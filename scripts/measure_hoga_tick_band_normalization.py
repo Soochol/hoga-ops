@@ -469,10 +469,193 @@ def cmd_lookback(days: int = 40) -> None:
           ["lookback N", "해당", "전체", "%"], rows)
 
 
+
+# --- truncation: 고정 %밴드안(C) 의 X 후보별 잘림 노출 ------------------------
+
+def cmd_truncation(day: str = "20260818") -> None:
+    """X 후보별로 10호가가 밴드를 담는지. 위험은 '항상 잘림'이 아니라 **하루 중 뒤집힘**이다
+    — 틱이 굵어지면 사다리가 넓어지므로, 전환이 고치려던 그 경계에서 일어나 새 계단을 만든다.
+    """
+    xs = [0.2, 0.3, 0.4, 0.5]
+    con = connect()
+    cols = ", ".join(
+        f"avg(CASE WHEN ask_half >= {x} AND bid_half >= {x} THEN 1.0 ELSE 0.0 END) ok{k}"
+        for k, x in enumerate(xs))
+    con.execute("CREATE TABLE t(code VARCHAR, n BIGINT, half DOUBLE, "
+                + ", ".join(f"ok{k} DOUBLE" for k in range(len(xs))) + ")")
+    for f in sorted(glob.glob(str(DATA_ROOT / day / "*" / "hogaplay" / "snapshots.parquet"))):
+        code = f.split("/")[-3]
+        con.execute(f"""INSERT INTO t
+          WITH s AS (SELECT (ask_p1+bid_p1)/2.0 mid, ask_p10, bid_p10 FROM read_parquet('{f}')
+            WHERE {DEEP} AND {SESSION} AND {FULL_BOOK}),
+          u AS (SELECT (ask_p10-mid)/mid*100 ask_half, (mid-bid_p10)/mid*100 bid_half FROM s)
+          SELECT '{code}', count(*), median(LEAST(ask_half,bid_half)), {cols} FROM u""")
+    table("10호가 반폭 분포", ["min", "p5", "p10", "p50", "p90"],
+          con.execute("""SELECT min(half), quantile_cont(half,0.05), quantile_cont(half,0.1),
+            median(half), quantile_cont(half,0.9) FROM t WHERE n>0""").fetchall())
+    rows = []
+    for k, x in enumerate(xs):
+        rows.append((f"±{x}%", *con.execute(f"""SELECT count(*) FILTER (WHERE ok{k} > 0.999),
+          count(*) FILTER (WHERE ok{k} < 0.001), count(*) FILTER (WHERE ok{k} BETWEEN 0.001 AND 0.999),
+          count(*) FROM t WHERE n>0""").fetchone()))
+    table("X 후보별", ["X", "항상 담김", "항상 잘림", "⚠하루 중 뒤집힘", "전체"], rows)
+
+
+# --- proxy: 고정 %밴드가 원 신호를 보존하는가 (C안 기각 근거) ----------------
+
+def cmd_proxy(days: int = 12, sample: int = 150) -> None:
+    """**경계 미통과일**에서만 잰다 — 경계일은 raw 가 인위를 타므로 불일치가 정상이고,
+    그 날을 빼야 '창을 좁혀서 잃은 것'만 남는다.
+    """
+    con = connect()
+    xs = [0.3, 0.4]
+    agree = {x: [0, 0] for x in xs}
+    corr = {x: [] for x in xs}
+    for day, code, _lo, _hi in _placebo_candidates(con, days, sample):
+        recs = _minute_reps(con, snapshots_of(day, code),
+                            extra=[f"({fixed_band_sql(x/100)[0]})::DOUBLE" for x in xs])
+        if recs is None:
+            continue
+        raw = [r[1] for r in recs]
+        # detect_surge 는 [index, prevPeak, value] 를 돌려준다 — 인덱스만 쓴다.
+        m0 = {m[0] for m in detect_surge(raw)}
+        for j, x in enumerate(xs):
+            v = [r[2 + j] for r in recs]
+            mf = {m[0] for m in detect_surge(v)}
+            agree[x][0] += sum(1 for i in m0 if any(abs(i - k) <= 1 for k in mf))
+            agree[x][1] += len(m0)
+            corr[x].append(_pearson(raw, v))
+    table("고정 %밴드가 raw 를 대신할 수 있는가 (경계 미통과일)",
+          ["X", "raw 대비 상관 중앙", "마커 재현율"],
+          [(f"±{x}%", sorted(corr[x])[len(corr[x])//2],
+            f"{agree[x][0]}/{agree[x][1]} = {agree[x][0]/max(agree[x][1],1)*100:.1f}%") for x in xs])
+
+
+# --- rebaseline: D안 — running peak 을 폭비로 환산 ---------------------------
+
+def detect_surge_rebased(vals, widths, step, approach=0.95, rearm=0.85):
+    """detect_surge 에 **폭 변화 시 running peak 환산**을 더한 변형.
+
+    `step=None` 이면 원본과 동일. 폭이 안 변하면 아무 일도 일어나지 않으므로
+    비경계일 동작이 보존된다 — C안이 실패한 지점이 바로 여기다.
+    """
+    out: list[int] = []
+    running, armed, active, wref = 0.0, False, -1, None
+    for i, (v, w) in enumerate(zip(vals, widths, strict=True)):
+        if step is not None and w > 0:
+            if wref is None:
+                wref = w
+            elif abs(w / wref - 1) > step:
+                running *= w / wref
+                wref = w
+        if running > 0:
+            if v < rearm * running:
+                armed, active = True, -1
+            if armed and v >= approach * running:
+                out.append(i)
+                active, armed = len(out) - 1, False
+            elif active >= 0 and v > running:
+                out[active] = i
+        running = max(running, v)
+    return out
+
+
+def cmd_rebaseline(window: int = 6) -> None:
+    steps = [None, 0.15, 0.25, 0.50]
+    con, agg, cases, buckets = connect(), {s: [0, 0] for s in steps}, 0, 0
+    for day, code, _lo, _hi, b in _crossings_cached():
+        recs = _minute_reps(con, snapshots_of(day, code), bound=b,
+                            extra=["(ask_p10-bid_p10)/mid*100"], min_buckets=MIN_BUCKETS)
+        if recs is None:
+            continue
+        cross, seen = None, False
+        for i, r in enumerate(recs):
+            if r[-1] == REG_FINE:
+                seen = True
+            elif r[-1] == REG_COARSE and seen:
+                cross = i
+                break
+        if cross is None:
+            continue
+        cases += 1
+        buckets += len(recs)
+        win = range(cross, min(cross + window, len(recs)))
+        vals, widths = [r[1] for r in recs], [r[2] for r in recs]
+        for st in steps:
+            mk = detect_surge_rebased(vals, widths, st)
+            agg[st][1] += len(mk)
+            if any(i in win for i in mk):
+                agg[st][0] += 1
+    avg = buckets / max(cases, 1)
+    rows = []
+    for st in steps:
+        obs = agg[st][0] / max(cases, 1)
+        base = agg[st][1] / max(cases, 1) * window / avg
+        rows.append(("현행" if st is None else f"{int(st*100)}%", f"{obs*100:.1f}%",
+                     f"{base*100:.1f}%", f"{obs/base:.1f}배", f"{agg[st][1]/max(cases,1):.1f}"))
+    table(f"running peak 환산 문턱별 (경계 통과 {cases} 종목일)",
+          ["문턱", "통과직후 발사율", "기저", "배수", "마커/일"], rows)
+
+
+def cmd_rebaseline_control(days: int = 12, sample: int = 150) -> None:
+    """D안의 부작용 검사 — 경계 미통과일에 마커가 얼마나 바뀌나. C안은 여기서 죽었다."""
+    con, steps = connect(), [0.15, 0.25, 0.50]
+    agg = {s: [0, 0, 0] for s in steps}
+    ndays = 0
+    for day, code, _lo, _hi in _placebo_candidates(con, days, sample):
+        recs = _minute_reps(con, snapshots_of(day, code), extra=["(ask_p10-bid_p10)/mid*100"])
+        if recs is None:
+            continue
+        ndays += 1
+        vals, widths = [r[1] for r in recs], [r[2] for r in recs]
+        m0 = set(detect_surge_rebased(vals, widths, None))
+        for st in steps:
+            ms = set(detect_surge_rebased(vals, widths, st))
+            agg[st][0] += sum(1 for i in m0 if any(abs(i - j) <= 1 for j in ms))
+            agg[st][1] += len(m0)
+            agg[st][2] += len(ms)
+    table(f"D안 부작용 — 경계 미통과 {ndays} 종목일", ["문턱", "마커 보존율", "마커/일 현행→D"],
+          [(f"{int(s*100)}%", f"{agg[s][0]}/{agg[s][1]} = {agg[s][0]/max(agg[s][1],1)*100:.1f}%",
+            f"{agg[s][1]/max(ndays,1):.1f} → {agg[s][2]/max(ndays,1):.1f}") for s in steps])
+
+
+# --- 공용 헬퍼 --------------------------------------------------------------
+
+def _pearson(a: list[float], b: list[float]) -> float:
+    n = len(a)
+    ma, mb = sum(a) / n, sum(b) / n
+    da = sum((x - ma) ** 2 for x in a) ** 0.5
+    db = sum((y - mb) ** 2 for y in b) ** 0.5
+    return sum((x - ma) * (y - mb) for x, y in zip(a, b, strict=True)) / (da * db) if da and db else 0.0
+
+
+def _minute_reps(con, path, *, extra=None, bound=None, min_buckets=200):
+    """1분 버킷 대표(= 그 버킷의 마지막 연속거래 스냅샷) 행들.
+
+    대표 선정 규칙은 백엔드 query_bucketed_ratio 와 같아야 의미가 있다.
+    반환: (mb, ask_total, *extra[, reg]) — bound 를 주면 마지막 열이 사다리 위치 코드.
+    """
+    if not path.exists():
+        return None
+    cols = [f"arg_max({e}, im)" for e in (extra or [])]
+    if bound is not None:
+        cols.append(f"arg_max(CASE WHEN ask_p10 < {bound} THEN {REG_FINE}"
+                    f" WHEN bid_p10 >= {bound} THEN {REG_COARSE} ELSE {REG_STRADDLE} END, im)")
+    recs = con.execute(f"""
+      WITH s AS (SELECT *, (ask_p1+bid_p1)/2.0 mid,
+          (ts_ms//10000000)*3600000 + ((ts_ms//100000)%100)*60000 + ((ts_ms//1000)%100)*1000 im
+          FROM read_parquet('{path}') WHERE {DEEP} AND {SESSION} AND {FULL_BOOK})
+      SELECT im//60000 mb, arg_max(({AQ})::DOUBLE, im){',' if cols else ''} {', '.join(cols)}
+      FROM s GROUP BY 1 ORDER BY 1""").fetchall()
+    return recs if len(recs) >= min_buckets else None
+
+
 COMMANDS = {
     "band": cmd_band, "crossings": cmd_crossings, "pure": cmd_pure, "placebo": cmd_placebo,
     "surge": cmd_surge, "profile": cmd_profile, "ratio": cmd_ratio, "case": cmd_case,
     "straddle": cmd_straddle, "lookback": cmd_lookback,
+    "truncation": cmd_truncation, "proxy": cmd_proxy,
+    "rebaseline": cmd_rebaseline, "rebaseline-control": cmd_rebaseline_control,
 }
 
 def main(argv: list[str]) -> int:
