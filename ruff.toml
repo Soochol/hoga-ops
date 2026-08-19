@@ -32,7 +32,7 @@ ignore = ["PLR0913"]
 # CLI/일회성 스크립트가 print 와 subprocess 로 돌아가는 이 저장소에서 수백 건이
 # 되고, ARG001 은 콜백 시그니처 호환 인자를 전부 잡는다. 각 6건은 이미 이유가
 # 적혀 있으므로 감시 대상이 아니라 보존 대상이다.
-external = ["S102", "S310", "T201", "ARG001", "ANN001"]
+external = ["S102", "S310", "T201", "ARG001", "ANN001", "SLF001"]
 
 [lint.isort]
 # 기본값(false)은 별칭 import 를 문장 여러 개로 쪼개, 지연 import 함수 안에서

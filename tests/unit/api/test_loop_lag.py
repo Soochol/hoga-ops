@@ -1,3 +1,4 @@
+
 """이벤트 루프 지연 프로브.
 
 **벽시계로 재지 않는다.** 이 리포는 벽시계 비율 단언을 이미 기각했고(#434/#516/#977)
@@ -8,7 +9,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import time
 
 import pytest
 
@@ -70,3 +73,44 @@ async def test_probe_disabled_returns_immediately(caplog):
     with caplog.at_level(logging.WARNING):
         await loop_lag.loop_lag_probe(interval_s=999.0, warn_ms=0.0)
     assert caplog.text == ""
+
+
+@pytest.mark.asyncio
+async def test_watchdog_dumps_the_stack_while_the_loop_is_blocked(caplog) -> None:
+    """정체 **도중에** 스택이 찍히는가 — 이 계측이 존재하는 이유.
+
+    **막는 방향**: 정체가 끝난 뒤에 스택을 뜨는 쪽. 그러면 범인이 아니라 그 다음
+    코드가 찍혀 진단이 조용히 틀린 곳을 가리킨다. 그래서 여기서는 루프를 **동기로**
+    막아 두고, 그 블로킹 함수의 이름이 덤프에 들어 있는지 본다.
+
+    **못 보는 것**: 실서버에서 무엇이 루프를 막는지는 말하지 않는다. 이 테스트는
+    "막히면 그 프레임이 찍힌다" 는 기계적 성질만 고정한다.
+
+    ⚠ 이 파일의 머리말은 "벽시계로 재지 않는다" 인데 이 테스트는 예외다 — 워치독의
+    계약 자체가 "실제로 막힌 동안" 이라 가짜 시계로는 재현할 수 없다(정체를 흉내
+    내려면 루프를 진짜로 붙들어야 하고, 그 순간 이벤트 루프 기반 가짜 시계도 함께
+    멈춘다). 대신 **비율이 아니라 존재**를 단언하고 여유를 크게 잡는다: 블로킹
+    450ms vs 임계 120ms vs 폴링 100ms. 느린 머신에서도 부등호가 뒤집히지 않는다.
+    """
+    def _block_the_loop_for_the_test() -> None:
+        time.sleep(0.45)   # 워치독 임계(120ms)를 넉넉히 넘긴다
+
+    caplog.set_level(logging.WARNING, logger="hoga.api.loop_lag")
+    task = asyncio.create_task(
+        loop_lag.loop_lag_probe(interval_s=0.02, warn_ms=120.0, iterations=40),
+    )
+    await asyncio.sleep(0.05)          # 프로브·워치독이 서로를 잡을 시간
+    _block_the_loop_for_the_test()      # 루프를 동기로 붙든다
+    await asyncio.sleep(0.15)           # 워치독이 찍은 줄이 도착할 시간
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+    stalls = [r.getMessage() for r in caplog.records if "loop_stall" in r.getMessage()]
+    assert stalls, f"정체 중 스택 덤프가 없다. 받은 로그: {[r.getMessage() for r in caplog.records]}"
+    assert "_block_the_loop_for_the_test" in stalls[0], stalls[0]
+
+
+def test_format_loop_stack_returns_empty_for_unknown_thread() -> None:
+    """없는 스레드 id 는 빈 문자열 — 워치독이 그걸로 로그를 건너뛴다."""
+    assert loop_lag.format_loop_stack(-1) == ""
