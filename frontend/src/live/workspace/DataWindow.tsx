@@ -246,8 +246,11 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         volume: afterHoursBook.data?.acc_volume ?? null,
       };
     }
-    return latestAfterHoursTotals(live.afterHours);
-  }, [isSpot, singlePriceSnapshot, live.afterHours, afterHoursBook.data]);
+    // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
+    // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
+    // KRX 시간외 총잔량이 그 위에 덮인다(판정 근거는 `latestAfterHoursTotals`).
+    return latestAfterHoursTotals(live.afterHours, latestSnapshot?.ts_ms ?? null);
+  }, [isSpot, singlePriceSnapshot, live.afterHours, afterHoursBook.data, latestSnapshot]);
   const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.

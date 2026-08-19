@@ -345,6 +345,49 @@ describe('BookPanel', () => {
     expect(screen.getByText('246,500')).toBeInTheDocument(); // 매수 최말단
   });
 
+  it('사다리가 없어도 시간외 총잔량은 그린다 — 장전 08:30–08:40 (2026-08-19 실측)', () => {
+    // 회귀 고정: 0E 를 119 프레임 받는 동안(069500) 0D 가 0 건이라 snapshot 이 null 이었고,
+    // 그래서 **수신 중인 총잔량이 화면에서 통째로 사라졌다**. 장후에 안 터진 이유는
+    // 그때는 그날 15:30 까지의 사다리가 버퍼에 남아 snapshot 이 non-null 이기 때문이다.
+    render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        afterHoursTotals={{ ask: 22_367, bid: 0 }}
+      />,
+    );
+
+    expect(screen.queryByText('호가 데이터 없음')).toBeNull();
+    expect(screen.getByTestId('book-total-fill')).toBeInTheDocument();
+    expect(screen.getByText('22,367')).toBeInTheDocument();
+    expect(screen.getByTestId('book-total-after-hours')).toHaveTextContent('시간외');
+  });
+
+  it('사다리를 합성하지 않는다 — 0E 에는 단계별 호가가 없다', () => {
+    // 10단을 0 으로 채워 그리면 "가짜 호가창" 이 된다(백엔드 test_after_hours_payload_has_no_ladder
+    // 와 같은 계약). 제도상으로도 이 구간은 전일종가 단일가라 사다리 개념이 없다.
+    render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        afterHoursTotals={{ ask: 22_367, bid: 0 }}
+      />,
+    );
+
+    expect(screen.getByText('호가 사다리 없음')).toBeInTheDocument();
+    // `중` 행은 사다리 본문에만 있다 — 존재하지 않는 testid 를 0 으로 세는 단언은
+    // 아무것도 증명하지 못하므로, 실제로 렌더되는 요소로 부재를 판정한다.
+    expect(screen.queryByTestId('book-mid-row')).toBeNull();
+  });
+
   it('빈 상태를 구분해 그린다', () => {
     const { rerender } = render(
       <BookPanel

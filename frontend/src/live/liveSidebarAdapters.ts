@@ -114,8 +114,18 @@ export type AfterHoursTotals = {
   volume?: number | null;
 };
 
+/** 0E 가 사다리를 덧씌우려면 사다리보다 이만큼 앞서야 한다.
+ *
+ *  **왜 여유가 필요한가**: 두 스트림이 **둘 다 살아 있는** 구간이 있다. NXT 프리마켓
+ *  (08:00–08:50 접속매매)이 그것으로, 그때 사다리는 초당 여러 건 갱신되고 0E 도
+ *  08:30–08:40 에 5초 주기로 온다. 단순히 `ahTs > obTs` 로 가르면 0E 가 막 도착한
+ *  찰나에만 이겨서 **라벨이 깜빡인다**. 반대로 진짜 덧씌워야 하는 구간의 격차는
+ *  분 단위다(장후: 사다리 15:30 · 0E 15:40~16:00). 그 사이 어디를 잘라도 판정이
+ *  같으므로 넉넉한 1분을 쓴다 — 이 값은 정밀도가 아니라 **안정성**을 사는 것이다. */
+const AFTER_HOURS_OVERRIDE_MARGIN_MS = 60_000;
+
 /**
- * 시간외호가 버퍼(`ah`)의 마지막 총잔량. 없으면 null.
+ * 시간외호가 버퍼(`ah`)의 마지막 총잔량. 없거나 **사다리가 더 최신이면** null.
  *
  * `latestOrderbookSnapshot` 과 짝이지만 `OrderbookSnapshot` 을 만들지 **않는다** —
  * 0E 에는 사다리가 없어서 만들면 10단이 전부 0 인 가짜 호가창이 된다
@@ -125,15 +135,51 @@ export type AfterHoursTotals = {
  *
  * 양쪽 0 은 null 로 접는다 — 파서가 이미 그런 프레임을 버리지만(`_parse_after_hours`),
  * 여기서도 접어야 "시간외 잔량 없음" 이 정규장 총잔량으로 자연히 폴백한다.
+ *
+ * ## `obTsMs` — 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다
+ *
+ * 이 함수엔 원래 시계 게이트가 없었다. 의도적이었다 — 장후엔 0E 가 유일한 호가
+ * 신호라 창을 좁히면 진짜 신호가 죽는다. 그런데 그 설계는 **"사다리는 멈춰 있다"**
+ * 를 암묵 전제로 깔고 있었고(15:30 에 0D 가 끊긴 뒤가 유일한 관측 구간이었다),
+ * 사다리가 **살아 있는** 구간이 존재한다는 사실이 빠져 있었다.
+ *
+ * 2026-08-19 08:53 실측(005930, 통합): 사다리는 08:53:59 로 실시간인데 스트립은
+ * **08:40:00 에 멎은 0E 값**(23,870)을 "시간외" 라벨과 함께 그리고 있었다 — 같은
+ * 순간 사다리 총잔량은 13,938 이었다. NXT 프리마켓과 KRX 장전 시간외 종가매매는
+ * **다른 시장의 다른 제도**인데 한 패널에서 섞인 것이다. 0E 는 `KRX` 뿐 아니라
+ * `UN` 태그로도 오므로(같은 실측에서 확인 — 파서 주석의 "미실측" 이 풀렸다)
+ * venue 필터가 이걸 걸러 주지 않는다.
+ *
+ * 그래서 판정을 **프레임 t_ms** 로 한다(벽시계가 아니다 — 벽시계 게이트는 창을
+ * 잘못 좁혀 진짜 신호를 죽이는 쪽으로 실패한다):
+ *
+ *   - `obTsMs === null` — 사다리가 아예 없다. 0E 가 유일한 신호다(장전 08:30–08:40
+ *     KRX 가 그 상태). **덧씌우는 게 아니라 그것만 그린다** — BookPanel 축약 분기.
+ *   - `ahTs - obTsMs >= 1분` — 사다리가 멈췄고 0E 가 현재값이다(장후 15:40–16:00).
+ *   - 그 외 — 사다리가 살아 있다. **사다리 총잔량이 정답이므로 null 을 돌려준다.**
+ *
+ * **"사다리는 있는데 시각을 모른다" 는 덮지 않는 쪽으로 실패한다.** `latestOrderbookSnapshot`
+ * 은 `ts_ms: latest.t_ms ?? 0` 으로 만들므로 프레임에 `t_ms` 가 없으면 0 이 실린다.
+ * 그 0 을 그대로 비교에 태우면 `ahTs - 0 >= 1분` 이 **항상 참**이라 게이트가 조용히
+ * 열려 원래 혼입이 돌아온다 — 모름이 "덮는다" 로 귀결되는 것은 실패 방향이 거꾸로다.
+ * 사다리 없음(`null`)과 시각 미상(`0`)은 **다른 상태**이고, 후자는 사다리를 신뢰한다.
  */
 export function latestAfterHoursTotals(
   ah: readonly RawSnapshot[],
+  obTsMs: number | null,
 ): AfterHoursTotals | null {
   if (ah.length === 0) return null;
   const latest = ah[ah.length - 1];
   const ask = (latest.total_ask_qty as number) ?? 0;
   const bid = (latest.total_bid_qty as number) ?? 0;
   if (ask === 0 && bid === 0) return null;
+  if (obTsMs !== null) {
+    // 시각 미상(0·음수)이면 비교를 포기하고 사다리를 신뢰한다 — 위 docstring 의
+    // 실패 방향 규약. `ahTs` 가 0 인 경우도 이 부등식이 자연히 흡수한다.
+    if (obTsMs <= 0) return null;
+    const ahTs = (latest.t_ms as number) ?? 0;
+    if (ahTs - obTsMs < AFTER_HOURS_OVERRIDE_MARGIN_MS) return null;
+  }
   return { ask, bid };
 }
 

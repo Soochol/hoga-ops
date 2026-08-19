@@ -126,7 +126,35 @@ export default function BookPanel({
   afterHoursLabel = '시간외',
 }: Props) {
   if (snapshot === undefined) return <PanelState>커서 위치 불러오는 중…</PanelState>;
-  if (snapshot === null) return <PanelState>호가 데이터 없음</PanelState>;
+  // 사다리가 없어도 **시간외 총잔량은 그린다.** 이 분기가 없으면 0E 가 정상 수신 중인데도
+  // 화면이 통째로 "호가 데이터 없음" 이 된다 — 장전 시간외 종가매매(08:30–08:40)가 그
+  // 상태다(2026-08-19 실측: 069500 은 그 10분에 0E 119 프레임을 받는 동안 0D 가 0 건).
+  //
+  // 왜 장후에는 안 터졌는가: 15:40–16:00 에는 **그날 15:30 까지 쌓인 0D 가 버퍼에 남아**
+  // snapshot 이 non-null 이라 아래 본문이 그려지고, 스트립이 그 안에서 총잔량만 갈아끼운다.
+  // 그 전제는 시간 방향에 의존한다 — 아침에는 그날의 선행 사다리가 원리적으로 없고,
+  // 폴백 세 겹(버퍼 · bufferFallbackSnapshot · 서버 last_ob)이 **전부 0D 파생**이라
+  // 동시에 빈다. 즉 이것은 데이터 결손이 아니라 표시 경로의 구멍이었다.
+  //
+  // 사다리를 **합성하지 않는다** — 0E 에는 단계별 호가 FID 가 없어서(kiwoom_fields 0E 절)
+  // 만들면 10단이 전부 0 인 가짜 호가창이 된다. 제도상으로도 이 구간은 전일종가 단일가라
+  // 사다리라는 개념 자체가 없다. 그려야 할 실체는 총잔량 두 개뿐이다.
+  if (snapshot === null) {
+    if (afterHoursTotals === null) return <PanelState>호가 데이터 없음</PanelState>;
+    return (
+      <div className="flex h-full flex-col bg-bg-card">
+        <div className="flex min-h-0 flex-1">
+          <PanelState>호가 사다리 없음</PanelState>
+        </div>
+        <TotalQtyStrip
+          totals={afterHoursTotals}
+          maskRatio={maskRatio}
+          afterHoursTotals={afterHoursTotals}
+          afterHoursLabel={afterHoursLabel}
+        />
+      </div>
+    );
+  }
 
   const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
   const bids = snapshot.bid;
@@ -305,7 +333,7 @@ export default function BookPanel({
         </div>
       </div>
       <TotalQtyStrip
-        snapshot={snapshot}
+        totals={afterHoursTotals ?? { ask: snapshot.tot_ask, bid: snapshot.tot_bid }}
         maskRatio={maskRatio}
         afterHoursTotals={afterHoursTotals}
         afterHoursLabel={afterHoursLabel}
@@ -650,22 +678,28 @@ function SummaryRow({
 }
 
 function TotalQtyStrip({
-  snapshot,
+  totals,
   maskRatio,
   afterHoursTotals,
   afterHoursLabel,
 }: {
-  snapshot: OrderbookSnapshot;
+  /** 그릴 총잔량. **어느 출처를 쓸지는 호출부가 정한다** — 시간외 값이 있으면 그것,
+   *  없으면 사다리 스냅샷의 총잔량. 여기서 `snapshot` 을 직접 받아 `?? ` 로 떨어뜨리면
+   *  "사다리도 없고 시간외도 없다" 는 **불가능한 상태가 타입에 생기고**, 그 폴백이
+   *  0 을 조용히 삼켜 `0fr 0fr` 격자가 된다. 두 호출부 모두 non-null 을 보장한다. */
+  totals: { ask: number; bid: number };
   maskRatio: boolean;
+  /** 값이 아니라 **출처 판정**용이다 — non-null 이면 위 `totals` 가 시간외 값이라는 뜻이라
+   *  라벨·체결량 줄이 붙는다. 사다리(정규장 마지막 값)와 합이 안 맞는 것을 설명하는 장치. */
   afterHoursTotals: AfterHoursTotals | null;
   afterHoursLabel: string;
 }) {
   // 시간외 총잔량이 오면 그걸 쓴다 — 위 사다리(정규장 15:30 마지막 스냅샷)는
   // 그대로 두고 이 스트립만 살아 움직인다. KRX-only 종목은 15:30 에 0D 가 끊겨
-  // 여기가 시간외의 유일한 호가 신호다(Props.afterHoursTotals 주석).
+  // 여기가 시간외의 유일한 호가 신호다(Props.afterHoursTotals 주석). 사다리가 아예
+  // 없는 장전 08:30–08:40 에는 이 스트립이 **패널의 유일한 내용**이 된다.
   const isAfterHours = afterHoursTotals !== null;
-  const ask = afterHoursTotals?.ask ?? snapshot.tot_ask;
-  const bid = afterHoursTotals?.bid ?? snapshot.tot_bid;
+  const { ask, bid } = totals;
   return (
     <div className="border-t border-border">
       {maskRatio ? (

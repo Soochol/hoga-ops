@@ -339,21 +339,68 @@ describe('latestAfterHoursTotals', () => {
     ({ t_ms, kind: 'ah', total_ask_qty, total_bid_qty });
 
   it('마지막 프레임의 총잔량을 준다', () => {
-    expect(latestAfterHoursTotals([ah(100, 200, 1), ah(300, 400, 2)])).toEqual({
+    expect(latestAfterHoursTotals([ah(100, 200, 1), ah(300, 400, 2)], null)).toEqual({
       ask: 300,
       bid: 400,
     });
   });
 
   it('버퍼가 비면 null — 정규장 총잔량으로 폴백하라는 뜻', () => {
-    expect(latestAfterHoursTotals([])).toBeNull();
+    expect(latestAfterHoursTotals([], null)).toBeNull();
   });
 
   it('양쪽 0 은 null 로 접는다 — "시간외 잔량 없음"이 화면을 0 으로 덮지 않게', () => {
-    expect(latestAfterHoursTotals([ah(0, 0)])).toBeNull();
+    expect(latestAfterHoursTotals([ah(0, 0)], null)).toBeNull();
   });
 
   it('한쪽만 0 은 유지한다 — 매수만 쌓인 시간외 호가는 정상 상태다', () => {
-    expect(latestAfterHoursTotals([ah(0, 500)])).toEqual({ ask: 0, bid: 500 });
+    expect(latestAfterHoursTotals([ah(0, 500)], null)).toEqual({ ask: 0, bid: 500 });
+  });
+
+  // ── 사다리와의 관계 (2026-08-19 실측) ──────────────────────────────────────
+  //
+  // 이 축이 없던 동안 **살아 있는 사다리 위에 멎은 0E 가 덮였다**: 08:53 실측에서
+  // 005930(통합) 사다리는 08:53:59 로 실시간인데 스트립은 08:40:00 에 멎은 KRX
+  // 시간외 값 23,870 을 "시간외" 라벨과 함께 그렸다(같은 순간 사다리 총잔량 13,938).
+  // NXT 프리마켓과 KRX 장전 시간외 종가매매는 다른 시장의 다른 제도다.
+  const OB_TS = 60_000_000;
+
+  it('사다리가 살아 있으면 null — 덧씌우기는 멈춘 사다리에만 옳다', () => {
+    // 0E 가 **더 최근이어도** 여유 안이면 사다리가 이긴다. 둘 다 살아 있는 구간
+    // (NXT 프리마켓 08:00–08:50)에서 라벨이 깜빡이지 않게 하는 것이 이 여유다.
+    expect(latestAfterHoursTotals([ah(300, 400, OB_TS + 1_000)], OB_TS)).toBeNull();
+  });
+
+  it('사다리가 멈췄으면 0E 가 이긴다 — 장후 15:40–16:00 의 유일한 호가 신호', () => {
+    // 사다리 15:30 · 0E 15:40 → 10분 격차. 이 경로가 죽으면 KRX-only 종목은
+    // 장후에 호가 축이 통째로 사라진다(0E 를 붙인 원래 이유).
+    expect(latestAfterHoursTotals([ah(300, 400, OB_TS + 600_000)], OB_TS)).toEqual({
+      ask: 300,
+      bid: 400,
+    });
+  });
+
+  it('여유 경계를 값으로 고정한다 — 미만은 사다리, 이상은 0E', () => {
+    // 경계를 양쪽에서 집어야 실패 메시지가 "부호를 뒤집었다"와 "상수를 바꿨다"를
+    // 구분해 준다. 한쪽만 두면 어느 실수인지 말해 주지 못한다.
+    expect(latestAfterHoursTotals([ah(300, 400, OB_TS + 59_999)], OB_TS)).toBeNull();
+    expect(latestAfterHoursTotals([ah(300, 400, OB_TS + 60_000)], OB_TS)).toEqual({
+      ask: 300,
+      bid: 400,
+    });
+  });
+
+  it('사다리 시각을 모르면 덮지 않는다 — 모름은 안전한 쪽으로 실패해야 한다', () => {
+    // `latestOrderbookSnapshot` 은 `ts_ms: latest.t_ms ?? 0` 이라 프레임에 t_ms 가
+    // 없으면 0 이 실린다. 그 0 을 비교에 태우면 `ahTs - 0 >= 1분` 이 **항상 참**이라
+    // 게이트가 조용히 열려 원래 혼입(살아 있는 사다리 위에 멎은 0E)이 돌아온다.
+    // 사다리 없음(null)과 시각 미상(0)은 다른 상태다 — 아래 케이스와 짝으로 읽을 것.
+    expect(latestAfterHoursTotals([ah(300, 400, OB_TS)], 0)).toBeNull();
+  });
+
+  it('사다리가 아예 없으면 여유와 무관하게 0E — 장전 08:30–08:40 KRX', () => {
+    // 그날 첫 0D 가 오기 전이라 비교 대상 자체가 없다. 여기서 null 을 돌려주면
+    // BookPanel 이 "호가 데이터 없음" 으로 떨어져 수신 중인 값이 화면에서 사라진다.
+    expect(latestAfterHoursTotals([ah(22_367, 0, 1)], null)).toEqual({ ask: 22_367, bid: 0 });
   });
 })
