@@ -212,6 +212,31 @@ const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
  * sweep (it only fired after the pointer stopped). */
 const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
+/** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
+ *
+ * ## 왜 캡이 (다시) 있는가
+ *
+ * 이 캡은 #479 에서 도입됐다가 #579 가 제거했고, 2026-08-19 사용자 결정으로
+ * 복원됐다. 취향의 왕복이 아니라 **전제가 실측으로 반박된** 경우다:
+ *
+ * - #579 의 근거는 "사이드카는 빠르다" 였다(실측 220ms). 캔들 콜드 ~1s 옆에서
+ *   0.2s 는 공짜라, 캡 없이 다 같이 등장시키는 편이 나았다("기다림 > 따로 뜸").
+ * - 그 뒤 실측이 그 전제를 깼다. 콜드 5거래일 창에서 호가 44ms 대 **사이드카
+ *   4.68s**, 한 달 창은 **11.7s**(아래 지표 문구 주석에 기록). 2026-08-19
+ *   `/live` 조사에서도 `/api/range` 가 콜드 2.6s, 서버 slow-log 09시대 19건
+ *   평균 5.0s·최대 12.3s 였다.
+ * - 즉 "0.2s 더 기다리기" 가 실제로는 "최대 11.7초 단색 커버 응시" 였다.
+ *   그 구간에서는 따로 뜨는 편이 낫다 — 캡은 그 꼬리만 자른다.
+ *
+ * 700ms 는 #479 가 심사했던 값 그대로다. 빠른 경로(사이드카 220ms + vdist 의
+ * 캔들-후행 체인 ~0.2s)는 캡 안에 들어오므로 **한 장면 등장이 그대로 유지되고**,
+ * 잘리는 것은 rate-limit·넓은 창 같은 꼬리뿐이다.
+ *
+ * 대가: 캡이 발화한 뒤 사이드카가 도착하면 그 pane 이 늦게 채워진다. pane 멤버십
+ * 자체는 토글·타임프레임으로만 정해지므로(`paneSpecsForTimeframe`) 데이터 도착이
+ * pane 을 새로 만들지는 않지만, 빈 pane 을 lwc 가 지웠다가 되살리는 경로가 있어
+ * 리플로우가 보일 수 있다. 11.7초 커버와 맞바꾼 값이다. */
+export const SIDECAR_REVEAL_CAP_MS = 700;
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
 function dailyLogicalRange(
@@ -898,6 +923,10 @@ export function LiveChartRoot({
   const [viewportLayoutTick, setViewportLayoutTick] = useState(0);
   const revealRafRef = useRef<number | null>(null);
   const calendarViewportRetryRafRef = useRef<number | null>(null);
+  // 사이드카 대기 상한(SIDECAR_REVEAL_CAP_MS)이 소진됐는가. viewKey 단위로 리셋한다 —
+  // 이전 뷰의 cap-reached 가 새 뷰의 첫 커밋을 조기 reveal 하면 안 된다.
+  const [sidecarCapReached, setSidecarCapReached] = useState(false);
+  const sidecarCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
@@ -910,12 +939,35 @@ export function LiveChartRoot({
       cancelAnimationFrame(calendarViewportRetryRafRef.current);
       calendarViewportRetryRafRef.current = null;
     }
+    if (sidecarCapTimerRef.current !== null) {
+      clearTimeout(sidecarCapTimerRef.current);
+      sidecarCapTimerRef.current = null;
+    }
+    setSidecarCapReached(false);
   }, [viewKey]);
   // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
   useEffect(() => () => {
     if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
     if (calendarViewportRetryRafRef.current !== null) cancelAnimationFrame(calendarViewportRetryRafRef.current);
+    if (sidecarCapTimerRef.current !== null) clearTimeout(sidecarCapTimerRef.current);
   }, []);
+  // 사이드카 캡 타이머. **캔들·호가가 이미 settle 됐고 사이드카만 남은 시점**에서만
+  // 시작한다 — 이 시작점이 설계의 급소다. viewKey 변경 시점부터 세면 캔들 콜드
+  // fetch(~1s)가 캡을 먼저 소진해, vdist 의 캔들-후행 체인(+0.2s)조차 매번 캡을
+  // 놓치고 **모든 콜드 로드가 따로 뜸**이 된다 — 고치려던 것보다 나쁜 결과다.
+  //
+  // 타이머는 viewKey 리셋·언마운트에서만 정리하므로(dep churn 에 재시작하지 않는다)
+  // 한 창(window)당 정확히 한 번 동작한다. 사이드카가 캡 전에 settle 되면 아래 메인
+  // reveal effect 가 즉시 열고(dep 에 isSidecarLoading 포함), 이 타이머는 뒤늦게
+  // fire 해도 무해하다(reveal 의 revealedKey === viewKey 가드로 no-op).
+  useEffect(() => {
+    const waitingOnSidecar = isSidecarLoading && !isPastCandlesLoading && !isHogaLoading;
+    if (!waitingOnSidecar || sidecarCapReached || sidecarCapTimerRef.current !== null) return;
+    sidecarCapTimerRef.current = setTimeout(() => {
+      sidecarCapTimerRef.current = null;
+      setSidecarCapReached(true);
+    }, SIDECAR_REVEAL_CAP_MS);
+  }, [isSidecarLoading, isPastCandlesLoading, isHogaLoading, sidecarCapReached]);
 
   // Leftward-pan historical backfill + staleness-free viewport repositioning
   // (pre-swap layout snapshot, post-setData reposition, lazy-fetch trigger,
@@ -1008,10 +1060,18 @@ export function LiveChartRoot({
     // 팬 경로(historicalFromDate)는 일부러 이 게이트를 우회한다(raw reveal 유지).
     const revealWhenSettled = () => {
       // 캔들·호가·사이드카가 모두 settle될 때까지 홀드 → 캔들·모든 pane 지표가 한 번의
-      // reveal로 함께 등장(장면1). 캡 없음: 어떤 지표도 늦는다고 캔들만 먼저 공개하지
-      // 않는다("기다림 > 따로 뜸"). isSidecarLoading 의 모든 항은 settle(성공·에러)로
-      // 반드시 false 수렴하므로 커버가 고착되지 않는다(useLiveBundle isSidecarLoading 주석).
-      if (!isHogaLoading && !isSidecarLoading) reveal();
+      // reveal로 함께 등장(장면1). **단 사이드카에는 상한이 있다** — 캡이 소진되면
+      // 캔들을 먼저 공개한다. 근거·경위는 `SIDECAR_REVEAL_CAP_MS`(요약: 사이드카가
+      // 빠르다는 전제가 4.68s~11.7s 실측으로 반박됐다).
+      //
+      // 호가에는 캡이 없다. 실측이 수십~수백 ms 라 캔들 콜드 옆에서 무시할 수 있고,
+      // 호가 pane 은 캔들과 같은 축을 공유해 따로 뜨면 어긋남이 더 크게 읽힌다.
+      //
+      // isSidecarLoading 의 모든 항은 settle(성공·에러)로 반드시 false 수렴하므로
+      // 캡이 없더라도 커버가 고착되지는 않는다(useLiveBundle isSidecarLoading 주석) —
+      // 캡은 고착 방지가 아니라 **꼬리 지연 차단**이 목적이다.
+      const sidecarBlocking = isSidecarLoading && !sidecarCapReached;
+      if (!isHogaLoading && !sidecarBlocking) reveal();
     };
     if (!chart || !cb) {
       // No chart/bundle to position yet. If the past-candle fetch has SETTLED
@@ -1255,7 +1315,7 @@ export function LiveChartRoot({
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, isSidecarLoading, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -2503,10 +2563,14 @@ export function LiveChartRoot({
           (콜드 5거래일 창에서 호가 44ms vs 사이드카 4.68s, 한 달 창은 11.7s) → 종목 첫
           방문마다 수 초짜리 단색 사각형이 뜬다.
 
+          캡(`SIDECAR_REVEAL_CAP_MS`, 2026-08-19 복원)이 생긴 뒤에도 이 술어는 그대로
+          성립한다 — 캡이 발화하면 `chartReady` 가 true 가 되고 `!chartReady` 가드가
+          문구를 걷어 간다. 즉 문구가 뜨는 구간은 이제 **최대 700ms** 로 유계다.
+
           경위: 문구 자체가 #457 에서 **침묵 커버를 막으려고** 생겼는데, 이후 #479·#579 가
-          홀드 게이트만 넓히고 문구를 안 데려갔다. 무한 홀드(#579)는 그대로 둔다 — 캡을
-          되살리는 게 아니라 이미 있는 문구의 적용 범위를 홀드 범위와 일치시키는 것이다.
-          기존 문구가 사이드카·일봉MA 케이스에도 그대로 정확하므로 새 시각 요소를 만들지 않는다. */}
+          홀드 게이트만 넓히고 문구를 안 데려갔다(그 불일치를 뒤에 맞췄다). #579 가 없앤
+          캡은 위 상수의 근거대로 되살렸다 — 이 문구는 그 캡 이전·이후 모두 정확하므로
+          새 시각 요소를 만들지 않는다. */}
       {cb !== null && cb.candles.length > 0 && !chartReady && (isHogaLoading || isSidecarLoading) && (
         <div
           data-testid="hoga-loading-note"

@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay, shouldShowDepthDeltaOverlay } from './LiveChartRoot';
+import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay, shouldShowDepthDeltaOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -2122,10 +2122,14 @@ describe('LiveChartRoot', () => {
     expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
   });
 
-  it('holds the cover indefinitely while the sidecar loads — no cap (장면1)', async () => {
-    // 캡 제거: 캔들·호가가 settle된 뒤에도 사이드카가 loading이면 커버를 무제한 홀드한다
-    // (어떤 지표도 늦는다고 캔들만 먼저 공개하지 않음, "기다림 > 따로 뜸"). 옛 캡(700ms)을
-    // 훌쩍 넘겨도 커버가 걷히지 않음을 실타이머로 확인. settle 시 reveal은 위 테스트가 커버.
+  it('사이드카가 늦으면 캡 경과 후 캔들을 먼저 공개한다 (SIDECAR_REVEAL_CAP_MS)', async () => {
+    // 막는 방향: 사이드카 하나가 늦다고 캔들이 **무기한** 인질이 되는 쪽.
+    // #579 는 이 캡을 제거했고("기다림 > 따로 뜸"), 그 근거는 사이드카 실측 220ms 였다.
+    // 그 전제가 뒤에 반박됐다(콜드 5거래일 4.68s, 한 달 창 11.7s) → 2026-08-19 캡 복원.
+    // 근거 전문은 LiveChartRoot 의 SIDECAR_REVEAL_CAP_MS 주석.
+    //
+    // 못 보는 것: 캡 **값**(700ms)이 적절한지는 이 테스트가 말하지 않는다. 캡 이전에
+    // 홀드하고 이후에 열린다는 **분기**만 고정한다.
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot
@@ -2140,13 +2144,59 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     await flushFrames(3);
+    // 캡 이전: 사이드카를 기다리며 홀드 — 빠른 경로의 "한 장면 등장" 이 여기서 성립한다.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
-    // 옛 캡 창(700ms)을 넘겨 대기 — 캡이 살아 있었다면 여기서 걷혔을 것.
+    // 캡 경과: 사이드카는 **여전히 loading 인 채**로 커버가 걷혀야 한다.
+    // 벽시계 상수로 단언하지 않는다 — 캡(700ms) 소진은 실타이머로 흘려보내되,
+    // 이후 rAF 2틱이 필요한 reveal 은 waitFor 로 기다린다.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await new Promise((resolve) => setTimeout(resolve, SIDECAR_REVEAL_CAP_MS + 100));
     });
+    await waitFor(() =>
+      expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0'),
+    );
+    // 캡으로 열렸으므로 지표 문구도 함께 사라진다(!chartReady 가드) — 걷힌 차트 위에
+    // "지표 불러오는 중…" 이 남으면 안 된다.
+    expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
+  });
+
+  it('캡은 viewKey 마다 리셋된다 — 이전 뷰의 소진이 새 종목을 조기 공개하지 않는다', async () => {
+    // 캡 상태가 뷰를 넘어 새면, 한 번 늦은 종목을 본 뒤로는 **모든** 종목이 캡 없이
+    // 즉시 열려 "한 장면 등장" 이 영구히 깨진다. 리셋이 그걸 막는 유일한 장치다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={true}
+      />,
+      { wrapper },
+    );
+    // 첫 뷰에서 캡을 소진시킨다.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, SIDECAR_REVEAL_CAP_MS + 100));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0'),
+    );
+    // 종목 전환 = 새 viewKey. 사이드카는 여전히 loading 이다.
+    rerender(
+      <LiveChartRoot
+        code="000660"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={true}
+      />,
+    );
     await flushFrames(3);
-    // 사이드카가 여전히 loading이므로 커버는 계속 홀드(캡 없음).
+    // 새 뷰는 자기 캡을 처음부터 다시 센다 → 지금은 홀드여야 한다.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
   });
 
