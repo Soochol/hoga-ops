@@ -242,12 +242,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const afterHoursTotals = useMemo(() => {
     if (isSpot) return null;
     if (singlePriceSnapshot !== null) {
-      return {
-        ask: singlePriceSnapshot.tot_ask,
-        bid: singlePriceSnapshot.tot_bid,
-        // 체결량은 **단일가 경로에만** 있다 — 0E 에는 체결량 FID 가 없다.
-        volume: afterHoursBook.data?.acc_volume ?? null,
-      };
+      // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
+      // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
+      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
     }
     // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
     // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
