@@ -339,8 +339,10 @@ export interface UseLiveBundleResult {
   isExtending: boolean;
   /** 사이드카 지표 경로(/api/range mode=sidecar)의 초기 fetch가 아직 pending인가.
    * LiveChartRoot의 reveal 커버가 캔들·호가와 함께 써서 최대벽·POC·거래량분포·프로그램
-   * 매매가 캔들과 한 번의 reveal로 등장하게 한다(개선안 1-A). 캔들 settle 후 상한(캡)까지만
-   * 대기하고, 사이드카가 rate-limit로 늦어지면 캔들을 인질로 잡지 않는다.
+   * 매매가 캔들과 한 번의 reveal로 등장하게 한다. 단 **캔들·호가 settle 후
+   * `SIDECAR_REVEAL_CAP_MS`(700ms)까지만** 대기한다 — 사이드카가 늦어져도 캔들을
+   * 인질로 잡지 않는다. (이 캡은 #579 가 제거했다가 2026-08-19 복원됐다. 근거·실측은
+   * `LiveChartRoot.tsx` 의 그 상수 주석이 유일 출처이므로 여기 숫자를 늘려 적지 말 것.)
    * - sidecarEnabled=false(지표 전부 off)면 항상 false → 홀드 없음.
    * - `data == null`: 캐시된 뷰 재방문 시 즉시 서빙되는 동안 리프레시가 isLoading이어도
    *   불필요 홀드를 방지. 에러 settle도 isLoading=false라 영구 홀드 없음. */
