@@ -16,6 +16,7 @@ import {
   bucketHogaSeries,
   isContinuousBook,
   isIndicatorEligibleBook,
+  krxTickOf,
   ladderBandPct,
   type ObSnapshot,
   type TradeSnapshot,
@@ -679,6 +680,7 @@ class IncrementalHogaBucketer {
           // 대표(= 버킷의 마지막 유효 스냅샷)를 덮어쓸 때마다 그 스냅샷의 폭을 함께
           // 싣는다 — 총잔량과 **같은 행**의 폭이어야 정규화가 성립한다.
           band_pct: ladderBandPct(s),
+          tick: krxTickOf(s),
           ask_total: s.total_ask_qty,
           bid_total: s.total_bid_qty,
           bid_max,
@@ -724,7 +726,7 @@ class IncrementalHogaBucketer {
           ask_max: 0,
           imb_max_bid: 0,
           imb_max_ask: 0,
-          band_pct: 0,
+          band_pct: 0, tick: 0,
         });
       }
       this.maxProcessedObT = this.maxProcessedObT === null ? s.t_ms : Math.max(this.maxProcessedObT, s.t_ms);

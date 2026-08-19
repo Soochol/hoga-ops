@@ -3,9 +3,11 @@ import { detectSurges, detectSurgeSide } from './detectSurges';
 import type { QuoteRatioPoint } from '../../api/types';
 
 // detectSurges reads only ask_total/bid_total (close); the Intra-Bar Max fields mirror close here.
-const P = (t: number, ask: number, bid: number, band = 0): QuoteRatioPoint => ({
+const P = (t: number, ask: number, bid: number, tick = 0, band = 99): QuoteRatioPoint => ({
   t, ask_total: ask, bid_total: bid,
-  bid_max: bid, ask_max: ask, imb_max_bid: bid, imb_max_ask: ask, band_pct: band,
+  bid_max: bid, ask_max: ask, imb_max_bid: bid, imb_max_ask: ask,
+  // 폭 기본값 99 는 "확인 게이트를 통과시키는 아무 값" — 틱이 바뀌는 시점에만 쓰인다.
+  band_pct: band, tick,
 });
 const OPTS = { approachRatio: 0.95, rearmRatio: 0.85, isClosingAuction: () => false };
 const DAY = 86_400_000;
@@ -110,79 +112,108 @@ describe('detectSurges (근접 + 히스테리시스)', () => {
 });
 
 
+
 // ---------------------------------------------------------------------------
-// 호가단위 변화 보정 (widthStepRatio) — 기본 off. 근거·실측은
-// docs/research/2026-08-19-hoga-tick-band-totals-normalization.md
+// 호가단위 변화 보정 — 표 트리거 + 폭 확인 게이트. 기본 off.
+// 근거·실측: docs/research/2026-08-19-... · ADR-0151 Amendment 2
 // ---------------------------------------------------------------------------
 
-describe('호가단위 변화 보정 (widthStepRatio)', () => {
-  const ON = { ...OPTS, widthStepRatio: 0.25 };
+describe('호가단위 변화 보정 (tickConfirmRatio)', () => {
+  const ON = { ...OPTS, tickConfirmRatio: 0.10 };
+  /** t, ask, 틱(원), 폭(%) */
+  const Q = (t: number, ask: number, tick: number, band: number) => P(t, ask, 0, tick, band);
 
-  it('옵션이 없으면 band_pct 가 아무리 튀어도 동작이 그대로다 (기본 off 의 의미)', () => {
-    // 폭이 2 → 6 (3배) 로 튀지만 보정이 꺼져 있으므로 100 기준 그대로 → 96 이 발사.
-    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 6)];
+  it('옵션이 없으면 틱이 바뀌어도 동작이 그대로다 (기본 off 의 의미)', () => {
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 2), Q(3, 96, 100, 4)];
     expect(detectSurgeSide(pts, 'ask', OPTS)).toHaveLength(1);
   });
 
-  it('폭이 문턱을 넘게 커지면 최고치를 폭비로 환산해 헛발사를 막는다', () => {
-    // 폭 2 → 6 (3배, 문턱 25% 초과) ⇒ 최고치 100 × 3 = 300.
-    // 96 은 300 의 32% 라 발사하지 않는다. 보정이 없으면(위 테스트) 발사한다.
-    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 6)];
+  it('틱이 바뀌고 폭도 움직였으면 최고치를 틱 비율로 환산한다', () => {
+    // 틱 50 → 100 (2배) & 폭 2% → 4% (100% 변화, 확인 통과) ⇒ 최고치 100 × 2 = 200.
+    // 96 은 200 의 48% 라 발사하지 않는다. 보정이 없으면(위 테스트) 발사한다.
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 2), Q(3, 96, 100, 4)];
     expect(detectSurgeSide(pts, 'ask', ON)).toEqual([]);
   });
 
-  it('폭이 줄어들면 반대 방향으로도 환산한다 (양방향)', () => {
-    // 폭 6 → 2 (1/3) ⇒ 최고치 300 × (1/3) = 100. 96 은 그 96% 라 발사.
-    // 환산이 한쪽 방향만이면 최고치가 300 으로 남아 이 단언이 깨진다.
-    const pts = [P(1, 300, 0, 6), P(2, 240, 0, 6), P(3, 96, 0, 2)];
+  it('틱이 줄면 반대 방향으로도 환산한다 (양방향)', () => {
+    // 틱 100 → 50 (1/2) & 폭 4% → 2% ⇒ 최고치 200 × 0.5 = 100 → 96 은 96% 라 발사.
+    const pts = [Q(1, 200, 100, 4), Q(2, 160, 100, 4), Q(3, 96, 50, 2)];
     const r = detectSurgeSide(pts, 'ask', ON);
     expect(r).toHaveLength(1);
     expect(r[0].prevPeak).toBeCloseTo(100, 6);
   });
 
-  it('문턱 안의 폭 흔들림은 무시한다 (빈 호가로 인한 분단위 출렁임)', () => {
-    // 폭 2 → 2.4 (20%, 문턱 25% 미만) ⇒ 환산 없음 → 96 이 100 의 96% 로 발사.
-    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 2.4)];
-    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
-  });
-
-  it('band_pct 0 은 "폭 0" 이 아니라 "잴 수 없음" — 건너뛰고 기준도 갱신하지 않는다', () => {
-    // 동시호가·3단 붕괴 사다리·합성 갭 점이 0 을 준다. 0 을 폭으로 **받아들이면**
-    // 기준이 0 이 되고, 그 뒤 첫 실측 폭에서 w/0 = Infinity 배율이 나와 최고치가
-    // NaN 으로 오염돼 그날 남은 발사가 통째로 사라진다.
+  it('배율은 **틱 비율**이지 폭 비율이 아니다', () => {
+    // 틱 50 → 100 (2배) 인데 폭은 2% → 6% (3배) — 빈 호가 배수가 함께 바뀐 경우다.
+    // 틱 비율로 환산하면 최고치 200, 폭 비율이면 300. 190 은 전자의 95%(발사) ·
+    // 후자의 63%(무발사) 라 두 설계가 갈린다.
     //
-    // 판별 배치: 폭 2 → 0(못 잼) → 2. 게이트가 있으면 기준은 내내 2 라 환산이 없고
-    // 96 이 100 의 96% 로 **발사**한다. 게이트가 없으면 t2 에서 기준이 0 이 되고
-    // t3 에서 최고치가 NaN 이 되어 발사가 사라진다.
-    // (0 → 6 배치로 쓰면 깨진 구현도 "발사 안 함"이라 구분되지 않는다 — red-check 로 확인.)
-    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 0), P(3, 96, 0, 2)];
-    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
-    // 폭이 계속 0 이면 보정이 통째로 비활성 — 보정 없는 결과와 같아야 한다.
-    const allZero = [P(1, 100, 0, 0), P(2, 80, 0, 0), P(3, 96, 0, 0)];
-    expect(detectSurgeSide(allZero, 'ask', ON)).toEqual(detectSurgeSide(allZero, 'ask', OPTS));
-  });
-
-  it('기준 폭은 거래일마다 리셋된다 (Past/Today Split Cache 동일성의 조건)', () => {
-    // ⚠ 순진한 배치(D1 의 첫 점이 실측 폭)로는 이 성질을 못 잰다 — 거래일 경계에서
-    // runningMax 가 0 으로 리셋되므로 기준 폭이 새어도 `0 × 배율 = 0` 이라 결과가
-    // 같다(red-check 로 확인). 기준 폭 누수가 **드러나려면** D1 이 최고치를 먼저
-    // 세운 뒤에 첫 실측 폭이 와야 한다.
-    //
-    // 그래서 D1 의 앞 두 점은 폭을 못 재는 점(0)으로 두어 최고치 100 을 세우고,
-    // 세 번째 점에서 폭 6 이 처음 관측되게 한다.
-    //   리셋 O → 기준이 null 이라 6 을 기준으로 잡을 뿐, 환산 없음 → 96/100 = 96% 발사
-    //   리셋 X → D0 의 기준 2 가 남아 |6/2−1| = 2 > 0.25 → 최고치 100×3 = 300 → 무발사
-    const pts = [
-      P(D0 + 1, 100, 0, 2), P(D0 + 2, 80, 0, 2), P(D0 + 3, 96, 0, 2),
-      P(D0 + DAY + 1, 100, 0, 0), P(D0 + DAY + 2, 80, 0, 0), P(D0 + DAY + 3, 96, 0, 6),
-    ];
+    // 폭이 아니라 틱을 쓰는 이유: 폭에는 빈 호가 잡음이 곱해져 있어 배율까지 잡음을
+    // 탄다. 틱은 가격의 결정론적 함수다(ADR-0151 Amendment 2).
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 2), Q(3, 190, 100, 6)];
     const r = detectSurgeSide(pts, 'ask', ON);
-    expect(r.map((m) => m.t)).toEqual([D0 + 3, D0 + DAY + 3]);
+    expect(r).toHaveLength(1);
+    expect(r[0].prevPeak).toBeCloseTo(200, 6);
+  });
+
+  it('⭐ 확인 게이트 — 틱이 바뀌었다 해도 폭이 안 움직였으면 환산하지 않는다', () => {
+    // ETF 는 호가단위가 5원 고정이라 가격이 표의 경계를 넘어도 사다리 폭이 그대로다.
+    // 표만 믿고 환산하면 헛교정이 난다. 폭 2% → 2.05%(2.5%, 문턱 10% 미만) ⇒ 거부.
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 2), Q(3, 96, 100, 2.05)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
+  });
+
+  it('확인 게이트는 **거부권만** 갖는다 — 폭만 흔들려서는 환산이 일어나지 않는다', () => {
+    // 폭이 2% → 9% 로 4.5배 흔들려도 틱이 그대로면 아무 일도 없어야 한다.
+    // 구안(폭 문턱)이 실패한 지점이 정확히 여기다 — 빈 호가 잡음이 환산을 일으켰다.
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 9), Q(3, 96, 50, 2)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toEqual(detectSurgeSide(pts, 'ask', OPTS));
+  });
+
+  it('tick 0 은 "틱 0" 이 아니라 "모름" — 건너뛰고 기준도 갱신하지 않는다', () => {
+    // 동시호가·합성 갭 점이 0 을 준다. 0 을 기준으로 받으면 다음 실측에서 배율이
+    // tk/0 = Infinity 가 되어 최고치가 오염되고 그날 남은 발사가 통째로 사라진다.
+    //
+    // ⚠ 판별 배치가 중요하다. t2 의 폭까지 0 으로 두면 확인 게이트가 어차피 막아서
+    // 게이트를 지워도 결과가 같다(red-check 로 확인). **폭은 멀쩡한데 틱만 모르는**
+    // 점을 놓아야 tick>0 가드가 단독으로 붙잡힌다.
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 0, 9), Q(3, 96, 50, 2)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
+  });
+
+  it('기준 갱신은 양방향이다 — 틱이 내려가도 기준이 따라가야 한다', () => {
+    // 틱 100 →(내림) 50 →(다시) 100. 기준이 내림에서 안 따라가면 마지막 100 이
+    // "변화 없음"으로 읽혀 환산이 빠지고, 최고치가 좁은 자에 남은 채 비교된다.
+    const pts = [
+      Q(1, 200, 100, 4), Q(2, 160, 100, 4), Q(3, 96, 50, 2),
+      Q(4, 60, 50, 2), Q(5, 190, 100, 4),
+    ];
+    // t3 에서 200 → 100 으로 환산되고 96 발사. t5 에서 100 → 200 으로 되돌아가므로
+    // 190 은 200 의 95% 라 다시 발사한다(기준이 안 따라가면 190 이 100 의 190% 라
+    // 이미 신고가 취급되어 마커 위치·개수가 달라진다).
+    expect(detectSurgeSide(pts, 'ask', ON).map((m) => m.t)).toEqual([3, 5]);
+  });
+
+  it('폭을 못 재면(0) 확인할 방법이 없으므로 환산하지 않는다', () => {
+    // 틱은 바뀌었지만 폭이 0(붕괴 사다리)이라 확인 불가 → 모르면 건드리지 않는 쪽.
+    const pts = [Q(1, 100, 50, 2), Q(2, 80, 50, 2), Q(3, 96, 100, 0)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
+  });
+
+  it('기준은 거래일마다 리셋된다 (Past/Today Split Cache 동일성의 조건)', () => {
+    // D1 은 앞 두 점의 틱이 0(모름)이라 최고치를 먼저 세우고, 세 번째 점에서 틱 100 이
+    // 처음 관측된다. 리셋되면 그것이 D1 의 기준이 될 뿐 환산이 없어 발사한다.
+    // 리셋 안 되면 D0 의 기준 50 이 남아 |100/50| 환산이 일어나 발사가 사라진다.
+    const pts = [
+      Q(D0 + 1, 100, 50, 2), Q(D0 + 2, 80, 50, 2), Q(D0 + 3, 96, 50, 2),
+      Q(D0 + DAY + 1, 100, 0, 0), Q(D0 + DAY + 2, 80, 0, 0), Q(D0 + DAY + 3, 96, 100, 9),
+    ];
+    expect(detectSurgeSide(pts, 'ask', ON).map((m) => m.t)).toEqual([D0 + 3, D0 + DAY + 3]);
   });
 
   it('청크를 갈라 돌려도 결과가 같다 (cachedPast ++ today === all)', () => {
-    const past = [P(D0 + 1, 100, 0, 2), P(D0 + 2, 80, 0, 2), P(D0 + 3, 96, 0, 2)];
-    const today = [P(D0 + DAY + 1, 100, 0, 0), P(D0 + DAY + 2, 80, 0, 0), P(D0 + DAY + 3, 96, 0, 6)];
+    const past = [Q(D0 + 1, 100, 50, 2), Q(D0 + 2, 80, 50, 2), Q(D0 + 3, 96, 50, 2)];
+    const today = [Q(D0 + DAY + 1, 100, 0, 0), Q(D0 + DAY + 2, 80, 0, 0), Q(D0 + DAY + 3, 96, 100, 9)];
     expect([...detectSurgeSide(past, 'ask', ON), ...detectSurgeSide(today, 'ask', ON)])
       .toEqual(detectSurgeSide([...past, ...today], 'ask', ON));
   });

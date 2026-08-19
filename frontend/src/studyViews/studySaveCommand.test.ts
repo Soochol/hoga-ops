@@ -33,7 +33,7 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     ],
     quote_ratio: {
       bucket_ms: 300_000,
-      points: [{ t: BAR1, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0 }],
+      points: [{ t: BAR1, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0, tick: 0 }],
     },
     fill_strength: { bucket_ms: 300_000, points: [{ t: BAR1, buy_qty: 5, sell_qty: 4 }] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },

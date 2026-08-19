@@ -438,6 +438,7 @@ def build_quote_ratio_slice(
                 imb_max_bid=r.imb_max_bid,
                 imb_max_ask=r.imb_max_ask,
                 band_pct=r.band_pct,
+                tick=r.tick,
             )
             for r in rows
         ],

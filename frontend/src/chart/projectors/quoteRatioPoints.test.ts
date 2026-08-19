@@ -22,8 +22,8 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     quote_ratio: {
       bucket_ms: 60_000,
       points: [
-        { t: 1_000, bid_total: 10, ask_total: 20, bid_max: 10, ask_max: 20, imb_max_bid: 10, imb_max_ask: 20, band_pct: 0 },
-        { t: 121_000, bid_total: 30, ask_total: 40, bid_max: 30, ask_max: 40, imb_max_bid: 30, imb_max_ask: 40, band_pct: 0 },
+        { t: 1_000, bid_total: 10, ask_total: 20, bid_max: 10, ask_max: 20, imb_max_bid: 10, imb_max_ask: 20, band_pct: 0, tick: 0 },
+        { t: 121_000, bid_total: 30, ask_total: 40, bid_max: 30, ask_max: 40, imb_max_bid: 30, imb_max_ask: 40, band_pct: 0, tick: 0 },
       ],
     },
     fill_strength: { bucket_ms: 60_000, points: [] },

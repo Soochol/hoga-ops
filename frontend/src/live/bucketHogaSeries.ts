@@ -1,5 +1,6 @@
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
+import { krxTick } from '../chart/surge/krxTick';
 import type { LiveFrameVenue } from './liveVenuePolicy';
 
 /** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
@@ -116,6 +117,25 @@ export function isIndicatorEligibleBook(s: ObSnapshot, sessionOpenMs: number): b
  * 못 재면 0을 준다 — 사다리가 아예 없거나(분봉 경로는 totals만 싣는다) 10단이 안 찼거나
  * 가격이 0인 경우. **0 은 "폭이 0"이 아니라 "보정 불가"** 이고, 소비자(detectSurgeSide)는
  * 0 인 점에서 기준 폭을 갱신하지 않는다. */
+/** 이 스냅샷 중간가의 KRX 호가단위(원) — `QuoteRatioPoint.tick` 의 라이브 산출.
+ *
+ * ⚠ **`depthDelta` 의 `ladderTick(levels)` 과 다른 물건이다.** 저쪽은 *관측된* 인접 호가
+ * 간격에서 틱을 구하고, 이쪽은 *가격 표*에서 구한다. 급증 보정이 표를 쓰는 이유는
+ * 관측값이 얇은 책에서 위로 튀기 때문이다 — 실측으로 관측 기반은 하루 환산이 중앙 9회
+ * (표 기반은 실제 경계 통과 횟수인 4회)였다. ADR-0151 Amendment 2.
+ *
+ * 백엔드는 대표 스냅샷 중간가에 같은 표를 적용한다(`snapshots.krx_tick`). **표가 갈리면
+ * 오늘→과거 이음매에서 보정 기준이 바뀐다.**
+ *
+ * 사다리가 없으면(분봉 경로는 totals 만 싣는다) 0 = 모름. `ladderBandPct` 와 달리
+ * **10단이 다 차지 않아도 된다** — 1호가 두 개만 있으면 중간가를 알 수 있고, 틱은
+ * 중간가의 함수다. 그래서 붕괴 사다리에서도 틱은 알 수 있다(폭은 못 잰다). */
+export function krxTickOf(s: ObSnapshot): number {
+  const a = s.asks?.[0]?.price ?? 0;
+  const b = s.bids?.[0]?.price ?? 0;
+  return a > 0 && b > 0 ? krxTick((a + b) / 2) : 0;
+}
+
 export function ladderBandPct(s: ObSnapshot): number {
   const a = s.asks;
   const b = s.bids;
@@ -208,6 +228,7 @@ export function bucketHogaSeries(
       quoteByBucket.set(t, {
         t,
         band_pct: ladderBandPct(s),
+        tick: krxTickOf(s),
         ask_total: s.total_ask_qty,
         bid_total: s.total_bid_qty,
         bid_max,
@@ -227,7 +248,7 @@ export function bucketHogaSeries(
         ask_max: 0,
         imb_max_bid: 0,
         imb_max_ask: 0,
-        band_pct: 0,
+        band_pct: 0, tick: 0,
       });
     }
   }

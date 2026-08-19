@@ -104,6 +104,10 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     # **환산하면 틀린다**(계수가 한 번 더 곱해진다). 가격에서 파생됐다고 PRICE_FIELDS
     # 로 옮기지 말 것 — 파생 여부가 아니라 차원이 기준이다.
     "QuoteRatioPoint.band_pct",
+    # tick 은 원 단위지만 **비율로만 소비된다**(tick[i] / tick[ref]). 수정주가 계수를
+    # 곱하면 비율은 그대로이고 값만 의미를 잃는다 — 게다가 호가단위는 그 시점의
+    # **미수정 가격**으로 결정되므로 환산하면 애초에 틀린 밴드를 가리킨다.
+    "QuoteRatioPoint.tick",
     # 총잔량·불균형은 **수량**이다(주식 수) — 별도 pane 의 축이라 가격축과 무관하고,
     # #1229 실측대로 분봉은 수정 여부와 무관하게 수량이 같다.
     "QuoteRatioPoint.ask_total", "QuoteRatioPoint.bid_total",

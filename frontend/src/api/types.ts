@@ -79,6 +79,10 @@ export type QuoteRatioPoint = {
    *  동시호가/완전-auction 버킷은 0. **0 은 "폭 없음"이지 "폭이 0"이 아니다** — 소비자는
    *  0 을 보정 불가로 다뤄야 한다. */
   band_pct: number;
+  /** 대표 스냅샷 중간가의 KRX 호가단위(원). 급증 보정의 **트리거** — 가격의 결정론적
+   *  함수라 빈 호가 잡음이 원리적으로 못 건드린다. `band_pct` 는 그 트리거를 **확인**하는
+   *  용도로 함께 쓰인다(ETF 처럼 표가 틀리는 종목군에서 거부권). 0 = 모름. */
+  tick: number;
 };
 export type QuoteRatio = { bucket_ms: number; points: QuoteRatioPoint[] };
 

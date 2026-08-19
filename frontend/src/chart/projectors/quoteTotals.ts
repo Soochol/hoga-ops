@@ -130,8 +130,9 @@ export type QuoteTotalsCtx = {
   /** 호가단위 변화 보정(기본 off). 켜면 급증 검출이 사다리 폭 변화만큼 running peak 을
    *  환산한다 — detectSurgeSide 의 widthStepRatio 주석에 근거·실측이 있다. */
   tickNormalize: boolean;
-  /** 위 보정의 폭 변화 문턱(%). 보정이 꺼져 있으면 쓰이지 않는다. */
-  surgeWidthStepPct: number;
+  /** 위 보정의 **확인 게이트** 문턱(%) — 호가단위가 바뀐 시점에 사다리 폭이 이만큼은
+   *  실제로 움직여야 환산한다. 보정이 꺼져 있으면 쓰이지 않는다. */
+  surgeTickConfirmPct: number;
 };
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -154,7 +155,7 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
       surgeRearmPct: p.surgeRearmPct,
       surgeStartHHMM: p.surgeStartHHMM,
       tickNormalize: p.quoteTotalsTickNormalize,
-      surgeWidthStepPct: p.surgeWidthStepPct,
+      surgeTickConfirmPct: p.surgeTickConfirmPct,
     })),
   );
 
@@ -178,9 +179,9 @@ function surgeMarkerPoints(side: 'ask' | 'bid') {
       approachRatio: ctx.surgeApproachPct / 100,
       rearmRatio: ctx.surgeRearmPct / 100,
       isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
-      // 꺼져 있으면 **undefined 를 넘긴다** — 0 을 넘기면 "폭이 조금이라도 바뀌면
-      // 환산" 이 되어 정반대로 동작한다(문턱 0 = 매 분 환산).
-      widthStepRatio: ctx.tickNormalize ? ctx.surgeWidthStepPct / 100 : undefined,
+      // 꺼져 있으면 **undefined 를 넘긴다** — 0 을 넘기면 확인 게이트가 항상 통과라
+      // ETF 처럼 표가 틀리는 종목군에서 헛환산이 난다.
+      tickConfirmRatio: ctx.tickNormalize ? ctx.surgeTickConfirmPct / 100 : undefined,
     })
       // 표시 필터: 보이는 구간(axis.contains) + 시작 시각 이후(KST 분). 알고리즘 상태는
       // detectSurgeSide가 장 시작부터 전부 굴린 뒤, 발사된 마커만 여기서 가린다.

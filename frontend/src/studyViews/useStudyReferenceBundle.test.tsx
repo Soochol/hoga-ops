@@ -293,7 +293,7 @@ describe('useStudyReferenceBundles', () => {
                   ask_max: 3,
                   imb_max_bid: 4,
                   imb_max_ask: 3,
-                  band_pct: 0,
+                  band_pct: 0, tick: 0,
                 },
               ],
             },

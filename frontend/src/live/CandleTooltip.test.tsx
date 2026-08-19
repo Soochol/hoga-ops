@@ -99,7 +99,7 @@ describe('CandleTooltip', () => {
           bid_max: 900,
           imb_max_ask: 32_500,
           imb_max_bid: 900,
-          band_pct: 0,
+          band_pct: 0, tick: 0,
         }],
       },
     } as never;
@@ -128,7 +128,7 @@ describe('CandleTooltip', () => {
           bid_max: 2_000,
           imb_max_ask: 500,
           imb_max_bid: 10_000,
-          band_pct: 0,
+          band_pct: 0, tick: 0,
         }],
       },
     } as never;

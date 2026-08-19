@@ -615,6 +615,36 @@ _BID_Q_SUM: str = " + ".join(f"bid_q{i}::BIGINT" for i in range(1, ORDERBOOK_LEV
 # 3 on both sides. _ASK_DEEP_SUM / _BID_DEEP_SUM sum the deep (level 4..10) columns so
 # query_bucketed_ratio can test "is this a continuous-trading book?". Cast to
 # BIGINT for the same INT32-overflow reason as _ASK_Q_SUM / _BID_Q_SUM above.
+#: KRX 주식 호가단위(원) — 가격대별 계단함수. 경계에서 틱이 2~5배 점프한다.
+#: **데이터에서 역산해 확인한 표다**(hogaplay 298종목 실측이 이 경계와 정확히 일치).
+#: 근거: docs/research/2026-08-19-hoga-tick-band-totals-normalization.md §2.
+#: 프론트에 같은 표가 하나 더 있다(`chart/surge/krxTick.ts`) — 라이브 경로가 오늘의
+#: QuoteRatioPoint 를 클라이언트에서 만들기 때문이다. **한쪽을 고치면 반드시 다른 쪽도**.
+#: ⚠ ETF/ETN 은 이 표를 따르지 않는다(5원 고정). 그래서 소비자는 이 값을 그대로 믿지
+#: 않고 **사다리 폭이 실제로 움직였는지 확인**한 뒤 쓴다(ADR-0151 Amendment 2).
+_KRX_TICK_BANDS: tuple[tuple[int, int], ...] = (
+    (2_000, 1), (5_000, 5), (20_000, 10), (50_000, 50),
+    (200_000, 100), (500_000, 500),
+)
+_KRX_TICK_TOP: int = 1_000
+
+
+def _krx_tick_sql(price_expr: str) -> str:
+    """krx_tick 의 SQL 판 — 파이썬 판과 **같은 표에서 생성**된다(손으로 두 번 적지 않는다)."""
+    cases = " ".join(f"WHEN {price_expr} < {b} THEN {t}" for b, t in _KRX_TICK_BANDS)
+    return f"(CASE {cases} ELSE {_KRX_TICK_TOP} END)"
+
+
+def krx_tick(price: float) -> int:
+    """가격이 속한 KRX 주식 호가단위(원). 0 이하면 0(모름)."""
+    if price <= 0:
+        return 0
+    for bound, tick in _KRX_TICK_BANDS:
+        if price < bound:
+            return tick
+    return _KRX_TICK_TOP
+
+
 _AUCTION_BOOK_DEPTH: int = 3
 _ASK_DEEP_SUM: str = " + ".join(
     f"ask_q{i}::BIGINT" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
@@ -731,6 +761,10 @@ class QuoteRatioRow:
     imb_max_bid: int
     imb_max_ask: int
     band_pct: float = 0.0
+    #: 대표 스냅샷 중간가의 KRX 호가단위(원). 급증 보정의 **트리거**다 — 이 값이
+    #: 바뀌면 "자가 바뀌었다". `band_pct` 와 달리 빈 호가 잡음이 원리적으로 못 건드린다
+    #: (가격의 결정론적 함수). 0 = 모름(동시호가·붕괴 사다리).
+    tick: int = 0
 
 
 @dataclass(frozen=True)
@@ -1071,12 +1105,15 @@ def query_bucketed_ratio(
                      AND ask_p10 > 0 AND bid_p10 > 0 AND (ask_p1 + bid_p1) > 0
                      THEN (ask_p10 - bid_p10) * 200.0 / (ask_p1 + bid_p1)
                      ELSE 0 END) AS gw,
+                 (CASE WHEN ({pre_auction_pred}) AND (ask_p1 + bid_p1) > 0
+                     THEN {_krx_tick_sql("((ask_p1 + bid_p1) / 2.0)")}
+                     ELSE 0 END) AS gt,
                  ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
                    + ({intra_ms_expr})) AS rep_key
           FROM read_parquet(?)
         )
         SELECT bucket * {bucket_ms},
-               arg_max(struct_pack(b := gb, a := ga, w := gw), rep_key) AS rep,
+               arg_max(struct_pack(b := gb, a := ga, w := gw, t := gt), rep_key) AS rep,
                max(gb) AS bid_max,
                max(ga) AS ask_max,
                arg_min(struct_pack(b := gb, a := ga), struct_pack(neg_imb := -imb_key, ts := ts_ms)) AS imb
@@ -1092,7 +1129,7 @@ def query_bucketed_ratio(
             bid_total=int(r[1]["b"]), ask_total=int(r[1]["a"]),
             bid_max=int(r[2]), ask_max=int(r[3]),
             imb_max_bid=int(r[4]["b"]), imb_max_ask=int(r[4]["a"]),
-            band_pct=float(r[1]["w"]),
+            band_pct=float(r[1]["w"]), tick=int(r[1]["t"]),
         )
         for r in rows
     ]

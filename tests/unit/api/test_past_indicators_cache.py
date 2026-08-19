@@ -45,7 +45,7 @@ def _store_dir(tmp_path: Path, code: str = CODE, source: str = SRC, venue: str =
 
 RATIO = [QuoteRatioRow(bucket_intra_ms=0, bid_total=10, ask_total=20,
                        bid_max=900, ask_max=800, imb_max_bid=100, imb_max_ask=2,
-                       band_pct=2.5),
+                       band_pct=2.5, tick=50),
          # 동시호가 센티넬 — 총잔량도 폭도 0.
          QuoteRatioRow(bucket_intra_ms=60_000, bid_total=0, ask_total=0,
                        bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0)]
@@ -113,36 +113,37 @@ def test_empty_rows_roundtrip(tmp_path: Path) -> None:
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == []
 
 
-def test_ratio_disk_payload_is_eight_tuples(tmp_path: Path) -> None:
+def test_ratio_disk_payload_is_nine_tuples(tmp_path: Path) -> None:
     """디스크 직렬화는 [bucket_intra_ms, bid_total, ask_total, bid_max, ask_max,
-    imb_max_bid, imb_max_ask, band_pct] 8-tuple — Intra-Bar Max 필드(ADR-0076)와
+    imb_max_bid, imb_max_ask, band_pct, tick] 9-tuple — Intra-Bar Max 필드(ADR-0076)와
     사다리 폭을 보존한다. 7→8 칸 확장이라 KIND_VERSIONS["ratio"] 범프가 필수였다
     (아래 test_ratio_version_bumped_for_band_pct 가 그 짝)."""
     PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
     p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())
-    assert body["rows"][0] == [0, 10, 20, 900, 800, 100, 2, 2.5]
-    assert body["rows"][1] == [60_000, 0, 0, 0, 0, 0, 0, 0.0]
-    # 콜드 인스턴스가 8-tuple을 동일 QuoteRatioRow로 복원.
+    assert body["rows"][0] == [0, 10, 20, 900, 800, 100, 2, 2.5, 50]
+    assert body["rows"][1] == [60_000, 0, 0, 0, 0, 0, 0, 0.0, 0]
+    # 콜드 인스턴스가 9-tuple을 동일 QuoteRatioRow로 복원.
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
 
 
-def test_ratio_version_bumped_for_band_pct(tmp_path: Path) -> None:
-    """band_pct 이전(7-tuple) 캐시는 **버전 미스로 버려져야** 한다.
+def test_ratio_version_bumped_for_new_columns(tmp_path: Path) -> None:
+    """칸이 늘기 전(7·8-tuple) 캐시는 **버전 미스로 버려져야** 한다.
 
     막는 방향: 옛 파일이 되살아나 ``t[7]`` 에서 IndexError 로 죽는 것. 못 보는 것:
     같은 버전 안에서 폭 계산 규칙이 바뀌는 경우(그때는 또 범프해야 한다)."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.KIND_VERSIONS["ratio"] >= 8
+    assert mod.KIND_VERSIONS["ratio"] >= 9
     c = PastIndicatorsCache(tmp_path)
     c.store_ratio(CODE, DATE, SRC, RATIO)
     p = _store_dir(tmp_path) / f"{DATE}.ratio.json"
     body = json.loads(p.read_text())
-    # band_pct 이전 세대를 그대로 재현: 7-tuple + 옛 버전.
-    body["version"] = 7
-    body["rows"] = [r[:7] for r in body["rows"]]
-    p.write_text(json.dumps(body))
-    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
+    for old_ver, ncol in ((7, 7), (8, 8)):
+        body["version"] = old_ver
+        body["rows"] = [r[:ncol] for r in json.loads(p.read_text())["rows"]]
+        p.write_text(json.dumps(body))
+        assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None, old_ver
+        c.store_ratio(CODE, DATE, SRC, RATIO)
 
 
 def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
