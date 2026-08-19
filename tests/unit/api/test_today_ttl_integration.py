@@ -154,8 +154,12 @@ def test_today_fill_strength_none_result_is_not_cached(tmp_path):
 def test_today_peak_dual_second_call_within_ttl_skips_query(peak_fixture):
     engine, code, date, source = peak_fixture
     with patch.object(
-        bundle_mod.snapshots_tbl, "query_day_ask_bid_peak_dual",
-        wraps=bundle_mod.snapshots_tbl.query_day_ask_bid_peak_dual,
+        # 감시 대상은 **호출부가 실제로 부르는 함수**다. peak 경로가 1분 rep 행을
+        # 함께 받도록 `_with_rep` 로 옮겨 갔으므로 여기도 따라간다 — 옛 이름에 걸어
+        # 두면 스파이가 0 을 세고 "TTL 이 쿼리를 건너뛴다" 가 아니라 "아무도 안
+        # 부른다" 를 통과로 읽는다(실제로 그렇게 빨개져서 발견했다).
+        bundle_mod.snapshots_tbl, "query_day_ask_bid_peak_dual_with_rep",
+        wraps=bundle_mod.snapshots_tbl.query_day_ask_bid_peak_dual_with_rep,
     ) as spy:
         kw = dict(code=code, date=date, source=source, bucket_ms=60_000,
                    session_open_ms=90_000_000, session_close_ms=153_000_000,
