@@ -442,3 +442,41 @@ def test_next_day_clears_rows() -> None:
 
 def test_rows_empty_for_unknown_code() -> None:
     assert _FillLedger().rows("000000", t_ms=_T0) == ()
+
+
+# ── wire 모델 채움 (AfterHoursBookResponse) ─────────────────────────────────
+#
+# 위 테스트들은 fetcher·파서까지만 본다. `response_model` 은 **선언되지 않은 키를
+# 조용히 버리므로**(CLAUDE.md), 모델을 실제로 채워 wire 키가 남는지 따로 재야 한다.
+# 부분 payload(`active=False`)를 함께 넣는 것도 같은 규율이다 — 그 경로는 무자격
+# dev·창 밖에서 **정상 경로**라 여기서 깨지면 그 환경이 전부 조용히 빈다.
+
+
+def test_response_model_keeps_new_wire_keys() -> None:
+    from hoga.live.api import AfterHoursBookResponse, AfterHoursFillModel
+
+    dumped = AfterHoursBookResponse(
+        code="006360",
+        active=True,
+        exp_price=35_000,
+        exp_qty=2_198,
+        fills=[AfterHoursFillModel(t_ms=1_787_123_427_000, price=34_950, qty=3_484)],
+    ).model_dump()
+
+    assert dumped["exp_price"] == 35_000
+    assert dumped["exp_qty"] == 2_198
+    assert dumped["fills"] == [{"t_ms": 1_787_123_427_000, "price": 34_950, "qty": 3_484}]
+    # `side` 를 싣지 않는다 — 단일가 일괄 체결이라 방향이 정의되지 않는다.
+    assert "side" not in dumped["fills"][0]
+
+
+def test_inactive_partial_payload_still_carries_the_keys() -> None:
+    """창 밖·미거래 종목의 부분 payload. **키가 사라지면 안 된다** — 프론트가
+    `exp_price ?? 0` 같은 식으로 읽는데 키 자체가 없으면 미러가 거짓이 된다."""
+    from hoga.live.api import AfterHoursBookResponse
+
+    dumped = AfterHoursBookResponse(code="006360", active=False).model_dump()
+
+    assert dumped["exp_price"] is None and dumped["exp_qty"] is None
+    assert dumped["fills"] == []
+    assert dumped["active"] is False
