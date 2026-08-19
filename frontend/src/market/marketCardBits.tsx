@@ -57,7 +57,7 @@ export function ModeSwitch<T extends string>({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(key)}
-            className={`whitespace-nowrap px-2 py-[2px] font-data text-2xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+            className={`whitespace-nowrap px-2 py-[2px] font-data text-xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
           >
             {text}
           </button>
@@ -100,8 +100,11 @@ export const CARD_HEADER_RULE = 'border-b border-border pb-2xs';
 export function CardHeader({ title, hint, right }: { title: string; hint?: string; right?: React.ReactNode }) {
   return (
     <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
-      <h2 className="text-sm text-fg">
-        {title} {hint && <span className="text-2xs text-fg-dim">{hint}</span>}
+      {/* 제목은 semibold — 카드 안 서브라벨(`text-xs font-semibold`)보다 제목이 가벼운
+          위계 역전의 교정. 힌트는 `font-normal` 명시가 필수다(없으면 h2 의 600 을 상속).
+          `font-data` 는 표본 카운터(투자자 수급 힌트) 같은 갱신 숫자의 폭 고정용. */}
+      <h2 className="text-sm font-semibold text-fg">
+        {title} {hint && <span className="font-data text-2xs font-normal text-fg-dim">{hint}</span>}
       </h2>
       {right}
     </div>

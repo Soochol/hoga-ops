@@ -83,7 +83,10 @@ export function SectorFlowCard() {
           {flow.isLoading ? '수급 표본을 읽는 중입니다.' : '오늘 수집된 표본이 아직 없습니다.'}
         </EmptyNote>
       ) : (
-        <table className="w-full border-collapse font-data text-2xs tabular-nums">
+        /* 데이터 표라 `text-xs` — `2xs` 는 크롬 마이크로라벨 용도다. 이 표는 1.125×
+           다이얼 시절(렌더 10.125px)에 승인됐고, 2026-08-07 다이얼 하향으로 9px 가
+           된 것은 부수효과였다. `text-xs`(10.5px)가 승인된 외형을 복원한다. */
+        <table className="w-full border-collapse font-data text-xs tabular-nums">
           <thead>
             <tr className="text-fg-dim">
               <th className="pb-1 text-left font-normal">업종</th>

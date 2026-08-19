@@ -666,9 +666,9 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
       <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
         {/* 색 바는 **주체**의 표식이라 시장·방향을 따라가지 않는다 — 방향은 토글과
             값의 색(적/청)이 이미 말한다. */}
-        <h2 className="flex items-center gap-2xs text-sm text-fg">
+        <h2 className="flex items-center gap-2xs text-sm font-semibold text-fg">
           <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
-          {actor} <span className="text-2xs text-fg-dim">연속 · 억원</span>
+          {actor} <span className="text-2xs font-normal text-fg-dim">연속 · 억원</span>
         </h2>
         <div className="flex flex-wrap items-center gap-2xs">
           <ModeSwitch
@@ -740,9 +740,9 @@ function FundsCard() {
   return (
     <MarketCard className="flex flex-col gap-xs p-sm">
       <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
-        <h2 className="text-sm text-fg">
+        <h2 className="text-sm font-semibold text-fg">
           증시 주변 자금{' '}
-          <span className="text-2xs text-fg-dim">
+          <span className="text-2xs font-normal text-fg-dim">
             {asOf ? `조원 · ${asOf.slice(4, 6)}/${asOf.slice(6)} 기준` : '조원'}
           </span>
         </h2>
@@ -804,7 +804,7 @@ export function RankCard({
   const rows = q.data?.rows ?? [];
   return (
     <MarketCard className="flex flex-col gap-xs p-md">
-      <h2 className={`text-sm text-fg ${CARD_HEADER_RULE}`}>{title}</h2>
+      <h2 className={`text-sm font-semibold text-fg ${CARD_HEADER_RULE}`}>{title}</h2>
       {rows.length === 0 ? (
         <EmptyNote>{q.data && !q.data.marketOpen ? '장 마감 — 순위는 장중에만 갱신됩니다.' : '순위를 받지 못했습니다.'}</EmptyNote>
       ) : (
