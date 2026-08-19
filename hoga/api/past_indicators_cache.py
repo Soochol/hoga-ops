@@ -114,9 +114,12 @@ KIND_VERSIONS: dict[str, int] = {
     # `snapshots.reaggregate_peak_rep` 참고. **새 kind 라서 기존 ask_peak/bid_peak
     # 항목을 무효화하지 않는다**(위 문단의 "전량 재계산 수십 분" 을 피하는 조건).
     "peak_rep": 1,
+    # 1분 버킷별 사다리 가격 집합. depth_delta 의 tick(중앙값)은 결합적이지 않아
+    # 값으로는 못 접고 **집합의 합집합**이 있어야 한다 — 그 원료.
+    "depth_delta_prices": 1,
 }
 
-Kind = Literal["ratio", "fill", "peak_rep"]
+Kind = Literal["ratio", "fill", "peak_rep", "depth_delta_prices"]
 DEFAULT_MEM_MAX_ENTRIES = 512
 # depth_heatmap 항목은 하루치 40컬럼 × 수백 버킷 ≈ 1.5MB/entry (ratio의 ~20배).
 # 공용 512 상한을 그대로 쓰면 최악 수백 MB가 되므로 전용 소형 상한을 둔다 —
@@ -155,6 +158,7 @@ class PastIndicatorsCache:
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
         self._mem_peak_rep: OrderedDict[tuple[str, str, str, str], list[PeakRepRow]] = OrderedDict()
+        self._mem_dd_prices: OrderedDict[tuple[str, str, str, str], list[list[int]]] = OrderedDict()
         self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
         self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
@@ -220,7 +224,7 @@ class PastIndicatorsCache:
             kind: CacheStats()
             for kind in (
                 "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
-                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep",
+                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep", "depth_delta_prices",
             )
         }
 
@@ -238,6 +242,7 @@ class PastIndicatorsCache:
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
             "peak_rep": len(self._mem_peak_rep),
+            "depth_delta_prices": len(self._mem_dd_prices),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -419,6 +424,38 @@ class PastIndicatorsCache:
         stats = self._stats["peak_rep"]
         stats.record_store()
         self._mem_put(self._mem_peak_rep, (code, date, source, venue), rows, stats)
+
+    def get_depth_delta_prices(
+        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
+    ) -> list[list[int]] | object:
+        """1분 사다리 가격 행 `[bucket_intra_ms, side(0=ask), *prices]`. 미스는 `CACHE_MISS`.
+
+        dict 가 아니라 **행 리스트**인 것은 이 파일의 list kind 공용 계약(빈 값도
+        유효한 캐시값)에 맞추기 위해서다 — 사전↔행 변환은 호출부가 한다.
+        """
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue)
+        stats = self._stats["depth_delta_prices"]
+        hit = self._mem_hit(self._mem_dd_prices, key)
+        if hit is not None:
+            stats.record_hit()
+            return hit
+        rows = self._read(code, date, source, "depth_delta_prices", venue=venue)
+        if rows is None:
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put(self._mem_dd_prices, key, rows, stats)
+        return rows
+
+    def store_depth_delta_prices(
+        self, code: str, date: str, source: str,
+        rows: list[list[int]], *, venue: Venue = "KRX",
+    ) -> None:
+        self._write(code, date, source, "depth_delta_prices", rows, venue=venue)
+        stats = self._stats["depth_delta_prices"]
+        stats.record_store()
+        self._mem_put(self._mem_dd_prices, (code, date, source, venue), rows, stats)
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 

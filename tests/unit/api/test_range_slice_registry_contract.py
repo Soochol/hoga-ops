@@ -72,6 +72,7 @@ _SCALAR_FIELDS = frozenset({"code", "from_date", "to_date", "bucket_ms"})
 _NON_SLICE_CACHE_KINDS: dict[str, str] = {
     "continuous_before": "volume_distributions 계산의 보조값이라 wire 필드가 없다",
     "peak_rep": "ask_peak/bid_peak 를 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
+    "depth_delta_prices": "depth_delta 의 tick 을 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
 }
 
 

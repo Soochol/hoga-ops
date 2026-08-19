@@ -657,6 +657,7 @@ class _ListKindCase:
 
 
 _DEPTH_DELTA_SAMPLE = [DepthDeltaPoint(t_ms=1_764_000_000_000, asks=[[70_100, 5]], bids=[[70_000, -3]])]
+_DD_PRICES_SAMPLE = [[60_000, 0, 70_100, 70_200], [60_000, 1, 69_900, 70_000]]
 _PEAK_REP_SAMPLE = [
     PeakRepRow(bucket_id=3, side="ask", price=70_100, qty=900, intra_ms=180_000, seq=2, touched=True),
     PeakRepRow(bucket_id=3, side="bid", price=70_000, qty=800, intra_ms=180_000, seq=2, touched=False),
@@ -666,6 +667,13 @@ _WALL_SURGE_SAMPLE = [
 ]
 
 _LIST_KIND_CASES = [
+    _ListKindCase(
+        "depth_delta_prices",
+        f"{DATE}.depth_delta_prices.json",   # 1분 고정이라 파일명에 bucket 이 없다
+        lambda c, v: c.store_depth_delta_prices(CODE, DATE, SRC, v),
+        lambda c: c.get_depth_delta_prices(CODE, DATE, SRC),
+        _DD_PRICES_SAMPLE,
+    ),
     _ListKindCase(
         "peak_rep",
         f"{DATE}.peak_rep.json",   # 1분 고정이라 파일명에 bucket 이 없다

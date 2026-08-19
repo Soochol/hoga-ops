@@ -1352,22 +1352,99 @@ def build_depth_delta_slice(
         cached = cache.get_depth_delta(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    one = snapshots_tbl.ONE_MINUTE_MS
+    if cacheable and bucket_ms != one and bucket_ms % one == 0:
+        # 굵은 봉은 **파케이를 읽지 않는다** — 1분 결과와 1분 사다리 가격 집합에서
+        # 파생한다. 유입/유출은 합, tick 은 가격 집합의 합집합에서 다시 중앙값
+        # (`snapshots.reaggregate_depth_delta`). 1분 산출이 없으면 여기서 한 번만
+        # 만든다(스캔 1회).
+        assert cache is not None
+        midnight = ms_from_midnight_to_unix_ms(date, 0)
+        base_pts = cache.get_depth_delta(code, date, source, one, venue=venue)
+        ladder = cache.get_depth_delta_prices(code, date, source, venue=venue)
+        if base_pts is CACHE_MISS or ladder is CACHE_MISS:
+            def _compute_1m() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
+                # out 파라미터를 **반환값에 실어** coalescer 와 안전하게 쓴다 —
+                # 바깥 dict 를 닫아 쓰면 다른 스레드의 비행이 이기는 순간 빈 채로 남는다.
+                prices: dict[tuple[int, str], list[int]] = {}
+                rows = snapshots_tbl.query_bucketed_depth_delta(
+                    engine.conn, path=path_obj, bucket_ms=one,
+                    session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+                    out_ladder_prices=prices,
+                )
+                return rows, prices
+
+            rows_1m, prices_1m = SLICE_COALESCER.run(
+                ("depth_delta_1m", code, date, source, venue), _compute_1m,
+            )
+            base_pts = [
+                DepthDeltaPoint(
+                    t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                    asks=[[p, i, o] for p, i, o in r.ask],
+                    bids=[[p, i, o] for p, i, o in r.bid],
+                    ask_tick=r.ask_tick, bid_tick=r.bid_tick,
+                )
+                for r in rows_1m
+            ]
+            cache.store_depth_delta(code, date, source, one, base_pts, venue=venue)
+            ladder = [
+                [intra, 0 if side == "ask" else 1, *ps]
+                for (intra, side), ps in sorted(prices_1m.items())
+            ]
+            cache.store_depth_delta_prices(code, date, source, ladder, venue=venue)
+        # 캐시는 wire 모델(unix `t_ms`)을 담고 축약 함수는 자정 기준 `bucket_intra_ms`
+        # 를 먹는다 — KST 는 서머타임이 없어 오프셋이 상수라 뺄셈으로 오간다.
+        buckets_1m = [
+            snapshots_tbl.DepthDeltaBucket(
+                bucket_intra_ms=p.t_ms - midnight,
+                ask=tuple((a[0], a[1], a[2]) for a in p.asks),
+                bid=tuple((b[0], b[1], b[2]) for b in p.bids),
+                ask_tick=p.ask_tick, bid_tick=p.bid_tick,
+            )
+            for p in cast("list[DepthDeltaPoint]", base_pts)
+        ]
+        ladder_map = {
+            (r[0], "ask" if r[1] == 0 else "bid"): r[2:]
+            for r in cast("list[list[int]]", ladder)
+        }
+        merged = snapshots_tbl.reaggregate_depth_delta(buckets_1m, ladder_map, bucket_ms=bucket_ms)
+        return [
+            DepthDeltaPoint(
+                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
+                asks=[[p, i, o] for p, i, o in r.ask],
+                bids=[[p, i, o] for p, i, o in r.bid],
+                ask_tick=r.ask_tick, bid_tick=r.bid_tick,
+            )
+            for r in merged
+        ]
+
     is_today = today_kst is not None and date == today_kst
     delta_key = ("depth_delta", code, date, source, venue, bucket_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(delta_key)
         if hit:
             return cached
-    rows = SLICE_COALESCER.run(
-        delta_key,
-        lambda: snapshots_tbl.query_bucketed_depth_delta(
+    def _compute_delta() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
+        prices: dict[tuple[int, str], list[int]] = {}
+        got = snapshots_tbl.query_bucketed_depth_delta(
             engine.conn,
             path=path_obj,
             bucket_ms=bucket_ms,
             session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
-        ),
-    )
+            out_ladder_prices=prices,
+        )
+        return got, prices
+
+    rows, ladder_1m = SLICE_COALESCER.run(delta_key, _compute_delta)
+    # 1분으로 계산한 김에 가격 집합도 저장한다 — 없으면 **이 종목의 첫 굵은 봉
+    # 요청이 같은 스캔을 한 번 더** 한다(실측 4.2s 뒤 4.1s).
+    if cacheable and bucket_ms == one:
+        cache.store_depth_delta_prices(  # type: ignore[union-attr]
+            code, date, source,
+            [[intra, 0 if side == "ask" else 1, *ps] for (intra, side), ps in sorted(ladder_1m.items())],
+            venue=venue,
+        )
     out: list[DepthDeltaPoint] = []
     for r in rows:
         out.append(

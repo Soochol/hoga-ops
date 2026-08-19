@@ -8,9 +8,10 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 from __future__ import annotations
 
 import os
+import statistics
 from bisect import bisect_right
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -1494,6 +1495,7 @@ def query_bucketed_depth_delta(
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     max_gap_ms: int = DEPTH_DELTA_MAX_GAP_MS,
+    out_ladder_prices: dict[tuple[int, str], list[int]] | None = None,
 ) -> list[DepthDeltaBucket]:
     """연속 스냅샷 diff → 버킷별 가격별 유입/유출 합 (단별 잔량 증감 지표의 과거 소스).
 
@@ -1596,27 +1598,29 @@ def query_bucketed_depth_delta(
         for i in range(1, ORDERBOOK_LEVELS + 1)
         for side in ("ask", "bid")
     )
-    tick_rows = con.execute(
+    # 중앙값을 SQL 이 아니라 파이썬에서 낸다 — 가격 **집합**을 손에 쥐어야 굵은 봉을
+    # 합집합으로 파생할 수 있기 때문이다(`reaggregate_depth_delta`). 값은 그대로다:
+    # DuckDB 의 `CAST(double AS BIGINT)` 는 banker's rounding 이고 파이썬 `round()`
+    # 도 같다(실측: 15.5→16, 16.5→16, 7.5→8, 6.5→6).
+    price_rows = con.execute(
         f"""
         WITH {eligible_cte},
-        lv AS ({tick_arms}),
-        uniq AS (SELECT DISTINCT bucket, side, price FROM lv WHERE price > 0),
-        gaps AS (
-          SELECT bucket, side,
-                 price - lag(price) OVER (PARTITION BY bucket, side ORDER BY price) AS g
-          FROM uniq
-        )
-        SELECT bucket * {bucket_ms} AS bucket_intra_ms, side,
-               CAST(median(g) AS BIGINT) AS tick
-        FROM gaps
-        WHERE g IS NOT NULL AND g > 0
-        GROUP BY 1, 2
+        lv AS ({tick_arms})
+        SELECT DISTINCT bucket * {bucket_ms} AS bucket_intra_ms, side, price
+        FROM lv WHERE price > 0
+        ORDER BY 1, 2, 3
         """,
         [str(path)],
     ).fetchall()
+    prices: dict[tuple[int, str], list[int]] = {}
+    for b, side, price in price_rows:
+        prices.setdefault((int(b), str(side)), []).append(int(price))
     ticks: dict[tuple[int, str], int] = {
-        (int(b), str(side)): int(t) for b, side, t in tick_rows
+        key: t for key, ps in prices.items() if (t := tick_from_ladder_prices(ps))
     }
+
+    if out_ladder_prices is not None:
+        out_ladder_prices.update(prices)
 
     grouped: OrderedDict[int, dict[str, list[tuple[int, int, int]]]] = OrderedDict()
     for b, side, price, in_q, out_q in delta_rows:
@@ -1681,6 +1685,70 @@ def query_bucket_representative(
     if best_pos is None:
         return None
     return _row_to_api_snapshot(_row_at(index, best_pos))
+
+
+def reaggregate_depth_delta(
+    buckets_1m: Sequence[DepthDeltaBucket],
+    ladder_prices_1m: Mapping[tuple[int, str], Sequence[int]],
+    *,
+    bucket_ms: int,
+) -> list[DepthDeltaBucket]:
+    """1분 잔량 증감 → `bucket_ms`. 직접 조회와 동치다.
+
+    ## 두 필드가 서로 다른 방식으로 접힌다
+
+    - **유입/유출 합**은 그냥 더한다. 직접 쿼리가 `GROUP BY bucket, side, price` 의
+      `SUM` 이라 부분합의 합이 전체합이다(`reaggregate_fill` 과 같은 꼴). 스냅샷
+      diff 는 버킷과 무관하게 같은 쌍에서 나오고 `max_gap_ms` 체인 차단도 버킷과
+      독립이므로, 1분 분할의 합집합이 곧 굵은 버킷의 재료다.
+    - **호가단위(tick)는 못 더한다.** 중앙값은 결합적이지 않다. 그래서 값이 아니라
+      **가격 집합**을 받아 합집합을 낸 뒤 다시 중앙값을 구한다 —
+      `tick_from_ladder_prices` 가 SQL 판과 같은 함수다.
+
+    `ladder_prices_1m` 은 `(bucket_intra_ms, side) → 가격들`. 증감이 0 이라 delta
+    행이 없는 분도 사다리는 있으므로 **`buckets_1m` 보다 키가 많을 수 있다** —
+    tick 은 그 분들까지 합쳐야 직접 조회와 같아진다.
+
+    출력 순서는 직접 쿼리의 `ORDER BY bucket, side, price` 를 따른다.
+    """
+    if bucket_ms % ONE_MINUTE_MS != 0:
+        raise ValueError(f"bucket_ms must be a multiple of {ONE_MINUTE_MS}: {bucket_ms}")
+
+    def target(intra: int) -> int:
+        return (intra // bucket_ms) * bucket_ms
+
+    sums: OrderedDict[int, dict[str, dict[int, list[int]]]] = OrderedDict()
+    for b in buckets_1m:
+        tb = target(b.bucket_intra_ms)
+        entry = sums.setdefault(tb, {"ask": {}, "bid": {}})
+        for side, rows in (("ask", b.ask), ("bid", b.bid)):
+            acc = entry[side]
+            for price, in_q, out_q in rows:
+                cur = acc.setdefault(price, [0, 0])
+                cur[0] += in_q
+                cur[1] += out_q
+    merged_prices: dict[tuple[int, str], set[int]] = {}
+    for (intra, side), ps in ladder_prices_1m.items():
+        merged_prices.setdefault((target(intra), side), set()).update(ps)
+    out: list[DepthDeltaBucket] = []
+    for tb in sorted(sums):
+        entry = sums[tb]
+        out.append(
+            DepthDeltaBucket(
+                bucket_intra_ms=tb,
+                # 증감이 상쇄돼 0 이 된 가격은 직접 쿼리도 내보내지 않는다
+                # (`HAVING` 상당) — 여기서도 뺀다.
+                ask=tuple(
+                    (p, v[0], v[1]) for p, v in sorted(entry["ask"].items()) if v[0] or v[1]
+                ),
+                bid=tuple(
+                    (p, v[0], v[1]) for p, v in sorted(entry["bid"].items()) if v[0] or v[1]
+                ),
+                ask_tick=tick_from_ladder_prices(sorted(merged_prices.get((tb, "ask"), ()))),
+                bid_tick=tick_from_ladder_prices(sorted(merged_prices.get((tb, "bid"), ()))),
+            )
+        )
+    return out
 
 
 def query_bucket_representatives(
@@ -2010,6 +2078,24 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
 
 #: peak rep 캐시의 고정 해상도. 더 굵은 봉은 이 행들을 묶어 파생한다.
 ONE_MINUTE_MS = 60_000
+
+
+def tick_from_ladder_prices(prices: Sequence[int]) -> int:
+    """정렬된 사다리 가격 집합 → 호가단위(인접 gap 의 중앙값). 못 구하면 0.
+
+    `query_bucketed_depth_delta` 의 SQL 판과 **값이 같아야 한다** — 굵은 봉을
+    가격 집합의 **합집합**으로 파생하려면(중앙값은 결합적이지 않으므로 집합이
+    있어야 한다) 양쪽이 같은 함수를 써야 한다.
+
+    반올림은 `round()` 다: DuckDB 의 `CAST(double AS BIGINT)` 가 banker's rounding
+    이고 파이썬도 같다(실측 15.5→16 · 16.5→16 · 7.5→8 · 6.5→6). `int()` 로 바꾸면
+    짝수 경계에서 1 씩 어긋난다.
+    """
+    uniq = sorted(set(prices))
+    gaps = [b - a for a, b in zip(uniq, uniq[1:], strict=False) if b - a > 0]
+    if not gaps:
+        return 0
+    return int(round(statistics.median(gaps)))
 
 
 @dataclass(frozen=True)

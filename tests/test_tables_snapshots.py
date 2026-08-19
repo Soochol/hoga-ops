@@ -26,6 +26,7 @@ from hoga.tables.snapshots import (
     _classify_wall_frame,
     _peak_distinct,
     query_at,
+    query_bucketed_depth_delta,
     query_day_ask_bid_peak_dual,
     query_day_ask_bid_peak_dual_with_rep,
     query_day_ask_peak,
@@ -34,6 +35,7 @@ from hoga.tables.snapshots import (
     query_day_bid_peak_dual,
     query_first_ts,
     query_time_bounds,
+    reaggregate_depth_delta,
     reaggregate_peak_rep,
     validate,
     write_parquet,
@@ -2885,3 +2887,45 @@ def test_query_daily_depth_peaks_without_close_bound_relaxes_like_single(
 def test_query_daily_depth_peaks_empty_input(tmp_path: Path) -> None:
     del tmp_path
     assert _peaks_batch(duckdb.connect(), [], session_close_ms=153_000_000) == {}
+
+
+@pytest.mark.parametrize("bucket_ms", [180_000, 300_000, 600_000])
+def test_reaggregate_depth_delta_matches_direct_query(tmp_path: Path, bucket_ms: int) -> None:
+    """1분 잔량 증감을 접은 결과 == 그 봉으로 직접 조회한 결과.
+
+    **막는 방향**: 접기가 직접 조회와 어긋나는 쪽. 특히 `ask_tick`/`bid_tick` —
+    중앙값은 결합적이지 않아 값끼리 못 합치고, 사다리 가격 **집합의 합집합**에서
+    다시 구해야 한다. 합만 맞추고 tick 을 대충 고르면 여기서 걸린다.
+    """
+    # ⚠ 사다리 간격을 분마다 **다르게** 둔다. 간격이 일정하면 어떤 (틀린) 구현도
+    # 같은 tick 을 내서 가드가 아무것도 증명하지 못한다 — 첫 판이 실제로 그랬다
+    # (tick 을 "1분 tick 중 최댓값" 으로 바꿔도 통과). 여기서는 짝수 분이 100,
+    # 홀수 분이 50 이라 합집합의 중앙값(50)이 어느 1분 tick 과도 다르다.
+    snapshots = tmp_path / "snapshots.parquet"
+    obs = []
+    for m in range(8):
+        step = 100 if m % 2 == 0 else 50
+        base = 25_000 + (m % 3) * step   # 창을 미끄러뜨려 공통 가격과 신규 가격을 섞는다
+        obs.append(
+            replace(
+                _ob_ap(
+                    90_000_000 + m * 100_000,
+                    [300 + m * 7, 200, 10, 40, 5, 6, 7, 8, 9, 1],
+                    ask_p=[base + i * step for i in range(10)],
+                ),
+                bid_p=tuple(base - 50 - i * step for i in range(10)),
+                bid_q=(250 + m * 5, 80, 70, 60, 50, 40, 30, 20, 10, 1),
+            )
+        )
+    write_parquet(obs, snapshots)
+    con = _con_for(snapshots)
+    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+
+    direct = query_bucketed_depth_delta(con, path=snapshots, bucket_ms=bucket_ms, **kw)
+    prices_1m: dict[tuple[int, str], list[int]] = {}
+    base_1m = query_bucketed_depth_delta(
+        con, path=snapshots, bucket_ms=60_000, out_ladder_prices=prices_1m, **kw,
+    )
+    derived = reaggregate_depth_delta(base_1m, prices_1m, bucket_ms=bucket_ms)
+
+    assert derived == direct
