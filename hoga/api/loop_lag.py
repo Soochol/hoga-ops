@@ -39,12 +39,80 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
+import threading
 import time
+import traceback
 
 log = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_S = 0.5
 DEFAULT_WARN_MS = 250.0
+
+#: 워치독이 심박을 확인하는 주기. 프로브 간격보다 촘촘해야 정체 **도중**에 잡는다.
+_WATCHDOG_POLL_S = 0.1
+#: 스택 덤프에 남길 프레임 수(안쪽부터). 전체를 남기면 한 정체가 로그를 수십 줄 먹는다.
+_STACK_FRAMES = 12
+
+
+class _LoopHeartbeat:
+    """루프가 마지막으로 살아 있던 시각. 워치독 스레드와 공유한다.
+
+    ## 왜 별도 스레드인가 — 이게 이 계측의 핵심이다
+
+    `loop_lag_probe` 는 **깨어난 뒤에** 지연을 잰다. 그 시점엔 루프를 붙들고 있던
+    코드가 이미 끝나 있어서, 거기서 스택을 떠 봐야 **범인이 아니라 그 다음 코드**가
+    찍힌다. 정체를 만든 프레임을 보려면 루프가 막혀 있는 **동안** 떠야 하고, 막힌
+    루프는 자기 자신을 관찰할 수 없다 — GIL 을 쥐고 있어도 별개 OS 스레드는
+    바이트코드 경계에서 스케줄되므로 워치독은 돈다.
+    """
+
+    def __init__(self) -> None:
+        self._last = time.perf_counter()
+        self._lock = threading.Lock()
+        self.loop_thread_id: int | None = None
+
+    def beat(self) -> None:
+        with self._lock:
+            self._last = time.perf_counter()
+
+    def stale_ms(self) -> float:
+        with self._lock:
+            return (time.perf_counter() - self._last) * 1000.0
+
+
+def format_loop_stack(thread_id: int, *, limit: int = _STACK_FRAMES) -> str:
+    """`thread_id` 의 현재 스택을 한 줄로. 못 찾으면 빈 문자열.
+
+    `sys._current_frames()` 는 CPython 구현 세부지만 **막힌 스레드를 밖에서 보는
+    유일한 표준 수단**이다(faulthandler 는 파일 디스크립터로만 쓰고 필터가 없다).
+    """
+    frame = sys._current_frames().get(thread_id)  # noqa: SLF001 — 외부 관찰의 유일 수단
+    if frame is None:
+        return ""
+    stack = traceback.extract_stack(frame)[-limit:]
+    return " <- ".join(f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno}:{f.name}" for f in reversed(stack))
+
+
+def _watchdog(hb: _LoopHeartbeat, warn_ms: float, stop: threading.Event) -> None:
+    """심박이 `warn_ms` 를 넘겨 멈춰 있으면 루프 스레드 스택을 **한 정체당 한 번** 찍는다."""
+    dumped_for_current_stall = False
+    while not stop.wait(_WATCHDOG_POLL_S):
+        stale = hb.stale_ms()
+        if stale < warn_ms:
+            dumped_for_current_stall = False
+            continue
+        if dumped_for_current_stall or hb.loop_thread_id is None:
+            continue
+        dumped_for_current_stall = True
+        stack = format_loop_stack(hb.loop_thread_id)
+        if stack:
+            # `loop_lag` 와 같은 grep 표면을 쓰되 이름을 갈라 둔다 — 이 줄은
+            # "지연이 있었다" 가 아니라 "그때 이걸 실행 중이었다" 라 의미가 다르다.
+            log.warning(
+                "hoga_perf loop_stall stale_ms=%.0f threshold_ms=%.0f stack=%s",
+                stale, warn_ms, stack,
+            )
 
 
 def warn_ms_from_env(env: dict[str, str] | None = None) -> float:
@@ -82,10 +150,45 @@ async def loop_lag_probe(
     """
     if warn_ms <= 0:
         return
+    # 워치독은 프로브의 수명에 묶는다 — 프로브가 죽으면 심박이 멈춰 워치독이
+    # "영원한 정체" 를 찍게 되므로, 같이 살고 같이 죽어야 한다.
+    hb = _LoopHeartbeat()
+    hb.loop_thread_id = threading.get_ident()
+    stop = threading.Event()
+    watchdog = threading.Thread(
+        target=_watchdog, args=(hb, warn_ms, stop),
+        name="loop-lag-watchdog", daemon=True,
+    )
+    watchdog.start()
+    try:
+        await _probe_loop(hb, interval_s, warn_ms, iterations)
+    finally:
+        stop.set()
+
+
+async def _beating_sleep(hb: _LoopHeartbeat, total_s: float) -> None:
+    """`total_s` 동안 자되 `_WATCHDOG_POLL_S` 마다 심박을 남긴다."""
+    deadline = time.perf_counter() + total_s
+    while True:
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(_WATCHDOG_POLL_S / 2, remaining))
+        hb.beat()
+
+
+async def _probe_loop(
+    hb: _LoopHeartbeat, interval_s: float, warn_ms: float, iterations: int | None,
+) -> None:
     count = 0
     while iterations is None or count < iterations:
         t0 = time.perf_counter()
-        await asyncio.sleep(interval_s)
+        hb.beat()
+        # ⚠ `sleep(interval_s)` 한 번으로 자면 **심박도 그동안 멈춘다** — 워치독은
+        # 정상 동작을 interval_s 짜리 정체로 오인해 매 주기 스택을 찍는다(첫 판이
+        # 실제로 그랬다: 몇 분에 1168건, 전부 부팅 프레임). 잘게 나눠 자면서 매번
+        # 뛰어야 "심박이 멈췄다 == 루프가 막혔다" 가 성립한다.
+        await _beating_sleep(hb, interval_s)
         lag = overshoot_ms(time.perf_counter() - t0, interval_s)
         if lag >= warn_ms:
             # 포맷은 이 리포의 관례 그대로 — `hoga_perf <name> key=value`(grep 표면 공유).
