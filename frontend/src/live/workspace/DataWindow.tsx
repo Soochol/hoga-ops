@@ -61,7 +61,7 @@ import {
 } from '../liveSidebarAdapters';
 import {
   afterHoursBookToSnapshot,
-  latestExpectedFill,
+  afterHoursFillRows,
   useAfterHoursBook,
 } from '../../api/liveAfterHoursBook';
 import { useLiveCursorStore } from '../useLiveCursorStore';
@@ -212,16 +212,19 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
   // 아예 끈다 — 과거 시점 위에 "지금 호가"를 얹으면 거짓 정보다.
   const afterHoursBook = useAfterHoursBook(isSpot ? null : code);
-  // 시간외 단일가 구간의 예상체결(키움 0H). REST(ka10087·ka10004)에는 이 값이 없고
-  // ka10007 의 `exp_cntr_*` 는 정규장 잔상이라(2026-08-18 실측) WS 가 유일 소스다.
-  // ⚠ 이 구간에 0H 가 실제로 흐르는지는 미실측 — 안 오면 배너가 안 뜰 뿐이다.
-  const expectedFill = useMemo(
-    () => (isSpot ? null : latestExpectedFill(live.expected)),
-    [isSpot, live.expected],
-  );
+  // 예상체결(`exp_price`/`exp_qty`)은 이 응답에 **함께** 실려 온다 — 백엔드가 ka10087
+  // 과 ka10001 을 같은 TTL 축에서 치기 때문이다. 따로 폴링하지 않는 이유는 두 값의
+  // 시점이 갈리면 사다리와 배너가 다른 순간을 가리키기 때문이다.
   const singlePriceSnapshot = useMemo(
-    () => afterHoursBookToSnapshot(afterHoursBook.data, expectedFill),
-    [afterHoursBook.data, expectedFill],
+    () => afterHoursBookToSnapshot(afterHoursBook.data),
+    [afterHoursBook.data],
+  );
+  // 합성 체결 — 이 구간의 체결창 내용이다. 벤더가 개별 체결을 주지 않아 백엔드가
+  // 누적 증분에서 만든 것이고(`AfterHoursFillModel`), **WS 체결 경로를 타지 않는다**.
+  // 그래서 venue 필터와도 무관하다 — 애초에 그 파이프에 들어오지 않는다.
+  const singlePriceFills = useMemo(
+    () => afterHoursFillRows(afterHoursBook.data),
+    [afterHoursBook.data],
   );
   const regularSnapshot = resolveOrderbookCardSnapshot({
     scope,
@@ -392,7 +395,19 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     }
     return out;
   }, [isSpot, venueTrade]);
-  const lastPrice = recentTrades.length > 0 ? recentTrades[0].price : null;
+  // 시간외 단일가 구간에는 **합성 체결**이 체결창을 채운다. WS 체결(0B)은 16:00 에
+  // 끊기므로 `recentTrades` 는 그때부터 15:59 의 화석이고, 그것을 "지금 흐르는 체결"
+  // 자리에 두면 시각이 안 보이는 만큼 조용히 거짓이 된다.
+  const bookTrades = singlePriceSnapshot !== null ? singlePriceFills : recentTrades;
+  // 사다리에서 현재가 행을 강조하는 값. 시간외에는 벤더 현재가를 **직접** 쓴다 —
+  // 체결창이 비어 있을 수 있고(첫 관측은 기준선이라 행이 없다), 15:59 가격은 시간외
+  // 5단 어디에도 없어 강조가 사라지거나 엉뚱한 행에 붙는다.
+  const lastPrice =
+    singlePriceSnapshot !== null
+      ? (afterHoursBook.data?.cur_price ?? null)
+      : recentTrades.length > 0
+        ? recentTrades[0].price
+        : null;
   // 상하한가·250일은 **날짜** 단위 상수다 — 오늘 스팟(시각만 과거)에서는 유효하고
   // 과거 날짜에서만 거짓이라, 시각 단위 누적인 summary 와 게이트가 다르다.
   const spotLimits = isPastDateCursor ? null : (stockLimits.data ?? null);
@@ -429,7 +444,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           afterHoursLabel={afterHoursLabel}
           baselinePrice={baselinePrice}
           summary={summary}
-          trades={recentTrades}
+          trades={bookTrades}
           maskRatio={maskRatio}
           lastPrice={lastPrice}
           deltaBadges={isSpot ? null : deltaBadges}

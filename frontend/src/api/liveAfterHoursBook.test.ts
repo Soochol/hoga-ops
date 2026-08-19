@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 
 import {
   afterHoursBookToSnapshot,
+  afterHoursFillRows,
   isAfterHoursSinglePriceWindow,
-  latestExpectedFill,
   type LiveAfterHoursBookResponse,
 } from './liveAfterHoursBook';
 
@@ -59,6 +59,9 @@ const book = (over: Partial<LiveAfterHoursBookResponse> = {}): LiveAfterHoursBoo
   change_pct: -0.98,
   acc_volume: 12_345,
   close_price: 35_350,
+  exp_price: null,
+  exp_qty: null,
+  fills: [],
   fetched_at_ms: 1_700_000_000_000,
   source: 'kiwoom',
   ...over,
@@ -94,58 +97,57 @@ describe('afterHoursBookToSnapshot', () => {
   });
 });
 
-// ── 예상체결(키움 0H) (2026-08-18) ──────────────────────────────────────────
+// ── 예상체결 (ka10001, 2026-08-19 실측) ──────────────────────────────────
+//
+// 여기 있던 `latestExpectedFill`(WS 0H) 테스트 묶음을 들어냈다. 그 함수가 삭제됐고,
+// 삭제한 이유는 **소스가 존재하지 않기 때문**이다: 0H 는 이 창에 프레임을 하나도
+// 내지 않는다(구독 중, 체결 3주기, 링버퍼 0건). 예상체결은 이제 응답이 싣고 온다.
 
-const expFrame = (t_ms: number, price: number, qty: number) => ({
-  t_ms, kind: 'expected', code: '028050', venue: 'KRX',
-  expected_price: price, expected_qty: qty,
-});
-
-describe('latestExpectedFill', () => {
-  const inWindow = kst(2026, 5, 27, 16, 30);
-  const closingAuction = kst(2026, 5, 27, 15, 25); // 정규장 종가 동시호가
-
-  it('창 안의 마지막 프레임을 고른다', () => {
-    expect(
-      latestExpectedFill([expFrame(inWindow, 47_800, 100), expFrame(inWindow + 1000, 47_900, 250)]),
-    ).toEqual({ price: 47_900, qty: 250 });
-  });
-
-  it('정규장 동시호가 프레임은 쓰지 않는다 — **이 테스트가 이 함수의 존재 이유다**', () => {
-    // 게이트가 없으면 15:20–15:30 종가 동시호가의 마지막 0H 프레임이 버퍼에 남아
-    // 16:30 화면에 실시간처럼 뜬다. 그건 ka10007 의 `exp_cntr_*` 가 이 구간에
-    // 정규장 잔상을 답하던 것(2026-08-18 실측: 두 체결 주기에 걸쳐 미동)과 똑같은
-    // 버그를 우리 손으로 재생산하는 것이다.
-    expect(latestExpectedFill([expFrame(closingAuction, 47_900, 54_701)])).toBeNull();
-  });
-
-  it('창 안 프레임이 있으면 창 밖 최신 프레임보다 그것을 고른다', () => {
-    // 배열 뒤쪽이 더 최신이지만 창 밖이다 — 순서가 아니라 **창 소속**이 판정한다.
-    expect(
-      latestExpectedFill([
-        expFrame(inWindow, 47_800, 100),
-        expFrame(kst(2026, 5, 27, 18, 30), 47_000, 999),
-      ]),
-    ).toEqual({ price: 47_800, qty: 100 });
-  });
-
-  it('값이 0 이거나 형이 다른 프레임은 건너뛴다', () => {
-    expect(latestExpectedFill([expFrame(inWindow, 0, 100)])).toBeNull();
-    expect(latestExpectedFill([expFrame(inWindow, 47_900, 0)])).toBeNull();
-    expect(latestExpectedFill([{ t_ms: inWindow, kind: 'expected' }])).toBeNull();
-    expect(latestExpectedFill([])).toBeNull();
-  });
-});
-
-describe('afterHoursBookToSnapshot — 예상체결 주입', () => {
-  it('0H 가 있으면 정규장 동시호가와 **같은 배너 필드**를 채운다', () => {
+describe('afterHoursBookToSnapshot — 예상체결', () => {
+  it('응답의 exp_* 가 정규장 동시호가와 **같은 배너 필드**로 간다', () => {
     // 새 UI 를 만들지 않는다 — ExpectedFillBanner 가 이미 이 두 필드를 읽는다.
-    const snap = afterHoursBookToSnapshot(book(), { price: 47_900, qty: 250 });
-    expect(snap).toMatchObject({ exp_price: 47_900, exp_qty: 250 });
+    // 출처만 다르다(정규장 0D FID 23/24 · 시간외 REST ka10001).
+    const snap = afterHoursBookToSnapshot(book({ exp_price: 35_000, exp_qty: 2_198 }));
+
+    expect(snap).toMatchObject({ exp_price: 35_000, exp_qty: 2_198 });
   });
 
-  it('0H 가 없으면 0 이라 배너가 뜨지 않는다', () => {
-    const snap = afterHoursBookToSnapshot(book());
-    expect(snap).toMatchObject({ exp_price: 0, exp_qty: 0 });
+  it('예상체결이 없으면 0 이라 배너가 뜨지 않는다', () => {
+    // ka10001 만 실패했거나 그 종목에 시간외 주문이 없는 정상 상태다.
+    expect(afterHoursBookToSnapshot(book())).toMatchObject({ exp_price: 0, exp_qty: 0 });
+  });
+});
+
+describe('afterHoursFillRows', () => {
+  const fills = [
+    { t_ms: 1_787_123_427_000, price: 34_950, qty: 3_484 },
+    { t_ms: 1_787_122_827_000, price: 34_900, qty: 1_255 },
+  ];
+
+  it('합성 체결을 체결창 행으로 옮긴다 — 순서는 백엔드가 준 대로(최신 먼저)', () => {
+    const rows = afterHoursFillRows(book({ fills }));
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ price: 34_950, qty: 3_484 });
+  });
+
+  it('side 는 항상 0 — 단일가 일괄 체결이라 **방향이 정의되지 않는다**', () => {
+    // 0 을 "중립 체결"로 색칠하면 방향을 아는 것처럼 읽힌다. BookPanel 의 side>0/
+    // side<0 분기 어디에도 걸리지 않는 값이어야 한다.
+    expect(afterHoursFillRows(book({ fills })).every((r) => r.side === 0)).toBe(true);
+  });
+
+  it('active=false 면 빈 배열 — 그때 화면은 정규장 체결창을 그대로 쓴다', () => {
+    expect(afterHoursFillRows(book({ active: false, fills }))).toEqual([]);
+  });
+
+  it('응답이 없으면 빈 배열', () => {
+    expect(afterHoursFillRows(undefined)).toEqual([]);
+  });
+
+  it('관측이 없던 주기는 비는 것이 정상이다 — 없는 행을 만들지 않는다', () => {
+    // 백엔드 `_FillLedger` 가 관측 공백에서 re-baseline 하므로 빈 배열이 온다.
+    // 프론트가 그 자리를 메우려 들면 그쪽에서 막은 위조가 여기서 되살아난다.
+    expect(afterHoursFillRows(book({ fills: [] }))).toEqual([]);
   });
 });

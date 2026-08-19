@@ -1,19 +1,23 @@
-"""kiwoom_after_hours (ka10087) — 파서 + fetcher TTL 캐시/single-flight.
+"""kiwoom_after_hours — ka10087 호가 + ka10001 예상체결 + 합성 체결 원장.
 
-⚠ **fixture 는 합성이다.** ka10001 테스트가 실호출 응답을 옮겨 온 것과 달리, 여기
-골든은 공식 **필드표**로 조립했다 — 2026-08-14 시점에 토큰 캐시가 만료였고 새 발급은
-사용자 dev 서버의 토큰을 죽이므로(#1088) 실응답을 뜰 수 없었다. 그래서 이 테스트가
-고정하는 것은 "벤더가 무엇을 보내는가" 가 아니라 **파서가 그 형태를 어떻게 다루는가**
-(키 선택·부호·빈 단계·판별 술어)다. 실프레임을 받으면 골든을 교체할 것.
+⚠ **fixture 가 두 종류다. 성격이 다르니 섞어 읽지 말 것.**
 
-교체 시 1순위 확인 항목은 **총잔량 세 쌍 중 어느 것이 실제로 오는가**다. 공식
-Response Example 에는 `sel_bid_tot_req`(정규장)만 찍혀 있고 우리가 읽는
-`ovt_sigpric_sel_bid_tot_req`(시간외 단일가)는 없다.
+- `GOLDEN`(ka10087)은 공식 **필드표로 조립한 합성**이다. 2026-08-14 당시 토큰 캐시가
+  만료였고 새 발급은 사용자 dev 서버의 토큰을 죽이므로(#1088) 실응답을 못 떴다.
+  그래서 이것이 고정하는 것은 "벤더가 무엇을 보내는가" 가 아니라 **파서가 그 형태를
+  어떻게 다루는가**(키 선택·부호·빈 단계·판별 술어)다.
+- `KA10001_REAL` 은 2026-08-19 16:28 **실응답**이다. 부호 변종(`"34950"` vs
+  `"+35000"`)이 원본 그대로 들어 있어 파서가 실제로 만나는 형태를 고정한다.
+
+`GOLDEN` 을 실프레임으로 교체할 때 1순위 확인 항목은 **총잔량 세 쌍 중 어느 것이
+실제로 오는가**다. 공식 Response Example 에는 `sel_bid_tot_req`(정규장)만 찍혀 있고
+우리가 읽는 `ovt_sigpric_sel_bid_tot_req`(시간외 단일가)는 없다.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -22,8 +26,15 @@ from hoga.live.kiwoom_after_hours import (
     LEVELS,
     KiwoomAfterHoursError,
     KiwoomAfterHoursFetcher,
+    _FillLedger,
+    parse_ka10001_expected,
     parse_ka10087,
 )
+
+#: 2026-08-19 거래일 16:28 실응답(006360). **합성이 아니다** — 세션 scratchpad 에서
+#: 건져 온 원본이라 부호 변종(`"34950"` vs `"+35000"`)이 그대로 들어 있다.
+_FIXTURES = Path(__file__).parents[2] / "fixtures" / "kiwoom_after_hours"
+KA10001_REAL = json.loads((_FIXTURES / "ka10001_006360_1628.json").read_text())
 
 # 필드표 기반 합성 응답. 부호 prefix 는 키움 REST 공통 wire 형식이고, 빈 단계를
 # `"-0"` 으로 둔 것은 0D 애프터마켓 실측에서 확인된 관용 표기를 그대로 흉내낸 것이다.
@@ -66,8 +77,26 @@ class _FakeTokenProvider:
         return "tok"
 
 
-def _transport(body: dict, status: int = 200, *, counter: list[int] | None = None):
+def _transport(
+    body: dict,
+    status: int = 200,
+    *,
+    counter: list[int] | None = None,
+    expected_body: dict | None = None,
+    expected_status: int = 200,
+):
+    """MockTransport. **fetcher 가 TR 을 둘 치므로 api-id 로 갈라 답한다.**
+
+    `counter` 는 **ka10087 호출만** 센다 — TTL·single-flight 를 재는 단언들이 예상체결
+    호출까지 세면 "캐시가 접혔는가" 와 "TR 이 몇 개인가" 가 한 숫자에 섞여, 나중에
+    TR 을 하나 더 붙일 때 무관한 테스트가 무더기로 빨개진다.
+    """
+
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("api-id") == "ka10001":
+            return httpx.Response(
+                expected_status, content=json.dumps(expected_body or {"return_code": 0}).encode()
+            )
         if counter is not None:
             counter.append(1)
         return httpx.Response(status, content=json.dumps(body).encode())
@@ -260,3 +289,156 @@ def test_close_price_is_none_when_either_input_is_missing() -> None:
     assert parse_ka10087("000000", {
         "ovt_sigpric_cur_prc": "-100", "ovt_sigpric_pred_pre": "+500",
     }).close_price is None
+
+
+# ── 예상체결 (ka10001) ──────────────────────────────────────────────────────
+
+
+def test_parses_expected_fill_from_real_response() -> None:
+    """2026-08-19 16:28 **실응답**에서 예상체결을 뽑는다.
+
+    이 값이 왜 ka10087 이 아니라 ka10001 에서 오는지는 `ExpectedFill` docstring.
+    같은 픽스처의 `cur_prc`(정규장 종가 34,950)와 **다른 값**이라는 것이 요점이다 —
+    같으면 잔상과 구별되지 않는다.
+    """
+    exp = parse_ka10001_expected(KA10001_REAL)
+
+    assert exp is not None
+    assert (exp.price, exp.qty) == (35_000, 2_198)
+    assert KA10001_REAL["cur_prc"] == "+34950"  # 종가와 다르다 = 잔상이 아니다
+
+
+def test_expected_fill_accepts_unsigned_price() -> None:
+    """부호 **없는** 가격이 실제로 온다 — 종가와 같을 때다(실측 `"34950"`).
+
+    `_abs_int` 의 `lstrip("+-")` 가 없으면 이 변종에서 조용히 0 이 되고, 그러면
+    "보합일 때만 예상체결이 사라지는" 재현 어려운 버그가 된다.
+    """
+    unsigned = parse_ka10001_expected({"exp_cntr_pric": "34950", "exp_cntr_qty": "3279"})
+    signed = parse_ka10001_expected({"exp_cntr_pric": "+35000", "exp_cntr_qty": "481"})
+
+    assert unsigned is not None and unsigned.price == 34_950
+    assert signed is not None and signed.price == 35_000
+
+
+def test_expected_fill_none_when_either_side_is_zero() -> None:
+    """한쪽만 있으면 None — 반쪽짜리 배너를 띄우지 않는다."""
+    assert parse_ka10001_expected({"exp_cntr_pric": "0", "exp_cntr_qty": "3279"}) is None
+    assert parse_ka10001_expected({"exp_cntr_pric": "34950", "exp_cntr_qty": "0"}) is None
+    assert parse_ka10001_expected({}) is None
+
+
+@pytest.mark.asyncio
+async def test_expected_failure_does_not_take_down_the_ladder() -> None:
+    """**실패 격리** — ka10001 이 죽어도 ka10087 사다리는 나간다.
+
+    이 구간에 ka10087 은 **유일한** 호가 소스다. 예상체결은 그 위의 부가 정보라,
+    부가 정보의 장애가 화면 전체를 끄는 것은 손익이 맞지 않는다(`AfterHoursView` 표).
+    """
+    f = KiwoomAfterHoursFetcher(
+        _FakeTokenProvider(),
+        _transport=_transport(GOLDEN, expected_body={"return_code": 3}, expected_status=500),
+    )
+    try:
+        view = await f.get("006360")
+    finally:
+        f.close()
+
+    assert view.expected is None
+    assert view.book.ask[0].price == 35_400  # 사다리는 멀쩡하다
+
+
+# ── 합성 체결 원장 (_FillLedger) ────────────────────────────────────────────
+#
+# 이 클래스의 계약은 "행을 만든다" 가 아니라 **"언제 만들지 않는가"** 다. 아래 네
+# 개의 음성 케이스가 그 계약이고, 하나라도 빠지면 여러 주기의 합이 한 줄로 위조된다.
+
+_T0 = 1_787_123_400_000  # 2026-08-19 16:30:00 KST
+
+
+def test_first_observation_makes_no_row() -> None:
+    """첫 관측은 기준선이다 — 그때까지의 누적은 여러 주기의 합이라 한 줄이 못 된다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0, acc_volume=2_845, price=34_950)
+
+    assert led.rows("006360", t_ms=_T0) == ()
+
+
+def test_delta_within_one_boundary_makes_a_row() -> None:
+    """정상 폴링(경계 0~1개)의 증분은 그 주기의 체결이다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0 - 20_000, acc_volume=2_845, price=34_950)  # 16:29:40
+    led.observe("006360", t_ms=_T0 + 27_000, acc_volume=6_329, price=34_950)  # 16:30:27
+
+    rows = led.rows("006360", t_ms=_T0 + 27_000)
+    assert len(rows) == 1
+    assert (rows[0].price, rows[0].qty) == (34_950, 3_484)  # 실측 그대로
+
+
+def test_observation_gap_re_baselines_instead_of_forging_a_row() -> None:
+    """**관측 공백은 행을 만들지 않는다.**
+
+    16:05 에 보다가 16:45 에 돌아오면 순진한 델타는 5,638주 @ 16:45 가격 한 줄을
+    만든다. 그 물량은 네 주기에 걸쳐 서로 다른 가격에 체결된 것이라 **어느 주기의
+    사실도 아니다** — 첫 관측에 행을 안 만드는 규칙이 갭으로 우회되는 경로다.
+    """
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0 - 1_500_000, acc_volume=1_590, price=34_950)  # 16:05
+    led.observe("006360", t_ms=_T0 + 900_000, acc_volume=7_228, price=35_100)  # 16:45
+
+    assert led.rows("006360", t_ms=_T0 + 900_000) == ()
+
+
+def test_exactly_one_boundary_still_counts() -> None:
+    """경계 **하나**는 정상이다 — 체결 주기를 넘는 관측 쌍이 바로 그 모양이라,
+    여기를 0 으로 좁히면 잡으려던 체결을 전부 놓친다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0 - 1_000, acc_volume=2_845, price=34_950)  # 16:29:59
+    led.observe("006360", t_ms=_T0 + 1_000, acc_volume=6_329, price=34_950)  # 16:30:01
+
+    assert len(led.rows("006360", t_ms=_T0 + 1_000)) == 1
+
+
+def test_decrease_re_baselines() -> None:
+    """누적이 줄면(벤더 되감기·날짜 전환) 기준만 새로 잡는다 — 음수 행은 없다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0, acc_volume=6_329, price=34_950)
+    led.observe("006360", t_ms=_T0 + 10_000, acc_volume=1_590, price=34_950)
+
+    assert led.rows("006360", t_ms=_T0 + 10_000) == ()
+
+
+def test_missing_price_makes_no_row() -> None:
+    """가격이 없으면 행의 절반이 비어 표시할 수 없다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0, acc_volume=2_845, price=34_950)
+    led.observe("006360", t_ms=_T0 + 27_000, acc_volume=6_329, price=None)
+
+    assert led.rows("006360", t_ms=_T0 + 27_000) == ()
+
+
+def test_rows_are_newest_first() -> None:
+    """체결창이 위에서부터 최신을 그린다 — 정렬을 소비자에게 미루지 않는다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0, acc_volume=2_845, price=34_950)
+    led.observe("006360", t_ms=_T0 + 30_000, acc_volume=6_329, price=34_950)
+    led.observe("006360", t_ms=_T0 + 600_000, acc_volume=7_228, price=35_100)
+
+    rows = led.rows("006360", t_ms=_T0 + 600_000)
+    assert [r.qty for r in rows] == [899, 3_484]
+
+
+def test_next_day_clears_rows() -> None:
+    """자정을 넘겨 열어 둔 탭이 어제 체결을 오늘 것처럼 보여주지 않는다."""
+    led = _FillLedger()
+    led.observe("006360", t_ms=_T0, acc_volume=2_845, price=34_950)
+    led.observe("006360", t_ms=_T0 + 30_000, acc_volume=6_329, price=34_950)
+    assert len(led.rows("006360", t_ms=_T0 + 30_000)) == 1
+
+    led.observe("006360", t_ms=_T0 + 86_400_000, acc_volume=100, price=35_000)
+
+    assert led.rows("006360", t_ms=_T0 + 86_400_000) == ()
+
+
+def test_rows_empty_for_unknown_code() -> None:
+    assert _FillLedger().rows("000000", t_ms=_T0) == ()
