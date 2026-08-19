@@ -11,8 +11,9 @@ export interface HeatmapRowProps {
   high?: number | null;
   low?: number | null;
   /** 동시호가 예상체결가/등락률(WS 0D 유래, LiveQuote.expected_*). 값이 있으면 가격·
-   *  등락률 셀을 예상값으로 대체하고 캔들 셀에 '예' 마커를 띄운다. 창 밖·체결 후엔
-   *  키 자체가 사라져(백엔드 게이트 SSOT) 자동으로 확정치 표시로 돌아온다. */
+   *  등락률 셀을 예상값으로 대체하고 **종목명 앞에 '*' 마커**를 띄운다(관심종목
+   *  QuoteRow 와 동일 표기). 창 밖·체결 후엔 키 자체가 사라져(백엔드 게이트 SSOT)
+   *  자동으로 확정치 표시로 돌아온다. */
   expectedPrice?: number | null;
   expectedPct?: number | null;
   // QuoteRow 와 동일 계약: 이벤트를 통과시켜 호출부가 ctrl/⌘ 로 새 탭 분기를 할 수
@@ -55,22 +56,20 @@ export function HeatmapRow({
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
-  // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고 캔들 셀에 '예상' 마커가 붙는다.
-  // 마커는 캔들을 **대체하지 않고 나란히** 선다: 마감 동시호가(15:20~15:30)엔 당일
-  // OHLC 가 살아 있어(phase=open) 캔들이 정규장 종가·흐름을 계속 보여줘야 한다 —
-  // 예상가가 가격 셀을 덮어도 확정 종가가 글리프로 남는다. 개장 동시호가엔 OHLC 가
-  // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다.
-  // 두 시간창을 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
-  // 폭(2026-08-07 `/browse` 실측 @1.0×): 셀 **30.39px** ⊃ 캔들 10 + gap 2 + '예상' 16
-  // = **28px 필요**, 여유 2.39px.
-  // ⚠ **이 열은 다이얼에 대해 비선형이다** — 배정 폭(rem)과 '예상' 텍스트(text-2xs)는
-  // 다이얼을 따라가지만 `CandleGlyph` 의 폭은 **고정 px**(W 상수, SVG viewBox)라 안
-  // 줄어든다. 그래서 다이얼을 내릴수록 여유가 빠르게 잠식된다: 1.125× 에서는 34px
-  // 배정에 여유 4px, 1.0× 에서는 30.39px 배정에 여유 2.39px 다. 다음 한 칸을 내리면
-  // 여기가 먼저 터지므로 **이 셀을 실측하고 내릴 것** — 게다가 셀이 `overflow-hidden`
-  // 이라 넘쳐도 **에러 없이 잘리기만 한다**(무성 회귀). 다른 열은 배정·필요가 함께
-  // 줄어 비율이 보존된다; 이 열만 분자에 고정 px 가 섞여 있다.
-  // **종전 2.5rem 은 15px 이 놀고 있었다** — 아래 그리드 주석 참조.
+  // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고 **종목명 앞에 '*' 마커**가 붙는다.
+  // 2026-08-19 에 캔들 옆 '예상' 텍스트에서 이관했다: 같은 개념을 관심종목(QuoteRow)은
+  // '*', 이 행은 '예상' 으로 쓰던 비대칭을 없앤 것이다(사용자 요청).
+  // 마커가 캔들과 **다른 셀**로 옮겨져 이제 둘은 서로의 폭을 다투지 않는다. 캔들의
+  // 역할은 그대로다: 마감 동시호가(15:20~15:30)엔 당일 OHLC 가 살아 있어(phase=open)
+  // 예상가가 가격 셀을 덮어도 확정 종가·흐름이 글리프로 남고, 개장 동시호가엔 OHLC 가
+  // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다. 두 시간창을
+  // 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
+  // ⚠ **글리프 열 폭은 아직 회수하지 않았다.** 이 셀의 필요폭은 이제 **캔들 10px 뿐**인데
+  // 배정은 1.9rem(2026-08-07 `/browse` 실측 @1.0× = 30.39px) 그대로라 ~20px 이 논다.
+  // 그래도 이번 변경에선 안 줄였다 — 이 열은 다이얼에 대해 **비선형**이라(배정 폭은 rem,
+  // `CandleGlyph` 는 고정 px: W 상수·SVG viewBox) 안전 폭을 눈으로 못 정하고, 셀이
+  // `overflow-hidden` 이라 잘못 줄이면 **에러 없이 잘리기만 한다**(무성 회귀). 남는 폭을
+  // 이름 열(1fr)로 흘려보내는 재배분은 **실측과 함께 별도로** 할 것.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -120,14 +119,23 @@ export function HeatmapRow({
         // 위해 275행에 툴팁을 켜는 건 남는 거래가 아니다.
         title={captureTitle}
         data-capture-lagging={captureLagging ? '' : undefined}
-      >{name}</span>
-      {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지.
-          예상 표시 중엔 '예상' 마커(text-fg-dimmer, DepthBadge 급 크기)가 캔들 옆에 붙는다. */}
-      <span className="flex items-center justify-center gap-0.5 overflow-hidden">
-        <CandleGlyph open={open} high={high} low={low} close={price} />
+      >
+        {/* 동시호가 예상 마커 — 관심종목 QuoteRow 와 같은 표기·같은 자리(이름 앞).
+            truncate 는 부모인 이 span(그리드 아이템)에 걸려 있어 inline 마커는 자기
+            폭을 갖지 않는다: 긴 종목명은 뒤쪽이 잘리고 마커는 항상 남는다.
+            색을 **명시**하는 이유는 QuoteRow 에 없는 축 때문이다 — captureLagging 이면
+            부모가 text-error 라, 상속시키면 마커까지 빨개진다. 크기는 이름에서 상속
+            (text-xs); 별표 글리프는 이미 작아 text-2xs 로 더 줄이면 밀도 다이얼
+            하단에서 사라진다(QuoteRow 2026-08-14 판단과 동일). */}
         {showExpected && (
-          <span className="text-2xs text-fg-dim" data-testid={`${testId}-expected-marker`}>예상</span>
+          <span className="text-fg-dim" data-testid={`${testId}-expected-marker`}>*</span>
         )}
+        {name}
+      </span>
+      {/* 당일 캔들 셀 — CandleGlyph 가 null 이어도 이 span 이 칼럼을 점유해 정렬 유지.
+          예상 마커는 종목명 셀로 옮겼으므로(위 주석) 이 셀은 캔들 **전용**이다. */}
+      <span className="flex items-center justify-center overflow-hidden">
+        <CandleGlyph open={open} high={high} low={low} close={price} />
       </span>
       <span className="text-right font-data tabular-nums text-fg">
         {shownPrice === null ? '—' : shownPrice.toLocaleString('ko-KR')}
