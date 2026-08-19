@@ -727,26 +727,18 @@ function TotalQtyStrip({
           {ask.toLocaleString('ko-KR')}
         </span>
         {isAfterHours && (
-          // 라벨 + 체결량을 **두 줄**로 쌓는다. 한 줄에 붙이면 좁은 창에서 좌우
-          // 총잔량 숫자와 셋이 경쟁해 한글 라벨이 글자 단위로 접힌다(한글은
-          // min-content 가 한 글자라 폭이 부족하면 세로로 쌓인다).
+          // 여기 라벨 아래에 누적 체결량("체결 17,474")을 두 줄로 쌓았었다. **뺐다**
+          // (사용자 결정 2026-08-19) — 그것을 두었던 근거가 무효가 됐기 때문이다.
+          // 원 주석은 "시간외 단일가는 개별 체결 내역이 없어 이 누적이 그 구간에
+          // 움직이는 유일한 체결 신호" 였는데, #1417 이 체결창에 주기별 개별 행을
+          // 그리면서 그 자리가 생겼다. 총**잔량** 스트립에 체결**량**이 얹혀 있던
+          // 것은 자리가 없던 시절의 임시방편이었고, 이제는 축이 다른 숫자가 같은
+          // 줄에 섞여 있는 것일 뿐이다.
           <span
-            className="flex flex-col items-center leading-tight"
+            className="whitespace-nowrap text-xs text-fg-dim"
             data-testid="book-total-after-hours"
           >
-            <span className="whitespace-nowrap text-xs text-fg-dim">{afterHoursLabel}</span>
-            {afterHoursTotals?.volume != null && (
-              // 시간외 단일가는 10분 주기 일괄 체결이라 **개별 체결 내역이 없다** —
-              // 좌측 체결창이 정규장 마지막 값에 멈춰 있는 것은 결손이 아니고,
-              // 이 누적 체결량이 그 구간에 움직이는 유일한 체결 신호다.
-              <span
-                className="whitespace-nowrap font-data text-badge tabular-nums text-fg-dim"
-                data-testid="book-after-hours-volume"
-                aria-label={`${afterHoursLabel} 체결량 ${afterHoursTotals.volume.toLocaleString('ko-KR')}`}
-              >
-                체결 {afterHoursTotals.volume.toLocaleString('ko-KR')}
-              </span>
-            )}
+            {afterHoursLabel}
           </span>
         )}
         <span

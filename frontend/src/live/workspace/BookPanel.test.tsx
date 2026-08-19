@@ -314,26 +314,23 @@ describe('BookPanel', () => {
     expect(screen.getByLabelText('매수총잔량 2,045')).toBeInTheDocument();
   });
 
-  it('시간외 체결량이 오면 라벨과 함께 보여준다', () => {
-    // 시간외 단일가는 10분 주기 **일괄 체결**이라 개별 체결 내역이 없다 — 좌측
-    // 체결창·체결강도가 정규장 마지막 값에 멈춰 있는 것은 결손이 아니고, 이 누적
-    // 체결량이 그 구간에 움직이는 유일한 체결 신호다.
+  it('총잔량 스트립에 **체결량을 그리지 않는다** — 라벨만 (사용자 결정 2026-08-19)', () => {
+    // 여기엔 누적 체결량("체결 2,562")이 라벨 아래 두 줄로 쌓여 있었다. 그것을 둔
+    // 근거는 "시간외에는 개별 체결 내역이 없어 이 누적이 유일한 체결 신호" 였는데,
+    // #1417 이 체결창에 주기별 개별 행을 그리면서 전제가 사라졌다.
+    //
+    // **이 테스트는 되돌리기 방지용이다.** 총잔량 스트립에 체결량을 다시 얹으면
+    // 축이 다른 숫자가 한 줄에 섞인다 — 잔량(지금 쌓여 있는 것)과 체결량(오늘
+    // 지나간 것)은 물리량이 다르다.
     renderPanel({
-      afterHoursTotals: { ask: 7_777, bid: 8_888, volume: 2_562 },
+      afterHoursTotals: { ask: 7_777, bid: 8_888 },
       afterHoursLabel: '시간외 단일가',
     });
 
-    expect(screen.getByTestId('book-after-hours-volume')).toHaveTextContent('체결 2,562');
-    expect(screen.getByLabelText('시간외 단일가 체결량 2,562')).toBeInTheDocument();
-  });
-
-  it('체결량이 없으면(0E 경로) 그 줄을 그리지 않는다', () => {
-    // 0E 에는 체결량 FID 가 없다. `null` 을 0 으로 때워 "체결 0" 을 그리면
-    // "체결이 없었다" 로 읽히는데, 실제로는 **모른다** 다.
-    renderPanel({ afterHoursTotals: { ask: 7_777, bid: 8_888 } });
-
+    const strip = screen.getByTestId('book-total-after-hours');
+    expect(strip).toHaveTextContent('시간외 단일가');
+    expect(strip.textContent).not.toMatch(/체결/);
     expect(screen.queryByTestId('book-after-hours-volume')).toBeNull();
-    expect(screen.getByTestId('book-total-after-hours')).toHaveTextContent('시간외');
   });
 
   it('시간외 총잔량은 사다리를 건드리지 않는다 — 위 10단은 정규장 마지막 값', () => {
