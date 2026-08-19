@@ -17,16 +17,32 @@
  * and the jsdom `import.meta.url` mismatch.
  */
 import { describe, expect, it } from 'vitest';
-import SOURCE from './useLiveCursor.ts?raw';
+import CURSOR_SOURCE from './useLiveCursor.ts?raw';
+import BROKER_SOURCE from './brokerSeries.ts?raw';
+
+/**
+ * 감시 대상은 "이 파일" 이 아니라 **fetcher 가 실제로 사는 곳**이다.
+ *
+ * 거래원 fetcher 가 `brokerSeries.ts` 로 이사했을 때 이 목록을 같이 늘리지 않으면,
+ * 가드는 초록인 채로 **아무것도 안 보게 된다** — 옮겨간 쪽에 SSE import 를 넣어도
+ * 통과한다. 파일을 쪼갤 때마다 여기에 추가한다.
+ */
+const FETCHER_SOURCES: ReadonlyArray<readonly [name: string, source: string]> = [
+  ['useLiveCursor.ts', CURSOR_SOURCE],
+  ['brokerSeries.ts', BROKER_SOURCE],
+];
 
 describe('ADR-0044 invariant', () => {
-  it('hover hooks do not import LiveBuffer / useLiveStream / liveSnapshotBuffer', () => {
-    // Anchor list mirrors hoga/live/ module names and the live page's
-    // SSE-stream modules. If a future feature genuinely needs a hybrid
-    // path, do that with a NEW hook + ADR amendment — not a quiet import.
-    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?useLiveStream['"]/);
-    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSnapshotBuffer['"]/);
-    expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSeries['"]/);
-    expect(SOURCE).not.toMatch(/\bLiveBuffer\b/);
-  });
+  it.each(FETCHER_SOURCES)(
+    '%s: hover hooks do not import LiveBuffer / useLiveStream / liveSnapshotBuffer',
+    (_name, SOURCE) => {
+      // Anchor list mirrors hoga/live/ module names and the live page's
+      // SSE-stream modules. If a future feature genuinely needs a hybrid
+      // path, do that with a NEW hook + ADR amendment — not a quiet import.
+      expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?useLiveStream['"]/);
+      expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSnapshotBuffer['"]/);
+      expect(SOURCE).not.toMatch(/from ['"](?:[^'"]*\/)?liveSeries['"]/);
+      expect(SOURCE).not.toMatch(/\bLiveBuffer\b/);
+    },
+  );
 });

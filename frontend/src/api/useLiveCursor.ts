@@ -1,9 +1,14 @@
 /**
  * Live-page cursor-keyed spot hooks (ADR-0044).
  *
- * Mirrors replay's useCursor.ts pattern using useSpot (not React Query).
+ * 호가 스냅샷은 replay 의 useCursor.ts 를 따라 `useSpot` 을 쓴다 — 키에 커서 시각이
+ * 들어가는 rapid-scrub 전용 디바운서다. 거래원 두 훅은 **react-query 로 옮겼다**:
+ * 키가 커서와 무관한 하루 단위라 두 소비 표면이 같은 키를 공유할 수 있고, 공유해야
+ * 중복 발사와 재방문 미스가 사라진다. 근거·실측은 `brokerSeries.ts`.
+ *
  * All three hooks are parquet-only — SSE / stream modules are excluded per
- * ADR-0044. See useLiveCursor.invariant.test.ts for the static guard.
+ * ADR-0044. See useLiveCursor.invariant.test.ts for the static guard — 그 가드는
+ * 이 파일과 `brokerSeries.ts` **둘 다** 본다(거래원 fetcher 가 그리로 이사했으므로).
  *
  * Client-side bucket alignment: Math.floor(sidebarCursorMs / bucketMs) * bucketMs
  * is applied to both the URL `t=` param and the cache key to collapse
@@ -14,6 +19,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
+import { useBrokerSeriesForDay } from './brokerSeries';
 import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
 import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
@@ -25,31 +31,35 @@ import {
   type AdjustFactors,
 } from '../live/scaleRangeBundlePrices';
 
-// ─── Spot 캐시 튜닝 ───────────────────────────────────────────────────────────
+// ─── 커서 파생 날짜 디바운스 ──────────────────────────────────────────────────
 
-/** useSpot 기본 디바운스. capacity 를 넘기려면 4번째 인자라 함께 명시해야 한다. */
-const SPOT_DEBOUNCE_MS = 30;
+/** 커서에서 파생한 **날짜**가 안정될 때까지 기다리는 시간.
+ *
+ * `useSpot` 시절 거래원 두 훅이 쓰던 디바운스와 같은 값이고 같은 일을 한다 —
+ * react-query 에는 디바운스가 없으므로 keying **전에** 여기서 걸어야 한다. 안 걸면
+ * `/study` 5개월 저장뷰를 가로로 훑을 때 스쳐간 날짜마다 요청이 하나씩 나가고
+ * (수십~백 건), 그 응답이 전부 캐시에 앉는다.
+ *
+ * `BROKER_SERIES_GC_TIME_MS`(brokerSeries.ts)와 **짝이다** — 이쪽은 발생을,
+ * 저쪽은 상주 시간을 막는다. 옛 판의 `capacity = 6` 이 혼자 하던 일이라 한쪽만
+ * 두면 그 힙 사고(2026-07-29)가 절반만 막힌다.
+ *
+ * 늦추는 것은 날짜뿐이다. 종목·venue 는 즉시 반영된다 — 사용자가 방금 고른 값이라
+ * 늦추면 그대로 체감 지연이 되고, 스크럽처럼 연속으로 바뀌지도 않는다. */
+const CURSOR_DATE_DEBOUNCE_MS = 30;
 
-/** 커서 거래원 궤적 LRU 용량.
+/** 값이 `debounceMs` 동안 안정될 때까지 직전 값을 유지한다.
  *
- * 페이로드가 **당일 전체** 거래원 궤적(브로커 수십 × 10초 다운샘플 포인트)이라
- * 호가 스냅샷과 크기 등급이 다르다. useSpot 기본 100 이면 훑어본 (code, date)
- * 조합 100 벌이 상주해 힙을 수백 MB 로 밀어올린다. 커서는 한 날짜 안에서 오래
- * 머물다 가끔 옆 날짜로 옮기는 사용 패턴이라, 최근 몇 벌만 있어도 재요청은 거의
- * 안 생긴다. 초과분은 재요청(백엔드 parquet 읽기)으로 되메워지므로 정합 손실 없음. */
-const BROKER_SERIES_SPOT_CAPACITY = 6;
-
-/** latest 모드 당일 궤적 LRU 용량 = 1.
- *
- * 키에 60초 스탬프가 박혀 있어(TODAY_SERIES_REFRESH_MS) **지나간 키는 다시는
- * 조회되지 않는다** — 캐시가 아니라 "한 번 쓰고 버릴 사본"의 무덤이었다. 기본
- * 100 이면 100 분치 당일 궤적이 상주하고, 그 페이로드는 장중 단조 증가라 오후엔
- * 최대 크기 × 100 이 된다(2026-07-29 크로스헤어 지연 1 순위 원인). 1 이면 현재
- * 스탬프 1 벌만 남고, 새 스탬프가 랜딩될 때 이전 벌이 축출된다.
- *
- * 1 이어도 네트워크 동작은 불변이다 — 스탬프가 바뀌면 어차피 항상 miss 였다.
- * 재렌더에서 같은 키로 다시 들어오는 경우만 캐시가 흡수하면 되므로 1 로 충분하다. */
-const BROKER_TODAY_SPOT_CAPACITY = 1;
+ * 최초 값은 늦추지 않는다 — 마운트 시점의 값은 "스크럽 중에 스쳐간 값" 이 아니다. */
+function useDebouncedValue<T>(value: T, debounceMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (Object.is(value, settled)) return;
+    const timer = setTimeout(() => setSettled(value), debounceMs);
+    return () => clearTimeout(timer);
+  }, [value, settled, debounceMs]);
+  return settled;
+}
 
 // ─── Shared param type ────────────────────────────────────────────────────────
 
@@ -180,33 +190,36 @@ interface BrokersParams extends VenueParam {
  * fixes the regression where hovering past-date candles queried date=today.
  *
  * ADR-0039: source_pref threaded. ADR-0044: parquet path only.
+ *
+ * 조회 자체는 `useBrokerSeriesForDay` 가 한다 — latest 모드 훅과 **같은 캐시 키**를
+ * 쓰기 위해서다. 이 훅이 하는 일은 "커서 → 날짜" 파생과 게이팅뿐이다.
  */
 export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  // 선택값이 아니라 이 종목의 **유효** venue — 근거는 VenueParam.
-  const venue = useEffectiveVenue(p.code, p.venue);
   const sourcePref = useOrderflowSourcePref();
-  const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
-  // Key gates on cursor presence AND a minute timeframe — no fetch in latest
-  // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes
-  // sidebar cursor on all frames). The key omits sidebarCursorMs — the day series is the
-  // same for any t within (code, date).
-  const key =
-    p.code && date && p.timeframe !== null && sourcePref
-      ? `live|br|${p.code}|${date}|${sourcePref}|${venue}`
-      : null;
-  const { data } = useSpot<BrokerSeriesEntry[]>(
-    key,
-    () =>
-      apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-        `/api/brokers/series?code=${p.code}&date=${date}&source_pref=${sourcePref}&venue=${venue}`,
-      ).then((r) => r.brokers),
-    SPOT_DEBOUNCE_MS,
-    BROKER_SERIES_SPOT_CAPACITY,
-  );
-  return data;
+  // 날짜가 곧 게이트다. 커서가 없으면(latest 모드) 잠들고, 달력 프레임(D·W·M)에서도
+  // 잠든다 — LiveChartRoot 는 모든 프레임에서 sidebar 커서를 발행하지만 그쪽엔
+  // 커서별 파케이가 없다(ADR-0044). 근거는 BrokersParams.timeframe.
+  //
+  // 날짜는 커서 **시각**이 아니라 날짜라, 같은 날 안에서 커서를 움직여도 바뀌지
+  // 않는다 — 하루치 궤적은 그 날의 어느 t 에서나 같고, 행별 net 투영은 표가
+  // 클라이언트에서 이분 탐색으로 한다.
+  const rawDate =
+    cursorMs !== null && p.timeframe !== null ? unixMsToKSTDate(cursorMs) : null;
+  const date = useDebouncedValue(rawDate, CURSOR_DATE_DEBOUNCE_MS);
+  return useBrokerSeriesForDay({
+    code: p.code,
+    date,
+    sourcePref,
+    // 선택값을 그대로 넘긴다 — 유효 venue 해석은 조회 훅이 삼킨다(VenueParam).
+    venue: p.venue,
+    // 커서가 오늘을 가리켜도 갱신하지 않는다 — `useSpot` 판의 동작(첫 fetch 에
+    // 동결)과 같다. 자라는 꼬리가 필요한 화면은 latest 모드이고, 그쪽이 같은 키를
+    // 60초로 갱신하므로 캐시를 공유하는 이 훅도 덩달아 신선해진다.
+    liveRefreshMs: null,
+  });
 }
 
 // ─── latest 모드 당일 궤적 (ADR-0044 amendment 2026-07-21) ────────────────────
@@ -219,11 +232,15 @@ const TODAY_SERIES_REFRESH_MS = 60_000;
 /**
  * 커서 없는 latest 모드에서 쓰는 **당일 전체** 거래원 궤적.
  *
- * useLiveBrokersAtCursor 와 같은 파케이 엔드포인트를 읽지만 두 가지가 다르다:
- * 커서가 아니라 "오늘" 로 키를 잡고, 장중에 계속 자라는 파일이라 주기적으로
- * 다시 읽는다(useSpot 은 키 단위 영구 캐시라 키에 시각 스탬프를 넣어야 갱신된다 —
- * 스팟 키를 재활용하면 화면이 첫 로드 시점에 얼어붙는다). 스탬프를 키에 넣는 이상
- * LRU 용량은 반드시 1 이어야 한다 — 근거는 BROKER_TODAY_SPOT_CAPACITY 주석.
+ * useLiveBrokersAtCursor 와 **같은 엔드포인트·같은 캐시 키**를 읽는다. 다른 것은
+ * 날짜를 커서가 아니라 "오늘" 로 잡는다는 것과, 장중에 계속 자라는 파일이라
+ * 주기적으로 다시 읽는다는 것뿐이다.
+ *
+ * 갱신은 `refetchInterval` 이 맡는다. 옛 `useSpot` 판은 키 단위 영구 캐시라
+ * 갱신하려면 **키에 60초 스탬프를 박는** 수밖에 없었고, 그 대가가 셋이었다:
+ * 지나간 키는 다시 조회되지 않아 캐시가 "한 번 쓰고 버릴 사본" 의 무덤이 되고
+ * (그래서 LRU 를 1 로 조여야 했고), 그 결과 **종목 재방문이 항상 미스**였으며,
+ * 커서 훅과 키가 갈려 같은 URL 이 두 번 나갔다. 키가 안정된 지금은 셋 다 없다.
  *
  * ADR-0044 불변식 유지: 이 훅은 **parquet-only** 다. 승격 지연(≤약 5분 10초)으로
  * 비는 꼬리는 호출부가 WS 버퍼로 잇는다(liveSidebarAdapters의
@@ -236,28 +253,23 @@ export function useLiveBrokersToday(
   code: string | null,
   selectedVenue: LiveVenueOption,
 ): BrokerSeriesEntry[] | undefined {
-  // 선택값이 아니라 이 종목의 **유효** venue — 근거는 VenueParam.
-  const venue = useEffectiveVenue(code, selectedVenue);
   const sourcePref = useOrderflowSourcePref();
   // 렌더 중 Date.now() 는 impure — 최초 1회 lazy init 후 인터벌로만 진행시킨다.
-  // 스탬프가 날짜 파생의 근거이므로 자정 롤오버도 같이 따라간다.
+  // 이 스탬프는 이제 **날짜 파생에만** 쓴다(자정 롤오버를 따라가려고). 갱신 자체는
+  // refetchInterval 이 하므로 스탬프는 캐시 키에 들어가지 않는다 — 들어가면 위
+  // docstring 의 대가 셋이 그대로 돌아온다.
   const [stampMs, setStampMs] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setStampMs(Date.now()), TODAY_SERIES_REFRESH_MS);
     return () => clearInterval(id);
   }, []);
 
-  const date = unixMsToKSTDate(stampMs);
-  const key =
-    code && sourcePref ? `live|br-today|${code}|${date}|${sourcePref}|${venue}|${stampMs}` : null;
-  const { data } = useSpot<BrokerSeriesEntry[]>(
-    key,
-    () =>
-      apiGet<{ date: string; brokers: BrokerSeriesEntry[]; source: SourceName }>(
-        `/api/brokers/series?code=${code}&date=${date}&source_pref=${sourcePref}&venue=${venue}`,
-      ).then((r) => r.brokers),
-    SPOT_DEBOUNCE_MS,
-    BROKER_TODAY_SPOT_CAPACITY,
-  );
-  return data;
+  return useBrokerSeriesForDay({
+    code,
+    date: unixMsToKSTDate(stampMs),
+    sourcePref,
+    // 선택값을 그대로 넘긴다 — 유효 venue 해석은 조회 훅이 삼킨다(VenueParam).
+    venue: selectedVenue,
+    liveRefreshMs: TODAY_SERIES_REFRESH_MS,
+  });
 }
