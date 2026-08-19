@@ -64,12 +64,21 @@ export function HeatmapRow({
   // 예상가가 가격 셀을 덮어도 확정 종가·흐름이 글리프로 남고, 개장 동시호가엔 OHLC 가
   // null(hidden_pre_open)이라 CandleGlyph 가 스스로 미렌더 → 마커만 남는다. 두 시간창을
   // 시계로 가르지 않고 **OHLC 유무**로 가른다(데이터 주도).
-  // ⚠ **글리프 열 폭은 아직 회수하지 않았다.** 이 셀의 필요폭은 이제 **캔들 10px 뿐**인데
-  // 배정은 1.9rem(2026-08-07 `/browse` 실측 @1.0× = 30.39px) 그대로라 ~20px 이 논다.
-  // 그래도 이번 변경에선 안 줄였다 — 이 열은 다이얼에 대해 **비선형**이라(배정 폭은 rem,
-  // `CandleGlyph` 는 고정 px: W 상수·SVG viewBox) 안전 폭을 눈으로 못 정하고, 셀이
-  // `overflow-hidden` 이라 잘못 줄이면 **에러 없이 잘리기만 한다**(무성 회귀). 남는 폭을
-  // 이름 열(1fr)로 흘려보내는 재배분은 **실측과 함께 별도로** 할 것.
+  // **글리프 트랙은 이 그리드에서 유일하게 고정 px 다**(2026-08-19 회수 `1.9rem`→`14px`).
+  // 마커 이관으로 이 셀의 필요폭이 28px → **캔들 10px 뿐**이 됐는데 배정은 1.9rem
+  // (`/browse` 실측 @1.0× = 30.39px) 그대로라 20.39px 이 놀고 있었다.
+  // 회수하면서 **단위도 rem→px 로 바꿨다**. 이 트랙이 보호하는 것이 rem 이 아니라 고정
+  // px 콘텐츠(`CandleGlyph` 의 `W = 10`, SVG viewBox)이기 때문이다 — DESIGN.md 가 반응형
+  // floor 를 rem 으로 두는 근거("보호 대상이 전부 rem 기반이라 floor 도 다이얼을 따라야
+  // 한다")의 대우다. 종전 주석이 이 열을 **비선형**이라 부른 것이 바로 이 단위 불일치이고,
+  // px 트랙은 그 구조 자체를 없앤다. 실측(1440×900, 셀 폭 px):
+  //   트랙            root 16px   14px    12px
+  //   `14px` (현행)     14.00     14.00   14.00  ← 다이얼과 무관, 여유 항상 4px
+  //   `0.875rem`       14.00     12.25   10.50  ← 내릴수록 캔들 10px 에 수렴(=잠식)
+  // 14px = 캔들 10 + 여유 4. **10px(딱 맞춤)은 두 번 탈락한다** — ① 다이얼을 한 칸만
+  // 내려도 캔들이 잘리고, ② 잘림을 없애 주지도 못한다(아래 그리드 주석의 반올림 항).
+  // 셀은 여전히 `overflow-hidden` 이라 넘쳐도 **에러 없이 잘리기만 한다**(무성 회귀) —
+  // 이 트랙을 다시 건드리면 산수로 끝내지 말고 브라우저에서 px 로 실측할 것.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
@@ -104,9 +113,30 @@ export function HeatmapRow({
          **잘림 4→1 · 가격 넘침 6→0**, 칼럼 수(7)와 스크롤(1.02화면)은 그대로다.
          — 폭 부족이 아니라 배분 오류였으므로 columnWidth 를 키우지 않았다(키우면
          2200px 보드에서 7열→6열, 스크롤 1.02→1.31화면).
-         남는 1개는 LIG디펜스앤에어로스페이스(14자) 하나뿐이다. 이걸 마저 없애려면
-         columnWidth 를 키워야 하는데 그게 위의 7→6열 비용이라, 여기서 멈춘다. */
-      className={`grid grid-cols-[minmax(4rem,1fr)_1.9rem_3.5rem_2.9rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+         남는 1개는 LIG디펜스앤에어로스페이스(14자) 하나였다.
+
+         **2026-08-19 · 글리프 트랙 회수 `1.9rem`→`14px`** (`/browse` 실측 @1.0×, 보드
+         310행). 마커가 종목명 셀로 옮겨져 필요폭이 28px→10px 이 된 만큼 **16.39px 을
+         이름 열(1fr)로** 흘려보낸다. 실측은 반드시 **잘리는 뷰포트에서** 한다 — 잘림은
+         뷰포트에 대해 **비단조**다. multicol 이 칼럼 수를 올림한 뒤 칼럼을 보드 폭까지
+         늘리므로 **칼럼이 하나 늘어난 직후**가 이름 열이 가장 좁고, 넓은 화면은 회수
+         전에도 잘림이 0 이라 아무 차이가 안 보인다(2560×1440 은 before/after 둘 다 0).
+           뷰포트     열   이름 열 before→after   잘림 before→after
+           1440×900   5     95.22 → 111.61        1 → 1  ← 5열 전환 직후(최악 밴드)
+           1480×900   5    103.22 → 119.61        1 → 0
+           1520×900   5    111.22 → 127.61        1 → 0
+           1740×900   6     99.88 → 116.27        1 → 0  ← 6열 전환 직후
+           1780×900   6    106.55 → 122.94        1 → 0
+         즉 이득은 행 수가 아니라 **밴드**로 잰다: 잘리던 네 밴드가 사라지고 최악 밴드
+         하나만 남는다(잘리는 종목은 어느 밴드에서나 LIG 하나, 필요폭 ≈115.2px). 그
+         한 밴드의 부족분도 20.0→3.6px 로 줄었다.
+         **그 3.6px 을 마저 없애자고 트랙을 캔들과 같은 10px 로 깎지 말 것** — ① 다이얼
+         한 칸에 캔들이 잘리고, ② `scrollWidth − clientWidth` 는 **정수 반올림**이라
+         부족분 "20.0" 의 실제 값은 19.5~20.5 어디쯤이고, 그때 남는 여유 0.39px 은 그
+         오차 안이다(구제가 보장되지 않는다). columnWidth 를 키우는 길도 여전히 닫혀
+         있다(위 7→6열 비용). 회귀 감시선: 2560×1440 에서 **7열 · 1.000화면**,
+         2200×1200 에서 **7열 · 1.138화면** — 회수 전후 동일. */
+      className={`grid grid-cols-[minmax(4rem,1fr)_14px_3.5rem_2.9rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
