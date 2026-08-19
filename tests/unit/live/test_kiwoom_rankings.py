@@ -43,6 +43,16 @@ GOLDEN_VOLUME = {
         {"stk_cd": "137310", "stk_nm": "에스디바이오센서", "cur_prc": "-11840", "flu_rt": "-18.32", "trde_qty": "98420000"},  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     ],
 }
+# venue=UN/NXT 로 조회하면 키움이 `stex_tp` 접미를 **stk_cd 에 그대로 에코**한다
+# (dev 서버 실측 2026-08-20: `064550_AL`). 파서가 이걸 벗기지 않으면 순위 행의 코드가
+# 6자리 계약을 깨고 프론트·필터 양쪽에서 조용히 죽는다.
+GOLDEN_CHANGE_UN = {
+    "return_code": 0,
+    "pred_pre_flu_rt_upper": [
+        {"stk_cd": "294870_AL", "stk_nm": "HDC현대산업개발", "cur_prc": "+24350", "flu_rt": "+29.97"},
+        {"stk_cd": "095340_NX", "stk_nm": "ISC", "cur_prc": "+89400", "flu_rt": "+24.51"},
+    ],
+}
 GOLDEN_VALUE = {
     "return_code": 0,
     "trde_prica_upper": [
@@ -96,6 +106,20 @@ def test_parse_skips_rows_without_code():
     assert len(rows) == 1
     assert rows[0].code == "005930"
     assert rows[0].rank == 2  # 순위는 원본 인덱스(스킵해도 유지)
+
+
+def test_parse_strips_venue_suffix_from_code():
+    """`stex_tp` 가 KRX 가 아니면 벤더가 코드에 venue 접미를 실어 보낸다 — 벗긴다.
+
+    회귀 대상(2026-08-20): 순위를 venue=UN 으로 뽑으면 `064550_AL` 이 그대로 프론트로
+    나갔고, 그 행을 클릭하면 `/api/live/past-daily-candles` 가 422(INVALID_CODE) 였다.
+    접미는 wire 인코딩이지 종목 식별자가 아니므로 파스 경계가 소유한다."""
+    rows = parse_rankings("change", GOLDEN_CHANGE_UN)
+    assert [r.code for r in rows] == ["294870", "095340"]
+    # 나머지 필드는 접미와 무관하게 그대로다(벗기기가 파싱을 흔들지 않았다).
+    assert rows[0].name == "HDC현대산업개발"
+    assert rows[0].price == 24350
+    assert rows[1].change_pct == 24.51
 
 
 def test_double_minus_lower_limit_parsed_negative():
@@ -326,6 +350,30 @@ def test_rankings_route_exclude_etf_drops_and_renumbers(monkeypatch, tmp_path, _
 
     assert [r["code"] for r in body["rows"]] == ["095340"]
     assert body["rows"][0]["rank"] == 1
+    assert body["warnings"] == []
+    fetcher.close()
+
+
+def test_rankings_route_exclude_etf_works_on_suffixed_codes(monkeypatch, tmp_path, _hermetic_kiwoom_env):
+    """venue=UN 순위에서도 ETF 제외가 실제로 듣는다.
+
+    회귀 대상(2026-08-20): 심볼 마스터는 맨 코드를 들고 있는데 순위 행은 `294870_AL`
+    이라 `r.code not in drop` 이 **영원히 참**이었다 — 마스터가 로드돼 있으니
+    `etf_filter_unavailable` 경고도 안 떴고, 사용자에겐 "토글이 안 먹는" 무증상
+    실패로만 보였다. 파서가 접미를 벗기면서 함께 닫힌다."""
+    from hoga.api import symbols as symbols_module
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(symbols_module, "_cache",
+                        _symbol_cache({"294870": "etf", "095340": "stock"}))
+    fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_CHANGE_UN))
+    monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
+
+    body = _route_client(tmp_path).get(
+        "/api/live/rankings",
+        params={"kind": "change", "venue": "UN", "exclude_etf": "true"}).json()
+
+    assert [r["code"] for r in body["rows"]] == ["095340"]
     assert body["warnings"] == []
     fetcher.close()
 
