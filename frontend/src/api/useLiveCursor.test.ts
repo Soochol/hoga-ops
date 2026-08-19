@@ -247,6 +247,65 @@ describe('useLiveBrokersAtCursor', () => {
   });
 });
 
+// ─── 커서 ↔ latest 캐시 공유 (중복 발사 회귀 가드) ────────────────────────────
+
+/**
+ * 두 거래원 훅은 **같은 캐시 키**를 써야 한다.
+ *
+ * 막는 방향: 두 훅이 같은 (code, date, source_pref, venue) 를 볼 때 요청이 **2건
+ * 이상** 나가는 쪽. 예전엔 각자 `useSpot` 위에 있었고 그 LRU 는 훅 인스턴스별이라
+ * (그 파일의 계약: "Different consumers do not share state") dedup 이 아예 없었다 —
+ * 커서 스코프가 `minute-cursor` ↔ `inactive` 로 한 번 뒤집히기만 해도 바이트 단위로
+ * 같은 URL 이 두 번 나갔다(실측 2026-08-19 `/live` 종목 전환: 58ms·402ms 2벌).
+ *
+ * 못 보는 것: 날짜가 **다를** 때는 키가 갈리는 게 맞으므로 이 가드가 아무 말도
+ * 하지 않는다. 그리고 이건 캐시 공유만 본다 — 실제 화면에서 어느 훅이 깨어 있는지는
+ * `resolveCursorDetailScope` 의 몫이라 `cursorDetailResolver.test.ts` 가 본다.
+ */
+describe('거래원 훅 캐시 공유', () => {
+  /** 커서와 "오늘" 이 같은 날짜를 가리키게 하려고 시계를 고정한다.
+   *  2026-05-28 10:00 KST — 다른 스위트가 쓰는 값과 같아 date=20260528 이다. */
+  const TODAY_MS = 1_779_930_000_000;
+
+  beforeEach(() => {
+    useLiveCursorStore.getState().resetCursor();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
+    (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (url.includes('/api/brokers/series')) {
+        return { date: '20260528', brokers: [], source: 'hogaplay' };
+      }
+      throw new Error('unexpected url: ' + url);
+    });
+  });
+
+  it('커서 훅과 latest 훅이 같은 날짜를 보면 요청은 1건이다', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(TODAY_MS);
+    try {
+      const urls = (): string[] =>
+        (apiGet as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+
+      renderSpotHook(() => {
+        // 피험군 — 실제 BrokerWindow 가 스코프 플립 순간에 만드는 조합이다.
+        useLiveBrokersAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' });
+        useLiveBrokersToday('005930', 'KRX');
+        // 대조군 — 커서 훅만 있는 다른 종목. latest 훅은 마운트 즉시 쏘지만 커서
+        // 훅은 커서 세팅 + 30ms 디바운스 뒤라, 그냥 세면 "아직 안 왔을 뿐" 인
+        // 상태를 통과로 읽는 **위양성**이 된다. 대조군의 요청 도착이 곧 "피험군
+        // 커서 훅의 디바운스도 이미 풀렸다" 는 배리어다 — 벽시계로 안 기다린다.
+        useLiveBrokersAtCursor({ code: '000660', timeframe: '1m', venue: 'KRX' });
+      });
+
+      act(() => useLiveCursorStore.getState().setSidebarCursor(TODAY_MS));
+      await waitFor(() =>
+        expect(urls().filter((u) => u.includes('code=000660'))).toHaveLength(1),
+      );
+      expect(urls().filter((u) => u.includes('code=005930'))).toHaveLength(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+});
+
 // ─── 코드별 유효 venue 해석 (#1209 후속) ──────────────────────────────────────
 
 /**
