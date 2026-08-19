@@ -63,8 +63,11 @@ const entryCollision: CollisionDetection = (args) => {
  *  비대칭). 빈 카드는 헤더 + 한 줄 안내로 끝나 밀도 비용도 낮다. columnWidth 로 가용 폭만큼
  *  칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음). columnWidth 는 행 그리드의 측정
  *  min-content(합성 하니스 실측 ≈15.7rem — 이름+캔들 2.5rem+현재가+칩; 20px root 시절 ≈314px 실측을
- *  rem 환산, rem 기준이라 root 크기와 무관) 위로
- *  올린 16.5rem floor. multicol 은 column-width 를 '최소'로 보고 칼럼수를 올림한 뒤 칼럼을 board
+ *  rem 환산) 위로 올린 16.5rem floor. **그 실측 이후 글리프 열이 두 번 줄었다**(2.5rem→1.9rem→
+ *  2026-08-19 `14px` 고정) — 전부 min-content 를 낮추는 방향이라 floor 여유는 커지기만 했다. 다만
+ *  글리프 열이 이제 px 라 min-content 가 완전한 rem 배수는 아니다: 다이얼을 내리면 floor(16.5rem)와
+ *  min-content 의 rem 부분만 함께 줄고 14px 는 남는다. 여유가 39px(@16px root)이라 당장 문제는
+ *  없지만, 다이얼을 크게 내릴 때는 floor 도 실측할 것. multicol 은 column-width 를 '최소'로 보고 칼럼수를 올림한 뒤 칼럼을 board
  *  폭까지 늘리므로, 플로어가 행 min-content 미만이면 특정 board 밴드(칼럼수 올림→stretch폭<행min)
  *  에서 카드(overflow-hidden·break-inside-avoid)가 등락칩을 잘랐다 — v0.7.15.0 글리프 칼럼(3.5rem)
  *  이 12rem 에 미반영돼 생기던 잠재 버그. 플로어 ≥ 행 min-content 로 그 클리핑 밴드를 제거. (board
