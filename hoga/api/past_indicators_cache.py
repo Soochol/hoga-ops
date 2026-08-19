@@ -158,7 +158,7 @@ class PastIndicatorsCache:
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
         self._mem_peak_rep: OrderedDict[tuple[str, str, str, str], list[PeakRepRow]] = OrderedDict()
-        self._mem_dd_prices: OrderedDict[tuple[str, str, str, str], dict[tuple[int, str], list[int]]] = OrderedDict()
+        self._mem_dd_prices: OrderedDict[tuple[str, str, str, str], list[list[int]]] = OrderedDict()
         self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
         self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
@@ -427,8 +427,12 @@ class PastIndicatorsCache:
 
     def get_depth_delta_prices(
         self, code: str, date: str, source: str, *, venue: Venue = "KRX",
-    ) -> dict[tuple[int, str], list[int]] | object:
-        """`(bucket_intra_ms, side) → 사다리 가격들`(1분). 미스는 `CACHE_MISS`."""
+    ) -> list[list[int]] | object:
+        """1분 사다리 가격 행 `[bucket_intra_ms, side(0=ask), *prices]`. 미스는 `CACHE_MISS`.
+
+        dict 가 아니라 **행 리스트**인 것은 이 파일의 list kind 공용 계약(빈 값도
+        유효한 캐시값)에 맞추기 위해서다 — 사전↔행 변환은 호출부가 한다.
+        """
         self._sync_generation(code, date, source, venue=venue)
         key = (code, date, source, venue)
         stats = self._stats["depth_delta_prices"]
@@ -440,25 +444,18 @@ class PastIndicatorsCache:
         if rows is None:
             stats.record_miss()
             return _CACHE_MISS
-        out: dict[tuple[int, str], list[int]] = {
-            (r[0], "ask" if r[1] == 0 else "bid"): list(r[2:]) for r in rows
-        }
         stats.record_disk_hit()
-        self._mem_put(self._mem_dd_prices, key, out, stats)
-        return out
+        self._mem_put(self._mem_dd_prices, key, rows, stats)
+        return rows
 
     def store_depth_delta_prices(
         self, code: str, date: str, source: str,
-        prices: dict[tuple[int, str], list[int]], *, venue: Venue = "KRX",
+        rows: list[list[int]], *, venue: Venue = "KRX",
     ) -> None:
-        rows = [
-            [intra, 0 if side == "ask" else 1, *ps]
-            for (intra, side), ps in sorted(prices.items())
-        ]
         self._write(code, date, source, "depth_delta_prices", rows, venue=venue)
         stats = self._stats["depth_delta_prices"]
         stats.record_store()
-        self._mem_put(self._mem_dd_prices, (code, date, source, venue), prices, stats)
+        self._mem_put(self._mem_dd_prices, (code, date, source, venue), rows, stats)
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
