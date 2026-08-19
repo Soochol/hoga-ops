@@ -34,8 +34,8 @@ describe('bucketHogaSeries', () => {
     const b1 = Math.floor(1700_007_070_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
       // b0: max over (a100,b80),(a200,b90) → bid_max90/ask_max200; |imb(90,200)|>|imb(80,90)| → imb_max=(90,200).
-      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200 },
-      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300 },
+      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200, band_pct: 0 },
+      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300, band_pct: 0 },
     ]);
   });
 
@@ -88,7 +88,7 @@ describe('bucketHogaSeries', () => {
     const b0 = Math.floor(1700_007_000_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
       // close = last snapshot (a800,b200); bid_max=900 (from A), ask_max=800 (from B) — independent times.
-      { t: b0, ask_total: 800, bid_total: 200, bid_max: 900, ask_max: 800, imb_max_bid: 900, imb_max_ask: 100 },
+      { t: b0, ask_total: 800, bid_total: 200, bid_max: 900, ask_max: 800, imb_max_bid: 900, imb_max_ask: 100, band_pct: 0 },
     ]);
   });
 
@@ -102,7 +102,7 @@ describe('bucketHogaSeries', () => {
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], 60_000);
     const b0 = Math.floor(1700_007_000_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
-      { t: b0, ask_total: 300, bid_total: 10, bid_max: 100, ask_max: 300, imb_max_bid: 100, imb_max_ask: 2 },
+      { t: b0, ask_total: 300, bid_total: 10, bid_max: 100, ask_max: 300, imb_max_bid: 100, imb_max_ask: 2, band_pct: 0 },
     ]);
     // quoteImbalance(imb_max) = quoteImbalance(100, 2) = −(100/2−1) = −49 (buy-heavy);
     // quoteImbalance(bid_max, ask_max) = quoteImbalance(100, 300) = 300/100−1 = +2 (sell-heavy) — opposite sign.
@@ -124,6 +124,7 @@ describe('bucketHogaSeries', () => {
     expect(aucBucket).toEqual({
       t: base + 180_000, ask_total: 0, bid_total: 0,
       bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0,
+      band_pct: 0,
     });
   });
 
@@ -154,8 +155,8 @@ describe('bucketHogaSeries', () => {
     const b1 = Math.floor(1700_007_070_000 / 60_000) * 60_000;
     expect(quoteRatioPoints).toEqual([
       // b0: max over (a100,b80),(a200,b90) → bid_max90/ask_max200; |imb(90,200)|>|imb(80,90)| → imb_max=(90,200).
-      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200 },
-      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300 },
+      { t: b0, ask_total: 200, bid_total: 90, bid_max: 90, ask_max: 200, imb_max_bid: 90, imb_max_ask: 200, band_pct: 0 },
+      { t: b1, ask_total: 300, bid_total: 95, bid_max: 95, ask_max: 300, imb_max_bid: 95, imb_max_ask: 300, band_pct: 0 },
     ]);
   });
 
@@ -171,7 +172,7 @@ describe('bucketHogaSeries', () => {
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     // max over continuous (a21,b11),(a22,b12); |imb(11,21)|>|imb(12,22)| → imb_max=(11,21) (first wins).
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21 },
+      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21, band_pct: 0 },
     ]);
   });
 
@@ -186,9 +187,9 @@ describe('bucketHogaSeries', () => {
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 50, bid_total: 60, bid_max: 60, ask_max: 50, imb_max_bid: 60, imb_max_ask: 50 },
+      { t: base, ask_total: 50, bid_total: 60, bid_max: 60, ask_max: 50, imb_max_bid: 60, imb_max_ask: 50, band_pct: 0 },
       // no pre-auction member → auction book excluded, slot kept at 0 (ADR-0062) — all Intra-Bar Max 0 too.
-      { t: base + 180_000, ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 },
+      { t: base + 180_000, ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0 },
     ]);
   });
 
@@ -205,7 +206,7 @@ describe('bucketHogaSeries', () => {
     // bucket represented by the base continuous, NOT the 60_000 auction. Max candidates are only the
     // base snapshot (t <= lastContinuousMs = base), so the post-close 90_000 book is excluded from max too.
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11 },
+      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11, band_pct: 0 },
     ]);
   });
 
@@ -223,7 +224,7 @@ describe('bucketHogaSeries', () => {
     // All 3 continuous → max over (a21,b11),(a22,b12),(a98,b99): bid_max99/ask_max98;
     // |imb(11,21)|>|imb(12,22)|>|imb(99,98)| → imb_max=(11,21) (first, largest magnitude).
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 98, bid_total: 99, bid_max: 99, ask_max: 98, imb_max_bid: 11, imb_max_ask: 21 },
+      { t: base, ask_total: 98, bid_total: 99, bid_max: 99, ask_max: 98, imb_max_bid: 11, imb_max_ask: 21, band_pct: 0 },
     ]);
   });
 
@@ -243,7 +244,7 @@ describe('bucketHogaSeries', () => {
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     // Only the base snapshot is a max candidate (t <= lastContinuousMs = base).
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11 },
+      { t: base, ask_total: 11, bid_total: 21, bid_max: 21, ask_max: 11, imb_max_bid: 21, imb_max_ask: 11, band_pct: 0 },
     ]);
   });
 
@@ -270,7 +271,7 @@ describe('bucketHogaSeries', () => {
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
     // Same shape as the structural straddle test — Intra-Bar Max over continuous (a21,b11),(a22,b12).
     expect(quoteRatioPoints).toEqual([
-      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21 },
+      { t: base, ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 11, imb_max_ask: 21, band_pct: 0 },
     ]);
   });
 
@@ -293,8 +294,8 @@ describe('bucketHogaSeries', () => {
     ];
     const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, inSession + 3_600_000, openMs);
     expect(quoteRatioPoints).toEqual([
-      { t: preOpen - (preOpen % BUCKET), ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 },
-      { t: inSession - (inSession % BUCKET), ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 12, imb_max_ask: 22 },
+      { t: preOpen - (preOpen % BUCKET), ask_total: 0, bid_total: 0, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0 },
+      { t: inSession - (inSession % BUCKET), ask_total: 22, bid_total: 12, bid_max: 12, ask_max: 22, imb_max_bid: 12, imb_max_ask: 22, band_pct: 0 },
     ]);
   });
 });

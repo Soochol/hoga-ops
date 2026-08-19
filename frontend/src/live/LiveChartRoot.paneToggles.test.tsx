@@ -317,7 +317,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   it('quote/ratio/fill panes receive the hoga-only bundle while program-trade stays on the full bundle', () => {
     const hogaPaneBundle = {
       ...DEFAULT_BUNDLE,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1748275260000, ask_total: 10, bid_total: 20, ask_max: 10, bid_max: 20, imb_max_ask: 10, imb_max_bid: 20 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1748275260000, ask_total: 10, bid_total: 20, ask_max: 10, bid_max: 20, imb_max_ask: 10, imb_max_bid: 20, band_pct: 0 }] },
     } satisfies RangeBundle;
     renderAt('1m', {
       bundle: DEFAULT_BUNDLE,
@@ -345,7 +345,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     } satisfies RangeBundle;
     const point = (askTotal: number) => ({
       bucket_ms: 60_000,
-      points: [{ t: 1748275260000, ask_total: askTotal, bid_total: 20, ask_max: askTotal, bid_max: 20, imb_max_ask: askTotal, imb_max_bid: 20 }],
+      points: [{ t: 1748275260000, ask_total: askTotal, bid_total: 20, ask_max: askTotal, bid_max: 20, imb_max_ask: askTotal, imb_max_bid: 20, band_pct: 0 }],
     });
     const beforeTick = { ...chartBundle, quote_ratio: point(10) } satisfies RangeBundle;
     const afterTick = { ...chartBundle, quote_ratio: point(11) } satisfies RangeBundle;
@@ -417,7 +417,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     } satisfies RangeBundle;
     const hogaPaneBundle = {
       ...chartBundle,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1748275260000, ask_total: 10, bid_total: 20, ask_max: 10, bid_max: 20, imb_max_ask: 10, imb_max_bid: 20 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1748275260000, ask_total: 10, bid_total: 20, ask_max: 10, bid_max: 20, imb_max_ask: 10, imb_max_bid: 20, band_pct: 0 }] },
     } satisfies RangeBundle;
 
     renderAt('1m', {

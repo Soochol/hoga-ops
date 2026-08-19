@@ -3,9 +3,9 @@ import { detectSurges, detectSurgeSide } from './detectSurges';
 import type { QuoteRatioPoint } from '../../api/types';
 
 // detectSurges reads only ask_total/bid_total (close); the Intra-Bar Max fields mirror close here.
-const P = (t: number, ask: number, bid: number): QuoteRatioPoint => ({
+const P = (t: number, ask: number, bid: number, band = 0): QuoteRatioPoint => ({
   t, ask_total: ask, bid_total: bid,
-  bid_max: bid, ask_max: ask, imb_max_bid: bid, imb_max_ask: ask,
+  bid_max: bid, ask_max: ask, imb_max_bid: bid, imb_max_ask: ask, band_pct: band,
 });
 const OPTS = { approachRatio: 0.95, rearmRatio: 0.85, isClosingAuction: () => false };
 const DAY = 86_400_000;
@@ -106,5 +106,84 @@ describe('detectSurges (근접 + 히스테리시스)', () => {
     const pts = [P(1, 100, 0), P(2, 80, 0), P(3, 96, 0)];
     expect(detectSurgeSide(pts, 'ask', OPTS)).toHaveLength(1);
     expect(detectSurgeSide(pts, 'bid', OPTS)).toHaveLength(0);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// 호가단위 변화 보정 (widthStepRatio) — 기본 off. 근거·실측은
+// docs/research/2026-08-19-hoga-tick-band-totals-normalization.md
+// ---------------------------------------------------------------------------
+
+describe('호가단위 변화 보정 (widthStepRatio)', () => {
+  const ON = { ...OPTS, widthStepRatio: 0.25 };
+
+  it('옵션이 없으면 band_pct 가 아무리 튀어도 동작이 그대로다 (기본 off 의 의미)', () => {
+    // 폭이 2 → 6 (3배) 로 튀지만 보정이 꺼져 있으므로 100 기준 그대로 → 96 이 발사.
+    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 6)];
+    expect(detectSurgeSide(pts, 'ask', OPTS)).toHaveLength(1);
+  });
+
+  it('폭이 문턱을 넘게 커지면 최고치를 폭비로 환산해 헛발사를 막는다', () => {
+    // 폭 2 → 6 (3배, 문턱 25% 초과) ⇒ 최고치 100 × 3 = 300.
+    // 96 은 300 의 32% 라 발사하지 않는다. 보정이 없으면(위 테스트) 발사한다.
+    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 6)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toEqual([]);
+  });
+
+  it('폭이 줄어들면 반대 방향으로도 환산한다 (양방향)', () => {
+    // 폭 6 → 2 (1/3) ⇒ 최고치 300 × (1/3) = 100. 96 은 그 96% 라 발사.
+    // 환산이 한쪽 방향만이면 최고치가 300 으로 남아 이 단언이 깨진다.
+    const pts = [P(1, 300, 0, 6), P(2, 240, 0, 6), P(3, 96, 0, 2)];
+    const r = detectSurgeSide(pts, 'ask', ON);
+    expect(r).toHaveLength(1);
+    expect(r[0].prevPeak).toBeCloseTo(100, 6);
+  });
+
+  it('문턱 안의 폭 흔들림은 무시한다 (빈 호가로 인한 분단위 출렁임)', () => {
+    // 폭 2 → 2.4 (20%, 문턱 25% 미만) ⇒ 환산 없음 → 96 이 100 의 96% 로 발사.
+    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 2), P(3, 96, 0, 2.4)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
+  });
+
+  it('band_pct 0 은 "폭 0" 이 아니라 "잴 수 없음" — 건너뛰고 기준도 갱신하지 않는다', () => {
+    // 동시호가·3단 붕괴 사다리·합성 갭 점이 0 을 준다. 0 을 폭으로 **받아들이면**
+    // 기준이 0 이 되고, 그 뒤 첫 실측 폭에서 w/0 = Infinity 배율이 나와 최고치가
+    // NaN 으로 오염돼 그날 남은 발사가 통째로 사라진다.
+    //
+    // 판별 배치: 폭 2 → 0(못 잼) → 2. 게이트가 있으면 기준은 내내 2 라 환산이 없고
+    // 96 이 100 의 96% 로 **발사**한다. 게이트가 없으면 t2 에서 기준이 0 이 되고
+    // t3 에서 최고치가 NaN 이 되어 발사가 사라진다.
+    // (0 → 6 배치로 쓰면 깨진 구현도 "발사 안 함"이라 구분되지 않는다 — red-check 로 확인.)
+    const pts = [P(1, 100, 0, 2), P(2, 80, 0, 0), P(3, 96, 0, 2)];
+    expect(detectSurgeSide(pts, 'ask', ON)).toHaveLength(1);
+    // 폭이 계속 0 이면 보정이 통째로 비활성 — 보정 없는 결과와 같아야 한다.
+    const allZero = [P(1, 100, 0, 0), P(2, 80, 0, 0), P(3, 96, 0, 0)];
+    expect(detectSurgeSide(allZero, 'ask', ON)).toEqual(detectSurgeSide(allZero, 'ask', OPTS));
+  });
+
+  it('기준 폭은 거래일마다 리셋된다 (Past/Today Split Cache 동일성의 조건)', () => {
+    // ⚠ 순진한 배치(D1 의 첫 점이 실측 폭)로는 이 성질을 못 잰다 — 거래일 경계에서
+    // runningMax 가 0 으로 리셋되므로 기준 폭이 새어도 `0 × 배율 = 0` 이라 결과가
+    // 같다(red-check 로 확인). 기준 폭 누수가 **드러나려면** D1 이 최고치를 먼저
+    // 세운 뒤에 첫 실측 폭이 와야 한다.
+    //
+    // 그래서 D1 의 앞 두 점은 폭을 못 재는 점(0)으로 두어 최고치 100 을 세우고,
+    // 세 번째 점에서 폭 6 이 처음 관측되게 한다.
+    //   리셋 O → 기준이 null 이라 6 을 기준으로 잡을 뿐, 환산 없음 → 96/100 = 96% 발사
+    //   리셋 X → D0 의 기준 2 가 남아 |6/2−1| = 2 > 0.25 → 최고치 100×3 = 300 → 무발사
+    const pts = [
+      P(D0 + 1, 100, 0, 2), P(D0 + 2, 80, 0, 2), P(D0 + 3, 96, 0, 2),
+      P(D0 + DAY + 1, 100, 0, 0), P(D0 + DAY + 2, 80, 0, 0), P(D0 + DAY + 3, 96, 0, 6),
+    ];
+    const r = detectSurgeSide(pts, 'ask', ON);
+    expect(r.map((m) => m.t)).toEqual([D0 + 3, D0 + DAY + 3]);
+  });
+
+  it('청크를 갈라 돌려도 결과가 같다 (cachedPast ++ today === all)', () => {
+    const past = [P(D0 + 1, 100, 0, 2), P(D0 + 2, 80, 0, 2), P(D0 + 3, 96, 0, 2)];
+    const today = [P(D0 + DAY + 1, 100, 0, 0), P(D0 + DAY + 2, 80, 0, 0), P(D0 + DAY + 3, 96, 0, 6)];
+    expect([...detectSurgeSide(past, 'ask', ON), ...detectSurgeSide(today, 'ask', ON)])
+      .toEqual(detectSurgeSide([...past, ...today], 'ask', ON));
   });
 });

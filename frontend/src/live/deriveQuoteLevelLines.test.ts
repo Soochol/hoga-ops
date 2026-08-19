@@ -10,6 +10,7 @@ const pt = (over: Partial<QuoteRatioPoint>): QuoteRatioPoint => ({
   ask_max: 0,
   imb_max_bid: 0,
   imb_max_ask: 0,
+  band_pct: 0,
   ...over,
 });
 
@@ -179,7 +180,7 @@ describe('deriveRatioLevel', () => {
   it('uses imb_max fields when intraMax=true', () => {
     // 이 픽스처는 bid_total/ask_total 이 (0,0) 이라 마스크를 켜면 배제 대상이 된다 —
     // 그래서 마스크 축을 재는 테스트가 아님을 false 로 명시한다.
-    const v = deriveRatioLevel(bundleOf([pt({ t: 1, imb_max_bid: 100, imb_max_ask: 200 })]), true, false);
+    const v = deriveRatioLevel(bundleOf([pt({ t: 1, imb_max_bid: 100, imb_max_ask: 200, band_pct: 0 })]), true, false);
     expect(v as number).toBeGreaterThan(0);
   });
 

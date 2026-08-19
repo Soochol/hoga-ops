@@ -819,8 +819,8 @@ describe('mergeRangeBundles', () => {
       quote_ratio: {
         bucket_ms: 60_000,
         points: [
-          { t: 1, bid_total: 10, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 },
-          { t: 2, bid_total: 11, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 },
+          { t: 1, bid_total: 10, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0, band_pct: 0 },
+          { t: 2, bid_total: 11, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0, band_pct: 0 },
         ],
       },
       fill_strength: {
@@ -853,7 +853,7 @@ describe('mergeRangeBundles', () => {
       to_date: '20260706',
       segments: [{ date: '20260706', session_open_ms: 1, session_close_ms: 4, source: 'kiwoom_live' }],
       candles: [{ ts_ms: 1, open: 20, high: 20, low: 20, close: 20, vol_a: 2, vol_b: 0 }],
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 20, ask_total: 19, bid_max: 6, ask_max: 5, imb_max_bid: 1, imb_max_ask: 0 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 20, ask_total: 19, bid_max: 6, ask_max: 5, imb_max_bid: 1, imb_max_ask: 0, band_pct: 0 }] },
       fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 20, sell_qty: 2 }] },
       ask_peaks: [{ date: '20260706', price: 20, qty: 2, t_ms: 2, max_price: 20, max_qty: 2, max_t_ms: 2 }],
       bid_peaks: [{ date: '20260706', price: 19, qty: 2, t_ms: 2, max_price: 19, max_qty: 2, max_t_ms: 2 }],
@@ -1701,7 +1701,7 @@ describe('useRangeHogaDelta', () => {
       from_date: '20260629',
       to_date: '20260706',
       bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0, band_pct: 0 }] },
       fill_strength: { bucket_ms: 60_000, points: [{ t: 2, buy_qty: 3, sell_qty: 1 }] },
     };
     const delta: RangeBundle = {
@@ -1710,7 +1710,7 @@ describe('useRangeHogaDelta', () => {
       from_date: '20260624',
       to_date: '20260628',
       bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1, band_pct: 0 }] },
       fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 1, sell_qty: 2 }] },
     };
     const options = { mode: 'hoga' as const };
@@ -1761,7 +1761,7 @@ describe('useRangeHogaDelta', () => {
       from_date: '20260629',
       to_date: '20260706',
       bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0, band_pct: 0 }] },
     };
     const delta: RangeBundle = {
       ...fakeBundle,
@@ -1769,7 +1769,7 @@ describe('useRangeHogaDelta', () => {
       from_date: '20260624',
       to_date: '20260628',
       bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1, band_pct: 0 }] },
     };
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
       const text = String(url);

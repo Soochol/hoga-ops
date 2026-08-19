@@ -277,6 +277,11 @@ class QuoteRatioPoint(BaseModel):
     ask_max: int        # 버킷 내 매도 총잔량 독립 최댓값
     imb_max_bid: int    # |imbalance| 최대 스냅샷의 bid_total
     imb_max_ask: int    # |imbalance| 최대 스냅샷의 ask_total
+    # 대표 스냅샷의 10호가 사다리 폭(중간가 대비 %). 총잔량은 "고정된 가격 폭"이
+    # 아니라 "고정된 호가 단계 수"로 잰 값이라, 호가단위가 바뀌면 같은 물량이 다른
+    # 숫자로 나온다 — 소비자가 그 자의 변화를 볼 수 있게 동반한다.
+    # `docs/research/2026-08-19-hoga-tick-band-totals-normalization.md`
+    band_pct: float = 0.0
 
 
 class QuoteRatio(BaseModel):

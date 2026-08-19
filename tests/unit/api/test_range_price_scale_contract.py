@@ -99,6 +99,11 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "ApiCandle.ts_ms", "ApiCandle.vol_a", "ApiCandle.vol_b",
     "QuoteRatio.bucket_ms", "QuoteRatio.points",
     "QuoteRatioPoint.t", "QuoteRatioPoint.bid_max", "QuoteRatioPoint.ask_max",
+    # band_pct 는 **무차원**이다 — (ask_p10 − bid_p10) / mid 라 분자·분모가 같은 단위라서
+    # 수정주가 계수를 곱해도 값이 변하지 않는다. 즉 가격 환산 대상이 아닐 뿐 아니라
+    # **환산하면 틀린다**(계수가 한 번 더 곱해진다). 가격에서 파생됐다고 PRICE_FIELDS
+    # 로 옮기지 말 것 — 파생 여부가 아니라 차원이 기준이다.
+    "QuoteRatioPoint.band_pct",
     # 총잔량·불균형은 **수량**이다(주식 수) — 별도 pane 의 축이라 가격축과 무관하고,
     # #1229 실측대로 분봉은 수정 여부와 무관하게 수량이 같다.
     "QuoteRatioPoint.ask_total", "QuoteRatioPoint.bid_total",

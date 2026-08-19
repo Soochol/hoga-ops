@@ -60,9 +60,15 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     with the largest ``_imb_mag(imb_max_bid, imb_max_ask)`` — direct-query
     equivalence holds because the N-minute |imbalance| extreme is the max over the
     constituent 1-minute extremes.
+
+    ``band_pct`` (사다리 폭)은 **대표 행을 따라간다** — 총잔량과 같은 스냅샷의 폭이
+    아니면 정규화가 성립하지 않기 때문이다. max/평균이 아니라 동반값이라는 뜻이다.
     """
-    last_nonzero: dict[int, tuple[int, int]] = {}
-    last_any: dict[int, tuple[int, int]] = {}
+    # 값 튜플은 (bid_total, ask_total, band_pct) — **폭은 총잔량과 같은 행에서**
+    # 와야 정규화가 성립한다(snapshots.QuoteRatioRow 참조). 그래서 따로 집계하지
+    # 않고 대표 행을 고를 때 함께 실려 온다.
+    last_nonzero: dict[int, tuple[int, int, float]] = {}
+    last_any: dict[int, tuple[int, int, float]] = {}
     bid_max: dict[int, int] = {}
     ask_max: dict[int, int] = {}
     imb_best: dict[int, tuple[float, int, int]] = {}  # (mag, imb_max_bid, imb_max_ask)
@@ -74,9 +80,9 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
             bid_max[tb] = 0
             ask_max[tb] = 0
             imb_best[tb] = (0.0, 0, 0)
-        last_any[tb] = (r.bid_total, r.ask_total)
+        last_any[tb] = (r.bid_total, r.ask_total, r.band_pct)
         if r.bid_total != 0 or r.ask_total != 0:
-            last_nonzero[tb] = (r.bid_total, r.ask_total)
+            last_nonzero[tb] = (r.bid_total, r.ask_total, r.band_pct)
         bid_max[tb] = max(bid_max[tb], r.bid_max)
         ask_max[tb] = max(ask_max[tb], r.ask_max)
         mag = _imb_mag(r.imb_max_bid, r.imb_max_ask)
@@ -84,12 +90,12 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
             imb_best[tb] = (mag, r.imb_max_bid, r.imb_max_ask)
     out: list[QuoteRatioRow] = []
     for tb in order:
-        bid, ask = last_nonzero.get(tb, last_any[tb])
+        bid, ask, band = last_nonzero.get(tb, last_any[tb])
         _, imb_b, imb_a = imb_best[tb]
         out.append(QuoteRatioRow(
             bucket_intra_ms=tb, bid_total=bid, ask_total=ask,
             bid_max=bid_max[tb], ask_max=ask_max[tb],
-            imb_max_bid=imb_b, imb_max_ask=imb_a,
+            imb_max_bid=imb_b, imb_max_ask=imb_a, band_pct=band,
         ))
     return out
 

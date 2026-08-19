@@ -113,7 +113,11 @@ export default function QuoteTotalsConfig() {
         </>
       )}
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['surgeMarkerEnabled', 'quoteTotalsIntraMax']} />
+      {/* 호가단위 보정은 급증 마커의 하위 설정이라(enabledBy: surgeMarkerEnabled)
+          바로 뒤에 온다. 행 순서는 이 배열이 아니라 CHART_TOGGLES 등록 순서를 따른다. */}
+      <IndicatorPrefRows
+        toggleKeys={['surgeMarkerEnabled', 'quoteTotalsTickNormalize', 'quoteTotalsIntraMax']}
+      />
     </div>
   );
 }

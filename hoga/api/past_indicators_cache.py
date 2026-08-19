@@ -99,7 +99,10 @@ _log = logging.getLogger(__name__)
 # 인 반면, 범프 비용은 위 문단의 /study 콜드 로드 사고 그 자체다(콜드 비용의 95%+ =
 # peak 재계산, 수십 분). 2건을 버리자고 전량을 버리는 거래가 성립하지 않는다.
 KIND_VERSIONS: dict[str, int] = {
-    "ratio": 7,
+    # 8: band_pct(사다리 폭) 동반 — 튜플이 7칸→8칸이라 **범프가 필수다**.
+    # 안 올리면 옛 7칸 캐시가 그대로 되살아나 t[7] 에서 IndexError 로 죽는다.
+    # peak 계열(콜드 비용의 95%)과 달리 ratio 재계산은 싸므로 범프 비용이 낮다.
+    "ratio": 8,
     "fill": 6,
     "ask_peak": 7,
     "bid_peak": 7,
@@ -475,6 +478,7 @@ class PastIndicatorsCache:
             QuoteRatioRow(
                 bucket_intra_ms=t[0], bid_total=t[1], ask_total=t[2],
                 bid_max=t[3], ask_max=t[4], imb_max_bid=t[5], imb_max_ask=t[6],
+                band_pct=t[7],
             )
             for t in tuples
         ]
@@ -487,7 +491,7 @@ class PastIndicatorsCache:
     ) -> None:
         tuples = [
             [r.bucket_intra_ms, r.bid_total, r.ask_total,
-             r.bid_max, r.ask_max, r.imb_max_bid, r.imb_max_ask]
+             r.bid_max, r.ask_max, r.imb_max_bid, r.imb_max_ask, r.band_pct]
             for r in rows
         ]
         self._write(code, date, source, "ratio", tuples, venue=venue)

@@ -21,6 +21,7 @@ function quotePoint(t: number, synthetic = false): RangeBundle['quote_ratio']['p
     ask_max: synthetic ? 0 : 70,
     imb_max_bid: synthetic ? 0 : 40,
     imb_max_ask: synthetic ? 0 : 50,
+    band_pct: 0,
     ...(synthetic ? { __syntheticHogaGap: true } : {}),
   } as RangeBundle['quote_ratio']['points'][number];
 }

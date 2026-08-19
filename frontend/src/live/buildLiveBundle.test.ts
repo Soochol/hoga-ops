@@ -7,6 +7,7 @@ import type { QuoteRatioPoint, RangeBundle } from '../api/types';
 const qp = (t: number, bid_total: number, ask_total: number): QuoteRatioPoint => ({
   t, bid_total, ask_total,
   bid_max: bid_total, ask_max: ask_total, imb_max_bid: bid_total, imb_max_ask: ask_total,
+  band_pct: 0,
 });
 
 const TODAY = '20260527';

@@ -105,6 +105,19 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    key: 'quoteTotalsTickNormalize',
+    label: '호가단위 변화 보정',
+    description:
+      '총잔량은 "가격 폭"이 아니라 "호가 10단계"로 잰 값이라, 주가가 호가단위 경계' +
+      '(2,000·5,000·20,000·50,000·200,000·500,000원)를 지나면 물량이 늘지 않아도 ' +
+      '총잔량이 2~5배 뜁니다. 켜면 급증 마커가 "오늘 최고치"를 새 호가단위로 환산해 ' +
+      '비교합니다 — 표시되는 총잔량 값 자체는 바뀌지 않습니다. ' +
+      '실측: 경계 통과 직후 오발률이 평소의 3.4배 → 2.0배, 경계와 무관한 날의 마커는 92.9% 유지.',
+    default: false,
+    category: 'indicator-modal',
+    enabledBy: 'surgeMarkerEnabled',
+  },
+  {
     key: 'quoteTotalsIntraMax',
     label: '분봉 내 최댓값 기준',
     description: '그 분의 마지막값(종가) 대신 분봉 내 최대 총잔량을 표시합니다. (캔들 고가와 같은 직관)',
@@ -289,6 +302,20 @@ export const CHART_NUMERIC_PREFS = [
     min: 80,
     max: 100,
     enabledBy: 'surgeMarkerEnabled',
+  },
+  {
+    key: 'surgeWidthStepPct',
+    label: '호가단위 보정 — 폭 변화 문턱(%)',
+    description:
+      '10호가가 덮는 가격 폭이 직전 기준 대비 이 비율(%)을 넘게 달라지면 "호가단위가 바뀌었다"고 ' +
+      '보고 오늘 최고치를 환산합니다. 기본 25%. **낮추면 안 되는 이유가 있습니다** — 호가창 폭은 ' +
+      '빈 호가 때문에 분마다 출렁이므로(저가주는 19~30틱), 0 에 가까우면 그 흔들림까지 환산으로 ' +
+      '새어 경계와 무관한 날의 마커가 달라집니다(실측 문턱 0: 보존 81%, 25%: 93%). ' +
+      '반대로 50% 이상이면 실제 호가단위 변화를 놓치기 시작합니다(교정력 2.0배 → 2.7배).',
+    default: 25,
+    min: 5,
+    max: 100,
+    enabledBy: 'quoteTotalsTickNormalize',
   },
   {
     key: 'surgeRearmPct',

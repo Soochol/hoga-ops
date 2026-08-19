@@ -12,6 +12,7 @@ const pt: QuoteRatioPoint = {
   ask_max: 20,
   imb_max_bid: 100,
   imb_max_ask: 2,
+  band_pct: 0,
 };
 const axis = createVirtualAxis([
   { date: '20231114', sessionOpenMs: t0 - 60_000, sessionCloseMs: t0 + 60_000 },

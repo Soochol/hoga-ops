@@ -320,8 +320,12 @@ def test_validate_raises_when_bid_prices_not_sorted() -> None:
 def _ob(*, ts_ms: int, seq: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderbook:
     """Build an Orderbook with controlled per-level qty arrays.
 
-    Only ask_q / bid_q matter for query_bucketed_ratio (it SUMs the 10 levels);
-    prices/deltas/totals are filler. Pads/truncates the given tuples to 10.
+    Pads/truncates the given tuples to 10.
+
+    ⚠ **가격은 더 이상 filler 가 아니다.** ``band_pct`` (사다리 폭)가 ask_p/bid_p 에서
+    나오므로 이 픽스처의 가격 배치(ask 1..10, bid 10..1 — 실제 호가창과 달리 매도가
+    매수보다 낮다)가 그대로 폭에 반영된다: (10 − 1) / ((1 + 10) / 2) × 100 =
+    ``_OB_BAND_PCT``. 총잔량 계열만 볼 때는 여전히 ask_q / bid_q 만 중요하다.
     """
     def _pad(t: tuple[int, ...]) -> tuple[int, ...]:
         return (tuple(t) + (0,) * 10)[:10]
@@ -837,6 +841,17 @@ def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -
     assert (auction_row.imb_max_bid, auction_row.imb_max_ask) == (0, 0)
 
 
+#: `_ob` 픽스처의 사다리 폭 — ask_p = 1..10, bid_p = 10..1 → (10 − 1) / 5.5 × 100.
+_OB_BAND_PCT = 163.63636363636363
+
+#: 두 골든 테스트의 `_deep` 픽스처가 갖는 사다리 폭(중간가 대비 %).
+#: ask_p = 101..110, bid_p = 100..91 → (110 − 91) / ((101 + 100) / 2) × 100.
+#: **폭에는 is_pre 와 별개의 두 번째 게이트가 있다** — 3단 붕괴 사다리는 `ask_p10 = 0`
+#: 이라 폭을 잴 수 없어 0.0 이다. `session_close_ms=None` 분기(is_pre = TRUE)에서
+#: 붕괴 행이 대표가 되면 총잔량은 나오는데 폭만 0 인 행이 생긴다 — 소비자는 0 을
+#: "폭이 0" 이 아니라 **"보정 불가"** 로 다뤄야 한다.
+_DEEP_BAND_PCT = 18.90547263681592
+
 # ---------------------------------------------------------------------------
 # query_bucketed_ratio golden values: the arg_max/arg_min GROUP BY rewrite
 # was differentially validated against the prior windowed implementation
@@ -894,23 +909,23 @@ def test_query_bucketed_ratio_parity_mixed_continuous_and_auction_tail(
     # real-data differential — see module-level comment above).
     want_by_combo = {
         (1000, None): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
             QuoteRatioRow(bucket_intra_ms=55258000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
         ],
         (1000, 153000000): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
             QuoteRatioRow(bucket_intra_ms=55258000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
         ],
         (60_000, None): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
             QuoteRatioRow(bucket_intra_ms=55200000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
         ],
         (60_000, 153000000): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
             QuoteRatioRow(bucket_intra_ms=55200000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
         ],
     }
@@ -943,7 +958,7 @@ def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
     got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
     # Golden value: earlier-ts row (seq=2: bid=100, ask=10) wins the imb tie.
     assert got == [
-        QuoteRatioRow(bucket_intra_ms=32400000, bid_total=30, ask_total=30, bid_max=500, ask_max=30, imb_max_bid=100, imb_max_ask=10),
+        QuoteRatioRow(bucket_intra_ms=32400000, bid_total=30, ask_total=30, bid_max=500, ask_max=30, imb_max_bid=100, imb_max_ask=10, band_pct=_OB_BAND_PCT),
     ]
 
 

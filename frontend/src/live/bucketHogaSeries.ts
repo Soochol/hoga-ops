@@ -106,6 +106,28 @@ export function isIndicatorEligibleBook(s: ObSnapshot, sessionOpenMs: number): b
   return isContinuousBook(s) && s.t_ms >= sessionOpenMs;
 }
 
+/** 10호가 사다리가 덮는 가격 폭을 중간가 대비 %로 — `QuoteRatioPoint.band_pct` 의 라이브 산출.
+ *
+ * **백엔드 `snapshots.query_bucketed_ratio` 의 `gw` 와 글자 그대로 같은 식이어야 한다**:
+ * `(ask_p10 − bid_p10) / mid × 100`, `mid = (ask_p1 + bid_p1) / 2`. 두 경로가 갈리면
+ * 봉이 오늘→과거로 넘어가는 순간 호가단위 보정 기준이 어긋나 급증 마커가 그 이음매에서
+ * 한 번 튄다(값이 아니라 **비교 기준**이 튀는 것이라 화면상 원인이 안 보인다).
+ *
+ * 못 재면 0을 준다 — 사다리가 아예 없거나(분봉 경로는 totals만 싣는다) 10단이 안 찼거나
+ * 가격이 0인 경우. **0 은 "폭이 0"이 아니라 "보정 불가"** 이고, 소비자(detectSurgeSide)는
+ * 0 인 점에서 기준 폭을 갱신하지 않는다. */
+export function ladderBandPct(s: ObSnapshot): number {
+  const a = s.asks;
+  const b = s.bids;
+  if (!a || !b || a.length < 10 || b.length < 10) return 0;
+  const a1 = a[0].price;
+  const b1 = b[0].price;
+  const a10 = a[9].price;
+  const b10 = b[9].price;
+  if (a10 <= 0 || b10 <= 0 || a1 + b1 <= 0) return 0;
+  return ((a10 - b10) * 200) / (a1 + b1);
+}
+
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches
  * `aggregateCandles.ts` convention so candle/volume/호가 align on the x-axis.
  *
@@ -185,6 +207,7 @@ export function bucketHogaSeries(
       }
       quoteByBucket.set(t, {
         t,
+        band_pct: ladderBandPct(s),
         ask_total: s.total_ask_qty,
         bid_total: s.total_bid_qty,
         bid_max,
@@ -204,6 +227,7 @@ export function bucketHogaSeries(
         ask_max: 0,
         imb_max_bid: 0,
         imb_max_ask: 0,
+        band_pct: 0,
       });
     }
   }
