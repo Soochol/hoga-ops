@@ -27,12 +27,14 @@ from hoga.tables.snapshots import (
     _peak_distinct,
     query_at,
     query_day_ask_bid_peak_dual,
+    query_day_ask_bid_peak_dual_with_rep,
     query_day_ask_peak,
     query_day_ask_peak_dual,
     query_day_bid_peak,
     query_day_bid_peak_dual,
     query_first_ts,
     query_time_bounds,
+    reaggregate_peak_rep,
     validate,
     write_parquet,
 )
@@ -1547,6 +1549,108 @@ def _trade(ts_ms: int, price: int, side: int = 1, *, seq: int = 1) -> Trade:
 def _assert_no_post_touch_scalars(peak: AskPeakDualRow | BidPeakDualRow) -> None:
     assert (peak.price, peak.qty, peak.intra_ms) == (None, None, None)
     assert (peak.max_price, peak.max_qty, peak.max_intra_ms) == (None, None, None)
+
+
+def _peak_reagg_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    """분 단위로 흩어진 스냅샷 — **3분은 비운다**.
+
+    5분 창 0(0~4분)의 마지막 rep 보유 분이 4분이고, 3분을 비워 둠으로써 "마지막
+    1분 버킷" 이 아니라 **"rep 가 존재하는 마지막 1분 버킷"** 을 골라야 한다는
+    규칙이 실제로 검사된다. 앞의 규칙으로 짜면 창 0 이 통째로 비어 실패한다.
+    """
+    snapshots = tmp_path / "snapshots.parquet"
+    trades = tmp_path / "trades.parquet"
+    # 분 m 의 타임스탬프(HHMMSSmmm): 09:00 부터 1분씩.
+    def at(minute: int) -> int:
+        return 90_000_000 + minute * 100_000
+    obs = []
+    for m, top_qty in ((0, 300), (1, 120), (2, 900), (4, 450), (5, 700), (6, 210)):
+        obs.append(
+            replace(
+                _ob_ap(
+                    at(m),
+                    [top_qty, 300, 10, 40, 5, 6, 7, 8, 9, 1],
+                    ask_p=[25100, 25200, 25300, 25400, 25500, 25600, 25700, 25800, 25900, 26000],
+                ),
+                bid_p=(24950, 24900, 24850, 24800, 24750, 24700, 24650, 24600, 24550, 24500),
+                bid_q=(top_qty + 50, 80, 70, 60, 50, 40, 30, 20, 10, 1),
+            )
+        )
+    write_parquet(obs, snapshots)
+    # 체결로 traded/untraded 를 갈라 둔다 — 두 갈래 모두 축약을 타야 한다.
+    write_trades([_trade(90_010_000, 25100), _trade(90_020_000, 24950, side=-1)], trades)
+    return snapshots, trades
+
+
+@pytest.mark.parametrize("bucket_ms", [180_000, 300_000, 600_000])
+def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: int) -> None:
+    """1분 rep 행을 접은 결과 == 그 봉으로 직접 조회한 결과.
+
+    이 동치가 봉별 재계산을 없앨 수 있는 유일한 근거다(ratio/fill 의
+    `test_indicator_reaggregate` 와 같은 역할).
+
+    **막는 방향**: 축약이 직접 조회와 어긋나는 쪽. `all_peaks`/`all_max_peaks`
+    는 비교하지 않는다 — 과거일에는 의도적으로 만들지 않기로 한 필드다
+    (`_peak_with_rep_outputs` docstring). **못 보는 것**: 봉 무관 절반(`*_max*`)
+    이 정말 봉과 무관한지는 아래 별도 테스트가 본다.
+    """
+    snapshots, trades = _peak_reagg_fixture(tmp_path)
+    con = _con_for(snapshots)
+    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+
+    direct_ask, direct_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=bucket_ms, **kw,
+    )
+    _, _, rep_rows = query_day_ask_bid_peak_dual_with_rep(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+
+    for side, direct in (("ask", direct_ask), ("bid", direct_bid)):
+        reduced = reaggregate_peak_rep(
+            [r for r in rep_rows if r.side == side], side=side, bucket_ms=bucket_ms,
+        )
+        assert direct is not None and reduced is not None, side
+        assert reduced["all_close"] == (
+            direct.all_price, direct.all_qty, direct.all_intra_ms,
+        ), f"{side} all_close"
+        assert reduced["traded_close"] == (
+            (direct.price, direct.qty, direct.intra_ms) if direct.price is not None else None
+        ), f"{side} traded_close"
+        assert reduced["untraded_close"] == (
+            (direct.untraded_price, direct.untraded_qty, direct.untraded_intra_ms)
+            if direct.untraded_price is not None else None
+        ), f"{side} untraded_close"
+        assert reduced["traded_peaks"] == direct.traded_peaks, f"{side} traded_peaks"
+        assert reduced["untraded_peaks"] == direct.untraded_peaks, f"{side} untraded_peaks"
+
+
+def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
+    """틱-max(`cont`) 계열은 봉을 바꿔도 같다 — 1분 캐시에서 그대로 쓰는 근거.
+
+    이 성질이 깨지면 `_peak_slices_from_1m_cache` 가 굵은 봉에 1분 값을 잘못
+    실어 나른다. 실서버 캐시 파일 대조(024840 20260818, 1분 vs 5분)에서 확인한
+    것을 픽스처로 고정한다.
+    """
+    snapshots, trades = _peak_reagg_fixture(tmp_path)
+    con = _con_for(snapshots)
+    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+    base_ask, base_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+    for bucket_ms in (180_000, 300_000, 600_000):
+        ask, bid = query_day_ask_bid_peak_dual(
+            con, path=snapshots, trades_path=trades, bucket_ms=bucket_ms, **kw,
+        )
+        for base, other, side in ((base_ask, ask, "ask"), (base_bid, bid, "bid")):
+            assert base is not None and other is not None
+            assert (base.max_price, base.max_qty, base.max_intra_ms) == (
+                other.max_price, other.max_qty, other.max_intra_ms
+            ), f"{side} max @{bucket_ms}"
+            assert (base.all_max_price, base.all_max_qty, base.all_max_intra_ms) == (
+                other.all_max_price, other.all_max_qty, other.all_max_intra_ms
+            ), f"{side} all_max @{bucket_ms}"
+            assert base.traded_max_peaks == other.traded_max_peaks, f"{side} traded_max_peaks @{bucket_ms}"
+            assert base.untraded_max_peaks == other.untraded_max_peaks, f"{side} untraded_max_peaks @{bucket_ms}"
 
 
 def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path: Path) -> None:

@@ -2008,6 +2008,116 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
     return (row["price"], row["qty"], row["intra_ms"])
 
 
+#: peak rep 캐시의 고정 해상도. 더 굵은 봉은 이 행들을 묶어 파생한다.
+ONE_MINUTE_MS = 60_000
+
+
+@dataclass(frozen=True)
+class PeakRepRow:
+    """분류된 **1분 버킷 rep** 스냅샷의 한 호가단계.
+
+    `query_day_ask_bid_peak_dual` 이 만드는 `rep` 프레임(버킷당 마지막 유효 스냅샷의
+    10단계 unpivot)을 캐시·재집계할 수 있게 행 단위로 뽑은 것. `bucket_id` 는
+    **1분** 버킷 인덱스다 — 더 굵은 봉은 이 행들을 묶어 파생한다
+    (`reaggregate_peak_rep`).
+    """
+
+    bucket_id: int
+    side: str
+    price: int
+    qty: int
+    intra_ms: int
+    seq: int
+    touched: bool
+
+
+def _peak_rep_rows(classified: pl.DataFrame, *, side: str) -> list[PeakRepRow]:
+    """`source == 'rep'` 행을 PeakRepRow 리스트로. 캐시 직렬화용."""
+    rep = classified.filter(pl.col("source") == "rep")
+    return [
+        PeakRepRow(
+            bucket_id=int(b), side=side, price=int(p), qty=int(q),
+            intra_ms=int(i), seq=int(s), touched=bool(t),
+        )
+        for b, p, q, i, s, t in zip(
+            rep["bucket_id"], rep["price"], rep["qty"],
+            rep["intra_ms"], rep["seq"], rep["touched"], strict=True,
+        )
+    ]
+
+
+def _rep_frame_from_rows(rows: Sequence[PeakRepRow]) -> pl.DataFrame:
+    """PeakRepRow 리스트 → `_peak_*` 헬퍼가 먹는 프레임 스키마."""
+    return pl.DataFrame(
+        {
+            "bucket_id": [r.bucket_id for r in rows],
+            "price": [r.price for r in rows],
+            "qty": [r.qty for r in rows],
+            "intra_ms": [r.intra_ms for r in rows],
+            "seq": [r.seq for r in rows],
+            "touched": [r.touched for r in rows],
+        },
+        schema={
+            "bucket_id": pl.Int64, "price": pl.Int64, "qty": pl.Int64,
+            "intra_ms": pl.Int64, "seq": pl.Int64, "touched": pl.Boolean,
+        },
+    )
+
+
+def reaggregate_peak_rep(
+    rows: Sequence[PeakRepRow], *, side: str, bucket_ms: int,
+) -> dict[str, Any] | None:
+    """1분 rep 행 → `bucket_ms` 의 **rep 파생** 출력(종가 대표 계열).
+
+    ## 왜 이것만으로 충분한가
+
+    peak 출력은 두 갈래인데 **한 갈래는 봉과 무관하다**. `cont`(틱-max 계열)는
+    유효 스냅샷 **전체**를 보므로 `bucket_ms` 를 바꿔도 답이 같다 — 실측으로도
+    같은 날짜의 1분/5분 캐시에서 `max_*`·`all_max_*`·`*_max_peaks` 가 전부
+    바이트 동일했다. 그래서 호출부는 그 절반을 1분 캐시에서 그대로 가져오고,
+    이 함수는 **봉에 의존하는 rep 절반만** 다시 만든다.
+
+    ## N분 rep = "rep 가 있는 마지막 1분 버킷"의 rep
+
+    N분 버킷의 대표는 그 창의 마지막 유효 스냅샷이고, 그것은 창 안에서 **rep 가
+    존재하는 마지막 1분 버킷**의 rep 와 같은 스냅샷이다. ⚠ "마지막 1분 버킷" 이
+    아니다 — 유효 스냅샷이 없는 분(동시호가 전용 등)은 rep 자체가 없으므로
+    비어 있는 꼬리 분을 고르면 그 창이 통째로 사라진다.
+
+    `rows` 는 한 side 것만 담겨 있다고 가정한다(호출부가 갈라 넘긴다).
+    """
+    if not rows:
+        return None
+    per_minute = ONE_MINUTE_MS
+    if bucket_ms % per_minute != 0:
+        raise ValueError(f"bucket_ms must be a multiple of {per_minute}: {bucket_ms}")
+    step = bucket_ms // per_minute
+    # 창별로 rep 가 존재하는 마지막 1분 버킷만 남긴다.
+    last_minute_of_window: dict[int, int] = {}
+    for r in rows:
+        w = r.bucket_id // step
+        if r.bucket_id > last_minute_of_window.get(w, -1):
+            last_minute_of_window[w] = r.bucket_id
+    keep = set(last_minute_of_window.values())
+    rep = _rep_frame_from_rows([r for r in rows if r.bucket_id in keep])
+    if rep.height == 0:
+        return None
+    all_close = _peak_scalar(rep)
+    if all_close is None:
+        return None
+    rep_distinct = _peak_distinct(rep)
+    rep_traded = rep_distinct.filter(pl.col("touched"))
+    rep_untraded = rep_distinct.filter(~pl.col("touched"))
+    return {
+        "side": side,
+        "all_close": all_close,
+        "traded_close": _peak_scalar(rep_traded),
+        "untraded_close": _peak_scalar(rep_untraded),
+        "traded_peaks": _peak_candidates(rep_traded, 3),
+        "untraded_peaks": _peak_candidates(rep_untraded, 3),
+    }
+
+
 def _peak_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, touched) — mirrors ``{side}_{src}_lifecycle_distinct``.
 
@@ -2019,7 +2129,7 @@ def _peak_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def query_day_ask_bid_peak_dual(
+def query_day_ask_bid_peak_dual_with_rep(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
@@ -2027,8 +2137,12 @@ def query_day_ask_bid_peak_dual(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
-) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
+) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None, list[PeakRepRow]]:
     """Return ask and bid peak rows for the same day using shared scans.
+
+    세 번째 원소는 분류된 **rep 행**이다 — `bucket_ms=ONE_MINUTE_MS` 로 부르고
+    이 행들을 캐시해 두면 더 굵은 봉은 파케이를 다시 읽지 않고
+    `reaggregate_peak_rep` 로 만들 수 있다(근거는 그 함수 docstring).
 
     Columnar-sweep implementation (ADR-0085 v2/v2.1): two linear SQL scans
     fetched into polars frames + a fully columnar classifier
@@ -2049,10 +2163,17 @@ def query_day_ask_bid_peak_dual(
         where=where, intra=intra, trade_seq_expr=trade_seq_expr,
     )
 
+    rep_rows_out: list[PeakRepRow] = []
+
     def _side_row(side: str) -> dict[str, Any] | None:
         classified = _classify_wall_frame(
             events.filter(pl.col("side") == side), touches, side=side,
         )
+        # 분류된 rep 행을 그대로 흘려 보낸다 — 호출부가 1분 해상도로 캐시해 두면
+        # 더 굵은 봉은 스캔 없이 `reaggregate_peak_rep` 로 파생된다. 분류는 행별
+        # 연산이라(같은 side 의 다른 event 행을 참조하지 않는다) rep 만 따로 떼도
+        # `touched` 가 달라지지 않는다.
+        rep_rows_out.extend(_peak_rep_rows(classified, side=side))
         rep = classified.filter(pl.col("source") == "rep")
         cont = classified.filter(pl.col("source") == "cont")
 
@@ -2121,6 +2242,23 @@ def query_day_ask_bid_peak_dual(
             untraded_max_intra_ms=um[2] if um else None,
             untraded_peaks=bid["untraded_peaks"], untraded_max_peaks=bid["untraded_max_peaks"],
         )
+    return ask_row, bid_row, rep_rows_out
+
+
+def query_day_ask_bid_peak_dual(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
+    """`query_day_ask_bid_peak_dual_with_rep` 의 rep 행 없는 판(기존 시그니처)."""
+    ask_row, bid_row, _ = query_day_ask_bid_peak_dual_with_rep(
+        con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     return ask_row, bid_row
 
 
