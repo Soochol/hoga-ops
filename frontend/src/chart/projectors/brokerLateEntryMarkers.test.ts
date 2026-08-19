@@ -30,7 +30,7 @@ function ratioPoint(
     ask_max: ask_total,
     imb_max_bid: bid_total,
     imb_max_ask: ask_total,
-    band_pct: 0,
+    band_pct: 0, tick: 0,
   };
 }
 

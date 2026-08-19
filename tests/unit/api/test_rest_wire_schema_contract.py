@@ -95,6 +95,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
             "imb_max_bid",
             "imb_max_ask",
             "band_pct",
+            "tick",
         }
     ),
     "RangeBundle": frozenset(

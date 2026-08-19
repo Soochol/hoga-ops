@@ -14,25 +14,32 @@ export type DetectSurgesOpts = {
   rearmRatio: number;
   /** 마감 동시호가(15:20–15:30) 구간 술어. true면 발사·peak갱신 모두 제외. */
   isClosingAuction: (t: number) => boolean;
-  /** 호가단위 보정(선택). 사다리 폭(`band_pct`)이 직전 기준 대비 이 비율을 넘게 바뀌면
-   *  running peak 을 **폭비로 환산**한다. `undefined` = 보정 없음(기본 동작 그대로).
+  /** 호가단위 보정(선택). 사다리의 **호가단위(`tick`)가 바뀐 시점**에 running peak 을
+   *  틱 비율로 환산한다. 값은 **확인 게이트의 문턱**(사다리 폭이 이 비율 이상 실제로
+   *  움직였을 때만 환산). `undefined` = 보정 없음(기본 동작 그대로).
    *
    *  왜 필요한가: 총잔량은 "고정된 가격 폭"이 아니라 "고정된 호가 단계 수"로 잰 값이다.
    *  KRX 호가단위가 가격대별 계단함수라 2,000·5,000·20,000·50,000·200,000·500,000원
    *  경계를 지나면 10호가가 덮는 가격 폭이 2~5배 점프하고, 물량이 늘지 않아도 총잔량이
    *  같은 배수로 뛴다. 그러면 "오전에 좁은 자로 잰 최고치"와 "오후에 넓은 자로 잰 값"을
-   *  비교하게 된다 — 실측 오발률이 기저의 3.4배였다.
+   *  비교하게 된다 — 실측 오발률이 기저의 2.9배였다.
    *
-   *  왜 곱이 아니라 환산인가: 이 검출기는 **상대 비교**(`v ≥ approach × peak`)라
-   *  시리즈 전체를 같은 수로 나누면 아무것도 안 바뀐다. 나누기가 효과를 내는 순간은
-   *  폭이 변한 때뿐이므로, `총잔량 ÷ 폭` 과 `peak × 폭비` 는 같은 교정이다. 후자를
-   *  택한 이유는 **표시값을 건드리지 않기 때문**이다.
+   *  **트리거가 폭이 아니라 틱인 이유**(ADR-0151 Amendment 2): 폭은 `틱 × 빈 호가 배수`
+   *  라 잡음이 곱해져 있다. 폭 25% 문턱으로 하면 환산이 하루 중앙 12회·최대 140회 나는데
+   *  실제 호가단위 변화는 하루 두세 번이다. 틱은 가격의 결정론적 함수라 잡음이 없다.
    *
-   *  왜 문턱이 있는가: 사다리 폭은 빈 호가 탓에 분마다 출렁인다(저가주는 19~30틱을
-   *  오간다). 매 분 환산하면 그 흔들림이 섞여 경계와 무관한 날의 마커 19% 가 달라졌다.
-   *  0.25 에서 교정력은 유지하면서(기저 대비 3.4배 → 2.0배) 보존율이 92.9% 였다.
-   *  근거·실측: `docs/research/2026-08-19-hoga-tick-band-totals-normalization.md`. */
-  widthStepRatio?: number;
+   *  **확인 게이트가 거부권만 갖는 이유**: 잡음이 환산을 *일으킬* 수 있으면 안 된다.
+   *  ETF 는 틱이 5원 고정이라 표가 "바뀌었다" 해도 사다리 폭이 안 움직인다 — 그때
+   *  거부한다. 실측(경계 통과 108 종목일 / 미통과 242 종목일):
+   *
+   *  | 안 | 경계일 오발 | 환산/일 중앙 | 비경계일 보존 |
+   *  |---|---|---|---|
+   *  | 없음 | 2.9배 | 0 | 100% |
+   *  | 폭 25% 문턱(구안) | 2.0배 | 12 | 90.6% |
+   *  | 표 트리거 + 확인 10% | **1.7배** | 4 | **100.0%** |
+   *
+   *  보존율 100% 는 통계가 아니라 **구조적**이다 — 틱이 안 변하면 이 분기가 아예 안 돈다. */
+  tickConfirmRatio?: number;
 };
 
 const FIELD: Record<SurgeSide, 'ask_total' | 'bid_total'> = { ask: 'ask_total', bid: 'bid_total' };
@@ -62,10 +69,11 @@ export function detectSurgeSide(
 ): SurgeMarker[] {
   const out: SurgeMarker[] = [];
   let runningMax = 0;
-  // 호가단위 보정의 기준 폭. runningMax 와 **같은 자리에서** 거래일마다 리셋해야
+  // 호가단위 보정의 기준(틱·폭). runningMax 와 **같은 자리에서** 거래일마다 리셋해야
   // `cachedPast ++ today === all` (Past/Today Split Cache 바이트 동일성)이 유지된다 —
-  // 하루 밖의 폭을 물고 들어오면 today 청크가 과거 거래일 결과를 바꾼다.
-  let widthRef: number | null = null;
+  // 하루 밖의 기준을 물고 들어오면 today 청크가 과거 거래일 결과를 바꾼다.
+  let tickRef: number | null = null;
+  let widthRef = 0;
   let armed = false;
   // 현재 발사 사이클의 마커 인덱스(-1 = 사이클 없음). disarm 상태에서 신고가 갱신 시 이 마커를 이동.
   // 거래일 경계에서 -1로 리셋 → today 청크가 과거 거래일 마커를 건드리지 않아 Split Cache 불변식
@@ -77,22 +85,30 @@ export function detectSurgeSide(
     if (day !== curDay) {
       curDay = day;
       runningMax = 0; // 거래일 경계 리셋
-      widthRef = null;
+      tickRef = null;
+      widthRef = 0;
       armed = false;
       activeIdx = -1;
     }
     if (o.isClosingAuction(p.t)) continue; // 마감 동시호가 누적 제외
     const v = p[FIELD[side]];
     // 호가단위 보정: 자가 바뀌었으면 running peak 을 새 자 단위로 환산한다.
-    // band_pct = 0 은 "폭이 0" 이 아니라 **"폭을 잴 수 없음"**이다(동시호가·3단 붕괴
-    // 사다리는 ask_p10 이 0이라 폭이 정의되지 않는다) — 그런 점은 보정에서 제외하고
-    // 기준 폭도 갱신하지 않는다. 0 을 폭으로 받아들이면 나눗셈이 폭발한다.
-    const w = p.band_pct;
-    if (o.widthStepRatio !== undefined && w > 0) {
-      if (widthRef === null) {
-        widthRef = w;
-      } else if (Math.abs(w / widthRef - 1) > o.widthStepRatio) {
-        runningMax *= w / widthRef;
+    // tick = 0 은 "틱이 0" 이 아니라 **"모름"**이다(동시호가 등) — 건너뛰고 기준도
+    // 갱신하지 않는다. 0 을 기준으로 받으면 다음 실측에서 배율이 Infinity 가 된다.
+    const tk = p.tick;
+    if (o.tickConfirmRatio !== undefined && tk > 0) {
+      if (tickRef === null) {
+        tickRef = tk;
+        widthRef = p.band_pct;
+      } else if (tk !== tickRef) {
+        // 확인 게이트 — **거부권만** 갖는다. 사다리 폭이 실제로 움직이지 않았으면
+        // (ETF 처럼 표가 틀리는 종목군) 환산하지 않는다. 폭을 못 재면(0) 확인할
+        // 방법이 없으므로 역시 환산하지 않는다 — 모르면 건드리지 않는 쪽.
+        const w = p.band_pct;
+        if (widthRef > 0 && w > 0 && Math.abs(w / widthRef - 1) >= o.tickConfirmRatio) {
+          runningMax *= tk / tickRef;
+        }
+        tickRef = tk;
         widthRef = w;
       }
     }

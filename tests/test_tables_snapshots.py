@@ -844,8 +844,14 @@ def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -
 #: `_ob` 픽스처의 사다리 폭 — ask_p = 1..10, bid_p = 10..1 → (10 − 1) / 5.5 × 100.
 _OB_BAND_PCT = 163.63636363636363
 
+#: 두 픽스처 모두 중간가가 2,000원 미만이라 KRX 호가단위는 1원이다
+#: (`_deep` mid = 100.5, `_ob` mid = 5.5).
+_FIXTURE_TICK = 1
+
 #: 두 골든 테스트의 `_deep` 픽스처가 갖는 사다리 폭(중간가 대비 %).
 #: ask_p = 101..110, bid_p = 100..91 → (110 − 91) / ((101 + 100) / 2) × 100.
+#: ⚠ **폭과 틱은 게이트가 다르다** — 붕괴 사다리는 폭을 못 재지만(ask_p10 = 0) 틱은
+#: 중간가만 있으면 알 수 있다. 그래서 `band_pct = 0, tick = 1` 인 행이 정상으로 존재한다.
 #: **폭에는 is_pre 와 별개의 두 번째 게이트가 있다** — 3단 붕괴 사다리는 `ask_p10 = 0`
 #: 이라 폭을 잴 수 없어 0.0 이다. `session_close_ms=None` 분기(is_pre = TRUE)에서
 #: 붕괴 행이 대표가 되면 총잔량은 나오는데 폭만 0 인 행이 생긴다 — 소비자는 0 을
@@ -909,23 +915,25 @@ def test_query_bucketed_ratio_parity_mixed_continuous_and_auction_tail(
     # real-data differential — see module-level comment above).
     want_by_combo = {
         (1000, None): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55258000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55258000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294,
+                          tick=_FIXTURE_TICK),
         ],
         (1000, 153000000): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
             QuoteRatioRow(bucket_intra_ms=55258000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
         ],
         (60_000, None): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55200000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55200000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294,
+                          tick=_FIXTURE_TICK),
         ],
         (60_000, 153000000): [
-            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT),
-            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT),
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136, band_pct=_DEEP_BAND_PCT, tick=_FIXTURE_TICK),
             QuoteRatioRow(bucket_intra_ms=55200000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
         ],
     }
@@ -958,7 +966,7 @@ def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
     got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
     # Golden value: earlier-ts row (seq=2: bid=100, ask=10) wins the imb tie.
     assert got == [
-        QuoteRatioRow(bucket_intra_ms=32400000, bid_total=30, ask_total=30, bid_max=500, ask_max=30, imb_max_bid=100, imb_max_ask=10, band_pct=_OB_BAND_PCT),
+        QuoteRatioRow(bucket_intra_ms=32400000, bid_total=30, ask_total=30, bid_max=500, ask_max=30, imb_max_bid=100, imb_max_ask=10, band_pct=_OB_BAND_PCT, tick=_FIXTURE_TICK),
     ]
 
 
@@ -2944,3 +2952,32 @@ def test_reaggregate_depth_delta_matches_direct_query(tmp_path: Path, bucket_ms:
     derived = reaggregate_depth_delta(base_1m, prices_1m, bucket_ms=bucket_ms)
 
     assert derived == direct
+
+
+def test_krx_tick_boundaries_and_sql_python_agree(tmp_path: Path) -> None:
+    """호가단위표 — 경계값과 **SQL/파이썬 두 구현의 일치**를 못박는다.
+
+    막는 방향: 표가 한쪽에서만 바뀌는 것(SQL 은 지표 계산에, 파이썬은 테스트·도구에
+    쓰인다). 못 보는 것: 두 구현이 **함께** 틀리는 것 — 그건 실데이터 역산으로만
+    잡히고, 그 역산 결과가 docs/research/2026-08-19-... §2 의 표다.
+    """
+    import duckdb as _duckdb
+
+    from hoga.tables.snapshots import _krx_tick_sql, krx_tick
+
+    # 경계는 "미만" 이다 — 2,000원은 이미 다음 밴드(5원)다.
+    cases = [
+        (0, 0), (1, 1), (1_999, 1), (2_000, 5), (4_999, 5), (5_000, 10),
+        (19_999, 10), (20_000, 50), (49_999, 50), (50_000, 100),
+        (199_999, 100), (200_000, 500), (499_999, 500), (500_000, 1_000),
+        (3_000_000, 1_000),
+    ]
+    for price, want in cases:
+        assert krx_tick(price) == want, price
+
+    con = _duckdb.connect()
+    for price, want in cases:
+        if price <= 0:
+            continue  # SQL 쪽은 호출부가 (ask_p1+bid_p1) > 0 로 먼저 거른다
+        got = con.execute(f"SELECT {_krx_tick_sql(str(float(price)))}").fetchone()[0]
+        assert got == want, (price, got, want)

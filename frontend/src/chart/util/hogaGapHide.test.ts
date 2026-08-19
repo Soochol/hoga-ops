@@ -18,7 +18,7 @@ function qr(t: number, bid = 100, ask = 200): QuoteRatioPoint {
     ask_max: ask,
     imb_max_bid: bid,
     imb_max_ask: ask,
-    band_pct: 0,
+    band_pct: 0, tick: 0,
   };
 }
 
@@ -51,7 +51,7 @@ describe('withHogaGapSentinels', () => {
       ask_max: 0,
       imb_max_bid: 0,
       imb_max_ask: 0,
-      band_pct: 0,
+      band_pct: 0, tick: 0,
     });
     expect(isSyntheticHogaGapPoint(out[2])).toBe(false);
   });

@@ -32,7 +32,7 @@ function pastBundle(): RangeBundle {
     candles: [],
     quote_ratio: {
       bucket_ms: 300_000,
-      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 100, ask_max: 90, imb_max_bid: 100, imb_max_ask: 90, band_pct: 0 }],
+      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 100, ask_max: 90, imb_max_bid: 100, imb_max_ask: 90, band_pct: 0, tick: 0 }],
     },
     fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
     program_trade: { points: [{ t: 1_000, net_qty: 10, net_amount: 100, delta_qty: 10, delta_amount: 100, gap_risk: false }], source: 'kis_program_trade' },

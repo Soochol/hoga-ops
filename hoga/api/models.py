@@ -282,6 +282,10 @@ class QuoteRatioPoint(BaseModel):
     # 숫자로 나온다 — 소비자가 그 자의 변화를 볼 수 있게 동반한다.
     # `docs/research/2026-08-19-hoga-tick-band-totals-normalization.md`
     band_pct: float = 0.0
+    # 대표 스냅샷 중간가의 KRX 호가단위(원). 급증 보정의 **트리거** — 가격의 결정론적
+    # 함수라 빈 호가 잡음이 못 건드린다. band_pct 는 그 트리거를 **확인**하는 용도로
+    # 함께 쓰인다(ETF 처럼 표가 틀리는 종목군에서 거부권). 0 = 모름.
+    tick: int = 0
 
 
 class QuoteRatio(BaseModel):

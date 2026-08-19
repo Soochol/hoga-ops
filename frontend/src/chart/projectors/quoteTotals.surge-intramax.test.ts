@@ -12,7 +12,7 @@ const mk = (i: number, ask: number, ask_max: number): QuoteRatioPoint => ({
   ask_max,
   imb_max_bid: 1,
   imb_max_ask: ask_max,
-  band_pct: 0,
+  band_pct: 0, tick: 0,
 });
 const pts: QuoteRatioPoint[] = [mk(0, 100, 100), mk(1, 50, 50), mk(2, 98, 500)];
 const bundle = {
@@ -30,7 +30,7 @@ const ctx = (intraMax: boolean): QuoteTotalsCtx => ({
   surgeRearmPct: 85,
   surgeStartHHMM: 0,
   tickNormalize: false,
-  surgeWidthStepPct: 25,
+  surgeTickConfirmPct: 10,
 });
 
 describe('급증 마커 — 감지 종가 고정, 높이만 Intra-Bar Max', () => {
