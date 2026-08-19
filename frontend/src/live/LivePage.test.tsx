@@ -271,7 +271,7 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
     ],
     quote_ratio: {
       bucket_ms: 300_000,
-      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 }],
+      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0 }],
     },
     fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
@@ -951,7 +951,7 @@ describe('LivePage shell', () => {
     livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
       quote_ratio: {
         bucket_ms: 300_000,
-        points: [{ t: 1_000, bid_total: 500, ask_total: 400, bid_max: 5, ask_max: 4, imb_max_bid: 3, imb_max_ask: 2 }],
+        points: [{ t: 1_000, bid_total: 500, ask_total: 400, bid_max: 5, ask_max: 4, imb_max_bid: 3, imb_max_ask: 2, band_pct: 0 }],
       },
       ask_peaks: [],
       bid_peaks: [],

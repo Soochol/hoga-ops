@@ -18,6 +18,7 @@ const Q = (
   bid_max: bidMax,
   imb_max_bid: 0,
   imb_max_ask: 0,
+  band_pct: 0,
 });
 
 describe('Surge 격리 (Q4) — detectSurgeSide는 종가만 읽고 Intra-Bar Max를 무시', () => {

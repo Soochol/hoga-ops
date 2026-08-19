@@ -80,6 +80,23 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     #
     # 프론트 ``RangeBundle`` 에는 ``investorPoints`` 가 하나 더 있는데 백엔드엔 대응 필드가
     # 없다 — 프론트가 다른 출처로 채우는 값이라 이 스냅샷의 대상이 아니다.
+    # ``RangeBundle.quote_ratio.points[*]`` — 위 문단이 말하는 "하위 모델을 덮고 싶으면
+    # 이름으로 따로 추가" 의 첫 사례다. 이 shape 은 손 미러가 값까지 나르는 자리라
+    # (``frontend/src/api/types.ts`` 의 ``QuoteRatioPoint``) 필드가 조용히 늘거나 줄면
+    # 프론트가 읽던 값이 사라진다 — 실제로 ``band_pct`` 를 추가할 때 최상위 스냅샷은
+    # 아무 말도 하지 않았다.
+    "QuoteRatioPoint": frozenset(
+        {
+            "t",
+            "bid_total",
+            "ask_total",
+            "bid_max",
+            "ask_max",
+            "imb_max_bid",
+            "imb_max_ask",
+            "band_pct",
+        }
+    ),
     "RangeBundle": frozenset(
         {
             "code",

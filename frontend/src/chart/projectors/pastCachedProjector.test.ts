@@ -20,6 +20,7 @@ type QRSeed = {
   ask_max: number;
   imb_max_bid: number;
   imb_max_ask: number;
+  band_pct: number;
 };
 
 function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
@@ -31,10 +32,10 @@ function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
     const close = open + SESSION;
     axisSegs.push({ date: `d${d}`, sessionOpenMs: open, sessionCloseMs: close });
     snakeSegs.push({ date: `d${d}`, session_open_ms: open, session_close_ms: close, source: 'kiwoom_live' as const });
-    points.push({ t: open, bid_total: 100, ask_total: 100, bid_max: 120, ask_max: 130, imb_max_bid: 40, imb_max_ask: 160 });
-    points.push({ t: open + 3_600_000, bid_total: 100, ask_total: 200, bid_max: 150, ask_max: 260, imb_max_bid: 30, imb_max_ask: 300 }); // sell-heavy
-    points.push({ t: open + 9000 * 1000, bid_total: 5000, ask_total: 50, bid_max: 5200, ask_max: 90, imb_max_bid: 6000, imb_max_ask: 20 }); // 극단값(outlier clamp 대상)
-    points.push({ t: close - 5 * 60_000, bid_total: 100, ask_total: 150, bid_max: 110, ask_max: 170, imb_max_bid: 50, imb_max_ask: 220 }); // 동시호가창 (mask 대상)
+    points.push({ t: open, bid_total: 100, ask_total: 100, bid_max: 120, ask_max: 130, imb_max_bid: 40, imb_max_ask: 160, band_pct: 2 + d });
+    points.push({ t: open + 3_600_000, bid_total: 100, ask_total: 200, bid_max: 150, ask_max: 260, imb_max_bid: 30, imb_max_ask: 300, band_pct: 2 + d }); // sell-heavy
+    points.push({ t: open + 9000 * 1000, bid_total: 5000, ask_total: 50, bid_max: 5200, ask_max: 90, imb_max_bid: 6000, imb_max_ask: 20, band_pct: 2 + d }); // 극단값(outlier clamp 대상)
+    points.push({ t: close - 5 * 60_000, bid_total: 100, ask_total: 150, bid_max: 110, ask_max: 170, imb_max_bid: 50, imb_max_ask: 220, band_pct: 2 + d }); // 동시호가창 (mask 대상)
   }
   const lastOpen = BASE + (nDays - 1) * DAY;
   for (const p of extraTodayPoints) points.push({ ...p, t: lastOpen + p.t });
@@ -79,6 +80,7 @@ function makeBoundaryGapBundle() {
           ask_max: 200,
           imb_max_bid: 100,
           imb_max_ask: 200,
+          band_pct: 0,
         },
         {
           t: day1Open + 60_000,
@@ -88,6 +90,7 @@ function makeBoundaryGapBundle() {
           ask_max: 100,
           imb_max_bid: 200,
           imb_max_ask: 100,
+          band_pct: 0,
         },
       ],
     },
@@ -127,6 +130,7 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
       ask_max: 300,
       imb_max_bid: 100,
       imb_max_ask: 300,
+      band_pct: 0,
     }]);
     expect(cached(tick.bundle, first.axis, CTX_MASKED)).toEqual(
       projectRatio(tick.bundle, first.axis, CTX_MASKED),
@@ -259,6 +263,7 @@ describe('makePastCachedProjector — 총잔량(bid/ask)·체결강도 히스토
       ask_max: 480,
       imb_max_bid: 640,
       imb_max_ask: 480,
+      band_pct: 0,
     }]);
     expect(cached(tick.bundle, first.axis, MASK)).toEqual(projectBuy(tick.bundle, first.axis, MASK));
   });
@@ -304,6 +309,8 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
       surgeApproachPct: 95,
       surgeRearmPct: 85,
       surgeStartHHMM: 900,
+  tickNormalize: false,
+  surgeWidthStepPct: 25,
     };
 
     const cachedBid = QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx) as any[];
@@ -341,6 +348,7 @@ describe('makePastCachedProjector — hoga gap expansion happens after the split
             ask_max: 100,
             imb_max_bid: 300,
             imb_max_ask: 100,
+            band_pct: 0,
           },
         ],
       },
@@ -441,6 +449,7 @@ describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF �
       ask_max: 380,
       imb_max_bid: 40,
       imb_max_ask: 420,
+      band_pct: 0,
     }]);
     expect(cached(tick.bundle, first.axis, true)).toEqual(askProj(true)(getQR(tick.bundle), first.axis, true));
   });

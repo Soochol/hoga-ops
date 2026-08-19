@@ -201,7 +201,7 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
 });
 
 describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () => {
-  const ctx = { auctionMask: false, intraMax: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
+  const ctx = { auctionMask: false, intraMax: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900, tickNormalize: false, surgeWidthStepPct: 25 };
   const bundle: any = {
     quote_ratio: {
       points: [
@@ -228,9 +228,9 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
   it('surgeStartHHMM 시작 시각 이전 급증은 표시에서 가린다 (알고리즘은 그대로 진행)', () => {
     // sessionOpenMs = 09:00 KST → 발사 시점 09:00:02 = 자정 기준 540분.
     // 시작 시각 09:30(=930, 570분)으로 올리면 540 < 570 이라 표시 제외.
-    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 930 })).toEqual([]);
+    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 930, tickNormalize: false, surgeWidthStepPct: 25 })).toEqual([]);
     // 09:00(=900, 540분)이면 540 >= 540 경계 포함 — 그대로 표시.
-    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 900 })).toHaveLength(1);
+    expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeStartHHMM: 900, tickNormalize: false, surgeWidthStepPct: 25 })).toHaveLength(1);
   });
 });
 
@@ -257,6 +257,7 @@ describe('hoga data gaps', () => {
             ask_max: 200,
             imb_max_bid: 100,
             imb_max_ask: 200,
+            band_pct: 0,
           },
           {
             t: sessionOpenMs + 120_000,
@@ -266,6 +267,7 @@ describe('hoga data gaps', () => {
             ask_max: 250,
             imb_max_bid: 150,
             imb_max_ask: 250,
+            band_pct: 0,
           },
         ],
       },
@@ -315,6 +317,7 @@ describe('hoga data gaps', () => {
             ask_max: 200,
             imb_max_bid: 100,
             imb_max_ask: 200,
+            band_pct: 0,
           },
           {
             t: sessionOpenMs + 120_000,
@@ -324,11 +327,12 @@ describe('hoga data gaps', () => {
             ask_max: 250,
             imb_max_bid: 150,
             imb_max_ask: 250,
+            band_pct: 0,
           },
         ],
       },
     };
-    const ctx = { auctionMask: false, intraMax: false, surgeEnabled: false, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900 };
+    const ctx = { auctionMask: false, intraMax: false, surgeEnabled: false, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900, tickNormalize: false, surgeWidthStepPct: 25 };
 
     expect(QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },

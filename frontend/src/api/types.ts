@@ -72,6 +72,13 @@ export type QuoteRatioPoint = {
   ask_max: number;
   imb_max_bid: number;
   imb_max_ask: number;
+  /** 대표 스냅샷의 10호가 사다리 폭(중간가 대비 %). 총잔량은 "고정된 가격 폭"이 아니라
+   *  "고정된 호가 단계 수"로 잰 값이라, KRX 호가단위(가격대별 계단함수)가 바뀌면 같은 물량이
+   *  다른 숫자로 나온다 — 경계에서 폭이 2~5배 점프한다. 급증 검출의 호가단위 보정이 이 값을
+   *  쓴다(docs/research/2026-08-19-hoga-tick-band-totals-normalization.md).
+   *  동시호가/완전-auction 버킷은 0. **0 은 "폭 없음"이지 "폭이 0"이 아니다** — 소비자는
+   *  0 을 보정 불가로 다뤄야 한다. */
+  band_pct: number;
 };
 export type QuoteRatio = { bucket_ms: number; points: QuoteRatioPoint[] };
 

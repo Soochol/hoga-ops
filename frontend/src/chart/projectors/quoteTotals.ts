@@ -127,6 +127,11 @@ export type QuoteTotalsCtx = {
   /** 마커 표시 시작 시각(HHMM, 예 930=09:30). 이 시각 이전의 급증은 표시만 가린다 — 알고리즘(running
    *  peak·재무장)은 장 시작부터 계속 진행하므로 detectSurgeSide에는 넘기지 않고 프로젝터에서 필터링. */
   surgeStartHHMM: number;
+  /** 호가단위 변화 보정(기본 off). 켜면 급증 검출이 사다리 폭 변화만큼 running peak 을
+   *  환산한다 — detectSurgeSide 의 widthStepRatio 주석에 근거·실측이 있다. */
+  tickNormalize: boolean;
+  /** 위 보정의 폭 변화 문턱(%). 보정이 꺼져 있으면 쓰이지 않는다. */
+  surgeWidthStepPct: number;
 };
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -148,6 +153,8 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
       surgeApproachPct: p.surgeApproachPct,
       surgeRearmPct: p.surgeRearmPct,
       surgeStartHHMM: p.surgeStartHHMM,
+      tickNormalize: p.quoteTotalsTickNormalize,
+      surgeWidthStepPct: p.surgeWidthStepPct,
     })),
   );
 
@@ -171,6 +178,9 @@ function surgeMarkerPoints(side: 'ask' | 'bid') {
       approachRatio: ctx.surgeApproachPct / 100,
       rearmRatio: ctx.surgeRearmPct / 100,
       isClosingAuction: (t) => axis.inClosingAuctionWindow(t),
+      // 꺼져 있으면 **undefined 를 넘긴다** — 0 을 넘기면 "폭이 조금이라도 바뀌면
+      // 환산" 이 되어 정반대로 동작한다(문턱 0 = 매 분 환산).
+      widthStepRatio: ctx.tickNormalize ? ctx.surgeWidthStepPct / 100 : undefined,
     })
       // 표시 필터: 보이는 구간(axis.contains) + 시작 시각 이후(KST 분). 알고리즘 상태는
       // detectSurgeSide가 장 시작부터 전부 굴린 뒤, 발사된 마커만 여기서 가린다.

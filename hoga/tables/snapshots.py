@@ -710,6 +710,17 @@ class QuoteRatioRow:
     스냅샷의 bid_total / ask_total 독립 최댓값. ``imb_max_bid`` / ``imb_max_ask``
     = 버킷 내 |imbalance|(= GREATEST/LEAST ratio 단조 대용)가 가장 컸던 연속거래
     스냅샷의 (bid_total, ask_total) 쌍. 동시호가/완전-auction 버킷은 4필드 모두 0.
+
+    ``band_pct`` = **대표 스냅샷의** 10호가 사다리 폭을 중간가 대비 %로 잰 값
+    (``(ask_p10 - bid_p10) / mid × 100``). 총잔량이 "고정된 가격 폭"이 아니라
+    "고정된 호가 단계 수"로 잰 값이라는 사실을 소비자가 볼 수 있게 하는 유일한
+    창구다 — 호가단위가 가격대별 계단함수라 이 폭은 경계에서 2~5배 점프한다
+    (`docs/research/2026-08-19-hoga-tick-band-totals-normalization.md`).
+    **bid_total/ask_total 과 반드시 같은 행에서 와야 하므로** 같은 struct 안에서
+    한 번의 arg_max 로 뽑는다. 동시호가/완전-auction 버킷은 0.0.
+
+    Intra-Bar Max 쌍이 없는 이유: 급증 검출은 기준 토글과 무관하게 **항상 종가
+    기준**이라(CONTEXT.md 분봉 내 최댓값 기준) 대표 행의 폭 하나면 충분하다.
     """
 
     bucket_intra_ms: int
@@ -719,6 +730,7 @@ class QuoteRatioRow:
     ask_max: int
     imb_max_bid: int
     imb_max_ask: int
+    band_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -1000,12 +1012,14 @@ def query_bucketed_ratio(
     fully-auction bucket (no pre row) has every gated input = 0 for every
     row and all aggregates naturally emit 0/(0,0) for it — no outer
     ``CASE WHEN is_pre`` needed on the final SELECT. The representative row
-    (bid_total/ask_total) is selected by ONE
-    ``arg_max(struct_pack(b, a), rep_key)`` so both totals always come from
-    the same physical row. ``rep_key = is_pre_int * 100_000_000 + intra_ms``
-    reproduces "is_pre DESC, ts_ms DESC" ranking: pre rows outrank non-pre
-    rows (the *1e8 digit dominates), and within the same is_pre tier, larger
-    intra_ms (== larger ts_ms, monotonic within a bucket) wins — arg_max
+    (bid_total/ask_total/band_pct) is selected by ONE
+    ``arg_max(struct_pack(b, a, w), rep_key)`` so all three always come from
+    the same physical row — ``band_pct`` read from a separate aggregate could
+    describe a different snapshot's ladder than the totals it normalizes.
+    ``rep_key = is_pre_int * 100_000_000 + intra_ms`` reproduces "is_pre DESC,
+    ts_ms DESC" ranking: pre rows outrank non-pre rows (the *1e8 digit
+    dominates), and within the same is_pre tier, larger intra_ms
+    (== larger ts_ms, monotonic within a bucket) wins — arg_max
     picks the row with the maximum key, i.e. the LAST such row. The
     imbalance-extreme pair (imb_max_bid/imb_max_ask) is selected by ONE
     ``arg_min(struct_pack(b, a), struct_pack(neg_imb, ts))`` so both values
@@ -1053,12 +1067,16 @@ def query_bucketed_ratio(
                      THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
                           / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
                      ELSE 0 END) AS imb_key,
+                 (CASE WHEN ({pre_auction_pred})
+                     AND ask_p10 > 0 AND bid_p10 > 0 AND (ask_p1 + bid_p1) > 0
+                     THEN (ask_p10 - bid_p10) * 200.0 / (ask_p1 + bid_p1)
+                     ELSE 0 END) AS gw,
                  ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
                    + ({intra_ms_expr})) AS rep_key
           FROM read_parquet(?)
         )
         SELECT bucket * {bucket_ms},
-               arg_max(struct_pack(b := gb, a := ga), rep_key) AS rep,
+               arg_max(struct_pack(b := gb, a := ga, w := gw), rep_key) AS rep,
                max(gb) AS bid_max,
                max(ga) AS ask_max,
                arg_min(struct_pack(b := gb, a := ga), struct_pack(neg_imb := -imb_key, ts := ts_ms)) AS imb
@@ -1074,6 +1092,7 @@ def query_bucketed_ratio(
             bid_total=int(r[1]["b"]), ask_total=int(r[1]["a"]),
             bid_max=int(r[2]), ask_max=int(r[3]),
             imb_max_bid=int(r[4]["b"]), imb_max_ask=int(r[4]["a"]),
+            band_pct=float(r[1]["w"]),
         )
         for r in rows
     ]

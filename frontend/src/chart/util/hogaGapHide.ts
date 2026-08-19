@@ -9,6 +9,9 @@ const ZERO_HOGA_FIELDS = {
   ask_max: 0,
   imb_max_bid: 0,
   imb_max_ask: 0,
+  // 합성 갭 점은 관측된 사다리가 없다 → 폭도 "잴 수 없음"(0). 소비자는 이 점에서
+  // 호가단위 보정의 기준 폭을 갱신하지 않는다.
+  band_pct: 0,
 } as const;
 
 function bucketStart(t: number, bucketMs: number): number {
