@@ -38,6 +38,7 @@ from hoga.api.calendar import is_trading_day
 from hoga.util.timeenc import KST
 
 from .kiwoom_token_provider import KiwoomTokenProvider
+from .kiwoom_venue import split_venue
 from .single_flight import SingleFlight
 
 log = logging.getLogger(__name__)
@@ -155,10 +156,18 @@ def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
         name = item.get("stk_nm")
         if not isinstance(code, str) or not code.strip():
             continue
+        # `stex_tp` 가 KRX 가 아니면 벤더가 **venue 접미를 그대로 에코**한다
+        # (`064550_AL`). 접미는 wire 인코딩이지 종목 식별자가 아니므로 파스 경계에서
+        # 벗긴다 — 여기서 새지 않게 하는 것이 계약이다(#1124 와 같은 부류).
+        # 새면 두 곳이 조용히 깨졌다: ① 프론트 workarea 코드 공간은 6자리 전용이라
+        # 순위 행을 클릭하면 `/api/live/past-daily-candles` 가 422(INVALID_CODE),
+        # ② 아래 라우트의 `exclude_etf` 가 심볼 마스터 코드와 영영 불일치해 **경고
+        # 없이 무동작**(마스터는 로드돼 있으니 etf_filter_unavailable 도 안 뜬다).
+        bare_code, _venue = split_venue(code.strip())
         rows.append(
             RankingRow(
                 rank=i,
-                code=code.strip(),
+                code=bare_code,
                 name=name.strip() if isinstance(name, str) else "",
                 price=_abs_price(item.get("cur_prc")),
                 change_pct=_signed_float(item.get("flu_rt")),
