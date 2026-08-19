@@ -30,10 +30,31 @@ export interface LiveAfterHoursLevel {
   qty: number;
 }
 
+/** 시간외 단일가 체결 한 건 — **벤더가 준 것이 아니라 백엔드가 합성한 것**이다.
+ *
+ *  개별 체결을 주는 소스가 없어(2026-08-19 실측: `ka10003`·`ka10084`·WS `0B` 전부
+ *  15:59:50 정지) 누적 체결량의 증분에서 만든다. 그래서:
+ *
+ *  - ⚠ `t_ms` 는 **관측 시각이지 체결 시각이 아니다**(실측 27초 지연). 정렬 전용.
+ *  - ⚠ `side` 가 **없다** — 단일가 일괄 체결이라 방향이 정의되지 않는다. 0 을 채워
+ *    "중립 체결"로 그리지 말고, 색 없이 렌더할 것.
+ *  - 관측이 없던 주기는 **빈다**. 그게 정상이다 — 백엔드가 여러 주기를 한 줄로
+ *    합치지 않는다(`_FillLedger`).
+ */
+export interface LiveAfterHoursFill {
+  t_ms: number;
+  price: number;
+  qty: number;
+}
+
 export interface LiveAfterHoursBookResponse {
   code: string;
   active: boolean;
-  /** 호가잔량기준시간 HHMMSS(벤더 `bid_req_base_tm`) — 신선도 표시용. */
+  /** 호가잔량기준시간 HHMMSS(벤더 `bid_req_base_tm`).
+   *
+   *  ⚠ **신선도로 쓰지 말 것.** 2026-08-19 실측(117표본 20분)에서 `"160000"` 에
+   *  고정된 채 한 번도 움직이지 않았고, 같은 기간 호가 잔량은 계속 변했다.
+   *  "언제 값인가" 를 보이려면 `fetched_at_ms` 를 쓴다. */
   base_tm: string | null;
   /** 길이 5, index 0 = 최우선호가. `active=false` 면 빈 배열. */
   ask: LiveAfterHoursLevel[];
@@ -51,6 +72,19 @@ export interface LiveAfterHoursBookResponse {
    *
    *  `null` 이면 **등락률을 생략한다** — 분모를 추측해 0.00% 로 박제하지 않는다. */
   close_price: number | null;
+  /** 예상체결가·량 — 출처는 **`ka10001`** 이다(이 응답의 나머지는 ka10087).
+   *
+   *  2026-08-19 실측으로 확정된 이 구간의 **유일한** 예상체결 소스다. 같은 이름
+   *  필드를 가진 `ka10007`·`ka10095` 는 정규장 잔상이고, WS `0H` 는 오지 않는다.
+   *
+   *  ⚠ 값이 **체결 직전 30초에 요동친다**(실측: 최종 표본 400 vs 실제 899).
+   *  확정 체결이 아니라 접수 상황의 스냅샷이므로 화면은 "예상"이라고 말해야 한다.
+   *
+   *  둘 중 하나라도 null 이면 배너를 감춘다 — "예상체결 없음"은 정상 상태다. */
+  exp_price: number | null;
+  exp_qty: number | null;
+  /** 합성 체결(최신 먼저) — 성격과 한계는 `LiveAfterHoursFill`. */
+  fills: LiveAfterHoursFill[];
   fetched_at_ms: number;
   source: 'kiwoom';
 }
@@ -107,42 +141,22 @@ const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };
  *
  * `active=false` 면 **null** 을 준다 — 호출부가 정규장 스냅샷을 유지하도록.
  */
-/** 시간외 단일가 구간의 예상체결(키움 0H) 한 쌍. 둘 다 >0 일 때만 의미가 있다. */
-export interface LiveExpectedFill {
-  price: number;
-  qty: number;
-}
-
-/**
- * `expected` 버퍼(0H)의 **이 구간에 속하는** 마지막 프레임. 없으면 null.
+/*
+ * 이 자리에 `latestExpectedFill(frames)` 이 있었다 — WS `0H` 버퍼에서 이 구간의
+ * 예상체결을 꺼내는 함수였다. **삭제한 이유는 소스가 존재하지 않기 때문**이다:
+ * 2026-08-19 실측에서 `0H` 는 이 창에 프레임을 하나도 내지 않았다(구독 중, 체결
+ * 3주기, 링버퍼 0건 — `docs/research/2026-08-19-after-hours-single-price-fills-and-
+ * expected.md` §4.3). 그 함수는 `isAfterHoursSinglePriceWindow(t)` 로 **하드 게이트**
+ * 를 걸고 있었으므로, 그 창에 프레임이 없다는 것은 곧 **어떤 입력에도 매칭되지
+ * 않는다**는 뜻이다.
  *
- * ⚠ **시각 게이트가 핵심이다.** 게이트가 없으면 정규장 종가 동시호가(15:20–15:30)의
- * 마지막 0H 프레임이 버퍼에 남아 16:30 화면에 실시간처럼 뜬다 — 그건 ka10007 의
- * `exp_cntr_*` 가 이 구간에 정규장 잔상을 그대로 답하던 것(2026-08-18 실측: 두 체결
- * 주기에 걸쳐 미동)과 **똑같은 버그를 우리 손으로 재생산**하는 것이다.
- *
- * 그래서 판정은 프레임 **자기 t_ms** 로 한다(수신 시각이 아니라). 벽시계로 판정하면
- * 창 안에서 받은 낡은 프레임을 걸러내지 못한다.
+ * 정규장 동시호가 배너는 이 함수를 탄 적이 없다 — 그쪽은 `0D` FID 23/24 가
+ * 스냅샷에 실려 오는 별도 경로다. 예상체결은 이제 응답의 `exp_price`/`exp_qty`
+ * (ka10001)에서 온다.
  */
-export function latestExpectedFill(
-  frames: readonly Record<string, unknown>[],
-): LiveExpectedFill | null {
-  for (let i = frames.length - 1; i >= 0; i--) {
-    const f = frames[i];
-    const t = f.t_ms;
-    if (typeof t !== 'number' || !isAfterHoursSinglePriceWindow(t)) continue;
-    const price = f.expected_price;
-    const qty = f.expected_qty;
-    if (typeof price === 'number' && price > 0 && typeof qty === 'number' && qty > 0) {
-      return { price, qty };
-    }
-  }
-  return null;
-}
 
 export function afterHoursBookToSnapshot(
   book: LiveAfterHoursBookResponse | undefined,
-  expected: LiveExpectedFill | null = null,
 ): OrderbookSnapshot | null {
   if (!book || !book.active) return null;
   const pad = (levels: readonly LiveAfterHoursLevel[]): OrderbookLevel[] => {
@@ -160,9 +174,20 @@ export function afterHoursBookToSnapshot(
     bid: pad(book.bid),
     tot_ask: book.total_ask_qty,
     tot_bid: book.total_bid_qty,
-    // 0H 가 있으면 정규장 동시호가와 **같은 배너**(ExpectedFillBanner)가 뜬다 —
+    // 예상체결이 있으면 정규장 동시호가와 **같은 배너**(ExpectedFillBanner)가 뜬다 —
     // 소비 표면을 하나로 둔다. 없으면 0 이라 배너는 높이 0 으로 사라진다.
-    exp_price: expected?.price ?? 0,
-    exp_qty: expected?.qty ?? 0,
+    // 출처만 다르다: 정규장은 0D FID 23/24, 여기는 REST ka10001.
+    exp_price: book.exp_price ?? 0,
+    exp_qty: book.exp_qty ?? 0,
   };
+}
+
+/** 합성 체결 → 체결창 행. **`side` 를 만들지 않는다** — 단일가 일괄 체결이라
+ *  방향이 정의되지 않고, 0 을 넣으면 BookPanel 이 "중립 체결" 색으로 그려
+ *  "방향을 아는데 중립" 처럼 읽힌다. 색 없는 렌더는 호출부가 정한다. */
+export function afterHoursFillRows(
+  book: LiveAfterHoursBookResponse | undefined,
+): { price: number; qty: number; side: number }[] {
+  if (!book || !book.active) return [];
+  return book.fills.map((f) => ({ price: f.price, qty: f.qty, side: 0 }));
 }

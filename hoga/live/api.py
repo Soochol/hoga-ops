@@ -1799,6 +1799,23 @@ class AfterHoursLevelModel(BaseModel):
     qty: int
 
 
+class AfterHoursFillModel(BaseModel):
+    """시간외 단일가 체결 한 건 — **우리가 합성한 것**이다(벤더 미제공).
+
+    2026-08-19 실측: 개별 체결을 주는 소스가 없다(`ka10003`·`ka10084`·WS `0B` 전부
+    15:59:50 에서 정지). 그래서 ka10087 누적 체결량의 증분에서 만든다.
+
+    ⚠ `t_ms` 는 **관측 시각이지 체결 시각이 아니다** — 체결은 10분 경계에 일어나고
+    우리는 폴링 주기만큼 늦게 본다(실측 27초). **정렬 외의 용도로 쓰지 말 것.**
+    ⚠ `side` 필드가 **없다** — 단일가 일괄 체결이라 방향이라는 개념이 성립하지 않는다.
+    `OrderbookLevel` 처럼 0 을 채워 두면 "중립 체결" 로 오독되므로 아예 두지 않는다.
+    """
+
+    t_ms: int
+    price: int
+    qty: int
+
+
 class AfterHoursBookResponse(BaseModel):
     """GET /api/live/after-hours-book — 키움 ka10087 시간외 단일가 **5단**.
 
@@ -1821,7 +1838,11 @@ class AfterHoursBookResponse(BaseModel):
 
     code: str
     active: bool
-    #: 호가잔량기준시간 HHMMSS(벤더 `bid_req_base_tm`). 표시용 — 신선도 판단 근거.
+    #: 호가잔량기준시간 HHMMSS(벤더 `bid_req_base_tm`).
+    #:
+    #: ⚠ **신선도로 쓰면 안 된다.** 2026-08-19 실측(117표본 20분, 체결 주기 둘 관통)에서
+    #: 이 값은 `"160000"` 에 고정된 채 **한 번도 움직이지 않았고**, 같은 기간 호가 잔량은
+    #: 계속 변했다. 화면에 "언제 값인가" 를 표시하려면 `fetched_at_ms` 를 쓸 것.
     base_tm: str | None = None
     ask: list[AfterHoursLevelModel] = Field(default_factory=list)
     bid: list[AfterHoursLevelModel] = Field(default_factory=list)
@@ -1838,6 +1859,17 @@ class AfterHoursBookResponse(BaseModel):
     #: 전일종가 기준 등락률은 이 화면에서 의미가 없다. 벤더 자신도 `flu_rt` 를
     #: 종가 기준으로 준다 — 사다리만 정규장 분모를 쓰고 있었다.
     close_price: int | None = None
+    #: 예상체결가·량 — 출처는 **`ka10001`** 이다(이 응답의 나머지는 ka10087).
+    #: 값의 성격과 왜 다른 TR 인지는 `kiwoom_after_hours.ExpectedFill`.
+    #: 둘 다 None 이면 프론트가 배너를 감춘다 — "예상체결 없음" 은 정상 상태다
+    #: (그 종목에 시간외 주문이 없거나, ka10001 만 실패했거나).
+    exp_price: int | None = None
+    exp_qty: int | None = None
+    #: 합성 체결 — **벤더가 준 것이 아니다**(`kiwoom_after_hours.AfterHoursFill`).
+    #: 최신이 먼저. 개별 체결을 주는 소스가 없어 누적량 증분에서 만든 것이라,
+    #: `t_ms` 는 관측 시각이고 `side` 는 아예 없다. 관측이 없던 주기는 비고,
+    #: **그것이 정상**이다 — 빈 자리를 메우려 여러 주기를 한 줄로 합치지 않는다.
+    fills: list[AfterHoursFillModel] = Field(default_factory=list)
     fetched_at_ms: int = 0
     source: Literal["kiwoom"] = "kiwoom"
 
@@ -3029,11 +3061,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if kiwoom_after_hours_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
-            book, fetched_at_ms = await kiwoom_after_hours_fetcher_instance.get(code)
+            view = await kiwoom_after_hours_fetcher_instance.get(code)
         except KiwoomAfterHoursError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_HTTP_ERROR, "message": str(e)}) from e
+        book, fetched_at_ms = view.book, view.fetched_at_ms
         if not book.has_quotes:
             # 벤더는 답했지만 전 단계가 0 이다(그 종목에 시간외 주문이 없다).
             # 빈 호가창으로 갈아끼우면 화면이 오히려 나빠지므로 정규장 스냅샷을
@@ -3053,6 +3086,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             change_pct=book.change_pct,
             acc_volume=book.acc_volume,
             close_price=book.close_price,
+            exp_price=view.expected.price if view.expected else None,
+            exp_qty=view.expected.qty if view.expected else None,
+            # `active=False` 경로에는 싣지 않는다 — 프론트가 그때 정규장 화면을 유지하므로
+            # 시간외 체결창 자체를 안 쓴다. 분기를 하나로 두는 편이 소비자에게 안전하다.
+            fills=[
+                AfterHoursFillModel(t_ms=f.t_ms, price=f.price, qty=f.qty) for f in view.fills
+            ],
             fetched_at_ms=fetched_at_ms,
         )
 
