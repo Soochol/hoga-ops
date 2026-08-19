@@ -51,7 +51,7 @@ from hoga.api.models import (
     WallSurgeEvent,
 )
 from hoga.live.venue import Venue
-from hoga.tables.snapshots import QuoteRatioRow
+from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.cache_stats import CacheStats
@@ -110,9 +110,13 @@ KIND_VERSIONS: dict[str, int] = {
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
+    # 1분 rep 행(분류 결과). 봉별 peak 를 스캔 없이 파생하는 원료 —
+    # `snapshots.reaggregate_peak_rep` 참고. **새 kind 라서 기존 ask_peak/bid_peak
+    # 항목을 무효화하지 않는다**(위 문단의 "전량 재계산 수십 분" 을 피하는 조건).
+    "peak_rep": 1,
 }
 
-Kind = Literal["ratio", "fill"]
+Kind = Literal["ratio", "fill", "peak_rep"]
 DEFAULT_MEM_MAX_ENTRIES = 512
 # depth_heatmap 항목은 하루치 40컬럼 × 수백 버킷 ≈ 1.5MB/entry (ratio의 ~20배).
 # 공용 512 상한을 그대로 쓰면 최악 수백 MB가 되므로 전용 소형 상한을 둔다 —
@@ -150,6 +154,7 @@ class PastIndicatorsCache:
         # In-memory hot cache (avoids re-reading disk within a process).
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
+        self._mem_peak_rep: OrderedDict[tuple[str, str, str, str], list[PeakRepRow]] = OrderedDict()
         self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
         self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
@@ -215,7 +220,7 @@ class PastIndicatorsCache:
             kind: CacheStats()
             for kind in (
                 "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
-                "wall_surge", "vdist", "broker_late", "continuous_before",
+                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep",
             )
         }
 
@@ -232,6 +237,7 @@ class PastIndicatorsCache:
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
+            "peak_rep": len(self._mem_peak_rep),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -360,6 +366,59 @@ class PastIndicatorsCache:
 
     def _path(self, code: str, date: str, source: str, kind: Kind, *, venue: Venue = "KRX") -> Path:
         return self._store_dir(code, source, venue=venue) / f"{date}.{kind}.json"
+
+    # ── peak_rep (1분 rep 행) ─────────────────────────────────────────────────
+    #
+    # 봉별 peak 재계산을 없애는 원료다. peak 출력은 두 갈래인데 `cont`(틱-max 계열)
+    # 는 유효 스냅샷 **전체**를 보므로 봉과 무관하고(같은 날짜 1분/5분 캐시에서
+    # `max_*`·`all_max_*`·`*_max_peaks` 가 바이트 동일함을 실측 확인), `rep`(종가
+    # 대표 계열)만 봉에 의존한다. 그래서 rep 행만 1분으로 캐시해 두면 어떤 봉이든
+    # 파케이를 다시 읽지 않고 만들 수 있다.
+    #
+    # 키에 bucket_ms 가 **없다** — 1분 고정이라는 것이 이 kind 의 계약이다.
+
+    def get_peak_rep(
+        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
+    ) -> list[PeakRepRow] | object:
+        """미스는 `CACHE_MISS` 센티널이다(신규 list kind 공통 계약).
+
+        `get_ratio` 처럼 `None` 을 돌려주지 않는다 — 빈 리스트(그날 rep 가 없음)와
+        미스를 구별해야 호출부가 재계산 여부를 정할 수 있다.
+        """
+        self._sync_generation(code, date, source, venue=venue)
+        key = (code, date, source, venue)
+        stats = self._stats["peak_rep"]
+        hit = self._mem_hit(self._mem_peak_rep, key)
+        if hit is not None:
+            stats.record_hit()
+            return hit
+        tuples = self._read(code, date, source, "peak_rep", venue=venue)
+        if tuples is None:
+            stats.record_miss()
+            return _CACHE_MISS
+        rows = [
+            PeakRepRow(
+                bucket_id=t[0], side="ask" if t[1] == 0 else "bid", price=t[2],
+                qty=t[3], intra_ms=t[4], seq=t[5], touched=bool(t[6]),
+            )
+            for t in tuples
+        ]
+        stats.record_disk_hit()
+        self._mem_put(self._mem_peak_rep, key, rows, stats)
+        return rows
+
+    def store_peak_rep(
+        self, code: str, date: str, source: str, rows: list[PeakRepRow], *, venue: Venue = "KRX",
+    ) -> None:
+        tuples = [
+            [r.bucket_id, 0 if r.side == "ask" else 1, r.price,
+             r.qty, r.intra_ms, r.seq, int(r.touched)]
+            for r in rows
+        ]
+        self._write(code, date, source, "peak_rep", tuples, venue=venue)
+        stats = self._stats["peak_rep"]
+        stats.record_store()
+        self._mem_put(self._mem_peak_rep, (code, date, source, venue), rows, stats)
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 

@@ -19,7 +19,7 @@ import logging
 from collections.abc import Collection
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import HTTPException
 
@@ -914,6 +914,117 @@ def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
     return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
 
 
+def _peak_with_rep_outputs(
+    base: _PeakT, *, date: str, reduced: dict[str, Any] | None,
+) -> _PeakT | None:
+    """1분 peak(`base`)의 **봉 무관 절반**에 `reduced`(봉 의존 절반)를 덮어쓴다.
+
+    봉 무관/의존의 경계는 `snapshots.reaggregate_peak_rep` docstring 참조. 여기서
+    덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
+
+    `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
+    `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라
+    (`useDayBidPeaks`), 과거일 전체 랭킹은 만들 이유가 없다 — 하루 1.5MB × 2 side
+    의 직렬화·디스크 쓰기가 이 결정으로 사라진다. 되살리려면 재계산해야 한다.
+    """
+    if reduced is None:
+        return None
+    close = reduced["all_close"]
+    traded, untraded = reduced["traded_close"], reduced["untraded_close"]
+    return base.model_copy(update={
+        "all_price": close[0], "all_qty": close[1],
+        "all_t_ms": ms_from_midnight_to_unix_ms(date, close[2]),
+        "price": traded[0] if traded else None,
+        "qty": traded[1] if traded else None,
+        "t_ms": ms_from_midnight_to_unix_ms(date, traded[2]) if traded else None,
+        "untraded_price": untraded[0] if untraded else None,
+        "untraded_qty": untraded[1] if untraded else None,
+        "untraded_t_ms": ms_from_midnight_to_unix_ms(date, untraded[2]) if untraded else None,
+        "traded_peaks": [_ask_candidate(date, c) for c in reduced["traded_peaks"]],
+        "untraded_peaks": [_ask_candidate(date, c) for c in reduced["untraded_peaks"]],
+        "all_peaks": [], "all_max_peaks": [],
+    })
+
+
+def _peak_slices_from_1m_cache(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str,
+    venue: Venue,
+    session_open_ms: int | None,
+    session_close_ms: int | None,
+    cache: PastIndicatorsCache | None,
+    today_kst: str | None,
+    path_obj: Path,
+    trades_path: Path,
+) -> tuple[AskPeak | None, BidPeak | None] | None:
+    """굵은 봉 peak 을 **1분 캐시에서 파생**한다. 해당 없으면 None(호출부가 원경로).
+
+    peak 은 sidecar 콜드 비용의 74%인데(실측 2026-08-19), 그 대부분이 봉과 무관한
+    일을 봉마다 다시 하는 것이었다. 봉을 30배 줄여도(390→13 버킷) 시간이 30%만
+    줄었다 — 비용이 버킷 수가 아니라 **원본 스캔**에 있다는 뜻이다.
+
+    그래서 굵은 봉은 파케이를 아예 읽지 않는다: 봉 의존 절반은 1분 rep 행을 묶어
+    만들고, 봉 무관 절반(`*_max*`)은 1분 peak 캐시 값을 그대로 쓴다. 후자가
+    정말 봉과 무관하다는 것은 같은 날짜의 1분/5분 캐시 파일 대조로 확인했다.
+
+    1분 산출이 없으면 여기서 **한 번만** 만든다(스캔 1회 — ADR-0085 는 이 경로의
+    쿼리를 늘리지 말 것을 요구한다). 그 뒤로는 어떤 봉이든 스캔이 없다.
+    """
+    one = snapshots_tbl.ONE_MINUTE_MS
+    if cache is None or today_kst is None or date == today_kst:
+        return None
+    if bucket_ms == one or bucket_ms % one != 0:
+        return None
+    cached_rep = cache.get_peak_rep(code, date, source, venue=venue)
+    rep_rows: list[snapshots_tbl.PeakRepRow] | None = (
+        None if cached_rep is CACHE_MISS else cast("list[snapshots_tbl.PeakRepRow]", cached_rep)
+    )
+    have_ask = cache.has_ask_peak(code, date, source, one, venue=venue)
+    have_bid = cache.has_bid_peak(code, date, source, one, venue=venue)
+    base_ask = cache.get_ask_peak(code, date, source, one, venue=venue) if have_ask else None
+    base_bid = cache.get_bid_peak(code, date, source, one, venue=venue) if have_bid else None
+    if rep_rows is None or not (have_ask and have_bid):
+        ask_row, bid_row, rep_rows = SLICE_COALESCER.run(
+            ("peak_dual_1m", code, date, source, venue, session_open_ms, session_close_ms),
+            lambda: snapshots_tbl.query_day_ask_bid_peak_dual_with_rep(
+                engine.conn,
+                path=path_obj,
+                trades_path=trades_path,
+                bucket_ms=one,
+                session_open_ms=session_open_ms,
+                session_close_ms=session_close_ms,
+            ),
+        )
+        base_ask = _ask_peak_from_dual_row(date, ask_row) if ask_row is not None else None
+        base_bid = _bid_peak_from_dual_row(date, bid_row) if bid_row is not None else None
+        cache.store_ask_peak(code, date, source, one, base_ask, venue=venue)
+        cache.store_bid_peak(code, date, source, one, base_bid, venue=venue)
+        cache.store_peak_rep(code, date, source, rep_rows, venue=venue)
+    ask = (
+        None if base_ask is None
+        else _peak_with_rep_outputs(
+            base_ask, date=date,
+            reduced=snapshots_tbl.reaggregate_peak_rep(
+                [r for r in rep_rows if r.side == "ask"], side="ask", bucket_ms=bucket_ms,
+            ),
+        )
+    )
+    bid = (
+        None if base_bid is None
+        else _peak_with_rep_outputs(
+            base_bid, date=date,
+            reduced=snapshots_tbl.reaggregate_peak_rep(
+                [r for r in rep_rows if r.side == "bid"], side="bid", bucket_ms=bucket_ms,
+            ),
+        )
+    )
+    return ask, bid
+
+
 def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
     engine: QueryEngine,
     *,
@@ -982,6 +1093,18 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
             )
         return ask, bid
 
+    # 굵은 봉은 1분 캐시에서 파생해 스캔을 건너뛴다(근거는 그 함수 docstring).
+    # 해당 없으면(오늘·1분·비배수) None 이 와서 아래 원경로로 떨어진다.
+    derived = _peak_slices_from_1m_cache(
+        engine,
+        code=code, date=date, bucket_ms=bucket_ms, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        cache=cache, today_kst=today_kst,
+        path_obj=path_obj, trades_path=trades_path,
+    )
+    if derived is not None:
+        return derived
+
     # Concurrent identical dual-peak computes are collapsed by single-flight
     # (SLICE_COALESCER), same as every other per-day slice. The 2-slot
     # semaphore that used to cap DISTINCT-key concurrency here (ADR-0085,
@@ -1001,9 +1124,9 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
     else:
         # 키는 TTL 키를 미러(kind 프리픽스 + 세션 경계): 경계가 다른 동시 호출이
         # flight를 공유하면 다른 결과를 받게 되므로 경계도 키에 포함한다.
-        ask_row, bid_row = SLICE_COALESCER.run(
+        ask_row, bid_row, rep_rows = SLICE_COALESCER.run(
             ("peak_dual", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms),
-            lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
+            lambda: snapshots_tbl.query_day_ask_bid_peak_dual_with_rep(
                 engine.conn,
                 path=path_obj,
                 trades_path=trades_path,
@@ -1014,6 +1137,17 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         )
         if is_today:
             TODAY_TTL.put(ttl_key, (ask_row, bid_row))
+        # 1분으로 계산한 김에 rep 행도 저장한다 — 이게 없으면 **이 종목의 첫 굵은
+        # 봉 요청이 같은 스캔을 한 번 더** 한다(실측 8.9s 뒤 9.3s). 1분 요청일
+        # 때만 의미가 있다: 굵은 봉의 rep 는 1분 rep 의 부분집합이라 그 반대는
+        # 성립하지 않는다.
+        elif (
+            cache is not None
+            and today_kst is not None
+            and date != today_kst
+            and bucket_ms == snapshots_tbl.ONE_MINUTE_MS
+        ):
+            cache.store_peak_rep(code, date, source, rep_rows, venue=venue)
     if ask_row is not None and not ask_cached:
         ask = _ask_peak_from_dual_row(date, ask_row)
     if bid_row is not None and not bid_cached:

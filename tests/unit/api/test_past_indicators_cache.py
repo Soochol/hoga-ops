@@ -23,7 +23,7 @@ from hoga.api.models import (
     WallSurgeEvent,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS, KIND_VERSIONS, PastIndicatorsCache
-from hoga.tables.snapshots import QuoteRatioRow
+from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
 CODE = "005930"
@@ -657,11 +657,22 @@ class _ListKindCase:
 
 
 _DEPTH_DELTA_SAMPLE = [DepthDeltaPoint(t_ms=1_764_000_000_000, asks=[[70_100, 5]], bids=[[70_000, -3]])]
+_PEAK_REP_SAMPLE = [
+    PeakRepRow(bucket_id=3, side="ask", price=70_100, qty=900, intra_ms=180_000, seq=2, touched=True),
+    PeakRepRow(bucket_id=3, side="bid", price=70_000, qty=800, intra_ms=180_000, seq=2, touched=False),
+]
 _WALL_SURGE_SAMPLE = [
     WallSurgeEvent(t_ms=1_764_000_000_000, side="ask", price=70_100, qty=900, jump=700, total=5_000, kind="grow")
 ]
 
 _LIST_KIND_CASES = [
+    _ListKindCase(
+        "peak_rep",
+        f"{DATE}.peak_rep.json",   # 1분 고정이라 파일명에 bucket 이 없다
+        lambda c, v: c.store_peak_rep(CODE, DATE, SRC, v),
+        lambda c: c.get_peak_rep(CODE, DATE, SRC),
+        _PEAK_REP_SAMPLE,
+    ),
     _ListKindCase(
         "depth",
         f"{DATE}.depth.60000.json",

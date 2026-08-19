@@ -71,6 +71,7 @@ _SCALAR_FIELDS = frozenset({"code", "from_date", "to_date", "bucket_ms"})
 # 슬라이스에 대응하지 않는 캐시 kind 와 그 사유. 늘리려면 사유를 함께 적는다.
 _NON_SLICE_CACHE_KINDS: dict[str, str] = {
     "continuous_before": "volume_distributions 계산의 보조값이라 wire 필드가 없다",
+    "peak_rep": "ask_peak/bid_peak 를 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
 }
 
 
