@@ -43,18 +43,23 @@ it('시세 결측(null) → 가격·등락 모두 —', () => {
   expect(screen.getAllByText('—').length).toBe(2);
 });
 
-it('예상체결 모드: 가격·등락률 셀이 예상값으로 대체되고 캔들 셀에 마커가 선다', () => {
+it('예상체결 모드: 가격·등락률 셀이 예상값으로 대체되고 종목명 앞에 * 마커가 선다', () => {
   row({ expectedPrice: 71500, expectedPct: 2.14 });
-  expect(screen.getByTestId('heatmap-row-005930-expected-marker')).toHaveTextContent('예상');
+  const marker = screen.getByTestId('heatmap-row-005930-expected-marker');
+  expect(marker).toHaveTextContent('*');
+  // 마커는 **종목명 셀 안**이고 공백 없이 이름에 붙는다 — 부모 span 의 textContent 로
+  // 대조한다(QuoteRow.test 와 같은 계약). 캔들 셀로 되돌아가면 여기서 잡힌다.
+  expect(marker.parentElement?.textContent).toBe('*삼성전자');
   expect(screen.getByText('71,500')).toBeInTheDocument();
   expect(screen.queryByText('70,000')).not.toBeInTheDocument(); // 확정가는 표시 안 함
   const cell = screen.getByText('+2.14');
   expect(cell).toHaveClass('text-price-up'); // 예상 등락도 방향색 컨벤션 동일
 });
 
-it('마감 동시호가(OHLC 살아있음): 마커가 캔들을 대체하지 않고 나란히 선다', () => {
+it('마감 동시호가(OHLC 살아있음): 캔들과 * 마커가 함께 남는다', () => {
   // 15:20~15:30 은 phase=open 이라 당일 OHLC 가 있다 — 캔들이 정규장 종가·흐름을
-  // 계속 보여줘야 예상가가 가격 셀을 덮어도 확정 정보가 남는다.
+  // 계속 보여줘야 예상가가 가격 셀을 덮어도 확정 정보가 남는다. 마커는 종목명 셀에
+  // 있으므로(2026-08-19 이관) 캔들 셀 폭을 애초에 다투지 않는다.
   const { container } = row({
     open: 69000, high: 71000, low: 68500,
     expectedPrice: 71500, expectedPct: 2.14,
@@ -63,7 +68,7 @@ it('마감 동시호가(OHLC 살아있음): 마커가 캔들을 대체하지 않
   expect(screen.getByTestId('heatmap-row-005930-expected-marker')).toBeInTheDocument();
 });
 
-it('개장 동시호가(OHLC null): 캔들은 스스로 미렌더되고 마커만 남는다', () => {
+it('개장 동시호가(OHLC null): 캔들은 스스로 미렌더되고 마커는 그대로', () => {
   const { container } = row({
     open: null, high: null, low: null,
     expectedPrice: 71500, expectedPct: 2.14,

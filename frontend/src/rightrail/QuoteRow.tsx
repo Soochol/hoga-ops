@@ -83,10 +83,11 @@ export function QuoteRow({
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
   void _changeWon;
-  // 예상 표시 모드 — 셀 대체 규칙은 HeatmapRow 와 같고(가격·등락% 를 예상값으로),
-  // 마커만 다르다: 이 행은 종목명 앞 '*', 히트맵 행은 캔들 옆 '예상'. 이 행엔 캔들
-  // 글리프가 없어 마커를 걸 중립 슬롯이 없고, 가격 셀에 두면 고정폭 4.75rem 을
-  // 마커와 나눠 써야 한다(사용자 요청 2026-08-14).
+  // 예상 표시 모드 — 셀 대체 규칙(가격·등락% 를 예상값으로)도 마커 자리(종목명 앞
+  // '*')도 이제 HeatmapRow 와 같다. 이 행이 2026-08-14 에 먼저 '*' 로 갔고(이 행엔
+  // 마커를 걸 중립 슬롯이 될 캔들 글리프가 없고, 가격 셀에 두면 고정폭 4.75rem 을
+  // 마커와 나눠 써야 한다 — 사용자 요청), 2026-08-19 에 히트맵 행이 캔들 옆 '예상'
+  // 텍스트를 버리고 같은 표기로 합류했다(사용자 요청). 표기를 다시 가르지 말 것.
   const showExpected = expectedPrice != null;
   const shownPrice = showExpected ? expectedPrice : price;
   const shownPct = showExpected ? (expectedPct ?? null) : pct;
