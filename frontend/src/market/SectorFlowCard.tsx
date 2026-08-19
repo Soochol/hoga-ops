@@ -83,7 +83,11 @@ export function SectorFlowCard() {
           {flow.isLoading ? '수급 표본을 읽는 중입니다.' : '오늘 수집된 표본이 아직 없습니다.'}
         </EmptyNote>
       ) : (
-        <table className="w-full border-collapse font-data text-2xs tabular-nums">
+        /* `text-sm` — 같은 성격의 데이터 행은 같은 크기다(2026-08-19 사용자 결정):
+           업종 온도·순위표 행이 `text-sm` 이므로 이 표도 맞춘다. 원래 `2xs` 였던 것은
+           1.125× 다이얼 시절(렌더 10.125px) 승인 후 다이얼 하향의 부수효과로 9px 가
+           된 드리프트였다. 11.5px 에서도 5열 셀 넘침 0 실측. */
+        <table className="w-full border-collapse font-data text-sm tabular-nums">
           <thead>
             <tr className="text-fg-dim">
               <th className="pb-1 text-left font-normal">업종</th>

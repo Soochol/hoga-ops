@@ -84,7 +84,7 @@ const GROUPS: { key: string; keys: readonly string[]; fallback: Record<string, s
   { key: '999', keys: ['S001'], fallback: { S001: '주식선물' } },
 ];
 
-const SEG_BASE = 'whitespace-nowrap px-2 py-[2px] font-data text-2xs tabular-nums';
+const SEG_BASE = 'whitespace-nowrap px-2 py-[2px] font-data text-xs tabular-nums';
 const SEG_ON = 'bg-tint-selection text-accent';
 const SEG_OFF = 'text-fg-dim hover:bg-bg-input-hover';
 
