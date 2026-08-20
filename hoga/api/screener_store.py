@@ -265,6 +265,58 @@ def fetch_concurrency_from_env() -> int:
     return _DEFAULT_FETCH_CONCURRENCY
 
 
+#: 한 거래일의 행 중 `volume == 0` 이 이 비율을 넘으면 **그 날짜를 저장하지 않는다.**
+#:
+#: 실측 기저선(`daily_unadjusted`, 최근 1년 · 전 종목): 평균 **3.4%** · 최소 2.1% ·
+#: 정상일 최대 ~7%. 사고일 `2026-06-18` 은 **89.4%**(3541 중 3164). 마진이 7배라
+#: 오탐 여지가 없어 임계를 넉넉히 50% 로 둔다 — 정확한 값보다 **정상 시장의 어떤 날도
+#: 걸리지 않는 것**이 중요하다.
+_UNCONFIRMED_ZERO_VOLUME_RATIO = 0.5
+
+
+def drop_unconfirmed_days(rows: list[DailyBar]) -> tuple[list[DailyBar], list[dt.date]]:
+    """미확정으로 보이는 **날짜 단위**로 행을 걸러낸다. (남길 행, 버린 날짜들) 반환.
+
+    **왜 필요한가 — `2026-06-18` 사고.** 그날 코퍼스는 3541 종목 전부가 `o=h=l=c`(전일
+    종가) 에 거래량 0 이었다. 정규장 시작 전(장전 시간외) 스냅샷이 그날 일봉으로 굳은
+    것이다. `_gap_trading_days` 의 EOD 컷오프는 **요청 범위**만 좁힐 뿐 **응답을 검증하지
+    않아서**, 상류가 미확정 봉을 실어 보내면 그대로 저장됐다.
+
+    그리고 한 번 저장되면 **영원히 안 고쳐진다**: 갱신기는 `last_raw_date` 다음날부터만
+    긁으므로 행이 있는 날짜는 갭이 아니다. 실측으로 두 달간(6/18~8/20) 그대로였다.
+
+    **버린 날짜는 갭으로 남는 것까지가 설계다.** 저장하지 않으면 `last_raw_date` 가
+    그 날짜를 넘지 않으므로 **다음 갱신이 자동으로 재시도**한다 — 별도 재시도 큐가
+    필요 없다. 반대로 저장해 버리면 위의 영구 고착이 된다.
+
+    **날짜 단위**인 이유: 여러 날을 한 번에 캐치업할 때 하루가 부실하다고 정상인 날까지
+    버리면 갱신이 통째로 멎는다.
+
+    ⚠ 실패 모드 하나: 상류가 같은 날짜를 계속 부실하게 주면 매 갱신이 같은 날짜를 다시
+    거부한다(무한 재시도). 코드로 막지 않고 **로그로 드러낸다** — 재시도 자체는 옳은
+    동작이고, 상류가 나으면 저절로 풀린다.
+    """
+    by_date: dict[dt.date, list[DailyBar]] = {}
+    for bar in rows:
+        by_date.setdefault(bar.date, []).append(bar)
+    kept: list[DailyBar] = []
+    dropped: list[dt.date] = []
+    for date, bars in by_date.items():
+        zero = sum(1 for b in bars if not b.volume)
+        if len(bars) and zero / len(bars) > _UNCONFIRMED_ZERO_VOLUME_RATIO:
+            dropped.append(date)
+            log.warning(
+                "screener.update.unconfirmed_day_dropped date=%s codes=%d zero_volume=%d "
+                "(%.1f%% > %.0f%%) — 미확정(장전) 스냅샷으로 보여 저장하지 않는다. "
+                "갭으로 남으므로 다음 갱신이 재시도한다.",
+                date, len(bars), zero, zero / len(bars) * 100,
+                _UNCONFIRMED_ZERO_VOLUME_RATIO * 100,
+            )
+            continue
+        kept.extend(bars)
+    return kept, dropped
+
+
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
                      trading_days: list[str], now_ms: int) -> int:
     """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 실제로 추가된
@@ -279,6 +331,9 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
 
     fetched = await asyncio.gather(*(_one(c) for c in codes))
     rows: list[DailyBar] = [b for batch in fetched for b in batch]
+    # 저장 **전에** 응답을 검증한다 — 요청 범위를 좁히는 것만으로는 상류가 실어 보내는
+    # 미확정 봉을 못 막는다(`drop_unconfirmed_days` 의 2026-06-18 사고 참조).
+    rows, _dropped = drop_unconfirmed_days(rows)
     if not rows:
         return 0
     up = sdir / "daily_unadjusted.parquet"
