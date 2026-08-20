@@ -54,6 +54,13 @@ export const LINE_HIDDEN_COLOR = { color: TRANSPARENT } as const;
  * The single predicate: "should this `t` be hidden by the Auction Mask?".
  * Returns false fast when the toggle is off so callers can use it inline
  * without an outer guard.
+ *
+ * ⚠ **점-루프 안에서는 쓰지 말 것.** 이 함수는 `axis.inClosingAuctionWindow(t)` 를
+ * 부르고, 그건 `locateSegment` 이진 탐색을 한 번 더 돌린다. 점마다 `contains` ·
+ * `toVirtual` 까지 따로 부르면 점당 탐색이 3회가 된다. 프로젝터들은 그래서
+ * `axis.classifyAndProject(t)` 로 셋을 **한 번에** 받고 `mask && at.inAuction` 을
+ * 인라인한다(90일 35,100점 실측 4.34ms → 1.66ms). 남은 소비처
+ * (`brokerLateEntryMarkers`)는 이벤트 단위라 호출 수가 작아 그대로 쓴다.
  */
 export function isAuctionHidden(
   axis: Pick<VirtualAxis, 'inClosingAuctionWindow'>,

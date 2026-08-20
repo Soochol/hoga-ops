@@ -310,6 +310,38 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     }
   });
 
+  it('I) 프로그램 순매수·누적 체결강도 — 분리 캐시 전/후 (days 스윕)', async () => {
+    const { projectProgramTradeNetAmount, makeCachedProgramTradeProjector } = await import('./programTrade');
+    const { makeCumulativeCachedProjector } = await import('./fillStrength');
+    for (const days of [1, 5, 30, 90]) {
+      const { bundle, axis, pointCount } = makeBundle(days);
+      // ⚠ 공용 픽스처엔 `program_trade` 가 **없다** — 안 채우면 프로젝터가 첫 줄에서
+      // 빈 배열로 조기 반환해 측정이 공허해진다.
+      bundle.program_trade = {
+        points: bundle.quote_ratio.points.map((q: { t: number }, i: number) => ({
+          t: q.t, net_amount: ((i % 200) - 100) * 1_000_000,
+        })),
+      };
+      const cachedPt = makeCachedProgramTradeProjector();
+      cachedPt(bundle, axis); // warm
+      const tPtCached = median(() => cachedPt(bundle, axis));
+      const tPtFull = median(() => projectProgramTradeNetAmount(bundle, axis));
+
+      const cachedCum = makeCumulativeCachedProjector();
+      cachedCum(bundle, axis, true); // warm
+      const tCumWarm = median(() => cachedCum(bundle, axis, true));
+      // 미스 경로 = 5분 refetch · 마스크 토글 · 좌측 팬. 인스턴스를 새로 만들어 재현한다.
+      const tCumMiss = median(() => makeCumulativeCachedProjector()(bundle, axis, true));
+      // eslint-disable-next-line no-console
+      console.log(
+        `[I] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} segs=${String(days).padStart(2)} | ` +
+        `프로그램: 캐시=${tPtCached.toFixed(3)}ms vs 풀=${tPtFull.toFixed(3)}ms | ` +
+        `누적: warm=${tCumWarm.toFixed(3)}ms miss=${tCumMiss.toFixed(3)}ms → ` +
+        `프로그램 캐시 /초(${FLUSH_HZ.toFixed(1)}Hz)=${(tPtCached * FLUSH_HZ).toFixed(1)}ms`,
+      );
+    }
+  });
+
   it('D) 참고: 이동평균(MA) — 안정 chartBundle 경로(틱당 아님), config개수 스윕', () => {
     const days = 90;
     const { axis } = makeAxisAndSegments(days);

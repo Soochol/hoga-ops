@@ -12,7 +12,7 @@ import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
-import { isAuctionHidden, isExcludedQuoteBucket, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
+import { isExcludedQuoteBucket, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 import { detectSurgeSide } from '../surge/detectSurges';
@@ -47,9 +47,13 @@ export function projectBidPoints(
 ): LineData<Time>[] {
   const { bid } = resolveTokensThemed(TOKEN_SPEC);
   const out: LineData<Time>[] = [];
+  // 축 조회 1회 — `classifyAndProject` 가 `contains`·`inClosingAuctionWindow`·`toVirtual`
+  // 을 한 번의 이진 탐색으로 준다. 근거·실측은 `chart/util/auctionHide.ts` 의
+  // `isAuctionHidden` 경고 참조. 계약은 `candle.perf.test.ts` 가 호출 횟수로 잠근다.
   for (const p of points) {
-    if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    const at = axis.classifyAndProject(p.t);
+    if (!at.contained) continue;
+    const time = (at.virtual / 1000) as UTCTimestamp;
     if (isSyntheticHogaGapPoint(p)) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
@@ -59,7 +63,7 @@ export function projectBidPoints(
     // from the last pre-auction point so the line doesn't slope into the window.
     // 시간 마스크(마감 동시호가) OR 구조 센티넬(장중 VI 포함, (0,0)) — ADR-0062 v2.
     if (
-      isAuctionHidden(axis, auctionWindowMask, p.t) ||
+      (auctionWindowMask && at.inAuction) ||
       isExcludedQuoteBucket(auctionWindowMask, p.bid_total, p.ask_total)
     ) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
@@ -92,9 +96,13 @@ export function projectAskPoints(
 ): LineData<Time>[] {
   const { ask } = resolveTokensThemed(TOKEN_SPEC);
   const out: LineData<Time>[] = [];
+  // 축 조회 1회 — `classifyAndProject` 가 `contains`·`inClosingAuctionWindow`·`toVirtual`
+  // 을 한 번의 이진 탐색으로 준다. 근거·실측은 `chart/util/auctionHide.ts` 의
+  // `isAuctionHidden` 경고 참조. 계약은 `candle.perf.test.ts` 가 호출 횟수로 잠근다.
   for (const p of points) {
-    if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    const at = axis.classifyAndProject(p.t);
+    if (!at.contained) continue;
+    const time = (at.virtual / 1000) as UTCTimestamp;
     if (isSyntheticHogaGapPoint(p)) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
@@ -102,7 +110,7 @@ export function projectAskPoints(
     }
     // 시간 마스크(마감 동시호가) OR 구조 센티넬(장중 VI 포함, (0,0)) — ADR-0062 v2.
     if (
-      isAuctionHidden(axis, auctionWindowMask, p.t) ||
+      (auctionWindowMask && at.inAuction) ||
       isExcludedQuoteBucket(auctionWindowMask, p.bid_total, p.ask_total)
     ) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
