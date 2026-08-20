@@ -8,8 +8,12 @@ export type JumpModifiers = Pick<MouseEvent, 'ctrlKey' | 'metaKey'>;
 
 /** 새 탭 요청 = ctrl(Win/Linux) 또는 ⌘(mac) — 브라우저 링크의 보편 관용구.
  *  shift 는 제외한다: 브라우저에서 '새 창'이고, 리스트에서는 범위 선택 후보라
- *  나중에 충돌한다. */
-function wantsNewTab(e: JumpModifiers | undefined): boolean {
+ *  나중에 충돌한다.
+ *
+ *  `/study` 저장뷰 드로어도 이 술어를 쓴다(studyViews/StudyViewsDrawer). 목적지는
+ *  달라도 **"무엇이 새 탭 의도인가" 는 한 곳에서만 정한다** — 두 표면이 각자
+ *  판정하면 한쪽만 shift 를 받아들이는 식으로 조용히 갈라진다. */
+export function wantsNewTab(e: JumpModifiers | undefined): boolean {
   return e !== undefined && (e.ctrlKey || e.metaKey);
 }
 

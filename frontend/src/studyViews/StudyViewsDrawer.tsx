@@ -15,6 +15,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyActiveViewStore } from '../state/studyActiveView';
+import { wantsNewTab } from '../live/useJumpToLive';
+import { openStudyViewInNewTab, studyViewDeepLinkPath } from './studyDeepLink';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -235,11 +237,17 @@ export function StudyViewsDrawer() {
 
   function navigateToStudyView(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
-    navigate(`/study?view=${row.id}`);
+    navigate(studyViewDeepLinkPath(row.id));
   }
 
   /**
-   * 저장뷰를 연다 — 활성 뷰를 **제자리 교체**한다(ADR-0149). "새 탭으로 열기" 는 없다.
+   * 저장뷰를 **이 탭에서** 연다 — 활성 뷰를 제자리 교체한다(ADR-0149). 앱 안에 뷰가
+   * 쌓이는 자리는 없다: 탭바도, disposition 도 되살아나지 않았다.
+   *
+   * 다른 뷰를 곁눈질하려면 **브라우저 탭**을 쓴다 — 행 ctrl/⌘+클릭이
+   * `openStudyViewInNewTab` 으로 `?view=` 딥링크를 새 탭에 띄우고, 이 함수는 그 경로에서
+   * 아예 호출되지 않는다(그래야 이 탭의 활성 뷰가 그대로다). 두 「탭」의 구별은
+   * `studyDeepLink.ts` 도크스트링에 있다.
    *
    * 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
    * 종목과 구간이다.
@@ -405,9 +413,20 @@ export function StudyViewsDrawer() {
         style={{
           background: isActive ? 'var(--tint-selection)' : 'transparent',
         }}
-        // Ctrl/⌘+클릭 분기는 ADR-0149 로 사라졌다 — 탭이 없으면 "새 탭으로" 가 무의미하다
-        // (ADR-0113 §3 의 `disposition` 제거와 동형). 일반 클릭과 똑같이 현재 뷰를 교체한다.
-        onClick={isEditing ? undefined : () => {
+        // Ctrl/⌘+클릭 = **브라우저** 새 탭. ADR-0149 가 없앤 것은 앱 안의 저장뷰 탭이고
+        // (그 disposition 은 되살리지 않는다), 여기서 타는 것은 같은 ADR §7 이 정식 경로로
+        // 못박은 `?view=` 딥링크다 — 새 상태가 0이라 결정과 충돌하지 않는다.
+        //
+        // 지연 스케줄(180ms — 이름 변경 더블클릭과의 모호성 해소)을 **거치지 않는다**:
+        // 수정자 클릭에는 그 모호성이 없고, 사용자 제스처 핸들러 안에서 동기로 열어야
+        // 팝업 차단에 걸리지 않는다. 이 탭의 활성 뷰는 건드리지 않는 것이 계약이라
+        // `openStudyView`(=`openSave` + navigate)를 부르지 않는다.
+        onClick={isEditing ? undefined : (e) => {
+          if (wantsNewTab(e)) {
+            cancelPendingStudyViewNavigation();
+            openStudyViewInNewTab(row.id);
+            return;
+          }
           scheduleStudyViewNavigation(row);
         }}
         onContextMenu={isEditing ? undefined : (e) => {
@@ -600,8 +619,11 @@ export function StudyViewsDrawer() {
                           aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
                           aria-expanded={!groupCollapsed}
                           title={`${group.label} ${group.code}`}
-                          // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 새 탭으로 열던 분기는
+                          // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 앱 탭으로 열던 분기는
                           // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
+                          // 행에 생긴 브라우저 새 탭(ctrl/⌘+클릭)을 여기까지 넓히지 않은 것은
+                          // 의도다 — 헤더의 클릭 하나는 접기이고, 어느 뷰를 열지는 헤더가
+                          // 아니라 행이 정한다.
                           onClick={() => {
                             toggleGroup(group.key);
                           }}
