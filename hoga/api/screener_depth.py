@@ -1,4 +1,4 @@
-"""스크리너 총잔량 조건 평가 — 두 갈래가 한 모듈에 있다.
+"""스크리너 총잔량 조건 평가 — 세 갈래가 한 모듈에 있다.
 
 **과거 N일 peak 대비** (``ask_depth_new_high`` / ``bid_depth_new_high``):
 당일 총잔량(10단계 합) 분봉 peak ≥ (threshold_pct/100) × 지난 N거래일 peak.
@@ -6,6 +6,16 @@
 온다 — 과거는 (code,date)당 **hogaplay 우선, 없으면 kiwoom_live**
 (:func:`hoga.api.depth_daily.select_with_fallback`). 폴백 전에는 hogaplay 결손일이
 창에서 통째로 빠져 기준선이 낮아졌다(위양성).
+
+**기간내 peak** (``ask_depth_new_high_period`` / ``bid_depth_new_high_period``):
+위 판정을 **최근 lookback 거래일 각각에** 적용해 하루라도 통과하면 통과. 각 날의
+기준선은 그 날을 **제외한** 직전 period 거래일이다(:func:`_period_breakout`).
+데이터 의존이 당일 갈래와 같아 로딩을 공유하며, 당일 전용인 기준시각 돌파와 달리
+eod 에서도 동작한다. ``lookback=1`` 은 정의상 당일 갈래와 같은 답을 내야 하고,
+그것이 오늘 칸의 소스를 실시간 승격본으로 고정하는 근거다(:func:`_side_series`).
+파라미터 이름의 비대칭 — 여기 ``lookback`` 은 "기간내"의 그 기간이고 당일 갈래의
+``lookback`` 은 비교 창이다 — 은 :class:`hoga.api.models.DepthPeakPeriodParams`
+주석에 근거를 적어 두었다.
 
 **기준시각 돌파** (``ask_depth_renewal`` / ``bid_depth_renewal``, 당일 전용):
 기준시각 이후 그 side 총잔량 최댓값 ≥ (threshold_pct/100) × 개장~기준시각 최댓값.
@@ -18,7 +28,7 @@ depth_daily·코퍼스에 의존하지 않는다 — 애초에 쓸 수도 없다
 놓치지 않아야 한다. /live 의 실시간 알림(``sell_total_renewal``)과 같은 의미를 보지만
 그쪽은 틱 단위 이벤트라 재무장 히스테리시스가 있고 이쪽은 없다(집합엔 불필요).
 
-이 조건은 총잔량 데이터가 정의되는 종목 — 관심∪히트맵(캡처 대상) — 에서만 평가된다.
+이 조건들은 총잔량 데이터가 정의되는 종목 — 관심∪히트맵(캡처 대상) — 에서만 평가된다.
 데이터가 없는 종목은 결과에서 제외하고 커버리지 리포트로 사용자에게 알린다(수집 요청
 대상). depth 조건이 없으면 이 모듈은 관여하지 않는다(:func:`has_depth_conditions`).
 
@@ -51,12 +61,18 @@ BID_TYPE = "bid_depth_new_high"
 # 는 하루당 스칼라 하나라 시각 분해가 없어서 애초에 쓸 수 없다.
 RENEWAL_ASK_TYPE = "ask_depth_renewal"
 RENEWAL_BID_TYPE = "bid_depth_renewal"
+# 기간내 peak(과거 N일 peak 대비의 "기간내" 판)  — 당일 하나가 아니라 **최근
+# lookback 거래일 중 어느 하루라도** 그 날 직전 period 일 peak 를 돌파했는지 본다.
+# 데이터 의존은 당일 peak 조건과 같다(depth_daily + 오늘 실시간 승격본).
+PERIOD_ASK_TYPE = "ask_depth_new_high_period"
+PERIOD_BID_TYPE = "bid_depth_new_high_period"
 _PEAK_TYPES = (ASK_TYPE, BID_TYPE)
+_PERIOD_TYPES = (PERIOD_ASK_TYPE, PERIOD_BID_TYPE)
 _RENEWAL_TYPES = (RENEWAL_ASK_TYPE, RENEWAL_BID_TYPE)
 # 사전계산 코드셋으로 처리되는 조건 타입의 **단일 진실 소스**. screener_scan 이 같은
 # 목록을 따로 들고 있었는데, 새 타입을 한쪽에만 더하면 다른 쪽이 CONDITION_COMPILERS
 # 조회로 흘러 KeyError 로 죽는다 — 그래서 여기서 import 하게 했다.
-DEPTH_TYPES = (*_PEAK_TYPES, *_RENEWAL_TYPES)
+DEPTH_TYPES = (*_PEAK_TYPES, *_PERIOD_TYPES, *_RENEWAL_TYPES)
 _DEPTH_TYPES = DEPTH_TYPES
 # 당일 값 소스 — 실시간 승격본 하나뿐이다. REST30 승격(kis_api)은 캡처와 함께
 # 제거됐고(2026-07-17 — api 폴백 없음), KIS WS 계층은 ADR-0118 에서 삭제됐다.
@@ -289,6 +305,88 @@ def _past_agg(
     return peak, have
 
 
+def _eval_axis(corpus: list[str], today_ref: str | None) -> list[str]:
+    """판정 축 — 코퍼스 거래일 중 ``today_ref`` 이전 + ``today_ref`` 자신(오름차순).
+
+    intraday 에서 today_ref(오늘)는 코퍼스(확정 거래일)에 아직 없고, eod 에서는
+    today_ref == corpus[-1] 라 이미 들어 있다. ``< today_ref`` 로 자른 뒤 붙이면
+    두 경우가 중복 없이 같은 축이 된다.
+    """
+    if today_ref is None:
+        return list(corpus)
+    return [d for d in corpus if d < today_ref] + [today_ref]
+
+
+def _side_series(
+    dd: pl.DataFrame,
+    side_col: str,
+    *,
+    today_ref: str | None,
+    today_peaks: dict[str, tuple[int | None, int | None]],
+    idx: int,
+) -> dict[str, dict[str, int]]:
+    """code -> {date: peak}. ``today_ref`` 칸은 항상 ``today_peaks`` 가 소유한다.
+
+    intraday 에서 dd 에 **오늘자 행이 이미 있을 수 있다** — 스윕이 캡처 완료 훅에서
+    돌기 때문이다. 그 행은 장중 중간 집계라 실시간 승격본에서 뽑은 today_peaks 와
+    갈리므로, dd 쪽 오늘 행을 빼고 today_peaks 로 덮어 축의 마지막 칸을 한 소스로
+    고정한다. eod 에서는 today_peaks 자체가 dd[today_ref] 에서 왔으므로 이 교체가
+    무연산이다 — 두 basis 가 같은 코드를 탄다.
+    """
+    series: dict[str, dict[str, int]] = {}
+    if dd.height:
+        past = dd.filter(pl.col("date") != today_ref) if today_ref is not None else dd
+        for code, date, peak in zip(
+            past["code"].to_list(), past["date"].to_list(), past[side_col].to_list(),
+            strict=True,
+        ):
+            if peak is not None:
+                series.setdefault(code, {})[date] = int(peak)
+    if today_ref is not None:
+        for code, tp in today_peaks.items():
+            v = tp[idx]
+            if v is not None:
+                series.setdefault(code, {})[today_ref] = int(v)
+    return series
+
+
+def _period_breakout(
+    series: dict[str, dict[str, int]],
+    axis: list[str],
+    *,
+    lookback: int,
+    period: int,
+    threshold_pct: float,
+) -> set[str]:
+    """최근 ``lookback`` 거래일 중 **하루라도** 직전 ``period`` 일 peak 를 돌파한 코드.
+
+    비교 창은 그 날을 **제외**한다(strictly before). 당일 조건(:data:`ASK_TYPE`)이
+    "오늘 vs 지난 N일"인 것과 같은 규칙이고, 자기를 포함하면 threshold_pct > 100 이
+    원리적으로 영원히 거짓이 된다 — 신고가 SQL 돌파 CTE(``v >= mx``, 창에 자기 포함)를
+    글자 그대로 미러하면 안 되는 자리다.
+
+    기준 창의 결손일은 "있는 만큼"으로 판정한다(창 전체를 요구하면 depth 데이터
+    희소성 때문에 거의 전멸한다 — 실측 종목당 중위 35거래일). 대가는 얕은 기준선에서
+    오는 위양성이고, 그 방향은 커버리지 배너가 사용자에게 알린다. 당일 조건과 같은
+    트레이드오프다.
+    """
+    ok: set[str] = set()
+    start = max(0, len(axis) - lookback)
+    ratio = threshold_pct / 100.0
+    for code, by_date in series.items():
+        for i in range(start, len(axis)):
+            cur = by_date.get(axis[i])
+            if cur is None:
+                continue
+            base = [v for d in axis[max(0, i - period):i] if (v := by_date.get(d)) is not None]
+            if not base:
+                continue  # 기준선 없음 → 비교 불가(제외). 당일 조건의 have==0 과 같다.
+            if cur >= max(base) * ratio:
+                ok.add(code)
+                break
+    return ok
+
+
 def evaluate(  # noqa: PLR0912, PLR0915
     *,
     data_dir: Path,
@@ -303,12 +401,18 @@ def evaluate(  # noqa: PLR0912, PLR0915
     호출 전 :func:`has_depth_conditions` 로 depth 조건 존재를 확인한다(없으면 부르지
     않음). ``universe_codes`` 는 스캔 유니버스(KOSPI/KOSDAQ 필터 후) 코드 집합.
 
-    두 조건 갈래는 데이터 의존이 달라 서로의 비용을 지지 않는다 — 기준시각 돌파만
-    있는 스크린은 depth_daily·코퍼스를 읽지 않고, 반환 ``coverage`` 도 None 이다
-    (그 커버리지 배너의 처방인 "지난 N일 수집"이 당일 전용 조건엔 무의미하다).
+    갈래는 데이터 의존으로 갈린다. **이력 갈래(당일 ∪ 기간내)는 로딩을 공유하고**
+    (같은 depth_daily·코퍼스·오늘 승격본을 본다), 기준시각 돌파만 있는 스크린은
+    그 셋을 아예 읽지 않으며 반환 ``coverage`` 도 None 이다 — 그 커버리지 배너의
+    처방인 "지난 N일 수집"이 당일 전용 조건엔 줄 수 있는 조치가 아니기 때문이다.
     """
     peak_leaves = [c for c in conditions if c.type in _PEAK_TYPES]
+    period_leaves = [c for c in conditions if c.type in _PERIOD_TYPES]
     renewal_leaves = [c for c in conditions if c.type in _RENEWAL_TYPES]
+    # 당일 peak 와 기간내 peak 는 데이터 의존이 같다(depth_daily + 오늘 승격본).
+    # 로딩 게이트를 둘의 합집합으로 두어, 기간내 조건만 있는 스크린도 같은 프레임을
+    # 공유한다 — 갈라 두면 period 갈래가 빈 dd 로 조용히 전량 미통과가 된다.
+    history_leaves = peak_leaves + period_leaves
     warnings: list[str] = []
 
     name_by = _depth_universe(data_dir)
@@ -324,11 +428,15 @@ def evaluate(  # noqa: PLR0912, PLR0915
     ask_n: int | None = None
     bid_n: int | None = None
     max_n = 0
+    # 로딩 블록 밖(커버리지·사이드카)에서도 읽으므로 함수 스코프에 둔다.
+    today_ref: str | None = None
+    dd = pl.DataFrame()
+    corpus: list[str] = []
 
-    # === 과거 N일 peak 대비 조건 (ask/bid_depth_new_high) ===
+    # === 과거 이력을 보는 조건 (ask/bid_depth_new_high[_period]) ===
     # 과거 코퍼스·depth_daily 는 이 갈래에서만 필요하다 — 기준시각 돌파 조건만 있는
     # 스크린에서 parquet 을 읽거나 depth_corpus_unavailable 을 붙이지 않는다.
-    if peak_leaves:
+    if history_leaves:
         # (code,date)당 1행 — hogaplay 우선, 없으면 kiwoom_live 폴백. 센티넬 행
         # (퇴화 캡처, eligible 0)은 그 안에서 걸러진다. 소스 선택 규칙은 스토어가
         # 소유하므로 여기서 src 를 직접 필터하지 않는다.
@@ -351,6 +459,7 @@ def evaluate(  # noqa: PLR0912, PLR0915
         if not corpus:
             warnings.append("depth_corpus_unavailable")
 
+        # --- 당일 판정 (ask/bid_depth_new_high) ---
         for leaf in peak_leaves:
             n = leaf.params.lookback
             thr = leaf.params.threshold_pct
@@ -371,13 +480,41 @@ def evaluate(  # noqa: PLR0912, PLR0915
                     ok.add(code)
             passing[leaf.id] = ok
 
-        # 커버리지(집합 관점: excluded/partial)는 가장 넓은 N 창 기준.
-        max_n = max(leaf.params.lookback for leaf in peak_leaves)
+        # --- 기간내 판정 (ask/bid_depth_new_high_period) ---
+        # 축(코퍼스 거래일 + 오늘)과 side 시계열은 leaf 파라미터와 무관하므로 side 당
+        # 한 번만 만든다 — 같은 side 의 leaf 가 여럿이어도 프레임 순회는 두 번이 상한.
+        if period_leaves:
+            axis = _eval_axis(corpus, today_ref)
+            series_cache: dict[str, dict[str, dict[str, int]]] = {}
+            for leaf in period_leaves:
+                is_ask = leaf.type == PERIOD_ASK_TYPE
+                side = "ask_peak" if is_ask else "bid_peak"
+                if side not in series_cache:
+                    series_cache[side] = _side_series(
+                        dd, side, today_ref=today_ref, today_peaks=today_peaks,
+                        idx=0 if is_ask else 1)
+                passing[leaf.id] = _period_breakout(
+                    {c: v for c, v in series_cache[side].items() if c in depth_codes},
+                    axis,
+                    lookback=leaf.params.lookback, period=leaf.params.period,
+                    threshold_pct=leaf.params.threshold_pct,
+                )
+
+        # 커버리지(집합 관점: excluded/partial)는 가장 넓은 창 기준. 기간내 조건이
+        # 요구하는 이력은 lookback + period 다 — 가장 이른 판정일도 자기 직전
+        # period 일을 기준선으로 쓰므로, lookback 만 세면 배너의 "지난 N일 수집"
+        # 처방이 기준 창을 덮지 못한다.
+        max_n = max(
+            [lf.params.lookback for lf in peak_leaves]
+            + [lf.params.lookback + lf.params.period for lf in period_leaves]
+        )
         _, cov_have_by = _past_agg(
             dd, _window_dates(corpus, before=today_ref, n=max_n), "ask_peak")
 
-        # 표시값(사이드카)은 각 side 의 자기 leaf N 창 기준 — 혼합 N 스크린에서 배지가 실제
-        # 통과를 좌우한 값을 보여주도록(가장 넓은 N 을 양쪽에 쓰지 않는다).
+        # 표시값(사이드카)은 **당일 조건 전용**이다 — 배지 문구가 "당일 vs 지난 N일"
+        # 이라 기간내 조건의 N 을 섞으면 남의 의미로 그려진다(프론트도 depthSides 를
+        # 당일 조건으로만 켠다). 각 side 는 자기 leaf 의 N 창을 쓴다: 혼합 N 스크린에서
+        # 배지가 실제 통과를 좌우한 값을 보여주도록(가장 넓은 N 을 양쪽에 쓰지 않는다).
         def _side_n(t: str) -> int | None:
             ns = [lf.params.lookback for lf in peak_leaves if lf.type == t]
             return max(ns) if ns else None
@@ -458,7 +595,7 @@ def evaluate(  # noqa: PLR0912, PLR0915
             bid_post_max=bid_post,
             bid_renewal_start_hhmm=bid_hhmm,
         )
-        if not peak_leaves:
+        if not history_leaves:
             continue
         have = int(cov_have_by.get(code, 0))
         if have == 0:
@@ -471,7 +608,7 @@ def evaluate(  # noqa: PLR0912, PLR0915
     coverage = DepthCoverage(
         lookback=max_n, evaluated=len(depth_codes),
         excluded=excluded, partial=partial,
-    ) if peak_leaves else None
+    ) if history_leaves else None
     return DepthEvalResult(
         passing=passing, coverage=coverage, values=values, warnings=warnings,
     )

@@ -1773,6 +1773,20 @@ class DepthPeakParams(BaseModel):                      # 매도/매수 총잔량
     # >100=초과 돌파. 단일 비율 파라미터로 "보다 클 때"와 "N% 이상"을 통합.
     threshold_pct: float = Field(default=100.0, ge=1)
 
+class DepthPeakPeriodParams(BaseModel):                # 기간내 매도/매수 총잔량 peak 신고
+    # ⚠ 형제인 DepthPeakParams 와 `lookback` 의 의미가 **뒤집혀 있다**. 저쪽의
+    # lookback 은 "비교 대상 과거 거래일 수"(당일 하나를 지난 N일과 견준다)지만,
+    # 여기서는 BreakoutParams·TradeValuePeriodParams 의 지배적 규약을 따라 "기간내"
+    # 의 그 기간 — 판정을 시도할 최근 거래일 수다. 비교 기준 창은 `period` 가 진다.
+    # 어느 쪽에 맞춰도 한쪽 형제와는 어긋나는 구조라, 조건 이름(`..._period`)이
+    # 가리키는 규약(`trade_value_period`·`new_high`)을 택했다.
+    lookback: int = Field(ge=1)                        # N: 판정 대상 최근 거래일 수
+    period: int = Field(ge=1)                          # M: 각 날의 비교 기준 창(그 날 **제외**)
+    # 판정: 최근 N거래일 중 **어느 하루 d 라도** peak(d) ≥ (threshold_pct/100) ×
+    # max(peak, d 직전 M거래일). 비율 규약은 DepthPeakParams 와 같다(100=신고 돌파,
+    # 동률 포함 · <100=근접 · >100=초과 돌파).
+    threshold_pct: float = Field(default=100.0, ge=1)
+
 class DepthRenewalParams(BaseModel):                   # 매도 총잔량 기준시각 돌파 — 당일 전용
     # 판정: start_hhmm 이후 최댓값 ≥ (threshold_pct/100) × 개장~start_hhmm 최댓값.
     # 두 창 모두 유효 스냅샷이 있어야 하며, 이후 창의 **최댓값**으로 보므로 하루 중
@@ -1850,6 +1864,16 @@ class BidDepthNewHighLeaf(BaseModel):
     id: str
     params: DepthPeakParams
 
+class AskDepthNewHighPeriodLeaf(BaseModel):
+    type: Literal["ask_depth_new_high_period"] = "ask_depth_new_high_period"
+    id: str
+    params: DepthPeakPeriodParams
+
+class BidDepthNewHighPeriodLeaf(BaseModel):
+    type: Literal["bid_depth_new_high_period"] = "bid_depth_new_high_period"
+    id: str
+    params: DepthPeakPeriodParams
+
 class AskDepthRenewalLeaf(BaseModel):
     type: Literal["ask_depth_renewal"] = "ask_depth_renewal"
     id: str
@@ -1861,7 +1885,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 

@@ -1,4 +1,4 @@
-import type { BreakoutParams, DepthPeakParams, DepthRenewalParams, PeriodParams } from '../api/screener';
+import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenewalParams, PeriodParams } from '../api/screener';
 
 // 기준시각 허용 범위(KST) — 백엔드 validate_session_start_hhmm 과 같은 경계다.
 // 여기서 막는 것은 편의고, 진짜 계약은 서버가 지킨다.
@@ -98,6 +98,30 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
     <div className="text-2xs text-fg-dim">관심·히트맵 종목 중 데이터 보유 종목 대상</div>
+  </div>;
+}
+
+/** (기간 N, 비교 창 M, 과거 peak 대비 X%) 폼 — ask/bid_depth_new_high_period 공용.
+ *  문장형은 BreakoutForm("최근 [N]일 내 [M]일 신고")을 따른다 — 같은 (N, M) 규약이라
+ *  같은 어순으로 읽혀야 한다. 어느 side 인지는 조건 행 라벨이 말한다(DepthPeakForm 규칙). */
+export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPeriodParams; onChange: (p: DepthPeakPeriodParams) => void }) {
+  return <div className="flex flex-col gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-sm text-fg-dim">최근</span>
+      <Num ariaLabel="최근 기간(일)" w="w-16" min={1} max={1000}
+        value={params.lookback} onChange={(n) => onChange({ ...params, lookback: n ?? 1 })} />
+      <span className="text-sm text-fg-dim">일 내</span>
+      <Num ariaLabel="비교 기간(일)" w="w-16" min={1} max={1000}
+        value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} />
+      <span className="text-sm text-fg-dim">일 peak 대비</span>
+      <Num ariaLabel="과거 peak 대비(%)" min={0}
+        value={params.threshold_pct} onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
+      <span className="text-sm text-fg-dim">% 이상</span>
+    </div>
+    <div className="text-2xs text-fg-dim">
+      관심·히트맵 종목 중 데이터 보유 종목 대상 · 최근 N일 중 하루라도 닿으면 통과
+      · 비교 창은 그 날을 제외한 직전 M거래일
+    </div>
   </div>;
 }
 

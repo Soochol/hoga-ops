@@ -3,9 +3,10 @@ import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { CONDITION_GROUPS } from './ConditionBuilder';
 
 describe('catalog', () => {
-  it('covers all 14 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
+  it('covers all 16 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
-      ['ask_depth_new_high', 'ask_depth_renewal', 'bid_depth_new_high', 'bid_depth_renewal',
+      ['ask_depth_new_high', 'ask_depth_new_high_period', 'ask_depth_renewal',
+       'bid_depth_new_high', 'bid_depth_new_high_period', 'bid_depth_renewal',
        'change_pct', 'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
@@ -33,6 +34,20 @@ describe('catalog', () => {
     expect(CONDITION_CATALOG.bid_depth_new_high.label).toBe('매수 총잔량 peak');
     expect(CONDITION_CATALOG.ask_depth_new_high.summarize({ lookback: 20, threshold_pct: 100 }))
       .toBe('20일 peak의 100%');
+  });
+  it('기간내 총잔량 peak 조건: 기본 파라미터 + 라벨 + 요약', () => {
+    // 기본값은 실측에서 왔다 — depth_daily 는 종목당 중위 35거래일 보유라
+    // lookback + period 가 25 를 넘으면 기본 상태가 커버리지 부족 배너로 덮인다.
+    expect(makeLeaf('ask_depth_new_high_period').params)
+      .toEqual({ lookback: 5, period: 20, threshold_pct: 100 });
+    expect(makeLeaf('bid_depth_new_high_period').params)
+      .toEqual({ lookback: 5, period: 20, threshold_pct: 100 });
+    expect(CONDITION_CATALOG.ask_depth_new_high_period.label).toBe('기간내 매도 총잔량 peak');
+    expect(CONDITION_CATALOG.bid_depth_new_high_period.label).toBe('기간내 매수 총잔량 peak');
+    expect(CONDITION_CATALOG.ask_depth_new_high_period
+      .summarize({ lookback: 5, period: 20, threshold_pct: 100 })).toBe('5일내 20일 peak의 100%');
+    expect(CONDITION_CATALOG.bid_depth_new_high_period
+      .summarize({ lookback: 10, period: 30, threshold_pct: 120 })).toBe('10일내 30일 peak의 120%');
   });
   it('총잔량 기준시각 돌파 조건: 기본 파라미터 + 라벨 + 요약', () => {
     expect(makeLeaf('ask_depth_renewal').params).toEqual({ start_hhmm: 1200, threshold_pct: 100 });
