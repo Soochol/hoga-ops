@@ -28,6 +28,7 @@ import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimefram
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import type { LiveTimeframe, MinuteTimeframe } from '../state/livePage';
 import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
+import type { StudySavedRangeCoverageNotice } from './studyDailyContext';
 
 /** 차트 데이터 배선 — 페이지가 쿼리 소유자라 값은 위에서 오지만, 요소를 만드는
  *  건 창이다(로딩 자리·에러 경계·셸 선택이 창의 결정이 되게). */
@@ -54,6 +55,14 @@ export type StudyChartWindowProps = {
    *  과했지만 신호는 있었다). 이 두 값이 그 자리를 메운다. */
   sidecarLoading: boolean;
   sidecarFailed: boolean;
+  /**
+   * 저장 구간이 캘린더 봉 코퍼스 밖(또는 일부만)일 때의 안내. null = 정상.
+   *
+   * 판정은 `studySavedRangeCoverage` 가 소유하고 여기서는 그리기만 한다. 이 안내가
+   * 없던 동안 기간 밴드와 크로스헤어 동기화가 **아무 표시 없이** 사라졌다 — 사용자는
+   * 데이터가 없다는 것이 아니라 기능이 고장났다고 읽는다.
+   */
+  savedRangeNotice: StudySavedRangeCoverageNotice | null;
 };
 
 export function StudyChartWindow(props: StudyChartWindowProps) {
@@ -107,7 +116,7 @@ function SidecarStatusChip({ failed }: { failed: boolean }) {
   return (
     <div
       data-testid="study-sidecar-status"
-      className="pointer-events-none absolute right-2 top-2 z-[25] flex items-center gap-1.5 rounded-md px-2 py-1 text-xs shadow-panel"
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs shadow-panel"
       style={{ background: 'var(--bg-card)', color: failed ? 'var(--error)' : 'var(--fg-dim)' }}
     >
       <span
@@ -116,6 +125,34 @@ function SidecarStatusChip({ failed }: { failed: boolean }) {
         style={{ background: failed ? 'var(--error)' : 'var(--accent)' }}
       />
       {failed ? '지표 불러오기 실패' : '지표 불러오는 중'}
+    </div>
+  );
+}
+
+/**
+ * 저장 구간이 캘린더 봉 코퍼스 밖일 때의 칩.
+ *
+ * **왜 `/live` 의 경고 칩을 재사용하지 않는가**: 저쪽 문구는 `일부 과거구간 로딩 실패`
+ * 두 가지로 고정돼 있고 둘 다 **fetch 실패**를 뜻한다. 여기서는 조회가 성공했고
+ * 데이터가 원래 없는 것이라, 그 문구를 빌리면 "재시도하면 되겠지" 로 오도한다.
+ * (`deriveHogaMissingNotice` 가 "고장 아님, 원래 없음" 을 따로 말하는 것과 같은 이유.)
+ *
+ * 뒷문장은 `title`(호버)과 `aria-label`(스크린리더) 양쪽에 싣는다 — 칩 한 줄은
+ * "무엇이" 만 담고, "어디부터 있는지 · 그래서 무엇이 안 보이는지" 는 거기 있다.
+ * 스택 컨테이너가 `pointer-events-none` 이라 이 칩만 `auto` 로 되살려야 호버가
+ * 산다(`LiveChartRoot` 의 `partial-load-chip` 선례).
+ */
+function SavedRangeCoverageChip({ notice }: { notice: StudySavedRangeCoverageNotice }) {
+  return (
+    <div
+      data-testid="study-saved-range-coverage"
+      title={notice.detail}
+      aria-label={`${notice.text}. ${notice.detail}`}
+      className="pointer-events-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs shadow-panel"
+      style={{ background: 'var(--bg-card)', color: 'var(--warn)' }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--warn)' }} />
+      {notice.text}
     </div>
   );
 }
@@ -129,6 +166,7 @@ function StudyChartWindowInner({
   loading,
   sidecarLoading,
   sidecarFailed,
+  savedRangeNotice,
 }: StudyChartWindowProps & { timeframe: LiveTimeframe }) {
   // 임계는 `/live` 값을 재사용하지 않는다 — 액션이 2버튼이라 그대로 쓰면 일찍
   // 접힌다(#903, #905 가 실측으로 대체).
@@ -180,10 +218,17 @@ function StudyChartWindowInner({
             </ChartDrawingShell>
           </ChartErrorBoundary>
         )}
-        {/* 차트가 실제로 떠 있을 때만 — 로딩 자리(위 분기)에는 이미 문구가 있고,
-            거기 겹쳐 놓으면 "불러오는 중" 이 두 번 나온다. */}
-        {chart && !loading && (sidecarLoading || sidecarFailed) && (
-          <SidecarStatusChip failed={sidecarFailed} />
+        {/* 우상단 칩 스택. 차트가 실제로 떠 있을 때만 — 로딩 자리(위 분기)에는 이미
+            문구가 있고, 거기 겹쳐 놓으면 "불러오는 중" 이 두 번 나온다.
+
+            둘을 한 컬럼에 쌓는 이유: 같은 모서리에 각자 `absolute` 로 앉히면 사이드카가
+            로딩 중이면서 저장 구간이 코퍼스 밖인 창(콜드 로드에서 흔하다)에서 정확히
+            겹친다. `LiveChartRoot` 가 좌하단 칩 둘에 쓴 것과 같은 처방. */}
+        {chart && !loading && (sidecarLoading || sidecarFailed || savedRangeNotice) && (
+          <div className="pointer-events-none absolute right-2 top-2 z-[25] flex flex-col items-end gap-1">
+            {(sidecarLoading || sidecarFailed) && <SidecarStatusChip failed={sidecarFailed} />}
+            {savedRangeNotice && <SavedRangeCoverageChip notice={savedRangeNotice} />}
+          </div>
         )}
       </div>
     </div>

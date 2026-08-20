@@ -37,7 +37,12 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
-import { studyDailyViewport, studySavedRangeMarks } from './studyDailyContext';
+import {
+  studyDailyViewport,
+  studySavedRangeCoverage,
+  studySavedRangeMarks,
+  type StudySavedRangeCoverageNotice,
+} from './studyDailyContext';
 import { STUDY_VENUE } from './studyVenuePolicy';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
@@ -467,6 +472,10 @@ export function StudyPage() {
   // 창별 차트 props. 훅이 아니라 평범한 계산이다 — 위쪽 조기 return 들 뒤라
   // 여기서 훅을 부르면 렌더마다 훅 순서가 갈린다.
   const chartPropsByWindow: Record<string, StudyChartRootProps | null> = {};
+  // 저장 구간이 캘린더 봉 코퍼스 밖일 때의 안내. 차트 props 가 아니라 **창 props** 로
+  // 간다 — `LiveChartRoot` 에는 저장 구간이라는 개념이 없고(밴드 마크를 받아 그릴
+  // 뿐이다), 이 사실은 `/study` 만 안다.
+  const savedRangeNoticeByWindow: Record<string, StudySavedRangeCoverageNotice | null> = {};
   for (const spec of chartWindowSpecs) {
     const result = bundlesByWindow[spec.windowId];
     if (!result) continue;
@@ -483,6 +492,11 @@ export function StudyPage() {
     // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다.
     const band = result.dailyContext && referenceSave
       ? studySavedRangeMarks(referenceSave, model.chartBundle.candles)
+      : null;
+    // 코퍼스 커버리지 안내는 **밴드와 같은 게이트**를 쓴다(그 함수의 「호출부 의존」
+    // 절). 분봉 경로는 캔들이 저장 구간으로 클립돼 있어 판정이 성립하지 않는다.
+    savedRangeNoticeByWindow[spec.windowId] = result.dailyContext && referenceSave
+      ? studySavedRangeCoverage(referenceSave, model.chartBundle.candles, model.save.timeframe)
       : null;
     // 맥락 창의 기본 뷰포트가 저장 뷰포트를 이긴다 — 저장 뷰포트는 좁은 창 시절의
     // 값이라 그대로 복원하면 맥락이 도로 사라진다.
@@ -607,6 +621,7 @@ export function StudyPage() {
                   // 불러오는 중" 이 뜬다.
                   sidecarLoading: bundlesByWindow[windowId]?.isSidecarLoading ?? false,
                   sidecarFailed: bundlesByWindow[windowId]?.sidecarError != null,
+                  savedRangeNotice: savedRangeNoticeByWindow[windowId] ?? null,
                 })}
               />
             </div>

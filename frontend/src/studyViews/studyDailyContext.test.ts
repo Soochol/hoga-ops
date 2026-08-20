@@ -6,6 +6,7 @@ import {
   STUDY_DAILY_FULL_HISTORY_FROM,
   studyDailyContextWindow,
   studyDailyViewport,
+  studySavedRangeCoverage,
   studySavedRangeMarks,
 } from './studyDailyContext';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
@@ -122,5 +123,85 @@ describe('studyDailyViewport', () => {
 
   it('캔들이 없으면 null', () => {
     expect(studyDailyViewport([], fromMs, toMs)).toBeNull();
+  });
+});
+
+/**
+ * 저장 구간이 캘린더 봉 코퍼스 밖일 때의 안내.
+ *
+ * 이 가드가 **닫는 방향**은 하나다: 코퍼스의 첫/끝 봉이 저장 구간을 못 덮는 경우.
+ * 구간 **안쪽 구멍**은 보지 않고(그 전제는 함수 주석), 분봉 경로는 호출부가 막는다
+ * (캔들이 저장 구간으로 클립돼 있어 여기 넣으면 전 구간이 "앞이 잘렸다" 가 된다).
+ */
+describe('studySavedRangeCoverage', () => {
+  // `Date.UTC` 로 잡으면 그대로 KST 09:00 이라 캔들 ts(`_daily_t_ms`)와 같은 격자다.
+  // 날짜 문구를 눈으로 확인할 수 있게 실제 달력 값을 쓴다.
+  const FROM = Date.UTC(2026, 5, 1); // 2026-06-01
+  const TO = Date.UTC(2026, 6, 1); // 2026-07-01
+  const daily = (overrides: Partial<StudyViewReference> = {}) => save({
+    timeframe: 'D',
+    range: { from_date: '20260601', to_date: '20260701', from_ms: FROM, to_ms: TO },
+    ...overrides,
+  });
+  /** `startUtc` 부터 하루 간격 `n` 개. */
+  const bars = (startUtc: number, n: number, stepDays = 1): Candle[] =>
+    Array.from({ length: n }, (_, i) => ({
+      ts_ms: startUtc + i * stepDays * DAY_MS,
+      open: 100, high: 110, low: 90, close: 105, vol_a: 10, vol_b: 0,
+    }));
+
+  it('전 구간을 덮으면 침묵한다 — 정상 화면에 칩이 남으면 안 된다', () => {
+    expect(studySavedRangeCoverage(daily(), bars(FROM - 10 * DAY_MS, 60), 'D')).toBeNull();
+  });
+
+  it('캔들이 하나도 없으면 침묵한다 — 그 화면은 빈 상태가 소유한다', () => {
+    expect(studySavedRangeCoverage(daily(), [], 'D')).toBeNull();
+  });
+
+  it('저장 시작일에 봉이 없어도(휴장) 코퍼스가 그 전부터면 침묵한다', () => {
+    // 이틀 간격이라 FROM 당일 봉이 없다. 그래도 코퍼스는 구간을 덮고 있다 —
+    // 판정 기준이 "그 날의 봉" 이 아니라 "코퍼스의 첫/끝 봉" 이라는 성질을 고정한다.
+    const twoDayGrid = bars(FROM - 3 * DAY_MS, 30, 2);
+    expect(twoDayGrid.some((c) => c.ts_ms === FROM)).toBe(false);
+    expect(studySavedRangeCoverage(daily(), twoDayGrid, 'D')).toBeNull();
+  });
+
+  describe('구간 안에 봉이 하나도 없다 — 밴드·동기화가 통째로 사라지는 경우', () => {
+    it('무엇이 사라지는지와 어디부터 있는지를 함께 말한다', () => {
+      // 코퍼스가 저장 끝보다 뒤에서 시작한다(실측 010140: 저장 2024-08 · 코퍼스 2025-04).
+      const notice = studySavedRangeCoverage(daily(), bars(Date.UTC(2026, 6, 6), 20), 'D');
+      expect(notice?.text).toBe('저장 구간 데이터 없음');
+      // 저장 구간과 코퍼스 시작이 **다른 값**으로 둘 다 문구에 있어야 원인이 보인다.
+      expect(notice?.detail).toContain('2026.06.01~2026.07.01');
+      expect(notice?.detail).toContain('2026.07.06');
+      expect(notice?.detail).toContain('크로스헤어 동기화');
+    });
+
+    it('W 에서는 동기화를 잃었다고 말하지 않는다 — 애초에 없는 기능이다', () => {
+      const notice = studySavedRangeCoverage(daily(), bars(Date.UTC(2026, 6, 6), 20), 'W');
+      expect(notice?.text).toBe('저장 구간 데이터 없음');
+      expect(notice?.detail).toContain('기간 밴드');
+      expect(notice?.detail).not.toContain('크로스헤어');
+    });
+  });
+
+  describe('부분 커버리지 — 밴드가 그려지되 구간을 거짓말한다', () => {
+    it('앞이 잘리면 코퍼스 시작을 지목한다', () => {
+      const notice = studySavedRangeCoverage(daily(), bars(Date.UTC(2026, 5, 10), 40), 'D');
+      expect(notice?.text).toBe('저장 구간 일부만 표시');
+      expect(notice?.detail).toContain('2026.06.10 부터');
+    });
+
+    it('뒤가 잘리면 코퍼스 끝을 지목한다', () => {
+      // 6/1 이전에 시작해 6/5 에 끝난다 → 앞은 멀쩡, 뒤가 모자란다.
+      const notice = studySavedRangeCoverage(daily(), bars(Date.UTC(2026, 4, 28), 9), 'D');
+      expect(notice?.text).toBe('저장 구간 일부만 표시');
+      expect(notice?.detail).toContain('2026.06.05 까지만');
+    });
+
+    it('앞뒤가 다 잘리면 남은 구간을 통째로 말한다', () => {
+      const notice = studySavedRangeCoverage(daily(), bars(Date.UTC(2026, 5, 10), 5), 'D');
+      expect(notice?.detail).toContain('2026.06.10~2026.06.14 만');
+    });
   });
 });

@@ -90,6 +90,7 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
       chart={null}
       sidecarLoading={false}
       sidecarFailed={false}
+      savedRangeNotice={null}
       {...overrides}
     />,
   );
@@ -216,6 +217,52 @@ describe('전역 v2 가 지표 SSOT 다', () => {
 
       expect(screen.getByTestId('study-page-loading')).toBeTruthy();
       expect(screen.queryByTestId('study-sidecar-status')).toBeNull();
+    });
+  });
+
+  /**
+   * 저장 구간이 캘린더 봉 코퍼스 밖일 때의 칩.
+   *
+   * 이게 없던 동안 기간 밴드와 크로스헤어 동기화가 **아무 표시 없이** 사라졌다 —
+   * 데이터가 없다는 사실이 화면에 닿지 않아 사용자는 기능 고장으로 읽었다.
+   * 판정은 `studySavedRangeCoverage` 가 소유하므로 여기서는 **닿는지**만 본다.
+   */
+  describe('저장 구간 커버리지 칩', () => {
+    const chart = {} as NonNullable<Parameters<typeof StudyChartWindow>[0]['chart']>;
+    const notice = { text: '저장 구간 데이터 없음', detail: '이 종목의 과거 데이터는 2025.04.22 부터 있습니다.' };
+
+    it('안내가 없으면 아무것도 그리지 않는다', () => {
+      renderWindow({ chart });
+
+      expect(screen.queryByTestId('study-saved-range-coverage')).toBeNull();
+    });
+
+    it('안내가 있으면 칩과 뒷문장이 함께 닿는다', () => {
+      renderWindow({ chart, savedRangeNotice: notice });
+
+      const chip = screen.getByTestId('study-saved-range-coverage');
+      expect(chip.textContent).toContain('저장 구간 데이터 없음');
+      // 칩 한 줄은 "무엇이" 만 담는다 — "어디부터 있는지" 는 툴팁·스크린리더 경로다.
+      expect(chip.getAttribute('title')).toContain('2025.04.22');
+      expect(chip.getAttribute('aria-label')).toContain('2025.04.22');
+    });
+
+    it('사이드카 칩과 같이 떠도 서로를 덮지 않는다 — 한 컬럼에 쌓인다', () => {
+      renderWindow({ chart, sidecarLoading: true, savedRangeNotice: notice });
+
+      const sidecar = screen.getByTestId('study-sidecar-status');
+      const coverage = screen.getByTestId('study-saved-range-coverage');
+      // 같은 부모의 형제여야 스택이다. 각자 absolute 로 앉으면 부모가 갈린다.
+      expect(coverage.parentElement).toBe(sidecar.parentElement);
+      // 그 부모가 위치를 소유한다 — 칩 자신이 absolute 면 다시 겹친다.
+      expect(sidecar.className).not.toContain('absolute');
+      expect(coverage.parentElement?.className).toContain('absolute');
+    });
+
+    it('페이지 로딩 자리에는 겹쳐 뜨지 않는다', () => {
+      renderWindow({ chart, loading: true, savedRangeNotice: notice });
+
+      expect(screen.queryByTestId('study-saved-range-coverage')).toBeNull();
     });
   });
 });
