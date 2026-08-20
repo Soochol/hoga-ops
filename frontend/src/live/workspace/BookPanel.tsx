@@ -79,6 +79,24 @@ type Props = {
    * "그 시장에 없는 단계" 임을 말하는 유일한 장치다.
    */
   afterHoursLabel?: string;
+  /**
+   * 사다리가 **현재 커서의 것이 아닐 수 있다** — 새 시점의 조회가 비행 중.
+   *
+   * 로딩 문구로 갈아치우지 않고 흐리게만 하는 이유: 커서를 훑으면 버킷마다
+   * 조회가 새로 뜨는데, 그때마다 사다리를 비우면 스크럽 내내 화면이 깜빡여
+   * 정작 읽으려던 값을 못 읽는다. 값은 남기고 확정 여부만 낮춘다.
+   *
+   * **딤은 스냅샷에서 온 것에만 건다** — 사다리·중앙 가격축·예상체결·총잔량.
+   * 체결강도·시/고/저·요약 패널은 커서에서 즉시 파생되므로 이미 새 시점의
+   * 정확한 값이고, 같이 흐려지면 "이것도 낡았다" 는 거짓말이 된다.
+   *
+   * 남는 비대칭 하나는 **의도된 것**이다: 요약의 최고/최저 색과 사다리 행의
+   * 시/고/저 칩은 커서 시점 값을 스냅샷 시점 분모에 견주므로 비행 중 잠깐
+   * 어긋난다. 분모를 한 벌 더 조회해 맞출 수 있지만 그러면 날짜마다 쿼리가
+   * 불어난다 — 사다리가 눈에 띄게 흐려져 있는 동안의 색조 하나를 위해 치를
+   * 값이 아니다.
+   */
+  stale?: boolean;
 };
 
 const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
@@ -124,7 +142,11 @@ export default function BookPanel({
   vi = null,
   afterHoursTotals = null,
   afterHoursLabel = '시간외',
+  stale = false,
 }: Props) {
+  // 스냅샷 파생 블록에만 얹는 딤. 값은 읽히되 확정이 아님을 말한다 — 전환은
+  // DESIGN.md Motion 의 상태 전환 규격(150ms ease-in-out).
+  const staleDim = `transition-opacity duration-150 ease-in-out${stale ? ' opacity-50' : ''}`;
   if (snapshot === undefined) return <PanelState>커서 위치 불러오는 중…</PanelState>;
   // 사다리가 없어도 **시간외 총잔량은 그린다.** 이 분기가 없으면 0E 가 정상 수신 중인데도
   // 화면이 통째로 "호가 데이터 없음" 이 된다 — 장전 시간외 종가매매(08:30–08:40)가 그
@@ -166,11 +188,13 @@ export default function BookPanel({
 
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0. */}
+      {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0.
+          `exp_price`/`exp_qty` 가 스냅샷 필드라 사다리와 같이 흐려진다. */}
       <ExpectedFillBanner
         price={snapshot.exp_price ?? 0}
         qty={snapshot.exp_qty ?? 0}
         baselinePrice={baselinePrice}
+        dimClass={staleDim}
       />
       {/* min-w 가 load-bearing: 창을 좁히면 좌우 열이 0 으로 수렴해 잔량 숫자가
           겹친다. 최소 폭을 잡아 두면 대신 가로 스크롤이 생긴다(깨지지 않는다).
@@ -195,6 +219,7 @@ export default function BookPanel({
                 maxQty={maxQty}
                 side="ask"
                 badge={deltaBadges?.get(`a:${l.price}`) ?? null}
+                dimClass={staleDim}
               />
             ))}
             {/* `중` 행의 좌측 빈칸(3열 공통 y). 22행 정렬 계약의 일부다. */}
@@ -242,8 +267,9 @@ export default function BookPanel({
           </div>
 
           {/* 중앙: 가격축 — 세로 프레임(border-x) 없음. 열 분리는 좌우 잔량 바의
-              방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안). */}
-          <div className="flex flex-col">
+              방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안).
+              열 전체가 스냅샷 파생(가격·중간가)이라 열 자체에 딤을 건다. */}
+          <div className={`flex flex-col ${staleDim}`}>
             <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <PriceCell
@@ -327,16 +353,21 @@ export default function BookPanel({
                 side="bid"
                 badge={deltaBadges?.get(`b:${l.price}`) ?? null}
                 topDivider={i === 0}
+                dimClass={staleDim}
               />
             ))}
           </div>
         </div>
       </div>
+      {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
+          커서 스팟 경로를 타지 않으므로 흐리지 않는다 — 사다리가 낡았다는 말이
+          그 숫자에는 해당하지 않는다. */}
       <TotalQtyStrip
         totals={afterHoursTotals ?? { ask: snapshot.tot_ask, bid: snapshot.tot_bid }}
         maskRatio={maskRatio}
         afterHoursTotals={afterHoursTotals}
         afterHoursLabel={afterHoursLabel}
+        dimClass={afterHoursTotals === null ? staleDim : ''}
       />
     </div>
   );
@@ -355,16 +386,19 @@ function ExpectedFillBanner({
   price,
   qty,
   baselinePrice,
+  dimClass = '',
 }: {
   price: number;
   qty: number;
   baselinePrice: number | null;
+  /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
+  dimClass?: string;
 }) {
   if (price <= 0 || qty <= 0) return null;
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className="flex items-baseline justify-center gap-6 bg-bg-card px-3 py-1.5"
+      className={`flex items-baseline justify-center gap-6 bg-bg-card px-3 py-1.5 ${dimClass}`}
       data-testid="book-expected-fill"
     >
       <span className="flex items-baseline gap-1.5 whitespace-nowrap">
@@ -529,11 +563,16 @@ function QtyBar({
   side,
   badge,
   topDivider = false,
+  dimClass = '',
 }: {
   qty: number;
   maxQty: number;
   side: 'ask' | 'bid';
   badge: OrderbookDeltaBadge | null;
+  /** stale 딤 유틸리티. **래퍼가 아니라 셀에 직접 얹는다** — 잔량 바를 묶는
+   *  래퍼를 하나 두면 3열 22행 정렬 계약을 세는 자리(BookPanel.test.tsx 의
+   *  자식 수 단언)가 깨진다. 구조를 안 바꾸는 것이 이 prop 의 존재 이유다. */
+  dimClass?: string;
   /** 매수 1호가 바에만 true — 매도/매수 경계선(3열 공통 y). 여기선 boxed 같은
    *  경쟁 테두리가 없어 셀에 직접 border-t 를 얹는다(border-box 라 22px 유지). */
   topDivider?: boolean;
@@ -545,7 +584,7 @@ function QtyBar({
       data-book-divider={topDivider ? '' : undefined}
       className={`relative flex items-center ${
         topDivider ? 'border-t border-border' : ''
-      }`}
+      } ${dimClass}`}
       style={{ height: ROW_H }}
     >
       {/* Toss식 알약형 깊이 막대(2026-07-23 실측 이식). 행(ROW_H)보다 위아래
@@ -682,6 +721,7 @@ function TotalQtyStrip({
   maskRatio,
   afterHoursTotals,
   afterHoursLabel,
+  dimClass = '',
 }: {
   /** 그릴 총잔량. **어느 출처를 쓸지는 호출부가 정한다** — 시간외 값이 있으면 그것,
    *  없으면 사다리 스냅샷의 총잔량. 여기서 `snapshot` 을 직접 받아 `?? ` 로 떨어뜨리면
@@ -693,6 +733,9 @@ function TotalQtyStrip({
    *  라벨·체결량 줄이 붙는다. 사다리(정규장 마지막 값)와 합이 안 맞는 것을 설명하는 장치. */
   afterHoursTotals: AfterHoursTotals | null;
   afterHoursLabel: string;
+  /** stale 딤. **총잔량은 출처가 둘이라 조건도 둘**이다 — 시간외 값이면 커서
+   *  스팟 경로를 타지 않으므로 호출부가 빈 문자열을 넘긴다. */
+  dimClass?: string;
 }) {
   // 시간외 총잔량이 오면 그걸 쓴다 — 위 사다리(정규장 15:30 마지막 스냅샷)는
   // 그대로 두고 이 스트립만 살아 움직인다. KRX-only 종목은 15:30 에 0D 가 끊겨
@@ -701,7 +744,7 @@ function TotalQtyStrip({
   const isAfterHours = afterHoursTotals !== null;
   const { ask, bid } = totals;
   return (
-    <div className="border-t border-border">
+    <div data-testid="book-total-strip" className={`border-t border-border ${dimClass}`}>
       {maskRatio ? (
         <div className="h-1 bg-bg-subtle" data-testid="book-total-masked" />
       ) : (

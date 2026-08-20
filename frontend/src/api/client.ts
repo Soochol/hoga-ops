@@ -108,7 +108,11 @@ export async function apiAction(path: string, init?: RequestInit): Promise<void>
 }
 
 /** Thin alias preserved for existing useQuery callers (session, stock-dates). */
-export const apiGet = <T>(path: string): Promise<T> => apiCall<T>(path);
+/** GET 헬퍼. `init` 은 **취소용 `signal` 을 넘기기 위해** 열어 둔 구멍이다 —
+ *  커서 스팟처럼 사용자가 계속 키를 바꾸는 표면에서 죽은 요청을 끊지 않으면
+ *  브라우저 커넥션이 시체로 막혀 최신 요청이 자기 앞의 폐기분을 기다린다
+ *  (실측 2026-08-20: 서버 2~7ms 인 `/api/orderbook` 이 스크럽 중 596~781ms). */
+export const apiGet = <T>(path: string, init?: RequestInit): Promise<T> => apiCall<T>(path, init);
 
 export function __resetConfigForTests(): void {
   _configPromise = null;

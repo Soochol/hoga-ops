@@ -181,7 +181,11 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const isSpot = scope.kind === 'minute-cursor';
   const spotTimeframe = isSpot ? scope.minuteTimeframe : null;
-  const spotOrderbook = useLiveOrderbookAtCursor({
+  const {
+    spot: spotOrderbook,
+    stale: spotOrderbookStale,
+    error: spotOrderbookError,
+  } = useLiveOrderbookAtCursor({
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
     venue,
@@ -277,12 +281,24 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     subtractDaysKst(todayKst, 60),
     todayKst,
   );
-  const cursorBaseline = useMemo(
+  // 분모의 날짜는 커서가 아니라 **사다리에 실제로 그려지는 스냅샷**의 날짜다.
+  //
+  // 커서 날짜로 잡으면 스팟 조회가 비행 중일 때 분자(아직 옛 스냅샷)와 분모(벌써
+  // 새 날짜)가 갈려, 있지도 않았던 등락률의 프레임이 뜬다 — `/study` 에서 실측된
+  // 그 버그와 같은 것이고(2026-08-20: 같은 가격 26,050 이 −1.51%→+2.76%), 같은
+  // 훅을 쓰는 이 창도 구조상 같은 상태를 지난다. 사다리가 자기 시각을 싣고 있으니
+  // 그것을 따라가면 늦은 프레임도 정합하고, 낡았다는 사실은 딤이 말한다.
+  //
+  // `isPastDateCursor` 는 **그대로 둔다** — 상하한가·250일(`spotLimits`)의 게이트는
+  // "사용자가 어느 날짜를 보고 있나" 라서 축이 다르고, 그쪽은 보수적인 편이 옳다.
+  const ladderDate = snapshot != null ? realMsToYyyymmdd(snapshot.ts_ms) : cursorDate;
+  const isPastDateLadder = ladderDate !== null && ladderDate < todayKst;
+  const ladderBaseline = useMemo(
     () =>
-      cursorDate !== null && isPastDateCursor
-        ? prevCloseBeforeDate(baselineCandles.data?.candles ?? [], cursorDate)
+      ladderDate !== null && isPastDateLadder
+        ? prevCloseBeforeDate(baselineCandles.data?.candles ?? [], ladderDate)
         : null,
-    [cursorDate, isPastDateCursor, baselineCandles.data],
+    [ladderDate, isPastDateLadder, baselineCandles.data],
   );
   // change_pct_source==='unavailable' = 백엔드가 기준가를 **못 믿겠다고 판정한** 상태
   // (adjusted_baseline_stale · adjusted_baseline_scale_mismatch). 그때 백엔드는
@@ -305,8 +321,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 과거 날짜 커서면 일봉에서 뽑은 그날의 기준가. 로딩 중이면 null(등락률 생략) —
   // 틀린 값을 잠깐 보여주느니 비는 편이 옳다.
   const baselinePrice = resolveBookBaseline({
-    isPastDateCursor,
-    cursorBaseline,
+    isPastDateLadder,
+    ladderBaseline,
     singlePriceActive: singlePriceSnapshot !== null,
     singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline,
@@ -413,6 +429,27 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 가 기준가에서 예상 발동가를 계산하는데, 스팟에선 summary(dayOpen)도 비고 과거
   // 날짜면 limits(base_price)도 비므로 base 가 없어 대시로 떨어진다.
   const spotVi = isSpot ? null : (viStatus.data?.vi ?? null);
+  // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
+  // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
+  const bookStale = singlePriceSnapshot === null && spotOrderbookStale;
+  // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
+  // 비우므로 사다리는 `undefined` 로 떨어져 "커서 위치 불러오는 중…" 을 그리는데,
+  // 그 위에 실패 칩을 얹으면 한 화면이 "실패했다" 와 "불러오는 중" 을 동시에
+  // 말한다. `/study` 의 BookContent 와 같은 처리 — 같은 패널을 쓰는 두 화면이
+  // 같은 실패에 다른 모양을 내면 안 된다.
+  if (isSpot && spotOrderbookError !== null) {
+    return (
+      <div
+        data-testid="orderbook-spot-error"
+        className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 text-center"
+      >
+        <span className="font-data text-xs" style={{ color: 'var(--error)' }}>
+          호가 불러오기 실패
+        </span>
+        <span className="text-2xs text-fg-dim">커서를 다시 움직이면 재시도합니다</span>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col">
       {showAvailableHint && (
@@ -447,6 +484,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           deltaBadges={isSpot ? null : deltaBadges}
           limits={spotLimits}
           vi={spotVi}
+          stale={bookStale}
         />
       </div>
     </div>
@@ -785,8 +823,13 @@ function candleRangeUnbounded(
 /**
  * 10호가 창 등락률의 **분모**를 고른다. 세 갈래이고 우선순위가 있다.
  *
- * 1. **과거 날짜 커서** → 그날의 전일종가. 분자(호가)만 과거로 가고 분모가 오늘에
+ * 1. **과거 날짜 사다리** → 그날의 전일종가. 분자(호가)만 과거로 가고 분모가 오늘에
  *    남으면 부호까지 뒤집힌다(2026-08-03 실측: −20.00% 로 찍힌 값의 정답이 +0.72%).
+ *
+ *    **판정 기준은 커서가 아니라 사다리다**(2026-08-20). 두 날짜는 스팟 조회가
+ *    비행 중일 때 갈리는데, 그때 커서로 판정하면 같은 오류의 축소판이 매 이동마다
+ *    난다 — 옛 사다리에 새 날짜의 분모. 커서가 아니라 **화면에 그려진 가격**이
+ *    분모의 짝이다.
  * 2. **시간외 단일가(16:00–18:00)** → **당일 종가**. 그 구간의 거래는 종가 ±10%
  *    안에서 이뤄지므로 전일종가 기준 등락률은 화면에서 의미가 없다 — 종가가 곧
  *    0% 여야 한다. 벤더도 자기 `change_pct` 를 종가 기준으로 주는데 사다리만
@@ -801,19 +844,19 @@ function candleRangeUnbounded(
  * 이 코드베이스의 규율이다(`hidden_pre_open` 이 같은 이유로 값을 죽인다).
  */
 export function resolveBookBaseline({
-  isPastDateCursor,
-  cursorBaseline,
+  isPastDateLadder,
+  ladderBaseline,
   singlePriceActive,
   singlePriceClose,
   liveBaseline,
 }: {
-  isPastDateCursor: boolean;
-  cursorBaseline: number | null;
+  isPastDateLadder: boolean;
+  ladderBaseline: number | null;
   singlePriceActive: boolean;
   singlePriceClose: number | null;
   liveBaseline: number | null;
 }): number | null {
-  if (isPastDateCursor) return cursorBaseline;
+  if (isPastDateLadder) return ladderBaseline;
   if (singlePriceActive) return singlePriceClose;
   return liveBaseline;
 }

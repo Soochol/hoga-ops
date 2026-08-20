@@ -129,6 +129,12 @@ vi.mock('../live/indicators/IndicatorPanel', () => ({
 
 import { StudyPage } from './StudyPage';
 
+/** 훅 반환은 값이 아니라 **값 + 신선도**다(`LiveOrderbookSpotResult`). 이 파일의
+ *  단언은 값에만 관심이 있으므로 감싸는 일을 한 곳에 모은다 — stale/error 를
+ *  직접 세우는 테스트는 이 헬퍼를 쓰지 않고 객체를 그대로 넘긴다. */
+const spotResult = (spot: unknown) => ({ spot, stale: false, error: null }) as never;
+
+
 const HOVER_MS = Date.UTC(2026, 5, 16, 1, 0, 0);
 
 const cutoffDistribution: DayVolumeDistribution = {
@@ -270,7 +276,7 @@ beforeEach(() => {
     pastDataWarnings: [],
     venue: 'KRX',
   });
-  useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+  useLiveOrderbookAtCursorMock.mockReturnValue(spotResult(undefined));
   useLiveBrokersAtCursorMock.mockReturnValue(undefined);
   useSymbolSearchMock.mockReturnValue([searchHit]);
   useLiveIndicesMock.mockReturnValue({ data: [] });
@@ -706,7 +712,7 @@ describe('StudyPage', () => {
 
 
   it('hydrates reference detail indicators from cursor spot data on hover', () => {
-    useLiveOrderbookAtCursorMock.mockReturnValue({
+    useLiveOrderbookAtCursorMock.mockReturnValue(spotResult({
       snapshot: {
         ts_ms: HOVER_MS,
         seq: 1,
@@ -717,7 +723,7 @@ describe('StudyPage', () => {
       },
       available_from: null,
       source: 'hogaplay',
-    });
+    }));
     useLiveBrokersAtCursorMock.mockReturnValue([
       {
         broker: '키움증권',
@@ -845,7 +851,7 @@ describe('StudyPage', () => {
   });
 
   it('waits for the debounced sidebar cursor before activating reference spot details', () => {
-    useLiveOrderbookAtCursorMock.mockReturnValue({
+    useLiveOrderbookAtCursorMock.mockReturnValue(spotResult({
       snapshot: {
         ts_ms: HOVER_MS,
         seq: 1,
@@ -856,7 +862,7 @@ describe('StudyPage', () => {
       },
       available_from: null,
       source: 'hogaplay',
-    });
+    }));
     useLiveBrokersAtCursorMock.mockReturnValue([
       {
         broker: '키움증권',
@@ -886,7 +892,7 @@ describe('StudyPage', () => {
   });
 
   it('shows orderbook loading instead of no-data while study cursor spot orderbook is fetching', () => {
-    useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+    useLiveOrderbookAtCursorMock.mockReturnValue(spotResult(undefined));
     useLiveBrokersAtCursorMock.mockReturnValue([]);
     useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
@@ -898,7 +904,7 @@ describe('StudyPage', () => {
   });
 
   it('keeps study cursor indicators visible while cursor remains set without relying on active callbacks', () => {
-    useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+    useLiveOrderbookAtCursorMock.mockReturnValue(spotResult(undefined));
     useLiveBrokersAtCursorMock.mockReturnValue(undefined);
     useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 

@@ -19,6 +19,12 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { RangeBundle } from '../../api/types';
 
+/** 훅 반환은 값이 아니라 **값 + 신선도**다(`LiveOrderbookSpotResult`). 이 파일의
+ *  단언은 값에만 관심이 있으므로 감싸는 일을 한 곳에 모은다 — stale/error 를
+ *  직접 세우는 테스트는 이 헬퍼를 쓰지 않고 객체를 그대로 넘긴다. */
+const spotResult = (spot: unknown) => ({ spot, stale: false, error: null }) as never;
+
+
 // sector-ranking 라우팅 가드만 검증한다 — 지수 happy-path 는 SectorRankingWindow 를
 // 스텁으로 대체(자체 데이터 훅은 SectorRankingWindow.test 가 커버).
 vi.mock('./SectorRankingWindow', () => ({
@@ -73,17 +79,20 @@ vi.mock('./BookPanel', () => ({
     baselinePrice,
     limits,
     vi: viEvent,
+    stale,
   }: {
     maskRatio: boolean;
     baselinePrice: number | null;
     limits: unknown;
     vi: unknown;
+    stale?: boolean;
   }) => (
     <div>
       <div>mask:{String(maskRatio)}</div>
       <div>baseline:{String(baselinePrice)}</div>
       <div>limits:{limits === null || limits === undefined ? 'null' : 'set'}</div>
       <div>vi:{viEvent === null || viEvent === undefined ? 'null' : 'set'}</div>
+      <div>stale:{String(stale ?? false)}</div>
     </div>
   ),
 }));
@@ -184,6 +193,9 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     __resetGroupChartLinksForTests();
     useLiveCursorStore.getState().resetCursor();
     vi.mocked(useLiveOrderbookAtCursor).mockClear();
+    // 이 블록은 훅에 **넘어가는 인자**만 검사하지만 반환값은 여전히 소비된다 —
+    // 구조분해 대상이라 undefined 면 렌더가 통째로 터진다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
   });
 
   it('링크 없음 → 연동 대기 카드 (매물대·프로그램)', () => {
@@ -291,6 +303,9 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     __resetGroupChartLinksForTests();
     useLiveCursorStore.getState().resetCursor();
     vi.mocked(useLiveOrderbookAtCursor).mockClear();
+    // 이 블록은 훅에 **넘어가는 인자**만 검사하지만 반환값은 여전히 소비된다 —
+    // 구조분해 대상이라 undefined 면 렌더가 통째로 터진다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
   });
 
   it('같은 그룹 차트 창의 분봉 호버 → 스팟 훅에 code 를 넘긴다', () => {
@@ -359,7 +374,11 @@ describe('DataWindow — 10호가 동시호가 마스크 (ADR-0119 PR-D2)', () =
   }
 
   beforeEach(() => {
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+    // 훅은 값과 **신선도**를 함께 낸다(LiveOrderbookSpotResult) — 값만 돌려주던
+    // 시절의 undefined 를 그대로 두면 소비처가 stale 을 못 읽는다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({
+      spot: undefined, stale: false, error: null,
+    }));
   });
 
   it('동시호가 구간 커서 + 토글 ON → 마스킹', () => {
@@ -429,7 +448,11 @@ describe('DataWindow — 10호가 등락률 기준가는 커서 날짜를 따라
   }
 
   beforeEach(() => {
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+    // 훅은 값과 **신선도**를 함께 낸다(LiveOrderbookSpotResult) — 값만 돌려주던
+    // 시절의 undefined 를 그대로 두면 소비처가 stale 을 못 읽는다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({
+      spot: undefined, stale: false, error: null,
+    }));
     vi.mocked(useLiveStockLimits).mockReturnValue({ data: undefined } as never);
     vi.mocked(useLiveViStatus).mockReturnValue({ data: undefined } as never);
     vi.mocked(useScreenerDailyCandles).mockReturnValue({ data: undefined } as never);
@@ -516,7 +539,11 @@ describe('DataWindow — 10호가 시점 게이트 (상하한가·VI)', () => {
   }
 
   beforeEach(() => {
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined);
+    // 훅은 값과 **신선도**를 함께 낸다(LiveOrderbookSpotResult) — 값만 돌려주던
+    // 시절의 undefined 를 그대로 두면 소비처가 stale 을 못 읽는다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({
+      spot: undefined, stale: false, error: null,
+    }));
     vi.mocked(useQuoteByCode).mockReturnValue(new Map());
     vi.mocked(useScreenerDailyCandles).mockReturnValue({ data: undefined } as never);
     vi.mocked(useLiveStockLimits).mockReturnValue({
@@ -601,14 +628,12 @@ describe('DataWindow — 형성 중 봉 힌트', () => {
 
   /** 파케이 미승격(= WS 버퍼가 답하는 구간). 실측 승격 지연 3~8분의 상태. */
   function parquetMiss() {
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(
-      { snapshot: null, available_from: null, source: 'kiwoom_live' } as never,
-    );
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({ snapshot: null, available_from: null, source: 'kiwoom_live' } as never,));
   }
 
   beforeEach(() => {
     liveSeriesBuffers.ob = [];
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(undefined as never);
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
   });
 
   it('형성 중 봉을 호버하고 파케이가 아직 없으면 힌트를 띄운다', () => {
@@ -617,6 +642,32 @@ describe('DataWindow — 형성 중 봉 힌트', () => {
     hoverAt(LAST_CANDLE_MS);
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByTestId('orderbook-forming-hint')).toBeInTheDocument();
+  });
+
+  it('사다리가 비행 중이면 stale 을 패널로 흘려보낸다', () => {
+    // `/live` 도 같은 훅을 쓰므로 같은 찢어짐을 지난다 — 배선이 빠지면 `/study` 만
+    // 고쳐지고 이쪽은 조용히 옛 화면을 확정처럼 보여 준다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue({
+      spot: { snapshot: null, available_from: null, source: 'hogaplay' },
+      stale: true,
+      error: null,
+    } as never);
+    hoverAt(LAST_CANDLE_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('stale:true')).toBeInTheDocument();
+  });
+
+  it('스팟 조회 실패는 패널을 **대체한다** — 실패와 로딩이 공존하지 않는다', () => {
+    // `useSpot` 이 실패분을 비우므로 사다리는 undefined 로 떨어져 "커서 위치
+    // 불러오는 중…" 을 그린다. 실패를 칩으로 위에 얹으면 한 화면이 두 가지를
+    // 동시에 말한다 — `/study` 의 BookContent 와 같은 처리여야 한다.
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue({
+      spot: undefined, stale: false, error: new Error('boom'),
+    } as never);
+    hoverAt(LAST_CANDLE_MS);
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByTestId('orderbook-spot-error')).toBeInTheDocument();
+    expect(screen.queryByText('커서 위치 불러오는 중…')).toBeNull();
   });
 
   it('닫힌 봉이면 띄우지 않는다 — 커서 버킷 하나만 바꾼 대조', () => {
@@ -629,10 +680,8 @@ describe('DataWindow — 형성 중 봉 힌트', () => {
 
   it('파케이가 답하면 띄우지 않는다 — 승격됐다는 것은 값이 고정됐다는 뜻이다', () => {
     liveSeriesBuffers.ob = [obAt(LAST_CANDLE_MS + 30_000)];
-    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(
-      { snapshot: { ts_ms: LAST_CANDLE_MS, seq: 0, ask: [], bid: [], tot_ask: 1, tot_bid: 1, exp_price: 0, exp_qty: 0 },
-        available_from: null, source: 'hogaplay' } as never,
-    );
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({ snapshot: { ts_ms: LAST_CANDLE_MS, seq: 0, ask: [], bid: [], tot_ask: 1, tot_bid: 1, exp_price: 0, exp_qty: 0 },
+        available_from: null, source: 'hogaplay' } as never,));
     hoverAt(LAST_CANDLE_MS);
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.queryByTestId('orderbook-forming-hint')).not.toBeInTheDocument();
@@ -656,8 +705,8 @@ describe('DataWindow — 형성 중 봉 힌트', () => {
 
 describe('resolveBookBaseline', () => {
   const base = {
-    isPastDateCursor: false,
-    cursorBaseline: 208_500,
+    isPastDateLadder: false,
+    ladderBaseline: 208_500,
     singlePriceActive: false,
     singlePriceClose: 47_900,
     liveBaseline: 49_800,
@@ -684,10 +733,10 @@ describe('resolveBookBaseline', () => {
     ).toBeNull();
   });
 
-  it('과거 날짜 커서가 시간외보다 우선한다', () => {
-    // 과거 시점을 보고 있는데 "지금 시간외" 분모를 쓰면 분자와 분모의 날짜가 갈린다.
+  it('과거 날짜 사다리가 시간외보다 우선한다', () => {
+    // 과거 시점의 사다리에 "지금 시간외" 분모를 쓰면 분자와 분모의 날짜가 갈린다.
     expect(
-      resolveBookBaseline({ ...base, isPastDateCursor: true, singlePriceActive: true }),
+      resolveBookBaseline({ ...base, isPastDateLadder: true, singlePriceActive: true }),
     ).toBe(208_500);
   });
 });

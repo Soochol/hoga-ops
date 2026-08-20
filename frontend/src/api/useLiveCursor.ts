@@ -114,6 +114,25 @@ export interface LiveOrderbookSpot {
 }
 
 /**
+ * 훅 반환 — **스냅샷과 그 신선도를 함께** 내보낸다.
+ *
+ * 값만 돌려주던 이전 판이 `/study` 의 "등락률만 바뀌고 10호가는 그대로" 버그를
+ * 구조적으로 가능하게 했다: `useSpot` 은 키가 바뀌는 동안 이전 값을 유지하는데
+ * (스크럽 UX 상 옳다) 소비처는 그 사실을 **알 방법이 없어서** 옛 사다리에 새
+ * 커서에서 파생한 분모를 얹었다. 신선도를 값과 같은 자리에서 내보내는 것이
+ * 그 구멍을 닫는다 — 소비처가 `stale` 을 무시하면 타입이 아니라 화면이 알려
+ * 준다(딤이 안 걸린다).
+ */
+export interface LiveOrderbookSpotResult {
+  /** 마지막으로 **성공한** 조회 결과. undefined = 아직 한 번도 못 받았거나 실패. */
+  spot: LiveOrderbookSpot | undefined;
+  /** `spot` 이 현재 커서의 것이 아닐 수 있다 — 새 키의 조회가 비행 중. */
+  stale: boolean;
+  /** 조회 실패. 이때 `spot` 은 undefined 다(틀린 옛 값을 남기지 않는다). */
+  error: Error | null;
+}
+
+/**
  * Live-side cursor-keyed orderbook spot, mirroring replay's
  * useOrderbookAtCursor. See ADR-0044 — parquet-only path, source_pref
  * threaded, client-side bucket alignment for cache stability.
@@ -122,10 +141,12 @@ export interface LiveOrderbookSpot {
  * this mirrors replay's useCursor pattern and fixes the regression where
  * hovering on past-date candles sent date=today to the API (ADR-0044).
  *
- * Returns undefined while loading / cursor absent, the full LiveOrderbookSpot
- * once fetched (snapshot may be null for pre-available slots).
+ * `spot` is undefined while loading / cursor absent, the full LiveOrderbookSpot
+ * once fetched (snapshot may be null for pre-available slots). `stale` says the
+ * carried value belongs to an older key; `error` says the fetch failed and the
+ * value was dropped rather than left to rot. See LiveOrderbookSpotResult.
  */
-export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
+export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpotResult {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   // 선택값이 아니라 이 종목의 **유효** venue 로 조회한다 — 근거는 VenueParam.
   // code=null 이면 해석이 항등이라 무조건 불러도 안전하다(훅 순서 고정).
@@ -142,9 +163,10 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
     p.code && date && alignedT !== null && bucketMs !== null && sourcePref
       ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${venue}`
       : null;
-  const { data } = useSpot<LiveOrderbookSpot>(key, () =>
+  const { data, isFetching, error } = useSpot<LiveOrderbookSpot>(key, (signal) =>
     apiGet<OrderbookResponse>(
       `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}&venue=${venue}`,
+      { signal },
     ).then((r) => ({
       snapshot: r.snapshot,
       available_from: r.available_from,
@@ -154,13 +176,29 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefin
   // 환산은 **fetch 결과의 파생**이다 — 캐시 키에 계수를 넣지 않는다. 키에 넣으면 계수가
   // 늦게 도착할 때 같은 스냅샷을 두 벌 받고, 안 넣으면서 환산을 fetch 안에서 하면 계수
   // 도착 전 캐시가 환산 없이 굳는다. 원본을 캐시하고 파생을 memo 하면 둘 다 없다.
-  return useMemo(() => {
-    if (data?.snapshot == null || date === null) return data;
+  //
+  // 환산 날짜는 **커서가 아니라 스냅샷 자신의 `ts_ms`** 다. 커서 날짜를 쓰면 비행
+  // 중(옛 스냅샷 + 새 커서)에 다른 날의 수정계수가 옛 가격에 곱해져, 있지도 않았던
+  // 가격의 사다리가 잠깐 뜬다. 스냅샷이 자기 날짜를 이미 싣고 있으므로 커서를
+  // 참조할 이유가 없다.
+  //
+  // `stale` 은 **캐시에 넣지 않는다** — 신선도는 이 순간의 상태이지 응답의 속성이
+  // 아니다. 캐시에 굳히면 재방문 히트가 지난번의 로딩 여부를 되살린다.
+  const spot = useMemo(() => {
+    if (data?.snapshot == null) return data;
     return {
       ...data,
-      snapshot: scaleOrderbookSnapshot(data.snapshot, p.adjustFactors, date),
+      snapshot: scaleOrderbookSnapshot(
+        data.snapshot,
+        p.adjustFactors,
+        unixMsToKSTDate(data.snapshot.ts_ms),
+      ),
     };
-  }, [data, p.adjustFactors, date]);
+  }, [data, p.adjustFactors]);
+  return useMemo(
+    () => ({ spot, stale: isFetching && spot !== undefined, error }),
+    [spot, isFetching, error],
+  );
 }
 
 // ─── Task 12: useLiveBrokersAtCursor ─────────────────────────────────────────
