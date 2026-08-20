@@ -51,11 +51,28 @@ function limitPriceCandidates(limitBasePrevClose: number | null): Candidate[] {
   return out;
 }
 
-function findPreviousClose(candles: readonly Candle[], todayKst: string): number | null {
-  const prev = candles
-    .filter((c) => realMsToYyyymmdd(c.ts_ms) < todayKst)
-    .sort((a, b) => a.ts_ms - b.ts_ms);
-  return prev.length > 0 ? prev[prev.length - 1].close : null;
+/**
+ * KST 날짜가 `yyyymmdd` 이상인 첫 candle 의 index (candles 는 `ts_ms` 오름차순).
+ *
+ * 종전엔 `candles.filter((c) => realMsToYyyymmdd(c.ts_ms) === todayKst)` 로 **전체를
+ * 훑었고**, 그것도 오늘 캔들 찾기 · 직전 종가 찾기 두 번 했다. `realMsToYyyymmdd` 는
+ * 캔들마다 `Date` 를 새로 만드는데, 이 함수는 SSE 틱(150ms)마다 불린다 — 90일
+ * (35,100 캔들) 실측 8.15ms/틱이 여기 들었다. 이진 탐색이면 날짜 변환이 O(log n) 회로
+ * 줄고, 오늘 구간은 뒤에서 앞으로 이어져 있으므로 그 뒤만 훑으면 된다.
+ *
+ * 전제: `candles` 는 `ts_ms` 오름차순 — 리포 전역 불변식이다(`volume.ts` 의
+ * `lowerBoundCandle`, `CandleTooltip` 의 인덱스 맵이 이미 같은 전제 위에 있다).
+ * 그래서 종전의 `.sort()` 두 개도 무의미했고(이미 정렬된 입력) 함께 걷어낸다.
+ */
+function lowerBoundByKstDate(candles: readonly Candle[], yyyymmdd: string): number {
+  let lo = 0;
+  let hi = candles.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (realMsToYyyymmdd(candles[mid].ts_ms) < yyyymmdd) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function hitKey(hit: PriceLevelHit): string {
@@ -125,10 +142,14 @@ export function buildLivePriceLevelHits(
   todayKst: string,
 ): PriceLevelHit[] {
   if (candles.length === 0) return [];
-  const todayCandles = candles
-    .filter((c) => realMsToYyyymmdd(c.ts_ms) === todayKst)
-    .sort((a, b) => a.ts_ms - b.ts_ms);
+  // 오늘 구간의 시작 = 날짜가 todayKst 이상인 첫 index. 그 **직전**이 곧 직전 거래일의
+  // 마지막 캔들이라, 종전에 따로 전체를 훑던 `findPreviousClose` 가 여기로 접힌다.
+  const start = lowerBoundByKstDate(candles, todayKst);
+  let end = start;
+  while (end < candles.length && realMsToYyyymmdd(candles[end].ts_ms) === todayKst) end += 1;
+  const todayCandles = candles.slice(start, end);
   if (todayCandles.length === 0) return [];
+  const previousClose = start > 0 ? candles[start - 1].close : null;
 
   const hits: PriceLevelHit[] = [];
   const seen = new Set<string>();
@@ -136,7 +157,7 @@ export function buildLivePriceLevelHits(
   appendViHits(hits, seen, todayCandles, todayKst, todayOpen, 'upper');
   appendViHits(hits, seen, todayCandles, todayKst, todayOpen, 'lower');
 
-  for (const candidate of limitPriceCandidates(findPreviousClose(candles, todayKst))) {
+  for (const candidate of limitPriceCandidates(previousClose)) {
     const candle = firstTouch(todayCandles, candidate);
     if (!candle) continue;
     appendHit(hits, seen, todayKst, candle, candidate);

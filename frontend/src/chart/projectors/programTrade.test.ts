@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import { PROGRAM_TRADE_SPEC, projectProgramTradeNetAmount } from './programTrade';
+import {
+  PROGRAM_TRADE_SPEC,
+  projectProgramTradeNetAmount,
+  findSegmentIdxByTime,
+  makeCachedProgramTradeProjector,
+} from './programTrade';
 
 const OPEN = Date.UTC(2026, 4, 12, 0, 0, 0);
 const CLOSE = Date.UTC(2026, 4, 12, 6, 30, 0);
@@ -246,5 +251,93 @@ describe('PROGRAM_TRADE_SPEC zero baseline', () => {
       priceRange: { minValue: -30_000_000_000, maxValue: -20_000_000_000 },
     }));
     expect(res?.priceRange).toEqual({ minValue: -30_000_000_000, maxValue: 0 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 세그먼트 조회를 `.find()` 선형 스캔에서 이진 탐색으로 바꿨다(O(N×S) → O(N log S)).
+// **바꾼 부분이 유일 기여자**가 되게 조회 함수만 `.find()` 와 직접 대조한다 — 프로젝터
+// 전체를 복제한 오라클보다 실패 지점을 정확히 가리킨다.
+//
+// 간극(장 마감~다음 개장)이 이 테스트의 핵심이다: `.find()` 는 undefined 를 주는데,
+// "openMs <= t 인 마지막 세그먼트" 만 찾고 멈추는 이진 탐색은 **직전 세그먼트로 빨아들인다**.
+// 상한 재확인(`t <= closeMs`)이 그걸 막고, 아래 간극 케이스가 그 확인의 red-check 이다.
+describe('findSegmentIdxByTime == segments.find()', () => {
+  const metas = [
+    { openMs: 1000, closeMs: 2000, date: 'a', regularOpen: null, regularAuctionStart: 0 },
+    { openMs: 5000, closeMs: 6000, date: 'b', regularOpen: null, regularAuctionStart: 0 },
+    { openMs: 9000, closeMs: 9000, date: 'c', regularOpen: null, regularAuctionStart: 0 }, // 0폭 세그먼트
+  ];
+  const reference = (t: number): number =>
+    metas.findIndex((s) => s.openMs <= t && t <= s.closeMs);
+
+  const probes = [
+    -1, 0, 999, 1000, 1001, 1999, 2000, // 첫 세그먼트: 앞·경계·안·끝(포함)
+    2001, 3000, 4999,                   // 간극 → -1 이어야 한다
+    5000, 5500, 6000, 6001,             // 둘째 세그먼트 + 그 뒤 간극
+    8999, 9000, 9001,                   // 0폭 세그먼트와 그 뒤(축 끝 밖)
+  ];
+
+  it.each(probes)('t=%i 에서 같은 index', (t) => {
+    expect(findSegmentIdxByTime(metas, t)).toBe(reference(t));
+  });
+
+  it('빈 세그먼트 배열은 -1', () => {
+    expect(findSegmentIdxByTime([], 1234)).toBe(-1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 과거/당일 분리 캐시 == 풀 투영. `pastCachedProjector.test.ts` 의 관용구를 따른다 —
+// 풀 투영 함수가 그대로 남아 있으므로 그것이 오라클이다.
+//
+// 픽스처가 **이틀**이어야 의미가 있다: 하루뿐이면 `segs.length < 2` 로 풀 투영에 위임해
+// 캐시 경로를 아예 안 탄다. 그리고 날짜가 바뀌는 지점의 **경계 마스킹**(직전 방출점의
+// 나가는 선을 투명으로)이 정확히 청크를 가로지르는 상태라, 그게 이 테스트의 표적이다.
+describe('makeCachedProgramTradeProjector == 풀 투영', () => {
+  const twoDayAxis = createVirtualAxis([
+    { date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+    { date: '20260513', sessionOpenMs: NEXT_OPEN, sessionCloseMs: NEXT_CLOSE },
+  ]);
+  const mk = (extraToday: number[] = []): RangeBundle => {
+    const day0 = [0, 1, 2, 3].map((m) => OPEN + m * 60_000);
+    const day1 = [0, 1, 2, ...extraToday].map((m) => NEXT_OPEN + m * 60_000);
+    const all = [...day0, ...day1];
+    return {
+      ...bundle(all.map((t, i) => ({ t, net_amount: (i + 1) * 1_000_000, net_qty: 0, gap_risk: false }))),
+      segments: [
+        { date: '20260512', session_open_ms: OPEN, session_close_ms: CLOSE },
+        { date: '20260513', session_open_ms: NEXT_OPEN, session_close_ms: NEXT_CLOSE },
+      ],
+      quote_ratio: { bucket_ms: 60_000, points: all.map((t) => quotePoint(t)) },
+    } as RangeBundle;
+  };
+
+  it('픽스처 전제: 두 거래일에 걸쳐 있고 날짜 경계 마스킹이 실제로 일어난다', () => {
+    const out = projectProgramTradeNetAmount(mk(), twoDayAxis) as { color?: string }[];
+    expect(out.length).toBeGreaterThan(4);
+    // 경계에서 직전 점이 투명으로 덮였다 = 캐시가 과거 꼬리를 패치해야 하는 상황이다.
+    expect(out.some((p) => p.color === HIDDEN_COLOR)).toBe(true);
+  });
+
+  it('캐시 첫 호출이 풀 투영과 같다', () => {
+    const b = mk();
+    expect(makeCachedProgramTradeProjector()(b, twoDayAxis))
+      .toEqual(projectProgramTradeNetAmount(b, twoDayAxis));
+  });
+
+  it('당일이 늘어난 뒤(= SSE 틱)에도 풀 투영과 같다 — 과거 캐시 적중 경로', () => {
+    const cached = makeCachedProgramTradeProjector();
+    const first = mk();
+    cached(first, twoDayAxis); // 과거를 캐시에 올린다
+    for (const extra of [[3], [3, 4], [3, 4, 5]]) {
+      const next = mk(extra);
+      expect(cached(next, twoDayAxis)).toEqual(projectProgramTradeNetAmount(next, twoDayAxis));
+    }
+  });
+
+  it('program_trade 가 비면 호가점이 있어도 빈 배열', () => {
+    const b = { ...mk(), program_trade: { points: [] } } as RangeBundle;
+    expect(makeCachedProgramTradeProjector()(b, twoDayAxis)).toEqual([]);
   });
 });
