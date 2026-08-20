@@ -1,9 +1,31 @@
 import type { RangeBundle, QuoteRatioPoint } from '../api/types';
 import { isSyntheticHogaGapPoint } from '../chart/util/hogaGapHide';
 import { isExcludedQuoteBucket } from '../chart/util/auctionHide';
-import { quoteRatioPointsForBundle } from '../chart/projectors/quoteRatioPoints';
 import { quoteImbalance } from '../util/imbalance';
 import { tradingDayOf } from '../util/tradingDay';
+
+/**
+ * 이 파일의 세 파생은 **원본 `bundle.quote_ratio.points` 를 그대로 훑는다** —
+ * 프로젝터와 달리 `quoteRatioPointsForBundle`(= `withHogaGapSentinels`)를 거치지 않는다.
+ *
+ * 왜 안 거쳐도 같은가: 합성 gap 센티넬은 **세 파생 어디서도 값으로 채택될 수 없다**.
+ * `lastDisplayedPoint` 는 `isSyntheticHogaGapPoint` 를 건너뛰고, `deriveQuoteTotalsDayMax`
+ * 의 역방향 루프도 같은 술어로 건너뛴다. 거래일 경계 판정도 안전하다 — 센티넬은
+ * `[firstHogaT, lastHogaT]` 안에만 생기고 실제 점과 t 가 겹치지 않으므로(겹치면
+ * `hogaTimes` 에 걸려 생성되지 않는다) 배열 끝은 언제나 마지막 실제 점이고, t 오름차순
+ * 정렬이라 "마지막 거래일" 블록의 경계도 이동하지 않는다. 즉 센티넬을 **만들어 놓고
+ * 건너뛰는 것**과 **애초에 안 만드는 것**의 출력이 같다(오라클 테스트로 잠금).
+ *
+ * 왜 안 거쳐야 하는가(성능): `withHogaGapSentinels` 는 호출마다 전체 배열 복사 + 정렬 +
+ * 전체 t 의 `Set` + 캔들 전량 순회다. 이 파생들은 `QuoteLevelLines` 에서 **SSE 틱(150ms)
+ * 마다** 불리므로 그 비용이 히스토리 깊이에 비례해 매 틱 재지불됐다 — 실측 90일
+ * (35,100점/35,100캔들)에서 현재값 2회에 11.1ms/틱, 당일최고 4.2ms/틱. 원본을 꼬리부터
+ * 훑으면 O(꼬리) 로 떨어진다.
+ *
+ * 전제: `bundle.quote_ratio.points` 는 t 오름차순이다. 리포 전역 불변식이며
+ * (`bucketHogaSeries` 가 정렬해 내보내고, `makePastCachedProjector` 의 `lowerBoundT`
+ * 이진탐색이 이미 같은 전제 위에 서 있다) 여기서 새로 도입하는 가정이 아니다.
+ */
 
 /** 총잔량 현재값 수평선 모델 — 매수·매도 각각 마지막 유효 버킷의 잔량. */
 export type QuoteTotalsLevels = { bid: number; ask: number } | null;
@@ -54,7 +76,7 @@ export function deriveQuoteTotalsLevels(
   intraMax: boolean,
   auctionWindowMask: boolean,
 ): QuoteTotalsLevels {
-  const p = lastDisplayedPoint(quoteRatioPointsForBundle(bundle), auctionWindowMask);
+  const p = lastDisplayedPoint(bundle.quote_ratio.points, auctionWindowMask);
   if (!p) return null;
   const bid = intraMax ? p.bid_max : p.bid_total;
   const ask = intraMax ? p.ask_max : p.ask_total;
@@ -106,7 +128,7 @@ export function deriveQuoteTotalsDayMax(
   intraMax: boolean,
   inClosingAuction: (t: number) => boolean,
 ): QuoteTotalsDayMax {
-  const points = quoteRatioPointsForBundle(bundle);
+  const points = bundle.quote_ratio.points;
   const anchor = lastDisplayedPoint(points, false);
   if (!anchor) return null;
   const day = tradingDayOf(anchor.t);
@@ -137,7 +159,7 @@ export function deriveRatioLevel(
   intraMax: boolean,
   auctionWindowMask: boolean,
 ): number | null {
-  const p = lastDisplayedPoint(quoteRatioPointsForBundle(bundle), auctionWindowMask);
+  const p = lastDisplayedPoint(bundle.quote_ratio.points, auctionWindowMask);
   if (!p) return null;
   const value = intraMax
     ? quoteImbalance(p.imb_max_bid, p.imb_max_ask)

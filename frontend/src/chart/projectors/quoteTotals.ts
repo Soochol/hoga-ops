@@ -200,8 +200,16 @@ function surgeMarkerPoints(side: 'ask' | 'bid') {
 
 const askSurgeCached = makePastCachedProjector(surgeMarkerPoints('ask'), (b) => b.quote_ratio.points);
 const bidSurgeCached = makePastCachedProjector(surgeMarkerPoints('bid'), (b) => b.quote_ratio.points);
-export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askSurgeCached(b, a, c);
-export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidSurgeCached(b, a, c);
+/** 급증 마커 OFF 일 때 돌려주는 **공유** 빈 배열. `SurgeMarkersPrimitive.setMarkers` 는
+ *  참조를 보관만 하고 변형하지 않으므로 안전하고, 매 틱 새 `[]` 를 만들지 않는다. */
+const NO_SURGE_MARKERS: SurgeMarkerPoint[] = [];
+// 토글 게이트를 **캐시 래퍼 바깥**에 둔다. `surgeMarkerPoints` 안의 조기 반환만으로는
+// 래퍼가 이미 slice·expand 를 지불한 뒤라, 꺼 놔도 틱당 비용이 0 이 아니었다
+// (90일 실측 0.158ms/틱, 양쪽 합). 안쪽 가드는 직접 호출자를 위해 남겨 둔다.
+export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
+  (c.surgeEnabled ? askSurgeCached(b, a, c) : NO_SURGE_MARKERS);
+export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
+  (c.surgeEnabled ? bidSurgeCached(b, a, c) : NO_SURGE_MARKERS);
 
 // crosshairMarkerBackgroundColor pins the hover marker to a solid series color
 // so it survives the Auction Mask connector-break. maskOutgoingConnector

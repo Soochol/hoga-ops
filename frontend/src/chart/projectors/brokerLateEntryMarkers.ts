@@ -183,10 +183,11 @@ export function makeCachedBrokerLateEntryProjector(): (
     const todayOpen = segs[segs.length - 1].session_open_ms;
     const quotePoints = bundle.quote_ratio.points;
     const splitIdx = lowerBoundT(quotePoints, todayOpen);
-    const pastQuote = quotePoints.slice(0, splitIdx);
     const todayQuote = quotePoints.slice(splitIdx);
-    const pastQuoteLen = pastQuote.length;
-    const pastQuoteLastT = pastQuoteLen > 0 ? pastQuote[pastQuoteLen - 1].t : 0;
+    // 캐시 키는 `splitIdx` 로 바로 나온다 — 과거 slice 는 **미스일 때만** 만든다
+    // (makePastCachedProjector 와 같은 관용구·같은 이유). 히트면 O(오늘) 만 남는다.
+    const pastQuoteLen = splitIdx;
+    const pastQuoteLastT = pastQuoteLen > 0 ? quotePoints[pastQuoteLen - 1].t : 0;
 
     let entry = cache.get(axis);
     if (
@@ -199,7 +200,7 @@ export function makeCachedBrokerLateEntryProjector(): (
     ) {
       const pastEvents = events.filter((e) => e.t_ms < todayOpen);
       const pastRatio = quoteRatioPointsForSlice({
-        bundle, points: pastQuote, allPoints: quotePoints, toT: todayOpen,
+        bundle, points: quotePoints.slice(0, splitIdx), allPoints: quotePoints, toT: todayOpen,
       });
       entry = {
         ctx, events, todayOpen, pastQuoteLen, pastQuoteLastT,

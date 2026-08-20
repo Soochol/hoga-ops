@@ -68,8 +68,20 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
   // 동시호가·장중 VI)이 현재값으로 잡혀 수평선만 pane 바닥에 깔린다.
   const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
 
-  const levels = deriveQuoteTotalsLevels(bundle, qtIntraMax, auctionWindowMask);
-  const ratioValue = deriveRatioLevel(bundle, ratioIntraMax, auctionWindowMask);
+  // 파생은 **토글이 켜졌고 그 pane 이 실제로 마운트됐을 때만** 돈다. 셋 다 순수 함수라
+  // (훅이 아니라) 조건부 호출이 안전하고, 이미 `dayMax` 가 같은 방식으로 게이트돼 있다.
+  //
+  // 왜 필요한가: 이 컴포넌트는 pane 토글과 무관하게 항상 마운트되고, `bundle` 은 SSE
+  // 틱(150ms)마다 새 객체라 memo 를 통과해 매 틱 재렌더된다. 게이트가 없으면 총잔량
+  // pane 을 꺼도, 수평선 토글을 꺼도 파생이 계속 돌았다 — "토글 OFF = CPU 절약" 이
+  // 성립하지 않는 구멍이었다. `series == null` 까지 보는 이유는 D/W/M 타임프레임처럼
+  // pane 자체가 없는 경우로, 그때 계산 결과는 어차피 렌더되지 않는다.
+  const qtOn = qtEnabled && quoteTotalsSeries != null;
+  const levels = qtOn ? deriveQuoteTotalsLevels(bundle, qtIntraMax, auctionWindowMask) : null;
+  const ratioValue =
+    ratioEnabled && ratioSeries != null
+      ? deriveRatioLevel(bundle, ratioIntraMax, auctionWindowMask)
+      : null;
   // 최고 수평선은 **`/live` 전용**이다. 기준일이 "데이터의 마지막 거래일" 이라 복기에서는
   // 로드된 구간의 **끝날**이 되는데, 복기는 그 구간 한가운데의 "그때 그 시점" 을 보는
   // 작업이다 — 6/25 를 되짚는 화면에 7/24 기준선이 그어지면 선만 미래를 알고 있어 방해가
@@ -77,7 +89,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
   // 달라 — 언제나 "보고 있는 그 시점의 값" — 여기서 막지 않는다).
   // 페이지는 어댑터에서 렌더 동기적으로 온다(ADR-0146). Provider 밖(null)은 `/live` 폴백.
   const dayMaxAllowed = useWindowIndicatorScope() !== 'study';
-  const dayMaxOn = dayMaxEnabled && dayMaxAllowed;
+  const dayMaxOn = dayMaxEnabled && dayMaxAllowed && quoteTotalsSeries != null;
   // 기준일은 데이터의 마지막 거래일이라 파생은 시계와 무관하다(장중엔 그게 곧 오늘, 장
   // 마감 후·주말엔 직전 거래일). 시계는 **라벨에만** 쓴다 — 오늘 것이 아니면 날짜를 붙여
   // 낡은 기준선을 오늘 것으로 착각하지 않게 한다.

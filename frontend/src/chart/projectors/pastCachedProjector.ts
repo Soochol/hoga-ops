@@ -88,10 +88,13 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
 
     const todayOpen = segs[segs.length - 1].session_open_ms;
     const splitIdx = lowerBoundT(points, todayOpen);
-    const past = points.slice(0, splitIdx);
     const today = points.slice(splitIdx);
-    const pastLen = past.length;
-    const pastLastT = pastLen > 0 ? past[pastLen - 1].t : 0;
+    // 캐시 키(과거 점 개수·마지막 t)는 `splitIdx` 하나로 바로 나온다 — **과거 slice 는
+    // 캐시 미스일 때만 만든다.** 종전엔 매 틱 `points.slice(0, splitIdx)` 로 과거 전체를
+    // 복사해 놓고, 히트하면 그대로 버렸다(90일 35k점 기준 0.076ms/호출 × 이 헬퍼로 감싼
+    // 프로젝터 수). 결과값은 동일하다 — 미스 경로에서 같은 slice 를 그대로 만든다.
+    const pastLen = splitIdx;
+    const pastLastT = pastLen > 0 ? points[pastLen - 1].t : 0;
 
     let entry = cache.get(axis);
     if (
@@ -103,7 +106,7 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
     ) {
       const expandedPast = expandSlice({
         bundle,
-        points: past,
+        points: points.slice(0, splitIdx),
         allPoints: points,
         toT: todayOpen,
         splitT: todayOpen,

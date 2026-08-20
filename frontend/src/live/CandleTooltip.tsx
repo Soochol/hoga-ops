@@ -5,6 +5,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { paneIdAtY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates';
+import { lowerBoundT } from '../chart/projectors/pastCachedProjector';
 import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
@@ -118,13 +119,23 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
     return { drawn: drawnArr, vsecToIndex: vmap, tsMsToIndex: tmap };
   }, [bundle.candles, axis]);
 
-  const quoteByTs = useMemo(() => {
-    const map = new Map<number, NonNullable<RangeBundle['quote_ratio']['points'][number]>>();
-    for (const p of (quoteBundle ?? bundle).quote_ratio?.points ?? []) {
-      map.set(p.t, p);
-    }
-    return map;
-  }, [bundle, quoteBundle]);
+  // 호버 봉의 quote_ratio 점을 **이진 탐색 한 번**으로 찾는다.
+  //
+  // 종전엔 `useMemo` 로 t→점 Map 을 세웠는데, 그 deps(`[bundle, quoteBundle]`)가 SSE
+  // 틱(150ms)마다 새 객체라 memo 가 매 틱 무효화됐다 — 즉 **커서를 올려놓지 않아도, 툴팁
+  // 토글이 꺼져 있어도** 히스토리 깊이에 비례한 Map 을 계속 다시 만들었다(실측 90일
+  // 35,100점에서 2.44ms/틱). 정작 읽는 곳은 아래 렌더의 `.get()` 딱 하나다.
+  //
+  // points 가 t 오름차순이고 버킷당 한 점(중복 t 없음 — `bucketHogaSeries` 가 버킷 Map
+  // 으로 만들고, 라이브 증분은 `p.t > pastMaxQrT` 로 걸러 붙는다)이라 lowerBound 로 같은
+  // 답이 나온다. 틱당 비용 0, 호버당 O(log n).
+  const quotePointAt = (
+    tsMs: number,
+  ): NonNullable<RangeBundle['quote_ratio']['points'][number]> | undefined => {
+    const pts = (quoteBundle ?? bundle).quote_ratio?.points ?? [];
+    const hit = pts[lowerBoundT(pts, tsMs)];
+    return hit?.t === tsMs ? hit : undefined;
+  };
 
   // 핸들러가 읽는 최신 데이터(drawn·vsecToIndex·paneSeries)는 ref 로 — 구독 effect 가
   // [chart, enabled] 에만 의존하게 해, 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지
@@ -177,7 +188,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   const renderedHover = hoverRef.current?.tsMs === hover.tsMs ? hoverRef.current : hover;
   const idx = tsMsToIndex.get(renderedHover.tsMs);
   if (idx === undefined) return null;
-  const m = buildCandleTooltip(drawn, idx, timeframe, quoteByTs.get(renderedHover.tsMs), {
+  const m = buildCandleTooltip(drawn, idx, timeframe, quotePointAt(renderedHover.tsMs), {
     quoteTotalsIntraMax,
     ratioIntraMax,
   });
