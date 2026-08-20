@@ -105,4 +105,59 @@ describe('priceLevelHits', () => {
 
     expect(mergePriceLevelHits(backend, live)).toEqual(backend);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 오늘 구간 찾기·직전 종가 찾기를 "전체 filter" 에서 "이진 탐색 + 오늘 구간 slice" 로
+  // 바꿨다(90일 8.15ms/틱 → 0.065ms/틱). 두 계약이 그 교체의 표적이다:
+  //   ① 오늘이 아닌 캔들이 도달 판정에 **섞이면 안 된다**
+  //   ② 직전 종가는 **오늘 바로 앞 캔들**의 종가다(첫 캔들도, 며칠 전 캔들도 아니다)
+  // 각 케이스는 잘못 짚었을 때 값이 실제로 달라지도록 세웠다 — 그렇지 않으면 통과해도
+  // 아무것도 증명하지 못한다.
+  describe('오늘 구간 슬라이스 · 직전 종가', () => {
+    const twoDaysAgoOpen = Date.UTC(2026, 5, 22, 0, 0, 0);
+
+    it('직전일 캔들이 상한가를 건드려도 오늘 히트로 잡지 않는다', () => {
+      const candles = [
+        // 어제 고가가 13,000 을 넘지만 어제 캔들이라 후보가 아니다. 오늘은 안 닿는다.
+        candleRange(yesterdayOpen + 60_000, 10_000, 14_000, 9_900, 10_000),
+        candleRange(todayOpen + 60_000, 10_000, 10_100, 9_950),
+      ];
+      expect(buildLivePriceLevelHits(candles, '20260624')).toEqual([]);
+    });
+
+    it('직전 종가는 오늘 **바로 앞** 캔들의 종가 — 더 과거 캔들이 아니다', () => {
+      const candles = [
+        // 이틀 전 종가 20,000 (여기서 기준을 잡으면 상한가가 26,000 이라 안 닿는다)
+        candle(twoDaysAgoOpen + 60_000, 20_000, 20_000),
+        // 어제 종가 10,000 → 상한가 13,000 · 하한가 7,000
+        candle(yesterdayOpen + 60_000, 10_000, 10_000),
+        candleRange(todayOpen + 60_000, 12_000, 13_100, 6_900),
+      ];
+      // VI 히트는 오늘 시가에서 파생돼 이 계약과 무관하다 — limit 만 본다.
+      const limits = buildLivePriceLevelHits(candles, '20260624').filter((h) => h.kind === 'limit');
+      expect(limits.map((h) => [h.direction, h.pct, h.price]))
+        .toEqual([['upper', 30, 13_000], ['lower', 30, 7_000]]);
+    });
+
+    it('직전 거래일이 비어 있어도(며칠 건너뜀) 배열에서 바로 앞 캔들을 쓴다', () => {
+      const candles = [
+        candle(twoDaysAgoOpen + 60_000, 10_000, 10_000), // 어제 캔들 없음
+        candleRange(todayOpen + 60_000, 12_000, 13_100, 6_900),
+      ];
+      // VI 히트는 오늘 시가에서 파생돼 이 계약과 무관하다 — limit 만 본다.
+      const limits = buildLivePriceLevelHits(candles, '20260624').filter((h) => h.kind === 'limit');
+      expect(limits.map((h) => [h.direction, h.pct, h.price]))
+        .toEqual([['upper', 30, 13_000], ['lower', 30, 7_000]]);
+    });
+
+    it('오늘이 첫 거래일이면 직전 종가가 없어 상·하한가 후보가 없다', () => {
+      const candles = [candleRange(todayOpen + 60_000, 12_000, 13_100, 6_900)];
+      expect(buildLivePriceLevelHits(candles, '20260624').every((h) => h.kind === 'vi')).toBe(true);
+    });
+
+    it('오늘 캔들이 하나도 없으면 빈 배열', () => {
+      const candles = [candle(yesterdayOpen + 60_000, 10_000, 10_000)];
+      expect(buildLivePriceLevelHits(candles, '20260624')).toEqual([]);
+    });
+  });
 });

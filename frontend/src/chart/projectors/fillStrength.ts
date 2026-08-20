@@ -14,7 +14,7 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokensThemed } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
+import { LINE_HIDDEN_COLOR } from '../util/auctionHide';
 import { makePastCachedProjector, lowerBoundT } from './pastCachedProjector';
 
 // buy/sell/cumulative are applied at series-options level (thunked below), not
@@ -67,10 +67,14 @@ export function projectBuyPoints(
   auctionWindowMask: boolean,
 ): (HistogramData<Time> | WhitespaceData<Time>)[] {
   const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
+  // 축 조회 1회 — `classifyAndProject` 가 `contains`·`inClosingAuctionWindow`·`toVirtual`
+  // 을 한 번의 이진 탐색으로 준다. 근거·실측은 `chart/util/auctionHide.ts` 의
+  // `isAuctionHidden` 경고 참조. 계약은 `candle.perf.test.ts` 가 호출 횟수로 잠근다.
   for (const p of points) {
-    if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+    const at = axis.classifyAndProject(p.t);
+    if (!at.contained) continue;
+    const time = (at.virtual / 1000) as UTCTimestamp;
+    if (auctionWindowMask && at.inAuction) {
       out.push({ time });
       continue;
     }
@@ -94,10 +98,14 @@ export function projectSellPoints(
   auctionWindowMask: boolean,
 ): (HistogramData<Time> | WhitespaceData<Time>)[] {
   const out: (HistogramData<Time> | WhitespaceData<Time>)[] = [];
+  // 축 조회 1회 — `classifyAndProject` 가 `contains`·`inClosingAuctionWindow`·`toVirtual`
+  // 을 한 번의 이진 탐색으로 준다. 근거·실측은 `chart/util/auctionHide.ts` 의
+  // `isAuctionHidden` 경고 참조. 계약은 `candle.perf.test.ts` 가 호출 횟수로 잠근다.
   for (const p of points) {
-    if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
-    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+    const at = axis.classifyAndProject(p.t);
+    if (!at.contained) continue;
+    const time = (at.virtual / 1000) as UTCTimestamp;
+    if (auctionWindowMask && at.inAuction) {
       out.push({ time });
       continue;
     }
@@ -202,11 +210,15 @@ export function projectCumulativeSegment(
   // segment transparent so the line doesn't visibly slope into the
   // value=0 auction anchor at 15:20.
   let lastPreAuctionIdx = -1;
+  // 축 조회 1회 — `classifyAndProject` 가 `contains`·`inClosingAuctionWindow`·`toVirtual`
+  // 을 한 번의 이진 탐색으로 준다. 근거·실측은 `chart/util/auctionHide.ts` 의
+  // `isAuctionHidden` 경고 참조. 계약은 `candle.perf.test.ts` 가 호출 횟수로 잠근다.
   for (const p of points) {
     if (p.t < seg.session_open_ms || p.t > seg.session_close_ms) continue;
     runningSum += p.buy_qty - p.sell_qty;
-    if (!axis.contains(p.t)) continue;
-    const thisVirtual = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    const at = axis.classifyAndProject(p.t);
+    if (!at.contained) continue;
+    const thisVirtual = (at.virtual / 1000) as UTCTimestamp;
 
     // In-window source points are intentionally NOT emitted here: the
     // per-bucket transparent anchor synthesis below covers the same slot,
@@ -215,7 +227,7 @@ export function projectCumulativeSegment(
     // slots), which lightweight-charts rejects with "data must be asc
     // ordered by time". `runningSum` has already accumulated above, so
     // the "hide is rendering, not data" invariant from ADR-0029 holds.
-    if (isAuctionHidden(axis, auctionWindowMask, p.t)) continue;
+    if (auctionWindowMask && at.inAuction) continue;
 
     if (firstEmittedInSeg) {
       const segOpenVirtual = (axis.toVirtual(seg.session_open_ms) / 1000) as UTCTimestamp;
@@ -235,7 +247,7 @@ export function projectCumulativeSegment(
       if (
         axis.contains(seg.session_open_ms) &&
         (segOpenVirtual as number) < (thisVirtual as number) &&
-        !axis.inClosingAuctionWindow(p.t)
+        !at.inAuction
       ) {
         out.push({ time: segOpenVirtual, value: 0 });
       }
@@ -334,9 +346,10 @@ export function makeCumulativeCachedProjector(): (
     const todayIdx = segs.length - 1;
     const todaySeg = segs[todayIdx];
     const splitIdx = lowerBoundT(points, todaySeg.session_open_ms);
-    const pastPoints = points.slice(0, splitIdx);
     const todayPoints = points.slice(splitIdx);
-    const pastLastT = splitIdx > 0 ? pastPoints[splitIdx - 1].t : 0;
+    // 과거 slice 는 **캐시 미스일 때만** 만든다 — 키는 splitIdx 로 바로 나온다
+    // (makePastCachedProjector 와 같은 관용구·같은 이유).
+    const pastLastT = splitIdx > 0 ? points[splitIdx - 1].t : 0;
 
     let entry = cache.get(axis);
     if (
@@ -347,8 +360,19 @@ export function makeCumulativeCachedProjector(): (
       || entry.pastLastT !== pastLastT
     ) {
       const pastData: (LineData<Time> | WhitespaceData<Time>)[] = [];
+      // 세그먼트마다 **그 세그먼트의 창만** 넘긴다. 종전엔 과거 전체 배열을 매 세그먼트에
+      // 넘겨 각 호출이 전량을 훑고 경계 밖을 버렸다 — O(세그먼트 × 점). 90일 기준 90 ×
+      // 35,100 = 316만 회로, 미스가 뜨는 5분 refetch·마스크 토글·좌측 팬에서 11.3ms 를
+      // 태웠다(실측). points 는 t 오름차순이라 이진 탐색으로 창을 자르면 O(점 + 세그먼트
+      // × log 점) 이 된다. `projectCumulativeSegment` 의 docstring 이 이미 "points 는 미리
+      // 잘린 세그먼트 창일 수 있다" 고 계약해 두었으므로 의미는 그대로다(경계 검사도
+      // 함수 안에 남아 있어 이중 안전).
       for (let i = 0; i < todayIdx; i++) {
-        const segOut = projectCumulativeSegment(segs[i], i, pastPoints, axis, mask, bucketMs, false);
+        const from = lowerBoundT(points, segs[i].session_open_ms);
+        // 상한은 `t <= session_close_ms` 포함이라 **닫힘 구간**이다 — close 직후 값의
+        // lowerBound 를 써야 close 자신이 창에 남는다.
+        const to = lowerBoundT(points, segs[i].session_close_ms + 1);
+        const segOut = projectCumulativeSegment(segs[i], i, points.slice(from, to), axis, mask, bucketMs, false);
         for (const e of segOut) pastData.push(e);
       }
       entry = { code: bundle.code, mask, pastLen: splitIdx, pastLastT, pastData };
