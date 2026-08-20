@@ -13,7 +13,7 @@
  * 이후 구간(저장 시점엔 몰랐던 미래)을 **항상 보여준다** — 2026-08-09 사용자 결정.
  * 복기의 목적이 결과 확인이라 스포일러 회피보다 맥락이 우선이라는 판단이다.
  */
-import { todayKstYyyymmdd } from '../live/liveDateTime';
+import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import { isMinuteTimeframe } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle } from '../api/types';
@@ -128,5 +128,108 @@ export function studySavedRangeMarks(
     fromMs: first.ts_ms,
     toMs: last.ts_ms,
     barCount: inRange.length,
+  };
+}
+
+/**
+ * `20250422` → `2025.04.22`.
+ *
+ * `/live` 의 `monthDay`(`MM/DD`)를 쓰지 않는 이유: 이 안내의 본체가 **저장 구간과
+ * 코퍼스 시작이 다른 해인 경우**다(실측 010140 — 저장 2024-08, 코퍼스 2025-04).
+ * 연도를 빼면 두 날짜가 같은 해처럼 읽혀 안내가 원인을 숨긴다.
+ */
+function dotted(yyyymmdd: string): string {
+  return `${yyyymmdd.slice(0, 4)}.${yyyymmdd.slice(4, 6)}.${yyyymmdd.slice(6, 8)}`;
+}
+
+export type StudySavedRangeCoverageNotice = {
+  /** 차트 위 칩 한 줄. */
+  text: string;
+  /** 툴팁·스크린리더용 뒷문장 — **결과**를 말한다(무엇이 안 보이는지, 어디부터 있는지). */
+  detail: string;
+};
+
+/**
+ * 저장 구간이 캘린더 봉 코퍼스에 실제로 있는지. 안내가 필요 없으면 `null`.
+ *
+ * ── 왜 필요한가 ───────────────────────────────────────────────────────────
+ * 일봉 소스가 **두 개고 커버리지가 다르다.** `/live` D/W/M 은
+ * `/api/live/past-daily-candles`(벤더 워크백, ADR-0048)이고 `/study` 는
+ * `/api/live/screener-daily-candles`(디스크 `screener/daily_adjusted.parquet`)다.
+ * 코퍼스 시작은 **종목마다 다르다** — 실측 2026-08-20: `005930` 1999-01-04(6,812봉),
+ * `000660` 2015-01-02, **`010140` 2025-04-22(323봉)**.
+ *
+ * 그래서 `/live` 일봉 위에서 잡은 구간이 `/study` 에는 통째로 없을 수 있고, 그때
+ * **아무 증상 없이** 두 기능이 사라진다: `studySavedRangeMarks` 가 null 을 내
+ * 기간 밴드가 미마운트되고(뷰포트도 저장 구간에 못 앉는다), `resolveSyncTarget` 의
+ * 날짜 조회가 빗나가 크로스헤어 동기화가 죽는다. 부분 커버리지는 더 나쁘다 —
+ * 밴드가 그려지되 왼쪽 끝이 코퍼스 시작으로 **조용히 스냅해 구간을 거짓말한다**.
+ *
+ * ── 이 함수가 못 보는 것 ──────────────────────────────────────────────────
+ * **경계만 본다.** 코퍼스 시작이 저장 시작보다 늦은가 / 코퍼스 끝이 저장 끝보다
+ * 이른가 두 가지다. 구간 **안쪽의 구멍**(중간 며칠이 빠진 경우)은 판정하지 않는다 —
+ * 일봉 표는 그런 구멍을 갖지 않는다는 전제이고, 갖는다면 그건 별개 문제다.
+ * 다만 "저장 구간 안에 봉이 하나도 없다" 는 경계가 아니라 **직접** 센다. 그게
+ * 밴드·동기화를 죽이는 정확한 술어이기 때문이다.
+ *
+ * 휴장일 오탐은 없다. 판정 기준이 저장 시작 그 날의 봉 유무가 아니라 **코퍼스의
+ * 첫/끝 봉**이라, 저장 시작이 토요일이어도 코퍼스가 그 전부터 있으면 통과한다.
+ *
+ * W/M 에서도 정확하다 — `aggregateCalendar` 가 버킷 ts 를 캘린더 주기 시작이 아니라
+ * **그 버킷의 첫 봉 시각**으로 잡아서, 집계 후에도 `candles[0].ts_ms` 가 일봉 코퍼스의
+ * 진짜 시작일과 같다.
+ *
+ * ── 호출부 의존 ───────────────────────────────────────────────────────────
+ * **맥락 창(`dailyContext`)이 열린 캘린더 봉에서만 부른다.** 분봉 경로의 캔들은 저장
+ * 구간으로 클립돼 있어(`buildStudyReferenceBundleModel`) `candles[0]` 이 항상 구간
+ * 안이고, 그러면 이 판정이 전 구간을 "앞이 잘렸다" 로 오독한다. 밴드와 **같은
+ * 게이트**를 쓴다.
+ */
+export function studySavedRangeCoverage(
+  save: StudyViewReference,
+  candles: readonly Candle[],
+  /** 이 창의 봉 — 동기화 문구는 `D` 에서만 참이다(`CursorSyncCrosshair` 가 `D` 전용). */
+  timeframe: StudyViewReference['timeframe'],
+): StudySavedRangeCoverageNotice | null {
+  const first = candles[0];
+  const last = candles[candles.length - 1];
+  // 캔들이 아예 없으면 차트가 통째로 비어 있다 — 그 화면은 빈 상태가 소유한다.
+  // 여기서 한마디 더 얹으면 같은 사실을 두 곳에서 다르게 말하게 된다.
+  if (!first || !last) return null;
+
+  // 표시 날짜도 **비교에 쓴 ms 에서** 뽑는다. `save.range.from_date` 를 쓰면 문구와
+  // 판정이 서로 다른 필드를 근거로 삼아, 둘이 어긋나는 날 안내가 조용히 거짓이 된다.
+  const savedFrom = dotted(realMsToYyyymmdd(save.range.from_ms));
+  const savedTo = dotted(realMsToYyyymmdd(save.range.to_ms));
+  const corpusFrom = dotted(realMsToYyyymmdd(first.ts_ms));
+  const corpusTo = dotted(realMsToYyyymmdd(last.ts_ms));
+
+  const hasAnyInRange = candles.some(
+    (c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms,
+  );
+  if (!hasAnyInRange) {
+    // 동기화까지 죽는 건 `D` 뿐이다 — W/M 에는 애초에 동기화가 없어 그걸 잃었다고
+    // 말하면 없는 기능을 잃은 것처럼 들린다.
+    const lost = timeframe === 'D'
+      ? '기간 밴드와 크로스헤어 동기화가 표시되지 않습니다'
+      : '기간 밴드가 표시되지 않습니다';
+    return {
+      text: '저장 구간 데이터 없음',
+      detail: `저장 구간 ${savedFrom}~${savedTo} 에 해당하는 봉이 없어 ${lost}. 이 종목의 과거 데이터는 ${corpusFrom}~${corpusTo} 만 있습니다.`,
+    };
+  }
+
+  const missingBefore = first.ts_ms > save.range.from_ms;
+  const missingAfter = last.ts_ms < save.range.to_ms;
+  if (!missingBefore && !missingAfter) return null;
+
+  const held = missingBefore && missingAfter
+    ? `${corpusFrom}~${corpusTo} 만`
+    : missingBefore
+      ? `${corpusFrom} 부터`
+      : `${corpusTo} 까지만`;
+  return {
+    text: '저장 구간 일부만 표시',
+    detail: `저장 구간은 ${savedFrom}~${savedTo} 인데 이 종목의 과거 데이터는 ${held} 있습니다. 기간 밴드가 그 경계에서 잘립니다.`,
   };
 }
