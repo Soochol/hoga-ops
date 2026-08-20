@@ -12,6 +12,8 @@ import { price_range } from './conditions/price_range';
 import { ma } from './conditions/ma';
 import { ask_depth_new_high } from './conditions/ask_depth_new_high';
 import { bid_depth_new_high } from './conditions/bid_depth_new_high';
+import { ask_depth_new_high_period } from './conditions/ask_depth_new_high_period';
+import { bid_depth_new_high_period } from './conditions/bid_depth_new_high_period';
 import { ask_depth_renewal } from './conditions/ask_depth_renewal';
 import { bid_depth_renewal } from './conditions/bid_depth_renewal';
 import type { CatalogEntry } from './conditions/types';
@@ -23,6 +25,7 @@ import type { CatalogEntry } from './conditions/types';
 export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
   trade_value, trade_value_period, new_high_today, new_high,
   new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
+  ask_depth_new_high_period, bid_depth_new_high_period,
   ask_depth_renewal, bid_depth_renewal, change_pct, price_range, ma,
 };
 

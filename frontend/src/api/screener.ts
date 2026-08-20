@@ -17,6 +17,11 @@ export type MaSource = 'open' | 'high' | 'low' | 'close';
 export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
 // 매도/매수 총잔량 분봉 peak 신고: 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak.
 export interface DepthPeakParams { lookback: number; threshold_pct: number }
+// 기간내 매도/매수 총잔량 peak: 최근 lookback 거래일 중 **어느 하루 d 라도**
+// peak(d) ≥ (threshold_pct/100) × max(peak, d 직전 period 거래일).
+// ⚠ `lookback` 의 의미가 DepthPeakParams 와 **뒤집혀 있다** — 저쪽은 비교 기준 창,
+// 여기서는 BreakoutParams 규약대로 "기간내" 의 그 기간이고 비교 창은 `period` 다.
+export interface DepthPeakPeriodParams { lookback: number; period: number; threshold_pct: number }
 // 매도/매수 총잔량 기준시각 돌파(당일 전용): start_hhmm 이후 최댓값 ≥ (threshold_pct/100)
 // × 개장~start_hhmm 최댓값. start_hhmm 은 HHMM(예: 1200 = 12:00), 0900~1520 KST.
 // 100 은 동률 포함("renews or revisits") — 엄밀히 더 큰 것만 원하면 101 이상.
@@ -35,6 +40,8 @@ export type ConditionLeaf =
   | { id: string; type: 'ma'; params: MaParams }
   | { id: string; type: 'ask_depth_new_high'; params: DepthPeakParams }
   | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams }
+  | { id: string; type: 'ask_depth_new_high_period'; params: DepthPeakPeriodParams }
+  | { id: string; type: 'bid_depth_new_high_period'; params: DepthPeakPeriodParams }
   | { id: string; type: 'ask_depth_renewal'; params: DepthRenewalParams }
   | { id: string; type: 'bid_depth_renewal'; params: DepthRenewalParams };
 export type ConditionType = ConditionLeaf['type'];

@@ -9,10 +9,13 @@ import polars as pl
 from hoga.api import depth_daily, screener_depth
 from hoga.api.models import (
     AskDepthNewHighLeaf,
+    AskDepthNewHighPeriodLeaf,
     AskDepthRenewalLeaf,
     BidDepthNewHighLeaf,
+    BidDepthNewHighPeriodLeaf,
     BidDepthRenewalLeaf,
     DepthPeakParams,
+    DepthPeakPeriodParams,
     DepthRenewalParams,
     HeatmapDocument,
     HeatmapEntry,
@@ -590,3 +593,235 @@ def test_bid_renewal_on_eod_basis_is_empty_with_warning(tmp_path: Path) -> None:
     res = _renewal_eval(tmp_path, code, leaves=[_bid_renewal_leaf()], basis="eod")
     assert res.passing["rb"] == set()
     assert "depth_renewal_requires_intraday" in res.warnings
+
+
+# === 기간내 총잔량 peak (ask/bid_depth_new_high_period) ===============================
+#
+# 픽스처는 한 벌을 공유한다. 값은 **평탄하지 않게** 세웠다 — threshold 100 은 동률을
+# 통과시키므로(설계상 "renews or revisits"), 평탄한 계단에서는 어떤 lookback 을 줘도
+# 전부 통과해 창 파라미터가 테스트에서 지워진다.
+#
+#   0707: 4000   0708: 4000   0709: 3000   0710: 5000 ← 돌파   0713: 2000   0714: 1000
+#   0715(당일): 1000  ← 오늘은 조용하다
+#
+# period=2 기준 0710 만 직전 창(0708·0709 max 4000)을 넘는다. 그래서 "3일 전에
+# 돌파, 오늘은 조용" 이 되고, 이 픽스처 하나로 새 조건 통과 ↔ 당일 조건 미통과가
+# 동시에 성립한다 — 새 코드 경로가 실제로 돌았다는 증거다.
+_PERIOD_PEAKS = {
+    "20260707": 400, "20260708": 400, "20260709": 300,
+    "20260710": 500, "20260713": 200, "20260714": 100,
+}
+_PERIOD_CORPUS = list(_PERIOD_PEAKS)
+_PERIOD_TODAY = "20260715"
+
+
+def _seed_period_fixture(tmp_path: Path, code: str = "005930") -> tuple[Path, Path]:
+    """과거 6거래일 hogaplay + 당일 live(조용). 반환 (data_dir, sdir)."""
+    data_dir = tmp_path
+    sdir = data_dir / "screener"
+    _seed_heatmap(data_dir, [code])
+    _seed_corpus(sdir, _PERIOD_CORPUS, [code])
+    for date, q in _PERIOD_PEAKS.items():
+        _write_snap(data_dir, date=date, code=code, source="hogaplay",
+                    obs=[_ob(ts_ms=91_000_000, ask_q=(q,) * 10, bid_q=(q,) * 10)])
+    depth_daily.sweep(data_dir)
+    _write_snap(data_dir, date=_PERIOD_TODAY, code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(100,) * 10, bid_q=(100,) * 10)])
+    return data_dir, sdir
+
+
+def _period_leaf(**params) -> AskDepthNewHighPeriodLeaf:
+    return AskDepthNewHighPeriodLeaf(id="p1", params=DepthPeakPeriodParams(**params))
+
+
+def _eval_period(data_dir: Path, sdir: Path, leaf, *, code: str = "005930",
+                 basis: str = "intraday", today: str = _PERIOD_TODAY):
+    return screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir, conditions=[leaf],
+        universe_codes={code}, basis=basis, today=today,
+    )
+
+
+def test_period_peak_passes_on_a_breakout_three_days_ago(tmp_path: Path) -> None:
+    """기간내 조건은 **오늘이 아닌 날**의 돌파로 통과한다 — 당일 조건과 갈리는 지점.
+
+    같은 픽스처에서 당일 조건(오늘 1000 vs 과거 peak 5000)은 미통과다. 두 단언을
+    한 테스트에 둔 것은 대조가 요점이기 때문 — 새 조건이 그냥 늘 통과하는 게
+    아니라 **당일 조건이 놓치는 날**을 잡는다는 것을 보인다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+
+    res = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=2, threshold_pct=100))
+    assert code in res.passing["p1"]
+
+    today_leaf = AskDepthNewHighLeaf(
+        id="t1", params=DepthPeakParams(lookback=20, threshold_pct=100))
+    today_res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir, conditions=[today_leaf],
+        universe_codes={code}, basis="intraday", today=_PERIOD_TODAY,
+    )
+    assert code not in today_res.passing["t1"]
+
+
+def test_period_peak_lookback_window_excludes_the_older_breakout(tmp_path: Path) -> None:
+    """lookback 을 2 로 좁히면 0710 돌파가 창 밖으로 나가 미통과.
+
+    lookback 축이 실제로 판정에 쓰인다는 증거다 — 이 대조가 없으면 파라미터를
+    무시하는 구현(늘 전 구간 스캔)도 앞 테스트를 통과한다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    res = _eval_period(data_dir, sdir, _period_leaf(lookback=2, period=2, threshold_pct=100))
+    assert code not in res.passing["p1"]
+
+
+def test_period_peak_threshold_above_100_needs_strict_excess(tmp_path: Path) -> None:
+    """0710 은 직전 창의 125%(5000/4000). thr=120 통과, thr=130 미통과.
+
+    **이 대조가 비교 창의 자기 제외를 고정한다.** 판정일을 창에 포함하면
+    기준선이 max(4000, 5000)=5000 이 되어 5000 ≥ 5000×1.2 가 거짓 — thr>100 이
+    원리적으로 영영 통과할 수 없게 된다(신고가 SQL CTE 의 `v >= mx` 를 그대로
+    미러하면 그렇게 된다).
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    hit = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=2, threshold_pct=120))
+    assert code in hit.passing["p1"]
+    miss = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=2, threshold_pct=130))
+    assert code not in miss.passing["p1"]
+
+
+def test_period_peak_works_on_eod_basis(tmp_path: Path) -> None:
+    """eod 에서도 동작한다 — 기준시각 돌파와 달리 당일 전용이 아니다.
+
+    eod 의 '당일' 은 코퍼스 최신 확정 거래일(0714)이고 축은 거기서 끝난다.
+    lookback=3 이면 0710 돌파가 창 안, lookback=2 면 밖이다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    hit = _eval_period(data_dir, sdir, _period_leaf(lookback=3, period=2, threshold_pct=100),
+                       basis="eod")
+    assert code in hit.passing["p1"]
+    assert "depth_renewal_requires_intraday" not in hit.warnings
+    miss = _eval_period(data_dir, sdir, _period_leaf(lookback=2, period=2, threshold_pct=100),
+                        basis="eod")
+    assert code not in miss.passing["p1"]
+
+
+def _plant_stale_today_row(data_dir: Path, *, ask: int, bid: int) -> None:
+    """depth_daily 에 **오늘자 중간 집계 행**을 심는다(장중 스윕이 남기는 상태)."""
+    dd_path = depth_daily.depth_daily_path(data_dir)
+    dd = pl.read_parquet(dd_path)
+    stale = dd.head(1).with_columns(
+        pl.lit(_PERIOD_TODAY).alias("date"), pl.lit("kiwoom_live").alias("src"),
+        pl.lit(ask).cast(pl.Int64).alias("ask_peak"),
+        pl.lit(bid).cast(pl.Int64).alias("bid_peak"),
+    )
+    pl.concat([dd, stale]).write_parquet(dd_path)
+
+
+def test_period_peak_today_column_comes_from_live_not_depth_daily(tmp_path: Path) -> None:
+    """오늘 칸은 실시간 승격본이 소유한다 — dd 에 오늘 행이 있어도 그것이 이긴다.
+
+    스윕은 캡처 완료 훅에서 돌기 때문에 장중에 **오늘자 kiwoom_live 행이 이미
+    depth_daily 에 들어와 있을 수 있다**. 그 행은 그 시점까지의 중간 집계라 실시간
+    승격본보다 낮으므로, 축의 마지막 칸을 dd 가 소유하면 방금 터진 돌파를 놓친다.
+    여기서는 dd 오늘 행을 낮게(1000), live 를 높게(6000) 둬서 값으로 가른다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    # 오늘 live 를 6000 으로 올린다 — 직전 창(0713·0714 max 2000)의 300%.
+    _write_snap(data_dir, date=_PERIOD_TODAY, code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(600,) * 10, bid_q=(600,) * 10)])
+    _plant_stale_today_row(data_dir, ask=1000, bid=1000)
+
+    # lookback=1 → 오늘 하루만 판정 대상. dd 값(1000)을 읽으면 1000 < 2000×2.5 로
+    # 미통과, live 값(6000)을 읽으면 통과다.
+    res = _eval_period(data_dir, sdir, _period_leaf(lookback=1, period=2, threshold_pct=250))
+    assert code in res.passing["p1"]
+
+
+def test_period_peak_drops_today_when_live_is_absent(tmp_path: Path) -> None:
+    """live 스냅샷이 없으면 오늘은 **판정 대상에서 빠진다** — dd 오늘 행으로 대신하지 않는다.
+
+    ⚠ 이것이 dd 의 오늘 행을 빼는 필터가 실제로 막는 유일한 경우다. live 가 있으면
+    어차피 뒤이어 덮어쓰므로 필터 유무가 결과를 바꾸지 않는다 — 그래서 위 테스트만
+    으로는 필터가 죽어도 초록이다(실측).
+
+    **막는 방향**: 당일 조건이 미통과인 종목이 lookback=1 기간내 조건으로는 통과하는
+    비대칭. 당일 조건은 intraday 에서 실시간 승격본만 보므로 live 가 없으면 미통과인데,
+    lookback=1 은 정의상 당일 조건과 같은 답을 내야 한다.
+    **못 보는 것**: 과거일의 소스 선택. 그쪽은 여전히 depth_daily 의 폴백 규칙이 정한다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    # 당일 live 파일을 치운다 — _today_peaks 가 이 종목을 못 본다.
+    from hoga.api.sources import source_venue_dir
+    live_dir = source_venue_dir(
+        data_dir / "parquet" / _PERIOD_TODAY / code, "kiwoom_live", "KRX")
+    (live_dir / "snapshots.parquet").unlink()
+    # dd 에는 돌파로 보이는 오늘 행이 남아 있다(직전 창 2000 의 300%).
+    _plant_stale_today_row(data_dir, ask=6000, bid=6000)
+
+    params = DepthPeakPeriodParams(lookback=1, period=2, threshold_pct=250)
+    res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir,
+        conditions=[AskDepthNewHighPeriodLeaf(id="p1", params=params),
+                    AskDepthNewHighLeaf(
+                        id="t1", params=DepthPeakParams(lookback=2, threshold_pct=250))],
+        universe_codes={code}, basis="intraday", today=_PERIOD_TODAY,
+    )
+    assert res.passing["p1"] == set()
+    assert res.passing["t1"] == set()   # 당일 조건과 같은 답 — 그것이 요점이다
+
+
+def test_period_peak_bid_side_uses_bid_column(tmp_path: Path) -> None:
+    """매수 리프는 bid 컬럼을 본다. 픽스처는 ask=bid 라 side 혼선은 값이 아니라
+    **컬럼 선택 실수**로만 드러나는데, 당일 live 를 비대칭으로 둬서 그것을 가른다."""
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    # 오늘 매수만 크게(9000), 매도는 조용(1000). 직전 창(0713·0714)은 양측 2000.
+    _write_snap(data_dir, date=_PERIOD_TODAY, code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(100,) * 10, bid_q=(900,) * 10)])
+    params = DepthPeakPeriodParams(lookback=1, period=2, threshold_pct=300)
+    res = screener_depth.evaluate(
+        data_dir=data_dir, sdir=sdir,
+        conditions=[AskDepthNewHighPeriodLeaf(id="a", params=params),
+                    BidDepthNewHighPeriodLeaf(id="b", params=params)],
+        universe_codes={code}, basis="intraday", today=_PERIOD_TODAY,
+    )
+    assert code not in res.passing["a"]
+    assert code in res.passing["b"]
+
+
+def test_period_peak_coverage_needs_lookback_plus_period(tmp_path: Path) -> None:
+    """커버리지의 need_days 는 lookback + period 다.
+
+    가장 이른 판정일도 자기 직전 period 일을 기준선으로 쓰므로, lookback 만 세면
+    배너의 '지난 N일 수집' 처방이 기준 창을 덮지 못한다. 픽스처는 6일치뿐이라
+    need 25 에 못 미쳐 partial 로 잡힌다.
+    """
+    code = "005930"
+    data_dir, sdir = _seed_period_fixture(tmp_path, code)
+    res = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=20, threshold_pct=100))
+    assert res.coverage is not None
+    assert res.coverage.lookback == 25
+    assert [c.code for c in res.coverage.partial] == [code]
+
+
+def test_period_peak_without_baseline_does_not_pass(tmp_path: Path) -> None:
+    """기준선이 하나도 없는 날은 통과가 아니라 제외다(비교 불가).
+
+    코퍼스에는 있지만 depth 데이터가 전무한 종목이 그렇다 — 여기서 통과시키면
+    '데이터가 없어서 걸린' 종목이 결과에 섞인다.
+    """
+    code = "005930"
+    data_dir = tmp_path
+    sdir = data_dir / "screener"
+    _seed_heatmap(data_dir, [code])
+    _seed_corpus(sdir, _PERIOD_CORPUS, [code])
+    _write_snap(data_dir, date=_PERIOD_TODAY, code=code, source="kiwoom_live",
+                obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(500,) * 10)])
+    res = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=2, threshold_pct=100))
+    assert res.passing["p1"] == set()
