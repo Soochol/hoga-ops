@@ -410,3 +410,83 @@ def test_completeness_first_excludes_invalid_even_if_more_recent_tier(tmp_path: 
 # `test_kiwoom_candle_wins_over_hogaplay_regardless_of_policy` 가 고정한다.
 
 
+
+
+# ── 캔들 차원 완결성 티어 (2026-08-20) ──────────────────────────────────────
+#
+# **호가 차원은 범위 밖이다.** 위 `test_partial_ws_still_wins_over_complete_hogaplay`
+# 가 계속 초록인 것이 그 경계의 증거다 — 값 비교의 venue 대칭이라는 폐지 사유는
+# `resolve_source_result` 에서 여전히 유효하다. 여기서 바꾸는 것은 **캔들 승자뿐**이고,
+# 그 함수는 애초에 호가와 독립으로 정한다고 선언돼 있다(`resolve_candle_source` 참조).
+#
+# 아래 두 날짜는 실측이다(483650, 2026-08-20 조사). **한 방향으로 고정된 사다리로는
+# 둘을 동시에 만족시킬 수 없다** — 그래서 완결성이 1차 키여야 한다.
+
+def test_candle_completeness_beats_ladder_order_20260731(tmp_path: Path) -> None:
+    """실측 20260731: hogaplay 가 부실한데 사다리 순서만으로 이겨 27분을 잃던 날.
+
+    `hogaplay=SOURCE_PARTIAL` · `kiwoom_live=COMPLETE` 에서 `pref="hogaplay"` 인데도
+    완결한 kiwoom_live 가 이겨야 한다(09:18~09:45 결손 회피).
+    """
+    _seed_partial(tmp_path, "20260731", "483650", "hogaplay")
+    _seed_candles(tmp_path, "20260731", "483650", "hogaplay")
+    _seed_source(tmp_path, "20260731", "483650", "kiwoom_live")
+    _seed_candles(tmp_path, "20260731", "483650", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260731", "483650", "hogaplay") == "kiwoom_live"
+
+
+def test_candle_completeness_keeps_hogaplay_20260819(tmp_path: Path) -> None:
+    """실측 20260819: 반대 방향. 완결성이 hogaplay 를 **지켜** 준다(72봉 → 128봉).
+
+    이 테스트가 `..._20260731` 과 쌍이라는 것이 요점이다 — 사다리를 kiwoom 쪽으로
+    고정해 7/31 을 고치면 이 날이 깨지고, hogaplay 로 고정하면 7/31 이 깨진다.
+    """
+    _seed_source(tmp_path, "20260819", "483650", "hogaplay")
+    _seed_candles(tmp_path, "20260819", "483650", "hogaplay")
+    _seed_partial(tmp_path, "20260819", "483650", "kiwoom_live")
+    _seed_candles(tmp_path, "20260819", "483650", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260819", "483650", "hogaplay") == "hogaplay"
+
+
+def test_candle_both_complete_falls_back_to_ladder(tmp_path: Path) -> None:
+    """동급이면 사다리가 정한다 — 완결성은 **타이브레이크가 아니라 1차 키**다."""
+    _seed_source(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")
+    _seed_candles(tmp_path, "20260622", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260622", "005930", "hogaplay") == "hogaplay"
+    assert resolve_candle_source(engine, "20260622", "005930", "") == "kiwoom_live"
+
+
+def test_candle_both_partial_keeps_current_behaviour(tmp_path: Path) -> None:
+    """둘 다 부실한 날은 **동작이 안 바뀐다** — COMPLETE 가 없으면 현행 사다리 첫째."""
+    _seed_partial(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_partial(tmp_path, "20260622", "005930", "kiwoom_live")
+    _seed_candles(tmp_path, "20260622", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260622", "005930", "hogaplay") == "hogaplay"
+    assert resolve_candle_source(engine, "20260622", "005930", "") == "kiwoom_live"
+
+
+def test_candle_complete_without_parquet_does_not_win(tmp_path: Path) -> None:
+    """**필터 순서가 계약이다.** 호가만 완결하고 캔들 승격이 안 된 소스가 COMPLETE
+    티어에서 이기면 캔들이 통째로 사라진다 — 파일 존재를 **먼저** 거른 뒤 티어를 적용한다.
+
+    여기서 kiwoom_live 는 COMPLETE 지만 candles.parquet 이 없다. 부실하더라도 캔들을
+    **가진** hogaplay 가 서빙돼야 한다(빈 화면보다 부분 캔들이 낫다).
+    """
+    _seed_partial(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_candles(tmp_path, "20260622", "005930", "hogaplay")
+    _seed_source(tmp_path, "20260622", "005930", "kiwoom_live")  # COMPLETE, 캔들 없음
+    engine = _make_engine(tmp_path)
+
+    assert resolve_candle_source(engine, "20260622", "005930", "hogaplay") == "hogaplay"
+    assert resolve_candle_source(engine, "20260622", "005930", "") == "hogaplay"

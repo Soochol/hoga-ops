@@ -361,11 +361,31 @@ def resolve_candle_source(
     소스마다 보유 차원이 다르므로 한 Stock-Date의 호가 승자와 캔들 승자가 갈릴 수
     있다(예: 호가는 kiwoom_live 승격본, 캔들은 hogaplay 또는 ADR-0109 복구본).
 
-    후보는 ``CANDLE_BEARING_SOURCES``로 좁히고, 정책 사다리 순서대로
-    ``INVALID가 아니면서 candles.parquet이 실제로 있는`` 첫 Source를 고른다.
-    파일 존재까지 보는 이유: 캔들 없이 끝난 hogaplay 캡처가 healthy로 남아
-    복구본을 가리는 것을 막는다. 승자가 없으면 ``None`` — 호출부는 캔들만
-    비우고 호가 차원은 정상 서빙한다(그날 전체를 버리지 않는다).
+    후보는 ``CANDLE_BEARING_SOURCES``로 좁히고, ``INVALID가 아니면서
+    candles.parquet이 실제로 있는`` 것만 남긴 뒤 **완결성을 1차 키, 사다리 순서를
+    타이브레이크**로 고른다(2026-08-20). 파일 존재까지 보는 이유: 캔들 없이 끝난
+    hogaplay 캡처가 healthy로 남아 복구본을 가리는 것을 막는다. 승자가 없으면
+    ``None`` — 호출부는 캔들만 비우고 호가 차원은 정상 서빙한다(그날 전체를 버리지
+    않는다).
+
+    ⚠ **폐지된 `completeness_first` 정책 옵션의 부활이 아니다.** 그것은 사용자가 고르는
+    옵션이었고 **호가 차원**까지 지배했다. 폐지 사유는 값 비교의 venue 대칭이다:
+    hogaplay 는 KRX 만 덮으므로(`SOURCE_VENUES`) 완결성으로 KRX 승자가 날마다 갈리면
+    "어떤 날은 venue 대칭이고 어떤 날은 아닌" 상태가 되고, 사용자는 그게 언제인지 알 수
+    없었다. 그 사유는 **호가 값을 나란히 비교할 때** 성립하는 것이라
+    `resolve_source_result` 는 그대로 두었다(`test_partial_ws_still_wins_over_complete_hogaplay`
+    가 계속 초록인 것이 그 증거다).
+
+    캔들이 범위 안인 이유: OHLCV 는 같은 시장의 같은 체결을 집계한 값이라 소스가 달라도
+    **의미가 같고**(해상도만 다르다), 이 함수는 애초에 호가 차원과 독립으로 정한다고
+    위에 선언돼 있다. NXT·통합은 후보가 `kiwoom_live` 하나뿐이라 완결성 비교가 성립하지
+    않아 **동작이 변하지 않는다** — 기준이 갈리는 것은 KRX 안에서뿐이다.
+
+    실측 근거(483650, 2026-08-20): 이 티어가 없으면 **더 부실한 쪽이 이긴다**.
+    20260731 은 `kiwoom_live=COMPLETE` · `hogaplay=SOURCE_PARTIAL` 인데 사다리 순서만으로
+    hogaplay 를 골라 09:18~09:45 **27분을 잃었다**. 반대로 20260819 는
+    `hogaplay=COMPLETE` · `kiwoom_live=SOURCE_PARTIAL` 이라 완결성이 hogaplay 를 지켜 준다.
+    한 방향으로 고정된 순서로는 두 날을 동시에 만족시킬 수 없다.
     """
     # 캔들 후보도 같은 규율로 좁힌다 — `CANDLE_BEARING_SOURCES` 는 "캔들을 갖는가",
     # `source_covers_venue` 는 "그 시장을 갖는가". 둘 다 만족해야 후보다.
@@ -384,10 +404,22 @@ def resolve_candle_source(
     if not sd_dir.exists():
         return None
     per_source = classify_stock_date(sd_dir)
+    # 완결성 티어를 적용하기 **전에** 두 필터를 먼저 통과시킨다. 순서가 계약이다 —
+    # 호가만 완결하고 캔들 승격이 안 된 날이 실재하므로(promote.py 의 빈 candles.parquet
+    # 방어), COMPLETE 티어에서 파일 없는 소스를 고르면 캔들이 통째로 사라진다.
+    eligible: list[SourceName] = []
     for source in candle_order:
         classification = per_source.get(source)
         if classification is None or classification.state == DiskState.INVALID:
             continue
-        if (source_venue_dir(sd_dir, source, venue_v) / "candles.parquet").exists():
-            return source
-    return None
+        if not (source_venue_dir(sd_dir, source, venue_v) / "candles.parquet").exists():
+            continue
+        eligible.append(source)
+    if not eligible:
+        return None
+    # `eligible` 은 사다리 순서를 유지하므로 첫 COMPLETE 가 곧 "완결한 것 중 사다리 우선"
+    # 이고, 하나도 없으면 현행대로 사다리 첫째다(둘 다 부실한 날의 동작은 안 바뀐다).
+    complete: list[SourceName] = [
+        s for s in eligible if per_source[s].state == DiskState.COMPLETE
+    ]
+    return complete[0] if complete else eligible[0]
