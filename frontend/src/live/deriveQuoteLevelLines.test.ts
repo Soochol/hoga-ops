@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { RangeBundle, QuoteRatioPoint } from '../api/types';
 import { deriveQuoteTotalsDayMax, deriveQuoteTotalsLevels, deriveRatioLevel } from './deriveQuoteLevelLines';
+import { withHogaGapSentinels } from '../chart/util/hogaGapHide';
 
 const pt = (over: Partial<QuoteRatioPoint>): QuoteRatioPoint => ({
   t: 0,
@@ -199,5 +200,76 @@ describe('deriveRatioLevel', () => {
     expect(masked as number).toBeLessThan(0); // 매수 우위 버킷을 집는다
     // 대조군: 마스크 OFF 면 붕괴 버킷 그대로 → 라인과 같은 0.
     expect(deriveRatioLevel(b, false, false)).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 오라클: 세 파생은 `withHogaGapSentinels` 를 **거치지 않는다**(파일 상단 주석).
+// 그 근거 — "센티넬이 배열 어디에 있든 결과는 원본만 훑은 것과 같다" — 를 값으로 잠근다.
+// 왼쪽(원본 스캔)이 지금 코드가 타는 경로, 오른쪽이 종전 경로를 재현한 입력이다.
+//
+// 센티넬을 **두 종류로** 심는 것이 이 테스트의 핵심이다:
+//   ① `withHogaGapSentinels` 가 실제로 만드는 중간 결손 센티넬
+//   ② 배열 **꼬리**의 센티넬 — 현행 `withHogaGapSentinels` 는 `t <= lastHogaT` 로 묶여
+//      이걸 만들지 않지만, ①만으로는 테스트가 **공허하다**: 중간 센티넬은 값이 전부 0 이라
+//      `lastDisplayedPoint` 가 선택할 수도, dayMax 를 갱신할 수도 없어 skip 술어를 지워도
+//      결과가 안 변한다(실측 — 처음 이 테스트를 ①만으로 썼을 때 red-check 이 초록이었다).
+//      꼬리 센티넬이 있어야 skip 술어가 **유일한 기여자**가 되어 red 가 뜬다. 그리고 이
+//      계약("센티넬에 둔감") 이 곧 상단 주석이 기대는 성질이므로, ②는 픽스처 장식이 아니라
+//      경계를 넓혀 잡는 쪽이다.
+describe('센티넬 오라클 — 원본 스캔 == 센티넬이 섞인 배열 스캔', () => {
+  const BUCKET = 60_000;
+  const DAY0 = 1_779_062_400_000; // 어느 거래일 09:00 KST
+  const DAY1 = DAY0 + 24 * 60 * 60 * 1000;
+  const gap = (t: number): QuoteRatioPoint =>
+    ({ ...pt({ t }), __syntheticHogaGap: true } as unknown as QuoteRatioPoint);
+
+  // 캔들은 두 날 각각 0..5분 전부, 호가 점은 그중 일부만 → 빈 버킷에 ① 센티넬이 낀다.
+  const candles = [DAY0, DAY1].flatMap((open) =>
+    [0, 1, 2, 3, 4, 5].map((m) => ({ ts_ms: open + m * BUCKET, open: 1, high: 1, low: 1, close: 1, volume: 1 })),
+  ) as unknown as RangeBundle['candles'];
+  const real: QuoteRatioPoint[] = [
+    pt({ t: DAY0 + 0 * BUCKET, bid_total: 10, ask_total: 20, bid_max: 15, ask_max: 25, imb_max_bid: 10, imb_max_ask: 20 }),
+    // 1·2분 결손 → 센티넬
+    pt({ t: DAY0 + 3 * BUCKET, bid_total: 30, ask_total: 40, bid_max: 90, ask_max: 99, imb_max_bid: 30, imb_max_ask: 40 }),
+    pt({ t: DAY1 + 1 * BUCKET, bid_total: 50, ask_total: 60, bid_max: 55, ask_max: 65, imb_max_bid: 50, imb_max_ask: 60 }),
+    // 2·3분 결손 → 센티넬
+    pt({ t: DAY1 + 4 * BUCKET, bid_total: 12, ask_total: 70, bid_max: 45, ask_max: 80, imb_max_bid: 12, imb_max_ask: 70 }),
+  ];
+
+  const augmented = [...withHogaGapSentinels(real, candles, BUCKET), gap(DAY1 + 5 * BUCKET)];
+  const rawBundle = ({ quote_ratio: { bucket_ms: BUCKET, points: real }, candles, bucket_ms: BUCKET } as unknown as RangeBundle);
+  const augBundle = ({ quote_ratio: { bucket_ms: BUCKET, points: augmented }, candles: [], bucket_ms: BUCKET } as unknown as RangeBundle);
+  const noAuction = (): boolean => false;
+
+  it('픽스처 전제: 중간 결손 센티넬이 실제로 주입됐다', () => {
+    // 꼬리 센티넬 1개를 빼고도 원본보다 길어야 ①이 생겼다는 뜻.
+    expect(augmented.length - 1).toBeGreaterThan(real.length);
+  });
+
+  it.each([false, true])('deriveQuoteTotalsLevels 일치 (intraMax=%s)', (im) => {
+    for (const mask of [false, true]) {
+      expect(deriveQuoteTotalsLevels(rawBundle, im, mask)).toEqual(deriveQuoteTotalsLevels(augBundle, im, mask));
+    }
+  });
+
+  it.each([false, true])('deriveRatioLevel 일치 (intraMax=%s)', (im) => {
+    for (const mask of [false, true]) {
+      expect(deriveRatioLevel(rawBundle, im, mask)).toEqual(deriveRatioLevel(augBundle, im, mask));
+    }
+  });
+
+  it.each([false, true])('deriveQuoteTotalsDayMax 일치 (intraMax=%s)', (im) => {
+    expect(deriveQuoteTotalsDayMax(rawBundle, im, noAuction)).toEqual(
+      deriveQuoteTotalsDayMax(augBundle, im, noAuction),
+    );
+  });
+
+  it('마지막 거래일만 본다는 계약이 센티넬과 무관하게 유지된다', () => {
+    // DAY0 의 bid_max 90 은 DAY1 최댓값 55 보다 크지만 잡히면 안 된다 — 경계가 센티넬
+    // 때문에 밀리면 여기서 깨진다.
+    const expected = { bid: 55, ask: 80, t: DAY1 + 4 * BUCKET };
+    expect(deriveQuoteTotalsDayMax(rawBundle, true, noAuction)).toEqual(expected);
+    expect(deriveQuoteTotalsDayMax(augBundle, true, noAuction)).toEqual(expected);
   });
 });

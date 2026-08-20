@@ -265,6 +265,51 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     }
   });
 
+  it('H) 총잔량 파생 수평선·툴팁 조회 — 틱당 비용 (원본 스캔 vs 센티넬 materialize, days 스윕)', async () => {
+    const { deriveQuoteTotalsLevels, deriveQuoteTotalsDayMax, deriveRatioLevel } =
+      await import('../../live/deriveQuoteLevelLines');
+    const { withHogaGapSentinels } = await import('../util/hogaGapHide');
+    const { lowerBoundT } = await import('./pastCachedProjector');
+    for (const days of [1, 5, 30, 90]) {
+      const { bundle, axis, pointCount } = makeBundle(days);
+      // ⚠ 이 파일의 공용 픽스처는 `candles: []` 라 `withHogaGapSentinels` 가 정렬 직후
+      // 조기 반환한다 — 센티넬 경로(전체 t 의 Set + 캔들 전량 순회)를 **과소 측정**한다.
+      // 이 항목만 캔들을 채워 실제 `/live` 모양으로 잰다.
+      bundle.candles = bundle.quote_ratio.points.map((q: { t: number }) => ({
+        ts_ms: q.t, open: 100, high: 102, low: 99, close: 101, volume: 10,
+      }));
+      const noAuction = (t: number): boolean => axis.inClosingAuctionWindow(t);
+
+      // 현행: 원본 배열을 꼬리부터 훑는다(O(꼬리)).
+      const tDerive = median(() => {
+        deriveQuoteTotalsLevels(bundle, false, true);
+        deriveRatioLevel(bundle, false, true);
+        deriveQuoteTotalsDayMax(bundle, false, noAuction);
+      });
+      // 대조군: 종전처럼 매 호출 센티넬 배열을 만들어 놓고 같은 스캔을 한다.
+      const tMaterialize = median(() => {
+        for (let k = 0; k < 3; k++) {
+          withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles, bundle.bucket_ms);
+        }
+      });
+      // 툴팁: 호버 1회 조회. 현행은 이진 탐색, 종전은 t→점 Map 을 매 틱 재구축했다.
+      const probe = bundle.quote_ratio.points[Math.floor(pointCount / 2)].t;
+      const tLookup = median(() => lowerBoundT(bundle.quote_ratio.points, probe));
+      const tMapBuild = median(() => {
+        const m = new Map<number, unknown>();
+        for (const q of bundle.quote_ratio.points) m.set(q.t, q);
+        return m;
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[H] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} | ` +
+        `파생3회=${tDerive.toFixed(3)}ms (대조 materialize3회=${tMaterialize.toFixed(3)}ms) | ` +
+        `툴팁 조회=${tLookup.toFixed(3)}ms (대조 Map재구축=${tMapBuild.toFixed(3)}ms) → ` +
+        `현행 틱합=${(tDerive + tLookup).toFixed(3)}ms, 종전 틱합=${(tMaterialize + tMapBuild).toFixed(3)}ms`,
+      );
+    }
+  });
+
   it('D) 참고: 이동평균(MA) — 안정 chartBundle 경로(틱당 아님), config개수 스윕', () => {
     const days = 90;
     const { axis } = makeAxisAndSegments(days);

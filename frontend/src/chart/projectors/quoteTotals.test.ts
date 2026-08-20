@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectBid, projectAsk, QUOTE_TOTALS_SPEC, askSurgeMarkers } from './quoteTotals';
+import { projectBid, projectAsk, QUOTE_TOTALS_SPEC, askSurgeMarkers, bidSurgeMarkers } from './quoteTotals';
 import { createVirtualAxis } from '../../util/virtualAxis';
 import { LINE_HIDDEN_COLOR } from '../util/auctionHide';
 
@@ -223,6 +223,19 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
 
   it('surgeEnabled=false면 마커 없음', () => {
     expect(askSurgeMarkers(bundle, axis, { ...ctx, surgeEnabled: false })).toEqual([]);
+  });
+
+  it('surgeEnabled=false면 캐시 래퍼를 아예 타지 않는다 — 같은 빈 배열 참조', () => {
+    // 게이트가 `makePastCachedProjector` **바깥**에 있다는 계약. 래퍼를 타면 매 호출
+    // `pastData.concat(todayData)` 로 **새** 배열이 나오므로 참조가 갈린다. 즉 이 단언이
+    // 곧 "꺼 놓으면 slice·expand 비용조차 안 낸다" 의 관측 가능한 서명이다.
+    const off = { ...ctx, surgeEnabled: false };
+    const a = askSurgeMarkers(bundle, axis, off);
+    const b = askSurgeMarkers(bundle, axis, off);
+    expect(a).toBe(b);
+    expect(bidSurgeMarkers(bundle, axis, off)).toBe(a);
+    // 대조: 켜면 캐시 래퍼를 타므로 새 배열이 나온다(참조가 갈린다).
+    expect(askSurgeMarkers(bundle, axis, ctx)).not.toBe(a);
   });
 
   it('surgeStartHHMM 시작 시각 이전 급증은 표시에서 가린다 (알고리즘은 그대로 진행)', () => {
