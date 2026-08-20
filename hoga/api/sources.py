@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -16,6 +17,8 @@ from hoga.live.venue import Venue
 
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
+
+log = logging.getLogger(__name__)
 
 # kiwoom_live: 키움 WS 승격본(ADR-0116). **유일한 실시간 WS 티어**다 — ADR-0136이
 # 실시간·폴링을 전부 키움으로 옮겼고, 같은 티어를 공유하던 KIS WS 승격본 `kis_live`는
@@ -196,17 +199,48 @@ class SourceResolution:
     missing_reason: MissingReason | None = None
 
 
+#: `ordered_sources` 가 **의미를 갖고 받는** 토큰. 그 밖의 값도 여전히 기본 사다리로
+#: 수렴하지만(구 URL 호환) 경고를 남긴다 — 아래 함수 docstring 참조.
+#:
+#: `"kiwoom_live"` 가 여기 있는 이유: 프론트가 옵트인 **꺼짐**일 때 보내는 정상 토큰이다
+#: (`frontend/src/state/sourcePreference.ts` 의 `ORDERFLOW_SOURCE_PREF`). 특별 취급은
+#: 없지만 "기본 사다리를 원한다" 는 의도된 발신이므로 경고 대상이 아니다. 빼면 기본
+#: 설정 사용자의 **모든 요청이** 경고를 찍는다.
+RECOGNIZED_SOURCE_PREFS: frozenset[str] = frozenset({"", "hogaplay", "kiwoom_live"})
+
+#: 프로세스당 토큰별 1회만 경고하기 위한 기록. `ordered_sources` 는 요청마다 불린다.
+_warned_prefs: set[str] = set()
+
+
 def ordered_sources(policy: str = "") -> tuple[SourceName, ...]:
     """소스 사다리 — 기본 `ORDERFLOW_LADDER`, `"hogaplay"` 하나만 뒤집는다.
 
     2026-08-07 오전에 정책 인자를 **무시**하도록 바꿨다가(옵션 폐지) 같은 날 오후에
     옵트인 하나를 되살렸다. 경위는 `HOGAPLAY_FIRST_LADDER` 주석에 있다.
 
-    **여전히 검증하지 않는다.** 인식하는 토큰은 `"hogaplay"` 뿐이고 나머지는 전부
-    조용히 기본 사다리로 수렴한다 — 폐지된 옛 정책 문자열(`kis_ws_first` ·
+    **여전히 거절하지 않는다.** 인식하는 토큰은 `"hogaplay"` 뿐이고 나머지는 전부
+    기본 사다리로 수렴한다 — 폐지된 옛 정책 문자열(`kis_ws_first` ·
     `completeness_first`)이 구 URL·저장된 설정에 남아 있을 수 있는데, 그걸 400 으로
     거절하는 것보다 기본값으로 수렴시키는 편이 사용자에게 낫다.
+
+    **다만 더는 조용하지 않다(2026-08-20).** 그 관대함이 오타를 삼켰다: 프론트가
+    `"hogaplay_first"` 를 보내고 있었는데 — 이름·주석·변수명이 전부 "hogaplay 우선" 을
+    선언하는데도 — 인식되지 않아 **정반대인 kiwoom_live 우선으로 수렴**했다. 실측
+    (483650/20260819/3분봉): `hogaplay_first` → 72봉(168분 결손) vs `hogaplay` →
+    128봉(결손 없음). 같은 화면의 호가·사이드카 요청은 올바른 토큰을 보내고 있어
+    **캔들만** 갈렸고, 에러가 없으니 아무도 몰랐다.
+
+    수렴은 하되 경고는 남긴다 — 로그 한 줄이면 그때 잡혔을 문제다. 발신자를 고치는
+    것이 본 수정이고(이 함수에 `"hogaplay_first"` 별칭을 더하는 것은 죽은 토큰을
+    고착시키므로 하지 않는다), 이 경고는 **다음 오타**를 위한 그물이다.
     """
+    if policy not in RECOGNIZED_SOURCE_PREFS and policy not in _warned_prefs:
+        _warned_prefs.add(policy)
+        log.warning(
+            "api.sources.unrecognized_source_pref pref=%r → 기본 사다리(%s)로 수렴. "
+            "인식 토큰은 %s 뿐이다 — 발신자가 의도한 소스와 다를 수 있다.",
+            policy, ORDERFLOW_LADDER[0], sorted(RECOGNIZED_SOURCE_PREFS - {""}),
+        )
     return HOGAPLAY_FIRST_LADDER if policy == "hogaplay" else ORDERFLOW_LADDER
 
 

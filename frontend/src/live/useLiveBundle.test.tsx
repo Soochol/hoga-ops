@@ -1262,7 +1262,8 @@ describe('useLiveBundle', () => {
 
   it('uses disk range candles for minute when KIS REST bypass is enabled', () => {
     candlesMock.candles = [];
-    // store sourcePref가 무엇이든 캔들 쿼리는 'hogaplay_first' 고정(아래 검증).
+    // 캔들 쿼리는 sourcePref override 를 주지 않는다 — `useRange` 의
+    // `sourcePrefOverride ?? storedSourcePref` 가 설정을 따르게 하기 위해서다(아래 검증).
 
     const result = renderUseLiveBundle({
       timeframe: '1m',
@@ -1272,10 +1273,13 @@ describe('useLiveBundle', () => {
       ],
     });
 
-    // 우회 ON 분봉: 디스크 캔들 쿼리(mode=candles)가 code 있음 + sourcePref 'hogaplay_first' 고정.
+    // 우회 ON 분봉: 디스크 캔들 쿼리(mode=candles)가 code 있음 + sourcePref override 없음.
+    // override 가 `undefined` 여야 `useRange` 가 설정(`krx_prefer_hogaplay`)을 따른다.
+    // 예전엔 `'hogaplay_first'` 를 박았는데 백엔드가 인식 못 하는 토큰이라 이름과 정반대인
+    // kiwoom_live 우선으로 수렴했다 — 값을 하나라도 다시 박으면 그 함정이 되살아난다.
     const candleCall = useRangeSpy.mock.calls.find((call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles');
     expect(candleCall?.[0]).toBe('005930');
-    expect(candleCall?.[7]).toBe('hogaplay_first');
+    expect(candleCall?.[7]).toBeUndefined();
     // 벤더 분봉 쿼리는 우회 ON이면 code=null로 비활성.
     expect(livePastCandlesSpy).toHaveBeenLastCalledWith(
       null, null, null, 'KRX', '20260527', 60_000,

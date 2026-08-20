@@ -1,6 +1,7 @@
 """Tests for three-source display-priority resolution."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import get_args
 from unittest.mock import MagicMock
@@ -43,9 +44,13 @@ def test_source_name_literal_includes_all_sources() -> None:
 
 
 # 인식하는 토큰은 `"hogaplay"` 하나뿐이고(옵트인 토글), 나머지는 전부 기본 사다리로
-# **조용히 수렴**한다. 구 정책 키를 그대로 넣는 것이 요점이다: 저장된 설정이나 구 URL 이
+# 수렴한다. 구 정책 키를 그대로 넣는 것이 요점이다: 저장된 설정이나 구 URL 이
 # 도착해도 예외 없이 수렴해야 한다(사용자 화면이 깨지지 않는다).
 # `"HOGAPLAY"` 대문자가 목록에 있는 것도 계약이다 — 정확히 일치할 때만 뒤집는다.
+#
+# **수렴은 그대로지만 더는 조용하지 않다**(2026-08-20) — 경고는 아래 절에서 따로 잰다.
+# 이 테스트는 여전히 "수렴한다"만 본다: 두 성질을 한 테스트에 묶으면 경고를 손볼 때
+# 수렴 계약까지 같이 빨개져 어느 쪽이 깨졌는지 말해 주지 못한다.
 @pytest.mark.parametrize("policy", [
     "hogaplay_first", "kis_ws_first", "kiwoom_live",
     "kiwoom_ws_first", "kis_api", "kis_api_first", "completeness_first",
@@ -58,6 +63,47 @@ def test_unknown_policy_strings_converge_to_default_ladder(policy) -> None:
 def test_hogaplay_token_flips_the_ladder() -> None:
     """설정 `krx_prefer_hogaplay` 가 켜지면 프론트가 이 토큰을 보낸다."""
     assert ordered_sources("hogaplay") == ("hogaplay", "kiwoom_live")
+
+
+# ── 미인식 토큰 경고 ────────────────────────────────────────────────────────
+#
+# **이 경고가 없어서 생긴 사고가 있다.** 프론트가 `"hogaplay_first"` 를 보내고 있었는데
+# — 변수명·주석이 전부 "hogaplay 우선" 을 선언하는데도 — 인식되지 않아 **정반대인
+# kiwoom_live 우선**으로 수렴했다. 실측(483650/20260819/3분봉) 72봉 vs 128봉.
+# 거절하지 않는 관대함은 유지하되(구 URL 호환), 다음 오타는 로그가 잡는다.
+#
+# 이 가드가 **막지 못하는 것**: 인식 토큰을 **의도와 다르게** 보내는 경우
+# (예: hogaplay 를 원하면서 `"kiwoom_live"` 를 보냄)는 여전히 조용하다 — 발신 의도는
+# 이 함수에서 볼 수 없다. 잡는 것은 "아무도 모르는 문자열" 하나뿐이다.
+
+@pytest.fixture(autouse=True)
+def _reset_pref_warn_state():
+    """프로세스당 1회 기록이라 테스트 간 격리가 필요하다 — 안 지우면 실행 순서에
+    따라 경고가 이미 소진돼 있어 아래 단언이 **통과하는 척** 한다."""
+    from hoga.api.sources import _warned_prefs
+    _warned_prefs.clear()
+    yield
+    _warned_prefs.clear()
+
+
+def test_unrecognized_pref_warns_once(caplog) -> None:
+    with caplog.at_level(logging.WARNING, logger="hoga.api.sources"):
+        ordered_sources("hogaplay_first")
+        ordered_sources("hogaplay_first")  # 같은 토큰 재호출 — 요청마다 불리는 함수다.
+
+    warnings = [r for r in caplog.records if "unrecognized_source_pref" in r.getMessage()]
+    assert len(warnings) == 1, "요청마다 찍으면 로그가 그 토큰으로 뒤덮인다"
+    assert "hogaplay_first" in warnings[0].getMessage()
+
+
+@pytest.mark.parametrize("pref", ["", "hogaplay", "kiwoom_live"])
+def test_recognized_prefs_do_not_warn(pref, caplog) -> None:
+    """`"kiwoom_live"` 가 여기 있는 것이 핵심이다 — 옵트인 **꺼짐**일 때 프론트가 보내는
+    정상 토큰이라, 빠지면 기본 설정 사용자의 모든 요청이 경고를 찍는다."""
+    with caplog.at_level(logging.WARNING, logger="hoga.api.sources"):
+        ordered_sources(pref)
+
+    assert not [r for r in caplog.records if "unrecognized_source_pref" in r.getMessage()]
 
 
 def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:

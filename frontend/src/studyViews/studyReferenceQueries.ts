@@ -126,12 +126,26 @@ export function studyReferenceSidecarRangeOptions(
   });
 }
 
-/** 디스크 캔들(mode=candles). sourcePref는 store 값이 아니라 'hogaplay_first' 고정 —
- * store가 'kis_ws_first'/'completeness_first'면 실시간 WS 소스가 선택되는데
- * kiwoom_live 는 캔들을 보유하지만(ADR-0125) venue 축이 있어 축 없는 소스와 다르다.
- * 백엔드 `resolve_candle_source` 가 단일 사다리(kiwoom_live → hogaplay)에서 캔들을 가진
- * 첫 소스를 고른다. 복기뷰 캔들은 항상 디스크 저장분만 쓴다. */
-export function studyReferenceCandleRangeOptions(save: StudyViewReference | null) {
+/** 디스크 캔들(mode=candles). 복기뷰 캔들은 항상 디스크 저장분만 쓴다.
+ *
+ * **sourcePref 고정을 뗐다(2026-08-20) — 이제 호가·사이드카와 같은 설정을 따른다.**
+ * 예전엔 `'hogaplay_first'` 를 박아 "store 가 `kis_ws_first`/`completeness_first` 면
+ * candles.parquet 없는 실시간 WS 소스가 선택된다" 를 막았는데, 그 정책들과 문제의
+ * 소스(`kis_live`/`kis_api`)는 전부 제거됐다(2026-08-06·08-07). 남은 두 소스는 **둘 다
+ * 캔들을 보유**하므로(`CANDLE_BEARING_SOURCES`) 고정할 이유가 사라졌다.
+ *
+ * 그리고 그 고정은 **동작하지도 않았다**: 백엔드 `ordered_sources` 는 `'hogaplay'` 만
+ * 인식하고 나머지는 기본 사다리(kiwoom_live 우선)로 수렴시키므로, `'hogaplay_first'` 는
+ * 이름과 **정반대**로 동작했다. 실측(483650/20260819/3분봉): 72봉(168분 결손) vs
+ * `'hogaplay'` 128봉(결손 없음) — kiwoom_live 는 실시간 수신분만 보유해 WS 가 끊긴
+ * 만큼 캔들이 비는데, 같은 날 hogaplay 는 `COMPLETE` 로 디스크에 있었다.
+ *
+ * `settings.sourcePref` 가 `undefined`(설정 로딩 중)면 `rangeBundleQueryOptions` 가
+ * `enabled=false` 로 막는다 — 호가·사이드카가 이미 타는 게이트에 캔들이 합류하는 것뿐이다. */
+export function studyReferenceCandleRangeOptions(
+  save: StudyViewReference | null,
+  settings: StudyReferenceQuerySettings,
+) {
   const inputs = studyReferenceQueryInputs(save);
   return rangeBundleQueryOptions({
     code: inputs.candles.code,
@@ -139,11 +153,11 @@ export function studyReferenceCandleRangeOptions(save: StudyViewReference | null
     to: inputs.candles.to,
     timeframe: inputs.candles.timeframe,
     todayKst: null,
-    sourcePref: 'hogaplay_first',
-    // ⚠ 캔들만 KRX 고정이다 — 위 sourcePref 고정과 같은 이유다. 이 쿼리는 **디스크
-    // 저장 캔들 전용**이고 그 승자는 kiwoom_live → hogaplay 인데, hogaplay 는 venue 축이
+    sourcePref: settings.sourcePref,
+    // ⚠ 캔들만 KRX 고정이다 — **이건 유지한다**(위 sourcePref 고정 해제와 별개 사안).
+    // 이 쿼리는 **디스크 저장 캔들 전용**이고 후보 중 hogaplay 는 venue 축이
     // 없다(`SOURCE_HAS_VENUE`). venue 를 넘기면 축 없는 소스에 축을 요구해 쿼리 키만
-    // 3벌로 갈리고 응답은 같다.
+    // 3벌로 갈리고 응답은 같다. `/study` 는 어차피 항상 KRX 다(`studyVenuePolicy`, ADR-0144).
     venue: 'KRX' as const,
     options: {
       mode: 'candles',
@@ -179,7 +193,7 @@ export function studyReferenceQueryOptions(
   return {
     rangeHoga: studyReferenceHogaRangeOptions(save, settings),
     rangeSidecars: studyReferenceSidecarRangeOptions(save, settings),
-    rangeCandles: studyReferenceCandleRangeOptions(save),
+    rangeCandles: studyReferenceCandleRangeOptions(save, settings),
     screenerDaily: studyReferenceScreenerDailyOptions(save, dailyContext),
   };
 }
