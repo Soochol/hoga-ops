@@ -604,9 +604,19 @@ export function useLiveBundle(
   ]);
 
   // 우회 ON 분봉의 유일한 디스크 캔들 쿼리(/api/range mode=candles). 서버가 bucket_ms로
-  // 3/5/15/30분 버킷팅해 내려주므로 클라이언트 재집계 불요. sourcePref는 'hogaplay_first'
-  // 고정 — store 값을 따라가면 candles.parquet 없는 kis 소스가 선택돼 빈 캔들이 되는 함정.
+  // 3/5/15/30분 버킷팅해 내려주므로 클라이언트 재집계 불요.
   // (D/W/M 우회는 스크리너 일봉만 쓰므로 이 쿼리는 분봉 전용.)
+  //
+  // **sourcePref 고정을 뗐다(2026-08-20).** 예전엔 `'hogaplay_first'` 를 박아
+  // "candles.parquet 없는 kis 소스가 선택돼 빈 캔들이 되는 함정" 을 막았는데, 그 함정의
+  // 주체인 `kis_live`/`kis_api` 는 소스에서 제거됐다(2026-08-06·08-07). 남은 두 소스는
+  // **둘 다 캔들을 보유**하므로(`CANDLE_BEARING_SOURCES`) 고정할 이유가 사라졌다.
+  //
+  // 더 나쁜 것은 그 고정이 **동작하지도 않았다**는 점이다: 백엔드 `ordered_sources` 는
+  // `'hogaplay'` 만 인식하고 나머지는 기본 사다리(kiwoom_live 우선)로 수렴시키므로,
+  // `'hogaplay_first'` 는 이름과 **정반대**로 동작했다. 인자를 빼면 `useRange` 의
+  // `sourcePrefOverride ?? storedSourcePref` 가 설정(`krx_prefer_hogaplay`)을 따른다 —
+  // 로딩 중 `undefined` 게이트도 그 경로가 이미 처리한다.
   const minuteDiskNeeded = !!(code && isMinute && restBypassEnabled);
   const minuteDiskOptions = useMemo(
     () => ({
@@ -627,7 +637,6 @@ export function useLiveBundle(
     undefined,
     minuteDiskNeeded ? todayKstYyyymmdd : null,
     minuteDiskOptions,
-    'hogaplay_first',
   );
 
   // 캔들 소스 이분법 — 모드당 소스 1개라 병합 없음.

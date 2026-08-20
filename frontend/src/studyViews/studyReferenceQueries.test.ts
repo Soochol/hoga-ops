@@ -18,7 +18,10 @@ const save: StudyViewReference = {
 };
 
 const settings = {
-  sourcePref: 'hogaplay_first' as const,
+  // 백엔드 `ordered_sources` 가 인식하는 실제 토큰. 예전 픽스처는 `'hogaplay_first'` 였는데
+  // 그건 백엔드가 못 알아듣고 기본 사다리로 수렴시키는 값이라, 고정을 검증하던 단언이
+  // **정반대 동작을 통과시키고 있었다**(2026-08-20).
+  sourcePref: 'hogaplay' as const,
   venue: 'KRX' as const,
   askPeakEnabled: true,
   bidPeakEnabled: true,
@@ -31,7 +34,7 @@ const settings = {
 };
 
 describe('studyReferenceQueryOptions', () => {
-  it('builds disk candle (mode=candles, hogaplay_first fixed) options for minute study views', () => {
+  it('builds disk candle (mode=candles, sourcePref 설정 추종) options for minute study views', () => {
     const options = studyReferenceQueryOptions(save, settings);
 
     expect(options.rangeHoga.enabled).toBe(true);
@@ -43,24 +46,38 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.rangeSidecars.queryKey).toContain(1000);
     // depth_heatmap 지표 활성 → sidecar 요청 queryKey에 반영(index 20, 토글 refetch).
     expect(options.rangeSidecars.queryKey[20]).toBe(true);
-    // 캔들: mode=candles + sourcePref 'hogaplay_first' 고정 + 저장 타임프레임(5m 버킷).
+    // 캔들: mode=candles + sourcePref 설정 추종 + 저장 타임프레임(5m 버킷).
     expect(options.rangeCandles.enabled).toBe(true);
     expect(options.rangeCandles.queryKey[0]).toBe('range');
     expect(options.rangeCandles.queryKey[1]).toBe('005930');
     expect(options.rangeCandles.queryKey[2]).toBe('20260616');
     expect(options.rangeCandles.queryKey[3]).toBe('20260618');
     expect(options.rangeCandles.queryKey[4]).toBe(300_000);
-    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay_first');
+    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay');
     expect(options.rangeCandles.queryKey[14]).toBe('candles');
     // 스크리너 일봉은 분봉 저장에서 비활성.
     expect(options.screenerDaily.enabled).toBe(false);
   });
 
-  it('keeps the candle source pinned to hogaplay_first even when store pref is kis_ws_first', () => {
-    const options = studyReferenceQueryOptions(save, { ...settings, sourcePref: 'kis_ws_first' });
-    // 지표(hoga/sidecar)는 store pref를 따르지만, 캔들은 항상 hogaplay_first.
-    expect(options.rangeHoga.queryKey[13]).toBe('kis_ws_first');
-    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay_first');
+  // 이 두 테스트는 **뒤집힌 계약**이다(2026-08-20). 예전엔 "캔들은 store pref 와 무관하게
+  // 'hogaplay_first' 고정" 을 지켰는데, 그 토큰을 백엔드가 인식하지 못해 고정이 실제로는
+  // **kiwoom_live 우선**으로 동작했다. 지금은 캔들도 호가·사이드카와 같은 설정을 따른다.
+  it('캔들 sourcePref 는 호가·사이드카와 같은 설정을 따른다 — 고정하지 않는다', () => {
+    const options = studyReferenceQueryOptions(save, { ...settings, sourcePref: 'kiwoom_live' });
+
+    expect(options.rangeHoga.queryKey[13]).toBe('kiwoom_live');
+    expect(options.rangeCandles.queryKey[13]).toBe('kiwoom_live');
+    // 세 쿼리가 한 축 위에 있어야 소스 배지가 말하는 것과 캔들이 일치한다.
+    expect(options.rangeSidecars.queryKey[13]).toBe('kiwoom_live');
+  });
+
+  it('설정 로딩 중(sourcePref undefined)이면 캔들도 호가와 함께 비활성이다', () => {
+    // 게이트가 캔들에만 빠지면 콜드 마운트마다 기본 pref 로 한 번 조회하고 곧바로
+    // 설정 pref 로 다시 조회해 차트가 눈에 띄게 갈아끼워진다(`sourcePreference.ts` 주석).
+    const options = studyReferenceQueryOptions(save, { ...settings, sourcePref: undefined });
+
+    expect(options.rangeHoga.enabled).toBe(false);
+    expect(options.rangeCandles.enabled).toBe(false);
   });
 
   it('requests no broker late-entry sidecars when the indicator is disabled', () => {
@@ -129,7 +146,7 @@ describe('studyReferenceQueryOptions', () => {
     const options = studyReferenceQueryOptions({ ...save, timeframe: '5m' }, settings);
 
     expect(options.rangeCandles.enabled).toBe(true);
-    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay_first');
+    expect(options.rangeCandles.queryKey[13]).toBe('hogaplay');
     expect(options.rangeCandles.queryKey[14]).toBe('candles');
     expect(options.screenerDaily.enabled).toBe(false);
   });
