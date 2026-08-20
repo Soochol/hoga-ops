@@ -14,6 +14,7 @@ import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
   useReorderItems, useAddMemo, useUpdateMemo, useRemoveMemo,
+  useMoveMember, useAddMember,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
@@ -34,7 +35,7 @@ import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
-  DndContext, PointerSensor, useSensor, useSensors,
+  DndContext, PointerSensor, useSensor, useSensors, useDroppable, useDndContext,
   type DragStartEvent, type DragMoveEvent, type DragEndEvent,
   type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
@@ -52,7 +53,7 @@ import {
 // resolveDrag(코드 전용 재배열)는 이제 편집 모달만 쓴다 — 패널은 메모를 함께 옮기므로
 // mergePanelRows + toItemRefs 로 표시 순서 전체를 만든다.
 import {
-  resolveFolderDrag, entrySortableId, memoSortableId, parseItemSortableId,
+  resolveFolderDrag, entrySortableId, memoSortableId, parseItemSortableId, folderDroppableId,
 } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
@@ -391,6 +392,41 @@ function SortableGroup({ folderId, children }: {
   );
 }
 
+/** 그룹 블록 전체를 **폴더 간 이동**의 드롭 타깃으로 감싼다(id=folderDroppableId,
+ *  히트맵 드로어 GroupDropZone 미러). 행만 타깃이면 빈 폴더·접힌 폴더에는 겨눌 곳이
+ *  없고, 정렬 모드가 켜진 폴더는 행에 sortable ref 자체가 안 붙어 역시 겨눌 수 없다 —
+ *  블록 하나가 그 셋을 한 번에 연다.
+ *
+ *  data.folderId 를 실어 onDragEnd 가 id 디코딩 없이 대상 그룹을 읽는다(행 droppable 과
+ *  같은 키라 분기가 하나로 합쳐진다). 헤더 그룹 드래그(type='folder')와 메모 드래그는
+ *  typeAwareCollision 이 걸러 여기로 오지 않고, **출발 폴더 자신의 존도** 거기서
+ *  빠진다(그룹 내 재정렬을 훔치지 않게 — panelDragCollision 주석 참조). */
+function GroupDropZone({ folderId, children }: {
+  folderId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({
+    id: folderDroppableId(folderId),
+    data: { type: 'entry-target', folderId },
+  });
+  // isOver 대신 컨텍스트의 over 로 판정 — 대상 그룹의 **행** 위를 지나는 동안 이 존의
+  // isOver 는 꺼지는데, 정작 그 상태로 놓으면 이 그룹으로 들어간다(같은 폴더로 귀결되는
+  // 두 경로가 하이라이트만 달라지면 손을 떼기 전 예고가 거짓말이 된다). 히트맵과 동일.
+  const { active, over } = useDndContext();
+  const isOver = !!active && !!over
+    && active.data.current?.type === 'entry'
+    && over.data.current?.folderId === folderId
+    && active.data.current?.folderId !== folderId;
+  return (
+    <div ref={setNodeRef}
+      data-testid={`watchlist-dropzone-${folderId}`}
+      data-drop-intent={isOver ? 'move' : undefined}
+      className={isOver ? 'rounded ring-1 ring-inset ring-accent bg-tint-selection' : ''}>
+      {children}
+    </div>
+  );
+}
+
 /** 패널 종목 행 — dnd transform/ref는 행에 두고, listeners는 종목명 왼쪽 핸들에만 둔다.
  *  행 클릭(차트 이동)·우클릭 메뉴와 드래그 시작 표면이 섞이지 않게 분리한다.
  *
@@ -557,10 +593,10 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
  * and click → activeCode + /live jump. The 편집 control opens a small menu
  * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
  * headers carry a hover ⋯ menu (이름 변경/순서/삭제), and the row context menu
- * does quick-remove + 그룹으로 이동. Entry add/multi-delete and cross-folder
- * move live in the edit modal; quick within-group reorder (drag a row) and
- * folder reorder (drag a group via its ⠿ handle) happen in-panel via dnd-kit
- * (ADR-0066). Collapse state persists via localStorage.
+ * does quick-remove + 그룹으로 이동. Entry add/multi-delete live in the edit
+ * modal; quick within-group reorder (drag a row), cross-folder move (drag a row
+ * onto another group — v5) and folder reorder (drag a group via its ⠿ handle)
+ * happen in-panel via dnd-kit (ADR-0066). Collapse state persists via localStorage.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -809,6 +845,11 @@ export function WatchlistDrawer() {
   };
 
   const reorderItemsM = useReorderItems();
+  // 폴더 간 이동(v5). 실폴더 → 실폴더는 moveMember(대상 추가 후 출처 제거), 미분류에서
+  // 끌어낸 것은 addMember 하나로 끝난다 — 멤버십이 생기면 그 entry 는 미분류 렌더에서
+  // 자동으로 빠진다(미분류는 폴더가 아니라 "어느 폴더에도 없음"의 표시다).
+  const moveMember = useMoveMember();
+  const addMemberM = useAddMember();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // --- 행에 넘길 안정 콜백(P2) ---
@@ -909,7 +950,6 @@ export function WatchlistDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
     const wasEntry = activeType === 'entry';
-    const wasMemo = activeType === 'memo';
     // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
     // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
     // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
@@ -922,8 +962,6 @@ export function WatchlistDrawer() {
     // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
     // **같은 술어**라 둘이 갈릴 수 없다.
     finishDrag();
-    if ((wasEntry || wasMemo)
-        && getFolderSortMode(parseItemSortableId(String(ev.active.id)).folderId) !== 'default') return;
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
     // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
     // 메모는 이 분기를 타지 않는다 — 차트에 실을 종목이 없다.
@@ -954,9 +992,31 @@ export function WatchlistDrawer() {
     // v4 composite id: `${folderId}:${code|memoId}` — 같은 코드가 N폴더면 N행이라
     // 폴더 스코프로 파싱하고, 키 모양으로 종목/메모를 가른다.
     const active = parseItemSortableId(String(ev.active.id));
+    // v5: 폴더 간 이동. over 는 대상 그룹의 드롭존('entry-target')이거나 대상 그룹의
+    // 행인데, **둘 다 data.folderId 를 실으므로** 한 술어로 읽는다(id 디코딩 불필요).
+    //
+    // 정렬 모드 게이트(아래)보다 **앞**에 둔다 — 그 게이트는 재정렬 전용이다. 정렬이
+    // 켜진 폴더로 끌어넣는 것은 순서와 무관하고, 히트맵도 non-manual 에서 이동만은
+    // 허용한다. 미분류로 **넣는** 방향은 없다: 마지막 멤버십을 빼면 서버가 entry 를
+    // prune 하므로 그건 이동이 아니라 삭제다(관심종목에서 빼려면 행 메뉴를 쓴다).
+    if (wasEntry && active.kind === 'code') {
+      const overFolderId = (ev.over.data.current?.folderId ?? null) as string | null;
+      if (overFolderId !== null && overFolderId !== active.folderId) {
+        const d = ev.active.data.current as { name?: string } | undefined;
+        const name = d?.name ?? '';
+        if (active.folderId === null) {
+          // 미분류에서 끌어냄 = 멤버십 **생성** 하나. remove 할 출처가 없다.
+          addMemberM.mutate({ folderId: overFolderId, code: active.code, name });
+        } else {
+          void moveMember({ code: active.code, from: active.folderId, to: overFolderId, name });
+        }
+        return;
+      }
+    }
     const over = parseItemSortableId(String(ev.over.id));
     const folderId = active.folderId;
     if (folderId === null) return;   // 미분류엔 메모가 없고 재정렬 대상도 아니다
+    if (getFolderSortMode(folderId) !== 'default') return;   // 재정렬 전용 게이트
     // 화면에 보이는 순서(종목+메모)를 그대로 옮긴다 — 서버 계약이 items 전체 집합
     // 일치를 요구하므로 한쪽만 보내면 409 다.
     const rows = mergePanelRows(
@@ -1079,9 +1139,11 @@ export function WatchlistDrawer() {
                   dragHandle={dragHandle} />
               );
               return folder ? (
-                <SortableGroup key={key} folderId={folder.id}>
-                  {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
-                </SortableGroup>
+                <GroupDropZone key={key} folderId={folder.id}>
+                  <SortableGroup folderId={folder.id}>
+                    {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
+                  </SortableGroup>
+                </GroupDropZone>
               ) : (
                 <div key={key}>{renderHeader()}{entriesList}</div>
               );

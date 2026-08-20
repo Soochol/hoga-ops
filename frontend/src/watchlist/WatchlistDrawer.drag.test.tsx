@@ -44,6 +44,10 @@ vi.mock('@dnd-kit/core', async (orig) => {
     useSensor: () => ({}),
     useSensors: () => [],
     PointerSensor: class {},
+    // 그룹 드롭존(v5)은 실물 훅이 아니라 스텁으로 — 여기서 재는 것은 onDragEnd 배선이고,
+    // 실제 히트 영역·하이라이트는 e2e 담당(ADR-0057). 히트맵 드로어 테스트와 같은 선례.
+    useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+    useDndContext: () => ({ active: null, over: null }),
   };
 });
 vi.mock('@dnd-kit/sortable', async (orig) => {
@@ -404,5 +408,120 @@ describe('WatchlistDrawer drag wiring', () => {
     });
 
     await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith('f_0000000b', [{ kind: 'code', code: '051910' }, { kind: 'code', code: '035420' }]));
+  });
+  // --- 폴더 간 이동(v5) ---
+  // 막는 방향: 패널에서 종목을 **다른 그룹으로 옮길 수 없던 것**. 그전엔 onDragEnd 가
+  // 출발 폴더의 행 목록에서만 목적지를 찾아, 다른 폴더 위에 놓으면 조용한 no-op 이었다.
+  // 못 보는 것: 실제 히트 영역(빈/접힌 폴더를 겨눌 수 있는가)은 여기서 안 잰다 —
+  // 그건 panelDragCollision.test 의 드롭존 레인 + e2e 담당(ADR-0057).
+  const MOVE_EVENT = (over: Record<string, unknown>) => ({
+    active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
+    over,
+    activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+    delta: { x: 0, y: 0 },
+  });
+
+  it('entry-drag onto another group drop zone → addMember(to) + removeMember(from)', async () => {
+    const addSpy = vi.spyOn(watchlistApi, 'addMember').mockResolvedValue({
+      code: '005930', name: '삼성전자', registered_at_kst_date: '20260101',
+      last_success_date: null, folder_id: 'f_0000000b', order: 0,
+    });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    h.onDragEnd!(MOVE_EVENT({
+      id: 'folder:f_0000000b',
+      data: { current: { type: 'entry-target', folderId: 'f_0000000b' } },
+    }));
+
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
+    expect(reorderSpy).not.toHaveBeenCalled();
+  });
+
+  // 회귀: 다중 소속(ADR-0070)이라 대상 폴더의 행 위에 놓았을 때 **그 종목이 출발 폴더에도
+  // 등록돼 있으면** 옛 코드는 출발 폴더 rows 에서 그 code 를 찾아내 **출발 폴더를 조용히
+  // 재정렬**했다 — 사용자가 요청한 이동은 일어나지 않은 채로. move 분기가 선행하면 사라진다.
+  it('entry-drag over a row in another folder moves it — never silently reorders the source', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      ...DATA,
+      entries: [
+        ...ENTRIES,
+        // 000660 이 **양쪽 폴더에** 등록돼 있다 — 옛 코드가 헛짚던 바로 그 조건.
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000b', order: 0 },
+      ],
+    });
+    const addSpy = vi.spyOn(watchlistApi, 'addMember').mockResolvedValue({
+      code: '005930', name: '삼성전자', registered_at_kst_date: '20260101',
+      last_success_date: null, folder_id: 'f_0000000b', order: 1,
+    });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    h.onDragEnd!(MOVE_EVENT({
+      id: 'f_0000000b:000660',
+      data: { current: { type: 'entry', folderId: 'f_0000000b' } },
+    }));
+
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
+    expect(reorderSpy).not.toHaveBeenCalled();
+  });
+
+  it('미분류 행을 그룹으로 끌면 addMember 하나로 끝난다 (뺄 출처가 없다)', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      ...DATA,
+      entries: [{ code: '035720', name: '카카오', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }],
+    });
+    const addSpy = vi.spyOn(watchlistApi, 'addMember').mockResolvedValue({
+      code: '035720', name: '카카오', registered_at_kst_date: '20260101',
+      last_success_date: null, folder_id: 'f_0000000a', order: 0,
+    });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('카카오')).toBeInTheDocument());
+
+    h.onDragEnd!({
+      active: { id: '__uncat__:035720', data: { current: { type: 'entry', folderId: null, code: '035720', name: '카카오' } } },
+      over: { id: 'folder:f_0000000a', data: { current: { type: 'entry-target', folderId: 'f_0000000a' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000a', '035720', undefined));
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
+  // 정렬 모드 게이트는 **재정렬 전용**이다 — 순서와 무관한 이동까지 죽이면, 정렬을 켠
+  // 폴더는 종목을 넣지도 빼지도 못하는 섬이 된다(히트맵도 non-manual 에서 이동만 허용).
+  it('정렬 모드가 켜진 폴더에서도 폴더 간 이동은 살아 있다', async () => {
+    const addSpy = vi.spyOn(watchlistApi, 'addMember').mockResolvedValue({
+      code: '005930', name: '삼성전자', registered_at_kst_date: '20260101',
+      last_success_date: null, folder_id: 'f_0000000b', order: 0,
+    });
+    const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+    fireEvent.click(screen.getByLabelText('스윙 정렬'));
+
+    h.onDragEnd!(MOVE_EVENT({
+      id: 'folder:f_0000000b',
+      data: { current: { type: 'entry-target', folderId: 'f_0000000b' } },
+    }));
+
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
+    expect(reorderSpy).not.toHaveBeenCalled();
   });
 });
