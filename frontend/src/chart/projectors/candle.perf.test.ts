@@ -138,18 +138,22 @@ describe('projectCandle single-pass 계약', () => {
 // 대조군은 캔들 쪽처럼 별도 레거시 구현을 두지 않는다 — `contains`/`toVirtual` 이
 // **0 이어야 한다**는 단언 자체가 대조군 역할을 한다(옛 경로면 그 둘이 N 이 된다).
 describe('호가 pane 프로젝터 single-pass 계약', () => {
-  const DAY = 24 * 60 * 60 * 1000;
   const FULL = 6.5 * 60 * 60 * 1000;
-  const base = 1_779_062_400_000;
   const DAYS = 2;
   const PER_DAY = 30;
 
   const segments: { date: string; sessionOpenMs: number; sessionCloseMs: number }[] = [];
   const bundleSegments: { date: string; session_open_ms: number; session_close_ms: number }[] = [];
+  // ⚠ `date` 는 **`session_open_ms` 와 실제로 일치해야 한다.** 프로그램 순매수는
+  // `regularSessionBoundsForDate(date)`(= `Date.UTC(y, m-1, d)`)로 정규장 창을 만들고
+  // 그 밖의 점을 버린다 — 지어낸 날짜('2026060N' 같은)를 쓰면 창이 엉뚱한 곳에 생겨
+  // **모든 program_trade 점이 조용히 걸러지고**, 그러면 `byBucket` 이 비어 방출 경로가
+  // 사실상 테스트되지 않는다(그 상태에서도 `classifyAndProject` 계수는 N 이라 초록이다).
+  const yyyymmdd = (ms: number): string => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
   for (let d = 0; d < DAYS; d++) {
-    const open = base + d * DAY;
-    segments.push({ date: `2026d${d}`, sessionOpenMs: open, sessionCloseMs: open + FULL });
-    bundleSegments.push({ date: `2026060${d}`, session_open_ms: open, session_close_ms: open + FULL });
+    const open = Date.UTC(2026, 5, 22 + d, 0, 0, 0); // 09:00 KST = 그 날짜의 UTC 자정
+    segments.push({ date: yyyymmdd(open), sessionOpenMs: open, sessionCloseMs: open + FULL });
+    bundleSegments.push({ date: yyyymmdd(open), session_open_ms: open, session_close_ms: open + FULL });
   }
   const axis = createVirtualAxis(segments);
 
@@ -157,7 +161,7 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
   const fillPoints: Record<string, number>[] = [];
   const programPoints: Record<string, number>[] = [];
   for (let d = 0; d < DAYS; d++) {
-    const open = base + d * DAY;
+    const open = bundleSegments[d].session_open_ms;
     for (let m = 0; m < PER_DAY; m++) {
       const t = open + m * 60_000;
       quotePoints.push({
@@ -208,12 +212,23 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
     expectOnePerPoint(calls, N);
   });
 
+  it('픽스처 전제: 프로그램 순매수가 실제로 점을 방출한다', () => {
+    // 위 `date`↔`session_open_ms` 정합이 깨지면 여기서 0 이 되어, 아래 계수 계약이
+    // "아무것도 안 하는 코드" 를 재고 있음을 알려 준다.
+    expect(projectProgramTradeNetAmount(bundle, axis).length).toBeGreaterThan(0);
+  });
+
   it('프로그램 순매수 — 축 조회는 점당 1회 (program_trade 는 축을 세그먼트로만 쓴다)', () => {
     const { axis: counted, calls } = countingAxis(axis);
     projectProgramTradeNetAmount(bundle, counted);
     // byBucket 을 세울 때 program_trade 점마다 `contains` 를 한 번 부르고(그쪽은 버킷
     // 시각의 포함 여부만 필요하다), 방출 루프에서 호가점마다 `classifyAndProject` 1회.
     expect(calls.classifyAndProject).toBe(N);
+    // `contains` 도 **정확히** 박는다 — `toBe(0)` 이 아니라 `toBe(N)` 인 이유가 위 한 줄이다.
+    // 안 박아 두면 방출 루프에 점당 `contains` 가 되살아나도 이 테스트가 통과한다
+    // (`classifyAndProject` 는 여전히 N 이므로). 픽스처의 program_trade 점 수가 호가점과
+    // 같아 둘 다 N 이다.
+    expect(calls.contains ?? 0).toBe(N);
     expect(calls.toVirtual ?? 0).toBe(0);
     expect(calls.inClosingAuctionWindow ?? 0).toBe(0);
   });
