@@ -108,9 +108,11 @@ describe('App document title', () => {
     expect(document.title).toBe('before-test');
   });
 
-  it('sets /study to the matching top menu label', () => {
+  it('leaves /study to the StudyPage title writer', () => {
+    // `/live` 와 같은 이유로 표에서 빠졌다 — 저장뷰가 열려 있으면 제목이 nav 라벨
+    // 「복기」가 아니라 **종목명 + 저장뷰 이름**이고, 그 재료는 페이지만 안다.
     wrap(<div>unused</div>, '/study');
-    expect(document.title).toBe('복기');
+    expect(document.title).toBe('before-test');
   });
 
   it('uses hoga-ops for routes without a side menu item', () => {
