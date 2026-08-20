@@ -454,16 +454,42 @@ it('clicking the saved view name text navigates to the study route', async () =>
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
-// ADR-0149 §「Ctrl+클릭은 일반 클릭과 동일」 — 탭이 없으면 "새 탭으로" 가 무의미하다
-// (ADR-0113 §3 의 `disposition` 제거와 동형). 계산만 하고 버려지는 배선을 남기지 않는다.
-it('ctrl-clicking a saved view row behaves exactly like a normal click', async () => {
-  useStudyActiveViewStore.getState().openSave(saves[1]);
-  renderDrawer('/inventory');
+// ADR-0149 §갱신(2026-08-20) — ctrl/⌘+클릭은 **브라우저** 탭이다. 같은 ADR §5 가 없앤
+// 것은 *앱 안* 탭 disposition 이고 그건 여전히 없다(스토어·라우트가 무변화인 것을 아래
+// 두 단언이 잰다). 여기서 검사가 무너지는 방향은 하나뿐이다: 이 탭의 활성 뷰가 바뀌면
+// 곁눈질이라는 목적 자체가 사라진다.
+describe.each([
+  ['ctrl', { ctrlKey: true }],
+  ['meta', { metaKey: true }],
+])('%s-clicking a saved view row', (_label, modifier) => {
+  it('opens the ?view= deep link in a browser tab without touching this tab', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    useStudyActiveViewStore.getState().openSave(saves[1]);
+    renderDrawer('/study?view=b');
 
-  fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), modifier);
+
+    expect(open).toHaveBeenCalledWith('/study?view=a', '_blank', 'noopener');
+    // 이 탭은 그대로 — 라우트도, 활성 저장뷰도 움직이지 않는다.
+    expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
+    expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'b' });
+    open.mockRestore();
+  });
+});
+
+// 일반 클릭 경로가 새 탭 분기에 흡수되지 않았는가 — 위 테스트만으로는 `window.open` 을
+// 항상 부르는 구현도 통과한다(그쪽은 라우트를 안 바꾸므로).
+it('일반 클릭은 새 브라우저 탭을 열지 않는다 — 제자리 교체 그대로', async () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null);
+  useStudyActiveViewStore.getState().openSave(saves[1]);
+  renderDrawer('/study?view=b');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  expect(open).not.toHaveBeenCalled();
   expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'a', name: '급등 이후' });
+  open.mockRestore();
 });
 
 it('pressing Enter on the saved view title navigates to the study route', async () => {
