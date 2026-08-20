@@ -96,11 +96,15 @@ describe('useLiveOrderbookAtCursor', () => {
     });
   });
 
-  it('returns undefined and does not fetch when cursorMs is null', async () => {
+  it('returns an empty spot and does not fetch when cursorMs is null', async () => {
     const { result } = renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
     );
-    expect(result.current).toBeUndefined();
+    expect(result.current.spot).toBeUndefined();
+    // 커서가 없으면 조회가 없으니 **stale 도 아니다** — 딤이 걸릴 이유가 없는
+    // 상태이고, 여기가 true 로 새면 latest 표면이 영구히 흐려진다.
+    expect(result.current.stale).toBe(false);
+    expect(result.current.error).toBeNull();
     expect(apiGet).not.toHaveBeenCalled();
   });
 
@@ -140,8 +144,8 @@ describe('useLiveOrderbookAtCursor', () => {
     // 10호가 창이 호버 내내 "호가 데이터 없음" 으로 남는다. 실제로 그렇게
     // 깨져 있었다(이 훅만 venue 전파에서 누락).
     expect(url).toContain('venue=KRX');
-    // T14b: result is LiveOrderbookSpot, assert via .snapshot
-    await waitFor(() => expect(result.current?.snapshot).toBeDefined());
+    // T14b: result carries the spot plus its freshness — assert via .spot.snapshot
+    await waitFor(() => expect(result.current.spot?.snapshot).toBeDefined());
   });
 
   it('venue change reissues the query', async () => {

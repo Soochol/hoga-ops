@@ -72,3 +72,106 @@ describe('useSpot capacity', () => {
     await waitFor(() => expect(result.current.data).toBe('v:b'));
   });
 });
+
+/**
+ * 취소·실패 계약 (2026-08-20).
+ *
+ * 세 성질이 함께 `/study` 10호가 버그를 만들었다: 키가 바뀌어도 옛 값이 남고,
+ * 죽은 요청이 커넥션을 물고 있고, 실패가 그 옛 값을 영구히 굳혔다. 여기서
+ * 나머지 둘을 못박는다(옛 값이 남는 것은 **의도된 동작**이고, 그것을 화면에
+ * 말하는 책임은 `isFetching` → `BookPanel.stale` 로 넘어갔다).
+ */
+describe('useSpot 취소·실패', () => {
+  it('키가 바뀌면 비행 중이던 요청을 끊는다', async () => {
+    // 끊지 않으면 최신 요청이 **자기가 만든 시체 뒤에서** 큐를 기다린다 —
+    // 실측 2026-08-20: 서버 2~7ms 인 /api/orderbook 이 스크럽 중 596~781ms.
+    const signals: AbortSignal[] = [];
+    const { rerender } = renderHook(
+      ({ key }) =>
+        useSpot<string>(
+          key,
+          (signal) => {
+            signals.push(signal);
+            return new Promise<string>(() => {}); // 영원히 미해결 = 비행 중
+          },
+          0,
+        ),
+      { initialProps: { key: 'a' } },
+    );
+
+    await waitFor(() => expect(signals).toHaveLength(1));
+    rerender({ key: 'b' });
+    await waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it('취소는 실패가 아니다 — AbortError 는 error 로 새지 않는다', async () => {
+    // 스크럽 중에는 **매 스텝이 이 경로를 지난다**. 여기가 새면 커서를 움직이는
+    // 내내 화면이 에러로 깜빡인다.
+    const abortErr = () => {
+      const e = new Error('aborted');
+      e.name = 'AbortError';
+      return e;
+    };
+    const { result, rerender } = renderHook(
+      ({ key }) =>
+        useSpot<string>(
+          key,
+          (signal) =>
+            new Promise<string>((resolve, reject) => {
+              if (key === 'b') {
+                resolve('v:b');
+                return;
+              }
+              signal.addEventListener('abort', () => reject(abortErr()));
+            }),
+          0,
+        ),
+      { initialProps: { key: 'a' } },
+    );
+
+    rerender({ key: 'b' });
+    await waitFor(() => expect(result.current.data).toBe('v:b'));
+    expect(result.current.error).toBeNull();
+  });
+
+  it('실패하면 옛 값을 남기지 않고 error 로 말한다', async () => {
+    // 남기면 커서가 옮겨간 자리에 옛 호가가 눌러앉는다 — 이 훅엔 재시도가 없어
+    // 다음 키 변경까지 거짓 데이터가 화면에 굳는다.
+    const boom = new Error('boom');
+    const fetcher = vi.fn((key: string) =>
+      key === 'a' ? Promise.resolve('v:a') : Promise.reject(boom),
+    );
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderHook(
+      ({ key }) => useSpot<string>(key, () => fetcher(key), 0),
+      { initialProps: { key: 'a' } },
+    );
+
+    await waitFor(() => expect(result.current.data).toBe('v:a'));
+    rerender({ key: 'b' });
+    await waitFor(() => expect(result.current.error).toBe(boom));
+    expect(result.current.data).toBeUndefined();
+    logged.mockRestore();
+  });
+
+  it('키가 움직이면 지난 실패는 턴다', async () => {
+    // 에러는 **키에 딸린 상태**다. 안 털면 실패한 버킷 하나가 커서가 떠난
+    // 뒤에도 계속 에러를 그린다.
+    const fetcher = vi.fn((key: string) =>
+      key === 'bad' ? Promise.reject(new Error('boom')) : Promise.resolve(`v:${key}`),
+    );
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderHook(
+      ({ key }) => useSpot<string>(key, () => fetcher(key), 0),
+      { initialProps: { key: 'bad' } },
+    );
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    rerender({ key: 'good' });
+    await waitFor(() => expect(result.current.data).toBe('v:good'));
+    expect(result.current.error).toBeNull();
+    logged.mockRestore();
+  });
+});

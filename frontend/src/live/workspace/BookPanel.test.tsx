@@ -477,3 +477,58 @@ describe('BookPanel', () => {
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
   });
 });
+
+/**
+ * stale 딤 (2026-08-20).
+ *
+ * 사다리만 네트워크고 요약·체결강도는 커서에서 즉시 파생되므로, 조회가 비행 중인
+ * 동안 한 패널 안에 **두 시점**이 공존한다. 그 사실을 화면이 말하게 하는 장치가
+ * 이 딤이고, **어디에 걸리지 않는지가 절반**이다 — 이미 새 시점인 값까지 흐리면
+ * "이것도 낡았다" 는 거짓말이 된다.
+ */
+describe('BookPanel stale 딤', () => {
+  const dimOf = (el: Element | null) => el?.className ?? '';
+
+  it('stale 이면 사다리·가격축·총잔량이 흐려진다', () => {
+    const { container } = renderPanel({ stale: true });
+    const bars = container.querySelectorAll('.relative.flex.items-center');
+    expect(bars.length).toBeGreaterThan(0);
+    expect(dimOf(bars[0])).toContain('opacity-50'); // 잔량 바
+    const grid = container.querySelector('.grid')!;
+    expect(dimOf(grid.children[1])).toContain('opacity-50'); // 중앙 가격축 열
+    expect(dimOf(screen.getByTestId('book-total-strip'))).toContain('opacity-50');
+  });
+
+  it('stale 이 아니면 아무 데도 딤이 없다', () => {
+    const { container } = renderPanel({ stale: false });
+    expect(container.querySelectorAll('.opacity-50')).toHaveLength(0);
+  });
+
+  it('요약 패널과 체결강도는 흐리지 않는다 — 이미 새 시점 값이다', () => {
+    const { container } = renderPanel({ stale: true });
+    const grid = container.querySelector('.grid')!;
+    // 우측 열의 첫 자식 = 요약 11행 래퍼.
+    expect(dimOf(grid.children[2].children[0])).not.toContain('opacity-50');
+    // 체결강도 행은 좌측 열에 있고 자체 딤이 없어야 한다.
+    const strength = screen.getByText('체결강도').parentElement!;
+    expect(dimOf(strength)).not.toContain('opacity-50');
+  });
+
+  it('딤은 22행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
+    // 잔량 바를 래퍼로 묶으면 자식 수가 바뀐다. 딤은 **셀에 직접** 얹어야 한다.
+    const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
+    const { container } = renderPanel({ trades, stale: true });
+    const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
+    expect(left.children).toHaveLength(22);
+    expect(center.children).toHaveLength(22);
+    expect(right.children).toHaveLength(12);
+  });
+
+  it('시간외 총잔량은 스팟 경로가 아니라 흐리지 않는다', () => {
+    // ⚠ `container.querySelector('.border-t.border-border')` 로 잡으면 **좌측 열의
+    // `중` 행 divider** 가 먼저 걸린다 — 그 요소는 애초에 딤 대상이 아니라 스트립
+    // 상태와 무관하게 통과하는 vacuous 가드가 된다. testid 로 지목할 것.
+    renderPanel({ stale: true, afterHoursTotals: { ask: 10, bid: 20 } });
+    expect(dimOf(screen.getByTestId('book-total-strip'))).not.toContain('opacity-50');
+  });
+});
