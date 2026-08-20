@@ -257,6 +257,7 @@ function openStudyView(view: { viewId: string; code: string; label: string; name
 }
 
 beforeEach(() => {
+  document.title = 'before-test';
   indicatorPanelMockProps.length = 0;
   liveChartRootMock.mockClear();
   useStudyViewsMock.mockReturnValue({
@@ -329,6 +330,29 @@ beforeEach(() => {
   useStudyWorkspaceStore.setState({
     windows: seedWindows,
     zOrder: ['w-book', 'w-broker', 'w-vdist', 'w-program', 'w-chart'],
+  });
+});
+
+describe('StudyPage document title', () => {
+  // 탭 제목은 `App` 의 nav 라벨 표가 아니라 **이 페이지**가 쓴다 — 저장뷰가 열려 있으면
+  // 「복기」로는 어느 종목의 어느 뷰인지 알 수 없다. App 쪽 계약은 App.test.tsx 가 잡는다.
+  it('writes the symbol name and view name for a deep-linked view', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(document.title).toBe('삼성전자 돌파 복기');
+  });
+
+  it('follows the active view when it changes', () => {
+    renderPage();
+    openStudyView({ viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' });
+
+    expect(document.title).toBe('SK하이닉스 눌림 복기');
+  });
+
+  it('keeps the nav label while no view is open', () => {
+    renderPage();
+
+    expect(document.title).toBe('복기');
   });
 });
 

@@ -8,6 +8,11 @@ import type { RailPanel } from '../state/rightRail';
 // 이 값은 화면 라벨이자 **브라우저 탭 제목**이다 — `App.tsx` 의 STATIC_ROUTE_TITLES
 // 가 여기서 파생하므로, 라벨을 고치면 document.title 도 함께 따라온다(별도 표 없음).
 //
+// 예외는 **페이지가 제목을 소유하는 두 라우트**다: `/live`(종목명 + 시세)와
+// `/study`(종목명 + 저장뷰 이름). 그래도 표에서 빠질 뿐 라벨이 무관해지진 않는다 —
+// `/study` 는 저장뷰가 없을 때 이 라벨로 돌아가고, 그 폴백은 아래 `WorkspaceNavLabel`
+// 로 **타입이 묶여 있다**(studyViews/studyDocumentTitle.ts).
+//
 // `panel` 은 그 nav 를 눌렀을 때 **함께 열리는 우측 패널**이다(선택). 라이브는
 // 관심종목, 복기는 저장뷰 — 그 페이지에서 곧바로 종목을 고르게 되는 패널이라 nav
 // 한 번에 화면이 완성된다. 값이 없는 항목은 열려 있던 패널을 그대로 둔다(닫지도
@@ -26,6 +31,16 @@ export const WORKSPACE_NAV_ITEMS = [
   { to: '/inventory', label: '보관함' },
   { to: '/capture', label: '캡처' },
 ] as const satisfies readonly { to: string; label: string; panel?: RailPanel }[];
+
+/**
+ * `to` 하나의 nav 라벨을 **리터럴 타입으로** 뽑는다.
+ *
+ * 표에서 빠진 라우트(위 주석의 `/live`·`/study`)가 라벨을 폴백으로 다시 쓸 때, 값을
+ * 손으로 복사하지 않고 타입으로 묶기 위한 것이다. 라벨이 바뀌면 그 복사본이 타입
+ * 에러로 드러난다.
+ */
+export type WorkspaceNavLabel<To extends (typeof WORKSPACE_NAV_ITEMS)[number]['to']> =
+  Extract<(typeof WORKSPACE_NAV_ITEMS)[number], { to: To }>['label'];
 
 // 여기 있던 `SYSTEM_NAV_ITEMS`(`/settings` 한 항목)는 그 라우트와 함께 사라졌다 —
 // 설정은 이제 페이지가 아니라 앱 전역 드로어이고, TopNav 가 버튼을 직접 렌더한다.

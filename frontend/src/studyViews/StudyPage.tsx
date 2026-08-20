@@ -37,6 +37,7 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
+import { studyDocumentTitle } from './studyDocumentTitle';
 import {
   studyDailyViewport,
   studySavedRangeCoverage,
@@ -44,6 +45,7 @@ import {
   type StudySavedRangeCoverageNotice,
 } from './studyDailyContext';
 import { STUDY_VENUE } from './studyVenuePolicy';
+import { useStaticDocumentTitle } from '../util/useDocumentTitle';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { useRightRailStore } from '../state/rightRail';
 import {
@@ -199,6 +201,10 @@ export function StudyPage() {
     () => savesQuery.data?.saves.find((row) => row.id === activeViewId) ?? null,
     [activeViewId, savesQuery.data?.saves],
   );
+  // 탭 제목의 소유자는 이 페이지다(`App` 의 PAGE_OWNED_TITLE_ROUTES) — nav 라벨
+  // 「복기」 대신 **종목명 + 저장뷰 이름**이 뜬다. 아래 조기 return 셋(빈·로딩·에러)
+  // 보다 **위에서** 불러야 상태에 따라 훅 순서가 갈리지 않는다.
+  useStaticDocumentTitle(studyDocumentTitle(selectedSave, activeView));
   const referenceSave = referenceStudyView(selectedSave);
   /**
    * 지금 화면이 서 있는 봉 — **창이 유일한 소유자다**(#1326).

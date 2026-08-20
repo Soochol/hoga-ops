@@ -61,10 +61,17 @@ const StudyViewsDrawer = lazy(() =>
 const SignalAlertsDrawer = lazy(() => import('./signalAlerts/SignalAlertsDrawer'));
 const SettingsSections = lazy(() => import('./live/SettingsSections'));
 
+// 탭 제목이 nav 라벨 그대로인 라우트 표.
+//
 // `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
+// `/live`·`/study` 도 빠진다 — **페이지가 제목을 소유한다**(각각 종목명 + 시세,
+// 종목명 + 저장뷰 이름). 표에서 빼는 것만으로는 부족하고 아래 `staticTitle` 의
+// 삼항에서도 같이 빼야 한다: 표를 못 찾으면 `?? 'hoga-ops'` 로 떨어져 App 이
+// 페이지와 **경쟁하는 두 번째 writer** 가 된다.
+const PAGE_OWNED_TITLE_ROUTES: ReadonlySet<string> = new Set(['/live', '/study']);
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   WORKSPACE_NAV_ITEMS
-    .filter((item) => item.to !== '/live')
+    .filter((item) => !PAGE_OWNED_TITLE_ROUTES.has(item.to))
     .map((item) => [item.to, item.label] as const),
 );
 
@@ -95,7 +102,9 @@ export default function App() {
   // inflating the chart row and returns the retired side-menu width to main.
   const { pathname } = useLocation();
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
-  const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
+  const staticTitle = PAGE_OWNED_TITLE_ROUTES.has(pathname)
+    ? null
+    : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트
   // TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
