@@ -32,6 +32,9 @@ export function Num({ value, onChange, label, ariaLabel, w = 'w-20', min, max }:
 }) {
   // 타이핑 중에는 자유롭게 두고(중간값 간섭 금지), blur 에서만 범위로 클램프한다.
   // NaN('e' 등)은 undefined 로 흘려 폼별 기본값 복원 경로를 태운다 — 서버 422 방지.
+  // ⚠ `min`/`max` 는 장식이 아니라 **백엔드 Field 제약의 손 미러**다. 어긋나면 타입은
+  // 통과하고 서버만 422 로 스캔을 통째로 거절한다(숫자 제약은 wire contract 가 보는
+  // 축이 아니다 — 이름과 enum 값만 대조한다). 폼별 클램프 테스트가 그 미러를 지킨다.
   const commit = (raw: string) => {
     if (raw === '') { onChange(undefined); return; }
     const n = Number(raw);
@@ -93,7 +96,7 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
       <Num label="비교 기간" ariaLabel="비교 기간(일)" min={1} max={1000}
         value={params.lookback} onChange={(n) => onChange({ ...params, lookback: n ?? 1 })} />
       <span className="text-sm text-fg-dim">일</span>
-      <Num label="과거 peak 대비" min={0}
+      <Num label="과거 peak 대비" min={1}
         value={params.threshold_pct} onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
@@ -114,7 +117,7 @@ export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPer
       <Num ariaLabel="비교 기간(일)" w="w-16" min={1} max={1000}
         value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} />
       <span className="text-sm text-fg-dim">일 peak 대비</span>
-      <Num ariaLabel="과거 peak 대비(%)" min={0}
+      <Num ariaLabel="과거 peak 대비(%)" min={1}
         value={params.threshold_pct} onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
@@ -145,7 +148,7 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
           className="w-28 bg-bg-input border border-border rounded-md px-2 py-1 font-data text-sm tabular-nums text-fg" />
       </label>
       <span className="text-sm text-fg-dim">이후 총잔량이</span>
-      <Num label="이전 최대 대비" min={0} value={params.threshold_pct}
+      <Num label="이전 최대 대비" min={1} value={params.threshold_pct}
         onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
       <span className="text-sm text-fg-dim">% 이상</span>
     </div>
