@@ -59,7 +59,6 @@ import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButto
 import { useLivePageStore, isMinuteTimeframe } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
-import { earliestAllowedMinuteDate } from '../liveDateTime';
 import { savedRangeNotice } from '../savedRangeNotice';
 import { countBarsInRange } from '../savedRangeAnchor';
 import type { Candle } from '../../api/types';
@@ -160,6 +159,28 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
   // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
   const venue = isSavedRangeSubject ? SAVED_RANGE_VENUE : resolvedVenue;
+  /**
+   * 저장뷰 **얼림**(2026-08-21 사용자 결정: "멈춰 있다 — 저장한 그 날만 보인다").
+   *
+   * venue 고정과 **같은 축**이다 — `isSavedRangeSubject`, 즉 저장뷰가 가리키는 그 종목을
+   * 그리는 창만. 다른 종목 창은 같은 기간을 볼 뿐이라 그 종목의 복기 데이터를 보는 게
+   * 아니고, 함께 얼리면 저장뷰와 무관한 창까지 실시간이 멎는다.
+   *
+   * ⚠ **기간이 250일 벽 안인지 밖인지 묻지 않는다.** 규칙이 하나여야 "어떤 저장뷰는
+   * 멈추고 어떤 건 안 멈춘다" 를 사용자가 예측할 필요가 없다. 벽 판정을 여기 넣으면
+   * 그 경계일에 같은 저장뷰의 동작이 조용히 바뀐다(벽이 매일 하루씩 밀리므로).
+   *
+   * ⚠ **봉 게이트는 여기 있어야 한다** — 소비자가 둘이기 때문이다(`useLiveChartData` 와
+   * `<LiveChartRoot savedRangeFrozen>`). 한쪽에서만 거르면 일봉 저장뷰 창이 "얼지는
+   * 않는데 백필은 꺼진" 잡종이 된다(좌측 팬이 조용히 죽는다). 훅 안쪽에도 같은 게이트가
+   * 있지만 그건 다른 호출자(`LivePage`)를 위한 방어이지 이 축의 소유자가 아니다.
+   */
+  const savedRangeFreeze = useMemo(
+    () => (isSavedRangeSubject && savedRangeFocus && isMinuteTimeframe(view.timeframe)
+      ? { fromDate: savedRangeFocus.fromDate, toDate: savedRangeFocus.toDate }
+      : null),
+    [isSavedRangeSubject, savedRangeFocus, view.timeframe],
+  );
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
@@ -198,11 +219,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     venue,
     investorNetEnabled,
     sidecarDemands,
+    savedRangeFreeze,
   });
 
   // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
   const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;
-  const todayYmd = d.today;
 
   /**
    * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
@@ -267,12 +288,16 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           timeframe: view.timeframe,
           fromDate: savedRange.fromDate,
           toDate: savedRange.toDate,
-          minuteFloorDate: earliestAllowedMinuteDate(todayYmd),
           hasBand: savedRangeBand !== null,
           candleCount: savedRangeCandles.length,
+          // 얼린 창의 캔들 = 저장 구간 그 자체이므로 첫 봉의 거래일이 곧 커버리지
+          // 시작이다. `ts_ms` → KST 거래일 변환은 `unixMsToKSTDate` 단일 소유자를 탄다.
+          earliestCandleDate: savedRangeCandles.length > 0
+            ? unixMsToKSTDate(savedRangeCandles[0].ts_ms)
+            : null,
         })
       : null),
-    [savedRange, view.timeframe, todayYmd, savedRangeBand, savedRangeCandles],
+    [savedRange, view.timeframe, savedRangeBand, savedRangeCandles],
   );
   const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
 
@@ -526,6 +551,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               savedRangeBand={savedRangeBand}
               restoreViewport={savedRangeViewport}
               savedRangeFromDate={savedRange?.fromDate ?? null}
+              savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}

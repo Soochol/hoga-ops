@@ -62,6 +62,15 @@ export interface CandleEmptyInput {
   isLoading: boolean;
   /** REST 우회(디스크 전용 모드). 켜져 있으면 벤더가 아니라 디스크가 원인이다. */
   restBypassEnabled: boolean;
+  /**
+   * 저장뷰 구간에 **얼린** 창인가(`useLiveBundle` 의 `frozenRangeFrom`).
+   *
+   * `restBypassEnabled` 와 **따로 받는다** — 얼린 창은 그 값을 강제로 켜지만 처방이
+   * 정반대이기 때문이다. 전역 우회는 설정에서 끄면 벤더로 받아오지만, 얼린 창은
+   * 설정으로 못 끈다(칩 × 가 손잡이다). 하나로 합치면 "설정 열기" 를 눌러도 아무
+   * 일이 없는 버튼이 뜬다 — 이 파일이 반복해서 거절해 온 실패 유형이다.
+   */
+  savedRangeFrozen?: boolean;
   /** 종목이 아예 안 골라졌으면 이 안내의 대상이 아니다(그건 별도 빈 상태). */
   hasInstrument: boolean;
 }
@@ -119,6 +128,7 @@ export function deriveCandleEmptyState({
   hasCandles,
   isLoading,
   restBypassEnabled,
+  savedRangeFrozen,
   hasInstrument,
 }: CandleEmptyInput): CandleEmptyState | null {
   if (!hasInstrument || hasCandles || isLoading) return null;
@@ -174,6 +184,14 @@ export function deriveCandleEmptyState({
     };
   }
 
+  // 얼린 창이 먼저다 — 얼림이 `restBypassEnabled` 를 강제로 켜므로 아래 우회 분기가
+  // 항상 먼저 잡아 "설정 열기" 라는 **듣지 않는 버튼**을 준다(입력 도크스트링의 근거).
+  if (savedRangeFrozen) {
+    // 조회는 성공했는데 비었다 + 저장뷰 구간 = 그 구간이 캡처되지 않은 것이다.
+    // 행동을 제안하지 않는다: 설정으로도 재시도로도 못 고치고, 손잡이는 칩의 × 뿐인데
+    // 그건 이 구간을 보는 것을 **포기**하는 것이라 여기서 권할 일이 아니다.
+    return { text: '저장 구간에 캡처된 캔들이 없다', action: null };
+  }
   if (restBypassEnabled) {
     // 조회는 성공했는데 비었다 + 디스크 전용 모드 = 이 구간이 저장되지 않은 것이다.
     // 벤더를 켜면(우회 끄기) 받아올 수 있으므로 그쪽으로 안내한다.

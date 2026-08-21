@@ -372,6 +372,18 @@ interface Props {
    *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
   savedRangeFromDate?: string | null;
   /**
+   * 이 창이 저장뷰 구간에 **얼려** 있는가(`UseLiveBundleOptions.frozenRangeFrom`).
+   *
+   * 켜지면 **백필 4경로를 전부 끈다**(`canTriggerBackfill`). 얼린 창의 fetch 범위는
+   * 저장 구간에 고정돼 있어 `historicalFromDate` 를 아무리 밀어도 응답이 안 바뀌므로,
+   * 백필이 도는 것은 순수 낭비다 — perf 로그·스토어 쓰기·재렌더만 남고 캔들은 그대로다.
+   * (3a 진행 루프는 착지한 범위로 종료를 판정하는데, 그 범위가 영영 안 움직인다.)
+   *
+   * `/study` 는 넘기지 않는다 — 그쪽은 `historicalFromDate` 를 소비하는 쿼리가 아예
+   * 없어 백필이 이미 inert 다(`StudyPage` 의 `isExtending: false` 주석).
+   */
+  savedRangeFrozen?: boolean;
+  /**
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
    *
@@ -484,6 +496,7 @@ export function LiveChartRoot({
   savedRangeBand = null,
   savedRangeAnchorMs = null,
   savedRangeFromDate = null,
+  savedRangeFrozen = false,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
@@ -914,8 +927,10 @@ export function LiveChartRoot({
   const historicalRange = useHistoricalRangeActions();
   const viewGuard = useWindowViewGuard();
   const canTriggerBackfill = useCallback(
-    () => lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null,
-    [historicalRange],
+    // 얼린 창은 백필을 아예 돌리지 않는다 — 근거는 `savedRangeFrozen` prop 도크스트링.
+    () => !savedRangeFrozen
+      && (lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null),
+    [historicalRange, savedRangeFrozen],
   );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
