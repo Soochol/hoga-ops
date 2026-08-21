@@ -12,6 +12,9 @@ import { WindowViewContext, type WindowViewValue } from '../live/workspace/windo
 import { LIVE_WINDOW_WORKSPACE } from '../live/workspace/windowView';
 import type { LiveTimeframe } from './livePage';
 
+
+/** Provider 밖(전역 경로) 스코프 — `/live` 페이지 세트. */
+const AMBIENT = { page: null, windowKey: null } as const;
 /**
  * indicator-modal chartPrefs 의 **창 스코프** 회귀 가드.
  *
@@ -48,10 +51,17 @@ function SurgeToggle({ label }: { label: string }) {
   );
 }
 
+/** 창 세트의 버킷 — 창 편집은 페이지 세트가 아니라 여기로 간다(ADR-0152). */
+function windowBuckets(timeframe: LiveTimeframe) {
+  return useChartPrefsStore.getState().indicatorModalByWindow[`live:win-${timeframe}`];
+}
+
 describe('indicator-modal chartPrefs 창 스코프', () => {
   beforeEach(() => {
     act(() => {
       useChartPrefsStore.getState().resetToDefaults();
+      // 창 id 가 봉에서 파생돼 테스트 간 재사용되므로 창 맵도 비운다(ADR-0152).
+      useChartPrefsStore.setState({ indicatorModalByWindow: {} });
       syncIndicatorModalTimeframe('1m');
     });
   });
@@ -91,9 +101,11 @@ describe('indicator-modal chartPrefs 창 스코프', () => {
     );
     await userEvent.click(screen.getByTestId('toggle-daily'));
 
-    const { indicatorModalByTimeframe: buckets } = useChartPrefsStore.getState();
-    expect(buckets.D?.surgeMarkerEnabled).toBe(false);
-    expect(buckets.minute?.surgeMarkerEnabled).toBeUndefined();
+    // 대상 창의 D 버킷에 쓴다. 페이지 세트는 손대지 않는다 — 창 편집이 시드
+    // 뿌리를 오염시키면 그 뒤 열리는 모든 새 창이 이 값을 물려받는다.
+    expect(windowBuckets('D')?.D?.surgeMarkerEnabled).toBe(false);
+    expect(windowBuckets('D')?.minute?.surgeMarkerEnabled).toBeUndefined();
+    expect(useChartPrefsStore.getState().indicatorModalByTimeframe).toEqual({});
     // ambient(minute) 투영도 그대로 — 다른 봉을 편집했을 뿐이다.
     expect(useChartPrefsStore.getState().surgeMarkerEnabled).toBe(true);
   });
@@ -120,10 +132,13 @@ describe('indicator-modal chartPrefs 창 스코프', () => {
     expect(prefsForTimeframe(s, '1m')).not.toBe(prefsForTimeframe(s, 'D'));
   });
 
-  it('"현재 봉 초기화"는 대상 창의 버킷만 비운다', async () => {
+  it('"현재 봉 초기화"는 대상 창의 그 봉 버킷만 비운다 — 페이지 세트는 안 건드린다', async () => {
+    // 페이지 세트에 두 봉을 심어 두고 D 창에서 초기화한다. 창 엔트리가 아직
+    // 없으므로 **초기화 경로가 먼저 엔트리를 보장**해야 한다 — 안 그러면 이
+    // 초기화가 페이지 세트를 지워 그 뒤 열리는 모든 새 창에 번진다.
     act(() => {
-      useChartPrefsStore.getState().setPrefScoped(null, '1m', 'surgeMarkerEnabled', false);
-      useChartPrefsStore.getState().setPrefScoped(null, 'D', 'surgeMarkerEnabled', false);
+      useChartPrefsStore.getState().setPrefScoped(AMBIENT, '1m', 'surgeMarkerEnabled', false);
+      useChartPrefsStore.getState().setPrefScoped(AMBIENT, 'D', 'surgeMarkerEnabled', false);
     });
     function Reset() {
       const { resetIndicatorModalBucket } = useChartPrefActions();
@@ -136,8 +151,12 @@ describe('indicator-modal chartPrefs 창 스코프', () => {
     );
     await userEvent.click(screen.getByTestId('reset'));
 
-    const { indicatorModalByTimeframe: buckets } = useChartPrefsStore.getState();
-    expect(buckets.D).toBeUndefined();
-    expect(buckets.minute?.surgeMarkerEnabled).toBe(false);
+    // 창 세트: 시드로 두 봉을 받은 뒤 D 만 비었다.
+    expect(windowBuckets('D')?.D).toBeUndefined();
+    expect(windowBuckets('D')?.minute?.surgeMarkerEnabled).toBe(false);
+    // 페이지 세트: 그대로.
+    const { indicatorModalByTimeframe: page } = useChartPrefsStore.getState();
+    expect(page.D?.surgeMarkerEnabled).toBe(false);
+    expect(page.minute?.surgeMarkerEnabled).toBe(false);
   });
 });

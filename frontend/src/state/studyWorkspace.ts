@@ -22,8 +22,9 @@
  *   무시한다 — rail 접기는 "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
  * - **차트 설정**은 `study.lastMinuteTimeframe.v1`(분봉)에서 1회. 지표는 시드하지
  *   않는다 — 창이 소유하지 않고 앱 전역 저장소(`live.indicators.v2`)에 있기
- *   때문이다. 그 저장소 안에서 `/study` 는 자기 세트를 갖지만(ADR-0146) 그것도
- *   페이지 축이지 창 축이 아니다.
+ *   때문이다. 그 저장소 안에서 `/study` 는 자기 페이지 세트를 갖고(ADR-0146) 창은
+ *   자기 세트를 갖지만(ADR-0152), 창이 **소유**하는 것은 스코프 키뿐이라 스냅샷에
+ *   지표가 실리지 않는 것은 그대로다.
  */
 import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
@@ -46,6 +47,11 @@ import {
 // #907 의 스토어 핸들 주입이 성립하지 않는다.
 import type { ChartWindowConfig, ChartWindowRuntime } from './workspace';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
+import {
+  dropIndicatorScopesForRemovedWindows,
+  dropIndicatorScopesForWindows,
+  seedIndicatorScopeForWindow,
+} from './indicatorScopeGc';
 
 export { STUDY_WORKSPACE_STORAGE_KEY };
 export const STUDY_WORKSPACE_SCHEMA_VERSION = 1;
@@ -481,6 +487,8 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
         })()
       : undefined;
     const id = newWindowId();
+    // 새 창이 복사할 지표의 원본 — `set` 전에 잡는다(`/live` addWindow 와 같은 이유).
+    const indicatorSourceId = kind === 'chart' ? focusedChartWindowId(get()) : null;
     set((state) => {
       const size = DEFAULT_SIZE[kind];
       const frac = { w: size.w / REF_CANVAS.w, h: size.h / REF_CANVAS.h };
@@ -500,10 +508,16 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, ...next });
       return next;
     });
+    // 새 차트 창은 포커스 창의 지표를 복사해서 연다(ADR-0152 — `/live` 미러).
+    if (kind === 'chart') seedIndicatorScopeForWindow('study', id, indicatorSourceId);
     return id;
   },
 
   closeWindow: (id) => {
+    // 닫기가 실제로 일어났을 때만 회수한다 — `canCloseStudyWindow` 가 마지막 차트
+    // 창을 거부하는데, 그 no-op 에서 회수하면 **살아 있는 창**의 설정이 사라진다.
+    const closed = get().windows.some((w) => w.id === id)
+      && canCloseStudyWindow(get().windows, id);
     set((state) => {
       // 남은 불변식은 "차트 창 0개 금지" 뿐이다 — 술어는 한 곳(#801).
       if (!canCloseStudyWindow(state.windows, id)) return {};
@@ -517,6 +531,7 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       delete chartRuntime[id];
       return { ...next, chartRuntime };
     });
+    if (closed) dropIndicatorScopesForWindows('study', [id]);
   },
 
   focusWindow: (id) => {
@@ -546,12 +561,15 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applySnapshot: (snapshot) => {
+    const before = get().windows;
     const next = normalizeSnapshot(snapshot);
     set(() => {
       persistFromState(next);
       // 창 전면 교체 → 비영속 런타임을 걷는다(fresh-view, `/live` 미러).
       return { ...next, chartRuntime: {} };
     });
+    // 사라진 창의 지표 스코프 회수(`/live` applyWorkspaceSnapshot 과 같은 규율).
+    dropIndicatorScopesForRemovedWindows('study', before, get().windows);
   },
 
   setChartTimeframe: (id, tf) => {

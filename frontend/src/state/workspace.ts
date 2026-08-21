@@ -13,6 +13,11 @@ import {
 import { MIN_W, MIN_H, type Canvas, type Rect } from '../workspace/snapEngine';
 import { isFracRect, toFrac } from '../workspace/rectSpace';
 import { readLegacyWorkspaceSeed } from './workspaceMigration';
+import {
+  dropIndicatorScopesForRemovedWindows,
+  dropIndicatorScopesForWindows,
+  seedIndicatorScopeForWindow,
+} from './indicatorScopeGc';
 import { liveDefaultWindows } from './liveDefaultLayout';
 import { isLiveIndexId } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
@@ -493,6 +498,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 
   addWindow: (kind) => {
     const id = newWindowId();
+    // 새 창이 복사할 지표의 원본 — `set` **전에** 잡는다(그 안에서 windows 가 바뀌면
+    // 포커스 차트가 새 창 자신이 되어 시드가 자기 자신을 가리킨다).
+    const indicatorSourceId = kind === 'chart' ? focusedChart(get())?.id ?? null : null;
     set((state) => {
       const group = activeGroupOf(state); // 새 창 = 활성 그룹 상속(#711)
       // DEFAULT_SIZE 는 px 실측값(카드가 전부 보이는 높이) — 기준 캔버스로 나눠
@@ -520,6 +528,11 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, ...next });
       return next;
     });
+    // 새 차트 창은 **포커스 창의 지표를 복사**해서 연다(ADR-0152). 창별 독립의
+    // 유일한 마찰이 "새 창마다 지표를 처음부터 켜야 함" 인데, 봉을 물려받는 위
+    // 규칙과 같은 이유로 여기서 없앤다. (set 콜백 **밖**에서 부른다 — 다른 스토어를
+    // 그 안에서 갱신하지 않기 위해.)
+    if (kind === 'chart') seedIndicatorScopeForWindow('live', id, indicatorSourceId);
     return id;
   },
 
@@ -533,6 +546,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, ...next });
       return next;
     });
+    // 창별 지표 설정은 전역 저장소에 있어 창과 함께 사라지지 않는다 — 창 id 는
+    // 재사용되지 않으므로 여기서 회수하지 않으면 닿을 수 없는 쓰레기가 된다.
+    dropIndicatorScopesForWindows('live', [id]);
   },
 
   focusWindow: (id) => {
@@ -676,6 +692,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applyWorkspaceSnapshot: (snapshot) => {
+    const before = get().windows;
     set((state) => {
       // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
       const next = { ...normalizeWorkspaceSnapshot(snapshot), groupSymbols: state.groupSymbols };
@@ -684,6 +701,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
       return { ...next, chartRuntime: {} };
     });
+    // 같은 이유로 창별 지표 스코프도 고아가 된다. 새로 등장한 창의 시드는 그 창이
+    // 마운트될 때 안전망(`useSeedWindowIndicatorScope`)이 페이지 세트로 채운다.
+    dropIndicatorScopesForRemovedWindows('live', before, get().windows);
   },
 }));
 

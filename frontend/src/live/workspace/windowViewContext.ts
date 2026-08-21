@@ -94,6 +94,23 @@ export interface WindowWorkspaceAdapter {
   scopePrefix: 'live' | 'study';
 }
 
+/**
+ * 창 지표 스코프 키 — 창별 지표 세트의 저장소 키(`live.indicators.v2` 의
+ * `byWindow`). 창 id 는 두 워크스페이스가 독립적으로 발급하므로
+ * (`/live`=`newWindowId`, `/study`=`randomUUID`) 접두사로 구별한다.
+ *
+ * `windowId` 가 null(=Provider 밖, 단일 차트·테스트)이면 null 이고, 그 null 이 곧
+ * "페이지 세트를 본다"는 뜻이다. 두 스토어(`livePage`·`chartPrefs`)가 **같은 키**를
+ * 써야 멤버십이 어긋나지 않으므로 파생을 여기 한 곳에 둔다 — chartPrefs 는
+ * `windowView` 를 import 할 수 없다(이 파일 상단의 순환 주석 참조).
+ */
+export function windowScopeKey(
+  adapter: Pick<WindowWorkspaceAdapter, 'scopePrefix'> | undefined | null,
+  windowId: string | null | undefined,
+): string | null {
+  return adapter && windowId ? `${adapter.scopePrefix}:${windowId}` : null;
+}
+
 /** 창이 워크스페이스 통로까지 공급하는 완전한 뷰 값. `workspace` 는 **필수** —
  *  빠뜨리면 훅이 조용히 다른 스토어를 보게 되는데, 그 조용한 폴백이야말로 이
  *  작업이 없애려는 것이다(#901).

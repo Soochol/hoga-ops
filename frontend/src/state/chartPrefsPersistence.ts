@@ -12,6 +12,7 @@ import {
 } from './chartPrefs';
 import type { useChartPrefsStore } from './chartPrefs';
 import { INDICATOR_PANE_PROFILE_KEYS } from '../live/indicators/indicatorPaneProfiles';
+import { INDICATOR_WINDOW_SCOPE_LIMIT } from './indicatorSettingsV2';
 import { attachPersistence } from './persistentSubscriber';
 
 export const CHART_PREFS_KEY = 'hoga.chart.prefs.v1';
@@ -133,6 +134,32 @@ export function mergeStudyIndicatorModal(
   return out;
 }
 
+/**
+ * 창별 indicator-modal 버킷 로드 — **빈 엔트리를 보존한다**(`livePage` 의
+ * `byWindow` 와 같은 멤버십 규약: 엔트리의 존재가 곧 "이 창은 자기 세트를 갖는다").
+ */
+export function mergeIndicatorModalByWindow(
+  raw: unknown,
+): Record<string, IndicatorModalByTimeframe> {
+  const stored = raw && typeof raw === 'object'
+    ? (raw as Record<string, unknown>).indicatorModalByWindow
+    : undefined;
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+  const out: Record<string, IndicatorModalByTimeframe> = {};
+  for (const [scopeKey, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (Object.keys(out).length >= INDICATOR_WINDOW_SCOPE_LIMIT) break;
+    if (!scopeKey) continue;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const buckets: IndicatorModalByTimeframe = {};
+    for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+      const bucket = sanitizeIndicatorModalBucket((value as Record<string, unknown>)[profileKey]);
+      if (Object.keys(bucket).length > 0) buckets[profileKey] = bucket;
+    }
+    out[scopeKey] = buckets;
+  }
+  return out;
+}
+
 export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
   try {
     if (typeof localStorage === 'undefined') return;
@@ -146,6 +173,7 @@ export function hydrateChartPrefs(store: typeof useChartPrefsStore): void {
       ...prefs,
       indicatorModalByTimeframe,
       studyIndicatorModalByTimeframe: mergeStudyIndicatorModal(parsed, indicatorModalByTimeframe),
+      indicatorModalByWindow: mergeIndicatorModalByWindow(parsed),
       ...resolveIndicatorModalPrefs(indicatorModalByTimeframe, tf),
     });
   } catch {
@@ -194,6 +222,7 @@ export function attachChartPrefsPersistence(store: typeof useChartPrefsStore): (
       ),
       indicatorModalByTimeframe: s.indicatorModalByTimeframe,
       studyIndicatorModalByTimeframe: s.studyIndicatorModalByTimeframe,
+      indicatorModalByWindow: s.indicatorModalByWindow,
     }) as unknown as ChartViewPrefs,
   });
 }

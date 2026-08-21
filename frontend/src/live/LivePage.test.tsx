@@ -286,14 +286,19 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 // 멀티창 플립(ADR-0119 C2c-2d): 파이프라인은 차트 창 안에서 돈다. 셸 테스트는
-// 단일 차트 창(TEST_WIN)을 시드한다. 봉은 창 설정으로, **지표는 전역 스토어로**
-// 주입한다 — 설정은 앱 전역 1세트고 창은 어느 봉 버킷을 볼지만 정한다.
+// 단일 차트 창(TEST_WIN)을 시드한다. 봉은 창 설정으로, **지표는 전역 스토어의
+// 페이지 세트로** 주입한다 — 창은 마운트 시드로 그 값을 복사해 간다(ADR-0152).
+//
+// ⚠ `indicatorsByWindow` 를 **매번 비우는 것이 격리의 핵심**이다. 창 id 가 테스트
+// 간 재사용되므로(TEST_WIN 고정), 안 비우면 앞 테스트가 심은 창 엔트리가 남아
+// 뒤 테스트의 페이지 세트 주입을 통째로 가린다 — 증상은 "혼자 돌리면 통과, 파일
+// 전체로 돌리면 실패" 다.
 const TEST_WIN = 'w-test';
 function seedWorkspace(
   timeframe: LiveTimeframe = '1m',
   byTimeframe: IndicatorSettingsByTimeframe = {},
 ) {
-  useLivePageStore.setState({ indicatorsByTimeframe: byTimeframe });
+  useLivePageStore.setState({ indicatorsByTimeframe: byTimeframe, indicatorsByWindow: {} });
   useWorkspaceStore.setState({
     windows: [{
       id: TEST_WIN,
