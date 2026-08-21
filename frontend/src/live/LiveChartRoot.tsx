@@ -34,6 +34,8 @@ import {
   type DayBoundaryTick,
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
+import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
+import type { Candle } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
@@ -190,6 +192,9 @@ function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: 
  * something that doesn't crash. Mirrors ChartStage's `axisRef` pattern. */
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
+/** 동기화 소비자가 없는 봉(W/M)의 캔들 자리. identity 가 안정적이어야 소비자의
+ *  memo 가 헛돌지 않는다 — 매번 새 `[]` 를 내면 그 창의 다리가 프레임마다 재생성된다. */
+const EMPTY_SYNC_CANDLES: readonly Candle[] = [];
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
@@ -360,14 +365,30 @@ interface Props {
    *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
   savedRangeFromDate?: string | null;
   /**
+   * 이 창이 저장뷰 구간에 **얼려** 있는가(`UseLiveBundleOptions.frozenRangeFrom`).
+   *
+   * 켜지면 **백필 4경로를 전부 끈다**(`canTriggerBackfill`). 얼린 창의 fetch 범위는
+   * 저장 구간에 고정돼 있어 `historicalFromDate` 를 아무리 밀어도 응답이 안 바뀌므로,
+   * 백필이 도는 것은 순수 낭비다 — perf 로그·스토어 쓰기·재렌더만 남고 캔들은 그대로다.
+   * (3a 진행 루프는 착지한 범위로 종료를 판정하는데, 그 범위가 영영 안 움직인다.)
+   *
+   * `/study` 는 넘기지 않는다 — 그쪽은 `historicalFromDate` 를 소비하는 쿼리가 아예
+   * 없어 백필이 이미 inert 다(`StudyPage` 의 `isExtending: false` 주석).
+   */
+  savedRangeFrozen?: boolean;
+  /**
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
    *
-   * **동기화 범위는 종목이다** — 링크 그룹이 아니다(`/live`, 사용자 결정
-   * 2026-08-11). ADR-0119 §4 가 드로잉을 창 귀속에서 **종목 귀속**으로 뒤집은 것과
-   * 같은 범주의 판단이라 같은 답을 쓴다: 같은 종목을 보는 창은 그룹이 달라도
-   * 따라온다. 판정은 `resolveSyncTarget` 의 code 게이트 하나이고, `/live` 를 켜기
-   * 위해 필터에 추가한 것은 없다.
+   * **동기화 범위에 링크 그룹은 쓰지 않는다** — 같은 종목을 보는 창은 그룹이 달라도
+   * 따라온다(`/live`, 사용자 결정 2026-08-11 · ADR-0119 §4 가 드로잉을 창 귀속에서
+   * **종목 귀속**으로 뒤집은 것과 같은 범주의 판단).
+   *
+   * **종목 축은 이제 설정이 정한다**(2026-08-21): ⚙️ 설정 → 차트의
+   * `cursorSyncCrossSymbol`(기본 켬)이 켜져 있으면 종목이 달라도 따라오고, 끄면
+   * 2026-08-11 동작(같은 종목만)으로 돌아간다. 이 prop 은 **기능 자체의 on/off** 이고
+   * 종목 범위는 `CursorSyncCrosshair` 가 직접 읽는다 — 판정은 여전히
+   * `resolveSyncTarget` 한 곳이다.
    *
    * 라우트를 여기서 스니핑하지 않고 **prop 으로 받는** 이유는 둘이다: 결정의
    * 소유자가 페이지이고, `/study` 워크스페이스 어댑터를 정적 import 하면 그
@@ -470,6 +491,7 @@ export function LiveChartRoot({
   savedRangeBand = null,
   savedRangeAnchorMs = null,
   savedRangeFromDate = null,
+  savedRangeFrozen = false,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
@@ -536,16 +558,14 @@ export function LiveChartRoot({
           : spec.bundleKind === 'live'
             ? (liveBundle ?? candlePath)
             : candlePath;
-  // 창 간 크로스헤어 동기화가 KST 날짜 → 캔들 ts 다리를 놓는 재료. `D` 가 아니면 빈
+  // 창 간 크로스헤어 동기화가 다리를 놓는 재료. 소비자가 없는 봉(W/M)에서는 빈
   // 배열이라 비용이 없다. `close` 는 크로스헤어 가로선 높이로 쓴다.
   //
-  // 이 map 은 `cursorSyncCrosshair` 와 무관하게 모든 `D` 창에서 돈다 — prop 이
-  // 꺼져 있으면 소비자 없이 재료만 만든 셈이었고, `/live` 를 켜면서 그 낭비가
-  // 사라졌다.
+  // **`{ts_ms, close}` 로 다시 만들지 않는다.** `Candle` 이 이미 그 두 필드를 가져
+  // 구조적으로 `SyncCandle` 이고, 분봉 번들은 틱마다 갱신되므로 map 을 걸면 캔들
+  // 수만큼의 할당을 초당 여러 번 하게 된다. 원본을 그대로 넘긴다.
   const syncCandles = useMemo(
-    () => (timeframe === 'D'
-      ? (cb?.candles ?? []).map((c) => ({ ts_ms: c.ts_ms, close: c.close }))
-      : []),
+    () => (isSyncConsumerTimeframe(timeframe) ? (cb?.candles ?? EMPTY_SYNC_CANDLES) : EMPTY_SYNC_CANDLES),
     [cb, timeframe],
   );
   // 호가 pane 이 빈 **이유**(#1133). prop 을 먼저 보고 번들로 폴백하는 순서가 요점이다 —
@@ -759,13 +779,15 @@ export function LiveChartRoot({
   // 창 간 크로스헤어 동기화 발행 — origin 을 실은 **즉시** 채널. 기존 두 채널을
   // 쓰지 못하는 이유는 `useLiveCursorStore` 의 해당 필드 주석 참조.
   //
-  // **분봉 창만 발행한다.** 슬롯이 하나라 아무나 쓰면 마지막 쓴 사람이 이기는데,
-  // 소비 측(`resolveSyncTarget`)은 분봉 origin 이 아니면 어차피 버린다 — 즉 비분봉
-  // 발행은 표시에 기여하지 않으면서 **분봉 발행만 밀어낸다**. `/live` 실측(2026-08-11):
-  // 포인터가 분봉 창에 있는데도 일봉 창이 자기 크로스헤어를 발행해 슬롯을 덮었고,
-  // 동기화 표시가 그대로 사라졌다(`/study` 는 창이 적어 눈에 덜 띄었을 뿐 같은 구조).
+  // **소비자가 있는 봉만 발행한다**(분봉 · `D`). 슬롯이 하나라 아무나 쓰면 마지막 쓴
+  // 사람이 이기는데, 아무도 받지 않는 발행은 표시에 기여하지 않으면서 **유효한 발행만
+  // 밀어낸다**. `/live` 실측(2026-08-11): 포인터가 분봉 창에 있는데도 일봉 창이 자기
+  // 크로스헤어를 발행해 슬롯을 덮었고, 동기화 표시가 그대로 사라졌다. 그때는 일봉에
+  // 소비자가 없어서 그랬고 지금은 있다 — 그래서 술어가 `canPublishSyncCursor` 이고,
+  // 그것이 곧 `isSyncConsumerTimeframe` 이다(두 집합을 갈라 놓지 않겠다는 뜻).
+  // W/M 은 여전히 소비자가 없어 발행하지 않는다.
   const publishSyncCursor = useCallback((cursorMs: number) => {
-    if (!isMinuteTimeframe(cursorOriginRef.current.timeframe)) return;
+    if (!canPublishSyncCursor(cursorOriginRef.current.timeframe)) return;
     useLiveCursorStore.getState().setSyncCursor(cursorMs, cursorOriginRef.current);
   }, []);
 
@@ -900,8 +922,10 @@ export function LiveChartRoot({
   const historicalRange = useHistoricalRangeActions();
   const viewGuard = useWindowViewGuard();
   const canTriggerBackfill = useCallback(
-    () => lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null,
-    [historicalRange],
+    // 얼린 창은 백필을 아예 돌리지 않는다 — 근거는 `savedRangeFrozen` prop 도크스트링.
+    () => !savedRangeFrozen
+      && (lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null),
+    [historicalRange, savedRangeFrozen],
   );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
@@ -2459,16 +2483,18 @@ export function LiveChartRoot({
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
             <StudySavedRangeBandHost axis={axis} paneSeries={paneSeries} marks={savedRangeBand} />
           )}
-          {/* 창 간 크로스헤어 동기화(분봉 창 호버 → 이 일봉 창). 게이트가 둘이다:
-              **`D` 전용** — 분봉 ms 를 KST 날짜로 스냅해 일봉 캔들을 찾는데(바로 위
-              동시호가 음영이 이 스냅을 안 해서 좌표계가 어긋나 삭제됐다), 그 스냅이
-              정확한 건 한 캔들 = 하루인 `D` 뿐이다. W/M 은 범위 밖.
+          {/* 창 간 크로스헤어 동기화(옆 창 호버 → 이 창). 게이트가 둘이다:
+              **분봉 · `D` 만** — 소비자가 자기 축으로 스냅할 다리가 있는 봉이다(바로 위
+              동시호가 음영이 그 스냅을 안 해서 좌표계가 어긋나 삭제됐다). W/M 은 한
+              캔들이 여러 날을 담아 범위 밖이고, 일봉→분봉도 아직 범위 밖이다 —
+              어느 발행을 받는지는 `cursorSync.ts` 헤더가 갖는다.
               **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
-          {cursorSyncCrosshair && timeframe === 'D' && (
+          {cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe) && (
             <CursorSyncCrosshair
               chart={chart}
               axis={axis}
               candles={syncCandles}
+              timeframe={timeframe}
               paneSeries={paneSeries}
               code={code}
             />
