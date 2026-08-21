@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import {
   buildRangeBundleRequest,
   mergedLiveRangeKey,
+  trimRangeBundleBefore,
   evictExcessMergedLiveRanges,
   MERGED_LIVE_RANGE_MAX_ENTRIES,
   mergeRangeBundles,
@@ -2279,6 +2280,70 @@ describe('evictExcessMergedLiveRanges — identity 축 LRU 캡', () => {
 
     expect(qc.getQueryData(oldestKey)).toBeDefined();
     unsubscribe();
+  });
+});
+
+describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
+  const DAY = 86_400_000;
+  const openOf = (i: number) => 1_780_000_000_000 + i * DAY;
+
+  function bundle3(): RangeBundle {
+    const seg = (i: number, date: string) => ({
+      date, session_open_ms: openOf(i), session_close_ms: openOf(i) + 3600_000,
+      source: 'hogaplay' as const, gap_ms: 0,
+    });
+    const at = (i: number) => openOf(i) + 60_000;
+    return {
+      ...fakeBundle,
+      from_date: '20260601', to_date: '20260603',
+      segments: [seg(0, '20260601'), seg(1, '20260602'), seg(2, '20260603')],
+      candles: [0, 1, 2].map((i) => ({ ts_ms: at(i), open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 })),
+      quote_ratio: { bucket_ms: 60_000, points: [0, 1, 2].map((i) => ({ t: at(i), value: i })) },
+      fill_strength: { bucket_ms: 60_000, points: [0, 1, 2].map((i) => ({ t: at(i), value: i })) },
+      ask_peaks: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
+      bid_peaks: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
+      trade_volume_pocs: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
+      volume_distributions: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
+      depth_heatmap: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
+      depth_delta: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
+      wall_surge: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
+      broker_late_entries: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
+      program_trade: { source: 'kis_program_trade', points: [0, 1, 2].map((i) => ({ t: at(i) })) },
+    } as unknown as RangeBundle;
+  }
+
+  it('리테인 날짜 이전을 **모든 시리즈에서** 버린다', () => {
+    // 막는 방향: 필드를 하나라도 빠뜨려 그 배열만 조용히 계속 자라는 회귀.
+    // 개수만 세지 않고 **필드별로** 단언한다 — 한 곳만 맞아도 통과하면 안 된다.
+    const out = trimRangeBundleBefore(bundle3(), '20260602');
+
+    expect(out.from_date).toBe('20260602');
+    expect(out.segments.map((s) => s.date)).toEqual(['20260602', '20260603']);
+    expect(out.candles).toHaveLength(2);
+    expect(out.quote_ratio.points).toHaveLength(2);
+    expect(out.fill_strength.points).toHaveLength(2);
+    expect(out.ask_peaks).toHaveLength(2);
+    expect(out.bid_peaks).toHaveLength(2);
+    expect(out.trade_volume_pocs).toHaveLength(2);
+    expect(out.volume_distributions).toHaveLength(2);
+    expect(out.depth_heatmap).toHaveLength(2);
+    expect(out.depth_delta).toHaveLength(2);
+    expect(out.wall_surge).toHaveLength(2);
+    expect(out.broker_late_entries).toHaveLength(2);
+    expect(out.program_trade?.points).toHaveLength(2);
+  });
+
+  it('전부 잘릴 리테인 날짜면 **원본을 그대로** 돌려준다', () => {
+    // 자르기는 되돌릴 수 없고(재요청 필요), 빈 번들은 차트를 통째로 지운다.
+    const input = bundle3();
+    expect(trimRangeBundleBefore(input, '20270101')).toBe(input);
+  });
+
+  it('자를 것이 없으면 **같은 참조**를 돌려준다 — memo 경계 보존', () => {
+    // 새 객체를 만들면 하위 memo 가 매 렌더 깨져 이 최적화가 스스로 비용이 된다.
+    const input = bundle3();
+    expect(trimRangeBundleBefore(input, '20260601')).toBe(input);
+    expect(trimRangeBundleBefore(input, '20260101')).toBe(input);
   });
 });
 

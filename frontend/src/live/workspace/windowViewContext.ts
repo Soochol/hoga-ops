@@ -44,6 +44,8 @@ export interface WindowChartStoreState {
   zOrder: readonly string[];
   chartRuntime: Record<string, ChartWindowRuntime>;
   extendChartHistoricalRange: (id: string, date: string) => void;
+  /** 창을 앞으로 당긴다(축소) — `extend` 의 반대. 근거는 스토어 구현 주석. */
+  contractChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 }
 

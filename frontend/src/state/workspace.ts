@@ -239,6 +239,17 @@ type Store = Persisted & {
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
   /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
   extendChartHistoricalRange: (id: string, date: string) => void;
+  /** 좌측 팬 창을 **앞으로** 당긴다(축소) — `extend` 의 반대 방향.
+   *
+   *  `extend` 는 단조 감소 가드가 있어 창이 **뒤로만** 간다. 그래서 한 번 3개월까지
+   *  넓히면 다시 줌인해도 안 줄어들고, 1시간을 보면서도 3개월치 지표 번들을 계속
+   *  들고 있게 된다(2026-08-21 실측 sidecar 29.2MB). 이 액션이 그 단조성을 끊는다.
+   *
+   *  **진동 방지는 호출부 책임이다** — 이 값은 `indicatorCoverageFromDate` 로 되돌아와
+   *  `planCoverageGapFill` 의 재요청 판정에 쓰이므로, 뷰포트 좌단보다 충분히 과거를
+   *  줘야 한다(`useViewportBackfill` 의 히스테리시스 상수 참조). 여기서는 **뒤로 가는
+   *  호출만 막는다**(그건 `extend` 의 일이다). */
+  contractChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 
   /**
@@ -907,6 +918,20 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     if (!state.windows.some((w) => w.id === id && w.chart)) return;
     const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
     if (rt.historicalFromDate !== null && rt.historicalFromDate <= date) return; // 단조 감소 가드
+    set({
+      chartRuntime: {
+        ...state.chartRuntime,
+        [id]: { ...rt, historicalFromDate: date },
+      },
+    });
+  },
+
+  contractChartHistoricalRange: (id, date) => {
+    const state = get();
+    if (!state.windows.some((w) => w.id === id && w.chart)) return;
+    const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+    // 아직 창이 없거나(전체 이력) 이미 그보다 앞이면 no-op — 뒤로 가는 건 extend 의 일.
+    if (rt.historicalFromDate === null || rt.historicalFromDate >= date) return;
     set({
       chartRuntime: {
         ...state.chartRuntime,
