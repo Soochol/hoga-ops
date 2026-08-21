@@ -110,6 +110,21 @@ class InvestorFlowStore:
 
     def __init__(self, data_dir: Path) -> None:
         self._root = Path(data_dir) / "investor-flow"
+        # (date, key) → 마지막으로 append 한 표본. `last_sample` 의 메모리 경로다.
+        #
+        # **왜 필요한가.** `last_sample` 은 "직전 표본 1개" 를 얻으려고
+        # `load_samples`(하루치 JSONL 전체 pydantic 파싱)를 불렀다. 이 파일은 하루
+        # 종일 자라는 append 로그라(실측 2026-08-21: investor 16.7MB·1,279표본,
+        # deriv 8.1MB·4,239표본) 파싱 비용이 장중 내내 선형으로 커지고, 수집기가
+        # 이것을 **이벤트 루프 위에서 매 30초 × 시장/상품 수만큼** 반복했다 —
+        # `hoga_perf loop_stall` 스택 상위 단골이었다(최대 2.7s).
+        #
+        # 이 store 는 해당 파일의 **유일한 writer** 다(수집기가 프로세스당 1개, 같은
+        # 인스턴스를 계속 쥔다). 그래서 append 시점에 갱신하는 이 dict 가 곧 진실이고,
+        # 디스크 폴백은 프로세스 재시작 후 키당 1회만 발생한다. 항목 수는 날짜×키라
+        # 하루 한 자릿수지만, 날짜가 바뀌면 옛 날짜 항목을 지워 영구 프로세스에서도
+        # 자라지 않게 한다(append_sample 의 청소).
+        self._last_cache: dict[tuple[str, str], IntradaySample] = {}
 
     def intraday_path(self, date: str) -> Path:
         return self._root / "intraday" / f"{date}.jsonl"
@@ -128,6 +143,10 @@ class InvestorFlowStore:
         line = json.dumps(sample.model_dump(), ensure_ascii=False, separators=(",", ":"))
         with path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+        # 캐시 갱신 + 날짜 롤오버 청소(__init__ docstring). 쓰기 **뒤**에 갱신한다 —
+        # 앞이면 디스크에 없는 표본이 "직전" 행세를 해 중복 억제가 오판한다.
+        self._last_cache = {k: v for k, v in self._last_cache.items() if k[0] == date}
+        self._last_cache[(date, str(sample.request.get("mrkt_tp")))] = sample
 
     def load_samples(self, date: str) -> list[IntradaySample]:
         """그날 표본 전부. **개행으로 끝나지 않은 마지막 줄은 버린다** — append 중
@@ -153,8 +172,13 @@ class InvestorFlowStore:
 
     def last_sample(self, date: str, request_key: str) -> IntradaySample | None:
         """같은 요청(시장)의 직전 표본. 중복 쓰기 회피(#1099)의 비교 대상."""
+        hit = self._last_cache.get((date, request_key))
+        if hit is not None:
+            return hit
+        # 미스 = 프로세스 재시작 후 첫 조회. 키당 1회만 디스크를 읽고 캐시를 채운다.
         for s in reversed(self.load_samples(date)):
             if s.request.get("mrkt_tp") == request_key:
+                self._last_cache[(date, request_key)] = s
                 return s
         return None
 

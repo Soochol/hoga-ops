@@ -121,3 +121,49 @@ def test_coverage_of_empty_day_is_empty_not_error():
     assert cov.sample_count == 0
     assert cov.first_sample_ms is None
     assert cov.gap_ranges == []
+
+
+def test_last_sample_serves_from_memory_not_disk(tmp_path):
+    """append 후의 `last_sample` 은 **디스크를 읽지 않는다**.
+
+    막는 방향: 캐시를 지워 매 폴마다 하루치 JSONL 전체를 pydantic 파싱하던 회귀.
+    그 비용은 장중 내내 선형으로 커져(실측 16.7MB → 수백 ms~2.7s) **이벤트 루프
+    위에서** 돌았다 — `hoga_perf loop_stall` 스택 상위 단골이었다.
+
+    파일을 지운 뒤에도 답이 나와야 메모리 경로가 증명된다. 개수 세기(mock)보다
+    강한 단언이다 — 읽되 결과를 버리는 구현도 여기서 걸린다.
+    """
+    store = InvestorFlowStore(tmp_path)
+    store.append_sample("20260805", _sample(1000, mrkt="0"))
+    store.append_sample("20260805", _sample(2000, mrkt="1"))
+    store.intraday_path("20260805").unlink()
+
+    got = store.last_sample("20260805", "0")
+    assert got is not None and got.sampled_at_ms == 1000
+    got = store.last_sample("20260805", "1")
+    assert got is not None and got.sampled_at_ms == 2000
+
+
+def test_last_sample_falls_back_to_disk_after_restart(tmp_path):
+    """새 인스턴스(프로세스 재시작 모사)는 디스크에서 복원한다 — 캐시가 억제 판정을
+    깨뜨리면 안 된다. 미스는 키당 1회만 디스크를 읽고 이후는 메모리다."""
+    InvestorFlowStore(tmp_path).append_sample("20260805", _sample(1000))
+
+    fresh = InvestorFlowStore(tmp_path)
+    got = fresh.last_sample("20260805", "0")
+    assert got is not None and got.sampled_at_ms == 1000
+    # 채워진 뒤에는 메모리 — 파일을 지워도 산다.
+    fresh.intraday_path("20260805").unlink()
+    assert fresh.last_sample("20260805", "0") is not None
+
+
+def test_last_sample_cache_rolls_over_dates(tmp_path):
+    """새 날짜를 append 하면 옛 날짜 캐시는 비워진다(영구 프로세스 무한 증식 방지).
+    옛 날짜 조회는 디스크 폴백으로 여전히 정확하다."""
+    store = InvestorFlowStore(tmp_path)
+    store.append_sample("20260805", _sample(1000))
+    store.append_sample("20260806", _sample(2000))
+    assert list(store._last_cache) == [("20260806", "0")]
+    got = store.last_sample("20260805", "0")
+    assert got is not None and got.sampled_at_ms == 1000
+
