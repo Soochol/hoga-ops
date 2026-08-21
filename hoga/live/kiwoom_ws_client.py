@@ -64,6 +64,25 @@ _ACK_TIMEOUT_S = 10.0
 # 계속 오므로 5분 무수신은 사실상 사망 — 오탐해도 비용은 재연결+전량 재등록(~17s)뿐.
 _RECV_IDLE_TIMEOUT_S = 300.0
 
+# 틱 처리가 이만큼 이어지면 이벤트 루프에 한 번 양보한다(`_maybe_yield`).
+#
+# **왜 필요한가.** `_recv_loop` → `_dispatch` 는 **중첩된 무양보 루프 두 개**다:
+# 바깥은 버퍼에 쌓인 메시지들을, 안쪽은 한 REAL 메시지의 `data[]` 행들을 돈다.
+# `on_tick` 은 `async def` 지만 본문이 **순수 동기 CPU** 라 실제로 suspend 하지
+# 않으므로, 그 사이 어떤 요청·타이머도 못 낀다. 이 앱은 `--workers` 를 못 써서
+# (#998) 단일 루프가 REST·WS·스케줄러를 전부 처리하니 그 구간이 곧 전역 정지다.
+# GIL 보유자가 이 경로임은 2026-08-18 py-spy 로 확인됐다.
+#
+# **왜 시간 기반인가 — 틱마다 `sleep(0)` 이 아니라.** 실측(2026-08-21):
+# `await asyncio.sleep(0)` 은 회전당 **3.0µs**(초당 5,000틱이면 14.8ms/s 를 순수
+# 오버헤드로 태운다). 시간 기반은 회전당 `perf_counter()` 한 번, **0.14µs**
+# (같은 조건 0.58ms/s) — **25배 싸면서** 무양보 구간을 이 값으로 **직접 상한**한다.
+# 개수 기반(N틱마다)은 틱 하나의 비용이 종목·프레임 종류마다 달라 상한이 안 된다.
+#
+# 1ms 인 이유: 정지 감지 임계(`loop_lag` 250ms)보다 두 자릿수 작아 이 경로가
+# 다시 정지 원인으로 잡히지 않으면서, 오버헤드가 무시할 수준으로 남는 값이다.
+_TICK_YIELD_INTERVAL_S = 0.001
+
 # REG 응답 return_code (실측)
 _RC_OK = 0
 _RC_RATE_LIMIT = 105110  # 해당 TRNM 허용 요청 건수 초과 → 백오프 재시도
@@ -86,6 +105,7 @@ class KiwoomWsClient:
         types: tuple[str, ...] = DEFAULT_TYPES,
         gate_fn: Callable[[], bool] | None = None,
         max_consecutive_kicks: int = 5,
+        tick_yield_interval_s: float = _TICK_YIELD_INTERVAL_S,
         invalidate_fn: Callable[[], None] | None = None,
         on_vi_row: Callable[[dict, int], None] | None = None,
         on_sector_row: Callable[[dict, int], None] | None = None,
@@ -112,6 +132,11 @@ class KiwoomWsClient:
         self._types = list(types)
         self._gate_fn = gate_fn
         self._max_kicks = max_consecutive_kicks
+        # 양보 임계와 마지막 양보 시각. 상태가 **인스턴스에 있어야** 한다 —
+        # 지역 변수면 메시지 경계에서 리셋돼, 틱 1개짜리 메시지가 수천 개
+        # 연달아 오는 경우(바깥 루프)를 못 막는다.
+        self._tick_yield_interval_s = tick_yield_interval_s
+        self._last_yield_at = 0.0
         self._connect = _connect or self._default_connect
         self._codes: list[str] = []
         self._ws: _WsLike | None = None
@@ -254,6 +279,28 @@ class KiwoomWsClient:
                 )
                 raise
             await self._dispatch(raw)
+            # 바깥 루프분. `_dispatch` 가 틱을 하나도 안 만든 메시지
+            # (PING·ACK·빈 data)는 안쪽 검사를 못 지나므로 여기서 받는다.
+            await self._maybe_yield()
+
+    async def _maybe_yield(self) -> None:
+        """마지막 양보 이후 `_tick_yield_interval_s` 가 지났으면 루프에 한 번 양보한다.
+
+        `last_recv_ms` 는 `_dispatch` **진입 즉시** 찍히므로 이 양보가 좀비 판정
+        (`_RECV_IDLE_TIMEOUT_S`, 무수신 5분)을 흔들지 않는다 — 재는 것은 벤더 침묵이고,
+        프레임은 그동안 websockets 버퍼에 계속 쌓인다. `last_tick_ms` 도 틱마다 찍혀
+        의미가 그대로다.
+
+        **새로 생기는 것은 「한 REAL 메시지의 행들 사이」 interleaving 이다.** 키움
+        REAL 은 서로 다른 등록(종목)의 행을 한 프레임에 묶는 것이지 한 종목의 원자적
+        다중 갱신이 아니므로, 종목별 상태는 어느 쪽이든 틱 하나씩 적용된다 — 그 행들이
+        별개 메시지로 왔을 때와 구별되지 않는다.
+        """
+        now = time.monotonic()
+        if now - self._last_yield_at < self._tick_yield_interval_s:
+            return
+        self._last_yield_at = now
+        await asyncio.sleep(0)
 
     async def _login(self, ws: _WsLike, token: str) -> None:
         ack = await self._send_and_wait(
@@ -455,6 +502,7 @@ class KiwoomWsClient:
                 self.last_tick_ms = now_ms
                 if self._on_tick is not None:
                     await self._on_tick(tick)
+                await self._maybe_yield()
             return
         # control (LOGIN/REG/REMOVE ACK) → 대기 중인 sender에게 전달.
         waiter = self._ack_waiters.pop(trnm, None) if isinstance(trnm, str) else None

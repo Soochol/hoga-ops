@@ -360,3 +360,71 @@ async def test_ping_alone_keeps_session_alive(monkeypatch):
     assert len(logins) == 1, "PING 수신 중엔 재연결하지 않아야 한다"
     assert client.connected
     await _cancel(task)
+
+
+def _real_many(n: int) -> str:
+    """행 n개짜리 REAL 프레임 — 각 행이 다른 종목(=틱 n개)."""
+    row = REAL_0D["data"][0]
+    return json.dumps({
+        "trnm": "REAL",
+        "data": [{**row, "item": f"{100000 + i:06d}"} for i in range(n)],
+    })
+
+
+async def _count_loop_turns_during_dispatch(*, interval_s: float, rows: int) -> int:
+    """`_dispatch` 가 도는 동안 **다른 태스크가 몇 번 스케줄됐는지** 센다.
+
+    프로브는 `sleep(0)` 으로 자기를 즉시 재예약하므로, 루프가 제어를 돌려받을 때마다
+    정확히 한 번 돈다 — 즉 이 카운트가 곧 `_dispatch` 가 양보한 횟수다.
+    """
+    turns = 0
+
+    async def probe() -> None:
+        nonlocal turns
+        while True:
+            turns += 1
+            await asyncio.sleep(0)
+
+    async def noop(_tick) -> None:
+        return None
+
+    client = _client(FakeServer(), on_tick=noop, tick_yield_interval_s=interval_s)
+    task = asyncio.create_task(probe())
+    await asyncio.sleep(0)  # 프로브 진입
+    before = turns
+    await client._dispatch(_real_many(rows))
+    during = turns - before
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    return during
+
+
+async def test_dispatch_yields_to_the_loop_between_ticks():
+    """틱 배치가 이벤트 루프를 **독점하지 않는다**.
+
+    막는 방향: `_maybe_yield` 호출을 지워 `_dispatch` 가 한 프레임의 행 전부를
+    무양보로 도는 회귀. 그 구간 동안 REST·WS 송신·스케줄러가 전부 멈춘다 — 이 앱은
+    `--workers` 를 못 써서(#998) 단일 루프가 전부를 처리하기 때문이다.
+
+    임계를 **주입**해서 잰다(시계를 가짜로 만들지 않는다 — 이 모듈의 `time` 을 통째로
+    패치하면 `now_ms` 와 좀비 타임아웃까지 같이 흔든다).
+
+    **못 보는 것**: 실제 정지 시간과 프로덕션 효과. 총 CPU 는 그대로이고 바뀌는 것은
+    분배다. 그 축은 `hoga_perf loop_lag` 가 조용한 창에서 재야 한다.
+    """
+    # 임계 0 = 틱마다 양보 → 행 수만큼 루프가 돌아온다.
+    turns = await _count_loop_turns_during_dispatch(interval_s=0.0, rows=20)
+    assert turns >= 20, f"20행 처리 중 루프 복귀가 {turns}회 — 양보가 없다"
+
+
+async def test_dispatch_yield_respects_the_interval():
+    """양보는 **임계에 걸릴 때만** 일어난다 — 무조건 `sleep(0)` 이 아니다.
+
+    임계를 무한대로 두면 한 번도 양보하지 않아야 한다. 이 단언이 없으면 위 테스트는
+    "`_maybe_yield` 가 임계를 무시하고 매번 양보" 하는 구현도 통과시킨다 — 그 구현은
+    실측상 회전당 3.0µs 로 시간 기반(0.14µs)보다 **25배 비싸다**.
+    """
+    turns = await _count_loop_turns_during_dispatch(interval_s=float("inf"), rows=20)
+    assert turns == 0, f"임계가 무한인데 {turns}회 양보했다 — 임계를 안 보고 있다"
+
