@@ -375,6 +375,9 @@ interface Props {
    * 넘겨받으면 백필이 착지할 때마다 벽이 조용히 어긋난다(`savedRangeWall.ts`).
    */
   savedRangeWallToMs?: number | null;
+  /** 열린 저장뷰의 구간 **시작일**(YYYYMMDD) — 백필이 그 날까지 워크백하게 한다
+   *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
+  savedRangeFromDate?: string | null;
   /**
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
@@ -487,6 +490,7 @@ export function LiveChartRoot({
   dailyCandleKisEnabled = true,
   savedRangeBand = null,
   savedRangeWallToMs = null,
+  savedRangeFromDate = null,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
@@ -1010,6 +1014,7 @@ export function LiveChartRoot({
     indicatorCoverageFromDate,
     rangeWindowFromDate,
     settledFromDate,
+    savedRangeFromDate,
   });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md

@@ -60,10 +60,9 @@ import { useLivePageStore, isMinuteTimeframe } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
 import { countBarsInRange } from '../savedRangeWall';
-import { earliestAllowedMinuteDate, initialHistoricalDaysFor, subtractDaysKst } from '../liveDateTime';
+import { earliestAllowedMinuteDate } from '../liveDateTime';
 import { savedRangeNotice } from '../savedRangeNotice';
 import type { Candle } from '../../api/types';
-import { useHistoricalRangeActions } from './windowView';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
@@ -191,38 +190,18 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     sidecarDemands,
   });
 
-  // ── 저장뷰 기간: 백필 · 밴드 · 착석 ─────────────────────────────────────
+  // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
   const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;
-  const historicalRange = useHistoricalRangeActions();
-  const savedRangeViewId = savedRange?.viewId ?? null;
-  const savedRangeFromDate = savedRange?.fromDate ?? null;
   const todayYmd = d.today;
 
   /**
-   * 저장 구간까지 과거를 당긴다. 이 창의 초기 로드는 분봉 **5거래일**뿐이라
-   * (`INITIAL_MINUTE_TRADING_DAYS`) 그냥 우측 엣지를 B 로 꽂으면 빈 축에 앉는다.
-   * 지금까지 이 확장은 **좌측 팬으로만** 발화했다 — 저장뷰 적용은 팬 없이 순간
-   * 이동하므로 프로그램적으로 한 번 민다.
+   * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
    *
-   * ⚠ **`historicalFromDate` 는 "더 받는 양" 이 아니라 fetch 창의 시작점이다.**
-   * `useLiveBundle` 이 `historicalFromDate ?? (오늘 − initialHistoricalDaysFor(tf))`
-   * 로 from 을 정하므로, 기본 창보다 **최근** 날짜를 넣으면 범위가 넓어지는 게 아니라
-   * **좁아진다**. 일봉 기본 창은 250봉(≈1년)이라 4개월 전 저장 구간을 그대로 넘기면
-   * 화면이 저장 구간 딱 그만큼으로 잘리고, 그러면 밴드가 화면 전체를 덮어 **밴드가
-   * 안 보이는 것과 구별되지 않는다**(2026-08-21 실측 — 그 증상으로 발견했다).
-   * 그래서 **기본 창보다 과거일 때만** 민다.
-   *
-   * 분봉은 250일 벽에서 자른다(`earliestAllowedMinuteDate`) — 넘겨도 백엔드가 못 주고,
-   * 자르면 **되는 데까지는 보인다**(2026-08-21 사용자 결정).
+   * 여기서 `historicalRange.extend` 를 한 번 부르던 시절엔 3개월 전 저장뷰가 **영영
+   * 착석하지 않았다**(2026-08-21 실측, 3분 20초 무변화). 단발 extend 는 백엔드에서
+   * 한 청크만 받고 끝나고, `fillKind` 를 세우지 않으므로 진행 루프(3a)가 이어받지
+   * 못한다 — 나머지 스텝은 좌측 팬(3b)이 있어야 발화하는데 저장뷰 적용에는 팬이 없다.
    */
-  useEffect(() => {
-    if (savedRangeFromDate === null) return;
-    const floor = isMinuteTimeframe(view.timeframe) ? earliestAllowedMinuteDate(todayYmd) : null;
-    const target = floor !== null && savedRangeFromDate < floor ? floor : savedRangeFromDate;
-    const defaultFrom = subtractDaysKst(todayYmd, initialHistoricalDaysFor(view.timeframe));
-    // YYYYMMDD 는 사전식 비교가 곧 날짜 순서다.
-    if (target < defaultFrom) historicalRange.extend(target);
-  }, [savedRangeViewId, savedRangeFromDate, view.timeframe, todayYmd, historicalRange]);
 
   /** 일봉 기간 밴드의 마크. 분봉에서는 `LiveChartRoot` 가 스스로 게이트한다. */
   const savedRangeBand = useMemo(
@@ -527,6 +506,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               savedRangeBand={savedRangeBand}
               restoreViewport={savedRangeViewport}
               savedRangeWallToMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
+              savedRangeFromDate={savedRange?.fromDate ?? null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}
