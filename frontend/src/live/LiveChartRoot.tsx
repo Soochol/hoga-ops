@@ -1549,9 +1549,25 @@ export function LiveChartRoot({
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
     // Dev-only QA handle for browser-level chart viewport inspection.
+    //
+    // **`__liveChart` 단수는 마지막 생성 차트만 가리킨다** — 워크스페이스처럼 차트
+    // 창이 여럿이면 원하는 창을 읽을 수가 없다. 실제로 창 간 동기화를 `/browse` 로
+    // 검증할 때, 소비 창을 읽으려고 봉을 W→D 로 토글해 차트를 **재생성시키는**
+    // 편법을 써야 했다(2026-08-21). 그래서 창 id 로 찾는 레지스트리를 함께 둔다.
+    //
+    // 값은 `IChartApi` 그대로다 — `chartElement()` 로 DOM 까지 도달할 수 있어,
+    // QA 스크립트가 좌표 조준(`elementFromPoint`)이나 제목 텍스트 매칭 없이 그 창의
+    // 캔버스에 직접 이벤트를 쏠 수 있다. 창이 겹쳐 있어도 안전하다.
+    //
+    // 키는 창 id, Provider 밖(`/study`·단일 뷰)은 `'global'`. 창 id 는 컴포넌트
+    // 수명 동안 불변이라(windowViewContext 의 불변식) effect deps 에 넣지 않는다.
     if (import.meta.env.DEV) {
-      const w = window as unknown as { __liveChart?: unknown };
+      const w = window as unknown as {
+        __liveChart?: unknown;
+        __liveCharts?: Map<string, unknown>;
+      };
       w.__liveChart = c;
+      (w.__liveCharts ??= new Map()).set(winCtxWindowId ?? 'global', c);
     }
 
     return () => {
@@ -1561,8 +1577,16 @@ export function LiveChartRoot({
       // 도달 가능한 채로 남아 힙 스냅샷 조사를 오염시킨다(이 파일의 진단 대상이
       // 바로 힙이라 특히 곤란하다).
       if (import.meta.env.DEV) {
-        const w = window as unknown as { __liveChart?: unknown };
+        const w = window as unknown as {
+          __liveChart?: unknown;
+          __liveCharts?: Map<string, unknown>;
+        };
         if (w.__liveChart === c) delete w.__liveChart;
+        // 레지스트리도 같이 비운다 — 같은 이유(파괴된 차트가 window 에서 도달
+        // 가능하면 힙 스냅샷이 오염된다). 그 사이 같은 키를 새 차트가 가져갔으면
+        // 건드리지 않는다(창 재마운트 순서상 실제로 일어난다).
+        const key = winCtxWindowId ?? 'global';
+        if (w.__liveCharts?.get(key) === c) w.__liveCharts.delete(key);
       }
     };
     // Recreate the chart per (code, timeframe) view. lightweight-charts keeps
