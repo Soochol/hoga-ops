@@ -42,7 +42,7 @@ import {
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
-import { useWorkspaceStore } from '../../state/workspace';
+import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
 import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
 import type { PaneStretchMap } from '../../chart/paneOrder';
@@ -75,7 +75,7 @@ export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   getWorkareaCode: (windowId) => {
     const s = useWorkspaceStore.getState();
     const win = s.windows.find((w) => w.id === windowId);
-    const sym = win ? s.groupSymbols[win.group] : undefined;
+    const sym = windowSymbolOf(s, win);
     if (!sym) return null;
     // `isLiveIndexId` 까지 보는 이유: `ChartWindow` 의 instrument 생성이 **정확히 같은
     // 조건**으로 거르고(`kind==='index' && isLiveIndexId(code)` 아니면 instrument=null

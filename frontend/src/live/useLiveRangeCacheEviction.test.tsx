@@ -33,6 +33,21 @@ describe('liveOpenCodesKey', () => {
     expect(liveOpenCodesKey(windows, symbols)).toBe('000660,005930');
   });
 
+  it('고정(핀) 창의 종목도 포함한다 — 빠지면 그 창이 조용히 빈다', () => {
+    // 핀 창은 그룹을 안 따르므로 `groupSymbols[win.group]` 직독이 이 코드를 놓친다.
+    // 놓치면 증상이 화면이 아니라 **데이터**로 나온다: 축출 보호 대상에서 빠져
+    // 캔들·시세 캐시가 회수되고, 창은 종목명을 띄운 채 빈다.
+    const windows = [{ ...win('w1', 1), pinned: sym('035720') }, win('w2', 1)];
+
+    expect(liveOpenCodesKey(windows, { 1: sym('005930') })).toBe('005930,035720');
+  });
+
+  it('핀 창만 있으면 그룹 종목은 안 들어간다 — 그 창은 그룹을 안 보므로', () => {
+    const windows = [{ ...win('w1', 1), pinned: sym('035720') }];
+
+    expect(liveOpenCodesKey(windows, { 1: sym('005930') })).toBe('035720');
+  });
+
   it('종목 구성이 같으면 창이 바뀌어도 같은 문자열이다', () => {
     const symbols = { 1: sym('005930') };
     const before = liveOpenCodesKey([win('w1', 1)], symbols);
