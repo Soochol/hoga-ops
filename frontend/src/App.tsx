@@ -129,8 +129,11 @@ export default function App() {
       data-testid="app-content-grid"
       // 반응형 바닥(--app-floor-min-w): 유효 폭이 바닥 미만이면 셸이 계속 눌리는 대신
       // #root 가 가로 스크롤을 얻는다(global.css). 바닥을 정하는 건 페이지 콘텐츠가
-      // 아니라 전 라우트가 공유하는 셸 크롬 — TopNav 자연폭 939px + 레일 54px = 993px
-      // 실측(2026-07-21, 기본 밀도). rem 토큰이라 밀도 다이얼을 따라간다.
+      // 아니라 전 라우트가 공유하는 셸 크롬이고, 현재 병목은 **TopNav** 다 —
+      // 2026-08-21 시계 추가로 자연폭이 늘어 필요 뷰포트폭이 ~930px(캡처 진행 중
+      // 최악값)이 됐고, 토큰을 59rem(944px)으로 올렸다. 여기 숫자를 다시 적지 않는다:
+      // 유도 실측과 그 이력은 DESIGN.md "Responsive floor" 한 곳에만 둔다(그전 판이
+      // 여기 박아 둔 939/993px 은 두 번 stale 이 됐다). rem 토큰이라 밀도 다이얼을 따라간다.
       // w-screen(100vw) → h-full+min-w: 100vw 는 세로 스크롤바 폭을 포함해 바닥 아래에서
       // 셸이 항상 뷰포트보다 넓어진다. 이제 폭은 #root 를 따르고 바닥만 min-width 가 건다.
       className="grid h-full min-h-app-floor min-w-app-floor overflow-hidden"

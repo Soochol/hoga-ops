@@ -60,6 +60,58 @@ test.describe('상단바 시계', () => {
     expect(await centerOffset(page)).toBeGreaterThan(0); // 잘리는 대신 밀렸다
   });
 
+  test('셸 바닥 폭에서도 우측 클러스터가 시계를 덮지 않는다', async ({ page }) => {
+    // 바닥 폭(`--app-floor-min-w`)은 셸이 압축을 멈추는 지점이라 **상단바가 가장 좁게
+    // 눌리는 실사용 폭**이다. 시계(138px `shrink-0`)가 들어오면서 상단바 자연폭이 늘어
+    // 옛 바닥 912px 에서는 캡처 진행 중 우측 클러스터가 상단바 밖으로 밀려 나갔다
+    // (그리고 `min-w-0` 이 있으면 시계까지 덮었다) → 바닥을 59rem 으로 올린 근거.
+    //
+    // **이 가드가 고정하는 것은 바닥 값이다**(red-check: 57rem 으로 되돌리면 실패).
+    // 우측 클러스터의 `min-w-0` 제거는 944px 여유 안에서는 증상을 내지 않아 여기서
+    // 잡히지 않는다 — 그건 가드가 아니라 선택이라고 TopNav 주석에 적어 두었다.
+    //
+    // 캡처 상태 라벨은 큐가 놀고 있으면 렌더되지 않으므로(CaptureInlineStatus 는 idle 에
+    // null) **가장 넓은 상태를 DOM 으로 주입해** 폭 여유를 잰다. 여기서 재는 것은 동작이
+    // 아니라 **레이아웃 용량**이라 주입이 정당하다 — 실제 큐를 돌려도 폭은 같고 준비만
+    // 무거워진다.
+    // 바닥 폭은 **앱에서 읽는다** — 숫자를 박으면 토큰이 움직일 때 이 테스트만 옛 폭을
+    // 검사한다(빈 페이지에서는 CSS 변수가 없어 NaN 이므로 반드시 goto 뒤에 읽을 것).
+    await page.goto('/capture');
+    await expect(page.getByRole('timer')).toBeVisible();
+    const floorPx = await page.evaluate(
+      () =>
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--app-floor-min-w'),
+        ) * parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    expect(Number.isFinite(floorPx), '--app-floor-min-w 를 못 읽었다').toBe(true);
+    await page.setViewportSize({ width: Math.round(floorPx), height: 800 });
+
+    const geom = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="주요 메뉴"]') as HTMLElement;
+      const grid = nav.firstElementChild as HTMLElement;
+      const right = grid.children[2] as HTMLElement;
+      const clock = grid.children[1] as HTMLElement;
+      const probe = document.createElement('a');
+      probe.className =
+        'inline-flex h-full items-center gap-xs whitespace-nowrap text-xs font-semibold';
+      probe.textContent = '수집 3 · 대기 12'; // CaptureInlineStatus 의 최대 폭 형태
+      right.insertBefore(probe, right.firstChild);
+      const n = nav.getBoundingClientRect();
+      const r = right.getBoundingClientRect();
+      const c = clock.getBoundingClientRect();
+      const pr = probe.getBoundingClientRect();
+      const out = {
+        overlapsClock: pr.left < c.right - 0.5,
+        spillPx: Math.round(Math.max(0, r.right - n.right)),
+      };
+      probe.remove();
+      return out;
+    });
+    expect(geom.overlapsClock, '우측 클러스터가 시계를 덮었다').toBe(false);
+    expect(geom.spillPx, '우측 클러스터가 상단바 밖으로 넘쳤다').toBe(0);
+  });
+
   test('브라우저 시계와 일치하고 실제로 초가 흐른다', async ({ page }) => {
     await page.goto('/capture');
     await expect(page.getByRole('timer')).toBeVisible();

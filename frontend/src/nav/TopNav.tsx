@@ -87,9 +87,16 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
         {/* 종목 검색은 2026-08-21 에 중앙 열에서 이 우측 클러스터로 옮겼다(사용자 결정) —
             가운데를 시계에 내주기 위해서다. 트리거만 옮겨지고 **팝오버는 그대로**다:
             `fixed left-1/2 top-[12vh]` 로 뷰포트에 붙는 오버레이라 트리거 위치와 무관하다.
-            `min-w-0` 은 검색 트리거의 `flex-1 min-w-0 max-w-[360px]` 가 좁은 폭에서
-            줄어들 수 있게 하는 짝이다(예전 `min-w-max` 는 축소를 막아 오버플로가 난다). */}
-        <div className="flex min-w-0 items-center justify-end gap-lg text-xs font-semibold text-fg-dim">
+            **`min-w-0` 을 넣지 않는다.** 열이 내용 아래로 줄면 `justify-end` 때문에
+            항목들이 **왼쪽으로 넘쳐 시계를 덮는다** — 실측: 옛 셸 바닥 912px 에서 캡처
+            진행 중(`수집 3 · 대기 12`)일 때 상태 텍스트가 시계와 겹쳤다. 축소가 필요한
+            것은 검색 트리거뿐이고 그건 자기 안에 `flex-1 min-w-0 max-w-[360px]` 로 이미
+            갖고 있다.
+            ⚠ 다만 정직하게: 바닥을 59rem(944px)으로 올린 지금은 `min-w-0` 을 되돌려도
+            겹침이 재현되지 않는다(red-check 실측 — 초록이었다). 즉 **이건 테스트가
+            지키는 계약이 아니라 여유에 기대지 않으려는 선택**이다. 바닥을 다시 내리면
+            둘의 결합이 되살아난다. */}
+        <div className="flex items-center justify-end gap-lg text-xs font-semibold text-fg-dim">
           {isLive && <LiveSymbolSearch />}
           <CaptureInlineStatus />
           {/* 설정은 **라우트가 아니라 드로어**다. 목록 기반 렌더(`SYSTEM_NAV_ITEMS`)와
