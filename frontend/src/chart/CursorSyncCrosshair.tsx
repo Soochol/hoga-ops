@@ -1,6 +1,10 @@
 /**
- * 일봉 창에 **다른 창(분봉)의 마우스 위치**를 크로스헤어로 표시한다. `/study` 와
- * `/live` 워크스페이스가 둘 다 쓰고, 동작은 페이지에 무관하다.
+ * **다른 창의 마우스 위치**를 이 창의 크로스헤어로 표시한다. `/study` 와 `/live`
+ * 워크스페이스가 둘 다 쓰고, 동작은 페이지에 무관하다.
+ *
+ * 방향은 셋이다 — 분봉→일봉 · 일봉→일봉 · 분봉→분봉. 어느 발행을 받는지와 대상을
+ * 어떻게 찾는지는 **이 창의 봉**이 정하고, 그 판정은 전부 `cursorSync.ts` 가 갖는다.
+ * 여기서 하는 일은 자기 봉으로 다리(`SyncTargetSource`)를 고르는 것뿐이다.
  *
  * 선은 직접 그리지 않는다 — lightweight-charts 가 "두 차트의 크로스헤어 동기화"
  * 용도로 문서화한 `setCrosshairPosition` 을 부른다(`typings.d.ts` 의 예시가 곧 이
@@ -13,6 +17,10 @@
  * 캔들이 화면 밖인 경우가 흔한데(실측: pane 왼쪽 1,236px 밖) lwc 는 그때 아무것도
  * 그리지 않아 "동기화가 고장났다" 로 읽힌다. 방향과 **날짜만** 가장자리에 남긴다.
  *
+ * ⚠ 이 칩은 **대상을 찾은 뒤 화면 밖일 때만** 뜬다. 대상 자체가 없으면(그 날이 이
+ * 창에 로드돼 있지 않음) 아무것도 뜨지 않고, 그건 같은 오독을 부른다 — 분봉↔분봉에서
+ * 한쪽 창만 과거로 팬하면 실제로 그렇게 된다. 로드 범위 밖 안내는 미구현이다.
+ *
  * **분봉의 시:분은 일봉 창에 표시하지 않는다**(사용자 결정, 2026-08-11). 초기 판에는
  * 크로스헤어 위에 시각 칩(`14:09`)이 있었다 — lwc 시간축 배지가 일봉 축이라 날짜까지만
  * 찍는 것을 보완하려던 것이다. 일봉 차트에 분 단위 시각이 뜨는 것이 축과 맞지 않아
@@ -21,7 +29,7 @@
  * 좌표·필터 판정은 `cursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
  * 그린다. **종목 범위만 이 컴포넌트가 실어 준다** — ⚙️ 설정 → 차트의
  * `cursorSyncCrossSymbol`(기본 켬)을 읽어 `allowCrossSymbol` 로 넘긴다. 끄면
- * 같은 종목 창끼리만 동기화하던 2026-08-11 동작으로 돌아간다.
+ * 같은 종목 창끼리만 동기화하던 2026-08-11 동작으로 돌아간다(방향과 무관하게 일괄).
  *
  * 실측으로 확인한 성질 하나: `setCrosshairPosition` 은 그 차트의
  * `subscribeCrosshairMove` 를 **발화시키지 않는다.** 그래서 일봉 창의 레전드·툴팁은
@@ -41,7 +49,9 @@ import {
   indexCandlesByKstDate,
   resolveSyncTarget,
   type SyncCandle,
+  type SyncTargetSource,
 } from './cursorSync';
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 
 /** 좌상단 레전드(OHLC + 이동평균)와 저장 구간 라벨이 쓰는 높이. */
 const LEGEND_CLEARANCE_PX = 46;
@@ -51,8 +61,10 @@ const EDGE_TOP_PX = LEGEND_CLEARANCE_PX + 24;
 type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
-  /** 이 창이 그리고 있는 일봉 캔들. */
+  /** 이 창이 그리고 있는 캔들. **ts 오름차순**이어야 한다(분봉 다리가 이진 탐색). */
   candles: readonly SyncCandle[];
+  /** 이 창의 봉 — 다리와 받아 주는 발행 집합을 이것이 정한다. */
+  timeframe: LiveTimeframe;
   /** `setCrosshairPosition` 이 시리즈 핸들을 요구한다. */
   paneSeries: PaneSeriesMap;
   /** 이 창의 종목 — 발행 origin 과 대조한다. */
@@ -61,7 +73,7 @@ type Props = {
 
 const chipStyle = { background: 'var(--accent)', color: 'var(--accent-fg)' } as const;
 
-function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) {
+function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
@@ -92,7 +104,17 @@ function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) 
     };
   }, [chart]);
 
-  const byDate = useMemo(() => indexCandlesByKstDate(candles), [candles]);
+  // 다리는 **내 봉**이 고른다. 분봉이면 인덱스를 만들지 않는다 — 분봉 번들은 틱마다
+  // 갱신되므로 그때마다 캔들 전량을 훑게 된다(`snapToInstant` 가 이진 탐색을 쓰는 이유).
+  const minuteConsumer = isMinuteTimeframe(timeframe);
+  const byDate = useMemo(
+    () => (minuteConsumer ? null : indexCandlesByKstDate(candles)),
+    [candles, minuteConsumer],
+  );
+  const source = useMemo<SyncTargetSource>(
+    () => (byDate ? { axis: 'date', byDate } : { axis: 'instant', candles }),
+    [byDate, candles],
+  );
 
   const target = useMemo(
     () => resolveSyncTarget({
@@ -101,10 +123,10 @@ function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) 
         : null,
       myWindowId,
       myCode: code,
-      byDate,
+      source,
       allowCrossSymbol,
     }),
-    [syncCursorMs, syncCursorOrigin, myWindowId, code, byDate, allowCrossSymbol],
+    [syncCursorMs, syncCursorOrigin, myWindowId, code, source, allowCrossSymbol],
   );
 
   // 크로스헤어 자체. cleanup 이 이전 위치를 지우므로 커서가 바뀌면 옮겨 가고,
