@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { deriveDayAskPeaks, useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
+import { deriveDayAskPeaks, useDayAskPeaks } from './useDayAskPeaks';
+import { classifyAskWallEvents, toWallEventsFromOrderbooks } from './peakWallEventClassifier';
 import type { AskPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -28,7 +29,6 @@ const OPEN_MS = atKst(9);
 const todayAskPeak = (overrides: Partial<LiveTodayAskPeak> = {}): LiveTodayAskPeak => ({
   date: '20260613',
   coverage: 'partial',
-  traded_prices: [25500],
   traded_price: 25500,
   traded_qty: 9000,
   traded_t_ms: atKst(9, 10),
@@ -145,10 +145,6 @@ describe('useDayAskPeaks', () => {
       max_qty: 9000,
       max_t_ms: 3,
     });
-    expect(m['20260613'].untraded_peaks).toEqual([
-      { price: 26000, qty: 15000, t_ms: 5 },
-      { price: 26000, qty: 12000, t_ms: 4 },
-    ]);
   });
 
   it('backend today payload의 traded_peaks를 체결가격 기준 후보 목록으로 보존한다', () => {
@@ -178,13 +174,17 @@ describe('useDayAskPeaks', () => {
     });
   });
 
-  it('splits touched and untouched same-price ask walls into separate candidate families', () => {
+  it('judges same-price ask walls on their own minute (ADR-0156)', () => {
+    // 09:10 벽에는 같은 분(09:10:30) 체결이 있고, 09:12 의 **더 큰** 벽에는 없다.
+    // 옛 규칙이었다면 09:10:30 체결이 이후 내내 유효해 09:12 벽도 체결이었다.
     const { result } = renderHook(() => useDayAskPeaks(
       [
         deep(atKst(9, 10), 1200, 26000),
         deep(atKst(9, 12), 9000, 26000),
       ],
-      [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 26000, qty: 10 }])],
+      [trade(atKst(9, 10) + 30_000, [
+        { t_ms: atKst(9, 10) + 30_000, side: 1, price: 26000, qty: 10 },
+      ])],
       [],
       '20260613',
       OPEN_MS,
@@ -197,16 +197,11 @@ describe('useDayAskPeaks', () => {
       price: 26000,
       qty: 1200,
       t_ms: atKst(9, 10),
-      untraded_price: 26000,
-      untraded_qty: 9000,
-      untraded_t_ms: atKst(9, 12),
     });
-    expect(today.traded_peaks).toEqual(
-      expect.arrayContaining([{ price: 26000, qty: 1200, t_ms: atKst(9, 10) }]),
-    );
-    expect(today.untraded_peaks).toEqual(
-      expect.arrayContaining([{ price: 26000, qty: 9000, t_ms: atKst(9, 12) }]),
-    );
+    // `deep()` 픽스처의 채움 레벨(price 1)도 체결가에 지배되므로 포함/제외로 단언한다.
+    expect(today.traded_peaks).toContainEqual({ price: 26000, qty: 1200, t_ms: atKst(9, 10) });
+    expect(today.traded_peaks).not.toContainEqual({ price: 26000, qty: 9000, t_ms: atKst(9, 12) });
+    // 터치와 무관한 all 계열에는 더 큰 09:12 벽이 1위로 남는다.
     expect(today.all_peaks?.slice(0, 2)).toEqual([
       { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
       { price: 26000, qty: 1200, t_ms: atKst(9, 10) },
@@ -238,8 +233,11 @@ describe('useDayAskPeaks', () => {
 
     expect(byDate(result.current)['20260613']?.qty).toBe(9000);
 
+    // 체결과 벽을 **같은 분**(09:19)에 둔다 — ADR-0156 이후 다른 분이면 승격되지 않는다.
     rerender({
-      trades: [trade(atKst(9, 20), [{ t_ms: atKst(9, 20), side: 1, price: 27000, qty: 10 }])],
+      trades: [trade(atKst(9, 19) + 30_000, [
+        { t_ms: atKst(9, 19) + 30_000, side: 1, price: 27000, qty: 10 },
+      ])],
       ob: [deep(atKst(9, 19), 20000, 27000)],
     });
 
@@ -254,7 +252,7 @@ describe('useDayAskPeaks', () => {
     });
   });
 
-  it('retroactively promotes a previously seen wall once that price trades later', () => {
+  it('promotes an already-seen wall when a later trade lands in the same minute', () => {
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
         useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
@@ -268,7 +266,9 @@ describe('useDayAskPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
 
     rerender({
-      trades: [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 27000, qty: 10 }])],
+      trades: [trade(atKst(9, 20) + 40_000, [
+        { t_ms: atKst(9, 20) + 40_000, side: 1, price: 27000, qty: 10 },
+      ])],
       ob: [deep(atKst(9, 20), 20000, 27000)],
     });
 
@@ -319,7 +319,7 @@ describe('useDayAskPeaks', () => {
     });
   });
 
-  it('keeps a pre-cutoff ask wall in untraded_peaks when the touch happens only after the cutoff', () => {
+  it('excludes a wall whose only touch lies after the cutoff', () => {
     const wallT = atKst(9, 10);
     const cutoff = { date: '20260613', tMs: Date.UTC(2026, 5, 13, 0, 10, 59, 999) };
     const peaks = deriveDayAskPeaks(
@@ -344,13 +344,12 @@ describe('useDayAskPeaks', () => {
       price: 25900,
       qty: 1000,
       t_ms: atKst(9, 9),
-      untraded_price: 26000,
-      untraded_qty: 1200,
-      untraded_t_ms: wallT,
     });
-    expect(byDate(peaks)['20260613'].untraded_peaks).toEqual(
-      expect.arrayContaining([{ price: 26000, qty: 1200, t_ms: wallT }]),
-    );
+    // 09:10 벽(1200)은 컷오프 이후 체결로만 닿으므로 체결 후보가 아니다.
+    expect(byDate(peaks)['20260613'].traded_peaks)
+      .toContainEqual({ price: 25900, qty: 1000, t_ms: atKst(9, 9) });
+    expect(byDate(peaks)['20260613'].traded_peaks)
+      .not.toContainEqual({ price: 26000, qty: 1200, t_ms: wallT });
   });
 
   it('omits today traded baseline when no traded peak exists even though all-price REST data exists', () => {
@@ -367,102 +366,15 @@ describe('useDayAskPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
   });
 
-  it('all-price peak keeps advancing from later OB walls after REST seed', () => {
-    const restPeak = todayAskPeak();
-    const { result, rerender } = renderHook(
-      ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
-      { initialProps: { ob: [] as ObSnapshot[] } },
-    );
+  // ── 유효 스냅샷 술어(동시호가·VI 3호가 붕괴 배제) ─────────────────────────
+  //
+  // 종전엔 삭제된 `useTodayAllPriceAskPeak` 훅을 통해 간접 검증했다. ADR-0156 이 그
+  // 훅(미체결 선 전용)을 지우면서, 술어를 **직접** 부르는 형태로 옮긴다 — 훅이
+  // 사라졌다고 이 커버리지까지 잃으면 안 된다.
+  const allWalls = (ob: ObSnapshot[]) =>
+    classifyAskWallEvents(toWallEventsFromOrderbooks(ob, 'ask', OPEN_MS), []).all;
 
-    expect(result.current?.qty).toBe(12000);
-
-    rerender({ ob: [deep(atKst(9, 25), 25000, 28000)] });
-
-    expect(result.current).toMatchObject({
-      date: '20260613',
-      price: 28000,
-      qty: 25000,
-      t_ms: atKst(9, 25),
-      max_price: 28000,
-      max_qty: 25000,
-      max_t_ms: atKst(9, 25),
-    });
-  });
-
-  it('all-price peak preserves REST all-price candidates for current-day cutoff recalculation', () => {
-    const restPeak = todayAskPeak({
-      all_price: 27000,
-      all_qty: 20000,
-      all_t_ms: atKst(10, 0),
-      all_peaks: [
-        { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
-        { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
-        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
-        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
-      ],
-    });
-    const { result } = renderHook(
-      () => useTodayAllPriceAskPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
-    );
-
-    expect(result.current).toMatchObject({
-      price: 27000,
-      all_peaks: [
-        { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
-        { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
-        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
-      ],
-    });
-  });
-
-  it('live all-price ask candidates keep earlier same-price observations for cutoff recalculation', () => {
-    const { result } = renderHook(() => useTodayAllPriceAskPeak(
-      [
-        deep(atKst(9, 11), 1200, 26000),
-        deep(atKst(9, 12), 9000, 26000),
-      ],
-      [],
-      '20260613',
-      OPEN_MS,
-      '005930',
-    ));
-
-    expect(result.current).toMatchObject({ price: 26000, qty: 9000 });
-    expect(result.current?.all_peaks?.slice(0, 2)).toEqual([
-      { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
-      { price: 26000, qty: 1200, t_ms: atKst(9, 11) },
-    ]);
-  });
-
-  it('all-price hook keeps legacy rank-1 untraded fields when untraded arrays are absent', () => {
-    const restPeak = todayAskPeak({
-      untraded_price: 27100,
-      untraded_qty: 13000,
-      untraded_t_ms: atKst(10, 5),
-      untraded_max_price: 27100,
-      untraded_max_qty: 13000,
-      untraded_max_t_ms: atKst(10, 5),
-    });
-
-    const { result } = renderHook(
-      () => useTodayAllPriceAskPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
-    );
-
-    expect(result.current).toMatchObject({
-      untraded_price: 27100,
-      untraded_qty: 13000,
-      untraded_t_ms: atKst(10, 5),
-      untraded_max_price: 27100,
-      untraded_max_qty: 13000,
-      untraded_max_t_ms: atKst(10, 5),
-      untraded_peaks: [{ price: 27100, qty: 13000, t_ms: atKst(10, 5) }],
-      untraded_max_peaks: [{ price: 27100, qty: 13000, t_ms: atKst(10, 5) }],
-    });
-  });
-
-  it('all-price peak ignores collapsed 3-level auction/VI books', () => {
-    const restPeak = todayAskPeak();
+  it('ignores collapsed 3-level auction/VI books', () => {
     const collapsed: ObSnapshot = {
       t_ms: atKst(10, 0),
       total_ask_qty: 100001,
@@ -480,23 +392,13 @@ describe('useDayAskPeaks', () => {
         ...Array.from({ length: 7 }, () => ({ price: 0, qty: 0 })),
       ],
     };
-    const { result, rerender } = renderHook(
-      ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
-      { initialProps: { ob: [] as ObSnapshot[] } },
-    );
 
-    expect(result.current?.qty).toBe(12000);
-    rerender({ ob: [collapsed] });
-
-    expect(result.current).toMatchObject({
-      price: 26000,
-      qty: 12000,
-    });
+    expect(allWalls([collapsed])).toEqual([]);
+    expect(allWalls([collapsed, deep(atKst(10, 1), 12000, 26000)])[0])
+      .toEqual({ price: 26000, qty: 12000, t_ms: atKst(10, 1) });
   });
 
-  it('all-price peak ignores one-sided collapsed ask books even when bids remain deep', () => {
-    const restPeak = todayAskPeak();
+  it('ignores one-sided collapsed ask books even when bids remain deep', () => {
     const oneSidedCollapsed: ObSnapshot = {
       t_ms: atKst(10, 0),
       total_ask_qty: 100001,
@@ -509,18 +411,8 @@ describe('useDayAskPeaks', () => {
       ],
       bids: Array.from({ length: 10 }, (_, i) => ({ price: 28900 - i * 100, qty: 100 })),
     };
-    const { result, rerender } = renderHook(
-      ({ ob }: { ob: ObSnapshot[] }) =>
-        useTodayAllPriceAskPeak(ob, [], '20260613', OPEN_MS, '005930', restPeak),
-      { initialProps: { ob: [] as ObSnapshot[] } },
-    );
 
-    rerender({ ob: [oneSidedCollapsed] });
-
-    expect(result.current).toMatchObject({
-      price: 26000,
-      qty: 12000,
-    });
+    expect(allWalls([oneSidedCollapsed])).toEqual([]);
   });
 
   // (제거됨, issue #434) 대량 버퍼 무정지 벽시계 테스트는 full-suite 워커 경합에

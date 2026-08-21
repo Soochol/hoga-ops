@@ -4,17 +4,11 @@ import {
   deriveDayAskPeaks,
   deriveDayAskPeaksIncremental,
   deriveDayAskPeaksIncrementalAsOf,
-  deriveTodayAllPriceAskPeak,
-  deriveTodayAllPriceAskPeakIncremental,
-  deriveTodayAllPriceAskPeakIncrementalAsOf,
 } from './useDayAskPeaks';
 import {
   deriveDayBidPeaks,
   deriveDayBidPeaksIncremental,
   deriveDayBidPeaksIncrementalAsOf,
-  deriveTodayAllPriceBidPeak,
-  deriveTodayAllPriceBidPeakIncremental,
-  deriveTodayAllPriceBidPeakIncrementalAsOf,
 } from './useDayBidPeaks';
 import type { AskPeak, BidPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
@@ -76,7 +70,6 @@ function genStream(seed: number, snapshots: number): { obs: ObSnapshot[]; trades
 const BACKEND: LiveTodayAskPeak = {
   date: TODAY,
   coverage: 'partial',
-  traded_prices: [25500],
   traded_price: 25500,
   traded_qty: 9000,
   traded_t_ms: atKst(9, 10),
@@ -121,28 +114,6 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     }
   });
 
-  it('todayAllPrice(ask): 터치 없는 all 패밀리도 배치와 동일하다', () => {
-    const { obs } = genStream(99, 200);
-    const source = new IncrementalPeakWallSource('ask');
-    for (const cut of [0, 80, 200]) {
-      const obSlice = obs.slice(0, cut);
-      const incremental = deriveTodayAllPriceAskPeakIncremental(source, obSlice, ASK_SEEDS, TODAY, OPEN_MS, BACKEND);
-      const batch = deriveTodayAllPriceAskPeak(obSlice, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND);
-      expect(incremental).toEqual(batch);
-    }
-  });
-
-  it('todayAllPrice(bid): 터치 없는 all 패밀리도 배치와 동일하다', () => {
-    const { obs } = genStream(99, 200);
-    const source = new IncrementalPeakWallSource('bid');
-    for (const cut of [0, 80, 200]) {
-      const obSlice = obs.slice(0, cut);
-      const incremental = deriveTodayAllPriceBidPeakIncremental(source, obSlice, BID_SEEDS, TODAY, OPEN_MS, null);
-      const batch = deriveTodayAllPriceBidPeak(obSlice, BID_SEEDS, TODAY, OPEN_MS, '005930', null);
-      expect(incremental).toEqual(batch);
-    }
-  });
-
   it('touch t_ms가 wall event t_ms와 정확히 같은 경계도 배치와 동일하다 (line 172 경계)', () => {
     const T = atKst(10, 0);
     // 최대 벽(qty 50000)이 시각 T, 정확히 같은 시각 T에 그 가격(26000)을 때리는 체결.
@@ -157,19 +128,19 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     expect(today?.qty).toBe(50000);
   });
 
-  it('배열 순서가 뒤바뀐 touch도 재정렬 후 배치와 동일하다 (ensureTouchIndex lockstep argsort)', () => {
-    const Ta = atKst(9, 30);   // 벽 A: 26000 / qty 50000
-    const Tb = atKst(10, 0);   // 벽 B: 25000 / qty 40000
+  it('체결이 시간 역순으로 도착해도 배치와 동일하다 (분 극값은 순서 무관)', () => {
+    // ADR-0084 시절엔 역순 도착이 정렬·lockstep argsort 를 요구했고, 그 정렬이
+    // touchCounts 대응을 깨서 축출을 폴백시켰다. ADR-0156 의 분 극값은 순서에
+    // 무관하므로 그 기계가 통째로 사라졌다 — 그래도 결과가 같아야 한다.
+    const Ta = atKst(9, 30);   // 벽 A: 26000 / qty 50000 (분 570)
+    const Tb = atKst(10, 0);   // 벽 B: 25000 / qty 40000 (분 600)
     const obs = [
       ob(Ta, [{ price: 26000, qty: 50000 }]),
       ob(Tb, [{ price: 25000, qty: 40000 }]),
     ];
-    // 체결을 시간 역순으로 공급: 배열[0]=10:30(25000), 배열[1]=9:15(30000).
-    // 올바른 lockstep 재정렬이라야 (9:15→30000, 10:30→25000)로 짝지어져
-    // 벽 A(9:30)는 untouched, 벽 B(10:00)는 touched → 오늘 벽 = B(qty 40000).
-    // touchPrices를 함께 재정렬하지 않으면 A가 touched로 뒤바뀐다.
-    const T2 = atKst(10, 30);
-    const T1 = atKst(9, 15);
+    // 배열[0]=10:00:30(25000, 분 600), 배열[1]=9:30:15(30000, 분 570) — 역순 공급.
+    const T2 = atKst(10, 0, 30);
+    const T1 = atKst(9, 30, 15);
     const trades = [
       tradeSnap(T2, [{ t_ms: T2, side: 1, price: 25000, qty: 100 }]),
       tradeSnap(T1, [{ t_ms: T1, side: 1, price: 30000, qty: 100 }]),
@@ -178,16 +149,9 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, null);
     const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', null);
     expect(incremental).toEqual(batch);
+    // 두 벽 모두 자기 분에서 지배당한다 → 큰 쪽(A, 50000)이 1위.
     const today = incremental.find((p) => p.date === TODAY);
-    expect(today?.qty).toBe(40000); // 올바른 페어링이면 벽 B
-  });
-
-  it('backend가 null이어도(seed 폴백 경로) 동일하다', () => {
-    const { obs } = genStream(5, 100);
-    const source = new IncrementalPeakWallSource('ask');
-    const incremental = deriveTodayAllPriceAskPeakIncremental(source, obs, ASK_SEEDS, TODAY, OPEN_MS, null);
-    const batch = deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, OPEN_MS, '005930', null);
-    expect(incremental).toEqual(batch);
+    expect(today?.qty).toBe(50000);
   });
 
   it('prefix가 깨지면(배열 교체) 리셋 폴백으로 배치와 동일하다', () => {
@@ -261,18 +225,6 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     }
   });
 
-  it.each([1, 7, 42])('ask/bid todayAllPrice: cutoff 스윕이 배치와 동일 (seed %i)', (seed) => {
-    const { obs } = genStream(seed, 250);
-    const askSource = new IncrementalPeakWallSource('ask');
-    const bidSource = new IncrementalPeakWallSource('bid');
-    for (const cutoffMs of cutoffCandidates(obs)) {
-      expect(deriveTodayAllPriceAskPeakIncrementalAsOf(askSource, obs, ASK_SEEDS, TODAY, OPEN_MS, BACKEND, cutoffMs))
-        .toEqual(deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, OPEN_MS, '005930', BACKEND, { date: TODAY, tMs: cutoffMs }));
-      expect(deriveTodayAllPriceBidPeakIncrementalAsOf(bidSource, obs, BID_SEEDS, TODAY, OPEN_MS, null, cutoffMs))
-        .toEqual(deriveTodayAllPriceBidPeak(obs, BID_SEEDS, TODAY, OPEN_MS, '005930', null, { date: TODAY, tMs: cutoffMs }));
-    }
-  });
-
   it('cutoff 증분: ob/trade 가 자라는 매 스텝에서 live-edge cutoff 가 배치와 동일', () => {
     // 팬 없이 실시간 뷰(cutoff=마지막 캔들 시각)에서 틱마다 성장하는 경우.
     const { obs, trades } = genStream(555, 200);
@@ -297,7 +249,7 @@ describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (AD
     const obs = [ob(Twall, [{ price: 26000, qty: 50000 }])];
     const trades = [tradeSnap(Ttouch, [{ t_ms: Ttouch, side: 1, price: 26000, qty: 100 }])];
     const source = new IncrementalPeakWallSource('ask');
-    // cutoff 가 터치 직전 → 미체결, 터치 시각 이상 → 체결. 두 경우 모두 배치와 일치.
+    // cutoff 가 터치 직전 → 터치 아님, 터치 시각 이상 → 터치. 두 경우 모두 배치와 일치.
     for (const cutoffMs of [Twall, Ttouch - 1, Ttouch, Ttouch + 1]) {
       const incremental = deriveDayAskPeaksIncrementalAsOf(source, obs, trades, ASK_SEEDS, TODAY, OPEN_MS, null, cutoffMs);
       const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, OPEN_MS, '005930', null, [], { date: TODAY, tMs: cutoffMs });

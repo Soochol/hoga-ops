@@ -3,7 +3,6 @@ import type { LiveSeriesResponse, LiveTodayAskPeak, LiveTodayBidPeak } from './l
 const _todayAskPeakWithoutTradedPeak: LiveTodayAskPeak = {
   date: '20260616',
   coverage: 'partial',
-  traded_prices: [],
   traded_price: null,
   traded_qty: null,
   traded_t_ms: null,

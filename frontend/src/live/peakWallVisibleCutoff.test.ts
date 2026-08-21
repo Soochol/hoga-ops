@@ -44,12 +44,6 @@ const askPeak = (date: string): AskPeak => ({
     { price: 100, qty: 110, t_ms: date === '20260610' ? day1Open + 60_000 : day2Open + 60_000 },
     { price: 101, qty: 600, t_ms: date === '20260610' ? day1Open + 180_000 : day2Open + 180_000 },
   ],
-  untraded_price: 102,
-  untraded_qty: 700,
-  untraded_t_ms: date === '20260610' ? day1Open + 180_000 : day2Open + 180_000,
-  untraded_max_price: 102,
-  untraded_max_qty: 800,
-  untraded_max_t_ms: date === '20260610' ? day1Open + 180_000 : day2Open + 180_000,
 });
 
 describe('rightmostVisibleCandleCutoff', () => {
@@ -108,7 +102,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
       qty: 100,
       t_ms: day2Open + 60_000,
     });
-    expect(out[1].untraded_price).toBeNull();
   });
 
   it('omits the cutoff date when every candidate is after the cutoff', () => {
@@ -195,27 +188,4 @@ describe('applyPeakVisibleTimeCutoff', () => {
     ]);
   });
 
-  it('filters ranked untraded arrays by the cutoff time', () => {
-    const out = applyPeakVisibleTimeCutoff([{
-      ...askPeak('20260611'),
-      untraded_peaks: [
-        { price: 102, qty: 700, t_ms: day2Open + 60_000 },
-        { price: 103, qty: 900, t_ms: day2Open + 180_000 },
-      ],
-      untraded_max_peaks: [
-        { price: 102, qty: 800, t_ms: day2Open + 60_000 },
-        { price: 103, qty: 950, t_ms: day2Open + 180_000 },
-      ],
-    }], { date: '20260611', tMs: day2Open + 120_000 }, {
-      side: 'ask',
-      intraMax: false,
-    });
-
-    expect(out).toEqual([
-      expect.objectContaining({
-        untraded_peaks: [{ price: 102, qty: 700, t_ms: day2Open + 60_000 }],
-        untraded_max_peaks: [{ price: 102, qty: 800, t_ms: day2Open + 60_000 }],
-      }),
-    ]);
-  });
 });

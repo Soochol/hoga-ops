@@ -162,10 +162,6 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
-  setAskPeakAllPriceStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
-    askPeakAllPriceColor: patch.color ?? cur.askPeakAllPriceColor,
-    askPeakAllPriceLineWidth: patch.lineWidth ?? cur.askPeakAllPriceLineWidth,
-  }),
   setAskPeakVisibleMaxStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     askPeakVisibleMaxColor: patch.color ?? cur.askPeakVisibleMaxColor,
     askPeakVisibleMaxLineWidth: patch.lineWidth ?? cur.askPeakVisibleMaxLineWidth,
@@ -182,10 +178,6 @@ export const INDICATOR_OPS = {
   setBidPeakStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     bidPeakColor: patch.color ?? cur.bidPeakColor,
     bidPeakLineWidth: patch.lineWidth ?? cur.bidPeakLineWidth,
-  }),
-  setBidPeakAllPriceStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
-    bidPeakAllPriceColor: patch.color ?? cur.bidPeakAllPriceColor,
-    bidPeakAllPriceLineWidth: patch.lineWidth ?? cur.bidPeakAllPriceLineWidth,
   }),
 
   setTradeVolumePocEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>

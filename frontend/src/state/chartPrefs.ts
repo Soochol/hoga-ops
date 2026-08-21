@@ -142,13 +142,6 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'askPeakShowAllPrices',
-    label: '미체결 최대 매도벽 표시',
-    description: '체결된 벽과 미체결된 벽을 각각 표시합니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
     key: 'askPeakLabelEnabled',
     label: '최대벽 라벨 표시',
     description: '당일 매도 최대벽 라벨을 차트 오른쪽에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
@@ -168,13 +161,6 @@ export const CHART_TOGGLES = [
     description:
       '분봉 종가 호가창 대신 분봉 내 순간 최대 매수벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
     default: false,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakShowAllPrices',
-    label: '미체결 최대 매수벽 표시',
-    description: '체결된 벽과 미체결된 벽을 각각 표시합니다.',
-    default: true,
     category: 'indicator-modal',
   },
   {
@@ -339,18 +325,13 @@ export const CHART_NUMERIC_PREFS = [
     kind: 'time',
   },
   {
+    // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절
+    // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `askPeakAllPriceColor` 는
+    // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
+    // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
     key: 'askPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
-    default: 1,
-    min: 1,
-    max: 3,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'askPeakUntradedRankLimit',
-    label: '미체결된 벽 표시 개수',
-    description: '미체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -367,18 +348,13 @@ export const CHART_NUMERIC_PREFS = [
     category: 'indicator-modal',
   },
   {
+    // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절
+    // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `bidPeakAllPriceColor` 는
+    // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
+    // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
     key: 'bidPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
-    default: 1,
-    min: 1,
-    max: 3,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakUntradedRankLimit',
-    label: '미체결된 벽 표시 개수',
-    description: '미체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,

@@ -3,45 +3,6 @@ import { createVirtualAxis } from '../util/virtualAxis';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 
 describe('buildBidPeakOverlaySegments', () => {
-  it('renders bid untraded rank 1 even when it is smaller than traded rank 1', () => {
-    const day = '20260619';
-    const open = Date.UTC(2026, 5, 19, 0, 0);
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [{
-        date: day,
-        price: 70000,
-        qty: 5000,
-        t_ms: open + 60_000,
-        max_price: 70000,
-        max_qty: 5000,
-        max_t_ms: open + 60_000,
-        untraded_price: 69000,
-        untraded_qty: 4000,
-        untraded_t_ms: open + 180_000,
-        untraded_max_price: 69000,
-        untraded_max_qty: 4000,
-        untraded_max_t_ms: open + 180_000,
-      }],
-      todayAllPriceBidPeak: null,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 0, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-    });
-
-    expect(segments).toHaveLength(2);
-    expect(segments.map((segment) => [segment.price, segment.qty])).toEqual([
-      [70000, 5000],
-      [69000, 4000],
-    ]);
-  });
 
   it('filters bid baseline candidates by visible-time cutoff', () => {
     const day = '20260613';
@@ -66,15 +27,12 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       dayBidPeaks: [peak],
-      todayAllPriceBidPeak: null,
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
       axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
       todayKst: day,
       baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
       intraMax: false,
-      showAllPrices: true,
       visibleTimeCutoff: { date: day, tMs: open + 120_000 },
     });
 
@@ -109,7 +67,6 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       dayBidPeaks: [peak],
-      todayAllPriceBidPeak: null,
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [
         { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
@@ -119,9 +76,7 @@ describe('buildBidPeakOverlaySegments', () => {
       axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
       todayKst: day,
       baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
       intraMax: false,
-      showAllPrices: false,
       visibleTimeCutoff: { date: day, tMs: open + 180_000 },
       allPriceRankLimit: 3,
     });
@@ -156,7 +111,6 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       dayBidPeaks: [peak],
-      todayAllPriceBidPeak: null,
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [
         { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
@@ -167,9 +121,7 @@ describe('buildBidPeakOverlaySegments', () => {
       axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
       todayKst: day,
       baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
       intraMax: false,
-      showAllPrices: false,
       allPriceRankLimit: 3,
     });
 
@@ -197,352 +149,22 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       dayBidPeaks: [peak],
-      todayAllPriceBidPeak: null,
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
       axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
       todayKst: day,
       baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
       intraMax: false,
-      showAllPrices: true,
       visibleTimeCutoff: { date: day, tMs: open + 120_000 },
     });
 
     expect(segments).toEqual([]);
   });
 
-  it('filters today all-price bid peaks by max_t_ms when intraMax is enabled', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const baseline = {
-      date: day,
-      price: 98,
-      qty: 90,
-      t_ms: open + 60_000,
-      max_price: 98,
-      max_qty: 90,
-      max_t_ms: open + 60_000,
-    };
-    const allPrice = {
-      ...baseline,
-      price: 97,
-      qty: 100,
-      t_ms: open + 60_000,
-      max_price: 97,
-      max_qty: 1_000,
-      max_t_ms: open + 180_000,
-    };
 
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [baseline],
-      todayAllPriceBidPeak: allPrice,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 100, high: 101, low: 98, close: 99, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 120_000, open: 99, high: 100, low: 98, close: 99, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: true,
-      showAllPrices: true,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
 
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toMatchObject({ price: 98, qty: 90 });
-  });
 
-  it('uses today low through cutoff when deciding whether to render bid all-price', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const baseline = {
-      date: day,
-      price: 100,
-      qty: 90,
-      t_ms: open + 60_000,
-      max_price: 100,
-      max_qty: 90,
-      max_t_ms: open + 60_000,
-    };
-    const allPrice = {
-      ...baseline,
-      price: 99,
-      qty: 1_000,
-      t_ms: open + 60_000,
-      max_price: 99,
-      max_qty: 1_000,
-      max_t_ms: open + 60_000,
-    };
 
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [baseline],
-      todayAllPriceBidPeak: allPrice,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 101, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 98, high: 99, low: 98, close: 98, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
 
-    expect(segments).toHaveLength(2);
-    expect(segments[1]).toMatchObject({ price: 99, qty: 1_000, color: '#f00' });
-  });
 
-  it('renders earlier today ranked bid untraded candidates when the scalar winner is after cutoff', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const baseline = {
-      date: day,
-      price: 100,
-      qty: 90,
-      t_ms: open + 60_000,
-      max_price: 100,
-      max_qty: 90,
-      max_t_ms: open + 60_000,
-    };
-    const allPrice = {
-      ...baseline,
-      price: 97,
-      qty: 2_000,
-      t_ms: open + 180_000,
-      max_price: 97,
-      max_qty: 2_000,
-      max_t_ms: open + 180_000,
-      untraded_peaks: [
-        { price: 99, qty: 1_000, t_ms: open + 60_000 },
-        { price: 97, qty: 2_000, t_ms: open + 180_000 },
-      ],
-      untraded_max_peaks: [
-        { price: 99, qty: 1_000, t_ms: open + 60_000 },
-        { price: 97, qty: 2_000, t_ms: open + 180_000 },
-      ],
-    };
-
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [baseline],
-      todayAllPriceBidPeak: allPrice,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 101, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 98, high: 99, low: 98, close: 98, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
-
-    expect(segments).toHaveLength(2);
-    expect(segments[1]).toMatchObject({ price: 99, qty: 1_000, color: '#f00' });
-  });
-
-  it('filters historical ranked bid untraded candidates through the visible-time cutoff', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const peak = {
-      date: day,
-      price: 100,
-      qty: 90,
-      t_ms: open + 60_000,
-      max_price: 100,
-      max_qty: 90,
-      max_t_ms: open + 60_000,
-      untraded_peaks: [
-        { price: 99, qty: 1_000, t_ms: open + 60_000 },
-      ],
-      untraded_max_peaks: [
-        { price: 99, qty: 1_000, t_ms: open + 60_000 },
-      ],
-      untraded_price: null,
-      untraded_qty: null,
-      untraded_t_ms: null,
-    };
-
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [peak],
-      todayAllPriceBidPeak: null,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 101, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 98, high: 99, low: 98, close: 98, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: '20260614',
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
-
-    expect(segments).toHaveLength(2);
-    expect(segments[1]).toMatchObject({ price: 99, qty: 1_000, color: '#f00' });
-  });
-
-  it('renders up to three ranked bid untraded candidates independently of traded ranks', () => {
-    const day = '20260619';
-    const open = Date.UTC(2026, 5, 19, 0, 0);
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [{
-        date: day,
-        price: 70000,
-        qty: 5000,
-        t_ms: open + 60_000,
-        max_price: 70000,
-        max_qty: 5000,
-        max_t_ms: open + 60_000,
-        traded_peaks: [
-          { price: 70000, qty: 5000, t_ms: open + 60_000 },
-          { price: 69900, qty: 4500, t_ms: open + 120_000 },
-        ],
-        traded_max_peaks: [
-          { price: 70000, qty: 5000, t_ms: open + 60_000 },
-          { price: 69900, qty: 4500, t_ms: open + 120_000 },
-        ],
-        untraded_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69700, qty: 3900, t_ms: open + 240_000 },
-          { price: 69600, qty: 3800, t_ms: open + 300_000 },
-        ],
-        untraded_max_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69700, qty: 3900, t_ms: open + 240_000 },
-          { price: 69600, qty: 3800, t_ms: open + 300_000 },
-        ],
-      }],
-      todayAllPriceBidPeak: null,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 240_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 300_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      allPriceRankLimit: 2,
-      untradedRankLimit: 3,
-    });
-
-    expect(segments.map((segment) => segment.price)).toEqual([70000, 69900, 69800, 69700, 69600]);
-    expect(segments.map((segment) => segment.color)).toEqual(['#fff', '#fff', '#f00', '#f00', '#f00']);
-  });
-
-  it('renders bid untraded candidates even when traded_peaks is explicitly empty', () => {
-    const day = '20260619';
-    const open = Date.UTC(2026, 5, 19, 0, 0);
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [{
-        date: day,
-        price: 70000,
-        qty: 5000,
-        t_ms: open + 60_000,
-        max_price: 70000,
-        max_qty: 5000,
-        max_t_ms: open + 60_000,
-        traded_peaks: [],
-        traded_max_peaks: [],
-        untraded_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69700, qty: 3900, t_ms: open + 240_000 },
-        ],
-        untraded_max_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69700, qty: 3900, t_ms: open + 240_000 },
-        ],
-      }],
-      todayAllPriceBidPeak: null,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 240_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      untradedRankLimit: 2,
-    });
-
-    expect(segments.map((segment) => segment.price)).toEqual([70000, 69800, 69700]);
-  });
-
-  it('dedupes duplicate bid untraded prices within that family but allows the same price in traded and untraded families', () => {
-    const day = '20260619';
-    const open = Date.UTC(2026, 5, 19, 0, 0);
-    const segments = buildBidPeakOverlaySegments({
-      dayBidPeaks: [{
-        date: day,
-        price: 70000,
-        qty: 5000,
-        t_ms: open + 60_000,
-        max_price: 70000,
-        max_qty: 5000,
-        max_t_ms: open + 60_000,
-        traded_peaks: [
-          { price: 70000, qty: 5000, t_ms: open + 60_000 },
-          { price: 69900, qty: 4500, t_ms: open + 120_000 },
-        ],
-        traded_max_peaks: [
-          { price: 70000, qty: 5000, t_ms: open + 60_000 },
-          { price: 69900, qty: 4500, t_ms: open + 120_000 },
-        ],
-        untraded_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69800, qty: 3900, t_ms: open + 240_000 },
-          { price: 70000, qty: 3800, t_ms: open + 300_000 },
-        ],
-        untraded_max_peaks: [
-          { price: 69800, qty: 4000, t_ms: open + 180_000 },
-          { price: 69800, qty: 3900, t_ms: open + 240_000 },
-          { price: 70000, qty: 3800, t_ms: open + 300_000 },
-        ],
-      }],
-      todayAllPriceBidPeak: null,
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 240_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 300_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      allPriceStyle: { color: '#f00', lineWidth: 1 },
-      intraMax: false,
-      showAllPrices: true,
-      allPriceRankLimit: 2,
-      untradedRankLimit: 3,
-    });
-
-    expect(segments.map((segment) => [segment.price, segment.color])).toEqual([
-      [70000, '#fff'],
-      [69900, '#fff'],
-      [69800, '#f00'],
-      [70000, '#f00'],
-    ]);
-  });
 });

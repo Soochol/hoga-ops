@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import { useDayBidPeaks } from './useDayBidPeaks';
 import type { BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -34,7 +34,6 @@ const trade = (t_ms: number, trades: TradeSnapshot['trades']): TradeSnapshot => 
 const todayBidPeak = (overrides: Partial<LiveTodayBidPeak> = {}): LiveTodayBidPeak => ({
   date: '20260613',
   coverage: 'partial',
-  traded_prices: [23900],
   traded_price: 23900,
   traded_qty: 9000,
   traded_t_ms: atKst(9, 10),
@@ -45,7 +44,7 @@ const todayBidPeak = (overrides: Partial<LiveTodayBidPeak> = {}): LiveTodayBidPe
 });
 
 describe('useDayBidPeaks', () => {
-  it('only promotes traded bid prices, even when a larger untraded wall exists', () => {
+  it('only promotes bid walls touched in their own minute, even when a larger one exists', () => {
     const { result } = renderHook(() => useDayBidPeaks(
       [
         deep(atKst(9, 20), [
@@ -54,7 +53,9 @@ describe('useDayBidPeaks', () => {
           ...Array(8).fill([1, 1]),
         ] as Array<[number, number]>),
       ],
-      [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 23900, qty: 10 }])],
+      [trade(atKst(9, 20) + 30_000, [
+        { t_ms: atKst(9, 20) + 30_000, side: 1, price: 23900, qty: 10 },
+      ])],
       [],
       '20260613',
       OPEN_MS,
@@ -70,7 +71,6 @@ describe('useDayBidPeaks', () => {
 
   it('promotes REST all-price bid peaks when the price falls inside a today candle range', () => {
     const restPeak = todayBidPeak({
-      traded_prices: [],
       traded_price: null,
       traded_qty: null,
       traded_t_ms: null,
@@ -124,13 +124,15 @@ describe('useDayBidPeaks', () => {
     });
   });
 
-  it('splits touched and untouched same-price bid walls into separate candidate families', () => {
+  it('judges same-price bid walls on their own minute (ADR-0156)', () => {
     const { result } = renderHook(() => useDayBidPeaks(
       [
         deep(atKst(9, 10), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
         deep(atKst(9, 12), [[23900, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>),
       ],
-      [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 23900, qty: 10 }])],
+      [trade(atKst(9, 10) + 30_000, [
+        { t_ms: atKst(9, 10) + 30_000, side: 1, price: 23900, qty: 10 },
+      ])],
       [],
       '20260613',
       OPEN_MS,
@@ -142,23 +144,17 @@ describe('useDayBidPeaks', () => {
       price: 23900,
       qty: 1200,
       t_ms: atKst(9, 10),
-      untraded_price: 23900,
-      untraded_qty: 9000,
-      untraded_t_ms: atKst(9, 12),
     });
-    expect(today.traded_peaks).toEqual(
-      expect.arrayContaining([{ price: 23900, qty: 1200, t_ms: atKst(9, 10) }]),
-    );
-    expect(today.untraded_peaks).toEqual(
-      expect.arrayContaining([{ price: 23900, qty: 9000, t_ms: atKst(9, 12) }]),
-    );
+    expect(today.traded_peaks).toContainEqual({ price: 23900, qty: 1200, t_ms: atKst(9, 10) });
+    // 09:12 의 **더 큰** 벽은 자기 분에 체결이 없어 체결 후보가 아니다.
+    expect(today.traded_peaks).not.toContainEqual({ price: 23900, qty: 9000, t_ms: atKst(9, 12) });
     expect(today.all_peaks?.slice(0, 2)).toEqual([
       { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
       { price: 23900, qty: 1200, t_ms: atKst(9, 10) },
     ]);
   });
 
-  it('retroactively promotes a previously observed bid wall once that price trades later', () => {
+  it('promotes an already-seen bid wall when a later trade lands in the same minute', () => {
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
         useDayBidPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
@@ -172,7 +168,9 @@ describe('useDayBidPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
 
     rerender({
-      trades: [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 23800, qty: 10 }])],
+      trades: [trade(atKst(9, 20) + 40_000, [
+        { t_ms: atKst(9, 20) + 40_000, side: 1, price: 23800, qty: 10 },
+      ])],
       ob: [deep(atKst(9, 20), [[23800, 20000], ...Array(9).fill([1, 1])] as Array<[number, number]>)],
     });
 
@@ -186,166 +184,4 @@ describe('useDayBidPeaks', () => {
   // (제거됨, issue #434) 대량 버퍼 무정지 벽시계 테스트는 full-suite 워커 경합에
   // flaky했다. IncrementalPeakWallSource의 append-only 델타 소비는 useDayPeaks.perf
   // .test.tsx가 결정론적으로 검증한다(ask/bid 공유 소스).
-});
-
-describe('useTodayAllPriceBidPeak', () => {
-  it('uses REST all-price seed ahead of historical today seed', () => {
-    const seed: BidPeak = {
-      date: '20260613',
-      price: 23900,
-      qty: 5000,
-      t_ms: atKst(9, 5),
-      max_price: 23900,
-      max_qty: 5000,
-      max_t_ms: atKst(9, 5),
-    };
-
-    const { result } = renderHook(() => useTodayAllPriceBidPeak(
-      [],
-      [seed],
-      '20260613', OPEN_MS,
-      '005930',
-      todayBidPeak({ all_price: 23800, all_qty: 12000, all_t_ms: atKst(9, 11) }),
-    ));
-
-    expect(result.current).toMatchObject({
-      date: '20260613',
-      price: 23800,
-      qty: 12000,
-      t_ms: atKst(9, 11),
-      max_price: 23800,
-      max_qty: 12000,
-      max_t_ms: atKst(9, 11),
-      all_peaks: [{ price: 23800, qty: 12000, t_ms: atKst(9, 11) }],
-    });
-  });
-
-  it('falls back to historical today seed when REST today peak is absent', () => {
-    const seed: BidPeak = {
-      date: '20260613',
-      price: 23900,
-      qty: 5000,
-      t_ms: atKst(9, 5),
-      max_price: 23900,
-      max_qty: 5000,
-      max_t_ms: atKst(9, 5),
-    };
-
-    const { result } = renderHook(() => useTodayAllPriceBidPeak(
-      [],
-      [seed],
-      '20260613', OPEN_MS,
-      '005930',
-      null,
-    ));
-
-    expect(result.current).toMatchObject({
-      ...seed,
-      all_peaks: [{ price: 23900, qty: 5000, t_ms: atKst(9, 5) }],
-    });
-  });
-
-  it('ratchets larger live bid walls and resets on code/date changes', () => {
-    const first = deep(
-      atKst(9, 20),
-      [[23800, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>,
-    );
-    const larger = deep(
-      atKst(9, 21),
-      [[23700, 15000], ...Array(9).fill([1, 1])] as Array<[number, number]>,
-    );
-
-    const { result, rerender } = renderHook(
-      ({ ob, todayKst, code }: { ob: ObSnapshot[]; todayKst: string; code: string }) =>
-        useTodayAllPriceBidPeak(ob, [], todayKst, OPEN_MS, code, null),
-      { initialProps: { ob: [] as ObSnapshot[], todayKst: '20260613', code: '005930' } },
-    );
-
-    expect(result.current).toBeNull();
-
-    rerender({ ob: [first], todayKst: '20260613', code: '005930' });
-    expect(result.current).toMatchObject({ price: 23800, qty: 9000, t_ms: atKst(9, 20) });
-
-    rerender({ ob: [first, larger], todayKst: '20260613', code: '005930' });
-    expect(result.current).toMatchObject({ price: 23700, qty: 15000, t_ms: atKst(9, 21) });
-
-    rerender({ ob: [], todayKst: '20260614', code: '000660' });
-    expect(result.current).toBeNull();
-  });
-
-  it('preserves REST all-price bid candidates for current-day cutoff recalculation', () => {
-    const restPeak = todayBidPeak({
-      all_price: 23800,
-      all_qty: 20000,
-      all_t_ms: atKst(10, 0),
-      all_peaks: [
-        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
-        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
-        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
-        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
-      ],
-    });
-
-    const { result } = renderHook(() => useTodayAllPriceBidPeak(
-      [],
-      [],
-      '20260613', OPEN_MS,
-      '005930',
-      restPeak,
-    ));
-
-    expect(result.current).toMatchObject({
-      price: 23800,
-      all_peaks: [
-        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
-        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
-        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
-      ],
-    });
-  });
-
-  it('live all-price bid candidates keep earlier same-price observations for cutoff recalculation', () => {
-    const { result } = renderHook(() => useTodayAllPriceBidPeak(
-      [
-        deep(atKst(9, 11), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
-        deep(atKst(9, 12), [[23900, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>),
-      ],
-      [],
-      '20260613',
-      OPEN_MS,
-      '005930',
-    ));
-
-    expect(result.current).toMatchObject({ price: 23900, qty: 9000 });
-    expect(result.current?.all_peaks?.slice(0, 2)).toEqual([
-      { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
-      { price: 23900, qty: 1200, t_ms: atKst(9, 11) },
-    ]);
-  });
-
-  it('all-price hook keeps legacy rank-1 untraded fields when untraded arrays are absent', () => {
-    const restPeak = todayBidPeak({
-      untraded_price: 23700,
-      untraded_qty: 13000,
-      untraded_t_ms: atKst(10, 5),
-      untraded_max_price: 23700,
-      untraded_max_qty: 13000,
-      untraded_max_t_ms: atKst(10, 5),
-    });
-
-    const { result } = renderHook(
-      () => useTodayAllPriceBidPeak([], [], '20260613', OPEN_MS, '005930', restPeak),
-    );
-
-    expect(result.current).toMatchObject({
-      untraded_price: 23700,
-      untraded_qty: 13000,
-      untraded_t_ms: atKst(10, 5),
-      untraded_max_price: 23700,
-      untraded_max_qty: 13000,
-      untraded_max_t_ms: atKst(10, 5),
-      untraded_peaks: [{ price: 23700, qty: 13000, t_ms: atKst(10, 5) }],
-      untraded_max_peaks: [{ price: 23700, qty: 13000, t_ms: atKst(10, 5) }],
-    });
-  });
 });

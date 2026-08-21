@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from bisect import insort
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal
 
 _EMIT_LIMIT = 3
+
+#: 터치 판정 창(ADR-0156). 백엔드 과거일 경로(`snapshots.ONE_MINUTE_MS`)와 **같은 값이어야
+#: 한다** — 오늘 실시간과 과거일이 같은 규칙으로 계산되는 것이 그 ADR 의 요구다.
+_TOUCH_WINDOW_MS = 60_000
+
+#: pending 벽을 몇 분 더 붙들고 있을 것인가. 자기 분이 지난 벽은 원리적으로 더는 터치될 수
+#: 없으므로(판정이 분 안에서 닫힌다) 버려도 답이 안 바뀐다 — 여유분은 오직 **도착 순서**를
+#: 위한 것이다(체결 틱이 같은 분의 호가 틱보다 늦게 올 수 있다). 이 값이 0 이면 분 경계에
+#: 걸친 지연 도착이 조용히 미터치로 굳는다.
+_PENDING_MINUTE_SLACK = 2
 
 
 @dataclass
@@ -16,28 +25,39 @@ class Peak:
     seq: int | None = None
 
 
-@dataclass(frozen=True)
-class TouchTick:
-    price: int
-    t_ms: int
-    seq: int | None = None
-
-
 PeakEventKey = tuple[int, int, int | None, str, str]
+
+
+def _minute_of(t_ms: int) -> int:
+    return t_ms // _TOUCH_WINDOW_MS
 
 
 @dataclass
 class _TodaySidePeakState:
-    traded_prices: set[int] = field(default_factory=set)
-    observed_peak_events: dict[PeakEventKey, Peak] = field(default_factory=dict)
-    open_by_price: dict[int, Peak] = field(default_factory=dict)
+    """오늘분 최대벽 상태 — **동일분 터치**(ADR-0156) 기준.
+
+    벽 이벤트는 자기가 관측된 1분 안의 체결로만 터치된다. 그래서 자기 분이 지난 벽은
+    더 이상 터치될 수 없고, 미터치 대기열(`pending_by_minute`)은 **최근 몇 분만**
+    붙들면 된다 — ADR-0084 시절의 `open_by_price` 가 하루치 distinct 가격을 모두
+    붙들던 것과 다르다(300종목 × 2 side 가 한 프로세스에 상주한다).
+
+    ``all_by_price`` 는 터치와 무관한 계열(`all_*`, 「보이는 영역 최대벽」의 원천)이라
+    청소하지 않는다 — 가격당 1개로 접혀 있어 상한이 그날 거래 가격 수다.
+    """
+
+    #: 가격당 당일 최대 벽. 터치 여부와 무관 — `all_*` 계열의 원천.
+    all_by_price: dict[int, Peak] = field(default_factory=dict)
+    #: 분 → (가격 → 아직 터치 안 된 벽). `_PENDING_MINUTE_SLACK` 창만 보관.
+    pending_by_minute: dict[int, dict[int, Peak]] = field(default_factory=dict)
+    #: 분 → 그 분 체결가의 극값(ask=max, bid=min). pending 과 같은 창만 보관.
+    touch_extreme_by_minute: dict[int, int] = field(default_factory=dict)
+    #: 터치된 벽 top-3.
     closed_traded: list[Peak] = field(default_factory=list)
+    observed_peak_events: dict[PeakEventKey, Peak] = field(default_factory=dict)
     all_best_by_price_time: dict[tuple[int, int], Peak] = field(default_factory=dict)
-    latest_touch_t_ms: int | None = None
-    latest_touch_price_extreme: int | None = None
-    latest_seq_touches: list[TouchTick] = field(default_factory=list)
+    #: 양 스트림에서 본 가장 최근 분 — 창 청소의 기준(단조).
+    latest_minute: int = -1
     traded_peak: Peak | None = None
-    untraded_peak: Peak | None = None
     all_peak: Peak | None = None
     coverage: Literal["full", "partial"] = "partial"
 
@@ -45,6 +65,11 @@ class _TodaySidePeakState:
 
     def _is_touched_by_price(self, trade_price: int, wall_price: int) -> bool:
         raise NotImplementedError
+
+    def _extend_touch_extreme(self, current: int | None, trade_price: int) -> int:
+        if current is None:
+            return trade_price
+        return max(current, trade_price) if self.side_name == "ask" else min(current, trade_price)
 
     def ingest_trade(
         self,
@@ -54,22 +79,30 @@ class _TodaySidePeakState:
         t_ms: int | None = None,
         seq: int | None = None,
     ) -> None:
+        del seq  # 판정이 분 안에서 닫히므로 체결 순번은 쓰이지 않는다(ADR-0156).
         if side not in (1, -1):
             return
         if _positive_int(price) is None:
             return
-        self.traded_prices.add(price)
         if type(t_ms) is not int or t_ms <= 0:
             return
-        touch = TouchTick(price=price, t_ms=t_ms, seq=seq if type(seq) is int else None)
-        self._record_touch(touch)
-        touched_prices = [
-            wall_price
-            for wall_price, peak in self.open_by_price.items()
-            if self._trade_touches_peak(touch, peak)
-        ]
-        for wall_price in touched_prices:
-            self._record_closed_peak(self.open_by_price.pop(wall_price))
+        minute = _minute_of(t_ms)
+        self.touch_extreme_by_minute[minute] = self._extend_touch_extreme(
+            self.touch_extreme_by_minute.get(minute), price,
+        )
+        # 이 체결이 닫는 것은 **같은 분의** 대기 벽뿐이다.
+        pending = self.pending_by_minute.get(minute)
+        if pending:
+            closed = [
+                wall_price
+                for wall_price, peak in pending.items()
+                if self._is_touched_by_price(price, peak.price)
+            ]
+            for wall_price in closed:
+                self._record_closed_peak(pending.pop(wall_price))
+            if not pending:
+                self.pending_by_minute.pop(minute, None)
+        self._advance_window(minute)
         self._refresh_rank_ones()
 
     def _ingest_orderbook_levels(
@@ -78,6 +111,8 @@ class _TodaySidePeakState:
         t_ms: int,
         levels: Sequence[Mapping[str, int]],
     ) -> None:
+        minute = _minute_of(t_ms)
+        extreme = self.touch_extreme_by_minute.get(minute)
         for level in levels:
             price = _positive_int(level.get("price"))
             qty = _positive_int(level.get("qty"))
@@ -85,46 +120,51 @@ class _TodaySidePeakState:
                 continue
 
             peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
-            if self._is_touched_by_touch_history(
-                t_ms=t_ms,
-                wall_price=price,
-                wall_seq=None,
-            ):
+            self.all_by_price[price] = _larger_peak(
+                self.all_by_price.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
+            )
+            if extreme is not None and self._is_touched_by_price(extreme, price):
                 self._record_closed_peak(peak)
                 continue
-            self.open_by_price[price] = _larger_peak(
-                self.open_by_price.get(price),
-                price=price,
-                qty=qty,
-                t_ms=t_ms,
-                seq=None,
+            bucket = self.pending_by_minute.setdefault(minute, {})
+            bucket[price] = _larger_peak(
+                bucket.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
             )
 
+        self._advance_window(minute)
         self._refresh_rank_ones()
+
+    def _advance_window(self, minute: int) -> None:
+        """관측 분이 앞으로 갔으면 창 밖의 대기 벽·체결 극값을 버린다.
+
+        버려진 대기 벽은 **미터치로 확정된 것**이고, 미터치 계열은 ADR-0156 에서
+        사라졌으므로 어디에도 실리지 않는다. `all_by_price` 는 별도 구조라 무손실이다.
+        """
+        if minute <= self.latest_minute:
+            return
+        self.latest_minute = minute
+        cutoff = minute - _PENDING_MINUTE_SLACK
+        for stale in [m for m in self.pending_by_minute if m < cutoff]:
+            self.pending_by_minute.pop(stale, None)
+        for stale in [m for m in self.touch_extreme_by_minute if m < cutoff]:
+            self.touch_extreme_by_minute.pop(stale, None)
 
     def snapshot(self) -> dict | None:
         if self.all_peak is None:
             return None
 
         traded_peaks = _top_ranked_peaks(self.closed_traded)
-        untraded_peaks = _top_ranked_peaks(self.open_by_price.values())
-        all_peaks = _top_ranked_peaks([*self.closed_traded, *self.open_by_price.values()])
+        all_peaks = _top_ranked_peaks(self.all_by_price.values())
         traded = traded_peaks[0] if traded_peaks else None
-        untraded = untraded_peaks[0] if untraded_peaks else None
         all_peak = all_peaks[0] if all_peaks else None
         if all_peak is None:
             return None
         return {
             "coverage": self.coverage,
-            "traded_prices": sorted(self.traded_prices),
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,
             "traded_peaks": [_peak_payload(p) for p in traded_peaks],
-            "untraded_price": untraded.price if untraded is not None else None,
-            "untraded_qty": untraded.qty if untraded is not None else None,
-            "untraded_t_ms": untraded.t_ms if untraded is not None else None,
-            "untraded_peaks": [_peak_payload(p) for p in untraded_peaks],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -133,13 +173,10 @@ class _TodaySidePeakState:
 
     def _refresh_rank_ones(self) -> None:
         # `all_ranked` 만 정렬한다 — 아래 `bounded_all` 이 상위 _EMIT_LIMIT 개를
-        # 쓰기 때문이다. 나머지 둘은 **1위만** 쓰므로 정렬 대신 `_rank_one`(O(n)).
-        # `open_by_price` 는 하루 동안 가격 수만큼 자라므로 이쪽이 큰 쪽이다
-        # (`closed_traded` 는 _EMIT_LIMIT 로 잘려 항상 ≤3).
-        all_ranked = _ranked_peaks([*self.closed_traded, *self.open_by_price.values()])
+        # 쓰기 때문이다. `traded_peak` 은 **1위만** 쓰므로 정렬 대신 `_rank_one`(O(n)).
+        all_ranked = _ranked_peaks(self.all_by_price.values())
         self.all_peak = all_ranked[0] if all_ranked else None
         self.traded_peak = _rank_one(self.closed_traded)
-        self.untraded_peak = _rank_one(self.open_by_price.values())
         bounded_all = all_ranked[:_EMIT_LIMIT]
         self.observed_peak_events = {
             _peak_event_key(self.side_name, peak): peak for peak in bounded_all
@@ -148,53 +185,8 @@ class _TodaySidePeakState:
             (peak.price, peak.t_ms): peak for peak in bounded_all
         }
 
-    def _record_touch(self, touch: TouchTick) -> None:
-        if touch.t_ms != self.latest_touch_t_ms:
-            self.latest_touch_t_ms = touch.t_ms
-            self.latest_touch_price_extreme = touch.price
-            self.latest_seq_touches = [touch]
-            return
-        current = self.latest_touch_price_extreme
-        if current is None:
-            self.latest_touch_price_extreme = touch.price
-        elif self.side_name == "ask":
-            self.latest_touch_price_extreme = max(current, touch.price)
-        else:
-            self.latest_touch_price_extreme = min(current, touch.price)
-        insort(
-            self.latest_seq_touches,
-            touch,
-            key=lambda tick: _seq_sort_key(tick.seq),
-        )
-
     def _record_closed_peak(self, peak: Peak) -> None:
         self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
-
-    def _trade_touches_peak(self, touch: TouchTick, peak: Peak) -> bool:
-        return self._is_touched_by_price(touch.price, peak.price) and _touch_is_after_wall(
-            touch,
-            peak,
-        )
-
-    def _is_touched_by_touch_history(
-        self,
-        *,
-        t_ms: int,
-        wall_price: int,
-        wall_seq: int | None,
-    ) -> bool:
-        if t_ms != self.latest_touch_t_ms:
-            return False
-        if wall_seq is not None:
-            wall = Peak(price=wall_price, qty=0, t_ms=t_ms, seq=wall_seq)
-            return any(
-                self._trade_touches_peak(tick, wall)
-                for tick in self.latest_seq_touches
-            )
-        return self.latest_touch_price_extreme is not None and self._is_touched_by_price(
-            self.latest_touch_price_extreme,
-            wall_price,
-        )
 
 
 @dataclass
@@ -277,16 +269,6 @@ def _peak_payload(peak: Peak) -> dict[str, int]:
 
 def _peak_event_key(side_name: str, peak: Peak) -> PeakEventKey:
     return (peak.price, peak.t_ms, peak.seq, side_name, "candidate")
-
-
-def _event_order_key(t_ms: int, seq: int | None) -> tuple[int, int]:
-    return (t_ms, _seq_sort_key(seq))
-
-
-def _touch_is_after_wall(touch: TouchTick, peak: Peak) -> bool:
-    if touch.seq is None or peak.seq is None:
-        return touch.t_ms >= peak.t_ms
-    return _event_order_key(touch.t_ms, touch.seq) >= _event_order_key(peak.t_ms, peak.seq)
 
 
 def _seq_sort_key(seq: int | None) -> int:
