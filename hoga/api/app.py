@@ -16,7 +16,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -380,21 +379,16 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    # /api/range 등 번들 응답은 반복 구조 숫자 JSON이라 압축비가 크다(호가 잔량
-    # 히트맵 실측 246KB→27KB, ~9×). 라이브 스트림은 WebSocket(/api/ws)이라 HTTP
-    # scope만 처리하는 GZipMiddleware를 그대로 통과 — SSE 버퍼링 우려가 없다.
-    # CORS 뒤(안쪽)에 둬 CORS 헤더가 붙은 뒤 본문만 압축한다. minimum_size로 작은
-    # 응답(health·control ack)은 무압축 통과시켜 CPU를 낭비하지 않는다.
+    # **HTTP 응답 압축은 없다 — GZipMiddleware 를 의도적으로 제거했다(ADR-0154).**
+    # 되돌리기 전에 그 ADR 을 읽을 것. 요지는 압축이 **막지 않는 전송 시간을 막는
+    # CPU 시간으로 바꾸는** 거래라는 것이다: 이 앱은 `--workers` 를 못 써서(#998)
+    # 단일 이벤트 루프가 REST·WS·스케줄러를 전부 처리하므로, 압축이 도는 동안
+    # **그 요청만이 아니라 앱 전체**가 멈춘다. 반면 전송은 async 소켓 쓰기라 아무도
+    # 안 막는다. 2026-08-21 실측(sidecar 3개월 29.2MB): 압축 CPU 813ms 로 루프백
+    # 전송 9.3ms 를 아꼈다 — 87배 손해다.
     #
-    # **`compresslevel` 을 명시한다 — 기본값이 9(최대·최저속)다.** 압축은 이 앱의
-    # 단일 이벤트 루프 위에서 돈다(`--workers` 불가, #998). 178KB 응답 실측
-    # (2026-08-21): level 9 = 13.0ms / 89.3% 절감, **level 6 = 2.2ms / 88.2%**.
-    # 즉 절감률 1.1%p 를 내주고 루프 점유를 **5.9배** 줄인다. 3개월 sidecar 처럼
-    # 수십 MB 나가는 응답에서는 이 차이가 초 단위가 된다.
-    #
-    # **압축을 끄지는 않는다** — prod 는 Tailscale tailnet 이라(ADR-0134) 대역폭이
-    # 실재한다. 루프백뿐이라면 무압축이 맞지만 그 전제는 dev 에만 성립한다.
-    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+    # 다시 넣고 싶으면 **레벨을 낮추는 것이 아니라 바인드 주소로 분기**하는 형태여야
+    # 한다(루프백=끔, tailscale=켬). 무조건 켜기는 dev 에서 항상 손해다.
     # 상태 변경 요청의 Origin 검사. **CORSMiddleware 보다 바깥**이어야 한다 —
     # add_middleware 는 나중에 추가한 것이 바깥이므로 CORS 뒤에 온다.
     #
