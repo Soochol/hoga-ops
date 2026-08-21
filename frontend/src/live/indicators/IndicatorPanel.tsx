@@ -27,7 +27,11 @@ import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
-import { WORKSPACE_DRAWER_WIDTH_CLASS, WORKSPACE_DRAWER_SHELL_CLASS } from '../workspaceDrawer';
+import {
+  WORKSPACE_PANEL_WIDTH_CLASS,
+  WORKSPACE_PANEL_HEIGHT_CLASS,
+  WORKSPACE_PANEL_SHELL_CLASS,
+} from '../workspacePanel';
 import type { LiveTimeframe } from '../../state/livePage';
 
 export type CategoryId =
@@ -248,18 +252,18 @@ export default function IndicatorPanel({
   const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
-    // 우측 드로어(side='right', ADR-0116): 왼쪽에 차트가 반투명 딤 너머로 남아 즉시
-    // 적용이 실시간 반영된다. 마스터-디테일(240 nav + 디테일)을 유지하되 폭을 760px로
-    // 좁혀 넓은 화면에서 좌측 차트를 살린다. 높이는 드로어라 항상 전체(=height 무시).
+    // 중앙 모달(2026-08-21 사용자 결정 — 그전에는 우측 드로어). 마스터-디테일
+    // (240 nav + 디테일)과 760px 폭은 드로어 시절 그대로 승계하고, 높이만 중앙 카드가
+    // 스스로 정한다(상수 docstring 에 근거). 설정 패널과 폭·높이·nav 를 공유한다.
     <ModalShell
       ariaLabel="지표"
-      side="right"
-      width={WORKSPACE_DRAWER_WIDTH_CLASS}
+      width={WORKSPACE_PANEL_WIDTH_CLASS}
+      height={WORKSPACE_PANEL_HEIGHT_CLASS}
       onClose={onClose}
     >
       <div
         data-testid="indicator-panel-shell"
-        className={WORKSPACE_DRAWER_SHELL_CLASS}
+        className={WORKSPACE_PANEL_SHELL_CLASS}
       >
         {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
             borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는

@@ -6,6 +6,10 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
+import {
+  WORKSPACE_PANEL_WIDTH_CLASS,
+  WORKSPACE_PANEL_HEIGHT_CLASS,
+} from '../workspacePanel';
 
 function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {}) {
   const onClose = props.onClose ?? (() => {});
@@ -63,6 +67,25 @@ describe('IndicatorPanel', () => {
     expect(screen.getAllByText('10호가 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('프로그램 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('거래원 지표').length).toBeGreaterThan(0);
+  });
+
+  // 2026-08-21 우측 드로어 → 중앙 모달 전환에서 배운 것: 그때 **지표 패널 쪽에는
+  // 앵커 가드가 없었다** — 배치를 통째로 바꿨는데 이 파일 72개 테스트가 전부 초록이었고
+  // 빨개진 것은 `App.test.tsx`(설정 쪽)뿐이었다. 그 비대칭을 메우는 가드다.
+  it('중앙 모달로 뜨고, 폭·높이는 설정 패널과 같은 공용 상수를 쓴다', () => {
+    renderPanel();
+
+    // 앵커: 중앙 정렬 백드롭(드로어의 items-stretch/justify-end 가 아니다).
+    const backdrop = screen.getByRole('dialog');
+    expect(backdrop).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
+    expect(backdrop).not.toHaveClass('items-stretch', 'justify-end');
+
+    // 카드: 사방 테두리 + 유한 높이. 폭·높이는 상수 — `App.test.tsx` 가 설정 패널에
+    // 대해 **같은 상수**를 단언하므로, 한쪽이 하드코딩으로 이탈하면 두 패널이 어긋난다
+    // (그 동기화가 `live/workspacePanel.ts` 가 존재하는 이유다).
+    const card = screen.getByTestId('indicator-panel-shell').parentElement!;
+    expect(card).toHaveClass('border', 'rounded-lg');
+    expect(card).toHaveClass(WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS);
   });
 
   it('uses a flat section layout for indicator settings', () => {
