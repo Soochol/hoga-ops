@@ -35,6 +35,7 @@ import {
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
+import { savedRangeAnchorTs } from './savedRangeAnchor';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
   type LiveMAConfig,
@@ -357,6 +358,16 @@ interface Props {
    *  같은 값을 넘긴다(`ChartWindow`). 분봉 게이트는 아래 렌더에 있으므로 생산자는
    *  봉을 신경 쓰지 않아도 된다. */
   savedRangeBand?: StudySavedRangeMarks | null;
+  /**
+   * 분봉 착석 앵커 — 저장 구간 끝(B)의 실시각. null(기본) = 착석 안 함.
+   *
+   * 캘린더 봉은 `restoreViewport`(`studyDailyViewport`) 가 초기 커밋에서 앉히면 되지만,
+   * 분봉은 그 시점에 로드된 캔들이 **최근 5거래일**뿐이라(`INITIAL_MINUTE_TRADING_DAYS`)
+   * 몇 달 전 구간이 축에 없다. 그래서 이 값으로 **지연 착석**을 돌린다 — 아래 effect.
+   *
+   * ⚠ ms 를 받는 것이 계약이다(논리 인덱스 아님) — `savedRangeAnchor.ts` 주석.
+   */
+  savedRangeAnchorMs?: number | null;
   /** 열린 저장뷰의 구간 **시작일**(YYYYMMDD) — 백필이 그 날까지 워크백하게 한다
    *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
   savedRangeFromDate?: string | null;
@@ -471,6 +482,7 @@ export function LiveChartRoot({
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   savedRangeBand = null,
+  savedRangeAnchorMs = null,
   savedRangeFromDate = null,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
@@ -1047,6 +1059,63 @@ export function LiveChartRoot({
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange));
     };
   }, [chart, containerRef, markViewportUserAdjusted]);
+
+  /**
+   * **분봉 지연 착석** — 저장 구간이 뒤늦게 도착하면 그때 앉힌다.
+   *
+   * 저장뷰를 분봉에서 열면 그 순간 로드된 캔들은 최근 5거래일뿐이라 몇 달 전 구간이
+   * 축에 없다. 그러면 `restoreViewport` 착석이 `rightEdgeMs >= cb.candles[0].ts_ms`
+   * 가드에서 실패하고 `lastAppliedCountRef` 가 세팅돼 **재시도가 없다** — 백필이 다
+   * 와도 화면은 오늘에 남는다(2026-08-21 실측). 그래서 캔들이 갱신될 때마다 "B 가 축에
+   * 들어왔는가" 를 보고, 들어온 **첫 순간에 한 번** 앉힌다.
+   *
+   * 한 번만 앉히는 것이 계약이다(`seatedRef`) — 매 백필마다 앉히면 사용자가 구간
+   * 왼쪽을 보고 있는데 화면이 계속 오른쪽으로 튄다. 키에 `viewKey` 를 섞어 봉·종목·
+   * 저장뷰가 바뀌면 다시 앉을 기회를 준다.
+   *
+   * ⚠ **이동만 한다.** 벽(우측 이탈 차단)은 #1457 에서 의도적으로 제거됐다 — 여기에
+   * 스냅백 구독을 다시 붙이지 말 것.
+   */
+  const savedRangeSeatedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!chart || savedRangeAnchorMs === null) {
+      savedRangeSeatedRef.current = null;
+      return;
+    }
+    const seatKey = `${viewKey}|${savedRangeAnchorMs}`;
+    if (savedRangeSeatedRef.current === seatKey) return;
+    const candles = cb?.candles ?? [];
+    const anchorTs = savedRangeAnchorTs(candles, savedRangeAnchorMs);
+    // 아직 축에 없다 — 다음 캔들 갱신에서 다시 본다(백필은 진행 중이다).
+    if (anchorTs === null) return;
+    const ts = chart.timeScale();
+    const anchorIdx = ts.timeToIndex?.(
+      realMsToVirtualSeconds(axisRef.current, anchorTs) as Time,
+      true,
+    );
+    if (typeof anchorIdx !== 'number' || !Number.isFinite(anchorIdx)) return;
+    const current = ts.getVisibleLogicalRange();
+    if (!current) return;
+    savedRangeSeatedRef.current = seatKey;
+    // 저장 span 을 **그릴 수 있는 크기로 접는다** — 넓은 화면에서 저장한 span 을 좁은
+    // 창에 그대로 적용하면 여백만 부풀어 캔들이 화면 밖으로 밀린다
+    // (`minuteRestoreGeometry` 의 근거). 저장 뷰포트가 없으면 현재 줌 유지.
+    const geom = restoreViewport
+      ? minuteRestoreGeometry(
+          restoreViewport.barSpan,
+          ts.width(),
+          chart.options().timeScale.minBarSpacing ?? 0.5,
+        )
+      : null;
+    const span = Math.max(1, Math.round(geom?.barSpan ?? current.to - current.from));
+    try {
+      // B 가 오른쪽 끝 — 여백을 두지 않는다. 저장 구간 끝은 **과거**라 그 오른쪽에
+      // 실제 캔들이 있어서, 여백을 두면 그 폭이 곧 "B 이후" 가 된다(2026-08-21 실측).
+      ts.setVisibleLogicalRange({ from: anchorIdx - span, to: anchorIdx });
+    } catch {
+      /* chart torn down between effect runs */
+    }
+  }, [chart, savedRangeAnchorMs, cb, viewKey, restoreViewport]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands

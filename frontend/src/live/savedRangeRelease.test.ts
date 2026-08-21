@@ -36,6 +36,8 @@ const FOCUS: SavedRangeFocus = {
   toMs: 1_781_000_000_000,
   fromDate: '20260701',
   toDate: '20260708',
+  savedTimeframe: '1m',
+  savedBarSpan: 240,
 };
 
 function seedWorkspace(windows: { id: string; group: number; pinned?: { code: string; name: string } }[]) {
