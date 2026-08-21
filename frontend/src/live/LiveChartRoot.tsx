@@ -1052,6 +1052,7 @@ export function LiveChartRoot({
     enabled: rangeSyncOn && isRangeSyncFollower(timeframe),
     syncZoom: rangeSyncZoom,
     myWindowId: winCtxWindowId,
+    myTimeframe: timeframe,
     myGroup: winCtxGroup,
     myCode: code,
     allowCrossSymbol: rangeSyncCrossSymbol,

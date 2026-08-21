@@ -19,6 +19,7 @@ const MINUTE_ORIGIN: SidebarCursorOrigin = {
 };
 
 const setVisibleLogicalRange = vi.fn();
+const setVisibleRange = vi.fn();
 let rangeHandler: (() => void) | null = null;
 
 /** `getVisibleRange` 가 돌려줄 값(초 단위). 테스트가 팬을 흉내 낼 때 갈아 끼운다. */
@@ -33,6 +34,7 @@ function makeChart() {
     // 시각(초) → 논리 인덱스. 축이 항등이라 초를 그대로 인덱스로 쓴다.
     timeToIndex: (t: number) => t,
     setVisibleLogicalRange,
+    setVisibleRange,
     subscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => { rangeHandler = h; }),
     unsubscribeVisibleLogicalRangeChange: vi.fn(() => { rangeHandler = null; }),
   };
@@ -66,6 +68,7 @@ function Follower(props: {
   myGroup?: number | null;
   /** 우측 클램프 기준. 기본은 아주 먼 미래라 클램프가 안 걸린다. */
   lastCandleMs?: number | null;
+  myTimeframe?: 'D' | 'W' | 'M' | '1m';
 }) {
   useRangeSyncFollow({
     chart: makeChart() as never,
@@ -75,6 +78,7 @@ function Follower(props: {
     enabled: props.enabled ?? true,
     syncZoom: props.syncZoom ?? false,
     myWindowId: 'daily-window',
+    myTimeframe: props.myTimeframe ?? 'D',
     myGroup: props.myGroup ?? 1,
     myCode: props.myCode ?? '064350',
     allowCrossSymbol: props.allowCrossSymbol ?? false,
@@ -88,6 +92,7 @@ const publishRange = (from: number, to: number, origin = MINUTE_ORIGIN) =>
 beforeEach(() => {
   useLiveCursorStore.getState().resetCursor();
   setVisibleLogicalRange.mockClear();
+  setVisibleRange.mockClear();
   rangeHandler = null;
   visibleRange = { from: 1_000, to: 2_000 };
   visibleLogical = { from: 100, to: 200 };
@@ -230,6 +235,69 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
  * 「끈 상태에서도 위치는 따라간다」** 다 — 줌 동기화를 끄는 것과 기간 동기화 자체를
  * 끄는 것은 다른 일이다.
  */
+/**
+ * **peer 모드**(같은 캘린더 봉끼리) — 발행 구간을 그대로 복제한다.
+ *
+ * **판별 케이스**: cross 는 `setVisibleLogicalRange`(중앙 정렬), peer 는
+ * `setVisibleRange`(구간 복제)로 **다른 API** 를 쓴다. 한쪽으로 잘못 배선하면
+ * 이 쌍이 갈린다.
+ */
+describe('useRangeSyncFollow — peer 모드', () => {
+  const DAILY_ORIGIN: SidebarCursorOrigin = {
+    windowId: 'other-daily', group: 1, code: '064350', timeframe: 'D',
+  };
+  // 소비 창의 현재 시각 범위 — 목이 `getVisibleRange` 하나를 공유하므로 여기서 민다.
+  // 기본값(1,000~2,000)은 복제 대상과 같아 "이미 그 구간" 가드에 걸린다.
+  beforeEach(() => { visibleRange = { from: 9_000, to: 9_500 }; });
+
+  it('같은 봉 발행을 받아 구간을 복제한다 — 축이 항등이라 ms/1000 이 가상초', async () => {
+    render(<Follower myTimeframe="D" syncZoom />);
+    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    await flushFrame();
+    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
+    // 중앙 정렬 경로는 타지 않는다.
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+
+  it('배율 토글이 꺼져 있으면 위치만 — 중앙 정렬 경로로 간다', async () => {
+    render(<Follower myTimeframe="D" syncZoom={false} />);
+    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    await flushFrame();
+    expect(setVisibleRange).not.toHaveBeenCalled();
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
+  });
+
+  it('주봉 창은 주봉 발행만 받는다 — 일↔주는 통하지 않는다', async () => {
+    render(<Follower myTimeframe="W" syncZoom />);
+    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    await flushFrame();
+    expect(setVisibleRange).not.toHaveBeenCalled();
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+
+  it('주봉 ↔ 주봉은 복제한다', async () => {
+    render(<Follower myTimeframe="W" syncZoom />);
+    publishRange(1_000_000, 2_000_000, { ...DAILY_ORIGIN, timeframe: 'W' });
+    await flushFrame();
+    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
+  });
+
+  it('창번호가 다르면 peer 도 막힌다 — 범위 규칙은 모드와 무관하다', async () => {
+    render(<Follower myTimeframe="D" syncZoom myGroup={2} />);
+    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    await flushFrame();
+    expect(setVisibleRange).not.toHaveBeenCalled();
+  });
+
+  it('이미 그 구간이면 되쓰지 않는다', async () => {
+    visibleRange = { from: 1_000, to: 2_000 };
+    render(<Follower myTimeframe="D" syncZoom />);
+    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    await flushFrame();
+    expect(setVisibleRange).not.toHaveBeenCalled();
+  });
+});
+
 describe('useRangeSyncFollow — 줌 동기화 배선', () => {
   /** 기준선을 세우고(1회) 그 다음 발행으로 비율을 만든다. */
   const seedThenZoom = async (nextFrom: number, nextTo: number) => {
