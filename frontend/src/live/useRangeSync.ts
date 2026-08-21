@@ -13,7 +13,10 @@ import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { centeredLogicalRange, shouldFollowRange, zoomedSpan } from '../chart/rangeSync';
+import type { LiveTimeframe } from '../state/livePage';
+import {
+  centeredLogicalRange, replicatedRange, resolveRangeSyncMode, zoomedSpan,
+} from '../chart/rangeSync';
 
 /** 휠이 멈춘 것으로 보는 침묵 구간. 휠은 pointerup 같은 종료 이벤트가 없다. */
 const WHEEL_GESTURE_TAIL_MS = 150;
@@ -96,6 +99,16 @@ export function useRangeSyncPublish(params: {
     const onPointerUp = () => {
       // 휠 꼬리가 살아 있으면 그쪽이 끝낸다 — 드래그 종료가 휠 구간을 잘라먹지 않게.
       if (wheelTail !== null) return;
+      // ⚠ **내 창에서 시작한 제스처가 아니면 아무것도 하지 않는다.** 이 리스너는
+      // `window` 에 걸려 있어서(포인터가 창 밖에서 떨어져도 제스처를 닫아야 한다)
+      // **옆 창의 드래그도 여기로 들어온다.** 그때 아래 flush 가 돌면 이 창이
+      // 자기 현재 범위를 발행하고, 방금 옆 창이 만든 뷰포트를 되돌린다.
+      //
+      // 실측(2026-08-21): 일봉 창을 드래그하면 즉시 -34 만큼 움직였다가 2초 뒤
+      // 원위치로 튕겼다. 버스를 보니 그 사이 **분봉 창 B** 가 발행하고 있었다 —
+      // B 는 만진 적이 없다. 「마지막 프레임 유실」을 고치며 넣은 flush 가 게이트를
+      // 안 보고 돌던 것이 원인이다.
+      if (!gestureActive) return;
       gestureActive = false;
       // **마지막 위치를 한 번 더 싣고 닫는다.** 범위 변화는 rAF 로 미뤄 두는데, 드래그가
       // 한 프레임 안에 끝나면(빠른 플릭 · 합성 드래그) 예약된 rAF 가 `pointerup` **뒤에**
@@ -163,6 +176,8 @@ export function useRangeSyncFollow(params: {
   /** 폭(줌)까지 따라갈지 — `rangeSyncZoom`. 끄면 스크롤만 한다. */
   syncZoom: boolean;
   myWindowId: string | null;
+  /** 이 창의 봉 — 모드(cross/peer)를 이것이 정한다. */
+  myTimeframe: LiveTimeframe;
   /** 이 창의 링크 그룹(창 헤더의 번호) — 동기화 범위. */
   myGroup: number | null;
   myCode: string | null;
@@ -170,7 +185,7 @@ export function useRangeSyncFollow(params: {
 }): void {
   const {
     chart, axis, candleCount, lastCandleMs, enabled, syncZoom,
-    myWindowId, myGroup, myCode, allowCrossSymbol,
+    myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   } = params;
   const syncRange = useLiveCursorStore((s) => s.syncRange);
   const axisRef = useRef(axis);
@@ -195,11 +210,32 @@ export function useRangeSyncFollow(params: {
   useEffect(() => {
     if (!chart || !enabled || candleCount <= 0 || !syncRange) return;
     if (syncRange.seq <= (baselineSeqRef.current ?? 0)) return;
-    if (!shouldFollowRange({
-      publication: syncRange, myWindowId, myGroup, myCode, allowCrossSymbol,
-    })) return;
+    const mode = resolveRangeSyncMode({
+      publication: syncRange, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
+    });
+    if (mode === null) return;
     const ts = chart.timeScale();
     const raf = requestAnimationFrame(() => {
+      // peer 모드: 발행 구간을 **그대로** 복제한다. 같은 봉끼리는 폭이 비교 가능해
+      // "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이 한 값에서
+      // 나온다 — 중앙 정렬도 줌 비율도 필요 없다.
+      //
+      // `syncZoom` 이 꺼져 있으면 배율은 내 것으로 두고 위치만 맞춘다(아래 cross 와
+      // 같은 경로). 그 스위치의 의미가 두 모드에서 "상대의 배율까지 반영" 으로 같다.
+      if (mode === 'peer' && syncZoom) {
+        const next = replicatedRange({
+          fromVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.fromMs),
+          toVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.toMs),
+          current: (() => {
+            const r = ts.getVisibleRange();
+            return r ? { from: Number(r.from), to: Number(r.to) } : null;
+          })(),
+        });
+        if (next) {
+          ts.setVisibleRange({ from: next.from as Time, to: next.to as Time });
+        }
+        return;
+      }
       // 실행 시점에 다시 읽는다 — 예약 이후 사용자가 이 창을 움직였을 수 있다.
       const current = ts.getVisibleLogicalRange();
       if (!current) return;
@@ -215,7 +251,7 @@ export function useRangeSyncFollow(params: {
       const baseline = zoomBaselineRef.current;
       const publishedSpanMs = syncRange.toMs - syncRange.fromMs;
       const sameOrigin = baseline !== null && baseline.windowId === syncRange.origin.windowId;
-      const spanOverride = syncZoom && sameOrigin
+      const spanOverride = mode === 'cross' && syncZoom && sameOrigin
         ? zoomedSpan({
           prevPublishedSpanMs: baseline.spanMs,
           nextPublishedSpanMs: publishedSpanMs,
@@ -245,6 +281,6 @@ export function useRangeSyncFollow(params: {
     return () => cancelAnimationFrame(raf);
   }, [
     chart, enabled, syncZoom, candleCount, lastCandleMs, syncRange,
-    myWindowId, myGroup, myCode, allowCrossSymbol,
+    myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   ]);
 }

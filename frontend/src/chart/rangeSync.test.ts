@@ -5,7 +5,9 @@ import {
   canPublishRangeSync,
   centeredLogicalRange,
   isRangeSyncFollower,
-  shouldFollowRange,
+  resolveRangeSyncMode,
+  replicatedRange,
+  syncModeFor,
   zoomedSpan,
   type RangeSyncPublication,
 } from './rangeSync';
@@ -19,38 +21,106 @@ function pub(over: Partial<SidebarCursorOrigin> = {}, seq = 1): RangeSyncPublica
   };
 }
 
-function follows(
+/** 일봉 소비 창 기준. 반환은 모드(또는 null) — 불리언이 아니다. */
+function modeOf(
   over: Partial<SidebarCursorOrigin> = {},
   allowCrossSymbol = false,
   myGroup: number | null = 1,
+  myTimeframe: 'D' | 'W' | 'M' | '1m' = 'D',
 ) {
-  return shouldFollowRange({
+  return resolveRangeSyncMode({
     publication: pub(over),
     myWindowId: 'daily-window',
+    myTimeframe,
     myGroup,
     myCode: '064350',
     allowCrossSymbol,
   });
 }
 
+/** 기존 단언 문체 보존 — "따라가는가" 만 볼 때. */
+const follows = (...a: Parameters<typeof modeOf>) => modeOf(...a) !== null;
+
 /**
  * 발행·추종 집합. **크로스헤어와 달리 두 집합이 다르다** — 방향이 분봉→일봉 하나뿐이라
  * 분봉은 발행만, 일봉은 추종만 한다. 단일 슬롯 도둑 문제가 없는 이유는 발행자가
  * 분봉뿐이어서 아무도 남의 유효한 발행을 밀어내지 않기 때문이다.
  */
-describe('발행 ↔ 추종 집합', () => {
-  it('분봉만 발행하고 D 만 추종한다', () => {
+describe('모드 판정 · 발행/추종 집합', () => {
+  it('분봉 → 일봉은 cross, 같은 캘린더 봉끼리는 peer', () => {
+    expect(syncModeFor('D', '1m')).toBe('cross');
+    expect(syncModeFor('D', '240m')).toBe('cross');
+    expect(syncModeFor('D', 'D')).toBe('peer');
+    expect(syncModeFor('W', 'W')).toBe('peer');
+    expect(syncModeFor('M', 'M')).toBe('peer');
+  });
+
+  it('분봉은 추종하지 않는다 — 발행만 한다(사용자 결정 2026-08-21)', () => {
+    expect(syncModeFor('1m', '1m')).toBeNull();
+    expect(syncModeFor('5m', '1m')).toBeNull();
+    expect(syncModeFor('1m', 'D')).toBeNull();
     for (const tf of ['1m', '5m', '240m'] as const) {
+      expect(isRangeSyncFollower(tf)).toBe(false);
+    }
+  });
+
+  it('캘린더는 같은 봉끼리만 — 일↔주↔월은 통하지 않는다', () => {
+    // 일봉 3개월을 월봉에 복제하면 캔들 3개가 되어 그 쌍에서 다시 쓸모가 없어진다.
+    expect(syncModeFor('W', 'D')).toBeNull();
+    expect(syncModeFor('D', 'W')).toBeNull();
+    expect(syncModeFor('M', 'W')).toBeNull();
+    // W/M 은 분봉 발행도 받지 않는다(cross 는 일봉 전용).
+    expect(syncModeFor('W', '1m')).toBeNull();
+    expect(syncModeFor('M', '1m')).toBeNull();
+  });
+
+  /**
+   * ⚠ 여기서 재는 것은 **「발행 집합 = 소비 집합」이 아니다.** 이 파일은 한때 그렇게
+   * 적혀 있었고 그때는 두 집합이 우연히 같았다. 분봉이 발행만 하는 지금 구성에서
+   * 그 등식은 틀렸다 — 진짜 불변식은 **내 발행을 받는 소비자가 있는가** 다.
+   */
+  it('발행 자격은 「받는 소비자가 있는가」에서 유도된다', () => {
+    // 분봉: 스스로는 추종하지 않지만 일봉이 받으므로 발행 자격이 있다.
+    expect(canPublishRangeSync('1m')).toBe(true);
+    expect(isRangeSyncFollower('1m')).toBe(false);
+    // 캘린더: 같은 봉 peer 가 받는다.
+    for (const tf of ['D', 'W', 'M'] as const) {
       expect(canPublishRangeSync(tf)).toBe(true);
-      expect(isRangeSyncFollower(tf)).toBe(false);
+      expect(isRangeSyncFollower(tf)).toBe(true);
     }
-    expect(canPublishRangeSync('D')).toBe(false);
-    expect(isRangeSyncFollower('D')).toBe(true);
-    for (const tf of ['W', 'M'] as const) {
-      expect(canPublishRangeSync(tf)).toBe(false);
-      // W/M 은 한 캔들이 여러 날이라 "그 날이 어느 버킷인가" 가 포함 탐색이 된다.
-      expect(isRangeSyncFollower(tf)).toBe(false);
-    }
+  });
+});
+
+/**
+ * peer 복제. **클램프하지 않는다** — 우측 클램프는 "자기 데이터 밖으로 밀지 않는다"
+ * 는 규칙인데, 복제는 그 반대가 계약이다(상대가 보는 구간에 내 데이터가 없으면
+ * 여백이 보이는 것이 정직하다).
+ */
+describe('replicatedRange', () => {
+  it('발행 구간을 그대로 돌려준다', () => {
+    expect(replicatedRange({ fromVirtualSec: 100, toVirtualSec: 200, current: null }))
+      .toEqual({ from: 100, to: 200 });
+  });
+
+  it('이미 그 구간이면 null — 되쓰면 애니메이션이 재시작돼 떤다', () => {
+    expect(replicatedRange({
+      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 100, to: 200 },
+    })).toBeNull();
+    // 1초 미만 차이도 무시(가상초는 반올림돼 들어온다).
+    expect(replicatedRange({
+      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 100.4, to: 199.7 },
+    })).toBeNull();
+  });
+
+  it('1초 이상 벌어지면 적용한다', () => {
+    expect(replicatedRange({
+      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 102, to: 202 },
+    })).toEqual({ from: 100, to: 200 });
+  });
+
+  it('구간이 뒤집혔거나 유한하지 않으면 null', () => {
+    expect(replicatedRange({ fromVirtualSec: 200, toVirtualSec: 100, current: null })).toBeNull();
+    expect(replicatedRange({ fromVirtualSec: NaN, toVirtualSec: 100, current: null })).toBeNull();
   });
 });
 
@@ -60,10 +130,10 @@ describe('발행 ↔ 추종 집합', () => {
  */
 describe('shouldFollowRange', () => {
   it('발행이 없으면 따라가지 않는다', () => {
-    expect(shouldFollowRange({
-      publication: null, myWindowId: 'daily-window', myGroup: 1, myCode: '064350',
-      allowCrossSymbol: true,
-    })).toBe(false);
+    expect(resolveRangeSyncMode({
+      publication: null, myWindowId: 'daily-window', myTimeframe: 'D', myGroup: 1,
+      myCode: '064350', allowCrossSymbol: true,
+    })).toBeNull();
   });
 
   it('옆 분봉 창의 발행을 따라간다', () => {
@@ -74,9 +144,17 @@ describe('shouldFollowRange', () => {
     expect(follows({ windowId: 'daily-window' })).toBe(false);
   });
 
-  it('비분봉 발행은 따라가지 않는다 — 발행 자격은 분봉뿐이다', () => {
-    expect(follows({ timeframe: 'D' })).toBe(false);
-    expect(follows({ timeframe: 'W' })).toBe(false);
+  it('일봉 발행은 peer 로 받고, 주/월 발행은 받지 않는다', () => {
+    // **2026-08-21 번복**: 여기 「비분봉 발행은 따라가지 않는다 — 발행 자격은
+    // 분봉뿐이다」가 있었다. 같은 캘린더 봉끼리의 peer 동기화가 생기며 뒤집혔다.
+    // 일봉 소비 창 기준이므로 D 발행은 peer, W/M 발행은 봉이 달라 여전히 거절이다.
+    expect(modeOf({ timeframe: 'D', windowId: 'other-daily' })).toBe('peer');
+    expect(modeOf({ timeframe: 'W', windowId: 'other' })).toBeNull();
+    expect(modeOf({ timeframe: 'M', windowId: 'other' })).toBeNull();
+  });
+
+  it('분봉 발행은 cross 로 받는다', () => {
+    expect(modeOf()).toBe('cross');
   });
 
   it('창번호가 다르면 따라가지 않는다 — 세 동기화가 같은 범위 규칙을 쓴다', () => {
