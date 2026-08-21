@@ -7,7 +7,7 @@
  *
  * 번호→**무엇**은 페이지가 정한다:
  * - `/live` — 번호 → 종목 (`state/workspace.ts` 의 `groupSymbols`, #711)
- * - `/study` — 번호 → 저장뷰 (`state/studyWorkspace.ts` 의 `groupViews`, ADR-0154)
+ * - `/study` — 번호 → 저장뷰 (`state/studyWorkspace.ts` 의 `groupViews`, ADR-0155)
  *
  * 이 모듈이 페이지 스토어 밖의 leaf 인 이유: 두 스토어가 **범위와 판별자만** 공유해야
  * 하고 서로를 런타임 import 하면 안 되기 때문이다. `state/workspace.ts` 에 두고

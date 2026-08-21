@@ -11,7 +11,7 @@ import {
   useStudyWorkspaceStore,
 } from '../state/studyWorkspace';
 
-/** ADR-0154 이후 "활성 저장뷰" 는 **활성 그룹의 것**이다. 워크스페이스 기본 시드 창이
+/** ADR-0155 이후 "활성 저장뷰" 는 **활성 그룹의 것**이다. 워크스페이스 기본 시드 창이
  *  전부 그룹 1 이라 테스트는 그룹 1 을 쓴다. */
 function activeView() {
   return activeStudyView(useStudyWorkspaceStore.getState());

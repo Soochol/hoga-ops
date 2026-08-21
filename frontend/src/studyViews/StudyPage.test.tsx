@@ -39,7 +39,7 @@ const {
   capturedWindowSpecs: {
     current: [] as Array<{
       windowId: string;
-      // ADR-0154: 저장뷰가 창 스펙 안으로 들어왔다 — 그룹마다 다를 수 있다.
+      // ADR-0155: 저장뷰가 창 스펙 안으로 들어왔다 — 그룹마다 다를 수 있다.
       save: { id: string; code: string } | null;
       indicators: Record<string, unknown>;
     }>,
@@ -63,7 +63,7 @@ vi.mock('./useStudyReferenceBundle', () => ({
       indicators: Record<string, unknown>;
     }>,
   ) => Object.fromEntries((capturedWindowSpecs.current = [...windows]).map((w) => {
-    // 저장뷰는 ADR-0154 로 **창 스펙 안**에 있다 — 창마다 그룹이 다를 수 있다.
+    // 저장뷰는 ADR-0155 로 **창 스펙 안**에 있다 — 창마다 그룹이 다를 수 있다.
     const save = w.save;
     const displayedSave = save && typeof save === 'object'
       ? { ...save, timeframe: w.timeframe }
@@ -260,7 +260,7 @@ function renderPage(initialEntry = '/study') {
  *  스토어 액션을 직접 부른다. 종전엔 탭 칩을 클릭했다(ADR-0149 로 제거). */
 function openStudyView(view: { viewId: string; code: string; label: string; name: string }) {
   act(() => {
-    // ADR-0154: 저장뷰는 **활성 그룹**에 꽂힌다. 시드 창이 전부 그룹 1 이다.
+    // ADR-0155: 저장뷰는 **활성 그룹**에 꽂힌다. 시드 창이 전부 그룹 1 이다.
     useStudyWorkspaceStore.getState().setGroupView(1, studyGroupViewFromSave({
       id: view.viewId,
       code: view.code,
@@ -348,7 +348,7 @@ beforeEach(() => {
   useStudyWorkspaceStore.setState({
     windows: seedWindows,
     zOrder: ['w-book', 'w-broker', 'w-vdist', 'w-program', 'w-chart'],
-    // 그룹→저장뷰도 함께 비운다(ADR-0154) — 여기가 활성 뷰의 집이다.
+    // 그룹→저장뷰도 함께 비운다(ADR-0155) — 여기가 활성 뷰의 집이다.
     groupViews: {},
   });
 });
@@ -1178,13 +1178,13 @@ describe('StudyPage', () => {
 });
 
 /**
- * 링크 그룹 (ADR-0154) — 한 페이지에서 저장뷰를 **여럿** 본다.
+ * 링크 그룹 (ADR-0155) — 한 페이지에서 저장뷰를 **여럿** 본다.
  *
  * `/live` 가 그룹→종목으로 하는 것을 `/study` 는 그룹→저장뷰로 한다. 여기서 재는 것은
  * "창마다 다른 뷰가 실제로 화면까지 도달하는가" 다 — 스토어 단언은 studyWorkspace 쪽에
  * 있고, 이 파일은 **페이지 배선**(창별 스펙·per-window 안내·게이트)을 본다.
  */
-describe('StudyPage — 링크 그룹 (ADR-0154)', () => {
+describe('StudyPage — 링크 그룹 (ADR-0155)', () => {
   /** 그룹 2 차트 창을 하나 더 심는다. 포커스는 그대로 그룹 1 창(zOrder 마지막). */
   function seedSecondGroupChart() {
     const s = useStudyWorkspaceStore.getState();
@@ -1292,7 +1292,7 @@ describe('StudyPage — 링크 그룹 (ADR-0154)', () => {
  * 그룹으로 옮기면 소스가 통째로 사라지는데, 그 상태를 로딩으로 표시하면 영영 끝나지
  * 않는다 — 사용자는 고장으로 읽고, 고칠 방법(차트 창 추가)도 알 수 없다.
  */
-describe('StudyPage — 그룹에 차트 창이 없을 때 (ADR-0154)', () => {
+describe('StudyPage — 그룹에 차트 창이 없을 때 (ADR-0155)', () => {
   it('데이터 창이 로딩이 아니라 "차트 창을 추가하세요" 를 말한다', () => {
     act(() => {
       // 10호가 창만 그룹 2 로 보낸다. 그룹 2 에 뷰는 주되 차트는 없다.
