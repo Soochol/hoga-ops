@@ -20,7 +20,7 @@ import {
   ThemeSection,
 } from './settings/AppInfoSections';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
-import { WORKSPACE_DRAWER_SHELL_CLASS } from './workspaceDrawer';
+import { WORKSPACE_PANEL_SHELL_CLASS } from './workspacePanel';
 
 /**
  * 앱의 **유일한** 설정 본체 — 좌측 카테고리 nav 240px + 우측 상세(지표 드로어와 동일
@@ -194,13 +194,13 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
-  // 지표 드로어와 동일한 크롬(ADR-0116, 우측 드로어): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
-  // 드로어를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
+  // 지표 패널과 동일한 크롬(중앙 모달, 2026-08-21): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
+  // 카드를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
   // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-lg는 ModalShell 반경에 맞춰 클립.
   return (
     <div
       data-testid="settings-shell"
-      className={WORKSPACE_DRAWER_SHELL_CLASS}
+      className={WORKSPACE_PANEL_SHELL_CLASS}
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (
