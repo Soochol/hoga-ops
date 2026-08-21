@@ -1405,6 +1405,32 @@ describe('LiveChartRoot', () => {
     expect(options?.fontSize).toBeUndefined();
   });
 
+  // 어트리뷰션 로고는 lightweight-charts 가 메인 페인에 직접 심는 앵커라
+  // 기본값 true 를 옵션으로 명시해 꺼야만 사라진다(CSS 로 덮는 것이 아니다).
+  // jsdom 은 캔버스를 그리지 않아 로고 자체를 볼 수 없으므로, 위 폰트 회귀와
+  // 같은 이유로 옵션이 `layout` 아래로 도착하는지를 잰다 — 값이 맞아도 닿지
+  // 않으면 무의미하다. 로고의 실제 부재는 실브라우저에서만 확인된다.
+  it('disables the TradingView attribution logo under layout', () => {
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)?.[2] as
+      | { layout?: { attributionLogo?: boolean } }
+      | undefined;
+    expect(options?.layout?.attributionLogo).toBe(false);
+  });
+
   // Crosshair axis-label chips (2026-08-10). lightweight-charts 5.2.0 defaults
   // BOTH labels to `#131722` and we only overrode `mode`, so the chip shipped
   // theme-blind: measured against our chart background that is 1.04:1 on
