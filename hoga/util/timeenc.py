@@ -9,6 +9,7 @@ is a fixed +09:00 with no DST.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import NewType
 
 KST = timezone(timedelta(hours=9))
@@ -21,6 +22,31 @@ KST = timezone(timedelta(hours=9))
 HogaMs = NewType("HogaMs", int)
 
 
+# ⚠ **캐시가 성능상 load-bearing 이다 — 지우지 말 것.**
+#
+# 이 함수는 `hhmmssms_to_unix_ms` / `ms_from_midnight_to_unix_ms` 를 통해 **행마다**
+# 불린다. 캐시가 없으면 같은 날짜를 수만 번 다시 파싱한다 — `datetime.strptime` 은
+# 포맷 문자열을 매번 정규식으로 컴파일·해석하므로(파이썬 구현) 이 경로에서 가장
+# 비싼 프레임이 된다. 실측(2026-08-21, 000660, cProfile tottime):
+#
+#     `/api/range` mode=sidecar 의 tottime 24% 가 `_strptime` 단독
+#
+# 교대 대조 A/B (5회 median, 프로파일러 없는 wall):
+#
+#     경로                          현행     lru_cache     차이
+#     오늘 하루 · sidecar (`/live`)  21.4ms      8.0ms     **-62.5%**
+#     3개월 · hoga (`/study`)       410.6ms    231.2ms     **-43.7%**
+#     3개월 · sidecar                240.3ms    237.8ms       -1.0%
+#
+# 마지막 줄이 0 인 것은 캐시가 안 먹어서가 아니라 **과거일 sidecar 가 이미
+# `PastIndicatorsCache` 에서 나와 이 경로를 안 타기** 때문이다(`_indicator_cacheable`
+# 이 `date < today_kst` 를 요구). 즉 이 캐시가 버는 곳은 **오늘**과 **캐시가 없는
+# 지표**이고, 그게 정확히 `/live` 가 매번 지나는 자리다.
+#
+# 캐시가 안전한 근거: 순수 함수다. 입력은 날짜 문자열 하나, KST 는 DST 없는 고정
+# 오프셋(+09:00)이라 같은 입력이 영원히 같은 값이다. 카디널리티도 날짜 수만큼이라
+# maxsize 안에 들어온다.
+@lru_cache(maxsize=4096)
 def _date_unix_ms_at_kst_midnight(date: str) -> int:
     dt = datetime.strptime(date, "%Y%m%d").replace(tzinfo=KST)
     return int(dt.timestamp() * 1000)
