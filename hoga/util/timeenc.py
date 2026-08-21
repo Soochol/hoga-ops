@@ -26,22 +26,29 @@ HogaMs = NewType("HogaMs", int)
 #
 # 이 함수는 `hhmmssms_to_unix_ms` / `ms_from_midnight_to_unix_ms` 를 통해 **행마다**
 # 불린다. 캐시가 없으면 같은 날짜를 수만 번 다시 파싱한다 — `datetime.strptime` 은
-# 포맷 문자열을 매번 정규식으로 컴파일·해석하므로(파이썬 구현) 이 경로에서 가장
-# 비싼 프레임이 된다. 실측(2026-08-21, 000660, cProfile tottime):
+# 포맷 문자열을 매번 정규식으로 해석하므로(파이썬 구현) 그 경로에서 가장 비싼
+# 프레임이 된다.
 #
-#     `/api/range` mode=sidecar 의 tottime 24% 가 `_strptime` 단독
+# **이득은 `mode=hoga` 에 몰려 있다.** 그 모드가 만드는 호가비·체결강도는 **점마다**
+# `hhmmssms_to_unix_ms` 를 부르는 flat `(t, value)` 배열이라 날짜 변환 밀도가 가장
+# 높다. 캔들은 오프셋을 SQL 이 한 번만 더하고(`candles.query_all`), sidecar 의
+# 무거운 축(depth 히트맵·증감)은 버킷 단위라 밀도가 낮다.
 #
-# 교대 대조 A/B (5회 median, 프로파일러 없는 wall):
+# 실측 (2026-08-21, 000660, **ABBA 균형** 16~20 표본, `TodayTtlCache` 끔):
 #
-#     경로                          현행     lru_cache     차이
-#     오늘 하루 · sidecar (`/live`)  21.4ms      8.0ms     **-62.5%**
-#     3개월 · hoga (`/study`)       410.6ms    231.2ms     **-43.7%**
-#     3개월 · sidecar                240.3ms    237.8ms       -1.0%
+#     경로                          min      p25   median
+#     `/study` 3개월 · **hoga**   +37.5%   +29.5%   +27.7%   ← 진짜 이득
+#     `/study` 3개월 · candles     +2.1%    +0.7%   -13.9%   (노이즈)
+#     `/study` 3개월 · sidecar     +1.1%    +3.7%    +1.6%   (노이즈)
+#     `/live` 오늘 · hoga          +4.5%    +7.1%    +2.3%   (작다)
+#     `/live` 오늘 · sidecar       -1.9%    -2.2%    +1.2%   (없다)
 #
-# 마지막 줄이 0 인 것은 캐시가 안 먹어서가 아니라 **과거일 sidecar 가 이미
-# `PastIndicatorsCache` 에서 나와 이 경로를 안 타기** 때문이다(`_indicator_cacheable`
-# 이 `date < today_kst` 를 요구). 즉 이 캐시가 버는 곳은 **오늘**과 **캐시가 없는
-# 지표**이고, 그게 정확히 `/live` 가 매번 지나는 자리다.
+# ⚠ **이 표는 한 번 크게 틀렸다.** 처음엔 "`/live` sidecar -62.5%" 로 쟀는데 그건
+# 두 가지가 겹친 허수였다: (1) 같은 요청을 밀리초 간격으로 반복해 `TodayTtlCache`
+# (15초)가 거의 전부 적중한 **웜 경로**를 쟀고, (2) A,B 순서 고정이라 워밍 편향이
+# B 에 쌓였다. `/live` 의 실제 refetch 주기는 **5분**이라 언제나 TTL 밖이다 —
+# 사용자가 기다리는 것은 콜드 경로다. 다시 잴 때는 **TTL 을 끄고 ABBA 로** 할 것
+# (`HOGA_TODAY_INDICATOR_TTL_MS=0`).
 #
 # 캐시가 안전한 근거: 순수 함수다. 입력은 날짜 문자열 하나, KST 는 DST 없는 고정
 # 오프셋(+09:00)이라 같은 입력이 영원히 같은 값이다. 카디널리티도 날짜 수만큼이라
