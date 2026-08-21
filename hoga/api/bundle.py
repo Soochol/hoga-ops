@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Collection, Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1902,6 +1903,38 @@ def _segment_gap_ms(date: str, meta: dict) -> int | None:
     return total
 
 
+# `build_range_bundle` 일자 루프의 GIL 양보 주기·길이.
+#
+# **왜 필요한가.** 이 함수는 라우트에서 `to_thread` **1개**로 통째로 돈다
+# (routes.py — 취소 불가·permit 회수 문제로 구조가 그렇다). 본문은 96.7% 순수
+# 파이썬이라(2026-08-16 프로파일) 워커 스레드가 GIL 을 사실상 독점하고, CPython
+# 의 GIL convoy(강제 드롭 직후 CPU 스레드가 즉시 재획득) 때문에 이벤트 루프는
+# switch interval(5ms)로도 못 비집고 들어온다. 실측(2026-08-21): 3개월 sidecar
+# 요청 1발 = `/health` **9,757ms** 지연 — 앱 전체가 그만큼 멎는다(#998 단일 루프).
+#
+# **왜 시간 기반 sleep 인가.** `time.sleep(0.001)` 은 GIL 을 완전히 놓고 1ms 를
+# 보장한다 — 루프가 epoll + 콜백 여러 개를 소화하기에 충분하다(sleep(0) 은 convoy
+# 로 루프가 GIL 을 못 받을 수 있다). 50ms 마다 1ms 면 오버헤드 +2% 로, 무양보
+# 구간이 「일자 1개 처리(~110ms)」 수준으로 상한된다. WS 틱 경로의 같은 처방이
+# `kiwoom_ws_client._maybe_yield`(#1444)다 — 그쪽은 루프 위라 `asyncio.sleep(0)`,
+# 여기는 워커 스레드라 `time.sleep(1ms)` 로 형태만 다르다.
+_GIL_BREATHE_INTERVAL_S = 0.05
+_GIL_BREATHE_SLEEP_S = 0.001
+
+
+def _gil_breathe(last_yield_at: float) -> float:
+    """`_GIL_BREATHE_INTERVAL_S` 가 지났으면 GIL 을 1ms 놓는다. 새 기준 시각을 돌려준다.
+
+    반환값 재대입 형태인 이유: 이 함수는 워커 스레드의 동기 루프에서 불리므로
+    인스턴스 상태를 둘 자리가 없고, 지역 변수 하나가 가장 싸다.
+    """
+    now = time.monotonic()
+    if now - last_yield_at < _GIL_BREATHE_INTERVAL_S:
+        return last_yield_at
+    time.sleep(_GIL_BREATHE_SLEEP_S)
+    return time.monotonic()
+
+
 def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
@@ -2029,7 +2062,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
 
+    gil_breathe_at = time.monotonic()
     for d in dates:
+        # 일자 경계마다 검사 — 한 일자(~110ms, 2026-08-21 프로파일: heatmap 47ms
+        # + peaks 29ms + delta 19ms + broker 13ms)가 무양보 상한이 된다.
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         date_t0 = perf_debug.now()
         date_candles_before = len(candles)
         date_ratio_before = len(ratio_pts)
