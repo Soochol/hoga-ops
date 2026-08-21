@@ -38,7 +38,7 @@ import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import {
   clampLogicalRangeToWall,
-  savedRangeWallBarIndex,
+  savedRangeWallBarTs,
   savedRangeWallLimit,
 } from './savedRangeWall';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
@@ -1074,6 +1074,66 @@ export function LiveChartRoot({
   }, [savedRangeWallToMs, cb]);
 
   /**
+   * **지연 착석** — 저장 구간이 뒤늦게 도착하면 그때 앉힌다.
+   *
+   * 저장뷰를 분봉 상태에서 열면 그 순간 로드된 캔들은 **최근 5거래일**뿐이라
+   * (`INITIAL_MINUTE_TRADING_DAYS`) 몇 달 전 저장 구간이 축에 없다. 그러면 두 메커니즘이
+   * **둘 다 데이터 도착 전에 소진된다**:
+   *   ① `restoreViewport` 착석은 `rightEdgeMs >= cb.candles[0].ts_ms` 가드에서 실패하고
+   *      `lastAppliedCountRef` 가 세팅돼 **재시도가 없다**.
+   *   ② 우측 벽은 범위 변경 **이벤트 구동**이라, 백필이 도착해도 사용자가 팬하지 않으면
+   *      발화하지 않는다.
+   * 결과: 백필이 저장 구간까지 다 와도 화면은 **오늘 장중에 남는다**(2026-08-21 실측 —
+   * 저장 05-20~06-26 인데 08-21 13:30~15:30 이 보였다).
+   *
+   * 그래서 캔들이 갱신될 때마다 "B 가 축에 들어왔는가" 를 보고, 들어온 **첫 순간에 한 번**
+   * 앉힌다. 그 뒤로는 벽이 우측 이탈만 막고 좌측 팬은 자유다.
+   *
+   * 한 번만 앉히는 것이 계약이다(`seatedRef`) — 매 백필마다 앉히면 사용자가 저장 구간
+   * 왼쪽을 보고 있는데 화면이 계속 오른쪽으로 튄다. 키에 `viewKey` 를 섞어 봉·종목·저장뷰가
+   * 바뀌면 다시 앉을 기회를 준다.
+   */
+  const savedRangeSeatedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!chart || savedRangeWallToMs === null) {
+      savedRangeSeatedRef.current = null;
+      return;
+    }
+    const seatKey = `${viewKey}|${savedRangeWallToMs}`;
+    if (savedRangeSeatedRef.current === seatKey) return;
+    const candles = cb?.candles ?? [];
+    const wallTs = savedRangeWallBarTs(candles, savedRangeWallToMs);
+    // 아직 축에 없다 — 다음 캔들 갱신에서 다시 본다(백필은 진행 중이다).
+    if (wallTs === null) return;
+    const ts = chart.timeScale();
+    const barIndex = ts.timeToIndex?.(
+      realMsToVirtualSeconds(axisRef.current, wallTs) as Time,
+      true,
+    );
+    if (typeof barIndex !== 'number' || !Number.isFinite(barIndex)) return;
+    const current = ts.getVisibleLogicalRange();
+    if (!current) return;
+    savedRangeSeatedRef.current = seatKey;
+    // span 은 저장 뷰포트를 쓰되 **그릴 수 있는 크기로 접는다** — 넓은 화면에서 저장한
+    // span 을 좁은 창에 그대로 적용하면 여백만 부풀어 캔들이 화면 밖으로 밀린다
+    // (`minuteRestoreGeometry` 의 근거). 저장 뷰포트가 없으면 현재 줌을 유지한다.
+    const geom = restoreViewport
+      ? minuteRestoreGeometry(
+          restoreViewport.barSpan,
+          ts.width(),
+          chart.options().timeScale.minBarSpacing ?? 0.5,
+        )
+      : null;
+    const span = Math.max(1, Math.round(geom?.barSpan ?? current.to - current.from));
+    const limit = savedRangeWallLimit(barIndex);
+    try {
+      ts.setVisibleLogicalRange({ from: limit - span, to: limit });
+    } catch {
+      /* chart torn down between effect runs */
+    }
+  }, [chart, savedRangeWallToMs, cb, viewKey, restoreViewport]);
+
+  /**
    * 우측 벽의 **단일 집행 지점** — 팬 입력이 둘인데 여기 하나로 모인다.
    *
    * 드래그·트랙패드 스크롤은 lightweight-charts 소유(`handleScroll`)라 계산에 끼어들
@@ -1107,9 +1167,14 @@ export function LiveChartRoot({
       // 움직였으면 낡은 값으로 되미는 것이 오히려 튐이 된다.
       const range = ts.getVisibleLogicalRange();
       if (!range) return;
-      const barIndex = savedRangeWallBarIndex(wall.candles, wall.toMs);
-      if (barIndex === null) return;
-      const limit = savedRangeWallLimit(barIndex, range.to - range.from, ts.width());
+      const wallTs = savedRangeWallBarTs(wall.candles, wall.toMs);
+      if (wallTs === null) return;
+      const barIndex = ts.timeToIndex?.(
+        realMsToVirtualSeconds(axisRef.current, wallTs) as Time,
+        true,
+      );
+      if (typeof barIndex !== 'number' || !Number.isFinite(barIndex)) return;
+      const limit = savedRangeWallLimit(barIndex);
       const next = clampLogicalRangeToWall(range, limit);
       if (!next) return;
       try {

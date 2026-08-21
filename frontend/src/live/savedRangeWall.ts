@@ -16,22 +16,28 @@
  * 착지할 때마다 벽이 조용히 어긋난다 — 매 이벤트 `savedRangeWallBarIndex` 로 다시
  * 구해야 한다.
  */
-import { minuteRightOffsetBars } from './minuteViewportPolicy';
 
 export type LogicalRangeLike = { from: number; to: number };
 
 /**
- * 저장 구간 끝(B)에 해당하는 캔들의 **논리 인덱스**. 구간 안에 봉이 하나도 없으면 null.
+ * 저장 구간 끝(B)에 해당하는 캔들의 **실시각(ts_ms)**. 구간 안에 봉이 하나도 없으면 null.
  *
- * `toMs` 를 그대로 좌표로 바꾸지 않고 **실재하는 캔들**로 내리는 이유는
- * `studySavedRangeMarks` 와 같다 — 축에 없는 임의 ms 는 좌표가 어긋난다(#1238).
- * 여기서는 `toMs` **이하의 마지막 캔들**을 고른다: B 가 장 마감 후 시각이거나
+ * ⚠ **논리 인덱스가 아니라 ts 를 돌려주는 것이 계약이다.** 배열 인덱스를 lwc 논리
+ * 좌표로 그대로 쓰면 **어긋난다** — `/live` 차트에는 Auction Mask 등이 넣는
+ * `WhitespaceData` 가 섞여 있어 lwc 가 든 포인트 수가 `candles.length` 보다 많다.
+ * 호출부가 이 ts 를 `timeScale.timeToIndex(realMsToVirtualSeconds(axis, ts), true)` 로
+ * 논리 인덱스로 바꿔야 한다(`LiveChartRoot` 의 다른 좌표 변환이 전부 그 경로다).
+ * 2026-08-21 실측: 배열 인덱스를 그대로 썼더니 벽이 저장 끝(06-26)이 아니라 06-29 에
+ * 섰다 — **되밀리기는 하므로 "작동한다" 로 오독하기 쉽다.**
+ *
+ * `toMs` 를 그대로 쓰지 않고 **실재하는 캔들**로 내리는 이유는 `studySavedRangeMarks`
+ * 와 같다(#1238). `toMs` **이하의 마지막 캔들**을 고른다: B 가 장 마감 후 시각이거나
  * 휴장일이면 그 시각의 봉이 없고, 그때 벽은 그 직전 봉이어야 한다.
  *
  * 캔들은 ts 오름차순이므로 이진 탐색이다 — 딥 팬 뒤 배열이 수만 개가 되고 이 함수는
  * **뷰포트 이벤트마다** 불린다(위 캐시 금지 주석).
  */
-export function savedRangeWallBarIndex(
+export function savedRangeWallBarTs(
   candles: readonly { ts_ms: number }[],
   toMs: number,
 ): number | null {
@@ -49,20 +55,26 @@ export function savedRangeWallBarIndex(
       hi = mid - 1;
     }
   }
-  return found >= 0 ? found : null;
+  return found >= 0 ? (candles[found]?.ts_ms ?? null) : null;
 }
 
 /**
- * 가시 범위의 우측 상한(논리 좌표). 벽 봉 자체가 오른쪽 끝에 딱 붙으면 가격축 라벨
- * 거터에 가려 읽히지 않으므로, 분봉 기본 거터(`minuteRightOffsetBars`)만큼 띄운다 —
- * 라이브 엣지에서 최신 봉이 라벨에 안 가리는 것과 같은 규칙을 저장뷰 끝에 적용한다.
+ * 가시 범위의 우측 상한(논리 좌표) — **벽 봉 그 자체**. 여백을 두지 않는다.
+ *
+ * ⚠ **여백을 두면 그 폭이 곧 "B 이후" 다.** 저장 구간 끝은 **과거**라 그 오른쪽에
+ * 실제 캔들이 있다 — 라이브 엣지처럼 whitespace 가 아니다. 그래서 여백은 빈 공간이
+ * 아니라 **다음 거래일 캔들**로 채워지고, 요구("B 를 가장 오른쪽에 두고 그 우측으로는
+ * 못 나가게")가 그만큼 깨진다.
+ *
+ * 2026-08-21 실측으로 두 번 좁혔다: `minuteRightOffsetBars`(폭 비례, 수십~수백 봉)
+ * → 06-26 저장인데 06-29 10:00 까지 보였고, 고정 2봉 → 06-29 09:00·09:01 두 봉이
+ * 걸쳤다(하필 **다음 거래일 첫 봉**이라 갭으로 눈에 띈다). 0 이 정답이다.
+ *
+ * 함수를 남겨 두는 것은 이 근거를 붙일 자리가 필요해서다 — 호출부에서 `barIndex` 를
+ * 그대로 쓰면 다음 사람이 "여백을 왜 안 두지?" 를 물을 곳이 없다.
  */
-export function savedRangeWallLimit(
-  wallBarIndex: number,
-  visibleBars: number,
-  plotWidth: number,
-): number {
-  return wallBarIndex + minuteRightOffsetBars(visibleBars, plotWidth);
+export function savedRangeWallLimit(wallBarIndex: number): number {
+  return wallBarIndex;
 }
 
 /**

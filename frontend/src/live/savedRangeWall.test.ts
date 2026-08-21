@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampLogicalRangeToWall,
   countBarsInRange,
-  savedRangeWallBarIndex,
+  savedRangeWallBarTs,
   savedRangeWallLimit,
 } from './savedRangeWall';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
@@ -10,39 +10,53 @@ import { minuteRightOffsetBars } from './minuteViewportPolicy';
 const bars = (n: number, startMs = 1_000_000): { ts_ms: number }[] =>
   Array.from({ length: n }, (_, i) => ({ ts_ms: startMs + i * 60_000 }));
 
-describe('savedRangeWallBarIndex', () => {
-  it('저장 끝(B)에 봉이 있으면 그 봉의 인덱스', () => {
+describe('savedRangeWallBarTs', () => {
+  it('저장 끝(B)에 봉이 있으면 그 봉의 ts', () => {
     const candles = bars(10);
-    expect(savedRangeWallBarIndex(candles, candles[6].ts_ms)).toBe(6);
+    expect(savedRangeWallBarTs(candles, candles[6].ts_ms)).toBe(candles[6].ts_ms);
   });
 
   it('B 시각에 봉이 없으면 **그 이전 마지막 봉** — 마감 후/휴장일 경계가 이 경우다', () => {
     const candles = bars(10);
-    // 6번과 7번 사이의 시각: 6번이 벽이어야 한다.
-    expect(savedRangeWallBarIndex(candles, candles[6].ts_ms + 30_000)).toBe(6);
+    expect(savedRangeWallBarTs(candles, candles[6].ts_ms + 30_000)).toBe(candles[6].ts_ms);
   });
 
   it('B 가 첫 봉보다 과거면 null — 벽을 세울 자리가 없다', () => {
     const candles = bars(10);
-    expect(savedRangeWallBarIndex(candles, candles[0].ts_ms - 1)).toBeNull();
+    expect(savedRangeWallBarTs(candles, candles[0].ts_ms - 1)).toBeNull();
   });
 
   it('B 가 마지막 봉보다 미래면 마지막 봉 (백필이 아직 안 왔거나 저장이 최근)', () => {
     const candles = bars(10);
-    expect(savedRangeWallBarIndex(candles, candles[9].ts_ms + 10 * 60_000)).toBe(9);
+    expect(savedRangeWallBarTs(candles, candles[9].ts_ms + 10 * 60_000)).toBe(candles[9].ts_ms);
   });
 
   it('빈 배열은 null', () => {
-    expect(savedRangeWallBarIndex([], 1)).toBeNull();
+    expect(savedRangeWallBarTs([], 1)).toBeNull();
+  });
+
+  // 배열 인덱스를 돌려주던 시절의 회귀 방어. `/live` 차트에는 WhitespaceData 가 섞여
+  // lwc 논리 인덱스 ≠ 배열 인덱스라, 인덱스를 그대로 좌표로 쓰면 벽이 엉뚱한 곳에 선다.
+  it('인덱스가 아니라 **ts** 를 돌려준다 — 논리 좌표 변환은 호출부가 축으로 한다', () => {
+    const candles = bars(10);
+    const got = savedRangeWallBarTs(candles, candles[6].ts_ms);
+    expect(got).toBeGreaterThan(1_000_000);   // 인덱스(6)였다면 실패한다
+    expect(got).toBe(candles[6].ts_ms);
   });
 });
 
 describe('savedRangeWallLimit', () => {
-  it('벽 봉에 가격축 거터를 더한다 — 벽 봉이 라벨에 가리면 안 된다', () => {
-    const gutter = minuteRightOffsetBars(120, 800);
-    expect(savedRangeWallLimit(500, 120, 800)).toBe(500 + gutter);
-    // 거터가 실제로 0보다 크지 않으면 이 테스트는 아무것도 증명하지 않는다.
-    expect(gutter).toBeGreaterThan(0);
+  // 저장 구간 끝 오른쪽에는 **실제 캔들**이 있다(라이브 엣지의 whitespace 가 아니다).
+  // 그래서 여백은 빈 공간이 아니라 "B 이후" 가 되고, 요구가 그만큼 깨진다.
+  // 실측으로 두 번 좁혔다: 폭 비례 거터 → 고정 2봉 → 0.
+  it('여백 없이 벽 봉 그 자체 — B 가 오른쪽 끝이다', () => {
+    expect(savedRangeWallLimit(500)).toBe(500);
+  });
+
+  it('화면 폭에 비례하지 않는다 — 라이브 엣지 거터를 되쓰면 회귀다', () => {
+    const wide = minuteRightOffsetBars(1200, 800);
+    expect(wide).toBeGreaterThan(10); // 비례 거터가 실제로 크다는 전제
+    expect(savedRangeWallLimit(500)).toBeLessThan(500 + wide);
   });
 });
 
