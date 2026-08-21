@@ -212,11 +212,14 @@ export type SavedRangeFocus = {
   /** 안내 문구용 YYYYMMDD. ms 에서 재유도하지 않고 저장뷰가 준 값을 그대로 쓴다. */
   fromDate: string;
   toDate: string;
-  /** 저장 당시 봉. 창의 봉과 **다를 수 있다** — 그때 `savedBarSpan` 을 쓰면 안 된다. */
-  savedTimeframe: LiveTimeframe;
-  /** 저장 당시 가시 봉 수. 봉이 일치할 때만 유효하다(봉 수는 봉 종류에 상대적이다). */
-  savedBarSpan: number;
 };
+
+/*
+ * 여기 `savedTimeframe`·`savedBarSpan` 이 있었다. 분봉 착석이 그 둘을 썼는데
+ * 2026-08-21 결정으로 분봉에서는 저장뷰가 화면을 건드리지 않게 되면서 **읽는 곳이
+ * 0이 됐다.** write-only 슬롯은 두 커밋만 지나면 부패하므로 함께 지웠다 — 다시
+ * 필요해지면 `savedRangeFocusFromView` 에서 한 줄로 되살릴 수 있다.
+ */
 
 /** The full active-view tuple the page renders. Written atomically by the active
  *  Live Tab (applyTabToPage → projectActiveView) so there is no setter ordering to

@@ -1,6 +1,10 @@
 /**
  * `/live` 저장뷰 기간이 **화면에 온전히 들어오지 못할 때**의 안내 문구.
  *
+ * 분봉에서 저장뷰는 **화면을 건드리지 않으므로**(2026-08-21 결정 — 착석·우측 벽 모두
+ * 제거) 이 안내가 말하는 것은 "지금 화면이 잘렸다" 가 아니라 **"그 구간을 분봉으로는
+ * 볼 수 없다"** 이다. 사용자가 과거로 팬해도 데이터가 없다는 정보라 여전히 유효하다.
+ *
  * `/study` 의 `studySavedRangeCoverage` 와 같은 역할이지만 **판정 축이 다르다.**
  * 저쪽은 디스크 일봉 코퍼스의 시작·끝을 보고, 이쪽은 `/live` 의 두 한계를 본다:
  *  ① 분봉 스크롤백 상한 250 캘린더일(`PAST_CANDLES_MAX_DAYS`) — 저장 구간이 그보다
@@ -45,13 +49,13 @@ export function savedRangeNotice(args: {
     if (toDate < minuteFloorDate) {
       return {
         text: '저장 구간이 분봉 범위 밖',
-        detail: `분봉은 최근 ${dotted(minuteFloorDate)} 부터만 조회됩니다. 저장 구간 ${from}~${to} 는 그보다 과거라 분봉으로 표시할 수 없습니다. 일봉(D)으로 바꾸면 기간 밴드로 볼 수 있습니다.`,
+        detail: `분봉은 최근 ${dotted(minuteFloorDate)} 부터만 조회됩니다. 저장 구간 ${from}~${to} 는 그보다 과거라 분봉으로 볼 수 없습니다. 일봉(D)으로 바꾸면 기간 밴드로 표시됩니다.`,
       };
     }
     if (fromDate < minuteFloorDate) {
       return {
-        text: '저장 구간 일부만 표시',
-        detail: `분봉은 최근 ${dotted(minuteFloorDate)} 부터만 조회됩니다. 저장 구간 ${from}~${to} 의 앞부분이 그 경계에서 잘립니다.`,
+        text: '저장 구간 일부가 범위 밖',
+        detail: `분봉은 최근 ${dotted(minuteFloorDate)} 부터만 조회됩니다. 저장 구간 ${from}~${to} 의 앞부분은 분봉으로 볼 수 없습니다.`,
       };
     }
     return null;
