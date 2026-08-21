@@ -226,6 +226,27 @@ class _TodaySidePeakState:
     def _record_closed_peak(self, peak: Peak) -> None:
         self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
 
+    def merge_from(self, other: _TodaySidePeakState) -> None:
+        """다른 상태(오늘 JSONL 재생본)의 **확정 계열만** 흡수한다.
+
+        재기동으로 비거나 반쪽만 쌓인 상태를 하루 전체분으로 보정하는 자리다
+        (`stream.install_today_peak_seed`). 제시 순서에 무관하고 멱등하다 —
+        `all_top` 은 `_offer_all` 이 가격당 최댓값으로 접고, `closed_traded` 는
+        `_top_ranked_peaks` 가 상한 3 을 유지한다. 그래서 같은 재생본을 두 번
+        흡수해도 답이 같다.
+
+        **대기열·창은 옮기지 않는다.** `pending_by_minute`/`touch_extreme_by_minute`
+        은 "아직 터치 판정이 안 닫힌 분" 을 위한 것인데, 재생본의 판정은 재생 안에서
+        이미 닫혔다. 게다가 재생분은 창(`_PENDING_MINUTE_SLACK`) 밖이라 옮겨 봐야
+        `_advance_window` 가 곧바로 버린다. `latest_minute` 도 건드리지 않는다 —
+        단조여야 하고, 살아 있는 쪽이 언제나 더 앞서 있다.
+        """
+        for peak in other.all_top:
+            self._offer_all(peak)
+        for peak in other.closed_traded:
+            self._record_closed_peak(peak)
+        self._refresh_rank_ones()
+
 
 @dataclass
 class TodayAskPeakState(_TodaySidePeakState):
