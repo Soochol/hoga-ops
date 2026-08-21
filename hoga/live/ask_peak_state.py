@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import insort
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal
@@ -41,12 +42,14 @@ class _TodaySidePeakState:
     붙들면 된다 — ADR-0084 시절의 `open_by_price` 가 하루치 distinct 가격을 모두
     붙들던 것과 다르다(300종목 × 2 side 가 한 프로세스에 상주한다).
 
-    ``all_by_price`` 는 터치와 무관한 계열(`all_*`, 「보이는 영역 최대벽」의 원천)이라
-    청소하지 않는다 — 가격당 1개로 접혀 있어 상한이 그날 거래 가격 수다.
+    ``all_*`` 계열(「보이는 영역 최대벽」의 원천)은 top-3 만 **증분으로** 유지한다
+    (`_offer_all`). 가격별 딕셔너리를 들면 틱 경로가 그 크기에 비례해 느려지는데,
+    이 경로는 이벤트 루프 스레드에서 **양보 없이** 돈다.
     """
 
-    #: 가격당 당일 최대 벽. 터치 여부와 무관 — `all_*` 계열의 원천.
-    all_by_price: dict[int, Peak] = field(default_factory=dict)
+    #: 터치 무관 `all_*` 계열의 top-3. **가격별 딕셔너리를 들지 않는다** — 근거는
+    #: `_offer_all` docstring. 이것이 이 클래스의 유일한 `all` 상태다.
+    all_top: list[Peak] = field(default_factory=list)
     #: 분 → (가격 → 아직 터치 안 된 벽). `_PENDING_MINUTE_SLACK` 창만 보관.
     pending_by_minute: dict[int, dict[int, Peak]] = field(default_factory=dict)
     #: 분 → 그 분 체결가의 극값(ask=max, bid=min). pending 과 같은 창만 보관.
@@ -120,9 +123,7 @@ class _TodaySidePeakState:
                 continue
 
             peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
-            self.all_by_price[price] = _larger_peak(
-                self.all_by_price.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
-            )
+            self._offer_all(peak)
             if extreme is not None and self._is_touched_by_price(extreme, price):
                 self._record_closed_peak(peak)
                 continue
@@ -134,11 +135,47 @@ class _TodaySidePeakState:
         self._advance_window(minute)
         self._refresh_rank_ones()
 
+    def _offer_all(self, peak: Peak) -> None:
+        """`all` top-3 에 벽 하나를 제시한다 — 가격당 하나로 접으며 O(1).
+
+        ## 왜 가격별 딕셔너리가 필요 없는가
+
+        한 가격의 후보는 **개선 방향으로만** 바뀐다(더 큰 qty 일 때만 교체). 그래서
+        어떤 가격 p 가 top-3 밖에 있다면, p 의 *현재* 최선이 이미 3위보다 나쁘다는
+        뜻이고, 이후 p 에 오는 후보 중 top-3 에 들 수 있는 것은 **3위를 이기는 것**
+        뿐이다 — 그건 딕셔너리 없이 3위와만 비교하면 판별된다. top-3 안의 가격이
+        개선되면 그 자리를 빼고 다시 넣는데, 개선 전 값이 이미 4위 이하 전부보다
+        나았으므로 개선 후에도 그렇다(밀려난 후보가 되살아날 일이 없다).
+
+        ## 왜 이 최적화가 필요한가
+
+        종전엔 `all_by_price` 딕셔너리를 하루 내내 들고 **매 틱 전량 정렬**했다.
+        가격 다양성이 큰 종목에서 이 경로가 폭발한다 — 실측(하루치 재생, 2026-08-21):
+        가격 ~49개 종목 347ms · ~400개 1,221ms · ~1,180개 **3,508ms**. 이 루프는
+        300종목 × ~16 ob/s 로 **이벤트 루프 스레드에서 양보 없이** 돈다.
+        ADR-0156 이 미체결 계열을 지우면서 구 `open_by_price`(터치된 가격을 영구히
+        떨궈 작게 유지되던 구조)가 사라진 것이 회귀의 출처였다.
+        """
+        top = self.all_top
+        key = _peak_rank_key(peak)
+        for i, cur in enumerate(top):
+            if cur.price != peak.price:
+                continue
+            if _peak_rank_key(cur) <= key:
+                return          # 같은 가격에 이미 더 좋은(또는 동일한) 후보가 있다
+            top.pop(i)
+            break
+        else:
+            if len(top) >= _EMIT_LIMIT and _peak_rank_key(top[-1]) <= key:
+                return          # 3위도 못 이긴다
+        insort(top, peak, key=_peak_rank_key)
+        del top[_EMIT_LIMIT:]
+
     def _advance_window(self, minute: int) -> None:
         """관측 분이 앞으로 갔으면 창 밖의 대기 벽·체결 극값을 버린다.
 
         버려진 대기 벽은 **미터치로 확정된 것**이고, 미터치 계열은 ADR-0156 에서
-        사라졌으므로 어디에도 실리지 않는다. `all_by_price` 는 별도 구조라 무손실이다.
+        사라졌으므로 어디에도 실리지 않는다. `all_top` 은 별도 구조라 무손실이다.
         """
         if minute <= self.latest_minute:
             return
@@ -154,7 +191,7 @@ class _TodaySidePeakState:
             return None
 
         traded_peaks = _top_ranked_peaks(self.closed_traded)
-        all_peaks = _top_ranked_peaks(self.all_by_price.values())
+        all_peaks = list(self.all_top)
         traded = traded_peaks[0] if traded_peaks else None
         all_peak = all_peaks[0] if all_peaks else None
         if all_peak is None:
@@ -172,12 +209,13 @@ class _TodaySidePeakState:
         }
 
     def _refresh_rank_ones(self) -> None:
-        # `all_ranked` 만 정렬한다 — 아래 `bounded_all` 이 상위 _EMIT_LIMIT 개를
-        # 쓰기 때문이다. `traded_peak` 은 **1위만** 쓰므로 정렬 대신 `_rank_one`(O(n)).
-        all_ranked = _ranked_peaks(self.all_by_price.values())
-        self.all_peak = all_ranked[0] if all_ranked else None
+        # 두 계열 모두 **이미 상한 3** 이라 여기서 큰 정렬이 없다 — `all_top` 은
+        # `_offer_all` 이 증분으로, `closed_traded` 는 `_record_closed_peak` 가
+        # `_top_ranked_peaks` 로 유지한다. 이 함수가 틱 경로 위에 있으므로
+        # (300종목 × ~16 ob/s, 이벤트 루프 스레드) 여기에 O(가격 수) 를 두지 말 것.
+        self.all_peak = self.all_top[0] if self.all_top else None
         self.traded_peak = _rank_one(self.closed_traded)
-        bounded_all = all_ranked[:_EMIT_LIMIT]
+        bounded_all = self.all_top
         self.observed_peak_events = {
             _peak_event_key(self.side_name, peak): peak for peak in bounded_all
         }
