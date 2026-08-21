@@ -2705,3 +2705,82 @@ def test_build_program_trade_series_skips_bucketing_without_session_open(tmp_pat
     )
     assert len(series.points) == 2
 
+
+def test_gil_breathe_respects_the_interval(monkeypatch):
+    """`_gil_breathe` 는 **임계에 걸릴 때만** sleep 한다 — 무조건이 아니다.
+
+    막는 방향 둘:
+    - 임계 검사를 지워 일자마다 sleep → 짧은 창(1~2일)에도 불필요한 1ms×N 지연.
+    - sleep 을 지워 검사만 남김 → GIL 을 놓지 않아 이 장치가 무동작이 된다.
+
+    시계·sleep 을 함께 fake 로 갈아 결정적으로 만든다(벽시계 단언은 이 리포에서
+    flaky 로 기각 — `reference_wallclock_ratio_assertions_replace_with_call_counts`).
+    """
+    from hoga.api import bundle as bundle_mod
+
+    clock = {"now": 1000.0}
+    slept: list[float] = []
+
+    class FakeTime:
+        @staticmethod
+        def monotonic() -> float:
+            return clock["now"]
+
+        @staticmethod
+        def sleep(s: float) -> None:
+            slept.append(s)
+
+    monkeypatch.setattr(bundle_mod, "time", FakeTime)
+
+    anchor = bundle_mod._gil_breathe(clock["now"])   # 방금 양보한 상태 → no-op
+    assert slept == [] and anchor == 1000.0
+
+    clock["now"] += bundle_mod._GIL_BREATHE_INTERVAL_S / 2   # 임계 미달 → no-op
+    assert bundle_mod._gil_breathe(anchor) == anchor
+    assert slept == []
+
+    clock["now"] += bundle_mod._GIL_BREATHE_INTERVAL_S       # 임계 초과 → sleep + 갱신
+    new_anchor = bundle_mod._gil_breathe(anchor)
+    assert slept == [bundle_mod._GIL_BREATHE_SLEEP_S]
+    assert new_anchor == clock["now"]
+
+
+def test_build_range_bundle_breathes_once_per_date():
+    """일자 루프가 **일자마다** `_gil_breathe` 를 지난다 (배선).
+
+    막는 방향: 루프의 호출을 지우는 회귀. 헬퍼 단위 테스트(위)는 그 회귀에 전부
+    초록이다 — 이 세션에서 두 번 반복된 "무동작이 초록으로 위장" 패턴이라 배선을
+    따로 못박는다. 이 장치가 없으면 3개월 sidecar 1발이 이벤트 루프를 9.8초
+    굶긴다(2026-08-21 /health 프로브 실측).
+    """
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+
+    dates = ["20260601", "20260602", "20260603"]
+    mock_engine = _engine_with_meta_for_dates(dates)
+
+    with contextlib.ExitStack() as stack:
+        for name in (
+            "build_candles_slice", "downsample_candles", "build_quote_ratio_slice",
+            "build_fill_strength_slice", "build_volume_distribution_slice",
+            "build_trade_volume_poc_slice", "build_ask_bid_peak_slices",
+            "build_program_trade_series", "build_broker_late_entries_slice",
+        ):
+            stack.enter_context(patch.object(bundle_mod, name))
+        breathe = stack.enter_context(
+            patch.object(bundle_mod, "_gil_breathe", side_effect=lambda last: last)
+        )
+        build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260601",
+            to_date="20260603",
+            bucket_ms=60_000,
+            source_pref="hogaplay_first",
+            mode="candles",
+        )
+
+    assert breathe.call_count == len(dates)
+
