@@ -6,10 +6,12 @@
  * 지워지면 차트 `viewKey` 에서 `sv=` 가 빠져 재생성되고, 복원 뷰포트가 없으니 분봉
  * 기본 초기 뷰(=라이브 엣지)로 돌아간다(`ChartWindow` 의 `viewIdentity` 주석).
  *
- * **「KRX 기준」을 항상 병기한다.** 저장뷰 창은 전역 거래소 선택과 무관하게 KRX 로
- * 고정되므로(`SAVED_RANGE_VENUE`), 병기하지 않으면 사용자가 NXT 를 골라 둔 채로
- * KRX 차트를 보면서 그 사실을 알 길이 없다 — ADR-0144 §2 가 "한 화면이 두 시장을
- * 보고 있었다" 로 기록한 사고의 예방이다.
+ * **「KRX」는 그 창이 실제로 고정됐을 때만 병기한다**(`krxPinned`). 고정 대상은 저장뷰가
+ * 가리키는 **그 종목**을 그리는 창뿐이고(`SAVED_RANGE_VENUE`), 다른 종목 창은 같은
+ * 기간을 볼 뿐이라 전역 거래소 선택을 그대로 따른다. 안 붙는 창에까지 「KRX」를 찍으면
+ * **거짓말**이 되고, 붙어야 할 창에 안 찍으면 사용자가 NXT 를 골라 둔 채 KRX 차트를
+ * 보면서 그 사실을 모른다 — ADR-0144 §2 가 "한 화면이 두 시장을 보고 있었다" 로
+ * 기록한 사고의 예방이다.
  */
 import type { SavedRangeNotice } from '../savedRangeNotice';
 
@@ -36,12 +38,15 @@ export function SavedRangeChip({
   label,
   fromDate,
   toDate,
+  krxPinned,
   notice,
   onClear,
 }: {
   label: string;
   fromDate: string;
   toDate: string;
+  /** 이 창이 저장뷰 종목을 그려 venue 가 KRX 로 고정됐는가. */
+  krxPinned: boolean;
   notice: SavedRangeNotice | null;
   onClear: () => void;
 }) {
@@ -51,7 +56,9 @@ export function SavedRangeChip({
   const tone = notice ? 'var(--warn)' : 'var(--fg-muted)';
   const detail = notice
     ? `${notice.text}. ${notice.detail}`
-    : `${label} 저장뷰 기간 ${fromDate}~${toDate} 을(를) 표시 중입니다. 이 창은 KRX 기준으로 고정됩니다.`;
+    : krxPinned
+      ? `${label} 저장뷰 기간 ${fromDate}~${toDate} 을(를) 표시 중입니다. 이 창은 KRX 기준으로 고정됩니다.`
+      : `${label} 저장뷰 기간 ${fromDate}~${toDate} 을(를) 이 창에도 함께 표시 중입니다. 거래소는 이 창의 선택을 따릅니다.`;
 
   return (
     <div
@@ -67,7 +74,9 @@ export function SavedRangeChip({
       <span className="truncate">
         {notice ? notice.text : `저장뷰 ${period}`}
       </span>
-      <span className="shrink-0" style={{ color: 'var(--fg-subtle)' }}>KRX</span>
+      {krxPinned && (
+        <span className="shrink-0" style={{ color: 'var(--fg-subtle)' }}>KRX</span>
+      )}
       <button
         type="button"
         aria-label="저장뷰 기간 표시 해제"
