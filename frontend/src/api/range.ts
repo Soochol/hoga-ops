@@ -837,17 +837,28 @@ function useLiveRangeDelta(
   });
 
   const data = useMemo(() => {
-    if (plan.servePrevious && previous && !query.data) return previous;
-    if (!query.data) return undefined;
-    if (query.isPlaceholderData) return previous ?? query.data;
-    if (plan.canReusePrevious && previous) {
-      // 병합 **직후** 자른다 — 캐논 병합본(`setQueryData`)과 `mergedRef` 가 둘 다 이
-      // 값을 받으므로, 여기서 자르면 다음 사이클의 `previous` 도 잘린 상태로 출발한다.
-      // 쓰기 시점에만 자르면 `mergedRef` 에 원본이 남아 다시 부풀어 오른다.
-      const merged = mergeRangeBundles(previous, query.data);
-      return baseInput.from ? trimRangeBundleBefore(merged, baseInput.from) : merged;
-    }
-    return query.data;
+    const served = ((): RangeBundle | undefined => {
+      if (plan.servePrevious && previous && !query.data) return previous;
+      if (!query.data) return undefined;
+      if (query.isPlaceholderData) return previous ?? query.data;
+      if (plan.canReusePrevious && previous) return mergeRangeBundles(previous, query.data);
+      return query.data;
+    })();
+    // **트림은 어느 경로로 나오든 건다 — 병합 경로에만 걸면 무동작이 된다.**
+    //
+    // 창 축소(`planViewportContraction`)가 발동하는 순간은 정의상 "더 안 가져와도
+    // 되는" 때다. 그래서 새 fetch 가 없고, 병합도 안 돈다 — 병합 경로에만 트림을
+    // 걸면 `historicalFromDate` 만 앞으로 당겨지고 병합본은 그대로 남는다.
+    // 2026-08-21 실사용 팬 실측에서 정확히 그랬다: `viewport_backfill_contract`
+    // (20260612→20260806)가 찍혔는데 커버리지는 안 줄어(그 뒤 6월 중순으로 팬해도
+    // `coverage_gap` 확장이 안 떴다) 회수가 0 이었다.
+    //
+    // 여기서 걸면 `servePrevious`·placeholder 경로로 나온 이전 번들도 잘리고, 그 값이
+    // 아래 effect 를 통해 캐논 병합본·`mergedRef` 로 들어가 다음 사이클도 잘린 채
+    // 출발한다. 이미 창 안이면 `trimRangeBundleBefore` 가 **같은 참조**를 돌려주므로
+    // 정상 경로에 비용이 없다.
+    if (!served || !baseInput.from) return served;
+    return trimRangeBundleBefore(served, baseInput.from);
   }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData, baseInput.from]);
 
   useEffect(() => {
