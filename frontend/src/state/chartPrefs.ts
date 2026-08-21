@@ -8,6 +8,14 @@
  * Adding a toggle = one entry here. The type below (`ChartToggleKey`),
  * the `ChartViewPrefs` boolean fields, the default values, and the toggle row
  * rendering all derive from this list.
+ *
+ * `enabledBy` (optional): names a **parent toggle**. `IndicatorPrefRows` then
+ * renders this row indented beneath that parent and dims it while the parent is
+ * off — same gate semantics `NumericPrefDef.enabledBy` already had, extended to
+ * boolean rows. The value is preserved while dimmed, and the renderer that
+ * reads the pref is still responsible for honoring the parent toggle too (the
+ * sub-pref alone is not load-bearing). Nesting is one level — a gated toggle
+ * must not itself be a parent.
  */
 export const CHART_TOGGLES = [
   {
@@ -93,6 +101,22 @@ export const CHART_TOGGLES = [
     description:
       '현재 보이는 차트 범위의 최고가·최저가 봉에 현재가의 극값 대비율(가격·%·시각) 라벨을 표시합니다. (고가=빨강, 저가=파랑)',
     default: true,
+  },
+  {
+    key: 'highLowHighLineEnabled',
+    label: '고가 가격선',
+    description:
+      '고저 극값 라벨의 최고가 가격에 차트 전폭을 가로지르는 수평 점선을 그립니다. (빨강)',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
+    key: 'highLowLowLineEnabled',
+    label: '저가 가격선',
+    description:
+      '고저 극값 라벨의 최저가 가격에 차트 전폭을 가로지르는 수평 점선을 그립니다. (파랑)',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'viLimitPriceDotsEnabled',
@@ -225,6 +249,19 @@ export function categoryOf(
   t: (typeof CHART_TOGGLES)[number],
 ): ChartToggleCategory {
   return 'category' in t ? t.category : 'chart';
+}
+
+/** Resolve a CHART_TOGGLES entry's gating **parent toggle**, or undefined when
+ *  the row is top-level. Same `in` narrowing trick as `categoryOf` — direct
+ *  `t.enabledBy` access on the `as const` union fails to compile on entries
+ *  that omit the field, so the predicate lives in one place. Consumers:
+ *  `IndicatorPrefRows` (renders the row indented + dimmed under its parent) and
+ *  `SettingsSections` (drops gated rows from the top-level list so they are not
+ *  rendered twice). */
+export function gatedByOf(
+  t: (typeof CHART_TOGGLES)[number],
+): ChartToggleKey | undefined {
+  return 'enabledBy' in t ? t.enabledBy : undefined;
 }
 
 /**

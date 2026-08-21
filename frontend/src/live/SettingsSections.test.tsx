@@ -55,6 +55,15 @@ describe('SettingsSections (2단 nav+detail)', () => {
     expect(screen.getByLabelText('대량 체결 강조 배경색 선택')).toBeTruthy();
   });
 
+  it('차트 상세: 하위 토글(극값 가격선)은 부모 아래 **한 번만** 렌더된다', () => {
+    // 차트 카테고리는 토글을 **키 하나씩** IndicatorPrefRows 에 넘긴다. 하위 토글을
+    // 최상위 목록에서 빼지 않으면 같은 행이 두 번(부모 아래 + 자기 차례) 나온다.
+    render(<SettingsSections />);
+    for (const key of ['highLowHighLineEnabled', 'highLowLowLineEnabled']) {
+      expect(screen.getAllByTestId(`settings-toggle-${key}`)).toHaveLength(1);
+    }
+  });
+
   it('기본 선택은 차트 — 동시호가 마스킹 토글이 상세에 보인다', () => {
     render(<SettingsSections />);
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();

@@ -43,6 +43,14 @@ export const DOT_RADIUS_PX = 3;
 export const DOT_RING_PX = 1.5;
 export const LEADER_OPACITY = 0.45;
 /**
+ * 극값 **가격선**(pane 전폭 수평 점선)의 획 스타일. 리더선(0.45 / [3,3])보다 옅고
+ * 성글다 — 리더선은 dot↔칩 사이 수십 px 이지만 이 선은 pane 을 가로지르므로 같은
+ * 무게를 주면 캔들보다 선이 먼저 읽힌다. VI/상하한가 선(실선 + 사용자 지정 색·두께)
+ * 과 점선/실선으로 갈려 두 레이어가 겹쳐도 구분된다.
+ */
+export const LEVEL_LINE_OPACITY = 0.28;
+export const LEVEL_LINE_DASH: readonly number[] = [4, 4];
+/**
  * 캔버스는 CSS rem 을 못 읽으므로 `--text-xs` 를 px 로 환산해 둔다. **손으로 계산한
  * 숫자를 박지 말 것** — 2026-08-07 다이얼 변경(18→16px) 전까지 여기엔 `11.8` 이
  * 상수로 박혀 있었고, 다이얼이 움직여도 타입 에러도 테스트 실패도 없이 이 라벨만

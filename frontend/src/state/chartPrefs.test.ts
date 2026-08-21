@@ -155,7 +155,7 @@ describe('거래량 체결강도 누적 토글', () => {
   });
 });
 
-import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf } from './chartPrefs';
+import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf, gatedByOf } from './chartPrefs';
 
 describe('총잔량 급증 설정', () => {
   it('surgeMarkerEnabled 토글 기본 ON · category indicator-modal', () => {
@@ -451,5 +451,35 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
       candleTooltipEnabled: false,    // IM 키 아님 → 무시
     });
     expect(byTimeframe).toEqual({ minute: { askPeakIntraMax: true } });
+  });
+});
+
+describe('극값 가격선 설정', () => {
+  it('고가·저가 가격선은 **각각 독립 토글**이고 둘 다 기본 OFF', () => {
+    // 기본 OFF 인 이유: 라벨(`highLowLabelsEnabled`)은 기본 ON 이라 이미 켜져 있는
+    // 사용자 화면에 선이 저절로 생기면 안 된다. 옵트인이다.
+    expect(DEFAULT_PREFS.highLowHighLineEnabled).toBe(false);
+    expect(DEFAULT_PREFS.highLowLowLineEnabled).toBe(false);
+  });
+
+  it('둘 다 고저 극값 라벨의 하위 토글(enabledBy)이고 chart 카테고리', () => {
+    for (const key of ['highLowHighLineEnabled', 'highLowLowLineEnabled'] as const) {
+      const t = CHART_TOGGLES.find((x) => x.key === key);
+      expect(t).toBeDefined();
+      expect(gatedByOf(t!)).toBe('highLowLabelsEnabled');
+      expect(categoryOf(t!)).toBe('chart');
+    }
+  });
+
+  it('부모(고저 극값 라벨)는 하위를 갖되 스스로는 최상위', () => {
+    // 중첩은 한 단계까지다 — 부모가 또 누군가의 하위면 IndicatorPrefRows 의
+    // "부모 아래 한 번만 렌더" 전제가 깨진다.
+    const parent = CHART_TOGGLES.find((t) => t.key === 'highLowLabelsEnabled');
+    expect(gatedByOf(parent!)).toBeUndefined();
+  });
+
+  it('persist 된 값 보존', () => {
+    expect(hydratedMinuteView({ highLowHighLineEnabled: true }).highLowHighLineEnabled).toBe(true);
+    expect(hydratedMinuteView({ highLowLowLineEnabled: true }).highLowLowLineEnabled).toBe(true);
   });
 });
