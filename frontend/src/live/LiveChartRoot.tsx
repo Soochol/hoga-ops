@@ -383,15 +383,13 @@ interface Props {
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
    *
-   * **동기화 범위에 링크 그룹은 쓰지 않는다** — 같은 종목을 보는 창은 그룹이 달라도
-   * 따라온다(`/live`, 사용자 결정 2026-08-11 · ADR-0119 §4 가 드로잉을 창 귀속에서
-   * **종목 귀속**으로 뒤집은 것과 같은 범주의 판단).
+   * **동기화 범위는 창번호(링크 그룹)다** — 번호가 다른 창끼리는 어떤 동기화도 하지
+   * 않는다(사용자 결정 2026-08-21). 이것은 2026-08-11 의 "범위는 종목이다 — 링크
+   * 그룹이 아니다" 를 번복한 것이고, 그 사연은 `cursorSync.ts` 헤더가 갖는다.
    *
-   * **종목 축은 이제 설정이 정한다**(2026-08-21): ⚙️ 설정 → 차트의
-   * `cursorSyncCrossSymbol`(기본 켬)이 켜져 있으면 종목이 달라도 따라오고, 끄면
-   * 2026-08-11 동작(같은 종목만)으로 돌아간다. 이 prop 은 **기능 자체의 on/off** 이고
-   * 종목 범위는 `CursorSyncCrosshair` 가 직접 읽는다 — 판정은 여전히
-   * `resolveSyncTarget` 한 곳이다.
+   * **종목 축은 그 안에서 설정이 정한다**: ⚙️ 설정 → 차트의 `cursorSyncCrossSymbol`
+   * (기본 켬). 같은 번호여도 **핀**이 걸린 창은 종목이 다를 수 있어 이 축이 남는다.
+   * 이 prop 은 **기능 자체의 on/off** 이고 범위 판정은 `resolveSyncTarget` 한 곳이다.
    *
    * 라우트를 여기서 스니핑하지 않고 **prop 으로 받는** 이유는 둘이다: 결정의
    * 소유자가 페이지이고, `/study` 워크스페이스 어댑터를 정적 import 하면 그
@@ -1037,6 +1035,7 @@ export function LiveChartRoot({
   // `rangeSyncEnabled`, 종목 축은 크로스헤어와 공유하는 `cursorSyncCrossSymbol` 이다.
   const rangeSyncEnabled = useActivePrefs((p) => p.rangeSyncEnabled);
   const rangeSyncCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  const rangeSyncZoom = useActivePrefs((p) => p.rangeSyncZoom);
   const rangeSyncOn = cursorSyncCrosshair && rangeSyncEnabled;
   useRangeSyncPublish({
     chart,
@@ -1048,9 +1047,12 @@ export function LiveChartRoot({
   useRangeSyncFollow({
     chart,
     axis,
-    hasCandles: (cb?.candles.length ?? 0) > 0,
+    candleCount: cb?.candles.length ?? 0,
+    lastCandleMs: lastCandleMsRef.current,
     enabled: rangeSyncOn && isRangeSyncFollower(timeframe),
+    syncZoom: rangeSyncZoom,
     myWindowId: winCtxWindowId,
+    myGroup: winCtxGroup,
     myCode: code,
     allowCrossSymbol: rangeSyncCrossSymbol,
   });

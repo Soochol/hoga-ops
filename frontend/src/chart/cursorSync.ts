@@ -238,12 +238,13 @@ function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle |
 }
 
 /**
- * 이 창이 무엇을 그려야 하는가. 아래 넷 중 하나라도 걸리면 `none`(= 아무것도 안 함).
+ * 이 창이 무엇을 그려야 하는가. 아래 다섯 중 하나라도 걸리면 `none`(= 아무것도 안 함).
  *
  * 1. 발행이 없다.
  * 2. **내가 발행자다** — 자기 호버를 되받으면 lwc 자체 크로스헤어와 이중이 된다.
  * 3. **받지 않는 발행 봉이다**(W/M) — `acceptsOriginTimeframe`.
- * 4. **종목이 다르다** — 단 `allowCrossSymbol` 이 이 게이트를 **끈다**(아래).
+ * 4. **창번호(링크 그룹)가 다르다** — 아래 「범위는 창번호다」 절.
+ * 5. **종목이 다르다** — 단 `allowCrossSymbol` 이 이 게이트를 **끈다**(아래).
  *
  * 게이트를 다 통과했는데 다리가 대상을 못 찾으면 둘로 갈린다: 그 날이 로드 범위
  * **밖**이면 `out-of-range`(방향만 알려 준다), 범위 **안**인데 없으면(휴장·구멍)
@@ -254,12 +255,22 @@ function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle |
  * 띄우면 호버할 때마다 자기 창에 "범위 밖" 이 뜬다 — 게이트를 먼저 통과시키는 순서가
  * 그걸 막는다(회귀 테스트로 고정).
  *
- * ── 게이트 4 와 `allowCrossSymbol` ────────────────────────────────────────
+ * ── 범위는 **창번호**다(게이트 4) ─────────────────────────────────────────
+ * 창 헤더의 그 작은 번호(링크 그룹)가 동기화 범위를 정한다 — 번호가 다른 창끼리는
+ * 어떤 동기화도 하지 않는다(사용자 결정 2026-08-21).
+ *
+ * **이것은 2026-08-11 결정의 번복이다.** 그때는 "범위는 종목이다 — 링크 그룹이
+ * 아니다"(ADR-0119 §4 「드로잉 = 종목 귀속」과 같은 답)였다. 창을 여러 개 띄우고
+ * 그룹을 나눠 쓰는 실사용에서, 그룹 1 의 호버가 그룹 2 의 창까지 움직이는 것이
+ * 방해가 된다는 판단이다. 되돌리려면 이 게이트 하나만 지우면 된다.
+ *
+ * `/study` 는 모든 창이 group `null` 이라 이 축이 상수다 — 서로 통과한다.
+ *
+ * ── 게이트 5 와 `allowCrossSymbol` ────────────────────────────────────────
  * **막는 방향**(`allowCrossSymbol === false`): 종목이 다른 창끼리 동기화되는 것.
- * `/live` 는 창마다 종목이 다른 것이 1급 사용 패턴이라 여기가 유일한 방어선이고,
- * 링크 그룹은 보지 않는다(사용자 결정 2026-08-11 · ADR-0119 §4 「드로잉 = 종목
- * 귀속」과 같은 답). `/study` 는 모든 창이 활성 저장뷰의 같은 code 를 보므로 이
- * 축이 상수다 — 어느 값이든 결과가 같다.
+ * 창번호 게이트가 생긴 뒤에도 이 축이 남는 이유는 **핀** 때문이다 —
+ * `windowSymbolOf` 가 `pinned ?? groupSymbols[group]` 이라, 같은 그룹이어도 핀이
+ * 걸린 창은 종목이 다르다. `/study` 는 모든 창이 같은 code 라 여기도 상수다.
  *
  * **토글이 바꾸는 것**: `cursorSyncCrossSymbol`(⚙️ 설정 → 차트, **기본 켬**)이 켜지면
  * 게이트 4 만 건너뛴다. 나머지 셋은 그대로다. 켠 상태의 귀결 하나는 **지수 창도
@@ -276,6 +287,8 @@ function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle |
 export function resolveSyncTarget(params: {
   cursor: SyncCursor | null;
   myWindowId: string | null;
+  /** 이 창의 링크 그룹(창 헤더의 번호). Provider 밖(`/study`·단일 뷰)이면 null. */
+  myGroup: number | null;
   myCode: string | null;
   source: SyncTargetSource;
   /**
@@ -287,12 +300,16 @@ export function resolveSyncTarget(params: {
    */
   allowCrossSymbol: boolean;
 }): SyncResolution {
-  const { cursor, myWindowId, myCode, source, allowCrossSymbol } = params;
+  const { cursor, myWindowId, myGroup, myCode, source, allowCrossSymbol } = params;
   const none: SyncResolution = { kind: 'none' };
   if (!cursor) return none;
   const { origin } = cursor;
   if (origin.windowId !== null && origin.windowId === myWindowId) return none;
   if (!acceptsOriginTimeframe(origin.timeframe)) return none;
+  // 창번호. **엄격 비교다** — code 게이트의 관대한 `!== null` 방식을 쓰지 않는다.
+  // 그쪽은 code 가 늦게 붙는 창이 있어 관대해야 했지만, group 은 Provider 값이라
+  // 렌더 첫 프레임부터 확정이고, 관대하면 "번호 없는 창" 이 모두와 동기화된다.
+  if (origin.group !== myGroup) return none;
   if (!allowCrossSymbol && origin.code !== null && myCode !== null && origin.code !== myCode) {
     return none;
   }

@@ -195,7 +195,7 @@ export function pastChunkCalendarDays(bucketMs: number): number {
 /** 서버가 예산 내로 응답하므로 정상 요청은 수 초에 끝난다. 30s는 서버
  * 포화·행 상태에서 무한 로딩을 끊는 백스톱 — abort되면 React Query
  * 재시도/refetchInterval이 이어받는다. */
-const PAST_CANDLES_TIMEOUT_MS = 30_000;
+export const PAST_CANDLES_TIMEOUT_MS = 30_000;
 
 export function withPastCandlesTimeout(signal: AbortSignal, ms: number): AbortSignal {
   if (typeof AbortSignal.any !== 'function' || typeof AbortSignal.timeout !== 'function') {

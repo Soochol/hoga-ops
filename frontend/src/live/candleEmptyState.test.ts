@@ -170,7 +170,17 @@ describe('deriveCandleEmptyState — 저장뷰 얼림', () => {
     const s = deriveCandleEmptyState({
       ...base, restBypassEnabled: true, savedRangeFrozen: true,
     });
-    expect(s?.text).toBe('저장 구간에 캡처된 캔들이 없다');
+    expect(s?.text).toBe('저장 구간에 캔들이 없다 — 캡처도 벤더 보충도 없다');
+    expect(s?.action).toBeNull();
+  });
+
+  it('보충이 도는 중이면 "없다" 고 단언하지 않는다', () => {
+    // **막는 방향**: 곧 채워질 구간을 빈 상태로 선언해 화면이 없음 → 있음으로 뒤집히는 것.
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, savedRangeFrozen: true,
+      savedRangeGapFillPending: true,
+    });
+    expect(s?.text).toContain('보충하는 중');
     expect(s?.action).toBeNull();
   });
 

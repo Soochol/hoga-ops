@@ -42,7 +42,7 @@ const MINUTE_CANDLES: SyncCandle[] = [
 ];
 
 function origin(over: Partial<SidebarCursorOrigin> = {}): SidebarCursorOrigin {
-  return { windowId: 'minute-window', group: null, code: '064350', timeframe: '3m', ...over };
+  return { windowId: 'minute-window', group: 1, code: '064350', timeframe: '3m', ...over };
 }
 
 /** 종목 게이트가 **켜진**(= 같은 종목만) 모드. 2026-08-11~08-21 의 유일한 동작. */
@@ -50,6 +50,7 @@ function target(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
   return hitOf(resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'daily-window',
+    myGroup: 1,
     myCode: '064350',
     source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
     allowCrossSymbol: false,
@@ -66,6 +67,7 @@ function minuteTarget(
   return hitOf(resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'minute-consumer',
+    myGroup: 1,
     myCode: '064350',
     source: { axis: 'instant', candles },
     allowCrossSymbol: true,
@@ -81,6 +83,7 @@ function minuteResolution(
   return resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'minute-consumer',
+    myGroup: 1,
     myCode: '064350',
     source: { axis: 'instant', candles },
     allowCrossSymbol: true,
@@ -92,6 +95,7 @@ function targetCross(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500
   return hitOf(resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'daily-window',
+    myGroup: 1,
     myCode: '064350',
     source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
     allowCrossSymbol: true,
@@ -113,7 +117,7 @@ describe('resolveSyncTarget', () => {
 
   it('발행이 없으면 대상이 없다', () => {
     expect(hitOf(resolveSyncTarget({
-      cursor: null, myWindowId: 'daily-window', myCode: '064350',
+      cursor: null, myWindowId: 'daily-window', myGroup: 1, myCode: '064350',
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     }))).toBeNull();
   });
@@ -141,7 +145,7 @@ describe('resolveSyncTarget', () => {
     expect(target({ code: null })).not.toBeNull();
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin() },
-      myWindowId: 'daily-window', myCode: null,
+      myWindowId: 'daily-window', myGroup: 1, myCode: null,
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     })).not.toBeNull();
   });
@@ -161,14 +165,33 @@ describe('resolveSyncTarget', () => {
  * 둘 다 null 인 경우(아래 마지막 케이스가 그 통과를 명시로 고정한다).
  */
 describe('resolveSyncTarget — /live 스코프', () => {
-  it('링크 그룹이 달라도 같은 종목이면 동기화한다 — 범위는 종목이다', () => {
-    // 사용자 결정 2026-08-11. ADR-0119 §4 가 드로잉을 종목 귀속으로 뒤집은 것과 같은
-    // 답이다. 그룹으로 좁히려면 여기가 실패해야 하므로, 이 단언이 곧 그 결정이다.
-    expect(target({ group: 3 })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+  it('창번호(링크 그룹)가 다르면 무시한다 — 범위는 창번호다', () => {
+    // **2026-08-11 결정의 번복**(사용자 결정 2026-08-21). 그때는 「그룹이 달라도 같은
+    // 종목이면 동기화한다 — 범위는 종목이다」였고 이 자리에 그 단언이 있었다. 창을
+    // 여러 개 띄우고 그룹을 나눠 쓰면 그룹 1 의 호버가 그룹 2 까지 움직이는 것이
+    // 방해가 된다는 판단이다. 되돌리려면 게이트 하나만 지우면 된다.
+    expect(target({ group: 3 })).toBeNull();
+    // 종목 토글을 켜도 창번호는 열리지 않는다 — 축이 다르다.
+    expect(targetCross({ group: 3 })).toBeNull();
   });
 
-  it('같은 그룹이라도 종목이 다르면 무시한다 — 그룹은 판정에 쓰이지 않는다', () => {
+  it('같은 창번호라도 종목이 다르면 무시한다 — 두 축이 각각 산다', () => {
+    // 같은 그룹인데 종목이 다를 수 있는 이유는 **핀**이다
+    // (`windowSymbolOf` = `pinned ?? groupSymbols[group]`).
     expect(target({ group: 1, code: '005930' })).toBeNull();
+  });
+
+  it('`/study` 처럼 양쪽이 번호 없음이면 통과한다', () => {
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ group: null }) },
+      myWindowId: 'daily-window', myGroup: null, myCode: '064350',
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+      allowCrossSymbol: false,
+    })).toEqual({ kind: 'hit', candle: { ts_ms: DAY_20250619, close: 212000 } });
+  });
+
+  it('한쪽만 번호가 없으면 막는다 — code 게이트의 관대한 비교를 쓰지 않는다', () => {
+    expect(target({ group: null })).toBeNull();
   });
 
   it('지수 창은 code 가 `index:` 접두로 채워져 서로 갈린다', () => {
@@ -176,7 +199,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     // 아니므로 KOSPI 호버가 KOSDAQ 창으로 새지 않는다.
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
-      myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
+      myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSDAQ',
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     }))).toBeNull();
   });
@@ -187,7 +210,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     // null 인 창 종류가 새로 생기면 여기가 먼저 샌다. 통과를 명시로 남겨 둔다.
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: null }) },
-      myWindowId: 'daily-window', myCode: null,
+      myWindowId: 'daily-window', myGroup: 1, myCode: null,
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     })).not.toBeNull();
   });
@@ -211,7 +234,7 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
     // `index:KOSPI` 일봉 창 ← 개별 종목 분봉 호버. 꺼진 모드에서는 갈렸다.
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: '005930' }) },
-      myWindowId: 'daily-window', myCode: 'index:KOSPI',
+      myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSPI',
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
     }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
@@ -219,7 +242,7 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
   it('지수끼리도 서로 받는다 — KOSPI 호버 → KOSDAQ 창', () => {
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
-      myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
+      myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSDAQ',
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
     }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
@@ -402,6 +425,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
   const resolution = (tsMs: number) => resolveSyncTarget({
     cursor: { tsMs, origin: origin({ windowId: 'other' }) },
     myWindowId: 'daily-window',
+    myGroup: 1,
     myCode: '064350',
     source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
     allowCrossSymbol: false,
@@ -422,6 +446,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: Date.UTC(2025, 5, 20, 6, 0), origin: origin({ windowId: 'other' }) },
       myWindowId: 'daily-window',
+      myGroup: 1,
       myCode: '064350',
       source: { axis: 'date', byDate: indexCandlesByKstDate(holed), candles: holed },
       allowCrossSymbol: false,
@@ -432,6 +457,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ windowId: 'other' }) },
       myWindowId: 'daily-window',
+      myGroup: 1,
       myCode: '064350',
       source: { axis: 'date', byDate: new Map(), candles: [] },
       allowCrossSymbol: false,
@@ -442,6 +468,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: Date.UTC(2025, 5, 10, 6, 0), origin: origin({ windowId: 'other', code: '005930' }) },
       myWindowId: 'daily-window',
+      myGroup: 1,
       myCode: '064350',
       source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
       allowCrossSymbol: false,

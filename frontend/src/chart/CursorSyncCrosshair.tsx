@@ -80,7 +80,10 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
   const [, force] = useState(0);
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
   const syncCursorOrigin = useLiveCursorStore((s) => s.syncCursorOrigin);
-  const myWindowId = useContext(WindowViewContext)?.windowId ?? null;
+  const winCtx = useContext(WindowViewContext);
+  const myWindowId = winCtx?.windowId ?? null;
+  // 창번호(링크 그룹) — 동기화 범위를 정한다(`cursorSync.ts` 헤더의 그 절).
+  const myGroup = winCtx?.group ?? null;
   // ⚙️ 설정 → 차트의 「크로스헤어 동기화 — 다른 종목까지」(기본 켬). 차트 전반
   // 카테고리라 전역 flat 값이고, Provider 밖(`/study`·단일 차트)에서도 같은 값을
   // 읽는다 — `/study` 는 창이 전부 같은 종목이라 이 값이 결과를 바꾸지 않는다.
@@ -124,11 +127,12 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
         ? { tsMs: syncCursorMs, origin: syncCursorOrigin }
         : null,
       myWindowId,
+      myGroup,
       myCode: code,
       source,
       allowCrossSymbol,
     }),
-    [syncCursorMs, syncCursorOrigin, myWindowId, code, source, allowCrossSymbol],
+    [syncCursorMs, syncCursorOrigin, myWindowId, myGroup, code, source, allowCrossSymbol],
   );
   const target = resolution.kind === 'hit' ? resolution.candle : null;
 
