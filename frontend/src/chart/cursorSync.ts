@@ -47,30 +47,52 @@ export function indexCandlesByKstDate(
  * 1. 발행이 없다.
  * 2. **내가 발행자다** — 자기 호버를 되받으면 lwc 자체 크로스헤어와 이중이 된다.
  * 3. **분봉 발행이 아니다** — 일봉↔일봉 동기화는 의미가 없다(같은 축이면 그냥 같은 칸).
- * 4. **종목이 다르다** — `/live` 에서 **동기화 범위를 정하는 게이트**다. 창마다 종목이
- *    다른 것이 1급 사용 패턴이라 여기가 유일한 방어선이고, 링크 그룹은 보지 않는다
- *    (사용자 결정 2026-08-11 · ADR-0119 §4 「드로잉 = 종목 귀속」과 같은 답).
- *    `/study` 는 모든 창이 활성 저장뷰의 같은 code 를 보므로 형식적으로 통과한다.
+ * 4. **종목이 다르다** — 단 `allowCrossSymbol` 이 이 게이트를 **끈다**(아래).
  *
  * 그리고 그 날의 일봉이 이 창에 없으면(맥락 창 밖 · 휴장) 역시 `null` 이다.
  *
- * **못 막는 것 하나**: 양쪽 code 가 **둘 다 null** 이면 통과한다(관대한 `!== null`
- * 가드). `/live` 의 지수 창은 `index:KOSPI` 로 채워지고 종목 없는 창은 `LiveChartRoot`
- * 자체가 렌더되지 않아 현재 도달 경로가 없지만, 새 code-null 창이 생기면 여기가
- * 먼저 샌다 — 회귀 테스트로 이 성질을 고정해 두었다.
+ * ── 게이트 4 와 `allowCrossSymbol` ────────────────────────────────────────
+ * **막는 방향**(`allowCrossSymbol === false`): 종목이 다른 창끼리 동기화되는 것.
+ * `/live` 는 창마다 종목이 다른 것이 1급 사용 패턴이라 여기가 유일한 방어선이고,
+ * 링크 그룹은 보지 않는다(사용자 결정 2026-08-11 · ADR-0119 §4 「드로잉 = 종목
+ * 귀속」과 같은 답). `/study` 는 모든 창이 활성 저장뷰의 같은 code 를 보므로 이
+ * 축이 상수다 — 어느 값이든 결과가 같다.
+ *
+ * **토글이 바꾸는 것**: `cursorSyncCrossSymbol`(⚙️ 설정 → 차트, **기본 켬**)이 켜지면
+ * 게이트 4 만 건너뛴다. 나머지 셋(발행 유무 · 자기 발행 · 분봉 발행)은 그대로다.
+ * 켠 상태의 귀결 하나는 **지수 창도 받는다**는 것이다 — 다리가 KST 날짜뿐이라
+ * `index:KOSPI` 일봉 창이 개별 종목 분봉 호버를 받고, 그 반대도 된다(사용자 결정
+ * 2026-08-21, 「다른 종목에도 적용」의 직역).
+ *
+ * **못 보는 것**: 이 판정은 종목만 본다 — 어느 창이 발행했는지는 소비 창 화면에
+ * 남지 않는다(엣지 칩은 날짜만). 그리고 `allowCrossSymbol === false` 여도 양쪽
+ * code 가 **둘 다 null** 이면 통과한다(관대한 `!== null` 가드). `/live` 의 지수 창은
+ * `index:KOSPI` 로 채워지고 종목 없는 창은 `LiveChartRoot` 자체가 렌더되지 않아 현재
+ * 도달 경로가 없지만, 새 code-null 창이 생기면 여기가 먼저 샌다 — 회귀 테스트로 이
+ * 성질을 고정해 두었다.
  */
 export function resolveSyncTarget(params: {
   cursor: SyncCursor | null;
   myWindowId: string | null;
   myCode: string | null;
   byDate: ReadonlyMap<string, SyncCandle>;
+  /**
+   * 게이트 4(종목 일치)를 끈다 — `cursorSyncCrossSymbol` 토글의 값이다.
+   *
+   * **선택 인자가 아니다.** 순수 함수 기본값을 두면 그 기본과 레지스트리 기본
+   * (`default: true`)이 조용히 갈리고, 인자를 안 적은 테스트가 제품 기본이 아닌
+   * 모드를 검사하게 된다. 호출부·테스트가 매번 어느 모드인지 밝히게 둔다.
+   */
+  allowCrossSymbol: boolean;
 }): SyncCandle | null {
-  const { cursor, myWindowId, myCode, byDate } = params;
+  const { cursor, myWindowId, myCode, byDate, allowCrossSymbol } = params;
   if (!cursor) return null;
   const { origin } = cursor;
   if (origin.windowId !== null && origin.windowId === myWindowId) return null;
   if (!isMinuteTimeframe(origin.timeframe)) return null;
-  if (origin.code !== null && myCode !== null && origin.code !== myCode) return null;
+  if (!allowCrossSymbol && origin.code !== null && myCode !== null && origin.code !== myCode) {
+    return null;
+  }
   return byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null;
 }
 

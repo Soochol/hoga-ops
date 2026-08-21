@@ -77,6 +77,16 @@ export const CHART_TOGGLES = [
     default: false,
   },
   {
+    key: 'cursorSyncCrossSymbol',
+    label: '크로스헤어 동기화 — 다른 종목까지',
+    // 설명문은 평문으로 렌더된다(SettingsRow) — 마크다운 강조를 쓰면 별표가 그대로 뜬다.
+    description:
+      '분봉 창에 마우스를 올린 시각의 날짜를 일봉(D) 창에 크로스헤어로 표시합니다. '
+      + '켜면 창의 종목이 달라도 표시합니다 — 다리가 날짜뿐이라 지수 창(KOSPI·KOSDAQ)도 '
+      + '서로 받습니다. 끄면 같은 종목을 보는 창끼리만 표시합니다.',
+    default: true,
+  },
+  {
     key: 'highLowLabelsEnabled',
     label: '고저 극값 라벨',
     description:

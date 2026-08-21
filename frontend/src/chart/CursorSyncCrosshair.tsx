@@ -19,7 +19,9 @@
  * 걷어냈고, 같은 이유로 엣지 인디케이터에서도 시각을 뺐다.
  *
  * 좌표·필터 판정은 `cursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
- * 그린다.
+ * 그린다. **종목 범위만 이 컴포넌트가 실어 준다** — ⚙️ 설정 → 차트의
+ * `cursorSyncCrossSymbol`(기본 켬)을 읽어 `allowCrossSymbol` 로 넘긴다. 끄면
+ * 같은 종목 창끼리만 동기화하던 2026-08-11 동작으로 돌아간다.
  *
  * 실측으로 확인한 성질 하나: `setCrosshairPosition` 은 그 차트의
  * `subscribeCrosshairMove` 를 **발화시키지 않는다.** 그래서 일봉 창의 레전드·툴팁은
@@ -31,6 +33,7 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { useActivePrefs } from '../state/chartPrefs';
 import { WindowViewContext } from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
 import {
@@ -64,6 +67,10 @@ function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) 
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
   const syncCursorOrigin = useLiveCursorStore((s) => s.syncCursorOrigin);
   const myWindowId = useContext(WindowViewContext)?.windowId ?? null;
+  // ⚙️ 설정 → 차트의 「크로스헤어 동기화 — 다른 종목까지」(기본 켬). 차트 전반
+  // 카테고리라 전역 flat 값이고, Provider 밖(`/study`·단일 차트)에서도 같은 값을
+  // 읽는다 — `/study` 는 창이 전부 같은 종목이라 이 값이 결과를 바꾸지 않는다.
+  const allowCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
 
   // 축이 움직이면 칩 좌표를 다시 잡는다. `StudySavedRangeBand` 와 같은 패턴
   // (rAF 로 합친 visible-range 구독 + `ResizeObserver`).
@@ -95,8 +102,9 @@ function CursorSyncCrosshair({ chart, axis, candles, paneSeries, code }: Props) 
       myWindowId,
       myCode: code,
       byDate,
+      allowCrossSymbol,
     }),
-    [syncCursorMs, syncCursorOrigin, myWindowId, code, byDate],
+    [syncCursorMs, syncCursorOrigin, myWindowId, code, byDate, allowCrossSymbol],
   );
 
   // 크로스헤어 자체. cleanup 이 이전 위치를 지우므로 커서가 바뀌면 옮겨 가고,

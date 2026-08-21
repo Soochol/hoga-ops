@@ -23,12 +23,25 @@ function origin(over: Partial<SidebarCursorOrigin> = {}): SidebarCursorOrigin {
   return { windowId: 'minute-window', group: null, code: '064350', timeframe: '3m', ...over };
 }
 
+/** 종목 게이트가 **켜진**(= 같은 종목만) 모드. 2026-08-11~08-21 의 유일한 동작. */
 function target(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
   return resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'daily-window',
     myCode: '064350',
     byDate: indexCandlesByKstDate(CANDLES),
+    allowCrossSymbol: false,
+  });
+}
+
+/** 종목 게이트를 **끈** 모드(`cursorSyncCrossSymbol` 켬 — 레지스트리 기본값). */
+function targetCross(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
+  return resolveSyncTarget({
+    cursor: { tsMs, origin: origin(over) },
+    myWindowId: 'daily-window',
+    myCode: '064350',
+    byDate: indexCandlesByKstDate(CANDLES),
+    allowCrossSymbol: true,
   });
 }
 
@@ -48,7 +61,7 @@ describe('resolveSyncTarget', () => {
   it('발행이 없으면 대상이 없다', () => {
     expect(resolveSyncTarget({
       cursor: null, myWindowId: 'daily-window', myCode: '064350',
-      byDate: indexCandlesByKstDate(CANDLES),
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: false,
     })).toBeNull();
   });
 
@@ -60,7 +73,7 @@ describe('resolveSyncTarget', () => {
     expect(target({ timeframe: 'D' })).toBeNull();
   });
 
-  it('종목이 다르면 무시한다', () => {
+  it('종목이 다르면 무시한다 — `allowCrossSymbol` 이 꺼진 모드', () => {
     expect(target({ code: '005930' })).toBeNull();
   });
 
@@ -71,7 +84,7 @@ describe('resolveSyncTarget', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin() },
       myWindowId: 'daily-window', myCode: null,
-      byDate: indexCandlesByKstDate(CANDLES),
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: false,
     })).not.toBeNull();
   });
 
@@ -85,8 +98,9 @@ describe('resolveSyncTarget', () => {
  * `/live` 워크스페이스에서 처음 의미를 갖는 성질들. `/study` 는 창이 전부 같은 종목·
  * 그룹 없음이라 이 축들이 상수였다.
  *
- * **이 가드가 막는 방향**: 종목이 다른 창끼리 동기화되는 것. **못 보는 것**: 양쪽
- * code 가 둘 다 null 인 경우(아래 마지막 케이스가 그 통과를 명시로 고정한다).
+ * **이 가드가 막는 방향**: `allowCrossSymbol` 이 **꺼진 모드**에서 종목이 다른 창끼리
+ * 동기화되는 것. 켠 모드는 아래 별도 describe 가 잰다. **못 보는 것**: 양쪽 code 가
+ * 둘 다 null 인 경우(아래 마지막 케이스가 그 통과를 명시로 고정한다).
  */
 describe('resolveSyncTarget — /live 스코프', () => {
   it('링크 그룹이 달라도 같은 종목이면 동기화한다 — 범위는 종목이다', () => {
@@ -105,7 +119,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
       myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
-      byDate: indexCandlesByKstDate(CANDLES),
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: false,
     })).toBeNull();
   });
 
@@ -116,8 +130,53 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: null }) },
       myWindowId: 'daily-window', myCode: null,
-      byDate: indexCandlesByKstDate(CANDLES),
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: false,
     })).not.toBeNull();
+  });
+});
+
+/**
+ * `cursorSyncCrossSymbol` 이 **켜진** 모드(⚙️ 설정 → 차트, 레지스트리 기본값).
+ *
+ * **이 블록이 고정하는 것**: 게이트 4(종목)만 열리고 나머지 셋은 그대로라는 것.
+ * "다른 종목에도 뜬다" 만 재면 자기 발행 되받기·일봉 발행까지 함께 열려도 초록이라,
+ * 열린 축과 닫힌 축을 **같이** 잰다.
+ */
+describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)', () => {
+  it('종목이 달라도 같은 날짜의 일봉 캔들을 가리킨다', () => {
+    // 사용자 결정 2026-08-21. 게이트가 꺼진 모드에서는 이 입력이 null 이다
+    // (위 「종목이 다르면 무시한다」와 같은 입력) — 두 단언이 곧 토글의 정의다.
+    expect(targetCross({ code: '005930' })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+  });
+
+  it('지수 창도 개별 종목 호버를 받는다 — 다리가 날짜뿐이라 종목 종류를 가리지 않는다', () => {
+    // `index:KOSPI` 일봉 창 ← 개별 종목 분봉 호버. 꺼진 모드에서는 갈렸다.
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ code: '005930' }) },
+      myWindowId: 'daily-window', myCode: 'index:KOSPI',
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: true,
+    })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+  });
+
+  it('지수끼리도 서로 받는다 — KOSPI 호버 → KOSDAQ 창', () => {
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
+      myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
+      byDate: indexCandlesByKstDate(CANDLES), allowCrossSymbol: true,
+    })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+  });
+
+  it('내가 발행자면 여전히 무시한다 — 열린 건 종목 축뿐이다', () => {
+    expect(targetCross({ windowId: 'daily-window', code: '005930' })).toBeNull();
+  });
+
+  it('일봉 발행은 여전히 무시한다 — 열린 건 종목 축뿐이다', () => {
+    expect(targetCross({ timeframe: 'D', code: '005930' })).toBeNull();
+  });
+
+  it('그 날의 일봉이 이 창에 없으면 여전히 대상이 없다 — 휴장', () => {
+    const holiday = Date.UTC(2025, 5, 21, 6, 0); // 토요일
+    expect(targetCross({ code: '005930' }, holiday)).toBeNull();
   });
 });
 

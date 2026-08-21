@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import CursorSyncCrosshair from './CursorSyncCrosshair';
 import { useLiveCursorStore, type SidebarCursorOrigin } from '../live/useLiveCursorStore';
-import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowView';
+import { useChartPrefsStore } from '../state/chartPrefs';
+import {
+  LIVE_WINDOW_WORKSPACE,
+  WindowViewContext,
+  type WindowViewValue,
+} from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
 
 const DAY_20250619 = Date.UTC(2025, 5, 19, 0, 0);
@@ -38,8 +43,21 @@ function makeChart(coords: Map<number, number | null>) {
 const candleSeries = { __series: true };
 const paneSeries = new Map([['candle', candleSeries]]) as never;
 
-function renderCrosshair(coords = new Map([[DAY_20250619 / 1000, 260]])) {
-  const view = { windowId: 'daily-window' } as WindowViewValue;
+function renderCrosshair(
+  coords = new Map([[DAY_20250619 / 1000, 260]]),
+  code = '064350',
+) {
+  // `workspace` 는 계약상 필수다(`WindowViewValue`) — 지금까지 아무도 읽지 않아
+  // 부분 캐스트로 넘어갔지만, `useActivePrefs` 가 스코프를 잡으려고
+  // `workspace.scopePrefix` 를 읽는다. `/live` 창과 같은 값을 실어 준다.
+  const view: WindowViewValue = {
+    windowId: 'daily-window',
+    group: null,
+    code,
+    timeframe: 'D',
+    historicalFromDate: null,
+    workspace: LIVE_WINDOW_WORKSPACE,
+  };
   return render(
     <WindowViewContext.Provider value={view}>
       <CursorSyncCrosshair
@@ -47,7 +65,7 @@ function renderCrosshair(coords = new Map([[DAY_20250619 / 1000, 260]])) {
         axis={axis}
         candles={CANDLES}
         paneSeries={paneSeries}
-        code="064350"
+        code={code}
       />
     </WindowViewContext.Provider>,
   );
@@ -60,6 +78,9 @@ function publish(tsMs = CURSOR_1500, origin = MINUTE_ORIGIN) {
 describe('CursorSyncCrosshair', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
+    // 이 컴포넌트는 chartPrefs 도 읽는다 — 다른 스펙이 남긴 토글 값이 새면
+    // 종목 축 판정이 조용히 뒤집힌다.
+    useChartPrefsStore.getState().resetToDefaults();
     setCrosshairPosition.mockClear();
     clearCrosshairPosition.mockClear();
   });
@@ -110,6 +131,51 @@ describe('CursorSyncCrosshair', () => {
 
     expect(setCrosshairPosition).not.toHaveBeenCalled();
     expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+  });
+
+  /**
+   * ⚙️ 설정 → 차트의 「크로스헤어 동기화 — 다른 종목까지」가 **실제로 배선돼 있는가**.
+   *
+   * `cursorSync.test.ts` 의 순수 함수 테스트는 이 축을 원리적으로 못 잡는다 —
+   * `resolveSyncTarget` 이 옳아도 컴포넌트가 토글을 안 읽으면 전부 초록이다.
+   * 그래서 **같은 발행을 두 모드로** 흘려 결과가 갈리는지를 잰다(red-check:
+   * `allowCrossSymbol` 전달을 지우면 둘 중 하나가 반드시 빨개진다).
+   */
+  describe('종목 축 — cursorSyncCrossSymbol 배선', () => {
+    /** 이 창은 064350, 발행은 005930 — 종목이 확실히 다르다. */
+    const OTHER_SYMBOL: SidebarCursorOrigin = { ...MINUTE_ORIGIN, code: '005930' };
+
+    it('켜져 있으면(기본) 다른 종목 발행도 크로스헤어로 받는다', () => {
+      expect(useChartPrefsStore.getState().cursorSyncCrossSymbol).toBe(true);
+      renderCrosshair();
+      publish(CURSOR_1500, OTHER_SYMBOL);
+
+      expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
+    });
+
+    it('끄면 같은 종목 창끼리만 받는다 — 2026-08-11 동작', () => {
+      act(() => { useChartPrefsStore.getState().setToggle('cursorSyncCrossSymbol', false); });
+      renderCrosshair();
+      publish(CURSOR_1500, OTHER_SYMBOL);
+
+      expect(setCrosshairPosition).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+    });
+
+    it('꺼도 같은 종목 발행은 그대로 받는다 — 토글이 기능을 통째로 끄는 게 아니다', () => {
+      act(() => { useChartPrefsStore.getState().setToggle('cursorSyncCrossSymbol', false); });
+      renderCrosshair();
+      publish();
+
+      expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
+    });
+
+    it('켜져 있으면 지수 창도 개별 종목 호버를 받는다 — 다리가 날짜뿐이다', () => {
+      renderCrosshair(new Map([[DAY_20250619 / 1000, 260]]), 'index:KOSPI');
+      publish(CURSOR_1500, OTHER_SYMBOL);
+
+      expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
+    });
   });
 
   it('대상이 pane 왼쪽 밖이면 방향과 날짜를 가장자리에 남긴다', () => {
