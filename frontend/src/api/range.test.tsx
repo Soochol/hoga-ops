@@ -2347,3 +2347,55 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
   });
 });
 
+describe('useRangeSidecarDelta — 창이 좁아지면 **어느 경로로 나오든** 잘린다 (배선)', () => {
+  /** 요청 URL 의 from/to 를 그대로 되싣는 번들. 세그먼트는 날짜당 1개. */
+  function bundleFor(url: string): RangeBundle {
+    const [, from, to] = /from=(\d+)&to=(\d+)/.exec(url) ?? [, '', ''];
+    const dates: string[] = [];
+    for (let d = Number(from); d <= Number(to); d += 1) dates.push(String(d));
+    const openOf = (date: string) => (Number(date) - 20260800) * 86_400_000 + 1_780_000_000_000;
+    return {
+      ...fakeBundle,
+      code: '003490', from_date: from, to_date: to, bucket_ms: 60_000,
+      segments: dates.map((date) => ({
+        date, session_open_ms: openOf(date), session_close_ms: openOf(date) + 3600_000,
+        source: 'hogaplay', gap_ms: 0,
+      })),
+      depth_heatmap: dates.map((date) => ({ t_ms: openOf(date) + 60_000 })),
+    } as unknown as RangeBundle;
+  }
+
+  it('넓은 창을 받은 뒤 좁은 창으로 바뀌면 이전 구간이 사라진다', async () => {
+    // 막는 방향: 트림을 **병합 경로에만** 거는 회귀. 창 축소가 발동하는 순간은 정의상
+    // 새 fetch 가 없는 때라, 병합 경로에만 걸면 `historicalFromDate` 만 앞으로 가고
+    // 번들은 그대로 남는다 — 로그는 정상인데 회수가 0 인 **무동작**이 된다
+    // (2026-08-21 실사용 팬 실측에서 실제로 그랬다).
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, [symbolHit('003490', false)]);
+    vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => bundleFor(url) as never);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('003490', from, '20260810', '1m', undefined, '20260810', {
+          mode: 'sidecar',
+        }),
+      { wrapper, initialProps: { from: '20260801' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260801'));
+    expect(result.current.data!.segments).toHaveLength(10);
+
+    // 창 축소: from 이 앞으로 당겨진다(= planViewportContraction 이 한 일).
+    rerender({ from: '20260806' });
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260806'));
+    const dates = result.current.data!.segments.map((s) => s.date);
+    expect(dates).toEqual(['20260806', '20260807', '20260808', '20260809', '20260810']);
+    // 라벨만 바뀌고 배열이 남는 회귀를 막는다 — 실제 시리즈까지 확인한다.
+    expect(result.current.data!.depth_heatmap).toHaveLength(5);
+  });
+});
+
