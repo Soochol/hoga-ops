@@ -218,7 +218,7 @@ export const CHART_TOGGLES = [
   {
     key: 'askPeakLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '당일 매도 최대벽 라벨을 차트 오른쪽에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '당일 매도 최대벽 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -240,7 +240,7 @@ export const CHART_TOGGLES = [
   {
     key: 'bidPeakLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '당일 매수 최대벽 라벨을 차트 오른쪽에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '당일 매수 최대벽 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
     default: true,
     category: 'indicator-modal',
   },

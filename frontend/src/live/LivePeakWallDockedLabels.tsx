@@ -128,9 +128,11 @@ function LivePeakWallDockedLabels({
         visibleTimeCutoff: bidVisibleTimeCutoff,
       })
       : [];
+    // side 는 라벨의 세로 방향을 가른다 — 매도는 선 위, 매수는 선 아래. 같은 분봉에
+    // 양쪽 벽이 동시에 잡히는 최빈 겹침이 배치 없이 해소된다.
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, labelBudget),
-      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, labelBudget),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, 'ask', visibleRange, labelBudget),
+      ...livePeakWallDockedLabelsFromSegments(bidSegments, 'bid', visibleRange, labelBudget),
     ]);
   }, [
     askAllPriceRankLimit,

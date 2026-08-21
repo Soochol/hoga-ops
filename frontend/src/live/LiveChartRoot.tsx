@@ -85,6 +85,7 @@ import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
@@ -1938,7 +1939,7 @@ export function LiveChartRoot({
     if (!cb || !isMinuteTimeframe(timeframe)) return [];
     const askLabelsOn = askPeakEnabled && !askPeakWallHidden && askPeakLabelEnabled;
     const bidLabelsOn = bidPeakEnabled && !bidPeakWallHidden && bidPeakLabelEnabled;
-    const wallSegments = [
+    const wallSegments: (AskPeakSegment & { side: PeakWallLabelSide })[] = [
       ...(askLabelsOn
         ? buildAskPeakOverlaySegments({
           dayAskPeaks: renderDayAskPeaks,
@@ -1949,7 +1950,7 @@ export function LiveChartRoot({
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: askPeakIntraMax,
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
-        })
+        }).map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
       ...(bidLabelsOn
         ? buildBidPeakOverlaySegments({
@@ -1961,20 +1962,25 @@ export function LiveChartRoot({
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: bidPeakIntraMax,
           visibleTimeCutoff: bidVisibleTimeCutoffForRender,
-        })
+        }).map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
-    // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + 가격별 최대
-    // qty 1개(같은 가격에 라벨 칩은 하나만 도킹됨).
-    const bestByPrice = new Map<number, (typeof wallSegments)[number]>();
+    // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
+    // 별 최대 qty 1개. 라벨이 발생 분봉 위로 옮겨간 뒤로는 같은 가격이라도 날마다 x 앵커가
+    // 달라 칩이 따로 그려지므로, 가격만으로 합치면 실재하는 칩을 회피 대상에서 놓친다.
+    const best = new Map<string, (typeof wallSegments)[number]>();
     for (const segment of wallSegments) {
       if (segment.label === '' || !Number.isFinite(segment.price)) continue;
-      const prev = bestByPrice.get(segment.price);
-      if (!prev || segment.qty > prev.qty) bestByPrice.set(segment.price, segment);
+      const key = `${segment.side}|${segment.time0 as unknown as number}|${segment.price}`;
+      const prev = best.get(key);
+      if (!prev || segment.qty > prev.qty) best.set(key, segment);
     }
-    return [...bestByPrice.values()].map((s) => ({
+    return [...best.values()].map((s) => ({
       price: s.price,
+      time0: s.time0,
       time1: s.time1,
+      peakTime: s.peakTime,
+      side: s.side,
       label: s.label,
     }));
   }, [
