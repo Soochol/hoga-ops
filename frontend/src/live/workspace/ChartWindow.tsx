@@ -140,15 +140,25 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 지수 창(`view.code` 가 KOSPI 등)은 심볼 마스터에 없어 해석이 항등이다.
   const resolvedVenue = useEffectiveVenue(view.code, selectedVenue);
   // ── 저장뷰 기간 (2026-08-21) ──────────────────────────────────────────
-  // 슬롯은 전역이지만 **이 창이 그 종목을 그릴 때만** 적용된다. 창 번호·링크 그룹은
-  // 보지 않는다 — 저장뷰가 묶인 것은 종목이지 창이 아니고, 사용자 결정도 "창 번호
-  // 상관없이 모두" 였다. 핀 창도 그 종목을 그리고 있으면 밴드를 받는다(핀이 막는
-  // 것은 종목 교체이지 표시가 아니다).
+  //
+  // **표시는 전 창, venue 고정은 저장뷰 종목 창만** — 두 개념을 가른다.
+  //
+  // 표시(밴드·착석·칩)가 종목을 안 보는 이유: 저장 구간은 **달력 위의 구간**이고
+  // `studySavedRangeMarks` 는 그 창의 캔들에서 해당 기간 봉을 찾을 뿐이라 종목에
+  // 의존하지 않는다. 그래서 여러 종목을 나란히 놓고 **같은 기간을 비교**하는 화면이
+  // 된다(2026-08-21 사용자 결정 — 종전에는 저장뷰 종목 창에만 떴다).
+  //
+  // ⚠ **venue 고정은 같이 넓히면 안 된다.** KRX 고정의 근거는 "저장뷰가 가리키는
+  // **그 종목**의 복기 데이터가 hogaplay(KRX 전용)" 인데, 다른 종목 창은 그 데이터를
+  // 보는 게 아니라 같은 기간을 볼 뿐이다. 함께 풀면 저장뷰와 무관한 창까지 거래소가
+  // 조용히 바뀐다.
   const savedRangeFocus = useLivePageStore((s) => s.savedRangeFocus);
-  const savedRange = savedRangeFocus && view.code === savedRangeFocus.code ? savedRangeFocus : null;
-  // 저장뷰 창은 **KRX 고정** — 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
+  const savedRange = savedRangeFocus;
+  /** 이 창이 저장뷰 **그 종목**을 그리는가 — venue 고정과 칩의 「KRX」 표기의 축. */
+  const isSavedRangeSubject = savedRangeFocus !== null && view.code === savedRangeFocus.code;
+  // 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
   // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
-  const venue = savedRange ? SAVED_RANGE_VENUE : resolvedVenue;
+  const venue = isSavedRangeSubject ? SAVED_RANGE_VENUE : resolvedVenue;
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
@@ -444,6 +454,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               label={savedRange.label}
               fromDate={savedRange.fromDate}
               toDate={savedRange.toDate}
+              krxPinned={isSavedRangeSubject}
               notice={savedRangeChipNotice}
               onClear={clearSavedRange}
             />
