@@ -65,6 +65,40 @@ describe('창 헤더 고정(핀) 버튼', () => {
     },
   );
 
+  // 오른쪽 배치는 **두 축**이 함께 만든다: JSX 위치(제목 뒤)와 정렬(`ml-auto`).
+  // 둘을 한 단언으로 뭉치면 한쪽만 되돌아가도 초록이라, 축마다 따로 잰다
+  // (실측: `ml-auto` 만 지웠을 때 DOM 순서 단언은 통과했다).
+  it('헤더 오른쪽 ① DOM 순서 — 제목 뒤, 닫기(×) 앞', () => {
+    const { pin } = renderFrame({ pinned: false });
+    const title = screen.getByText(/삼성전자/);
+    const close = screen.getByTitle('창 닫기');
+
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    // 제목 → 핀 → × 순서. compareDocumentPosition 은 인자가 뒤에 오면 FOLLOWING 을 켠다.
+    expect(title.compareDocumentPosition(pin) & FOLLOWING).toBeTruthy();
+    expect(pin.compareDocumentPosition(close) & FOLLOWING).toBeTruthy();
+  });
+
+  it('헤더 오른쪽 ② 정렬 — 바로 앞에 flex-1 스페이서가 여유를 혼자 먹는다', () => {
+    // jsdom 은 레이아웃을 안 하므로 실제 x 좌표를 잴 수 없다 — 정렬 **수단**을 잰다.
+    // 눈으로 보는 최종 확인은 도그푸딩 실측이 담당한다(이 단언의 한계).
+    //
+    // **`ml-auto` 가 아니어야 한다**: 코어의 × 도 `ml-auto` 라 둘을 함께 두면 flex 가
+    // 여유를 auto 마진들에 균등 분배해 핀이 중간에 뜬다(실측 179px 간격). 그 회귀를
+    // 막는 것이 이 단언의 목적이므로 스페이서 **와** ml-auto 부재를 함께 잰다.
+    const { pin } = renderFrame({ pinned: false });
+
+    expect(pin.previousElementSibling?.className).toContain('flex-1');
+    expect(pin.className).not.toContain('ml-auto');
+  });
+
+  it('그룹 뱃지는 왼쪽에 그대로 남는다 — 핀만 옮겼다', () => {
+    const { pin } = renderFrame({ pinned: false });
+    const badge = screen.getByTitle('링크 그룹 변경');
+
+    expect(badge.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('onTogglePin 을 안 넘기면 버튼 자체가 없다(/study 등 핀 없는 호출부)', () => {
     render(
       <WindowFrame

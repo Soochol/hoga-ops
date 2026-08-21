@@ -119,38 +119,6 @@ function WindowFrameImpl(props: WindowFrameProps) {
             onToggle={() => onTogglePalette(id)}
             onPick={(g) => onPickGroup(id, g)}
           />
-          {/* 종목 고정 — 그룹 뱃지 바로 옆이다. 두 컨트롤이 같은 축(이 창이 어느 종목을
-              따르는가)을 다루므로 붙여 두면 "그룹을 따를지 / 이 창에 붙들지" 가 한 자리에
-              읽힌다. `title` 이 스코프를 **창**으로 못 박는다 — 그룹 뱃지 옆이라 그룹
-              단위로 오해되기 쉬운 자리다(DESIGN 2026-08-07 #759 결정 1 의 반대 방향
-              함정: 거기선 전역 값을 창 헤더에 뒀을 때, 여기선 창 값을 그룹 컨트롤 옆에
-              둘 때). 종목이 없어 켤 수 없는 창은 disabled — 흐린 것이 기능이다. */}
-          {onTogglePin && (
-            <button
-              type="button"
-              data-testid="window-pin-toggle"
-              aria-pressed={pinned}
-              disabled={!canPin}
-              className={`inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm ${
-                pinned
-                  ? 'bg-tint-selection text-accent hover:brightness-125'
-                  : canPin
-                    ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
-                    : 'cursor-not-allowed text-fg-dimmer'
-              }`}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => onTogglePin(id)}
-              title={
-                pinned
-                  ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
-                  : canPin
-                    ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
-                    : '고정할 종목이 없습니다'
-              }
-            >
-              <PinGlyph filled={pinned} />
-            </button>
-          )}
           {/* 차트 창은 종목 식별 행(종목명·현재가·등락률·히트맵·경고)을 타이틀바에
               그린다(#869 캔버스 레전드에서 이관). 데이터 창·종목 없는 창은 기존 제목. */}
           {kind === 'chart' && symbolCode ? (
@@ -161,6 +129,53 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
               </span>
               {symbolCode && <span className="font-data text-2xs text-fg-dim">{symbolCode}</span>}
+            </>
+          )}
+          {/* 종목 고정 — 헤더 **오른쪽 끝**, 닫기(×) 왼쪽이다 (사용자 결정 2026-08-21).
+              그룹 뱃지 옆에서 옮겼다: 거기서는 제목이 시작하기 전에 컨트롤 둘이 먼저 나와
+              종목명이 밀렸고, 좁은 창일수록 손해가 컸다. 오른쪽은 창 수준 액션(닫기)의
+              자리라 "이 창에 거는 동작" 이라는 스코프와도 맞는다.
+
+              정렬은 **`flex-1` 스페이서**로 만든다. `ml-auto` 를 핀에 걸면 안 된다 —
+              코어의 × 도 `ml-auto` 라, flex 는 여유 공간을 **auto 마진들에 균등 분배**해
+              핀이 오른쪽 끝이 아니라 중간에 뜬다(실측 2026-08-21: × 와 179px 간격).
+              스페이서는 `flex: 1 1 0%` 라 여유를 **혼자** 먹고, 그러면 × 의 `ml-auto` 는
+              남은 공간이 0 이라 핀 바로 옆에 붙는다 → [⠿][뱃지][제목]⟶[핀][×].
+              코어(`WindowFrameCore`)는 건드리지 않는다.
+
+              basis 가 0 이라 헤더가 넘칠 때는 스페이서가 0 으로 접힌다 — 제목의
+              `truncate` 동작은 그대로다.
+
+              `title` 이 스코프를 **창**으로 못 박는다(그룹 뱃지에서 멀어졌지만 라벨은 유지 —
+              스코프를 문장으로 말하는 쪽이 위치보다 확실하다). 종목이 없어 켤 수 없는
+              창은 disabled — 흐린 것이 기능이다. */}
+          {onTogglePin && (
+            <>
+              <span aria-hidden data-testid="window-header-spacer" className="flex-1" />
+              <button
+                type="button"
+                data-testid="window-pin-toggle"
+                aria-pressed={pinned}
+                disabled={!canPin}
+                className={`inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm ${
+                  pinned
+                    ? 'bg-tint-selection text-accent hover:brightness-125'
+                    : canPin
+                      ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
+                      : 'cursor-not-allowed text-fg-dimmer'
+                }`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onTogglePin(id)}
+                title={
+                  pinned
+                    ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
+                    : canPin
+                      ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
+                      : '고정할 종목이 없습니다'
+                }
+              >
+                <PinGlyph filled={pinned} />
+              </button>
             </>
           )}
         </>
