@@ -115,11 +115,13 @@ export type StudySavedRangeMarks = {
 };
 
 export function studySavedRangeMarks(
-  save: StudyViewReference,
+  /** 저장 구간 경계만 받는다 — `StudyViewReference` 전체를 받던 시절엔 `/live` 슬롯
+   *  (`SavedRangeFocus`, 원시 필드 평탄화)이 쓸 수 없었다. 실제로 읽던 것도 이 둘뿐이다. */
+  range: { from_ms: number; to_ms: number },
   candles: readonly Candle[],
 ): StudySavedRangeMarks | null {
   const inRange = candles.filter(
-    (c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms,
+    (c) => c.ts_ms >= range.from_ms && c.ts_ms <= range.to_ms,
   );
   const first = inRange[0];
   const last = inRange[inRange.length - 1];

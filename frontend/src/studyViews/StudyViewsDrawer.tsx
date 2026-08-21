@@ -20,6 +20,9 @@ import {
   useStudyWorkspaceStore,
 } from '../state/studyWorkspace';
 import { wantsNewTab } from '../live/useJumpToLive';
+import { activateLiveCode } from '../live/liveNavigate';
+import { useLivePageStore } from '../state/livePage';
+import { savedRangeFocusFromView } from './savedRangeFocus';
 import { openStudyViewInNewTab, studyViewDeepLinkPath } from './studyDeepLink';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -254,10 +257,16 @@ export function StudyViewsDrawer() {
   }
 
   /**
-   * 저장뷰를 **이 탭의 활성 그룹에서** 연다 — 그 그룹의 뷰를 제자리 교체한다
-   * (ADR-0155). 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 행을
-   * 클릭하면 그룹 2 만 갈아탄다. 다른 그룹 창들은 그대로다 — 그게 나란히 비교라는
-   * 이 기능의 요점이다.
+   * 저장뷰를 `/study` 의 활성 그룹에서 연다 — 그 그룹의 뷰를 제자리 교체한다
+   * (ADR-0155).
+   *
+   * ⚠ **이제 소비자가 하나뿐이다: `/study` 캔버스로의 그룹 드롭.** 행 클릭·키보드
+   * Enter·행 메뉴 「열기」는 2026-08-21 결정으로 전부 `openSavedRangeInLive`(→`/live`)
+   * 로 옮겼다. 이 함수가 남은 이유는 드롭 타깃이 `/study` 페이지 안에만 존재하기
+   * 때문이다 — 거기에 떨어뜨린 것을 다른 페이지로 보내면 제스처가 거짓말이 된다.
+   *
+   * 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 드롭하면 그룹 2 만
+   * 갈아탄다. 다른 그룹 창들은 그대로다 — 그게 나란히 비교라는 이 기능의 요점이다.
    *
    * 앱 안에 **탭**이 쌓이는 자리는 여전히 없다(ADR-0149): 탭바도 disposition 도
    * 되살아나지 않았다. 뷰를 여럿 여는 축이 탭에서 **그룹**으로 바뀌었을 뿐이다.
@@ -276,11 +285,35 @@ export function StudyViewsDrawer() {
     navigateToStudyView(row);
   }
 
+  /**
+   * 저장뷰를 **`/live` 에서 연다** — 행 클릭의 목적지 (2026-08-21 사용자 결정,
+   * `/study` 진입로를 대체한다).
+   *
+   * 두 단계이고 **순서가 계약이다**:
+   *  1. `activateLiveCode` — 종목 교체. 목적지는 `activationTarget` 이 고르므로
+   *     **포커스 그룹만** 바뀌고 **핀 걸린 창은 건드리지 않는다**(ADR-0153).
+   *     이 호출이 이전 슬롯을 해제한다(종목이 다를 때만).
+   *  2. `focusSavedRange` — 기간 슬롯 세팅. 반드시 **나중**이다. 역순이면 1단계의
+   *     해제 트리거가 방금 세운 슬롯을 스스로 지운다.
+   *
+   * 여기서 `/study` 워크스페이스(`setGroupView`)는 건드리지 않는다 — 두 페이지가
+   * 같은 저장뷰 슬롯을 공유하면 `/live` 클릭이 `/study` 창 배치를 조용히 바꾼다.
+   *
+   * ctrl/⌘+클릭은 이 경로를 타지 않는다. 그쪽은 아직 `/study` 새 탭이다
+   * (`/live?view=` 딥링크는 `/study` 제거 시 함께 만든다).
+   */
+  function openSavedRangeInLive(row: StudyViewListRow) {
+    cancelPendingStudyViewNavigation();
+    activateLiveCode(row.code, row.label);
+    useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(row));
+    if (location.pathname !== '/live') navigate('/live');
+  }
+
   function scheduleStudyViewNavigation(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
     navigateClickTimerRef.current = window.setTimeout(() => {
       navigateClickTimerRef.current = null;
-      openStudyView(row);
+      openSavedRangeInLive(row);
     }, 180);
   }
 
@@ -459,7 +492,7 @@ export function StudyViewsDrawer() {
           if (e.target !== e.currentTarget) return;
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
-          openStudyView(row);
+          openSavedRangeInLive(row);
         }}
       >
         {renameState?.id === row.id ? (
@@ -691,7 +724,7 @@ export function StudyViewsDrawer() {
           x={rowMenu.left}
           y={rowMenu.top}
           name={rowMenu.row.name}
-          onOpen={() => openStudyView(rowMenu.row)}
+          onOpen={() => openSavedRangeInLive(rowMenu.row)}
           onRename={() => startRename(rowMenu.row)}
           onEditMemo={() => startMemoEdit(rowMenu.row)}
           onDelete={() => requestDelete(rowMenu.row)}

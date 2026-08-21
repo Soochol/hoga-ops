@@ -45,6 +45,16 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
     ws.setGroupSymbol(target.group, symbol);
   }
   const page = useLivePageStore.getState();
+  // 저장뷰 기간 슬롯 해제 — **종목이 실제로 바뀔 때만**. 관심종목에서 같은 종목을
+  // 다시 눌러도 이 함수는 발화하므로, 무조건 지우면 "종목 변경 시 해제" 가 아니라
+  // "아무 클릭에나 해제" 가 된다. blocked early-return 뒤에 두는 것도 같은 이유다
+  // (아무것도 안 바뀐 클릭이 슬롯을 지우면 안 된다).
+  //
+  // 해제를 `projectActiveView` 쪽에 걸지 않는 이유는 그 액션의 주석에 있다 —
+  // 창 포커스 전환 미러가 같은 경로를 타서, 다른 종목 창을 클릭만 해도 풀린다.
+  if (page.savedRangeFocus && instrumentToActiveCode(instrument) !== page.savedRangeFocus.code) {
+    page.clearSavedRange();
+  }
   page.projectActiveView({
     instrument,
     code: instrumentToActiveCode(instrument) ?? '',

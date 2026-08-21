@@ -56,6 +56,15 @@ import {
 } from './windowWarningsSource';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
+import { useLivePageStore, isMinuteTimeframe } from '../../state/livePage';
+import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
+import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
+import { countBarsInRange } from '../savedRangeWall';
+import { earliestAllowedMinuteDate, initialHistoricalDaysFor, subtractDaysKst } from '../liveDateTime';
+import { savedRangeNotice } from '../savedRangeNotice';
+import type { Candle } from '../../api/types';
+import { useHistoricalRangeActions } from './windowView';
+import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import { showsWatchlistHeart } from './chartHeaderCompact';
@@ -67,6 +76,10 @@ import { useMaSeriesRegistry } from '../indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from '../indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from '../indicators/paneLegendRegistry';
 import type { TabViewport } from '../viewportAnchor';
+
+/** 빈 캔들 폴백 — **모듈 상수여야 한다.** 인라인 `[]` 는 매 렌더 새 배열이라
+ *  아래 저장뷰 `useMemo` 들이 캔들이 안 왔을 때 매번 재계산된다. */
+const EMPTY_CANDLES: readonly Candle[] = [];
 
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const timeframe = win.chart?.timeframe ?? '1m';
@@ -127,7 +140,17 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 걸러 **이중 필터로 전멸**한다.
   //
   // 지수 창(`view.code` 가 KOSPI 등)은 심볼 마스터에 없어 해석이 항등이다.
-  const venue = useEffectiveVenue(view.code, selectedVenue);
+  const resolvedVenue = useEffectiveVenue(view.code, selectedVenue);
+  // ── 저장뷰 기간 (2026-08-21) ──────────────────────────────────────────
+  // 슬롯은 전역이지만 **이 창이 그 종목을 그릴 때만** 적용된다. 창 번호·링크 그룹은
+  // 보지 않는다 — 저장뷰가 묶인 것은 종목이지 창이 아니고, 사용자 결정도 "창 번호
+  // 상관없이 모두" 였다. 핀 창도 그 종목을 그리고 있으면 밴드를 받는다(핀이 막는
+  // 것은 종목 교체이지 표시가 아니다).
+  const savedRangeFocus = useLivePageStore((s) => s.savedRangeFocus);
+  const savedRange = savedRangeFocus && view.code === savedRangeFocus.code ? savedRangeFocus : null;
+  // 저장뷰 창은 **KRX 고정** — 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
+  // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
+  const venue = savedRange ? SAVED_RANGE_VENUE : resolvedVenue;
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
@@ -167,6 +190,96 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     investorNetEnabled,
     sidecarDemands,
   });
+
+  // ── 저장뷰 기간: 백필 · 밴드 · 착석 ─────────────────────────────────────
+  const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;
+  const historicalRange = useHistoricalRangeActions();
+  const savedRangeViewId = savedRange?.viewId ?? null;
+  const savedRangeFromDate = savedRange?.fromDate ?? null;
+  const todayYmd = d.today;
+
+  /**
+   * 저장 구간까지 과거를 당긴다. 이 창의 초기 로드는 분봉 **5거래일**뿐이라
+   * (`INITIAL_MINUTE_TRADING_DAYS`) 그냥 우측 엣지를 B 로 꽂으면 빈 축에 앉는다.
+   * 지금까지 이 확장은 **좌측 팬으로만** 발화했다 — 저장뷰 적용은 팬 없이 순간
+   * 이동하므로 프로그램적으로 한 번 민다.
+   *
+   * ⚠ **`historicalFromDate` 는 "더 받는 양" 이 아니라 fetch 창의 시작점이다.**
+   * `useLiveBundle` 이 `historicalFromDate ?? (오늘 − initialHistoricalDaysFor(tf))`
+   * 로 from 을 정하므로, 기본 창보다 **최근** 날짜를 넣으면 범위가 넓어지는 게 아니라
+   * **좁아진다**. 일봉 기본 창은 250봉(≈1년)이라 4개월 전 저장 구간을 그대로 넘기면
+   * 화면이 저장 구간 딱 그만큼으로 잘리고, 그러면 밴드가 화면 전체를 덮어 **밴드가
+   * 안 보이는 것과 구별되지 않는다**(2026-08-21 실측 — 그 증상으로 발견했다).
+   * 그래서 **기본 창보다 과거일 때만** 민다.
+   *
+   * 분봉은 250일 벽에서 자른다(`earliestAllowedMinuteDate`) — 넘겨도 백엔드가 못 주고,
+   * 자르면 **되는 데까지는 보인다**(2026-08-21 사용자 결정).
+   */
+  useEffect(() => {
+    if (savedRangeFromDate === null) return;
+    const floor = isMinuteTimeframe(view.timeframe) ? earliestAllowedMinuteDate(todayYmd) : null;
+    const target = floor !== null && savedRangeFromDate < floor ? floor : savedRangeFromDate;
+    const defaultFrom = subtractDaysKst(todayYmd, initialHistoricalDaysFor(view.timeframe));
+    // YYYYMMDD 는 사전식 비교가 곧 날짜 순서다.
+    if (target < defaultFrom) historicalRange.extend(target);
+  }, [savedRangeViewId, savedRangeFromDate, view.timeframe, todayYmd, historicalRange]);
+
+  /** 일봉 기간 밴드의 마크. 분봉에서는 `LiveChartRoot` 가 스스로 게이트한다. */
+  const savedRangeBand = useMemo(
+    () => (savedRange
+      ? studySavedRangeMarks({ from_ms: savedRange.fromMs, to_ms: savedRange.toMs }, savedRangeCandles)
+      : null),
+    [savedRange, savedRangeCandles],
+  );
+
+  /**
+   * 저장 구간을 화면에 앉히는 1회 뷰포트. **없으면 클릭해도 아무 일이 없다** — 라이브
+   * 엣지에 있는 차트에서 2년 전 밴드는 화면 밖이다.
+   *
+   * `atLiveEdge: false` 가 핵심이다. true 면 `computeRestoreRange` 가 최신 봉을 따라가
+   * 저장 구간이 도로 밀려나고, 분봉에서는 그 추적이 우측 벽과 매 틱 싸운다.
+   */
+  const savedRangeViewport = useMemo((): TabViewport | null => {
+    if (!savedRange) return null;
+    if (!isMinuteTimeframe(view.timeframe)) {
+      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs);
+    }
+    // 저장 `bar_span` 은 **봉이 일치할 때만** 유효하다(그 함수 주석). 아니면 구간의
+    // 실제 봉 수에서 유도한다.
+    const barSpan = view.timeframe === savedRange.savedTimeframe && savedRange.savedBarSpan > 0
+      ? savedRange.savedBarSpan
+      : Math.max(1, countBarsInRange(savedRangeCandles, savedRange.fromMs, savedRange.toMs));
+    return { rightEdgeMs: savedRange.toMs, barSpan, atLiveEdge: false };
+  }, [savedRange, savedRangeCandles, view.timeframe]);
+
+  /**
+   * 차트 정체성에 저장뷰를 섞는다 — viewKey 가 바뀌면 `lastAppliedCountRef` 가 리셋돼
+   * `restoreViewport` 의 **1회 적용이 다시 살아난다**(LiveChartRoot 의 그 effect).
+   * 섞지 않으면 이미 마운트된 차트에서는 그 1회가 이미 소진돼 착석이 조용히 무시된다.
+   *
+   * 부수효과 둘 다 의도된 것이다: ① 봉을 바꾸면 viewKey 에 timeframe 이 이미 있어
+   * 그 봉에 맞는 착석이 자동으로 다시 일어난다. ② 칩 × 로 슬롯을 지우면 `sv=` 가
+   * 빠져 차트가 재생성되고, `restoreViewport` 가 없으니 분봉 기본 초기 뷰
+   * (=라이브 엣지)로 돌아간다 — **× 가 라이브 복귀를 겸하는 것이 여기서 나온다.**
+   */
+  /** 「되는 데까지 + 안내」의 안내 쪽(2026-08-21 결정). 없으면 null. */
+  const savedRangeChipNotice = useMemo(
+    () => (savedRange
+      ? savedRangeNotice({
+          timeframe: view.timeframe,
+          fromDate: savedRange.fromDate,
+          toDate: savedRange.toDate,
+          minuteFloorDate: earliestAllowedMinuteDate(todayYmd),
+          hasBand: savedRangeBand !== null,
+          candleCount: savedRangeCandles.length,
+        })
+      : null),
+    [savedRange, view.timeframe, todayYmd, savedRangeBand, savedRangeCandles],
+  );
+  const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
+
+  const baseIdentity = d.workareaCode ? `${d.workareaCode}:${venue}` : venue;
+  const viewIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}` : baseIdentity;
 
   // 헤더가 좁아지면 액션 라벨을 접는다(#762) — 관측 대상은 컨테이너 폭이라
   // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
@@ -343,6 +456,25 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           onChange={(tf) => setChartTimeframe(win.id, tf)}
           compact={headerFold.compactTimeframe}
         />
+        {/* 저장뷰 기간 칩은 **헤더에 있다.** 차트 위 오버레이로 두면 `PaneLegendOverlay`
+            와 겹치는데, legend 는 켜진 지표 수만큼 줄이 늘어나므로 좌표를 피해 가는
+            방식으로는 구조적으로 못 막는다(2026-08-21 실측 — 좌상단·우상단 둘 다 겹쳤다).
+            여기 두면 겹침이 원천 소멸한다. 대가는 좁은 창에서 액션이 한 단계 일찍
+            접히는 것뿐이고, 그것도 저장뷰를 연 동안만이다(평소엔 폭을 0 먹는다).
+
+            `ml-auto` 를 **달지 않는다** — 액션 그룹이 이미 갖고 있어서 두 번째를 달면
+            여유를 반씩 나눠 칩이 끝이 아니라 중간에 뜬다. */}
+        {savedRange && (
+          <div className="ml-1 flex min-w-0 items-center">
+            <SavedRangeChip
+              label={savedRange.label}
+              fromDate={savedRange.fromDate}
+              toDate={savedRange.toDate}
+              notice={savedRangeChipNotice}
+              onClear={clearSavedRange}
+            />
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-0.5">
           {/* 관심 하트는 액션 행 맨 왼쪽 — 나머지 넷은 차트 조작이고 이것만
               종목 속성이라, 그리기 왼쪽에 두어 동사 묶음 앞에 세운다.
@@ -391,7 +523,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               code={d.workareaCode}
               timeframe={view.timeframe}
               venue={venue}
-              viewIdentity={d.workareaCode ? `${d.workareaCode}:${venue}` : venue}
+              viewIdentity={viewIdentity}
+              savedRangeBand={savedRangeBand}
+              restoreViewport={savedRangeViewport}
+              savedRangeWallToMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}
