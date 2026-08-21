@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RangeMissingDate } from '../api/types';
 import {
   KIWOOM_MINUTE_RETENTION_DAYS,
+  MAX_DATES_PER_RUN_1MIN,
   MAX_GAP_FILL_DATES,
   planMinuteGapFill,
 } from './minuteGapFillPlan';
@@ -61,9 +62,9 @@ describe('planMinuteGapFill — 요청 폭', () => {
 });
 
 /**
- * **막는 방향**: 소득이 0 인 요청을 만드는 것. 키움 분봉 보유는 1년 롤링이라
- * (#1008 실측) 그 밖의 날짜는 walk 가 `max_pages` 까지 커서를 밀고도 빈손이다.
- * 요청을 만들지 **않는** 것이 유일한 방어라 계획 단계에 있어야 한다.
+ * **막는 방향**: 소득이 0 인 요청을 만드는 것. 키움 분봉 보유 하한은 실측 약 13개월이고
+ * (`KIWOOM_MINUTE_RETENTION_DAYS` 의 표), 그 밖은 **200 + 빈 배열 + 경고 0** 이라
+ * 조용히 아무 일이 없다. 요청을 만들지 **않는** 것이 유일한 방어라 계획 단계에 있어야 한다.
  */
 describe('planMinuteGapFill — 보유 기간 밖', () => {
   it('보유 밖 날짜는 요청하지 않고 unfillable 로 분리한다', () => {
@@ -140,6 +141,55 @@ describe('planMinuteGapFill — 총량 상한', () => {
     expect(plan.deferred).toEqual(dates.slice(0, 5));
     expect(planned).not.toContain(dates[0]);
     expect(planned).toContain(dates[dates.length - 1]);
+  });
+});
+
+/**
+ * **막는 방향**: 넓은 구멍이 절반만 채워지고 나머지가 조용히 유실되는 것.
+ *
+ * 백엔드는 collect 당 신선-날짜 예산(1분 12일)을 걸고 초과분을 봉 없이
+ * `fetch_budget_exhausted` 로 유예한다. 그 회복 계약은 "다음 사이클에 이어서 받는다"
+ * 인데, 이 훅의 커서는 run 을 **한 번만** 지나가므로 청크가 유일한 준수 방법이다.
+ *
+ * 실측(2026-08-21, 005930, 27거래일을 한 요청으로): `fresh_dates` 12 ·
+ * `fetch_budget_exhausted` 10건. 청크가 없으면 딱 그만큼이 유실된다.
+ *
+ * **못 보는 것**: 예산 상수 자체(백엔드 값)가 바뀌는 것. 여기 숫자는 그 값의 **사본**이라
+ * 백엔드가 12를 줄이면 이 테스트는 초록인 채로 틀린다.
+ */
+describe('planMinuteGapFill — 예산 청크', () => {
+  it('긴 연속 구간을 예산 크기로 자른다 — 한 요청이 예산 안에서 완결되도록', () => {
+    const dates = Array.from({ length: 27 }, (_, i) => shiftDays('20251001', i));
+    const plan = planMinuteGapFill({ missingDates: missing(...dates), todayKstYyyymmdd: TODAY });
+
+    expect(plan.runs.length).toBeGreaterThan(1);
+    for (const run of plan.runs) {
+      expect(run.dates.length).toBeLessThanOrEqual(MAX_DATES_PER_RUN_1MIN);
+    }
+    // 모든 날짜가 살아 있다 — 자르는 것이지 버리는 것이 아니다.
+    expect(plan.runs.flatMap((r) => r.dates).sort()).toEqual(dates);
+  });
+
+  it('청크도 최신 우선이고, 최신 청크가 가득 찬다', () => {
+    const dates = Array.from({ length: 25 }, (_, i) => shiftDays('20251001', i));
+    const plan = planMinuteGapFill({ missingDates: missing(...dates), todayKstYyyymmdd: TODAY });
+
+    // 첫 요청이 사용자가 보고 있는 쪽이다 — 여기가 짧으면 최신 구간이 제일 늦게 완성된다.
+    expect(plan.runs[0].to).toBe(dates[dates.length - 1]);
+    expect(plan.runs[0].dates).toHaveLength(MAX_DATES_PER_RUN_1MIN);
+    // 나머지 조각은 가장 오래된 청크로 밀린다.
+    expect(plan.runs[plan.runs.length - 1].from).toBe(dates[0]);
+  });
+
+  it('상위 tf 는 청크가 배수만큼 넓어진다 — 백엔드 예산이 tic_scope 에 비례하므로', () => {
+    const dates = Array.from({ length: 27 }, (_, i) => shiftDays('20251001', i));
+    const oneMin = planMinuteGapFill({ missingDates: missing(...dates), todayKstYyyymmdd: TODAY });
+    const tenMin = planMinuteGapFill({
+      missingDates: missing(...dates), todayKstYyyymmdd: TODAY, bucketMs: 600_000,
+    });
+
+    expect(tenMin.runs.length).toBeLessThan(oneMin.runs.length);
+    expect(tenMin.runs).toHaveLength(1);
   });
 });
 

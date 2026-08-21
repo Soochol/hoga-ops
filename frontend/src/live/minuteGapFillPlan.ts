@@ -100,6 +100,31 @@ export const RUN_MERGE_GAP_DAYS = 5;
  */
 export const MAX_GAP_FILL_DATES = 40;
 
+/**
+ * 한 요청이 담을 수 있는 거래일 수 — **1분 기준**. 실효값은 `bucketMs` 배수다.
+ *
+ * ## 이 상수가 없으면 넓은 구멍이 절반만 채워진다
+ *
+ * 백엔드는 collect 당 **새로 가져올 날짜 수에 예산**을 건다
+ * (`LiveMinuteCandleBackfill._max_fresh_dates_per_collect = 12`, 1분 기준이고
+ * `_fresh_budget_for` 가 tic_scope 분 수를 곱한다). 초과분은 봉 없이
+ * `fetch_budget_exhausted`(blocking) 경고로 유예되고, 백엔드는 **"프론트가 박제하지
+ * 않으므로 다음 사이클에 이어서 받는다"** 를 회복 계약으로 삼는다 — 좌측 팬 경로가
+ * 청크를 ~11 거래일로 자르는 이유가 그것이다.
+ *
+ * **이 훅의 커서는 run 을 한 번만 지나간다.** 그래서 그 계약을 지킬 방법이 청크뿐이다.
+ * 안 자르면 27거래일 run 이 최신 12일만 채우고 조용히 끝나며, 안내는 나머지를 "보충도
+ * 되지 않았습니다" 로 **거짓 보고**한다.
+ *
+ * 실측(2026-08-21, 005930, 20251001~20251107 한 요청): `fresh_dates` **12** ·
+ * `fetch_budget_exhausted` **10건**(오래된 쪽) · 봉은 12일치만.
+ *
+ * 10 인 이유: 예산 12 에 2일 여유다. run 은 구멍 날짜만 묶지만 백엔드 pending 은
+ * `from~to` **범위 안 모든 미캐시 거래일**이라, 주말을 건너뛰며 병합된 run 은 사이에
+ * 낀 거래일만큼 pending 이 더 많다.
+ */
+export const MAX_DATES_PER_RUN_1MIN = 10;
+
 /** `20260821` → `Date`(UTC 자정). 캘린더 일수 차이 계산 전용. */
 function toUtcDate(yyyymmdd: string): Date {
   return new Date(Date.UTC(
@@ -133,12 +158,19 @@ export function planMinuteGapFill(args: {
   missingDates: readonly RangeMissingDate[] | undefined;
   /** 기준일(KST). 이 날짜와 이후는 대상이 아니다 — 오늘분은 실시간 경로가 소유한다. */
   todayKstYyyymmdd: string;
+  /**
+   * 벤더에 요청할 봉 주기(ms). **청크 크기를 정하는 값이다** — 백엔드 예산이
+   * tic_scope 분 수에 비례하므로(`_fresh_budget_for`) 10분 요청은 한 번에 10배 넓은
+   * 구간을 완결할 수 있다. 미지정이면 1분(가장 좁은 쪽)으로 본다.
+   */
+  bucketMs?: number;
   retentionDays?: number;
   maxDates?: number;
 }): GapFillPlan {
   const {
     missingDates,
     todayKstYyyymmdd,
+    bucketMs = 60_000,
     retentionDays = KIWOOM_MINUTE_RETENTION_DAYS,
     maxDates = MAX_GAP_FILL_DATES,
   } = args;
@@ -166,8 +198,17 @@ export function planMinuteGapFill(args: {
   const deferred = fillable.length > maxDates ? fillable.slice(0, fillable.length - maxDates) : [];
   const targets = deferred.length > 0 ? fillable.slice(fillable.length - maxDates) : fillable;
 
+  // 백엔드 예산 안에서 **한 요청이 완결되도록** 자른 청크 크기. 배수가 1 미만으로
+  // 내려가지 않게 하한을 둔다(알 수 없는 bucketMs 는 1분으로 수렴 — 조여질지언정
+  // 넓어지지 않는 방향, `_fresh_budget_for` 의 같은 규율).
+  const perRun = Math.max(1, MAX_DATES_PER_RUN_1MIN * Math.max(1, Math.floor(bucketMs / 60_000)));
+
   const runs: GapFillRun[] = [];
   let current: string[] = [];
+  const flush = () => {
+    if (current.length > 0) runs.push(...chunkRun(current, perRun));
+    current = [];
+  };
   for (const date of targets) {
     if (current.length === 0) {
       current = [date];
@@ -177,16 +218,30 @@ export function planMinuteGapFill(args: {
       current.push(date);
       continue;
     }
-    runs.push({ from: current[0], to: current[current.length - 1], dates: current });
+    flush();
     current = [date];
   }
-  if (current.length > 0) {
-    runs.push({ from: current[0], to: current[current.length - 1], dates: current });
-  }
+  flush();
 
   // 최신 run 부터 요청한다 — 사용자가 보고 있을 확률이 높은 쪽이 먼저 채워진다.
   runs.reverse();
   return { runs, unfillable, deferred };
+}
+
+/**
+ * 한 연속 구간을 예산 크기 청크로 자른다. 입력·출력 모두 오름차순.
+ *
+ * **뒤(최신)에서부터 자른다.** 앞에서 자르면 나머지 조각이 마지막(=최신)에 놓여
+ * 첫 요청이 가장 적게 가져온다 — 사용자가 보고 있는 쪽이 제일 늦게 완성된다.
+ */
+function chunkRun(dates: readonly string[], perRun: number): GapFillRun[] {
+  const out: GapFillRun[] = [];
+  for (let end = dates.length; end > 0; end -= perRun) {
+    const slice = dates.slice(Math.max(0, end - perRun), end);
+    out.push({ from: slice[0], to: slice[slice.length - 1], dates: slice });
+  }
+  out.reverse();
+  return out;
 }
 
 /** run 을 react-query 키·진행 상태에 쓸 안정 문자열로. */

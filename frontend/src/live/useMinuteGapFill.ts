@@ -193,9 +193,9 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
 
   const plan = useMemo(
     () => (active
-      ? planMinuteGapFill({ missingDates, todayKstYyyymmdd })
+      ? planMinuteGapFill({ missingDates, todayKstYyyymmdd, bucketMs })
       : { runs: [], unfillable: [], deferred: [] }),
-    [active, missingDates, todayKstYyyymmdd],
+    [active, missingDates, todayKstYyyymmdd, bucketMs],
   );
 
   // 계획이 바뀌면 누적을 버린다. 종목·venue·해상도가 바뀌어도 마찬가지 — 다른 척도·다른
