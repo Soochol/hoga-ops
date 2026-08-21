@@ -159,7 +159,31 @@ class ProgramTradeCollector:
         for (code, venue), payload in latched.items():
             try:
                 row = self._to_row(code, venue, payload)
-                self.store.merge_response(
+                # **병합은 스레드로 내보낸다 — 루프에서 직접 부르면 앱 전체가 멎는다.**
+                #
+                # `merge_response` 한 건은 종목-일 파일을 통째로 **읽고**(uncached
+                # load: 최대 448KB JSON 파싱) 한 행을 얹어 **다시 쓴다**
+                # (`atomic_write_json` = mkstemp + json.dump + fsync + replace).
+                # 그 자체는 수 ms 지만, latch 에 남은 종목 수만큼 **중간에 한 번도
+                # 양보하지 않고** 직렬로 쌓인다. 이 앱은 `--workers` 를 못 써서 단일
+                # 이벤트 루프가 REST·WS·스케줄러를 전부 처리하므로(#998), 그 합이
+                # 그대로 전역 정지가 된다.
+                #
+                # 2026-08-21 실측(종목 333개·오늘자 파일 688개): **32.3초 주기로
+                # 2.0~2.6초 정지**(최대 11.2초, 벽시계의 5.3%). `/health` 같은 빈
+                # 엔드포인트가 2.8초 걸렸고, `/live` 종목 전환이 그 창에 걸리면
+                # 캔들·호가·시세 요청이 **한꺼번에** 밀렸다. `loop-lag-probe` 의 정지
+                # 시점 스택 덤프(`hoga_perf loop_stall`) 상위 65건이 전부 이 쓰기다.
+                #
+                # **사이클 전체가 아니라 종목마다 한 번씩 넘긴다.** 한 번에 넘기면
+                # 워커가 GIL 을 쥐고 도는 동안 루프가 얻는 것은 스위치 간격뿐이지만,
+                # 종목 경계마다 await 가 있으면 매번 준비된 콜백을 소진할 수 있다.
+                # 훅 비용(종목당 수십 µs)은 이 IO 앞에서 무시할 수 있다.
+                #
+                # 취소 시 스레드는 끝까지 돈다(`to_thread` 는 중단 불가) — 쓰기가
+                # 원자적이라 반쪽 파일이 남지 않으므로 이 방향이 안전한 쪽이다.
+                await asyncio.to_thread(
+                    self.store.merge_response,
                     code=code,
                     date=date,
                     venue=venue,
