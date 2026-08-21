@@ -58,6 +58,7 @@ function makeCanvasSpy() {
   } as unknown as CanvasRenderingContext2D & {
     fillText: ReturnType<typeof vi.fn>;
     moveTo: ReturnType<typeof vi.fn>;
+    lineTo: ReturnType<typeof vi.fn>;
     stroke: ReturnType<typeof vi.fn>;
   };
 }
@@ -103,6 +104,7 @@ function snapshot(over: Partial<HighLowLabelsSnapshot> = {}): HighLowLabelsSnaps
     timeframe: '1m',
     avoidWallLabels: [],
     legendRects: [],
+    levelLines: { high: false, low: false },
     ...over,
   };
 }
@@ -260,5 +262,67 @@ describe('HighLowLabelsPrimitive', () => {
 
     expect(() => draw(prim, c)).not.toThrow();
     expect(c.fillText).not.toHaveBeenCalled();
+  });
+
+  // 극값 **가격선** — pane 전폭 수평 점선. 고가·저가가 독립 토글이라 네 조합을 전부
+  // 잰다: 한 방향만 보면 "항상 그린다"는 하드코딩도, "아무것도 안 그린다"는 무동작도
+  // 초록이 된다. 판정축은 `moveTo(0, y)` → `lineTo(paneWidth, y)` 쌍 — 리더선(x=봉 좌표)
+  // 과 칩 박스(x=칩 좌변)는 x=0 에서 시작하지 않으므로 이 필터에 걸리지 않는다.
+  describe('극값 가격선', () => {
+    // 고가 38,800 → y=40 / 저가 36,750 → y=220. 두 선을 y 로 구별하려고 가격별 스텁.
+    const priceToCoordinate = (price: number) => (price === 38_800 ? 40 : 220);
+    const PANE = { w: 760, h: 300 };
+
+    function levelLines(c: ReturnType<typeof makeCanvasSpy>) {
+      const from = c.moveTo.mock.calls.filter(([x]) => Number(x) === 0).map(([, y]) => Number(y));
+      const to = c.lineTo.mock.calls.filter(([x]) => Number(x) === PANE.w).map(([, y]) => Number(y));
+      return { from, to };
+    }
+
+    function drawWith(levelLinesPref: { high: boolean; low: boolean }) {
+      const stubs = makeAxisStubs({ priceToCoordinate });
+      const { prim } = attach(stubs, () => snapshot({ levelLines: levelLinesPref }));
+      const c = makeCanvasSpy();
+      draw(prim, c, PANE);
+      return c;
+    }
+
+    it('둘 다 꺼져 있으면 한 줄도 긋지 않는다 (라벨은 그대로)', () => {
+      const c = drawWith({ high: false, low: false });
+
+      expect(levelLines(c).from).toEqual([]);
+      expect(texts(c)).toHaveLength(2);
+    });
+
+    it('고가만 켜면 고가 가격에 전폭 한 줄 — 저가에는 긋지 않는다', () => {
+      const c = drawWith({ high: true, low: false });
+
+      // 0.5 오프셋(픽셀 격자 정렬)까지 고정한다 — 흐릿한 1px 선 회귀 가드.
+      expect(levelLines(c)).toEqual({ from: [40.5], to: [40.5] });
+    });
+
+    it('저가만 켜면 저가 가격에 전폭 한 줄 — 고가에는 긋지 않는다', () => {
+      const c = drawWith({ high: false, low: true });
+
+      expect(levelLines(c)).toEqual({ from: [220.5], to: [220.5] });
+    });
+
+    it('둘 다 켜면 두 줄', () => {
+      const c = drawWith({ high: true, low: true });
+
+      expect(levelLines(c)).toEqual({ from: [40.5, 220.5], to: [40.5, 220.5] });
+    });
+
+    it('극값 봉의 x 가 없어도(우측 빈 띠) 가격선은 그린다 — 레벨은 가격만으로 성립', () => {
+      const stubs = makeAxisStubs({ priceToCoordinate, timeToCoordinate: () => null });
+      const { prim } = attach(stubs, () => snapshot({ levelLines: { high: true, low: true } }));
+      const c = makeCanvasSpy();
+
+      draw(prim, c, PANE);
+
+      // 칩·dot 은 x 가 없어 skip 되지만 수평선은 남는다.
+      expect(levelLines(c).from).toEqual([40.5, 220.5]);
+      expect(c.fillText).not.toHaveBeenCalled();
+    });
   });
 });

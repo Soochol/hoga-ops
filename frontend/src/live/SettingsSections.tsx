@@ -4,6 +4,7 @@ import {
   DAY_BOUNDARY_COLOR_DEFAULT,
   TRADE_HIGHLIGHT_COLOR_DEFAULT,
   categoryOf,
+  gatedByOf,
   useChartPrefsStore,
   type ChartToggleCategory,
 } from '../state/chartPrefs';
@@ -80,8 +81,10 @@ function SectionDetail({ id }: { id: NavId }) {
 }
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
+  // `enabledBy` 로 부모를 가진 토글은 뺀다 — `IndicatorPrefRows` 가 부모 행 아래
+  // 들여쓰기로 그리므로, 여기 남겨 두면 같은 행이 두 번 나온다.
   const keys = CHART_TOGGLES
-    .filter((t) => categoryOf(t) === category)
+    .filter((t) => categoryOf(t) === category && gatedByOf(t) === undefined)
     .map((t) => t.key);
 
   if (category === 'indicator-modal') {

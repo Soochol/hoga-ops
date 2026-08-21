@@ -54,6 +54,11 @@ function sameRects(a: readonly AvoidRect[], b: readonly AvoidRect[]): boolean {
  */
 function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWallLabels = [] }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
+  // 극값 가격선 — 고가·저가 **각각** 독립 토글이다. 라벨 토글의 하위라
+  // (`enabledBy: 'highLowLabelsEnabled'`) 부모가 꺼지면 아래 effect 가 primitive 를
+  // 아예 붙이지 않아 자동으로 함께 꺼진다(값은 보존).
+  const highLineEnabled = useActivePrefs((p) => p.highLowHighLineEnabled);
+  const lowLineEnabled = useActivePrefs((p) => p.highLowLowLineEnabled);
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const snapshotRef = useRef<HighLowLabelsSnapshot | null>(null);
   const legendRectsRef = useRef<readonly AvoidRect[]>([]);
@@ -69,10 +74,11 @@ function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWa
         timeframe,
         avoidWallLabels,
         legendRects: legendRectsRef.current,
+        levelLines: { high: highLineEnabled, low: lowLineEnabled },
       }
       : null;
     primRef.current?.requestUpdate();
-  }, [enabled, bundle, axis, timeframe, avoidWallLabels]);
+  }, [enabled, bundle, axis, timeframe, avoidWallLabels, highLineEnabled, lowLineEnabled]);
 
   useEffect(() => {
     if (!series || !enabled) return;

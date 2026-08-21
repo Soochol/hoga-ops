@@ -27,6 +27,8 @@ import {
   LABEL_HEIGHT_PX,
   LEADER_MIN_HEIGHT_PX,
   LEADER_OPACITY,
+  LEVEL_LINE_DASH,
+  LEVEL_LINE_OPACITY,
   labelBoxWidth,
   placeExtremeLabel,
   wallLabelAvoidRect,
@@ -58,6 +60,10 @@ export type HighLowLabelsSnapshot = {
   avoidWallLabels: readonly AvoidWallLabel[];
   /** Pane Legend 행 rect(캔들 pane 로컬 px) — DOM 실측이라 host 가 밀어 넣는다. */
   legendRects: readonly AvoidRect[];
+  /** 극값 **가격선**(pane 전폭 수평 점선) 표시 여부 — 고가·저가가 **독립 토글**이다
+   *  (`highLowHighLineEnabled` / `highLowLowLineEnabled`). 라벨 토글이 꺼지면 이
+   *  primitive 자체가 붙지 않으므로 부모 게이팅은 host 가 이미 끝낸 상태로 온다. */
+  levelLines: { high: boolean; low: boolean };
 };
 
 export type HighLowLabelsSource = () => HighLowLabelsSnapshot | null;
@@ -161,9 +167,10 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         e: (typeof ex)['high'];
         color: string;
         place: ExtremeLabelPlace;
+        line: boolean;
       }[] = [
-        { e: ex.high, color: tokens.up, place: 'above' },
-        { e: ex.low, color: tokens.down, place: 'below' },
+        { e: ex.high, color: tokens.up, place: 'above', line: snap.levelLines.high },
+        { e: ex.low, color: tokens.down, place: 'below', line: snap.levelLines.low },
       ];
 
       for (const item of items) {
@@ -179,7 +186,27 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         } catch {
           continue;
         }
-        if (xc === null || yc === null) continue;
+        if (yc === null) continue;
+
+        // 극값 **가격선** — pane 전폭 수평 점선. 극값 봉의 x(`xc`)가 아니라 가격만으로
+        // 성립하므로 xc 게이트보다 **앞**에 둔다(우측 빈 띠 등으로 xc 가 null 이어도
+        // 레벨은 유효하다). 맨 앞에 그려 dot·칩이 나중에 그 위를 덮게 한다.
+        if (item.line) {
+          ctx.save();
+          ctx.globalAlpha = LEVEL_LINE_OPACITY;
+          ctx.strokeStyle = item.color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([...LEVEL_LINE_DASH]);
+          ctx.beginPath();
+          // 0.5 오프셋 — 1px 선을 픽셀 격자에 앉혀 흐릿함을 막는다(리더선과 동일).
+          const levelY = Math.round(yc) + 0.5;
+          ctx.moveTo(0, levelY);
+          ctx.lineTo(paneWidth, levelY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (xc === null) continue;
 
         const text = formatExtremeLabel(item.e.price, item.e.pct, item.e.tsMs, snap.timeframe);
         const boxWidth = labelBoxWidth(measureTextCached(ctx, text));
@@ -258,7 +285,9 @@ class HighLowLabelsPaneView implements IPrimitivePaneView {
  * /live 캔들 pane 의 **고저 극값 라벨**(CONTEXT.md `High/Low Extreme Labels`).
  * 현재 보이는 뷰포트의 최고가 봉(빨강)·최저가 봉(파랑)에 dot 을 극값 가격 위치에 찍고,
  * `<가격>원 (<±극값 대비율>%, <시각>)` 라벨을 캔들과 겹치지 않게 pane 상단(고가)·하단(저가)
- * 가장자리에 고정하며, dot↔라벨을 옅은 세로 리더선으로 잇는다.
+ * 가장자리에 고정하며, dot↔라벨을 옅은 세로 리더선으로 잇는다. 설정에서 **극값
+ * 가격선**(고가·저가 각각 독립)을 켜면 그 가격에 pane 전폭 수평 점선을 함께 긋는다 —
+ * 지지·저항 레벨로 읽는 용도라 극값 봉 이전 구간까지 잘리지 않고 이어진다.
  *
  * DOM 오버레이가 아니라 primitive 인 이유: DOM 은 `subscribeVisibleLogicalRangeChange`
  * → rAF → React 렌더 경로라, lwc 가 이미 rAF **안에서** 구독을 발화하므로 예약된 rAF 는

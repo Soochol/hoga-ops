@@ -10,6 +10,7 @@ export default function ToggleRow({
   checked,
   onToggle,
   testId,
+  disabled = false,
 }: {
   label: string;
   description: string;
@@ -18,10 +19,14 @@ export default function ToggleRow({
   /** Optional data-testid override. `IndicatorPrefRows` passes
    *  `settings-toggle-{key}` for registry-driven rows. */
   testId?: string;
+  /** Gated row whose parent toggle is off — dimmed and unclickable, same
+   *  semantics `NumericPrefRow` already had for `enabledBy` prefs. The stored
+   *  value is preserved so turning the parent back on restores the choice. */
+  disabled?: boolean;
 }) {
   return (
-    <SettingsRow label={label} description={description} testId={testId}>
-      <ToggleSwitch label={label} checked={checked} onClick={onToggle} />
+    <SettingsRow label={label} description={description} testId={testId} disabled={disabled}>
+      <ToggleSwitch label={label} checked={checked} onClick={onToggle} disabled={disabled} />
     </SettingsRow>
   );
 }
