@@ -8,6 +8,7 @@ import {
   nextHistoricalFrom,
   nextCoverageFrom,
   planFillStep,
+  planViewportContraction,
   fillBudgetSteps,
   dispatchStepsFor,
   earliestAllowedMinuteDate,
@@ -458,7 +459,25 @@ export function useViewportBackfill({
         const covPlan = planCoverageGapFill(
           chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
         );
-        if (!covPlan) return;
+        if (!covPlan) {
+          // **확장이 필요 없는 순간이 곧 축소를 볼 자리다.** 여기 도달했다는 것은
+          // 뷰포트 좌단이 커버리지 오른쪽이라는 뜻이므로, 창이 과하게 넓으면 앞으로
+          // 당긴다(`planViewportContraction` 이 히스테리시스를 쥔다).
+          //
+          // 확장 판정 **뒤**에 두는 것이 요점이다 — 앞에 두면 같은 이벤트에서 자르고
+          // 곧바로 늘리는 왕복이 가능해진다.
+          const leftDate = readViewportLeftDate(chart, axis);
+          const contractTo = leftDate
+            ? planViewportContraction(cur, leftDate, timeframe)
+            : null;
+          if (contractTo !== null) {
+            livePerfLog('viewport_backfill_contract', {
+              code, timeframe, from: cur, contractTo, leftDate,
+            });
+            historicalRange.contract(contractTo);
+          }
+          return;
+        }
         trigger = 'coverage_gap';
         nextFrom = covPlan.nextFrom;
         budget = MAX_FILL_STEPS; // 종료는 날짜 수렴이 담당, 예산은 백스톱

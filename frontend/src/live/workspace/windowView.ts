@@ -435,6 +435,8 @@ export function useWindowViewGuard(): ViewGuard {
 /** 좌측 팬 딥 백필의 창별 from-date 액션 + imperative 스냅샷(effect/콜백용). */
 export interface HistoricalRangeActions {
   extend: (date: string) => void;
+  /** 창을 앞으로 당긴다(축소). 근거는 스토어 액션 주석 참조. */
+  contract: (date: string) => void;
   reset: () => void;
   snapshot: () => { historicalFromDate: string | null; lastMinuteHistoricalFromDate: string | null };
 }
@@ -448,6 +450,7 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
       const ws = () => workspace.store.getState();
       return {
         extend: (date: string) => ws().extendChartHistoricalRange(windowId, date),
+        contract: (date: string) => ws().contractChartHistoricalRange(windowId, date),
         reset: () => ws().resetChartHistoricalRange(windowId),
         snapshot: () => ws().chartRuntime[windowId]
           ?? { historicalFromDate: null, lastMinuteHistoricalFromDate: null },
@@ -456,6 +459,7 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
     const ps = () => useLivePageStore.getState();
     return {
       extend: (date: string) => ps().extendHistoricalRange(date),
+      contract: (date: string) => ps().contractHistoricalRange(date),
       reset: () => ps().resetHistoricalRange(),
       snapshot: () => ({
         historicalFromDate: ps().historicalFromDate,

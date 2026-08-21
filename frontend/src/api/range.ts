@@ -529,6 +529,67 @@ function outsideCoveredSegment(pointMs: number, bundle: RangeBundle): boolean {
   );
 }
 
+/**
+ * 병합본의 **왼쪽을 잘라** 리테인 창 밖(`retainFrom` 이전) 데이터를 버린다.
+ *
+ * ## 왜 필요한가 — 창이 뒤로만 가기 때문이다
+ *
+ * `mergeRangeBundles` 는 `from_date = min(previous, next)` 라 **단조 증가**한다.
+ * 좌측 팬으로 한 번 3개월까지 넓히면 다시 줌인해도 안 줄어들어, 1시간을 보면서도
+ * 3개월치를 계속 들고 있게 된다(2026-08-21 실측: 3개월 sidecar 29.2MB — 그중
+ * depth_heatmap 14.7MB + depth_delta 11.1MB). 이 함수가 그 단조성을 끊는다.
+ *
+ * ## 진동 방지는 **호출부 책임**이다
+ *
+ * `from_date` 는 `indicatorCoverageFromDate` → `planCoverageGapFill` 로 되돌아온다.
+ * 뷰포트가 아직 `retainFrom` 보다 왼쪽인데 자르면 **방금 버린 것을 즉시 재요청**한다
+ * (#582 wide-range 사고와 같은 모양). 그래서 호출부는 뷰포트 좌단보다 **충분히
+ * 과거**를 `retainFrom` 으로 줘야 한다 — 그 여유가 곧 히스테리시스다.
+ *
+ * ## 안전장치: **빈 결과를 만들지 않는다**
+ *
+ * `retainFrom` 이 모든 세그먼트보다 미래면 원본을 그대로 돌려준다. 자르는 것은
+ * 되돌릴 수 없고(재요청 필요), 빈 번들은 차트를 통째로 지운다.
+ *
+ * ⚠ **필드를 새로 추가하면 여기도 같이 늘린다.** 빠뜨리면 그 배열만 조용히 계속
+ * 자란다 — `mergeRangeBundles` 가 같은 이유로 필드를 전수 나열하는 것과 같다.
+ */
+export function trimRangeBundleBefore(bundle: RangeBundle, retainFrom: string): RangeBundle {
+  const segments = bundle.segments.filter((s) => s.date >= retainFrom);
+  // 다 잘리면 손대지 않는다(위 안전장치). 자를 게 없어도 새 객체를 만들지 않는다 —
+  // 참조가 바뀌면 하위 memo 경계가 전부 깨진다.
+  if (segments.length === 0 || segments.length === bundle.segments.length) return bundle;
+
+  const cutoffMs = Math.min(...segments.map((s) => s.session_open_ms));
+  const afterMs = <T>(items: readonly T[] | undefined, at: (item: T) => number): T[] =>
+    (items ?? []).filter((item) => at(item) >= cutoffMs);
+  const afterDate = <T extends { date: string }>(items: readonly T[] | undefined): T[] =>
+    (items ?? []).filter((item) => item.date >= retainFrom);
+
+  return {
+    ...bundle,
+    from_date: retainFrom,
+    segments,
+    candles: afterMs(bundle.candles, (c) => c.ts_ms),
+    quote_ratio: { ...bundle.quote_ratio, points: afterMs(bundle.quote_ratio.points, (p) => p.t) },
+    fill_strength: { ...bundle.fill_strength, points: afterMs(bundle.fill_strength.points, (p) => p.t) },
+    excluded_dates: afterDate(bundle.excluded_dates),
+    data_warnings: afterDate(bundle.data_warnings),
+    missing_dates: afterDate(bundle.missing_dates),
+    ask_peaks: afterDate(bundle.ask_peaks),
+    bid_peaks: afterDate(bundle.bid_peaks),
+    trade_volume_pocs: afterDate(bundle.trade_volume_pocs),
+    volume_distributions: afterDate(bundle.volume_distributions),
+    broker_late_entries: afterMs(bundle.broker_late_entries, (e) => e.t_ms),
+    depth_heatmap: afterMs(bundle.depth_heatmap, (p) => p.t_ms),
+    depth_delta: afterMs(bundle.depth_delta, (p) => p.t_ms),
+    wall_surge: afterMs(bundle.wall_surge, (e) => e.t_ms),
+    program_trade: bundle.program_trade
+      ? { ...bundle.program_trade, points: afterMs(bundle.program_trade.points, (p) => p.t) }
+      : bundle.program_trade,
+  };
+}
+
 export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): RangeBundle {
   const nextDates = coveredDates(next);
   const previousCandles = previous.candles.filter((candle) => outsideCoveredSegment(candle.ts_ms, next));
@@ -779,9 +840,15 @@ function useLiveRangeDelta(
     if (plan.servePrevious && previous && !query.data) return previous;
     if (!query.data) return undefined;
     if (query.isPlaceholderData) return previous ?? query.data;
-    if (plan.canReusePrevious && previous) return mergeRangeBundles(previous, query.data);
+    if (plan.canReusePrevious && previous) {
+      // 병합 **직후** 자른다 — 캐논 병합본(`setQueryData`)과 `mergedRef` 가 둘 다 이
+      // 값을 받으므로, 여기서 자르면 다음 사이클의 `previous` 도 잘린 상태로 출발한다.
+      // 쓰기 시점에만 자르면 `mergedRef` 에 원본이 남아 다시 부풀어 오른다.
+      const merged = mergeRangeBundles(previous, query.data);
+      return baseInput.from ? trimRangeBundleBefore(merged, baseInput.from) : merged;
+    }
     return query.data;
-  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
+  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData, baseInput.from]);
 
   useEffect(() => {
     if (plan.scheduleRefreshAtMs == null) return undefined;

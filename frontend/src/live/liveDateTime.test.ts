@@ -17,6 +17,9 @@ import {
   isKrxRegularSessionNow,
   initialCandleTargetFor,
   initialHistoricalDaysFor,
+  planViewportContraction,
+  CONTRACT_RETAIN_STEPS,
+  CONTRACT_TRIGGER_STEPS,
 } from './liveDateTime';
 import { PAST_CHUNK_CALENDAR_DAYS, pastChunkCalendarDays } from '../api/livePastCandles';
 import { MINUTE_TIMEFRAMES, fetchBucketMsFor } from '../state/livePage';
@@ -441,3 +444,41 @@ describe('initialCandleTargetFor — 초기 분봉 창 (5거래일)', () => {
     expect(initialHistoricalDaysFor('D')).toBe(350);
   });
 });
+
+describe('planViewportContraction — 좌측 팬 창을 앞으로 당긴다', () => {
+  const TF = '1m' as const;
+  const LEFT = '20260814';   // 뷰포트 좌단 날짜
+
+  it('창이 없으면(초기 상태) 자르지 않는다', () => {
+    expect(planViewportContraction(null, LEFT, TF)).toBeNull();
+  });
+
+  it('발동 임계 안이면 자르지 않는다', () => {
+    // 좌단에서 1스텝만 과거 — 아직 회수할 값이 없다.
+    const near = planViewportContraction('20260813', LEFT, TF);
+    expect(near).toBeNull();
+  });
+
+  it('임계를 넘으면 **뷰포트 좌단보다 과거**로 당긴다 — 재요청을 유발하지 않는다', () => {
+    // 막는 방향: 좌단(또는 그보다 미래)까지 잘라 `planCoverageGapFill` 의 재요청 조건
+    // (좌단 < coverageFrom)에 곧바로 걸리는 회귀 — 자르고 즉시 되받는 진동이다
+    // (#582 wide-range 사고와 같은 모양).
+    const next = planViewportContraction('20260101', LEFT, TF);
+    expect(next).not.toBeNull();
+    expect(next! < LEFT).toBe(true);       // 좌단보다 과거 = 갭 없음
+    expect(next! > '20260101').toBe(true); // 실제로 앞으로 당겨졌다
+  });
+
+  it('한 번 당기면 **수렴한다** — 같은 뷰포트에서 두 번째는 no-op', () => {
+    // 이것이 진동 방지의 핵심 성질이다. 두 임계가 붙어 있으면(RETAIN == TRIGGER)
+    // 당긴 결과가 다시 임계를 넘어 매 이벤트마다 당기고 되받는다.
+    const first = planViewportContraction('20260101', LEFT, TF);
+    expect(first).not.toBeNull();
+    expect(planViewportContraction(first, LEFT, TF)).toBeNull();
+  });
+
+  it('두 임계 사이에 간격이 있다 — 간격이 0이면 위 수렴이 성립하지 않는다', () => {
+    expect(CONTRACT_RETAIN_STEPS).toBeLessThan(CONTRACT_TRIGGER_STEPS);
+  });
+});
+

@@ -304,6 +304,41 @@ export function nextCoverageFrom(
   return stepBackFrom(base, tf);
 }
 
+/** 뷰포트 좌단보다 **이만큼 과거까지는 남긴다**(리테인 여유).
+ *
+ *  이 여유가 곧 히스테리시스의 한쪽이다. 0 이면 자른 자리에서 곧바로
+ *  `planCoverageGapFill` 의 재요청 조건(`좌단 < coverageFrom`)에 걸린다. */
+export const CONTRACT_RETAIN_STEPS = 2;
+
+/** 남은 창이 뷰포트 좌단에서 **이 스텝보다 더 과거**일 때만 자른다(발동 임계).
+ *
+ *  히스테리시스의 다른 한쪽. `CONTRACT_RETAIN_STEPS` 와의 간격(=4스텝)이 자를 때마다
+ *  실제로 회수되는 양이자, 자른 뒤 재요청까지의 완충이다. 둘을 붙이면 뷰포트가
+ *  조금만 흔들려도 자르기↔재요청이 왕복한다 — #582 wide-range 사고와 같은 모양이다. */
+export const CONTRACT_TRIGGER_STEPS = 6;
+
+/** 좌측 팬 창을 **앞으로 당길지** 판정한다. 당길 필요 없으면 null.
+ *
+ *  `nextCoverageFrom`(뒤로 넓히기)의 대칭이다. 창이 단조 증가만 하면 한 번 3개월까지
+ *  넓힌 뒤 줌인해도 안 줄어들어, 1시간을 보면서 3개월치 지표 번들을 계속 들고 있게
+ *  된다(2026-08-21 실측 sidecar 29.2MB). 그 단조성을 끊는 자리다.
+ *
+ *  **못 보는 것**: 실제 진동 여부. 이 함수는 두 임계의 간격만 보장하고, 뷰포트가 그
+ *  간격을 넘나들며 흔들리는지는 실제 팬 동작에서만 드러난다. */
+export function planViewportContraction(
+  historicalFromDate: string | null,
+  viewportLeftDate: string,
+  tf: LiveTimeframe,
+): string | null {
+  // 창이 아직 없으면(전체 이력 = 초기 상태) 자를 것도 없다.
+  if (historicalFromDate === null) return null;
+  const trigger = stepBackFrom(viewportLeftDate, tf, CONTRACT_TRIGGER_STEPS);
+  if (historicalFromDate >= trigger) return null;
+  const keepFrom = stepBackFrom(viewportLeftDate, tf, CONTRACT_RETAIN_STEPS);
+  // 방어: 계산 결과가 뒤로 가면(임계 상수를 잘못 뒤집은 경우) 자르지 않는다.
+  return keepFrom > historicalFromDate ? keepFrom : null;
+}
+
 /** 한 스텝이 실제로 가져오는 봉 수 추정. 제스처 예산 산정의 분모.
  * 분봉은 `STEP_TRADING_DAYS`거래일 × (거래분/일 ÷ 봉분) — 1m 한 스텝은
  * 5×390 = 1,950봉이다. D/W/M은 STEP_TRADING_DAYS가 캔들 50개에서 유도됐으므로

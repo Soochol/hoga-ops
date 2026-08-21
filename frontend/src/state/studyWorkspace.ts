@@ -181,6 +181,8 @@ interface Store extends Persisted {
   // 설정이 전역으로 돌아가면서 창이 소유하는 것은 봉과 백필뿐이다.
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
   extendChartHistoricalRange: (id: string, date: string) => void;
+  /** 창을 앞으로 당긴다(축소). `/live` 판과 같은 계약 — 근거는 그쪽 주석. */
+  contractChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
 }
 
@@ -908,6 +910,15 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
     if (!state.windows.some((w) => w.id === id && w.chart)) return;
     const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
     if (rt.historicalFromDate !== null && rt.historicalFromDate <= date) return; // 단조 감소 가드
+    set({ chartRuntime: { ...state.chartRuntime, [id]: { ...rt, historicalFromDate: date } } });
+  },
+
+  contractChartHistoricalRange: (id, date) => {
+    const state = get();
+    if (!state.windows.some((w) => w.id === id && w.chart)) return;
+    const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+    // 아직 창이 없거나 이미 그보다 앞이면 no-op — 넓히는 건 extend 의 일이다.
+    if (rt.historicalFromDate === null || rt.historicalFromDate >= date) return;
     set({ chartRuntime: { ...state.chartRuntime, [id]: { ...rt, historicalFromDate: date } } });
   },
 
