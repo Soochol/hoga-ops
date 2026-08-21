@@ -90,6 +90,15 @@ export interface ViewportBackfillArgs {
    * 루프가 이어진다 — `planFillStep`의 "연휴 스텝도 예산 1" 계약이 여기에 기댄다.
    */
   settledFromDate?: string | null;
+  /**
+   * 열린 저장뷰의 **구간 시작일**(YYYYMMDD). null = 저장뷰 없음.
+   *
+   * 저장뷰 적용은 팬 없이 순간 이동하므로 3b(좌측 팬 이벤트)가 발화하지 않고, 단발
+   * `extend` 는 fill 을 **시작하지 않아**(fillKind 가 null 이면 3a 가 곧바로 return)
+   * 한 스텝에서 멎는다 — 2026-08-21 실측: 3개월 전 저장뷰가 3분 20초를 기다려도
+   * 오늘 화면 그대로였다. 그래서 3d 가 3c 와 같은 방식으로 fill 을 세운다.
+   */
+  savedRangeFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -141,6 +150,7 @@ export function useViewportBackfill({
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
   settledFromDate = null,
+  savedRangeFromDate = null,
 }: ViewportBackfillArgs): void {
   // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
   // 안) 또는 전역 스토어(밖)로 — getState 병행 경로의 창별 대응물.
@@ -175,6 +185,8 @@ export function useViewportBackfill({
   // 뷰포트가 처음부터 지표 커버리지 밖 과거를 보고 있으면 사용자 무조작으로도 갭을
   // 메우되, 지표 신호가 유효해진 첫 커밋에서 단 한 번만 판정한다(effect 3c).
   const initialCoverageCheckedRef = useRef(false);
+  /** 3d 가 fill 을 세운 저장 구간 시작일 — 같은 저장뷰로 반복 판정하지 않기 위한 키. */
+  const savedRangeFilledForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -576,4 +588,76 @@ export function useViewportBackfill({
     });
     historicalRange.extend(covPlan.nextFrom);
   }, [chart, bundle, axis, timeframe, canTriggerBackfill, indicatorCoverageFromDate, rangeWindowFromDate, code, historicalRange]);
+
+  // 3d. 저장뷰 구간 백필 — 저장 구간 시작까지 워크백한다.
+  //
+  // **3c 와 같은 형태이고 트리거 소스만 다르다**: 저쪽은 "지표 커버리지가 화면보다 얕다",
+  // 이쪽은 "열린 저장뷰의 구간이 로드 범위보다 과거다". 둘 다 뷰포트 이벤트가 없는 상황
+  // (3b 가 못 잡는 자리)이고, 둘 다 `fillKind` 를 세워 **진행 루프(3a)에 나머지 청크
+  // 워크백을 넘긴다**. `coverage_gap` kind 를 그대로 쓰는 이유는 종료 조건이 정확히
+  // 같기 때문이다 — 요청 창이 목표 날짜에 닿으면 `planFillStep` 이 stop 한다.
+  //
+  // ⚠ **단발 `extend` 로는 안 된다.** 그건 `historicalFromDate` 를 한 번 세팅할 뿐이라
+  // 백엔드가 한 청크만 주고 끝나고, `fillKind` 가 null 이라 3a 가 이어받지 못한다.
+  // 저장뷰 적용에는 팬이 없으니 그대로 멎는다(2026-08-21 실측, 3분 20초 무변화).
+  //
+  // 저장뷰가 바뀌면 다시 판정한다(키가 `savedRangeFromDate` 자체) — 1회 마킹인 3c 와
+  // 다른 점이고, 다른 저장뷰를 열면 그 구간까지 다시 채워야 하므로 그래야 한다.
+  useEffect(() => {
+    if (savedRangeFromDate === null) {
+      savedRangeFilledForRef.current = null;
+      return;
+    }
+    if (savedRangeFilledForRef.current === savedRangeFromDate) return;
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    if (!canTriggerBackfill()) return;
+    if (axis.segments.length === 0) return;
+    if (isExtendingRef.current) return;
+    // 요청 창 신호가 아직 없으면 **판정 보류**(미마킹) — 3c 와 같은 규율이다.
+    // 넘겨야 `planFillStep` 의 coverage_gap 분기가 서고, 진행 루프(3a)도 같은 값을
+    // 읽으므로 여기서 폴백으로 밀고 나가면 3a 가 첫 settle 에서 stop 해 **한 스텝만
+    // 가고 멎는다** — 고치려던 그 증상이 그대로 재발한다.
+    if (rangeWindowFromDate === null) return;
+    // ⚠ `fillKindRef` 가 활성이어도 **저장뷰가 바뀌었으면 덮어쓴다.** 저장뷰 적용은
+    // 명시적 사용자 액션이라 진행 중이던 팬 백필보다 우선한다. 안 그러면 저장뷰를
+    // 연달아 클릭했을 때 두 번째가 **영영 안 채워진다**(첫 fill 이 끝날 때까지 막힌다).
+    const cur = historicalRange.snapshot().historicalFromDate;
+    // 분봉은 250일 벽에서 자른다 — 넘겨도 백엔드가 못 준다.
+    const earliestAllowedDate = isMinuteTimeframe(timeframe)
+      ? earliestAllowedMinuteDate(todayKstYyyymmdd())
+      : null;
+    const target = earliestAllowedDate !== null && savedRangeFromDate < earliestAllowedDate
+      ? earliestAllowedDate
+      : savedRangeFromDate;
+    const plan = planFillStep({
+      kind: 'coverage_gap',
+      historicalFromDate: cur,
+      axisEarliestMs: axis.segments[0].sessionOpenMs,
+      earliestAllowedDate,
+      timeframe,
+      stepCount: 0,
+      budget: MAX_FILL_STEPS,
+      coverageTargetDate: target,
+      rangeWindowFromDate,
+    });
+    // 이미 목표까지 와 있으면 stop 이다 — 그때도 마킹해 반복 판정을 막는다.
+    savedRangeFilledForRef.current = savedRangeFromDate;
+    if (plan.action === 'stop') return;
+    fillKindRef.current = 'coverage_gap';
+    fillBudgetRef.current = MAX_FILL_STEPS;
+    fillCoverageTargetRef.current = target;
+    fillStepCountRef.current = 1;
+    livePerfLog('viewport_backfill_extend', {
+      code,
+      timeframe,
+      trigger: 'saved_range',
+      from: cur,
+      nextFrom: plan.nextFrom,
+      coverageTarget: target,
+      stepCount: fillStepCountRef.current,
+      budget: fillBudgetRef.current,
+      candleCount: bundle.candles.length,
+    });
+    historicalRange.extend(plan.nextFrom);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, savedRangeFromDate, rangeWindowFromDate, code, historicalRange]);
 }

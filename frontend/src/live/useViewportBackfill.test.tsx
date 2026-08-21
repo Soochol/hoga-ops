@@ -435,6 +435,111 @@ describe('useViewportBackfill — initial-display coverage trigger (3c, PR-3)', 
   });
 });
 
+describe('useViewportBackfill — 저장뷰 구간 백필 (3d)', () => {
+  /**
+   * 저장뷰 적용은 **팬 없이 순간 이동**하므로 3b(좌측 팬 이벤트)가 발화하지 않는다.
+   * 그래서 3c 와 같은 형태로 fill 을 세워 진행 루프(3a)에 워크백을 넘긴다.
+   *
+   * ── 이 describe 가 막는 방향 ────────────────────────────────────────────
+   * **단발 `extend` 로 되돌아가는 것.** `historicalRange.extend(target)` 한 번은
+   * 백엔드에서 한 청크만 받고 끝나고 `fillKind` 를 세우지 않아 3a 가 이어받지 못한다 —
+   * 저장뷰 적용에는 팬이 없으니 그대로 멎는다(2026-08-21 실측: 3개월 전 저장뷰가
+   * 3분 20초를 기다려도 오늘 화면 그대로였다). 아래 "연속 워크백" 테스트가 그 축이다.
+   *
+   * ── 이 describe 가 못 보는 것 ──────────────────────────────────────────
+   * 착석(뷰포트를 저장 끝에 앉히는 것)은 `LiveChartRoot` 소유라 여기서 재지 않는다.
+   * 여기는 **데이터를 그 구간까지 끌어오는가**만 본다.
+   */
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260801',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  type Props = { savedRangeFromDate?: string | null; isExtending?: boolean; rangeWindowFromDate?: string | null };
+  function renderSaved(initialProps: Props) {
+    return renderHook(
+      (p: Props) =>
+        useViewportBackfill({
+          chart: chartWithCapturedHandler().chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '1m',
+          isExtending: p.isExtending ?? false,
+          code: '005930',
+          canTriggerBackfill: () => true,
+          // 3a·3d 가 같은 값을 읽는다 — null 이면 둘 다 판정을 보류/종료한다.
+          rangeWindowFromDate: p.rangeWindowFromDate === undefined ? '20260801' : p.rangeWindowFromDate,
+          savedRangeFromDate: p.savedRangeFromDate ?? null,
+        }),
+      { initialProps },
+    );
+  }
+
+  it('저장 구간이 로드 범위보다 과거면 **뷰포트 이벤트 없이** 발화한다', () => {
+    renderSaved({ savedRangeFromDate: '20260520' }); // 현재 창 20260801 보다 과거
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('요청 창 신호(rangeWindowFromDate)가 아직 없으면 보류했다가, 도착하면 발화한다', () => {
+    // 폴백으로 밀고 나가면 3a 가 첫 settle 에서 stop 해 한 스텝만 가고 멎는다.
+    const { rerender } = renderSaved({ savedRangeFromDate: '20260520', rangeWindowFromDate: null });
+    expect(extendSpy).not.toHaveBeenCalled();
+    rerender({ savedRangeFromDate: '20260520', rangeWindowFromDate: '20260801' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('저장뷰가 없으면 발화하지 않는다', () => {
+    renderSaved({ savedRangeFromDate: null });
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('이미 저장 구간까지 로드돼 있으면 발화하지 않는다', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260501' }); // 목표보다 과거
+    renderSaved({ savedRangeFromDate: '20260520' });
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('같은 저장뷰로는 재발화하지 않는다 — SSE 틱마다 밀면 안 된다', () => {
+    const { rerender } = renderSaved({ savedRangeFromDate: '20260520' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    rerender({ savedRangeFromDate: '20260520' });
+    rerender({ savedRangeFromDate: '20260520' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('**다른** 저장뷰로 바꾸면 그 구간까지 다시 채운다', () => {
+    const { rerender } = renderSaved({ savedRangeFromDate: '20260520' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    rerender({ savedRangeFromDate: '20260301' });
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('fill 을 세우므로 진행 루프(3a)가 이어받는다 — 단발 extend 면 여기서 멎는다', () => {
+    // 3a 는 settle 신호(isExtending 하강 엣지)에서 다음 스텝을 낸다. fill 이 활성이
+    // 아니면(=단발 extend) 곧바로 return 하므로 두 번째 호출이 없다.
+    const { rerender } = renderSaved({ savedRangeFromDate: '20260101' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    rerender({ savedRangeFromDate: '20260101', isExtending: true });
+    rerender({ savedRangeFromDate: '20260101', isExtending: false }); // 하강 엣지 = 스텝 settle
+    expect(extendSpy.mock.calls.length).toBeGreaterThan(1);
+  });
+});
+
 describe('useViewportBackfill — warm-cache settle signal (3a)', () => {
   /**
    * 종목 A→B→A 복귀 후 일봉 재-팬의 박제(2026-08-15 실측).
