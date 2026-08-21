@@ -132,12 +132,14 @@ class _TodaySidePeakState:
         }
 
     def _refresh_rank_ones(self) -> None:
+        # `all_ranked` 만 정렬한다 — 아래 `bounded_all` 이 상위 _EMIT_LIMIT 개를
+        # 쓰기 때문이다. 나머지 둘은 **1위만** 쓰므로 정렬 대신 `_rank_one`(O(n)).
+        # `open_by_price` 는 하루 동안 가격 수만큼 자라므로 이쪽이 큰 쪽이다
+        # (`closed_traded` 는 _EMIT_LIMIT 로 잘려 항상 ≤3).
         all_ranked = _ranked_peaks([*self.closed_traded, *self.open_by_price.values()])
-        traded_ranked = _ranked_peaks(self.closed_traded)
-        untraded_ranked = _ranked_peaks(self.open_by_price.values())
         self.all_peak = all_ranked[0] if all_ranked else None
-        self.traded_peak = traded_ranked[0] if traded_ranked else None
-        self.untraded_peak = untraded_ranked[0] if untraded_ranked else None
+        self.traded_peak = _rank_one(self.closed_traded)
+        self.untraded_peak = _rank_one(self.open_by_price.values())
         bounded_all = all_ranked[:_EMIT_LIMIT]
         self.observed_peak_events = {
             _peak_event_key(self.side_name, peak): peak for peak in bounded_all
@@ -244,11 +246,29 @@ def _top_ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
     return _ranked_peaks(peaks)[:_EMIT_LIMIT]
 
 
+def _peak_rank_key(peak: Peak) -> tuple[int, int, int, tuple[int, int]]:
+    """랭킹 정렬 키. 모듈 상수로 올려 `_ranked_peaks`·`_rank_one` 이 공유한다."""
+    return (-peak.qty, peak.t_ms, peak.price, _seq_sort_key(peak.seq))
+
+
 def _ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
-    return sorted(
-        peaks,
-        key=lambda p: (-p.qty, p.t_ms, p.price, _seq_sort_key(p.seq)),
-    )
+    return sorted(peaks, key=_peak_rank_key)
+
+
+def _rank_one(peaks: Iterable[Peak]) -> Peak | None:
+    """1위만 필요한 자리 — **정렬하지 않는다**.
+
+    `sorted(...)[0]` 은 O(n log n) 인데 여기서 쓰는 것은 첫 항목 하나뿐이다.
+    `min` 은 O(n) 이고 같은 키를 쓰므로 결과가 동일하다(동점 처리도 같다 — 키가
+    `seq` 까지 포함한 전순서라 최솟값이 유일하다).
+
+    싼 미시 최적화처럼 보이지만 **이 함수는 틱 경로 위에 있다**: 300종목 × 종목당
+    ~16 ob/s 의 모든 틱이 `_refresh_rank_ones` 를 지나고, 그 본문은 이벤트 루프
+    스레드에서 **양보 없이** 돈다(2026-08-18 py-spy 로 GIL 보유자가 이 경로임이
+    확인됐다 — `_recv_loop → _dispatch → on_tick`). 실측 1.1~1.9배
+    (n=10~600, 2026-08-21).
+    """
+    return min(peaks, key=_peak_rank_key, default=None)
 
 
 def _peak_payload(peak: Peak) -> dict[str, int]:
