@@ -132,6 +132,26 @@ export interface WorkspaceWindow {
   rect: WorkspaceRect;
   /** kind==='chart' 에서만 존재. */
   chart?: ChartWindowConfig;
+  /**
+   * 종목 고정(핀) — **이 창을 링크 그룹에서 뗀 상태**이고, 값이 곧 그 창이 붙든 종목이다.
+   *
+   * 왜 boolean 이 아니라 종목 사본인가: 종목 SSOT 는 그룹이다(#711). 창에 boolean
+   * 자물쇠만 걸면 같은 그룹의 **다른 창**에 종목이 들어오는 순간 `setGroupSymbol` 한 번이
+   * 잠긴 창의 표시 종목까지 바꾼다 — 지키려는 값이 창 밖에 있어서 자물쇠가 원리적으로
+   * 샌다. 창이 자기 종목 사본을 들면 그룹 교체가 이 창을 그냥 지나간다.
+   *
+   * 그래서 핀은 "얼리기" 가 아니라 **분리**다: 핀이 걸린 창은 그룹 종목을 안 보고,
+   * 이 슬롯을 쓰는 문은 **그 창에 직접 드롭**하는 경로 하나뿐이다(`setWindowSymbol`).
+   * 해제하면 슬롯이 지워지고 다시 그룹 종목을 따른다.
+   *
+   * 읽는 쪽은 반드시 `windowSymbolOf` 를 거친다 — 창→종목 해석이 두 갈래(핀/그룹)가
+   * 된 이상 소비처가 각자 `groupSymbols[win.group]` 를 직독하면 핀 창만 조용히
+   * 옛 종목을 그린다(구독 코드 집합이 그 사고의 최단 경로다 — `liveOpenCodesKey`).
+   *
+   * **프리셋에는 담기지 않는다**(`snapshotWorkspace`·`normalizeWorkspaceSnapshot`) —
+   * `groupSymbols` 를 뺀 것과 같은 이유로, 프리셋은 배치를 담고 종목을 담지 않는다.
+   */
+  pinned?: GroupSymbol;
 }
 
 export interface GroupSymbol {
@@ -181,6 +201,27 @@ type Store = Persisted & {
   setWindowRects: (updates: readonly { id: string; rect: WorkspaceRect }[]) => void;
   setWindowGroup: (id: string, group: GroupId) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
+  /**
+   * 창 종목 고정 토글. 켤 때 지금 그리고 있는 종목을 창 슬롯으로 복사하고, 끌 때
+   * 슬롯을 지워 그룹으로 되돌린다. **표시 종목이 없는 창은 켤 수 없다**(고정할 값이
+   * 없다 — UI 도 그때 버튼을 비활성화한다).
+   */
+  toggleWindowPin: (id: string) => void;
+  /**
+   * 창 하나에 종목을 쓴다 — **드롭 경로의 문**. 핀 창이면 창 슬롯에, 아니면 종전대로
+   * 그 창의 그룹에 쓴다(그룹 동료 창들이 같이 따라오는 링크 동작 유지).
+   *
+   * 클릭 경로는 이 문을 쓰지 않는다 — `activationTarget` 이 고른 **핀 아닌** 창을
+   * 거치므로 항상 그룹 쓰기로 떨어진다.
+   */
+  setWindowSymbol: (id: string, symbol: GroupSymbol) => void;
+  /** 전 창이 핀이라 클릭 종목 교체가 막힌 사건(비영속 · 토스트 트리거).
+   *  `liveNavigate` 가 세우고 토스트 호스트가 소비한다. */
+  blockedActivation: { name: string } | null;
+  reportBlockedActivation: (name: string) => void;
+  dismissBlockedActivation: () => void;
+  /** 전 창 고정 해제 — 위 토스트의 복구 액션. */
+  unpinAllWindows: () => void;
   /** 실명이 아직 안 붙은(`name === code`) 주식 그룹 종목을 심볼 마스터 실명으로
    *  보강한다. `resolve` 가 undefined 를 주면 그 그룹은 그대로 둔다. */
   backfillSymbolNames: (resolve: (code: string) => string | undefined) => void;
@@ -258,13 +299,23 @@ function readRect(raw: unknown, legacyPx: boolean): WorkspaceRect | null {
   return isFracRect(rect) ? rect : null;
 }
 
-function readWindow(raw: unknown, legacyPx: boolean): WorkspaceWindow | null {
+/**
+ * @param keepPin 핀 종목을 실어 올지. 저장소 하이드레이션은 true, **프리셋 payload 는
+ *  false** — 프리셋은 배치만 담는다는 계약이 `groupSymbols` 뿐 아니라 창 핀에도 걸린다.
+ *  (분기를 호출부가 아니라 여기 두는 이유: 프리셋 적용 경로가 이 함수를 재사용하므로,
+ *  호출부에서 지우면 새 프리셋 경로가 생길 때마다 지우는 것을 잊을 수 있다.)
+ */
+function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceWindow | null {
   if (!raw || typeof raw !== 'object') return null;
   const w = raw as Record<string, unknown>;
   if (typeof w.id !== 'string' || !isWindowKind(w.kind) || !isGroupId(w.group)) return null;
   const rect = readRect(w.rect, legacyPx);
   if (!rect) return null;
   const win: WorkspaceWindow = { id: w.id, kind: w.kind, group: w.group, rect };
+  if (keepPin) {
+    const pinned = readSymbol(w.pinned);
+    if (pinned) win.pinned = pinned;
+  }
   if (w.kind === 'chart') {
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
@@ -283,19 +334,26 @@ function readWindow(raw: unknown, legacyPx: boolean): WorkspaceWindow | null {
   return win;
 }
 
+/** 저장값 하나 → GroupSymbol. 그룹 종목과 창 핀 종목이 **같은 검증**을 통과해야
+ *  한다 — 둘 다 화면·구독·드로어로 흘러가는 같은 종류의 값이다. */
+function readSymbol(raw: unknown): GroupSymbol | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.code !== 'string' || typeof s.name !== 'string') return null;
+  // kind='index' 는 code 가 실제 LiveIndexId 일 때만 보존 — 손상/외래 값이
+  // 상태바 폴백(`index:FOO`)·드로어 capabilities 로 새는 것을 입구에서 차단(리뷰 #2).
+  const isIndex = s.kind === 'index' && isLiveIndexId(s.code);
+  return { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
+}
+
 function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
   const out: Partial<Record<GroupId, GroupSymbol>> = {};
   if (!raw || typeof raw !== 'object') return out;
   for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
     const group = Number(key);
-    if (!isGroupId(group) || !val || typeof val !== 'object') continue;
-    const s = val as Record<string, unknown>;
-    if (typeof s.code === 'string' && typeof s.name === 'string') {
-      // kind='index' 는 code 가 실제 LiveIndexId 일 때만 보존 — 손상/외래 값이
-      // 상태바 폴백(`index:FOO`)·드로어 capabilities 로 새는 것을 입구에서 차단(리뷰 #2).
-      const isIndex = s.kind === 'index' && isLiveIndexId(s.code);
-      out[group] = { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
-    }
+    if (!isGroupId(group)) continue;
+    const symbol = readSymbol(val);
+    if (symbol) out[group] = symbol;
   }
   return out;
 }
@@ -316,6 +374,17 @@ function readWorkspaceSnapshot(): Record<string, unknown> {
   return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
 }
 
+/**
+ * 딥링크 탭(`?code=`·`?index=`)은 **핀을 물려받지 않는다**.
+ *
+ * 딥링크 탭은 공유 시드에서 레이아웃을 물려받는데(`readWorkspaceSnapshot`), 그 시드에
+ * 핀이 있으면 새 탭이 **핀이 걸린 채로 열린다**. 그러면 `LivePage` 의 1회 시드
+ * (`activateLiveCode`)가 핀 창을 피해 다른 창에 착지하거나, 전 창이 핀이면 아무 데도
+ * 못 간다 — 그 URL 을 열어 그 종목을 보려던 요청이 조용히 무시된다.
+ *
+ * 이 탭에서만 지우므로 원래 탭의 핀은 그대로다(sessionStorage 격리). "딥링크 탭 =
+ * 그 종목을 보러 새로 연 탭" 이라는 그 탭의 존재 이유와도 맞는다.
+ */
 function readStorage(): Persisted & { pendingNormalize: boolean } {
   const parsed = readWorkspaceSnapshot();
   // v2 = 비율 rect(ADR-0122). 버전이 없거나 낮으면 레거시 px — 값은 그대로 싣고
@@ -355,7 +424,7 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     return { ...fresh, pendingNormalize: false };
   }
   return {
-    windows,
+    windows: isDeepLinkTab() ? windows.map(withoutPin) : windows,
     zOrder: normalizeZOrder(parsed.zOrder, windows),
     groupSymbols: readGroupSymbols(parsed.groupSymbols),
     pendingNormalize: legacyPx,
@@ -390,9 +459,19 @@ export function targetChartWindow(
   return null;
 }
 
-/** 그룹의 대상 차트 창 = 그 그룹에서 z-최상위 차트 창 (ADR-0119 PR-D) —
+/** 그룹의 대상 차트 창 = 그 그룹에서 z-최상위 **핀 아닌** 차트 창 (ADR-0119 PR-D) —
  *  그룹 차트 링크(매물대·프로그램 번들·스팟 timeframe) 발행자 선정 규칙.
- *  targetChartWindow(전역 드로어/상태바 대상)와 같은 순회를 그룹으로 좁힌 것. */
+ *  targetChartWindow(전역 드로어 대상)와 같은 순회를 그룹으로 좁힌 것.
+ *
+ *  **핀 창이 빠지는 이유**: 발행 payload 는 종목 종속이다(`code`·`bundle`). 핀 창은
+ *  그룹과 다른 종목을 그리므로, 발행하면 소비자(DataWindow)의 `link.code === code`
+ *  가드에 전량 걸린다 — 그룹 데이터 창(매물대·프로그램)이 **영구히** 링크를 못 받는다
+ *  (그 가드는 종목 교체 직후 한 프레임을 위한 것이라 이 상태를 일시적이라 오해한다).
+ *  핀 창을 건너뛰면 그룹 종목을 실제로 따르는 차트가 발행자가 되어 링크가 산다.
+ *
+ *  못 보는 것: 그룹의 차트가 그 하나뿐이고 그것이 핀이면 발행자가 없다 → 데이터 창은
+ *  폴백(빈 매물대)이다. 그 그룹 종목의 차트 파이프라인이 아예 없으니 파생할 것도 없다 —
+ *  숨겨진 실패가 아니라 정직한 결과다. 차트를 하나 더 열거나 핀을 풀면 살아난다. */
 export function groupTargetChartWindow(
   windows: readonly WorkspaceWindow[],
   zOrder: readonly string[],
@@ -400,7 +479,7 @@ export function groupTargetChartWindow(
 ): WorkspaceWindow | null {
   for (let i = zOrder.length - 1; i >= 0; i--) {
     const w = windows.find((win) => win.id === zOrder[i]);
-    if (w?.kind === 'chart' && w.group === group) return w;
+    if (w?.kind === 'chart' && w.group === group && !w.pinned) return w;
   }
   return null;
 }
@@ -410,6 +489,62 @@ export function activeGroupOf(state: Pick<Persisted, 'windows' | 'zOrder'>): Gro
   const focusedId = state.zOrder[state.zOrder.length - 1];
   const focused = state.windows.find((w) => w.id === focusedId);
   return focused?.group ?? 1;
+}
+
+/**
+ * 창이 **실제로 그리는** 종목 — 창→종목 해석의 SSOT.
+ *
+ * 핀이 걸렸으면 창이 든 사본, 아니면 그룹 종목(#711 의 기본 경로). 소비처가
+ * `groupSymbols[win.group]` 를 직독하면 핀 창에서만 값이 갈리므로 **읽기는 전부
+ * 여기를 지난다**(화면·구독 코드 집합·지표 드로어·창 목록).
+ */
+export function windowSymbolOf(
+  state: Pick<Persisted, 'groupSymbols'>,
+  win: WorkspaceWindow | null | undefined,
+): GroupSymbol | null {
+  if (!win) return null;
+  return win.pinned ?? state.groupSymbols[win.group] ?? null;
+}
+
+/** 포커스 창이 그리는 종목 — 레거시 미러(`activeCode`)·문서 제목의 원천.
+ *
+ *  `groupSymbols[activeGroupOf(s)]` 가 **아니다**: 포커스 창이 핀이면 그룹 종목과
+ *  화면이 갈리므로, 그 식은 관심종목 하트·검색 하이라이트·탭 제목을 "지금 보고 있지
+ *  않은 종목" 에 걸어 놓는다. */
+export function focusedWindowSymbol(state: Pick<Persisted, 'windows' | 'zOrder' | 'groupSymbols'>): GroupSymbol | null {
+  const focusedId = state.zOrder[state.zOrder.length - 1];
+  return windowSymbolOf(state, state.windows.find((w) => w.id === focusedId));
+}
+
+/**
+ * 클릭 계열(관심종목·히트맵·스크리너·검색·지수바) 종목 교체의 **목적지 창**.
+ *
+ * z순서 위에서부터 훑어 **핀이 걸리지 않은** 첫 창. 핀 창은 클릭으로 안 바뀌는 것이
+ * 핀의 정의이므로 목적지 후보에서 빠지고, 클릭은 그 아래 살아 있는 창으로 넘어간다
+ * (사용자 결정 2026-08-21 — 무반응보다 착지가 낫다).
+ *
+ * **드롭은 이 함수를 타지 않는다** — 좌표 아래 창에 직접 쓴다(`setWindowSymbol`).
+ * 그것이 "직접 놓을 때만 바뀐다" 의 구현이고, 핀 창에 종목을 넣는 유일한 문이다.
+ *
+ * 세 결과를 **구분해서** 돌려준다. `blocked` 와 `empty` 를 한 null 로 뭉개면 창이 없는
+ * 워크스페이스(빈 상태 화면)의 클릭까지 실패로 알리게 된다 — 거긴 종전대로 그룹 1 에
+ * 시드해 두는 것이 맞다(다음에 추가하는 창이 활성 그룹을 물려받는다).
+ */
+export type ActivationTarget =
+  /** 이 창으로 — 창의 그룹(핀 아님이 보장됨)에 쓰고 창을 포커스한다. */
+  | { kind: 'window'; window: WorkspaceWindow }
+  /** 창이 하나도 없음 — 그룹 1 에 시드(종전 동작 보존). */
+  | { kind: 'empty'; group: GroupId }
+  /** 창은 있는데 **전부 핀** — 바꿀 곳이 없다. 호출부가 무반응 대신 알려야 한다. */
+  | { kind: 'blocked' };
+
+export function activationTarget(state: Pick<Persisted, 'windows' | 'zOrder'>): ActivationTarget {
+  if (state.windows.length === 0) return { kind: 'empty', group: 1 };
+  for (let i = state.zOrder.length - 1; i >= 0; i--) {
+    const w = state.windows.find((win) => win.id === state.zOrder[i]);
+    if (w && !w.pinned) return { kind: 'window', window: w };
+  }
+  return { kind: 'blocked' };
 }
 
 /** 포커스 차트 창(없으면 undefined) — 새 차트 창 복제 시드용(#712). */
@@ -473,6 +608,17 @@ function withChart(
   if (!win?.chart) return null;
   const chart = fn(win.chart);
   return state.windows.map((w) => (w.id === id ? { ...w, chart } : w));
+}
+
+/** 창에서 핀 슬롯만 뗀 사본. 핀을 빼는 자리가 넷(프리셋 저장·프리셋 적용·딥링크 탭
+ *  하이드레이션·해제)이라 이름을 붙여 한곳에 둔다 — 각자 destructure 로 지우면
+ *  "여기서 왜 핀이 빠지나" 가 네 번 설명돼야 한다. 핀이 없으면 원본 참조를 그대로
+ *  돌려준다(불필요한 새 객체로 memo 경계를 깨지 않게). */
+function withoutPin(win: WorkspaceWindow): WorkspaceWindow {
+  if (!win.pinned) return win;
+  const next = { ...win };
+  delete next.pinned;
+  return next;
 }
 
 const EMPTY_RUNTIME: ChartWindowRuntime = {
@@ -589,7 +735,10 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       if (!prev || prev.group === group) return {};
       const windows = state.windows.map((w) => (w.id === id ? { ...w, group } : w));
       // 그룹 이동 = 이 창의 표시 종목 교체(그룹=종목 SSOT #711) — fresh-view 런타임 리셋.
+      // **핀 창은 예외**: 그룹을 옮겨도 자기 종목을 계속 그리므로 표시가 안 바뀐다
+      // (그룹은 크로스헤어 동기화 축으로만 남는다). setGroupSymbol 의 핀 제외와 같은 논리.
       persistFromState({ ...state, windows });
+      if (prev.pinned) return { windows };
       return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
     });
   },
@@ -599,9 +748,68 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     set((state) => {
       const groupSymbols = { ...state.groupSymbols, [group]: symbol };
       // 종목 교체 = fresh-view — 그 그룹 창들의 백필·분봉 기억 런타임 리셋.
-      const affected = state.windows.filter((w) => w.group === group).map((w) => w.id);
+      // **핀 창은 빠진다** — 그룹이 바뀌어도 그 창의 화면은 안 바뀌므로, 리셋하면
+      // 진행 중이던 딥 백필만 이유 없이 되감긴다(backfillSymbolNames 와 같은 논리).
+      const affected = state.windows.filter((w) => w.group === group && !w.pinned).map((w) => w.id);
       persistFromState({ ...state, groupSymbols });
       return { groupSymbols, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
+    });
+  },
+
+  toggleWindowPin: (id) => {
+    set((state) => {
+      const win = state.windows.find((w) => w.id === id);
+      if (!win) return {};
+      const next = windowSymbolOf(state, win);
+      // 고정할 종목이 없는 창(종목 미배정 그룹)은 켤 수 없다 — 빈 핀은 "그룹을 따르지도,
+      // 자기 종목도 없는" 표현 불가 상태다.
+      if (!win.pinned && !next) return {};
+      const windows = state.windows.map((w) =>
+        w.id !== id ? w : w.pinned ? withoutPin(w) : { ...w, pinned: next! },
+      );
+      persistFromState({ ...state, windows });
+      // 해제는 그룹 종목으로 되돌아가는 것이라 **종목이 바뀔 수 있다** → fresh-view.
+      // 켜는 쪽은 지금 보던 종목을 그대로 드는 것이라 런타임을 건드리지 않는다.
+      const unpinnedTo = win.pinned ? state.groupSymbols[win.group] ?? null : null;
+      const symbolChanged = !!win.pinned && unpinnedTo?.code !== win.pinned.code;
+      return {
+        windows,
+        ...(symbolChanged ? { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) } : {}),
+      };
+    });
+  },
+
+  setWindowSymbol: (id, symbol) => {
+    const win = get().windows.find((w) => w.id === id);
+    if (!win) return;
+    if (!win.pinned) {
+      get().setGroupSymbol(win.group, symbol);
+      return;
+    }
+    set((state) => {
+      const windows = state.windows.map((w) => (w.id === id ? { ...w, pinned: symbol } : w));
+      persistFromState({ ...state, windows });
+      return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
+    });
+  },
+
+  blockedActivation: null,
+  reportBlockedActivation: (name) => set({ blockedActivation: { name } }),
+  dismissBlockedActivation: () => set((s) => (s.blockedActivation ? { blockedActivation: null } : {})),
+
+  unpinAllWindows: () => {
+    set((state) => {
+      const pinnedIds = state.windows.filter((w) => w.pinned).map((w) => w.id);
+      if (pinnedIds.length === 0) return {};
+      const windows = state.windows.map(withoutPin);
+      persistFromState({ ...state, windows });
+      // 해제된 창들은 그룹 종목으로 되돌아간다 — 전부 fresh-view 로 본다(창별 비교보다
+      // 과잉이지만, 이 경로는 복구 액션이라 빈도가 0 에 가깝고 안전한 쪽이 맞다).
+      return {
+        windows,
+        chartRuntime: clearedChartRuntime(state.chartRuntime, pinnedIds),
+        blockedActivation: null,
+      };
     });
   },
 
@@ -616,19 +824,40 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
    *  심볼 마스터에 없고, 보강 대상도 아니므로 건너뛴다. */
   backfillSymbolNames: (resolve) => {
     set((state) => {
+      const healed = (symbol: GroupSymbol | undefined): GroupSymbol | null => {
+        if (!symbol || symbol.kind === 'index' || symbol.name !== symbol.code) return null;
+        const name = resolve(symbol.code);
+        return !name || name === symbol.code ? null : { ...symbol, name };
+      };
+
       let groupSymbols: Partial<Record<GroupId, GroupSymbol>> | null = null;
       for (const [key, symbol] of Object.entries(state.groupSymbols)) {
-        if (!symbol || symbol.kind === 'index' || symbol.name !== symbol.code) continue;
-        const name = resolve(symbol.code);
-        if (!name || name === symbol.code) continue;
+        const next = healed(symbol);
+        if (!next) continue;
         groupSymbols ??= { ...state.groupSymbols };
-        groupSymbols[Number(key) as GroupId] = { ...symbol, name };
+        groupSymbols[Number(key) as GroupId] = next;
       }
+
+      // 핀 종목도 같은 치유를 받는다 — 이름 없이 드롭된 종목(`name === code`)이 핀
+      // 슬롯에 들어가면 그룹 쪽만 고치는 종전 루프가 **핀 창만 `005930(005930)` 로
+      // 남겨 둔다**. 슬롯이 늘었으면 치유 경로도 같이 늘어야 한다.
+      let windows: WorkspaceWindow[] | null = null;
+      state.windows.forEach((w, i) => {
+        const next = healed(w.pinned);
+        if (!next) return;
+        windows ??= [...state.windows];
+        windows[i] = { ...w, pinned: next };
+      });
+
       // 보강할 게 없으면 참조를 그대로 둔다 — persist·재렌더 낭비 회피(매 심볼 마스터
       // 재검증마다 불리는 경로다).
-      if (!groupSymbols) return {};
-      persistFromState({ ...state, groupSymbols });
-      return { groupSymbols };
+      if (!groupSymbols && !windows) return {};
+      const next = {
+        ...(groupSymbols ? { groupSymbols } : {}),
+        ...(windows ? { windows } : {}),
+      };
+      persistFromState({ ...state, ...next });
+      return next;
     });
   },
 
@@ -711,13 +940,14 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
  *  스토어 내부 참조를 잡지 않도록 창·rect·chart 값까지 새 객체로 복제한다 —
  *  프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게.
  *
- *  담기지 않는 것 둘: **종목**(프리셋은 배치만 — `WorkspaceSnapshot` 주석)과
- *  **지표**(전역 1세트라 창에 실을 것이 없다). 창의 group 번호는 배치의 일부라
- *  남지만, 그 번호가 어느 종목인지는 프리셋 밖의 현재 상태가 정한다. */
+ *  담기지 않는 것 셋: **종목**(프리셋은 배치만 — `WorkspaceSnapshot` 주석), **창 핀**
+ *  (핀 슬롯이 종목이므로 같은 규칙 — `...w` 스프레드가 조용히 실어 나르지 않도록
+ *  아래에서 명시적으로 뺀다), **지표**(전역 1세트라 창에 실을 것이 없다). 창의 group
+ *  번호는 배치의 일부라 남지만, 그 번호가 어느 종목인지는 프리셋 밖의 현재 상태가 정한다. */
 export function snapshotWorkspace(): WorkspaceSnapshot {
   const s = useWorkspaceStore.getState();
   return {
-    windows: s.windows.map((w) => ({
+    windows: s.windows.map(withoutPin).map((w) => ({
       ...w,
       rect: { ...w.rect },
       ...(w.chart ? { chart: { ...w.chart } } : {}),
@@ -733,7 +963,12 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
  *  **`groupSymbols` 는 읽지 않는다** — 반환 타입에서 빠져 있으므로, 옛 payload 에
  *  종목이 남아 있어도(v3 로 저장된 프리셋) 여기서 조용히 버려진다. 폴백 분기가
  *  종목을 지우지 못하는 것도 같은 이유다(그 분기가 `groupSymbols: {}` 를 만들던 것이
- *  "기본 배치로 초기화" 에서 종목을 날리던 경로였다). */
+ *  "기본 배치로 초기화" 에서 종목을 날리던 경로였다).
+ *
+ *  **창 핀도 읽지 않는다**(`keepPin: false`) — 핀 슬롯은 종목이다. 프리셋이 핀을 실어
+ *  오면 배치를 바꾸려고 누른 프리셋이 창들의 종목까지 갈아 끼운다. 저장 쪽
+ *  (`snapshotWorkspace`)과 **양쪽 다** 막아야 한다: 서버에 이미 핀이 실린 옛 프리셋이
+ *  남아 있을 수 있으므로 읽기 차단이 최종 방어선이다. */
 function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
@@ -741,7 +976,7 @@ function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
   // rect 검증에서 떨어져 공장 기본으로 폴백한다(ADR-0122). 프리셋은 이미
   // 버전 불일치 시 폐기하는 규율이라 조용한 오해석보다 이쪽이 안전하다.
   const windows = rawWindows
-    .map((w) => readWindow(w, false))
+    .map((w) => readWindow(w, false, false))
     .filter((w): w is WorkspaceWindow => w !== null);
   if (windows.length === 0) {
     const fallback = defaultWindows();

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
 import { codeFromMergedLiveRangeKey } from '../api/range';
-import type { GroupSymbol, WorkspaceWindow } from '../state/workspace';
+import { windowSymbolOf, type GroupSymbol, type WorkspaceWindow } from '../state/workspace';
 
 /**
  * 열린 창이 가리키는 종목 집합을 **문자열**로 만든다.
@@ -11,9 +11,15 @@ import type { GroupSymbol, WorkspaceWindow } from '../state/workspace';
  * 조금만 바뀌어도 구독자가 재렌더된다. 정렬 후 join 하면 Object.is 비교가 값 비교로
  * 떨어져, 종목 구성이 그대로인 변경(창 이동·리사이즈·z순서)에는 아무 일도 안 생긴다.
  *
- * 종목의 SSOT 는 창이 아니라 **그룹**이다(#711) — 창은 group 만 들고 code 는
+ * 종목의 SSOT 는 원칙적으로 창이 아니라 **그룹**이다(#711) — 창은 group 만 들고 code 는
  * groupSymbols 에 산다. 그래서 "창이 하나라도 있는 그룹"의 심볼만 모은다. 창이 전부
  * 닫힌 그룹의 종목은 보호 대상에서 빠져 다음 축출에 회수된다.
+ *
+ * **예외가 창 고정(핀)이다** — 핀 창은 자기 종목을 들고 그룹을 안 본다. 그래서 여기서
+ * `groupSymbols[win.group]` 를 직독하면 안 되고 `windowSymbolOf` 를 거쳐야 한다.
+ * 직독하면 증상이 **화면이 아니라 데이터**로 나온다: 핀 종목이 이 집합에서 빠져 그
+ * 창의 캔들·시세 캐시가 다음 축출에 회수되고(구독 코드 집합도 같은 키를 쓴다), 창은
+ * 종목명을 멀쩡히 띄운 채 조용히 빈다.
  */
 export function liveOpenCodesKey(
   windows: readonly WorkspaceWindow[],
@@ -21,7 +27,7 @@ export function liveOpenCodesKey(
 ): string {
   const codes = new Set<string>();
   for (const win of windows) {
-    const code = groupSymbols[win.group]?.code;
+    const code = windowSymbolOf({ groupSymbols }, win)?.code;
     if (code) codes.add(code);
   }
   return [...codes].sort().join(',');

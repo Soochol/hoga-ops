@@ -4,6 +4,10 @@
  * useWorkspaceStore 의 창을 그룹별 섹션으로 정규화해 공용 WindowListMenu 에 넘긴다.
  * /live 는 링크 그룹(#711)이 있어 그룹 헤더 아래 그 그룹의 종목명을 실을 수 있다 —
  * 창 자체는 종목을 모르고 그룹→종목(groupSymbols)이 SSOT 이므로 헤더가 종목을 진다.
+ *
+ * **고정(핀) 창은 그 규칙의 예외**라 행이 자기 종목을 진다 — 그룹을 안 따르므로 헤더의
+ * 종목명이 그 창에 대해 거짓이 된다. 행에 종목을 실어 헤더와 어긋난 것을 눈에 보이게
+ * 한다(그게 핀의 정의이므로, 감출 것이 아니라 드러낼 차이다).
  */
 import { useMemo } from 'react';
 import { WindowListMenu, type WindowListSection } from '../../workspace/WindowListMenu';
@@ -33,6 +37,7 @@ export function LiveWindowListMenu() {
           .map((w) => ({
             id: w.id,
             label: WINDOW_KIND_LABEL[w.kind],
+            ...(w.pinned ? { sublabel: `고정 ${w.pinned.name}` } : {}),
             icon: WINDOW_KIND_ICON[w.kind],
             isFocused: w.id === focusedId,
             closable: true,
