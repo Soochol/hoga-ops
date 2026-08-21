@@ -359,6 +359,75 @@ describe('planLiveRangeRequest', () => {
   });
 });
 
+/**
+ * 저장뷰 얼림의 **요청 축**(2026-08-21). 세 케이스가 각각 다른 실수를 지목한다.
+ *
+ * **막는 방향**: `frozenRangeFrom` 이 서 있는데도 250일 벽이 요청을 자르는 것. 그러면
+ * 저장 구간이 **디스크에는 있는데 화면에는 없는** 상태가 되고, 그게 이 기능이 고치려던
+ * 증상 그대로다.
+ *
+ * **못 보는 것**: 이 함수는 순수 계산이라 ① 소스가 실제로 디스크로 갔는지(그건
+ * `restBypassEnabled` 축이라 훅 안에 있다) ② 라이브 SSE 가 끊겼는지
+ * (`useLiveChartData` 의 `useLiveSeries('')`) 는 못 잰다. 계산만 맞고 배선이 없어도
+ * 초록일 수 있는 층이라는 뜻이다 — 배선은 아래 훅 테스트와 실사용이 맡는다.
+ *
+ * 픽스처의 `todayKstYyyymmdd` 는 **저장 끝일**이다. 그게 얼림의 정의라서
+ * (`useLiveChartData` 가 `freeze.toDate` 를 "오늘" 로 넘긴다) 여기서도 그렇게 세운다.
+ */
+describe('planLiveRangeRequest — 저장뷰 얼림', () => {
+  const frozenArgs = {
+    code: '005930',
+    timeframe: '1m' as const,
+    // 저장 구간 2025-12-01 ~ 2025-12-10 을 클릭한 상태. 실제 "오늘"(2026-08-21)에서
+    // 250일 벽은 20251215 이므로 **구간 전체가 벽 밖**이다 — 얼림이 없으면 잘린다.
+    todayKstYyyymmdd: '20251210',
+    historicalFromDate: null,
+    askPeakEnabled: true,
+    bidPeakEnabled: true,
+    tradeVolumePocEnabled: true,
+    depthHeatmapEnabled: true,
+    depthDeltaEnabled: false,
+    wallSurgeEnabled: true,
+    brokerLateEntryEnabled: true,
+    brokerLateEntryStartHHMM: 945,
+    programTradeEnabled: true,
+    volumeDistributionEnabled: true,
+    volumeDistributionRangeCount: 12,
+    volumeDistributionPriceRange: null,
+  };
+
+  it('얼린 구간을 그대로 요청한다 — 250일 벽이 시작일을 밀지 않는다', () => {
+    const plan = planLiveRangeRequest({ ...frozenArgs, frozenRangeFrom: '20251201' });
+
+    expect(plan.from).toBe('20251201');
+    expect(plan.to).toBe('20251210');
+  });
+
+  it('얼림 없이도 벽 안 구간은 안 잘린다 — 위 단언이 무엇을 안 재는지 고정한다', () => {
+    // 벽은 `todayKst` 인자 기준으로 돈다(실제 오늘이 아니다). 이 구간은 그 벽 안이라
+    // 얼림 없이도 통과한다 — 즉 **위 케이스만으로는 얼림의 효과를 증명하지 못한다.**
+    // 진짜 대조는 구간이 벽보다도 과거인 아래 케이스다.
+    const plan = planLiveRangeRequest({
+      ...frozenArgs, historicalFromDate: '20251201', frozenRangeFrom: null,
+    });
+
+    expect(plan.from).toBe('20251201');
+  });
+
+  it('저장 구간이 250일보다 길어도 얼리면 자르지 않는다', () => {
+    // 벽 = todayKst − 249 = 20251210 − 249 = **20250405**. 저장 시작일이 그보다 과거다.
+    const frozen = planLiveRangeRequest({ ...frozenArgs, frozenRangeFrom: '20240902' });
+    const notFrozen = planLiveRangeRequest({
+      ...frozenArgs, historicalFromDate: '20240902', frozenRangeFrom: null,
+    });
+
+    expect(frozen.from).toBe('20240902');
+    // 얼리지 않으면 벽이 시작일을 20250405 로 민다 — **이 한 줄이 red-check 이다.**
+    // `frozenRangeFrom` 분기를 지우면 위 `frozen.from` 도 이 값이 되어 빨개진다.
+    expect(notFrozen.from).toBe('20250405');
+  });
+});
+
 describe('overlayLiveTradesOnCandles — 비거래일 가드', () => {
   // 회귀: 주말 시각 틱이 오버레이를 통과하면 차트 끝에 주말 캔들이 붙고, 그 상태로
   // 저장한 학습뷰의 to_date 가 토/일로 박제된다(실측 2건). 백엔드 파서가 1차로

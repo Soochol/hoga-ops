@@ -388,6 +388,28 @@ type UseLiveBundleOptions = {
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
+  /**
+   * 저장뷰 구간에 **얼린** 창의 시작일(YYYYMMDD KST). `null`/미지정 = 평소의 라이브 창.
+   *
+   * 끝일은 따로 받지 않는다 — `todayKstYyyymmdd` 가 **이미 그것**이다. 호출부
+   * (`useLiveChartData`)가 저장 끝일을 "오늘" 로 넘기는 것이 이 모드의 정의이고,
+   * 그래서 `minutePastTo`·세션 경계·라이브 엣지 판정이 전부 저절로 따라온다. 끝일을
+   * 여기서 한 번 더 받으면 두 값이 어긋날 수 있는 **불변식이 하나 생긴다** — 안 받는
+   * 쪽이 어긋날 자리가 없다.
+   *
+   * 이 값이 서면 세 가지가 같이 바뀐다(셋은 한 덩어리다):
+   *  1. **디스크 소스 강제** — 벤더(`ka10080`)는 자격증명·보존에 달렸고, 저장뷰가
+   *     가리키는 과거 구간의 신뢰 가능한 소스는 캡처 디스크(hogaplay)다. 전역
+   *     `rest_bypass_enabled` 를 켜는 것이 **아니라** 이 창만 그렇게 읽는다.
+   *  2. **시작일 고정** — 백필이 걸어온 `historicalFromDate` 대신 저장 시작일.
+   *  3. **250일 벽 해제** — 그 벽은 `/api/live/past-candles` 의 span 캡에서 온 것이라
+   *     (`hoga/live/api.py` `_PAST_MAX_DAYS`) 디스크 경로(`/api/range`)에는 없다.
+   *     실측(2026-08-21): `mode=candles` 가 20251212(벽 밖 252일)를 381봉·경고 0으로 서빙.
+   *
+   * **분봉 전용이다.** 캘린더 봉은 애초에 벽이 없고, 얼리면 `/study` 처럼 맥락 창을
+   * 따로 넓혀 줘야 해서(`studyDailyContextWindow`) 화면이 오히려 좁아진다.
+   */
+  frozenRangeFrom?: string | null;
 };
 
 export type LiveRangeRequestPlan = {
@@ -429,11 +451,18 @@ export function planLiveRangeRequest(args: {
   volumeDistributionEnabled: boolean;
   volumeDistributionRangeCount: number;
   volumeDistributionPriceRange: { min: number; max: number } | null;
+  /** 저장뷰 얼림 시작일 — `UseLiveBundleOptions.frozenRangeFrom` 과 같은 값·같은 의미. */
+  frozenRangeFrom?: string | null;
 }): LiveRangeRequestPlan {
   const isMinute = isMinuteTimeframe(args.timeframe);
-  const seedFrom = args.historicalFromDate
+  const frozenFrom = args.frozenRangeFrom ?? null;
+  const seedFrom = frozenFrom
+    ?? args.historicalFromDate
     ?? subtractDaysKst(args.todayKstYyyymmdd, initialHistoricalDaysFor(args.timeframe));
-  const minutePastFrom = laterDate(seedFrom, earliestAllowedMinuteDate(args.todayKstYyyymmdd));
+  // 얼린 창은 벽을 타지 않는다 — 250일은 벤더 span 캡이고 이 모드는 디스크를 읽는다.
+  const minutePastFrom = frozenFrom
+    ? seedFrom
+    : laterDate(seedFrom, earliestAllowedMinuteDate(args.todayKstYyyymmdd));
   const enableMinute = !!(args.code && isMinute && minutePastFrom <= args.todayKstYyyymmdd);
   return {
     code: enableMinute ? args.code : null,
@@ -495,9 +524,20 @@ export function useLiveBundle(
   const effVolumeDistributionEnabled =
     volumeDistributionEnabled || !!options.sidecarDemands?.volumeDistribution;
   const { data: liveSettings } = useLiveSettings();
+  /**
+   * 저장뷰 얼림 시작일 — 서 있으면 이 창이 저장 구간에 얼려 있다는 뜻이다
+   * (`UseLiveBundleOptions.frozenRangeFrom` 이 세 가지 효과를 전부 적는다).
+   * 분봉에서만 의미가 있으므로 여기서 한 번 걸러 아래 세 소비처가 각자 안 걸러도 되게 한다.
+   */
+  const frozenRangeFrom =
+    isMinuteTimeframe(timeframe) ? (options.frozenRangeFrom ?? null) : null;
   // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=벤더 REST만,
   // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
-  const restBypassEnabled = liveSettings?.rest_bypass_enabled ?? false;
+  //
+  // 얼린 창은 **전역 설정과 무관하게** 디스크다. 전역 토글을 뒤집는 것이 아니라 이 창의
+  // 지역 상수만 뒤집는다 — `SAVED_RANGE_VENUE` 가 전역 `live.venue.v1` 을 안 건드리는
+  // 것과 같은 규율이고, 안 그러면 저장뷰 클릭 하나가 다른 창·다른 탭까지 바꾼다.
+  const restBypassEnabled = frozenRangeFrom !== null || (liveSettings?.rest_bypass_enabled ?? false);
   const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
   const resolveRestFailure = useRestBypassModeStore((s) => s.resolveFailure);
   const venue = options.venue ?? 'KRX';
@@ -508,9 +548,17 @@ export function useLiveBundle(
   // 250-day clamp at the bundle layer so /api/range's 90-day cap and
   // /api/live/past-candles' 250-day cap can stay independent. Applies to
   // the minute path only — the daily endpoint has no equivalent cap.
-  const seedFrom = historicalFromDate ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
+  //
+  // ⚠ **얼린 창(`frozenRangeFrom`)은 이 클램프를 타지 않는다.** 250일은 벤더 엔드포인트의
+  // span 캡에서 온 숫자이고(`hoga/live/api.py` `_PAST_MAX_DAYS`), 얼린 창은 그 엔드포인트를
+  // 아예 안 부른다(위 `restBypassEnabled` 가 디스크로 보낸다). 여기서 같이 자르면 저장뷰가
+  // 가리키는 구간이 **디스크에는 있는데 화면에는 없는** 상태가 된다 — 이 기능이 고치려던
+  // 바로 그 증상이다.
+  const seedFrom = frozenRangeFrom
+    ?? historicalFromDate
+    ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
   const earliestAllowedMinute = earliestAllowedMinuteDate(todayKstYyyymmdd);
-  const minutePastFrom = laterDate(seedFrom, earliestAllowedMinute);
+  const minutePastFrom = frozenRangeFrom ? seedFrom : laterDate(seedFrom, earliestAllowedMinute);
   // Includes today so post-promote disk data (hogaplay/snapshots.parquet,
   // ADR-0037 v2 layout) feeds today's hoga indicators. Before this, today's
   // quote_ratio/fill_strength came only from the in-memory SSE buffer, which
@@ -715,6 +763,7 @@ export function useLiveBundle(
     volumeDistributionEnabled: effVolumeDistributionEnabled,
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
+    frozenRangeFrom,
   });
   const hogaRangeOptions = useMemo(
     () => ({ mode: 'hoga' as const }),
@@ -1224,6 +1273,7 @@ export function useLiveBundle(
       hasCandles: (chartBundle?.candles.length ?? 0) > 0,
       isLoading: activeCandlesLoading,
       restBypassEnabled,
+      savedRangeFrozen: frozenRangeFrom !== null,
       hasInstrument: !!code,
     }),
     refetchCandles,

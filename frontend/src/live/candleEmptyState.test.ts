@@ -154,3 +154,42 @@ describe('deriveCandleEmptyState', () => {
     expect(s?.text).toContain('벤더 연결');
   });
 });
+
+/**
+ * 저장뷰 얼림의 빈 상태(2026-08-21).
+ *
+ * **막는 방향**: 얼린 창의 빈 화면에 "설정 열기" 가 뜨는 것. 얼림은
+ * `restBypassEnabled` 를 강제로 켜므로(useLiveBundle), 순서가 틀리면 우회 분기가
+ * 먼저 잡아 **듣지 않는 버튼**을 준다 — 설정으로는 얼림을 못 끈다(손잡이는 칩의 ×).
+ *
+ * **못 보는 것**: 얼린 창이 실제로 `savedRangeFrozen: true` 를 받는지는 여기서 못 잰다.
+ * 그 배선은 `useLiveBundle` 의 `frozenRangeFrom !== null` 한 줄이다.
+ */
+describe('deriveCandleEmptyState — 저장뷰 얼림', () => {
+  it('얼린 창이 비면 행동을 제안하지 않는다', () => {
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, savedRangeFrozen: true,
+    });
+    expect(s?.text).toBe('저장 구간에 캡처된 캔들이 없다');
+    expect(s?.action).toBeNull();
+  });
+
+  it('얼림이 우회보다 **먼저** 잡는다 — 순서가 계약이다', () => {
+    // 얼린 창은 `restBypassEnabled` 가 항상 켜져 있으므로, 이 단언이 없으면 두 분기의
+    // 순서를 뒤집어도 통과한다(위 케이스만으로는 순서를 고정하지 못한다).
+    const frozen = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, savedRangeFrozen: true,
+    });
+    const bypassOnly = deriveCandleEmptyState({ ...base, restBypassEnabled: true });
+
+    expect(frozen?.action).toBeNull();
+    expect(bypassOnly?.action).toBe('settings');
+  });
+
+  it('에러·벤더 경고가 있으면 그쪽이 먼저다 — 얼림은 "정상 조회인데 비었다" 의 사유다', () => {
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, savedRangeFrozen: true, error: apiError('not_wired'),
+    });
+    expect(s?.text).toContain('벤더 연결');
+  });
+});
