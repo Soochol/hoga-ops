@@ -46,6 +46,12 @@ HogaMs = NewType("HogaMs", int)
 # 캐시가 안전한 근거: 순수 함수다. 입력은 날짜 문자열 하나, KST 는 DST 없는 고정
 # 오프셋(+09:00)이라 같은 입력이 영원히 같은 값이다. 카디널리티도 날짜 수만큼이라
 # maxsize 안에 들어온다.
+#
+# **동시성**: 이 경로는 `/api/range` 의 threadpool 스레드에서 동시에 불린다.
+# `functools.lru_cache` 는 maxsize 가 있으면 C 구현이 자체 락으로 딕셔너리를 보호하고,
+# 설령 두 스레드가 같은 키를 동시에 놓쳐도 순수 함수라 **같은 값을 두 번 계산할 뿐**
+# 이다 — 손상되는 상태가 없다. 캐시를 키우거나 이 함수에 상태를 들이면 그때 이
+# 근거가 깨지므로, 순수성을 잃는 변경은 캐시부터 다시 볼 것.
 @lru_cache(maxsize=4096)
 def _date_unix_ms_at_kst_midnight(date: str) -> int:
     dt = datetime.strptime(date, "%Y%m%d").replace(tzinfo=KST)
