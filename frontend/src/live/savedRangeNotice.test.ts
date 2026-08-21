@@ -71,7 +71,7 @@ describe('savedRangeNotice — 분봉 부분 미캡처', () => {
       earliestCandleDate: '20260102',
     });
 
-    expect(n?.text).toBe('저장 구간 앞부분 미캡처');
+    expect(n?.text).toBe('저장 구간 앞부분 없음');
     // 결과(어디부터 보이는지)를 문구에 담는다 — 칩만으로는 "얼마나" 를 모른다.
     expect(n?.detail).toContain('2026.01.02');
   });
@@ -84,7 +84,7 @@ describe('savedRangeNotice — 분봉 부분 미캡처', () => {
       earliestCandleDate: '20260102',
     });
 
-    expect(n?.text).toBe('저장 구간 앞부분 미캡처');
+    expect(n?.text).toBe('저장 구간 앞부분 없음');
   });
 
   it('첫 캔들이 저장 시작일보다 이르면 침묵 — 구간이 다 덮였다', () => {
@@ -98,6 +98,89 @@ describe('savedRangeNotice — 분봉 부분 미캡처', () => {
   it('earliestCandleDate 를 안 넘기면 침묵 — 모르는 것을 단언하지 않는다', () => {
     // 호출부가 이 값을 아직 못 구했을 때(로딩 중) 잘못된 경고가 깜빡이면 안 된다.
     expect(savedRangeNotice({ ...base, timeframe: '1m', fromDate: '20251119' })).toBeNull();
+  });
+});
+
+/**
+ * 키움 보충(`useMinuteGapFill`)이 붙으면서 생긴 판정들.
+ *
+ * **막는 방향**: 되는 일을 "안 된다" 고 말하는 것. 2026-08-21 까지 이 함수는 앞부분
+ * 미캡처에 무조건 "캡처 이전 구간은 채울 수 없습니다" 를 붙였는데, 보충 경로가 생긴
+ * 지금 그 문장은 세 갈래 중 하나(보유 기간 밖)에서만 참이다.
+ *
+ * **못 보는 것**: 실제로 벤더가 응답했는지. 이 함수는 개수만 받으므로 훅이 센 값이
+ * 틀리면 그대로 틀린다 — 그 축은 `useMinuteGapFill` 쪽 테스트가 맡는다.
+ */
+describe('savedRangeNotice — 키움 보충', () => {
+  const noGapFill = { filledCount: 0, rescaledCount: 0, unfillableCount: 0, pending: false };
+
+  it('보충 중이면 그것만 말한다 — 채워지는 구간을 "없다" 고 단언하지 않는다', () => {
+    const n = savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20251119', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: { ...noGapFill, pending: true, unfillableCount: 3 },
+    });
+
+    expect(n?.text).toBe('빈 거래일 보충 중');
+  });
+
+  it('앞부분이 보유 기간 밖이면 그 이유를 말한다', () => {
+    const n = savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20240827', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: { ...noGapFill, unfillableCount: 40 },
+    });
+
+    expect(n?.text).toBe('저장 구간 앞부분 없음');
+    expect(n?.detail).toContain('보유 기간');
+    // 되는 일을 안 된다고 말하던 옛 문장이 남아 있으면 안 된다.
+    expect(n?.detail).not.toContain('디스크 캡처를 읽으므로');
+  });
+
+  it('보유 기간 안인데도 앞이 비면 이유를 단정하지 않는다', () => {
+    const n = savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20260101', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: noGapFill,
+    });
+
+    expect(n?.detail).toContain('캡처도 벤더 보충도');
+  });
+
+  it('앞은 멀쩡하고 중간에 척도 불일치만 남으면 그것을 말한다', () => {
+    const n = savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20260110', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: { ...noGapFill, filledCount: 5, rescaledCount: 2 },
+    });
+
+    expect(n?.text).toContain('수정주가');
+    expect(n?.text).toContain('2일');
+  });
+
+  it('앞은 멀쩡하고 보유 밖 결손만 남으면 개수를 말한다', () => {
+    const n = savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20260110', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: { ...noGapFill, unfillableCount: 7 },
+    });
+
+    expect(n?.text).toContain('보유 기간 밖');
+    expect(n?.text).toContain('7일');
+  });
+
+  it('전부 채워졌으면 침묵한다 — 안 되는 것만 말하는 정책', () => {
+    expect(savedRangeNotice({
+      ...base, timeframe: '1m',
+      fromDate: '20260110', toDate: '20260224',
+      earliestCandleDate: '20260102',
+      gapFill: { ...noGapFill, filledCount: 12 },
+    })).toBeNull();
   });
 });
 
