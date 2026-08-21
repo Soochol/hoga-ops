@@ -379,7 +379,7 @@ describe('BookPanel', () => {
       />,
     );
 
-    expect(screen.getByText('호가 사다리 없음')).toBeInTheDocument();
+    expect(screen.getByText('정규장 호가 없음 (시간외 잔량만 수신 중)')).toBeInTheDocument();
     // `중` 행은 사다리 본문에만 있다 — 존재하지 않는 testid 를 0 으로 세는 단언은
     // 아무것도 증명하지 못하므로, 실제로 렌더되는 요소로 부재를 판정한다.
     expect(screen.queryByTestId('book-mid-row')).toBeNull();
