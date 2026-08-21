@@ -2746,7 +2746,7 @@ def test_gil_breathe_respects_the_interval(monkeypatch):
 
 
 def test_build_range_bundle_breathes_once_per_date():
-    """일자 루프가 **일자마다** `_gil_breathe` 를 지난다 (배선).
+    """일자 루프가 **일자마다 + 빌더 사이마다** `_gil_breathe` 를 지난다 (배선).
 
     막는 방향: 루프의 호출을 지우는 회귀. 헬퍼 단위 테스트(위)는 그 회귀에 전부
     초록이다 — 이 세션에서 두 번 반복된 "무동작이 초록으로 위장" 패턴이라 배선을
@@ -2782,5 +2782,10 @@ def test_build_range_bundle_breathes_once_per_date():
             mode="candles",
         )
 
-    assert breathe.call_count == len(dates)
+    # **일자당 정확히 9회** = 루프 상단 1 + 빌더 블록 앞 8 (quote_ratio · peaks ·
+    # poc · broker_late · vdist · heatmap · delta · wall_surge). 지점 하나를 지우면
+    # 여기서 떨어진다 — 오늘 재계산(과거 36ms vs 오늘 1,379ms, 그중 peaks 577ms)이
+    # 한 덩어리로 돌아가는 회귀다. **빌더를 추가하면 그 앞에 지점을 넣고 이 수를
+    # 올릴 것** — mergeRangeBundles 가 필드를 전수 나열하는 것과 같은 규율이다.
+    assert breathe.call_count == 9 * len(dates)
 
