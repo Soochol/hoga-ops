@@ -22,9 +22,10 @@ import {
   LABEL_BOX_Y_PAD_PX,
   LABEL_EDGE_PAD_PX,
   LABEL_FONT_PX,
-  LABEL_GAP_PX,
   LABEL_ROW_GAP_PX,
   layoutAskPeakLabels,
+  peakWallChipGeometry,
+  peakXFromCoordinate,
   xCoordinateOrNearest,
   type AskPeakLabelCandidate,
   type PeakWallDockedLabel,
@@ -32,6 +33,12 @@ import {
 import { measureTextCached } from './util/textWidthCache';
 
 export type PeakWallDockedLabelInput = PeakWallDockedLabel;
+
+// 회피로 칩이 점에서 밀렸을 때만 잇는 리더선 — 고저 극값 라벨의 리더선과 같은 처방(옅은 점선).
+// 밀린 거리가 짧으면 1px 얼룩만 남으므로 최소 길이 미만은 그리지 않는다.
+const LEADER_OPACITY = 0.45;
+const LEADER_DASH_PX: readonly [number, number] = [3, 3];
+const LEADER_MIN_PX = 4;
 
 /** 도킹 라벨 앵커 x — 세그먼트 선과 동일한 최근접 봉 클램프(xCoordinateOrNearest)를 쓴다.
  *  raw timeToCoordinate는 통합(UN) 확장 세션 경계(08:00/20:00)의 time1이 로드된 시계열
@@ -47,42 +54,119 @@ export function dockedLabelTimeToX(
   };
 }
 
-export function peakWallDockedLabelCandidates(
-  labels: readonly PeakWallDockedLabelInput[],
-  priceToY: (price: number) => number | null,
-  paneRight: number,
-  measureText: (text: string) => number,
-  labelGapPx: number = LABEL_GAP_PX,
-  timeToX?: (time: Time) => number | null,
-  labelXGapPx: number = LABEL_GAP_PX,
-  labelAnchorShiftPx: number = 0,
-): AskPeakLabelCandidate[] {
-  const candidates: AskPeakLabelCandidate[] = [];
-  const safeAnchorShiftPx = Number.isFinite(labelAnchorShiftPx)
-    ? Math.max(0, labelAnchorShiftPx)
-    : 0;
+/** 도킹 라벨 1개의 배치 후보. `layoutAskPeakLabels` 가 그대로 실어 나르는 추가 필드로
+ *  점(dot)의 x·y 를 들고 다닌다 — 회피로 칩이 밀렸을 때 리더선을 그 점에 잇기 위해. */
+export type PeakWallDockedLabelCandidate = AskPeakLabelCandidate & {
+  peakX: number;
+  lineY: number;
+};
+
+export type PeakWallDockedLabelCandidatesArgs = {
+  labels: readonly PeakWallDockedLabelInput[];
+  priceToY: (price: number) => number | null;
+  /** 세그먼트 끝점 시각 → x(최근접 봉 클램프 포함). */
+  timeToX: (time: Time) => number | null;
+  /** peak 시각의 raw x — 로드 범위 밖이면 null(보간 폴백은 peakXFromCoordinate 가 처리). */
+  rawPeakX: (peakTime: Time) => number | null;
+  measureText: (text: string) => number;
+  paneWidth: number;
+  /** px 상수 → 대상 좌표계 배율. bitmap space 는 hr/vr, media space 는 1(기본). */
+  horizontalScale?: number;
+  verticalScale?: number;
+};
+
+/**
+ * 라벨 앵커는 **선 끝(time1)이 아니라 peak 발생 봉(peakTime)** 이다. 선 끝 도킹은 모든 라벨을
+ * 날 경계에 몰아 서로 겹치게 만들었고, "언제 걸린 벽인가" 도 읽히지 않았다. 기하는
+ * `peakWallChipGeometry` 한 곳에만 있어 고저 라벨의 회피 rect 와 자동으로 같은 값을 쓴다.
+ */
+export function peakWallDockedLabelCandidates({
+  labels,
+  priceToY,
+  timeToX,
+  rawPeakX,
+  measureText,
+  paneWidth,
+  horizontalScale = 1,
+  verticalScale = 1,
+}: PeakWallDockedLabelCandidatesArgs): PeakWallDockedLabelCandidate[] {
+  const candidates: PeakWallDockedLabelCandidate[] = [];
   for (let i = 0; i < labels.length; i += 1) {
     const label = labels[i];
     if (label.label === '') continue;
-    const y = priceToY(label.price);
-    if (y === null) continue;
+    const lineY = priceToY(label.price);
+    if (lineY === null) continue;
+    const x0 = timeToX(label.time0);
+    const x1 = timeToX(label.time1);
+    if (x0 === null || x1 === null) continue;
+    const peakX = peakXFromCoordinate(
+      rawPeakX(label.peakTime),
+      label.peakTime,
+      label.time0,
+      label.time1,
+      x0,
+      x1,
+    );
     const width = measureText(label.label);
-    let xRight = paneRight;
-    if (timeToX) {
-      const lineEndX = timeToX(label.time1);
-      if (lineEndX === null) continue;
-      xRight = lineEndX + labelXGapPx + safeAnchorShiftPx + width;
-      if (xRight > paneRight) continue;
-    }
+    const geometry = peakWallChipGeometry({
+      peakX,
+      dayX0: x0,
+      dayX1: x1,
+      lineY,
+      textWidth: width,
+      side: label.side,
+      paneWidth,
+      horizontalScale,
+      verticalScale,
+    });
+    if (geometry === null) continue;
     candidates.push({
       index: i,
-      xRight,
-      yLine: y - labelGapPx,
+      xRight: geometry.xRight,
+      yLine: geometry.baselineY,
       width,
+      // 폭 컷은 peakWallChipGeometry 의 그날-구간 클램프가 흡수한다(인라인 경로 전용 가드).
       segmentWidth: Number.POSITIVE_INFINITY,
+      peakX,
+      lineY,
     });
   }
   return candidates;
+}
+
+type LeaderArgs = {
+  peakX: number;
+  lineY: number;
+  desiredBaselineY: number;
+  baselineY: number;
+  chipLeft: number;
+  chipRight: number;
+  chipTop: number;
+  chipBottom: number;
+  color: string;
+  verticalScale: number;
+};
+
+/** 회피 스택으로 칩이 원래 자리에서 밀렸거나, 클램프로 점이 칩 x 범위 밖에 남았을 때만
+ *  점↔칩을 잇는다. 안 밀린 라벨까지 그으면 모든 벽에 짧은 수직 획이 붙어 오히려 시끄럽다. */
+function drawPeakLabelLeader(ctx: CanvasRenderingContext2D, args: LeaderArgs): void {
+  const pushedPx = Math.abs(args.baselineY - args.desiredBaselineY) / args.verticalScale;
+  const offAnchor = args.peakX < args.chipLeft || args.peakX > args.chipRight;
+  if (pushedPx < LEADER_MIN_PX && !offAnchor) return;
+  const edgeY = Math.abs(args.lineY - args.chipBottom) <= Math.abs(args.lineY - args.chipTop)
+    ? args.chipBottom
+    : args.chipTop;
+  const endX = Math.min(args.chipRight, Math.max(args.chipLeft, args.peakX));
+  ctx.save();
+  ctx.globalAlpha = LEADER_OPACITY;
+  ctx.strokeStyle = args.color;
+  ctx.lineWidth = Math.max(1, args.verticalScale);
+  ctx.setLineDash([LEADER_DASH_PX[0] * args.verticalScale, LEADER_DASH_PX[1] * args.verticalScale]);
+  ctx.beginPath();
+  ctx.moveTo(args.peakX, args.lineY);
+  ctx.lineTo(endX, edgeY);
+  ctx.stroke();
+  ctx.restore();
 }
 
 class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
@@ -103,27 +187,25 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
-      const xRight = scope.bitmapSize.width - LABEL_EDGE_PAD_PX * hr;
       ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
-      const visibleLogicalRange = chart.timeScale().getVisibleLogicalRange();
-      const logicalSpan = visibleLogicalRange
-        ? Math.abs(visibleLogicalRange.to - visibleLogicalRange.from)
-        : 0;
-      const halfBarSpacing = logicalSpan > 0 ? (scope.bitmapSize.width / logicalSpan) * 0.5 : 0;
+      const timeScale = chart.timeScale();
 
-      const candidates = peakWallDockedLabelCandidates(
+      const candidates = peakWallDockedLabelCandidates({
         labels,
-        (price) => {
+        priceToY: (price) => {
           const y = series.priceToCoordinate(price);
           return y === null ? null : y * vr;
         },
-        xRight,
-        (text) => measureTextCached(ctx, text),
-        LABEL_GAP_PX * vr,
-        dockedLabelTimeToX(chart.timeScale(), hr),
-        6 * hr,
-        halfBarSpacing,
-      );
+        timeToX: dockedLabelTimeToX(timeScale, hr),
+        rawPeakX: (peakTime) => {
+          const x = timeScale.timeToCoordinate(peakTime);
+          return x === null ? null : x * hr;
+        },
+        measureText: (text) => measureTextCached(ctx, text),
+        paneWidth: scope.bitmapSize.width,
+        horizontalScale: hr,
+        verticalScale: vr,
+      });
       if (candidates.length === 0) return;
 
       const rowHeight = (LABEL_FONT_PX + LABEL_ROW_GAP_PX) * vr;
@@ -142,6 +224,19 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
         const by = layout.baselineY - fontHeight - yPad;
         const bw = layout.width + xPad * 2;
         const bh = fontHeight + yPad * 2;
+        // 리더선은 칩보다 먼저 — 칩 표면이 선 끝을 덮어 깔끔하게 맞물린다.
+        drawPeakLabelLeader(ctx, {
+          peakX: layout.peakX,
+          lineY: layout.lineY,
+          desiredBaselineY: layout.yLine,
+          baselineY: layout.baselineY,
+          chipLeft: bx,
+          chipRight: bx + bw,
+          chipTop: by,
+          chipBottom: by + bh,
+          color: label.color,
+          verticalScale: vr,
+        });
         ctx.fillStyle = chipBg;
         ctx.fillRect(bx, by, bw, bh);
         ctx.fillStyle = label.color;

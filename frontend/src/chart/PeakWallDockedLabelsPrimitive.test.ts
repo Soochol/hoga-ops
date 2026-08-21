@@ -2,109 +2,104 @@ import { describe, expect, it } from 'vitest';
 import {
   dockedLabelTimeToX,
   peakWallDockedLabelCandidates,
+  type PeakWallDockedLabelCandidatesArgs,
   type PeakWallDockedLabelInput,
 } from './PeakWallDockedLabelsPrimitive';
 import type { ITimeScaleApi, Time } from 'lightweight-charts';
 
+const label = (
+  overrides: Partial<PeakWallDockedLabelInput> = {},
+): PeakWallDockedLabelInput => ({
+  price: 24500,
+  label: '16.6k',
+  color: '#f97316',
+  time0: 100 as Time,
+  time1: 200 as Time,
+  peakTime: 150 as Time,
+  side: 'ask',
+  ...overrides,
+});
+
+/** 시각 → x 의 선형 스텁: time 100→200px, 200→400px (배율 2). */
+const linearTimeToX = (time: Time): number => (time as unknown as number) * 2;
+
+const args = (
+  labels: readonly PeakWallDockedLabelInput[],
+  overrides: Partial<PeakWallDockedLabelCandidatesArgs> = {},
+): PeakWallDockedLabelCandidatesArgs => ({
+  labels,
+  priceToY: () => 300,
+  timeToX: linearTimeToX,
+  rawPeakX: linearTimeToX,
+  measureText: (text) => text.length * 6,
+  paneWidth: 1000,
+  ...overrides,
+});
+
 describe('peakWallDockedLabelCandidates', () => {
-  const labels: PeakWallDockedLabelInput[] = [
-    { price: 24500, label: '24,500, 16.6k', color: '#f97316', time1: 120 as Time },
-    { price: 23500, label: '23,500, 17.2k', color: '#ec4899', time1: 130 as Time },
-    { price: 23000, label: '', color: '#60a5fa', time1: 140 as Time },
-  ];
+  it('라벨을 발생 분봉 x 에 중앙 정렬한다 — 선 끝(time1)이 아니다', () => {
+    const [candidate] = peakWallDockedLabelCandidates(args([label()]));
 
-  it('places visible labels after each line endpoint inside the right padding', () => {
-    const out = peakWallDockedLabelCandidates(
-      labels,
-      (price) => (price === 24500 ? 100 : price === 23500 ? 104 : 108),
-      780,
-      (text) => text.length * 5,
-      3,
-      (time) => (time === 120 ? 650 : time === 130 ? 660 : 670),
-      6,
-    );
-
-    expect(out).toEqual([
-      { index: 0, xRight: 650 + 6 + '24,500, 16.6k'.length * 5, yLine: 97, width: '24,500, 16.6k'.length * 5, segmentWidth: Number.POSITIVE_INFINITY },
-      { index: 1, xRight: 660 + 6 + '23,500, 17.2k'.length * 5, yLine: 101, width: '23,500, 17.2k'.length * 5, segmentWidth: Number.POSITIVE_INFINITY },
-    ]);
+    // peakTime 150 → x 300. 선 끝(time1 200 → x 400)이 아니라 여기에 중심이 온다.
+    expect(candidate.peakX).toBe(300);
+    expect(candidate.xRight - candidate.width / 2).toBeCloseTo(300, 6);
   });
 
-  it('can shift docked labels past the latest candle body before measuring room', () => {
-    const width = '24,500, 16.6k'.length * 5;
-    const out = peakWallDockedLabelCandidates(
-      labels.slice(0, 1),
-      () => 100,
-      780,
-      (text) => text.length * 5,
-      3,
-      () => 650,
-      6,
-      7,
-    );
+  it('매도는 선 위, 매수는 선 아래 baseline 을 희망한다', () => {
+    const [ask] = peakWallDockedLabelCandidates(args([label({ side: 'ask' })]));
+    const [bid] = peakWallDockedLabelCandidates(args([label({ side: 'bid' })]));
 
-    expect(out).toEqual([
-      { index: 0, xRight: 650 + 6 + 7 + width, yLine: 97, width, segmentWidth: Number.POSITIVE_INFINITY },
-    ]);
+    expect(ask.yLine).toBeLessThan(300);
+    expect(bid.yLine).toBeGreaterThan(300);
   });
 
-  it('hides shifted labels when the latest candle plus label leaves no right-padding room', () => {
-    const out = peakWallDockedLabelCandidates(
-      labels.slice(0, 1),
-      () => 100,
-      700,
-      () => 40,
-      3,
-      () => 650,
-      6,
-      8,
-    );
+  it('peak 시각이 로드 범위 밖(null)이어도 보간으로 앵커를 만든다 — 라벨이 사라지지 않는다', () => {
+    const [candidate] = peakWallDockedLabelCandidates(args(
+      [label({ peakTime: 150 as Time })],
+      { rawPeakX: () => null },
+    ));
 
+    // [time0,time1] = [100,200] 의 50% → x 는 [200,400] 의 50% 인 300.
+    expect(candidate.peakX).toBe(300);
+  });
+
+  it('빈 라벨 텍스트는 건너뛴다', () => {
+    const out = peakWallDockedLabelCandidates(args([label({ label: '' }), label()]));
+    expect(out.map((c) => c.index)).toEqual([1]);
+  });
+
+  it('가격을 y 로 못 옮기면 건너뛴다 — 축 밖 벽', () => {
+    const out = peakWallDockedLabelCandidates(args(
+      [label({ price: 24500 }), label({ price: 23500 })],
+      { priceToY: (price) => (price === 24500 ? 300 : null) },
+    ));
+    expect(out.map((c) => c.index)).toEqual([0]);
+  });
+
+  it('세그먼트 끝점을 x 로 못 옮기면 건너뛴다 — 그날 구간 클램프 입력이 없다', () => {
+    const out = peakWallDockedLabelCandidates(args([label()], { timeToX: () => null }));
     expect(out).toEqual([]);
   });
 
-  it('hides labels when the line endpoint leaves no right-padding room', () => {
-    const out = peakWallDockedLabelCandidates(
-      labels.slice(0, 1),
-      () => 100,
-      700,
-      () => 80,
-      3,
-      () => 650,
-      6,
-    );
-
-    expect(out).toEqual([]);
+  it('점(dot)의 y 를 실어 나른다 — 회피로 밀린 칩에 리더선을 잇기 위해', () => {
+    const [candidate] = peakWallDockedLabelCandidates(args([label()], { priceToY: () => 275 }));
+    expect(candidate.lineY).toBe(275);
   });
 
-  it('skips labels whose price is not mappable to a y coordinate', () => {
-    const out = peakWallDockedLabelCandidates(
-      labels,
-      (price) => (price === 24500 ? 100 : null),
-      780,
-      (text) => text.length,
-      3,
-      () => 650,
-      6,
-    );
+  it('bitmap 배율을 받으면 기하가 그대로 확대된다', () => {
+    const [media] = peakWallDockedLabelCandidates(args([label()]));
+    const [bitmap] = peakWallDockedLabelCandidates(args([label()], {
+      priceToY: () => 600,
+      timeToX: (time) => linearTimeToX(time) * 2,
+      rawPeakX: (time) => linearTimeToX(time) * 2,
+      measureText: (text) => text.length * 12,
+      paneWidth: 2000,
+      horizontalScale: 2,
+      verticalScale: 2,
+    }));
 
-    expect(out.map((candidate) => candidate.index)).toEqual([0]);
-  });
-
-  it('supports bitmap-scaled y coordinates by taking a scaled gap', () => {
-    const out = peakWallDockedLabelCandidates(
-      labels.slice(0, 1),
-      () => 100,
-      780,
-      () => 42,
-      6,
-      () => 650,
-      8,
-    );
-
-    expect(out).toEqual([
-      { index: 0, xRight: 700, yLine: 94, width: 42, segmentWidth: Number.POSITIVE_INFINITY },
-    ]);
+    expect(bitmap.xRight).toBeCloseTo(media.xRight * 2, 6);
+    expect(bitmap.yLine).toBeCloseTo(media.yLine * 2, 6);
   });
 });
 

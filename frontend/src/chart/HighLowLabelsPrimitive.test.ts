@@ -211,11 +211,18 @@ describe('HighLowLabelsPrimitive', () => {
   });
 
   it('derives wall-chip avoid rects at draw time and yields the high label past them', () => {
-    // 회귀 가드: 회피 rect 는 상위에서 픽셀로 구워 넘기지 않고 {price,time1} 에서 매
-    // 프레임 변환돼야 한다(축 리스케일 정합). wall 가격을 상단 가장자리 근처(y=15)로
+    // 회귀 가드: 회피 rect 는 상위에서 픽셀로 구워 넘기지 않고 {price,time0,time1,peakTime}
+    // 에서 매 프레임 변환돼야 한다(축 리스케일 정합). wall 가격을 상단 가장자리 근처(y=15)로
     // 매핑하면 x-겹침인 상단 고정 고가 라벨이 그 칩 rect 를 피해 아래로 밀린다.
     const WALL_PRICE = 38_805;
-    const wall: AvoidWallLabel = { price: WALL_PRICE, time1: (CLOSE / 1000) as Time, label: '38,805, 1.2M' };
+    const wall: AvoidWallLabel = {
+      price: WALL_PRICE,
+      time0: (OPEN / 1000) as Time,
+      time1: (CLOSE / 1000) as Time,
+      peakTime: ((OPEN + CLOSE) / 2000) as Time,
+      side: 'ask',
+      label: '38,805, 1.2M',
+    };
     const stubs = makeAxisStubs({ priceToCoordinate: (p) => (p === WALL_PRICE ? 15 : 150) });
     const { prim } = attach(stubs, () => snapshot({ avoidWallLabels: [wall] }));
     const c = makeCanvasSpy();

@@ -17,7 +17,7 @@ import { resolveTokensThemed } from '../util/tokens';
 import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
 import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
-import { xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
+import { peakXFromCoordinate, xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
 import {
   DOT_RADIUS_PX,
@@ -144,7 +144,9 @@ function priceY(series: ISeriesApi<SeriesType>, price: number): number | null {
   }
 }
 
-/** 도킹 wall 칩 회피 rect — draw 프레임의 축 스케일로 변환한다(축 리스케일 정합). */
+/** 최대벽 라벨 칩 회피 rect — draw 프레임의 축 스케일로 변환한다(축 리스케일 정합).
+ *  앵커 x 는 선 끝이 아니라 **peak 발생 봉**이고, 점(dot)·라벨과 동일한 `peakXFromCoordinate`
+ *  를 거친다 — 각자 구하면 보간 폴백 구간에서만 어긋난다. */
 function wallAvoidRects(
   chart: IChartApi,
   series: ISeriesApi<SeriesType>,
@@ -155,17 +157,32 @@ function wallAvoidRects(
   const ts = chart.timeScale();
   const rects: AvoidRect[] = [];
   try {
-    // 도킹 라벨의 anchor shift(반 봉 간격) — PeakWallDockedLabelsPrimitive.draw 미러.
-    const lr = ts.getVisibleLogicalRange();
-    const logicalSpan = lr ? Math.abs(lr.to - lr.from) : 0;
-    const halfBarSpacing = logicalSpan > 0 && paneWidth > 0 ? (paneWidth / logicalSpan) * 0.5 : 0;
     for (const wall of labels) {
       if (wall.label === '' || !Number.isFinite(wall.price)) continue;
       const yc = series.priceToCoordinate(wall.price);
       if (yc == null) continue;
-      const lineEndX = xCoordinateOrNearest(ts, wall.time1);
-      if (lineEndX == null) continue;
-      rects.push(wallLabelAvoidRect(Math.round(Number(yc)), Number(lineEndX), wall.label, halfBarSpacing));
+      const x0 = xCoordinateOrNearest(ts, wall.time0);
+      const x1 = xCoordinateOrNearest(ts, wall.time1);
+      if (x0 == null || x1 == null) continue;
+      const rawPeakX = ts.timeToCoordinate(wall.peakTime);
+      const peakX = peakXFromCoordinate(
+        rawPeakX === null ? null : Number(rawPeakX),
+        wall.peakTime,
+        wall.time0,
+        wall.time1,
+        Number(x0),
+        Number(x1),
+      );
+      const rect = wallLabelAvoidRect(
+        Math.round(Number(yc)),
+        peakX,
+        Number(x0),
+        Number(x1),
+        wall.label,
+        wall.side,
+        paneWidth,
+      );
+      if (rect !== null) rects.push(rect);
     }
   } catch {
     // 차트 teardown 레이스 — 회피 없이 그린다(다음 프레임 self-heal).
