@@ -14,7 +14,8 @@ import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import { resolveTokensThemed } from '../util/tokens';
-import { computeVisibleExtremes } from '../live/visibleExtremes';
+import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
+import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
 import { xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
@@ -29,6 +30,7 @@ import {
   LEADER_OPACITY,
   LEVEL_LINE_DASH,
   LEVEL_LINE_OPACITY,
+  PRIOR_LINE_DASH,
   labelBoxWidth,
   placeExtremeLabel,
   wallLabelAvoidRect,
@@ -38,10 +40,10 @@ import {
 } from './highLowLabelLayout';
 
 // DESIGN.md 성역: 상승=빨강 / 하락=파랑. 고가 라벨=빨강, 저가 라벨=파랑. candle.ts 와 동일 토큰.
-// draw 에서 지연 해석 — 테마(Obsidian/Ledger) 전환 시 라벨 색이 따라온다.
+// draw 에서 지연 해석 — 테마(Obsidian/Ledger) 전환 시 라벨 색이 따라온다. 방향색은
+// 설정 UI(LineStyleRow)와 **공유**한다 — 각자 리터럴을 들면 화면과 설정이 갈린다.
 const TOKEN_SPEC = {
-  up: ['--price-up', '#F04452'],
-  down: ['--price-down', '#3485FA'],
+  ...PRICE_DIRECTION_TOKEN_SPEC,
   // 칩 표면 = 차트 layout 배경. 캔들과 겹치지 않는 여백에선 배경에 융화돼 방향색 텍스트만
   // 뜨고, 캔들 위에선 불투명 배경이 텍스트 대비를 지킨다(외곽선·섀도 없음).
   bg: ['--bg-card', '#121216'],
@@ -52,6 +54,13 @@ const TOKEN_SPEC = {
  * 스케일에 굳지만, 팬/줌은 프레임마다 축을 바꾼다. getter 를 draw 안에서 읽어야
  * 캔들이 그려지는 바로 그 프레임의 좌표로 라벨이 산출된다(DrawingsPrimitive 선례).
  */
+/**
+ * 수평선 한 줄의 렌더 스타일. `color: ''` 는 **"고르지 않음"** 이고 draw 가 방향 토큰
+ * (`--price-up`/`--price-down`)으로 지연 해석한다 — 그래야 색을 고르지 않은 선이
+ * 테마 전환을 계속 따라간다(`CHART_LINE_STYLES` 의 기본값 규약).
+ */
+export type LevelLineStyle = { on: boolean; color: string; width: number };
+
 export type HighLowLabelsSnapshot = {
   candles: readonly Candle[];
   axis: VirtualAxis;
@@ -60,10 +69,13 @@ export type HighLowLabelsSnapshot = {
   avoidWallLabels: readonly AvoidWallLabel[];
   /** Pane Legend 행 rect(캔들 pane 로컬 px) — DOM 실측이라 host 가 밀어 넣는다. */
   legendRects: readonly AvoidRect[];
-  /** 극값 **가격선**(pane 전폭 수평 점선) 표시 여부 — 고가·저가가 **독립 토글**이다
+  /** 극값 **가격선**(pane 전폭 수평 점선) — 고가·저가가 **독립 토글**이다
    *  (`highLowHighLineEnabled` / `highLowLowLineEnabled`). 라벨 토글이 꺼지면 이
    *  primitive 자체가 붙지 않으므로 부모 게이팅은 host 가 이미 끝낸 상태로 온다. */
-  levelLines: { high: boolean; low: boolean };
+  levelLines: { high: LevelLineStyle; low: LevelLineStyle };
+  /** **이전일 고저선** — 보이는 마지막 캔들의 거래일을 통째로 뺀 이전 구간의 고저.
+   *  극값 가격선과 같은 색 규약, 더 긴 dash. */
+  priorDayLines: { high: LevelLineStyle; low: LevelLineStyle };
 };
 
 export type HighLowLabelsSource = () => HighLowLabelsSnapshot | null;
@@ -94,6 +106,42 @@ function roundRectPath(
   ctx.arcTo(x, y + h, x, y, radius);
   ctx.arcTo(x, y, x + w, y, radius);
   ctx.closePath();
+}
+
+/**
+ * pane 전폭 수평 레벨선 한 줄. 두께가 **홀수일 때만** 0.5 오프셋을 준다 — 캔버스는
+ * 좌표를 획 중심으로 잡으므로 짝수 두께에 0.5 를 얹으면 오히려 두 픽셀에 반씩 걸쳐
+ * 흐려진다(홀수는 그 반대).
+ */
+function strokeLevelLine(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  paneWidth: number,
+  color: string,
+  width: number,
+  dash: readonly number[],
+): void {
+  ctx.save();
+  ctx.globalAlpha = LEVEL_LINE_OPACITY;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash([...dash]);
+  ctx.beginPath();
+  const snapped = width % 2 === 1 ? Math.round(y) + 0.5 : Math.round(y);
+  ctx.moveTo(0, snapped);
+  ctx.lineTo(paneWidth, snapped);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** 가격 → y좌표. 차트 teardown 레이스에서 throw 하면 null(그 프레임은 건너뛴다). */
+function priceY(series: ISeriesApi<SeriesType>, price: number): number | null {
+  try {
+    const y = series.priceToCoordinate(price);
+    return y == null ? null : Number(y);
+  } catch {
+    return null;
+  }
 }
 
 /** 도킹 wall 칩 회피 rect — draw 프레임의 축 스케일로 변환한다(축 리스케일 정합). */
@@ -140,7 +188,8 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
     if (!chart || !series || snap === null) return;
 
     const ts = chart.timeScale();
-    const ex = computeVisibleExtremes(snap.candles, snap.axis, readVisibleRange(ts));
+    const visibleRange = readVisibleRange(ts);
+    const ex = computeVisibleExtremes(snap.candles, snap.axis, visibleRange);
     if (ex === null) return;
 
     // Media(CSS 픽셀) space — priceToCoordinate/timeToCoordinate 와 같은 단위라
@@ -163,11 +212,31 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
+      // 이전일 고저선 — 극값 가격선보다 **먼저** 그려 뒤 레이어로 둔다. 오늘이 아직
+      // 이전 고점을 넘지 않았으면 두 선이 같은 y 에 포개지는데, 그건 결함이 아니라
+      // "아직 갱신되지 않았다" 는 정보다.
+      const priorOn = snap.priorDayLines.high.on || snap.priorDayLines.low.on;
+      const prior = priorOn
+        ? computePriorDaysExtremes(snap.candles, snap.axis, visibleRange)
+        : null;
+      if (prior !== null) {
+        const priorRows: { style: LevelLineStyle; price: number; fallback: string }[] = [
+          { style: snap.priorDayLines.high, price: prior.high, fallback: tokens.up },
+          { style: snap.priorDayLines.low, price: prior.low, fallback: tokens.down },
+        ];
+        for (const row of priorRows) {
+          if (!row.style.on) continue;
+          const y = priceY(series, row.price);
+          if (y === null) continue;
+          strokeLevelLine(ctx, y, paneWidth, row.style.color || row.fallback, row.style.width, PRIOR_LINE_DASH);
+        }
+      }
+
       const items: {
         e: (typeof ex)['high'];
         color: string;
         place: ExtremeLabelPlace;
-        line: boolean;
+        line: LevelLineStyle;
       }[] = [
         { e: ex.high, color: tokens.up, place: 'above', line: snap.levelLines.high },
         { e: ex.low, color: tokens.down, place: 'below', line: snap.levelLines.low },
@@ -191,19 +260,8 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         // 극값 **가격선** — pane 전폭 수평 점선. 극값 봉의 x(`xc`)가 아니라 가격만으로
         // 성립하므로 xc 게이트보다 **앞**에 둔다(우측 빈 띠 등으로 xc 가 null 이어도
         // 레벨은 유효하다). 맨 앞에 그려 dot·칩이 나중에 그 위를 덮게 한다.
-        if (item.line) {
-          ctx.save();
-          ctx.globalAlpha = LEVEL_LINE_OPACITY;
-          ctx.strokeStyle = item.color;
-          ctx.lineWidth = 1;
-          ctx.setLineDash([...LEVEL_LINE_DASH]);
-          ctx.beginPath();
-          // 0.5 오프셋 — 1px 선을 픽셀 격자에 앉혀 흐릿함을 막는다(리더선과 동일).
-          const levelY = Math.round(yc) + 0.5;
-          ctx.moveTo(0, levelY);
-          ctx.lineTo(paneWidth, levelY);
-          ctx.stroke();
-          ctx.restore();
+        if (item.line.on) {
+          strokeLevelLine(ctx, yc, paneWidth, item.line.color || item.color, item.line.width, LEVEL_LINE_DASH);
         }
 
         if (xc === null) continue;

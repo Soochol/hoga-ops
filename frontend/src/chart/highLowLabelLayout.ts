@@ -51,6 +51,12 @@ export const LEADER_OPACITY = 0.45;
 export const LEVEL_LINE_OPACITY = 0.28;
 export const LEVEL_LINE_DASH: readonly number[] = [4, 4];
 /**
+ * 이전일 고저선의 dash — 극값 가격선([4,4])보다 **길다**. 두 기능을 동시에 켜면 색은
+ * 같은 방향색이라(정보가 방향이므로 바꾸지 않는다) 구분은 dash 가 진다. 사용자가
+ * 두께를 바꿔도 이 비율은 유지된다.
+ */
+export const PRIOR_LINE_DASH: readonly number[] = [8, 4];
+/**
  * 캔버스는 CSS rem 을 못 읽으므로 `--text-xs` 를 px 로 환산해 둔다. **손으로 계산한
  * 숫자를 박지 말 것** — 2026-08-07 다이얼 변경(18→16px) 전까지 여기엔 `11.8` 이
  * 상수로 박혀 있었고, 다이얼이 움직여도 타입 에러도 테스트 실패도 없이 이 라벨만

@@ -12,7 +12,13 @@ import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts
 import {
   HighLowLabelsPrimitive,
   type HighLowLabelsSnapshot,
+  type LevelLineStyle,
 } from './HighLowLabelsPrimitive';
+
+/** 수평선 스타일 한 줄. 색 '' = 방향 토큰 추종(기본), 두께 1. */
+function line(on: boolean, over: Partial<LevelLineStyle> = {}): LevelLineStyle {
+  return { on, color: '', width: 1, ...over };
+}
 import type { AvoidRect, AvoidWallLabel } from './highLowLabelLayout';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
@@ -33,7 +39,11 @@ const CANDLES = [
 ];
 
 function makeCanvasSpy() {
-  return {
+  // strokeStyle·lineWidth 는 plain 프로퍼티라 **마지막 값만** 남는다. 선마다 다른 색·
+  // 두께를 재려면 `stroke()` 호출 **시점의** 상태를 찍어 둬야 한다.
+  const strokes: { style: string; width: number; dash: number[]; alpha: number }[] = [];
+  let dash: number[] = [];
+  const spy = {
     save: vi.fn(),
     restore: vi.fn(),
     beginPath: vi.fn(),
@@ -41,13 +51,20 @@ function makeCanvasSpy() {
     lineTo: vi.fn(),
     arcTo: vi.fn(),
     closePath: vi.fn(),
-    stroke: vi.fn(),
+    stroke: vi.fn(() => {
+      strokes.push({
+        style: String(spy.strokeStyle),
+        width: Number(spy.lineWidth),
+        dash: [...dash],
+        alpha: Number(spy.globalAlpha),
+      });
+    }),
     fill: vi.fn(),
     arc: vi.fn(),
     fillRect: vi.fn(),
     fillText: vi.fn(),
     measureText: vi.fn(() => ({ width: 40 })),
-    setLineDash: vi.fn(),
+    setLineDash: vi.fn((d: number[]) => { dash = [...d]; }),
     strokeStyle: '',
     fillStyle: '',
     lineWidth: 0,
@@ -55,12 +72,15 @@ function makeCanvasSpy() {
     textBaseline: '' as CanvasTextBaseline,
     textAlign: '' as CanvasTextAlign,
     globalAlpha: 1,
+    strokes,
   } as unknown as CanvasRenderingContext2D & {
     fillText: ReturnType<typeof vi.fn>;
     moveTo: ReturnType<typeof vi.fn>;
     lineTo: ReturnType<typeof vi.fn>;
     stroke: ReturnType<typeof vi.fn>;
+    strokes: { style: string; width: number; dash: number[]; alpha: number }[];
   };
+  return spy;
 }
 
 function makeTarget(context: CanvasRenderingContext2D, width = 760, height = 300) {
@@ -104,7 +124,8 @@ function snapshot(over: Partial<HighLowLabelsSnapshot> = {}): HighLowLabelsSnaps
     timeframe: '1m',
     avoidWallLabels: [],
     legendRects: [],
-    levelLines: { high: false, low: false },
+    levelLines: { high: line(false), low: line(false) },
+    priorDayLines: { high: line(false), low: line(false) },
     ...over,
   };
 }
@@ -279,7 +300,9 @@ describe('HighLowLabelsPrimitive', () => {
       return { from, to };
     }
 
-    function drawWith(levelLinesPref: { high: boolean; low: boolean }) {
+    function drawWith(
+      levelLinesPref: { high: LevelLineStyle; low: LevelLineStyle },
+    ) {
       const stubs = makeAxisStubs({ priceToCoordinate });
       const { prim } = attach(stubs, () => snapshot({ levelLines: levelLinesPref }));
       const c = makeCanvasSpy();
@@ -288,34 +311,34 @@ describe('HighLowLabelsPrimitive', () => {
     }
 
     it('둘 다 꺼져 있으면 한 줄도 긋지 않는다 (라벨은 그대로)', () => {
-      const c = drawWith({ high: false, low: false });
+      const c = drawWith({ high: line(false), low: line(false) });
 
       expect(levelLines(c).from).toEqual([]);
       expect(texts(c)).toHaveLength(2);
     });
 
     it('고가만 켜면 고가 가격에 전폭 한 줄 — 저가에는 긋지 않는다', () => {
-      const c = drawWith({ high: true, low: false });
+      const c = drawWith({ high: line(true), low: line(false) });
 
       // 0.5 오프셋(픽셀 격자 정렬)까지 고정한다 — 흐릿한 1px 선 회귀 가드.
       expect(levelLines(c)).toEqual({ from: [40.5], to: [40.5] });
     });
 
     it('저가만 켜면 저가 가격에 전폭 한 줄 — 고가에는 긋지 않는다', () => {
-      const c = drawWith({ high: false, low: true });
+      const c = drawWith({ high: line(false), low: line(true) });
 
       expect(levelLines(c)).toEqual({ from: [220.5], to: [220.5] });
     });
 
     it('둘 다 켜면 두 줄', () => {
-      const c = drawWith({ high: true, low: true });
+      const c = drawWith({ high: line(true), low: line(true) });
 
       expect(levelLines(c)).toEqual({ from: [40.5, 220.5], to: [40.5, 220.5] });
     });
 
     it('극값 봉의 x 가 없어도(우측 빈 띠) 가격선은 그린다 — 레벨은 가격만으로 성립', () => {
       const stubs = makeAxisStubs({ priceToCoordinate, timeToCoordinate: () => null });
-      const { prim } = attach(stubs, () => snapshot({ levelLines: { high: true, low: true } }));
+      const { prim } = attach(stubs, () => snapshot({ levelLines: { high: line(true), low: line(true) } }));
       const c = makeCanvasSpy();
 
       draw(prim, c, PANE);
@@ -323,6 +346,154 @@ describe('HighLowLabelsPrimitive', () => {
       // 칩·dot 은 x 가 없어 skip 되지만 수평선은 남는다.
       expect(levelLines(c).from).toEqual([40.5, 220.5]);
       expect(c.fillText).not.toHaveBeenCalled();
+    });
+  });
+
+  // 이전일 고저선 — **이틀치** 픽스처가 필수다. 하루짜리로는 이전 구간이 없어
+  // `computePriorDaysExtremes` 가 항상 null 이고, 그러면 "안 그린다" 가 늘 통과해
+  // 이 기능이 통째로 검증 밖에 남는다.
+  describe('이전일 고저선', () => {
+    const D1 = Date.UTC(2026, 5, 11, 0, 0, 0);
+    const D2 = Date.UTC(2026, 5, 12, 0, 0, 0);
+    const SESSION = 6.5 * 3_600_000;
+    const twoDayAxis = createVirtualAxis(
+      [
+        { date: '20260611', sessionOpenMs: D1, sessionCloseMs: D1 + SESSION },
+        { date: '20260612', sessionOpenMs: D2, sessionCloseMs: D2 + SESSION },
+      ],
+      D1,
+    );
+    // D1(이전일): 고 120 / 저 80 · D2(마지막 날): 고 150 / 저 70
+    const twoDayCandles = [
+      candle(D1 + 60_000, 120, 110, 115),
+      candle(D1 + 120_000, 118, 80, 85),
+      candle(D2 + 60_000, 150, 140, 145),
+      candle(D2 + 120_000, 148, 70, 75),
+    ];
+    // 이전일 고 120 → y=60 / 이전일 저 80 → y=260. 마지막 날 극값(150·70)은 다른 y.
+    const priceToCoordinate = (price: number) => {
+      if (price === 120) return 60;
+      if (price === 80) return 260;
+      return 150;
+    };
+    const PANE = { w: 760, h: 300 };
+
+    function drawTwoDay(priorPref: { high: LevelLineStyle; low: LevelLineStyle }) {
+      const stubs = makeAxisStubs({
+        priceToCoordinate,
+        visibleRange: {
+          from: twoDayAxis.toVirtual(D1) / 1000,
+          to: twoDayAxis.toVirtual(D2 + SESSION) / 1000,
+        },
+      });
+      const { prim } = attach(stubs, () => snapshot({
+        candles: twoDayCandles,
+        axis: twoDayAxis,
+        priorDayLines: priorPref,
+      }));
+      const c = makeCanvasSpy();
+      draw(prim, c, PANE);
+      return c;
+    }
+
+    /** 긴 dash([8,4])로 그어진 획만 — 극값 가격선([4,4])·리더선([3,3])과 갈라 센다. */
+    const priorStrokes = (c: ReturnType<typeof makeCanvasSpy>) =>
+      c.strokes.filter((st) => st.dash[0] === 8);
+
+    it('둘 다 꺼져 있으면 이전일선을 긋지 않는다', () => {
+      const c = drawTwoDay({ high: line(false), low: line(false) });
+
+      expect(priorStrokes(c)).toEqual([]);
+    });
+
+    it('이전일 고가선만 켜면 **마지막 날을 뺀** 고가(120)에 한 줄', () => {
+      const c = drawTwoDay({ high: line(true), low: line(false) });
+
+      // 마지막 날 고가 150(y=150)이 아니라 이전일 고가 120(y=60).
+      expect(c.moveTo.mock.calls.filter(([x]) => Number(x) === 0).map(([, y]) => Number(y)))
+        .toEqual([60.5]);
+      expect(priorStrokes(c)).toHaveLength(1);
+    });
+
+    it('이전일 저가선만 켜면 이전일 저가(80)에 한 줄', () => {
+      const c = drawTwoDay({ high: line(false), low: line(true) });
+
+      expect(c.moveTo.mock.calls.filter(([x]) => Number(x) === 0).map(([, y]) => Number(y)))
+        .toEqual([260.5]);
+    });
+
+    it('극값 가격선과 dash 로 갈린다 — 넷을 다 켜도 서로 섞이지 않는다', () => {
+      const stubs = makeAxisStubs({
+        priceToCoordinate,
+        visibleRange: {
+          from: twoDayAxis.toVirtual(D1) / 1000,
+          to: twoDayAxis.toVirtual(D2 + SESSION) / 1000,
+        },
+      });
+      const { prim } = attach(stubs, () => snapshot({
+        candles: twoDayCandles,
+        axis: twoDayAxis,
+        levelLines: { high: line(true), low: line(true) },
+        priorDayLines: { high: line(true), low: line(true) },
+      }));
+      const c = makeCanvasSpy();
+
+      draw(prim, c, PANE);
+
+      expect(priorStrokes(c)).toHaveLength(2);
+      expect(c.strokes.filter((st) => st.dash[0] === 4)).toHaveLength(2);
+    });
+  });
+
+  // 색·두께 — `CHART_LINE_STYLES` 가 저장한 값이 실제 획에 도달하는지. 색 '' 는
+  // "고르지 않음" 이라 방향 토큰으로 풀려야 하고, 고른 색은 그대로 나가야 한다.
+  describe('선 색·두께', () => {
+    const priceToCoordinate = (price: number) => (price === 38_800 ? 40 : 220);
+    const PANE = { w: 760, h: 300 };
+
+    function drawStyled(levelLinesPref: { high: LevelLineStyle; low: LevelLineStyle }) {
+      const stubs = makeAxisStubs({ priceToCoordinate });
+      const { prim } = attach(stubs, () => snapshot({ levelLines: levelLinesPref }));
+      const c = makeCanvasSpy();
+      draw(prim, c, PANE);
+      return c;
+    }
+
+    const levelStrokes = (c: ReturnType<typeof makeCanvasSpy>) =>
+      c.strokes.filter((st) => st.dash[0] === 4);
+
+    it("색 ''(고르지 않음)이면 방향 토큰으로 푼다 — 고가/저가가 서로 다른 색", () => {
+      const c = drawStyled({ high: line(true), low: line(true) });
+
+      const [high, low] = levelStrokes(c);
+      expect(high.style).not.toBe('');
+      expect(low.style).not.toBe('');
+      expect(high.style).not.toBe(low.style);
+    });
+
+    it('고른 색은 그대로 획에 나간다 (방향 토큰을 덮어쓴다)', () => {
+      const c = drawStyled({
+        high: line(true, { color: '#00FF00' }),
+        low: line(true),
+      });
+
+      const [high, low] = levelStrokes(c);
+      expect(high.style).toBe('#00FF00');
+      expect(low.style).not.toBe('#00FF00'); // 저가는 여전히 방향 토큰
+    });
+
+    it('두께가 획에 반영되고, 짝수 두께는 정수 y 에 앉는다', () => {
+      // 홀수는 0.5 오프셋(획 중심이 픽셀 경계), 짝수는 정수 — 반대로 하면 흐려진다.
+      const c = drawStyled({
+        high: line(true, { width: 3 }),
+        low: line(true, { width: 2 }),
+      });
+
+      const [high, low] = levelStrokes(c);
+      expect(high.width).toBe(3);
+      expect(low.width).toBe(2);
+      const ys = c.moveTo.mock.calls.filter(([x]) => Number(x) === 0).map(([, y]) => Number(y));
+      expect(ys).toEqual([40.5, 220]);
     });
   });
 });

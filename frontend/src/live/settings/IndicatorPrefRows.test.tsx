@@ -58,6 +58,32 @@ describe('IndicatorPrefRows', () => {
     expect(useChartPrefsStore.getState().highLowHighLineEnabled).toBe(true);
   });
 
+  it('하위 토글의 색·두께 행(LineStyleRow)이 그 아래 따라온다', () => {
+    useChartPrefsStore.setState({ highLowLabelsEnabled: true, highLowHighLineEnabled: true });
+    render(<IndicatorPrefRows toggleKeys={['highLowLabelsEnabled']} />);
+    expect(screen.getByTestId('settings-linestyle-highLowHighLine')).toBeTruthy();
+    expect(screen.getByTestId('settings-linestyle-highLowPriorLowLine')).toBeTruthy();
+  });
+
+  it('선 토글이 꺼져 있으면 그 색·두께 행은 dim (값은 보존)', () => {
+    useChartPrefsStore.setState({
+      highLowLabelsEnabled: true,
+      highLowHighLineEnabled: false,
+      highLowHighLineWidth: 3,
+    });
+    render(<IndicatorPrefRows toggleKeys={['highLowLabelsEnabled']} />);
+    const row = screen.getByTestId('settings-linestyle-highLowHighLine');
+    expect(row.className).toContain('opacity-50');
+    expect(useChartPrefsStore.getState().highLowHighLineWidth).toBe(3);
+  });
+
+  it('선 토글이 켜져 있으면 dim 되지 않는다 (게이트 양방향)', () => {
+    useChartPrefsStore.setState({ highLowLabelsEnabled: true, highLowHighLineEnabled: true });
+    render(<IndicatorPrefRows toggleKeys={['highLowLabelsEnabled']} />);
+    const row = screen.getByTestId('settings-linestyle-highLowHighLine');
+    expect(row.className).not.toContain('opacity-50');
+  });
+
   it('하위 토글이 자기 numeric 을 가지면 그것도 따라온다 (2단 중첩)', () => {
     // `quoteTotalsTickNormalize` 는 자식이면서 부모다 — surgeMarkerEnabled 아래에
     // 있으면서 확인 문턱 노브를 자기 아래에 단다. 1단만 처리하면 이 노브가 화면에서
