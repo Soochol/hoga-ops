@@ -21,7 +21,7 @@ const CANDLES = [
 ];
 
 const MINUTE_ORIGIN: SidebarCursorOrigin = {
-  windowId: 'minute-window', group: null, code: '064350', timeframe: '3m',
+  windowId: 'minute-window', group: 1, code: '064350', timeframe: '3m',
 };
 
 /** `axis.toVirtual` 는 항등 — 테스트가 보는 축 값은 곧 ms/1000. */
@@ -55,7 +55,7 @@ function renderCrosshair(
   // `workspace.scopePrefix` 를 읽는다. `/live` 창과 같은 값을 실어 준다.
   const view: WindowViewValue = {
     windowId: 'daily-window',
-    group: null,
+    group: 1,
     code,
     timeframe,
     historicalFromDate: null,
@@ -174,6 +174,15 @@ describe('CursorSyncCrosshair', () => {
       expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
     });
 
+    it('창번호가 다르면 종목 토글과 무관하게 받지 않는다', () => {
+      // 사용자 결정 2026-08-21 — 세 동기화가 같은 범위 규칙(창번호)을 쓴다.
+      renderCrosshair();
+      publish(CURSOR_1500, { ...MINUTE_ORIGIN, group: 2 });
+
+      expect(setCrosshairPosition).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+    });
+
     it('켜져 있으면 지수 창도 개별 종목 호버를 받는다 — 다리가 날짜뿐이다', () => {
       renderCrosshair(new Map([[DAY_20250619 / 1000, 260]]), 'index:KOSPI');
       publish(CURSOR_1500, OTHER_SYMBOL);
@@ -201,7 +210,7 @@ describe('CursorSyncCrosshair', () => {
       { ts_ms: M_1500, close: 212000 },
     ];
     const DAILY_ORIGIN: SidebarCursorOrigin = {
-      windowId: 'other-daily', group: null, code: '005930', timeframe: 'D',
+      windowId: 'other-daily', group: 1, code: '005930', timeframe: 'D',
     };
 
     it('일봉 창이 다른 일봉 창의 발행을 받는다', () => {
