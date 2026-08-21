@@ -342,6 +342,14 @@ export function planViewportContraction(
   viewportLeftDate: string,
   tf: LiveTimeframe,
 ): string | null {
+  // **분봉 전용이다.** 이 장치의 존재 이유(sidecar 지표 번들 29MB)가 분봉에만
+  // 있다 — D/W/M 은 range 지표가 없어 얻을 것이 0 인데, `historicalFromDate` 가
+  // 일봉에선 **캔들 창 자체**를 좁히므로 축소가 곧 화면에서 데이터가 사라지는
+  // 것으로 보인다(2026-08-21 사용자 관측: 일봉 줌아웃→줌인→줌아웃에서 과거
+  // 캔들이 사라졌다 재로드). 분봉 캔들은 병합 캐시가 깊이를 따로 보존해 이 문제가
+  // 없다. D/W/M 게이트는 배선(useViewportBackfill)이 아니라 여기 커널에 둔다 —
+  // 판정 규칙이라 테이블 테스트가 직접 못박을 수 있는 자리다.
+  if (!isMinuteTimeframe(tf)) return null;
   // 창이 아직 없으면(전체 이력 = 초기 상태) 자를 것도 없다.
   if (historicalFromDate === null) return null;
   const trigger = stepBackFrom(viewportLeftDate, tf, CONTRACT_TRIGGER_STEPS);
