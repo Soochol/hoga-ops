@@ -1,15 +1,24 @@
 /**
- * /study 창 워크스페이스 스토어 (ADR-0123 PR-2).
+ * /study 창 워크스페이스 스토어 (ADR-0123 PR-2 · ADR-0152).
  *
- * /live 의 `workspace.ts` 와 같은 뼈대(창 배열 + zOrder + 단일 영속 깔때기)지만
- * 의도적으로 얇다:
- * - **그룹 없음** — 활성 저장뷰가 단일 암묵 그룹이다(종목은 탭이 SSOT). 차트 창이
- *   여러 개여도 그대로다 — 창은 봉만 달리 볼 뿐 전부 같은 저장뷰를 본다.
- * - **레거시 px 마이그레이션 없음** — 처음부터 비율 rect(ADR-0122)로 태어난다.
+ * /live 의 `workspace.ts` 와 **같은 뼈대**다: 창 배열 + zOrder + 링크 그룹 + 단일
+ * 영속 깔때기. 두 페이지가 갈리는 지점은 그룹이 **무엇을 가리키느냐** 하나다:
+ * - `/live` — 그룹 → 종목 (`groupSymbols`, #711)
+ * - `/study` — 그룹 → **저장뷰** (`groupViews`, ADR-0152)
  *
- * **차트 창은 여러 개 열 수 있다**(#801 판정: 도입, 2026-08-10). 같은 저장뷰를
- * 창마다 다른 봉으로 나란히 보기 위한 것이다 — 창별 저장뷰는 범위 밖이고 종목은
- * 여전히 탭이 SSOT 다. 남은 불변식은 **"차트 창이 0개가 되지 않는다"** 하나다
+ * 종목이 아니라 저장뷰인 이유: 복기 쿼리는 종목만으로 서지 않는다. 어느 날 · 어느
+ * 구간까지가 쿼리 키이고, 저장뷰가 그 셋을 한 덩어리로 들고 있다.
+ *
+ * 번호 자체(범위 1..10 · 판별자)는 페이지 중립 leaf `workspace/groupId` 가 소유한다 —
+ * `/live` 스토어를 런타임 import 하면 `/study` 를 여는 것만으로 저쪽이 하이드레이션돼
+ * `live.workspace.v1` 에 시드를 쓴다(그 파일 주석).
+ *
+ * 여전히 갈리는 것: **레거시 px 마이그레이션 없음** — 처음부터 비율 rect(ADR-0122)로
+ * 태어난다.
+ *
+ * **차트 창은 여러 개 열 수 있다**(#801 판정: 도입, 2026-08-10). 원래 근거는 같은
+ * 저장뷰를 창마다 다른 봉으로 나란히 보는 것이었고, ADR-0152 로 **창마다 다른
+ * 저장뷰**도 된다. 남은 불변식은 **"차트 창이 0개가 되지 않는다"** 하나다
  * (`canCloseStudyWindow`).
  *
  * 차트 창은 `/live` 와 **같은 모양**의 `chart` 설정을 갖는다(#906) — 타입을
@@ -17,9 +26,11 @@
  * 창-스코프 훅에 이 스토어를 핸들로 주입할 때, 훅이 어느 스토어인지 모른 채
  * `windows[].chart` 를 구독할 수 있어야 하기 때문이다(#901).
  *
- * 시드는 두 갈래다:
+ * 시드는 세 갈래다:
  * - **배치**는 `study.layout.v1`(카드 순서/숨김)에서 1회. `detailPanelCollapsed` 는
  *   무시한다 — rail 접기는 "잠깐 치움"이지 숨김이 아니었으므로 창은 생성한다(플랜 §PR-2).
+ * - **그룹 1 의 저장뷰**는 `study.activeView.v1` 에서 1회. 그 키가 다시 `study.tabs.v1`
+ *   을 승계했으므로 사슬은 두 홉이다(ADR-0149). 근거는 `readLegacyGroupViewSeed`.
  * - **차트 설정**은 `study.lastMinuteTimeframe.v1`(분봉)에서 1회. 지표는 시드하지
  *   않는다 — 창이 소유하지 않고 앱 전역 저장소(`live.indicators.v2`)에 있기
  *   때문이다. 그 저장소 안에서 `/study` 는 자기 세트를 갖지만(ADR-0146) 그것도
@@ -45,6 +56,9 @@ import {
 // 창 설정 타입은 /live 와 **공유**한다(복제 금지) — 두 창 모양이 갈라지는 순간
 // #907 의 스토어 핸들 주입이 성립하지 않는다.
 import type { ChartWindowConfig, ChartWindowRuntime } from './workspace';
+// 그룹 번호는 페이지 중립 leaf 에서 온다 — `state/workspace.ts`(=/live 스토어)를
+// 런타임으로 끌어오지 않기 위해서다(위 스코프 주석).
+import { MIN_GROUP, isGroupId, type GroupId } from '../workspace/groupId';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 
 export { STUDY_WORKSPACE_STORAGE_KEY };
@@ -53,34 +67,106 @@ export const STUDY_WORKSPACE_SCHEMA_VERSION = 1;
 export const STUDY_WINDOW_KINDS = ['chart', 'book', 'broker', 'vdist', 'program', 'memo'] as const;
 export type StudyWindowKind = (typeof STUDY_WINDOW_KINDS)[number];
 
+/** 소비자가 `/live` 짝처럼 스토어 모듈에서 가져갈 수 있게 재수출한다. */
+export type { GroupId };
+
+/**
+ * 그룹이 가리키는 저장뷰 — `/live` `GroupSymbol` 의 `/study` 짝(ADR-0152).
+ *
+ * 네 필드는 ADR-0149 가 `study.activeView.v1` 에 정한 것 그대로 승계한다.
+ *
+ * - **`code` 는 필수다.** `studyWindowWorkspace.getWorkareaCode()` 가 `getState()` 로
+ *   동기 fresh 읽기를 하고, 새로고침 직후 저장뷰 목록 쿼리가 뜨기 전에도 "이 창의
+ *   종목이 뭐냐" 에 답해야 한다. 못 답하면 `useWindowViewGuard` 를 타는 디바운스/타이머
+ *   콜백이 조용히 버려진다. 이 맵을 **영속**하는 이유가 이것이다.
+ * - **`label`/`name` 은 가공 없는 raw** 다 — saves 도착 전 한 프레임의 헤더·탭 제목
+ *   폴백. 드로어 rename 뒤에는 stale 이지만, 소비자가 서버 값을 앞에 두므로
+ *   (`studyDocumentTitle`) 화면에는 곧바로 반영된다.
+ * - **`timeframe` 은 담지 않는다.** 봉의 소유자는 차트 창이다(#1326) — 여기 두면 두
+ *   번째 진실이 생겨 #902↔#1326 왕복이 재발한다. 그룹이 생겨도 그대로다: 한 그룹에
+ *   봉이 다른 차트 창 둘을 두는 것이 이 페이지의 원래 용도다(#801).
+ * - **`viewport` 도 담지 않는다.** ADR-0149 §4 의 판정이 그룹 축에서도 성립한다 —
+ *   그룹은 상시 공존이라 "이탈 시 캡처 → 복귀 시 복원" 이라는 사건 자체가 없다.
+ */
+export interface StudyGroupView {
+  viewId: string;
+  code: string;
+  label: string;
+  name: string;
+}
+
+/**
+ * 저장뷰 목록 행 → 그룹 저장뷰 (ADR-0149 `studyActiveViewFromSave` 승계).
+ *
+ * 필드명이 갈리는 자리는 `id` → `viewId` 하나뿐이고, 손 매핑이 두 곳으로 흩어지면
+ * 한쪽만 고쳐지는 종류의 드리프트가 난다. 인자를 구조형으로 받아 이 스토어가
+ * `api/studyViews` 를 import 하지 않게 한다.
+ */
+export function studyGroupViewFromSave(
+  save: { id: string; code: string; label: string; name: string },
+): StudyGroupView {
+  return { viewId: save.id, code: save.code, label: save.label, name: save.name };
+}
+
 export interface StudyWorkspaceWindow {
   id: string;
   kind: StudyWindowKind;
+  /** 링크 그룹 = **저장뷰** SSOT (ADR-0152). 창은 저장뷰를 직접 들지 않는다. */
+  group: GroupId;
   /** 캔버스 대비 비율 rect (ADR-0122). px 가 아니다. */
   rect: FracRect;
   /** kind==='chart' 에서만 존재. 타입은 `/live` 와 공유(#906). */
   chart?: ChartWindowConfig;
 }
 
-interface Persisted {
+/**
+ * 프리셋·왕복이 담는 것 = **배치뿐**. `groupViews` 가 빠진 것이 이 타입의 요점이다
+ * (`/live` `WorkspaceSnapshot` 과 같은 규율).
+ *
+ * 프리셋은 "어떻게 배치할까" 이지 "무엇을 볼까" 가 아니다. 그룹 **번호**는 배치의
+ * 일부라 남지만 그 번호가 어느 저장뷰인지는 프리셋 밖의 현재 상태가 정한다 — 안
+ * 그러면 배치를 불러오는 것만으로 보던 복기뷰가 통째로 바뀐다.
+ *
+ * 타입으로 막는 것이 핵심이다: `StudyLayoutPresetPayload` 는 `{windows, zOrder}` 라
+ * `Persisted` 의 **구조적 부분집합**이고, 변수 대입에는 excess property check 가 걸리지
+ * 않는다 — 즉 `Persisted` 를 그대로 넘기면 `groupViews` 가 조용히 프리셋에 실린다.
+ */
+export type StudyWorkspaceSnapshot = {
   windows: StudyWorkspaceWindow[];
   /** 마지막 = 최상단(포커스) 창. */
   zOrder: string[];
+};
+
+interface Persisted extends StudyWorkspaceSnapshot {
+  /** 그룹 → 저장뷰. 창이 아니라 **그룹**이 들므로 창을 닫아도 뷰는 남는다. */
+  groupViews: Partial<Record<GroupId, StudyGroupView>>;
 }
 
 interface Store extends Persisted {
   /** 창별 비영속 런타임(#713 뷰포트 비저장과 정합) — 좌측 팬 딥 백필의 from-date. */
   chartRuntime: Record<string, ChartWindowRuntime>;
 
-  /** 창 추가. `chart` 는 포커스된 차트의 설정을 복제해 새로 만든다(#801). */
+  /** 창 추가. 새 창은 **활성 그룹을 상속**하고(#711 미러), `chart` 는 포커스된
+   *  차트의 설정을 복제해 새로 만든다(#801). */
   addWindow: (kind: StudyWindowKind) => string;
   /** 창 닫기. **마지막** 차트 창만 거부한다(`canCloseStudyWindow`). */
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   setWindowRect: (id: string, rect: FracRect) => void;
   setWindowRects: (updates: { id: string; rect: FracRect }[]) => void;
-  /** 스냅샷 통째 적용(왕복 대비 — 프리셋은 범위 밖). 유효 창 없으면 시드 폴백. */
+  /** 스냅샷 통째 적용(왕복 대비 — 프리셋은 범위 밖). 유효 창 없으면 시드 폴백.
+   *  **`groupViews` 는 payload 에서 읽지 않는다** — 배치만 교체한다. */
   applySnapshot: (snapshot: unknown) => void;
+
+  // ── 링크 그룹 (ADR-0152) ─────────────────────────────────────────────────
+  /** 창을 다른 그룹으로 옮긴다 = 이 창의 표시 저장뷰 교체. */
+  setWindowGroup: (id: string, group: GroupId) => void;
+  /** 그룹이 볼 저장뷰를 정한다 — 그 그룹 창들이 **함께** 갈아탄다(SSOT). */
+  setGroupView: (group: GroupId, view: StudyGroupView) => void;
+  /** 저장뷰가 삭제됐을 때: 그 뷰를 보던 **모든** 그룹을 비우고, 비웠는지 답한다.
+   *  ADR-0149 `clearIfView` 의 그룹 판 — "다음 뷰" 를 고르지 않는 것도 그대로다
+   *  (사용자가 지운 직후 뜻밖의 다른 뷰가 뜨는 것보다 빈 상태가 낫다). */
+  clearGroupsOfView: (viewId: string) => boolean;
 
   // ── 차트 창 설정 쓰기 경로 ────────────────────────────────────────────────
   // `/live` workspace 스토어와 **같은 이름·같은 시그니처**다. #907 이 windowView 의
@@ -151,7 +237,16 @@ function readWindow(raw: unknown): StudyWorkspaceWindow | null {
   if (typeof w.id !== 'string' || !isStudyWindowKind(w.kind)) return null;
   const rect = readRect(w.rect);
   if (!rect) return null;
-  const win: StudyWorkspaceWindow = { id: w.id, kind: w.kind, rect };
+  // 그룹은 **관대 파싱**이다(#904 규율) — 없거나 무효면 1. 스키마 버전을 올리지 않는
+  // 이유가 여기 있다: 필드 추가는 이 폴백이 흡수하고, 버전 검사를 넣는 순간 "불일치 시
+  // 무엇을 버릴지" 를 정해야 하는데 그게 과잉 무효화의 입구다(#577). 기존 저장분의
+  // 창이 전부 그룹 1 로 읽히는 것이 승계가 그룹 1 을 고르는 이유이기도 하다.
+  const win: StudyWorkspaceWindow = {
+    id: w.id,
+    kind: w.kind,
+    group: isGroupId(w.group) ? w.group : MIN_GROUP,
+    rect,
+  };
   // 설정이 없는 차트 창은 여기서 채우지 않는다 — 시드는 ensureChartWindow 가
   // 한 곳에서 맡아 "시드가 붙었는가"를 호출부가 알 수 있게 한다.
   if (w.kind === 'chart' && w.chart && typeof w.chart === 'object') {
@@ -160,6 +255,76 @@ function readWindow(raw: unknown): StudyWorkspaceWindow | null {
   return win;
 }
 
+/** 저장뷰 한 벌의 관대 파싱. 판정은 `viewId`·`code` 두 문자열뿐이고 나머지는 빈
+ *  문자열로 채운다 — ADR-0149 의 `isStudyActiveView` 와 **같은 강도**로 둔다(이 함수가
+ *  옛 키 승계 경로에서도 쓰이므로, 강도를 올리면 승계가 조용히 줄어든다). */
+function readGroupView(raw: unknown): StudyGroupView | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.viewId !== 'string' || typeof v.code !== 'string') return null;
+  return {
+    viewId: v.viewId,
+    code: v.code,
+    label: typeof v.label === 'string' ? v.label : '',
+    name: typeof v.name === 'string' ? v.name : '',
+  };
+}
+
+/** 그룹 → 저장뷰 맵의 관대 파싱(`/live` `readGroupSymbols` 미러). 키가 그룹 번호가
+ *  아니거나 값이 저장뷰 모양이 아니면 그 항목만 버린다. */
+function readGroupViews(raw: unknown): Partial<Record<GroupId, StudyGroupView>> {
+  const out: Partial<Record<GroupId, StudyGroupView>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    const group = Number(key);
+    if (!isGroupId(group)) continue;
+    const view = readGroupView(val);
+    if (view) out[group] = view;
+  }
+  return out;
+}
+
+/** ADR-0149 의 활성 저장뷰 키. **승계 전용** — 쓰지 않고, 지우지도 않는다. */
+const LEGACY_ACTIVE_VIEW_KEY = 'study.activeView.v1';
+/** 탭 시절 저장소(ADR-0149 이전). `study.activeView.v1` 이 이미 승계한 사슬의 끝. */
+const LEGACY_TABS_KEY = 'study.tabs.v1';
+
+/**
+ * 그룹 1 의 저장뷰를 옛 키에서 1회 승계한다 — **사슬은 두 홉이다**
+ * (`study.tabs.v1` → `study.activeView.v1` → `groupViews[1]`).
+ *
+ * 끊으면 기존 사용자의 첫 진입이 **빈 화면**이 된다. ADR-0149 §3 이 적었듯 `/study` 에는
+ * `live.page.v1` 같은 이중화가 없어 "마지막으로 보던 뷰" 의 집이 이 키들뿐이다 —
+ * `/live` 가 ADR-0113 에서 옛 탭 키를 그냥 버릴 수 있었던 것과의 비대칭이 여기서도
+ * 그대로 성립한다.
+ *
+ * 두 홉을 **한 함수에 둔 이유**: 첫 홉을 이미 마친 사용자와 아직 안 마친 사용자가
+ * 동시에 존재하고(ADR-0149 가 4일 전이다), 둘 다 여기로 와야 한다.
+ *
+ * 승계 대상이 그룹 1 인 것은 임의가 아니다 — 기존 저장분의 창은 `readWindow` 폴백으로
+ * 전부 그룹 1 이 되므로, 승계 직후 화면이 승계 전과 **같다**.
+ *
+ * 옛 키는 **지우지 않는다**(되돌리기 비용 최소화 — ADR-0149 와 같은 규율).
+ */
+function readLegacyGroupViewSeed(): Partial<Record<GroupId, StudyGroupView>> {
+  // `readJsonObject` 는 부재·파손을 똑같이 `{}` 로 돌려주므로, 첫 홉의 존재 판정은
+  // **`view` 키의 존재**로 한다. `{"view": null}`(뷰를 명시적으로 비운 상태)이 탭 키로
+  // 되돌아가지 않게 하는 것이 이 구분의 목적이다.
+  const own = readJsonObject(LEGACY_ACTIVE_VIEW_KEY);
+  if ('view' in own) {
+    const view = readGroupView(own.view);
+    return view ? { [MIN_GROUP]: view } : {};
+  }
+  const snapshot = readJsonObject(LEGACY_TABS_KEY);
+  const rawTabs = Array.isArray(snapshot.tabs) ? snapshot.tabs : [];
+  const tabs = rawTabs.map(readGroupView).filter((v): v is StudyGroupView => v !== null);
+  if (tabs.length === 0) return {};
+  // clamp 는 **걸러낸 뒤의** 목록 길이 기준이다(ADR-0149 판과 동일) — 무효 탭이 앞에
+  // 섞여 있을 때 인덱스가 밀리는 것을 감수하고, 범위 밖 접근을 없애는 쪽을 택한다.
+  const rawIndex = Number.isInteger(snapshot.activeIndex) ? (snapshot.activeIndex as number) : 0;
+  const index = Math.min(Math.max(0, rawIndex), tabs.length - 1);
+  return { [MIN_GROUP]: tabs[index] };
+}
 
 /** 상세 패널 카드 → 창 kind (시드 전용 매핑). */
 const CARD_TO_KIND: Record<StudyCardKey, StudyWindowKind> = {
@@ -204,11 +369,15 @@ const SEED_BOOK_HEIGHT_WEIGHT = 3;
  * 다른 카드의 두 배 높이 가중치를 받고, 보이면 우측 열 자체도 넓어진다. 숨긴
  * 카드는 창을 만들지 않는다(사용자가 치운 것). 메모는 시드에 없다 — 헤더 메모
  * 버튼으로 연다. zOrder 는 데이터 창들 뒤에 차트를 둬 첫 포커스가 차트가 되게 한다.
+ *
+ * **배치만 만든다** — 반환 타입이 `Persisted` 가 아니라 `StudyWorkspaceSnapshot` 인
+ * 것이 그 계약이다. 그룹→저장뷰는 시드의 입력(카드 순서/숨김)과 무관한 축이라
+ * 호출부가 얹는다. 창은 전부 그룹 1 로 난다 — 첫 진입에 번호가 갈릴 이유가 없다.
  */
 export function buildStudyWorkspaceSeed(layout: {
   cardOrder: readonly StudyCardKey[];
   cardHidden: Partial<Record<StudyCardKey, boolean>>;
-}): Persisted {
+}): StudyWorkspaceSnapshot {
   const visible = layout.cardOrder.filter((key) => !layout.cardHidden[key]);
   const hasBook = visible.includes('orderbook');
   const chartW = visible.length === 0
@@ -219,6 +388,7 @@ export function buildStudyWorkspaceSeed(layout: {
   const chart: StudyWorkspaceWindow = {
     id: newWindowId(),
     kind: 'chart',
+    group: MIN_GROUP,
     rect: { x: 0, y: 0, w: chartW, h: 1 },
     chart: seedChartConfig(),
   };
@@ -230,6 +400,7 @@ export function buildStudyWorkspaceSeed(layout: {
     const win: StudyWorkspaceWindow = {
       id: newWindowId(),
       kind: CARD_TO_KIND[key],
+      group: MIN_GROUP,
       rect: { x: chartW, y, w: 1 - chartW, h },
     };
     y += h;
@@ -306,21 +477,61 @@ export function canCloseStudyWindow(
   return windows.filter((w) => w.kind === 'chart').length > 1;
 }
 
+/** 창 배열·zOrder 만 읽는 파생의 최소 입력 — 셀렉터로 그대로 넘길 수 있게 구조형. */
+type StudyLayoutState = {
+  windows: readonly StudyWorkspaceWindow[];
+  zOrder: readonly string[];
+};
+
 /**
  * 포커스된 차트 창 = zOrder 최상단의 차트 창.
  *
- * 창이 여러 개일 때 **탭 라벨 write-through·커서 해석·뷰포트 캡처**가 이 창을
- * 따른다(#801 단계 1). 창이 하나면 그 창이므로 기존 동작과 같다.
+ * 창이 여러 개일 때 **커서 해석·페이지 상태(로딩·에러)**가 이 창을 따른다(#801 단계 1).
+ * 창이 하나면 그 창이므로 기존 동작과 같다.
+ *
+ * `group` 을 주면 **그 그룹 안에서만** 고른다(ADR-0152). 데이터 창이 "내 그룹의 어느
+ * 차트 번들을 먹을까" 를 묻는 자리다 — 그룹을 무시하고 전역 포커스 차트를 먹이면
+ * 그룹 2 의 10호가에 그룹 1 의 데이터가 뜬다.
  */
-export function focusedChartWindowId(state: {
-  windows: readonly StudyWorkspaceWindow[];
-  zOrder: readonly string[];
-}): string | null {
+export function focusedChartWindowId(
+  state: StudyLayoutState,
+  group?: GroupId,
+): string | null {
+  const matches = (w: StudyWorkspaceWindow) =>
+    w.kind === 'chart' && (group === undefined || w.group === group);
   for (let i = state.zOrder.length - 1; i >= 0; i -= 1) {
     const id = state.zOrder[i];
-    if (state.windows.some((w) => w.id === id && w.kind === 'chart')) return id;
+    if (state.windows.some((w) => w.id === id && matches(w))) return id;
   }
-  return state.windows.find((w) => w.kind === 'chart')?.id ?? null;
+  return state.windows.find(matches)?.id ?? null;
+}
+
+/**
+ * 활성 그룹 = 포커스 창(zOrder 마지막)의 그룹. 창이 없으면 1.
+ *
+ * `/live` `activeGroupOf` 의 미러이고 **저장하지 않는 것**까지 같다(#711) — 포커스에서
+ * 파생하므로 두 번째 진실이 생기지 않는다. 저장뷰를 열 때(드로어 클릭·딥링크) 어느
+ * 그룹에 꽂을지가 이 값이다.
+ */
+export function activeStudyGroup(state: StudyLayoutState): GroupId {
+  const focusedId = state.zOrder[state.zOrder.length - 1];
+  return state.windows.find((w) => w.id === focusedId)?.group ?? MIN_GROUP;
+}
+
+/** 이 창이 보는 저장뷰 — 창 → 그룹 → 저장뷰 **두 홉**. 창이 없으면 null. */
+export function studyViewOfWindow(
+  state: StudyLayoutState & { groupViews: Partial<Record<GroupId, StudyGroupView>> },
+  windowId: string,
+): StudyGroupView | null {
+  const win = state.windows.find((w) => w.id === windowId);
+  return win ? state.groupViews[win.group] ?? null : null;
+}
+
+/** 활성 그룹이 보는 저장뷰 — 페이지 헤더·탭 제목·드로어 선택 표시가 읽는 값. */
+export function activeStudyView(
+  state: StudyLayoutState & { groupViews: Partial<Record<GroupId, StudyGroupView>> },
+): StudyGroupView | null {
+  return state.groupViews[activeStudyGroup(state)] ?? null;
 }
 
 /** 차트 창에 설정이 빠진 게 있는가(하이드레이션 시 시드 여부 판정용). */
@@ -335,13 +546,14 @@ function needsChartConfigSeed(windows: readonly StudyWorkspaceWindow[]): boolean
  * **배치는 절대 건드리지 않는다** — 설정 신설이 rect·zOrder 를 초기화하면 그게
  * 과잉 무효화다(#577).
  */
-function ensureChartWindow(persisted: Persisted): Persisted {
+function ensureChartWindow(persisted: StudyWorkspaceSnapshot): StudyWorkspaceSnapshot {
   const windows = persisted.windows.map((w) =>
     w.kind === 'chart' && !w.chart ? { ...w, chart: seedChartConfig() } : w);
   if (windows.some((w) => w.kind === 'chart')) return { ...persisted, windows };
   const chart: StudyWorkspaceWindow = {
     id: newWindowId(),
     kind: 'chart',
+    group: MIN_GROUP,
     rect: { x: 0, y: 0, w: SEED_CHART_FRACTION, h: 1 },
     chart: seedChartConfig(),
   };
@@ -375,6 +587,7 @@ function persistFromState(state: Persisted): void {
     schema_version: STUDY_WORKSPACE_SCHEMA_VERSION,
     windows: state.windows,
     zOrder: state.zOrder,
+    groupViews: state.groupViews,
   };
   persistJson(STUDY_WORKSPACE_STORAGE_KEY, snapshot, 'tab');
   persistJson(STUDY_WORKSPACE_STORAGE_KEY, snapshot, 'shared');
@@ -382,7 +595,7 @@ function persistFromState(state: Persisted): void {
 
 /** raw 스냅샷 → canonical Persisted. 유효 창이 없으면 시드로 폴백(빈 워크스페이스로
  *  덮어써 창을 잃지 않게 — /live normalizeWorkspaceSnapshot 과 같은 규율). */
-function normalizeSnapshot(raw: unknown): Persisted {
+function normalizeSnapshot(raw: unknown): StudyWorkspaceSnapshot {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
   const windows = rawWindows
@@ -416,13 +629,37 @@ function readStorage(): Persisted {
   const windows = rawWindows
     .map(readWindow)
     .filter((w): w is StudyWorkspaceWindow => w !== null);
+  /**
+   * **키의 부재와 빈 맵은 다른 계약이다.** 부재일 때만 옛 키를 승계한다 — 빈 맵도
+   * 승계하면 사용자가 마지막 저장뷰를 비운 것이 매 부팅마다 되살아난다(그리고 그
+   * 되살아남은 옛 키를 지우지 않기로 한 결정 때문에 영구적이다).
+   */
+  const hasGroupViews = parsed.groupViews !== undefined;
+  const groupViews = hasGroupViews
+    ? readGroupViews(parsed.groupViews)
+    : readLegacyGroupViewSeed();
   if (windows.length === 0) {
-    const seed = buildStudyWorkspaceSeed(readLegacyLayoutSeed());
+    const seed = { ...buildStudyWorkspaceSeed(readLegacyLayoutSeed()), groupViews };
     persistFromState(seed);
     return seed;
   }
-  const seeded = needsChartConfigSeed(windows) || !windows.some((w) => w.kind === 'chart');
-  const next = ensureChartWindow({ windows, zOrder: normalizeZOrder(parsed.zOrder, windows) });
+  /**
+   * **승계했다는 이유만으로는 굳히지 않는다** — 차트 설정 시드와 갈리는 지점이다.
+   *
+   * 저쪽은 굳혀야 한다: `study.lastMinuteTimeframe.v1` 은 살아 있는 키라, 안 굳히면
+   * 매 방문이 그 값을 다시 읽어 사용자가 창에서 바꾼 봉을 덮는다.
+   *
+   * 여기는 반대다. `study.activeView.v1` 은 ADR-0152 로 **쓰는 사람이 사라진** 키라
+   * 재읽기가 멱등이고, 승계 결과는 첫 변경(뷰 열기·창 드래그)에서 어차피 굳는다.
+   * 반면 하이드레이션이 쓰기를 하면 **"새 탭은 열기만 해서는 아무것도 안 쓴다"** 는
+   * 탭 격리 계약이 깨진다(공유 시드를 물려받은 탭이 즉시 자기 저장소를 만든다).
+   */
+  const seeded = needsChartConfigSeed(windows)
+    || !windows.some((w) => w.kind === 'chart');
+  const next = {
+    ...ensureChartWindow({ windows, zOrder: normalizeZOrder(parsed.zOrder, windows) }),
+    groupViews,
+  };
   if (seeded) persistFromState(next);
   return next;
 }
@@ -449,6 +686,17 @@ const EMPTY_RUNTIME: ChartWindowRuntime = {
   historicalFromDate: null,
   lastMinuteHistoricalFromDate: null,
 };
+
+/** 지정한 창들의 비영속 런타임을 걷는다 = fresh-view (`/live` 동명 헬퍼 미러).
+ *  저장뷰가 바뀌면 그 그룹 창들의 좌측 팬 백필 from-date 는 의미를 잃는다. */
+function clearedChartRuntime(
+  runtime: Record<string, ChartWindowRuntime>,
+  ids: Iterable<string>,
+): Record<string, ChartWindowRuntime> {
+  const next = { ...runtime };
+  for (const id of ids) delete next[id];
+  return next;
+}
 
 /** 차트 창 설정 변경 공통 경로 — 대상이 차트 창일 때만 fn 으로 chart 를 교체한다.
  *  창을 못 찾거나 차트 창이 아니면 null → 호출부가 no-op 한다(`/live` 미러). */
@@ -482,6 +730,9 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       : undefined;
     const id = newWindowId();
     set((state) => {
+      // 새 창 = **활성 그룹 상속**(#711 미러). 창을 하나 더 여는 흔한 동작이 지금 보던
+      // 저장뷰를 그대로 이어받아야 "창 추가 → 뷰 다시 고르기" 가 되지 않는다.
+      const group = activeStudyGroup(state);
       const size = DEFAULT_SIZE[kind];
       const frac = { w: size.w / REF_CANVAS.w, h: size.h / REF_CANVAS.h };
       // 캐스케이드 오프셋 — 새 창이 서로 겹쳐 나지 않도록 창 수에 비례해 밀어낸다.
@@ -489,6 +740,7 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
       const win: StudyWorkspaceWindow = {
         id,
         kind,
+        group,
         rect: {
           x: Math.min(offPx / REF_CANVAS.w, 1 - frac.w),
           y: Math.min(offPx / REF_CANVAS.h, 1 - frac.h),
@@ -546,12 +798,64 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
   },
 
   applySnapshot: (snapshot) => {
-    const next = normalizeSnapshot(snapshot);
-    set(() => {
+    const layout = normalizeSnapshot(snapshot);
+    set((state) => {
+      // **`groupViews` 는 payload 에서 읽지 않는다** — 어떤 경로로 들어와도(프리셋 적용·
+      // 왕복) 배치만 교체하고 지금 보고 있는 저장뷰는 그대로다. `/live` applySnapshot 이
+      // `groupSymbols` 를 상태에서 되싣는 것과 같은 규율이다.
+      const next = { ...layout, groupViews: state.groupViews };
       persistFromState(next);
       // 창 전면 교체 → 비영속 런타임을 걷는다(fresh-view, `/live` 미러).
       return { ...next, chartRuntime: {} };
     });
+  },
+
+  setWindowGroup: (id, group) => {
+    if (!isGroupId(group)) return;
+    set((state) => {
+      const prev = state.windows.find((w) => w.id === id);
+      if (!prev || prev.group === group) return {};
+      const windows = state.windows.map((w) => (w.id === id ? { ...w, group } : w));
+      // 그룹 이동 = 이 창의 표시 저장뷰 교체(그룹=저장뷰 SSOT) — fresh-view 런타임 리셋.
+      persistFromState({ ...state, windows });
+      return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
+    });
+  },
+
+  setGroupView: (group, view) => {
+    if (!isGroupId(group)) return;
+    set((state) => {
+      const prev = state.groupViews[group];
+      const groupViews = { ...state.groupViews, [group]: view };
+      persistFromState({ ...state, groupViews });
+      // **같은 뷰를 다시 여는 것은 멱등**이다(ADR-0149 `openSave` 계약 승계). 여기서
+      // 런타임까지 리셋하면 드로어를 두 번 눌렀다는 이유만으로 진행 중이던 좌측 팬
+      // 백필이 처음으로 되감긴다 — `/live` renameGroupSymbol 이 리셋을 피한 것과 같은
+      // 판단이고, 판정은 `viewId` 하나로 한다(label·name 만 바뀐 것은 표시 문자열이다).
+      if (prev?.viewId === view.viewId) return { groupViews };
+      const affected = state.windows.filter((w) => w.group === group).map((w) => w.id);
+      return { groupViews, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
+    });
+  },
+
+  clearGroupsOfView: (viewId) => {
+    let cleared = false;
+    set((state) => {
+      const groups = Object.entries(state.groupViews)
+        .filter(([, v]) => v?.viewId === viewId)
+        .map(([key]) => Number(key) as GroupId);
+      if (groups.length === 0) return {};
+      cleared = true;
+      const groupViews = { ...state.groupViews };
+      const affected: string[] = [];
+      for (const group of groups) {
+        delete groupViews[group];
+        for (const w of state.windows) if (w.group === group) affected.push(w.id);
+      }
+      persistFromState({ ...state, groupViews });
+      return { groupViews, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
+    });
+    return cleared;
   },
 
   setChartTimeframe: (id, tf) => {
@@ -601,7 +905,7 @@ export const useStudyWorkspaceStore = create<Store>((set, get) => ({
 
 /** 현재 워크스페이스 스냅샷(왕복 대비) — 스토어 내부 참조를 잡지 않도록 복제한다.
  *  chart 설정도 값까지 새 객체로(`/live` snapshotWorkspace 와 같은 근거). */
-export function snapshotStudyWorkspace(): Persisted {
+export function snapshotStudyWorkspace(): StudyWorkspaceSnapshot {
   const s = useStudyWorkspaceStore.getState();
   return {
     windows: s.windows.map((w) => ({

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { StudyChartWindow } from './StudyChartWindow';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
-import { useStudyActiveViewStore } from '../state/studyActiveView';
 import { useWorkspaceStore } from '../state/workspace';
 import { useLivePageStore } from '../state/livePage';
 import { registerIndicatorDrawerOpener } from '../live/workspace/indicatorDrawerControls';
@@ -48,6 +47,7 @@ function seedStudyWorkspace(timeframe = '5m' as const): void {
     windows: [{
       id: CHART_ID,
       kind: 'chart',
+      group: 1,
       rect: { x: 0, y: 0, w: 1, h: 1 },
       chart: { timeframe, lastMinuteTimeframe: '5m' },
     }],
@@ -87,6 +87,7 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
       onTimeframeChange={vi.fn()}
       targetLabel="현대로템"
       loading={false}
+      viewMissing={false}
       chart={null}
       sidecarLoading={false}
       sidecarFailed={false}
@@ -99,8 +100,9 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
 beforeEach(() => {
   seedStudyWorkspace();
   seedLiveDecoy();
-  useStudyActiveViewStore.setState({
-    active: { viewId: 'view-1', code: '064350', label: '현대로템', name: '복기' },
+  // ADR-0152: 저장뷰는 **그룹**이 든다. 시드 창이 그룹 1 이므로 활성 그룹도 1.
+  useStudyWorkspaceStore.setState({
+    groupViews: { 1: { viewId: 'view-1', code: '064350', label: '현대로템', name: '복기' } },
   });
 });
 

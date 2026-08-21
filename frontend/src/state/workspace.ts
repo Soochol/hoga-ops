@@ -1,5 +1,6 @@
 import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
+import { MAX_GROUP, MIN_GROUP, isGroupId, type GroupId } from '../workspace/groupId';
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
 import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
@@ -76,10 +77,15 @@ function isDeepLinkTab(): boolean {
 export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
-export const MIN_GROUP = 1;
-export const MAX_GROUP = 10;
-/** 링크 그룹 = 종목 SSOT (#711). 1..10. */
-export type GroupId = number;
+/**
+ * 링크 그룹 = **종목** SSOT (#711).
+ *
+ * 번호 자체(범위 1..10 · 판별자)는 페이지 중립 leaf `workspace/groupId` 가 소유하고
+ * `/study` 와 공유한다(ADR-0152). 여기서 정하는 것은 그 번호가 **이 페이지에서 무엇을
+ * 가리키는가** — `groupSymbols` 뿐이다. 소비자가 종전대로 이 모듈에서 가져갈 수 있게
+ * 재수출한다.
+ */
+export { MIN_GROUP, MAX_GROUP, type GroupId };
 
 /**
  * 창 위치·크기 — **캔버스 대비 비율(0~1)**, px 아님 (ADR-0122).
@@ -218,10 +224,6 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isWindowKind(value: unknown): value is WindowKind {
   return typeof value === 'string' && (WINDOW_KINDS as readonly string[]).includes(value);
-}
-
-function isGroupId(value: unknown): value is GroupId {
-  return isFiniteNumber(value) && Number.isInteger(value) && value >= MIN_GROUP && value <= MAX_GROUP;
 }
 
 function isLiveTimeframe(value: unknown): value is LiveTimeframe {

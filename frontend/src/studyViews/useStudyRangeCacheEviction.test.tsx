@@ -16,15 +16,33 @@ function seedRange(queryClient: QueryClient, code: string, bucketMs = 600_000): 
   return key;
 }
 
-// 보존 집합은 **활성 저장뷰의 종목 하나**다(ADR-0149). 종전엔 "열린 탭 어느 하나라도
-// 든 종목" 이라 여러 개였고, 탭이 사라지면서 하나로 좁아졌다 — 그만큼 축출이 공격적이다.
+// 보존 집합은 **어느 그룹이든 지금 보고 있는 종목 전부**다(ADR-0152). 축은 두 번
+// 바뀌었다: "열린 탭 어느 하나라도 든 종목" → "활성 저장뷰의 종목 하나"(ADR-0149) →
+// 지금. 그룹은 상시 공존이라 전부 실제로 화면에 떠 있는 번들이다.
 describe('useStudyRangeCacheEviction — 종목 축', () => {
+  it('그룹이 여럿이면 그 종목들을 **전부** 보존한다 (ADR-0152)', () => {
+    const queryClient = new QueryClient();
+    seedRange(queryClient, '005930');
+    seedRange(queryClient, '000660');
+    seedRange(queryClient, '035720');
+
+    // 그룹 1 = 005930, 그룹 2 = 000660. 035720 은 어느 그룹도 안 본다.
+    renderHook(() => useStudyRangeCacheEviction(['005930', '000660']), {
+      wrapper: makeWrapper(queryClient),
+    });
+
+    expect(queryClient.getQueriesData({ queryKey: ['range', '005930'] })).toHaveLength(1);
+    expect(queryClient.getQueriesData({ queryKey: ['range', '000660'] })).toHaveLength(1);
+    // red-check: 보존을 활성 그룹 하나로 되돌리면 이 줄이 1 이 되어 실패한다.
+    expect(queryClient.getQueriesData({ queryKey: ['range', '035720'] })).toHaveLength(0);
+  });
+
   it('활성 종목이 아닌 range 캐시를 축출한다', () => {
     const queryClient = new QueryClient();
     seedRange(queryClient, '005930');
     seedRange(queryClient, '000660');
 
-    renderHook(() => useStudyRangeCacheEviction('005930'), {
+    renderHook(() => useStudyRangeCacheEviction(['005930']), {
       wrapper: makeWrapper(queryClient),
     });
 
@@ -37,7 +55,7 @@ describe('useStudyRangeCacheEviction — 종목 축', () => {
     seedRange(queryClient, '000660');
     queryClient.setQueryData(['live', 'past-candles', '000660'], { code: '000660' });
 
-    renderHook(() => useStudyRangeCacheEviction('005930'), {
+    renderHook(() => useStudyRangeCacheEviction(['005930']), {
       wrapper: makeWrapper(queryClient),
     });
 
@@ -56,7 +74,7 @@ describe('useStudyRangeCacheEviction — 종목 축', () => {
     const unsubscribe = observer.subscribe(() => {});
 
     try {
-      renderHook(() => useStudyRangeCacheEviction('005930'), {
+      renderHook(() => useStudyRangeCacheEviction(['005930']), {
         wrapper: makeWrapper(queryClient),
       });
 
@@ -71,26 +89,26 @@ describe('useStudyRangeCacheEviction — 종목 축', () => {
     const queryClient = new QueryClient();
     seedRange(queryClient, '005930');
 
-    const { rerender } = renderHook(({ code }) => useStudyRangeCacheEviction(code), {
+    const { rerender } = renderHook(({ codes }) => useStudyRangeCacheEviction(codes), {
       wrapper: makeWrapper(queryClient),
-      initialProps: { code: '005930' as string | null },
+      initialProps: { codes: ['005930'] as readonly string[] },
     });
     expect(queryClient.getQueriesData({ queryKey: ['range', '005930'] })).toHaveLength(1);
 
     // 새 뷰를 열면 그 종목 번들이 새로 받아진다.
     seedRange(queryClient, '000660');
-    rerender({ code: '000660' });
+    rerender({ codes: ['000660'] });
 
     expect(queryClient.getQueriesData({ queryKey: ['range', '000660'] })).toHaveLength(1);
     expect(queryClient.getQueriesData({ queryKey: ['range', '005930'] })).toHaveLength(0);
   });
 
-  it('활성 뷰가 없으면 관찰자 없는 range 캐시를 전부 축출한다', () => {
+  it('어느 그룹에도 뷰가 없으면 관찰자 없는 range 캐시를 전부 축출한다', () => {
     const queryClient = new QueryClient();
     seedRange(queryClient, '005930');
     seedRange(queryClient, '000660');
 
-    renderHook(() => useStudyRangeCacheEviction(null), {
+    renderHook(() => useStudyRangeCacheEviction([]), {
       wrapper: makeWrapper(queryClient),
     });
 
@@ -109,7 +127,7 @@ describe('useStudyRangeCacheEviction — 봉 축 (#801 멀티 차트 창)', () =
     seedRange(queryClient, '005930', MIN_10);
 
     renderHook(
-      () => useStudyRangeCacheEviction('005930', ['5m', '10m']),
+      () => useStudyRangeCacheEviction(['005930'], ['5m', '10m']),
       { wrapper: makeWrapper(queryClient) },
     );
 
@@ -117,7 +135,7 @@ describe('useStudyRangeCacheEviction — 봉 축 (#801 멀티 차트 창)', () =
     expect(queryClient.getQueriesData({ queryKey: ['range', '005930'] })).toHaveLength(2);
 
     renderHook(
-      () => useStudyRangeCacheEviction('005930', ['5m']),
+      () => useStudyRangeCacheEviction(['005930'], ['5m']),
       { wrapper: makeWrapper(queryClient) },
     );
     // 10m 창을 닫으면 그 번들만 축출된다.
@@ -131,7 +149,7 @@ describe('useStudyRangeCacheEviction — 봉 축 (#801 멀티 차트 창)', () =
     seedRange(queryClient, '005930', MIN_1);
 
     renderHook(
-      () => useStudyRangeCacheEviction('005930', ['D']),
+      () => useStudyRangeCacheEviction(['005930'], ['D']),
       { wrapper: makeWrapper(queryClient) },
     );
 
@@ -147,7 +165,7 @@ describe('useStudyRangeCacheEviction — 봉 축 (#801 멀티 차트 창)', () =
     const queryClient = new QueryClient();
     seedRange(queryClient, '005930', MIN_10);
 
-    renderHook(() => useStudyRangeCacheEviction('005930', []), {
+    renderHook(() => useStudyRangeCacheEviction(['005930'], []), {
       wrapper: makeWrapper(queryClient),
     });
 
@@ -166,7 +184,7 @@ describe('useStudyRangeCacheEviction — 봉 축 (#801 멀티 차트 창)', () =
 
     try {
       renderHook(
-        () => useStudyRangeCacheEviction('005930', ['1m']),
+        () => useStudyRangeCacheEviction(['005930'], ['1m']),
         { wrapper: makeWrapper(queryClient) },
       );
 

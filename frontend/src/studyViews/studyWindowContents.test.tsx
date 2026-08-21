@@ -106,7 +106,9 @@ function spotResult(over: Partial<LiveOrderbookSpotResult> = {}): LiveOrderbookS
 }
 
 function renderBook() {
-  return render(<StudyDataWindowContent kind="book" save={SAVE} bundle={BUNDLE} />);
+  return render(
+    <StudyDataWindowContent kind="book" group={1} emptyReason={null} save={SAVE} bundle={BUNDLE} />,
+  );
 }
 
 /** `useScreenerDailyCandles(code, from, to)` 의 `to` = 분모를 뽑는 기준 날짜. */

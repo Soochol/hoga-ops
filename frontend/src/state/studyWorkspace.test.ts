@@ -479,3 +479,301 @@ describe('snapshotStudyWorkspace — 깊은 복사(프리셋 저장본 오염 �
   });
 });
 
+
+// ── 링크 그룹 (ADR-0152) ─────────────────────────────────────────────────────
+// 그룹 → **저장뷰** 다(`/live` 는 그룹 → 종목). 창은 저장뷰를 직접 들지 않고 번호만
+// 들며, 같은 번호를 단 창들은 대상이 함께 바뀐다.
+
+const RECT = { x: 0, y: 0, w: 0.5, h: 0.5 };
+const VIEW_A = { viewId: 'va', code: '005930', label: '삼성전자', name: '눌림' };
+const VIEW_B = { viewId: 'vb', code: '000660', label: 'SK하이닉스', name: '급등' };
+
+function seedSession(windows: unknown[], zOrder: string[], extra: Record<string, unknown> = {}): void {
+  sessionStorage.setItem('study.workspace.v1', JSON.stringify({
+    schema_version: 1, windows, zOrder, ...extra,
+  }));
+}
+
+function storedGroupViews(scope: 'tab' | 'shared' = 'tab'): unknown {
+  const raw = (scope === 'tab' ? sessionStorage : localStorage).getItem('study.workspace.v1');
+  return raw ? (JSON.parse(raw) as { groupViews?: unknown }).groupViews : undefined;
+}
+
+describe('링크 그룹 (ADR-0152)', () => {
+  it('시드 창은 전부 그룹 1 이다 — 첫 진입에 번호가 갈릴 이유가 없다', async () => {
+    const { useStudyWorkspaceStore } = await importFresh();
+    const groups = useStudyWorkspaceStore.getState().windows.map((w) => w.group);
+    expect(new Set(groups)).toEqual(new Set([1]));
+  });
+
+  it('저장값의 group 은 관대 파싱 — 없거나 범위 밖이면 1, 유효하면 그대로', async () => {
+    seedSession([
+      { id: 'a', kind: 'chart', rect: RECT, chart: { timeframe: '5m' } },  // group 부재
+      { id: 'b', kind: 'book', group: 99, rect: RECT },                     // 범위 밖
+      { id: 'c', kind: 'broker', group: 4, rect: RECT },                    // 유효
+      { id: 'd', kind: 'vdist', group: '2', rect: RECT },                   // 타입 불일치
+    ], ['a', 'b', 'c', 'd'], { groupViews: {} });
+
+    const { useStudyWorkspaceStore } = await importFresh();
+    const byId = Object.fromEntries(
+      useStudyWorkspaceStore.getState().windows.map((w) => [w.id, w.group]),
+    );
+    // 기존 저장분이 전부 그룹 1 로 읽히는 것이 "승계는 그룹 1" 의 근거이기도 하다.
+    expect(byId).toEqual({ a: 1, b: 1, c: 4, d: 1 });
+  });
+
+  it('setGroupView — 같은 그룹 창들이 함께 갈아탄다(그룹=저장뷰 SSOT)', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: 'D' } },
+      { id: 'c3', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c1', 'c2', 'c3'], { groupViews: {} });
+    const { useStudyWorkspaceStore, studyViewOfWindow } = await importFresh();
+
+    useStudyWorkspaceStore.getState().setGroupView(1, VIEW_A);
+    const s = useStudyWorkspaceStore.getState();
+
+    expect(studyViewOfWindow(s, 'c1')).toEqual(VIEW_A);
+    expect(studyViewOfWindow(s, 'c2')).toEqual(VIEW_A);
+    // 그룹 2 는 안 움직인다 — 그게 "나란히 비교" 라는 이 기능의 요점이다.
+    expect(studyViewOfWindow(s, 'c3')).toBeNull();
+    expect(storedGroupViews()).toEqual({ 1: VIEW_A });
+  });
+
+  it('setGroupView — 뷰를 바꾸면 그 그룹 창들의 백필 런타임만 걷는다(fresh-view)', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c3', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c1', 'c3'], { groupViews: { 1: VIEW_A } });
+    const { useStudyWorkspaceStore } = await importFresh();
+    useStudyWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260101');
+    useStudyWorkspaceStore.getState().extendChartHistoricalRange('c3', '20260101');
+
+    useStudyWorkspaceStore.getState().setGroupView(1, VIEW_B);
+
+    const { chartRuntime } = useStudyWorkspaceStore.getState();
+    expect(chartRuntime.c1).toBeUndefined();
+    expect(chartRuntime.c3?.historicalFromDate).toBe('20260101');
+  });
+
+  it('setGroupView — 같은 뷰를 다시 열면 멱등이라 런타임을 되감지 않는다', async () => {
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+      { groupViews: { 1: VIEW_A } },
+    );
+    const { useStudyWorkspaceStore } = await importFresh();
+    useStudyWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260101');
+
+    // 이름만 바뀐 같은 뷰(드로어 rename 직후 재클릭) — 판정은 viewId 하나다.
+    useStudyWorkspaceStore.getState().setGroupView(1, { ...VIEW_A, name: '이름변경' });
+
+    expect(useStudyWorkspaceStore.getState().chartRuntime.c1?.historicalFromDate).toBe('20260101');
+  });
+
+  it('setWindowGroup — 창 하나만 옮기고 그 창의 런타임을 걷는다', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: 'D' } },
+    ], ['c1', 'c2'], { groupViews: { 1: VIEW_A, 2: VIEW_B } });
+    const { useStudyWorkspaceStore, studyViewOfWindow } = await importFresh();
+    useStudyWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260101');
+    useStudyWorkspaceStore.getState().extendChartHistoricalRange('c2', '20260101');
+
+    useStudyWorkspaceStore.getState().setWindowGroup('c1', 2);
+
+    const s = useStudyWorkspaceStore.getState();
+    expect(studyViewOfWindow(s, 'c1')).toEqual(VIEW_B);
+    expect(studyViewOfWindow(s, 'c2')).toEqual(VIEW_A);
+    expect(s.chartRuntime.c1).toBeUndefined();
+    expect(s.chartRuntime.c2?.historicalFromDate).toBe('20260101');
+  });
+
+  it('setWindowGroup — 범위 밖 번호는 no-op', async () => {
+    const { useStudyWorkspaceStore } = await importFresh();
+    const id = useStudyWorkspaceStore.getState().windows[0].id;
+    useStudyWorkspaceStore.getState().setWindowGroup(id, 0);
+    useStudyWorkspaceStore.getState().setWindowGroup(id, 11);
+    expect(useStudyWorkspaceStore.getState().windows[0].group).toBe(1);
+  });
+
+  it('clearGroupsOfView — 그 뷰를 보던 **모든** 그룹을 비운다', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c3', kind: 'chart', group: 3, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c1', 'c2', 'c3'], { groupViews: { 1: VIEW_A, 2: VIEW_A, 3: VIEW_B } });
+    const { useStudyWorkspaceStore } = await importFresh();
+
+    expect(useStudyWorkspaceStore.getState().clearGroupsOfView('va')).toBe(true);
+
+    // 한쪽만 비우면 남은 그룹이 **삭제된 뷰를 계속 조회**한다 — 그래서 전부다.
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 3: VIEW_B });
+    // 안 보던 뷰의 삭제는 무변화 + false.
+    expect(useStudyWorkspaceStore.getState().clearGroupsOfView('없는뷰')).toBe(false);
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 3: VIEW_B });
+  });
+
+  it('activeStudyGroup / activeStudyView — 포커스 창에서 파생한다(저장하지 않는다)', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c2', 'c1'], { groupViews: { 1: VIEW_A, 2: VIEW_B } });
+    const { useStudyWorkspaceStore, activeStudyGroup, activeStudyView } = await importFresh();
+
+    expect(activeStudyGroup(useStudyWorkspaceStore.getState())).toBe(1);
+    expect(activeStudyView(useStudyWorkspaceStore.getState())).toEqual(VIEW_A);
+
+    useStudyWorkspaceStore.getState().focusWindow('c2');
+
+    expect(activeStudyGroup(useStudyWorkspaceStore.getState())).toBe(2);
+    expect(activeStudyView(useStudyWorkspaceStore.getState())).toEqual(VIEW_B);
+  });
+
+  it('focusedChartWindowId(group) — 그 그룹 안에서만 고른다', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c1', 'c2'], { groupViews: {} });
+    const { useStudyWorkspaceStore, focusedChartWindowId } = await importFresh();
+    const s = useStudyWorkspaceStore.getState();
+
+    expect(focusedChartWindowId(s)).toBe('c2');       // 전역 포커스
+    expect(focusedChartWindowId(s, 1)).toBe('c1');    // 그룹 1 의 포커스
+    expect(focusedChartWindowId(s, 3)).toBeNull();    // 차트 없는 그룹
+  });
+
+  it('addWindow — 새 창은 활성 그룹을 상속한다', async () => {
+    seedSession([
+      { id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } },
+      { id: 'c2', kind: 'chart', group: 5, rect: RECT, chart: { timeframe: '5m' } },
+    ], ['c1', 'c2'], { groupViews: {} });
+    const { useStudyWorkspaceStore } = await importFresh();
+
+    const id = useStudyWorkspaceStore.getState().addWindow('book');
+
+    expect(useStudyWorkspaceStore.getState().windows.find((w) => w.id === id)?.group).toBe(5);
+  });
+
+  it('applySnapshot — payload 의 groupViews 를 읽지 않는다(배치만 교체)', async () => {
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+      { groupViews: { 1: VIEW_A } },
+    );
+    const { useStudyWorkspaceStore } = await importFresh();
+
+    useStudyWorkspaceStore.getState().applySnapshot({
+      windows: [{ id: 'p1', kind: 'chart', group: 2, rect: RECT, chart: { timeframe: 'D' } }],
+      zOrder: ['p1'],
+      // 프리셋이 어떻게든 이 필드를 들고 있어도 무시돼야 한다 — 배치를 불러오는 것만으로
+      // 보던 복기뷰가 바뀌면 안 된다.
+      groupViews: { 2: VIEW_B },
+    });
+
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 1: VIEW_A });
+    expect(useStudyWorkspaceStore.getState().windows.map((w) => w.id)).toEqual(['p1']);
+  });
+
+  it('snapshotStudyWorkspace — groupViews 를 담지 않는다(프리셋 오염 방지)', async () => {
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 3, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+      { groupViews: { 3: VIEW_A } },
+    );
+    const { snapshotStudyWorkspace } = await importFresh();
+
+    const snapshot = snapshotStudyWorkspace();
+
+    expect(snapshot).not.toHaveProperty('groupViews');
+    // 번호는 배치의 일부라 남는다 — 그 번호가 어느 뷰인지만 프리셋 밖이다.
+    expect(snapshot.windows[0].group).toBe(3);
+  });
+
+  it('groupViews 는 자기 탭과 공유 시드 양쪽에 기록된다', async () => {
+    const { useStudyWorkspaceStore } = await importFresh();
+    useStudyWorkspaceStore.getState().setGroupView(2, VIEW_B);
+
+    expect(storedGroupViews('tab')).toEqual({ 2: VIEW_B });
+    expect(storedGroupViews('shared')).toEqual({ 2: VIEW_B });
+  });
+});
+
+// ── 그룹 1 저장뷰 승계 (study.tabs.v1 → study.activeView.v1 → groupViews) ──────
+// 사슬을 끊으면 기존 사용자의 첫 진입이 빈 화면이다 — `/study` 에는 `live.page.v1` 같은
+// 이중화가 없어 "마지막으로 보던 뷰" 의 집이 이 키들뿐이다(ADR-0149 §3 의 비대칭).
+
+describe('그룹 1 저장뷰 승계 (ADR-0149 → ADR-0152)', () => {
+  it('study.activeView.v1 의 뷰를 그룹 1 로 승계한다', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 1: VIEW_A });
+  });
+
+  it('자기 키에 groupViews 가 있으면 옛 키를 쳐다보지 않는다', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+      { groupViews: { 1: VIEW_B } },
+    );
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 1: VIEW_B });
+  });
+
+  it('빈 맵도 "있는 것" 이다 — 비운 상태가 매 부팅에 되살아나지 않는다', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+      { groupViews: {} },
+    );
+    const { useStudyWorkspaceStore } = await importFresh();
+    // red-check: 판정을 `Object.keys(...).length === 0` 으로 바꾸면 여기가 VIEW_A 가 된다.
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({});
+  });
+
+  it('activeView 키가 명시적 null 이면 tabs 키로 되돌아가지 않는다', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: null }));
+    localStorage.setItem('study.tabs.v1', JSON.stringify({ activeIndex: 0, tabs: [VIEW_A] }));
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({});
+  });
+
+  it('activeView 키가 없으면 study.tabs.v1 의 활성 탭 하나를 승계한다', async () => {
+    localStorage.setItem('study.tabs.v1', JSON.stringify({ activeIndex: 1, tabs: [VIEW_A, VIEW_B] }));
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 1: VIEW_B });
+  });
+
+  it('activeIndex 가 범위를 벗어나면 clamp 한다', async () => {
+    localStorage.setItem('study.tabs.v1', JSON.stringify({ activeIndex: 9, tabs: [VIEW_A, VIEW_B] }));
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({ 1: VIEW_B });
+  });
+
+  it('깨진 값·필수 필드 누락은 승계하지 않는다', async () => {
+    localStorage.setItem('study.activeView.v1', '{broken');
+    localStorage.setItem('study.tabs.v1', JSON.stringify({ activeIndex: 0, tabs: [{ viewId: 'x' }] }));
+    const { useStudyWorkspaceStore } = await importFresh();
+    expect(useStudyWorkspaceStore.getState().groupViews).toEqual({});
+  });
+
+  it('승계만으로는 저장소에 쓰지 않는다 — "열기만 해서는 아무것도 안 쓴다"', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
+    seedSession(
+      [{ id: 'c1', kind: 'chart', group: 1, rect: RECT, chart: { timeframe: '5m' } }],
+      ['c1'],
+    );
+    await importFresh();
+    // 옛 키는 쓰는 사람이 없어 재읽기가 멱등이다. 여기서 굳히면 탭 격리 계약이 깨진다
+    // (`readStorage` 의 `seeded` 주석 — 차트 설정 시드와 갈리는 지점).
+    expect(storedGroupViews('tab')).toBeUndefined();
+  });
+
+  it('옛 키는 지우지 않는다 — 되돌리기 비용 최소화', async () => {
+    localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
+    await importFresh();
+    expect(localStorage.getItem('study.activeView.v1')).not.toBeNull();
+  });
+});

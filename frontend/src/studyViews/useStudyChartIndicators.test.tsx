@@ -18,6 +18,7 @@ function seed(windows: { id: string; timeframe: string }[], zOrder: string[]): v
     windows: windows.map((w) => ({
       id: w.id,
       kind: 'chart' as const,
+      group: 1,
       rect: { x: 0, y: 0, w: 0.5, h: 0.5 },
       chart: { timeframe: w.timeframe as 'D' | '1m' },
     })),
