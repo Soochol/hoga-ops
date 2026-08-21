@@ -1047,6 +1047,7 @@ export function LiveChartRoot({
     chart,
     axis,
     candleCount: cb?.candles.length ?? 0,
+    lastCandleMs: lastCandleMsRef.current,
     enabled: rangeSyncOn && isRangeSyncFollower(timeframe),
     syncZoom: rangeSyncZoom,
     myWindowId: winCtxWindowId,

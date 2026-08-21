@@ -11,6 +11,7 @@ import type { IChartApi, Time } from 'lightweight-charts';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import { realMsToVirtualSeconds } from './viewportAnchor';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { centeredLogicalRange, shouldFollowRange, zoomedSpan } from '../chart/rangeSync';
 
@@ -156,6 +157,8 @@ export function useRangeSyncFollow(params: {
   axis: VirtualAxis;
   /** 이 창의 캔들 수 — 인덱스 변환의 존재 확인이자 줌 클램프의 천장이다. */
   candleCount: number;
+  /** 이 창의 마지막 캔들 시각 — 우측 클램프의 기준이다. 없으면 클램프하지 않는다. */
+  lastCandleMs: number | null;
   enabled: boolean;
   /** 폭(줌)까지 따라갈지 — `rangeSyncZoom`. 끄면 스크롤만 한다. */
   syncZoom: boolean;
@@ -166,7 +169,8 @@ export function useRangeSyncFollow(params: {
   allowCrossSymbol: boolean;
 }): void {
   const {
-    chart, axis, candleCount, enabled, syncZoom, myWindowId, myGroup, myCode, allowCrossSymbol,
+    chart, axis, candleCount, lastCandleMs, enabled, syncZoom,
+    myWindowId, myGroup, myCode, allowCrossSymbol,
   } = params;
   const syncRange = useLiveCursorStore((s) => s.syncRange);
   const axisRef = useRef(axis);
@@ -222,15 +226,25 @@ export function useRangeSyncFollow(params: {
       // 기준선은 **줌 동기화가 꺼져 있어도** 갱신한다 — 안 그러면 토글을 켠 순간
       // 한참 전 폭과 비교해 유령 줌이 난다.
       zoomBaselineRef.current = { windowId: syncRange.origin.windowId, spanMs: publishedSpanMs };
+      // 우측 끝 = 마지막 캔들의 **논리 인덱스** + 1 + 표준 여백.
+      // ⚠ `candleCount - 1` 이 아니다 — `/live` 는 WhitespaceData 가 섞여 논리
+      // 인덱스와 배열 인덱스가 다르다. 축에 물어봐야 한다.
+      const lastIndex = lastCandleMs === null
+        ? null
+        : ts.timeToIndex?.(realMsToVirtualSeconds(axisRef.current, lastCandleMs) as Time, true);
+      const rightEdgeLimit = typeof lastIndex === 'number' && Number.isFinite(lastIndex)
+        ? lastIndex + 1 + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
+        : undefined;
       // 위치와 폭을 **한 번의 호출로** 적용한다. 두 번 나눠 부르면 일봉의 범위 변화
       // 이벤트가 두 번 발화해 애니메이션이 겹친다.
       const next = centeredLogicalRange({
-        fromIndex, toIndex, current, spanOverride: spanOverride ?? undefined,
+        fromIndex, toIndex, current, spanOverride: spanOverride ?? undefined, rightEdgeLimit,
       });
       if (next) ts.setVisibleLogicalRange(next);
     });
     return () => cancelAnimationFrame(raf);
   }, [
-    chart, enabled, syncZoom, candleCount, syncRange, myWindowId, myGroup, myCode, allowCrossSymbol,
+    chart, enabled, syncZoom, candleCount, lastCandleMs, syncRange,
+    myWindowId, myGroup, myCode, allowCrossSymbol,
   ]);
 }

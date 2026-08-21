@@ -4,6 +4,9 @@ import { useRef } from 'react';
 import { useRangeSyncFollow, useRangeSyncPublish } from './useRangeSync';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+
+const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 /** 축은 항등 — 테스트가 보는 virtual ms 는 곧 real ms 다. */
 const axis = {
@@ -61,11 +64,14 @@ function Follower(props: {
   candleCount?: number;
   syncZoom?: boolean;
   myGroup?: number | null;
+  /** 우측 클램프 기준. 기본은 아주 먼 미래라 클램프가 안 걸린다. */
+  lastCandleMs?: number | null;
 }) {
   useRangeSyncFollow({
     chart: makeChart() as never,
     axis,
     candleCount: props.candleCount ?? 400,
+    lastCandleMs: props.lastCandleMs ?? null,
     enabled: props.enabled ?? true,
     syncZoom: props.syncZoom ?? false,
     myWindowId: 'daily-window',
@@ -295,6 +301,28 @@ describe('useRangeSyncFollow — 배선', () => {
     await flushFrame();
 
     expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_450, to: 3_550 });
+  });
+
+  it('자기 데이터 밖으로는 밀지 않는다 — 우측 끝에서 멈춘다', async () => {
+    // 축이 항등이라 lastCandleMs 3,000,000 → 인덱스 3,000. 우측 끝 = 3,000 + 1 + 여백.
+    // 중앙 정렬만 하면 to = 3,050(중점 3,000 + 폭/2)이라 끝을 넘는다.
+    render(<Follower lastCandleMs={3_000_000} />);
+    publishRange(3_000_000, 3_000_000);
+    await flushFrame();
+
+    const arg = setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    // 폭(100)은 보존하고 우측 끝에 붙는다 — 그 값이 곧 일봉의 평소 오른쪽 끝이다.
+    expect(arg.to - arg.from).toBe(100);
+    expect(arg.to).toBeLessThanOrEqual(3_001 + RIGHT_OFFSET);
+    expect(arg.to).toBeGreaterThan(3_000);
+  });
+
+  it('과거 날짜에서는 클램프가 안 걸려 중앙 정렬이 온전하다', async () => {
+    render(<Follower lastCandleMs={9_000_000} />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
   });
 
   it('창번호가 다르면 따라가지 않는다', async () => {
