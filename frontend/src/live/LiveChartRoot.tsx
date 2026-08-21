@@ -1426,6 +1426,12 @@ export function LiveChartRoot({
         // default font at 12px through the density dial (2026-07-15) and both
         // font migrations. Spread first so the explicit keys below still win.
         ...CHART_LAYOUT_OPTIONS,
+        // TradingView 어트리뷰션 로고 숨김. lightweight-charts 는 이 로고를
+        // Apache-2.0 NOTICE 링크 의무의 "기본 이행 수단"으로 켜 두므로(기본값
+        // true) 끄려면 고지를 다른 곳에서 해야 한다 — 리포 루트 NOTICE 파일이
+        // 그 역할이다. 스케일 개념이 아니라서 CHART_LAYOUT_OPTIONS 가 아닌
+        // 여기에 둔다.
+        attributionLogo: false,
         background: { color: tokens.bgCard },
         textColor: tokens.fg,
         panes: {
@@ -2486,8 +2492,8 @@ export function LiveChartRoot({
           {/* 창 간 크로스헤어 동기화(옆 창 호버 → 이 창). 게이트가 둘이다:
               **분봉 · `D` 만** — 소비자가 자기 축으로 스냅할 다리가 있는 봉이다(바로 위
               동시호가 음영이 그 스냅을 안 해서 좌표계가 어긋나 삭제됐다). W/M 은 한
-              캔들이 여러 날을 담아 범위 밖이고, 일봉→분봉도 아직 범위 밖이다 —
-              어느 발행을 받는지는 `cursorSync.ts` 헤더가 갖는다.
+              캔들이 여러 날을 담아 범위 밖이다. 방향 넷(분봉→일봉·일봉→일봉·
+              분봉→분봉·일봉→분봉)의 규칙은 `cursorSync.ts` 헤더가 갖는다.
               **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
           {cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe) && (
             <CursorSyncCrosshair

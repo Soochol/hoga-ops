@@ -1,0 +1,16 @@
+# NOTICE
+
+`/live` 캔들 차트는 아래 서드파티 라이브러리를 사용한다. 그 라이선스는
+어트리뷰션 고지와 https://www.tradingview.com/ 링크를 요구하며, 라이브러리는
+차트 옵션 `layout.attributionLogo` 로 그 링크를 차트 위에 직접 띄우는 것을
+기본 이행 수단으로 제공한다. 이 리포는 그 옵션을 끄고
+(`frontend/src/live/LiveChartRoot.tsx`) 고지를 이 파일로 대신한다.
+
+---
+
+TradingView Lightweight Charts™
+Copyright (с) 2025 TradingView, Inc.
+https://www.tradingview.com/
+
+Licensed under the Apache License, Version 2.0
+https://www.apache.org/licenses/LICENSE-2.0
