@@ -1247,11 +1247,16 @@ def _write_rows(root, date: str, venue: str, rows: list[dict]) -> None:
 
 
 async def test_today_peak_seed_lands_in_the_requested_venue_only(tmp_path):
-    """venue 는 경로뿐 아니라 **틱에도** 실려야 한다.
+    """요청한 venue 슬롯에만 들어간다 — 옆 venue 는 비어 있어야 한다.
 
-    회귀 가드: 종전 시더는 `WsTick` 에 venue 를 안 실어 기본값 "KRX" 로 떨어졌다. 그래서
-    NXT 로 불러도 값은 KRX 상태에 들어가고 NXT 엔 coverage 만 찍혔다 — 기존 테스트가 KRX
-    만 써서 이 뒤바뀜을 통과시켰다. **KRX 가 비어 있다는 단언이 이 테스트의 핵심**이다.
+    **막는 것**: 설치 슬롯의 venue 가 어긋나는 것(예: `(code, "KRX")` 로 못박기).
+    `install_today_peak_seed` 의 키를 바꾸면 빨개진다 — KRX 가 비어 있다는 단언이 그 절반이다.
+
+    **못 보는 것**: `WsTick.venue` 전파. 종전 시더의 버그가 그것이었지만(틱에 venue 를 안
+    실어 기본값 "KRX" 로 떨어졌다), 지금 구조에서는 **재현 자체가 불가능**하다 — 재생은
+    분리된 상태를 **호출자가 지정**하고(`lambda: ask`) ingest 는 `tick.venue` 를 읽지
+    않기 때문이다. 그래서 이 테스트는 그 버그의 red-check 이 아니다(실제로 `venue=venue`
+    를 지워도 초록이다). 그 버그를 막는 것은 테스트가 아니라 **구조**다.
     """
     stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")

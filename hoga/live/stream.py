@@ -487,11 +487,12 @@ def build_today_peak_seed(
     이벤트 루프의 `on_tick` 이 같은 객체를 변이 중일 수 있어서다(장중 재기동 케이스가 정확히
     그 상황이다). 설치는 루프 쪽 `LiveStream.install_today_peak_seed` 가 한다.
 
-    `venue` 는 경로뿐 아니라 **틱에도 실린다**. 종전 시더는 `WsTick` 에 venue 를 안 실어
-    기본값 "KRX" 로 떨어졌고, 그래서 `venue="NXT"` 로 불러도 NXT 상태엔 coverage 만 찍히고
-    값은 KRX 상태로 들어갔다(테스트가 KRX 만 써서 안 잡혔다).
+    `venue` 가 고르는 것은 **경로와 설치 슬롯**이다. 종전 시더는 상태를 `tick.venue` 로
+    되찾았는데 틱에 venue 를 안 실어 기본값 "KRX" 로 떨어졌고, 그래서 `venue="NXT"` 로
+    불러도 NXT 엔 coverage 만 찍히고 값은 KRX 로 들어갔다(테스트가 KRX 만 써서 안 잡혔다).
+    여기서는 상태를 **인자로 지정**하므로 그 뒤바뀜이 원리적으로 없다.
 
-    비용은 종목·venue 하나당 실측 **~144ms / 8.6k행 / 3.9MB** 다(2026-08-21, 005930 KRX).
+    비용 실측(2026-08-21, 005930): KRX **122ms / 8.6k행 / 3.9MB**, NXT 167ms / 15.1k행.
     전량 선행 시딩은 성립하지 않는다 — 하루치가 venue 당 ~1GB, 300종목 × 3 venue 다.
     """
     path = today_peak_seed_path(live_root=live_root, date=date, venue=venue, code=code)
@@ -523,6 +524,11 @@ def build_today_peak_seed(
                     t_ms=t_ms,
                     kind=tick_kind,
                     payload=payload.get("payload") or {},
+                    # 이 틱의 진짜 venue. **지금은 아무도 안 읽는다** — 아래 ingest 는
+                    # 상태를 인자(`lambda: ask`)로 받으므로 `tick.venue` 를 보지 않는다.
+                    # 그래서 종전 시더를 망가뜨린 "기본값 KRX 로 떨어짐" 은 구조적으로
+                    # 재현되지 않는다. 그래도 채워 두는 이유는 나중에 ingest 가
+                    # `tick.venue` 를 읽게 되는 날 조용히 KRX 가 되지 않게 하기 위해서다.
                     venue=venue,
                 )
                 ingest_ask_peak_tick(tick, lambda: ask)
