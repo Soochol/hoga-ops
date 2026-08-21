@@ -10,7 +10,7 @@ import hoga.live.session_gate as session_gate_mod
 import hoga.live.stream as stream_mod
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.stream import LiveStream
+from hoga.live.stream import LiveStream, build_today_peak_seed, today_peak_seed_path
 from hoga.live.ticks import WsTick
 from hoga.live.writer import LiveWriter
 
@@ -755,14 +755,16 @@ async def test_on_tick_drops_codes_outside_active_set(tmp_path):
     assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()
 
 
-async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
+async def test_today_peak_seed_loads_full_day_ask_peak_and_full_coverage(tmp_path):
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
     live_root = tmp_path / "live"
     live_root.mkdir(parents=True, exist_ok=True)
-    live_path = live_root / "20260616" / "005930.jsonl"
+    # 실디스크 레이아웃과 **같은** venue 세그먼트(ADR-0140 §3). 종전 시더는 이걸 빼고
+    # 읽어 실서버에서 파일을 영영 못 찾았는데, 이 픽스처가 낡은 경로에 있어 초록이었다.
+    live_path = live_root / "20260616" / "KRX" / "005930.jsonl"
     live_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [
         {
@@ -803,7 +805,9 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
     ]
     live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-    stream.seed_ask_peak_from_live_file(code="005930", venue="KRX", date="20260616", live_root=live_root)
+    seed = build_today_peak_seed(code="005930", venue="KRX", date="20260616", live_root=live_root)
+    assert seed is not None
+    assert stream.install_today_peak_seed(code="005930", venue="KRX", seed=seed) == "installed"
 
     # 호가 09:10 · 체결 10:00 — **다른 분**이라 체결 계열은 비어 있다(ADR-0156).
     assert stream.ask_peak_snapshot("005930", "KRX") == {
@@ -824,14 +828,14 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
     }
 
 
-async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
+async def test_today_peak_seed_loads_full_day_bid_peak_and_full_coverage(tmp_path):
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260619", phase_fn=lambda: "regular")
     live_root = tmp_path / "live"
     live_root.mkdir(parents=True, exist_ok=True)
-    live_path = live_root / "20260619" / "005930.jsonl"
+    live_path = live_root / "20260619" / "KRX" / "005930.jsonl"
     live_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [
         {
@@ -857,7 +861,9 @@ async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverag
     ]
     live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-    stream.seed_bid_peak_from_live_file(code="005930", venue="KRX", date="20260619", live_root=live_root)
+    seed = build_today_peak_seed(code="005930", venue="KRX", date="20260619", live_root=live_root)
+    assert seed is not None
+    assert stream.install_today_peak_seed(code="005930", venue="KRX", seed=seed) == "installed"
 
     # 체결 09:01:00 · 호가 09:01:05 — **같은 분**이라 70,000 매수벽이 체결이다.
     _bid_ob_ms = int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)
@@ -1206,3 +1212,122 @@ async def test_broker_malformed_top_entries_do_not_crash_display(tmp_path):
 
     series = await buf.get_series("005930")
     assert len(series["brokers"][0]["buy_top"]) == 3
+
+
+def _ob_row(t_ms: int, price: int, qty: int) -> dict:
+    """연속호가 판정을 통과하는 최소 ob 행(10단은 불필요 — 4단이면 족하다)."""
+    return {
+        "t_ms": t_ms,
+        "kind": "ob",
+        "payload": {
+            "code": "005930",
+            "t_ms": t_ms,
+            "asks": [
+                {"price": price, "qty": qty},
+                {"price": price + 100, "qty": 10},
+                {"price": price + 200, "qty": 10},
+                {"price": price + 300, "qty": 10},
+            ],
+            "bids": [
+                {"price": price - 100, "qty": 10},
+                {"price": price - 200, "qty": 10},
+                {"price": price - 300, "qty": 10},
+                {"price": price - 400, "qty": 10},
+            ],
+            "total_ask_qty": qty + 30,
+            "total_bid_qty": 40,
+        },
+    }
+
+
+def _write_rows(root, date: str, venue: str, rows: list[dict]) -> None:
+    path = today_peak_seed_path(live_root=root, date=date, venue=venue, code="005930")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+
+
+async def test_today_peak_seed_lands_in_the_requested_venue_only(tmp_path):
+    """요청한 venue 슬롯에만 들어간다 — 옆 venue 는 비어 있어야 한다.
+
+    **막는 것**: 설치 슬롯의 venue 가 어긋나는 것(예: `(code, "KRX")` 로 못박기).
+    `install_today_peak_seed` 의 키를 바꾸면 빨개진다 — KRX 가 비어 있다는 단언이 그 절반이다.
+
+    **못 보는 것**: `WsTick.venue` 전파. 종전 시더의 버그가 그것이었지만(틱에 venue 를 안
+    실어 기본값 "KRX" 로 떨어졌다), 지금 구조에서는 **재현 자체가 불가능**하다 — 재생은
+    분리된 상태를 **호출자가 지정**하고(`lambda: ask`) ingest 는 `tick.venue` 를 읽지
+    않기 때문이다. 그래서 이 테스트는 그 버그의 red-check 이 아니다(실제로 `venue=venue`
+    를 지워도 초록이다). 그 버그를 막는 것은 테스트가 아니라 **구조**다.
+    """
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    live_root = tmp_path / "live"
+    _write_rows(live_root, "20260616", "NXT", [_ob_row(_kst_ms(9, 10), 10_200, 900)])
+
+    seed = build_today_peak_seed(code="005930", venue="NXT", date="20260616", live_root=live_root)
+    assert seed is not None
+    stream.install_today_peak_seed(code="005930", venue="NXT", seed=seed)
+
+    nxt = stream.ask_peak_snapshot("005930", "NXT")
+    assert nxt is not None
+    assert nxt["all_price"] == 10_200
+    assert stream.ask_peak_snapshot("005930", "KRX") is None
+
+
+async def test_today_peak_seed_requires_the_venue_path_segment(tmp_path):
+    """낡은 경로(`{date}/{code}.jsonl`)에 있는 파일은 못 찾는다 — 실레이아웃만 읽는다."""
+    live_root = tmp_path / "live"
+    stale = live_root / "20260616" / "005930.jsonl"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text(json.dumps(_ob_row(_kst_ms(9, 10), 10_200, 900)) + "\n")
+
+    assert build_today_peak_seed(
+        code="005930", venue="KRX", date="20260616", live_root=live_root,
+    ) is None
+
+
+async def test_today_peak_seed_merges_into_a_live_state_instead_of_skipping(tmp_path):
+    """장중 재기동 복구 — 이미 살아 있는 상태에 재생본을 **흡수**한다.
+
+    이 결함의 더 나쁜 절반이 여기다: 재기동 후 래칫이 재기동 시점부터만 쌓여 조용히
+    과소평가된다. 그 경우 시딩이 도착할 때 상태가 이미 **있으므로**, 스킵하면 정작 고쳐야
+    할 케이스를 비켜간다. 재생본의 더 큰 벽(900)이 살아 있는 작은 벽(120)을 이겨야 한다.
+    """
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    # 재기동 후 라이브로 들어온 작은 벽.
+    stream._ingest_ask_peak(WsTick(
+        code="005930", t_ms=_kst_ms(14, 0), kind=SnapshotKind.OB,
+        payload=_ob_row(_kst_ms(14, 0), 10_500, 120)["payload"], venue="KRX",
+    ))
+    before = stream.ask_peak_snapshot("005930", "KRX")
+    assert before is not None and before["all_qty"] == 120
+
+    live_root = tmp_path / "live"
+    _write_rows(live_root, "20260616", "KRX", [_ob_row(_kst_ms(9, 10), 10_200, 900)])
+    seed = build_today_peak_seed(code="005930", venue="KRX", date="20260616", live_root=live_root)
+    assert seed is not None
+
+    assert stream.install_today_peak_seed(code="005930", venue="KRX", seed=seed) == "merged"
+
+    after = stream.ask_peak_snapshot("005930", "KRX")
+    assert after is not None
+    assert after["all_qty"] == 900                       # 재생분이 이겼다
+    assert after["coverage"] == "full"
+    # 라이브분도 살아 있다 — 흡수지 교체가 아니다(나머지 자리는 채움 단의 10들이다).
+    assert {900, 120} <= {p["qty"] for p in after["all_peaks"]}
+
+
+async def test_today_peak_seed_is_idempotent(tmp_path):
+    """같은 재생본을 두 번 흡수해도 답이 같다 — 락 경합·재시도에 안전하다."""
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+    live_root = tmp_path / "live"
+    _write_rows(live_root, "20260616", "KRX", [_ob_row(_kst_ms(9, 10), 10_200, 900)])
+    seed = build_today_peak_seed(code="005930", venue="KRX", date="20260616", live_root=live_root)
+    assert seed is not None
+
+    stream.install_today_peak_seed(code="005930", venue="KRX", seed=seed)
+    once = stream.ask_peak_snapshot("005930", "KRX")
+    stream.install_today_peak_seed(code="005930", venue="KRX", seed=seed)
+
+    assert stream.ask_peak_snapshot("005930", "KRX") == once
