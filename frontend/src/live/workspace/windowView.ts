@@ -9,15 +9,19 @@
  * 당시 기능 무변경이었고, 지금도 Provider 없이 렌더되는 경로(테스트·단일 차트)가
  * 종전대로 동작한다.
  *
- * **지표 스코프는 (페이지 × 봉)이다**(ADR-0146). `/live` 와 `/study` 는 각각 자기
- * 세트를 갖고 **서로 동기화하지 않는다**. 한 페이지 **안**에서는 창들이 같은 세트를
- * 공유하고, 창이 정하는 것은 **어느 봉 버킷인가** 뿐이다.
+ * **지표 스코프는 (페이지 × 창 × 봉)이다**(ADR-0146 + ADR-0152). `/live` 와
+ * `/study` 는 각각 자기 페이지 세트를 갖고 **서로 동기화하지 않으며**, 그 안에서
+ * 차트 창은 **항상 자기 세트**를 갖는다. 페이지 세트는 새 창의 시드 뿌리이자
+ * Provider 밖 폴백으로 남는다.
  *
- * 창별 분리는 만들었다가 같은 날 되돌렸다(#1327 → ADR-0146) — 요구는 "창마다" 가
- * 아니라 "두 페이지가 서로 안 따라오게" 였다. 그보다 앞서 창이 설정을 통째로
- * 소유하던 시절도 있었고(#712), 그건 내용물을 창 스냅샷(탭별 sessionStorage)에
- * 담아서 지표가 브라우저 탭마다 갈렸다. 지금 두 세트는 모두 전역 localStorage 에
- * 있어 크로스탭 동기화(`subscribeToIndicatorsStorage`)가 양쪽을 그대로 덮는다.
+ * 이 축은 한 번 되돌아온 적이 있다: 창별 분리를 만들었다가 같은 날 걷어냈고
+ * (#1327 → ADR-0146) — 그때 요구는 "창마다" 가 아니라 "두 페이지가 서로 안
+ * 따라오게" 였다 — ADR-0146 이 예고한 재검토 트리거("한 페이지 안에서 창마다
+ * 다른 지표")가 실제로 와서 ADR-0152 로 다시 얹었다. 그보다 앞서 창이 설정을
+ * 통째로 **소유**하던 시절도 있었고(#712), 그건 내용물을 창 스냅샷(탭별
+ * sessionStorage)에 담아서 지표가 브라우저 탭마다 갈렸다. 지금 세 세트는 모두
+ * 전역 localStorage 에 있고 창이 갖는 것은 **키뿐**이라, 크로스탭 동기화
+ * (`subscribeToIndicatorsStorage`)가 창별 설정까지 그대로 덮는다.
  *
  * 범위: 데이터 페치 경로만(code·timeframe·historicalFromDate·지표 resolve).
  * 크로스헤어/축 동기화는 PR-D, venue 는 전역 유지(#715).
@@ -26,18 +30,19 @@
  * PR-C]에서 `<WindowViewContext.Provider>` 로 감싼다. react-refresh 규약상 훅·컨텍스트
  * 와 컴포넌트를 한 파일에 섞지 않는다.)
  */
-import { useContext, useMemo } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
   INDICATOR_SETTING_KEYS,
-  bucketsForPage,
+  bucketsForScope,
   resolveIndicatorSettings,
   type IndicatorPageScope,
+  type IndicatorScope,
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
-import { useWorkspaceStore } from '../../state/workspace';
+import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
 import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
 import type { PaneStretchMap } from '../../chart/paneOrder';
@@ -45,13 +50,14 @@ import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 import {
   WindowViewContext,
+  windowScopeKey,
   type WindowView,
   type WindowWorkspaceAdapter,
 } from './windowViewContext';
 
 // 컨텍스트 객체·타입은 `windowViewContext.ts` 가 소유한다(chartPrefs 순환 회피 —
 // 그 파일 상단 주석 참조). 소비자 호환을 위해 여기서 그대로 re-export 한다.
-export { WindowViewContext } from './windowViewContext';
+export { WindowViewContext, windowScopeKey } from './windowViewContext';
 export type {
   WindowChartStoreState,
   WindowStoreHandle,
@@ -69,7 +75,7 @@ export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   getWorkareaCode: (windowId) => {
     const s = useWorkspaceStore.getState();
     const win = s.windows.find((w) => w.id === windowId);
-    const sym = win ? s.groupSymbols[win.group] : undefined;
+    const sym = windowSymbolOf(s, win);
     if (!sym) return null;
     // `isLiveIndexId` 까지 보는 이유: `ChartWindow` 의 instrument 생성이 **정확히 같은
     // 조건**으로 거르고(`kind==='index' && isLiveIndexId(code)` 아니면 instrument=null
@@ -144,9 +150,56 @@ function useWindowIndicatorTimeframe(): LiveTimeframe | null {
  * 여기 있다: 그런 슬롯은 라우팅·마운트보다 한 커밋 늦게 갱신되고, 그 한 틱 동안
  * 엉뚱한 페이지의 버킷이 적용된다 — `chartPrefs.windowScope.test.tsx` 가 남아 있는
  * 결함이 정확히 그 모양(포커스를 따라다니는 전역 슬롯)이었다.
+ *
+ * 페이지 축**만** 필요한 소비자용이다(예: `/study` 에서 지원하지 않는 지표 옵션을
+ * 감추는 자리). 버킷을 읽거나 쓰는 소비자는 `useWindowIndicatorScope` 를 쓴다.
  */
-export function useWindowIndicatorScope(): IndicatorPageScope | null {
+export function useWindowIndicatorPage(): IndicatorPageScope | null {
   return useContext(WindowViewContext)?.workspace.scopePrefix ?? null;
+}
+
+/**
+ * 이 서브트리의 지표 스코프 — (페이지, 창 키). Provider 밖은 둘 다 null.
+ *
+ * 매 렌더 새 객체지만 소비자가 전부 이 값을 **스토어 selector 안에서만** 쓰므로
+ * (구독 identity 에 실리지 않음) 재렌더를 유발하지 않는다. `useMemo` 를 씌우면
+ * 오히려 의존성 배열이 하나 늘 뿐이다.
+ */
+export function useWindowIndicatorScope(): IndicatorScope {
+  const ctx = useContext(WindowViewContext);
+  return {
+    page: ctx?.workspace.scopePrefix ?? null,
+    windowKey: windowScopeKey(ctx?.workspace, ctx?.windowId),
+  };
+}
+
+/**
+ * 이 창에 자기 지표 세트가 있는지 보장하는 **마운트 안전망**(ADR-0152).
+ *
+ * `addWindow` 가 이미 새 창을 포커스 창에서 시드하지만, 창이 생기는 경로는 그것만이
+ * 아니다 — 업그레이드 직후의 기존 창, 레이아웃 프리셋 적용, 워크스페이스 스냅샷
+ * 복원, 딥링크 탭의 시드 복제, 공장 기본 배치가 전부 시드를 거치지 않는다. 그
+ * 창들이 페이지 세트를 **공유**하면 이 기능이 조용히 절반만 동작한다.
+ *
+ * 마운트 effect 인 이유: 저장소 로드 순서에 기대지 않고(워크스페이스는 탭별
+ * sessionStorage, 지표는 전역 localStorage — 하이드레이션 순서가 보장되지 않는다),
+ * 창이 실제로 렌더되는 시점에 한다. 시드가 멱등이라 재마운트·탭 전환에서 사용자
+ * 값을 덮지 않는다.
+ *
+ * 언마운트를 회수 신호로 쓰지 **않는다** — 페이지 이탈·탭 전환에서도 언마운트가
+ * 나는데 그때 지우면 돌아왔을 때 이유 없이 초기화된 창을 본다. 회수는 창 닫기
+ * 같은 명시적 사건에서만 한다(`indicatorScopeGc`).
+ */
+export function useSeedWindowIndicatorScope(
+  windowId: string | null,
+  workspace: WindowWorkspaceAdapter | null,
+): void {
+  const scopeKey = windowScopeKey(workspace, windowId);
+  const page = workspace?.scopePrefix ?? null;
+  useEffect(() => {
+    if (!scopeKey) return;
+    useLivePageStore.getState().seedWindowIndicatorScope({ page, windowKey: scopeKey });
+  }, [scopeKey, page]);
 }
 
 /**
@@ -157,7 +210,7 @@ export function useWindowIndicatorScope(): IndicatorPageScope | null {
  */
 export function useWindowIndicators(): IndicatorSettings {
   const timeframe = useWindowIndicatorTimeframe();
-  const page = useWindowIndicatorScope();
+  const scope = useWindowIndicatorScope();
   const ambient = useLivePageStore(
     useShallow((s): IndicatorSettings | undefined => {
       if (timeframe) return undefined; // 창 안 — 상수 selector 로 구독 무력화
@@ -171,7 +224,9 @@ export function useWindowIndicators(): IndicatorSettings {
   const inWindow = useLivePageStore(
     (s) => (timeframe
       ? resolveIndicatorSettings(
-        bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
+        bucketsForScope(
+          s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
+        ),
         timeframe,
       )
       : undefined),
@@ -186,11 +241,13 @@ export function useWindowIndicators(): IndicatorSettings {
  */
 export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
   const timeframe = useWindowIndicatorTimeframe();
-  const page = useWindowIndicatorScope();
+  const scope = useWindowIndicatorScope();
   return useLivePageStore((s) => select(
     timeframe
       ? resolveIndicatorSettings(
-        bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
+        bucketsForScope(
+          s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
+        ),
         timeframe,
       )
       : (s as unknown as IndicatorSettings),
@@ -276,29 +333,37 @@ function buildWindowIndicatorActions(
   workspace: WindowWorkspaceAdapter,
 ): IndicatorActions {
   const handle = workspace.store;
-  // 이 창이 속한 페이지 — 어댑터가 모듈 상수라 창 수명 동안 불변이다.
-  const page = workspace.scopePrefix;
+  // 이 창의 스코프 — 어댑터가 모듈 상수이고 창 id 는 컴포넌트 수명 동안 불변이라
+  // (windowViewContext 하단 불변식) 이 객체도 창 수명 동안 그대로다.
+  const scope: IndicatorScope = {
+    page: workspace.scopePrefix,
+    windowKey: windowScopeKey(workspace, windowId),
+  };
   const ps = () => useLivePageStore.getState();
   const tf = (): LiveTimeframe =>
     handle.getState().windows.find((w) => w.id === windowId)?.chart?.timeframe ?? '1m';
   const readSettings = (): IndicatorSettings => {
     const s = ps();
     return resolveIndicatorSettings(
-      bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, page),
+      bucketsForScope(
+        s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
+      ),
       tf(),
     );
   };
   return {
-    ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsScoped(page, tf(), patch)),
+    ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsScoped(scope, tf(), patch)),
     // 호출자가 넘긴 tf 의 버킷에 기록한다 — 정상 경로에선 이 창의 봉과 같지만,
     // 드로어 재타깃/stale 렌더에서 어긋나도 조용히 다른 버킷을 오염시키지 않는다.
     setPanePrefForTimeframe: (timeframe, key, enabled) =>
-      ps().setPanePrefScoped(page, timeframe, key, enabled),
-    // 레이아웃(pane 순서·크기)은 분리 대상이 아니다 — 전역 1세트 유지(ADR-0114 §3).
+      ps().setPanePrefScoped(scope, timeframe, key, enabled),
+    // 레이아웃(pane 순서·크기)은 창 축 대상이 아니다 — 전역 1세트 유지(ADR-0114 §3).
     setPaneOrder: (order) => ps().setPaneOrder(order),
     setPaneStretch: (patch) => ps().setPaneStretch(patch),
-    resetIndicators: () => ps().resetIndicatorsScoped(page, tf()),
-    // 프리셋은 그 페이지의 세트를 갈아끼운다(다른 페이지는 영향 없음).
+    resetIndicators: () => ps().resetIndicatorsScoped(scope, tf()),
+    // 지표 프리셋은 그 **페이지 세트**를 갈아끼운다 — 즉 이 창에는 보이지 않는다.
+    // 현재 UI 진입점이 없는 휴면 표면이라 그대로 두되(ADR-0152 Consequences),
+    // 되살릴 때는 "호출한 창에 적용" 으로 스코프를 실을 것.
     applyIndicatorPreset: (preset) => ps().applyIndicatorPreset(preset),
   };
 }

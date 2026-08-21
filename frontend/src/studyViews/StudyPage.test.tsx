@@ -286,11 +286,15 @@ beforeEach(() => {
     (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
   );
   useLiveCursorStore.getState().resetCursor();
-  // 지표는 앱 전역 1세트다 — 창은 어느 봉 버킷을 볼지만 정한다. 창 밖 소비자
-  // (vdist 데이터 창·번들 쿼리 키)도 같은 전역 버킷을 창의 봉으로 편다(#904).
-  // 지표 세트는 페이지 것이다(ADR-0146) — `/study` 화면을 보는 테스트는 `/study`
-  // 세트에 심어야 한다. `/live` 에 심으면 이 페이지는 그것을 보지 않는다.
+  // 지표 저장소는 전역이다 — 창은 자기 세트를 갖고(ADR-0152) 창 밖 소비자
+  // (vdist 데이터 창)는 **포커스 창**의 세트를 그 창의 봉으로 편다(#904).
+  // 테스트는 **페이지 세트**(`/study`)에 심는다 — 창이 마운트 시드로 그 값을
+  // 복사해 가므로 화면에 그대로 뜬다. `/live` 에 심으면 이 페이지는 보지 않는다.
+  //
+  // ⚠ `indicatorsByWindow` 를 **매번 비운다**. 창 id 가 테스트 간 고정('w-chart')
+  // 이라, 안 비우면 앞 테스트가 심은 창 세트가 남아 이 주입을 통째로 가린다.
   useLivePageStore.setState({
+    indicatorsByWindow: {},
     indicatorsByTimeframe: {},
     studyIndicatorsByTimeframe: {
       minute: {
@@ -966,7 +970,7 @@ describe('StudyPage', () => {
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
     // hover-cutoff 는 **`/study` 세트**의 minute 버킷에 켠다 — 창(5m)이 그것을
     // 편다(#904 + ADR-0146).
-    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
+    useLivePageStore.getState().patchIndicatorsScoped({ page: 'study', windowKey: null }, '5m', {
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
@@ -1137,11 +1141,13 @@ describe('StudyPage', () => {
 
   /**
    * 번들 쿼리 키에는 지표 플래그가 실린다(`studyReferenceQuerySettings`). 그 값은
-   * **`/study` 세트**에서 와야 한다 — `/live` 것으로 풀면 차트는 히트맵을 그리려는데
-   * 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이 된다(ADR-0146).
+   * **그 창이 실제로 보는 세트**에서 와야 한다 — 다른 세트로 풀면 차트는 히트맵을
+   * 그리려는데 페이지가 받아온 번들에 그 데이터가 없어 **"켰는데 안 보임"** 이
+   * 된다(ADR-0146 → ADR-0152). 여기서는 창이 페이지 세트를 시드로 물려받는 경로를
+   * 잰다(창별 오버라이드는 `windowView.scope.test.tsx` 가 잰다).
    */
-  it('번들 요청의 지표가 `/study` 세트에서 온다', () => {
-    useLivePageStore.getState().patchIndicatorsScoped('study', '5m', {
+  it('번들 요청의 지표가 그 창의 세트에서 온다', () => {
+    useLivePageStore.getState().patchIndicatorsScoped({ page: 'study', windowKey: null }, '5m', {
       depthHeatmapEnabled: true,
     });
 

@@ -1,5 +1,5 @@
 import { useLivePageStore } from '../state/livePage';
-import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
+import { activationTarget, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import {
   indexInstrument,
   instrumentToActiveCode,
@@ -9,16 +9,41 @@ import {
 } from './liveInstrument';
 
 /** 활성 뷰의 종목/instrument 교체 — 관심종목·헤더 검색·스크리너·히트맵·지수바
- *  클릭·드롭의 공통 동작.
+ *  **클릭**의 공통 동작.
  *
  *  멀티창 플립(ADR-0119 C2c-2d) 후 종목 SSOT 는 워크스페이스의 **활성 그룹**
  *  (#711: 전역 진입점 = 활성 그룹 종목 교체). 레거시 읽기 15곳 호환을 위해
  *  livePage(projectActiveView)에도 같은 값을 원자적으로 함께 쓴다 — LivePage 의
  *  미러 effect(workspace→livePage)는 포커스 전환으로 활성 그룹이 바뀌는 경우를
- *  전담하고, 여기서 이미 일치시킨 상태는 동등 비교로 no-op 이라 루프가 없다. */
+ *  전담하고, 여기서 이미 일치시킨 상태는 동등 비교로 no-op 이라 루프가 없다.
+ *
+ *  **목적지는 포커스 창이 아니라 `activationTarget`** 이다(2026-08-21 창 고정). 포커스
+ *  창이 핀이면 클릭은 그 아래 핀 아닌 창으로 넘어가고, 그 창을 포커스로 올린다 —
+ *  안 올리면 아래 미러가 "화면에 없는 종목" 을 활성으로 잡아 관심종목 하트·검색
+ *  하이라이트·탭 제목이 착지 지점과 어긋난다.
+ *
+ *  **드롭은 여기를 타지 않는다** — 좌표 아래 창에 직접 쓴다(`WorkspaceCanvas` 리졸버 →
+ *  `setWindowSymbol`). 그래서 핀 창은 "직접 놓을 때만" 바뀐다.
+ *
+ *  **반환값은 없다** — 막힘은 호출부가 분기할 것이 아니라 사용자에게 알릴 것이라,
+ *  여기서 토스트 슬롯(`reportBlockedActivation`)을 세우고 끝낸다. 아무도 안 읽는
+ *  boolean 을 돌려주면 그 자리가 write-only 슬롯으로 썩는다. */
 export function activateLiveInstrument(instrument: LiveInstrument): void {
   const ws = useWorkspaceStore.getState();
-  ws.setGroupSymbol(activeGroupOf(ws), toGroupSymbol(instrument));
+  const symbol = toGroupSymbol(instrument);
+  const target = activationTarget(ws);
+  if (target.kind === 'blocked') {
+    ws.reportBlockedActivation(symbol.name);
+    return;
+  }
+  if (target.kind === 'window') {
+    ws.setGroupSymbol(target.window.group, symbol);
+    ws.focusWindow(target.window.id);
+  } else {
+    // 창이 하나도 없는 워크스페이스 — 종전대로 그룹 1 에 시드해 둔다(다음에 추가하는
+    // 창이 활성 그룹을 물려받아 이 종목으로 열린다).
+    ws.setGroupSymbol(target.group, symbol);
+  }
   const page = useLivePageStore.getState();
   page.projectActiveView({
     instrument,
@@ -58,9 +83,12 @@ export function toGroupSymbol(instrument: LiveInstrument): GroupSymbol {
     : { code: instrument.code, name: instrument.label };
 }
 
-/** 워크스페이스 활성 그룹 → livePage 레거시 미러 (LivePage 전용 헬퍼).
+/** 워크스페이스 **포커스 창이 그리는 종목** → livePage 레거시 미러 (LivePage 전용 헬퍼).
  *  projectActiveView 로 원자적 반영 — 관심종목 하트·검색 하이라이트 등 전역
- *  activeCode 읽기가 플립 후에도 활성 그룹 종목을 본다(ADR-0119 호환층). */
+ *  activeCode 읽기가 플립 후에도 화면의 종목을 본다(ADR-0119 호환층).
+ *
+ *  출처가 `groupSymbols[활성 그룹]` 이 아니라 `focusedWindowSymbol` 인 이유는 창 고정
+ *  때문이다 — 포커스 창이 핀이면 그룹 종목과 화면이 갈린다(그 함수 주석). */
 export function mirrorActiveGroupToLivePage(
   symbol: GroupSymbol | null,
   focusedTimeframe: ReturnType<typeof useLivePageStore.getState>['candleTimeframe'],

@@ -16,18 +16,24 @@
  * 비활성 탭 워밍이었고 그 훅은 ADR-0149 로 사라졌지만, **교훈은 봉이 갈리는 모든 자리에
  * 그대로 성립한다**(각 자리가 자기 봉으로 `studyReferenceQuerySettings` 를 풀어야 한다).
  *
- * 지표 세트는 페이지 것이므로(ADR-0146) 여기서 창에 묻는 것은 **봉뿐**이다. 그 봉은
- * **포커스된 차트 창**의 것이다(#801) — 탭 라벨·커서 해석·뷰포트 캡처와 같은 창을
- * 따르므로 "지금 보고 있는 창" 이라는 한 가지 의미로 통일된다.
+ * 지표 세트는 **창 것이므로**(ADR-0152) 여기서 창에 묻는 것은 봉과 **스코프 키**
+ * 둘 다이고, 둘 다 **포커스된 차트 창**의 것이다(#801) — 탭 라벨·커서 해석·뷰포트
+ * 캡처와 같은 창을 따르므로 "지금 보고 있는 창" 이라는 한 가지 의미로 통일된다.
+ *
+ * 한쪽만 창을 따라가면 안 된다: 봉만 따라가고 세트는 `/study` 페이지 것을 읽으면,
+ * 창별 독립이 켜진 뒤에는 포커스 창이 실제로 그리는 지표와 어긋나 이 훅이 막으려던
+ * **"켰는데 안 보임"** 이 그대로 난다.
  *
  * ⚠ 번들 쿼리는 이 훅을 쓰지 않는다 — 창마다 봉이 달라 유효 지표도 달라지므로
  * `useStudyReferenceBundles` 가 **창별**로 키를 만든다(StudyPage).
  */
 import {
-  bucketsForPage,
+  bucketsForScope,
   resolveIndicatorSettings,
   type IndicatorSettings,
 } from '../state/indicatorSettingsV2';
+import { windowScopeKey } from '../live/workspace/windowViewContext';
+import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
 import { useLivePageStore } from '../state/livePage';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
 import { focusedChartWindowId, useStudyWorkspaceStore } from '../state/studyWorkspace';
@@ -37,8 +43,16 @@ export function useStudyChartIndicators(): IndicatorSettings {
     (s) => s.windows.find((w) => w.id === focusedChartWindowId(s))?.chart?.timeframe
       ?? STUDY_DEFAULT_MINUTE_TIMEFRAME,
   );
+  const windowKey = useStudyWorkspaceStore(
+    (s) => windowScopeKey(STUDY_WINDOW_WORKSPACE, focusedChartWindowId(s)),
+  );
   return useLivePageStore((s) => resolveIndicatorSettings(
-    bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, 'study'),
+    bucketsForScope(
+      s.indicatorsByTimeframe,
+      s.studyIndicatorsByTimeframe,
+      s.indicatorsByWindow,
+      { page: 'study', windowKey },
+    ),
     timeframe,
   ));
 }

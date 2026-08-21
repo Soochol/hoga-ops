@@ -1,6 +1,9 @@
 # 0146 — 지표 세트는 페이지별(`/live` ↔ `/study`)이고, 페이지 안에서는 공유한다
 
-**Status:** accepted (2026-08-15)
+**Status:** accepted (2026-08-15) · **amended by**
+[ADR-0152](0152-per-window-indicator-sets.md) (2026-08-21) — 아래 재검토 트리거("한
+페이지 안에서 창마다 다른 지표")가 실제로 와서 이 축 **위에** 창 축을 얹었다.
+페이지 축은 그대로 유효하다.
 
 **Supersedes:** [ADR-0145](0145-per-window-indicator-scope.md) (창별 분리 opt-in — 구현되어
 #1327 로 머지됐다가 같은 날 제거).
