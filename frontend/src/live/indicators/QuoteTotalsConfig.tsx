@@ -2,7 +2,7 @@ import SignColorLegend from './SignColorLegend';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
 import MAStylePicker from './MAStylePicker';
-import { useWindowIndicator, useIndicatorActions, useWindowIndicatorScope } from '../workspace/windowView';
+import { useWindowIndicator, useIndicatorActions, useWindowIndicatorPage } from '../workspace/windowView';
 
 /** 총잔량 상세 — 매수/매도 호가 총잔량 라인 범례 + 현재값 수평선 + 급증 마커 설정.
  *  동작설정(급증 마커·문턱)은 chartPrefs에 저장(렌더 위치만 ⚙️→지표 모달 이동). */
@@ -30,7 +30,7 @@ export default function QuoteTotalsConfig() {
   // 최고 수평선은 `/live` 전용 — 복기에선 기준일이 로드 구간의 끝날이라 "그때 그 시점" 을
   // 보는 작업과 어긋난다(QuoteLevelLines 주석 참조). 렌더를 막는 것과 **같은 판정**으로
   // 설정 행도 숨긴다 — 켤 수는 있는데 안 그려지는 유령 토글을 남기지 않기 위해서다.
-  const dayMaxSupported = useWindowIndicatorScope() !== 'study';
+  const dayMaxSupported = useWindowIndicatorPage() !== 'study';
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">

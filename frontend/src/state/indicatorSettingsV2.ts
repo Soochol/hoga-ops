@@ -17,11 +17,16 @@ import type { LiveTimeframe } from './livePage';
 /**
  * per-timeframe 지표 설정 v2 (지도 #694 / 최종 스펙 #699).
  *
- * 저장 모델: `live.indicators.v2` = { paneOrder(전역) + byTimeframe(분/D/W/M
- * 4버킷 sparse 오버라이드) }. 읽기 = 공장 기본값 ⊕ 현재 봉 버킷. flat 상속과
- * `panePrefsByTimeframe` 병합(구 모델)은 폐지 — 기존 pane 토글 7종도 버킷 안으로
- * 흡수된다(#696). sparse 의 정의는 "공장값과의 diff"다: 공장값과 같은 항목은
- * 로드 시 제거되므로, 향후 공장값 개선이 안 만진 필드에 자동 반영된다(#697).
+ * 저장 모델: `live.indicators.v2` = { paneOrder·paneStretch(전역 레이아웃)
+ * + byTimeframe/studyByTimeframe(페이지 세트) + byWindow(창 세트) }. 각 세트는
+ * 분/D/W/M 4버킷 sparse 오버라이드이고, 읽기 = 공장 기본값 ⊕ 그 봉 버킷이다.
+ * flat 상속과 `panePrefsByTimeframe` 병합(구 모델)은 폐지 — 기존 pane 토글 7종도
+ * 버킷 안으로 흡수된다(#696). sparse 의 정의는 "공장값과의 diff"다: 공장값과 같은
+ * 항목은 로드 시 제거되므로, 향후 공장값 개선이 안 만진 필드에 자동 반영된다(#697).
+ *
+ * **스코프 축은 셋이다: 페이지 × 창 × 봉** (ADR-0146 + ADR-0152).
+ * 차트 창은 항상 자기 세트(`byWindow`)를 갖고, 페이지 세트는 그 **시드 뿌리이자
+ * Provider 밖 폴백**으로 남는다. 해석은 `bucketsForScope` 한 곳에 모여 있다.
  */
 
 /** 버킷 하나가 담는 지표 설정 전체 — v1 `PersistedIndicators` 에서 per-timeframe
@@ -39,7 +44,11 @@ export type PersistedIndicatorsV2 = {
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
   /**
-   * `/live` 의 지표 세트 — **이 필드는 종전 그대로다**(ADR-0146).
+   * `/live` 의 **페이지 세트** — 이 필드의 저장 형태는 종전 그대로다(ADR-0146).
+   *
+   * ADR-0152 이후 이 값을 직접 보는 것은 Provider 밖 소비자(단일 차트·테스트
+   * 픽스처)뿐이고, 화면의 차트 창은 자기 `byWindow` 엔트리를 본다. 대신 **새 창의
+   * 시드 뿌리**라 죽은 키가 되지는 않는다 — 첫 창이 열릴 때마다 여기서 복사된다.
    *
    * 페이지 축을 대칭(`byPage.{live,study}`)으로 만들지 않은 이유: 그러면 이 키가
    * 아무도 안 쓰는 값이 되는데, 이 리포는 그 실패를 이미 겪었다 — 스테일해진
@@ -61,10 +70,48 @@ export type PersistedIndicatorsV2 = {
    * 다시 `/live` 값으로 덮인다.
    */
   studyByTimeframe: IndicatorSettingsByTimeframe;
+  /**
+   * **창별 지표 세트** (ADR-0152). 키는 `live:<창id>` / `study:<창id>`.
+   *
+   * 차트 창은 **항상** 자기 엔트리를 갖는다 — 창이 생길 때 시드되고(`/live` 는
+   * 포커스 창 복사, 그 밖은 페이지 세트 복사) 창이 사라질 때 회수된다. 그래서
+   * 같은 페이지·같은 봉을 보는 두 창이 서로를 따라가지 않는다.
+   *
+   * **엔트리의 존재가 곧 "이 창은 자기 세트를 갖는다"** 이므로 정규화가
+   * `byTimeframe` 과 달리 **빈 엔트리를 걷어내지 않는다**: 걷어내면 공장값 상태의
+   * 창(= 복사할 diff 가 없어 `{}`)이 다음 로드에 페이지 세트로 조용히 되붙고,
+   * 증상은 한참 뒤 다른 창을 편집한 순간에야 "왜 이 창까지 따라오지" 로 나타난다.
+   * 같은 이유로 **창 지표 초기화는 키 삭제가 아니라 `{}` 쓰기**다.
+   *
+   * 내용물이 여기(전역 localStorage)에 사는 것이 #712 와의 차이다 — 창이 소유한
+   * 것은 **키뿐**이라 워크스페이스(탭별 sessionStorage)가 갈려도 설정은 안 갈리고,
+   * 크로스탭 동기화가 창별 설정까지 그대로 덮는다.
+   */
+  byWindow: Record<string, IndicatorSettingsByTimeframe>;
 };
 
-/** 지표 세트의 소유자 — 페이지 하나당 하나. */
+/** 지표 세트의 소유자 — 페이지 하나당 하나. 창 세트의 **시드·폴백 뿌리**다. */
 export type IndicatorPageScope = 'live' | 'study';
+
+/**
+ * 지표 읽기·쓰기의 대상 스코프 — (페이지, 창) 쌍.
+ *
+ * 두 필드가 다 null 인 경우는 **화면이 아니다**: Provider 밖(단일 차트·테스트
+ * 픽스처)이고, 그때는 종전대로 `/live` 페이지 세트를 본다. 실제 두 페이지의 차트는
+ * 모두 창 Provider 안에서 렌더되므로 `windowKey` 가 채워진다.
+ *
+ * `windowKey` 는 `page` 를 접두사로 포함하지만(`live:<id>`) 둘을 따로 싣는다 —
+ * 창 엔트리가 아직 시드되기 전(첫 마운트 전 렌더) 폴백이 **어느 페이지 세트인지**
+ * 알아야 하고, 그 정보를 문자열에서 파싱해 되찾는 것은 저장 키 포맷에 로직을
+ * 묶는 일이다.
+ */
+export interface IndicatorScope {
+  page: IndicatorPageScope | null;
+  windowKey: string | null;
+}
+
+/** 손상된 스토어의 무한 증식 방어 — 실사용 창 수보다 한참 크다. */
+export const INDICATOR_WINDOW_SCOPE_LIMIT = 64;
 
 export const INDICATORS_V2_STORAGE_KEY = 'live.indicators.v2';
 const V1_STORAGE_KEY = 'live.indicators.v1';
@@ -177,6 +224,25 @@ function cloneBucketMap(source: IndicatorSettingsByTimeframe): IndicatorSettings
   return out;
 }
 
+/**
+ * 창 스코프 맵 — **빈 엔트리를 보존한다**(`byWindow` 필드 주석의 멤버십 규약).
+ *
+ * `normalizeBucketMap` 은 빈 버킷을 걷지만 그건 **맵 안**의 이야기다. 여기서
+ * 걷어내는 것은 **엔트리 자체**이고, 그건 "이 창이 자기 세트를 갖는다" 는 사실을
+ * 지우는 일이라 다른 뜻이 된다.
+ */
+function normalizeByWindow(raw: unknown): Record<string, IndicatorSettingsByTimeframe> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, IndicatorSettingsByTimeframe> = {};
+  for (const [scopeKey, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Object.keys(out).length >= INDICATOR_WINDOW_SCOPE_LIMIT) break;
+    if (!scopeKey) continue;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    out[scopeKey] = normalizeBucketMap(value);
+  }
+  return out;
+}
+
 export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
@@ -193,6 +259,7 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
     paneStretch: normalizePaneStretch(obj.paneStretch),
     byTimeframe,
     studyByTimeframe,
+    byWindow: normalizeByWindow(obj.byWindow),
   };
 }
 
@@ -244,6 +311,41 @@ export function bucketsForPage(
   return page === 'study' ? study : live;
 }
 
+/**
+ * 이 스코프가 읽고 쓰는 버킷 맵 — 창 엔트리가 있으면 그것, 없으면 페이지 세트.
+ *
+ * 폴백이 "엔트리 없음 → 페이지 세트" 라, `byWindow` 가 통째로 없는 저장값(이 기능
+ * 이전에 쓰인 것 포함)은 전 창이 페이지 세트를 보는 **종전 동작**이 된다. 되돌리기도
+ * 대칭이다 — 정규화에서 `byWindow` 를 버리면 전부 페이지 공유로 돌아온다.
+ *
+ * `??` 여야 한다(`||` 아님) — 공장값 상태의 창은 엔트리가 `{}` 이고, 그건 **유효한
+ * 자기 세트**다. truthiness 로 판정하면 그 창만 조용히 페이지 세트로 되붙는다.
+ */
+export function bucketsForScope(
+  live: IndicatorSettingsByTimeframe,
+  study: IndicatorSettingsByTimeframe,
+  byWindow: Record<string, IndicatorSettingsByTimeframe>,
+  scope: IndicatorScope,
+): IndicatorSettingsByTimeframe {
+  const shared = bucketsForPage(live, study, scope.page);
+  return scope.windowKey ? byWindow[scope.windowKey] ?? shared : shared;
+}
+
+/** 이 창이 자기 세트를 갖는가 — 값이 아니라 **키의 존재**로 판정한다. */
+export function hasWindowIndicatorScope(
+  byWindow: Record<string, IndicatorSettingsByTimeframe>,
+  scopeKey: string | null,
+): boolean {
+  return scopeKey !== null && Object.hasOwn(byWindow, scopeKey);
+}
+
+/** 버킷 맵의 깊은 사본 — 시드용 공개 판(`cloneBucketMap` 과 같은 규율). */
+export function cloneIndicatorBuckets(
+  source: IndicatorSettingsByTimeframe,
+): IndicatorSettingsByTimeframe {
+  return cloneBucketMap(source);
+}
+
 /** 전환 시드 (#697 결정 변경): v1 의 분봉 관점 유효 설정(flat ⊕ 구
  *  panePrefsByTimeframe.minute)을 새 공장값과 diff 해 minute 버킷에 심는다.
  *  D/W/M 버킷은 시드 없음 — 구 D/W/M pane 오버라이드는 폐기. paneOrder 는 이관. */
@@ -263,6 +365,8 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
     // v1 에는 페이지 축이 없었다 — 두 페이지가 같은 값에서 출발하는 것이 맞다.
     studyByTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: { ...minuteDiff } } : {},
+    // 창 축도 없었다. 빈 맵이면 마운트 시드가 각 창에 이 값을 복사한다(ADR-0152).
+    byWindow: {},
   };
 }
 
