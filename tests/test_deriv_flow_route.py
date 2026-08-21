@@ -111,3 +111,33 @@ def test_coverage_counts_per_product(tmp_path):
     # 405분 세션(09:00–15:45) / 30초 = 810. 분모가 폴 주기를 따라가므로 수집 주기를
     # 바꾸면 여기도 같이 바뀐다(2026-08-10 60→30초).
     assert got["products"]["F001"]["coverage"]["expected_count"] == 810
+
+
+def _ds(ms: int, product: str = "101W09") -> DerivSample:
+    return DerivSample(
+        sampled_at_ms=ms, product=product,
+        request={"fid_input_iscd": "K2I", "fid_input_iscd_2": product},
+        row={"hts_otst_stpl_qty": str(ms)},
+    )
+
+
+def test_last_sample_serves_from_memory_not_disk(tmp_path):
+    """append 후의 `last_sample` 은 디스크를 읽지 않는다 — investor 판과 같은 가드.
+
+    막는 방향: 캐시를 지워 매 폴마다 하루치 JSONL 전체를 파싱하던 회귀(실측 8.1MB ·
+    4,239표본, 이벤트 루프 위). 파일을 지운 뒤에도 답이 나와야 메모리 경로가 증명된다.
+    """
+    store = DerivFlowStore(tmp_path)
+    store.append_sample("20260805", _ds(1000))
+    store.intraday_path("20260805").unlink()
+    got = store.last_sample("20260805", "101W09")
+    assert got is not None and got.sampled_at_ms == 1000
+
+
+def test_last_sample_falls_back_to_disk_after_restart(tmp_path):
+    """새 인스턴스(재시작 모사)는 디스크에서 복원한다 — 중복 억제 판정 보존."""
+    DerivFlowStore(tmp_path).append_sample("20260805", _ds(1000))
+    fresh = DerivFlowStore(tmp_path)
+    got = fresh.last_sample("20260805", "101W09")
+    assert got is not None and got.sampled_at_ms == 1000
+
