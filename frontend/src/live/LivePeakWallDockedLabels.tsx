@@ -9,7 +9,7 @@ import {
   peakLabelBudgetForBarSpacing,
 } from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
-import { useActivePrefs, type ChartViewPrefs } from '../state/chartPrefs';
+import { useActivePrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -22,9 +22,7 @@ type Props = {
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
   dayAskPeaks: readonly AskPeak[];
-  todayAllPriceAskPeak?: AskPeak | null;
   dayBidPeaks: readonly BidPeak[];
-  todayAllPriceBidPeak?: BidPeak | null;
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   todayKst: string;
@@ -44,21 +42,11 @@ function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
   return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
 }
 
-function optionalRankLimit(
-  prefs: ChartViewPrefs,
-  key: 'askPeakUntradedRankLimit' | 'bidPeakUntradedRankLimit',
-): 1 | 2 | 3 {
-  const value = (prefs as ChartViewPrefs & Partial<Record<typeof key, number>>)[key];
-  return value === 2 || value === 3 ? value : 1;
-}
-
 function LivePeakWallDockedLabels({
   paneSeries,
   axis,
   dayAskPeaks,
-  todayAllPriceAskPeak = null,
   dayBidPeaks,
-  todayAllPriceBidPeak = null,
   segments,
   candles,
   todayKst,
@@ -71,25 +59,17 @@ function LivePeakWallDockedLabels({
   const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled && !s.bidPeakHidden);
   const askColor = useWindowIndicator((s) => s.askPeakColor);
   const askLineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
-  const askAllPriceColor = useWindowIndicator((s) => s.askPeakAllPriceColor);
-  const askAllPriceLineWidth = useWindowIndicator((s) => s.askPeakAllPriceLineWidth);
   const askVisibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
   const askVisibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
   const bidColor = useWindowIndicator((s) => s.bidPeakColor);
   const bidLineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
-  const bidAllPriceColor = useWindowIndicator((s) => s.bidPeakAllPriceColor);
-  const bidAllPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
   const askIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
-  const askShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const askLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const askAllPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
-  const askUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'askPeakUntradedRankLimit'));
   const askVisibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const bidIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
-  const bidShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
   const bidLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
-  const bidUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'bidPeakUntradedRankLimit'));
   const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<PeakWallDockedLabelsPrimitive | null>(null);
 
@@ -115,17 +95,13 @@ function LivePeakWallDockedLabels({
     const askRaw = askPeakEnabled && askLabelEnabled
       ? buildAskPeakOverlaySegments({
         dayAskPeaks,
-        todayAllPriceAskPeak,
         segments,
         candles,
         axis,
         todayKst,
         baselineStyle: { color: askColor, lineWidth: askLineWidth },
-        allPriceStyle: { color: askAllPriceColor, lineWidth: askAllPriceLineWidth },
         intraMax: askIntraMax,
-        showAllPrices: askShowAllPrices,
         allPriceRankLimit: askPeakRankLimit,
-        untradedRankLimit: askUntradedRankLimit,
         visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
@@ -142,17 +118,13 @@ function LivePeakWallDockedLabels({
     const bidSegments = bidPeakEnabled && bidLabelEnabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
-        todayAllPriceBidPeak,
         segments,
         candles,
         axis,
         todayKst,
         baselineStyle: { color: bidColor, lineWidth: bidLineWidth },
-        allPriceStyle: { color: bidAllPriceColor, lineWidth: bidAllPriceLineWidth },
         intraMax: bidIntraMax,
-        showAllPrices: bidShowAllPrices,
         allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
-        untradedRankLimit: bidUntradedRankLimit,
         visibleTimeCutoff: bidVisibleTimeCutoff,
       })
       : [];
@@ -161,39 +133,29 @@ function LivePeakWallDockedLabels({
       ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, labelBudget),
     ]);
   }, [
-    askAllPriceColor,
-    askAllPriceLineWidth,
     askAllPriceRankLimit,
-    askUntradedRankLimit,
     askColor,
     askIntraMax,
     askLabelEnabled,
     askLineWidth,
     askPeakEnabled,
-    askShowAllPrices,
     askVisibleMaxColor,
     askVisibleMaxLineWidth,
     askVisibleMaxRankLimit,
     askVisibleTimeCutoff,
     axis,
-    bidAllPriceColor,
-    bidAllPriceLineWidth,
     bidAllPriceRankLimit,
-    bidUntradedRankLimit,
     bidColor,
     bidIntraMax,
     bidLabelEnabled,
     bidLineWidth,
     bidPeakEnabled,
-    bidShowAllPrices,
     bidVisibleMaxRankLimit,
     bidVisibleTimeCutoff,
     candles,
     dayAskPeaks,
     dayBidPeaks,
     segments,
-    todayAllPriceAskPeak,
-    todayAllPriceBidPeak,
     todayKst,
   ]);
 

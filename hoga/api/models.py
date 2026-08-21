@@ -199,10 +199,10 @@ class AskPeak(BaseModel):
     ``all_peaks``/``all_max_peaks`` 전체 랭킹 배열은 /api/range 응답에서 비워진다
     (bundle._without_all_peak_rankings — 하루당 수천 후보로 페이로드의 99%인데
     range 소비처 미사용). 전체 랭킹은 라이브 ``ask_peak_today`` 경로 전용.
-    ``traded_*`` arrays = post-touch ranked wire; single ``price``/``max_price`` remain
-    the legacy rank-1 compatibility fields.
-    ``untraded_*`` = post-untouched legacy rank-1 wire. ``untraded_*_peaks`` carries
-    the full ranked candidates array.
+    ``traded_*`` arrays = **동일분 터치** 벽의 랭킹 배열(ADR-0156 — 그 벽이 관측된
+    1분 안에서 체결이 그 가격을 친 벽); single ``price``/``max_price`` remain the
+    legacy rank-1 compatibility fields. 와이어 이름 ``traded_*`` 는 캐시·API 이관
+    비용을 피해 유지한다(ADR-0084 의 규약 계승).
     """
     date: str
     price: int | None
@@ -217,28 +217,18 @@ class AskPeak(BaseModel):
     all_max_price: int | None = None
     all_max_qty: int | None = None
     all_max_t_ms: int | None = None
-    untraded_price: int | None = None
-    untraded_qty: int | None = None
-    untraded_t_ms: int | None = None
-    untraded_max_price: int | None = None
-    untraded_max_qty: int | None = None
-    untraded_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
-    untraded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
-    untraded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class BidPeak(BaseModel):
     """한 거래일 연속거래 중 단일 매수 호가단계 최대 물량·가격(Day Bid Peak).
 
-    Mirrors ``AskPeak`` on the bid side. ``traded_*`` arrays are the post-touch
-    ranked wire, while single ``price``/``max_price`` stay as legacy rank-1
-    compatibility fields. ``untraded_*`` fields are the post-untouched legacy
-    rank-1 wire, and ``untraded_*_peaks`` carries the full ranked candidates
-    array.
+    Mirrors ``AskPeak`` on the bid side. ``traded_*`` arrays are the **동일분
+    터치** ranked wire (ADR-0156), while single ``price``/``max_price`` stay as
+    legacy rank-1 compatibility fields.
     """
 
     date: str
@@ -254,18 +244,10 @@ class BidPeak(BaseModel):
     all_max_price: int | None = None
     all_max_qty: int | None = None
     all_max_t_ms: int | None = None
-    untraded_price: int | None = None
-    untraded_qty: int | None = None
-    untraded_t_ms: int | None = None
-    untraded_max_price: int | None = None
-    untraded_max_qty: int | None = None
-    untraded_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
-    untraded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
-    untraded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class QuoteRatioPoint(BaseModel):
