@@ -1915,7 +1915,11 @@ def _segment_gap_ms(date: str, meta: dict) -> int | None:
 # **왜 시간 기반 sleep 인가.** `time.sleep(0.001)` 은 GIL 을 완전히 놓고 1ms 를
 # 보장한다 — 루프가 epoll + 콜백 여러 개를 소화하기에 충분하다(sleep(0) 은 convoy
 # 로 루프가 GIL 을 못 받을 수 있다). 50ms 마다 1ms 면 오버헤드 +2% 로, 무양보
-# 구간이 「일자 1개 처리(~110ms)」 수준으로 상한된다. WS 틱 경로의 같은 처방이
+# 구간이 「빌더 1개」 수준으로 상한된다 — 호출 지점이 일자 루프 상단 + 각 빌더
+# 블록 앞(총 9곳/일자)이다. 과거 캐시일은 빌더당 수 ms 라 인터벌 게이트에 걸려
+# 사실상 무비용이고, **오늘 재계산**(과거 36ms vs 오늘 1,379ms — 그중 peaks
+# 577ms, 2026-08-21 실측)에서만 양보가 실제로 발화해 1.4s 무양보 블록이 최대
+# 단일 빌더(~600ms)로 줄어든다. WS 틱 경로의 같은 처방이
 # `kiwoom_ws_client._maybe_yield`(#1444)다 — 그쪽은 루프 위라 `asyncio.sleep(0)`,
 # 여기는 워커 스레드라 `time.sleep(1ms)` 로 형태만 다르다.
 _GIL_BREATHE_INTERVAL_S = 0.05
@@ -2190,6 +2194,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # 읽던 것이 "포인트는 전 구간 오는데 값만 0" 결함이었다. 구형 meta·hogaplay
         # 는 새 키가 없어 정규장 값으로 떨어지므로 KRX 경로는 무변경이다.
         ind_open_ms, ind_close_ms = indicator_session_bounds(norm_meta)
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
             if sidecar_only or candles_only
@@ -2226,6 +2231,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if continuous_before_needed
             else None
         )
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if include_ask_peaks or include_bid_peaks:
             ap_d, bp_d = build_ask_bid_peak_slices(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
@@ -2239,6 +2245,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         else:
             ap_d = None
             bp_d = None
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         tvp_d = (
             build_trade_volume_poc_slice(
                 engine, code=code, date=d, source=trade_indicator_source, venue=venue,
@@ -2267,6 +2274,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             gap_ms=_segment_gap_ms(d, meta),
         ))
         included_dates.append(d)
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if (
             not hoga_only and not cutoff_sidecar and not candles_only
             and broker_late_entries_enabled
@@ -2284,6 +2292,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if (
             not hoga_only and not candles_only
             and volume_distribution_bins is not None
@@ -2310,6 +2319,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             bid_peaks.append(_without_all_peak_rankings(bp_d))
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if include_depth_heatmap:
             depth_heatmap.extend(
                 build_depth_heatmap_slice(
@@ -2323,6 +2333,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     session_close_ms=ind_close_ms,
                 )
             )
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if include_depth_delta:
             depth_delta.extend(
                 build_depth_delta_slice(
@@ -2336,6 +2347,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     session_close_ms=ind_close_ms,
                 )
             )
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if include_wall_surge:
             wall_surge.extend(
                 build_wall_surge_slice(
