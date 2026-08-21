@@ -27,6 +27,17 @@
  * 백필 prepend 재앵커) 와 **클램프**(분봉은 30~2000봉을 오가는데 그 배율을 그대로
  * 곱하면 일봉이 3봉 또는 12,000봉이 된다).
  *
+ * ── 자기 데이터 밖으로는 밀지 않는다 ──────────────────────────────────────
+ * 중앙 정렬은 그대로 두되 **우측 끝을 넘지 않는다**(마지막 캔들 + 표준 여백).
+ *
+ * 이게 없으면 최근 날짜를 중앙에 둘 때 화면 **오른쪽 절반이 빈 공간**이 된다 —
+ * 일봉 차트는 원래 그 지점에서 멈추는데 중앙 정렬이 한계를 무시하고 밀어붙이기
+ * 때문이다(2026-08-21 실사용에서 사용자 지적). 클램프가 걸리면 대상 날짜는 중앙이
+ * 아니라 오른쪽 어딘가에 서지만, 그건 일봉 차트가 평소에 보이는 모습 그대로다.
+ * 과거 날짜에서는 클램프가 안 걸려 중앙 정렬이 온전히 산다.
+ *
+ * ── 대상이 없을 때 — 침묵하지 않는다 ──────────────────────────────────────
+ *
  * ── 왜 `D` 만 소비하는가 ──────────────────────────────────────────────────
  * W/M 은 한 캔들이 여러 날을 담아 "그 날이 어느 버킷인가" 가 포함 탐색이 된다 —
  * 크로스헤어를 W/M 에서 뺀 것과 같은 사유다.
@@ -107,14 +118,24 @@ export function centeredLogicalRange(params: {
   current: LogicalRange;
   /** 줌 동기화가 계산한 새 폭. 없으면 현재 폭을 그대로 쓴다(스크롤만). */
   spanOverride?: number;
+  /**
+   * 이 창의 자연스러운 우측 끝(마지막 캔들 인덱스 + 1 + 표준 여백). 결과가 이보다
+   * 오른쪽으로 가면 **폭을 유지한 채 왼쪽으로 되민다** — 파일 헤더의 그 절 참조.
+   * 마지막 캔들을 아직 축에서 찾지 못했으면 `undefined`(클램프 없음).
+   */
+  rightEdgeLimit?: number;
 }): LogicalRange | null {
-  const { fromIndex, toIndex, current, spanOverride } = params;
+  const { fromIndex, toIndex, current, spanOverride, rightEdgeLimit } = params;
   if (![fromIndex, toIndex, current.from, current.to].every(Number.isFinite)) return null;
   const currentSpan = current.to - current.from;
   const span = spanOverride ?? currentSpan;
   if (!(span > 0)) return null;
   const center = (fromIndex + toIndex) / 2;
-  const from = center - span / 2;
+  // 클램프는 **되밀기 전에** 계산한 뒤 적용한다. 순서를 바꿔 "이미 그 자리인가" 를
+  // 먼저 보면, 천장에 붙은 상태에서 매번 같은 값을 되써 미세하게 떤다.
+  const from = rightEdgeLimit !== undefined && center + span / 2 > rightEdgeLimit
+    ? rightEdgeLimit - span
+    : center - span / 2;
   // **위치와 폭 둘 다** 그대로일 때만 건너뛴다. 폭만 바뀌는 경우(제자리 줌)를
   // 위치 비교만으로 거르면 줌 동기화가 통째로 죽는다.
   const samePlace = Math.abs(from - current.from) < 1;

@@ -164,6 +164,54 @@ describe('zoomedSpan', () => {
   });
 });
 
+/**
+ * **우측 클램프**. 중앙 정렬이 자기 데이터 밖으로 밀고 나가면 화면 오른쪽 절반이
+ * 빈 공간이 된다(2026-08-21 사용자 지적). 폭은 유지한 채 우측 끝에 붙인다.
+ *
+ * **막는 방향**: 마지막 캔들 + 표준 여백보다 오른쪽. **여는 방향**: 과거 쪽은 그대로
+ * — 왼쪽 클램프는 없다(음수 `from` 이 곧 백필 트리거다).
+ */
+describe('centeredLogicalRange — rightEdgeLimit', () => {
+  const current = { from: 100, to: 200 }; // span 100
+
+  it('중앙 정렬이 우측 끝을 넘으면 폭을 유지한 채 되민다', () => {
+    // 중점 1,000 → 중앙 정렬이면 950~1,050. 끝이 1,000 이면 900~1,000.
+    expect(centeredLogicalRange({
+      fromIndex: 1_000, toIndex: 1_000, current, rightEdgeLimit: 1_000,
+    })).toEqual({ from: 900, to: 1_000 });
+  });
+
+  it('넘지 않으면 중앙 정렬 그대로 — 과거 날짜는 영향 없다', () => {
+    expect(centeredLogicalRange({
+      fromIndex: 500, toIndex: 500, current, rightEdgeLimit: 1_000,
+    })).toEqual({ from: 450, to: 550 });
+  });
+
+  it('줌으로 폭이 바뀌어도 같은 끝을 지킨다', () => {
+    expect(centeredLogicalRange({
+      fromIndex: 1_000, toIndex: 1_000, current, spanOverride: 40, rightEdgeLimit: 1_000,
+    })).toEqual({ from: 960, to: 1_000 });
+  });
+
+  it('한계가 없으면(축에서 마지막 캔들을 못 찾음) 클램프하지 않는다', () => {
+    expect(centeredLogicalRange({ fromIndex: 1_000, toIndex: 1_000, current }))
+      .toEqual({ from: 950, to: 1_050 });
+  });
+
+  it('이미 끝에 붙어 있으면 null — 천장에서 되쓰면 떤다', () => {
+    // 현재가 900~1,000 이고 중앙 정렬 결과도 같은 자리.
+    expect(centeredLogicalRange({
+      fromIndex: 1_000, toIndex: 1_000, current: { from: 900, to: 1_000 }, rightEdgeLimit: 1_000,
+    })).toBeNull();
+  });
+
+  it('왼쪽은 클램프하지 않는다 — 음수 from 이 백필 트리거다', () => {
+    expect(centeredLogicalRange({
+      fromIndex: 0, toIndex: 0, current, rightEdgeLimit: 1_000,
+    })).toEqual({ from: -50, to: 50 });
+  });
+});
+
 describe('centeredLogicalRange — spanOverride', () => {
   const current = { from: 100, to: 200 };
 
