@@ -155,7 +155,7 @@ describe('거래량 체결강도 누적 토글', () => {
   });
 });
 
-import { CHART_TOGGLES, CHART_NUMERIC_PREFS, categoryOf, gatedByOf } from './chartPrefs';
+import { CHART_TOGGLES, CHART_LINE_STYLES, CHART_NUMERIC_PREFS, categoryOf, gatedByOf } from './chartPrefs';
 
 describe('총잔량 급증 설정', () => {
   it('surgeMarkerEnabled 토글 기본 ON · category indicator-modal', () => {
@@ -481,5 +481,73 @@ describe('극값 가격선 설정', () => {
   it('persist 된 값 보존', () => {
     expect(hydratedMinuteView({ highLowHighLineEnabled: true }).highLowHighLineEnabled).toBe(true);
     expect(hydratedMinuteView({ highLowLowLineEnabled: true }).highLowLowLineEnabled).toBe(true);
+  });
+});
+
+describe('이전일 고저선 설정', () => {
+  it('이전일 고가·저가선도 각각 독립 토글이고 둘 다 기본 OFF', () => {
+    expect(DEFAULT_PREFS.highLowPriorHighLineEnabled).toBe(false);
+    expect(DEFAULT_PREFS.highLowPriorLowLineEnabled).toBe(false);
+  });
+
+  it('고저 극값 라벨의 하위 토글이고 chart 카테고리', () => {
+    for (const key of ['highLowPriorHighLineEnabled', 'highLowPriorLowLineEnabled'] as const) {
+      const t = CHART_TOGGLES.find((x) => x.key === key);
+      expect(gatedByOf(t!)).toBe('highLowLabelsEnabled');
+      expect(categoryOf(t!)).toBe('chart');
+    }
+  });
+});
+
+describe('CHART_LINE_STYLES (선 색·두께 레지스트리)', () => {
+  it('수평선 4종이 각자 자기 토글에 게이트된다', () => {
+    expect(CHART_LINE_STYLES.map((d) => [d.key, d.enabledBy])).toEqual([
+      ['highLowHighLine', 'highLowHighLineEnabled'],
+      ['highLowLowLine', 'highLowLowLineEnabled'],
+      ['highLowPriorHighLine', 'highLowPriorHighLineEnabled'],
+      ['highLowPriorLowLine', 'highLowPriorLowLineEnabled'],
+    ]);
+  });
+
+  it("색 기본값은 '' (=방향 토큰 추종), 두께 기본값은 1", () => {
+    // hex 를 기본값으로 박으면 테마 전환을 따라가지 않는다 — `''` 여야 draw 가
+    // 그 프레임의 테마로 푼다. 이 단언이 그 규약을 고정한다.
+    for (const d of CHART_LINE_STYLES) {
+      expect(DEFAULT_PREFS[`${d.key}Color` as keyof typeof DEFAULT_PREFS]).toBe('');
+      expect(DEFAULT_PREFS[`${d.key}Width` as keyof typeof DEFAULT_PREFS]).toBe(1);
+    }
+  });
+
+  it('label 은 **선 이름**이라 "스타일" 을 포함하지 않는다', () => {
+    // 행 제목은 LineStyleRow 가 `<label> 스타일` 로 조립하고, MAStylePicker 는
+    // aria-label 에 " 스타일 선택" 을 덧붙인다 — 여기 넣으면 "… 스타일 스타일 선택".
+    for (const d of CHART_LINE_STYLES) {
+      expect(d.label).not.toContain('스타일');
+    }
+  });
+
+  it('고가 계열은 up, 저가 계열은 down 방향', () => {
+    expect(CHART_LINE_STYLES.filter((d) => d.direction === 'up').map((d) => d.key))
+      .toEqual(['highLowHighLine', 'highLowPriorHighLine']);
+    expect(CHART_LINE_STYLES.filter((d) => d.direction === 'down').map((d) => d.key))
+      .toEqual(['highLowLowLine', 'highLowPriorLowLine']);
+  });
+
+  it('persist: 색·두께가 살아 돌아오고, 무효값은 기본값으로 떨어진다', () => {
+    const v = hydratedMinuteView({
+      highLowHighLineColor: '#00ff00',
+      highLowHighLineWidth: 3,
+      highLowLowLineColor: 'not-a-color',
+      highLowLowLineWidth: 9,
+    });
+    expect(v.highLowHighLineColor).toBe('#00FF00'); // 대문자 정규화
+    expect(v.highLowHighLineWidth).toBe(3);
+    expect(v.highLowLowLineColor).toBe('');
+    expect(v.highLowLowLineWidth).toBe(1);
+  });
+
+  it("persist: 빈 문자열은 **유효한 저장값**이다 (= 고르지 않음)", () => {
+    // 색을 고른 뒤 기본으로 되돌린 상태. falsy 라고 걸러 내면 이전 hex 가 되살아난다.
+    expect(hydratedMinuteView({ highLowPriorHighLineColor: '' }).highLowPriorHighLineColor).toBe('');
   });
 });
