@@ -20,6 +20,7 @@ import {
 } from '../api/useLiveCursor';
 import type { RangeBundle } from '../api/types';
 import type { StudyViewReference } from '../api/studyViews';
+import type { GroupId } from '../workspace/groupId';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { realMsToYyyymmdd, subtractDaysKst } from '../live/liveDateTime';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../api/screenerDailyCandles';
@@ -300,20 +301,51 @@ function contentFor(kind: StudyDataWindowKind, props: ContentProps): React.React
 }
 
 /**
- * 데이터 창 본문 — 활성 저장뷰 번들이 준비되기 전엔 로딩 카드.
+ * 데이터 창 본문 — 자기 그룹의 저장뷰 번들이 준비되기 전엔 로딩 카드.
  * testid 는 구 카드 계약(`study-detail-card-*`/`study-detail-content-*`)을 승계해
  * 커서 스팟 테스트가 창 전환을 넘어 그대로 통과한다.
+ *
+ * `save`/`bundle` 은 **이 창의 그룹** 것이다(ADR-0154) — 그룹의 포커스 차트 창이
+ * 먹이는 번들. 그룹을 무시하면 그룹 2 의 10호가에 그룹 1 의 데이터가 뜬다.
  */
 export function StudyDataWindowContent({
   kind,
+  group,
+  emptyReason,
   save,
   bundle,
 }: {
   kind: StudyDataWindowKind;
+  group: GroupId;
+  /**
+   * 그릴 것이 없는 **이유**. null 이면 정상(로딩 포함).
+   *
+   * 로딩과 반드시 구분한다 — 둘 다 쿼리가 아예 안 걸리는 상태라, 로딩 문구를 쓰면
+   * 영영 끝나지 않는 거짓말이 된다.
+   *
+   * - `no-view` — 이 그룹에 저장뷰가 없다.
+   * - `no-chart` — 저장뷰는 있는데 이 그룹에 **차트 창이 없다**. 데이터 창의 번들은
+   *   그룹의 포커스 차트 창에서 오므로(봉이 쿼리 키다) 소스가 통째로 없다. 팔레트로
+   *   차트 창만 다른 그룹에 옮기면 도달한다.
+   */
+  emptyReason: 'no-view' | 'no-chart' | null;
   save: StudyViewReference | null;
   bundle: RangeBundle | null;
 }) {
   const testId = STUDY_DATA_WINDOW_TEST_ID[kind];
+  if (emptyReason) {
+    return (
+      <div
+        data-testid={`study-data-window-${emptyReason}`}
+        className="flex h-full w-full flex-col items-center justify-center gap-1 bg-bg-subtle/40 text-xs text-fg-dim"
+      >
+        <span className="font-data">그룹 {group}</span>
+        <span>
+          {emptyReason === 'no-view' ? '저장뷰를 선택하세요' : '이 그룹에 차트 창을 추가하세요'}
+        </span>
+      </div>
+    );
+  }
   if (!save || !bundle) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">

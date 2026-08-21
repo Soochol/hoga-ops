@@ -29,6 +29,7 @@ import {
   type WindowViewValue,
 } from '../live/workspace/windowView';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
+import { MIN_GROUP } from '../workspace/groupId';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
 import type { LiveTimeframe, MinuteTimeframe } from '../state/livePage';
 import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
@@ -40,8 +41,19 @@ export type StudyChartRootProps = ComponentProps<typeof LiveChartRoot>;
 
 export type StudyChartWindowProps = {
   windowId: string;
-  /** 활성 저장뷰의 종목 — Provider 의 `code`. */
+  /** 이 창의 그룹이 보는 저장뷰의 종목 — Provider 의 `code`(ADR-0154). */
   code: string | null;
+  /**
+   * 이 창의 그룹에 저장뷰가 없다 — "아직 안 왔다"(`loading`)와 **다른 상태**다.
+   *
+   * 그룹이 생기기 전에는 이 상태가 페이지 전체의 빈 상태였다(활성 뷰가 없으면 페이지가
+   * 통째로 안내였다). 그룹이 여럿이면 그 게이트가 못 산다 — 빈 그룹 창 하나 때문에
+   * 다른 그룹에서 보던 복기뷰까지 화면에서 사라지기 때문이다. 그래서 안내가 **창으로**
+   * 내려왔고, 이 플래그가 그 자리다.
+   *
+   * 구분하지 않으면 빈 그룹 창이 "학습뷰 불러오는 중…" 에서 영영 멈춘 것처럼 보인다.
+   */
+  viewMissing: boolean;
   /** 분봉 슬롯 복귀용 기억값(창 설정이 없을 때의 폴백). */
   rememberedMinute: MinuteTimeframe;
   /** 봉 전환 — **어느 창인지 함께 넘긴다**(#801: 창이 여럿이라 대상이 모호해진다). */
@@ -74,6 +86,9 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
   const chartConfig = useStudyWorkspaceStore(
     (s) => s.windows.find((w) => w.id === windowId)?.chart,
   );
+  const group = useStudyWorkspaceStore(
+    (s) => s.windows.find((w) => w.id === windowId)?.group ?? MIN_GROUP,
+  );
   const timeframe = chartConfig?.timeframe ?? STUDY_DEFAULT_MINUTE_TIMEFRAME;
   // 좌측 팬 딥 백필의 창별 from-date — 비영속 런타임(#713 과 정합).
   const historicalFromDate = useStudyWorkspaceStore(
@@ -86,20 +101,22 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
   const view: WindowViewValue = useMemo(
     () => ({
       windowId,
-      // `/study` 에는 링크 그룹이 없다 — 활성 저장뷰가 단일 암묵 그룹(ADR-0123).
-      group: null,
+      // 링크 그룹은 ADR-0154 로 `/study` 에도 생겼다 — 여기 `null` 이던 시절의 근거
+      // ("활성 저장뷰가 단일 암묵 그룹")는 그때 소멸했다.
+      group,
       code,
       timeframe,
       historicalFromDate,
       workspace: STUDY_WINDOW_WORKSPACE,
     }),
-    [windowId, code, timeframe, historicalFromDate],
+    [windowId, group, code, timeframe, historicalFromDate],
   );
 
   return (
     <WindowViewContext.Provider value={view}>
       <StudyChartWindowInner
         {...props}
+        group={group}
         timeframe={timeframe}
         // 분봉 슬롯은 **이 창의 기억**이 먼저다(#902). 페이지 값은 창 설정이 아직
         // 없을 때의 폴백 — 창이 여럿이면 옆 창의 기억이 새어 들어오면 안 된다.
@@ -166,15 +183,17 @@ function SavedRangeCoverageChip({ notice }: { notice: StudySavedRangeCoverageNot
 
 function StudyChartWindowInner({
   windowId,
+  group,
   rememberedMinute,
   onTimeframeChange,
   timeframe,
   chart,
   loading,
+  viewMissing,
   sidecarLoading,
   sidecarFailed,
   savedRangeNotice,
-}: StudyChartWindowProps & { timeframe: LiveTimeframe }) {
+}: StudyChartWindowProps & { group: number; timeframe: LiveTimeframe }) {
   // 임계는 `/live` 값을 재사용하지 않는다 — 액션이 2버튼이라 그대로 쓰면 일찍
   // 접힌다(#903, #905 가 실측으로 대체).
   const [fold, headerRef] = useChartHeaderFold(STUDY_HEADER_FOLD);
@@ -210,8 +229,19 @@ function StudyChartWindowInner({
       >
         {/* 창마다 번들이 따로라(#801) 로딩도 창별이다 — 페이지 플래그는 포커스 창
             기준이므로, 아직 안 받아온 다른 창이 빈 사각형으로 남지 않게 `!chart` 도
-            같은 자리로 취급한다. */}
-        {loading || !chart ? (
+            같은 자리로 취급한다.
+
+            **"뷰 없음" 이 로딩보다 먼저다**(ADR-0154): 뷰가 없으면 쿼리 자체가 걸리지
+            않으므로 로딩 문구는 영영 끝나지 않는 거짓말이 된다. */}
+        {viewMissing ? (
+          <div
+            data-testid="study-chart-window-no-view"
+            className="flex h-full flex-col items-center justify-center gap-1 text-sm text-fg-dim"
+          >
+            <span className="font-data">그룹 {group}</span>
+            <span>저장뷰를 선택하세요</span>
+          </div>
+        ) : loading || !chart ? (
           <div
             data-testid="study-page-loading"
             className="flex h-full items-center justify-center text-sm text-fg-dim"
@@ -231,7 +261,7 @@ function StudyChartWindowInner({
             둘을 한 컬럼에 쌓는 이유: 같은 모서리에 각자 `absolute` 로 앉히면 사이드카가
             로딩 중이면서 저장 구간이 코퍼스 밖인 창(콜드 로드에서 흔하다)에서 정확히
             겹친다. `LiveChartRoot` 가 좌하단 칩 둘에 쓴 것과 같은 처방. */}
-        {chart && !loading && (sidecarLoading || sidecarFailed || savedRangeNotice) && (
+        {chart && !loading && !viewMissing && (sidecarLoading || sidecarFailed || savedRangeNotice) && (
           <div className="pointer-events-none absolute right-2 top-2 z-[25] flex flex-col items-end gap-1">
             {(sidecarLoading || sidecarFailed) && <SidecarStatusChip failed={sidecarFailed} />}
             {savedRangeNotice && <SavedRangeCoverageChip notice={savedRangeNotice} />}

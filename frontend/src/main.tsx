@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
-import { initStudyActiveViewSync } from './state/studyActiveView';
 import AppErrorBoundary from './ui/AppErrorBoundary';
 // 앱 서체(Pretendard dynamic-subset)를 번들에 내장한다 — ADR-0134 §4 (폰트
 // self-host). 이전에는 index.html 이 jsdelivr CDN 을 렌더 블로킹으로 링크해,
@@ -39,13 +38,6 @@ const Market = lazy(() => import('./pages/Market'));
 // 전부 `requestSettingsModal()` 로 모인다. 페이지 사본이 있던 시절엔 같은 내용이 두
 // 표면으로 열렸다. 옛 북마크는 아래 라우트가 `/live` 로 받는다.
 
-
-const _disposeStudyActiveViewSync = initStudyActiveViewSync();
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    _disposeStudyActiveViewSync();
-  });
-}
 
 // refetchOnWindowFocus/Reconnect default to true — a tab refocus or network
 // blip fires every active /live poll at once, and each sidecar refetch can

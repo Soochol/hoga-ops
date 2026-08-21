@@ -14,7 +14,11 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
-import { useStudyActiveViewStore } from '../state/studyActiveView';
+import {
+  activeStudyGroup,
+  studyGroupViewFromSave,
+  useStudyWorkspaceStore,
+} from '../state/studyWorkspace';
 import { wantsNewTab } from '../live/useJumpToLive';
 import { openStudyViewInNewTab, studyViewDeepLinkPath } from './studyDeepLink';
 import { latestStudyViewForCode } from './studyViewSelection';
@@ -185,8 +189,17 @@ export function StudyViewsDrawer() {
   // 스토어를 읽는 이유: 이 드로어는 **우측 레일의 전역 컴포넌트**라 `/live` 등 다른
   // 라우트에서는 URL 에 `?view=` 가 아예 없다. URL 만 보면 그 라우트들에서 행 하이라이트가
   // 통째로 사라진다.
-  const activeStudyViewId = useStudyActiveViewStore((state) => state.active?.viewId ?? null);
-  const selectedStudyViewId = activeStudyViewId ?? currentStudyViewId;
+  //
+  // ADR-0154 로 **열린 뷰가 여럿**이 됐다(그룹마다 하나). 하이라이트도 집합이다 — 하나만
+  // 칠하면 그룹 2 에서 보고 있는 뷰가 목록에서 "안 열린 것" 으로 보인다.
+  const groupViews = useStudyWorkspaceStore((s) => s.groupViews);
+  const openStudyViewIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const view of Object.values(groupViews)) if (view) ids.add(view.viewId);
+    // URL 폴백은 그룹이 아직 하이드레이션되기 전(딥링크 첫 프레임)을 메운다.
+    if (ids.size === 0 && currentStudyViewId) ids.add(currentStudyViewId);
+    return ids;
+  }, [groupViews, currentStudyViewId]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
@@ -241,19 +254,25 @@ export function StudyViewsDrawer() {
   }
 
   /**
-   * 저장뷰를 **이 탭에서** 연다 — 활성 뷰를 제자리 교체한다(ADR-0149). 앱 안에 뷰가
-   * 쌓이는 자리는 없다: 탭바도, disposition 도 되살아나지 않았다.
+   * 저장뷰를 **이 탭의 활성 그룹에서** 연다 — 그 그룹의 뷰를 제자리 교체한다
+   * (ADR-0154). 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 행을
+   * 클릭하면 그룹 2 만 갈아탄다. 다른 그룹 창들은 그대로다 — 그게 나란히 비교라는
+   * 이 기능의 요점이다.
    *
-   * 다른 뷰를 곁눈질하려면 **브라우저 탭**을 쓴다 — 행 ctrl/⌘+클릭이
+   * 앱 안에 **탭**이 쌓이는 자리는 여전히 없다(ADR-0149): 탭바도 disposition 도
+   * 되살아나지 않았다. 뷰를 여럿 여는 축이 탭에서 **그룹**으로 바뀌었을 뿐이다.
+   *
+   * 다른 뷰를 곁눈질하려면 **브라우저 탭**도 그대로 쓸 수 있다 — 행 ctrl/⌘+클릭이
    * `openStudyViewInNewTab` 으로 `?view=` 딥링크를 새 탭에 띄우고, 이 함수는 그 경로에서
-   * 아예 호출되지 않는다(그래야 이 탭의 활성 뷰가 그대로다). 두 「탭」의 구별은
+   * 아예 호출되지 않는다(그래야 이 탭의 그룹들이 그대로다). 두 「탭」의 구별은
    * `studyDeepLink.ts` 도크스트링에 있다.
    *
    * 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
    * 종목과 구간이다.
    */
   function openStudyView(row: StudyViewListRow) {
-    useStudyActiveViewStore.getState().openSave(row);
+    const workspace = useStudyWorkspaceStore.getState();
+    workspace.setGroupView(activeStudyGroup(workspace), studyGroupViewFromSave(row));
     navigateToStudyView(row);
   }
 
@@ -313,10 +332,13 @@ export function StudyViewsDrawer() {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        // 지운 것이 활성 뷰였으면 **빈 상태**로 간다(ADR-0149). 남은 뷰 중 하나로 자동
-        // 이동하면 사용자가 지운 직후 뜻밖의 뷰가 뜬다 — 빈 상태에는 "저장뷰 열기"
-        // 버튼이 있다.
-        useStudyActiveViewStore.getState().clearIfView(deletedId);
+        // 지운 뷰를 보던 **모든 그룹**을 비운다(ADR-0154). 남은 뷰 중 하나로 자동
+        // 이동하지 않는 것은 ADR-0149 그대로다 — 사용자가 지운 직후 뜻밖의 뷰가 뜨는
+        // 것보다 빈 상태가 낫고, 빈 상태에는 "저장뷰 열기" 버튼이 있다.
+        //
+        // 그룹이 여럿일 수 있으므로 "활성 그룹만" 이 아니다: 같은 뷰를 두 그룹에서
+        // 보고 있었다면 한쪽만 비우고 다른 쪽이 삭제된 뷰를 계속 조회한다.
+        useStudyWorkspaceStore.getState().clearGroupsOfView(deletedId);
         if (location.pathname === '/study' && currentStudyViewId === deletedId) {
           navigate('/study');
         }
@@ -400,7 +422,7 @@ export function StudyViewsDrawer() {
   };
 
   const renderStudyViewRow = (row: StudyViewListRow) => {
-    const isActive = selectedStudyViewId === row.id;
+    const isActive = openStudyViewIds.has(row.id);
     const isEditing = renameState?.id === row.id || memoState?.id === row.id;
     return (
       <RailTreeRow
@@ -419,8 +441,8 @@ export function StudyViewsDrawer() {
         //
         // 지연 스케줄(180ms — 이름 변경 더블클릭과의 모호성 해소)을 **거치지 않는다**:
         // 수정자 클릭에는 그 모호성이 없고, 사용자 제스처 핸들러 안에서 동기로 열어야
-        // 팝업 차단에 걸리지 않는다. 이 탭의 활성 뷰는 건드리지 않는 것이 계약이라
-        // `openStudyView`(=`openSave` + navigate)를 부르지 않는다.
+        // 팝업 차단에 걸리지 않는다. 이 탭의 그룹들은 건드리지 않는 것이 계약이라
+        // `openStudyView`(=`setGroupView` + navigate)를 부르지 않는다.
         onClick={isEditing ? undefined : (e) => {
           if (wantsNewTab(e)) {
             cancelPendingStudyViewNavigation();

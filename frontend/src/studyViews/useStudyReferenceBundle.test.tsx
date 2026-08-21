@@ -147,14 +147,15 @@ const indicators: IndicatorSettings = {
   volumeDistributionRangeCount: 12,
 };
 
-function spec(timeframe: LiveTimeframe, windowId = WINDOW_ID) {
-  return { windowId, timeframe, indicators };
+/** 저장뷰는 ADR-0154 로 **창 스펙 안**으로 들어왔다 — 창마다 그룹이 다를 수 있다. */
+function spec(timeframe: LiveTimeframe, windowId = WINDOW_ID, save: StudyViewReference | null = null) {
+  return { windowId, save, timeframe, indicators };
 }
 
 /** 단일 창 결과 — 기존 단수 훅 단언을 그대로 옮기기 위한 얇은 어댑터. */
 function renderOne(target: StudyViewReference, windowId = WINDOW_ID) {
   const rendered = renderHook(() =>
-    useStudyReferenceBundles(target, [spec(target.timeframe as LiveTimeframe, windowId)]));
+    useStudyReferenceBundles([spec(target.timeframe as LiveTimeframe, windowId, target)]));
   return {
     ...rendered,
     get current() { return rendered.result.current[windowId]; },
@@ -478,7 +479,7 @@ describe('useStudyReferenceBundles', () => {
 
   // ── 멀티 차트 창 (#801) ──────────────────────────────────────────────
   it('창마다 자기 봉으로 계획을 세운다 — 봉이 곧 쿼리 키다', () => {
-    renderHook(() => useStudyReferenceBundles(save, [spec('5m', 'a'), spec('D', 'b')]));
+    renderHook(() => useStudyReferenceBundles([spec('5m', 'a', save), spec('D', 'b', save)]));
 
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(
       expect.objectContaining({ timeframe: '5m' }), expect.anything(), null);
@@ -492,7 +493,7 @@ describe('useStudyReferenceBundles', () => {
 
   it('같은 설정 창끼리는 쿼리를 한 벌로 접는다 — RQ 의 Duplicate Queries 경고 방지', () => {
     const { result } = renderHook(() =>
-      useStudyReferenceBundles(save, [spec('5m', 'a'), spec('5m', 'b')]));
+      useStudyReferenceBundles([spec('5m', 'a', save), spec('5m', 'b', save)]));
 
     // 옵션 객체가 같은 4개뿐 — 8개를 넣으면 react-query 가 경고한다(실측).
     expect(useQueryMock).toHaveBeenCalledTimes(4);
@@ -512,14 +513,14 @@ describe('useStudyReferenceBundles', () => {
     }));
 
     const { result } = renderHook(() =>
-      useStudyReferenceBundles(save, [spec('5m', 'a'), spec('D', 'b')]));
+      useStudyReferenceBundles([spec('5m', 'a', save), spec('D', 'b', save)]));
 
     expect(useQueryMock).toHaveBeenCalledTimes(8);
     expect(Object.keys(result.current).sort()).toEqual(['a', 'b']);
   });
 
   it('창이 없으면 아무 쿼리도 걸지 않는다', () => {
-    const { result } = renderHook(() => useStudyReferenceBundles(save, []));
+    const { result } = renderHook(() => useStudyReferenceBundles([]));
 
     expect(useQueryMock).not.toHaveBeenCalled();
     expect(result.current).toEqual({});

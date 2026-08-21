@@ -6,7 +6,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import type { DayVolumeDistribution, RangeBundle, SymbolHit } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { useStudyActiveViewStore } from '../state/studyActiveView';
+import { activeStudyView, studyGroupViewFromSave } from '../state/studyWorkspace';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyWorkspaceStore, type StudyWorkspaceWindow } from '../state/studyWorkspace';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
@@ -36,7 +36,14 @@ const {
   liveChartRootMock: vi.fn(),
   // 번들 훅이 받은 창별 스펙 — 봉·지표가 곧 쿼리 키라, 창 분리가 여기 닿는지를
   // 재려면 인자를 봐야 한다(반환값은 mock 이 만들므로 아무것도 증명하지 않는다).
-  capturedWindowSpecs: { current: [] as Array<{ windowId: string; indicators: Record<string, unknown> }> },
+  capturedWindowSpecs: {
+    current: [] as Array<{
+      windowId: string;
+      // ADR-0154: 저장뷰가 창 스펙 안으로 들어왔다 — 그룹마다 다를 수 있다.
+      save: { id: string; code: string } | null;
+      indicators: Record<string, unknown>;
+    }>,
+  },
 }));
 
 vi.mock('./useStudyViews', () => ({
@@ -49,9 +56,15 @@ vi.mock('./useStudyViews', () => ({
 // 결과도 하나라 기존 계약과 동치다.
 vi.mock('./useStudyReferenceBundle', () => ({
   useStudyReferenceBundles: (
-    save: unknown,
-    windows: ReadonlyArray<{ windowId: string; timeframe: string; indicators: Record<string, unknown> }>,
+    windows: ReadonlyArray<{
+      windowId: string;
+      save: { id: string; code: string } | null;
+      timeframe: string;
+      indicators: Record<string, unknown>;
+    }>,
   ) => Object.fromEntries((capturedWindowSpecs.current = [...windows]).map((w) => {
+    // 저장뷰는 ADR-0154 로 **창 스펙 안**에 있다 — 창마다 그룹이 다를 수 있다.
+    const save = w.save;
     const displayedSave = save && typeof save === 'object'
       ? { ...save, timeframe: w.timeframe }
       : save;
@@ -247,12 +260,13 @@ function renderPage(initialEntry = '/study') {
  *  스토어 액션을 직접 부른다. 종전엔 탭 칩을 클릭했다(ADR-0149 로 제거). */
 function openStudyView(view: { viewId: string; code: string; label: string; name: string }) {
   act(() => {
-    useStudyActiveViewStore.getState().openSave({
+    // ADR-0154: 저장뷰는 **활성 그룹**에 꽂힌다. 시드 창이 전부 그룹 1 이다.
+    useStudyWorkspaceStore.getState().setGroupView(1, studyGroupViewFromSave({
       id: view.viewId,
       code: view.code,
       label: view.label,
       name: view.name,
-    });
+    }));
   });
 }
 
@@ -309,7 +323,6 @@ beforeEach(() => {
       },
     },
   });
-  useStudyActiveViewStore.setState({ active: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
   // 창 워크스페이스(ADR-0123) — 시드와 무관한 결정적 배치로 초기화. DOM 순서 =
   // windows 배열 순서(orderbook → brokers → vdist → program).
@@ -317,6 +330,7 @@ beforeEach(() => {
     {
       id: 'w-chart',
       kind: 'chart',
+      group: 1,
       rect: { x: 0, y: 0, w: 0.72, h: 1 },
       // ⚠️ setState 는 하이드레이션(ensureChartWindow)을 우회하므로 창 설정을
       // 직접 심어야 한다. 없으면 `withChart` 가 no-op 이라 봉 전환이 조용히 죽고,
@@ -326,14 +340,16 @@ beforeEach(() => {
         lastMinuteTimeframe: '5m',
       },
     },
-    { id: 'w-book', kind: 'book', rect: { x: 0.72, y: 0, w: 0.28, h: 0.25 } },
-    { id: 'w-broker', kind: 'broker', rect: { x: 0.72, y: 0.25, w: 0.28, h: 0.25 } },
-    { id: 'w-vdist', kind: 'vdist', rect: { x: 0.72, y: 0.5, w: 0.28, h: 0.25 } },
-    { id: 'w-program', kind: 'program', rect: { x: 0.72, y: 0.75, w: 0.28, h: 0.25 } },
+    { id: 'w-book', kind: 'book', group: 1, rect: { x: 0.72, y: 0, w: 0.28, h: 0.25 } },
+    { id: 'w-broker', kind: 'broker', group: 1, rect: { x: 0.72, y: 0.25, w: 0.28, h: 0.25 } },
+    { id: 'w-vdist', kind: 'vdist', group: 1, rect: { x: 0.72, y: 0.5, w: 0.28, h: 0.25 } },
+    { id: 'w-program', kind: 'program', group: 1, rect: { x: 0.72, y: 0.75, w: 0.28, h: 0.25 } },
   ];
   useStudyWorkspaceStore.setState({
     windows: seedWindows,
     zOrder: ['w-book', 'w-broker', 'w-vdist', 'w-program', 'w-chart'],
+    // 그룹→저장뷰도 함께 비운다(ADR-0154) — 여기가 활성 뷰의 집이다.
+    groupViews: {},
   });
 });
 
@@ -1087,7 +1103,7 @@ describe('StudyPage', () => {
     openStudyView({ viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' });
 
     expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
-    expect(useStudyActiveViewStore.getState().active).toMatchObject({ viewId: 'view-second' });
+    expect(activeStudyView(useStudyWorkspaceStore.getState())).toMatchObject({ viewId: 'view-second' });
   });
 
   // 「keeps previously focused study tabs in the warm query set after switching tabs」가
@@ -1113,8 +1129,8 @@ describe('StudyPage', () => {
    */
   describe('진입 시 활성 뷰 결정 (ADR-0149)', () => {
     it('쿼리 없이 들어오면 영속된 마지막 뷰를 연다', () => {
-      useStudyActiveViewStore.setState({
-        active: { viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' },
+      useStudyWorkspaceStore.setState({
+        groupViews: { 1: { viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' } },
       });
 
       renderPage('/study');
@@ -1123,8 +1139,8 @@ describe('StudyPage', () => {
     });
 
     it('`?view=` 가 영속된 마지막 뷰를 이긴다 — 딥링크는 그 뷰를 보러 온 것이다', () => {
-      useStudyActiveViewStore.setState({
-        active: { viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' },
+      useStudyWorkspaceStore.setState({
+        groupViews: { 1: { viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기' } },
       });
 
       renderPage('/study?view=view-ref');
@@ -1158,5 +1174,140 @@ describe('StudyPage', () => {
     // `/live` 세트는 그대로다 — 이 값이 거기서 온 것이 아님을 못 박는다.
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.depthHeatmapEnabled)
       .toBeUndefined();
+  });
+});
+
+/**
+ * 링크 그룹 (ADR-0154) — 한 페이지에서 저장뷰를 **여럿** 본다.
+ *
+ * `/live` 가 그룹→종목으로 하는 것을 `/study` 는 그룹→저장뷰로 한다. 여기서 재는 것은
+ * "창마다 다른 뷰가 실제로 화면까지 도달하는가" 다 — 스토어 단언은 studyWorkspace 쪽에
+ * 있고, 이 파일은 **페이지 배선**(창별 스펙·per-window 안내·게이트)을 본다.
+ */
+describe('StudyPage — 링크 그룹 (ADR-0154)', () => {
+  /** 그룹 2 차트 창을 하나 더 심는다. 포커스는 그대로 그룹 1 창(zOrder 마지막). */
+  function seedSecondGroupChart() {
+    const s = useStudyWorkspaceStore.getState();
+    useStudyWorkspaceStore.setState({
+      windows: [
+        ...s.windows,
+        {
+          id: 'w-chart-g2',
+          kind: 'chart',
+          group: 2,
+          rect: { x: 0, y: 0, w: 0.3, h: 0.5 },
+          chart: { timeframe: '5m', lastMinuteTimeframe: '5m' },
+        },
+      ],
+      zOrder: [...s.zOrder.filter((id) => id !== 'w-chart'), 'w-chart-g2', 'w-chart'],
+    });
+  }
+
+  it('그룹이 다른 두 차트 창이 **각자의** 저장뷰로 번들을 건다', () => {
+    seedSecondGroupChart();
+    act(() => {
+      useStudyWorkspaceStore.getState().setGroupView(2, {
+        viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기',
+      });
+    });
+
+    renderPage('/study?view=view-ref');
+
+    const byWindow = Object.fromEntries(
+      capturedWindowSpecs.current.map((w) => [w.windowId, w.save?.id ?? null]),
+    );
+    expect(byWindow['w-chart']).toBe('view-ref');
+    expect(byWindow['w-chart-g2']).toBe('view-second');
+    // 화면까지 도달했는가 — 두 종목이 각각 차트로 간다.
+    const codes = new Set(liveChartRootMock.mock.calls.map((c) => c[0].code));
+    expect(codes).toEqual(new Set(['005930', '000660']));
+  });
+
+  it('`?view=` 는 **활성 그룹만** 갈아탄다 — 딥링크가 옆 그룹을 덮지 않는다', () => {
+    seedSecondGroupChart();
+    act(() => {
+      useStudyWorkspaceStore.getState().setGroupView(2, {
+        viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기',
+      });
+    });
+
+    renderPage('/study?view=view-ref');
+
+    // 활성 그룹(1)은 딥링크 뷰. 그룹 2 는 스토어 값 그대로.
+    expect(useStudyWorkspaceStore.getState().groupViews[2]?.viewId).toBe('view-second');
+    const g2 = capturedWindowSpecs.current.find((w) => w.windowId === 'w-chart-g2');
+    expect(g2?.save?.id).toBe('view-second');
+  });
+
+  it('뷰가 없는 그룹의 창은 로딩이 아니라 "저장뷰를 선택하세요" 다', () => {
+    seedSecondGroupChart(); // 그룹 2 에는 뷰를 주지 않는다.
+
+    renderPage('/study?view=view-ref');
+
+    // 로딩 문구를 쓰면 쿼리가 아예 안 걸리므로 영영 끝나지 않는 거짓말이 된다.
+    const notice = screen.getByTestId('study-chart-window-no-view');
+    expect(notice.textContent).toContain('그룹 2');
+    expect(notice.textContent).toContain('저장뷰를 선택하세요');
+  });
+
+  it('활성 그룹이 비어도 다른 그룹에 뷰가 있으면 페이지가 빈 상태로 가지 않는다', () => {
+    // 포커스는 그룹 2 창(뷰 없음), 뷰는 그룹 1 에만.
+    seedSecondGroupChart();
+    act(() => {
+      useStudyWorkspaceStore.getState().setGroupView(1, {
+        viewId: 'view-ref', code: '005930', label: '삼성전자', name: '돌파 복기',
+      });
+      useStudyWorkspaceStore.getState().focusWindow('w-chart-g2');
+    });
+
+    renderPage('/study');
+
+    expect(screen.queryByTestId('study-page-empty')).toBeNull();
+    expect(screen.getByTestId('study-page')).toBeTruthy();
+    // 그룹 1 창은 자기 뷰를 계속 그린다 — 빈 그룹 창을 클릭했다는 이유로 사라지면 안 된다.
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].code).toBe('005930');
+  });
+
+  it('창 헤더에 그룹 번호 뱃지가 있고 팔레트로 그룹을 옮긴다', () => {
+    renderPage('/study?view=view-ref');
+
+    // 뱃지는 창마다 하나 — `/live` 와 같은 자리(타이틀바 좌상단).
+    const badges = screen.getAllByTitle('저장뷰 링크 그룹 변경');
+    expect(badges.length).toBe(useStudyWorkspaceStore.getState().windows.length);
+
+    const anchor = badges[0].parentElement as HTMLElement;
+    fireEvent.click(badges[0]);
+    fireEvent.click(within(anchor).getByRole('button', { name: '4' }));
+
+    expect(useStudyWorkspaceStore.getState().windows[0].group).toBe(4);
+    // 고른 뒤 팔레트는 닫힌다(선택이 곧 커밋).
+    expect(within(anchor).queryByRole('button', { name: '10' })).toBeNull();
+  });
+});
+
+/**
+ * 그룹 팔레트로 도달 가능한 사각지대 — **저장뷰는 있는데 그 그룹에 차트 창이 없다**.
+ *
+ * 데이터 창의 번들은 그룹의 포커스 차트 창에서 온다(봉이 쿼리 키다). 차트만 다른
+ * 그룹으로 옮기면 소스가 통째로 사라지는데, 그 상태를 로딩으로 표시하면 영영 끝나지
+ * 않는다 — 사용자는 고장으로 읽고, 고칠 방법(차트 창 추가)도 알 수 없다.
+ */
+describe('StudyPage — 그룹에 차트 창이 없을 때 (ADR-0154)', () => {
+  it('데이터 창이 로딩이 아니라 "차트 창을 추가하세요" 를 말한다', () => {
+    act(() => {
+      // 10호가 창만 그룹 2 로 보낸다. 그룹 2 에 뷰는 주되 차트는 없다.
+      useStudyWorkspaceStore.getState().setWindowGroup('w-book', 2);
+      useStudyWorkspaceStore.getState().setGroupView(2, {
+        viewId: 'view-second', code: '000660', label: 'SK하이닉스', name: '눌림 복기',
+      });
+    });
+
+    renderPage('/study?view=view-ref');
+
+    const notice = screen.getByTestId('study-data-window-no-chart');
+    expect(notice.textContent).toContain('그룹 2');
+    expect(notice.textContent).toContain('차트 창을 추가하세요');
+    // "뷰 없음" 과 구분된다 — 그룹 2 에는 뷰가 있다.
+    expect(screen.queryByTestId('study-data-window-no-view')).toBeNull();
   });
 });

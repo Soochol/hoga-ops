@@ -111,6 +111,14 @@
 > 서로를 덮어써도 잃는 것이 "다음에 그 탭에서 뭐가 먼저 뜨나" 뿐이다. 여기서 세운 저장
 > 경로 테스트의 **계약은 `studyActiveView.test.ts` 의 「저장 배선」 describe 가 승계**했다.
 
+> **갱신 (2026-08-21, ADR-0154): 이 항목의 결말이 한 번 더 바뀌었고, 이번엔 좋은 쪽이다.**
+> 활성 저장뷰가 링크 그룹의 것이 되면서 `study.activeView.v1` 스토어가 삭제되고 값이
+> `study.workspace.v1` 의 `groupViews` 로 옮겨갔다 — 그 키는 `tab-authoritative-shared-seed`
+> 라 **위에서 보류했던 "두 탭이 서로를 덮어쓴다" 가 구조적으로 사라졌다**(공유
+> localStorage 는 새 탭의 시드 전용). 옛 키 둘(`study.tabs.v1` · `study.activeView.v1`)은
+> 이제 **부팅 승계 전용**이고 여전히 지우지 않는다. 저장 경로 테스트의 계약은
+> `state/studyWorkspace.test.ts` 의 「링크 그룹」·「그룹 1 저장뷰 승계」 describe 가 승계했다.
+
 **`readJsonObject` 가 키 부재를 지운다**(`persist.ts:27` — `if (!raw) return {}`). 이것이
 "원시 localStorage 를 직접 쓰는" 사례 중 4건의 실제 이유다 — `chartPrefsPersistence` ·
 `indicatorSettingsV2` · `indicatorsWindowMigration` · `chart/drawing/persistence` 가 전부

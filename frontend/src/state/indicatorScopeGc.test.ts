@@ -118,6 +118,7 @@ describe('`/study` 창 닫기 게이트', () => {
       windows: [{
         id: 'w1',
         kind: 'chart',
+        group: 1,
         rect: { x: 0, y: 0, w: 0.5, h: 0.5 },
         chart: { timeframe: '1m' },
       }],

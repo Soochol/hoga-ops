@@ -12,10 +12,14 @@ import type { LiveTimeframe } from '../state/livePage';
  * 번들이 30분씩 힙에 상주한다. 장시간 세션에서 힙이 GB 단위로 부풀어 GC 정지가
  * 길어지고 마우스/크로스헤어가 버벅이는 원인이다.
  *
- * **ADR-0149 로 보존 대상이 좁아졌다.** 종전엔 "열린 탭 어느 하나라도 든 종목" 을
- * 남겼지만 `/study` 는 이제 저장뷰를 하나만 연다 — 보존 집합이 활성 종목 하나다.
- * 그만큼 **축출이 공격적**이어서 뷰 A↔B 왕복은 매번 재fetch 가 된다. 메모리와
- * 재요청을 맞바꾼 것이고, 체감이 나쁘면 "직전 종목 1개 유예" 가 다음 수다.
+ * **보존 집합의 축은 두 번 바뀌었다.** 원래는 "열린 탭 어느 하나라도 든 종목",
+ * ADR-0149 가 탭을 없애며 "활성 종목 하나", 그리고 ADR-0154 가 링크 그룹을 들이면서
+ * **"어느 그룹이든 지금 보고 있는 종목 전부"** 가 됐다. 축이 탭에서 그룹으로 옮겨간
+ * 것이지 되돌아간 것이 아니다 — 그룹은 상시 공존이라 "비활성 그룹" 이라는 것이 없고,
+ * 전부 실제로 화면에 떠 있는 번들이다.
+ *
+ * 여전히 **축출은 공격적**이다: 어느 그룹에서도 안 보는 종목은 즉시 지운다. 뷰 A↔B
+ * 왕복이 매번 재fetch 인 것도 그대로고, 체감이 나쁘면 "직전 종목 1개 유예" 가 다음 수다.
  *
  * **봉 축도 함께 본다(#801)** — 차트 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
  * 종목만 보는 규칙은 그걸 영원히 남기므로, 활성 종목에 한해 "열린 창 어디에도 없는 봉"
@@ -28,12 +32,20 @@ import type { LiveTimeframe } from '../state/livePage';
  * `useQueries` 로 옵저버를 들고 있으므로 이 가드 하나로 "지금 쓰는 번들" 은 보호된다.
  */
 export function useStudyRangeCacheEviction(
-  /** 활성 저장뷰의 종목. `null` 이면 보존 집합이 비어 관찰자 없는 range 캐시를 전부 지운다. */
-  activeCode: string | null = null,
+  /** 지금 어느 그룹이든 보고 있는 종목들. 비면 보존 집합이 비어 관찰자 없는 range
+   *  캐시를 전부 지운다. */
+  activeCodes: readonly string[] = [],
   /** 지금 열려 있는 차트 창들의 봉. */
   openTimeframes: readonly LiveTimeframe[] = [],
 ): void {
   const queryClient = useQueryClient();
+  // 배열 신원이 아니라 **내용**으로 effect 를 건다 — 호출부가 창 배열에서 매 렌더
+  // 새로 만들어 넘기므로(창을 드래그하기만 해도 새 배열), 신원으로 걸면 축출이
+  // 무의미하게 매 렌더 돈다. 봉 쪽이 `keepBucketsKey` 로 하는 것과 같은 처방.
+  const keepCodesKey = useMemo(
+    () => [...new Set(activeCodes)].sort().join(','),
+    [activeCodes],
+  );
   // 봉은 **버킷 ms** 로 비교한다 — 쿼리 키에 있는 것이 그 값이다.
   const keepBucketsKey = useMemo(() => {
     const buckets = new Set<number>();
@@ -58,14 +70,15 @@ export function useStudyRangeCacheEviction(
 
   useEffect(() => {
     const keepBuckets = new Set(keepBucketsKey.split(',').filter(Boolean).map(Number));
+    const keepCodes = new Set(keepCodesKey.split(',').filter(Boolean));
     queryClient.removeQueries({
       queryKey: ['range'],
       type: 'inactive',
       predicate: (query) => {
         const code = query.queryKey[1];
         if (typeof code !== 'string') return false;
-        // 보존 집합은 활성 종목 하나다(ADR-0149). 나머지는 전부 축출 대상.
-        if (code !== activeCode) return true;
+        // 보존 집합은 지금 어느 그룹이든 보고 있는 종목들이다(ADR-0154). 나머지는 축출.
+        if (!keepCodes.has(code)) return true;
         // 열린 창 봉을 하나도 모르면 **봉 축을 끈다** — 빈 배열은 "보존할 봉이 없다" 가
         // 아니라 "창이 아직 없다"(하이드레이션 직전)는 뜻이다. 여기서 축출하면 창이
         // 뜨자마자 전부 재fetch 다. 탭이 있던 시절엔 탭 봉이 이 자리를 메워서 이 구멍이
@@ -76,5 +89,5 @@ export function useStudyRangeCacheEviction(
         return bucketMs !== null && !keepBuckets.has(bucketMs);
       },
     });
-  }, [activeCode, keepBucketsKey, queryClient]);
+  }, [keepCodesKey, keepBucketsKey, queryClient]);
 }

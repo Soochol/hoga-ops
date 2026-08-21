@@ -1,10 +1,13 @@
 /**
  * StudyWorkspaceCanvas — 코어 캔버스에 /study 결합부를 배선한다 (ADR-0123 PR-3).
  *
- * /live 래퍼(`live/workspace/WorkspaceCanvas.tsx`)의 study 판. 링크 그룹·entryDrag
- * 정밀 드롭·드롭 어포던스가 전부 없다 — 탭(활성 저장뷰)이 콘텐츠 선택자라 창은
- * 배치만 담당한다(방안 A). 창 콘텐츠는 ctx 로 주입받는다: 차트/메모는 StudyPage 가
- * 조립한 노드·props, 데이터 창은 kind 분기(studyWindowContents).
+ * /live 래퍼(`live/workspace/WorkspaceCanvas.tsx`)의 study 판. **링크 그룹은 이제
+ * 있다**(ADR-0154) — 뱃지·팔레트 배선이 저쪽과 같은 모양이고, 다른 것은 번호가
+ * 저장뷰를 가리킨다는 점뿐이다. entryDrag 정밀 드롭·드롭 어포던스는 여전히 없다.
+ *
+ * 창 콘텐츠는 ctx 로 주입받는다: 차트/메모는 StudyPage 가 조립한 노드·props, 데이터
+ * 창은 kind 분기(studyWindowContents). **전부 창 id 를 받는 함수**다 — 창마다 그룹이
+ * 다를 수 있으므로 값으로 실으면 그룹 축이 사라진다.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -12,6 +15,7 @@ import {
   type WindowItemProps,
 } from '../workspace/WorkspaceCanvas';
 import { WindowFrameCore } from '../workspace/WindowFrame';
+import { GroupBadge } from '../workspace/GroupBadge';
 import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -26,6 +30,7 @@ import { STUDY_WINDOW_LABEL, type StudyDataWindowKind } from './studyWindowMeta'
 import {
   canCloseStudyWindow,
   useStudyWorkspaceStore,
+  type GroupId,
   type StudyWindowKind,
   type StudyWorkspaceWindow,
 } from '../state/studyWorkspace';
@@ -37,22 +42,39 @@ export interface StudyChartSymbol {
   kindLabel: string;
 }
 
-/** 창 항목들이 공유하는 /study 컨텍스트 — StudyPage 가 useMemo 로 안정화해 주입. */
+/**
+ * 창 항목들이 공유하는 /study 컨텍스트 — StudyPage 가 useMemo 로 안정화해 주입.
+ *
+ * **거의 전부가 `windowId` 를 받는 함수다**(ADR-0154). 값으로 실으면 "모든 창이 같은
+ * 저장뷰를 본다" 가 타입에 박히고, 그게 정확히 이 변경이 없앤 전제다.
+ */
 export interface StudyItemCtx {
-  save: StudyViewReference | null;
-  bundle: RangeBundle | null;
-  /** 차트 창 타이틀바가 그리는 식별 행(#903 의 페이지 툴바 식별부에서 이관). */
-  symbol: StudyChartSymbol;
+  /** 이 창의 그룹이 보는 저장뷰. null = 그 그룹에 뷰가 없거나 아직 안 왔다. */
+  saveFor: (windowId: string) => StudyViewReference | null;
+  /** 이 창의 그룹 번들(그룹의 포커스 차트 창이 먹인다). */
+  bundleFor: (windowId: string) => RangeBundle | null;
+  /** 이 창의 그룹에 저장뷰가 **없다** — 로딩과 구분한다(쿼리가 아예 안 걸린다). */
+  viewMissing: (windowId: string) => boolean;
+  /** 이 창의 그룹에 차트 창이 있는가. 데이터 창의 번들 소스가 그것뿐이라, 없으면
+   *  저장뷰가 있어도 그릴 것이 없다(팔레트로 차트만 옮기면 도달한다). */
+  groupHasChart: (windowId: string) => boolean;
+  /** 차트 창 타이틀바가 그리는 식별 행(#903 의 페이지 툴바 식별부에서 이관).
+   *  null = 그 그룹에 저장뷰가 없다 → 타이틀은 `그룹 N` 으로 폴백. */
+  symbolFor: (windowId: string) => StudyChartSymbol | null;
   /** 차트 창 배선 — 창이 헤더·셸·차트를 소유하고(#908) 페이지는 데이터만 준다.
    *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다).
    *
-   *  창마다 봉·번들이 다르므로 값이 아니라 **함수**다(#801). */
+   *  창마다 봉·번들·저장뷰가 다르므로 값이 아니라 **함수**다(#801 · ADR-0154). */
   chartFor: (windowId: string) => Omit<StudyChartWindowProps, 'windowId'>;
   /** 이 창을 닫을 수 있는가 — 스토어의 술어와 같은 것을 쓴다(어포던스 불일치 방지). */
   canClose: (windowId: string) => boolean;
   /** 메모 창 본문 props(onClose 제외 — 창 닫기와 결속). null 이면 로딩 카드. */
-  memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
+  memoFor: (windowId: string) => Omit<StudyMemoPanelProps, 'onClose'> | null;
   closeWindow: (id: string) => void;
+  /** 열려 있는 그룹 팔레트의 창 id(한 번에 하나) — `/live` 캔버스와 같은 모양. */
+  paletteId: string | null;
+  onTogglePalette: (id: string) => void;
+  onPickGroup: (id: string, group: GroupId) => void;
 }
 
 /**
@@ -83,6 +105,17 @@ function StudyTitleBarSymbolRow({ label, code, kindLabel }: StudyChartSymbol) {
 function StudyWindowItem({
   win, rect, zIndex, focused, lifting, onHandleDown, onFocus, ctx,
 }: WindowItemProps<StudyWorkspaceWindow, StudyItemCtx>) {
+  const symbol = ctx.symbolFor(win.id);
+  const viewMissing = ctx.viewMissing(win.id);
+  // 데이터 창은 "뷰 없음" 과 "그룹에 차트 창 없음" 을 **구분해서** 말한다 — 둘 다
+  // 쿼리가 안 걸리는 상태라 로딩 문구로 뭉치면 영영 끝나지 않는 거짓말이 된다.
+  const dataEmptyReason = viewMissing
+    ? 'no-view' as const
+    : ctx.groupHasChart(win.id) ? null : 'no-chart' as const;
+  const memoProps = win.kind === 'memo' ? ctx.memoFor(win.id) : null;
+  // `/live` `WindowFrame` 의 `symbolLabel ?? \`그룹 ${group}\`` 과 같은 폴백이다 —
+  // 대상이 없을 때 제목이 사라지지 않고 **번호가 남는다**.
+  const title = symbol?.label || `그룹 ${win.group}`;
   return (
     <WindowFrameCore
       id={win.id}
@@ -99,15 +132,29 @@ function StudyWindowItem({
       onFocus={onFocus}
       onClose={ctx.closeWindow}
       header={
-        // 차트 창은 종목 식별 행을 타이틀바에 그린다(/live 와 같은 자리). 코드가
-        // 아직 없으면(저장뷰 미선택) 종류 라벨로 폴백해 빈 제목을 만들지 않는다.
-        win.kind === 'chart' && ctx.symbol.code ? (
-          <StudyTitleBarSymbolRow {...ctx.symbol} />
-        ) : (
-          <span className="truncate text-sm font-medium text-fg">
-            {STUDY_WINDOW_LABEL[win.kind]}
-          </span>
-        )
+        <>
+          {/* 뱃지·팔레트는 `/live` 와 **같은 컴포넌트**다 — 번호가 가리키는 것만
+              다르다(그쪽은 종목, 여기는 저장뷰). */}
+          <GroupBadge
+            group={win.group}
+            open={ctx.paletteId === win.id}
+            onToggle={() => ctx.onTogglePalette(win.id)}
+            onPick={(g) => ctx.onPickGroup(win.id, g)}
+            title="저장뷰 링크 그룹 변경"
+          />
+          {/* 차트 창은 종목 식별 행을 타이틀바에 그린다(/live 와 같은 자리). 코드가
+              아직 없으면(그 그룹에 저장뷰 미선택) 종류 라벨로 폴백해 빈 제목을 만들지
+              않는다. 데이터 창은 `/live` 처럼 `종류 · 대상` 으로 어느 그룹인지 읽힌다. */}
+          {win.kind === 'chart' && symbol?.code ? (
+            <StudyTitleBarSymbolRow {...symbol} />
+          ) : (
+            <span className="truncate text-sm font-medium text-fg">
+              {win.kind === 'chart'
+                ? title
+                : `${STUDY_WINDOW_LABEL[win.kind]} · ${title}`}
+            </span>
+          )}
+        </>
       }
     >
       {win.kind === 'chart' ? (
@@ -118,18 +165,22 @@ function StudyWindowItem({
            로딩 텍스트 색은 main 의 fg-dimmer→fg-dim 승격(대비 AA)을 따른다. */
         <ChartErrorBoundary title="창 렌더링에 실패했습니다">
           {win.kind === 'memo' ? (
-            ctx.memo ? (
-              <StudyMemoPanel {...ctx.memo} onClose={() => ctx.closeWindow(win.id)} />
+            memoProps ? (
+              <StudyMemoPanel {...memoProps} onClose={() => ctx.closeWindow(win.id)} />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
-                <span className="font-data">학습뷰 불러오는 중…</span>
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-bg-subtle/40 text-xs text-fg-dim">
+                {/* 메모도 그룹의 저장뷰에 딸린다 — 뷰가 없으면 저장할 대상이 없다. */}
+                <span className="font-data">{viewMissing ? `그룹 ${win.group}` : ''}</span>
+                <span>{viewMissing ? '저장뷰를 선택하세요' : '학습뷰 불러오는 중…'}</span>
               </div>
             )
           ) : (
             <StudyDataWindowContent
               kind={win.kind as StudyDataWindowKind}
-              save={ctx.save}
-              bundle={ctx.bundle}
+              group={win.group}
+              emptyReason={dataEmptyReason}
+              save={ctx.saveFor(win.id)}
+              bundle={ctx.bundleFor(win.id)}
             />
           )}
         </ChartErrorBoundary>
@@ -139,45 +190,65 @@ function StudyWindowItem({
 }
 
 export function StudyWorkspaceCanvas({
-  save,
-  bundle,
+  saveFor,
+  bundleFor,
+  viewMissing,
+  groupHasChart,
+  symbolFor,
   chartFor,
-  memo,
-  symbolLabel,
-  symbolCode,
-  symbolKindLabel,
+  memoFor,
 }: {
-  save: StudyViewReference | null;
-  bundle: RangeBundle | null;
-  /** 창 id → 그 창의 차트 props. 창마다 봉·번들이 다르므로 값이 아니라 **함수**다(#801). */
+  /** 아래 다섯은 전부 **창 id → 값**이다(ADR-0154) — 창마다 그룹이, 그룹마다 저장뷰가
+   *  다를 수 있다. 페이지가 `useCallback` 으로 안정화해 넘긴다. */
+  saveFor: (windowId: string) => StudyViewReference | null;
+  bundleFor: (windowId: string) => RangeBundle | null;
+  viewMissing: (windowId: string) => boolean;
+  groupHasChart: (windowId: string) => boolean;
+  symbolFor: (windowId: string) => StudyChartSymbol | null;
   chartFor: (windowId: string) => Omit<StudyChartWindowProps, 'windowId'>;
-  memo: Omit<StudyMemoPanelProps, 'onClose'> | null;
-  /** 차트 창 타이틀바 식별 — 스칼라 3개로 받아 itemCtx 재생성 축을 늘리지 않는다. */
-  symbolLabel: string;
-  symbolCode: string;
-  symbolKindLabel: string;
+  memoFor: (windowId: string) => Omit<StudyMemoPanelProps, 'onClose'> | null;
 }) {
   const windows = useStudyWorkspaceStore((s) => s.windows);
   const zOrder = useStudyWorkspaceStore((s) => s.zOrder);
   const focusWindow = useStudyWorkspaceStore((s) => s.focusWindow);
   const closeWindow = useStudyWorkspaceStore((s) => s.closeWindow);
+  const setWindowGroup = useStudyWorkspaceStore((s) => s.setWindowGroup);
   const canClose = useCallback(
     (id: string) => canCloseStudyWindow(useStudyWorkspaceStore.getState().windows, id),
     [windows],
   );
   const setWindowRects = useStudyWorkspaceStore((s) => s.setWindowRects);
 
+  // 팔레트는 한 번에 하나만 열린다 — 상태를 캔버스가 들고 창은 `paletteId` 비교로
+  // 자기 차례인지 안다(`/live` WorkspaceCanvas 와 같은 모양).
+  const [palette, setPalette] = useState<string | null>(null);
+  const onTogglePalette = useCallback((id: string) => {
+    setPalette((p) => (p === id ? null : id));
+  }, []);
+  const onPickGroup = useCallback((id: string, g: GroupId) => {
+    setWindowGroup(id, g);
+    setPalette(null);
+  }, [setWindowGroup]);
+
   const itemCtx = useMemo<StudyItemCtx>(
     () => ({
-      save,
-      bundle,
+      saveFor,
+      bundleFor,
+      viewMissing,
+      groupHasChart,
+      symbolFor,
       chartFor,
       canClose,
-      memo,
+      memoFor,
       closeWindow,
-      symbol: { label: symbolLabel, code: symbolCode, kindLabel: symbolKindLabel },
+      paletteId: palette,
+      onTogglePalette,
+      onPickGroup,
     }),
-    [save, bundle, chartFor, canClose, memo, closeWindow, symbolLabel, symbolCode, symbolKindLabel],
+    [
+      saveFor, bundleFor, viewMissing, groupHasChart, symbolFor, chartFor, canClose, memoFor,
+      closeWindow, palette, onTogglePalette, onPickGroup,
+    ],
   );
 
   return (
