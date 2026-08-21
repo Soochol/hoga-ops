@@ -197,3 +197,16 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     });
   },
 }));
+
+/**
+ * Dev 전용 QA 핸들 — 창 간 동기화 **버스 자체**를 브라우저에서 들여다보기 위한 것.
+ *
+ * 끝점(차트)만 보이고 그 사이 채널이 안 보이면, "발행자는 움직였는데 소비자가 안
+ * 움직인다" 에서 원인을 **가정으로만** 좁히게 된다(발행이 없는가 · 게이트에 걸렸는가 ·
+ * 적용이 실패했는가). 2026-08-21 `/browse` 검증에서 실제로 그 지점에 막혔다.
+ *
+ * `LiveChartRoot` 의 `__liveCharts` 와 같은 규약이다(dev 빌드에서만 존재).
+ */
+if (import.meta.env.DEV) {
+  (window as unknown as { __liveCursorStore?: unknown }).__liveCursorStore = useLiveCursorStore;
+}

@@ -41,6 +41,14 @@ $B snapshot -i                       # interactive elements with @e refs
 
 See `~/.claude/skills/gstack/browse/SKILL.md` for the full command list.
 
+### 창 간 동기화(크로스헤어·기간·줌) QA
+
+`/browse` 로 검증할 때는 `docs/agents/chart-sync-qa.md` 의 절차와 드라이버를 쓴다.
+좌표 조준(`elementFromPoint`)·`hover` 명령·단일 전역(`__liveChart`)은 **창이 겹치는
+워크스페이스에서 거짓 결론을 낸다** — 그 문서가 실측 사례와 대체 도구를 갖는다.
+dev 빌드에는 `window.__liveCharts`(창 id → 차트)와 `window.__liveCursorStore`
+(동기화 버스)가 있다.
+
 ### `/live` daily candle body issue
 
 If daily (`D`) candles on `http://localhost:5173/live` appear as long wicks with almost no
