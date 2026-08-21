@@ -114,12 +114,30 @@ window.__qa = {
     n.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 5, clientY: 5 }));
     n.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, clientX: 5, clientY: 5, pointerType: 'mouse', pointerId: 1 }));
   },
-  /** 그 창 안에 동기화 오버레이가 있는가 — **창 소속으로** 판정한다(전역 존재가 아니라). */
+  /**
+   * 그 창 안에 크로스헤어 동기화 오버레이가 있는가 — **창 소속으로** 판정한다.
+   *
+   * ⚠ `chartElement().parentElement.querySelector(...)` 로 찾으면 **항상 false 다.**
+   * 오버레이는 그 박스 아래가 아니라 pane 호스트 쪽에 붙는다. 그렇게 쓴 초판이
+   * "크로스헤어가 안 온다" 는 **거짓 음성**을 냈다(2026-08-21 실측: 전역에는 1개가
+   * 있었고 소속도 옳은 창이었다).
+   *
+   * 그래서 **문서에서 찾고 소속을 되묻는다** — 음성 결과를 믿기 전에 탐침이 양성을
+   * 낼 수 있는지부터 확인하라는 규칙의 구현이다.
+   */
   syncOverlay(id) {
-    const el = this.chart(id).chartElement().closest('div');
-    const box = this.chart(id).chartElement().parentElement;
-    const n = (box || el)?.querySelector('[data-testid=study-cursor-sync]');
-    return !!n;
+    const root = this.chart(id).chartElement();
+    const frame = root.closest('div.absolute');
+    return [...document.querySelectorAll('[data-testid=study-cursor-sync]')]
+      .some((n) => frame?.contains(n) || root.contains(n));
+  },
+  /** 오버레이 전수 — 어느 창에 몇 개 떠 있는지. 음성 판정 전에 이걸로 되묻는다. */
+  syncOverlaysAll() {
+    return [...document.querySelectorAll('[data-testid=study-cursor-sync]')].map((n) => {
+      const f = n.closest('div.absolute');
+      const r = f?.getBoundingClientRect();
+      return r ? [Math.round(r.x), Math.round(r.y)] : null;
+    });
   },
   toggle(labelFragment) {
     const r = [...document.querySelectorAll('*')]
