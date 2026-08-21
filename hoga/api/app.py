@@ -385,7 +385,16 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # scope만 처리하는 GZipMiddleware를 그대로 통과 — SSE 버퍼링 우려가 없다.
     # CORS 뒤(안쪽)에 둬 CORS 헤더가 붙은 뒤 본문만 압축한다. minimum_size로 작은
     # 응답(health·control ack)은 무압축 통과시켜 CPU를 낭비하지 않는다.
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    #
+    # **`compresslevel` 을 명시한다 — 기본값이 9(최대·최저속)다.** 압축은 이 앱의
+    # 단일 이벤트 루프 위에서 돈다(`--workers` 불가, #998). 178KB 응답 실측
+    # (2026-08-21): level 9 = 13.0ms / 89.3% 절감, **level 6 = 2.2ms / 88.2%**.
+    # 즉 절감률 1.1%p 를 내주고 루프 점유를 **5.9배** 줄인다. 3개월 sidecar 처럼
+    # 수십 MB 나가는 응답에서는 이 차이가 초 단위가 된다.
+    #
+    # **압축을 끄지는 않는다** — prod 는 Tailscale tailnet 이라(ADR-0134) 대역폭이
+    # 실재한다. 루프백뿐이라면 무압축이 맞지만 그 전제는 dev 에만 성립한다.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     # 상태 변경 요청의 Origin 검사. **CORSMiddleware 보다 바깥**이어야 한다 —
     # add_middleware 는 나중에 추가한 것이 바깥이므로 CORS 뒤에 온다.
     #

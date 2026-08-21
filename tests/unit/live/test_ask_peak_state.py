@@ -1,3 +1,5 @@
+import random
+
 from hoga.live.ask_peak_state import Peak, TodayAskPeakState, TodayBidPeakState
 
 
@@ -482,3 +484,32 @@ def test_closed_and_all_state_stay_bounded_after_many_lifecycle_closes():
         {"price": 10_070, "qty": 107, "t_ms": 1_007},
     ]
     assert snap["all_peaks"] == snap["traded_peaks"]
+
+
+def test_rank_one_matches_full_sort_first_element() -> None:
+    """`_rank_one` 은 `_ranked_peaks(...)[0]` 과 **항상 같아야 한다**.
+
+    막는 방향: 1위 산출을 정렬에서 `min` 으로 바꾼 것이 동점 처리에서 갈리는 회귀.
+    키가 `(-qty, t_ms, price, seq)` 전순서라 최솟값이 유일하므로 동일해야 한다 —
+    동점(같은 qty·t_ms)을 일부러 섞어 그 전제를 실제로 밟는다.
+
+    못 보는 것: 성능(그게 바꾼 이유지만 여기서 재지 않는다). 빈 입력은 아래에서 별도 단언.
+    """
+    from hoga.live.ask_peak_state import Peak, _rank_one, _ranked_peaks
+
+    rng = random.Random(20260821)
+    for n in (1, 2, 3, 17, 120):
+        for _ in range(40):
+            peaks = [
+                Peak(
+                    price=rng.randrange(1000, 1010),   # 좁은 범위 → 동점 유도
+                    qty=rng.randrange(1, 5),
+                    t_ms=rng.randrange(10**12, 10**12 + 5),
+                    seq=rng.choice([None, 1, 2]),
+                )
+                for _ in range(n)
+            ]
+            assert _rank_one(peaks) == _ranked_peaks(peaks)[0]
+
+    assert _rank_one([]) is None
+
