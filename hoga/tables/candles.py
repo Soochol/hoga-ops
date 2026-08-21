@@ -15,7 +15,7 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from hoga.tables.dispatch import FieldCountError, split_row
 from hoga.util.atomic_write import atomic_write_parquet_table
@@ -177,6 +177,12 @@ class ApiCandle(BaseModel):
 
 # === Query (returns list[ApiCandle] directly) ===
 
+# `query_all` 의 일괄 검증용. 모듈 상수인 이유는 `TypeAdapter` 생성이 스키마를
+# 컴파일하기 때문이다 — 호출마다 만들면 그 비용이 이득을 통째로 삼킨다.
+_API_CANDLE_FIELDS = ("ts_ms", "open", "close", "high", "low", "vol_a", "vol_b")
+_API_CANDLE_LIST = TypeAdapter(list[ApiCandle])
+
+
 
 def query_all(
     con: duckdb.DuckDBPyConnection, *, path: Path, ts_offset_ms: int
@@ -204,10 +210,42 @@ def query_all(
         "FROM read_parquet(?) ORDER BY ts_ms ASC",
         [ts_offset_ms, str(path)],
     ).fetchall()
-    return [
-        ApiCandle(ts_ms=r[0], open=r[1], close=r[2], high=r[3], low=r[4], vol_a=r[5], vol_b=r[6])
-        for r in rows
-    ]
+    # ⚠ **모델을 하나씩 만들지 않는다 — `TypeAdapter` 로 일괄 검증한다.**
+    #
+    # `ApiCandle(...)` 를 행마다 부르면 호출마다 파이썬 프레임 + kwargs dict 가 생긴다.
+    # `TypeAdapter.validate_python` 은 **리스트 전체를 pydantic-core(Rust) 안에서**
+    # 돌아 그 임시 객체들을 안 만든다. 검증은 그대로다 — `model_construct` 와 다르다
+    # (그건 검증을 건너뛰는데 **오히려 5% 느렸다**).
+    #
+    # **이득의 정체는 속도가 아니라 GC 압력이다 — 이 구분이 중요하다.**
+    # 실측 (2026-08-21, 000660, 3개월 = 파일 56개 · 20,783행, **ABBA 균형** 48 표본):
+    #
+    #     GC 켬(운영 조건)    min      p25   median     p75    GC 수집
+    #     이전 (kwargs)      71.3     80.7    106.9   122.4     4,080
+    #     현재 (TypeAdapter) 69.2     73.8     79.4   121.8     2,562  **-37%**
+    #
+    #     GC 끔 (순수 계산)   min      p25   median     p75
+    #     이전 (kwargs)      66.4     68.5     70.7    72.4
+    #     현재 (TypeAdapter) 63.2     66.9     68.0    69.9
+    #
+    # 즉 **순수 계산 차이는 ~4% 뿐**이고(GC 끔에서 min +4.8% · median +3.8%), 운영
+    # 조건의 median -26% 는 **느린 실행의 빈도가 준 것**이다. 임시 객체가 줄어 수집이
+    # 37% 덜 돌기 때문이며, GC 가 이 경로에 얹는 비용은 이전 +51% → 현재 +17% 다.
+    # (ADR-0085 v3.3 이 `gc.disable()` 로 "candles +49%" 를 잰 것과 같은 크기다.)
+    #
+    # 그래서 **바닥(min)은 안 움직인다** — 기대를 그쪽에 걸지 말 것. 움직이는 것은
+    # 분포의 꼬리고, 사용자가 기다리는 것은 그쪽이다.
+    #
+    # 동등성: 값·필드 타입·`dump_json` 바이트까지 이전과 동일함을 19,921행에서 확인.
+    #
+    # ⚠ **이 수치를 다시 재려면 ABBA 로 순서를 상쇄할 것.** A,B,A,B 로 번갈아 도는
+    # 것만으로는 부족하다 — 라운드마다 A 가 먼저면 워밍 효과가 전부 B 에 쌓여
+    # **순서를 변형 차이로 읽는다.** 이 세션이 정확히 그 함정에 빠져 같은 변경을
+    # 한때 "-33%" 로 오독했다. 판별 신호는 **min 이 양쪽 같은데 median 만 벌어지는
+    # 것**이었다(그건 변형 차이가 아니라 조건 차이의 서명이다).
+    return _API_CANDLE_LIST.validate_python(
+        [dict(zip(_API_CANDLE_FIELDS, r, strict=True)) for r in rows]
+    )
 
 
 def query_price_range(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:

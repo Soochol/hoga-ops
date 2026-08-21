@@ -9,6 +9,7 @@ is a fixed +09:00 with no DST.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import NewType
 
 KST = timezone(timedelta(hours=9))
@@ -21,6 +22,44 @@ KST = timezone(timedelta(hours=9))
 HogaMs = NewType("HogaMs", int)
 
 
+# ⚠ **캐시가 성능상 load-bearing 이다 — 지우지 말 것.**
+#
+# 이 함수는 `hhmmssms_to_unix_ms` / `ms_from_midnight_to_unix_ms` 를 통해 **행마다**
+# 불린다. 캐시가 없으면 같은 날짜를 수만 번 다시 파싱한다 — `datetime.strptime` 은
+# 포맷 문자열을 매번 정규식으로 해석하므로(파이썬 구현) 그 경로에서 가장 비싼
+# 프레임이 된다.
+#
+# **이득은 `mode=hoga` 에 몰려 있다.** 그 모드가 만드는 호가비·체결강도는 **점마다**
+# `hhmmssms_to_unix_ms` 를 부르는 flat `(t, value)` 배열이라 날짜 변환 밀도가 가장
+# 높다. 캔들은 오프셋을 SQL 이 한 번만 더하고(`candles.query_all`), sidecar 의
+# 무거운 축(depth 히트맵·증감)은 버킷 단위라 밀도가 낮다.
+#
+# 실측 (2026-08-21, 000660, **ABBA 균형** 16~20 표본, `TodayTtlCache` 끔):
+#
+#     경로                          min      p25   median
+#     `/study` 3개월 · **hoga**   +37.5%   +29.5%   +27.7%   ← 진짜 이득
+#     `/study` 3개월 · candles     +2.1%    +0.7%   -13.9%   (노이즈)
+#     `/study` 3개월 · sidecar     +1.1%    +3.7%    +1.6%   (노이즈)
+#     `/live` 오늘 · hoga          +4.5%    +7.1%    +2.3%   (작다)
+#     `/live` 오늘 · sidecar       -1.9%    -2.2%    +1.2%   (없다)
+#
+# ⚠ **이 표는 한 번 크게 틀렸다.** 처음엔 "`/live` sidecar -62.5%" 로 쟀는데 그건
+# 두 가지가 겹친 허수였다: (1) 같은 요청을 밀리초 간격으로 반복해 `TodayTtlCache`
+# (15초)가 거의 전부 적중한 **웜 경로**를 쟀고, (2) A,B 순서 고정이라 워밍 편향이
+# B 에 쌓였다. `/live` 의 실제 refetch 주기는 **5분**이라 언제나 TTL 밖이다 —
+# 사용자가 기다리는 것은 콜드 경로다. 다시 잴 때는 **TTL 을 끄고 ABBA 로** 할 것
+# (`HOGA_TODAY_INDICATOR_TTL_MS=0`).
+#
+# 캐시가 안전한 근거: 순수 함수다. 입력은 날짜 문자열 하나, KST 는 DST 없는 고정
+# 오프셋(+09:00)이라 같은 입력이 영원히 같은 값이다. 카디널리티도 날짜 수만큼이라
+# maxsize 안에 들어온다.
+#
+# **동시성**: 이 경로는 `/api/range` 의 threadpool 스레드에서 동시에 불린다.
+# `functools.lru_cache` 는 maxsize 가 있으면 C 구현이 자체 락으로 딕셔너리를 보호하고,
+# 설령 두 스레드가 같은 키를 동시에 놓쳐도 순수 함수라 **같은 값을 두 번 계산할 뿐**
+# 이다 — 손상되는 상태가 없다. 캐시를 키우거나 이 함수에 상태를 들이면 그때 이
+# 근거가 깨지므로, 순수성을 잃는 변경은 캐시부터 다시 볼 것.
+@lru_cache(maxsize=4096)
 def _date_unix_ms_at_kst_midnight(date: str) -> int:
     dt = datetime.strptime(date, "%Y%m%d").replace(tzinfo=KST)
     return int(dt.timestamp() * 1000)
