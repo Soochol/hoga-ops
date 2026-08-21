@@ -480,5 +480,25 @@ describe('planViewportContraction — 좌측 팬 창을 앞으로 당긴다', ()
   it('두 임계 사이에 간격이 있다 — 간격이 0이면 위 수렴이 성립하지 않는다', () => {
     expect(CONTRACT_RETAIN_STEPS).toBeLessThan(CONTRACT_TRIGGER_STEPS);
   });
+
+  it('**한 달 창(4스텝 ≈ 20거래일)이 잡힌다** — 이 변경의 목적', () => {
+    // 2026-08-16 성능 감사가 실측한 아픈 케이스가 "028050 한 달 창 콜드 11.7초" 였다.
+    // 임계 6스텝(=30거래일) 시절엔 한 달(21거래일)이 그 아래라 **영영 안 잡혔다** —
+    // contract 가 발동조차 안 하니 로그로도 안 보였다. 임계를 되돌리면 여기서 실패한다.
+    //
+    // 스텝 산술은 `nextCoverageFrom`(1스텝 뒤로)을 재사용한다 — `stepBackFrom` 은
+    // 모듈 지역이고, 테스트가 자기 날짜 계산을 따로 쓰면 그게 또 다른 진실이 된다.
+    let monthAgo = LEFT;
+    for (let i = 0; i < 4; i += 1) monthAgo = nextCoverageFrom(null, monthAgo, TF);
+    expect(planViewportContraction(monthAgo, LEFT, TF)).not.toBeNull();
+  });
+
+  it('화면에 **떠 있는** 구간은 안 자른다 — 줌아웃 케이스', () => {
+    // 창이 넓은 이유가 "그만큼을 실제로 보고 있어서" 라면 자르면 안 된다.
+    // 뷰포트 좌단이 곧 창 시작이면 임계 안이므로 no-op 이어야 한다.
+    let monthAgo = LEFT;
+    for (let i = 0; i < 4; i += 1) monthAgo = nextCoverageFrom(null, monthAgo, TF);
+    expect(planViewportContraction(monthAgo, monthAgo, TF)).toBeNull();
+  });
 });
 
