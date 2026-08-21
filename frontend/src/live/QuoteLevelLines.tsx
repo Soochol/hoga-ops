@@ -7,7 +7,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import SeriesLevelLine from './SeriesLevelLine';
 import { deriveQuoteTotalsDayMax, deriveQuoteTotalsLevels, deriveRatioLevel } from './deriveQuoteLevelLines';
 import { tradingDayOf } from '../util/tradingDay';
-import { useWindowIndicator, useWindowIndicatorScope } from './workspace/windowView';
+import { useWindowIndicator, useWindowIndicatorPage } from './workspace/windowView';
 
 /** epoch ms 의 KST 월/일(예 "8/14"). 낡은 기준선에 붙이는 라벨용이라 연도는 뺀다 —
  *  차트가 보여주는 범위가 며칠 단위라 M/D 로 충분하고, 칩이 짧을수록 라인을 덜 가린다. */
@@ -88,7 +88,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
   // 된다. 라이브에선 마지막 거래일이 곧 "지금" 이라 이 어긋남이 없다(현재값 수평선은 성격이
   // 달라 — 언제나 "보고 있는 그 시점의 값" — 여기서 막지 않는다).
   // 페이지는 어댑터에서 렌더 동기적으로 온다(ADR-0146). Provider 밖(null)은 `/live` 폴백.
-  const dayMaxAllowed = useWindowIndicatorScope() !== 'study';
+  const dayMaxAllowed = useWindowIndicatorPage() !== 'study';
   const dayMaxOn = dayMaxEnabled && dayMaxAllowed && quoteTotalsSeries != null;
   // 기준일은 데이터의 마지막 거래일이라 파생은 시계와 무관하다(장중엔 그게 곧 오늘, 장
   // 마감 후·주말엔 직전 거래일). 시계는 **라벨에만** 쓴다 — 오늘 것이 아니면 날짜를 붙여

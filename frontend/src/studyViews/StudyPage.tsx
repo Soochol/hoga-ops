@@ -12,7 +12,9 @@ import {
   useStudyWorkspaceStore,
   type GroupId,
 } from '../state/studyWorkspace';
-import { bucketsForPage, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { bucketsForScope, resolveIndicatorSettings } from '../state/indicatorSettingsV2';
+import { windowScopeKey } from '../live/workspace/windowViewContext';
+import { STUDY_WINDOW_WORKSPACE } from './studyWindowWorkspace';
 import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import {
   resolveIndicatorPanelTimeframe,
@@ -279,6 +281,7 @@ export function StudyPage() {
   });
   const indicatorsByTimeframe = useLivePageStore((s) => s.indicatorsByTimeframe);
   const studyIndicators = useLivePageStore((s) => s.studyIndicatorsByTimeframe);
+  const indicatorsByWindow = useLivePageStore((s) => s.indicatorsByWindow);
   // 번들을 요구하는 창 목록 — 봉·지표가 곧 쿼리 키다(#904).
   //
   // **포커스 창만 `selectedTimeframe` 을 쓴다**: 탭을 바꾼 첫 커밋에는 창이 아직
@@ -302,16 +305,21 @@ export function StudyPage() {
           // 하나를 받아 전 창에 먹이던 구조가 여기서 끝난다.
           save: referenceStudyView(savesById.get(groupViewIdOf(w.group) ?? '')),
           timeframe,
-          // 지표는 `/study` 세트에서 푼다(ADR-0146) — `/live` 것으로 풀면 이 페이지가
-          // 켠 지표의 데이터가 번들에 안 실려 **"켰는데 안 보임"** 이 된다.
+          // 지표는 **그 창의 세트**에서 푼다(ADR-0152 — 없으면 `/study` 페이지 세트).
+          // 페이지 세트로 일괄해 풀면 창별로 다르게 켠 지표의 데이터가 번들에 안
+          // 실려 그 창에서 **"켰는데 안 보임"** 이 된다.
           indicators: resolveIndicatorSettings(
-            bucketsForPage(indicatorsByTimeframe, studyIndicators, 'study'),
+            bucketsForScope(indicatorsByTimeframe, studyIndicators, indicatorsByWindow, {
+              page: 'study',
+              windowKey: windowScopeKey(STUDY_WINDOW_WORKSPACE, w.id),
+            }),
             timeframe,
           ),
         };
       }),
     [
-      chartWindowId, selectedTimeframe, workspaceWindows, indicatorsByTimeframe, studyIndicators,
+      chartWindowId, selectedTimeframe, workspaceWindows,
+      indicatorsByTimeframe, studyIndicators, indicatorsByWindow,
       savesById, groupViewIdOf,
     ],
   );

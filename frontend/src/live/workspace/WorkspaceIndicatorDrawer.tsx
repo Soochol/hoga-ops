@@ -17,6 +17,7 @@ import { LIVE_WINDOW_WORKSPACE, WindowViewContext, type WindowViewValue } from '
 import {
   targetChartWindow,
   useWorkspaceStore,
+  windowSymbolOf,
   type GroupSymbol,
   type WorkspaceWindow,
 } from '../../state/workspace';
@@ -43,7 +44,7 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
   const target = windowId
     ? windows.find((w) => w.id === windowId && w.kind === 'chart') ?? null
     : null;
-  const symbol: GroupSymbol | null = target ? groupSymbols[target.group] ?? null : null;
+  const symbol: GroupSymbol | null = windowSymbolOf({ groupSymbols }, target);
   const timeframe = target?.chart?.timeframe ?? '1m';
   const isIndex = symbol?.kind === 'index';
 

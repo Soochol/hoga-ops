@@ -56,6 +56,27 @@ describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', 
     expect(useWorkspaceStore.getState().groupSymbols[1]).toBeUndefined();
   });
 
+  it('고정(핀) 창에 놓으면 그 창만 바뀌고 그룹은 불변 — 핀 창에 쓰는 유일한 문', () => {
+    // 사용자 요청의 나머지 절반: "드래그로 직접 해당 창에 놓을 때만 종목 변경".
+    // 같은 그룹의 형제 창(b)이 있어도 그룹 종목은 건드리지 않아야 한다.
+    useWorkspaceStore.setState({
+      windows: [
+        { ...chart('a', 1, { x: 0, y: 0, w: frac(200), h: frac(200) }), pinned: { code: '005930', name: '삼성전자' } },
+        chart('b', 1, { x: frac(400), y: 0, w: frac(200), h: frac(200) }),
+      ],
+      zOrder: ['b', 'a'],
+      groupSymbols: { 1: { code: '000660', name: 'SK하이닉스' } },
+    });
+    render(<WorkspaceCanvas />);
+
+    const handled = resolveDropOnChart({ x: 50, y: 50 }, { code: '035720', name: '카카오' });
+
+    expect(handled).toBe(true);
+    const s = useWorkspaceStore.getState();
+    expect(s.windows.find((w) => w.id === 'a')?.pinned).toEqual({ code: '035720', name: '카카오' });
+    expect(s.groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' });
+  });
+
   it('창 밖(여백) 좌표면 false → 활성 그룹 폴백', () => {
     useWorkspaceStore.setState({
       windows: [chart('a', 1, { x: 0, y: 0, w: frac(100), h: frac(100) })],

@@ -24,14 +24,15 @@ import { normalizePaneOrder } from '../../chart/paneOrder';
 
 /**
  * 지표 편집 표면의 계약 — **백엔드는 언제나 전역 스토어**이고, 창이 정하는 것은
- * "어느 버킷인가" 뿐이다. 한때 창이 설정을 통째로 소유했지만(#712), 워크스페이스가
- * 탭별 sessionStorage 라 지표가 브라우저 탭마다 갈렸다.
+ * "어느 버킷인가" 뿐이다. 한때 창이 설정을 통째로 **소유**했지만(#712), 워크스페이스가
+ * 탭별 sessionStorage 라 지표가 브라우저 탭마다 갈렸다. 창별 세트가 돌아온 지금도
+ * (ADR-0152) 내용물은 전역 저장소에 남는다 — 창이 갖는 것은 스코프 키뿐이다.
  *
  * 그래서 여기서 못 박는 것이 둘이다:
- *  ① 창에서 편집해도 **워크스페이스는 건드리지 않는다**(전역 v2 로 간다).
+ *  ① 창에서 편집해도 **워크스페이스는 건드리지 않는다**(전역 v2 의 창 버킷으로 간다).
  *  ② 창의 봉이 ambient 와 다르면 **다른 버킷에 쓰고 ambient 투영은 그대로**다.
  *
- * 페이지 축(`/live` ↔ `/study`)은 `windowView.scope.test.tsx` 가 맡는다(ADR-0146).
+ * 페이지·창 축의 격리 자체는 `windowView.scope.test.tsx` 가 맡는다(ADR-0146·0152).
  */
 
 function chartWindow(id: string, timeframe: LiveTimeframe = '5m'): WorkspaceWindow {
@@ -76,6 +77,8 @@ function resetIndicatorState(): void {
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
     studyIndicatorsByTimeframe: {},
+    // 창 id 가 테스트 간 고정('w1')이라 여기까지 비워야 격리가 된다(ADR-0152).
+    indicatorsByWindow: {},
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
     paneStretch: {},
@@ -84,7 +87,13 @@ function resetIndicatorState(): void {
   });
 }
 
-function bucket(profile: 'minute' | 'D') {
+/** 창 세트의 버킷 — 창 편집은 페이지 세트가 아니라 여기로 간다(ADR-0152). */
+function bucket(profile: 'minute' | 'D', windowId = 'w1') {
+  return useLivePageStore.getState().indicatorsByWindow[`live:${windowId}`]?.[profile];
+}
+
+/** `/live` **페이지 세트**의 버킷 — Provider 밖(전역 ambient) 쓰기가 가는 곳. */
+function pageBucket(profile: 'minute' | 'D') {
   return useLivePageStore.getState().indicatorsByTimeframe[profile];
 }
 
@@ -98,8 +107,10 @@ describe('useIndicatorActions — Provider 밖(전역 ambient 봉)', () => {
   it('ambient 봉 버킷에 쓰고 최상위 투영도 갱신한다', () => {
     const { result } = renderHook(() => useIndicatorActions());
     result.current.setMovingAverageEnabled(false);
-    expect(bucket('minute')?.movingAverageEnabled).toBe(false);
+    // Provider 밖은 창이 없으므로 페이지 세트로 간다(ADR-0152 의 폴백).
+    expect(pageBucket('minute')?.movingAverageEnabled).toBe(false);
     expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByWindow).toEqual({});
   });
 });
 
@@ -120,13 +131,13 @@ describe('useIndicatorActions — Provider 안(창의 봉 버킷)', () => {
       wrapper: provider(windowValue('wD', 'D')),
     });
     result.current.setVolumeEnabled(false);
-    expect(bucket('D')?.volumeEnabled).toBe(false);
-    expect(bucket('minute')).toBeUndefined();
+    expect(bucket('D', 'wD')?.volumeEnabled).toBe(false);
+    expect(bucket('minute', 'wD')).toBeUndefined();
     // ambient(1m) 투영이 D 창의 편집으로 오염되면 안 된다.
     expect(useLivePageStore.getState().volumeEnabled).toBe(FACTORY_INDICATOR_SETTINGS.volumeEnabled);
   });
 
-  it('같은 봉의 두 창은 같은 설정을 본다(전역 1세트)', () => {
+  it('같은 봉의 두 창은 서로를 따라가지 않는다(ADR-0152)', () => {
     seedWorkspace([chartWindow('w1'), chartWindow('w2')]);
     const editor = renderHook(() => useIndicatorActions(), {
       wrapper: provider(windowValue('w1')),
@@ -137,7 +148,10 @@ describe('useIndicatorActions — Provider 안(창의 봉 버킷)', () => {
     expect(observer.result.current.askPeakEnabled).toBe(false);
     editor.result.current.setAskPeakEnabled(true);
     observer.rerender();
-    expect(observer.result.current.askPeakEnabled).toBe(true);
+    expect(observer.result.current.askPeakEnabled).toBe(false);
+    // 편집은 편집한 창에만 남는다.
+    expect(bucket('minute')?.askPeakEnabled).toBe(true);
+    expect(bucket('minute', 'w2')).toBeUndefined();
   });
 
   it('enable↔hidden 결합 시맨틱이 창 편집에도 적용된다', () => {
@@ -158,7 +172,7 @@ describe('useIndicatorActions — Provider 안(창의 봉 버킷)', () => {
     result.current.addMovingAverage();
     result.current.addMovingAverage(); // 두 번째 호출이 첫 결과 위에 쌓여야 한다
     const resolved = resolveIndicatorSettings(
-      useLivePageStore.getState().indicatorsByTimeframe,
+      useLivePageStore.getState().indicatorsByWindow['live:w1'],
       '5m',
     );
     expect(resolved.movingAverages.length).toBe(baseCount + 2);

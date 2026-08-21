@@ -33,12 +33,41 @@ export interface WindowFrameProps {
   /** 지수 종목 여부 — 타이틀바 종목 행에서 현재가/등락률/히트맵/수집점을 숨긴다. */
   isIndex?: boolean;
   paletteOpen: boolean;
+  /** 종목 고정 상태 — 켜져 있으면 이 창은 링크 그룹을 따르지 않고 자기 종목을 든다. */
+  pinned?: boolean;
+  /** 핀을 켤 수 있는가(= 고정할 종목이 있는가). 이미 켜져 있으면 항상 true(끄기). */
+  canPin?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onTogglePalette: (id: string) => void;
   onPickGroup: (id: string, group: GroupId) => void;
+  onTogglePin?: (id: string) => void;
   children: React.ReactNode;
+}
+
+/**
+ * 압정 글리프 — 리포 관례대로 손으로 그린다(`windowKindIcons` 와 같은 규격:
+ * 24 viewBox · `currentColor` 스트로크 · round cap). 고정 상태에서는 머리를 채워
+ * 색뿐 아니라 **형태로도** 켜짐을 말한다(색만으로 상태를 말하지 않는다 — DESIGN).
+ */
+function PinGlyph({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10 3.5v6L7 14h10l-3-4.5v-6" fill={filled ? 'currentColor' : 'none'} />
+      <path d="M8.5 3.5h7M12 14v6.5" />
+    </svg>
+  );
 }
 
 function WindowFrameImpl(props: WindowFrameProps) {
@@ -54,11 +83,14 @@ function WindowFrameImpl(props: WindowFrameProps) {
     symbolCode,
     isIndex = false,
     paletteOpen,
+    pinned = false,
+    canPin = true,
     onHandleDown,
     onFocus,
     onClose,
     onTogglePalette,
     onPickGroup,
+    onTogglePin,
     children,
   } = props;
 
@@ -87,6 +119,38 @@ function WindowFrameImpl(props: WindowFrameProps) {
             onToggle={() => onTogglePalette(id)}
             onPick={(g) => onPickGroup(id, g)}
           />
+          {/* 종목 고정 — 그룹 뱃지 바로 옆이다. 두 컨트롤이 같은 축(이 창이 어느 종목을
+              따르는가)을 다루므로 붙여 두면 "그룹을 따를지 / 이 창에 붙들지" 가 한 자리에
+              읽힌다. `title` 이 스코프를 **창**으로 못 박는다 — 그룹 뱃지 옆이라 그룹
+              단위로 오해되기 쉬운 자리다(DESIGN 2026-08-07 #759 결정 1 의 반대 방향
+              함정: 거기선 전역 값을 창 헤더에 뒀을 때, 여기선 창 값을 그룹 컨트롤 옆에
+              둘 때). 종목이 없어 켤 수 없는 창은 disabled — 흐린 것이 기능이다. */}
+          {onTogglePin && (
+            <button
+              type="button"
+              data-testid="window-pin-toggle"
+              aria-pressed={pinned}
+              disabled={!canPin}
+              className={`inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm ${
+                pinned
+                  ? 'bg-tint-selection text-accent hover:brightness-125'
+                  : canPin
+                    ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
+                    : 'cursor-not-allowed text-fg-dimmer'
+              }`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onTogglePin(id)}
+              title={
+                pinned
+                  ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
+                  : canPin
+                    ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
+                    : '고정할 종목이 없습니다'
+              }
+            >
+              <PinGlyph filled={pinned} />
+            </button>
+          )}
           {/* 차트 창은 종목 식별 행(종목명·현재가·등락률·히트맵·경고)을 타이틀바에
               그린다(#869 캔버스 레전드에서 이관). 데이터 창·종목 없는 창은 기존 제목. */}
           {kind === 'chart' && symbolCode ? (

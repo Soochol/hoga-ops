@@ -21,6 +21,7 @@ import { DataWindow } from './DataWindow';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import {
   useWorkspaceStore,
+  windowSymbolOf,
   type GroupId,
   type GroupSymbol,
   type WorkspaceWindow,
@@ -36,6 +37,7 @@ interface LiveItemCtx {
   onClose: (id: string) => void;
   onTogglePalette: (id: string) => void;
   onPickGroup: (id: string, group: GroupId) => void;
+  onTogglePin: (id: string) => void;
 }
 
 export function WorkspaceCanvas() {
@@ -46,6 +48,7 @@ export function WorkspaceCanvas() {
   const focusWindow = useWorkspaceStore((s) => s.focusWindow);
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
   const setWindowGroup = useWorkspaceStore((s) => s.setWindowGroup);
+  const onTogglePin = useWorkspaceStore((s) => s.toggleWindowPin);
   const pendingNormalize = useWorkspaceStore((s) => s.pendingNormalize);
   const normalizeLegacyRects = useWorkspaceStore((s) => s.normalizeLegacyRects);
 
@@ -91,9 +94,9 @@ export function WorkspaceCanvas() {
     return () => clearChartTarget(hitTest);
   }, [api, registerChartTarget, clearChartTarget]);
 
-  // 창별 정밀 드롭 리졸버 — 좌표 아래 z-최상위 창을 찾아 그 창의 그룹 종목을 교체
-  // 한다(포커스 무관, #711). 창을 못 찾으면(캔버스 여백) false → 패널이 활성 그룹
-  // 교체로 폴백. 스토어 getState 로 최신 상태를 읽는다(effect deps 없이 안정).
+  // 창별 정밀 드롭 리졸버 — 좌표 아래 z-최상위 창을 찾아 그 창의 종목을 교체한다
+  // (포커스 무관, #711). 창을 못 찾으면(캔버스 여백) false → 패널이 클릭 경로로 폴백.
+  // 스토어 getState 로 최신 상태를 읽는다(effect deps 없이 안정).
   useEffect(() => {
     if (!api) return undefined;
     const resolver = (
@@ -104,7 +107,10 @@ export function WorkspaceCanvas() {
       if (!rect) return false;
       const win = api.windowAtPoint(point.x - rect.left, point.y - rect.top);
       if (!win) return false;
-      useWorkspaceStore.getState().setGroupSymbol(win.group, {
+      // 창 스코프의 문(`setWindowSymbol`) — 핀 창이면 그 창 슬롯에, 아니면 종전대로
+      // 그 창의 그룹에 쓴다. **핀 창에 종목을 넣는 경로는 이것 하나뿐이다**(클릭은
+      // `activationTarget` 이 핀 창을 건너뛴다).
+      useWorkspaceStore.getState().setWindowSymbol(win.id, {
         code: entry.code,
         name: entry.name ?? entry.code,
       });
@@ -146,8 +152,10 @@ export function WorkspaceCanvas() {
 
   const overlays = (
     <>
-      {/* 행 드래그 드롭 어포던스. 창 위 = 그 창 하이라이트(정밀 드롭, 그룹 N 교체),
-          창 밖 = 캔버스 전면(활성 그룹 교체). #711 PR-D2. */}
+      {/* 행 드래그 드롭 어포던스. 창 위 = 그 창 하이라이트(정밀 드롭 — 핀 창이면 그 창,
+          아니면 그룹 N 교체), 창 밖 = 캔버스 전면(클릭과 같은 목적지 규칙). #711 PR-D2.
+          여백 문구가 "활성 그룹" 을 말하지 않는 이유: 목적지가 포커스 창이 아니라
+          `activationTarget`(핀 창을 건너뛴 첫 창)이라 그 표현이 더 이상 참이 아니다. */}
       {draggingEntry && hoverDropWin && hoverDropRect && (
         <div
           aria-hidden
@@ -172,7 +180,7 @@ export function WorkspaceCanvas() {
               boxShadow: 'var(--shadow-overlay)',
             }}
           >
-            그룹 {hoverDropWin.group} 종목 교체
+            {hoverDropWin.pinned ? '고정된 이 창의 종목 교체' : `그룹 ${hoverDropWin.group} 종목 교체`}
           </span>
         </div>
       )}
@@ -198,7 +206,7 @@ export function WorkspaceCanvas() {
               transition: 'transform 150ms ease',
             }}
           >
-            여기에 놓아 활성 그룹 종목 변경
+            여기에 놓아 종목 변경
           </span>
         </div>
       )}
@@ -229,8 +237,9 @@ export function WorkspaceCanvas() {
       onClose: closeWindow,
       onTogglePalette,
       onPickGroup,
+      onTogglePin,
     }),
-    [groupSymbols, palette, closeWindow, onTogglePalette, onPickGroup],
+    [groupSymbols, palette, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
   );
 
   return (
@@ -261,7 +270,7 @@ function LiveWindowItem({
   return (
     <WorkspaceWindowItem
       win={win}
-      symbol={ctx.groupSymbols[win.group] ?? null}
+      symbol={windowSymbolOf({ groupSymbols: ctx.groupSymbols }, win)}
       rect={rect}
       zIndex={zIndex}
       focused={focused}
@@ -272,6 +281,7 @@ function LiveWindowItem({
       onClose={ctx.onClose}
       onTogglePalette={ctx.onTogglePalette}
       onPickGroup={ctx.onPickGroup}
+      onTogglePin={ctx.onTogglePin}
     />
   );
 }
@@ -286,7 +296,7 @@ function LiveWindowItem({
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   win, symbol, rect, zIndex, focused, lifting, paletteOpen,
-  onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup,
+  onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup, onTogglePin,
 }: {
   win: WorkspaceWindow;
   symbol: GroupSymbol | null;
@@ -300,7 +310,11 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   onClose: (id: string) => void;
   onTogglePalette: (id: string) => void;
   onPickGroup: (id: string, group: GroupId) => void;
+  onTogglePin: (id: string) => void;
 }) {
+  // 고정할 종목이 없는 창은 핀을 켤 수 없다 — 스토어 가드(`toggleWindowPin`)와 **같은
+  // 술어**를 UI 에도 세워 "눌렀는데 아무 일도 안 남" 을 만들지 않는다.
+  const canPin = win.pinned != null || symbol != null;
   return (
     <WindowFrame
       id={win.id}
@@ -314,11 +328,14 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       symbolCode={symbol?.code ?? null}
       isIndex={symbol?.kind === 'index'}
       paletteOpen={paletteOpen}
+      pinned={win.pinned != null}
+      canPin={canPin}
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={onClose}
       onTogglePalette={onTogglePalette}
       onPickGroup={onPickGroup}
+      onTogglePin={onTogglePin}
     >
       {win.kind === 'chart' ? (
         <ChartWindow win={win} symbol={symbol} />

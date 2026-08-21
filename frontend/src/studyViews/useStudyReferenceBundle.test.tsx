@@ -188,7 +188,7 @@ describe('useStudyReferenceBundles', () => {
     const chartId = useStudyWorkspaceStore.getState().windows.find((w) => w.kind === 'chart')!.id;
     useStudyWorkspaceStore.getState().setChartTimeframe(chartId, save.timeframe);
     useLivePageStore.setState({ indicatorsByTimeframe: {} });
-    useLivePageStore.getState().patchIndicatorsScoped(null, save.timeframe, {
+    useLivePageStore.getState().patchIndicatorsScoped({ page: null, windowKey: null }, save.timeframe, {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,

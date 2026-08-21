@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
-import { activeGroupOf, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
+import { focusedWindowSymbol, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStateBanner } from './LiveStateBanner';
@@ -90,10 +90,11 @@ export function LivePage() {
   const liveStatus = useLiveStatusProjection(status);
   const banner = liveStatus.banner;
 
-  // 활성 그룹 종목 + 포커스 차트 창 tf — 미러·수집·타이틀·상태바 폴백의 원천.
-  const activeSymbol: GroupSymbol | null = useWorkspaceStore(
-    (s) => s.groupSymbols[activeGroupOf(s)] ?? null,
-  );
+  // 포커스 창이 **그리는** 종목 + 포커스 차트 창 tf — 미러·수집·타이틀의 원천.
+  // `groupSymbols[activeGroupOf(s)]` 가 아니다: 포커스 창이 고정(핀)이면 그룹 종목과
+  // 화면이 갈려서, 그 식은 관심종목 하트·검색 하이라이트·탭 제목을 화면에 없는
+  // 종목에 걸어 놓는다(`focusedWindowSymbol` 주석).
+  const activeSymbol: GroupSymbol | null = useWorkspaceStore(focusedWindowSymbol);
   const focusedChartTf = useWorkspaceStore(
     (s) => targetChartWindow(s.windows, s.zOrder)?.chart?.timeframe,
   );

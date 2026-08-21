@@ -23,7 +23,11 @@ import { TimeframeControl } from '../live/TimeframeControl';
 import { STUDY_HEADER_FOLD } from '../live/workspace/chartHeaderCompact';
 import { requestIndicatorDrawer } from '../live/workspace/indicatorDrawerControls';
 import { useChartHeaderFold } from '../live/workspace/useChartHeaderCompact';
-import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowView';
+import {
+  WindowViewContext,
+  useSeedWindowIndicatorScope,
+  type WindowViewValue,
+} from '../live/workspace/windowView';
 import { STUDY_DEFAULT_MINUTE_TIMEFRAME } from '../state/studyLastMinuteTimeframe';
 import { MIN_GROUP } from '../workspace/groupId';
 import { useStudyWorkspaceStore } from '../state/studyWorkspace';
@@ -90,6 +94,9 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
   const historicalFromDate = useStudyWorkspaceStore(
     (s) => s.chartRuntime[windowId]?.historicalFromDate ?? null,
   );
+
+  // `/live` ChartWindow 와 같은 안전망(ADR-0152) — 멱등 시드.
+  useSeedWindowIndicatorScope(windowId, STUDY_WINDOW_WORKSPACE);
 
   const view: WindowViewValue = useMemo(
     () => ({

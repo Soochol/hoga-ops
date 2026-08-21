@@ -54,10 +54,13 @@ function seedStudyWorkspace(timeframe = '5m' as const): void {
     zOrder: [CHART_ID],
     chartRuntime: {},
   });
-  // 지표는 앱 전역 1세트 — 창 시드와 함께 전역 버킷도 비운다.
+  // 지표 저장소는 전역이고 창 id 는 테스트 간 고정(CHART_ID)이라, **창 엔트리까지**
+  // 비워야 격리가 된다 — 안 비우면 앞 테스트가 심은 창 세트가 남아 뒤 테스트의
+  // 페이지 세트 주입을 가린다(ADR-0152).
   useLivePageStore.setState({
     indicatorsByTimeframe: {},
     studyIndicatorsByTimeframe: {},
+    indicatorsByWindow: {},
     indicatorTimeframe: '1m',
   });
 }
@@ -142,15 +145,19 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
     expect(probe.paneStretch).toMatchObject({ volume: 2 });
   });
 
-  it('지표 쓰기는 전역 v2 의 `/study` 세트로 간다 — 두 워크스페이스 창 모두 안 움직인다', () => {
+  it('지표 쓰기는 전역 v2 의 **이 창** 세트로 간다 — 두 워크스페이스 창 모두 안 움직인다', () => {
     renderWindow({ chart: chartProps });
     act(() => probe.actions!.setRatioEnabled(true));
 
-    expect(useLivePageStore.getState().studyIndicatorsByTimeframe.minute)
+    // 창 세트에 쓴다(ADR-0152). 키의 접두사가 `study:` 인 것도 함께 못 박는다 —
+    // 두 워크스페이스가 창 id 를 독립 발급하므로 접두사가 유일한 구분자다.
+    expect(useLivePageStore.getState().indicatorsByWindow[`study:${CHART_ID}`]?.minute)
       .toMatchObject({ ratioEnabled: true });
-    // `/live` 세트는 그대로다(ADR-0146) — 두 페이지는 서로 동기화하지 않는다.
+    // 페이지 세트는 **양쪽 다** 그대로다 — 창 편집이 시드 뿌리를 오염시키면
+    // 그 뒤 열리는 모든 새 창이 남의 창 설정을 물려받는다.
+    expect(useLivePageStore.getState().studyIndicatorsByTimeframe.minute).toBeUndefined();
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
-    // 창에는 봉만 남는다 — 설정 사본이 되살아나면 다시 탭마다 갈린다.
+    // 창에는 봉만 남는다 — 설정 사본이 되살아나면 다시 탭마다 갈린다(#712).
     expect(useStudyWorkspaceStore.getState().windows[0].chart)
       .toEqual({ timeframe: '5m', lastMinuteTimeframe: '5m' });
     expect(useWorkspaceStore.getState().windows[0].chart).toEqual({ timeframe: 'D' });
@@ -160,8 +167,8 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
 
   it('창 봉이 바뀌면 전역 버킷도 그 봉으로 resolve 된다', () => {
     act(() => {
-      useLivePageStore.getState().patchIndicatorsScoped('study', 'D', { ratioEnabled: true });
-      useLivePageStore.getState().patchIndicatorsScoped('study', '5m', { ratioEnabled: false });
+      useLivePageStore.getState().patchIndicatorsScoped({ page: 'study', windowKey: null }, 'D', { ratioEnabled: true });
+      useLivePageStore.getState().patchIndicatorsScoped({ page: 'study', windowKey: null }, '5m', { ratioEnabled: false });
     });
     renderWindow({ chart: chartProps });
     expect(probe.indicators?.ratioEnabled).toBe(false); // minute 버킷
@@ -172,12 +179,18 @@ describe('Provider 가 /study 스토어를 향한다 (#901·#907)', () => {
 });
 
 describe('전역 v2 가 지표 SSOT 다', () => {
+  // 창별 지표(ADR-0152)에서도 **내용물은 전역 저장소에 있다** — 창이 갖는 것은
+  // 스코프 키뿐이다. 그래서 크로스탭 재수화가 창 세트까지 그대로 덮는다. 이것이
+  // #712(내용물을 탭별 워크스페이스 스냅샷에 담아 탭마다 지표가 갈린 사고)와
+  // 갈리는 지점이라, 여기서 초록이 아니면 그 사고가 되돌아온 것이다.
   it('다른 탭이 바꾼 전역 설정이 창에 그대로 반영된다', () => {
     renderWindow({ chart: { code: '064350', timeframe: '5m' } as unknown as StudyChartRootProps });
     expect(probe.indicators?.ratioEnabled).toBe(false);
     // 크로스탭 재수화(`hydrateIndicatorsFromStorage`)가 하는 일과 같은 모양의 쓰기.
     act(() => {
-      useLivePageStore.setState({ studyIndicatorsByTimeframe: { minute: { ratioEnabled: true } } });
+      useLivePageStore.setState({
+        indicatorsByWindow: { [`study:${CHART_ID}`]: { minute: { ratioEnabled: true } } },
+      });
     });
     expect(probe.indicators?.ratioEnabled).toBe(true);
   });

@@ -16,6 +16,10 @@ _Avoid_: "session" alone, "trading day"
 A 6-digit KRX ticker, e.g. `005930`. Strings, not integers — leading zeros matter.
 _Avoid_: "symbol", "ticker"
 
+**Window Pin (창 종목 고정)**:
+`/live` 워크스페이스 창 하나를 **링크 그룹에서 뗀** 상태. 핀이 걸린 창은 `groupSymbols[group]` 을 보지 않고 자기 슬롯(`WorkspaceWindow.pinned`)의 종목을 그리므로, 관심종목·히트맵·스크리너·검색 **클릭**으로는 바뀌지 않는다 — 클릭의 목적지(`activationTarget`)가 z순서 위에서부터 **핀 아닌** 첫 창을 고르고 그 창을 포커스로 올리기 때문이다. 바꾸는 문은 **그 창에 직접 드롭**하는 경로 하나뿐(`setWindowSymbol`). 창→종목 해석은 전부 `windowSymbolOf` 를 지나야 한다(직독하면 핀 창만 조용히 갈린다 — 구독 코드 집합 `liveOpenCodesKey` 가 그 사고의 최단 경로). 핀 슬롯은 종목이므로 `groupSymbols` 와 같은 규칙으로 **레이아웃 프리셋에 담기지 않고**, 딥링크 탭(`?code=`)은 하이드레이션에서 핀을 지운다(안 그러면 그 URL 이 죽는다). 전 창이 핀이면 클릭은 착지할 곳이 없어 토스트 + 「전체 고정 해제」로 알린다. ADR-0153.
+_Avoid_: "창 잠금"/"boolean 자물쇠" (핀은 값을 든다 — 잠금으로 구현하면 같은 그룹의 형제 창 교체가 잠긴 창까지 바꾼다); "그룹 고정" (스코프는 창이다); 핀 창이 그룹 종목을 "무시하고 얼려 둔다"는 설명 (해제하면 그룹으로 되돌아온다 — 얼리기가 아니라 분리다).
+
 **LiveInstrument**:
 The canonical subject model for the `/live` page: either a stock instrument (`{ kind: 'stock', code, label }`) or a representative index instrument (`{ kind: 'index', id, label }`). `activeInstrument` is the full subject; `activeCode` is only the stock-code projection used by older stock-only hooks. The stable subject key is `stock:005930` or `index:KOSPI`.
 _Avoid_: overloading **Code** for indices; representing an index as a fake 6-digit ticker.

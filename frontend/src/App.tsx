@@ -17,6 +17,7 @@ import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
+import PinnedActivationToastHost from './live/PinnedActivationToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ShortcutHelpHost } from './ui/ShortcutHelpModal';
 import { ToastViewport } from './ui/toast/ToastViewport';
@@ -158,6 +159,10 @@ export default function App() {
         <SupervisedTaskFailureToastHost />
         <DiskHeadroomToastHost />
         <DrawingClearToastHost />
+        {/* 전 창 고정으로 클릭 종목 교체가 막힌 사건 — 전 라우트에 마운트한다.
+            클릭 진입점(useJumpToLive)이 /heatmap·/screener 등 /live 밖에도 있어서,
+            /live 안에 두면 정작 막힌 그 클릭에서는 호스트가 아직 없다. */}
+        <PinnedActivationToastHost />
       </ToastViewport>
       {/* 토스트가 아니라 모달 — 뷰포트 밖에 둔다. 그리기 메뉴와 Alt+C 가 공유하는
           단 하나의 확인 게이트(자세한 사연은 호스트 주석). */}
