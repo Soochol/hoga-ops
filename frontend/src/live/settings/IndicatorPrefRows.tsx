@@ -3,12 +3,14 @@ import {
   useScopedChartPrefs,
   useChartPrefActions,
   CHART_TOGGLES,
+  CHART_LINE_STYLES,
   CHART_NUMERIC_PREFS,
   gatedByOf,
   type ChartToggleKey,
 } from '../../state/chartPrefs';
 import ToggleRow from './ToggleRow';
 import NumericPrefRow from './NumericPrefRow';
+import LineStyleRow from './LineStyleRow';
 
 /**
  * 주어진 토글 키 목록을 `ToggleRow` + (enabledBy로 묶인) 하위 `ToggleRow`·
@@ -36,6 +38,7 @@ export default function IndicatorPrefRows({
   const numericsGatedBy = (key: ChartToggleKey) => CHART_NUMERIC_PREFS.filter((p) => (
     'enabledBy' in p && p.enabledBy === key
   ));
+  const lineStylesGatedBy = (key: ChartToggleKey) => CHART_LINE_STYLES.filter((d) => d.enabledBy === key);
   const keySet = new Set<string>(toggleKeys);
   const requested = CHART_TOGGLES.filter((t) => keySet.has(t.key));
   const toggles = requested.filter((t) => {
@@ -47,6 +50,7 @@ export default function IndicatorPrefRows({
       {toggles.map((toggle, idx) => {
         const gatedToggles = CHART_TOGGLES.filter((t) => gatedByOf(t) === toggle.key);
         const gatedNumerics = numericsGatedBy(toggle.key);
+        const gatedLines = lineStylesGatedBy(toggle.key);
         const gateOpen = prefs[toggle.key];
         return (
           <Fragment key={toggle.key}>
@@ -57,7 +61,7 @@ export default function IndicatorPrefRows({
               onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
               testId={`settings-toggle-${toggle.key}`}
             />
-            {(gatedToggles.length > 0 || gatedNumerics.length > 0) && (
+            {(gatedToggles.length > 0 || gatedNumerics.length > 0 || gatedLines.length > 0) && (
               <div className="ml-4">
                 {gatedToggles.map((def) => (
                   <Fragment key={def.key}>
@@ -73,12 +77,20 @@ export default function IndicatorPrefRows({
                         → 확인 문턱). 이걸 빠뜨리면 토글을 부모 아래로 옮기는 순간 그 노브가
                         화면에서 조용히 사라진다 — 타입도 테스트도 안 잡는 종류의 소실이라
                         `TickNormalizeConfigRow.test.tsx` 가 그 자리를 지키고 있다. */}
+                    {lineStylesGatedBy(def.key).map((d) => (
+                      <div className="ml-4" key={d.key}>
+                        <LineStyleRow def={d} />
+                      </div>
+                    ))}
                     {numericsGatedBy(def.key).map((n) => (
                       <div className="ml-4" key={n.key}>
                         <NumericPrefRow def={n} />
                       </div>
                     ))}
                   </Fragment>
+                ))}
+                {gatedLines.map((def) => (
+                  <LineStyleRow key={def.key} def={def} />
                 ))}
                 {gatedNumerics.map((def) => (
                   <NumericPrefRow key={def.key} def={def} />

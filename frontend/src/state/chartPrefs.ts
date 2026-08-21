@@ -129,6 +129,22 @@ export const CHART_TOGGLES = [
     enabledBy: 'highLowLabelsEnabled',
   },
   {
+    key: 'highLowPriorHighLineEnabled',
+    label: '이전일 고가선',
+    description:
+      '보이는 범위에서 **마지막 캔들이 속한 거래일을 빼고** 남은 이전 날들의 최고가에 수평 점선을 그립니다. 그 날 아직 넘지 못한 고점을 저항선으로 봅니다. (긴 점선)',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
+    key: 'highLowPriorLowLineEnabled',
+    label: '이전일 저가선',
+    description:
+      '보이는 범위에서 **마지막 캔들이 속한 거래일을 빼고** 남은 이전 날들의 최저가에 수평 점선을 그립니다. 그 날 아직 깨지 않은 저점을 지지선으로 봅니다. (긴 점선)',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
     key: 'viLimitPriceDotsEnabled',
     label: 'VI/상하한가 선',
     description: '가격이 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 가격선으로 표시합니다.',
@@ -447,6 +463,77 @@ export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
 export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
 export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
+/** 선 두께 — `MAStylePicker` 가 제공하는 네 단계. */
+export type ChartLineWidth = 1 | 2 | 3 | 4;
+
+/**
+ * Declarative registry of per-line **색·두께** prefs. Sister of `CHART_TOGGLES`:
+ * one entry here yields two `ChartViewPrefs` fields (`<key>Color` / `<key>Width`),
+ * their defaults, `mergePrefs` validation, and the `MAStylePicker` row rendered
+ * (indented, dimmed while the gate is off) under `enabledBy` — no per-line code
+ * in any of those modules. That derivation is the point: the hand-written
+ * `viLimitPriceLine*` pair predates it and is **not** validated in `mergePrefs`,
+ * so it silently resets on reload. Add lines here, not by hand.
+ *
+ * **색 기본값은 `''`(빈 문자열) = 방향색 토큰**이지 hex 가 아니다. 렌더가
+ * `pref || tokens[direction]` 으로 지연 해석하므로 고르지 않은 선은 테마
+ * (Obsidian/Ledger/Toss)를 계속 따라간다 — hex 를 기본값으로 박으면 그 추종이
+ * 끊긴다. 사용자가 색을 명시하면 그때부터 그 hex 로 고정되는 것이 의도다.
+ */
+export type LineStylePrefDef = {
+  readonly key: string;
+  /** **선 이름**이지 행 제목이 아니다 — 행 제목은 `LineStyleRow` 가 `<label> 스타일` 로
+   *  조립하고, 픽커의 aria-label 은 이 이름을 쓴다(`MAStylePicker` 가 다시 " 스타일
+   *  선택" 을 덧붙이므로 여기 "스타일" 을 넣으면 "… 스타일 스타일 선택" 이 된다). */
+  readonly label: string;
+  /** 이 선을 켜는 토글. UI 게이트이자 렌더 위치(그 토글 바로 아래). */
+  readonly enabledBy: ChartToggleKey;
+  /** 색 미지정 시 따라갈 방향 토큰 — 렌더가 `--price-up`/`--price-down` 로 푼다. */
+  readonly direction: 'up' | 'down';
+  readonly defaultWidth: ChartLineWidth;
+};
+
+export const CHART_LINE_STYLES = [
+  {
+    key: 'highLowHighLine',
+    label: '고가 가격선',
+    enabledBy: 'highLowHighLineEnabled',
+    direction: 'up',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowLowLine',
+    label: '저가 가격선',
+    enabledBy: 'highLowLowLineEnabled',
+    direction: 'down',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowPriorHighLine',
+    label: '이전일 고가선',
+    enabledBy: 'highLowPriorHighLineEnabled',
+    direction: 'up',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowPriorLowLine',
+    label: '이전일 저가선',
+    enabledBy: 'highLowPriorLowLineEnabled',
+    direction: 'down',
+    defaultWidth: 1,
+  },
+] as const satisfies readonly LineStylePrefDef[];
+
+export type ChartLineStyleKey = (typeof CHART_LINE_STYLES)[number]['key'];
+
+/** 행 설명 — 네 엔트리가 이름과 방향만 다른 같은 문장이라 레지스트리에 적지 않고
+ *  조립한다. 번들 절감을 노렸다면 헛수고다(raw −0.3KB, **gzip 은 그 반복을 이미
+ *  압축하고 있어 0**); 남긴 이유는 문장 하나를 고칠 때 네 군데를 고치지 않는 것이다. */
+export function lineStyleDescription(def: LineStylePrefDef): string {
+  const dir = def.direction === 'up' ? '상승색' : '하락색';
+  return `${def.label}의 색과 두께입니다. 색을 고르지 않으면 테마의 ${dir}을 따릅니다.`;
+}
+
 export type ViLimitPriceLineWidth = 1 | 2 | 3 | 4;
 export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
 export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: ViLimitPriceLineWidth = 3;
@@ -462,6 +549,10 @@ export const TRADE_HIGHLIGHT_COLOR_DEFAULT = '#EAB308';
 export type ChartViewPrefs =
   & { [K in ChartToggleKey]: boolean }
   & { [K in NumericPrefKey]: number }
+  // `CHART_LINE_STYLES` 파생 — 엔트리 하나가 `<key>Color`(''=방향 토큰) 와
+  // `<key>Width` 두 필드를 만든다.
+  & { [K in ChartLineStyleKey as `${K}Color`]: string }
+  & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth }
   & {
     dayBoundaryColor: string;
     dayBoundaryLineWidth: DayBoundaryLineWidth;
@@ -482,9 +573,18 @@ const NUMERIC_DEFAULTS = Object.fromEntries(
   CHART_NUMERIC_PREFS.map((p) => [p.key, p.default]),
 ) as { [K in NumericPrefKey]: number };
 
+const LINE_STYLE_DEFAULTS = Object.fromEntries(
+  CHART_LINE_STYLES.flatMap((d) => [
+    [`${d.key}Color`, ''],
+    [`${d.key}Width`, d.defaultWidth],
+  ]),
+) as { [K in ChartLineStyleKey as `${K}Color`]: string }
+  & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth };
+
 export const DEFAULT_PREFS: ChartViewPrefs = {
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
+  ...LINE_STYLE_DEFAULTS,
   dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
   dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
   tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
@@ -598,6 +698,9 @@ type ChartPrefsStore = ChartViewPrefs & {
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
+  /** `CHART_LINE_STYLES` 한 엔트리의 색·두께를 patch 한다. 색 `''` 는 "고르지 않음"
+   *  (= 방향 토큰 추종)이라 유효한 값이다 — 빈 문자열을 falsy 로 걸러 내지 말 것. */
+  setLineStyle: (key: ChartLineStyleKey, patch: { color?: string; lineWidth?: ChartLineWidth }) => void;
   /** 지표 드로어 "현재 봉 초기화"(PR-C #699): indicator-modal 의 **현재 봉 버킷만**
    *  비우고 재투영한다. 차트 전반 flat(그리드·툴팁 등 ⚙️ 설정 항목)은 드로어 밖이라
    *  건드리지 않는다. */
@@ -706,6 +809,14 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
         viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
       })),
+
+    setLineStyle: (key, patch) =>
+      set((s) => {
+        const out: Record<string, unknown> = {};
+        if (patch.color !== undefined) out[`${key}Color`] = patch.color;
+        if (patch.lineWidth !== undefined) out[`${key}Width`] = patch.lineWidth;
+        return out as Partial<typeof s>;
+      }),
 
     resetIndicatorModalBucket: () =>
       get().resetIndicatorModalBucketScoped(AMBIENT_PREF_SCOPE, get().indicatorModalTimeframe),

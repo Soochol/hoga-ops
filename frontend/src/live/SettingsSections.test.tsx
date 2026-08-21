@@ -59,8 +59,17 @@ describe('SettingsSections (2단 nav+detail)', () => {
     // 차트 카테고리는 토글을 **키 하나씩** IndicatorPrefRows 에 넘긴다. 하위 토글을
     // 최상위 목록에서 빼지 않으면 같은 행이 두 번(부모 아래 + 자기 차례) 나온다.
     render(<SettingsSections />);
-    for (const key of ['highLowHighLineEnabled', 'highLowLowLineEnabled']) {
+    for (const key of [
+      'highLowHighLineEnabled', 'highLowLowLineEnabled',
+      'highLowPriorHighLineEnabled', 'highLowPriorLowLineEnabled',
+    ]) {
       expect(screen.getAllByTestId(`settings-toggle-${key}`)).toHaveLength(1);
+    }
+    // 색·두께 행도 각 선 아래 한 번씩.
+    for (const key of [
+      'highLowHighLine', 'highLowLowLine', 'highLowPriorHighLine', 'highLowPriorLowLine',
+    ]) {
+      expect(screen.getAllByTestId(`settings-linestyle-${key}`)).toHaveLength(1);
     }
   });
 
