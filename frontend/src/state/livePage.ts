@@ -189,6 +189,35 @@ type Persisted = {
   historicalFromDate: string | null;
 };
 
+/**
+ * `/live` 에서 열린 **저장 학습뷰의 기간** — 일봉이면 기간 밴드, 분봉이면 오른쪽 벽.
+ *
+ * 저장뷰 자체(`StudyViewListRow`)를 들지 않고 **원시 필드로 평탄화**한다. 이유는 두
+ * 가지다. ① `api/studyViews` 가 여기서 `LiveTimeframe` 을 import 하므로 역방향
+ * import 는 순환이다. ② 슬롯이 필요로 하는 것은 종목·구간·저장 당시 봉/줌뿐이고,
+ * 메모·태그·타임스탬프까지 들면 저장뷰 스키마가 바뀔 때마다 `/live` 스토어가 흔들린다.
+ * 변환은 생산부(`studyViews/savedRangeFocus.ts`)가 한다.
+ *
+ * **비영속이다.** `persistedPayload` 가 저장을 `Persisted` 5필드로 좁히므로 이 값은
+ * `live.page.v1` 에 실리지 않는다 — `lastMinuteHistoricalFromDate` 와 같은 결이다.
+ * 새로고침하면 해제되는 것이 의도다(저장뷰는 명시적으로 여는 것이지 복원 대상이 아니다).
+ */
+export type SavedRangeFocus = {
+  viewId: string;
+  code: string;
+  label: string;
+  /** 저장 구간 경계 실시각. 밴드·벽이 둘 다 이 두 값에서 나온다. */
+  fromMs: number;
+  toMs: number;
+  /** 안내 문구용 YYYYMMDD. ms 에서 재유도하지 않고 저장뷰가 준 값을 그대로 쓴다. */
+  fromDate: string;
+  toDate: string;
+  /** 저장 당시 봉. 창의 봉과 **다를 수 있다** — 그때 `savedBarSpan` 을 쓰면 안 된다. */
+  savedTimeframe: LiveTimeframe;
+  /** 저장 당시 가시 봉 수. 봉이 일치할 때만 유효하다(봉 수는 봉 종류에 상대적이다). */
+  savedBarSpan: number;
+};
+
 /** The full active-view tuple the page renders. Written atomically by the active
  *  Live Tab (applyTabToPage → projectActiveView) so there is no setter ordering to
  *  get wrong (setActiveCode/setCandleTimeframe each reset historicalFromDate; an
@@ -241,6 +270,10 @@ type Store = Persisted & IndicatorSettings & {
    *  `Persisted` 5필드로 좁히므로 이 값은 `live.page.v1` 에 실리지 않는다(그전에는
    *  실리되 `readStorage` 화이트리스트가 무시해 재수화만 안 됐다). */
   lastMinuteHistoricalFromDate: string | null;
+  /** `/live` 에서 열린 저장뷰의 기간 슬롯. **단일** — 다른 저장뷰를 열면 교체된다. */
+  savedRangeFocus: SavedRangeFocus | null;
+  focusSavedRange: (focus: SavedRangeFocus) => void;
+  clearSavedRange: () => void;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
   extendHistoricalRange: (date: string) => void;
@@ -582,6 +615,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     indicatorsByWindow: initialIndicatorsV2.byWindow,
     indicatorTimeframe: initialPage.candleTimeframe,
     lastMinuteHistoricalFromDate: null,
+    savedRangeFocus: null,
 
     // 지표 도메인 변이 setter 55종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
     // C2c-2a). 전역 백엔드 = 호출 시점 fresh get() + ambient 봉 버킷 patch.
@@ -714,6 +748,19 @@ export const useLivePageStore = create<Store>((set, get) => {
         ...resolveIndicatorSettings(stored.byTimeframe, get().indicatorTimeframe),
       });
     },
+
+    focusSavedRange: (focus) => set({ savedRangeFocus: focus }),
+
+    /**
+     * 슬롯 해제. 호출부는 **명시적인 것만** 이어야 한다 — 칩 ×, 사용자의 종목 변경
+     * (`activateLiveInstrument`), 창 드롭(`setWindowSymbol`).
+     *
+     * ⚠ **`projectActiveView` 에 걸지 말 것.** 거기엔 `mirrorActiveGroupToLivePage`
+     * (창 포커스 전환 미러)도 들어와서, 다른 종목 창을 **클릭만 해도** 저장뷰가
+     * 풀린다. 봉 전환도 트리거가 아니다 — 일봉 밴드와 분봉 벽은 같은 슬롯의 두
+     * 표현이라 봉을 오갈 수 있어야 기능이 성립한다(2026-08-21 사용자 결정).
+     */
+    clearSavedRange: () => set({ savedRangeFocus: null }),
 
     projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate }) => {
       // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe

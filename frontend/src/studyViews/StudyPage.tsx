@@ -622,7 +622,7 @@ export function StudyPage() {
     // 캘린더 봉의 저장 구간 마크 + 그 구간을 화면에 앉히는 초기 뷰포트(#1240).
     // 저장 봉이 분봉이든 일봉이든 **똑같이** `save.range` 를 표시한다.
     const band = result.dailyContext && spec.save
-      ? studySavedRangeMarks(spec.save, model.chartBundle.candles)
+      ? studySavedRangeMarks(spec.save.range, model.chartBundle.candles)
       : null;
     // 코퍼스 커버리지 안내는 **밴드와 같은 게이트**를 쓴다(그 함수의 「호출부 의존」
     // 절). 분봉 경로는 캔들이 저장 구간으로 클립돼 있어 판정이 성립하지 않는다.

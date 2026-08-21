@@ -19,7 +19,13 @@ function activeView() {
 function openViewInGroup1(save: { id: string; code: string; label: string; name: string }) {
   useStudyWorkspaceStore.getState().setGroupView(1, studyGroupViewFromSave(save));
 }
+import { useLivePageStore } from '../state/livePage';
 import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
+
+/** 행 클릭이 세우는 `/live` 저장뷰 기간 슬롯(2026-08-21). */
+function savedRange() {
+  return useLivePageStore.getState().savedRangeFocus;
+}
 import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
 type DndHandlers = {
@@ -420,51 +426,55 @@ it('does not expose overwrite when the current study save is missing from the dr
   expect(createMutate).not.toHaveBeenCalled();
 });
 
-it('clicking the saved view title navigates to the study route', async () => {
+// 2026-08-21: 행 클릭의 목적지가 `/study` → **`/live`** 로 바뀌었다. 저장뷰가 정하는
+// 것은 종목과 구간이고, 그 둘을 `/live` 차트가 기간 밴드(일봉)·우측 벽(분봉)으로 그린다.
+it('clicking the saved view title navigates to /live and arms the range slot', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
+  expect(savedRange()).toMatchObject({ viewId: 'a', code: '005930' });
 });
 
-it('normal row click replaces the active study view instead of opening only the route', async () => {
+// 행 클릭은 **`/study` 워크스페이스를 건드리지 않는다.** 두 페이지가 같은 저장뷰
+// 슬롯을 공유하면 `/live` 클릭이 `/study` 창 배치를 조용히 바꾼다 — 그 결합을 만들지
+// 않는 것이 계약이고, 그래서 그룹 뷰는 이전 값 그대로여야 한다.
+it('normal row click leaves the /study workspace untouched', async () => {
   openViewInGroup1(saves[1]);
   renderDrawer('/study?view=b');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  // 제자리 교체 — 뷰가 쌓이지 않는다(ADR-0149).
-  expect(activeView()).toEqual({
-    viewId: 'a',
-    code: '005930',
-    label: '삼성전자',
-    name: '급등 이후',
-  });
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
+  expect(savedRange()).toMatchObject({ viewId: 'a' });
+  expect(activeView()).toMatchObject({ viewId: 'b' });
 });
 
-// 스토어는 **봉을 담지 않는다**(ADR-0149) — 봉의 소유자는 차트 창이다(#1326).
-// 종전엔 탭이 저장 봉을 들고 있어서 "서랍이 딴 값을 끼워 넣지 않는가" 를 여기서 쟀다.
-// 이제는 담을 자리 자체가 없다는 것이 계약이고, 그것을 그대로 잰다.
-it('저장뷰를 열어도 스토어에 봉이 들어가지 않는다 — 봉은 창이 소유한다', async () => {
+// 봉의 소유자는 **차트 창**이다(#1326) — `/live` 로 목적지가 바뀐 뒤에도 그대로다.
+// 슬롯은 저장 당시 봉을 `savedTimeframe` 으로 **기억만** 하고(창의 봉과 다를 때
+// bar_span 을 못 쓴다는 판정에 쓴다), 창의 봉을 그 값으로 밀지 않는다. 미는 구현은
+// 저장이 10분봉인 저장뷰를 열었을 때 사용자가 보던 봉을 빼앗는다.
+it('저장뷰를 열어도 창의 봉을 밀지 않는다 — 봉은 창이 소유한다', async () => {
   useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
+  useLivePageStore.setState({ candleTimeframe: '5m' });
   mockedSaves = [{ ...saves[0], timeframe: '10m' }];
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-  expect(activeView()).not.toHaveProperty('timeframe');
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
+  expect(savedRange()).toMatchObject({ savedTimeframe: '10m' });
+  expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
 });
 
 
-it('clicking the saved view name text navigates to the study route', async () => {
+it('clicking the saved view name text navigates to /live', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByText('급등 이후'));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
 });
 
 // ADR-0149 §갱신(2026-08-20) — ctrl/⌘+클릭은 **브라우저** 탭이다. 같은 ADR §5 가 없앤
@@ -499,20 +509,22 @@ it('일반 클릭은 새 브라우저 탭을 열지 않는다 — 제자리 교�
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
   expect(open).not.toHaveBeenCalled();
-  expect(activeView()).toMatchObject({ viewId: 'a', name: '급등 이후' });
+  expect(savedRange()).toMatchObject({ viewId: 'a' });
   open.mockRestore();
 });
 
-it('pressing Enter on the saved view title navigates to the study route', async () => {
+// 키보드도 클릭과 **같은 목적지**여야 한다 — 두 표면이 갈리면 한쪽만 낡는다.
+it('pressing Enter on the saved view title navigates to /live', async () => {
   renderDrawer('/inventory');
 
   const titleButton = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
   titleButton.focus();
   await userEvent.keyboard('{Enter}');
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
+  expect(savedRange()).toMatchObject({ viewId: 'a' });
 });
 
 it('does not render persistent row edit or delete buttons', () => {
@@ -722,13 +734,15 @@ it('opens the full row menu from the hover ⋯ button without navigating', async
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
 });
 
+// 행 메뉴 「열기」도 클릭·Enter 와 **같은 목적지**다 — 같은 제스처의 세 번째 표면이다.
 it('opens the saved view from the row menu 열기 item', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
+  expect(savedRange()).toMatchObject({ viewId: 'a' });
 });
 
 it('starts inline rename from the row menu', async () => {

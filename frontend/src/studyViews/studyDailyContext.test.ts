@@ -74,7 +74,7 @@ describe('studySavedRangeMarks', () => {
     const fromMs = bars[3].ts_ms;
     const toMs = bars[6].ts_ms;
     const marks = studySavedRangeMarks(
-      save({ timeframe: 'D', range: { from_date: '20260601', to_date: '20260630', from_ms: fromMs, to_ms: toMs } }),
+      save({ timeframe: 'D', range: { from_date: '20260601', to_date: '20260630', from_ms: fromMs, to_ms: toMs } }).range,
       bars,
     );
     // 저장 range 의 ms 가 아니라 **캔들 ts** 여야 캘린더 축에서 좌표가 맞는다.
@@ -84,7 +84,7 @@ describe('studySavedRangeMarks', () => {
   it('구간 안에 캔들이 하나도 없으면 null — 밴드를 그리지 않는다', () => {
     const bars = candles(5);
     const marks = studySavedRangeMarks(
-      save({ range: { from_date: '20200101', to_date: '20200102', from_ms: 1, to_ms: 2 } }),
+      save({ range: { from_date: '20200101', to_date: '20200102', from_ms: 1, to_ms: 2 } }).range,
       bars,
     );
     expect(marks).toBeNull();
