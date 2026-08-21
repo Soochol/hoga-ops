@@ -166,7 +166,9 @@ export default function BookPanel({
     return (
       <div className="flex h-full flex-col bg-bg-card">
         <div className="flex min-h-0 flex-1">
-          <PanelState>호가 사다리 없음</PanelState>
+          {/* "호가 데이터 없음"(위 분기)과 문구를 갈라 둔다 — 여기는 아래 스트립에
+              살아 있는 숫자가 그려지는 상태라, 같은 문구면 화면과 모순된다. */}
+          <PanelState>정규장 호가 없음 (시간외 잔량만 수신 중)</PanelState>
         </div>
         <TotalQtyStrip
           totals={afterHoursTotals}
