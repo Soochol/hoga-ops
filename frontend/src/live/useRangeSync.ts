@@ -225,9 +225,12 @@ export function useRangeSyncFollow(params: {
       // "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이 한 값에서
       // 나온다 — 중앙 정렬도 줌 비율도 필요 없다.
       //
-      // `syncZoom` 이 꺼져 있으면 배율은 내 것으로 두고 위치만 맞춘다(아래 cross 와
-      // 같은 경로). 그 스위치의 의미가 두 모드에서 "상대의 배율까지 반영" 으로 같다.
-      if (mode === 'peer' && syncZoom) {
+      // **`syncZoom` 을 보지 않는다**(사용자 결정 2026-08-21: "보이는 view 가 완전한
+      // 동기화"). 한때 그 토글로 게이트했는데, 꺼져 있으면 peer 가 중앙 정렬로 떨어져
+      // **두 창이 같은 구간을 보지 않았다** — peer 의 정의와 어긋난다. 그 토글은 이제
+      // `cross`(분봉→일봉) 전용이다. 거기서는 폭이 비교 불가라 복제가 불가능하고
+      // "비율만 옮길지" 가 진짜 선택지로 남는다.
+      if (mode === 'peer') {
         const next = replicatedRange({
           fromVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.fromMs),
           toVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.toMs),
