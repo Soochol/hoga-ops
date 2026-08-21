@@ -16,8 +16,8 @@ import { useMemo } from 'react';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useLiveBundle, type SidecarDemands } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import { useDayAskPeaks } from './useDayAskPeaks';
+import { useDayBidPeaks } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
 import type {
   AskPeak,
@@ -93,13 +93,37 @@ export interface UseLiveChartDataArgs {
   /** 같은 그룹 데이터 창의 sidecar 강제 fetch 수요(ADR-0119 PR-D) — 그룹 링크
    *  발행 차트 창만 공급. useLiveBundle 로 그대로 전달된다. */
   sidecarDemands?: SidecarDemands;
+  /**
+   * 저장뷰 구간에 **얼린** 창(2026-08-21 사용자 결정). `null` = 평소의 라이브 창.
+   *
+   * `/study`(복기)와 같은 의미론이다 — 저장 구간만 디스크에서 읽고 그 구간에 멈춰 있다.
+   * 칩 × 로 슬롯을 지우면 이 값이 `null` 이 되어 라이브로 돌아온다(`viewIdentity` 의
+   * `sv=` 가 빠지며 차트가 재생성되는 기존 경로가 그대로 겸한다).
+   *
+   * **`toDate` 가 이 훅의 "오늘" 이 된다.** 그 한 줄이 얼림의 전부다 — `minutePastTo`·
+   * 세션 경계·라이브 엣지 판정·피크 래칫의 당일 병합이 전부 `today` 를 기준으로 돌아서,
+   * 별도의 freeze 플래그를 하류에 뿌릴 필요가 없다. `/study` 도 같은 자리를 쓴다
+   * (`StudyPage` 의 `todayKst: model.save.range.to_date`).
+   *
+   * 라이브 SSE 는 여기서 **구독 자체를 끊는다**(`useLiveSeries('')`). 안 끊으면 오늘
+   * 틱이 과거 축에 얹혀 실재하지 않는 봉이 생긴다.
+   */
+  savedRangeFreeze?: { fromDate: string; toDate: string } | null;
 }
 
 export function useLiveChartData(args: UseLiveChartDataArgs) {
   const { activeCode, activeInstrument, timeframe, historicalFromDate, venue, investorNetEnabled, sidecarDemands } = args;
 
-  const today = todayKstYyyymmdd();
-  const live = useLiveSeries(activeCode ?? '', venue);
+  // 얼림은 **분봉에서만** 건다. 캘린더 봉은 250일 벽이 애초에 없어 저장뷰가 지금도
+  // 그려지고, 얼리면 `/study` 처럼 맥락 창을 따로 넓혀야 해서(`studyDailyContextWindow`)
+  // 오히려 화면이 저장 구간만큼으로 좁아진다.
+  const freeze = isMinuteTimeframe(timeframe) ? (args.savedRangeFreeze ?? null) : null;
+  // **얼림의 전부가 이 한 줄이다** — 인자 도크스트링 참조.
+  const today = freeze?.toDate ?? todayKstYyyymmdd();
+  // 얼린 창은 라이브 스트림을 아예 구독하지 않는다. `useLiveSeries` 는 빈 코드에서
+  // 초기 fetch(`enabled: !!code`)와 WS 구독(`if (!code) return`)을 둘 다 끊고 버퍼를
+  // 안 보이게 하므로(`bufferVisible`), 하류 피크·매물대의 당일 병합이 전부 no-op 이 된다.
+  const live = useLiveSeries(freeze ? '' : (activeCode ?? ''), venue);
   const {
     bundle,
     chartBundle,
@@ -118,7 +142,12 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     rangeWindowFromDate,
     pastSettledFromDate,
     adjustFactors,
-  } = useLiveBundle(activeCode, timeframe, today, live, { investorNetEnabled, venue, sidecarDemands });
+  } = useLiveBundle(activeCode, timeframe, today, live, {
+    investorNetEnabled,
+    venue,
+    sidecarDemands,
+    frozenRangeFrom: freeze?.fromDate ?? null,
+  });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
   const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;
@@ -205,14 +234,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
   );
-  const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
-    askPeakOb,
-    askPeakSeeds,
-    today,
-    peakSessionOpenMs,
-    activeCode,
-    liveInitial?.ask_peak_today ?? null,
-  );
   const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const bidPeakSeeds = candlePathBundle?.bid_peaks ?? EMPTY_BID_PEAKS;
@@ -226,14 +247,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
-  );
-  const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
-    bidPeakOb,
-    bidPeakSeeds,
-    today,
-    peakSessionOpenMs,
-    activeCode,
-    liveInitial?.bid_peak_today ?? null,
   );
   // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
   // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기
@@ -321,9 +334,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     pastSettledFromDate,
     indexSettledFromDate,
     dayAskPeaks,
-    todayAllPriceAskPeak,
     dayBidPeaks,
-    todayAllPriceBidPeak,
     tradeVolumePocs,
     liveSaveBundle,
     // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.

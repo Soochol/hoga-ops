@@ -264,18 +264,6 @@ describe('차트 배경 구분선 설정', () => {
 });
 
 describe('ask peak all-price toggle', () => {
-  it('defaults on and belongs to the indicator modal', () => {
-    expect(DEFAULT_PREFS.askPeakShowAllPrices).toBe(true);
-    const t = CHART_TOGGLES.find((t) => t.key === 'askPeakShowAllPrices');
-    expect(t).toBeDefined();
-    expect(t?.label).toBe('미체결 최대 매도벽 표시');
-    expect(categoryOf(t!)).toBe('indicator-modal');
-  });
-
-  it('mergePrefs preserves persisted false', () => {
-    expect(hydratedMinuteView({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
-  });
-
   it('label display toggles default on and persist false', () => {
     const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakLabelEnabled');
     const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakLabelEnabled');
@@ -321,71 +309,27 @@ describe('ask peak all-price toggle', () => {
       .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
   });
 
-  it('post-touch and untraded rank limits default to 1', () => {
+  it('touched-wall rank limits default to 1', () => {
+    // ⚠ 키 이름의 `AllPrice` 는 **체결된 벽** 개수다(ADR-0084 잔재; ADR-0156 이 형제
+    // `*AllPriceColor` = 미체결 선 색을 지우면서 이름만 남았다).
     expect(DEFAULT_PREFS.askPeakAllPriceRankLimit).toBe(1);
     expect(DEFAULT_PREFS.bidPeakAllPriceRankLimit).toBe(1);
-    expect(DEFAULT_PREFS.askPeakUntradedRankLimit).toBe(1);
-    expect(DEFAULT_PREFS.bidPeakUntradedRankLimit).toBe(1);
   });
 
-  it('persists valid ask/bid untraded rank limits 1..3', () => {
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 1 }).askPeakUntradedRankLimit).toBe(1);
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 2 }).askPeakUntradedRankLimit).toBe(2);
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 3 }).askPeakUntradedRankLimit).toBe(3);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 1 }).bidPeakUntradedRankLimit).toBe(1);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 2 }).bidPeakUntradedRankLimit).toBe(2);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 3 }).bidPeakUntradedRankLimit).toBe(3);
-  });
 
-  it('falls back to defaults for invalid untraded rank limit values', () => {
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 0 }).askPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: 4 }).askPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(hydratedMinuteView({ askPeakUntradedRankLimit: '2' as never }).askPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 0 }).bidPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: 4 }).bidPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
-    expect(hydratedMinuteView({ bidPeakUntradedRankLimit: '2' as never }).bidPeakUntradedRankLimit)
-      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
-  });
 
-  it('registers ask/bid untraded rank prefs in the indicator modal with 1..3 bounds', () => {
-    const ask = CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakUntradedRankLimit');
-    const bid = CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakUntradedRankLimit');
 
-    expect(ask).toMatchObject({
-      key: 'askPeakUntradedRankLimit',
-      label: '미체결된 벽 표시 개수',
-      default: 1,
-      min: 1,
-      max: 3,
-      category: 'indicator-modal',
-    });
-    expect(bid).toMatchObject({
-      key: 'bidPeakUntradedRankLimit',
-      label: '미체결된 벽 표시 개수',
-      default: 1,
-      min: 1,
-      max: 3,
-      category: 'indicator-modal',
-    });
-  });
-
-  it('relabels post-touch rank prefs and updates untraded toggle descriptions', () => {
+  it('labels the touched-wall rank prefs and keeps no untouched sibling (ADR-0156)', () => {
     const askRank = CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakAllPriceRankLimit');
     const bidRank = CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakAllPriceRankLimit');
-    const askToggle = CHART_TOGGLES.find((t) => t.key === 'askPeakShowAllPrices');
-    const bidToggle = CHART_TOGGLES.find((t) => t.key === 'bidPeakShowAllPrices');
 
     expect(askRank?.label).toBe('체결된 벽 표시 개수');
     expect(bidRank?.label).toBe('체결된 벽 표시 개수');
     expect(askRank).toMatchObject({ category: 'indicator-modal' });
     expect(bidRank).toMatchObject({ category: 'indicator-modal' });
-    expect(askToggle?.description).toContain('미체결된 벽');
-    expect(bidToggle?.description).toContain('미체결된 벽');
+    // 미체결 계열은 pref 표에서 사라졌다 — 남아 있으면 UI 가 죽은 항목을 렌더한다.
+    expect(CHART_NUMERIC_PREFS.some((p) => p.key.endsWith('UntradedRankLimit'))).toBe(false);
+    expect(CHART_TOGGLES.some((t) => t.key.endsWith('PeakShowAllPrices'))).toBe(false);
   });
 });
 
@@ -416,13 +360,9 @@ describe('peak wall visible-time cutoff toggles', () => {
 describe('bid peak toggles', () => {
   it('defaults and belongs to the indicator modal', () => {
     const intra = CHART_TOGGLES.find((t) => t.key === 'bidPeakIntraMax');
-    const allPrices = CHART_TOGGLES.find((t) => t.key === 'bidPeakShowAllPrices');
 
     expect(intra?.default).toBe(false);
     expect(categoryOf(intra!)).toBe('indicator-modal');
-    expect(allPrices?.default).toBe(true);
-    expect(allPrices?.label).toBe('미체결 최대 매수벽 표시');
-    expect(categoryOf(allPrices!)).toBe('indicator-modal');
   });
 });
 
@@ -458,12 +398,12 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
     useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute
     useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
     expect(useChartPrefsStore.getState().askPeakIntraMax).toBe(false); // D = 기본값
-    useChartPrefsStore.getState().setNumericPref('bidPeakUntradedRankLimit', 3); // D 버킷
+    useChartPrefsStore.getState().setNumericPref('bidPeakAllPriceRankLimit', 3); // D 버킷
     useChartPrefsStore.getState().setIndicatorModalTimeframe('30m');
     const s = useChartPrefsStore.getState();
     expect(s.askPeakIntraMax).toBe(true);                 // minute 복원
-    expect(s.bidPeakUntradedRankLimit).toBe(1);           // D 오버라이드는 minute 에 없음
-    expect(s.indicatorModalByTimeframe.D?.bidPeakUntradedRankLimit).toBe(3);
+    expect(s.bidPeakAllPriceRankLimit).toBe(1);           // D 오버라이드는 minute 에 없음
+    expect(s.indicatorModalByTimeframe.D?.bidPeakAllPriceRankLimit).toBe(3);
   });
 
   it('resetIndicatorModalBucket 은 현재 봉 버킷만 비우고 차트 전반 flat 은 보존한다', () => {
@@ -506,7 +446,7 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
   it('시드는 기본값과 다른 유효값만 minute 버킷에 남긴다', () => {
     const byTimeframe = mergeIndicatorModalByTimeframe({
       askPeakIntraMax: true,          // 기본 false 와 다름 → 시드
-      askPeakShowAllPrices: true,     // 기본 true 와 동일 → 탈락
+      askPeakLabelEnabled: true,      // 기본 true 와 동일 → 탈락
       surgeApproachPct: 999,          // 범위 밖 → 탈락
       candleTooltipEnabled: false,    // IM 키 아님 → 무시
     });

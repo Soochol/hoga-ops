@@ -378,6 +378,7 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
 
     now = _kst_ms(9, 10)
+    # 체결(09:10:00)과 호가(09:10:05)가 **같은 분** — ADR-0156 에서 터치다.
     await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.TRADE, payload={
         "trades": [{"t_ms": now, "price": 101, "qty": 5, "side": 1}],
     }))
@@ -386,19 +387,10 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
     assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
-        "traded_prices": [101],
-        "traded_price": None,
-        "traded_qty": None,
-        "traded_t_ms": None,
-        "traded_peaks": [],
-        "untraded_price": 102,
-        "untraded_qty": 9,
-        "untraded_t_ms": now + 5_000,
-        "untraded_peaks": [
-            {"price": 102, "qty": 9, "t_ms": now + 5_000},
-            {"price": 101, "qty": 3, "t_ms": now + 5_000},
-            {"price": 103, "qty": 1, "t_ms": now + 5_000},
-        ],
+        "traded_price": 101,
+        "traded_qty": 3,
+        "traded_t_ms": now + 5_000,
+        "traded_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now + 5_000,
@@ -425,19 +417,10 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
     assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "partial",
-        "traded_prices": [70_000],
-        "traded_price": None,
-        "traded_qty": None,
-        "traded_t_ms": None,
-        "traded_peaks": [],
-        "untraded_price": 68_900,
-        "untraded_qty": 12_000,
-        "untraded_t_ms": now + 5_000,
-        "untraded_peaks": [
-            {"price": 68_900, "qty": 12_000, "t_ms": now + 5_000},
-            {"price": 70_000, "qty": 5_000, "t_ms": now + 5_000},
-            {"price": 68_450, "qty": 100, "t_ms": now + 5_000},
-        ],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": now + 5_000,
+        "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": now + 5_000,
@@ -478,20 +461,11 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_pa
     assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
-        "traded_prices": [101],
         "traded_price": 101,
         "traded_qty": 3,
         "traded_t_ms": now,
         "traded_peaks": [
             {"price": 101, "qty": 3, "t_ms": now},
-        ],
-        "untraded_price": 102,
-        "untraded_qty": 9,
-        "untraded_t_ms": now,
-        "untraded_peaks": [
-            {"price": 102, "qty": 9, "t_ms": now},
-            {"price": 103, "qty": 1, "t_ms": now},
-            {"price": 104, "qty": 1, "t_ms": now},
         ],
         "all_price": 102,
         "all_qty": 9,
@@ -528,20 +502,11 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
     assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "partial",
-        "traded_prices": [70_000],
         "traded_price": 70_000,
         "traded_qty": 5_000,
         "traded_t_ms": now,
         "traded_peaks": [
             {"price": 70_000, "qty": 5_000, "t_ms": now},
-        ],
-        "untraded_price": 68_900,
-        "untraded_qty": 12_000,
-        "untraded_t_ms": now,
-        "untraded_peaks": [
-            {"price": 68_900, "qty": 12_000, "t_ms": now},
-            {"price": 68_450, "qty": 100, "t_ms": now},
-            {"price": 68_500, "qty": 100, "t_ms": now},
         ],
         "all_price": 68_900,
         "all_qty": 12_000,
@@ -554,7 +519,7 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
     }
 
 
-async def test_on_tick_orderbook_populates_untraded_peak_arrays_without_trades(tmp_path):
+async def test_on_tick_orderbook_populates_all_peak_arrays_without_trades(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
@@ -565,19 +530,10 @@ async def test_on_tick_orderbook_populates_untraded_peak_arrays_without_trades(t
     assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
-        "traded_prices": [],
         "traded_price": None,
         "traded_qty": None,
         "traded_t_ms": None,
         "traded_peaks": [],
-        "untraded_price": 102,
-        "untraded_qty": 9,
-        "untraded_t_ms": now,
-        "untraded_peaks": [
-            {"price": 102, "qty": 9, "t_ms": now},
-            {"price": 101, "qty": 3, "t_ms": now},
-            {"price": 103, "qty": 1, "t_ms": now},
-        ],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
@@ -589,9 +545,14 @@ async def test_on_tick_orderbook_populates_untraded_peak_arrays_without_trades(t
     }
 
 
-async def test_on_tick_continuous_trade_reclassifies_earlier_wall_but_not_later_same_price_wall(
+async def test_on_tick_continuous_trade_touches_every_same_minute_wall_at_or_below_it(
     tmp_path,
 ):
+    """같은 분 안이라면 체결 **전후 모두** 그 가격 이하 벽을 터치한다(ADR-0156).
+
+    ADR-0084 에서는 체결 이후의 101@8 만 미터치로 남았다 — 순서가 판정에서 빠지며
+    두 벽 모두 체결이 됐다. 102 는 체결가(101) 위라 여전히 미터치다.
+    """
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
                         date_fn=lambda: "20260616", phase_fn=lambda: "regular")
@@ -608,33 +569,21 @@ async def test_on_tick_continuous_trade_reclassifies_earlier_wall_but_not_later_
     assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "partial",
-        "traded_prices": [101],
         "traded_price": 101,
-        "traded_qty": 3,
-        "traded_t_ms": now,
+        "traded_qty": 8,
+        "traded_t_ms": now + 2_000,
         "traded_peaks": [
+            {"price": 101, "qty": 8, "t_ms": now + 2_000},
             {"price": 101, "qty": 3, "t_ms": now},
         ],
-        "untraded_price": 102,
-        "untraded_qty": 9,
-        "untraded_t_ms": now,
-        # Same-price walls collapse to their best open peak (ADR-0084 event-based
-        # model, commit 38fb9ff8): the later 102@4 collapses into 102@9 rather
-        # than staying a separate untraded row, so rank-3 falls through to 103@1.
-        "untraded_peaks": [
-            {"price": 102, "qty": 9, "t_ms": now},
-            {"price": 101, "qty": 8, "t_ms": now + 2_000},
-            {"price": 103, "qty": 1, "t_ms": now},
-        ],
+        # `all_*` 은 가격당 최댓값으로 접힌다(터치 무관) — 102 는 9, 101 은 8.
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
-        # all_peaks = closed_traded + open: the earlier 101@3 was touched by the
-        # trade (closed_traded), so it ranks third here, not the collapsed 102@4.
         "all_peaks": [
             {"price": 102, "qty": 9, "t_ms": now},
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
-            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
         ],
     }
 
@@ -856,24 +805,14 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
 
     stream.seed_ask_peak_from_live_file(code="005930", venue="KRX", date="20260616", live_root=live_root)
 
+    # 호가 09:10 · 체결 10:00 — **다른 분**이라 체결 계열은 비어 있다(ADR-0156).
     assert stream.ask_peak_snapshot("005930", "KRX") == {
         "date": "20260616",
         "coverage": "full",
-        "traded_prices": [10_100],
-        "traded_price": 10_100,
-        "traded_qty": 500,
-        "traded_t_ms": _kst_ms(9, 10),
-        "traded_peaks": [
-            {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
-        ],
-        "untraded_price": 10_200,
-        "untraded_qty": 900,
-        "untraded_t_ms": _kst_ms(9, 10),
-        "untraded_peaks": [
-            {"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)},
-            {"price": 10_400, "qty": 700, "t_ms": _kst_ms(9, 10)},
-            {"price": 10_300, "qty": 10, "t_ms": _kst_ms(9, 10)},
-        ],
+        "traded_price": None,
+        "traded_qty": None,
+        "traded_t_ms": None,
+        "traded_peaks": [],
         "all_price": 10_200,
         "all_qty": 900,
         "all_t_ms": _kst_ms(9, 10),
@@ -920,34 +859,15 @@ async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverag
 
     stream.seed_bid_peak_from_live_file(code="005930", venue="KRX", date="20260619", live_root=live_root)
 
+    # 체결 09:01:00 · 호가 09:01:05 — **같은 분**이라 70,000 매수벽이 체결이다.
+    _bid_ob_ms = int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)
     assert stream.bid_peak_snapshot("005930", "KRX") == {
         "date": "20260619",
         "coverage": "full",
-        "traded_prices": [70_000],
-        "traded_price": None,
-        "traded_qty": None,
-        "traded_t_ms": None,
-        "traded_peaks": [],
-        "untraded_price": 68_900,
-        "untraded_qty": 12_000,
-        "untraded_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
-        "untraded_peaks": [
-            {
-                "price": 68_900,
-                "qty": 12_000,
-                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
-            },
-            {
-                "price": 70_000,
-                "qty": 5_000,
-                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
-            },
-            {
-                "price": 68_450,
-                "qty": 100,
-                "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
-            },
-        ],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": _bid_ob_ms,
+        "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),

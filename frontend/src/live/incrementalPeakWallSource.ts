@@ -1,6 +1,6 @@
 import type { AskPeakCandidate } from '../api/types';
 import { isIndicatorEligibleBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import type { PeakWallClassification } from './peakWallEventClassifier';
+import { touchWindowOf, type PeakWallClassification } from './peakWallEventClassifier';
 
 const EMIT_LIMIT = 3;
 
@@ -9,9 +9,7 @@ export type FallbackReason =
   /** 이전 tail 이 새 배열에 없다 — 종목 전환·버퍼 리셋·통째 교체(정상 폴백). */
   | 'buffer-replaced'
   /** 같은 price:t_ms 가 두 스냅샷에서 나왔다 — 축출 판정이 모호해진다. */
-  | 't-ms-collision'
-  /** 터치가 시간 역순으로 왔다 — 정렬이 touchCounts 대응을 깬다. */
-  | 'touch-out-of-order';
+  | 't-ms-collision';
 
 /**
  * 모든 인스턴스의 폴백 누적 — **장중 확인의 판별식**.
@@ -25,7 +23,7 @@ export type FallbackReason =
  */
 const fallbackTotals: { total: number; byReason: Record<FallbackReason, number> } = {
   total: 0,
-  byReason: { 'buffer-replaced': 0, 't-ms-collision': 0, 'touch-out-of-order': 0 },
+  byReason: { 'buffer-replaced': 0, 't-ms-collision': 0 },
 };
 
 export function peakWallFallbackTotals(): { total: number; byReason: Record<FallbackReason, number> } {
@@ -79,16 +77,19 @@ function pushTopK(top: AskPeakCandidate[], candidate: AskPeakCandidate): void {
  *  5000→120 인데 누적본은 5000" 과 같은 실패). 그래서 `eventSeq` 기준 prefix 절단 +
  *  `head` 포인터 + trade 스냅샷별 터치 기여 개수를 같이 넣었다(각 필드 주석 참조).
  *
- *  **정확성은 언제나 폴백이 보증한다.** t_ms 중복·터치 역순처럼 축출 판정이 모호해지는
+ *  **정확성은 언제나 폴백이 보증한다.** t_ms 중복처럼 축출 판정이 모호해지는
  *  입력에서는 sticky 플래그가 서서 ②로 떨어진다. 증분은 오직 "같은 결과를 덜 계산해서"
  *  얻는 수단이고, 그 등식을 `incrementalPeakWallEviction.test.ts` 가 매 스텝 오라클과
  *  대조해 못박는다(ask/bid × 일반/cutoff, 고정 시드).
  *
- *  분류(classify)는 매 호출 누적 이벤트 전체에 대한 단일 숫자 패스다:
- *  touched 판정은 정렬된 터치 시각의 이진탐색 + suffix 극값(makeTouchIndex와 동일
- *  수식), 각 패밀리는 top-3 삽입 선택. classifyWallEvents가 EMIT_LIMIT=3만 방출하므로
+ *  분류(classify)는 매 호출 누적 이벤트 전체에 대한 단일 숫자 패스다: touched 판정은
+ *  **분 단위 체결가 극값 맵** 조회(배치 touchExtremeByWindow/isWallTouched와 동일 수식,
+ *  ADR-0156), 각 패밀리는 top-3 삽입 선택. classifyWallEvents가 EMIT_LIMIT=3만 방출하므로
  *  결과가 배치와 동일하다. 문자열 키는 이벤트 "삽입 시 1회"만 생성된다(배치는 매 틱
  *  전체 재생성).
+ *
+ *  ⚠ ADR-0084 시절엔 터치가 시간 역순으로 오면 정렬이 touchCounts 대응을 깨서 축출을
+ *  폴백시켜야 했다. 분 단위 극값은 **순서에 무관**하므로 그 사유가 원리적으로 사라졌다.
  *
  *  주의: 소비자는 반환된 배열을 다음 update() 호출 전까지만 신뢰할 것(내부 재사용
  *  없음 — 매 호출 새 top-3 배열이지만, 이벤트 객체는 공유). */
@@ -141,9 +142,9 @@ export class IncrementalPeakWallSource {
   /** 누적 터치 틱 — toTouchTicksFromTrades와 동일 필터. */
   private touchTimes: number[] = [];
   private touchPrices: number[] = [];
-  private touchesSorted = true;
   private touchIndexDirty = true;
-  private suffixExtreme: number[] = [];
+  /** 분 → 그 분 체결가의 극값. 터치가 자랄·줄 때만 재구축. */
+  private extremeByWindow = new Map<number, number>();
   /**
    * 같은 `price:t_ms` 키가 **서로 다른 ob 스냅샷**에서 나왔다 = t_ms 중복.
    * 위 `eventSeq` 주석의 모호함이 실제로 발생했다는 뜻이라 축출을 폴백시킨다.
@@ -153,14 +154,6 @@ export class IncrementalPeakWallSource {
    * 선다. 쌍이 창을 벗어나면 다음 축출부터 슬라이딩이 **저절로 재개**된다.
    */
   private tMsCollisionSeen = false;
-  /**
-   * 터치가 시간 역순으로 들어온 적이 있다 = `ensureTouchesSorted` 가 재정렬한다/했다.
-   * 재정렬은 `touchCounts` 와 `touchTimes` 의 **대응을 깨므로** 축출을 폴백시킨다.
-   *
-   * ⚠ `touchesSorted` 를 대신 보면 안 된다 — 그 플래그는 정렬 **직후 true 로 되돌아가서**
-   * 축출 시점엔 이미 깨끗해 보인다. 위와 같은 수명(누적 상태에 sticky, `reset()` 이 해제).
-   */
-  private touchOrderCompromised = false;
   /**
    * 슬라이딩을 원했으나 전량 재소비로 떨어진 횟수와 마지막 사유.
    *
@@ -227,7 +220,7 @@ export class IncrementalPeakWallSource {
       if (this.obLength > 0 || this.tradeLength > 0) {
         const reason: FallbackReason = obPlan === null || tradePlan === null
           ? 'buffer-replaced'
-          : (this.tMsCollisionSeen ? 't-ms-collision' : 'touch-out-of-order');
+          : 't-ms-collision';
         this.fallbacks += 1;
         this.lastFallbackReason = reason;
         fallbackTotals.total += 1;
@@ -250,9 +243,9 @@ export class IncrementalPeakWallSource {
     this.lastTradeRef = trade.length > 0 ? trade[trade.length - 1] : null;
   }
 
-  /** 축출 경로를 탈 수 있는가. 둘 중 하나라도 서면 전량 재소비로 떨어진다(정확성 우선). */
+  /** 축출 경로를 탈 수 있는가. 서면 전량 재소비로 떨어진다(정확성 우선). */
   private canEvictSafely(): boolean {
-    return !this.tMsCollisionSeen && !this.touchOrderCompromised;
+    return !this.tMsCollisionSeen;
   }
 
   /**
@@ -298,11 +291,9 @@ export class IncrementalPeakWallSource {
     this.touchCounts = [];
     this.touchTimes = [];
     this.touchPrices = [];
-    this.touchesSorted = true;
     this.touchIndexDirty = true;
-    this.suffixExtreme = [];
+    this.extremeByWindow = new Map();
     this.tMsCollisionSeen = false;
-    this.touchOrderCompromised = false;
     // `fallbacks`/`lastFallbackReason` 은 **지우지 않는다** — reset 은 누적 상태를 버리는
     // 것이지 "이 창에서 폴백이 몇 번 있었나" 라는 사실을 지우는 게 아니다.
   }
@@ -401,10 +392,6 @@ export class IncrementalPeakWallSource {
         if ((item.side !== 1 && item.side !== -1) || !isFiniteNumber(item.price)) continue;
         const tMs = isFiniteNumber(item.t_ms) ? item.t_ms : snapshot.t_ms;
         if (!isFiniteNumber(tMs) || tMs <= 0) continue;
-        if (this.touchTimes.length > 0 && tMs < this.touchTimes[this.touchTimes.length - 1]) {
-          this.touchesSorted = false;
-          this.touchOrderCompromised = true;
-        }
         this.touchTimes.push(tMs);
         this.touchPrices.push(item.price);
         this.touchIndexDirty = true;
@@ -414,59 +401,38 @@ export class IncrementalPeakWallSource {
     }
   }
 
-  /** 터치 배열을 시각 오름차순으로 정렬(이진탐색 전제). 정렬이 일어나면 suffixExtreme
-   *  캐시가 무효화되므로 touchIndexDirty 를 세운다. */
-  private ensureTouchesSorted(): void {
-    if (this.touchesSorted) return;
-    const order = this.touchTimes
-      .map((_, i) => i)
-      .sort((a, b) => this.touchTimes[a] - this.touchTimes[b]);
-    this.touchTimes = order.map((i) => this.touchTimes[i]);
-    this.touchPrices = order.map((i) => this.touchPrices[i]);
-    this.touchesSorted = true;
-    this.touchIndexDirty = true;
-  }
-
-  /** makeTouchIndex(peakWallEventClassifier.ts)와 동일한 인덱스를 터치가 자랄 때만 재구축. */
+  /** touchExtremeByWindow(peakWallEventClassifier.ts)와 동일한 맵을 터치가 바뀔 때만 재구축.
+   *  **정렬을 요구하지 않는다** — 분 단위 극값은 도착 순서에 무관하다(ADR-0156). */
   private ensureTouchIndex(): void {
-    this.ensureTouchesSorted();
     if (!this.touchIndexDirty) return;
-    const n = this.touchTimes.length;
-    const suffix = new Array<number>(n + 1);
-    suffix[n] = this.side === 'ask' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-    for (let i = n - 1; i >= 0; i -= 1) {
-      suffix[i] = this.side === 'ask'
-        ? Math.max(this.touchPrices[i], suffix[i + 1])
-        : Math.min(this.touchPrices[i], suffix[i + 1]);
+    const isAsk = this.side === 'ask';
+    const map = new Map<number, number>();
+    for (let i = 0; i < this.touchTimes.length; i += 1) {
+      const window = touchWindowOf(this.touchTimes[i]);
+      const current = map.get(window);
+      const price = this.touchPrices[i];
+      map.set(
+        window,
+        current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
+      );
     }
-    this.suffixExtreme = suffix;
+    this.extremeByWindow = map;
     this.touchIndexDirty = false;
   }
 
   private isTouched(event: AskPeakCandidate): boolean {
-    const n = this.touchTimes.length;
-    if (n === 0) return false;
-    let lo = 0;
-    let hi = n;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (this.touchTimes[mid] < event.t_ms) lo = mid + 1;
-      else hi = mid;
-    }
-    if (lo >= n) return false;
-    const extreme = this.suffixExtreme[lo];
+    const extreme = this.extremeByWindow.get(touchWindowOf(event.t_ms));
+    if (extreme === undefined) return false;
     return this.side === 'ask' ? extreme >= event.price : extreme <= event.price;
   }
 
   private classify(extras: readonly AskPeakCandidate[]): PeakWallClassification {
     this.ensureTouchIndex();
-    const postTouch: AskPeakCandidate[] = [];
-    const postUntouched: AskPeakCandidate[] = [];
+    const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
     const consider = (candidate: AskPeakCandidate) => {
       pushTopK(all, candidate);
-      if (this.isTouched(candidate)) pushTopK(postTouch, candidate);
-      else pushTopK(postUntouched, candidate);
+      if (this.isTouched(candidate)) pushTopK(touched, candidate);
     };
     for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
     // extras(백엔드 피크 후보·seed)는 호출마다 달라질 수 있어 누적하지 않고 매번
@@ -480,7 +446,7 @@ export class IncrementalPeakWallSource {
       if (this.isCoveredByLiveEvent(extra)) continue;
       consider(extra);
     }
-    return { postTouch, postUntouched, all };
+    return { touched, all };
   }
 
   /**
@@ -498,54 +464,38 @@ export class IncrementalPeakWallSource {
   }
 
   /** classify 의 as-of-cutoff 판. 이벤트·extras·터치를 t_ms <= cutoffMs 로 제한한다.
-   *  cutoff 는 팬으로 이동하므로 suffixExtreme 를 캐시하지 않고, cutoff 이하 터치
-   *  prefix [0, hi) 에 대한 suffixExtremeC 를 호출마다 O(hi) 로 빌드한다(sparse table
-   *  불필요). 배치 mergedAskFamilies 의 cutoff 분기와 동일: cutoff 이하 터치로만 벽의
-   *  touched 여부를 재평가한다. no-cutoff classify 의 dedup·top-3 규칙을 그대로 상속. */
+   *  cutoff 는 팬으로 이동하므로 캐시하지 않고 호출마다 O(n) 으로 분 극값 맵을 다시
+   *  만든다. 배치 mergedAskFamilies 의 cutoff 분기와 동일: cutoff 이하 터치로만 벽의
+   *  touched 여부를 재평가한다(경계 분은 부분만 반영된다 — 그게 "그 시각까지 본 것"
+   *  이라는 cutoff 의 의미다). no-cutoff classify 의 dedup·top-3 규칙을 그대로 상속. */
   private classifyAsOf(
     extras: readonly AskPeakCandidate[],
     cutoffMs: number,
   ): PeakWallClassification {
-    this.ensureTouchesSorted();
-    const n = this.touchTimes.length;
-    // hi = cutoff 이하 터치 개수(upper bound).
-    let lo = 0;
-    let hiBound = n;
-    while (lo < hiBound) {
-      const mid = (lo + hiBound) >>> 1;
-      if (this.touchTimes[mid] <= cutoffMs) lo = mid + 1;
-      else hiBound = mid;
-    }
-    const hi = lo;
-    // suffixExtreme over [0, hi): suffix[i] = extreme(touchPrices[i..hi-1]).
-    const suffix = new Array<number>(hi + 1);
-    suffix[hi] = this.side === 'ask' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-    for (let i = hi - 1; i >= 0; i -= 1) {
-      suffix[i] = this.side === 'ask'
-        ? Math.max(this.touchPrices[i], suffix[i + 1])
-        : Math.min(this.touchPrices[i], suffix[i + 1]);
+    const isAsk = this.side === 'ask';
+    const extremeByWindow = new Map<number, number>();
+    for (let i = 0; i < this.touchTimes.length; i += 1) {
+      const tMs = this.touchTimes[i];
+      if (tMs > cutoffMs) continue;
+      const window = touchWindowOf(tMs);
+      const current = extremeByWindow.get(window);
+      const price = this.touchPrices[i];
+      extremeByWindow.set(
+        window,
+        current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
+      );
     }
     const isTouchedC = (event: AskPeakCandidate): boolean => {
-      if (hi === 0) return false;
-      let l = 0;
-      let h = hi;
-      while (l < h) {
-        const mid = (l + h) >>> 1;
-        if (this.touchTimes[mid] < event.t_ms) l = mid + 1;
-        else h = mid;
-      }
-      if (l >= hi) return false;
-      const extreme = suffix[l];
-      return this.side === 'ask' ? extreme >= event.price : extreme <= event.price;
+      const extreme = extremeByWindow.get(touchWindowOf(event.t_ms));
+      if (extreme === undefined) return false;
+      return isAsk ? extreme >= event.price : extreme <= event.price;
     };
-    const postTouch: AskPeakCandidate[] = [];
-    const postUntouched: AskPeakCandidate[] = [];
+    const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
     const consider = (candidate: AskPeakCandidate) => {
       if (candidate.t_ms > cutoffMs) return;
       pushTopK(all, candidate);
-      if (isTouchedC(candidate)) pushTopK(postTouch, candidate);
-      else pushTopK(postUntouched, candidate);
+      if (isTouchedC(candidate)) pushTopK(touched, candidate);
     };
     for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
     const seenExtras = new Set<string>();
@@ -557,6 +507,6 @@ export class IncrementalPeakWallSource {
       if (this.isCoveredByLiveEvent(extra)) continue;
       consider(extra);
     }
-    return { postTouch, postUntouched, all };
+    return { touched, all };
   }
 }

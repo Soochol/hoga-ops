@@ -16,8 +16,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
-      askPeakAllPriceColor: '#F97316',
-      askPeakAllPriceLineWidth: 1,
       askPeakVisibleMaxColor: '#EAB308',
       askPeakVisibleMaxLineWidth: 3,
       viLimitPriceLineColor: '#EAB308',
@@ -26,8 +24,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       bidPeakHidden: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
-      bidPeakAllPriceColor: '#F97316',
-      bidPeakAllPriceLineWidth: 1,
       tradeVolumePocEnabled: true,
       tradeVolumePocHidden: false,
       tradeVolumePocBandPct: 0.005,
@@ -461,30 +457,22 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(m.askPeakEnabled).toBe(false);
     expect(m.askPeakColor).toBe('#1D4ED8');
     expect(m.askPeakLineWidth).toBe(2);
-    expect(m.askPeakAllPriceColor).toBe('#F97316');
-    expect(m.askPeakAllPriceLineWidth).toBe(1);
   });
   it('bid peak prefs default to opt-in false with KRX buy colors', () => {
     const merged = mergeLiveIndicatorPrefs(undefined);
     expect(merged.bidPeakEnabled).toBe(false);
     expect(merged.bidPeakColor).toBe('#DC2626');
     expect(merged.bidPeakLineWidth).toBe(2);
-    expect(merged.bidPeakAllPriceColor).toBe('#F97316');
-    expect(merged.bidPeakAllPriceLineWidth).toBe(1);
   });
   it('유효값 보존', () => {
     const m = mergeLiveIndicatorPrefs({
       askPeakEnabled: true,
       askPeakColor: '#EF4444',
       askPeakLineWidth: 3,
-      askPeakAllPriceColor: '#22C55E',
-      askPeakAllPriceLineWidth: 4,
     });
     expect(m.askPeakEnabled).toBe(true);
     expect(m.askPeakColor).toBe('#EF4444');
     expect(m.askPeakLineWidth).toBe(3);
-    expect(m.askPeakAllPriceColor).toBe('#22C55E');
-    expect(m.askPeakAllPriceLineWidth).toBe(4);
   });
   it('레거시(필드 없음): visible max 기본 #EAB308/3', () => {
     const m = mergeLiveIndicatorPrefs(undefined);
@@ -532,13 +520,9 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     const m = mergeLiveIndicatorPrefs({
       askPeakColor: 'red',
       askPeakLineWidth: 9,
-      askPeakAllPriceColor: 'orange',
-      askPeakAllPriceLineWidth: 0,
     });
     expect(m.askPeakColor).toBe('#1D4ED8');
     expect(m.askPeakLineWidth).toBe(2);
-    expect(m.askPeakAllPriceColor).toBe('#F97316');
-    expect(m.askPeakAllPriceLineWidth).toBe(1);
   });
 });
 

@@ -777,7 +777,6 @@ describe('LiveChartRoot', () => {
 
     useChartPrefsStore.getState().setToggle('askPeakVisibleTimeCutoff', true);
     useChartPrefsStore.getState().setToggle('bidPeakVisibleTimeCutoff', true);
-    useChartPrefsStore.getState().setToggle('bidPeakShowAllPrices', true);
     useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
 
     const candles = [
@@ -825,15 +824,6 @@ describe('LiveChartRoot', () => {
             max_qty: 90,
             max_t_ms: TODAY_OPEN_MS + 60_000,
           }]}
-          todayAllPriceBidPeak={{
-            date: '20260527',
-            price: 98,
-            qty: 900,
-            t_ms: TODAY_OPEN_MS + 180_000,
-            max_price: 98,
-            max_qty: 900,
-            max_t_ms: TODAY_OPEN_MS + 180_000,
-          }}
         />,
         { wrapper },
       );
@@ -846,158 +836,6 @@ describe('LiveChartRoot', () => {
       expect(renderedPrices).not.toContain(101);
       expect(renderedPrices).not.toContain(98);
     } finally {
-      useLivePageStore.setState({
-        askPeakEnabled: previousAskPeakEnabled,
-        bidPeakEnabled: previousBidPeakEnabled,
-      });
-    }
-  });
-
-  it('passes ranked untraded limits into live peak wall overlays', async () => {
-    const previousAskPeakEnabled = useLivePageStore.getState().askPeakEnabled;
-    const previousBidPeakEnabled = useLivePageStore.getState().bidPeakEnabled;
-    const previousPrefs = useChartPrefsStore.getState();
-    const attachedPeakWallPrimitives: Array<{ segmentsForTest: () => Array<{ price: number }> }> = [];
-    const ts = {
-      subscribeVisibleTimeRangeChange: vi.fn(),
-      unsubscribeVisibleTimeRangeChange: vi.fn(),
-      subscribeVisibleLogicalRangeChange: vi.fn(),
-      unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      applyOptions: vi.fn(),
-      fitContent: vi.fn(),
-      scrollToRealTime: vi.fn(),
-      scrollToPosition: vi.fn(),
-      setVisibleLogicalRange: vi.fn(),
-      getVisibleLogicalRange: vi.fn(() => null),
-      getVisibleRange: vi.fn(() => null),
-      options: vi.fn(() => ({ barSpacing: 12 })),
-      setVisibleRange: vi.fn(),
-      timeToCoordinate: vi.fn(() => null),
-      coordinateToTime: vi.fn(() => null),
-      coordinateToLogical: vi.fn(() => null),
-      timeToIndex: vi.fn(() => 0),
-      width: vi.fn(() => 800),
-      height: vi.fn(() => 28),
-    };
-    const makeSeries = (chart: {
-      timeScale: () => typeof ts;
-    }) => ({
-      setData: vi.fn(),
-      update: vi.fn(),
-      removeSeries: vi.fn(),
-      applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
-      priceToCoordinate: vi.fn((price: number) => price),
-      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
-      removePriceLine: vi.fn(),
-      attachPrimitive: vi.fn((primitive: {
-        attached?: (param: unknown) => void;
-        segmentsData?: () => Array<{ price: number }>;
-      }) => {
-        primitive.attached?.({ chart, series: null, requestUpdate: vi.fn() });
-        attachedPeakWallPrimitives.push({
-          segmentsForTest: () => primitive.segmentsData?.() ?? [],
-        });
-      }),
-      detachPrimitive: vi.fn((primitive: { detached?: () => void }) => {
-        primitive.detached?.();
-      }),
-      setMarkers: vi.fn(),
-    });
-    const chart = {
-      addSeries: vi.fn(),
-      removeSeries: vi.fn(),
-      timeScale: vi.fn(() => ts),
-      panes: vi.fn(() => []),
-      remove: vi.fn(),
-      resize: vi.fn(),
-      applyOptions: vi.fn(),
-      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
-      subscribeCrosshairMove: vi.fn(),
-      unsubscribeCrosshairMove: vi.fn(),
-      subscribeClick: vi.fn(),
-      unsubscribeClick: vi.fn(),
-      chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
-    };
-    chart.addSeries.mockImplementation(() => makeSeries(chart));
-    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
-
-    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
-    useChartPrefsStore.setState({
-      askPeakShowAllPrices: true,
-      bidPeakShowAllPrices: true,
-      askPeakUntradedRankLimit: 2,
-      bidPeakUntradedRankLimit: 2,
-    } as Partial<ReturnType<typeof useChartPrefsStore.getState>> & Record<string, number | boolean>);
-
-    const bundle: RangeBundle = {
-      ...TODAY_ONLY_BUNDLE,
-      candles: [
-        { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
-        { ts_ms: TODAY_OPEN_MS + 120_000, open: 100, high: 101, low: 98, close: 99, vol_a: 1, vol_b: 0 },
-        { ts_ms: TODAY_OPEN_MS + 180_000, open: 99, high: 100, low: 97, close: 98, vol_a: 1, vol_b: 0 },
-        { ts_ms: TODAY_OPEN_MS + 240_000, open: 98, high: 99, low: 96, close: 97, vol_a: 1, vol_b: 0 },
-      ],
-      ask_peaks: [{
-        date: '20260527',
-        price: 100,
-        qty: 100,
-        t_ms: TODAY_OPEN_MS + 60_000,
-        max_price: 100,
-        max_qty: 100,
-        max_t_ms: TODAY_OPEN_MS + 60_000,
-        untraded_peaks: [
-          { price: 110, qty: 90, t_ms: TODAY_OPEN_MS + 180_000 },
-          { price: 115, qty: 80, t_ms: TODAY_OPEN_MS + 240_000 },
-        ],
-        untraded_max_peaks: [
-          { price: 110, qty: 90, t_ms: TODAY_OPEN_MS + 180_000 },
-          { price: 115, qty: 80, t_ms: TODAY_OPEN_MS + 240_000 },
-        ],
-      }],
-    };
-
-    try {
-      render(
-        <LiveChartRoot
-          code="005930"
-          timeframe="1m"
-          bundle={bundle}
-          chartBundle={bundle}
-          clampEngaged={false}
-          isPastCandlesLoading={false}
-          todayKst="20260527"
-          dayAskPeaks={bundle.ask_peaks}
-          dayBidPeaks={[{
-            date: '20260527',
-            price: 99,
-            qty: 90,
-            t_ms: TODAY_OPEN_MS + 60_000,
-            max_price: 99,
-            max_qty: 90,
-            max_t_ms: TODAY_OPEN_MS + 60_000,
-            untraded_peaks: [
-              { price: 98, qty: 80, t_ms: TODAY_OPEN_MS + 180_000 },
-              { price: 97, qty: 70, t_ms: TODAY_OPEN_MS + 240_000 },
-            ],
-            untraded_max_peaks: [
-              { price: 98, qty: 80, t_ms: TODAY_OPEN_MS + 180_000 },
-              { price: 97, qty: 70, t_ms: TODAY_OPEN_MS + 240_000 },
-            ],
-          }]}
-        />,
-        { wrapper },
-      );
-
-      await waitFor(() => expect(attachedPeakWallPrimitives.length).toBeGreaterThanOrEqual(2));
-      const renderedPrices = attachedPeakWallPrimitives.flatMap((primitive) =>
-        primitive.segmentsForTest().map((segment) => segment.price));
-      expect(renderedPrices).toContain(110);
-      expect(renderedPrices).toContain(115);
-      expect(renderedPrices).toContain(98);
-      expect(renderedPrices).toContain(97);
-    } finally {
-      useChartPrefsStore.setState(previousPrefs);
       useLivePageStore.setState({
         askPeakEnabled: previousAskPeakEnabled,
         bidPeakEnabled: previousBidPeakEnabled,
@@ -3680,20 +3518,22 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   });
 
   /**
-   * 동기화 채널(`syncCursorMs`)은 **분봉 창만** 쓴다.
+   * 동기화 채널(`syncCursorMs`)은 **소비자가 있는 봉만** 쓴다(분봉 · `D`).
    *
-   * **이 가드가 막는 방향**: 비분봉 창이 단일 슬롯을 덮어써 분봉 발행을 밀어내는 것.
-   * 소비 측(`resolveSyncTarget`)이 분봉 origin 이 아니면 어차피 버리므로, 비분봉
-   * 발행은 표시에 기여하지 않으면서 표시를 **지우기만** 한다. `/live` 실측(2026-08-11)
-   * 에서 포인터가 분봉 창에 있는데 일봉 창 발행이 슬롯을 가져가 동기화 표시가 사라졌다.
+   * **이 가드가 막는 방향**: 아무도 받지 않는 봉이 단일 슬롯을 덮어써 유효한 발행을
+   * 밀어내는 것. `/live` 실측(2026-08-11)에서 포인터가 분봉 창에 있는데 일봉 창
+   * 발행이 슬롯을 가져가 동기화 표시가 사라졌다 — **그때는 일봉에 소비자가 없었다.**
+   * 2026-08-21 에 일봉이 소비자가 되면서 그 근거가 일봉에 대해 사라졌고, 술어가
+   * `canPublishSyncCursor`(= `isSyncConsumerTimeframe`)로 바뀌었다. W/M 은 여전히
+   * 소비자가 없어 발행하지 않는다 — **이 테스트가 지키는 것이 그 남은 절반이다.**
    *
    * **못 보는 것**: 소비 측 필터는 이 테스트가 검증하지 않는다(`cursorSync.test.ts`
    * 담당). 여기서 재는 것은 발행 측이 슬롯에 손대는지 여부뿐이다.
    */
-  it('일봉 창은 동기화 슬롯에 쓰지 않는다 — 커서는 발행하되 sync 는 건드리지 않는다', () => {
+  it('발행 집합은 분봉 + D — W/M 은 동기화 슬롯에 쓰지 않는다', () => {
     vi.useFakeTimers();
     try {
-      const fireOn = (timeframe: 'D' | '1m') => {
+      const fireOn = (timeframe: 'D' | '1m' | 'W') => {
         vi.mocked(createChartEx).mockClear();
         const { unmount } = render(
           <LiveChartRoot
@@ -3723,11 +3563,17 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       expect(minute.syncCursorMs).toBe(minute.cursorMs);
       expect(minute.syncTf).toBe('1m');
 
-      // 일봉: **커서는 서는데**(핸들러가 돈 증거) 동기화 슬롯은 그대로 null 이다.
-      // 두 단언이 같이 있어야 "게이트가 걸렸다" 와 "이벤트가 안 들어왔다" 가 갈린다.
+      // 일봉: 이제 **발행한다**(2026-08-21 — 일봉↔일봉 방향이 생겼다).
       const daily = fireOn('D');
       expect(daily.cursorMs).not.toBeNull();
-      expect(daily.syncCursorMs).toBeNull();
+      expect(daily.syncCursorMs).toBe(daily.cursorMs);
+      expect(daily.syncTf).toBe('D');
+
+      // 주봉: **커서는 서는데**(핸들러가 돈 증거) 동기화 슬롯은 그대로 null 이다.
+      // 두 단언이 같이 있어야 "게이트가 걸렸다" 와 "이벤트가 안 들어왔다" 가 갈린다.
+      const weekly = fireOn('W');
+      expect(weekly.cursorMs).not.toBeNull();
+      expect(weekly.syncCursorMs).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -5012,6 +4858,36 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
 
     expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBe('other-window');
     expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(1_000_000);
+  });
+
+  /**
+   * 2026-08-21 에 **일봉도 발행자**가 되면서 생긴 새 배치: 슬롯 주인이 일봉 창이고
+   * 이 분봉 창은 그 발행을 받아 크로스헤어를 그린 쪽이다.
+   *
+   * 그 상태에서 lwc 가 데이터 갱신마다 `crosshairMove` 를 **재발화**하는데(실측 초당
+   * ~8회, 전부 `sourceEvent` 없음), 그걸로 발행하면 일봉 주인의 유효한 발행을 이
+   * 창 origin 으로 덮는다 — 2026-08-12 핑퐁(25초에 두 창이 97·96회)이 그 증상이었다.
+   * 가드는 봉을 보지 않으므로 원리상 그대로 걸리지만, **그 무관함을 단언으로 고정**해
+   * 둔다. 실브라우저 도그푸딩은 이 축을 재지 못한다 — 프록시 환경에서는 WS 가 끊겨
+   * 재발화를 일으키는 데이터 갱신 자체가 오지 않는다(2026-08-21 실측: 6초 40샘플
+   * 소유자 전환 0회, 단 트리거 부재).
+   */
+  it('일봉 창이 슬롯 주인일 때도 재발화가 덮어쓰지 않는다', async () => {
+    const DAILY_OWNER = {
+      windowId: 'daily-window', group: 1, code: '000660', timeframe: 'D' as const,
+    };
+    const { fire, vsec } = renderWithCrosshair();
+    act(() => {
+      useLiveCursorStore.getState().setSidebarCursor(1_000_000, DAILY_OWNER);
+      useLiveCursorStore.getState().setSyncCursor(1_000_000, DAILY_OWNER);
+    });
+
+    act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+    await flushRaf();
+
+    expect(useLiveCursorStore.getState().syncCursorOrigin?.windowId).toBe('daily-window');
+    expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
+    expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBe('daily-window');
   });
 
   it('실제 포인터 이벤트는 통과한다 — 그 창으로 마우스를 옮기면 발행자가 바뀐다', async () => {

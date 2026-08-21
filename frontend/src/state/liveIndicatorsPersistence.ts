@@ -59,16 +59,12 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 export const ASK_PEAK_DEFAULT_COLOR = '#1D4ED8';
 export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
-export const ASK_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
-export const ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const ASK_PEAK_VISIBLE_MAX_DEFAULT_COLOR = '#EAB308';
 export const ASK_PEAK_VISIBLE_MAX_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
 export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
 export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
-export const BID_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
-export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
 export const TRADE_VOLUME_POC_DEFAULT_COLOR = '#A855F7';
 export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
@@ -126,10 +122,6 @@ export type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
-  /** 미체결 포함 매도 최대벽 선 색(hex). 기본 #F97316(주황). */
-  askPeakAllPriceColor: string;
-  /** 미체결 포함 매도 최대벽 선 두께. 기본 1. */
-  askPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
   /** 현재 보이는 캔들 영역 안에서 가장 큰 매도 최대벽 강조 색(hex). 기본 #EAB308(노랑). */
   askPeakVisibleMaxColor: string;
   /** 현재 보이는 캔들 영역 안에서 가장 큰 매도 최대벽 강조 두께. 기본 3. */
@@ -146,10 +138,6 @@ export type PersistedIndicators = {
   bidPeakColor: string;
   /** 매수 최대벽 선 두께. 기본 2. */
   bidPeakLineWidth: 1 | 2 | 3 | 4;
-  /** 미체결 포함 매수 최대벽 선 색(hex). 기본 #F97316(주황). */
-  bidPeakAllPriceColor: string;
-  /** 미체결 포함 매수 최대벽 선 두께. 기본 1. */
-  bidPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
   /** 당일 최대 매물대(체결량 POC) 밴드 on/off. Default TRUE. */
   tradeVolumePocEnabled: boolean;
   /** 최대 매물대 눈(숨김). 기본 false. */
@@ -339,10 +327,6 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
   const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
     ? (obj!.askPeakLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_DEFAULT_WIDTH;
-  const apAllColor = typeof obj?.askPeakAllPriceColor === 'string' && HEX_COLOR.test(obj.askPeakAllPriceColor as string)
-    ? (obj.askPeakAllPriceColor as string) : ASK_PEAK_ALL_PRICE_DEFAULT_COLOR;
-  const apAllWidth = VALID_LINE_WIDTHS.has(obj?.askPeakAllPriceLineWidth as number)
-    ? (obj!.askPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH;
   const apVisibleMaxColor = typeof obj?.askPeakVisibleMaxColor === 'string'
     && HEX_COLOR.test(obj.askPeakVisibleMaxColor as string)
     ? (obj.askPeakVisibleMaxColor as string) : ASK_PEAK_VISIBLE_MAX_DEFAULT_COLOR;
@@ -360,10 +344,6 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.bidPeakColor as string) : BID_PEAK_DEFAULT_COLOR;
   const bpWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakLineWidth as number)
     ? (obj!.bidPeakLineWidth as 1 | 2 | 3 | 4) : BID_PEAK_DEFAULT_WIDTH;
-  const bpAllColor = typeof obj?.bidPeakAllPriceColor === 'string' && HEX_COLOR.test(obj.bidPeakAllPriceColor as string)
-    ? (obj.bidPeakAllPriceColor as string) : BID_PEAK_ALL_PRICE_DEFAULT_COLOR;
-  const bpAllWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakAllPriceLineWidth as number)
-    ? (obj!.bidPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : BID_PEAK_ALL_PRICE_DEFAULT_WIDTH;
   const tvpBandPct = VALID_TRADE_VOLUME_POC_BAND_PCTS.has(obj?.tradeVolumePocBandPct as number)
     ? (obj!.tradeVolumePocBandPct as number)
     : TRADE_VOLUME_POC_DEFAULT_BAND_PCT;
@@ -474,8 +454,6 @@ export function mergeLiveIndicatorPrefs(
     askPeakHidden: apHidden,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
-    askPeakAllPriceColor: apAllColor,
-    askPeakAllPriceLineWidth: apAllWidth,
     askPeakVisibleMaxColor: apVisibleMaxColor,
     askPeakVisibleMaxLineWidth: apVisibleMaxWidth,
     viLimitPriceLineColor,
@@ -484,8 +462,6 @@ export function mergeLiveIndicatorPrefs(
     bidPeakHidden: bpHidden,
     bidPeakColor: bpColor,
     bidPeakLineWidth: bpWidth,
-    bidPeakAllPriceColor: bpAllColor,
-    bidPeakAllPriceLineWidth: bpAllWidth,
     tradeVolumePocEnabled: tradeVolumePoc,
     tradeVolumePocHidden: tvpHidden,
     tradeVolumePocBandPct: tvpBandPct,

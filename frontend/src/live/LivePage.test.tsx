@@ -44,9 +44,7 @@ const livePageMocks = vi.hoisted(() => {
       pastDataWarnings?: Array<{ reason: string; msg?: string }>;
       paneTogglesOverride?: { hogaPanes?: boolean };
       dayAskPeaks?: unknown[];
-      todayAllPriceAskPeak?: unknown;
       dayBidPeaks?: unknown[];
-      todayAllPriceBidPeak?: unknown;
     }>,
     liveBundleCalls: [] as Array<{
       code: unknown;
@@ -72,8 +70,6 @@ const livePageMocks = vi.hoisted(() => {
     dayAskPeakObArgs: [] as unknown[],
     dayAskPeakTradeArgs: [] as unknown[],
     dayAskPeakTodayArgs: [] as unknown[],
-    allPriceObArgs: [] as unknown[],
-    allPriceTodayArgs: [] as unknown[],
     // 매수 최대벽·매물대 POC 의 라이브 인자 — 매도와 **같은 계산 게이트**를 공유하므로
     // 관측 지점도 같이 둔다(하나만 두면 나머지 둘이 조용히 게이트를 잃는다).
     dayBidPeakObArgs: [] as unknown[],
@@ -134,11 +130,6 @@ vi.mock('../api/liveSeries', () => ({
 // 값을 집어내므로, 훅에 인자가 하나 늘면 여기도 같이 늘려야 조용히 엉뚱한 값을 재지 않는다
 // (`_sessionOpenMs` 가 그 자리다: todayKst 뒤, code 앞).
 vi.mock('./useDayAskPeaks', () => ({
-  useTodayAllPriceAskPeak: (ob: unknown, _seeds: unknown, _today: unknown, _sessionOpenMs: unknown, _code: unknown, todayAskPeak: unknown) => {
-    livePageMocks.allPriceObArgs.push(ob);
-    livePageMocks.allPriceTodayArgs.push(todayAskPeak);
-    return null;
-  },
   useDayAskPeaks: (ob: unknown, trade: unknown, seeds: unknown, _today: unknown, _sessionOpenMs: unknown, _code: unknown, todayAskPeak: unknown) => {
     livePageMocks.dayAskPeakObArgs.push(ob);
     livePageMocks.dayAskPeakTradeArgs.push(trade);
@@ -148,7 +139,6 @@ vi.mock('./useDayAskPeaks', () => ({
 }));
 
 vi.mock('./useDayBidPeaks', () => ({
-  useTodayAllPriceBidPeak: () => null,
   useDayBidPeaks: (ob: unknown, trade: unknown, seeds: unknown) => {
     livePageMocks.dayBidPeakObArgs.push(ob);
     livePageMocks.dayBidPeakTradeArgs.push(trade);
@@ -351,8 +341,6 @@ describe('LivePage shell', () => {
     livePageMocks.indexInvestorNetResult.data = undefined;
     livePageMocks.indexInvestorNetResult.isLoading = false;
     livePageMocks.dayAskPeakTodayArgs.length = 0;
-    livePageMocks.allPriceObArgs.length = 0;
-    livePageMocks.allPriceTodayArgs.length = 0;
     livePageMocks.dayBidPeakObArgs.length = 0;
     livePageMocks.dayBidPeakTradeArgs.length = 0;
     livePageMocks.tradeVolumePocTradeArgs.length = 0;
@@ -851,7 +839,6 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakObArgs.at(-1)).toBe(livePageMocks.liveOb);
     expect(livePageMocks.dayAskPeakTradeArgs.at(-1)).toBe(livePageMocks.liveTrade);
-    expect(livePageMocks.allPriceObArgs.at(-1)).toBe(livePageMocks.liveOb);
   });
 
   /**
@@ -874,7 +861,6 @@ describe('LivePage shell', () => {
     expect(ob).toEqual([]);
     expect(trade).not.toBe(livePageMocks.liveTrade);
     expect(trade).toEqual([]);
-    expect(livePageMocks.allPriceObArgs.at(-1)).toEqual([]);
   });
 
   // 매수 최대벽 — 매도와 **독립 토글**이라 따로 센다. 하나만 게이트하면 반대쪽이
@@ -926,7 +912,6 @@ describe('LivePage shell', () => {
   it('passes backend today ask-peak payload to useDayAskPeaks', () => {
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
-    expect(livePageMocks.allPriceTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
   });
 
   it('does not pass stale ask-peak seeds from a bundle whose code differs from the active tab', async () => {

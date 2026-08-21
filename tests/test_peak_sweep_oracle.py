@@ -1,21 +1,26 @@
-"""Oracle equivalence for the peak-wall sweep rewrite (ADR-0085 v2).
+"""Oracle equivalence for the minute-scoped peak-wall classifier (ADR-0156).
 
-Frozen copy of the pre-vectorization pure-Python implementation (dataclass
-streams + Fenwick sweep, as merged in ADR-0085) serves as the ORACLE. The
-rewritten production ``query_day_ask_bid_peak_dual`` must produce identical
-rows on:
+The ORACLE here is a deliberately **naive** implementation: for each wall event
+it scans every trade tick and asks "is this tick in the same 1-minute window and
+does it dominate the wall price?". O(N·M) and obviously correct by inspection —
+the production path (`_classify_wall_frame`) instead groups touches into a
+per-minute extreme and left-joins, and must agree on:
 
-  * seeded fuzz books/trades (many shapes: touches at same (ts,seq), lifecycle
-    reopen, collapsed books, session bounds, empty touches), and
+  * seeded fuzz books/trades (many shapes: touches at the same (ts,seq) as a
+    book, collapsed books, session bounds, empty touches), and
   * optionally real captured days (env ``HOGA_ORACLE_REAL_DIR`` — manual run).
 
 If prod and oracle ever diverge, the failing seed pins the repro.
+
+History: this file used to freeze the pre-vectorization Fenwick sweep (ADR-0085)
+because the "touched by any LATER tick" relation (ADR-0084) needed one. ADR-0156
+closed the relation inside a minute, so a naive scan is now both feasible and a
+**stronger** oracle — it shares no structure with the implementation.
 """
 from __future__ import annotations
 
 import os
 import random
-from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,7 +34,6 @@ from hoga.tables.snapshots import (
     BidPeakDualRow,
     Orderbook,
     _book_indicator_eligible_sql,
-    _parquet_has_column,
     hhmmssms_to_intra_ms_sql,
     query_day_ask_bid_peak_dual,
     write_parquet,
@@ -37,9 +41,11 @@ from hoga.tables.snapshots import (
 from hoga.tables.trades import Trade, write_parquet as write_trades
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ORACLE — frozen pre-vectorization implementation. Do not "fix" or refactor;
-# byte-for-byte semantics of the ADR-0085 sweep is the whole point.
+# ORACLE — naive minute-scoped classifier. Do not "optimise": sharing structure
+# with the implementation is exactly what would make this oracle worthless.
 # ─────────────────────────────────────────────────────────────────────────────
+
+_TOUCH_WINDOW_MS = 60_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +60,7 @@ class _WallEvent:
 
 @dataclass(frozen=True, slots=True)
 class _Touch:
-    ts_ms: int
-    seq: int
+    intra_ms: int
     price: int
 
 
@@ -63,86 +68,37 @@ def _event_rank_key(e: _WallEvent) -> tuple[int, int, int, int]:
     return (-e.qty, e.intra_ms, e.seq, e.price)
 
 
-class _MaxFenwick:
-    def __init__(self, size: int) -> None:
-        self._size = size
-        self._tree = [0] * (size + 1)
-
-    def update(self, i: int, value: int) -> None:
-        tree = self._tree
-        while i <= self._size:
-            tree[i] = max(tree[i], value)
-            i += i & (-i)
-
-    def prefix_max(self, i: int) -> int:
-        best = 0
-        tree = self._tree
-        while i > 0:
-            best = max(best, tree[i])
-            i -= i & (-i)
-        return best
-
-
 def _classify_wall_stream(
     events: list[_WallEvent],
     touches: list[_Touch],
     *,
     side: str,
-) -> tuple[list[tuple[_WallEvent, bool]], dict[tuple[int, bool], _WallEvent]]:
+) -> tuple[list[tuple[_WallEvent, bool]], dict[int, _WallEvent]]:
+    """(이벤트, touched) 목록과 **터치된 이벤트의 가격당 rank-1** 사전.
+
+    touched 판정은 전수 스캔이다: 같은 1분 창의 체결 중 가격으로 지배하는 것이
+    하나라도 있는가. 순서는 보지 않는다(ADR-0156).
+    """
     is_ask = side == "ask"
-    events_sorted = sorted(events, key=lambda e: (e.ts_ms, e.seq))
-    touches_sorted = sorted(touches, key=lambda t: (t.ts_ms, t.seq, t.price))
 
-    classified: list[tuple[_WallEvent, bool]] = [None] * len(events_sorted)  # type: ignore[list-item]
-    ti = len(touches_sorted) - 1
-    future_extreme: int | None = None
-    for ei in range(len(events_sorted) - 1, -1, -1):
-        e = events_sorted[ei]
-        while ti >= 0 and (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) >= (e.ts_ms, e.seq):
-            tp = touches_sorted[ti].price
-            if future_extreme is None or (tp > future_extreme if is_ask else tp < future_extreme):
-                future_extreme = tp
-            ti -= 1
-        touched = future_extreme is not None and (
-            future_extreme >= e.price if is_ask else future_extreme <= e.price
-        )
-        classified[ei] = (e, touched)
+    def touched_of(e: _WallEvent) -> bool:
+        window = e.intra_ms // _TOUCH_WINDOW_MS
+        for t in touches:
+            if t.intra_ms // _TOUCH_WINDOW_MS != window:
+                continue
+            if (t.price >= e.price) if is_ask else (t.price <= e.price):
+                return True
+        return False
 
-    uniq = sorted({t.price for t in touches_sorted})
-    fen = _MaxFenwick(len(uniq))
-    if is_ask:
-        def _touch_idx(price: int) -> int:
-            return len(uniq) - bisect_left(uniq, price)
+    classified = [(e, touched_of(e)) for e in sorted(events, key=lambda e: (e.ts_ms, e.seq))]
 
-        _query_idx = _touch_idx
-    else:
-        def _touch_idx(price: int) -> int:
-            return bisect_left(uniq, price) + 1
-
-        def _query_idx(price: int) -> int:
-            return bisect_right(uniq, price)
-
-    lifecycle_best: dict[tuple[int, int], tuple[_WallEvent, bool]] = {}
-    ti = 0
-    n_touch = len(touches_sorted)
+    distinct_best: dict[int, _WallEvent] = {}
     for e, touched in classified:
-        while ti < n_touch and (
-            (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) < (e.ts_ms, e.seq)
-        ):
-            fen.update(_touch_idx(touches_sorted[ti].price), ti + 1)
-            ti += 1
-        lifecycle_id = fen.prefix_max(_query_idx(e.price))
-        key = (e.price, lifecycle_id)
-        cur = lifecycle_best.get(key)
-        if cur is None or _event_rank_key(e) < _event_rank_key(cur[0]):
-            lifecycle_best[key] = (e, touched)
-
-    distinct_best: dict[tuple[int, bool], _WallEvent] = {}
-    for (price, _lid), (e, touched) in lifecycle_best.items():
-        key2 = (price, touched)
-        cur2 = distinct_best.get(key2)
-        if cur2 is None or _event_rank_key(e) < _event_rank_key(cur2):
-            distinct_best[key2] = e
+        if not touched:
+            continue
+        cur = distinct_best.get(e.price)
+        if cur is None or _event_rank_key(e) < _event_rank_key(cur):
+            distinct_best[e.price] = e
 
     return classified, distinct_best
 
@@ -155,7 +111,6 @@ def _read_peak_wall_streams(
     bucket_ms: int,
     where: str,
     intra: str,
-    trade_seq_expr: str,
 ) -> tuple[dict[str, list[_WallEvent]], list[_Touch]]:
     level_selects: list[str] = []
     for source in ("cont", "rep"):
@@ -185,7 +140,7 @@ def _read_peak_wall_streams(
     ).fetchall()
     touch_rows = con.execute(
         f"""
-        SELECT ts_ms, {trade_seq_expr} AS seq, price
+        SELECT {intra} AS intra_ms, price
         FROM read_parquet(?)
         WHERE side IN (1, -1) AND price > 0
         """,
@@ -203,8 +158,8 @@ def _read_peak_wall_streams(
             )
         )
     touches = [
-        _Touch(ts_ms=int(ts_ms), seq=int(seq or 0), price=int(price))
-        for ts_ms, seq, price in touch_rows
+        _Touch(intra_ms=int(intra_ms), price=int(price))
+        for intra_ms, price in touch_rows
     ]
     return streams, touches
 
@@ -243,14 +198,13 @@ def oracle_query_day_ask_bid_peak_dual(
     session_close_ms: int | None = None,
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
     where = _book_indicator_eligible_sql(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
 
     streams, touches = _read_peak_wall_streams(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
-        where=where, intra=intra, trade_seq_expr=trade_seq_expr,
+        where=where, intra=intra,
     )
 
     def _side_row(side: str) -> dict | None:
@@ -262,22 +216,16 @@ def oracle_query_day_ask_bid_peak_dual(
         if all_close is None or all_max is None:
             return None
 
-        rep_traded = [e for (_p, t), e in rep_distinct.items() if t]
-        rep_untraded = [e for (_p, t), e in rep_distinct.items() if not t]
-        cont_traded = [e for (_p, t), e in cont_distinct.items() if t]
-        cont_untraded = [e for (_p, t), e in cont_distinct.items() if not t]
+        rep_traded = list(rep_distinct.values())
+        cont_traded = list(cont_distinct.values())
 
         return {
             "all_close": all_close,
             "all_max": all_max,
             "traded_close": _peak_scalar(rep_traded),
             "traded_max": _peak_scalar(cont_traded),
-            "untraded_close": _peak_scalar(rep_untraded),
-            "untraded_max": _peak_scalar(cont_untraded),
             "traded_peaks": _peak_candidates(rep_traded, 3),
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
-            "untraded_peaks": _peak_candidates(rep_untraded, 3),
-            "untraded_max_peaks": _peak_candidates(cont_untraded, 3),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
         }
@@ -288,7 +236,6 @@ def oracle_query_day_ask_bid_peak_dual(
     ask_row: AskPeakDualRow | None = None
     if ask is not None:
         tc, tm = ask["traded_close"], ask["traded_max"]
-        uc, um = ask["untraded_close"], ask["untraded_max"]
         ask_row = AskPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -296,17 +243,11 @@ def oracle_query_day_ask_bid_peak_dual(
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
-            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
-            untraded_intra_ms=uc[2] if uc else None,
-            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
-            untraded_max_intra_ms=um[2] if um else None,
-            untraded_peaks=ask["untraded_peaks"], untraded_max_peaks=ask["untraded_max_peaks"],
         )
 
     bid_row: BidPeakDualRow | None = None
     if bid is not None:
         tc, tm = bid["traded_close"], bid["traded_max"]
-        uc, um = bid["untraded_close"], bid["untraded_max"]
         bid_row = BidPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -314,11 +255,6 @@ def oracle_query_day_ask_bid_peak_dual(
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
-            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
-            untraded_intra_ms=uc[2] if uc else None,
-            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
-            untraded_max_intra_ms=um[2] if um else None,
-            untraded_peaks=bid["untraded_peaks"], untraded_max_peaks=bid["untraded_max_peaks"],
         )
     return ask_row, bid_row
 
