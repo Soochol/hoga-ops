@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -1731,10 +1731,98 @@ def _empty_range_bundle(
     )
 
 
+def _bucket_program_trade_points(
+    points: list[ProgramTradePoint], *, open_ms: int, bucket_ms: int
+) -> list[ProgramTradePoint]:
+    """한 거래일의 점들을 `bucket_ms` 격자로 접는다.
+
+    **격자 원점이 epoch 가 아니라 세션 오픈(`open_ms`)이다.** 프론트 프로젝터가
+    `meta.openMs + floor((t - openMs) / bucketMs) * bucketMs` 로 재버킷하기 때문이다
+    (`chart/projectors/programTrade.ts`). 같은 원점을 쓰면 서버 출력이 프론트가 계산할
+    값과 **동일**해져 차트가 비트 단위로 안 바뀐다. epoch 원점으로 접으면 버킷 경계가
+    어긋나 "프론트 버킷의 마지막 점" 이 아닌 값이 남을 수 있다.
+
+    필드별 집계 규칙 — **누적이냐 증분이냐로 갈린다**:
+    - `net_qty`·`net_amount`: **마지막 값**. 당일 누적이라 합치면 안 된다. 프론트
+      프로젝터의 `byBucket.set`(뒤가 이김)과 같은 규칙이다.
+    - `delta_qty`·`delta_amount`: **non-null 합**. 구간 증분이라 합이 그 버킷의 증분이다.
+      전부 null 이면 null 이다 — 거래일 첫 행은 delta 가 null 이므로(수집기가 새 거래일에
+      `_last_net` 을 리셋한다) 0 으로 만들면 "증분 없음" 과 "모름" 이 뭉개진다.
+      ⚠ 현재 프론트는 이 두 필드를 **아무도 안 읽는다**(차트는 net_amount, 카드는
+      net_amount·net_qty). 그래도 계약 필드이므로 뜻이 맞게 접는다.
+    - `gap_risk`: **any**. 보수적으로 — 버킷 안에 위험 표본이 하나라도 있으면 그 버킷이
+      위험이다. 30초 표본 하나의 플래그가 버킷 전체를 물들이는 것은 **의도된 선택**이다
+      (놓치는 쪽보다 과하게 알리는 쪽).
+    """
+    if bucket_ms <= 0:
+        return points
+    by_bucket: dict[int, list[ProgramTradePoint]] = {}
+    for point in points:
+        start = open_ms + (point.t - open_ms) // bucket_ms * bucket_ms
+        by_bucket.setdefault(start, []).append(point)
+
+    out: list[ProgramTradePoint] = []
+    for start in sorted(by_bucket):
+        group = by_bucket[start]
+        last = group[-1]
+        out.append(
+            ProgramTradePoint(
+                t=start,
+                net_qty=last.net_qty,
+                net_amount=last.net_amount,
+                delta_qty=_sum_or_none(p.delta_qty for p in group),
+                delta_amount=_sum_or_none(p.delta_amount for p in group),
+                gap_risk=any(p.gap_risk for p in group),
+            )
+        )
+    return out
+
+
+def _sum_or_none(values: Iterable[int | None]) -> int | None:
+    """non-null 만 더한다. 전부 null 이면 **None**(0 이 아니다 — 위 docstring 참고)."""
+    total: int | None = None
+    for value in values:
+        if value is None:
+            continue
+        total = value if total is None else total + value
+    return total
+
+
 def build_program_trade_series(
-    engine: QueryEngine, *, code: str, dates: list[str], venue: str
+    engine: QueryEngine,
+    *,
+    code: str,
+    dates: list[str],
+    venue: str,
+    bucket_ms: int = 0,
+    session_open_by_date: Mapping[str, int] | None = None,
+    today_kst: str | None = None,
 ) -> ProgramTradeSeries:
     """선택 venue 의 프로그램 순매수 시계열.
+
+    ## `bucket_ms` — 이 번들의 다른 시리즈와 같은 해상도로 접는다
+
+    수집 주기가 30초라 하루 ~845점이다. 접지 않으면 3개월 창에서 **47,313점 ·
+    6.11MB** 가 나가는데(2026-08-21 실측), 이 번들의 **다른 모든 시리즈는 이미
+    `bucket_ms` 로 접혀 나간다** — 여기만 예외였다. 게다가 프론트 차트는 어차피
+    같은 격자로 재버킷해 버킷당 1점만 쓴다(`programByBucket`). 즉 나머지는 그리지도
+    않을 점을 실어 보낸 것이다.
+
+    `0`(기본)이면 접지 않는다 — 인자를 안 넘긴 기존 호출자의 동작이 그대로다.
+
+    ## 오늘분은 **접지 않는다**
+
+    오늘분은 프론트에서 WS 실시간 꼬리와 이어 붙는데, 그 이음매가
+    `max(persisted.t)` 다(`programTradeLiveTail.ts`). 오늘분을 접으면 이음매가
+    마지막 **버킷 시작**(예: 15:00)으로 당겨져, 그 뒤 원해상도 라이브 점들이 이미
+    버킷이 덮은 구간에 겹쳐 들어온다. 캔들이 같은 이유로 "오늘분은 언제나 1분" 을
+    못박은 것과 같은 함정이다(ADR-0125).
+
+    비용은 무시할 만하다 — 3개월 56거래일 중 하루뿐이다.
+
+    `venue` 는 **필수**다 — 기본값을 두면 호출부가 빠뜨렸을 때 조용히 KRX 답을 주고,
+    NXT·통합 화면은 15:30 에 멎은 시계열을 자기 시장 것으로 믿는다. 그 침묵이 정확히
+    이 축이 없던 시절의 증상이었다.
 
     `venue` 는 **필수**다 — 기본값을 두면 호출부가 빠뜨렸을 때 조용히 KRX 답을 주고,
     NXT·통합 화면은 15:30 에 멎은 시계열을 자기 시장 것으로 믿는다. 그 침묵이 정확히
@@ -1746,8 +1834,10 @@ def build_program_trade_series(
     if not isinstance(data_dir, Path):
         return ProgramTradeSeries(points=[])
     store = ProgramTradeStore(data_dir)
+    opens = session_open_by_date or {}
     points: list[ProgramTradePoint] = []
     for date in dates:
+        day_points: list[ProgramTradePoint] = []
         # 읽기 전용 — mtime 캐시로 과거일 JSON 재파싱 제거(today 는 mtime 변경 시 재로드).
         day = store.load_cached(code, date, venue)
         # 임계 재검증 — 0w drain 초기(PR-F4 직후)에 매 드레인마다 쌓인 30초 간격
@@ -1758,7 +1848,7 @@ def build_program_trade_series(
             if is_significant_gap_event(ev, poll_interval_ms=day.poll_interval_ms)
         }
         for row in day.rows:
-            points.append(
+            day_points.append(
                 ProgramTradePoint(
                     t=row.t_ms,
                     net_qty=row.net_qty,
@@ -1768,6 +1858,14 @@ def build_program_trade_series(
                     gap_risk=row.bsop_hour in gap_times,
                 )
             )
+        open_ms = opens.get(date)
+        # 접는 조건 세 가지가 **모두** 참일 때만 접는다. 세션 오픈을 모르면 격자 원점이
+        # 없어 프론트와 어긋나므로 원해상도로 둔다 — 추측해서 접지 않는다.
+        if bucket_ms > 0 and open_ms is not None and (today_kst is None or date < today_kst):
+            day_points = _bucket_program_trade_points(
+                day_points, open_ms=open_ms, bucket_ms=bucket_ms,
+            )
+        points.extend(day_points)
     points.sort(key=lambda p: p.t)
     return ProgramTradeSeries(points=points)
 
@@ -2267,7 +2365,15 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         wall_surge=wall_surge,
         volume_distributions=volume_distributions,
         program_trade=(
-            build_program_trade_series(engine, code=code, dates=included_dates, venue=venue)
+            build_program_trade_series(
+                engine,
+                code=code,
+                dates=included_dates,
+                venue=venue,
+                bucket_ms=bucket_ms,
+                session_open_by_date={s.date: s.session_open_ms for s in segments},
+                today_kst=_today_kst_yyyymmdd(),
+            )
             if include_program_trade
             else ProgramTradeSeries(points=[])
         ),

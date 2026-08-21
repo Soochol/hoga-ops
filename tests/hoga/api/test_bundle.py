@@ -681,9 +681,19 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     fs_builder.assert_not_called()
     # venue 가 읽기 경로까지 흐르는지 — 빠지면 NXT·통합 화면이 KRX 시계열을 자기
     # 시장 것으로 믿는다(사이드카에 venue 축이 없던 시절의 증상).
-    program_builder.assert_called_once_with(
-        mock_engine, code="005930", dates=["20260512"], venue="KRX"
-    )
+    #
+    # **전체 시그니처 스냅샷으로 두지 않는다** — `today_kst` 가 실제 오늘 날짜라
+    # 스냅샷이면 날짜가 바뀔 때마다 깨진다. kwargs 를 축별로 단언한다.
+    assert program_builder.call_count == 1
+    kwargs = program_builder.call_args.kwargs
+    assert kwargs["code"] == "005930"
+    assert kwargs["dates"] == ["20260512"]
+    assert kwargs["venue"] == "KRX"
+    # 접기 축(2026-08-21): 번들과 **같은** 해상도로 접히고, 격자 원점은 세그먼트에서
+    # 온다. bucket_ms 를 안 넘기면 조용히 원해상도(47,313점/3개월)로 돌아간다.
+    assert kwargs["bucket_ms"] == 60_000
+    assert set(kwargs["session_open_by_date"]) == {"20260512"}
+    assert kwargs["today_kst"] is not None
 
 
 def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_path):
@@ -2530,3 +2540,168 @@ def test_build_depth_heatmap_slice_missing_parquet_returns_empty(tmp_path):
         session_close_ms=153_000_000,
     )
     assert points == []
+
+
+def _pt(t: int, *, net=None, delta=None, gap=False):
+    from hoga.api.models import ProgramTradePoint
+    return ProgramTradePoint(
+        t=t, net_qty=net, net_amount=net, delta_qty=delta, delta_amount=delta, gap_risk=gap,
+    )
+
+
+def test_bucket_program_trade_points_aggregation_rules():
+    """필드마다 규칙이 다르다 — **누적은 마지막, 증분은 합, 위험은 any**.
+
+    막는 방향: 전 필드를 같은 규칙으로 접는 회귀. 특히 `net_*` 를 더하면(누적인데)
+    값이 폭주하고, `delta_*` 를 마지막만 취하면 버킷 안 증분이 사라진다. 둘 다
+    **화면에는 그럴듯한 숫자로 나와서** 눈으로 못 잡는다.
+    """
+    from hoga.api.bundle import _bucket_program_trade_points
+
+    open_ms = 1_000_000
+    out = _bucket_program_trade_points(
+        [
+            _pt(open_ms + 0, net=100, delta=10),
+            _pt(open_ms + 30_000, net=130, delta=30, gap=True),
+            _pt(open_ms + 59_000, net=175, delta=45),
+            _pt(open_ms + 60_000, net=200, delta=25),   # 다음 버킷
+        ],
+        open_ms=open_ms,
+        bucket_ms=60_000,
+    )
+
+    assert [p.t for p in out] == [open_ms, open_ms + 60_000]
+    assert [p.net_amount for p in out] == [175, 200]        # 누적 → 마지막
+    assert [p.delta_amount for p in out] == [85, 25]        # 증분 → 합(10+30+45)
+    assert [p.gap_risk for p in out] == [True, False]       # any
+
+
+def test_bucket_program_trade_points_all_null_delta_stays_null():
+    """delta 가 전부 null 인 버킷은 **null 이지 0 이 아니다**.
+
+    거래일 첫 행은 delta 가 null 이다(수집기가 새 거래일에 `_last_net` 을 리셋한다).
+    0 으로 접으면 "증분이 없었다" 와 "모른다" 가 뭉개진다 — 이 리포가 `days_behind`
+    에서 같은 구분을 지킨 것과 같은 이유다.
+    """
+    from hoga.api.bundle import _bucket_program_trade_points
+
+    out = _bucket_program_trade_points(
+        [_pt(0, net=100, delta=None), _pt(1_000, net=110, delta=None)],
+        open_ms=0, bucket_ms=60_000,
+    )
+    assert len(out) == 1
+    assert out[0].delta_amount is None and out[0].delta_qty is None
+    # 섞여 있으면 non-null 만 더한다(전부 null 일 때만 null).
+    mixed = _bucket_program_trade_points(
+        [_pt(0, delta=None), _pt(1_000, delta=7)], open_ms=0, bucket_ms=60_000,
+    )
+    assert mixed[0].delta_amount == 7
+
+
+def test_bucket_program_trade_anchors_on_session_open_not_epoch():
+    """격자 원점이 **세션 오픈**이다 — epoch 가 아니다.
+
+    프론트 프로젝터가 `meta.openMs + floor((t-openMs)/bucketMs)*bucketMs` 로 재버킷하므로
+    (`chart/projectors/programTrade.ts`), 원점이 다르면 버킷 경계가 어긋나 "프론트
+    버킷의 마지막 점" 이 아닌 값이 남는다. epoch 원점이면 아래가 두 버킷으로 갈린다.
+    """
+    from hoga.api.bundle import _bucket_program_trade_points
+
+    open_ms = 1_000_000 + 30_000          # epoch 60s 격자와 어긋난 원점
+    out = _bucket_program_trade_points(
+        [_pt(open_ms + 0, net=1), _pt(open_ms + 59_000, net=2)],
+        open_ms=open_ms, bucket_ms=60_000,
+    )
+    assert [p.t for p in out] == [open_ms]      # 한 버킷 — 원점을 세션 오픈으로 잡았다
+    assert out[0].net_amount == 2
+
+
+def test_build_program_trade_series_buckets_past_but_keeps_today_raw(tmp_path):
+    """과거일은 접고 **오늘분은 원해상도**로 둔다.
+
+    막는 방향: 오늘분까지 접는 회귀. 오늘분은 프론트에서 WS 실시간 꼬리와
+    `max(persisted.t)` 이음매로 이어지므로(`programTradeLiveTail.ts`), 접으면 이음매가
+    마지막 버킷 시작으로 당겨져 라이브 점들이 이미 덮인 구간에 겹쳐 들어온다 —
+    캔들이 ADR-0125 에서 "오늘분은 언제나 1분" 을 못박은 것과 같은 함정.
+
+    못 보는 것: 프론트 병합 결과 자체(그건 `programTradeLiveTail.test.ts` 몫).
+    """
+    from datetime import datetime
+    from unittest.mock import MagicMock
+
+    from hoga.api.bundle import build_program_trade_series
+    from hoga.live.program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
+    from hoga.util.timeenc import KST
+
+    def _row(hhmmss: str, net_qty: int) -> ProgramTradeByStockRow:
+        return ProgramTradeByStockRow(
+            code="005930", bsop_hour=hhmmss, t_ms=0, price=70_000,
+            net_qty=net_qty, net_amount=net_qty * 1000,
+            buy_qty=None, sell_qty=None, buy_amount=None, sell_amount=None,
+            delta_qty=None, delta_amount=None,
+        )
+
+    def _open_ms(date: str) -> int:
+        d = datetime.strptime(date, "%Y%m%d").replace(hour=9, tzinfo=KST)
+        return int(d.timestamp() * 1000)
+
+    past, today = "20260806", "20260807"
+    store = ProgramTradeStore(tmp_path)
+    for date in (past, today):
+        # 같은 1분 버킷 안 30초 간격 2행 + 다음 버킷 1행.
+        store.merge_response(
+            venue="KRX", code="005930", date=date,
+            rows=[_row("100000", 1), _row("100030", 2), _row("100100", 3)],
+            observed_at_ms=1,
+        )
+
+    engine = MagicMock()
+    engine.data_dir = tmp_path
+    series = build_program_trade_series(
+        engine, code="005930", dates=[past, today], venue="KRX",
+        bucket_ms=60_000,
+        session_open_by_date={past: _open_ms(past), today: _open_ms(today)},
+        today_kst=today,
+    )
+
+    def _for(date: str) -> list[int]:
+        lo, hi = _open_ms(date), _open_ms(date) + 86_400_000
+        return [p.net_qty for p in series.points if lo <= p.t < hi]
+
+    assert _for(past) == [2, 3]           # 접힘: 1분 버킷 2개(첫 버킷은 마지막 값 2)
+    assert _for(today) == [1, 2, 3]       # 원해상도 유지
+    assert series.points == sorted(series.points, key=lambda p: p.t)
+
+
+def test_build_program_trade_series_skips_bucketing_without_session_open(tmp_path):
+    """세션 오픈을 모르면 **접지 않는다** — 격자 원점을 추측하지 않는다.
+
+    원점이 프론트와 어긋나면 값이 조용히 달라진다. 모를 때는 원해상도가 안전한 쪽이다.
+    """
+    from unittest.mock import MagicMock
+
+    from hoga.api.bundle import build_program_trade_series
+    from hoga.live.program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    store.merge_response(
+        venue="KRX", code="005930", date="20260806",
+        rows=[
+            ProgramTradeByStockRow(
+                code="005930", bsop_hour=h, t_ms=0, price=1, net_qty=i,
+                net_amount=i, buy_qty=None, sell_qty=None, buy_amount=None,
+                sell_amount=None, delta_qty=None, delta_amount=None,
+            )
+            for i, h in enumerate(("100000", "100030"))
+        ],
+        observed_at_ms=1,
+    )
+    engine = MagicMock()
+    engine.data_dir = tmp_path
+
+    series = build_program_trade_series(
+        engine, code="005930", dates=["20260806"], venue="KRX",
+        bucket_ms=60_000, session_open_by_date={}, today_kst="20260807",
+    )
+    assert len(series.points) == 2
+
