@@ -5,12 +5,15 @@ import { createPortal } from 'react-dom';
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   useDraggable, useDroppable, useDndContext,
-  type DragEndEvent, type DragStartEvent, type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
+  type DragEndEvent, type DragMoveEvent, type DragStartEvent, type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { resolveFolderDrag, folderDroppableId, entrySortableId } from '../watchlist/dragHandlers';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { dropPoint, isPointOnChart, resolveDropOnChart, useEntryDragStore } from '../state/entryDrag';
+import { useDragPointPublisher } from '../state/useDragPointPublisher';
+import { withChartDropSuppression } from '../state/chartDropCollision';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -181,7 +184,7 @@ function SortableEntryRow({ code, name, folderId, children }: {
  *  sortable 로 등록)과 그룹 드롭존(entry-target)을 **둘 다** 본다 — 형제 위=그룹 내 재정렬,
  *  다른 그룹 위=이동. non-manual 모드엔 'entry' droppable 이 없어 자동으로 entry-target 만 남는다
  *  (기존 이동 전용 동작 보존). */
-const typeAwareCollision: CollisionDetection = (args) => {
+const lanes: CollisionDetection = (args) => {
   const activeType = args.active.data.current?.type;
   const same = args.droppableContainers.filter((c) => {
     const t = c.data.current?.type;
@@ -189,6 +192,12 @@ const typeAwareCollision: CollisionDetection = (args) => {
   });
   return closestCenter({ ...args, droppableContainers: same });
 };
+
+/** 차트 위에서는 패널 droppable 을 억제한다(`withChartDropSuppression`) — 억제가 없으면
+ *  커서가 캔버스 한복판이어도 `closestCenter` 가 패널의 최근접 행을 골라 그룹 이동
+ *  하이라이트가 켜진 채로 남는다. 억제는 **'entry' 에만** — 그룹 헤더(folder) 드래그는
+ *  차트에 놓을 수 없으므로 억제하면 차트 위를 지나는 동안 그룹 재정렬만 죽는다. */
+const typeAwareCollision = withChartDropSuppression(lanes, (type) => type === 'entry');
 
 /**
  * 그룹 헤더 행 — ⠿ 드래그 핸들(수동 정렬 시) + chevron 접기 + 라벨/개수 + 평균 등락률 + ⋯ 메뉴
@@ -482,6 +491,12 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
 export function HeatmapDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
   const onPick = useJumpToLive();
+  // 차트 드롭 제스처의 공유 상태 — WorkspaceCanvas 가 구독해 드롭 어포던스를 띄운다.
+  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
+  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+  // 드래그 좌표는 프레임당 한 번만 발행한다 — 우측 레일 드로어 공용 훅(직접 setDragPoint
+  // 를 치면 포인터 이동마다 캔버스가 강제 레이아웃을 돈다).
+  const { publishDragPoint, cancelDragPointFlush } = useDragPointPublisher();
   const { data, isLoading, error } = useHeatmap();
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
@@ -626,6 +641,22 @@ export function HeatmapDrawer() {
     // activatorEvent 로 초기값을 심어야 그 흔한 조작이 복제로 잡힌다.
     seed(ev.activatorEvent);
     setIsEntryDragging(true);
+    // 차트 드롭 어포던스 — 캔버스가 이 상태를 구독해 드롭 표시를 띄운다. 관심종목과
+    // **같은 제스처 하나**가 두 목적지(패널 안 = 이동/재정렬, 캔버스 = 종목 교체)를 겸한다.
+    startEntryDrag(String(ev.active.data.current.code ?? ''));
+  };
+  const onDragMove = (ev: DragMoveEvent) => {
+    // 그룹 헤더 드래그는 차트에 놓을 것이 없다 — 좌표를 발행하면 캔버스가 창별 어포던스를
+    // 그린다(collision 억제의 게이트와 **같은 술어**여야 둘이 갈리지 않는다).
+    if (ev.active.data.current?.type !== 'entry') return;
+    publishDragPoint(dropPoint(ev));
+  };
+  /** 종목 드래그 종료 공통 정리 — 취소·드롭·차트 드롭 어느 경로로 끝나도 지나야 한다.
+   *  `endEntryDrag` 를 빠뜨리면 캔버스 드롭 오버레이가 드래그가 끝난 뒤에도 남는다. */
+  const finishEntryDrag = () => {
+    cancelDragPointFlush();
+    setIsEntryDragging(false);
+    endEntryDrag();
   };
   const onEntryDragEnd = (ev: DragEndEvent) => {
     // over 는 형제 행(entry) 또는 그룹 드롭존(entry-target) — 둘 다 data.folderId 를 실어
@@ -660,8 +691,21 @@ export function HeatmapDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
     if (activeType === 'entry') {
+      // 차트 드롭이 그룹 이동보다 **먼저**다. 판정은 `ev.over` 가 아니라 좌표로 한다 —
+      // collision 억제가 차트 위에서 over 를 비우므로 over 로 물으면 "아무 데도 안 놓음"
+      // 과 구별되지 않고, 억제가 없더라도 closestCenter 는 캔버스 한복판에서도 패널 행을
+      // 돌려주므로 그쪽으로 물으면 엉뚱한 그룹으로 이동해 버린다.
+      if (isPointOnChart(dropPoint(ev))) {
+        finishEntryDrag();
+        const d = ev.active.data.current as { code?: string; name?: string } | undefined;
+        if (!d?.code) return;
+        // 창 위 = 그 창 종목 교체(정밀 드롭), 창 밖(캔버스 여백) = 클릭과 같은 목적지 규칙.
+        if (resolveDropOnChart(dropPoint(ev), { code: d.code, name: d.name })) return;
+        onPick(d.code, d.name);
+        return;
+      }
       onEntryDragEnd(ev);
-      setIsEntryDragging(false);
+      finishEntryDrag();
       return;
     }
     // 그룹 헤더 드래그(순서 변경).
@@ -702,8 +746,8 @@ export function HeatmapDrawer() {
           <RailState>검색 결과 없음</RailState>
         )}
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
-          onDragStart={onDragStart} onDragEnd={onDragEnd}
-          onDragCancel={() => setIsEntryDragging(false)}>
+          onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}
+          onDragCancel={finishEntryDrag}>
           <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
             {displayGroups.map((g, gi) => {
               const folder = g.folder;

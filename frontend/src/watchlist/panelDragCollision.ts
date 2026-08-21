@@ -1,5 +1,5 @@
 import { closestCenter, type CollisionDetection } from '@dnd-kit/core';
-import { isPointOnChart } from '../state/entryDrag';
+import { withChartDropSuppression } from '../state/chartDropCollision';
 
 /** 액티브 드래그와 같은 레인의 droppable만 closestCenter에 넘긴다 — 중첩
  *  SortableContext의 cross-talk(폴더 컨테이너가 행 위로 끼어드는) 차단.
@@ -25,20 +25,12 @@ import { isPointOnChart } from '../state/entryDrag';
 const ROW_TYPES = new Set(['entry', 'memo']);
 const ENTRY_TARGET = 'entry-target';
 
-export const typeAwareCollision: CollisionDetection = (args) => {
+/** 차트 드롭 억제(`withChartDropSuppression`)를 **'entry' 에만** 건다 — 메모는 차트에
+ *  놓을 수 없어서(onDragMove 가 같은 게이트를 쓴다), 억제하면 차트 위를 지나는 동안
+ *  재정렬만 죽는다. 그 래퍼 주석의 "좁게 잡아야 한다" 가 바로 이 경우다. */
+const lanes: CollisionDetection = (args) => {
   const active = args.active.data.current;
   const type = active?.type;
-  // 커서가 차트 워크에어리어 위면 **아무것도 over 로 잡지 않는다**. closestCenter 는
-  // 거리 상한이 없어 커서가 캔버스 한복판이어도 패널의 최근접 행을 골라내고, 그러면
-  // 목적지가 창인데 출발지(패널)가 계속 재정렬 프리뷰를 그린다.
-  //
-  // 드롭 경로는 안 깨진다 — onDragEnd 의 차트 드롭 분기는 `over` 가 아니라
-  // `isPointOnChart(dropPoint(ev))` 로 판정한다. 억제는 'entry' 에만 건다: 메모는
-  // 차트 드롭 대상이 아니라(onDragMove 가 같은 게이트를 쓴다) over 를 없애면 제자리
-  // 복귀만 남아, 차트 위를 지나가는 동안 재정렬 자체가 불가능해진다.
-  if (type === 'entry' && args.pointerCoordinates && isPointOnChart(args.pointerCoordinates)) {
-    return [];
-  }
   const inRowLane = ROW_TYPES.has(String(type));
   const same = args.droppableContainers.filter((c) => {
     const t = String(c.data.current?.type);
@@ -49,3 +41,5 @@ export const typeAwareCollision: CollisionDetection = (args) => {
   });
   return closestCenter({ ...args, droppableContainers: same });
 };
+
+export const typeAwareCollision = withChartDropSuppression(lanes, (type) => type === 'entry');

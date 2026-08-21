@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 
 /**
- * 관심종목 행을 차트 워크에어리어로 드래그하는 "차트로 드롭" 제스처의 단일 소유 seam.
+ * 리스트 행을 차트 워크에어리어로 드래그하는 "차트로 드롭" 제스처의 단일 소유 seam.
+ * 소비 패널은 관심종목·스크리너·순위·히트맵 넷이다.
  *
  * 패널 재정렬과 차트-드롭은 같은 dnd-kit 드래그 한 번을 공유한다(별도 드래그
  * 시스템을 행에 얹으면 네이티브 draggable이 pointermove를 가로채 재정렬이 깨진다).
  * 이 store가 드래그 상태(draggingCode/overChart)뿐 아니라 **드롭 타깃 seam**도 소유한다:
  * LiveWorkarea가 mount 시 자신의 히트테스트 술어 `hitTestChart(clientX,clientY)`를 등록하고
- * (unmount 시 해제), 패널의 onDragMove/onDragEnd(WatchlistDrawer, ScreenerDrawer)가
+ * (unmount 시 해제), 패널의 onDragMove/onDragEnd(WatchlistDrawer·HeatmapDrawer 는 직접,
+ * ScreenerDrawer·RankingDrawer 는 useChartDropDrag 훅으로)가
  * 그 술어로 "이 좌표가 차트 위인가"를 묻는다. 차트는 자기 지오메트리를 스스로 소유하고,
  * 패널은 DOM·rect를 모른다.
  *

@@ -9,7 +9,7 @@ import { isPointOnChart, useEntryDragStore } from './entryDrag';
  * (`getBoundingClientRect`)가 매번 강제 레이아웃을 유발한다. 좌표는 ref 에 적고
  * 프레임 경계에서 한 번만 내보낸다.
  *
- * 우측 레일의 세 드로어(관심종목·스크리너·순위)가 같은 seam 을 쓰므로 여기 한 곳에
+ * 우측 레일의 네 드로어(관심종목·스크리너·순위·히트맵)가 같은 seam 을 쓰므로 여기 한 곳에
  * 둔다 — 특히 **취소 규율**이 중요하다: 예약된 프레임이 `endDrag` 뒤에 실행되면 방금
  * 지운 dragPoint 가 되살아나 캔버스 드롭 어포던스가 화면에 남는다. 언마운트 정리도
  * 같은 이유다.
