@@ -493,6 +493,17 @@ describe('planViewportContraction — 좌측 팬 창을 앞으로 당긴다', ()
     expect(planViewportContraction(monthAgo, LEFT, TF)).not.toBeNull();
   });
 
+  it('**D/W/M 에서는 절대 자르지 않는다** — 일봉 캔들이 눈앞에서 사라지는 회귀', () => {
+    // 2026-08-21 사용자 관측: 일봉에서 줌아웃(과거 로드)→줌인→줌아웃 시 과거
+    // 캔들이 사라졌다 재로드됐다. D/W/M 은 range 지표가 없어(coverage null) 축소
+    // 분기가 항상 열리는데, `historicalFromDate` 가 일봉에선 **캔들 창 자체**라
+    // 축소 = 화면에서 데이터 소멸이다. 이 장치의 존재 이유(sidecar 29MB)는 분봉
+    // 전용이므로 D/W/M 은 어떤 창 폭에서도 no-op 이어야 한다.
+    for (const tf of ['D', 'W', 'M'] as const) {
+      expect(planViewportContraction('20200101', LEFT, tf)).toBeNull();
+    }
+  });
+
   it('화면에 **떠 있는** 구간은 안 자른다 — 줌아웃 케이스', () => {
     // 창이 넓은 이유가 "그만큼을 실제로 보고 있어서" 라면 자르면 안 된다.
     // 뷰포트 좌단이 곧 창 시작이면 임계 안이므로 no-op 이어야 한다.
