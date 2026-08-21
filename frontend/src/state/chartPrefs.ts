@@ -486,7 +486,6 @@ export type LineStylePrefDef = {
    *  조립하고, 픽커의 aria-label 은 이 이름을 쓴다(`MAStylePicker` 가 다시 " 스타일
    *  선택" 을 덧붙이므로 여기 "스타일" 을 넣으면 "… 스타일 스타일 선택" 이 된다). */
   readonly label: string;
-  readonly description: string;
   /** 이 선을 켜는 토글. UI 게이트이자 렌더 위치(그 토글 바로 아래). */
   readonly enabledBy: ChartToggleKey;
   /** 색 미지정 시 따라갈 방향 토큰 — 렌더가 `--price-up`/`--price-down` 로 푼다. */
@@ -498,7 +497,6 @@ export const CHART_LINE_STYLES = [
   {
     key: 'highLowHighLine',
     label: '고가 가격선',
-    description: '고가 가격선의 색과 두께입니다. 색을 고르지 않으면 테마의 상승색을 따릅니다.',
     enabledBy: 'highLowHighLineEnabled',
     direction: 'up',
     defaultWidth: 1,
@@ -506,7 +504,6 @@ export const CHART_LINE_STYLES = [
   {
     key: 'highLowLowLine',
     label: '저가 가격선',
-    description: '저가 가격선의 색과 두께입니다. 색을 고르지 않으면 테마의 하락색을 따릅니다.',
     enabledBy: 'highLowLowLineEnabled',
     direction: 'down',
     defaultWidth: 1,
@@ -514,7 +511,6 @@ export const CHART_LINE_STYLES = [
   {
     key: 'highLowPriorHighLine',
     label: '이전일 고가선',
-    description: '이전일 고가선의 색과 두께입니다. 색을 고르지 않으면 테마의 상승색을 따릅니다.',
     enabledBy: 'highLowPriorHighLineEnabled',
     direction: 'up',
     defaultWidth: 1,
@@ -522,7 +518,6 @@ export const CHART_LINE_STYLES = [
   {
     key: 'highLowPriorLowLine',
     label: '이전일 저가선',
-    description: '이전일 저가선의 색과 두께입니다. 색을 고르지 않으면 테마의 하락색을 따릅니다.',
     enabledBy: 'highLowPriorLowLineEnabled',
     direction: 'down',
     defaultWidth: 1,
@@ -530,6 +525,14 @@ export const CHART_LINE_STYLES = [
 ] as const satisfies readonly LineStylePrefDef[];
 
 export type ChartLineStyleKey = (typeof CHART_LINE_STYLES)[number]['key'];
+
+/** 행 설명 — 네 엔트리가 이름과 방향만 다른 같은 문장이라 레지스트리에 적지 않고
+ *  조립한다. 번들 절감을 노렸다면 헛수고다(raw −0.3KB, **gzip 은 그 반복을 이미
+ *  압축하고 있어 0**); 남긴 이유는 문장 하나를 고칠 때 네 군데를 고치지 않는 것이다. */
+export function lineStyleDescription(def: LineStylePrefDef): string {
+  const dir = def.direction === 'up' ? '상승색' : '하락색';
+  return `${def.label}의 색과 두께입니다. 색을 고르지 않으면 테마의 ${dir}을 따릅니다.`;
+}
 
 export type ViLimitPriceLineWidth = 1 | 2 | 3 | 4;
 export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';

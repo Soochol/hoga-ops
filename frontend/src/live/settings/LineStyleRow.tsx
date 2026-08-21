@@ -1,4 +1,5 @@
 import {
+  lineStyleDescription,
   useScopedChartPrefs,
   useChartPrefsStore,
   type ChartLineStyleKey,
@@ -32,7 +33,7 @@ export default function LineStyleRow({ def }: { def: LineStylePrefDef }) {
   return (
     <SettingsRow
       label={`${def.label} 스타일`}
-      description={def.description}
+      description={lineStyleDescription(def)}
       disabled={!gateOpen}
       testId={`settings-linestyle-${key}`}
     >
