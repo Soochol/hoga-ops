@@ -228,21 +228,40 @@ describe('CursorSyncCrosshair', () => {
       expect(setCrosshairPosition).toHaveBeenCalledWith(211500, M_1455 / 1000, candleSeries);
     });
 
-    it('분봉 창은 일봉 발행을 받지 않는다 — 하루가 구간이라 범위 밖(의도적 비대칭)', () => {
+    it('분봉 창이 일봉 발행을 받아 그 날 **마지막** 봉에 선다', () => {
+      // 2026-08-21 에 열린 마지막 방향. 발행 ms 는 그 날 09:00 앵커이므로 최근접
+      // 스냅으로 배선하면 첫 봉(14:50 = 211000)이 나온다 — 이 단언이 그 갈림길이다.
+      const anchor = Date.UTC(2025, 5, 19, 0, 0);
       renderCrosshair(new Map([[M_1500 / 1000, 260]]), '064350', '1m', MINUTE_CANDLES);
-      publish(CURSOR_1500, DAILY_ORIGIN);
+      publish(anchor, DAILY_ORIGIN);
 
-      expect(setCrosshairPosition).not.toHaveBeenCalled();
-      expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+      expect(setCrosshairPosition).toHaveBeenCalledWith(212000, M_1500 / 1000, candleSeries);
     });
 
-    it('그 날이 분봉 창에 없으면 아무것도 그리지 않는다 — 알려진 침묵', () => {
-      // 06/20 커서, 이 창은 06/19 만 들고 있다. 로드 범위 밖 안내는 미구현이라
-      // 화면에 사유가 남지 않는다 — 그 성질을 명시로 고정해 둔다.
+    it('그 날이 분봉 창에 없으면 크로스헤어 대신 방향 칩을 남긴다', () => {
+      // 06/20 커서, 이 창은 06/19 만 들고 있다. 2026-08-21 이전엔 여기가 **침묵**이라
+      // "고장났다" 로 읽혔다 — 이제 사유가 화면에 남는다.
       renderCrosshair(new Map(), '064350', '1m', MINUTE_CANDLES);
       publish(Date.UTC(2025, 5, 20, 6, 0), { ...MINUTE_ORIGIN, code: '005930' });
 
       expect(setCrosshairPosition).not.toHaveBeenCalled();
+      const edge = screen.getByTestId('study-cursor-sync-edge-right');
+      expect(edge.textContent).toContain('06/20');
+    });
+
+    it('일봉 창이 맥락 밖 날짜를 호버해도 같은 칩이 뜬다 — 방향 무관하게 일괄', () => {
+      renderCrosshair();
+      publish(Date.UTC(2025, 5, 10, 6, 0), { ...MINUTE_ORIGIN, code: '005930' });
+
+      expect(setCrosshairPosition).not.toHaveBeenCalled();
+      expect(screen.getByTestId('study-cursor-sync-edge-left').textContent).toContain('06/10');
+    });
+
+    it('⚠ 게이트에 걸린 발행은 칩도 띄우지 않는다 — 자기 발행이 그 함정이다', () => {
+      // 게이트 차단이 out-of-range 로 새면 자기 호버마다 자기 창에 "범위 밖" 이 뜬다.
+      renderCrosshair(new Map(), '064350', '1m', MINUTE_CANDLES);
+      publish(Date.UTC(2025, 5, 10, 6, 0), { ...MINUTE_ORIGIN, windowId: 'daily-window' });
+
       expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
     });
   });

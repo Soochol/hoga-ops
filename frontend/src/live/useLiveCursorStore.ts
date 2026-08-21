@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { LiveTimeframe } from '../state/livePage';
+import type { RangeSyncPublication } from '../chart/rangeSync';
 
 /**
  * sidebarCursorMs 발행 출처 (ADR-0119 PR-D 크로스헤어 버스).
@@ -24,15 +25,25 @@ interface State {
   sidebarCursorOrigin: SidebarCursorOrigin | null;
   syncCursorMs: number | null;
   syncCursorOrigin: SidebarCursorOrigin | null;
+  /** 창 간 **기간 동기화** 채널 — 분봉 창의 보이는 실시각 구간. `chart/rangeSync.ts`
+   *  헤더가 왜 커서와 다른 채널인지를 갖는다(요약: 지속 상태 · 제스처 중에만 발행 ·
+   *  stale 판정용 `seq`). 커서 채널과 달리 **포인터가 떠나도 지우지 않는다** —
+   *  마지막으로 본 기간이 곧 현재 상태라 지울 대상이 아니다. */
+  syncRange: RangeSyncPublication | null;
   setCursor: (t: number) => void;
   setSidebarCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   /** 창 간 크로스헤어 동기화 채널 — 즉시 발행 + origin. 아래 주석 참조. */
   setSyncCursor: (t: number, origin: SidebarCursorOrigin) => void;
+  /** 기간 동기화 발행. `seq` 는 스토어가 매긴다 — 발행자가 세면 창마다 자기 카운터를
+   *  갖게 되어 "누구의 seq 인가" 가 생기고, 소비자의 stale 판정이 깨진다. */
+  setSyncRange: (fromMs: number, toMs: number, origin: SidebarCursorOrigin) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
   /** 발행자만 자기 것을 지운다 — 옆 창의 mouse-leave 가 내 표시를 끄면 안 된다. */
   clearSyncCursorFrom: (windowId: string | null) => void;
+  /** 발행 창이 닫힐 때만 비운다(언마운트 정리). 소유자 가드는 커서와 같다. */
+  clearSyncRangeFrom: (windowId: string | null) => void;
   restoreCursor: () => void;
   /** 발행자만 자기 것을 지운다. 차트 언마운트·재생성 정리 경로 전용. */
   resetCursorFrom: (windowId: string | null) => void;
@@ -109,6 +120,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
   sidebarCursorOrigin: null,
   syncCursorMs: null,
   syncCursorOrigin: null,
+  syncRange: null,
   setCursor: (t) => {
     const { cursorMs, lastCursorMs } = get();
     if (cursorMs === t && lastCursorMs === t) return; // identity-stable, no-op rerender
@@ -123,6 +135,20 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     const { syncCursorMs, syncCursorOrigin } = get();
     if (syncCursorMs === t && sameOrigin(syncCursorOrigin, origin)) return;
     set({ syncCursorMs: t, syncCursorOrigin: origin });
+  },
+  setSyncRange: (fromMs, toMs, origin) => {
+    const prev = get().syncRange;
+    // 같은 구간·같은 발행자면 no-op. 제스처 중에는 프레임마다 들어오는데, 값이 안
+    // 바뀐 발행까지 store 를 쓰면 소비 창이 매 프레임 재렌더된다.
+    if (prev && prev.fromMs === fromMs && prev.toMs === toMs && sameOrigin(prev.origin, origin)) {
+      return;
+    }
+    set({ syncRange: { fromMs, toMs, seq: (prev?.seq ?? 0) + 1, origin } });
+  },
+  clearSyncRangeFrom: (windowId) => {
+    const cur = get().syncRange;
+    if (cur === null || !ownedBy(cur.origin, windowId)) return;
+    set({ syncRange: null });
   },
   clearCursor: () => {
     if (get().cursorMs === null) return;
@@ -158,12 +184,16 @@ export const useLiveCursorStore = create<State>((set, get) => ({
   },
   resetCursor: () => {
     const s = get();
+    // ⚠ 조기 반환 가드는 **아래 set 이 비우는 필드를 전부** 봐야 한다. 한 필드라도
+    // 빠지면 그 필드만 남은 상태에서 reset 이 no-op 이 되어 다음 테스트로 샌다
+    // (`syncRange` 를 추가하며 실제로 그렇게 새서 스펙 하나가 빨개졌다).
     if (s.cursorMs === null && s.lastCursorMs === null
       && s.sidebarCursorMs === null && s.sidebarCursorOrigin === null
-      && s.syncCursorMs === null && s.syncCursorOrigin === null) return;
+      && s.syncCursorMs === null && s.syncCursorOrigin === null
+      && s.syncRange === null) return;
     set({
       cursorMs: null, lastCursorMs: null, sidebarCursorMs: null, sidebarCursorOrigin: null,
-      syncCursorMs: null, syncCursorOrigin: null,
+      syncCursorMs: null, syncCursorOrigin: null, syncRange: null,
     });
   },
 }));

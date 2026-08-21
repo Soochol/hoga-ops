@@ -2,9 +2,10 @@
  * **다른 창의 마우스 위치**를 이 창의 크로스헤어로 표시한다. `/study` 와 `/live`
  * 워크스페이스가 둘 다 쓰고, 동작은 페이지에 무관하다.
  *
- * 방향은 셋이다 — 분봉→일봉 · 일봉→일봉 · 분봉→분봉. 어느 발행을 받는지와 대상을
- * 어떻게 찾는지는 **이 창의 봉**이 정하고, 그 판정은 전부 `cursorSync.ts` 가 갖는다.
- * 여기서 하는 일은 자기 봉으로 다리(`SyncTargetSource`)를 고르는 것뿐이다.
+ * 방향은 넷이다 — 분봉→일봉 · 일봉→일봉 · 분봉→분봉 · 일봉→분봉. 대상을 어떻게
+ * 찾는지는 **이 창의 봉**과 **발행 봉**이 함께 정하고, 그 판정은 전부 `cursorSync.ts`
+ * 가 갖는다. 여기서 하는 일은 자기 봉으로 다리(`SyncTargetSource`)를 고르고 판정
+ * 결과 세 갈래(`SyncResolution`)를 각각 그리는 것뿐이다.
  *
  * 선은 직접 그리지 않는다 — lightweight-charts 가 "두 차트의 크로스헤어 동기화"
  * 용도로 문서화한 `setCrosshairPosition` 을 부른다(`typings.d.ts` 의 예시가 곧 이
@@ -17,9 +18,10 @@
  * 캔들이 화면 밖인 경우가 흔한데(실측: pane 왼쪽 1,236px 밖) lwc 는 그때 아무것도
  * 그리지 않아 "동기화가 고장났다" 로 읽힌다. 방향과 **날짜만** 가장자리에 남긴다.
  *
- * ⚠ 이 칩은 **대상을 찾은 뒤 화면 밖일 때만** 뜬다. 대상 자체가 없으면(그 날이 이
- * 창에 로드돼 있지 않음) 아무것도 뜨지 않고, 그건 같은 오독을 부른다 — 분봉↔분봉에서
- * 한쪽 창만 과거로 팬하면 실제로 그렇게 된다. 로드 범위 밖 안내는 미구현이다.
+ * 같은 칩이 **대상이 아예 없을 때도** 뜬다(`out-of-range`) — 그 날이 이 창의 로드
+ * 범위 밖인 경우다. 일봉→분봉에서 이건 예외가 아니라 **다수**다: 일봉 창은 수개월을
+ * 보여주는데 분봉 창은 보통 1~2일치만 들고 있다. 두 경우의 차이는 크로스헤어를
+ * 거는가뿐이고(범위 밖이면 안 건다) 칩은 같은 말을 한다 — "그 날은 저쪽이다".
  *
  * **분봉의 시:분은 일봉 창에 표시하지 않는다**(사용자 결정, 2026-08-11). 초기 판에는
  * 크로스헤어 위에 시각 칩(`14:09`)이 있었다 — lwc 시간축 배지가 일봉 축이라 날짜까지만
@@ -112,11 +114,11 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
     [candles, minuteConsumer],
   );
   const source = useMemo<SyncTargetSource>(
-    () => (byDate ? { axis: 'date', byDate } : { axis: 'instant', candles }),
+    () => (byDate ? { axis: 'date', byDate, candles } : { axis: 'instant', candles }),
     [byDate, candles],
   );
 
-  const target = useMemo(
+  const resolution = useMemo(
     () => resolveSyncTarget({
       cursor: syncCursorMs !== null && syncCursorOrigin !== null
         ? { tsMs: syncCursorMs, origin: syncCursorOrigin }
@@ -128,9 +130,11 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
     }),
     [syncCursorMs, syncCursorOrigin, myWindowId, code, source, allowCrossSymbol],
   );
+  const target = resolution.kind === 'hit' ? resolution.candle : null;
 
   // 크로스헤어 자체. cleanup 이 이전 위치를 지우므로 커서가 바뀌면 옮겨 가고,
-  // 발행이 끊기거나(포인터가 분봉 창을 벗어남) 언마운트되면 사라진다.
+  // 발행이 끊기거나(포인터가 발행 창을 벗어남) 언마운트되면 사라진다.
+  // **`out-of-range` 에는 걸지 않는다** — 가리킬 캔들이 이 창에 없다.
   useEffect(() => {
     const series = paneSeries.get('candle');
     if (!series || !target) return;
@@ -142,14 +146,23 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
     return () => { chart.clearCrosshairPosition(); };
   }, [target, chart, axis, paneSeries]);
 
-  if (!target || syncCursorMs === null) return null;
+  if (resolution.kind === 'none' || syncCursorMs === null) return null;
 
   const ts = chart.timeScale();
-  const x = ts.timeToCoordinate((axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp);
   const paneWidth = ts.width();
-  // 축이 아직 안 섰거나(null) 대상이 화면 안이면 그릴 것이 없다 — 화면 안은 lwc 가
-  // 전부 그린다. 컨테이너는 그대로 두어 `ResizeObserver` 앵커를 잃지 않는다.
-  const offscreen = x != null && ((x as number) < 0 || (x as number) > paneWidth);
+  // 칩을 띄우는 사유가 둘이다:
+  //  - `out-of-range`: 그 날이 이 창에 아예 없다. 판정이 방향을 이미 알고 있다.
+  //  - `hit` 인데 화면 밖: 캔들은 있는데 뷰포트 밖이다(실측 pane 왼쪽 1,236px 밖).
+  //    lwc 는 그때 아무것도 그리지 않아 "동기화가 고장났다" 로 읽힌다.
+  // 축이 아직 안 섰으면(`timeToCoordinate` 가 null) 화면 안팎을 모르니 칩도 없다.
+  const x = target
+    ? ts.timeToCoordinate((axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp)
+    : null;
+  const edgeSide: 'left' | 'right' | null = resolution.kind === 'out-of-range'
+    ? resolution.side
+    : (x != null && ((x as number) < 0 || (x as number) > paneWidth)
+      ? ((x as number) < 0 ? 'left' : 'right')
+      : null);
 
   return (
     <div
@@ -161,11 +174,8 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
       className="pointer-events-none absolute top-0 left-0 z-10 overflow-hidden"
       style={{ width: `${paneWidth}px`, bottom: `${ts.height()}px` }}
     >
-      {offscreen && (
-        <EdgeIndicator
-          side={(x as number) < 0 ? 'left' : 'right'}
-          date={formatKstMmdd(syncCursorMs)}
-        />
+      {edgeSide && (
+        <EdgeIndicator side={edgeSide} date={formatKstMmdd(syncCursorMs)} />
       )}
     </div>
   );

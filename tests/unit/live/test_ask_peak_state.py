@@ -135,7 +135,7 @@ def test_pending_walls_are_pruned_once_their_minute_can_no_longer_be_touched():
     """자기 분이 지난 미터치 벽은 버린다 — 메모리 상한의 근거.
 
     막는 방향: 대기열이 하루 내내 자라는 것(300종목 × 2 side 가 한 프로세스에 있다).
-    `all_by_price` 는 **청소하지 않는다** — 터치 무관 계열이라 값이 살아 있어야 한다.
+    `all_top` 은 별도 구조라 무손실이다 — 청소된 분의 벽도 `all_*` 에는 남는다.
     """
     state = TodayAskPeakState()
     for m in range(10, 10 + _PENDING_MINUTE_SLACK + 4):
@@ -143,7 +143,7 @@ def test_pending_walls_are_pruned_once_their_minute_can_no_longer_be_touched():
 
     assert len(state.pending_by_minute) <= _PENDING_MINUTE_SLACK + 1
     # 청소된 분의 벽도 all 계열에는 남는다.
-    assert len(state.all_by_price) == _PENDING_MINUTE_SLACK + 4
+    assert len(state.all_top) <= 3
     snap = state.snapshot()
     assert snap is not None
     assert snap["all_price"] == 10_000 + (10 + _PENDING_MINUTE_SLACK + 3)
@@ -208,6 +208,44 @@ def test_closed_state_stays_bounded_after_many_touches():
         {"price": 10_070, "qty": 107, "t_ms": at(17, 1_000)},
     ]
     assert snap["all_peaks"] == snap["traded_peaks"]
+
+
+def test_all_top_matches_a_full_sort_over_every_wall_seen() -> None:
+    """증분 top-3(`_offer_all`) == "가격당 최댓값 전량 정렬" 의 상위 3.
+
+    막는 방향: 증분 유지가 전량 정렬과 갈리는 회귀. 이 등식이 성립해야 딕셔너리를
+    안 들어도 되고, 그 딕셔너리가 없어야 틱 경로가 가격 수에 비례해 느려지지 않는다
+    (회귀 실측: 가격 ~1,180 종목에서 하루 재생 3,508ms → 269ms).
+
+    못 보는 것: 성능(그게 이유지만 여기서 재지 않는다 — 벽시계 단언은 이 리포에서
+    기각됐다). 같은 가격이 top-3 를 독식하지 않는 성질은 위 랭킹 테스트가 본다.
+    """
+    from hoga.live.ask_peak_state import _EMIT_LIMIT, Peak, _ranked_peaks
+
+    def oracle(walls: list[Peak]) -> list[tuple[int, int, int]]:
+        best: dict[int, Peak] = {}
+        for p in walls:
+            cur = best.get(p.price)
+            if cur is None or p.qty > cur.qty:
+                best[p.price] = p
+        return [(p.price, p.qty, p.t_ms) for p in _ranked_peaks(best.values())[:_EMIT_LIMIT]]
+
+    rng = random.Random(20260821)
+    for seed in range(120):
+        rng.seed(seed)
+        state = TodayAskPeakState()
+        seen: list[Peak] = []
+        for step in range(rng.randrange(1, 40)):
+            t_ms = at(10 + step, rng.randrange(0, 60_000))
+            levels = [
+                {"price": 70_000 + 50 * rng.randrange(0, 12), "qty": 1 + rng.randrange(5_000)}
+                for _ in range(rng.randrange(1, 6))
+            ]
+            state.ingest_orderbook(t_ms=t_ms, asks=levels)
+            seen += [Peak(price=lv["price"], qty=lv["qty"], t_ms=t_ms, seq=None) for lv in levels]
+            if rng.random() < 0.4:
+                state.ingest_trade(price=70_000 + 50 * rng.randrange(0, 12), side=1, t_ms=t_ms + 1)
+        assert [(p.price, p.qty, p.t_ms) for p in state.all_top] == oracle(seen), f"seed={seed}"
 
 
 def test_rank_one_matches_full_sort_first_element() -> None:
