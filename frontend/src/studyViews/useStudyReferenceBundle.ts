@@ -53,7 +53,7 @@ type StudyPlanQuery =
 /**
  * 번들 한 벌을 요구하는 차트 창. **쿼리 키 전부가 창에서 온다.**
  *
- * 봉과 지표는 #904 부터 그랬고, ADR-0154 로 **저장뷰까지** 여기로 들어왔다 — 창의
+ * 봉과 지표는 #904 부터 그랬고, ADR-0155 로 **저장뷰까지** 여기로 들어왔다 — 창의
  * 링크 그룹이 저장뷰를 정하므로 창마다 다를 수 있다. 그전에는 훅 인자로 하나를
  * 받아 모든 창에 같은 것을 먹였다.
  */
@@ -112,7 +112,7 @@ export type StudyReferenceBundleResult = {
  * 두 개 열어도 요청은 한 벌이다.
  *
  * venue 는 종목·창과 무관한 **상수**다(`STUDY_VENUE`) — 창별 저장뷰가 생겨 종목이
- * 갈리는 ADR-0154 이후에도 이 값은 갈리지 않는다. sourcePref 는 전역 설정이라 역시
+ * 갈리는 ADR-0155 이후에도 이 값은 갈리지 않는다. sourcePref 는 전역 설정이라 역시
  * 한 번만 푼다.
  */
 export function useStudyReferenceBundles(
@@ -130,7 +130,7 @@ export function useStudyReferenceBundles(
 
   const plans = useMemo(
     () => windows.map((win) => {
-      // 저장뷰는 **창에서** 온다(ADR-0154) — 그룹마다 다른 뷰일 수 있다.
+      // 저장뷰는 **창에서** 온다(ADR-0155) — 그룹마다 다른 뷰일 수 있다.
       const displayedSave = win.save ? { ...win.save, timeframe: win.timeframe } : null;
       const dailyContext = studyDailyContextWindow(displayedSave);
       // 펴는 것은 `studyReferenceQuerySettings` 한 곳에서만 한다 — 워밍 경로와 이

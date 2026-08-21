@@ -180,7 +180,7 @@ export function StudyPage() {
   const activeGroup = useStudyWorkspaceStore(activeStudyGroup);
   const groupViews = useStudyWorkspaceStore((s) => s.groupViews);
   /**
-   * 저장뷰를 **활성 그룹에** 연다(ADR-0154 — 드로어의 `openStudyView` 와 같은 규칙).
+   * 저장뷰를 **활성 그룹에** 연다(ADR-0155 — 드로어의 `openStudyView` 와 같은 규칙).
    *
    * 그룹을 렌더 값(`activeGroup`)이 아니라 `getState()` 로 읽는 이유: 이 함수를 부르는
    * 셋 다 effect 이고, 포커스가 같은 커밋에서 막 바뀌었을 수 있다. 한 틱 전 그룹에
@@ -301,7 +301,7 @@ export function StudyPage() {
         return {
           windowId: w.id,
           group: w.group,
-          // 저장뷰도 **창에서** 온다(ADR-0154) — 그룹마다 다를 수 있으므로 훅 인자로
+          // 저장뷰도 **창에서** 온다(ADR-0155) — 그룹마다 다를 수 있으므로 훅 인자로
           // 하나를 받아 전 창에 먹이던 구조가 여기서 끝난다.
           save: referenceStudyView(savesById.get(groupViewIdOf(w.group) ?? '')),
           timeframe,
@@ -374,7 +374,7 @@ export function StudyPage() {
   const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
   const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
   // 축출은 (종목 × 봉)이다(#801) — 창이 여러 개면 같은 종목 아래 봉별 번들이 쌓인다.
-  // 보존 대상은 **어느 그룹이든 지금 보고 있는 종목 전부**다(ADR-0154). 활성 그룹
+  // 보존 대상은 **어느 그룹이든 지금 보고 있는 종목 전부**다(ADR-0155). 활성 그룹
   // 하나만 남기면 다른 그룹의 번들이 매 포커스 전환마다 축출·재fetch 된다.
   useStudyRangeCacheEviction(
     useMemo(
@@ -383,7 +383,7 @@ export function StudyPage() {
     ),
     chartWindowSpecs.map((w) => w.timeframe),
   );
-  /** 메모 저장 — **어느 저장뷰인지 인자로 받는다**(ADR-0154: 메모 창도 그룹에 딸린다).
+  /** 메모 저장 — **어느 저장뷰인지 인자로 받는다**(ADR-0155: 메모 창도 그룹에 딸린다).
    *  활성 뷰를 클로저로 가두면 그룹 2 의 메모 창이 그룹 1 의 뷰에 쓴다. */
   const commitMemo = useCallback((viewId: string, current: string, memo: string) => {
     if (memo === current) return;
@@ -485,7 +485,7 @@ export function StudyPage() {
   }, [clearStudyTarget, registerStudyTarget]);
 
   /**
-   * 페이지가 빈 상태로 가는 조건은 **어느 그룹에도 저장뷰가 없을 때**다(ADR-0154).
+   * 페이지가 빈 상태로 가는 조건은 **어느 그룹에도 저장뷰가 없을 때**다(ADR-0155).
    *
    * 활성 그룹만 보면, 빈 그룹의 창을 클릭했다는 이유만으로 다른 그룹에서 보고 있던
    * 복기뷰가 화면에서 통째로 사라진다. 그룹별 안내는 창이 진다(`viewMissing`).
@@ -608,7 +608,7 @@ export function StudyPage() {
     const result = bundlesByWindow[spec.windowId];
     if (!result) continue;
     const model = studyActiveViewModel({
-      // 폴백도 **이 창의 그룹** 저장뷰다(ADR-0154) — 활성 뷰로 떨어뜨리면 그룹 2 창이
+      // 폴백도 **이 창의 그룹** 저장뷰다(ADR-0155) — 활성 뷰로 떨어뜨리면 그룹 2 창이
       // 한 프레임 동안 그룹 1 의 종목을 그린다.
       selectedSave: result.displayedSave ?? spec.save,
       reference: result,
@@ -727,7 +727,7 @@ export function StudyPage() {
               className="h-full min-h-0"
             >
               <StudyWorkspaceCanvas
-                // 데이터·메모 창은 **자기 그룹의 포커스 차트 창** 번들을 먹는다(ADR-0154).
+                // 데이터·메모 창은 **자기 그룹의 포커스 차트 창** 번들을 먹는다(ADR-0155).
                 saveFor={(windowId) => {
                   const sourceId = groupChartSource(windowId);
                   return sourceId ? modelSaveByWindow[sourceId] ?? null : null;

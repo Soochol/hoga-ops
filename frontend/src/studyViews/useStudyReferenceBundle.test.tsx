@@ -147,7 +147,7 @@ const indicators: IndicatorSettings = {
   volumeDistributionRangeCount: 12,
 };
 
-/** 저장뷰는 ADR-0154 로 **창 스펙 안**으로 들어왔다 — 창마다 그룹이 다를 수 있다. */
+/** 저장뷰는 ADR-0155 로 **창 스펙 안**으로 들어왔다 — 창마다 그룹이 다를 수 있다. */
 function spec(timeframe: LiveTimeframe, windowId = WINDOW_ID, save: StudyViewReference | null = null) {
   return { windowId, save, timeframe, indicators };
 }

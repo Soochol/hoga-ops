@@ -86,7 +86,7 @@ export type WindowKind = (typeof WINDOW_KINDS)[number];
  * 링크 그룹 = **종목** SSOT (#711).
  *
  * 번호 자체(범위 1..10 · 판별자)는 페이지 중립 leaf `workspace/groupId` 가 소유하고
- * `/study` 와 공유한다(ADR-0154). 여기서 정하는 것은 그 번호가 **이 페이지에서 무엇을
+ * `/study` 와 공유한다(ADR-0155). 여기서 정하는 것은 그 번호가 **이 페이지에서 무엇을
  * 가리키는가** — `groupSymbols` 뿐이다. 소비자가 종전대로 이 모듈에서 가져갈 수 있게
  * 재수출한다.
  */
