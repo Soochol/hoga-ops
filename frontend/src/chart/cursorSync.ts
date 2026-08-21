@@ -18,21 +18,33 @@
  *   가까운 내 봉을 찾되 **같은 KST 날짜일 때만** 인정한다.
  *
  * ── 받아 주는 발행은 소비자마다 다르다 ────────────────────────────────────
- * - `date` 소비자(`D`)는 **분봉·일봉 발행을 모두** 받는다 — 분봉→일봉(2026-08-11)
- *   과 일봉→일봉(2026-08-21). 후자는 창마다 뷰포트가 독립이라 의미가 있다: 옛
- *   주석이 "같은 축이면 그냥 같은 칸" 이라며 막았지만, A 창의 06/19 가 B 창에서
- *   같은 x 라는 보장은 애초에 없었다(종목까지 다르면 더더욱).
- * - `instant` 소비자(분봉)는 **분봉 발행만** 받는다 — 분봉→분봉(2026-08-21).
+ * 두 소비자 모두 **분봉·일봉 발행을 받는다**. 방향 넷이 전부 산다 —
+ * 분봉→일봉(2026-08-11) · 일봉→일봉 · 분봉→분봉 · 일봉→분봉(2026-08-21).
  *
- * ── 범위 밖: 일봉 → 분봉 ──────────────────────────────────────────────────
- * 하루가 분봉 축에서는 **한 점이 아니라 구간**이라 "선이 어디 서는가" 가 별도
- * 결정이고, 더 큰 문제는 커버리지다 — 일봉 창은 수개월을 보여주는데 분봉 창은
- * 보통 1~2일치만 들고 있어 **대부분의 일봉 호버가 대상 없음으로 떨어진다**. 지금
- * 구조에서 대상 없음은 "아무것도 안 그림" 이고, 그건 "동기화가 고장났다" 로 읽힌다.
- * 그 침묵을 화면에 설명하는 affordance(로드 범위 밖 안내)가 먼저다. 사용자 결정
- * 2026-08-21 — 못 하는 게 아니라 **순서를 미룬 것**이다.
+ * 일봉→일봉이 의미가 있는 이유: 창마다 뷰포트가 독립이다. 옛 주석이 "같은 축이면
+ * 그냥 같은 칸" 이라며 막았지만, A 창의 06/19 가 B 창에서 같은 x 라는 보장은 애초에
+ * 없었다(종목까지 다르면 더더욱).
  *
- * W/M 도 같은 이유로 범위 밖이다(한 캔들이 여러 날을 담는다).
+ * ── 일봉 → 분봉: 하루는 구간이라 **어디에 설지**를 정해야 했다 ─────────────
+ * 발행 ms 는 일봉 캔들의 ts, 즉 **그 날 09:00 앵커**다. 최근접 스냅을 쓰면 그 날
+ * **첫** 봉이 잡히는데, 거기엔 이미 「날짜 구분선」이 서 있어 두 선이 겹쳐 읽히지
+ * 않는다. 그래서 **그 날 마지막 봉**에 세운다(사용자 결정 2026-08-21) — 소비 창이
+ * 자기 캔들의 종가를 가로선 높이로 쓰므로 세로선과 가로선이 **실제 점에서 교차**하고,
+ * 같은 종목이면 그 값이 일봉 종가와 일치한다.
+ *
+ * 즉 `instant` 다리의 스냅은 **발행 봉에 따라 갈린다**: 분봉 발행이면 같은 순간
+ * 최근접, 일봉 발행이면 그 날 마지막 봉.
+ *
+ * ── 대상이 없을 때 — 침묵하지 않는다 ──────────────────────────────────────
+ * 일봉 창은 수개월을 보여주는데 분봉 창은 보통 1~2일치만 들고 있어 **대부분의 일봉
+ * 호버가 대상 없음으로 떨어진다**. 아무것도 안 그리면 "동기화가 고장났다" 로 읽힌다.
+ * 그래서 판정이 **세 갈래**를 낸다(`SyncResolution`): 게이트에 걸림(`none`) · 대상
+ * 있음(`hit`) · 게이트는 통과했는데 **그 날이 이 창의 로드 범위 밖**(`out-of-range`).
+ * 마지막 것은 방향과 날짜를 가장자리 칩으로 남긴다 — 분봉↔분봉에서 한쪽 창만 과거로
+ * 팬한 경우에도 같은 칩이 뜬다(2026-08-21 이전엔 그것도 침묵이었다).
+ *
+ * W/M 은 여전히 범위 밖이다(한 캔들이 여러 날을 담아 "그 날이 캔들 안 어디인가" 가
+ * 다른 질문이 된다).
  */
 import { unixMsToKSTDate } from '../util/time';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
@@ -85,12 +97,34 @@ export function indexCandlesByKstDate(
   return m;
 }
 
-/** 소비 창이 대상을 찾는 방식. **소비 창의 봉**이 고르고, 받아 주는 발행 봉도 이것이 정한다. */
+/**
+ * 소비 창이 대상을 찾는 방식. **소비 창의 봉**이 고른다.
+ *
+ * `candles` 는 **양쪽 다** 필요하다 — `date` 다리는 조회에 `byDate` 를 쓰지만,
+ * "그 날이 내 로드 범위 밖인가"(`out-of-range`) 판정에는 **첫·마지막 캔들**이 있어야
+ * 한다. Map 의 삽입 순서에 기대는 건 취약하고, 호출부엔 배열이 이미 있어 참조만
+ * 넘기면 되므로 비용이 0이다. **ts 오름차순**이어야 한다(이진 탐색과 span 판정이
+ * 둘 다 그 성질에 기댄다).
+ */
 export type SyncTargetSource =
   /** 캘린더 소비자(`D`) — 날짜로 스냅. */
-  | { axis: 'date'; byDate: ReadonlyMap<string, SyncCandle> }
-  /** 분봉 소비자 — 같은 순간으로 스냅. `candles` 는 **ts 오름차순**이어야 한다. */
+  | { axis: 'date'; byDate: ReadonlyMap<string, SyncCandle>; candles: readonly SyncCandle[] }
+  /** 분봉 소비자 — 발행 봉에 따라 최근접(분봉) 또는 그 날 마지막 봉(일봉)으로 스냅. */
   | { axis: 'instant'; candles: readonly SyncCandle[] };
+
+/**
+ * 판정 결과 **세 갈래**. 불리언(대상 있음/없음)으로 두면 "게이트에 걸렸다" 와 "그 날이
+ * 이 창에 없다" 가 화면에서 같은 침묵이 되는데, 둘은 사용자에게 전혀 다른 사실이다 —
+ * 전자는 정상 동작이고 후자는 "여기선 못 보여 준다" 는 안내가 필요하다.
+ */
+export type SyncResolution =
+  /** 아무것도 하지 않는다 — 게이트에 걸렸거나(발행 없음·자기 발행·안 받는 봉),
+   *  로드 범위 **안**인데 그 날 캔들이 없다(휴장 등). 후자에 칩을 띄우면 휴일마다
+   *  "범위 밖" 이라 거짓말을 하게 된다. */
+  | { kind: 'none' }
+  | { kind: 'hit'; candle: SyncCandle }
+  /** 게이트는 통과했는데 그 날이 이 창의 로드 범위 **밖**이다. 방향만 알려 준다. */
+  | { kind: 'out-of-range'; side: 'left' | 'right' };
 
 /** `ms` 이상인 첫 캔들의 인덱스(없으면 `length`). 캔들이 ts 오름차순임에 기댄다. */
 function lowerBound(candles: readonly SyncCandle[], ms: number): number {
@@ -104,6 +138,51 @@ function lowerBound(candles: readonly SyncCandle[], ms: number): number {
   return lo;
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** `ms` 가 속한 KST 날짜가 **끝나는** 순간(다음 날 00:00 KST)의 Unix ms.
+ *  날짜 문자열을 ms 로 되돌리는 역함수가 없어도 되도록 산술로 구한다. */
+function kstDayEndMs(ms: number): number {
+  return (Math.floor((ms + KST_OFFSET_MS) / DAY_MS) + 1) * DAY_MS - KST_OFFSET_MS;
+}
+
+/**
+ * 발행 ms 가 속한 KST 날짜의 **마지막 봉**.
+ *
+ * 일봉 발행을 분봉 축에 얹을 때 쓴다 — 발행 ms 는 그 날 09:00 앵커라 최근접 스냅을
+ * 쓰면 **첫** 봉이 잡히는데, 거기엔 이미 날짜 구분선이 서 있어 겹쳐 읽히지 않는다
+ * (사용자 결정 2026-08-21: 마지막 봉). 그 날 캔들이 하나도 없으면 `null`.
+ */
+export function snapToLastOfKstDay(
+  candles: readonly SyncCandle[],
+  cursorMs: number,
+): SyncCandle | null {
+  const i = lowerBound(candles, kstDayEndMs(cursorMs)) - 1;
+  if (i < 0) return null;
+  const c = candles[i];
+  return unixMsToKSTDate(c.ts_ms) === unixMsToKSTDate(cursorMs) ? c : null;
+}
+
+/**
+ * 그 날이 이 창의 로드 범위 **밖**인가 — 밖이면 어느 쪽인가.
+ *
+ * 범위 **안**인데 캔들이 없는 경우(휴장·구멍)는 `null` 이다. 거기에 "범위 밖" 칩을
+ * 띄우면 휴일마다 거짓말을 하게 된다 — 그 날은 애초에 그릴 것이 없는 게 맞다.
+ */
+function outOfLoadedRange(
+  candles: readonly SyncCandle[],
+  cursorMs: number,
+): 'left' | 'right' | null {
+  const first = candles[0];
+  const last = candles[candles.length - 1];
+  if (!first || !last) return null; // 아직 로딩 중 — 칩은 소음이다.
+  const date = unixMsToKSTDate(cursorMs);
+  if (date < unixMsToKSTDate(first.ts_ms)) return 'left';
+  if (date > unixMsToKSTDate(last.ts_ms)) return 'right';
+  return null;
+}
+
 /**
  * 같은 순간으로 스냅 — 발행 ms 에 가장 가까운 내 봉.
  *
@@ -113,8 +192,8 @@ function lowerBound(candles: readonly SyncCandle[], ms: number): number {
  *
  * **같은 KST 날짜가 아니면 버린다.** 그 날이 이 창에 없으면(옆 창만 과거로 팬)
  * 가장 가까운 봉이 며칠 떨어져 있을 수 있는데, 그리면 "동기화가 엉뚱한 데를
- * 가리킨다" 가 된다. **못 하는 것**: 그 침묵을 화면에 설명하지는 못한다 — 지금은
- * 아무것도 그리지 않고 끝이다(로드 범위 밖 안내는 미구현, 파일 헤더 범위 절).
+ * 가리킨다" 가 된다. 버린 뒤 그 사실이 화면에서 사라지지 않게 하는 것은 호출부의
+ * 몫이다 — `resolveSyncTarget` 이 `out-of-range` 로 승격한다.
  *
  * 정확히 두 봉 사이면 **앞 봉**이 이긴다 — 커서가 버킷 경계에 있으면 그 시각을
  * 포함하는 쪽은 앞 봉이다(봉 ts 는 버킷 시작).
@@ -136,28 +215,44 @@ export function snapToInstant(
 }
 
 /**
- * 이 소비자가 저 발행 봉을 받는가(게이트 3). 헤더의 「받아 주는 발행」 절이 이 함수다.
+ * 이 소비자가 저 발행 봉을 받는가(게이트 3).
  *
- * `canPublishSyncCursor` 가 W/M 발행을 이미 막지만 여기서도 거른다 — 판정 층은
- * 발행 층의 규율에 기대지 않고 혼자 서 있어야 한다.
+ * 이제 **소비자 종류와 무관하게 분봉·일봉을 다 받는다**(2026-08-21 에 일봉→분봉이
+ * 열리며 마지막 비대칭이 사라졌다). 그래도 이 함수를 남겨 두는 이유는 W/M 이다:
+ * `canPublishSyncCursor` 가 W/M 발행을 이미 막지만 판정 층은 발행 층의 규율에
+ * 기대지 않고 혼자 서 있어야 한다.
  */
-function acceptsOriginTimeframe(
-  axis: SyncTargetSource['axis'],
-  originTimeframe: LiveTimeframe,
-): boolean {
-  if (isMinuteTimeframe(originTimeframe)) return true;
-  return axis === 'date' && originTimeframe === 'D';
+function acceptsOriginTimeframe(originTimeframe: LiveTimeframe): boolean {
+  return isMinuteTimeframe(originTimeframe) || originTimeframe === 'D';
+}
+
+/** 다리를 건넌 결과 — 대상 캔들이거나 `null`. 게이트는 이미 통과한 뒤다. */
+function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle | null {
+  if (source.axis === 'date') {
+    return source.byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null;
+  }
+  // 분봉 축에서는 **발행 봉이 스냅을 가른다** — 헤더의 「하루는 구간」 절 참조.
+  return isMinuteTimeframe(cursor.origin.timeframe)
+    ? snapToInstant(source.candles, cursor.tsMs)
+    : snapToLastOfKstDay(source.candles, cursor.tsMs);
 }
 
 /**
- * 이 창이 가리켜야 할 캔들. 아래 넷 중 하나라도 걸리면 `null`(= 아무것도 안 함).
+ * 이 창이 무엇을 그려야 하는가. 아래 넷 중 하나라도 걸리면 `none`(= 아무것도 안 함).
  *
  * 1. 발행이 없다.
  * 2. **내가 발행자다** — 자기 호버를 되받으면 lwc 자체 크로스헤어와 이중이 된다.
- * 3. **내 소비자 종류가 받지 않는 발행 봉이다** — `acceptsOriginTimeframe`.
+ * 3. **받지 않는 발행 봉이다**(W/M) — `acceptsOriginTimeframe`.
  * 4. **종목이 다르다** — 단 `allowCrossSymbol` 이 이 게이트를 **끈다**(아래).
  *
- * 그리고 다리가 대상을 못 찾으면(맥락 창 밖 · 휴장 · 그 날이 이 창에 없음) `null`.
+ * 게이트를 다 통과했는데 다리가 대상을 못 찾으면 둘로 갈린다: 그 날이 로드 범위
+ * **밖**이면 `out-of-range`(방향만 알려 준다), 범위 **안**인데 없으면(휴장·구멍)
+ * `none`. 이 구별이 있어야 "여기선 못 보여 준다" 와 "그 날은 원래 없다" 가 화면에서
+ * 다른 말을 한다.
+ *
+ * ⚠ **게이트 차단은 절대 `out-of-range` 가 아니다.** 자기 발행을 되받는 경로가 칩을
+ * 띄우면 호버할 때마다 자기 창에 "범위 밖" 이 뜬다 — 게이트를 먼저 통과시키는 순서가
+ * 그걸 막는다(회귀 테스트로 고정).
  *
  * ── 게이트 4 와 `allowCrossSymbol` ────────────────────────────────────────
  * **막는 방향**(`allowCrossSymbol === false`): 종목이 다른 창끼리 동기화되는 것.
@@ -191,18 +286,20 @@ export function resolveSyncTarget(params: {
    * 모드를 검사하게 된다. 호출부·테스트가 매번 어느 모드인지 밝히게 둔다.
    */
   allowCrossSymbol: boolean;
-}): SyncCandle | null {
+}): SyncResolution {
   const { cursor, myWindowId, myCode, source, allowCrossSymbol } = params;
-  if (!cursor) return null;
+  const none: SyncResolution = { kind: 'none' };
+  if (!cursor) return none;
   const { origin } = cursor;
-  if (origin.windowId !== null && origin.windowId === myWindowId) return null;
-  if (!acceptsOriginTimeframe(source.axis, origin.timeframe)) return null;
+  if (origin.windowId !== null && origin.windowId === myWindowId) return none;
+  if (!acceptsOriginTimeframe(origin.timeframe)) return none;
   if (!allowCrossSymbol && origin.code !== null && myCode !== null && origin.code !== myCode) {
-    return null;
+    return none;
   }
-  return source.axis === 'date'
-    ? source.byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null
-    : snapToInstant(source.candles, cursor.tsMs);
+  const candle = crossBridge(source, cursor);
+  if (candle) return { kind: 'hit', candle };
+  const side = outOfLoadedRange(source.candles, cursor.tsMs);
+  return side ? { kind: 'out-of-range', side } : none;
 }
 
 /**

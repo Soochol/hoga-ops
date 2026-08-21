@@ -7,8 +7,16 @@ import {
   isSyncConsumerTimeframe,
   resolveSyncTarget,
   snapToInstant,
+  snapToLastOfKstDay,
   type SyncCandle,
+  type SyncResolution,
 } from './cursorSync';
+
+/** 판정 결과에서 **대상 캔들만** 꺼낸다 — `hit` 이 아니면 null.
+ *  기존 단언 문체(캔들 또는 null)를 그대로 쓰되, `out-of-range` 는 별도 블록이 잰다. */
+function hitOf(r: SyncResolution): SyncCandle | null {
+  return r.kind === 'hit' ? r.candle : null;
+}
 
 /** 2025-06-19 09:00 KST = 일봉 캔들의 ts_ms(장 시작 기준). */
 const DAY_20250619 = Date.UTC(2025, 5, 19, 0, 0);
@@ -39,13 +47,13 @@ function origin(over: Partial<SidebarCursorOrigin> = {}): SidebarCursorOrigin {
 
 /** 종목 게이트가 **켜진**(= 같은 종목만) 모드. 2026-08-11~08-21 의 유일한 동작. */
 function target(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
-  return resolveSyncTarget({
+  return hitOf(resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'daily-window',
     myCode: '064350',
-    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) },
+    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
     allowCrossSymbol: false,
-  });
+  }));
 }
 
 /** 분봉 소비 창(= `instant` 다리). 종목 게이트는 끈 상태로 둔다 — 이 블록이 재는 건
@@ -55,6 +63,21 @@ function minuteTarget(
   tsMs = CURSOR_1500,
   candles: readonly SyncCandle[] = MINUTE_CANDLES,
 ) {
+  return hitOf(resolveSyncTarget({
+    cursor: { tsMs, origin: origin(over) },
+    myWindowId: 'minute-consumer',
+    myCode: '064350',
+    source: { axis: 'instant', candles },
+    allowCrossSymbol: true,
+  }));
+}
+
+/** 분봉 소비 창의 **판정 전체**(세 갈래). `minuteTarget` 은 그중 `hit` 만 본다. */
+function minuteResolution(
+  over: Partial<SidebarCursorOrigin> = {},
+  tsMs = CURSOR_1500,
+  candles: readonly SyncCandle[] = MINUTE_CANDLES,
+): SyncResolution {
   return resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'minute-consumer',
@@ -66,13 +89,13 @@ function minuteTarget(
 
 /** 종목 게이트를 **끈** 모드(`cursorSyncCrossSymbol` 켬 — 레지스트리 기본값). */
 function targetCross(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
-  return resolveSyncTarget({
+  return hitOf(resolveSyncTarget({
     cursor: { tsMs, origin: origin(over) },
     myWindowId: 'daily-window',
     myCode: '064350',
-    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) },
+    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
     allowCrossSymbol: true,
-  });
+  }));
 }
 
 describe('indexCandlesByKstDate', () => {
@@ -89,10 +112,10 @@ describe('resolveSyncTarget', () => {
   });
 
   it('발행이 없으면 대상이 없다', () => {
-    expect(resolveSyncTarget({
+    expect(hitOf(resolveSyncTarget({
       cursor: null, myWindowId: 'daily-window', myCode: '064350',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: false,
-    })).toBeNull();
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+    }))).toBeNull();
   });
 
   it('내가 발행자면 무시한다 — 자기 호버를 되받으면 lwc 크로스헤어와 이중이 된다', () => {
@@ -119,7 +142,7 @@ describe('resolveSyncTarget', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin() },
       myWindowId: 'daily-window', myCode: null,
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: false,
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     })).not.toBeNull();
   });
 
@@ -151,11 +174,11 @@ describe('resolveSyncTarget — /live 스코프', () => {
   it('지수 창은 code 가 `index:` 접두로 채워져 서로 갈린다', () => {
     // `/live` 지수 창의 code 는 `workareaCode` 가 `index:KOSPI` 로 만든다 — null 이
     // 아니므로 KOSPI 호버가 KOSDAQ 창으로 새지 않는다.
-    expect(resolveSyncTarget({
+    expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
       myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: false,
-    })).toBeNull();
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+    }))).toBeNull();
   });
 
   it('⚠ 양쪽 code 가 둘 다 null 이면 통과한다 — 이 가드가 못 보는 구멍', () => {
@@ -165,7 +188,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: null }) },
       myWindowId: 'daily-window', myCode: null,
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: false,
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
     })).not.toBeNull();
   });
 });
@@ -186,19 +209,19 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
 
   it('지수 창도 개별 종목 호버를 받는다 — 다리가 날짜뿐이라 종목 종류를 가리지 않는다', () => {
     // `index:KOSPI` 일봉 창 ← 개별 종목 분봉 호버. 꺼진 모드에서는 갈렸다.
-    expect(resolveSyncTarget({
+    expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: '005930' }) },
       myWindowId: 'daily-window', myCode: 'index:KOSPI',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: true,
-    })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
+    }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
 
   it('지수끼리도 서로 받는다 — KOSPI 호버 → KOSDAQ 창', () => {
-    expect(resolveSyncTarget({
+    expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
       myWindowId: 'daily-window', myCode: 'index:KOSDAQ',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES) }, allowCrossSymbol: true,
-    })).toEqual({ ts_ms: DAY_20250619, close: 212000 });
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
+    }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
 
   it('내가 발행자면 여전히 무시한다 — 열린 건 종목 축뿐이다', () => {
@@ -275,15 +298,13 @@ describe('resolveSyncTarget — 분봉 → 분봉', () => {
       .toEqual({ ts_ms: M_1450, close: 211000 });
   });
 
-  it('그 날이 이 창에 없으면 무시한다 — 며칠 떨어진 봉을 그리면 거짓 표시가 된다', () => {
-    // 06/20 커서인데 이 창은 06/19 만 들고 있다. 가장 가까운 봉은 06/19 15:00 이다.
+  it('그 날이 이 창에 없으면 크로스헤어는 안 걸고 방향만 알려 준다', () => {
+    // 06/20 커서인데 이 창은 06/19 만 들고 있다. 가장 가까운 봉은 06/19 15:00 이라
+    // 그걸 그리면 거짓 표시가 된다 — 그래서 `hit` 이 아니다. 다만 2026-08-21 이전엔
+    // 여기가 **침묵**이었고, 그 침묵이 "고장났다" 로 읽혔다. 이제 칩이 뜬다.
     expect(minuteTarget({}, Date.UTC(2025, 5, 20, 6, 0))).toBeNull();
-  });
-
-  it('일봉 발행은 받지 않는다 — 하루가 분봉 축에서는 구간이라 범위 밖이다', () => {
-    // 의도적 비대칭이다(사용자 결정 2026-08-21). 켤 때는 "선이 어디 서는가" 와
-    // 로드 범위 밖 안내를 함께 정해야 한다 — cursorSync.ts 헤더의 범위 절 참조.
-    expect(minuteTarget({ timeframe: 'D' })).toBeNull();
+    expect(minuteResolution({}, Date.UTC(2025, 5, 20, 6, 0)))
+      .toEqual({ kind: 'out-of-range', side: 'right' });
   });
 
   it('캔들이 아직 없으면 대상이 없다', () => {
@@ -323,6 +344,135 @@ describe('snapToInstant', () => {
  * 갈라지면 2026-08-11 실측이 그대로 재현된다 — 아무도 받지 않는 발행이 전역 슬롯
  * 하나를 훔쳐 유효한 표시를 지운다. 그래서 이 단언은 스타일이 아니라 **불변식**이다.
  */
+/**
+ * **일봉 → 분봉**(2026-08-21). 마지막으로 열린 방향이고, 스냅 규칙이 **다른 셋과
+ * 다르다** — 하루가 분봉 축에서 구간이라 "어디에 설지" 를 정해야 했다.
+ *
+ * **이 블록의 판별 단언**: 발행 ms 는 일봉 캔들 ts = 그 날 **09:00 앵커**다. 최근접
+ * 스냅(`snapToInstant`)을 그대로 쓰면 그 날 **첫** 봉이 잡힌다. 사용자 선택은
+ * **마지막 봉**이므로, 첫 봉 ≠ 마지막 봉인 픽스처에서 09:00 앵커 커서를 넣으면 두
+ * 구현이 갈린다. 아래 첫 단언이 그 지점이다.
+ */
+describe('resolveSyncTarget — 일봉 → 분봉', () => {
+  /** 06/19 일봉 캔들의 ts — 그 날 09:00 KST 앵커. */
+  const DAILY_ANCHOR_20250619 = Date.UTC(2025, 5, 19, 0, 0);
+  const dailyOrigin = { windowId: 'daily-window', timeframe: 'D' as const };
+
+  it('그 날 **마지막** 봉에 선다 — 최근접 스냅이면 첫 봉(14:50)이 잡힌다', () => {
+    // 09:00 앵커에서 가장 가까운 봉은 14:50 이다. 그런데 정답은 15:00 —
+    // 첫 봉 자리에는 이미 「날짜 구분선」이 서 있어 두 선이 겹쳐 읽히지 않는다.
+    expect(minuteTarget(dailyOrigin, DAILY_ANCHOR_20250619))
+      .toEqual({ ts_ms: M_1500, close: 212000 });
+  });
+
+  it('그 날이 이 창에 없으면 방향을 알려 준다 — 일봉 창은 수개월, 분봉 창은 1~2일', () => {
+    // 이 방향에서는 이게 예외가 아니라 **다수**다. 침묵하면 "고장났다" 로 읽힌다.
+    const older = Date.UTC(2025, 5, 10, 0, 0); // 06/10 — 로드 범위보다 앞
+    expect(minuteResolution(dailyOrigin, older))
+      .toEqual({ kind: 'out-of-range', side: 'left' });
+  });
+
+  it('분봉 발행은 여전히 같은 순간으로 스냅한다 — 스냅은 발행 봉이 가른다', () => {
+    // 같은 09:00 앵커 ms 라도 분봉 발행이면 최근접(14:50)이다. 이 단언과 위 첫
+    // 단언이 **같은 입력·다른 발행 봉**이라, 둘이 갈리는 것 자체가 규칙의 정의다.
+    expect(minuteTarget({}, DAILY_ANCHOR_20250619)).toEqual({ ts_ms: M_1450, close: 211000 });
+  });
+
+  it('내가 발행자면 무시한다 — 칩도 뜨지 않는다', () => {
+    // ⚠ 게이트 차단이 `out-of-range` 로 새면 자기 호버마다 자기 창에 칩이 뜬다.
+    expect(minuteResolution({ ...dailyOrigin, windowId: 'minute-consumer' }, DAILY_ANCHOR_20250619))
+      .toEqual({ kind: 'none' });
+  });
+
+  it('W 발행은 무시한다 — 칩도 뜨지 않는다', () => {
+    const far = Date.UTC(2025, 5, 10, 0, 0); // 범위 밖이지만 게이트가 먼저 걸린다
+    expect(minuteResolution({ windowId: 'w-window', timeframe: 'W' }, far))
+      .toEqual({ kind: 'none' });
+  });
+});
+
+/**
+ * `out-of-range` 는 **방향과 무관하게** 일괄 적용된다 — 일봉 소비자도 같은 대접을
+ * 받는다(맥락 창 밖 날짜를 호버한 경우).
+ *
+ * **막는 방향**: 범위 **안**인데 캔들이 없는 날(휴장)까지 "범위 밖" 이라 말하는 것.
+ * 그건 휴일마다 거짓말이 된다.
+ */
+describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
+  const resolution = (tsMs: number) => resolveSyncTarget({
+    cursor: { tsMs, origin: origin({ windowId: 'other' }) },
+    myWindowId: 'daily-window',
+    myCode: '064350',
+    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+    allowCrossSymbol: false,
+  });
+
+  it('로드 범위보다 앞이면 left', () => {
+    expect(resolution(Date.UTC(2025, 5, 10, 6, 0))).toEqual({ kind: 'out-of-range', side: 'left' });
+  });
+
+  it('로드 범위보다 뒤면 right', () => {
+    expect(resolution(Date.UTC(2025, 5, 25, 6, 0))).toEqual({ kind: 'out-of-range', side: 'right' });
+  });
+
+  it('범위 **안**인데 그 날이 없으면 none — 휴장에 "범위 밖" 은 거짓말이다', () => {
+    // 06/19 와 06/20 사이는 없지만, 픽스처가 연속 이틀이라 그 사이 날짜가 없다.
+    // 대신 범위 안 경계를 직접 만든다: 06/19~06/21 을 들고 06/20 만 비운 창.
+    const holed = [CANDLES[0], { ts_ms: Date.UTC(2025, 5, 21, 0, 0), close: 1 }];
+    expect(resolveSyncTarget({
+      cursor: { tsMs: Date.UTC(2025, 5, 20, 6, 0), origin: origin({ windowId: 'other' }) },
+      myWindowId: 'daily-window',
+      myCode: '064350',
+      source: { axis: 'date', byDate: indexCandlesByKstDate(holed), candles: holed },
+      allowCrossSymbol: false,
+    })).toEqual({ kind: 'none' });
+  });
+
+  it('캔들이 아직 없으면 none — 로딩 중 칩은 소음이다', () => {
+    expect(resolveSyncTarget({
+      cursor: { tsMs: CURSOR_1500, origin: origin({ windowId: 'other' }) },
+      myWindowId: 'daily-window',
+      myCode: '064350',
+      source: { axis: 'date', byDate: new Map(), candles: [] },
+      allowCrossSymbol: false,
+    })).toEqual({ kind: 'none' });
+  });
+
+  it('종목 게이트에 걸리면 칩도 뜨지 않는다 — 게이트가 다리보다 먼저다', () => {
+    expect(resolveSyncTarget({
+      cursor: { tsMs: Date.UTC(2025, 5, 10, 6, 0), origin: origin({ windowId: 'other', code: '005930' }) },
+      myWindowId: 'daily-window',
+      myCode: '064350',
+      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+      allowCrossSymbol: false,
+    })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('snapToLastOfKstDay', () => {
+  it('그 날의 마지막 봉을 준다 — 커서가 그 날 어디에 있든', () => {
+    for (const ms of [Date.UTC(2025, 5, 19, 0, 0), Date.UTC(2025, 5, 19, 3, 0), M_1450]) {
+      expect(snapToLastOfKstDay(MINUTE_CANDLES, ms)).toEqual({ ts_ms: M_1500, close: 212000 });
+    }
+  });
+
+  it('그 날 봉이 하나도 없으면 null — 앞 날의 마지막 봉으로 새지 않는다', () => {
+    expect(snapToLastOfKstDay(MINUTE_CANDLES, Date.UTC(2025, 5, 20, 3, 0))).toBeNull();
+  });
+
+  it('KST 자정 경계에서 날짜가 갈린다', () => {
+    // UTC 06/19 15:00 = KST 06/20 00:00 → 06/19 의 마지막 봉이 아니다.
+    expect(snapToLastOfKstDay(MINUTE_CANDLES, Date.UTC(2025, 5, 19, 15, 0))).toBeNull();
+    // 그 1분 전은 아직 KST 06/19 다.
+    expect(snapToLastOfKstDay(MINUTE_CANDLES, Date.UTC(2025, 5, 19, 14, 59)))
+      .toEqual({ ts_ms: M_1500, close: 212000 });
+  });
+
+  it('빈 배열은 null', () => {
+    expect(snapToLastOfKstDay([], CURSOR_1500)).toBeNull();
+  });
+});
+
 describe('발행 ↔ 소비 집합', () => {
   it('분봉과 D 만 발행하고, 같은 집합만 소비한다', () => {
     for (const tf of ['1m', '5m', '60m', '240m', 'D'] as const) {

@@ -2486,8 +2486,8 @@ export function LiveChartRoot({
           {/* 창 간 크로스헤어 동기화(옆 창 호버 → 이 창). 게이트가 둘이다:
               **분봉 · `D` 만** — 소비자가 자기 축으로 스냅할 다리가 있는 봉이다(바로 위
               동시호가 음영이 그 스냅을 안 해서 좌표계가 어긋나 삭제됐다). W/M 은 한
-              캔들이 여러 날을 담아 범위 밖이고, 일봉→분봉도 아직 범위 밖이다 —
-              어느 발행을 받는지는 `cursorSync.ts` 헤더가 갖는다.
+              캔들이 여러 날을 담아 범위 밖이다. 방향 넷(분봉→일봉·일봉→일봉·
+              분봉→분봉·일봉→분봉)의 규칙은 `cursorSync.ts` 헤더가 갖는다.
               **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
           {cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe) && (
             <CursorSyncCrosshair
