@@ -190,7 +190,7 @@ export function StudyViewsDrawer() {
   // 라우트에서는 URL 에 `?view=` 가 아예 없다. URL 만 보면 그 라우트들에서 행 하이라이트가
   // 통째로 사라진다.
   //
-  // ADR-0152 로 **열린 뷰가 여럿**이 됐다(그룹마다 하나). 하이라이트도 집합이다 — 하나만
+  // ADR-0154 로 **열린 뷰가 여럿**이 됐다(그룹마다 하나). 하이라이트도 집합이다 — 하나만
   // 칠하면 그룹 2 에서 보고 있는 뷰가 목록에서 "안 열린 것" 으로 보인다.
   const groupViews = useStudyWorkspaceStore((s) => s.groupViews);
   const openStudyViewIds = useMemo(() => {
@@ -255,7 +255,7 @@ export function StudyViewsDrawer() {
 
   /**
    * 저장뷰를 **이 탭의 활성 그룹에서** 연다 — 그 그룹의 뷰를 제자리 교체한다
-   * (ADR-0152). 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 행을
+   * (ADR-0154). 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 행을
    * 클릭하면 그룹 2 만 갈아탄다. 다른 그룹 창들은 그대로다 — 그게 나란히 비교라는
    * 이 기능의 요점이다.
    *
@@ -332,7 +332,7 @@ export function StudyViewsDrawer() {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        // 지운 뷰를 보던 **모든 그룹**을 비운다(ADR-0152). 남은 뷰 중 하나로 자동
+        // 지운 뷰를 보던 **모든 그룹**을 비운다(ADR-0154). 남은 뷰 중 하나로 자동
         // 이동하지 않는 것은 ADR-0149 그대로다 — 사용자가 지운 직후 뜻밖의 뷰가 뜨는
         // 것보다 빈 상태가 낫고, 빈 상태에는 "저장뷰 열기" 버튼이 있다.
         //

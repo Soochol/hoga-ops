@@ -16,11 +16,11 @@ function seedRange(queryClient: QueryClient, code: string, bucketMs = 600_000): 
   return key;
 }
 
-// 보존 집합은 **어느 그룹이든 지금 보고 있는 종목 전부**다(ADR-0152). 축은 두 번
+// 보존 집합은 **어느 그룹이든 지금 보고 있는 종목 전부**다(ADR-0154). 축은 두 번
 // 바뀌었다: "열린 탭 어느 하나라도 든 종목" → "활성 저장뷰의 종목 하나"(ADR-0149) →
 // 지금. 그룹은 상시 공존이라 전부 실제로 화면에 떠 있는 번들이다.
 describe('useStudyRangeCacheEviction — 종목 축', () => {
-  it('그룹이 여럿이면 그 종목들을 **전부** 보존한다 (ADR-0152)', () => {
+  it('그룹이 여럿이면 그 종목들을 **전부** 보존한다 (ADR-0154)', () => {
     const queryClient = new QueryClient();
     seedRange(queryClient, '005930');
     seedRange(queryClient, '000660');

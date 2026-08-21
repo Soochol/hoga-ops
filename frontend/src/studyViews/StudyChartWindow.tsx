@@ -41,7 +41,7 @@ export type StudyChartRootProps = ComponentProps<typeof LiveChartRoot>;
 
 export type StudyChartWindowProps = {
   windowId: string;
-  /** 이 창의 그룹이 보는 저장뷰의 종목 — Provider 의 `code`(ADR-0152). */
+  /** 이 창의 그룹이 보는 저장뷰의 종목 — Provider 의 `code`(ADR-0154). */
   code: string | null;
   /**
    * 이 창의 그룹에 저장뷰가 없다 — "아직 안 왔다"(`loading`)와 **다른 상태**다.
@@ -101,7 +101,7 @@ export function StudyChartWindow(props: StudyChartWindowProps) {
   const view: WindowViewValue = useMemo(
     () => ({
       windowId,
-      // 링크 그룹은 ADR-0152 로 `/study` 에도 생겼다 — 여기 `null` 이던 시절의 근거
+      // 링크 그룹은 ADR-0154 로 `/study` 에도 생겼다 — 여기 `null` 이던 시절의 근거
       // ("활성 저장뷰가 단일 암묵 그룹")는 그때 소멸했다.
       group,
       code,
@@ -231,7 +231,7 @@ function StudyChartWindowInner({
             기준이므로, 아직 안 받아온 다른 창이 빈 사각형으로 남지 않게 `!chart` 도
             같은 자리로 취급한다.
 
-            **"뷰 없음" 이 로딩보다 먼저다**(ADR-0152): 뷰가 없으면 쿼리 자체가 걸리지
+            **"뷰 없음" 이 로딩보다 먼저다**(ADR-0154): 뷰가 없으면 쿼리 자체가 걸리지
             않으므로 로딩 문구는 영영 끝나지 않는 거짓말이 된다. */}
         {viewMissing ? (
           <div

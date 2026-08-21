@@ -137,7 +137,7 @@ export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
     key: 'study.workspace.v1',
     module: 'state/workspaceKeys.ts',
     policy: 'tab-authoritative-shared-seed',
-    note: '위와 같은 이유. /study 는 딥링크 예외가 없어 write-through 가 무조건이다. ADR-0152 로 그룹→저장뷰(groupViews)도 이 스냅샷에 들어왔다 — 옛 study.activeView.v1 이 공유 localStorage 라 두 탭이 서로를 덮던 자리를 이 정책이 없앤다.',
+    note: '위와 같은 이유. /study 는 딥링크 예외가 없어 write-through 가 무조건이다. ADR-0154 로 그룹→저장뷰(groupViews)도 이 스냅샷에 들어왔다 — 옛 study.activeView.v1 이 공유 localStorage 라 두 탭이 서로를 덮던 자리를 이 정책이 없앤다.',
   },
 ];
 

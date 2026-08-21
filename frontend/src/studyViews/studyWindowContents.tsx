@@ -305,7 +305,7 @@ function contentFor(kind: StudyDataWindowKind, props: ContentProps): React.React
  * testid 는 구 카드 계약(`study-detail-card-*`/`study-detail-content-*`)을 승계해
  * 커서 스팟 테스트가 창 전환을 넘어 그대로 통과한다.
  *
- * `save`/`bundle` 은 **이 창의 그룹** 것이다(ADR-0152) — 그룹의 포커스 차트 창이
+ * `save`/`bundle` 은 **이 창의 그룹** 것이다(ADR-0154) — 그룹의 포커스 차트 창이
  * 먹이는 번들. 그룹을 무시하면 그룹 2 의 10호가에 그룹 1 의 데이터가 뜬다.
  */
 export function StudyDataWindowContent({

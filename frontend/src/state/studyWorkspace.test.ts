@@ -480,7 +480,7 @@ describe('snapshotStudyWorkspace — 깊은 복사(프리셋 저장본 오염 �
 });
 
 
-// ── 링크 그룹 (ADR-0152) ─────────────────────────────────────────────────────
+// ── 링크 그룹 (ADR-0154) ─────────────────────────────────────────────────────
 // 그룹 → **저장뷰** 다(`/live` 는 그룹 → 종목). 창은 저장뷰를 직접 들지 않고 번호만
 // 들며, 같은 번호를 단 창들은 대상이 함께 바뀐다.
 
@@ -499,7 +499,7 @@ function storedGroupViews(scope: 'tab' | 'shared' = 'tab'): unknown {
   return raw ? (JSON.parse(raw) as { groupViews?: unknown }).groupViews : undefined;
 }
 
-describe('링크 그룹 (ADR-0152)', () => {
+describe('링크 그룹 (ADR-0154)', () => {
   it('시드 창은 전부 그룹 1 이다 — 첫 진입에 번호가 갈릴 이유가 없다', async () => {
     const { useStudyWorkspaceStore } = await importFresh();
     const groups = useStudyWorkspaceStore.getState().windows.map((w) => w.group);
@@ -703,7 +703,7 @@ describe('링크 그룹 (ADR-0152)', () => {
 // 사슬을 끊으면 기존 사용자의 첫 진입이 빈 화면이다 — `/study` 에는 `live.page.v1` 같은
 // 이중화가 없어 "마지막으로 보던 뷰" 의 집이 이 키들뿐이다(ADR-0149 §3 의 비대칭).
 
-describe('그룹 1 저장뷰 승계 (ADR-0149 → ADR-0152)', () => {
+describe('그룹 1 저장뷰 승계 (ADR-0149 → ADR-0154)', () => {
   it('study.activeView.v1 의 뷰를 그룹 1 로 승계한다', async () => {
     localStorage.setItem('study.activeView.v1', JSON.stringify({ version: 1, view: VIEW_A }));
     const { useStudyWorkspaceStore } = await importFresh();

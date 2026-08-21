@@ -9,7 +9,7 @@ import { studyViewOfWindow, useStudyWorkspaceStore } from '../state/studyWorkspa
 import type { WindowWorkspaceAdapter } from '../live/workspace/windowView';
 
 /**
- * 창의 종목 코드 — **창 → 링크 그룹 → 저장뷰 → code** 세 홉이다(ADR-0152).
+ * 창의 종목 코드 — **창 → 링크 그룹 → 저장뷰 → code** 세 홉이다(ADR-0154).
  *
  * 여기 있던 것은 "활성 저장뷰 하나"(ADR-0149)였고, 그 시절 주석은 이렇게 적혀 있었다:
  * *"창 id 는 쓰지 않는다 — 차트 창이 여러 개여도 전부 활성 저장뷰에 묶여 있어 종목이

@@ -1,10 +1,10 @@
 /**
- * /study 창 워크스페이스 스토어 (ADR-0123 PR-2 · ADR-0152).
+ * /study 창 워크스페이스 스토어 (ADR-0123 PR-2 · ADR-0154).
  *
  * /live 의 `workspace.ts` 와 **같은 뼈대**다: 창 배열 + zOrder + 링크 그룹 + 단일
  * 영속 깔때기. 두 페이지가 갈리는 지점은 그룹이 **무엇을 가리키느냐** 하나다:
  * - `/live` — 그룹 → 종목 (`groupSymbols`, #711)
- * - `/study` — 그룹 → **저장뷰** (`groupViews`, ADR-0152)
+ * - `/study` — 그룹 → **저장뷰** (`groupViews`, ADR-0154)
  *
  * 종목이 아니라 저장뷰인 이유: 복기 쿼리는 종목만으로 서지 않는다. 어느 날 · 어느
  * 구간까지가 쿼리 키이고, 저장뷰가 그 셋을 한 덩어리로 들고 있다.
@@ -17,7 +17,7 @@
  * 태어난다.
  *
  * **차트 창은 여러 개 열 수 있다**(#801 판정: 도입, 2026-08-10). 원래 근거는 같은
- * 저장뷰를 창마다 다른 봉으로 나란히 보는 것이었고, ADR-0152 로 **창마다 다른
+ * 저장뷰를 창마다 다른 봉으로 나란히 보는 것이었고, ADR-0154 로 **창마다 다른
  * 저장뷰**도 된다. 남은 불변식은 **"차트 창이 0개가 되지 않는다"** 하나다
  * (`canCloseStudyWindow`).
  *
@@ -77,7 +77,7 @@ export type StudyWindowKind = (typeof STUDY_WINDOW_KINDS)[number];
 export type { GroupId };
 
 /**
- * 그룹이 가리키는 저장뷰 — `/live` `GroupSymbol` 의 `/study` 짝(ADR-0152).
+ * 그룹이 가리키는 저장뷰 — `/live` `GroupSymbol` 의 `/study` 짝(ADR-0154).
  *
  * 네 필드는 ADR-0149 가 `study.activeView.v1` 에 정한 것 그대로 승계한다.
  *
@@ -117,7 +117,7 @@ export function studyGroupViewFromSave(
 export interface StudyWorkspaceWindow {
   id: string;
   kind: StudyWindowKind;
-  /** 링크 그룹 = **저장뷰** SSOT (ADR-0152). 창은 저장뷰를 직접 들지 않는다. */
+  /** 링크 그룹 = **저장뷰** SSOT (ADR-0154). 창은 저장뷰를 직접 들지 않는다. */
   group: GroupId;
   /** 캔버스 대비 비율 rect (ADR-0122). px 가 아니다. */
   rect: FracRect;
@@ -164,7 +164,7 @@ interface Store extends Persisted {
    *  **`groupViews` 는 payload 에서 읽지 않는다** — 배치만 교체한다. */
   applySnapshot: (snapshot: unknown) => void;
 
-  // ── 링크 그룹 (ADR-0152) ─────────────────────────────────────────────────
+  // ── 링크 그룹 (ADR-0154) ─────────────────────────────────────────────────
   /** 창을 다른 그룹으로 옮긴다 = 이 창의 표시 저장뷰 교체. */
   setWindowGroup: (id: string, group: GroupId) => void;
   /** 그룹이 볼 저장뷰를 정한다 — 그 그룹 창들이 **함께** 갈아탄다(SSOT). */
@@ -495,7 +495,7 @@ type StudyLayoutState = {
  * 창이 여러 개일 때 **커서 해석·페이지 상태(로딩·에러)**가 이 창을 따른다(#801 단계 1).
  * 창이 하나면 그 창이므로 기존 동작과 같다.
  *
- * `group` 을 주면 **그 그룹 안에서만** 고른다(ADR-0152). 데이터 창이 "내 그룹의 어느
+ * `group` 을 주면 **그 그룹 안에서만** 고른다(ADR-0154). 데이터 창이 "내 그룹의 어느
  * 차트 번들을 먹을까" 를 묻는 자리다 — 그룹을 무시하고 전역 포커스 차트를 먹이면
  * 그룹 2 의 10호가에 그룹 1 의 데이터가 뜬다.
  */
@@ -655,7 +655,7 @@ function readStorage(): Persisted {
    * 저쪽은 굳혀야 한다: `study.lastMinuteTimeframe.v1` 은 살아 있는 키라, 안 굳히면
    * 매 방문이 그 값을 다시 읽어 사용자가 창에서 바꾼 봉을 덮는다.
    *
-   * 여기는 반대다. `study.activeView.v1` 은 ADR-0152 로 **쓰는 사람이 사라진** 키라
+   * 여기는 반대다. `study.activeView.v1` 은 ADR-0154 로 **쓰는 사람이 사라진** 키라
    * 재읽기가 멱등이고, 승계 결과는 첫 변경(뷰 열기·창 드래그)에서 어차피 굳는다.
    * 반면 하이드레이션이 쓰기를 하면 **"새 탭은 열기만 해서는 아무것도 안 쓴다"** 는
    * 탭 격리 계약이 깨진다(공유 시드를 물려받은 탭이 즉시 자기 저장소를 만든다).

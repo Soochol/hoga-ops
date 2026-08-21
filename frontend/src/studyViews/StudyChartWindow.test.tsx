@@ -103,7 +103,7 @@ function renderWindow(overrides: Partial<Parameters<typeof StudyChartWindow>[0]>
 beforeEach(() => {
   seedStudyWorkspace();
   seedLiveDecoy();
-  // ADR-0152: 저장뷰는 **그룹**이 든다. 시드 창이 그룹 1 이므로 활성 그룹도 1.
+  // ADR-0154: 저장뷰는 **그룹**이 든다. 시드 창이 그룹 1 이므로 활성 그룹도 1.
   useStudyWorkspaceStore.setState({
     groupViews: { 1: { viewId: 'view-1', code: '064350', label: '현대로템', name: '복기' } },
   });

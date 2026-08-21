@@ -2,7 +2,7 @@
  * StudyWorkspaceCanvas — 코어 캔버스에 /study 결합부를 배선한다 (ADR-0123 PR-3).
  *
  * /live 래퍼(`live/workspace/WorkspaceCanvas.tsx`)의 study 판. **링크 그룹은 이제
- * 있다**(ADR-0152) — 뱃지·팔레트 배선이 저쪽과 같은 모양이고, 다른 것은 번호가
+ * 있다**(ADR-0154) — 뱃지·팔레트 배선이 저쪽과 같은 모양이고, 다른 것은 번호가
  * 저장뷰를 가리킨다는 점뿐이다. entryDrag 정밀 드롭·드롭 어포던스는 여전히 없다.
  *
  * 창 콘텐츠는 ctx 로 주입받는다: 차트/메모는 StudyPage 가 조립한 노드·props, 데이터
@@ -45,7 +45,7 @@ export interface StudyChartSymbol {
 /**
  * 창 항목들이 공유하는 /study 컨텍스트 — StudyPage 가 useMemo 로 안정화해 주입.
  *
- * **거의 전부가 `windowId` 를 받는 함수다**(ADR-0152). 값으로 실으면 "모든 창이 같은
+ * **거의 전부가 `windowId` 를 받는 함수다**(ADR-0154). 값으로 실으면 "모든 창이 같은
  * 저장뷰를 본다" 가 타입에 박히고, 그게 정확히 이 변경이 없앤 전제다.
  */
 export interface StudyItemCtx {
@@ -64,7 +64,7 @@ export interface StudyItemCtx {
   /** 차트 창 배선 — 창이 헤더·셸·차트를 소유하고(#908) 페이지는 데이터만 준다.
    *  `windowId` 만 창 쪽에서 채운다(창이 자기 id 를 안다).
    *
-   *  창마다 봉·번들·저장뷰가 다르므로 값이 아니라 **함수**다(#801 · ADR-0152). */
+   *  창마다 봉·번들·저장뷰가 다르므로 값이 아니라 **함수**다(#801 · ADR-0154). */
   chartFor: (windowId: string) => Omit<StudyChartWindowProps, 'windowId'>;
   /** 이 창을 닫을 수 있는가 — 스토어의 술어와 같은 것을 쓴다(어포던스 불일치 방지). */
   canClose: (windowId: string) => boolean;
@@ -198,7 +198,7 @@ export function StudyWorkspaceCanvas({
   chartFor,
   memoFor,
 }: {
-  /** 아래 다섯은 전부 **창 id → 값**이다(ADR-0152) — 창마다 그룹이, 그룹마다 저장뷰가
+  /** 아래 다섯은 전부 **창 id → 값**이다(ADR-0154) — 창마다 그룹이, 그룹마다 저장뷰가
    *  다를 수 있다. 페이지가 `useCallback` 으로 안정화해 넘긴다. */
   saveFor: (windowId: string) => StudyViewReference | null;
   bundleFor: (windowId: string) => RangeBundle | null;

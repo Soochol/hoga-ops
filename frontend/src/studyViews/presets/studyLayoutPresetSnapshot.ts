@@ -10,7 +10,7 @@ import type { StudyLayoutPresetPayload } from '../../api/studyLayoutPresets';
  * 갱신하는 배선뿐이다.
  *
  * 프리셋은 **창 배치만** 담는다 — `/live` 가 `groupSymbols` 를 빼는 것과 같은 규율이고,
- * `/study` 도 ADR-0152 로 그룹이 생기면서 같은 문제를 갖게 됐다. 창의 그룹 **번호**는
+ * `/study` 도 ADR-0154 로 그룹이 생기면서 같은 문제를 갖게 됐다. 창의 그룹 **번호**는
  * 배치의 일부라 payload 에 남지만 그 번호가 **어느 저장뷰인지**(`groupViews`)는 빠진다.
  * 안 그러면 배치를 불러오는 것만으로 보고 있던 복기뷰가 통째로 바뀐다.
  *
