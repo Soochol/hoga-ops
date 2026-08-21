@@ -71,6 +71,15 @@ export interface CandleEmptyInput {
    * 일이 없는 버튼이 뜬다 — 이 파일이 반복해서 거절해 온 실패 유형이다.
    */
   savedRangeFrozen?: boolean;
+  /**
+   * 얼린 창의 **키움 보충이 아직 진행 중인가**(`useMinuteGapFill`).
+   *
+   * `isLoading` 과 따로 받는다 — 저쪽은 reveal 게이트를 겸하므로 보충을 섞으면 있는
+   * 디스크 캔들까지 가장 느린 벤더 walk 를 기다리게 된다(그게 이 기능이 피하려던
+   * 비용이다). 반면 **빈 상태 문구**는 사실 판정이라, 채워지는 중인 구간을 "없다" 고
+   * 단언하면 그 순간의 화면이 틀린다.
+   */
+  savedRangeGapFillPending?: boolean;
   /** 종목이 아예 안 골라졌으면 이 안내의 대상이 아니다(그건 별도 빈 상태). */
   hasInstrument: boolean;
 }
@@ -129,6 +138,7 @@ export function deriveCandleEmptyState({
   isLoading,
   restBypassEnabled,
   savedRangeFrozen,
+  savedRangeGapFillPending,
   hasInstrument,
 }: CandleEmptyInput): CandleEmptyState | null {
   if (!hasInstrument || hasCandles || isLoading) return null;
@@ -187,10 +197,16 @@ export function deriveCandleEmptyState({
   // 얼린 창이 먼저다 — 얼림이 `restBypassEnabled` 를 강제로 켜므로 아래 우회 분기가
   // 항상 먼저 잡아 "설정 열기" 라는 **듣지 않는 버튼**을 준다(입력 도크스트링의 근거).
   if (savedRangeFrozen) {
-    // 조회는 성공했는데 비었다 + 저장뷰 구간 = 그 구간이 캡처되지 않은 것이다.
-    // 행동을 제안하지 않는다: 설정으로도 재시도로도 못 고치고, 손잡이는 칩의 × 뿐인데
-    // 그건 이 구간을 보는 것을 **포기**하는 것이라 여기서 권할 일이 아니다.
-    return { text: '저장 구간에 캡처된 캔들이 없다', action: null };
+    // 보충이 아직 돌고 있으면 **아직 모르는 것**이다. 여기서 "없다" 고 단언하면 곧
+    // 채워질 구간을 빈 상태로 선언하게 되고, 화면이 없음 → 있음으로 뒤집힌다.
+    if (savedRangeGapFillPending) {
+      return { text: '빈 거래일을 벤더에서 보충하는 중이다', action: null };
+    }
+    // 조회는 성공했는데 비었다 + 저장뷰 구간 = 캡처도 없고 벤더 보충도 안 된 것이다.
+    // 행동을 제안하지 않는다: 설정으로도 재시도로도 못 고치고(보유 기간 밖이면 영영
+    // 없다), 손잡이는 칩의 × 뿐인데 그건 이 구간을 보는 것을 **포기**하는 것이라
+    // 여기서 권할 일이 아니다. 못 채운 **이유**는 저장뷰 칩(`savedRangeNotice`)이 말한다.
+    return { text: '저장 구간에 캔들이 없다 — 캡처도 벤더 보충도 없다', action: null };
   }
   if (restBypassEnabled) {
     // 조회는 성공했는데 비었다 + 디스크 전용 모드 = 이 구간이 저장되지 않은 것이다.

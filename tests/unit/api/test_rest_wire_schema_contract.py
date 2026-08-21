@@ -370,10 +370,13 @@ def test_wire_enum_mirror_parser_reads_as_const_arrays() -> None:
 # 남긴다 — 사유가 없으면 다음 사람이 "불일치네" 하고 한쪽을 고쳐 버린다.
 INTENTIONALLY_UNMIRRORED: dict[str, str] = {
     "SourceName": (
-        "FE 는 두 개념의 합집합이다: BE 오더플로 Literal(hogaplay·kiwoom_live)에 "
-        "차트 전용 'screener_daily' 를 더했다. 그 값은 /api/live/screener-daily-candles "
-        "가 내는데 그 라우트는 반환형이 `-> dict` 라 wire model 자체가 없다. 동일성으로 "
-        "묶으면 영구히 빨간 테스트가 되고, FE 에서 screener_daily 를 지우면 차트가 깨진다."
+        "FE 는 세 개념의 합집합이다: BE 오더플로 Literal(hogaplay·kiwoom_live)에 "
+        "차트 전용 'screener_daily' 와 'kiwoom_gapfill' 을 더했다. 전자는 "
+        "/api/live/screener-daily-candles 가 내는데 그 라우트는 반환형이 `-> dict` 라 "
+        "wire model 자체가 없다. 후자는 **와이어에 아예 없다** — 얼린 저장뷰가 디스크에 "
+        "없는 거래일을 키움 분봉으로 보충한 날의 프론트 표기이고(useMinuteGapFill), 그 "
+        "봉은 캡처 저장소에 들어가지 않고 그 창의 화면에서만 산다. 동일성으로 묶으면 "
+        "영구히 빨간 테스트가 되고, FE 에서 이 값들을 지우면 차트가 깨진다."
     ),
 }
 

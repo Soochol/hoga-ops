@@ -295,9 +295,19 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           earliestCandleDate: savedRangeCandles.length > 0
             ? unixMsToKSTDate(savedRangeCandles[0].ts_ms)
             : null,
+          // 보충 요약 — 개수만 넘긴다(순수 판정 함수라 봉 배열을 들이지 않는다).
+          // `pending` 은 "지금 요청 중" 과 "아직 남은 run 이 있다" 의 합집합이다:
+          // run 사이 커서가 넘어가는 프레임에서는 `isFetching` 이 잠깐 false 라,
+          // 그것만 보면 안내가 '보충 중' → '없음' → '보충 중' 으로 깜빡인다.
+          gapFill: {
+            filledCount: d.gapFill.filledDates.size,
+            rescaledCount: d.gapFill.rescaledDates.length,
+            unfillableCount: d.gapFill.unfillableCount,
+            pending: d.gapFill.isFetching || d.gapFill.remainingRuns > 0,
+          },
         })
       : null),
-    [savedRange, view.timeframe, savedRangeBand, savedRangeCandles],
+    [savedRange, view.timeframe, savedRangeBand, savedRangeCandles, d.gapFill],
   );
   const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
 
