@@ -96,6 +96,16 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'rangeSyncEnabled',
+    label: '기간 동기화 — 분봉을 밀면 일봉도',
+    description:
+      '분봉 창을 좌우로 밀면 그 기간이 일봉(D) 창 화면 중앙에 오도록 따라갑니다. '
+      + '일봉의 확대 배율은 그대로 두고 스크롤만 합니다. 분봉 창을 직접 밀거나 '
+      + '휠로 움직일 때만 따라가며, 새 캔들이 들어오는 것만으로는 움직이지 않습니다. '
+      + '종목 범위는 위 「크로스헤어 동기화 — 다른 종목까지」와 같은 설정을 씁니다.',
+    default: true,
+  },
+  {
     key: 'highLowLabelsEnabled',
     label: '고저 극값 라벨',
     description:
