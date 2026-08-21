@@ -259,12 +259,17 @@ describe('useRangeSyncFollow — peer 모드', () => {
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
-  it('배율 토글이 꺼져 있으면 위치만 — 중앙 정렬 경로로 간다', async () => {
+  it('배율 토글과 무관하게 복제한다 — peer 의 정의가 「보이는 view 완전 동기화」다', async () => {
+    // **2026-08-21 번복**: 여기 「배율 토글이 꺼져 있으면 위치만 — 중앙 정렬 경로로
+    // 간다」가 있었다. 그 동작에서는 토글이 꺼진 기본 상태의 두 일봉 창이 **같은
+    // 구간을 보지 않았고**(중앙 정렬 + 우측 클램프), 그건 peer 의 정의와 어긋난다.
+    // `rangeSyncZoom` 은 이제 `cross`(분봉→일봉) 전용이다 — 거기서는 폭이 비교
+    // 불가라 복제가 불가능하고 "비율만 옮길지" 가 진짜 선택지로 남는다.
     render(<Follower myTimeframe="D" syncZoom={false} />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
-    expect(setVisibleRange).not.toHaveBeenCalled();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
+    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('주봉 창은 주봉 발행만 받는다 — 일↔주는 통하지 않는다', async () => {
