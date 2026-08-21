@@ -130,8 +130,14 @@ export type OrderbookSnapshot = {
 
 /** Capture source that produced a segment. Orderflow sources mirror
  * hoga/api/sources.py::SourceName (kiwoom_live=키움 WS, ADR-0116); screener_daily is a
- * chart-only daily corpus. 표기 라벨은 api/sourceCapabilities.ts 가 소유한다. */
-export type SourceName = 'hogaplay' | 'kiwoom_live' | 'screener_daily';
+ * chart-only daily corpus. 표기 라벨은 api/sourceCapabilities.ts 가 소유한다.
+ *
+ * `kiwoom_gapfill` 도 프론트 전용이다 — 얼린 저장뷰에서 **디스크에 없는 거래일을 키움
+ * 분봉으로 보충한** 날을 뜻한다(`useMinuteGapFill`). 백엔드에 같은 이름의 소스가 없는
+ * 것이 정확하다: 그 봉은 캡처 저장소에 들어가지 않고 이 창의 화면에서만 산다. 별도
+ * 값으로 두는 이유는 **그 날짜엔 캔들만 있고 호가 파생 지표가 없기** 때문이다 — 배지가
+ * 그 사실을 말해 주지 않으면 빈 지표 pane 이 고장으로 읽힌다. */
+export type SourceName = 'hogaplay' | 'kiwoom_live' | 'screener_daily' | 'kiwoom_gapfill';
 
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {

@@ -65,6 +65,7 @@ import {
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
+import { useMinuteGapFill, type MinuteGapFillResult } from './useMinuteGapFill';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
 const EMPTY_CANDLES: Candle[] = [];
@@ -318,6 +319,10 @@ export interface UseLiveBundleResult {
    *  호출하는 소비자가 **같은 척도**를 쓰게 하는 통로다 — `scaleRangeBundlePrices` 참조.
    *  우회 ON 이면 `undefined`(그 모드는 캔들도 디스크라 환산 자체가 없다). */
   adjustFactors: Readonly<Record<string, number>> | undefined;
+  /** 얼린 저장뷰에서 **디스크에 없는 거래일을 키움으로 보충한** 결과. 얼림이 아니면
+   *  전 필드가 비어 있다. 저장뷰 안내(`savedRangeNotice`)가 이 값으로 "몇 일 보충됐고
+   *  몇 일은 왜 못 채웠는지" 를 말한다. */
+  gapFill: MinuteGapFillResult;
   isLoading: boolean;
   error: unknown;
   clampEngaged: boolean;
@@ -687,6 +692,32 @@ export function useLiveBundle(
     minuteDiskOptions,
   );
 
+  /**
+   * 디스크에 **없는 거래일을 키움 분봉으로 보충**한다 (`useMinuteGapFill`).
+   *
+   * 게이트가 `frozenRangeFrom !== null` 인 것이 요점이다 — 전역 `rest_bypass_enabled`
+   * 에서는 켜지 않는다. 그 모드는 벤더가 실패하고 있을 때 사용자에게 권하는 처방이라
+   * (`notifyRestFailure` → 우회 유도), 그 상태에서 자동으로 벤더를 두드리면 모드가
+   * 존재하는 이유를 정면으로 무효화한다. 저장뷰 얼림은 반대다 — **사용자가 특정 과거
+   * 구간을 보겠다고 명시한** 창이라 그 구간을 채우는 것이 곧 요청받은 일이다.
+   *
+   * 구멍 목록은 백엔드가 준 `missing_dates` 하나만 쓴다. 프론트가 직접 계산하면
+   * 거래일 달력이 없어 주말·공휴일을 구멍으로 오인한다.
+   */
+  const minuteGapFill = useMinuteGapFill({
+    enabled: frozenRangeFrom !== null,
+    code,
+    venue,
+    timeframe,
+    todayKstYyyymmdd,
+    missingDates: minuteDiskCandles.data?.missing_dates,
+  });
+  /** 디스크가 실제로 실어 온 거래일. 보충분과의 **서로소 확인**과 소스 표기가 함께 쓴다. */
+  const diskCandleDates = useMemo(
+    () => (minuteDiskNeeded ? candleDateSet(minuteDiskCandles.data?.candles ?? []) : null),
+    [minuteDiskNeeded, minuteDiskCandles.data?.candles],
+  );
+
   // 캔들 소스 이분법 — 모드당 소스 1개라 병합 없음.
   const minuteKisCandles = useMemo<Candle[]>(() => {
     if (!isMinute) return EMPTY_CANDLES;
@@ -696,7 +727,20 @@ export function useLiveBundle(
     // 과거분에 멱등이라 한 번의 호출이 두 해상도를 같은 격자로 수렴시킨다. 이 멱등성은
     // 매핑된 6종 tf 가 전부 KST 오프셋을 정수로 나누는 데 기댄다 — 45분처럼 나누지
     // 못하는 tf 를 추가하려면 kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE 주석 참고.
-    if (restBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
+    if (restBypassEnabled) {
+      const disk = minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
+      if (minuteGapFill.candles.length === 0) return disk;
+      // **서로소 날짜 union 이지 우선순위 병합이 아니다.** `missing_dates` 는 정의상
+      // 디스크에 없는 거래일이므로 두 집합은 겹치지 않는다 — 그래서 이 자리는 "모드당
+      // 소스 1개" 규율(위 주석)과 충돌하지 않는다. 같은 날짜를 두 소스가 다투기 시작하면
+      // 그때는 이 코드가 아니라 그 전제가 깨진 것이므로, 겹침을 **버려서** 디스크를
+      // 진실로 남긴다(캡처본이 호가 지표와 격자가 맞는 유일한 쪽이다).
+      const extra = diskCandleDates === null
+        ? minuteGapFill.candles
+        : minuteGapFill.candles.filter((c) => !diskCandleDates.has(realMsToYyyymmdd(c.ts_ms)));
+      if (extra.length === 0) return disk;
+      return [...disk, ...extra].sort((a, b) => a.ts_ms - b.ts_ms);
+    }
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return EMPTY_CANDLES;
     // 120·240 만 정규장으로 클립한 뒤 접는다. 입력은 30m 라 15:30 이 봉 경계로 남아
@@ -704,7 +748,7 @@ export function useLiveBundle(
     const src = needsRegularSessionClip(timeframe) ? keepRegularSessionCandles(raw) : raw;
     if (src.length === 0) return EMPTY_CANDLES;
     return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
-  }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
+  }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
@@ -721,8 +765,14 @@ export function useLiveBundle(
     if (!restBypassEnabled) return undefined;
     const sourceByDate = new Map<string, SourceName>();
     if (isMinute) {
-      for (const date of candleDateSet(minuteDiskCandles.data?.candles ?? [])) {
+      for (const date of diskCandleDates ?? candleDateSet(minuteDiskCandles.data?.candles ?? [])) {
         sourceByDate.set(date, segmentSourceByDate(minuteDiskCandles.data, date) ?? 'hogaplay');
+      }
+      // 보충일은 **디스크가 말하지 않은 날짜만** 차지한다. 소스를 따로 두는 이유는
+      // 그날엔 캔들만 있고 호가 파생 지표가 없기 때문이다 — 배지가 말해 주지 않으면
+      // 빈 지표 pane 이 고장으로 읽힌다(`SourceName` 주석).
+      for (const date of minuteGapFill.filledDates) {
+        if (!sourceByDate.has(date)) sourceByDate.set(date, 'kiwoom_gapfill');
       }
     } else {
       for (const c of screenerDailyCandlesQuery.data?.candles ?? []) {
@@ -730,7 +780,7 @@ export function useLiveBundle(
       }
     }
     return sourceByDate.size > 0 ? sourceByDate : undefined;
-  }, [restBypassEnabled, isMinute, minuteDiskCandles.data, screenerDailyCandlesQuery.data]);
+  }, [restBypassEnabled, isMinute, minuteDiskCandles.data, diskCandleDates, minuteGapFill.filledDates, screenerDailyCandlesQuery.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && effVolumeDistributionEnabled
@@ -1274,6 +1324,9 @@ export function useLiveBundle(
       isLoading: activeCandlesLoading,
       restBypassEnabled,
       savedRangeFrozen: frozenRangeFrom !== null,
+      // "지금 요청 중" 과 "아직 남은 run 이 있다" 의 합집합 — run 사이 커서가 넘어가는
+      // 프레임에서 `isFetching` 만 보면 빈 상태가 한 번 깜빡인다.
+      savedRangeGapFillPending: minuteGapFill.isFetching || minuteGapFill.remainingRuns > 0,
       hasInstrument: !!code,
     }),
     refetchCandles,
@@ -1285,6 +1338,7 @@ export function useLiveBundle(
      *  내보낸다 — 여기서 안 주면 그 경로만 원주가로 남아 옆문으로 어긋난다.
      *  우회 ON 이면 `undefined`(그 모드는 캔들도 디스크라 환산 대상이 아니다). */
     adjustFactors,
+    gapFill: minuteGapFill,
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,

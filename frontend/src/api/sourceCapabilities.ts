@@ -21,6 +21,12 @@ export const SOURCE_CAPABILITIES: Record<SourceName, SourceCapability> = {
     source: 'screener_daily',
     label: '스크리너',
   },
+  kiwoom_gapfill: {
+    source: 'kiwoom_gapfill',
+    // "보충" 이 이 라벨의 요점이다 — 소스 이름만 내면 사용자가 그 날짜의 호가 파생
+    // pane 이 왜 비었는지 알 수 없다. 캔들만 있는 날이라는 뜻을 라벨이 지고 간다.
+    label: '키움 보충',
+  },
 };
 
 // 소스 선호 옵션 정의(`SOURCE_PREFERENCE_OPTIONS` · 라벨 · 대표 소스 맵)는 폐지됐다
