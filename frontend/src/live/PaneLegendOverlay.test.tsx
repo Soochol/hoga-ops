@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useLiveCursorStore } from './useLiveCursorStore';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import {
@@ -90,6 +91,120 @@ function resetStore() {
   useDailyMaSeriesRegistry.setState({ byScope: new Map() });
   usePaneLegendRegistry.setState({ byScope: new Map() });
 }
+
+/**
+ * **동기화로 그려진 크로스헤어를 레전드가 따라간다**(2026-08-21).
+ *
+ * lwc 는 `setCrosshairPosition` 으로 그린 크로스헤어에 대해 `subscribeCrosshairMove`
+ * 를 발화시키지 않는다. 그래서 이 창의 `param.time` 은 비어 있고, 그 상태에서 폴백만
+ * 있으면 레전드가 **항상 최신 봉**을 보여준다 — 선은 옆 창과 같은 자리인데 숫자만
+ * 달라 "다른 차트" 로 읽힌다(실측: 종가 260,500 vs 281,500).
+ *
+ * **이 테스트가 막는 방향**: 동기화 대상이 있는데도 최신 봉으로 떨어지는 것.
+ * **못 보는 것**: 내 마우스가 올라가 있을 때의 우선순위(그건 `param.time` 경로라
+ * 종전대로 1순위다 — 아래 마지막 케이스가 그 순서를 고정한다).
+ */
+describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
+  const DAY1 = Date.UTC(2025, 5, 18, 0, 0);
+  const DAY2 = Date.UTC(2025, 5, 19, 0, 0);
+  const DAY3 = Date.UTC(2025, 5, 20, 0, 0);
+  const CANDLES = [
+    { ts_ms: DAY1, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 0 },
+    { ts_ms: DAY2, open: 105, high: 130, low: 100, close: 120, vol_a: 1, vol_b: 0 },
+    { ts_ms: DAY3, open: 120, high: 140, low: 115, close: 135, vol_a: 1, vol_b: 0 },
+  ];
+  /** 항등 축 — 가상초 = ms/1000. */
+  const axis = {
+    contains: () => true,
+    toVirtual: (ms: number) => ms,
+  } as never;
+
+  const publish = (tsMs: number) => act(() => {
+    useLiveCursorStore.getState().setSyncCursor(tsMs, {
+      windowId: 'other-window', group: null, code: '005930', timeframe: '1m',
+    });
+  });
+
+  /** 크로스헤어 핸들러를 붙잡는 차트 — 「내 마우스」 경로를 재려면 필요하다. */
+  let crosshairHandler: ((p: { time?: unknown; point?: unknown }) => void) | null = null;
+  const capturingChart = () => ({
+    subscribeCrosshairMove: (h: (p: { time?: unknown; point?: unknown }) => void) => {
+      crosshairHandler = h;
+    },
+    unsubscribeCrosshairMove: () => { crosshairHandler = null; },
+    timeScale: () => ({
+      subscribeVisibleLogicalRangeChange: () => {},
+      unsubscribeVisibleLogicalRangeChange: () => {},
+      width: () => 500,
+    }),
+    panes: () => [{ getHeight: () => 120 }],
+  }) as never;
+
+  const renderWithCandles = () => render(
+    <PaneLegendOverlay
+      chart={makeChart([120])}
+      timeframe="D"
+      paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+      candles={CANDLES}
+      axis={axis}
+      code="005930"
+    />,
+  );
+
+  beforeEach(() => { useLiveCursorStore.getState().resetCursor(); });
+
+  /** OHLC 행의 「시작」 값만 읽는다 — 봉마다 값이 갈려 판별식으로 충분하고,
+   *  `getByText` 로 숫자를 찾으면 다른 행의 같은 숫자와 섞인다. */
+  const openText = (c: HTMLElement) =>
+    c.querySelector('.legend-ohlc-open')?.textContent ?? '';
+
+  it('동기화 발행이 없으면 최신 봉을 읽는다 — 종전 폴백', () => {
+    const { container } = renderWithCandles();
+    expect(openText(container)).toContain('120'); // DAY3 시가
+  });
+
+  it('동기화 대상이 있으면 **그 봉**을 읽는다 — 최신 봉이 아니라', () => {
+    const { container } = renderWithCandles();
+    publish(DAY2 + 6 * 3600_000); // 그 날 낮 — 날짜로 DAY2 에 스냅된다
+
+    expect(openText(container)).toContain('105'); // DAY2 시가
+    expect(openText(container)).not.toContain('120');
+  });
+
+  it('⚠ 내 마우스가 1순위 — 동기화 대상이 있어도 내 호버가 이긴다', async () => {
+    // 이 케이스가 없으면 우선순위를 뒤집어도(동기화가 내 마우스를 이기도록) 테스트가
+    // 전부 초록이다 — red-check 으로 실제 확인한 구멍이다.
+    const { container } = render(
+      <PaneLegendOverlay
+        chart={capturingChart()}
+        timeframe="D"
+        paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+        candles={CANDLES}
+        axis={axis}
+        code="005930"
+      />,
+    );
+    publish(DAY2 + 6 * 3600_000); // 동기화 대상은 DAY2
+    // ⚠ `point` 가 없으면 구현이 param 을 **버린다**(커서가 차트 밖이라는 뜻).
+    //   그리고 갱신은 rAF 로 미뤄지므로 한 프레임을 흘려야 한다.
+    act(() => { crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 } }); });
+    await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
+
+    expect(openText(container)).toContain('100'); // DAY1 시가 — 내 마우스가 이긴다
+  });
+
+  it('창번호가 다르면 따라가지 않는다 — 게이트는 크로스헤어와 같은 판정을 쓴다', () => {
+    const { container } = renderWithCandles();
+    act(() => {
+      useLiveCursorStore.getState().setSyncCursor(DAY2 + 6 * 3600_000, {
+        windowId: 'other-window', group: 7, code: '005930', timeframe: '1m',
+      });
+    });
+
+    // Provider 밖이라 내 group 은 null — 7 과 다르므로 막힌다 → 최신 봉.
+    expect(openText(container)).toContain('120');
+  });
+});
 
 describe('PaneLegendOverlay — candle MA row', () => {
   beforeEach(resetStore);
