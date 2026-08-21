@@ -6,6 +6,10 @@ import type { ReactNode } from 'react';
 import App from './App';
 import { useRightRailStore } from './state/rightRail';
 import { DEFAULT_THEME_PREFERENCE, useThemePrefsStore } from './state/themePrefs';
+import {
+  WORKSPACE_PANEL_WIDTH_CLASS,
+  WORKSPACE_PANEL_HEIGHT_CLASS,
+} from './live/workspacePanel';
 
 vi.mock('./api/eventStream', () => ({
   useEventStream: () => {},
@@ -181,22 +185,24 @@ describe('App shell layout', () => {
     expect(await screen.findByTestId('heatmap-drawer')).toBeInTheDocument();
   });
 
-  it('opens Settings as a right drawer without leaving the current page', async () => {
+  it('설정을 중앙 모달로 열되 현재 페이지를 벗어나지 않는다', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
 
     // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
     const dialog = screen.getByRole('dialog', { name: '설정' });
-    // `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(우측 드로어)이다. 옛 중앙 모달
-    // (720×560 하드코딩)은 설정 표면이 하나로 합쳐지면서 사라졌다 — 진입점이 달라도
-    // 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
-    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-stretch', 'justify-end');
+    // `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(중앙 모달, 2026-08-21 사용자 결정)이다 —
+    // 진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
+    // ⚠ 이 단언이 곧 **앵커의 유일한 가드**다: 2026-08-21 전환 때 배치를 우측 드로어에서
+    // 중앙 모달로 바꿨는데 앱 테스트 중 빨개진 것은 이 파일의 두 건뿐이었다. 지운다면
+    // 앵커가 조용히 되돌아가도 아무도 모른다.
+    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
     expect(await within(dialog).findByText('settings panel body')).toBeInTheDocument();
     expect(screen.getByText('live page')).toBeInTheDocument();
   });
 
-  it('closes the Settings drawer with Escape', async () => {
+  it('Escape 로 설정 패널을 닫는다', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
@@ -212,17 +218,21 @@ describe('App shell layout', () => {
   // ↓ 두 건은 `SettingsDrawer.test.tsx` 에서 이관됐다. 그 래퍼 컴포넌트가 사라지고
   //   App 이 ModalShell 을 직접 세우면서, 드로어 크롬 계약의 검증 자리도 여기가 됐다.
 
-  it('drawer card is a full-height, left-bordered panel (ADR-0116)', async () => {
+  it('설정 카드는 사방 테두리를 두른 중앙 카드이고, 폭·높이는 공용 상수를 쓴다', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
     // Suspense 는 DOM 요소를 만들지 않으므로 본문의 부모가 곧 ModalShell 카드다.
     const card = (await screen.findByText('settings panel body')).parentElement!;
-    expect(card).toHaveClass('border-l');
-    expect(card).toHaveClass('h-full');
+    // 드로어 시절의 `border-l`+`h-full` 이 아니라 사방 테두리 + 유한 높이다.
+    expect(card).toHaveClass('border', 'rounded-lg');
+    expect(card).not.toHaveClass('border-l', 'h-full');
+    // 폭·높이를 **상수로** 대조한다 — 보조지표 패널이 같은 상수를 단언하므로(그쪽
+    // 테스트 참조) 한쪽이 하드코딩으로 이탈하면 그 순간 두 패널이 어긋난다.
+    expect(card).toHaveClass(WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS);
   });
 
-  it('closes the Settings drawer on backdrop press', async () => {
+  it('백드롭 press 로 설정 패널을 닫는다', async () => {
     wrap(<div>unused</div>, '/live');
 
     fireEvent.click(screen.getByRole('button', { name: '설정' }));

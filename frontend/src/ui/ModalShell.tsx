@@ -7,9 +7,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 // in one place — consumed by ConfirmModal, SettingsDrawer, IndicatorPanel, App.
 //
 // `side='right'` turns it into a right-anchored, full-height drawer (slides in)
-// with a lighter dim so the chart stays visible on the left — immediate-apply
-// settings reflect live behind it (ADR-0116, /live 지표 드로어). Default 'center'
-// keeps every existing caller unchanged.
+// with a lighter dim so the chart stays visible on the left (ADR-0116). Default
+// 'center' keeps every existing caller unchanged.
+//
+// ⚠ **`side='right'` 는 2026-08-21 부터 앱 소비자가 0 이다** — 설정·보조지표가 중앙
+// 모달로 옮겨가면서(사용자 결정, DESIGN.md 결정 로그) 마지막 두 소비자가 사라졌다.
+// 코드와 `ModalShell.test.tsx` 커버리지는 되돌릴 여지를 위해 남겨 둔다. 새로 쓰려면
+// 그 결정 로그를 먼저 읽을 것 — 되돌림이지 신규 선택지가 아니다.
 //
 // 포커스 계약(2026-08-04): aria-modal="true" 를 선언하는 이상 실제로도 모달이어야
 // 한다 — 열릴 때 카드 안 첫 포커서블(없으면 카드 자신)로 포커스, Tab/Shift+Tab 은
