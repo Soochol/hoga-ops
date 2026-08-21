@@ -309,6 +309,59 @@ function removeDominatedLiveRangeCopies(
   });
 }
 
+/**
+ * `['live','range-merged']` 병합본 개수 상한 — identity 축 LRU.
+ *
+ * 기존 축출(`useLiveRangeCacheEviction`)은 **종목 축만** 본다: 열린 창 어디에도 없는
+ * 종목의 캐시를 지운다. 그래서 **열려 있는 종목**의 사본은 몇 벌이 쌓이든 남는다.
+ * identity 는 code·to·bucketMs·mode·지표 옵션의 JSON 이라, 지표를 토글하거나 봉을
+ * 바꿀 때마다 **새 identity = 새 병합본**이 생기고 옛 것은 아무도 안 지운다.
+ *
+ * 그리고 이 네임스페이스는 `main.tsx` 에서 **gcTime 2시간**으로 승격돼 있다("점심 후
+ * 복귀" 복원용, 의도된 설계). 즉 고아가 두 시간을 버틴다. 2026-08-16 성능 감사가
+ * 실측한 크기가 1분봉 7일 **2.4MB** · 2개월 **23.6MB** 라, 2개월 창에서 토글 몇 번이면
+ * 23MB 급 고아가 여러 벌 상주한다.
+ *
+ * **처방은 gcTime 축소가 아니다**(그러면 복원이라는 설계 의도를 죽인다). 개수에 상한을
+ * 두고 오래된 쪽부터 회수한다 — 감사의 결론이 그것이다.
+ *
+ * ## 12 인 근거
+ *
+ * 동시 작업 집합은 **차트 창당 2개**다(`mode=hoga` + `mode=sidecar`). 공장 기본 배치의
+ * 차트 창 수 + 사용자가 늘리는 몫을 넉넉히 잡아 6개를 살아 있는 집합으로 보고, 그
+ * 2배를 상한으로 둔다. 상한이 작업 집합에 가까우면 **정상 사용이 계속 축출을 유발**해
+ * 복원 대신 재-워크백이 돈다 — 이 캐시가 애초에 막으려던 것이다.
+ */
+export const MERGED_LIVE_RANGE_MAX_ENTRIES = 12;
+
+/**
+ * 병합본이 상한을 넘으면 **최근 갱신 순으로** 남기고 나머지를 회수한다.
+ *
+ * 가드 둘:
+ *  - **상한 안쪽은 옵저버 여부와 무관하게 남긴다** — 최신이 곧 작업 집합이다.
+ *  - **상한 밖이라도 옵저버가 붙었으면 안 지운다.** 옵저버가 남은 쿼리를 지우면 RQ 가
+ *    즉시 재생성·재요청해 요청 폭주가 된다(`removeDominatedLiveRangeCopies` ·
+ *    `useLiveRangeCacheEviction` 과 같은 함정). 이 키엔 설계상 옵저버가 없지만
+ *    (`setQueryData` 만 쓴다), 나중에 누가 `useQuery` 를 달면 조용히 폭주하므로 남긴다.
+ *
+ * `dataUpdatedAt` 이 같으면 순서는 미정이다 — 상한 근처의 동률은 어느 쪽이 남아도
+ * 정보 손실이 아니라 재요청 한 번 차이다.
+ */
+export function evictExcessMergedLiveRanges(
+  queryClient: QueryClient,
+  cap: number = MERGED_LIVE_RANGE_MAX_ENTRIES,
+): void {
+  const queries = queryClient.getQueryCache().findAll({ queryKey: ['live', 'range-merged'] });
+  if (queries.length <= cap) return;
+  const byRecency = [...queries].sort(
+    (a, b) => (b.state.dataUpdatedAt ?? 0) - (a.state.dataUpdatedAt ?? 0),
+  );
+  for (const query of byRecency.slice(cap)) {
+    if (query.getObserversCount() > 0) continue;
+    queryClient.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+}
+
 function cachedLiveRangeDeltaPrevious(
   queryClient: QueryClient,
   input: RangeBundleRequestInput,
@@ -750,6 +803,9 @@ function useLiveRangeDelta(
     queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data);
     // 위 재발행이 남긴 이전 팬 스텝 사본들을 즉시 회수 — 근거는 함수 주석.
     removeDominatedLiveRangeCopies(queryClient, plan.identity, data);
+    // identity 축 상한. 위 회수는 **같은 identity 안의** 중복만 걷으므로, 지표 토글·봉
+    // 전환이 만든 **다른 identity** 의 고아는 그대로 남는다(gcTime 2h). 여기서 걷는다.
+    evictExcessMergedLiveRanges(queryClient);
     if (plan.forceRerenderAfterMerge) forceRerender();
   }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, plan.identity, plan.forceRerenderAfterMerge]);
 

@@ -1,11 +1,13 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
 import {
   buildRangeBundleRequest,
   mergedLiveRangeKey,
+  evictExcessMergedLiveRanges,
+  MERGED_LIVE_RANGE_MAX_ENTRIES,
   mergeRangeBundles,
   planHogaRangeDelta,
   planSidecarRangeDelta,
@@ -2195,3 +2197,88 @@ describe('range 훅 — 종목별 유효 venue 해석', () => {
     expect(spy.mock.calls.every((c) => String(c[0]).includes('venue=KRX'))).toBe(true);
   });
 });
+
+describe('evictExcessMergedLiveRanges — identity 축 LRU 캡', () => {
+  /** identity 를 n개 심는다. `updatedAt` 을 명시해 최신 순서를 결정적으로 만든다. */
+  function seedMerged(qc: QueryClient, n: number): string[] {
+    const identities: string[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const identity = JSON.stringify(['range', '005930', null, null, 60_000, `opt-${i}`]);
+      identities.push(identity);
+      qc.setQueryData(mergedLiveRangeKey(identity), { code: '005930' }, { updatedAt: 1_000 + i });
+    }
+    return identities;
+  }
+
+  const survivors = (qc: QueryClient) =>
+    qc.getQueryCache().findAll({ queryKey: ['live', 'range-merged'] }).length;
+
+  it('상한 이하면 아무것도 지우지 않는다', () => {
+    const qc = new QueryClient();
+    seedMerged(qc, MERGED_LIVE_RANGE_MAX_ENTRIES);
+    evictExcessMergedLiveRanges(qc);
+    expect(survivors(qc)).toBe(MERGED_LIVE_RANGE_MAX_ENTRIES);
+  });
+
+  it('상한을 넘으면 **오래된 쪽부터** 회수하고 최신 상한개를 남긴다', () => {
+    // 막는 방향: 열린 종목의 병합본이 identity 마다 무한 증식하는 회귀(지표 토글·봉
+    // 전환이 매번 새 identity 를 만든다). 크기가 2개월 창에서 23.6MB 라 개수가 곧 힙이다.
+    const qc = new QueryClient();
+    const cap = 3;
+    const identities = seedMerged(qc, 10);   // updatedAt 1000..1009 (뒤가 최신)
+    evictExcessMergedLiveRanges(qc, cap);
+    expect(survivors(qc)).toBe(cap);
+    // 최신 3개(7·8·9)만 남고 나머지는 사라진다 — 개수만 세면 "아무거나 3개"도 통과한다.
+    for (const i of [7, 8, 9]) {
+      expect(qc.getQueryData(mergedLiveRangeKey(identities[i]))).toBeDefined();
+    }
+    for (const i of [0, 3, 6]) {
+      expect(qc.getQueryData(mergedLiveRangeKey(identities[i]))).toBeUndefined();
+    }
+  });
+
+  it('머지 effect 가 캡을 **실제로 호출한다** (배선)', async () => {
+    // ⚠ 위 세 테스트는 함수를 직접 부른다 — `useLiveRangeDelta` 의 effect 에서 호출을
+    // 지워도 전부 초록이다("무동작이 초록으로 위장"). 배선을 따로 못박는다.
+    //
+    // 상한만큼 채운 뒤 훅이 새 identity 를 발행하게 한다. 캡이 돌면 **최고령이 밀려
+    // 나가고** 총수가 유지된다. 개수만 세면 배선이 없어도(=cap+1) 못 잡으므로
+    // "최고령이 사라졌다"까지 단언한다.
+    const cap = MERGED_LIVE_RANGE_MAX_ENTRIES;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc, [symbolHit('003490', false)]);
+    const identities = seedMerged(qc, cap);
+    vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    renderHook(
+      () => useRangeSidecarDelta('003490', '20260807', '20260807', '1m', undefined, '20260807', {
+        mode: 'sidecar',
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(qc.getQueryData(mergedLiveRangeKey(identities[0]))).toBeUndefined();
+    });
+    expect(survivors(qc)).toBe(cap);
+  });
+
+  it('상한 밖이라도 **옵저버가 붙은 것은 안 지운다**', () => {
+    // 옵저버가 남은 쿼리를 지우면 RQ 가 즉시 재생성·재요청해 요청 폭주가 된다 —
+    // 이 리포가 축출 코드마다 되풀이해 막아 온 함정이다.
+    const qc = new QueryClient();
+    const identities = seedMerged(qc, 5);
+    const oldestKey = mergedLiveRangeKey(identities[0]);   // updatedAt 1000 = 최고령
+    const observer = new QueryObserver(qc, { queryKey: oldestKey, enabled: false });
+    const unsubscribe = observer.subscribe(() => {});
+
+    evictExcessMergedLiveRanges(qc, 1);
+
+    expect(qc.getQueryData(oldestKey)).toBeDefined();
+    unsubscribe();
+  });
+});
+
