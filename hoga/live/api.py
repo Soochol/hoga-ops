@@ -1912,6 +1912,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     get_today_bid_peak: Callable[[str, str], dict | None] | None = None,
     *,
     get_vi_status: Callable[[str], dict | None] | None = None,
+    ensure_today_peaks_seeded: Callable[[str, str, str], Awaitable[None]] | None = None,
     data_dir: Path | None = None,
 ) -> APIRouter:
     """Build the /api/live router.
@@ -1926,6 +1927,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             ask-peak-today snapshot for a code. None → /series returns null.
         get_today_bid_peak: optional callable returning the current
             bid-peak-today snapshot for a code. None → /series returns null.
+        ensure_today_peaks_seeded: optional awaitable invoked with
+            (code, venue, date) before /series reads the peak snapshots. 오늘분 상태는
+            프로세스 인메모리라 재기동으로 사라지므로, 그날 JSONL 로 복원할 기회를 여기서
+            준다(lifecycle.ensure_today_peaks_seeded). None → 복원 없음(기존 동작).
     """
     router = APIRouter(prefix="/api/live")
 
@@ -2438,6 +2443,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         kst = KST
         dt = datetime.strptime(date, "%Y%m%d").replace(tzinfo=kst)
         session_open_ms = int(dt.replace(hour=9, minute=0).timestamp() * 1000)
+        # 최대벽 스냅샷을 읽기 **전에** 복원 기회를 준다 — 인메모리 상태는 재기동으로
+        # 비고, 그러면 프론트가 오늘분을 통째로 잃는다(오늘 seed 를 버리고 이 값으로만
+        # 대체하기 때문). 오늘이 아니거나 이미 시도했으면 즉시 반환한다.
+        if ensure_today_peaks_seeded is not None:
+            await ensure_today_peaks_seeded(code, venue, date)
         return {
             **series,
             "date": date,

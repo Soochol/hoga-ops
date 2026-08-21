@@ -61,6 +61,7 @@ from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
+    ensure_today_peaks_seeded as live_ensure_today_peaks_seeded,
     get_buffer as live_get_buffer,
     get_kiwoom_capture_codes,
     get_program_trade_task,
@@ -495,6 +496,11 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             get_today_ask_peak=live_get_today_ask_peak,
             get_today_bid_peak=live_get_today_bid_peak,
             get_vi_status=live_get_vi_status,
+            # data_dir 은 여기서 닫는다 — 라우터는 경로 조립을 몰라도 되고,
+            # live_root 규약(`<data_dir>/live_kiwoom`)은 lifecycle 한 곳에만 있다.
+            ensure_today_peaks_seeded=lambda code, venue, date: (
+                live_ensure_today_peaks_seeded(code, venue, date, data_dir=data_dir)
+            ),
             data_dir=data_dir,
         )
     )

@@ -215,6 +215,77 @@ def get_today_ask_peak(code: str, venue: str) -> dict | None:
     return None
 
 
+# 오늘분 최대벽 **지연 시딩** — (code, venue, date) 당 1회.
+#
+# 왜 지연인가: 하루치 JSONL 은 venue 당 ~1GB(300종목 × 3 venue), 종목·venue 하나를 재생하는
+# 데 실측 ~144ms 다(2026-08-21, 005930 KRX / 8.6k행 / 3.9MB). 기동 시 전량 시딩은 ~130초와
+# ~3.2GB 파싱을 뜻하므로 성립하지 않는다. 사용자가 실제로 여는 종목은 소수라, 그 요청이
+# 올 때 그 (code, venue) 하나만 재생한다.
+_today_peak_seed_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+_today_peak_seeded: set[tuple[str, str, str]] = set()
+
+
+def _owning_capture_stream(code: str) -> object | None:
+    session = _state.kiwoom_session
+    if session is None:
+        return None
+    for stream in session.capture_streams():
+        owns = getattr(stream, "owns_code", None)
+        if owns is not None and owns(code):
+            return stream
+    return None
+
+
+async def ensure_today_peaks_seeded(
+    code: str, venue: str, date: str, *, data_dir: Path,
+) -> None:
+    """오늘분 최대벽 인메모리 상태가 비어 있으면 그날 JSONL 로 복원한다.
+
+    상태는 프로세스 인메모리라 **재기동으로 사라진다**. 두 가지 모양으로 아프다:
+    ① 마감 후 기동 → 오늘 벽이 통째로 없다. ② **장중 재기동 → 재기동 시점 이후로만
+    래칫이 쌓여 조용히 과소평가된다**(그럴듯해 보이므로 더 나쁘다). 이 함수가 둘 다
+    복구한다 — ②는 살아 있는 상태에 재생본을 **병합**해서(`install_today_peak_seed`).
+
+    재생은 워커 스레드에서 **분리된** 상태에 하고 설치만 루프에서 한다 — 살아 있는 상태를
+    스레드에서 변이하면 `on_tick` 과 레이스가 난다(정확히 ② 의 상황이다).
+
+    파일이 없어도 시도한 것으로 표시한다. 장 초반 flush(10초) 전이면 파일이 아직 없을 수
+    있는데, 그 구간은 라이브 틱이 어차피 상태를 만들고 있으므로 재시도의 값이 없다 —
+    매 요청 디스크를 두드리는 비용만 남는다.
+    """
+    if date != _today_kst():
+        return
+    key = (code, venue, date)
+    if key in _today_peak_seeded:
+        return
+    stream = _owning_capture_stream(code)
+    if stream is None:
+        return
+    lock = _today_peak_seed_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if key in _today_peak_seeded:
+            return
+        from .stream import build_today_peak_seed  # noqa: PLC0415 — stream→lifecycle 순환 절단
+
+        # live_root 는 키움 conn 의 LiveWriter 와 같은 뿌리여야 한다(kiwoom_session
+        # `_default_build_conn`). 어긋나면 파일을 못 찾아 조용히 no-op 이 된다.
+        seed = await asyncio.to_thread(
+            build_today_peak_seed,
+            code=code, venue=venue, date=date, live_root=data_dir / "live_kiwoom",
+        )
+        _today_peak_seeded.add(key)
+        if seed is None:
+            return
+        install = getattr(stream, "install_today_peak_seed", None)
+        if install is None:
+            return
+        outcome = install(code=code, venue=venue, seed=seed)
+    _log.info(
+        "live.peak.seed code=%s venue=%s date=%s rows=%d %s",
+        code, venue, date, seed.rows, outcome,
+    )
+
+
 def get_today_bid_peak(code: str, venue: str) -> dict | None:
     """Return today's bid-peak snapshot for a captured code (키움 스트림)."""
     session = _state.kiwoom_session

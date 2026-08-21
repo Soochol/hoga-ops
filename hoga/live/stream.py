@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import program_trade_latch
@@ -141,6 +142,16 @@ class LiveStream:
         for key in [k for k in self._bid_peak_by_code if k[0] not in self._active_codes]:
             del self._bid_peak_by_code[key]
 
+    def owns_code(self, code: str) -> bool:
+        """이 스트림이 그 종목을 맡고 있나 — conn 파티션은 코드-disjoint 다.
+
+        시딩 대상 스트림을 고르는 데 쓴다. `capture_streams()` fan-out 은 스냅샷 조회용이라
+        "상태가 이미 있는" 스트림만 가려내는데, 시딩은 정의상 **상태가 없을 때** 도는 일이라
+        같은 방법으로는 소유자를 못 찾는다. `_active_codes` 가 None 인 부분 조립 상태
+        (set_active_codes 이전·단위 테스트)는 필터가 없다는 뜻이라 True 로 본다 — `on_tick`
+        의 활성 집합 필터와 같은 규율이다."""
+        return self._active_codes is None or code in self._active_codes
+
     def _reset_ask_peak_if_date_changed(self) -> None:
         date = self._date_fn()
         if self._ask_peak_date is None:
@@ -179,177 +190,38 @@ class LiveStream:
             return None
         return {"date": self._ask_peak_date, **snap}
 
-    def seed_ask_peak_from_live_file(
-        self, *, code: str, venue: str, date: str, live_root: Path
-    ) -> None:
-        """Replay today's persisted JSONL into this stream's ask-peak state."""
-        path = live_root / date / f"{code}.jsonl"
-        if not path.exists():
-            return
-        state = self._ask_peak_state(code, venue)
-        loaded = False
+    def install_today_peak_seed(self, *, code: str, venue: str, seed: TodayPeakSeed) -> str:
+        """재생본을 이 스트림의 오늘분 상태에 반영한다 — **이벤트 루프에서만** 부른다.
 
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                for raw in f:
-                    row = raw.rstrip("\n")
-                    if not row:
-                        continue
-                    try:
-                        payload = json.loads(row)
-                    except json.JSONDecodeError:
-                        continue
+        반환값은 "installed"(빈 자리에 그대로) 또는 "merged"(살아 있는 상태에 흡수).
 
-                    try:
-                        tick_kind = SnapshotKind(payload.get("kind"))
-                    except ValueError:
-                        continue
-                    t_ms = payload.get("t_ms")
-                    if type(t_ms) is not int:
-                        continue
-                    loaded = True
-                    self._ingest_ask_peak(
-                        WsTick(code=code, t_ms=t_ms, kind=tick_kind, payload=payload.get("payload") or {}),
-                    )
-        except OSError:
-            return
+        스킵하지 않는 이유: 이 결함의 **더 나쁜 절반이 장중 재기동**이다. 그 경우 오늘이
+        사라지는 게 아니라 재기동 시점 이후로만 래칫이 쌓여 **조용히 과소평가된 벽**이
+        나오는데, 그럴듯해 보이므로 아무도 못 알아챈다. 그리고 바로 그 경우에 라이브 틱이
+        이미 상태를 만들어 둔 채로 시딩이 도착한다 — 스킵하면 고쳐야 할 케이스를 정확히
+        비켜간다. 병합이 안전한 근거는 `_TodaySidePeakState.merge_from` 참조.
 
-        if loaded:
-            state.coverage = "full"
-
-    def seed_bid_peak_from_live_file(
-        self, *, code: str, venue: str, date: str, live_root: Path
-    ) -> None:
-        """Replay today's persisted JSONL into this stream's bid-peak state."""
-        path = live_root / date / f"{code}.jsonl"
-        if not path.exists():
-            return
-        state = self._bid_peak_state(code, venue)
-        loaded = False
-
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                for raw in f:
-                    row = raw.rstrip("\n")
-                    if not row:
-                        continue
-                    try:
-                        payload = json.loads(row)
-                    except json.JSONDecodeError:
-                        continue
-
-                    try:
-                        tick_kind = SnapshotKind(payload.get("kind"))
-                    except ValueError:
-                        continue
-                    t_ms = payload.get("t_ms")
-                    if type(t_ms) is not int:
-                        continue
-                    loaded = True
-                    self._ingest_bid_peak(
-                        WsTick(code=code, t_ms=t_ms, kind=tick_kind, payload=payload.get("payload") or {}),
-                    )
-        except OSError:
-            return
-
-        if loaded:
-            state.coverage = "full"
+        `coverage` 는 두 경로 모두 "full" 로 올린다 — 재생본이 그날 파일 전체를 훑었으므로
+        흡수 후의 확정 계열은 하루 전체를 반영한다.
+        """
+        ask = self._ask_peak_by_code.get((code, venue))
+        bid = self._bid_peak_by_code.get((code, venue))
+        if ask is None and bid is None:
+            self._reset_ask_peak_if_date_changed()
+            self._ask_peak_by_code[(code, venue)] = seed.ask
+            self._bid_peak_by_code[(code, venue)] = seed.bid
+            return "installed"
+        self._ask_peak_state(code, venue).merge_from(seed.ask)
+        self._bid_peak_state(code, venue).merge_from(seed.bid)
+        self._ask_peak_by_code[(code, venue)].coverage = "full"
+        self._bid_peak_by_code[(code, venue)].coverage = "full"
+        return "merged"
 
     def _ingest_ask_peak(self, tick: WsTick) -> None:
-        if tick.kind is SnapshotKind.TRADE:
-            state: TodayAskPeakState | None = None
-            trades = tick.payload.get("trades")
-            if not isinstance(trades, Sequence) or isinstance(trades, (str, bytes)):
-                return
-            for trade in trades:
-                if not isinstance(trade, Mapping):
-                    continue
-                try:
-                    price = int(trade["price"])
-                    side = int(trade["side"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if state is None:
-                    state = self._ask_peak_state(tick.code, tick.venue)
-                trade_t_ms = trade.get("t_ms")
-                trade_seq = trade.get("seq")
-                state.ingest_trade(
-                    price=price,
-                    side=side,
-                    t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
-                    seq=trade_seq if type(trade_seq) is int else None,
-                )
-            return
-
-        if tick.kind is SnapshotKind.OB:
-            if market_phase(tick.t_ms) != "regular":
-                return
-            asks = tick.payload.get("asks")
-            if not isinstance(asks, Sequence) or isinstance(asks, (str, bytes)):
-                return
-            valid_asks = [ask for ask in asks if isinstance(ask, Mapping)]
-            if not valid_asks:
-                return
-            bids = tick.payload.get("bids")
-            valid_bids = (
-                [bid for bid in bids if isinstance(bid, Mapping)]
-                if isinstance(bids, Sequence) and not isinstance(bids, (str, bytes))
-                else []
-            )
-            if not _is_continuous_book(valid_asks, valid_bids):
-                return
-            self._ask_peak_state(tick.code, tick.venue).ingest_orderbook(
-                t_ms=tick.t_ms,
-                asks=valid_asks,
-            )
+        ingest_ask_peak_tick(tick, lambda: self._ask_peak_state(tick.code, tick.venue))
 
     def _ingest_bid_peak(self, tick: WsTick) -> None:
-        if tick.kind is SnapshotKind.TRADE:
-            state: TodayBidPeakState | None = None
-            trades = tick.payload.get("trades")
-            if not isinstance(trades, Sequence) or isinstance(trades, (str, bytes)):
-                return
-            for trade in trades:
-                if not isinstance(trade, Mapping):
-                    continue
-                try:
-                    price = int(trade["price"])
-                    side = int(trade["side"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if state is None:
-                    state = self._bid_peak_state(tick.code, tick.venue)
-                trade_t_ms = trade.get("t_ms")
-                trade_seq = trade.get("seq")
-                state.ingest_trade(
-                    price=price,
-                    side=side,
-                    t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
-                    seq=trade_seq if type(trade_seq) is int else None,
-                )
-            return
-
-        if tick.kind is SnapshotKind.OB:
-            if market_phase(tick.t_ms) != "regular":
-                return
-            asks = tick.payload.get("asks")
-            valid_asks = (
-                [ask for ask in asks if isinstance(ask, Mapping)]
-                if isinstance(asks, Sequence) and not isinstance(asks, (str, bytes))
-                else []
-            )
-            bids = tick.payload.get("bids")
-            if not isinstance(bids, Sequence) or isinstance(bids, (str, bytes)):
-                return
-            valid_bids = [bid for bid in bids if isinstance(bid, Mapping)]
-            if not valid_bids:
-                return
-            if not _is_continuous_book(valid_asks, valid_bids):
-                return
-            self._bid_peak_state(tick.code, tick.venue).ingest_orderbook(
-                t_ms=tick.t_ms,
-                bids=valid_bids,
-            )
+        ingest_bid_peak_tick(tick, lambda: self._bid_peak_state(tick.code, tick.venue))
 
     async def on_tick(self, tick: WsTick) -> None:
         """ws_client 콜백 — 표시 경로(즉시·무게이트) + 저장 경로(누적·게이트)."""
@@ -584,3 +456,180 @@ class LiveStream:
                     self.last_flush_ms = None
                 await asyncio.sleep(IDLE_INTERVAL_S)
             was_open = open_now
+
+
+@dataclass(frozen=True)
+class TodayPeakSeed:
+    """오늘 JSONL 한 벌을 재생해 만든 **분리된** 최대벽 상태(ask·bid)."""
+
+    ask: TodayAskPeakState
+    bid: TodayBidPeakState
+    rows: int
+
+
+def today_peak_seed_path(*, live_root: Path, date: str, venue: str, code: str) -> Path:
+    """오늘분 JSONL 경로 — **venue 세그먼트를 포함한다**(`LiveWriter.append` 와 동일 레이아웃).
+
+    ADR-0140 §3 이 두 시장을 파일로 가른 뒤로 실경로는 `{date}/{venue}/{code}.jsonl` 이다.
+    종전 시더는 이 세그먼트 없이(`{date}/{code}.jsonl`) 읽어 **실디스크에서 파일을 영영 못
+    찾았다** — `if not path.exists(): return` 이라 조용한 no-op 이었고, 유닛 테스트는 낡은
+    경로에 픽스처를 놓았으므로 초록이었다.
+    """
+    return live_root / date / venue / f"{code}.jsonl"
+
+
+def build_today_peak_seed(
+    *, code: str, venue: str, date: str, live_root: Path,
+) -> TodayPeakSeed | None:
+    """오늘 JSONL 을 **분리된** 상태 한 쌍(ask·bid)에 한 패스로 재생한다.
+
+    **워커 스레드 전용이다.** 스트림이 들고 있는 살아 있는 상태를 절대 건드리지 않는다 —
+    이벤트 루프의 `on_tick` 이 같은 객체를 변이 중일 수 있어서다(장중 재기동 케이스가 정확히
+    그 상황이다). 설치는 루프 쪽 `LiveStream.install_today_peak_seed` 가 한다.
+
+    `venue` 는 경로뿐 아니라 **틱에도 실린다**. 종전 시더는 `WsTick` 에 venue 를 안 실어
+    기본값 "KRX" 로 떨어졌고, 그래서 `venue="NXT"` 로 불러도 NXT 상태엔 coverage 만 찍히고
+    값은 KRX 상태로 들어갔다(테스트가 KRX 만 써서 안 잡혔다).
+
+    비용은 종목·venue 하나당 실측 **~144ms / 8.6k행 / 3.9MB** 다(2026-08-21, 005930 KRX).
+    전량 선행 시딩은 성립하지 않는다 — 하루치가 venue 당 ~1GB, 300종목 × 3 venue 다.
+    """
+    path = today_peak_seed_path(live_root=live_root, date=date, venue=venue, code=code)
+    if not path.exists():
+        return None
+    ask = TodayAskPeakState()
+    bid = TodayBidPeakState()
+    rows = 0
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                row = raw.rstrip("\n")
+                if not row:
+                    continue
+                try:
+                    payload = json.loads(row)
+                except json.JSONDecodeError:
+                    continue
+                try:
+                    tick_kind = SnapshotKind(payload.get("kind"))
+                except ValueError:
+                    continue
+                t_ms = payload.get("t_ms")
+                if type(t_ms) is not int:
+                    continue
+                rows += 1
+                tick = WsTick(
+                    code=code,
+                    t_ms=t_ms,
+                    kind=tick_kind,
+                    payload=payload.get("payload") or {},
+                    venue=venue,
+                )
+                ingest_ask_peak_tick(tick, lambda: ask)
+                ingest_bid_peak_tick(tick, lambda: bid)
+    except OSError:
+        return None
+    if rows == 0:
+        return None
+    ask.coverage = "full"
+    bid.coverage = "full"
+    return TodayPeakSeed(ask=ask, bid=bid, rows=rows)
+
+# ── 오늘분 최대벽 ingest — 상태 접근자를 인자로 받는다 ────────────────────────
+#
+# 스트림의 살아 있는 상태(`self._ask_peak_state`)와 **분리된** 재생용 상태
+# (`build_today_peak_seed`) 둘 다 같은 판정을 태우기 위한 추출이다. 접근자를 콜백으로
+# 받는 이유는 원래의 **지연 생성**을 유지하기 위해서다 — 관련 없는 틱에 상태를 만들면
+# 300종목 × 2 side 가 한 프로세스에 상주하는 구조에서 헛된 슬롯이 생긴다.
+
+
+def ingest_ask_peak_tick(tick: WsTick, get_state: Callable[[], TodayAskPeakState]) -> None:
+    if tick.kind is SnapshotKind.TRADE:
+        state: TodayAskPeakState | None = None
+        trades = tick.payload.get("trades")
+        if not isinstance(trades, Sequence) or isinstance(trades, (str, bytes)):
+            return
+        for trade in trades:
+            if not isinstance(trade, Mapping):
+                continue
+            try:
+                price = int(trade["price"])
+                side = int(trade["side"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if state is None:
+                state = get_state()
+            trade_t_ms = trade.get("t_ms")
+            trade_seq = trade.get("seq")
+            state.ingest_trade(
+                price=price,
+                side=side,
+                t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
+                seq=trade_seq if type(trade_seq) is int else None,
+            )
+        return
+
+    if tick.kind is SnapshotKind.OB:
+        if market_phase(tick.t_ms) != "regular":
+            return
+        asks = tick.payload.get("asks")
+        if not isinstance(asks, Sequence) or isinstance(asks, (str, bytes)):
+            return
+        valid_asks = [ask for ask in asks if isinstance(ask, Mapping)]
+        if not valid_asks:
+            return
+        bids = tick.payload.get("bids")
+        valid_bids = (
+            [bid for bid in bids if isinstance(bid, Mapping)]
+            if isinstance(bids, Sequence) and not isinstance(bids, (str, bytes))
+            else []
+        )
+        if not _is_continuous_book(valid_asks, valid_bids):
+            return
+        get_state().ingest_orderbook(t_ms=tick.t_ms, asks=valid_asks)
+
+
+def ingest_bid_peak_tick(tick: WsTick, get_state: Callable[[], TodayBidPeakState]) -> None:
+    if tick.kind is SnapshotKind.TRADE:
+        state: TodayBidPeakState | None = None
+        trades = tick.payload.get("trades")
+        if not isinstance(trades, Sequence) or isinstance(trades, (str, bytes)):
+            return
+        for trade in trades:
+            if not isinstance(trade, Mapping):
+                continue
+            try:
+                price = int(trade["price"])
+                side = int(trade["side"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if state is None:
+                state = get_state()
+            trade_t_ms = trade.get("t_ms")
+            trade_seq = trade.get("seq")
+            state.ingest_trade(
+                price=price,
+                side=side,
+                t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
+                seq=trade_seq if type(trade_seq) is int else None,
+            )
+        return
+
+    if tick.kind is SnapshotKind.OB:
+        if market_phase(tick.t_ms) != "regular":
+            return
+        asks = tick.payload.get("asks")
+        valid_asks = (
+            [ask for ask in asks if isinstance(ask, Mapping)]
+            if isinstance(asks, Sequence) and not isinstance(asks, (str, bytes))
+            else []
+        )
+        bids = tick.payload.get("bids")
+        if not isinstance(bids, Sequence) or isinstance(bids, (str, bytes)):
+            return
+        valid_bids = [bid for bid in bids if isinstance(bid, Mapping)]
+        if not valid_bids:
+            return
+        if not _is_continuous_book(valid_asks, valid_bids):
+            return
+        get_state().ingest_orderbook(t_ms=tick.t_ms, bids=valid_bids)
