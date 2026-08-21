@@ -193,7 +193,6 @@ def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_
             "max_qty": 30632,
             "max_t_ms": 1,
             "traded_peaks": [{"price": 101000, "qty": 30632, "t_ms": 1}],
-            "untraded_peaks": [],
         },
         "fetched_at_ms": 0,
     }
@@ -228,7 +227,6 @@ def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_pa
                 {"price": 50000, "qty": 7000, "t_ms": 2},
                 {"price": 50000, "qty": 5000, "t_ms": 0},
             ],
-            "untraded_peaks": [],
         },
         "fetched_at_ms": 0,
     }
@@ -304,8 +302,12 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
 
 
-def test_peak_cache_loads_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
-    """ranked untraded 배열이 없는 payload 도 읽힌다(필드 하위호환).
+def test_peak_cache_loads_payload_without_ranked_arrays(tmp_path: Path) -> None:
+    """ranked 배열이 없는 payload 도 읽히고, **없어진 `untraded_*` 키는 무시된다**.
+
+    ADR-0156 이 미체결 계열을 지우면서 디스크에 남은 구 payload 는 kind 버전 범프로
+    걸러지지만, 그것과 **별개로** 모델이 미지 키에 터지지 않는 것이 계약이다
+    (pydantic 기본이 extra='ignore' 라는 사실에 의존한다 — 바뀌면 여기가 빨개진다).
 
     ⚠ 버전은 **현재 값**으로 기록한다 — 숫자를 박으면 kind 범프마다 이 테스트가
     깨지는데, 여기서 재는 것은 버전이 아니라 **없는 필드의 기본값 처리**다.
@@ -324,6 +326,7 @@ def test_peak_cache_loads_payload_without_ranked_untraded_arrays(tmp_path: Path)
             "max_price": 70000,
             "max_qty": 1000,
             "max_t_ms": 1,
+            # ADR-0156 이후 모델에 없는 키 — 조용히 버려져야 한다.
             "untraded_price": 69900,
             "untraded_qty": 900,
             "untraded_t_ms": 2,
@@ -338,13 +341,14 @@ def test_peak_cache_loads_payload_without_ranked_untraded_arrays(tmp_path: Path)
     bid = reloaded.get_bid_peak("005930", "20260619", SRC, 60_000)
 
     assert ask is not None
-    assert ask.untraded_price == 69900
-    assert ask.untraded_peaks == []
-    assert ask.untraded_max_peaks == []
+    assert (ask.price, ask.qty, ask.t_ms) == (70000, 1000, 1)
+    assert ask.traded_peaks == []
+    assert ask.all_peaks == []
+    assert not hasattr(ask, "untraded_price")
     assert bid is not None
-    assert bid.untraded_price == 69900
-    assert bid.untraded_peaks == []
-    assert bid.untraded_max_peaks == []
+    assert (bid.price, bid.qty, bid.t_ms) == (70000, 1000, 1)
+    assert bid.traded_peaks == []
+    assert bid.all_peaks == []
 
 
 def test_trade_volume_poc_cache_survives_new_cache_instance(tmp_path: Path) -> None:

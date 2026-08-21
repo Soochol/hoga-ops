@@ -53,7 +53,7 @@ import {
   useWindowScopeId,
   useWindowViewGuard,
 } from './workspace/windowView';
-import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
+import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
 import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
@@ -90,11 +90,9 @@ const EMPTY_WALL_SURGE: readonly never[] = [];
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import {
   deriveDayAskPeaksIncrementalAsOf,
-  deriveTodayAllPriceAskPeakIncrementalAsOf,
 } from './useDayAskPeaks';
 import {
   deriveDayBidPeaksIncrementalAsOf,
-  deriveTodayAllPriceBidPeakIncrementalAsOf,
 } from './useDayBidPeaks';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
@@ -184,14 +182,6 @@ function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: 
   const prev = lo > 0 ? candleMs[lo - 1] : next;
   const nearest = Math.abs(prev - realMs) <= Math.abs(next - realMs) ? prev : next;
   return Math.abs(nearest - realMs) <= bucketMs / 2 ? nearest : realMs;
-}
-
-function optionalRankLimit(
-  prefs: ChartViewPrefs,
-  key: 'askPeakUntradedRankLimit' | 'bidPeakUntradedRankLimit',
-): 1 | 2 | 3 {
-  const value = (prefs as ChartViewPrefs & Partial<Record<typeof key, number>>)[key];
-  return value === 2 || value === 3 ? value : 1;
 }
 
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
@@ -325,13 +315,11 @@ interface Props {
   /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveAskPeakSegments에 전달. */
   dayAskPeaks?: readonly AskPeak[];
   /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
-  todayAllPriceAskPeak?: AskPeak | null;
   /** Raw backend today ask-peak payload, used only for cutoff-aware live recomputation. */
   todayAskPeakInput?: LiveTodayAskPeak | null;
   /** LivePage의 useDayBidPeaks 결과(거래일별) — LiveBidPeakSegments에 전달. */
   dayBidPeaks?: readonly BidPeak[];
   /** Backend today all-price bid peak — optional so existing tests/callers omit it safely. */
-  todayAllPriceBidPeak?: BidPeak | null;
   /** Raw backend today bid-peak payload, used only for cutoff-aware live recomputation. */
   todayBidPeakInput?: LiveTodayBidPeak | null;
   /** Raw live snapshots, used only for cutoff-aware today/live peak recomputation. */
@@ -468,10 +456,8 @@ export function LiveChartRoot({
   pastDataWarnings,
   restoreViewport = null,
   dayAskPeaks = EMPTY_ASK_PEAKS,
-  todayAllPriceAskPeak = null,
   todayAskPeakInput = null,
   dayBidPeaks = EMPTY_BID_PEAKS,
-  todayAllPriceBidPeak = null,
   todayBidPeakInput = null,
   liveObSnapshots = EMPTY_OB_SNAPSHOTS,
   liveTradeSnapshots = EMPTY_TRADE_SNAPSHOTS,
@@ -1588,12 +1574,8 @@ export function LiveChartRoot({
   const askPeakLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const bidPeakLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
-  const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
-  const askPeakUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'askPeakUntradedRankLimit'));
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
   const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
-  const bidPeakShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
-  const bidPeakUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'bidPeakUntradedRankLimit'));
   const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
@@ -1655,12 +1637,8 @@ export function LiveChartRoot({
   );
   const askDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (askDayPeakSourceRef.current === null) askDayPeakSourceRef.current = new IncrementalPeakWallSource('ask');
-  const askTodayAllSourceRef = useRef<IncrementalPeakWallSource | null>(null);
-  if (askTodayAllSourceRef.current === null) askTodayAllSourceRef.current = new IncrementalPeakWallSource('ask');
   const bidDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (bidDayPeakSourceRef.current === null) bidDayPeakSourceRef.current = new IncrementalPeakWallSource('bid');
-  const bidTodayAllSourceRef = useRef<IncrementalPeakWallSource | null>(null);
-  if (bidTodayAllSourceRef.current === null) bidTodayAllSourceRef.current = new IncrementalPeakWallSource('bid');
   const renderDayAskPeaks = useMemo(
     () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
       ? deriveDayAskPeaksIncrementalAsOf(
@@ -1682,30 +1660,6 @@ export function LiveChartRoot({
       liveTradeSnapshots,
       timeframe,
       askVisibleTimeCutoffForRender?.tMs,
-      todayAskPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-    ],
-  );
-  const renderTodayAllPriceAskPeak = useMemo(
-    () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
-      ? deriveTodayAllPriceAskPeakIncrementalAsOf(
-        askTodayAllSourceRef.current!,
-        liveObSnapshots,
-        historicalAskSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayAskPeakInput,
-        askVisibleTimeCutoffForRender!.tMs,
-      )
-      : todayAllPriceAskPeak,
-    [
-      canRecomputeAskCutoff,
-      historicalAskSeeds,
-      liveObSnapshots,
-      timeframe,
-      askVisibleTimeCutoffForRender?.tMs,
-      todayAllPriceAskPeak,
       todayAskPeakInput,
       todayKst,
       peakSessionOpenMs,
@@ -1735,30 +1689,6 @@ export function LiveChartRoot({
       todayBidPeakInput,
       todayKst,
       peakSessionOpenMs,
-    ],
-  );
-  const renderTodayAllPriceBidPeak = useMemo(
-    () => canRecomputeBidCutoff && isMinuteTimeframe(timeframe)
-      ? deriveTodayAllPriceBidPeakIncrementalAsOf(
-        bidTodayAllSourceRef.current!,
-        liveObSnapshots,
-        historicalBidSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayBidPeakInput,
-        bidVisibleTimeCutoffForRender!.tMs,
-      )
-      : todayAllPriceBidPeak,
-    [
-      canRecomputeBidCutoff,
-      historicalBidSeeds,
-      liveObSnapshots,
-      timeframe,
-      bidVisibleTimeCutoffForRender?.tMs,
-      todayBidPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-      todayAllPriceBidPeak,
     ],
   );
   const activePaneToggles = useMemo(
@@ -1954,32 +1884,24 @@ export function LiveChartRoot({
       ...(askLabelsOn
         ? buildAskPeakOverlaySegments({
           dayAskPeaks: renderDayAskPeaks,
-          todayAllPriceAskPeak: renderTodayAllPriceAskPeak,
           segments: cb.segments,
           candles: cb.candles,
           axis,
           todayKst,
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-          allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: askPeakIntraMax,
-          showAllPrices: askPeakShowAllPrices,
-          untradedRankLimit: askPeakUntradedRankLimit,
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
         })
         : []),
       ...(bidLabelsOn
         ? buildBidPeakOverlaySegments({
           dayBidPeaks: renderDayBidPeaks,
-          todayAllPriceBidPeak: renderTodayAllPriceBidPeak,
           segments: cb.segments,
           candles: cb.candles,
           axis,
           todayKst,
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-          allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: bidPeakIntraMax,
-          showAllPrices: bidPeakShowAllPrices,
-          untradedRankLimit: bidPeakUntradedRankLimit,
           visibleTimeCutoff: bidVisibleTimeCutoffForRender,
         })
         : []),
@@ -2001,23 +1923,17 @@ export function LiveChartRoot({
     askPeakEnabled,
     askPeakIntraMax,
     askPeakLabelEnabled,
-    askPeakShowAllPrices,
-    askPeakUntradedRankLimit,
     askPeakWallHidden,
     askVisibleTimeCutoffForRender,
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
     bidPeakLabelEnabled,
-    bidPeakShowAllPrices,
-    bidPeakUntradedRankLimit,
     bidPeakWallHidden,
     bidVisibleTimeCutoffForRender,
     cb,
     renderDayAskPeaks,
     renderDayBidPeaks,
-    renderTodayAllPriceAskPeak,
-    renderTodayAllPriceBidPeak,
     timeframe,
     todayKst,
   ]);
@@ -2431,11 +2347,9 @@ export function LiveChartRoot({
               paneSeries={paneSeries}
               axis={axis}
               dayAskPeaks={renderDayAskPeaks}
-              todayAllPriceAskPeak={renderTodayAllPriceAskPeak}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
-              untradedRankLimit={askPeakUntradedRankLimit}
               visibleTimeCutoff={askVisibleTimeCutoffForRender}
             />
           )}
@@ -2444,11 +2358,9 @@ export function LiveChartRoot({
               paneSeries={paneSeries}
               axis={axis}
               dayBidPeaks={renderDayBidPeaks}
-              todayAllPriceBidPeak={renderTodayAllPriceBidPeak}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
-              untradedRankLimit={bidPeakUntradedRankLimit}
               visibleTimeCutoff={bidVisibleTimeCutoffForRender}
             />
           )}
@@ -2457,9 +2369,7 @@ export function LiveChartRoot({
               paneSeries={paneSeries}
               axis={axis}
               dayAskPeaks={renderDayAskPeaks}
-              todayAllPriceAskPeak={renderTodayAllPriceAskPeak}
               dayBidPeaks={renderDayBidPeaks}
-              todayAllPriceBidPeak={renderTodayAllPriceBidPeak}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}

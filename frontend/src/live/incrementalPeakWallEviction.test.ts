@@ -157,12 +157,16 @@ describe('축출 폴백 — 한 번에 한 변수씩', () => {
     expect(actual).toEqual(new IncrementalPeakWallSource('ask').update(slid, [], OPEN_MS, []));
   });
 
-  it('터치가 시간 역순으로 오면 전량 재소비로 떨어진다(결과는 그대로 옳다)', () => {
+  it('터치가 시간 역순으로 와도 슬라이딩이 유지된다(ADR-0156: 분 극값은 순서 무관)', () => {
+    // ADR-0084 시절엔 이 배치가 `touchOrderCompromised` 를 세워 **전량 재소비**로
+    // 떨어졌다 — suffix 극값 + 이진탐색이 정렬을 전제했고, 그 정렬이 `touchCounts`
+    // 대응을 깼기 때문이다. 분 단위 극값은 도착 순서에 무관하므로 그 폴백 사유가
+    // 원리적으로 사라졌다. 막는 방향: 순서 의존이 되살아나는 쪽.
     const rnd = lcg(11);
     const src = new IncrementalPeakWallSource('ask');
     const ob = Array.from({ length: 30 }, (_u, i) => mkOb(i, rnd));
     const trade = Array.from({ length: 30 }, (_u, i) => mkTrade(i, rnd));
-    // 한 아이템만 과거 시각으로 — `touchOrderCompromised` 가 서는 유일한 조건.
+    // 한 아이템만 과거 시각으로.
     trade[20] = { t_ms: trade[20].t_ms, trades: [{ side: 1, price: 40_001, qty: 1, t_ms: base + 1000 }] };
     src.update(ob, trade, OPEN_MS, []);
 
@@ -170,7 +174,7 @@ describe('축출 폴백 — 한 번에 한 변수씩', () => {
     const slid = [...ob.slice(2), mkOb(100, rnd)];
     const slidTr = [...trade.slice(2), mkTrade(100, rnd)];
     const actual = src.update(slid, slidTr, OPEN_MS, []);
-    expect(spy.mock.calls.length).toBe(slid.length);
+    expect(spy.mock.calls.length).toBe(1);   // 붙인 1개만 소비 = 슬라이딩 유지
     spy.mockRestore();
     expect(actual).toEqual(new IncrementalPeakWallSource('ask').update(slid, slidTr, OPEN_MS, []));
   });

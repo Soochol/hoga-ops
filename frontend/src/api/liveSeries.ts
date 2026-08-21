@@ -15,19 +15,11 @@ import { unixMsToKSTDate } from '../util/time';
 export type LiveTodayPeakBase = {
   date: string;
   coverage: 'full' | 'partial';
-  traded_prices: number[];
+  /** 동일분 터치 벽(ADR-0156) 랭킹 1위 — 와이어 이름은 이관 비용 때문에 유지한다. */
   traded_price: number | null;
   traded_qty: number | null;
   traded_t_ms: number | null;
   traded_peaks?: AskPeakCandidate[];
-  untraded_price?: number | null;
-  untraded_qty?: number | null;
-  untraded_t_ms?: number | null;
-  untraded_max_price?: number | null;
-  untraded_max_qty?: number | null;
-  untraded_max_t_ms?: number | null;
-  untraded_peaks?: AskPeakCandidate[];
-  untraded_max_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

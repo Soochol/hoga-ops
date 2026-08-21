@@ -742,12 +742,6 @@ export type PeakBase = {
   all_max_price?: number | null;
   all_max_qty?: number | null;
   all_max_t_ms?: number | null;
-  untraded_price?: number | null;
-  untraded_qty?: number | null;
-  untraded_t_ms?: number | null;
-  untraded_max_price?: number | null;
-  untraded_max_qty?: number | null;
-  untraded_max_t_ms?: number | null;
 };
 
 /** hoga/api/models.py::AskPeak 미러. 후보 배열은 매도벽 표시용 ask-only 확장. */
@@ -756,8 +750,6 @@ export type AskPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
-  untraded_peaks?: AskPeakCandidate[];
-  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 /** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
@@ -766,8 +758,6 @@ export type BidPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
-  untraded_peaks?: AskPeakCandidate[];
-  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 export type TradeVolumePocWire = {

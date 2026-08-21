@@ -162,23 +162,20 @@ describe('IndicatorPanel', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('매도 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
+  it('매도 최대벽 상세 pane에 체결된 벽·보이는 영역 표시 개수 controls를 렌더한다', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
-    expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
 
     const groups = screen.getAllByRole('group');
     expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
-    expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
 
     const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
@@ -188,13 +185,11 @@ describe('IndicatorPanel', () => {
 
     useChartPrefsStore.setState({
       askPeakAllPriceRankLimit: 2,
-      askPeakUntradedRankLimit: 1,
       askPeakVisibleMaxRankLimit: 1,
     });
     fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
     expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(3);
     expect(useChartPrefsStore.getState().askPeakAllPriceRankLimit).toBe(2);
-    expect(useChartPrefsStore.getState().askPeakUntradedRankLimit).toBe(1);
     fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
     expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(0);
   });
@@ -371,18 +366,16 @@ describe('IndicatorPanel', () => {
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('매수 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
+  it('매수 최대벽 상세 pane에 체결된 벽·보이는 영역 표시 개수 controls를 렌더한다', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
-    expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
 
     const groups = screen.getAllByRole('group');
     expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
-    expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
 
     const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
@@ -392,13 +385,11 @@ describe('IndicatorPanel', () => {
 
     useChartPrefsStore.setState({
       bidPeakAllPriceRankLimit: 2,
-      bidPeakUntradedRankLimit: 1,
       bidPeakVisibleMaxRankLimit: 1,
     });
     fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
     expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(3);
     expect(useChartPrefsStore.getState().bidPeakAllPriceRankLimit).toBe(2);
-    expect(useChartPrefsStore.getState().bidPeakUntradedRankLimit).toBe(1);
     fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
     expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(0);
   });
@@ -660,7 +651,6 @@ describe('IndicatorPanel', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
   });
 
@@ -678,9 +668,7 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 

@@ -15,8 +15,9 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 const EMPTY_CANDLES: readonly Candle[] = [];
 
 type PeakFamilies = {
+  /** 동일분 터치 벽(ADR-0156) — UI 의 「체결된 벽」. */
   traded: AskPeakCandidate[];
-  untraded: AskPeakCandidate[];
+  /** 터치 무관 전체 벽 — 「보이는 영역 최대벽」의 원천. */
   all: AskPeakCandidate[];
 };
 
@@ -43,11 +44,6 @@ function uniqueCandidates(candidates: readonly AskPeakCandidate[]): AskPeakCandi
 function mergeRankedCandidates(...groups: ReadonlyArray<readonly AskPeakCandidate[]>): AskPeakCandidate[] {
   return rankPeakCandidates(groups.flatMap((group) => group));
 }
-
-function rankUniqueCandidates(candidates: readonly AskPeakCandidate[]): AskPeakCandidate[] {
-  return rankPeakCandidates(uniqueCandidates(candidates));
-}
-
 function toCandidate(
   price: unknown,
   qty: unknown,
@@ -60,7 +56,7 @@ function toCandidate(
 
 function candidateFromPrefix(
   peak: LiveTodayAskPeak | null,
-  prefix: 'traded' | 'all' | 'untraded',
+  prefix: 'traded' | 'all',
 ): AskPeakCandidate | null {
   if (!peak) return null;
   return toCandidate(
@@ -74,15 +70,11 @@ function backendPeakFamilies(todayAskPeak: LiveTodayAskPeak | null): PeakFamilie
   const traded = todayAskPeak?.traded_peaks?.length
     ? todayAskPeak.traded_peaks
     : [candidateFromPrefix(todayAskPeak, 'traded')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
-  const untraded = todayAskPeak?.untraded_peaks?.length
-    ? todayAskPeak.untraded_peaks
-    : [candidateFromPrefix(todayAskPeak, 'untraded')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
   const all = todayAskPeak?.all_peaks?.length
     ? todayAskPeak.all_peaks
     : [candidateFromPrefix(todayAskPeak, 'all')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
   return {
     traded: rankPeakCandidates(traded),
-    untraded: rankPeakCandidates(untraded),
     all: rankPeakCandidates(all),
   };
 }
@@ -103,21 +95,12 @@ function attachFamilies(
   peak: AskPeak,
   families: PeakFamilies,
 ): AskPeak {
-  const untraded = families.untraded[0] ?? null;
   return {
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
     all_peaks: families.all,
     all_max_peaks: families.all,
-    untraded_price: untraded?.price ?? null,
-    untraded_qty: untraded?.qty ?? null,
-    untraded_t_ms: untraded?.t_ms ?? null,
-    untraded_max_price: untraded?.price ?? null,
-    untraded_max_qty: untraded?.qty ?? null,
-    untraded_max_t_ms: untraded?.t_ms ?? null,
-    untraded_peaks: families.untraded,
-    untraded_max_peaks: families.untraded,
   };
 }
 
@@ -128,14 +111,9 @@ function askFamiliesFromClassified(
   classified: PeakWallClassification,
   backend: PeakFamilies,
 ): PeakFamilies {
-  const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
-  const tradedKeys = new Set(traded.map(candidateKey));
-  const untraded = rankUniqueCandidates(
-    [...classified.postUntouched, ...backend.untraded]
-      .filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
-  );
-  const all = mergeRankedCandidates(classified.all, backend.all, traded, untraded);
-  return { traded, untraded, all };
+  const traded = mergeRankedCandidates(classified.touched, backend.traded);
+  const all = mergeRankedCandidates(classified.all, backend.all, traded);
+  return { traded, all };
 }
 
 function mergedAskFamilies(
@@ -169,44 +147,22 @@ function mergedAskFamilies(
     ...toWallEventsFromOrderbooks(filteredOb, 'ask', sessionOpenMs),
     ...filterCandidates(backend.all),
     ...filterCandidates(backend.traded),
-    ...filterCandidates(backend.untraded),
   ]);
   const classified = classifyAskWallEvents(sourceEvents, touchTicks);
   if (visibleTimeCutoff) {
-    const traded = rankPeakCandidates(classified.postTouch);
-    const tradedKeys = new Set(traded.map(candidateKey));
-    const untraded = rankUniqueCandidates(
-      classified.postUntouched.filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
-    );
     return {
-      traded,
-      untraded,
+      traded: rankPeakCandidates(classified.touched),
       all: rankPeakCandidates(classified.all),
     };
   }
   return askFamiliesFromClassified(classified, backend);
 }
-
-function historicalTodaySeed(seeds: readonly AskPeak[], todayKst: string): AskPeakCandidate | null {
-  const today = seeds.find((peak) => peak.date === todayKst);
-  if (!today) return null;
-  return toCandidate(today.price, today.qty, today.t_ms);
-}
-
 export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
   const families = backendPeakFamilies(todayAskPeak);
   const date = todayAskPeak?.date;
   const traded = families.traded[0];
   if (!date || !traded) return null;
   return attachFamilies(askPeakFromCandidate(date, traded), families);
-}
-
-export function buildTodayAllPriceAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
-  const families = backendPeakFamilies(todayAskPeak);
-  const date = todayAskPeak?.date;
-  const all = families.all[0];
-  if (!date || !all) return null;
-  return attachFamilies(askPeakFromCandidate(date, all), families);
 }
 
 export function deriveDayAskPeaks(
@@ -245,7 +201,6 @@ export function deriveDayAskPeaksIncremental(
   const classified = source.update(ob, trade, sessionOpenMs, [
     ...backend.all,
     ...backend.traded,
-    ...backend.untraded,
   ]);
   const families = askFamiliesFromClassified(classified, backend);
   const out = seeds.filter((peak) => peak.date !== todayKst);
@@ -254,25 +209,14 @@ export function deriveDayAskPeaksIncremental(
   out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
   return out;
 }
-
-function filterCandidatesByCutoff(
-  candidates: readonly AskPeakCandidate[],
-  cutoffMs: number,
-): AskPeakCandidate[] {
-  return candidates.filter((candidate) => candidate.t_ms <= cutoffMs);
-}
-
 /** classify 결과 → cutoff 패밀리 조립. mergedAskFamilies 의 cutoff 분기(라인 174-185)와
  *  동일: backend 를 별도 병합하지 않고(이미 sourceEvents/extras 로 접힘) 분류 결과를 랭크만
  *  한다. 증분 경로 전용 — no-cutoff 의 askFamiliesFromClassified 와 구분된다. */
 function askFamiliesFromClassifiedCutoff(classified: PeakWallClassification): PeakFamilies {
-  const traded = rankPeakCandidates(classified.postTouch);
-  const tradedKeys = new Set(traded.map(candidateKey));
-  const untraded = rankUniqueCandidates(
-    classified.postUntouched.filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
-  );
-  const all = rankPeakCandidates(classified.all);
-  return { traded, untraded, all };
+  return {
+    traded: rankPeakCandidates(classified.touched),
+    all: rankPeakCandidates(classified.all),
+  };
 }
 
 /** deriveDayAskPeaks(cutoff) 의 증분판. source.updateAsOf 가 ob/trade 재스캔 대신 누적
@@ -291,7 +235,6 @@ export function deriveDayAskPeaksIncrementalAsOf(
   const classified = source.updateAsOf(ob, trade, [
     ...backend.all,
     ...backend.traded,
-    ...backend.untraded,
   ], cutoffMs, sessionOpenMs);
   const families = askFamiliesFromClassifiedCutoff(classified);
   const out = seeds.filter((peak) => peak.date !== todayKst);
@@ -299,36 +242,6 @@ export function deriveDayAskPeaksIncrementalAsOf(
   if (!traded) return out;
   out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
   return out;
-}
-
-/** deriveTodayAllPriceAskPeak(cutoff) 의 증분판. 터치 없이 all 패밀리만 필요하므로 빈
- *  trade 로 updateAsOf 한다(EMPTY_TRADES). traded/untraded 는 배치와 동일하게 backend 를
- *  cutoff 로 필터한 값. */
-export function deriveTodayAllPriceAskPeakIncrementalAsOf(
-  source: IncrementalPeakWallSource,
-  ob: ReadonlyArray<ObSnapshot>,
-  seeds: readonly AskPeak[],
-  todayKst: string,
-  sessionOpenMs: number,
-  todayAskPeak: LiveTodayAskPeak | null,
-  cutoffMs: number,
-): AskPeak | null {
-  const backend = backendPeakFamilies(todayAskPeak);
-  const todaySeed = historicalTodaySeed(seeds, todayKst);
-  const classified = source.updateAsOf(ob, EMPTY_TRADES, [
-    ...backend.all,
-    ...(todayAskPeak === null && todaySeed ? [todaySeed] : []),
-  ], cutoffMs, sessionOpenMs);
-  const all = classified.all[0];
-  if (!all) return null;
-  return attachFamilies(
-    askPeakFromCandidate(todayKst, all),
-    {
-      traded: filterCandidatesByCutoff(backend.traded, cutoffMs),
-      untraded: filterCandidatesByCutoff(backend.untraded, cutoffMs),
-      all: classified.all,
-    },
-  );
 }
 
 export function useDayAskPeaks(
@@ -348,89 +261,5 @@ export function useDayAskPeaks(
   return useMemo(
     () => deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak),
     [ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak],
-  );
-}
-
-export function deriveTodayAllPriceAskPeak(
-  ob: ReadonlyArray<ObSnapshot>,
-  seeds: readonly AskPeak[],
-  todayKst: string,
-  sessionOpenMs: number,
-  code: string | null,
-  todayAskPeak: LiveTodayAskPeak | null = null,
-  visibleTimeCutoff: VisibleTimeCutoff | null = null,
-): AskPeak | null {
-  void code;
-  const backend = backendPeakFamilies(todayAskPeak);
-  const todaySeed = historicalTodaySeed(seeds, todayKst);
-  const filterCandidates = (candidates: readonly AskPeakCandidate[]) =>
-    visibleTimeCutoff
-      ? candidates.filter((candidate) => candidate.t_ms <= visibleTimeCutoff.tMs)
-      : candidates;
-  const filteredOb = visibleTimeCutoff
-    ? ob.filter((snapshot) => snapshot.t_ms <= visibleTimeCutoff.tMs)
-    : ob;
-  const allCandidates = mergeRankedCandidates(
-    toWallEventsFromOrderbooks(filteredOb, 'ask', sessionOpenMs),
-    filterCandidates(backend.all),
-    todayAskPeak === null && todaySeed ? [todaySeed] : [],
-  );
-  const all = allCandidates[0];
-  if (!all) return null;
-  return attachFamilies(
-    askPeakFromCandidate(todayKst, all),
-    {
-      traded: [...filterCandidates(backend.traded)],
-      untraded: [...filterCandidates(backend.untraded)],
-      all: allCandidates,
-    },
-  );
-}
-
-const EMPTY_TRADES: readonly TradeSnapshot[] = [];
-
-/** deriveTodayAllPriceAskPeak의 증분판(no-cutoff 전용). 터치(trade) 없이 all
- *  패밀리만 필요하므로 빈 trade 스트림으로 update한다. top-3 합집합의 top-3 =
- *  전체 합집합의 top-3이므로 배치의 mergeRankedCandidates와 결과가 같다. */
-export function deriveTodayAllPriceAskPeakIncremental(
-  source: IncrementalPeakWallSource,
-  ob: ReadonlyArray<ObSnapshot>,
-  seeds: readonly AskPeak[],
-  todayKst: string,
-  sessionOpenMs: number,
-  todayAskPeak: LiveTodayAskPeak | null,
-): AskPeak | null {
-  const backend = backendPeakFamilies(todayAskPeak);
-  const todaySeed = historicalTodaySeed(seeds, todayKst);
-  const classified = source.update(ob, EMPTY_TRADES, sessionOpenMs, [
-    ...backend.all,
-    ...(todayAskPeak === null && todaySeed ? [todaySeed] : []),
-  ]);
-  const all = classified.all[0];
-  if (!all) return null;
-  return attachFamilies(
-    askPeakFromCandidate(todayKst, all),
-    {
-      traded: [...backend.traded],
-      untraded: [...backend.untraded],
-      all: classified.all,
-    },
-  );
-}
-
-export function useTodayAllPriceAskPeak(
-  ob: ReadonlyArray<ObSnapshot>,
-  seeds: readonly AskPeak[],
-  todayKst: string,
-  sessionOpenMs: number,
-  code: string | null,
-  todayAskPeak: LiveTodayAskPeak | null = null,
-): AskPeak | null {
-  void code;
-  const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
-  if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('ask');
-  return useMemo(
-    () => deriveTodayAllPriceAskPeakIncremental(sourceRef.current!, ob, seeds, todayKst, sessionOpenMs, todayAskPeak),
-    [ob, seeds, todayKst, sessionOpenMs, todayAskPeak],
   );
 }

@@ -132,15 +132,11 @@ function scalePeak<T extends AskPeak | BidPeak>(peak: T, factor: number): T {
     max_price: scaleNullable(peak.max_price, factor),
     all_price: scaleNullable(peak.all_price, factor),
     all_max_price: scaleNullable(peak.all_max_price, factor),
-    untraded_price: scaleNullable(peak.untraded_price, factor),
-    untraded_max_price: scaleNullable(peak.untraded_max_price, factor),
-    // 순위 배열은 **여섯 갈래**다 — traded/untraded/all × 스냅샷/일중최대. 손으로 훑으면
+    // 순위 배열은 **네 갈래**다 — traded/all × 스냅샷/일중최대. 손으로 훑으면
     // `all_*` 두 개를 빠뜨리기 쉽고(초판이 실제로 그랬다), 그러면 "전체 호가 기준" 벽
     // 라벨만 옛 척도로 남는다. 계약 테스트가 이 누락을 잡는다.
     traded_peaks: rank(peak.traded_peaks),
     traded_max_peaks: rank(peak.traded_max_peaks),
-    untraded_peaks: rank(peak.untraded_peaks),
-    untraded_max_peaks: rank(peak.untraded_max_peaks),
     all_peaks: rank(peak.all_peaks),
     all_max_peaks: rank(peak.all_max_peaks),
   };

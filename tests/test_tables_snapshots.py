@@ -24,7 +24,7 @@ from hoga.tables.snapshots import (
     Orderbook,
     SnapshotValidationError,
     _classify_wall_frame,
-    _peak_distinct,
+    _peak_touched_distinct,
     query_at,
     query_bucketed_depth_delta,
     query_day_ask_bid_peak_dual,
@@ -1602,8 +1602,15 @@ def _peak_reagg_fixture(tmp_path: Path) -> tuple[Path, Path]:
             )
         )
     write_parquet(obs, snapshots)
-    # 체결로 traded/untraded 를 갈라 둔다 — 두 갈래 모두 축약을 타야 한다.
-    write_trades([_trade(90_010_000, 25100), _trade(90_020_000, 24950, side=-1)], trades)
+    # 터치를 **분 0·2·4·6 에만** 둔다(1·5 는 비운다) — ADR-0156 판정이 분 스코프라,
+    # 봉을 바꾸면 창의 rep 가 다른 분으로 옮겨 가면서 터치/미터치가 둘 다 축약을 탄다.
+    write_trades(
+        [t for m in (0, 2, 4, 6) for t in (
+            _trade(90_000_000 + m * 100_000 + 5_000, 25100),
+            _trade(90_000_000 + m * 100_000 + 6_000, 24950, side=-1),
+        )],
+        trades,
+    )
     return snapshots, trades
 
 
@@ -1641,12 +1648,7 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
         assert reduced["traded_close"] == (
             (direct.price, direct.qty, direct.intra_ms) if direct.price is not None else None
         ), f"{side} traded_close"
-        assert reduced["untraded_close"] == (
-            (direct.untraded_price, direct.untraded_qty, direct.untraded_intra_ms)
-            if direct.untraded_price is not None else None
-        ), f"{side} untraded_close"
         assert reduced["traded_peaks"] == direct.traded_peaks, f"{side} traded_peaks"
-        assert reduced["untraded_peaks"] == direct.untraded_peaks, f"{side} untraded_peaks"
 
 
 def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
@@ -1655,6 +1657,10 @@ def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
     이 성질이 깨지면 `_peak_slices_from_1m_cache` 가 굵은 봉에 1분 값을 잘못
     실어 나른다. 실서버 캐시 파일 대조(024840 20260818, 1분 vs 5분)에서 확인한
     것을 픽스처로 고정한다.
+
+    **ADR-0156 이후 이 테스트는 터치 규칙까지 건다.** 터치 창을 차트 봉으로 바꾸면
+    `cont` 이벤트의 `touched` 가 봉에 따라 달라져 `traded_max_peaks` 가 갈린다 —
+    창을 1분으로 고정한 이유의 절반이 여기 있고, 되돌리면 여기가 빨개진다.
     """
     snapshots, trades = _peak_reagg_fixture(tmp_path)
     con = _con_for(snapshots)
@@ -1675,7 +1681,6 @@ def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
                 other.all_max_price, other.all_max_qty, other.all_max_intra_ms
             ), f"{side} all_max @{bucket_ms}"
             assert base.traded_max_peaks == other.traded_max_peaks, f"{side} traded_max_peaks @{bucket_ms}"
-            assert base.untraded_max_peaks == other.untraded_max_peaks, f"{side} untraded_max_peaks @{bucket_ms}"
 
 
 def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path: Path) -> None:
@@ -1735,7 +1740,14 @@ def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path:
     assert actual_bid == expected_bid
 
 
-def test_query_day_ask_peak_dual_classifies_post_touch_and_post_untouched_events(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_counts_only_same_minute_touch(tmp_path: Path) -> None:
+    """**같은 1분 안의 체결만** 벽을 체결로 만든다(ADR-0156).
+
+    막는 방향: 다른 분의 체결이 벽을 체결로 만드는 쪽(ADR-0084 의 옛 규칙).
+    여기서 10:20 벽은 10:00 벽보다 **두 배 크지만** 자기 분에 체결이 없어 탈락한다 —
+    옛 규칙이었다면 10:00 의 체결이 이후 내내 유효해 둘 다 체결이었다.
+    못 보는 것: 봉(bucket_ms)을 바꿨을 때의 동작 — 위 bucket_independent 테스트가 본다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -1753,7 +1765,8 @@ def test_query_day_ask_peak_dual_classifies_post_touch_and_post_untouched_events
         ],
         snapshots_path,
     )
-    write_trades([_trade(100500000, 50000)], trades_path)
+    # 10:00:00.500 — 첫 벽과 **같은 분**. 두 번째 벽(10:20)의 분에는 체결이 없다.
+    write_trades([_trade(100000500, 50000)], trades_path)
 
     peak = query_day_ask_peak_dual(
         _con_for(snapshots_path),
@@ -1769,14 +1782,19 @@ def test_query_day_ask_peak_dual_classifies_post_touch_and_post_untouched_events
     second = AskPeakCandidateRow(price=50000, qty=200000, intra_ms=37_200_000)
     assert peak.traded_peaks == (first,)
     assert peak.traded_max_peaks == (first,)
-    assert peak.untraded_peaks[0] == second
-    assert peak.untraded_max_peaks[0] == second
+    assert second not in peak.traded_peaks       # 자기 분에 체결이 없다
     assert (peak.price, peak.qty, peak.intra_ms) == (50000, 100000, 36_000_000)
+    # `all_*` 은 터치와 무관하므로 더 큰 두 번째 벽이 그대로 1위다.
     assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (50000, 200000, 37_200_000)
-    assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (50000, 200000, 37_200_000)
 
 
-def test_query_day_ask_peak_dual_ranks_lifecycle_representatives(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_ranks_touched_best_per_price(tmp_path: Path) -> None:
+    """가격당 rank-1 은 **터치된 이벤트 중에서만** 고른다(ADR-0156).
+
+    분 604 의 9000 벽이 그날 그 가격의 최대지만 자기 분에 체결이 없어 후보가 아니다 —
+    "가장 큰 벽" 이 아니라 "체결된 것 중 가장 큰 벽" 이 답이라는 계약.
+    ADR-0084 의 lifecycle 세그먼트는 전역 시간 관계였으므로 대응물이 없다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     ask_prices = [50000, 50100, 50200, 50300, 50400, 50500, 50600, 50700, 50800, 50900]
@@ -1789,7 +1807,8 @@ def test_query_day_ask_peak_dual_ranks_lifecycle_representatives(tmp_path: Path)
         ],
         snapshots_path,
     )
-    write_trades([_trade(100300000, 50200)], trades_path)
+    # 분 600·602 에만 체결 — 분 601·604 의 벽은 자기 분에 체결이 없다.
+    write_trades([_trade(100003000, 50200), _trade(100203000, 50200)], trades_path)
 
     peak = query_day_ask_peak_dual(
         _con_for(snapshots_path),
@@ -1801,19 +1820,20 @@ def test_query_day_ask_peak_dual_ranks_lifecycle_representatives(tmp_path: Path)
     )
 
     assert peak is not None
+    # 분 602 의 rep(7000)이 가격 50000 의 대표다 — 분 601 의 8000 도, 분 604 의 9000 도
+    # 자기 분에 체결이 없어 후보가 아니다.
     traded = (
-        AskPeakCandidateRow(price=50000, qty=8000, intra_ms=36_060_000),
+        AskPeakCandidateRow(price=50000, qty=7000, intra_ms=36_120_000),
         AskPeakCandidateRow(price=50100, qty=4200, intra_ms=36_120_000),
         AskPeakCandidateRow(price=50200, qty=3200, intra_ms=36_120_000),
     )
-    untraded = AskPeakCandidateRow(price=50000, qty=9000, intra_ms=36_240_000)
     assert peak.traded_peaks == traded
     assert peak.traded_max_peaks == traded
-    assert peak.untraded_peaks[0] == untraded
-    assert peak.untraded_max_peaks[0] == untraded
+    assert 9000 not in [c.qty for c in peak.traded_peaks]
 
 
-def test_query_day_ask_peak_dual_keeps_one_best_traded_lifecycle_per_price(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_keeps_one_best_touched_wall_per_price(tmp_path: Path) -> None:
+    """같은 가격이 top-N 슬롯을 독식하지 않는다 — 가격당 하나로 접는다."""
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     ask_prices = [50000, 50100, 50200, 50300, 50400, 50500, 50600, 50700, 50800, 50900]
@@ -1825,10 +1845,11 @@ def test_query_day_ask_peak_dual_keeps_one_best_traded_lifecycle_per_price(tmp_p
         ],
         snapshots_path,
     )
+    # 각 체결을 **그 벽과 같은 분**에 둔다(분 600·602·604).
     write_trades([
-        _trade(100100000, 50000),
-        _trade(100300000, 50000),
-        _trade(100500000, 50100),
+        _trade(100001000, 50000),
+        _trade(100201000, 50000),
+        _trade(100401000, 50100),
     ], trades_path)
 
     peak = query_day_ask_peak_dual(
@@ -1848,7 +1869,8 @@ def test_query_day_ask_peak_dual_keeps_one_best_traded_lifecycle_per_price(tmp_p
     assert [p.price for p in peak.traded_peaks].count(50000) == 1
 
 
-def test_query_day_bid_peak_dual_classifies_post_touch_and_post_untouched_events(tmp_path: Path) -> None:
+def test_query_day_bid_peak_dual_counts_only_same_minute_touch(tmp_path: Path) -> None:
+    """매수 대칭판 — `test_query_day_ask_peak_dual_counts_only_same_minute_touch` 참조."""
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -1866,7 +1888,8 @@ def test_query_day_bid_peak_dual_classifies_post_touch_and_post_untouched_events
         ],
         snapshots_path,
     )
-    write_trades([_trade(100500000, 50000)], trades_path)
+    # 10:00:00.500 — 첫 벽과 **같은 분**. 두 번째 벽(10:20)의 분에는 체결이 없다.
+    write_trades([_trade(100000500, 50000)], trades_path)
 
     peak = query_day_bid_peak_dual(
         _con_for(snapshots_path),
@@ -1882,14 +1905,19 @@ def test_query_day_bid_peak_dual_classifies_post_touch_and_post_untouched_events
     second = AskPeakCandidateRow(price=50000, qty=200000, intra_ms=37_200_000)
     assert peak.traded_peaks == (first,)
     assert peak.traded_max_peaks == (first,)
-    assert peak.untraded_peaks[0] == second
-    assert peak.untraded_max_peaks[0] == second
+    assert second not in peak.traded_peaks       # 자기 분에 체결이 없다
     assert (peak.price, peak.qty, peak.intra_ms) == (50000, 100000, 36_000_000)
+    # `all_*` 은 터치와 무관하므로 더 큰 두 번째 벽이 그대로 1위다.
     assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (50000, 200000, 37_200_000)
-    assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (50000, 200000, 37_200_000)
 
 
-def test_query_day_bid_peak_dual_ranks_lifecycle_representatives(tmp_path: Path) -> None:
+def test_query_day_bid_peak_dual_ranks_touched_best_per_price(tmp_path: Path) -> None:
+    """가격당 rank-1 은 **터치된 이벤트 중에서만** 고른다(ADR-0156).
+
+    분 604 의 9000 벽이 그날 그 가격의 최대지만 자기 분에 체결이 없어 후보가 아니다 —
+    "가장 큰 벽" 이 아니라 "체결된 것 중 가장 큰 벽" 이 답이라는 계약.
+    ADR-0084 의 lifecycle 세그먼트는 전역 시간 관계였으므로 대응물이 없다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     bid_prices = [50000, 49900, 49800, 49700, 49600, 49500, 49400, 49300, 49200, 49100]
@@ -1902,7 +1930,8 @@ def test_query_day_bid_peak_dual_ranks_lifecycle_representatives(tmp_path: Path)
         ],
         snapshots_path,
     )
-    write_trades([_trade(100300000, 49800)], trades_path)
+    # 분 600·602 에만 체결 — 분 601·604 의 벽은 자기 분에 체결이 없다.
+    write_trades([_trade(100003000, 49800), _trade(100203000, 49800)], trades_path)
 
     peak = query_day_bid_peak_dual(
         _con_for(snapshots_path),
@@ -1914,19 +1943,25 @@ def test_query_day_bid_peak_dual_ranks_lifecycle_representatives(tmp_path: Path)
     )
 
     assert peak is not None
+    # 분 602 의 rep(7000)이 가격 50000 의 대표다 — 분 601 의 8000 도, 분 604 의 9000 도
+    # 자기 분에 체결이 없어 후보가 아니다.
     traded = (
-        AskPeakCandidateRow(price=50000, qty=8000, intra_ms=36_060_000),
+        AskPeakCandidateRow(price=50000, qty=7000, intra_ms=36_120_000),
         AskPeakCandidateRow(price=49900, qty=4200, intra_ms=36_120_000),
         AskPeakCandidateRow(price=49800, qty=3200, intra_ms=36_120_000),
     )
-    untraded = AskPeakCandidateRow(price=50000, qty=9000, intra_ms=36_240_000)
     assert peak.traded_peaks == traded
     assert peak.traded_max_peaks == traded
-    assert peak.untraded_peaks[0] == untraded
-    assert peak.untraded_max_peaks[0] == untraded
+    assert 9000 not in [c.qty for c in peak.traded_peaks]
 
 
-def test_query_day_ask_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_ignores_trade_in_another_minute(tmp_path: Path) -> None:
+    """같은 **가격**을 쳤어도 **다른 분**이면 체결이 아니다(ADR-0156 의 핵심).
+
+    체결 09:55 · 벽 10:00 — 가격은 정확히 일치한다. ADR-0084 에서는 시각 순서만
+    보았으므로 이 배치가 미터치였지만, 순서를 뒤집으면(체결이 나중) 터치가 됐다.
+    지금은 **순서와 무관하게** 분이 다르면 아니다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -1954,12 +1989,17 @@ def test_query_day_ask_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) 
     assert peak.traded_peaks == ()
     assert peak.traded_max_peaks == ()
     _assert_no_post_touch_scalars(peak)
-    only = AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
-    assert peak.untraded_peaks[0] == only
-    assert peak.untraded_max_peaks[0] == only
+    # 터치와 무관한 `all_*` 에는 그대로 남는다.
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
-def test_query_day_bid_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) -> None:
+def test_query_day_bid_peak_dual_ignores_trade_in_another_minute(tmp_path: Path) -> None:
+    """같은 **가격**을 쳤어도 **다른 분**이면 체결이 아니다(ADR-0156 의 핵심).
+
+    체결 09:55 · 벽 10:00 — 가격은 정확히 일치한다. ADR-0084 에서는 시각 순서만
+    보았으므로 이 배치가 미터치였지만, 순서를 뒤집으면(체결이 나중) 터치가 됐다.
+    지금은 **순서와 무관하게** 분이 다르면 아니다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -1987,9 +2027,8 @@ def test_query_day_bid_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) 
     assert peak.traded_peaks == ()
     assert peak.traded_max_peaks == ()
     _assert_no_post_touch_scalars(peak)
-    only = AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
-    assert peak.untraded_peaks[0] == only
-    assert peak.untraded_max_peaks[0] == only
+    # 터치와 무관한 `all_*` 에는 그대로 남는다.
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
 def test_query_day_ask_peak_dual_same_millisecond_equal_seq_counts_as_touch(tmp_path: Path) -> None:
@@ -2019,10 +2058,16 @@ def test_query_day_ask_peak_dual_same_millisecond_equal_seq_counts_as_touch(tmp_
 
     assert peak is not None
     assert peak.traded_peaks == (AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000),)
-    assert AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000) not in peak.untraded_peaks
 
 
-def test_query_day_ask_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_same_millisecond_earlier_seq_still_touches(tmp_path: Path) -> None:
+    """같은 분 안이면 체결이 벽보다 **앞서도** 터치다(ADR-0156).
+
+    ADR-0084 에서는 `(ts, seq)` 로 "이후" 를 따져 seq 9 < 10 이 미터치였다. 규칙이
+    분 안에서 닫히면서 순서가 판정에서 빠졌고, 이 배치의 답이 **뒤집혔다** —
+    기본 기준(rep)의 벽은 그 분의 마지막 스냅샷에서 관측되므로 "이후" 만 세면
+    거의 전부 미터치가 되기 때문이다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -2048,9 +2093,8 @@ def test_query_day_ask_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp
     )
 
     assert peak is not None
-    assert peak.traded_peaks == ()
-    _assert_no_post_touch_scalars(peak)
-    assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000)
+    assert peak.traded_peaks == (AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000),)
+    assert (peak.price, peak.qty, peak.intra_ms) == (50000, 1000, 32_400_000)
 
 
 def test_query_day_bid_peak_dual_same_millisecond_equal_seq_counts_as_touch(tmp_path: Path) -> None:
@@ -2080,10 +2124,16 @@ def test_query_day_bid_peak_dual_same_millisecond_equal_seq_counts_as_touch(tmp_
 
     assert peak is not None
     assert peak.traded_peaks == (AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000),)
-    assert AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000) not in peak.untraded_peaks
 
 
-def test_query_day_bid_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp_path: Path) -> None:
+def test_query_day_bid_peak_dual_same_millisecond_earlier_seq_still_touches(tmp_path: Path) -> None:
+    """같은 분 안이면 체결이 벽보다 **앞서도** 터치다(ADR-0156).
+
+    ADR-0084 에서는 `(ts, seq)` 로 "이후" 를 따져 seq 9 < 10 이 미터치였다. 규칙이
+    분 안에서 닫히면서 순서가 판정에서 빠졌고, 이 배치의 답이 **뒤집혔다** —
+    기본 기준(rep)의 벽은 그 분의 마지막 스냅샷에서 관측되므로 "이후" 만 세면
+    거의 전부 미터치가 되기 때문이다.
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -2109,9 +2159,8 @@ def test_query_day_bid_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp
     )
 
     assert peak is not None
-    assert peak.traded_peaks == ()
-    _assert_no_post_touch_scalars(peak)
-    assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000)
+    assert peak.traded_peaks == (AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000),)
+    assert (peak.price, peak.qty, peak.intra_ms) == (50000, 1000, 32_400_000)
 
 
 def test_query_day_ask_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> None:
@@ -2141,7 +2190,7 @@ def test_query_day_ask_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> No
     assert peak is not None
     assert peak.traded_peaks == ()
     _assert_no_post_touch_scalars(peak)
-    assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
 def test_query_day_bid_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> None:
@@ -2171,10 +2220,13 @@ def test_query_day_bid_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> No
     assert peak is not None
     assert peak.traded_peaks == ()
     _assert_no_post_touch_scalars(peak)
-    assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
-def test_query_day_ask_peak_dual_returns_top_three_ranked_post_touch_and_post_untouched_candidates(tmp_path: Path) -> None:
+def test_query_day_ask_peak_dual_returns_top_three_ranked_touched_candidates(tmp_path: Path) -> None:
+    """가격이 다른 상위 3개까지 방출. **분 604~606 의 51000대 벽은 체결 가격(52000)
+    아래인데도** 후보가 아니다 — 그 분에 체결이 없기 때문이다(ADR-0156).
+    """
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
     write_parquet(
@@ -2194,7 +2246,13 @@ def test_query_day_ask_peak_dual_returns_top_three_ranked_post_touch_and_post_un
         ],
         snapshots_path,
     )
-    write_trades([_trade(100330000, 50300)], trades_path)
+    # 분 600·601·602 에만 체결. 가격 52000 은 51000·51100·51200 벽도 **지배하지만**,
+    # 그 벽들은 분 604·605·606 에 있어 터치되지 않는다.
+    write_trades([
+        _trade(100003000, 52000),
+        _trade(100103000, 52000),
+        _trade(100203000, 52000),
+    ], trades_path)
 
     peak = query_day_ask_peak_dual(
         _con_for(snapshots_path),
@@ -2216,20 +2274,13 @@ def test_query_day_ask_peak_dual_returns_top_three_ranked_post_touch_and_post_un
         AskPeakCandidateRow(price=50100, qty=1800, intra_ms=36_070_000),
         AskPeakCandidateRow(price=50200, qty=1700, intra_ms=36_130_000),
     )
-    assert peak.untraded_peaks == (
-        AskPeakCandidateRow(price=51000, qty=1200, intra_ms=36_290_000),
-        AskPeakCandidateRow(price=51100, qty=1100, intra_ms=36_350_000),
-        AskPeakCandidateRow(price=51200, qty=1000, intra_ms=36_410_000),
-    )
-    assert peak.untraded_max_peaks == (
-        AskPeakCandidateRow(price=51000, qty=2200, intra_ms=36_250_000),
-        AskPeakCandidateRow(price=51100, qty=2100, intra_ms=36_310_000),
-        AskPeakCandidateRow(price=51200, qty=2000, intra_ms=36_370_000),
-    )
+    # 51000대 벽은 체결가 52000 아래지만 **다른 분**이라 전부 탈락.
+    assert {c.price for c in peak.traded_peaks}.isdisjoint({51000, 51100, 51200})
+    assert {c.price for c in peak.traded_max_peaks}.isdisjoint({51000, 51100, 51200})
 
 
 def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_path) -> None:
-    """미체결 포함 과거일 peak도 동시호가/VI 3호가 collapsed book을 제외한다."""
+    """`all_*`(터치 무관) 과거일 peak도 동시호가/VI 3호가 collapsed book을 제외한다."""
     z = tuple([0] * 10)
     collapsed = Orderbook(
         ts_ms=100000000, seq=1,
@@ -2261,13 +2312,14 @@ def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_pat
     )
 
     assert peak is not None
-    assert peak.traded_peaks == ()
-    _assert_no_post_touch_scalars(peak)
+    # 붕괴책의 99999 는 어느 계열에도 들어가지 않는다 — 연속책의 300 만 남는다.
+    assert peak.traded_peaks == (AskPeakCandidateRow(price=25000, qty=300, intra_ms=36_010_000),)
+    assert 99999 not in [c.qty for c in peak.all_peaks]
     assert peak.all_qty == 2000 and peak.all_price == 26000
 
 
 def test_query_day_ask_peak_dual_excludes_one_sided_collapsed_ask_book(tmp_path) -> None:
-    """매도 쪽이 3호가로 붕괴했으면 bid 쪽 depth가 남아 있어도 미체결 peak에서 제외한다."""
+    """매도 쪽이 3호가로 붕괴했으면 bid 쪽 depth가 남아 있어도 `all_*` peak에서 제외한다."""
     z = tuple([0] * 10)
     one_sided_collapsed = Orderbook(
         ts_ms=100000000, seq=1,
@@ -2377,7 +2429,8 @@ def test_query_day_bid_peak_excludes_auction_and_session_boundaries(tmp_path) ->
     assert dual.all_price == 70000 and dual.all_qty == 5000
 
 
-def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
+def test_query_day_bid_peak_dual_splits_touched_and_all(tmp_path) -> None:
+    """체결가와 같은 최우선 매수벽만 체결로 잡히고, 더 깊은 최대 벽은 `all_*` 로 간다."""
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
 
     snapshots = tmp_path / "snapshots.parquet"
@@ -2407,18 +2460,8 @@ def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
     assert (peak.all_max_price, peak.all_max_qty, peak.all_max_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
     assert peak.all_peaks[0] == AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000)
     assert peak.all_max_peaks[0] == AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000)
-    assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
-    assert (peak.untraded_max_price, peak.untraded_max_qty, peak.untraded_max_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
-    assert peak.untraded_peaks == (
-        AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000),
-        AskPeakCandidateRow(price=69000, qty=9000, intra_ms=32400000),
-        AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),
-    )
-    assert peak.untraded_max_peaks == (
-        AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000),
-        AskPeakCandidateRow(price=69000, qty=9000, intra_ms=32400000),
-        AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),
-    )
+    # 09:01 분에는 체결이 없으므로 그 분의 12000 벽은 체결이 아니다.
+    assert {c.price for c in peak.traded_peaks} == {70000}
 
 
 # ---------------------------------------------------------------------------
@@ -2521,12 +2564,16 @@ def _pathological_peak_dataset(
     return snapshots_path, trades_path
 
 
-# ── 스위프 분류기 유닛 테스트 (SQL 의미론의 inclusive/exclusive 비대칭 고정) ──
+# ── 분 스코프 분류기 유닛 테스트 (ADR-0156 의 판정 축을 프레임 단위로 고정) ──
+#
+# ⚠ 이 테스트들이 거는 것은 **분 경계**와 **가격 지배 방향** 둘뿐이다. 시각·순번의
+# 전후 관계는 이제 판정에 들어가지 않으므로 여기서 재지 않는다(재려는 시도가
+# ADR-0084 의 잔재다).
 
 
 def _ev_frame(rows: list[tuple[int, int, int, int]]) -> pl.DataFrame:
-    """(ts, seq, price, qty) 튜플들 → _classify_wall_frame 이벤트 프레임."""
-    cols = ("ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id")
+    """(intra_ms, seq, price, qty) 튜플들 → _classify_wall_frame 이벤트 프레임."""
+    cols = ("ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id", "minute_id")
     return pl.DataFrame(
         {
             "ts_ms": [r[0] for r in rows],
@@ -2535,48 +2582,62 @@ def _ev_frame(rows: list[tuple[int, int, int, int]]) -> pl.DataFrame:
             "qty": [r[3] for r in rows],
             "intra_ms": [r[0] for r in rows],
             "bucket_id": [0] * len(rows),
+            "minute_id": [r[0] // 60_000 for r in rows],
         },
         schema_overrides={c: pl.Int64 for c in cols},
     )
 
 
-def _tk_frame(rows: list[tuple[int, int, int]]) -> pl.DataFrame:
-    """(ts, seq, price) 튜플들 → _classify_wall_frame 터치 프레임."""
+def _tk_frame(rows: list[tuple[int, int]]) -> pl.DataFrame:
+    """(intra_ms, price) 튜플들 → _classify_wall_frame 터치 프레임."""
     return pl.DataFrame(
         {
-            "ts_ms": [r[0] for r in rows],
-            "seq": [r[1] for r in rows],
-            "price": [r[2] for r in rows],
+            "minute_id": [r[0] // 60_000 for r in rows],
+            "price": [r[1] for r in rows],
         },
-        schema_overrides={c: pl.Int64 for c in ("ts_ms", "seq", "price")},
+        schema_overrides={c: pl.Int64 for c in ("minute_id", "price")},
     )
 
 
-def test_sweep_same_key_touch_counts_as_touched() -> None:
-    cls = _classify_wall_frame(_ev_frame([(1000, 5, 50000, 10)]), _tk_frame([(1000, 5, 50000)]), side="ask")
-    assert cls["touched"].to_list() == [True]  # 같은 (ts,seq) 터치는 touched (>= 규칙)
+def test_classify_same_minute_touch_counts() -> None:
+    cls = _classify_wall_frame(_ev_frame([(1000, 5, 50000, 10)]), _tk_frame([(1000, 50000)]), side="ask")
+    assert cls["touched"].to_list() == [True]  # 같은 분 · 같은 가격 → 지배( >= )
 
 
-def test_sweep_same_ms_earlier_seq_does_not_touch() -> None:
-    cls = _classify_wall_frame(_ev_frame([(1000, 5, 50000, 10)]), _tk_frame([(1000, 4, 50000)]), side="ask")
-    assert cls["touched"].to_list() == [False]  # 같은 ms의 더 이른 seq 터치는 미포함
+def test_classify_earlier_touch_in_same_minute_counts() -> None:
+    """체결이 벽보다 **앞서도** 같은 분이면 터치 — 순서는 판정에 들어가지 않는다."""
+    cls = _classify_wall_frame(_ev_frame([(59_000, 5, 50000, 10)]), _tk_frame([(1_000, 50000)]), side="ask")
+    assert cls["touched"].to_list() == [True]
 
 
-def test_sweep_lifecycle_reopens_after_touch() -> None:
-    # 벽 관측 → 지배 터치 → 같은 가격 재관측: 재관측은 새 lifecycle이라
-    # (price, is_touched=False) best로 남아야 한다 (untraded).
-    events = _ev_frame([(1000, 1, 50000, 100), (3000, 3, 50000, 40)])
-    cls = _classify_wall_frame(events, _tk_frame([(2000, 2, 50000)]), side="ask")
-    # lifecycle id는 더 이상 계산하지 않는다(모듈 헤더 정리: 세그먼트는 touched
-    # 순수 → (price, touched) 전역 rank-1과 동치). 관측 계약만 고정한다.
-    by_touched = {row["touched"]: row for row in _peak_distinct(cls).to_dicts()}
-    assert by_touched[True]["qty"] == 100   # 터치 전 벽 (touched 클래스 best)
-    assert by_touched[False]["qty"] == 40   # 터치 후 재관측 벽 (untouched best)
+def test_classify_touch_in_neighbouring_minute_does_not_count() -> None:
+    """1ms 차이라도 **분이 갈리면** 아니다 — ADR-0156 이 옮긴 판정 축이 여기다.
+
+    막는 방향: 창이 분보다 넓어지는 쪽(차트 봉 단위·하루 전체 모두 여기서 빨개진다).
+    """
+    events = _ev_frame([(60_000, 5, 50000, 10)])           # 분 1
+    assert _classify_wall_frame(events, _tk_frame([(59_999, 50000)]), side="ask")["touched"].to_list() == [False]
+    assert _classify_wall_frame(events, _tk_frame([(120_000, 50000)]), side="ask")["touched"].to_list() == [False]
 
 
-def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:
+def test_classify_uses_minute_extreme_not_last_touch() -> None:
+    """분 안에 여러 체결이 있으면 **극값**이 판정한다(마지막 값이 아니라)."""
+    events = _ev_frame([(30_000, 1, 50000, 10)])
+    touches = _tk_frame([(1_000, 50000), (2_000, 49000)])   # 마지막은 미달, 극값은 도달
+    assert _classify_wall_frame(events, touches, side="ask")["touched"].to_list() == [True]
+
+
+def test_classify_touched_distinct_keeps_best_per_price() -> None:
+    """같은 가격의 터치된 이벤트는 하나(rank-1)로 접힌다."""
+    events = _ev_frame([(1_000, 1, 50000, 100), (3_000, 3, 50000, 40)])
+    cls = _classify_wall_frame(events, _tk_frame([(2_000, 50000)]), side="ask")
+    rows = _peak_touched_distinct(cls).to_dicts()
+    assert [r["qty"] for r in rows] == [100]
+
+
+def test_classify_bid_side_uses_lower_or_equal_domination() -> None:
     # bid에선 고가 터치(50100)가 저가 벽(50000)을 지배하지 않는다.
-    cls = _classify_wall_frame(_ev_frame([(1000, 1, 50000, 10)]), _tk_frame([(2000, 2, 50100)]), side="bid")
+    cls = _classify_wall_frame(_ev_frame([(1000, 1, 50000, 10)]), _tk_frame([(2000, 50100)]), side="bid")
     assert cls["touched"].to_list() == [False]
 
 

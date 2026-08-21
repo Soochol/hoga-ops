@@ -794,42 +794,34 @@ class AskPeakCandidateRow:
     intra_ms: int
 
 
-# ── Peak-wall columnar sweep classifier (ADR-0085 v2) ────────────────────────
+#: 터치 판정 창의 고정 해상도(ADR-0156)이자 peak rep 캐시의 고정 해상도.
+#: 두 역할이 같은 값인 것은 우연이 아니다 — 분 스코프 판정이라야 1분 rep 행의
+#: ``touched`` 가 표시 봉과 무관해지고, 굵은 봉을 스캔 없이 파생할 수 있다.
+ONE_MINUTE_MS = 60_000
+
+
+# ── Peak-wall minute-scoped touch classifier (ADR-0156) ──────────────────────
 #
-# History: the single-SQL classifier (ADR-0084) materialised a non-equi join —
-# 17GB RSS / 155s on the worst day (20260623/000660). ADR-0085 replaced it with
-# a pure-Python Fenwick sweep over ``_WallEvent`` dataclass streams (identical
-# semantics, O((N+M) log M)) — but materialising ~2M dataclasses cost ~1GB RSS
-# and ~6s on a heavy day (measured 034020/20260116), and the pure-Python sweep
-# is GIL-bound, so concurrent computes serialise (12-way: 94s wall vs 77s
-# sequential — measured 2026-07-11).
+# 터치 판정은 **벽이 관측된 그 1분 안의 체결**만 본다. 즉 이벤트 ``e`` 는 ``e`` 와
+# 같은 1분 버킷(``minute_id``)에 속한 연속거래 체결 중 가격으로 지배하는 것이
+# 하나라도 있으면 touched 다 (ask: ``touch.price >= e.price``; bid: ``<=``).
+# 같은 분 안이면 체결이 ``e`` 보다 앞섰든 뒤섰든 무관하다 — 기본 기준(rep)의 벽은
+# 그 분의 **마지막** 스냅샷에서 관측되므로 "이후" 만 세면 거의 전부 미터치가 된다.
 #
-# This columnar version keeps the exact sweep semantics but moves the data
-# plane to polars (Rust, GIL-released): DuckDB → Arrow → polars frames,
-# is_touched as a merged-timeline reverse cumulative extreme, and all
-# ranking/dedup reductions as frame ops. No Python loop remains.
+# History (왜 이렇게 단순해졌는가): ADR-0084 는 "이벤트 이후 **아무 때나**" 를 썼다.
+# 그 관계는 하루 전체에 걸치므로 non-equi join(17GB RSS / 155s) → Fenwick 스윕
+# (ADR-0085, ~1GB RSS · GIL 바운드) → 병합 타임라인 역누적 극값(ADR-0085 v2, polars)
+# 순으로 세 번 다시 구현됐다. ADR-0156 이 관계를 **1분 안으로 닫으면서** 그 기계가
+# 전부 불필요해졌다: 분당 체결가 극값 하나 + left join 이면 끝이다. 부수 효과로
+# 체결틱의 ``seq`` 가 판정에서 빠져 trades parquet 의 seq 컬럼 유무도 무관해졌다.
 #
-# Semantics contract (must match the ADR-0085 sweep exactly; oracle-tested in
-# tests/test_peak_sweep_oracle.py against a frozen copy):
-#   rank       — qty DESC, intra_ms ASC, seq ASC, price ASC.
-#   is_touched — event ``e`` is touched iff some touch with ``(ts, seq) >= e``'s
-#                dominates it price-wise (ask: ``touch.price >= e.price``;
-#                bid: ``<=``). Same-``(ts, seq)`` touches ARE included.
+# lifecycle 세그먼트(ADR-0085 의 Fenwick pass 2)는 계산하지 않는다 — "지배 터치
+# 사이의 구간" 이라는 정의 자체가 전역 시간 관계였고, 새 규칙엔 대응물이 없다.
+# per-price rank-1 로 직접 붕괴한다(`_peak_touched_distinct`).
 #
-# lifecycle 세그먼트(엄격히-이른 지배 터치 기준 분할, ADR-0085의 Fenwick pass 2)는
-# 계산하지 않는다 — 최종 출력에 잉여임이 증명되어 삭제했다 (ADR-0085 v2.1):
-#
-#   정리: 모든 (price, lifecycle) 세그먼트는 touched 값이 순수하다.
-#   증명: 가격 p의 지배 터치들을 키 순서로 d_1 < d_2 < … < d_K라 하자.
-#     count(e) = |{ d_i < key(e) }| 는 세그먼트 키와 동치다(둘 다 "사이에 지배
-#     터치가 없는" 이벤트를 같은 그룹으로 묶는다). count(e) = c < K 이면
-#     d_{c+1} ≥ key(e) 가 존재 → touched. count(e) = K 이면 모든 d_i < key(e)
-#     → 어떤 지배 터치도 ≥ key(e) 가 아님 → untouched. ∎
-#   따름정리: distinct_best[(p, X)] = "클래스 X 이벤트 전역 rank-1"
-#     (순수 세그먼트들의 세그먼트-최댓값들의 최댓값 = 클래스 전역 최댓값).
-#   → per-event lifecycle id가 불필요하고, per-(price,lifecycle) 중간 dedup도
-#   per-(price,touched) rank-1로 직접 붕괴한다. 동결 오라클(퍼즈 + 실데이터)이
-#   이 동치를 경험적으로 재확인한다.
+# Semantics contract (동결 오라클 tests/test_peak_sweep_oracle.py 가 대조):
+#   rank       — qty DESC, intra_ms ASC, seq ASC, price ASC. (변경 없음)
+#   is_touched — 같은 ``minute_id`` 의 체결 극값이 가격으로 지배하는가.
 
 _PEAK_RANK_BY = ["qty", "intra_ms", "seq", "price"]
 _PEAK_RANK_DESC = [True, False, False, False]
@@ -846,61 +838,43 @@ def _classify_wall_frame(
     *,
     side: str,
 ) -> pl.DataFrame:
-    """Columnar sweep: ``events`` + ``touched`` column.
+    """분 스코프 터치 조인: ``events`` + ``touched`` 컬럼.
 
-    ``events`` needs columns ts_ms/seq/price/qty/intra_ms/bucket_id (Int64);
-    ``touches`` needs ts_ms/seq/price (Int64). Both may arrive unsorted.
+    ``events`` 는 ts_ms/seq/price/qty/intra_ms/bucket_id/minute_id (Int64) 가,
+    ``touches`` 는 minute_id/price (Int64) 가 필요하다. 둘 다 정렬 없이 와도 된다.
+
+    ⚠ 반환 행 순서는 ``(ts_ms, seq)`` 오름차순이다 — join 이 순서를 보장하지 않으므로
+    ``_ord`` 로 되돌린다. 호출부(`_peak_rep_rows`)가 이 순서에 의존한다.
     """
     is_ask = side == "ask"
     ev = events.sort(["ts_ms", "seq"])
-    n = ev.height
-    if n == 0:
+    if ev.height == 0:
         return ev.with_columns(pl.lit(False).alias("touched"))
-    tch = touches.sort(["ts_ms", "seq", "price"])
-
-    # is_touched via merged-timeline reverse cumulative extreme.
-    # Event rows (kind=0) sort BEFORE same-(ts,seq) touch rows (kind=1), so the
-    # suffix extreme at an event row includes same-key touches — the oracle's
-    # ``(t.ts, t.seq) >= (e.ts, e.seq)`` inclusion. cum_max/cum_min accumulate
-    # across nulls but leave null positions null → forward_fill carries the
-    # running extreme onto event rows.
-    merged = pl.concat([
-        ev.select(
-            "ts_ms", "seq",
-            pl.lit(0, pl.Int8).alias("kind"),
-            pl.lit(None, pl.Int64).alias("tprice"),
-            pl.int_range(0, pl.len(), dtype=pl.Int64).alias("eidx"),
-        ),
-        tch.select(
-            "ts_ms", "seq",
-            pl.lit(1, pl.Int8).alias("kind"),
-            pl.col("price").alias("tprice"),
-            pl.lit(None, pl.Int64).alias("eidx"),
-        ),
-    ]).sort(["ts_ms", "seq", "kind"])
-    rev = merged["tprice"].reverse()
-    rev = (rev.cum_max() if is_ask else rev.cum_min()).forward_fill()
-    fut = (
-        merged.with_columns(rev.reverse().alias("fut"))
-        .filter(pl.col("kind") == 0)
-        .sort("eidx")["fut"]
+    ev = ev.with_columns(pl.int_range(0, pl.len(), dtype=pl.Int64).alias("_ord"))
+    agg = pl.col("price").max() if is_ask else pl.col("price").min()
+    extreme = touches.group_by("minute_id").agg(agg.alias("_touch_extreme"))
+    dominates = (
+        (pl.col("_touch_extreme") >= pl.col("price"))
+        if is_ask
+        else (pl.col("_touch_extreme") <= pl.col("price"))
     )
-    touched = (fut >= ev["price"]) if is_ask else (fut <= ev["price"])
-    touched = touched.fill_null(False)
-
-    return ev.with_columns(touched.alias("touched"))
+    return (
+        ev.join(extreme, on="minute_id", how="left")
+        .sort("_ord")
+        .with_columns(dominates.fill_null(value=False).alias("touched"))
+        .drop(["_ord", "_touch_extreme"])
+    )
 
 
 @dataclass(frozen=True)
 class AskPeakDualRow:
-    """Day ask peak split into post-touch, all-level, and post-untouched views.
+    """Day ask peak split into touched and all-level views (ADR-0156).
 
-    ``price``/``qty``/``intra_ms`` and ``max_*`` are the legacy rank-1 carriers
-    for post-touch ask events and stay ``None`` when no post-touch candidate
-    exists. ``all_*`` fields use every eligible ask level regardless of touch
-    state. ``untraded_*`` is the legacy rank-1 wire for post-untouched asks,
-    while ``untraded_*_peaks`` preserves the full ranked candidates array. All
-    variants share the same continuous-book/session filters.
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are the rank-1 carriers for
+    **동일분 터치** ask events (그 벽이 관측된 1분 안에서 체결이 그 가격을 친
+    벽) and stay ``None`` when no touched candidate exists. ``all_*`` fields use
+    every eligible ask level regardless of touch state. Both variants share
+    the same continuous-book/session filters.
     """
     price: int | None
     qty: int | None
@@ -918,14 +892,6 @@ class AskPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
-    untraded_price: int | None = None
-    untraded_qty: int | None = None
-    untraded_intra_ms: int | None = None
-    untraded_max_price: int | None = None
-    untraded_max_qty: int | None = None
-    untraded_max_intra_ms: int | None = None
-    untraded_peaks: tuple[AskPeakCandidateRow, ...] = ()
-    untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -950,14 +916,13 @@ class BidPeakRow:
 
 @dataclass(frozen=True)
 class BidPeakDualRow:
-    """Day bid peak split into post-touch, all-level, and post-untouched views.
+    """Day bid peak split into touched and all-level views (ADR-0156).
 
-    ``price``/``qty``/``intra_ms`` and ``max_*`` are the legacy rank-1 carriers
-    for post-touch bid events and stay ``None`` when no post-touch candidate
-    exists. ``all_*`` fields use every eligible bid level regardless of touch
-    state. ``untraded_*`` is the legacy rank-1 wire for post-untouched bids,
-    while ``untraded_*_peaks`` preserves the full ranked candidates array. All
-    variants share the same continuous-book/session filters.
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are the rank-1 carriers for
+    **동일분 터치** bid events (그 벽이 관측된 1분 안에서 체결이 그 가격을 친
+    벽) and stay ``None`` when no touched candidate exists. ``all_*`` fields use
+    every eligible bid level regardless of touch state. Both variants share
+    the same continuous-book/session filters.
     """
     price: int | None
     qty: int | None
@@ -975,14 +940,6 @@ class BidPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
-    untraded_price: int | None = None
-    untraded_qty: int | None = None
-    untraded_intra_ms: int | None = None
-    untraded_max_price: int | None = None
-    untraded_max_qty: int | None = None
-    untraded_max_intra_ms: int | None = None
-    untraded_peaks: tuple[AskPeakCandidateRow, ...] = ()
-    untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -1957,7 +1914,7 @@ def query_day_ask_peak_dual(
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> AskPeakDualRow | None:
-    """Past-day ask peak split into post-touch and post-untouched variants."""
+    """Past-day ask peak — 동일분 터치 벽과 전체 벽(ADR-0156)."""
     ask_row, _bid_row = query_day_ask_bid_peak_dual(
         con,
         path=path,
@@ -2031,7 +1988,7 @@ def query_day_bid_peak_dual(
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> BidPeakDualRow | None:
-    """Past-day bid peak split into post-touch and post-untouched variants."""
+    """Past-day bid peak — 동일분 터치 벽과 전체 벽(ADR-0156)."""
     _ask_row, bid_row = query_day_ask_bid_peak_dual(
         con,
         path=path,
@@ -2051,14 +2008,17 @@ def _read_peak_wall_frames(
     bucket_ms: int,
     where: str,
     intra: str,
-    trade_seq_expr: str,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Linear SQL scans → polars frames for the columnar sweep classifier.
+    """Linear SQL scans → polars frames for the minute-scoped classifier.
 
     Reuses the (linear) ``cont``/``rep`` bucketing + 10-level unpivot of the old
     query, but fetches via Arrow into columnar frames — NO per-row Python
     objects (the ADR-0085 dataclass streams cost ~1GB RSS on a heavy day),
     NO non-equi join, NO UNBOUNDED window.
+
+    ``minute_id`` 는 터치 판정 창(ADR-0156)이고 ``bucket_id`` 는 표시 봉이다 —
+    **다른 축이므로 둘 다 실어 보낸다.** 체결 쪽은 ``minute_id``/``price`` 만
+    필요하다: 판정이 분 안에서 닫히므로 체결틱의 시각·순번이 쓰이지 않는다.
     """
     level_selects: list[str] = []
     for source in ("cont", "rep"):
@@ -2067,7 +2027,7 @@ def _read_peak_wall_frames(
                 level_selects.append(
                     f"SELECT '{side}' AS side, '{source}' AS source, ts_ms, seq, "
                     f"{price_prefix}{i} AS price, {qty_prefix}{i} AS qty, "
-                    f"{intra} AS intra_ms, bucket_id "
+                    f"{intra} AS intra_ms, bucket_id, minute_id "
                     f"FROM {source} WHERE {qty_prefix}{i} > 0"
                 )
     events = con.execute(
@@ -2075,6 +2035,7 @@ def _read_peak_wall_frames(
         WITH cont AS (
           SELECT *,
                  ({intra} // {int(bucket_ms)}) AS bucket_id,
+                 ({intra} // {ONE_MINUTE_MS}) AS minute_id,
                  ROW_NUMBER() OVER (
                    PARTITION BY ({intra} // {int(bucket_ms)})
                    ORDER BY ts_ms DESC, seq DESC
@@ -2088,21 +2049,21 @@ def _read_peak_wall_frames(
     ).pl()
     touches = con.execute(
         f"""
-        SELECT ts_ms, {trade_seq_expr} AS seq, price
+        SELECT ({intra} // {ONE_MINUTE_MS}) AS minute_id, price
         FROM read_parquet(?)
         WHERE side IN (1, -1) AND price > 0
         """,
         [str(trades_path)],
     ).pl()
 
-    num_cols = ["ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id"]
+    num_cols = ["ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id", "minute_id"]
     events = events.with_columns(
         [pl.col(c).fill_null(0).cast(pl.Int64) for c in num_cols]
         # 2M행 Utf8 두 컬럼은 정렬·복사 비용이 지배적 — 사전형으로 격하.
         + [pl.col("side").cast(pl.Categorical), pl.col("source").cast(pl.Categorical)],
     )
     touches = touches.with_columns(
-        [pl.col(c).fill_null(0).cast(pl.Int64) for c in ("ts_ms", "seq", "price")],
+        [pl.col(c).fill_null(0).cast(pl.Int64) for c in ("minute_id", "price")],
     )
     return events, touches
 
@@ -2130,10 +2091,6 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
         return None
     row = _peak_rank_sort(df).row(0, named=True)
     return (row["price"], row["qty"], row["intra_ms"])
-
-
-#: peak rep 캐시의 고정 해상도. 더 굵은 봉은 이 행들을 묶어 파생한다.
-ONE_MINUTE_MS = 60_000
 
 
 def tick_from_ladder_prices(prices: Sequence[int]) -> int:
@@ -2247,27 +2204,24 @@ def reaggregate_peak_rep(
     all_close = _peak_scalar(rep)
     if all_close is None:
         return None
-    rep_distinct = _peak_distinct(rep)
-    rep_traded = rep_distinct.filter(pl.col("touched"))
-    rep_untraded = rep_distinct.filter(~pl.col("touched"))
+    rep_traded = _peak_touched_distinct(rep)
     return {
         "side": side,
         "all_close": all_close,
         "traded_close": _peak_scalar(rep_traded),
-        "untraded_close": _peak_scalar(rep_untraded),
         "traded_peaks": _peak_candidates(rep_traded, 3),
-        "untraded_peaks": _peak_candidates(rep_untraded, 3),
     }
 
 
-def _peak_distinct(classified: pl.DataFrame) -> pl.DataFrame:
-    """Best per (price, touched) — mirrors ``{side}_{src}_lifecycle_distinct``.
+def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
+    """터치된 이벤트만 남기고 **가격당 rank-1** — 같은 가격이 top-N 슬롯을 독식하지
+    않게 한다.
 
-    구 구현의 per-(price, lifecycle) 중간 dedup은 생략한다: 세그먼트가 touched
-    순수(모듈 헤더의 정리)이므로 클래스 전역 rank-1과 결과가 동일하다. 동결
-    오라클(lifecycle 기계 포함)과의 전 필드 일치가 이 동치의 경험적 재확인."""
-    return _peak_rank_sort(classified).unique(
-        subset=["price", "touched"], keep="first", maintain_order=True,
+    ADR-0084 시절의 per-(price, lifecycle) 중간 dedup 은 대응물이 없다: lifecycle 은
+    "지배 터치 사이의 구간" 이라는 전역 시간 관계였고, ADR-0156 의 판정은 분 안에서
+    닫힌다. 가격당 rank-1 로 직접 붕괴한다."""
+    return _peak_rank_sort(classified.filter(pl.col("touched"))).unique(
+        subset=["price"], keep="first", maintain_order=True,
     )
 
 
@@ -2286,23 +2240,20 @@ def query_day_ask_bid_peak_dual_with_rep(
     이 행들을 캐시해 두면 더 굵은 봉은 파케이를 다시 읽지 않고
     `reaggregate_peak_rep` 로 만들 수 있다(근거는 그 함수 docstring).
 
-    Columnar-sweep implementation (ADR-0085 v2/v2.1): two linear SQL scans
-    fetched into polars frames + a fully columnar classifier
-    (``_classify_wall_frame``) — no Python loop. The lifecycle segmentation of
-    the original sweep is provably redundant to the output (see the module
-    header theorem) and is not computed. Identical results to the ADR-0085
-    dataclass sweep (oracle-tested), GIL-released end to end. Public signature
-    and returned dataclasses are unchanged.
+    두 번의 선형 SQL 스캔 → polars 프레임 + 컬럼형 분류기(``_classify_wall_frame``)
+    — 파이썬 루프 없음, GIL 해제 상태로 끝까지 간다. 터치 판정은 **벽이 관측된
+    1분 안의 체결**만 본다(ADR-0156); ADR-0084/0085 의 lifecycle 세그먼트는 대응물이
+    없어 계산하지 않는다(모듈 헤더 참조). 반환 dataclass 에서 ``untraded_*``
+    (사후미터치) 계열이 빠졌다.
     """
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
     where = _book_indicator_eligible_sql(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
 
     events, touches = _read_peak_wall_frames(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
-        where=where, intra=intra, trade_seq_expr=trade_seq_expr,
+        where=where, intra=intra,
     )
 
     rep_rows_out: list[PeakRepRow] = []
@@ -2324,24 +2275,16 @@ def query_day_ask_bid_peak_dual_with_rep(
         if all_close is None or all_max is None:
             return None
 
-        rep_distinct = _peak_distinct(rep)
-        cont_distinct = _peak_distinct(cont)
-        rep_traded = rep_distinct.filter(pl.col("touched"))
-        rep_untraded = rep_distinct.filter(~pl.col("touched"))
-        cont_traded = cont_distinct.filter(pl.col("touched"))
-        cont_untraded = cont_distinct.filter(~pl.col("touched"))
+        rep_traded = _peak_touched_distinct(rep)
+        cont_traded = _peak_touched_distinct(cont)
 
         return {
             "all_close": all_close,
             "all_max": all_max,
             "traded_close": _peak_scalar(rep_traded),
             "traded_max": _peak_scalar(cont_traded),
-            "untraded_close": _peak_scalar(rep_untraded),
-            "untraded_max": _peak_scalar(cont_untraded),
             "traded_peaks": _peak_candidates(rep_traded, 3),
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
-            "untraded_peaks": _peak_candidates(rep_untraded, 3),
-            "untraded_max_peaks": _peak_candidates(cont_untraded, 3),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
         }
@@ -2352,7 +2295,6 @@ def query_day_ask_bid_peak_dual_with_rep(
     ask_row: AskPeakDualRow | None = None
     if ask is not None:
         tc, tm = ask["traded_close"], ask["traded_max"]
-        uc, um = ask["untraded_close"], ask["untraded_max"]
         ask_row = AskPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2360,17 +2302,11 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
-            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
-            untraded_intra_ms=uc[2] if uc else None,
-            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
-            untraded_max_intra_ms=um[2] if um else None,
-            untraded_peaks=ask["untraded_peaks"], untraded_max_peaks=ask["untraded_max_peaks"],
         )
 
     bid_row: BidPeakDualRow | None = None
     if bid is not None:
         tc, tm = bid["traded_close"], bid["traded_max"]
-        uc, um = bid["untraded_close"], bid["untraded_max"]
         bid_row = BidPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2378,11 +2314,6 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
-            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
-            untraded_intra_ms=uc[2] if uc else None,
-            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
-            untraded_max_intra_ms=um[2] if um else None,
-            untraded_peaks=bid["untraded_peaks"], untraded_max_peaks=bid["untraded_max_peaks"],
         )
     return ask_row, bid_row, rep_rows_out
 

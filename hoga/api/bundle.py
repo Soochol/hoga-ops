@@ -719,8 +719,6 @@ def _ask_candidate(date: str, c: snapshots_tbl.AskPeakCandidateRow) -> dict[str,
 
 
 def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> AskPeak:
-    untraded_peaks = [_ask_candidate(date, c) for c in row.untraded_peaks]
-    untraded_max_peaks = [_ask_candidate(date, c) for c in row.untraded_max_peaks]
     return AskPeak(
         date=date, price=row.price, qty=row.qty,
         t_ms=_unix_or_none(date, row.intra_ms),
@@ -734,28 +732,10 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
-        untraded_price=untraded_peaks[0]["price"] if untraded_peaks else row.untraded_price,
-        untraded_qty=untraded_peaks[0]["qty"] if untraded_peaks else row.untraded_qty,
-        untraded_t_ms=untraded_peaks[0]["t_ms"] if untraded_peaks else _unix_or_none(date, row.untraded_intra_ms),
-        untraded_max_price=(
-            untraded_max_peaks[0]["price"] if untraded_max_peaks else row.untraded_max_price
-        ),
-        untraded_max_qty=(
-            untraded_max_peaks[0]["qty"] if untraded_max_peaks else row.untraded_max_qty
-        ),
-        untraded_max_t_ms=(
-            untraded_max_peaks[0]["t_ms"]
-            if untraded_max_peaks
-            else _unix_or_none(date, row.untraded_max_intra_ms)
-        ),
-        untraded_peaks=untraded_peaks,
-        untraded_max_peaks=untraded_max_peaks,
     )
 
 
 def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> BidPeak:
-    untraded_peaks = [_ask_candidate(date, c) for c in row.untraded_peaks]
-    untraded_max_peaks = [_ask_candidate(date, c) for c in row.untraded_max_peaks]
     return BidPeak(
         date=date, price=row.price, qty=row.qty,
         t_ms=_unix_or_none(date, row.intra_ms),
@@ -769,22 +749,6 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
-        untraded_price=untraded_peaks[0]["price"] if untraded_peaks else row.untraded_price,
-        untraded_qty=untraded_peaks[0]["qty"] if untraded_peaks else row.untraded_qty,
-        untraded_t_ms=untraded_peaks[0]["t_ms"] if untraded_peaks else _unix_or_none(date, row.untraded_intra_ms),
-        untraded_max_price=(
-            untraded_max_peaks[0]["price"] if untraded_max_peaks else row.untraded_max_price
-        ),
-        untraded_max_qty=(
-            untraded_max_peaks[0]["qty"] if untraded_max_peaks else row.untraded_max_qty
-        ),
-        untraded_max_t_ms=(
-            untraded_max_peaks[0]["t_ms"]
-            if untraded_max_peaks
-            else _unix_or_none(date, row.untraded_max_intra_ms)
-        ),
-        untraded_peaks=untraded_peaks,
-        untraded_max_peaks=untraded_max_peaks,
     )
 
 
@@ -933,18 +897,14 @@ def _peak_with_rep_outputs(
     if reduced is None:
         return None
     close = reduced["all_close"]
-    traded, untraded = reduced["traded_close"], reduced["untraded_close"]
+    traded = reduced["traded_close"]
     return base.model_copy(update={
         "all_price": close[0], "all_qty": close[1],
         "all_t_ms": ms_from_midnight_to_unix_ms(date, close[2]),
         "price": traded[0] if traded else None,
         "qty": traded[1] if traded else None,
         "t_ms": ms_from_midnight_to_unix_ms(date, traded[2]) if traded else None,
-        "untraded_price": untraded[0] if untraded else None,
-        "untraded_qty": untraded[1] if untraded else None,
-        "untraded_t_ms": ms_from_midnight_to_unix_ms(date, untraded[2]) if untraded else None,
         "traded_peaks": [_ask_candidate(date, c) for c in reduced["traded_peaks"]],
-        "untraded_peaks": [_ask_candidate(date, c) for c in reduced["untraded_peaks"]],
         "all_peaks": [], "all_max_peaks": [],
     })
 

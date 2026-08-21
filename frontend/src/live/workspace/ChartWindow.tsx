@@ -543,10 +543,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               settledFromDate={d.activeIndexId ? d.indexSettledFromDate : d.pastSettledFromDate}
               pastDataWarnings={[...d.workareaDataWarnings]}
               dayAskPeaks={d.dayAskPeaks}
-              todayAllPriceAskPeak={d.todayAllPriceAskPeak}
               todayAskPeakInput={d.liveInitial?.ask_peak_today ?? null}
               dayBidPeaks={d.dayBidPeaks}
-              todayAllPriceBidPeak={d.todayAllPriceBidPeak}
               todayBidPeakInput={d.liveInitial?.bid_peak_today ?? null}
               liveObSnapshots={d.live.ob}
               liveTradeSnapshots={d.live.trade}
