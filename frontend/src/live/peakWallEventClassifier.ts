@@ -9,12 +9,22 @@ export type PeakWallTouchTick = {
 };
 
 export type PeakWallClassification = {
-  postTouch: AskPeakCandidate[];
-  postUntouched: AskPeakCandidate[];
+  /** 동일분 터치 벽 — 그 벽이 관측된 1분 안에서 체결이 그 가격을 친 것(ADR-0156). */
+  touched: AskPeakCandidate[];
+  /** 터치와 무관한 전체 벽 — 「보이는 영역 최대벽」의 원천. */
   all: AskPeakCandidate[];
 };
 
 const EMIT_LIMIT = 3;
+
+/** 터치 판정 창(ADR-0156). 백엔드 `snapshots.ONE_MINUTE_MS` 와 **같은 값이어야 한다** —
+ *  오늘(클라이언트 계산)과 과거일(백엔드 seed)이 같은 규칙으로 분류되는 것이 그 ADR 의
+ *  요구이고, 어긋나면 오늘이 과거일로 넘어가는 순간 판정이 조용히 바뀐다. */
+export const TOUCH_WINDOW_MS = 60_000;
+
+export function touchWindowOf(tMs: number): number {
+  return Math.floor(tMs / TOUCH_WINDOW_MS);
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -83,55 +93,53 @@ export function toTouchTicksFromTrades(
   return out;
 }
 
+/**
+ * 분 → 그 분 체결가의 극값(ask=max, bid=min).
+ *
+ * ADR-0084 시절엔 "이벤트 이후 아무 때나" 라는 전역 시간 관계라 터치를 시각순으로
+ * 정렬하고 suffix 극값 + 이진탐색을 써야 했다. ADR-0156 이 관계를 분 안으로 닫으면서
+ * **순서가 무의미해졌다** — 맵 하나면 되고, 터치가 역순으로 도착해도 답이 같다.
+ */
+export function touchExtremeByWindow(
+  touches: readonly PeakWallTouchTick[],
+  side: 'ask' | 'bid',
+): Map<number, number> {
+  const out = new Map<number, number>();
+  const isAsk = side === 'ask';
+  for (const touch of touches) {
+    const window = touchWindowOf(touch.t_ms);
+    const current = out.get(window);
+    if (current === undefined) {
+      out.set(window, touch.price);
+    } else {
+      out.set(window, isAsk ? Math.max(current, touch.price) : Math.min(current, touch.price));
+    }
+  }
+  return out;
+}
+
+export function isWallTouched(
+  event: PeakWallEvent,
+  extremeByWindow: ReadonlyMap<number, number>,
+  side: 'ask' | 'bid',
+): boolean {
+  const extreme = extremeByWindow.get(touchWindowOf(event.t_ms));
+  if (extreme === undefined) return false;
+  return side === 'ask' ? extreme >= event.price : extreme <= event.price;
+}
+
 function classifyWallEvents(
   events: readonly PeakWallEvent[],
   touches: readonly PeakWallTouchTick[],
   side: 'ask' | 'bid',
 ): PeakWallClassification {
   const dedupedEvents = uniquePeakCandidates(events);
-  const touchedByLaterTrade = makeTouchIndex(touches, side);
-  const postTouch = dedupedEvents.filter(touchedByLaterTrade);
-  const touchedKeys = new Set(postTouch.map(candidateKey));
-  const postUntouched = dedupedEvents.filter((event) => !touchedKeys.has(candidateKey(event)));
+  const extremeByWindow = touchExtremeByWindow(touches, side);
   return {
-    postTouch: rankPeakCandidates(postTouch),
-    postUntouched: rankPeakCandidates(postUntouched),
+    touched: rankPeakCandidates(
+      dedupedEvents.filter((event) => isWallTouched(event, extremeByWindow, side)),
+    ),
     all: rankPeakCandidates(dedupedEvents),
-  };
-}
-
-function lowerBoundTouchTime(touches: readonly PeakWallTouchTick[], tMs: number): number {
-  let lo = 0;
-  let hi = touches.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (touches[mid].t_ms < tMs) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function makeTouchIndex(
-  touches: readonly PeakWallTouchTick[],
-  side: 'ask' | 'bid',
-): (event: PeakWallEvent) => boolean {
-  if (touches.length === 0) return () => false;
-  const sorted = [...touches].sort((a, b) => a.t_ms - b.t_ms);
-  const extremeFromIdx = new Array<number>(sorted.length + 1);
-  extremeFromIdx[sorted.length] = side === 'ask'
-    ? Number.NEGATIVE_INFINITY
-    : Number.POSITIVE_INFINITY;
-  for (let i = sorted.length - 1; i >= 0; i -= 1) {
-    extremeFromIdx[i] = side === 'ask'
-      ? Math.max(sorted[i].price, extremeFromIdx[i + 1])
-      : Math.min(sorted[i].price, extremeFromIdx[i + 1]);
-  }
-
-  return (event) => {
-    const idx = lowerBoundTouchTime(sorted, event.t_ms);
-    if (idx >= sorted.length) return false;
-    const extreme = extremeFromIdx[idx];
-    return side === 'ask' ? extreme >= event.price : extreme <= event.price;
   };
 }
 

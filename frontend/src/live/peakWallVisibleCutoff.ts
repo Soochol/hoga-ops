@@ -18,8 +18,6 @@ type CutoffOptions = {
 type PeakWithCandidates = (AskPeak | BidPeak) & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
-  untraded_peaks?: AskPeakCandidate[];
-  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 function finiteTime(value: unknown): number | null {
@@ -115,7 +113,7 @@ function chooseCandidate(
 function cutoffNullableTriple<T extends PeakWithCandidates>(
   peak: T,
   cutoff: VisibleTimeCutoff,
-  prefix: 'untraded' | 'all',
+  prefix: 'all',
 ): Partial<T> {
   const price = peak[`${prefix}_price` as keyof T] as number | null | undefined;
   const qty = peak[`${prefix}_qty` as keyof T] as number | null | undefined;
@@ -161,9 +159,6 @@ export function applyPeakVisibleTimeCutoff<T extends PeakWithCandidates>(
       max_t_ms: selected.max.t_ms,
       traded_peaks: filterCandidatesByCutoff(peak.traded_peaks, cutoff),
       traded_max_peaks: filterCandidatesByCutoff(peak.traded_max_peaks, cutoff),
-      untraded_peaks: filterCandidatesByCutoff(peak.untraded_peaks, cutoff),
-      untraded_max_peaks: filterCandidatesByCutoff(peak.untraded_max_peaks, cutoff),
-      ...cutoffNullableTriple(peak, cutoff, 'untraded'),
       ...cutoffNullableTriple(peak, cutoff, 'all'),
     });
   }

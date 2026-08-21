@@ -26,8 +26,6 @@ describe('LivePeakWallDockedLabels', () => {
         bidPeakEnabled: false,
         askPeakColor: '#1D4ED8',
         askPeakLineWidth: 2,
-        askPeakAllPriceColor: '#F97316',
-        askPeakAllPriceLineWidth: 1,
         askPeakVisibleMaxColor: '#EAB308',
         askPeakVisibleMaxLineWidth: 3,
       });
@@ -58,6 +56,15 @@ describe('LivePeakWallDockedLabels', () => {
       detachPrimitive: vi.fn(),
     } as unknown as ISeriesApi<SeriesType>;
     const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
+    // 벽 2개를 그리게 한다(체결된 벽 표시 개수 = 2) — 이 테스트의 주제는 "그려진 벽마다
+    // 라벨이 붙는가" 이므로 벽이 둘 이상이어야 의미가 있다.
+    act(() => {
+      useChartPrefsStore.setState({ askPeakAllPriceRankLimit: 2 });
+    });
+    const candidates = [
+      { price: 100, qty: 100, t_ms: open },
+      { price: 105, qty: 300, t_ms: open + 60_000 },
+    ];
     const askPeak: AskPeak = {
       date: day,
       price: 100,
@@ -66,12 +73,8 @@ describe('LivePeakWallDockedLabels', () => {
       max_price: 100,
       max_qty: 100,
       max_t_ms: open,
-      untraded_price: 105,
-      untraded_qty: 300,
-      untraded_t_ms: open + 60_000,
-      untraded_max_price: 105,
-      untraded_max_qty: 300,
-      untraded_max_t_ms: open + 60_000,
+      traded_peaks: candidates,
+      traded_max_peaks: candidates,
     };
     const segments: RangeSegment[] = [{
       date: day,
@@ -84,9 +87,7 @@ describe('LivePeakWallDockedLabels', () => {
         paneSeries={paneSeries}
         axis={axis}
         dayAskPeaks={[askPeak]}
-        todayAllPriceAskPeak={null}
         dayBidPeaks={[]}
-        todayAllPriceBidPeak={null}
         segments={segments}
         candles={[candle(open), candle(open + 60_000)]}
         todayKst={day}
@@ -134,12 +135,6 @@ describe('LivePeakWallDockedLabels', () => {
       max_price: 100,
       max_qty: 100,
       max_t_ms: open,
-      untraded_price: 105,
-      untraded_qty: 300,
-      untraded_t_ms: open + 60_000,
-      untraded_max_price: 105,
-      untraded_max_qty: 300,
-      untraded_max_t_ms: open + 60_000,
     };
     const segments: RangeSegment[] = [{
       date: day,
@@ -152,9 +147,7 @@ describe('LivePeakWallDockedLabels', () => {
         paneSeries={paneSeries}
         axis={axis}
         dayAskPeaks={[askPeak]}
-        todayAllPriceAskPeak={null}
         dayBidPeaks={[]}
-        todayAllPriceBidPeak={null}
         segments={segments}
         candles={[candle(open), candle(open + 60_000)]}
         todayKst={day}
@@ -215,9 +208,7 @@ describe('LivePeakWallDockedLabels', () => {
         paneSeries={paneSeries}
         axis={axis}
         dayAskPeaks={[]}
-        todayAllPriceAskPeak={null}
         dayBidPeaks={[bidPeak]}
-        todayAllPriceBidPeak={null}
         segments={segments}
         candles={[candle(open), candle(open + 60_000)]}
         todayKst={day}

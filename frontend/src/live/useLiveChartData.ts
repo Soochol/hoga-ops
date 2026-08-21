@@ -16,8 +16,8 @@ import { useMemo } from 'react';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useLiveBundle, type SidecarDemands } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import { useDayAskPeaks } from './useDayAskPeaks';
+import { useDayBidPeaks } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
 import type {
   AskPeak,
@@ -234,14 +234,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
   );
-  const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
-    askPeakOb,
-    askPeakSeeds,
-    today,
-    peakSessionOpenMs,
-    activeCode,
-    liveInitial?.ask_peak_today ?? null,
-  );
   const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const bidPeakSeeds = candlePathBundle?.bid_peaks ?? EMPTY_BID_PEAKS;
@@ -255,14 +247,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
-  );
-  const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
-    bidPeakOb,
-    bidPeakSeeds,
-    today,
-    peakSessionOpenMs,
-    activeCode,
-    liveInitial?.bid_peak_today ?? null,
   );
   // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
   // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기
@@ -350,9 +334,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     pastSettledFromDate,
     indexSettledFromDate,
     dayAskPeaks,
-    todayAllPriceAskPeak,
     dayBidPeaks,
-    todayAllPriceBidPeak,
     tradeVolumePocs,
     liveSaveBundle,
     // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.

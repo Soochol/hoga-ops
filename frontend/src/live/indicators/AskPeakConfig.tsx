@@ -19,16 +19,12 @@ const VISIBLE_MAX_RANK_OPTIONS = [
 export default function AskPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
   const color = useWindowIndicator((s) => s.askPeakColor);
   const lineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
-  const allPriceColor = useWindowIndicator((s) => s.askPeakAllPriceColor);
-  const allPriceLineWidth = useWindowIndicator((s) => s.askPeakAllPriceLineWidth);
   const visibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
   const visibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
   const setStyle = useIndicatorActions().setAskPeakStyle;
-  const setAllPriceStyle = useIndicatorActions().setAskPeakAllPriceStyle;
   const setVisibleMaxStyle = useIndicatorActions().setAskPeakVisibleMaxStyle;
   const prefs = useScopedChartPrefs();
   const postTouchRankLimit = prefs.askPeakAllPriceRankLimit;
-  const untradedRankLimit = prefs.askPeakUntradedRankLimit;
   const visibleMaxRankLimit = prefs.askPeakVisibleMaxRankLimit;
   const { setNumericPref } = useChartPrefActions();
   return (
@@ -40,7 +36,7 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
           </h3>
           <p className="text-fg-dim text-xs mb-3">
             차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-            수평선을 그립니다. 체결된 벽과 미체결된 벽을 각각 표시합니다.
+            수평선을 그립니다. 그 벽이 서 있던 1분 안에 체결이 그 가격을 친 것만 「체결된 벽」으로 봅니다.
             분봉 차트에서만 표시됩니다
           </p>
         </>
@@ -49,15 +45,6 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
         <div className="flex items-center gap-2">
           <span className="text-sm text-fg">체결된 벽</span>
           <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="체결된 벽" />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">미체결된 벽</span>
-          <MAStylePicker
-            color={allPriceColor}
-            lineWidth={allPriceLineWidth}
-            onChange={setAllPriceStyle}
-            label="미체결된 벽"
-          />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-fg">보이는 영역 최대벽</span>
@@ -71,7 +58,7 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
       </div>
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows
-        toggleKeys={['askPeakIntraMax', 'askPeakShowAllPrices', 'askPeakLabelEnabled', 'askPeakVisibleTimeCutoff']}
+        toggleKeys={['askPeakIntraMax', 'askPeakLabelEnabled', 'askPeakVisibleTimeCutoff']}
       />
       <div className="border-b border-border my-2" />
       <div>
@@ -85,28 +72,6 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setNumericPref('askPeakAllPriceRankLimit', option.value)}
-                className={[
-                  'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
-                  selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-                ].join(' ')}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mt-3">
-        <div className="text-sm text-fg mb-2">미체결된 벽 표시 개수</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="미체결된 벽 표시 개수">
-          {RANK_OPTIONS.map((option) => {
-            const selected = untradedRankLimit === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => setNumericPref('askPeakUntradedRankLimit', option.value)}
                 className={[
                   'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
                   selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',

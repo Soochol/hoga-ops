@@ -83,8 +83,6 @@ describe('scaleRangeBundlePrices', () => {
         max_price: 38700, max_qty: 6269, max_t_ms: T_0612,
         all_price: 38500, all_qty: 8461, all_t_ms: T_0612,
         all_max_price: 38500, all_max_qty: 8558, all_max_t_ms: T_0612,
-        untraded_price: 38500, untraded_qty: 100, untraded_t_ms: T_0612,
-        untraded_max_price: 38500, untraded_max_qty: 100, untraded_max_t_ms: T_0612,
         traded_peaks: [{ price: 38700, qty: 6269, t_ms: T_0612 }],
       }],
     });
@@ -95,8 +93,6 @@ describe('scaleRangeBundlePrices', () => {
     expect(peak.max_price).toBe(19350);
     expect(peak.all_price).toBe(19250);
     expect(peak.all_max_price).toBe(19250);
-    expect(peak.untraded_price).toBe(19250);
-    expect(peak.untraded_max_price).toBe(19250);
     expect(peak.traded_peaks).toEqual([{ price: 19350, qty: 6269, t_ms: T_0612 }]);
     // 수량·시각은 가격이 아니다.
     expect(peak.qty).toBe(6269);

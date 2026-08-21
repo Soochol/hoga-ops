@@ -1,6 +1,6 @@
 # 0084 - Peak wall classification is event-based, not price-membership based
 
-**Status:** accepted (2026-07-05)
+**Status:** superseded by ADR-0156 (2026-08-21) — 판정 창이 「이벤트 이후 아무 때나」에서 **벽이 관측된 그 1분** 으로 좁혀졌고, 아래 **사후미터치 최대벽** 계열은 제거됐다. 아래 내용은 이력으로만 읽을 것.
 
 `당일 매도 최대벽` and `당일 매수 최대벽` classify wall events by whether continuous-trading ticks touch or cross the wall after the wall event is observed, not by whether that price traded at any point during the Stock-Date. This lets two same-price walls classify differently: an earlier wall can be **사후터치 최대벽** after a later tick reaches it, while a later larger wall at the same price can remain **사후미터치 최대벽** if no subsequent tick reaches it. Historical data should use `(ts_ms, seq)` ordering for the "after" relation; live buffers may fall back to inclusive `t_ms` when source sequence is unavailable.
 

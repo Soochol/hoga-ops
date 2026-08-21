@@ -105,23 +105,14 @@ type BidPeakLineStyle = {
 
 type BuildBidPeakOverlaySegmentsArgs = {
   dayBidPeaks: readonly BidPeak[];
-  todayAllPriceBidPeak: BidPeak | null;
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   axis: VirtualAxis;
   todayKst: string;
   baselineStyle: BidPeakLineStyle;
-  allPriceStyle: BidPeakLineStyle;
   intraMax: boolean;
-  showAllPrices: boolean;
   allPriceRankLimit?: 1 | 2 | 3;
-  untradedRankLimit?: 1 | 2 | 3;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
-};
-
-type BidPeakSource = {
-  peak: BidPeak;
-  allowSelfFallback: boolean;
 };
 
 function finiteNumber(value: number | null | undefined): value is number {
@@ -141,18 +132,6 @@ function selectedTMs(p: BidPeak, intraMax: boolean): number {
 function selectedPrice(p: BidPeak, intraMax: boolean): number {
   const price = intraMax ? p.max_price : p.price;
   return finiteNumber(price) ? price : Number.NaN;
-}
-
-function bidPeakFromModeCandidate(base: BidPeak, candidate: AskPeakCandidate): BidPeak {
-  return {
-    ...base,
-    price: candidate.price,
-    qty: candidate.qty,
-    t_ms: candidate.t_ms,
-    max_price: candidate.price,
-    max_qty: candidate.qty,
-    max_t_ms: candidate.t_ms,
-  };
 }
 
 function candidateFromPeakFields(
@@ -224,100 +203,15 @@ function expandBaselineBidPeaks(
     .slice(0, limit));
 }
 
-function untradedPeakFromFields(p: BidPeak, intraMax: boolean): BidPeak | null {
-  const price = intraMax ? p.untraded_max_price : p.untraded_price;
-  const qty = intraMax ? p.untraded_max_qty : p.untraded_qty;
-  const tMs = intraMax ? p.untraded_max_t_ms : p.untraded_t_ms;
-  if (!finiteNumber(price) || !finiteNumber(qty) || !finiteNumber(tMs)) return null;
-  return {
-    date: p.date,
-    price,
-    qty,
-    t_ms: tMs,
-    max_price: price,
-    max_qty: qty,
-    max_t_ms: tMs,
-  };
-}
-
-function filterBidPeakForUntradedCutoff(
-  peak: BidPeak,
-  cutoff: VisibleTimeCutoff | null | undefined,
-): BidPeak | null {
-  if (!cutoff) return peak;
-  if (peak.date < cutoff.date) return peak;
-  if (peak.date > cutoff.date) return null;
-  const closeOk = finiteNumber(peak.t_ms) && peak.t_ms <= cutoff.tMs;
-  const maxOk = finiteNumber(peak.max_t_ms) && peak.max_t_ms <= cutoff.tMs;
-  const untradedCloseOk = finiteNumber(peak.untraded_t_ms) && peak.untraded_t_ms <= cutoff.tMs;
-  const untradedMaxOk = finiteNumber(peak.untraded_max_t_ms) && peak.untraded_max_t_ms <= cutoff.tMs;
-  return {
-    ...peak,
-    price: closeOk ? peak.price : null,
-    qty: closeOk ? peak.qty : null,
-    t_ms: closeOk ? peak.t_ms : null,
-    max_price: maxOk ? peak.max_price : null,
-    max_qty: maxOk ? peak.max_qty : null,
-    max_t_ms: maxOk ? peak.max_t_ms : null,
-    untraded_price: untradedCloseOk ? peak.untraded_price : null,
-    untraded_qty: untradedCloseOk ? peak.untraded_qty : null,
-    untraded_t_ms: untradedCloseOk ? peak.untraded_t_ms : null,
-    untraded_max_price: untradedMaxOk ? peak.untraded_max_price : null,
-    untraded_max_qty: untradedMaxOk ? peak.untraded_max_qty : null,
-    untraded_max_t_ms: untradedMaxOk ? peak.untraded_max_t_ms : null,
-    untraded_peaks: peak.untraded_peaks?.filter((candidate) => candidate.t_ms <= cutoff.tMs),
-    untraded_max_peaks: peak.untraded_max_peaks?.filter((candidate) => candidate.t_ms <= cutoff.tMs),
-  };
-}
-
-function expandUntradedBidPeaks(
-  sources: readonly BidPeakSource[],
-  limit: 1 | 2 | 3,
-  intraMax: boolean,
-): BidPeak[] {
-  const byDate = new Map<string, BidPeak[]>();
-  for (const { peak, allowSelfFallback } of sources) {
-    const rankedCandidates = intraMax ? peak.untraded_max_peaks : peak.untraded_peaks;
-    const expanded = byDate.get(peak.date) ?? [];
-    if (rankedCandidates && rankedCandidates.length > 0) {
-      for (const candidate of rankedCandidates) {
-        expanded.push(bidPeakFromModeCandidate(peak, candidate));
-      }
-    } else {
-      const legacy = untradedPeakFromFields(peak, intraMax);
-      if (legacy) {
-        expanded.push(legacy);
-      } else if (allowSelfFallback) {
-        const candidate = candidateFromPeakFields(peak, intraMax ? 'max' : 'close');
-        if (candidate) expanded.push(bidPeakFromModeCandidate(peak, candidate));
-      }
-    }
-    byDate.set(peak.date, expanded);
-  }
-  return [...byDate.values()].flatMap((items) => items
-    .slice()
-    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax)
-      || selectedTMs(a, intraMax) - selectedTMs(b, intraMax)
-      || selectedPrice(a, intraMax) - selectedPrice(b, intraMax))
-    .filter((item, index, sorted) => sorted.findIndex((candidate) =>
-      selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax),
-    ) === index)
-    .slice(0, limit));
-}
-
 export function buildBidPeakOverlaySegments({
   dayBidPeaks,
-  todayAllPriceBidPeak,
   segments,
   candles,
   axis,
   todayKst,
   baselineStyle,
-  allPriceStyle,
   intraMax,
-  showAllPrices,
   allPriceRankLimit = 1,
-  untradedRankLimit = 1,
   visibleTimeCutoff,
 }: BuildBidPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayBidPeaks, visibleTimeCutoff ?? null, {
@@ -335,37 +229,7 @@ export function buildBidPeakOverlaySegments({
     baselineStyle.lineWidth,
     intraMax,
   );
-  if (!showAllPrices) return baseline;
-
-  const untradedSourcesByDate = new Map<string, BidPeakSource>(
-    dayBidPeaks
-      .map((peak) => filterBidPeakForUntradedCutoff(peak, visibleTimeCutoff))
-      .filter((peak): peak is BidPeak => peak !== null)
-      .map((peak) => [peak.date, { peak, allowSelfFallback: false }]),
-  );
-  const todaySource = todayAllPriceBidPeak
-    ? filterBidPeakForUntradedCutoff(todayAllPriceBidPeak, visibleTimeCutoff)
-    : null;
-  if (todaySource?.date === todayKst) {
-    untradedSourcesByDate.set(todayKst, { peak: todaySource, allowSelfFallback: true });
-  }
-  const untradedPeaks = expandUntradedBidPeaks(
-    [...untradedSourcesByDate.values()],
-    untradedRankLimit,
-    intraMax,
-  );
-  if (untradedPeaks.length === 0) return baseline;
-
-  return baseline.concat(buildBidPeakSegments(
-    untradedPeaks,
-    segments,
-    candles,
-    axis,
-    todayKst,
-    allPriceStyle.color,
-    allPriceStyle.lineWidth,
-    intraMax,
-  ));
+  return baseline;
 }
 
 export function prepareBidPeakSegmentsForRender(
@@ -379,29 +243,23 @@ type Props = {
   axis: VirtualAxis;
   /** LivePage의 useDayBidPeaks 결과 — 거래일별 매수 최대벽. */
   dayBidPeaks: readonly BidPeak[];
-  /** Backend today bid peak payload. Orange overlay renders only its untraded_* fields. */
-  todayAllPriceBidPeak?: BidPeak | null;
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
-  untradedRankLimit?: 1 | 2 | 3;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 /** 거래일별 매수 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPeak = null, segments, candles, todayKst, untradedRankLimit = 1, visibleTimeCutoff = null }: Props) {
+function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useWindowIndicator((s) => s.bidPeakEnabled);
   const hidden = useWindowIndicator((s) => s.bidPeakHidden);
   const color = useWindowIndicator((s) => s.bidPeakColor);
   const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
-  const allPriceColor = useWindowIndicator((s) => s.bidPeakAllPriceColor);
-  const allPriceLineWidth = useWindowIndicator((s) => s.bidPeakAllPriceLineWidth);
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
-  const showAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
@@ -440,38 +298,29 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
     const nextSegments = enabled && !hidden
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
-        todayAllPriceBidPeak,
         segments,
         candles,
         axis,
         todayKst,
         baselineStyle: { color, lineWidth },
-        allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
         intraMax,
-        showAllPrices,
         allPriceRankLimit: baselineRankLimit,
-        untradedRankLimit,
         visibleTimeCutoff,
       })
       : [];
     prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
   }, [
     dayBidPeaks,
-    todayAllPriceBidPeak,
     segments,
     candles,
     axis,
     todayKst,
     color,
     lineWidth,
-    allPriceColor,
-    allPriceLineWidth,
     enabled,
     hidden,
     intraMax,
-    showAllPrices,
     allPriceRankLimit,
-    untradedRankLimit,
     visibleMaxRankLimit,
     visibleTimeCutoff,
     series,
