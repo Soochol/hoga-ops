@@ -4,6 +4,7 @@ REST 시절의 계약 중 루프·게이트·에러 관측은 유지되고, fetc
 바뀌었다. latch payload 는 kiwoom_frames._parse_program 산출 shape 을 흉내낸다.
 """
 import asyncio
+import threading
 
 import pytest
 
@@ -219,3 +220,37 @@ async def test_loop_failure_sets_internal_kind_and_keeps_running(tmp_path, caplo
             assert collector.status.last_error_code == "RuntimeError"
         finally:
             await collector.stop()
+
+
+@pytest.mark.asyncio
+async def test_merge_runs_off_the_event_loop_thread(tmp_path):
+    """병합은 **이벤트 루프 스레드에서 돌면 안 된다**.
+
+    막는 방향: `run_once` 가 `store.merge_response` 를 직접(동기로) 부르는 회귀.
+    이 앱은 `--workers` 를 못 써서 단일 루프가 REST·WS·스케줄러를 전부 처리하므로
+    (#998), 여기서 직렬로 도는 파일 읽기 + fsync 쓰기가 그대로 전역 정지가 된다
+    (2026-08-21 실측: 32.3초 주기로 2.0~2.6초, 최대 11.2초).
+
+    **못 보는 것**: 스레드로 넘겼더라도 총 IO 량이 크면 GIL 경합으로 루프가 느려지는
+    것까지는 막지 못한다 — 그 축은 `loop-lag-probe`(`hoga_perf loop_lag`)가 잰다.
+    """
+    program_trade_latch.update("005930", _payload(), venue="KRX")
+    collector = _collector(tmp_path)
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real = collector.store.merge_response
+
+    def _spy(**kwargs):
+        seen.append(threading.get_ident())
+        return real(**kwargs)
+
+    collector.store.merge_response = _spy
+
+    await collector.run_once()
+
+    assert seen, "merge_response 가 불리지 않았다 — latch 픽스처가 비어 있다"
+    assert all(t != loop_thread for t in seen), (
+        "merge_response 가 이벤트 루프 스레드에서 실행됐다 — to_thread 우회 회귀"
+    )
+    # 병합 자체는 그대로 성립해야 한다(스레드로 옮겼을 뿐이다).
+    assert len(collector.store.load("005930", "20260720", "KRX").rows) == 1
