@@ -1,11 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   dockedLabelTimeToX,
   peakWallDockedLabelCandidates,
+  PeakWallDockedLabelsPrimitive,
   type PeakWallDockedLabelCandidatesArgs,
   type PeakWallDockedLabelInput,
 } from './PeakWallDockedLabelsPrimitive';
-import type { ITimeScaleApi, Time } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, ITimeScaleApi, SeriesType, Time } from 'lightweight-charts';
 
 const label = (
   overrides: Partial<PeakWallDockedLabelInput> = {},
@@ -139,5 +140,141 @@ describe('dockedLabelTimeToX', () => {
   it('가장 가까운 봉조차 없으면(빈 차트) null — 라벨 skip 동작 유지', () => {
     const toX = dockedLabelTimeToX(timeScaleStub({}), 2);
     expect(toX(1000 as Time)).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 렌더러 단 — 리더선은 순수 함수로 못 잰다(칩 rect 는 배치 **후** 좌표라 draw 안에만 있다).
+// 프리미티브를 직접 몰아 canvas 스파이로 stroke 호출을 센다(HighLowLabelsPrimitive.test 패턴).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function canvasSpy() {
+  const strokes: { from: [number, number]; to: [number, number]; alpha: number; dash: number[] }[] = [];
+  let dash: number[] = [];
+  let from: [number, number] = [0, 0];
+  let to: [number, number] = [0, 0];
+  const ctx = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn((x: number, y: number) => { from = [x, y]; }),
+    lineTo: vi.fn((x: number, y: number) => { to = [x, y]; }),
+    stroke: vi.fn(() => {
+      strokes.push({ from, to, alpha: Number(ctx.globalAlpha), dash: [...dash] });
+    }),
+    setLineDash: vi.fn((d: number[]) => { dash = [...d]; }),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    measureText: vi.fn(() => ({ width: 30 })),
+    strokeStyle: '',
+    fillStyle: '',
+    lineWidth: 0,
+    globalAlpha: 1,
+    font: '',
+    textBaseline: '' as CanvasTextBaseline,
+    textAlign: '' as CanvasTextAlign,
+    strokes,
+  } as unknown as CanvasRenderingContext2D & {
+    fillText: ReturnType<typeof vi.fn>;
+    strokes: { from: [number, number]; to: [number, number]; alpha: number; dash: number[] }[];
+  };
+  return ctx;
+}
+
+function drawLabels(
+  labels: readonly PeakWallDockedLabelInput[],
+  priceToCoordinate: (price: number) => number,
+): ReturnType<typeof canvasSpy> {
+  const ctx = canvasSpy();
+  const prim = new PeakWallDockedLabelsPrimitive();
+  prim.attached({
+    chart: {
+      timeScale: () => ({
+        timeToCoordinate: (t: Time) => (t as unknown as number),
+        timeToIndex: () => null,
+        logicalToCoordinate: () => null,
+      }),
+    } as unknown as IChartApi,
+    series: { priceToCoordinate } as unknown as ISeriesApi<SeriesType>,
+    requestUpdate: () => {},
+  } as never);
+  prim.setLabels(labels);
+  const renderer = prim.paneViews()[0].renderer();
+  if (!renderer) throw new Error('pane renderer 없음 — 프리미티브 배선이 깨졌다');
+  renderer.draw({
+    useBitmapCoordinateSpace: <T,>(
+      f: (scope: {
+        context: CanvasRenderingContext2D;
+        bitmapSize: { width: number; height: number };
+        horizontalPixelRatio: number;
+        verticalPixelRatio: number;
+      }) => T,
+    ): T => f({
+      context: ctx,
+      bitmapSize: { width: 800, height: 400 },
+      horizontalPixelRatio: 1,
+      verticalPixelRatio: 1,
+    }),
+  } as never);
+  return ctx;
+}
+
+describe('PeakWallDockedLabelsPrimitive 리더선', () => {
+  const wall = (over: Partial<PeakWallDockedLabelInput> = {}): PeakWallDockedLabelInput => ({
+    price: 100,
+    label: '1.0k',
+    color: '#EAB308',
+    time0: 0 as Time,
+    time1: 800 as Time,
+    peakTime: 400 as Time,
+    side: 'ask',
+    ...over,
+  });
+
+  it('안 밀린 라벨에는 리더선을 안 그린다 — 모든 벽에 획이 붙으면 오히려 시끄럽다', () => {
+    const ctx = drawLabels([wall()], () => 200);
+
+    expect(ctx.fillText).toHaveBeenCalledTimes(1);
+    expect(ctx.strokes).toEqual([]);
+  });
+
+  it('회피 스택으로 밀린 라벨은 점과 이어 준다', () => {
+    // 같은 x·같은 가격의 벽 3개 → 뒤의 둘이 아래로 밀린다.
+    const ctx = drawLabels(
+      [wall({ label: 'A' }), wall({ label: 'B' }), wall({ label: 'C' })],
+      () => 200,
+    );
+
+    expect(ctx.fillText).toHaveBeenCalledTimes(3);
+    // 첫 라벨은 제자리(리더선 없음), 밀린 둘만 그린다.
+    expect(ctx.strokes).toHaveLength(2);
+    for (const stroke of ctx.strokes) {
+      // 점(peakX=400, lineY=200)에서 출발해 칩 모서리로.
+      expect(stroke.from).toEqual([400, 200]);
+      expect(stroke.alpha).toBeLessThan(1);
+      expect(stroke.dash.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('점이 화면 밖이라 칩이 pane 안으로 클램프되면 밀리지 않았어도 이어 준다', () => {
+    // 좌측으로 팬해 peak 이 pane 밖(음수 x)에 남은 경우 — 칩만 가장자리로 들어온다.
+    const ctx = drawLabels(
+      [wall({ time0: -1000 as Time, time1: 700 as Time, peakTime: -800 as Time })],
+      () => 200,
+    );
+
+    expect(ctx.strokes).toHaveLength(1);
+    expect(ctx.strokes[0].from[0]).toBe(-800);
+  });
+
+  it('클램프가 칩 절반보다 작게 밀면 점이 아직 칩 아래라 리더선을 안 그린다', () => {
+    // 회귀 가드: 이 경계를 놓치면 가장자리의 거의 모든 라벨에 1~2px 획이 붙는다.
+    const ctx = drawLabels(
+      [wall({ time0: 300 as Time, time1: 700 as Time, peakTime: 301 as Time })],
+      () => 200,
+    );
+
+    expect(ctx.fillText).toHaveBeenCalledTimes(1);
+    expect(ctx.strokes).toEqual([]);
   });
 });
