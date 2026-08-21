@@ -1,10 +1,12 @@
 import {
   CHART_TOGGLES,
+  CHART_LINE_STYLES,
   CHART_NUMERIC_PREFS,
   DEFAULT_PREFS,
   INDICATOR_MODAL_PREF_KEYS,
   isIndicatorModalPrefKey,
   resolveIndicatorModalPrefs,
+  type ChartLineWidth,
   type ChartViewPrefs,
   type DayBoundaryLineWidth,
   type IndicatorModalByTimeframe,
@@ -21,6 +23,10 @@ const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const DAY_BOUNDARY_WIDTHS = new Set([1, 2, 3, 4]);
 
 function isDayBoundaryLineWidth(v: unknown): v is DayBoundaryLineWidth {
+  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
+}
+
+function isChartLineWidth(v: unknown): v is ChartLineWidth {
   return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
 }
 
@@ -65,6 +71,16 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
   }
   if (typeof obj.tradeHighlightColor === 'string' && HEX_COLOR_RE.test(obj.tradeHighlightColor)) {
     out.tradeHighlightColor = obj.tradeHighlightColor.toUpperCase();
+  }
+  // 선 스타일은 레지스트리에서 파생된다 — 엔트리를 추가해도 여기 코드는 그대로다.
+  // 색의 `''` 는 "고르지 않음"(방향 토큰 추종)이라 **유효한 저장값**이다.
+  for (const d of CHART_LINE_STYLES) {
+    const rawColor = obj[`${d.key}Color`];
+    if (typeof rawColor === 'string' && (rawColor === '' || HEX_COLOR_RE.test(rawColor))) {
+      (out as Record<string, unknown>)[`${d.key}Color`] = rawColor.toUpperCase();
+    }
+    const rawWidth = obj[`${d.key}Width`];
+    if (isChartLineWidth(rawWidth)) (out as Record<string, unknown>)[`${d.key}Width`] = rawWidth;
   }
   return out;
 }

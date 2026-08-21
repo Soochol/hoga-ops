@@ -35,6 +35,8 @@ import {
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
+import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
+import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
 import type { Candle } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
@@ -1027,6 +1029,30 @@ export function LiveChartRoot({
       : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
   ), [timeframe]);
   useWheelInteractions(chart, containerRef, cb, axis, markViewportUserAdjusted, getLiveRightOffsetBars);
+
+  // 기간 동기화(분봉 창 팬 → 일봉 창이 그 기간을 중앙에). 크로스헤어와 **같은 prop**
+  // (`cursorSyncCrosshair`)으로 켠다 — 둘 다 "창 간 동기화" 라는 한 결정이고, 페이지가
+  // 그 결정의 소유자라는 이유도 같다(그 prop 주석 참조). 세부 on/off 는 ⚙️ 설정의
+  // `rangeSyncEnabled`, 종목 축은 크로스헤어와 공유하는 `cursorSyncCrossSymbol` 이다.
+  const rangeSyncEnabled = useActivePrefs((p) => p.rangeSyncEnabled);
+  const rangeSyncCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  const rangeSyncOn = cursorSyncCrosshair && rangeSyncEnabled;
+  useRangeSyncPublish({
+    chart,
+    axis,
+    containerRef,
+    enabled: rangeSyncOn && canPublishRangeSync(timeframe),
+    originRef: cursorOriginRef,
+  });
+  useRangeSyncFollow({
+    chart,
+    axis,
+    hasCandles: (cb?.candles.length ?? 0) > 0,
+    enabled: rangeSyncOn && isRangeSyncFollower(timeframe),
+    myWindowId: winCtxWindowId,
+    myCode: code,
+    allowCrossSymbol: rangeSyncCrossSymbol,
+  });
   useEffect(() => {
     const container = containerRef.current;
     const target = container?.parentElement ?? container;

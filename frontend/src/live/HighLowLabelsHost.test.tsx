@@ -49,7 +49,16 @@ function renderHost() {
   return { attachPrimitive, prim };
 }
 
-describe('HighLowLabelsHost — 극값 가격선 배선', () => {
+/** 스냅샷의 켜짐 플래그만 뽑아 본다 — 색·두께는 별도 케이스에서 잰다. */
+function onFlags(prim: HighLowLabelsPrimitive | undefined) {
+  const snap = prim?.snapshot();
+  return {
+    level: { high: snap?.levelLines.high.on, low: snap?.levelLines.low.on },
+    prior: { high: snap?.priorDayLines.high.on, low: snap?.priorDayLines.low.on },
+  };
+}
+
+describe('HighLowLabelsHost — 수평선 배선', () => {
   afterEach(cleanup);
 
   it('고가만 켜면 snapshot.levelLines 가 { high: true, low: false }', () => {
@@ -61,7 +70,7 @@ describe('HighLowLabelsHost — 극값 가격선 배선', () => {
 
     const { prim } = renderHost();
 
-    expect(prim?.snapshot()?.levelLines).toEqual({ high: true, low: false });
+    expect(onFlags(prim).level).toEqual({ high: true, low: false });
   });
 
   it('저가만 켜면 { high: false, low: true } — 두 토글이 서로 새지 않는다', () => {
@@ -73,7 +82,7 @@ describe('HighLowLabelsHost — 극값 가격선 배선', () => {
 
     const { prim } = renderHost();
 
-    expect(prim?.snapshot()?.levelLines).toEqual({ high: false, low: true });
+    expect(onFlags(prim).level).toEqual({ high: false, low: true });
   });
 
   it('둘 다 꺼도 라벨 스냅샷은 살아 있다 — 가격선만 빠진다', () => {
@@ -85,8 +94,44 @@ describe('HighLowLabelsHost — 극값 가격선 배선', () => {
 
     const { prim } = renderHost();
 
-    expect(prim?.snapshot()?.levelLines).toEqual({ high: false, low: false });
+    expect(onFlags(prim).level).toEqual({ high: false, low: false });
     expect(prim?.snapshot()?.candles).toHaveLength(1);
+  });
+
+  it('이전일 고저선도 각각 독립으로 흘러간다 — 극값 가격선과 서로 새지 않는다', () => {
+    useChartPrefsStore.setState({
+      highLowLabelsEnabled: true,
+      highLowHighLineEnabled: false,
+      highLowLowLineEnabled: false,
+      highLowPriorHighLineEnabled: true,
+      highLowPriorLowLineEnabled: false,
+    });
+
+    const { prim } = renderHost();
+
+    expect(onFlags(prim)).toEqual({
+      level: { high: false, low: false },
+      prior: { high: true, low: false },
+    });
+  });
+
+  it('색·두께가 스냅샷으로 흘러간다 — 고르지 않은 색은 빈 문자열 그대로 간다', () => {
+    // '' 를 여기서 방향색으로 풀지 **않는** 것이 계약이다. 해석은 draw 가 테마를 보고
+    // 하므로, 호스트가 미리 구우면 테마를 바꿔도 선 색이 안 따라온다.
+    useChartPrefsStore.setState({
+      highLowLabelsEnabled: true,
+      highLowHighLineEnabled: true,
+      highLowHighLineColor: '#00FF00',
+      highLowHighLineWidth: 3,
+      highLowLowLineEnabled: true,
+      highLowLowLineColor: '',
+      highLowLowLineWidth: 2,
+    });
+
+    const snap = renderHost().prim?.snapshot();
+
+    expect(snap?.levelLines.high).toEqual({ on: true, color: '#00FF00', width: 3 });
+    expect(snap?.levelLines.low).toEqual({ on: true, color: '', width: 2 });
   });
 
   it('부모(고저 극값 라벨)를 끄면 하위 토글이 켜져 있어도 primitive 자체가 붙지 않는다', () => {
@@ -95,6 +140,8 @@ describe('HighLowLabelsHost — 극값 가격선 배선', () => {
       highLowLabelsEnabled: false,
       highLowHighLineEnabled: true,
       highLowLowLineEnabled: true,
+      highLowPriorHighLineEnabled: true,
+      highLowPriorLowLineEnabled: true,
     });
 
     const { attachPrimitive, prim } = renderHost();

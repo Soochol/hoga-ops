@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeVisibleExtremes } from './visibleExtremes';
+import { computeVisibleExtremes, computePriorDaysExtremes } from './visibleExtremes';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 
@@ -124,5 +124,70 @@ describe('computeVisibleExtremes', () => {
     const ex = computeVisibleExtremes([candle(OPEN + 60_000, 38_800, 36_750, 36_750)], axis, FULL_RANGE);
     expect(ex!.low.price).toBe(36_750);
     expect(ex!.low.pct).toBe(0);
+  });
+});
+
+// ── computePriorDaysExtremes ────────────────────────────────────────────────
+// 3거래일 픽스처를 **일부러 길게** 잡고 범위로 잘라서 잰다. 하루짜리 픽스처였다면
+// "마지막 날을 뺀다" 는 축 자체가 테스트에서 사라진다(항상 null 이거나 항상 전체).
+// 세 날의 고저를 전부 다르게 준 것도 같은 이유 — 어느 날이 섞였는지 값이 말해 준다.
+const D0 = Date.UTC(2026, 5, 10, 0, 0, 0); // 06-10 09:00 KST
+const D1 = Date.UTC(2026, 5, 11, 0, 0, 0); // 06-11
+const D2 = Date.UTC(2026, 5, 12, 0, 0, 0); // 06-12 (마지막 날)
+const SESSION_MS = 6.5 * 3_600_000;
+const multiAxis: VirtualAxis = createVirtualAxis(
+  [
+    { date: '20260610', sessionOpenMs: D0, sessionCloseMs: D0 + SESSION_MS },
+    { date: '20260611', sessionOpenMs: D1, sessionCloseMs: D1 + SESSION_MS },
+    { date: '20260612', sessionOpenMs: D2, sessionCloseMs: D2 + SESSION_MS },
+  ],
+  D0,
+);
+// D0: 고 100 / 저 90 · D1: 고 120 / 저 80 · D2: 고 150 / 저 70
+const MULTI_CANDLES = [
+  candle(D0 + 60_000, 100, 95, 98),
+  candle(D0 + 120_000, 99, 90, 92),
+  candle(D1 + 60_000, 120, 110, 115),
+  candle(D1 + 120_000, 118, 80, 85),
+  candle(D2 + 60_000, 150, 140, 145),
+  candle(D2 + 120_000, 148, 70, 75),
+];
+/** 두 실 ms 사이를 덮는 가시 범위(가상초) — 축이 간극을 접으므로 손으로 못 적는다. */
+const vRange = (fromMs: number, toMs: number) => ({
+  from: multiAxis.toVirtual(fromMs) / 1000,
+  to: multiAxis.toVirtual(toMs) / 1000,
+});
+
+describe('computePriorDaysExtremes', () => {
+  it('마지막 날(D2)을 통째로 빼고 이전 날 **전부**(D0+D1)에서 고저를 찾는다', () => {
+    const ex = computePriorDaysExtremes(MULTI_CANDLES, multiAxis, vRange(D0, D2 + SESSION_MS));
+
+    // D2 의 고 150 / 저 70 이 아니라 D0∪D1 의 고 120 / 저 80.
+    expect(ex).toEqual({ high: 120, low: 80 });
+  });
+
+  it('우측 끝 날이 D1 로 바뀌면 컷오프도 따라 옮겨 간다 (뷰포트 의존)', () => {
+    // 같은 캔들 배열, 범위만 D0~D1 로 좁힌다 → 이제 제외 대상은 D1, 남는 것은 D0.
+    const ex = computePriorDaysExtremes(MULTI_CANDLES, multiAxis, vRange(D0, D1 + SESSION_MS));
+
+    expect(ex).toEqual({ high: 100, low: 90 });
+  });
+
+  it('하루만 보이면 null — 그릴 이전 구간이 없다', () => {
+    const ex = computePriorDaysExtremes(MULTI_CANDLES, multiAxis, vRange(D2, D2 + SESSION_MS));
+
+    expect(ex).toBeNull();
+  });
+
+  it('마지막 날의 일부만 보여도 그 날 전체가 빠진다 (컷오프 = 개장 시각)', () => {
+    // 범위 시작이 D2 장중이어도 D2 는 통째로 제외 대상이다. 남는 것은 D0∪D1.
+    const ex = computePriorDaysExtremes(MULTI_CANDLES, multiAxis, vRange(D0, D2 + 90_000));
+
+    expect(ex).toEqual({ high: 120, low: 80 });
+  });
+
+  it('보이는 범위가 비면 null', () => {
+    expect(computePriorDaysExtremes(MULTI_CANDLES, multiAxis, null)).toBeNull();
+    expect(computePriorDaysExtremes([], multiAxis, vRange(D0, D2))).toBeNull();
   });
 });

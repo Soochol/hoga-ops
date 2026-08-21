@@ -1,14 +1,15 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { LiveTimeframe } from '../state/livePage';
-import { useActivePrefs } from '../state/chartPrefs';
+import { useActivePrefs, useScopedChartPrefs } from '../state/chartPrefs';
 import {
   HighLowLabelsPrimitive,
   type HighLowLabelsSnapshot,
+  type LevelLineStyle,
 } from '../chart/HighLowLabelsPrimitive';
 import type { AvoidRect, AvoidWallLabel } from '../chart/highLowLabelLayout';
 import { findLegendRoot, legendAvoidRects } from './legendAvoidRects';
@@ -54,11 +55,42 @@ function sameRects(a: readonly AvoidRect[], b: readonly AvoidRect[]): boolean {
  */
 function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWallLabels = [] }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
-  // 극값 가격선 — 고가·저가 **각각** 독립 토글이다. 라벨 토글의 하위라
-  // (`enabledBy: 'highLowLabelsEnabled'`) 부모가 꺼지면 아래 effect 가 primitive 를
-  // 아예 붙이지 않아 자동으로 함께 꺼진다(값은 보존).
-  const highLineEnabled = useActivePrefs((p) => p.highLowHighLineEnabled);
-  const lowLineEnabled = useActivePrefs((p) => p.highLowLowLineEnabled);
+  // 수평선 4종(극값 고/저 · 이전일 고/저)은 전부 라벨 토글의 하위다
+  // (`enabledBy: 'highLowLabelsEnabled'`) — 부모가 꺼지면 아래 effect 가 primitive 를
+  // 아예 붙이지 않아 함께 꺼진다(값은 보존). 여기서 selector 를 12개 늘어놓지 않고
+  // 스코프 prefs 를 통째로 읽는 이유: 색·두께까지 세면 필드가 12개인데, 아래 useMemo
+  // 의 deps 가 **원시값**이라 관계없는 pref 가 바뀌어도 스냅샷 참조는 유지된다.
+  const prefs = useScopedChartPrefs();
+  const levelLines = useMemo((): { high: LevelLineStyle; low: LevelLineStyle } => ({
+    high: {
+      on: prefs.highLowHighLineEnabled,
+      color: prefs.highLowHighLineColor,
+      width: prefs.highLowHighLineWidth,
+    },
+    low: {
+      on: prefs.highLowLowLineEnabled,
+      color: prefs.highLowLowLineColor,
+      width: prefs.highLowLowLineWidth,
+    },
+  }), [
+    prefs.highLowHighLineEnabled, prefs.highLowHighLineColor, prefs.highLowHighLineWidth,
+    prefs.highLowLowLineEnabled, prefs.highLowLowLineColor, prefs.highLowLowLineWidth,
+  ]);
+  const priorDayLines = useMemo((): { high: LevelLineStyle; low: LevelLineStyle } => ({
+    high: {
+      on: prefs.highLowPriorHighLineEnabled,
+      color: prefs.highLowPriorHighLineColor,
+      width: prefs.highLowPriorHighLineWidth,
+    },
+    low: {
+      on: prefs.highLowPriorLowLineEnabled,
+      color: prefs.highLowPriorLowLineColor,
+      width: prefs.highLowPriorLowLineWidth,
+    },
+  }), [
+    prefs.highLowPriorHighLineEnabled, prefs.highLowPriorHighLineColor, prefs.highLowPriorHighLineWidth,
+    prefs.highLowPriorLowLineEnabled, prefs.highLowPriorLowLineColor, prefs.highLowPriorLowLineWidth,
+  ]);
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const snapshotRef = useRef<HighLowLabelsSnapshot | null>(null);
   const legendRectsRef = useRef<readonly AvoidRect[]>([]);
@@ -74,11 +106,12 @@ function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWa
         timeframe,
         avoidWallLabels,
         legendRects: legendRectsRef.current,
-        levelLines: { high: highLineEnabled, low: lowLineEnabled },
+        levelLines,
+        priorDayLines,
       }
       : null;
     primRef.current?.requestUpdate();
-  }, [enabled, bundle, axis, timeframe, avoidWallLabels, highLineEnabled, lowLineEnabled]);
+  }, [enabled, bundle, axis, timeframe, avoidWallLabels, levelLines, priorDayLines]);
 
   useEffect(() => {
     if (!series || !enabled) return;
