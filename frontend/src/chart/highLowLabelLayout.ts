@@ -1,5 +1,5 @@
 import type { Time } from 'lightweight-charts';
-import { LABEL_BOX_X_PAD_PX, LABEL_BOX_Y_PAD_PX, LABEL_FONT_PX, LABEL_GAP_PX } from './AskPeakSegmentsPrimitive';
+import { peakWallChipGeometry, type PeakWallLabelSide } from './AskPeakSegmentsPrimitive';
 import { RENDERED_ROOT_PX, SIZE_TOKENS } from '../styles/design-tokens';
 
 /**
@@ -8,10 +8,14 @@ import { RENDERED_ROOT_PX, SIZE_TOKENS } from '../styles/design-tokens';
  * lightweight-charts 비의존이라 캔버스 없이 단위 테스트된다.
  */
 
-/** Ask/Bid Peak(최대벽) 도킹 라벨 1개의 회피 입력 — 가격(y)·선 끝 시각(x)·라벨 텍스트(폭). */
+/** Ask/Bid Peak(최대벽) 라벨 1개의 회피 입력 — 가격(y)·그날 구간·발생 시각(x 앵커)·측면·텍스트(폭).
+ *  픽셀이 아니라 **데이터 좌표**다: 축 스케일 변환은 HighLowLabelsPrimitive.draw 가 매 프레임 한다. */
 export type AvoidWallLabel = {
   price: number;
+  time0: Time;
   time1: Time;
+  peakTime: Time;
+  side: PeakWallLabelSide;
   label: string;
 };
 
@@ -69,8 +73,6 @@ const LABEL_CHAR_WIDTH_PX = 6.6;
 // 도킹 라벨(11px sans-serif, 숫자·콤마 위주) 폭 추정 — canvas measureText 없이 근사.
 // 약간 넉넉하게 잡아 회피 rect 가 실제 칩보다 좁아지는 쪽(겹침 잔존)을 피한다.
 const WALL_LABEL_CHAR_WIDTH_PX = 6.5;
-// 도킹 라벨 x 간격 — PeakWallDockedLabelsPrimitive.draw 의 labelXGapPx(6*hr)와 동일.
-const WALL_LABEL_X_GAP_PX = 6;
 // 회피 연쇄 push 상한(pane 높이 비율). 이보다 깊이 밀 바엔 겹침을 감수하고 가장자리로
 // 복귀한다 — 회피가 라벨을 pane 중간까지 표류시키던 최악 케이스의 구조적 차단.
 const MAX_AVOID_SHIFT_RATIO = 0.3;
@@ -98,22 +100,39 @@ function highLowLabelBox(anchorY: number, place: ExtremeLabelPlace): VerticalBox
     : { top: anchorY - LABEL_HEIGHT_PX, bottom: anchorY };
 }
 
-/** 도킹 라벨 칩 rect 근사 — PeakWallDockedLabelsPrimitive 의 렌더 기하를 미러링:
- *  선 y 위 baseline(lineY-GAP), 선 끝 x 우측(x-gap + halfBarSpacing anchor shift). */
+/**
+ * 최대벽 라벨 칩 rect — 렌더러와 **같은** `peakWallChipGeometry` 를 부른다(손 미러 아님).
+ * 예전에는 이 함수가 렌더 기하를 복제했는데, 어긋나도 타입 에러가 나지 않아 고저 라벨이
+ * 있지도 않은 칩을 피해 pane 중간으로 표류하는 유령 회피를 낳았다.
+ *
+ * 회피 배치(`layoutAskPeakLabels`) **이전**의 희망 위치라는 점은 종전과 같다 — 스택으로 밀린
+ * 칩은 이 rect보다 아래에 있을 수 있고, 그 오차는 렌더 단 2D 교차 검사가 흡수한다.
+ * 폭은 canvas measureText 없이 문자 수로 근사한다(레이아웃은 순수 함수로 테스트된다).
+ */
 export function wallLabelAvoidRect(
   lineY: number,
-  lineEndX: number,
+  peakX: number,
+  dayX0: number,
+  dayX1: number,
   label: string,
-  halfBarSpacingPx: number,
-): AvoidRect {
-  const baselineY = lineY - LABEL_GAP_PX;
-  const estWidth = label.length * WALL_LABEL_CHAR_WIDTH_PX;
-  const left = lineEndX + WALL_LABEL_X_GAP_PX + halfBarSpacingPx - LABEL_BOX_X_PAD_PX;
+  side: PeakWallLabelSide,
+  paneWidth: number,
+): AvoidRect | null {
+  const geometry = peakWallChipGeometry({
+    peakX,
+    dayX0,
+    dayX1,
+    lineY,
+    textWidth: label.length * WALL_LABEL_CHAR_WIDTH_PX,
+    side,
+    paneWidth,
+  });
+  if (geometry === null) return null;
   return {
-    top: baselineY - LABEL_FONT_PX - LABEL_BOX_Y_PAD_PX,
-    bottom: baselineY + LABEL_BOX_Y_PAD_PX,
-    left,
-    right: left + estWidth + LABEL_BOX_X_PAD_PX * 2,
+    top: geometry.top,
+    bottom: geometry.bottom,
+    left: geometry.left,
+    right: geometry.right,
   };
 }
 

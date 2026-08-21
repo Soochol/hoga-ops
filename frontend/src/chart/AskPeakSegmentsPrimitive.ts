@@ -50,11 +50,19 @@ export interface AskPeakSegment {
   live?: boolean;
 }
 
+/** 최대벽 라벨의 측면 — 매도는 선 위, 매수는 선 아래에 붙어 같은 분봉에서 서로 비켜간다. */
+export type PeakWallLabelSide = 'ask' | 'bid';
+
 export interface PeakWallDockedLabel {
   price: number;
   label: string;
   color: string;
+  /** 그날 세그먼트 양 끝 — 칩을 그날 구간 안에 가두는 경계(이웃 날로 새는 것 방지). */
+  time0: Time;
   time1: Time;
+  /** peak 발생 시점(봉 버킷에 스냅됨) — 라벨 앵커. 점(dot)과 같은 x. */
+  peakTime: Time;
+  side: PeakWallLabelSide;
 }
 
 type VisibleTimeRange = IRange<Time> | null;
@@ -70,8 +78,17 @@ function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: Visi
   return Math.max(Math.min(s0, s1), from) <= Math.min(Math.max(s0, s1), to);
 }
 
+/** 중복 제거 키 — **(그날, 가격)**. 선 끝에 도킹하던 시절에는 가격만으로 합쳤지만(같은 가격이면
+ *  칩이 한 자리에 겹치므로), 라벨을 **발생 분봉 위**로 옮기면 같은 가격이라도 날마다 x 앵커가 달라
+ *  겹치지 않는다. 가격만으로 합치면 다른 날의 벽은 점만 남고 수량을 못 읽는다. 하루 안 여러 가격은
+ *  allPriceRankLimit(체결된 벽 개수)이 이미 제한한다. */
+function dayPriceKey(segment: AskPeakSegment): string {
+  return `${segment.time0 as unknown as number}|${segment.price}`;
+}
+
 export function livePeakWallDockedLabelsFromSegments(
   segments: readonly AskPeakSegment[],
+  side: PeakWallLabelSide,
   visibleRange: VisibleTimeRange = null,
   rankLimit?: number,
 ): PeakWallDockedLabel[] {
@@ -83,21 +100,22 @@ export function livePeakWallDockedLabelsFromSegments(
       segment.label !== ''
       && (visibleRange ? segmentOverlapsVisibleRange(segment, visibleRange) : segment.live === true)
     ));
-  const uniqueByPrice = (items: typeof candidates): typeof candidates => {
-    const bestByPrice = new Map<number, typeof candidates[number]>();
+  const uniqueByDayPrice = (items: typeof candidates): typeof candidates => {
+    const best = new Map<string, typeof candidates[number]>();
     for (const item of items) {
-      const previous = bestByPrice.get(item.segment.price);
+      const key = dayPriceKey(item.segment);
+      const previous = best.get(key);
       if (
         !previous
         || item.segment.qty > previous.segment.qty
         || (item.segment.qty === previous.segment.qty && item.index < previous.index)
       ) {
-        bestByPrice.set(item.segment.price, item);
+        best.set(key, item);
       }
     }
-    return items.filter((item) => bestByPrice.get(item.segment.price) === item);
+    return items.filter((item) => best.get(dayPriceKey(item.segment)) === item);
   };
-  const uniqueCandidates = uniqueByPrice(candidates);
+  const uniqueCandidates = uniqueByDayPrice(candidates);
   const rankedCandidates = rankLimit
     ? uniqueCandidates.slice().sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
     : uniqueCandidates;
@@ -105,11 +123,14 @@ export function livePeakWallDockedLabelsFromSegments(
     ? rankedCandidates.slice(0, rankLimit)
     : rankedCandidates;
   return ranked
-    .map((segment) => ({
-      price: segment.segment.price,
-      label: segment.segment.label,
-      color: segment.segment.color,
-      time1: segment.segment.time1,
+    .map(({ segment }) => ({
+      price: segment.price,
+      label: segment.label,
+      color: segment.color,
+      time0: segment.time0,
+      time1: segment.time1,
+      peakTime: segment.peakTime,
+      side,
     }));
 }
 
@@ -167,6 +188,114 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+/**
+ * peak 발생 시점의 x. `timeToCoordinate` 는 그 시각이 로드된 시계열 범위 밖이면 null 을 내므로
+ * `[time0, time1]` 내 위치로 선형 보간해 폴백한다(세션 내 가상시각이 x와 단조라 근사 정확).
+ *
+ * **점(dot)·라벨·고저 라벨 회피 rect 가 반드시 이 함수를 함께 쓴다.** 각자 구하면 폴백이 걸리는
+ * 구간에서만 서로 어긋나 — 평소엔 멀쩡하고 특정 날짜/줌에서만 라벨이 점을 떠나는 결함이 된다.
+ * 입력 x0/x1 과 rawPeakX 는 **같은 좌표계**여야 한다(bitmap 이면 둘 다 bitmap).
+ */
+export function peakXFromCoordinate(
+  rawPeakX: number | null,
+  peakTime: Time,
+  time0: Time,
+  time1: Time,
+  x0: number,
+  x1: number,
+): number {
+  if (rawPeakX !== null && Number.isFinite(rawPeakX)) return rawPeakX;
+  const t0 = time0 as unknown as number;
+  const t1 = time1 as unknown as number;
+  const tp = peakTime as unknown as number;
+  const frac = t1 > t0 ? clamp((tp - t0) / (t1 - t0), 0, 1) : 0;
+  return x0 + frac * (x1 - x0);
+}
+
+export type PeakWallChipGeometryInput = {
+  /** 라벨 앵커 — peak 발생 봉의 x(점과 동일). */
+  peakX: number;
+  /** 그날 세그먼트 양 끝 x. */
+  dayX0: number;
+  dayX1: number;
+  /** 벽 가격선의 y. */
+  lineY: number;
+  /** 측정된 텍스트 폭(칩 좌우 패딩 제외). */
+  textWidth: number;
+  side: PeakWallLabelSide;
+  paneWidth: number;
+  /** px 상수 → 대상 좌표계 배율. bitmap space 는 hr/vr, media space 는 1(기본). */
+  horizontalScale?: number;
+  verticalScale?: number;
+};
+
+export type PeakWallChipGeometry = {
+  /** 우측 정렬 `fillText` 기준 x. */
+  xRight: number;
+  /** 회피 배치(layoutAskPeakLabels) 이전의 희망 baseline. */
+  baselineY: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+/**
+ * 최대벽 수량 라벨 칩의 기하 — **발생 분봉 위(매도)/아래(매수)** 중앙 정렬.
+ *
+ * 도킹 렌더러와 고저 극값 라벨의 회피 rect 가 **같은 함수**를 부른다. 예전에는
+ * `wallLabelAvoidRect` 가 렌더 기하를 손으로 미러했는데, 그런 미러는 어긋나도 타입 에러가
+ * 나지 않아 고저 라벨이 있지도 않은 칩을 피해 표류하는 유령 회피를 낳는다.
+ *
+ * x 는 ① 발생 봉 중앙 → ② 그날 구간 안 → ③ pane 안 순으로 클램프한다. ②는 구간이 칩보다
+ * 넓을 때만 적용한다 — 아침의 오늘 세그먼트는 라이브 엣지까지라 폭이 좁은데, 거기서 숨기면
+ * 가장 중요한 라벨이 사라진다(오른쪽은 빈 공간이라 새어도 오독 위험이 없다).
+ */
+export function peakWallChipGeometry({
+  peakX,
+  dayX0,
+  dayX1,
+  lineY,
+  textWidth,
+  side,
+  paneWidth,
+  horizontalScale = 1,
+  verticalScale = 1,
+}: PeakWallChipGeometryInput): PeakWallChipGeometry | null {
+  if (![peakX, dayX0, dayX1, lineY, textWidth, paneWidth].every((n) => Number.isFinite(n))) return null;
+  const xPad = LABEL_BOX_X_PAD_PX * horizontalScale;
+  const yPad = LABEL_BOX_Y_PAD_PX * verticalScale;
+  const edgePad = LABEL_EDGE_PAD_PX * horizontalScale;
+  const fontHeight = LABEL_FONT_PX * verticalScale;
+  // 점(dot) 지름만큼 더 띄운다 — 라벨이 선 끝이 아니라 점 바로 위/아래에 붙으므로,
+  // GAP 만으로는 칩이 점을 덮어 "언제 걸린 벽인지" 를 가린다.
+  const lineClearance = (LABEL_GAP_PX + PEAK_DOT_RADIUS_PX) * verticalScale;
+  const chipWidth = textWidth + xPad * 2;
+  const half = chipWidth / 2;
+
+  const dayLeft = Math.min(dayX0, dayX1);
+  const dayRight = Math.max(dayX0, dayX1);
+  let center = peakX;
+  if (dayRight - dayLeft >= chipWidth) center = clamp(center, dayLeft + half, dayRight - half);
+  const paneMin = edgePad + half;
+  const paneMax = paneWidth - edgePad - half;
+  center = paneMax >= paneMin ? clamp(center, paneMin, paneMax) : (paneMin + paneMax) / 2;
+
+  // baseline 은 텍스트 아랫변('bottom'). 매도=칩 아랫변이 선 위, 매수=칩 윗변이 선 아래.
+  const baselineY = side === 'ask'
+    ? lineY - lineClearance - yPad
+    : lineY + lineClearance + fontHeight + yPad;
+  const xRight = center + textWidth / 2;
+  return {
+    xRight,
+    baselineY,
+    left: xRight - textWidth - xPad,
+    right: xRight + xPad,
+    top: baselineY - fontHeight - yPad,
+    bottom: baselineY + yPad,
+  };
+}
+
 function labelsOverlap(a: AskPeakLabelLayout, b: AskPeakLabelLayout, rowHeight: number): boolean {
   const aLeft = a.xRight - a.width;
   const bLeft = b.xRight - b.width;
@@ -209,13 +338,13 @@ export function visibleAskPeakLabelCandidates(
  * Canvas 라벨은 DOM 레이아웃 도움을 못 받으므로, 같은 화면 영역의 라벨끼리만 baseline을 벌린다.
  * 원래 선 위 위치를 우선하되 겹치면 아래쪽 빈 슬롯으로 내리고, pane 밖으로 나가면 위로 되민다.
  */
-export function layoutAskPeakLabels(
-  candidates: readonly AskPeakLabelCandidate[],
+export function layoutAskPeakLabels<T extends AskPeakLabelCandidate>(
+  candidates: readonly T[],
   minBaselineY: number,
   maxBaselineY: number,
   rowHeight: number,
-): AskPeakLabelLayout[] {
-  const layouts: AskPeakLabelLayout[] = [];
+): (T & { baselineY: number })[] {
+  const layouts: (T & { baselineY: number })[] = [];
   const sorted = candidates.slice().sort((a, b) => a.yLine - b.yLine || a.xRight - b.xRight || a.index - b.index);
   for (const c of sorted) {
     let baselineY = clamp(c.yLine, minBaselineY, maxBaselineY);
@@ -294,16 +423,17 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
         // peak 시각이 로드된 캔들 범위 밖이면 null을 내 점이 누락된다(일부만 보이던 버그). 그럴 때는
         // 세그먼트 끝점(x0~x1) 사이를 peakTime의 [time0,time1] 내 위치로 선형 보간해 폴백 — 선이
         // 그려지는 한 점도 항상 그려진다(보간은 세션 내 가상시각이 x와 단조라 근사 정확).
-        let xPeak: number | null = timeScale.timeToCoordinate(s.peakTime);
-        if (xPeak === null) {
-          const t0 = s.time0 as unknown as number;
-          const t1 = s.time1 as unknown as number;
-          const tp = s.peakTime as unknown as number;
-          const frac = t1 > t0 ? Math.min(1, Math.max(0, (tp - t0) / (t1 - t0))) : 0;
-          xPeak = (x0 as number) + frac * ((x1 as number) - (x0 as number));
-        }
+        const rawPeakX = timeScale.timeToCoordinate(s.peakTime);
+        const pxPeak = peakXFromCoordinate(
+          rawPeakX === null ? null : rawPeakX * hr,
+          s.peakTime,
+          s.time0,
+          s.time1,
+          px0,
+          px1,
+        );
         ctx.beginPath();
-        ctx.arc(xPeak * hr, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
+        ctx.arc(pxPeak, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
         ctx.fillStyle = s.color;
         ctx.fill();
         // 라벨은 선/점 렌더 후 한 번에 배치해 가까운 가격대의 텍스트 겹침을 피한다.

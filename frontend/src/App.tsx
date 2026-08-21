@@ -25,7 +25,7 @@ import { useSectorTickEvents } from './api/useSectorTickEvents';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
-import { WORKSPACE_DRAWER_WIDTH_CLASS } from './live/workspaceDrawer';
+import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from './live/workspacePanel';
 import { registerSettingsModalOpener } from './live/settingsModalControls';
 import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
@@ -175,14 +175,14 @@ export default function App() {
       {settingsOpen && (
         <ModalShell
           ariaLabel="설정"
-          side="right"
-          width={WORKSPACE_DRAWER_WIDTH_CLASS}
+          width={WORKSPACE_PANEL_WIDTH_CLASS}
+          height={WORKSPACE_PANEL_HEIGHT_CLASS}
           onClose={() => setSettingsOpen(false)}
         >
           {/* title 없음 — 섹션 제목·닫기 X는 SettingsSections 콘텐츠 헤더가 담당.
-              `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(우측 드로어 760px + nav 240px)이다:
+              `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(중앙 모달 760px + nav 240px)이다:
               진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
-              옛 중앙 모달(720×560 하드코딩)은 이 통일로 사라졌다. */}
+              크롬은 `live/workspacePanel.ts` 상수 하나로 강제한다(하드코딩 금지). */}
           <Suspense fallback={null}>
             <SettingsSections variant={settingsVariant} onClose={() => setSettingsOpen(false)} />
           </Suspense>
