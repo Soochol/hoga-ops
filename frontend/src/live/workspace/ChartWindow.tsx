@@ -589,11 +589,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               depthHeatmap={d.workareaDepthHeatmap}
               depthDeltaToday={d.depthDeltaToday}
               onViewportCaptureReady={handleViewportCaptureReady}
-              // 옆 분봉 창의 마우스 위치를 이 창(일봉일 때)의 크로스헤어로 받는다.
-              // 링크 그룹은 판정에 쓰지 않는다(ADR-0119 §크로스헤어 부분 번복).
-              // 종목 축은 ⚙️ 설정 → 차트의 「크로스헤어 동기화 — 다른 종목까지」가
-              // 정한다(기본 켬 — 종목이 달라도 따라온다). 발행은 `LiveChartRoot` 가
-              // 라우트 무관하게 이미 하고 있었고, `/live` 에는 소비자가 없었을 뿐이다.
+              // 창 간 동기화(크로스헤어 · 기간 · 줌)를 켠다. **범위는 창 헤더의 번호
+              // (링크 그룹)** 다 — 번호가 다르면 아무것도 공유하지 않는다(사용자 결정
+              // 2026-08-21, ADR-0119 §크로스헤어의 재번복). 그 안에서 종목 축은
+              // ⚙️ 설정 → 차트의 「다른 종목까지」가 정한다(핀 때문에 같은 번호여도
+              // 종목이 갈릴 수 있다).
               cursorSyncCrosshair
               paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes }}
             />

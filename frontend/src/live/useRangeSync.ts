@@ -12,7 +12,7 @@ import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorSto
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { centeredLogicalRange, shouldFollowRange } from '../chart/rangeSync';
+import { centeredLogicalRange, shouldFollowRange, zoomedSpan } from '../chart/rangeSync';
 
 /** 휠이 멈춘 것으로 보는 침묵 구간. 휠은 pointerup 같은 종료 이벤트가 없다. */
 const WHEEL_GESTURE_TAIL_MS = 150;
@@ -68,12 +68,30 @@ export function useRangeSyncPublish(params: {
       flushPending = true;
       schedule();
     };
-    const onWheel = () => {
+    /**
+     * 제스처 시작. **그 시점의 범위를 즉시(동기로) 싣는다.**
+     *
+     * 소비 창의 줌 비율은 "직전에 적용한 발행의 폭" 과 비교해 나온다. 제스처가 만든
+     * 발행이 그 창의 **첫 발행**이면 비교할 짝이 없어 줌이 한 박자 늦는다 — 도그푸딩
+     * 에서 실제로 그랬다(분봉은 확대됐는데 일봉 라벨 간격이 그대로). 시작 시점의
+     * 범위를 먼저 실어 두면 이어지는 rAF 발행이 곧바로 올바른 비율을 만든다.
+     *
+     * **capture 단계로 듣는 이유**가 이것이다 — lwc 의 휠 핸들러는 캔버스(타겟)에
+     * 있어 버블 단계에서는 이미 확대가 끝난 뒤다. 그러면 "시작 시점" 이 아니라
+     * 확대 후 범위를 싣게 되어 기준선이 무의미해진다.
+     */
+    const startGesture = () => {
+      if (gestureActive) return;
       gestureActive = true;
+      flushPending = true;
+      publish();
+    };
+    const onWheel = () => {
+      startGesture();
       if (wheelTail !== null) clearTimeout(wheelTail);
       wheelTail = setTimeout(endWheelTail, WHEEL_GESTURE_TAIL_MS);
     };
-    const onPointerDown = () => { gestureActive = true; };
+    const onPointerDown = () => { startGesture(); };
     const onPointerUp = () => {
       // 휠 꼬리가 살아 있으면 그쪽이 끝낸다 — 드래그 종료가 휠 구간을 잘라먹지 않게.
       if (wheelTail !== null) return;
@@ -102,16 +120,17 @@ export function useRangeSyncPublish(params: {
       useLiveCursorStore.getState().setSyncRange(fromMs, toMs, originRef.current);
     };
 
-    target.addEventListener('wheel', onWheel, { passive: true });
-    target.addEventListener('pointerdown', onPointerDown);
+    // capture: true — lwc 의 핸들러(캔버스=타겟)보다 **먼저** 듣기 위해서다.
+    target.addEventListener('wheel', onWheel, { passive: true, capture: true });
+    target.addEventListener('pointerdown', onPointerDown, { capture: true });
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerUp);
     ts.subscribeVisibleLogicalRangeChange(schedule);
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       if (wheelTail !== null) clearTimeout(wheelTail);
-      target.removeEventListener('wheel', onWheel);
-      target.removeEventListener('pointerdown', onPointerDown);
+      target.removeEventListener('wheel', onWheel, { capture: true });
+      target.removeEventListener('pointerdown', onPointerDown, { capture: true });
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
@@ -135,14 +154,20 @@ export function useRangeSyncPublish(params: {
 export function useRangeSyncFollow(params: {
   chart: IChartApi | null;
   axis: VirtualAxis;
-  /** 이 창의 캔들 — 발행 구간을 내 축의 인덱스로 옮길 때 존재 확인에 쓴다. */
-  hasCandles: boolean;
+  /** 이 창의 캔들 수 — 인덱스 변환의 존재 확인이자 줌 클램프의 천장이다. */
+  candleCount: number;
   enabled: boolean;
+  /** 폭(줌)까지 따라갈지 — `rangeSyncZoom`. 끄면 스크롤만 한다. */
+  syncZoom: boolean;
   myWindowId: string | null;
+  /** 이 창의 링크 그룹(창 헤더의 번호) — 동기화 범위. */
+  myGroup: number | null;
   myCode: string | null;
   allowCrossSymbol: boolean;
 }): void {
-  const { chart, axis, hasCandles, enabled, myWindowId, myCode, allowCrossSymbol } = params;
+  const {
+    chart, axis, candleCount, enabled, syncZoom, myWindowId, myGroup, myCode, allowCrossSymbol,
+  } = params;
   const syncRange = useLiveCursorStore((s) => s.syncRange);
   const axisRef = useRef(axis);
   axisRef.current = axis;
@@ -151,11 +176,24 @@ export function useRangeSyncFollow(params: {
   if (baselineSeqRef.current === null) {
     baselineSeqRef.current = useLiveCursorStore.getState().syncRange?.seq ?? 0;
   }
+  /**
+   * 줌 비율의 기준선 — 직전에 **적용한** 발행의 폭과 그 발행 창.
+   *
+   * `windowId` 를 함께 들고 있어야 한다. 분봉 창이 둘이고 배율이 서로 다르면(6시간 vs
+   * 1시간) 번갈아 발행할 때마다 6배·1/6배가 번갈아 나온다 — 아무도 줌하지 않았는데
+   * 일봉이 요동친다. 발행 창이 바뀌면 기준선을 새로 잡고 그 라운드는 줌을 건너뛴다.
+   */
+  const zoomBaselineRef = useRef<{ windowId: string | null; spanMs: number } | null>(null);
+  // 추종이 꺼져 있는 동안의 발행은 기준선을 갱신하지 못한다 — 다시 켰을 때 낡은 폭과
+  // 비교하면 유령 줌이 된다. 스위치·종목이 바뀌면 기준선을 버린다.
+  useEffect(() => { zoomBaselineRef.current = null; }, [enabled, syncZoom, myCode]);
 
   useEffect(() => {
-    if (!chart || !enabled || !hasCandles || !syncRange) return;
+    if (!chart || !enabled || candleCount <= 0 || !syncRange) return;
     if (syncRange.seq <= (baselineSeqRef.current ?? 0)) return;
-    if (!shouldFollowRange({ publication: syncRange, myWindowId, myCode, allowCrossSymbol })) return;
+    if (!shouldFollowRange({
+      publication: syncRange, myWindowId, myGroup, myCode, allowCrossSymbol,
+    })) return;
     const ts = chart.timeScale();
     const raf = requestAnimationFrame(() => {
       // 실행 시점에 다시 읽는다 — 예약 이후 사용자가 이 창을 움직였을 수 있다.
@@ -170,9 +208,29 @@ export function useRangeSyncFollow(params: {
         true,
       );
       if (typeof fromIndex !== 'number' || typeof toIndex !== 'number') return;
-      const next = centeredLogicalRange({ fromIndex, toIndex, current });
+      const baseline = zoomBaselineRef.current;
+      const publishedSpanMs = syncRange.toMs - syncRange.fromMs;
+      const sameOrigin = baseline !== null && baseline.windowId === syncRange.origin.windowId;
+      const spanOverride = syncZoom && sameOrigin
+        ? zoomedSpan({
+          prevPublishedSpanMs: baseline.spanMs,
+          nextPublishedSpanMs: publishedSpanMs,
+          currentSpan: current.to - current.from,
+          candleCount,
+        })
+        : null;
+      // 기준선은 **줌 동기화가 꺼져 있어도** 갱신한다 — 안 그러면 토글을 켠 순간
+      // 한참 전 폭과 비교해 유령 줌이 난다.
+      zoomBaselineRef.current = { windowId: syncRange.origin.windowId, spanMs: publishedSpanMs };
+      // 위치와 폭을 **한 번의 호출로** 적용한다. 두 번 나눠 부르면 일봉의 범위 변화
+      // 이벤트가 두 번 발화해 애니메이션이 겹친다.
+      const next = centeredLogicalRange({
+        fromIndex, toIndex, current, spanOverride: spanOverride ?? undefined,
+      });
       if (next) ts.setVisibleLogicalRange(next);
     });
     return () => cancelAnimationFrame(raf);
-  }, [chart, enabled, hasCandles, syncRange, myWindowId, myCode, allowCrossSymbol]);
+  }, [
+    chart, enabled, syncZoom, candleCount, syncRange, myWindowId, myGroup, myCode, allowCrossSymbol,
+  ]);
 }

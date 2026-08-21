@@ -12,7 +12,7 @@ const axis = {
 } as unknown as VirtualAxis;
 
 const MINUTE_ORIGIN: SidebarCursorOrigin = {
-  windowId: 'minute-window', group: null, code: '064350', timeframe: '1m',
+  windowId: 'minute-window', group: 1, code: '064350', timeframe: '1m',
 };
 
 const setVisibleLogicalRange = vi.fn();
@@ -58,14 +58,18 @@ function Follower(props: {
   enabled?: boolean;
   myCode?: string | null;
   allowCrossSymbol?: boolean;
-  hasCandles?: boolean;
+  candleCount?: number;
+  syncZoom?: boolean;
+  myGroup?: number | null;
 }) {
   useRangeSyncFollow({
     chart: makeChart() as never,
     axis,
-    hasCandles: props.hasCandles ?? true,
+    candleCount: props.candleCount ?? 400,
     enabled: props.enabled ?? true,
+    syncZoom: props.syncZoom ?? false,
     myWindowId: 'daily-window',
+    myGroup: props.myGroup ?? 1,
     myCode: props.myCode ?? '064350',
     allowCrossSymbol: props.allowCrossSymbol ?? false,
   });
@@ -99,6 +103,16 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
     await flushFrame();
 
     expect(useLiveCursorStore.getState().syncRange).toBeNull();
+  });
+
+  it('제스처 시작 시점의 범위를 **즉시** 싣는다 — 소비 창의 줌 기준선', async () => {
+    // rAF 를 기다리지 않는다. 이 발행이 없으면 그 제스처가 만든 범위 변화가 소비 창의
+    // **첫 발행**이 되어 비교할 짝이 없고, 줌 동기화가 한 박자 늦는다(도그푸딩 실측:
+    // 분봉은 확대됐는데 일봉 라벨 간격이 그대로).
+    const view = render(<Publisher />);
+    view.getByTestId('pane').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
+    expect(useLiveCursorStore.getState().syncRange?.fromMs).toBe(1_000_000);
   });
 
   it('드래그 중 범위가 바뀌면 발행한다', async () => {
@@ -188,6 +202,72 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
  * **추종**. 여기서 재는 것은 판정이 아니라 배선이다 — 순수 수식이 옳아도 훅이
  * `setVisibleLogicalRange` 를 안 부르면 `rangeSync.test.ts` 는 전부 초록이다.
  */
+/**
+ * **줌 동기화 배선**(`rangeSyncZoom`, 기본 끔).
+ *
+ * 순수 수식(`zoomedSpan`)이 옳아도 훅이 그 결과를 `spanOverride` 로 안 넘기면
+ * `rangeSync.test.ts` 는 전부 초록이다. 여기서 재는 것은 그 배선이고, **판별 케이스는
+ * 「끈 상태에서도 위치는 따라간다」** 다 — 줌 동기화를 끄는 것과 기간 동기화 자체를
+ * 끄는 것은 다른 일이다.
+ */
+describe('useRangeSyncFollow — 줌 동기화 배선', () => {
+  /** 기준선을 세우고(1회) 그 다음 발행으로 비율을 만든다. */
+  const seedThenZoom = async (nextFrom: number, nextTo: number) => {
+    publishRange(1_000_000, 2_000_000); // 기준선: 폭 1,000,000ms
+    await flushFrame();
+    setVisibleLogicalRange.mockClear();
+    visibleLogical = { from: 100, to: 200 }; // 현재 폭 100
+    publishRange(nextFrom, nextTo);
+    await flushFrame();
+  };
+
+  it('끈 상태에서는 폭이 그대로 — 하지만 위치는 따라간다', async () => {
+    render(<Follower syncZoom={false} />);
+    await seedThenZoom(3_000_000, 3_500_000); // 폭 절반
+
+    // 중점 3,250 → from = 3,250 - 50 = 3,200, 폭 100 유지.
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_200, to: 3_300 });
+  });
+
+  it('켜면 발행 폭이 절반일 때 추종 폭도 절반', async () => {
+    render(<Follower syncZoom />);
+    await seedThenZoom(3_000_000, 3_500_000);
+
+    // 폭 100 → 50. 중점 3,250 → from = 3,225.
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_225, to: 3_275 });
+  });
+
+  it('켜도 팬만이면 폭이 그대로 — 데드밴드', async () => {
+    render(<Follower syncZoom />);
+    // 폭은 같고 위치만 이동(1,000,000ms 유지).
+    await seedThenZoom(3_000_000, 4_000_000);
+
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_450, to: 3_550 });
+  });
+
+  it('발행 창이 바뀌면 그 라운드는 폭을 건드리지 않는다 — 유령 줌 방지', async () => {
+    // 분봉 창이 둘이고 배율이 다르면, 번갈아 발행할 때마다 가짜 비율이 나온다.
+    render(<Follower syncZoom />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+    setVisibleLogicalRange.mockClear();
+    visibleLogical = { from: 100, to: 200 };
+    publishRange(3_000_000, 3_500_000, { ...MINUTE_ORIGIN, windowId: 'other-minute' });
+    await flushFrame();
+
+    // 폭 100 유지 — 다른 창의 폭과 비교하지 않는다.
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_200, to: 3_300 });
+  });
+
+  it('첫 발행은 폭을 건드리지 않는다 — 비율을 잴 짝이 없다', async () => {
+    render(<Follower syncZoom />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
+  });
+});
+
 describe('useRangeSyncFollow — 배선', () => {
   it('발행을 받으면 그 기간을 중앙에 두도록 논리 범위를 민다', async () => {
     render(<Follower />);
@@ -217,6 +297,14 @@ describe('useRangeSyncFollow — 배선', () => {
     expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_450, to: 3_550 });
   });
 
+  it('창번호가 다르면 따라가지 않는다', async () => {
+    render(<Follower myGroup={2} />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+
   it('자기 발행은 따라가지 않는다', async () => {
     render(<Follower />);
     publishRange(1_000_000, 2_000_000, { ...MINUTE_ORIGIN, windowId: 'daily-window' });
@@ -242,7 +330,7 @@ describe('useRangeSyncFollow — 배선', () => {
   });
 
   it('캔들이 아직 없으면 움직이지 않는다 — 빈 축에 인덱스가 없다', async () => {
-    render(<Follower hasCandles={false} />);
+    render(<Follower candleCount={0} />);
     publishRange(1_000_000, 2_000_000);
     await flushFrame();
 

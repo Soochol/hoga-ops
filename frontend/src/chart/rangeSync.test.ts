@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import {
+  MIN_FOLLOW_SPAN_BARS,
   canPublishRangeSync,
   centeredLogicalRange,
   isRangeSyncFollower,
   shouldFollowRange,
+  zoomedSpan,
   type RangeSyncPublication,
 } from './rangeSync';
 
@@ -13,14 +15,19 @@ function pub(over: Partial<SidebarCursorOrigin> = {}, seq = 1): RangeSyncPublica
     fromMs: Date.UTC(2025, 5, 19, 0, 0),
     toMs: Date.UTC(2025, 5, 19, 6, 30),
     seq,
-    origin: { windowId: 'minute-window', group: null, code: '064350', timeframe: '3m', ...over },
+    origin: { windowId: 'minute-window', group: 1, code: '064350', timeframe: '3m', ...over },
   };
 }
 
-function follows(over: Partial<SidebarCursorOrigin> = {}, allowCrossSymbol = false) {
+function follows(
+  over: Partial<SidebarCursorOrigin> = {},
+  allowCrossSymbol = false,
+  myGroup: number | null = 1,
+) {
   return shouldFollowRange({
     publication: pub(over),
     myWindowId: 'daily-window',
+    myGroup,
     myCode: '064350',
     allowCrossSymbol,
   });
@@ -54,7 +61,8 @@ describe('발행 ↔ 추종 집합', () => {
 describe('shouldFollowRange', () => {
   it('발행이 없으면 따라가지 않는다', () => {
     expect(shouldFollowRange({
-      publication: null, myWindowId: 'daily-window', myCode: '064350', allowCrossSymbol: true,
+      publication: null, myWindowId: 'daily-window', myGroup: 1, myCode: '064350',
+      allowCrossSymbol: true,
     })).toBe(false);
   });
 
@@ -71,6 +79,22 @@ describe('shouldFollowRange', () => {
     expect(follows({ timeframe: 'W' })).toBe(false);
   });
 
+  it('창번호가 다르면 따라가지 않는다 — 세 동기화가 같은 범위 규칙을 쓴다', () => {
+    // 사용자 결정 2026-08-21. 그룹 1 의 팬이 그룹 2 의 창을 움직이면 방해가 된다.
+    expect(follows({ group: 2 })).toBe(false);
+    // 종목 토글을 켜도 창번호는 열리지 않는다 — 축이 다르다.
+    expect(follows({ group: 2 }, true)).toBe(false);
+  });
+
+  it('`/study` 처럼 양쪽이 번호 없음이면 통과한다', () => {
+    expect(follows({ group: null }, false, null)).toBe(true);
+  });
+
+  it('한쪽만 번호가 없으면 막는다 — 관대한 비교를 쓰지 않는다', () => {
+    expect(follows({ group: null }, true, 1)).toBe(false);
+    expect(follows({ group: 1 }, true, null)).toBe(false);
+  });
+
   it('종목 축은 크로스헤어와 같은 토글이 정한다', () => {
     expect(follows({ code: '005930' }, false)).toBe(false);
     expect(follows({ code: '005930' }, true)).toBe(true);
@@ -81,6 +105,85 @@ describe('shouldFollowRange', () => {
  * 중앙 정렬 수식. **줌은 현재 값을 그대로 쓴다** — 분봉이 보는 폭(1~2일)을 일봉 축에
  * 맞추면 캔들 두 개짜리 화면이 된다.
  */
+/**
+ * **줌 비율 옮기기**(`rangeSyncZoom`, 기본 끔).
+ *
+ * **막는 방향** 셋: ① 팬을 줌으로 오독하는 것(데드밴드) ② 분봉 배율을 그대로 곱해
+ * 일봉이 3봉/12,000봉이 되는 것(클램프) ③ 천장·바닥에서 같은 값을 되쓰는 것.
+ * **못 보는 것**: 이 함수는 비율만 본다 — "발행 창이 바뀌었는가" 는 호출부가 판단해
+ * `prevPublishedSpanMs: null` 로 알려 준다(그 판정은 훅 테스트가 잰다).
+ */
+describe('zoomedSpan', () => {
+  const base = { currentSpan: 200, candleCount: 400 };
+
+  it('발행 폭이 절반이면 추종 폭도 절반 — 절대 폭이 아니라 **비율**을 옮긴다', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 20_000, nextPublishedSpanMs: 10_000 }))
+      .toBe(100);
+  });
+
+  it('발행 폭이 2배면 추종 폭도 2배', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 20_000 }))
+      .toBe(400);
+  });
+
+  it('기준선이 없으면 건드리지 않는다 — 첫 발행·발행 창 교체', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: null, nextPublishedSpanMs: 10_000 }))
+      .toBeNull();
+  });
+
+  it('데드밴드 안이면 팬으로 본다 — 백필 재앵커가 폭을 조금 흔든다', () => {
+    // 4% 변화. 부동소수 오차가 아니라 **백필 크기**의 흔들림을 흡수해야 한다.
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 10_400 }))
+      .toBeNull();
+    // 6% 는 통과한다 — 문턱 바로 위.
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 10_600 }))
+      .toBe(212);
+  });
+
+  it('바닥은 최소 봉 수 — 분봉을 극단으로 확대해도 일봉은 읽힌다', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 1 }))
+      .toBe(MIN_FOLLOW_SPAN_BARS);
+  });
+
+  it('천장은 이 창의 캔들 수 — 그 이상은 여백만 늘린다', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 1, nextPublishedSpanMs: 10_000 }))
+      .toBe(400);
+  });
+
+  it('클램프에 걸려 지금과 같아지면 null — 천장에서 1봉 진동을 남기지 않는다', () => {
+    // 이미 천장(400)인데 더 축소(=폭 확대) 요청.
+    expect(zoomedSpan({
+      currentSpan: 400, candleCount: 400, prevPublishedSpanMs: 1, nextPublishedSpanMs: 10_000,
+    })).toBeNull();
+  });
+
+  it('값이 유효하지 않으면 null', () => {
+    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 0, nextPublishedSpanMs: 10 })).toBeNull();
+    expect(zoomedSpan({ ...base, currentSpan: 0, prevPublishedSpanMs: 10, nextPublishedSpanMs: 20 }))
+      .toBeNull();
+  });
+});
+
+describe('centeredLogicalRange — spanOverride', () => {
+  const current = { from: 100, to: 200 };
+
+  it('넘긴 폭으로 중앙 정렬한다 — 위치와 폭을 한 번에', () => {
+    expect(centeredLogicalRange({ fromIndex: 140, toIndex: 160, current, spanOverride: 50 }))
+      .toEqual({ from: 125, to: 175 });
+  });
+
+  it('제자리 줌도 적용한다 — 위치만 비교하면 줌 동기화가 통째로 죽는다', () => {
+    // 중점 150 은 현재 중앙과 같다(위치 불변). 폭만 100 → 50 으로 바뀐다.
+    const r = centeredLogicalRange({ fromIndex: 150, toIndex: 150, current, spanOverride: 50 });
+    expect(r).toEqual({ from: 125, to: 175 });
+  });
+
+  it('위치도 폭도 그대로면 null', () => {
+    expect(centeredLogicalRange({ fromIndex: 150, toIndex: 150, current, spanOverride: 100 }))
+      .toBeNull();
+  });
+});
+
 describe('centeredLogicalRange', () => {
   const current = { from: 100, to: 200 }; // span 100
 
