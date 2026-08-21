@@ -142,6 +142,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     rangeWindowFromDate,
     pastSettledFromDate,
     adjustFactors,
+    gapFill,
   } = useLiveBundle(activeCode, timeframe, today, live, {
     investorNetEnabled,
     venue,
@@ -343,6 +344,11 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
      *  같은 척도를 쓰게 하는 통로(`scaleRangeBundlePrices`). 지수는 호가 지표 자체가
      *  없으므로 `undefined`(`depthDeltaToday` 와 같은 규율). */
     adjustFactors: activeIndexId ? undefined : adjustFactors,
+    /** 얼린 저장뷰의 키움 보충 결과. **로딩 게이트에는 넣지 않는다** — 보충은 디스크
+     *  캔들이 그려진 뒤 점진적으로 도착하는 것이 설계다. reveal 을 여기에 묶으면 있는
+     *  데이터마저 가장 느린 벤더 walk 를 기다리게 되고, 그게 이 기능이 피하려던 비용이다.
+     *  지수 워크에어리어는 분봉 캡처 파이프라인 자체가 없으므로 대상이 아니다. */
+    gapFill,
     workareaCode,
     workareaBundle,
     workareaChartBundle,
