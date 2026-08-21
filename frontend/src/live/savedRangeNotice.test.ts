@@ -26,7 +26,7 @@ describe('savedRangeNotice — 분봉 250일 벽', () => {
     const n = savedRangeNotice({
       ...base, timeframe: '1m', fromDate: '20250101', toDate: '20260108',
     });
-    expect(n?.text).toBe('저장 구간 일부만 표시');
+    expect(n?.text).toBe('저장 구간 일부가 범위 밖');
   });
 
   it('경계 그 날짜는 벽 안이다 (< 이지 <= 가 아니다)', () => {

@@ -464,7 +464,10 @@ it('저장뷰를 열어도 창의 봉을 밀지 않는다 — 봉은 창이 소�
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
-  expect(savedRange()).toMatchObject({ savedTimeframe: '10m' });
+  // 슬롯은 종목과 구간만 든다 — 저장 당시 봉은 담지 않는다(2026-08-21: 분봉 착석이
+  // 사라지면서 읽는 곳이 0이 됐고, write-only 슬롯은 부패하므로 함께 지웠다).
+  expect(savedRange()).toMatchObject({ code: '005930' });
+  expect(savedRange()).not.toHaveProperty('savedTimeframe');
   expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
 });
 

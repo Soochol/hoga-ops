@@ -41,7 +41,5 @@ export function savedRangeFocusFromView(row: StudyViewListRow): SavedRangeFocus 
     toMs: row.range.to_ms,
     fromDate: row.range.from_date,
     toDate: row.range.to_date,
-    savedTimeframe: row.timeframe,
-    savedBarSpan: row.viewport.bar_span,
   };
 }

@@ -4,7 +4,6 @@ import {
   TickMarkType,
   type IChartApi,
   type ISeriesApi,
-  type LogicalRange,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -36,11 +35,6 @@ import {
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
-import {
-  clampLogicalRangeToWall,
-  savedRangeWallBarTs,
-  savedRangeWallLimit,
-} from './savedRangeWall';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
   type LiveMAConfig,
@@ -363,18 +357,6 @@ interface Props {
    *  같은 값을 넘긴다(`ChartWindow`). 분봉 게이트는 아래 렌더에 있으므로 생산자는
    *  봉을 신경 쓰지 않아도 된다. */
   savedRangeBand?: StudySavedRangeMarks | null;
-  /**
-   * 분봉 **저장뷰 우측 벽** — 이 실시각(저장 구간의 끝 B)보다 오른쪽으로 뷰포트가
-   * 못 나간다. null(기본) = 벽 없음.
-   *
-   * 밴드와 **배타적인 짝**이다: 같은 슬롯의 두 표현이고, 캘린더 봉이면 밴드를,
-   * 분봉이면 벽을 쓴다(2026-08-21 사용자 결정). 그래서 생산자는 분봉일 때만 채운다.
-   *
-   * ⚠ 여기서 받는 것이 **ms 이지 논리 인덱스가 아닌 것**이 계약이다. 저장뷰 적용은
-   * 과거 백필을 발화하고 prepend 는 기존 봉의 논리 인덱스를 전부 민다 — 인덱스를
-   * 넘겨받으면 백필이 착지할 때마다 벽이 조용히 어긋난다(`savedRangeWall.ts`).
-   */
-  savedRangeWallToMs?: number | null;
   /** 열린 저장뷰의 구간 **시작일**(YYYYMMDD) — 백필이 그 날까지 워크백하게 한다
    *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
   savedRangeFromDate?: string | null;
@@ -489,7 +471,6 @@ export function LiveChartRoot({
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   savedRangeBand = null,
-  savedRangeWallToMs = null,
   savedRangeFromDate = null,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
@@ -1066,138 +1047,6 @@ export function LiveChartRoot({
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange));
     };
   }, [chart, containerRef, markViewportUserAdjusted]);
-
-  // ── 분봉 저장뷰 우측 벽 ───────────────────────────────────────────────
-  //
-  // 벽 입력을 **ref 로** 들고 구독 deps 를 `[chart]` 하나로 묶는다. 캔들은 SSE 틱마다
-  // 새 배열이라 deps 에 넣으면 틱마다 구독을 떼었다 붙인다.
-  const savedRangeWallRef = useRef<{ toMs: number; candles: readonly { ts_ms: number }[] } | null>(null);
-  useEffect(() => {
-    savedRangeWallRef.current = savedRangeWallToMs !== null
-      ? { toMs: savedRangeWallToMs, candles: cb?.candles ?? [] }
-      : null;
-  }, [savedRangeWallToMs, cb]);
-
-  /**
-   * **지연 착석** — 저장 구간이 뒤늦게 도착하면 그때 앉힌다.
-   *
-   * 저장뷰를 분봉 상태에서 열면 그 순간 로드된 캔들은 **최근 5거래일**뿐이라
-   * (`INITIAL_MINUTE_TRADING_DAYS`) 몇 달 전 저장 구간이 축에 없다. 그러면 두 메커니즘이
-   * **둘 다 데이터 도착 전에 소진된다**:
-   *   ① `restoreViewport` 착석은 `rightEdgeMs >= cb.candles[0].ts_ms` 가드에서 실패하고
-   *      `lastAppliedCountRef` 가 세팅돼 **재시도가 없다**.
-   *   ② 우측 벽은 범위 변경 **이벤트 구동**이라, 백필이 도착해도 사용자가 팬하지 않으면
-   *      발화하지 않는다.
-   * 결과: 백필이 저장 구간까지 다 와도 화면은 **오늘 장중에 남는다**(2026-08-21 실측 —
-   * 저장 05-20~06-26 인데 08-21 13:30~15:30 이 보였다).
-   *
-   * 그래서 캔들이 갱신될 때마다 "B 가 축에 들어왔는가" 를 보고, 들어온 **첫 순간에 한 번**
-   * 앉힌다. 그 뒤로는 벽이 우측 이탈만 막고 좌측 팬은 자유다.
-   *
-   * 한 번만 앉히는 것이 계약이다(`seatedRef`) — 매 백필마다 앉히면 사용자가 저장 구간
-   * 왼쪽을 보고 있는데 화면이 계속 오른쪽으로 튄다. 키에 `viewKey` 를 섞어 봉·종목·저장뷰가
-   * 바뀌면 다시 앉을 기회를 준다.
-   */
-  const savedRangeSeatedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!chart || savedRangeWallToMs === null) {
-      savedRangeSeatedRef.current = null;
-      return;
-    }
-    const seatKey = `${viewKey}|${savedRangeWallToMs}`;
-    if (savedRangeSeatedRef.current === seatKey) return;
-    const candles = cb?.candles ?? [];
-    const wallTs = savedRangeWallBarTs(candles, savedRangeWallToMs);
-    // 아직 축에 없다 — 다음 캔들 갱신에서 다시 본다(백필은 진행 중이다).
-    if (wallTs === null) return;
-    const ts = chart.timeScale();
-    const barIndex = ts.timeToIndex?.(
-      realMsToVirtualSeconds(axisRef.current, wallTs) as Time,
-      true,
-    );
-    if (typeof barIndex !== 'number' || !Number.isFinite(barIndex)) return;
-    const current = ts.getVisibleLogicalRange();
-    if (!current) return;
-    savedRangeSeatedRef.current = seatKey;
-    // span 은 저장 뷰포트를 쓰되 **그릴 수 있는 크기로 접는다** — 넓은 화면에서 저장한
-    // span 을 좁은 창에 그대로 적용하면 여백만 부풀어 캔들이 화면 밖으로 밀린다
-    // (`minuteRestoreGeometry` 의 근거). 저장 뷰포트가 없으면 현재 줌을 유지한다.
-    const geom = restoreViewport
-      ? minuteRestoreGeometry(
-          restoreViewport.barSpan,
-          ts.width(),
-          chart.options().timeScale.minBarSpacing ?? 0.5,
-        )
-      : null;
-    const span = Math.max(1, Math.round(geom?.barSpan ?? current.to - current.from));
-    const limit = savedRangeWallLimit(barIndex);
-    try {
-      ts.setVisibleLogicalRange({ from: limit - span, to: limit });
-    } catch {
-      /* chart torn down between effect runs */
-    }
-  }, [chart, savedRangeWallToMs, cb, viewKey, restoreViewport]);
-
-  /**
-   * 우측 벽의 **단일 집행 지점** — 팬 입력이 둘인데 여기 하나로 모인다.
-   *
-   * 드래그·트랙패드 스크롤은 lightweight-charts 소유(`handleScroll`)라 계산에 끼어들
-   * 자리가 아예 없고, 휠은 이 컴포넌트가 소유하지만(`handleScale.mouseWheel: false` +
-   * `useWheelInteractions`) 그쪽도 결국 `ts.setVisibleLogicalRange` 로 착지한다 —
-   * 즉 **두 경로 모두 이 구독을 발화시킨다.** 그래서 휠 계산부에 클램프를 따로 심지
-   * 않는다. 심으면 같은 규칙이 두 곳에 살고 한쪽만 낡는다.
-   *
-   * ⚠ **스냅백은 rAF 로 미뤄야 한다 — 콜백 안에서 부르면 lwc 가 삼킨다.**
-   * 범위 변경 처리 중의 `setVisibleLogicalRange` 는 재진입 방지로 무시되는데,
-   * **에러도 없고 반환값도 없어** 실패가 보이지 않는다. 2026-08-21 도그푸딩에서
-   * 클램프 계산은 정확한데(`next.to = 9872`) 차트는 그대로(13872)인 모양으로 잡혔다 —
-   * 단위 테스트로는 원리적으로 못 잡는 층이다(순수 함수는 옳았다).
-   *
-   * 루프는 안 생긴다: 스냅백 결과가 `to === limit` 이라 다음 발화에서
-   * `clampLogicalRangeToWall` 이 곧바로 null 을 낸다(이미 벽 안). rAF 중복 예약
-   * 가드는 그 위의 이중화다.
-   *
-   * 벽 인덱스는 **매 발화 재계산**한다 — 백필 prepend 가 논리 인덱스를 밀기 때문
-   * (`savedRangeWall.ts` 의 캐시 금지 주석).
-   */
-  useEffect(() => {
-    if (!chart) return;
-    const ts = chart.timeScale();
-    let raf: number | null = null;
-    const applyClamp = () => {
-      raf = null;
-      const wall = savedRangeWallRef.current;
-      if (!wall) return;
-      // 예약 시점이 아니라 **실행 시점의** 범위를 읽는다 — 그 사이 사용자가 더
-      // 움직였으면 낡은 값으로 되미는 것이 오히려 튐이 된다.
-      const range = ts.getVisibleLogicalRange();
-      if (!range) return;
-      const wallTs = savedRangeWallBarTs(wall.candles, wall.toMs);
-      if (wallTs === null) return;
-      const barIndex = ts.timeToIndex?.(
-        realMsToVirtualSeconds(axisRef.current, wallTs) as Time,
-        true,
-      );
-      if (typeof barIndex !== 'number' || !Number.isFinite(barIndex)) return;
-      const limit = savedRangeWallLimit(barIndex);
-      const next = clampLogicalRangeToWall(range, limit);
-      if (!next) return;
-      try {
-        ts.setVisibleLogicalRange(next);
-      } catch {
-        /* chart torn down between frames */
-      }
-    };
-    const onRange = (range: LogicalRange | null) => {
-      if (raf !== null || !range || !savedRangeWallRef.current) return;
-      raf = requestAnimationFrame(applyClamp);
-    };
-    ts.subscribeVisibleLogicalRangeChange(onRange);
-    return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
-      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onRange));
-    };
-  }, [chart]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands

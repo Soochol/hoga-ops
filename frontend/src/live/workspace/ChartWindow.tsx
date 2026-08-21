@@ -59,7 +59,6 @@ import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButto
 import { useLivePageStore, isMinuteTimeframe } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
-import { countBarsInRange } from '../savedRangeWall';
 import { earliestAllowedMinuteDate } from '../liveDateTime';
 import { savedRangeNotice } from '../savedRangeNotice';
 import type { Candle } from '../../api/types';
@@ -212,23 +211,19 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   );
 
   /**
-   * 저장 구간을 화면에 앉히는 1회 뷰포트. **없으면 클릭해도 아무 일이 없다** — 라이브
-   * 엣지에 있는 차트에서 2년 전 밴드는 화면 밖이다.
+   * 저장 구간을 화면에 앉히는 1회 뷰포트 — **캘린더 봉(D/W/M) 전용**이다.
+   * 없으면 클릭해도 아무 일이 없다: 라이브 엣지에 있는 차트에서 2년 전 밴드는 화면 밖이다.
+   * `atLiveEdge: false` 가 핵심 — true 면 `computeRestoreRange` 가 최신 봉을 따라가
+   * 저장 구간이 도로 밀려난다.
    *
-   * `atLiveEdge: false` 가 핵심이다. true 면 `computeRestoreRange` 가 최신 봉을 따라가
-   * 저장 구간이 도로 밀려나고, 분봉에서는 그 추적이 우측 벽과 매 틱 싸운다.
+   * **분봉은 null 이다**(2026-08-21 사용자 결정). 분봉에서 저장뷰는 화면을 건드리지
+   * 않는다 — 라이브 기본 뷰 그대로이고, 우측 이동도 막지 않는다. 저장 구간을 보려면
+   * 직접 과거로 팬하면 되고, 그때 데이터는 이미 와 있다(백필은 그대로 미리 당긴다 —
+   * `useViewportBackfill` 3d).
    */
   const savedRangeViewport = useMemo((): TabViewport | null => {
-    if (!savedRange) return null;
-    if (!isMinuteTimeframe(view.timeframe)) {
-      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs);
-    }
-    // 저장 `bar_span` 은 **봉이 일치할 때만** 유효하다(그 함수 주석). 아니면 구간의
-    // 실제 봉 수에서 유도한다.
-    const barSpan = view.timeframe === savedRange.savedTimeframe && savedRange.savedBarSpan > 0
-      ? savedRange.savedBarSpan
-      : Math.max(1, countBarsInRange(savedRangeCandles, savedRange.fromMs, savedRange.toMs));
-    return { rightEdgeMs: savedRange.toMs, barSpan, atLiveEdge: false };
+    if (!savedRange || isMinuteTimeframe(view.timeframe)) return null;
+    return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs);
   }, [savedRange, savedRangeCandles, view.timeframe]);
 
   /**
@@ -505,7 +500,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               viewIdentity={viewIdentity}
               savedRangeBand={savedRangeBand}
               restoreViewport={savedRangeViewport}
-              savedRangeWallToMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               savedRangeFromDate={savedRange?.fromDate ?? null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
