@@ -333,7 +333,8 @@ class LiveStream:
             self._candle_agg.ingest(tick)
 
     async def flush_once(
-        self, *, now_ms: int | None = None, seal_candles_all: bool = False
+        self, *, now_ms: int | None = None,
+        seal_candle_venues: frozenset[str] = frozenset(),
     ) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
         # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
@@ -378,9 +379,12 @@ class LiveStream:
                 )
         # 캔들 합성 flush(다운샘플러와 동일 durability 규율): 완성 봉만 append,
         # 성공한 코드만 commit해 봉을 제거한다. append 실패 시 commit을 건너뛰어
-        # 봉이 다음 flush로 롤된다. seal_candles_all은 게이트 닫힘 drain에서 진행 중
-        # 마지막 봉(종가 동시호가)까지 봉인하기 위함.
-        candle_flushed = self._candle_agg.flush(now_ms=now_ms, seal_all=seal_candles_all)
+        # 봉이 다음 flush로 롤된다. seal_candle_venues는 게이트 닫힘 drain에서 **그
+        # 시장의** 진행 중 마지막 봉(종가 동시호가)까지 봉인하기 위함 — 전 시장이
+        # 아니다(minute_candle_agg.flush docstring).
+        candle_flushed = self._candle_agg.flush(
+            now_ms=now_ms, seal_venues=seal_candle_venues
+        )
         for (code, venue), snaps in candle_flushed.items():
             try:
                 await self._writer.append(date, code, venue, snaps)
@@ -419,8 +423,11 @@ class LiveStream:
             closed = was_open - open_now
             if closed:
                 try:
-                    # seal_candles_all: 진행 중 마지막 봉(종가 동시호가)을 잃지 않게.
-                    await self.flush_once(seal_candles_all=True)
+                    # 진행 중 마지막 봉(종가 동시호가)의 강제 봉인은 **닫히는 시장에만**
+                    # 건다. 전 시장에 걸면 아직 열려 있는 NXT·UN 의 그 분이 여기서 잘려
+                    # 나머지 체결이 새 봉을 만든다 — 같은 분이 두 행이 되는 것이고,
+                    # 바로 아래 `reset(venue)` 이 venue 별인 것과 같은 이유로 틀렸다.
+                    await self.flush_once(seal_candle_venues=frozenset(closed))
                 except Exception:  # noqa: BLE001
                     _log.exception("live.stream.drain_flush_failed venues=%s", sorted(closed))
                 for venue in closed:
