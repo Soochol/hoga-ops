@@ -11,7 +11,9 @@ import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 
-const axis = { toVirtual: (ms: number) => ms } as unknown as VirtualAxis;
+// contains: 이동평균 필터가 MovingAverageOverlay 와 같은 「세션 안 캔들」 배열 위에서
+// SMA 를 재므로 스텁도 그 축을 갖는다 — 픽스처 캔들은 전부 세션 안이다.
+const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
 
 function candle(ts_ms: number): Candle {
   return { ts_ms, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 };

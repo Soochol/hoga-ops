@@ -87,6 +87,7 @@ import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import { usePeakMaFilter } from './peakWallMaFilter';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
 /** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
@@ -1661,6 +1662,10 @@ export function LiveChartRoot({
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
   const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
+  // 회피 rect 도 선·도킹 라벨과 같은 MA 필터를 타야 한다 — 안 그러면 필터로 사라진
+  // 라벨을 피해 고저 극값 라벨이 pane 안쪽으로 밀리는 유령 회피가 남는다.
+  const askPeakMaFilter = usePeakMaFilter('ask');
+  const bidPeakMaFilter = usePeakMaFilter('bid');
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
 
@@ -1975,6 +1980,7 @@ export function LiveChartRoot({
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: askPeakIntraMax,
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
+          maFilter: askPeakMaFilter,
         }).map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
       ...(bidLabelsOn
@@ -1987,6 +1993,7 @@ export function LiveChartRoot({
           baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: bidPeakIntraMax,
           visibleTimeCutoff: bidVisibleTimeCutoffForRender,
+          maFilter: bidPeakMaFilter,
         }).map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
@@ -2012,12 +2019,14 @@ export function LiveChartRoot({
     askPeakEnabled,
     askPeakIntraMax,
     askPeakLabelEnabled,
+    askPeakMaFilter,
     askPeakWallHidden,
     askVisibleTimeCutoffForRender,
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
     bidPeakLabelEnabled,
+    bidPeakMaFilter,
     bidPeakWallHidden,
     bidVisibleTimeCutoffForRender,
     cb,

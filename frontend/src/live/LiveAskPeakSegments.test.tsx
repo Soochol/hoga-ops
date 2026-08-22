@@ -15,7 +15,9 @@ import { createVirtualAxis } from '../util/virtualAxis';
 import type { Time } from 'lightweight-charts';
 
 // 항등 축: toVirtual(ms)=ms → time = ms/1000.
-const axis = { toVirtual: (ms: number) => ms } as unknown as VirtualAxis;
+// contains: 이동평균 필터가 MovingAverageOverlay 와 같은 「세션 안 캔들」 배열 위에서
+// SMA 를 재므로 스텁도 그 축을 갖는다 — 픽스처 캔들은 전부 세션 안이다.
+const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
 const t = (time: number): Time => time as Time;
 const seg = (date: string, o: number, c: number): RangeSegment =>
   ({ date, session_open_ms: o, session_close_ms: c }) as RangeSegment;
@@ -237,6 +239,7 @@ describe('buildAskPeakOverlaySegments', () => {
   it('체결가격 기준 top-N은 같은 가격 후보를 하나의 벽으로만 취급한다', () => {
     const day = '20260613';
     const out = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [{
         date: day,
         price: 100400,
@@ -285,6 +288,7 @@ describe('buildAskPeakOverlaySegments', () => {
     };
 
     const out = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [past],
       segments: [seg('20260612', 60000, 240000)],
       candles: [candle(60000), candle(120000), candle(180000)],
@@ -316,6 +320,7 @@ describe('buildAskPeakOverlaySegments', () => {
     ];
 
     const out = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [past, ...today],
       segments: [seg('20260612', 60000, 240000), seg('20260613', 260000, 440000)],
       candles: [candle(60000), candle(120000), candle(220000), candle(230000), candle(240000)],
@@ -335,6 +340,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
   it('ranked 후보가 비어 있으면 scalar 기준선으로 폴백해 한 줄을 렌더한다', () => {
     const out = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [{
         date: '20260613',
         price: 100,
@@ -381,6 +387,7 @@ describe('buildAskPeakOverlaySegments', () => {
     } as never;
 
     const segments = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }],
@@ -400,6 +407,7 @@ describe('buildAskPeakOverlaySegments', () => {
 describe('live peak-wall inline label suppression', () => {
   it('suppresses ask inline labels after ask styling is applied', () => {
     const raw = buildAskPeakOverlaySegments({
+      maFilter: null,
       dayAskPeaks: [
         peak({ date: '20260612', price: 100, qty: 50, t_ms: 120000 }),
         peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 }),
@@ -449,6 +457,7 @@ describe('live peak-wall inline label suppression', () => {
       max_t_ms: 180000,
     };
     const raw = buildBidPeakOverlaySegments({
+      maFilter: null,
       dayBidPeaks: [pastBid, todayBid],
       segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
       candles: [candle(60000), candle(120000), candle(180000)],
