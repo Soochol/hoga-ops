@@ -697,8 +697,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     forwardPointRef.current = null;
     // lwc 자신의 leave 경로를 태운다 — `crosshairMove(point=null)` 까지 나므로
     // 툴팁·레전드도 평소와 같은 방식으로 정리된다.
+    // `mouseleave` 도 **버블링시킨다** — enter 와 같은 이유다. 우리는 리스너 요소를
+    // 모르고 그 자손에 쏘므로, 네이티브 규칙(mouseleave 는 안 뜬다)을 따르면 lwc 의
+    // leave 핸들러가 안 돌아 `mousemove` 구독도 안 떼지고 크로스헤어도 안 지워진다.
     dispatchToChart('mouseout', clientX, clientY, true);
-    dispatchToChart('mouseleave', clientX, clientY, false);
+    dispatchToChart('mouseleave', clientX, clientY, true);
   };
   // 언마운트 정리는 ref 경유다 — 빈 deps 로 걸어야 마운트/언마운트에만 도는데,
   // 이 클로저는 매 렌더 새로 만들어지므로 직접 넣으면 렌더마다 재구독된다.

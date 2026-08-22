@@ -794,10 +794,15 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
   }
 
   function renderOverlay() {
-    // lwc 서브트리를 흉내 낸다: chartElement 안에 리스너를 건 자손 하나.
+    // lwc 서브트리를 흉내 낸다. **깊이가 계약의 일부다**: 리스너는 pane 요소에
+    // 걸려 있고 우리는 그 **자손**(캔버스)에 쏜다 — 실제 구조가 그렇고, 그래서
+    // 되돌리는 이벤트가 `bubbles: true` 여야 한다. 리스너 요소에 직접 쏘는 스텁은
+    // 그 조건을 지우고 `bubbles: false` 회귀를 통과시킨다(실측으로 확인).
     const chartEl = document.createElement('div');
     chartEl.setAttribute('data-qa-lwc-root', '');
     const lwcTarget = document.createElement('div');
+    const lwcCanvas = document.createElement('canvas');
+    lwcTarget.appendChild(lwcCanvas);
     chartEl.appendChild(lwcTarget);
     document.body.appendChild(chartEl);
 
@@ -841,10 +846,11 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     // jsdom 에 없는 API. 오버레이가 맨 위(실제 상황 그대로), 그 아래 lwc 요소.
     (document as unknown as { elementsFromPoint: unknown }).elementsFromPoint = () => [
       overlay,
+      lwcCanvas,
       lwcTarget,
       chartEl,
     ];
-    return { ...view, overlay, lwcTarget, chartEl, events };
+    return { ...view, overlay, lwcTarget, lwcCanvas, chartEl, events };
   }
 
   it('1. 오버레이 위 pointermove 를 lwc 서브트리로 되돌린다 — enter 를 앞세워서', async () => {
