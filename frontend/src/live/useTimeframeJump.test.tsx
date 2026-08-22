@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useTimeframeJump } from './useTimeframeJump';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
+import { earliestAllowedMinuteDate, todayKstYyyymmdd } from './liveDateTime';
 import type { SyncCandle } from '../chart/cursorSync';
 import type { VirtualAxis } from '../util/virtualAxis';
 
@@ -58,6 +59,8 @@ function Consumer(props: {
   candles: readonly SyncCandle[];
   myGroup?: number | null;
   myTimeframe?: '1m' | 'D';
+  /** 좌측 팬 하한. 미지정이면 벤더 모드(250일 벽), `null` 이면 디스크 모드(무한). */
+  floor?: string | null;
   onResult?: (r: ReturnType<typeof useTimeframeJump>) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +70,8 @@ function Consumer(props: {
     containerRef,
     candles: props.candles,
     enabled: true,
+    minuteScrollbackFloorDate:
+      props.floor === undefined ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : props.floor,
     myWindowId: 'minute-window',
     myTimeframe: props.myTimeframe ?? '1m',
     myGroup: props.myGroup === undefined ? 1 : props.myGroup,
@@ -282,5 +287,18 @@ describe('중단은 착지와 구별되지 않는다 — 그래서 문구가 「
     await flushFrame();
     expect(getByTestId('status').textContent).toBe('landed');
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+});
+
+describe('하한은 창마다 다르다 — 디스크 모드는 막지 않는다 (#1497)', () => {
+  const OLD_MS = NOW - 400 * DAY_MS;
+
+  it('하한이 null 이면 같은 날짜라도 out-of-retention 이 아니다', async () => {
+    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} floor={null} />);
+    await requestJump(OLD_MS);
+    await flushFrame();
+    expect(getByTestId('status').textContent).not.toBe('out-of-retention');
+    // 백필 목표로도 나간다 — 디스크에는 그 구간이 있을 수 있다.
+    expect(getByTestId('backfill').textContent).toMatch(/^\d{8}$/);
   });
 });
