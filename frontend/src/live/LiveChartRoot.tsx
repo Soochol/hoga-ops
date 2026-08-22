@@ -300,7 +300,11 @@ interface Props {
   onRetryCandles?: () => void;
   /** Optional pane-specific bundle for ratio display when the source is already display-locked. */
   ratioBundle?: RangeBundle | null;
+  /** 벤더 250일 벽에 닿았다 — **벤더 모드 전용**. 디스크 모드엔 그 벽이 없다. */
   clampEngaged: boolean;
+  /** 좌측 팬 하한(YYYYMMDD) — `useLiveBundle.minuteScrollbackFloorDate`. `null`=무한.
+   *  판정은 모드를 아는 훅이 하고 여기서는 나르기만 한다(그 값의 도크스트링 참조). */
+  minuteScrollbackFloorDate?: string | null;
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
@@ -487,6 +491,7 @@ export function LiveChartRoot({
   onRetryCandles,
   ratioBundle,
   clampEngaged,
+  minuteScrollbackFloorDate = null,
   isPastCandlesLoading,
   isHogaLoading = false,
   isSidecarLoading = false,
@@ -1103,6 +1108,7 @@ export function LiveChartRoot({
     rangeWindowFromDate,
     settledFromDate,
     savedRangeFromDate,
+    minuteScrollbackFloorDate,
     // 게이트를 통과한 값이다 — 원시 슬롯을 물리면 받지도 않은 점프를 위해 과거를
     // 긁는 창이 생긴다(그 prop 주석의 그 사고).
     jumpFromDate: minuteJump.backfillFromDate,
@@ -2781,7 +2787,10 @@ export function LiveChartRoot({
         </div>
       )}
       {/* bottom-left 상태 칩 스택: 부분로딩(rate-limit, 위) + 클램프(아래). 둘 다
-          하단-좌측이라 한 flex 컬럼으로 묶어 겹침을 막는다(드물게 동시 발생). */}
+          하단-좌측이라 한 flex 컬럼으로 묶어 겹침을 막는다(드물게 동시 발생).
+
+          ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
+          추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
       {(clampEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
