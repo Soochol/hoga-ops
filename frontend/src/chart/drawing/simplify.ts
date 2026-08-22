@@ -80,5 +80,16 @@ export function simplifyByPixels<T>(
   return items.filter((_, i) => keptProjected.has(i) || unprojectable.has(i));
 }
 
-/** Default pencil simplification tolerance in canvas pixels. */
-export const PENCIL_SIMPLIFY_EPSILON = 1.5;
+/**
+ * Default pencil simplification tolerance in canvas pixels.
+ *
+ * 1.5 was chosen when a stroke's X was pinned to the bar grid anyway, so
+ * sub-pixel fidelity had nothing to be faithful to. Now that a vertex carries
+ * its sub-bar offset, 1.5px of allowed error is the dominant remaining source
+ * of visible flattening on a curve — every arc got shaved toward its chord.
+ * 0.6px is below the width of the stroke itself at every supported
+ * `STROKE_WIDTHS`, so simplification stops being something the eye can find,
+ * while still collapsing the long straight runs that make freehand capture
+ * expensive to store.
+ */
+export const PENCIL_SIMPLIFY_EPSILON = 0.6;

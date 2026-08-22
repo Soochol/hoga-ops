@@ -128,6 +128,58 @@ export interface Pencil extends DrawingBase {
   kind: 'pencil';
   /** >= 2 points. Capped at PENCIL_MAX_POINTS during capture. */
   points: Point[];
+  /**
+   * Sub-bar horizontal offset per point, as a FRACTION OF ONE BAR'S WIDTH
+   * (typically -0.5..+0.5). Parallel to `points`; index i belongs to
+   * `points[i]`. Absent (or a shorter array) → 0, which is exactly the
+   * pre-subX behaviour, so old strokes keep rendering unchanged.
+   *
+   * Why this exists: `points[i].realMs` can only ever name a BAR. Capture goes
+   * through `timeScale().coordinateToTime`, which is `Math.ceil` on the float
+   * bar index — so a freehand stroke's X collapses onto the bar grid and the
+   * curve renders as a staircase whose step equals the bar pitch (measured:
+   * 15.8px zoomed out, 28.2px zoomed in). The residual pixel offset the anchor
+   * threw away is kept here and re-added at projection time
+   * (`x = realMsToX(realMs) + subX[i] * barPx`).
+   *
+   * Stored as a bar fraction rather than raw pixels because pixels are only
+   * meaningful at the zoom level that captured them; a fraction of a bar
+   * survives zoom and pan unchanged.
+   *
+   * It is NOT invariant across a timeframe switch inside one slot (1m↔30m
+   * share a storage slot — see `DrawingSlot`): the fraction is denominated in
+   * the CAPTURING frame's bar and re-multiplied by the VIEWING frame's, so a
+   * 1m stroke viewed on 30m re-denominates. The resulting error is bounded by
+   * half a viewing bar — the same magnitude as the anchor snapping this field
+   * exists to undo — so it degrades to roughly the pre-subX accuracy rather
+   * than to something worse. Encoding it against a fixed unit (ms) instead
+   * would fix that, but ms is exactly what the calendar-mode axis cannot
+   * represent between bars (see above).
+   *
+   * ⚠ NOT applicable to the other kinds. hline/vline/trendline/rect/measure/
+   * text anchor to bars deliberately (a trendline endpoint on a candle is the
+   * point), and magnet snapping reinforces that. Pencil is the one tool whose
+   * whole value is the shape between bars, and the one tool that opts out of
+   * magnet (see DrawingOverlay's `buildCtx`).
+   */
+  subX?: number[];
+}
+
+/**
+ * Pixel offset that re-adds what bar-anchoring threw away for `points[i]`.
+ * Zero for a stroke without `subX`, for an index past the array's end, for a
+ * non-finite entry, and whenever the bar pitch is unknown — every one of those
+ * degrades to the bar-anchored X, never to a wrong one.
+ *
+ * Lives here, not in the renderer, because render AND hit-test both call it
+ * and they MUST agree: a disagreement makes a stroke grabbable somewhere other
+ * than where it is drawn. (`hitTest.ts` is deliberately dependency-light — it
+ * imports only this module — so the shared piece has to sit at that level.)
+ */
+export function subBarOffsetPx(p: Pencil, i: number, barPx: number | undefined): number {
+  if (barPx == null || !Number.isFinite(barPx)) return 0;
+  const sub = p.subX?.[i];
+  return typeof sub === 'number' && Number.isFinite(sub) ? sub * barPx : 0;
 }
 
 export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil;

@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/hitTest.ts
 
 import type { Drawing, PaneId } from './types';
-import { HIT_THRESHOLD } from './types';
+import { HIT_THRESHOLD, subBarOffsetPx } from './types';
 
 export type Pixel = { x: number; y: number };
 
@@ -62,6 +62,11 @@ export interface HitCoord {
   /** Pixel width of `text` at `sizePx`, using the same font as render — needed
    *  for the text-label bounding box. Optional for the same back-compat reason. */
   measureTextWidth?: (text: string, sizePx: number) => number;
+  /** Effective bar width in canvas px, for a pencil point's sub-bar offset.
+   *  MUST match what the renderer used (`ProjectCtx.barPx`) or a stroke becomes
+   *  grabbable off its drawn position. Absent → offsets read as 0, the
+   *  bar-anchored geometry, which is also what every pre-subX stub gets. */
+  barPx?: number;
 }
 
 /** Topmost drawing under pixel (px, py), or null. Iterates back-to-front so a
@@ -133,11 +138,12 @@ export function hitTestDrawings(
       }
     } else if (d.kind === 'pencil') {
       const poly: Pixel[] = [];
-      for (const pt of d.points) {
+      d.points.forEach((pt, i) => {
         const x = coord.realMsToCanvasX(pt.realMs);
         const y = coord.priceToCanvasY(pt.price, d.paneId);
-        if (x != null && y != null) poly.push({ x, y });
-      }
+        // Same offset the renderer applies — see `subBarOffsetPx`.
+        if (x != null && y != null) poly.push({ x: x + subBarOffsetPx(d, i, coord.barPx), y });
+      });
       if (distanceToPolyline({ x: px, y: py }, poly) <= HIT_THRESHOLD.pencil) return d;
     }
   }

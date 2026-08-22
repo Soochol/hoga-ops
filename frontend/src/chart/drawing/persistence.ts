@@ -125,8 +125,28 @@ export function normalizeItems(raw: unknown): Drawing[] {
       const { paneIndex: _ignored, ...rest } = item;
       void _ignored;
       const lineStyle = (item as { lineStyle?: LineStyle }).lineStyle ?? 'solid';
-      return { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
+      const normalized = { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
+      if (normalized.kind === 'pencil') {
+        const subX = normalizeSubX(normalized.subX);
+        // Deleted rather than set to undefined: a present-but-undefined key
+        // still answers `'subX' in item`, and absence is what marks a stroke
+        // as pre-subX.
+        if (subX) normalized.subX = subX;
+        else delete normalized.subX;
+      }
+      return normalized;
     });
+}
+
+/** Keep `Pencil.subX` a plain number array or nothing at all. A non-array (a
+ *  hand-edited export, a future build's richer shape) would otherwise reach
+ *  `subBarOffsetPx` as an indexable object; dropping it here means the stroke
+ *  falls back to bar-anchored — visibly coarser, never misplaced. Non-finite
+ *  entries become 0 for the same reason. Absent stays absent so a pre-subX
+ *  stroke doesn't grow an all-zero array on every load/save round trip. */
+function normalizeSubX(subX: unknown): number[] | undefined {
+  if (!Array.isArray(subX)) return undefined;
+  return subX.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0));
 }
 
 export function saveDrawings(scope: string, items: Drawing[]): void {

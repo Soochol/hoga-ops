@@ -176,7 +176,9 @@ describe('DrawingsPrimitive', () => {
     const pencilDraft = {
       points: [{ realMs: 1_000, price: 100 }, { realMs: 2_000, price: 120 }],
       pointerId: 1,
-      lastFrame: 0,
+      subX: [],
+      lastPx: 0,
+      lastPy: 0,
       paneId: 'candle' as const,
     };
     const { prim } = attach('candle');
