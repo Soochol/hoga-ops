@@ -7,6 +7,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
 import {
   registerFlagLegendValues,
   unregisterFlagLegendValues,
@@ -113,6 +114,10 @@ type BuildBidPeakOverlaySegmentsArgs = {
   intraMax: boolean;
   allPriceRankLimit?: 1 | 2 | 3;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
+  /** 이동평균선 필터(`usePeakMaFilter`). 매수는 MA **아래**만 남긴다 — 매도의 거울.
+   *  매도쪽과 같은 이유로 **필수 인자**다(기본값을 주면 새 호출부가 조용히 필터 없이
+   *  태어난다). 필터를 안 쓰는 자리는 `null` 을 명시한다. */
+  maFilter: PeakMaFilter | null;
 };
 
 function finiteNumber(value: number | null | undefined): value is number {
@@ -213,12 +218,20 @@ export function buildBidPeakOverlaySegments({
   intraMax,
   allPriceRankLimit = 1,
   visibleTimeCutoff,
+  maFilter,
 }: BuildBidPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayBidPeaks, visibleTimeCutoff ?? null, {
     side: 'bid',
     intraMax,
   });
-  const baselinePeaks = expandBaselineBidPeaks(cutoffPeaks, allPriceRankLimit, intraMax);
+  // rank-then-filter: 매도쪽과 같은 순서. 최대벽을 먼저 뽑고 그중 MA 아래인 것만 남긴다.
+  const baselinePeaks = filterPeaksAgainstMa(
+    expandBaselineBidPeaks(cutoffPeaks, allPriceRankLimit, intraMax),
+    candles,
+    axis,
+    intraMax,
+    maFilter,
+  );
   const baseline = buildBidPeakSegments(
     baselinePeaks,
     segments,
@@ -262,6 +275,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
+  const maFilter = usePeakMaFilter('bid');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창) — ask 쪽과 동일 규칙.
   const windowId = useWindowScopeId();
@@ -306,6 +320,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
         intraMax,
         allPriceRankLimit: baselineRankLimit,
         visibleTimeCutoff,
+        maFilter,
       })
       : [];
     prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
@@ -323,6 +338,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
     allPriceRankLimit,
     visibleMaxRankLimit,
     visibleTimeCutoff,
+    maFilter,
     series,
   ]);
 
