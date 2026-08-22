@@ -27,13 +27,23 @@ let visibleRange: { from: number; to: number } | null = { from: 1_000, to: 2_000
 /** 소비 창의 현재 논리 범위. */
 let visibleLogical: { from: number; to: number } | null = { from: 100, to: 200 };
 
-function makeChart() {
+/**
+ * `overrides` 는 **창마다 다른 상태**를 세울 때만 쓴다. 폭 합의처럼 "창 둘이 서로
+ * 다른 폭에서 출발한다" 가 전제인 계약은 공유 전역으로는 원리적으로 못 세운다.
+ */
+function makeChart(overrides: {
+  logical?: { from: number; to: number };
+  apply?: (r: { from: number; to: number }) => void;
+} = {}) {
   const timeScale = {
     getVisibleRange: () => visibleRange,
-    getVisibleLogicalRange: () => visibleLogical,
+    getVisibleLogicalRange: () => overrides.logical ?? visibleLogical,
     // 시각(초) → 논리 인덱스. 축이 항등이라 초를 그대로 인덱스로 쓴다.
     timeToIndex: (t: number) => t,
-    setVisibleLogicalRange,
+    setVisibleLogicalRange: (r: { from: number; to: number }) => {
+      overrides.apply?.(r);
+      setVisibleLogicalRange(r);
+    },
     setVisibleRange,
     subscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => { rangeHandler = h; }),
     unsubscribeVisibleLogicalRangeChange: vi.fn(() => { rangeHandler = null; }),
@@ -69,15 +79,20 @@ function Follower(props: {
   /** 우측 클램프 기준. 기본은 아주 먼 미래라 클램프가 안 걸린다. */
   lastCandleMs?: number | null;
   myTimeframe?: 'D' | 'W' | 'M' | '1m';
+  /** 이 창만의 현재 논리 범위 — 생략하면 공유 전역. */
+  logical?: { from: number; to: number };
+  /** 이 창에 적용된 범위만 받는 스파이. */
+  apply?: (r: { from: number; to: number }) => void;
+  myWindowId?: string;
 }) {
   useRangeSyncFollow({
-    chart: makeChart() as never,
+    chart: makeChart({ logical: props.logical, apply: props.apply }) as never,
     axis,
     candleCount: props.candleCount ?? 400,
     lastCandleMs: props.lastCandleMs ?? null,
     enabled: props.enabled ?? true,
     syncZoom: props.syncZoom ?? false,
-    myWindowId: 'daily-window',
+    myWindowId: props.myWindowId ?? 'daily-window',
     myTimeframe: props.myTimeframe ?? 'D',
     myGroup: props.myGroup ?? 1,
     myCode: props.myCode ?? '064350',
@@ -300,6 +315,54 @@ describe('useRangeSyncFollow — peer 모드', () => {
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * **폭 합의** — 분봉 하나를 만지면 일봉 창이 **모두 똑같아진다**(사용자 요구
+ * 2026-08-22: "일봉 폭도 완전히 동일하게").
+ *
+ * **이 가드가 막는 방향**: 각 창이 자기 현재 폭을 보존해 같은 발행에도 창 크기만큼
+ * 결과가 갈리는 것(실측: 171봉 vs 118봉).
+ * **못 보는 것**: 누가 seed 하는가. 마운트 순서에 달렸고 한 라운드 뒤 자기안정이라
+ * 계약이 아니다 — 그래서 "첫 창의 폭" 이 아니라 **"둘이 같다"** 를 잰다.
+ */
+describe('useRangeSyncFollow — 폭 합의', () => {
+  it('폭이 다른 두 일봉 창이 같은 발행에 **같은 범위**를 쓴다', async () => {
+    const wide = vi.fn();
+    const narrow = vi.fn();
+    render(
+      <>
+        <Follower myWindowId="d1" logical={{ from: 0, to: 180 }} apply={wide} />
+        <Follower myWindowId="d2" logical={{ from: 60, to: 180 }} apply={narrow} />
+      </>,
+    );
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+
+    const w = wide.mock.calls.at(-1)?.[0];
+    const n = narrow.mock.calls.at(-1)?.[0];
+    expect(w).toBeDefined();
+    expect(n).toBeDefined();
+    // 축이 같은 테스트라 위치까지 같다. 실물에서는 로드 이력이 달라 인덱스가 갈릴 수
+    // 있고, 그때도 **폭은** 같아야 한다 — 아래 단언이 계약의 핵심이다.
+    expect(w.to - w.from).toBe(n.to - n.from);
+    expect(w).toEqual(n);
+  });
+
+  it('발행이 바뀌면 합의를 새로 잡는다 — 낡은 폭에 갇히지 않는다', async () => {
+    const applied = vi.fn();
+    const view = render(<Follower logical={{ from: 0, to: 100 }} apply={applied} />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 1_450, to: 1_550 });
+
+    // 사용자가 이 창을 직접 확대해 폭이 바뀌었다. 다음 발행은 그 새 폭을 따라야 한다.
+    view.rerender(<Follower logical={{ from: 0, to: 40 }} apply={applied} />);
+    publishRange(3_000_000, 4_000_000);
+    await flushFrame();
+
+    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 3_480, to: 3_520 });
   });
 });
 

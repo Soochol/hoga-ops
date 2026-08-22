@@ -259,7 +259,7 @@ export function useRangeSyncFollow(params: {
       const baseline = zoomBaselineRef.current;
       const publishedSpanMs = syncRange.toMs - syncRange.fromMs;
       const sameOrigin = baseline !== null && baseline.windowId === syncRange.origin.windowId;
-      const spanOverride = mode === 'cross' && syncZoom && sameOrigin
+      const zoomed = syncZoom && sameOrigin
         ? zoomedSpan({
           prevPublishedSpanMs: baseline.spanMs,
           nextPublishedSpanMs: publishedSpanMs,
@@ -270,6 +270,17 @@ export function useRangeSyncFollow(params: {
       // 기준선은 **줌 동기화가 꺼져 있어도** 갱신한다 — 안 그러면 토글을 켠 순간
       // 한참 전 폭과 비교해 유령 줌이 난다.
       zoomBaselineRef.current = { windowId: syncRange.origin.windowId, spanMs: publishedSpanMs };
+      // 폭은 **이 발행에 대한 합의값**을 쓴다. 자기 폭을 보존하면 같은 발행에도 창
+      // 크기만큼 결과가 갈려 "분봉을 만지면 일봉이 모두 똑같아진다" 가 성립하지
+      // 않는다(실측 2026-08-22: 171봉 vs 118봉). 먼저 온 창이 seed 하고 나머지가
+      // 읽으므로 한 라운드 뒤 전원이 같다 — 자세한 근거는 스토어 필드 주석.
+      //
+      // 합의는 **폭만**이다. 위치는 창마다 로드 이력이 달라 같은 날짜의 논리 인덱스가
+      // 다르므로 아래에서 각자 `timeToIndex` 로 찾는다.
+      const agreement = useLiveCursorStore.getState().crossSpanAgreement;
+      const ownSpan = zoomed ?? (current.to - current.from);
+      const spanOverride = agreement?.seq === syncRange.seq ? agreement.spanBars : ownSpan;
+      useLiveCursorStore.getState().agreeCrossSpan(syncRange.seq, ownSpan);
       // 우측 끝 = 마지막 캔들의 **논리 인덱스** + 1 + 표준 여백.
       // ⚠ `candleCount - 1` 이 아니다 — `/live` 는 WhitespaceData 가 섞여 논리
       // 인덱스와 배열 인덱스가 다르다. 축에 물어봐야 한다.
@@ -282,7 +293,7 @@ export function useRangeSyncFollow(params: {
       // 위치와 폭을 **한 번의 호출로** 적용한다. 두 번 나눠 부르면 일봉의 범위 변화
       // 이벤트가 두 번 발화해 애니메이션이 겹친다.
       const next = centeredLogicalRange({
-        fromIndex, toIndex, current, spanOverride: spanOverride ?? undefined, rightEdgeLimit,
+        fromIndex, toIndex, current, spanOverride, rightEdgeLimit,
       });
       if (next) ts.setVisibleLogicalRange(next);
     });
