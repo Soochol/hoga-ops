@@ -221,6 +221,7 @@ describe('rank-then-filter 순서', () => {
       intraMax: false,
       allPriceRankLimit: 1,
       maFilter: { side: 'ask', period: 3 },
+      dailyMaFilter: null,
     });
     // filter-then-rank 였다면 2등 110 이 승격해 길이 1 이 된다.
     expect(out).toEqual([]);

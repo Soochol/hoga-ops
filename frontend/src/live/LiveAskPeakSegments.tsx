@@ -14,6 +14,7 @@ import {
 import { peakLegendCells } from './peakLegendValues';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
+import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -187,6 +188,9 @@ type BuildAskPeakOverlaySegmentsArgs = {
    *  회피가 남는다. 기본값을 주면 새 호출부가 조용히 그 상태로 태어나므로, 타입이
    *  세 곳을 강제하게 둔다 — 필터를 안 쓰는 자리는 `null` 을 **명시**한다. */
   maFilter: PeakMaFilter | null;
+  /** 일봉 이동평균선 필터. `maFilter` 와 **독립**이라 둘 다 걸면 교집합이다.
+   *  같은 이유로 **필수 인자**다 — 기본값을 주면 새 호출부가 조용히 빠진다. */
+  dailyMaFilter: PeakDailyMaFilter | null;
 };
 
 function finiteNumber(value: number | null | undefined): value is number {
@@ -288,6 +292,7 @@ export function buildAskPeakOverlaySegments({
   allPriceRankLimit = 1,
   visibleTimeCutoff,
   maFilter,
+  dailyMaFilter,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayAskPeaks, visibleTimeCutoff ?? null, {
     side: 'ask',
@@ -296,12 +301,18 @@ export function buildAskPeakOverlaySegments({
   // rank-then-filter: 그날 최대벽을 먼저 뽑고(expandBaselinePeaks) 그중 MA 조건에 맞는
   // 것만 남긴다. 반대로 걸면(filter-then-rank) 지표의 뜻이 "그날 최대벽"에서 "MA 위 벽 중
   // 최대"로 바뀌어, 최대벽이 조건에 걸리면 2등 벽이 대신 올라온다.
-  const baselinePeaks = filterPeaksAgainstMa(
-    expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax),
-    candles,
-    axis,
+  // 두 필터는 순차 교집합이다. 순서는 결과에 영향이 없다(둘 다 술어) — 분봉 쪽을 먼저 두는
+  // 것은 그쪽이 캔들 배열을 만지므로 더 비싼 쪽을 뒤에 남기지 않기 위해서다.
+  const baselinePeaks = filterPeaksAgainstDailyMa(
+    filterPeaksAgainstMa(
+      expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax),
+      candles,
+      axis,
+      intraMax,
+      maFilter,
+    ),
     intraMax,
-    maFilter,
+    dailyMaFilter,
   );
   const baseline = buildAskPeakSegments(
     baselinePeaks,
@@ -326,12 +337,14 @@ type Props = {
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
+  /** 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해 내려보낸다. */
+  dailyMaFilter?: PeakDailyMaFilter | null;
 };
 
 /** 거래일별 매도 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
+function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles, todayKst, visibleTimeCutoff = null, dailyMaFilter = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useWindowIndicator((s) => s.askPeakEnabled);
   const hidden = useWindowIndicator((s) => s.askPeakHidden);
@@ -391,6 +404,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
       allPriceRankLimit: baselineRankLimit,
       visibleTimeCutoff,
       maFilter,
+      dailyMaFilter,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
     prim.setSegments(prepareAskPeakSegmentsForRender(
@@ -416,6 +430,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     visibleMaxRankLimit,
     visibleTimeCutoff,
     maFilter,
+    dailyMaFilter,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.

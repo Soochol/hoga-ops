@@ -239,6 +239,16 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    // 형제: `askPeakAboveMaEnabled`(현재 보고 있는 분봉의 MA). 둘은 **독립 필터**라 둘 다
+    // 켜면 교집합이다 — 분봉 MA 위 **그리고** 일봉 MA 위인 벽만 남는다.
+    key: 'askPeakAboveDailyMaEnabled',
+    label: '일봉 이동평균선 위 벽만',
+    description:
+      '벽이 걸린 거래일의 일봉 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 일봉 데이터가 아직 없는 날은 판정하지 않고 그대로 표시합니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'bidPeakIntraMax',
     label: '분봉 내 최댓값 기준',
     description:
@@ -266,6 +276,14 @@ export const CHART_TOGGLES = [
     label: '이동평균선 아래 벽만',
     description:
       '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakBelowDailyMaEnabled',
+    label: '일봉 이동평균선 아래 벽만',
+    description:
+      '벽이 걸린 거래일의 일봉 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 일봉 데이터가 아직 없는 날은 판정하지 않고 그대로 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -440,6 +458,25 @@ export const CHART_NUMERIC_PREFS = [
     min: 2,
     max: 400,
     enabledBy: 'askPeakAboveMaEnabled',
+  },
+  {
+    // 일봉 MA 는 거래일 계단 함수라(ADR-0073) 기간 단위가 **거래일**이다.
+    key: 'askPeakAboveDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '매도 최대벽을 걸러낼 때 비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakAboveDailyMaEnabled',
+  },
+  {
+    key: 'bidPeakBelowDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '매수 최대벽을 걸러낼 때 비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakBelowDailyMaEnabled',
   },
   {
     key: 'bidPeakBelowMaPeriod',
