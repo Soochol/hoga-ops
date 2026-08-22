@@ -1036,13 +1036,13 @@ export function LiveChartRoot({
   // `rangeSyncEnabled`, 종목 축은 크로스헤어와 공유하는 `cursorSyncCrossSymbol` 이다.
   const rangeSyncEnabled = useActivePrefs((p) => p.rangeSyncEnabled);
   const rangeSyncCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
-  const rangeSyncZoom = useActivePrefs((p) => p.rangeSyncZoom);
+  const rangeSyncPeer = useActivePrefs((p) => p.rangeSyncPeer);
   const rangeSyncOn = cursorSyncCrosshair && rangeSyncEnabled;
   useRangeSyncPublish({
     chart,
     axis,
     containerRef,
-    enabled: rangeSyncOn && canPublishRangeSync(timeframe),
+    enabled: rangeSyncOn && canPublishRangeSync(timeframe, { peer: rangeSyncPeer }),
     originRef: cursorOriginRef,
   });
   useRangeSyncFollow({
@@ -1050,8 +1050,8 @@ export function LiveChartRoot({
     axis,
     candleCount: cb?.candles.length ?? 0,
     lastCandleMs: lastCandleMsRef.current,
-    enabled: rangeSyncOn && isRangeSyncFollower(timeframe),
-    syncZoom: rangeSyncZoom,
+    enabled: rangeSyncOn && isRangeSyncFollower(timeframe, { peer: rangeSyncPeer }),
+    syncPeer: rangeSyncPeer,
     myWindowId: winCtxWindowId,
     myTimeframe: timeframe,
     myGroup: winCtxGroup,

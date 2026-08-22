@@ -27,13 +27,23 @@ let visibleRange: { from: number; to: number } | null = { from: 1_000, to: 2_000
 /** 소비 창의 현재 논리 범위. */
 let visibleLogical: { from: number; to: number } | null = { from: 100, to: 200 };
 
-function makeChart() {
+/**
+ * `overrides` 는 **창마다 다른 상태**를 세울 때만 쓴다. 폭 합의처럼 "창 둘이 서로
+ * 다른 폭에서 출발한다" 가 전제인 계약은 공유 전역으로는 원리적으로 못 세운다.
+ */
+function makeChart(overrides: {
+  logical?: { from: number; to: number };
+  apply?: (r: { from: number; to: number }) => void;
+} = {}) {
   const timeScale = {
     getVisibleRange: () => visibleRange,
-    getVisibleLogicalRange: () => visibleLogical,
+    getVisibleLogicalRange: () => overrides.logical ?? visibleLogical,
     // 시각(초) → 논리 인덱스. 축이 항등이라 초를 그대로 인덱스로 쓴다.
     timeToIndex: (t: number) => t,
-    setVisibleLogicalRange,
+    setVisibleLogicalRange: (r: { from: number; to: number }) => {
+      overrides.apply?.(r);
+      setVisibleLogicalRange(r);
+    },
     setVisibleRange,
     subscribeVisibleLogicalRangeChange: vi.fn((h: () => void) => { rangeHandler = h; }),
     unsubscribeVisibleLogicalRangeChange: vi.fn(() => { rangeHandler = null; }),
@@ -64,20 +74,25 @@ function Follower(props: {
   myCode?: string | null;
   allowCrossSymbol?: boolean;
   candleCount?: number;
-  syncZoom?: boolean;
+  syncPeer?: boolean;
   myGroup?: number | null;
   /** 우측 클램프 기준. 기본은 아주 먼 미래라 클램프가 안 걸린다. */
   lastCandleMs?: number | null;
   myTimeframe?: 'D' | 'W' | 'M' | '1m';
+  /** 이 창만의 현재 논리 범위 — 생략하면 공유 전역. */
+  logical?: { from: number; to: number };
+  /** 이 창에 적용된 범위만 받는 스파이. */
+  apply?: (r: { from: number; to: number }) => void;
+  myWindowId?: string;
 }) {
   useRangeSyncFollow({
-    chart: makeChart() as never,
+    chart: makeChart({ logical: props.logical, apply: props.apply }) as never,
     axis,
     candleCount: props.candleCount ?? 400,
     lastCandleMs: props.lastCandleMs ?? null,
     enabled: props.enabled ?? true,
-    syncZoom: props.syncZoom ?? false,
-    myWindowId: 'daily-window',
+    syncPeer: props.syncPeer ?? true,
+    myWindowId: props.myWindowId ?? 'daily-window',
     myTimeframe: props.myTimeframe ?? 'D',
     myGroup: props.myGroup ?? 1,
     myCode: props.myCode ?? '064350',
@@ -116,10 +131,10 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
     expect(useLiveCursorStore.getState().syncRange).toBeNull();
   });
 
-  it('제스처 시작 시점의 범위를 **즉시** 싣는다 — 소비 창의 줌 기준선', async () => {
-    // rAF 를 기다리지 않는다. 이 발행이 없으면 그 제스처가 만든 범위 변화가 소비 창의
-    // **첫 발행**이 되어 비교할 짝이 없고, 줌 동기화가 한 박자 늦는다(도그푸딩 실측:
-    // 분봉은 확대됐는데 일봉 라벨 간격이 그대로).
+  it('제스처 시작 시점의 범위를 **즉시** 싣는다 — 소비 창이 한 프레임 늦지 않게', async () => {
+    // rAF 를 기다리지 않는다. 어긋난 채 있던 두 창이 **손을 대는 순간** 맞춰진다
+    // (첫 움직임까지 기다리지 않는다). 도입 사유였던 줌 기준선은 2026-08-22 에
+    // 줌 동기화와 함께 사라졌고, 이 즉시 발행은 위 사유로 남는다.
     const view = render(<Publisher />);
     view.getByTestId('pane').dispatchEvent(new Event('pointerdown', { bubbles: true }));
 
@@ -228,14 +243,6 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
  * `setVisibleLogicalRange` 를 안 부르면 `rangeSync.test.ts` 는 전부 초록이다.
  */
 /**
- * **줌 동기화 배선**(`rangeSyncZoom`, 기본 끔).
- *
- * 순수 수식(`zoomedSpan`)이 옳아도 훅이 그 결과를 `spanOverride` 로 안 넘기면
- * `rangeSync.test.ts` 는 전부 초록이다. 여기서 재는 것은 그 배선이고, **판별 케이스는
- * 「끈 상태에서도 위치는 따라간다」** 다 — 줌 동기화를 끄는 것과 기간 동기화 자체를
- * 끄는 것은 다른 일이다.
- */
-/**
  * **peer 모드**(같은 캘린더 봉끼리) — 발행 구간을 그대로 복제한다.
  *
  * **판별 케이스**: cross 는 `setVisibleLogicalRange`(중앙 정렬), peer 는
@@ -251,7 +258,7 @@ describe('useRangeSyncFollow — peer 모드', () => {
   beforeEach(() => { visibleRange = { from: 9_000, to: 9_500 }; });
 
   it('같은 봉 발행을 받아 구간을 복제한다 — 축이 항등이라 ms/1000 이 가상초', async () => {
-    render(<Follower myTimeframe="D" syncZoom />);
+    render(<Follower myTimeframe="D" />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
     expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
@@ -259,21 +266,19 @@ describe('useRangeSyncFollow — peer 모드', () => {
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
-  it('배율 토글과 무관하게 복제한다 — peer 의 정의가 「보이는 view 완전 동기화」다', async () => {
-    // **2026-08-21 번복**: 여기 「배율 토글이 꺼져 있으면 위치만 — 중앙 정렬 경로로
-    // 간다」가 있었다. 그 동작에서는 토글이 꺼진 기본 상태의 두 일봉 창이 **같은
-    // 구간을 보지 않았고**(중앙 정렬 + 우측 클램프), 그건 peer 의 정의와 어긋난다.
-    // `rangeSyncZoom` 은 이제 `cross`(분봉→일봉) 전용이다 — 거기서는 폭이 비교
-    // 불가라 복제가 불가능하고 "비율만 옮길지" 가 진짜 선택지로 남는다.
-    render(<Follower myTimeframe="D" syncZoom={false} />);
+  it('토글을 끄면 복제하지 않는다 — **중앙 정렬로 떨어지지도 않는다**', async () => {
+    // 판별 케이스다. 한때 토글이 꺼지면 peer 가 중앙 정렬 경로로 갔는데, 그러면 두
+    // 창이 **같은 구간을 보지 않으면서 동기화된 것처럼 보인다**. 지금은 `syncModeFor`
+    // 가 peer 를 없는 모드로 만들어 아무 경로도 타지 않는다.
+    render(<Follower myTimeframe="D" syncPeer={false} />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
-    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
+    expect(setVisibleRange).not.toHaveBeenCalled();
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('주봉 창은 주봉 발행만 받는다 — 일↔주는 통하지 않는다', async () => {
-    render(<Follower myTimeframe="W" syncZoom />);
+    render(<Follower myTimeframe="W" />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
@@ -281,14 +286,14 @@ describe('useRangeSyncFollow — peer 모드', () => {
   });
 
   it('주봉 ↔ 주봉은 복제한다', async () => {
-    render(<Follower myTimeframe="W" syncZoom />);
+    render(<Follower myTimeframe="W" />);
     publishRange(1_000_000, 2_000_000, { ...DAILY_ORIGIN, timeframe: 'W' });
     await flushFrame();
     expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
   });
 
   it('창번호가 다르면 peer 도 막힌다 — 범위 규칙은 모드와 무관하다', async () => {
-    render(<Follower myTimeframe="D" syncZoom myGroup={2} />);
+    render(<Follower myTimeframe="D" myGroup={2} />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
@@ -296,68 +301,79 @@ describe('useRangeSyncFollow — peer 모드', () => {
 
   it('이미 그 구간이면 되쓰지 않는다', async () => {
     visibleRange = { from: 1_000, to: 2_000 };
-    render(<Follower myTimeframe="D" syncZoom />);
+    render(<Follower myTimeframe="D" />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
   });
 });
 
-describe('useRangeSyncFollow — 줌 동기화 배선', () => {
-  /** 기준선을 세우고(1회) 그 다음 발행으로 비율을 만든다. */
-  const seedThenZoom = async (nextFrom: number, nextTo: number) => {
-    publishRange(1_000_000, 2_000_000); // 기준선: 폭 1,000,000ms
-    await flushFrame();
-    setVisibleLogicalRange.mockClear();
-    visibleLogical = { from: 100, to: 200 }; // 현재 폭 100
-    publishRange(nextFrom, nextTo);
-    await flushFrame();
-  };
-
-  it('끈 상태에서는 폭이 그대로 — 하지만 위치는 따라간다', async () => {
-    render(<Follower syncZoom={false} />);
-    await seedThenZoom(3_000_000, 3_500_000); // 폭 절반
-
-    // 중점 3,250 → from = 3,250 - 50 = 3,200, 폭 100 유지.
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_200, to: 3_300 });
-  });
-
-  it('켜면 발행 폭이 절반일 때 추종 폭도 절반', async () => {
-    render(<Follower syncZoom />);
-    await seedThenZoom(3_000_000, 3_500_000);
-
-    // 폭 100 → 50. 중점 3,250 → from = 3,225.
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_225, to: 3_275 });
-  });
-
-  it('켜도 팬만이면 폭이 그대로 — 데드밴드', async () => {
-    render(<Follower syncZoom />);
-    // 폭은 같고 위치만 이동(1,000,000ms 유지).
-    await seedThenZoom(3_000_000, 4_000_000);
-
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_450, to: 3_550 });
-  });
-
-  it('발행 창이 바뀌면 그 라운드는 폭을 건드리지 않는다 — 유령 줌 방지', async () => {
-    // 분봉 창이 둘이고 배율이 다르면, 번갈아 발행할 때마다 가짜 비율이 나온다.
-    render(<Follower syncZoom />);
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
-    setVisibleLogicalRange.mockClear();
-    visibleLogical = { from: 100, to: 200 };
-    publishRange(3_000_000, 3_500_000, { ...MINUTE_ORIGIN, windowId: 'other-minute' });
-    await flushFrame();
-
-    // 폭 100 유지 — 다른 창의 폭과 비교하지 않는다.
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_200, to: 3_300 });
-  });
-
-  it('첫 발행은 폭을 건드리지 않는다 — 비율을 잴 짝이 없다', async () => {
-    render(<Follower syncZoom />);
+/**
+ * **폭 합의** — 분봉 하나를 만지면 일봉 창이 **모두 똑같아진다**(사용자 요구
+ * 2026-08-22: "일봉 폭도 완전히 동일하게").
+ *
+ * **이 가드가 막는 방향**: 각 창이 자기 현재 폭을 보존해 같은 발행에도 창 크기만큼
+ * 결과가 갈리는 것(실측: 171봉 vs 118봉).
+ * **못 보는 것**: 누가 seed 하는가. 마운트 순서에 달렸고 한 라운드 뒤 자기안정이라
+ * 계약이 아니다 — 그래서 "첫 창의 폭" 이 아니라 **"둘이 같다"** 를 잰다.
+ */
+describe('useRangeSyncFollow — 폭 합의', () => {
+  it('폭이 다른 두 일봉 창이 같은 발행에 **같은 범위**를 쓴다', async () => {
+    const wide = vi.fn();
+    const narrow = vi.fn();
+    render(
+      <>
+        <Follower myWindowId="d1" logical={{ from: 0, to: 180 }} apply={wide} />
+        <Follower myWindowId="d2" logical={{ from: 60, to: 180 }} apply={narrow} />
+      </>,
+    );
     publishRange(1_000_000, 2_000_000);
     await flushFrame();
 
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
+    const w = wide.mock.calls.at(-1)?.[0];
+    const n = narrow.mock.calls.at(-1)?.[0];
+    expect(w).toBeDefined();
+    expect(n).toBeDefined();
+    // 축이 같은 테스트라 위치까지 같다. 실물에서는 로드 이력이 달라 인덱스가 갈릴 수
+    // 있고, 그때도 **폭은** 같아야 한다 — 아래 단언이 계약의 핵심이다.
+    expect(w.to - w.from).toBe(n.to - n.from);
+    expect(w).toEqual(n);
+  });
+
+  it('「같은 봉 창끼리」를 끄면 합의도 꺼진다 — 각자 자기 배율을 지킨다', async () => {
+    // 이 토글이 **일봉↔일봉 결합을 통째로** 쥔다는 계약. 폭 합의는 트리거만 분봉일
+    // 뿐 결합의 실체는 일봉끼리라, 여기서 빠지면 "일봉끼리 동기화를 껐는데 분봉을
+    // 만지면 일봉 폭이 서로 같아지는" 모순이 된다.
+    const wide = vi.fn();
+    const narrow = vi.fn();
+    render(
+      <>
+        <Follower myWindowId="d1" syncPeer={false} logical={{ from: 0, to: 180 }} apply={wide} />
+        <Follower myWindowId="d2" syncPeer={false} logical={{ from: 60, to: 180 }} apply={narrow} />
+      </>,
+    );
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+
+    // 위치(중점 1,500)는 둘 다 따라간다 — 꺼지는 것은 폭 결합뿐이다.
+    expect(wide.mock.calls.at(-1)?.[0]).toEqual({ from: 1_410, to: 1_590 });
+    expect(narrow.mock.calls.at(-1)?.[0]).toEqual({ from: 1_440, to: 1_560 });
+    expect(useLiveCursorStore.getState().crossSpanAgreement).toBeNull();
+  });
+
+  it('발행이 바뀌면 합의를 새로 잡는다 — 낡은 폭에 갇히지 않는다', async () => {
+    const applied = vi.fn();
+    const view = render(<Follower logical={{ from: 0, to: 100 }} apply={applied} />);
+    publishRange(1_000_000, 2_000_000);
+    await flushFrame();
+    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 1_450, to: 1_550 });
+
+    // 사용자가 이 창을 직접 확대해 폭이 바뀌었다. 다음 발행은 그 새 폭을 따라야 한다.
+    view.rerender(<Follower logical={{ from: 0, to: 40 }} apply={applied} />);
+    publishRange(3_000_000, 4_000_000);
+    await flushFrame();
+
+    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 3_480, to: 3_520 });
   });
 });
 
