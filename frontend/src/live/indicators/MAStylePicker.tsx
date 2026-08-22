@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { LINE_STYLES, type LineStyle } from '../../chart/drawing/types';
-import { useDismissablePopover } from '../../util/useDismissablePopover';
+import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 
 /** 모양 라벨(한국어). LineStyle 값이 CSS border-style 키워드와 동일해 미리보기는 값 그대로 사용. */
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -22,6 +23,10 @@ export const MA_COLOR_ROWS: readonly (readonly string[])[] = [
 ];
 
 const LINE_WIDTHS: readonly (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+
+/** 팝오버 폭. 8열 팔레트(22px 스와치 + 4px gap)와 4열 굵기 카드가 함께 눕는 폭이자
+ *  `useAnchoredPopover` 의 오른쪽 정렬 기준 — 그래서 CSS 가 아니라 값으로 산다. */
+const POPOVER_WIDTH = 280;
 
 type Props = {
   color: string;
@@ -47,11 +52,18 @@ export default function MAStylePicker({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const colorRows = extraColors?.length ? [extraColors, ...MA_COLOR_ROWS] : MA_COLOR_ROWS;
+  const close = useCallback(() => setOpen(false), []);
 
-  // 공용 dismiss 계약(바깥 mousedown + Escape)으로 통일 — 자체 useEffect 복붙 제거.
-  // 이 픽커는 IndicatorPanel(ModalShell) 안에 떠서 Escape는 모달이 먼저 먹지만,
-  // 계약을 한곳(useDismissablePopover)으로 모아 document→window 리스너까지 일관화.
-  useDismissablePopover(open, containerRef, () => setOpen(false));
+  // 팝오버는 body 로 포털된다 — 설정 모달 셸의 overflow-hidden 과 상세 section 의
+  // overflow-y-auto 가 absolute 팝오버를 카드 오른쪽에서 잘라먹었다(팔레트 8열 중
+  // 4열, 굵기 카드 4개 중 1개만 보였다). 배치·dismiss(바깥 mousedown + Escape)·
+  // 스크롤 계약은 전부 useAnchoredPopover 가 쥔다 — 클리핑 두 겹의 사연은 그 헤더에.
+  const { ref: popoverRef, style: popoverStyle } = useAnchoredPopover<HTMLDivElement>(
+    open,
+    containerRef,
+    close,
+    POPOVER_WIDTH,
+  );
 
   return (
     <div ref={containerRef} className="relative inline-block">
@@ -99,15 +111,16 @@ export default function MAStylePicker({
             열, 비슷한 알약형)과 순간 구분이 안 된다. TimeframeControl 과 같은 ⌄. */}
         <span aria-hidden="true" style={{ color: 'var(--fg-dimmer)', fontSize: 'var(--text-xs)', lineHeight: 1 }}>⌄</span>
       </button>
-      {open && (
+      {open && createPortal(
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label={`${lbl} 스타일 팔레트`}
-          className="absolute top-7 left-0 z-50 p-3 rounded shadow-lg"
+          className="p-3 rounded shadow-lg"
           style={{
+            ...popoverStyle,
             background: 'var(--bg-card)',
             border: '1px solid var(--border-strong)',
-            minWidth: 280,
           }}
         >
           <div
@@ -258,7 +271,8 @@ export default function MAStylePicker({
               </div>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
