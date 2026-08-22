@@ -10,7 +10,7 @@ import { useMinuteGapFill, type UseMinuteGapFillArgs } from './useMinuteGapFill'
 /**
  * **막는 방향**: 두 가지다.
  *
- * ① **안 켜져야 할 곳에서 벤더를 두드리는 것.** 게이트가 셋이라(얼림 · 분봉 · KRX)
+ * ① **안 켜져야 할 곳에서 벤더를 두드리는 것.** 게이트가 셋이라(디스크 창 · 분봉 · KRX)
  *    한 방향만 재면 "항상 통과" 하는 배선도 초록이 된다. 그래서 각 축을 **양방향**으로
  *    잰다 — 켜진 경우의 호출과 꺼진 경우의 침묵을 같은 픽스처에서 본다.
  *
@@ -92,7 +92,7 @@ describe('useMinuteGapFill — 게이트 (양방향)', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it('얼림이 아니면 침묵한다 — 전역 우회 모드에서 벤더를 두드리지 않는다', async () => {
+  it('디스크 창이 아니면 침묵한다 — 전역 우회 모드에서 벤더를 두드리지 않는다', async () => {
     const spy = stubBackend(['20260814']);
     const { result } = renderHook(
       () => useMinuteGapFill({ ...BASE, enabled: false, missingDates: missing('20260814') }),
@@ -218,6 +218,81 @@ describe('useMinuteGapFill — 수확분', () => {
 
     await waitFor(() => expect(result.current.remainingRuns).toBe(0));
     expect([...result.current.filledDates]).toEqual(['20260814']);
+  });
+});
+
+/**
+ * 창이 **자라는** 소비자(창별 hogaplay 소스)를 위한 누적 정책.
+ *
+ * **막는 방향**: 좌측 팬으로 `missing_dates` 가 자랄 때 ① 채운 날짜가 **중간에 줄었다
+ * 다시 느는 것** ② 창에서 빠진 날짜가 차트에 남는 것.
+ *
+ * ## ⚠ 단언이 **렌더 궤적**인 이유 — 동기 시점은 판별력이 없다
+ *
+ * 처음엔 `rerender` 직후 동기 시점에서 `filledDates` 를 봤는데 **옛 정책을 주입해도
+ * 초록이었다.** RTL 의 `rerender` 는 `act()` 로 감싸므로 렌더 → effect → 재렌더가 한
+ * 덩어리로 끝나고, 누적을 버려도 react-query 캐시(`staleTime: Infinity`)가 같은 사이클
+ * 안에서 즉시 되채운다. `result.current` 는 그 **최종값만** 보여 준다.
+ *
+ * 브라우저에서는 `useEffect` 가 paint **이후**라 그 중간 상태가 실제 프레임으로 보인다.
+ * 그것을 잴 수 있는 결정론적 대체물이 **렌더마다 찍은 값의 수열**이다 — 옛 정책은
+ * `1 → 0 → …` 를 지나고 새 정책은 지나지 않는다.
+ *
+ * 같은 이유로 "이미 받은 run 을 다시 요청하지 않는다" 는 **재지 않는다.** 옛 정책도
+ * 캐시 덕에 `apiCall` 을 다시 부르지 않아 호출 수가 같다 — 빨개질 수 없는 단언이다.
+ *
+ * **못 보는 것**: 저장뷰(얼림)에서는 계획이 애초에 안 바뀌므로 이 항목들이 실효가 없다.
+ * 여기서 재는 것은 hogaplay 토글이 만든 새 상황이다.
+ */
+describe('useMinuteGapFill — 창이 자랄 때의 누적', () => {
+  /** 렌더마다 값을 찍는 훅 래퍼. 반환은 `renderHook` 의 것과 같고 궤적만 곁들인다. */
+  function traceFilledCount(trace: number[]) {
+    return (props: { dates: string[] }) => {
+      const r = useMinuteGapFill({ ...BASE, missingDates: missing(...props.dates) });
+      trace.push(r.filledDates.size);
+      return r;
+    };
+  }
+
+  it('계획이 자라도 채운 날짜 수가 도중에 줄지 않는다', async () => {
+    const spy = stubBackend(['20260701', '20260814']);
+    const trace: number[] = [];
+    const { result, rerender } = renderHook(traceFilledCount(trace), {
+      wrapper: wrap(newClient()),
+      initialProps: { dates: ['20260814'] },
+    });
+    await waitFor(() => expect(result.current.filledDates.size).toBe(1));
+
+    // 좌측 팬 — 더 오래된 구멍이 계획 앞에 붙는다.
+    const before = trace.length;
+    rerender({ dates: ['20260701', '20260814'] });
+    await waitFor(() => expect(result.current.filledDates.size).toBe(2));
+
+    // ⚠ 이 단언이 이 테스트의 전부다. 첫 보충이 끝난 뒤로는 단조 증가여야 한다 —
+    // 누적을 버리는 정책은 여기서 0 을 지난다.
+    const after = trace.slice(before - 1);
+    expect(Math.min(...after)).toBe(1);
+    expect(after[after.length - 1]).toBe(2);
+
+    // 새로 생긴 청크만 요청된다 — `chunkRun` 이 뒤(최신)에서 자르므로 기존 키가 남는다.
+    expect(spy.mock.calls[spy.mock.calls.length - 1][0]).toContain('from=20260701');
+  });
+
+  it('창에서 빠진 날짜는 접기에서도 빠진다 — 요청하지 않은 구간의 봉이 붙지 않는다', async () => {
+    stubBackend(['20260701', '20260814']);
+    const { result, rerender } = renderHook(
+      (props: { dates: string[] }) => useMinuteGapFill({ ...BASE, missingDates: missing(...props.dates) }),
+      { wrapper: wrap(newClient()), initialProps: { dates: ['20260814'] } },
+    );
+    await waitFor(() => expect(result.current.candles).toHaveLength(1));
+
+    // 창이 옮겨가 20260814 가 더는 이 창의 구멍이 아니다(디스크에 생겼거나 창 밖이다).
+    // 누적은 남아 있으므로 `wantedDates` 필터가 없으면 그 봉이 그대로 그려진다.
+    rerender({ dates: ['20260701'] });
+    await waitFor(() => expect(result.current.filledDates.has('20260701')).toBe(true));
+
+    expect(result.current.filledDates.has('20260814')).toBe(false);
+    expect(result.current.candles).toHaveLength(1);
   });
 });
 

@@ -69,7 +69,7 @@ import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
 } from './HogaplaySourceButton';
-import { HogaplaySourceChip } from './HogaplaySourceChip';
+import { HogaplaySourceChip, type HogaplayChipGapFill } from './HogaplaySourceChip';
 import {
   showsHeaderStateIcons,
   showsWatchlistHeart,
@@ -467,6 +467,28 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     };
   }, [hogaplaySourceEnabled, savedRangeCandles]);
 
+  /**
+   * 칩 툴팁에 실을 **키움 보충 요약** — 개수만. 봉 자체는 이미 번들을 통해 차트에 있다.
+   *
+   * `hogaplaySourceEnabled` 일 때만 만든다. 얼린 저장뷰도 같은 보충을 돌리지만 그쪽
+   * 안내는 `savedRangeNotice` 가 소유하므로(같은 사실을 두 곳에서 다르게 말하지 않는다),
+   * 이 값이 그 창으로 새면 칩 두 개가 같은 것을 두 번 말한다.
+   */
+  const hogaplayGapFill = useMemo<HogaplayChipGapFill | undefined>(
+    () => (hogaplaySourceEnabled
+      ? {
+          filledCount: d.gapFill.filledDates.size,
+          unfillableCount: d.gapFill.unfillableCount,
+          rescaledCount: d.gapFill.rescaledDates.length,
+          deferredCount: d.gapFill.deferredCount,
+          // "지금 요청 중" 과 "아직 남은 run 이 있다" 의 합집합 — run 사이 커서가 넘어가는
+          // 프레임에서 `isFetching` 만 보면 문구가 완료로 한 번 깜빡인다.
+          pending: d.gapFill.isFetching || d.gapFill.remainingRuns > 0,
+        }
+      : undefined),
+    [hogaplaySourceEnabled, d.gapFill],
+  );
+
   /** 비활성 사유 — 없으면 `null`. 세 사유의 근거는 `HogaplaySourceButton` 도크스트링. */
   const hogaplayDisabledReason: HogaplaySourceDisabledReason | null =
     heartCode == null
@@ -653,6 +675,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           <div className="ml-1 flex min-w-0 items-center">
             <HogaplaySourceChip
               range={hogaplayLoadedRange}
+              gapFill={hogaplayGapFill}
               onClear={() => toggleHogaplaySource(false)}
             />
           </div>
