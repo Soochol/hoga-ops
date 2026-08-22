@@ -100,22 +100,20 @@ export const CHART_TOGGLES = [
     key: 'rangeSyncEnabled',
     label: '기간 동기화',
     description:
-      '한 창을 밀거나 확대·축소하면 다른 창도 같은 기간을 봅니다. 분봉을 밀면 그 '
-      + '날짜가 일봉 중앙에 오고, 같은 봉끼리(일·주·월)는 보이는 구간이 위치·배율 '
-      + '모두 완전히 같아집니다. '
+      '분봉 창을 밀면 그 날짜가 일봉 창의 중앙에 옵니다. 배율은 건드리지 않습니다. '
       + '분봉끼리는 따라가지 않습니다. 직접 밀거나 휠로 움직일 때만 따라가며 '
       + '새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 창끼리만 동작하고 '
       + '종목 범위는 위 설정을 따릅니다.',
     default: true,
   },
   {
-    key: 'rangeSyncZoom',
-    label: '분봉 → 일봉도 배율까지',
+    key: 'rangeSyncPeer',
+    label: '같은 봉 창끼리 완전 동기화',
     description:
-      '분봉 창을 확대·축소하면 일봉 창도 같은 비율로 확대·축소합니다. 분봉이 보는 '
-      + '1~2일을 일봉에 그대로 맞추면 캔들 두어 개짜리 화면이 되므로, 폭이 아니라 '
-      + '비율을 옮깁니다. 끄면 일봉은 위치만 따라갑니다. 같은 봉끼리(일·주·월)는 '
-      + '이 설정과 무관하게 항상 같은 구간을 봅니다.',
+      '일봉끼리(주봉·월봉도 같은 봉끼리) 보이는 구간을 위치·배율 모두 똑같이 '
+      + '맞춥니다. 한쪽을 밀거나 확대하면 나머지가 같은 구간을 보고, 분봉을 밀 때도 '
+      + '창 크기와 무관하게 보이는 폭이 같아집니다. 끄면 각 창이 자기 배율을 '
+      + '지키고 위치만 따라갑니다.',
     default: true,
     enabledBy: 'rangeSyncEnabled',
   },
@@ -231,6 +229,16 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    // 방향을 키 이름에 박아 둔다 — 매도는 위, 매수는 아래로 **비대칭**이라
+    // `askPeakMaFilterEnabled` 같은 중립 이름이면 코드에서 방향을 다시 찾아야 한다.
+    key: 'askPeakAboveMaEnabled',
+    label: '이동평균선 위 벽만',
+    description:
+      '벽이 걸린 분봉의 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'bidPeakIntraMax',
     label: '분봉 내 최댓값 기준',
     description:
@@ -250,6 +258,15 @@ export const CHART_TOGGLES = [
     label: '보이는 최신 봉 기준',
     description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매수 최대벽을 계산합니다.',
     default: false,
+    category: 'indicator-modal',
+  },
+  {
+    // 매도의 거울: 저항은 평균 위, 지지는 평균 아래에 선다는 읽기의 대칭.
+    key: 'bidPeakBelowMaEnabled',
+    label: '이동평균선 아래 벽만',
+    description:
+      '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
     category: 'indicator-modal',
   },
   {
@@ -411,6 +428,27 @@ export const CHART_NUMERIC_PREFS = [
     max: 1520,
     enabledBy: 'surgeMarkerEnabled',
     kind: 'time',
+  },
+  {
+    // 범위는 이동평균선 지표의 슬롯 기간(MA_PERIOD_MIN/MAX = 2/400)과 맞춘다. 그 상수를
+    // import 하지 않는 것은 의존 방향 때문 — chartPrefs 는 live 지표 저장소를 모른다.
+    // 기본 20 은 사용자가 지목한 값이자 기본 MA 슬롯(5·20·60·120)에 있는 기간.
+    key: 'askPeakAboveMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakAboveMaEnabled',
+  },
+  {
+    key: 'bidPeakBelowMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakBelowMaEnabled',
   },
   {
     // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절

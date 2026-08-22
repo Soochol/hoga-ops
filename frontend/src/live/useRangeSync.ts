@@ -15,7 +15,7 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import {
-  centeredLogicalRange, replicatedRange, resolveRangeSyncMode, zoomedSpan,
+  centeredLogicalRange, replicatedRange, resolveRangeSyncMode,
 } from '../chart/rangeSync';
 
 /** 휠이 멈춘 것으로 보는 침묵 구간. 휠은 pointerup 같은 종료 이벤트가 없다. */
@@ -75,14 +75,17 @@ export function useRangeSyncPublish(params: {
     /**
      * 제스처 시작. **그 시점의 범위를 즉시(동기로) 싣는다.**
      *
-     * 소비 창의 줌 비율은 "직전에 적용한 발행의 폭" 과 비교해 나온다. 제스처가 만든
-     * 발행이 그 창의 **첫 발행**이면 비교할 짝이 없어 줌이 한 박자 늦는다 — 도그푸딩
-     * 에서 실제로 그랬다(분봉은 확대됐는데 일봉 라벨 간격이 그대로). 시작 시점의
-     * 범위를 먼저 실어 두면 이어지는 rAF 발행이 곧바로 올바른 비율을 만든다.
+     * 소비 창이 한 프레임 늦게 출발하지 않도록 하는 장치다. 두 창이 어긋난 채로
+     * 있다가 제스처가 시작되면(peer 를 방금 켰다·창을 방금 열었다) 첫 움직임이
+     * 아니라 **손을 대는 순간** 맞춰진다.
      *
-     * **capture 단계로 듣는 이유**가 이것이다 — lwc 의 휠 핸들러는 캔버스(타겟)에
-     * 있어 버블 단계에서는 이미 확대가 끝난 뒤다. 그러면 "시작 시점" 이 아니라
-     * 확대 후 범위를 싣게 되어 기준선이 무의미해진다.
+     * 도입 사유는 원래 줌 비율의 기준선이었다 — 첫 발행에는 비교할 짝이 없어 배율이
+     * 한 박자 늦었다. 그 줌 동기화는 2026-08-22 에 걷어냈고(사용자 결정) 이 즉시
+     * 발행은 위 사유로 남긴다.
+     *
+     * **capture 단계로 듣는 이유**: lwc 의 휠 핸들러는 캔버스(타겟)에 있어 버블
+     * 단계에서는 이미 확대가 끝난 뒤다. 그러면 "시작 시점" 이 아니라 확대 후 범위를
+     * 싣게 된다.
      */
     const startGesture = () => {
       if (gestureActive) return;
@@ -173,13 +176,17 @@ export function useRangeSyncPublish(params: {
 export function useRangeSyncFollow(params: {
   chart: IChartApi | null;
   axis: VirtualAxis;
-  /** 이 창의 캔들 수 — 인덱스 변환의 존재 확인이자 줌 클램프의 천장이다. */
+  /** 이 창의 캔들 수 — 0 이면 축이 아직 안 서서 인덱스 변환이 무의미하다. */
   candleCount: number;
   /** 이 창의 마지막 캔들 시각 — 우측 클램프의 기준이다. 없으면 클램프하지 않는다. */
   lastCandleMs: number | null;
   enabled: boolean;
-  /** 폭(줌)까지 따라갈지 — `rangeSyncZoom`. 끄면 스크롤만 한다. */
-  syncZoom: boolean;
+  /**
+   * 「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`). peer 복제와 **폭 합의**를 함께
+   * 쥔다 — 둘 다 일봉↔일봉 결합이라 한 스위치다(`rangeSync.ts` 헤더의 그 절).
+   * 끄면 cross 는 위치만 옮기고 각 창이 자기 배율을 지킨다.
+   */
+  syncPeer: boolean;
   myWindowId: string | null;
   /** 이 창의 봉 — 모드(cross/peer)를 이것이 정한다. */
   myTimeframe: LiveTimeframe;
@@ -189,7 +196,7 @@ export function useRangeSyncFollow(params: {
   allowCrossSymbol: boolean;
 }): void {
   const {
-    chart, axis, candleCount, lastCandleMs, enabled, syncZoom,
+    chart, axis, candleCount, lastCandleMs, enabled, syncPeer,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   } = params;
   const syncRange = useLiveCursorStore((s) => s.syncRange);
@@ -200,36 +207,24 @@ export function useRangeSyncFollow(params: {
   if (baselineSeqRef.current === null) {
     baselineSeqRef.current = useLiveCursorStore.getState().syncRange?.seq ?? 0;
   }
-  /**
-   * 줌 비율의 기준선 — 직전에 **적용한** 발행의 폭과 그 발행 창.
-   *
-   * `windowId` 를 함께 들고 있어야 한다. 분봉 창이 둘이고 배율이 서로 다르면(6시간 vs
-   * 1시간) 번갈아 발행할 때마다 6배·1/6배가 번갈아 나온다 — 아무도 줌하지 않았는데
-   * 일봉이 요동친다. 발행 창이 바뀌면 기준선을 새로 잡고 그 라운드는 줌을 건너뛴다.
-   */
-  const zoomBaselineRef = useRef<{ windowId: string | null; spanMs: number } | null>(null);
-  // 추종이 꺼져 있는 동안의 발행은 기준선을 갱신하지 못한다 — 다시 켰을 때 낡은 폭과
-  // 비교하면 유령 줌이 된다. 스위치·종목이 바뀌면 기준선을 버린다.
-  useEffect(() => { zoomBaselineRef.current = null; }, [enabled, syncZoom, myCode]);
-
   useEffect(() => {
     if (!chart || !enabled || candleCount <= 0 || !syncRange) return;
     if (syncRange.seq <= (baselineSeqRef.current ?? 0)) return;
     const mode = resolveRangeSyncMode({
       publication: syncRange, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
+      switches: { peer: syncPeer },
     });
     if (mode === null) return;
     const ts = chart.timeScale();
     const raf = requestAnimationFrame(() => {
       // peer 모드: 발행 구간을 **그대로** 복제한다. 같은 봉끼리는 폭이 비교 가능해
       // "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이 한 값에서
-      // 나온다 — 중앙 정렬도 줌 비율도 필요 없다.
+      // 나온다 — 중앙 정렬이 필요 없다.
       //
-      // **`syncZoom` 을 보지 않는다**(사용자 결정 2026-08-21: "보이는 view 가 완전한
-      // 동기화"). 한때 그 토글로 게이트했는데, 꺼져 있으면 peer 가 중앙 정렬로 떨어져
-      // **두 창이 같은 구간을 보지 않았다** — peer 의 정의와 어긋난다. 그 토글은 이제
-      // `cross`(분봉→일봉) 전용이다. 거기서는 폭이 비교 불가라 복제가 불가능하고
-      // "비율만 옮길지" 가 진짜 선택지로 남는다.
+      // **중앙 정렬로 떨어지는 폴백을 두지 않는다.** 한때 peer 를 토글로 게이트하면서
+      // 꺼졌을 때 중앙 정렬로 보냈는데, 그러면 **두 창이 같은 구간을 보지 않으면서
+      // 동기화된 것처럼 보인다** — peer 의 정의와 어긋난다. 지금은 꺼지면 여기 도달
+      // 자체를 안 한다(`syncModeFor` 가 peer 를 없는 모드로 만든다).
       if (mode === 'peer') {
         const next = replicatedRange({
           fromVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.fromMs),
@@ -256,20 +251,23 @@ export function useRangeSyncFollow(params: {
         true,
       );
       if (typeof fromIndex !== 'number' || typeof toIndex !== 'number') return;
-      const baseline = zoomBaselineRef.current;
-      const publishedSpanMs = syncRange.toMs - syncRange.fromMs;
-      const sameOrigin = baseline !== null && baseline.windowId === syncRange.origin.windowId;
-      const spanOverride = mode === 'cross' && syncZoom && sameOrigin
-        ? zoomedSpan({
-          prevPublishedSpanMs: baseline.spanMs,
-          nextPublishedSpanMs: publishedSpanMs,
-          currentSpan: current.to - current.from,
-          candleCount,
-        })
-        : null;
-      // 기준선은 **줌 동기화가 꺼져 있어도** 갱신한다 — 안 그러면 토글을 켠 순간
-      // 한참 전 폭과 비교해 유령 줌이 난다.
-      zoomBaselineRef.current = { windowId: syncRange.origin.windowId, spanMs: publishedSpanMs };
+      // 폭은 **이 발행에 대한 합의값**을 쓴다. 자기 폭을 보존하면 같은 발행에도 창
+      // 크기만큼 결과가 갈려 "분봉을 만지면 일봉이 모두 똑같아진다" 가 성립하지
+      // 않는다(실측 2026-08-22: 184봉 vs 131봉). 먼저 온 창이 seed 하고 나머지가
+      // 읽으므로 한 라운드 뒤 전원이 같다 — 자세한 근거는 스토어 필드 주석.
+      //
+      // 합의는 **폭만**이다. 위치는 창마다 로드 이력이 달라 같은 날짜의 논리 인덱스가
+      // 다르므로 아래에서 각자 `timeToIndex` 로 찾는다.
+      //
+      // `syncPeer` 가 꺼져 있으면 **읽지도 쓰지도 않는다** — 그 토글이 일봉↔일봉
+      // 결합을 통째로 쥐고, 폭 합의도 그 결합이다(트리거만 분봉일 뿐이다).
+      const ownSpan = current.to - current.from;
+      let spanOverride = ownSpan;
+      if (syncPeer) {
+        const agreement = useLiveCursorStore.getState().crossSpanAgreement;
+        if (agreement?.seq === syncRange.seq) spanOverride = agreement.spanBars;
+        useLiveCursorStore.getState().agreeCrossSpan(syncRange.seq, ownSpan);
+      }
       // 우측 끝 = 마지막 캔들의 **논리 인덱스** + 1 + 표준 여백.
       // ⚠ `candleCount - 1` 이 아니다 — `/live` 는 WhitespaceData 가 섞여 논리
       // 인덱스와 배열 인덱스가 다르다. 축에 물어봐야 한다.
@@ -282,13 +280,13 @@ export function useRangeSyncFollow(params: {
       // 위치와 폭을 **한 번의 호출로** 적용한다. 두 번 나눠 부르면 일봉의 범위 변화
       // 이벤트가 두 번 발화해 애니메이션이 겹친다.
       const next = centeredLogicalRange({
-        fromIndex, toIndex, current, spanOverride: spanOverride ?? undefined, rightEdgeLimit,
+        fromIndex, toIndex, current, spanOverride, rightEdgeLimit,
       });
       if (next) ts.setVisibleLogicalRange(next);
     });
     return () => cancelAnimationFrame(raf);
   }, [
-    chart, enabled, syncZoom, candleCount, lastCandleMs, syncRange,
+    chart, enabled, syncPeer, candleCount, lastCandleMs, syncRange,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   ]);
 }

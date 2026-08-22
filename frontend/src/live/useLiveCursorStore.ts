@@ -30,6 +30,22 @@ interface State {
    *  stale 판정용 `seq`). 커서 채널과 달리 **포인터가 떠나도 지우지 않는다** —
    *  마지막으로 본 기간이 곧 현재 상태라 지울 대상이 아니다. */
   syncRange: RangeSyncPublication | null;
+  /**
+   * cross(분봉→일봉) 추종의 **폭 합의** — 한 발행(`seq`)에 대해 일봉 창들이 함께
+   * 쓰는 논리 폭(캔들 수).
+   *
+   * 없으면 각 창이 **자기 현재 폭**을 보존하므로 같은 발행에도 창 크기만큼 결과가
+   * 갈린다(실측 2026-08-22: 폭이 넓은 창 171봉 · 좁은 창 118봉). 사용자가 요구한
+   * 것은 "분봉을 만지면 일봉 창이 **모두 똑같아지는**" 것이라, 폭이 합의돼야 한다.
+   * 먼저 도착한 창이 자기 값으로 seed 하고 나머지가 그것을 읽으므로 한 라운드 뒤
+   * 전원이 같은 폭이다.
+   *
+   * **폭만 공유하고 위치는 공유하지 않는다.** 논리 인덱스는 창마다 다른 로드 이력
+   * 위의 값이라(백필이 더 된 창은 같은 날짜가 더 큰 인덱스다) 그대로 옮기면 엉뚱한
+   * 날로 간다 — 위치는 각 창이 `timeToIndex` 로 자기 축에서 다시 찾는다. 폭은 캘린더
+   * 축에서 1봉 = 1거래일이라 축이 달라도 같은 뜻이다.
+   */
+  crossSpanAgreement: { seq: number; spanBars: number } | null;
   setCursor: (t: number) => void;
   setSidebarCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   /** 창 간 크로스헤어 동기화 채널 — 즉시 발행 + origin. 아래 주석 참조. */
@@ -37,6 +53,8 @@ interface State {
   /** 기간 동기화 발행. `seq` 는 스토어가 매긴다 — 발행자가 세면 창마다 자기 카운터를
    *  갖게 되어 "누구의 seq 인가" 가 생기고, 소비자의 stale 판정이 깨진다. */
   setSyncRange: (fromMs: number, toMs: number, origin: SidebarCursorOrigin) => void;
+  /** 그 발행에 대한 폭 합의를 seed 한다 — 먼저 도착한 창이 한 번만 쓴다. */
+  agreeCrossSpan: (seq: number, spanBars: number) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
@@ -121,6 +139,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
   syncCursorMs: null,
   syncCursorOrigin: null,
   syncRange: null,
+  crossSpanAgreement: null,
   setCursor: (t) => {
     const { cursorMs, lastCursorMs } = get();
     if (cursorMs === t && lastCursorMs === t) return; // identity-stable, no-op rerender
@@ -145,10 +164,17 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     }
     set({ syncRange: { fromMs, toMs, seq: (prev?.seq ?? 0) + 1, origin } });
   },
+  agreeCrossSpan: (seq, spanBars) => {
+    const cur = get().crossSpanAgreement;
+    // 먼저 쓴 창이 이긴다. 뒤에 온 창이 덮으면 같은 라운드 안에서 폭이 두 번 바뀌어
+    // 앞 창이 이미 적용한 값과 어긋난다 — 합의의 의미가 없어진다.
+    if (cur?.seq === seq) return;
+    set({ crossSpanAgreement: { seq, spanBars } });
+  },
   clearSyncRangeFrom: (windowId) => {
     const cur = get().syncRange;
     if (cur === null || !ownedBy(cur.origin, windowId)) return;
-    set({ syncRange: null });
+    set({ syncRange: null, crossSpanAgreement: null });
   },
   clearCursor: () => {
     if (get().cursorMs === null) return;
@@ -190,10 +216,10 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (s.cursorMs === null && s.lastCursorMs === null
       && s.sidebarCursorMs === null && s.sidebarCursorOrigin === null
       && s.syncCursorMs === null && s.syncCursorOrigin === null
-      && s.syncRange === null) return;
+      && s.syncRange === null && s.crossSpanAgreement === null) return;
     set({
       cursorMs: null, lastCursorMs: null, sidebarCursorMs: null, sidebarCursorOrigin: null,
-      syncCursorMs: null, syncCursorOrigin: null, syncRange: null,
+      syncCursorMs: null, syncCursorOrigin: null, syncRange: null, crossSpanAgreement: null,
     });
   },
 }));
