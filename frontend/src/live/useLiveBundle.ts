@@ -329,8 +329,6 @@ export interface UseLiveBundleResult {
   clampEngaged: boolean;
   /** 좌측 팬 하한(YYYYMMDD). `null` = 아직 막을 근거 없음. 도출은 아래 훅 본문 참조. */
   minuteScrollbackFloorDate: string | null;
-  /** 디스크 모드에서 팬이 캡처의 끝에 닿았다 — 「벽」이 아니라 「더 없음」이다. */
-  diskFloorReached: boolean;
   isPastCandlesLoading: boolean;
   /** 호가 지표 경로(/api/range mode=hoga)의 CURRENT (code, timeframe) 뷰 초기 fetch가
    * 아직 pending인가. LiveChartRoot의 reveal 커버가 isPastCandlesLoading과 함께 써서
@@ -758,6 +756,7 @@ export function useLiveBundle(
     todayKstYyyymmdd,
     missingDates: minuteDiskCandles.data?.missing_dates,
   });
+
   /** 디스크가 실제로 실어 온 거래일. 보충분과의 **서로소 확인**과 소스 표기가 함께 쓴다. */
   const diskCandleDates = useMemo(
     () => (minuteDiskNeeded ? candleDateSet(minuteDiskCandles.data?.candles ?? []) : null),
@@ -1293,63 +1292,37 @@ export function useLiveBundle(
   // 무관한 쿼리까지 태운다). 캔들 소스가 바뀌면 이 참조도 따라 바뀐다.
   const refetchCandles = activeCandlesQuery.refetch;
 
-  /**
-   * **증명된 디스크 바닥** — 이보다 이른 분봉은 디스크에 없다(YYYYMMDD). 모르면 `null`.
-   *
-   * 250일 벽을 걷어내면 좌측 팬을 멈출 것이 없어진다. `nextHistoricalFrom` 은 데이터가
-   * 왔는지와 **무관하게** 무조건 한 스텝 뒤로 가므로 단조 감소 가드를 계속 통과하고,
-   * 스텝마다 `from=<더 과거>&to=오늘` **전 구간을 다시** 받는다(react-query 키가 바뀐다).
-   * 예산(`MAX_FILL_STEPS`)까지 그 낭비가 쌓이므로 **진짜 바닥이 필요하다**.
-   *
-   * 바닥은 응답 하나로 증명된다 — 새 라우트도 wire 변경도 없다. 서버가 더 이른 데이터를
-   * 갖고 있었으면 넣었을 것이므로, **바닥 아래를 물었다는 증거만** 있으면 `segments[0]`
-   * 이 곧 바닥이다. 오버슈팅 비용도 없다: 빈 구간은 응답 크기를 안 늘린다(2026-08-22
-   * 실측 005380 — `from=20200101`(6.5년) 1.39s/7.7MB vs 정확 요청 1.60s/7.7MB).
-   *
-   * ⚠ **증거는 `missing_dates` 여야 한다. `from_date < segments[0].date` 는 위양성이다** —
-   * 요청 시작일이 주말·공휴일이면 첫 데이터는 **항상** 그보다 뒤다. 실측으로 확인
-   * (005380, `to=20260822`):
-   *
-   * | from | earliest | `missing<earliest` | naive `from<earliest` |
-   * |------|----------|--------------------|------------------------|
-   * | 20200101 (바닥 아래) | 20251014 | **1418** ✔ | true |
-   * | 20251014 (정확히 바닥) | 20251014 | 0 ✔ | false |
-   * | 20260815 (공휴일) | 20260818 | 0 ✔ | **true — 위양성** |
-   * | 20260816 (토) | 20260818 | 0 ✔ | **true — 위양성** |
-   *
-   * `missing_dates` 는 **거래일인데 데이터가 없는 날**이라 주말·공휴일이 애초에 안 들어
-   * 있다. 그래서 `segments[0]` 보다 이른 항목이 하나라도 있으면 "바닥 아래를 물었다" 가
-   * 성립한다(그 항목들이 곧 데이터 없는 거래일이다).
-   */
-  const diskFloorDate = useMemo((): string | null => {
-    if (!isMinute || !restBypassEnabled) return null;
-    const disk = minuteDiskCandles.data;
-    const earliest = disk?.segments?.[0]?.date;
-    if (!disk || earliest == null) return null;
-    const missing = disk.missing_dates ?? [];
-    return missing.some((m) => m.date < earliest) ? earliest : null;
-  }, [isMinute, restBypassEnabled, minuteDiskCandles.data]);
 
   /**
-   * 좌측 팬의 하한(YYYYMMDD). `null` = 아직 막을 근거가 없다(계속 팬 가능).
+   * 좌측 팬의 하한(YYYYMMDD). `null` = 막을 근거가 없다(디스크가 끝날 때까지 팬 가능).
    *
    * 축이 **둘로 갈린다**:
    *  - 벤더 모드: 250일 벽. 넘겨도 `/api/live/past-candles` 가 못 준다 — 진짜 상한이다.
-   *  - 디스크 모드: 벽은 무의미하고(위 `minutePastFrom` 주석), 대신 **증명된 바닥**이
-   *    멈춤을 준다. 증명 전에는 `null` 이라 팬이 계속 가고, 한 번 오버슈팅하면 그
-   *    응답이 바닥을 알려 준다.
+   *  - 디스크 모드: `null`. 그 벽은 벤더 span 캡이라 `/api/range` 에는 존재하지 않는다
+   *    (위 `minutePastFrom` 주석).
    *
-   * 종전에는 이 판정이 `useViewportBackfill` 안에 **세 번 복제**돼 있었고
-   * (`earliestAllowedMinuteDate(todayKstYyyymmdd())`), 그래서 얼린 창이 훅 층에서는
-   * 벽을 우회하는데 백필 층에서는 벽에서 멎는 **반쪽 상태**였다 — 저장뷰가 250일보다
-   * 오래된 구간을 가리키면 그 구간이 디스크엔 있는데 화면엔 안 채워졌다. 판정을 여기
-   * 한 곳으로 올려 그 비대칭을 없앤다.
+   * **디스크 쪽에 "캡처 바닥" 하한을 두려다 걷어냈다 — 판정이 원리적으로 불가능했다.**
+   * 응답만으로 세울 수 있는 증거는 `missing_dates` 에 `segments[0]` 보다 이른 항목이
+   * 있다는 것뿐인데, 그건 **"이 창에서 가장 이른 데이터보다 앞을 물었다"** 이지
+   * "디스크에 더 이른 게 없다" 가 아니다. 요청 시작일이 **중간 구멍**에 떨어지면 그
+   * 구멍이 바닥으로 위장한다(2026-08-22 실측: 005380 이 진짜 바닥 20251014 이 아니라
+   * 20260120 에서 멎었다). 클램프가 틀리면 **사용자를 막으므로** 원래 문제보다 나쁘다.
+   *
+   * 하한 없이 두는 대가는 실측으로 작다: 바닥 아래로 팬해도 캔들 요청은 **1건**이고
+   * (요청이 창 하나라 빈 구간이 응답 크기를 안 늘린다) 지표는 주 단위 청크가 **838B ×
+   * 28건 = 23KB** 였다. 청크는 react-query 가 키별로 캐시해 **새 주만** 나간다.
+   * 예산(`MAX_FILL_STEPS`)이 제스처당 상한을 준다.
+   *
+   * 진짜 바닥이 필요해지면 길은 하나다 — **서버가 알려 주는 것**(코드별 최고(最古)
+   * 캡처일). 응답으로 유도하는 길은 위 이유로 닫혀 있다.
+   *
+   * 판정을 여기 두는 이유: 종전에는 `useViewportBackfill` 안에 세 번 복제돼 있었는데
+   * (`earliestAllowedMinuteDate(todayKstYyyymmdd())`), 하한이 모드에 따라 갈리는 값이
+   * 된 이상 모드를 아는 쪽이 정해야 한다.
    */
-  const minuteScrollbackFloorDate = !isMinute
+  const minuteScrollbackFloorDate = !isMinute || restBypassEnabled
     ? null
-    : restBypassEnabled
-      ? diskFloorDate
-      : earliestAllowedMinute;
+    : earliestAllowedMinute;
 
   // 벽에 닿았다는 칩(`clamp-engaged-chip`)의 신호. **벤더 모드 전용이다** — 디스크
   // 모드에는 250일 벽이 없으므로 「최대 250일까지 표시됩니다」가 거짓말이 된다.
@@ -1359,10 +1332,6 @@ export function useLiveBundle(
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
 
-  /** 디스크 모드에서 **더 과거가 없다** — 팬이 바닥에 닿았다. 칩 문구가 갈린다. */
-  const diskFloorReached = diskFloorDate !== null
-    && historicalFromDate != null
-    && historicalFromDate <= diskFloorDate;
 
   // Coverage-gap 백필(A안) 신호. 캔들은 병합 캐시로 수개월 복원되는데 range 지표는
   // 요청 창(기본 5거래일)만 커버해, viewport가 지표 커버리지 밖 구간을 보면
@@ -1459,7 +1428,6 @@ export function useLiveBundle(
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,
     minuteScrollbackFloorDate,
-    diskFloorReached,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,

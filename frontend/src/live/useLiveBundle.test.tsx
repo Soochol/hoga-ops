@@ -315,6 +315,46 @@ describe('planLiveRangeRequest', () => {
     });
   });
 
+  /**
+   * 250일 벽은 **벤더 엔드포인트의 span 캡**이다(`hoga/live/api.py` `_PAST_MAX_DAYS`).
+   * 디스크(`/api/range`)엔 없으므로 디스크를 읽는 창은 타지 않는다 — 2026-08-22
+   * 실측으로 005380 이 20240827 까지 캡처돼 있는데도 화면은 20251216 에서 끊겼다.
+   *
+   * **양방향으로 잰다.** 우회 쪽만 보면 「항상 안 자른다」 하드코딩도 초록이라, 벤더
+   * 모드에서 벽이 살아 있는지가 검증 밖에 남는다.
+   */
+  const WALL_ARGS = {
+    code: '005930',
+    timeframe: '1m' as const,
+    todayKstYyyymmdd: '20260822',
+    // 2년 전 — 벽(20260822 기준 20251216) 밖.
+    historicalFromDate: '20240827',
+    askPeakEnabled: false,
+    bidPeakEnabled: false,
+    tradeVolumePocEnabled: false,
+    depthHeatmapEnabled: false,
+    depthDeltaEnabled: false,
+    wallSurgeEnabled: false,
+    brokerLateEntryEnabled: false,
+    brokerLateEntryStartHHMM: 900,
+    programTradeEnabled: false,
+    volumeDistributionEnabled: false,
+    volumeDistributionRangeCount: 12,
+    volumeDistributionPriceRange: null,
+  };
+
+  it('벤더 모드는 250일 벽에서 자른다', () => {
+    expect(planLiveRangeRequest(WALL_ARGS).from).toBe('20251216');
+  });
+
+  it('디스크 모드는 벽을 타지 않는다 — 요청 창이 그대로 나간다', () => {
+    expect(planLiveRangeRequest({ ...WALL_ARGS, diskSource: true }).from).toBe('20240827');
+  });
+
+  it('저장뷰 얼림도 종전대로 벽을 타지 않는다(회귀 가드)', () => {
+    expect(planLiveRangeRequest({ ...WALL_ARGS, frozenRangeFrom: '20240827' }).from).toBe('20240827');
+  });
+
   it('disables /api/range for calendar timeframes and gates disabled optional slices', () => {
     expect(planLiveRangeRequest({
       code: '005930',
@@ -2691,5 +2731,57 @@ describe('useLiveBundle isExtending', () => {
       );
       expect(result.current.pastSettledFromDate).toBeNull();
     });
+  });
+});
+
+/**
+ * 좌측 팬 하한이 **모드에 따라 갈린다** — 벤더 모드만 250일 벽을 쓴다.
+ *
+ * 종전엔 이 판정이 `useViewportBackfill` 안에 세 번 복제돼 있어서, 훅 층에서 벽을
+ * 우회해도 백필 층이 벽에서 멎었다. 판정을 훅으로 올렸으므로 여기서 고정한다.
+ *
+ * **막는 방향**: 디스크 모드에서 벽이 되살아나 팬이 20251216 에서 멎는 것.
+ * **못 보는 것**: 백필이 이 값을 실제로 쓰는지(그건 `useViewportBackfill` 의 계약이다).
+ */
+describe('minuteScrollbackFloorDate · clampEngaged', () => {
+  it('벤더 분봉은 250일 벽을 하한으로 준다', () => {
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.minuteScrollbackFloorDate).toBe('20250920');
+  });
+
+  it('디스크 모드는 하한이 없다(null) — 벽은 벤더 span 캡이라 이 경로엔 없다', () => {
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(result.current.minuteScrollbackFloorDate).toBeNull();
+  });
+
+  it('캘린더 봉은 애초에 하한이 없다', () => {
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.minuteScrollbackFloorDate).toBeNull();
+  });
+
+  // 「최대 250일까지 표시됩니다」 칩의 신호. 디스크 모드에서 뜨면 **거짓말**이고,
+  // 더 나쁘게는 "설정을 바꾸면 더 볼 수 있다" 로 읽힌다 — 실제로 할 일은 수집이다.
+  it('clampEngaged 는 디스크 모드에서 서지 않는다', () => {
+    useLivePageStore.setState({ historicalFromDate: '20240827' });
+    const vendor = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(vendor.result.current.clampEngaged).toBe(true);
+
+    const disk = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(disk.result.current.clampEngaged).toBe(false);
   });
 });

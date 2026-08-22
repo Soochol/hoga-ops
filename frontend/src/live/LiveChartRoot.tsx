@@ -300,8 +300,6 @@ interface Props {
   /** 좌측 팬 하한(YYYYMMDD) — `useLiveBundle.minuteScrollbackFloorDate`. `null`=무한.
    *  판정은 모드를 아는 훅이 하고 여기서는 나르기만 한다(그 값의 도크스트링 참조). */
   minuteScrollbackFloorDate?: string | null;
-  /** 디스크 모드에서 팬이 캡처의 끝에 닿았다 — 「최대 N일」이 아니라 「더 없음」이다. */
-  diskFloorReached?: boolean;
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
@@ -481,7 +479,6 @@ export function LiveChartRoot({
   ratioBundle,
   clampEngaged,
   minuteScrollbackFloorDate = null,
-  diskFloorReached = false,
   isPastCandlesLoading,
   isHogaLoading = false,
   isSidecarLoading = false,
@@ -2708,7 +2705,10 @@ export function LiveChartRoot({
         </div>
       )}
       {/* bottom-left 상태 칩 스택: 부분로딩(rate-limit, 위) + 클램프(아래). 둘 다
-          하단-좌측이라 한 flex 컬럼으로 묶어 겹침을 막는다(드물게 동시 발생). */}
+          하단-좌측이라 한 flex 컬럼으로 묶어 겹침을 막는다(드물게 동시 발생).
+
+          ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
+          추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
       {(clampEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
@@ -2736,17 +2736,6 @@ export function LiveChartRoot({
           {clampEngaged && (
             <div data-testid="clamp-engaged-chip" style={chipStyle}>
               최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
-            </div>
-          )}
-          {/* 디스크 모드의 끝은 **벽이 아니라 캡처 유무**다. 같은 칩에 「최대 250일」을
-              쓰면 거짓말이 되고(그 벽은 벤더 span 캡이라 이 경로엔 없다), 더 나쁘게는
-              "설정을 바꾸면 더 볼 수 있다" 로 읽힌다 — 실제로 할 일은 그 구간을
-              **수집**하는 것이다. 그래서 문구도 testid 도 가른다.
-              두 칩이 동시에 뜰 수는 없다: `clampEngaged` 는 벤더 모드 전용이고
-              `diskFloorReached` 는 디스크 모드에서만 선다(`useLiveBundle`). */}
-          {diskFloorReached && (
-            <div data-testid="disk-floor-chip" style={chipStyle}>
-              저장된 데이터의 시작입니다
             </div>
           )}
         </div>
