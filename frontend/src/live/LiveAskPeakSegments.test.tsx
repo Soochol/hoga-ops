@@ -240,6 +240,7 @@ describe('buildAskPeakOverlaySegments', () => {
     const day = '20260613';
     const out = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [{
         date: day,
         price: 100400,
@@ -289,6 +290,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     const out = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [past],
       segments: [seg('20260612', 60000, 240000)],
       candles: [candle(60000), candle(120000), candle(180000)],
@@ -321,6 +323,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     const out = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [past, ...today],
       segments: [seg('20260612', 60000, 240000), seg('20260613', 260000, 440000)],
       candles: [candle(60000), candle(120000), candle(220000), candle(230000), candle(240000)],
@@ -341,6 +344,7 @@ describe('buildAskPeakOverlaySegments', () => {
   it('ranked 후보가 비어 있으면 scalar 기준선으로 폴백해 한 줄을 렌더한다', () => {
     const out = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [{
         date: '20260613',
         price: 100,
@@ -388,6 +392,7 @@ describe('buildAskPeakOverlaySegments', () => {
 
     const segments = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }],
@@ -408,6 +413,7 @@ describe('live peak-wall inline label suppression', () => {
   it('suppresses ask inline labels after ask styling is applied', () => {
     const raw = buildAskPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayAskPeaks: [
         peak({ date: '20260612', price: 100, qty: 50, t_ms: 120000 }),
         peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 }),
@@ -458,6 +464,7 @@ describe('live peak-wall inline label suppression', () => {
     };
     const raw = buildBidPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayBidPeaks: [pastBid, todayBid],
       segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
       candles: [candle(60000), candle(120000), candle(180000)],
