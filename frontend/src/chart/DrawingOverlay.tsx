@@ -158,12 +158,21 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // without a remembered position it can only wait for the next mousemove, and
   // a cursor sitting still over a shape stays untouchable. See that effect.
   const lastMouseRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  // 합성 크로스헤어(아래 `scheduleCrosshair`)의 rAF 스로틀 상태와, 지금 우리가 건
+  // 크로스헤어가 살아 있는지. `crosshairSetRef` 가 없으면 한 번도 걸지 않은 차트에
+  // `clearCrosshairPosition` 을 부르게 되고, 그건 **옆 창이 동기화로 그려 준
+  // 크로스헤어**(`CursorSyncCrosshair`)를 지운다 — 같은 차트에 위치는 하나뿐이다.
+  const crosshairPointRef = useRef<{ x: number; y: number } | null>(null);
+  const crosshairRafRef = useRef<number | null>(null);
+  const crosshairSetRef = useRef(false);
   // Reassigned every render so primitives always read current state at draw time.
   const snapshotRef = useRef<() => DrawingsSnapshot | null>(() => null);
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
   // snapshotRef. Set just before the return.
   const duplicateSelectedRef = useRef<() => void>(() => {});
+  // 같은 이유로 언마운트 정리가 최신 `clearCrosshair` 를 부르게 하는 통로.
+  const clearCrosshairRef = useRef<() => void>(() => {});
 
   // Text editing — a DOM <input> rendered over the canvas (IME-safe).
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
@@ -615,6 +624,86 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     };
   };
 
+  // ── 합성 크로스헤어 ────────────────────────────────────────────────────
+  //
+  // 이 오버레이가 포인터를 잡는 동안 lightweight-charts 는 마우스를 못 받는다
+  // (아래 pointer-events 게이트). 그래서 **드로잉 위 ±6px 밴드에 들어가는 순간
+  // 크로스헤어가 사라졌다** — 선을 고르려고 다가가면 조준선이 없어지는 것이라
+  // "고장" 으로 읽힌다. 도구를 든 동안엔 게이트가 플롯 전체를 잡으므로 **그리는
+  // 내내** 없었다.
+  //
+  // lwc 가 "두 차트의 크로스헤어 동기화" 용도로 문서화한 `setCrosshairPosition`
+  // 으로 그 자리에 정품 크로스헤어를 되건다 — 선뿐 아니라 시간축·가격축 배지까지
+  // 함께 온다. 같은 API 를 `CursorSyncCrosshair` 가 이미 쓰고 있다(마우스를 전혀
+  // 받지 않는 차트에 그린다는 점이 똑같다).
+  //
+  // **품질 저하가 없다는 것이 이 선택의 근거다.** lwc 5.2.0 에서 네이티브 경로와
+  // 합성 경로는 같은 함수(`crosshair.setPosition(index, price, pane)`)로 수렴하고,
+  // 그리는 x 는 양쪽 다 `indexToCoordinate(index)` 다 — 즉 네이티브 세로선도
+  // 원래부터 봉 그리드에 붙어 있다. 실측(2026-08-22, 626px 폭 402봉): 샘플 9개
+  // 전부에서 `timeToCoordinate(coordinateToTime(x))` 가 네이티브 양자화 결과와
+  // 소수점까지 일치했다.
+  //
+  // 남는 차이는 하나뿐이다: `setCrosshairPosition` 은 `crosshairMove` 를 **쏘지
+  // 않는다**(실측: 구독 로그 0건). 그래서 툴팁·레전드는 그 순간 반응하지 않는다.
+  // 다만 **다음 데이터 갱신이 유효한 param 으로 재발화**하므로(lwc `updateCrosshair`
+  // 가 저장된 originCoord 로 skipEvent 없이 재호출 — 실측: `applyOptions({})` 한 번에
+  // `{time, point:{x:206,y:169}}` 1건) 틱이 오는 분봉에선 둘 다 저절로 따라온다.
+  // 조용한 차트(일봉·장 마감)에서는 레전드가 최신 봉 폴백에 머문다 — 알려진 잔여.
+  const scheduleCrosshair = (px: number, py: number) => {
+    crosshairPointRef.current = { x: px, y: py };
+    if (crosshairRafRef.current !== null) return;
+    // pointermove 는 OS 샘플링 레이트(고폴링 마우스면 1kHz 초과)로 오는데
+    // `setCrosshairPosition` 은 매번 lwc 재도색을 부른다 — 프레임당 1회로 합친다.
+    crosshairRafRef.current = requestAnimationFrame(() => {
+      crosshairRafRef.current = null;
+      const p = crosshairPointRef.current;
+      crosshairPointRef.current = null;
+      if (!p) return;
+      // `paneIdAtY` 는 항상 어떤 pane 을 돌려준다(범위 밖은 폴백) — 여기서
+      // 걸러야 하는 것은 그 pane 의 시리즈가 아직 등록 전인 경우다.
+      const paneId = paneIdAtY(p.y);
+      const series = paneSeries.get(paneId);
+      if (!series) return;
+      // 가격은 **그 pane 의 등록 시리즈**로 환산한다. lwc 는 넘긴 시리즈가 아니라
+      // 그 pane 의 `defaultPriceScale()` 로 되돌리므로, 오버레이 스케일
+      // (`priceScaleId: ''`) 시리즈를 넘기면 좌표가 어긋난다 — 실측: 그런 시리즈는
+      // `coordinateToPrice` 가 null 이고 가로선이 목표 y=48 대신 84.5 로 갔다.
+      // `paneSeries` 는 pane 의 primary(right 스케일) 시리즈를 등록하므로
+      // (`onPrimarySeriesReady` → `seriesList[0]`) 이 경로가 맞다: 실측 48 → 48.
+      const price = canvasYToPrice(p.y, paneId);
+      // 시간이 null 인 경우가 실제로 있다 — select 모드 히트 판정은 **가격축 거터**
+      // 까지 열려 있어서(hline 가격 배지를 눌러 선을 고르는 경로) 거기서는
+      // `px > timeScale().width()` 라 `coordinateToTime` 이 null 이다.
+      const time = chart.timeScale().coordinateToTime(p.x);
+      if (price == null || time == null) return;
+      try {
+        chart.setCrosshairPosition(price, time, series);
+        crosshairSetRef.current = true;
+      } catch {
+        // 차트가 이미 teardown 됨 — 다음 렌더에서 오버레이도 함께 사라진다.
+      }
+    });
+  };
+  const clearCrosshair = () => {
+    if (crosshairRafRef.current !== null) {
+      cancelAnimationFrame(crosshairRafRef.current);
+      crosshairRafRef.current = null;
+    }
+    crosshairPointRef.current = null;
+    if (!crosshairSetRef.current) return;
+    crosshairSetRef.current = false;
+    try {
+      chart.clearCrosshairPosition();
+    } catch {
+      // 차트가 이미 teardown 됨 — 지울 대상도 없다.
+    }
+  };
+  // 언마운트 정리는 ref 경유다 — 빈 deps 로 걸어야 마운트/언마운트에만 도는데,
+  // `clearCrosshair` 는 매 렌더 새로 만들어지는 클로저라 직접 넣으면 매 렌더
+  // 재구독된다(그러면 렌더마다 크로스헤어가 지워진다).
+  clearCrosshairRef.current = clearCrosshair;
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if (activeTool === 'text') {
@@ -637,6 +726,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     onChartHoverPassthrough?.({ x: px, y: py });
+    // 오버레이가 포인터를 잡는 동안 죽은 크로스헤어를 그 자리에 되건다.
+    scheduleCrosshair(px, py);
     // Track the cursor for the hline/vline ghost-line preview and repaint.
     if (activeTool === 'hline' || activeTool === 'vline') {
       ghostRef.current = computeGhost(px, py);
@@ -648,6 +739,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     TOOLS[activeTool].onPointerUp?.(buildCtx(e));
   };
   const onPointerLeave = () => {
+    // 커서가 차트를 떠나면 우리가 건 크로스헤어도 걷는다. **밴드 → 플롯 복귀는
+    // 여기 오지 않는다** — 게이트가 오버레이를 'none' 으로 돌리는 순간 lwc 가
+    // 다시 마우스를 받아 네이티브 크로스헤어가 덮어쓰기 때문이다. 여기가 필요한
+    // 것은 도형 위에서 곧장 차트 밖으로 빠져나가는 경로다(그때는 lwc 에 아무
+    // 이벤트도 안 가서 합성 크로스헤어가 남는다).
+    clearCrosshair();
     // Drop the ghost preview when the cursor leaves the chart.
     if (ghostRef.current) {
       ghostRef.current = null;
@@ -693,6 +790,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       e.preventDefault();
     }
   };
+
+  // 언마운트(봉 전환·창 닫기·종목 변경)될 때 우리가 건 합성 크로스헤어를 걷는다.
+  // 오버레이만 사라지고 차트가 남는 경로가 있어서(도구 UI 재마운트) 안 걷으면
+  // 아무도 안 움직이는 크로스헤어가 화면에 박힌다.
+  useEffect(() => () => clearCrosshairRef.current(), []);
 
   // Remember where the cursor is at all times (client coords). Deliberately
   // separate from the gating effect below, which only lives while select mode

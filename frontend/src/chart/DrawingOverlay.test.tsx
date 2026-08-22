@@ -753,3 +753,163 @@ describe('포인터 캡처가 실패해도 그린 도형은 커밋된다', () =>
     expect(drawings[0].kind).toBe('pencil');
   });
 });
+
+/**
+ * 드로잉 위 ±6px 밴드(`HIT_THRESHOLD.hline`)에서 오버레이가 포인터를 잡으면
+ * lightweight-charts 는 마우스를 못 받아 **크로스헤어가 사라진다.** 그 자리에
+ * `setCrosshairPosition` 으로 정품 크로스헤어를 되거는 것이 여기 잰 계약이다.
+ *
+ * **막는 방향**: "오버레이가 포인터를 잡는 동안 크로스헤어가 없어진다" 는 회귀.
+ * 되걸기를 지우면 1·5번이 빨개진다(실측으로 확인).
+ * **못 보는 것**: 실제로 그려지는 픽셀. lwc 내부 렌더는 여기서 안 돈다 —
+ * 네이티브와 픽셀 동일하다는 근거는 브라우저 실측이고 컴포넌트 코드 주석에 있다.
+ * **등록 의존**: `paneSeries` 에 그 pane 의 primary(right 스케일) 시리즈가 실려
+ * 있다는 것. 오버레이 스케일 시리즈가 실리면 좌표가 어긋나지만 여기선 안 잡힌다.
+ */
+describe('DrawingOverlay 합성 크로스헤어 — 오버레이가 포인터를 잡는 동안', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  /** jsdom 은 rAF 를 타이머로 돌린다 — 예약된 콜백 하나를 흘린다. */
+  async function flushFrame() {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+  }
+
+  function makeSeries(paneIndex: number, height: number) {
+    return {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => ({ paneIndex: () => paneIndex, getHeight: () => height }),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+    };
+  }
+
+  function renderOverlay(opts: { coordinateToTime?: (x: number) => number | null } = {}) {
+    const setCrosshairPosition = vi.fn();
+    const clearCrosshairPosition = vi.fn();
+    const candle = makeSeries(0, 400);
+    const volume = makeSeries(1, 100);
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: opts.coordinateToTime ?? ((x: number) => x),
+        timeToCoordinate: (t: number) => t,
+      }),
+      panes: () => [{ getHeight: () => 400 }, { getHeight: () => 100 }],
+      setCrosshairPosition,
+      clearCrosshairPosition,
+    };
+    const axis = {
+      segments: [],
+      contains: () => true,
+      toReal: (v: number) => v,
+      toVirtual: (r: number) => r,
+    };
+    const paneSeries = new Map([
+      ['candle', candle],
+      ['volume', volume],
+    ]);
+    const view = render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={axis as never}
+        scope={SCOPE}
+        paneSeries={paneSeries as never}
+      />,
+    );
+    const overlay = view.container.querySelector('[data-drawing-overlay]')!;
+    return { ...view, overlay, setCrosshairPosition, clearCrosshairPosition, candle, volume };
+  }
+
+  it('1. 오버레이 위 pointermove 가 커서 자리에 크로스헤어를 되건다', async () => {
+    const { overlay, setCrosshairPosition, candle } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 120, clientY: 80 });
+    });
+    await flushFrame();
+
+    // 가격·시간은 각각 그 pane 시리즈와 시간축이 돌려준 값 그대로
+    // (스텁이 항등이라 픽셀 좌표와 같다). 시리즈는 **커서가 있는 pane** 의 것.
+    expect(setCrosshairPosition).toHaveBeenCalledTimes(1);
+    expect(setCrosshairPosition).toHaveBeenCalledWith(80, 120, candle);
+  });
+
+  it('2. 지표 pane 위에서는 그 pane 의 시리즈를 넘긴다', async () => {
+    const { overlay, setCrosshairPosition, volume } = renderOverlay();
+
+    // 캔들 pane 은 0..399(+구분선), 그 아래가 거래량 pane.
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 120, clientY: 450 });
+    });
+    await flushFrame();
+
+    expect(setCrosshairPosition).toHaveBeenCalledTimes(1);
+    // 시리즈가 volume 이어야 lwc 가 **그 pane 의** price scale 로 되돌린다.
+    // candle 을 넘기면 가로선이 다른 pane 에 그려진다.
+    expect(setCrosshairPosition.mock.calls[0][2]).toBe(volume);
+  });
+
+  it('3. 프레임당 한 번으로 합친다 — pointermove 세 번에 호출 한 번', async () => {
+    const { overlay, setCrosshairPosition } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 100, clientY: 80 });
+      fireEvent.pointerMove(overlay, { clientX: 110, clientY: 80 });
+      fireEvent.pointerMove(overlay, { clientX: 120, clientY: 80 });
+    });
+    await flushFrame();
+
+    expect(setCrosshairPosition).toHaveBeenCalledTimes(1);
+    // 합치되 **마지막 위치**를 쓴다 — 첫 위치를 쓰면 커서보다 뒤처진다.
+    expect(setCrosshairPosition.mock.calls[0][1]).toBe(120);
+  });
+
+  it('4. 시간축 밖(가격축 거터)에서는 걸지 않는다', async () => {
+    // select 모드 히트 판정은 가격축 거터까지 열려 있다(hline 가격 배지로
+    // 선을 고르는 경로). 거기서 lwc 의 coordinateToTime 은 null 이다.
+    const { overlay, setCrosshairPosition } = renderOverlay({ coordinateToTime: () => null });
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 700, clientY: 80 });
+    });
+    await flushFrame();
+
+    expect(setCrosshairPosition).not.toHaveBeenCalled();
+  });
+
+  it('5. 커서가 차트를 떠나면 걷는다', async () => {
+    const { overlay, clearCrosshairPosition } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 120, clientY: 80 });
+    });
+    await flushFrame();
+    act(() => {
+      fireEvent.pointerLeave(overlay);
+    });
+
+    expect(clearCrosshairPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('6. 건 적이 없으면 걷지 않는다 — 옆 창이 동기화로 그려 준 크로스헤어 보호', async () => {
+    // 같은 차트에 크로스헤어 위치는 하나뿐이다. `CursorSyncCrosshair` 가 걸어 둔
+    // 것을 우리가 무조건 clear 하면 창 간 동기화가 커서 스침 한 번에 꺼진다.
+    const { overlay, clearCrosshairPosition } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerLeave(overlay);
+    });
+
+    expect(clearCrosshairPosition).not.toHaveBeenCalled();
+  });
+});
