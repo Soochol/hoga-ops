@@ -54,7 +54,7 @@ export default function DepthHeatmapConfig() {
         />
       </div>
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['depthHeatmapIntraMax']} />
+      <IndicatorPrefRows toggleKeys={['depthHeatmapIntraMax', 'depthHeatmapTopLevelsOnly']} />
     </div>
   );
 }

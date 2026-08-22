@@ -5,9 +5,6 @@ import { useRangeSyncFollow, useRangeSyncPublish } from './useRangeSync';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeSyncBars } from '../chart/rangeSync';
-import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
-
-const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 /** 축은 항등 — 테스트가 보는 virtual ms 는 곧 real ms 다. */
 const axis = {
@@ -15,9 +12,16 @@ const axis = {
   toVirtual: (ms: number) => ms,
 } as unknown as VirtualAxis;
 
-const MINUTE_ORIGIN: SidebarCursorOrigin = {
-  windowId: 'minute-window', group: 1, code: '064350', timeframe: '1m',
+/** 발행자는 **다른 일봉 창**이다 — 분봉은 이 채널에서 빠졌다(2026-08-22). */
+const DAILY_ORIGIN: SidebarCursorOrigin = {
+  windowId: 'other-daily', group: 1, code: '064350', timeframe: 'D',
 };
+/**
+ * 발행 창의 뷰 — 기준 캔들 왼쪽 120봉 ~ **오른쪽 30봉**. `toBars > 0` 이 곧 "캔들
+ * 오른쪽 여백을 보고 있다" 다. 목의 `timeToIndex` 가 항등이라 소비 창의 기준
+ * 인덱스는 2,000(= `anchorMs`/1000) 이고, 적용 결과는 1,880~2,030 이다.
+ */
+const BARS: RangeSyncBars = { anchorMs: 2_000_000, fromBars: -120, toBars: 30 };
 
 const setVisibleLogicalRange = vi.fn();
 const setVisibleRange = vi.fn();
@@ -62,7 +66,7 @@ const PUBLISHER_LAST_CANDLE_MS = 2_000_000;
 
 function Publisher({ enabled = true }: { enabled?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const originRef = useRef(MINUTE_ORIGIN);
+  const originRef = useRef(DAILY_ORIGIN);
   const lastCandleMsRef = useRef<number | null>(PUBLISHER_LAST_CANDLE_MS);
   useRangeSyncPublish({
     chart: makeChart() as never,
@@ -80,10 +84,7 @@ function Follower(props: {
   myCode?: string | null;
   allowCrossSymbol?: boolean;
   candleCount?: number;
-  syncPeer?: boolean;
   myGroup?: number | null;
-  /** 우측 클램프 기준. 기본은 아주 먼 미래라 클램프가 안 걸린다. */
-  lastCandleMs?: number | null;
   myTimeframe?: 'D' | 'W' | 'M' | '1m';
   /** 이 창만의 현재 논리 범위 — 생략하면 공유 전역. */
   logical?: { from: number; to: number };
@@ -95,9 +96,7 @@ function Follower(props: {
     chart: makeChart({ logical: props.logical, apply: props.apply }) as never,
     axis,
     candleCount: props.candleCount ?? 400,
-    lastCandleMs: props.lastCandleMs ?? null,
     enabled: props.enabled ?? true,
-    syncPeer: props.syncPeer ?? true,
     myWindowId: props.myWindowId ?? 'daily-window',
     myTimeframe: props.myTimeframe ?? 'D',
     myGroup: props.myGroup ?? 1,
@@ -108,8 +107,12 @@ function Follower(props: {
 }
 
 const publishRange = (
-  from: number, to: number, origin = MINUTE_ORIGIN, bars?: RangeSyncBars,
+  from: number, to: number, origin = DAILY_ORIGIN, bars?: RangeSyncBars,
 ) => act(() => { useLiveCursorStore.getState().setSyncRange(from, to, origin, bars); });
+
+/** 정상 발행 한 건 — 봉 단위 뷰까지 실린 것이 기본값이다. */
+const peerPublish = (origin = DAILY_ORIGIN, bars: RangeSyncBars = BARS) =>
+  publishRange(1_000_000, 2_000_000, origin, bars);
 
 beforeEach(() => {
   useLiveCursorStore.getState().resetCursor();
@@ -157,7 +160,7 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
     const r = useLiveCursorStore.getState().syncRange;
     // 발행값은 **실시각**이다 — 논리 인덱스를 실으면 창마다 캔들 수가 달라 해석 불가.
     expect(r).toMatchObject({ fromMs: 1_000_000, toMs: 2_000_000, seq: 1 });
-    expect(r?.origin.windowId).toBe('minute-window');
+    expect(r?.origin.windowId).toBe('other-daily');
   });
 
   it('드래그가 한 프레임 안에 끝나도 최종 위치를 발행한다', async () => {
@@ -295,18 +298,7 @@ describe('useRangeSyncPublish — 봉 단위 뷰', () => {
  * `setVisibleRange`(구간 복제)로 **다른 API** 를 쓴다. 한쪽으로 잘못 배선하면
  * 이 쌍이 갈린다.
  */
-describe('useRangeSyncFollow — peer 모드', () => {
-  const DAILY_ORIGIN: SidebarCursorOrigin = {
-    windowId: 'other-daily', group: 1, code: '064350', timeframe: 'D',
-  };
-  /**
-   * 발행 창의 뷰 — 기준 캔들 왼쪽 120봉 ~ **오른쪽 30봉**. `toBars > 0` 이 곧
-   * "캔들 오른쪽 여백을 보고 있다" 다. 목의 `timeToIndex` 가 항등이라 소비 창의
-   * 기준 인덱스는 2,000(= `anchorMs`/1000) 이고, 적용 결과는 1,880~2,030 이다.
-   */
-  const BARS: RangeSyncBars = { anchorMs: 2_000_000, fromBars: -120, toBars: 30 };
-  const peerPublish = (bars: RangeSyncBars = BARS, origin = DAILY_ORIGIN) =>
-    publishRange(1_000_000, 2_000_000, origin, bars);
+describe('useRangeSyncFollow — 복제', () => {
 
   it('발행 창의 뷰를 봉 단위로 복제한다 — **여백까지**', async () => {
     render(<Follower myTimeframe="D" />);
@@ -327,17 +319,6 @@ describe('useRangeSyncFollow — peer 모드', () => {
     expect(setVisibleRange).not.toHaveBeenCalled();
   });
 
-  it('토글을 끄면 복제하지 않는다 — **중앙 정렬로 떨어지지도 않는다**', async () => {
-    // 판별 케이스다. 한때 토글이 꺼지면 peer 가 중앙 정렬 경로로 갔는데, 그러면 두
-    // 창이 **같은 구간을 보지 않으면서 동기화된 것처럼 보인다**. 지금은 `syncModeFor`
-    // 가 peer 를 없는 모드로 만들어 아무 경로도 타지 않는다.
-    render(<Follower myTimeframe="D" syncPeer={false} />);
-    peerPublish();
-    await flushFrame();
-    expect(setVisibleRange).not.toHaveBeenCalled();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-  });
-
   it('주봉 창은 주봉 발행만 받는다 — 일↔주는 통하지 않는다', async () => {
     render(<Follower myTimeframe="W" />);
     peerPublish();
@@ -348,7 +329,7 @@ describe('useRangeSyncFollow — peer 모드', () => {
 
   it('주봉 ↔ 주봉은 복제한다', async () => {
     render(<Follower myTimeframe="W" />);
-    peerPublish(BARS, { ...DAILY_ORIGIN, timeframe: 'W' });
+    peerPublish({ ...DAILY_ORIGIN, timeframe: 'W' });
     await flushFrame();
     expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_880, to: 2_030 });
   });
@@ -369,88 +350,10 @@ describe('useRangeSyncFollow — peer 모드', () => {
   });
 });
 
-/**
- * **폭 합의** — 분봉 하나를 만지면 일봉 창이 **모두 똑같아진다**(사용자 요구
- * 2026-08-22: "일봉 폭도 완전히 동일하게").
- *
- * **이 가드가 막는 방향**: 각 창이 자기 현재 폭을 보존해 같은 발행에도 창 크기만큼
- * 결과가 갈리는 것(실측: 171봉 vs 118봉).
- * **못 보는 것**: 누가 seed 하는가. 마운트 순서에 달렸고 한 라운드 뒤 자기안정이라
- * 계약이 아니다 — 그래서 "첫 창의 폭" 이 아니라 **"둘이 같다"** 를 잰다.
- */
-describe('useRangeSyncFollow — 폭 합의', () => {
-  it('폭이 다른 두 일봉 창이 같은 발행에 **같은 범위**를 쓴다', async () => {
-    const wide = vi.fn();
-    const narrow = vi.fn();
-    render(
-      <>
-        <Follower myWindowId="d1" logical={{ from: 0, to: 180 }} apply={wide} />
-        <Follower myWindowId="d2" logical={{ from: 60, to: 180 }} apply={narrow} />
-      </>,
-    );
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
 
-    const w = wide.mock.calls.at(-1)?.[0];
-    const n = narrow.mock.calls.at(-1)?.[0];
-    expect(w).toBeDefined();
-    expect(n).toBeDefined();
-    // 축이 같은 테스트라 위치까지 같다. 실물에서는 로드 이력이 달라 인덱스가 갈릴 수
-    // 있고, 그때도 **폭은** 같아야 한다 — 아래 단언이 계약의 핵심이다.
-    expect(w.to - w.from).toBe(n.to - n.from);
-    expect(w).toEqual(n);
-  });
-
-  it('「같은 봉 창끼리」를 끄면 합의도 꺼진다 — 각자 자기 배율을 지킨다', async () => {
-    // 이 토글이 **일봉↔일봉 결합을 통째로** 쥔다는 계약. 폭 합의는 트리거만 분봉일
-    // 뿐 결합의 실체는 일봉끼리라, 여기서 빠지면 "일봉끼리 동기화를 껐는데 분봉을
-    // 만지면 일봉 폭이 서로 같아지는" 모순이 된다.
-    const wide = vi.fn();
-    const narrow = vi.fn();
-    render(
-      <>
-        <Follower myWindowId="d1" syncPeer={false} logical={{ from: 0, to: 180 }} apply={wide} />
-        <Follower myWindowId="d2" syncPeer={false} logical={{ from: 60, to: 180 }} apply={narrow} />
-      </>,
-    );
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
-
-    // 위치(중점 1,500)는 둘 다 따라간다 — 꺼지는 것은 폭 결합뿐이다.
-    expect(wide.mock.calls.at(-1)?.[0]).toEqual({ from: 1_410, to: 1_590 });
-    expect(narrow.mock.calls.at(-1)?.[0]).toEqual({ from: 1_440, to: 1_560 });
-    expect(useLiveCursorStore.getState().crossSpanAgreement).toBeNull();
-  });
-
-  it('발행이 바뀌면 합의를 새로 잡는다 — 낡은 폭에 갇히지 않는다', async () => {
-    const applied = vi.fn();
-    const view = render(<Follower logical={{ from: 0, to: 100 }} apply={applied} />);
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
-    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 1_450, to: 1_550 });
-
-    // 사용자가 이 창을 직접 확대해 폭이 바뀌었다. 다음 발행은 그 새 폭을 따라야 한다.
-    view.rerender(<Follower logical={{ from: 0, to: 40 }} apply={applied} />);
-    publishRange(3_000_000, 4_000_000);
-    await flushFrame();
-
-    expect(applied.mock.calls.at(-1)?.[0]).toMatchObject({ from: 3_480, to: 3_520 });
-  });
-});
-
-describe('useRangeSyncFollow — 배선', () => {
-  it('발행을 받으면 그 기간을 중앙에 두도록 논리 범위를 민다', async () => {
-    render(<Follower />);
-    // from 1,000,000ms → 1,000 초 → 인덱스 1,000 / to → 2,000. 중점 1,500.
-    // 현재 span 100 → from = 1,450, to = 1,550.
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
-
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
-  });
-
+describe('useRangeSyncFollow — 게이트와 stale', () => {
   it('마운트 전의 발행은 적용하지 않는다 — 저장뷰 착석과 싸운다', async () => {
-    publishRange(1_000_000, 2_000_000);
+    peerPublish();
     render(<Follower />);
     await flushFrame();
 
@@ -458,40 +361,18 @@ describe('useRangeSyncFollow — 배선', () => {
   });
 
   it('마운트 뒤의 새 발행은 적용한다 — stale 가드가 기능을 죽이지 않는다', async () => {
-    publishRange(1_000_000, 2_000_000);
+    peerPublish();
     render(<Follower />);
     await flushFrame();
-    publishRange(3_000_000, 4_000_000);
+    peerPublish(DAILY_ORIGIN, { ...BARS, fromBars: -60, toBars: 40 });
     await flushFrame();
 
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 3_450, to: 3_550 });
-  });
-
-  it('자기 데이터 밖으로는 밀지 않는다 — 우측 끝에서 멈춘다', async () => {
-    // 축이 항등이라 lastCandleMs 3,000,000 → 인덱스 3,000. 우측 끝 = 3,000 + 1 + 여백.
-    // 중앙 정렬만 하면 to = 3,050(중점 3,000 + 폭/2)이라 끝을 넘는다.
-    render(<Follower lastCandleMs={3_000_000} />);
-    publishRange(3_000_000, 3_000_000);
-    await flushFrame();
-
-    const arg = setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
-    // 폭(100)은 보존하고 우측 끝에 붙는다 — 그 값이 곧 일봉의 평소 오른쪽 끝이다.
-    expect(arg.to - arg.from).toBe(100);
-    expect(arg.to).toBeLessThanOrEqual(3_001 + RIGHT_OFFSET);
-    expect(arg.to).toBeGreaterThan(3_000);
-  });
-
-  it('과거 날짜에서는 클램프가 안 걸려 중앙 정렬이 온전하다', async () => {
-    render(<Follower lastCandleMs={9_000_000} />);
-    publishRange(1_000_000, 2_000_000);
-    await flushFrame();
-
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_450, to: 1_550 });
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_940, to: 2_040 });
   });
 
   it('창번호가 다르면 따라가지 않는다', async () => {
     render(<Follower myGroup={2} />);
-    publishRange(1_000_000, 2_000_000);
+    peerPublish();
     await flushFrame();
 
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
@@ -499,7 +380,7 @@ describe('useRangeSyncFollow — 배선', () => {
 
   it('자기 발행은 따라가지 않는다', async () => {
     render(<Follower />);
-    publishRange(1_000_000, 2_000_000, { ...MINUTE_ORIGIN, windowId: 'daily-window' });
+    peerPublish({ ...DAILY_ORIGIN, windowId: 'daily-window' });
     await flushFrame();
 
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
@@ -507,7 +388,7 @@ describe('useRangeSyncFollow — 배선', () => {
 
   it('종목이 다르면 토글이 꺼진 동안 따라가지 않는다', async () => {
     render(<Follower allowCrossSymbol={false} />);
-    publishRange(1_000_000, 2_000_000, { ...MINUTE_ORIGIN, code: '005930' });
+    peerPublish({ ...DAILY_ORIGIN, code: '005930' });
     await flushFrame();
 
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
@@ -515,7 +396,7 @@ describe('useRangeSyncFollow — 배선', () => {
 
   it('토글이 켜져 있으면 종목이 달라도 따라간다', async () => {
     render(<Follower allowCrossSymbol />);
-    publishRange(1_000_000, 2_000_000, { ...MINUTE_ORIGIN, code: '005930' });
+    peerPublish({ ...DAILY_ORIGIN, code: '005930' });
     await flushFrame();
 
     expect(setVisibleLogicalRange).toHaveBeenCalled();
@@ -523,16 +404,21 @@ describe('useRangeSyncFollow — 배선', () => {
 
   it('캔들이 아직 없으면 움직이지 않는다 — 빈 축에 인덱스가 없다', async () => {
     render(<Follower candleCount={0} />);
-    publishRange(1_000_000, 2_000_000);
+    peerPublish();
     await flushFrame();
 
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
-  it('이미 중앙이면 부르지 않는다 — 같은 값을 되쓰면 떤다', async () => {
-    visibleLogical = { from: 1_450, to: 1_550 };
+  /**
+   * **분봉 발행은 받지 않는다**(사용자 결정 2026-08-22).
+   *
+   * 판정 층(`rangeSync.test.ts`)이 이미 같은 것을 재지만, 배선이 그 판정을 실제로
+   * 부르는지는 여기서만 드러난다 — 훅이 판정을 건너뛰면 순수 층은 전부 초록이다.
+   */
+  it('분봉 창의 발행은 받지 않는다 — 분봉을 밀어도 일봉은 움직이지 않는다', async () => {
     render(<Follower />);
-    publishRange(1_000_000, 2_000_000);
+    peerPublish({ ...DAILY_ORIGIN, windowId: 'minute-window', timeframe: '1m' });
     await flushFrame();
 
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();

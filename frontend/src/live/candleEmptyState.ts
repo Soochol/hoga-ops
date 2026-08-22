@@ -72,7 +72,19 @@ export interface CandleEmptyInput {
    */
   savedRangeFrozen?: boolean;
   /**
-   * 얼린 창의 **키움 보충이 아직 진행 중인가**(`useMinuteGapFill`).
+   * 이 창만 **hogaplay 저장 데이터로** 읽는가(`useLiveBundle` 의 `hogaplaySourceEnabled`).
+   *
+   * `savedRangeFrozen` 과 같은 이유로 `restBypassEnabled` 와 따로 받는다 — 이쪽도 그
+   * 값을 강제로 켜지만 처방이 다르다. 전역 우회는 설정에서 끄는 것이 답이고, 이 창은
+   * 설정에 아무것도 없다(손잡이는 헤더 칩의 × 다). 합쳐 두면 "설정 열기" 라는 **듣지
+   * 않는 버튼**이 뜬다 — 2026-08-22 까지 실제로 그랬고, 그게 이 축을 만든 이유다.
+   */
+  hogaplaySourceEnabled?: boolean;
+  /**
+   * 디스크 창의 **키움 보충이 아직 진행 중인가**(`useMinuteGapFill`).
+   *
+   * 소비자가 둘이다 — 얼린 저장뷰와 창별 hogaplay 소스. 둘 다 보충이 돌므로 아래
+   * 두 분기가 같은 값을 읽는다.
    *
    * `isLoading` 과 따로 받는다 — 저쪽은 reveal 게이트를 겸하므로 보충을 섞으면 있는
    * 디스크 캔들까지 가장 느린 벤더 walk 를 기다리게 된다(그게 이 기능이 피하려던
@@ -138,6 +150,7 @@ export function deriveCandleEmptyState({
   isLoading,
   restBypassEnabled,
   savedRangeFrozen,
+  hogaplaySourceEnabled,
   savedRangeGapFillPending,
   hasInstrument,
 }: CandleEmptyInput): CandleEmptyState | null {
@@ -207,6 +220,21 @@ export function deriveCandleEmptyState({
     // 없다), 손잡이는 칩의 × 뿐인데 그건 이 구간을 보는 것을 **포기**하는 것이라
     // 여기서 권할 일이 아니다. 못 채운 **이유**는 저장뷰 칩(`savedRangeNotice`)이 말한다.
     return { text: '저장 구간에 캔들이 없다 — 캡처도 벤더 보충도 없다', action: null };
+  }
+  // 창별 hogaplay 소스도 얼림과 같은 처방이다(설정으로 못 끈다) — 전역 우회 분기보다
+  // **먼저** 놓는 이유가 그것이고, 얼림 분기가 같은 자리에 있는 이유와 같다.
+  if (hogaplaySourceEnabled) {
+    if (savedRangeGapFillPending) {
+      return { text: '빈 거래일을 벤더에서 보충하는 중이다', action: null };
+    }
+    // 행동 버튼을 주지 않는다. "설정 열기" 는 이 모드와 무관하고(전역 우회가 아니다)
+    // "다시 시도" 는 디스크에 없는 것을 다시 없다고 확인할 뿐이다. 실제로 듣는 손잡이는
+    // 헤더 칩의 × 하나뿐이라 문구가 그것을 지목한다 — 버튼이 아니라 **문장**인 이유는
+    // 그게 이 창을 보기를 포기하는 선택이라 빈 상태가 대신 눌러 줄 일이 아니어서다.
+    return {
+      text: 'hogaplay 저장 데이터에 이 구간 캔들이 없다 · 헤더 칩의 × 로 벤더로 돌아간다',
+      action: null,
+    };
   }
   if (restBypassEnabled) {
     // 조회는 성공했는데 비었다 + 디스크 전용 모드 = 이 구간이 저장되지 않은 것이다.

@@ -13,7 +13,8 @@ import {
   unregisterFlagLegendValues,
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
-import { formatPriceQty, peakLegendCells } from './peakLegendValues';
+import { formatPriceQty } from './peakLegendValues';
+import { peakWallRankLegendCells } from './peakWallVisibleRanking';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -288,6 +289,8 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
   const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const maFilter = usePeakMaFilter('bid');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
+  /** 레전드가 랭킹할 세그먼트(필터 통과 후) — 사유는 ask 쪽 동명 ref 주석 참조. */
+  const legendSegmentsRef = useRef<readonly AskPeakSegment[]>([]);
   // 레전드 값 provider 의 창 스코프(멀티창) — ask 쪽과 동일 규칙.
   const windowId = useWindowScopeId();
 
@@ -307,20 +310,24 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
     };
   }, [series]);
 
-  // 레전드 값 provider — 커서 거래일의 벽 가격·잔량(ask 쪽과 동일 규칙).
+  // 레전드 값 provider — **보이는 영역**의 잔량 상위 3개(ask 쪽과 동일 규칙: 호출 시점에
+  // 범위를 읽고, hidden 과 무관하게 값을 유지한다).
   useEffect(() => {
-    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
-      peakLegendCells(dayBidPeaks, axis, intraMax, cursorTimeSec, 'bid-peak');
+    const provider: FlagLegendValueProvider = () => peakWallRankLegendCells(
+      legendSegmentsRef.current,
+      primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
+      'bid-peak',
+    );
     registerFlagLegendValues(windowId, 'bid-peak', provider);
     return () => unregisterFlagLegendValues(windowId, 'bid-peak', provider);
-  }, [windowId, dayBidPeaks, axis, intraMax]);
+  }, [windowId]);
 
   // 갱신: dayBidPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
     const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
-    const nextSegments = enabled && !hidden
+    const nextSegments = enabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
         segments,
@@ -335,7 +342,9 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
         dailyMaFilter,
       })
       : [];
-    prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
+    // 레전드는 눈(hidden)과 무관하게 값을 유지 → 그리기 게이트보다 먼저 채운다(ask 미러).
+    legendSegmentsRef.current = nextSegments;
+    prim.setSegments(hidden ? [] : prepareBidPeakSegmentsForRender(nextSegments));
   }, [
     dayBidPeaks,
     segments,

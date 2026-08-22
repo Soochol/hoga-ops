@@ -203,3 +203,60 @@ describe('deriveCandleEmptyState — 저장뷰 얼림', () => {
     expect(s?.text).toContain('벤더 연결');
   });
 });
+
+/**
+ * 창별 hogaplay 소스의 빈 상태(2026-08-22).
+ *
+ * **막는 방향**: 얼림 케이스와 **같은 실패**다 — 이 모드도 `restBypassEnabled` 를
+ * 강제로 켜므로, 축이 없으면 우회 분기가 먼저 잡아 "벤더 우회가 켜져 있다 · 설정
+ * 열기" 를 낸다. 전역 우회는 꺼져 있으니 **문구가 오진이고 버튼이 듣지 않는다**
+ * (2026-08-22 조사에서 실제로 그 상태였다).
+ *
+ * **못 보는 것**: 창이 실제로 `hogaplaySourceEnabled: true` 를 받는지. 그 배선은
+ * `useLiveBundle` 이 소유하고 `useLiveBundle.test.tsx` 가 잰다.
+ */
+describe('deriveCandleEmptyState — 창별 hogaplay 소스', () => {
+  it('빈 구간에 "설정 열기" 를 주지 않는다 — 전역 우회가 아니다', () => {
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, hogaplaySourceEnabled: true,
+    });
+    expect(s?.text).toContain('hogaplay 저장 데이터');
+    expect(s?.action).toBeNull();
+  });
+
+  it('실제로 듣는 손잡이(칩의 ×)를 문구가 지목한다', () => {
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, hogaplaySourceEnabled: true,
+    });
+    expect(s?.text).toContain('×');
+  });
+
+  it('보충이 도는 중이면 "없다" 고 단언하지 않는다', () => {
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, hogaplaySourceEnabled: true,
+      savedRangeGapFillPending: true,
+    });
+    expect(s?.text).toContain('보충하는 중');
+  });
+
+  it('창별 소스가 우회보다 **먼저** 잡는다 — 순서가 계약이다', () => {
+    // 이 창은 `restBypassEnabled` 가 항상 켜져 있으므로, 대조군 없이는 순서를 뒤집어도
+    // 통과한다(얼림 케이스가 같은 이유로 같은 단언을 갖는다).
+    const windowSource = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, hogaplaySourceEnabled: true,
+    });
+    const bypassOnly = deriveCandleEmptyState({ ...base, restBypassEnabled: true });
+
+    expect(windowSource?.action).toBeNull();
+    expect(bypassOnly?.action).toBe('settings');
+  });
+
+  it('얼림과 겹치면 얼림이 먼저다 — 두 칩이 같은 화면을 다르게 말하지 않는다', () => {
+    // 호출부(`ChartWindow`)가 얼린 창에서 이 플래그를 내리므로 실제로는 안 겹치지만,
+    // 겹쳤을 때의 우선순위를 고정해 두지 않으면 그 게이트가 풀릴 때 조용히 바뀐다.
+    const s = deriveCandleEmptyState({
+      ...base, restBypassEnabled: true, savedRangeFrozen: true, hogaplaySourceEnabled: true,
+    });
+    expect(s?.text).toBe('저장 구간에 캔들이 없다 — 캡처도 벤더 보충도 없다');
+  });
+});
