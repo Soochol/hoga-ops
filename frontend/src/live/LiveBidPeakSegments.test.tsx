@@ -27,6 +27,7 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayBidPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
@@ -68,6 +69,7 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayBidPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [
@@ -113,6 +115,7 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayBidPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [
@@ -152,6 +155,7 @@ describe('buildBidPeakOverlaySegments', () => {
 
     const segments = buildBidPeakOverlaySegments({
       maFilter: null,
+      dailyMaFilter: null,
       dayBidPeaks: [peak],
       segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
       candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],

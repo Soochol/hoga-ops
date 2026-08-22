@@ -46,6 +46,54 @@ function finiteNumber(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+type SessionSma = {
+  inSession: readonly Candle[];
+  sma: readonly (number | null)[];
+};
+
+type SmaCacheEntry = {
+  axis: VirtualAxis;
+  inSession: readonly Candle[];
+  byPeriod: Map<number, readonly (number | null)[]>;
+};
+
+/**
+ * 세션 필터 + SMA 결과를 캔들 배열 **참조**에 매단다.
+ *
+ * 왜 필요한가: 이 필터는 소비처 셋(선·도킹 라벨·고저 라벨 회피 rect) × 양측(ask/bid)에서
+ * 불리고, 그중 둘은 **팬·줌 콜백**에 걸려 있어 프레임마다 다시 돈다. 캐시가 없으면 매
+ * 프레임 12일치 캔들(~4,700개)을 여섯 번 훑는다 — 실측 조립 비용이 0.005 → 0.083ms 로
+ * 16배가 됐다(#1484 를 머지하며 들어온 비용이다).
+ *
+ * 키가 배열 참조인 이유: 캔들이 갱신되면 호출부가 새 배열을 만들므로(`cb.candles` 는 memo
+ * 산출물) 참조가 곧 내용의 신원이다. WeakMap 이라 그 배열이 버려지면 캐시도 같이 사라진다.
+ * `axis` 는 세션 판정을 바꾸므로 같이 확인한다 — 축만 갈리는 경우(venue 전환) 배열 참조는
+ * 그대로일 수 있다.
+ */
+const smaCache = new WeakMap<readonly Candle[], SmaCacheEntry>();
+
+function sessionSma(
+  candles: readonly Candle[],
+  axis: VirtualAxis,
+  period: number,
+): SessionSma {
+  let entry = smaCache.get(candles);
+  if (entry === undefined || entry.axis !== axis) {
+    entry = {
+      axis,
+      inSession: candles.filter((candle) => axis.contains(candle.ts_ms)),
+      byPeriod: new Map(),
+    };
+    smaCache.set(candles, entry);
+  }
+  let sma = entry.byPeriod.get(period);
+  if (sma === undefined) {
+    sma = computeSMA(entry.inSession.map((candle) => candle.close), period);
+    entry.byPeriod.set(period, sma);
+  }
+  return { inSession: entry.inSession, sma };
+}
+
 /** `candles`(ts_ms 오름차순)에서 `tMs` 이하 마지막 인덱스. 없으면 -1.
  *  `snapPeakMsToCandle` 과 같은 이진 탐색이되 ts 가 아니라 **인덱스**를 낸다 — SMA 배열이
  *  캔들 인덱스로 정렬돼 있어서다. */
@@ -84,9 +132,8 @@ export function filterPeaksAgainstMa<T extends PeakBase>(
   filter: PeakMaFilter | null,
 ): T[] {
   if (!filter || peaks.length === 0 || candles.length === 0) return [...peaks];
-  const inSession = candles.filter((candle) => axis.contains(candle.ts_ms));
+  const { inSession, sma } = sessionSma(candles, axis, filter.period);
   if (inSession.length === 0) return [...peaks];
-  const sma = computeSMA(inSession.map((candle) => candle.close), filter.period);
   return peaks.filter((peak) => {
     const price = intraMax ? peak.max_price : peak.price;
     const tMs = intraMax ? peak.max_t_ms : peak.t_ms;

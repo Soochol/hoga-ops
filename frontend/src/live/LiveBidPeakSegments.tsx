@@ -8,6 +8,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
+import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import {
   registerFlagLegendValues,
   unregisterFlagLegendValues,
@@ -118,6 +119,9 @@ type BuildBidPeakOverlaySegmentsArgs = {
    *  매도쪽과 같은 이유로 **필수 인자**다(기본값을 주면 새 호출부가 조용히 필터 없이
    *  태어난다). 필터를 안 쓰는 자리는 `null` 을 명시한다. */
   maFilter: PeakMaFilter | null;
+  /** 일봉 이동평균선 필터(매수는 MA **아래**). `maFilter` 와 독립이라 둘 다 걸면 교집합이다.
+   *  매도쪽과 같은 이유로 **필수 인자**다. */
+  dailyMaFilter: PeakDailyMaFilter | null;
 };
 
 function finiteNumber(value: number | null | undefined): value is number {
@@ -219,18 +223,24 @@ export function buildBidPeakOverlaySegments({
   allPriceRankLimit = 1,
   visibleTimeCutoff,
   maFilter,
+  dailyMaFilter,
 }: BuildBidPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayBidPeaks, visibleTimeCutoff ?? null, {
     side: 'bid',
     intraMax,
   });
   // rank-then-filter: 매도쪽과 같은 순서. 최대벽을 먼저 뽑고 그중 MA 아래인 것만 남긴다.
-  const baselinePeaks = filterPeaksAgainstMa(
-    expandBaselineBidPeaks(cutoffPeaks, allPriceRankLimit, intraMax),
-    candles,
-    axis,
+  // 매도쪽과 같은 순차 교집합.
+  const baselinePeaks = filterPeaksAgainstDailyMa(
+    filterPeaksAgainstMa(
+      expandBaselineBidPeaks(cutoffPeaks, allPriceRankLimit, intraMax),
+      candles,
+      axis,
+      intraMax,
+      maFilter,
+    ),
     intraMax,
-    maFilter,
+    dailyMaFilter,
   );
   const baseline = buildBidPeakSegments(
     baselinePeaks,
@@ -261,12 +271,14 @@ type Props = {
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
+  /** 일봉 MA 필터 — `LiveChartRoot` 가 한 번 계산해 내려보낸다(매도쪽과 동일). */
+  dailyMaFilter?: PeakDailyMaFilter | null;
 };
 
 /** 거래일별 매수 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
+function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles, todayKst, visibleTimeCutoff = null, dailyMaFilter = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useWindowIndicator((s) => s.bidPeakEnabled);
   const hidden = useWindowIndicator((s) => s.bidPeakHidden);
@@ -321,6 +333,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
         allPriceRankLimit: baselineRankLimit,
         visibleTimeCutoff,
         maFilter,
+        dailyMaFilter,
       })
       : [];
     prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
@@ -339,6 +352,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
     visibleMaxRankLimit,
     visibleTimeCutoff,
     maFilter,
+    dailyMaFilter,
     series,
   ]);
 

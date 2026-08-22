@@ -14,6 +14,7 @@ import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './L
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { usePeakMaFilter } from './peakWallMaFilter';
+import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import { useWindowIndicator } from './workspace/windowView';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -29,6 +30,10 @@ type Props = {
   todayKst: string;
   askVisibleTimeCutoff?: VisibleTimeCutoff | null;
   bidVisibleTimeCutoff?: VisibleTimeCutoff | null;
+  /** 일봉 MA 필터 — 선(LiveAsk/BidPeakSegments)과 **같은 값**을 받아야 라벨만 남는 유령이
+   *  생기지 않는다. `LiveChartRoot` 가 한 번 계산해 셋 모두에 같은 참조를 내려보낸다. */
+  askDailyMaFilter?: PeakDailyMaFilter | null;
+  bidDailyMaFilter?: PeakDailyMaFilter | null;
 };
 
 function toPeakRankLimit(value: number): 1 | 2 | 3 {
@@ -53,6 +58,8 @@ function LivePeakWallDockedLabels({
   todayKst,
   askVisibleTimeCutoff = null,
   bidVisibleTimeCutoff = null,
+  askDailyMaFilter = null,
+  bidDailyMaFilter = null,
 }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   // 눈(hidden)은 세그먼트와 도킹 라벨을 함께 숨긴다 — 시각 요소 일괄.
@@ -108,6 +115,7 @@ function LivePeakWallDockedLabels({
         allPriceRankLimit: askPeakRankLimit,
         visibleTimeCutoff: askVisibleTimeCutoff,
         maFilter: askMaFilter,
+        dailyMaFilter: askDailyMaFilter,
       })
       : [];
     const timeScale = prim.chartApi()?.timeScale();
@@ -132,6 +140,7 @@ function LivePeakWallDockedLabels({
         allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
         visibleTimeCutoff: bidVisibleTimeCutoff,
         maFilter: bidMaFilter,
+        dailyMaFilter: bidDailyMaFilter,
       })
       : [];
     // side 는 라벨의 세로 방향을 가른다 — 매도는 선 위, 매수는 선 아래. 같은 분봉에
@@ -143,6 +152,7 @@ function LivePeakWallDockedLabels({
   }, [
     askAllPriceRankLimit,
     askColor,
+    askDailyMaFilter,
     askIntraMax,
     askLabelEnabled,
     askLineWidth,
@@ -155,6 +165,7 @@ function LivePeakWallDockedLabels({
     axis,
     bidAllPriceRankLimit,
     bidColor,
+    bidDailyMaFilter,
     bidIntraMax,
     bidLabelEnabled,
     bidLineWidth,

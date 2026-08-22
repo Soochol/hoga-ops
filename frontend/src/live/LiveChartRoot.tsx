@@ -88,6 +88,7 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import { usePeakMaFilter } from './peakWallMaFilter';
+import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
 /** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
@@ -211,6 +212,10 @@ const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
  * debounce here starved the sidebar for the entire duration of a continuous
  * sweep (it only fired after the pointer stopped). */
 const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
+/** 번들이 아직 없을 때 일봉 MA 필터에 넘기는 빈 캔들 — 매 렌더 새 배열을 만들면 훅의
+ *  memo 가 매번 깨진다. */
+const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
+
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 /** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
  *
@@ -1667,6 +1672,18 @@ export function LiveChartRoot({
   // 라벨을 피해 고저 극값 라벨이 pane 안쪽으로 밀리는 유령 회피가 남는다.
   const askPeakMaFilter = usePeakMaFilter('ask');
   const bidPeakMaFilter = usePeakMaFilter('bid');
+  // 일봉 MA 필터는 **여기 한 곳에서만** 만든다 — 데이터 fetch 가 걸린 훅이라 소비처(선 2 ·
+  // 도킹 라벨 · 회피 rect)마다 부르면 쿼리가 그만큼 는다. 같은 참조를 셋에 내려보낸다.
+  const peakDailyMaInput = {
+    code,
+    venue,
+    todayKst,
+    candles: cb?.candles ?? EMPTY_CANDLES_FOR_DAILY_MA,
+    enabled: isMinuteTimeframe(timeframe),
+    kisEnabled: dailyCandleKisEnabled,
+  };
+  const askPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'ask' });
+  const bidPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'bid' });
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
 
@@ -1982,6 +1999,7 @@ export function LiveChartRoot({
           intraMax: askPeakIntraMax,
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
           maFilter: askPeakMaFilter,
+          dailyMaFilter: askPeakDailyMaFilter,
         }).map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
       ...(bidLabelsOn
@@ -1995,6 +2013,7 @@ export function LiveChartRoot({
           intraMax: bidPeakIntraMax,
           visibleTimeCutoff: bidVisibleTimeCutoffForRender,
           maFilter: bidPeakMaFilter,
+          dailyMaFilter: bidPeakDailyMaFilter,
         }).map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
@@ -2019,6 +2038,7 @@ export function LiveChartRoot({
   }, [
     askPeakEnabled,
     askPeakIntraMax,
+    askPeakDailyMaFilter,
     askPeakLabelEnabled,
     askPeakMaFilter,
     askPeakWallHidden,
@@ -2026,6 +2046,7 @@ export function LiveChartRoot({
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
+    bidPeakDailyMaFilter,
     bidPeakLabelEnabled,
     bidPeakMaFilter,
     bidPeakWallHidden,
@@ -2450,6 +2471,7 @@ export function LiveChartRoot({
               candles={cb.candles}
               todayKst={todayKst}
               visibleTimeCutoff={askVisibleTimeCutoffForRender}
+              dailyMaFilter={askPeakDailyMaFilter}
             />
           )}
           {isMinuteTimeframe(timeframe) && (
@@ -2461,6 +2483,7 @@ export function LiveChartRoot({
               candles={cb.candles}
               todayKst={todayKst}
               visibleTimeCutoff={bidVisibleTimeCutoffForRender}
+              dailyMaFilter={bidPeakDailyMaFilter}
             />
           )}
           {isMinuteTimeframe(timeframe) && (
@@ -2474,6 +2497,8 @@ export function LiveChartRoot({
               todayKst={todayKst}
               askVisibleTimeCutoff={askVisibleTimeCutoffForRender}
               bidVisibleTimeCutoff={bidVisibleTimeCutoffForRender}
+              askDailyMaFilter={askPeakDailyMaFilter}
+              bidDailyMaFilter={bidPeakDailyMaFilter}
             />
           )}
           {showTradeVolumePocOverlay && (
