@@ -427,17 +427,28 @@ type UseLiveBundleOptions = {
    * | 입력 | 무엇인가 | 구간을 얼리는가 | 키움 보충 |
    * |------|----------|-----------------|-----------|
    * | `frozenRangeFrom` | 저장뷰가 가리키는 과거 구간 | **얼린다**(시작일 고정) | **한다** |
-   * | 전역 `rest_bypass_enabled` | 벤더가 실패할 때 주는 처방 | 아니오 | 안 한다 |
-   * | 이 옵션 | 사용자의 **명시적 소스 선택** | **아니오** | 안 한다 |
+   * | 전역 `rest_bypass_enabled` | 벤더가 실패할 때 주는 처방 | 아니오 | **안 한다** |
+   * | 이 옵션 | 사용자의 **명시적 소스 선택** | **아니오** | **한다** |
    *
    * "얼리지 않는다" 가 이 옵션의 존재 이유다. 시작일을 고정하지 않으므로 페치 창은
    * 종전대로 `historicalFromDate` 가 정하고, 좌측 팬이 그것을 넓히면 디스크 요청도
    * 같이 넓어진다(2026-08-22 사용자 요구: "기간 이동해도 디스크에서 읽어서 보여줘야").
    *
-   * 키움 보충(`useMinuteGapFill`)을 **일부러 안 한다.** 사용자가 고른 것은 hogaplay
-   * 이므로 구멍을 벤더 분봉으로 메우면 고른 것과 다른 것을 보여 주게 된다 — 구멍은
-   * `missing_dates` 안내(`HogaMissingNotice`)로 말한다. 저장뷰 얼림이 보충하는 이유는
-   * 그쪽이 "이 구간을 보겠다" 는 **구간** 요청이기 때문이다(소스 요청이 아니다).
+   * ## 키움 보충은 **한다** — 도입 시의 판단이 뒤집혔다
+   *
+   * #1493 은 "사용자가 고른 것은 hogaplay 이므로 구멍을 벤더 분봉으로 메우면 고른 것과
+   * 다른 것을 보여 준다" 를 근거로 보충을 뺐다. 그 논리의 전제는 **구멍이 화면에서
+   * 설명된다**는 것이었는데, 실제로는 아니었다: 가장 흔한 결손 사유 `not_captured` 를
+   * `hogaMissingNotice` 의 `IGNORED_REASONS` 가 걸러내고 그 예외(`includeNotCaptured`)는
+   * `/study` 에서만 켜진다. 즉 `/live` 에서 미캡처일은 **채워지지도 설명되지도 않은 채**
+   * 차트에서 사라지고 있었다(2026-08-22 사용자 결정으로 보충 쪽을 택했다).
+   *
+   * 보충일은 소스가 `kiwoom_gapfill` 로 표기되므로(아래 `sourceByDate`) "고른 것과 다른
+   * 것" 이 조용히 섞이지는 않는다 — 배지가 그 날을 지목한다.
+   *
+   * ⚠ 전역 `rest_bypass_enabled` 는 여전히 보충하지 않는다. 그 모드는 벤더가 실패할 때
+   * 주는 처방이라 자동으로 벤더를 두드리면 목적이 무효가 된다 — 그래서 게이트가
+   * `restBypassEnabled` 가 아니라 **이 옵션과 얼림의 OR** 이다.
    *
    * **분봉 전용이다.** 캘린더 봉의 디스크 소스는 스크리너 일봉이지 hogaplay 가
    * 아니므로(`enableScreenerDaily`), 호출부가 봉이 캘린더로 나갈 때 내린다.
@@ -739,17 +750,20 @@ export function useLiveBundle(
   /**
    * 디스크에 **없는 거래일을 키움 분봉으로 보충**한다 (`useMinuteGapFill`).
    *
-   * 게이트가 `frozenRangeFrom !== null` 인 것이 요점이다 — 전역 `rest_bypass_enabled`
-   * 에서는 켜지 않는다. 그 모드는 벤더가 실패하고 있을 때 사용자에게 권하는 처방이라
-   * (`notifyRestFailure` → 우회 유도), 그 상태에서 자동으로 벤더를 두드리면 모드가
-   * 존재하는 이유를 정면으로 무효화한다. 저장뷰 얼림은 반대다 — **사용자가 특정 과거
-   * 구간을 보겠다고 명시한** 창이라 그 구간을 채우는 것이 곧 요청받은 일이다.
+   * 게이트가 `restBypassEnabled` 가 **아닌** 것이 요점이다. 그 값은 셋의 OR 인데
+   * 전역 `rest_bypass_enabled` 만은 보충하면 안 되기 때문이다 — 그 모드는 벤더가
+   * 실패하고 있을 때 사용자에게 권하는 처방이라(`notifyRestFailure` → 우회 유도),
+   * 그 상태에서 자동으로 벤더를 두드리면 모드가 존재하는 이유를 정면으로 무효화한다.
+   *
+   * 나머지 둘은 **사용자가 이 창을 그렇게 보겠다고 명시한** 상태다(과거 구간을 골랐거나
+   * hogaplay 소스를 골랐거나). 그 창의 구멍을 채우는 것은 곧 요청받은 일이다.
+   * hogaplay 토글이 여기 합류한 경위는 `hogaplaySourceEnabled` 도크스트링에 있다.
    *
    * 구멍 목록은 백엔드가 준 `missing_dates` 하나만 쓴다. 프론트가 직접 계산하면
    * 거래일 달력이 없어 주말·공휴일을 구멍으로 오인한다.
    */
   const minuteGapFill = useMinuteGapFill({
-    enabled: frozenRangeFrom !== null,
+    enabled: frozenRangeFrom !== null || hogaplaySourceEnabled,
     code,
     venue,
     timeframe,
@@ -1409,6 +1423,7 @@ export function useLiveBundle(
       isLoading: activeCandlesLoading,
       restBypassEnabled,
       savedRangeFrozen: frozenRangeFrom !== null,
+      hogaplaySourceEnabled,
       // "지금 요청 중" 과 "아직 남은 run 이 있다" 의 합집합 — run 사이 커서가 넘어가는
       // 프레임에서 `isFetching` 만 보면 빈 상태가 한 번 깜빡인다.
       savedRangeGapFillPending: minuteGapFill.isFetching || minuteGapFill.remainingRuns > 0,
