@@ -9,6 +9,7 @@ import {
   planLiveRangeRequest,
   useLiveBundle,
 } from './useLiveBundle';
+import * as clientModule from '../api/client';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
@@ -78,7 +79,12 @@ const livePastCandlesSpy = vi.fn(() => ({
   isPlaceholderData: candlesMock.isPlaceholderData,
   isFetching: candlesMock.isFetching,
 }));
-vi.mock('../api/livePastCandles', () => ({
+// ⚠ **부분 모킹은 같은 모듈의 나머지 export 를 지운다.** `useMinuteGapFill` 의 queryFn 이
+// 이 모듈의 `withPastCandlesTimeout` 을 부르므로, 팩토리가 그것을 안 실으면 보충이
+// `apiCall` 에 닿기도 전에 TypeError 로 죽는다 — 증상은 "요청이 안 나간다" 라 **게이트가
+// 안 열린 것처럼 보인다.** 그래서 실제 모듈을 펼친 뒤 훅만 덮는다.
+vi.mock('../api/livePastCandles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/livePastCandles')>()),
   useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
 }));
 
@@ -848,6 +854,104 @@ describe('useLiveBundle', () => {
     useRestBypassModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
+    });
+  });
+
+  /**
+   * 창별 hogaplay 소스(`hogaplaySourceEnabled`)의 **번들 층 배선**.
+   *
+   * 이 축은 2026-08-22 조사 시점까지 이 파일에서 **한 번도 검증된 적이 없었다** —
+   * 버튼·칩·헤더 폭·워크스페이스 스토어에만 테스트가 있었고, 정작 "디스크로 보내는가"
+   * 와 "보충을 켜는가" 두 배선이 비어 있었다.
+   *
+   * **막는 방향**: ① 토글이 디스크 경로로 안 보내는 것 ② 보충이 안 도는 것
+   * ③ **보충이 전역 우회까지 번지는 것**. ③ 이 특히 중요하다 — 게이트를
+   * `restBypassEnabled`(셋의 OR)로 쓰면 ①②는 초록인 채로 전역 우회 모드가 자동으로
+   * 벤더를 두드리게 되고, 그건 그 모드가 존재하는 이유를 정면으로 무효화한다.
+   *
+   * **못 보는 것**: 창이 실제로 이 옵션을 넘기는지(`ChartWindow` 소유)와 보충 계획의
+   * 내용(`minuteGapFillPlan` 소유). 여기서는 **게이트**만 잰다.
+   */
+  describe('창별 hogaplay 소스', () => {
+    /** 미캡처 하루가 있는 디스크 응답. 날짜는 오늘(20260527) 이전 · 보유 기간 안. */
+    function diskBundleWithHole() {
+      return { ...fallbackRangeBundle(), missing_dates: [{ date: '20260520', reason: 'not_captured' }] };
+    }
+
+    function serveDisk() {
+      useRangeSpy.mockImplementation((...args: unknown[]) => {
+        const options = args[6] as { mode?: string } | undefined;
+        return rangeResult(options?.mode === 'candles' ? diskBundleWithHole() : null);
+      });
+    }
+
+    it('디스크 경로로 보낸다 — 벤더 분봉 대신 /api/range mode=candles 를 쓴다', () => {
+      serveDisk();
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: true }),
+        { wrapper: createWrapper() },
+      );
+
+      const candleCall = useRangeSpy.mock.calls.find(
+        (c) => (c[6] as { mode?: string } | undefined)?.mode === 'candles',
+      );
+      expect(candleCall?.[0]).toBe('005930');
+      // 요청이 나갔다는 것만으로는 부족하다 — **그 응답이 차트에 들어가야** 소스가 바뀐 것이다.
+      // 디스크 종가 71,234 · 벤더 픽스처 종가 70,050 이 그 두 소스를 가른다.
+      const closes = result.current.chartBundle!.candles.map((c) => c.close);
+      expect(closes).toContain(71_234);
+      expect(closes).not.toContain(70_050);
+    });
+
+    it('구멍을 키움 분봉으로 보충한다 — 토글이 보충 게이트를 연다', async () => {
+      serveDisk();
+      const apiSpy = vi.spyOn(clientModule, 'apiCall').mockResolvedValue({
+        code: '005930', from: '20260520', to: '20260520', venue: 'KRX', bucket_ms: 60_000,
+        candles: [], cached_dates: [], fresh_dates: [], data_warnings: {}, adjust_factors: {},
+      } as never);
+
+      renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: true }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(apiSpy).toHaveBeenCalled());
+      const url = apiSpy.mock.calls[0][0] as string;
+      expect(url).toContain('/api/live/past-candles');
+      expect(url).toContain('from=20260520');
+      apiSpy.mockRestore();
+    });
+
+    it('전역 우회만 켜져 있으면 보충하지 않는다 — 처방 모드를 무효화하지 않는다', async () => {
+      serveDisk();
+      const apiSpy = vi.spyOn(clientModule, 'apiCall');
+
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+      );
+
+      // 같은 디스크 응답·같은 구멍인데도 침묵해야 한다. 게이트를 `restBypassEnabled`
+      // 로 쓰면 위 두 테스트는 초록인 채 여기만 빨개진다 — 그게 이 단언의 존재 이유다.
+      await waitFor(() => expect(result.current.chartBundle).not.toBeNull());
+      expect(apiSpy).not.toHaveBeenCalled();
+      apiSpy.mockRestore();
+    });
+
+    it('빈 상태가 "설정 열기" 대신 창 소스 문구를 낸다', () => {
+      useRangeSpy.mockImplementation((...args: unknown[]) => {
+        const options = args[6] as { mode?: string } | undefined;
+        return rangeResult(
+          options?.mode === 'candles' ? { ...fallbackRangeBundle(), candles: [] } : null,
+        );
+      });
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: true }),
+        { wrapper: createWrapper() },
+      );
+
+      expect(result.current.candleEmpty?.text).toContain('hogaplay 저장 데이터');
+      expect(result.current.candleEmpty?.action).toBeNull();
     });
   });
 

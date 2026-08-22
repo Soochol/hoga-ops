@@ -1,5 +1,16 @@
 /**
- * 얼린 저장뷰 분봉의 **미캡처 거래일을 키움으로 보충**한다.
+ * **디스크로 읽는 분봉 창의 미캡처 거래일을 키움으로 보충**한다.
+ *
+ * 소비자가 둘이고, 둘은 창의 성질이 다르다:
+ *
+ * | 소비자 | 구간 | 이 훅에 주는 부담 |
+ * |---|---|---|
+ * | 저장뷰 얼림(`frozenRangeFrom`) | 고정 | 계획이 안 변한다 |
+ * | 창별 hogaplay 소스(`hogaplaySourceEnabled`) | **좌측 팬을 따라 자란다** | 계획이 변한다 |
+ *
+ * 아래쪽이 2026-08-22 에 붙었다(#1493 은 보충을 일부러 뺐고 사용자가 그 결정을 뒤집었다).
+ * 그 때문에 누적 정책이 바뀌었으니 `identity`·`wantedDates` 주석을 먼저 읽을 것 —
+ * "계획이 바뀌면 누적을 버린다" 로 되돌리면 팬마다 채운 봉이 깜빡인다.
  *
  * 계획(어느 구간을 물어볼지)은 `minuteGapFillPlan` 이 소유하고, 이 훅은 그 계획을
  * **한 번에 하나씩 순차로** 소비한다. 두 가지가 그 순차성에 달려 있다:
@@ -150,9 +161,13 @@ function absorbRun(acc: Accumulator, run: GapFillRun, res: LivePastCandlesRespon
  * 봉이라 격자가 어긋나면 보충일만 폭이 다른 봉이 된다. 120·240 의 정규장 클립까지
  * 포함해 그 경로를 그대로 따른다.
  */
-function foldToTimeframe(acc: Accumulator, timeframe: LiveTimeframe): readonly Candle[] {
+function foldToTimeframe(
+  acc: Accumulator,
+  timeframe: LiveTimeframe,
+  wanted: ReadonlySet<string>,
+): readonly Candle[] {
   if (acc.byDate.size === 0) return EMPTY_CANDLES;
-  const dates = [...acc.byDate.keys()].sort();
+  const dates = [...acc.byDate.keys()].filter((d) => wanted.has(d)).sort();
   const out: Candle[] = [];
   for (const date of dates) {
     const raw = acc.byDate.get(date) ?? [];
@@ -170,12 +185,14 @@ function foldToTimeframe(acc: Accumulator, timeframe: LiveTimeframe): readonly C
 
 export interface UseMinuteGapFillArgs {
   /**
-   * 보충을 켤 것인가. 호출자가 **세 가지를 모두** 만족시켜야 한다:
-   * 얼린 저장뷰(`frozenRangeFrom !== null`) · 분봉 · KRX.
+   * 보충을 켤 것인가. 호출자가 **사용자가 고른 디스크 창**임을 보장해야 한다 —
+   * 얼린 저장뷰(`frozenRangeFrom !== null`) **또는** 창별 hogaplay 소스. 나머지 두 축
+   * (분봉·KRX)은 이 훅이 스스로 건다.
    *
    * 전역 `rest_bypass_enabled` 에서는 **켜지 않는다** — 그 모드는 벤더가 실패할 때
    * 사용자에게 주는 처방이라(`restBypassMode` 의 `notifyFailure` 경로), 그 상태에서
-   * 자동으로 벤더를 두드리면 모드의 목적을 정면으로 무효화한다.
+   * 자동으로 벤더를 두드리면 모드의 목적을 정면으로 무효화한다. 앞의 둘은 반대로
+   * 사용자가 **그 창을 보겠다고 명시한** 상태라 채우는 것이 곧 요청받은 일이다.
    */
   enabled: boolean;
   code: string | null;
@@ -198,24 +215,61 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
     [active, missingDates, todayKstYyyymmdd, bucketMs],
   );
 
-  // 계획이 바뀌면 누적을 버린다. 종목·venue·해상도가 바뀌어도 마찬가지 — 다른 척도·다른
-  // 시장의 봉을 이어 붙이면 안 된다.
-  const identity = `${code ?? ''}|${venue}|${bucketMs}|${plan.runs.map(gapFillRunKey).join(',')}`;
+  /**
+   * 누적을 버리는 축은 **척도**다 — 계획이 아니다.
+   *
+   * 종목·venue·해상도가 바뀌면 이어 붙이면 안 되는 봉이라 버린다. 반면 **계획이
+   * 바뀌었다는 것은 창이 넓어졌다는 뜻일 뿐**이고, 이미 받아 둔 날짜의 봉은 그 창에서도
+   * 그대로 유효하다.
+   *
+   * ⚠ 예전엔 run 키까지 이 문자열에 넣어 계획이 바뀔 때마다 누적을 버렸다. 저장뷰에서는
+   * 구간이 얼어 있어 계획이 안 바뀌므로 공짜였지만, **창별 hogaplay 소스는 좌측 팬을
+   * 따라 `missing_dates` 가 자란다** — 그 정책 그대로면 팬 한 번마다 채운 봉이 사라졌다
+   * 다시 나타난다. 되돌리지 말 것.
+   */
+  const identity = `${code ?? ''}|${venue}|${bucketMs}`;
+
+  /**
+   * **지금 창에서 채우려는 거래일** — 누적본을 이 집합으로 거른다.
+   *
+   * 누적이 계획보다 오래 살게 된 대가다. 창이 옮겨가면 예전 창의 구멍 날짜가 누적에
+   * 남는데, 그대로 접으면 요청하지도 않은 구간의 봉이 차트에 붙는다(좌측 팬 하한을
+   * 재는 소비자들이 그걸 "이미 있는 이력" 으로 읽는다). 계획에 있는 날짜만 접으면
+   * 누적은 캐시로 남고 화면은 창을 정확히 따른다.
+   */
+  const wantedDates = useMemo<ReadonlySet<string>>(
+    () => new Set(plan.runs.flatMap((r) => r.dates)),
+    [plan.runs],
+  );
 
   const accRef = useRef<Accumulator>(emptyAccumulator());
   const processedRef = useRef<Set<string>>(new Set());
-  const [cursor, setCursor] = useState(0);
+  /** 두 ref 의 **버전**. 흡수 1회당 정확히 1 오른다 — 렌더 트리거를 겸한다. */
+  const [absorbed, setAbsorbed] = useState(0);
   const [seenIdentity, setSeenIdentity] = useState(identity);
   if (seenIdentity !== identity) {
     // 렌더 중 리셋 — props 변화에 맞춰 state 를 조정하는 공식 패턴이다. effect 로 미루면
-    // 한 프레임 동안 **옛 계획의 누적본**이 새 종목 차트에 그려진다.
+    // 한 프레임 동안 **다른 척도의 누적본**이 새 종목 차트에 그려진다.
     setSeenIdentity(identity);
-    setCursor(0);
+    setAbsorbed(0);
     accRef.current = emptyAccumulator();
     processedRef.current = new Set();
   }
 
-  const run: GapFillRun | null = active && cursor < plan.runs.length ? plan.runs[cursor] : null;
+  /**
+   * 아직 처리하지 않은 **첫 run**.
+   *
+   * 인덱스 커서가 아니라 처리 집합으로 고른다 — 계획이 자라도(팬) 이미 받은 run 을
+   * 다시 걷지 않기 위해서다. `chunkRun` 이 **뒤(최신)에서부터** 자르므로 앞쪽에 오래된
+   * 날짜가 붙어도 기존 청크의 키가 그대로 남아, 새로 생긴 청크만 요청된다.
+   */
+  const run = useMemo<GapFillRun | null>(
+    () => (active
+      ? plan.runs.find((r) => !processedRef.current.has(gapFillRunKey(r))) ?? null
+      : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedRef 의 버전
+    [active, plan.runs, absorbed, seenIdentity],
+  );
 
   const query = useQuery({
     queryKey: ['live', 'gap-fill', code, venue, bucketMs, run?.from ?? null, run?.to ?? null] as const,
@@ -245,32 +299,39 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
       return;
     }
     processedRef.current.add(key);
-    setCursor((c) => c + 1);
+    setAbsorbed((n) => n + 1);
   }, [run, data, isSuccess, isError]);
 
-  // `cursor` 가 누적기의 **버전**이다. 누적은 ref 라 deps 에 넣을 수 없고, run 이 하나
-  // 끝날 때마다 커서가 정확히 한 번 오르므로 그 값이 곧 "몇 번 흡수했는가" 다.
+  // `absorbed` 가 누적기의 **버전**이다. 누적은 ref 라 deps 에 넣을 수 없고, run 이 하나
+  // 끝날 때마다 정확히 한 번 오르므로 그 값이 곧 "몇 번 흡수했는가" 다.
+  // 셋 다 `wantedDates` 로 거른다 — 누적은 창보다 오래 살고 화면은 창을 따른다.
   const candles = useMemo(
-    () => foldToTimeframe(accRef.current, timeframe),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cursor 가 accRef 의 버전
-    [cursor, identity, timeframe],
+    () => foldToTimeframe(accRef.current, timeframe, wantedDates),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 accRef 의 버전
+    [absorbed, identity, timeframe, wantedDates],
   );
   const filledDates = useMemo<ReadonlySet<string>>(
-    () => new Set(accRef.current.byDate.keys()),
+    () => new Set([...accRef.current.byDate.keys()].filter((d) => wantedDates.has(d))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 위와 같은 이유
-    [cursor, identity],
+    [absorbed, identity, wantedDates],
   );
   const rescaledDates = useMemo<readonly string[]>(
-    () => [...accRef.current.rescaled].sort(),
+    () => [...accRef.current.rescaled].filter((d) => wantedDates.has(d)).sort(),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 위와 같은 이유
-    [cursor, identity],
+    [absorbed, identity, wantedDates],
   );
 
   // 결과를 memo 로 고정한다 — 매 렌더 새 객체를 내면 이 값을 deps 로 쓰는 하류
   // (저장뷰 안내·소스 맵)가 전부 재계산된다. 보충은 드물게 움직이는 데이터라 참조가
   // 안정적이어야 그 비용이 0 이 된다.
   const isFetching = query.isFetching;
-  const remainingRuns = Math.max(0, plan.runs.length - cursor);
+  // 인덱스 차가 아니라 **미처리 run 수**다 — 계획이 자라도(팬) 이미 받은 run 은 세지
+  // 않는다. 이 값이 0 이면 이 창의 보충이 끝났다는 뜻이고 빈 상태·안내가 그걸 읽는다.
+  const remainingRuns = useMemo(
+    () => plan.runs.filter((r) => !processedRef.current.has(gapFillRunKey(r))).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedRef 의 버전
+    [plan.runs, absorbed, seenIdentity],
+  );
   return useMemo<MinuteGapFillResult>(
     () => (active
       ? {
