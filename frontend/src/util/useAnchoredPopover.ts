@@ -33,6 +33,13 @@
 // 밀면 트리거 top 68 < section top 103 인데 팝오버는 그대로 떠 있었다). 이건 포털이
 // 만든 회귀라 포털이 갚아야 한다.
 //
+// 열릴 때 팝오버 안으로 **포커스를 옮긴다**. `ModalShell` 의 Tab trap 은 카드 안
+// 포커서블만 순환시키는데(`cardRef.querySelectorAll`) 포털된 팝오버는 그 서브트리
+// 밖이라 Tab 이 영영 닿지 않는다 — 포털 전에는 DOM 순서상 트리거 다음이 팔레트였으니
+// 이것도 포털이 만든 회귀다. `FolderAddButton` 이 같은 이유로 같은 처방을 쓴다.
+// `preventScroll` 은 필수다: 포커스가 조상을 스크롤하면 트리거가 가려지고, 바로 아래
+// IO 가 그것을 "안 보임" 으로 읽어 **방금 연 팝오버를 닫는다**.
+//
 // 판정은 `IntersectionObserver` 로 한다. rect 비교로는 **조상 overflow 에 가려진**
 // 경우를 알 수 없다 — 트리거는 뷰포트 좌표 안에 멀쩡히 있고 카드가 덮고 있을 뿐이다.
 // IO 는 명세상 root(여기선 뷰포트)까지의 클립 사슬을 적용한 교차 영역을 주므로
@@ -97,6 +104,17 @@ export function useAnchoredPopover<T extends HTMLElement = HTMLDivElement>(
       window.removeEventListener('resize', sync);
     };
   }, [isOpen, anchorRef, width]);
+
+  // 포커스를 팝오버 안으로 — 위 헤더의 사연 참조. 현재 값(aria-pressed)이 있으면
+  // 거기서 시작해 "지금 무엇이 골라져 있나" 가 포커스 링으로도 읽힌다.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const layer = ref.current;
+    if (!layer) return;
+    const target = layer.querySelector<HTMLElement>('[aria-pressed="true"]')
+      ?? layer.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    target?.focus({ preventScroll: true });
+  }, [isOpen, ref]);
 
   // 트리거가 (스크롤이든 접힘이든) 보이지 않게 되면 닫는다 — 위 헤더의 사연 참조.
   useEffect(() => {

@@ -118,6 +118,20 @@ describe('MAStylePicker', () => {
     expect(Number(popover.style.zIndex)).toBeGreaterThan(60);
   });
 
+  it('열리면 팝오버 안으로 포커스를 옮긴다 — 포털이라 Tab 이 닿지 않는다', () => {
+    // ModalShell 의 Tab trap 은 카드 안 포커서블만 순환한다. 포털된 팝오버는 그
+    // 밖이라 명시적으로 포커스를 넣지 않으면 키보드로는 팔레트에 **도달할 수 없다**.
+    // 막는 방향: 포커스 이동을 지우면 activeElement 가 트리거에 남아 빨개진다.
+    render(<MAStylePicker color={MA_COLOR_ROWS[2][3]} lineWidth={1} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    const popover = screen.getByRole('dialog', { name: 'MA 스타일 팔레트' });
+    expect(popover.contains(document.activeElement)).toBe(true);
+    // 현재 값에서 시작한다 — 골라져 있는 것이 포커스 링으로도 읽힌다.
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: `MA 색상 ${MA_COLOR_ROWS[2][3]}` }),
+    );
+  });
+
   it('팝오버 내부 mousedown 은 팝오버를 닫지 않는다', () => {
     const onChange = vi.fn();
     render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={onChange} />);
