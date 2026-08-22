@@ -398,7 +398,17 @@ def create_range_measurement_app(
     *,
     temp_directory: Path | None = None,
 ) -> tuple[FastAPI, QueryEngine]:
-    """Build only the real Range route/model and production GZip middleware."""
+    """Build only the real Range route/model, with the **pre-ADR-0154** GZip middleware.
+
+    ⚠ 「production」 이 아니다. 2026-08-21 에 ADR-0154 가 `GZipMiddleware` 를 제거해
+    프로덕션은 **무압축**이다(단일 이벤트 루프라 압축이 전역 정지를 만든다). 이 하니스는
+    2026-07-24 측정이 이뤄진 **그 시절 조건을 재현**하려고 미들웨어를 그대로 둔다 —
+    그래야 `docs/superpowers/measurements/2026-07-24-backend-performance/` 의 수치와
+    비교 가능하다.
+
+    **현재 프로덕션 조건을 재려면 `identity` 레그를 본다.** `endpoint_gzip` 레그는
+    과거 조건이다.
+    """
     engine = QueryEngine(data_dir, temp_directory=temp_directory)
     app = FastAPI(title="Range measurement app")
     app.add_middleware(GZipMiddleware, minimum_size=1_024)

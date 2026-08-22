@@ -115,11 +115,9 @@ export function initialLoadBudget(): Plugin {
             `초기 로드 raw ${kb(report.rawTotal)} > 예산 ${kb(INITIAL_LOAD_BUDGET.rawBytes)}`,
           );
         }
-        if (report.gzipTotal > INITIAL_LOAD_BUDGET.gzipBytes) {
-          problems.push(
-            `초기 로드 gzip ${kb(report.gzipTotal)} > 예산 ${kb(INITIAL_LOAD_BUDGET.gzipBytes)}`,
-          );
-        }
+        // gzip 은 **실패시키지 않는다** — 이 앱은 무압축 서빙이라 실사용 부담이 아니다
+        // (사유는 규칙 파일의 `gzipBytes` 자리 주석). 수치는 아래 summary 로 계속 낸다:
+        // raw 와 갈리는 방향이 「반복 문자열인가 새 내용인가」를 말해 준다.
 
         const summary = `초기 로드 raw ${kb(report.rawTotal)} / gzip ${kb(report.gzipTotal)} `
           + `(${report.entries.length}개 자산, CSS 포함)`;
