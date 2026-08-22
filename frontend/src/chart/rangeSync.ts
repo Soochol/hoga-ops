@@ -15,24 +15,28 @@
  *    적용하면 저장뷰 착석(`restoreViewport`)과 싸운다. 그래서 발행마다 `seq` 를 올리고
  *    소비자는 **자기가 붙은 뒤의 seq** 만 본다.
  *
- * ── 줌: 기본은 안 건드리고, 켜면 **비율만** 옮긴다 ─────────────────────────
- * 분봉 창이 보는 폭은 보통 1~2일이다. 그 폭을 일봉 축에 **그대로 맞추면** 캔들 두
- * 개짜리 화면이 된다 — 그래서 "폭 일치" 는 기각이다.
+ * ── cross 는 **배율을 건드리지 않는다** ───────────────────────────────────
+ * 분봉 창이 보는 폭은 보통 1~2일이다. 그 폭을 일봉 축에 맞추면 캔들 두 개짜리
+ * 화면이 되므로 "폭 일치" 는 애초에 기각이다. 한때 **변화 비율**을 옮기는
+ * `rangeSyncZoom` 이 있었으나 사용자 결정으로 걷어냈다(2026-08-22) — 분봉을 확대할
+ * 때 일봉까지 따라 확대되는 것이 원하는 동작이 아니었다. 지금 cross 는 위치만 옮긴다.
  *
- * `rangeSyncZoom`(⚙️ 설정 → 차트, **기본 끔**)을 켜면 대신 **변화 비율**을 옮긴다:
- * 분봉을 2배 확대하면 일봉도 2배 확대된다. 절대 폭은 각 창의 것으로 남으므로 일봉이
- * 읽히는 배율을 유지하면서 제스처만 따라간다. 끄면 스크롤만 하고 배율은 그대로다.
+ * ── 「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`) ────────────────────────
+ * 이 토글이 **일봉 창들끼리의 결합**을 통째로 쥔다. 트리거가 둘이라 둘 다 여기 걸린다:
  *
- * 비율이라 두 가지 방어가 필요하다 — **데드밴드**(팬만 해도 발행 폭이 조금 흔들린다:
- * 백필 prepend 재앵커) 와 **클램프**(분봉은 30~2000봉을 오가는데 그 배율을 그대로
- * 곱하면 일봉이 3봉 또는 12,000봉이 된다).
+ * 1. **peer 복제** — 한 일봉 창을 밀면 나머지가 같은 구간을 본다.
+ * 2. **폭 합의** — 분봉 발행에 일봉들이 **같은 폭**을 쓴다. 폭을 각 창의 현재 값으로
+ *    두면 같은 발행에도 창 크기만큼 화면이 갈린다(실측 2026-08-22: 184봉 vs 131봉).
+ *    발행 하나(`seq`)에 대해 먼저 도착한 창이 seed 하고 나머지가 읽는다
+ *    (`useLiveCursorStore.crossSpanAgreement`). **폭만 합의하고 위치는 각자 찾는다** —
+ *    논리 인덱스는 창마다 다른 로드 이력 위의 값이라 옮기면 엉뚱한 날로 간다.
  *
- * ── 폭은 창끼리 합의한다 ─────────────────────────────────────────────────
- * 일봉 창이 여럿이면 **크기가 달라도 같은 폭을 본다**(사용자 요구 2026-08-22).
- * 폭을 각 창의 현재 값으로 두면 같은 발행에도 화면이 갈린다 — 실측 171봉 vs 118봉.
- * 그래서 발행 하나(`seq`)에 대해 먼저 도착한 창이 폭을 seed 하고 나머지가 읽는다
- * (`useLiveCursorStore.crossSpanAgreement`). **폭만 합의하고 위치는 각자 찾는다** —
- * 논리 인덱스는 창마다 다른 로드 이력 위의 값이라 옮기면 엉뚱한 날로 간다.
+ * 트리거가 분봉이라고 2를 이 토글 밖에 두면 "일봉끼리 동기화를 껐는데 분봉을 만지면
+ * 일봉 폭이 서로 같아지는" 모순이 된다. 둘 다 **일봉↔일봉 결합**이라 한 스위치다.
+ *
+ * 끄면 `syncModeFor` 가 peer 를 **없는 모드로** 취급하고, 그러면 발행·소비 게이트가
+ * 거기서 유도되므로 일봉 창은 **발행도 멈춘다** — 아무도 안 받는 발행이 단일 슬롯을
+ * 훔쳐 분봉 발행을 지우는 것을 막는다(`canPublishRangeSync` 주석의 그 사고).
  *
  * ── 자기 데이터 밖으로는 밀지 않는다 ──────────────────────────────────────
  * 중앙 정렬은 그대로 두되 **우측 끝을 넘지 않는다**(마지막 캔들 + 표준 여백).
@@ -65,6 +69,15 @@ function isCalendar(tf: LiveTimeframe): boolean {
   return tf === 'D' || tf === 'W' || tf === 'M';
 }
 
+/**
+ * 참여 스위치. **필수 인자다** — 기본값을 주면 새 호출부가 조용히 옛 동작을 쓰고,
+ * 그 어긋남은 화면에 안 보인다(이 파일이 이미 한 번 밟은 유형).
+ */
+export type RangeSyncSwitches = {
+  /** 「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`) — peer 복제 + 폭 합의. */
+  peer: boolean;
+};
+
 /** 동기화 모드. 어떤 다리를 놓고 어떻게 적용할지가 여기서 갈린다. */
 export type RangeSyncMode =
   /** 분봉 → 일봉. 폭이 비교 불가라 **중앙 정렬 + 비율**이다. */
@@ -86,16 +99,22 @@ export type RangeSyncMode =
 export function syncModeFor(
   myTimeframe: LiveTimeframe,
   originTimeframe: LiveTimeframe,
+  opts: RangeSyncSwitches,
 ): RangeSyncMode | null {
   if (!isCalendar(myTimeframe)) return null;
-  if (myTimeframe === originTimeframe) return 'peer';
+  if (myTimeframe === originTimeframe) return opts.peer ? 'peer' : null;
   if (myTimeframe === 'D' && isMinuteTimeframe(originTimeframe)) return 'cross';
   return null;
 }
 
-/** 이 봉의 창에 소비자를 마운트하는가 — 캘린더 봉만. */
-export function isRangeSyncFollower(tf: LiveTimeframe): boolean {
-  return isCalendar(tf);
+/**
+ * 이 봉의 창에 소비자를 마운트하는가 — **내가 받을 발행이 하나라도 있는가.**
+ *
+ * 발행 쪽(`canPublishRangeSync`)과 같은 이유로 손 목록이 아니라 유도다. peer 를 끄면
+ * W/M 창은 받을 것이 하나도 없어져(그 봉은 peer 뿐이다) 소비자를 아예 안 단다.
+ */
+export function isRangeSyncFollower(tf: LiveTimeframe, opts: RangeSyncSwitches): boolean {
+  return LIVE_TIMEFRAMES.some((origin) => syncModeFor(tf, origin, opts) !== null);
 }
 
 /**
@@ -110,8 +129,8 @@ export function isRangeSyncFollower(tf: LiveTimeframe): boolean {
  * 바뀔 때 조용히 어긋나고, 그 어긋남의 증상은 "아무도 안 받는 발행이 단일 슬롯을
  * 훔쳐 유효한 표시를 지우는 것"이다(2026-08-11 실측).
  */
-export function canPublishRangeSync(tf: LiveTimeframe): boolean {
-  return LIVE_TIMEFRAMES.some((my) => syncModeFor(my, tf) !== null);
+export function canPublishRangeSync(tf: LiveTimeframe, opts: RangeSyncSwitches): boolean {
+  return LIVE_TIMEFRAMES.some((my) => syncModeFor(my, tf, opts) !== null);
 }
 
 /**
@@ -136,12 +155,15 @@ export function resolveRangeSyncMode(params: {
   myGroup: number | null;
   myCode: string | null;
   allowCrossSymbol: boolean;
+  switches: RangeSyncSwitches;
 }): RangeSyncMode | null {
-  const { publication, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol } = params;
+  const {
+    publication, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, switches,
+  } = params;
   if (!publication) return null;
   const { origin } = publication;
   if (origin.windowId !== null && origin.windowId === myWindowId) return null;
-  const mode = syncModeFor(myTimeframe, origin.timeframe);
+  const mode = syncModeFor(myTimeframe, origin.timeframe, switches);
   if (mode === null) return null;
   if (origin.group !== myGroup) return null;
   if (!allowCrossSymbol && origin.code !== null && myCode !== null && origin.code !== myCode) {
@@ -172,8 +194,8 @@ export function centeredLogicalRange(params: {
   toIndex: number;
   current: LogicalRange;
   /**
-   * 적용할 폭. 호출부가 **창끼리 합의한 값**(파일 헤더의 그 절)을 넘긴다 — 줌
-   * 동기화가 켜져 있으면 비율이 이미 반영돼 있다. 없으면 현재 폭 유지(스크롤만).
+   * 적용할 폭. 호출부가 **창끼리 합의한 값**(파일 헤더의 그 절)을 넘긴다.
+   * 없거나 합의가 꺼져 있으면 현재 폭 유지 — 위치만 옮긴다.
    */
   spanOverride?: number;
   /**
@@ -194,25 +216,14 @@ export function centeredLogicalRange(params: {
   const from = rightEdgeLimit !== undefined && center + span / 2 > rightEdgeLimit
     ? rightEdgeLimit - span
     : center - span / 2;
-  // **위치와 폭 둘 다** 그대로일 때만 건너뛴다. 폭만 바뀌는 경우(제자리 줌)를
-  // 위치 비교만으로 거르면 줌 동기화가 통째로 죽는다.
+  // **위치와 폭 둘 다** 그대로일 때만 건너뛴다. 위치는 같은데 폭만 바뀌는 경우가
+  // 실제로 있다(폭 합의가 옆 창의 값을 물어다 준다) — 위치 비교만으로 거르면 그
+  // 라운드가 통째로 사라진다.
   const samePlace = Math.abs(from - current.from) < 1;
   const sameSpan = Math.abs(span - currentSpan) < 1;
   if (samePlace && sameSpan) return null;
   return { from, to: from + span };
 }
-
-/** 추종 창이 내려갈 수 있는 최소 폭(캔들 수) — 이보다 좁으면 일봉이 읽히지 않는다. */
-export const MIN_FOLLOW_SPAN_BARS = 10;
-
-/**
- * 줌 비율을 무시하는 문턱.
- *
- * **부동소수 오차용 ε 이 아니다.** 팬만 해도 발행 구간의 ms 폭이 완전히 고정되지는
- * 않는다 — 왼쪽으로 밀면 백필이 prepend 하며 재앵커해서 폭이 조금 달라진다. 그
- * 흔들림을 줌 제스처로 오독하면 팬할 때마다 일봉 배율이 야금야금 변한다.
- */
-export const ZOOM_RATIO_DEADBAND = 0.05;
 
 /**
  * peer 모드의 적용 대상 — 발행 구간을 **그대로** 복제한다(가상초).
@@ -237,32 +248,4 @@ export function replicatedRange(params: {
   // 1초 미만 차이는 무시 — 가상초는 정수로 반올림돼 들어온다.
   if (current && Math.abs(current.from - from) < 1 && Math.abs(current.to - to) < 1) return null;
   return { from, to };
-}
-
-/**
- * 발행 폭의 **변화 비율**을 추종 창의 폭에 옮긴다 — 절대 폭을 맞추지 않는 이유는
- * 파일 헤더의 줌 절 참조.
- *
- * `null` 은 "이번 라운드는 폭을 건드리지 않는다" 다. 네 경우가 있다:
- * 1. 기준선이 없다(첫 발행 · 발행 창이 바뀜 · 토글이 방금 켜짐) — 비율을 잴 짝이 없다.
- * 2. 값이 유효하지 않다.
- * 3. 비율이 데드밴드 안이다(= 팬이지 줌이 아니다).
- * 4. 클램프에 걸려 결과가 지금과 같다 — 천장·바닥에서 되쓰면 1봉 진동만 남는다.
- */
-export function zoomedSpan(params: {
-  prevPublishedSpanMs: number | null;
-  nextPublishedSpanMs: number;
-  currentSpan: number;
-  /** 추종 창이 들고 있는 캔들 수 — 폭의 천장이다(그 이상은 여백만 늘린다). */
-  candleCount: number;
-}): number | null {
-  const { prevPublishedSpanMs, nextPublishedSpanMs, currentSpan, candleCount } = params;
-  if (prevPublishedSpanMs === null) return null;
-  if (!(prevPublishedSpanMs > 0) || !(nextPublishedSpanMs > 0) || !(currentSpan > 0)) return null;
-  const ratio = nextPublishedSpanMs / prevPublishedSpanMs;
-  if (Math.abs(ratio - 1) < ZOOM_RATIO_DEADBAND) return null;
-  const ceiling = Math.max(candleCount, MIN_FOLLOW_SPAN_BARS);
-  const target = Math.min(ceiling, Math.max(MIN_FOLLOW_SPAN_BARS, currentSpan * ratio));
-  if (Math.abs(target - currentSpan) < 1) return null;
-  return target;
 }

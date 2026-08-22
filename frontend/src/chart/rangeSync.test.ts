@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import {
-  MIN_FOLLOW_SPAN_BARS,
   canPublishRangeSync,
   centeredLogicalRange,
   isRangeSyncFollower,
   resolveRangeSyncMode,
   replicatedRange,
   syncModeFor,
-  zoomedSpan,
   type RangeSyncPublication,
 } from './rangeSync';
+
+/** 기본 스위치 — 「같은 봉 창끼리 완전 동기화」 켬(제품 기본값). */
+const ON = { peer: true } as const;
+/** peer 를 끈 상태 — cross 만 남는다. */
+const OFF = { peer: false } as const;
 
 function pub(over: Partial<SidebarCursorOrigin> = {}, seq = 1): RangeSyncPublication {
   return {
@@ -27,6 +30,7 @@ function modeOf(
   allowCrossSymbol = false,
   myGroup: number | null = 1,
   myTimeframe: 'D' | 'W' | 'M' | '1m' = 'D',
+  switches: { peer: boolean } = ON,
 ) {
   return resolveRangeSyncMode({
     publication: pub(over),
@@ -35,6 +39,7 @@ function modeOf(
     myGroup,
     myCode: '064350',
     allowCrossSymbol,
+    switches,
   });
 }
 
@@ -48,30 +53,30 @@ const follows = (...a: Parameters<typeof modeOf>) => modeOf(...a) !== null;
  */
 describe('모드 판정 · 발행/추종 집합', () => {
   it('분봉 → 일봉은 cross, 같은 캘린더 봉끼리는 peer', () => {
-    expect(syncModeFor('D', '1m')).toBe('cross');
-    expect(syncModeFor('D', '240m')).toBe('cross');
-    expect(syncModeFor('D', 'D')).toBe('peer');
-    expect(syncModeFor('W', 'W')).toBe('peer');
-    expect(syncModeFor('M', 'M')).toBe('peer');
+    expect(syncModeFor('D', '1m', ON)).toBe('cross');
+    expect(syncModeFor('D', '240m', ON)).toBe('cross');
+    expect(syncModeFor('D', 'D', ON)).toBe('peer');
+    expect(syncModeFor('W', 'W', ON)).toBe('peer');
+    expect(syncModeFor('M', 'M', ON)).toBe('peer');
   });
 
   it('분봉은 추종하지 않는다 — 발행만 한다(사용자 결정 2026-08-21)', () => {
-    expect(syncModeFor('1m', '1m')).toBeNull();
-    expect(syncModeFor('5m', '1m')).toBeNull();
-    expect(syncModeFor('1m', 'D')).toBeNull();
+    expect(syncModeFor('1m', '1m', ON)).toBeNull();
+    expect(syncModeFor('5m', '1m', ON)).toBeNull();
+    expect(syncModeFor('1m', 'D', ON)).toBeNull();
     for (const tf of ['1m', '5m', '240m'] as const) {
-      expect(isRangeSyncFollower(tf)).toBe(false);
+      expect(isRangeSyncFollower(tf, ON)).toBe(false);
     }
   });
 
   it('캘린더는 같은 봉끼리만 — 일↔주↔월은 통하지 않는다', () => {
     // 일봉 3개월을 월봉에 복제하면 캔들 3개가 되어 그 쌍에서 다시 쓸모가 없어진다.
-    expect(syncModeFor('W', 'D')).toBeNull();
-    expect(syncModeFor('D', 'W')).toBeNull();
-    expect(syncModeFor('M', 'W')).toBeNull();
+    expect(syncModeFor('W', 'D', ON)).toBeNull();
+    expect(syncModeFor('D', 'W', ON)).toBeNull();
+    expect(syncModeFor('M', 'W', ON)).toBeNull();
     // W/M 은 분봉 발행도 받지 않는다(cross 는 일봉 전용).
-    expect(syncModeFor('W', '1m')).toBeNull();
-    expect(syncModeFor('M', '1m')).toBeNull();
+    expect(syncModeFor('W', '1m', ON)).toBeNull();
+    expect(syncModeFor('M', '1m', ON)).toBeNull();
   });
 
   /**
@@ -81,12 +86,12 @@ describe('모드 판정 · 발행/추종 집합', () => {
    */
   it('발행 자격은 「받는 소비자가 있는가」에서 유도된다', () => {
     // 분봉: 스스로는 추종하지 않지만 일봉이 받으므로 발행 자격이 있다.
-    expect(canPublishRangeSync('1m')).toBe(true);
-    expect(isRangeSyncFollower('1m')).toBe(false);
+    expect(canPublishRangeSync('1m', ON)).toBe(true);
+    expect(isRangeSyncFollower('1m', ON)).toBe(false);
     // 캘린더: 같은 봉 peer 가 받는다.
     for (const tf of ['D', 'W', 'M'] as const) {
-      expect(canPublishRangeSync(tf)).toBe(true);
-      expect(isRangeSyncFollower(tf)).toBe(true);
+      expect(canPublishRangeSync(tf, ON)).toBe(true);
+      expect(isRangeSyncFollower(tf, ON)).toBe(true);
     }
   });
 });
@@ -125,6 +130,45 @@ describe('replicatedRange', () => {
 });
 
 /**
+ * **「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`) 를 끄면** peer 가 **없는 모드**가
+ * 된다 — 그러면 발행·소비 게이트가 거기서 유도되므로 일봉 창이 **발행도 멈춘다**.
+ *
+ * **이 가드가 막는 방향**: 아무도 안 받는 일봉 발행이 단일 슬롯을 훔쳐 분봉 발행을
+ * 지우는 것. **못 보는 것**: 폭 합의가 함께 꺼지는가 — 그건 훅의 계약이라
+ * `useRangeSync.test.tsx` 가 본다.
+ */
+describe('peer 스위치', () => {
+  it('끄면 같은 봉끼리는 통하지 않는다 — cross 는 그대로', () => {
+    expect(syncModeFor('D', 'D', OFF)).toBeNull();
+    expect(syncModeFor('W', 'W', OFF)).toBeNull();
+    expect(syncModeFor('M', 'M', OFF)).toBeNull();
+    // 분봉 → 일봉은 이 토글과 무관하다.
+    expect(syncModeFor('D', '1m', OFF)).toBe('cross');
+  });
+
+  it('끄면 일봉·주봉·월봉이 발행을 멈춘다 — 받는 소비자가 없어서', () => {
+    for (const tf of ['D', 'W', 'M'] as const) {
+      expect(canPublishRangeSync(tf, ON)).toBe(true);
+      expect(canPublishRangeSync(tf, OFF)).toBe(false);
+    }
+    // 분봉 발행은 남는다 — 일봉이 cross 로 받는다.
+    expect(canPublishRangeSync('1m', OFF)).toBe(true);
+  });
+
+  it('끄면 W/M 은 소비자도 안 단다 — 일봉만 cross 로 남는다', () => {
+    expect(isRangeSyncFollower('D', OFF)).toBe(true);
+    expect(isRangeSyncFollower('W', OFF)).toBe(false);
+    expect(isRangeSyncFollower('M', OFF)).toBe(false);
+  });
+
+  it('판정에도 그대로 실린다', () => {
+    expect(modeOf({ timeframe: 'D' }, false, 1, 'D', ON)).toBe('peer');
+    expect(modeOf({ timeframe: 'D' }, false, 1, 'D', OFF)).toBeNull();
+    expect(modeOf({}, false, 1, 'D', OFF)).toBe('cross');
+  });
+});
+
+/**
  * **이 게이트가 막는 방향**: 자기 발행 되받기 · 비분봉 발행 · (토글이 꺼졌을 때) 다른
  * 종목. **못 보는 것**: 크로스헤어와 같은 code-null 구멍(양쪽 다 null 이면 통과).
  */
@@ -132,7 +176,7 @@ describe('shouldFollowRange', () => {
   it('발행이 없으면 따라가지 않는다', () => {
     expect(resolveRangeSyncMode({
       publication: null, myWindowId: 'daily-window', myTimeframe: 'D', myGroup: 1,
-      myCode: '064350', allowCrossSymbol: true,
+      myCode: '064350', allowCrossSymbol: true, switches: ON,
     })).toBeNull();
   });
 
@@ -182,72 +226,6 @@ describe('shouldFollowRange', () => {
 /**
  * 중앙 정렬 수식. **줌은 현재 값을 그대로 쓴다** — 분봉이 보는 폭(1~2일)을 일봉 축에
  * 맞추면 캔들 두 개짜리 화면이 된다.
- */
-/**
- * **줌 비율 옮기기**(`rangeSyncZoom`, 기본 끔).
- *
- * **막는 방향** 셋: ① 팬을 줌으로 오독하는 것(데드밴드) ② 분봉 배율을 그대로 곱해
- * 일봉이 3봉/12,000봉이 되는 것(클램프) ③ 천장·바닥에서 같은 값을 되쓰는 것.
- * **못 보는 것**: 이 함수는 비율만 본다 — "발행 창이 바뀌었는가" 는 호출부가 판단해
- * `prevPublishedSpanMs: null` 로 알려 준다(그 판정은 훅 테스트가 잰다).
- */
-describe('zoomedSpan', () => {
-  const base = { currentSpan: 200, candleCount: 400 };
-
-  it('발행 폭이 절반이면 추종 폭도 절반 — 절대 폭이 아니라 **비율**을 옮긴다', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 20_000, nextPublishedSpanMs: 10_000 }))
-      .toBe(100);
-  });
-
-  it('발행 폭이 2배면 추종 폭도 2배', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 20_000 }))
-      .toBe(400);
-  });
-
-  it('기준선이 없으면 건드리지 않는다 — 첫 발행·발행 창 교체', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: null, nextPublishedSpanMs: 10_000 }))
-      .toBeNull();
-  });
-
-  it('데드밴드 안이면 팬으로 본다 — 백필 재앵커가 폭을 조금 흔든다', () => {
-    // 4% 변화. 부동소수 오차가 아니라 **백필 크기**의 흔들림을 흡수해야 한다.
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 10_400 }))
-      .toBeNull();
-    // 6% 는 통과한다 — 문턱 바로 위.
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 10_600 }))
-      .toBe(212);
-  });
-
-  it('바닥은 최소 봉 수 — 분봉을 극단으로 확대해도 일봉은 읽힌다', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 10_000, nextPublishedSpanMs: 1 }))
-      .toBe(MIN_FOLLOW_SPAN_BARS);
-  });
-
-  it('천장은 이 창의 캔들 수 — 그 이상은 여백만 늘린다', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 1, nextPublishedSpanMs: 10_000 }))
-      .toBe(400);
-  });
-
-  it('클램프에 걸려 지금과 같아지면 null — 천장에서 1봉 진동을 남기지 않는다', () => {
-    // 이미 천장(400)인데 더 축소(=폭 확대) 요청.
-    expect(zoomedSpan({
-      currentSpan: 400, candleCount: 400, prevPublishedSpanMs: 1, nextPublishedSpanMs: 10_000,
-    })).toBeNull();
-  });
-
-  it('값이 유효하지 않으면 null', () => {
-    expect(zoomedSpan({ ...base, prevPublishedSpanMs: 0, nextPublishedSpanMs: 10 })).toBeNull();
-    expect(zoomedSpan({ ...base, currentSpan: 0, prevPublishedSpanMs: 10, nextPublishedSpanMs: 20 }))
-      .toBeNull();
-  });
-});
-
-/**
- * **우측 클램프**. 중앙 정렬이 자기 데이터 밖으로 밀고 나가면 화면 오른쪽 절반이
- * 빈 공간이 된다(2026-08-21 사용자 지적). 폭은 유지한 채 우측 끝에 붙인다.
- *
- * **막는 방향**: 마지막 캔들 + 표준 여백보다 오른쪽. **여는 방향**: 과거 쪽은 그대로
- * — 왼쪽 클램프는 없다(음수 `from` 이 곧 백필 트리거다).
  */
 describe('centeredLogicalRange — rightEdgeLimit', () => {
   const current = { from: 100, to: 200 }; // span 100
