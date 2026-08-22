@@ -753,3 +753,202 @@ describe('포인터 캡처가 실패해도 그린 도형은 커밋된다', () =>
     expect(drawings[0].kind).toBe('pencil');
   });
 });
+
+/**
+ * 드로잉 위 ±6px 밴드(`HIT_THRESHOLD.hline`)에서 오버레이가 포인터를 잡으면
+ * lightweight-charts 는 마우스를 못 받아 **크로스헤어·툴팁·레전드가 함께 죽는다.**
+ * 그래서 이동을 lwc 서브트리로 되돌려 준다.
+ *
+ * **막는 방향**: "오버레이가 포인터를 잡는 동안 lwc 가 아무것도 못 받는다" 는 회귀.
+ * 되돌리기를 지우면 1·3·4·5 가, leave 되돌리기를 지우면 2 가, 서브트리 필터를 지우면
+ * 1~5 전부가, **프레임 밖에서 즉시 쏘도록 바꾸면** 4 가 빨개진다(넷 다 주입으로 확인).
+ * 4 가 지키는 것은 `forwardRafRef` 의 조기 반환이 **아니다** — 그것만 지우면 4 는
+ * 초록으로 남는다(실측). 좌표를 덮어쓰는 `forwardPointRef` 가 이미 프레임당 하나로
+ * 접기 때문이다. 4 가 실제로 막는 것은 **rAF 로 미루지 않는** 형태다.
+ * **못 보는 것**: lwc 가 그 이벤트로 실제로 무엇을 그리는지. 여기서는 lwc 내부가
+ * 안 돈다 — 되돌린 이동이 크로스헤어를 움직인다는 것은 브라우저 실측이고 근거는
+ * 컴포넌트 주석에 있다.
+ * **등록 의존**: `chart.chartElement()` 가 lwc 의 리스너 요소를 포함한다는 것과,
+ * `document.elementsFromPoint` 가 존재한다는 것. jsdom 은 후자를 구현하지 않아
+ * 여기서는 스텁이고, 없으면 되돌리기가 조용히 꺼진다(브라우저에는 항상 있다).
+ */
+describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨 이동을 lwc 로 되돌린다', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  afterEach(() => {
+    delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint;
+    document.querySelectorAll('[data-qa-lwc-root]').forEach((n) => n.remove());
+  });
+
+  /** jsdom 은 rAF 를 타이머로 돌린다 — 예약된 콜백 하나를 흘린다. */
+  async function flushFrame() {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+  }
+
+  function renderOverlay() {
+    // lwc 서브트리를 흉내 낸다. **깊이가 계약의 일부다**: 리스너는 pane 요소에
+    // 걸려 있고 우리는 그 **자손**(캔버스)에 쏜다 — 실제 구조가 그렇고, 그래서
+    // 되돌리는 이벤트가 `bubbles: true` 여야 한다. 리스너 요소에 직접 쏘는 스텁은
+    // 그 조건을 지우고 `bubbles: false` 회귀를 통과시킨다(실측으로 확인).
+    const chartEl = document.createElement('div');
+    chartEl.setAttribute('data-qa-lwc-root', '');
+    const lwcTarget = document.createElement('div');
+    const lwcCanvas = document.createElement('canvas');
+    lwcTarget.appendChild(lwcCanvas);
+    chartEl.appendChild(lwcTarget);
+    document.body.appendChild(chartEl);
+
+    const events: { type: string; x: number }[] = [];
+    ['mouseover', 'mouseenter', 'mousemove', 'mouseout', 'mouseleave'].forEach((t) =>
+      lwcTarget.addEventListener(t, (e) => events.push({ type: t, x: (e as MouseEvent).clientX })),
+    );
+
+    const series = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => ({ paneIndex: () => 0, getHeight: () => 400 }),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+    };
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: (x: number) => x,
+        timeToCoordinate: (t: number) => t,
+      }),
+      panes: () => [{ getHeight: () => 400 }],
+      chartElement: () => chartEl,
+    };
+    const axis = {
+      segments: [],
+      contains: () => true,
+      toReal: (v: number) => v,
+      toVirtual: (r: number) => r,
+    };
+    const view = render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={axis as never}
+        scope={SCOPE}
+        paneSeries={new Map([['candle', series]]) as never}
+      />,
+    );
+    const overlay = view.container.querySelector('[data-drawing-overlay]')!;
+    // jsdom 에 없는 API. 오버레이가 맨 위(실제 상황 그대로), 그 아래 lwc 요소.
+    (document as unknown as { elementsFromPoint: unknown }).elementsFromPoint = () => [
+      overlay,
+      lwcCanvas,
+      lwcTarget,
+      chartEl,
+    ];
+    return { ...view, overlay, lwcTarget, lwcCanvas, chartEl, events };
+  }
+
+  it('1. 오버레이 위 pointermove 를 lwc 서브트리로 되돌린다 — enter 를 앞세워서', async () => {
+    const { overlay, events } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 320, clientY: 80 });
+    });
+    await flushFrame();
+
+    // `mouseenter` 가 앞서야 한다: lwc 는 mousemove 리스너를 enter 안에서 등록하고
+    // leave 에서 뗀다. 커서가 오버레이로 넘어오는 순간 브라우저가 진짜 leave 를
+    // 쏘므로, enter 없이 move 만 되돌리면 **아무 리스너에도 안 닿는다**(실측).
+    // `mouseover`/`mouseout` 은 쏘지 않는다 — lwc 는 안 듣고, 그 둘은 React 의
+    // enter/leave 위임이 타는 경로라 남의 컴포넌트를 흔든다.
+    expect(events).toEqual([
+      { type: 'mouseenter', x: 320 },
+      { type: 'mousemove', x: 320 },
+    ]);
+  });
+
+  it('2. pointerleave 는 **마지막으로 이동을 넘긴 요소**에 leave 를 보낸다', async () => {
+    // `clearCrosshairPosition` 대신 leave 를 쓰는 이유: 그쪽은 조용해서
+    // (`crosshairMove` 미발화) 툴팁·레전드가 정리되지 않고 lwc 의 mousemove 구독도
+    // 안 떼어진다.
+    //
+    // 좌표로 다시 찾으면 안 되는 이유를 이 테스트가 고정한다 — leave 좌표는 이미
+    // 차트 밖인 경우가 흔하다(실측: 도형 위에서 곧장 빠져나가면 크로스헤어가 화면에
+    // 박힌 채 남았다). 그래서 여기서는 히트테스트가 **아무것도 못 찾도록** 해 둔다.
+    const { overlay, events } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 320, clientY: 80 });
+    });
+    await flushFrame();
+    events.length = 0;
+    (document as unknown as { elementsFromPoint: unknown }).elementsFromPoint = () => [];
+
+    act(() => {
+      fireEvent.pointerLeave(overlay, { clientX: 5, clientY: 5 });
+    });
+
+    expect(events.map((e) => e.type)).toEqual(['mouseleave']);
+  });
+
+  it('3. 우리 오버레이로는 되돌리지 않는다 — 되돌린 이벤트가 다시 들어오면 루프다', async () => {
+    const { overlay, events } = renderOverlay();
+    const onOverlay = vi.fn();
+    overlay.addEventListener('mousemove', onOverlay);
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 320, clientY: 80 });
+    });
+    await flushFrame();
+
+    // 되돌린 이동은 차트 서브트리에서 시작해 window 로 올라간다 —
+    // 오버레이는 그 경로에 없다(차트의 형제다).
+    expect(onOverlay).not.toHaveBeenCalled();
+    expect(events).toHaveLength(2);
+  });
+
+  it('4. 프레임당 한 번으로 합치고, 마지막 위치를 쓴다', async () => {
+    const { overlay, events } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 100, clientY: 80 });
+      fireEvent.pointerMove(overlay, { clientX: 200, clientY: 80 });
+      fireEvent.pointerMove(overlay, { clientX: 300, clientY: 80 });
+    });
+    await flushFrame();
+
+    // 첫 위치를 쓰면 크로스헤어가 커서보다 뒤처진다.
+    expect(events.map((e) => e.x)).toEqual([300, 300]);
+  });
+
+  it('5. 시간축이 해석 못 하는 x 에서도 되돌린다 — 빈 구간이 pane 의 4분의 1이다', async () => {
+    // `setCrosshairPosition` 은 Time 을 요구해 이 구간을 통째로 못 다룬다(그래서
+    // 기각했다). 되돌리기는 좌표를 우리가 해석하지 않으므로 조건이 붙지 않는다.
+    const { overlay, events } = renderOverlay();
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 999, clientY: 80 });
+    });
+    await flushFrame();
+
+    expect(events.map((e) => e.type)).toEqual(['mouseenter', 'mousemove']);
+    expect(events.every((e) => e.x === 999)).toBe(true);
+  });
+
+  it('6. elementsFromPoint 가 없으면 조용히 꺼진다', async () => {
+    const { overlay, events } = renderOverlay();
+    delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint;
+
+    act(() => {
+      fireEvent.pointerMove(overlay, { clientX: 320, clientY: 80 });
+    });
+    await flushFrame();
+
+    expect(events).toHaveLength(0);
+  });
+});
