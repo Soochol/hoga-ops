@@ -137,8 +137,24 @@ export function livePeakWallDockedLabelsFromSegments(
 // 줌(barSpacing) → side별 도킹 라벨 개수 예산. 이 아래로 좁아지면(줌아웃) 라벨을 전부 숨기고,
 // 이상이면 barSpacing 에 선형 비례해 MIN~MAX 개만 남긴다(가시범위 내 qty 상위 N). 밀집 방지 +
 // "줌인=더 보임" 요청을 한 손잡이로 해결. 픽셀 임계라 DPR/줌과 무관하게 barSpacing 만 본다.
-export const PEAK_LABEL_HIDE_BAR_SPACING_PX = 3.5;
-export const PEAK_LABEL_BUDGET_RAMP_END_PX = 16;
+//
+// **3.5/16 → 6/33 (2026-08-22)**: 라벨이 「잔량만」에서 「가격, 잔량」으로 돌아가며 칩이
+// 넓어졌다. 실측(11px sans-serif, 실제 canvas `measureText`): 텍스트 폭 **평균 2.7배**
+// (20.8~33px → 45.3~79.5px), 좌우 패딩 8px 을 더한 **칩 폭 기준 약 2.06배**(~34 → ~70px).
+// 겹침은 칩끼리 일어나므로 보정 기준은 칩 폭이다.
+//
+// RAMP_END 는 그 배율을 그대로 태웠다(16 × 2.06 ≈ 33). barSpacing 12 에서 6개 → 3개가
+// 되는데, 칩이 2배이므로 **차지하는 가로 폭은 같다** — 같은 밀도다.
+//
+// ⚠ HIDE 는 **비례보다 완만하게** 올렸다(3.5 × 2.06 ≈ 7 이 아니라 6). 7 로 두면
+// barSpacing 6 대에서 라벨이 **통째로 사라진다** — 최소 2개는 보이는 편이 "안 보인다"
+// 보다 낫다는 판단이다. 6 이면 그 구간에서 MIN(2개)이 살아남고, 4px 대(칩 하나가 봉
+// 17개를 덮는 폭)에서만 숨는다.
+//
+// **MAX 는 줄이지 않는다.** 줄이면 줌인해도 못 보게 되어 #839 가 만든 "줌인=더 보임"
+// 손잡이가 망가진다. 좁은 줌에서만 더 일찍 감추는 것이 이 조정의 의도다.
+export const PEAK_LABEL_HIDE_BAR_SPACING_PX = 6;
+export const PEAK_LABEL_BUDGET_RAMP_END_PX = 33;
 export const PEAK_LABEL_BUDGET_MIN = 2;
 export const PEAK_LABEL_BUDGET_MAX = 8;
 
