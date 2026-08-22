@@ -115,6 +115,29 @@ export const HEART_FOLDED_WIDTH_PX = 22;
  * 폭 예산" 이라는 산술 하나다.
  */
 export function showsWatchlistHeart(fold: HeaderFold): boolean {
+  return showsHeaderStateIcons(fold);
+}
+
+/**
+ * 액션 행의 **상태 아이콘**(hogaplay 소스 · 관심 하트)을 이 단계에서 렌더하는가.
+ *
+ * 둘은 한 예산을 나눠 쓴다 — 하나만 내리면 남은 하나가 `bothFolded` 를 그대로
+ * 넘긴다. 그래서 판정을 하나로 두고 `showsWatchlistHeart` 가 여기에 위임한다
+ * (그 이름은 호출부 가독성 때문에 남긴다).
+ *
+ * **막는 방향**: 2단계 접힘(`compactTimeframe`)에서 상태 아이콘을 내려, `MIN_W`
+ * (160px) 창의 헤더 컨테이너(158px)에 요구폭이 들어가게 한다. 하트 하나만 포함해도
+ * 170px 이라 12px 넘치고 오른쪽 끝 「수집」이 overflow-hidden 에 무성 잘렸다
+ * (#767 과 같은 실패 모드). 두 아이콘이면 192px 로 34px 넘친다.
+ *
+ * **못 보는 것**: 이 함수는 폭 예산만 판정한다. 헤더에 **다른** 버튼이 추가되어
+ * 예산이 다시 깨지는 것은 막지 못한다 — 그건 `LIVE_HEADER_NEED` 재실측의 몫이다.
+ *
+ * 판정을 컴포넌트 밖 순수 함수로 두는 이유는 테스트다. `ChartWindow` 는 차트 데이터
+ * 파이프라인 전체를 끌고 와서 단위 렌더가 어렵고, 정작 검사하고 싶은 것은 "단계 ↔
+ * 폭 예산" 이라는 산술 하나다.
+ */
+export function showsHeaderStateIcons(fold: HeaderFold): boolean {
   return !fold.compactTimeframe;
 }
 
