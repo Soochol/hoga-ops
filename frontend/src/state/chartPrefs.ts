@@ -286,6 +286,17 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    // 가독성 옵션: 10호가를 전부 칠하면 캔들이 색 벽에 묻힌다. 각 분봉에서 실제로
+    // 두꺼웠던 벽만 남기면 캔들과 벽의 관계가 읽힌다. 소스 선택(위 intraMax)과 직교 —
+    // 소스를 고른 뒤 그 안에서 자른다.
+    key: 'depthHeatmapTopLevelsOnly',
+    label: '최대 잔량 가격대만',
+    description:
+      '각 분봉에서 잔량이 가장 컸던 가격대만 남깁니다(매수·매도 각각). 강도 기준은 그대로 화면 최대 잔량이라 남은 벽끼리의 굵기 비교는 유지됩니다.',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
     key: 'tradeHighlightEnabled',
     label: '대량 체결 강조',
     description:
@@ -522,6 +533,17 @@ export const CHART_NUMERIC_PREFS = [
     max: 3,
     // BidPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
     category: 'indicator-modal',
+  },
+  {
+    key: 'depthHeatmapTopLevelCount',
+    label: '표시할 가격대 수',
+    description:
+      '매수·매도 **각각** 잔량 상위 몇 등까지 그릴지. 올릴수록 원래 10호가에 가까워집니다.',
+    default: 1,
+    // 1(가장 두꺼운 벽 하나)~5(10호가의 절반 — 그 위는 사실상 필터가 무의미).
+    min: 1,
+    max: 5,
+    enabledBy: 'depthHeatmapTopLevelsOnly',
   },
   {
     key: 'tradeHighlightThresholdManwon',
