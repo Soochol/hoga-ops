@@ -17,6 +17,7 @@ import type {
 import { subBarOffsetPx } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
+import { catmullRomSpans } from './smooth';
 
 /**
  * Everything a render needs to place a Drawing on SOME canvas, with the
@@ -669,7 +670,13 @@ function renderPencil(
       if (seg.length < 2) continue;
       c.beginPath();
       c.moveTo(seg[0].x, seg[0].y);
-      for (let i = 1; i < seg.length; i++) c.lineTo(seg[i].x, seg[i].y);
+      // Curve, not chords: RDP keeps only the vertices that define the shape,
+      // so straight joins would re-introduce the angularity it was allowed to
+      // create. Each sub-segment is splined independently — a two-point piece
+      // yields one span whose controls lie on the chord, i.e. a straight line.
+      for (const s of catmullRomSpans(seg)) {
+        c.bezierCurveTo(s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.to.x, s.to.y);
+      }
       c.stroke();
     }
   });

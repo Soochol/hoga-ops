@@ -27,6 +27,7 @@ function makeCanvasSpy() {
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    bezierCurveTo: vi.fn(),
     stroke: vi.fn(),
     fill: vi.fn(),
     fillRect: vi.fn(),
@@ -50,6 +51,7 @@ function makeCanvasSpy() {
     fillText: ReturnType<typeof vi.fn>;
     fillRect: ReturnType<typeof vi.fn>;
     setLineDash: ReturnType<typeof vi.fn>;
+    bezierCurveTo: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -470,13 +472,15 @@ describe('renderPencil — 서브-봉 오프셋', () => {
     };
   }
 
-  /** 이 stroke 가 찍은 x 좌표를 **순서대로**. `drawHaloThenMain` 이 같은
-   *  경로를 두 번(halo → 본선) 그리므로 첫 패스만 읽는다 — Set 으로 뭉개면
-   *  "밀린 점" 과 "원래 거기 있던 점" 이 구별되지 않는다. */
+  /** 이 stroke 가 **지나는 꼭짓점**의 x 를 순서대로. 스플라인이 붙은 뒤로
+   *  경로는 `moveTo` + `bezierCurveTo` 로 나오고, 그 끝점(인자 4·5번)이 곧
+   *  원래 꼭짓점이다(Catmull–Rom 은 꼭짓점을 지난다 — smooth.test.ts).
+   *  `drawHaloThenMain` 이 같은 경로를 두 번 그리므로 첫 패스만 읽는다 —
+   *  Set 으로 뭉개면 "밀린 점" 과 "원래 거기 있던 점" 이 구별되지 않는다. */
   function xs(c: ReturnType<typeof makeCanvasSpy>): number[] {
     const move = (c.moveTo as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    const line = (c.lineTo as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    return [move[0][0] as number, line[0][0] as number, line[1][0] as number];
+    const bez = (c.bezierCurveTo as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    return [move[0][0] as number, bez[0][4] as number, bez[1][4] as number];
   }
 
   it('subX 가 없으면 봉 앵커 그대로 그린다', () => {

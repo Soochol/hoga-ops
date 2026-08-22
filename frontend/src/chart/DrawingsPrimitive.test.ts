@@ -19,6 +19,7 @@ function makeCanvasSpy() {
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    bezierCurveTo: vi.fn(),
     stroke: vi.fn(),
     fill: vi.fn(),
     arc: vi.fn(),
@@ -186,7 +187,13 @@ describe('DrawingsPrimitive', () => {
     const c = makeCanvasSpy();
     draw(prim, c);
     expect(c.moveTo).toHaveBeenCalledWith(1, 200);
-    expect(c.lineTo).toHaveBeenCalledWith(2, 180);
+    // 프리뷰도 커밋본과 같은 스플라인 경로를 탄다 — 점이 둘뿐이면 컨트롤이
+    // 현 위에 놓여 직선으로 그려지고, 끝점(인자 4·5번)이 그 꼭짓점이다.
+    expect(c.bezierCurveTo).toHaveBeenCalledWith(
+      expect.any(Number), expect.any(Number),
+      expect.any(Number), expect.any(Number),
+      2, 180,
+    );
 
     const other = attach('volume');
     other.prim.setSource(() => snapshot({ drafts: { trendline: null, rect: null, measure: null, pencil: pencilDraft } }));
