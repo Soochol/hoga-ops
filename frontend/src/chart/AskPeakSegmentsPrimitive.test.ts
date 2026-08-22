@@ -99,6 +99,18 @@ describe('peakLabelBudgetForBarSpacing', () => {
     expect(peakLabelBudgetForBarSpacing(1000)).toBe(PEAK_LABEL_BUDGET_MAX);
   });
 
+  // ⚠ 위 두 테스트는 **상수를 참조**하므로 임계를 바꿔도 통과한다(형태만 본다).
+  // 임계 자체는 라벨 폭에 묶인 값이라 여기서 대표 줌의 개수를 못박는다 — 라벨 포맷이
+  // 바뀌면(칩 폭이 바뀌면) 이 숫자들도 같이 재조정돼야 한다는 것을 실패로 알린다.
+  it('대표 줌에서의 개수를 못박는다 — 라벨 폭(「가격, 잔량」)에 맞춘 임계', () => {
+    // 실측 칩 폭 ~70px(11px sans-serif, 패딩 포함). 잔량만이던 시절(~34px)의 약 2배라
+    // 임계도 3.5/16 → 6/33 으로 옮겼다(사유는 상수 자리 주석).
+    expect(peakLabelBudgetForBarSpacing(4)).toBe(0);    // 칩 하나가 봉 17개를 덮는 폭 → 숨김
+    expect(peakLabelBudgetForBarSpacing(6)).toBe(2);    // 하한: 최소 2개는 보인다
+    expect(peakLabelBudgetForBarSpacing(12)).toBe(3);   // 통상 분봉 뷰
+    expect(peakLabelBudgetForBarSpacing(33)).toBe(8);   // 램프 끝 = MAX
+  });
+
   it('grows monotonically with bar spacing', () => {
     const near = peakLabelBudgetForBarSpacing(6);
     const wide = peakLabelBudgetForBarSpacing(12);

@@ -17,7 +17,11 @@ export function legendCursorDate(axis: VirtualAxis, cursorTimeSec: number | null
   return idx >= 0 ? segs[idx].date : null;
 }
 
-/** "가격, 수량압축" — 최대벽 도킹 라벨과 동일한 포맷(peakWall label 미러). */
+/** "가격, 수량압축" — 최대벽 도킹 라벨과 **같은 함수**다(레전드·라벨 공용).
+ *
+ *  종전엔 「미러」였는데 #839 가 라벨에서만 가격을 빼면서 그 주장이 거짓이 됐다
+ *  (라벨 "1.8k" vs 레전드 "934,000, 1.8k"). 미러는 어긋나도 타입이 안 잡으므로
+ *  이제 라벨이 이 함수를 **직접 부른다** — 갈릴 여지를 없앤다. */
 export function formatPriceQty(price: number, qty: number): string {
   return `${Math.round(price).toLocaleString('ko-KR')}, ${formatQtyCompact(qty)}`;
 }
