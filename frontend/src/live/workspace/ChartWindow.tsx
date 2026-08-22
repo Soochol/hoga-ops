@@ -65,7 +65,12 @@ import type { Candle } from '../../api/types';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
-import { showsWatchlistHeart } from './chartHeaderCompact';
+import {
+  HogaplaySourceButton,
+  type HogaplaySourceDisabledReason,
+} from './HogaplaySourceButton';
+import { HogaplaySourceChip } from './HogaplaySourceChip';
+import { showsHeaderStateIcons, showsWatchlistHeart } from './chartHeaderCompact';
 import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import type { CollectVisibleRange } from './collectDialogControls';
 import { unixMsToKSTDate } from '../../util/time';
@@ -181,6 +186,26 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       : null),
     [isSavedRangeSubject, savedRangeFocus, view.timeframe],
   );
+  /**
+   * 창별 **hogaplay 저장 데이터 소스**(헤더 버튼, `ChartWindowRuntime.hogaplaySource`).
+   *
+   * 저장뷰 얼림과 **축이 다르다** — 저쪽은 "어느 구간", 이쪽은 "어느 소스". 그래서
+   * 여기서는 `today` 도 라이브 SSE 도 페치 시작일도 건드리지 않는다(상세는
+   * `useLiveBundle` 의 `hogaplaySourceEnabled` 3열 표).
+   *
+   * 얼린 창에서는 값을 내린다. 얼림이 이미 디스크라 데이터는 같지만, 켜 둔 채로
+   * 두면 칩이 두 개 뜨면서 서로 다른 것을 말한다(하나는 고정 구간, 하나는 따라가는
+   * 구간). 플래그 자체는 스토어에 남아 얼림이 풀리면 되살아난다.
+   *
+   * 분봉 게이트는 훅도 자기 몫으로 갖고 있지만(`useLiveBundle`), 여기 있는 것은
+   * **버튼·칩의 표시 축**이라 별개다 — 훅 쪽만 있으면 캘린더 봉에서 칩이 남는다.
+   */
+  const hogaplaySourceFlag = useWorkspaceStore(
+    (s) => s.chartRuntime[win.id]?.hogaplaySource ?? false,
+  );
+  const hogaplaySourceEnabled =
+    hogaplaySourceFlag && savedRangeFreeze === null && isMinuteTimeframe(view.timeframe);
+
   // 그룹 차트 링크 발행자 게이트(ADR-0119 PR-D) — 그룹당 하나(z-최상위 차트 창).
   const isGroupLink = useWorkspaceStore(
     (s) => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id,
@@ -220,6 +245,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     investorNetEnabled,
     sidecarDemands,
     savedRangeFreeze,
+    hogaplaySource: hogaplaySourceEnabled,
   });
 
   // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
@@ -349,6 +375,55 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     if (startYmd > endYmd) return null;
     return { startYmd, endYmd };
   }, [todayKst]);
+
+  // ── hogaplay 저장 데이터 소스: 토글 · 칩 ──────────────────────────────────
+  const setChartHogaplaySource = useWorkspaceStore((s) => s.setChartHogaplaySource);
+  const extendChartHistoricalRange = useWorkspaceStore((s) => s.extendChartHistoricalRange);
+  /**
+   * 켤 때 **보이는 구간을 페치 창에 못 박는다.**
+   *
+   * 이 모드는 시작일을 얼리지 않고 종전 시드를 그대로 탄다 —
+   * `historicalFromDate ?? 봉별 기본 창`. 대개는 그 시드가 화면을 덮지만 한 조합이
+   * 새어 나간다: 좌측 팬으로 넓힌 뒤 봉을 바꾸면 `setChartTimeframe` 이
+   * `historicalFromDate` 를 null 로 되돌리므로(창별 백필 리셋), 화면에는 아직 과거
+   * 봉이 남아 있는데 시드는 기본 창으로 돌아가 있다. 그 상태에서 켜면 디스크 요청이
+   * 보이는 구간보다 짧아 왼쪽이 빈다 — "보이는 구간을 불러온다" 는 이 버튼의 계약이
+   * 바로 그 자리에서 깨진다.
+   *
+   * `extendChartHistoricalRange` 는 단조 감소 가드라 이미 더 과거면 no-op 이고,
+   * 뷰포트를 못 읽으면(콜드·빈 차트) 그냥 시드에 맡긴다.
+   */
+  const toggleHogaplaySource = useCallback((next: boolean) => {
+    if (next) {
+      const visible = getCollectVisibleRange();
+      if (visible) extendChartHistoricalRange(win.id, visible.startYmd);
+    }
+    setChartHogaplaySource(win.id, next);
+  }, [getCollectVisibleRange, extendChartHistoricalRange, setChartHogaplaySource, win.id]);
+
+  /**
+   * 칩에 찍을 기간 = **실제로 그려진 캔들의 양 끝**.
+   *
+   * 켤 때의 구간을 박아 두지 않는 이유는 이 모드의 정의다 — 좌측 팬을 따라 넓어지는
+   * 창이라 고정 표기는 곧 거짓말이 된다. 아직 안 왔으면 `null` → 칩이 「불러오는 중」.
+   */
+  const hogaplayLoadedRange = useMemo(() => {
+    if (!hogaplaySourceEnabled || savedRangeCandles.length === 0) return null;
+    return {
+      fromDate: unixMsToKSTDate(savedRangeCandles[0].ts_ms),
+      toDate: unixMsToKSTDate(savedRangeCandles[savedRangeCandles.length - 1].ts_ms),
+    };
+  }, [hogaplaySourceEnabled, savedRangeCandles]);
+
+  /** 비활성 사유 — 없으면 `null`. 세 사유의 근거는 `HogaplaySourceButton` 도크스트링. */
+  const hogaplayDisabledReason: HogaplaySourceDisabledReason | null =
+    heartCode == null
+      ? 'no-code'
+      : !isMinuteTimeframe(view.timeframe)
+        ? 'calendar-timeframe'
+        : savedRangeFreeze !== null
+          ? 'saved-range'
+          : null;
 
   // 그룹 차트 링크 발행(ADR-0119 PR-D) — 같은 그룹 데이터 창(매물대·프로그램 실
   // 콘텐츠, 10호가·거래원 스팟 모드)이 소비한다. 상태바 발행과 같은 규율: deps 없는
@@ -509,7 +584,34 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             />
           </div>
         )}
+        {/* hogaplay 소스 칩 — 저장뷰 칩과 **같은 자리·다른 의미**다. 둘이 동시에 뜰 수
+            있는 조합은 하나뿐이다: 저장뷰가 **다른 종목**을 가리켜 이 창이 얼지 않은
+            경우(그때 저장뷰 칩은 "이 창에도 함께 표시 중" 이라는 기간 안내이고, 이
+            칩은 이 창의 소스 안내다 — 서로 모순되지 않는다). 이 창이 얼면 위
+            `hogaplaySourceEnabled` 가 내려가 이 칩은 사라진다. */}
+        {hogaplaySourceEnabled && (
+          <div className="ml-1 flex min-w-0 items-center">
+            <HogaplaySourceChip
+              range={hogaplayLoadedRange}
+              onClear={() => toggleHogaplaySource(false)}
+            />
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-0.5">
+          {/* hogaplay 소스는 액션 행 **맨 왼쪽**(하트보다 앞) — 2026-08-22 사용자
+              지정. 의미로도 맞는다: 오른쪽 넷은 차트 조작이고 하트는 종목 속성인데,
+              이것은 그 둘보다 앞선 **차트가 무엇을 그리는가**(소스)라 동사 묶음에서
+              가장 멀다.
+              **2단계 접힘에서는 하트와 함께 내린다** — 근거·실패 모드는 아래 하트
+              주석과 `showsHeaderStateIcons` 참조(둘이 같은 폭 예산을 나눈다). */}
+          {showsHeaderStateIcons(headerFold) && (
+            <HogaplaySourceButton
+              enabled={hogaplaySourceEnabled}
+              disabledReason={hogaplayDisabledReason}
+              onToggle={toggleHogaplaySource}
+              compact={headerFold.compactActions}
+            />
+          )}
           {/* 관심 하트는 액션 행 맨 왼쪽 — 나머지 넷은 차트 조작이고 이것만
               종목 속성이라, 그리기 왼쪽에 두어 동사 묶음 앞에 세운다.
               **2단계 접힘에서는 내린다.** 그 단계의 요구폭이 하트 포함 170px 인데
