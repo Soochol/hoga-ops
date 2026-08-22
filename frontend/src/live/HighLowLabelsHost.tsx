@@ -12,6 +12,7 @@ import {
   type LevelLineStyle,
 } from '../chart/HighLowLabelsPrimitive';
 import type { AvoidRect, AvoidWallLabel } from '../chart/highLowLabelLayout';
+import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
 import { findLegendRoot, legendAvoidRects } from './legendAvoidRects';
 
 export type { AvoidWallLabel };
@@ -27,6 +28,11 @@ type Props = {
    *  축 스케일 스냅샷이라, 상위에서 미리 구우면 오토스케일·팬/줌 시 회피 rect 가 낡는다.
    *  primitive.draw 가 매 프레임 변환한다. */
   avoidWallLabels?: readonly AvoidWallLabel[];
+  /** 최대벽 **순위 화살표** 후보(전건). 같은 이유로 픽셀이 아니라 가격/시각이고, 상위
+   *  몇 개가 그려지는지는 primitive 가 draw 프레임의 보이는 범위로 정한다. */
+  avoidRankArrows?: readonly PeakWallRankArrow[];
+  /** 화살표 순위 컷. 0 = 화살표 꺼짐 → 회피 없음. */
+  avoidRankArrowLimit?: number;
 };
 
 function measureLegendRects(chart: IChartApi, series: ISeriesApi<SeriesType>): AvoidRect[] {
@@ -53,7 +59,10 @@ function sameRects(a: readonly AvoidRect[], b: readonly AvoidRect[]): boolean {
  * 팬/줌 재계산은 lwc 의 캔버스 패스가 담당하므로 여기엔 range 구독이 없다(그게 옛
  * DOM 오버레이의 한 프레임 지연 원인이었다).
  */
-function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWallLabels = [] }: Props) {
+function HighLowLabelsHost({
+  chart, bundle, axis, paneSeries, timeframe,
+  avoidWallLabels = [], avoidRankArrows = [], avoidRankArrowLimit = 0,
+}: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
   // 수평선 4종(극값 고/저 · 이전일 고/저)은 전부 라벨 토글의 하위다
   // (`enabledBy: 'highLowLabelsEnabled'`) — 부모가 꺼지면 아래 effect 가 primitive 를
@@ -105,13 +114,15 @@ function HighLowLabelsHost({ chart, bundle, axis, paneSeries, timeframe, avoidWa
         axis,
         timeframe,
         avoidWallLabels,
+        avoidRankArrows,
+        avoidRankArrowLimit,
         legendRects: legendRectsRef.current,
         levelLines,
         priorDayLines,
       }
       : null;
     primRef.current?.requestUpdate();
-  }, [enabled, bundle, axis, timeframe, avoidWallLabels, levelLines, priorDayLines]);
+  }, [enabled, bundle, axis, timeframe, avoidWallLabels, avoidRankArrows, avoidRankArrowLimit, levelLines, priorDayLines]);
 
   useEffect(() => {
     if (!series || !enabled) return;

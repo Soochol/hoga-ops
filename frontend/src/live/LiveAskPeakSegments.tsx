@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { IRange, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
@@ -11,7 +11,13 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
-import { peakWallRankLegendCells, rankVisiblePeakSegments } from './peakWallVisibleRanking';
+import {
+  PEAK_WALL_LEGEND_RANK_LIMIT,
+  peakWallRankLegendCells,
+  rankVisiblePeakSegments,
+} from './peakWallVisibleRanking';
+import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
+import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -334,6 +340,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
+  const rankArrowEnabled = useActivePrefs((s) => s.askPeakRankArrowEnabled);
   const maFilter = usePeakMaFilter('ask');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
   /** 레전드가 랭킹할 세그먼트 — `updateSegments` 가 **필터를 모두 통과한 뒤**의 집합을
@@ -342,8 +349,15 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
    *  렌더 시점에 lazy 하게 불리므로, 스토어/props 를 provider effect 의 deps 로 끌어오면
    *  등록·해제만 반복된다. */
   const legendSegmentsRef = useRef<readonly AskPeakSegment[]>([]);
+  const arrowPrimRef = useRef<PeakWallRankArrowsPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창) — 창별로 다른 종목의 벽 값이 섞이지 않게.
   const windowId = useWindowScopeId();
+  /** 가상초 → 봉 극값. 화살표 갱신은 팬·줌마다 도는데 이 맵은 캔들·축이 바뀔 때만
+   *  새로 만들면 된다(캔들이 수천 개라 매 프레임 재구축은 낭비). */
+  const candleExtremes = useMemo(
+    () => candleExtremesByVirtualSec(candles, axis),
+    [candles, axis],
+  );
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
@@ -358,6 +372,23 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
         /* chart already torn down */
       }
       primRef.current = null;
+    };
+  }, [series]);
+
+  // 순위 화살표는 **별도 primitive** 다 — 앵커가 벽 가격이 아니라 캔들 극값이라
+  // 세그먼트 렌더러와 좌표계 전제가 다르고, 설정으로 따로 끌 수 있어야 한다.
+  useEffect(() => {
+    if (!series) return;
+    const prim = new PeakWallRankArrowsPrimitive();
+    series.attachPrimitive(prim);
+    arrowPrimRef.current = prim;
+    return () => {
+      try {
+        series.detachPrimitive(prim);
+      } catch {
+        /* chart already torn down */
+      }
+      arrowPrimRef.current = null;
     };
   }, [series]);
 
@@ -380,9 +411,11 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
 
   const updateSegments = useCallback(() => {
     const prim = primRef.current;
+    const arrowPrim = arrowPrimRef.current;
     if (!prim) return;
     if (!enabled) {
       prim.setSegments([]);
+      arrowPrim?.setArrows([], 0);
       legendSegmentsRef.current = [];
       return;
     }
@@ -403,6 +436,14 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     // 레전드는 눈(hidden)과 무관하게 값을 유지하므로 **그리기 게이트보다 먼저** 채운다.
     // 여기서 hidden 을 먼저 걸면 눈을 끄는 순간 레전드가 비어 MA 규칙이 깨진다.
     legendSegmentsRef.current = rawSegments;
+    // 화살표는 **그리기**다 — 눈(hidden)이 선과 함께 지운다(레전드 값과 다른 취급).
+    // 랭킹은 primitive 가 draw 시점 범위로 하므로 여기서는 전건을 넘긴다.
+    arrowPrim?.setArrows(
+      hidden || !rankArrowEnabled
+        ? []
+        : peakWallRankArrowsFromSegments(rawSegments, 'ask', candleExtremes),
+      PEAK_WALL_LEGEND_RANK_LIMIT,
+    );
     if (hidden) {
       prim.setSegments([]);
       return;
@@ -432,6 +473,8 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     visibleTimeCutoff,
     maFilter,
     dailyMaFilter,
+    rankArrowEnabled,
+    candleExtremes,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.

@@ -90,6 +90,9 @@ import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
+import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
+import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
@@ -222,6 +225,10 @@ const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
 const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
 
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
+// 회피 입력의 빈 상태 — **공유 상수**여야 memo 결과가 참조로 안정되어 하위 스냅샷
+// effect 가 매 렌더 다시 돌지 않는다(빈 배열 리터럴은 매번 새 참조다).
+const EMPTY_AVOID_SEGMENTS: readonly AskPeakSegment[] = [];
+const EMPTY_AVOID_ARROWS: readonly PeakWallRankArrow[] = [];
 /** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
  *
  * ## 왜 캡이 (다시) 있는가
@@ -1749,6 +1756,8 @@ export function LiveChartRoot({
   const askPeakWallHidden = useWindowIndicator((s) => s.askPeakHidden);
   const bidPeakWallHidden = useWindowIndicator((s) => s.bidPeakHidden);
   const askPeakLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
+  const askPeakRankArrowEnabled = useActivePrefs((s) => s.askPeakRankArrowEnabled);
+  const bidPeakRankArrowEnabled = useActivePrefs((s) => s.bidPeakRankArrowEnabled);
   const bidPeakLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
@@ -2069,38 +2078,74 @@ export function LiveChartRoot({
   // (LivePeakWallDockedLabels 미러: enabled && !hidden && labelEnabled) — 안 그려지는
   // 라벨을 피해 극값 라벨이 pane 안쪽으로 밀리던 유령 회피의 수정. 가시범위/rank 컷은
   // 렌더 단 2D 교차 검사가 흡수한다(화면 밖 칩 rect 는 극값 라벨과 교차하지 않음).
+  // 회피 입력의 **공유 원천**. 게이트는 「지표가 켜져 있고 눈으로 숨기지 않음」까지만
+  // 두고, 라벨/화살표의 개별 토글은 아래 두 memo 가 각자 건다 — 그래야 세그먼트 계산이
+  // 표면 수만큼 늘지 않는다(이 파일은 이미 오버레이와 별개의 두 번째 계산 사본이다).
+  const avoidAskWallSegments = useMemo(() => (
+    cb && isMinuteTimeframe(timeframe) && askPeakEnabled && !askPeakWallHidden
+      ? buildAskPeakOverlaySegments({
+        dayAskPeaks: renderDayAskPeaks,
+        segments: cb.segments,
+        candles: cb.candles,
+        axis,
+        todayKst,
+        baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+        intraMax: askPeakIntraMax,
+        visibleTimeCutoff: askVisibleTimeCutoffForRender,
+        maFilter: askPeakMaFilter,
+        dailyMaFilter: askPeakDailyMaFilter,
+      })
+      : EMPTY_AVOID_SEGMENTS
+  ), [
+    askPeakDailyMaFilter,
+    askPeakEnabled,
+    askPeakIntraMax,
+    askPeakMaFilter,
+    askPeakWallHidden,
+    askVisibleTimeCutoffForRender,
+    axis,
+    cb,
+    renderDayAskPeaks,
+    timeframe,
+    todayKst,
+  ]);
+
+  const avoidBidWallSegments = useMemo(() => (
+    cb && isMinuteTimeframe(timeframe) && bidPeakEnabled && !bidPeakWallHidden
+      ? buildBidPeakOverlaySegments({
+        dayBidPeaks: renderDayBidPeaks,
+        segments: cb.segments,
+        candles: cb.candles,
+        axis,
+        todayKst,
+        baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+        intraMax: bidPeakIntraMax,
+        visibleTimeCutoff: bidVisibleTimeCutoffForRender,
+        maFilter: bidPeakMaFilter,
+        dailyMaFilter: bidPeakDailyMaFilter,
+      })
+      : EMPTY_AVOID_SEGMENTS
+  ), [
+    axis,
+    bidPeakDailyMaFilter,
+    bidPeakEnabled,
+    bidPeakIntraMax,
+    bidPeakMaFilter,
+    bidPeakWallHidden,
+    bidVisibleTimeCutoffForRender,
+    cb,
+    renderDayBidPeaks,
+    timeframe,
+    todayKst,
+  ]);
+
   const highLowAvoidWallLabels = useMemo(() => {
-    if (!cb || !isMinuteTimeframe(timeframe)) return [];
-    const askLabelsOn = askPeakEnabled && !askPeakWallHidden && askPeakLabelEnabled;
-    const bidLabelsOn = bidPeakEnabled && !bidPeakWallHidden && bidPeakLabelEnabled;
     const wallSegments: (AskPeakSegment & { side: PeakWallLabelSide })[] = [
-      ...(askLabelsOn
-        ? buildAskPeakOverlaySegments({
-          dayAskPeaks: renderDayAskPeaks,
-          segments: cb.segments,
-          candles: cb.candles,
-          axis,
-          todayKst,
-          baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-          intraMax: askPeakIntraMax,
-          visibleTimeCutoff: askVisibleTimeCutoffForRender,
-          maFilter: askPeakMaFilter,
-          dailyMaFilter: askPeakDailyMaFilter,
-        }).map((segment) => ({ ...segment, side: 'ask' as const }))
+      ...(askPeakLabelEnabled
+        ? avoidAskWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
-      ...(bidLabelsOn
-        ? buildBidPeakOverlaySegments({
-          dayBidPeaks: renderDayBidPeaks,
-          segments: cb.segments,
-          candles: cb.candles,
-          axis,
-          todayKst,
-          baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-          intraMax: bidPeakIntraMax,
-          visibleTimeCutoff: bidVisibleTimeCutoffForRender,
-          maFilter: bidPeakMaFilter,
-          dailyMaFilter: bidPeakDailyMaFilter,
-        }).map((segment) => ({ ...segment, side: 'bid' as const }))
+      ...(bidPeakLabelEnabled
+        ? avoidBidWallSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
     // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
@@ -2121,27 +2166,28 @@ export function LiveChartRoot({
       side: s.side,
       label: s.label,
     }));
+  }, [askPeakLabelEnabled, avoidAskWallSegments, avoidBidWallSegments, bidPeakLabelEnabled]);
+
+  // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
+  // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.
+  const highLowAvoidRankArrows = useMemo(() => {
+    if (!cb) return EMPTY_AVOID_ARROWS;
+    const extremes = candleExtremesByVirtualSec(cb.candles, axis);
+    return [
+      ...(askPeakRankArrowEnabled
+        ? peakWallRankArrowsFromSegments(avoidAskWallSegments, 'ask', extremes)
+        : []),
+      ...(bidPeakRankArrowEnabled
+        ? peakWallRankArrowsFromSegments(avoidBidWallSegments, 'bid', extremes)
+        : []),
+    ];
   }, [
-    askPeakEnabled,
-    askPeakIntraMax,
-    askPeakDailyMaFilter,
-    askPeakLabelEnabled,
-    askPeakMaFilter,
-    askPeakWallHidden,
-    askVisibleTimeCutoffForRender,
+    askPeakRankArrowEnabled,
+    avoidAskWallSegments,
+    avoidBidWallSegments,
     axis,
-    bidPeakEnabled,
-    bidPeakIntraMax,
-    bidPeakDailyMaFilter,
-    bidPeakLabelEnabled,
-    bidPeakMaFilter,
-    bidPeakWallHidden,
-    bidVisibleTimeCutoffForRender,
+    bidPeakRankArrowEnabled,
     cb,
-    renderDayAskPeaks,
-    renderDayBidPeaks,
-    timeframe,
-    todayKst,
   ]);
 
   const publishCursorHover = useCallback(
@@ -2652,6 +2698,8 @@ export function LiveChartRoot({
             paneSeries={paneSeries}
             timeframe={timeframe}
             avoidWallLabels={highLowAvoidWallLabels}
+            avoidRankArrows={highLowAvoidRankArrows}
+            avoidRankArrowLimit={PEAK_WALL_LEGEND_RANK_LIMIT}
           />
           {isMinuteTimeframe(timeframe) && liveBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={liveBundle} axis={axis} paneSeries={paneSeries} />

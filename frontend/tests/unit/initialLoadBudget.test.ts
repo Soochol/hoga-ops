@@ -16,6 +16,8 @@ import {
   chunkNameOf,
   INITIAL_LOAD_BUDGET,
   ATTRIBUTION_RULES,
+  MAX_SINGLE_CHANGE_JUMP_BYTES,
+  initialLoadJumpProblem,
 } from '../../scripts/initialLoadBudgetRules';
 
 describe('parseInitialLoadAssets', () => {
@@ -135,5 +137,48 @@ describe('설정값 자체', () => {
 
   it('소속 규칙이 비어 있지 않다 — 0건 순회는 항상 통과한다', () => {
     expect(ATTRIBUTION_RULES.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * **점프 감지**(2026-08-23) — 절대 상한을 대체했다.
+ *
+ * 종전 방식의 실적이 근거였다: 6일간 이 상수를 건드린 커밋 16건 중 12건이 「올려서
+ * 통과시킴」, 코드를 줄인 사례 0건. 그래서 게이트는 **한 변경이 크게 뛰는 것**만
+ * 잡고, 평소 증가는 빌드 출력의 「기준선 대비 ±」가 보이게 한다.
+ *
+ * **막는 방향**: (1) 게이트가 통째로 무력해지는 것(아무리 뛰어도 통과),
+ * (2) 상한이 다시 좁아져 정상 기능 추가가 걸리는 것.
+ * **못 보는 것**: 누적 증가 — **의도적으로** 막지 않는다(그게 12번 인상의 원인이었다).
+ * 누적은 이 파일의 git 이력과 매 빌드 출력이 맡는다.
+ */
+describe('initialLoadJumpProblem', () => {
+  const BASE = INITIAL_LOAD_BUDGET.rawBytes;
+
+  it('기준선과 같으면 통과', () => {
+    expect(initialLoadJumpProblem(BASE)).toBeNull();
+  });
+
+  it('줄어든 것은 문제가 아니다', () => {
+    expect(initialLoadJumpProblem(BASE - 50 * 1024)).toBeNull();
+  });
+
+  it('정상 기능 추가 폭(실측 0.6~7.2 KB)은 통과한다', () => {
+    // 이 값들이 걸리기 시작하면 상한이 다시 좁아진 것 — 12번 인상으로 되돌아간다.
+    for (const kb of [0.6, 1.3, 2.2, 3.3, 4.0, 7.2]) {
+      expect(initialLoadJumpProblem(BASE + kb * 1024)).toBeNull();
+    }
+  });
+
+  it('경계 바로 위에서 실패한다', () => {
+    expect(initialLoadJumpProblem(BASE + MAX_SINGLE_CHANGE_JUMP_BYTES)).toBeNull();
+    expect(initialLoadJumpProblem(BASE + MAX_SINGLE_CHANGE_JUMP_BYTES + 1)).not.toBeNull();
+  });
+
+  it('노리는 사고 규모(무거운 의존이 초기 청크로)는 잡는다', () => {
+    // 도입 커밋이 실측한 오배치 규모: react-dom 129 KB · @dnd-kit 46 KB.
+    const problem = initialLoadJumpProblem(BASE + 129 * 1024);
+    expect(problem).toContain('기준선 대비');
+    expect(problem).toContain('129.0 KB');
   });
 });

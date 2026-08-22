@@ -212,6 +212,14 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    key: 'askPeakRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description:
+      '레전드 상위 3개 매도벽이 걸린 분봉의 고가 위에 ↓ 화살표와 순위를 찍습니다. 수평선은 벽 가격에 그려지므로 어느 봉이었는지는 이 화살표로 읽습니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'askPeakVisibleTimeCutoff',
     label: '보이는 최신 봉 기준',
     description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매도 최대벽을 계산합니다.',
@@ -250,6 +258,13 @@ export const CHART_TOGGLES = [
     key: 'bidPeakLabelEnabled',
     label: '최대벽 라벨 표시',
     description: '당일 매수 최대벽 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
     default: true,
     category: 'indicator-modal',
   },

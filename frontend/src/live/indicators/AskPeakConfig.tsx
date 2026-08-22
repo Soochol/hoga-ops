@@ -58,7 +58,7 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
       </div>
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows
-        toggleKeys={['askPeakIntraMax', 'askPeakLabelEnabled', 'askPeakVisibleTimeCutoff', 'askPeakAboveMaEnabled', 'askPeakAboveDailyMaEnabled']}
+        toggleKeys={['askPeakIntraMax', 'askPeakLabelEnabled', 'askPeakRankArrowEnabled', 'askPeakVisibleTimeCutoff', 'askPeakAboveMaEnabled', 'askPeakAboveDailyMaEnabled']}
       />
       <div className="border-b border-border my-2" />
       <div>

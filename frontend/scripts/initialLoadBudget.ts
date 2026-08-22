@@ -30,8 +30,13 @@
  *
  * ## 왜 경고가 아니라 실패인가
  *
- * ③ 이 답이다 — 조용한 빌드가 6주를 갔다. 경고는 읽히지 않는다. 예산을 올리는 것은
- * 규칙 파일의 상수 한 줄을 고치는 일이고, **그 한 줄이 커밋에 남는 것**이 이 장치의 요점이다.
+ * ③ 이 답이다 — 조용한 빌드가 6주를 갔다. 경고는 읽히지 않는다.
+ *
+ * **단, 그 답은 청크 소속 가드의 것이다**(2026-08-23). 초기 로드 쪽은 절대 상한으로
+ * 두었더니 6일 만에 12번 「올려서 통과시킴」이 됐고 코드를 줄인 사례는 0건이었다 —
+ * 상시-red 는 CLAUDE.md 가 금하는 상태다. 그래서 초기 로드는 **점프 감지**로 바꿨다
+ * (사유·수치는 규칙 파일 `INITIAL_LOAD_BUDGET` 머리말). 소속 가드는 그대로 실패다:
+ * 그쪽은 위반이 곧 설정 사망이라 「의도된 위반」이 없다.
  */
 import { gzipSync } from 'node:zlib';
 import { readFileSync, statSync } from 'node:fs';
@@ -41,6 +46,7 @@ import {
   ATTRIBUTION_RULES,
   INITIAL_LOAD_BUDGET,
   checkAttribution,
+  initialLoadJumpProblem,
   parseInitialLoadAssets,
 } from './initialLoadBudgetRules';
 
@@ -110,17 +116,23 @@ export function initialLoadBudget(): Plugin {
           // 통과로 위장하는 유일한 경로라 따로 막는다.
           problems.push('index.html 에서 초기 로드 자산을 하나도 못 찾았다 — 파서 결함 의심');
         }
-        if (report.rawTotal > INITIAL_LOAD_BUDGET.rawBytes) {
-          problems.push(
-            `초기 로드 raw ${kb(report.rawTotal)} > 예산 ${kb(INITIAL_LOAD_BUDGET.rawBytes)}`,
-          );
-        }
+        // **절대 상한이 아니라 점프**를 잰다(2026-08-23 전환 — 사유는 규칙 파일
+        // `INITIAL_LOAD_BUDGET` 머리말). 기준선 대비 증분은 아래 summary 가 늘 찍으므로
+        // 조용한 누적은 여전히 눈에 보이고, 실패는 한 변경이 크게 뛸 때만이다.
+        const jumpProblem = initialLoadJumpProblem(report.rawTotal);
+        if (jumpProblem !== null) problems.push(jumpProblem);
         // gzip 은 **실패시키지 않는다** — 이 앱은 무압축 서빙이라 실사용 부담이 아니다
         // (사유는 규칙 파일의 `gzipBytes` 자리 주석). 수치는 아래 summary 로 계속 낸다:
         // raw 와 갈리는 방향이 「반복 문자열인가 새 내용인가」를 말해 준다.
 
+        // 기준선 대비 증분을 **매 빌드 찍는다** — 게이트가 누적을 막지 않으므로,
+        // 누적을 보이게 하는 일은 전적으로 이 한 줄이 맡는다.
+        const delta = report.rawTotal - INITIAL_LOAD_BUDGET.rawBytes;
+        const deltaText = delta === 0
+          ? '기준선과 같음'
+          : `기준선 대비 ${delta > 0 ? '+' : '-'}${kb(Math.abs(delta))}`;
         const summary = `초기 로드 raw ${kb(report.rawTotal)} / gzip ${kb(report.gzipTotal)} `
-          + `(${report.entries.length}개 자산, CSS 포함)`;
+          + `(${report.entries.length}개 자산, CSS 포함 · ${deltaText})`;
         if (problems.length === 0) {
           this.info?.(summary);
           return;
@@ -134,8 +146,10 @@ export function initialLoadBudget(): Plugin {
           `초기 로드 가드 실패\n\n`
           + problems.map((p) => `  ✗ ${p}`).join('\n')
           + `\n\n${summary}\n${detail}\n\n`
-          + `예산 초과가 **의도된** 것이면 scripts/initialLoadBudgetRules.ts 의 `
-          + `INITIAL_LOAD_BUDGET 을 올리고 **이유를 한 줄 적는다**. `
+          + `점프가 잡혔으면 **먼저 무엇이 늘었는지 본다** — 이 상한은 정상 기능 추가의 `
+          + `3배 이상이라, 대개 무거운 의존이 실수로 초기 청크에 끌려온 경우다. `
+          + `정말로 필요한 변경이면 scripts/initialLoadBudgetRules.ts 의 `
+          + `INITIAL_LOAD_BUDGET.rawBytes 를 **새 실측값으로** 적고 한 줄 남긴다. `
           + `소속 위반은 vite.config.ts 의 codeSplitting.groups 를 보라 — `
           + `그 규칙은 과거에 한 번 조용히 죽은 적이 있다.`,
         );

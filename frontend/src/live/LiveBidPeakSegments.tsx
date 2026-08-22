@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { AskPeakCandidate, BidPeak, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
@@ -14,7 +14,9 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
-import { peakWallRankLegendCells } from './peakWallVisibleRanking';
+import { PEAK_WALL_LEGEND_RANK_LIMIT, peakWallRankLegendCells } from './peakWallVisibleRanking';
+import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
+import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -287,10 +289,17 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
+  const rankArrowEnabled = useActivePrefs((s) => s.bidPeakRankArrowEnabled);
   const maFilter = usePeakMaFilter('bid');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
   /** 레전드가 랭킹할 세그먼트(필터 통과 후) — 사유는 ask 쪽 동명 ref 주석 참조. */
   const legendSegmentsRef = useRef<readonly AskPeakSegment[]>([]);
+  const arrowPrimRef = useRef<PeakWallRankArrowsPrimitive | null>(null);
+  /** 가상초 → 봉 극값(ask 쪽과 동일 규칙). 매수는 **저가**를 앵커로 쓴다. */
+  const candleExtremes = useMemo(
+    () => candleExtremesByVirtualSec(candles, axis),
+    [candles, axis],
+  );
   // 레전드 값 provider 의 창 스코프(멀티창) — ask 쪽과 동일 규칙.
   const windowId = useWindowScopeId();
 
@@ -307,6 +316,22 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
         /* chart already torn down */
       }
       primRef.current = null;
+    };
+  }, [series]);
+
+  // 순위 화살표 primitive(ask 미러) — 앵커가 캔들 저가라 세그먼트 렌더러와 별개다.
+  useEffect(() => {
+    if (!series) return;
+    const prim = new PeakWallRankArrowsPrimitive();
+    series.attachPrimitive(prim);
+    arrowPrimRef.current = prim;
+    return () => {
+      try {
+        series.detachPrimitive(prim);
+      } catch {
+        /* chart already torn down */
+      }
+      arrowPrimRef.current = null;
     };
   }, [series]);
 
@@ -344,6 +369,13 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
       : [];
     // 레전드는 눈(hidden)과 무관하게 값을 유지 → 그리기 게이트보다 먼저 채운다(ask 미러).
     legendSegmentsRef.current = nextSegments;
+    // 화살표는 그리기이므로 눈이 지운다. 랭킹은 primitive 가 draw 시점에 한다.
+    arrowPrimRef.current?.setArrows(
+      hidden || !rankArrowEnabled
+        ? []
+        : peakWallRankArrowsFromSegments(nextSegments, 'bid', candleExtremes),
+      PEAK_WALL_LEGEND_RANK_LIMIT,
+    );
     prim.setSegments(hidden ? [] : prepareBidPeakSegmentsForRender(nextSegments));
   }, [
     dayBidPeaks,
@@ -362,6 +394,8 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
     maFilter,
     dailyMaFilter,
     series,
+    rankArrowEnabled,
+    candleExtremes,
   ]);
 
   return null;
