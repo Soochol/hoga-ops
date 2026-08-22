@@ -370,6 +370,37 @@ def backfill_venue_gaps_cmd(
     )
 
 
+@app.command(name="repair-split-candles")
+def repair_split_candles_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="대상만 세고 쓰지 않음"),
+) -> None:
+    """이미 쓰인 kiwoom_live candles 파케이의 쪼개진 분봉을 한 봉으로 접는다.
+
+    실시간 분봉 합성(ADR-0125)이 한 분을 여러 행으로 내보냈다 — 봉인 뒤 도착한 틱이
+    새 봉을 만들었기 때문이다(생산자는 수정됨). 그 결과 디스크가
+    ``series.candles_ts_monotonic`` (Severity.error) 을 위반한 채 남아 있다.
+
+    과거 날짜만 훑는다 — 오늘은 Today Promoter 가 주기마다 다시 쓰므로 생산자 수정
+    이후 저절로 낫는다. 멱등: 2회차는 repaired=0.
+    """
+    from hoga.live.candle_repair import repair_split_candles  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    try:
+        res = repair_split_candles(data_dir, dry_run=dry_run)
+    except Exception as e:
+        console.print(f"[red]repair-split-candles failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    tag = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]repair-split-candles {tag}[/green]: "
+        f"scanned={res.scanned} repaired={res.repaired} "
+        f"clean={res.skipped_clean} unreadable={res.unreadable}\n"
+        f"  행 수 {res.rows_before} → {res.rows_after} "
+        f"({res.rows_after - res.rows_before:+d})"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

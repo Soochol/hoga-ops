@@ -315,6 +315,70 @@ def _merge_split_minutes(
     return merged
 
 
+def merge_split_candles(candles: list[Candle]) -> list[Candle]:
+    """쪼개진 분봉 조각을 **쓰기 전에** 한 봉으로 접는다 — `_merge_split_minutes` 의 쌍.
+
+    같은 규칙, 다른 층이다. `_merge_split_minutes` 는 **이미 쓰인** 파케이를 읽을 때
+    접고(과거 파일 7,069개), 이쪽은 `promote` 가 **새 파케이를 쓰기 전에** 접는다.
+    그래서 새로 쓰이는 파일에는 애초에 조각이 없다.
+
+    **왜 읽기 병합만으로 부족한가.** `hoga/api/invariants.py` 의
+    ``series.candles_ts_monotonic`` 은 "candles ts_ms must be strictly ascending" 를
+    **Severity.error** 로 선언한다. 조각 난 파일은 그 불변식을 위반한 채 디스크에
+    앉아 있다 — 읽기 병합은 증상을 가릴 뿐 디스크를 진실로 만들지 않는다.
+
+    **조각이 생기는 이유**(생산자 진단, 2026-08-22 실측). `MinuteCandleAggregator`
+    (ADR-0125)는 봉을 **거래소 체결시간**으로 버킷팅하면서 봉인은 **로컬 벽시계**로
+    한다 — `flush()` 가 ``minute < now_ms // 60_000`` 을 즉시 봉인하고 `commit()` 이
+    버킷을 지우므로 **허용 지연이 0** 이다. 그 뒤 같은 분의 틱이 오면 `_Bar` 가 새로
+    생겨 두 번째 행이 된다. JSONL 의 `ob` 행 t_ms 가 곧 flush 벽시계라 지연을 역산할
+    수 있는데, 첫 조각은 93% 가 분 종료 후 0~10초에 나가는 반면 **추가 조각은
+    10~120초** 뒤에 나간다. 유한한 유예로는 이 꼬리를 다 못 덮으므로 봉인 시점을
+    미루는 대신 **파생 테이블을 만들 때 정규화**한다(JSONL 은 도착 로그 그대로 둔다).
+
+    ## 정렬이 병합의 일부다 — 인접 판정만으로는 안 된다
+
+    `_merge_split_minutes` 는 입력이 SQL 로 정렬돼 온다는 전제 위에서 **인접 실행**만
+    접는다. 여기 들어오는 것은 **도착 순서**의 리스트라 그 전제가 없다. 지연이 60초를
+    넘으면 원리적으로 ``M 조각1, M+1, M 조각2`` 순서가 나올 수 있고, 그러면 인접
+    판정은 조각2를 놓친다 — 그런데 `write_parquet` 이 쓰기 직전에 정렬하므로 놓친
+    조각은 **파일 안에서 다시 이웃이 되어** 중복으로 남는다. 그래서 여기서 먼저
+    정렬한다. `sorted` 는 stable 이라 같은 ts 안에서는 도착 순서가 유지되고, 그것이
+    ``open``=첫 조각 / ``close``=마지막 조각 규칙이 기대는 타이브레이커다.
+
+    (실측: 파케이 8,934개 전수 스캔에서 **순서가 뒤집힌 파일은 0개**였다. `flush` 가
+    한 배치 안의 봉인 봉들을 분 오름차순으로 내보내기 때문이다. 즉 이 정렬은 관측된
+    결함을 고치는 것이 아니라 **그 창발적 성질에 기대지 않게 하는 보험**이다.)
+
+    합치는 규칙은 `_merge_split_minutes` · `bundle.downsample_candles` 와 같다:
+    ``open`` 은 첫 조각, ``close`` 는 마지막 조각, ``high`` 는 최대, ``low`` 는 최소,
+    거래량은 합. **순수 함수다** — 증분 파서의 누적 상태(`_JsonlParseState.candles`)를
+    변이하면 다음 패스가 이미 접힌 행에 새 조각을 더하게 되므로 반드시 복사본을 낸다.
+    """
+    if len(candles) < 2:  # noqa: PLR2004 — 국소 비교 상수(조각이 성립하려면 2행 이상)
+        return candles
+    ordered = sorted(candles, key=lambda c: c.ts_ms)
+    if all(ordered[i].ts_ms != ordered[i - 1].ts_ms for i in range(1, len(ordered))):
+        return ordered
+
+    merged: list[Candle] = []
+    for candle in ordered:
+        prev = merged[-1] if merged else None
+        if prev is None or prev.ts_ms != candle.ts_ms:
+            merged.append(candle)
+            continue
+        merged[-1] = Candle(
+            ts_ms=prev.ts_ms,
+            open_=prev.open_,                    # open  = 첫 조각
+            close_=candle.close_,                # close = 마지막 조각
+            high=max(prev.high, candle.high),
+            low=min(prev.low, candle.low),
+            vol_a=prev.vol_a + candle.vol_a,
+            vol_b=prev.vol_b + candle.vol_b,
+        )
+    return merged
+
+
 def query_price_range(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:
     """Return ``(MIN(low), MAX(high))`` across the candles, or ``None`` if the
     table is empty (NULL aggregates).

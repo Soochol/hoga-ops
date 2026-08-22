@@ -9,6 +9,7 @@ from hoga.tables.candles import (
     PARQUET_SCHEMA,
     ApiCandle,
     Candle,
+    merge_split_candles,
     parse_row,
     query_all,
     read_parquet,
@@ -328,3 +329,82 @@ def test_query_all_returns_the_same_list_object_when_nothing_is_split(tmp_path: 
     _write_rows(out, clean)
     rows = query_all(duckdb.connect(), path=out, ts_offset_ms=0)
     assert [r.ts_ms for r in rows] == [1, 2]
+
+
+# === merge_split_candles — 쓰기 전 병합(생산자 쪽) ===
+#
+# 읽기 쪽 `_merge_split_minutes` 와 **같은 규칙, 다른 층**이다. 여기 테스트가 재는 것은
+# 그 규칙이 아니라 층이 다르기 때문에 생기는 차이 두 가지다: ① 입력이 도착 순서라
+# 정렬이 병합의 일부다 ② 증분 파서의 누적 상태를 변이하면 안 되므로 순수해야 한다.
+
+
+def _frag(ts: int, open_: int, close_: int, high: int, low: int, vol: int) -> Candle:
+    return Candle(ts_ms=ts, open_=open_, close_=close_, high=high, low=low,
+                  vol_a=vol, vol_b=0)
+
+
+def test_merge_split_candles_folds_fragments_of_the_same_minute() -> None:
+    """실측 값(005930/20260820 09:08)으로 한 분을 한 봉으로 접는다."""
+    merged = merge_split_candles([
+        _frag(32820000, 252000, 252750, 253000, 251500, 50000),
+        _frag(32880000, 252750, 253000, 253500, 252500, 107264),
+        _frag(32880000, 253250, 253500, 254000, 253000, 39722),
+    ])
+
+    assert [c.ts_ms for c in merged] == [32820000, 32880000]
+    assert merged[1].open_ == 252750    # 첫 조각
+    assert merged[1].close_ == 253500   # 마지막 조각
+    assert merged[1].high == 254000     # max
+    assert merged[1].low == 252500      # min
+    assert merged[1].vol_a == 146986    # 합
+    assert merged[0].vol_a == 50000     # 단일 조각은 손대지 않는다
+
+
+def test_merge_split_candles_folds_fragments_that_are_not_adjacent() -> None:
+    """``M 조각1, M+1, M 조각2`` — **인접 판정만으로는 못 잡는 배치**.
+
+    **막는 방향**: 도착 순서가 시각 순서와 어긋난 조각이 병합을 빠져나가는 것.
+    빠져나가면 `write_parquet` 이 쓰기 직전에 정렬하므로 두 조각은 **파일 안에서
+    다시 이웃이 되어** 중복 행으로 남는다 — 즉 인접 판정은 조각을 놓칠 뿐 아니라
+    놓친 사실이 파일에서 지워진다.
+
+    **못 보는 것**: 이 배치는 실측 파케이 8,934개 전수 스캔에서 **0건**이었다(`flush`
+    가 한 배치의 봉인 봉들을 분 오름차순으로 내보내기 때문). 이 테스트는 관측된
+    결함이 아니라 그 창발적 성질에 기대지 않는다는 계약을 고정한다.
+    """
+    merged = merge_split_candles([
+        _frag(32880000, 252750, 253000, 253500, 252500, 107264),  # 09:08 조각 1
+        _frag(32940000, 253500, 254000, 254500, 253500, 90000),   # 09:09
+        _frag(32880000, 253250, 253500, 254000, 253000, 39722),   # 09:08 조각 2 (늦음)
+    ])
+
+    assert [c.ts_ms for c in merged] == [32880000, 32940000]
+    assert merged[0].vol_a == 146986
+    assert merged[0].open_ == 252750    # 도착 순서가 동률 타이브레이커(stable sort)
+    assert merged[0].close_ == 253500
+    assert merged[1].vol_a == 90000
+
+
+def test_merge_split_candles_does_not_mutate_its_input() -> None:
+    """순수 함수 — 증분 파서의 누적 상태를 그대로 넘겨받기 때문이다.
+
+    변이하면 다음 승격 패스가 **이미 접힌 행에 새 조각을 또 더해** 거래량이 부풀고,
+    그 오염은 되돌릴 수 없다(JSONL 재파싱 전까지 상태가 살아 있다).
+    """
+    original = [
+        _frag(32880000, 252750, 253000, 253500, 252500, 107264),
+        _frag(32880000, 253250, 253500, 254000, 253000, 39722),
+    ]
+    snapshot = list(original)
+
+    merged = merge_split_candles(original)
+
+    assert len(merged) == 1
+    assert original == snapshot           # 원소 순서·값 불변
+    assert original[0].vol_a == 107264    # 접힌 값이 되돌아오지 않았다
+
+
+def test_merge_split_candles_sorts_even_when_nothing_is_split() -> None:
+    clean = [_frag(2, 1, 1, 1, 1, 1), _frag(1, 2, 2, 2, 2, 2)]
+    assert [c.ts_ms for c in merge_split_candles(clean)] == [1, 2]
+    assert merge_split_candles([]) == []
