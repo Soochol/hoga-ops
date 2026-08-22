@@ -362,9 +362,10 @@ def _parse_jsonl_incremental(
         fill_count=len(state.fills), source=source, venue=venue,
     )
     # 조각 봉은 여기서 접는다 — 파케이가 분당 한 행이 되도록(merge_split_candles
-    # docstring). **`state.candles` 를 변이하지 않는다**: 이 상태는 패스 사이에
-    # 누적되므로, 접은 결과를 되돌려 넣으면 다음 패스가 이미 접힌 행에 새 조각을
-    # 또 더해 거래량이 부풀어 오른다.
+    # docstring). ⚠ **exit 이 둘이다** — 전량 파서(`_parse_jsonl_to_records`)에도
+    # 같은 호출이 있어야 한다. 한쪽만 고치면 증분(오늘)과 전량(익일 배치)이 같은
+    # JSONL 에서 다른 파케이를 내고, 그 차이는 날짜가 넘어가야 드러난다.
+    # `state.candles` 자체는 도착 로그로 남긴다(변이하지 않는다).
     return (state.snapshots, state.trades, state.broker_rows, state.fills,
             merge_split_candles(state.candles), meta)
 

@@ -189,12 +189,15 @@ def test_full_parse_folds_a_minute_split_across_flushes(tmp_path: Path) -> None:
 def test_incremental_folds_a_fragment_that_arrives_in_a_later_pass(tmp_path: Path) -> None:
     """조각 2가 **다음 승격 주기**에 도착해도 행은 하나이고 거래량은 정확히 한 번 더해진다.
 
-    **막는 방향**: 증분 파서의 누적 상태(`_JsonlParseState.candles`)를 병합이 변이하는
-    것. 변이하면 이 2회차가 **이미 접힌 행에 조각 2를 또 더해** 거래량이 부푼다 —
-    1회차만 보는 테스트로는 원리적으로 못 잡는 방향이다.
+    **막는 방향**: 병합이 **증분 exit 에만 안 물리는 것**. 승격 파서는 exit 이 둘이라
+    (`_parse_jsonl_to_records` · `_parse_jsonl_incremental`) 한쪽만 고치기 쉬운데,
+    증분은 오늘 · 전량은 익일 배치라 그 차이는 **날짜가 넘어가야** 드러난다. 실제
+    오늘 파케이를 쓰는 것은 이쪽이다.
 
-    **못 보는 것**: 조각을 만드는 생산자는 그대로다. 이것은 파생 테이블을 만들 때의
-    정규화이지, JSONL 이 도착 로그라는 사실을 바꾸지 않는다.
+    **못 보는 것**: 병합이 누적 상태를 제자리에서 변이하는지. 병합 규칙은 결합법칙이
+    성립해 이미 접힌 행에 조각을 다시 접어도 값이 같으므로, 여기 단언은 전부 통과한다
+    (red-check 확인). 그 불변식은 `test_merge_split_candles_does_not_mutate_its_input`
+    이 따로 잡는다.
     """
     _TODAY_PARSE_STATES.clear()
     jsonl = tmp_path / f"{CODE}.jsonl"
