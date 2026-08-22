@@ -19,6 +19,7 @@ import {
   selectTool,
   trendlineTool,
   matchShortcut,
+  PENCIL_MIN_SAMPLE_PX,
   type DrawingToolSpec,
   type ToolCtx,
 } from './tools';
@@ -31,6 +32,12 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   const base: ToolCtx = {
     px: 100,
     py: 200,
+    // Empty = "the platform coalesced nothing", so the pencil falls back to
+    // px/py. Tests that exercise multi-sample capture pass their own list.
+    coalesced: [],
+    // Unknown pitch by default → sub-bar offsets resolve to 0, i.e. the
+    // bar-anchored geometry every pre-subX assertion in this file expects.
+    barPx: vi.fn(() => null),
     pointerId: 1,
     capturePointer: vi.fn(),
     revertToSelectMode: vi.fn(),
@@ -445,26 +452,164 @@ describe('pencilTool commit', () => {
   });
 });
 
-describe('pencilTool throttle', () => {
-  it('drops a move that arrives within the 16ms RAF window', () => {
+describe('pencilTool 서브-봉 해상도', () => {
+  // 저장되는 realMs 는 **봉**밖에 못 가리킨다 — 캡처가 타는
+  // `coordinateToTime` 이 float 봉 인덱스의 `Math.ceil` 이라서다. 커서가 그
+  // 봉 안에서 어디였는지는 subX 가 아니면 복원할 방법이 없고, 없으면
+  // 스트로크가 봉 폭만큼의 계단이 된다(실측: 축소 15.8px, 확대 28.2px).
+  it('봉 앵커가 버린 픽셀 잔차를 봉 폭 분수로 싣는다', () => {
+    const ctx = makeCtx({
+      barPx: vi.fn(() => 20),
+      realMsToCanvasX: vi.fn(() => 92), // 앵커 봉은 92px, 커서는 100px
+    });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.pencilDraft.current!.subX[0]).toBeCloseTo(0.4); // (100-92)/20
+  });
+
+  it('봉 폭을 모르면 subX 는 0 — 봉 앵커 동작으로 퇴화한다', () => {
+    const ctx = makeCtx({
+      barPx: vi.fn(() => null),
+      realMsToCanvasX: vi.fn(() => 92),
+    });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.pencilDraft.current!.subX[0]).toBe(0);
+  });
+
+  it('앵커가 축 밖이라 재투영이 안 되면 subX 는 0', () => {
+    const ctx = makeCtx({
+      barPx: vi.fn(() => 20),
+      realMsToCanvasX: vi.fn(() => null),
+    });
+    pencilTool.onPointerDown!(ctx);
+    expect(ctx.pencilDraft.current!.subX[0]).toBe(0);
+  });
+
+  it('커밋된 stroke 의 subX 는 points 와 같은 길이다', () => {
+    const ctx = makeCtx({ barPx: vi.fn(() => 20), realMsToCanvasX: vi.fn(() => 92) });
+    pencilTool.onPointerDown!(ctx);
+    ctx.px += 10;
+    pencilTool.onPointerMove!(ctx);
+    ctx.px += 10;
+    pencilTool.onPointerMove!(ctx);
+    pencilTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    if (added.kind !== 'pencil') throw new Error('expected a pencil');
+    expect(added.subX).toHaveLength(added.points.length);
+  });
+
+  it('단순화가 points 와 subX 를 같은 인덱스로 함께 솎는다', () => {
+    // 두 배열을 따로 필터하면 여기서 어긋난다 — 그러면 남은 점들이 남의
+    // 오프셋을 쓰게 되고, 스트로크가 통째로 옆으로 밀린다.
+    const anchors = [1_700_000_000_000, 1_700_000_060_000, 1_700_000_120_000];
+    let i = -1;
+    const ctx = makeCtx({
+      barPx: vi.fn(() => 10),
+      pixelToData: vi.fn(() => {
+        i += 1;
+        return { realMs: anchors[Math.min(i, anchors.length - 1)], price: 70_000 };
+      }),
+      realMsToCanvasX: vi.fn((ms: number) => (ms - anchors[0]) / 1000), // 0 / 60 / 120
+      priceToCanvasY: vi.fn(() => 200),
+    });
+    ctx.px = 1; // 앵커 0 → 0.1
+    pencilTool.onPointerDown!(ctx);
+    ctx.px = 62; // 앵커 60 → 0.2
+    pencilTool.onPointerMove!(ctx);
+    ctx.px = 123; // 앵커 120 → 0.3
+    pencilTool.onPointerMove!(ctx);
+    pencilTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    if (added.kind !== 'pencil') throw new Error('expected a pencil');
+    // 오프셋까지 더한 픽셀이 1/62/123 로 정확히 일직선 → 가운데는 RDP 가 버린다.
+    expect(added.points.map((p) => p.realMs)).toEqual([anchors[0], anchors[2]]);
+    expect(added.subX).toEqual([0.1, 0.3]);
+  });
+
+  it('subX 는 소수 3자리로 반올림해 저장한다 (용량 예산)', () => {
+    const ctx = makeCtx({ barPx: vi.fn(() => 3), realMsToCanvasX: vi.fn(() => 99) });
+    pencilTool.onPointerDown!(ctx); // (100-99)/3 = 0.3333…
+    ctx.px += 10;
+    pencilTool.onPointerMove!(ctx);
+    pencilTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    if (added.kind !== 'pencil') throw new Error('expected a pencil');
+    expect(added.subX![0]).toBe(0.333);
+  });
+});
+
+describe('pencilTool 샘플 게이트', () => {
+  // 종전엔 16ms 시계 게이트였다(초당 ~62점 상한). 빠르게 그을수록 성겨지는
+  // 게 문제라 **이동 거리** 게이트로 바꿨다 — 멈춘 포인터는 이벤트가 아무리
+  // 많이 와도 점을 안 늘리고, 빠른 포인터는 상한 없이 다 잡는다.
+  it('제자리 move 는 점을 늘리지 않는다', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
     expect(ctx.pencilDraft.current?.points).toHaveLength(1);
-    // First move primes lastFrame to a recent perf.now().
+    pencilTool.onPointerMove!(ctx); // 커서가 pointer-down 자리 그대로
     pencilTool.onPointerMove!(ctx);
-    const len1 = ctx.pencilDraft.current!.points.length;
-    // A second move on the same ms should be dropped.
+    expect(ctx.pencilDraft.current!.points).toHaveLength(1);
+  });
+
+  it('PENCIL_MIN_SAMPLE_PX 를 넘긴 이동은 점을 추가한다', () => {
+    const ctx = makeCtx();
+    pencilTool.onPointerDown!(ctx);
+    // 경계 바로 아래 → 버린다. 임계를 지우면 이 단언이 깨진다.
+    ctx.px += PENCIL_MIN_SAMPLE_PX / 2;
     pencilTool.onPointerMove!(ctx);
-    expect(ctx.pencilDraft.current!.points.length).toBe(len1);
+    expect(ctx.pencilDraft.current!.points).toHaveLength(1);
+    // 경계 위 → 잡는다.
+    ctx.px += PENCIL_MIN_SAMPLE_PX * 2;
+    pencilTool.onPointerMove!(ctx);
+    expect(ctx.pencilDraft.current!.points).toHaveLength(2);
+  });
+
+  it('한 이벤트에 합쳐진 coalesced 샘플을 전부 잡는다', () => {
+    // 브라우저는 고주사율 포인터의 여러 샘플을 pointermove 하나로 합쳐서
+    // 준다. 이벤트 좌표만 읽으면 나머지를 버리는 것이고, 그게 곧
+    // 프레임 해상도(≈60Hz)로 스트로크가 깎이는 원인이다.
+    const ctx = makeCtx({
+      coalesced: [
+        { px: 110, py: 210 },
+        { px: 120, py: 220 },
+        { px: 130, py: 230 },
+      ],
+    });
+    pencilTool.onPointerDown!(ctx);
+    pencilTool.onPointerMove!(ctx);
+    expect(ctx.pencilDraft.current!.points).toHaveLength(4); // down 1 + 합쳐진 3
   });
 
   it('requests a redraw when a point is appended (live preview)', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
     (ctx.requestRedraw as ReturnType<typeof vi.fn>).mockClear();
-    // First successful move appends one point and asks for a frame.
+    ctx.px += 10;
     pencilTool.onPointerMove!(ctx);
     expect(ctx.requestRedraw).toHaveBeenCalledOnce();
+  });
+
+  it('redraw 는 샘플 수가 아니라 이벤트 수를 따른다', () => {
+    // 샘플마다 부르면 프레임당 수십 번이 된다. lwc 가 다음 프레임으로
+    // 합치긴 하지만, 프리뷰 갱신 단위는 이벤트라는 것을 여기서 못박는다.
+    const ctx = makeCtx({
+      coalesced: [
+        { px: 110, py: 210 },
+        { px: 120, py: 220 },
+        { px: 130, py: 230 },
+      ],
+    });
+    pencilTool.onPointerDown!(ctx);
+    (ctx.requestRedraw as ReturnType<typeof vi.fn>).mockClear();
+    pencilTool.onPointerMove!(ctx);
+    expect(ctx.requestRedraw).toHaveBeenCalledOnce();
+  });
+
+  it('아무 샘플도 안 잡히면 redraw 도 안 부른다', () => {
+    const ctx = makeCtx();
+    pencilTool.onPointerDown!(ctx);
+    (ctx.requestRedraw as ReturnType<typeof vi.fn>).mockClear();
+    pencilTool.onPointerMove!(ctx); // 제자리
+    expect(ctx.requestRedraw).not.toHaveBeenCalled();
   });
 });
 
@@ -504,6 +649,12 @@ describe('그리기 모드는 항상 그린다 — 커밋해도 선택하지 않
    *  핸들러가 아예 없다(게이트를 걷어내며 래퍼가 붙여 주던 것도 사라졌다). */
   function drawOne(tool: DrawingToolSpec, ctx: ToolCtx): void {
     tool.onPointerDown?.(ctx);
+    // 커서를 실제로 옮긴 뒤 move 한다. 연필은 픽셀 이동이
+    // PENCIL_MIN_SAMPLE_PX 미만이면 샘플을 버리므로(제자리 포인터가 점을
+    // 쌓지 않게), 좌표가 고정이면 점이 1개에 머물러 커밋 자체가 일어나지
+    // 않는다. 나머지 도구는 좌표 대신 pixelToData 결과만 읽어 무해하다.
+    ctx.px += 20;
+    ctx.py += 20;
     tool.onPointerMove?.(ctx);
     tool.onPointerUp?.(ctx);
   }
@@ -878,8 +1029,10 @@ describe('pane stamping', () => {
       paneIdAtY: vi.fn(() => 'fill-strength' as const),
     });
     pencilTool.onPointerDown!(ctx);
-    // Force the move-throttle to pass by mutating lastFrame, then move once.
-    if (ctx.pencilDraft.current) ctx.pencilDraft.current.lastFrame = 0;
+    // Move the cursor past PENCIL_MIN_SAMPLE_PX so the sample is captured
+    // (pointer-down seeded lastPx/lastPy at the same 100/200).
+    ctx.px = 140;
+    ctx.py = 260;
     (ctx.pixelToData as ReturnType<typeof vi.fn>).mockReturnValue({
       realMs: 1_700_000_001_000,
       price: 0.5,

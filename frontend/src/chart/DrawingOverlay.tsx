@@ -45,6 +45,7 @@ import {
   clampYToPane as projClampYToPane,
   priceBoundsForPane as projPriceBoundsForPane,
   dragBarDomain,
+  barPitchPx,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
@@ -426,6 +427,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
             canvasWidth: containerRef.current?.clientWidth ?? 0,
             measureTextWidth,
+            // MUST be the same pitch the renderer used, or a pencil stroke
+            // would be grabbable off its drawn position (see subBarOffsetPx).
+            barPx: barPitchPx(chart) ?? undefined,
           },
           drawings,
           px,
@@ -548,6 +552,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     return {
       px: e.clientX - rect.left,
       py: e.clientY - rect.top,
+      // Same container-relative frame as px/py. `getCoalescedEvents` is
+      // optional-called: jsdom's PointerEvent doesn't implement it, and a
+      // non-pointer synthetic event in a test has no such method either.
+      coalesced:
+        e.nativeEvent
+          .getCoalescedEvents?.()
+          .map((c) => ({ px: c.clientX - rect.left, py: c.clientY - rect.top })) ?? [],
       pointerId: e.pointerId,
       shiftKey: e.shiftKey,
       capturePointer: () => target.setPointerCapture(e.pointerId),
@@ -557,6 +568,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
       priceToCanvasY,
       canvasYToPrice,
+      barPx: () => barPitchPx(chart),
       hitTestAt,
       paneIdAtY,
       clampYToPane,

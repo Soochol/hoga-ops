@@ -64,15 +64,35 @@ function angleConstrainedPoint(
  *  pointer-down, committed on pointer-up. */
 export type TrendlineDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
 
-/** A per-gesture draft for the pencil tool. `lastFrame` carries the
- *  performance.now() of the last appended point so the move handler can
- *  throttle to RAF cadence (~16ms). */
+/**
+ * A per-gesture draft for the pencil tool.
+ *
+ * `subX` is parallel to `points` and carries each vertex's sub-bar offset (see
+ * `Pencil.subX`) — the draft has to hold it too, or the LIVE PREVIEW would
+ * render on the bar grid and then visibly snap into place on pointer-up.
+ *
+ * `lastPx`/`lastPy` are the last APPENDED sample, for the minimum-movement
+ * gate. It replaced a 16ms clock gate: the clock capped capture at ~62
+ * points/second regardless of how fast the cursor was moving, so a quick
+ * stroke came out sparse and angular. Distance is the property actually worth
+ * gating on — a stationary pointer adds nothing at any event rate, and a fast
+ * one is exactly when the extra samples matter. Redraw stays frame-paced
+ * regardless (`requestRedraw` coalesces via lwc's `requestUpdate`).
+ */
 export type PencilDraft = {
   points: Point[];
+  subX: number[];
   pointerId: number;
-  lastFrame: number;
+  lastPx: number;
+  lastPy: number;
   paneId: PaneId;
 };
+
+/** Minimum cursor movement (canvas px) between two captured pencil samples.
+ *  Below one pixel because coalesced/pen samples are sub-pixel and the RDP
+ *  pass at commit is what actually decides the stored point count; this only
+ *  keeps a resting pointer from piling up duplicates. */
+export const PENCIL_MIN_SAMPLE_PX = 0.5;
 
 /** A per-gesture draft for the rect tool — one corner captured on pointer-down,
  *  the opposite corner tracked on move, committed on pointer-up. */
@@ -133,6 +153,19 @@ export type ToolCtx = {
   px: number;
   /** Cursor pixel Y relative to the overlay container. */
   py: number;
+  /**
+   * Every pointer sample the browser merged into this one event
+   * (`PointerEvent.getCoalescedEvents`), already in overlay-container pixels
+   * and ordered oldest→newest, with the event's own position last. Empty when
+   * the platform coalesced nothing.
+   *
+   * Freehand capture reads this instead of `px`/`py`: a 1000Hz mouse or a pen
+   * emits many samples per frame, and the browser hands the page ONE
+   * pointermove for the lot. Taking only that one throws the rest away — the
+   * stroke gets frame-rate resolution rather than device resolution. Only the
+   * pencil uses it; every other tool wants the final position.
+   */
+  coalesced: readonly { px: number; py: number }[];
   /** PointerEvent.pointerId — needed for setPointerCapture / release. */
   pointerId: number;
   /** Shift held — constrains trendline/measure drags to 0°/45°/90°. */
@@ -203,6 +236,11 @@ export type ToolCtx = {
    *  <input> at the click even if `at` can't be re-projected. The overlay owns
    *  the input (IME-safe) and commits on Enter/blur. */
   beginTextEdit(at: Point, paneId: PaneId, px: number, py: number): void;
+
+  /** Effective bar width in canvas px, or null when the time scale can't
+   *  report it (`barPitchPx`). The pencil turns the pixel remainder its
+   *  bar-anchored `realMs` discarded into a fraction of this. */
+  barPx(): number | null;
 
   /** Trigger a single canvas redraw on the next animation frame. Tools
    *  call this after mutating a draft ref to surface a live preview
@@ -756,8 +794,10 @@ export const pencilTool: DrawingToolSpec = {
     if (!data) return;
     ctx.pencilDraft.current = {
       points: [data],
+      subX: [subBarFraction(ctx, data, ctx.px)],
       pointerId: ctx.pointerId,
-      lastFrame: 0,
+      lastPx: ctx.px,
+      lastPy: ctx.py,
       paneId,
     };
     ctx.capturePointer();
@@ -765,17 +805,29 @@ export const pencilTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const draft = ctx.pencilDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const now = performance.now();
-    if (now - draft.lastFrame < 16) return; // RAF-aligned throttle (spec G11)
-    draft.lastFrame = now;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
-    if (!data) return;
-    if (draft.points.length >= PENCIL_MAX_POINTS) return;
-    draft.points.push(data);
+    // Device resolution, not frame resolution: walk every sample the browser
+    // folded into this event. Falls back to the event's own position when the
+    // platform coalesced nothing (and in tests, which stub `coalesced: []`).
+    const samples =
+      ctx.coalesced.length > 0 ? ctx.coalesced : [{ px: ctx.px, py: ctx.py }];
+    let appended = false;
+    for (const s of samples) {
+      if (draft.points.length >= PENCIL_MAX_POINTS) break;
+      if (Math.hypot(s.px - draft.lastPx, s.py - draft.lastPy) < PENCIL_MIN_SAMPLE_PX) continue;
+      const clampedY = ctx.clampYToPane(draft.paneId, s.py);
+      const data = ctx.pixelToData(s.px, clampedY, draft.paneId);
+      if (!data) continue;
+      draft.points.push(data);
+      draft.subX.push(subBarFraction(ctx, data, s.px));
+      draft.lastPx = s.px;
+      draft.lastPy = s.py;
+      appended = true;
+    }
     // Live preview: redraw so the in-flight polyline appears under the
     // cursor. Without this the stroke only materialises on pointer-up.
-    ctx.requestRedraw();
+    // One request per EVENT, not per sample — lwc coalesces to the next frame
+    // anyway, and the draft is read at draw time (see DrawingsSource).
+    if (appended) ctx.requestRedraw();
   },
   onPointerUp(ctx) {
     const draft = ctx.pencilDraft.current;
@@ -783,14 +835,19 @@ export const pencilTool: DrawingToolSpec = {
     ctx.pencilDraft.current = null;
     ctx.releasePointer();
     if (draft.points.length < 2) return;
+    const barPx = ctx.barPx();
     // RDP-simplify in pixel space at commit — trims the dense freehand capture
-    // to the points that actually define the curve's shape.
+    // to the points that actually define the curve's shape. The sub-bar offset
+    // travels WITH its point through the filter (same index, one array of
+    // pairs) so simplification can't shear the two arrays apart, and it is
+    // included in the projection so RDP measures the pixels the user will
+    // actually see rather than the bar-snapped ones.
     const simplified = simplifyByPixels(
-      draft.points,
-      (pt) => {
+      draft.points.map((pt, i) => ({ pt, sub: draft.subX[i] ?? 0 })),
+      ({ pt, sub }) => {
         const x = ctx.realMsToCanvasX(pt.realMs);
         const y = ctx.priceToCanvasY(pt.price, draft.paneId);
-        return x != null && y != null ? { x, y } : null;
+        return x != null && y != null ? { x: x + sub * (barPx ?? 0), y } : null;
       },
       PENCIL_SIMPLIFY_EPSILON,
     );
@@ -798,7 +855,11 @@ export const pencilTool: DrawingToolSpec = {
     ctx.add({
       id,
       kind: 'pencil',
-      points: simplified,
+      points: simplified.map((s) => s.pt),
+      // Rounded to 3 decimals: at any plausible bar pitch that is far below a
+      // pixel, and the full float would roughly double each point's JSON
+      // footprint against PENCIL_MAX_POINTS' ~250KB budget.
+      subX: simplified.map((s) => Math.round(s.sub * 1000) / 1000),
       color: ctx.defaults.color,
       width: ctx.defaults.width,
       lineStyle: ctx.defaults.lineStyle,
@@ -806,6 +867,27 @@ export const pencilTool: DrawingToolSpec = {
     });
   },
 };
+
+/**
+ * The pixel remainder `pixelToData` threw away at `px`, as a fraction of one
+ * bar (see `Pencil.subX`).
+ *
+ * `data.realMs` names a BAR, because `coordinateToTime` is `Math.ceil` on the
+ * float bar index. Re-projecting that bar back to a coordinate and subtracting
+ * recovers exactly what the rounding discarded — no second trip through the
+ * time scale's internals, and it stays correct wherever `realMsToCanvasX` is
+ * (extrapolated future band included).
+ *
+ * Returns 0 when the pitch is unknown or the anchor won't re-project, which is
+ * the pre-subX behaviour: anchored to the bar, never to a guess.
+ */
+function subBarFraction(ctx: ToolCtx, data: Point, px: number): number {
+  const barPx = ctx.barPx();
+  if (barPx == null) return 0;
+  const anchorX = ctx.realMsToCanvasX(data.realMs);
+  if (anchorX == null) return 0;
+  return (px - anchorX) / barPx;
+}
 
 // ─── eraser ────────────────────────────────────────────────────────────────
 export const eraserTool: DrawingToolSpec = {

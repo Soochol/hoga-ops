@@ -195,6 +195,56 @@ describe('loadDrawings — lineStyle hydration', () => {
   });
 });
 
+describe('loadDrawings — 연필 subX', () => {
+  function store(pencil: Record<string, unknown>): void {
+    localStorage.setItem(
+      storageKey(SCOPE),
+      JSON.stringify({
+        v: 1,
+        items: [
+          {
+            id: 'p1', kind: 'pencil', paneId: 'candle',
+            color: '#14B8A6', width: 2, lineStyle: 'solid',
+            points: [{ realMs: 1, price: 10 }, { realMs: 2, price: 20 }],
+            ...pencil,
+          },
+        ],
+      }),
+    );
+  }
+
+  it('저장한 subX 를 그대로 되읽는다', () => {
+    store({ subX: [0.25, -0.5] });
+    const loaded = loadDrawings(SCOPE)[0];
+    expect(loaded.kind === 'pencil' && loaded.subX).toEqual([0.25, -0.5]);
+  });
+
+  it('배열이 아니면 통째로 버린다 — 봉 앵커로 퇴화', () => {
+    // 배열이 아닌 값이 `subX?.[i]` 에 그대로 닿으면(문자열이면 글자,
+    // 객체면 임의 값) 스트로크가 엉뚱한 자리에 그려질 수 있다.
+    store({ subX: 'nope' });
+    const loaded = loadDrawings(SCOPE)[0];
+    expect(loaded.kind === 'pencil' && loaded.subX).toBeUndefined();
+  });
+
+  it('숫자가 아닌 원소는 0 으로 눌러 담는다', () => {
+    store({ subX: [0.25, null, 'x', Infinity, NaN] });
+    const loaded = loadDrawings(SCOPE)[0];
+    expect(loaded.kind === 'pencil' && loaded.subX).toEqual([0.25, 0, 0, 0, 0]);
+  });
+
+  it('subX 가 없던 stroke 는 왕복해도 생기지 않는다', () => {
+    // 없는 것과 전부 0 은 저장 용량이 다르고, "구버전 데이터" 라는 사실도
+    // 이 부재가 유일한 표식이다.
+    store({});
+    const loaded = loadDrawings(SCOPE)[0];
+    expect(loaded.kind === 'pencil' && 'subX' in loaded).toBe(false);
+    saveDrawings(SCOPE, [loaded]);
+    const again = loadDrawings(SCOPE)[0];
+    expect(again.kind === 'pencil' && 'subX' in again).toBe(false);
+  });
+});
+
 describe('drawing defaults persistence', () => {
   beforeEach(() => localStorage.clear());
 

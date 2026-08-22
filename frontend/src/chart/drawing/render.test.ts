@@ -16,7 +16,7 @@ import {
 } from './render';
 import { realMsToCanvasX, realMsToCanvasXClamped } from './chartCoordinates';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import type { Hline, Measure, Text, Trendline, Vline } from './types';
+import type { Hline, Measure, Pencil, Text, Trendline, Vline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -448,5 +448,66 @@ describe('renderHline lineStyle + lineCap', () => {
     const lastCall = setLineDashCalls[setLineDashCalls.length - 1] as [number[]];
     expect(lastCall[0]).toEqual([9, 6]);
     expect(c.lineCap).toBe('butt');
+  });
+});
+
+describe('renderPencil — 서브-봉 오프셋', () => {
+  /** 3점 stroke. `subX` 를 주면 그만큼 x 가 밀려야 한다. */
+  function stroke(subX?: number[]): Pencil {
+    return {
+      id: 'p1',
+      kind: 'pencil',
+      points: [
+        { realMs: 10_000, price: 100 },
+        { realMs: 20_000, price: 120 },
+        { realMs: 30_000, price: 110 },
+      ],
+      subX,
+      color: '#14B8A6',
+      width: 2,
+      lineStyle: 'solid',
+      paneId: 'candle',
+    };
+  }
+
+  /** 이 stroke 가 찍은 x 좌표를 **순서대로**. `drawHaloThenMain` 이 같은
+   *  경로를 두 번(halo → 본선) 그리므로 첫 패스만 읽는다 — Set 으로 뭉개면
+   *  "밀린 점" 과 "원래 거기 있던 점" 이 구별되지 않는다. */
+  function xs(c: ReturnType<typeof makeCanvasSpy>): number[] {
+    const move = (c.moveTo as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const line = (c.lineTo as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    return [move[0][0] as number, line[0][0] as number, line[1][0] as number];
+  }
+
+  it('subX 가 없으면 봉 앵커 그대로 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, { ...makeProjectCtxWithProjection(), barPx: 20 }, stroke(), false);
+    // realMs/1000 → 10 / 20 / 30. halo 패스가 있어 같은 좌표가 두 번 나온다.
+    expect(xs(c)).toEqual([10, 20, 30]);
+  });
+
+  it('subX × barPx 만큼 x 를 민다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(
+      c,
+      { ...makeProjectCtxWithProjection(), barPx: 20 },
+      stroke([0.25, -0.5, 0.1]),
+      false,
+    );
+    expect(xs(c)).toEqual([15, 10, 32]);
+  });
+
+  it('barPx 를 모르면 오프셋을 무시한다 — 봉 앵커로 퇴화', () => {
+    // 곱할 픽셀 폭이 없을 때 분수를 픽셀로 착각해 더하면 스트로크가
+    // 살짝 어긋난 채 그려진다. 0 으로 떨어지는 쪽이 옳다.
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), stroke([0.25, -0.5, 0.1]), false);
+    expect(xs(c)).toEqual([10, 20, 30]);
+  });
+
+  it('subX 가 points 보다 짧으면 남는 점은 오프셋 0', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, { ...makeProjectCtxWithProjection(), barPx: 20 }, stroke([0.5]), false);
+    expect(xs(c)).toEqual([20, 20, 30]);
   });
 });
