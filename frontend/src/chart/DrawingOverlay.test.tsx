@@ -802,7 +802,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     document.body.appendChild(chartEl);
 
     const events: { type: string; x: number }[] = [];
-    ['mousemove', 'mouseout', 'mouseleave'].forEach((t) =>
+    ['mouseover', 'mouseenter', 'mousemove', 'mouseout', 'mouseleave'].forEach((t) =>
       lwcTarget.addEventListener(t, (e) => events.push({ type: t, x: (e as MouseEvent).clientX })),
     );
 
@@ -847,7 +847,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     return { ...view, overlay, lwcTarget, chartEl, events };
   }
 
-  it('1. 오버레이 위 pointermove 를 lwc 서브트리로 되돌린다', async () => {
+  it('1. 오버레이 위 pointermove 를 lwc 서브트리로 되돌린다 — enter 를 앞세워서', async () => {
     const { overlay, events } = renderOverlay();
 
     act(() => {
@@ -855,7 +855,14 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     });
     await flushFrame();
 
-    expect(events).toEqual([{ type: 'mousemove', x: 320 }]);
+    // `mouseenter` 가 앞서야 한다: lwc 는 mousemove 리스너를 enter 안에서 등록하고
+    // leave 에서 뗀다. 커서가 오버레이로 넘어오는 순간 브라우저가 진짜 leave 를
+    // 쏘므로, enter 없이 move 만 되돌리면 **아무 리스너에도 안 닿는다**(실측).
+    expect(events).toEqual([
+      { type: 'mouseover', x: 320 },
+      { type: 'mouseenter', x: 320 },
+      { type: 'mousemove', x: 320 },
+    ]);
   });
 
   it('2. pointerleave 는 lwc 자신의 leave 경로를 태운다', async () => {
@@ -883,7 +890,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     // 되돌린 이동은 차트 서브트리에서 시작해 window 로 올라간다 —
     // 오버레이는 그 경로에 없다(차트의 형제다).
     expect(onOverlay).not.toHaveBeenCalled();
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(3);
   });
 
   it('4. 프레임당 한 번으로 합치고, 마지막 위치를 쓴다', async () => {
@@ -897,7 +904,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     await flushFrame();
 
     // 첫 위치를 쓰면 크로스헤어가 커서보다 뒤처진다.
-    expect(events).toEqual([{ type: 'mousemove', x: 300 }]);
+    expect(events.map((e) => e.x)).toEqual([300, 300, 300]);
   });
 
   it('5. 시간축이 해석 못 하는 x 에서도 되돌린다 — 빈 구간이 pane 의 4분의 1이다', async () => {
@@ -910,7 +917,8 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     });
     await flushFrame();
 
-    expect(events).toEqual([{ type: 'mousemove', x: 999 }]);
+    expect(events.map((e) => e.type)).toEqual(['mouseover', 'mouseenter', 'mousemove']);
+    expect(events.every((e) => e.x === 999)).toBe(true);
   });
 
   it('6. elementsFromPoint 가 없으면 조용히 꺼진다', async () => {

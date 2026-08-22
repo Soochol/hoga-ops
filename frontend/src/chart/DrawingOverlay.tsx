@@ -675,6 +675,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       const p = forwardPointRef.current;
       forwardPointRef.current = null;
       if (!p) return;
+      // **`mouseenter` 를 매번 앞세운다.** lwc 는 `mousemove` 리스너를
+      // `_mouseEnterHandler` **안에서** 등록하고 leave 에서 뗀다. 커서가 우리
+      // 오버레이로 넘어오는 순간 브라우저가 진짜 mouseleave 를 쏘므로, 그 뒤에
+      // 되돌린 mousemove 는 **아무 리스너에도 안 닿는다**(실측: 차트 서브트리 어느
+      // 요소에 쏴도 crosshairMove 0건). enter 는 재진입이 멱등이고(기존 구독을 떼고
+      // 다시 건다) 커서 위치는 뒤따르는 mousemove 가 정한다.
+      // 둘 다 `bubbles: true` 여야 한다 — 우리는 lwc 의 리스너 요소를 이름으로
+      // 모르고 그 자손에 쏘기 때문이다(네이티브 mouseenter 는 원래 안 뜨지만
+      // 합성 이벤트는 뜨게 만들 수 있고, 리스너는 버블 단계에서도 불린다).
+      dispatchToChart('mouseover', p.clientX, p.clientY, true);
+      dispatchToChart('mouseenter', p.clientX, p.clientY, true);
       dispatchToChart('mousemove', p.clientX, p.clientY, true);
     });
   };
