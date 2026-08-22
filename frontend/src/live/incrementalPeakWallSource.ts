@@ -142,8 +142,21 @@ export class IncrementalPeakWallSource {
   /** 누적 터치 틱 — toTouchTicksFromTrades와 동일 필터. */
   private touchTimes: number[] = [];
   private touchPrices: number[] = [];
-  private touchIndexDirty = true;
-  /** 분 → 그 분 체결가의 극값. 터치가 자랄·줄 때만 재구축. */
+  /**
+   * 분 → 그 분에 속한 터치 가격들(**도착 순**). `extremeByWindow` 를 축출 후에 다시
+   * 세우기 위한 원천이다.
+   *
+   * 왜 이 배열이 필요한가: 극값은 **삭제가 안 되는 집계**다. 어떤 분의 max 가 축출되면
+   * 남은 것들의 max 를 알 방법이 없어 그 분을 다시 훑어야 한다. 전량 `touchPrices` 를
+   * 훑으면 원래 비용으로 돌아가므로, 분 단위로 갈라 두고 **그 분만** 훑는다.
+   *
+   * **도착 순이 prefix 대응을 만든다.** `touchTimes` 전체가 도착 순 push 이고 이 배열도
+   * 같은 순서로 push 되므로, 전체 prefix 축출은 각 분 배열에서도 prefix 축출이다 —
+   * 중간 삭제가 없다. 터치가 **시간 역순으로 도착해도** 성립한다(배열 순서는 도착 순이지
+   * 시각 순이 아니다). ADR-0156 이 분 극값을 순서 무관으로 만든 덕이다.
+   */
+  private touchesByWindow = new Map<number, number[]>();
+  /** 분 → 그 분 체결가의 극값. 삽입은 O(1) 갱신, 축출은 **닿은 분만** 재계산. */
   private extremeByWindow = new Map<number, number>();
   /**
    * 같은 `price:t_ms` 키가 **서로 다른 ob 스냅샷**에서 나왔다 = t_ms 중복.
@@ -291,7 +304,7 @@ export class IncrementalPeakWallSource {
     this.touchCounts = [];
     this.touchTimes = [];
     this.touchPrices = [];
-    this.touchIndexDirty = true;
+    this.touchesByWindow = new Map();
     this.extremeByWindow = new Map();
     this.tMsCollisionSeen = false;
     // `fallbacks`/`lastFallbackReason` 은 **지우지 않는다** — reset 은 누적 상태를 버리는
@@ -349,9 +362,39 @@ export class IncrementalPeakWallSource {
     for (let i = 0; i < evicted && i < this.touchCounts.length; i += 1) drop += this.touchCounts[i];
     this.touchCounts.splice(0, evicted);
     if (drop === 0) return;
+    // 버려지는 prefix 가 **어느 분들에** 걸쳤는지 세어 둔다. 슬라이딩 정상상태에서는
+    // 보통 가장 오래된 한 분뿐이다.
+    const dropCountByWindow = new Map<number, number>();
+    for (let i = 0; i < drop; i += 1) {
+      const window = touchWindowOf(this.touchTimes[i]);
+      dropCountByWindow.set(window, (dropCountByWindow.get(window) ?? 0) + 1);
+    }
     this.touchTimes.splice(0, drop);
     this.touchPrices.splice(0, drop);
-    this.touchIndexDirty = true;
+    for (const [window, count] of dropCountByWindow) {
+      const prices = this.touchesByWindow.get(window);
+      if (prices === undefined) continue;
+      // 전체가 prefix 로 잘렸으므로 이 분 배열에서도 prefix 다(필드 주석의 도착 순 불변식).
+      prices.splice(0, count);
+      if (prices.length === 0) {
+        this.touchesByWindow.delete(window);
+        this.extremeByWindow.delete(window);
+        continue;
+      }
+      // 극값은 삭제가 안 되는 집계라, 남은 것들로 **이 분만** 다시 잰다.
+      this.extremeByWindow.set(window, this.extremeOf(prices));
+    }
+  }
+
+  /** 한 분의 남은 가격들에서 극값(ask=max, bid=min). */
+  private extremeOf(prices: readonly number[]): number {
+    const isAsk = this.side === 'ask';
+    let best = prices[0];
+    for (let i = 1; i < prices.length; i += 1) {
+      const price = prices[i];
+      if (isAsk ? price > best : price < best) best = price;
+    }
+    return best;
   }
 
   private consumeOb(snapshots: ReadonlyArray<ObSnapshot>): void {
@@ -394,30 +437,25 @@ export class IncrementalPeakWallSource {
         if (!isFiniteNumber(tMs) || tMs <= 0) continue;
         this.touchTimes.push(tMs);
         this.touchPrices.push(item.price);
-        this.touchIndexDirty = true;
+        // 삽입은 극값의 **닫힌 연산**이라 O(1) 이다 — 새 값과 기존 극값의 max/min.
+        // (삭제만 재계산이 필요하고, 그건 evictTrades 가 닿은 분에만 한다.)
+        const window = touchWindowOf(tMs);
+        const bucket = this.touchesByWindow.get(window);
+        if (bucket === undefined) {
+          this.touchesByWindow.set(window, [item.price]);
+          this.extremeByWindow.set(window, item.price);
+        } else {
+          bucket.push(item.price);
+          const current = this.extremeByWindow.get(window) as number;
+          const isAsk = this.side === 'ask';
+          if (isAsk ? item.price > current : item.price < current) {
+            this.extremeByWindow.set(window, item.price);
+          }
+        }
         contributed += 1;
       }
       this.touchCounts.push(contributed);
     }
-  }
-
-  /** touchExtremeByWindow(peakWallEventClassifier.ts)와 동일한 맵을 터치가 바뀔 때만 재구축.
-   *  **정렬을 요구하지 않는다** — 분 단위 극값은 도착 순서에 무관하다(ADR-0156). */
-  private ensureTouchIndex(): void {
-    if (!this.touchIndexDirty) return;
-    const isAsk = this.side === 'ask';
-    const map = new Map<number, number>();
-    for (let i = 0; i < this.touchTimes.length; i += 1) {
-      const window = touchWindowOf(this.touchTimes[i]);
-      const current = map.get(window);
-      const price = this.touchPrices[i];
-      map.set(
-        window,
-        current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
-      );
-    }
-    this.extremeByWindow = map;
-    this.touchIndexDirty = false;
   }
 
   private isTouched(event: AskPeakCandidate): boolean {
@@ -427,7 +465,6 @@ export class IncrementalPeakWallSource {
   }
 
   private classify(extras: readonly AskPeakCandidate[]): PeakWallClassification {
-    this.ensureTouchIndex();
     const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
     const consider = (candidate: AskPeakCandidate) => {
