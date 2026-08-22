@@ -11,12 +11,10 @@ import type { IChartApi, Time } from 'lightweight-charts';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import { realMsToVirtualSeconds } from './viewportAnchor';
-import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import {
-  centeredLogicalRange, replicatedLogicalRange, resolveRangeSyncMode,
-  type RangeSyncBars,
+  replicatedLogicalRange, shouldFollowRange, type RangeSyncBars,
 } from '../chart/rangeSync';
 
 /** 휠이 멈춘 것으로 보는 침묵 구간. 휠은 pointerup 같은 종료 이벤트가 없다. */
@@ -202,17 +200,9 @@ export function useRangeSyncFollow(params: {
   axis: VirtualAxis;
   /** 이 창의 캔들 수 — 0 이면 축이 아직 안 서서 인덱스 변환이 무의미하다. */
   candleCount: number;
-  /** 이 창의 마지막 캔들 시각 — 우측 클램프의 기준이다. 없으면 클램프하지 않는다. */
-  lastCandleMs: number | null;
   enabled: boolean;
-  /**
-   * 「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`). peer 복제와 **폭 합의**를 함께
-   * 쥔다 — 둘 다 일봉↔일봉 결합이라 한 스위치다(`rangeSync.ts` 헤더의 그 절).
-   * 끄면 cross 는 위치만 옮기고 각 창이 자기 배율을 지킨다.
-   */
-  syncPeer: boolean;
   myWindowId: string | null;
-  /** 이 창의 봉 — 모드(cross/peer)를 이것이 정한다. */
+  /** 이 창의 봉 — 받는지 아닌지를 이것이 정한다(같은 캘린더 봉끼리만). */
   myTimeframe: LiveTimeframe;
   /** 이 창의 링크 그룹(창 헤더의 번호) — 동기화 범위. */
   myGroup: number | null;
@@ -220,7 +210,7 @@ export function useRangeSyncFollow(params: {
   allowCrossSymbol: boolean;
 }): void {
   const {
-    chart, axis, candleCount, lastCandleMs, enabled, syncPeer,
+    chart, axis, candleCount, enabled,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   } = params;
   const syncRange = useLiveCursorStore((s) => s.syncRange);
@@ -234,87 +224,37 @@ export function useRangeSyncFollow(params: {
   useEffect(() => {
     if (!chart || !enabled || candleCount <= 0 || !syncRange) return;
     if (syncRange.seq <= (baselineSeqRef.current ?? 0)) return;
-    const mode = resolveRangeSyncMode({
+    if (!shouldFollowRange({
       publication: syncRange, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
-      switches: { peer: syncPeer },
-    });
-    if (mode === null) return;
+    })) return;
     const ts = chart.timeScale();
     const raf = requestAnimationFrame(() => {
-      // peer 모드: 발행 창의 뷰를 **여백까지 그대로** 복제한다. 같은 봉끼리는 폭이
-      // 비교 가능해 "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이
-      // 한 값에서 나온다 — 중앙 정렬이 필요 없다.
+      // 발행 창의 뷰를 **여백까지 그대로** 복제한다. 같은 봉끼리는 폭이 비교 가능해
+      // "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이 한 값에서
+      // 나온다 — 중앙 정렬이나 별도의 폭 규칙이 필요 없다.
       //
       // **봉 단위(`bars`)로 옮긴다.** 시각 범위를 복제하면 캔들 오른쪽 여백이 발행에
       // 아예 안 실려 소비 창이 데이터 부분만 보게 된다 — `RangeSyncBars` 주석이 그
       // 실측(120봉 → 74봉, 여백 46 소실)을 갖는다.
       //
-      // **중앙 정렬로 떨어지는 폴백을 두지 않는다.** 한때 peer 를 토글로 게이트하면서
-      // 꺼졌을 때 중앙 정렬로 보냈는데, 그러면 **두 창이 같은 구간을 보지 않으면서
-      // 동기화된 것처럼 보인다** — peer 의 정의와 어긋난다. 지금은 꺼지면 여기 도달
-      // 자체를 안 한다(`syncModeFor` 가 peer 를 없는 모드로 만든다).
-      if (mode === 'peer') {
-        const bars = syncRange.bars;
-        if (!bars) return;
-        const anchorIndex = ts.timeToIndex?.(
-          realMsToVirtualSeconds(axisRef.current, bars.anchorMs) as Time,
-          true,
-        );
-        if (typeof anchorIndex !== 'number') return;
-        const next = replicatedLogicalRange({
-          anchorIndex, bars, current: ts.getVisibleLogicalRange(),
-        });
-        if (next) ts.setVisibleLogicalRange(next);
-        return;
-      }
+      // **다른 경로로 떨어지는 폴백을 두지 않는다.** `bars` 가 없으면 아무것도 하지
+      // 않는다 — 시각 복제로 돌아가면 위 여백 소실이 되살아난다.
+      const bars = syncRange.bars;
+      if (!bars) return;
+      const anchorIndex = ts.timeToIndex?.(
+        realMsToVirtualSeconds(axisRef.current, bars.anchorMs) as Time,
+        true,
+      );
+      if (typeof anchorIndex !== 'number') return;
       // 실행 시점에 다시 읽는다 — 예약 이후 사용자가 이 창을 움직였을 수 있다.
-      const current = ts.getVisibleLogicalRange();
-      if (!current) return;
-      const toIndex = ts.timeToIndex?.(
-        realMsToVirtualSeconds(axisRef.current, syncRange.toMs) as Time,
-        true,
-      );
-      const fromIndex = ts.timeToIndex?.(
-        realMsToVirtualSeconds(axisRef.current, syncRange.fromMs) as Time,
-        true,
-      );
-      if (typeof fromIndex !== 'number' || typeof toIndex !== 'number') return;
-      // 폭은 **이 발행에 대한 합의값**을 쓴다. 자기 폭을 보존하면 같은 발행에도 창
-      // 크기만큼 결과가 갈려 "분봉을 만지면 일봉이 모두 똑같아진다" 가 성립하지
-      // 않는다(실측 2026-08-22: 184봉 vs 131봉). 먼저 온 창이 seed 하고 나머지가
-      // 읽으므로 한 라운드 뒤 전원이 같다 — 자세한 근거는 스토어 필드 주석.
-      //
-      // 합의는 **폭만**이다. 위치는 창마다 로드 이력이 달라 같은 날짜의 논리 인덱스가
-      // 다르므로 아래에서 각자 `timeToIndex` 로 찾는다.
-      //
-      // `syncPeer` 가 꺼져 있으면 **읽지도 쓰지도 않는다** — 그 토글이 일봉↔일봉
-      // 결합을 통째로 쥐고, 폭 합의도 그 결합이다(트리거만 분봉일 뿐이다).
-      const ownSpan = current.to - current.from;
-      let spanOverride = ownSpan;
-      if (syncPeer) {
-        const agreement = useLiveCursorStore.getState().crossSpanAgreement;
-        if (agreement?.seq === syncRange.seq) spanOverride = agreement.spanBars;
-        useLiveCursorStore.getState().agreeCrossSpan(syncRange.seq, ownSpan);
-      }
-      // 우측 끝 = 마지막 캔들의 **논리 인덱스** + 1 + 표준 여백.
-      // ⚠ `candleCount - 1` 이 아니다 — `/live` 는 WhitespaceData 가 섞여 논리
-      // 인덱스와 배열 인덱스가 다르다. 축에 물어봐야 한다.
-      const lastIndex = lastCandleMs === null
-        ? null
-        : ts.timeToIndex?.(realMsToVirtualSeconds(axisRef.current, lastCandleMs) as Time, true);
-      const rightEdgeLimit = typeof lastIndex === 'number' && Number.isFinite(lastIndex)
-        ? lastIndex + 1 + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
-        : undefined;
-      // 위치와 폭을 **한 번의 호출로** 적용한다. 두 번 나눠 부르면 일봉의 범위 변화
-      // 이벤트가 두 번 발화해 애니메이션이 겹친다.
-      const next = centeredLogicalRange({
-        fromIndex, toIndex, current, spanOverride, rightEdgeLimit,
+      const next = replicatedLogicalRange({
+        anchorIndex, bars, current: ts.getVisibleLogicalRange(),
       });
       if (next) ts.setVisibleLogicalRange(next);
     });
     return () => cancelAnimationFrame(raf);
   }, [
-    chart, enabled, syncPeer, candleCount, lastCandleMs, syncRange,
+    chart, enabled, candleCount, syncRange,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   ]);
 }
