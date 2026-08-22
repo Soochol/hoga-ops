@@ -65,7 +65,11 @@ import type { Candle } from '../../api/types';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
-import { showsWatchlistHeart } from './chartHeaderCompact';
+import {
+  showsWatchlistHeart,
+  LIVE_CALENDAR_HEADER_FOLD,
+  LIVE_HEADER_FOLD,
+} from './chartHeaderCompact';
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 import { MinuteJumpChip } from './MinuteJumpChip';
 import { canPublishTimeframeJump } from '../../chart/timeframeJump';
@@ -326,12 +330,16 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 훅이 **callback ref** 를 준다: 아래 `if (!instrument)` 빈 상태를 지나 종목이
   // 붙는 순간 헤더가 처음 마운트되는데, ref 객체로는 그 등장을 관측자에게 알릴 수
   // 없었다(그 훅의 주석 참조 — 리사이즈가 통째로 죽던 원인).
-  const [headerFold, headerRef] = useChartHeaderFold();
-
   // ── 「분봉으로」 기간 점프 ────────────────────────────────────────────────
   // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
   // 헤더에도 둘 중 하나만 뜬다.
   const canJump = canPublishTimeframeJump(view.timeframe);
+  // 접힘 임계는 **창의 봉**이 정한다 — 「분봉으로」가 캘린더 창에만 떠서 요구폭이
+  // 갈린다(실측 Δ full +70 / actionsFolded +22). 하나로 합치면 분봉 헤더가 70px
+  // 일찍 접힌다. 모듈 상수 둘 중 하나를 고르므로 참조가 안정적이다(관측자 재구독 없음).
+  const [headerFold, headerRef] = useChartHeaderFold(
+    canJump ? LIVE_CALENDAR_HEADER_FOLD : LIVE_HEADER_FOLD,
+  );
   // 보낼 곳이 있는가. **자기 자신은 세지 않는다**(캘린더 창이라 어차피 대상이 아니지만,
   // 조건을 창 종류에 기대면 봉이 바뀔 때 조용히 어긋난다).
   const hasMinuteWindow = useWorkspaceStore((s) => s.windows.some(
