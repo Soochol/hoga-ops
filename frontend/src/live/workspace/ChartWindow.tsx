@@ -16,7 +16,7 @@
  * (view.code=null·instrument=index, 파이프라인의 activeIndexId 분기 재사용).
  * 창 내 봉 컨트롤(TimeframeControl→setChartTimeframe) + 포커스 창의 상태바 발행.
  */
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
 import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
@@ -66,6 +66,13 @@ import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import { showsWatchlistHeart } from './chartHeaderCompact';
+import { JumpToMinuteButton } from './JumpToMinuteButton';
+import { MinuteJumpChip } from './MinuteJumpChip';
+import { canPublishTimeframeJump } from '../../chart/timeframeJump';
+import { jumpDestinationOf } from '../minuteJumpDestination';
+import { registerJumpRunner } from './jumpControls';
+import { useLiveCursorStore } from '../useLiveCursorStore';
+import type { MinuteJumpState } from '../useTimeframeJump';
 import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import type { CollectVisibleRange } from './collectDialogControls';
 import { unixMsToKSTDate } from '../../util/time';
@@ -321,6 +328,41 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 없었다(그 훅의 주석 참조 — 리사이즈가 통째로 죽던 원인).
   const [headerFold, headerRef] = useChartHeaderFold();
 
+  // ── 「분봉으로」 기간 점프 ────────────────────────────────────────────────
+  // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
+  // 헤더에도 둘 중 하나만 뜬다.
+  const canJump = canPublishTimeframeJump(view.timeframe);
+  // 보낼 곳이 있는가. **자기 자신은 세지 않는다**(캘린더 창이라 어차피 대상이 아니지만,
+  // 조건을 창 종류에 기대면 봉이 바뀔 때 조용히 어긋난다).
+  const hasMinuteWindow = useWorkspaceStore((s) => s.windows.some(
+    (w) => w.id !== win.id && w.kind === 'chart' && w.group === win.group
+      && w.chart !== undefined && isMinuteTimeframe(w.chart.timeframe),
+  ));
+  // 차트 좌표와 캔들 배열은 `LiveChartRoot` 안에만 있다 — 헤더가 직접 계산할 수
+  // 없어 등록으로 받는다(`captureViewport` 와 같은 패턴).
+  const jumpSourceRef = useRef<() => number | null>(() => null);
+  const [minuteJump, setMinuteJump] = useState<{
+    state: MinuteJumpState | null;
+    clear: () => void;
+  }>({ state: null, clear: () => {} });
+  // 발행 판정은 **여기 하나**다. 버튼과 `g` 가 각자 판정하면 "버튼은 막았는데
+  // 단축키는 보내는" 상태가 생기고, 그 어긋남은 눌러 보기 전엔 안 보인다.
+  const runJump = useCallback(() => {
+    if (!hasMinuteWindow) return;
+    const toMs = jumpSourceRef.current();
+    const dest = jumpDestinationOf(toMs);
+    if (toMs === null || dest === null || dest.outOfRetention) return;
+    useLiveCursorStore.getState().requestTimeframeJump(toMs, {
+      windowId: win.id, group: win.group, code: view.code, timeframe: view.timeframe,
+    });
+  }, [hasMinuteWindow, win.id, win.group, view.code, view.timeframe]);
+  // `g` 는 셸이 포커스 창을 정하고 실행은 그 창이 한다 — 목적지가 차트 좌표라
+  // 스토어를 통해서는 도달할 수 없다(`jumpControls` 헤더).
+  useEffect(() => {
+    if (!canJump) return;
+    return registerJumpRunner(win.id, runJump);
+  }, [canJump, win.id, runJump]);
+
   // 관심 하트의 채움 상태. `useWatchlistMembership` 의 계약대로 **창에서 한 번만**
   // 부르고 버튼에 내린다(버튼이 직접 부르면 창 수만큼 옵저버가 는다). 타이틀바도
   // 자기 몫으로 한 번 부르므로 창당 2개인데, 창 단위라 행 단위였던 그 훅의 원래
@@ -509,7 +551,28 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             />
           </div>
         )}
+        {/* 점프 칩은 저장뷰 칩과 **같은 자리**다 — 「차트가 특별한 구간에 잡혀 있다
+            + × 로 푼다」는 이미 학습된 패턴이라 새 자리를 만들지 않는다. 둘이 동시에
+            뜨는 경우(저장뷰를 연 분봉 창으로 점프)는 나란히 선다. */}
+        {minuteJump.state && (
+          <div className="ml-1 flex min-w-0 items-center">
+            <MinuteJumpChip state={minuteJump.state} onClear={minuteJump.clear} />
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-0.5">
+          {/* 「분봉으로」는 캘린더 봉 창에만 뜬다. 액션 그룹 맨 앞(하트 앞)에 두는
+              이유: 이것만 **다른 창을 움직이는** 동사라, 이 창을 대상으로 하는
+              나머지와 섞이지 않게 앞에 세운다.
+              **2단계 접힘에서는 내린다** — 하트와 같은 예산 사유이고, 도달 경로가
+              `g` 단축키로 남는다(#762 의 "기능 손실 없이" 를 지키는 조건). */}
+          {canJump && showsWatchlistHeart(headerFold) && (
+            <JumpToMinuteButton
+              readTargetMs={() => jumpSourceRef.current()}
+              hasMinuteWindow={hasMinuteWindow}
+              onRun={runJump}
+              showLabel={!headerFold.compactActions}
+            />
+          )}
           {/* 관심 하트는 액션 행 맨 왼쪽 — 나머지 넷은 차트 조작이고 이것만
               종목 속성이라, 그리기 왼쪽에 두어 동사 묶음 앞에 세운다.
               **2단계 접힘에서는 내린다.** 그 단계의 요구폭이 하트 포함 170px 인데
@@ -561,6 +624,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               savedRangeBand={savedRangeBand}
               restoreViewport={savedRangeViewport}
               savedRangeFromDate={savedRange?.fromDate ?? null}
+              onJumpSourceReady={(read) => { jumpSourceRef.current = read; }}
+              onMinuteJumpChange={setMinuteJump}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}
