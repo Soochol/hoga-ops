@@ -864,23 +864,36 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     // `mouseenter` 가 앞서야 한다: lwc 는 mousemove 리스너를 enter 안에서 등록하고
     // leave 에서 뗀다. 커서가 오버레이로 넘어오는 순간 브라우저가 진짜 leave 를
     // 쏘므로, enter 없이 move 만 되돌리면 **아무 리스너에도 안 닿는다**(실측).
+    // `mouseover`/`mouseout` 은 쏘지 않는다 — lwc 는 안 듣고, 그 둘은 React 의
+    // enter/leave 위임이 타는 경로라 남의 컴포넌트를 흔든다.
     expect(events).toEqual([
-      { type: 'mouseover', x: 320 },
       { type: 'mouseenter', x: 320 },
       { type: 'mousemove', x: 320 },
     ]);
   });
 
-  it('2. pointerleave 는 lwc 자신의 leave 경로를 태운다', async () => {
+  it('2. pointerleave 는 **마지막으로 이동을 넘긴 요소**에 leave 를 보낸다', async () => {
     // `clearCrosshairPosition` 대신 leave 를 쓰는 이유: 그쪽은 조용해서
-    // (`crosshairMove` 미발화) 툴팁·레전드가 정리되지 않는다.
+    // (`crosshairMove` 미발화) 툴팁·레전드가 정리되지 않고 lwc 의 mousemove 구독도
+    // 안 떼어진다.
+    //
+    // 좌표로 다시 찾으면 안 되는 이유를 이 테스트가 고정한다 — leave 좌표는 이미
+    // 차트 밖인 경우가 흔하다(실측: 도형 위에서 곧장 빠져나가면 크로스헤어가 화면에
+    // 박힌 채 남았다). 그래서 여기서는 히트테스트가 **아무것도 못 찾도록** 해 둔다.
     const { overlay, events } = renderOverlay();
 
     act(() => {
-      fireEvent.pointerLeave(overlay, { clientX: 320, clientY: 80 });
+      fireEvent.pointerMove(overlay, { clientX: 320, clientY: 80 });
+    });
+    await flushFrame();
+    events.length = 0;
+    (document as unknown as { elementsFromPoint: unknown }).elementsFromPoint = () => [];
+
+    act(() => {
+      fireEvent.pointerLeave(overlay, { clientX: 5, clientY: 5 });
     });
 
-    expect(events.map((e) => e.type)).toEqual(['mouseout', 'mouseleave']);
+    expect(events.map((e) => e.type)).toEqual(['mouseleave']);
   });
 
   it('3. 우리 오버레이로는 되돌리지 않는다 — 되돌린 이벤트가 다시 들어오면 루프다', async () => {
@@ -896,7 +909,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     // 되돌린 이동은 차트 서브트리에서 시작해 window 로 올라간다 —
     // 오버레이는 그 경로에 없다(차트의 형제다).
     expect(onOverlay).not.toHaveBeenCalled();
-    expect(events).toHaveLength(3);
+    expect(events).toHaveLength(2);
   });
 
   it('4. 프레임당 한 번으로 합치고, 마지막 위치를 쓴다', async () => {
@@ -910,7 +923,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     await flushFrame();
 
     // 첫 위치를 쓰면 크로스헤어가 커서보다 뒤처진다.
-    expect(events.map((e) => e.x)).toEqual([300, 300, 300]);
+    expect(events.map((e) => e.x)).toEqual([300, 300]);
   });
 
   it('5. 시간축이 해석 못 하는 x 에서도 되돌린다 — 빈 구간이 pane 의 4분의 1이다', async () => {
@@ -923,7 +936,7 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     });
     await flushFrame();
 
-    expect(events.map((e) => e.type)).toEqual(['mouseover', 'mouseenter', 'mousemove']);
+    expect(events.map((e) => e.type)).toEqual(['mouseenter', 'mousemove']);
     expect(events.every((e) => e.x === 999)).toBe(true);
   });
 

@@ -161,6 +161,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // 아래 `forwardHoverToChart` 의 rAF 스로틀 상태.
   const forwardPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const forwardRafRef = useRef<number | null>(null);
+  // 마지막으로 이동을 넘겨 준 요소. leave 를 **좌표가 아니라 이 요소로** 보내기
+  // 위해 기억한다 — 사유는 `forwardLeaveToChart`.
+  const forwardTargetRef = useRef<Element | null>(null);
   // Reassigned every render so primitives always read current state at draw time.
   const snapshotRef = useRef<() => DrawingsSnapshot | null>(() => null);
   // Reassigned every render so the (empty-deps) keydown effect always calls the
@@ -645,25 +648,32 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // 되돌려도 팬/줌이 나지 않는다: lwc 의 `mousemove` 처리는 `_mousePressed` 일 때
   // 곧바로 빠지고, 그 플래그는 **자기 요소의 mousedown** 으로만 선다. 우리는 이동만
   // 되돌리고 버튼 이벤트는 넘기지 않으므로 그 경로가 열리지 않는다.
-  const chartNodeAt = (clientX: number, clientY: number): Element | null => {
-    // lwc 는 캔버스가 아니라 그 위에 덮인 **이벤트 오버레이**에 리스너를 걸고,
-    // 버전에 따라 그 요소가 바뀐다. 그래서 요소를 이름으로 찍지 않고 좌표로 찾는다 —
-    // 그 지점에서 차트 서브트리 안 **가장 위** 요소면 리스너 요소 자신이거나 그
-    // 자손이므로, 거기 쏘면 버블링으로 반드시 닿는다.
+  //
+  // 쏘는 요소는 **이름이 아니라 좌표로** 찾는다. lwc 는 캔버스가 아니라 그 조상에
+  // 리스너를 걸고 버전에 따라 그 요소가 바뀌는데, 그 지점에서 차트 서브트리 안
+  // **가장 위** 요소는 리스너 요소 자신이거나 그 자손이므로 거기 쏘면 버블링으로
+  // 반드시 닿는다. 그래서 **전부 `bubbles: true`** 다 — 네이티브 규칙(enter/leave 는
+  // 안 뜬다)을 따르면 자손에 쏜 것이 리스너에 안 닿는다.
+  //
+  // 넘기는 종류는 lwc 가 **실제로 듣는 것만**이다(`mouseenter`·`mousemove`·
+  // `mouseleave`). `mouseover`/`mouseout` 은 lwc 리스너가 없고, 그 둘은 React 의
+  // enter/leave 위임이 타는 경로라 괜히 쏘면 남의 컴포넌트를 흔든다.
+  //
+  // `view` 는 일부러 넘기지 않는다. lwc 가 읽는 것은 `clientX`/`clientY` 와
+  // 타임스탬프뿐이고(`_makeCompatEvent`·`_firesTouchEvents`), 반면 테스트 러너의
+  // jsdom 에서는 전역 `window` 가 프록시라 `new MouseEvent({view})` 가 "member view
+  // is not of type Window" 로 **던진다** — 얻는 것 없이 환경 하나를 깨뜨리는 인자다.
+  const forwardToChart = (clientX: number, clientY: number, types: readonly string[]) => {
     const chartEl = chart.chartElement();
     const doc = chartEl?.ownerDocument;
-    if (!chartEl || !doc || typeof doc.elementsFromPoint !== 'function') return null;
-    return doc.elementsFromPoint(clientX, clientY).find((n) => chartEl.contains(n)) ?? null;
-  };
-  const dispatchToChart = (type: string, clientX: number, clientY: number, bubbles: boolean) => {
-    const target = chartNodeAt(clientX, clientY);
+    if (!chartEl || !doc || typeof doc.elementsFromPoint !== 'function') return;
+    // 대상은 프레임당 한 번만 찾는다 — `elementsFromPoint` 는 히트테스트다.
+    const target = doc.elementsFromPoint(clientX, clientY).find((n) => chartEl.contains(n));
     if (!target) return;
-    // `view` 는 일부러 넘기지 않는다. lwc 가 읽는 것은 `clientX`/`clientY` 와
-    // 타임스탬프뿐이고(`_makeCompatEvent`·`_firesTouchEvents`), 반면 테스트 러너의
-    // jsdom 에서는 전역 `window` 가 프록시라 `new MouseEvent({view})` 가
-    // "member view is not of type Window" 로 **던진다** — 얻는 것 없이 환경 하나를
-    // 깨뜨리는 인자다. 브라우저 실측도 이 형태로 통과했다.
-    target.dispatchEvent(new MouseEvent(type, { bubbles, cancelable: true, clientX, clientY }));
+    forwardTargetRef.current = target;
+    for (const type of types) {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY }));
+    }
   };
   const forwardHoverToChart = (clientX: number, clientY: number) => {
     forwardPointRef.current = { clientX, clientY };
@@ -684,9 +694,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       // 둘 다 `bubbles: true` 여야 한다 — 우리는 lwc 의 리스너 요소를 이름으로
       // 모르고 그 자손에 쏘기 때문이다(네이티브 mouseenter 는 원래 안 뜨지만
       // 합성 이벤트는 뜨게 만들 수 있고, 리스너는 버블 단계에서도 불린다).
-      dispatchToChart('mouseover', p.clientX, p.clientY, true);
-      dispatchToChart('mouseenter', p.clientX, p.clientY, true);
-      dispatchToChart('mousemove', p.clientX, p.clientY, true);
+      forwardToChart(p.clientX, p.clientY, ['mouseenter', 'mousemove']);
     });
   };
   const forwardLeaveToChart = (clientX: number, clientY: number) => {
@@ -696,12 +704,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     }
     forwardPointRef.current = null;
     // lwc 자신의 leave 경로를 태운다 — `crosshairMove(point=null)` 까지 나므로
-    // 툴팁·레전드도 평소와 같은 방식으로 정리된다.
-    // `mouseleave` 도 **버블링시킨다** — enter 와 같은 이유다. 우리는 리스너 요소를
-    // 모르고 그 자손에 쏘므로, 네이티브 규칙(mouseleave 는 안 뜬다)을 따르면 lwc 의
-    // leave 핸들러가 안 돌아 `mousemove` 구독도 안 떼지고 크로스헤어도 안 지워진다.
-    dispatchToChart('mouseout', clientX, clientY, true);
-    dispatchToChart('mouseleave', clientX, clientY, true);
+    // 툴팁·레전드도 평소와 같은 방식으로 정리되고, `mousemove` 구독도 떼어진다.
+    //
+    // **대상을 좌표로 다시 찾으면 안 된다.** `pointerleave` 의 좌표는 이미 차트 밖인
+    // 경우가 흔해서(빠르게 빠져나가는 동선) 히트테스트가 아무것도 못 찾고, 그러면
+    // 크로스헤어가 화면에 **박힌 채 남는다**(실측: 도형 위 x=551 에서 차트 밖으로
+    // 이탈 → 크로스헤어가 550 에 그대로). 이동을 받아 온 그 요소로 곧장 보낸다.
+    const target = forwardTargetRef.current;
+    forwardTargetRef.current = null;
+    if (!target?.isConnected) return;
+    target.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true, clientX, clientY }));
   };
   // 언마운트 정리는 ref 경유다 — 빈 deps 로 걸어야 마운트/언마운트에만 도는데,
   // 이 클로저는 매 렌더 새로 만들어지므로 직접 넣으면 렌더마다 재구독된다.
