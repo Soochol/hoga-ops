@@ -121,7 +121,8 @@ describe('checkAttribution', () => {
 
 describe('설정값 자체', () => {
   it('예산이 현재 실측보다 위이되 무의미하게 크지 않다', () => {
-    // 2026-08-17 실측 raw 1253.6 KB / gzip 375.5 KB. 헤드룸 ~3%.
+    // 2026-08-17 실측 raw 1253.6 KB. 헤드룸 ~3%.
+    // gzip 은 게이트가 아니라 상한이 없다(규칙 파일의 `gzipBytes` 자리 주석 참조).
     //
     // ⚠ 예산을 **정당하게** 올리면 이 테스트도 실패한다 — 아래 실측값을 같이 갱신해야
     // 한다. **그 강제가 이 테스트의 목적이다**: 예산을 올릴 때 실제로 다시 재게 만든다.
@@ -130,8 +131,6 @@ describe('설정값 자체', () => {
     // 위: 현재값을 통과시켜야 한다. 아래: 헤드룸이 10% 를 넘으면 가드가 아니라 장식이다.
     expect(INITIAL_LOAD_BUDGET.rawBytes).toBeGreaterThan(1_253.6 * 1024);
     expect(INITIAL_LOAD_BUDGET.rawBytes).toBeLessThan(1_253.6 * 1024 * 1.1);
-    expect(INITIAL_LOAD_BUDGET.gzipBytes).toBeGreaterThan(375.5 * 1024);
-    expect(INITIAL_LOAD_BUDGET.gzipBytes).toBeLessThan(375.5 * 1024 * 1.1);
   });
 
   it('소속 규칙이 비어 있지 않다 — 0건 순회는 항상 통과한다', () => {
