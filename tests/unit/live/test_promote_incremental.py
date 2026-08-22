@@ -49,6 +49,14 @@ def broker_line(t_ms: int) -> str:
     })
 
 
+def candle_line(t_ms: int, o: int, h: int, low: int, c: int, vol: int) -> str:
+    """`MinuteCandleAggregator.flush` 가 내보내는 봉 한 줄(ADR-0125)."""
+    return json.dumps({
+        "kind": "candle", "t_ms": t_ms,
+        "payload": {"open": o, "high": h, "low": low, "close": c, "volume": vol},
+    })
+
+
 def fill_line(t_ms: int, buy: int, sell: int) -> str:
     return json.dumps({
         "kind": "fill", "t_ms": t_ms, "payload": {"buy_qty": buy, "sell_qty": sell},
@@ -142,4 +150,90 @@ def test_malformed_lines_skip_identically(tmp_path: Path) -> None:
         + json.dumps({"kind": "ob", "t_ms": "NaN", "payload": {}}) + "\n"
         + ob_line(T0, 25000) + "\n",
     )
+    assert_matches_full_parse(jsonl)
+
+
+# === 쪼개진 분봉의 승격 (2026-08-22) ===
+#
+# 생산자(`MinuteCandleAggregator`)는 봉을 거래소 체결시간으로 버킷팅하면서 봉인은
+# 로컬 벽시계로 하고 허용 지연이 0이라, 봉인 뒤 도착한 틱이 **같은 분의 두 번째 봉**을
+# 만든다. 실측 지연: 추가 조각은 분 종료 후 10~120초. 승격이 그 조각을 접지 않으면
+# 파케이가 ``series.candles_ts_monotonic``(Severity.error)을 위반한 채 쓰인다.
+
+MINUTE_MS = 60_000
+
+
+def test_full_parse_folds_a_minute_split_across_flushes(tmp_path: Path) -> None:
+    """한 분이 두 줄로 나뉘어 들어와도 파케이 행은 하나다.
+
+    값은 실측 파일에서 가져왔다(005930/20260820 09:08: 107,264 → 39,722).
+    """
+    jsonl = tmp_path / f"{CODE}.jsonl"
+    jsonl.write_text("".join(line + "\n" for line in [
+        candle_line(T0, 252750, 253500, 252500, 253000, 107264),          # 조각 1
+        candle_line(T0, 253250, 254000, 253000, 253500, 39722),           # 조각 2(늦음)
+        candle_line(T0 + MINUTE_MS, 253500, 254500, 253500, 254000, 90000),
+    ]), encoding="utf-8")
+
+    candles = _parse_jsonl_to_records(jsonl, code=CODE, date=DATE)[4]
+
+    assert len(candles) == 2
+    assert [c.ts_ms for c in candles] == [36_000_000, 36_060_000]  # 10:00 · 10:01
+    assert candles[0].open_ == 252750    # 첫 조각
+    assert candles[0].close_ == 253500   # 마지막 조각
+    assert candles[0].high == 254000
+    assert candles[0].low == 252500
+    assert candles[0].vol_a == 146986    # 합
+
+
+def test_incremental_folds_a_fragment_that_arrives_in_a_later_pass(tmp_path: Path) -> None:
+    """조각 2가 **다음 승격 주기**에 도착해도 행은 하나이고 거래량은 정확히 한 번 더해진다.
+
+    **막는 방향**: 병합이 **증분 exit 에만 안 물리는 것**. 승격 파서는 exit 이 둘이라
+    (`_parse_jsonl_to_records` · `_parse_jsonl_incremental`) 한쪽만 고치기 쉬운데,
+    증분은 오늘 · 전량은 익일 배치라 그 차이는 **날짜가 넘어가야** 드러난다. 실제
+    오늘 파케이를 쓰는 것은 이쪽이다.
+
+    **못 보는 것**: 병합이 누적 상태를 제자리에서 변이하는지. 병합 규칙은 결합법칙이
+    성립해 이미 접힌 행에 조각을 다시 접어도 값이 같으므로, 여기 단언은 전부 통과한다
+    (red-check 확인). 그 불변식은 `test_merge_split_candles_does_not_mutate_its_input`
+    이 따로 잡는다.
+    """
+    _TODAY_PARSE_STATES.clear()
+    jsonl = tmp_path / f"{CODE}.jsonl"
+
+    first = candle_line(T0, 252750, 253500, 252500, 253000, 107264) + "\n"
+    jsonl.write_text(first, encoding="utf-8")
+    candles = _parse_jsonl_incremental(jsonl, code=CODE, date=DATE)[4]
+    assert [(c.ts_ms, c.vol_a) for c in candles] == [(36_000_000, 107264)]
+
+    # 2회차: 같은 분의 늦은 조각이 붙는다.
+    jsonl.write_text(
+        first + candle_line(T0, 253250, 254000, 253000, 253500, 39722) + "\n",
+        encoding="utf-8",
+    )
+    candles = _parse_jsonl_incremental(jsonl, code=CODE, date=DATE)[4]
+    assert [(c.ts_ms, c.vol_a) for c in candles] == [(36_000_000, 146986)]
+    assert (candles[0].open_, candles[0].close_) == (252750, 253500)
+
+    # 3회차: 새 줄이 없으면 값이 더 움직이지 않는다(멱등 — 변이 감지의 두 번째 각도).
+    candles = _parse_jsonl_incremental(jsonl, code=CODE, date=DATE)[4]
+    assert [(c.ts_ms, c.vol_a) for c in candles] == [(36_000_000, 146986)]
+    assert_matches_full_parse(jsonl)
+
+
+def test_incremental_and_full_agree_on_a_non_adjacent_fragment(tmp_path: Path) -> None:
+    """``M 조각1, M+1, M 조각2`` 배치에서도 두 파서가 같은 답을 낸다."""
+    _TODAY_PARSE_STATES.clear()
+    jsonl = tmp_path / f"{CODE}.jsonl"
+    jsonl.write_text("".join(line + "\n" for line in [
+        candle_line(T0, 252750, 253500, 252500, 253000, 107264),
+        candle_line(T0 + MINUTE_MS, 253500, 254500, 253500, 254000, 90000),
+        candle_line(T0, 253250, 254000, 253000, 253500, 39722),  # 60초 넘게 늦음
+    ]), encoding="utf-8")
+
+    candles = _parse_jsonl_incremental(jsonl, code=CODE, date=DATE)[4]
+    assert [(c.ts_ms, c.vol_a) for c in candles] == [
+        (36_000_000, 146986), (36_060_000, 90000),
+    ]
     assert_matches_full_parse(jsonl)

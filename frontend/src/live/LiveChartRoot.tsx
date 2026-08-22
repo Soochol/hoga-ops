@@ -37,6 +37,8 @@ import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
+import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../chart/timeframeJump';
+import { useTimeframeJump, type MinuteJumpState } from './useTimeframeJump';
 import type { Candle } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
@@ -205,6 +207,8 @@ const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
+/** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
+const EMPTY_CANDLES: readonly Candle[] = [];
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
 /** Leading+trailing throttle window for sidebarCursorMs publishes. The first
  * hover after a quiet window publishes immediately; while the pointer keeps
@@ -428,6 +432,14 @@ interface Props {
   };
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
+  /**
+   * 「분봉으로」 버튼이 이 캘린더 창의 **목적지 날짜**를 읽는 통로(실시각 ms, 없으면
+   * null). `onViewportCaptureReady` 와 같은 등록 패턴이다 — 좌표 변환과 캔들 배열은
+   * 차트 안에만 있어서 헤더가 직접 계산할 수 없다.
+   */
+  onJumpSourceReady?: (readTargetMs: () => number | null) => void;
+  /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
+  onMinuteJumpChange?: (jump: { state: MinuteJumpState | null; clear: () => void }) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
   onCandleBasisHover?: (date: string | null) => void;
@@ -509,6 +521,8 @@ export function LiveChartRoot({
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
   onViewportCaptureReady,
+  onJumpSourceReady,
+  onMinuteJumpChange,
   onCursorActiveChange,
   onCandleBasisHover,
   onCandleBasisClick,
@@ -750,6 +764,10 @@ export function LiveChartRoot({
   const lastCandleMsRef = useRef<number | null>(null);
   lastCandleMsRef.current =
     cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
+  // 「분봉으로」 목적지 계산이 읽는다 — `readJumpTargetMs` 는 useCallback([]) 이라
+  // 렌더 클로저를 볼 수 없다. 렌더 중 쓰기는 위 `lastCandleMsRef` 와 같은 규약.
+  const candlesRef = useRef<readonly Candle[]>(EMPTY_CANDLES);
+  candlesRef.current = cb?.candles ?? EMPTY_CANDLES;
   const lastStableCandleLogicalIndexRef = useRef<number | null>(null);
   const rememberLatestCandleLogicalIndex = (idx: number | null) => {
     if (typeof idx === 'number' && Number.isFinite(idx)) {
@@ -778,6 +796,18 @@ export function LiveChartRoot({
   useEffect(() => {
     cursorOriginRef.current = { windowId: winCtxWindowId, group: winCtxGroup, code, timeframe };
   }, [winCtxWindowId, winCtxGroup, code, timeframe]);
+  /**
+   * 이 창에서 **마지막으로 호버한** 실시각 — 「분봉으로」의 1순위 목적지다.
+   *
+   * 스토어의 `syncCursorMs` 를 읽을 수 없는 이유: 그 채널은 포인터가 떠나면
+   * 120ms 뒤 지워진다(`CURSOR_LEAVE_CLEAR_DELAY_MS`). 버튼을 누르려면 포인터가
+   * 차트를 떠나 헤더로 가야 하므로 클릭 시점엔 이미 비어 있다 — 같은 수명 문제로
+   * 크로스헤어 가장자리 칩을 클릭 가능하게 만드는 안이 기각됐다.
+   *
+   * 그래서 **sticky 로 따로 기억한다**. 오래돼서 화면 밖일 수 있으므로 소비 시점에
+   * 현재 보이는 범위 안인지 확인하고, 밖이면 우측 끝으로 폴백한다.
+   */
+  const lastHoveredMsRef = useRef<number | null>(null);
   const publishedCursorMsRef = useRef<number | null>(null);
   const publishedBasisDateRef = useRef<string | null>(null);
   const publishedCursorActiveRef = useRef<boolean | null>(null);
@@ -799,6 +829,7 @@ export function LiveChartRoot({
   // 그것이 곧 `isSyncConsumerTimeframe` 이다(두 집합을 갈라 놓지 않겠다는 뜻).
   // W/M 은 여전히 소비자가 없어 발행하지 않는다.
   const publishSyncCursor = useCallback((cursorMs: number) => {
+    lastHoveredMsRef.current = cursorMs;
     if (!canPublishSyncCursor(cursorOriginRef.current.timeframe)) return;
     useLiveCursorStore.getState().setSyncCursor(cursorMs, cursorOriginRef.current);
   }, []);
@@ -1018,6 +1049,61 @@ export function LiveChartRoot({
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
+  // ── 기간 점프 ───────────────────────────────────────────────────────────
+  // 동기화 토글(`rangeSyncEnabled`)에 묶지 **않는다**. 저것은 "따라다닐 것인가" 를
+  // 정하는 스위치이고 점프는 사용자가 누를 때만 한 번 움직이는 명령이라, 끌 이유가
+  // 애초에 없다(안 누르면 아무 일도 일어나지 않는다). 종목 축만 크로스헤어와
+  // 공유한다 — 세 동기화가 이미 그 토글을 함께 쓴다.
+  //
+  // ⚠ **백필 호출보다 위에 있어야 한다** — `backfillFromDate` 를 그쪽에 넘긴다.
+  const jumpCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  useEffect(() => { lastHoveredMsRef.current = null; }, [code, timeframe]);
+  const readJumpTargetMs = useCallback((): number | null => {
+    const c = chartRef.current;
+    const arr = candlesRef.current;
+    if (!c || arr.length === 0) return null;
+    const lastMs = arr[arr.length - 1].ts_ms;
+    let vr: { from: unknown; to: unknown } | null = null;
+    try {
+      vr = c.timeScale().getVisibleRange();
+    } catch {
+      vr = null;
+    }
+    if (!vr) return lastMs;
+    const fromMs = axisRef.current.toReal(Number(vr.from) * 1000);
+    const toMs = axisRef.current.toReal(Number(vr.to) * 1000);
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return lastMs;
+    // ① 마지막으로 호버한 봉이 **지금 화면 안**이면 그것이 사용자가 가리킨 날이다.
+    //    화면 밖이면 그 기억은 낡았다(그 뒤로 팬했다는 뜻) — 조용히 쓰면 보이지도
+    //    않는 날짜로 점프한다.
+    const hovered = lastHoveredMsRef.current;
+    if (hovered !== null && hovered >= fromMs && hovered <= toMs) return hovered;
+    // ② 아니면 뷰 우측 끝 **이하의 마지막 실재 캔들**. `toMs` 를 그대로 쓰지 않는
+    //    이유는 저장뷰 앵커와 같다 — 우측 여백을 보고 있으면 그 시각의 봉이 없다.
+    return savedRangeAnchorTs(arr, toMs) ?? lastMs;
+  }, []);
+  useEffect(() => {
+    if (!canPublishTimeframeJump(timeframe)) return;
+    onJumpSourceReady?.(readJumpTargetMs);
+    return () => onJumpSourceReady?.(() => null);
+  }, [timeframe, readJumpTargetMs, onJumpSourceReady]);
+  const minuteJump = useTimeframeJump({
+    chart,
+    axis,
+    containerRef,
+    candles: cb?.candles ?? EMPTY_CANDLES,
+    enabled: isTimeframeJumpTarget(timeframe),
+    myWindowId: winCtxWindowId,
+    myTimeframe: timeframe,
+    myGroup: winCtxGroup,
+    myCode: code,
+    allowCrossSymbol: jumpCrossSymbol,
+  });
+  const { state: minuteJumpState, clear: clearMinuteJump } = minuteJump;
+  useEffect(() => {
+    onMinuteJumpChange?.({ state: minuteJumpState, clear: clearMinuteJump });
+  }, [minuteJumpState, clearMinuteJump, onMinuteJumpChange]);
+
   useViewportBackfill({
     chart,
     axis,
@@ -1031,6 +1117,9 @@ export function LiveChartRoot({
     settledFromDate,
     savedRangeFromDate,
     minuteScrollbackFloorDate,
+    // 게이트를 통과한 값이다 — 원시 슬롯을 물리면 받지도 않은 점프를 위해 과거를
+    // 긁는 창이 생긴다(그 prop 주석의 그 사고).
+    jumpFromDate: minuteJump.backfillFromDate,
   });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
@@ -1070,6 +1159,7 @@ export function LiveChartRoot({
     myCode: code,
     allowCrossSymbol: rangeSyncCrossSymbol,
   });
+
   useEffect(() => {
     const container = containerRef.current;
     const target = container?.parentElement ?? container;

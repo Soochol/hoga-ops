@@ -73,6 +73,42 @@ export const LIVE_HEADER_NEED = {
   bothFolded: 155,
 } as const;
 
+/**
+ * **캘린더 봉 창**(일·주·월)이 요구하는 폭 — 「분봉으로」 버튼이 여기에만 뜬다.
+ *
+ * **실측 2026-08-22** (`/browse` · 다이얼 1.0× · 위와 같은 #905 복제 절차 ·
+ * 창 rect 를 sessionStorage 로 바꿔 reload 해서 단계를 재현 · 240분 라벨):
+ *
+ * | 단계          | 분봉 창(대조) | 캘린더 창 | Δ   |
+ * |---------------|---------------|-----------|-----|
+ * | full          | **449**       | 519       | +70 |
+ * | actionsFolded | **286**       | 308       | +22 |
+ * | bothFolded    | **155**       | 135       | 0   |
+ *
+ * **대조 열이 위 `LIVE_HEADER_NEED`(449 / 286 / 155)와 정확히 일치한다** — 절차가
+ * 재현됐다는 증거다. 재측정할 때도 같은 대조를 남길 것.
+ *
+ * ⚠ **이 표는 #1493(hogaplay 소스 토글) 합류 뒤 다시 잰 값이다.** 그 전 base 에서는
+ * 대조군이 405/250/141(1분 라벨)이었고 캘린더가 475/272/135 로 **Δ 는 같았다** —
+ * 즉 두 신규 버튼의 폭이 가산적이라는 것이 두 base 에서 확인됐다. 그래도 아래 상수를
+ * Δ 가 아니라 `LIVE_HEADER_NEED` **파생**으로 적는 이유가 이것이다: 대조군이 다시
+ * 움직이면(버튼이 또 늘거나 다이얼이 바뀌면) 이 값이 따라간다.
+ *
+ * Δ 를 `LIVE_HEADER_NEED` 에 더한 값이 아래 상수다. `bothFolded` 가
+ * 0 인 것은 실수가 아니라 **그 단계에서 버튼을 렌더하지 않기** 때문이다(하트와 같은
+ * 예산 사유, `showsWatchlistHeart` 게이트를 공유한다). 캘린더 창의 2단계 자연폭이
+ * 분봉보다 오히려 좁은 것(135 < 141)은 「일⌄」가 「1분⌄」보다 짧아서다.
+ *
+ * ⚠ **임계를 하나로 합치지 말 것.** 캘린더 값을 분봉 창에도 씌우면 분봉 헤더가
+ * **70px 일찍** 라벨을 접는다 — `/study` 임계를 따로 둔 것과 같은 사유이고, 그쪽
+ * 주석이 "양방향으로 틀린다" 로 기록한 실패다.
+ */
+export const LIVE_CALENDAR_HEADER_NEED = {
+  full: LIVE_HEADER_NEED.full + 70,
+  actionsFolded: LIVE_HEADER_NEED.actionsFolded + 22,
+  bothFolded: LIVE_HEADER_NEED.bothFolded,
+} as const;
+
 /** 라벨을 유지할 수 있는 헤더 최소 폭(px) = `full` 요구폭 + 여유 2. */
 export const HEADER_LABEL_MIN_WIDTH_PX = LIVE_HEADER_NEED.full + 2;
 
@@ -179,12 +215,25 @@ export type HeaderFoldThresholds = {
   timeframeRestoreWidthPx: number;
 };
 
-/** `/live` 차트 창 헤더 — 액션 4버튼(그리기·보조지표·저장뷰·수집) 실측. */
+/** `/live` **분봉** 차트 창 헤더 — 액션 4버튼(그리기·보조지표·저장뷰·수집) 실측. */
 export const LIVE_HEADER_FOLD: HeaderFoldThresholds = {
   labelMinWidthPx: HEADER_LABEL_MIN_WIDTH_PX,
   labelRestoreWidthPx: HEADER_LABEL_RESTORE_WIDTH_PX,
   timeframeFoldWidthPx: HEADER_TIMEFRAME_FOLD_WIDTH_PX,
   timeframeRestoreWidthPx: HEADER_TIMEFRAME_RESTORE_WIDTH_PX,
+};
+
+/**
+ * `/live` **캘린더 봉**(일·주·월) 차트 창 헤더 — 위 4버튼 + 「분봉으로」.
+ *
+ * 여유는 분봉 쪽과 **같은 값**을 쓴다(+2 / +5) — 여유는 폰트 렌더 편차 몫이지
+ * 버튼 수의 함수가 아니다. 2단계 임계는 그 단계에서 버튼이 빠지므로 분봉과 같다.
+ */
+export const LIVE_CALENDAR_HEADER_FOLD: HeaderFoldThresholds = {
+  labelMinWidthPx: LIVE_CALENDAR_HEADER_NEED.full + 2,
+  labelRestoreWidthPx: LIVE_CALENDAR_HEADER_NEED.full + 2 + 24,
+  timeframeFoldWidthPx: LIVE_CALENDAR_HEADER_NEED.actionsFolded + 5,
+  timeframeRestoreWidthPx: LIVE_CALENDAR_HEADER_NEED.actionsFolded + 5 + 24,
 };
 
 /**

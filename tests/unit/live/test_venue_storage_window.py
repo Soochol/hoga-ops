@@ -12,6 +12,7 @@
 """
 import asyncio
 import contextlib
+import json
 import time
 from datetime import datetime
 
@@ -33,6 +34,13 @@ def _ob(venue: str, t_ms: int, tot_ask: int) -> WsTick:
     return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, venue=venue, payload={
         "code": "005930", "t_ms": t_ms, "asks": [], "bids": [],
         "total_ask_qty": tot_ask, "total_bid_qty": 0,
+    })
+
+
+def _tr(venue: str, t_ms: int, price: int, qty: int) -> WsTick:
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.TRADE, venue=venue, payload={
+        "trades": [{"t_ms": t_ms, "price": price, "qty": qty, "side": 1,
+                    "side_source": "kiwoom_ws"}],
     })
 
 
@@ -77,6 +85,67 @@ async def test_partial_close_drains_only_the_closed_venue(tmp_path, monkeypatch)
     # 전 venue 가 닫힌 게 아니므로 일경계 라벨은 유지된다 — 지우면 NXT 의 이후 fill
     # 윈도 라벨이 전부 어긋난다(`fill_t_ms` 가 now−FLUSH_INTERVAL 로 폴백).
     assert stream._last_flush_date == "20260605"
+
+
+async def test_partial_close_seals_the_in_progress_candle_of_the_closed_venue_only(
+    tmp_path, monkeypatch,
+):
+    """15:30 drain 이 **아직 열려 있는 NXT 의 진행 중 봉까지 봉인하면 안 된다**.
+
+    이 배선이 실제 결함이 있던 자리다. `reset(venue)` 은 venue 별인데 봉인은
+    `seal_candles_all=True` 로 **전 시장**에 걸려 있어서, KRX 마감마다 NXT·UN 의 그
+    분이 잘리고 나머지 체결이 새 봉을 만들었다 — 같은 분이 두 행. 실측 서명은
+    "분이 끝나기도 전에 나간 봉"(표본 60파일 11건).
+
+    **양방향으로 잰다**: 닫히는 KRX 는 봉이 나가고, 열린 NXT 는 안 나간다. 한쪽만
+    보면 「항상 봉인」·「절대 봉인 안 함」 어느 하드코딩도 초록이 된다.
+
+    시계를 고정한다 — 실시각을 쓰면 테스트가 분 경계를 넘는 순간 진행 중 봉이
+    **완성 봉**이 되어 두 시장 모두 나가고, 그 실패는 실행마다 달라진다.
+    """
+    monkeypatch.setattr(stream_mod, "FLUSH_INTERVAL_S", 0.05)
+    monkeypatch.setattr(stream_mod, "IDLE_INTERVAL_S", 0.02)
+    minute = int(time.time() * 1000) // 60_000 * 60_000
+    monkeypatch.setattr(stream_mod, "_now_ms", lambda: minute + 5_000)
+
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    calls = {"n": 0}
+
+    def windows(_ms):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # 진행 중(같은 분) 봉을 두 시장에 하나씩.
+            stream._candle_agg.ingest(_tr("KRX", minute + 1_000, price=100, qty=1))
+            stream._candle_agg.ingest(_tr("NXT", minute + 2_000, price=200, qty=3))
+            return _ALL_OPEN
+        return frozenset({"NXT", "UN"})   # KRX 만 닫힘(15:30)
+
+    monkeypatch.setattr(session_gate_mod, "venue_capture_windows", windows)
+    task = asyncio.create_task(stream.run_flush_loop())
+    try:
+        for _ in range(80):
+            await asyncio.sleep(0.02)
+            if calls["n"] >= 3:
+                break
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    def candles(venue: str) -> list[dict]:
+        path = tmp_path / "live" / "20260605" / venue / "005930.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(x) for x in path.read_text().splitlines()
+                if x and json.loads(x)["kind"] == "candle"]
+
+    krx = candles("KRX")
+    assert len(krx) == 1, "닫히는 시장의 마지막 봉을 잃었다"
+    assert krx[0]["payload"]["close"] == 100
+    assert candles("NXT") == [], "열려 있는 시장의 진행 중 봉을 잘랐다 — 조각이 생긴다"
+    # NXT 봉은 집계기에 살아 있어 그 분이 지난 뒤 **한 봉으로** 나간다.
+    assert [k for k in stream._candle_agg._codes if k[1] == "NXT"]
 
 
 def test_downsampler_reset_scopes_to_one_venue():

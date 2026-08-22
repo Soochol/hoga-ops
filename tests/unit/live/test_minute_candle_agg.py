@@ -19,7 +19,7 @@ def _tr(code, t_ms, price, qty, *, side=1, cum=None):
 
 
 def _seal_all(agg):
-    out = agg.flush(now_ms=0, seal_all=True)
+    out = agg.flush(now_ms=0, seal_venues=frozenset({"KRX", "NXT", "UN"}))
     return {code: {s.t_ms: s for s in snaps} for code, snaps in out.items()}
 
 
@@ -81,13 +81,13 @@ def test_flush_does_not_remove_until_commit():
     assert agg.flush(now_ms=M1 + 5_000) == {}
 
 
-def test_seal_all_seals_in_progress_bar():
+def test_seal_venues_seals_in_progress_bar():
     agg = MinuteCandleAggregator()
     agg.ingest(_tr("005930", M0 + 1_000, price=100, qty=1))
     # now_ms가 같은 분이라 일반 flush면 미봉인.
     assert agg.flush(now_ms=M0 + 2_000) == {}
-    # seal_all이면 진행 중 봉도 봉인(게이트 닫힘 drain).
-    out = agg.flush(now_ms=M0 + 2_000, seal_all=True)
+    # 그 시장이 seal_venues에 들면 진행 중 봉도 봉인(게이트 닫힘 drain).
+    out = agg.flush(now_ms=M0 + 2_000, seal_venues=frozenset({"KRX"}))
     assert out[("005930", "KRX")][0].t_ms == M0
 
 
@@ -114,7 +114,7 @@ def test_reset_clears_all():
     agg = MinuteCandleAggregator()
     agg.ingest(_tr("005930", M0 + 1_000, price=100, qty=1))
     agg.reset()
-    assert agg.flush(now_ms=0, seal_all=True) == {}
+    assert agg.flush(now_ms=0, seal_venues=frozenset({"KRX", "NXT", "UN"})) == {}
 
 
 def test_multiple_codes_isolated():
@@ -131,4 +131,4 @@ def test_non_trade_ticks_ignored():
     agg = MinuteCandleAggregator()
     agg.ingest(WsTick(code="005930", t_ms=M0 + 1_000, kind=SnapshotKind.OB,
                       payload={"asks": [], "bids": []}))
-    assert agg.flush(now_ms=0, seal_all=True) == {}
+    assert agg.flush(now_ms=0, seal_venues=frozenset({"KRX", "NXT", "UN"})) == {}

@@ -19,6 +19,7 @@ import {
   WorkspaceIndicatorDrawer,
   targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
+import { requestTimeframeJumpFrom } from './workspace/jumpControls';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
@@ -150,6 +151,14 @@ export function LivePage() {
       ws.setChartTimeframe(target.id, next);
     },
     onAddChartWindow: () => useWorkspaceStore.getState().addWindow('chart'),
+    // g = 포커스 차트 창의 「분봉으로」. 목적지 계산이 그 창의 차트 좌표를 읽어야
+    // 해서 실행 자체는 창이 한다 — 셸은 **어느 창인가**만 정한다(Shift+1~4 와 같은
+    // 포커스 규칙). 그 창이 분봉이면 등록이 없어 no-op 이다.
+    onJumpToMinute: () => {
+      const ws = useWorkspaceStore.getState();
+      const target = targetChartWindow(ws.windows, ws.zOrder);
+      if (target) requestTimeframeJumpFrom(target.id);
+    },
     onCycleFocus: (dir) => {
       const ws = useWorkspaceStore.getState();
       // 창 목록(안정 순서)에서 현재 포커스의 다음/이전을 focus. 창 0·1개면 no-op.

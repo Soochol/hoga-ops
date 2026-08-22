@@ -142,7 +142,7 @@ async def test_candle_not_synthesized_for_nxt(tmp_path):
 
 
 async def test_drain_seals_final_in_progress_candle(tmp_path):
-    """게이트 닫힘 drain(seal_candles_all)이 진행 중 마지막 봉을 봉인한다."""
+    """게이트 닫힘 drain 이 **닫히는 시장의** 진행 중 마지막 봉을 봉인한다."""
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
@@ -160,8 +160,8 @@ async def test_drain_seals_final_in_progress_candle(tmp_path):
     await stream.flush_once(now_ms=t0 + 2_000)
     assert _candle_lines(jsonl_path.read_text()) == []
 
-    # drain: seal_candles_all → 진행 중 봉도 봉인.
-    await stream.flush_once(now_ms=t0 + 2_000, seal_candles_all=True)
+    # drain: 그 시장이 seal_candle_venues 에 들면 진행 중 봉도 봉인.
+    await stream.flush_once(now_ms=t0 + 2_000, seal_candle_venues=frozenset({"KRX"}))
     candles = _candle_lines(jsonl_path.read_text())
     assert len(candles) == 1
     assert candles[0]["payload"]["close"] == 200

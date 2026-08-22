@@ -25,7 +25,11 @@ from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
-from hoga.tables.candles import Candle, write_parquet as write_candles_parquet
+from hoga.tables.candles import (
+    Candle,
+    merge_split_candles,
+    write_parquet as write_candles_parquet,
+)
 from hoga.tables.fills import Fill, write_fills_parquet
 from hoga.tables.snapshots import Orderbook, write_parquet as write_snapshots_parquet
 from hoga.tables.trades import Trade, write_parquet as write_trades_parquet
@@ -357,8 +361,13 @@ def _parse_jsonl_incremental(
         code, date, state.snapshots, state.trades, state.broker_snapshot_count,
         fill_count=len(state.fills), source=source, venue=venue,
     )
+    # 조각 봉은 여기서 접는다 — 파케이가 분당 한 행이 되도록(merge_split_candles
+    # docstring). ⚠ **exit 이 둘이다** — 전량 파서(`_parse_jsonl_to_records`)에도
+    # 같은 호출이 있어야 한다. 한쪽만 고치면 증분(오늘)과 전량(익일 배치)이 같은
+    # JSONL 에서 다른 파케이를 내고, 그 차이는 날짜가 넘어가야 드러난다.
+    # `state.candles` 자체는 도착 로그로 남긴다(변이하지 않는다).
     return (state.snapshots, state.trades, state.broker_rows, state.fills,
-            state.candles, meta)
+            merge_split_candles(state.candles), meta)
 
 
 def _parse_jsonl_to_records(
@@ -422,7 +431,7 @@ def _parse_jsonl_to_records(
     trades = state.trades
     broker_rows = state.broker_rows
     fills = state.fills
-    candles = state.candles
+    candles = merge_split_candles(state.candles)
     broker_snapshot_count = state.broker_snapshot_count
     meta = _build_meta(
         code,

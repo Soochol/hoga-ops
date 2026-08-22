@@ -18,6 +18,7 @@ const TIMEFRAME_SHORTCUT_KEYS: Record<string, LiveTimeframeShortcutSlot> = {
  *   k   — focus previous watchlist code
  *   w   — toggle watchlist panel
  *   n   — add a chart window to the active group (ADR-0119 PR-E)
+ *   g   — 포커스 차트 창의 「분봉으로」 — 보고 있는 날짜를 그룹의 분봉 창에서 연다
  *   [ ] — cycle window focus prev / next in the window list (PR-E)
  *   Shift+1~4 — focus chart window timeframe slot
  *
@@ -33,6 +34,8 @@ export interface UseLiveKeyboardOpts {
   onSelectTimeframeShortcut?: (slot: LiveTimeframeShortcutSlot) => void;
   /** 활성 그룹에 차트 창 추가(n). 미지정이면 no-op(멀티창 밖). */
   onAddChartWindow?: () => void;
+  /** 포커스 차트 창의 「분봉으로」(g). 그 창이 캘린더 봉이 아니면 no-op. */
+  onJumpToMinute?: () => void;
   /** 포커스 창 순환(] = next, [ = prev). 미지정이면 no-op. */
   onCycleFocus?: (dir: 1 | -1) => void;
 }
@@ -67,6 +70,9 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
         case 'n':
           if (opts.onAddChartWindow) { opts.onAddChartWindow(); e.preventDefault(); }
           break;
+        case 'g':
+          if (opts.onJumpToMinute) { opts.onJumpToMinute(); e.preventDefault(); }
+          break;
         case ']':
           if (opts.onCycleFocus) { opts.onCycleFocus(1); e.preventDefault(); }
           break;
@@ -84,6 +90,7 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
     opts.onPrevCode,
     opts.onSelectTimeframeShortcut,
     opts.onAddChartWindow,
+    opts.onJumpToMinute,
     opts.onCycleFocus,
   ]);
 }

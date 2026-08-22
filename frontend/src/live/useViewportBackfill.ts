@@ -117,6 +117,19 @@ export interface ViewportBackfillArgs {
    * (`StudyPage` 의 같은 주석).
    */
   minuteScrollbackFloorDate?: string | null;
+  /**
+   * 이 창에 걸린 **기간 점프**의 목적지(YYYYMMDD). null = 점프 없음.
+   *
+   * 저장뷰와 **정확히 같은 문제**라 3d 가 둘을 함께 받는다: 순간 이동이라 팬
+   * 이벤트가 없어 3b 가 발화하지 않고, 단발 `extend` 는 한 청크에서 멎는다. 둘 중
+   * 더 과거를 목표로 삼아 한 번에 워크백한다 — 저장뷰를 연 채로 점프하면 두 구간이
+   * 모두 필요하고, 목표를 하나만 두면 나머지가 영영 안 채워진다.
+   *
+   * ⚠ **게이트를 통과한 값이어야 한다.** 스토어의 원시 점프 슬롯을 그대로 물리면
+   * 창번호·종목이 달라 **받지도 않은** 점프를 위해 과거를 긁는 창이 생긴다
+   * (`useTimeframeJump.backfillFromDate` 가 그 게이트를 통과한 결과다).
+   */
+  jumpFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -170,6 +183,7 @@ export function useViewportBackfill({
   settledFromDate = null,
   savedRangeFromDate = null,
   minuteScrollbackFloorDate = null,
+  jumpFromDate = null,
 }: ViewportBackfillArgs): void {
   // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
   // 안) 또는 전역 스토어(밖)로 — getState 병행 경로의 창별 대응물.
@@ -204,8 +218,10 @@ export function useViewportBackfill({
   // 뷰포트가 처음부터 지표 커버리지 밖 과거를 보고 있으면 사용자 무조작으로도 갭을
   // 메우되, 지표 신호가 유효해진 첫 커밋에서 단 한 번만 판정한다(effect 3c).
   const initialCoverageCheckedRef = useRef(false);
-  /** 3d 가 fill 을 세운 저장 구간 시작일 — 같은 저장뷰로 반복 판정하지 않기 위한 키. */
-  const savedRangeFilledForRef = useRef<string | null>(null);
+  /** 3d 가 fill 을 세운 (저장 구간 시작일 · 점프 목적지) 쌍 — 같은 요청으로 반복
+   *  판정하지 않기 위한 키. **쌍이어야 한다**: 한쪽만 키로 두면 다른 쪽이 바뀌어도
+   *  마킹이 걸린 채라 그 요청이 조용히 무시된다. */
+  const targetFilledForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -608,26 +624,35 @@ export function useViewportBackfill({
     historicalRange.extend(covPlan.nextFrom);
   }, [chart, bundle, axis, timeframe, canTriggerBackfill, indicatorCoverageFromDate, rangeWindowFromDate, code, historicalRange]);
 
-  // 3d. 저장뷰 구간 백필 — 저장 구간 시작까지 워크백한다.
+  // 3d. **순간 이동** 백필 — 저장뷰 구간 시작 또는 기간 점프 목적지까지 워크백한다.
   //
   // **3c 와 같은 형태이고 트리거 소스만 다르다**: 저쪽은 "지표 커버리지가 화면보다 얕다",
-  // 이쪽은 "열린 저장뷰의 구간이 로드 범위보다 과거다". 둘 다 뷰포트 이벤트가 없는 상황
+  // 이쪽은 "화면이 팬 없이 과거로 옮겨졌다". 둘 다 뷰포트 이벤트가 없는 상황
   // (3b 가 못 잡는 자리)이고, 둘 다 `fillKind` 를 세워 **진행 루프(3a)에 나머지 청크
   // 워크백을 넘긴다**. `coverage_gap` kind 를 그대로 쓰는 이유는 종료 조건이 정확히
   // 같기 때문이다 — 요청 창이 목표 날짜에 닿으면 `planFillStep` 이 stop 한다.
+  //
+  // 소스가 둘인 것은 **같은 실패를 공유하기 때문**이다. 저장뷰 적용도 점프도 팬을
+  // 만들지 않아 3b 가 침묵하고, 단발 `extend` 로는 한 청크에서 멎는다. 목표는 둘 중
+  // **더 과거**다 — 저장뷰를 연 채로 점프하면 두 구간이 모두 필요하고, 목표를 하나만
+  // 두면 나머지가 영영 안 채워진다.
   //
   // ⚠ **단발 `extend` 로는 안 된다.** 그건 `historicalFromDate` 를 한 번 세팅할 뿐이라
   // 백엔드가 한 청크만 주고 끝나고, `fillKind` 가 null 이라 3a 가 이어받지 못한다.
   // 저장뷰 적용에는 팬이 없으니 그대로 멎는다(2026-08-21 실측, 3분 20초 무변화).
   //
-  // 저장뷰가 바뀌면 다시 판정한다(키가 `savedRangeFromDate` 자체) — 1회 마킹인 3c 와
-  // 다른 점이고, 다른 저장뷰를 열면 그 구간까지 다시 채워야 하므로 그래야 한다.
+  // 요청이 바뀌면 다시 판정한다(키가 두 날짜의 쌍) — 1회 마킹인 3c 와 다른 점이고,
+  // 다른 저장뷰를 열거나 다른 날로 점프하면 그 구간까지 다시 채워야 하므로 그래야 한다.
+  const spotTargetFromDate = [savedRangeFromDate, jumpFromDate]
+    .filter((d): d is string => d !== null)
+    .reduce<string | null>((acc, d) => (acc === null || d < acc ? d : acc), null);
+  const spotTargetKey = `${savedRangeFromDate ?? ''}|${jumpFromDate ?? ''}`;
   useEffect(() => {
-    if (savedRangeFromDate === null) {
-      savedRangeFilledForRef.current = null;
+    if (spotTargetFromDate === null) {
+      targetFilledForRef.current = null;
       return;
     }
-    if (savedRangeFilledForRef.current === savedRangeFromDate) return;
+    if (targetFilledForRef.current === spotTargetKey) return;
     if (!chart || !bundle || bundle.candles.length === 0) return;
     if (!canTriggerBackfill()) return;
     if (axis.segments.length === 0) return;
@@ -637,16 +662,17 @@ export function useViewportBackfill({
     // 읽으므로 여기서 폴백으로 밀고 나가면 3a 가 첫 settle 에서 stop 해 **한 스텝만
     // 가고 멎는다** — 고치려던 그 증상이 그대로 재발한다.
     if (rangeWindowFromDate === null) return;
-    // ⚠ `fillKindRef` 가 활성이어도 **저장뷰가 바뀌었으면 덮어쓴다.** 저장뷰 적용은
-    // 명시적 사용자 액션이라 진행 중이던 팬 백필보다 우선한다. 안 그러면 저장뷰를
-    // 연달아 클릭했을 때 두 번째가 **영영 안 채워진다**(첫 fill 이 끝날 때까지 막힌다).
+    // ⚠ `fillKindRef` 가 활성이어도 **요청이 바뀌었으면 덮어쓴다.** 저장뷰 적용도
+    // 점프도 명시적 사용자 액션이라 진행 중이던 팬 백필보다 우선한다. 안 그러면
+    // 연달아 눌렀을 때 두 번째가 **영영 안 채워진다**(첫 fill 이 끝날 때까지 막힌다).
     const cur = historicalRange.snapshot().historicalFromDate;
     // 하한은 **호출부가 정한다**(모드에 따라 갈리는 값이라) — prop 도크스트링 참조.
-    // 벤더 모드면 250일 벽, 디스크 모드면 증명된 캡처 바닥, 모르면 null(무한).
+    // 벤더 모드면 250일 벽, 디스크 모드면 없음(null). 종전엔 이 자리에서
+    // `earliestAllowedMinuteDate` 를 직접 불렀다.
     const earliestAllowedDate = minuteScrollbackFloorDate;
-    const target = earliestAllowedDate !== null && savedRangeFromDate < earliestAllowedDate
+    const target = earliestAllowedDate !== null && spotTargetFromDate < earliestAllowedDate
       ? earliestAllowedDate
-      : savedRangeFromDate;
+      : spotTargetFromDate;
     const plan = planFillStep({
       kind: 'coverage_gap',
       historicalFromDate: cur,
@@ -659,7 +685,7 @@ export function useViewportBackfill({
       rangeWindowFromDate,
     });
     // 이미 목표까지 와 있으면 stop 이다 — 그때도 마킹해 반복 판정을 막는다.
-    savedRangeFilledForRef.current = savedRangeFromDate;
+    targetFilledForRef.current = spotTargetKey;
     if (plan.action === 'stop') return;
     fillKindRef.current = 'coverage_gap';
     fillBudgetRef.current = MAX_FILL_STEPS;
@@ -668,7 +694,8 @@ export function useViewportBackfill({
     livePerfLog('viewport_backfill_extend', {
       code,
       timeframe,
-      trigger: 'saved_range',
+      // 어느 순간 이동이 이 fill 을 세웠는가 — 둘이 겹치면 목표가 더 과거인 쪽이다.
+      trigger: spotTargetFromDate === jumpFromDate ? 'timeframe_jump' : 'saved_range',
       from: cur,
       nextFrom: plan.nextFrom,
       coverageTarget: target,
@@ -677,5 +704,5 @@ export function useViewportBackfill({
       candleCount: bundle.candles.length,
     });
     historicalRange.extend(plan.nextFrom);
-  }, [chart, bundle, axis, timeframe, canTriggerBackfill, savedRangeFromDate, rangeWindowFromDate, code, historicalRange]);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, jumpFromDate, rangeWindowFromDate, code, historicalRange]);
 }
