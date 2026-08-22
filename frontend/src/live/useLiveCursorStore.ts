@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { LiveTimeframe } from '../state/livePage';
-import type { RangeSyncPublication } from '../chart/rangeSync';
+import type { RangeSyncBars, RangeSyncPublication } from '../chart/rangeSync';
 
 /**
  * sidebarCursorMs 발행 출처 (ADR-0119 PR-D 크로스헤어 버스).
@@ -52,7 +52,9 @@ interface State {
   setSyncCursor: (t: number, origin: SidebarCursorOrigin) => void;
   /** 기간 동기화 발행. `seq` 는 스토어가 매긴다 — 발행자가 세면 창마다 자기 카운터를
    *  갖게 되어 "누구의 seq 인가" 가 생기고, 소비자의 stale 판정이 깨진다. */
-  setSyncRange: (fromMs: number, toMs: number, origin: SidebarCursorOrigin) => void;
+  setSyncRange: (
+    fromMs: number, toMs: number, origin: SidebarCursorOrigin, bars?: RangeSyncBars,
+  ) => void;
   /** 그 발행에 대한 폭 합의를 seed 한다 — 먼저 도착한 창이 한 번만 쓴다. */
   agreeCrossSpan: (seq: number, spanBars: number) => void;
   clearCursor: () => void;
@@ -69,6 +71,12 @@ interface State {
    *  프로덕션에서는 `resetCursorFrom` 을 쓸 것(이 함수를 창 정리 경로에 두면
    *  옆 창의 teardown 이 호버 중인 창의 스팟을 죽인다. 아래 소유자 절 참조). */
   resetCursor: () => void;
+}
+
+/** 봉 단위 뷰가 같은가 — 발행 dedup 이 시각만 보면 여백 구간에서 멎는다. */
+function sameBars(a: RangeSyncBars | undefined, b: RangeSyncBars | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.anchorMs === b.anchorMs && a.fromBars === b.fromBars && a.toBars === b.toBars;
 }
 
 /**
@@ -155,14 +163,19 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (syncCursorMs === t && sameOrigin(syncCursorOrigin, origin)) return;
     set({ syncCursorMs: t, syncCursorOrigin: origin });
   },
-  setSyncRange: (fromMs, toMs, origin) => {
+  setSyncRange: (fromMs, toMs, origin, bars) => {
     const prev = get().syncRange;
     // 같은 구간·같은 발행자면 no-op. 제스처 중에는 프레임마다 들어오는데, 값이 안
     // 바뀐 발행까지 store 를 쓰면 소비 창이 매 프레임 재렌더된다.
-    if (prev && prev.fromMs === fromMs && prev.toMs === toMs && sameOrigin(prev.origin, origin)) {
+    //
+    // ⚠ **`bars` 도 함께 본다.** 시각(`fromMs`/`toMs`)만 비교하면 캔들 오른쪽 여백
+    // 안에서 팬할 때 발행이 통째로 막힌다 — 그 구간에서는 `getVisibleRange()` 가
+    // 데이터 끝에 붙어 거의 움직이지 않기 때문이다(`RangeSyncBars` 주석의 실측).
+    if (prev && prev.fromMs === fromMs && prev.toMs === toMs
+      && sameBars(prev.bars, bars) && sameOrigin(prev.origin, origin)) {
       return;
     }
-    set({ syncRange: { fromMs, toMs, seq: (prev?.seq ?? 0) + 1, origin } });
+    set({ syncRange: { fromMs, toMs, bars, seq: (prev?.seq ?? 0) + 1, origin } });
   },
   agreeCrossSpan: (seq, spanBars) => {
     const cur = get().crossSpanAgreement;

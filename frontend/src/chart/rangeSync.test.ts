@@ -5,7 +5,7 @@ import {
   centeredLogicalRange,
   isRangeSyncFollower,
   resolveRangeSyncMode,
-  replicatedRange,
+  replicatedLogicalRange,
   syncModeFor,
   type RangeSyncPublication,
 } from './rangeSync';
@@ -101,31 +101,47 @@ describe('모드 판정 · 발행/추종 집합', () => {
  * 는 규칙인데, 복제는 그 반대가 계약이다(상대가 보는 구간에 내 데이터가 없으면
  * 여백이 보이는 것이 정직하다).
  */
-describe('replicatedRange', () => {
-  it('발행 구간을 그대로 돌려준다', () => {
-    expect(replicatedRange({ fromVirtualSec: 100, toVirtualSec: 200, current: null }))
-      .toEqual({ from: 100, to: 200 });
+describe('replicatedLogicalRange', () => {
+  /** 기준 캔들이 내 축에서 200 번 인덱스인 창. */
+  const anchorIndex = 200;
+  /** 발행 창: 기준 캔들 왼쪽 120봉 ~ 오른쪽 30봉(= 여백 30봉을 보고 있다). */
+  const bars = { anchorMs: 1_700_000_000_000, fromBars: -120, toBars: 30 };
+
+  it('기준점을 내 축에서 찾아 봉 오프셋을 그대로 옮긴다 — **여백까지**', () => {
+    expect(replicatedLogicalRange({ anchorIndex, bars, current: null }))
+      .toEqual({ from: 80, to: 230 });
+  });
+
+  it('기준 인덱스가 다르면 결과도 옮겨간다 — 로드 이력이 달라도 같은 화면', () => {
+    // 백필이 70봉 더 된 창은 같은 날짜가 270 번이다. 오프셋은 불변이라 화면은 같다.
+    expect(replicatedLogicalRange({ anchorIndex: 270, bars, current: null }))
+      .toEqual({ from: 150, to: 300 });
+  });
+
+  it('왼쪽으로 음수도 그대로 나간다 — 그게 백필 트리거다', () => {
+    expect(replicatedLogicalRange({
+      anchorIndex: 10, bars: { ...bars, fromBars: -120, toBars: -20 }, current: null,
+    })).toEqual({ from: -110, to: -10 });
   });
 
   it('이미 그 구간이면 null — 되쓰면 애니메이션이 재시작돼 떤다', () => {
-    expect(replicatedRange({
-      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 100, to: 200 },
-    })).toBeNull();
-    // 1초 미만 차이도 무시(가상초는 반올림돼 들어온다).
-    expect(replicatedRange({
-      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 100.4, to: 199.7 },
-    })).toBeNull();
+    expect(replicatedLogicalRange({ anchorIndex, bars, current: { from: 80, to: 230 } }))
+      .toBeNull();
+    // 한 봉 미만 차이도 무시.
+    expect(replicatedLogicalRange({ anchorIndex, bars, current: { from: 80.4, to: 229.7 } }))
+      .toBeNull();
   });
 
-  it('1초 이상 벌어지면 적용한다', () => {
-    expect(replicatedRange({
-      fromVirtualSec: 100, toVirtualSec: 200, current: { from: 102, to: 202 },
-    })).toEqual({ from: 100, to: 200 });
+  it('한 봉 이상 벌어지면 적용한다', () => {
+    expect(replicatedLogicalRange({ anchorIndex, bars, current: { from: 82, to: 232 } }))
+      .toEqual({ from: 80, to: 230 });
   });
 
   it('구간이 뒤집혔거나 유한하지 않으면 null', () => {
-    expect(replicatedRange({ fromVirtualSec: 200, toVirtualSec: 100, current: null })).toBeNull();
-    expect(replicatedRange({ fromVirtualSec: NaN, toVirtualSec: 100, current: null })).toBeNull();
+    expect(replicatedLogicalRange({
+      anchorIndex, bars: { ...bars, fromBars: 30, toBars: -120 }, current: null,
+    })).toBeNull();
+    expect(replicatedLogicalRange({ anchorIndex: NaN, bars, current: null })).toBeNull();
   });
 });
 

@@ -15,7 +15,8 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import {
-  centeredLogicalRange, replicatedRange, resolveRangeSyncMode,
+  centeredLogicalRange, replicatedLogicalRange, resolveRangeSyncMode,
+  type RangeSyncBars,
 } from '../chart/rangeSync';
 
 /** 휠이 멈춘 것으로 보는 침묵 구간. 휠은 pointerup 같은 종료 이벤트가 없다. */
@@ -44,8 +45,13 @@ export function useRangeSyncPublish(params: {
   enabled: boolean;
   /** 매 발행 시점의 최신 origin 을 읽는다 — 창의 code·봉은 바뀔 수 있다. */
   originRef: { current: SidebarCursorOrigin };
+  /**
+   * 이 창의 마지막 캔들 실시각 — peer 가 쓰는 봉 단위 뷰의 **기준점**이다.
+   * ref 인 이유는 새 캔들마다 리스너를 다시 걸지 않기 위해서다.
+   */
+  lastCandleMsRef: { current: number | null };
 }): void {
-  const { chart, axis, containerRef, enabled, originRef } = params;
+  const { chart, axis, containerRef, enabled, originRef, lastCandleMsRef } = params;
   const axisRef = useRef(axis);
   axisRef.current = axis;
 
@@ -127,8 +133,26 @@ export function useRangeSyncPublish(params: {
       schedule();
     };
 
-    // 발행값은 **실시각**이다. 논리 인덱스를 실으면 발행 창의 캔들 수에 묶여 소비 창이
-    // 해석할 수 없다(창마다 로드 범위가 다르다). 시각이 두 축의 유일한 공통 언어다.
+    /**
+     * 봉 단위 뷰 — **여백까지** 담는다. 논리 범위를 그대로 실으면 창마다 로드 범위가
+     * 달라 해석이 안 되므로, **마지막 캔들 실시각 + 거기서 떨어진 봉 수**로 적는다.
+     * 왜 시각 범위만으로는 부족한지는 `RangeSyncBars` 주석이 실측과 함께 갖는다.
+     */
+    const barsOf = (): RangeSyncBars | undefined => {
+      const l = ts.getVisibleLogicalRange();
+      const lastMs = lastCandleMsRef.current;
+      if (!l || lastMs === null) return undefined;
+      const anchorIndex = ts.timeToIndex?.(
+        realMsToVirtualSeconds(axisRef.current, lastMs) as Time,
+        true,
+      );
+      if (typeof anchorIndex !== 'number' || !Number.isFinite(anchorIndex)) return undefined;
+      return { anchorMs: lastMs, fromBars: l.from - anchorIndex, toBars: l.to - anchorIndex };
+    };
+
+    // 발행값은 **실시각**이다(cross 가 읽는다). 논리 인덱스를 그대로 실으면 발행 창의
+    // 캔들 수에 묶여 소비 창이 해석할 수 없다 — 시각이 두 축의 유일한 공통 언어다.
+    // peer 가 읽는 `bars` 는 그 원칙을 지키면서 여백을 담는 형태다(기준점이 시각).
     const publish = () => {
       raf = 0;
       const allowed = gestureActive || flushPending;
@@ -139,7 +163,7 @@ export function useRangeSyncPublish(params: {
       const fromMs = axisRef.current.toReal(Number(r.from) * 1000);
       const toMs = axisRef.current.toReal(Number(r.to) * 1000);
       if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return;
-      useLiveCursorStore.getState().setSyncRange(fromMs, toMs, originRef.current);
+      useLiveCursorStore.getState().setSyncRange(fromMs, toMs, originRef.current, barsOf());
     };
 
     // capture: true — lwc 의 핸들러(캔버스=타겟)보다 **먼저** 듣기 위해서다.
@@ -158,7 +182,7 @@ export function useRangeSyncPublish(params: {
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
       useLiveCursorStore.getState().clearSyncRangeFrom(originRef.current.windowId);
     };
-  }, [chart, containerRef, enabled, originRef]);
+  }, [chart, containerRef, enabled, originRef, lastCandleMsRef]);
 }
 
 /**
@@ -217,26 +241,30 @@ export function useRangeSyncFollow(params: {
     if (mode === null) return;
     const ts = chart.timeScale();
     const raf = requestAnimationFrame(() => {
-      // peer 모드: 발행 구간을 **그대로** 복제한다. 같은 봉끼리는 폭이 비교 가능해
-      // "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이 한 값에서
-      // 나온다 — 중앙 정렬이 필요 없다.
+      // peer 모드: 발행 창의 뷰를 **여백까지 그대로** 복제한다. 같은 봉끼리는 폭이
+      // 비교 가능해 "같은 구간을 본다" 가 곧 동기화의 정의이고, 그래서 위치와 폭이
+      // 한 값에서 나온다 — 중앙 정렬이 필요 없다.
+      //
+      // **봉 단위(`bars`)로 옮긴다.** 시각 범위를 복제하면 캔들 오른쪽 여백이 발행에
+      // 아예 안 실려 소비 창이 데이터 부분만 보게 된다 — `RangeSyncBars` 주석이 그
+      // 실측(120봉 → 74봉, 여백 46 소실)을 갖는다.
       //
       // **중앙 정렬로 떨어지는 폴백을 두지 않는다.** 한때 peer 를 토글로 게이트하면서
       // 꺼졌을 때 중앙 정렬로 보냈는데, 그러면 **두 창이 같은 구간을 보지 않으면서
       // 동기화된 것처럼 보인다** — peer 의 정의와 어긋난다. 지금은 꺼지면 여기 도달
       // 자체를 안 한다(`syncModeFor` 가 peer 를 없는 모드로 만든다).
       if (mode === 'peer') {
-        const next = replicatedRange({
-          fromVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.fromMs),
-          toVirtualSec: realMsToVirtualSeconds(axisRef.current, syncRange.toMs),
-          current: (() => {
-            const r = ts.getVisibleRange();
-            return r ? { from: Number(r.from), to: Number(r.to) } : null;
-          })(),
+        const bars = syncRange.bars;
+        if (!bars) return;
+        const anchorIndex = ts.timeToIndex?.(
+          realMsToVirtualSeconds(axisRef.current, bars.anchorMs) as Time,
+          true,
+        );
+        if (typeof anchorIndex !== 'number') return;
+        const next = replicatedLogicalRange({
+          anchorIndex, bars, current: ts.getVisibleLogicalRange(),
         });
-        if (next) {
-          ts.setVisibleRange({ from: next.from as Time, to: next.to as Time });
-        }
+        if (next) ts.setVisibleLogicalRange(next);
         return;
       }
       // 실행 시점에 다시 읽는다 — 예약 이후 사용자가 이 창을 움직였을 수 있다.

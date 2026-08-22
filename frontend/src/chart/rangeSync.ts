@@ -15,6 +15,11 @@
  *    적용하면 저장뷰 착석(`restoreViewport`)과 싸운다. 그래서 발행마다 `seq` 를 올리고
  *    소비자는 **자기가 붙은 뒤의 seq** 만 본다.
  *
+ * ── peer 는 **여백까지** 복제한다 ────────────────────────────────────────
+ * 캔들 오른쪽 여백을 보고 있는 상태도 화면의 일부다. 시각 API 로는 그게 안 실린다
+ * (`getVisibleRange()` 가 데이터 경계로 클램프한다) — 그래서 peer 발행은 **봉 단위**
+ * (`RangeSyncBars`)다. 그 타입 주석이 실측과 함께 사유를 갖는다.
+ *
  * ── cross 는 **배율을 건드리지 않는다** ───────────────────────────────────
  * 분봉 창이 보는 폭은 보통 1~2일이다. 그 폭을 일봉 축에 맞추면 캔들 두 개짜리
  * 화면이 되므로 "폭 일치" 는 애초에 기각이다. 한때 **변화 비율**을 옮기는
@@ -56,10 +61,43 @@
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import { LIVE_TIMEFRAMES, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 
+/**
+ * 발행 창의 뷰를 **봉 단위**로 적은 것 — peer 복제가 쓴다.
+ *
+ * 왜 시각(`fromMs`/`toMs`)으로는 안 되는가: lwc 의 `getVisibleRange()` 는 **데이터
+ * 경계로 클램프된** 값을 준다. 캔들 오른쪽 여백을 보고 있으면 그 여백이 발행값에
+ * 아예 안 실리고, 소비 창은 데이터 부분만 복제해 **다른 화면**이 된다(실측
+ * 2026-08-22: 발행 창 120봉(데이터 74 + 여백 46) → 소비 창 74봉, 여백 0).
+ * 뷰가 전부 여백이면 더 나쁘다 — `getVisibleRange()` 가 데이터 끝의 **1초 조각**을
+ * 돌려주고, 그걸 복제한 소비 창은 캔들 하나로 쪼그라든다(실측 논리 0~1).
+ *
+ * 논리 범위(`getVisibleLogicalRange()`)에는 여백이 그대로 들어 있다. 다만 논리
+ * 인덱스는 창마다 다른 로드 이력 위의 값이라 **그대로 옮길 수 없다** — 그래서
+ * **기준 캔들의 실시각 + 거기서 떨어진 봉 수**로 적는다. 소비 창이 그 날짜를 자기
+ * 축에서 다시 찾으면(`timeToIndex`) 나머지는 산수다.
+ *
+ * 기준을 **마지막 캔들**로 잡는 이유: 백필은 왼쪽에 prepend 하므로 마지막 캔들
+ * 기준 오프셋은 백필에 **불변**이다. 뷰 안의 어떤 날짜를 기준으로 삼으면 그 날짜가
+ * 여백 구간일 때 존재하지 않는다.
+ */
+export type RangeSyncBars = {
+  /** 발행 창의 마지막 캔들 실시각 — 소비 창이 자기 축에서 다시 찾는 기준점. */
+  anchorMs: number;
+  /** 뷰 좌·우 끝이 기준점에서 몇 봉 떨어져 있는가. 여백을 포함하고 음수가 될 수 있다. */
+  fromBars: number;
+  toBars: number;
+};
+
 /** 분봉 창이 지금 보고 있는 실시각 구간. `seq` 는 stale 판정용 단조 증가 번호. */
 export type RangeSyncPublication = {
   fromMs: number;
   toMs: number;
+  /**
+   * 봉 단위 뷰. **peer 복제는 이것만 쓴다** — 위 타입 주석의 클램프 사고 때문이다.
+   * `timeToIndex` 를 못 쓰는 환경(테스트 목·구버전)에서는 없을 수 있고, 그때 peer 는
+   * **아무것도 하지 않는다**(시각으로 되돌아가면 그 사고가 되살아난다).
+   */
+  bars?: RangeSyncBars;
   seq: number;
   origin: SidebarCursorOrigin;
 };
@@ -226,26 +264,30 @@ export function centeredLogicalRange(params: {
 }
 
 /**
- * peer 모드의 적용 대상 — 발행 구간을 **그대로** 복제한다(가상초).
+ * peer 모드의 적용 대상 — 발행 창의 뷰를 **여백까지 그대로** 복제한다(논리 범위).
  *
  * `cross` 처럼 중앙 정렬하지 않는 이유: 같은 봉끼리는 폭이 비교 가능하므로 "같은
- * 구간을 본다" 가 곧 동기화의 정의다. 그래서 위치와 폭이 한 값에서 나온다 —
- * 별도의 줌 비율 계산이 필요 없다.
+ * 구간을 본다" 가 곧 동기화의 정의다. 그래서 위치와 폭이 한 값에서 나온다.
  *
  * **클램프하지 않는다.** 우측 클램프는 "자기 데이터 밖으로 밀지 않는다" 는 규칙인데,
  * 복제는 그 반대가 계약이다 — 상대가 보는 구간에 내 데이터가 없으면 **여백이 보이는
- * 것이 정직하다**(가짜로 당겨 붙이면 두 창이 다른 구간을 보면서 같아 보인다).
+ * 것이 정직하다**(가짜로 당겨 붙이면 두 창이 다른 구간을 보면서 같아 보인다). 논리
+ * 범위라 왼쪽 음수도 그대로 나가고, 그게 곧 백필 트리거다(`useViewportBackfill` 3b).
  *
  * 이미 그 구간이면 `null` — 되쓰면 lwc 가 애니메이션을 재시작해 떤다.
  */
-export function replicatedRange(params: {
-  fromVirtualSec: number;
-  toVirtualSec: number;
-  current: { from: number; to: number } | null;
-}): { from: number; to: number } | null {
-  const { fromVirtualSec: from, toVirtualSec: to, current } = params;
-  if (!Number.isFinite(from) || !Number.isFinite(to) || !(to > from)) return null;
-  // 1초 미만 차이는 무시 — 가상초는 정수로 반올림돼 들어온다.
+export function replicatedLogicalRange(params: {
+  /** 발행 창의 기준 캔들이 **내 축에서** 갖는 논리 인덱스. */
+  anchorIndex: number;
+  bars: RangeSyncBars;
+  current: LogicalRange | null;
+}): LogicalRange | null {
+  const { anchorIndex, bars, current } = params;
+  if (![anchorIndex, bars.fromBars, bars.toBars].every(Number.isFinite)) return null;
+  const from = anchorIndex + bars.fromBars;
+  const to = anchorIndex + bars.toBars;
+  if (!(to > from)) return null;
+  // 한 봉 미만 차이는 무시 — 화면에서 구별되지 않고, 되쓰면 떤다.
   if (current && Math.abs(current.from - from) < 1 && Math.abs(current.to - to) < 1) return null;
   return { from, to };
 }
