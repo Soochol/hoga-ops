@@ -5,7 +5,6 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
-import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -14,7 +13,7 @@ import {
   unregisterFlagLegendValues,
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
-import { peakLegendCells } from './peakLegendValues';
+import { formatPriceQty, peakLegendCells } from './peakLegendValues';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -44,9 +43,9 @@ function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | n
   return ans >= 0 ? candles[ans].ts_ms : null;
 }
 
-// 라벨은 잔량만 — 가격은 Y축·선 위치가 이미 말해줘 중복이라, 칩 폭을 줄여 겹침을 낮춘다.
-function formatBidPeakLabel(qty: number): string {
-  return formatQtyCompact(qty);
+/** 매도쪽과 같은 「가격, 잔량」 — 사유는 `LiveAskPeakSegments.formatAskPeakLabel` 참조. */
+function formatBidPeakLabel(price: number, qty: number): string {
+  return formatPriceQty(price, qty);
 }
 
 function toPeakRankLimit(value: number): 1 | 2 | 3 {
@@ -91,7 +90,7 @@ export function buildBidPeakSegments(
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
       qty: peakQty,
-      label: formatBidPeakLabel(peakQty),
+      label: formatBidPeakLabel(peakPrice, peakQty),
       color,
       lineWidth,
       live: isToday,

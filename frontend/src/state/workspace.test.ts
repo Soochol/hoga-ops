@@ -427,3 +427,64 @@ describe('backfillSymbolNames', () => {
     expect(saved.groupSymbols[1]).toEqual({ code: '000660', name: 'SK하이닉스' });
   });
 });
+
+/**
+ * 창별 hogaplay 저장 데이터 소스 토글.
+ *
+ * **양방향으로 잰다.** 한쪽만 보면 "항상 켠다"·"항상 끈다" 하드코딩도 초록이라
+ * 토글의 절반이 검증 밖에 남는다. 봉 전환의 carry/clear 도 같은 이유로 두 방향이다.
+ */
+describe('setChartHogaplaySource', () => {
+  function seedChart(timeframe: '1m' | '5m' | 'D') {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('w1', 1), chart: { timeframe } }],
+      zOrder: ['w1'],
+      groupSymbols: { 1: { code: '005930', name: '삼성전자' } },
+      chartRuntime: {},
+    });
+  }
+
+  it('분봉 창에서 켜고 끈다(양방향)', () => {
+    seedChart('1m');
+    useWorkspaceStore.getState().setChartHogaplaySource('w1', true);
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource).toBe(true);
+    useWorkspaceStore.getState().setChartHogaplaySource('w1', false);
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource).toBe(false);
+  });
+
+  // 캘린더 봉의 디스크 소스는 스크리너 일봉이지 hogaplay 가 아니다 — 켜면 버튼이
+  // 이름과 다른 것을 켠 상태가 된다. **끄는 것은 언제나 허용**: 봉이 먼저 바뀌어
+  // 이미 내려간 뒤 칩 × 가 늦게 도착해도 no-op 이어야 한다.
+  it('캘린더 봉에서는 켜지지 않지만 끄기는 통과한다', () => {
+    seedChart('D');
+    useWorkspaceStore.getState().setChartHogaplaySource('w1', true);
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource ?? false).toBe(false);
+    expect(() => useWorkspaceStore.getState().setChartHogaplaySource('w1', false)).not.toThrow();
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource ?? false).toBe(false);
+  });
+
+  it('분봉 → 분봉 전환에서는 따라오고, 분봉 → 캘린더에서는 내려간다', () => {
+    seedChart('1m');
+    useWorkspaceStore.getState().setChartHogaplaySource('w1', true);
+    useWorkspaceStore.getState().setChartTimeframe('w1', '5m');
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource).toBe(true);
+    useWorkspaceStore.getState().setChartTimeframe('w1', 'D');
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource).toBe(false);
+  });
+
+  // fresh-view(#711): 종목이 바뀌면 창의 비영속 런타임이 통째로 걷힌다. 그 규칙에
+  // 이 플래그가 실제로 실려 있는지 — 안 실리면 이전 종목의 소스 선택이 새 종목으로 샌다.
+  it('종목 교체가 플래그를 걷는다', () => {
+    seedChart('1m');
+    useWorkspaceStore.getState().setChartHogaplaySource('w1', true);
+    useWorkspaceStore.getState().setGroupSymbol(1, { code: '000660', name: 'SK하이닉스' });
+    expect(useWorkspaceStore.getState().chartRuntime.w1?.hogaplaySource ?? false).toBe(false);
+  });
+
+  it('차트가 아닌 창·없는 창은 무시한다', () => {
+    useWorkspaceStore.setState({ windows: [book('b1', 1)], zOrder: ['b1'], groupSymbols: {}, chartRuntime: {} });
+    useWorkspaceStore.getState().setChartHogaplaySource('b1', true);
+    useWorkspaceStore.getState().setChartHogaplaySource('nope', true);
+    expect(useWorkspaceStore.getState().chartRuntime).toEqual({});
+  });
+});

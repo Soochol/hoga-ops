@@ -109,6 +109,19 @@ export interface UseLiveChartDataArgs {
    * 틱이 과거 축에 얹혀 실재하지 않는 봉이 생긴다.
    */
   savedRangeFreeze?: { fromDate: string; toDate: string } | null;
+  /**
+   * 창별 **hogaplay 저장 데이터 소스** 토글(차트 창 헤더 버튼).
+   *
+   * 위 `savedRangeFreeze` 와 **겹치지 않는 축**이다: 저쪽은 "어느 구간" 이고 이쪽은
+   * "어느 소스" 다. 그래서 `today` 도 라이브 SSE 도 건드리지 않는다 — 이 모드의
+   * 오늘은 여전히 오늘이고, 좌측 팬도 종전대로 산다. 바뀌는 것은 캔들이 벤더
+   * (`ka10080`)에서 오느냐 디스크(`/api/range mode=candles`)에서 오느냐 하나뿐이다.
+   *
+   * 둘이 동시에 서면 **얼림이 이긴다**(호출부가 그때 버튼을 비활성으로 둔다) —
+   * 어차피 얼림이 이미 디스크라 소스 축에서는 결과가 같고, 구간 축에서 더 구체적인
+   * 요청이 저장뷰다.
+   */
+  hogaplaySource?: boolean;
 }
 
 export function useLiveChartData(args: UseLiveChartDataArgs) {
@@ -148,6 +161,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     venue,
     sidecarDemands,
     frozenRangeFrom: freeze?.fromDate ?? null,
+    hogaplaySourceEnabled: args.hogaplaySource === true,
   });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;

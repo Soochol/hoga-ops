@@ -415,6 +415,31 @@ type UseLiveBundleOptions = {
    * 따로 넓혀 줘야 해서(`studyDailyContextWindow`) 화면이 오히려 좁아진다.
    */
   frozenRangeFrom?: string | null;
+  /**
+   * 이 창을 **저장 데이터(hogaplay 캡처 디스크)로만** 읽는다 — 차트 창 헤더의
+   * hogaplay 버튼(창별 토글, `ChartWindowRuntime.hogaplaySource`).
+   *
+   * 디스크를 켜는 세 입력이 셋 다 다른 것을 말한다 — 혼동하면 게이트를 잘못 단다:
+   *
+   * | 입력 | 무엇인가 | 구간을 얼리는가 | 키움 보충 |
+   * |------|----------|-----------------|-----------|
+   * | `frozenRangeFrom` | 저장뷰가 가리키는 과거 구간 | **얼린다**(시작일 고정) | **한다** |
+   * | 전역 `rest_bypass_enabled` | 벤더가 실패할 때 주는 처방 | 아니오 | 안 한다 |
+   * | 이 옵션 | 사용자의 **명시적 소스 선택** | **아니오** | 안 한다 |
+   *
+   * "얼리지 않는다" 가 이 옵션의 존재 이유다. 시작일을 고정하지 않으므로 페치 창은
+   * 종전대로 `historicalFromDate` 가 정하고, 좌측 팬이 그것을 넓히면 디스크 요청도
+   * 같이 넓어진다(2026-08-22 사용자 요구: "기간 이동해도 디스크에서 읽어서 보여줘야").
+   *
+   * 키움 보충(`useMinuteGapFill`)을 **일부러 안 한다.** 사용자가 고른 것은 hogaplay
+   * 이므로 구멍을 벤더 분봉으로 메우면 고른 것과 다른 것을 보여 주게 된다 — 구멍은
+   * `missing_dates` 안내(`HogaMissingNotice`)로 말한다. 저장뷰 얼림이 보충하는 이유는
+   * 그쪽이 "이 구간을 보겠다" 는 **구간** 요청이기 때문이다(소스 요청이 아니다).
+   *
+   * **분봉 전용이다.** 캘린더 봉의 디스크 소스는 스크리너 일봉이지 hogaplay 가
+   * 아니므로(`enableScreenerDaily`), 호출부가 봉이 캘린더로 나갈 때 내린다.
+   */
+  hogaplaySourceEnabled?: boolean;
 };
 
 export type LiveRangeRequestPlan = {
@@ -542,7 +567,15 @@ export function useLiveBundle(
   // 얼린 창은 **전역 설정과 무관하게** 디스크다. 전역 토글을 뒤집는 것이 아니라 이 창의
   // 지역 상수만 뒤집는다 — `SAVED_RANGE_VENUE` 가 전역 `live.venue.v1` 을 안 건드리는
   // 것과 같은 규율이고, 안 그러면 저장뷰 클릭 하나가 다른 창·다른 탭까지 바꾼다.
-  const restBypassEnabled = frozenRangeFrom !== null || (liveSettings?.rest_bypass_enabled ?? false);
+  //
+  // 창별 hogaplay 소스도 같은 항으로 들어온다 — 얼림과 달리 시작일을 안 건드리므로
+  // `seedFrom` 아래 계산은 전부 종전대로 `historicalFromDate` 를 따른다(그래서 좌측
+  // 팬이 살아 있다). 분봉 게이트는 이 훅이 쥔다: 호출부가 봉 전환에서 내리지만,
+  // 내려가기 전 한 프레임 동안 캘린더 봉 + 켜짐 조합이 성립해 스크리너 일봉이
+  // hogaplay 로 표기될 수 있다.
+  const hogaplaySourceEnabled = isMinuteTimeframe(timeframe) && options.hogaplaySourceEnabled === true;
+  const restBypassEnabled =
+    frozenRangeFrom !== null || hogaplaySourceEnabled || (liveSettings?.rest_bypass_enabled ?? false);
   const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
   const resolveRestFailure = useRestBypassModeStore((s) => s.resolveFailure);
   const venue = options.venue ?? 'KRX';

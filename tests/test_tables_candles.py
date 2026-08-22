@@ -251,3 +251,80 @@ def test_query_price_range_empty_candles_returns_none(tmp_path: Path) -> None:
     write_parquet([], out)
     con = duckdb.connect()
     assert query_price_range(con, path=out) is None
+
+
+def _write_rows(path: Path, rows: list[tuple[int, int, int, int, int, int, int]]) -> None:
+    """행 **순서 그대로** 파케이를 쓴다.
+
+    `write_parquet` 은 오름차순 정렬을 하므로 같은 ts 조각들의 상대 순서를 이 테스트가
+    직접 통제할 수 없다. 실제 `kiwoom_live` 파일은 쓰인 순서 = 시각 순서이고, 병합의
+    first/last 의미가 그 순서에 달려 있으므로 여기서는 손으로 배치한다.
+    """
+    import pyarrow as pa
+
+    cols = list(zip(*rows, strict=True))
+    names = ["ts_ms", "open", "close", "high", "low", "vol_a", "vol_b"]
+    table = pa.table(
+        {name: pa.array(list(col), type=PARQUET_SCHEMA.field(name).type)
+         for name, col in zip(names, cols, strict=True)},
+        schema=PARQUET_SCHEMA,
+    )
+    pq.write_table(table, path)
+
+
+def test_query_all_merges_minute_fragments_split_across_rows(tmp_path: Path) -> None:
+    """같은 ``ts_ms`` 로 쪼개진 조각을 한 봉으로 합친다.
+
+    **막는 방향**: 비단조 캔들이 `/api/range` 로 나가는 것. 나가면 프론트의
+    lightweight-charts 가 ``data must be asc ordered by time`` 어서션으로 죽고 차트
+    전체가 「차트 렌더링에 실패했습니다」로 대체된다(2026-08-22 실측). 저장뷰·전역 REST
+    우회·창별 hogaplay 소스가 셋 다 이 경로를 탄다.
+
+    **못 보는 것**: 조각을 만들어 내는 생산자(`kiwoom_live` 분봉 합성, ADR-0125)는
+    그대로다 — 이것은 이미 쓰인 파일 7,069개를 읽을 수 있게 하는 읽기 쪽 수용이지
+    데이터 위생의 해결이 아니다.
+
+    값은 실측 파일에서 가져왔다(005930/20260820 09:08 · 09:55 = 3조각).
+    """
+    out = tmp_path / "candles.parquet"
+    _write_rows(out, [
+        (32820000, 252000, 252750, 253000, 251500, 50000, 0),   # 단일 조각(불변)
+        (32880000, 252750, 253000, 253500, 252500, 107264, 0),  # 09:08 조각 1
+        (32880000, 253250, 253500, 254000, 253000, 39722, 0),   # 09:08 조각 2
+        (35700000, 263500, 263750, 264000, 263500, 29538, 0),   # 09:55 조각 1
+        (35700000, 263750, 263750, 263750, 263750, 13, 0),      # 09:55 조각 2
+        (35700000, 263750, 263750, 263750, 263500, 1395, 0),    # 09:55 조각 3
+    ])
+
+    rows = query_all(duckdb.connect(), path=out, ts_offset_ms=0)
+
+    assert [r.ts_ms for r in rows] == [32820000, 32880000, 35700000]
+    merged = rows[1]
+    assert merged.open == 252750    # 첫 조각
+    assert merged.close == 253500   # 마지막 조각
+    assert merged.high == 254000    # max
+    assert merged.low == 252500     # min
+    assert merged.vol_a == 146986   # 합
+    three = rows[2]
+    assert (three.open, three.close) == (263500, 263750)
+    assert (three.high, three.low) == (264000, 263500)
+    assert three.vol_a == 29538 + 13 + 1395
+    assert rows[0].vol_a == 50000   # 단일 조각은 손대지 않는다
+
+
+def test_query_all_returns_the_same_list_object_when_nothing_is_split(tmp_path: Path) -> None:
+    """중복이 없으면 **아무것도 할당하지 않는다**.
+
+    `query_all` 의 TypeAdapter 경로가 재는 것은 속도가 아니라 GC 압력이므로(그 주석의
+    실측표), 정상 경로가 리스트를 한 벌 더 만들면 그 이득이 도로 나간다. hogaplay
+    소스 파일은 전부 이쪽이다.
+    """
+    from hoga.tables.candles import _merge_split_minutes
+
+    clean = [(1, 1, 1, 1, 1, 1, 1), (2, 2, 2, 2, 2, 2, 2)]
+    assert _merge_split_minutes(clean) is clean
+
+    out = tmp_path / "candles.parquet"
+    _write_rows(out, clean)
+    rows = query_all(duckdb.connect(), path=out, ts_offset_ms=0)
+    assert [r.ts_ms for r in rows] == [1, 2]

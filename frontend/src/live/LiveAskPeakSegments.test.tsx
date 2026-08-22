@@ -48,7 +48,7 @@ describe('buildAskPeakSegments', () => {
     expect(today.time0).toBe(10); // 10000/1000
     expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
     expect(today.live).toBe(true);
-    expect(today.label).toBe('153.1k'); // 잔량만 — formatQtyCompact(153125)
+    expect(today.label).toBe('323,000, 153.1k'); // 「가격, 잔량」 — 레전드와 같은 formatPriceQty
     expect(today.qty).toBe(153125);
     expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
     expect(today.color).toBe('#1D4ED8');
@@ -66,12 +66,12 @@ describe('buildAskPeakSegments', () => {
     expect(out[0].peakTime).toBe(120); // 175000이 아니라 버킷 시작 120000/1000
   });
 
-  it('1,000 미만 매도벽 수량도 k 단위 라벨로 표시', () => {
+  it('1,000 미만 매도벽 수량도 k 단위로, 가격과 함께 표시', () => {
     const peaks: AskPeak[] = [peak({ date: '20260613', price: 100, qty: 900, t_ms: 120000 })];
     const segments = [seg('20260613', 60000, 240000)];
     const candles = [candle(60000), candle(120000), candle(180000)];
     const out = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
-    expect(out[0].label).toBe('0.9k');
+    expect(out[0].label).toBe('100, 0.9k');
   });
 
   it('peak이 마지막 캔들 버킷보다 뒤면(라이브 엣지) 마지막 캔들에 스냅', () => {
@@ -120,12 +120,12 @@ describe('buildAskPeakSegments', () => {
     const candles = [candle(60000), candle(120000), candle(180000)];
 
     const off = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
-    expect(off[0].label).toBe('0.3k');
+    expect(off[0].label).toBe('25,100, 0.3k');
     expect(off[0].peakTime).toBe(60);
 
     const on = buildAskPeakSegments(peaks, segments, candles, axis, '20260613', '#000', 1, true);
     expect(on[0].price).toBe(25200);
-    expect(on[0].label).toBe('0.9k');
+    expect(on[0].label).toBe('25,200, 0.9k');  // 가격도 max 축을 따른다
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);
