@@ -97,6 +97,13 @@ function translatePencil(p: Pencil, shift: ShiftFn, dPrice: number): Partial<Pen
       realMs: shift(pt.realMs),
       price: pt.price + dPrice,
     })),
+    // Sub-bar offsets survive a translation unchanged: `shift` moves whole bar
+    // ordinals (see TimeShift / DragBarDomain), so every vertex keeps the same
+    // position WITHIN its bar. Copied rather than shared because
+    // `cloneWithOffset` builds a duplicate from this patch — the clone must not
+    // alias the original's array. Absent stays absent (a pre-subX stroke does
+    // not grow an all-zero array just by being dragged).
+    ...(p.subX ? { subX: [...p.subX] } : {}),
   };
 }
 

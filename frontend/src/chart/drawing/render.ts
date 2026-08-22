@@ -14,8 +14,10 @@ import type {
   PaneId,
   LineStyle,
 } from './types';
+import { subBarOffsetPx } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
+import { catmullRomSpans } from './smooth';
 
 /**
  * Everything a render needs to place a Drawing on SOME canvas, with the
@@ -55,6 +57,10 @@ export type ProjectCtx = {
   /** Newest candle's realMs — with bucketMs, lets drawings anchored in the
    *  empty band right of the last candle render via extrapolation. */
   lastRealMs?: number;
+  /** Effective bar width in canvas px (`barPitchPx`). Scales a pencil point's
+   *  sub-bar offset back into pixels. Absent → offsets read as 0, i.e. the
+   *  bar-anchored geometry this renderer had before `Pencil.subX`. */
+  barPx?: number;
 };
 
 /** Canvas font string for a text-label drawing at `sizePx`. Rendering and
@@ -650,21 +656,27 @@ function renderPencil(
   // Split the polyline at any off-axis vertex so we draw sub-strokes,
   // not a fictional segment that bridges a gap.
   const segments: { x: number; y: number }[][] = [[]];
-  for (const pt of p.points) {
+  p.points.forEach((pt, i) => {
     const x = ctx.realMsToX(pt.realMs);
     const y = ctx.priceToY(pt.price);
     if (x == null || y == null) {
       if (segments[segments.length - 1].length > 0) segments.push([]);
-      continue;
+      return;
     }
-    segments[segments.length - 1].push({ x, y });
-  }
+    segments[segments.length - 1].push({ x: x + subBarOffsetPx(p, i, ctx.barPx), y });
+  });
   drawHaloThenMain(c, p, selected, () => {
     for (const seg of segments) {
       if (seg.length < 2) continue;
       c.beginPath();
       c.moveTo(seg[0].x, seg[0].y);
-      for (let i = 1; i < seg.length; i++) c.lineTo(seg[i].x, seg[i].y);
+      // Curve, not chords: RDP keeps only the vertices that define the shape,
+      // so straight joins would re-introduce the angularity it was allowed to
+      // create. Each sub-segment is splined independently — a two-point piece
+      // yields one span whose controls lie on the chord, i.e. a straight line.
+      for (const s of catmullRomSpans(seg)) {
+        c.bezierCurveTo(s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.to.x, s.to.y);
+      }
       c.stroke();
     }
   });

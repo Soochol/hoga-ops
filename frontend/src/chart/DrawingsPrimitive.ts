@@ -32,6 +32,7 @@ import type {
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { VirtualAxis } from '../util/virtualAxis';
 import {
+  barPitchPx,
   realMsToCanvasX,
   realMsToCanvasXClamped,
   type FutureBand,
@@ -150,6 +151,9 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         axis: snap.axis,
         bucketMs: snap.bucketMs,
         lastRealMs: snap.lastRealMs,
+        // Read once per frame, not once per point: `logicalToCoordinate` is a
+        // model call, and a pencil stroke can carry thousands of vertices.
+        barPx: barPitchPx(chart) ?? undefined,
       };
 
       // Two passes so vlines stay on top of everything else, matching the
@@ -186,6 +190,10 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
             id: '__draft__',
             kind: 'pencil',
             points: pencil.points,
+            // Preview must use the same sub-bar offsets the commit will store,
+            // or the stroke renders on the bar grid and visibly snaps sideways
+            // the moment the pointer lifts.
+            subX: pencil.subX,
             color: snap.draftStyles.pencil.color,
             width: snap.draftStyles.pencil.width,
             lineStyle: snap.draftStyles.pencil.lineStyle,

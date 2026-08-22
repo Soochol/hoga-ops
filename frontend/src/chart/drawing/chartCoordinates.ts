@@ -299,6 +299,42 @@ function extrapolateFutureX(
   return (baseX as number) + barsAhead * barPx;
 }
 
+/**
+ * Width of one bar in canvas pixels, or null when it can't be measured.
+ *
+ * Measured from two ADJACENT WHOLE logical indices rather than read off
+ * `options().timeScale.barSpacing`: that option is the configured value, not
+ * the live one — after a zoom it stayed at 6 while the bars were actually
+ * 15.8px apart (measured on /live, lwc 5.2). lwc has no public getter for the
+ * effective spacing, so two projections and a subtraction are the reading.
+ *
+ * The base index comes from the visible range so it is guaranteed to be a
+ * logical the time scale can currently project (`logicalToCoordinate` resolves
+ * only whole indices — a fraction returns 0, see `extrapolateFutureX`).
+ *
+ * Returns null rather than a default: callers treat "unknown pitch" as
+ * "sub-bar offset = 0", which degrades to the bar-anchored behaviour instead
+ * of scaling an offset by a made-up number.
+ */
+export function barPitchPx(chart: IChartApi): number | null {
+  const ts = chart.timeScale();
+  // Optional-called for the same reason `paneSeparatorHeight` calls
+  // `getHTMLElement?.()`: headless stubs implement only the time-scale methods
+  // the case under test needs, and a missing one must degrade to "unknown
+  // pitch", not throw out of a pointer handler or a draw call.
+  const range = ts.getVisibleLogicalRange?.();
+  if (range == null) return null;
+  // `from` can be negative (left whitespace) or fractional; ceil lands on a
+  // whole index inside the range, and `+1` stays inside for any range wider
+  // than one bar.
+  const base = Math.ceil(range.from);
+  const baseX = ts.logicalToCoordinate?.(base as Logical);
+  const nextX = ts.logicalToCoordinate?.((base + 1) as Logical);
+  if (baseX == null || nextX == null) return null;
+  const pitch = (nextX as number) - (baseX as number);
+  return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
+}
+
 /** Canvas X (in the empty band) → realMs via logical-index extrapolation. Only
  *  extrapolates to the RIGHT of the last candle (the empty band); returns null
  *  for the left whitespace to avoid colliding with real historical time. */

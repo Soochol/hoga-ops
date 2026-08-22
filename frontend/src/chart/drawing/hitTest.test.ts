@@ -106,6 +106,40 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(coord, [p], 50, 30)).toBeNull();
   });
 
+  it('연필의 subX 를 히트 기하에도 반영한다', () => {
+    // 렌더가 미는 만큼 히트 박스도 밀려야 한다. 안 그러면 스트로크가
+    // 그려진 자리에서 안 잡히고 옛 봉 자리에서 잡힌다.
+    const p: Drawing = {
+      id: 'p1', kind: 'pencil', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid',
+      points: [
+        { realMs: 0, price: 0 },
+        { realMs: 100, price: 0 },
+      ],
+      subX: [2, 2], // 봉 폭 20px × 2 = +40px
+    };
+    const withPitch: HitCoord = { ...coord, barPx: 20 };
+    // 40px 밀린 선분은 x∈[40,140] 에 있다. 왼쪽 끝 밖(x=10)은 빗나가고,
+    // 오른쪽으로 밀린 자리(x=130)는 맞는다.
+    expect(hitTestDrawings(withPitch, [p], 10, 0)).toBeNull();
+    expect(hitTestDrawings(withPitch, [p], 130, 0)).toBe(p);
+  });
+
+  it('barPx 가 없으면 연필 오프셋을 무시한다 — 봉 앵커 기하', () => {
+    const p: Drawing = {
+      id: 'p1', kind: 'pencil', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid',
+      points: [
+        { realMs: 0, price: 0 },
+        { realMs: 100, price: 0 },
+      ],
+      subX: [2, 2],
+    };
+    // 같은 stroke, pitch 없음 → x∈[0,100] 그대로.
+    expect(hitTestDrawings(coord, [p], 10, 0)).toBe(p);
+    expect(hitTestDrawings(coord, [p], 130, 0)).toBeNull();
+  });
+
   it('returns the topmost (last-drawn) drawing when two overlap', () => {
     const bottom = hline('bottom', 100);
     const top = hline('top', 100);

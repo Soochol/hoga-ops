@@ -113,6 +113,37 @@ describe('translateDrawing — pencil', () => {
     });
   });
 
+  it('subX 는 이동해도 그대로다 — 다만 원본과 배열을 공유하지 않는다', () => {
+    // 가로 이동은 봉 서수 단위라(TimeShift/DragBarDomain) 각 점의 봉 **안**
+    // 위치는 안 변한다. 배열을 그대로 넘기면 cloneWithOffset 이 만든 복제본이
+    // 원본과 같은 배열을 가리켜, 한쪽을 고치면 다른 쪽이 따라 바뀐다.
+    const p: Pencil = {
+      id: 'p1',
+      kind: 'pencil',
+      points: [
+        { realMs: 1_000, price: 100 },
+        { realMs: 1_010, price: 105 },
+      ],
+      subX: [0.25, -0.4],
+      ...baseStyle,
+      paneId: 'candle',
+    };
+    const patch = translateDrawing(p, 50, 2) as Partial<Pencil>;
+    expect(patch.subX).toEqual([0.25, -0.4]);
+    expect(patch.subX).not.toBe(p.subX);
+  });
+
+  it('subX 가 없던 stroke 는 이동해도 생기지 않는다', () => {
+    const p: Pencil = {
+      id: 'p1',
+      kind: 'pencil',
+      points: [{ realMs: 1_000, price: 100 }],
+      ...baseStyle,
+      paneId: 'candle',
+    };
+    expect('subX' in (translateDrawing(p, 50, 2) as object)).toBe(false);
+  });
+
   it('handles an empty point list cleanly (no crash; returns empty points)', () => {
     const p: Pencil = { id: 'p1', kind: 'pencil', points: [], ...baseStyle, paneId: 'candle' };
     const result = translateDrawing(p, 100, 10) as Partial<Pencil>;
