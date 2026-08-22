@@ -11,6 +11,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import LiveBidPeakSegments from './LiveBidPeakSegments';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 
@@ -225,5 +226,68 @@ describe('rank-then-filter 순서', () => {
     });
     // filter-then-rank 였다면 2등 110 이 승격해 길이 1 이 된다.
     expect(out).toEqual([]);
+  });
+});
+
+/**
+ * 일봉 MA 필터의 **배선** — 분봉 필터와 같은 양방향 규칙. 다만 이 필터는 데이터가 훅에서
+ * 오므로(`usePeakDailyMaFilter`) pref 토글이 아니라 **필터 값 주입**으로 잰다: 소비처가
+ * 받은 값을 실제로 쓰는지가 여기서 재는 것이고, pref → 값 변환은 훅의 몫이다.
+ */
+describe('일봉 MA 필터 — 선·라벨 배선', () => {
+  const DAILY_MA: PeakDailyMaFilter = { side: 'ask', byDate: new Map([[DAY, 100]]) };
+
+  async function renderSegmentPrices(dailyMaFilter: PeakDailyMaFilter | null, peak: AskPeak) {
+    act(() => {
+      // 분봉 필터는 끈다 — 켜 두면 어느 필터가 걸렀는지 구별되지 않는다.
+      useChartPrefsStore.setState({ askPeakAboveMaEnabled: false });
+    });
+    const attached: AskPeakSegmentsPrimitive[] = [];
+    render(
+      <LiveAskPeakSegments
+        paneSeries={makeSeries(attached)}
+        axis={axis}
+        dayAskPeaks={[peak]}
+        segments={SEGMENTS}
+        candles={CANDLES}
+        todayKst={DAY}
+        dailyMaFilter={dailyMaFilter}
+      />,
+    );
+    await waitFor(() => expect(attached).toHaveLength(1));
+    return attached[0].segmentsData().map((s) => s.price);
+  }
+
+  it('필터가 있으면 일봉 MA 아래 매도벽이 사라진다', async () => {
+    expect(await renderSegmentPrices(DAILY_MA, wallBelowMa())).toEqual([]);
+  });
+
+  it('필터가 null 이면 같은 벽이 그대로 그려진다', async () => {
+    expect(await renderSegmentPrices(null, wallBelowMa())).toEqual([90]);
+  });
+
+  it('필터가 있어도 일봉 MA 위 매도벽은 남는다', async () => {
+    expect(await renderSegmentPrices(DAILY_MA, wallAboveMa())).toEqual([110]);
+  });
+
+  it('도킹 라벨도 같은 필터를 탄다(라벨만 남는 유령 방지)', async () => {
+    act(() => {
+      useChartPrefsStore.setState({ askPeakAboveMaEnabled: false, bidPeakBelowMaEnabled: false });
+    });
+    const attached: PeakWallDockedLabelsPrimitive[] = [];
+    render(
+      <LivePeakWallDockedLabels
+        paneSeries={makeSeries(attached)}
+        axis={axis}
+        dayAskPeaks={[wallBelowMa()]}
+        dayBidPeaks={[]}
+        segments={SEGMENTS}
+        candles={CANDLES}
+        todayKst={DAY}
+        askDailyMaFilter={DAILY_MA}
+      />,
+    );
+    await waitFor(() => expect(attached).toHaveLength(1));
+    expect(attached[0].labelsData().map((l) => l.price)).toEqual([]);
   });
 });
