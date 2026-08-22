@@ -103,19 +103,22 @@ describe('filterPeaksAgainstMa — 축 정렬', () => {
   // 이 리포가 실제로 밟을 수 있는 함정: 호출부가 넘기는 candles 는 axis.contains 로 거르기
   // **전** 원본이다. MovingAverageOverlay 는 거른 배열 위에서 SMA 를 그리므로, 여기서 같은
   // 필터를 적용하지 않으면 인덱스가 밀려 화면의 선과 판정이 갈린다.
-  it('세션 밖 캔들을 뺀 배열 기준으로 SMA 인덱스를 잡는다', () => {
-    // 앞 3봉은 세션 밖(close 1), 뒤 3봉이 세션 안(close 100·100·100).
+  it('SMA 창이 세션 경계를 넘는 봉은 판정하지 않는다 — 세션 밖 종가가 섞이지 않는다', () => {
+    // 앞 3봉은 세션 밖(close 1000), 뒤 5봉이 세션 안(close 100).
     const candles = [
-      candle(0, 1), candle(1 * MIN, 1), candle(2 * MIN, 1),
-      candle(3 * MIN, 100), candle(4 * MIN, 100), candle(5 * MIN, 100),
+      ...[0, 1, 2].map((i) => candle(i * MIN, 1000)),
+      ...[3, 4, 5, 6, 7].map((i) => candle(i * MIN, 100)),
     ];
     const axis = makeAxis(3 * MIN);
-    // 세션 안 배열은 [100,100,100] → period 3 의 sma = [null, null, 100].
-    // 마지막 봉(5*MIN)의 MA 는 100 이므로 101 은 살고 99 는 죽는다.
-    expect(filterPeaksAgainstMa([peak(101, 5 * MIN)], candles, axis, false, ASK)).toHaveLength(1);
-    expect(filterPeaksAgainstMa([peak(99, 5 * MIN)], candles, axis, false, ASK)).toHaveLength(0);
-    // 거르지 않았다면 6봉 전체 sma 의 인덱스 5 = (1+100+100)/3 = 67 이 되어 99 도 살아남는다.
-    // 세션 밖 봉이 섞이면 판정이 뒤집힌다는 것을 여기서 못박는다.
+    // 벽은 세션 안 두 번째 봉(4*MIN)에 걸렸다. 세션 안 배열 기준으로는 인덱스 1 —
+    // period 3 의 warm-up 이라 sma 가 null 이고, fail-open 으로 남는다.
+    expect(filterPeaksAgainstMa([peak(150, 4 * MIN)], candles, axis, false, ASK)).toHaveLength(1);
+    // axis.contains 로 거르지 않으면 같은 봉이 전체 배열의 인덱스 4 가 되고, 그 SMA 창에
+    // 세션 밖 종가 1000 이 섞여 (1000+100+100)/3 = 400 이 된다 → 150 은 "MA 아래"로 죽는다.
+    //
+    // ⚠ 이 대비는 **경계를 넘는 창**에서만 나타난다. 경계에서 period 이상 떨어진 봉은 두
+    // 계산이 같은 값을 내므로 axis.contains 를 지워도 초록이다 — 처음 픽스처가 그랬고,
+    // red-check 을 돌리기 전까지 그 사실이 드러나지 않았다.
   });
 
   it('세션 안 캔들이 하나도 없으면 손대지 않는다', () => {

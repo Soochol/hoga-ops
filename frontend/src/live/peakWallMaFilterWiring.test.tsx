@@ -209,7 +209,10 @@ describe('rank-then-filter 순서', () => {
       { price: 110, qty: 100, t_ms: OPEN + 4 * MIN },  // 2등 — MA 위
     ];
     const out = buildAskPeakOverlaySegments({
-      dayAskPeaks: [{ ...wallBelowMa(), traded_peaks: candidates, traded_max_peaks: candidates }],
+      // 최상위 필드는 MA **위**(110)로 둔다 — 순서를 뒤집었을 때 이 AskPeak 자체는 필터를
+      // 통과하고, 그 안의 1등 후보(90)가 확장되어 살아남는 모습이 드러나야 red 가 된다.
+      // 최상위까지 MA 아래로 두면 두 순서가 똑같이 빈 배열을 내 아무것도 재지 못한다.
+      dayAskPeaks: [{ ...wallAboveMa(), traded_peaks: candidates, traded_max_peaks: candidates }],
       segments: SEGMENTS,
       candles: CANDLES,
       axis,

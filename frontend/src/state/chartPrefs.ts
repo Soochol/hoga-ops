@@ -236,7 +236,7 @@ export const CHART_TOGGLES = [
     key: 'askPeakAboveMaEnabled',
     label: '이동평균선 위 벽만',
     description:
-      '벽이 걸린 분봉의 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 그중 조건에 맞는 것만 남기는 방식이라, 아래쪽 벽이 대신 올라오지는 않습니다. 평균을 낼 봉이 모자란 구간(기간 미만)과 로딩된 캔들보다 앞선 벽은 판정하지 않고 그대로 표시합니다.',
+      '벽이 걸린 분봉의 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -267,7 +267,7 @@ export const CHART_TOGGLES = [
     key: 'bidPeakBelowMaEnabled',
     label: '이동평균선 아래 벽만',
     description:
-      '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 그중 조건에 맞는 것만 남기는 방식이라, 위쪽 벽이 대신 올라오지는 않습니다. 평균을 낼 봉이 모자란 구간(기간 미만)과 로딩된 캔들보다 앞선 벽은 판정하지 않고 그대로 표시합니다.',
+      '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -437,7 +437,7 @@ export const CHART_NUMERIC_PREFS = [
     // 기본 20 은 사용자가 지목한 값이자 기본 MA 슬롯(5·20·60·120)에 있는 기간.
     key: 'askPeakAboveMaPeriod',
     label: '기준 이동평균 기간',
-    description: '매도 최대벽을 걸러낼 때 비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준으로 계산합니다.',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
     default: 20,
     min: 2,
     max: 400,
@@ -446,7 +446,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'bidPeakBelowMaPeriod',
     label: '기준 이동평균 기간',
-    description: '매수 최대벽을 걸러낼 때 비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준으로 계산합니다.',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
     default: 20,
     min: 2,
     max: 400,
