@@ -98,24 +98,14 @@ export const CHART_TOGGLES = [
   },
   {
     key: 'rangeSyncEnabled',
-    label: '기간 동기화',
-    description:
-      '분봉 창을 밀면 그 날짜가 일봉 창의 중앙에 옵니다. 배율은 건드리지 않습니다. '
-      + '분봉끼리는 따라가지 않습니다. 직접 밀거나 휠로 움직일 때만 따라가며 '
-      + '새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 창끼리만 동작하고 '
-      + '종목 범위는 위 설정을 따릅니다.',
-    default: true,
-  },
-  {
-    key: 'rangeSyncPeer',
-    label: '같은 봉 창끼리 완전 동기화',
+    label: '같은 봉 창끼리 기간 동기화',
     description:
       '일봉끼리(주봉·월봉도 같은 봉끼리) 보이는 구간을 위치·배율 모두 똑같이 '
-      + '맞춥니다. 한쪽을 밀거나 확대하면 나머지가 같은 구간을 보고, 분봉을 밀 때도 '
-      + '창 크기와 무관하게 보이는 폭이 같아집니다. 끄면 각 창이 자기 배율을 '
-      + '지키고 위치만 따라갑니다.',
+      + '맞춥니다. 캔들 오른쪽 여백까지 같이 옮깁니다. 분봉 창은 이 동기화에 '
+      + '참여하지 않습니다 — 분봉을 밀어도 일봉은 움직이지 않습니다. 직접 밀거나 '
+      + '휠로 움직일 때만 따라가며 새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 '
+      + '창끼리만 동작하고 종목 범위는 위 설정을 따릅니다.',
     default: true,
-    enabledBy: 'rangeSyncEnabled',
   },
   {
     key: 'highLowLabelsEnabled',
@@ -292,6 +282,17 @@ export const CHART_TOGGLES = [
     label: '분봉 내 최댓값 기준',
     description:
       '분봉 종가 호가창 대신 그 분봉 내 총잔량이 가장 컸던 순간의 10호가를 히트맵 소스로 사용합니다. 강도 정규화도 같은 최댓값 소스를 기준으로 맞춥니다.',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
+    // 가독성 옵션: 10호가를 전부 칠하면 캔들이 색 벽에 묻힌다. 각 분봉에서 실제로
+    // 두꺼웠던 벽만 남기면 캔들과 벽의 관계가 읽힌다. 소스 선택(위 intraMax)과 직교 —
+    // 소스를 고른 뒤 그 안에서 자른다.
+    key: 'depthHeatmapTopLevelsOnly',
+    label: '최대 잔량 가격대만',
+    description:
+      '각 분봉에서 잔량이 가장 컸던 가격대만 남깁니다(매수·매도 각각). 강도 기준은 그대로 화면 최대 잔량이라 남은 벽끼리의 굵기 비교는 유지됩니다.',
     default: false,
     category: 'indicator-modal',
   },
@@ -532,6 +533,17 @@ export const CHART_NUMERIC_PREFS = [
     max: 3,
     // BidPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
     category: 'indicator-modal',
+  },
+  {
+    key: 'depthHeatmapTopLevelCount',
+    label: '표시할 가격대 수',
+    description:
+      '매수·매도 **각각** 잔량 상위 몇 등까지 그릴지. 올릴수록 원래 10호가에 가까워집니다.',
+    default: 1,
+    // 1(가장 두꺼운 벽 하나)~5(10호가의 절반 — 그 위는 사실상 필터가 무의미).
+    min: 1,
+    max: 5,
+    enabledBy: 'depthHeatmapTopLevelsOnly',
   },
   {
     key: 'tradeHighlightThresholdManwon',

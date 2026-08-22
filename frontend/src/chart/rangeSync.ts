@@ -59,7 +59,7 @@
  * 크로스헤어를 W/M 에서 뺀 것과 같은 사유다.
  */
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
-import { LIVE_TIMEFRAMES, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { LIVE_TIMEFRAMES, type LiveTimeframe } from '../state/livePage';
 
 /**
  * 발행 창의 뷰를 **봉 단위**로 적은 것 — peer 복제가 쓴다.
@@ -102,172 +102,96 @@ export type RangeSyncPublication = {
   origin: SidebarCursorOrigin;
 };
 
-/** 캘린더 봉 — peer 동기화의 참여 집합(사용자 결정 2026-08-21: 분봉 peer 는 제외). */
+/** 캘린더 봉 — 이 동기화의 참여 집합. 분봉은 양쪽 다 아니다(헤더의 그 절). */
 function isCalendar(tf: LiveTimeframe): boolean {
   return tf === 'D' || tf === 'W' || tf === 'M';
 }
 
 /**
- * 참여 스위치. **필수 인자다** — 기본값을 주면 새 호출부가 조용히 옛 동작을 쓰고,
- * 그 어긋남은 화면에 안 보인다(이 파일이 이미 한 번 밟은 유형).
- */
-export type RangeSyncSwitches = {
-  /** 「같은 봉 창끼리 완전 동기화」(`rangeSyncPeer`) — peer 복제 + 폭 합의. */
-  peer: boolean;
-};
-
-/** 동기화 모드. 어떤 다리를 놓고 어떻게 적용할지가 여기서 갈린다. */
-export type RangeSyncMode =
-  /** 분봉 → 일봉. 폭이 비교 불가라 **중앙 정렬 + 비율**이다. */
-  | 'cross'
-  /** 같은 캘린더 봉끼리(D↔D · W↔W · M↔M). 폭이 비교 가능해 **구간을 복제**한다. */
-  | 'peer';
-
-/**
- * 이 소비 창이 저 발행을 받는가, 받는다면 어느 모드인가.
+ * 이 소비 창이 저 발행을 받는가 — **같은 캘린더 봉끼리만**이다.
  *
- * **분봉은 추종하지 않는다** — 발행만 한다(사용자 결정 2026-08-21). 그래서 분봉 창을
- * 여러 개 놓고 각자 다른 구간을 보는 작업 방식이 그대로 살고, 분봉 백필이 창 수만큼
- * 겹쳐 도는 일도 없다.
+ * 일↔주↔월을 서로 통하게 하면 일봉 3개월을 월봉에 복제했을 때 캔들 3개가 되어 그
+ * 쌍에서는 다시 쓸모가 없어진다 — 「같은 주기」라는 조건이 붙은 이유가 그것이다.
  *
- * **캘린더는 같은 봉끼리만이다.** 일↔주↔월을 서로 통하게 하면 일봉 3개월을 월봉에
- * 복제했을 때 캔들 3개가 되어 그 쌍에서는 다시 쓸모가 없어진다 — 「같은 주기」라는
- * 조건이 붙은 이유가 그것이다.
+ * 분봉을 다시 넣으려면 **폭이 비교 불가**라는 문제부터 풀어야 한다: 분봉이 보는
+ * 1~2일을 일봉 축에 그대로 맞추면 캔들 두 개짜리 화면이 된다. 그래서 과거 판은
+ * 중앙 정렬 + 별도 폭 규칙이었고, 그 규칙들이 차례로 기각됐다(헤더 참조).
  */
-export function syncModeFor(
+export function acceptsRangeOrigin(
   myTimeframe: LiveTimeframe,
   originTimeframe: LiveTimeframe,
-  opts: RangeSyncSwitches,
-): RangeSyncMode | null {
-  if (!isCalendar(myTimeframe)) return null;
-  if (myTimeframe === originTimeframe) return opts.peer ? 'peer' : null;
-  if (myTimeframe === 'D' && isMinuteTimeframe(originTimeframe)) return 'cross';
-  return null;
+): boolean {
+  return isCalendar(myTimeframe) && myTimeframe === originTimeframe;
 }
 
 /**
  * 이 봉의 창에 소비자를 마운트하는가 — **내가 받을 발행이 하나라도 있는가.**
  *
- * 발행 쪽(`canPublishRangeSync`)과 같은 이유로 손 목록이 아니라 유도다. peer 를 끄면
- * W/M 창은 받을 것이 하나도 없어져(그 봉은 peer 뿐이다) 소비자를 아예 안 단다.
+ * 발행 쪽(`canPublishRangeSync`)과 같은 이유로 손 목록이 아니라 유도다.
  */
-export function isRangeSyncFollower(tf: LiveTimeframe, opts: RangeSyncSwitches): boolean {
-  return LIVE_TIMEFRAMES.some((origin) => syncModeFor(tf, origin, opts) !== null);
+export function isRangeSyncFollower(tf: LiveTimeframe): boolean {
+  return LIVE_TIMEFRAMES.some((origin) => acceptsRangeOrigin(tf, origin));
 }
 
 /**
  * 이 봉의 창이 기간을 **발행**하는가.
  *
- * ⚠ **「발행 집합 = 소비 집합」이 아니다.** 이 파일은 한때 그렇게 적혀 있었고
- * (`canPublishRangeSync = isRangeSyncFollower`), 그때는 두 집합이 우연히 같았다.
- * 분봉이 **발행만 하고 추종은 하지 않는** 지금 구성에서 그 등식은 틀렸다.
+ * ⚠ **손으로 목록을 적지 않는다.** 지금은 발행 집합과 소비 집합이 같지만(양쪽 다
+ * 캘린더 봉) 그건 **결과이지 정의가 아니다** — 분봉이 발행만 하던 시절에는 달랐고,
+ * 그때 이 파일은 `canPublishRangeSync = isRangeSyncFollower` 라고 적혀 있다가
+ * 조용히 틀렸다.
  *
  * 진짜 불변식은 포함 관계다 — **내 발행을 받는 소비자가 하나라도 있는가.** 그래서
- * 술어를 `syncModeFor` 에서 **유도**한다. 손으로 목록을 적어 두면 받는 쪽 규칙이
- * 바뀔 때 조용히 어긋나고, 그 어긋남의 증상은 "아무도 안 받는 발행이 단일 슬롯을
- * 훔쳐 유효한 표시를 지우는 것"이다(2026-08-11 실측).
+ * 술어를 `acceptsRangeOrigin` 에서 **유도**한다. 어긋남의 증상은 "아무도 안 받는
+ * 발행이 단일 슬롯을 훔쳐 유효한 표시를 지우는 것"이다(2026-08-11 실측).
  */
-export function canPublishRangeSync(tf: LiveTimeframe, opts: RangeSyncSwitches): boolean {
-  return LIVE_TIMEFRAMES.some((my) => syncModeFor(my, tf, opts) !== null);
+export function canPublishRangeSync(tf: LiveTimeframe): boolean {
+  return LIVE_TIMEFRAMES.some((my) => acceptsRangeOrigin(my, tf));
 }
 
 /**
- * 이 창이 저 발행을 따라가야 하는가, 따라간다면 어느 모드인가. 크로스헤어의
- * `resolveSyncTarget` 과 **같은 게이트 순서**를 쓴다 — 발행 유무 · 자기 발행 ·
- * 발행 봉(=모드 판정) · **창번호** · 종목.
+ * 이 창이 저 발행을 따라가야 하는가. 크로스헤어의 `resolveSyncTarget` · 기간 점프의
+ * `resolveTimeframeJump` 와 **같은 게이트 순서**를 쓴다 — 발행 유무 · 자기 발행 ·
+ * 발행 봉 · **창번호** · 종목.
  *
- * **범위는 창번호(링크 그룹)다**(사용자 결정 2026-08-21). 세 동기화(크로스헤어 ·
- * 기간 · 줌)가 같은 규칙을 쓴다 — 하나만 다르면 "창 A 와 B 가 연동되는가" 에 답이
- * 둘 생기는데 화면에는 그 차이가 보이지 않는다. 그 근거와 번복 사연은
- * `cursorSync.ts` 헤더의 「범위는 창번호다」 절이 갖는다.
+ * **범위는 창번호(링크 그룹)다**(사용자 결정 2026-08-21). 세 동기화가 같은 규칙을
+ * 쓴다 — 하나만 다르면 "창 A 와 B 가 연동되는가" 에 답이 둘 생기는데 화면에는 그
+ * 차이가 보이지 않는다. 그 근거와 번복 사연은 `cursorSync.ts` 헤더의 「범위는
+ * 창번호다」 절이 갖는다.
  *
  * 종목 축도 크로스헤어와 **같은 토글**(`cursorSyncCrossSymbol`)이 정한다 — 같은
  * 이유다. 창번호가 같아도 핀이 걸린 창은 종목이 다를 수 있어 이 축이 남는다.
  */
-export function resolveRangeSyncMode(params: {
+export function shouldFollowRange(params: {
   publication: RangeSyncPublication | null;
   myWindowId: string | null;
-  /** 이 창의 봉 — 어느 모드인지(또는 받지 않는지)를 이것이 정한다. */
+  /** 이 창의 봉 — 받는지 아닌지를 이것이 정한다. */
   myTimeframe: LiveTimeframe;
   /** 이 창의 링크 그룹(창 헤더의 번호). 크로스헤어와 **같은 범위 규칙**을 쓴다. */
   myGroup: number | null;
   myCode: string | null;
   allowCrossSymbol: boolean;
-  switches: RangeSyncSwitches;
-}): RangeSyncMode | null {
-  const {
-    publication, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, switches,
-  } = params;
-  if (!publication) return null;
+}): boolean {
+  const { publication, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol } = params;
+  if (!publication) return false;
   const { origin } = publication;
-  if (origin.windowId !== null && origin.windowId === myWindowId) return null;
-  const mode = syncModeFor(myTimeframe, origin.timeframe, switches);
-  if (mode === null) return null;
-  if (origin.group !== myGroup) return null;
+  if (origin.windowId !== null && origin.windowId === myWindowId) return false;
+  if (!acceptsRangeOrigin(myTimeframe, origin.timeframe)) return false;
+  if (origin.group !== myGroup) return false;
   if (!allowCrossSymbol && origin.code !== null && myCode !== null && origin.code !== myCode) {
-    return null;
+    return false;
   }
-  return mode;
+  return true;
 }
 
 /** 논리 범위 — lwc `getVisibleLogicalRange()` 와 같은 모양. */
 export type LogicalRange = { from: number; to: number };
 
 /**
- * 발행 구간을 **화면 중앙**에 두는 논리 범위. 줌(span)은 현재 값을 그대로 쓴다.
+ * 적용 대상 — 발행 창의 뷰를 **여백까지 그대로** 복제한다(논리 범위).
  *
- * 중심은 발행 구간이 내 축에서 차지하는 인덱스 구간의 중점이다 — 분봉 창이 하루만
- * 보면 그 하루 캔들이, 닷새를 보면 그 닷새의 가운데가 중앙에 온다.
- *
- * **`from` 을 0 으로 클램프하지 않는다.** 음수 `from` 은 로드된 가장 왼쪽 캔들보다
- * 과거를 보고 있다는 뜻이고, 그게 곧 백필 트리거다(`useViewportBackfill` 3b). 여기서
- * 잘라 내면 "그 기간을 보려고 팬했는데 데이터가 안 불러와지는" 상태가 된다. 대신
- * 오른쪽은 자연히 따라 움직이므로 별도 처리가 없다.
- *
- * 이미 중앙에 있으면(`null`) 아무것도 하지 않는다 — 매 프레임 같은 값을 되쓰면 lwc 가
- * 애니메이션을 재시작해 미세하게 떤다. 반올림 단위(1 인덱스)보다 작은 차이는 무시한다.
- */
-export function centeredLogicalRange(params: {
-  fromIndex: number;
-  toIndex: number;
-  current: LogicalRange;
-  /**
-   * 적용할 폭. 호출부가 **창끼리 합의한 값**(파일 헤더의 그 절)을 넘긴다.
-   * 없거나 합의가 꺼져 있으면 현재 폭 유지 — 위치만 옮긴다.
-   */
-  spanOverride?: number;
-  /**
-   * 이 창의 자연스러운 우측 끝(마지막 캔들 인덱스 + 1 + 표준 여백). 결과가 이보다
-   * 오른쪽으로 가면 **폭을 유지한 채 왼쪽으로 되민다** — 파일 헤더의 그 절 참조.
-   * 마지막 캔들을 아직 축에서 찾지 못했으면 `undefined`(클램프 없음).
-   */
-  rightEdgeLimit?: number;
-}): LogicalRange | null {
-  const { fromIndex, toIndex, current, spanOverride, rightEdgeLimit } = params;
-  if (![fromIndex, toIndex, current.from, current.to].every(Number.isFinite)) return null;
-  const currentSpan = current.to - current.from;
-  const span = spanOverride ?? currentSpan;
-  if (!(span > 0)) return null;
-  const center = (fromIndex + toIndex) / 2;
-  // 클램프는 **되밀기 전에** 계산한 뒤 적용한다. 순서를 바꿔 "이미 그 자리인가" 를
-  // 먼저 보면, 천장에 붙은 상태에서 매번 같은 값을 되써 미세하게 떤다.
-  const from = rightEdgeLimit !== undefined && center + span / 2 > rightEdgeLimit
-    ? rightEdgeLimit - span
-    : center - span / 2;
-  // **위치와 폭 둘 다** 그대로일 때만 건너뛴다. 위치는 같은데 폭만 바뀌는 경우가
-  // 실제로 있다(폭 합의가 옆 창의 값을 물어다 준다) — 위치 비교만으로 거르면 그
-  // 라운드가 통째로 사라진다.
-  const samePlace = Math.abs(from - current.from) < 1;
-  const sameSpan = Math.abs(span - currentSpan) < 1;
-  if (samePlace && sameSpan) return null;
-  return { from, to: from + span };
-}
-
-/**
- * peer 모드의 적용 대상 — 발행 창의 뷰를 **여백까지 그대로** 복제한다(논리 범위).
- *
- * `cross` 처럼 중앙 정렬하지 않는 이유: 같은 봉끼리는 폭이 비교 가능하므로 "같은
- * 구간을 본다" 가 곧 동기화의 정의다. 그래서 위치와 폭이 한 값에서 나온다.
+ * 같은 봉끼리는 폭이 비교 가능하므로 "같은 구간을 본다" 가 곧 동기화의 정의다.
+ * 그래서 위치와 폭이 한 값에서 나온다.
  *
  * **클램프하지 않는다.** 우측 클램프는 "자기 데이터 밖으로 밀지 않는다" 는 규칙인데,
  * 복제는 그 반대가 계약이다 — 상대가 보는 구간에 내 데이터가 없으면 **여백이 보이는
