@@ -302,7 +302,7 @@ export const CHART_TOGGLES = [
     key: 'depthHeatmapTopLevelsOnly',
     label: '최대 잔량 가격대만',
     description:
-      '각 분봉에서 잔량이 가장 컸던 가격대만 남기고 나머지 호가는 그리지 않습니다(매수·매도 각각 따로). 색 강도의 기준은 그대로 화면에 보이는 범위의 최대 잔량이라, 남은 벽끼리의 굵기 비교가 유지됩니다.',
+      '각 분봉에서 잔량이 가장 컸던 가격대만 남깁니다(매수·매도 각각). 강도 기준은 그대로 화면 최대 잔량이라 남은 벽끼리의 굵기 비교는 유지됩니다.',
     default: false,
     category: 'indicator-modal',
   },
@@ -548,7 +548,7 @@ export const CHART_NUMERIC_PREFS = [
     key: 'depthHeatmapTopLevelCount',
     label: '표시할 가격대 수',
     description:
-      '매수·매도 **각각** 잔량 상위 몇 등까지 그릴지. 1이면 그 분봉에서 가장 두꺼웠던 벽 하나씩만 남습니다. 올릴수록 원래의 10호가 히트맵에 가까워집니다.',
+      '매수·매도 **각각** 잔량 상위 몇 등까지 그릴지. 올릴수록 원래 10호가에 가까워집니다.',
     default: 1,
     // 1(가장 두꺼운 벽 하나)~5(10호가의 절반 — 그 위는 사실상 필터가 무의미).
     min: 1,
