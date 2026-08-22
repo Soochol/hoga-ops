@@ -1,11 +1,17 @@
 // frontend/src/chart/DrawingOverlay.test.tsx
 //
 // Focused unit tests for the empty-click deselect predicate that powers
-// the window-level mousedown listener in DrawingOverlay. The full
-// component requires IChartApi + VirtualAxis + paneSeries scaffolding,
-// so we extract the predicate and test it in isolation. The companion
-// integration coverage lives in the manual QA pass and in ADR-0030 /
-// ADR-0032.
+// the window-level mousedown listener in DrawingOverlay, plus ONE end-to-end
+// gesture (see 「포인터 캡처가 실패해도…」 below).
+//
+// Most of this file tests extracted predicates rather than the mounted
+// component, because driving the real thing needs IChartApi + VirtualAxis +
+// paneSeries scaffolding. That was long read as "the component can't be tested
+// here at all", and the gap had a cost: nothing between `tools.test.ts` (which
+// stubs the whole ToolCtx) and manual QA ever ran a pointer gesture through
+// the overlay's own closures, so a throw in one of them went unseen. The
+// scaffolding below is the minimum that reaches the commit path; extend it
+// rather than reaching for manual QA next time.
 
 import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -676,5 +682,74 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
       expect(s().activeTool).toBe('select');
     });
+  });
+});
+
+describe('포인터 캡처가 실패해도 그린 도형은 커밋된다', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  /**
+   * jsdom 은 `setPointerCapture`/`releasePointerCapture` 를 **구현하지 않는다**
+   * — 부르면 `TypeError` 다. 그래서 이 환경 자체가 공짜 오류 주입이고, 이
+   * 테스트는 그 예외를 삼키는 가드가 실제로 도는지를 잰다. 가드를 빼면
+   * `releasePointer` 가 `ctx.add` **앞에서** 던져 아무것도 저장되지 않는다.
+   */
+  function renderOverlay() {
+    const series = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => ({ paneIndex: () => 0, getHeight: () => 400 }),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+    };
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        // 봉 단위 왕복만 서면 된다. `getVisibleLogicalRange` 는 일부러 빼서
+        // `barPitchPx` 가 null 을 내게 둔다 — subX 는 0 이 되고, 이 테스트가
+        // 재려는 것(커밋이 일어나는가)에는 영향이 없다.
+        coordinateToTime: (x: number) => x,
+        timeToCoordinate: (t: number) => t,
+      }),
+      panes: () => [{ getHeight: () => 400 }],
+    };
+    const axis = {
+      segments: [],
+      contains: () => true,
+      toReal: (v: number) => v,
+      toVirtual: (r: number) => r,
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={axis as never}
+        scope={SCOPE}
+        paneSeries={new Map([['candle', series]]) as never}
+      />,
+    );
+  }
+
+  it('연필 down→move→up 한 번이 도형 하나를 남긴다', () => {
+    s().setActiveTool('pencil');
+    const { container } = renderOverlay();
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+
+    act(() => {
+      fireEvent.pointerDown(overlay, { clientX: 100, clientY: 120, button: 0 });
+      // PENCIL_MIN_SAMPLE_PX 를 넘겨야 샘플이 잡힌다.
+      fireEvent.pointerMove(overlay, { clientX: 140, clientY: 160 });
+      fireEvent.pointerUp(overlay, { clientX: 140, clientY: 160 });
+    });
+
+    const drawings = s().drawingsFor(SCOPE);
+    expect(drawings).toHaveLength(1);
+    expect(drawings[0].kind).toBe('pencil');
   });
 });

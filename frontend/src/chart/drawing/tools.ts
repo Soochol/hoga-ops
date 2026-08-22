@@ -170,7 +170,16 @@ export type ToolCtx = {
   pointerId: number;
   /** Shift held — constrains trendline/measure drags to 0°/45°/90°. */
   shiftKey: boolean;
-  /** Pin the active pointer to the overlay until releasePointer is called. */
+  /**
+   * Pin the active pointer to the overlay until releasePointer is called.
+   *
+   * **Neither of these throws** — that is part of the contract, enforced by
+   * the overlay's `buildCtx`. Tools sequence `releasePointer` before the
+   * `ctx.add` that commits the gesture, so a throwing release would silently
+   * destroy the drawing the user just made. Treat a failed capture as "the
+   * pointer isn't pinned" (the gesture still runs) and a failed release as a
+   * no-op; neither is a reason to abort.
+   */
   capturePointer(): void;
   releasePointer(): void;
 

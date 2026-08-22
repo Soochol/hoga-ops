@@ -561,8 +561,28 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           .map((c) => ({ px: c.clientX - rect.left, py: c.clientY - rect.top })) ?? [],
       pointerId: e.pointerId,
       shiftKey: e.shiftKey,
-      capturePointer: () => target.setPointerCapture(e.pointerId),
-      releasePointer: () => target.releasePointerCapture(e.pointerId),
+      // Both swallow — pointer capture is a CONVENIENCE (it keeps events coming
+      // while the cursor leaves the overlay), never part of a gesture's result.
+      // Four tools (trendline / rect / measure / pencil) call `releasePointer`
+      // BEFORE `ctx.add`, so a throw here used to take the whole commit with
+      // it: the user drew a shape and nothing appeared, with no error they
+      // could act on. Failing to pin a pointer is worth degrading for; losing
+      // the drawing is not. Same judgment `onPointerCancel` already makes.
+      capturePointer: () => {
+        try {
+          target.setPointerCapture(e.pointerId);
+        } catch {
+          // Pointer already gone (fast tap, touch cancelled) — the gesture
+          // still runs, it just isn't pinned to the overlay.
+        }
+      },
+      releasePointer: () => {
+        try {
+          target.releasePointerCapture(e.pointerId);
+        } catch {
+          // Never captured, or released already — nothing to undo.
+        }
+      },
       pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
       realMsToCanvasX,
       canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
