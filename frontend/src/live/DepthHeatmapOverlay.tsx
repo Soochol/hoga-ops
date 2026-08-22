@@ -82,14 +82,24 @@ function halfTickForPoint(pt: DepthHeatmapPoint, intraMax: boolean): number {
 
 type StyleOpts = { bidColor: string; askColor: string; maxOpacity: number };
 
+/** 어느 호가 스냅샷의, 어느 레벨을 셀로 만들지 — 색·불투명도(StyleOpts)와 달리
+ *  **소스 선택**이라 따로 묶는다. 두 축은 직교한다: 소스를 고른 뒤 그 안에서 자른다. */
+export type SourceOpts = {
+  /** 분봉 종가 호가창 대신 분봉 내 총잔량 최대 스냅샷(asksMax/bidsMax)을 소스로. */
+  intraMax?: boolean;
+  /** 매수·매도 **각 사이드에서** 잔량 상위 몇 레벨만 그릴지. null/미지정 = 전 레벨. */
+  topPerSide?: number | null;
+};
+
 export function buildDepthHeatmapCells(
   points: readonly DepthHeatmapPoint[],
   axis: VirtualAxis,
   fromMs: number,
   toMs: number,
   style: StyleOpts,
-  intraMax = false,
+  source: SourceOpts = {},
 ): DepthHeatmapCell[] {
+  const intraMax = source.intraMax ?? false;
   // 정규화 천장은 셀 소스와 반드시 같아야 한다 → intraMax 를 그대로 전달.
   const vmax = visibleMaxQty(points, fromMs, toMs, intraMax);
   if (vmax <= 0) return [];
@@ -187,7 +197,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
     // 초기(range 미확정) 프레임은 전 범위 폴백 후, 첫 구독 콜백에서 화면 범위로 좁힌다.
     const fromMs = visibleRange ? axis.toReal(visibleRange.from * 1000) : -Infinity;
     const toMs = visibleRange ? axis.toReal(visibleRange.to * 1000) : Infinity;
-    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity }, intraMax);
+    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity }, { intraMax });
   }, [points, axis, visibleRange, bidColor, askColor, maxOpacity, intraMax]);
 
   useEffect(() => {

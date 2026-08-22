@@ -67,7 +67,7 @@ describe('buildDepthHeatmapCells', () => {
       0,
       2000,
       { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 },
-      /*intraMax*/ true,
+      { intraMax: true },
     );
     expect(cells.length).toBe(2);
     // visibleMax=900(max소스), qty=900 → full α
@@ -103,8 +103,8 @@ describe('buildDepthHeatmapCells', () => {
       bidsMax: [{ price: 1000, qty: 100 }],
     };
     const style = { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 };
-    const closeCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, false);
-    const maxCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, true);
+    const closeCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { intraMax: false });
+    const maxCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { intraMax: true });
     expect(closeCells.every((c) => c.halfTick === 5)).toBe(true);
     expect(maxCells.every((c) => c.halfTick === 20)).toBe(true);
   });
