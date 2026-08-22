@@ -79,7 +79,6 @@ import {
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 import { MinuteJumpChip } from './MinuteJumpChip';
 import { canPublishTimeframeJump } from '../../chart/timeframeJump';
-import { jumpDestinationOf } from '../minuteJumpDestination';
 import { registerJumpRunner } from './jumpControls';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import type { MinuteJumpState } from '../useTimeframeJump';
@@ -385,8 +384,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const runJump = useCallback(() => {
     if (!hasMinuteWindow) return;
     const toMs = jumpSourceRef.current();
-    const dest = jumpDestinationOf(toMs);
-    if (toMs === null || dest === null || dest.outOfRetention) return;
+    // 「그 날짜는 데이터가 없다」는 여기서 막지 않는다 — 하한을 아는 것은 소비하는
+    // 분봉 창뿐이고(모드에 따라 갈린다, #1497) 이 창은 항상 `null` 을 본다. 보내고,
+    // 갈 수 없으면 그 창의 칩이 사유를 말한다.
+    if (toMs === null || !Number.isFinite(toMs)) return;
     useLiveCursorStore.getState().requestTimeframeJump(toMs, {
       windowId: win.id, group: win.group, code: view.code, timeframe: view.timeframe,
     });
