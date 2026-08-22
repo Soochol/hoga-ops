@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LiveTimeframe } from '../state/livePage';
 import type { RangeSyncBars, RangeSyncPublication } from '../chart/rangeSync';
+import type { JumpPublication } from '../chart/timeframeJump';
 
 /**
  * sidebarCursorMs 발행 출처 (ADR-0119 PR-D 크로스헤어 버스).
@@ -46,6 +47,17 @@ interface State {
    * 축에서 1봉 = 1거래일이라 축이 달라도 같은 뜻이다.
    */
   crossSpanAgreement: { seq: number; spanBars: number } | null;
+  /**
+   * 캘린더 봉 창 → 분봉 창 **1회 점프** 명령 채널. 위 두 채널과 성질이 다르다:
+   * 크로스헤어는 호버 상태고 기간은 지속 상태인데, 이것은 **명령**이다 — 사용자가
+   * 버튼을 누른 순간에만 실리고, 소비 창이 `seq` 하나를 한 번만 적용한다
+   * (`chart/timeframeJump.ts` 의 래치 절).
+   *
+   * 그래서 **지우지 않는 것이 기본**이다. 소비 창은 자기가 적용한 seq 를 기억하므로
+   * 슬롯에 값이 남아 있어도 두 번 움직이지 않고, 늦게 마운트된 창은 baseline seq
+   * 로 옛 명령을 무시한다. 발행 창이 닫힐 때만 `clearJumpRequestFrom` 이 걷는다.
+   */
+  jumpRequest: JumpPublication | null;
   setCursor: (t: number) => void;
   setSidebarCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   /** 창 간 크로스헤어 동기화 채널 — 즉시 발행 + origin. 아래 주석 참조. */
@@ -57,6 +69,9 @@ interface State {
   ) => void;
   /** 그 발행에 대한 폭 합의를 seed 한다 — 먼저 도착한 창이 한 번만 쓴다. */
   agreeCrossSpan: (seq: number, spanBars: number) => void;
+  /** 점프 명령 발행. `seq` 는 스토어가 매긴다 — 기간 동기화와 같은 이유(발행자가
+   *  세면 창마다 자기 카운터를 갖게 되어 소비자의 래치·stale 판정이 깨진다). */
+  requestTimeframeJump: (toMs: number, origin: SidebarCursorOrigin) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
@@ -64,6 +79,8 @@ interface State {
   clearSyncCursorFrom: (windowId: string | null) => void;
   /** 발행 창이 닫힐 때만 비운다(언마운트 정리). 소유자 가드는 커서와 같다. */
   clearSyncRangeFrom: (windowId: string | null) => void;
+  /** 발행 창이 닫힐 때만 비운다. 소유자 가드는 위와 같다. */
+  clearJumpRequestFrom: (windowId: string | null) => void;
   restoreCursor: () => void;
   /** 발행자만 자기 것을 지운다. 차트 언마운트·재생성 정리 경로 전용. */
   resetCursorFrom: (windowId: string | null) => void;
@@ -148,6 +165,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
   syncCursorOrigin: null,
   syncRange: null,
   crossSpanAgreement: null,
+  jumpRequest: null,
   setCursor: (t) => {
     const { cursorMs, lastCursorMs } = get();
     if (cursorMs === t && lastCursorMs === t) return; // identity-stable, no-op rerender
@@ -184,10 +202,23 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (cur?.seq === seq) return;
     set({ crossSpanAgreement: { seq, spanBars } });
   },
+  requestTimeframeJump: (toMs, origin) => {
+    // **같은 값이어도 no-op 하지 않는다.** 다른 채널은 값이 안 바뀌면 건너뛰지만
+    // 이건 명령이라 "같은 날짜로 한 번 더" 가 유효한 요청이다 — 사용자가 분봉을
+    // 팬해서 다른 곳을 보다가 같은 버튼을 다시 누르면 되돌아와야 한다. seq 가
+    // 올라야 소비 창의 래치가 풀린다.
+    const prev = get().jumpRequest;
+    set({ jumpRequest: { toMs, seq: (prev?.seq ?? 0) + 1, origin } });
+  },
   clearSyncRangeFrom: (windowId) => {
     const cur = get().syncRange;
     if (cur === null || !ownedBy(cur.origin, windowId)) return;
     set({ syncRange: null, crossSpanAgreement: null });
+  },
+  clearJumpRequestFrom: (windowId) => {
+    const cur = get().jumpRequest;
+    if (cur === null || !ownedBy(cur.origin, windowId)) return;
+    set({ jumpRequest: null });
   },
   clearCursor: () => {
     if (get().cursorMs === null) return;
@@ -229,10 +260,12 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     if (s.cursorMs === null && s.lastCursorMs === null
       && s.sidebarCursorMs === null && s.sidebarCursorOrigin === null
       && s.syncCursorMs === null && s.syncCursorOrigin === null
-      && s.syncRange === null && s.crossSpanAgreement === null) return;
+      && s.syncRange === null && s.crossSpanAgreement === null
+      && s.jumpRequest === null) return;
     set({
       cursorMs: null, lastCursorMs: null, sidebarCursorMs: null, sidebarCursorOrigin: null,
       syncCursorMs: null, syncCursorOrigin: null, syncRange: null, crossSpanAgreement: null,
+      jumpRequest: null,
     });
   },
 }));

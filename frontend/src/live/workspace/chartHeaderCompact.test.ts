@@ -9,6 +9,8 @@ import {
   nextHeaderFold,
   LIVE_HEADER_FOLD,
   LIVE_HEADER_NEED,
+  LIVE_CALENDAR_HEADER_FOLD,
+  LIVE_CALENDAR_HEADER_NEED,
   HEART_FOLDED_WIDTH_PX,
   HOGAPLAY_SOURCE_FOLDED_WIDTH_PX,
   showsHeaderStateIcons,
@@ -195,5 +197,49 @@ describe('/study 접힘 불변식 (#905 실측 고정)', () => {
     // 히스테리시스로 되편 순간의 폭이 그 형태의 요구 폭보다 넓어야 한다.
     expect(STUDY_HEADER_FOLD.labelRestoreWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.full);
     expect(STUDY_HEADER_FOLD.timeframeRestoreWidthPx).toBeGreaterThan(STUDY_HEADER_NEED.actionsFolded);
+  });
+});
+
+/**
+ * 캘린더 봉 창은 「분봉으로」를 하나 더 든다(2026-08-22 실측 Δ full +70 /
+ * actionsFolded +22 / bothFolded 0). #767 이 남긴 규율 그대로, 버튼이 늘었으면
+ * 임계도 같이 움직여야 한다.
+ */
+describe('캘린더 창 접힘 불변식 (2026-08-22 실측 고정)', () => {
+  it('각 단계 임계는 그 단계 형태의 요구 폭보다 크다', () => {
+    expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx)
+      .toBeGreaterThan(LIVE_CALENDAR_HEADER_NEED.full);
+    expect(LIVE_CALENDAR_HEADER_FOLD.timeframeFoldWidthPx)
+      .toBeGreaterThan(LIVE_CALENDAR_HEADER_NEED.actionsFolded);
+  });
+
+  // 이 단언이 이 describe 의 핵심이다. 두 임계를 하나로 합치면(= 분봉 값을 캘린더에
+  // 쓰면) 캘린더 헤더의 오른쪽 끝 「수집」이 무성 잘린다 — #767 의 재현이다.
+  it('캘린더 요구 폭이 분봉보다 크고, 분봉 임계로는 그 형태가 안 들어간다', () => {
+    expect(LIVE_CALENDAR_HEADER_NEED.full).toBeGreaterThan(LIVE_HEADER_NEED.full);
+    expect(LIVE_CALENDAR_HEADER_NEED.actionsFolded)
+      .toBeGreaterThan(LIVE_HEADER_NEED.actionsFolded);
+    expect(HEADER_LABEL_MIN_WIDTH_PX).toBeLessThan(LIVE_CALENDAR_HEADER_NEED.full);
+  });
+
+  // 반대 방향도 함께 막는다: 캘린더 값을 분봉 창에 씌우면 라벨이 70px 일찍 사라진다.
+  // `/study` 임계를 따로 둔 것과 같은 사유이고, 그 주석이 "양방향으로 틀린다" 로
+  // 기록한 실패다.
+  it('분봉 창은 자기 임계를 그대로 쓴다 — 캘린더 값에 끌려가지 않는다', () => {
+    expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx)
+      .toBeGreaterThan(HEADER_LABEL_MIN_WIDTH_PX);
+    expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx - HEADER_LABEL_MIN_WIDTH_PX).toBe(70);
+  });
+
+  it('2단계는 분봉과 같다 — 그 단계에서는 「분봉으로」를 렌더하지 않는다', () => {
+    expect(LIVE_CALENDAR_HEADER_NEED.bothFolded).toBe(LIVE_HEADER_NEED.bothFolded);
+    expect(showsWatchlistHeart({ compactActions: true, compactTimeframe: true })).toBe(false);
+  });
+
+  it('단계 순서가 뒤집히지 않는다 — 봉은 라벨보다 늦게 접힌다', () => {
+    expect(LIVE_CALENDAR_HEADER_FOLD.timeframeFoldWidthPx)
+      .toBeLessThan(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx);
+    expect(LIVE_CALENDAR_HEADER_FOLD.timeframeRestoreWidthPx)
+      .toBeLessThan(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx);
   });
 });
