@@ -13,6 +13,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { usePeakMaFilter } from './peakWallMaFilter';
 import { useWindowIndicator } from './workspace/windowView';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -71,6 +72,9 @@ function LivePeakWallDockedLabels({
   const bidLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
+  // 선(LiveAskPeakSegments/LiveBidPeakSegments)과 같은 필터 — 라벨만 남는 유령을 막는다.
+  const askMaFilter = usePeakMaFilter('ask');
+  const bidMaFilter = usePeakMaFilter('bid');
   const primRef = useRef<PeakWallDockedLabelsPrimitive | null>(null);
 
   useEffect(() => {
@@ -103,6 +107,7 @@ function LivePeakWallDockedLabels({
         intraMax: askIntraMax,
         allPriceRankLimit: askPeakRankLimit,
         visibleTimeCutoff: askVisibleTimeCutoff,
+        maFilter: askMaFilter,
       })
       : [];
     const timeScale = prim.chartApi()?.timeScale();
@@ -126,6 +131,7 @@ function LivePeakWallDockedLabels({
         intraMax: bidIntraMax,
         allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
         visibleTimeCutoff: bidVisibleTimeCutoff,
+        maFilter: bidMaFilter,
       })
       : [];
     // side 는 라벨의 세로 방향을 가른다 — 매도는 선 위, 매수는 선 아래. 같은 분봉에
@@ -140,6 +146,7 @@ function LivePeakWallDockedLabels({
     askIntraMax,
     askLabelEnabled,
     askLineWidth,
+    askMaFilter,
     askPeakEnabled,
     askVisibleMaxColor,
     askVisibleMaxLineWidth,
@@ -151,6 +158,7 @@ function LivePeakWallDockedLabels({
     bidIntraMax,
     bidLabelEnabled,
     bidLineWidth,
+    bidMaFilter,
     bidPeakEnabled,
     bidVisibleMaxRankLimit,
     bidVisibleTimeCutoff,

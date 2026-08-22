@@ -13,6 +13,7 @@ import {
 } from './indicators/flagLegendValueRegistry';
 import { peakLegendCells } from './peakLegendValues';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -179,6 +180,13 @@ type BuildAskPeakOverlaySegmentsArgs = {
   intraMax: boolean;
   allPriceRankLimit?: 1 | 2 | 3;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
+  /** 이동평균선 필터(`usePeakMaFilter`). null = 필터 없음.
+   *
+   *  ⚠ **필수 인자다(선택 아님).** 소비처가 셋이고(선·도킹 라벨·고저 라벨 회피 rect)
+   *  한 곳만 빠지면 필터로 사라진 라벨을 피해 극값 라벨이 pane 안쪽으로 밀리는 유령
+   *  회피가 남는다. 기본값을 주면 새 호출부가 조용히 그 상태로 태어나므로, 타입이
+   *  세 곳을 강제하게 둔다 — 필터를 안 쓰는 자리는 `null` 을 **명시**한다. */
+  maFilter: PeakMaFilter | null;
 };
 
 function finiteNumber(value: number | null | undefined): value is number {
@@ -279,12 +287,22 @@ export function buildAskPeakOverlaySegments({
   intraMax,
   allPriceRankLimit = 1,
   visibleTimeCutoff,
+  maFilter,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayAskPeaks, visibleTimeCutoff ?? null, {
     side: 'ask',
     intraMax,
   });
-  const baselinePeaks = expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax);
+  // rank-then-filter: 그날 최대벽을 먼저 뽑고(expandBaselinePeaks) 그중 MA 조건에 맞는
+  // 것만 남긴다. 반대로 걸면(filter-then-rank) 지표의 뜻이 "그날 최대벽"에서 "MA 위 벽 중
+  // 최대"로 바뀌어, 최대벽이 조건에 걸리면 2등 벽이 대신 올라온다.
+  const baselinePeaks = filterPeaksAgainstMa(
+    expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax),
+    candles,
+    axis,
+    intraMax,
+    maFilter,
+  );
   const baseline = buildAskPeakSegments(
     baselinePeaks,
     segments,
@@ -324,6 +342,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
   const visibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
+  const maFilter = usePeakMaFilter('ask');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창) — 창별로 다른 종목의 벽 값이 섞이지 않게.
   const windowId = useWindowScopeId();
@@ -371,6 +390,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
       intraMax,
       allPriceRankLimit: baselineRankLimit,
       visibleTimeCutoff,
+      maFilter,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
     prim.setSegments(prepareAskPeakSegmentsForRender(
@@ -395,6 +415,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     allPriceRankLimit,
     visibleMaxRankLimit,
     visibleTimeCutoff,
+    maFilter,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
