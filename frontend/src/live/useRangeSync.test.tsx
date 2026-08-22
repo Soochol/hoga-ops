@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useRangeSyncFollow, useRangeSyncPublish } from './useRangeSync';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import type { VirtualAxis } from '../util/virtualAxis';
+import type { RangeSyncBars } from '../chart/rangeSync';
 import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
@@ -56,15 +57,20 @@ const flushFrame = async () => {
   await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
 };
 
+/** 발행 창의 마지막 캔들 — 축이 항등이라 가상초 2,000 = 논리 인덱스 2,000. */
+const PUBLISHER_LAST_CANDLE_MS = 2_000_000;
+
 function Publisher({ enabled = true }: { enabled?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const originRef = useRef(MINUTE_ORIGIN);
+  const lastCandleMsRef = useRef<number | null>(PUBLISHER_LAST_CANDLE_MS);
   useRangeSyncPublish({
     chart: makeChart() as never,
     axis,
     containerRef,
     enabled,
     originRef,
+    lastCandleMsRef,
   });
   return <div ref={containerRef} data-testid="pane" />;
 }
@@ -101,8 +107,9 @@ function Follower(props: {
   return null;
 }
 
-const publishRange = (from: number, to: number, origin = MINUTE_ORIGIN) =>
-  act(() => { useLiveCursorStore.getState().setSyncRange(from, to, origin); });
+const publishRange = (
+  from: number, to: number, origin = MINUTE_ORIGIN, bars?: RangeSyncBars,
+) => act(() => { useLiveCursorStore.getState().setSyncRange(from, to, origin, bars); });
 
 beforeEach(() => {
   useLiveCursorStore.getState().resetCursor();
@@ -239,6 +246,45 @@ describe('useRangeSyncPublish — 제스처 게이트', () => {
 });
 
 /**
+ * **발행이 여백을 담는가.**
+ *
+ * **이 가드가 막는 방향**: `getVisibleRange()`(데이터로 클램프된 시각)만 싣고 캔들
+ * 오른쪽 여백을 잃는 것. 그러면 소비 창은 데이터 부분만 복제해 **다른 화면**이 된다
+ * (실사용 실측 2026-08-22: 발행 120봉 → 소비 74봉).
+ * **못 보는 것**: `timeToIndex` 가 없는 환경 — 그때 `bars` 는 안 실리고 peer 는
+ * 아무것도 하지 않는다(위 peer describe 가 그 케이스를 본다).
+ */
+describe('useRangeSyncPublish — 봉 단위 뷰', () => {
+  it('논리 범위에서 만든다 — 시각 범위와 값이 다르다는 것이 판별식', () => {
+    // 목: 시각 1,000~2,000 · 논리 100~200 · 기준 캔들 인덱스 2,000.
+    // 시각을 썼다면 fromBars 는 -1,000 이 됐을 것이다.
+    const view = render(<Publisher />);
+    view.getByTestId('pane').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
+    expect(useLiveCursorStore.getState().syncRange?.bars).toEqual({
+      anchorMs: PUBLISHER_LAST_CANDLE_MS, fromBars: -1_900, toBars: -1_800,
+    });
+  });
+
+  it('시각이 같아도 봉이 움직이면 발행한다 — 여백 안에서 팬해도 멎지 않는다', async () => {
+    // 여백 구간에서는 `getVisibleRange()` 가 데이터 끝에 붙어 거의 안 움직인다.
+    // dedup 이 시각만 봤다면 이 두 번째 발행이 통째로 사라진다.
+    const view = render(<Publisher />);
+    view.getByTestId('pane').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    const first = useLiveCursorStore.getState().syncRange;
+
+    visibleLogical = { from: 140, to: 240 };
+    act(() => { rangeHandler?.(); });
+    await flushFrame();
+
+    const next = useLiveCursorStore.getState().syncRange;
+    expect(next?.seq).toBe((first?.seq ?? 0) + 1);
+    expect(next?.fromMs).toBe(first?.fromMs);
+    expect(next?.bars?.fromBars).toBe(-1_860);
+  });
+});
+
+/**
  * **추종**. 여기서 재는 것은 판정이 아니라 배선이다 — 순수 수식이 옳아도 훅이
  * `setVisibleLogicalRange` 를 안 부르면 `rangeSync.test.ts` 는 전부 초록이다.
  */
@@ -253,17 +299,32 @@ describe('useRangeSyncFollow — peer 모드', () => {
   const DAILY_ORIGIN: SidebarCursorOrigin = {
     windowId: 'other-daily', group: 1, code: '064350', timeframe: 'D',
   };
-  // 소비 창의 현재 시각 범위 — 목이 `getVisibleRange` 하나를 공유하므로 여기서 민다.
-  // 기본값(1,000~2,000)은 복제 대상과 같아 "이미 그 구간" 가드에 걸린다.
-  beforeEach(() => { visibleRange = { from: 9_000, to: 9_500 }; });
+  /**
+   * 발행 창의 뷰 — 기준 캔들 왼쪽 120봉 ~ **오른쪽 30봉**. `toBars > 0` 이 곧
+   * "캔들 오른쪽 여백을 보고 있다" 다. 목의 `timeToIndex` 가 항등이라 소비 창의
+   * 기준 인덱스는 2,000(= `anchorMs`/1000) 이고, 적용 결과는 1,880~2,030 이다.
+   */
+  const BARS: RangeSyncBars = { anchorMs: 2_000_000, fromBars: -120, toBars: 30 };
+  const peerPublish = (bars: RangeSyncBars = BARS, origin = DAILY_ORIGIN) =>
+    publishRange(1_000_000, 2_000_000, origin, bars);
 
-  it('같은 봉 발행을 받아 구간을 복제한다 — 축이 항등이라 ms/1000 이 가상초', async () => {
+  it('발행 창의 뷰를 봉 단위로 복제한다 — **여백까지**', async () => {
+    render(<Follower myTimeframe="D" />);
+    peerPublish();
+    await flushFrame();
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_880, to: 2_030 });
+    // 시각 경로는 타지 않는다 — `getVisibleRange()` 가 데이터로 클램프돼 여백을 잃는다.
+    expect(setVisibleRange).not.toHaveBeenCalled();
+  });
+
+  it('봉 단위 뷰가 없는 발행은 적용하지 않는다 — 시각으로 되돌아가지 않는다', async () => {
+    // `timeToIndex` 를 못 쓰는 환경의 발행. 여기서 시각 복제로 폴백하면 여백 소실
+    // 버그가 되살아나므로, **아무것도 하지 않는 쪽**이 계약이다.
     render(<Follower myTimeframe="D" />);
     publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
     await flushFrame();
-    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
-    // 중앙 정렬 경로는 타지 않는다.
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(setVisibleRange).not.toHaveBeenCalled();
   });
 
   it('토글을 끄면 복제하지 않는다 — **중앙 정렬로 떨어지지도 않는다**', async () => {
@@ -271,7 +332,7 @@ describe('useRangeSyncFollow — peer 모드', () => {
     // 창이 **같은 구간을 보지 않으면서 동기화된 것처럼 보인다**. 지금은 `syncModeFor`
     // 가 peer 를 없는 모드로 만들어 아무 경로도 타지 않는다.
     render(<Follower myTimeframe="D" syncPeer={false} />);
-    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    peerPublish();
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
@@ -279,7 +340,7 @@ describe('useRangeSyncFollow — peer 모드', () => {
 
   it('주봉 창은 주봉 발행만 받는다 — 일↔주는 통하지 않는다', async () => {
     render(<Follower myTimeframe="W" />);
-    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    peerPublish();
     await flushFrame();
     expect(setVisibleRange).not.toHaveBeenCalled();
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
@@ -287,24 +348,24 @@ describe('useRangeSyncFollow — peer 모드', () => {
 
   it('주봉 ↔ 주봉은 복제한다', async () => {
     render(<Follower myTimeframe="W" />);
-    publishRange(1_000_000, 2_000_000, { ...DAILY_ORIGIN, timeframe: 'W' });
+    peerPublish(BARS, { ...DAILY_ORIGIN, timeframe: 'W' });
     await flushFrame();
-    expect(setVisibleRange).toHaveBeenCalledWith({ from: 1_000, to: 2_000 });
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith({ from: 1_880, to: 2_030 });
   });
 
   it('창번호가 다르면 peer 도 막힌다 — 범위 규칙은 모드와 무관하다', async () => {
     render(<Follower myTimeframe="D" myGroup={2} />);
-    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    peerPublish();
     await flushFrame();
-    expect(setVisibleRange).not.toHaveBeenCalled();
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('이미 그 구간이면 되쓰지 않는다', async () => {
-    visibleRange = { from: 1_000, to: 2_000 };
+    visibleLogical = { from: 1_880, to: 2_030 };
     render(<Follower myTimeframe="D" />);
-    publishRange(1_000_000, 2_000_000, DAILY_ORIGIN);
+    peerPublish();
     await flushFrame();
-    expect(setVisibleRange).not.toHaveBeenCalled();
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 });
 

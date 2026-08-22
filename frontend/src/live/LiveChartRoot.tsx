@@ -1044,6 +1044,7 @@ export function LiveChartRoot({
     containerRef,
     enabled: rangeSyncOn && canPublishRangeSync(timeframe, { peer: rangeSyncPeer }),
     originRef: cursorOriginRef,
+    lastCandleMsRef,
   });
   useRangeSyncFollow({
     chart,
