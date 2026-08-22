@@ -129,6 +129,23 @@ export interface ChartWindowConfig {
 export interface ChartWindowRuntime {
   historicalFromDate: string | null;
   lastMinuteHistoricalFromDate: string | null;
+  /**
+   * 이 창을 **저장 데이터(hogaplay 캡처 디스크)로만** 읽는가 — 헤더의 hogaplay
+   * 버튼이 세운다(`useLiveBundle` 의 `hogaplaySourceEnabled`).
+   *
+   * `historicalFromDate` 와 **같은 자리에 사는 것이 요점**이다: 이 플래그는 구간을
+   * 얼리지 않고 그 값이 정하는 페치 창을 그대로 따라간다. 좌측 팬이 창을 넓히면
+   * 디스크 요청도 같이 넓어진다(저장뷰 얼림과의 차이 — 그쪽은 시작일을 고정한다).
+   *
+   * 분봉 전용이다(디스크의 hogaplay 는 분 입도뿐). 봉이 캘린더로 나가면
+   * `setChartTimeframe` 이 내린다.
+   *
+   * **옵셔널인 것은 이 타입을 `/study` 워크스페이스가 함께 쓰기 때문이다**
+   * (`state/studyWorkspace.ts`). 거기엔 이 버튼이 없고 봉 소스가 애초에 디스크
+   * 하나뿐이라(복기뷰) 필드를 요구하면 쓰지도 않는 값을 생산부마다 적어야 한다.
+   * 읽는 쪽은 전부 `?? false` 로 받는다.
+   */
+  hogaplaySource?: boolean;
 }
 
 export interface WorkspaceWindow {
@@ -251,6 +268,9 @@ type Store = Persisted & {
    *  호출만 막는다**(그건 `extend` 의 일이다). */
   contractChartHistoricalRange: (id: string, date: string) => void;
   resetChartHistoricalRange: (id: string) => void;
+  /** 창별 hogaplay 저장 데이터 소스 토글 — 헤더 버튼과 기간 칩 × 가 함께 쓴다.
+   *  캘린더 봉(D/W/M)에서는 켜지지 않는다(디스크의 hogaplay 는 분 입도뿐). */
+  setChartHogaplaySource: (id: string, on: boolean) => void;
 
   /**
    * 프리셋 적용 — **창·배치만** 교체한다(ADR-0119 PR-E 에서 종목 교체를 철회).
@@ -637,6 +657,7 @@ function withoutPin(win: WorkspaceWindow): WorkspaceWindow {
 const EMPTY_RUNTIME: ChartWindowRuntime = {
   historicalFromDate: null,
   lastMinuteHistoricalFromDate: null,
+  hogaplaySource: false,
 };
 
 /** fresh-view 규칙(#711): 종목이 바뀌는(창 닫힘·그룹 이동·그룹 종목 교체) 창들의
@@ -906,6 +927,13 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
           lastMinuteHistoricalFromDate: isMinuteTimeframe(prev.timeframe)
             ? rt.historicalFromDate ?? rt.lastMinuteHistoricalFromDate
             : rt.lastMinuteHistoricalFromDate,
+          // hogaplay 소스는 **분봉끼리는 따라온다**. 소스 선택은 구간이 아니라
+          // "무엇을 읽을 것인가" 라 봉을 바꿨다고 되돌릴 이유가 없다 — 위
+          // `historicalFromDate` 리셋과 축이 다르다. 캘린더 봉으로 나갈 때만 내린다:
+          // 그 경로의 디스크 소스는 스크리너 일봉이지 hogaplay 가 아니어서
+          // (`useLiveBundle` 의 `enableScreenerDaily`) 켜 둔 채 두면 버튼이
+          // 이름과 다른 것을 켜 놓은 상태가 된다.
+          hogaplaySource: isMinuteTimeframe(tf) && rt.hogaplaySource === true,
         },
       };
       persistFromState({ ...state, windows });
@@ -944,6 +972,21 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     set((state) => {
       if (!(id in state.chartRuntime)) return {};
       return { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
+    });
+  },
+
+  setChartHogaplaySource: (id, on) => {
+    set((state) => {
+      const win = state.windows.find((w) => w.id === id);
+      if (!win?.chart) return {};
+      // 캘린더 봉에서는 **켜지지 않는다**(끄는 것은 언제나 허용 — 봉이 먼저 바뀌어
+      // 이미 내려간 상태에서 칩 × 가 늦게 도착해도 no-op 이 되게).
+      if (on && !isMinuteTimeframe(win.chart.timeframe)) return {};
+      const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+      if ((rt.hogaplaySource ?? false) === on) return {};
+      return {
+        chartRuntime: { ...state.chartRuntime, [id]: { ...rt, hogaplaySource: on } },
+      };
     });
   },
 
