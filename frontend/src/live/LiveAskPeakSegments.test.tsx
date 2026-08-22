@@ -1,4 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import { act } from 'react';
+import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
+import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
+import type { PaneId } from '../chart/drawing/types';
+import { AskPeakSegmentsPrimitive } from '../chart/AskPeakSegmentsPrimitive';
+import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
+import { useLivePageStore } from '../state/livePage';
+import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
+import LiveAskPeakSegments from './LiveAskPeakSegments';
 import {
   buildAskPeakSegments,
   buildAskPeakOverlaySegments,
@@ -480,5 +490,127 @@ describe('live peak-wall inline label suppression', () => {
     expect(inline[0].label).toBe('');
     expect(inline[1].live).toBe(true);
     expect(inline[1]).toMatchObject({ price: 90, label: '', color: '#2563EB', lineWidth: 2 });
+  });
+});
+
+/**
+ * **레전드 값 provider — 보이는 영역 잔량 상위 3개**(2026-08-22).
+ *
+ * provider 가 랭킹하는 대상은 `updateSegments` 가 **필터를 모두 통과시킨 뒤** ref 에
+ * 넣은 집합이다. 그래서 레전드는 화면에 그려진(그려질) 벽만 이름 부른다 — 「체결된 벽
+ * 표시 개수」로 잘려 나간 4번째 벽은 레전드에도 없다.
+ *
+ * **막는 방향**: (1) provider 가 필터 **전** 집합을 잡는 것, (2) 눈(hidden)이 선과 함께
+ * 레전드 값까지 지우는 것(MA 의 "hide 는 선만 숨긴다" 규칙 위반).
+ * **못 보는 것**: 랭킹 규칙 자체 — `peakWallVisibleRanking.test.ts` 가 잡는다.
+ */
+describe('LiveAskPeakSegments — 레전드 값 provider', () => {
+  const day = '20260613';
+  const open = 60_000;
+
+  function legendCandle(ts_ms: number): Candle {
+    return { ts_ms, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 };
+  }
+
+  // 하루에 벽 후보 4개. 「체결된 벽 표시 개수」 3 이라 잔량 하위 1개(500)는 그려지지도,
+  // 레전드에 오르지도 않아야 한다.
+  const candidates = [
+    { price: 100, qty: 1000, t_ms: open },
+    { price: 105, qty: 3000, t_ms: open + 60_000 },
+    { price: 110, qty: 2000, t_ms: open + 120_000 },
+    { price: 115, qty: 500, t_ms: open + 120_000 },
+  ];
+  const askPeak: AskPeak = {
+    date: day,
+    price: 100,
+    qty: 1000,
+    t_ms: open,
+    max_price: 100,
+    max_qty: 1000,
+    max_t_ms: open,
+    traded_peaks: candidates,
+    traded_max_peaks: candidates,
+  };
+  const rangeSegments: RangeSegment[] = [
+    { date: day, session_open_ms: open, session_close_ms: open + 180_000 },
+  ];
+
+  function renderOverlay() {
+    const attached: AskPeakSegmentsPrimitive[] = [];
+    const chart = {
+      timeScale: () => ({
+        // 가상초 = ms / 1000 → 그날 구간은 [60, 240]. 범위가 그 날을 통째로 덮는다.
+        getVisibleRange: () => ({ from: 60 as never, to: 240 as never }),
+        options: () => ({ barSpacing: 12 }),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+    } as unknown as IChartApi;
+    const series = {
+      attachPrimitive: vi.fn((primitive: AskPeakSegmentsPrimitive) => {
+        attached.push(primitive);
+        primitive.attached({
+          chart,
+          series: series as unknown as ISeriesApi<SeriesType>,
+          requestUpdate: vi.fn(),
+        } as unknown as Parameters<AskPeakSegmentsPrimitive['attached']>[0]);
+      }),
+      detachPrimitive: vi.fn(),
+    } as unknown as ISeriesApi<SeriesType>;
+    const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
+    render(
+      <LiveAskPeakSegments
+        paneSeries={paneSeries}
+        axis={axis}
+        dayAskPeaks={[askPeak]}
+        segments={rangeSegments}
+        candles={[legendCandle(open), legendCandle(open + 60_000), legendCandle(open + 120_000)]}
+        todayKst={day}
+      />,
+    );
+    return attached;
+  }
+
+  beforeEach(() => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS, askPeakAllPriceRankLimit: 3 });
+      useLivePageStore.setState({ askPeakEnabled: true, askPeakHidden: false });
+    });
+  });
+
+  it('그려진 벽만 잔량 내림차순 상위 3개로 레전드에 올린다', async () => {
+    const attached = renderOverlay();
+    await waitFor(() => expect(attached).toHaveLength(1));
+    await waitFor(() => {
+      expect(readFlagLegendValues(null, 'ask-peak', null)).toEqual([
+        { key: 'ask-peak-1', label: '1', value: '105, 3k' },
+        { key: 'ask-peak-2', label: '2', value: '110, 2k' },
+        { key: 'ask-peak-3', label: '3', value: '100, 1k' },
+      ]);
+    });
+  });
+
+  it('눈(hidden)은 선만 지우고 레전드 값은 살린다', async () => {
+    act(() => {
+      useLivePageStore.setState({ askPeakHidden: true });
+    });
+    const attached = renderOverlay();
+    await waitFor(() => expect(attached).toHaveLength(1));
+    await waitFor(() => {
+      expect(attached[0].segmentsData()).toEqual([]);
+      expect(readFlagLegendValues(null, 'ask-peak', null)).toHaveLength(3);
+    });
+  });
+
+  it('지표를 끄면(enabled=false) 선도 레전드 값도 없다', async () => {
+    act(() => {
+      useLivePageStore.setState({ askPeakEnabled: false });
+    });
+    const attached = renderOverlay();
+    await waitFor(() => expect(attached).toHaveLength(1));
+    await waitFor(() => {
+      expect(attached[0].segmentsData()).toEqual([]);
+      expect(readFlagLegendValues(null, 'ask-peak', null)).toEqual([]);
+    });
   });
 });

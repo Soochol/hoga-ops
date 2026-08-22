@@ -1,10 +1,13 @@
-// Flag legend value helpers — 커서 시각(가상초)을 거래일로 해석하고, 거래일별
-// 지표 데이터(최대벽·POC)를 레전드 값 셀 문자열로 변환하는 순수 계층.
-// `flagLegendValueRegistry`의 provider 구현체들이 공유한다.
+// Flag legend value helpers — 커서 시각(가상초)을 거래일로 해석하고, 지표 값을 레전드
+// 셀 문자열로 포맷하는 순수 계층. `flagLegendValueRegistry`의 provider 구현체들이 공유한다.
+//
+// 소비처: 매물대(POC)·거래원(ratio)은 `legendCursorDate` 로 커서 거래일을 잡고,
+// 단별 잔량 증감은 `formatPriceDelta`, 당일 최대벽은 `formatPriceQty` 를 쓴다
+// (최대벽의 값 선택 자체는 커서가 아니라 보이는 영역 랭킹이라 `peakWallVisibleRanking`
+// 이 소유한다 — 여기엔 포맷만 남는다).
 
 import type { VirtualAxis } from '../util/virtualAxis';
 import { formatQtyCompact } from '../util/formatQtyCompact';
-import type { FlagLegendValueCell } from './indicators/flagLegendValueRegistry';
 
 /** 커서 가상초 → 그 시각이 속한 거래일(YYYYMMDD). 커서 없음(null) → 마지막
  *  세그먼트 날짜(latest-fallback, MA row 규칙 미러). 축이 비면 null. */
@@ -34,31 +37,4 @@ export function formatPriceDelta(price: number, inQty: number, outQty: number): 
   if (outQty > 0) parts.push(`-${formatQtyCompact(outQty)}`);
   const flow = parts.length > 0 ? parts.join(' ') : '0';
   return `${Math.round(price).toLocaleString('ko-KR')}, ${flow}`;
-}
-
-type DayPeakLike = {
-  date: string;
-  price: number | null;
-  qty: number | null;
-  max_price: number | null;
-  max_qty: number | null;
-};
-
-/** 거래일별 최대벽(ask/bid 공용) provider 본체: 커서 거래일의 벽 가격·잔량을
- *  단일 셀로. 해당 날 데이터 없음 → 빈 배열(레전드는 이름만 표시). */
-export function peakLegendCells(
-  peaks: readonly DayPeakLike[],
-  axis: VirtualAxis,
-  intraMax: boolean,
-  cursorTimeSec: number | null,
-  key: string,
-): FlagLegendValueCell[] {
-  const date = legendCursorDate(axis, cursorTimeSec);
-  if (date === null) return [];
-  const peak = peaks.find((p) => p.date === date);
-  if (!peak) return [];
-  const price = intraMax ? peak.max_price : peak.price;
-  const qty = intraMax ? peak.max_qty : peak.qty;
-  if (price === null || qty === null || !Number.isFinite(price) || !Number.isFinite(qty)) return [];
-  return [{ key, value: formatPriceQty(price, qty) }];
 }

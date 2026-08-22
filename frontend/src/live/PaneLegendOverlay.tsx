@@ -110,6 +110,20 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'program-trade',
 ]);
 
+/** flag 행(값 없는 오버레이 지표)의 표시 화이트리스트 — `LEGEND_CELL_PANES` 와 같은 성격.
+ *  2026-07-22 에 캔들 pane 밀집도 때문에 flag 행을 **전부** 숨겼다. 당일 최대벽 두 행만
+ *  2026-08-22 에 되살린다(사용자 요청): 값이 「커서가 올라간 거래일의 벽 1개」에서
+ *  「보이는 영역 잔량 상위 3개」로 바뀌어, 커서를 따라다니는 단발 판독이 아니라 **화면
+ *  전체의 요약**이 됐다 — 커서를 올리지 않아도 읽을 값이 있으므로 레전드 자리가 정당하다.
+ *  나머지 flag(매물대·히트맵·단별잔량·신규거래원)는 계속 숨긴다.
+ *
+ *  ⚠ 상위 3개가 비어도(보이는 범위에 벽 없음) 행은 남는다 — 행을 지우면 눈·✕ 가 함께
+ *  사라져 레전드에서 지표를 끌 수 없다. */
+const LEGEND_FLAG_IDS: ReadonlySet<LegendFlagId> = new Set<LegendFlagId>([
+  'ask-peak',
+  'bid-peak',
+]);
+
 // Positioned by the per-pane stack wrapper (flex column), not absolutely —
 // a pane can now hold several rows (candle: MA + daily-MA + flag chips).
 const boxStyle: CSSProperties = {
@@ -830,14 +844,16 @@ function PaneLegendOverlay({
     // 캔들 pane 의 OHLC·이동평균선(현재 타임프레임)에 더해, LEGEND_CELL_PANES 의
     // cells 행을 표시한다(거래량·총잔량 2026-08-04 · 프로그램 순매수 2026-08-18,
     // 둘 다 사용자 요청 — 이 pane 들은 다른 지표처럼 값 레전드를 갖는다).
+    // LEGEND_FLAG_IDS 의 flag 행(당일 매도·매수 최대벽, 2026-08-22 사용자 요청)도 표시.
     // 계속 숨기는 것: 일봉 이동평균선(daily-ma) 행 — 차트의 일봉 MA 선 자체는
-    // dailyMaSeriesRegistry 가 계속 그리고 값 표시 행만 뺀다. flag 행(최대벽·매물대·
-    // 히트맵·단별잔량·신규거래원)과 나머지 cells pane(호가비·체결강도·투자자)도
+    // dailyMaSeriesRegistry 가 계속 그리고 값 표시 행만 뺀다. 화이트리스트 밖의 flag 행
+    // (매물대·히트맵·단별잔량·신규거래원)과 나머지 cells pane(호가비·체결강도·투자자)도
     // 숨긴다(2026-07-22, 차트 밀집도). 지표 on/off 는 보조지표 패널이 담당.
   }).filter(
     (r) =>
       r.kind === 'ohlc' ||
       r.kind === 'ma' ||
+      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.id)) ||
       (r.kind === 'cells' && LEGEND_CELL_PANES.has(r.paneId)),
   );
 

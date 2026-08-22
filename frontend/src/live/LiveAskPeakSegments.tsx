@@ -10,7 +10,8 @@ import {
   unregisterFlagLegendValues,
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
-import { formatPriceQty, peakLegendCells } from './peakLegendValues';
+import { formatPriceQty } from './peakLegendValues';
+import { peakWallRankLegendCells, rankVisiblePeakSegments } from './peakWallVisibleRanking';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, usePeakMaFilter, type PeakMaFilter } from './peakWallMaFilter';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -118,43 +119,16 @@ function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
   return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
 }
 
-function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
-  if (!visibleRange) return false;
-  const visibleFrom = visibleRange.from as unknown as number;
-  const visibleTo = visibleRange.to as unknown as number;
-  const from = Math.min(visibleFrom, visibleTo);
-  const to = Math.max(visibleFrom, visibleTo);
-  const s0 = segment.time0 as unknown as number;
-  const s1 = segment.time1 as unknown as number;
-  return Math.max(s0, from) <= Math.min(s1, to);
-}
-
 export function styleVisibleMaxAskPeakSegments(
   segments: readonly AskPeakSegment[],
   visibleRange: VisibleTimeRange,
   style: AskPeakLineStyle,
   rankLimit: VisibleMaxRankLimit = 1,
 ): AskPeakSegment[] {
-  if (!visibleRange || segments.length === 0 || rankLimit === 0) return [...segments];
-  const best: { index: number; qty: number }[] = [];
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    if (!segmentOverlapsVisibleRange(segment, visibleRange)) continue;
-    const candidate = { index, qty: segment.qty };
-    let insertAt = best.length;
-    for (let i = 0; i < best.length; i += 1) {
-      if (candidate.qty > best[i].qty) {
-        insertAt = i;
-        break;
-      }
-    }
-    if (insertAt < rankLimit) {
-      best.splice(insertAt, 0, candidate);
-      if (best.length > rankLimit) best.length = rankLimit;
-    }
-  }
-  const highlighted = new Set(best.map(({ index }) => index));
-  if (highlighted.size === 0) return [...segments];
+  // 레전드 값 셀(`peakWallRankLegendCells`)과 **같은 랭커**를 쓴다. 두 벌을 두면 동점
+  // (같은 잔량)에서 조용히 갈려 선은 A 를, 레전드 1위는 B 를 가리킨다.
+  const highlighted = rankVisiblePeakSegments(segments, visibleRange, rankLimit);
+  if (highlighted.length === 0) return [...segments];
   const next = [...segments];
   for (const index of highlighted) {
     next[index] = { ...segments[index], color: style.color, lineWidth: style.lineWidth };
@@ -362,6 +336,12 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   const visibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const maFilter = usePeakMaFilter('ask');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
+  /** 레전드가 랭킹할 세그먼트 — `updateSegments` 가 **필터를 모두 통과한 뒤**의 집합을
+   *  여기 넣는다. provider 가 이 ref 를 읽으므로 레전드는 화면에 실제로 그려진(그려질)
+   *  벽만 이름 부른다. ref 인 이유: provider 는 비반응형 레지스트리에 등록되고 레전드
+   *  렌더 시점에 lazy 하게 불리므로, 스토어/props 를 provider effect 의 deps 로 끌어오면
+   *  등록·해제만 반복된다. */
+  const legendSegmentsRef = useRef<readonly AskPeakSegment[]>([]);
   // 레전드 값 provider 의 창 스코프(멀티창) — 창별로 다른 종목의 벽 값이 섞이지 않게.
   const windowId = useWindowScopeId();
 
@@ -381,20 +361,29 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     };
   }, [series]);
 
-  // 레전드 값 provider — 커서 거래일의 벽 가격·잔량. hidden(눈)과 무관하게 유지:
+  // 레전드 값 provider — **보이는 영역**의 잔량 상위 3개. hidden(눈)과 무관하게 유지:
   // MA의 "hide는 선만 숨기고 레전드 값은 산다" 규칙 미러.
+  //
+  // 보이는 범위는 **호출 시점에** 읽는다(스냅샷 금지). 팬 한 번에 이 오버레이의 rAF 와
+  // 레전드 오버레이의 rAF 가 같은 `visibleLogicalRangeChange` 로 각각 깨어나는데 순서
+  // 보장이 없어서, 미리 계산해 두면 팬 직후 마지막 프레임이 **이전 범위의 상위 3개**를
+  // 보일 수 있다. 세그먼트 집합 자체는 팬으로 안 바뀌므로 ref + 실시간 범위면 충분하다.
   useEffect(() => {
-    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
-      peakLegendCells(dayAskPeaks, axis, intraMax, cursorTimeSec, 'ask-peak');
+    const provider: FlagLegendValueProvider = () => peakWallRankLegendCells(
+      legendSegmentsRef.current,
+      primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
+      'ask-peak',
+    );
     registerFlagLegendValues(windowId, 'ask-peak', provider);
     return () => unregisterFlagLegendValues(windowId, 'ask-peak', provider);
-  }, [windowId, dayAskPeaks, axis, intraMax]);
+  }, [windowId]);
 
   const updateSegments = useCallback(() => {
     const prim = primRef.current;
     if (!prim) return;
-    if (!enabled || hidden) {
+    if (!enabled) {
       prim.setSegments([]);
+      legendSegmentsRef.current = [];
       return;
     }
     const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
@@ -411,6 +400,13 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
       maFilter,
       dailyMaFilter,
     });
+    // 레전드는 눈(hidden)과 무관하게 값을 유지하므로 **그리기 게이트보다 먼저** 채운다.
+    // 여기서 hidden 을 먼저 걸면 눈을 끄는 순간 레전드가 비어 MA 규칙이 깨진다.
+    legendSegmentsRef.current = rawSegments;
+    if (hidden) {
+      prim.setSegments([]);
+      return;
+    }
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
     prim.setSegments(prepareAskPeakSegmentsForRender(
       rawSegments,
