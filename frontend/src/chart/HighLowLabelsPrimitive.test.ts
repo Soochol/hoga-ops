@@ -20,6 +20,7 @@ function line(on: boolean, over: Partial<LevelLineStyle> = {}): LevelLineStyle {
   return { on, color: '', width: 1, ...over };
 }
 import type { AvoidRect, AvoidWallLabel } from './highLowLabelLayout';
+import type { PeakWallRankArrow } from './PeakWallRankArrowsPrimitive';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 
@@ -123,6 +124,8 @@ function snapshot(over: Partial<HighLowLabelsSnapshot> = {}): HighLowLabelsSnaps
     axis,
     timeframe: '1m',
     avoidWallLabels: [],
+    avoidRankArrows: [],
+    avoidRankArrowLimit: 0,
     legendRects: [],
     levelLines: { high: line(false), low: line(false) },
     priorDayLines: { high: line(false), low: line(false) },
@@ -231,6 +234,59 @@ describe('HighLowLabelsPrimitive', () => {
 
     // 가장자리(6+8=14)에 머물지 않고 칩 아래로 밀림.
     expect(texts(c)[0].y).toBeGreaterThan(14);
+  });
+
+  /**
+   * **순위 화살표 회피 — 그려지는 것만 피한다.**
+   *
+   * 화살표는 상위 N 개만 그려지므로, 회피도 그 N 개만 해야 한다. 전건을 피하면 있지도
+   * 않은 화살표 때문에 극값 라벨이 pane 안쪽으로 표류한다(칩 rect 에서 이미 겪은 결함).
+   * 그래서 랭킹을 여기 draw 에서, 화살표 primitive 와 **같은 랭커·같은 프레임 범위**로
+   * 다시 구한다.
+   *
+   * **막는 방향**: (1) 회피가 통째로 빠지는 것, (2) 순위 밖 화살표까지 피하는 것.
+   * **못 보는 것**: 화살표가 실제로 그 rect 자리에 그려지는지 — 상수 공유가 그걸 맡는다.
+   */
+  describe('순위 화살표 회피', () => {
+    const TOP_ANCHOR = 38_805;
+    const RUNNER_ANCHOR = 38_804;
+    const arrow = (anchorPrice: number, qty: number): PeakWallRankArrow => ({
+      time: ((OPEN + CLOSE) / 2000) as Time,
+      time0: (OPEN / 1000) as Time,
+      time1: (CLOSE / 1000) as Time,
+      qty,
+      anchorPrice,
+      side: 'ask',
+      color: '#f00',
+    });
+    // TOP_ANCHOR 만 상단 가장자리(y=15)로 매핑 — 그 자리 화살표를 피해야 라벨이 밀린다.
+    const stubsFor = () => makeAxisStubs({
+      priceToCoordinate: (p) => (p === TOP_ANCHOR ? 15 : 150),
+    });
+
+    // 두 화살표는 **y 만 다르다** — 하나는 상단 가장자리(15, 라벨과 겹침), 하나는
+    // 한가운데(150, 안 겹침). 어느 쪽이 상위인지는 **잔량만으로** 갈리므로, 잔량을
+    // 뒤집는 것 하나로 「랭킹을 실제로 쓰는가」가 양방향으로 드러난다.
+    const drawWith = (edgeQty: number, middleQty: number) => {
+      const stubs = stubsFor();
+      const { prim } = attach(stubs, () => snapshot({
+        avoidRankArrows: [arrow(TOP_ANCHOR, edgeQty), arrow(RUNNER_ANCHOR, middleQty)],
+        avoidRankArrowLimit: 1,
+      }));
+      const c = makeCanvasSpy();
+      draw(prim, c, { w: 760, h: 300 });
+      return texts(c)[0].y;
+    };
+
+    it('1위 화살표가 라벨 자리에 있으면 고가 라벨이 밀린다', () => {
+      expect(drawWith(900, 100)).toBeGreaterThan(14);
+    });
+
+    it('같은 화살표라도 순위 밖이면 피하지 않는다(유령 회피 방지)', () => {
+      // 잔량만 뒤집었다 → 1위는 한가운데 화살표. 가장자리 것은 그려지지 않으므로
+      // 라벨은 가장자리(6+8=14)에 그대로 있어야 한다.
+      expect(drawWith(100, 900)).toBe(14);
+    });
   });
 
   it('avoids the pane legend rows measured by the host', () => {

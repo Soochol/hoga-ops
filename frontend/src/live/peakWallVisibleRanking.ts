@@ -17,6 +17,15 @@ import { formatPriceQty } from './peakLegendValues';
 
 type VisibleTimeRange = IRange<Time> | null;
 
+/** 랭킹이 실제로 읽는 최소 형태 — 그날 구간(겹침 판정)과 잔량(정렬 키)뿐이다.
+ *  `AskPeakSegment` 와 순위 화살표(`PeakWallRankArrow`)가 둘 다 이걸 만족하므로, 두
+ *  표면이 **같은 랭커**를 쓰면서도 서로의 구조체를 알 필요가 없다. */
+export type RankablePeakSegment = {
+  time0: Time;
+  time1: Time;
+  qty: number;
+};
+
 /** 레전드가 보여 주는 벽 개수. 설정의 「보이는 영역 최대벽 표시 개수」(0~3)와 **무관하게**
  *  고정이다 — 그 설정은 선 강조 색만 관장하고, 0 으로 두면 레전드가 통째로 비어 버린다. */
 export const PEAK_WALL_LEGEND_RANK_LIMIT = 3;
@@ -25,7 +34,7 @@ export const PEAK_WALL_LEGEND_RANK_LIMIT = 3;
  *  범위가 없으면(첫 프레임·teardown) **겹치지 않음**으로 본다 — 알 수 없는 상태에서
  *  전부 강조/표시하는 것보다 아무것도 안 하는 쪽이 정직하다. */
 function segmentOverlapsVisibleRange(
-  segment: AskPeakSegment,
+  segment: RankablePeakSegment,
   visibleRange: VisibleTimeRange,
 ): boolean {
   if (!visibleRange) return false;
@@ -43,8 +52,8 @@ function segmentOverlapsVisibleRange(
  *
  *  동점은 **먼저 나온 인덱스가 앞**이다(삽입 비교가 strict `>`). 이 규칙이 두 소비처의
  *  일치를 보장하므로 정렬을 `sort` 로 바꿀 때도 안정성을 유지할 것. */
-export function rankVisiblePeakSegments(
-  segments: readonly AskPeakSegment[],
+export function rankVisiblePeakSegments<T extends RankablePeakSegment>(
+  segments: readonly T[],
   visibleRange: VisibleTimeRange,
   limit: number,
 ): number[] {

@@ -2,6 +2,7 @@ import type {
   IChartApi,
   IPrimitivePaneRenderer,
   IPrimitivePaneView,
+  IRange,
   ISeriesApi,
   ISeriesPrimitive,
   ITimeScaleApi,
@@ -11,6 +12,8 @@ import type {
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { Candle } from '../api/types';
+import { rankVisiblePeakSegments } from '../live/peakWallVisibleRanking';
+import { rankArrowRect, type PeakWallRankArrow } from './PeakWallRankArrowsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import { resolveTokensThemed } from '../util/tokens';
@@ -67,6 +70,13 @@ export type HighLowLabelsSnapshot = {
   timeframe: LiveTimeframe;
   /** Ask/Bid Peak(최대벽) 도킹 라벨 — 픽셀이 아닌 가격/시각. 좌표 변환은 draw 가 한다. */
   avoidWallLabels: readonly AvoidWallLabel[];
+  /** 최대벽 **순위 화살표** 후보(전건). 상위 몇 개가 실제로 그려지는지는 보이는 범위에
+   *  달렸으므로 **여기서 미리 자르지 않는다** — draw 가 화살표 primitive 와 **같은
+   *  랭커·같은 프레임 범위**로 고른 것만 회피 대상에 넣는다. 미리 전건을 넣으면 그리지도
+   *  않은 화살표를 피해 극값 라벨이 밀리는 유령 회피가 된다(칩 rect 에서 이미 겪은 결함). */
+  avoidRankArrows: readonly PeakWallRankArrow[];
+  /** 화살표 순위 컷 — 0 이면 화살표가 꺼진 상태라 회피도 없다. */
+  avoidRankArrowLimit: number;
   /** Pane Legend 행 rect(캔들 pane 로컬 px) — DOM 실측이라 host 가 밀어 넣는다. */
   legendRects: readonly AvoidRect[];
   /** 극값 **가격선**(pane 전폭 수평 점선) — 고가·저가가 **독립 토글**이다
@@ -142,6 +152,39 @@ function priceY(series: ISeriesApi<SeriesType>, price: number): number | null {
   } catch {
     return null;
   }
+}
+
+/** 순위 화살표 회피 rect — **그려지는 것만**. 랭킹은 `PeakWallRankArrowsPrimitive` 와
+ *  같은 `rankVisiblePeakSegments` 에 같은 프레임의 보이는 범위를 먹여 구하므로, 회피
+ *  대상과 실제로 그려지는 화살표가 갈릴 수 없다. */
+function rankArrowAvoidRects(
+  chart: IChartApi,
+  series: ISeriesApi<SeriesType>,
+  arrows: readonly PeakWallRankArrow[],
+  limit: number,
+): AvoidRect[] {
+  if (arrows.length === 0 || limit <= 0) return [];
+  const ts = chart.timeScale();
+  const rects: AvoidRect[] = [];
+  try {
+    const visibleRange = ts.getVisibleRange() as IRange<Time> | null;
+    // **측면별로** 따로 랭킹한다 — 화살표 primitive 가 매도·매수 각각 한 개씩 붙어
+    // 자기 것만 고르기 때문이다. 합쳐서 상위 3개를 뽑으면 한쪽이 다 차지한다.
+    for (const side of ['ask', 'bid'] as const) {
+      const sideArrows = arrows.filter((a) => a.side === side);
+      for (const index of rankVisiblePeakSegments(sideArrows, visibleRange, limit)) {
+        const arrow = sideArrows[index];
+        const x = xCoordinateOrNearest(ts, arrow.time);
+        const y = series.priceToCoordinate(arrow.anchorPrice);
+        if (x == null || y == null) continue;
+        rects.push(rankArrowRect(Number(y), arrow.side, Number(x)));
+      }
+    }
+  } catch {
+    // 차트 teardown 레이스 — 회피 없이 그린다(칩 rect 와 같은 처방).
+    return [];
+  }
+  return rects;
 }
 
 /** 최대벽 라벨 칩 회피 rect — draw 프레임의 축 스케일로 변환한다(축 리스케일 정합).
@@ -221,6 +264,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       const tokens = resolveTokensThemed(TOKEN_SPEC);
       const avoidRects = [
         ...wallAvoidRects(chart, series, snap.avoidWallLabels, paneWidth),
+        ...rankArrowAvoidRects(chart, series, snap.avoidRankArrows, snap.avoidRankArrowLimit),
         ...snap.legendRects,
       ];
 

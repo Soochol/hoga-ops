@@ -5,7 +5,7 @@ import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
-import type { AskPeakSegmentsPrimitive } from '../chart/AskPeakSegmentsPrimitive';
+import { AskPeakSegmentsPrimitive } from '../chart/AskPeakSegmentsPrimitive';
 import type { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
@@ -99,6 +99,14 @@ beforeEach(() => {
   });
 });
 
+
+/** 캔들 series 에는 이제 primitive 가 **둘** 붙는다 — 벽 세그먼트와 순위 화살표
+ *  (`PeakWallRankArrowsPrimitive`). 인덱스로 집으면 부착 순서가 바뀌는 날 조용히 다른
+ *  primitive 를 검사하므로, 인스턴스로 골라낸다. */
+function segmentsOnly(attached: readonly unknown[]): AskPeakSegmentsPrimitive[] {
+  return attached.filter((p): p is AskPeakSegmentsPrimitive => p instanceof AskPeakSegmentsPrimitive);
+}
+
 describe('매도 최대벽 선 — 이동평균선 위 벽만', () => {
   async function renderPrices(enabled: boolean, peak: AskPeak): Promise<number[]> {
     act(() => {
@@ -115,8 +123,8 @@ describe('매도 최대벽 선 — 이동평균선 위 벽만', () => {
         todayKst={DAY}
       />,
     );
-    await waitFor(() => expect(attached).toHaveLength(1));
-    return attached[0].segmentsData().map((s) => s.price);
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    return segmentsOnly(attached)[0].segmentsData().map((s) => s.price);
   }
 
   it('ON 이면 MA 아래 벽이 사라진다', async () => {
@@ -148,8 +156,8 @@ describe('매수 최대벽 선 — 이동평균선 아래 벽만(매도의 거�
         todayKst={DAY}
       />,
     );
-    await waitFor(() => expect(attached).toHaveLength(1));
-    return attached[0].segmentsData().map((s) => s.price);
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    return segmentsOnly(attached)[0].segmentsData().map((s) => s.price);
   }
 
   it('ON 이면 MA 위 벽이 사라진다', async () => {
@@ -254,8 +262,8 @@ describe('일봉 MA 필터 — 선·라벨 배선', () => {
         dailyMaFilter={dailyMaFilter}
       />,
     );
-    await waitFor(() => expect(attached).toHaveLength(1));
-    return attached[0].segmentsData().map((s) => s.price);
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    return segmentsOnly(attached)[0].segmentsData().map((s) => s.price);
   }
 
   it('필터가 있으면 일봉 MA 아래 매도벽이 사라진다', async () => {

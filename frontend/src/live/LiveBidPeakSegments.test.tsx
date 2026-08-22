@@ -8,10 +8,19 @@ import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { AskPeakSegmentsPrimitive } from '../chart/AskPeakSegmentsPrimitive';
+import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+
+
+/** 캔들 series 에는 이제 primitive 가 **둘** 붙는다 — 벽 세그먼트와 순위 화살표
+ *  (`PeakWallRankArrowsPrimitive`). 인덱스로 집으면 부착 순서가 바뀌는 날 조용히 다른
+ *  primitive 를 검사하므로, 인스턴스로 골라낸다. */
+function segmentsOnly(attached: readonly unknown[]): AskPeakSegmentsPrimitive[] {
+  return attached.filter((p): p is AskPeakSegmentsPrimitive => p instanceof AskPeakSegmentsPrimitive);
+}
 
 describe('buildBidPeakOverlaySegments', () => {
 
@@ -198,70 +207,71 @@ describe('buildBidPeakOverlaySegments', () => {
  *
  * **막는 방향**: 매수쪽만 옛 배선(커서 거래일 1개)으로 남거나, 눈이 값을 지우는 것.
  */
-describe('LiveBidPeakSegments — 레전드 값 provider', () => {
   const day = '20260613';
-  const open = 60_000;
-  const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
+const open = 60_000;
+const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
 
-  function candle(ts_ms: number): Candle {
-    return { ts_ms, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 };
-  }
+function candle(ts_ms: number): Candle {
+  return { ts_ms, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 };
+}
 
-  const candidates = [
-    { price: 100, qty: 1000, t_ms: open },
-    { price: 95, qty: 3000, t_ms: open + 60_000 },
-    { price: 90, qty: 2000, t_ms: open + 120_000 },
-  ];
-  const bidPeak: BidPeak = {
-    date: day,
-    price: 100,
-    qty: 1000,
-    t_ms: open,
-    max_price: 100,
-    max_qty: 1000,
-    max_t_ms: open,
-    traded_peaks: candidates,
-    traded_max_peaks: candidates,
-  };
-  const rangeSegments: RangeSegment[] = [
-    { date: day, session_open_ms: open, session_close_ms: open + 180_000 },
-  ];
+const candidates = [
+  { price: 100, qty: 1000, t_ms: open },
+  { price: 95, qty: 3000, t_ms: open + 60_000 },
+  { price: 90, qty: 2000, t_ms: open + 120_000 },
+];
+const bidPeak: BidPeak = {
+  date: day,
+  price: 100,
+  qty: 1000,
+  t_ms: open,
+  max_price: 100,
+  max_qty: 1000,
+  max_t_ms: open,
+  traded_peaks: candidates,
+  traded_max_peaks: candidates,
+};
+const rangeSegments: RangeSegment[] = [
+  { date: day, session_open_ms: open, session_close_ms: open + 180_000 },
+];
 
-  function renderOverlay() {
-    const attached: AskPeakSegmentsPrimitive[] = [];
-    const chart = {
-      timeScale: () => ({
-        getVisibleRange: () => ({ from: 60 as never, to: 240 as never }),
-        options: () => ({ barSpacing: 12 }),
-        subscribeVisibleLogicalRangeChange: vi.fn(),
-        unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      }),
-    } as unknown as IChartApi;
-    const series = {
-      attachPrimitive: vi.fn((primitive: AskPeakSegmentsPrimitive) => {
-        attached.push(primitive);
-        primitive.attached({
-          chart,
-          series: series as unknown as ISeriesApi<SeriesType>,
-          requestUpdate: vi.fn(),
-        } as unknown as Parameters<AskPeakSegmentsPrimitive['attached']>[0]);
-      }),
-      detachPrimitive: vi.fn(),
-    } as unknown as ISeriesApi<SeriesType>;
-    const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
-    render(
-      <LiveBidPeakSegments
-        paneSeries={paneSeries}
-        axis={axis}
-        dayBidPeaks={[bidPeak]}
-        segments={rangeSegments}
-        candles={[candle(open), candle(open + 60_000), candle(open + 120_000)]}
-        todayKst={day}
-      />,
-    );
-    return attached;
-  }
+function renderBidOverlay() {
+  // series 에 primitive 가 둘 붙는다(세그먼트 + 순위 화살표) — 인스턴스로 골라낸다.
+const attached: unknown[] = [];
+  const chart = {
+    timeScale: () => ({
+      getVisibleRange: () => ({ from: 60 as never, to: 240 as never }),
+      options: () => ({ barSpacing: 12 }),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    }),
+  } as unknown as IChartApi;
+  const series = {
+    attachPrimitive: vi.fn((primitive: AskPeakSegmentsPrimitive) => {
+      attached.push(primitive);
+      primitive.attached({
+        chart,
+        series: series as unknown as ISeriesApi<SeriesType>,
+        requestUpdate: vi.fn(),
+      } as unknown as Parameters<AskPeakSegmentsPrimitive['attached']>[0]);
+    }),
+    detachPrimitive: vi.fn(),
+  } as unknown as ISeriesApi<SeriesType>;
+  const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
+  render(
+    <LiveBidPeakSegments
+      paneSeries={paneSeries}
+      axis={axis}
+      dayBidPeaks={[bidPeak]}
+      segments={rangeSegments}
+      candles={[candle(open), candle(open + 60_000), candle(open + 120_000)]}
+      todayKst={day}
+    />,
+  );
+  return attached;
+}
 
+describe('LiveBidPeakSegments — 레전드 값 provider', () => {
   beforeEach(() => {
     act(() => {
       useChartPrefsStore.setState({ ...DEFAULT_PREFS, bidPeakAllPriceRankLimit: 3 });
@@ -270,8 +280,8 @@ describe('LiveBidPeakSegments — 레전드 값 provider', () => {
   });
 
   it('보이는 영역 잔량 상위 3개를 순위 순으로 올린다', async () => {
-    const attached = renderOverlay();
-    await waitFor(() => expect(attached).toHaveLength(1));
+    const attached = renderBidOverlay();
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
     await waitFor(() => {
       expect(readFlagLegendValues(null, 'bid-peak', null)).toEqual([
         { key: 'bid-peak-1', label: '1', value: '95, 3k' },
@@ -285,11 +295,37 @@ describe('LiveBidPeakSegments — 레전드 값 provider', () => {
     act(() => {
       useLivePageStore.setState({ bidPeakHidden: true });
     });
-    const attached = renderOverlay();
-    await waitFor(() => expect(attached).toHaveLength(1));
+    const attached = renderBidOverlay();
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
     await waitFor(() => {
-      expect(attached[0].segmentsData()).toEqual([]);
+      expect(segmentsOnly(attached)[0].segmentsData()).toEqual([]);
       expect(readFlagLegendValues(null, 'bid-peak', null)).toHaveLength(3);
+    });
+  });
+});
+
+/**
+ * 순위 화살표 배선(매수) — 앵커가 **저가**인지가 요점이다. 매도와 같은 컴포넌트 코드를
+ * 복사한 자리라, side 를 'ask' 로 둔 채 복사되면 화살표가 캔들 위로 올라가고 방향도
+ * 뒤집힌다. 그건 타입이 안 잡는다(둘 다 `PeakWallLabelSide`).
+ */
+describe('LiveBidPeakSegments — 순위 화살표 배선', () => {
+  it("그 봉의 저가에 side='bid' 로 매단다", async () => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS, bidPeakAllPriceRankLimit: 3 });
+      useLivePageStore.setState({ bidPeakEnabled: true, bidPeakHidden: false });
+    });
+    const attached = renderBidOverlay();
+    const arrows = () => attached.filter(
+      (p): p is PeakWallRankArrowsPrimitive => p instanceof PeakWallRankArrowsPrimitive,
+    );
+    await waitFor(() => expect(arrows()).toHaveLength(1));
+    await waitFor(() => {
+      const data = arrows()[0].arrowsData();
+      expect(data.length).toBeGreaterThan(0);
+      expect(data.every((a) => a.side === 'bid')).toBe(true);
+      // 픽스처 캔들은 low 99 / high 100 — 저가를 쓰는지 고가를 쓰는지가 갈린다.
+      expect(data.every((a) => a.anchorPrice === 99)).toBe(true);
     });
   });
 });
