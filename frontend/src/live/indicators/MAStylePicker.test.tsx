@@ -92,6 +92,64 @@ describe('MAStylePicker', () => {
     expect(new Set(flat).size).toBe(flat.length);
   });
 
+  // ── 클리핑 탈출(2026-08-22). 설정 모달은 셸의 overflow-hidden 과 상세 section 의
+  //    overflow-y-auto 로 감싸여 있어 absolute 팝오버가 카드 오른쪽에서 잘렸다.
+  //    아래 두 건이 "포털로 나갔다" 와 "나가고도 조작할 수 있다" 를 각각 잰다.
+  //    **막는 방향**: 팝오버를 다시 앵커 서브트리 안 absolute 로 되돌리면 첫 건이,
+  //    포털만 하고 레이어 ref 를 dismiss 계약에 안 넘기면 둘째 건이 빨개진다.
+  //    **못 보는 것**: jsdom 은 레이아웃을 안 하므로 실제 픽셀 잘림은 여기서 못 잰다
+  //    (그건 /browse 도그푸딩 몫). 여기서 재는 건 DOM 위치와 조작 가능성이다.
+  it('팝오버를 body 로 포털해 조상 overflow 밖으로 내보낸다', () => {
+    const { container } = render(
+      // 실제 설정 모달과 같은 형상 — 잘라내는 조상 안에 픽커를 둔다.
+      <div style={{ overflow: 'hidden' }} data-testid="clipper">
+        <MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    const popover = screen.getByRole('dialog', { name: 'MA 스타일 팔레트' });
+    expect(popover.parentElement).toBe(document.body);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    // fixed 여야 조상 스크롤 컨테이너가 아니라 뷰포트를 기준으로 눕는다.
+    expect(popover.style.position).toBe('fixed');
+  });
+
+  it('팝오버 내부 mousedown 은 팝오버를 닫지 않는다', () => {
+    const onChange = vi.fn();
+    render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+
+    // 포털 후 팝오버는 앵커 서브트리 밖이다 — dismiss 계약이 레이어를 모르면
+    // 이 mousedown 이 "바깥" 으로 잡혀 닫히고, 이어질 click 은 영영 오지 않는다.
+    // (fireEvent.click 은 mousedown 을 안 쏘므로 위쪽 선택 테스트들은 그 버그를
+    //  안고도 전부 초록이다. 이 한 줄만이 그 차이를 본다.)
+    const swatch = screen.getByRole('button', { name: 'MA 굵기 3px' });
+    fireEvent.mouseDown(swatch);
+    expect(screen.getByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeTruthy();
+
+    fireEvent.click(swatch);
+    expect(onChange).toHaveBeenCalledWith({ lineWidth: 3 });
+  });
+
+  it('팝오버·트리거 바깥 mousedown 은 닫는다', () => {
+    render(
+      <div>
+        <MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />
+        <button data-testid="바깥">바깥</button>
+      </div>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    fireEvent.mouseDown(screen.getByTestId('바깥'));
+    expect(screen.queryByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeNull();
+  });
+
+  it('바깥 스크롤은 팝오버를 닫는다 — fixed 라 앵커에서 떨어지기 때문', () => {
+    render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeNull();
+  });
+
   it('label prop으로 aria 문구 일반화', () => {
     render(<MAStylePicker color="#1D4ED8" lineWidth={2} onChange={() => {}} label="매도벽" />);
     expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();

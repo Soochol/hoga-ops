@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MA_COLOR_ROWS } from './MAStylePicker';
-import { useDismissablePopover } from '../../util/useDismissablePopover';
+import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 
 type Props = {
   color: string;
@@ -19,7 +20,15 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const colorRows = extraColors?.length ? [extraColors, ...MA_COLOR_ROWS] : MA_COLOR_ROWS;
-  useDismissablePopover(open, containerRef, () => setOpen(false));
+  const close = useCallback(() => setOpen(false), []);
+
+  // MAStylePicker 와 같은 이유로 body 포털 — 설정 모달의 overflow 두 겹이 absolute
+  // 팝오버를 카드 경계에서 잘랐다. 배치·dismiss·스크롤 계약은 useAnchoredPopover.
+  const { ref: popoverRef, style: popoverStyle } = useAnchoredPopover<HTMLDivElement>(
+    open,
+    containerRef,
+    close,
+  );
 
   return (
     <div ref={containerRef} className="relative inline-block">
@@ -35,12 +44,19 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
           style={{ backgroundColor: color }}
         />
       </button>
-      {open && (
+      {open && createPortal(
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label={`${label} 팔레트`}
-          className="absolute left-0 top-8 z-50 rounded p-3 shadow-lg"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', minWidth: 240 }}
+          className="rounded p-3 shadow-lg"
+          style={{
+            ...popoverStyle,
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-strong)',
+            minWidth: 240,
+            maxWidth: 'calc(100vw - 8px)',
+          }}
         >
           <div className="flex flex-col gap-1">
             {colorRows.map((row, ri) => (
@@ -70,7 +86,8 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
               </div>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
