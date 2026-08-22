@@ -270,3 +270,17 @@ describe('해제', () => {
     expect(useLiveCursorStore.getState().jumpRequest).not.toBeNull();
   });
 });
+
+describe('중단은 착지와 구별되지 않는다 — 그래서 문구가 「이동했다」를 주장하면 안 된다', () => {
+  it('중단된 seq 도 `landed` 로 정착한다(스피너를 끄기 위해) — 칩 문구의 제약이 여기서 나온다', async () => {
+    const { getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
+    await requestJump(YESTERDAY_LAST.ts_ms);
+    await flushFrame();
+    expect(getByTestId('status').textContent).toBe('seeking');
+    // 백필을 기다리는 동안 사용자가 그 창을 만진다 — 창은 **움직인 적이 없다**.
+    fireEvent.pointerDown(getByTestId('pane'));
+    await flushFrame();
+    expect(getByTestId('status').textContent).toBe('landed');
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+});
