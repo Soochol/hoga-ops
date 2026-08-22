@@ -24,6 +24,10 @@ export const MA_COLOR_ROWS: readonly (readonly string[])[] = [
 
 const LINE_WIDTHS: readonly (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
 
+/** 팝오버 폭. 8열 팔레트(22px 스와치 + 4px gap)와 4열 굵기 카드가 함께 눕는 폭이자
+ *  `useAnchoredPopover` 의 오른쪽 정렬 기준 — 그래서 CSS 가 아니라 값으로 산다. */
+const POPOVER_WIDTH = 280;
+
 type Props = {
   color: string;
   lineWidth: 1 | 2 | 3 | 4;
@@ -58,6 +62,7 @@ export default function MAStylePicker({
     open,
     containerRef,
     close,
+    POPOVER_WIDTH,
   );
 
   return (
@@ -116,10 +121,6 @@ export default function MAStylePicker({
             ...popoverStyle,
             background: 'var(--bg-card)',
             border: '1px solid var(--border-strong)',
-            minWidth: 280,
-            // 뷰포트보다 넓어지면 클램프도 구할 수 없다(왼쪽 0 에 붙이고 오른쪽이
-            // 잘린다). 아주 좁은 창에서 팔레트가 스스로 줄어들도록 상한을 둔다.
-            maxWidth: 'calc(100vw - 8px)',
           }}
         >
           <div

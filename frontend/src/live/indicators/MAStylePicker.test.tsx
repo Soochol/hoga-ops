@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import MAStylePicker, { MA_COLOR_ROWS } from './MAStylePicker';
 
 describe('MAStylePicker', () => {
@@ -112,6 +112,10 @@ describe('MAStylePicker', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     // fixed 여야 조상 스크롤 컨테이너가 아니라 뷰포트를 기준으로 눕는다.
     expect(popover.style.position).toBe('fixed');
+    // 그리고 모달 크롬(ModalShell 은 z-[60])보다 위여야 한다. 포털된 팝오버는 모달의
+    // **형제**라 z 를 안 주면 뒤에 깔리는데, 좌표는 멀쩡해서 rect 검사가 전부
+    // 통과한다 — 실측에서 한 번 놓쳤다(fullyVisible:true 인데 화면엔 없었다).
+    expect(Number(popover.style.zIndex)).toBeGreaterThan(60);
   });
 
   it('팝오버 내부 mousedown 은 팝오버를 닫지 않는다', () => {
@@ -143,11 +147,47 @@ describe('MAStylePicker', () => {
     expect(screen.queryByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeNull();
   });
 
-  it('바깥 스크롤은 팝오버를 닫는다 — fixed 라 앵커에서 떨어지기 때문', () => {
+  // 스크롤 정책. 처음엔 "스크롤하면 닫는다" 로 만들었다가 /browse 실측에서 뒤집혔다 —
+  // 부분적으로만 보이는 트리거를 누르면 브라우저 포커스 스크롤이 따라붙어 팝오버가
+  // **열자마자 닫혔다**. 이제 앵커를 다시 읽어 따라가고, 트리거가 뷰포트 밖으로
+  // 완전히 나갔을 때만 닫는다. 아래 두 건이 그 두 갈래를 각각 고정한다.
+  it('스크롤해도 팝오버는 열린 채 앵커를 따라간다', () => {
     render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
     fireEvent.scroll(window);
-    expect(screen.queryByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeTruthy();
+  });
+
+  it('트리거가 보이지 않게 되면 닫는다 (IntersectionObserver)', () => {
+    // jsdom 에는 IntersectionObserver 가 없다 — 훅이 브라우저에서 타는 바로 그 경로를
+    // 재려고 스텁을 세워 콜백을 손에 쥔다(폴백 경로를 만들지 않은 이유가 이것이다).
+    // 막는 방향: 훅이 IO 구독을 잃거나 isIntersecting 판정을 뒤집으면 빨개진다.
+    let notify: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
+    class FakeIntersectionObserver {
+      constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+        notify = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+    try {
+      render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />);
+      fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+      expect(notify).not.toBeNull();
+
+      // 아직 보이는 동안은 그대로 열려 있다(반대 방향도 같이 고정 — 항상 닫는
+      // 구현이면 여기서 빨개진다).
+      act(() => notify!([{ isIntersecting: true }]));
+      expect(screen.getByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeTruthy();
+
+      act(() => notify!([{ isIntersecting: false }]));
+      expect(screen.queryByRole('dialog', { name: 'MA 스타일 팔레트' })).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('label prop으로 aria 문구 일반화', () => {

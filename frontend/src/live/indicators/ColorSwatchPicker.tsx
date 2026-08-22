@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 
+/** 팝오버 폭 — 오른쪽 정렬 기준. 8열 팔레트(20px 스와치)만 들어 MAStylePicker 보다 좁다. */
+const POPOVER_WIDTH = 240;
+
 type Props = {
   color: string;
   onChange: (color: string) => void;
@@ -28,6 +31,7 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
     open,
     containerRef,
     close,
+    POPOVER_WIDTH,
   );
 
   return (
@@ -54,8 +58,6 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
             ...popoverStyle,
             background: 'var(--bg-card)',
             border: '1px solid var(--border-strong)',
-            minWidth: 240,
-            maxWidth: 'calc(100vw - 8px)',
           }}
         >
           <div className="flex flex-col gap-1">
