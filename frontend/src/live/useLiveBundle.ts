@@ -325,7 +325,10 @@ export interface UseLiveBundleResult {
   gapFill: MinuteGapFillResult;
   isLoading: boolean;
   error: unknown;
+  /** 벤더 250일 벽에 닿았다(벤더 모드 전용 — 디스크 모드엔 그 벽이 없다). */
   clampEngaged: boolean;
+  /** 좌측 팬 하한(YYYYMMDD). `null` = 아직 막을 근거 없음. 도출은 아래 훅 본문 참조. */
+  minuteScrollbackFloorDate: string | null;
   isPastCandlesLoading: boolean;
   /** 호가 지표 경로(/api/range mode=hoga)의 CURRENT (code, timeframe) 뷰 초기 fetch가
    * 아직 pending인가. LiveChartRoot의 reveal 커버가 isPastCandlesLoading과 함께 써서
@@ -483,14 +486,19 @@ export function planLiveRangeRequest(args: {
   volumeDistributionPriceRange: { min: number; max: number } | null;
   /** 저장뷰 얼림 시작일 — `UseLiveBundleOptions.frozenRangeFrom` 과 같은 값·같은 의미. */
   frozenRangeFrom?: string | null;
+  /** 이 창이 디스크를 읽는가(`restBypassEnabled`). 250일 벽을 우회하는 축. */
+  diskSource?: boolean;
 }): LiveRangeRequestPlan {
   const isMinute = isMinuteTimeframe(args.timeframe);
   const frozenFrom = args.frozenRangeFrom ?? null;
   const seedFrom = frozenFrom
     ?? args.historicalFromDate
     ?? subtractDaysKst(args.todayKstYyyymmdd, initialHistoricalDaysFor(args.timeframe));
-  // 얼린 창은 벽을 타지 않는다 — 250일은 벤더 span 캡이고 이 모드는 디스크를 읽는다.
-  const minutePastFrom = frozenFrom
+  // **디스크를 읽는 창은 250일 벽을 타지 않는다** — 그 숫자는 벤더 엔드포인트의 span
+  // 캡(`hoga/live/api.py` `_PAST_MAX_DAYS`)이라 `/api/range` 에는 존재하지 않는다.
+  // 얼린 창(저장뷰)에는 이미 적용돼 있던 규칙을 **디스크를 읽는 모든 모드**로 넓힌다
+  // (창별 hogaplay 소스 · 전역 우회). 셋 다 같은 파일을 읽으므로 벽의 근거가 셋 다 없다.
+  const minutePastFrom = frozenFrom || args.diskSource === true
     ? seedFrom
     : laterDate(seedFrom, earliestAllowedMinuteDate(args.todayKstYyyymmdd));
   const enableMinute = !!(args.code && isMinute && minutePastFrom <= args.todayKstYyyymmdd);
@@ -596,7 +604,10 @@ export function useLiveBundle(
     ?? historicalFromDate
     ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
   const earliestAllowedMinute = earliestAllowedMinuteDate(todayKstYyyymmdd);
-  const minutePastFrom = frozenRangeFrom ? seedFrom : laterDate(seedFrom, earliestAllowedMinute);
+  // 벽 우회의 축은 **얼림이 아니라 디스크**다 — 근거는 `planLiveRangeRequest` 의 같은 줄.
+  const minutePastFrom = frozenRangeFrom || restBypassEnabled
+    ? seedFrom
+    : laterDate(seedFrom, earliestAllowedMinute);
   // Includes today so post-promote disk data (hogaplay/snapshots.parquet,
   // ADR-0037 v2 layout) feeds today's hoga indicators. Before this, today's
   // quote_ratio/fill_strength came only from the in-memory SSE buffer, which
@@ -745,6 +756,7 @@ export function useLiveBundle(
     todayKstYyyymmdd,
     missingDates: minuteDiskCandles.data?.missing_dates,
   });
+
   /** 디스크가 실제로 실어 온 거래일. 보충분과의 **서로소 확인**과 소스 표기가 함께 쓴다. */
   const diskCandleDates = useMemo(
     () => (minuteDiskNeeded ? candleDateSet(minuteDiskCandles.data?.candles ?? []) : null),
@@ -847,6 +859,9 @@ export function useLiveBundle(
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
     frozenRangeFrom,
+    // 지표 경로도 **같이** 벽을 우회해야 한다 — 캔들만 풀면 250일 밖에서 봉은 그려지고
+    // 호가비·체결강도·체결량 POC 만 조용히 비어, 그 구간이 "지표가 없는 날" 로 읽힌다.
+    diskSource: restBypassEnabled,
   });
   const hogaRangeOptions = useMemo(
     () => ({ mode: 'hoga' as const }),
@@ -1277,9 +1292,46 @@ export function useLiveBundle(
   // 무관한 쿼리까지 태운다). 캔들 소스가 바뀌면 이 참조도 따라 바뀐다.
   const refetchCandles = activeCandlesQuery.refetch;
 
+
+  /**
+   * 좌측 팬의 하한(YYYYMMDD). `null` = 막을 근거가 없다(디스크가 끝날 때까지 팬 가능).
+   *
+   * 축이 **둘로 갈린다**:
+   *  - 벤더 모드: 250일 벽. 넘겨도 `/api/live/past-candles` 가 못 준다 — 진짜 상한이다.
+   *  - 디스크 모드: `null`. 그 벽은 벤더 span 캡이라 `/api/range` 에는 존재하지 않는다
+   *    (위 `minutePastFrom` 주석).
+   *
+   * **디스크 쪽에 "캡처 바닥" 하한을 두려다 걷어냈다 — 판정이 원리적으로 불가능했다.**
+   * 응답만으로 세울 수 있는 증거는 `missing_dates` 에 `segments[0]` 보다 이른 항목이
+   * 있다는 것뿐인데, 그건 **"이 창에서 가장 이른 데이터보다 앞을 물었다"** 이지
+   * "디스크에 더 이른 게 없다" 가 아니다. 요청 시작일이 **중간 구멍**에 떨어지면 그
+   * 구멍이 바닥으로 위장한다(2026-08-22 실측: 005380 이 진짜 바닥 20251014 이 아니라
+   * 20260120 에서 멎었다). 클램프가 틀리면 **사용자를 막으므로** 원래 문제보다 나쁘다.
+   *
+   * 하한 없이 두는 대가는 실측으로 작다: 바닥 아래로 팬해도 캔들 요청은 **1건**이고
+   * (요청이 창 하나라 빈 구간이 응답 크기를 안 늘린다) 지표는 주 단위 청크가 **838B ×
+   * 28건 = 23KB** 였다. 청크는 react-query 가 키별로 캐시해 **새 주만** 나간다.
+   * 예산(`MAX_FILL_STEPS`)이 제스처당 상한을 준다.
+   *
+   * 진짜 바닥이 필요해지면 길은 하나다 — **서버가 알려 주는 것**(코드별 최고(最古)
+   * 캡처일). 응답으로 유도하는 길은 위 이유로 닫혀 있다.
+   *
+   * 판정을 여기 두는 이유: 종전에는 `useViewportBackfill` 안에 세 번 복제돼 있었는데
+   * (`earliestAllowedMinuteDate(todayKstYyyymmdd())`), 하한이 모드에 따라 갈리는 값이
+   * 된 이상 모드를 아는 쪽이 정해야 한다.
+   */
+  const minuteScrollbackFloorDate = !isMinute || restBypassEnabled
+    ? null
+    : earliestAllowedMinute;
+
+  // 벽에 닿았다는 칩(`clamp-engaged-chip`)의 신호. **벤더 모드 전용이다** — 디스크
+  // 모드에는 250일 벽이 없으므로 「최대 250일까지 표시됩니다」가 거짓말이 된다.
+  // 디스크 모드의 끝은 벽이 아니라 캡처 유무라, 그쪽 안내는 별도 신호로 준다.
   const clampEngaged = isMinute
+    && !restBypassEnabled
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
+
 
   // Coverage-gap 백필(A안) 신호. 캔들은 병합 캐시로 수개월 복원되는데 range 지표는
   // 요청 창(기본 5거래일)만 커버해, viewport가 지표 커버리지 밖 구간을 보면
@@ -1375,6 +1427,7 @@ export function useLiveBundle(
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,
+    minuteScrollbackFloorDate,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,

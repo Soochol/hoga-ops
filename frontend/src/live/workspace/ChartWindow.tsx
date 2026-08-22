@@ -749,6 +749,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               candleEmpty={d.workareaCandleEmpty}
               onRetryCandles={d.refetchCandles}
               clampEngaged={d.clampEngaged}
+              minuteScrollbackFloorDate={d.minuteScrollbackFloorDate}
               isPastCandlesLoading={d.workareaLoading}
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}
               isSidecarLoading={d.activeIndexId ? false : (d.isSidecarLoading || d.isDailyMaLoading)}
