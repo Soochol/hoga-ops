@@ -95,12 +95,27 @@ class MinuteCandleAggregator:
                 bar.last_cum = cum_val
 
     def flush(
-        self, *, now_ms: int, seal_all: bool = False
+        self, *, now_ms: int, seal_venues: frozenset[str] = frozenset()
     ) -> dict[tuple[str, str], list[LiveSnapshot]]:
         """완성(봉인) 봉만 반환 — **제거하지 않는다**(durability: commit이 뺀다).
 
-        봉인 기준: 봉의 분 인덱스 < 현재 분(now_ms 기준). ``seal_all``이면 진행 중
-        봉까지 전부 봉인(게이트 닫힘 전환 drain에서 마지막 봉을 잃지 않게).
+        봉인 기준: 봉의 분 인덱스 < 현재 분(now_ms 기준). ``seal_venues`` 에 든
+        시장은 **진행 중 봉까지** 봉인한다 — 그 시장의 저장 창이 지금 닫히므로
+        마지막 봉(종가 동시호가)을 잃지 않게 하는 것이 목적이다.
+
+        ## ``seal_venues`` 는 왜 bool 이 아닌가
+
+        예전 판은 ``seal_all: bool`` 이었고, 닫힘 drain 이 그걸 True 로 불렀다. 그런데
+        **닫히는 것은 한 시장인데 봉인은 전 시장에 걸렸다** — `reset(venue)` 은 venue
+        별인데 봉인만 아니었다(ADR-0140 §3 이 저장 창을 KRX 15:30 · NXT·UN 20:00 으로
+        가른 뒤의 비대칭). 그래서 KRX 마감 15:30 마다 **아직 열려 있는 NXT·UN** 의
+        진행 중 봉이 강제 봉인되고, 그 분의 나머지 체결이 새 봉을 만들어 **같은 분이
+        두 행**으로 나갔다. 실측 서명은 "분이 끝나기도 전에 나간 봉"이다(표본 60파일에
+        11건). bool 로는 호출부가 옳게 쓸 방법이 아예 없어 타입으로 지웠다.
+
+        ⚠ **완성된 봉은 venue 와 무관하게 항상 봉인된다.** venue 스코프는 진행 중
+        봉에만 건다 — 완성 봉까지 게이트하면 평시 flush 가 캔들을 하나도 안 내보내는,
+        원래 결함보다 훨씬 나쁜 고장이 된다.
 
         LiveSnapshot.t_ms는 분 시작 Unix ms. payload는 OHLCV(원 단위)."""
         cutoff = now_ms // MS_PER_MINUTE
@@ -108,7 +123,7 @@ class MinuteCandleAggregator:
         for key, bars in self._codes.items():
             snaps: list[LiveSnapshot] = []
             for minute in sorted(bars):
-                if not seal_all and minute >= cutoff:
+                if minute >= cutoff and key[1] not in seal_venues:
                     continue
                 bar = bars[minute]
                 snaps.append(LiveSnapshot(
