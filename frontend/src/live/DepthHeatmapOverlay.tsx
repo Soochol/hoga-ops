@@ -5,7 +5,7 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
 import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
-import type { DepthHeatmapPoint } from './depthHeatmapWire';
+import type { DepthHeatmapLevel, DepthHeatmapPoint } from './depthHeatmapWire';
 import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
 import {
   registerFlagLegendValues,
@@ -91,6 +91,21 @@ export type SourceOpts = {
   topPerSide?: number | null;
 };
 
+/** 잔량 상위 `n` 레벨. `n` 이 null·0 이하이거나 레벨 수 이상이면 **원본 배열 그대로**
+ *  돌려준다(할당 0 — 옵션 OFF 가 기본 경로다). n===1 도 정렬 없이 선형 최대로 뽑는다.
+ *  동점은 JS 안정 정렬/선형 스캔 모두 먼저 온 레벨(호가 순)을 남긴다. */
+function topLevelsByQty(
+  levels: readonly DepthHeatmapLevel[],
+  n: number | null,
+): readonly DepthHeatmapLevel[] {
+  if (n === null || n <= 0 || levels.length <= n) return levels;
+  if (n === 1) {
+    const best = maxQtyLevel(levels);
+    return best === null ? [] : [best];
+  }
+  return [...levels].sort((a, b) => b.qty - a.qty).slice(0, n);
+}
+
 export function buildDepthHeatmapCells(
   points: readonly DepthHeatmapPoint[],
   axis: VirtualAxis,
@@ -100,7 +115,12 @@ export function buildDepthHeatmapCells(
   source: SourceOpts = {},
 ): DepthHeatmapCell[] {
   const intraMax = source.intraMax ?? false;
+  const topPerSide = source.topPerSide ?? null;
   // 정규화 천장은 셀 소스와 반드시 같아야 한다 → intraMax 를 그대로 전달.
+  //
+  // **topPerSide 는 여기에 넘기지 않는다.** 전 레벨의 최댓값은 곧 사이드별 최댓값들의
+  // 최댓값이라 상위 N 만 남겨도 천장은 구성상 같고, 필터된 사다리로 재정규화하면
+  // 오히려 강도의 의미("보이는 범위의 최대 잔량 대비")가 조용히 바뀐다.
   const vmax = visibleMaxQty(points, fromMs, toMs, intraMax);
   if (vmax <= 0) return [];
   const askRgb = parseHex(style.askColor);
@@ -108,9 +128,12 @@ export function buildDepthHeatmapCells(
   const out: DepthHeatmapCell[] = [];
   for (const pt of points) {
     if (pt.tMs < fromMs || pt.tMs > toMs) continue;
-    const asks = intraMax ? pt.asksMax : pt.asks;
-    const bids = intraMax ? pt.bidsMax : pt.bids;
+    // 소스 선택(종가/분봉 내 최대) → 그 안에서 상위 N 자르기 순. 두 옵션이 조합된다.
+    const asks = topLevelsByQty(intraMax ? pt.asksMax : pt.asks, topPerSide);
+    const bids = topLevelsByQty(intraMax ? pt.bidsMax : pt.bids, topPerSide);
     const time = (axis.toVirtual(pt.tMs) / 1000) as Time;
+    // ⚠ 셀 높이는 **자르기 전 전체 호가 사다리**의 최소 gap 이다 — 남은 레벨로
+    // 재계산하면 사이드 간 거리가 최소 gap 이 되어 셀이 몇 배로 부푼다.
     const halfTick = halfTickForPoint(pt, intraMax);
     for (const lvl of asks) {
       if (lvl.qty <= 0) continue;
@@ -149,6 +172,8 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const askColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
   const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
   const intraMax = useActivePrefs((p) => p.depthHeatmapIntraMax);
+  const topLevelsOnly = useActivePrefs((p) => p.depthHeatmapTopLevelsOnly);
+  const topLevelCount = useActivePrefs((p) => p.depthHeatmapTopLevelCount);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창).
   const windowId = useWindowScopeId();
@@ -197,8 +222,18 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
     // 초기(range 미확정) 프레임은 전 범위 폴백 후, 첫 구독 콜백에서 화면 범위로 좁힌다.
     const fromMs = visibleRange ? axis.toReal(visibleRange.from * 1000) : -Infinity;
     const toMs = visibleRange ? axis.toReal(visibleRange.to * 1000) : Infinity;
-    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity }, { intraMax });
-  }, [points, axis, visibleRange, bidColor, askColor, maxOpacity, intraMax]);
+    return buildDepthHeatmapCells(
+      points,
+      axis,
+      fromMs,
+      toMs,
+      { bidColor, askColor, maxOpacity },
+      { intraMax, topPerSide: topLevelsOnly ? topLevelCount : null },
+    );
+  }, [
+    points, axis, visibleRange, bidColor, askColor, maxOpacity,
+    intraMax, topLevelsOnly, topLevelCount,
+  ]);
 
   useEffect(() => {
     primitiveRef.current?.setCells(enabled && !hidden ? cells : []);
@@ -248,9 +283,7 @@ function latestPointAtOrBefore(
   return ans >= 0 ? points[ans] : null;
 }
 
-function maxQtyLevel(
-  levels: readonly { price: number; qty: number }[],
-): { price: number; qty: number } | null {
+function maxQtyLevel(levels: readonly DepthHeatmapLevel[]): DepthHeatmapLevel | null {
   let best: { price: number; qty: number } | null = null;
   for (const level of levels) {
     if (best === null || level.qty > best.qty) best = level;
