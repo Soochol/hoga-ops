@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jumpDestinationOf, jumpTargetMs } from './minuteJumpDestination';
-import { earliestAllowedMinuteDate, todayKstYyyymmdd } from './liveDateTime';
+import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
 
 const NOW = new Date('2026-08-22T05:00:00Z').getTime(); // KST 14:00
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -21,28 +21,47 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('jumpDestinationOf', () => {
+  /** 벤더 모드 분봉 창의 하한(250일 벽) — `useLiveBundle` 이 주는 값과 같은 모양. */
+  const VENDOR_FLOOR = earliestAllowedMinuteDate(todayKstYyyymmdd());
+
   it('값이 없거나 유한하지 않으면 null', () => {
-    expect(jumpDestinationOf(null)).toBeNull();
-    expect(jumpDestinationOf(Number.NaN)).toBeNull();
+    expect(jumpDestinationOf(null, VENDOR_FLOOR)).toBeNull();
+    expect(jumpDestinationOf(Number.NaN, VENDOR_FLOOR)).toBeNull();
   });
 
   it('오늘은 갈 수 있다', () => {
-    expect(jumpDestinationOf(NOW)).toEqual({ date: '20260822', outOfRetention: false });
+    expect(jumpDestinationOf(NOW, VENDOR_FLOOR))
+      .toEqual({ date: '20260822', outOfRetention: false });
   });
 
-  // 경계 밖 한참 떨어진 값만 재면 "항상 false" 구현도 통과한다 — 한계선의
-  // **양옆 하루**를 세워야 그 상수를 실제로 쓰는지 알 수 있다.
-  it('보유 한계 경계의 양옆에서 판정이 갈린다', () => {
-    const edge = earliestAllowedMinuteDate(todayKstYyyymmdd());
-    const edgeMs = kstNoonMs(edge);
-    expect(jumpDestinationOf(edgeMs)).toEqual({ date: edge, outOfRetention: false });
-    const dayBefore = jumpDestinationOf(edgeMs - DAY_MS);
-    expect(dayBefore!.date < edge).toBe(true);
+  // 경계 밖 한참 떨어진 값만 재면 "항상 false" 구현도 통과한다 — 하한의
+  // **양옆 하루**를 세워야 그 값을 실제로 쓰는지 알 수 있다.
+  it('하한 경계의 양옆에서 판정이 갈린다', () => {
+    const edgeMs = kstNoonMs(VENDOR_FLOOR);
+    expect(jumpDestinationOf(edgeMs, VENDOR_FLOOR))
+      .toEqual({ date: VENDOR_FLOOR, outOfRetention: false });
+    const dayBefore = jumpDestinationOf(edgeMs - DAY_MS, VENDOR_FLOOR);
+    expect(dayBefore!.date < VENDOR_FLOOR).toBe(true);
     expect(dayBefore!.outOfRetention).toBe(true);
   });
 
   it('한참 과거는 갈 수 없다', () => {
-    expect(jumpDestinationOf(NOW - 400 * DAY_MS)?.outOfRetention).toBe(true);
+    expect(jumpDestinationOf(NOW - 400 * DAY_MS, VENDOR_FLOOR)?.outOfRetention).toBe(true);
+  });
+
+  // ⚠ 이 케이스가 #1497 회귀 가드다. 하한을 하드코딩된 250일 벽으로 되돌리면
+  // 디스크 모드(하한 없음) 창에서 **갈 수 있는 곳을 못 간다고** 말하게 된다.
+  it('하한이 null 이면(디스크 모드·미측정) 막지 않는다 — 모르는 것을 못 간다고 하지 않는다', () => {
+    expect(jumpDestinationOf(NOW - 400 * DAY_MS, null))
+      .toEqual({ date: realMsToYyyymmdd(NOW - 400 * DAY_MS), outOfRetention: false });
+    expect(jumpDestinationOf(NOW - 2000 * DAY_MS, null)?.outOfRetention).toBe(false);
+  });
+
+  it('하한이 더 과거면 그만큼 더 갈 수 있다 — 값이 실제로 판정에 쓰인다', () => {
+    const old = NOW - 400 * DAY_MS;
+    const deepFloor = realMsToYyyymmdd(NOW - 900 * DAY_MS);
+    expect(jumpDestinationOf(old, VENDOR_FLOOR)?.outOfRetention).toBe(true);
+    expect(jumpDestinationOf(old, deepFloor)?.outOfRetention).toBe(false);
   });
 });
 

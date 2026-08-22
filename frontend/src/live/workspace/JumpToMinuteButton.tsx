@@ -10,21 +10,21 @@
  * 렌더마다 묻지 않는 이유: `readTargetMs` 는 차트 좌표를 읽는 명령형 호출이고, 이
  * 버튼은 SSE 틱마다 재렌더되는 헤더 안에 산다. 사용자는 어차피 호버한 뒤 누른다.
  *
- * ── 비활성은 **두 가지**이고 사유가 다르다 ───────────────────────────────
- * ① 그룹에 분봉 창이 없다 — 보낼 곳이 없다. 워크스페이스 상태라 렌더 시점에 안다.
- * ② 목적지가 분봉 보유 한계(13개월) 밖이다 — 벤더가 못 준다. 목적지를 알아야 하므로
- *    호버 뒤에 판정된다.
+ * ── 「갈 수 없다」는 여기서 말하지 않는다 ─────────────────────────────────
+ * 이 버튼이 막는 것은 **보낼 곳이 없을 때**(그룹에 분봉 창 없음) 하나다. 그건
+ * 워크스페이스 상태라 렌더 시점에 알 수 있다.
  *
- * 둘 다 **사유를 말한다**. 회색으로 죽어 있기만 하면 사용자는 기능이 고장난 줄 안다 —
- * "되는 데까지 보여주고 **안 되는 것만 말한다**" 가 이 리포의 정책이다
- * (`savedRangeNotice` 헤더).
+ * 「그 날짜는 데이터가 없다」는 **소비 창이 말한다**(점프 칩). 하한이 모드에 따라
+ * 갈리기 때문이다 — 벤더 모드는 250일 벽, 디스크(hogaplay) 모드는 캡처가 있는 만큼
+ * (#1497). 그 값을 아는 것은 그 분봉 창뿐이고 이 캘린더 창은 항상 `null` 을 본다.
+ * 여기서 하드코딩된 13개월로 막으면 **디스크 모드에서 갈 수 있는 곳을 못 간다고**
+ * 말하게 된다 — `savedRangeNotice` 헤더가 경고한 그 실패다.
  */
 import { useCallback, useState } from 'react';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { COMPACT_PADDING_INLINE } from './chartHeaderCompact';
 import { jumpDateLabel } from '../../chart/timeframeJump';
-import { todayKstYyyymmdd } from '../liveDateTime';
-import { jumpDestinationOf, type JumpDestination } from '../minuteJumpDestination';
+import { realMsToYyyymmdd, todayKstYyyymmdd } from '../liveDateTime';
 
 export function JumpToMinuteButton({
   readTargetMs,
@@ -41,30 +41,29 @@ export function JumpToMinuteButton({
   /** false 면 아이콘만 — 창 헤더가 좁을 때 라벨을 접는다(#762 접힘 정책). */
   showLabel?: boolean;
 }) {
-  const [preview, setPreview] = useState<JumpDestination | null>(null);
+  /** 목적지 YYYYMMDD. 아직 안 물어봤거나 캔들이 없으면 null. */
+  const [preview, setPreview] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    setPreview(jumpDestinationOf(readTargetMs()));
+  const readDate = useCallback(() => {
+    const toMs = readTargetMs();
+    return toMs === null || !Number.isFinite(toMs) ? null : realMsToYyyymmdd(toMs);
   }, [readTargetMs]);
+  const refresh = useCallback(() => setPreview(readDate()), [readDate]);
 
-  const blocked = !hasMinuteWindow || preview?.outOfRetention === true;
   const today = todayKstYyyymmdd();
-  const destination = preview === null ? null : jumpDateLabel(preview.date, today);
+  const destination = preview === null ? null : jumpDateLabel(preview, today);
 
   const title = !hasMinuteWindow
     ? '이 창번호에 분봉 창이 없습니다'
-    : preview?.outOfRetention
-      ? `분봉 보유 기간(13개월) 밖입니다 — ${destination}`
-      : destination === null
-        ? '분봉으로'
-        : `분봉으로 — ${destination}`;
+    : destination === null
+      ? '분봉으로'
+      : `분봉으로 — ${destination}`;
 
   const onClick = () => {
     if (!hasMinuteWindow) return;
     // 호버 없이 도달하는 경로(키보드 활성화)가 있으므로 **여기서 다시 읽는다** —
-    // 호버 시점 값은 그 사이 사용자가 차트를 팬했으면 낡았다. 라벨이 사유를
-    // 말하도록 갱신만 하고, 보낼지 말지는 `onRun` 이 같은 판정으로 정한다.
-    setPreview(jumpDestinationOf(readTargetMs()));
+    // 호버 시점 값은 그 사이 사용자가 차트를 팬했으면 낡았다.
+    setPreview(readDate());
     onRun();
   };
 
@@ -76,16 +75,10 @@ export function JumpToMinuteButton({
       onFocus={refresh}
       disabled={!hasMinuteWindow}
       aria-label={
-        destination === null || blocked ? title : `분봉 창을 ${destination} 로 이동`
+        destination === null || !hasMinuteWindow ? title : `분봉 창을 ${destination} 로 이동`
       }
       title={title}
-      // 목적지가 못 가는 곳이면 눌러도 아무 일이 없다는 것을 **미리** 보인다.
-      // `disabled` 를 쓰지 않는 이유: 그러면 title 툴팁이 안 뜨는 브라우저가 있어
-      // 사유가 사라진다. ①(분봉 창 없음)은 사유가 정적이라 진짜 disabled 다.
-      style={{
-        paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE,
-        opacity: preview?.outOfRetention ? 0.5 : undefined,
-      }}
+      style={{ paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}
       icon={(
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="4" y1="12" x2="18" y2="12" />

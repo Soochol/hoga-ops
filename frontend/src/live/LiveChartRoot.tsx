@@ -1085,6 +1085,7 @@ export function LiveChartRoot({
     containerRef,
     candles: cb?.candles ?? EMPTY_CANDLES,
     enabled: isTimeframeJumpTarget(timeframe),
+    minuteScrollbackFloorDate,
     myWindowId: winCtxWindowId,
     myTimeframe: timeframe,
     myGroup: winCtxGroup,

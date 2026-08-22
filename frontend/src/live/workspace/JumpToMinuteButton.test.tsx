@@ -38,16 +38,21 @@ describe('JumpToMinuteButton', () => {
     expect(button().getAttribute('aria-label')).toBe('분봉 창을 08-21 로 이동');
   });
 
-  it('목적지가 보유 한계 밖이면 호버 시 사유가 뜬다', () => {
+  // 「갈 수 없다」는 이 버튼이 말하지 않는다 — 하한은 소비하는 분봉 창만 안다(#1497).
+  // 여기서 하드코딩된 13개월로 막으면 디스크 모드에서 갈 수 있는 곳을 막게 된다.
+  it('아주 과거인 목적지도 막지 않고 날짜만 보여준다', () => {
+    const onRun = vi.fn();
     render(
       <JumpToMinuteButton
         readTargetMs={() => NOW - 400 * DAY_MS}
         hasMinuteWindow
-        onRun={vi.fn()}
+        onRun={onRun}
       />,
     );
     fireEvent.pointerEnter(button());
-    expect(button().getAttribute('title')).toContain('분봉 보유 기간(13개월) 밖입니다');
+    expect(button().getAttribute('title')).toBe('분봉으로 — 25-07-18');
+    fireEvent.click(button());
+    expect(onRun).toHaveBeenCalledTimes(1);
   });
 
   it('누르면 창이 소유한 실행자를 부른다 — 판정이 갈리지 않게 발행은 한 곳이다', () => {

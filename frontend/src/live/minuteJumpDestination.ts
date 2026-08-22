@@ -8,7 +8,7 @@
  * 컴포넌트 파일이 아니라 여기 있는 이유는 react-refresh 규약이다 — 이 리포는 훅·
  * 순수 함수와 컴포넌트를 한 파일에 섞지 않는다(`windowViewContext.ts` 의 그 절).
  */
-import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
+import { realMsToYyyymmdd } from './liveDateTime';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 
 /**
@@ -53,17 +53,32 @@ export type JumpDestination = {
   /** 목적지 YYYYMMDD(KST). */
   date: string;
   /**
-   * 분봉 보유 한계(키움 실측 13개월) 밖 — 백필해도 빈 응답만 온다.
+   * 그 분봉 창의 **좌측 팬 하한 밖** — 백필해도 빈 응답만 온다.
    *
-   * 여기서 막는 것이 **친절이 아니라 정확성**이다: 보내 놓고 소비 창이 빈 차트를
-   * 보여주면 사용자는 "고장" 과 "원래 없는 데이터" 를 구별할 수 없다.
+   * ⚠ **하한을 여기서 계산하지 않고 받는다.** 종전엔
+   * `earliestAllowedMinuteDate(todayKstYyyymmdd())` 를 직접 불렀는데, 그건 **벤더
+   * 엔드포인트의 span 캡**(250일)이라 디스크(hogaplay)를 읽는 창에는 근거가 없다 —
+   * 그 창은 캡처가 있는 만큼 더 과거를 볼 수 있고, 하드코딩된 벽은 **볼 수 있는
+   * 구간을 못 본다고 말하는 안내**가 된다(`savedRangeNotice` 헤더가 경고한 그것).
+   *
+   * 하한이 모드에 따라 갈리는 값이 된 이상 판정은 모드를 아는 쪽이 해야 한다 —
+   * `useLiveBundle.minuteScrollbackFloorDate`(#1497 이 같은 이유로 백필에서 옮긴 값).
+   * 그래서 이 판정도 **분봉 창에서만** 성립한다: 일봉 창은 그 값이 항상 `null` 이다.
    */
   outOfRetention: boolean;
 };
 
-/** 실시각 → 목적지 판정. 값이 없거나 유한하지 않으면 null. */
-export function jumpDestinationOf(toMs: number | null): JumpDestination | null {
+/**
+ * 실시각 → 목적지 판정. 값이 없거나 유한하지 않으면 null.
+ *
+ * @param floorDate 그 창의 좌측 팬 하한(YYYYMMDD). `null` = 무한(디스크 모드·미측정)
+ *   이라 **막지 않는다** — 모르는 것을 못 간다고 말하지 않는다.
+ */
+export function jumpDestinationOf(
+  toMs: number | null,
+  floorDate: string | null,
+): JumpDestination | null {
   if (toMs === null || !Number.isFinite(toMs)) return null;
   const date = realMsToYyyymmdd(toMs);
-  return { date, outOfRetention: date < earliestAllowedMinuteDate(todayKstYyyymmdd()) };
+  return { date, outOfRetention: floorDate !== null && date < floorDate };
 }
