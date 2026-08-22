@@ -38,22 +38,15 @@
  * 반응하지 않고(의도), 사이드바 커서를 오염시키거나 발행↔소비 피드백 루프를 만들지도
  * 않는다. 레전드까지 연동하려면 별도 경로가 필요하다 — 지금 범위 밖이다.
  */
-import { memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { useActivePrefs } from '../state/chartPrefs';
-import { WindowViewContext } from '../live/workspace/windowView';
 import type { VirtualAxis } from '../util/virtualAxis';
-import {
-  formatKstMmdd,
-  indexCandlesByKstDate,
-  resolveSyncTarget,
-  type SyncCandle,
-  type SyncTargetSource,
-} from './cursorSync';
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { formatKstMmdd, type SyncCandle } from './cursorSync';
+import { useCursorSyncResolution } from '../live/useCursorSyncResolution';
+import type { LiveTimeframe } from '../state/livePage';
 
 /** 좌상단 레전드(OHLC + 이동평균)와 저장 구간 라벨이 쓰는 높이. */
 const LEGEND_CLEARANCE_PX = 46;
@@ -79,15 +72,10 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
-  const syncCursorOrigin = useLiveCursorStore((s) => s.syncCursorOrigin);
-  const winCtx = useContext(WindowViewContext);
-  const myWindowId = winCtx?.windowId ?? null;
-  // 창번호(링크 그룹) — 동기화 범위를 정한다(`cursorSync.ts` 헤더의 그 절).
-  const myGroup = winCtx?.group ?? null;
-  // ⚙️ 설정 → 차트의 「크로스헤어 동기화 — 다른 종목까지」(기본 켬). 차트 전반
-  // 카테고리라 전역 flat 값이고, Provider 밖(`/study`·단일 차트)에서도 같은 값을
-  // 읽는다 — `/study` 는 창이 전부 같은 종목이라 이 값이 결과를 바꾸지 않는다.
-  const allowCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  // 판정은 **레전드와 공유한다** — 각자 하면 게이트가 갈려 "선은 여기, 숫자는 저기"
+  // 가 된다(`useCursorSyncResolution` 헤더).
+  const resolution = useCursorSyncResolution({ candles, timeframe, code });
+  const target = resolution.kind === 'hit' ? resolution.candle : null;
 
   // 축이 움직이면 칩 좌표를 다시 잡는다. `StudySavedRangeBand` 와 같은 패턴
   // (rAF 로 합친 visible-range 구독 + `ResizeObserver`).
@@ -109,32 +97,6 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
     };
   }, [chart]);
 
-  // 다리는 **내 봉**이 고른다. 분봉이면 인덱스를 만들지 않는다 — 분봉 번들은 틱마다
-  // 갱신되므로 그때마다 캔들 전량을 훑게 된다(`snapToInstant` 가 이진 탐색을 쓰는 이유).
-  const minuteConsumer = isMinuteTimeframe(timeframe);
-  const byDate = useMemo(
-    () => (minuteConsumer ? null : indexCandlesByKstDate(candles)),
-    [candles, minuteConsumer],
-  );
-  const source = useMemo<SyncTargetSource>(
-    () => (byDate ? { axis: 'date', byDate, candles } : { axis: 'instant', candles }),
-    [byDate, candles],
-  );
-
-  const resolution = useMemo(
-    () => resolveSyncTarget({
-      cursor: syncCursorMs !== null && syncCursorOrigin !== null
-        ? { tsMs: syncCursorMs, origin: syncCursorOrigin }
-        : null,
-      myWindowId,
-      myGroup,
-      myCode: code,
-      source,
-      allowCrossSymbol,
-    }),
-    [syncCursorMs, syncCursorOrigin, myWindowId, myGroup, code, source, allowCrossSymbol],
-  );
-  const target = resolution.kind === 'hit' ? resolution.candle : null;
 
   // 크로스헤어 자체. cleanup 이 이전 위치를 지우므로 커서가 바뀌면 옮겨 가고,
   // 발행이 끊기거나(포인터가 발행 창을 벗어남) 언마운트되면 사라진다.

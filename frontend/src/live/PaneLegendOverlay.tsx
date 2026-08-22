@@ -21,6 +21,7 @@ import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { priceDirClass } from '../ui/priceDir';
 import { buildCandleTooltip } from './candleTooltipModel';
 import {
@@ -69,6 +70,8 @@ type Props = {
    *  SSE 틱엔 안정 — memo 를 깨지 않는다. 없으면 OHLC 행을 렌더하지 않는다. */
   candles?: readonly Candle[];
   axis?: VirtualAxis;
+  /** 이 창의 종목 — 크로스헤어 동기화의 종목 게이트에 쓴다(`useCursorSyncResolution`). */
+  code?: string | null;
   /** P1: latest-값 신선화 토큰(캔들 경로 chartBundle ref). /live가 SSE 호가 틱마다
    *  부모(LiveChartRoot)를 재렌더하지만 memo + 이 prop이 그 재렌더를 차단하고, 캔들
    *  갱신(chartBundle 식별자 변경) 때만 latest 값을 신선화한다. 본문에서 읽지 않고
@@ -561,6 +564,7 @@ function PaneLegendOverlay({
   visibleSpecs,
   candles,
   axis,
+  code = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
@@ -617,6 +621,9 @@ function PaneLegendOverlay({
     () => (candles && axis ? candles.filter((c) => axis.contains(c.ts_ms)) : []),
     [candles, axis],
   );
+  // 동기화 판정은 `CursorSyncCrosshair` 와 **같은 훅**을 쓴다 — 각자 하면 게이트가
+  // 갈려 "선은 여기 있는데 숫자는 다른 봉" 이 된다.
+  const syncResolution = useCursorSyncResolution({ candles: drawnCandles, timeframe, code });
   const vsecToIndex = useMemo(() => {
     const m = new Map<number, number>();
     if (axis) drawnCandles.forEach((c, i) => m.set(axis.toVirtual(c.ts_ms) / 1000, i));
@@ -664,12 +671,28 @@ function PaneLegendOverlay({
   // ── value extraction (read-only over the chart API) ────────────────────
   const seriesData = paramRef.current?.seriesData ?? null;
 
-  // OHLC(항상 표시) — 커서가 올라간 봉(param.time=가상초)을 해석하고, 커서 밖/봉 사이면
-  // 최신 봉으로 폴백. 직전종가 대비 %는 buildCandleTooltip(순수, 툴팁과 동일 규칙)에서.
+  // OHLC(항상 표시) — 우선순위 셋. 직전종가 대비 %는 buildCandleTooltip(순수, 툴팁과
+  // 동일 규칙)에서.
+  //
+  //   1. 내 마우스가 올라간 봉(`param.time` = 가상초)
+  //   2. **옆 창이 동기화로 그려 준 봉** — 아래 참조
+  //   3. 최신 봉(폴백)
+  //
+  // 2가 없으면 동기화 창의 레전드가 **항상 최신 봉**을 보여준다. lwc 는
+  // `setCrosshairPosition` 으로 그린 크로스헤어에 대해 `subscribeCrosshairMove` 를
+  // 발화시키지 않아서(`CursorSyncCrosshair` 헤더의 실측) `param.time` 이 안 채워지고
+  // 곧바로 3으로 떨어지기 때문이다. 실측(2026-08-21): 호버 창은 `종가 260,500`(그 봉)
+  // 인데 동기화 창은 `종가 281,500`(오늘 봉)이라, 선은 같은 자리인데 숫자가 달라
+  // "다른 차트" 로 보였다.
   let ohlc: LegendOhlcValues | null = null;
   if (drawnCandles.length > 0) {
     const t = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
-    const idx = (t !== null ? vsecToIndex.get(t) : undefined) ?? drawnCandles.length - 1;
+    const syncIdx = syncResolution.kind === 'hit' && axis
+      ? vsecToIndex.get(axis.toVirtual(syncResolution.candle.ts_ms) / 1000)
+      : undefined;
+    const idx = (t !== null ? vsecToIndex.get(t) : undefined)
+      ?? syncIdx
+      ?? drawnCandles.length - 1;
     const m = buildCandleTooltip(drawnCandles, idx, timeframe);
     if (m) {
       ohlc = {
