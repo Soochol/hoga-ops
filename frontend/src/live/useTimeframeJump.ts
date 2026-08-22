@@ -24,7 +24,7 @@ import type { IChartApi, Time } from 'lightweight-charts';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
-import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
+import { realMsToYyyymmdd } from './liveDateTime';
 import { snapToLastOfKstDay, type SyncCandle } from '../chart/cursorSync';
 import { jumpedLogicalRange, resolveTimeframeJump } from '../chart/timeframeJump';
 import type { LiveTimeframe } from '../state/livePage';
@@ -63,6 +63,14 @@ export function useTimeframeJump(params: {
   containerRef: { current: HTMLElement | null };
   /** 이 창이 그리고 있는 캔들. **ts 오름차순**이어야 한다(스냅이 이진 탐색). */
   candles: readonly SyncCandle[];
+  /**
+   * 이 창의 좌측 팬 하한(`useLiveBundle.minuteScrollbackFloorDate`). `null` = 무한.
+   *
+   * **판정이 여기 있는 이유**: 하한은 모드에 따라 갈린다(벤더=250일 벽, 디스크=캡처가
+   * 있는 만큼). 그 값을 아는 것은 **이 분봉 창뿐**이고, 발행하는 일봉 창은 항상
+   * `null` 을 본다 — 그래서 「갈 수 없다」는 발행 측이 아니라 소비 측이 말한다.
+   */
+  minuteScrollbackFloorDate: string | null;
   /** 기능 토글 + 이 봉이 점프를 받는가. 꺼져 있으면 구독도 하지 않는다. */
   enabled: boolean;
   myWindowId: string | null;
@@ -72,7 +80,7 @@ export function useTimeframeJump(params: {
   allowCrossSymbol: boolean;
 }): TimeframeJumpResult {
   const {
-    chart, axis, containerRef, candles, enabled,
+    chart, axis, containerRef, candles, enabled, minuteScrollbackFloorDate,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   } = params;
   const jumpRequest = useLiveCursorStore((s) => s.jumpRequest);
@@ -117,9 +125,12 @@ export function useTimeframeJump(params: {
   }, []);
 
   const targetDate = live === null ? null : realMsToYyyymmdd(live.toMs);
-  // 분봉 보유 한계 밖이면 백필해도 벤더가 못 준다 — 착지도 시도하지 않는다.
+  // 이 창의 하한 밖이면 백필해도 빈 응답만 온다 — 착지도 시도하지 않는다.
+  // 하한이 `null`(디스크 모드·미측정)이면 **막지 않는다**: 모르는 것을 못 간다고
+  // 말하지 않는다(그쪽은 캡처가 있는 만큼 더 과거를 볼 수 있다).
   const outOfRetention = targetDate !== null
-    && targetDate < earliestAllowedMinuteDate(todayKstYyyymmdd());
+    && minuteScrollbackFloorDate !== null
+    && targetDate < minuteScrollbackFloorDate;
 
   // ── 착지 ────────────────────────────────────────────────────────────────
   useEffect(() => {

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { IChartApi, Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
-import { type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import type { LiveTimeframe } from '../state/livePage';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
   nextHistoricalFrom,
@@ -11,8 +11,6 @@ import {
   planViewportContraction,
   fillBudgetSteps,
   dispatchStepsFor,
-  earliestAllowedMinuteDate,
-  todayKstYyyymmdd,
   realMsToYyyymmdd,
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
@@ -100,6 +98,26 @@ export interface ViewportBackfillArgs {
    */
   savedRangeFromDate?: string | null;
   /**
+   * 좌측 팬의 하한(YYYYMMDD) — `useLiveBundle.minuteScrollbackFloorDate`. `null` = 무한.
+   *
+   * **판정을 여기서 하지 않고 받는다.** 종전엔 이 훅이 세 자리에서
+   * `earliestAllowedMinuteDate(todayKstYyyymmdd())` 를 직접 불렀는데, 그건 **벤더
+   * 엔드포인트의 span 캡**(250일)이라 디스크를 읽는 창에는 근거가 없다. 하한이 모드에
+   * 따라 갈리는 값이 된 이상 판정은 모드를 아는 쪽(`useLiveBundle`)이 해야 한다:
+   * 벤더 모드=250일 벽, 디스크 모드=응답이 증명한 캡처 바닥(증명 전에는 `null` → 계속 팬).
+   *
+   * ⚠ **이 이관이 저장뷰를 고치는 것은 아니다.** 얼린 창은 `canTriggerBackfill` 이
+   * 백필 4경로를 통째로 끄고(`savedRangeFrozen`), 캘린더 봉 저장뷰는 애초에 하한이
+   * `null` 이라 종전에도 벽에 안 걸렸다. 벽이 실제로 걸리던 자리는 **저장뷰 종목이
+   * 아닌 분봉 창**(같은 기간만 함께 보는 창)인데, 그 창은 벤더를 읽으므로 벽이 옳다.
+   * 즉 여기서 바뀌는 것은 **그 창이 디스크 모드일 때뿐**이다.
+   *
+   * 미지정이면 `null`(무한)이다. `/study` 가 그 경로인데 무해하다 — 그 페이지는
+   * `historicalFromDate` 를 소비하는 쿼리가 없어 백필이 **inert**(fetch 0)이다
+   * (`StudyPage` 의 같은 주석).
+   */
+  minuteScrollbackFloorDate?: string | null;
+  /**
    * 이 창에 걸린 **기간 점프**의 목적지(YYYYMMDD). null = 점프 없음.
    *
    * 저장뷰와 **정확히 같은 문제**라 3d 가 둘을 함께 받는다: 순간 이동이라 팬
@@ -164,6 +182,7 @@ export function useViewportBackfill({
   rangeWindowFromDate = null,
   settledFromDate = null,
   savedRangeFromDate = null,
+  minuteScrollbackFloorDate = null,
   jumpFromDate = null,
 }: ViewportBackfillArgs): void {
   // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
@@ -379,7 +398,7 @@ export function useViewportBackfill({
       kind: fillKindRef.current,
       historicalFromDate: cur,
       axisEarliestMs: axis.segments[0].sessionOpenMs,
-      earliestAllowedDate: isMinuteTimeframe(timeframe) ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : null,
+      earliestAllowedDate: minuteScrollbackFloorDate,
       timeframe,
       stepCount: fillStepCountRef.current,
       budget: fillBudgetRef.current,
@@ -647,10 +666,10 @@ export function useViewportBackfill({
     // 점프도 명시적 사용자 액션이라 진행 중이던 팬 백필보다 우선한다. 안 그러면
     // 연달아 눌렀을 때 두 번째가 **영영 안 채워진다**(첫 fill 이 끝날 때까지 막힌다).
     const cur = historicalRange.snapshot().historicalFromDate;
-    // 분봉은 250일 벽에서 자른다 — 넘겨도 백엔드가 못 준다.
-    const earliestAllowedDate = isMinuteTimeframe(timeframe)
-      ? earliestAllowedMinuteDate(todayKstYyyymmdd())
-      : null;
+    // 하한은 **호출부가 정한다**(모드에 따라 갈리는 값이라) — prop 도크스트링 참조.
+    // 벤더 모드면 250일 벽, 디스크 모드면 없음(null). 종전엔 이 자리에서
+    // `earliestAllowedMinuteDate` 를 직접 불렀다.
+    const earliestAllowedDate = minuteScrollbackFloorDate;
     const target = earliestAllowedDate !== null && spotTargetFromDate < earliestAllowedDate
       ? earliestAllowedDate
       : spotTargetFromDate;
