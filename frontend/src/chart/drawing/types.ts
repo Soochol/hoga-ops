@@ -143,9 +143,18 @@ export interface Pencil extends DrawingBase {
    * (`x = realMsToX(realMs) + subX[i] * barPx`).
    *
    * Stored as a bar fraction rather than raw pixels because pixels are only
-   * meaningful at the zoom level that captured them; a fraction of a bar is
-   * scale-invariant and survives zoom, pan, and a timeframe switch inside the
-   * same slot (1m↔30m share one storage slot — see `DrawingSlot`).
+   * meaningful at the zoom level that captured them; a fraction of a bar
+   * survives zoom and pan unchanged.
+   *
+   * It is NOT invariant across a timeframe switch inside one slot (1m↔30m
+   * share a storage slot — see `DrawingSlot`): the fraction is denominated in
+   * the CAPTURING frame's bar and re-multiplied by the VIEWING frame's, so a
+   * 1m stroke viewed on 30m re-denominates. The resulting error is bounded by
+   * half a viewing bar — the same magnitude as the anchor snapping this field
+   * exists to undo — so it degrades to roughly the pre-subX accuracy rather
+   * than to something worse. Encoding it against a fixed unit (ms) instead
+   * would fix that, but ms is exactly what the calendar-mode axis cannot
+   * represent between bars (see above).
    *
    * ⚠ NOT applicable to the other kinds. hline/vline/trendline/rect/measure/
    * text anchor to bars deliberately (a trendline endpoint on a candle is the
