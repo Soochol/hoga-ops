@@ -243,9 +243,76 @@ def query_all(
     # **순서를 변형 차이로 읽는다.** 이 세션이 정확히 그 함정에 빠져 같은 변경을
     # 한때 "-33%" 로 오독했다. 판별 신호는 **min 이 양쪽 같은데 median 만 벌어지는
     # 것**이었다(그건 변형 차이가 아니라 조건 차이의 서명이다).
+    rows = _merge_split_minutes(rows)
     return _API_CANDLE_LIST.validate_python(
         [dict(zip(_API_CANDLE_FIELDS, r, strict=True)) for r in rows]
     )
+
+
+def _merge_split_minutes(
+    rows: list[tuple[int, int, int, int, int, int, int]],
+) -> list[tuple[int, int, int, int, int, int, int]]:
+    """같은 ``ts_ms`` 로 쪼개진 봉 조각들을 한 봉으로 합친다.
+
+    **왜 필요한가 — 디스크에 이미 그런 파일이 7,069개 있다.** ``kiwoom_live`` 소스의
+    분봉 합성(ADR-0125)이 한 분(分)을 여러 행으로 내보내는 경우가 있다. 실측
+    2026-08-22: ``kiwoom_live`` candles 파케이 **8,934개 중 7,069개(79%)** 가 중복
+    ``ts_ms`` 를 갖는다(예: 005930/20260820 은 364행 / 고유 356). ``hogaplay`` 소스는
+    깨끗하다 — 즉 이것은 읽기 규약의 문제가 아니라 그 한 생산자의 문제다.
+
+    **증상이 조용하지 않다.** ``/api/range`` 가 비단조 캔들을 그대로 실어 보내면
+    lightweight-charts 가 ``data must be asc ordered by time`` 어서션으로 죽고,
+    프론트는 차트 전체를 「차트 렌더링에 실패했습니다」로 대체한다(2026-08-22 실측).
+    저장뷰·전역 REST 우회·창별 hogaplay 소스가 **셋 다** 이 경로를 탄다.
+
+    **합치는 규칙은 새로 정하지 않는다** — 한 버킷 안을 접는
+    ``bundle.downsample_candles`` 와 같다: ``open`` 은 첫 조각, ``close`` 는 마지막
+    조각, ``high`` 는 최대, ``low`` 는 최소, 거래량은 합. 조각들이 실제로 그 규칙에
+    맞는 시간순 파편이라는 것은 실측으로 확인했다(005930/20260820: 파일 순서가 곧
+    시각 순서이고, 뒤 조각의 시가가 앞 조각의 종가에 이어지며 거래량이 꼬리 몫으로
+    작다 — 107,264 → 39,722 · 84,601 → 603).
+
+    **읽기 쪽에서 고치는 이유는 이미 쓰인 파일 7,069개다.** 생산자를 고쳐도 그 파일들은
+    안 낫는다. 생산자 수정은 별건이다(데이터 위생 — 이 병합이 있으면 더는 크래시가
+    아니다).
+
+    ## 성능
+
+    깨끗한 파일에서는 **한 번의 O(n) 스캔** 뒤 입력을 그대로 돌려준다 — 새 리스트도
+    새 튜플도 만들지 않는다. 위 TypeAdapter 주석이 재는 것은 임시 객체와 GC 압력이라,
+    그 이득을 지키려면 정상 경로가 아무것도 할당하지 않아야 한다. 병합은 중복이 실제로
+    있을 때만 리스트를 다시 만든다.
+
+    ## 정렬 가정
+
+    입력은 ``ts_ms`` 오름차순이라(호출부 SQL) 같은 ts 는 **인접**한다. 조각 사이의
+    상대 순서는 SQL 이 보장하지 않지만(동률 키에 대해 ORDER BY 는 stable 이 아니다)
+    파이썬 리스트의 순서는 결정돼 있으므로, 여기서 **인접 실행(run) 단위로** 접으면
+    fetch 가 준 순서가 곧 타이브레이커가 된다. 실측 파일에서 그 순서 = 파일 순서 =
+    시각 순서였다. SQL 에 ``file_row_number`` 를 끌어들여 ``arg_min``/``arg_max`` 로
+    푸는 길도 있으나, 소수 파일을 위해 **모든 읽기**에 GROUP BY 를 물리게 된다.
+    """
+    if len(rows) < 2:  # noqa: PLR2004 — 국소 비교 상수(조각이 성립하려면 2행 이상)
+        return rows
+    if all(rows[i][0] != rows[i - 1][0] for i in range(1, len(rows))):
+        return rows
+
+    merged: list[tuple[int, int, int, int, int, int, int]] = []
+    for row in rows:
+        if merged and merged[-1][0] == row[0]:
+            prev = merged[-1]
+            merged[-1] = (
+                prev[0],
+                prev[1],                  # open  = 첫 조각
+                row[2],                   # close = 마지막 조각
+                max(prev[3], row[3]),     # high
+                min(prev[4], row[4]),     # low
+                prev[5] + row[5],         # vol_a
+                prev[6] + row[6],         # vol_b
+            )
+        else:
+            merged.append(row)
+    return merged
 
 
 def query_price_range(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[int, int] | None:
