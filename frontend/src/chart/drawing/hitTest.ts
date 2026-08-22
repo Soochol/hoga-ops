@@ -137,6 +137,19 @@ export function hitTestDrawings(
         return d;
       }
     } else if (d.kind === 'pencil') {
+      // Straight chords between the vertices, while the RENDERER draws a
+      // Catmull-Rom spline through them (see `smooth.ts`). The two therefore
+      // disagree slightly — but the spline interpolates its vertices, so the
+      // gap is only the bow between consecutive ones, and it is bounded far
+      // below this kind's threshold. Measured on /live (1분봉, 봉 28px, 60
+      // spans, longest chord 72.6px): **max deviation 1.23px** against
+      // HIT_THRESHOLD.pencil = 8. The two cannot drift apart either — a long
+      // chord only appears where RDP found the stroke nearly straight, and a
+      // straight span bows by nothing.
+      //
+      // Flattening the Béziers here would close the gap exactly, at the cost
+      // of ~8× the geometry on a path that runs every hover frame. Revisit
+      // that trade only if the threshold drops or ε rises.
       const poly: Pixel[] = [];
       d.points.forEach((pt, i) => {
         const x = coord.realMsToCanvasX(pt.realMs);

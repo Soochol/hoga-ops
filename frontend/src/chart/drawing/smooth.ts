@@ -74,11 +74,16 @@ function tangentAt(p0: Px, p1: Px, p2: Px, d01: number, d12: number): Px {
  * whose controls sit on the chord (i.e. a straight line), so callers need no
  * special case beyond `moveTo(pts[0])`.
  *
- * The end conditions REFLECT rather than duplicate — the phantom point before
- * the first is `2·p0 − p1`. Duplicating instead (`p0` twice) would make the
- * first knot spacing zero, i.e. force the degenerate branch on every stroke;
- * reflecting keeps the spacing real and lets the curve leave the first vertex
- * along the chord rather than with a flat tangent.
+ * The end conditions REFLECT — the phantom point before the first is
+ * `2·p0 − p1`. Note that duplicating instead (`p0` twice) computes the SAME
+ * end tangent: duplication zeroes the first knot spacing and takes the
+ * coincident-flank branch, which returns the chord direction, and reflection
+ * makes `p1 − p0 = p2 − p1` so the general formula converges on that same
+ * chord direction. The choice is therefore about which branch a normal stroke
+ * runs through, not about the curve: reflecting keeps every ordinary stroke on
+ * the general path and leaves the degenerate guard as a signal of genuinely
+ * coincident input. (A red-check confirmed the two are indistinguishable by
+ * output — do not "fix" one into the other expecting a visual difference.)
  */
 export function catmullRomSpans(pts: readonly Px[]): BezierSpan[] {
   const n = pts.length;
