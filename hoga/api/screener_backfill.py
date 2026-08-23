@@ -38,10 +38,22 @@ async def factor_backfill(
     sdir: Path, *, fetch_adj: FetchAdj, codes: list[str] | None = None,
     batch: int = 200, concurrency: int = _BACKFILL_CONCURRENCY,
 ) -> int:
-    """전 종목 KIS 수정주가로 factors.parquet 구축. 이미 있는 종목은 skip(resumable).
+    """전 종목 KIS 수정주가로 factors.parquet **최초 구축**. 이미 있는 종목은 skip(resumable).
 
     각 종목: 원주가 종가 + KIS 수정주가 종가를 date-join(pair_raw_adj) → compute_factor_segments.
     batch 마다 (기존 ∪ 신규) 를 원자적으로 기록 → 중단돼도 완료분 보존. 신규 추가 종목 수 반환.
+
+    ⚠ **이 함수는 갱신 도구가 아니다 — 세그먼트가 하나라도 있는 종목은 영구히 건너뛴다.**
+    `codes=` 로 명시해도 그렇다(아래 `done` 차집합이 먼저 걸린다). 중단 복구를 위한
+    설계이고 그 목적에는 맞지만, 구축이 전 종목에 도달하는 순간 `todo` 가 비어 factors 가
+    얼어붙는다 — 실측(#1538)에서 2026-06 부터 커버리지가 0 이 됐고 114종목 수정주가에
+    5×·10× 절벽이 생겼다. **이미 있는 종목을 다시 계산하려면
+    `screener_factor_refresh.refresh_factors` 를 쓸 것.** 저쪽은 대상을 「설명되지 않는
+    계단」으로 좁히고(전 종목 재계산은 4,330 콜이다), 기존 행을 **교체**하며, 벤더
+    수정주가가 기존 세그먼트를 못 덮는 종목은 덮어쓰지 않고 보류한다.
+
+    여기 게이트를 푸는 것은 답이 아니다 — 아래 `_flush` 가 `기존 ∪ 신규` concat 이라
+    같은 코드에 세그먼트가 두 벌 쌓인다. 두 계약을 한 함수에 겹치지 않는다.
     """
     up = sdir / "daily_unadjusted.parquet"
     fpath = sdir / "factors.parquet"
