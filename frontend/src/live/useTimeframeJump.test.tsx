@@ -80,6 +80,7 @@ function Consumer(props: {
     allowCrossSymbol: false,
   });
   props.onResult?.(result);
+  lastResult = result;
   return (
     <div ref={containerRef} data-testid="pane">
       <span data-testid="status">{result.state?.status ?? 'none'}</span>
@@ -88,6 +89,9 @@ function Consumer(props: {
     </div>
   );
 }
+
+/** 마지막 렌더의 훅 반환 — `retry()` 처럼 명령형 API 를 스펙에서 부르기 위해. */
+let lastResult: ReturnType<typeof useTimeframeJump> | null = null;
 
 /** rAF 한 프레임 — 착지는 rAF 로 미룬다. */
 const flushFrame = async () => {
@@ -117,6 +121,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   useLiveCursorStore.getState().resetCursor();
+  lastResult = null;
   setVisibleLogicalRange.mockClear();
   scrollToRealTime.mockClear();
 });
@@ -396,7 +401,10 @@ describe('해제', () => {
 });
 
 describe('중단은 착지와 구별되지 않는다 — 그래서 문구가 「이동했다」를 주장하면 안 된다', () => {
-  it('중단된 seq 도 `landed` 로 정착한다(스피너를 끄기 위해) — 칩 문구의 제약이 여기서 나온다', async () => {
+  // 스피너를 꺼야 한다는 제약은 그대로다 — 중단도 **정착**이다. 다만 종전엔 그것을
+  // `landed` 로 뭉쳐서, 칩이 두 경우에 모두 참인 것(대상 날짜)밖에 말할 수 없었다.
+  // 중단은 사용자 자신의 행동이라 구별할 수 있는 사실이므로 따로 말한다.
+  it('중단된 seq 는 `aborted` 로 정착한다 — 스피너는 꺼지되 착지와 뭉치지 않는다', async () => {
     const { getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
     await requestJump(YESTERDAY_LAST.ts_ms);
     await flushFrame();
@@ -404,13 +412,46 @@ describe('중단은 착지와 구별되지 않는다 — 그래서 문구가 「
     // 백필을 기다리는 동안 사용자가 그 창을 만진다 — 창은 **움직인 적이 없다**.
     fireEvent.pointerDown(getByTestId('pane'));
     await flushFrame();
-    expect(getByTestId('status').textContent).toBe('landed');
+    expect(getByTestId('status').textContent).toBe('aborted');
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+
+  // 중단 뒤 다시 데려다 달라는 것은 유효한 요구다. 이 경로는 #1508 의 seq 단조화를
+  // **end-to-end 로 증명**하기도 한다 — 되감기던 시절엔 재시도가 래치에 걸려 죽었다.
+  it('중단 뒤 재시도하면 같은 목적지로 착지한다', async () => {
+    const { getByTestId, rerender } = render(<Consumer candles={TODAY_ONLY} />);
+    await requestJump(YESTERDAY_LAST.ts_ms);
+    await flushFrame();
+    fireEvent.pointerDown(getByTestId('pane'));
+    await flushFrame();
+    expect(getByTestId('status').textContent).toBe('aborted');
+
+    rerender(<Consumer candles={FULL_CANDLES} />);
+    await flushFrame();
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled(); // 포기한 seq 는 부활하지 않는다
+
+    await act(async () => { lastResult?.retry(); });
+    await flushFrame();
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
+    expect(getByTestId('status').textContent).toBe('landed');
   });
 });
 
 describe('하한은 창마다 다르다 — 디스크 모드는 막지 않는다 (#1497)', () => {
   const OLD_MS = NOW - 400 * DAY_MS;
+
+  // 칩이 「보유 기간(13개월)」을 **상수로** 적고 있었다. 실제 벽은 250일이고, 디스크
+  // 모드에는 벽 자체가 없다 — 이중으로 틀린 문구였다. 값을 상태가 나르면 두 모드에서
+  // 모두 맞고, 다음에 벽이 바뀌어도 문구가 따라온다.
+  it('갈 수 없다고 말할 때 **그 창의 실제 하한 날짜**를 함께 낸다', async () => {
+    const seen: (ReturnType<typeof useTimeframeJump>)[] = [];
+    render(<Consumer candles={FULL_CANDLES} onResult={(r) => seen.push(r)} />);
+    await requestJump(OLD_MS);
+    await flushFrame();
+    const state = seen[seen.length - 1].state;
+    expect(state?.status).toBe('out-of-retention');
+    expect(state?.floorDate).toBe(earliestAllowedMinuteDate(todayKstYyyymmdd()));
+  });
 
   it('하한이 null 이면 같은 날짜라도 out-of-retention 이 아니다', async () => {
     const { getByTestId } = render(<Consumer candles={FULL_CANDLES} floor={null} />);

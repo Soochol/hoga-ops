@@ -385,7 +385,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const [minuteJump, setMinuteJump] = useState<{
     state: MinuteJumpState | null;
     clear: () => void;
-  }>({ state: null, clear: () => {} });
+    retry: () => void;
+  }>({ state: null, clear: () => {}, retry: () => {} });
   // 발행 판정은 **여기 하나**다. 버튼과 `g` 가 각자 판정하면 "버튼은 막았는데
   // 단축키는 보내는" 상태가 생기고, 그 어긋남은 눌러 보기 전엔 안 보인다.
   const runJump = useCallback(() => {
@@ -682,7 +683,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             않는다. 셋이 동시에 뜨는 조합도 서로 모순되지 않는다(각각 기간·소스·점프). */}
         {minuteJump.state && (
           <div className="ml-1 flex min-w-0 items-center">
-            <MinuteJumpChip state={minuteJump.state} onClear={minuteJump.clear} />
+            <MinuteJumpChip
+              state={minuteJump.state}
+              onClear={minuteJump.clear}
+              onRetry={minuteJump.retry}
+            />
           </div>
         )}
         {/* hogaplay 소스 칩 — 저장뷰 칩과 **같은 자리·다른 의미**다. 둘이 동시에 뜰 수
