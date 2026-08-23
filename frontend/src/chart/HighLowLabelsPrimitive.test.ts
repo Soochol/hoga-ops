@@ -213,6 +213,36 @@ describe('HighLowLabelsPrimitive', () => {
     expect(c.moveTo).toHaveBeenCalledWith(expect.any(Number), 22);
   });
 
+  it('draws an L-shaped leader when the label slid sideways off the dot', () => {
+    // 레전드가 pane 좌측 절반을 덮고 dot 이 위쪽(y=60)이면 고가 라벨은 세로로 자리가
+    // 없어 가로로 비킨다 → 리더선이 ㄱ자가 된다. 판별식은 **수평 구간의 존재**:
+    // 칩 아래 모서리 높이(6+16=22)에서 y 가 그대로인 lineTo 가 있어야 한다.
+    const stubs = makeAxisStubs({ priceToCoordinate: () => 60, timeToCoordinate: () => 100 });
+    const legend = { top: 0, bottom: 56, left: 0, right: 400 };
+    const { prim } = attach(stubs, () => snapshot({ legendRects: [legend] }));
+    const c = makeCanvasSpy();
+
+    draw(prim, c, { w: 760, h: 300 });
+
+    const horizontal = c.lineTo.mock.calls.filter(([, y]) => Number(y) === 22);
+    expect(horizontal.length).toBeGreaterThan(0);
+    // 수평 구간의 끝은 dot 의 x — 거기서 수직으로 dot 까지 내려간다.
+    expect(c.lineTo).toHaveBeenCalledWith(horizontal[0][0], 60);
+    // 칩 자체는 레전드 우측 바깥으로 나가 있다.
+    expect(texts(c)[0].x).toBeGreaterThan(400);
+  });
+
+  it('keeps the leader purely vertical when the label sits on the dot', () => {
+    // 무변화 가드 — 회피 대상이 없으면 슬라이드가 없고 리더선도 세로 한 줄이다.
+    const stubs = makeAxisStubs({ priceToCoordinate: () => 150, timeToCoordinate: () => 100 });
+    const { prim } = attach(stubs, () => snapshot());
+    const c = makeCanvasSpy();
+
+    draw(prim, c, { w: 760, h: 300 });
+
+    expect(c.lineTo.mock.calls.filter(([, y]) => Number(y) === 22)).toHaveLength(0);
+  });
+
   it('derives wall-chip avoid rects at draw time and yields the high label past them', () => {
     // 회귀 가드: 회피 rect 는 상위에서 픽셀로 구워 넘기지 않고 {price,time0,time1,peakTime}
     // 에서 매 프레임 변환돼야 한다(축 리스케일 정합). wall 가격을 상단 가장자리 근처(y=15)로

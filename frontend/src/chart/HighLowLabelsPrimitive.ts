@@ -334,11 +334,16 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         const labelInnerY = label.place === 'above'
           ? label.y + LABEL_HEIGHT_PX
           : label.y - LABEL_HEIGHT_PX;
-        const leaderTop = Math.min(yc, labelInnerY);
         const leaderHeight = Math.abs(yc - labelInnerY);
+        // 라벨이 dot 의 x 에서 비켜난 거리. 가로 슬라이드(회피)와 좌우 가장자리 클램프
+        // 둘 다 여기에 값을 남긴다 — 어느 쪽이든 리더선이 ㄱ자로 이어 줘야 dot 과 칩이
+        // 끊기지 않는다(옛 세로 전용 리더선은 클램프 케이스에서 이미 끊겨 있었다).
+        const leaderDx = Math.abs(label.x - xc);
 
         // 옅은 세로 리더선 — 어느 봉이 극값인지 시선을 잇되 캔들을 가리지 않는다.
-        if (leaderHeight >= LEADER_MIN_HEIGHT_PX) {
+        // 세로·가로 중 **하나라도** 유의미하면 긋는다. 세로만 보던 옛 게이트는 극값이
+        // 가장자리 근처이면서 라벨만 옆으로 비킨 경우에 리더선을 통째로 생략했다.
+        if (leaderHeight >= LEADER_MIN_HEIGHT_PX || leaderDx >= LEADER_MIN_HEIGHT_PX) {
           ctx.save();
           ctx.globalAlpha = LEADER_OPACITY;
           ctx.strokeStyle = item.color;
@@ -346,9 +351,18 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
           // 0.5 오프셋 — 1px 선을 픽셀 격자에 앉혀 흐릿함을 막는다.
-          const lineX = Math.round(xc) + 0.5;
-          ctx.moveTo(lineX, leaderTop);
-          ctx.lineTo(lineX, leaderTop + leaderHeight);
+          const dotX = Math.round(xc) + 0.5;
+          const chipX = Math.round(label.x) + 0.5;
+          // ㄱ자: 칩의 dot 쪽 모서리에서 **수평**으로 dot 의 x 까지 간 뒤 **수직**으로
+          // dot 까지. 수평 구간은 방금 피해 온 회피 rect(레전드 등)의 y 대역을 지나지만,
+          // 0.45 알파 1px 점선인 데다 레전드는 DOM 이라 어차피 그 위에 그려진다 — 감수한다.
+          if (Math.abs(chipX - dotX) >= 1) {
+            ctx.moveTo(chipX, labelInnerY);
+            ctx.lineTo(dotX, labelInnerY);
+          } else {
+            ctx.moveTo(dotX, labelInnerY);
+          }
+          ctx.lineTo(dotX, yc);
           ctx.stroke();
           ctx.restore();
         }

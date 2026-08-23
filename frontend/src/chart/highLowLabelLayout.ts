@@ -76,6 +76,10 @@ const WALL_LABEL_CHAR_WIDTH_PX = 6.5;
 // 회피 연쇄 push 상한(pane 높이 비율). 이보다 깊이 밀 바엔 겹침을 감수하고 가장자리로
 // 복귀한다 — 회피가 라벨을 pane 중간까지 표류시키던 최악 케이스의 구조적 차단.
 const MAX_AVOID_SHIFT_RATIO = 0.3;
+// 가로 슬라이드 상한(pane 폭 비율). 후보를 원래 x 에서 가까운 순으로 고르므로 평소엔
+// 걸리지 않는 **최후 방벽**이다 — 라벨이 화면 반대편까지 날아가 리더선이 pane 을 통째로
+// 가로지르는 것을 막는다. 초과하면 슬라이드를 포기하고 제자리에서 겹침을 감수한다.
+const MAX_SLIDE_RATIO = 0.5;
 
 /** 칩 전체 폭(텍스트 + 좌우 패딩). measured 는 canvas measureText 결과. */
 export function labelBoxWidth(measuredTextWidth: number): number {
@@ -91,6 +95,17 @@ type VerticalBox = {
   top: number;
   bottom: number;
 };
+
+/** NaN 이 섞인 rect 는 회피에서 통째로 뺀다 — 비교가 전부 false 라 조용히 무시되느니 명시적으로. */
+function isFiniteRect(r: AvoidRect): boolean {
+  return Number.isFinite(r.top) && Number.isFinite(r.bottom)
+    && Number.isFinite(r.left) && Number.isFinite(r.right);
+}
+
+/** 라벨 박스(가로 [left,right] × 세로 box)와 rect 의 **2D** 교차. */
+function hits(left: number, right: number, box: VerticalBox, r: AvoidRect): boolean {
+  return left < r.right && r.left < right && box.top < r.bottom && r.top < box.bottom;
+}
 
 // 가장자리 고정 라벨 박스. anchorY 는 라벨의 pane-가장자리 쪽 모서리:
 // 'above'(고가)=상단 가장자리에서 아래로, 'below'(저가)=하단 가장자리에서 위로.
@@ -174,11 +189,7 @@ export function placeExtremeLabel(
     const labelLeft = placedX - halfWidth;
     const labelRight = placedX + halfWidth;
     const overlappingX = avoidRects
-      .filter((r) => (
-        Number.isFinite(r.top) && Number.isFinite(r.bottom)
-        && Number.isFinite(r.left) && Number.isFinite(r.right)
-        && labelLeft < r.right && r.left < labelRight
-      ))
+      .filter((r) => isFiniteRect(r) && labelLeft < r.right && r.left < labelRight)
       .sort((a, b) => (place === 'above' ? a.top - b.top : b.bottom - a.bottom));
     for (const box of overlappingX) {
       const labelBox = highLowLabelBox(anchorY, place);
@@ -215,9 +226,51 @@ export function placeExtremeLabel(
       : Math.max(anchorY, candleAnchorLimit);
   }
 
+  // ── **가로 슬라이드** ──
+  // 여기까지의 세로 배치로도 라벨이 회피 대상과 겹쳐 남을 수 있다. 남는 경로는 셋이지만
+  // (shift-cap 복귀 · 캔들 상한의 되감기 · 애초에 부족했던 push) 각각을 따지지 않고
+  // **최종 박스를 전수로 다시 교차 검사**한다 — 술어 하나로 세 경로가 전부 잡힌다.
+  // 겹쳐 있으면 라벨을 좌우로 밀어 rect 바깥의 빈 x 로 옮기고 앵커는 **가장자리로
+  // 되돌린다**(후보를 가장자리 기준으로 검증했으므로 반환도 그것이어야 일관된다).
+  // dot 에서 멀어진 만큼은 렌더 단 ㄱ자 리더선이 잇는다.
+  let slidX = placedX;
+  const validRects = avoidRects.filter(isFiniteRect);
+  if (validRects.length > 0) {
+    const finalBox = highLowLabelBox(anchorY, place);
+    const stillHit = validRects.some((r) => hits(slidX - halfWidth, slidX + halfWidth, finalBox, r));
+    // 슬라이드는 라벨을 **가장자리로** 되돌리므로, 가장자리 박스가 캔들 상한을 통과하는지가
+    // 전제다. 이 검사는 후보 x 와 무관한 **상수 비교**다 — 스카이라인이 아니라 극값 봉의
+    // y 하나만 본다(above 라벨이 통과하려면 대략 y ≥ 24). 캔들이 pane 가장자리에 바싹
+    // 붙어 이 전제가 깨지면 어느 x 로 가도 소용없으므로 슬라이드 자체를 포기한다.
+    const edgeBox = highLowLabelBox(edgeAnchorY, place);
+    const edgeClearsCandle = !Number.isFinite(y) || (place === 'above'
+      ? edgeBox.bottom <= y - LABEL_AVOID_GAP_PX
+      : edgeBox.top >= y + LABEL_AVOID_GAP_PX);
+    if (stillHit && edgeClearsCandle) {
+      const maxSlide = paneWidth * MAX_SLIDE_RATIO;
+      // 후보 = **모든** 회피 rect 의 좌·우 바깥(겹친 것만이 아니다 — 옮긴 자리에 다른
+      // rect 가 있을 수 있으므로 후보는 넓게 만들고 아래 검증이 거른다). 원래 x 에서
+      // 가까운 순으로 시도해 리더선의 수평 이동을 최소화한다.
+      const candidates = validRects
+        .flatMap((r) => [
+          r.left - halfWidth - LABEL_AVOID_GAP_PX,
+          r.right + halfWidth + LABEL_AVOID_GAP_PX,
+        ])
+        .map((c) => Math.min(maxX, Math.max(minX, c)))
+        .sort((a, b) => Math.abs(a - placedX) - Math.abs(b - placedX) || a - b);
+      for (const cand of candidates) {
+        if (Math.abs(cand - placedX) > maxSlide) continue;
+        if (validRects.some((r) => hits(cand - halfWidth, cand + halfWidth, edgeBox, r))) continue;
+        slidX = cand;
+        anchorY = edgeAnchorY;
+        break;
+      }
+    }
+  }
+
   // 라벨 박스 전체가 pane 안에 머물도록 앵커 클램프.
   const anchorMin = place === 'above' ? minY : minY + LABEL_HEIGHT_PX;
   const anchorMax = place === 'above' ? maxY - LABEL_HEIGHT_PX : maxY;
   const placedY = Math.min(anchorMax, Math.max(anchorMin, anchorY));
-  return { x: placedX, y: placedY, place };
+  return { x: slidX, y: placedY, place };
 }
