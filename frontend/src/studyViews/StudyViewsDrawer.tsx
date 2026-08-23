@@ -7,24 +7,15 @@ import {
   useSensors,
   type DraggableSyntheticListeners,
   type DragEndEvent,
-  type DragMoveEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
-import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
-import {
-  activeStudyGroup,
-  studyGroupViewFromSave,
-  useStudyWorkspaceStore,
-} from '../state/studyWorkspace';
 import { wantsNewTab } from '../live/useJumpToLive';
 import { activateLiveCode } from '../live/liveNavigate';
 import { useLivePageStore } from '../state/livePage';
 import { savedRangeFocusFromView } from './savedRangeFocus';
-import { openStudyViewInNewTab, studyViewDeepLinkPath } from './studyDeepLink';
-import { latestStudyViewForCode } from './studyViewSelection';
+import { openSavedViewInNewTab } from './studyDeepLink';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
   RailDrawer,
@@ -189,24 +180,19 @@ export function StudyViewsDrawer() {
     reorderRow,
   } = useStudyViewTreeState(saves);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
-  // 스토어를 읽는 이유: 이 드로어는 **우측 레일의 전역 컴포넌트**라 `/live` 등 다른
-  // 라우트에서는 URL 에 `?view=` 가 아예 없다. URL 만 보면 그 라우트들에서 행 하이라이트가
-  // 통째로 사라진다.
-  //
-  // ADR-0155 로 **열린 뷰가 여럿**이 됐다(그룹마다 하나). 하이라이트도 집합이다 — 하나만
-  // 칠하면 그룹 2 에서 보고 있는 뷰가 목록에서 "안 열린 것" 으로 보인다.
-  const groupViews = useStudyWorkspaceStore((s) => s.groupViews);
-  const openStudyViewIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const view of Object.values(groupViews)) if (view) ids.add(view.viewId);
-    // URL 폴백은 그룹이 아직 하이드레이션되기 전(딥링크 첫 프레임)을 메운다.
-    if (ids.size === 0 && currentStudyViewId) ids.add(currentStudyViewId);
-    return ids;
-  }, [groupViews, currentStudyViewId]);
+  /**
+   * "지금 열려 있는 저장뷰" = `/live` 의 **저장 구간 슬롯**(2026-08-23).
+   *
+   * 그전 출처는 `/study` 의 그룹→저장뷰 맵이었다(ADR-0155). 그 페이지가 사라지면서
+   * 열린 뷰는 다시 **한 번에 하나**가 됐고, 그 하나를 아는 곳이 이 슬롯이다.
+   *
+   * URL 을 안 보고 스토어를 보는 이유는 그대로다 — 이 드로어는 우측 레일의 전역
+   * 컴포넌트라 `?view=` 없이 도착한 `/live`(관심종목 클릭 등)에서도 하이라이트가
+   * 살아야 한다. URL 폴백은 슬롯이 아직 안 세워진 딥링크 첫 프레임을 메운다.
+   */
+  const savedRangeViewId = useLivePageStore((s) => s.savedRangeFocus?.viewId ?? null);
+  const openStudyViewId = savedRangeViewId ?? currentStudyViewId;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
-  const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
-  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
     window.clearTimeout(navigateClickTimerRef.current);
@@ -251,40 +237,6 @@ export function StudyViewsDrawer() {
     navigateClickTimerRef.current = null;
   }
 
-  function navigateToStudyView(row: StudyViewListRow) {
-    cancelPendingStudyViewNavigation();
-    navigate(studyViewDeepLinkPath(row.id));
-  }
-
-  /**
-   * 저장뷰를 `/study` 의 활성 그룹에서 연다 — 그 그룹의 뷰를 제자리 교체한다
-   * (ADR-0155).
-   *
-   * ⚠ **이제 소비자가 하나뿐이다: `/study` 캔버스로의 그룹 드롭.** 행 클릭·키보드
-   * Enter·행 메뉴 「열기」는 2026-08-21 결정으로 전부 `openSavedRangeInLive`(→`/live`)
-   * 로 옮겼다. 이 함수가 남은 이유는 드롭 타깃이 `/study` 페이지 안에만 존재하기
-   * 때문이다 — 거기에 떨어뜨린 것을 다른 페이지로 보내면 제스처가 거짓말이 된다.
-   *
-   * 활성 그룹은 포커스 창에서 파생하므로, 그룹 2 창을 누른 뒤 드롭하면 그룹 2 만
-   * 갈아탄다. 다른 그룹 창들은 그대로다 — 그게 나란히 비교라는 이 기능의 요점이다.
-   *
-   * 앱 안에 **탭**이 쌓이는 자리는 여전히 없다(ADR-0149): 탭바도 disposition 도
-   * 되살아나지 않았다. 뷰를 여럿 여는 축이 탭에서 **그룹**으로 바뀌었을 뿐이다.
-   *
-   * 다른 뷰를 곁눈질하려면 **브라우저 탭**도 그대로 쓸 수 있다 — 행 ctrl/⌘+클릭이
-   * `openStudyViewInNewTab` 으로 `?view=` 딥링크를 새 탭에 띄우고, 이 함수는 그 경로에서
-   * 아예 호출되지 않는다(그래야 이 탭의 그룹들이 그대로다). 두 「탭」의 구별은
-   * `studyDeepLink.ts` 도크스트링에 있다.
-   *
-   * 봉은 넘기지 않는다 — 차트 창이 유일한 소유자다(#1326). 저장뷰가 정하는 것은
-   * 종목과 구간이다.
-   */
-  function openStudyView(row: StudyViewListRow) {
-    const workspace = useStudyWorkspaceStore.getState();
-    workspace.setGroupView(activeStudyGroup(workspace), studyGroupViewFromSave(row));
-    navigateToStudyView(row);
-  }
-
   /**
    * 저장뷰를 **`/live` 에서 연다** — 행 클릭의 목적지 (2026-08-21 사용자 결정,
    * `/study` 진입로를 대체한다).
@@ -299,8 +251,10 @@ export function StudyViewsDrawer() {
    * 여기서 `/study` 워크스페이스(`setGroupView`)는 건드리지 않는다 — 두 페이지가
    * 같은 저장뷰 슬롯을 공유하면 `/live` 클릭이 `/study` 창 배치를 조용히 바꾼다.
    *
-   * ctrl/⌘+클릭은 이 경로를 타지 않는다. 그쪽은 아직 `/study` 새 탭이다
-   * (`/live?view=` 딥링크는 `/study` 제거 시 함께 만든다).
+   * ctrl/⌘+클릭은 이 함수를 부르지 않지만 **목적지는 같다** — 새 브라우저 탭에서
+   * `/live?view=` 를 열고(`openSavedViewInNewTab`), 착지 쪽이 여기와 같은 두 단계를
+   * 같은 순서로 밟는다(`useSavedRangeDeepLink`). 2026-08-23 까지는 그쪽만 `/study`
+   * 새 탭이라 같은 행의 두 제스처가 다른 페이지로 갈라져 있었다.
    */
   function openSavedRangeInLive(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
@@ -365,16 +319,14 @@ export function StudyViewsDrawer() {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        // 지운 뷰를 보던 **모든 그룹**을 비운다(ADR-0155). 남은 뷰 중 하나로 자동
-        // 이동하지 않는 것은 ADR-0149 그대로다 — 사용자가 지운 직후 뜻밖의 뷰가 뜨는
-        // 것보다 빈 상태가 낫고, 빈 상태에는 "저장뷰 열기" 버튼이 있다.
+        // 지운 뷰가 `/live` 차트에 걸려 있으면 그 기간 슬롯을 푼다. 남은 뷰 중 하나로
+        // 자동 이동하지 않는 것은 ADR-0149 그대로다 — 사용자가 지운 직후 뜻밖의 뷰가
+        // 뜨는 것보다 평소의 `/live` 가 낫다.
         //
-        // 그룹이 여럿일 수 있으므로 "활성 그룹만" 이 아니다: 같은 뷰를 두 그룹에서
-        // 보고 있었다면 한쪽만 비우고 다른 쪽이 삭제된 뷰를 계속 조회한다.
-        useStudyWorkspaceStore.getState().clearGroupsOfView(deletedId);
-        if (location.pathname === '/study' && currentStudyViewId === deletedId) {
-          navigate('/study');
-        }
+        // **종목은 그대로 둔다.** 슬롯만 푸는 것이 계약이다: 저장뷰를 지웠다고 보고
+        // 있던 종목까지 사라지면 삭제가 화면을 통째로 갈아엎는 제스처가 된다.
+        const page = useLivePageStore.getState();
+        if (page.savedRangeFocus?.viewId === deletedId) page.clearSavedRange();
       },
     });
   };
@@ -419,31 +371,17 @@ export function StudyViewsDrawer() {
     if (pendingDeleteRef.current) executeDeleteRef.current(pendingDeleteRef.current);
   }, []);
 
-  const handleDragStart = (event: DragStartEvent) => {
-    if (event.active.data.current?.type !== 'group') return;
-    const draggedGroup = event.active.data.current as { code?: string };
-    if (draggedGroup.code) startEntryDrag(draggedGroup.code);
-  };
-
-  const handleDragMove = (event: DragMoveEvent) => {
-    if (event.active.data.current?.type !== 'group') return;
-    setOverStudy(isPointOnStudy(dropPoint(event)));
-  };
-
-  const handleDragCancel = () => {
-    endEntryDrag();
-  };
-
+  /**
+   * 이 드로어의 드래그는 이제 **트리 재정렬 하나**다.
+   *
+   * 그전엔 그룹 드래그가 전역 entry drag(`startDrag`)를 켜서 `/study` 캔버스에
+   * 떨어뜨리면 그 종목의 최신 저장뷰가 열렸다. 그 드롭 타깃은 `/study` 안에만
+   * 존재했으므로 페이지와 함께 사라졌고, 전역 드래그를 켤 이유도 함께 사라졌다 —
+   * 남겨 두면 `/live` 캔버스가 `draggingCode` 만 보고 드롭 오버레이를 띄우는데
+   * (`WorkspaceCanvas`) 정작 받아 줄 핸들러가 없어 **오버레이가 거짓말**이 된다.
+   */
   const handleDragEnd = (event: DragEndEvent) => {
     const wasGroupDrag = event.active.data.current?.type === 'group';
-    endEntryDrag();
-    if (event.active.data.current?.type === 'group' && isPointOnStudy(dropPoint(event))) {
-      const draggedGroup = visibleGroups.find((group) => studyViewGroupDndId(group.key) === String(event.active.id));
-      const save = draggedGroup ? latestStudyViewForCode(saves, draggedGroup.code) : null;
-      if (save) openStudyView(save);
-      return;
-    }
-
     if (wasGroupDrag && !event.over) return;
     const intent = resolveStudyViewTreeDrag(event);
     if (!intent) return;
@@ -455,7 +393,7 @@ export function StudyViewsDrawer() {
   };
 
   const renderStudyViewRow = (row: StudyViewListRow) => {
-    const isActive = openStudyViewIds.has(row.id);
+    const isActive = openStudyViewId === row.id;
     const isEditing = renameState?.id === row.id || memoState?.id === row.id;
     return (
       <RailTreeRow
@@ -474,12 +412,13 @@ export function StudyViewsDrawer() {
         //
         // 지연 스케줄(180ms — 이름 변경 더블클릭과의 모호성 해소)을 **거치지 않는다**:
         // 수정자 클릭에는 그 모호성이 없고, 사용자 제스처 핸들러 안에서 동기로 열어야
-        // 팝업 차단에 걸리지 않는다. 이 탭의 그룹들은 건드리지 않는 것이 계약이라
-        // `openStudyView`(=`setGroupView` + navigate)를 부르지 않는다.
+        // 팝업 차단에 걸리지 않는다. **이 탭은 아무것도 바뀌지 않는 것이 계약**이라
+        // `openSavedRangeInLive`(종목 활성화 + 기간 슬롯)를 부르지 않는다 — 새 탭이
+        // URL 로 자기 상태를 세운다.
         onClick={isEditing ? undefined : (e) => {
           if (wantsNewTab(e)) {
             cancelPendingStudyViewNavigation();
-            openStudyViewInNewTab(row.id);
+            openSavedViewInNewTab(row.id);
             return;
           }
           scheduleStudyViewNavigation(row);
@@ -656,10 +595,7 @@ export function StudyViewsDrawer() {
           <DndContext
             sensors={sensors}
             collisionDetection={studyViewTreeCollision}
-            onDragStart={handleDragStart}
-            onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
           >
             <SortableContext items={visibleGroups.map((group) => studyViewGroupDndId(group.key))} strategy={verticalListSortingStrategy}>
               {visibleGroups.map((group) => {

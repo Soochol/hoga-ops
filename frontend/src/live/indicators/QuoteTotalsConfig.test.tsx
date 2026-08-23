@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import { useLivePageStore } from '../../state/livePage';
 import { WindowViewContext, LIVE_WINDOW_WORKSPACE, type WindowViewValue } from '../workspace/windowView';
-import { STUDY_WINDOW_WORKSPACE } from '../../studyViews/studyWindowWorkspace';
 
 /** 지표 소유 페이지를 세우는 최소 Provider — `useWindowIndicatorScope` 는
  *  `workspace.scopePrefix` 만 읽는다(ADR-0146, 어댑터에서 렌더 동기적). */
@@ -53,18 +52,9 @@ describe('QuoteTotalsConfig', () => {
     expect(screen.queryByText('매수 수평선')).toBeNull();
   });
 
-  // 최고 수평선은 `/live` 전용이다(기준일이 로드 구간의 끝날이라 복기와 어긋난다).
-  // 켤 수는 있는데 안 그려지는 유령 토글을 남기지 않도록 설정 행 자체를 숨긴다.
-  it('/study 에서는 최고 수평선 토글이 아예 없다 — 켜져 있어도', () => {
-    useLivePageStore.setState({ quoteTotalsDayMaxLineEnabled: true });
-    render(<QuoteTotalsConfig />, { wrapper: pageProvider(STUDY_WINDOW_WORKSPACE) });
-    expect(screen.queryByTestId('settings-toggle-quoteTotalsDayMaxLineEnabled')).toBeNull();
-    expect(screen.queryByText('매수 최고선')).toBeNull();
-    // 대조군: 현재값 수평선은 복기에서도 남는다 — 이 게이트가 총잔량 설정을 통째로
-    // 지우는 게 아니라 최고선만 겨눈다는 것을 못 박는다.
-    expect(screen.getByTestId('settings-toggle-quoteTotalsLevelLineEnabled')).toBeTruthy();
-  });
-
+  // 여기 `/study` 게이트 케이스가 있었다 — 최고 수평선이 복기에서 숨겨지는지 재던
+  // 것인데, 그 페이지와 게이트가 함께 사라졌다(2026-08-23). 아래 `/live` 케이스가
+  // 남는 계약 전부다.
   it('/live scope 를 명시해도 최고 수평선 토글은 그대로 있다', () => {
     render(<QuoteTotalsConfig />, { wrapper: pageProvider(LIVE_WINDOW_WORKSPACE) });
     expect(screen.getByTestId('settings-toggle-quoteTotalsDayMaxLineEnabled')).toBeTruthy();

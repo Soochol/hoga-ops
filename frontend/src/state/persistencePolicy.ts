@@ -122,22 +122,10 @@ export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
     note: '"이 탭이 마지막에 적용한 프리셋" 은 본질적으로 탭의 것. 공유였을 때 다른 탭의 선택이 이 탭을 이겼다.',
   },
   {
-    key: 'study.activePreset.v1',
-    module: 'state/studyActivePreset.ts',
-    policy: 'tab',
-    note: '위와 같은 이유의 /study 짝.',
-  },
-  {
     key: 'live.workspace.v1',
     module: 'state/workspaceKeys.ts',
     policy: 'tab-authoritative-shared-seed',
     note: '창 배치 전체 스냅샷이라 공유면 두 탭이 서로를 덮어쓴다. 딥링크 탭은 shared 쓰기를 건너뛴다(그 탭의 배치는 남길 것이 아니다).',
-  },
-  {
-    key: 'study.workspace.v1',
-    module: 'state/workspaceKeys.ts',
-    policy: 'tab-authoritative-shared-seed',
-    note: '위와 같은 이유. /study 는 딥링크 예외가 없어 write-through 가 무조건이다. ADR-0155 로 그룹→저장뷰(groupViews)도 이 스냅샷에 들어왔다 — 옛 study.activeView.v1 이 공유 localStorage 라 두 탭이 서로를 덮던 자리를 이 정책이 없앤다.',
   },
 ];
 
@@ -163,11 +151,5 @@ export const INTENTIONALLY_UNSYNCED: readonly UnsyncedHydrateDecl[] = [
     method: 'hydrateFromStorage',
     reason:
       '`live.page.v1` 은 활성 종목·봉이다. 두 탭이 다른 종목을 보는 것이 딥링크의 목적이므로 크로스탭은 기능을 죽인다. 같은 모듈의 `hydrateIndicatorsFromStorage` 는 다른 키(`live.indicators.v2`)이고 배선돼 있다.',
-  },
-  {
-    module: 'state/studyLastMinuteTimeframe.ts',
-    method: 'hydrateFromStorage',
-    reason:
-      '소비자가 차트 창 설정 시드 하나뿐이라(#906) 런타임 드리프트가 화면에 나타나지 않는다. 다음 창을 만들 때 읽히는 값이라 다음 로드 시드로 충분하다.',
   },
 ];

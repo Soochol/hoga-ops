@@ -28,10 +28,12 @@ describe('ShortcutHelpHost', () => {
     expect(screen.queryByRole('dialog', { name: '단축키 도움말' })).toBeNull();
   });
 
-  it('shows the study section on /study and opens via the channel', () => {
-    renderHost('/study');
+  // `/study` 섹션 케이스가 여기 있었다(2026-08-23 제거) — 그 페이지의 탭 단축키
+  // 도움말인데, 탭은 ADR-0149 로 먼저 사라졌고 페이지가 뒤따랐다.
+  it('채널로 열린다 — 라우트 전용 섹션이 없는 곳에서도', () => {
+    renderHost('/inventory');
     act(() => openShortcutHelp());
-    expect(screen.getByText('탭 선택')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '단축키 도움말' })).toBeInTheDocument();
     expect(screen.queryByText('관심종목 다음/이전 종목')).toBeNull();
   });
 

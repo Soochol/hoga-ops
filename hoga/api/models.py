@@ -2197,53 +2197,6 @@ class LiveLayoutPresetsFile(BaseModel):
     presets: list[LiveLayoutPreset] = Field(default_factory=list)
 
 
-class StudyLayoutPresetPayload(BaseModel):
-    """`/study` 프리셋 payload = **창 배치만**.
-
-    `/live` 와 달리 종목(groupSymbols)이 없다 — `/study` 의 종목·구간은 탭(저장뷰)이
-    SSOT 이고, 프리셋 적용이 열린 탭을 건드리지 않는 것이 이 리소스의 계약이다.
-    windows 원소는 자유 구조(창 kind별 chart 설정 등) — 검증·정규화는 프론트가 apply
-    시점에 한다(`studyWorkspace.applySnapshot`).
-    """
-
-    windows: list[dict[str, Any]] = Field(default_factory=list)
-    zOrder: list[str] = Field(default_factory=list)
-
-
-class StudyLayoutPresetWriteRequest(BaseModel):
-    name: str
-    payload: StudyLayoutPresetPayload
-    # 낙관적 동시성 — LiveLayoutPresetWriteRequest 와 같은 계약(PUT 전용, 생략 시 덮어씀).
-    expected_updated_at_ms: int | None = None
-
-    @field_validator("name")
-    @classmethod
-    def _strip_name(cls, v: str) -> str:
-        return _strip_nonblank_name(v)
-
-
-class StudyLayoutPreset(BaseModel):
-    schema_version: int = 1
-    id: str
-    name: str
-    payload: StudyLayoutPresetPayload
-    created_at_ms: int
-    updated_at_ms: int
-
-    @field_validator("name")
-    @classmethod
-    def _strip_name(cls, v: str) -> str:
-        return _strip_nonblank_name(v)
-
-
-StudyLayoutPresetListRow = StudyLayoutPreset
-
-
-class StudyLayoutPresetsFile(BaseModel):
-    schema_version: int = 1
-    presets: list[StudyLayoutPreset] = Field(default_factory=list)
-
-
 # ── 옵션 심리 패널 (ADR-0135) ────────────────────────────────────────────────
 # 계층별 as_of 를 따로 싣는 이유: 전수(5분)와 ATM(30초)의 관측 시각이 다르다.
 # 하나로 뭉치면 5분 전 GEX 와 30초 전 P/C 가 같은 시각으로 표시되어 오독을 부른다.

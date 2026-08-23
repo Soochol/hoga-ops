@@ -44,7 +44,7 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      '라이브', '복기', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
+      '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
     ]);
     expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
@@ -78,7 +78,7 @@ describe('TopNav', () => {
 
   it('hides the symbol search on non-live routes', () => {
     render(<TopNav onOpenSettings={vi.fn()} />, {
-      wrapper: ({ children }) => <W route="/study">{children}</W>,
+      wrapper: ({ children }) => <W route="/heatmap">{children}</W>,
     });
 
     expect(screen.queryByTestId('live-symbol-search')).toBeNull();
@@ -92,24 +92,19 @@ describe('TopNav', () => {
     expect(useRightRailStore.getState().activePanel).toBe('watchlist');
   });
 
-  it('복기 nav 는 저장뷰 패널을 함께 연다', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
-
-    fireEvent.click(screen.getByRole('link', { name: '복기' }));
-
-    expect(useRightRailStore.getState().activePanel).toBe('savedViews');
-  });
+  // 「복기」 nav 가 저장뷰 패널을 함께 열던 케이스가 여기 있었다 — 그 라우트와 함께
+  // 사라졌다(2026-08-23). 저장뷰 패널은 이제 우측 레일 버튼으로만 연다.
 
   // 열림이 아니라 **교체**다: 다른 패널을 보던 중에 눌러도 그 라우트의 패널로 간다.
   it('다른 패널이 열려 있어도 그 라우트의 패널로 교체한다', () => {
     useRightRailStore.setState({ activePanel: 'screener', lastPanel: 'screener' });
     render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
 
-    fireEvent.click(screen.getByRole('link', { name: '복기' }));
+    fireEvent.click(screen.getByRole('link', { name: '라이브' }));
 
-    expect(useRightRailStore.getState().activePanel).toBe('savedViews');
+    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
     // 레일 쉐브론이 다시 열 대상도 방금 연 패널이어야 한다(setActivePanel 계약).
-    expect(useRightRailStore.getState().lastPanel).toBe('savedViews');
+    expect(useRightRailStore.getState().lastPanel).toBe('watchlist');
   });
 
   // toggle 이었다면 여기서 닫힌다 — "누르면 열린다" 와 정반대다.
@@ -136,10 +131,10 @@ describe('TopNav', () => {
   // 사용자는 건드린 적 없는 화면이 변한 걸 보게 된다.
   it('새 탭 클릭(ctrl/meta/shift/alt)은 이 탭의 패널을 바꾸지 않는다', () => {
     render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
-    const study = screen.getByRole('link', { name: '복기' });
+    const live = screen.getByRole('link', { name: '라이브' });
 
     for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey'] as const) {
-      fireEvent.click(study, { [modifier]: true });
+      fireEvent.click(live, { [modifier]: true });
       expect(useRightRailStore.getState().activePanel).toBeNull();
     }
   });

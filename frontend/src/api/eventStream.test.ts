@@ -198,25 +198,23 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     }
   });
 
-  it('레이아웃 프리셋 2종도 각자 목록만 다시 읽는다', async () => {
+  it('레이아웃 프리셋도 자기 목록만 다시 읽는다', async () => {
     vi.useFakeTimers();
     try {
       const spy = mount();
       await vi.advanceTimersByTimeAsync(0);
       fakeSockets[0].open();
       fakeSockets[0].message({ ch: 'event', data: { type: 'live_layout_presets_changed' } });
-      fakeSockets[0].message({ ch: 'event', data: { type: 'study_layout_presets_changed' } });
       await vi.advanceTimersByTimeAsync(250);
 
       expect(keys(spy)).toContain('live-layout-presets');
-      expect(keys(spy)).toContain('study-layout-presets');
       expect(keys(spy)).not.toContain('watchlist');
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('축 등록부가 기대한 6개 그대로다 (누락·오타 감지)', () => {
+  it('축 등록부가 기대한 5개 그대로다 (누락·오타 감지)', () => {
     // 테이블이 단일 출처라 아래 재연결 단언이 자동으로 새 축을 덮는다. 그 자동성이
     // "축을 조용히 빠뜨려도 초록" 을 뜻하지 않도록, 등록부 자체를 여기서 못박는다.
     // 축을 늘렸다면 이 목록도 같이 늘리는 것이 의도된 마찰이다.
@@ -226,7 +224,6 @@ describe('useEventStream 목록 교차 창 동기화', () => {
       'screener_saves_changed',
       'study_views_changed',
       'live_layout_presets_changed',
-      'study_layout_presets_changed',
     ]);
   });
 

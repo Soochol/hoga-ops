@@ -317,19 +317,19 @@ interface Props {
   isPastCandlesLoading: boolean;
   /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
-   *  옵셔널 + 기본 false라 StudyPage·스냅샷 복원·기존 테스트는 무변경으로 settled. */
+   *  옵셔널 + 기본 false라 도입 당시 다른 마운트·기존 테스트가 무변경으로 settled. */
   isHogaLoading?: boolean;
   /** 캔들·호가 외의 오버레이 데이터(mode=sidecar 최대벽·POC·거래량분포·프로그램매매 +
    *  일봉MA)가 초기 fetch pending인지. LivePage가 isSidecarLoading || isDailyMaLoading으로
    *  OR해 전달한다. reveal 커버가 캔들·호가와 함께 써서 이 지표들이 캔들과 한 번의 reveal로
    *  등장하게 한다(장면1 — 캡 없음, 무제한 홀드). settle(성공·에러) 시 반드시 해제되므로
-   *  커버가 고착되지 않는다. 옵셔널+기본 false라 StudyPage·index·기존 테스트는 무변경. */
+   *  커버가 고착되지 않는다. 옵셔널+기본 false라 index·기존 테스트는 무변경. */
   isSidecarLoading?: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
   /** Coverage-gap 백필(A안): 활성 range 지표가 도달한 가장 최근 from_date. 캔들이 병합
    * 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만 있으면 useViewportBackfill이 range
-   * 창을 확장한다. 옵셔널+기본 null이라 StudyPage·기존 테스트는 무변경. */
+   * 창을 확장한다. 옵셔널+기본 null이라 기존 테스트는 무변경. */
   indicatorCoverageFromDate?: string | null;
   /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. */
   rangeWindowFromDate?: string | null;
@@ -399,8 +399,8 @@ interface Props {
    * 백필이 도는 것은 순수 낭비다 — perf 로그·스토어 쓰기·재렌더만 남고 캔들은 그대로다.
    * (3a 진행 루프는 착지한 범위로 종료를 판정하는데, 그 범위가 영영 안 움직인다.)
    *
-   * `/study` 는 넘기지 않는다 — 그쪽은 `historicalFromDate` 를 소비하는 쿼리가 아예
-   * 없어 백필이 이미 inert 다(`StudyPage` 의 `isExtending: false` 주석).
+   * (`/study` 는 넘기지 않았다 — 그쪽은 `historicalFromDate` 를 소비하는 쿼리가 아예
+   * 없어 백필이 이미 inert 였다. 그 페이지는 2026-08-23 에 사라졌다.)
    */
   savedRangeFrozen?: boolean;
   /**
@@ -1541,7 +1541,7 @@ export function LiveChartRoot({
         // 한때 "activeCode truthy 일 때만 마운트하니 일치한다"고 적혀 있었는데, 그
         // 전제는 지수 창에서 깨져 있었다 — 어댑터가 맨 코드(`'KOSPI'`)를 돌려줘
         // `'index:KOSPI'` 와 영영 달랐고, 이 복원이 지수에선 한 번도 돌지 않았다.
-        // 느슨한 truthy-게이트였다면 StudyPage 등 다른 마운트의 분봉 배치가 live
+        // 느슨한 truthy-게이트였다면 다른 마운트의 분봉 배치가 live
         // store를 extend하는 월경이 가능하다.
         const remembered = historicalRange.snapshot().lastMinuteHistoricalFromDate;
         const view = viewGuard();

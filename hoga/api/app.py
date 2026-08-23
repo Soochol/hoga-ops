@@ -45,9 +45,6 @@ from hoga.api.screener import build_router as build_screener_router
 from hoga.api.sentiment_routes import build_router as build_sentiment_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
-from hoga.api.study_layout_preset_routes import (
-    build_router as build_study_layout_preset_router,
-)
 from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
@@ -487,7 +484,6 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     # 메우던 것은 **캔들뿐**이고 캔들은 벤더가 과거를 다시 준다(우회 OFF 기본 경로).
     app.include_router(build_study_view_router(data_dir=data_dir, bus=bus))
     app.include_router(build_live_layout_preset_router(data_dir=data_dir, bus=bus))
-    app.include_router(build_study_layout_preset_router(data_dir=data_dir, bus=bus))
     app.include_router(
         build_live_router(
             get_status=live_get_status,

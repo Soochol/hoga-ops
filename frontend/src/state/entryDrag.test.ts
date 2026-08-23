@@ -7,15 +7,13 @@ function resetEntryDragState() {
     draggingCode: null,
     overChart: false,
     hitTestChart: null,
-    overStudy: false,
-    hitTestStudy: null,
     dragPoint: null,
     chartDropResolver: null,
     targets: {},
   });
 }
 
-describe('entryDrag study drop-target seam', () => {
+describe('entryDrag drop-target seam', () => {
   beforeEach(() => {
     resetEntryDragState();
   });
@@ -29,50 +27,12 @@ describe('entryDrag study drop-target seam', () => {
     expect(entryDrag.isPointOnChart({ x: 121, y: 64 })).toBe(false);
   });
 
-  it('returns true from isPointOnStudy when a study target is registered', () => {
-    expect(entryDrag).toHaveProperty('isPointOnStudy');
-    const registerStudyTarget = (useEntryDragStore.getState() as unknown as {
-      registerStudyTarget?: (hitTest: (clientX: number, clientY: number) => boolean) => void;
-    }).registerStudyTarget;
-    expect(registerStudyTarget).toBeTypeOf('function');
-
-    const hitTest = (clientX: number, clientY: number) => clientX === 360 && clientY === 240;
-    registerStudyTarget?.(hitTest);
-
-    expect((entryDrag as typeof entryDrag & {
-      isPointOnStudy: (point: { x: number; y: number } | null) => boolean;
-    }).isPointOnStudy({ x: 360, y: 240 })).toBe(true);
-    expect((entryDrag as typeof entryDrag & {
-      isPointOnStudy: (point: { x: number; y: number } | null) => boolean;
-    }).isPointOnStudy({ x: 361, y: 240 })).toBe(false);
-  });
-
-  it('clearing one target does not clear the other target', () => {
-    expect(entryDrag).toHaveProperty('isPointOnStudy');
-    const state = useEntryDragStore.getState() as unknown as {
-      registerStudyTarget?: (hitTest: (clientX: number, clientY: number) => boolean) => void;
-      clearStudyTarget?: (hitTest: (clientX: number, clientY: number) => boolean) => void;
-    };
-    expect(state.registerStudyTarget).toBeTypeOf('function');
-    expect(state.clearStudyTarget).toBeTypeOf('function');
-
-    const liveHitTest = (clientX: number, clientY: number) => clientX === 100 && clientY === 200;
-    const studyHitTest = (clientX: number, clientY: number) => clientX === 300 && clientY === 400;
-
-    useEntryDragStore.getState().registerChartTarget(liveHitTest);
-    state.registerStudyTarget?.(studyHitTest);
-
-    useEntryDragStore.getState().clearChartTarget(liveHitTest);
-    expect(entryDrag.isPointOnChart({ x: 100, y: 200 })).toBe(false);
-    expect((entryDrag as typeof entryDrag & {
-      isPointOnStudy: (point: { x: number; y: number } | null) => boolean;
-    }).isPointOnStudy({ x: 300, y: 400 })).toBe(true);
-
-    state.clearStudyTarget?.(studyHitTest);
-    expect((entryDrag as typeof entryDrag & {
-      isPointOnStudy: (point: { x: number; y: number } | null) => boolean;
-    }).isPointOnStudy({ x: 300, y: 400 })).toBe(false);
-  });
+  // 여기 학습뷰 타깃 케이스 둘이 있었다(2026-08-23 제거) — `isPointOnStudy` 와
+  // "한쪽 해제가 다른 쪽을 안 건드린다". `/study` 와 함께 그 축이 사라져 **등록 가능한
+  // 타깃이 `liveChart` 하나**가 됐고, 두 케이스 다 재던 성질이 남지 않았다.
+  //
+  // ⚠ 그 케이스들은 `as unknown as` 캐스트로 스토어에 닿았다 — 그래서 축을 지워도
+  // **타입체크가 조용했고** 런타임에서야 깨졌다. 새 케이스를 그 방식으로 쓰지 말 것.
 });
 
 describe('entryDrag 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', () => {

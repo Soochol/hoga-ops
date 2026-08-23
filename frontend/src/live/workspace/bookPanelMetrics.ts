@@ -1,9 +1,9 @@
 /**
- * BookPanel(10호가 십자 배치)의 **폭 계약** — `/live` 와 `/study` 가 공유하는 SSOT.
+ * BookPanel(10호가 십자 배치)의 **폭 계약** — 워크스페이스 SSOT.
  *
  * 이 값은 컴포넌트 밖에서도 load-bearing 이다. 창 좌표가 비율(0~1)이라 절대 하한을
  * 표현하지 못하므로(ADR-0122), 기본 배치 비율과 새 창 기본 크기는 **이 하한에서
- * 역산**된다 — `state/workspace.ts` · `state/studyWorkspace.ts` 가 그 소비처다.
+ * 역산**된다 — `state/workspace.ts` 가 그 소비처다(`/study` 삭제 전에는 둘이었다).
  * 2026-08-16 이전엔 같은 숫자(560)가 소스 3곳 + 테스트 2곳에 흩어져 있었고, 한
  * 곳만 고치면 나머지가 조용히 어긋났다.
  *
@@ -80,6 +80,6 @@ export const BOOK_PANEL_GRID_COLS = '1fr minmax(112px,139px) minmax(184px,1fr)';
 export const BOOK_WINDOW_CHROME_W = 32;
 
 /** 새 10호가 창의 기본 폭(487). 좁은 캔버스에서의 비율 역산이 여기서 출발한다 —
- *  `state/liveDefaultLayout.ts` 의 `LIVE_RIGHT_COL_W` 와 `state/studyWorkspace.ts` 의
+ *  `state/liveDefaultLayout.ts` 의 `LIVE_RIGHT_COL_W` 와 (지금은 삭제된) `/study` 시드의
  *  `SEED_CHART_FRACTION_WITH_BOOK` 둘 다 이 값을 넘겨야 한다. */
 export const BOOK_WINDOW_DEFAULT_W = BOOK_PANEL_MIN_W + BOOK_WINDOW_CHROME_W;

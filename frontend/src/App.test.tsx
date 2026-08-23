@@ -72,7 +72,6 @@ function wrap(ui: ReactNode, initialEntry: string) {
         <Routes>
           <Route element={<App />}>
             <Route path="/live" element={<div>live page</div>} />
-            <Route path="/study" element={<div>study page</div>} />
             <Route path="/ad-hoc" element={<div>ad hoc page</div>} />
             <Route path="/heatmap" element={ui} />
             <Route path="/inventory" element={ui} />
@@ -112,12 +111,9 @@ describe('App document title', () => {
     expect(document.title).toBe('before-test');
   });
 
-  it('leaves /study to the StudyPage title writer', () => {
-    // `/live` 와 같은 이유로 표에서 빠졌다 — 저장뷰가 열려 있으면 제목이 nav 라벨
-    // 「복기」가 아니라 **종목명 + 저장뷰 이름**이고, 그 재료는 페이지만 안다.
-    wrap(<div>unused</div>, '/study');
-    expect(document.title).toBe('before-test');
-  });
+  // `/study` 케이스가 여기 있었다 — 그 라우트가 사라지면서(2026-08-23)
+  // `PAGE_OWNED_TITLE_ROUTES` 의 거주자는 `/live` 하나가 됐다. 아래 「표에 없는
+  // 라우트」케이스가 이제 옛 `/study` 북마크의 착지 전 상태까지 덮는다.
 
   it('uses hoga-ops for routes without a side menu item', () => {
     wrap(<div>unused</div>, '/ad-hoc');
@@ -192,7 +188,7 @@ describe('App shell layout', () => {
 
     // 모달 껍데기(ModalShell)는 정적이라 즉시 뜬다 — 안쪽 패널만 lazy 다.
     const dialog = screen.getByRole('dialog', { name: '설정' });
-    // `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(중앙 모달, 2026-08-21 사용자 결정)이다 —
+    // `/live` 툴바 ⚙ 와 **같은 크롬**(중앙 모달, 2026-08-21 사용자 결정)이다 —
     // 진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
     // ⚠ 이 단언이 곧 **앵커의 유일한 가드**다: 2026-08-21 전환 때 배치를 우측 드로어에서
     // 중앙 모달로 바꿨는데 앱 테스트 중 빨개진 것은 이 파일의 두 건뿐이었다. 지운다면
@@ -263,7 +259,7 @@ describe('App 테마 — 브라우저 탭 전역', () => {
 
   it('다른 탭이 선호를 바꾸면 리로드 없이 data-theme 가 따라온다', () => {
     useThemePrefsStore.setState({ themePreference: 'toss-light' });
-    wrap(<div>unused</div>, '/study');
+    wrap(<div>unused</div>, '/inventory');
     expect(document.documentElement.getAttribute('data-theme')).toBe('toss-light');
 
     // 다른 탭의 쓰기를 재현한다. 저장소가 먼저 바뀌고 이벤트가 뒤따르는 순서가
@@ -281,13 +277,13 @@ describe('App 테마 — 브라우저 탭 전역', () => {
     localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'auto' }));
     fireEvent(window, new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
 
-    // 이 탭은 /live 라 obsidian. 같은 이벤트를 받은 /study 탭은 ledger 로 푼다.
+    // 이 탭은 /live 라 obsidian. 같은 이벤트를 받은 /inventory 탭은 ledger 로 푼다.
     expect(document.documentElement.getAttribute('data-theme')).toBe('obsidian');
   });
 
   it('언마운트하면 구독을 놓는다', () => {
     useThemePrefsStore.setState({ themePreference: 'toss-light' });
-    const { unmount } = wrap(<div>unused</div>, '/study');
+    const { unmount } = wrap(<div>unused</div>, '/inventory');
     unmount();
 
     localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'obsidian' }));
