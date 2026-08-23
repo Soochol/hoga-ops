@@ -7,7 +7,7 @@ export type Extreme = {
   /** 극값 대비율(Extreme Gap) = (기준가 − price) / price × 100. 기준가 = 보이는 범위의 우측 끝
    *  (가장 최근) 캔들 close. CONTEXT.md `극값 대비율`. */
   pct: number;
-  /** 극값 봉의 가상초(chart Time = axis.toVirtual(tsMs)/1000) — x좌표 투영용. */
+  /** 극값 봉의 가상초(chart Time = axis.toVirtual(ts_ms)/1000) — x좌표 투영용. */
   virtualSec: number;
 };
 
