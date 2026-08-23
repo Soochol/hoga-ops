@@ -495,7 +495,9 @@ describe.each([
 
     fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), modifier);
 
-    expect(open).toHaveBeenCalledWith('/study?view=a', '_blank', 'noopener');
+    // 2026-08-23: 목적지가 `/live?view=` 다 — 행 클릭(→`/live`)과 **같은 페이지**로
+    // 모았다. 그전까지 ctrl/⌘+클릭만 `/study` 새 탭이라 같은 행의 두 제스처가 갈렸다.
+    expect(open).toHaveBeenCalledWith('/live?view=a', '_blank', 'noopener');
     // 이 탭은 그대로 — 라우트도, 활성 저장뷰도 움직이지 않는다.
     expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
     expect(activeView()).toMatchObject({ viewId: 'b' });

@@ -23,7 +23,7 @@ import { wantsNewTab } from '../live/useJumpToLive';
 import { activateLiveCode } from '../live/liveNavigate';
 import { useLivePageStore } from '../state/livePage';
 import { savedRangeFocusFromView } from './savedRangeFocus';
-import { openStudyViewInNewTab, studyViewDeepLinkPath } from './studyDeepLink';
+import { openSavedViewInNewTab } from './studyDeepLink';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -251,9 +251,13 @@ export function StudyViewsDrawer() {
     navigateClickTimerRef.current = null;
   }
 
+  /** `/study` 그룹 드롭의 앱 내 이동. 경로를 `studyDeepLink` 에서 빌려 오지 않고
+   *  리터럴로 두는 것이 의도다 — 그 모듈은 이제 **`/live` 딥링크**를 만들고(북마크·새
+   *  탭), 이쪽은 드롭이 일어난 그 페이지에 머무는 이동이라 목적지가 서로 다르다.
+   *  이 리터럴은 `/study` 와 함께 죽는다. */
   function navigateToStudyView(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
-    navigate(studyViewDeepLinkPath(row.id));
+    navigate(`/study?view=${encodeURIComponent(row.id)}`);
   }
 
   /**
@@ -272,7 +276,7 @@ export function StudyViewsDrawer() {
    * 되살아나지 않았다. 뷰를 여럿 여는 축이 탭에서 **그룹**으로 바뀌었을 뿐이다.
    *
    * 다른 뷰를 곁눈질하려면 **브라우저 탭**도 그대로 쓸 수 있다 — 행 ctrl/⌘+클릭이
-   * `openStudyViewInNewTab` 으로 `?view=` 딥링크를 새 탭에 띄우고, 이 함수는 그 경로에서
+   * `openSavedViewInNewTab` 으로 `/live?view=` 딥링크를 새 탭에 띄우고, 이 함수는 그 경로에서
    * 아예 호출되지 않는다(그래야 이 탭의 그룹들이 그대로다). 두 「탭」의 구별은
    * `studyDeepLink.ts` 도크스트링에 있다.
    *
@@ -299,8 +303,10 @@ export function StudyViewsDrawer() {
    * 여기서 `/study` 워크스페이스(`setGroupView`)는 건드리지 않는다 — 두 페이지가
    * 같은 저장뷰 슬롯을 공유하면 `/live` 클릭이 `/study` 창 배치를 조용히 바꾼다.
    *
-   * ctrl/⌘+클릭은 이 경로를 타지 않는다. 그쪽은 아직 `/study` 새 탭이다
-   * (`/live?view=` 딥링크는 `/study` 제거 시 함께 만든다).
+   * ctrl/⌘+클릭은 이 함수를 부르지 않지만 **목적지는 같다** — 새 브라우저 탭에서
+   * `/live?view=` 를 열고(`openSavedViewInNewTab`), 착지 쪽이 여기와 같은 두 단계를
+   * 같은 순서로 밟는다(`useSavedRangeDeepLink`). 2026-08-23 까지는 그쪽만 `/study`
+   * 새 탭이라 같은 행의 두 제스처가 다른 페이지로 갈라져 있었다.
    */
   function openSavedRangeInLive(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
@@ -474,12 +480,13 @@ export function StudyViewsDrawer() {
         //
         // 지연 스케줄(180ms — 이름 변경 더블클릭과의 모호성 해소)을 **거치지 않는다**:
         // 수정자 클릭에는 그 모호성이 없고, 사용자 제스처 핸들러 안에서 동기로 열어야
-        // 팝업 차단에 걸리지 않는다. 이 탭의 그룹들은 건드리지 않는 것이 계약이라
-        // `openStudyView`(=`setGroupView` + navigate)를 부르지 않는다.
+        // 팝업 차단에 걸리지 않는다. **이 탭은 아무것도 바뀌지 않는 것이 계약**이라
+        // `openSavedRangeInLive`(종목 활성화 + 기간 슬롯)도 `openStudyView`(=`setGroupView`
+        // + navigate)도 부르지 않는다 — 새 탭이 URL 로 자기 상태를 세운다.
         onClick={isEditing ? undefined : (e) => {
           if (wantsNewTab(e)) {
             cancelPendingStudyViewNavigation();
-            openStudyViewInNewTab(row.id);
+            openSavedViewInNewTab(row.id);
             return;
           }
           scheduleStudyViewNavigation(row);
