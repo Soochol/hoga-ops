@@ -28,8 +28,6 @@ describe('LivePeakWallDockedLabels', () => {
         bidPeakEnabled: false,
         askPeakColor: '#1D4ED8',
         askPeakLineWidth: 2,
-        askPeakVisibleMaxColor: '#EAB308',
-        askPeakVisibleMaxLineWidth: 3,
       });
     });
   });

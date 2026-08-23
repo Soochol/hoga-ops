@@ -9,11 +9,6 @@ const RANK_OPTIONS = [
   { value: 3, label: '3' },
 ] as const;
 
-const VISIBLE_MAX_RANK_OPTIONS = [
-  { value: 0, label: '0' },
-  ...RANK_OPTIONS,
-] as const;
-
 /** `embedded` — 병합된 「당일 최대벽」 페이지의 서브탭 안에서 렌더될 때 제목·설명을
  *  숨긴다(상위가 이미 표시). 단독 카테고리로 쓰이던 시절과의 호환을 위해 기본 false. */
 export default function BidPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
@@ -22,7 +17,6 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const setStyle = useIndicatorActions().setBidPeakStyle;
   const prefs = useScopedChartPrefs();
   const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
-  const visibleMaxRankLimit = prefs.bidPeakVisibleMaxRankLimit;
   const { setNumericPref } = useChartPrefActions();
   return (
     <div>
@@ -60,28 +54,6 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setNumericPref('bidPeakAllPriceRankLimit', option.value)}
-                className={[
-                  'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
-                  selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-                ].join(' ')}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mt-3">
-        <div className="text-sm text-fg mb-2">보이는 영역 최대벽 표시 개수</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="보이는 영역 최대벽 표시 개수">
-          {VISIBLE_MAX_RANK_OPTIONS.map((option) => {
-            const selected = visibleMaxRankLimit === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => setNumericPref('bidPeakVisibleMaxRankLimit', option.value)}
                 className={[
                   'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
                   selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',

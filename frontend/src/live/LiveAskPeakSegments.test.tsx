@@ -15,7 +15,6 @@ import {
   buildAskPeakSegments,
   buildAskPeakOverlaySegments,
   prepareAskPeakSegmentsForRender,
-  styleVisibleMaxAskPeakSegments,
 } from './LiveAskPeakSegments';
 import {
   buildBidPeakOverlaySegments,
@@ -24,13 +23,11 @@ import {
 import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { createVirtualAxis } from '../util/virtualAxis';
-import type { Time } from 'lightweight-charts';
 
 // 항등 축: toVirtual(ms)=ms → time = ms/1000.
 // contains: 이동평균 필터가 MovingAverageOverlay 와 같은 「세션 안 캔들」 배열 위에서
 // SMA 를 재므로 스텁도 그 축을 갖는다 — 픽스처 캔들은 전부 세션 안이다.
 const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
-const t = (time: number): Time => time as Time;
 const seg = (date: string, o: number, c: number): RangeSegment =>
   ({ date, session_open_ms: o, session_close_ms: c }) as RangeSegment;
 const candle = (ts_ms: number): Candle =>
@@ -155,96 +152,6 @@ describe('buildAskPeakSegments', () => {
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);
-  });
-});
-
-describe('styleVisibleMaxAskPeakSegments', () => {
-  const baseSeg = (overrides: Partial<ReturnType<typeof buildAskPeakSegments>[number]> = {}) => ({
-    time0: 10 as ReturnType<typeof buildAskPeakSegments>[number]['time0'],
-    time1: 20 as ReturnType<typeof buildAskPeakSegments>[number]['time1'],
-    peakTime: 15 as ReturnType<typeof buildAskPeakSegments>[number]['peakTime'],
-    price: 100,
-    qty: 100,
-    label: '100, 0.1k',
-    color: '#1D4ED8',
-    lineWidth: 2,
-    live: false,
-    ...overrides,
-  });
-
-  it('visible range와 겹치는 세그먼트 중 qty 상위 N개를 같은 스타일로 강조한다', () => {
-    const out = styleVisibleMaxAskPeakSegments(
-      [
-        baseSeg({ time0: 0 as never, time1: 5 as never, qty: 1000, color: '#1D4ED8' }),
-        baseSeg({ time0: 10 as never, time1: 20 as never, qty: 300, color: '#1D4ED8' }),
-        baseSeg({ time0: 15 as never, time1: 25 as never, qty: 500, color: '#F97316', lineWidth: 1 }),
-        baseSeg({ time0: 18 as never, time1: 28 as never, qty: 400, color: '#1D4ED8' }),
-      ],
-      { from: t(12), to: t(22) },
-      { color: '#EAB308', lineWidth: 3 },
-      2,
-    );
-
-    expect(out.map((s) => ({ qty: s.qty, color: s.color, lineWidth: s.lineWidth }))).toEqual([
-      { qty: 1000, color: '#1D4ED8', lineWidth: 2 },
-      { qty: 300, color: '#1D4ED8', lineWidth: 2 },
-      { qty: 500, color: '#EAB308', lineWidth: 3 },
-      { qty: 400, color: '#EAB308', lineWidth: 3 },
-    ]);
-  });
-
-  it('visible range가 없으면 원래 스타일을 유지한다', () => {
-    const input = [baseSeg({ qty: 500 })];
-    const out = styleVisibleMaxAskPeakSegments(input, null, { color: '#EAB308', lineWidth: 3 }, 3);
-    expect(out).toEqual(input);
-  });
-
-  it('rank limit 0이면 visible max 스타일을 적용하지 않는다', () => {
-    const input = [baseSeg({ qty: 500, color: '#1D4ED8', lineWidth: 2 })];
-    const out = styleVisibleMaxAskPeakSegments(
-      input,
-      { from: t(10), to: t(20) },
-      { color: '#EAB308', lineWidth: 3 },
-      0,
-    );
-    expect(out).toEqual(input);
-  });
-
-  it('동률이면 먼저 나온 visible 세그먼트를 강조한다', () => {
-    const out = styleVisibleMaxAskPeakSegments(
-      [
-        baseSeg({ time0: 10 as never, time1: 20 as never, qty: 500, price: 100 }),
-        baseSeg({ time0: 12 as never, time1: 22 as never, qty: 500, price: 110 }),
-      ],
-      { from: t(10), to: t(22) },
-      { color: '#EAB308', lineWidth: 3 },
-      1,
-    );
-    expect(out[0]).toMatchObject({ color: '#EAB308', lineWidth: 3, price: 100 });
-    expect(out[1]).toMatchObject({ color: '#1D4ED8', lineWidth: 2, price: 110 });
-  });
-
-  it('keeps visible max styling responsive with many peak wall segments', () => {
-    const segments = Array.from({ length: 200_000 }, (_, index) => baseSeg({
-      time0: index as never,
-      time1: (index + 10) as never,
-      peakTime: index as never,
-      qty: index % 97,
-      price: 10_000 + index,
-    }));
-    const out = styleVisibleMaxAskPeakSegments(
-      segments,
-      { from: t(0), to: t(200_010) },
-      { color: '#EAB308', lineWidth: 3 },
-      3,
-    );
-    const highlighted = out.filter((segment) => segment.color === '#EAB308');
-
-    // 20만 세그먼트에서도 visible-max top 3만 하이라이트한다. 기존 벽시계
-    // `elapsedMs < 40ms`(가장 타이트)는 full-suite 워커 경합에 flaky해 제거(issue
-    // #434) — 대규모 입력 정확성 단언은 남는다.
-    expect(highlighted).toHaveLength(3);
-    expect(highlighted.map((segment) => segment.qty)).toEqual([96, 96, 96]);
   });
 });
 
@@ -436,7 +343,11 @@ describe('buildAskPeakOverlaySegments', () => {
 });
 
 describe('live peak-wall inline label suppression', () => {
-  it('suppresses ask inline labels after ask styling is applied', () => {
+  // 2026-08-23: 종전엔 이 자리에서 「보이는 영역 최대벽」 강조 색이 입혀졌는지도 함께
+  // 봤는데, 그 강조가 제거되면서 여기서 재는 것은 **인라인 라벨 억제 하나**로 좁아졌다
+  // (도킹 라벨이 라벨을 그리므로 선 위 인라인 라벨은 비워야 한다). 색·두께는 기본
+  // 스타일이 그대로 통과하는지만 확인한다.
+  it('suppresses ask inline labels and keeps the baseline style', () => {
     const raw = buildAskPeakOverlaySegments({
       maFilter: null,
       dailyMaFilter: null,
@@ -452,20 +363,15 @@ describe('live peak-wall inline label suppression', () => {
       intraMax: false,
     });
 
-    const inline = prepareAskPeakSegmentsForRender(
-      raw,
-      { from: t(1), to: t(999) },
-      { color: '#EAB308', lineWidth: 3 },
-      1,
-    );
+    const inline = prepareAskPeakSegmentsForRender(raw);
     expect(inline[0].live).toBe(false);
     expect(inline[0].label).toBe('');
     expect(inline[1].live).toBe(true);
     expect(inline[1]).toMatchObject({
       price: 110,
       label: '',
-      color: '#EAB308',
-      lineWidth: 3,
+      color: '#1D4ED8',
+      lineWidth: 2,
     });
   });
 

@@ -10,15 +10,13 @@ import {
 } from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import { useActivePrefs } from '../state/chartPrefs';
-import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
+import { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import { useWindowIndicator } from './workspace/windowView';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
-
-type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -40,13 +38,6 @@ function toPeakRankLimit(value: number): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
 
-function toVisibleMaxRankLimit(value: number): VisibleMaxRankLimit {
-  return value === 0 || value === 2 || value === 3 ? value : 1;
-}
-
-function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
-  return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
-}
 
 function LivePeakWallDockedLabels({
   paneSeries,
@@ -67,18 +58,14 @@ function LivePeakWallDockedLabels({
   const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled && !s.bidPeakHidden);
   const askColor = useWindowIndicator((s) => s.askPeakColor);
   const askLineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
-  const askVisibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
-  const askVisibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
   const bidColor = useWindowIndicator((s) => s.bidPeakColor);
   const bidLineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
   const askIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const askAllPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
-  const askVisibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const bidIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
-  const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   // 선(LiveAskPeakSegments/LiveBidPeakSegments)과 같은 필터 — 라벨만 남는 유령을 막는다.
   const askMaFilter = usePeakMaFilter('ask');
   const bidMaFilter = usePeakMaFilter('bid');
@@ -102,7 +89,7 @@ function LivePeakWallDockedLabels({
   const updateLabels = useCallback(() => {
     const prim = primRef.current;
     if (!prim) return;
-    const askPeakRankLimit = maxPeakRankLimit(askAllPriceRankLimit, askVisibleMaxRankLimit);
+    const askPeakRankLimit = toPeakRankLimit(askAllPriceRankLimit);
     const askRaw = askPeakEnabled && askLabelEnabled
       ? buildAskPeakOverlaySegments({
         dayAskPeaks,
@@ -122,12 +109,6 @@ function LivePeakWallDockedLabels({
     const visibleRange = timeScale?.getVisibleRange() ?? null;
     // 줌 예산: barSpacing 이 좁으면(줌아웃) 0 → 라벨 전부 숨김. 넓으면 side별 qty 상위 N 만.
     const labelBudget = peakLabelBudgetForBarSpacing(timeScale?.options?.().barSpacing ?? 0);
-    const askStyled = styleVisibleMaxAskPeakSegments(
-      askRaw,
-      visibleRange,
-      { color: askVisibleMaxColor, lineWidth: askVisibleMaxLineWidth },
-      toVisibleMaxRankLimit(askVisibleMaxRankLimit),
-    );
     const bidSegments = bidPeakEnabled && bidLabelEnabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
@@ -137,7 +118,7 @@ function LivePeakWallDockedLabels({
         todayKst,
         baselineStyle: { color: bidColor, lineWidth: bidLineWidth },
         intraMax: bidIntraMax,
-        allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
+        allPriceRankLimit: toPeakRankLimit(bidAllPriceRankLimit),
         visibleTimeCutoff: bidVisibleTimeCutoff,
         maFilter: bidMaFilter,
         dailyMaFilter: bidDailyMaFilter,
@@ -146,7 +127,7 @@ function LivePeakWallDockedLabels({
     // side 는 라벨의 세로 방향을 가른다 — 매도는 선 위, 매수는 선 아래. 같은 분봉에
     // 양쪽 벽이 동시에 잡히는 최빈 겹침이 배치 없이 해소된다.
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, 'ask', visibleRange, labelBudget),
+      ...livePeakWallDockedLabelsFromSegments(askRaw, 'ask', visibleRange, labelBudget),
       ...livePeakWallDockedLabelsFromSegments(bidSegments, 'bid', visibleRange, labelBudget),
     ]);
   }, [
@@ -158,9 +139,6 @@ function LivePeakWallDockedLabels({
     askLineWidth,
     askMaFilter,
     askPeakEnabled,
-    askVisibleMaxColor,
-    askVisibleMaxLineWidth,
-    askVisibleMaxRankLimit,
     askVisibleTimeCutoff,
     axis,
     bidAllPriceRankLimit,
@@ -171,7 +149,6 @@ function LivePeakWallDockedLabels({
     bidLineWidth,
     bidMaFilter,
     bidPeakEnabled,
-    bidVisibleMaxRankLimit,
     bidVisibleTimeCutoff,
     candles,
     dayAskPeaks,
