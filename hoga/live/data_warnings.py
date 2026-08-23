@@ -134,6 +134,46 @@ def classify_warning_reason(reason: str) -> tuple[LiveErrorKind | None, bool]:
     return WARNING_CLASSIFICATION.get(reason, (None, True))
 
 
+def violation_to_warning(violation, batch_label: str) -> dict:
+    """`DailyInvariantViolation` / `InvestorNetInvariantViolation` → wire 경고 하나.
+
+    두 위반 타입은 필드(`date_yyyymmdd`·`reason`·`detail`)가 같아서 한 렌더러로 족하다.
+    여기 있는 이유는 **일봉 경로 셋이 이걸 공유해야** 하기 때문이다 — 라우트
+    (`live/api.py`), REST 우회 캐시 전용 경로, 그리고 venue 를 아는 백필 모듈.
+    백필 모듈은 `live/api.py` 를 import 할 수 없어(역방향 의존) 이 자리가 유일한 공통점이다.
+    """
+    return make_data_warning(
+        "invariant_violation",
+        f"{violation.date_yyyymmdd}: {violation.reason} ({violation.detail})",
+        date=violation.date_yyyymmdd,
+        batch=batch_label,
+    )
+
+
+def violations_for_range(violations, from_yyyymmdd: str, to_yyyymmdd: str) -> list:
+    """요청 구간에 걸치는 위반만 고른다. **날짜가 없는 위반은 항상 남는다.**
+
+    ⚠ **이 함수의 존재 이유가 그 두 번째 문장이다.** 위반의 `date_yyyymmdd` 는
+    항상 날짜가 아니다 — 벤더가 빈 응답을 주면 `"(empty)"` 가, 페이지 걷기가 상한에
+    걸리면 요청 시작일이 들어간다(`kiwoom_daily_candles`). 앞의 것은 **행이 아니라
+    배치 전체**에 대한 진술이라 날짜 범위로 자를 축이 없다.
+
+    순진하게 `from <= date <= to` 로 자르면 그 부류가 **전멸한다**: 문자열 비교에서
+    `"20230101" <= "(empty)"` 가 거짓이다(`"("` 는 아스키 40, `"2"` 는 50). 하한에
+    걸려 조용히 사라지는 것이고, 하필 #1536 의 대표 증상이 정확히 그 형태였다.
+    """
+    out = []
+    for v in violations:
+        d = v.date_yyyymmdd
+        # 8자리 숫자만 날짜로 취급한다. 그 형태에서는 사전순 = 시간순이라 비교가 성립한다.
+        if len(d) == 8 and d.isdigit():  # noqa: PLR2004 — YYYYMMDD 자릿수
+            if from_yyyymmdd <= d <= to_yyyymmdd:
+                out.append(v)
+        else:
+            out.append(v)   # 배치 단위 진술 — 자를 축이 없다
+    return out
+
+
 def make_data_warning(
     reason: str,
     msg: str,

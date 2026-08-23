@@ -5,7 +5,11 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
-from hoga.live.data_warnings import make_data_warning
+from hoga.live.data_warnings import (
+    make_data_warning,
+    violation_to_warning,
+    violations_for_range,
+)
 from hoga.live.kiwoom_capacity import Priority
 from hoga.live.kiwoom_errors import KiwoomAuthError
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
@@ -165,13 +169,20 @@ class LiveDailyCandleBackfill:
         covered: list[tuple[date, date]] = []
         warnings: list[dict] = []
 
-        for batch_from, batch_to, rows in self._cache.list_batches(venue, code):
+        from_s = frm.strftime("%Y%m%d")
+        to_s = too.strftime("%Y%m%d")
+        for batch_from, batch_to, rows, violations in self._cache.list_batches(venue, code):
             if batch_to < frm or batch_from > too:
                 continue
             covered.append((batch_from, batch_to))
             loaded.extend(rows)
-            cached_batches.append(
-                f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}"
+            label = f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}"
+            cached_batches.append(label)
+            # REST 우회 경로도 위반을 되살린다(#1536). 우회 중에는 벤더를 아예 안
+            # 부르므로, 여기서 안 되살리면 **재시작 전까지 영영** 이유가 없다.
+            warnings.extend(
+                violation_to_warning(v, label)
+                for v in violations_for_range(violations, from_s, to_s)
             )
 
         if too >= today_d:
@@ -286,8 +297,15 @@ class _VenueDailyCacheAdapter:
     def list_batches(self, code: str):
         return self._inner.list_batches(self._venue, code)
 
-    def append_batch(self, code: str, frm: date, to: date, bars: list[dict]) -> None:
-        self._inner.append_batch(self._venue, code, frm, to, bars)
+    def append_batch(
+        self, code: str, frm: date, to: date, bars: list[dict],
+        *, violations: list | None = None,
+    ) -> None:
+        # 위반을 **그대로 흘려보낸다**. 이 어댑터가 삼키면 캐시 히트에서 진단이
+        # 사라진다(#1536) — 오케스트레이터가 넘겨도 여기서 끊기면 같은 결과다.
+        self._inner.append_batch(
+            self._venue, code, frm, to, bars, violations=violations
+        )
 
     def get_today(self, code: str):
         return self._inner.get_today(self._venue, code)

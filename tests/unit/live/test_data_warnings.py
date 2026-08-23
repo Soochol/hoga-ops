@@ -24,6 +24,7 @@ from hoga.live.data_warnings import (
     LiveDataWarning,
     classify_warning_reason,
     make_data_warning,
+    violations_for_range,
 )
 from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
@@ -221,3 +222,47 @@ def test_make_data_warning_omits_absent_keys() -> None:
     assert "date" not in info
     assert info["is_failure"] is False
     assert info["batch"] == "a__b"
+
+
+# ── violations_for_range — 「날짜가 아닌 날짜」 (#1536) ────────────────────────
+
+
+class _V:
+    """위반 두 종류(`Daily`·`InvestorNet`)의 공통 모양만 흉내낸 최소 대역."""
+
+    def __init__(self, date_yyyymmdd: str) -> None:
+        self.date_yyyymmdd = date_yyyymmdd
+        self.reason = "malformed_row"
+        self.detail = "x"
+
+
+def test_violations_for_range_keeps_dates_inside_and_drops_outside() -> None:
+    got = violations_for_range(
+        [_V("20240101"), _V("20240103"), _V("20240110")], "20240101", "20240105",
+    )
+    assert [v.date_yyyymmdd for v in got] == ["20240101", "20240103"]
+
+
+def test_violations_for_range_keeps_non_date_violations() -> None:
+    """**이 파일에서 가장 중요한 케이스.**
+
+    빈 응답 위반의 `date_yyyymmdd` 는 `"(empty)"` 다 — 행이 아니라 **배치 전체**에
+    대한 진술이라 자를 축이 없다. 순진하게 `from <= d <= to` 로 자르면 하한에서
+    걸려 조용히 사라진다(`"20240101" <= "(empty)"` 이 거짓). #1536 의 대표 증상이
+    정확히 그 형태였으므로, 고치면서 여기서 다시 잃으면 고친 것이 아니다.
+    """
+    got = violations_for_range([_V("(empty)")], "20240101", "20240105")
+    assert [v.date_yyyymmdd for v in got] == ["(empty)"]
+    # 순진한 필터가 이 위반을 **실제로** 지운다는 것을 값으로 박아 둔다 —
+    # 설명이 낡으면 이 줄이 먼저 빨개진다.
+    naive = [v for v in [_V("(empty)")] if "20240101" <= v.date_yyyymmdd <= "20240105"]
+    assert naive == [], "순진한 날짜 필터가 이걸 안 지운다면 이 함수의 존재 이유가 없다"
+
+
+def test_violations_for_range_treats_malformed_dates_as_batch_scoped() -> None:
+    """8자리 숫자가 아니면 전부 배치 단위로 본다 — `"(empty)"` 만 특별대우하지 않는다.
+
+    벤더가 다른 센티넬을 쓰기 시작해도(`"-"`·`""`) 조용히 사라지지 않는다.
+    """
+    got = violations_for_range([_V(""), _V("-"), _V("2024010")], "20240101", "20240105")
+    assert len(got) == 3

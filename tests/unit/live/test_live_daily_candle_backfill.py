@@ -8,7 +8,7 @@ import pytest
 
 from hoga.live import kiwoom_daily_candles, kiwoom_rest_runtime
 from hoga.live.api import batched_daily_walkback
-from hoga.live.candle_fetch_result import DailyCandleFetchResult
+from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 from hoga.live.candle_models import LiveCandle
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
@@ -519,3 +519,37 @@ async def test_date_rollover_drops_batches_of_the_old_basis(tmp_path, kiwoom) ->
     assert rolled["fresh_batches"] == ["20240101__20240105"], "날짜가 넘어가면 다시 받는다"
     assert {c[5] for c in kis.calls} == {"20240201", "20240202"}
     assert len(kis.calls) == 2, "버리는 것은 하루 한 번뿐이다"
+
+
+@pytest.mark.asyncio
+async def test_rest_bypass_cache_only_still_reports_cached_violations(tmp_path) -> None:
+    """REST 우회에서도 캐시된 위반이 나온다 (#1536).
+
+    **우회는 벤더를 아예 안 부른다** — 즉 여기서 안 되살리면 이유는 프로세스
+    재시작 전까지 영영 없다. 우회를 켜 둔 사용자에게는 그게 상시 상태다.
+    """
+    cache = PastDailyCandlesCache()
+    cache.append_batch(
+        "KRX", "005930", dt.date(2024, 1, 1), dt.date(2024, 1, 5), [],
+        violations=[DailyInvariantViolation(
+            date_yyyymmdd="(empty)", reason="malformed_row", detail="unparsable dt ''",
+        )],
+    )
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=cache,
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    out = await backfill.collect_daily_cache_only(
+        code="005930", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 2, 1), policy="KRX",
+        from_label="20240101", to_label="20240105",
+    )
+
+    reasons = [w["reason"] for w in out["data_warnings"]]
+    assert "invariant_violation" in reasons, "우회 경로에서 진단이 사라졌다"
+    # 우회 안내는 그대로 있어야 한다 — 위반이 그걸 밀어내면 안 된다.
+    assert "rest_bypassed" not in reasons, "구간이 캐시로 다 덮여 안내가 없는 것이 정상"
+    assert out["candles"] == []
