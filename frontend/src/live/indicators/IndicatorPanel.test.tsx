@@ -24,8 +24,7 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({
       ...FACTORY_INDICATOR_SETTINGS,
       indicatorsByTimeframe: {},
-      studyIndicatorsByTimeframe: {},
-      indicatorTimeframe: '1m',
+        indicatorTimeframe: '1m',
     });
     useChartPrefsStore.getState().resetToDefaults();
     // chartPrefs 의 ambient 봉도 '1m' 으로 — resetToDefaults 는 투영 pointer 를

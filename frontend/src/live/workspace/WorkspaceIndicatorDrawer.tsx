@@ -13,7 +13,7 @@ import {
   capabilitiesForInstrument,
 } from '../liveInstrumentCapabilities';
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
-import { LIVE_WINDOW_WORKSPACE, WindowViewContext, type WindowViewValue } from './windowView';
+import { WindowViewContext, type WindowViewValue } from './windowView';
 import {
   targetChartWindow,
   useWorkspaceStore,
@@ -64,7 +64,6 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
       historicalFromDate: null, // 드로어/설정은 페치를 돌리지 않는다 — 뷰 식별용 아님
-      workspace: LIVE_WINDOW_WORKSPACE,
     };
     return { view, target, symbol, instrument };
   }, [target, isIndex, symbol, timeframe, instrument]);

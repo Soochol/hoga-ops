@@ -28,7 +28,6 @@ export const TAILWIND_THEME = {
   height: {
     "toolbar": "var(--h-toolbar)",
     "capture-row": "var(--h-capture-row)",
-    "live-header": "var(--h-live-header)",
     "top-nav": "var(--h-top-nav)",
     "bottom-bar": "var(--h-bottom-bar)",
   },

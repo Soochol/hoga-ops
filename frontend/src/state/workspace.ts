@@ -712,7 +712,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 유일한 마찰이 "새 창마다 지표를 처음부터 켜야 함" 인데, 봉을 물려받는 위
     // 규칙과 같은 이유로 여기서 없앤다. (set 콜백 **밖**에서 부른다 — 다른 스토어를
     // 그 안에서 갱신하지 않기 위해.)
-    if (kind === 'chart') seedIndicatorScopeForWindow('live', id, indicatorSourceId);
+    if (kind === 'chart') seedIndicatorScopeForWindow(id, indicatorSourceId);
     return id;
   },
 
@@ -728,7 +728,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
     // 창별 지표 설정은 전역 저장소에 있어 창과 함께 사라지지 않는다 — 창 id 는
     // 재사용되지 않으므로 여기서 회수하지 않으면 닿을 수 없는 쓰레기가 된다.
-    dropIndicatorScopesForWindows('live', [id]);
+    dropIndicatorScopesForWindows([id]);
   },
 
   focusWindow: (id) => {
@@ -1002,7 +1002,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
     // 같은 이유로 창별 지표 스코프도 고아가 된다. 새로 등장한 창의 시드는 그 창이
     // 마운트될 때 안전망(`useSeedWindowIndicatorScope`)이 페이지 세트로 채운다.
-    dropIndicatorScopesForRemovedWindows('live', before, get().windows);
+    dropIndicatorScopesForRemovedWindows(before, get().windows);
   },
 }));
 

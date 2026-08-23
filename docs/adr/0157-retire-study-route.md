@@ -87,18 +87,25 @@ ADR-0145·0146·0152 가 그 결정의 화석이다.
 리다이렉트면 저장뷰 딥링크가 종목 없는 `/live` 가 되므로, 그 한 가지를 e2e 가 지킨다
 (`tests/e2e/study-route-retired.spec.ts`).
 
-### 잔여 — 의도적으로 남긴 것
+### 잔여 — 나중에 걷은 것 (**후속 PR 에서 완료**)
 
-**한 페이지짜리로 남은 일반화**는 이번에 걷지 않았다. 영속 데이터 마이그레이션이
-걸려 있어 별도 작업이다:
+**한 페이지짜리로 남은 일반화**는 삭제 PR 에서 걷지 않고 후속으로 넘겼다. 그 후속이
+완료됐고, 결과는 셋이 갈렸다:
 
-- `IndicatorPageScope`(`'live' | 'study'`) — 두 번째 값을 쓰는 코드는 없지만 기존
-  사용자의 `live.indicators.v2` 에 `studyByTimeframe` 블롭이 남아 하이드레이션이 그
-  경로를 탄다.
-- `WindowWorkspaceAdapter` 주입 seam(#907) — 구현체가 하나.
-- `workspace/zOrder.ts` · `groupId.ts` 공유 헬퍼.
-- `h-live-header` 토큰 — 소비처 0. 토큰 제거는 DESIGN.md 소관이라 코드 삭제에 끼우지
-  않았다.
+- **걷었다** — `IndicatorPageScope`(`'live' | 'study'`). 마이그레이션은 **필요 없었다**:
+  `persistIndicators` 가 스토어에서 필드를 명시로 조립하므로, 정규화가 안 읽고 거기서
+  안 쓰면 저장된 `studyByTimeframe` 키가 **다음 쓰기에 자연 소멸**한다(그 성질에 가드를
+  달았다). 단 `byWindow` 키의 **`live:` 접두는 남긴다** — 그건 축이 아니라 영속 키의
+  화석이고, 떼면 기존 창별 설정이 전부 조회 불가가 된다.
+- **걷었다** — `WindowWorkspaceAdapter` 주입 seam(#907). 훅들이 `useWorkspaceStore` 를
+  직접 본다. seam 이 막던 결함("훅이 조용히 다른 스토어를 봄")은 스토어가 하나가 되며
+  **구조적으로 불가능**해졌다.
+- **걷었다** — `h-live-header` 토큰. 이 리포 토큰 표의 첫 삭제다. 지우며 확인된 것:
+  마지막 소비처마저 `min-h-12` 를 얹고 있었으므로 **한 번도 화면 높이를 정한 적이 없다**.
+- **걷지 않았다 — 애초에 걷을 것이 아니었다**: `workspace/zOrder.ts` · `groupId.ts`.
+  분류가 틀렸다. `zOrder` 는 제네릭 16줄 순수 함수이고 `groupId` 는 `/live` 링크 그룹의
+  현역 모듈이다 — 「거주자가 하나」가 「걷어야 한다」를 자동으로 함의하지 않는다.
+  낡은 것은 코드가 아니라 **도크스트링**이었고 그것만 고쳤다.
 
 `state/indicatorsWindowMigration.ts` 는 **의도적으로 `study.workspace.v1` 을 계속 읽는다**
 — 1회성 승격 사다리를 아직 안 거친 사용자가 있고, 빼면 그 사용자의 지표가 공장값으로

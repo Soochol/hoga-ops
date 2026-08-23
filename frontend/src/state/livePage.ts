@@ -19,7 +19,6 @@ import {
 import {
   FACTORY_INDICATOR_SETTINGS,
   INDICATORS_V2_STORAGE_KEY,
-  bucketsForPage,
   cloneIndicatorBuckets,
   hasWindowIndicatorScope,
   loadIndicatorsV2Storage,
@@ -247,12 +246,11 @@ type Store = Persisted & IndicatorSettings & {
   paneOrder: PaneId[];
   /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
   paneStretch: PaneStretchMap;
-  /** `/live` 의 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). */
+  /** 앱 전역 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 창 세트의
+   *  **시드·폴백 뿌리**다. (ADR-0146 의 페이지 축은 ADR-0157 로 걷혔다.) */
   indicatorsByTimeframe: IndicatorSettingsByTimeframe;
-  /** `/study` 의 4버킷 원본 — 두 페이지는 항상 분리다(ADR-0146). 로드 시
-   *  `/live` 세트에서 시드되고, 그 뒤로는 서로를 보지 않는다. */
-  studyIndicatorsByTimeframe: IndicatorSettingsByTimeframe;
-  /** **창별** 4버킷 원본. 키 = `live:<창id>`/`study:<창id>`, 키의 존재가 곧
+  /** **창별** 4버킷 원본. 키 = `live:<창id>` — 접두는 축이 아니라 **영속 키의
+   *  화석**이다(`IndicatorScope` 주석). 키의 존재가 곧
    *  "이 창은 자기 세트를 갖는다"(ADR-0152 — `indicatorSettingsV2` 의 `byWindow`
    *  주석). 차트 창은 마운트 시드로 항상 엔트리를 갖고, 창이 사라지면 회수된다. */
   indicatorsByWindow: Record<string, IndicatorSettingsByTimeframe>;
@@ -517,7 +515,6 @@ export const useLivePageStore = create<Store>((set, get) => {
       paneOrder: s.paneOrder,
       paneStretch: s.paneStretch,
       byTimeframe: s.indicatorsByTimeframe,
-      studyByTimeframe: s.studyIndicatorsByTimeframe,
       byWindow: s.indicatorsByWindow,
     });
   };
@@ -537,9 +534,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     if (ownsWindowBuckets(s, scope)) {
       return { indicatorsByWindow: { ...s.indicatorsByWindow, [scope.windowKey]: buckets } };
     }
-    return scope.page === 'study'
-      ? { studyIndicatorsByTimeframe: buckets }
-      : { indicatorsByTimeframe: buckets };
+    return { indicatorsByTimeframe: buckets };
   };
 
   /**
@@ -570,22 +565,20 @@ export const useLivePageStore = create<Store>((set, get) => {
     const owned = ownsWindowBuckets(s, scope);
     const source = owned
       ? s.indicatorsByWindow[scope.windowKey as string]
-      : bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, scope.page);
+      : s.indicatorsByTimeframe;
     const buckets = { ...source, [profileKey]: { ...(source[profileKey] ?? {}), ...patch } };
     const next = bucketsPatch(s, scope, buckets);
-    // 최상위 투영은 **`/live` 페이지 세트의** ambient 봉 값이다. 창 편집이나
-    // `/study` 편집이 봉만 같다고 여기를 덮으면 Provider 밖 소비자(단일 차트·
-    // 픽스처)가 남의 창/페이지 설정을 본다.
-    if (!owned && scope.page !== 'study'
-      && profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
+    // 최상위 투영은 **앱 세트의** ambient 봉 값이다. 창 편집이 봉만 같다고 여기를
+    // 덮으면 Provider 밖 소비자(단일 차트·픽스처)가 남의 창 설정을 본다.
+    if (!owned && profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
       Object.assign(next, patch);
     }
     set(next as Partial<Store>);
     persistIndicators();
   };
 
-  /** Provider 밖(전역 경로) 스코프 — `/live` 페이지 세트의 ambient 봉. */
-  const AMBIENT_SCOPE: IndicatorScope = { page: null, windowKey: null };
+  /** Provider 밖(전역 경로) 스코프 — 앱 세트의 ambient 봉. */
+  const AMBIENT_SCOPE: IndicatorScope = { windowKey: null };
 
   /** ambient 봉 버킷에 기록 — 지표 ops 55종의 기본 백엔드. */
   const patchIndicators = (patch: Partial<IndicatorSettings>): void => {
@@ -608,7 +601,6 @@ export const useLivePageStore = create<Store>((set, get) => {
     paneOrder: initialIndicatorsV2.paneOrder,
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
-    studyIndicatorsByTimeframe: initialIndicatorsV2.studyByTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
     indicatorTimeframe: initialPage.candleTimeframe,
     lastMinuteHistoricalFromDate: null,
@@ -666,20 +658,16 @@ export const useLivePageStore = create<Store>((set, get) => {
       // 지정 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
       // 보존 — 크기 리셋은 프리셋 "기본 레이아웃으로 초기화"가 담당(#703).
       // 쓰기 경로와 같은 보장을 받는다 — 안 그러면 창의 "현재 봉 초기화" 가
-      // 엔트리 없는 창에서 **페이지 세트를** 지운다(모든 창에 번지는 사고).
+      // 엔트리 없는 창에서 **앱 세트를** 지운다(모든 창에 번지는 사고).
       const s = ensureWindowScope(scope);
       const profileKey = profileKeyForTimeframe(timeframe);
       const next: Record<string, unknown> = {};
       if (ownsWindowBuckets(s, scope)) {
-        // **엔트리는 남긴다** — 지우면 이 창이 페이지 세트로 되붙어, 초기화가
+        // **엔트리는 남긴다** — 지우면 이 창이 앱 세트로 되붙어, 초기화가
         // 사용자 모르게 연동을 만든다(`byWindow` 주석의 멤버십 규약).
         const buckets = { ...s.indicatorsByWindow[scope.windowKey] };
         delete buckets[profileKey];
         next.indicatorsByWindow = { ...s.indicatorsByWindow, [scope.windowKey]: buckets };
-      } else if (scope.page === 'study') {
-        const buckets = { ...s.studyIndicatorsByTimeframe };
-        delete buckets[profileKey];
-        next.studyIndicatorsByTimeframe = buckets;
       } else {
         const byTimeframe = { ...s.indicatorsByTimeframe };
         delete byTimeframe[profileKey];
@@ -704,11 +692,10 @@ export const useLivePageStore = create<Store>((set, get) => {
       // 사용자가 만진 값이 시드로 되돌아간다.
       if (hasWindowIndicatorScope(s.indicatorsByWindow, key)) return;
       // 손상된 저장소가 창 엔트리를 무한 증식시키는 것을 막는다. 상한을 넘으면
-      // 시드를 포기할 뿐이고, 그 창은 페이지 세트를 보는 종전 동작으로 돈다.
+      // 시드를 포기할 뿐이고, 그 창은 앱 세트를 보는 종전 동작으로 돈다.
       if (Object.keys(s.indicatorsByWindow).length >= INDICATOR_WINDOW_SCOPE_LIMIT) return;
       const fromWindow = sourceWindowKey ? s.indicatorsByWindow[sourceWindowKey] : undefined;
-      const source = fromWindow
-        ?? bucketsForPage(s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, scope.page);
+      const source = fromWindow ?? s.indicatorsByTimeframe;
       // 버킷 **객체까지** 새로 만든다 — 맵만 얕게 복사하면 두 창이 같은 버킷
       // 참조를 공유해, 한쪽 편집이 다른 쪽으로 샌다.
       set({ indicatorsByWindow: { ...s.indicatorsByWindow, [key]: cloneIndicatorBuckets(source) } });
@@ -738,7 +725,6 @@ export const useLivePageStore = create<Store>((set, get) => {
         indicatorsByTimeframe: stored.byTimeframe,
         // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼
         // 값이 없고, 이 탭의 다음 편집이 `persistIndicators` 로 그것을 덮어 지운다.
-        studyIndicatorsByTimeframe: stored.studyByTimeframe,
         // 창 세트도 같은 이유로 함께 받는다. 이것이 #712 와 갈리는 지점이다 —
         // 창별 설정이 전역 저장소에 있으므로 크로스탭 동기화가 그대로 덮는다.
         indicatorsByWindow: stored.byWindow,

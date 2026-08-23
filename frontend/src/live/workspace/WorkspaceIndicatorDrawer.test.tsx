@@ -89,8 +89,7 @@ describe('드로어 편집은 대상 창의 세트로 간다 (ADR-0152)', () => 
     useLivePageStore.setState({
       ...FACTORY_INDICATOR_SETTINGS,
       indicatorsByTimeframe: {},
-      studyIndicatorsByTimeframe: {},
-      indicatorsByWindow: {},
+        indicatorsByWindow: {},
       indicatorTimeframe: '1m',
     });
   });

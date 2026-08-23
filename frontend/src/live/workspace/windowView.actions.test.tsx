@@ -10,7 +10,6 @@ import {
   useWindowPaneOrder,
   useWindowPaneStretch,
   useWindowViewGuard,
-  LIVE_WINDOW_WORKSPACE,
   type WindowViewValue,
 } from './windowView';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
@@ -61,7 +60,6 @@ function windowValue(windowId: string, timeframe: LiveTimeframe = '5m'): WindowV
     code: '000660',
     timeframe,
     historicalFromDate: null,
-    workspace: LIVE_WINDOW_WORKSPACE,
   };
 }
 
@@ -76,7 +74,6 @@ function resetIndicatorState(): void {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
-    studyIndicatorsByTimeframe: {},
     // 창 id 가 테스트 간 고정('w1')이라 여기까지 비워야 격리가 된다(ADR-0152).
     indicatorsByWindow: {},
     indicatorTimeframe: '1m',

@@ -3,18 +3,16 @@ import { render, screen, cleanup } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import { useLivePageStore } from '../../state/livePage';
-import { WindowViewContext, LIVE_WINDOW_WORKSPACE, type WindowViewValue } from '../workspace/windowView';
+import { WindowViewContext, type WindowViewValue } from '../workspace/windowView';
 
-/** 지표 소유 페이지를 세우는 최소 Provider — `useWindowIndicatorScope` 는
- *  `workspace.scopePrefix` 만 읽는다(ADR-0146, 어댑터에서 렌더 동기적). */
-function pageProvider(workspace: typeof LIVE_WINDOW_WORKSPACE) {
+/** 창 스코프를 세우는 최소 Provider. */
+function windowProvider() {
   const value: WindowViewValue = {
     windowId: 'w1',
     group: 3,
     code: '000660',
     timeframe: '1m',
     historicalFromDate: null,
-    workspace,
   };
   return ({ children }: { children: ReactNode }) => (
     <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
@@ -53,10 +51,9 @@ describe('QuoteTotalsConfig', () => {
   });
 
   // 여기 `/study` 게이트 케이스가 있었다 — 최고 수평선이 복기에서 숨겨지는지 재던
-  // 것인데, 그 페이지와 게이트가 함께 사라졌다(2026-08-23). 아래 `/live` 케이스가
-  // 남는 계약 전부다.
-  it('/live scope 를 명시해도 최고 수평선 토글은 그대로 있다', () => {
-    render(<QuoteTotalsConfig />, { wrapper: pageProvider(LIVE_WINDOW_WORKSPACE) });
+  // 것인데, 그 페이지와 게이트가 함께 사라졌다(2026-08-23). 아래가 남는 계약 전부다.
+  it('창 스코프 안에서도 최고 수평선 토글은 그대로 있다', () => {
+    render(<QuoteTotalsConfig />, { wrapper: windowProvider() });
     expect(screen.getByTestId('settings-toggle-quoteTotalsDayMaxLineEnabled')).toBeTruthy();
   });
 });

@@ -6,11 +6,8 @@ import {
   useIndicatorActions,
   useSeedWindowIndicatorScope,
   useWindowIndicator,
-  useWindowIndicatorPage,
   useWindowIndicatorScope,
-  LIVE_WINDOW_WORKSPACE,
   type WindowViewValue,
-  type WindowWorkspaceAdapter,
 } from './windowView';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
@@ -27,27 +24,6 @@ import {
 } from '../../state/chartPrefs';
 
 /**
- * `'study'` 페이지 스코프의 어댑터 — **테스트 지역 픽스처다.**
- *
- * 원래는 `/study` 의 실제 어댑터(`STUDY_SCOPE`)를 썼고, 그 페이지는
- * 2026-08-23 에 삭제됐다. 그런데 **축은 남아 있다**: `IndicatorPageScope` 가 아직
- * `'live' | 'study'` 이고, 기존 사용자의 `live.indicators.v2` 에는 `studyByTimeframe`
- * 블롭이 그대로 있어 매 하이드레이션이 그 경로를 탄다. 아래 케이스들이 지키는 것이
- * 이제 「두 페이지 격리」가 아니라 **그 영속 데이터를 안 망가뜨리기**다.
- *
- * `store` 로 `/live` 것을 그대로 재사용하는 이유: 이 파일의 단언은 전부 지표 버킷에
- * 관한 것이라 창 스토어를 건드리지 않는다(포커스·chartRuntime 계약은 다른 파일).
- * 스토어까지 흉내 내면 아무도 안 쓰는 가짜만 늘어난다.
- *
- * 축 자체를 걷는 것은 별도 정리 작업이다 — 삭제안 문서 §9.
- */
-const STUDY_SCOPE: WindowWorkspaceAdapter = {
-  store: LIVE_WINDOW_WORKSPACE.store,
-  getWorkareaCode: () => null,
-  scopePrefix: 'study',
-};
-
-/**
  * 지표 스코프(페이지 × 창 × 봉)의 계약 가드 (ADR-0146 + ADR-0152).
  *
  * 사용자가 실제로 하는 검수가 이 파일의 뼈대다: **창 두 개를 띄우고 한쪽 지표를
@@ -60,7 +36,7 @@ const STUDY_SCOPE: WindowWorkspaceAdapter = {
  *     재검토 트리거가 실제로 와서 다시 얹었다. **기본이 독립**이라는 것이 그때와
  *     갈리는 지점이다 — opt-in 이면 검수 시나리오가 그때처럼 실패한다.
  *  ③ **시드** — 창은 빈손으로 열리지 않는다. 새 창은 포커스 창을, 그 밖의 창은
- *     페이지 세트를 복사한다. 시드가 없으면 "창별 독립" 의 대가가 "새 창마다
+ *     앱 세트를 복사한다. 시드가 없으면 "창별 독립" 의 대가가 "새 창마다
  *     지표를 처음부터" 가 되어 멀티창의 주 용도에 마찰만 더한다.
  *  ④ **회수** — 창이 사라지면 그 세트도 사라진다(창 id 는 재사용되지 않는다).
  *
@@ -90,7 +66,6 @@ function seedWorkspace(windows: WorkspaceWindow[]): void {
 
 function windowValue(
   windowId: string,
-  workspace = LIVE_WINDOW_WORKSPACE,
   timeframe: LiveTimeframe = '1m',
 ): WindowViewValue {
   return {
@@ -99,7 +74,6 @@ function windowValue(
     code: '000660',
     timeframe,
     historicalFromDate: null,
-    workspace,
   };
 }
 
@@ -110,13 +84,12 @@ function provider(value: WindowViewValue) {
 }
 
 /** 한 창에서 읽고 쓰는 표면 한 묶음(지표 + 드로어 안 chartPrefs 항목).
- *  실제 창 컴포넌트(`ChartWindow`·`StudyChartWindow`)와 같이 **시드 훅을 함께**
+ *  실제 창 컴포넌트(`ChartWindow`)와 같이 **시드 훅을 함께**
  *  돌린다 — 파일 상단 주석의 ⚠ 참조. */
 function renderWindow(value: WindowViewValue) {
   return renderHook(() => {
-    useSeedWindowIndicatorScope(value.windowId, value.workspace);
+    useSeedWindowIndicatorScope(value.windowId);
     return {
-      page: useWindowIndicatorPage(),
       scope: useWindowIndicatorScope(),
       actions: useIndicatorActions(),
       volumeEnabled: useWindowIndicator((s) => s.volumeEnabled),
@@ -136,7 +109,6 @@ beforeEach(() => {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
-    studyIndicatorsByTimeframe: {},
     indicatorsByWindow: {},
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
@@ -144,7 +116,6 @@ beforeEach(() => {
   });
   useChartPrefsStore.setState({
     indicatorModalByTimeframe: {},
-    studyIndicatorModalByTimeframe: {},
     indicatorModalByWindow: {},
     indicatorModalTimeframe: '1m',
     surgeMarkerEnabled: true,
@@ -152,68 +123,10 @@ beforeEach(() => {
   seedWorkspace([chartWindow('w1'), chartWindow('w2')]);
 });
 
-describe('두 페이지는 서로 동기화하지 않는다', () => {
-  it('`/live` 편집이 `/study` 에 새지 않는다', () => {
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-
-    live.result.current.actions.setVolumeEnabled(false);
-    live.rerender();
-    study.rerender();
-
-    expect(live.result.current.volumeEnabled).toBe(false);
-    expect(study.result.current.volumeEnabled).toBe(true);
-  });
-
-  it('`/study` 편집이 `/live` 에 새지 않는다', () => {
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-
-    study.result.current.actions.setMovingAverage('ma-1', { period: 33 });
-    live.rerender();
-    study.rerender();
-
-    expect(study.result.current.maPeriod).toBe(33);
-    expect(live.result.current.maPeriod).toBe(5); // 공장 기본
-  });
-
-  it('드로어 안 chartPrefs 항목도 페이지별이다 — 같은 패널의 절반만 갈리면 안 된다', () => {
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-
-    live.result.current.prefActions.setToggle('surgeMarkerEnabled', false);
-    live.rerender();
-    study.rerender();
-
-    expect(live.result.current.surgeMarkerEnabled).toBe(false);
-    expect(study.result.current.surgeMarkerEnabled).toBe(true);
-  });
-
-  it('드로어 안 chartPrefs 항목 — 역방향도 막는다(`/study` 편집이 `/live` 로)', () => {
-    // 읽기만 페이지별이고 **쓰기가 `/live` 버킷으로 가면** 위 테스트는 통과한다
-    // (live→study 방향만 보므로). 그 구멍을 이 케이스가 막는다.
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-
-    study.result.current.prefActions.setToggle('surgeMarkerEnabled', false);
-    live.rerender();
-    study.rerender();
-
-    expect(study.result.current.surgeMarkerEnabled).toBe(false);
-    expect(live.result.current.surgeMarkerEnabled).toBe(true);
-    expect(useChartPrefsStore.getState().indicatorModalByTimeframe.minute).toBeUndefined();
-  });
-
-  it('`/study` 쓰기는 최상위 ambient 투영을 건드리지 않는다', () => {
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-    study.result.current.actions.setVolumeEnabled(false);
-
-    // 투영은 `/live` 세트의 값이다 — 여기가 흔들리면 Provider 밖 소비자가
-    // 남의 페이지 설정을 본다.
-    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
-    expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
-  });
-});
+// 여기 「두 페이지는 서로 동기화하지 않는다」 5케이스가 있었다. 그 축(`IndicatorPageScope`)
+// 이 ADR-0157 후속으로 걷히면서 **가드가 지킬 대상 자체가 사라졌다** — 지난 세션에는
+// 축이 살아 있어 영속 데이터 가드로 남겼지만, 이번엔 축과 함께 간다. 「창 격리」는
+// 아래 블록이 그대로 지킨다.
 
 describe('한 페이지 안에서도 창들은 독립이다 (ADR-0152)', () => {
   // 이 파일의 헤드라인 — 사용자가 검수하는 바로 그 시나리오다.
@@ -243,36 +156,23 @@ describe('한 페이지 안에서도 창들은 독립이다 (ADR-0152)', () => {
     expect(b.result.current.surgeMarkerEnabled).toBe(true);
   });
 
-  it('창 편집은 페이지 세트를 오염시키지 않는다 — 시드 뿌리가 흔들리면 안 된다', () => {
+  it('창 편집은 앱 세트를 오염시키지 않는다 — 시드 뿌리가 흔들리면 안 된다', () => {
     // 여기가 흔들리면 그 뒤 열리는 **모든** 새 창이 남의 창 설정을 물려받는다.
     const a = renderWindow(windowValue('w1'));
     a.result.current.actions.setVolumeEnabled(false);
 
     const s = useLivePageStore.getState();
     expect(s.indicatorsByTimeframe.minute).toBeUndefined();
-    expect(s.studyIndicatorsByTimeframe.minute).toBeUndefined();
     // 최상위 ambient 투영도 그대로 — Provider 밖 소비자가 남의 창 값을 보면 안 된다.
     expect(s.volumeEnabled).toBe(true);
   });
 
-  it('스코프 키는 페이지 접두사 + 창 id 다 — 두 워크스페이스가 id 를 독립 발급한다', () => {
-    const live = renderWindow(windowValue('same-id'));
-    const study = renderWindow(windowValue('same-id', STUDY_SCOPE));
-
-    expect(live.result.current.page).toBe('live');
-    expect(study.result.current.page).toBe('study');
-    expect(live.result.current.scope).toEqual({ page: 'live', windowKey: 'live:same-id' });
-    expect(study.result.current.scope).toEqual({ page: 'study', windowKey: 'study:same-id' });
-
-    // 접두사가 없으면 두 페이지의 같은 id 가 한 엔트리를 나눠 쓴다.
-    live.result.current.actions.setVolumeEnabled(false);
-    study.rerender();
-    expect(study.result.current.volumeEnabled).toBe(true);
-  });
-
+  // 「스코프 키 = 페이지 접두 + 창 id」 케이스가 있었다 — 두 워크스페이스가 창 id 를
+  // 독립 발급하던 시절의 충돌 가드다. 워크스페이스가 하나가 되어 충돌이 불가능하다.
+  // 접두(`live:`) 자체는 영속 키의 화석으로 남는다(`windowScopeKey` 주석).
   it('봉 축은 창 **안에서** 그대로 산다 — 창 × 봉 버킷', () => {
-    const minute = renderWindow(windowValue('w1', LIVE_WINDOW_WORKSPACE, '1m'));
-    const daily = renderWindow(windowValue('w1', LIVE_WINDOW_WORKSPACE, 'D'));
+    const minute = renderWindow(windowValue('w1', '1m'));
+    const daily = renderWindow(windowValue('w1', 'D'));
 
     minute.result.current.actions.setVolumeEnabled(false);
     minute.rerender();
@@ -285,10 +185,10 @@ describe('한 페이지 안에서도 창들은 독립이다 (ADR-0152)', () => {
 });
 
 describe('창 시드 — 빈손으로 열리지 않는다', () => {
-  it('엔트리가 없는 창은 마운트 시 페이지 세트를 복사한다 — 화면 무변경', () => {
+  it('엔트리가 없는 창은 마운트 시 앱 세트를 복사한다 — 화면 무변경', () => {
     // 업그레이드 직후의 기존 창·프리셋 적용·딥링크 탭이 전부 이 경로다.
     useLivePageStore.getState().patchIndicatorsScoped(
-      { page: 'live', windowKey: null }, '1m', { volumeEnabled: false },
+      { windowKey: null }, '1m', { volumeEnabled: false },
     );
 
     const w = renderWindow(windowValue('w1'));
@@ -311,7 +211,7 @@ describe('창 시드 — 빈손으로 열리지 않는다', () => {
 
   it('시드는 깊은 사본이다 — 버킷 참조를 공유하면 편집이 새어 간다', () => {
     useLivePageStore.getState().patchIndicatorsScoped(
-      { page: 'live', windowKey: null }, '1m', { volumeEnabled: false },
+      { windowKey: null }, '1m', { volumeEnabled: false },
     );
     renderWindow(windowValue('w1'));
 
@@ -346,7 +246,7 @@ describe('창 시드 — 빈손으로 열리지 않는다', () => {
 
     // 되붙지 않았다: 페이지 세트를 바꿔도 이 창은 따라오지 않는다.
     useLivePageStore.getState().patchIndicatorsScoped(
-      { page: 'live', windowKey: null }, '1m', { volumeEnabled: false },
+      { windowKey: null }, '1m', { volumeEnabled: false },
     );
     w.rerender();
     expect(w.result.current.volumeEnabled).toBe(true);
@@ -388,50 +288,10 @@ describe('창 회수 — 사라진 창의 세트는 남지 않는다', () => {
   });
 });
 
-describe('시드 — 기존 사용자의 설정이 두 페이지에 그대로 실린다', () => {
-  it('`/study` 키가 없는 저장값은 로드 시 `/live` 에서 **즉시** 시드된다', () => {
-    // 게으른 폴백이면 이 시점에 `/study` 가 아직 `/live` 를 가리키고, 사용자가
-    // `/live` 를 바꾸면 `/study` 까지 따라온다 — 그게 이 기능의 인수 실패다.
-    localStorage.setItem(INDICATORS_V2_STORAGE_KEY, JSON.stringify({
-      paneOrder: [], paneStretch: {},
-      byTimeframe: { minute: { volumeEnabled: false } },
-    }));
-
-    useLivePageStore.getState().hydrateIndicatorsFromStorage();
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-
-    expect(study.result.current.volumeEnabled).toBe(false); // 시드가 실렸다
-
-    // 그리고 그 뒤 `/live` 를 바꿔도 `/study` 는 따라오지 않는다.
-    const live = renderWindow(windowValue('w1'));
-    live.result.current.actions.setVolumeEnabled(true);
-    study.rerender();
-    expect(study.result.current.volumeEnabled).toBe(false);
-  });
-
-  it('시드는 깊은 사본이다 — 버킷 참조를 공유하면 편집이 새어 간다', () => {
-    localStorage.setItem(INDICATORS_V2_STORAGE_KEY, JSON.stringify({
-      paneOrder: [], paneStretch: {},
-      byTimeframe: { minute: { volumeEnabled: false } },
-    }));
-    useLivePageStore.getState().hydrateIndicatorsFromStorage();
-
-    const s = useLivePageStore.getState();
-    expect(s.studyIndicatorsByTimeframe.minute).not.toBe(s.indicatorsByTimeframe.minute);
-  });
-
-  it('공장값 사용자는 빈 `/study` 엔트리를 얻고, 그것이 왕복에서 살아남는다', () => {
-    // 빈 것을 "없음" 으로 취급하면 매 로드 `/live` 값으로 덮인다.
-    useLivePageStore.getState().patchIndicatorsScoped({ page: 'live', windowKey: null }, '1m', { volumeEnabled: false });
-
-    const roundTripped = storedV2();
-    expect(roundTripped.studyByTimeframe).toEqual({});
-
-    useLivePageStore.getState().hydrateIndicatorsFromStorage();
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-    expect(study.result.current.volumeEnabled).toBe(true); // `/live` 의 false 를 안 받았다
-  });
-
+describe('시드·왕복 — 저장값이 그대로 실린다', () => {
+  // 여기 `/study` 세트의 시드·왕복 케이스 셋이 있었다(키 부재 시 `/live` 에서 시드,
+  // 공장값 사용자의 빈 엔트리 보존, 두 세트 동시 hydrate). 페이지 축이 걷히면서
+  // **시드할 두 번째 세트가 없어졌다** — 남는 것은 창 세트의 왕복이고 아래가 그것이다.
   it('저장된 창 세트는 왕복에서 살아남는다 — 빈 엔트리까지', () => {
     // 빈 엔트리를 걷어내면 공장값 상태의 창이 다음 로드에 페이지 세트로 되붙고,
     // 증상은 한참 뒤 다른 창을 편집한 순간에야 나타난다.
@@ -469,37 +329,48 @@ describe('시드 — 기존 사용자의 설정이 두 페이지에 그대로 �
 });
 
 describe('영속화', () => {
-  it('세 축이 같은 블롭에 함께 저장된다 — 한쪽 편집이 다른 쪽을 지우지 않는다', () => {
+  it('두 축이 같은 블롭에 함께 저장된다 — 한쪽 편집이 다른 쪽을 지우지 않는다', () => {
     // `persistIndicators()` 가 인자를 안 받는 이유가 이것이다 — 호출부가 블롭을
     // 손으로 조립하면 축이 늘 때마다 빠뜨린 곳이 저장소를 통째로 날린다
     // (`setPaneOrder` 한 번에 창 설정이 사라지는 모양).
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
+    //
+    // 축이 셋(앱·`/study`·창)에서 **둘**(앱·창)로 줄었다 — 페이지 축이 걷혔다.
+    const w1 = renderWindow(windowValue('w1'));
+    const w2 = renderWindow(windowValue('w2'));
 
-    study.result.current.actions.setVolumeEnabled(false);
-    useLivePageStore.getState().patchIndicatorsScoped(
-      { page: 'study', windowKey: null }, '1m', { ratioEnabled: true },
-    );
-    live.result.current.actions.setPaneOrder(['candle', 'volume']);
+    w2.result.current.actions.setVolumeEnabled(false);
+    useLivePageStore.getState().patchIndicatorsScoped({ windowKey: null }, '1m', { ratioEnabled: true });
+    w1.result.current.actions.setPaneOrder(['candle', 'volume']);
 
     const stored = storedV2();
-    expect(stored.byWindow['study:s1']?.minute?.volumeEnabled).toBe(false);
-    expect(stored.studyByTimeframe.minute?.ratioEnabled).toBe(true);
+    expect(stored.byWindow['live:w2']?.minute?.volumeEnabled).toBe(false);
+    expect(stored.byTimeframe.minute?.ratioEnabled).toBe(true);
     expect(stored.paneOrder).toEqual(normalizePaneOrder(['candle', 'volume']));
   });
 
-  it('hydrate 는 두 세트를 함께 받는다', () => {
+  /**
+   * 기존 사용자의 디스크에 남은 `studyByTimeframe` 이 **다음 쓰기에서 사라지는가**.
+   *
+   * 마이그레이션을 따로 쓰지 않은 근거가 이것이다 — `persistIndicators` 가 스토어에서
+   * 필드를 **명시로 조립**하므로, 정규화가 안 읽고 여기가 안 쓰면 키가 자연 소멸한다.
+   * 이 성질이 깨지면 죽은 키가 사용자 디스크에 영구히 남는다(기능은 안 깨지지만
+   * 「자연 소멸」이라고 적은 주석·PR 설명이 거짓이 된다).
+   */
+  it('저장된 `studyByTimeframe` 은 다음 쓰기에서 블롭에서 사라진다', () => {
     localStorage.setItem(INDICATORS_V2_STORAGE_KEY, JSON.stringify({
       paneOrder: [], paneStretch: {},
       byTimeframe: { minute: { volumeEnabled: false } },
       studyByTimeframe: { minute: { ratioEnabled: true } },
     }));
-
     useLivePageStore.getState().hydrateIndicatorsFromStorage();
 
-    const live = renderWindow(windowValue('w1'));
-    const study = renderWindow(windowValue('s1', STUDY_SCOPE));
-    expect(live.result.current.volumeEnabled).toBe(false);
-    expect(study.result.current.volumeEnabled).toBe(true);
+    // 양성 대조 — 하이드레이션이 실제로 일어났는가(살아 있는 축이 실렸다).
+    const w = renderWindow(windowValue('w1'));
+    expect(w.result.current.volumeEnabled).toBe(false);
+
+    w.result.current.actions.setPaneOrder(['candle', 'volume']);
+
+    const raw = JSON.parse(localStorage.getItem(INDICATORS_V2_STORAGE_KEY) as string);
+    expect(Object.hasOwn(raw, 'studyByTimeframe')).toBe(false);
   });
 });
