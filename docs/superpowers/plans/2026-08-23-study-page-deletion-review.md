@@ -324,7 +324,9 @@ cd frontend && node_modules/.bin/playwright test
    였다. 프롭·파생·순수 함수·그 테스트는 전부 멀쩡히 남고 **켜는 사람만 사라지는**
    모양이라 아무 가드도 빨개지지 않는다. `ChartWindow` 가 `savedRange !== null` 로
    켜도록 옮겼다.
-   ⚠ **이 한 줄 배선에는 테스트가 없다.** 순수 함수(`deriveHogaMissingNotice`)는 촘촘히
+   ✅ **후속에서 고쳤다** — 축이 틀렸었고(`savedRange !== null` → `savedRangeFrozen`
+   에서 파생), 양방향 가드가 붙었다. 아래 원문은 그 시점의 기록이다.
+   ⚠ ~~이 한 줄 배선에는 테스트가 없다.~~ 순수 함수(`deriveHogaMissingNotice`)는 촘촘히
    덮여 있고 `LiveChartRoot` 의 소비도 덮여 있지만, "저장 구간 창이면 켠다" 라는 **새 조건**
    자체는 `ChartWindow` 렌더 하네스가 없어 못 걸었다. 정직하게 적어 둔다.
 2. **`ui/WorkspaceShell` 의 프리미티브 4개** — `WorkspaceRoot` · `WorkspaceHeader` ·

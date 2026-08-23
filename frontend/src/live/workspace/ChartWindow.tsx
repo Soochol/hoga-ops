@@ -803,14 +803,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onMinuteJumpChange={setMinuteJump}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
-              /* 미캡처 안내는 **저장 구간이 걸린 창에서만** 켠다(2026-08-23).
-                 원래 `/study` 가 켜던 것이고, 그 근거는 페이지가 아니라 **구간의
-                 성격**이었다(`hogaMissingNotice` 의 `IGNORED_REASONS` 주석): 사용자가
-                 구간을 명시적으로 정했으면 "그 안에 아직 안 받은 날이 있다" 가 행동으로
-                 이어진다. 임의 종목을 훑는 평소 `/live` 에서는 미캡처가 정상이라 켜면
-                 배너가 상시 들어와 진짜 결손이 묻힌다(실측 90일 창에서 22일 미캡처).
-                 그래서 페이지가 사라져도 조건은 그대로 살아 창으로 옮겨온다. */
-              showNotCapturedNotice={savedRange !== null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}
