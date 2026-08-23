@@ -10,6 +10,7 @@ import {
   evictExcessMergedLiveRanges,
   MERGED_LIVE_RANGE_MAX_ENTRIES,
   mergeRangeBundles,
+  planCandlesRangeDelta,
   planHogaRangeDelta,
   planSidecarRangeDelta,
   useRange,
@@ -330,6 +331,78 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey[14]).toBe(null);
     // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
     expect(request.queryKey.at(-2)).toBe(null);
+  });
+});
+
+describe('planCandlesRangeDelta', () => {
+  // hogaplay 저장 데이터 소스 ON 분봉의 캔들 경로(`useLiveBundle` 의 minuteDiskCandles).
+  // 2026-08-23 까지 이 mode 는 `LiveRangeDeltaMode` 에 없어 델타를 **원리적으로** 못 탔고,
+  // `historicalFromDate` 가 움직일 때마다 창 전체를 통짜로 다시 받았다.
+  const previous: RangeBundle = {
+    ...fakeBundle,
+    code: '240810',
+    from_date: '20260629',
+    to_date: '20260706',
+    bucket_ms: 180_000,
+  };
+  const candlesRequest: RangeBundleRequestInput = {
+    code: '240810',
+    from: '20260629',
+    to: '20260706',
+    timeframe: '3m',
+    todayKst: '20260706',
+    sourcePref: 'hogaplay' as const,
+    venue: 'KRX' as const,
+    options: {
+      mode: 'candles' as const,
+      brokerLateEntriesEnabled: false,
+      brokerLateEntryStartHHMM: null,
+      volumeDistributionBins: null,
+      tradeVolumePocBins: null,
+      volumeDistributionPriceRange: null,
+    },
+  };
+  const previousIdentity = planCandlesRangeDelta(candlesRequest).identity;
+
+  it('walks a left extension back one LIVE_RANGE_CHUNK_DAYS tile instead of re-requesting the covered window', () => {
+    const plan = planCandlesRangeDelta(
+      { ...candlesRequest, from: '20260501' },
+      previous,
+      previousIdentity,
+    );
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    // 타일은 previous 좌측에 인접한 7일 — 이미 가진 [20260629, 20260706] 은 재요청 없음.
+    expect(plan.requestInput.from).toBe('20260622');
+    expect(plan.requestInput.to).toBe('20260628');
+    expect(plan.blocksHistoricalExtension).toBe(true);
+  });
+
+  it('narrows the periodic refresh to the today slice once previous covers the window', () => {
+    // `to` 가 오늘이라 5분 주기 refetch 가 도는 자리다(rangeFreshnessOptions). 델타가
+    // 없던 시절엔 그 주기 갱신이 **전 구간 통짜**였다 — 팬을 하지 않아도 반복됐다.
+    const plan = planCandlesRangeDelta(candlesRequest, previous, previousIdentity);
+
+    expect(plan.requestInput.from).toBe('20260706');
+    expect(plan.requestInput.to).toBe('20260706');
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.blocksHistoricalExtension).toBe(false);
+  });
+
+  it('falls back to the full window when the mode is not registered for delta merging', () => {
+    // **회귀 가드**: `LiveRangeDeltaMode` 에서 'candles' 가 빠지면(또는 호출부가 델타
+    // 훅 대신 plain useRange 로 되돌아가면) 계획이 정확히 이 모양이 된다 — 에러 없이
+    // 조용히 통짜. 진단한 버그를 값으로 못박는다.
+    const plan = planSidecarRangeDelta(
+      { ...candlesRequest, from: '20260501' },
+      previous,
+      previousIdentity,
+    );
+
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260501');
+    expect(plan.requestInput.to).toBe('20260706');
   });
 });
 

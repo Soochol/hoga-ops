@@ -169,7 +169,22 @@ function maxDate(a: string, b: string): string {
  */
 export const LIVE_RANGE_CHUNK_DAYS = 7;
 
-type LiveRangeDeltaMode = 'sidecar' | 'hoga';
+/** 델타 병합이 적용되는 `/api/range` 소비 모드.
+ *
+ * **여기 없는 mode 는 델타를 원리적으로 못 탄다** — `planLiveRangeDelta` 의
+ * `isLiveDeltaRequest` 가 `options.mode === mode` 를 요구하고, 훅 쪽 기본값이
+ * `'sidecar'` 라서 등록되지 않은 mode 는 항상 `fullInput`(통짜 [from, to]) 분기로
+ * 떨어진다. 에러도 경고도 없이 조용히 그렇게 된다.
+ *
+ * `'candles'` 가 그 사고였다(2026-08-23 진단). hogaplay 저장 데이터 소스 ON 분봉의
+ * 캔들이 이 mode 인데 union 에 없어서, 요청 창 `from` 이 바뀔 때마다 **이미 받은
+ * 구간까지 전 구간을 통짜로 다시** 받았다. 실측(240810 3분봉): 좌측 팬 1회에
+ * 284KB 재다운로드, 그리고 `to` 가 오늘이라 **무조작 5분 주기**로도 같은 통짜가
+ * 반복됐다. 흔드는 트리거가 넷이었다 — 좌측 팬(`useViewportBackfill` 3b) · 우측
+ * 복귀 축소(`planViewportContraction`) · tf 전환(콜드 키) · 5분 주기 갱신.
+ *
+ * 새 mode 를 만들면 **여기 등록하고 전용 `plan*`/`use*Delta` 래퍼를 함께 둔다.** */
+type LiveRangeDeltaMode = 'sidecar' | 'hoga' | 'candles';
 
 /** 델타 identity에서 중립화하는 queryKey 인덱스.
  *
@@ -331,6 +346,13 @@ function removeDominatedLiveRangeCopies(
  * 차트 창 수 + 사용자가 늘리는 몫을 넉넉히 잡아 6개를 살아 있는 집합으로 보고, 그
  * 2배를 상한으로 둔다. 상한이 작업 집합에 가까우면 **정상 사용이 계속 축출을 유발**해
  * 복원 대신 재-워크백이 돈다 — 이 캐시가 애초에 막으려던 것이다.
+ *
+ * **`mode=candles` 가 세 번째로 합류했는데(2026-08-23) 상한은 12 를 유지한다.** 셋을
+ * 다 드는 것은 hogaplay 저장 데이터 소스를 켠 창뿐이고(그 모드에서만 캔들이 디스크에서
+ * 온다), 그 병합본은 hoga 보다 **한 자릿수 작다**(3분봉 22거래일 284KB 대 1분봉 7일
+ * 2.4MB) — 상한이 지키는 것은 개수가 아니라 상주 바이트다. 게다가 회수가 **최근 갱신
+ * 순**이라 지금 보고 있는 창은 상한에 닿아도 살아남는다. 올리는 것은 성능 감사의
+ * 결론을 되무는 일이므로, 실사용에서 churn 이 관측되면 그때 **측정과 함께** 바꾼다.
  */
 export const MERGED_LIVE_RANGE_MAX_ENTRIES = 12;
 
@@ -501,6 +523,18 @@ export function planHogaRangeDelta(
   previousIdentity?: string,
 ): RangeDeltaPlan {
   return planLiveRangeDelta(input, previous, previousIdentity, undefined, undefined, 'hoga');
+}
+
+/** `mode=candles`(hogaplay 저장 데이터 분봉 캔들) 의 델타 계획.
+ *
+ * sidecar/hoga 와 계획 규칙이 완전히 같다 — 다른 것은 `options.mode` 뿐이고, 그
+ * 일치가 곧 델타 활성 조건이다(`LiveRangeDeltaMode` 주석 참조). */
+export function planCandlesRangeDelta(
+  input: RangeBundleRequestInput,
+  previous?: RangeBundle,
+  previousIdentity?: string,
+): RangeDeltaPlan {
+  return planLiveRangeDelta(input, previous, previousIdentity, undefined, undefined, 'candles');
 }
 
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string, compare: (a: T, b: T) => number): T[] {
@@ -925,4 +959,28 @@ export function useRangeHogaDelta(
   sourcePrefOverride?: SourcePreference,
 ) {
   return useLiveRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'hoga');
+}
+
+/**
+ * hogaplay 저장 데이터(디스크) 분봉 **캔들** 의 델타 훅 — `useRange` 의 델타 판(版).
+ *
+ * 종전엔 이 자리가 델타가 없는 `useRange` 였다. 그래서 `historicalFromDate` 가 움직일
+ * 때마다 창 전체를 다시 받았다(경위는 `LiveRangeDeltaMode` 주석). 이 훅으로 오면
+ * 좌측 확장이 `LIVE_RANGE_CHUNK_DAYS` 타일 워크백이 되고, 창을 이미 덮은 뒤에는
+ * 5분 주기 갱신이 **오늘-델타**(from=to=today)로 좁혀진다.
+ *
+ * ⚠ 호출부는 `isHistoricalDeltaFetching` 을 배압으로 써야 한다 — 청크 워크백이
+ * 도는 동안 백필이 다음 스텝을 밀면 둘이 경주한다(`useLiveBundle` 의 `extending`).
+ */
+export function useRangeCandlesDelta(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  timeframe: Timeframe | null,
+  priceRange?: { min: number; max: number },
+  todayKst?: string | null,
+  options?: RangeRequestOptions,
+  sourcePrefOverride?: SourcePreference,
+) {
+  return useLiveRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'candles');
 }
