@@ -1,6 +1,9 @@
 # 0144 — `/study` 는 항상 KRX
 
-**Status:** accepted (2026-08-10) — 단 **§Decision 3·4(설정 화면의 표시 규칙)는
+**Status:** accepted (2026-08-10) — **ADR-0157(2026-08-23)이 무대를 옮겼다: 정책은
+그대로 살아 있고 적용 단위가 「`/study` 페이지」에서 「저장뷰가 걸린 `/live` 차트 창」이
+됐다**(`savedRangeFocus.ts` 의 `SAVED_RANGE_VENUE`, 같은 상수를 참조). 전역 선택과
+어긋나므로 칩에 「KRX 기준」을 병기하는 것도 유지. 단 **§Decision 3·4(설정 화면의 표시 규칙)는
 2026-08-16 설정 표면 통합으로 대체됐다**. 문서 끝 §Amendment 참고. 정책(§Decision 1·2)과
 가드는 그대로다.
 
