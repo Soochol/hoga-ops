@@ -6,7 +6,7 @@ import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
+import { useRangeCandlesDelta, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
 import { scaleRangeBundlePrices } from './scaleRangeBundlePrices';
 import {
   type LiveTimeframe,
@@ -737,7 +737,14 @@ export function useLiveBundle(
     }),
     [],
   );
-  const minuteDiskCandles = useRange(
+  //
+  // **델타 훅이어야 한다(2026-08-23).** 종전엔 `useRange`(델타 없음)라 요청 창의 `from`
+  // 이 바뀔 때마다 [from, to] 전 구간을 통짜로 다시 받았다 — 좌측 팬·우측 복귀 축소·
+  // tf 전환·5분 주기 갱신 넷이 전부 그 트리거였다(경위는 range.ts 의
+  // `LiveRangeDeltaMode` 주석). `useRangeCandlesDelta` 는 sidecar/hoga 와 같은
+  // `LIVE_RANGE_CHUNK_DAYS` 타일 워크백을 쓰고, 창을 덮은 뒤의 주기 갱신은 오늘-델타로
+  // 좁혀진다.
+  const minuteDiskCandles = useRangeCandlesDelta(
     minuteDiskNeeded ? code : null,
     minuteDiskNeeded ? minutePastFrom : null,
     minuteDiskNeeded ? minutePastTo : null,
@@ -1180,11 +1187,14 @@ export function useLiveBundle(
     ? pastHoga.isHistoricalDeltaFetching ||
       (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||
-      // 우회 ON에선 차트 캔들이 벤더 REST가 아니라 디스크(minuteDiskCandles, plain useRange)
-      // 에서 온다. 이 쿼리도 좌측 팬 re-key 시 이전 데이터를 placeholder로 보이며 더 오래된 창을
-      // fetch하므로 벤더 경로와 동일하게 isPlaceholderData && isFetching로 홀드해야 프리펜드가
-      // 원자적이다. 우회 OFF면 disabled → 둘 다 false라 무해(이분 조건 불필요).
-      (minuteDiskCandles.isPlaceholderData && minuteDiskCandles.isFetching)
+      // 우회 ON에선 차트 캔들이 벤더 REST가 아니라 디스크(minuteDiskCandles)에서 온다.
+      // 그 쿼리도 이제 델타 훅이므로(2026-08-23) 위 두 지표와 **같은 신호**를 쓴다 —
+      // `isPlaceholderData && isFetching` 은 콜드 시드를 못 봤다(보여줄 이전 데이터가
+      // 없어 placeholder 가 안 생긴다). 콜드 청크 워크백 중에 백필이 다음 스텝을 밀면
+      // 둘이 경주하므로 그 구간을 홀드해야 프리펜드가 원자적이다. 반대로 **창을 이미
+      // 덮은 뒤의 5분 주기 갱신은 홀드하지 않는다**(`blocksHistoricalExtension:false`)
+      // — 그건 오늘-델타라 과거 프리펜드가 없다. 우회 OFF면 disabled → false(무해).
+      minuteDiskCandles.isHistoricalDeltaFetching
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
   // The gate holds the CHART side (candle/segment prepend atomicity is what it

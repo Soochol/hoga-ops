@@ -151,13 +151,17 @@ vi.mock('../api/livePastInvestorNet', () => ({
 }));
 
 const rangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
-const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+// 디스크 캔들(`mode=candles`) 전용 상태. `rangeMock` 과 **분리해 둔다** — 공유하면
+// "지표는 멎었는데 캔들 청크 워크백만 돈다" 를 세울 수 없어, `extending` 배선을
+// 되돌려도 hoga/sidecar 쪽이 대신 hold 를 걸어 테스트가 초록으로 남는다.
+const candlesRangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
+const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
   error: null,
-  isPlaceholderData: rangeMock.isPlaceholderData,
-  isFetching: rangeMock.isFetching,
-  isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
+  isPlaceholderData: candlesRangeMock.isPlaceholderData,
+  isFetching: candlesRangeMock.isFetching,
+  isHistoricalDeltaFetching: candlesRangeMock.isHistoricalDeltaFetching,
 }));
 const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
@@ -177,7 +181,7 @@ const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
 vi.mock('../api/range', () => ({
-  useRange: (...args: unknown[]) => useRangeSpy(...args as []),
+  useRangeCandlesDelta: (...args: unknown[]) => useRangeCandlesDeltaSpy(...args as []),
   useRangeHogaDelta: (...args: unknown[]) => useRangeHogaDeltaSpy(...args as []),
   useRangeSidecarDelta: (...args: unknown[]) => useRangeSidecarDeltaSpy(...args as []),
 }));
@@ -253,8 +257,8 @@ function renderUseLiveBundle(
     venue,
   } = overrides;
   screenerDailyCandlesMock.candles = screenerDailyCandles;
-  const previousImplementation = useRangeSpy.getMockImplementation();
-  useRangeSpy.mockImplementation((...args: unknown[]) => {
+  const previousImplementation = useRangeCandlesDeltaSpy.getMockImplementation();
+  useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
     const options = args[6] as { mode?: string } | undefined;
     if (options?.mode === 'candles') {
       return rangeResult(rangeCandles.length > 0 ? {
@@ -268,7 +272,7 @@ function renderUseLiveBundle(
     () => useLiveBundle(code, timeframe, '20260527', liveFixture, venue ? { venue } : undefined),
     { wrapper: createWrapper(settings) },
   );
-	  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
+	  useRangeCandlesDeltaSpy.mockImplementation(previousImplementation ?? (() => ({
 	    data: null,
 	    isLoading: false,
 	    error: null,
@@ -792,10 +796,10 @@ describe('useLiveBundle', () => {
     }));
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
-    useRangeSpy.mockClear();
+    useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
-	    useRangeSpy.mockImplementation(() => ({
+	    useRangeCandlesDeltaSpy.mockImplementation(() => ({
 	      data: null,
 	      isLoading: false,
 	      error: null,
@@ -879,7 +883,7 @@ describe('useLiveBundle', () => {
     }
 
     function serveDisk() {
-      useRangeSpy.mockImplementation((...args: unknown[]) => {
+      useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
         const options = args[6] as { mode?: string } | undefined;
         return rangeResult(options?.mode === 'candles' ? diskBundleWithHole() : null);
       });
@@ -892,7 +896,7 @@ describe('useLiveBundle', () => {
         { wrapper: createWrapper() },
       );
 
-      const candleCall = useRangeSpy.mock.calls.find(
+      const candleCall = useRangeCandlesDeltaSpy.mock.calls.find(
         (c) => (c[6] as { mode?: string } | undefined)?.mode === 'candles',
       );
       expect(candleCall?.[0]).toBe('005930');
@@ -939,7 +943,7 @@ describe('useLiveBundle', () => {
     });
 
     it('빈 상태가 "설정 열기" 대신 창 소스 문구를 낸다', () => {
-      useRangeSpy.mockImplementation((...args: unknown[]) => {
+      useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
         const options = args[6] as { mode?: string } | undefined;
         return rangeResult(
           options?.mode === 'candles' ? { ...fallbackRangeBundle(), candles: [] } : null,
@@ -1490,7 +1494,7 @@ describe('useLiveBundle', () => {
     // override 가 `undefined` 여야 `useRange` 가 설정(`krx_prefer_hogaplay`)을 따른다.
     // 예전엔 `'hogaplay_first'` 를 박았는데 백엔드가 인식 못 하는 토큰이라 이름과 정반대인
     // kiwoom_live 우선으로 수렴했다 — 값을 하나라도 다시 박으면 그 함정이 되살아난다.
-    const candleCall = useRangeSpy.mock.calls.find((call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles');
+    const candleCall = useRangeCandlesDeltaSpy.mock.calls.find((call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles');
     expect(candleCall?.[0]).toBe('005930');
     expect(candleCall?.[7]).toBeUndefined();
     // 벤더 분봉 쿼리는 우회 ON이면 code=null로 비활성.
@@ -1503,7 +1507,7 @@ describe('useLiveBundle', () => {
   it('returns disk candles before sidecar data arrives (bypass ON)', () => {
     candlesMock.candles = [];
 
-    useRangeSpy.mockImplementation((...args: unknown[]) => {
+    useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
       const options = args[6] as { mode?: string } | undefined;
       if (options?.mode === 'candles') {
         return rangeResult({
@@ -2156,7 +2160,7 @@ describe('useLiveBundle', () => {
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
     // 우회 OFF: 디스크 캔들 쿼리는 code=null(미발사) — KIS 경고여도 폴백 없음.
-    const candleCall = useRangeSpy.mock.calls.find(
+    const candleCall = useRangeCandlesDeltaSpy.mock.calls.find(
       (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
     expect(candleCall?.[0]).toBeNull();
@@ -2174,7 +2178,7 @@ describe('useLiveBundle', () => {
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    const candleCall = useRangeSpy.mock.calls.find(
+    const candleCall = useRangeCandlesDeltaSpy.mock.calls.find(
       (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
     expect(candleCall?.[0]).toBeNull();
@@ -2347,7 +2351,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
     screenerDailyCandlesSpy.mockClear();
-    useRangeSpy.mockClear();
+    useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
@@ -2398,7 +2402,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
     // 우회 OFF D: 스크리너는 code=null(미발사), 디스크 캔들 쿼리도 code=null. 폴백 없음.
     expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith(null, null, null);
-    const candleCall = useRangeSpy.mock.calls.find(
+    const candleCall = useRangeCandlesDeltaSpy.mock.calls.find(
       (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
     expect(candleCall?.[0]).toBeNull();
@@ -2435,7 +2439,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 
     const { result: week } = renderHook(() => useLiveBundle('005930', 'W', '20260527', liveFixture), { wrapper });
     expect(week.current.chartBundle!.candles).toEqual([]);
-    expect(useRangeSpy).not.toHaveBeenCalledWith(
+    expect(useRangeCandlesDeltaSpy).not.toHaveBeenCalledWith(
       '005930',
       expect.anything(),
       '20260527',
@@ -2445,10 +2449,10 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
     );
 
-    useRangeSpy.mockClear();
+    useRangeCandlesDeltaSpy.mockClear();
     const { result: month } = renderHook(() => useLiveBundle('005930', 'M', '20260527', liveFixture), { wrapper });
     expect(month.current.chartBundle!.candles).toEqual([]);
-    expect(useRangeSpy).not.toHaveBeenCalledWith(
+    expect(useRangeCandlesDeltaSpy).not.toHaveBeenCalledWith(
       '005930',
       expect.anything(),
       '20260527',
@@ -2547,7 +2551,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
 describe('useLiveBundle extension atomization gate', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
-    useRangeSpy.mockClear();
+    useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
@@ -2557,6 +2561,9 @@ describe('useLiveBundle extension atomization gate', () => {
 	    rangeMock.isPlaceholderData = false;
 	    rangeMock.isFetching = false;
 	    rangeMock.isHistoricalDeltaFetching = false;
+	    candlesRangeMock.isPlaceholderData = false;
+	    candlesRangeMock.isFetching = false;
+	    candlesRangeMock.isHistoricalDeltaFetching = false;
 	    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
   });
 
@@ -2689,7 +2696,7 @@ describe('useLiveBundle isExtending', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
-    useRangeSpy.mockClear();
+    useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
@@ -2747,8 +2754,11 @@ describe('useLiveBundle isExtending', () => {
     useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
-    // 디스크 캔들 쿼리가 좌측 팬 re-key로 placeholder를 보이며 더 오래된 창을 fetch 중.
-    useRangeSpy.mockImplementation((...args: unknown[]) => {
+    // 디스크 캔들 쿼리가 청크 워크백 중 — **콜드 시드**라 placeholder 가 아직 없다.
+    // 종전 배선(`isPlaceholderData && isFetching`)은 이 구간을 못 봐서 백필과
+    // 워크백이 경주했다. 델타 훅의 `isHistoricalDeltaFetching` 이 그걸 덮는다
+    // (2026-08-23) — placeholder 를 **false 로 두는 것이 이 테스트의 요점**이다.
+    useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
       const options = args[6] as { mode?: string } | undefined;
       const isCandles = options?.mode === 'candles';
       return {
@@ -2757,8 +2767,9 @@ describe('useLiveBundle isExtending', () => {
           : null,
         isLoading: false,
         error: null,
-        isPlaceholderData: isCandles,
+        isPlaceholderData: false,
         isFetching: isCandles,
+        isHistoricalDeltaFetching: isCandles,
       };
     });
     const { result } = renderHook(
@@ -2775,7 +2786,7 @@ describe('useLiveBundle isExtending', () => {
     useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
-    useRangeSpy.mockImplementation((...args: unknown[]) => {
+    useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
       const options = args[6] as { mode?: string } | undefined;
       const isCandles = options?.mode === 'candles';
       return {
@@ -2786,6 +2797,40 @@ describe('useLiveBundle isExtending', () => {
         error: null,
         isPlaceholderData: false,
         isFetching: false,
+        isHistoricalDeltaFetching: false,
+      };
+    });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(result.current.isExtending).toBe(false);
+  });
+
+  // 과잉 홀드 방지 ②: 창을 이미 덮은 뒤의 **주기 갱신**(오늘-델타)은 홀드하지 않는다.
+  // 그 요청엔 과거 프리펜드가 없어 뷰포트가 밀리지 않으므로 차트를 얼릴 이유가 없다
+  // (`planLiveRangeDelta` 가 그 분기에서 `blocksHistoricalExtension:false` 를 준다).
+  // 종전 배선(`isPlaceholderData && isFetching`)은 이 경우를 **홀드해 버렸다** —
+  // 5분마다 차트가 한 박자 얼었다는 뜻이다. 위 콜드 케이스와 짝으로 배선을 양방향에
+  // 못박는다: 신호를 되돌리면 이쪽이 빨개진다.
+  it('is false while a today-slice refresh fetches over an already-covered disk window', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260514' });
+    useRangeHogaDeltaSpy.mockImplementation(idleDeltaSpy);
+    useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
+      const options = args[6] as { mode?: string } | undefined;
+      const isCandles = options?.mode === 'candles';
+      return {
+        data: isCandles
+          ? { ...fallbackRangeBundle(), candles: [{ ts_ms: 1_779_753_600_000, open: 69_000, high: 69_100, low: 68_900, close: 69_050, vol_a: 900, vol_b: 0 }] }
+          : null,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: isCandles,
+        isFetching: isCandles,
+        isHistoricalDeltaFetching: false,
       };
     });
     const { result } = renderHook(
