@@ -17,10 +17,16 @@ describe('UniverseFilterButton', () => {
     expect(btn.textContent).not.toMatch(/\d/);
   });
 
+  // ⚠ 2026-08-23: ETF 축은 **포함**이 활성이다(기본이 제외로 바뀌었다 — `universeFilter`).
   it('활성 — 카운트 배지 + 열거형 aria-label', () => {
-    mount({ markets: ['KOSPI'], exclude_etf: true });
-    const btn = screen.getByRole('button', { name: '사전필터, 2개: KOSPI · ETF 제외' });
+    mount({ markets: ['KOSPI'], exclude_etf: false });
+    const btn = screen.getByRole('button', { name: '사전필터, 2개: KOSPI · ETF 포함' });
     expect(btn.textContent).toContain('2');
+  });
+
+  it('기본값(ETF 제외)만으로는 배지가 안 뜬다 — 말할 것이 없다', () => {
+    mount({ exclude_etf: true });
+    expect(screen.getByRole('button').textContent).not.toMatch(/\d/);
   });
 
   it('클릭 시 모달 열림, 닫기 시 닫힘', () => {
