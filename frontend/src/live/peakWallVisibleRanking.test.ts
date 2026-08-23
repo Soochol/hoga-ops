@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { IRange, Time } from 'lightweight-charts';
-import type { AskPeakSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
 import {
   PEAK_WALL_LEGEND_RANK_LIMIT,
   peakWallRankLegendCells,
@@ -12,7 +12,7 @@ import { candleExtremesByVirtualSec } from './peakWallRankArrows';
 
 /** 하루치 벽 하나. `day` 는 가상초 축에서의 그날 구간(=[day, day+100])이라
  *  보이는 범위와의 겹침 판정을 날짜 단위로 세울 수 있다. */
-function seg(day: number, price: number, qty: number): AskPeakSegment {
+function seg(day: number, price: number, qty: number): PeakWallSegment {
   return {
     time0: day as Time,
     time1: (day + 100) as Time,

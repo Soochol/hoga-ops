@@ -12,7 +12,7 @@
 
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
-import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
 import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
 
 /** 가상초 → 그 봉의 고가·저가. 캔들 배열이 수천 개라 호출부가 `useMemo` 로 붙든다
@@ -35,7 +35,7 @@ export function candleExtremesByVirtualSec(
  * 벽 가격으로 대체하면 "캔들 위" 라는 이 마커의 뜻 자체가 깨진다.
  */
 export function peakWallRankArrowsFromSegments(
-  segments: readonly AskPeakSegment[],
+  segments: readonly PeakWallSegment[],
   side: PeakWallLabelSide,
   extremes: ReadonlyMap<number, { high: number; low: number }>,
 ): PeakWallRankArrow[] {
