@@ -1,14 +1,18 @@
 /**
  * 캘린더 봉 창 헤더의 **「분봉으로」** — 지금 보고 있는 날짜를 그룹의 분봉 창에서 연다.
  *
- * ── 목적지를 **누르기 전에** 보여준다 ────────────────────────────────────
- * 착지 규칙은 「일봉 뷰의 가장 오른쪽 캔들」 하나다(2026-08-22 사용자 결정). 규칙이
- * 마우스와 무관해졌어도 이 미리보기는 남긴다 — 화면만 봐서는 그 날짜가 바로 안 읽히는
- * 경우가 있다: 우측 여백을 보고 있으면 목적지가 **최신 캔들**로 떨어지고, 캘린더 축은
- * 눈금이 촘촘해 오른쪽 끝 봉의 날짜를 세기 어렵다.
+ * ── 목적지를 **라벨에** 쓴다 ─────────────────────────────────────────────
+ * 착지 규칙은 「캘린더 뷰의 가장 오른쪽 칸」이다(2026-08-22 사용자 결정 + 주·월봉은 그
+ * 칸의 끝, `bucketEndMs`). 규칙이 마우스와 무관해도 목적지 표시는 필요하다 — 화면만
+ * 봐서는 그 날짜가 바로 안 읽힌다: 우측 여백을 보고 있으면 목적지가 **최신 캔들**로
+ * 떨어지고, 캘린더 축은 눈금이 촘촘해 오른쪽 끝 봉의 날짜를 세기 어렵다.
  *
- * 렌더마다 묻지 않는 이유: `readTargetMs` 는 차트 좌표를 읽는 명령형 호출이고, 이
- * 버튼은 SSE 틱마다 재렌더되는 헤더 안에 산다. 사용자는 어차피 호버한 뒤 누른다.
+ * ⚠ **종전엔 이것이 호버 툴팁뿐이었다.** 그 설계의 근거는 "`readTargetMs` 는 차트
+ * 좌표를 읽는 명령형 호출이라 렌더마다 부를 수 없다" 였는데, 대가가 셋이었다(2026-08-23
+ * 실측): 터치·펜에는 호버가 없어 **볼 방법이 아예 없고**, 네이티브 툴팁은 ~1초 지연에
+ * 스타일도 못 주며, 좁은 헤더에서는 버튼이 **20px 아이콘 하나**였다. 지금은 차트가
+ * 뷰포트 변화에만 rAF 로 묶어 날짜를 밀어 주므로(`onJumpDestinationChange`) 비용
+ * 없이 라벨에 쓴다 — SSE 틱은 이 경로를 태우지 않는다.
  *
  * ── 「갈 수 없다」는 여기서 말하지 않는다 ─────────────────────────────────
  * 이 버튼이 막는 것은 **보낼 곳이 없을 때**(그룹에 분봉 창 없음) 하나다. 그건
@@ -20,20 +24,23 @@
  * 여기서 하드코딩된 13개월로 막으면 **디스크 모드에서 갈 수 있는 곳을 못 간다고**
  * 말하게 된다 — `savedRangeNotice` 헤더가 경고한 그 실패다.
  */
-import { useCallback, useState } from 'react';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { COMPACT_PADDING_INLINE } from './chartHeaderCompact';
-import { jumpDateLabel } from '../../chart/timeframeJump';
-import { realMsToYyyymmdd, todayKstYyyymmdd } from '../liveDateTime';
+import { jumpBucketLabel } from '../../chart/timeframeJump';
+import { todayKstYyyymmdd } from '../liveDateTime';
+import type { CalendarTimeframe } from '../../state/livePage';
 
 export function JumpToMinuteButton({
-  readTargetMs,
+  timeframe,
+  destinationDate,
   hasMinuteWindow,
   onRun,
   showLabel = true,
 }: {
-  /** 이 창의 목적지를 읽는다(실시각 ms). 차트가 없거나 캔들이 없으면 null. */
-  readTargetMs: () => number | null;
+  /** 이 창의 봉 — 목적지를 **칸 단위로** 말하기 위해 필요하다(`jumpBucketLabel`). */
+  timeframe: CalendarTimeframe;
+  /** 목적지 칸의 **시작** KST 날짜(YYYYMMDD). 차트가 아직 없거나 캔들이 없으면 null. */
+  destinationDate: string | null;
   /** 같은 창번호 그룹에 분봉 창이 하나라도 있는가. */
   hasMinuteWindow: boolean;
   /** 실제 발행 — `g` 단축키와 **같은 함수**다(판정이 갈리지 않게 창이 소유한다). */
@@ -41,17 +48,9 @@ export function JumpToMinuteButton({
   /** false 면 아이콘만 — 창 헤더가 좁을 때 라벨을 접는다(#762 접힘 정책). */
   showLabel?: boolean;
 }) {
-  /** 목적지 YYYYMMDD. 아직 안 물어봤거나 캔들이 없으면 null. */
-  const [preview, setPreview] = useState<string | null>(null);
-
-  const readDate = useCallback(() => {
-    const toMs = readTargetMs();
-    return toMs === null || !Number.isFinite(toMs) ? null : realMsToYyyymmdd(toMs);
-  }, [readTargetMs]);
-  const refresh = useCallback(() => setPreview(readDate()), [readDate]);
-
-  const today = todayKstYyyymmdd();
-  const destination = preview === null ? null : jumpDateLabel(preview, today);
+  const destination = destinationDate === null
+    ? null
+    : jumpBucketLabel(timeframe, destinationDate, todayKstYyyymmdd());
 
   const title = !hasMinuteWindow
     ? '이 창번호에 분봉 창이 없습니다'
@@ -61,9 +60,8 @@ export function JumpToMinuteButton({
 
   const onClick = () => {
     if (!hasMinuteWindow) return;
-    // 호버 없이 도달하는 경로(키보드 활성화)가 있으므로 **여기서 다시 읽는다** —
-    // 호버 시점 값은 그 사이 사용자가 차트를 팬했으면 낡았다.
-    setPreview(readDate());
+    // 발행 시점의 목적지는 **차트가 다시 읽는다**(`runJump`) — 라벨은 rAF 로 묶인
+    // 표시값이라 마지막 프레임만큼 낡을 수 있고, 실제로 보낼 값과 갈리면 안 된다.
     onRun();
   };
 
@@ -71,8 +69,6 @@ export function JumpToMinuteButton({
     <IconToolbarButton
       data-testid="live-jump-to-minute-button"
       onClick={onClick}
-      onPointerEnter={refresh}
-      onFocus={refresh}
       disabled={!hasMinuteWindow}
       aria-label={
         destination === null || !hasMinuteWindow ? title : `분봉 창을 ${destination} 로 이동`
@@ -86,7 +82,16 @@ export function JumpToMinuteButton({
         </svg>
       )}
     >
-      {showLabel && <span>분봉으로</span>}
+      {showLabel && (
+        <span>
+          분봉으로
+          {/* 목적지는 **덜 강한 톤**으로 — 동사가 주인공이고 날짜는 그 대상이다.
+              접힘(아이콘만)에서는 title 만 남는다(#762 폭 예산). */}
+          {destination !== null && (
+            <span style={{ color: 'var(--fg-muted)', marginInlineStart: 4 }}>{destination}</span>
+          )}
+        </span>
+      )}
     </IconToolbarButton>
   );
 }

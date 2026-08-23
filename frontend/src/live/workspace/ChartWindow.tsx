@@ -56,7 +56,11 @@ import {
 } from './windowWarningsSource';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
 import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButton';
-import { useLivePageStore, isMinuteTimeframe } from '../../state/livePage';
+import {
+  useLivePageStore,
+  isMinuteTimeframe,
+  type CalendarTimeframe,
+} from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
 import { savedRangeNotice } from '../savedRangeNotice';
@@ -77,9 +81,10 @@ import {
   LIVE_HEADER_FOLD,
 } from './chartHeaderCompact';
 import { JumpToMinuteButton } from './JumpToMinuteButton';
+import type { JumpRange } from '../minuteJumpDestination';
 import { MinuteJumpChip } from './MinuteJumpChip';
 import { canPublishTimeframeJump } from '../../chart/timeframeJump';
-import { registerJumpRunner } from './jumpControls';
+import { jumpReceiverIds, registerJumpRunner } from './jumpControls';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import type { MinuteJumpState } from '../useTimeframeJump';
 import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
@@ -374,7 +379,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   ));
   // 차트 좌표와 캔들 배열은 `LiveChartRoot` 안에만 있다 — 헤더가 직접 계산할 수
   // 없어 등록으로 받는다(`captureViewport` 와 같은 패턴).
-  const jumpSourceRef = useRef<() => number | null>(() => null);
+  const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
+  /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
+  const [jumpDestination, setJumpDestination] = useState<string | null>(null);
   const [minuteJump, setMinuteJump] = useState<{
     state: MinuteJumpState | null;
     clear: () => void;
@@ -383,14 +390,26 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 단축키는 보내는" 상태가 생기고, 그 어긋남은 눌러 보기 전엔 안 보인다.
   const runJump = useCallback(() => {
     if (!hasMinuteWindow) return;
-    const toMs = jumpSourceRef.current();
+    const range = jumpSourceRef.current();
     // 「그 날짜는 데이터가 없다」는 여기서 막지 않는다 — 하한을 아는 것은 소비하는
     // 분봉 창뿐이고(모드에 따라 갈린다, #1497) 이 창은 항상 `null` 을 본다. 보내고,
     // 갈 수 없으면 그 창의 칩이 사유를 말한다.
-    if (toMs === null || !Number.isFinite(toMs)) return;
-    useLiveCursorStore.getState().requestTimeframeJump(toMs, {
+    if (range === null
+      || !Number.isFinite(range.fromMs) || !Number.isFinite(range.toMs)) return;
+    useLiveCursorStore.getState().requestTimeframeJump(range.fromMs, range.toMs, {
       windowId: win.id, group: win.group, code: view.code, timeframe: view.timeframe,
     });
+    // 결과는 **다른 창**에서 일어난다. 그 창이 가려져 있으면 누른 쪽에서는 아무 일도
+    // 안 일어난 것처럼 보인다 — 실측(2026-08-23): 「창 추가」 기본 배치가 기존 분봉 창
+    // 위에 겹쳐(일봉 404×261 @97,186 vs 분봉 711×596 @13,99) 칩도 뷰포트 이동도
+    // 눈에 안 들어왔다. 그래서 수신 창을 앞으로 올린다.
+    //
+    // ⚠ 이 모델에서 **올리기 = 포커스**다(`focusedId = zOrder 끝`). 즉 이 조작 뒤
+    // `g`·Shift+1~4 의 대상이 분봉 창으로 넘어간다 — 결과를 보고 있는 창이 포커스인
+    // 것이 자연스러우므로 수용한다. 여럿이면 zOrder 순으로 올려 **상대 순서를 보존**한다.
+    const ws = useWorkspaceStore.getState();
+    jumpReceiverIds(ws.windows, ws.zOrder, win.id, win.group)
+      .forEach((id) => ws.focusWindow(id));
   }, [hasMinuteWindow, win.id, win.group, view.code, view.timeframe]);
   // `g` 는 셸이 포커스 창을 정하고 실행은 그 창이 한다 — 목적지가 차트 좌표라
   // 스토어를 통해서는 도달할 수 없다(`jumpControls` 헤더).
@@ -691,7 +710,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               고쳤을 때 예산이 조용히 깨진다. */}
           {canJump && showsHeaderStateIcons(headerFold) && (
             <JumpToMinuteButton
-              readTargetMs={() => jumpSourceRef.current()}
+              timeframe={view.timeframe as CalendarTimeframe}
+              destinationDate={jumpDestination}
               hasMinuteWindow={hasMinuteWindow}
               onRun={runJump}
               showLabel={!headerFold.compactActions}
@@ -763,6 +783,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               restoreViewport={savedRangeViewport}
               savedRangeFromDate={savedRange?.fromDate ?? null}
               onJumpSourceReady={(read) => { jumpSourceRef.current = read; }}
+              onJumpDestinationChange={setJumpDestination}
               onMinuteJumpChange={setMinuteJump}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}

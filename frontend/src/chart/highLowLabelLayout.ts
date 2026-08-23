@@ -136,6 +136,10 @@ export function wallLabelAvoidRect(
   };
 }
 
+/**
+ * 극값 라벨 칩 한 개의 배치. `y` 는 **극값 봉의 y**(dot 위치, `priceToCoordinate` 결과)로
+ * 두 역할을 겸한다 — pane 크기를 모를 때의 폴백 좌표이자, 아래 **캔들 상한**의 기준선이다.
+ */
 export function placeExtremeLabel(
   preferred: ExtremeLabelPlace,
   x: number,
@@ -154,6 +158,8 @@ export function placeExtremeLabel(
 
   // 라벨은 가격이 아니라 pane 가장자리에 고정한다: 고가('above')=상단, 저가('below')=하단.
   // 반전 없음 — dot 은 극값 가격 위치에 남고 렌더 단 리더선이 dot↔라벨을 잇는다.
+  // 가장자리는 **출발점**이고, 아래에서 회피 push(안쪽) 와 캔들 상한(바깥쪽)이 순서대로
+  // 앵커를 옮긴다.
   const place = preferred;
   const minY = LABEL_EDGE_PAD_PX;
   const maxY = paneHeight - LABEL_EDGE_PAD_PX;
@@ -187,6 +193,26 @@ export function placeExtremeLabel(
     if (Math.abs(anchorY - edgeAnchorY) > paneHeight * MAX_AVOID_SHIFT_RATIO) {
       anchorY = edgeAnchorY;
     }
+  }
+
+  // **캔들 상한** — 라벨 박스가 극값 봉의 y(=dot, 인자 `y`)를 넘어 캔들 쪽으로 파고드는
+  // 것을 되돌린다. 라벨 x 는 극값 봉에 중심 정렬돼 있고 뷰포트의 다른 봉은 정의상 그보다
+  // 낮으므로(저가 라벨이면 높으므로), **라벨 가로 구간의 캔들 스카이라인은 `y` 그 자체**다
+  // — 봉을 스캔하지 않고 부등식 하나로 "라벨이 캔들을 덮지 않는다" 가 성립한다(이 지표는
+  // 매 프레임 전캔들을 이미 한 번 훑으므로 패스를 늘리지 않는 것이 중요하다).
+  // 이 클램프가 없으면 위 회피 push 가 라벨을 캔들 한복판까지 밀어 넣는다 — push 방향이
+  // 가장자리→pane 안쪽, 즉 **캔들 쪽**이고 상한이 pane 높이의 30% 이기 때문이다.
+  // 자리가 물리적으로 없으면(레전드가 두꺼워 상한 위로 못 올라가는 경우) 아래 pane 클램프가
+  // 라벨을 가장자리로 되돌린다 → **레전드를 덮고 캔들을 살린다**(2026-08-23 사용자 결정).
+  // 캔들이 pane 가장자리에 바싹 붙은 극단에서는 그 복귀조차 캔들 위이지만, 그때는 어떤
+  // 배치도 겹침을 피할 수 없다.
+  if (Number.isFinite(y)) {
+    const candleAnchorLimit = place === 'above'
+      ? y - LABEL_AVOID_GAP_PX - LABEL_HEIGHT_PX
+      : y + LABEL_AVOID_GAP_PX + LABEL_HEIGHT_PX;
+    anchorY = place === 'above'
+      ? Math.min(anchorY, candleAnchorLimit)
+      : Math.max(anchorY, candleAnchorLimit);
   }
 
   // 라벨 박스 전체가 pane 안에 머물도록 앵커 클램프.

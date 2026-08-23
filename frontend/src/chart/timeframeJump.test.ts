@@ -14,7 +14,9 @@ const DAILY_ORIGIN: SidebarCursorOrigin = {
 };
 
 function publication(over: Partial<JumpPublication> = {}): JumpPublication {
-  return { toMs: 1_700_000_000_000, seq: 1, origin: DAILY_ORIGIN, ...over };
+  return {
+    fromMs: 1_700_000_000_000, toMs: 1_700_086_399_999, seq: 1, origin: DAILY_ORIGIN, ...over,
+  };
 }
 
 /** 게이트 기본 인자 — 받는 쪽(같은 그룹·같은 종목의 분봉 창). */

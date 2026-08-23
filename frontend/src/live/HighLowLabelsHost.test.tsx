@@ -42,7 +42,6 @@ function renderHost() {
       bundle={bundle}
       axis={axis}
       paneSeries={paneSeries}
-      timeframe="1m"
     />,
   );
   const prim = attachPrimitive.mock.calls[0]?.[0] as HighLowLabelsPrimitive | undefined;

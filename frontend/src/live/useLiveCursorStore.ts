@@ -39,9 +39,24 @@ interface State {
    *
    * 그래서 **지우지 않는 것이 기본**이다. 소비 창은 자기가 적용한 seq 를 기억하므로
    * 슬롯에 값이 남아 있어도 두 번 움직이지 않고, 늦게 마운트된 창은 baseline seq
-   * 로 옛 명령을 무시한다. 발행 창이 닫힐 때만 `clearJumpRequestFrom` 이 걷는다.
+   * 로 옛 명령을 무시한다.
+   *
+   * ⚠ **크로스헤어 정리(`resetCursorFrom`)는 이 채널을 건드리지 않는다** (#1506).
+   * 종전엔 그것이 `resetCursor()` 로 위임하면서 이 슬롯까지 비웠고, 커서 발행자가
+   * 없으면(마우스가 차트 밖) 주인 판정을 무조건 통과했다 — 발행 창이 봉을 바꾸기만
+   * 해도 진행 중인 남의 점프가 사라졌다.
    */
   jumpRequest: JumpPublication | null;
+  /**
+   * 마지막으로 매긴 점프 `seq`. **읽는 쪽은 없다** — 발행 카운터다.
+   *
+   * 슬롯이 아니라 **스토어 수명**을 따르는 것이 요점이다(#1506). 종전엔
+   * `(prev?.seq ?? 0) + 1` 이라 슬롯이 비워질 때마다 1 로 되감겼고, 소비 창의 래치
+   * (`settledSeqRef`)는 그대로라 **재사용된 seq 의 명령이 조용히 무시**됐다. 더
+   * 나쁜 것은 같은 비교가 칩을 `landed` 로 만들어, 가지 않은 곳에 도착했다고
+   * 말한 것이다.
+   */
+  jumpSeqLast: number;
   setCursor: (t: number) => void;
   setSidebarCursor: (t: number, origin?: SidebarCursorOrigin | null) => void;
   /** 창 간 크로스헤어 동기화 채널 — 즉시 발행 + origin. 아래 주석 참조. */
@@ -53,7 +68,9 @@ interface State {
   ) => void;
   /** 점프 명령 발행. `seq` 는 스토어가 매긴다 — 기간 동기화와 같은 이유(발행자가
    *  세면 창마다 자기 카운터를 갖게 되어 소비자의 래치·stale 판정이 깨진다). */
-  requestTimeframeJump: (toMs: number, origin: SidebarCursorOrigin) => void;
+  requestTimeframeJump: (
+    fromMs: number, toMs: number, origin: SidebarCursorOrigin,
+  ) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
@@ -61,15 +78,45 @@ interface State {
   clearSyncCursorFrom: (windowId: string | null) => void;
   /** 발행 창이 닫힐 때만 비운다(언마운트 정리). 소유자 가드는 커서와 같다. */
   clearSyncRangeFrom: (windowId: string | null) => void;
-  /** 발행 창이 닫힐 때만 비운다. 소유자 가드는 위와 같다. */
+  /**
+   * 발행 창이 닫힐 때 비우는 용도. 소유자 가드는 위와 같다.
+   *
+   * ⚠ **현재 프로덕션 호출처가 없다.** 점프 슬롯은 남겨 두는 것이 기본이라(위
+   * `jumpRequest` 절) 실제로 걷는 경로가 생기지 않았다. 지우지 않고 두는 이유는
+   * 창 정리에서 이 채널을 걷어야 할 때 **`resetCursor` 로 우회하지 않도록** 문을
+   * 열어 두기 위해서다 — 그 우회가 곧 #1506 이었다.
+   */
   clearJumpRequestFrom: (windowId: string | null) => void;
   restoreCursor: () => void;
   /** 발행자만 자기 것을 지운다. 차트 언마운트·재생성 정리 경로 전용. */
   resetCursorFrom: (windowId: string | null) => void;
-  /** ⚠ 소유자를 보지 않고 **전 채널을 지운다**. 테스트 초기화 전용 —
-   *  프로덕션에서는 `resetCursorFrom` 을 쓸 것(이 함수를 창 정리 경로에 두면
-   *  옆 창의 teardown 이 호버 중인 창의 스팟을 죽인다. 아래 소유자 절 참조). */
+  /** ⚠ 소유자를 보지 않고 **점프를 포함한 전 채널을 지운다**. 테스트 초기화 전용 —
+   *  프로덕션에서는 `resetCursorFrom` 을 쓸 것(이 함수를 창 정리 경로에 두면 옆 창의
+   *  teardown 이 호버 중인 창의 스팟을 죽이고, 남의 점프 명령까지 지운다 — 후자가
+   *  #1506 이었다. 아래 소유자 절 참조). */
   resetCursor: () => void;
+}
+
+/**
+ * 크로스헤어·기간 채널의 빈 값. **점프는 포함하지 않는다**(#1506).
+ *
+ * 상수로 둔 이유는 `resetCursor` 주석이 경고한 누수를 **구조적으로** 막기 위해서다:
+ * 조기반환 가드가 이 키들을 그대로 돌므로 "지우는 필드 하나가 가드에서 빠지는" 조합이
+ * 애초에 만들어지지 않는다.
+ */
+const CLEARED_CURSOR_CHANNELS = {
+  cursorMs: null,
+  lastCursorMs: null,
+  sidebarCursorMs: null,
+  sidebarCursorOrigin: null,
+  syncCursorMs: null,
+  syncCursorOrigin: null,
+  syncRange: null,
+} as const;
+
+function cursorChannelsCleared(s: State): boolean {
+  return (Object.keys(CLEARED_CURSOR_CHANNELS) as (keyof typeof CLEARED_CURSOR_CHANNELS)[])
+    .every((k) => s[k] === null);
 }
 
 /** 봉 단위 뷰가 같은가 — 발행 dedup 이 시각만 보면 여백 구간에서 멎는다. */
@@ -147,6 +194,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
   syncCursorOrigin: null,
   syncRange: null,
   jumpRequest: null,
+  jumpSeqLast: 0,
   setCursor: (t) => {
     const { cursorMs, lastCursorMs } = get();
     if (cursorMs === t && lastCursorMs === t) return; // identity-stable, no-op rerender
@@ -176,13 +224,16 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     }
     set({ syncRange: { fromMs, toMs, bars, seq: (prev?.seq ?? 0) + 1, origin } });
   },
-  requestTimeframeJump: (toMs, origin) => {
+  requestTimeframeJump: (fromMs, toMs, origin) => {
     // **같은 값이어도 no-op 하지 않는다.** 다른 채널은 값이 안 바뀌면 건너뛰지만
     // 이건 명령이라 "같은 날짜로 한 번 더" 가 유효한 요청이다 — 사용자가 분봉을
     // 팬해서 다른 곳을 보다가 같은 버튼을 다시 누르면 되돌아와야 한다. seq 가
     // 올라야 소비 창의 래치가 풀린다.
-    const prev = get().jumpRequest;
-    set({ jumpRequest: { toMs, seq: (prev?.seq ?? 0) + 1, origin } });
+    //
+    // seq 는 **슬롯이 아니라 스토어 수명**을 따른다(#1506) — `prev?.seq` 에서 세면
+    // 슬롯이 비워질 때마다 1 로 되감겨 소비 창의 래치와 충돌한다.
+    const seq = get().jumpSeqLast + 1;
+    set({ jumpRequest: { fromMs, toMs, seq, origin }, jumpSeqLast: seq });
   },
   clearSyncRangeFrom: (windowId) => {
     const cur = get().syncRange;
@@ -224,23 +275,25 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     // teardown 이 내 `cursorMs` 를 지우는 것도 스팟이 지워지는 것과 같은 결함이다.
     const owner = s.sidebarCursorOrigin ?? s.syncCursorOrigin;
     if (!ownedBy(owner, windowId)) return;
-    get().resetCursor();
+    // ⚠ **`resetCursor()` 로 위임하지 않는다**(#1506). 그것은 점프까지 지우는데,
+    // 위 주인 판정은 **커서 origin 만** 본다 — 커서 발행자가 없으면(마우스가 차트
+    // 밖) 무조건 통과하므로, 발행 창이 봉을 바꾸며 자기 정리 경로를 태우기만 해도
+    // 다른 창에서 진행 중이던 점프가 사라졌다. 점프의 주인은 여기서 판정되지 않으니
+    // 여기서 지울 수도 없다.
+    if (cursorChannelsCleared(s)) return;
+    set({ ...CLEARED_CURSOR_CHANNELS });
   },
   resetCursor: () => {
     const s = get();
     // ⚠ 조기 반환 가드는 **아래 set 이 비우는 필드를 전부** 봐야 한다. 한 필드라도
     // 빠지면 그 필드만 남은 상태에서 reset 이 no-op 이 되어 다음 테스트로 샌다
-    // (`syncRange` 를 추가하며 실제로 그렇게 새서 스펙 하나가 빨개졌다).
-    if (s.cursorMs === null && s.lastCursorMs === null
-      && s.sidebarCursorMs === null && s.sidebarCursorOrigin === null
-      && s.syncCursorMs === null && s.syncCursorOrigin === null
-      && s.syncRange === null
-      && s.jumpRequest === null) return;
-    set({
-      cursorMs: null, lastCursorMs: null, sidebarCursorMs: null, sidebarCursorOrigin: null,
-      syncCursorMs: null, syncCursorOrigin: null, syncRange: null,
-      jumpRequest: null,
-    });
+    // (`syncRange` 를 추가하며 실제로 그렇게 새서 스펙 하나가 빨개졌다). 커서·기간
+    // 쪽은 `CLEARED_CURSOR_CHANNELS` 가 그 대응을 구조적으로 보장하고, 점프 두
+    // 필드만 여기서 손으로 맞춘다.
+    if (cursorChannelsCleared(s) && s.jumpRequest === null && s.jumpSeqLast === 0) return;
+    // 발행 카운터도 되돌린다 — 테스트 초기화 전용이라 이것이 옳다(프로덕션에서
+    // 되돌리면 그것이 곧 #1506 의 seq 재사용이다).
+    set({ ...CLEARED_CURSOR_CHANNELS, jumpRequest: null, jumpSeqLast: 0 });
   },
 }));
 
