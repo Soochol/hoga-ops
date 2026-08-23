@@ -39,7 +39,7 @@ import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
 import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../chart/timeframeJump';
 import { useTimeframeJump, type MinuteJumpState } from './useTimeframeJump';
-import type { Candle } from '../api/types';
+import type { Candle, RangeSegment } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
@@ -90,19 +90,18 @@ import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
-import LiveAskPeakSegments from './LiveAskPeakSegments';
-import { buildPeakWallOverlaySegments } from './peakWallSegments';
+import LivePeakWallSegments from './LivePeakWallSegments';
+import { usePeakWallRender } from './usePeakWallRender';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
-import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
-import { usePeakMaFilter } from './peakWallMaFilter';
 import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
 /** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
  *  memo 를 매번 깨뜨린다. */
+// 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
+// (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_WALL_SURGE: readonly never[] = [];
-import LiveBidPeakSegments from './LiveBidPeakSegments';
 import {
   deriveDayAskPeaksIncrementalAsOf,
 } from './useDayAskPeaks';
@@ -215,6 +214,9 @@ const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
 const EMPTY_CANDLES: readonly Candle[] = [];
+// 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
+// (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
+const EMPTY_RANGE_SEGMENTS: readonly RangeSegment[] = [];
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
 /** Leading+trailing throttle window for sidebarCursorMs publishes. The first
  * hover after a quiet window publishes immediately; while the pointer keeps
@@ -225,12 +227,8 @@ const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
 /** 번들이 아직 없을 때 일봉 MA 필터에 넘기는 빈 캔들 — 매 렌더 새 배열을 만들면 훅의
  *  memo 가 매번 깨진다. */
 const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
-
-const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 // 회피 입력의 빈 상태 — **공유 상수**여야 memo 결과가 참조로 안정되어 하위 스냅샷
 // effect 가 매 렌더 다시 돌지 않는다(빈 배열 리터럴은 매번 새 참조다).
-const EMPTY_AVOID_SEGMENTS: readonly PeakWallSegment[] = [];
-const EMPTY_AVOID_ARROWS: readonly PeakWallRankArrow[] = [];
 /** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
  *
  * ## 왜 캡이 (다시) 있는가
@@ -344,12 +342,12 @@ interface Props {
   /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치(줌+스크롤)로
    *  복원한다. optional + 기본 null이라 기존 단일-번들 호출부/테스트는 무변경으로 동작. */
   restoreViewport?: TabViewport | null;
-  /** LivePage의 useDayAskPeaks 결과(거래일별) — LiveAskPeakSegments에 전달. */
+  /** LivePage의 useDayAskPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayAskPeaks?: readonly AskPeak[];
   /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
   /** Raw backend today ask-peak payload, used only for cutoff-aware live recomputation. */
   todayAskPeakInput?: LiveTodayAskPeak | null;
-  /** LivePage의 useDayBidPeaks 결과(거래일별) — LiveBidPeakSegments에 전달. */
+  /** LivePage의 useDayBidPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayBidPeaks?: readonly BidPeak[];
   /** Backend today all-price bid peak — optional so existing tests/callers omit it safely. */
   /** Raw backend today bid-peak payload, used only for cutoff-aware live recomputation. */
@@ -1799,22 +1797,10 @@ export function LiveChartRoot({
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → PaneId 매핑에 쓰는 최신 spec 목록.
   const paneSpecsRef = useRef<readonly BoundPaneSpec[]>([]);
-  const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled);
-  const bidPeakEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
-  const askPeakWallHidden = useWindowIndicator((s) => s.askPeakHidden);
-  const bidPeakWallHidden = useWindowIndicator((s) => s.bidPeakHidden);
-  const askPeakLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
-  const askPeakRankArrowEnabled = useActivePrefs((s) => s.askPeakRankArrowEnabled);
-  const bidPeakRankArrowEnabled = useActivePrefs((s) => s.bidPeakRankArrowEnabled);
-  const bidPeakLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
-  const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
-  const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   // 회피 rect 도 선·도킹 라벨과 같은 MA 필터를 타야 한다 — 안 그러면 필터로 사라진
   // 라벨을 피해 고저 극값 라벨이 pane 안쪽으로 밀리는 유령 회피가 남는다.
-  const askPeakMaFilter = usePeakMaFilter('ask');
-  const bidPeakMaFilter = usePeakMaFilter('bid');
   // 일봉 MA 필터는 **여기 한 곳에서만** 만든다 — 데이터 fetch 가 걸린 훅이라 소비처(선 2 ·
   // 도킹 라벨 · 회피 rect)마다 부르면 쿼리가 그만큼 는다. 같은 참조를 셋에 내려보낸다.
   const peakDailyMaInput = {
@@ -2118,82 +2104,53 @@ export function LiveChartRoot({
     };
   }, [chart, setPaneStretch]);
 
-  // 고저 극값 라벨이 피할 매도/매수 최대벽 도킹 라벨 입력(가격·선 끝 시각·텍스트 —
-  // 픽셀 아님). 좌표 변환은 HighLowLabelsPrimitive.draw 가 매 프레임 수행한다:
-  // priceToCoordinate 는 가격축 스케일 스냅샷이라, 여기(데이터-deps memo)서 구우면
-  // 오토스케일·팬/줌·pane 토글로 축이 리스케일돼도 재계산되지 않아 회피 rect 가 실제
-  // 칩 위치와 어긋난다. 게이트는 도킹 라벨이 **실제로 그려지는** 조건과 동일해야 한다
-  // (LivePeakWallDockedLabels 미러: enabled && !hidden && labelEnabled) — 안 그려지는
-  // 라벨을 피해 극값 라벨이 pane 안쪽으로 밀리던 유령 회피의 수정. 가시범위/rank 컷은
-  // 렌더 단 2D 교차 검사가 흡수한다(화면 밖 칩 rect 는 극값 라벨과 교차하지 않음).
-  // 회피 입력의 **공유 원천**. 게이트는 「지표가 켜져 있고 눈으로 숨기지 않음」까지만
-  // 두고, 라벨/화살표의 개별 토글은 아래 두 memo 가 각자 건다 — 그래야 세그먼트 계산이
-  // 표면 수만큼 늘지 않는다(이 파일은 이미 오버레이와 별개의 두 번째 계산 사본이다).
-  const avoidAskWallSegments = useMemo(() => (
-    cb && isMinuteTimeframe(timeframe) && askPeakEnabled && !askPeakWallHidden
-      ? buildPeakWallOverlaySegments({
-        peaks: renderDayAskPeaks,
-        segments: cb.segments,
-        candles: cb.candles,
-        axis,
-        todayKst,
-        baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-        intraMax: askPeakIntraMax,
-        visibleTimeCutoff: askVisibleTimeCutoffForRender,
-        maFilter: askPeakMaFilter,
-        dailyMaFilter: askPeakDailyMaFilter,
-      })
-      : EMPTY_AVOID_SEGMENTS
-  ), [
-    askPeakDailyMaFilter,
-    askPeakEnabled,
-    askPeakIntraMax,
-    askPeakMaFilter,
-    askPeakWallHidden,
-    askVisibleTimeCutoffForRender,
+  // ── 최대벽 렌더의 **단일 소스** ───────────────────────────────────────────
+  //
+  // 종전엔 같은 계산이 여섯 곳에서 각자 돌았고(선 오버레이 2 · 도킹 라벨 2 · 회피 2),
+  // 그 중 **회피 경로만 `allPriceRankLimit` 을 빠뜨려** 기본값 1 로 돌고 있었다 —
+  // 「체결된 벽 표시 개수」를 2·3 으로 둔 사용자는 2·3번째 벽이 그려지는데도 고저 극값
+  // 라벨이 그것들을 피하지 않았다. 사유·불변식은 `usePeakWallRender` 머리말 참조.
+  const peakWallApplicable = !!cb && isMinuteTimeframe(timeframe);
+  const askWall = usePeakWallRender({
+    side: 'ask',
+    peaks: renderDayAskPeaks,
+    segments: cb?.segments ?? EMPTY_RANGE_SEGMENTS,
+    candles: cb?.candles ?? EMPTY_CANDLES,
     axis,
-    cb,
-    renderDayAskPeaks,
-    timeframe,
     todayKst,
-  ]);
-
-  const avoidBidWallSegments = useMemo(() => (
-    cb && isMinuteTimeframe(timeframe) && bidPeakEnabled && !bidPeakWallHidden
-      ? buildPeakWallOverlaySegments({
-        peaks: renderDayBidPeaks,
-        segments: cb.segments,
-        candles: cb.candles,
-        axis,
-        todayKst,
-        baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
-        intraMax: bidPeakIntraMax,
-        visibleTimeCutoff: bidVisibleTimeCutoffForRender,
-        maFilter: bidPeakMaFilter,
-        dailyMaFilter: bidPeakDailyMaFilter,
-      })
-      : EMPTY_AVOID_SEGMENTS
-  ), [
+    applicable: peakWallApplicable,
+    visibleTimeCutoff: askVisibleTimeCutoffForRender,
+    dailyMaFilter: askPeakDailyMaFilter,
+  });
+  const bidWall = usePeakWallRender({
+    side: 'bid',
+    peaks: renderDayBidPeaks,
+    segments: cb?.segments ?? EMPTY_RANGE_SEGMENTS,
+    candles: cb?.candles ?? EMPTY_CANDLES,
     axis,
-    bidPeakDailyMaFilter,
-    bidPeakEnabled,
-    bidPeakIntraMax,
-    bidPeakMaFilter,
-    bidPeakWallHidden,
-    bidVisibleTimeCutoffForRender,
-    cb,
-    renderDayBidPeaks,
-    timeframe,
     todayKst,
-  ]);
+    applicable: peakWallApplicable,
+    visibleTimeCutoff: bidVisibleTimeCutoffForRender,
+    dailyMaFilter: bidPeakDailyMaFilter,
+  });
+  /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
+   *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
+  const peakWallCandleExtremes = useMemo(
+    () => candleExtremesByVirtualSec(cb?.candles ?? EMPTY_CANDLES, axis),
+    [axis, cb?.candles],
+  );
 
+  // 고저 극값 라벨이 피할 도킹 라벨 입력(가격·선 끝 시각·텍스트 — 픽셀 아님). 좌표 변환은
+  // HighLowLabelsPrimitive.draw 가 매 프레임 수행한다: priceToCoordinate 는 가격축 스케일
+  // 스냅샷이라, 여기(데이터-deps memo)서 구우면 오토스케일·팬/줌·pane 토글로 축이
+  // 리스케일돼도 재계산되지 않아 회피 rect 가 실제 칩 위치와 어긋난다.
   const highLowAvoidWallLabels = useMemo(() => {
     const wallSegments: (PeakWallSegment & { side: PeakWallLabelSide })[] = [
-      ...(askPeakLabelEnabled
-        ? avoidAskWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
+      ...(askWall.labels
+        ? askWall.segments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
-      ...(bidPeakLabelEnabled
-        ? avoidBidWallSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
+      ...(bidWall.labels
+        ? bidWall.segments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
     // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
@@ -2214,28 +2171,23 @@ export function LiveChartRoot({
       side: s.side,
       label: s.label,
     }));
-  }, [askPeakLabelEnabled, avoidAskWallSegments, avoidBidWallSegments, bidPeakLabelEnabled]);
+  }, [askWall.labels, askWall.segments, bidWall.labels, bidWall.segments]);
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
   // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.
-  const highLowAvoidRankArrows = useMemo(() => {
-    if (!cb) return EMPTY_AVOID_ARROWS;
-    const extremes = candleExtremesByVirtualSec(cb.candles, axis);
-    return [
-      ...(askPeakRankArrowEnabled
-        ? peakWallRankArrowsFromSegments(avoidAskWallSegments, 'ask', extremes)
-        : []),
-      ...(bidPeakRankArrowEnabled
-        ? peakWallRankArrowsFromSegments(avoidBidWallSegments, 'bid', extremes)
-        : []),
-    ];
-  }, [
-    askPeakRankArrowEnabled,
-    avoidAskWallSegments,
-    avoidBidWallSegments,
-    axis,
-    bidPeakRankArrowEnabled,
-    cb,
+  const highLowAvoidRankArrows = useMemo(() => [
+    ...(askWall.arrows
+      ? peakWallRankArrowsFromSegments(askWall.segments, 'ask', peakWallCandleExtremes)
+      : []),
+    ...(bidWall.arrows
+      ? peakWallRankArrowsFromSegments(bidWall.segments, 'bid', peakWallCandleExtremes)
+      : []),
+  ], [
+    askWall.arrows,
+    askWall.segments,
+    bidWall.arrows,
+    bidWall.segments,
+    peakWallCandleExtremes,
   ]);
 
   const publishCursorHover = useCallback(
@@ -2643,42 +2595,26 @@ export function LiveChartRoot({
             />
           )}
           {isMinuteTimeframe(timeframe) && (
-            <LiveAskPeakSegments
+            <LivePeakWallSegments
               paneSeries={paneSeries}
-              axis={axis}
-              dayAskPeaks={renderDayAskPeaks}
-              segments={cb.segments}
-              candles={cb.candles}
-              todayKst={todayKst}
-              visibleTimeCutoff={askVisibleTimeCutoffForRender}
-              dailyMaFilter={askPeakDailyMaFilter}
+              side="ask"
+              wall={askWall}
+              candleExtremes={peakWallCandleExtremes}
             />
           )}
           {isMinuteTimeframe(timeframe) && (
-            <LiveBidPeakSegments
+            <LivePeakWallSegments
               paneSeries={paneSeries}
-              axis={axis}
-              dayBidPeaks={renderDayBidPeaks}
-              segments={cb.segments}
-              candles={cb.candles}
-              todayKst={todayKst}
-              visibleTimeCutoff={bidVisibleTimeCutoffForRender}
-              dailyMaFilter={bidPeakDailyMaFilter}
+              side="bid"
+              wall={bidWall}
+              candleExtremes={peakWallCandleExtremes}
             />
           )}
           {isMinuteTimeframe(timeframe) && (
             <LivePeakWallDockedLabels
               paneSeries={paneSeries}
-              axis={axis}
-              dayAskPeaks={renderDayAskPeaks}
-              dayBidPeaks={renderDayBidPeaks}
-              segments={cb.segments}
-              candles={cb.candles}
-              todayKst={todayKst}
-              askVisibleTimeCutoff={askVisibleTimeCutoffForRender}
-              bidVisibleTimeCutoff={bidVisibleTimeCutoffForRender}
-              askDailyMaFilter={askPeakDailyMaFilter}
-              bidDailyMaFilter={bidPeakDailyMaFilter}
+              askWall={askWall}
+              bidWall={bidWall}
             />
           )}
           {showTradeVolumePocOverlay && (

@@ -845,7 +845,7 @@ describe('LivePage shell', () => {
    * 계산 게이트의 토글 축 — 봉 축(바로 아래 'calendar timeframes')과 **교대 대조**를 이룬다.
    *
    * 이걸 지키지 않으면 최대벽을 한 번도 켠 적 없는 사용자가 매 flush(150ms)마다 `live.ob`
-   * 전량 스캔을 낸다. 화면에는 아무것도 안 그려지므로(렌더는 `LiveAskPeakSegments` 안에서
+   * 전량 스캔을 낸다. 화면에는 아무것도 안 그려지므로(렌더는 `LivePeakWallSegments` 안에서
    * `askPeakEnabled` 로 이미 게이트된다) 증상이 "차트가 그냥 무겁다" 로만 나타나고, 그래서
    * **테스트로만 잡힌다**. 백엔드 fetch 게이트(`planLiveRangeRequest` 의 `askPeaksEnabled`)와
    * 같은 술어를 쓰는지가 이 단언의 요지다.

@@ -75,7 +75,7 @@ type Props = {
 /** 캔들 시리즈에 호가벽 급증 마커를 붙인다.
  *
  * 생성은 series 핸들당 1회 — 봉·종목 전환에도 핸들이 유지되므로 매번 detach/attach 하지
- * 않는다(`LiveAskPeakSegments` 와 같은 수명 규칙).
+ * 않는다(`LivePeakWallSegments` 와 같은 수명 규칙).
  */
 function LiveWallSurgeMarkersImpl({ paneSeries, events, candles, axis }: Props): null {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
