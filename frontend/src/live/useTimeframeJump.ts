@@ -37,6 +37,11 @@ import type { VirtualAxis } from '../util/virtualAxis';
  * `out-of-retention` 이 따로 있는 이유: 그건 "아직 안 왔다" 가 아니라 **영영 안
  * 온다** 이고, 사용자가 할 수 있는 일도 다르다(기다림 vs 포기). 하나로 뭉치면
  * 칩이 영원히 "불러오는 중" 을 표시한다 — 침묵보다 나쁜 종류의 거짓말이다.
+ *
+ * `aborted` 도 같은 축에서 갈라져 나왔다. 종전엔 중단을 `landed` 에 뭉쳐서, 칩이 두
+ * 경우에 **모두 참인 것**(대상 날짜)밖에 말할 수 없었다 — 창이 움직인 적 없는데
+ * "이동했다" 고 하면 거짓이기 때문이다. 중단은 사용자 자신의 행동이라 구별할 수 있는
+ * 사실이므로 따로 말하고, 되돌릴 문(`retry`)을 준다.
  */
 export type MinuteJumpState = {
   /**
@@ -49,7 +54,15 @@ export type MinuteJumpState = {
    * 같은 모양이다.
    */
   date: string;
-  status: 'seeking' | 'landed' | 'out-of-retention';
+  status: 'seeking' | 'landed' | 'aborted' | 'out-of-retention';
+  /**
+   * `out-of-retention` 일 때 **이 창이 불러올 수 있는 가장 이른 날**(YYYYMMDD).
+   *
+   * 칩이 상수로 적던 「보유 기간(13개월)」을 대신한다. 그 문구는 이중으로 틀렸다 —
+   * 벤더 벽은 250일이고(`earliestAllowedMinuteDate`), 디스크 모드에는 벽 자체가 없다.
+   * 값을 상태가 나르면 두 모드에서 모두 맞고, 벽이 바뀌어도 문구가 따라온다.
+   */
+  floorDate?: string;
 };
 
 export type TimeframeJumpResult = {
@@ -63,6 +76,14 @@ export type TimeframeJumpResult = {
   backfillFromDate: string | null;
   /** 칩의 × — 이 창만 점프에서 풀고 라이브 엣지로 돌아간다. */
   clear: () => void;
+  /**
+   * 칩의 ↻ — 같은 목적지로 **다시** 보낸다(중단 뒤 되돌릴 문).
+   *
+   * 원래 발행(`origin`)을 그대로 재사용하므로 게이트 판정이 갈리지 않는다. 새 seq 가
+   * 매겨져 래치가 풀리는데, 그것이 안전한 것은 seq 가 단조 증가하기 때문이다 —
+   * #1508 이전에는 슬롯이 비워지면 되감겨 재발행이 옛 래치에 걸려 죽었다.
+   */
+  retry: () => void;
 };
 
 export function useTimeframeJump(params: {
@@ -209,6 +230,11 @@ export function useTimeframeJump(params: {
     };
   }, [containerRef, live, settle]);
 
+  const retry = useCallback(() => {
+    if (live === null) return;
+    useLiveCursorStore.getState().requestTimeframeJump(live.fromMs, live.toMs, live.origin);
+  }, [live]);
+
   const clear = useCallback(() => {
     if (live === null) return;
     setDismissedSeq(live.seq);
@@ -219,11 +245,19 @@ export function useTimeframeJump(params: {
 
   const state = useMemo<MinuteJumpState | null>(() => {
     if (live === null || targetDate === null) return null;
-    if (outOfRetention) return { date: targetDate, status: 'out-of-retention' };
+    if (outOfRetention) {
+      return {
+        date: targetDate,
+        status: 'out-of-retention',
+        ...(minuteScrollbackFloorDate === null ? {} : { floorDate: minuteScrollbackFloorDate }),
+      };
+    }
     if (settledSeq !== live.seq) return { date: targetDate, status: 'seeking' };
-    // 착지했으면 **앉은 봉의 날짜**를 말한다. 중단이면 앉은 봉이 없으니 상한 날짜다.
-    return { date: settledDate ?? targetDate, status: 'landed' };
-  }, [live, targetDate, outOfRetention, settledSeq, settledDate]);
+    // 앉은 봉이 없으면 중단이다 — 착지 경로만 날짜를 남긴다(`settle` 의 두 번째 인자).
+    if (settledDate === null) return { date: targetDate, status: 'aborted' };
+    // 착지했으면 **앉은 봉의 날짜**를 말한다.
+    return { date: settledDate, status: 'landed' };
+  }, [live, targetDate, outOfRetention, settledSeq, settledDate, minuteScrollbackFloorDate]);
 
   return {
     state,
@@ -233,5 +267,6 @@ export function useTimeframeJump(params: {
     // 되어 착지 대상인 그 칸의 봉이 영영 안 온다(`JumpPublication.fromMs` 주석).
     backfillFromDate: live !== null && !outOfRetention ? backfillDate : null,
     clear,
+    retry,
   };
 }

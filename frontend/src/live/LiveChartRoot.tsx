@@ -458,7 +458,11 @@ interface Props {
    */
   onJumpDestinationChange?: (bucketFromDate: string | null) => void;
   /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
-  onMinuteJumpChange?: (jump: { state: MinuteJumpState | null; clear: () => void }) => void;
+  onMinuteJumpChange?: (jump: {
+    state: MinuteJumpState | null;
+    clear: () => void;
+    retry: () => void;
+  }) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
   onCandleBasisHover?: (date: string | null) => void;
@@ -1141,10 +1145,12 @@ export function LiveChartRoot({
     myCode: code,
     allowCrossSymbol: jumpCrossSymbol,
   });
-  const { state: minuteJumpState, clear: clearMinuteJump } = minuteJump;
+  const { state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump } = minuteJump;
   useEffect(() => {
-    onMinuteJumpChange?.({ state: minuteJumpState, clear: clearMinuteJump });
-  }, [minuteJumpState, clearMinuteJump, onMinuteJumpChange]);
+    onMinuteJumpChange?.({
+      state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump,
+    });
+  }, [minuteJumpState, clearMinuteJump, retryMinuteJump, onMinuteJumpChange]);
 
   useViewportBackfill({
     chart,
