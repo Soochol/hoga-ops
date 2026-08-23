@@ -124,9 +124,10 @@ export const SIZE_TOKENS = {
   'list-row-min-h':     { rem: 1.5625,  baseIntentPx: 25, usage: 'Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density.' },
   'list-group-header-min-h': { rem: 1.8125, baseIntentPx: 29, usage: 'Shared list group-header min-height — watchlist/heatmap group headers align (29px @ the 1.0× dial; was ≈32px at 1.125×)' },
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
-  // 이름과 달리 /live 는 이 밴드를 쓰지 않는다(LiveStatusBar 폐지). 유일한 소비처는
-  // /study 의 StudyPage 헤더이고, 그마저 min-h-12(3rem)를 얹어 실효 높이는 이 토큰이
-  // 아니라 48px 다(1.125× 시절엔 54px — 둘 다 rem 이라 함께 움직인다).
+  // 이름과 달리 /live 는 이 밴드를 쓴 적이 없다(LiveStatusBar 폐지). 마지막 소비처는
+  // /study 의 헤더였고 그마저 min-h-12(3rem)를 얹어 실효 높이가 이 토큰이 아니라
+  // 48px 였다 — 즉 이 값은 **한 번도 화면을 정한 적이 없다**. 2026-08-23 그 페이지와
+  // 함께 소비처가 0 이 됐다.
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: '⚠ 소비처 0 — 유일한 소비자 WorkspaceHeader 가 /study 와 함께 삭제됐다(2026-08-23). 토큰 제거는 디자인 시스템 패스에서(DESIGN.md 소관이라 코드 삭제와 함께 처리하지 않았다).' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
   'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },

@@ -112,9 +112,9 @@ export interface ViewportBackfillArgs {
    * 아닌 분봉 창**(같은 기간만 함께 보는 창)인데, 그 창은 벤더를 읽으므로 벽이 옳다.
    * 즉 여기서 바뀌는 것은 **그 창이 디스크 모드일 때뿐**이다.
    *
-   * 미지정이면 `null`(무한)이다. `/study` 가 그 경로인데 무해하다 — 그 페이지는
-   * `historicalFromDate` 를 소비하는 쿼리가 없어 백필이 **inert**(fetch 0)이다
-   * (`StudyPage` 의 같은 주석).
+   * 미지정이면 `null`(무한)이다. `/study` 가 그 경로였는데 무해했다 — 그 페이지는
+   * `historicalFromDate` 를 소비하는 쿼리가 없어 백필이 **inert**(fetch 0)였다
+   * (2026-08-23 페이지 삭제로 이 경로의 소비자는 없다).
    */
   minuteScrollbackFloorDate?: string | null;
   /**
