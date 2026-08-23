@@ -77,16 +77,20 @@ const rangeSegments: RangeSegment[] = [
   { date: day, session_open_ms: open, session_close_ms: open + 180_000 },
 ];
 
+/** 팬·줌 구독 여부를 재기 위한 모듈 스코프 spy — `timeScale()` 이 호출마다 새 객체를
+ *  돌려주므로 안쪽에 `vi.fn()` 을 두면 호출 횟수를 못 센다. */
+const subscribeRangeSpy = vi.fn();
+
 function renderAskOverlay() {
   // 이 series 에는 primitive 가 둘 붙는다(세그먼트 + 순위 화살표) — 둘 다 모아 두고
-// 검사할 때 인스턴스로 골라낸다.
-const attached: unknown[] = [];
+  // 검사할 때 인스턴스로 골라낸다.
+  const attached: unknown[] = [];
   const chart = {
     timeScale: () => ({
       // 가상초 = ms / 1000 → 그날 구간은 [60, 240]. 범위가 그 날을 통째로 덮는다.
       getVisibleRange: () => ({ from: 60 as never, to: 240 as never }),
       options: () => ({ barSpacing: 12 }),
-      subscribeVisibleLogicalRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: subscribeRangeSpy,
       unsubscribeVisibleLogicalRangeChange: vi.fn(),
     }),
   } as unknown as IChartApi;
@@ -214,5 +218,36 @@ describe('LiveAskPeakSegments — 순위 화살표 배선', () => {
       expect(arrowsOnly(attached)[0].arrowsData()).toEqual([]);
       expect(segmentsOnly(attached)[0].segmentsData().length).toBeGreaterThan(0);
     });
+  });
+});
+
+/**
+ * **팬·줌을 구독하지 않는다**(2026-08-23).
+ *
+ * 종전엔 `visibleLogicalRangeChange` 마다 세그먼트를 통째로 다시 만들었다. 그 이유는
+ * 「보이는 영역 최대벽」 강조가 update 시점에 `getVisibleRange()` 를 읽었기 때문인데,
+ * 그 강조가 사라지면서(#1505) **이 계산에서 보이는 범위를 읽는 곳이 하나도 남지 않았다.**
+ * 매수 오버레이는 애초에 이 구독이 없었고 그래서 잘 돌았다 — 그 비대칭이 「필요 없다」의
+ * 증거였다.
+ *
+ * **막는 방향**: 구독이 되살아나 팬 프레임마다 전체 재계산이 돌아오는 것.
+ * **못 보는 것**: 팬에 따라가야 하는 것들(레전드 셀 · 순위 화살표 · 고저 라벨 회피)이
+ * 실제로 따라가는지 — 그건 **draw 시점 랭킹**이라 구독과 무관하고 각자의 테스트가 본다.
+ *
+ * ⚠ 범위를 읽는 입력을 다시 넣는다면 구독도 같이 되살려야 하고, 그때 이 테스트를 뒤집는다.
+ */
+describe('LiveAskPeakSegments — 팬·줌 재계산 없음', () => {
+  beforeEach(() => {
+    subscribeRangeSpy.mockClear();
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
+      useLivePageStore.setState({ askPeakEnabled: true, askPeakHidden: false });
+    });
+  });
+
+  it('visibleLogicalRangeChange 를 구독하지 않는다', async () => {
+    const attached = renderAskOverlay();
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    expect(subscribeRangeSpy).not.toHaveBeenCalled();
   });
 });

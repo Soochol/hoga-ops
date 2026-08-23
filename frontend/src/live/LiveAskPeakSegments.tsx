@@ -26,7 +26,6 @@ import {
   type PeakWallSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
-import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -182,24 +181,19 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
+  //
+  // **팬·줌은 구독하지 않는다**(2026-08-23 제거). 종전엔 `visibleLogicalRangeChange` 마다
+  // 세그먼트를 통째로 다시 만들었는데, 그건 「보이는 영역 최대벽」 강조가 update 시점에
+  // `getVisibleRange()` 를 읽었기 때문이다. 그 강조가 사라지면서(#1505) **이 계산에서
+  // 보이는 범위를 읽는 곳이 하나도 남지 않았다** — 유일한 범위 의존 입력인
+  // `visibleTimeCutoff` 는 prop 이고, 그 구독은 `LiveChartRoot` 에 따로 있다. 매수 쪽은
+  // 애초에 이 구독이 없었고 그래서 잘 돌았다.
+  //
+  // ⚠ 범위를 읽는 입력을 다시 넣으면 구독도 같이 되살려야 한다 — 지금 팬에 따라가는 것들
+  // (레전드 셀·순위 화살표·고저 라벨 회피)은 **draw 시점 랭킹**이라 구독이 필요 없다.
   useEffect(() => {
     updateSegments();
   }, [updateSegments, series]);
-
-  useEffect(() => {
-    const prim = primRef.current;
-    const chart = prim?.chartApi();
-    if (!chart) return;
-    const timeScale = chart.timeScale();
-    const handler = () => {
-      updateSegments();
-    };
-    timeScale.subscribeVisibleLogicalRangeChange(handler);
-    updateSegments();
-    return () => {
-      safeUnsubscribe(() => timeScale.unsubscribeVisibleLogicalRangeChange(handler));
-    };
-  }, [series, updateSegments]);
 
   return null;
 }
