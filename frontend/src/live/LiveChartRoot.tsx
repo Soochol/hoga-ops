@@ -89,7 +89,7 @@ import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
-import type { PeakWallSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';

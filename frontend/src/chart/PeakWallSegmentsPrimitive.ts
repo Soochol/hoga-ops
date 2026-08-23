@@ -24,7 +24,10 @@ const CHIP_TOKENS = {
 } as const;
 
 /**
- * 거래일별 "매도 최대벽"을 그날 구간에만 걸치는 수평 세그먼트로 그리는 커스텀 series primitive.
+ * 거래일별 최대벽을 그날 구간에만 걸치는 수평 세그먼트로 그리는 커스텀 series primitive.
+ * **매도·매수 공용**이다 — 방향은 호출자가 넘기는 색과 `PeakWallLabelSide` 로만 갈린다
+ * (2026-08-23 개명: 종전 이름 `AskPeakSegmentsPrimitive` 는 매수도 그리면서 매도 이름을
+ *  달고 있었다).
  *
  * lwc 기본 price line은 차트 전폭이라 여러 날을 못 그린다. 그래서 surge 마커와 같은 방식으로
  * `timeScale.timeToCoordinate(time)`(x) + series의 `priceToCoordinate(price)`(y)로 직접 그린다 —
@@ -38,7 +41,7 @@ export interface PeakWallSegment {
   time1: Time;
   /** peak이 실제 걸린 시점 — 이 x에 점을 찍어 그 날 언제 최대벽이었는지 표시. */
   peakTime: Time;
-  /** 그날 최대 매도벽 가격(priceToCoordinate 입력). */
+  /** 그날 최대벽 가격(priceToCoordinate 입력). */
   price: number;
   /** 비교용 물량. 현재 보이는 영역 내 최대벽 강조 선택에 사용하며 직접 렌더링하지 않는다. */
   qty: number;
@@ -188,7 +191,7 @@ export const LABEL_SEGMENT_PAD_PX = 8;
 export const LABEL_BOX_X_PAD_PX = 4;
 export const LABEL_BOX_Y_PAD_PX = 1;
 
-export type AskPeakLabelCandidate = {
+export type PeakWallLabelCandidate = {
   index: number;
   xRight: number;
   yLine: number;
@@ -196,7 +199,7 @@ export type AskPeakLabelCandidate = {
   segmentWidth: number;
 };
 
-export type AskPeakLabelLayout = AskPeakLabelCandidate & {
+export type PeakWallLabelLayout = PeakWallLabelCandidate & {
   baselineY: number;
 };
 
@@ -248,7 +251,7 @@ export type PeakWallChipGeometryInput = {
 export type PeakWallChipGeometry = {
   /** 우측 정렬 `fillText` 기준 x. */
   xRight: number;
-  /** 회피 배치(layoutAskPeakLabels) 이전의 희망 baseline. */
+  /** 회피 배치(layoutPeakWallLabels) 이전의 희망 baseline. */
   baselineY: number;
   left: number;
   right: number;
@@ -312,7 +315,7 @@ export function peakWallChipGeometry({
   };
 }
 
-function labelsOverlap(a: AskPeakLabelLayout, b: AskPeakLabelLayout, rowHeight: number): boolean {
+function labelsOverlap(a: PeakWallLabelLayout, b: PeakWallLabelLayout, rowHeight: number): boolean {
   const aLeft = a.xRight - a.width;
   const bLeft = b.xRight - b.width;
   const xOverlaps = aLeft <= b.xRight && bLeft <= a.xRight;
@@ -320,14 +323,14 @@ function labelsOverlap(a: AskPeakLabelLayout, b: AskPeakLabelLayout, rowHeight: 
   return xOverlaps && yOverlaps;
 }
 
-function labelXOverlaps(a: AskPeakLabelLayout, b: AskPeakLabelLayout): boolean {
+function labelXOverlaps(a: PeakWallLabelLayout, b: PeakWallLabelLayout): boolean {
   const aLeft = a.xRight - a.width;
   const bLeft = b.xRight - b.width;
   return aLeft <= b.xRight && bLeft <= a.xRight;
 }
 
-function overlappingLabelGroups(layouts: readonly AskPeakLabelLayout[]): AskPeakLabelLayout[][] {
-  const groups: AskPeakLabelLayout[][] = [];
+function overlappingLabelGroups(layouts: readonly PeakWallLabelLayout[]): PeakWallLabelLayout[][] {
+  const groups: PeakWallLabelLayout[][] = [];
   for (const layout of layouts) {
     const matches = groups.filter((group) => group.some((item) => labelXOverlaps(item, layout)));
     if (matches.length === 0) {
@@ -343,10 +346,10 @@ function overlappingLabelGroups(layouts: readonly AskPeakLabelLayout[]): AskPeak
   return groups;
 }
 
-export function visibleAskPeakLabelCandidates(
-  candidates: readonly AskPeakLabelCandidate[],
+export function visiblePeakWallLabelCandidates(
+  candidates: readonly PeakWallLabelCandidate[],
   segmentPad: number,
-): AskPeakLabelCandidate[] {
+): PeakWallLabelCandidate[] {
   return candidates.filter((candidate) => candidate.segmentWidth >= candidate.width + segmentPad * 2);
 }
 
@@ -354,7 +357,7 @@ export function visibleAskPeakLabelCandidates(
  * Canvas 라벨은 DOM 레이아웃 도움을 못 받으므로, 같은 화면 영역의 라벨끼리만 baseline을 벌린다.
  * 원래 선 위 위치를 우선하되 겹치면 아래쪽 빈 슬롯으로 내리고, pane 밖으로 나가면 위로 되민다.
  */
-export function layoutAskPeakLabels<T extends AskPeakLabelCandidate>(
+export function layoutPeakWallLabels<T extends PeakWallLabelCandidate>(
   candidates: readonly T[],
   minBaselineY: number,
   maxBaselineY: number,
@@ -401,9 +404,9 @@ export function xCoordinateOrNearest(timeScale: ITimeScaleApi<Time>, time: Time)
   return timeScale.logicalToCoordinate(nearest as unknown as Logical);
 }
 
-class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
-  private readonly _source: AskPeakSegmentsPrimitive;
-  constructor(source: AskPeakSegmentsPrimitive) {
+class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
+  private readonly _source: PeakWallSegmentsPrimitive;
+  constructor(source: PeakWallSegmentsPrimitive) {
     this._source = source;
   }
 
@@ -418,7 +421,7 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
-      const labelCandidates: AskPeakLabelCandidate[] = [];
+      const labelCandidates: PeakWallLabelCandidate[] = [];
       for (let i = 0; i < segments.length; i += 1) {
         const s = segments[i];
         const x0 = xCoordinateOrNearest(timeScale, s.time0);
@@ -468,8 +471,8 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const rowHeight = (LABEL_FONT_PX + LABEL_ROW_GAP_PX) * vr;
       const minBaselineY = (LABEL_FONT_PX + LABEL_EDGE_PAD_PX) * vr;
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
-      const visibleLabels = visibleAskPeakLabelCandidates(labelCandidates, LABEL_SEGMENT_PAD_PX * hr);
-      const labelLayouts = layoutAskPeakLabels(visibleLabels, minBaselineY, maxBaselineY, rowHeight);
+      const visibleLabels = visiblePeakWallLabelCandidates(labelCandidates, LABEL_SEGMENT_PAD_PX * hr);
+      const labelLayouts = layoutPeakWallLabels(visibleLabels, minBaselineY, maxBaselineY, rowHeight);
       // 칩은 외곽선 없이 표면(fill)만 — 방향색 텍스트가 캔들 위에서 또렷하도록 배경만 깐다.
       const { bg: chipBg } = resolveTokensThemed(CHIP_TOKENS);
       for (const layout of labelLayouts) {
@@ -493,25 +496,25 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
   }
 }
 
-class AskPeakSegmentsPaneView implements IPrimitivePaneView {
-  private readonly _renderer: AskPeakSegmentsRenderer;
-  constructor(source: AskPeakSegmentsPrimitive) {
-    this._renderer = new AskPeakSegmentsRenderer(source);
+class PeakWallSegmentsPaneView implements IPrimitivePaneView {
+  private readonly _renderer: PeakWallSegmentsRenderer;
+  constructor(source: PeakWallSegmentsPrimitive) {
+    this._renderer = new PeakWallSegmentsRenderer(source);
   }
   renderer(): IPrimitivePaneRenderer {
     return this._renderer;
   }
 }
 
-export class AskPeakSegmentsPrimitive implements ISeriesPrimitive<Time> {
+export class PeakWallSegmentsPrimitive implements ISeriesPrimitive<Time> {
   private _segments: readonly PeakWallSegment[] = [];
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _requestUpdate?: () => void;
-  private readonly _paneView: AskPeakSegmentsPaneView;
+  private readonly _paneView: PeakWallSegmentsPaneView;
 
   constructor() {
-    this._paneView = new AskPeakSegmentsPaneView(this);
+    this._paneView = new PeakWallSegmentsPaneView(this);
   }
 
   attached(param: SeriesAttachedParameter<Time>): void {

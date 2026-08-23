@@ -19,7 +19,7 @@ import { resolveTokensThemed } from '../util/tokens';
 import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
 import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
-import { peakXFromCoordinate, xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
+import { peakXFromCoordinate, xCoordinateOrNearest } from './PeakWallSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
 import {
   HIGHLOW_FONT_PX,

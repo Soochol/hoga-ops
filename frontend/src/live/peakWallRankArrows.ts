@@ -12,7 +12,7 @@
 
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
-import type { PeakWallSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
 
 /** 가상초 → 그 봉의 고가·저가. 캔들 배열이 수천 개라 호출부가 `useMemo` 로 붙든다

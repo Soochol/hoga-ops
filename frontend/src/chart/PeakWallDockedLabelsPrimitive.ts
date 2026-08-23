@@ -12,7 +12,7 @@ import type {
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { resolveTokensThemed } from '../util/tokens';
 
-// 라벨 칩 표면·테두리 — canvas 지연 해석(AskPeakSegmentsPrimitive 와 동일 처방).
+// 라벨 칩 표면·테두리 — canvas 지연 해석(PeakWallSegmentsPrimitive 와 동일 처방).
 const CHIP_TOKENS = {
   bg: ['--bg-card', '#121216'],
   border: ['--border-strong', '#33333C'],
@@ -23,13 +23,13 @@ import {
   LABEL_EDGE_PAD_PX,
   LABEL_FONT_PX,
   LABEL_ROW_GAP_PX,
-  layoutAskPeakLabels,
+  layoutPeakWallLabels,
   peakWallChipGeometry,
   peakXFromCoordinate,
   xCoordinateOrNearest,
-  type AskPeakLabelCandidate,
+  type PeakWallLabelCandidate,
   type PeakWallDockedLabel,
-} from './AskPeakSegmentsPrimitive';
+} from './PeakWallSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
 
 export type PeakWallDockedLabelInput = PeakWallDockedLabel;
@@ -54,9 +54,9 @@ export function dockedLabelTimeToX(
   };
 }
 
-/** 도킹 라벨 1개의 배치 후보. `layoutAskPeakLabels` 가 그대로 실어 나르는 추가 필드로
+/** 도킹 라벨 1개의 배치 후보. `layoutPeakWallLabels` 가 그대로 실어 나르는 추가 필드로
  *  점(dot)의 x·y 를 들고 다닌다 — 회피로 칩이 밀렸을 때 리더선을 그 점에 잇기 위해. */
-export type PeakWallDockedLabelCandidate = AskPeakLabelCandidate & {
+export type PeakWallDockedLabelCandidate = PeakWallLabelCandidate & {
   peakX: number;
   lineY: number;
 };
@@ -211,7 +211,7 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
       const rowHeight = (LABEL_FONT_PX + LABEL_ROW_GAP_PX) * vr;
       const minBaselineY = (LABEL_FONT_PX + LABEL_EDGE_PAD_PX) * vr;
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
-      const layouts = layoutAskPeakLabels(candidates, minBaselineY, maxBaselineY, rowHeight);
+      const layouts = layoutPeakWallLabels(candidates, minBaselineY, maxBaselineY, rowHeight);
 
       // 칩은 외곽선 없이 표면(fill)만 — 인라인 프리미티브와 동일 처방(방향색 텍스트 가독성용 배경).
       const { bg: chipBg } = resolveTokensThemed(CHIP_TOKENS);

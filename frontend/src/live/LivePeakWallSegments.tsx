@@ -12,10 +12,10 @@ import { PEAK_WALL_LEGEND_RANK_LIMIT, peakWallRankLegendCells } from './peakWall
 import { peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import {
-  AskPeakSegmentsPrimitive,
+  PeakWallSegmentsPrimitive,
   type PeakWallLabelSide,
   type PeakWallSegment,
-} from '../chart/AskPeakSegmentsPrimitive';
+} from '../chart/PeakWallSegmentsPrimitive';
 import { useWindowScopeId } from './workspace/windowView';
 import type { PeakWallRenderState } from './usePeakWallRender';
 
@@ -42,7 +42,7 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const windowId = useWindowScopeId();
   const legendId = side === 'ask' ? 'ask-peak' : 'bid-peak';
-  const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
+  const primRef = useRef<PeakWallSegmentsPrimitive | null>(null);
   const arrowPrimRef = useRef<PeakWallRankArrowsPrimitive | null>(null);
   /** 레전드가 랭킹할 세그먼트. **`hidden` 과 무관하게** 채운다 — 눈은 선만 숨기고 레전드
    *  값은 살린다(MA 규칙 미러). ref 인 이유: provider 는 비반응형 레지스트리에 등록되고
@@ -54,7 +54,7 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   // 생성: series 핸들당 1회(LiveCurrentPriceLine 과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
     if (!series) return;
-    const prim = new AskPeakSegmentsPrimitive();
+    const prim = new PeakWallSegmentsPrimitive();
     const arrowPrim = new PeakWallRankArrowsPrimitive();
     series.attachPrimitive(prim);
     series.attachPrimitive(arrowPrim);

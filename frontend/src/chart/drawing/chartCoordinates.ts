@@ -230,7 +230,7 @@ function nearestBarGridRealMs(axis: VirtualAxis, realMs: number, bucketMs: numbe
  * arguments make `logicalToCoordinate` return 0 rather than null (see the
  * measurement on `extrapolateFutureX`).
  *
- * Same shape as `AskPeakSegmentsPrimitive.xCoordinateOrNearest`, which learned
+ * Same shape as `PeakWallSegmentsPrimitive.xCoordinateOrNearest`, which learned
  * this for wall segments in 2026-07. Kept local rather than shared: that one
  * takes an already-virtual `Time`, this one owns the realMs→virtual step.
  */

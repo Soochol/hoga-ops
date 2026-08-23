@@ -5,7 +5,7 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import {
   livePeakWallDockedLabelsFromSegments,
   peakLabelBudgetForBarSpacing,
-} from '../chart/AskPeakSegmentsPrimitive';
+} from '../chart/PeakWallSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import type { PeakWallRenderState } from './usePeakWallRender';

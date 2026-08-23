@@ -24,7 +24,7 @@
 import { useMemo } from 'react';
 import type { Candle, RangeSegment } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
-import type { PeakWallLabelSide, PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import { useActivePrefs } from '../state/chartPrefs';
 import { useWindowIndicator } from './workspace/windowView';
 import { buildPeakWallOverlaySegments, toPeakRankLimit, type PeakWallInput } from './peakWallSegments';
