@@ -1,5 +1,14 @@
 # Watchlist drag-reorder: jsdom tests the wiring, e2e tests the pointer drag
 
+> ⚠ **번호 충돌: `ADR-0057` 은 두 문서를 가리킨다** — 이것과
+> `0057-screener-kis-authoritative-factor-store.md`. 병행 세션이 같은 번호를 동시에 붙인 결과이고,
+> **둘 다 인용돼 있어 옮기지 않는다**(번호를 바꾸면 리포 전역의 인용마다
+> 「둘 중 어느 쪽이었나」를 판정해야 하고, 커밋 메시지·이슈의 인용은 아예
+> 고칠 수 없다). 「ADR-0057」 을 만나면 **문맥으로** 가른다.
+>
+> 새 ADR 은 이 상황을 만들지 말 것 — `tests/unit/test_adr_numbering.py` 가
+> 새 충돌을 막고, 위 다섯 쌍만 역사로 동결돼 있다.
+
 > **갱신 노트 (2026-06-08, ADR-0066):** 아래 본문은 v0.5.5.0에서 *제거된* 평면 패널
 > 드래그(`PUT /api/watchlist/order`, `reorderCodes`/`reorderWatchlist`,
 > `watchlist-reorder.spec.ts`)를 서술한 역사적 기록이다. 현재 패널 드래그는 폴더 인지

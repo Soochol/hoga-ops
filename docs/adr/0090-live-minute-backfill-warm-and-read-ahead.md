@@ -1,5 +1,14 @@
 # 0090 — /live 분봉 백필: 선행 워밍 + read-ahead (인터랙션-결합 해소)
 
+> ⚠ **번호 충돌: `ADR-0090` 은 두 문서를 가리킨다** — 이것과
+> `0090-today-indicator-short-ttl-cache.md`. 병행 세션이 같은 번호를 동시에 붙인 결과이고,
+> **둘 다 인용돼 있어 옮기지 않는다**(번호를 바꾸면 리포 전역의 인용마다
+> 「둘 중 어느 쪽이었나」를 판정해야 하고, 커밋 메시지·이슈의 인용은 아예
+> 고칠 수 없다). 「ADR-0090」 을 만나면 **문맥으로** 가른다.
+>
+> 새 ADR 은 이 상황을 만들지 말 것 — `tests/unit/test_adr_numbering.py` 가
+> 새 충돌을 막고, 위 다섯 쌍만 역사로 동결돼 있다.
+
 **Status:** superseded by ADR-0103 (`0103-live-minute-backfill-remove-warm-and-read-ahead.md`, 2026-07-10) — accepted (2026-07-07)
 
 > 앱키별 독립 유량 재실측(ADR-0100)과 백필 동시성 계정 비례(#568)로 콜드 팬 지연
