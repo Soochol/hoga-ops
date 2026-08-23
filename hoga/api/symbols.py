@@ -666,6 +666,17 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     밖 종목은 파서가 드롭하므로 여기서 조회 실패 → 유지, 사용자 결정은 ETF+ETN
     만 제외).
 
+    ⚠ **ETN 은 `Q` 접두 형도 함께 낸다** (2026-08-23). 마스터는 `Q500061` 을
+    `500061` 로 정규화해 저장하는데(`kiwoom_master.normalize_code` — "ETN `Q` 접두를
+    벗긴다"), **스크리너 코퍼스에는 `Q` 형이 그대로 있다**. 그래서 문자열 대조가
+    빗나가 ETN 360종목이 「ETF 제외」를 **일반주 행세로 통과**했다(실측: 코퍼스의
+    `Q` 코드 360개 전부 벗기면 마스터에 있고 전부 `etn`).
+
+    여기서 두 형을 다 내는 것은 **증상 봉합이다.** 뿌리는 코퍼스가 같은 ETN 을 두
+    코드로 **중복 등재**한 것이고(360개 전부 `Q` 형과 벗긴 형이 동시 존재), 그건
+    사용자 데이터에서 행을 지우는 일이라 별개 결정이다. 그 정리가 끝나면 이
+    변형 추가는 무해한 잉여가 된다 — 지워도 되고 남겨도 된다.
+
     ``None`` 과 빈 집합을 **구분**하는 것이 이 시그니처의 요점이다. 이전 판은
     캐시가 비어도 빈 집합을 돌려줘, 마스터 다운로드가 실패한 부팅에서 "ETF 제외"
     토글이 켜진 채 **조용히 아무것도 거르지 않았다**(fail-open, 사용자·UI 어디에도
@@ -674,7 +685,18 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     _cache(≈4천행) 1회 순회 — 순위는 TTL 캐시 뒤, 스캔은 요청당 1회라 저빈도."""
     if not _cache:
         return None
-    return frozenset(h.code for h in _cache if h.security_type in ("etf", "etn"))
+    codes: set[str] = set()
+    for h in _cache:
+        if h.security_type not in ("etf", "etn"):
+            continue
+        codes.add(h.code)
+        if h.security_type == "etn" and not h.code.startswith("Q"):
+            # 위 ⚠ 참조. ETF 에는 `Q` 형이 없다(접두는 ETN 전용).
+            # `startswith` 가드는 `normalize_code` 와 같은 방어다 — 벤더가 `Q` 형을
+            # 다시 보내기 시작하면 마스터에 그대로 실릴 수 있고, 그때 `QQ…` 를 만들면
+            # 조용히 아무것도 안 걸러진다.
+            codes.add(f"Q{h.code}")
+    return frozenset(codes)
 
 
 def nxt_enabled_by_code() -> dict[str, bool | None] | None:
