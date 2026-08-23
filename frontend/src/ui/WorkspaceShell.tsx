@@ -1,8 +1,8 @@
 import { forwardRef } from 'react';
-import type { ButtonHTMLAttributes, RefObject, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 /**
- * 워크스페이스 페이지(`/live`·`/study`)의 **유일한 여백 소유자**.
+ * 워크스페이스 페이지(`/live`)의 **유일한 여백 소유자**.
  *
  * 좌·우 `px-md`(12) + 상 `pt-sm`(8), 하단은 패딩 없음 — 차트가 화면 바닥까지 붙는다.
  * 두 페이지가 이 상수 하나를 공유하므로 값이 갈릴 자리가 없다. 짝이 되는 규율이
@@ -11,7 +11,7 @@ import type { ButtonHTMLAttributes, RefObject, ReactNode } from 'react';
  * `state/workspace.ts` 의 `defaultWindows` 주석).
  *
  * #853 이 `/live` 를 `/study` 에 맞추려다 좌우만 맞췄고, 상단은 같은 커밋의 밀도 개편이
- * `/live` 만 `pt-sm` 으로 내려 `/study` 의 `PageContainer` 기본 `p-md` 와 8 vs 12 로
+ * `/live` 만 `pt-sm` 으로 내려 (지금은 사라진) `/study` 의 `PageContainer` 기본 `p-md` 와 8 vs 12 로
  * 갈렸다. 여기서 그 갈래를 닫는다. `pt-sm` 을 택한 것은 밀도 개편이 더 최신 의도이기
  * 때문이다(nav 와 툴바 사이 최소 숨).
  *
@@ -22,45 +22,6 @@ import type { ButtonHTMLAttributes, RefObject, ReactNode } from 'react';
  * (`PAGE_MAX_W` 선례). 값을 바꿀 때는 여기만 고친다.
  */
 export const WORKSPACE_PAGE_PAD = 'px-md pt-sm';
-
-export function WorkspaceRoot({
-  children,
-  className = '',
-  testId,
-}: {
-  children: ReactNode;
-  className?: string;
-  testId?: string;
-}) {
-  return (
-    <section
-      data-testid={testId}
-      className={`h-full min-w-0 bg-bg text-fg ${className}`.trim()}
-    >
-      {children}
-    </section>
-  );
-}
-
-export function WorkspaceHeader({
-  children,
-  className = '',
-  testId,
-}: {
-  children: ReactNode;
-  className?: string;
-  testId?: string;
-}) {
-  return (
-    <header
-      data-testid={testId}
-      className={`flex items-center gap-3 border-b border-border bg-bg-subtle/80 px-3 backdrop-blur ${className}`.trim()}
-      style={{ height: 'var(--h-live-header)' }}
-    >
-      {children}
-    </header>
-  );
-}
 
 export function WorkspaceToolbar({
   children,
@@ -106,56 +67,3 @@ export const IconToolbarButton = forwardRef<
   );
 });
 
-export function DropOverlay({ children }: { children: ReactNode }) {
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-0 z-20 flex items-center justify-center"
-      style={{
-        pointerEvents: 'none',
-        background: 'var(--tint-selection)',
-        border: '2px dashed var(--accent)',
-      }}
-    >
-      <span
-        className="rounded-md text-sm font-semibold"
-        style={{
-          padding: 'var(--space-sm) var(--space-md)',
-          background: 'var(--accent)',
-          color: 'var(--accent-fg)',
-          boxShadow: 'var(--shadow-overlay)',
-        }}
-      >
-        {children}
-      </span>
-    </div>
-  );
-}
-
-export function WorkspaceState({
-  children,
-  tone = 'neutral',
-  className = '',
-  testId,
-  dropTargetRef,
-  showDropOverlay = false,
-}: {
-  children: ReactNode;
-  tone?: 'neutral' | 'error';
-  className?: string;
-  testId?: string;
-  dropTargetRef?: RefObject<HTMLDivElement>;
-  showDropOverlay?: boolean;
-}) {
-  const toneClass = tone === 'error' ? 'text-error' : 'text-fg-dim';
-  return (
-    <WorkspaceRoot testId={testId} className={className}>
-      <div ref={dropTargetRef} data-testid="study-drop-target" className="relative h-full">
-        <div className={`flex h-full items-center justify-center text-sm ${toneClass}`}>
-          {children}
-        </div>
-        {showDropOverlay && <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>}
-      </div>
-    </WorkspaceRoot>
-  );
-}

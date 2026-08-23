@@ -127,7 +127,7 @@ export const SIZE_TOKENS = {
   // 이름과 달리 /live 는 이 밴드를 쓰지 않는다(LiveStatusBar 폐지). 유일한 소비처는
   // /study 의 StudyPage 헤더이고, 그마저 min-h-12(3rem)를 얹어 실효 높이는 이 토큰이
   // 아니라 48px 다(1.125× 시절엔 54px — 둘 다 rem 이라 함께 움직인다).
-  'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐' },
+  'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: '⚠ 소비처 0 — 유일한 소비자 WorkspaceHeader 가 /study 와 함께 삭제됐다(2026-08-23). 토큰 제거는 디자인 시스템 패스에서(DESIGN.md 소관이라 코드 삭제와 함께 처리하지 않았다).' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
   'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },
 

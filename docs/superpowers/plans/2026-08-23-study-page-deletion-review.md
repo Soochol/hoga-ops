@@ -105,7 +105,7 @@ ADR-0155(2026-08-21, **이틀 전**)의 링크 그룹이 정확히 이 워크플
 | **v1 레거시 스냅샷 학습뷰** | **이미 존재하지 않는다.** `models.py:2116` `schema_version: Literal[2] = 2`, 프론트 `api/studyViews.ts:21` 도 2, `studyViewVariant()` 는 상수 `'reference'`. → **ADR-0077 의 v1 절도 stale**. |
 | **KRX 고정 재현** | 보존. `savedRangeFocus.ts` 의 `SAVED_RANGE_VENUE = STUDY_VENUE` 를 `/live` 창이 이미 쓴다(ADR-0144 근거 공유). |
 | **저장 구간 밴드·착석** | 보존. `StudySavedRangeBandHost` + `savedRangeAnchor.ts` 를 `LiveChartRoot` 가 소비 중. |
-| **미캡처 안내** | `showNotCapturedNotice` 는 `/study` 만 켜지만(`StudyPage.tsx:668`), 근거 주석이 "저장뷰는 사용자가 구간을 명시한 것" 이라 **얼린 창** 조건으로 그대로 옮길 수 있다. |
+| **미캡처 안내** | **옮겼다.** `showNotCapturedNotice` 를 `ChartWindow` 가 `savedRange !== null` 로 켠다 — 근거가 페이지가 아니라 **구간의 성격**이었기 때문이다(`hogaMissingNotice` 의 `IGNORED_REASONS` 주석). 옮기지 않았으면 «델타가 아니다» 가 거짓이 될 뻔했다: 프롭은 남고 `true` 를 주는 곳이 사라져 기능이 **조용히** 죽는다. ⚠ **이 배선에는 테스트가 없다**(§9-6). |
 | **분봉 저장 구간 재현** | 방식만 다르다 — `/study` 는 번들을 구간으로 **클립**하고 `/live` 는 **뷰포트를 옮긴다**(`savedRangeAnchor.ts` 도크스트링: "같은 차트가 실시간 스트림을 받고 있어 클립할 수 없다"). 보이는 결과는 같고, 현행 계약은 "데려다주되 가두지 않는다". |
 | **e2e** | `/study` 를 타는 스펙 **0건**(`frontend/tests/e2e/` 전수 — README 언급 1줄뿐). |
 
@@ -311,6 +311,26 @@ cd frontend && node_modules/.bin/playwright test
 `state/indicatorsWindowMigration.ts` 는 **일부러 `'study.workspace.v1'` 을 계속 읽는다** —
 1회성 승격 사다리를 아직 안 거친 사용자가 있고, 거기서 빼면 그 사용자의 지표가 공장값으로
 회귀한다. 상수는 그 모듈 지역 리터럴로 내렸다(`workspaceKeys.ts` 는 살아 있는 키 목록이다).
+
+### 9-6. 삭제가 조용히 죽일 뻔한 것 둘 (막판에 잡음)
+
+전수 grep 을 한 번 더 돌려 **"사라진 것을 현재형으로 가리키는 산문"** 을 찾다가 나왔다.
+둘 다 타입체크·테스트가 통과하는 상태였다 — 그래서 산문 점검이 가치를 냈다.
+
+1. **미캡처 안내** — `showNotCapturedNotice` 에 `true` 를 주던 유일한 곳이 `StudyPage`
+   였다. 프롭·파생·순수 함수·그 테스트는 전부 멀쩡히 남고 **켜는 사람만 사라지는**
+   모양이라 아무 가드도 빨개지지 않는다. `ChartWindow` 가 `savedRange !== null` 로
+   켜도록 옮겼다.
+   ⚠ **이 한 줄 배선에는 테스트가 없다.** 순수 함수(`deriveHogaMissingNotice`)는 촘촘히
+   덮여 있고 `LiveChartRoot` 의 소비도 덮여 있지만, "저장 구간 창이면 켠다" 라는 **새 조건**
+   자체는 `ChartWindow` 렌더 하네스가 없어 못 걸었다. 정직하게 적어 둔다.
+2. **`ui/WorkspaceShell` 의 프리미티브 4개** — `WorkspaceRoot` · `WorkspaceHeader` ·
+   `DropOverlay` · `WorkspaceState`. 전부 `/study` 만 쓰던 것이고(`WorkspaceState` 는
+   문구가 「여기에 놓아 학습뷰 열기」였다) 소비처가 0 이 됐다. 컴포넌트와 그 테스트
+   케이스를 함께 삭제. 남은 둘(`WorkspaceToolbar` · `IconToolbarButton`)은 `/live` 가 쓴다.
+   - `h-live-header` **토큰**은 이제 소비처가 0 이지만 **지우지 않았다** — 토큰 제거는
+     DESIGN.md 소관이라 코드 삭제와 함께 처리할 일이 아니다. `usage` 문자열에 그 사실을
+     적어 뒀다.
 
 ### 9-5. 남은 문서 부채
 
