@@ -34,8 +34,11 @@ async function centerOffset(page: Page): Promise<number> {
 
 test.describe('상단바 시계', () => {
   test('넓은 화면에서 상단바 정중앙에 앉는다', async ({ page }) => {
-    // 기본 뷰포트(Desktop Chrome = 1280)는 좌측 메뉴가 공간을 다 써서 시계가 밀리는
-    // 구간이다. 정렬 계약은 **여유가 있는 폭**에서만 성립하므로 명시적으로 넓힌다.
+    // 정렬 계약은 **여유가 있는 폭**에서만 성립하므로 명시적으로 넓힌다.
+    // (2026-08-23 `/study` nav 제거로 메뉴가 한 항목 짧아지면서 여유 구간이 넓어졌다 —
+    // 실측 오프셋 0px 이 1280 까지 내려왔다. 그래도 1600 을 유지한다: 이 케이스가 재는
+    // 것은 "여유가 있으면 정중앙" 이고, 경계 바로 위를 고르면 nav 가 한 항목 늘 때마다
+    // 이 테스트가 먼저 깨진다.)
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto('/capture');
     await expect(page.getByRole('timer')).toBeVisible();
@@ -45,7 +48,13 @@ test.describe('상단바 시계', () => {
   test('좁은 화면에서는 메뉴를 자르지 않고 시계가 밀린다', async ({ page }) => {
     // 우선순위 계약: 폭이 모자라면 **정렬을 양보하고 기능(메뉴)을 지킨다**.
     // `overflow-hidden` 이 다시 들어오면 여기서 잘린 항목이 잡힌다.
-    await page.setViewportSize({ width: 1280, height: 800 });
+    //
+    // 폭이 1280 → **1100** 으로 내려왔다(2026-08-23). `/study` nav 항목이 사라져 메뉴가
+    // 짧아지면서 1280 에서는 더 이상 **경합이 없다** — 실측 오프셋 1280:0.0 · 1180:42.1 ·
+    // 1100:82.1 px. 1280 을 그대로 뒀다면 아래 "밀렸다" 단언이 조용히 0 을 검사하는
+    // 무력한 가드가 된다. 1180(경계 바로 아래)이 아니라 1100 을 고른 것은 여유폭을 두기
+    // 위해서다. 셸 바닥(944)보다는 위라 이 케이스와 아래 바닥 케이스가 겹치지 않는다.
+    await page.setViewportSize({ width: 1100, height: 800 });
     await page.goto('/capture');
     await expect(page.getByRole('timer')).toBeVisible();
 

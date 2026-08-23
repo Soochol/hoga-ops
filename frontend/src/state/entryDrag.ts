@@ -19,7 +19,7 @@ import { create } from 'zustand';
  * 드래그 고스트는 패널 overflow 경계에서 잘리므로, 워크에어리어 자체가 드롭 어포던스다.
  */
 type ChartHitTest = (clientX: number, clientY: number) => boolean;
-type DropTargetKind = 'liveChart' | 'studyPage';
+type DropTargetKind = 'liveChart';
 type DropTargetMap = Partial<Record<DropTargetKind, ChartHitTest>>;
 
 type DropPointEvent = { activatorEvent: Event | null; delta: { x: number; y: number } };
@@ -36,8 +36,6 @@ type EntryDragStore = {
   draggingCode: string | null;
   /** 커서가 현재 라이브 워크에어리어 위에 있는가(드롭하면 종목 변경). */
   overChart: boolean;
-  /** 커서가 현재 학습뷰 워크에어리어 위에 있는가(후속 task의 드롭 동선용). */
-  overStudy: boolean;
   /** 드래그 중 최종 포인터 좌표(client px) — 창별 드롭 어포던스가 호버 창을 계산
    *  하려면 좌표가 필요하다(overChart boolean 만으론 어느 창인지 모른다). null=유휴. */
   dragPoint: { x: number; y: number } | null;
@@ -45,23 +43,16 @@ type EntryDragStore = {
   targets: DropTargetMap;
   /** LiveWorkarea가 등록한 "이 좌표가 차트 위인가" 술어. 미등록(/live 밖)이면 null. */
   hitTestChart: ChartHitTest | null;
-  /** StudyPage가 등록한 "이 좌표가 학습뷰 위인가" 술어. 미등록(/study 밖)이면 null. */
-  hitTestStudy: ChartHitTest | null;
   /** WorkspaceCanvas 가 등록한 창별 드롭 리졸버. 미등록이면 null(정밀 드롭 없음). */
   chartDropResolver: ChartDropResolver | null;
   startDrag: (code: string) => void;
   setOverChart: (v: boolean) => void;
-  setOverStudy: (v: boolean) => void;
   setDragPoint: (point: { x: number; y: number } | null) => void;
   endDrag: () => void;
   /** LiveWorkarea가 mount 시 자신의 히트테스트를 등록한다. */
   registerChartTarget: (hitTest: ChartHitTest) => void;
   /** unmount 시 해제. 다른 인스턴스가 이미 덮어쓴 뒤면 해제하지 않는다(remount 안전). */
   clearChartTarget: (hitTest: ChartHitTest) => void;
-  /** StudyPage가 mount 시 자신의 히트테스트를 등록한다. */
-  registerStudyTarget: (hitTest: ChartHitTest) => void;
-  /** unmount 시 해제. 다른 인스턴스가 이미 덮어쓴 뒤면 해제하지 않는다(remount 안전). */
-  clearStudyTarget: (hitTest: ChartHitTest) => void;
   /** WorkspaceCanvas 가 mount 시 창별 드롭 리졸버를 등록한다. remount 안전(같은 규율). */
   registerChartDropResolver: (fn: ChartDropResolver) => void;
   clearChartDropResolver: (fn: ChartDropResolver) => void;
@@ -72,31 +63,27 @@ function clearTarget(targets: DropTargetMap, kind: DropTargetKind): DropTargetMa
   return rest;
 }
 
-function getRegisteredTarget(store: Pick<EntryDragStore, 'targets' | 'hitTestChart' | 'hitTestStudy'>, kind: DropTargetKind): ChartHitTest | null {
-  if (kind === 'liveChart') return store.targets.liveChart ?? store.hitTestChart;
-  return store.targets.studyPage ?? store.hitTestStudy;
+function getRegisteredTarget(store: Pick<EntryDragStore, 'targets' | 'hitTestChart'>, kind: DropTargetKind): ChartHitTest | null {
+  return store.targets[kind] ?? store.hitTestChart;
 }
 
 export const useEntryDragStore = create<EntryDragStore>((set, get) => ({
   draggingCode: null,
   overChart: false,
-  overStudy: false,
   dragPoint: null,
   targets: {},
   hitTestChart: null,
-  hitTestStudy: null,
   chartDropResolver: null,
-  startDrag: (code) => set({ draggingCode: code, overChart: false, overStudy: false, dragPoint: null }),
+  startDrag: (code) => set({ draggingCode: code, overChart: false, dragPoint: null }),
   // 같은 값이면 set을 건너뛴다 — onDragMove가 프레임마다 호출되므로 불필요한 리렌더 방지.
   setOverChart: (v) => set((s) => (s.overChart === v ? s : { overChart: v })),
-  setOverStudy: (v) => set((s) => (s.overStudy === v ? s : { overStudy: v })),
   setDragPoint: (point) => set((s) => {
     const p = s.dragPoint;
     if (p === point || (p && point && p.x === point.x && p.y === point.y)) return s;
     return { dragPoint: point };
   }),
   // 드롭 타깃 등록은 드래그 라이프사이클과 별개(워크에어리어 mount 동안 유지) — 여기선 안 건드린다.
-  endDrag: () => set({ draggingCode: null, overChart: false, overStudy: false, dragPoint: null }),
+  endDrag: () => set({ draggingCode: null, overChart: false, dragPoint: null }),
   registerChartTarget: (hitTest) => set((s) => ({
     targets: { ...s.targets, liveChart: hitTest },
     hitTestChart: hitTest,
@@ -106,18 +93,6 @@ export const useEntryDragStore = create<EntryDragStore>((set, get) => ({
       set((s) => ({
         targets: clearTarget(s.targets, 'liveChart'),
         hitTestChart: null,
-      }));
-    }
-  },
-  registerStudyTarget: (hitTest) => set((s) => ({
-    targets: { ...s.targets, studyPage: hitTest },
-    hitTestStudy: hitTest,
-  })),
-  clearStudyTarget: (hitTest) => {
-    if (getRegisteredTarget(get(), 'studyPage') === hitTest) {
-      set((s) => ({
-        targets: clearTarget(s.targets, 'studyPage'),
-        hitTestStudy: null,
       }));
     }
   },
@@ -145,13 +120,6 @@ export function resolveDropOnChart(
 export function isPointOnChart(point: { x: number; y: number } | null): boolean {
   if (!point) return false;
   const hit = getRegisteredTarget(useEntryDragStore.getState(), 'liveChart');
-  return hit ? hit(point.x, point.y) : false;
-}
-
-/** 드롭 좌표가 등록된 학습뷰 드롭 타깃 위인가. StudyPage 미등록(/study 밖)이면 false. */
-export function isPointOnStudy(point: { x: number; y: number } | null): boolean {
-  if (!point) return false;
-  const hit = getRegisteredTarget(useEntryDragStore.getState(), 'studyPage');
   return hit ? hit(point.x, point.y) : false;
 }
 

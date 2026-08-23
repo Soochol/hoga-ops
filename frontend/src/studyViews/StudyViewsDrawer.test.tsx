@@ -4,27 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
-import { useEntryDragStore } from '../state/entryDrag';
-import {
-  activeStudyView,
-  studyGroupViewFromSave,
-  useStudyWorkspaceStore,
-} from '../state/studyWorkspace';
-
-/** ADR-0155 이후 "활성 저장뷰" 는 **활성 그룹의 것**이다. 워크스페이스 기본 시드 창이
- *  전부 그룹 1 이라 테스트는 그룹 1 을 쓴다. */
-function activeView() {
-  return activeStudyView(useStudyWorkspaceStore.getState());
-}
-function openViewInGroup1(save: { id: string; code: string; label: string; name: string }) {
-  useStudyWorkspaceStore.getState().setGroupView(1, studyGroupViewFromSave(save));
-}
 import { useLivePageStore } from '../state/livePage';
-import { useStudyLastMinuteTimeframeStore } from '../state/studyLastMinuteTimeframe';
+import { savedRangeFocusFromView } from './savedRangeFocus';
 
-/** 행 클릭이 세우는 `/live` 저장뷰 기간 슬롯(2026-08-21). */
+/** 행 클릭이 세우는 `/live` 저장뷰 기간 슬롯 — **"지금 열린 저장뷰" 의 유일한 출처**다
+ *  (2026-08-23 `/study` 삭제 후. 그전엔 그 페이지의 그룹→저장뷰 맵이었다). */
 function savedRange() {
   return useLivePageStore.getState().savedRangeFocus;
+}
+/** 다른 저장뷰가 이미 열려 있는 상태를 만든다 — 클릭이 **제자리 교체**인지, 새 탭이
+ *  이 탭을 **안 건드리는지** 를 재는 케이스들의 사전 조건. */
+function openSavedView(save: StudyViewReference) {
+  useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(save));
 }
 import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
@@ -170,16 +161,7 @@ beforeEach(() => {
   dnd.onDragEnd = null;
   dnd.onDragCancel = null;
   mockedSaves = saves;
-  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '3m' });
-  useStudyWorkspaceStore.setState({ groupViews: {} });
-  (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
-    draggingCode: null,
-    overChart: false,
-    overStudy: false,
-    hitTestChart: null,
-    hitTestStudy: null,
-    targets: {},
-  });
+  useLivePageStore.getState().clearSavedRange();
 });
 
 it('filters by name, code, and memo ignoring whitespace and case', () => {
@@ -254,13 +236,12 @@ it('matches watchlist list typography for stock headers and saved view names', (
   expect(savedViewName).not.toHaveClass('text-sm');
 });
 
-// 스토어가 URL 을 이긴다 — 이 드로어는 우측 레일의 **전역** 컴포넌트라 `/live` 등에서는
-// URL 에 `?view=` 가 아예 없고, 스토어를 안 읽으면 하이라이트가 그 라우트에서 사라진다.
-it('highlights the saved-view row for the active study view', () => {
-  useStudyWorkspaceStore.setState({
-    groupViews: { 1: { viewId: 'b', code: '000660', label: 'SK하이닉스', name: '눌림' } },
-  });
-  renderDrawer('/study?view=a');
+// 스토어가 URL 을 이긴다 — 이 드로어는 우측 레일의 **전역** 컴포넌트라 `?view=` 없이
+// 도착한 `/live`(관심종목 클릭 등)에서도 하이라이트가 살아야 한다. URL 만 보면 그
+// 라우트들에서 하이라이트가 통째로 사라진다.
+it('highlights the saved-view row for the open saved view', () => {
+  openSavedView(saves[1]);
+  renderDrawer('/live?view=a');
 
   const activeRow = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
   expect(activeRow).toHaveAttribute('aria-current', 'true');
@@ -437,18 +418,17 @@ it('clicking the saved view title navigates to /live and arms the range slot', a
   expect(savedRange()).toMatchObject({ viewId: 'a', code: '005930' });
 });
 
-// 행 클릭은 **`/study` 워크스페이스를 건드리지 않는다.** 두 페이지가 같은 저장뷰
-// 슬롯을 공유하면 `/live` 클릭이 `/study` 창 배치를 조용히 바꾼다 — 그 결합을 만들지
-// 않는 것이 계약이고, 그래서 그룹 뷰는 이전 값 그대로여야 한다.
-it('normal row click leaves the /study workspace untouched', async () => {
-  openViewInGroup1(saves[1]);
-  renderDrawer('/study?view=b');
+// 열린 저장뷰가 있는 상태의 클릭은 **제자리 교체**다 — 슬롯이 하나이므로 쌓이지 않는다.
+// (그전엔 `/live` 슬롯과 `/study` 그룹 뷰가 따로 있어 "한쪽을 눌러도 다른 쪽은 그대로"
+// 가 계약이었다. 페이지가 하나가 되면서 그 비결합은 지킬 대상 자체가 사라졌다.)
+it('a row click replaces the open saved view in place', async () => {
+  openSavedView(saves[1]);
+  renderDrawer('/live?view=b');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
-  expect(savedRange()).toMatchObject({ viewId: 'a' });
-  expect(activeView()).toMatchObject({ viewId: 'b' });
+  await waitFor(() => expect(savedRange()).toMatchObject({ viewId: 'a' }));
+  expect(screen.getByTestId('loc').textContent).toBe('/live?view=b');
 });
 
 // 봉의 소유자는 **차트 창**이다(#1326) — `/live` 로 목적지가 바뀐 뒤에도 그대로다.
@@ -456,7 +436,6 @@ it('normal row click leaves the /study workspace untouched', async () => {
 // bar_span 을 못 쓴다는 판정에 쓴다), 창의 봉을 그 값으로 밀지 않는다. 미는 구현은
 // 저장이 10분봉인 저장뷰를 열었을 때 사용자가 보던 봉을 빼앗는다.
 it('저장뷰를 열어도 창의 봉을 밀지 않는다 — 봉은 창이 소유한다', async () => {
-  useStudyLastMinuteTimeframeStore.setState({ lastMinuteTimeframe: '15m' });
   useLivePageStore.setState({ candleTimeframe: '5m' });
   mockedSaves = [{ ...saves[0], timeframe: '10m' }];
   renderDrawer('/inventory');
@@ -490,7 +469,7 @@ describe.each([
 ])('%s-clicking a saved view row', (_label, modifier) => {
   it('opens the ?view= deep link in a browser tab without touching this tab', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    openViewInGroup1(saves[1]);
+    openSavedView(saves[1]);
     renderDrawer('/study?view=b');
 
     fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), modifier);
@@ -500,7 +479,7 @@ describe.each([
     expect(open).toHaveBeenCalledWith('/live?view=a', '_blank', 'noopener');
     // 이 탭은 그대로 — 라우트도, 활성 저장뷰도 움직이지 않는다.
     expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
-    expect(activeView()).toMatchObject({ viewId: 'b' });
+    expect(savedRange()).toMatchObject({ viewId: 'b' });
     open.mockRestore();
   });
 });
@@ -509,7 +488,7 @@ describe.each([
 // 항상 부르는 구현도 통과한다(그쪽은 라우트를 안 바꾸므로).
 it('일반 클릭은 새 브라우저 탭을 열지 않는다 — 제자리 교체 그대로', async () => {
   const open = vi.spyOn(window, 'open').mockReturnValue(null);
-  openViewInGroup1(saves[1]);
+  openSavedView(saves[1]);
   renderDrawer('/study?view=b');
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
@@ -689,17 +668,22 @@ it('flushes the previous pending delete when a second delete is requested', () =
   }
 });
 
-it('navigates away after the delete grace period for the active study view', () => {
+// 열려 있던 저장뷰를 지우면 **기간 슬롯이 풀린다**(그전엔 `/study` 에서 라우트를 떠났다).
+// 종목은 건드리지 않는 것이 계약이다 — 저장뷰 삭제가 보고 있던 종목까지 치우면 화면을
+// 통째로 갈아엎는 제스처가 된다.
+it('clears the saved-range slot after the delete grace period for the open saved view', () => {
   vi.useFakeTimers();
   try {
     removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
-    renderDrawer('/study?view=a');
+    openSavedView(saves[0]);
+    renderDrawer('/live?view=a');
 
     fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
     act(() => { vi.advanceTimersByTime(5000); });
 
-    expect(screen.getByTestId('loc').textContent).toBe('/study');
+    expect(savedRange()).toBeNull();
+    expect(screen.getByTestId('loc').textContent).toBe('/live?view=a');
   } finally {
     vi.useRealTimers();
   }
@@ -709,7 +693,7 @@ it('navigates away after the delete grace period for the active study view', () 
 it('비활성 저장뷰를 지워도 활성 뷰와 라우트는 그대로다', () => {
   vi.useFakeTimers();
   try {
-    openViewInGroup1(saves[1]);
+    openSavedView(saves[1]);
     removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
     renderDrawer('/study?view=b');
 
@@ -717,7 +701,7 @@ it('비활성 저장뷰를 지워도 활성 뷰와 라우트는 그대로다', (
     fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
     act(() => { vi.advanceTimersByTime(5000); });
 
-    expect(activeView()).toMatchObject({ viewId: 'b' });
+    expect(savedRange()).toMatchObject({ viewId: 'b' });
     expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
   } finally {
     vi.useRealTimers();
@@ -805,7 +789,7 @@ it('ctrl-clicking a stock group header just toggles the group', async () => {
     ...saves,
     { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
   ];
-  openViewInGroup1(saves[1]);
+  openSavedView(saves[1]);
   renderDrawer('/inventory');
 
   fireEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }), { ctrlKey: true });
@@ -815,87 +799,29 @@ it('ctrl-clicking a stock group header just toggles the group', async () => {
   ));
   // 라우트도 활성 뷰도 그대로다.
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
-  expect(activeView()).toMatchObject({ viewId: 'b' });
+  expect(savedRange()).toMatchObject({ viewId: 'b' });
 });
 
-it('updates study hover state during stock-group drag', async () => {
-  const hitTest = (clientX: number) => clientX < 800;
-  useEntryDragStore.getState().registerStudyTarget(hitTest);
+// 여기 `/study` 드롭 케이스 둘이 있었다(2026-08-23 제거) — 그룹 헤더를 복기 캔버스로
+// 끌면 그 종목의 최신 저장뷰가 열리는 제스처와, 드래그 중 hover 상태 갱신. 드롭 타깃이
+// `/study` 페이지 안에만 존재했으므로 페이지와 함께 사라졌고, 전역 entry drag 를 켜던
+// 것도 함께 걷혔다(드로어 `handleDragEnd` 주석). 그래서 이 드로어의 드래그는 이제
+// **트리 재정렬 하나**이고, 아래가 그 전부다.
+it('dragging a stock group reorders groups', async () => {
+  renderDrawer('/inventory');
+  expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
 
-  try {
-    renderDrawer('/inventory');
-    await waitFor(() => expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeInTheDocument());
+  dnd.onDragEnd?.({
+    active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
+    over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
+    activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+    delta: { x: 0, y: 0 },
+  });
 
-    dnd.onDragStart?.({
-      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
-    });
-    expect(useEntryDragStore.getState().draggingCode).toBe('005930');
-
-    dnd.onDragMove?.({
-      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
-      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
-      delta: { x: -500, y: 0 },
-    });
-    expect(useEntryDragStore.getState().overStudy).toBe(true);
-
-    dnd.onDragCancel?.();
-    expect(useEntryDragStore.getState().draggingCode).toBeNull();
-    expect(useEntryDragStore.getState().overStudy).toBe(false);
-  } finally {
-    useEntryDragStore.getState().clearStudyTarget(hitTest);
-  }
-});
-
-it('dragging a stock group over the study target opens its newest save without reordering groups', async () => {
-  mockedSaves = [
-    ...saves,
-    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
-  ];
-  openViewInGroup1(saves[1]);
-  const hitTest = (clientX: number) => clientX < 800;
-  useEntryDragStore.getState().registerStudyTarget(hitTest);
-
-  try {
-    renderDrawer('/inventory');
-    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
-
-    dnd.onDragEnd?.({
-      active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
-      over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
-      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
-      delta: { x: -500, y: 0 },
-    });
-
-    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=c'));
-    // 제자리 교체 — 드롭이 뷰를 쌓지 않는다.
-    expect(activeView()).toMatchObject({ viewId: 'c', name: '종가 반등' });
-    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
-  } finally {
-    useEntryDragStore.getState().clearStudyTarget(hitTest);
-  }
-});
-
-it('dragging a stock group outside the study target still reorders groups', async () => {
-  const hitTest = (clientX: number) => clientX < 800;
-  useEntryDragStore.getState().registerStudyTarget(hitTest);
-
-  try {
-    renderDrawer('/inventory');
-    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
-
-    dnd.onDragEnd?.({
-      active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
-      over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
-      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
-      delta: { x: 0, y: 0 },
-    });
-
-    await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 000660 접기', '삼성전자 005930 접기']));
-    expect(screen.getByTestId('loc').textContent).toBe('/inventory');
-    expect(activeView()).toBeNull();
-  } finally {
-    useEntryDragStore.getState().clearStudyTarget(hitTest);
-  }
+  await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 000660 접기', '삼성전자 005930 접기']));
+  // 재정렬은 목적지도 저장뷰 슬롯도 건드리지 않는다.
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+  expect(savedRange()).toBeNull();
 });
 
 describe('formatStudyViewMeta', () => {

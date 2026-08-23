@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useLivePageStore } from './livePage';
 import { useChartPrefsStore } from './chartPrefs';
-import { useStudyWorkspaceStore } from './studyWorkspace';
 import {
   dropIndicatorScopesForRemovedWindows,
   dropIndicatorScopesForWindows,
@@ -20,9 +19,15 @@ import { FACTORY_INDICATOR_SETTINGS } from './indicatorSettingsV2';
  *
  * **등록 의존**: 없다 — 호출부(워크스페이스 스토어)가 이 함수를 부르는지는
  * `windowView.scope.test.tsx` 의 창 닫기·스냅샷 케이스가 잰다.
+ *
+ * ⚠ 접두사가 전부 `'live'` 다 — `IndicatorPageScope` 는 아직 `'live' | 'study'` 지만
+ * `/study` 삭제(2026-08-23)로 **두 번째 값을 쓰는 코드가 없다**. 여기 있던 `/study`
+ * 창 닫기 게이트 케이스(`canCloseStudyWindow` 가 마지막 차트 창을 거부하는 no-op 에서
+ * 회수하면 안 된다)는 그 불변식이 `/study` 전용이라 함께 사라졌다 — `/live` 의
+ * `closeWindow` 에는 그 게이트가 애초에 없다(확인 완료).
  */
 
-const KEY = 'study:w1';
+const KEY = 'live:w1';
 
 beforeEach(() => {
   useLivePageStore.setState({
@@ -42,10 +47,10 @@ beforeEach(() => {
 describe('seedIndicatorScopeForWindow', () => {
   it('원본 창이 없으면 페이지 세트를 복사한다', () => {
     useLivePageStore.setState({
-      studyIndicatorsByTimeframe: { minute: { volumeEnabled: false } },
+      indicatorsByTimeframe: { minute: { volumeEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('study', 'w1', null);
+    seedIndicatorScopeForWindow('live', 'w1', null);
 
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
       .toEqual({ minute: { volumeEnabled: false } });
@@ -53,11 +58,11 @@ describe('seedIndicatorScopeForWindow', () => {
 
   it('원본 창이 있으면 **그 창**을 복사한다 — 페이지 세트가 아니다', () => {
     useLivePageStore.setState({
-      studyIndicatorsByTimeframe: { minute: { volumeEnabled: false } },
-      indicatorsByWindow: { 'study:src': { minute: { ratioEnabled: true } } },
+      indicatorsByTimeframe: { minute: { volumeEnabled: false } },
+      indicatorsByWindow: { 'live:src': { minute: { ratioEnabled: true } } },
     });
 
-    seedIndicatorScopeForWindow('study', 'w1', 'src');
+    seedIndicatorScopeForWindow('live', 'w1', 'src');
 
     // 페이지 세트의 volumeEnabled:false 가 아니라 원본 창의 값이 와야 한다.
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
@@ -66,10 +71,10 @@ describe('seedIndicatorScopeForWindow', () => {
 
   it('원본 창에 엔트리가 없으면 페이지 세트로 떨어진다', () => {
     useLivePageStore.setState({
-      studyIndicatorsByTimeframe: { minute: { volumeEnabled: false } },
+      indicatorsByTimeframe: { minute: { volumeEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('study', 'w1', 'ghost');
+    seedIndicatorScopeForWindow('live', 'w1', 'ghost');
 
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
       .toEqual({ minute: { volumeEnabled: false } });
@@ -77,10 +82,10 @@ describe('seedIndicatorScopeForWindow', () => {
 
   it('두 스토어에 함께 심는다 — 절반만 창별인 드로어가 되면 안 된다', () => {
     useChartPrefsStore.setState({
-      studyIndicatorModalByTimeframe: { minute: { surgeMarkerEnabled: false } },
+      indicatorModalByTimeframe: { minute: { surgeMarkerEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('study', 'w1', null);
+    seedIndicatorScopeForWindow('live', 'w1', null);
 
     expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY)).toBe(true);
     expect(useChartPrefsStore.getState().indicatorModalByWindow[KEY])
@@ -90,46 +95,22 @@ describe('seedIndicatorScopeForWindow', () => {
 
 describe('dropIndicatorScopes*', () => {
   it('두 스토어에서 함께 걷는다', () => {
-    seedIndicatorScopeForWindow('study', 'w1', null);
+    seedIndicatorScopeForWindow('live', 'w1', null);
 
-    dropIndicatorScopesForWindows('study', ['w1']);
+    dropIndicatorScopesForWindows('live', ['w1']);
 
     expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY)).toBe(false);
     expect(Object.hasOwn(useChartPrefsStore.getState().indicatorModalByWindow, KEY)).toBe(false);
   });
 
   it('사라진 id 만 걷는다 — 살아남은 창은 지킨다', () => {
-    seedIndicatorScopeForWindow('study', 'w1', null);
-    seedIndicatorScopeForWindow('study', 'w2', null);
+    seedIndicatorScopeForWindow('live', 'w1', null);
+    seedIndicatorScopeForWindow('live', 'w2', null);
 
-    dropIndicatorScopesForRemovedWindows('study', [{ id: 'w1' }, { id: 'w2' }], [{ id: 'w1' }]);
+    dropIndicatorScopesForRemovedWindows('live', [{ id: 'w1' }, { id: 'w2' }], [{ id: 'w1' }]);
 
     const byWindow = useLivePageStore.getState().indicatorsByWindow;
-    expect(Object.hasOwn(byWindow, 'study:w1')).toBe(true);
-    expect(Object.hasOwn(byWindow, 'study:w2')).toBe(false);
-  });
-});
-
-describe('`/study` 창 닫기 게이트', () => {
-  it('마지막 차트 창은 닫히지 않으므로 그 설정도 걷히지 않는다', () => {
-    // `canCloseStudyWindow` 가 거부하는 no-op 에서 회수하면 **살아 있는 창**의
-    // 설정이 사라진다 — 화면은 그대로인데 지표만 페이지 세트로 되붙는 모양.
-    useStudyWorkspaceStore.setState({
-      windows: [{
-        id: 'w1',
-        kind: 'chart',
-        group: 1,
-        rect: { x: 0, y: 0, w: 0.5, h: 0.5 },
-        chart: { timeframe: '1m' },
-      }],
-      zOrder: ['w1'],
-      chartRuntime: {},
-    });
-    seedIndicatorScopeForWindow('study', 'w1', null);
-
-    useStudyWorkspaceStore.getState().closeWindow('w1');
-
-    expect(useStudyWorkspaceStore.getState().windows).toHaveLength(1); // 거부됐다
-    expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY)).toBe(true);
+    expect(Object.hasOwn(byWindow, 'live:w1')).toBe(true);
+    expect(Object.hasOwn(byWindow, 'live:w2')).toBe(false);
   });
 });

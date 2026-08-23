@@ -4,7 +4,10 @@ import {
   pickWindowIndicators,
   takeWindowIndicatorsForMigration,
 } from './indicatorsWindowMigration';
-import { STUDY_WORKSPACE_STORAGE_KEY, WORKSPACE_STORAGE_KEY } from './workspaceKeys';
+import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
+
+/** 사라진 `/study` 스냅샷 키 — 사다리가 아직 읽는다(그 모듈의 `SOURCES` 주석). */
+const STUDY_WORKSPACE_STORAGE_KEY = 'study.workspace.v1';
 
 /**
  * 창 소유 지표 → 전역 v2 1회 승격.

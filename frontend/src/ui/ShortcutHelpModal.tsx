@@ -16,11 +16,10 @@ import { ModalShell } from './ModalShell';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { onOpenShortcutHelp } from './shortcutHelp';
 
-type HelpRoute = 'live' | 'study' | 'heatmap' | 'other';
+type HelpRoute = 'live' | 'heatmap' | 'other';
 
 function routeOf(pathname: string): HelpRoute {
   if (pathname.startsWith('/live')) return 'live';
-  if (pathname.startsWith('/study')) return 'study';
   if (pathname.startsWith('/heatmap')) return 'heatmap';
   return 'other';
 }
@@ -94,12 +93,6 @@ export function ShortcutHelpModal({ route, onClose }: { route: HelpRoute; onClos
               <Row keys={['Del']} desc="선택한 그리기 삭제" />
             </Section>
           </>
-        )}
-        {route === 'study' && (
-          <Section title="study 워크스페이스">
-            <Row keys={['1', '~', '4']} desc="탭 선택" />
-            <Row keys={['[', ']']} desc="탭 순환" />
-          </Section>
         )}
         {route === 'heatmap' && (
           <Section title="히트맵">

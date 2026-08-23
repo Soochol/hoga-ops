@@ -65,11 +65,10 @@ const SettingsSections = lazy(() => import('./live/SettingsSections'));
 // 탭 제목이 nav 라벨 그대로인 라우트 표.
 //
 // `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
-// `/live`·`/study` 도 빠진다 — **페이지가 제목을 소유한다**(각각 종목명 + 시세,
-// 종목명 + 저장뷰 이름). 표에서 빼는 것만으로는 부족하고 아래 `staticTitle` 의
-// 삼항에서도 같이 빼야 한다: 표를 못 찾으면 `?? 'hoga-ops'` 로 떨어져 App 이
-// 페이지와 **경쟁하는 두 번째 writer** 가 된다.
-const PAGE_OWNED_TITLE_ROUTES: ReadonlySet<string> = new Set(['/live', '/study']);
+// `/live` 도 빠진다 — **페이지가 제목을 소유한다**(종목명 + 시세). 표에서 빼는 것만
+// 으로는 부족하고 아래 `staticTitle` 의 삼항에서도 같이 빼야 한다: 표를 못 찾으면
+// `?? 'hoga-ops'` 로 떨어져 App 이 페이지와 **경쟁하는 두 번째 writer** 가 된다.
+const PAGE_OWNED_TITLE_ROUTES: ReadonlySet<string> = new Set(['/live']);
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   WORKSPACE_NAV_ITEMS
     .filter((item) => !PAGE_OWNED_TITLE_ROUTES.has(item.to))
@@ -91,7 +90,7 @@ export default function App() {
   // 탭 전역 설정(테마 · 거래소 · 보조지표 · LiveSettings)의 단일 구독 지점 — 다른
   // 탭에서 바꾸면 이 탭도 리로드 없이 따라온다. App 이 전 라우트를 감싸는 레이아웃
   // 라우트라(main.tsx 의 `<Route element={<App />}>`) 여기 한 번이면 `/live` 딥링크
-  // 탭과 `/study` 까지 덮인다.
+  // 탭까지 덮인다.
   useCrossTabSync();
   // 좁은 폭에서 주변부(드로어)가 코어에게 자리를 양보한다 — 셸 바닥은 드로어가
   // 닫힌 기준이라, 열린 채로 좁아지면 바닥 위에서도 TopNav 가 잘린다.
@@ -108,13 +107,10 @@ export default function App() {
     : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트
-  // TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
+  // TopNav ⚙ · `/live` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
   // 종목검색의 「설정에서 갱신」) 전부 `requestSettingsModal()` 로 모인다. 등록 지점을
   // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
   useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
-  // 설정 본체는 앱 전역이지만 「체결창」 nav 하나만 컨텍스트로 갈린다(/live 워크스페이스
-  // 전용 데이터 창). 이제 진입점이 하나라 variant 는 **경로에서만** 파생한다.
-  const settingsVariant = pathname.startsWith('/study') ? 'study' : 'live';
 
   // Keep <html data-theme> in sync with the preference + current route. The
   // index.html bootstrap sets the first-paint value; this owns every change
@@ -180,11 +176,11 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         >
           {/* title 없음 — 섹션 제목·닫기 X는 SettingsSections 콘텐츠 헤더가 담당.
-              `/live`·`/study` 툴바 ⚙ 와 **같은 크롬**(중앙 모달 760px + nav 240px)이다:
+              `/live` 툴바 ⚙ 와 **같은 크롬**(중앙 모달 760px + nav 240px)이다:
               진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
               크롬은 `live/workspacePanel.ts` 상수 하나로 강제한다(하드코딩 금지). */}
           <Suspense fallback={null}>
-            <SettingsSections variant={settingsVariant} onClose={() => setSettingsOpen(false)} />
+            <SettingsSections variant="live" onClose={() => setSettingsOpen(false)} />
           </Suspense>
         </ModalShell>
       )}
