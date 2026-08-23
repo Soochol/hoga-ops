@@ -2696,7 +2696,6 @@ export function LiveChartRoot({
             bundle={cb}
             axis={axis}
             paneSeries={paneSeries}
-            timeframe={timeframe}
             avoidWallLabels={highLowAvoidWallLabels}
             avoidRankArrows={highLowAvoidRankArrows}
             avoidRankArrowLimit={PEAK_WALL_LEGEND_RANK_LIMIT}

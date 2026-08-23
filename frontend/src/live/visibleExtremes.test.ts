@@ -32,11 +32,10 @@ describe('computeVisibleExtremes', () => {
 
     expect(ex).not.toBeNull();
     expect(ex!.high.price).toBe(38_800);
-    expect(ex!.high.tsMs).toBe(tHigh);
     expect(ex!.high.virtualSec).toBe(tHigh / 1000);
     expect(ex!.high.pct).toBeCloseTo(-4.38, 2); // (37100-38800)/38800*100
     expect(ex!.low.price).toBe(36_750);
-    expect(ex!.low.tsMs).toBe(tLast);
+    expect(ex!.low.virtualSec).toBe(tLast / 1000);
     expect(ex!.low.pct).toBeCloseTo(0.95, 2); // (37100-36750)/36750*100
   });
 
@@ -100,7 +99,7 @@ describe('computeVisibleExtremes', () => {
 
     const ex = computeVisibleExtremes(candles, axis, FULL_RANGE);
 
-    expect(ex!.high.tsMs).toBe(tFirst);
+    expect(ex!.high.virtualSec).toBe(tFirst / 1000);
   });
 
   it('returns null on null range / empty candles', () => {

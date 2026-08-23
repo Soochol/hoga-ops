@@ -4,7 +4,6 @@ import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
-import type { LiveTimeframe } from '../state/livePage';
 import { useActivePrefs, useScopedChartPrefs } from '../state/chartPrefs';
 import {
   HighLowLabelsPrimitive,
@@ -23,7 +22,6 @@ type Props = {
   bundle: RangeBundle;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
-  timeframe: LiveTimeframe;
   /** Ask/Bid Peak(최대벽) 도킹 라벨들. 픽셀이 아닌 가격/시각을 넘기는 이유: 좌표 변환은
    *  축 스케일 스냅샷이라, 상위에서 미리 구우면 오토스케일·팬/줌 시 회피 rect 가 낡는다.
    *  primitive.draw 가 매 프레임 변환한다. */
@@ -60,7 +58,7 @@ function sameRects(a: readonly AvoidRect[], b: readonly AvoidRect[]): boolean {
  * DOM 오버레이의 한 프레임 지연 원인이었다).
  */
 function HighLowLabelsHost({
-  chart, bundle, axis, paneSeries, timeframe,
+  chart, bundle, axis, paneSeries,
   avoidWallLabels = [], avoidRankArrows = [], avoidRankArrowLimit = 0,
 }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
@@ -112,7 +110,6 @@ function HighLowLabelsHost({
       ? {
         candles: bundle.candles,
         axis,
-        timeframe,
         avoidWallLabels,
         avoidRankArrows,
         avoidRankArrowLimit,
@@ -122,7 +119,7 @@ function HighLowLabelsHost({
       }
       : null;
     primRef.current?.requestUpdate();
-  }, [enabled, bundle, axis, timeframe, avoidWallLabels, avoidRankArrows, avoidRankArrowLimit, levelLines, priorDayLines]);
+  }, [enabled, bundle, axis, avoidWallLabels, avoidRankArrows, avoidRankArrowLimit, levelLines, priorDayLines]);
 
   useEffect(() => {
     if (!series || !enabled) return;

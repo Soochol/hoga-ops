@@ -7,8 +7,6 @@ export type Extreme = {
   /** 극값 대비율(Extreme Gap) = (기준가 − price) / price × 100. 기준가 = 보이는 범위의 우측 끝
    *  (가장 최근) 캔들 close. CONTEXT.md `극값 대비율`. */
   pct: number;
-  /** 극값 봉의 실 Unix ms — KST 시각 라벨용(formatExtremeLabel). */
-  tsMs: number;
   /** 극값 봉의 가상초(chart Time = axis.toVirtual(tsMs)/1000) — x좌표 투영용. */
   virtualSec: number;
 };
@@ -18,7 +16,7 @@ export type VisibleExtremes = { high: Extreme; low: Extreme } | null;
 /** 가격만 담는 극값 쌍 — 라벨이 없는 선 전용이라 %·시각이 필요 없다. */
 export type PriorDaysExtremes = { high: number; low: number } | null;
 
-type Ref = { price: number; tsMs: number; virtualSec: number };
+type Ref = { price: number; virtualSec: number };
 
 function gap(basis: number, extreme: number): number {
   return ((basis - extreme) / extreme) * 100;
@@ -55,8 +53,8 @@ export function computeVisibleExtremes(
     if (!axis.contains(c.ts_ms)) continue;
     const virtualSec = axis.toVirtual(c.ts_ms) / 1000;
     if (virtualSec < from || virtualSec > to) continue;
-    if (high === null || c.high > high.price) high = { price: c.high, tsMs: c.ts_ms, virtualSec };
-    if (low === null || c.low < low.price) low = { price: c.low, tsMs: c.ts_ms, virtualSec };
+    if (high === null || c.high > high.price) high = { price: c.high, virtualSec };
+    if (low === null || c.low < low.price) low = { price: c.low, virtualSec };
     if (virtualSec > basisVSec) {
       basisVSec = virtualSec;
       basisClose = c.close;
