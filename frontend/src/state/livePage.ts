@@ -369,7 +369,6 @@ type Store = Persisted & IndicatorSettings & {
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakHidden: (hidden: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
-  setAskPeakVisibleMaxStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakEnabled: (enabled: boolean) => void;
   setBidPeakHidden: (hidden: boolean) => void;

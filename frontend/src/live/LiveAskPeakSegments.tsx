@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { IRange, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
@@ -11,11 +11,7 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
-import {
-  PEAK_WALL_LEGEND_RANK_LIMIT,
-  peakWallRankLegendCells,
-  rankVisiblePeakSegments,
-} from './peakWallVisibleRanking';
+import { PEAK_WALL_LEGEND_RANK_LIMIT, peakWallRankLegendCells } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -110,50 +106,14 @@ type AskPeakLineStyle = {
   lineWidth: number;
 };
 
-type VisibleTimeRange = IRange<Time> | null;
-type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
-
 function toPeakRankLimit(value: number): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
 
-function toVisibleMaxRankLimit(value: number): VisibleMaxRankLimit {
-  return value === 0 || value === 2 || value === 3 ? value : 1;
-}
-
-function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
-  return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
-}
-
-export function styleVisibleMaxAskPeakSegments(
-  segments: readonly AskPeakSegment[],
-  visibleRange: VisibleTimeRange,
-  style: AskPeakLineStyle,
-  rankLimit: VisibleMaxRankLimit = 1,
-): AskPeakSegment[] {
-  // 레전드 값 셀(`peakWallRankLegendCells`)과 **같은 랭커**를 쓴다. 두 벌을 두면 동점
-  // (같은 잔량)에서 조용히 갈려 선은 A 를, 레전드 1위는 B 를 가리킨다.
-  const highlighted = rankVisiblePeakSegments(segments, visibleRange, rankLimit);
-  if (highlighted.length === 0) return [...segments];
-  const next = [...segments];
-  for (const index of highlighted) {
-    next[index] = { ...segments[index], color: style.color, lineWidth: style.lineWidth };
-  }
-  return next;
-}
-
 export function prepareAskPeakSegmentsForRender(
   segments: readonly AskPeakSegment[],
-  visibleRange: IRange<Time> | null,
-  visibleMaxStyle: { color: string; lineWidth: number },
-  visibleMaxRankLimit: VisibleMaxRankLimit,
 ): AskPeakSegment[] {
-  return inlinePeakWallSegmentsForDocking(styleVisibleMaxAskPeakSegments(
-    segments,
-    visibleRange,
-    visibleMaxStyle,
-    visibleMaxRankLimit,
-  ));
+  return inlinePeakWallSegmentsForDocking(segments);
 }
 
 type BuildAskPeakOverlaySegmentsArgs = {
@@ -335,11 +295,8 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
   const hidden = useWindowIndicator((s) => s.askPeakHidden);
   const color = useWindowIndicator((s) => s.askPeakColor);
   const lineWidth = useWindowIndicator((s) => s.askPeakLineWidth);
-  const visibleMaxColor = useWindowIndicator((s) => s.askPeakVisibleMaxColor);
-  const visibleMaxLineWidth = useWindowIndicator((s) => s.askPeakVisibleMaxLineWidth);
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
-  const visibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const rankArrowEnabled = useActivePrefs((s) => s.askPeakRankArrowEnabled);
   const maFilter = usePeakMaFilter('ask');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
@@ -419,7 +376,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
       legendSegmentsRef.current = [];
       return;
     }
-    const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
+    const baselineRankLimit = toPeakRankLimit(allPriceRankLimit);
     const rawSegments = buildAskPeakOverlaySegments({
       dayAskPeaks,
       segments,
@@ -448,13 +405,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
       prim.setSegments([]);
       return;
     }
-    const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
-    prim.setSegments(prepareAskPeakSegmentsForRender(
-      rawSegments,
-      visibleRange,
-      { color: visibleMaxColor, lineWidth: visibleMaxLineWidth },
-      toVisibleMaxRankLimit(visibleMaxRankLimit),
-    ));
+    prim.setSegments(prepareAskPeakSegmentsForRender(rawSegments));
   }, [
     dayAskPeaks,
     segments,
@@ -463,13 +414,10 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, segments, candles,
     todayKst,
     color,
     lineWidth,
-    visibleMaxColor,
-    visibleMaxLineWidth,
     enabled,
     hidden,
     intraMax,
     allPriceRankLimit,
-    visibleMaxRankLimit,
     visibleTimeCutoff,
     maFilter,
     dailyMaFilter,

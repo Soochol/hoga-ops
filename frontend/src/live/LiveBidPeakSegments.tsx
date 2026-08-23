@@ -55,10 +55,6 @@ function toPeakRankLimit(value: number): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
 
-function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
-  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
-}
-
 /** 거래일별 매수 최대벽(dayBidPeaks)을 그날 구간의 수평 세그먼트 좌표로 변환(순수). 각 peak.date를
  *  segment(session open/close)에 매핑 → x0=open, x1=close(과거일) 또는 라이브 엣지(오늘=마지막 캔들).
  *  segment 없는 날·축 빈 경우는 건너뛴다. 시각은 axis.toVirtual(ms)/1000(가상 초, 라인과 동일 좌표). */
@@ -288,7 +284,6 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
   const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
-  const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const rankArrowEnabled = useActivePrefs((s) => s.bidPeakRankArrowEnabled);
   const maFilter = usePeakMaFilter('bid');
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
@@ -351,7 +346,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
-    const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
+    const baselineRankLimit = toPeakRankLimit(allPriceRankLimit);
     const nextSegments = enabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
@@ -389,7 +384,6 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, segments, candles,
     hidden,
     intraMax,
     allPriceRankLimit,
-    visibleMaxRankLimit,
     visibleTimeCutoff,
     maFilter,
     dailyMaFilter,

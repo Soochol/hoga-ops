@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
@@ -181,41 +181,16 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
-  it('매도 최대벽 선택 시 스타일 pane과 보이는 최신 봉 기준 토글 표시', () => {
+  it('매도 최대벽 선택 시 체결된 벽 스타일과 보이는 최신 봉 기준 토글 표시', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
+    // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
+    expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
     expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('매도 최대벽 상세 pane에 체결된 벽·보이는 영역 표시 개수 controls를 렌더한다', () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
-
-    expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
-    expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
-
-    const groups = screen.getAllByRole('group');
-    expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
-    expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
-
-    const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
-    for (const name of ['0', '1', '2', '3']) {
-      expect(visibleMaxGroup.getByRole('button', { name })).toBeTruthy();
-    }
-
-    useChartPrefsStore.setState({
-      askPeakAllPriceRankLimit: 2,
-      askPeakVisibleMaxRankLimit: 1,
-    });
-    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
-    expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(3);
-    expect(useChartPrefsStore.getState().askPeakAllPriceRankLimit).toBe(2);
-    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
-    expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(0);
-  });
 
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
     renderPanel();
@@ -389,33 +364,6 @@ describe('IndicatorPanel', () => {
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('매수 최대벽 상세 pane에 체결된 벽·보이는 영역 표시 개수 controls를 렌더한다', () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
-    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
-
-    expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
-    expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
-
-    const groups = screen.getAllByRole('group');
-    expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
-    expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
-
-    const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
-    for (const name of ['0', '1', '2', '3']) {
-      expect(visibleMaxGroup.getByRole('button', { name })).toBeTruthy();
-    }
-
-    useChartPrefsStore.setState({
-      bidPeakAllPriceRankLimit: 2,
-      bidPeakVisibleMaxRankLimit: 1,
-    });
-    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
-    expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(3);
-    expect(useChartPrefsStore.getState().bidPeakAllPriceRankLimit).toBe(2);
-    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
-    expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(0);
-  });
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
     renderPanel();
@@ -674,7 +622,8 @@ describe('IndicatorPanel', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
+    // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
+    expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
   });
 
   it('당일 최대벽 매수 서브탭의 표시 토글로 bidPeakEnabled 반전', () => {

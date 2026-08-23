@@ -16,8 +16,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
-      askPeakVisibleMaxColor: '#EAB308',
-      askPeakVisibleMaxLineWidth: 3,
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
@@ -474,28 +472,7 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(m.askPeakColor).toBe('#EF4444');
     expect(m.askPeakLineWidth).toBe(3);
   });
-  it('레거시(필드 없음): visible max 기본 #EAB308/3', () => {
-    const m = mergeLiveIndicatorPrefs(undefined);
-    expect(m.askPeakVisibleMaxColor).toBe('#EAB308');
-    expect(m.askPeakVisibleMaxLineWidth).toBe(3);
-  });
-  it('visible max 유효값 보존', () => {
-    const m = mergeLiveIndicatorPrefs({
-      askPeakVisibleMaxColor: '#A855F7',
-      askPeakVisibleMaxLineWidth: 4,
-    });
-    expect(m.askPeakVisibleMaxColor).toBe('#A855F7');
-    expect(m.askPeakVisibleMaxLineWidth).toBe(4);
-  });
-  it('visible max 이상값 폴백', () => {
-    const m = mergeLiveIndicatorPrefs({
-      askPeakVisibleMaxColor: 'yellow',
-      askPeakVisibleMaxLineWidth: 9,
-    });
-    expect(m.askPeakVisibleMaxColor).toBe('#EAB308');
-    expect(m.askPeakVisibleMaxLineWidth).toBe(3);
-  });
-  it('VI/상하한가 선 스타일 기본값은 보이는 영역 최대벽과 같은 #EAB308/3', () => {
+  it('VI/상하한가 선 스타일 기본값은 #EAB308/3', () => {
     const m = mergeLiveIndicatorPrefs(undefined);
     expect(m.viLimitPriceLineColor).toBe('#EAB308');
     expect(m.viLimitPriceLineWidth).toBe(3);

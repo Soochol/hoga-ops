@@ -6,7 +6,9 @@ import {
   peakWallRankLegendCells,
   rankVisiblePeakSegments,
 } from './peakWallVisibleRanking';
-import { styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
+import { peakWallRankArrowsFromSegments } from './peakWallRankArrows';
+import type { VirtualAxis } from '../util/virtualAxis';
+import { candleExtremesByVirtualSec } from './peakWallRankArrows';
 
 /** 하루치 벽 하나. `day` 는 가상초 축에서의 그날 구간(=[day, day+100])이라
  *  보이는 범위와의 겹침 판정을 날짜 단위로 세울 수 있다. */
@@ -86,18 +88,22 @@ describe('peakWallRankLegendCells', () => {
 });
 
 /**
- * **선 강조와 레전드가 같은 벽을 가리킨다.**
+ * **레전드와 순위 화살표가 같은 벽을 가리킨다.**
  *
- * 이 리팩터의 요점 — 랭킹이 두 벌이면 동점에서 조용히 갈려 선은 A 를 강조하는데 레전드
- * 1위는 B 가 된다. 두 소비처가 같은 `rankVisiblePeakSegments` 를 쓰는 한 원리적으로
- * 불가능하고, 이 테스트가 그 「한」을 고정한다.
+ * 이 리포에서 랭킹의 소비처는 셋이다 — 레전드 셀 · 순위 화살표 · 고저 라벨 회피.
+ * 랭킹이 두 벌이면 동점(같은 잔량)에서 조용히 갈려 레전드 1위와 화살표 ① 이 다른 벽을
+ * 가리킨다. 셋이 같은 `rankVisiblePeakSegments` 를 쓰는 한 원리적으로 불가능하고,
+ * 이 테스트가 그 「한」을 고정한다.
+ *
+ * (2026-08-23: 네 번째 소비처였던 「보이는 영역 최대벽」 색 강조는 제거됐다 — 레전드와
+ * 화살표의 ①②③ 이 같은 정보를 순위까지 정확히 나르므로 색 채널이 중복이었다.)
  *
  * **막는 방향**: 어느 한쪽이 자기만의 정렬을 다시 갖는 것.
- * **못 보는 것**: 랭킹 **대상 집합**이 갈리는 것(레전드 ref 가 필터 전 세그먼트를 잡는 등)
- * — 그건 `LiveAskPeakSegments.test.tsx` 의 provider 테스트가 본다.
+ * **못 보는 것**: 랭킹 **대상 집합**이 갈리는 것(화살표가 필터 전 세그먼트를 잡는 등)
+ * — 그건 컴포넌트 테스트가 본다.
  */
-describe('선 강조 ↔ 레전드 일치', () => {
-  it('강조된 세그먼트 집합 = 레전드 상위 N 개', () => {
+describe('레전드 ↔ 순위 화살표 일치', () => {
+  it('두 표면이 같은 순서로 같은 벽을 고른다(동점 포함)', () => {
     // 1·2위가 동점(50) — 갈리려면 여기서 갈린다.
     const segments = [
       seg(0, 1000, 50),
@@ -106,20 +112,24 @@ describe('선 강조 ↔ 레전드 일치', () => {
       seg(3000, 4000, 70),
     ];
     const visible = range(-10, 4200);
-    const styled = styleVisibleMaxAskPeakSegments(
-      segments,
-      visible,
-      { color: '#hot', lineWidth: 3 },
-      2,
+    // 화살표는 봉 극값에 매달리므로 각 peakTime 에 캔들을 하나씩 둔다.
+    const axis = { toVirtual: (ms: number) => ms } as unknown as VirtualAxis;
+    const extremes = candleExtremesByVirtualSec(
+      segments.map((s) => ({
+        ts_ms: Number(s.peakTime) * 1000,
+        open: 0, high: s.price + 1, low: s.price - 1, close: 0, vol_a: 0, vol_b: 0,
+      })),
+      axis,
     );
-    const highlightedPrices = styled
-      .filter((s) => s.color === '#hot')
-      .map((s) => s.price)
-      .sort((a, b) => a - b);
-    const legendTop2 = rankVisiblePeakSegments(segments, visible, 2)
-      .map((i) => segments[i].price)
-      .sort((a, b) => a - b);
-    expect(highlightedPrices).toEqual(legendTop2);
-    expect(highlightedPrices).toEqual([1000, 4000]);
+    const arrows = peakWallRankArrowsFromSegments(segments, 'ask', extremes);
+
+    const legendValues = peakWallRankLegendCells(segments, visible, 'ask-peak').map((c) => c.value);
+    const arrowOrder = rankVisiblePeakSegments(arrows, visible, PEAK_WALL_LEGEND_RANK_LIMIT)
+      .map((i) => arrows[i].anchorPrice - 1); // 고가 = price + 1 로 뒀으므로 되돌린다
+
+    expect(arrowOrder).toEqual([4000, 1000, 2000]);
+    expect(legendValues[0]).toContain('4,000');
+    expect(legendValues[1]).toContain('1,000');
+    expect(legendValues[2]).toContain('2,000');
   });
 });
