@@ -15,7 +15,6 @@ import type { Candle } from '../api/types';
 import { rankVisiblePeakSegments } from '../live/peakWallVisibleRanking';
 import { rankArrowRect, type PeakWallRankArrow } from './PeakWallRankArrowsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
-import type { LiveTimeframe } from '../state/livePage';
 import { resolveTokensThemed } from '../util/tokens';
 import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
 import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
@@ -67,7 +66,6 @@ export type LevelLineStyle = { on: boolean; color: string; width: number };
 export type HighLowLabelsSnapshot = {
   candles: readonly Candle[];
   axis: VirtualAxis;
-  timeframe: LiveTimeframe;
   /** Ask/Bid Peak(최대벽) 도킹 라벨 — 픽셀이 아닌 가격/시각. 좌표 변환은 draw 가 한다. */
   avoidWallLabels: readonly AvoidWallLabel[];
   /** 최대벽 **순위 화살표** 후보(전건). 상위 몇 개가 실제로 그려지는지는 보이는 범위에
@@ -327,7 +325,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         if (xc === null) continue;
 
-        const text = formatExtremeLabel(item.e.price, item.e.pct, item.e.tsMs, snap.timeframe);
+        const text = formatExtremeLabel(item.e.price, item.e.pct);
         const boxWidth = labelBoxWidth(measureTextCached(ctx, text));
         const label = placeExtremeLabel(item.place, xc, yc, boxWidth, paneWidth, paneHeight, avoidRects);
 

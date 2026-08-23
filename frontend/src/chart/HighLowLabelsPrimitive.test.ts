@@ -122,7 +122,6 @@ function snapshot(over: Partial<HighLowLabelsSnapshot> = {}): HighLowLabelsSnaps
   return {
     candles: CANDLES,
     axis,
-    timeframe: '1m',
     avoidWallLabels: [],
     avoidRankArrows: [],
     avoidRankArrowLimit: 0,
@@ -150,7 +149,7 @@ function texts(c: ReturnType<typeof makeCanvasSpy>): { text: string; x: number; 
 }
 
 describe('HighLowLabelsPrimitive', () => {
-  it('draws the high and low extreme labels with price, 극값 대비율 and time', () => {
+  it('draws the high and low extreme labels with price and 극값 대비율 (no timestamp)', () => {
     const stubs = makeAxisStubs();
     const { prim } = attach(stubs, () => snapshot());
     const c = makeCanvasSpy();
@@ -160,7 +159,8 @@ describe('HighLowLabelsPrimitive', () => {
     const drawn = texts(c);
     expect(drawn).toHaveLength(2);
     expect(drawn[0].text).toContain('38,800원');
-    expect(drawn[0].text).toContain('09:02');
+    // 시각은 칩에 없다 — 폭이 곧 캔들을 덮는 면적이라 2026-08-23 에 뺐다.
+    expect(drawn[0].text).not.toMatch(/\d{2}:\d{2}/);
     expect(drawn[1].text).toContain('36,750원');
     // 극값 대비율 부호: 기준가 37,100 → 고가 음수, 저가 양수.
     expect(drawn[0].text).toMatch(/-\d+\.\d{2}%/);
