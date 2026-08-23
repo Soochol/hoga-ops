@@ -20,12 +20,21 @@ afterEach(() => {
 const button = () => screen.getByTestId('live-jump-to-minute-button');
 
 describe('JumpToMinuteButton', () => {
-  it('그룹에 분봉 창이 없으면 비활성이고 **사유를 말한다**', () => {
+  // 종전 문구는 「이 창번호에 분봉 창이 없습니다」로 끝났다 — 사실이지만 막다른 길이다.
+  // 사용자가 해야 하는 일은 세 단계이고, 그중 **봉을 바꾸는 단계는 화면만 봐서는 알 수
+  // 없다**: 새 차트 창은 포커스 차트의 봉을 물려받으므로 캘린더 창에서 만들면 캘린더 봉이다.
+  it('그룹에 분봉 창이 없으면 비활성이고 **할 일을 말한다**', () => {
     render(
       <JumpToMinuteButton timeframe="D" destinationDate={YESTERDAY} hasMinuteWindow={false} onRun={vi.fn()} />,
     );
     expect(button()).toBeDisabled();
-    expect(button().getAttribute('title')).toBe('이 창번호에 분봉 창이 없습니다');
+    const title = button().getAttribute('title') ?? '';
+    expect(title).toContain('분봉 창이 없습니다');
+    // 상태 서술로 끝나지 않는다 — 창을 만들고, 그 창의 봉을 바꾸라고까지 적는다.
+    expect(title).toContain('창 추가');
+    expect(title).toContain('봉');
+    // aria 도 같은 문장을 읽는다(보낼 곳이 없을 때는 목적지를 말하지 않는다).
+    expect(button().getAttribute('aria-label')).toBe(title);
   });
 
   // 종전엔 호버해야만 목적지가 보였다 — 터치·펜에는 호버가 없어 볼 방법이 아예

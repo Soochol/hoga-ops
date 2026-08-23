@@ -82,6 +82,7 @@ import {
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 import type { JumpRange } from '../minuteJumpDestination';
 import { MinuteJumpChip } from './MinuteJumpChip';
+import { ViewedDateChip } from './ViewedDateChip';
 import { canPublishTimeframeJump } from '../../chart/timeframeJump';
 import { jumpReceiverIds, registerJumpRunner } from './jumpControls';
 import { useLiveCursorStore } from '../useLiveCursorStore';
@@ -380,6 +381,12 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
   /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
   const [jumpDestination, setJumpDestination] = useState<string | null>(null);
+  // 이 분봉 창이 보고 있는 날짜(라이브 엣지면 null) — 시간축이 하루 안에서는 날짜를
+  // 안 찍어서 화면만 봐서는 며칠인지 알 수 없다(#1506 조사 D3).
+  const [viewedDate, setViewedDate] = useState<{
+    date: string | null;
+    returnToLive: () => void;
+  }>({ date: null, returnToLive: () => {} });
   const [minuteJump, setMinuteJump] = useState<{
     state: MinuteJumpState | null;
     clear: () => void;
@@ -679,6 +686,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         {/* 점프 칩·hogaplay 칩은 저장뷰 칩과 **같은 자리**다 — 「차트가 특별한
             상태에 잡혀 있다 + × 로 푼다」는 이미 학습된 패턴이라 새 자리를 만들지
             않는다. 셋이 동시에 뜨는 조합도 서로 모순되지 않는다(각각 기간·소스·점프). */}
+        {viewedDate.date !== null && (
+          <div className="ml-1 flex min-w-0 items-center">
+            <ViewedDateChip date={viewedDate.date} onReturn={viewedDate.returnToLive} />
+          </div>
+        )}
         {minuteJump.state && (
           <div className="ml-1 flex min-w-0 items-center">
             <MinuteJumpChip
@@ -787,6 +799,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               savedRangeFromDate={savedRange?.fromDate ?? null}
               onJumpSourceReady={(read) => { jumpSourceRef.current = read; }}
               onJumpDestinationChange={setJumpDestination}
+              onViewedDateChange={setViewedDate}
               onMinuteJumpChange={setMinuteJump}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
