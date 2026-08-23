@@ -19,6 +19,7 @@
 import { memo, useEffect, useMemo, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { useScopedChartPrefs } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
@@ -627,6 +628,20 @@ function PaneLegendOverlay({
   // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's
   // legend appears without waiting for a crosshair move.
   const legendPanes = usePaneLegendRegistry((s) => scopeEntries(s.byScope, windowId));
+  // **지표 pref 구독 — 값은 안 쓰고 재렌더 신호로만 쓴다.**
+  //
+  // flag provider 는 비반응형 레지스트리에 있어(P1: SSE 틱마다 재렌더되는 것을 막는다)
+  // 이 오버레이가 다시 렌더될 때 lazy 하게 읽힌다. 그런데 이 오버레이는 스토어 토글
+  // (`useWindowIndicator`)만 구독하고 **chartPrefs 는 구독하지 않았다** — 그래서 지표
+  // 설정을 바꾸면 선·마커는 즉시 갱신되는데 레전드만 **다음 상호작용(크로스헤어 이동·
+  // 팬·토글)까지 옛 값**을 보였다. 실앱에서 매수 최대벽의 MA 필터를 끄면 선 3개가 바로
+  // 나오는데 레전드는 비어 있는 모양으로 관측됐다.
+  //
+  // 전체 구독이 안전한 근거: chartPrefs 의 쓰기 경로는 **설정 UI 뿐**이다(설정 행 ·
+  // 숫자 행 · 최대벽 개수 노브 — 실측 4곳). 즉 사용자 조작 빈도라 P1 이 막은 비용
+  // (SSE 틱당 재렌더)을 되살리지 않는다. 반환값은 상태 객체당 memo 된 안정 참조라
+  // (`prefsForScope` 의 WeakMap 캐시) 렌더마다 새로 구독되지도 않는다.
+  void useScopedChartPrefs();
 
   // OHLC 레전드용 인덱싱 — 그려진(보이는) 봉 배열 + 가상초→index 맵(CandleTooltip 선례).
   // candles/axis 는 캔들 경로/segments 참조라 SSE 틱엔 재계산 안 됨. 팬/줌(axis 리베이스)·

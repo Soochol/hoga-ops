@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
@@ -649,5 +650,56 @@ describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 �
   it('플롯 폭을 못 읽으면(첫 프레임·teardown) 기존 인셋으로 폴백한다', () => {
     renderPanes(0);
     expect(wrapperOf('volume').style.right).toBe('var(--space-xs)');
+  });
+});
+
+/**
+ * **지표 pref 를 바꾸면 레전드도 그 자리에서 갱신된다**(2026-08-23).
+ *
+ * flag provider 는 비반응형 레지스트리에 있다(P1: SSE 틱마다 레전드가 재렌더되는 것을
+ * 막는 장치). 그래서 provider 의 값이 달라져도 **이 오버레이가 다시 렌더될 때**에만
+ * 읽힌다. 종전엔 이 오버레이가 스토어 토글만 구독하고 **chartPrefs 는 구독하지 않아**,
+ * 지표 설정을 바꾸면 선·마커는 즉시 갱신되는데 레전드만 **다음 상호작용(크로스헤어
+ * 이동·팬·토글)까지 옛 값**을 보였다. 실앱에서 매수 최대벽의 MA 필터를 끄면 선 3개가
+ * 바로 나오는데 레전드는 비어 있는 모양으로 관측됐다.
+ *
+ * **막는 방향**: chartPrefs 구독이 사라져 레전드가 다시 한 박자 늦는 것.
+ * **못 보는 것**: P1(SSE 틱 재렌더 차단)이 유지되는지 — 그건 chartPrefs 에 틱 단위
+ * 쓰기가 없다는 사실이 지탱하고(쓰기 경로는 설정 UI 뿐), 값이 아니라 구독만 쓰므로
+ * 이 테스트의 범위 밖이다.
+ */
+describe('PaneLegendOverlay — 지표 pref 변경 즉시 반영', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  it('크로스헤어·팬 없이 pref 만 바꿔도 flag 값이 갱신된다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    // provider 는 호출 시점에 pref 를 읽는다 — 실제 provider 들이 컴포넌트 상태(= pref
+    // 파생)를 캡처하는 것과 같은 성질을 최소 형태로 흉내낸다.
+    const provider: FlagLegendValueProvider = () => [{
+      key: 'ask-peak-1',
+      label: '1',
+      value: `${useChartPrefsStore.getState().askPeakAllPriceRankLimit}개`,
+    }];
+    registerFlagLegendValues(null, 'ask-peak', provider);
+    try {
+      render(
+        <PaneLegendOverlay
+          chart={makeChart([120, 60, 60, 60, 60, 60])}
+          timeframe="1m"
+          paneToggles={{ foreignNet: false, institutionNet: false } as PaneToggles}
+        />,
+      );
+      expect(screen.getByText('1개')).toBeInTheDocument();
+
+      act(() => {
+        useChartPrefsStore.setState({ askPeakAllPriceRankLimit: 3 });
+      });
+
+      expect(screen.getByText('3개')).toBeInTheDocument();
+      expect(screen.queryByText('1개')).toBeNull();
+    } finally {
+      unregisterFlagLegendValues(null, 'ask-peak', provider);
+    }
   });
 });
