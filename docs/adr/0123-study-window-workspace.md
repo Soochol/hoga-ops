@@ -1,6 +1,9 @@
 # ADR-0123 — /study 창 워크스페이스 전환: 탭 유지 + 자유 배치 창
 
-- 상태: 채택 (2026-07-21)
+- 상태: **superseded by ADR-0157 (2026-08-23)** — 이 창 워크스페이스가 붙어 있던
+  `/study` 라우트가 폐지됐다. `study.workspace.v1` 키는 1회성 지표 승격 사다리
+  (`state/indicatorsWindowMigration.ts`)가 **읽기만** 하는 승계 대상으로 남는다.
+  (원래 상태: 채택 2026-07-21)
 - 관련: ADR-0119(멀티창 워크스페이스), ADR-0122(비율 좌표계), ADR-0113(/live 멀티탭
   제거), **ADR-0149(/study 탭 제거 — 이 ADR 을 부분 supersede)**,
   플랜 (`docs/plans/2026-07-21-study-window-workspace.md`), 지도 #797
