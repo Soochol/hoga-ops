@@ -805,21 +805,14 @@ type ChartPrefsStore = ChartViewPrefs & {
   resetToDefaults: () => void;
 };
 
-/** Provider 밖(전역 경로) 스코프 — `/live` 페이지 세트. */
-const AMBIENT_PREF_SCOPE: IndicatorScope = { page: null, windowKey: null };
+/** Provider 밖(전역 경로) 스코프 — 앱 세트. */
+const AMBIENT_PREF_SCOPE: IndicatorScope = { windowKey: null };
 
-/** 이 스코프가 편집할 창 엔트리 키 — 없으면 null(= 페이지 세트를 편집한다).
+/** 이 스코프가 편집할 창 엔트리 키 — 없으면 null(= 앱 세트를 편집한다).
  *  값이 아니라 **키의 존재**로 판정한다(livePage 와 같은 멤버십 규약). */
 function ownedWindowKey(s: ChartPrefsStore, scope: IndicatorScope): string | null {
   const key = scope.windowKey;
   return key !== null && Object.hasOwn(s.indicatorModalByWindow, key) ? key : null;
-}
-
-function modalBucketsForPage(
-  s: Pick<ChartPrefsStore, 'indicatorModalByTimeframe' | 'studyIndicatorModalByTimeframe'>,
-  page: IndicatorScope['page'],
-): IndicatorModalByTimeframe {
-  return page === 'study' ? s.studyIndicatorModalByTimeframe : s.indicatorModalByTimeframe;
 }
 
 export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
@@ -850,17 +843,14 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
     const windowKey = ownedWindowKey(s, scope);
     const source = windowKey
       ? s.indicatorModalByWindow[windowKey]
-      : modalBucketsForPage(s, scope.page);
+      : s.indicatorModalByTimeframe;
     const buckets = { ...source, [profileKey]: { ...(source[profileKey] ?? {}), [key]: value } };
     const patch: Record<string, unknown> = windowKey
       ? { indicatorModalByWindow: { ...s.indicatorModalByWindow, [windowKey]: buckets } }
-      : scope.page === 'study'
-        ? { studyIndicatorModalByTimeframe: buckets }
-        : { indicatorModalByTimeframe: buckets };
-    // 창 쓰기와 `/study` 쓰기는 ambient 투영을 절대 갱신하지 않는다(livePage 와
-    // 같은 규율 — 투영은 `/live` 페이지 세트의 ambient 봉 값이다).
-    if (!windowKey && scope.page !== 'study'
-      && profileKey === profileKeyForTimeframe(s.indicatorModalTimeframe)) {
+      : { indicatorModalByTimeframe: buckets };
+    // 창 쓰기는 ambient 투영을 절대 갱신하지 않는다(livePage 와 같은 규율 —
+    // 투영은 앱 세트의 ambient 봉 값이다).
+    if (!windowKey && profileKey === profileKeyForTimeframe(s.indicatorModalTimeframe)) {
       patch[key] = value;
     }
     set(patch as Partial<ChartPrefsStore>);
@@ -925,16 +915,10 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
       const profileKey = profileKeyForTimeframe(tf);
       const windowKey = ownedWindowKey(s, scope);
       if (windowKey) {
-        // 엔트리는 남긴다 — 지우면 이 창이 페이지 세트로 되붙는다(livePage 와 동일).
+        // 엔트리는 남긴다 — 지우면 이 창이 앱 세트로 되붙는다(livePage 와 동일).
         const buckets = { ...s.indicatorModalByWindow[windowKey] };
         delete buckets[profileKey];
         set({ indicatorModalByWindow: { ...s.indicatorModalByWindow, [windowKey]: buckets } });
-        return;
-      }
-      if (scope.page === 'study') {
-        const buckets = { ...s.studyIndicatorModalByTimeframe };
-        delete buckets[profileKey];
-        set({ studyIndicatorModalByTimeframe: buckets });
         return;
       }
       const byTimeframe = { ...s.indicatorModalByTimeframe };
@@ -983,7 +967,7 @@ export function seedIndicatorModalScope(
   if (Object.hasOwn(s.indicatorModalByWindow, key)) return;
   if (Object.keys(s.indicatorModalByWindow).length >= INDICATOR_WINDOW_SCOPE_LIMIT) return;
   const source = (sourceWindowKey ? s.indicatorModalByWindow[sourceWindowKey] : undefined)
-    ?? modalBucketsForPage(s, scope.page);
+    ?? s.indicatorModalByTimeframe;
   const copy: IndicatorModalByTimeframe = {};
   for (const [profileKey, bucket] of Object.entries(source)) {
     copy[profileKey as IndicatorPaneProfileKey] = { ...bucket };
@@ -1032,7 +1016,7 @@ export function prefsForScope(
 ): ChartViewPrefs {
   const profileKey = profileKeyForTimeframe(tf);
   const windowKey = ownedWindowKey(state, scope);
-  const cacheKey = `${windowKey ?? (scope.page === 'study' ? 'study' : '')}|${profileKey}`;
+  const cacheKey = `${windowKey ?? ''}|${profileKey}`;
   let byProfile = prefsByTimeframeCache.get(state);
   if (!byProfile) {
     byProfile = new Map();
@@ -1042,7 +1026,7 @@ export function prefsForScope(
   if (hit) return hit;
   const buckets = windowKey
     ? state.indicatorModalByWindow[windowKey]
-    : modalBucketsForPage(state, scope.page);
+    : state.indicatorModalByTimeframe;
   const merged = {
     ...state,
     ...resolveIndicatorModalPrefs(buckets, tf),
@@ -1062,11 +1046,7 @@ function useWindowPrefsTimeframe(): LiveTimeframe | null {
  *  매 렌더 새 객체를 만들지만 소비자가 전부 이 값을 **스토어 selector 안에서만**
  *  쓰므로(구독 identity 에 실리지 않음) 재렌더를 유발하지 않는다. */
 function useWindowPrefsScope(): IndicatorScope {
-  const ctx = useContext(WindowViewContext);
-  return {
-    page: ctx?.workspace.scopePrefix ?? null,
-    windowKey: windowScopeKey(ctx?.workspace, ctx?.windowId),
-  };
+  return { windowKey: windowScopeKey(useContext(WindowViewContext)?.windowId) };
 }
 
 /**

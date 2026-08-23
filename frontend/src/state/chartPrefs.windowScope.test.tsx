@@ -9,12 +9,11 @@ import {
   syncIndicatorModalTimeframe,
 } from './chartPrefs';
 import { WindowViewContext, type WindowViewValue } from '../live/workspace/windowViewContext';
-import { LIVE_WINDOW_WORKSPACE } from '../live/workspace/windowView';
 import type { LiveTimeframe } from './livePage';
 
 
 /** Provider 밖(전역 경로) 스코프 — `/live` 페이지 세트. */
-const AMBIENT = { page: null, windowKey: null } as const;
+const AMBIENT = { windowKey: null } as const;
 /**
  * indicator-modal chartPrefs 의 **창 스코프** 회귀 가드.
  *
@@ -32,7 +31,6 @@ function windowView(timeframe: LiveTimeframe): WindowViewValue {
     code: '005930',
     timeframe,
     historicalFromDate: null,
-    workspace: LIVE_WINDOW_WORKSPACE,
   };
 }
 

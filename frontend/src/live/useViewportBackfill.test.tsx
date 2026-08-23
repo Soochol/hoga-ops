@@ -7,7 +7,6 @@ import { useLivePageStore } from '../state/livePage';
 import { useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import {
   WindowViewContext,
-  LIVE_WINDOW_WORKSPACE,
   type WindowViewValue,
 } from './workspace/windowView';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -701,8 +700,7 @@ describe('useViewportBackfill — 창 스코프(Provider 안)', () => {
       code,
       timeframe: '1m',
       historicalFromDate: '20260601',
-      workspace: LIVE_WINDOW_WORKSPACE,
-    };
+      };
     return ({ children }: { children: ReactNode }) => (
       <WindowViewContext.Provider value={value}>{children}</WindowViewContext.Provider>
     );

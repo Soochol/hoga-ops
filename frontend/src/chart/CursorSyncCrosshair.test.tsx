@@ -5,7 +5,6 @@ import { useLiveCursorStore, type SidebarCursorOrigin } from '../live/useLiveCur
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveTimeframe } from '../state/livePage';
 import {
-  LIVE_WINDOW_WORKSPACE,
   WindowViewContext,
   type WindowViewValue,
 } from '../live/workspace/windowView';
@@ -59,7 +58,6 @@ function renderCrosshair(
     code,
     timeframe,
     historicalFromDate: null,
-    workspace: LIVE_WINDOW_WORKSPACE,
   };
   return render(
     <WindowViewContext.Provider value={view}>

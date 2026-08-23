@@ -33,13 +33,11 @@ beforeEach(() => {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     indicatorsByTimeframe: {},
-    studyIndicatorsByTimeframe: {},
     indicatorsByWindow: {},
     indicatorTimeframe: '1m',
   });
   useChartPrefsStore.setState({
     indicatorModalByTimeframe: {},
-    studyIndicatorModalByTimeframe: {},
     indicatorModalByWindow: {},
   });
 });
@@ -50,7 +48,7 @@ describe('seedIndicatorScopeForWindow', () => {
       indicatorsByTimeframe: { minute: { volumeEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('live', 'w1', null);
+    seedIndicatorScopeForWindow('w1', null);
 
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
       .toEqual({ minute: { volumeEnabled: false } });
@@ -62,7 +60,7 @@ describe('seedIndicatorScopeForWindow', () => {
       indicatorsByWindow: { 'live:src': { minute: { ratioEnabled: true } } },
     });
 
-    seedIndicatorScopeForWindow('live', 'w1', 'src');
+    seedIndicatorScopeForWindow('w1', 'src');
 
     // 페이지 세트의 volumeEnabled:false 가 아니라 원본 창의 값이 와야 한다.
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
@@ -74,7 +72,7 @@ describe('seedIndicatorScopeForWindow', () => {
       indicatorsByTimeframe: { minute: { volumeEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('live', 'w1', 'ghost');
+    seedIndicatorScopeForWindow('w1', 'ghost');
 
     expect(useLivePageStore.getState().indicatorsByWindow[KEY])
       .toEqual({ minute: { volumeEnabled: false } });
@@ -85,7 +83,7 @@ describe('seedIndicatorScopeForWindow', () => {
       indicatorModalByTimeframe: { minute: { surgeMarkerEnabled: false } },
     });
 
-    seedIndicatorScopeForWindow('live', 'w1', null);
+    seedIndicatorScopeForWindow('w1', null);
 
     expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY)).toBe(true);
     expect(useChartPrefsStore.getState().indicatorModalByWindow[KEY])
@@ -95,19 +93,19 @@ describe('seedIndicatorScopeForWindow', () => {
 
 describe('dropIndicatorScopes*', () => {
   it('두 스토어에서 함께 걷는다', () => {
-    seedIndicatorScopeForWindow('live', 'w1', null);
+    seedIndicatorScopeForWindow('w1', null);
 
-    dropIndicatorScopesForWindows('live', ['w1']);
+    dropIndicatorScopesForWindows(['w1']);
 
     expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY)).toBe(false);
     expect(Object.hasOwn(useChartPrefsStore.getState().indicatorModalByWindow, KEY)).toBe(false);
   });
 
   it('사라진 id 만 걷는다 — 살아남은 창은 지킨다', () => {
-    seedIndicatorScopeForWindow('live', 'w1', null);
-    seedIndicatorScopeForWindow('live', 'w2', null);
+    seedIndicatorScopeForWindow('w1', null);
+    seedIndicatorScopeForWindow('w2', null);
 
-    dropIndicatorScopesForRemovedWindows('live', [{ id: 'w1' }, { id: 'w2' }], [{ id: 'w1' }]);
+    dropIndicatorScopesForRemovedWindows([{ id: 'w1' }, { id: 'w2' }], [{ id: 'w1' }]);
 
     const byWindow = useLivePageStore.getState().indicatorsByWindow;
     expect(Object.hasOwn(byWindow, 'live:w1')).toBe(true);

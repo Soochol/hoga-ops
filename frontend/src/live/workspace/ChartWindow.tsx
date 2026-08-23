@@ -22,7 +22,6 @@ import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import { useLiveChartData } from '../useLiveChartData';
 import {
-  LIVE_WINDOW_WORKSPACE,
   useSeedWindowIndicatorScope,
   WindowViewContext,
   useWindowView,
@@ -110,7 +109,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
   const isIndex = symbol?.kind === 'index';
   // 이 창에 자기 지표 세트가 있는지 보장한다(ADR-0152) — `addWindow` 가 안 거친
   // 경로(업그레이드 직후의 기존 창·프리셋 적용·딥링크 탭)의 안전망. 멱등이다.
-  useSeedWindowIndicatorScope(win.id, LIVE_WINDOW_WORKSPACE);
+  useSeedWindowIndicatorScope(win.id);
 
   const view: WindowViewValue = useMemo(
     () => ({
@@ -121,7 +120,6 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
       historicalFromDate,
-      workspace: LIVE_WINDOW_WORKSPACE,
     }),
     [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate],
   );

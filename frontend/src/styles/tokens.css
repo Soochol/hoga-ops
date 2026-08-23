@@ -177,7 +177,6 @@
   --list-row-min-h: 1.5625rem; /* 25px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density. */
   --list-group-header-min-h: 1.8125rem; /* 29px @ default; 29px base intent — Shared list group-header min-height — watchlist/heatmap group headers align (29px @ the 1.0× dial; was ≈32px at 1.125×) */
   --h-capture-row: 2.25rem; /* 36px @ default; 36px base intent — Single row in the capture queue */
-  --h-live-header: 2rem; /* 32px @ default; 32px base intent — Workspace header row — ui/WorkspaceShell.tsx WorkspaceHeader, 소비처는 /study 의 StudyPage 뿐 */
   --h-top-nav: 2rem; /* 32px @ default; 32px base intent — Global top navigation row */
   --h-bottom-bar: 1.5rem; /* 24px @ default; 24px base intent — Global market-index bottom bar row */
   --sidebar-w: 20rem; /* 320px @ default; 320px base intent — /inventory master-detail 좌열 폭 (pages/Inventory.tsx) */

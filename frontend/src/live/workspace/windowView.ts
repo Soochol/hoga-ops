@@ -37,7 +37,6 @@ import {
   INDICATOR_SETTING_KEYS,
   bucketsForScope,
   resolveIndicatorSettings,
-  type IndicatorPageScope,
   type IndicatorScope,
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
@@ -52,7 +51,6 @@ import {
   WindowViewContext,
   windowScopeKey,
   type WindowView,
-  type WindowWorkspaceAdapter,
 } from './windowViewContext';
 
 // 컨텍스트 객체·타입은 `windowViewContext.ts` 가 소유한다(chartPrefs 순환 회피 —
@@ -60,10 +58,8 @@ import {
 export { WindowViewContext, windowScopeKey } from './windowViewContext';
 export type {
   WindowChartStoreState,
-  WindowStoreHandle,
   WindowView,
   WindowViewValue,
-  WindowWorkspaceAdapter,
 } from './windowViewContext';
 
 /**
@@ -78,9 +74,21 @@ export type {
  *
  * 그때까지 `scopePrefix` 는 항상 `'live'` 다. 새 코드에서 `'study'` 분기를 만들지 말 것.
  */
-export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
-  store: useWorkspaceStore,
-  getWorkareaCode: (windowId) => {
+/**
+ * 이 창의 코드를 **workarea 공간**으로 — 주식=6자리 코드, 지수=`index:<id>`
+ * (`liveInstrument.ts` 의 `indexWorkareaCode`).
+ *
+ * 이름에 공간을 박아 둔 이유: `WindowViewValue.code` 는 **다른 공간**이다(지수=null,
+ * 전역 `activeCode` 미러). 둘이 갈리는 것은 의도이고, 이름이 같으면 다음 사람이 아무
+ * 생각 없이 바꿔 쓴다. 실제로 그 혼동이 지수 창의 좌측 팬 백필을 통째로 죽였다 —
+ * 가드가 `'KOSPI' !== 'index:KOSPI'` 로 매번 반려했다.
+ *
+ * ⚠ 이 함수는 어댑터 객체(`LIVE_WINDOW_WORKSPACE.getWorkareaCode`)의 필드였다.
+ * 주입이었던 이유는 `/study` 가 그룹이 아니라 활성 저장뷰에서 코드를 얻었기
+ * 때문인데, 그 페이지가 사라져(ADR-0157) 구현이 하나가 됐다.
+ */
+function liveWorkareaCode(windowId: string): string | null {
+  {
     const s = useWorkspaceStore.getState();
     const win = s.windows.find((w) => w.id === windowId);
     const sym = windowSymbolOf(s, win);
@@ -92,9 +100,8 @@ export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
     return sym.kind === 'index' && isLiveIndexId(sym.code)
       ? indexWorkareaCode(sym.code)
       : sym.code;
-  },
-  scopePrefix: 'live',
-};
+  }
+}
 
 /**
  * Provider 밖(전역 경로)에서 훅 호출 횟수를 맞추기 위한 스토어.
@@ -103,7 +110,7 @@ export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
  * (조건부 훅 금지). 그때 selector 는 상수를 돌려주므로 구독이 깨어나지 않아
  * 재렌더 비용이 0 이다 — 종전 `useWorkspaceStore` 하드코딩과 동작이 같다.
  */
-const FALLBACK_STORE = LIVE_WINDOW_WORKSPACE.store;
+const FALLBACK_STORE = useWorkspaceStore;
 
 /**
  * 창의 (code, timeframe, historicalFromDate, group). Provider 밖에서는 전역
@@ -152,22 +159,7 @@ function useWindowIndicatorTimeframe(): LiveTimeframe | null {
 }
 
 /**
- * 이 서브트리의 지표 소유 페이지 — Provider 밖은 null(= `/live` 세트로 폴백).
- *
- * 어댑터에서 **렌더 동기적으로** 나온다. 전역 "현재 페이지" 슬롯을 두지 않는 이유가
- * 여기 있다: 그런 슬롯은 라우팅·마운트보다 한 커밋 늦게 갱신되고, 그 한 틱 동안
- * 엉뚱한 페이지의 버킷이 적용된다 — `chartPrefs.windowScope.test.tsx` 가 남아 있는
- * 결함이 정확히 그 모양(포커스를 따라다니는 전역 슬롯)이었다.
- *
- * 페이지 축**만** 필요한 소비자용이다(예: `/study` 에서 지원하지 않는 지표 옵션을
- * 감추는 자리). 버킷을 읽거나 쓰는 소비자는 `useWindowIndicatorScope` 를 쓴다.
- */
-export function useWindowIndicatorPage(): IndicatorPageScope | null {
-  return useContext(WindowViewContext)?.workspace.scopePrefix ?? null;
-}
-
-/**
- * 이 서브트리의 지표 스코프 — (페이지, 창 키). Provider 밖은 둘 다 null.
+ * 이 서브트리의 지표 스코프 — 창 키 하나. Provider 밖은 null.
  *
  * 매 렌더 새 객체지만 소비자가 전부 이 값을 **스토어 selector 안에서만** 쓰므로
  * (구독 identity 에 실리지 않음) 재렌더를 유발하지 않는다. `useMemo` 를 씌우면
@@ -175,10 +167,7 @@ export function useWindowIndicatorPage(): IndicatorPageScope | null {
  */
 export function useWindowIndicatorScope(): IndicatorScope {
   const ctx = useContext(WindowViewContext);
-  return {
-    page: ctx?.workspace.scopePrefix ?? null,
-    windowKey: windowScopeKey(ctx?.workspace, ctx?.windowId),
-  };
+  return { windowKey: windowScopeKey(ctx?.windowId) };
 }
 
 /**
@@ -198,16 +187,12 @@ export function useWindowIndicatorScope(): IndicatorScope {
  * 나는데 그때 지우면 돌아왔을 때 이유 없이 초기화된 창을 본다. 회수는 창 닫기
  * 같은 명시적 사건에서만 한다(`indicatorScopeGc`).
  */
-export function useSeedWindowIndicatorScope(
-  windowId: string | null,
-  workspace: WindowWorkspaceAdapter | null,
-): void {
-  const scopeKey = windowScopeKey(workspace, windowId);
-  const page = workspace?.scopePrefix ?? null;
+export function useSeedWindowIndicatorScope(windowId: string | null): void {
+  const scopeKey = windowScopeKey(windowId);
   useEffect(() => {
     if (!scopeKey) return;
-    useLivePageStore.getState().seedWindowIndicatorScope({ page, windowKey: scopeKey });
-  }, [scopeKey, page]);
+    useLivePageStore.getState().seedWindowIndicatorScope({ windowKey: scopeKey });
+  }, [scopeKey]);
 }
 
 /**
@@ -232,9 +217,7 @@ export function useWindowIndicators(): IndicatorSettings {
   const inWindow = useLivePageStore(
     (s) => (timeframe
       ? resolveIndicatorSettings(
-        bucketsForScope(
-          s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
-        ),
+        bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scope),
         timeframe,
       )
       : undefined),
@@ -253,9 +236,7 @@ export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
   return useLivePageStore((s) => select(
     timeframe
       ? resolveIndicatorSettings(
-        bucketsForScope(
-          s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
-        ),
+        bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scope),
         timeframe,
       )
       : (s as unknown as IndicatorSettings),
@@ -270,7 +251,7 @@ export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
 export function useIsFocusedWindow(): boolean {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const store = ctx?.workspace.store ?? FALLBACK_STORE;
+  const store = FALLBACK_STORE;
   const focused = store((s) =>
     windowId ? s.zOrder[s.zOrder.length - 1] === windowId : true,
   );
@@ -336,26 +317,18 @@ function buildGlobalIndicatorActions(): IndicatorActions {
  * 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮이고, 봉을 바꾼 직후의
  * 편집이 이전 버킷으로 간다.
  */
-function buildWindowIndicatorActions(
-  windowId: string,
-  workspace: WindowWorkspaceAdapter,
-): IndicatorActions {
-  const handle = workspace.store;
-  // 이 창의 스코프 — 어댑터가 모듈 상수이고 창 id 는 컴포넌트 수명 동안 불변이라
-  // (windowViewContext 하단 불변식) 이 객체도 창 수명 동안 그대로다.
-  const scope: IndicatorScope = {
-    page: workspace.scopePrefix,
-    windowKey: windowScopeKey(workspace, windowId),
-  };
+function buildWindowIndicatorActions(windowId: string): IndicatorActions {
+  const handle = useWorkspaceStore;
+  // 이 창의 스코프 — 창 id 가 컴포넌트 수명 동안 불변이라(windowViewContext 하단
+  // 불변식) 이 객체도 창 수명 동안 그대로다.
+  const scope: IndicatorScope = { windowKey: windowScopeKey(windowId) };
   const ps = () => useLivePageStore.getState();
   const tf = (): LiveTimeframe =>
     handle.getState().windows.find((w) => w.id === windowId)?.chart?.timeframe ?? '1m';
   const readSettings = (): IndicatorSettings => {
     const s = ps();
     return resolveIndicatorSettings(
-      bucketsForScope(
-        s.indicatorsByTimeframe, s.studyIndicatorsByTimeframe, s.indicatorsByWindow, scope,
-      ),
+      bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scope),
       tf(),
     );
   };
@@ -380,12 +353,9 @@ function buildWindowIndicatorActions(
 export function useIndicatorActions(): IndicatorActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const workspace = ctx?.workspace ?? null;
   return useMemo(
-    () => (windowId && workspace
-      ? buildWindowIndicatorActions(windowId, workspace)
-      : buildGlobalIndicatorActions()),
-    [windowId, workspace],
+    () => (windowId ? buildWindowIndicatorActions(windowId) : buildGlobalIndicatorActions()),
+    [windowId],
   );
 }
 
@@ -404,15 +374,10 @@ export function useIndicatorActions(): IndicatorActions {
  */
 type ViewGuard = () => { code: string | null; timeframe: LiveTimeframe };
 
-function buildWindowViewGuard(
-  windowId: string,
-  workspace: WindowWorkspaceAdapter,
-): ViewGuard {
+function buildWindowViewGuard(windowId: string): ViewGuard {
   return () => ({
-    // 코드만 어댑터에 묻는다 — 스토어 모양으로 덮이지 않는 유일한 축이다
-    // (`/live`=링크 그룹, `/study`=활성 저장뷰). 상세는 어댑터 타입 주석 참조.
-    code: workspace.getWorkareaCode(windowId),
-    timeframe: workspace.store.getState().windows
+    code: liveWorkareaCode(windowId),
+    timeframe: useWorkspaceStore.getState().windows
       .find((w) => w.id === windowId)?.chart?.timeframe ?? '1m',
   });
 }
@@ -433,10 +398,9 @@ const GLOBAL_VIEW_GUARD: ViewGuard = () => {
 export function useWindowViewGuard(): ViewGuard {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const workspace = ctx?.workspace ?? null;
   return useMemo(
-    () => (windowId && workspace ? buildWindowViewGuard(windowId, workspace) : GLOBAL_VIEW_GUARD),
-    [windowId, workspace],
+    () => (windowId ? buildWindowViewGuard(windowId) : GLOBAL_VIEW_GUARD),
+    [windowId],
   );
 }
 
@@ -452,10 +416,9 @@ export interface HistoricalRangeActions {
 export function useHistoricalRangeActions(): HistoricalRangeActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
-  const workspace = ctx?.workspace ?? null;
   return useMemo(() => {
-    if (windowId && workspace) {
-      const ws = () => workspace.store.getState();
+    if (windowId) {
+      const ws = () => useWorkspaceStore.getState();
       return {
         extend: (date: string) => ws().extendChartHistoricalRange(windowId, date),
         contract: (date: string) => ws().contractChartHistoricalRange(windowId, date),
@@ -474,5 +437,5 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
         lastMinuteHistoricalFromDate: ps().lastMinuteHistoricalFromDate,
       }),
     };
-  }, [windowId, workspace]);
+  }, [windowId]);
 }
