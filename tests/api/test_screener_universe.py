@@ -65,8 +65,32 @@ def test_exclude_etf_falls_back_to_seed_when_master_unavailable(tmp_path):
     assert codes == ["000111", "069660"]
 
 
+def test_universe_excludes_etf_by_default(tmp_path):
+    """**기본이 제외다**(2026-08-23 사용자 결정) — 그리고 키 부재가 그 기본을 따른다.
+
+    이 테스트가 없으면 기본값을 되돌려도 아무것도 빨개지지 않는다(실측). 값 하나짜리
+    변경일수록 그것을 고정하는 가드가 따로 있어야 한다.
+
+    **키 부재까지 함께 재는 이유**: 저장 스크리너는 `exclude_etf` 를 안 실은 채로
+    디스크에 있고(구 저장본), 그 부재가 곧 이 기본값을 타는 경로다. 모델 필드만
+    보면 「기본이 True」는 참인데 저장본이 실제로 걸러지는지는 못 본다.
+
+    ⚠ 프론트는 언체크를 **`false` 로 명시**해서 보낸다(`UniverseFilterModal`).
+    거기서 키를 접으면 「사용자가 끔」이 여기 기본값으로 읽혀 정확히 반대로 동작한다.
+    """
+    assert ScreenerUniverse().exclude_etf is True
+    # 구 저장본 모양 — 키가 아예 없다.
+    assert ScreenerUniverse.model_validate({"markets": ["KOSPI"]}).exclude_etf is True
+    # 명시적 포함만이 기본을 끈다.
+    assert ScreenerUniverse.model_validate({"exclude_etf": False}).exclude_etf is False
+
+
 def test_etf_master_not_applied_when_exclude_etf_off(tmp_path):
-    """토글이 꺼져 있으면 마스터 코드셋이 있어도 ETF 를 거르지 않는다."""
+    """토글이 꺼져 있으면 마스터 코드셋이 있어도 ETF 를 거르지 않는다.
+
+    ⚠ **`exclude_etf=False` 를 명시해야 한다** — 2026-08-23 부터 기본이 `True`(제외)라,
+    `ScreenerUniverse()` 는 이제 「끔」이 아니라 「기본=제외」다.
+    """
     stocks = tmp_path / "stocks.parquet"
     pl.DataFrame({
         "code": ["000111", "069660"],
@@ -77,7 +101,7 @@ def test_etf_master_not_applied_when_exclude_etf_off(tmp_path):
     }).write_parquet(stocks)
 
     codes = screener_universe.codes_for_universe(
-        stocks, ScreenerUniverse(), etf_codes=frozenset({"069660"}))
+        stocks, ScreenerUniverse(exclude_etf=False), etf_codes=frozenset({"069660"}))
 
     assert sorted(codes) == ["000111", "069660"]
 
