@@ -57,7 +57,12 @@ async def test_runner_eod_basis_does_not_build_intraday_overlay(tmp_path, monkey
         data_dir=tmp_path,
         req=ScanRequest.model_validate({
             "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
-            "universe": {"markets": ["KOSPI"]},
+            # ⚠ `exclude_etf` 를 **명시**한다. 기본이 `True` 로 바뀐 뒤(2026-08-23)
+            # 생략하면 심볼 마스터 로드 여부에 따라 `etf_filter_stale_master_unavailable`
+            # 경고가 붙었다 말았다 하는데, 그 상태는 **다른 테스트가 남긴 전역**이라
+            # 단독 실행과 전체 실행의 결과가 갈린다(실측). 이 테스트의 주제가 아닌 축은
+            # 끄고 간다.
+            "universe": {"markets": ["KOSPI"], "exclude_etf": False},
         }),
         now=dt.datetime(2026, 5, 15, 10, 0),
     )
@@ -90,7 +95,12 @@ async def test_runner_intraday_basis_builds_overlay_and_falls_back_with_warning(
         req=ScanRequest.model_validate({
             "basis": "intraday",
             "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
-            "universe": {"markets": ["KOSPI"]},
+            # ⚠ `exclude_etf` 를 **명시**한다. 기본이 `True` 로 바뀐 뒤(2026-08-23)
+            # 생략하면 심볼 마스터 로드 여부에 따라 `etf_filter_stale_master_unavailable`
+            # 경고가 붙었다 말았다 하는데, 그 상태는 **다른 테스트가 남긴 전역**이라
+            # 단독 실행과 전체 실행의 결과가 갈린다(실측). 이 테스트의 주제가 아닌 축은
+            # 끄고 간다.
+            "universe": {"markets": ["KOSPI"], "exclude_etf": False},
         }),
         now=dt.datetime(2026, 5, 15, 10, 0),
     )
@@ -115,7 +125,12 @@ async def test_runner_intraday_bypass_skips_overlay_and_uses_eod(tmp_path, monke
         req=ScanRequest.model_validate({
             "basis": "intraday",
             "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
-            "universe": {"markets": ["KOSPI"]},
+            # ⚠ `exclude_etf` 를 **명시**한다. 기본이 `True` 로 바뀐 뒤(2026-08-23)
+            # 생략하면 심볼 마스터 로드 여부에 따라 `etf_filter_stale_master_unavailable`
+            # 경고가 붙었다 말았다 하는데, 그 상태는 **다른 테스트가 남긴 전역**이라
+            # 단독 실행과 전체 실행의 결과가 갈린다(실측). 이 테스트의 주제가 아닌 축은
+            # 끄고 간다.
+            "universe": {"markets": ["KOSPI"], "exclude_etf": False},
         }),
         now=dt.datetime(2026, 5, 15, 10, 0),
     )

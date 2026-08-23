@@ -82,8 +82,12 @@ export function UniverseFilterModal({ universe, onChange, onClose }: {
           ) : group === 'exclude' ? (
             <div className="flex flex-col gap-sm">
               <label className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">
-                <input type="checkbox" checked={!!universe.exclude_etf}
-                  onChange={(e) => onChange({ ...universe, exclude_etf: e.target.checked || undefined })}
+                {/* ⚠ **언체크를 `undefined` 로 접지 않는다** — 다른 토글과 다른 유일한 자리다.
+                    백엔드 기본이 `true`(제외)로 바뀌어서(2026-08-23), 키를 빼면 「끈 것」이
+                    「기본값=제외」로 읽혀 정확히 반대로 동작한다. 여기서 `false` 는
+                    **사용자가 명시적으로 포함시켰다**는 뜻이고 그대로 실려야 한다. */}
+                <input type="checkbox" checked={universe.exclude_etf ?? true}
+                  onChange={(e) => onChange({ ...universe, exclude_etf: e.target.checked })}
                   className="accent-[var(--accent)]" />ETF 제외</label>
               <label className="flex items-center gap-2 text-sm text-fg cursor-pointer select-none">
                 <input type="checkbox" checked={!!universe.exclude_halted}
