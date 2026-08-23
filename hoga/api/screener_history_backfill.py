@@ -1,4 +1,18 @@
-"""스크리너 일봉 코퍼스의 **앞쪽 갭**을 벤더 이력으로 채운다 (이슈 #1424).
+"""스크리너 일봉 코퍼스의 **결손 거래일**을 벤더 이력으로 채운다 (이슈 #1424).
+
+## 두 종류의 결손을 **같은 방식으로** 다룬다
+
+대상 판정이 「코퍼스 시작 이전」이 아니라 **「거래일 달력 대비 없는 날」**이다. 그래서
+모양이 다른 두 결손이 한 경로로 처리된다:
+
+| | 모양 | 실측 |
+| --- | --- | --- |
+| **앞쪽 갭** | 코퍼스 시작 이전이 통째로 없음 | 477종목(보통주), 2025-04-22 이전 |
+| **내부 구멍** | 코퍼스 안쪽에 날짜가 빔 | 705종목 × 31거래일 = **21,855칸**(2026 6~7월) |
+
+내부 구멍의 원인은 별개였다 — 로스터 멤버십 누락이라 그 날 이 집합 **전체**가 안 받아졌고,
+`merge_roster_from_master` 가 스케줄러에 배선된 2026-08-03 부터 멈췄다. **출혈은 이미
+멎었고 이 도구가 채우는 것은 남은 흉터다.**
 
 ## 무엇을 고치나
 
@@ -42,7 +56,11 @@ SSOT 는 원주가이므로(`derive_adjusted` 가 매번 그것에서 수정주�
 
 ## 안전 규율
 
-- **`dry_run=True` 가 기본이다.** 아무것도 안 쓰고 리포트만 낸다.
+- **`dry_run=True` 가 기본이고, 벤더를 아예 부르지 않는다.** 계획(어느 종목의 어느
+  날이 비었는지)만 세운다 — 그건 달력과 코퍼스만으로 나온다.
+- **거래일 달력 커버리지 밖은 결손으로 세지 않는다.** `trading_days` 는 커밋된 시드라
+  무자격에서도 정확하지만 범위 밖은 `None`(모름)이다 — 모르는 날을 결손으로 단정하면
+  주말·휴장일을 벤더에 물으러 간다.
 - 계수가 없는 종목은 **건너뛴다**(추정하지 않는다). `apply_factors` 의 전제가
   "각 code 는 최소 1개 세그먼트" 이므로, 계수 없는 종목에 행을 넣으면 그 종목의
   수정주가가 통째로 휴리스틱 폴백(`adjust_splits`)으로 넘어간다.
@@ -63,7 +81,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_factors
+from hoga.api import screener_factors, trading_days
 from hoga.api.screener_store import (
     _DAILY_PL_SCHEMA,  # 아래 주석 참조
     append_rows,
@@ -103,11 +121,30 @@ class CodePlan:
 
     code: str
     corpus_start: dt.date
-    gap_from: dt.date
-    gap_to: dt.date
+    #: **거래일 달력 대비 없는 날** 전량(앞쪽 갭 + 내부 구멍이 한 목록에 섞인다).
+    missing_dates: list[dt.date]
     factor: float
     fetched_rows: int = 0
     skipped_reason: str | None = None
+
+    @property
+    def gap_from(self) -> dt.date:
+        """벤더 조회 범위의 시작 — 결손의 최소 날짜."""
+        return min(self.missing_dates)
+
+    @property
+    def gap_to(self) -> dt.date:
+        """벤더 조회 범위의 끝. 범위 **안의** 비결손일은 받아도 버린다(멱등이라 무해)."""
+        return max(self.missing_dates)
+
+    @property
+    def leading(self) -> int:
+        """코퍼스 시작 이전 결손 수 — 리포트에서 두 종류를 갈라 보기 위한 것."""
+        return sum(1 for d in self.missing_dates if d < self.corpus_start)
+
+    @property
+    def interior(self) -> int:
+        return len(self.missing_dates) - self.leading
 
 
 @dataclass
@@ -121,6 +158,15 @@ class BackfillReport:
         return sum(1 for p in self.plans if p.skipped_reason is None and p.fetched_rows > 0)
 
     @property
+    def missing_cells(self) -> dict[str, int]:
+        """결손 칸 수를 종류별로 — 「무엇을 채우는가」가 리포트의 첫 질문이다."""
+        live = [p for p in self.plans if p.skipped_reason is None]
+        return {
+            "leading": sum(p.leading for p in live),
+            "interior": sum(p.interior for p in live),
+        }
+
+    @property
     def skipped(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for p in self.plans:
@@ -129,15 +175,18 @@ class BackfillReport:
         return out
 
 
-def corpus_starts(unadjusted_path: Path) -> dict[str, dt.date]:
-    """종목별 코퍼스 시작일. 대상 선정과 갭 계산의 유일한 입력."""
-    df = (
-        pl.scan_parquet(unadjusted_path)
-        .group_by("code")
-        .agg(pl.col("date").min().alias("first"))
-        .collect()
-    )
-    return dict(zip(df["code"].to_list(), df["first"].to_list(), strict=True))
+def corpus_dates(unadjusted_path: Path) -> tuple[dict[str, dt.date], dict[str, set[dt.date]]]:
+    """(종목별 시작일, 종목별 보유 날짜 집합).
+
+    한 번의 스캔으로 둘을 낸다 — 대상 선정은 시작일을, 결손 계산은 보유 집합을 쓴다.
+    """
+    df = pl.scan_parquet(unadjusted_path).select(["code", "date"]).collect()
+    present: dict[str, set[dt.date]] = {}
+    for key, sub in df.group_by("code"):
+        code = key[0] if isinstance(key, tuple) else key
+        present[code] = set(sub["date"].to_list())
+    starts = {c: min(ds) for c, ds in present.items() if ds}
+    return starts, present
 
 
 def oldest_factors(factors_path: Path) -> dict[str, float]:
@@ -175,12 +224,19 @@ def unadjust(bars: list[VendorBar], factor: float) -> list[dict]:
 def plan_targets(
     starts: dict[str, dt.date],
     factors: dict[str, float],
+    present: dict[str, set[dt.date]],
+    trading: set[dt.date],
     *,
     gap_from: dt.date,
+    window_to: dt.date,
     corpus_start_after: dt.date | None,
     codes: list[str] | None,
 ) -> list[CodePlan]:
-    """대상 선정 + 갭 계산. **부수효과 없음** — dry-run 이 이 함수만으로 성립한다."""
+    """대상 선정 + **결손 날짜 계산**. 부수효과 없음 — dry-run 이 이 함수만으로 성립한다.
+
+    `trading` 은 거래일 달력의 **커버리지 안** 날짜만이어야 한다(호출부가 자른다).
+    모르는 날을 결손으로 세면 주말·휴장일을 벤더에 물으러 간다.
+    """
     if codes is not None:
         wanted = [c for c in codes if c in starts]
     elif corpus_start_after is not None:
@@ -188,17 +244,16 @@ def plan_targets(
     else:
         wanted = sorted(starts)
 
+    window = {d for d in trading if gap_from <= d <= window_to}
     plans: list[CodePlan] = []
     for code in wanted:
-        start = starts[code]
-        gap_to = start - dt.timedelta(days=1)
+        missing = sorted(window - present.get(code, set()))
         plan = CodePlan(
-            code=code, corpus_start=start, gap_from=gap_from, gap_to=gap_to,
+            code=code, corpus_start=starts[code], missing_dates=missing,
             factor=factors.get(code, 1.0),
         )
-        if gap_to < gap_from:
-            # 이미 gap_from 이전부터 있다 — 채울 것이 없다(재실행 시 자연 스킵).
-            plan.skipped_reason = "no_gap"
+        if not missing:
+            plan.skipped_reason = "no_gap"          # 재실행 시 자연 스킵
         elif code not in factors:
             # 계수가 없으면 그 종목은 `adjust_splits` 휴리스틱으로 넘어간다 —
             # 행을 넣으면 수정주가 전체가 그 폴백에 걸린다. 추정하지 않는다.
@@ -212,6 +267,8 @@ async def history_backfill(
     *,
     fetch_adjusted_daily: FetchAdjustedDaily,
     gap_from: dt.date,
+    window_to: dt.date,
+    data_dir: Path | None = None,
     codes: list[str] | None = None,
     corpus_start_after: dt.date | None = None,
     dry_run: bool = True,
@@ -222,18 +279,33 @@ async def history_backfill(
     """앞쪽 갭을 채운다. **기본은 dry-run** — 계획만 세우고 아무것도 안 쓴다.
 
     `codes` 와 `corpus_start_after` 중 하나로 대상을 정한다(둘 다 없으면 전 종목).
+    `[gap_from, window_to]` 안의 **거래일 중 코퍼스에 없는 날**이 대상이고, 달력
+    커버리지 밖은 잘라 낸다. `data_dir` 은 거래일 오버레이 위치(미지정이면 시드만).
     반환 리포트로 무엇이 채워졌고 무엇이 왜 스킵됐는지 전수 확인할 수 있다.
     """
     up = sdir / "daily_unadjusted.parquet"
-    starts = corpus_starts(up)
+    starts, present = corpus_dates(up)
     factors = oldest_factors(sdir / "factors.parquet")
+    # 달력은 **커버리지 안**만 쓴다 — 시드 범위 밖은 `None`(모름)이고, 모르는 날을
+    # 결손으로 단정하면 주말·휴장일을 벤더에 물으러 간다(`trading_days` 도크스트링).
+    end = trading_days.coverage_end(data_dir)
+    coverage_to = dt.date(int(end[:4]), int(end[4:6]), int(end[6:8])) if end else gap_from
+    trading = {
+        dt.date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        for s in trading_days.trading_days(data_dir)
+    }
     plans = plan_targets(
-        starts, factors,
-        gap_from=gap_from, corpus_start_after=corpus_start_after, codes=codes,
+        starts, factors, present, trading,
+        gap_from=gap_from, window_to=min(window_to, coverage_to),
+        corpus_start_after=corpus_start_after, codes=codes,
     )
     report = BackfillReport(plans=plans, dry_run=dry_run)
     todo = [p for p in plans if p.skipped_reason is None]
-    if not todo:
+    # ⚠ **dry-run 은 벤더를 부르지 않는다.** 결정에 필요한 것은 「무엇이 비었는가」이고
+    # 그건 달력과 코퍼스만으로 나온다. 부르면 리허설이 수백 종목치 유량을 태우고
+    # 수 분이 걸린다 — 안전 장치가 비용을 만드는 셈이라 아무도 안 돌리게 된다.
+    # 벤더가 실제로 그 구간을 줄 수 있는지는 별개 물음이고, 별도 표본 조회로 답한다.
+    if dry_run or not todo:
         return report
 
     sem = asyncio.Semaphore(concurrency)
@@ -251,9 +323,11 @@ async def history_backfill(
                         plan.code, exc_info=True)
             plan.skipped_reason = "fetch_failed"
             return plan, []
-        # 갭 밖 행은 버린다 — 벤더는 기준일에서 걸어 내려오느라 요청보다 넓게 줄 수 있고,
-        # 그 행들은 이미 코퍼스에 있다(append 가 멱등이라 해롭진 않지만 통계가 부풀린다).
-        inside = [b for b in bars if plan.gap_from <= b.date <= plan.gap_to]
+        # **결손일만** 남긴다. 벤더는 기준일에서 걸어 내려오느라 요청보다 넓게 주고,
+        # 요청 범위 **안**에도 이미 가진 날이 섞여 있다(내부 구멍을 채울 때가 그렇다).
+        # append 가 멱등이라 해롭진 않지만 통계가 부풀고 값 출처가 흐려진다.
+        wanted = set(plan.missing_dates)
+        inside = [b for b in bars if b.date in wanted]
         rows = unadjust(inside, plan.factor)
         plan.fetched_rows = len(rows)
         return plan, [{**r, "code": plan.code} for r in rows]

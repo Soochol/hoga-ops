@@ -39,6 +39,11 @@ from hoga.api.screener_store import derive_adjusted
 
 GAP_FROM = dt.date(2024, 1, 2)
 CORPUS_START = dt.date(2025, 4, 22)
+WINDOW_TO = dt.date(2025, 4, 23)
+
+#: 테스트 달력 — 실제 시드가 아니라 **이 픽스처가 정한 거래일**이다. 달력을 주입하지
+#: 않으면 결손 계산이 시드 커버리지에 묶여 테스트가 날짜에 의존한다.
+TRADING = {GAP_FROM, GAP_FROM + dt.timedelta(days=1), CORPUS_START, WINDOW_TO}
 
 
 def _write_corpus(sdir: Path, *, factor: float | None) -> None:
@@ -91,38 +96,77 @@ def test_oldest_factor_is_the_one_extend_backward_will_reapply(tmp_path: Path) -
     assert oldest_factors(tmp_path / "factors.parquet")["005930"] == 5.0
 
 
+def _plan(starts, factors, present, **kw):
+    return plan_targets(
+        starts, factors, present, TRADING,
+        gap_from=GAP_FROM, window_to=WINDOW_TO,
+        corpus_start_after=kw.get("after"), codes=kw.get("codes"),
+    )
+
+
 def test_plan_skips_codes_without_factors() -> None:
     """계수 없는 종목에 행을 넣으면 그 종목 수정주가가 휴리스틱 폴백으로 넘어간다."""
-    plans = plan_targets(
-        {"005930": CORPUS_START}, {},
-        gap_from=GAP_FROM, corpus_start_after=dt.date(2025, 1, 1), codes=None,
-    )
+    plans = _plan({"005930": CORPUS_START}, {}, {"005930": {CORPUS_START}},
+                  after=dt.date(2025, 1, 1))
     assert [p.skipped_reason for p in plans] == ["no_factor"]
 
 
-def test_plan_skips_when_there_is_no_gap() -> None:
-    """재실행 안전 — 이미 gap_from 이전부터 있으면 채울 것이 없다."""
+def test_plan_skips_when_nothing_is_missing() -> None:
+    """재실행 안전 — 달력의 그 창을 이미 다 갖고 있으면 채울 것이 없다."""
+    plans = _plan({"005930": GAP_FROM}, {"005930": 1.0}, {"005930": set(TRADING)},
+                  codes=["005930"])
+    assert [p.skipped_reason for p in plans] == ["no_gap"]
+
+
+def test_plan_counts_leading_and_interior_separately() -> None:
+    """**이번 확장의 핵심** — 코퍼스 안쪽 구멍도 대상이다.
+
+    실측(2026-08-23): 705종목 × 31거래일 = 21,855칸이 코퍼스 **안쪽**에 비어 있었고,
+    옛 판정(`[gap_from, corpus_start-1]`)은 그것을 하나도 보지 못했다.
+    """
+    # 시작일은 GAP_FROM 인데 그 뒤 하루가 비어 있다 = 내부 구멍.
+    present = {"005930": {GAP_FROM, CORPUS_START, WINDOW_TO}}
+    [plan] = _plan({"005930": GAP_FROM}, {"005930": 1.0}, present, codes=["005930"])
+    assert plan.skipped_reason is None
+    assert plan.missing_dates == [GAP_FROM + dt.timedelta(days=1)]
+    assert (plan.leading, plan.interior) == (0, 1)
+
+
+def test_plan_ignores_non_trading_days() -> None:
+    """달력에 없는 날은 결손이 아니다 — 주말을 벤더에 물으러 가면 안 된다."""
+    present = {"005930": set(TRADING)}
     plans = plan_targets(
-        {"005930": dt.date(2023, 1, 1)}, {"005930": 1.0},
-        gap_from=GAP_FROM, corpus_start_after=None, codes=["005930"],
+        {"005930": GAP_FROM}, {"005930": 1.0}, present, TRADING,
+        gap_from=GAP_FROM, window_to=WINDOW_TO + dt.timedelta(days=30),
+        corpus_start_after=None, codes=["005930"],
     )
     assert [p.skipped_reason for p in plans] == ["no_gap"]
 
 
 @pytest.mark.anyio
-async def test_dry_run_writes_nothing_but_reports_the_plan(tmp_path: Path) -> None:
+async def test_dry_run_neither_writes_nor_calls_the_vendor(tmp_path: Path) -> None:
+    """**dry-run 은 벤더를 부르지 않는다.**
+
+    처음 판은 쓰기만 막고 조회는 그대로 했다 — 실 코퍼스에 돌려 보고서야 드러났다
+    (477종목치 유량을 태우고 수 분이 걸린다). 안전 장치가 비용을 만들면 아무도 안
+    돌리게 되므로, 리허설은 **달력과 코퍼스만으로** 성립해야 한다. 결정에 필요한
+    것은 「무엇이 비었는가」이고 그건 벤더 없이 나온다.
+    """
     _write_corpus(tmp_path, factor=1.0)
     before = (tmp_path / "daily_unadjusted.parquet").read_bytes()
 
+    async def _must_not_fetch(_c: str, _f: str, _t: str) -> list[VendorBar]:
+        raise AssertionError("dry-run 이 벤더를 불렀다")
+
     report = await history_backfill(
-        tmp_path, fetch_adjusted_daily=_fetch_ok, gap_from=GAP_FROM,
+        tmp_path, fetch_adjusted_daily=_must_not_fetch, gap_from=GAP_FROM, window_to=WINDOW_TO,
         corpus_start_after=dt.date(2025, 1, 1),
     )
 
     assert report.dry_run is True
     assert report.written_rows == 0
-    assert report.filled_codes == 1                      # 계획은 섰다
-    assert report.plans[0].fetched_rows == 2
+    assert report.plans[0].skipped_reason is None            # 대상으로 잡혔고
+    assert report.missing_cells["leading"] > 0               # 무엇이 빈지도 안다
     assert (tmp_path / "daily_unadjusted.parquet").read_bytes() == before   # 파일 무변경
 
 
@@ -137,7 +181,7 @@ async def test_backfill_round_trips_to_the_vendor_value_in_adjusted_space(tmp_pa
     _write_corpus(tmp_path, factor=5.0)
 
     report = await history_backfill(
-        tmp_path, fetch_adjusted_daily=_fetch_ok, gap_from=GAP_FROM,
+        tmp_path, fetch_adjusted_daily=_fetch_ok, gap_from=GAP_FROM, window_to=WINDOW_TO,
         corpus_start_after=dt.date(2025, 1, 1), dry_run=False,
     )
     assert report.written_rows == 2
@@ -163,7 +207,7 @@ async def test_rows_outside_the_gap_are_dropped(tmp_path: Path) -> None:
         ]
 
     report = await history_backfill(
-        tmp_path, fetch_adjusted_daily=_wide, gap_from=GAP_FROM,
+        tmp_path, fetch_adjusted_daily=_wide, gap_from=GAP_FROM, window_to=WINDOW_TO,
         corpus_start_after=dt.date(2025, 1, 1), dry_run=False,
     )
     assert report.written_rows == 1
@@ -178,7 +222,7 @@ async def test_one_code_failing_does_not_abort_the_run(tmp_path: Path) -> None:
         raise RuntimeError("vendor down")
 
     report = await history_backfill(
-        tmp_path, fetch_adjusted_daily=_boom, gap_from=GAP_FROM,
+        tmp_path, fetch_adjusted_daily=_boom, gap_from=GAP_FROM, window_to=WINDOW_TO,
         corpus_start_after=dt.date(2025, 1, 1), dry_run=False,
     )
     assert report.written_rows == 0
