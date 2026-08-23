@@ -43,6 +43,7 @@ import type { Candle, RangeSegment } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
+import { viewedDateOf } from './viewedDate';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
   type CalendarTimeframe,
@@ -452,6 +453,13 @@ interface Props {
    * 여기서는 뷰포트가 실제로 움직일 때만, rAF 로 묶어서 민다.
    */
   onJumpDestinationChange?: (bucketFromDate: string | null) => void;
+  /**
+   * 이 **분봉** 창이 보고 있는 날짜 — 헤더 칩이 그린다. 라이브 엣지면 `date` 가 null.
+   *
+   * 분봉 시간축은 하루 안에서 시:분만 찍어 날짜가 화면에 없다(`tickMarkFormatter`).
+   * 캘린더 봉 창은 축이 이미 날짜를 찍으므로 이 경로를 태우지 않는다.
+   */
+  onViewedDateChange?: (view: { date: string | null; returnToLive: () => void }) => void;
   /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
   onMinuteJumpChange?: (jump: {
     state: MinuteJumpState | null;
@@ -541,6 +549,7 @@ export function LiveChartRoot({
   onViewportCaptureReady,
   onJumpSourceReady,
   onJumpDestinationChange,
+  onViewedDateChange,
   onMinuteJumpChange,
   onCursorActiveChange,
   onCandleBasisHover,
@@ -1127,6 +1136,40 @@ export function LiveChartRoot({
       onJumpDestinationChange(null);
     };
   }, [chart, timeframe, readJumpRange, onJumpDestinationChange]);
+  const returnToLive = useCallback(() => {
+    chartRef.current?.timeScale().scrollToRealTime();
+  }, []);
+  // 보고 있는 날짜를 헤더로 민다. 「분봉으로」 목적지 구독(위)과 **같은 모양이되 게이트가
+  // 반대**다 — 저쪽은 발행하는 캘린더 창, 이쪽은 소비하는 분봉 창이다. 뷰포트가 실제로
+  // 움직일 때만, rAF 로 묶어서 민다(SSE 틱은 이 경로를 태우지 않는다).
+  useEffect(() => {
+    if (!chart || !isMinuteTimeframe(timeframe) || !onViewedDateChange) return;
+    let raf: number | null = null;
+    const publish = () => {
+      raf = null;
+      let vr: { to: unknown } | null = null;
+      try {
+        vr = chart.timeScale().getVisibleRange();
+      } catch {
+        vr = null;
+      }
+      const toMs = vr === null ? null : axisRef.current.toReal(Number(vr.to) * 1000);
+      onViewedDateChange({ date: viewedDateOf(candlesRef.current, toMs), returnToLive });
+    };
+    const schedule = () => {
+      if (raf === null) raf = requestAnimationFrame(publish);
+    };
+    publish();
+    const ts = chart.timeScale();
+    ts.subscribeVisibleLogicalRangeChange(schedule);
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
+      // 봉이 바뀌거나 창이 사라지면 칩도 내린다.
+      onViewedDateChange({ date: null, returnToLive });
+    };
+  }, [chart, timeframe, onViewedDateChange, returnToLive]);
+
   const minuteJump = useTimeframeJump({
     chart,
     axis,
