@@ -68,7 +68,9 @@ interface State {
   ) => void;
   /** 점프 명령 발행. `seq` 는 스토어가 매긴다 — 기간 동기화와 같은 이유(발행자가
    *  세면 창마다 자기 카운터를 갖게 되어 소비자의 래치·stale 판정이 깨진다). */
-  requestTimeframeJump: (toMs: number, origin: SidebarCursorOrigin) => void;
+  requestTimeframeJump: (
+    fromMs: number, toMs: number, origin: SidebarCursorOrigin,
+  ) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
@@ -222,7 +224,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     }
     set({ syncRange: { fromMs, toMs, bars, seq: (prev?.seq ?? 0) + 1, origin } });
   },
-  requestTimeframeJump: (toMs, origin) => {
+  requestTimeframeJump: (fromMs, toMs, origin) => {
     // **같은 값이어도 no-op 하지 않는다.** 다른 채널은 값이 안 바뀌면 건너뛰지만
     // 이건 명령이라 "같은 날짜로 한 번 더" 가 유효한 요청이다 — 사용자가 분봉을
     // 팬해서 다른 곳을 보다가 같은 버튼을 다시 누르면 되돌아와야 한다. seq 가
@@ -231,7 +233,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     // seq 는 **슬롯이 아니라 스토어 수명**을 따른다(#1506) — `prev?.seq` 에서 세면
     // 슬롯이 비워질 때마다 1 로 되감겨 소비 창의 래치와 충돌한다.
     const seq = get().jumpSeqLast + 1;
-    set({ jumpRequest: { toMs, seq, origin }, jumpSeqLast: seq });
+    set({ jumpRequest: { fromMs, toMs, seq, origin }, jumpSeqLast: seq });
   },
   clearSyncRangeFrom: (windowId) => {
     const cur = get().syncRange;

@@ -25,7 +25,8 @@ import { useLiveCursorStore } from './useLiveCursorStore';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
 import { realMsToYyyymmdd } from './liveDateTime';
-import { snapToLastOfKstDay, type SyncCandle } from '../chart/cursorSync';
+import { savedRangeAnchorTs } from './savedRangeAnchor';
+import type { SyncCandle } from '../chart/cursorSync';
 import { jumpedLogicalRange, resolveTimeframeJump } from '../chart/timeframeJump';
 import type { LiveTimeframe } from '../state/livePage';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -38,7 +39,15 @@ import type { VirtualAxis } from '../util/virtualAxis';
  * 칩이 영원히 "불러오는 중" 을 표시한다 — 침묵보다 나쁜 종류의 거짓말이다.
  */
 export type MinuteJumpState = {
-  /** 목적지 KST 날짜(YYYYMMDD). */
+  /**
+   * 칩이 말할 KST 날짜(YYYYMMDD).
+   *
+   * `landed` 면 **실제로 앉은 봉의 날짜**이고, 그 전에는 목적지 칸의 상한 날짜다.
+   * 둘을 구별하는 이유: 새 계약에서 상한은 **칸의 달력상 끝**이라 비거래일일 수 있다
+   * (주봉이면 일요일). 착지한 뒤에도 그 날짜를 계속 말하면 **차트가 보여주지 않는
+   * 날을 이름 붙이는 칩**이 되는데, 그것이 #1506 에서 고친 「거짓말하는 칩」과 정확히
+   * 같은 모양이다.
+   */
   date: string;
   status: 'seeking' | 'landed' | 'out-of-retention';
 };
@@ -119,12 +128,17 @@ export function useTimeframeJump(params: {
   // 끄기 위한 렌더 트리거용이다. 둘이 갈리지 않도록 쓰는 자리를 이 함수 하나로 묶는다.
   const settledSeqRef = useRef<number | null>(null);
   const [settledSeq, setSettledSeq] = useState<number | null>(null);
-  const settle = useCallback((seq: number) => {
+  /** 실제로 앉은 봉의 날짜. **중단이면 null** — 그 경우 앉은 봉이 없다. */
+  const [settledDate, setSettledDate] = useState<string | null>(null);
+  const settle = useCallback((seq: number, landedDate: string | null = null) => {
     settledSeqRef.current = seq;
     setSettledSeq(seq);
+    setSettledDate(landedDate);
   }, []);
 
+  // 상한 날짜 — 칩(착지 전)과 보유 한계 판정이 읽는다. 백필은 **칸 시작**을 쓴다(아래).
   const targetDate = live === null ? null : realMsToYyyymmdd(live.toMs);
+  const backfillDate = live === null ? null : realMsToYyyymmdd(live.fromMs);
   // 이 창의 하한 밖이면 백필해도 빈 응답만 온다 — 착지도 시도하지 않는다.
   // 하한이 `null`(디스크 모드·미측정)이면 **막지 않는다**: 모르는 것을 못 간다고
   // 말하지 않는다(그쪽은 캡처가 있는 만큼 더 과거를 볼 수 있다).
@@ -137,12 +151,16 @@ export function useTimeframeJump(params: {
     if (!chart || live === null || outOfRetention) return;
     if (settledSeqRef.current === live.seq) return;
     if (candles.length === 0) return;
-    // 그 날 **마지막 봉**. 스냅은 일봉→분봉 크로스헤어와 같은 함수를 쓴다 — 두
-    // 기능이 다른 봉에 서면 같은 조작이 두 답을 낸다.
-    const target = snapToLastOfKstDay(candles, live.toMs);
-    // 아직 그 날이 안 왔다 — 래치를 걸지 **않고** 물러난다. 백필이 캔들을 채우면
+    // 그 **칸의 마지막 봉** — 상한 이하에서 뒤로 훑는다.
+    //
+    // ⚠ **칸 밖으로는 내려가지 않는다.** `savedRangeAnchorTs` 는 상한 이하의 마지막
+    // 봉을 주므로 칸이 아직 비어 있으면 **그 앞 칸의 봉**을 돌려준다. 그대로 앉으면
+    // 백필 도중에 엉뚱한 구간으로 조기 착지하고 래치까지 걸려 되돌릴 수도 없다.
+    // 종전 `snapToLastOfKstDay` 도 그 날 봉이 없으면 물러났다 — 같은 성질이다.
+    const anchorTs = savedRangeAnchorTs(candles, live.toMs);
+    // 아직 그 칸이 안 왔다 — 래치를 걸지 **않고** 물러난다. 백필이 캔들을 채우면
     // 이 이펙트가 다시 돌아 그때 앉는다.
-    if (target === null) return;
+    if (anchorTs === null || anchorTs < live.fromMs) return;
     const raf = requestAnimationFrame(() => {
       // 예약과 실행 사이에 사용자가 만졌을 수 있다.
       if (settledSeqRef.current === live.seq) return;
@@ -152,7 +170,7 @@ export function useTimeframeJump(params: {
       const current = ts.getVisibleLogicalRange();
       if (!current) return;
       const anchorIndex = ts.timeToIndex?.(
-        realMsToVirtualSeconds(axisRef.current, target.ts_ms) as Time,
+        realMsToVirtualSeconds(axisRef.current, anchorTs) as Time,
         true,
       );
       if (typeof anchorIndex !== 'number' || !Number.isFinite(anchorIndex)) return;
@@ -166,7 +184,7 @@ export function useTimeframeJump(params: {
       // ⚠ **`next` 가 null 이어도 래치를 건다.** null 은 "이미 그 자리" 라는 뜻이고,
       // 그때 래치를 빼먹으면 틱마다 이 이펙트가 다시 돌아 사용자가 팬으로 빠져나갈
       // 수 없다 — 바로 이 훅이 막으려는 그 증상이다.
-      settle(live.seq);
+      settle(live.seq, realMsToYyyymmdd(anchorTs));
       if (next) ts.setVisibleLogicalRange(next);
     });
     return () => cancelAnimationFrame(raf);
@@ -202,13 +220,18 @@ export function useTimeframeJump(params: {
   const state = useMemo<MinuteJumpState | null>(() => {
     if (live === null || targetDate === null) return null;
     if (outOfRetention) return { date: targetDate, status: 'out-of-retention' };
-    return { date: targetDate, status: settledSeq === live.seq ? 'landed' : 'seeking' };
-  }, [live, targetDate, outOfRetention, settledSeq]);
+    if (settledSeq !== live.seq) return { date: targetDate, status: 'seeking' };
+    // 착지했으면 **앉은 봉의 날짜**를 말한다. 중단이면 앉은 봉이 없으니 상한 날짜다.
+    return { date: settledDate ?? targetDate, status: 'landed' };
+  }, [live, targetDate, outOfRetention, settledSeq, settledDate]);
 
   return {
     state,
     // 보유 한계 밖은 백필 대상이 아니다 — 긁어도 빈 응답만 온다.
-    backfillFromDate: live !== null && !outOfRetention ? targetDate : null,
+    //
+    // ⚠ **상한이 아니라 칸 시작이다.** 상한을 물리면 로드 구간이 `[칸 끝, 지금]` 이
+    // 되어 착지 대상인 그 칸의 봉이 영영 안 온다(`JumpPublication.fromMs` 주석).
+    backfillFromDate: live !== null && !outOfRetention ? backfillDate : null,
     clear,
   };
 }

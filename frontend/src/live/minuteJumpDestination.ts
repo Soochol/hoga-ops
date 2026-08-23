@@ -10,6 +10,7 @@
  */
 import { realMsToYyyymmdd } from './liveDateTime';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
+import type { CalendarTimeframe } from '../state/livePage';
 
 /**
  * 「분봉으로」의 목적지 봉 — **이 창에서 보이는 가장 오른쪽 캔들**의 실시각.
@@ -47,6 +48,91 @@ export function jumpTargetMs(
     return candles[candles.length - 1].ts_ms;
   }
   return savedRangeAnchorTs(candles, visibleToMs) ?? candles[0].ts_ms;
+}
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * 캘린더 봉 한 칸이 **덮는 마지막 순간**(포함 상한). 소비 창은 이 값 **이하의 마지막
+ * 봉**에 앉으므로, 이것이 곧 「그 칸의 마지막 거래일 마지막 봉」을 고르는 규칙이 된다.
+ *
+ * ── 왜 필요한가 ──────────────────────────────────────────────────────────
+ * 캘린더 봉의 `ts_ms` 는 그 칸의 **시작**이다. 그것을 그대로 목적지로 넘기면 주·월봉에서
+ * 칸의 **첫** 거래일로 간다 — 실측(2026-08-23, 005930): 주봉 `08-18`, 월봉 `08-03`.
+ * 최신 봉을 보고 있는데도 그렇게 떨어져 월봉은 **3주**가 어긋났다. 일봉은 칸이 하루라
+ * 우연히 맞았을 뿐이고, "일봉 오른쪽 끝 = 분봉 오른쪽 끝" 이라는 결정(2026-08-22)의
+ * 주·월봉 대응물이 여기다.
+ *
+ * ── 왜 「다음 봉 ts − 1」 이 아닌가 ───────────────────────────────────────
+ * 세 가지가 다 걸린다. ① 일봉에서 다음 봉은 **다음 거래일**이라 금요일 봉의 상한이
+ * 일요일이 되고, 진행 중인 점프의 칩이 주말 날짜를 말한다(지금은 금요일 그대로다).
+ * ② 주봉은 **첫 거래일**에 앵커되므로(위 08-18 = 화요일, 08-17 이 대체공휴일) `anchor +
+ * 7일` 이 다음 주 월요일로 넘친다. ③ 마지막 봉은 다음 봉이 아예 없다. 달력으로 풀면
+ * 셋 다 사라진다.
+ *
+ * `nowMs` 로 자르는 이유는 ③ 의 나머지 절반이다 — 진행 중인 칸의 상한은 아직 미래이고,
+ * 미래를 상한으로 주면 그 칸의 「마지막 봉」이 라이브 엣지가 된다(그게 맞다).
+ *
+ * ⚠ **거래일 달력을 쓰지 않는다.** 상한은 달력상의 칸 끝이고, 그 칸의 마지막 *거래일*을
+ * 고르는 일은 **분봉 창이 자기 캔들로** 한다. 발행 창에는 거래일 정보가 없고, 하드코딩된
+ * 근사를 여기 두면 휴일마다 어긋난다.
+ */
+export function bucketEndMs(
+  tf: CalendarTimeframe,
+  anchorTs: number,
+  nowMs: number,
+): number {
+  const date = realMsToYyyymmdd(anchorTs);
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(4, 6));
+  const d = Number(date.slice(6, 8));
+  // KST 자정 = 그 날 00:00 KST 의 Unix ms. `Date.UTC` 는 UTC 자정이므로 9시간 당긴다.
+  const kstMidnight = (yy: number, mm: number, dd: number) =>
+    Date.UTC(yy, mm - 1, dd) - KST_OFFSET_MS;
+
+  let exclusiveEnd: number;
+  if (tf === 'M') {
+    exclusiveEnd = kstMidnight(y, m + 1, 1); // 다음 달 1일 00:00 KST (m 은 1-based)
+  } else if (tf === 'W') {
+    // 그 주 일요일의 다음 날 00:00 KST. `getUTCDay()` 는 0=일요일.
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    exclusiveEnd = kstMidnight(y, m, d + ((7 - dow) % 7) + 1);
+  } else {
+    exclusiveEnd = kstMidnight(y, m, d + 1);
+  }
+  return Math.min(exclusiveEnd - 1, nowMs);
+}
+
+/**
+ * 「분봉으로」가 발행하는 **구간** — 어느 칸을 여는가.
+ *
+ * `fromMs` 는 칸의 시작(= 보이는 가장 오른쪽 캔들의 `ts_ms`), `toMs` 는 그 칸의 포함
+ * 상한이다. 소비 창이 둘을 **다른 일에** 쓰기 때문에 하나로 합칠 수 없다:
+ *
+ * - `toMs` — **착지**. 이 값 이하의 마지막 봉에 앉는다.
+ * - `fromMs` — **백필**. 그 창이 과거로 채워야 할 시작일이다. 여기에 `toMs` 를 쓰면
+ *   로드 구간이 `[칸 끝, 지금]` 이 되어 **착지 대상인 그 칸의 봉이 영영 안 온다**
+ *   (먼 과거 주·월봉이 영원히 「불러오는 중」에 머문다).
+ *
+ * 캔들이 없으면 null. 폴백 두 갈래(측정 불가 → 최신 / 좌측 여백 → 첫 봉)는
+ * `jumpTargetMs` 가 갖는다.
+ */
+export type JumpRange = {
+  /** 칸의 시작 — 백필 목표. */
+  fromMs: number;
+  /** 칸의 포함 상한 — 착지 기준. */
+  toMs: number;
+};
+
+export function jumpPublicationRange(
+  candles: readonly { ts_ms: number }[],
+  visibleToMs: number | null,
+  tf: CalendarTimeframe,
+  nowMs: number,
+): JumpRange | null {
+  const fromMs = jumpTargetMs(candles, visibleToMs);
+  if (fromMs === null) return null;
+  return { fromMs, toMs: bucketEndMs(tf, fromMs, nowMs) };
 }
 
 export type JumpDestination = {

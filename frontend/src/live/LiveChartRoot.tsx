@@ -42,9 +42,10 @@ import { useTimeframeJump, type MinuteJumpState } from './useTimeframeJump';
 import type { Candle } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
-import { jumpTargetMs } from './minuteJumpDestination';
+import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import {
+  type CalendarTimeframe,
   type LiveMAConfig,
   type LiveTimeframe,
   isMinuteTimeframe,
@@ -64,7 +65,7 @@ import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
 import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
-import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
+import { PAST_CANDLES_MAX_DAYS, realMsToYyyymmdd } from './liveDateTime';
 import { initialVisibleMinuteBarsFor, liveVenueSessionBoundsMs } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
@@ -442,11 +443,20 @@ interface Props {
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
   /**
-   * 「분봉으로」 버튼이 이 캘린더 창의 **목적지 날짜**를 읽는 통로(실시각 ms, 없으면
-   * null). `onViewportCaptureReady` 와 같은 등록 패턴이다 — 좌표 변환과 캔들 배열은
-   * 차트 안에만 있어서 헤더가 직접 계산할 수 없다.
+   * 「분봉으로」 버튼이 이 캘린더 창의 **목적지 구간**을 읽는 통로(칸의 시작·포함 상한,
+   * 없으면 null). `onViewportCaptureReady` 와 같은 등록 패턴이다 — 좌표 변환과 캔들
+   * 배열은 차트 안에만 있어서 헤더가 직접 계산할 수 없다.
    */
-  onJumpSourceReady?: (readTargetMs: () => number | null) => void;
+  onJumpSourceReady?: (readRange: () => JumpRange | null) => void;
+  /**
+   * 목적지 날짜(YYYYMMDD)를 헤더에 **밀어 준다** — 버튼이 호버 전에도 표시할 수 있게.
+   *
+   * 등록(`onJumpSourceReady`)과 나란히 두는 이유: 그쪽은 **누를 때** 정확한 값을 다시
+   * 읽는 명령형 통로이고, 이쪽은 **보여주기 위한** 구독이다. 하나로 합치면 헤더가
+   * SSE 틱마다 차트 좌표를 읽게 된다(그 비용이 종전에 미리보기를 호버로 미룬 이유다).
+   * 여기서는 뷰포트가 실제로 움직일 때만, rAF 로 묶어서 민다.
+   */
+  onJumpDestinationChange?: (bucketFromDate: string | null) => void;
   /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
   onMinuteJumpChange?: (jump: { state: MinuteJumpState | null; clear: () => void }) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
@@ -531,6 +541,7 @@ export function LiveChartRoot({
   tradeVolumePocOverride,
   onViewportCaptureReady,
   onJumpSourceReady,
+  onJumpDestinationChange,
   onMinuteJumpChange,
   onCursorActiveChange,
   onCandleBasisHover,
@@ -1069,10 +1080,13 @@ export function LiveChartRoot({
    * 앵커와 같다: 우측 여백을 보고 있으면 그 시각의 봉이 없다(그때 목적지는 최신
    * 캔들이 되고, 그것이 「보이는 가장 오른쪽 캔들」의 정의와도 맞는다).
    */
-  const readJumpTargetMs = useCallback((): number | null => {
+  const readJumpRange = useCallback((): JumpRange | null => {
     const c = chartRef.current;
-    if (!c) return null;
-    // 좌표 읽기만 여기서 한다 — 규칙은 `jumpTargetMs` 가 갖고 차트 없이 테스트된다.
+    const tf = timeframeRef.current;
+    if (!c || !canPublishTimeframeJump(tf)) return null;
+    // 좌표 읽기만 여기서 한다 — 규칙은 `jumpPublicationRange` 가 갖고 차트 없이
+    // 테스트된다. 봉은 ref 로 읽는다(이 콜백은 `useCallback([])` 이라 렌더 클로저를
+    // 못 본다 — `candlesRef` 와 같은 규약).
     let vr: { to: unknown } | null = null;
     try {
       vr = c.timeScale().getVisibleRange();
@@ -1080,13 +1094,40 @@ export function LiveChartRoot({
       vr = null;
     }
     const toMs = vr === null ? null : axisRef.current.toReal(Number(vr.to) * 1000);
-    return jumpTargetMs(candlesRef.current, toMs);
+    return jumpPublicationRange(
+      candlesRef.current, toMs, tf as CalendarTimeframe, Date.now(),
+    );
   }, []);
   useEffect(() => {
     if (!canPublishTimeframeJump(timeframe)) return;
-    onJumpSourceReady?.(readJumpTargetMs);
+    onJumpSourceReady?.(readJumpRange);
     return () => onJumpSourceReady?.(() => null);
-  }, [timeframe, readJumpTargetMs, onJumpSourceReady]);
+  }, [timeframe, readJumpRange, onJumpSourceReady]);
+  // 목적지 날짜를 헤더로 민다(버튼 라벨). 뷰포트가 움직일 때만, rAF 로 묶어서.
+  useEffect(() => {
+    if (!chart || !canPublishTimeframeJump(timeframe) || !onJumpDestinationChange) return;
+    let raf: number | null = null;
+    const publish = () => {
+      raf = null;
+      const range = readJumpRange();
+      // **칸 시작**을 민다(상한이 아니라) — 라벨은 칸 표기를 만들고, 상한 날짜는
+      // 거래일이 아닐 수 있어 약속으로 쓸 수 없다(`jumpBucketLabel`).
+      onJumpDestinationChange(range === null ? null : realMsToYyyymmdd(range.fromMs));
+    };
+    const schedule = () => {
+      if (raf === null) raf = requestAnimationFrame(publish);
+    };
+    publish();
+    const ts = chart.timeScale();
+    ts.subscribeVisibleLogicalRangeChange(schedule);
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
+      // 봉이 바뀌거나 창이 사라지면 라벨도 내린다 — 남겨 두면 캘린더가 아닌 창의
+      // 헤더에 옛 날짜가 붙어 있을 수 있다.
+      onJumpDestinationChange(null);
+    };
+  }, [chart, timeframe, readJumpRange, onJumpDestinationChange]);
   const minuteJump = useTimeframeJump({
     chart,
     axis,

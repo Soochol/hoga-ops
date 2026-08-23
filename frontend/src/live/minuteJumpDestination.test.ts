@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { jumpDestinationOf, jumpTargetMs } from './minuteJumpDestination';
+import { bucketEndMs, jumpDestinationOf, jumpPublicationRange, jumpTargetMs } from './minuteJumpDestination';
 import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
 
 const NOW = new Date('2026-08-22T05:00:00Z').getTime(); // KST 14:00
@@ -109,5 +109,70 @@ describe('jumpTargetMs — 보이는 가장 오른쪽 캔들', () => {
   it('측정 불가와 좌측 여백은 서로 다른 쪽으로 떨어진다', () => {
     expect(jumpTargetMs(CANDLES, null)).toBe(4_000);   // 화면을 모른다 → 라이브 엣지
     expect(jumpTargetMs(CANDLES, 500)).toBe(1_000);    // 과거를 본다 → 데이터 왼쪽 끝
+  });
+});
+
+/** `yyyy-mm-dd` KST 자정의 Unix ms. `Date.UTC` 는 UTC 자정이라 9시간 당긴다. */
+function kstMidnight(y: number, m: number, d: number): number {
+  return Date.UTC(y, m - 1, d) - 9 * 60 * 60 * 1000;
+}
+/** 그 KST 날짜가 덮는 마지막 ms. */
+function kstDayLast(y: number, m: number, d: number): number {
+  return kstMidnight(y, m, d + 1) - 1;
+}
+
+/**
+ * 캘린더 칸의 상한. 여기가 F1 의 규칙이다 — 주·월봉의 `ts_ms` 는 칸의 **시작**이라
+ * 그대로 목적지로 쓰면 칸의 첫 거래일로 간다(실측 2026-08-23: 주봉 08-18, 월봉 08-03).
+ */
+describe('bucketEndMs', () => {
+  const FAR_FUTURE = kstMidnight(2030, 1, 1);
+
+  it('일봉은 그 날이 끝나는 순간까지', () => {
+    expect(bucketEndMs('D', kstMidnight(2026, 8, 21) + 9 * 3_600_000, FAR_FUTURE))
+      .toBe(kstDayLast(2026, 8, 21));
+  });
+
+  it('주봉은 **그 주 일요일**까지 — 앵커가 화요일이어도(첫 거래일이 휴일로 밀린 주)', () => {
+    // 2026-08-17 은 광복절 대체공휴일이라 그 주 첫 거래일이 화요일 08-18 이다.
+    expect(bucketEndMs('W', kstMidnight(2026, 8, 18) + 9 * 3_600_000, FAR_FUTURE))
+      .toBe(kstDayLast(2026, 8, 23));
+  });
+
+  it('앵커가 일요일이면 그 날로 끝난다 — 다음 주로 넘치지 않는다', () => {
+    expect(bucketEndMs('W', kstMidnight(2026, 8, 23) + 3_600_000, FAR_FUTURE))
+      .toBe(kstDayLast(2026, 8, 23));
+  });
+
+  it('월봉은 그 달 마지막 날까지', () => {
+    expect(bucketEndMs('M', kstMidnight(2026, 8, 3) + 9 * 3_600_000, FAR_FUTURE))
+      .toBe(kstDayLast(2026, 8, 31));
+  });
+
+  it('12월은 다음 해 1월로 넘어간다 — 월 롤오버', () => {
+    expect(bucketEndMs('M', kstMidnight(2025, 12, 15), FAR_FUTURE))
+      .toBe(kstDayLast(2025, 12, 31));
+  });
+
+  // 진행 중인 칸은 상한이 아직 미래다. 미래를 상한으로 주면 그 칸의 「마지막 봉」이
+  // 존재하지 않는 시각을 가리킨다 — `nowMs` 로 잘라 라이브 엣지가 되게 한다.
+  it('진행 중인 칸은 지금으로 자른다', () => {
+    const now = kstMidnight(2026, 8, 20) + 5 * 3_600_000; // 목요일 05:00 KST
+    expect(bucketEndMs('W', kstMidnight(2026, 8, 18) + 9 * 3_600_000, now)).toBe(now);
+    expect(bucketEndMs('M', kstMidnight(2026, 8, 3) + 9 * 3_600_000, now)).toBe(now);
+  });
+});
+
+describe('jumpPublicationRange', () => {
+  const FAR_FUTURE = kstMidnight(2030, 1, 1);
+  const TUE = kstMidnight(2026, 8, 18) + 9 * 3_600_000;
+
+  it('칸 시작과 상한을 함께 낸다 — 소비 창이 둘을 다른 일에 쓴다', () => {
+    expect(jumpPublicationRange([{ ts_ms: TUE }], TUE, 'W', FAR_FUTURE))
+      .toEqual({ fromMs: TUE, toMs: kstDayLast(2026, 8, 23) });
+  });
+
+  it('캔들이 없으면 null', () => {
+    expect(jumpPublicationRange([], TUE, 'W', FAR_FUTURE)).toBeNull();
   });
 });
