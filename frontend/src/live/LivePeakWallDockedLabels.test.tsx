@@ -1,223 +1,108 @@
 import { render, waitFor } from '@testing-library/react';
-import { act } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
-import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
+import { describe, expect, it, vi } from 'vitest';
+import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
-import type { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
-import type { VirtualAxis } from '../util/virtualAxis';
-import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
-import { useLivePageStore } from '../state/livePage';
+import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
+import type { PeakWallRenderState } from './usePeakWallRender';
 
-// contains: 이동평균 필터가 MovingAverageOverlay 와 같은 「세션 안 캔들」 배열 위에서
-// SMA 를 재므로 스텁도 그 축을 갖는다 — 픽스처 캔들은 전부 세션 안이다.
-const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
-
-function candle(ts_ms: number): Candle {
-  return { ts_ms, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 };
+function seg(price: number, qty: number, peakSec: number): PeakWallSegment {
+  return {
+    time0: 60 as Time,
+    time1: 240 as Time,
+    peakTime: peakSec as Time,
+    price,
+    qty,
+    label: `${price}, ${qty}`,
+    color: '#base',
+    lineWidth: 2,
+  };
 }
 
+function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
+  return {
+    segments: [seg(100, 100, 60), seg(105, 300, 120)],
+    drawn: true,
+    labels: true,
+    arrows: true,
+    color: '#base',
+    lineWidth: 2,
+    ...over,
+  };
+}
+
+const EMPTY: PeakWallRenderState = {
+  segments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
+};
+
+function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {
+  const attached: PeakWallDockedLabelsPrimitive[] = [];
+  const chart = {
+    timeScale: () => ({
+      getVisibleRange: () => ({ from: 60 as never, to: 240 as never }),
+      options: () => ({ barSpacing: 12 }),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    }),
+  } as unknown as IChartApi;
+  const series = {
+    attachPrimitive: vi.fn((primitive: PeakWallDockedLabelsPrimitive) => {
+      attached.push(primitive);
+      primitive.attached({
+        chart,
+        series: series as unknown as ISeriesApi<SeriesType>,
+        requestUpdate: vi.fn(),
+      } as unknown as Parameters<PeakWallDockedLabelsPrimitive['attached']>[0]);
+    }),
+    detachPrimitive: vi.fn(),
+  } as unknown as ISeriesApi<SeriesType>;
+  const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
+  render(
+    <LivePeakWallDockedLabels paneSeries={paneSeries} askWall={askWall} bidWall={bidWall} />,
+  );
+  return attached;
+}
+
+/**
+ * 도킹 라벨은 **계산하지 않는다**(2026-08-23). `usePeakWallRender` 가 낸 세그먼트를
+ * 선 오버레이·고저 라벨 회피와 **같은 참조**로 받아 칩만 만든다. 여기서 재는 것은
+ * 「받은 세그먼트마다 라벨이 붙는가」와 「`labels` 플래그가 먹는가」뿐이다.
+ *
+ * **막는 방향**: 이 컴포넌트가 다시 자기 계산을 갖는 것, 그리고 라벨 토글이 안 먹는 것.
+ * **못 보는 것**: 필터가 실제로 무엇을 거르는지 — `peakWallMaFilterWiring.test.tsx` 가
+ * 훅에서 잰다(선·라벨·회피가 같은 참조라 셋이 함께 덮인다).
+ */
 describe('LivePeakWallDockedLabels', () => {
-  beforeEach(() => {
-    act(() => {
-      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
-      useLivePageStore.setState({
-        askPeakEnabled: true,
-        bidPeakEnabled: false,
-        askPeakColor: '#1D4ED8',
-        askPeakLineWidth: 2,
-      });
+  it('그려지는 벽마다 라벨을 붙인다(상위 하나만이 아니다)', async () => {
+    const attached = renderLabels(wall(), EMPTY);
+    await waitFor(() => {
+      expect(attached[0].labelsData().map((l) => l.price).sort((a, b) => a - b))
+        .toEqual([100, 105]);
     });
   });
 
-  it('keeps labels for every rendered ask wall, not only the visible-max highlighted wall', async () => {
-    const day = '20260613';
-    const open = 60_000;
-    const attached: PeakWallDockedLabelsPrimitive[] = [];
-    const chart = {
-      timeScale: () => ({
-        getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
-        options: () => ({ barSpacing: 12 }),
-        subscribeVisibleLogicalRangeChange: vi.fn(),
-        unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      }),
-    } as unknown as IChartApi;
-    const series = {
-      attachPrimitive: vi.fn((primitive: PeakWallDockedLabelsPrimitive) => {
-        attached.push(primitive);
-        primitive.attached({
-          chart,
-          series: series as unknown as ISeriesApi<SeriesType>,
-          requestUpdate: vi.fn(),
-        } as unknown as Parameters<PeakWallDockedLabelsPrimitive['attached']>[0]);
-      }),
-      detachPrimitive: vi.fn(),
-    } as unknown as ISeriesApi<SeriesType>;
-    const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
-    // 벽 2개를 그리게 한다(체결된 벽 표시 개수 = 2) — 이 테스트의 주제는 "그려진 벽마다
-    // 라벨이 붙는가" 이므로 벽이 둘 이상이어야 의미가 있다.
-    act(() => {
-      useChartPrefsStore.setState({ askPeakAllPriceRankLimit: 2 });
-    });
-    const candidates = [
-      { price: 100, qty: 100, t_ms: open },
-      { price: 105, qty: 300, t_ms: open + 60_000 },
-    ];
-    const askPeak: AskPeak = {
-      date: day,
-      price: 100,
-      qty: 100,
-      t_ms: open,
-      max_price: 100,
-      max_qty: 100,
-      max_t_ms: open,
-      traded_peaks: candidates,
-      traded_max_peaks: candidates,
-    };
-    const segments: RangeSegment[] = [{
-      date: day,
-      session_open_ms: open,
-      session_close_ms: open + 180_000,
-    }];
-
-    render(
-      <LivePeakWallDockedLabels
-        paneSeries={paneSeries}
-        axis={axis}
-        dayAskPeaks={[askPeak]}
-        dayBidPeaks={[]}
-        segments={segments}
-        candles={[candle(open), candle(open + 60_000)]}
-        todayKst={day}
-      />,
-    );
-
+  it('매도 라벨 토글이 꺼지면(labels=false) 매도 라벨만 사라진다', async () => {
+    const attached = renderLabels(wall({ labels: false }), wall());
     await waitFor(() => {
-      expect(attached).toHaveLength(1);
-      expect(attached[0].labelsData().map((label) => label.price).sort((a, b) => a - b)).toEqual([100, 105]);
+      const sides = attached[0].labelsData().map((l) => l.side);
+      expect(sides.every((s) => s === 'bid')).toBe(true);
+      expect(sides).toHaveLength(2);
     });
   });
 
-  it('hides ask wall labels when the ask label toggle is off', async () => {
-    act(() => {
-      useChartPrefsStore.setState({ askPeakLabelEnabled: false });
-    });
-    const day = '20260613';
-    const open = 60_000;
-    const attached: PeakWallDockedLabelsPrimitive[] = [];
-    const chart = {
-      timeScale: () => ({
-        getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
-        options: () => ({ barSpacing: 12 }),
-        subscribeVisibleLogicalRangeChange: vi.fn(),
-        unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      }),
-    } as unknown as IChartApi;
-    const series = {
-      attachPrimitive: vi.fn((primitive: PeakWallDockedLabelsPrimitive) => {
-        attached.push(primitive);
-        primitive.attached({
-          chart,
-          series: series as unknown as ISeriesApi<SeriesType>,
-          requestUpdate: vi.fn(),
-        } as unknown as Parameters<PeakWallDockedLabelsPrimitive['attached']>[0]);
-      }),
-      detachPrimitive: vi.fn(),
-    } as unknown as ISeriesApi<SeriesType>;
-    const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
-    const askPeak: AskPeak = {
-      date: day,
-      price: 100,
-      qty: 100,
-      t_ms: open,
-      max_price: 100,
-      max_qty: 100,
-      max_t_ms: open,
-    };
-    const segments: RangeSegment[] = [{
-      date: day,
-      session_open_ms: open,
-      session_close_ms: open + 180_000,
-    }];
-
-    render(
-      <LivePeakWallDockedLabels
-        paneSeries={paneSeries}
-        axis={axis}
-        dayAskPeaks={[askPeak]}
-        dayBidPeaks={[]}
-        segments={segments}
-        candles={[candle(open), candle(open + 60_000)]}
-        todayKst={day}
-      />,
-    );
-
+  it('매수 라벨 토글이 꺼지면 매수 라벨만 사라진다', async () => {
+    const attached = renderLabels(wall(), wall({ labels: false }));
     await waitFor(() => {
-      expect(attached).toHaveLength(1);
-      expect(attached[0].labelsData()).toEqual([]);
+      const sides = attached[0].labelsData().map((l) => l.side);
+      expect(sides.every((s) => s === 'ask')).toBe(true);
+      expect(sides).toHaveLength(2);
     });
   });
 
-  it('hides bid wall labels when the bid label toggle is off', async () => {
-    act(() => {
-      useChartPrefsStore.setState({ bidPeakLabelEnabled: false });
-      useLivePageStore.setState({ askPeakEnabled: false, bidPeakEnabled: true });
-    });
-    const day = '20260613';
-    const open = 60_000;
-    const attached: PeakWallDockedLabelsPrimitive[] = [];
-    const chart = {
-      timeScale: () => ({
-        getVisibleRange: () => ({ from: 60 as never, to: 120 as never }),
-        options: () => ({ barSpacing: 12 }),
-        subscribeVisibleLogicalRangeChange: vi.fn(),
-        unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      }),
-    } as unknown as IChartApi;
-    const series = {
-      attachPrimitive: vi.fn((primitive: PeakWallDockedLabelsPrimitive) => {
-        attached.push(primitive);
-        primitive.attached({
-          chart,
-          series: series as unknown as ISeriesApi<SeriesType>,
-          requestUpdate: vi.fn(),
-        } as unknown as Parameters<PeakWallDockedLabelsPrimitive['attached']>[0]);
-      }),
-      detachPrimitive: vi.fn(),
-    } as unknown as ISeriesApi<SeriesType>;
-    const paneSeries = new Map([[('candle' as PaneId), series]]) as PaneSeriesMap;
-    const bidPeak: BidPeak = {
-      date: day,
-      price: 99,
-      qty: 200,
-      t_ms: open,
-      max_price: 99,
-      max_qty: 200,
-      max_t_ms: open,
-    };
-    const segments: RangeSegment[] = [{
-      date: day,
-      session_open_ms: open,
-      session_close_ms: open + 180_000,
-    }];
-
-    render(
-      <LivePeakWallDockedLabels
-        paneSeries={paneSeries}
-        axis={axis}
-        dayAskPeaks={[]}
-        dayBidPeaks={[bidPeak]}
-        segments={segments}
-        candles={[candle(open), candle(open + 60_000)]}
-        todayKst={day}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(attached).toHaveLength(1);
-      expect(attached[0].labelsData()).toEqual([]);
-    });
+  it('양쪽 다 꺼지면 라벨이 없다', async () => {
+    const attached = renderLabels(EMPTY, EMPTY);
+    await waitFor(() => expect(attached[0].labelsData()).toEqual([]));
   });
 });
