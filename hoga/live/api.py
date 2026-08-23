@@ -32,7 +32,12 @@ from hoga.live import (
     kiwoom_rest_runtime,
     kiwoom_runtime,
 )
-from hoga.live.data_warnings import LiveDataWarning, make_data_warning
+from hoga.live.data_warnings import (
+    LiveDataWarning,
+    make_data_warning,
+    violation_to_warning,
+    violations_for_range,
+)
 from hoga.live.error_policy import classify_live_error
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
@@ -270,22 +275,6 @@ def _validate_index_range(index_id: str, from_: str, to: str):
     return index
 
 
-def _violation_to_warning(v, batch_label: str) -> dict:
-    """Render a DailyInvariantViolation as the wire dict the
-    /past-daily-candles handler emits in `data_warnings`.
-
-    Locality: one source of truth for the `{batch, date, reason, msg}` shape
-    so future frontend additions (e.g. `LivePastDailyCandlesWarning`
-    interface widening) only need to touch one builder.
-    """
-    return make_data_warning(
-        "invariant_violation",
-        f"{v.date_yyyymmdd}: {v.reason} ({v.detail})",
-        date=v.date_yyyymmdd,
-        batch=batch_label,
-    )
-
-
 def _vendor_error_to_warning(exc: BaseException, batch_label: str) -> dict:
     """벤더 실패를 핸들러가 내보내는 와이어 경고로. **사유·원문 모두 정책이 정한다.**
 
@@ -378,13 +367,21 @@ def _collect_daily_series_cache_only(
     loaded: list[dict] = []
     cached_batches: list[str] = []
     covered: list[tuple[date, date]] = []
+    from_s = frm.strftime("%Y%m%d")
+    to_s = too.strftime("%Y%m%d")
+    violation_warnings: list[dict] = []
 
-    for batch_from, batch_to, rows in cache.list_batches(code):
+    for batch_from, batch_to, rows, violations in cache.list_batches(code):
         if batch_to < frm or batch_from > too:
             continue
         covered.append((batch_from, batch_to))
         loaded.extend(rows)
-        cached_batches.append(f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}")
+        label = f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}"
+        cached_batches.append(label)
+        violation_warnings.extend(
+            violation_to_warning(v, label)
+            for v in violations_for_range(violations, from_s, to_s)
+        )
 
     if too >= today_d:
         today_s = today_d.strftime("%Y%m%d")
@@ -396,7 +393,7 @@ def _collect_daily_series_cache_only(
         elif state == "negative":
             covered.append((today_d, today_d))
 
-    data_warnings = [
+    data_warnings = violation_warnings + [
         _kis_rest_bypassed_batch_warning(
             f"{gap_from.strftime('%Y%m%d')}__{gap_to.strftime('%Y%m%d')}"
         )
@@ -446,7 +443,7 @@ def _collect_index_daily_candles_cache_only(
 
     batch_label = f"{from_s}__{to_s}"
     data_warnings = [
-        _violation_to_warning(v, batch_label)
+        violation_to_warning(v, batch_label)
         for v in violations
         if from_s <= v.date_yyyymmdd <= to_s
     ]
@@ -489,7 +486,7 @@ def _collect_index_minute_candles_cache_only(
         data_warnings = [_kis_rest_bypassed_batch_warning(batch_label)]
     else:
         candles = result.candles
-        data_warnings = [_violation_to_warning(v, batch_label) for v in result.violations]
+        data_warnings = [violation_to_warning(v, batch_label) for v in result.violations]
     return {
         "index_id": index_id,
         "from": from_s,
@@ -579,13 +576,28 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     loaded: list[dict] = []
 
     # 1+2. Read existing batches intersecting the request.
+    #
+    # **캐시된 배치의 위반도 같이 되살린다** (#1536). 이걸 안 하면 같은 URL 이
+    # 콜드에선 「왜 비었는지」를 말하고 웜에선 봉 0 만 말한다 — 봉이 0 인 사실은
+    # 그대로인데 이유만 사라지는 모양이라, 화면에서 새로고침하는 순간 설명이 없어진다.
+    #
+    # `batch` 라벨은 **캐시된 배치 자신의 라벨**이다(요청 구간이 아니라).
+    # 그래서 응답의 `data_warnings[].batch` 는 항상 같은 응답의 `cached_batches`
+    # 또는 `fresh_batches` 안에 있는 라벨이다 — 읽는 쪽이 대조할 수 있다.
+    # 콜드/웜에서 이 라벨은 다를 수 있다: 저장 시 커버리지가 넓어지기 때문이다
+    # (`covered_to`). 진단 자체(`reason`·`date`·`msg`)는 같다.
     existing_relevant: list[tuple[date, date]] = []
-    for b_from, b_to, b_rows in cache.list_batches(code):
+    for b_from, b_to, b_rows, b_violations in cache.list_batches(code):
         if b_to < frm or b_from > too:
             continue
         existing_relevant.append((b_from, b_to))
         loaded.extend(b_rows)
-        cached_batches.append(f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}")
+        label = f"{b_from.strftime('%Y%m%d')}__{b_to.strftime('%Y%m%d')}"
+        cached_batches.append(label)
+        warnings.extend(
+            violation_to_warning(v, label)
+            for v in violations_for_range(b_violations, from_s, to_s)
+        )
 
     # 3. Compute gaps (past-only — today handled separately).
     req_to_past = min(too, today_d - timedelta(days=1))
@@ -644,6 +656,9 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 code, gap_from, batch_to,
                 [r for r in rows if not isinstance(r.get("t_ms"), int)
                  or r["t_ms"] <= ceiling_ms],
+                # 행과 달리 위반은 `ceiling_ms` 로 자르지 않는다 — 자를 t_ms 가 없다
+                # (빈 응답 위반은 날짜조차 `"(empty)"` 다). 읽을 때 구간 필터가 건다.
+                violations=violations,
             )
             loaded.extend(rows)
             # 라벨은 **요청한 갭** 그대로다 — 이 필드는 벤더 왕복 기록이지 캐시
@@ -655,7 +670,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
             if covered_through is None or batch_to > covered_through:
                 covered_through = batch_to
             for v in violations:
-                warnings.append(_violation_to_warning(v, label))
+                warnings.append(violation_to_warning(v, label))
 
     # 5. Today handling (separate from past — memory only, tri-state).
     if too >= today_d:
@@ -683,7 +698,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                     cache.store_today(code, None)
                     fresh_batches.append(today_label)
                 for v in violations:
-                    warnings.append(_violation_to_warning(v, today_label))
+                    warnings.append(violation_to_warning(v, today_label))
             # 위 gap 루프와 **같은 튜플**을 쓴다. 예전엔 여기만 `Kis*` 를 직접 적어서
             # 두 브랜치의 포착 폭이 갈렸고, 일봉이 키움으로 이관된 뒤로는 오늘 프로브의
             # `KiwoomApiError` 만 그대로 탈출해 500 이 됐다(#1226, 8050 지정단말기 인증 실패).
@@ -2317,7 +2332,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 }
         batch_label = f"{from_}__{to}"
         data_warnings = [
-            _violation_to_warning(v, batch_label) for v in result.violations
+            violation_to_warning(v, batch_label) for v in result.violations
         ]
         if timeframe not in {"D", "W", "M"} and result.candles:
             earliest_returned = min(_candle_date_yyyymmdd(c) for c in result.candles)

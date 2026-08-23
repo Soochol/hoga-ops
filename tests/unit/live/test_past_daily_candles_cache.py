@@ -28,10 +28,11 @@ def test_append_and_read_round_trip() -> None:
     cache.append_batch("005930", date(2024, 1, 1), date(2024, 12, 31), bars)
     out = cache.list_batches("005930")
     assert len(out) == 1
-    b_from, b_to, b_bars = out[0]
+    b_from, b_to, b_bars, b_violations = out[0]
     assert b_from == date(2024, 1, 1)
     assert b_to == date(2024, 12, 31)
     assert b_bars == bars
+    assert b_violations == [], "위반을 안 넘기면 빈 리스트 — None 이 새면 소비처가 터진다"
 
 
 def test_batch_coverage_is_narrowed_to_actual_row_dates() -> None:
@@ -41,7 +42,7 @@ def test_batch_coverage_is_narrowed_to_actual_row_dates() -> None:
     cache.append_batch("UN", "089030", date(2024, 7, 23), date(2026, 6, 22), bars)
 
     assert cache.list_batches("UN", "089030") == [
-        (date(2026, 2, 10), date(2026, 2, 11), bars),
+        (date(2026, 2, 10), date(2026, 2, 11), bars, []),
     ]
 
 

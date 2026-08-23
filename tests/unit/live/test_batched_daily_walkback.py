@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 from hoga.live.api import _KST, batched_daily_walkback
+from hoga.live.candle_fetch_result import DailyInvariantViolation
 from hoga.live.kis_client import KisApiError, KisRateLimitError, KisTransportError
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
@@ -24,6 +25,7 @@ from hoga.live.kiwoom_errors import (
     KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
+from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 
 def _t_ms(d: date, hour: int = 9) -> int:
@@ -31,17 +33,30 @@ def _t_ms(d: date, hour: int = 9) -> int:
 
 
 class _FakeCache:
+    """`PastDailyCandlesCache` 의 대역. **`list_batches` 는 항상 4-튜플을 낸다.**
+
+    생성자 `batches` 는 픽스처라 3-튜플도 받아 위반을 빈 리스트로 채운다 — 위반이
+    주제가 아닌 테스트가 그 축을 안 적게 하려는 것이다. 대역이 실물보다 느슨한 것은
+    **입력 쪽뿐**이고, 계약 표면인 반환은 실물과 같은 4-튜플로 고정한다.
+    """
+
     def __init__(self, batches=None, today=("miss", None)):
-        self._batches = list(batches or [])  # list[(date, date, list[dict])]
+        # list[(date, date, list[dict], list)]
+        self._batches = [
+            b if len(b) == 4 else (*b, []) for b in (batches or [])
+        ]
         self._today = today
-        self.appended: list[tuple[date, date, list[dict]]] = []
+        self.appended: list[tuple[date, date, list[dict], list]] = []
         self.stored_today: list[dict | None] = []
 
     def list_batches(self, code: str):
         return list(self._batches)
 
-    def append_batch(self, code: str, frm: date, to: date, rows: list[dict]) -> None:
-        self.appended.append((frm, to, rows))
+    def append_batch(
+        self, code: str, frm: date, to: date, rows: list[dict],
+        *, violations: list | None = None,
+    ) -> None:
+        self.appended.append((frm, to, rows, list(violations or [])))
 
     def get_today(self, code: str):
         return self._today
@@ -421,3 +436,108 @@ def test_stop_walk_errors_end_the_gap_walk_but_api_errors_continue(
         f"gap 을 {len(calls)}번 걸었다 — {'멈췄어야' if stops else '계속했어야'} 한다"
     )
     assert len(out["data_warnings"]) == expected_calls
+
+
+# ── 캐시 히트에서 진단이 살아남는가 (#1536) ────────────────────────────────────
+#
+# 아래 셋은 **실물 `PastDailyCandlesCache`** 를 쓴다. 대역이 아니라 실물인 이유:
+# 이 결함의 절반이 캐시 자료구조에 있었다(배치 튜플에 위반 칸이 없었다). 대역으로
+# 재면 대역이 위반을 들고 있어서 **오케스트레이터 배선만** 재고 저장 쪽 회귀는 못 본다.
+
+
+def _empty_response_violation():
+    """벤더가 은퇴한 코드에 주는 응답의 모양 — 행 하나, `dt` 가 빈 문자열.
+
+    #1534 에서 37종목이 이 모양이었다. `date_yyyymmdd` 가 날짜가 **아니라는** 점이
+    이 픽스처의 핵심이다.
+    """
+    return DailyInvariantViolation(
+        date_yyyymmdd="(empty)", reason="malformed_row", detail="unparsable dt ''",
+    )
+
+
+def test_cache_hit_still_reports_the_violation_the_cold_call_reported() -> None:
+    """**같은 요청을 두 번 한다 — 그게 이 테스트의 요점이다** (#1536).
+
+    한 번만 재는 테스트는 이 결함을 **통과시킨다**: 콜드 경로는 고치기 전에도
+    정확했다. 사라지는 것은 두 번째 응답이고, 사용자에게는 그쪽이 「새로고침」이다.
+    """
+    cache = PastDailyCandlesCache()
+    calls: list[tuple[str, str, str]] = []
+
+    async def fetch_batch(code, from_s, to_s):
+        calls.append((code, from_s, to_s))
+        return [], [_empty_response_violation()], None
+
+    kwargs = dict(
+        cache=cache, fetch_batch=fetch_batch, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5), today_d=date(2024, 2, 1),
+    )
+    cold = _run(batched_daily_walkback(**kwargs))
+    warm = _run(batched_daily_walkback(**kwargs))
+
+    assert len(calls) == 1, "두 번째는 캐시가 덮어 벤더를 안 부른다 — 그 상황을 재는 것이다"
+    assert cold["candles"] == [] and warm["candles"] == []   # 봉이 0 인 것은 양쪽 같다
+    assert [w["reason"] for w in cold["data_warnings"]] == ["invariant_violation"]
+    assert [w["reason"] for w in warm["data_warnings"]] == ["invariant_violation"], (
+        "웜에서 진단이 사라졌다 — 봉 0 은 그대로인데 이유만 없어지는 그 결함이다"
+    )
+    # 진단 자체는 콜드/웜이 같아야 한다. `batch` 는 저장 시 커버리지가 넓어질 수
+    # 있어 제외한다(그 라벨이 응답 안에서 대조 가능한지는 아래 테스트가 본다).
+    keys = ("reason", "kind", "is_failure", "date", "msg")
+    assert ({k: cold["data_warnings"][0].get(k) for k in keys}
+            == {k: warm["data_warnings"][0].get(k) for k in keys})
+
+
+def test_cache_hit_warning_batch_label_is_findable_in_the_same_response() -> None:
+    """`data_warnings[].batch` 가 같은 응답의 배치 목록 안에 있어야 대조가 된다.
+
+    라벨이 어디에도 없는 문자열이면 「어느 구간의 이야기인가」를 읽는 쪽이 못 잇는다.
+    """
+    cache = PastDailyCandlesCache()
+
+    async def fetch_batch(code, from_s, to_s):
+        return [], [_empty_response_violation()], None
+
+    kwargs = dict(
+        cache=cache, fetch_batch=fetch_batch, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5), today_d=date(2024, 2, 1),
+    )
+    _run(batched_daily_walkback(**kwargs))
+    warm = _run(batched_daily_walkback(**kwargs))
+
+    labels = set(warm["cached_batches"]) | set(warm["fresh_batches"])
+    assert warm["data_warnings"][0]["batch"] in labels
+
+
+def test_cache_hit_drops_violations_of_dates_outside_the_request() -> None:
+    """구간 필터가 **공허하지 않다**.
+
+    이게 없으면 위 두 테스트는 "전부 그냥 싣는다" 로도 통과한다. 넓은 캐시 배치를
+    좁게 다시 물으면 바깥 날짜의 위반은 빠져야 한다.
+    """
+    cache = PastDailyCandlesCache()
+    inside = DailyInvariantViolation(
+        date_yyyymmdd="20240103", reason="close_nonpositive", detail="close=0",
+    )
+    outside = DailyInvariantViolation(
+        date_yyyymmdd="20240110", reason="close_nonpositive", detail="close=0",
+    )
+
+    async def fetch_batch(code, from_s, to_s):
+        return [], [inside, outside], None
+
+    _run(batched_daily_walkback(
+        cache=cache, fetch_batch=fetch_batch, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 20), today_d=date(2024, 2, 1),
+    ))
+
+    async def never(code, from_s, to_s):
+        raise AssertionError("캐시가 덮는다 — 벤더를 부르면 안 된다")
+
+    warm = _run(batched_daily_walkback(
+        cache=cache, fetch_batch=never, output_key="candles",
+        code="005930", frm=date(2024, 1, 1), too=date(2024, 1, 5), today_d=date(2024, 2, 1),
+    ))
+
+    assert [w["date"] for w in warm["data_warnings"]] == ["20240103"]
