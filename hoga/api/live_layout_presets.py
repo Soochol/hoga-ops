@@ -11,7 +11,7 @@ from hoga.api.models import (
 )
 
 # `/live` 레이아웃 프리셋 — 저장소 뼈대는 layout_preset_store 가 갖고, 여기선 리소스
-# 고유값(루트·버전·모델)만 묶는다. `/study` 는 study_layout_presets 가 같은 방식으로 얹는다.
+# 고유값(루트·버전·모델)만 묶는다.
 #
 # v3 (PR-E, #713 §5): payload 가 워크스페이스 전체 스냅샷이다(창·그룹·종목). 구 v1/v2
 # 프리셋은 폐기(변환 없음) — 스토어의 stale 버전 가드가 빈 목록으로 대체한다.

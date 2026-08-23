@@ -58,22 +58,8 @@ _SAVE_CREATE = {
                      "chart": CHART},
                 ],
                 "zOrder": ["w1"],
-                # /live 프리셋만 종목을 담는다(계약 차이 — /study 는 창 배치만).
+                # 프리셋은 창 배치와 함께 **그룹 종목**도 담는다(배치만이 아니다).
                 "groupSymbols": {"1": {"code": "005930", "name": "삼성전자"}},
-            },
-        },
-    ),
-    "study-layout-presets": (
-        "/api/study-layout-presets",
-        {
-            "name": "분석용",
-            "payload": {
-                "windows": [
-                    {"id": "w1", "kind": "chart",
-                     "rect": {"x": 0, "y": 0, "w": 0.7, "h": 1},
-                     "chart": CHART},
-                ],
-                "zOrder": ["w1"],
             },
         },
     ),
@@ -117,8 +103,6 @@ def _build_router(kind: str, tmp_path: Path, bus: EventBus | None):
         from hoga.api.study_view_routes import build_router
     elif kind == "live-layout-presets":
         from hoga.api.live_layout_preset_routes import build_router
-    elif kind == "study-layout-presets":
-        from hoga.api.study_layout_preset_routes import build_router
     else:
         from hoga.api.screener import build_router
     return build_router(data_dir=tmp_path, bus=bus)
@@ -185,7 +169,6 @@ def test_no_bus_still_serves(tmp_path: Path, kind: str):
         ("screener", "screener_saves_changed"),
         ("study-views", "study_views_changed"),
         ("live-layout-presets", "live_layout_presets_changed"),
-        ("study-layout-presets", "study_layout_presets_changed"),
     ],
 )
 def test_save_create_publishes_change_event(tmp_path: Path, kind: str, event_type: str):
@@ -201,7 +184,7 @@ def test_save_create_publishes_change_event(tmp_path: Path, kind: str, event_typ
 
 
 @pytest.mark.parametrize(
-    "kind", ["screener", "study-views", "live-layout-presets", "study-layout-presets"],
+    "kind", ["screener", "study-views", "live-layout-presets"],
 )
 def test_save_list_publishes_nothing(tmp_path: Path, kind: str):
     bus = EventBus()
@@ -265,7 +248,7 @@ def test_screener_broadcast_is_scoped_to_saves(tmp_path: Path):
 
 @pytest.mark.parametrize(
     "kind",
-    ["watchlist", "heatmap", "study-views", "live-layout-presets", "study-layout-presets"],
+    ["watchlist", "heatmap", "study-views", "live-layout-presets"],
 )
 def test_every_route_is_wrapped(tmp_path: Path, kind: str):
     """route_class 의 **자동성**을 직접 잰다.

@@ -22,10 +22,11 @@
  * 어느 창을 고르는가: **포커스(zOrder 최상단) 차트 창** — "사용자가 마지막으로
  * 보던 설정"이다. 두 페이지 중에는 `/live` 를 우선한다(그 탭 sessionStorage →
  * 공유 시드 → `/study` 순). 전역 1세트로 접는 이상 어느 하나는 져야 하고, 이
- * 순서는 PR 에 명시된 규칙이다.
+ * 순서는 PR 에 명시된 규칙이다. `/study` 는 사라졌지만(2026-08-23) 그 스냅샷을
+ * 아직 들고 있는 사용자가 있으므로 **읽기 순서는 그대로 둔다**(`SOURCES` 주석).
  */
 import { readJsonObject, persistJson, type StorageScope } from './persist';
-import { STUDY_WORKSPACE_STORAGE_KEY, WORKSPACE_STORAGE_KEY } from './workspaceKeys';
+import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 
 /** 승격 완료 마커. 값은 보지 않는다 — 키의 **존재**가 곧 "이미 했다"다. */
 export const INDICATORS_WINDOW_MIGRATION_KEY = 'live.indicators.fromWindows.v1';
@@ -63,11 +64,22 @@ export function pickWindowIndicators(snapshot: unknown): unknown {
   return null;
 }
 
+/**
+ * 사라진 `/study` 워크스페이스 스냅샷 키 — **이 1회성 사다리만 읽는다.**
+ *
+ * 리터럴로 둔 이유: `workspaceKeys.ts` 는 **살아 있는** 저장소 키의 목록이고,
+ * 그 페이지는 2026-08-23 에 삭제됐다. 그런데 아직 승격을 안 거친 사용자의 디스크에는
+ * 이 스냅샷이 남아 있을 수 있으므로 **읽기는 그대로 둔다** — 여기서 빼면 그 사용자는
+ * `/live` 스냅샷이 비어 있을 때 지표가 공장값으로 회귀한다(이 모듈이 막으려던 바로
+ * 그 증상). 우선순위상 마지막이라 `/live` 가 있으면 어차피 지지 않는다.
+ */
+const DEAD_STUDY_WORKSPACE_STORAGE_KEY = 'study.workspace.v1';
+
 const SOURCES: readonly { key: string; scope: StorageScope }[] = [
   { key: WORKSPACE_STORAGE_KEY, scope: 'tab' },
   { key: WORKSPACE_STORAGE_KEY, scope: 'shared' },
-  { key: STUDY_WORKSPACE_STORAGE_KEY, scope: 'tab' },
-  { key: STUDY_WORKSPACE_STORAGE_KEY, scope: 'shared' },
+  { key: DEAD_STUDY_WORKSPACE_STORAGE_KEY, scope: 'tab' },
+  { key: DEAD_STUDY_WORKSPACE_STORAGE_KEY, scope: 'shared' },
 ];
 
 /**

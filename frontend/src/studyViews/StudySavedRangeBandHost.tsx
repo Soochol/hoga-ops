@@ -30,7 +30,7 @@ function StudySavedRangeBandHost({ axis, paneSeries, marks }: Props) {
   // 스냅샷은 커밋 후 갱신하고 repaint 를 요청한다. 팬/줌은 요청 없이도 lwc 가 그리므로
   // 여기 deps 는 순수 데이터 변화만 커버하면 된다.
   //
-  // deps 를 `marks` 객체가 아니라 **필드 값**으로 잡는다 — 생산부(`StudyPage`)가 매
+  // deps 를 `marks` 객체가 아니라 **필드 값**으로 잡는다 — 생산부(`ChartWindow`)가 매
   // 렌더 `studySavedRangeMarks()` 를 새로 호출해 식별자가 churn 하므로, 객체로 잡으면
   // 값이 그대로인데도 렌더마다 repaint 를 요청하게 된다.
   const { fromMs, toMs, barCount } = marks;

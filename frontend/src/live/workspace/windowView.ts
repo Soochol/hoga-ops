@@ -69,6 +69,14 @@ export type {
 /**
  * `/live` 워크스페이스 어댑터 — `ChartWindow`·`WorkspaceIndicatorDrawer` 가 Provider
  * 값에 실어 준다. 모듈 상수라 참조가 안정적이다(useMemo 의존성으로 넣을 필요 없음).
+ *
+ * ⚠ **주입 seam 의 거주자가 이제 하나다**(2026-08-23). 이 어댑터는 `/live`·`/study`
+ * 두 워크스페이스를 같은 훅으로 다루려고 #907 이 만든 것인데 `/study` 가 사라졌다.
+ * 지금은 죽은 일반화이고, 걷는 것은 별도 정리 작업이다 — 같은 부류가 셋 더 있다
+ * (`IndicatorPageScope`, `workspace/zOrder.ts`·`groupId.ts` 의 공유 헬퍼). 한꺼번에
+ * 보는 편이 낫다: 삭제안 문서 §9 참조.
+ *
+ * 그때까지 `scopePrefix` 는 항상 `'live'` 다. 새 코드에서 `'study'` 분기를 만들지 말 것.
  */
 export const LIVE_WINDOW_WORKSPACE: WindowWorkspaceAdapter = {
   store: useWorkspaceStore,

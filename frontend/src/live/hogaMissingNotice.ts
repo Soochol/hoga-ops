@@ -30,10 +30,13 @@ const ABSENT_REASONS = new Set([
 /**
  * `/live` 에서는 **말하지 않을** 사유.
  *
- * `not_captured` 는 "아직 캡처하지 않았다" 이고, `/live` 는 임의 종목을 탐색하는
- * 화면이라 그게 정상 상태다 — 실측(2026-08-16) 90일 창에서 한 종목이 22일까지
- * 미캡처였다. 그걸 배너로 말하면 상시 켜져 의미를 잃고, 정작 진짜 결손이 왔을 때
- * 묻힌다. 저장 구간을 사용자가 **명시적으로 정한** `/study` 에서만 뜻이 있다.
+ * `not_captured` 는 "아직 캡처하지 않았다" 이고, 임의 종목을 탐색하는 평소 화면에서는
+ * 그게 정상 상태다 — 실측(2026-08-16) 90일 창에서 한 종목이 22일까지 미캡처였다. 그걸
+ * 배너로 말하면 상시 켜져 의미를 잃고, 정작 진짜 결손이 왔을 때 묻힌다.
+ *
+ * **사용자가 구간을 명시적으로 정했을 때만** 뜻이 있다. 그 조건은 `/study` 가 소유하다가
+ * (2026-08-23 페이지 삭제) **저장 구간이 걸린 차트 창**으로 옮겨왔다 — 근거가 페이지가
+ * 아니라 구간의 성격이었으므로 조건은 그대로다(`ChartWindow` 의 `showNotCapturedNotice`).
  */
 const IGNORED_REASONS = new Set(['not_captured']);
 
@@ -69,7 +72,7 @@ export interface HogaMissingNoticeInput {
    *  문구가 다르다 — 일부인데 "없음" 이라고 하면 보이는 데이터와 모순된다. */
   hasAnyHogaPoints: boolean;
   /**
-   * `not_captured` 를 말할 것인가. **`/study` 만 켠다.**
+   * `not_captured` 를 말할 것인가. **저장 구간이 걸린 창만 켠다.**
    *
    * 조회 구간을 사용자가 **명시적으로 정한** 화면에서만 뜻이 있다. `/live` 는 임의
    * 종목을 탐색하는 자리라 미캡처가 정상 상태이고(실측 2026-08-16: 90일 창에서 한
@@ -96,7 +99,7 @@ export function deriveHogaMissingNotice({
   // 아래 `!absent` 분기로 떨어져 "손상" 이 뜬다 — 침묵이 아니라 오진이다.
   const relevant = missingDates.filter((m) => !IGNORED_REASONS.has(m.reason));
   if (relevant.length === 0) {
-    // 결손이 없고 미캡처만 남았다 — `/study` 는 여기서 말하고 `/live` 는 침묵한다.
+    // 결손이 없고 미캡처만 남았다 — 저장 구간 창은 여기서 말하고 평소 창은 침묵한다.
     if (!includeNotCaptured) return null;
     const n = missingDates.filter((m) => m.reason === 'not_captured');
     if (n.length === 1) return `${monthDay(n[0].date)} 미캡처`;

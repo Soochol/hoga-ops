@@ -23,6 +23,7 @@ import { requestTimeframeJumpFrom } from './workspace/jumpControls';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
+import { useSavedRangeDeepLink } from '../studyViews/useSavedRangeDeepLink';
 
 /**
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
@@ -48,6 +49,11 @@ export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
   const queryIndex = params.get('index');
+  // `?view=` — 저장뷰 딥링크(ctrl/⌘+클릭 새 탭·북마크). 종목 시드와 **다른 훅**인
+  // 이유는 시점이 다르기 때문이다: `?code=` 는 URL 만으로 즉시 시드하지만 저장뷰는
+  // 행을 받아 와야 종목·구간을 안다. 계약·순서는 그 훅의 도크스트링에 있다.
+  const queryView = params.get('view');
+  useSavedRangeDeepLink(queryView);
 
   // 그리기 도구 활성 중 우클릭 = 해제. 페이지 단위 1회 — 창·오버레이에 걸면
   // 그 노드 밖(다른 창·워크스페이스 배경·nav)이 전부 사각지대로 남는다.

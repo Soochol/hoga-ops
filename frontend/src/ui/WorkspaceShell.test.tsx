@@ -1,35 +1,18 @@
-import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import {
-  DropOverlay,
-  IconToolbarButton,
-  WorkspaceHeader,
-  WorkspaceRoot,
-  WorkspaceState,
-  WorkspaceToolbar,
-} from './WorkspaceShell';
+import { IconToolbarButton, WorkspaceToolbar } from './WorkspaceShell';
+
+/**
+ * ⚠ 여기 있던 케이스 셋(`WorkspaceRoot` · `WorkspaceHeader` · `WorkspaceState`+`DropOverlay`)은
+ * 2026-08-23 에 **그 컴포넌트들과 함께** 사라졌다. 넷 다 `/study` 만 쓰던 프리미티브였고
+ * (`WorkspaceState` 는 문구가 아예 「여기에 놓아 학습뷰 열기」였다), 페이지가 지워지자
+ * 소비처가 0 이 됐다. 남은 둘은 `/live` 툴바가 쓴다.
+ */
 
 describe('WorkspaceShell primitives', () => {
-  it('renders a full-bleed workspace root', () => {
-    render(<WorkspaceRoot testId="root">body</WorkspaceRoot>);
-    const root = screen.getByTestId('root');
-    expect(root).toHaveClass('h-full');
-    expect(root).toHaveClass('bg-bg');
-    expect(root).toHaveClass('text-fg');
-  });
-
-  it('renders token-backed header and toolbar rows', () => {
-    render(
-      <>
-        <WorkspaceHeader testId="header">header</WorkspaceHeader>
-        <WorkspaceToolbar testId="toolbar">toolbar</WorkspaceToolbar>
-      </>,
-    );
-    expect(screen.getByTestId('header')).toHaveClass('border-b');
-    expect(screen.getByTestId('header')).toHaveClass('backdrop-blur');
-    expect(screen.getByTestId('header')).toHaveStyle({ height: 'var(--h-live-header)' });
-    // /study 통일(2026-07-23): 툴바 하단 구분선 제거 — study 툴바처럼 선 없이 톤만.
+  it('renders the token-backed toolbar row', () => {
+    render(<WorkspaceToolbar testId="toolbar">toolbar</WorkspaceToolbar>);
+    // 2026-07-23 통일: 툴바 하단 구분선 제거 — 선 없이 톤만.
     expect(screen.getByTestId('toolbar')).not.toHaveClass('border-b');
     expect(screen.getByTestId('toolbar')).toHaveClass('backdrop-blur');
     expect(screen.getByTestId('toolbar')).toHaveClass('overflow-x-auto');
@@ -45,21 +28,4 @@ describe('WorkspaceShell primitives', () => {
     expect(button).toHaveClass('text-fg-dim');
   });
 
-  it('renders centered workspace state and optional drop overlay', () => {
-    const ref = createRef<HTMLDivElement>();
-    render(
-      <WorkspaceState testId="state" dropTargetRef={ref} showDropOverlay>
-        비어 있음
-      </WorkspaceState>,
-    );
-    expect(screen.getByTestId('state')).toHaveClass('h-full');
-    // 빈/로딩 상태문은 text-sm(12.9px) 본문이라 --fg-dim 이다(2026-08-04 소형 텍스트 승격).
-    expect(screen.getByText('비어 있음')).toHaveClass('text-fg-dim');
-    expect(screen.getByText('여기에 놓아 학습뷰 열기')).toBeInTheDocument();
-  });
-
-  it('renders a reusable drop overlay label', () => {
-    render(<DropOverlay>드롭</DropOverlay>);
-    expect(screen.getByText('드롭')).toHaveClass('font-semibold');
-  });
 });

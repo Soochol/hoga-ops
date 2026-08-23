@@ -6,7 +6,6 @@ import { invalidateHeatmapDependents } from '../heatmap/heatmapKeys';
 import { SCREENER_SAVES_KEY } from '../screener/screenerKeys';
 import { STUDY_VIEW_SAVES_QUERY } from '../studyViews/studyViewKeys';
 import { LIVE_LAYOUT_PRESETS_QUERY } from '../live/presets/liveLayoutPresetKeys';
-import { STUDY_LAYOUT_PRESETS_QUERY } from '../studyViews/presets/studyLayoutPresetKeys';
 import { subscribeEvents, lastHeartbeat } from './ws';
 import type { PushEvent } from './types';
 import { markPromotion } from '../state/livePromotion';
@@ -71,7 +70,6 @@ export const LIST_SYNC_AXES: readonly ListSyncAxis[] = [
   { event: 'screener_saves_changed', invalidate: byKey(SCREENER_SAVES_KEY) },
   { event: 'study_views_changed', invalidate: byKey(STUDY_VIEW_SAVES_QUERY) },
   { event: 'live_layout_presets_changed', invalidate: byKey(LIVE_LAYOUT_PRESETS_QUERY) },
-  { event: 'study_layout_presets_changed', invalidate: byKey(STUDY_LAYOUT_PRESETS_QUERY) },
 ];
 
 export function useEventStream(): void {

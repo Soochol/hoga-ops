@@ -102,8 +102,9 @@ export interface UseLiveChartDataArgs {
    *
    * **`toDate` 가 이 훅의 "오늘" 이 된다.** 그 한 줄이 얼림의 전부다 — `minutePastTo`·
    * 세션 경계·라이브 엣지 판정·피크 래칫의 당일 병합이 전부 `today` 를 기준으로 돌아서,
-   * 별도의 freeze 플래그를 하류에 뿌릴 필요가 없다. `/study` 도 같은 자리를 쓴다
-   * (`StudyPage` 의 `todayKst: model.save.range.to_date`).
+   * 별도의 freeze 플래그를 하류에 뿌릴 필요가 없다. (`/study` 도 같은 자리를 썼다 —
+   * 저장 구간의 끝날을 `todayKst` 로 넘기는 방식. 그 페이지는 사라졌지만 얼림의
+   * 메커니즘은 이것 하나로 남았다.)
    *
    * 라이브 SSE 는 여기서 **구독 자체를 끊는다**(`useLiveSeries('')`). 안 끊으면 오늘
    * 틱이 과거 축에 얹혀 실재하지 않는 봉이 생긴다.

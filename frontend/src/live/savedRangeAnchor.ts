@@ -54,8 +54,7 @@ export function savedRangeAnchorTs(
  *
  * 저장 `bar_span` 을 못 쓰는 경우(창의 봉 ≠ 저장 당시 봉)에 쓴다. bar_span 은 봉의
  * **개수**라 봉 종류에 상대적이다 — 5m 로 저장한 300봉을 1m 창에 그대로 적용하면 같은
- * 수가 1/5 기간이 된다. `/study` 도 같은 이유로 봉이 일치할 때만 저장 뷰포트를 쓴다
- * (`StudyPage` 의 `model.save.timeframe === spec.save?.timeframe`).
+ * 수가 1/5 기간이 된다. (`/study` 도 같은 이유로 봉이 일치할 때만 저장 뷰포트를 썼다.)
  */
 export function countBarsInRange(
   candles: readonly { ts_ms: number }[],

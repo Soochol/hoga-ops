@@ -8,4 +8,3 @@
  * `indicatorSettingsV2` 를 부른다 — 키를 원래 자리에서 import 하면 순환이다.
  */
 export const WORKSPACE_STORAGE_KEY = 'live.workspace.v1';
-export const STUDY_WORKSPACE_STORAGE_KEY = 'study.workspace.v1';

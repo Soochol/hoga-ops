@@ -1,7 +1,26 @@
 /**
- * `/study` 저장뷰 딥링크 — 경로 조립과 "새 브라우저 탭으로 열기" 한 쌍.
+ * 저장뷰 딥링크 — 경로 조립과 "새 브라우저 탭으로 열기" 한 쌍.
  *
- * `live/liveNavigate.ts` 의 `liveDeepLinkPath`/`openLiveInNewTab` 의 `/study` 짝이다.
+ * `live/liveNavigate.ts` 의 `liveDeepLinkPath`/`openLiveInNewTab` 과 같은 자리의
+ * 저장뷰 짝이고, **같은 페이지(`/live`)로 간다**.
+ *
+ * ## 목적지가 `/study` 에서 `/live` 로 바뀌었다 (2026-08-23)
+ *
+ * 2026-08-21 결정으로 드로어 행 클릭·Enter·행 메뉴 「열기」가 이미 `/live` 로 갔고
+ * (`StudyViewsDrawer.openSavedRangeInLive`), 그때 ctrl/⌘+클릭만 `/study` 새 탭으로
+ * 남아 **같은 행의 두 제스처가 다른 페이지로 갈라져 있었다**. 이제 하나다.
+ *
+ * 착지 쪽 배선은 `useSavedRangeDeepLink` 가 갖는다 — 종목 활성화와 기간 슬롯을
+ * **그 순서로** 세우는 계약이 거기 적혀 있다.
+ *
+ * 이름을 `studyViewDeepLinkPath` 에서 `savedViewDeepLinkPath` 로 바꾼 이유가 그것이다 —
+ * 이 함수가 가리키는 곳은 이제 페이지가 아니라 **저장뷰라는 도메인**이다.
+ *
+ * ⚠ **디렉터리 이름(`studyViews/`)은 일부러 그대로 뒀다.** 삭제된 것은 페이지
+ * (`StudyPage`)이지 도메인이 아니고, 그 도메인의 이름은 백엔드에서도 `study_views.py` ·
+ * `/api/study-views/saves` 다(CONTEXT.md 의 「저장 학습뷰」). 프론트만 `savedViews/` 로
+ * 바꾸면 ADR-0004 가 계약 표면으로 삼는 **BE↔FE 손 미러**가 이름에서부터 갈린다.
+ * 바꾸려면 백엔드 모듈·REST 경로까지 한 번에 — 그건 이 삭제와 별개 작업이다.
  *
  * ## ADR-0149 와 충돌하지 않는다 — 두 「탭」을 구별할 것
  *
@@ -11,39 +30,32 @@
  * 같은 ADR 의 §7 이 저장뷰 전환의 정식 경로로 못박은 **`?view=` 딥링크**다.
  * 새로 생기는 영속 상태는 0이다.
  *
- * (ADR-0155 가 한 페이지 안에 저장뷰를 여럿 여는 축을 **링크 그룹**으로 되살렸지만
- * 그것도 탭이 아니다 — 창의 번호일 뿐 스트립도, 순환 단축키도, disposition 도 없다.)
- *
  * ## 새 탭이 이 탭을 덮지 않는가
  *
- * - 그룹→저장뷰는 `study.workspace.v1` 에 산다(ADR-0155). 그 키는
- *   `tab-authoritative-shared-seed` 라 **이미 열린 탭은 자기 sessionStorage 만 본다** —
- *   새 탭이 다른 뷰를 열어도 이 탭의 런타임은 그대로다. 이 탭의 URL 도 자기 `?view=` 를
- *   들고 있어 새로고침 복원까지 안전하다. (`study.activeView.v1` 시절에는 근거가
- *   "localStorage 는 다음 로드의 시드일 뿐" 이었는데, 지금은 탭 격리가 더 강하다.)
- * - **실측 시 헷갈리는 지점**(2026-08-20, Chrome trusted ctrl+클릭): localStorage 는
- *   오리진 공유라 새 탭이 쓴 **공유 시드**를 원래 탭에서 읽어도 보인다 — 그것은 런타임이
- *   옮겨간 증거가 **아니다**. 원래 탭이 안 움직였는지는 라우트와 드로어의 `aria-current`
- *   로 재야 한다(실측: 새 탭 열림·`window.opener === null`·원래 탭 `/live` 유지·
- *   하이라이트 0건).
- * - 새 탭에서 창을 옮기거나 뷰를 바꾸면 공유 시드가 갱신된다. 이는 사용자가 `/study` 를
- *   손으로 두 번째 탭에 여는 경우에 이미 성립하던 성질이고(그래서 `/live` 와 달리
- *   딥링크 예외가 없다 — `state/studyWorkspace.ts` 의 `persistFromState` 주석), 이
- *   진입점이 새로 만드는 위험이 아니다.
+ * 근거가 `/study` 시절보다 **단순해졌다**. 저장 구간 슬롯(`livePage.savedRangeFocus`)은
+ * **비영속**이라(`state/livePage.ts:199-201`, `persistedPayload` 가 저장을 5필드로
+ * 좁힌다) 새 탭이 무엇을 열든 이 탭의 슬롯에 닿을 경로가 아예 없다. 창 배치
+ * (`live.workspace.v1`)는 딥링크로 열린 탭이 sessionStorage 로 격리한다(`workspace.ts`)
+ * — `openLiveInNewTab` 이 이미 기대는 성질과 같은 것이다.
+ *
+ * **실측 시 헷갈리는 지점**(2026-08-20, Chrome trusted ctrl+클릭): localStorage 는
+ * 오리진 공유라 새 탭이 쓴 **공유 시드**를 원래 탭에서 읽어도 보인다 — 그것은 런타임이
+ * 옮겨간 증거가 **아니다**. 원래 탭이 안 움직였는지는 라우트와 드로어의 `aria-current`
+ * 로 재야 한다(실측: 새 탭 열림·`window.opener === null`·원래 탭 유지·하이라이트 0건).
  */
 
-/** `/study` 딥링크 경로. StudyPage 가 마운트 시 `?view=` 를 읽어 **활성 그룹**에 그
- *  저장뷰를 연다 — 그 그룹에 영속된 뷰보다 우선한다(`StudyPage` 의 라우트 sync 가드
- *  셋이 그 우선순위를 실현한다). 다른 그룹은 건드리지 않는다. */
-export function studyViewDeepLinkPath(viewId: string): string {
-  return `/study?view=${encodeURIComponent(viewId)}`;
+/** 저장뷰 딥링크 경로. `LivePage` 가 마운트 시 `?view=` 를 읽어 그 저장뷰의 종목을
+ *  활성 그룹에 시드하고 저장 구간 슬롯을 채운다(`useSavedRangeDeepLink`). 시드는
+ *  viewId 당 1회이고, 없는 id(삭제된 북마크)는 조용히 평소의 `/live` 가 된다. */
+export function savedViewDeepLinkPath(viewId: string): string {
+  return `/live?view=${encodeURIComponent(viewId)}`;
 }
 
 /** 저장뷰를 새 브라우저 탭으로 연다(ctrl/⌘+클릭).
  *
  *  `noopener` 는 새 탭이 `window.opener` 로 이 창을 조작하지 못하게 하는 표준 방어
- *  (`openLiveInNewTab` 과 동일). 이 창의 그룹들은 건드리지 않는다 — 호출부가
- *  `setGroupView`·`navigate` 를 부르지 않는 것이 그 계약의 전부다. */
-export function openStudyViewInNewTab(viewId: string): void {
-  window.open(studyViewDeepLinkPath(viewId), '_blank', 'noopener');
+ *  (`openLiveInNewTab` 과 동일). 이 탭의 종목·기간 슬롯은 건드리지 않는다 — 호출부가
+ *  `activateLiveCode`·`focusSavedRange` 를 부르지 않는 것이 그 계약의 전부다. */
+export function openSavedViewInNewTab(viewId: string): void {
+  window.open(savedViewDeepLinkPath(viewId), '_blank', 'noopener');
 }

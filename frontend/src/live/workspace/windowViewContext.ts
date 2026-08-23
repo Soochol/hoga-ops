@@ -27,11 +27,11 @@ export interface WindowView {
 
 /**
  * 창-스코프 훅이 읽고 쓰는 워크스페이스 스토어의 **최소 상태**. `/live`
- * `useWorkspaceStore` 와 `/study` `useStudyWorkspaceStore` 가 이 모양을 공유하므로
+ * `useWorkspaceStore` 와 (2026-08-23 삭제된) `/study` 스토어가 이 모양을 공유했으므로
  * (#906 이 창 설정 타입을 공유하게 만든 이유) 훅은 어느 쪽인지 몰라도 된다.
  *
  * `windows` 원소를 `{id, chart?}` 로만 좁힌 게 요점이다 — `/live` 의 `group`·`rect`,
- * `/study` 의 `kind` 처럼 한쪽에만 있는 필드에 훅이 손대지 못한다.
+ * `/study` 의 `kind` 처럼 한쪽에만 있던 필드에 훅이 손대지 못한다.
  *
  * **지표 액션은 여기 없다.** 지표 설정은 앱 전역 저장소(`live.indicators.v2`)에
  * 있고, 창이 정하는 것은 "어느 버킷을 편집하는가"(페이지 + 봉) 뿐이다 —
