@@ -89,7 +89,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
     const cutoff: VisibleTimeCutoff = { date: '20260611', tMs: day2Open + 120_000 };
 
     const out = applyPeakVisibleTimeCutoff([askPeak('20260610'), askPeak('20260611')], cutoff, {
-      side: 'ask',
       intraMax: false,
     });
 
@@ -108,7 +107,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
     const cutoff: VisibleTimeCutoff = { date: '20260611', tMs: day2Open + 30_000 };
 
     expect(applyPeakVisibleTimeCutoff([askPeak('20260611')], cutoff, {
-      side: 'ask',
       intraMax: false,
     })).toEqual([]);
   });
@@ -129,7 +127,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
     };
 
     const out = applyPeakVisibleTimeCutoff([bid], { date: '20260611', tMs: day2Open + 120_000 }, {
-      side: 'bid',
       intraMax: false,
     });
 
@@ -150,7 +147,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
     };
 
     expect(applyPeakVisibleTimeCutoff([bid], { date: '20260611', tMs: day2Open + 120_000 }, {
-      side: 'bid',
       intraMax: false,
     })).toEqual([]);
   });
@@ -171,7 +167,6 @@ describe('applyPeakVisibleTimeCutoff', () => {
     };
 
     const out = applyPeakVisibleTimeCutoff([bid], { date: '20260611', tMs: day2Open + 120_000 }, {
-      side: 'bid',
       intraMax: false,
     });
 

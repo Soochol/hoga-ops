@@ -10,7 +10,8 @@ import type { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabel
 import type { VirtualAxis } from '../util/virtualAxis';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
-import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import LiveAskPeakSegments from './LiveAskPeakSegments';
+import { buildPeakWallOverlaySegments } from './peakWallSegments';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import LiveBidPeakSegments from './LiveBidPeakSegments';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
@@ -217,11 +218,11 @@ describe('rank-then-filter 순서', () => {
       { price: 90, qty: 900, t_ms: OPEN + 4 * MIN },   // 1등(수량) — MA 아래
       { price: 110, qty: 100, t_ms: OPEN + 4 * MIN },  // 2등 — MA 위
     ];
-    const out = buildAskPeakOverlaySegments({
+    const out = buildPeakWallOverlaySegments({
       // 최상위 필드는 MA **위**(110)로 둔다 — 순서를 뒤집었을 때 이 AskPeak 자체는 필터를
       // 통과하고, 그 안의 1등 후보(90)가 확장되어 살아남는 모습이 드러나야 red 가 된다.
       // 최상위까지 MA 아래로 두면 두 순서가 똑같이 빈 배열을 내 아무것도 재지 못한다.
-      dayAskPeaks: [{ ...wallAboveMa(), traded_peaks: candidates, traded_max_peaks: candidates }],
+      peaks: [{ ...wallAboveMa(), traded_peaks: candidates, traded_max_peaks: candidates }],
       segments: SEGMENTS,
       candles: CANDLES,
       axis,

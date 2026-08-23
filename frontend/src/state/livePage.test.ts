@@ -456,35 +456,6 @@ describe('useLivePageStore.movingAverages', () => {
   });
 });
 
-describe('useLivePageStore.askPeakVisibleMaxStyle', () => {
-  beforeEach(() => {
-    localStorage.removeItem('live.indicators.v1');
-    localStorage.removeItem('live.indicators.v2');
-    useLivePageStore.setState({
-      askPeakVisibleMaxColor: '#EAB308',
-      askPeakVisibleMaxLineWidth: 3,
-    });
-  });
-
-  it('setAskPeakVisibleMaxStyle updates color and width independently', () => {
-    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ color: '#A855F7' });
-    expect(useLivePageStore.getState().askPeakVisibleMaxColor).toBe('#A855F7');
-    expect(useLivePageStore.getState().askPeakVisibleMaxLineWidth).toBe(3);
-
-    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ lineWidth: 4 });
-    expect(useLivePageStore.getState().askPeakVisibleMaxColor).toBe('#A855F7');
-    expect(useLivePageStore.getState().askPeakVisibleMaxLineWidth).toBe(4);
-  });
-
-  it('persists visible max style fields in the indicator snapshot', () => {
-    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ color: '#A855F7', lineWidth: 4 });
-    const raw = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
-    const bucket = raw.byTimeframe?.[useLivePageStore.getState().indicatorTimeframe === 'D' ? 'D' : 'minute'] ?? {};
-    expect(bucket.askPeakVisibleMaxColor).toBe('#A855F7');
-    expect(bucket.askPeakVisibleMaxLineWidth).toBe(4);
-  });
-});
-
 describe('useLivePageStore.viLimitPriceLineStyle', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');

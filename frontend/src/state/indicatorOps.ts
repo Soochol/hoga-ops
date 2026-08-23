@@ -162,10 +162,6 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
-  setAskPeakVisibleMaxStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
-    askPeakVisibleMaxColor: patch.color ?? cur.askPeakVisibleMaxColor,
-    askPeakVisibleMaxLineWidth: patch.lineWidth ?? cur.askPeakVisibleMaxLineWidth,
-  }),
   setViLimitPriceLineStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     viLimitPriceLineColor: patch.color ?? cur.viLimitPriceLineColor,
     viLimitPriceLineWidth: patch.lineWidth ?? cur.viLimitPriceLineWidth,

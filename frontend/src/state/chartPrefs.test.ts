@@ -285,28 +285,11 @@ describe('ask peak all-price toggle', () => {
       .toBe(DEFAULT_PREFS.askPeakAllPriceRankLimit);
   });
 
-  it('visible max rank limit defaults to 1 and persists valid 0..3 values', () => {
-    expect(DEFAULT_PREFS.askPeakVisibleMaxRankLimit).toBe(1);
-    expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakVisibleMaxRankLimit')?.label)
-      .toBe('보이는 영역 최대벽 표시 개수');
-    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit).toBe(0);
-    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 3 }).askPeakVisibleMaxRankLimit).toBe(3);
-    expect(hydratedMinuteView({ askPeakVisibleMaxRankLimit: 4 }).askPeakVisibleMaxRankLimit)
-      .toBe(DEFAULT_PREFS.askPeakVisibleMaxRankLimit);
-  });
-
   it('bid rank limits default to 1 and persist valid 1..3 values', () => {
     expect(DEFAULT_PREFS.bidPeakAllPriceRankLimit).toBe(1);
-    expect(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit).toBe(1);
-    expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakVisibleMaxRankLimit')?.label)
-      .toBe('보이는 영역 최대벽 표시 개수');
     expect(hydratedMinuteView({ bidPeakAllPriceRankLimit: 2 }).bidPeakAllPriceRankLimit).toBe(2);
-    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit).toBe(0);
-    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 3 }).bidPeakVisibleMaxRankLimit).toBe(3);
     expect(hydratedMinuteView({ bidPeakAllPriceRankLimit: 4 }).bidPeakAllPriceRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakAllPriceRankLimit);
-    expect(hydratedMinuteView({ bidPeakVisibleMaxRankLimit: 4 }).bidPeakVisibleMaxRankLimit)
-      .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
   });
 
   it('touched-wall rank limits default to 1', () => {
@@ -376,14 +359,14 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
   });
 
   it('IM 키 쓰기는 ambient 봉 버킷에 기록되고 투영도 갱신된다', () => {
-    useChartPrefsStore.getState().setNumericPref('askPeakVisibleMaxRankLimit', 3);
+    useChartPrefsStore.getState().setNumericPref('askPeakAllPriceRankLimit', 3);
     useChartPrefsStore.getState().setToggle('askPeakIntraMax', true);
     const s = useChartPrefsStore.getState();
     expect(s.indicatorModalByTimeframe.minute).toMatchObject({
-      askPeakVisibleMaxRankLimit: 3,
+      askPeakAllPriceRankLimit: 3,
       askPeakIntraMax: true,
     });
-    expect(s.askPeakVisibleMaxRankLimit).toBe(3);
+    expect(s.askPeakAllPriceRankLimit).toBe(3);
     expect(s.askPeakIntraMax).toBe(true);
   });
 
@@ -434,12 +417,12 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
     const byTimeframe = mergeIndicatorModalByTimeframe({
       askPeakIntraMax: true,                       // 구 flat — 무시돼야 함
       indicatorModalByTimeframe: {
-        D: { bidPeakIntraMax: true, askPeakVisibleMaxRankLimit: 0 },
+        D: { bidPeakIntraMax: true, askPeakAllPriceRankLimit: 2 },
         bogus: { askPeakIntraMax: true },          // unknown profile → drop
       },
     });
     expect(byTimeframe).toEqual({
-      D: { bidPeakIntraMax: true, askPeakVisibleMaxRankLimit: 0 },
+      D: { bidPeakIntraMax: true, askPeakAllPriceRankLimit: 2 },
     });
   });
 

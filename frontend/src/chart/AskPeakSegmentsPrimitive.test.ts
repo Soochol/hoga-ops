@@ -18,7 +18,7 @@ import {
   PEAK_LABEL_BUDGET_MIN,
   visibleAskPeakLabelCandidates,
   type AskPeakLabelCandidate,
-  type AskPeakSegment,
+  type PeakWallSegment,
 } from './AskPeakSegmentsPrimitive';
 
 const candidate = (
@@ -120,7 +120,7 @@ describe('peakLabelBudgetForBarSpacing', () => {
   });
 });
 
-const segment = (overrides: Partial<AskPeakSegment> = {}): AskPeakSegment => ({
+const segment = (overrides: Partial<PeakWallSegment> = {}): PeakWallSegment => ({
   time0: 1 as never,
   time1: 2 as never,
   peakTime: 1.5 as never,
