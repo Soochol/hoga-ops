@@ -33,6 +33,7 @@ from hoga.api.screener_history_backfill import (
     history_backfill,
     oldest_factors,
     plan_targets,
+    read_probe,
     unadjust,
 )
 from hoga.api.screener_store import derive_adjusted
@@ -227,3 +228,77 @@ async def test_one_code_failing_does_not_abort_the_run(tmp_path: Path) -> None:
     )
     assert report.written_rows == 0
     assert report.skipped == {"fetch_failed": 1}
+
+
+# ── #1532: 「없는 날」과 「안 받은 날」을 구별한다 ──────────────────────────────
+
+def test_tail_after_the_last_observed_bar_is_not_a_gap() -> None:
+    """폐지·거래정지 종목의 「그 뒤」는 결손이 아니다.
+
+    실측(2026-08-23): `012510` 은 코퍼스가 2026-07-14 에 끝나고 벤더도 0봉을 준다.
+    그 뒤 26 거래일을 결손으로 세면 리포트가 부풀고 헛 호출이 나간다.
+    """
+    d1, d2, d3 = GAP_FROM, GAP_FROM + dt.timedelta(days=1), CORPUS_START
+    plans = plan_targets(
+        {"005930": d1}, {"005930": 1.0}, {"005930": {d1}}, {d1, d2, d3},
+        gap_from=d1, window_to=d3, corpus_start_after=None, codes=["005930"],
+    )
+    assert [p.skipped_reason for p in plans] == ["no_gap"], "마지막 관측일 이후를 셌다"
+
+
+def test_probe_none_means_the_vendor_had_nothing(tmp_path: Path) -> None:
+    """벤더가 아무것도 안 준 종목은 **앞쪽을 아예 안 센다** — 헛 호출을 두 번 하지 않는다."""
+    d1, d2 = GAP_FROM, CORPUS_START
+    args = ({"005930": d2}, {"005930": 1.0}, {"005930": {d2}}, {d1, d2})
+    kw = dict(gap_from=d1, window_to=d2, corpus_start_after=None, codes=["005930"])
+
+    [before] = plan_targets(*args, **kw)
+    assert before.missing_dates == [d1]                     # 모를 때는 후보다
+
+    [after] = plan_targets(*args, **kw, probe={"005930": None})
+    assert after.skipped_reason == "no_gap", "프로브를 무시했다"
+
+
+def test_probe_date_clamps_the_leading_window() -> None:
+    """벤더가 가진 가장 이른 봉보다 앞은 안 센다."""
+    days = [GAP_FROM + dt.timedelta(days=i) for i in range(4)]
+    plans = plan_targets(
+        {"005930": days[3]}, {"005930": 1.0}, {"005930": {days[3]}}, set(days),
+        gap_from=days[0], window_to=days[3], corpus_start_after=None, codes=["005930"],
+        probe={"005930": days[2]},
+    )
+    assert plans[0].missing_dates == [days[2]], "프로브 이전까지 셌다"
+
+
+@pytest.mark.anyio
+async def test_leading_is_flagged_as_an_upper_bound_until_probed(tmp_path: Path) -> None:
+    """숫자만 보고 「이만큼 채운다」로 읽지 못하게 한다."""
+    _write_corpus(tmp_path, factor=1.0)
+
+    async def _never(_c: str, _f: str, _t: str) -> list[VendorBar]:
+        raise AssertionError("dry-run")
+
+    r = await (history_backfill(
+        tmp_path, fetch_adjusted_daily=_never, gap_from=GAP_FROM, window_to=WINDOW_TO,
+        corpus_start_after=dt.date(2025, 1, 1),
+    ))
+    assert r.leading_is_upper_bound is True
+
+
+@pytest.mark.anyio
+async def test_probe_is_persisted_so_the_next_run_is_cheaper(tmp_path: Path) -> None:
+    """**이 확장의 요점** — 한 번의 헛 호출이 이후 런을 정확하게 만든다."""
+    _write_corpus(tmp_path, factor=1.0)
+    calls: list[str] = []
+
+    async def _empty(code: str, _f: str, _t: str) -> list[VendorBar]:
+        calls.append(code)
+        return []          # 벤더가 그 구간을 아예 안 가졌다
+
+    kw = dict(gap_from=GAP_FROM, window_to=WINDOW_TO, corpus_start_after=dt.date(2025, 1, 1))
+    await history_backfill(tmp_path, fetch_adjusted_daily=_empty, dry_run=False, **kw)
+    assert calls == ["005930"]
+    assert read_probe(tmp_path) == {"005930": None}, "배운 것을 안 적었다"
+
+    await history_backfill(tmp_path, fetch_adjusted_daily=_empty, dry_run=False, **kw)
+    assert calls == ["005930"], "두 번째 런이 같은 헛 호출을 반복했다"
