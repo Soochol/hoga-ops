@@ -10,8 +10,7 @@ import {
 } from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import { useActivePrefs } from '../state/chartPrefs';
-import { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
-import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import { buildPeakWallOverlaySegments, toPeakRankLimit } from './peakWallSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -33,10 +32,6 @@ type Props = {
   askDailyMaFilter?: PeakDailyMaFilter | null;
   bidDailyMaFilter?: PeakDailyMaFilter | null;
 };
-
-function toPeakRankLimit(value: number): 1 | 2 | 3 {
-  return value === 2 || value === 3 ? value : 1;
-}
 
 
 function LivePeakWallDockedLabels({
@@ -91,8 +86,8 @@ function LivePeakWallDockedLabels({
     if (!prim) return;
     const askPeakRankLimit = toPeakRankLimit(askAllPriceRankLimit);
     const askRaw = askPeakEnabled && askLabelEnabled
-      ? buildAskPeakOverlaySegments({
-        dayAskPeaks,
+      ? buildPeakWallOverlaySegments({
+        peaks: dayAskPeaks,
         segments,
         candles,
         axis,
@@ -110,8 +105,8 @@ function LivePeakWallDockedLabels({
     // 줌 예산: barSpacing 이 좁으면(줌아웃) 0 → 라벨 전부 숨김. 넓으면 side별 qty 상위 N 만.
     const labelBudget = peakLabelBudgetForBarSpacing(timeScale?.options?.().barSpacing ?? 0);
     const bidSegments = bidPeakEnabled && bidLabelEnabled
-      ? buildBidPeakOverlaySegments({
-        dayBidPeaks,
+      ? buildPeakWallOverlaySegments({
+        peaks: dayBidPeaks,
         segments,
         candles,
         axis,

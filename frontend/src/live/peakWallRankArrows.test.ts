@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Time } from 'lightweight-charts';
 import type { Candle } from '../api/types';
-import type { AskPeakSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 
@@ -12,7 +12,7 @@ function candle(ts_ms: number, high: number, low: number): Candle {
   return { ts_ms, open: (high + low) / 2, high, low, close: (high + low) / 2, vol_a: 1, vol_b: 0 };
 }
 
-function segment(peakMs: number, price: number, qty: number): AskPeakSegment {
+function segment(peakMs: number, price: number, qty: number): PeakWallSegment {
   return {
     time0: 0 as Time,
     time1: 1000 as Time,

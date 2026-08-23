@@ -8,10 +8,11 @@ export type VisibleTimeCutoff = {
   tMs: number;
 };
 
-type PeakSide = 'ask' | 'bid';
-
+/** ⚠ 종전엔 `side: 'ask' | 'bid'` 가 있었는데 본문이 `void options.side` 로 **버리고
+ *  있었다**(2026-08-23 제거). 컷오프는 후보 시각만 보므로 방향과 무관하다. 그 죽은
+ *  인자가 매도·매수 호출부를 텍스트상 다르게 만들어, 두 파일이 실제로는 같은 계산인데도
+ *  달라 보이게 한 원인 중 하나였다. */
 type CutoffOptions = {
-  side: PeakSide;
   intraMax: boolean;
 };
 
@@ -138,7 +139,6 @@ export function applyPeakVisibleTimeCutoff<T extends PeakWithCandidates>(
   cutoff: VisibleTimeCutoff | null,
   options: CutoffOptions,
 ): T[] {
-  void options.side;
   if (!cutoff) return [...peaks];
   const out: T[] = [];
   for (const peak of peaks) {

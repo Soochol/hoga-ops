@@ -88,8 +88,9 @@ import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
-import type { AskPeakSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
-import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import type { PeakWallSegment, PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
+import LiveAskPeakSegments from './LiveAskPeakSegments';
+import { buildPeakWallOverlaySegments } from './peakWallSegments';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import type { PeakWallRankArrow } from '../chart/PeakWallRankArrowsPrimitive';
@@ -100,7 +101,7 @@ import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 /** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
  *  memo 를 매번 깨뜨린다. */
 const EMPTY_WALL_SURGE: readonly never[] = [];
-import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import LiveBidPeakSegments from './LiveBidPeakSegments';
 import {
   deriveDayAskPeaksIncrementalAsOf,
 } from './useDayAskPeaks';
@@ -227,7 +228,7 @@ const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 // 회피 입력의 빈 상태 — **공유 상수**여야 memo 결과가 참조로 안정되어 하위 스냅샷
 // effect 가 매 렌더 다시 돌지 않는다(빈 배열 리터럴은 매번 새 참조다).
-const EMPTY_AVOID_SEGMENTS: readonly AskPeakSegment[] = [];
+const EMPTY_AVOID_SEGMENTS: readonly PeakWallSegment[] = [];
 const EMPTY_AVOID_ARROWS: readonly PeakWallRankArrow[] = [];
 /** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
  *
@@ -2083,8 +2084,8 @@ export function LiveChartRoot({
   // 표면 수만큼 늘지 않는다(이 파일은 이미 오버레이와 별개의 두 번째 계산 사본이다).
   const avoidAskWallSegments = useMemo(() => (
     cb && isMinuteTimeframe(timeframe) && askPeakEnabled && !askPeakWallHidden
-      ? buildAskPeakOverlaySegments({
-        dayAskPeaks: renderDayAskPeaks,
+      ? buildPeakWallOverlaySegments({
+        peaks: renderDayAskPeaks,
         segments: cb.segments,
         candles: cb.candles,
         axis,
@@ -2112,8 +2113,8 @@ export function LiveChartRoot({
 
   const avoidBidWallSegments = useMemo(() => (
     cb && isMinuteTimeframe(timeframe) && bidPeakEnabled && !bidPeakWallHidden
-      ? buildBidPeakOverlaySegments({
-        dayBidPeaks: renderDayBidPeaks,
+      ? buildPeakWallOverlaySegments({
+        peaks: renderDayBidPeaks,
         segments: cb.segments,
         candles: cb.candles,
         axis,
@@ -2140,7 +2141,7 @@ export function LiveChartRoot({
   ]);
 
   const highLowAvoidWallLabels = useMemo(() => {
-    const wallSegments: (AskPeakSegment & { side: PeakWallLabelSide })[] = [
+    const wallSegments: (PeakWallSegment & { side: PeakWallLabelSide })[] = [
       ...(askPeakLabelEnabled
         ? avoidAskWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),

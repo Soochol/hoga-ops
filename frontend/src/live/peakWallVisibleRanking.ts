@@ -11,14 +11,14 @@
 // 체결된 벽 개수). 레전드가 화면에 없는 벽을 이름 부르면 안 된다.
 
 import type { IRange, Time } from 'lightweight-charts';
-import type { AskPeakSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
 import type { FlagLegendValueCell } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
 
 type VisibleTimeRange = IRange<Time> | null;
 
 /** 랭킹이 실제로 읽는 최소 형태 — 그날 구간(겹침 판정)과 잔량(정렬 키)뿐이다.
- *  `AskPeakSegment` 와 순위 화살표(`PeakWallRankArrow`)가 둘 다 이걸 만족하므로, 두
+ *  `PeakWallSegment` 와 순위 화살표(`PeakWallRankArrow`)가 둘 다 이걸 만족하므로, 두
  *  표면이 **같은 랭커**를 쓰면서도 서로의 구조체를 알 필요가 없다. */
 export type RankablePeakSegment = {
   time0: Time;
@@ -84,7 +84,7 @@ export function rankVisiblePeakSegments<T extends RankablePeakSegment>(
  *  읽히는 것을 막는 유일한 방법이 함수 공유다(#839 가 그 사고였다).
  *  겹치는 벽이 3개 미만이면 있는 만큼만 — 빈 자리를 "—" 로 채우지 않는다. */
 export function peakWallRankLegendCells(
-  segments: readonly AskPeakSegment[],
+  segments: readonly PeakWallSegment[],
   visibleRange: VisibleTimeRange,
   keyPrefix: string,
 ): FlagLegendValueCell[] {
