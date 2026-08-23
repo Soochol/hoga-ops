@@ -25,11 +25,14 @@ describe('UniverseFilterModal', () => {
     expect(screen.queryByRole('button', { name: 'KOSPI' })).not.toBeInTheDocument();
   });
 
+  // ⚠ 2026-08-23: 기본이 **제외**다. 그래서 키 부재 상태의 체크박스는 이미 **켜져**
+  // 있고, 첫 클릭은 「끄기」다 — 그 결과가 `false` 로 **명시**돼야 한다(아래 참조).
   it('ETF 제외 토글 → onChange 즉시 호출', () => {
     const { onChange } = mount({});
     fireEvent.click(screen.getByRole('button', { name: '제외' }));
+    expect(screen.getByLabelText('ETF 제외')).toBeChecked();   // 기본값이 화면에 보인다
     fireEvent.click(screen.getByLabelText('ETF 제외'));
-    expect(onChange).toHaveBeenCalledWith({ exclude_etf: true });
+    expect(onChange).toHaveBeenCalledWith({ exclude_etf: false });
   });
 
   it('시장 토글 → onChange 에 markets 갱신', () => {
@@ -80,11 +83,17 @@ describe('UniverseFilterModal', () => {
     expect(onChange).toHaveBeenCalledWith({ markets: undefined });
   });
 
-  it('체크된 ETF 제외 해제 → exclude_etf undefined 로 정규화', () => {
+  /**
+   * **해제는 `undefined` 가 아니라 `false` 로 실려야 한다.**
+   *
+   * 다른 토글과 다른 유일한 자리다. 백엔드 기본이 `true`(제외)라, 키를 빼면 「사용자가
+   * 끔」이 「기본값=제외」로 읽혀 **정확히 반대로** 동작한다. 이 케이스가 그 회귀를 막는다.
+   */
+  it('ETF 제외 해제 → `false` 로 명시된다 (undefined 로 접지 않는다)', () => {
     const { onChange } = mount({ exclude_etf: true });
     fireEvent.click(screen.getByRole('button', { name: '제외' }));     // 제외 pane
     fireEvent.click(screen.getByLabelText('ETF 제외'));               // 이미 체크됨 → 해제
-    expect(onChange).toHaveBeenCalledWith({ exclude_etf: undefined });
+    expect(onChange).toHaveBeenCalledWith({ exclude_etf: false });
   });
 
   it('종목 범위 그룹으로 pane 전환 → 관심종목/히트맵 체크박스', () => {

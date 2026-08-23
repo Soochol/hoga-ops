@@ -351,19 +351,22 @@ it('toolbar save overwrites the loaded screener with the current builder', async
     conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1,
   };
   vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [saved] });
-  vi.mocked(updateSave).mockResolvedValueOnce({ ...saved, universe: { exclude_etf: true } });
+  vi.mocked(updateSave).mockResolvedValueOnce({ ...saved, universe: { exclude_etf: false } });
   renderPage();
 
   await loadSave('급등주');
   fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));
   fireEvent.click(screen.getByRole('button', { name: '제외' }));
+  // ⚠ 이 클릭은 이제 **끄는** 동작이다 — 2026-08-23 부터 기본이 제외라, 키가 없는
+  // 저장본(`universe: {}`)의 체크박스는 이미 켜져 있다. 이 케이스가 재는 것은
+  // 「빌더 상태가 그대로 저장되는가」이지 그 값이 무엇이냐가 아니다.
   fireEvent.click(screen.getByLabelText('ETF 제외'));
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
   await waitFor(() => expect(updateSave).toHaveBeenCalledWith('s1', {
     name: '급등주',
     conditions: [],
-    universe: { exclude_etf: true },
+    universe: { exclude_etf: false },
   }));
 });
 
