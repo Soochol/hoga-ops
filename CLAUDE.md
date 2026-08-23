@@ -16,6 +16,13 @@ Five canonical triage roles map 1:1 to label strings (`needs-triage`, `needs-inf
 
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+**새 ADR 번호는 `ls docs/adr | tail` 로 고르지 말 것** — 병행 세션이 같은 값을 얻어
+실제로 여섯 번 충돌했다(2026-08-23). 번호는 **식별자**이고 커밋 메시지·GitHub 이슈의
+인용은 나중에 고칠 수 없어, 한 번호가 두 문서를 가리키면 그 인용들이 영구히 모호해진다.
+열린 PR 까지 확인하고(`gh pr diff <n> --name-only | grep docs/adr`) 고른다.
+`tests/unit/test_adr_numbering.py` 가 새 충돌을 막는다 — 그 테스트가 빨개지면 **번호를
+바꾸는 것**이 답이고(아직 인용이 0 이라 비용도 0), 동결 목록에 추가하는 것은 답이 아니다.
+
 ### Browser automation
 
 For any browser-driven check — opening a page, clicking, inspecting DOM/console/network,
