@@ -305,6 +305,57 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('NXT 호가 기록 없음');
   });
 
+  /**
+   * 미캡처(`not_captured`) 는 **얼린 창에서만** 말한다.
+   *
+   * ── 막는 방향 ─────────────────────────────────────────────────────────
+   * ① **켜는 사람이 사라지는 것.** 이 축은 원래 `/study` 가 소유했고, 그 페이지를
+   *    지우자 `true` 를 주는 곳이 없어져 기능이 **조용히 죽었다** — 프롭·파생·순수
+   *    함수·그 테스트가 전부 남아 있어 타입체크도 테스트도 빨개지지 않았다.
+   *    지금은 별도 프롭이 아니라 `savedRangeFrozen` 에서 파생하므로 그 재발이
+   *    구조적으로 어렵다(얼림은 다른 소비자가 여럿이라 혼자 죽지 않는다).
+   * ② **평소 창에서 켜지는 것.** 얼린 창은 fetch 범위가 곧 저장 구간이지만, 다른
+   *    종목·일봉 창은 자기 평소 구간을 받는다. 거기서 켜면 사용자가 고르지도 않은
+   *    구간의 미캡처를 상시로 말해 진짜 결손이 묻힌다(`hogaMissingNotice` 의
+   *    `IGNORED_REASONS` 주석이 기록한 실측: 90일 창에 22일 미캡처).
+   *
+   * ── 못 보는 것 ────────────────────────────────────────────────────────
+   * 어느 창이 `savedRangeFrozen` 을 받는가 — 그 판정은 `ChartWindow` 소유다
+   * (`SavedRangeChip.test.tsx` 가 `krxPinned` 에 대해 같은 경계를 긋는다).
+   */
+  it('얼린 창에서는 미캡처를 말한다', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260527', reason: 'not_captured' }]}
+        savedRangeFrozen
+        venue="KRX"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByTestId('hoga-missing-notice')).toHaveTextContent('미캡처');
+  });
+
+  it('평소 창에서는 미캡처를 말하지 않는다 — 대조군', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260527', reason: 'not_captured' }]}
+        venue="KRX"
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
   it('prop 이 없으면 번들에서 읽는다 — 구 호출부 하위호환', () => {
     render(
       <LiveChartRoot
