@@ -54,6 +54,22 @@ SSOT 는 원주가이므로(`derive_adjusted` 가 매번 그것에서 수정주�
 부정확하다. **다만 `derive_adjusted` 가 같은 상수를 되곱하므로 adjusted 는 여전히
 정확하고**, 부정확은 raw 공간에만 갇힌다.
 
+## ⚠ 「없는 날」과 「안 받은 날」은 오프라인으로 구별되지 않는다 (#1532)
+
+달력 대비 결손은 **상한**이다 — 그 종목이 애초에 존재하지 않던 날(상장 전·폐지 후)이
+섞인다. 상장일은 심볼 마스터에 없고, 벤더에 물으면 그 자체가 줄이려는 호출이다.
+두 축으로 좁힌다:
+
+- **꼬리는 오프라인으로 자른다.** 그 종목의 **마지막 관측일 이후**는 세지 않는다.
+  거래가 멎었거나(폐지·정지) 일일 갱신의 몫이거나 둘 중 하나이고, 둘 다 이 도구가
+  채울 것이 아니다. 실측: 내부 구멍 25,650 → 23,243칸.
+- **앞쪽은 런타임이 배운다.** 조회 결과의 **가장 이른 봉**을 `backfill_probe.json` 에
+  적어 두고, 다음 계획이 그보다 앞을 안 센다. 벤더가 아무것도 안 주면 그 사실을 적어
+  다음 런이 **그 종목을 아예 건너뛴다**. 한 번의 헛 호출이 이후 런을 정확하게 만든다.
+
+리포트의 `leading` 은 그래서 **학습 전에는 상한**이다. `BackfillReport.leading_is_upper_bound`
+가 그것을 명시한다 — 숫자만 보고 "이만큼 채울 수 있다" 로 읽지 말 것.
+
 ## 안전 규율
 
 - **`dry_run=True` 가 기본이고, 벤더를 아예 부르지 않는다.** 계획(어느 종목의 어느
@@ -74,6 +90,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -88,6 +105,7 @@ from hoga.api.screener_store import (
     derive_adjusted,
     write_status,
 )
+from hoga.util.atomic_write import atomic_write_json
 
 # `_DAILY_PL_SCHEMA` 를 **복제하지 않고 빌려 쓴다.** 원주가 parquet 에 쓰는 writer 가
 # 둘(`run_update` · 이 모듈)이 됐는데, 스키마를 각자 들면 한쪽이 컬럼을 늘릴 때 다른
@@ -113,6 +131,40 @@ class VendorBar:
     low: float
     close: float
     volume: int
+
+
+PROBE_FILENAME = "backfill_probe.json"
+
+#: 프로브 파일의 날짜 형식 길이(`YYYYMMDD`). 이 리포의 날짜 문자열 관례와 같다.
+_YYYYMMDD_LEN = 8
+
+
+def read_probe(sdir: Path) -> dict[str, dt.date | None]:
+    """종목별 **벤더가 가진 가장 이른 봉**. `None` = 조회했는데 아무것도 없었다.
+
+    이 파일이 없으면 빈 dict — 첫 런은 아무것도 모르는 상태에서 시작한다(그게 정상이다).
+    손상이면 조용히 빈 dict 로 떨어진다. 이건 **캐시**이지 진실이 아니라, 잃어도 다음
+    런이 다시 배울 뿐이다.
+    """
+    path = sdir / PROBE_FILENAME
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, dt.date | None] = {}
+    for code, value in (raw.items() if isinstance(raw, dict) else []):
+        if value is None:
+            out[code] = None
+        elif isinstance(value, str) and len(value) == _YYYYMMDD_LEN and value.isdigit():
+            out[code] = dt.date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+    return out
+
+
+def write_probe(sdir: Path, probe: dict[str, dt.date | None]) -> None:
+    atomic_write_json(
+        sdir / PROBE_FILENAME,
+        {c: (d.strftime("%Y%m%d") if d is not None else None) for c, d in sorted(probe.items())},
+    )
 
 
 @dataclass
@@ -165,6 +217,22 @@ class BackfillReport:
             "leading": sum(p.leading for p in live),
             "interior": sum(p.interior for p in live),
         }
+
+    @property
+    def leading_is_upper_bound(self) -> bool:
+        """`leading` 을 **상한으로 읽어야 하는가** (#1532).
+
+        프로브가 아직 모르는 종목이 하나라도 있으면 참이다 — 그 종목의 앞쪽 결손에는
+        「상장 전」이 섞여 있을 수 있고, 그건 채울 수 있는 날이 아니다. 숫자만 보고
+        "이만큼 채운다" 로 읽지 말라는 신호다. 한 번 돌리고 나면 대개 거짓이 된다.
+        """
+        return any(
+            p.skipped_reason is None and p.code not in self.probed
+            for p in self.plans
+        )
+
+    #: 이번 런에서 **새로 배운** 프로브(종목 → 벤더의 가장 이른 봉, `None` = 없음).
+    probed: dict[str, dt.date | None] = field(default_factory=dict)
 
     @property
     def skipped(self) -> dict[str, int]:
@@ -231,6 +299,7 @@ def plan_targets(
     window_to: dt.date,
     corpus_start_after: dt.date | None,
     codes: list[str] | None,
+    probe: dict[str, dt.date | None] | None = None,
 ) -> list[CodePlan]:
     """대상 선정 + **결손 날짜 계산**. 부수효과 없음 — dry-run 이 이 함수만으로 성립한다.
 
@@ -244,10 +313,20 @@ def plan_targets(
     else:
         wanted = sorted(starts)
 
-    window = {d for d in trading if gap_from <= d <= window_to}
+    probe = probe or {}
     plans: list[CodePlan] = []
     for code in wanted:
-        missing = sorted(window - present.get(code, set()))
+        seen = present.get(code, set())
+        # ── 꼬리: 마지막 관측일 이후는 세지 않는다(#1532). 폐지·정지이거나 일일 갱신의
+        #    몫이거나 둘 중 하나이고, 둘 다 이 도구가 채울 것이 아니다.
+        hi = min(window_to, max(seen)) if seen else window_to
+        # ── 앞: 프로브가 아는 만큼만. 벤더가 아무것도 안 줬던 종목(`None`)은 앞쪽을
+        #    아예 안 센다 — 그 헛 호출을 두 번 하지 않기 위한 것이 프로브의 존재 이유다.
+        lo = gap_from
+        if code in probe:
+            earliest = probe[code]
+            lo = min(seen) if earliest is None else max(gap_from, earliest)
+        missing = sorted({d for d in trading if lo <= d <= hi} - seen)
         plan = CodePlan(
             code=code, corpus_start=starts[code], missing_dates=missing,
             factor=factors.get(code, 1.0),
@@ -294,12 +373,13 @@ async def history_backfill(
         dt.date(int(s[:4]), int(s[4:6]), int(s[6:8]))
         for s in trading_days.trading_days(data_dir)
     }
+    probe = read_probe(sdir)
     plans = plan_targets(
         starts, factors, present, trading,
         gap_from=gap_from, window_to=min(window_to, coverage_to),
-        corpus_start_after=corpus_start_after, codes=codes,
+        corpus_start_after=corpus_start_after, codes=codes, probe=probe,
     )
-    report = BackfillReport(plans=plans, dry_run=dry_run)
+    report = BackfillReport(plans=plans, dry_run=dry_run, probed=dict(probe))
     todo = [p for p in plans if p.skipped_reason is None]
     # ⚠ **dry-run 은 벤더를 부르지 않는다.** 결정에 필요한 것은 「무엇이 비었는가」이고
     # 그건 달력과 코퍼스만으로 나온다. 부르면 리허설이 수백 종목치 유량을 태우고
@@ -309,6 +389,7 @@ async def history_backfill(
         return report
 
     sem = asyncio.Semaphore(concurrency)
+    learned: dict[str, dt.date | None] = {}
 
     async def _one(plan: CodePlan) -> tuple[CodePlan, list[dict]]:
         try:
@@ -326,6 +407,9 @@ async def history_backfill(
         # **결손일만** 남긴다. 벤더는 기준일에서 걸어 내려오느라 요청보다 넓게 주고,
         # 요청 범위 **안**에도 이미 가진 날이 섞여 있다(내부 구멍을 채울 때가 그렇다).
         # append 가 멱등이라 해롭진 않지만 통계가 부풀고 값 출처가 흐려진다.
+        # **배운 것을 적는다**(#1532): 벤더가 가진 가장 이른 봉. 아무것도 없으면 `None`
+        # 이고, 다음 계획이 이 종목의 앞쪽을 아예 안 센다 — 헛 호출을 두 번 하지 않는다.
+        learned[plan.code] = min((b.date for b in bars), default=None)
         wanted = set(plan.missing_dates)
         inside = [b for b in bars if b.date in wanted]
         rows = unadjust(inside, plan.factor)
@@ -353,4 +437,10 @@ async def history_backfill(
             await asyncio.to_thread(_commit, pending)
             report.written_rows += len(pending)
             pending = []
+    # 프로브는 **쓰기 성공 여부와 무관하게** 저장한다 — 배운 것은 사실이고, 다음 런의
+    # 헛 호출을 줄이는 값이다. dry-run 은 애초에 여기 도달하지 않는다(조회를 안 한다).
+    if learned:
+        probe.update(learned)
+        write_probe(sdir, probe)
+        report.probed = dict(probe)
     return report
