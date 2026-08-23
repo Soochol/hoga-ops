@@ -517,16 +517,6 @@ export const CHART_NUMERIC_PREFS = [
     category: 'indicator-modal',
   },
   {
-    key: 'askPeakVisibleMaxRankLimit',
-    label: '보이는 영역 최대벽 표시 개수',
-    description: '현재 보이는 캔들 영역 안에서 최대벽을 수량순으로 몇 등까지 표시할지 선택합니다.',
-    default: 1,
-    min: 0,
-    max: 3,
-    // AskPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
-    category: 'indicator-modal',
-  },
-  {
     // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `bidPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
@@ -537,16 +527,6 @@ export const CHART_NUMERIC_PREFS = [
     default: 1,
     min: 1,
     max: 3,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakVisibleMaxRankLimit',
-    label: '보이는 영역 최대벽 표시 개수',
-    description: '현재 보이는 캔들 영역 안에서 최대벽을 수량순으로 몇 등까지 표시할지 선택합니다.',
-    default: 1,
-    min: 0,
-    max: 3,
-    // BidPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
     category: 'indicator-modal',
   },
   {
