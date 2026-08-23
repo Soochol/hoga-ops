@@ -31,7 +31,7 @@ const CHIP_TOKENS = {
  * 각 세그먼트는 [time0, time1] x-구간(그날 open→close, 오늘은 라이브 엣지) × price y에 수평선.
  * series 길이/timeScale index와 무관해 좌측-팬 백필에도 면역(SurgeMarkersPrimitive와 동일 근거).
  */
-export interface AskPeakSegment {
+export interface PeakWallSegment {
   /** 그날 시작 — axis.toVirtual(open)/1000 (가상 초, 라인 점과 동일 좌표계). */
   time0: Time;
   /** 그날 끝 — 과거일=close, 오늘=라이브 엣지(마지막 캔들). */
@@ -67,7 +67,7 @@ export interface PeakWallDockedLabel {
 
 type VisibleTimeRange = IRange<Time> | null;
 
-function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
+function segmentOverlapsVisibleRange(segment: PeakWallSegment, visibleRange: VisibleTimeRange): boolean {
   if (!visibleRange) return true;
   const visibleFrom = visibleRange.from as unknown as number;
   const visibleTo = visibleRange.to as unknown as number;
@@ -82,12 +82,12 @@ function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: Visi
  *  칩이 한 자리에 겹치므로), 라벨을 **발생 분봉 위**로 옮기면 같은 가격이라도 날마다 x 앵커가 달라
  *  겹치지 않는다. 가격만으로 합치면 다른 날의 벽은 점만 남고 수량을 못 읽는다. 하루 안 여러 가격은
  *  allPriceRankLimit(체결된 벽 개수)이 이미 제한한다. */
-function dayPriceKey(segment: AskPeakSegment): string {
+function dayPriceKey(segment: PeakWallSegment): string {
   return `${segment.time0 as unknown as number}|${segment.price}`;
 }
 
 export function livePeakWallDockedLabelsFromSegments(
-  segments: readonly AskPeakSegment[],
+  segments: readonly PeakWallSegment[],
   side: PeakWallLabelSide,
   visibleRange: VisibleTimeRange = null,
   rankLimit?: number,
@@ -170,8 +170,8 @@ export function peakLabelBudgetForBarSpacing(barSpacing: number): number {
 }
 
 export function inlinePeakWallSegmentsForDocking(
-  segments: readonly AskPeakSegment[],
-): AskPeakSegment[] {
+  segments: readonly PeakWallSegment[],
+): PeakWallSegment[] {
   return segments.map((segment) => (
     segment.label !== ''
       ? { ...segment, label: '' }
@@ -504,7 +504,7 @@ class AskPeakSegmentsPaneView implements IPrimitivePaneView {
 }
 
 export class AskPeakSegmentsPrimitive implements ISeriesPrimitive<Time> {
-  private _segments: readonly AskPeakSegment[] = [];
+  private _segments: readonly PeakWallSegment[] = [];
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _requestUpdate?: () => void;
@@ -531,11 +531,11 @@ export class AskPeakSegmentsPrimitive implements ISeriesPrimitive<Time> {
     return [this._paneView];
   }
 
-  setSegments(segments: readonly AskPeakSegment[]): void {
+  setSegments(segments: readonly PeakWallSegment[]): void {
     this._segments = segments;
     this._requestUpdate?.();
   }
-  segmentsData(): readonly AskPeakSegment[] {
+  segmentsData(): readonly PeakWallSegment[] {
     return this._segments;
   }
   chartApi(): IChartApi | null {

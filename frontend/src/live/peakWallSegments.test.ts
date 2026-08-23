@@ -1,0 +1,568 @@
+import { describe, expect, it } from 'vitest';
+import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
+import type { VirtualAxis } from '../util/virtualAxis';
+import { createVirtualAxis } from '../util/virtualAxis';
+import {
+  buildPeakWallOverlaySegments,
+  buildPeakWallSegments,
+  preparePeakWallSegmentsForRender,
+} from './peakWallSegments';
+
+/**
+ * 최대벽 세그먼트 빌드의 **순수 계층** 테스트.
+ *
+ * 2026-08-23 에 `LiveAskPeakSegments`/`LiveBidPeakSegments` 두 파일에 **169줄이 바이트
+ * 단위로 중복**돼 있던 것을 한 벌로 합치면서, 그 테스트도 여기로 모았다. 매도·매수 케이스가
+ * **같은 파일에서 같은 함수**를 때리는 것이 요점이다 — 종전엔 두 테스트 파일이 각자 자기
+ * 복사본을 검증해서, 한쪽만 달라져도 아무도 몰랐다(매수의 죽은 노브가 그 결과였다).
+ */
+
+// 항등 축: toVirtual(ms)=ms → time = ms/1000.
+// contains: 이동평균 필터가 MovingAverageOverlay 와 같은 「세션 안 캔들」 배열 위에서
+// SMA 를 재므로 스텁도 그 축을 갖는다 — 픽스처 캔들은 전부 세션 안이다.
+const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
+const seg = (date: string, o: number, c: number): RangeSegment =>
+  ({ date, session_open_ms: o, session_close_ms: c }) as RangeSegment;
+const candle = (ts_ms: number): Candle =>
+  ({ ts_ms, open: 1, high: 2, low: 0.5, close: 1.5, vol_a: 1, vol_b: 0 }) as Candle;
+const peak = (over: Partial<AskPeak> & { date: string }): AskPeak => ({
+  price: null, qty: null, t_ms: null, max_price: null, max_qty: null, max_t_ms: null, ...over,
+});
+
+describe('buildPeakWallSegments', () => {
+  it('과거일=open→close, 오늘=open→마지막 캔들(라이브 엣지) + live 플래그', () => {
+    const peaks: AskPeak[] = [
+      peak({ date: '20260611', price: 297000, qty: 123456, t_ms: 1 }),
+      peak({ date: '20260613', price: 323000, qty: 153125, t_ms: 2 }),
+    ];
+    const segments = [seg('20260611', 1000, 5000), seg('20260613', 10000, 99999)];
+    const candles = [candle(10500), candle(12000)]; // 마지막 12000
+    const out = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#1D4ED8', 2, false);
+
+    const past = out.find((s) => s.price === 297000)!;
+    expect(past.time0).toBe(1); // 1000/1000
+    expect(past.time1).toBe(5); // close 5000/1000 (라이브 엣지 아님)
+    expect(past.live).toBe(false);
+
+    const today = out.find((s) => s.price === 323000)!;
+    expect(today.time0).toBe(10); // 10000/1000
+    expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
+    expect(today.live).toBe(true);
+    expect(today.label).toBe('323,000, 153.1k'); // 「가격, 잔량」 — 레전드와 같은 formatPriceQty
+    expect(today.qty).toBe(153125);
+    expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
+    expect(today.color).toBe('#1D4ED8');
+    expect(today.lineWidth).toBe(2);
+  });
+
+  it('peak 점은 그 시각이 속한 캔들(버킷 시작)에 스냅 — 1캔들 밀림 방지', () => {
+    // 캔들 = 버킷 시작(60s 간격): 60000, 120000, 180000. peak t_ms=175000은 [120000,180000) 버킷.
+    // 스냅 없으면 toVirtual(175000)=175 → lwc가 다음 캔들(180) 쪽으로 보간 → 1캔들 밀림.
+    // 스냅하면 120000(그 버킷 캔들)로 → peakTime=120.
+    const peaks: AskPeak[] = [peak({ date: '20260613', price: 100, qty: 50, t_ms: 175000 })];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+    const out = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
+    expect(out[0].peakTime).toBe(120); // 175000이 아니라 버킷 시작 120000/1000
+  });
+
+  it('1,000 미만 매도벽 수량도 k 단위로, 가격과 함께 표시', () => {
+    const peaks: AskPeak[] = [peak({ date: '20260613', price: 100, qty: 900, t_ms: 120000 })];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+    const out = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
+    expect(out[0].label).toBe('100, 0.9k');
+  });
+
+  it('peak이 마지막 캔들 버킷보다 뒤면(라이브 엣지) 마지막 캔들에 스냅', () => {
+    // 오늘 라이브: peak이 현재 형성 중 버킷(마지막 캔들 이후 시각)이면 마지막 캔들에 스냅.
+    const peaks: AskPeak[] = [peak({ date: '20260613', price: 100, qty: 50, t_ms: 185000 })];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+    const out = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
+    expect(out[0].peakTime).toBe(180); // 마지막 캔들 180000/1000
+  });
+
+  it('peak이 첫 캔들보다 앞서면(미로드 구간) 원시 t_ms 폴백', () => {
+    const peaks: AskPeak[] = [peak({ date: '20260613', price: 100, qty: 50, t_ms: 30000 })];
+    const segments = [seg('20260613', 60000, 240000)];
+    const candles = [candle(60000), candle(120000)];
+    const out = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
+    expect(out[0].peakTime).toBe(30); // 스냅 대상 없음 → 원시 30000/1000 (primitive 보간 폴백이 처리)
+  });
+
+  it('segment 없는 날은 건너뜀', () => {
+    const out = buildPeakWallSegments(
+      [peak({ date: '20260601', price: 1, qty: 1, t_ms: 1 })], [], [], axis, '20260613', '#000', 1, false,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('오늘이지만 캔들 없으면 session_close로 폴백', () => {
+    const out = buildPeakWallSegments(
+      [peak({ date: '20260613', price: 100, qty: 50, t_ms: 1 })],
+      [seg('20260613', 2000, 8000)], [], axis, '20260613', '#000', 1, false,
+    );
+    expect(out[0].time1).toBe(8); // 캔들 없음 → close 8000/1000
+  });
+
+  it('intraMax=true면 max triple(price/qty/t_ms 대신 max_*) 선택', () => {
+    const peaks: AskPeak[] = [{
+      date: '20260611',
+      price: 25100,
+      qty: 300,
+      t_ms: 100000,
+      max_price: 25200,
+      max_qty: 900,
+      max_t_ms: 130000,
+    }];
+    const segments = [seg('20260611', 60000, 240000)];
+    const candles = [candle(60000), candle(120000), candle(180000)];
+
+    const off = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, false);
+    expect(off[0].label).toBe('25,100, 0.3k');
+    expect(off[0].peakTime).toBe(60);
+
+    const on = buildPeakWallSegments(peaks, segments, candles, axis, '20260613', '#000', 1, true);
+    expect(on[0].price).toBe(25200);
+    expect(on[0].label).toBe('25,200, 0.9k');  // 가격도 max 축을 따른다
+    expect(on[0].peakTime).toBe(120);
+    expect(on[0].time0).toBe(off[0].time0);
+    expect(on[0].time1).toBe(off[0].time1);
+  });
+});
+
+describe('buildPeakWallOverlaySegments', () => {
+
+
+
+
+
+
+
+
+
+
+
+
+
+  it('체결가격 기준 top-N은 같은 가격 후보를 하나의 벽으로만 취급한다', () => {
+    const day = '20260613';
+    const out = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [{
+        date: day,
+        price: 100400,
+        qty: 22_300,
+        t_ms: 60_000,
+        max_price: 100400,
+        max_qty: 22_300,
+        max_t_ms: 60_000,
+        traded_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100400, qty: 22_800, t_ms: 120_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+          { price: 100200, qty: 20_000, t_ms: 240_000 },
+        ],
+        traded_max_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100400, qty: 22_800, t_ms: 120_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+          { price: 100200, qty: 20_000, t_ms: 240_000 },
+        ],
+      }],
+      segments: [seg(day, 0, 360_000)],
+      candles: [candle(60_000), candle(120_000), candle(180_000), candle(240_000)],
+      axis,
+      todayKst: day,
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+      allPriceRankLimit: 3,
+    });
+
+    expect(out.map((segment) => [segment.price, segment.qty])).toEqual([
+      [100400, 22_800],
+      [100300, 21_000],
+      [100200, 20_000],
+    ]);
+  });
+
+  it('과거 날짜도 체결가격 기준 후보를 rank limit만큼 그린다', () => {
+    const past: AskPeak = {
+      ...peak({ date: '20260612', price: 100, qty: 100, t_ms: 120000 }),
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: 120000 },
+        { price: 105, qty: 90, t_ms: 130000 },
+        { price: 108, qty: 80, t_ms: 140000 },
+      ],
+    };
+
+    const out = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [past],
+      segments: [seg('20260612', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+      allPriceRankLimit: 2,
+    });
+
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.price)).toEqual([100, 105]);
+    expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8']);
+  });
+
+  it('오늘과 과거 날짜를 각각 rank limit만큼 함께 그린다', () => {
+    const past: AskPeak = {
+      ...peak({ date: '20260612', price: 100, qty: 100, t_ms: 120000 }),
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: 120000 },
+        { price: 105, qty: 90, t_ms: 130000 },
+        { price: 108, qty: 80, t_ms: 140000 },
+      ],
+    };
+    const today = [
+      peak({ date: '20260613', price: 200, qty: 200, t_ms: 220000 }),
+      peak({ date: '20260613', price: 205, qty: 190, t_ms: 230000 }),
+      peak({ date: '20260613', price: 208, qty: 180, t_ms: 240000 }),
+    ];
+
+    const out = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [past, ...today],
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 260000, 440000)],
+      candles: [candle(60000), candle(120000), candle(220000), candle(230000), candle(240000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+      allPriceRankLimit: 2,
+    });
+
+    expect(out).toHaveLength(4);
+    expect(out.map((s) => s.price)).toEqual([100, 105, 200, 205]);
+  });
+
+
+
+
+  it('ranked 후보가 비어 있으면 scalar 기준선으로 폴백해 한 줄을 렌더한다', () => {
+    const out = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [{
+        date: '20260613',
+        price: 100,
+        qty: 100,
+        t_ms: 120000,
+        max_price: 100,
+        max_qty: 100,
+        max_t_ms: 120000,
+        traded_peaks: [],
+        traded_max_peaks: [],
+      }],
+      segments: [seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000), candle(190000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+    });
+
+    expect(out.map((segment) => segment.price)).toEqual([100]);
+    expect(out.map((segment) => segment.color)).toEqual(['#1D4ED8']);
+  });
+
+
+  it('filters ask baseline candidates by visible-time cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100,
+      qty: 100,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 100,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 101, qty: 900, t_ms: open + 180_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 101, qty: 900, t_ms: open + 180_000 },
+      ],
+    } as never;
+
+    const segments = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak],
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [{ ts_ms: open, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      intraMax: false,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ price: 100, qty: 100 });
+  });
+
+});
+
+describe('live peak-wall inline label suppression', () => {
+  // 2026-08-23: 종전엔 이 자리에서 「보이는 영역 최대벽」 강조 색이 입혀졌는지도 함께
+  // 봤는데, 그 강조가 제거되면서 여기서 재는 것은 **인라인 라벨 억제 하나**로 좁아졌다
+  // (도킹 라벨이 라벨을 그리므로 선 위 인라인 라벨은 비워야 한다). 색·두께는 기본
+  // 스타일이 그대로 통과하는지만 확인한다.
+  it('suppresses ask inline labels and keeps the baseline style', () => {
+    const raw = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [
+        peak({ date: '20260612', price: 100, qty: 50, t_ms: 120000 }),
+        peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 }),
+      ],
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+    });
+
+    const inline = preparePeakWallSegmentsForRender(raw);
+    expect(inline[0].live).toBe(false);
+    expect(inline[0].label).toBe('');
+    expect(inline[1].live).toBe(true);
+    expect(inline[1]).toMatchObject({
+      price: 110,
+      label: '',
+      color: '#1D4ED8',
+      lineWidth: 2,
+    });
+  });
+
+  it('suppresses bid inline labels', () => {
+    const pastBid: BidPeak = {
+      date: '20260612',
+      price: 100,
+      qty: 50,
+      t_ms: 120000,
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: 120000,
+    };
+    const todayBid: BidPeak = {
+      date: '20260613',
+      price: 90,
+      qty: 80,
+      t_ms: 180000,
+      max_price: 90,
+      max_qty: 80,
+      max_t_ms: 180000,
+    };
+    const raw = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [pastBid, todayBid],
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#2563EB', lineWidth: 2 },
+      intraMax: false,
+    });
+
+    const inline = preparePeakWallSegmentsForRender(raw);
+
+    expect(inline[0].live).toBe(false);
+    expect(inline[0].label).toBe('');
+    expect(inline[1].live).toBe(true);
+    expect(inline[1]).toMatchObject({ price: 90, label: '', color: '#2563EB', lineWidth: 2 });
+  });
+});
+
+describe('buildPeakWallOverlaySegments — 매수 케이스', () => {
+
+  it('filters bid baseline candidates by visible-time cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 99,
+      qty: 90,
+      t_ms: open + 60_000,
+      max_price: 99,
+      max_qty: 90,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 99, qty: 90, t_ms: open + 60_000 },
+        { price: 98, qty: 900, t_ms: open + 180_000 },
+      ],
+      traded_max_peaks: [
+        { price: 99, qty: 90, t_ms: open + 60_000 },
+        { price: 98, qty: 900, t_ms: open + 180_000 },
+      ],
+    };
+
+    const segments = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak],
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      intraMax: false,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ price: 99, qty: 90 });
+  });
+
+  it('renders top-N bid baseline candidates through the visible-time cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100,
+      qty: 100,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 100,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 99, qty: 300, t_ms: open + 120_000 },
+        { price: 98, qty: 200, t_ms: open + 180_000 },
+        { price: 97, qty: 900, t_ms: open + 300_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 99, qty: 300, t_ms: open + 120_000 },
+        { price: 98, qty: 200, t_ms: open + 180_000 },
+        { price: 97, qty: 900, t_ms: open + 300_000 },
+      ],
+    };
+
+    const segments = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak],
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      intraMax: false,
+      visibleTimeCutoff: { date: day, tMs: open + 180_000 },
+      allPriceRankLimit: 3,
+    });
+
+    expect(segments.map((segment) => segment.price)).toEqual([99, 98, 100]);
+  });
+
+  it('treats same-price bid candidates as one wall for top-N ranks', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100400,
+      qty: 22_300,
+      t_ms: open + 60_000,
+      max_price: 100400,
+      max_qty: 22_300,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100400, qty: 22_300, t_ms: open + 60_000 },
+        { price: 100400, qty: 22_800, t_ms: open + 120_000 },
+        { price: 100300, qty: 21_000, t_ms: open + 180_000 },
+        { price: 100200, qty: 20_000, t_ms: open + 240_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100400, qty: 22_300, t_ms: open + 60_000 },
+        { price: 100400, qty: 22_800, t_ms: open + 120_000 },
+        { price: 100300, qty: 21_000, t_ms: open + 180_000 },
+        { price: 100200, qty: 20_000, t_ms: open + 240_000 },
+      ],
+    };
+
+    const segments = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak],
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 240_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      intraMax: false,
+      allPriceRankLimit: 3,
+    });
+
+    expect(segments.map((segment) => [segment.price, segment.qty])).toEqual([
+      [100400, 22_800],
+      [100300, 21_000],
+      [100200, 20_000],
+    ]);
+  });
+
+  it('omits bid baseline when cutoff mode receives explicit empty ranked candidates', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 98,
+      qty: 900,
+      t_ms: open + 180_000,
+      max_price: 98,
+      max_qty: 900,
+      max_t_ms: open + 180_000,
+      traded_peaks: [],
+      traded_max_peaks: [],
+    };
+
+    const segments = buildPeakWallOverlaySegments({
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak],
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      intraMax: false,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(segments).toEqual([]);
+  });
+
+
+
+
+
+
+
+});
