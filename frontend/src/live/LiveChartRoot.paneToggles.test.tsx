@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ComponentProps, ReactNode } from 'react';
 
@@ -31,6 +32,7 @@ const { mounted, paneBundles, paneContexts, paneOrderKeys, candleTooltipProps, a
     timeScaleApi: {
       subscribeVisibleLogicalRangeChange: ReturnType<typeof vi.fn>;
       unsubscribeVisibleLogicalRangeChange: ReturnType<typeof vi.fn>;
+      subscribeVisibleTimeRangeChange: ReturnType<typeof vi.fn>;
       fitContent: ReturnType<typeof vi.fn>;
       setVisibleLogicalRange: ReturnType<typeof vi.fn>;
     };
@@ -110,7 +112,7 @@ vi.mock('lightweight-charts', async () => {
 
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { useChartPrefsStore } from '../state/chartPrefs';
+import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import type { RangeBundle } from '../api/types';
 
 const DEFAULT_BUNDLE: RangeBundle = {
@@ -490,5 +492,49 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       expect(bidPeakMounts).toHaveLength(1);
       expect(dockedLabelMounts).toHaveLength(1);
     });
+  });
+});
+
+/**
+ * **「보이는 최신 봉 기준」이 꺼져 있으면 시간범위를 구독하지 않는다**(2026-08-23).
+ *
+ * 이 구독의 콜백은 `setVisibleTimeCutoff` 로 **컴포넌트 전체를 재렌더**한다. 그런데 그 값은
+ * 두 pref 가 다 꺼져 있으면 아래에서 통째로 버려진다 — 즉 기본 설정(둘 다 false)의
+ * 사용자는 팬 프레임마다 아무 이득 없이 `LiveChartRoot` 재렌더 비용을 내고 있었다.
+ *
+ * **막는 방향**: 구독이 무조건으로 되돌아가는 것.
+ * **못 보는 것**: 켜져 있을 때 컷오프가 실제로 갱신되는지 — 그건 pref ON 케이스가 본다.
+ */
+describe('LiveChartRoot — 보이는 최신 봉 컷오프 구독 게이트', () => {
+  beforeEach(() => {
+    chartInstances.length = 0;
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
+    });
+  });
+
+  const subscribeCalls = () => chartInstances
+    .map((c) => c.timeScaleApi.subscribeVisibleTimeRangeChange.mock.calls.length)
+    .reduce((a, b) => a + b, 0);
+
+  it('두 pref 가 모두 꺼져 있으면 구독하지 않는다(기본값)', () => {
+    renderAt('1m');
+    expect(subscribeCalls()).toBe(0);
+  });
+
+  it('매도 pref 를 켜면 구독한다', () => {
+    act(() => {
+      useChartPrefsStore.setState({ askPeakVisibleTimeCutoff: true });
+    });
+    renderAt('1m');
+    expect(subscribeCalls()).toBeGreaterThan(0);
+  });
+
+  it('매수 pref 만 켜도 구독한다', () => {
+    act(() => {
+      useChartPrefsStore.setState({ bidPeakVisibleTimeCutoff: true });
+    });
+    renderAt('1m');
+    expect(subscribeCalls()).toBeGreaterThan(0);
   });
 });
