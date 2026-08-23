@@ -20,7 +20,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import {
   inlinePeakWallSegmentsForDocking,
   type PeakWallSegment,
-} from '../chart/AskPeakSegmentsPrimitive';
+} from '../chart/PeakWallSegmentsPrimitive';
 import { formatPriceQty } from './peakLegendValues';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, type PeakMaFilter } from './peakWallMaFilter';

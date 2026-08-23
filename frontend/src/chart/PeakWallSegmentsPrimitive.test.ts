@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ITimeScaleApi, Time } from 'lightweight-charts';
 import {
   xCoordinateOrNearest,
-  layoutAskPeakLabels,
+  layoutPeakWallLabels,
   peakWallChipGeometry,
   peakXFromCoordinate,
   LABEL_BOX_X_PAD_PX,
@@ -16,10 +16,10 @@ import {
   PEAK_LABEL_HIDE_BAR_SPACING_PX,
   PEAK_LABEL_BUDGET_MAX,
   PEAK_LABEL_BUDGET_MIN,
-  visibleAskPeakLabelCandidates,
-  type AskPeakLabelCandidate,
+  visiblePeakWallLabelCandidates,
+  type PeakWallLabelCandidate,
   type PeakWallSegment,
-} from './AskPeakSegmentsPrimitive';
+} from './PeakWallSegmentsPrimitive';
 
 const candidate = (
   index: number,
@@ -27,7 +27,7 @@ const candidate = (
   yLine: number,
   width = 70,
   segmentWidth = 120,
-): AskPeakLabelCandidate => ({
+): PeakWallLabelCandidate => ({
   index,
   xRight,
   yLine,
@@ -35,9 +35,9 @@ const candidate = (
   segmentWidth,
 });
 
-describe('layoutAskPeakLabels', () => {
+describe('layoutPeakWallLabels', () => {
   it('separates overlapping labels that share the same right edge', () => {
-    const out = layoutAskPeakLabels([
+    const out = layoutPeakWallLabels([
       candidate(0, 500, 100),
       candidate(1, 500, 104),
       candidate(2, 500, 108),
@@ -47,7 +47,7 @@ describe('layoutAskPeakLabels', () => {
   });
 
   it('uses the requested row height as the readable gap between close labels', () => {
-    const out = layoutAskPeakLabels([
+    const out = layoutPeakWallLabels([
       candidate(0, 500, 100),
       candidate(1, 500, 108),
       candidate(2, 500, 116),
@@ -57,7 +57,7 @@ describe('layoutAskPeakLabels', () => {
   });
 
   it('leaves nearby y labels alone when their text boxes do not overlap horizontally', () => {
-    const out = layoutAskPeakLabels([
+    const out = layoutPeakWallLabels([
       candidate(0, 150, 100),
       candidate(1, 500, 104),
     ], 15, 220, 13);
@@ -66,7 +66,7 @@ describe('layoutAskPeakLabels', () => {
   });
 
   it('keeps stacked labels inside the pane near the bottom edge', () => {
-    const out = layoutAskPeakLabels([
+    const out = layoutPeakWallLabels([
       candidate(0, 500, 202),
       candidate(1, 500, 206),
       candidate(2, 500, 210),
@@ -76,9 +76,9 @@ describe('layoutAskPeakLabels', () => {
   });
 });
 
-describe('visibleAskPeakLabelCandidates', () => {
+describe('visiblePeakWallLabelCandidates', () => {
   it('hides labels when zoomed out so the segment cannot fit the label', () => {
-    const out = visibleAskPeakLabelCandidates([
+    const out = visiblePeakWallLabelCandidates([
       candidate(0, 500, 100, 70, 120),
       candidate(1, 540, 104, 70, 60),
     ], 8);

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
-import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 import type { PeakWallRenderState } from './usePeakWallRender';

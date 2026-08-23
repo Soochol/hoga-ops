@@ -1,5 +1,5 @@
 import type { Time } from 'lightweight-charts';
-import { peakWallChipGeometry, type PeakWallLabelSide } from './AskPeakSegmentsPrimitive';
+import { peakWallChipGeometry, type PeakWallLabelSide } from './PeakWallSegmentsPrimitive';
 import { RENDERED_ROOT_PX, SIZE_TOKENS } from '../styles/design-tokens';
 
 /**
@@ -42,13 +42,10 @@ export const LABEL_AVOID_GAP_PX = 2;
 /** 칩 좌우 여백 — DOM 시절 padding '1px 5px' 의 x 성분. */
 export const LABEL_BOX_PAD_X_PX = 5;
 export const LABEL_BOX_RADIUS_PX = 3;
-/** dot 반지름과 배경색 링 두께 — DOM 시절 6px 원 + 1.5px boxShadow 링. */
-export const DOT_RADIUS_PX = 3;
-export const DOT_RING_PX = 1.5;
 export const LEADER_OPACITY = 0.45;
 /**
  * 극값 **가격선**(pane 전폭 수평 점선)의 획 스타일. 리더선(0.45 / [3,3])보다 옅고
- * 성글다 — 리더선은 dot↔칩 사이 수십 px 이지만 이 선은 pane 을 가로지르므로 같은
+ * 성글다 — 리더선은 극값점↔칩 사이 수십 px 이지만 이 선은 pane 을 가로지르므로 같은
  * 무게를 주면 캔들보다 선이 먼저 읽힌다. VI/상하한가 선(실선 + 사용자 지정 색·두께)
  * 과 점선/실선으로 갈려 두 레이어가 겹쳐도 구분된다.
  */
@@ -120,7 +117,7 @@ function highLowLabelBox(anchorY: number, place: ExtremeLabelPlace): VerticalBox
  * 예전에는 이 함수가 렌더 기하를 복제했는데, 어긋나도 타입 에러가 나지 않아 고저 라벨이
  * 있지도 않은 칩을 피해 pane 중간으로 표류하는 유령 회피를 낳았다.
  *
- * 회피 배치(`layoutAskPeakLabels`) **이전**의 희망 위치라는 점은 종전과 같다 — 스택으로 밀린
+ * 회피 배치(`layoutPeakWallLabels`) **이전**의 희망 위치라는 점은 종전과 같다 — 스택으로 밀린
  * 칩은 이 rect보다 아래에 있을 수 있고, 그 오차는 렌더 단 2D 교차 검사가 흡수한다.
  * 폭은 canvas measureText 없이 문자 수로 근사한다(레이아웃은 순수 함수로 테스트된다).
  */
@@ -152,7 +149,7 @@ export function wallLabelAvoidRect(
 }
 
 /**
- * 극값 라벨 칩 한 개의 배치. `y` 는 **극값 봉의 y**(dot 위치, `priceToCoordinate` 결과)로
+ * 극값 라벨 칩 한 개의 배치. `y` 는 **극값 봉의 y**(고가/저가의 `priceToCoordinate` 결과)로
  * 두 역할을 겸한다 — pane 크기를 모를 때의 폴백 좌표이자, 아래 **캔들 상한**의 기준선이다.
  */
 export function placeExtremeLabel(
@@ -165,14 +162,14 @@ export function placeExtremeLabel(
   avoidRects: readonly AvoidRect[] = [],
 ): ExtremeLabelPlacement {
   if (paneWidth <= 0 || paneHeight <= 0) return { x, y, place: preferred };
-  // x: dot(극값 봉) x 를 유지하되 라벨 폭 절반이 pane 좌우 가장자리를 넘지 않게 클램프.
+  // x: 극값 봉의 x 를 유지하되 라벨 폭 절반이 pane 좌우 가장자리를 넘지 않게 클램프.
   const halfWidth = labelWidth / 2;
   const minX = LABEL_EDGE_PAD_PX + halfWidth;
   const maxX = Math.max(minX, paneWidth - LABEL_EDGE_PAD_PX - halfWidth);
   const placedX = Math.min(maxX, Math.max(minX, x));
 
   // 라벨은 가격이 아니라 pane 가장자리에 고정한다: 고가('above')=상단, 저가('below')=하단.
-  // 반전 없음 — dot 은 극값 가격 위치에 남고 렌더 단 리더선이 dot↔라벨을 잇는다.
+  // 반전 없음 — 렌더 단 리더선이 극값 가격 지점↔라벨을 잇는다.
   // 가장자리는 **출발점**이고, 아래에서 회피 push(안쪽) 와 캔들 상한(바깥쪽)이 순서대로
   // 앵커를 옮긴다.
   const place = preferred;
@@ -206,7 +203,7 @@ export function placeExtremeLabel(
     }
   }
 
-  // **캔들 상한** — 라벨 박스가 극값 봉의 y(=dot, 인자 `y`)를 넘어 캔들 쪽으로 파고드는
+  // **캔들 상한** — 라벨 박스가 극값 봉의 y(인자 `y`)를 넘어 캔들 쪽으로 파고드는
   // 것을 되돌린다. 라벨 x 는 극값 봉에 중심 정렬돼 있고 뷰포트의 다른 봉은 정의상 그보다
   // 낮으므로(저가 라벨이면 높으므로), **라벨 가로 구간의 캔들 스카이라인은 `y` 그 자체**다
   // — 봉을 스캔하지 않고 부등식 하나로 "라벨이 캔들을 덮지 않는다" 가 성립한다(이 지표는
@@ -232,7 +229,7 @@ export function placeExtremeLabel(
   // **최종 박스를 전수로 다시 교차 검사**한다 — 술어 하나로 세 경로가 전부 잡힌다.
   // 겹쳐 있으면 라벨을 좌우로 밀어 rect 바깥의 빈 x 로 옮기고 앵커는 **가장자리로
   // 되돌린다**(후보를 가장자리 기준으로 검증했으므로 반환도 그것이어야 일관된다).
-  // dot 에서 멀어진 만큼은 렌더 단 ㄱ자 리더선이 잇는다.
+  // 극값 봉에서 멀어진 만큼은 렌더 단 ㄱ자 리더선이 잇는다.
   let slidX = placedX;
   const validRects = avoidRects.filter(isFiniteRect);
   if (validRects.length > 0) {

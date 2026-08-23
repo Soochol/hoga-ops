@@ -4,10 +4,10 @@ import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
 import {
-  AskPeakSegmentsPrimitive,
+  PeakWallSegmentsPrimitive,
   type PeakWallLabelSide,
   type PeakWallSegment,
-} from '../chart/AskPeakSegmentsPrimitive';
+} from '../chart/PeakWallSegmentsPrimitive';
 import { PeakWallRankArrowsPrimitive } from '../chart/PeakWallRankArrowsPrimitive';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
@@ -67,13 +67,13 @@ function renderOverlay(side: PeakWallLabelSide, state: PeakWallRenderState = wal
     }),
   } as unknown as IChartApi;
   const series = {
-    attachPrimitive: vi.fn((primitive: AskPeakSegmentsPrimitive) => {
+    attachPrimitive: vi.fn((primitive: PeakWallSegmentsPrimitive) => {
       attached.push(primitive);
       primitive.attached({
         chart,
         series: series as unknown as ISeriesApi<SeriesType>,
         requestUpdate: vi.fn(),
-      } as unknown as Parameters<AskPeakSegmentsPrimitive['attached']>[0]);
+      } as unknown as Parameters<PeakWallSegmentsPrimitive['attached']>[0]);
     }),
     detachPrimitive: vi.fn(),
   } as unknown as ISeriesApi<SeriesType>;
@@ -90,7 +90,7 @@ function renderOverlay(side: PeakWallLabelSide, state: PeakWallRenderState = wal
 }
 
 const segmentsOnly = (a: readonly unknown[]) =>
-  a.filter((p): p is AskPeakSegmentsPrimitive => p instanceof AskPeakSegmentsPrimitive);
+  a.filter((p): p is PeakWallSegmentsPrimitive => p instanceof PeakWallSegmentsPrimitive);
 const arrowsOnly = (a: readonly unknown[]) =>
   a.filter((p): p is PeakWallRankArrowsPrimitive => p instanceof PeakWallRankArrowsPrimitive);
 

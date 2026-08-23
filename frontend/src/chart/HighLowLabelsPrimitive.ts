@@ -19,11 +19,9 @@ import { resolveTokensThemed } from '../util/tokens';
 import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
 import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
-import { peakXFromCoordinate, xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
+import { peakXFromCoordinate, xCoordinateOrNearest } from './PeakWallSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
 import {
-  DOT_RADIUS_PX,
-  DOT_RING_PX,
   HIGHLOW_FONT_PX,
   HIGHLOW_FONT_WEIGHT,
   LABEL_BOX_RADIUS_PX,
@@ -318,7 +316,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         // 극값 **가격선** — pane 전폭 수평 점선. 극값 봉의 x(`xc`)가 아니라 가격만으로
         // 성립하므로 xc 게이트보다 **앞**에 둔다(우측 빈 띠 등으로 xc 가 null 이어도
-        // 레벨은 유효하다). 맨 앞에 그려 dot·칩이 나중에 그 위를 덮게 한다.
+        // 레벨은 유효하다). 맨 앞에 그려 리더선·칩이 나중에 그 위를 덮게 한다.
         if (item.line.on) {
           strokeLevelLine(ctx, yc, paneWidth, item.line.color || item.color, item.line.width, LEVEL_LINE_DASH);
         }
@@ -329,14 +327,14 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         const boxWidth = labelBoxWidth(measureTextCached(ctx, text));
         const label = placeExtremeLabel(item.place, xc, yc, boxWidth, paneWidth, paneHeight, avoidRects);
 
-        // 라벨 박스의 dot 쪽 모서리 y(above=박스 bottom, below=박스 top). dot 과의 세로
-        // 구간을 리더선으로 잇는다. 극값이 가장자리 근처면 구간이 짧아 리더선 생략.
+        // 라벨 박스의 극값점 쪽 모서리 y(above=박스 bottom, below=박스 top). 극값 가격과의
+        // 세로 구간을 리더선으로 잇는다. 극값이 가장자리 근처면 구간이 짧아 리더선 생략.
         const labelInnerY = label.place === 'above'
           ? label.y + LABEL_HEIGHT_PX
           : label.y - LABEL_HEIGHT_PX;
         const leaderHeight = Math.abs(yc - labelInnerY);
-        // 라벨이 dot 의 x 에서 비켜난 거리. 가로 슬라이드(회피)와 좌우 가장자리 클램프
-        // 둘 다 여기에 값을 남긴다 — 어느 쪽이든 리더선이 ㄱ자로 이어 줘야 dot 과 칩이
+        // 라벨이 극값 봉의 x 에서 비켜난 거리. 가로 슬라이드(회피)와 좌우 가장자리 클램프
+        // 둘 다 여기에 값을 남긴다 — 어느 쪽이든 리더선이 ㄱ자로 이어 줘야 극값점과 칩이
         // 끊기지 않는다(옛 세로 전용 리더선은 클램프 케이스에서 이미 끊겨 있었다).
         const leaderDx = Math.abs(label.x - xc);
 
@@ -351,31 +349,21 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
           // 0.5 오프셋 — 1px 선을 픽셀 격자에 앉혀 흐릿함을 막는다.
-          const dotX = Math.round(xc) + 0.5;
+          const barX = Math.round(xc) + 0.5;
           const chipX = Math.round(label.x) + 0.5;
-          // ㄱ자: 칩의 dot 쪽 모서리에서 **수평**으로 dot 의 x 까지 간 뒤 **수직**으로
-          // dot 까지. 수평 구간은 방금 피해 온 회피 rect(레전드 등)의 y 대역을 지나지만,
+          // ㄱ자: 칩의 극값점 쪽 모서리에서 **수평**으로 극값 봉의 x 까지 간 뒤 **수직**으로
+          // 극값 가격까지. 수평 구간은 방금 피해 온 회피 rect(레전드 등)의 y 대역을 지나지만,
           // 0.45 알파 1px 점선인 데다 레전드는 DOM 이라 어차피 그 위에 그려진다 — 감수한다.
-          if (Math.abs(chipX - dotX) >= 1) {
+          if (Math.abs(chipX - barX) >= 1) {
             ctx.moveTo(chipX, labelInnerY);
-            ctx.lineTo(dotX, labelInnerY);
+            ctx.lineTo(barX, labelInnerY);
           } else {
-            ctx.moveTo(dotX, labelInnerY);
+            ctx.moveTo(barX, labelInnerY);
           }
-          ctx.lineTo(dotX, yc);
+          ctx.lineTo(barX, yc);
           ctx.stroke();
           ctx.restore();
         }
-
-        // dot — 극값 가격 위치. 배경색 링으로 같은 방향색 캔들 위에서도 파묻히지 않는다.
-        ctx.beginPath();
-        ctx.arc(xc, yc, DOT_RADIUS_PX + DOT_RING_PX, 0, Math.PI * 2);
-        ctx.fillStyle = tokens.bg;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(xc, yc, DOT_RADIUS_PX, 0, Math.PI * 2);
-        ctx.fillStyle = item.color;
-        ctx.fill();
 
         // 칩 — 앵커(label.y)는 pane-가장자리 쪽 모서리(above=top, below=bottom).
         const boxTop = label.place === 'above' ? label.y : label.y - LABEL_HEIGHT_PX;
@@ -414,11 +402,17 @@ class HighLowLabelsPaneView implements IPrimitivePaneView {
 
 /**
  * /live 캔들 pane 의 **고저 극값 라벨**(CONTEXT.md `High/Low Extreme Labels`).
- * 현재 보이는 뷰포트의 최고가 봉(빨강)·최저가 봉(파랑)에 dot 을 극값 가격 위치에 찍고,
- * `<가격>원 (<±극값 대비율>%, <시각>)` 라벨을 캔들과 겹치지 않게 pane 상단(고가)·하단(저가)
- * 가장자리에 고정하며, dot↔라벨을 옅은 세로 리더선으로 잇는다. 설정에서 **극값
- * 가격선**(고가·저가 각각 독립)을 켜면 그 가격에 pane 전폭 수평 점선을 함께 긋는다 —
- * 지지·저항 레벨로 읽는 용도라 극값 봉 이전 구간까지 잘리지 않고 이어진다.
+ * 현재 보이는 뷰포트의 최고가 봉(빨강)·최저가 봉(파랑)에 대해 `<가격>원 (<±극값 대비율>%)`
+ * 칩을 캔들과 겹치지 않게 pane 상단(고가)·하단(저가) 가장자리에 고정하고, 극값 가격
+ * 지점↔칩을 옅은 리더선(자리를 비켜 놓였으면 ㄱ자)으로 잇는다.
+ *
+ * **극값 지점의 점(dot)은 2026-08-23 에 뺐다** — 지름 9px 불투명 원이라 그 봉의 꼭짓점을
+ * 정확히 덮었는데(줌아웃 실측 barSpacing 1.6px 기준 약 6봉, 기본 줌에서 1~2봉), 같은
+ * 지점을 리더선 종점이 이미 가리키고 있었다. 그래서 이제 "어느 봉인가" 는 리더선의
+ * 수직 구간 x 하나가 말한다 — 칩에서 시각을 뺀 것과 같은 방향의 결정이다.
+ *
+ * 설정에서 **극값 가격선**(고가·저가 각각 독립)을 켜면 그 가격에 pane 전폭 수평 점선을
+ * 함께 긋는다 — 지지·저항 레벨로 읽는 용도라 극값 봉 이전 구간까지 잘리지 않고 이어진다.
  *
  * DOM 오버레이가 아니라 primitive 인 이유: DOM 은 `subscribeVisibleLogicalRangeChange`
  * → rAF → React 렌더 경로라, lwc 가 이미 rAF **안에서** 구독을 발화하므로 예약된 rAF 는

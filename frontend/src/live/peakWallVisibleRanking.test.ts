@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { IRange, Time } from 'lightweight-charts';
-import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import {
   PEAK_WALL_LEGEND_RANK_LIMIT,
   peakWallRankLegendCells,

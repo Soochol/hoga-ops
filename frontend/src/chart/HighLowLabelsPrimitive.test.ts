@@ -143,7 +143,7 @@ function draw(prim: HighLowLabelsPrimitive, c: CanvasRenderingContext2D, size?: 
   prim.paneViews()[0].renderer()?.draw(makeTarget(c, size?.w, size?.h));
 }
 
-/** fillText 호출을 [텍스트, x, y] 로 — 칩 텍스트만 그린다(dot·리더선은 path). */
+/** fillText 호출을 [텍스트, x, y] 로 — 칩 텍스트만 그린다(리더선은 path). */
 function texts(c: ReturnType<typeof makeCanvasSpy>): { text: string; x: number; y: number }[] {
   return c.fillText.mock.calls.map(([text, x, y]) => ({ text: String(text), x: Number(x), y: Number(y) }));
 }
@@ -201,7 +201,7 @@ describe('HighLowLabelsPrimitive', () => {
     expect(texts(second)[0].text).toContain('37,500원');
   });
 
-  it('draws a dashed leader line from the dot to the label when they are far enough apart', () => {
+  it('draws a dashed leader line from the extreme point to the label when far enough apart', () => {
     const stubs = makeAxisStubs({ priceToCoordinate: () => 150 });
     const { prim } = attach(stubs, () => snapshot());
     const c = makeCanvasSpy();
@@ -209,12 +209,12 @@ describe('HighLowLabelsPrimitive', () => {
     draw(prim, c, { w: 760, h: 300 });
 
     expect(c.setLineDash).toHaveBeenCalled();
-    // dot(y=150) ↔ 상단 라벨 아래 모서리(6+16=22) 사이를 잇는 세로 구간.
+    // 극값 가격(y=150) ↔ 상단 라벨 아래 모서리(6+16=22) 사이를 잇는 세로 구간.
     expect(c.moveTo).toHaveBeenCalledWith(expect.any(Number), 22);
   });
 
-  it('draws an L-shaped leader when the label slid sideways off the dot', () => {
-    // 레전드가 pane 좌측 절반을 덮고 dot 이 위쪽(y=60)이면 고가 라벨은 세로로 자리가
+  it('draws an L-shaped leader when the label slid sideways off the extreme bar', () => {
+    // 레전드가 pane 좌측 절반을 덮고 극값이 위쪽(y=60)이면 고가 라벨은 세로로 자리가
     // 없어 가로로 비킨다 → 리더선이 ㄱ자가 된다. 판별식은 **수평 구간의 존재**:
     // 칩 아래 모서리 높이(6+16=22)에서 y 가 그대로인 lineTo 가 있어야 한다.
     const stubs = makeAxisStubs({ priceToCoordinate: () => 60, timeToCoordinate: () => 100 });
@@ -226,13 +226,13 @@ describe('HighLowLabelsPrimitive', () => {
 
     const horizontal = c.lineTo.mock.calls.filter(([, y]) => Number(y) === 22);
     expect(horizontal.length).toBeGreaterThan(0);
-    // 수평 구간의 끝은 dot 의 x — 거기서 수직으로 dot 까지 내려간다.
+    // 수평 구간의 끝은 극값 봉의 x — 거기서 수직으로 극값 가격까지 내려간다.
     expect(c.lineTo).toHaveBeenCalledWith(horizontal[0][0], 60);
     // 칩 자체는 레전드 우측 바깥으로 나가 있다.
     expect(texts(c)[0].x).toBeGreaterThan(400);
   });
 
-  it('keeps the leader purely vertical when the label sits on the dot', () => {
+  it('keeps the leader purely vertical when the label sits on the extreme bar', () => {
     // 무변화 가드 — 회피 대상이 없으면 슬라이드가 없고 리더선도 세로 한 줄이다.
     const stubs = makeAxisStubs({ priceToCoordinate: () => 150, timeToCoordinate: () => 100 });
     const { prim } = attach(stubs, () => snapshot());
@@ -241,6 +241,21 @@ describe('HighLowLabelsPrimitive', () => {
     draw(prim, c, { w: 760, h: 300 });
 
     expect(c.lineTo.mock.calls.filter(([, y]) => Number(y) === 22)).toHaveLength(0);
+  });
+
+  it('marks the extreme with a leader line only — no dot on the bar tip', () => {
+    // 2026-08-23 결정의 가드. 이 primitive 에서 `arc` 를 쓰던 곳은 극값 dot 하나뿐이었다
+    // (칩 모서리는 `arcTo`, 리더선·레벨선은 직선). 따라서 arc 가 한 번도 안 불리는 것이
+    // "봉 꼭짓점에 점을 얹지 않는다" 와 동치다 — dot 을 되살리면 여기서 빨개진다.
+    const stubs = makeAxisStubs({ priceToCoordinate: () => 150 });
+    const { prim } = attach(stubs, () => snapshot());
+    const c = makeCanvasSpy();
+
+    draw(prim, c, { w: 760, h: 300 });
+
+    expect(c.arc).not.toHaveBeenCalled();
+    // 표시가 통째로 사라진 게 아니라 리더선으로 옮겨간 것임을 같이 못박는다.
+    expect(c.lineTo).toHaveBeenCalledWith(expect.any(Number), 150);
   });
 
   it('derives wall-chip avoid rects at draw time and yields the high label past them', () => {
@@ -436,7 +451,7 @@ describe('HighLowLabelsPrimitive', () => {
 
       draw(prim, c, PANE);
 
-      // 칩·dot 은 x 가 없어 skip 되지만 수평선은 남는다.
+      // 칩·리더선은 x 가 없어 skip 되지만 수평선은 남는다.
       expect(levelLines(c).from).toEqual([40.5, 220.5]);
       expect(c.fillText).not.toHaveBeenCalled();
     });

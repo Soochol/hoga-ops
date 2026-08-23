@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Time } from 'lightweight-charts';
 import type { Candle } from '../api/types';
-import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 

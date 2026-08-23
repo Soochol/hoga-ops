@@ -1,17 +1,21 @@
 // 당일 최대벽 — 「보이는 영역」 랭킹(순수).
 //
 // 화면에 보이는 시간 범위와 겹치는 벽 세그먼트를 **잔량 내림차순**으로 상위 N개 고른다.
-// 소비처가 둘이고 **같은 함수를 써야 한다**:
-//   1. 선 강조 — `styleVisibleMaxAskPeakSegments`(보이는 영역 최대벽 색·두께)
-//   2. 레전드 값 — `peakWallRankLegendCells`(PaneLegendOverlay 의 flag 행)
-// 랭킹을 두 벌 두면 **동점(같은 잔량)에서 조용히 갈린다** — 선은 A 를 강조하는데
-// 레전드 1위는 B 가 되는 식이다. 그래서 여기 한 곳에만 둔다.
+// 소비처가 셋이고 **같은 함수를 써야 한다**:
+//   1. 레전드 값 — `peakWallRankLegendCells`(PaneLegendOverlay 의 flag 행)
+//   2. 순위 화살표 — `PeakWallRankArrowsPrimitive` 가 draw 시점에 고른다
+//   3. 고저 극값 라벨 회피 — 그려지는 화살표만 피하려고 draw 시점에 같은 랭킹을 다시 한다
+// 랭킹을 여러 벌 두면 **동점(같은 잔량)에서 조용히 갈린다** — 레전드 1위와 화살표 ① 이
+// 다른 벽을 가리키는 식이다. 그래서 여기 한 곳에만 둔다.
+//
+// (넷째 소비처였던 「보이는 영역 최대벽」 색 강조는 2026-08-23 에 제거됐다 — 레전드와
+// 화살표의 ①②③ 이 같은 정보를 순위까지 정확히 날라 색 채널이 중복이었다.)
 //
 // ⚠ 랭킹 대상은 **필터를 모두 통과한 뒤**의 세그먼트여야 한다(cutoff · MA · 일봉 MA ·
 // 체결된 벽 개수). 레전드가 화면에 없는 벽을 이름 부르면 안 된다.
 
 import type { IRange, Time } from 'lightweight-charts';
-import type { PeakWallSegment } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import type { FlagLegendValueCell } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
 
