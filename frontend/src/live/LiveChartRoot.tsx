@@ -110,10 +110,7 @@ import {
 } from './useDayBidPeaks';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
-import {
-  rightmostVisibleCandleCutoff,
-  type VisibleTimeCutoff,
-} from './peakWallVisibleCutoff';
+import { nextVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import DepthHeatmapOverlay from './DepthHeatmapOverlay';
 import DepthDeltaOverlay from './DepthDeltaOverlay';
@@ -1816,14 +1813,25 @@ export function LiveChartRoot({
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
 
+  // 「보이는 최신 봉 기준」이 **한쪽이라도 켜져 있을 때만** 구독한다. 이 값은 그 pref 가
+  // 꺼져 있으면 아래에서 통째로 버려지는데(`askVisibleTimeCutoffForRender`), 종전엔 그래도
+  // 팬 프레임마다 setState 를 해서 이 컴포넌트(훅 수백 개)를 통째로 재렌더했다. 두 pref 의
+  // 기본값이 **둘 다 false** 라 대다수 사용자가 아무 이득 없이 그 비용을 내고 있었다.
+  const visibleTimeCutoffNeeded = askPeakVisibleTimeCutoff || bidPeakVisibleTimeCutoff;
   useEffect(() => {
-    if (!chart || !cb || !isMinuteTimeframe(timeframe)) {
-      setVisibleTimeCutoff(null);
+    if (!visibleTimeCutoffNeeded || !chart || !cb || !isMinuteTimeframe(timeframe)) {
+      // 이미 null 이면 setState 자체를 건너뛴다 — 안 그러면 pref 가 꺼진 상태에서
+      // deps 가 바뀔 때마다(캔들 갱신 등) 무의미한 재렌더가 한 번씩 난다.
+      setVisibleTimeCutoff((prev) => (prev === null ? prev : null));
       return undefined;
     }
     const timeScale = chart.timeScale();
+    // **같은 봉이면 이전 참조를 유지한다** — `nextVisibleTimeCutoff` 가 그 비교를 갖는다.
+    // 팬 한 번의 프레임 대부분이 그 경우고(왼쪽으로 밀거나 봉 하나 안에서 줌하면 오른쪽
+    // 끝 봉은 그대로), React 가 `Object.is` 로 그 갱신을 버려 재렌더가 사라진다.
     const update = () => {
-      setVisibleTimeCutoff(rightmostVisibleCandleCutoff(
+      setVisibleTimeCutoff((prev) => nextVisibleTimeCutoff(
+        prev,
         cb.candles,
         timeScale.getVisibleRange(),
         axis,
@@ -1835,7 +1843,7 @@ export function LiveChartRoot({
     return () => {
       safeUnsubscribe(() => timeScale.unsubscribeVisibleTimeRangeChange(update));
     };
-  }, [chart, cb, cb?.candles, axis, timeframe]);
+  }, [chart, cb, cb?.candles, axis, timeframe, visibleTimeCutoffNeeded]);
 
   const askVisibleTimeCutoffForRender = askPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
   const bidVisibleTimeCutoffForRender = bidPeakVisibleTimeCutoff ? visibleTimeCutoff : null;

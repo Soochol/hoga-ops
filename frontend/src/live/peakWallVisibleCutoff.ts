@@ -34,6 +34,23 @@ function filterCandidatesByCutoff(
   return candidates.filter((candidate) => candidate.t_ms <= cutoff.tMs);
 }
 
+/**
+ * 두 컷오프가 **같은 봉을 가리키는가**.
+ *
+ * `rightmostVisibleCandleCutoff` 는 호출마다 **새 객체**를 낸다. 그래서 그대로 setState 하면
+ * 값이 그대로여도 identity 가 달라 재렌더가 난다 — 팬 한 번은 프레임을 수십 개 내는데,
+ * 그 대부분은 **오른쪽 끝 봉이 그대로**다(왼쪽으로 밀거나 봉 하나 안에서 줌할 때). 호출부가
+ * 이 함수로 걸러 같으면 이전 참조를 유지하면 React 가 그 프레임의 재렌더를 통째로 건너뛴다.
+ */
+export function sameVisibleTimeCutoff(
+  a: VisibleTimeCutoff | null,
+  b: VisibleTimeCutoff | null,
+): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return a.date === b.date && a.tMs === b.tMs;
+}
+
 export function rightmostVisibleCandleCutoff(
   candles: readonly Candle[],
   visibleRange: IRange<Time> | null,
@@ -163,4 +180,27 @@ export function applyPeakVisibleTimeCutoff<T extends PeakWithCandidates>(
     });
   }
   return out;
+}
+
+/**
+ * 컷오프 state 의 다음 값 — **같은 봉이면 이전 참조를 그대로 돌려준다.**
+ *
+ * `rightmostVisibleCandleCutoff` 가 호출마다 새 객체를 내므로, 그 결과를 곧장 setState 하면
+ * 값이 그대로여도 재렌더가 난다. 팬 한 번은 프레임을 수십 개 내는데 그 대부분은 오른쪽 끝
+ * 봉이 그대로다(왼쪽으로 밀거나 봉 하나 안에서 줌할 때) — 그 프레임들의 재렌더가 통째로
+ * 낭비였다. React 는 `Object.is` 로 같으면 그 갱신을 버리므로, 이전 참조를 돌려주는 것만으로
+ * 재렌더가 사라진다.
+ *
+ * 순수 함수로 떼어 둔 이유: 「참조가 보존되는가」를 컴포넌트 없이 직접 잴 수 있어야 한다.
+ * 호출부에 인라인으로 두면 그 비교를 지워도 아무 테스트도 빨개지지 않는다.
+ */
+export function nextVisibleTimeCutoff(
+  prev: VisibleTimeCutoff | null,
+  candles: readonly Candle[],
+  visibleRange: IRange<Time> | null,
+  axis: VirtualAxis,
+  bucketMs?: number,
+): VisibleTimeCutoff | null {
+  const next = rightmostVisibleCandleCutoff(candles, visibleRange, axis, bucketMs);
+  return sameVisibleTimeCutoff(prev, next) ? prev : next;
 }
