@@ -19,13 +19,28 @@
  * 보통 200봉 안팎 — 배율 차이가 2~3자릿수라 "그 기간을 그대로 보여준다" 는 애초에
  * 성립하지 않는다. 그래서 옮기는 것은 **위치 하나**이고 폭은 소비 창의 현재 값이다.
  *
- * ── 착지: 그 날 **마지막 봉**을 화면 오른쪽 끝에 ──────────────────────────
- * 스냅 자체는 `cursorSync.ts` 의 `snapToLastOfKstDay` 를 **그대로 쓴다**. 일봉→분봉
- * 크로스헤어가 이미 같은 질문("그 날의 어느 봉인가")에 답하고 있고, 두 기능이 다른
- * 봉에 서면 같은 조작이 두 답을 낸다. 그 결정의 사연(첫 봉은 날짜 구분선과 겹친다)은
- * 그쪽 주석이 갖는다.
+ * ── 착지: 그 **칸의 마지막 봉**을 화면 오른쪽 끝에 ────────────────────────
+ * 발행이 칸의 구간(`fromMs`~`toMs`)을 보내고, 소비 창이 그 안의 마지막 봉에 앉는다.
+ * 일봉이면 「그 날 마지막 봉」이라 종전과 결과가 같다.
+ *
+ * ⚠ **여기서 크로스헤어와 갈라진다 — 의도한 분기다.** 종전엔 `cursorSync.ts` 의
+ * `snapToLastOfKstDay` 를 그대로 썼고 근거는 "두 기능이 다른 봉에 서면 안 된다" 였다.
+ * 그 근거는 **일봉에서만** 성립한다: 주·월봉의 `ts_ms` 는 칸의 **시작**이라 날짜 일치
+ * 스냅은 칸의 첫 거래일로 간다(실측 2026-08-23: 주봉 08-18, 월봉 08-03 — 최신 봉을
+ * 보고 있는데도 월봉은 3주가 어긋났다). 크로스헤어는 "지금 가리키는 봉이 무엇인가" 라
+ * 칸 시작이 옳고, 점프는 "그 칸을 분봉에서 열어라" 라 칸 끝이 옳다. **크로스헤어 쪽은
+ * 건드리지 않는다.**
+ *
+ * 칸 안에 봉이 하나도 없으면 앉지 않고 기다린다(백필 대기) — 종전 `snapToLastOfKstDay`
+ * 가 그 날 봉이 없을 때 하던 것과 같은 성질이다. 칸 밖(더 과거)의 봉으로 내려앉지
+ * 않으므로 백필 도중에 엉뚱한 곳에 조기 착지하는 일이 없다.
  */
-import { CALENDAR_TIMEFRAMES, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import {
+  CALENDAR_TIMEFRAMES,
+  isMinuteTimeframe,
+  type CalendarTimeframe,
+  type LiveTimeframe,
+} from '../state/livePage';
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import type { LogicalRange } from './rangeSync';
 
@@ -38,7 +53,20 @@ import type { LogicalRange } from './rangeSync';
  * 나가려 할 때마다 도로 끌려온다. seq 당 한 번이 그 루프를 끊는다.
  */
 export type JumpPublication = {
-  /** 목적지 실시각. 그 날의 어느 시각이어도 좋다 — 소비 창이 KST 날짜로만 읽는다. */
+  /**
+   * 칸의 **시작**(= 발행 창에서 보이는 가장 오른쪽 캔들의 `ts_ms`).
+   *
+   * 소비 창의 **백필 목표**다. 착지 상한(`toMs`)을 백필에 물리면 로드 구간이
+   * `[칸 끝, 지금]` 이 되어 정작 착지 대상인 그 칸의 봉이 영영 안 온다 — 먼 과거
+   * 주·월봉이 영원히 「불러오는 중」에 머문다.
+   */
+  fromMs: number;
+  /**
+   * 칸의 **포함 상한**. 소비 창은 이 값 이하의 마지막 봉에 앉는다.
+   *
+   * 일봉이면 그 날 끝이라 종전 계약(「그 날의 어느 시각」)과 결과가 같다. 주·월봉에서만
+   * 달라진다 — 규칙과 근거는 `minuteJumpDestination.bucketEndMs`.
+   */
   toMs: number;
   seq: number;
   origin: SidebarCursorOrigin;
@@ -54,6 +82,30 @@ export type JumpPublication = {
 export function jumpDateLabel(yyyymmdd: string, todayYyyymmdd: string): string {
   const md = `${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
   return yyyymmdd.slice(0, 4) === todayYyyymmdd.slice(0, 4) ? md : `${yyyymmdd.slice(2, 4)}-${md}`;
+}
+
+/**
+ * 「분봉으로」 버튼이 **누르기 전에** 말하는 목적지 — 칸 단위 표기.
+ *
+ * ⚠ **날짜 하나로 쓰지 않는다(주·월).** 착지는 그 칸의 마지막 *거래일*인데, 그것이
+ * 어느 날인지는 **분봉 창만** 안다(거래일 달력이 그쪽 캔들에만 있다). 발행 창이 아는
+ * 것은 달력상의 칸 경계뿐이라, 상한 날짜를 그대로 쓰면 **거래일이 아닌 날**을 약속하게
+ * 된다 — 실측(2026-08-23, 일요일): 주봉·월봉 모두 `08-23` 을 보여줬는데 실제 착지는
+ * `08-21` 이다. 일봉이 `08-21` 인 옆에서 주봉이 `08-23` 이면 더 헷갈린다.
+ *
+ * 그래서 칸을 **칸으로** 말한다: 일 `08-21` · 주 `08-18 주` · 월 `08월`. 정확한 날짜는
+ * 착지한 뒤 점프 칩이 말한다(그때는 앉은 봉을 알고 있다).
+ */
+export function jumpBucketLabel(
+  tf: CalendarTimeframe,
+  fromYyyymmdd: string,
+  todayYyyymmdd: string,
+): string {
+  const thisYear = fromYyyymmdd.slice(0, 4) === todayYyyymmdd.slice(0, 4);
+  if (tf === 'D') return jumpDateLabel(fromYyyymmdd, todayYyyymmdd);
+  if (tf === 'W') return `${jumpDateLabel(fromYyyymmdd, todayYyyymmdd)} 주`;
+  const mm = fromYyyymmdd.slice(4, 6);
+  return thisYear ? `${mm}월` : `${fromYyyymmdd.slice(2, 4)}년 ${mm}월`;
 }
 
 /** 이 봉의 창이 점프를 **발행**하는가 — 캘린더 봉(일·주·월)뿐이다. */

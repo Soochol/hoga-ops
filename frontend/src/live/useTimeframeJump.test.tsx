@@ -4,7 +4,8 @@ import { useRef } from 'react';
 import { useTimeframeJump } from './useTimeframeJump';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
-import { earliestAllowedMinuteDate, todayKstYyyymmdd } from './liveDateTime';
+import { bucketEndMs } from './minuteJumpDestination';
+import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
 import type { SyncCandle } from '../chart/cursorSync';
 import type { VirtualAxis } from '../util/virtualAxis';
 
@@ -93,9 +94,15 @@ const flushFrame = async () => {
   await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
 };
 
-async function requestJump(toMs: number, origin: SidebarCursorOrigin = DAILY_ORIGIN) {
+/**
+ * 점프 발행. 인자가 **칸 시작**이고 상한은 그 날 끝으로 잡는다 — 일봉 발행의 모양이다
+ * (`bucketEndMs('D', …)` 와 같은 값). 주·월봉 칸은 개별 스펙이 직접 만든다.
+ */
+async function requestJump(fromMs: number, origin: SidebarCursorOrigin = DAILY_ORIGIN) {
   await act(async () => {
-    useLiveCursorStore.getState().requestTimeframeJump(toMs, origin);
+    useLiveCursorStore.getState().requestTimeframeJump(
+      fromMs, bucketEndMs('D', fromMs, Date.now()), origin,
+    );
   });
 }
 
@@ -259,6 +266,65 @@ describe('중단 — 사용자가 그 창을 만지면 포기한다', () => {
     rerender(<Consumer candles={FULL_CANDLES} />);
     await flushFrame();
     expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F1 — 주·월봉은 칸의 **마지막** 거래일로 간다.
+ *
+ * 실측(2026-08-23, 005930): 최신 봉을 보고 있는데도 주봉은 08-18, 월봉은 08-03 으로
+ * 떨어졌다(마지막 거래일은 08-21 — 월봉은 3주가 어긋났다). 캘린더 봉의 `ts_ms` 가 칸의
+ * **시작**이라 그것을 그대로 목적지로 쓴 결과다.
+ *
+ * 거래일 달력은 쓰지 않는다 — 발행은 **달력상의 칸 끝**만 주고, 그 안의 마지막 거래일을
+ * 고르는 일은 이 창이 자기 캔들로 한다.
+ */
+describe('캘린더 칸 — 마지막 거래일로 간다', () => {
+  /** 8/18(화)·8/20(목)·8/21(금) 봉. 8/17 은 대체공휴일이라 그 주 첫 거래일이 화요일이다. */
+  const WEEK_CANDLES: readonly SyncCandle[] = [
+    bar(4, 0), bar(4, 200), bar(2, 0), bar(1, 0), YESTERDAY_LAST,
+  ];
+
+  async function requestWeekJump() {
+    const fromMs = bar(4, 0).ts_ms;
+    await act(async () => {
+      useLiveCursorStore.getState().requestTimeframeJump(
+        fromMs, bucketEndMs('W', fromMs, Date.now()), DAILY_ORIGIN,
+      );
+    });
+  }
+
+  it('칸의 첫 거래일이 아니라 **마지막 봉**에 앉는다', async () => {
+    render(<Consumer candles={WEEK_CANDLES} />);
+    await requestWeekJump();
+    await flushFrame();
+    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
+  });
+
+  it('칩은 **앉은 봉의 날짜**를 말한다 — 상한(비거래일일 수 있다)이 아니라', async () => {
+    const { getByTestId } = render(<Consumer candles={WEEK_CANDLES} />);
+    await requestWeekJump();
+    await flushFrame();
+    expect(getByTestId('status').textContent).toBe('landed');
+    expect(getByTestId('date').textContent).toBe(realMsToYyyymmdd(YESTERDAY_LAST.ts_ms));
+  });
+
+  it('백필은 **칸 시작**을 목표로 한다 — 상한을 물리면 그 칸이 영영 안 온다', async () => {
+    const { getByTestId } = render(<Consumer candles={WEEK_CANDLES} />);
+    await requestWeekJump();
+    await flushFrame();
+    expect(getByTestId('backfill').textContent).toBe(realMsToYyyymmdd(bar(4, 0).ts_ms));
+  });
+
+  // 상한 이하의 마지막 봉을 그냥 고르면, 칸이 아직 비어 있을 때 **그 앞 칸의 봉**에
+  // 앉아 버린다. 백필 도중에 엉뚱한 구간으로 조기 착지하고 래치까지 걸려 되돌릴 수 없다.
+  it('칸이 아직 비어 있으면 그 앞 봉으로 내려앉지 않고 기다린다', async () => {
+    const BEFORE_WEEK: readonly SyncCandle[] = [bar(9, 0), bar(9, 200)];
+    const { getByTestId } = render(<Consumer candles={BEFORE_WEEK} />);
+    await requestWeekJump();
+    await flushFrame();
+    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(getByTestId('status').textContent).toBe('seeking');
   });
 });
 
