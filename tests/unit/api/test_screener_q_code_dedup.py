@@ -179,3 +179,28 @@ def test_value_conflicts_are_counted_not_hidden(tmp_path: Path) -> None:
 
     assert r.value_conflicts == 1
     assert r.corpus_rows_removed == 1
+
+
+def test_status_is_refreshed_when_now_ms_is_given(tmp_path: Path) -> None:
+    """파생 통계(`universe_size`)를 낡은 채 두지 않는다.
+
+    실행 후 상태 파일이 정리 **전** 종목 수를 들고 있으면, 다음 일일 갱신까지 「아는데
+    틀린 값」이 남는다. 화면에 안 나오더라도 파생 통계의 stale 은 이 리포가 반복해서
+    물린 실패 유형이다(#1424 조사에서 `prebackfill` 이름이 그랬듯).
+    """
+    import json
+    _seed(tmp_path, roster=["Q500023", "500023", "005930"], corpus=["Q500023", "500023", "005930"])
+
+    dedup_q_codes(tmp_path, dry_run=False, stamp="T", now_ms=1)
+
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert status["universe_size"] == 2, "정리 전 종목 수가 남았다"
+
+
+def test_status_is_left_alone_without_now_ms(tmp_path: Path) -> None:
+    """`now_ms` 없이는 상태 파일을 만들지 않는다 — 시각을 지어내지 않는다."""
+    _seed(tmp_path, roster=["Q500023", "500023"], corpus=["Q500023", "500023"])
+
+    dedup_q_codes(tmp_path, dry_run=False, stamp="T")
+
+    assert not (tmp_path / "status.json").exists()
