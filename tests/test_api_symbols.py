@@ -1139,12 +1139,26 @@ def test_all_etf_etn_codes_filters_by_security_type(monkeypatch):
     cache = [
         _hit_typed("005930", "stock"),   # 삼성전자 — 통과
         _hit_typed("069500", "etf"),     # KODEX 200 — 제외 대상
-        _hit_typed("Q500093", "etn"),    # ETN — 제외 대상
+        # 마스터는 ETN 을 **벗긴 형**으로 싣는다(`kiwoom_master.normalize_code`).
+        _hit_typed("500093", "etn"),     # ETN — 제외 대상
     ]
     monkeypatch.setattr(symbols_module, "_cache", cache)
 
     # etf/etn 만. 마스터에 없는 코드(리츠·펀드 등 파서 드롭분)는 미포함 → 호출처에서 통과.
-    assert symbols_module.all_etf_etn_codes() == frozenset({"069500", "Q500093"})
+    # **ETN 은 `Q` 형도 함께 낸다** — 스크리너 코퍼스가 그 형으로 들고 있어서, 없으면
+    # ETN 360종목이 「ETF 제외」를 일반주 행세로 통과한다(2026-08-23 실측).
+    assert symbols_module.all_etf_etn_codes() == frozenset({"069500", "500093", "Q500093"})
+
+
+def test_etn_q_variant_is_not_doubled(monkeypatch):
+    """벤더가 `Q` 형을 다시 보내도 `QQ…` 를 만들지 않는다.
+
+    지금은 마스터가 벗겨서 싣지만(`normalize_code`) 그 함수 자신이 "벤더가 다시 그렇게
+    보내면" 을 방어로 남겨 두었다. 여기서 `QQ500093` 이 나오면 대조가 통째로 빗나가
+    **조용히 아무것도 안 걸러진다** — fail-open 이라 화면에 신호가 없다.
+    """
+    monkeypatch.setattr(symbols_module, "_cache", [_hit_typed("Q500093", "etn")])
+    assert symbols_module.all_etf_etn_codes() == frozenset({"Q500093"})
 
 
 def test_all_etf_etn_codes_returns_none_when_master_not_loaded(monkeypatch):
