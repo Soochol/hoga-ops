@@ -62,7 +62,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api.screener_store import derive_adjusted
+from hoga.api.screener_store import derive_adjusted, write_status
 from hoga.util.atomic_write import atomic_write_parquet_df
 
 log = logging.getLogger(__name__)
@@ -159,10 +159,14 @@ def _merge_q_rows(
     return merged, {"removed": removed, "migrated": len(keep_idx), "conflicts": conflicts}
 
 
-def dedup_q_codes(sdir: Path, *, dry_run: bool = True, stamp: str | None = None) -> DedupReport:
+def dedup_q_codes(
+    sdir: Path, *, dry_run: bool = True, stamp: str | None = None, now_ms: int | None = None,
+) -> DedupReport:
     """`Q` 중복을 로스터·코퍼스에서 걷는다. **기본은 dry-run.**
 
     `stamp` 는 스냅샷 파일명 접미(테스트 재현성). 미지정이면 UTC 타임스탬프.
+    `now_ms` 를 주면 `status.json` 의 통계까지 갱신한다 — 안 주면 그 파일은 낡은 채로
+    남고 다음 일일 갱신(`run_update`)이 덮는다.
     """
     roster_path = sdir / "stocks.parquet"
     unadjusted_path = sdir / "daily_unadjusted.parquet"
@@ -194,10 +198,21 @@ def dedup_q_codes(sdir: Path, *, dry_run: bool = True, stamp: str | None = None)
 
     atomic_write_parquet_df(roster_path, roster.filter(~pl.col("code").is_in(list(drop))))
     atomic_write_parquet_df(unadjusted_path, merged)
-    derive_adjusted(
+    ms = derive_adjusted(
         unadjusted_path, sdir / "daily_adjusted.parquet",
         factors_path=sdir / "factors.parquet", unadjusted_df=merged,
     )
+    # `status.json` 의 `universe_size` 는 코퍼스에서 파생된 통계다. 안 고치면 이 정리
+    # 직후부터 다음 일일 갱신까지 **아는데 틀린 값**이 남는다 — 화면에 안 나오더라도
+    # 파생 통계를 낡은 채 두는 것은 이 리포가 반복해서 물린 실패 유형이다.
+    if now_ms is not None:
+        last = merged.select(pl.col("date").max()).item()
+        write_status(
+            sdir / "status.json",
+            last_raw_date=last.strftime("%Y%m%d") if last is not None else None,
+            universe_size=merged.select(pl.col("code").n_unique()).item(),
+            derive_ms=ms, now_ms=now_ms,
+        )
     log.info(
         "q-dedup: 로스터 %d행 제거 · 코퍼스 %d행 제거 + %d행 이관 "
         "(중복 %d · 고아 %d · 보류 %d · 값충돌 %d)",
