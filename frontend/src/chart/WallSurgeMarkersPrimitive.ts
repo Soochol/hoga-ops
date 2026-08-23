@@ -16,7 +16,7 @@ import {
   LABEL_BOX_X_PAD_PX,
   LABEL_BOX_Y_PAD_PX,
   LABEL_FONT_PX,
-} from './AskPeakSegmentsPrimitive';
+} from './PeakWallSegmentsPrimitive';
 
 /**
  * 호가벽 급증 마커 — 캔들 pane 위, **벽이 선 가격에** 삼각형으로 찍는다.
@@ -216,7 +216,7 @@ class WallSurgeMarkersRenderer implements IPrimitivePaneRenderer {
     // 삼각형 몸통 바깥쪽에 칩을 붙인다 — 매도는 더 위로, 매수는 더 아래로.
     // 다만 pane 경계를 넘으면 **안쪽으로 물린다**: 최저가 근처 매수벽은 칩이 아래로
     // 밀려 통째로 잘리는데, 그러면 "라벨 N 개" 약속이 개수부터 어긋난다
-    // (`AskPeakSegmentsPrimitive` 의 `maxBaselineY` 와 같은 이유·같은 처방).
+    // (`PeakWallSegmentsPrimitive` 의 `maxBaselineY` 와 같은 이유·같은 처방).
     const half = font / 2 + padY;
     const chipCy = clamp(
       m.side === 'ask' ? baseY - font : baseY + font,

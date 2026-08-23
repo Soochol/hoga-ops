@@ -1,5 +1,5 @@
 import type { Time } from 'lightweight-charts';
-import { peakWallChipGeometry, type PeakWallLabelSide } from './AskPeakSegmentsPrimitive';
+import { peakWallChipGeometry, type PeakWallLabelSide } from './PeakWallSegmentsPrimitive';
 import { RENDERED_ROOT_PX, SIZE_TOKENS } from '../styles/design-tokens';
 
 /**
@@ -117,7 +117,7 @@ function highLowLabelBox(anchorY: number, place: ExtremeLabelPlace): VerticalBox
  * 예전에는 이 함수가 렌더 기하를 복제했는데, 어긋나도 타입 에러가 나지 않아 고저 라벨이
  * 있지도 않은 칩을 피해 pane 중간으로 표류하는 유령 회피를 낳았다.
  *
- * 회피 배치(`layoutAskPeakLabels`) **이전**의 희망 위치라는 점은 종전과 같다 — 스택으로 밀린
+ * 회피 배치(`layoutPeakWallLabels`) **이전**의 희망 위치라는 점은 종전과 같다 — 스택으로 밀린
  * 칩은 이 rect보다 아래에 있을 수 있고, 그 오차는 렌더 단 2D 교차 검사가 흡수한다.
  * 폭은 canvas measureText 없이 문자 수로 근사한다(레이아웃은 순수 함수로 테스트된다).
  */

@@ -10,7 +10,7 @@ import type {
   Time,
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
-import { xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
+import { xCoordinateOrNearest } from './PeakWallSegmentsPrimitive';
 
 export type TradeVolumePocSegment = {
   time0: Time;

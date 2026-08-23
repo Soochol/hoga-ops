@@ -11,7 +11,7 @@ import type {
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { rankVisiblePeakSegments } from '../live/peakWallVisibleRanking';
-import { xCoordinateOrNearest, type PeakWallLabelSide } from './AskPeakSegmentsPrimitive';
+import { xCoordinateOrNearest, type PeakWallLabelSide } from './PeakWallSegmentsPrimitive';
 
 /**
  * 당일 최대벽 **순위 화살표** — 보이는 영역 잔량 상위 N 개의 벽이 걸린 분봉을 캔들

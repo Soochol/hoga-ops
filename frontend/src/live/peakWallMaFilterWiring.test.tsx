@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
-import type { PeakWallLabelSide } from '../chart/AskPeakSegmentsPrimitive';
+import type { PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
