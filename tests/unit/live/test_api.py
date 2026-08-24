@@ -1,5 +1,7 @@
 """Stage 7-α / 7-β — /api/live router."""
 
+import warnings
+
 import polars as pl
 import pytest
 from fastapi import FastAPI
@@ -80,6 +82,36 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
         # 양보 기계(#1038 기계 ④)의 관측치 — 인터랙티브가 백필에 밀리지 않는지를
         # 운영에서 보는 유일한 신호다.
         assert "background_deferred_due_to_user_visible" in scheduler
+
+
+def test_live_status_serializes_without_pydantic_warnings(tmp_path) -> None:
+    """상태 응답을 직렬화할 때 pydantic 경고가 **한 건도** 없어야 한다.
+
+    `_get_status` 는 `model_copy(update=...)` 로 필드를 덧붙이는데 **그 경로는 검증을
+    하지 않는다.** 그래서 모델로 선언된 필드에 raw dict 를 대입해도 조용히 통과하고,
+    직렬화 때가 되어서야 `PydanticSerializationUnexpectedValue` 가 **경고로** 흐른다 —
+    응답은 우연히 맞게 나가지만 검증을 건너뛴 채다(#1571 이 `rest_capacity_scheduler`
+    를 모델로 좁히면서 실제로 그 상태가 됐다).
+
+    경고를 잡는 형태로 쓴 이유: 필드 하나를 `isinstance` 로 재면 **다음에 같은 실수를
+    하는 다른 필드**를 못 본다. 이 단언은 `update` 에 들어가는 모든 필드를 한 번에
+    덮는다.
+
+    **못 보는 것**: 검증은 통과하지만 값이 틀린 경우. 여기서 보는 것은 "선언과 실제
+    타입이 어긋났는가" 뿐이다.
+    """
+    app = _make_test_app(data_dir=tmp_path)
+    with TestClient(app) as c:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            r = c.get("/api/live/status")
+        assert r.status_code == 200
+
+    offenders = [str(w.message) for w in caught if "Pydantic serializer warnings" in str(w.message)]
+    assert not offenders, (
+        "상태 응답 직렬화에서 pydantic 경고가 났다 — 모델로 선언된 필드에 raw dict 를 "
+        f"대입했을 가능성이 높다(`model_copy(update=...)` 는 검증하지 않는다): {offenders}"
+    )
 
 
 def test_get_live_status_exposes_collector_ownership(tmp_path) -> None:
