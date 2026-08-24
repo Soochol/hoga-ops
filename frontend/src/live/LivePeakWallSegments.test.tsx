@@ -42,6 +42,7 @@ const EXTREMES = new Map([
 function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
   return {
     segments: SEGMENTS,
+    stepSegments: SEGMENTS,
     drawn: true,
     labels: true,
     arrows: true,

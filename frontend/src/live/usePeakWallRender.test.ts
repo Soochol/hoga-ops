@@ -24,10 +24,10 @@ const PEAK: AskPeak = {
   max_t_ms: MIN,
 };
 
-function render(applicable = true) {
+function render(applicable = true, peaks: AskPeak[] = [PEAK], needStepSegments = false) {
   return renderHook(() => usePeakWallRender({
     side: 'ask',
-    peaks: [PEAK],
+    peaks,
     segments: SEGMENTS,
     candles: CANDLES,
     axis,
@@ -35,6 +35,7 @@ function render(applicable = true) {
     applicable,
     visibleTimeCutoff: null,
     dailyMaFilter: null,
+    needStepSegments,
   })).result;
 }
 
@@ -112,6 +113,33 @@ describe('usePeakWallRender', () => {
   });
 
   /** 빈 상태가 매번 새 배열이면 소비처 memo 가 매 렌더 다시 돈다(P1 재렌더 차단이 무너진다). */
+  it('stepSegments 는 표시 개수와 분리해 top-3 이력을 담는다 (계단 = as-of running max)', () => {
+    // 표시 개수 1(기본) + 그날 체결된 벽 2개(작은 것이 먼저) — 그리기 세그먼트는
+    // 1등 하나뿐이지만, 계단 입력은 둘 다 담아야 "그 시점까지의 최대" 가 복원된다.
+    // 종전엔 그리기 세그먼트를 그대로 썼고, 1등이 오후에 선 날은 오전 이력이 통째로
+    // 사라졌다(오전에 선이 없다가 오후에 생기던 사용자 보고의 주 원인).
+    const twoWalls: AskPeak = {
+      ...PEAK,
+      traded_peaks: [
+        { price: 110, qty: 500, t_ms: 2 * MIN },  // rank-1 (늦게 섬)
+        { price: 105, qty: 200, t_ms: 0 },         // rank-2 (먼저 섬)
+      ],
+    };
+    const r = render(true, [twoWalls], true);
+    expect(r.current.segments).toHaveLength(1);       // 그리기: 표시 개수 1
+    expect(r.current.stepSegments).toHaveLength(2);   // 계단: 항상 top-3
+    const qtys = r.current.stepSegments.map((seg) => seg.qty).sort((a, b) => a - b);
+    expect(qtys).toEqual([200, 500]);
+  });
+
+  it('표시 개수가 이미 3 이면 stepSegments 는 segments 와 같은 참조 (중복 계산 없음)', () => {
+    act(() => {
+      useChartPrefsStore.setState({ askPeakAllPriceRankLimit: 3 });
+    });
+    const r = render(true, [PEAK], true);
+    expect(r.current.stepSegments).toBe(r.current.segments);
+  });
+
   it('빈 결과는 참조가 안정적이다', () => {
     act(() => {
       useLivePageStore.setState({ askPeakEnabled: false });
