@@ -3,6 +3,7 @@ import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
+import { paneGroupKey, type PaneGroupStretchMap } from '../chart/paneGroups';
 
 /**
  * pane 병합 그룹의 **스펙 해석** — `paneGroups`(레이아웃 원본, `chart/paneGroups.ts`)
@@ -68,14 +69,22 @@ export function paneGroupIds(group: PaneSpecGroup): readonly PaneId[] {
 }
 
 /**
- * 그룹의 유효 stretch = 멤버 유효 stretch(저장값 ?? 스펙 기본값)의 **최대값**.
+ * 그룹의 유효 stretch — **그룹 키 오버라이드**(separator 드래그가 기록, v3 승격)
+ * 우선, 없으면 멤버 유효 stretch(저장값 ?? 스펙 기본값)의 최대값 파생.
  *
- * 트레이드오프(v1): 그룹 단위 저장 필드를 새로 만들지 않아 스키마가 안 늘지만,
- * separator 드래그로 그룹을 리사이즈하면 그 값이 **멤버 전원에게** 기록된다
- * (LiveChartRoot 의 드래그 캡처) — 나중에 분리하면 두 pane 이 같은 크기로 시작한다.
- * 문제가 되면 그룹 키 저장으로 승격한다(제안서 §4).
+ * 그룹 키 저장 승격의 이유: 종전(v1)엔 드래그 결과를 멤버 전원에게 기록해, 분리
+ * 후 두 pane 이 같은 크기로 시작했다 — 이제 멤버 개별 값은 오염되지 않아 분리
+ * 시 각자의 옛 크기가 살아난다.
  */
-export function paneGroupStretch(group: PaneSpecGroup, paneStretch: PaneStretchMap): number {
+export function paneGroupStretch(
+  group: PaneSpecGroup,
+  paneStretch: PaneStretchMap,
+  groupOverrides?: PaneGroupStretchMap,
+): number {
+  if (group.length > 1 && groupOverrides) {
+    const override = groupOverrides[paneGroupKey(paneGroupIds(group))];
+    if (override !== undefined) return override;
+  }
   let max = 0;
   for (const spec of group) {
     max = Math.max(max, paneStretch[spec.name] ?? spec.stretch);

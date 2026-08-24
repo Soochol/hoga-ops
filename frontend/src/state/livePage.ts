@@ -5,12 +5,15 @@ import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   flattenPaneGroups,
-  normalizePaneAxisShare,
+  normalizePaneAxisMode,
   normalizePaneGroups,
-  paneAxisShareKey,
+  normalizePaneGroupStretch,
+  paneGroupKey,
   paneGroupsFromOrder,
-  type PaneAxisShareMap,
+  type PaneAxisMode,
+  type PaneAxisModeMap,
   type PaneGroups,
+  type PaneGroupStretchMap,
 } from '../chart/paneGroups';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import {
@@ -259,9 +262,11 @@ type Store = Persisted & IndicatorSettings & {
   paneOrder: PaneId[];
   /** pane 병합 그룹(순열+분할) — 레이아웃의 원본(`chart/paneGroups.ts`). */
   paneGroups: PaneGroups;
-  /** 병합 그룹별 y축 공유 수동 오버라이드 — 키는 구성(정렬 join), 없는 키는
-   *  화이트리스트 기본값(`resolveAxisShared`). */
-  paneAxisShare: PaneAxisShareMap;
+  /** 병합 그룹별 y축 모드 오버라이드(shared/isolated/left) — 키는 구성(정렬 join),
+   *  없는 키는 화이트리스트 기본값(`resolveAxisMode`). */
+  paneAxisMode: PaneAxisModeMap;
+  /** 병합 그룹별 stretch 오버라이드 — 없는 키는 멤버 최대값 파생. */
+  paneGroupStretch: PaneGroupStretchMap;
   /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
   paneStretch: PaneStretchMap;
   /** 앱 전역 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 창 세트의
@@ -377,8 +382,10 @@ type Store = Persisted & IndicatorSettings & {
    *  `paneOrder` 투영도 함께 갱신되고, 축 공유 오버라이드는 새 구성과 매칭되는
    *  키만 남긴다(해체된 그룹의 키는 자연 소멸). */
   setPaneGroups: (groups: PaneGroups) => void;
-  /** 병합 그룹 하나의 y축 공유를 지정한다(칩 메뉴 「y축 공유/분리」). */
-  setPaneAxisShare: (members: readonly PaneId[], shared: boolean) => void;
+  /** 병합 그룹 하나의 y축 모드를 지정한다(칩 메뉴 「y축 공유/분리/왼쪽 축」). */
+  setPaneAxisMode: (members: readonly PaneId[], mode: PaneAxisMode) => void;
+  /** 병합 그룹 하나의 stretch 를 그룹 키에 기록한다(separator 드래그 캡처). */
+  setPaneGroupStretch: (members: readonly PaneId[], factor: number) => void;
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
   setPaneStretch: (patch: PaneStretchMap) => void;
@@ -551,7 +558,8 @@ export const useLivePageStore = create<Store>((set, get) => {
     persistIndicatorsV2({
       paneOrder: s.paneOrder,
       paneGroups: s.paneGroups,
-      paneAxisShare: s.paneAxisShare,
+      paneAxisMode: s.paneAxisMode,
+      paneGroupStretch: s.paneGroupStretch,
       paneStretch: s.paneStretch,
       byTimeframe: s.indicatorsByTimeframe,
       byWindow: s.indicatorsByWindow,
@@ -639,7 +647,8 @@ export const useLivePageStore = create<Store>((set, get) => {
     ...resolveIndicatorSettings(initialIndicatorsV2.byTimeframe, initialPage.candleTimeframe),
     paneOrder: initialIndicatorsV2.paneOrder,
     paneGroups: initialIndicatorsV2.paneGroups,
-    paneAxisShare: initialIndicatorsV2.paneAxisShare,
+    paneAxisMode: initialIndicatorsV2.paneAxisMode,
+    paneGroupStretch: initialIndicatorsV2.paneGroupStretch,
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
@@ -669,14 +678,15 @@ export const useLivePageStore = create<Store>((set, get) => {
       patchIndicatorsScoped(scope, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
 
     setPaneOrder: (order) => {
-      // flat 순서 쓰기 = 그룹 싱글턴 리셋 (액션 선언부 주석 참조) → 축 오버라이드도
-      // 매칭 그룹이 없어져 전부 걷힌다.
+      // flat 순서 쓰기 = 그룹 싱글턴 리셋 (액션 선언부 주석 참조) → 그룹 단위
+      // 오버라이드(축 모드·그룹 stretch)도 매칭 그룹이 없어져 전부 걷힌다.
       const normalized = normalizePaneOrder(order);
       const groups = paneGroupsFromOrder(normalized);
       set({
         paneOrder: normalized,
         paneGroups: groups,
-        paneAxisShare: normalizePaneAxisShare(get().paneAxisShare, groups),
+        paneAxisMode: normalizePaneAxisMode(get().paneAxisMode, groups),
+        paneGroupStretch: normalizePaneGroupStretch(get().paneGroupStretch, groups),
       });
       persistIndicators();
     },
@@ -687,18 +697,31 @@ export const useLivePageStore = create<Store>((set, get) => {
         paneGroups: normalized,
         paneOrder: flattenPaneGroups(normalized),
         // 새 구성과 매칭되는 키만 유지 — 해체·재구성된 그룹의 오버라이드는 기본값으로.
-        paneAxisShare: normalizePaneAxisShare(get().paneAxisShare, normalized),
+        paneAxisMode: normalizePaneAxisMode(get().paneAxisMode, normalized),
+        paneGroupStretch: normalizePaneGroupStretch(get().paneGroupStretch, normalized),
       });
       persistIndicators();
     },
 
-    setPaneAxisShare: (members, shared) => {
+    setPaneAxisMode: (members, mode) => {
       if (members.length <= 1) return;
       set({
-        paneAxisShare: {
-          ...get().paneAxisShare,
-          [paneAxisShareKey(members)]: shared,
+        paneAxisMode: {
+          ...get().paneAxisMode,
+          [paneGroupKey(members)]: mode,
         },
+      });
+      persistIndicators();
+    },
+
+    setPaneGroupStretch: (members, factor) => {
+      if (members.length <= 1) return;
+      if (!Number.isFinite(factor) || factor <= 0) return;
+      set({
+        paneGroupStretch: normalizePaneGroupStretch(
+          { ...get().paneGroupStretch, [paneGroupKey(members)]: factor },
+          get().paneGroups,
+        ),
       });
       persistIndicators();
     },
@@ -719,7 +742,8 @@ export const useLivePageStore = create<Store>((set, get) => {
         // 프리셋 payload 엔 그룹이 없다(레이아웃 프리셋은 flat 순서만 나른다) —
         // 적용 = 결정론적 교체이므로 그룹도 싱글턴으로 리셋되고 축 오버라이드도 걷힌다.
         paneGroups: paneGroupsFromOrder(nextPaneOrder),
-        paneAxisShare: {},
+        paneAxisMode: {},
+        paneGroupStretch: {},
         paneStretch: nextPaneStretch,
         indicatorsByTimeframe: byTimeframe,
         ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
@@ -817,7 +841,8 @@ export const useLivePageStore = create<Store>((set, get) => {
       set({
         paneOrder: stored.paneOrder,
         paneGroups: stored.paneGroups,
-        paneAxisShare: stored.paneAxisShare,
+        paneAxisMode: stored.paneAxisMode,
+        paneGroupStretch: stored.paneGroupStretch,
         paneStretch: stored.paneStretch,
         indicatorsByTimeframe: stored.byTimeframe,
         // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼
