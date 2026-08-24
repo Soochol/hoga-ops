@@ -182,6 +182,9 @@ export default function BookPanel({
 
   const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
   const bids = snapshot.bid;
+  // 중간값은 **한 번만** 계산한다 — 표시값·시고저 칩·현재가 박스 셋이 같은 수를
+  // 봐야 한다. 호출을 나누면 세 판정이 서로 다른 스냅샷을 볼 여지가 생긴다.
+  const midPrice = bookMidPrice(snapshot.ask, snapshot.bid);
   const maxQty = Math.max(
     1,
     ...snapshot.ask.map((l) => l.qty),
@@ -283,8 +286,10 @@ export default function BookPanel({
               />
             ))}
             <MidPriceRow
-              price={bookMidPrice(snapshot.ask, snapshot.bid)}
+              price={midPrice}
               baselinePrice={baselinePrice}
+              markers={priceMarkers(midPrice, summary)}
+              boxed={lastPrice !== null && midPrice === lastPrice}
             />
             {bids.map((l, i) => (
               <PriceCell
@@ -419,15 +424,50 @@ function ExpectedFillBanner({
   );
 }
 
+type PriceMarker = { label: string; bg: string };
+
 /** 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
- *  시=중립 회색. 한 가격이 둘 이상(예: 시가=고가)이면 배열로 나란히 쌓는다. */
-function priceMarkers(price: number, summary: LiveTradeSummary): { label: string; bg: string }[] {
-  if (price <= 0) return [];
-  const out: { label: string; bg: string }[] = [];
+ *  시=중립 회색. 한 가격이 둘 이상(예: 시가=고가)이면 배열로 나란히 쌓는다.
+ *
+ *  `null`(사다리 한쪽이 비어 중간값이 없는 행)을 **여기서** 흡수한다 — 호출부마다
+ *  가드를 두면 `중` 행만 조건이 갈려 다시 어긋난다. 소수 중간값(`.5`)은 정수
+ *  시/고/저와 `===` 가 성립하지 않아 **분기 없이** 걸러진다(저가주에선 상시다). */
+function priceMarkers(price: number | null, summary: LiveTradeSummary): PriceMarker[] {
+  if (price === null || price <= 0) return [];
+  const out: PriceMarker[] = [];
   if (summary.dayHigh !== null && price === summary.dayHigh) out.push({ label: '고', bg: 'bg-price-up' });
   if (summary.dayLow !== null && price === summary.dayLow) out.push({ label: '저', bg: 'bg-price-down' });
   if (summary.dayOpen !== null && price === summary.dayOpen) out.push({ label: '시', bg: 'bg-fg-dim' });
   return out;
+}
+
+/**
+ * 가격 숫자 왼쪽에 얹는 뱃지 띠 — **시/고/저 칩과 `중` 뱃지가 같은 슬롯을 쓴다.**
+ *
+ * 둘을 각각 `absolute right-full` 로 두면 같은 자리에 겹친다. 그래서 한 flex 행으로
+ * 합치고 `중` 을 **숫자에 가장 가깝게**(오른쪽 끝) 둔다 — 칩이 없을 때 `중` 의 x 가
+ * 종전과 정확히 같고, 칩은 왼쪽으로 자란다(`PriceCell` 이 이미 쓰던 방향).
+ *
+ * ⚠ 띠 전체가 `absolute` 라 **레이아웃 폭을 차지하지 않는다. 이것이 계약이다** —
+ * flex 아이템이면 뱃지 유무에 따라 가격 숫자가 밀려 호가 행끼리 x 가 어긋난다
+ * (실측 정수 mid +10.5px). 기준 요소(가격 span)가 `relative` 여야 성립한다.
+ *
+ * 두 행이 이 마크업을 각자 복제하던 것을 합친 것이다 — 갈라져 있으면 한쪽만
+ * 손봤을 때 같은 자리의 뱃지가 조용히 다른 모양이 된다.
+ */
+function PriceBadges({ markers, mid = false }: { markers: PriceMarker[]; mid?: boolean }) {
+  if (markers.length === 0 && !mid) return null;
+  const chip = 'flex items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
+  return (
+    <span data-price-badges="" className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
+      {markers.map((m) => (
+        <span key={m.label} className={`${chip} text-white ${m.bg}`}>
+          {m.label}
+        </span>
+      ))}
+      {mid && <span className={`${chip} bg-bg-subtle text-fg-dim`}>중</span>}
+    </span>
+  );
 }
 
 /**
@@ -443,8 +483,8 @@ function priceMarkers(price: number, summary: LiveTradeSummary): { label: string
  * 상단 `border-t` 는 매도 블록과의 분리선(3열 공통 y) — 좌우 빈칸도 같은 선을 갖는다.
  * 하단 분리는 첫 매수 행의 `topDivider` 가 이미 담당한다.
  *
- * ⚠ `중` 뱃지는 **`PriceCell` 의 시/고/저 칩과 같은 방식**으로 가격 span 안에
- * `absolute right-full` 로 얹는다 — 뱃지가 flex 아이템이면 폭을 차지해 가격 숫자가
+ * ⚠ `중` 뱃지는 **`PriceCell` 의 시/고/저 칩과 같은 슬롯**을 가격 span 안에서
+ * 공유한다(`PriceBadges`) — 뱃지가 flex 아이템이면 폭을 차지해 가격 숫자가
  * 다른 호가 행보다 오른쪽으로 밀린다(실측 정수 mid +10.5px). 소수 mid 는 `.5` 가
  * 늘린 폭이 중앙정렬에서 되밀어 +4.9px 로 **작게 보였을 뿐** 같은 결함이었다.
  * 뺀 뒤에는 flex 내용물이 PriceCell 과 동일(가격 + gap + 7ch 등락률)해 **정수 mid 는
@@ -455,36 +495,54 @@ function priceMarkers(price: number, summary: LiveTradeSummary): { label: string
 function MidPriceRow({
   price,
   baselinePrice,
+  markers = [],
+  boxed = false,
 }: {
   price: number | null;
   baselinePrice: number | null;
+  /** 당일 시/고/저 칩 — **`PriceCell` 과 같은 규약**이다. 이 배선이 빠져 있으면
+   *  중간값이 사다리 20행 어디에도 없는 가격일 때(넓은 스프레드·교차) 화면에
+   *  가격은 보이는데 라벨만 사라진다 — 그 행이 그 가격을 그리는 유일한 자리다.
+   *  ADR-0140 §7.1 이 이 행을 추가할 때 칩·박스 배선이 따라오지 않았다. */
+  markers?: PriceMarker[];
+  /** 현재가가 중간값과 같을 때의 박스 — 역시 `PriceCell` 과 같은 규약. */
+  boxed?: boolean;
 }) {
   const color = price !== null ? dirClass(price, baselinePrice) : 'text-fg-dim';
   const pct =
     price !== null && baselinePrice !== null && baselinePrice > 0
       ? ((price - baselinePrice) / baselinePrice) * 100
       : null;
+  // 경계선(border-t)과 현재가 박스(border)를 **다른 요소**에 그린다 — 한 요소면
+  // 둘 다 4변 border-color 를 걸어 박스 윗변만 색이 갈린다. `PriceCell` 이
+  // `topDivider` 에서 이미 겪고 래퍼로 푼 문제이고, 래퍼(1px) + 셀(ROW_H−1) = ROW_H
+  // 라 22행 정렬 계약은 그대로다. 식별자(testid·divider·mid-price)는 **래퍼에**
+  // 남긴다 — 기존 단언들이 이 행을 지목하는 앵커다.
   return (
     <div
       data-testid="book-mid-row"
       data-book-divider=""
       data-mid-price={price ?? ''}
-      className="flex items-baseline justify-center gap-1.5 border-t border-border px-2"
-      style={{ height: ROW_H }}
+      className="border-t border-border"
     >
-      <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
-        <span className="absolute right-full top-1/2 mr-1 -translate-y-1/2 rounded-sm bg-bg-subtle px-[3px] py-px font-ui text-badge font-semibold leading-none text-fg-dim">
-          중
-        </span>
-        {price !== null ? price.toLocaleString('ko-KR') : '−'}
-      </span>
-      {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
-      <span
-        className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
-        style={{ minWidth: '7ch' }}
+      <div
+        className={`flex items-baseline justify-center gap-1.5 px-2 ${
+          boxed ? 'rounded-md border border-fg-dim' : ''
+        }`}
+        style={{ height: ROW_H - 1 }}
       >
-        {pct !== null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : ''}
-      </span>
+        <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
+          <PriceBadges markers={markers} mid />
+          {price !== null ? price.toLocaleString('ko-KR') : '−'}
+        </span>
+        {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
+        <span
+          className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
+          style={{ minWidth: '7ch' }}
+        >
+          {pct !== null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : ''}
+        </span>
+      </div>
     </div>
   );
 }
@@ -502,7 +560,7 @@ function PriceCell({
   /** 당일 시/고/저 칩(priceMarkers) — 가격 숫자 왼쪽 바로 옆(가격 span 기준 right-full)에
    *  absolute 로 얹는다. 셀 좌단 고정이던 것을 가격 옆으로 당겨 중앙에 가깝게 읽히되,
    *  가격 x 정렬은 여전히 불변(칩 유무가 가격 위치를 안 바꾼다). */
-  markers?: { label: string; bg: string }[];
+  markers?: PriceMarker[];
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
 }) {
@@ -524,18 +582,7 @@ function PriceCell({
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
       <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
-        {markers.length > 0 && (
-          <span className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
-            {markers.map((m) => (
-              <span
-                key={m.label}
-                className={`flex items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none text-white ${m.bg}`}
-              >
-                {m.label}
-              </span>
-            ))}
-          </span>
-        )}
+        <PriceBadges markers={markers} />
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
