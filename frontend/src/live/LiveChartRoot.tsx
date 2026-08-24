@@ -2204,6 +2204,7 @@ export function LiveChartRoot({
     applicable: peakWallApplicable,
     visibleTimeCutoff: askVisibleTimeCutoffForRender,
     dailyMaFilter: askPeakDailyMaFilter,
+    needStepSegments: prefPeakWallPaneEnabled,
   });
   const bidWall = usePeakWallRender({
     side: 'bid',
@@ -2215,22 +2216,23 @@ export function LiveChartRoot({
     applicable: peakWallApplicable,
     visibleTimeCutoff: bidVisibleTimeCutoffForRender,
     dailyMaFilter: bidPeakDailyMaFilter,
+    needStepSegments: prefPeakWallPaneEnabled,
   });
   // ── 최대벽 강도 pane 계단 (구현 계획 §2) ──────────────────────────────
   // pane 프로젝터는 번들·축을 못 받는 pass-through 라, 계단을 **여기서** 접어
   // 레지스트리로 내려보낸다. pane 이 꺼져 있으면 계산하지 않는다(빈 배열 공유 참조).
   // 세그먼트 대신 완성된 점을 넣는 이유는 peakWallStepsRegistry 주석 참조.
   const askPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && askWall.segments.length > 0
-      ? buildPeakWallStepPoints(askWall.segments, cb?.candles ?? EMPTY_CANDLES, axis, askWall.color)
+    () => (prefPeakWallPaneEnabled && askWall.stepSegments.length > 0
+      ? buildPeakWallStepPoints(askWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, askWall.color)
       : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, askWall.segments, askWall.color, cb?.candles, axis],
+    [prefPeakWallPaneEnabled, askWall.stepSegments, askWall.color, cb?.candles, axis],
   );
   const bidPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && bidWall.segments.length > 0
-      ? buildPeakWallStepPoints(bidWall.segments, cb?.candles ?? EMPTY_CANDLES, axis, bidWall.color)
+    () => (prefPeakWallPaneEnabled && bidWall.stepSegments.length > 0
+      ? buildPeakWallStepPoints(bidWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, bidWall.color)
       : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, bidWall.segments, bidWall.color, cb?.candles, axis],
+    [prefPeakWallPaneEnabled, bidWall.stepSegments, bidWall.color, cb?.candles, axis],
   );
   useEffect(() => {
     const reg = usePeakWallStepsRegistry.getState();
