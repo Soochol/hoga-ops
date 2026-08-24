@@ -112,6 +112,8 @@ export type PersistedIndicators = {
   volumeEnabled: boolean;
   /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default FALSE. */
   movingAverageHidden: boolean;
+  /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
+  peakWallPaneEnabled: boolean;
   /** 당일 매도 최대벽 토글. opt-in(기본 false). */
   askPeakEnabled: boolean;
   /** 매도 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
@@ -315,6 +317,9 @@ export function mergeLiveIndicatorPrefs(
     ? raw as Record<string, unknown>
     : undefined;
   // askPeak fields — opt-in (default false/ASK_PEAK_DEFAULT_COLOR/ASK_PEAK_DEFAULT_WIDTH).
+  // 최대벽 강도 pane — opt-in (default false). 오버레이(askPeak/bidPeak)와 별개 토글:
+  // pane 은 오버레이의 표현이지만 화면 부동산을 차지하므로 켜는 결정은 따로 받는다.
+  const pwPaneEnabled = obj?.peakWallPaneEnabled === true;
   const apEnabled = obj?.askPeakEnabled === true;
   const apHidden = obj?.askPeakHidden === true;
   const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
@@ -439,6 +444,7 @@ export function mergeLiveIndicatorPrefs(
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
     movingAverageHidden: hidden,
+    peakWallPaneEnabled: pwPaneEnabled,
     askPeakEnabled: apEnabled,
     askPeakHidden: apHidden,
     askPeakColor: apColor,

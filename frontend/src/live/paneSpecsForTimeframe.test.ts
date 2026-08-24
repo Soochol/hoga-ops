@@ -141,6 +141,19 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
     expect(n).not.toContain('program-trade');
     expect(n).toContain('fill-strength');
   });
+
+  it('peak-wall 은 opt-in — 미지정·false 는 안 뜨고 `=== true` 만 마운트', () => {
+    const base = { foreignNet: false, institutionNet: false };
+    expect(names('1m', base)).not.toContain('peak-wall');
+    expect(names('1m', { ...base, peakWallPaneEnabled: false })).not.toContain('peak-wall');
+    expect(names('1m', { ...base, peakWallPaneEnabled: true })).toContain('peak-wall');
+  });
+
+  it('peak-wall 은 호가 파생 — D 에선 켜도 안 뜨고, hogaPanes=false 도 존중', () => {
+    const on = { foreignNet: false, institutionNet: false, peakWallPaneEnabled: true };
+    expect(names('D', on)).not.toContain('peak-wall');
+    expect(names('1m', { ...on, hogaPanes: false })).not.toContain('peak-wall');
+  });
 });
 
 describe('paneSpecsForTimeframe — paneOrder (ADR-0114)', () => {

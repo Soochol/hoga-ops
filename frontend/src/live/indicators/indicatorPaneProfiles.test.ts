@@ -14,6 +14,7 @@ const RESOLVED_PREFS = {
   programTradeEnabled: false,
   foreignNetEnabled: true,
   institutionNetEnabled: false,
+  peakWallPaneEnabled: false,
 };
 
 describe('indicatorPaneProfiles', () => {
@@ -29,7 +30,7 @@ describe('indicatorPaneProfiles', () => {
     expect(profileKeyForTimeframe('M')).toBe('M');
   });
 
-  it('picks the 7 pane toggles from an already-resolved slice (no merging)', () => {
+  it('picks the 8 pane toggles from an already-resolved slice (no merging)', () => {
     expect(pickPanePrefs({ ...RESOLVED_PREFS, quoteTotalsEnabled: true })).toEqual({
       ...RESOLVED_PREFS,
       quoteTotalsEnabled: true,

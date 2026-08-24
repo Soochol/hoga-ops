@@ -6,7 +6,7 @@ describe('CANONICAL_PANE_ORDER', () => {
     expect(CANONICAL_PANE_ORDER[0]).toBe('candle');
     expect(CANONICAL_PANE_ORDER).toContain('investor-foreign');
     expect(CANONICAL_PANE_ORDER).toContain('investor-institution');
-    expect(CANONICAL_PANE_ORDER).toHaveLength(8);
+    expect(CANONICAL_PANE_ORDER).toHaveLength(9);
   });
 });
 
@@ -22,7 +22,7 @@ describe('normalizePaneOrder', () => {
     // candle 앞에 있던 volume/ratio 는 candle 뒤로 밀리고, 나머지 누락은 append.
     expect(out).toEqual([
       'candle', 'volume', 'ratio', 'program-trade',
-      'quote-totals', 'fill-strength', 'investor-foreign', 'investor-institution',
+      'quote-totals', 'peak-wall', 'fill-strength', 'investor-foreign', 'investor-institution',
     ]);
   });
 
@@ -30,7 +30,7 @@ describe('normalizePaneOrder', () => {
     const out = normalizePaneOrder(['ratio', 'bogus', 'volume']);
     expect(out).toEqual([
       'candle', 'ratio', 'volume',
-      'quote-totals', 'fill-strength', 'program-trade',
+      'quote-totals', 'peak-wall', 'fill-strength', 'program-trade',
       'investor-foreign', 'investor-institution',
     ]);
   });
@@ -92,14 +92,14 @@ describe('movePaneBeside', () => {
     // D 전역 순서에서 investor-foreign 을 volume 위로 올려도, 분봉에서만 마운트되는
     // 호가 pane(quote-totals..program-trade)의 상대 순서는 그대로 — volume 이 그들
     // 뒤로 튀지 않는다. 이동한 pane 만 volume 바로 앞으로 최소 이동한다.
-    const order = normalizePaneOrder(undefined); // candle, volume, quote-totals, ratio, fill-strength, program-trade, IF, II
+    const order = normalizePaneOrder(undefined); // candle, volume, quote-totals, peak-wall, ratio, fill-strength, program-trade, IF, II
     const out = movePaneBeside(order, 'investor-foreign', 'volume', 'before');
     expect(out).toEqual([
-      'candle', 'investor-foreign', 'volume', 'quote-totals', 'ratio',
+      'candle', 'investor-foreign', 'volume', 'quote-totals', 'peak-wall', 'ratio',
       'fill-strength', 'program-trade', 'investor-institution',
     ]);
     // 분봉 투영(IF/II 제외): volume 이 여전히 candle 바로 뒤 → leapfrog 없음.
     const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution');
-    expect(minuteView).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
+    expect(minuteView).toEqual(['candle', 'volume', 'quote-totals', 'peak-wall', 'ratio', 'fill-strength', 'program-trade']);
   });
 });
