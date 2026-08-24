@@ -185,6 +185,14 @@ export default function BookPanel({
   // 중간값은 **한 번만** 계산한다 — 표시값·시고저 칩·현재가 박스 셋이 같은 수를
   // 봐야 한다. 호출을 나누면 세 판정이 서로 다른 스냅샷을 볼 여지가 생긴다.
   const midPrice = bookMidPrice(snapshot.ask, snapshot.bid);
+  // 지금 **화면에 가격이 그려진** 자리 전부 — 사다리 20행 + `중` 행. 요약표 칩이
+  // 뜰지 말지의 유일한 판정 근거다(`offLadderChip`). 여기서 `중` 을 빼면 중간값이
+  // 당일 고가일 때 사다리와 요약표에 칩이 동시에 뜬다.
+  const onScreenPrices = new Set<number>([
+    ...snapshot.ask.map((l) => l.price),
+    ...snapshot.bid.map((l) => l.price),
+  ]);
+  if (midPrice !== null) onScreenPrices.add(midPrice);
   const maxQty = Math.max(
     1,
     ...snapshot.ask.map((l) => l.qty),
@@ -306,16 +314,25 @@ export default function BookPanel({
           {/* 우: 요약 패널(11행 고정) → 매수 잔량 바 */}
           <div className="flex flex-col">
             <div className="flex flex-col" style={{ height: ROW_H * SUMMARY_ROWS }}>
-              <SummaryRow label="시작" value={fmtOr(summary.dayOpen)} />
+              {/* 칩은 **사다리 밖일 때만** 뜬다 — 등장 자체가 「이 값은 지금 사다리에
+                  없다」는 신호다(`offLadderChip`). 폭은 안전하다: 실측 최고+칩 111px
+                  vs 이 열의 제약을 쥔 `250일` 149px. */}
+              <SummaryRow
+                label="시작"
+                value={fmtOr(summary.dayOpen)}
+                chip={offLadderChip('시', summary, onScreenPrices)}
+              />
               <SummaryRow
                 label="최고"
                 value={fmtOr(summary.dayHigh)}
                 color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
+                chip={offLadderChip('고', summary, onScreenPrices)}
               />
               <SummaryRow
                 label="최저"
                 value={fmtOr(summary.dayLow)}
                 color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
+                chip={offLadderChip('저', summary, onScreenPrices)}
               />
               {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
                   620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
@@ -426,6 +443,19 @@ function ExpectedFillBanner({
 
 type PriceMarker = { label: string; bg: string };
 
+/** 시·고·저의 라벨·색·출처를 **한 곳에서** 정의한다. 사다리 칩(`priceMarkers`)과
+ *  요약표 칩(`offLadderChip`)이 같은 표를 보므로 색이 두 표면에서 갈릴 수 없다 —
+ *  두 벌로 두면 한쪽만 고쳤을 때 같은 뜻의 칩이 다른 색으로 조용히 갈린다. */
+const DAY_MARKERS = [
+  { label: '고', bg: 'bg-price-up', of: (s: LiveTradeSummary) => s.dayHigh },
+  { label: '저', bg: 'bg-price-down', of: (s: LiveTradeSummary) => s.dayLow },
+  { label: '시', bg: 'bg-fg-dim', of: (s: LiveTradeSummary) => s.dayOpen },
+] as const;
+
+/** 뱃지 한 알의 공통 형태. 사다리 칩·`중` 뱃지·요약표 칩이 전부 이걸 쓴다. */
+const BADGE_CLS =
+  'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
+
 /** 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
  *  시=중립 회색. 한 가격이 둘 이상(예: 시가=고가)이면 배열로 나란히 쌓는다.
  *
@@ -434,11 +464,36 @@ type PriceMarker = { label: string; bg: string };
  *  시/고/저와 `===` 가 성립하지 않아 **분기 없이** 걸러진다(저가주에선 상시다). */
 function priceMarkers(price: number | null, summary: LiveTradeSummary): PriceMarker[] {
   if (price === null || price <= 0) return [];
-  const out: PriceMarker[] = [];
-  if (summary.dayHigh !== null && price === summary.dayHigh) out.push({ label: '고', bg: 'bg-price-up' });
-  if (summary.dayLow !== null && price === summary.dayLow) out.push({ label: '저', bg: 'bg-price-down' });
-  if (summary.dayOpen !== null && price === summary.dayOpen) out.push({ label: '시', bg: 'bg-fg-dim' });
-  return out;
+  return DAY_MARKERS.filter((m) => {
+    const v = m.of(summary);
+    return v !== null && price === v;
+  }).map((m) => ({ label: m.label, bg: m.bg }));
+}
+
+/**
+ * 요약표(시작·최고·최저) 값에 붙는 칩 — **사다리에 그 가격의 행이 없을 때만** 낸다.
+ *
+ * 사다리는 현재가 위아래 10틱씩만 덮는다(호가 단위 기준 대략 ±1~2%). 일중 변동이
+ * 그보다 크면 시·고·저가 사다리 밖으로 나가 **칩을 붙일 행 자체가 사라진다** —
+ * 실측 2026-08-24 삼성전자(-8.5%)는 사다리 252,500~262,500 인데 고가 272,000 ·
+ * 시가 271,500 이 전부 밖이었다. 드문 경우가 아니라 변동성 있는 날의 기본값이다.
+ *
+ * 규칙은 **배타**다: 시/고/저 하나당 칩은 사다리 아니면 요약표, 한쪽에만 있다.
+ * 그래서 「요약표에 칩이 떴다」가 곧 「그 값은 지금 사다리에 없다」를 뜻하고,
+ * 칩의 **등장 자체가 신호**다(상시 표시면 아무것도 말하지 않는다).
+ *
+ * ⚠ `onScreen` 에 **중간값을 포함**한다 — `중` 행도 가격을 그리는 자리이므로,
+ * 빠뜨리면 사다리에 칩이 있는데 요약표에도 뜨는 이중 표시가 된다.
+ */
+function offLadderChip(
+  label: '시' | '고' | '저',
+  summary: LiveTradeSummary,
+  onScreen: ReadonlySet<number>,
+): PriceMarker | undefined {
+  const m = DAY_MARKERS.find((x) => x.label === label);
+  const v = m ? m.of(summary) : null;
+  if (!m || v === null || v <= 0 || onScreen.has(v)) return undefined;
+  return { label: m.label, bg: m.bg };
 }
 
 /**
@@ -457,15 +512,14 @@ function priceMarkers(price: number | null, summary: LiveTradeSummary): PriceMar
  */
 function PriceBadges({ markers, mid = false }: { markers: PriceMarker[]; mid?: boolean }) {
   if (markers.length === 0 && !mid) return null;
-  const chip = 'flex items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
   return (
     <span data-price-badges="" className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
       {markers.map((m) => (
-        <span key={m.label} className={`${chip} text-white ${m.bg}`}>
+        <span key={m.label} className={`flex ${BADGE_CLS} text-white ${m.bg}`}>
           {m.label}
         </span>
       ))}
-      {mid && <span className={`${chip} bg-bg-subtle text-fg-dim`}>중</span>}
+      {mid && <span className={`flex ${BADGE_CLS} bg-bg-subtle text-fg-dim`}>중</span>}
     </span>
   );
 }
@@ -736,12 +790,16 @@ function SummaryRow({
   color,
   divider,
   highlight,
+  chip,
 }: {
   label: string;
   value: string;
   color?: string;
   divider?: boolean;
   highlight?: boolean;
+  /** 시/고/저 칩 — 그 값이 사다리 밖일 때만 온다(`offLadderChip`). 값 **왼쪽**에
+   *  붙어 오른쪽 정렬된 숫자의 우측 끝을 흔들지 않는다. */
+  chip?: PriceMarker;
 }) {
   const empty = value === '−';
   return (
@@ -755,10 +813,11 @@ function SummaryRow({
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}
       <span className="whitespace-nowrap text-xs text-fg-dim">{label}</span>
       <span
-        className={`whitespace-nowrap font-data text-sm tabular-nums ${
+        className={`flex items-center whitespace-nowrap font-data text-sm tabular-nums ${
           color ?? (empty ? 'text-fg-dimmer' : 'text-fg')
         }`}
       >
+        {chip && <span className={`mr-1 flex ${BADGE_CLS} text-white ${chip.bg}`}>{chip.label}</span>}
         {value}
       </span>
     </div>

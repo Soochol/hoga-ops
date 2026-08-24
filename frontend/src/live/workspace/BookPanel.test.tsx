@@ -338,6 +338,56 @@ describe('BookPanel', () => {
     expect(label.className).toContain('whitespace-nowrap');
   });
 
+  describe('요약표 시/고/저 칩 — 사다리 밖일 때만 (배타 규칙)', () => {
+    // 사다리는 현재가 ±10틱만 덮는다. 일중 변동이 그보다 크면 시·고·저가 밖으로
+    // 나가 칩을 붙일 행이 사라진다(실측 2026-08-24 삼성전자 −8.5%: 고가·시가 둘 다
+    // 밖). 그때 요약표가 칩을 대신 받는다 — **등장 자체가 신호**다.
+    const summaryRow = (label: string) => screen.getByText(label).parentElement!;
+
+    it('고가가 사다리 밖이면 `최고` 행에 칩이 뜬다', () => {
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 999_000 } });
+      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+    });
+
+    it('시·저도 같은 규칙이다 — 셋 다 밖이면 셋 다 뜬다', () => {
+      // 기본 픽스처가 이미 셋 다 밖이다(시 245,500 · 고 257,500 · 저 238,500 vs
+      // 사다리 246,500~256,000).
+      renderPanel();
+      expect(within(summaryRow('시작')).getByText('시')).toBeInTheDocument();
+      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+      expect(within(summaryRow('최저')).getByText('저')).toBeInTheDocument();
+    });
+
+    it('사다리 행에 있으면 요약표엔 안 뜬다 — 칩은 정확히 한쪽에만', () => {
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_500 } }); // 매도1
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
+      // 대조군: 사다리 쪽에는 있어야 한다. 없으면 위 단언은 아무것도 증명 못 한다.
+      expect(screen.getAllByText('고')).toHaveLength(1);
+    });
+
+    it('중간값이 고가여도 요약표엔 안 뜬다 — `중` 행도 가격을 그리는 자리다', () => {
+      // 이 판정에서 `중` 을 빼면 사다리와 요약표에 칩이 **동시에** 뜬다.
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } }); // = 중간값
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
+      expect(within(screen.getByTestId('book-mid-row')).getByText('고')).toBeInTheDocument();
+    });
+
+    it('값이 없으면 칩도 없다 — 대시 행에 색딱지가 붙지 않는다', () => {
+      renderPanel({ summary: { ...SUMMARY, dayOpen: null, dayHigh: null, dayLow: null } });
+      expect(screen.queryByText('고')).toBeNull();
+      expect(screen.queryByText('저')).toBeNull();
+      expect(screen.queryByText('시')).toBeNull();
+    });
+
+    it('칩이 붙어도 값은 개행되지 않는다 — 행 높이 계약의 CSS 방어선', () => {
+      // 실측 폭: 칩 달린 `최고` 111px < 이 열의 제약을 쥔 `250일` 149px 이라
+      // 칩이 새 제약이 되지 않는다. jsdom 은 폭을 못 재므로 여기선 계약(클래스)만.
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 1_319_000 } });
+      const value = within(summaryRow('최고')).getByText('고').parentElement!;
+      expect(value.className).toContain('whitespace-nowrap');
+    });
+  });
+
   it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 22행 = 중앙 22행)', () => {
     const trades = Array.from({ length: 12 }, (_, i) => ({
       price: 251_500, qty: 1_000 + i, side: 1 as const,
