@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import CursorSyncCrosshair from './CursorSyncCrosshair';
+import { hasSyntheticCrosshair } from './syntheticCrosshair';
 import { useLiveCursorStore, type SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveTimeframe } from '../state/livePage';
@@ -43,6 +44,10 @@ function makeChart(coords: Map<number, number | null>) {
 const candleSeries = { __series: true };
 const paneSeries = new Map([['candle', candleSeries]]) as never;
 
+/** 마지막으로 렌더한 차트 — 합성 표시(`syntheticCrosshair`)가 **인스턴스별**이라
+ *  그 축을 재려면 테스트가 같은 객체를 쥐고 있어야 한다. */
+let lastChart: ReturnType<typeof makeChart> | null = null;
+
 function renderCrosshair(
   coords = new Map([[DAY_20250619 / 1000, 260]]),
   code = '064350',
@@ -59,10 +64,11 @@ function renderCrosshair(
     timeframe,
     historicalFromDate: null,
   };
+  lastChart = makeChart(coords);
   return render(
     <WindowViewContext.Provider value={view}>
       <CursorSyncCrosshair
-        chart={makeChart(coords) as never}
+        chart={lastChart as never}
         axis={axis}
         candles={candles}
         timeframe={timeframe}
@@ -289,6 +295,49 @@ describe('CursorSyncCrosshair', () => {
     publish();
 
     expect(screen.getByTestId('study-cursor-sync-edge-right')).toBeTruthy();
+  });
+
+  /**
+   * 합성 표시(`syntheticCrosshair`) — **그리는 쪽**의 절반.
+   *
+   * 나머지 절반은 `LiveChartRoot.test.tsx` 의 발행 게이트다. 둘을 갈라 둔 이유는
+   * 표시가 **두 층의 계약**이기 때문이다: 여기서 안 걸면 가드가 조용히 열리고,
+   * 거기서 안 읽으면 표시가 write-only 로 썩는다.
+   */
+  describe('합성 크로스헤어 표시', () => {
+    it('크로스헤어를 걸면 이 차트를 합성으로 표시한다', () => {
+      renderCrosshair();
+      publish();
+
+      expect(setCrosshairPosition).toHaveBeenCalled();
+      expect(hasSyntheticCrosshair(lastChart as never)).toBe(true);
+    });
+
+    it('발행이 끊기면 크로스헤어와 함께 표시도 걷는다', () => {
+      renderCrosshair();
+      publish();
+      act(() => { useLiveCursorStore.getState().clearSyncCursorFrom(MINUTE_ORIGIN.windowId); });
+
+      expect(clearCrosshairPosition).toHaveBeenCalled();
+      expect(hasSyntheticCrosshair(lastChart as never)).toBe(false);
+    });
+
+    it('언마운트도 표시를 남기지 않는다 — 남으면 그 창의 재획득이 영영 막힌다', () => {
+      const { unmount } = renderCrosshair();
+      publish();
+      unmount();
+
+      expect(hasSyntheticCrosshair(lastChart as never)).toBe(false);
+    });
+
+    it('게이트에 걸려 아무것도 안 그린 창은 표시하지 않는다', () => {
+      // 자기 발행 — 크로스헤어를 걸지 않으므로 이 창의 재발화는 여전히 유효하다.
+      renderCrosshair();
+      publish(CURSOR_1500, { ...MINUTE_ORIGIN, windowId: 'daily-window' });
+
+      expect(setCrosshairPosition).not.toHaveBeenCalled();
+      expect(hasSyntheticCrosshair(lastChart as never)).toBe(false);
+    });
   });
 
   it('캔버스(z-index:1) 위에 올라가되 pane 박스로 잘린다 (#1238 ↔ #1272)', () => {

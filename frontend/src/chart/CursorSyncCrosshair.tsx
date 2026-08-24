@@ -28,6 +28,11 @@
  * 찍는 것을 보완하려던 것이다. 일봉 차트에 분 단위 시각이 뜨는 것이 축과 맞지 않아
  * 걷어냈고, 같은 이유로 엣지 인디케이터에서도 시각을 뺐다.
  *
+ * 그리는 것 말고 **하나 더 남긴다**: 이 차트에 합성 크로스헤어를 걸었다는 표시다
+ * (`syntheticCrosshair.ts`). 발행 층이 그것을 읽어 데이터 갱신 재발화로 빈 동기화
+ * 슬롯을 차지하는 것을 막는다 — 그 표시가 없으면 소비 창이 자기 stale 위치를 발행해
+ * **포인터가 있는 창**의 크로스헤어를 임의 캔들로 끌어간다(2026-08-24 실측).
+ *
  * 좌표·필터 판정은 `cursorSync.ts` 가 소유한다. 여기서는 그 결과를 축에 태우고
  * 그린다. **종목 범위만 이 컴포넌트가 실어 준다** — ⚙️ 설정 → 차트의
  * `cursorSyncCrossSymbol`(기본 켬)을 읽어 `allowCrossSymbol` 로 넘긴다. 끄면
@@ -45,6 +50,7 @@ import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { formatKstMmdd, type SyncCandle } from './cursorSync';
+import { markSyntheticCrosshair, releaseSyntheticCrosshair } from './syntheticCrosshair';
 import { useCursorSyncResolution } from '../live/useCursorSyncResolution';
 import type { LiveTimeframe } from '../state/livePage';
 
@@ -109,7 +115,15 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
       (axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp,
       series,
     );
-    return () => { chart.clearCrosshairPosition(); };
+    // 이 창의 크로스헤어는 이제 **내 포인터가 아니다**. 그 사실을 발행 층이 읽어야
+    // 하는 이유는 `syntheticCrosshair.ts` 헤더에 있다(요약: lwc 가 데이터 갱신마다
+    // 이 위치로 `crosshairMove` 를 재발화하는데, 그걸로 발행하면 빈 슬롯을 차지해
+    // **포인터가 있는 창**의 크로스헤어를 남의 캔들로 끌어간다).
+    markSyntheticCrosshair(chart);
+    return () => {
+      chart.clearCrosshairPosition();
+      releaseSyntheticCrosshair(chart);
+    };
   }, [target, chart, axis, paneSeries]);
 
   if (resolution.kind === 'none' || syncCursorMs === null) return null;

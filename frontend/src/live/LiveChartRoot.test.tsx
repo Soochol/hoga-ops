@@ -3484,6 +3484,11 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 // ---------------------------------------------------------------------------
 
 import { useLiveCursorStore } from './useLiveCursorStore';
+import {
+  hasSyntheticCrosshair,
+  markSyntheticCrosshair,
+  releaseSyntheticCrosshair,
+} from '../chart/syntheticCrosshair';
 
 describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   beforeEach(() => {
@@ -4912,7 +4917,19 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
       [{ date: '20260619', sessionOpenMs: realMs, sessionCloseMs: realMs + 23400000 }],
       realMs,
     );
-    return { fire: () => crosshairHandler, vsec: realMsToVirtualSeconds(axis, realMs) };
+    // ⚠ **합성 표시를 여기서 씻는다.** 이 하네스는 `getMockImplementation()` 이 준
+    // 팩토리로 차트를 만드는데, 앞 스펙이 `mockReturnValueOnce` 를 걸어 두면 그
+    // 팩토리가 **같은 인스턴스를 다시 준다**(실측: 두 스펙의 chart 가 동일 객체).
+    // 표시는 인스턴스별이라 앞 스펙이 남긴 것이 그대로 새고, 그러면 "합성이 아닐 때"
+    // 를 재는 스펙이 파일 단독 실행에서만 빨개진다(단일 `-t` 실행에서는 초록이라
+    // 더 나쁘다).
+    releaseSyntheticCrosshair(chart as never);
+    return {
+      fire: () => crosshairHandler,
+      vsec: realMsToVirtualSeconds(axis, realMs),
+      // 합성 표시는 **차트 인스턴스별**이라 테스트가 같은 객체를 쥐어야 한다.
+      chart: chart as never,
+    };
   }
 
   const flushRaf = async () => {
@@ -4965,6 +4982,69 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
     expect(useLiveCursorStore.getState().syncCursorOrigin?.windowId).toBe('daily-window');
     expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
     expect(useLiveCursorStore.getState().sidebarCursorOrigin?.windowId).toBe('daily-window');
+  });
+
+  /**
+   * 2026-08-24 실측 버그. 위 세 스펙이 지키는 소유자 가드는 슬롯에 **주인이 있을 때**만
+   * 판정한다 — 슬롯이 `null` 인 순간은 통째로 열려 있다.
+   *
+   * 그 순간이 실제로 온다: 발행 창이 캔들 오른쪽 빈 공간으로 들어가면 자기 발행을
+   * 지운다. 그 직후 이 창(합성 크로스헤어를 들고 있던 소비 창)의 **미뤄진 재발화**가
+   * 착지하면 아래 발행이 성립하고, 포인터가 있는 저쪽 창이 그걸 받아 크로스헤어가
+   * 임의 캔들로 튄다. 주인이 바뀐 탓에 저쪽은 자기 정리 경로로 지우지도 못해
+   * 틱마다(초당 2~8회) 되돌아온다 — `/browse` 15 사이클 중 2회 재현.
+   *
+   * **막는 방향**: 합성 크로스헤어에서 나온 재발화가 **빈** 슬롯을 차지하는 것.
+   * **못 보는 것**: 합성이 아닌 재발화(= 포인터가 멈춰 있는 창의 재획득)는 그대로
+   * 통과해야 한다 — 두 번째 스펙이 그 방향을 고정한다. 셋째는 실제 포인터가
+   * 합성 표시보다 세다는 것.
+   * **등록 의존**: 표시는 `CursorSyncCrosshair` 가 남긴다(그쪽 스펙이 그 절반).
+   */
+  describe('빈 슬롯을 합성 재발화가 차지하지 못한다', () => {
+    it('합성 크로스헤어의 재발화는 빈 슬롯에도 발행하지 않는다', async () => {
+      const { fire, vsec, chart } = renderWithCrosshair();
+      markSyntheticCrosshair(chart);           // 옆 창 발행을 받아 그린 상태
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull(); // 슬롯은 비어 있다
+
+      act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+      await flushRaf();
+
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+    });
+
+    it('합성이 아니면 빈 슬롯을 되찾는다 — 정지 호버의 재획득 경로', async () => {
+      const { fire, vsec, chart } = renderWithCrosshair();
+      expect(hasSyntheticCrosshair(chart)).toBe(false);
+
+      act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+      await flushRaf();
+
+      expect(useLiveCursorStore.getState().syncCursorMs).not.toBeNull();
+    });
+
+    it('합성 표시가 있어도 실제 포인터는 통과한다', async () => {
+      const { fire, vsec, chart } = renderWithCrosshair();
+      markSyntheticCrosshair(chart);
+
+      act(() => { fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } }); });
+      await flushRaf();
+
+      expect(useLiveCursorStore.getState().syncCursorMs).not.toBeNull();
+    });
+
+    it('⚠ 판정은 **이벤트 시점**이다 — rAF 안에서 읽으면 해제와의 경쟁에 진다', async () => {
+      // 실측 순서: 옆 창이 슬롯 비움 → 이 창 cleanup(합성 해제) → 미뤄진 rAF 발행.
+      // 표시를 rAF 안에서 읽으면 그때는 이미 해제된 뒤라 가드가 통째로 무력해진다.
+      const { fire, vsec, chart } = renderWithCrosshair();
+      markSyntheticCrosshair(chart);
+
+      act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+      act(() => { releaseSyntheticCrosshair(chart); });   // rAF 가 돌기 **전에** 해제
+      await flushRaf();
+
+      expect(useLiveCursorStore.getState().syncCursorMs).toBeNull();
+    });
   });
 
   it('실제 포인터 이벤트는 통과한다 — 그 창으로 마우스를 옮기면 발행자가 바뀐다', async () => {
