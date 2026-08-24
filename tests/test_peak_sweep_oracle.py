@@ -181,6 +181,21 @@ def _peak_bucket_dedup(classified: list[tuple[_WallEvent, bool]]) -> list[_WallE
     return list(best.values())
 
 
+def _record_sequence(classified: list[tuple[_WallEvent, bool]]) -> tuple[AskPeakCandidateRow, ...]:
+    """기록 갱신 시퀀스의 **독립 구현**(순수 파이썬 루프) — 프로덕션 polars cum_max 와
+    fuzz 로 교차 검증된다. 규칙 동일: (intra_ms, seq, -qty) 정렬 · strict > · cap 128."""
+    touched = sorted((e for e, t in classified if t), key=lambda e: (e.intra_ms, e.seq, -e.qty))
+    out: list[AskPeakCandidateRow] = []
+    best = -1
+    for e in touched:
+        if e.qty > best:
+            out.append(AskPeakCandidateRow(price=e.price, qty=e.qty, intra_ms=e.intra_ms))
+            best = e.qty
+        if len(out) >= 128:
+            break
+    return tuple(out)
+
+
 def _peak_scalar(rows: list[_WallEvent]) -> tuple[int, int, int] | None:
     if not rows:
         return None
@@ -226,6 +241,8 @@ def oracle_query_day_ask_bid_peak_dual(
             "traded_max": _peak_scalar(cont_traded),
             "traded_peaks": _peak_candidates(rep_traded, 3),
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
+            "traded_record_peaks": _record_sequence(rep_classified),
+            "traded_record_max_peaks": _record_sequence(cont_classified),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
         }
@@ -240,6 +257,8 @@ def oracle_query_day_ask_bid_peak_dual(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
             traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
+            traded_record_peaks=ask["traded_record_peaks"],
+            traded_record_max_peaks=ask["traded_record_max_peaks"],
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
@@ -252,6 +271,8 @@ def oracle_query_day_ask_bid_peak_dual(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
             traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
+            traded_record_peaks=bid["traded_record_peaks"],
+            traded_record_max_peaks=bid["traded_record_max_peaks"],
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
