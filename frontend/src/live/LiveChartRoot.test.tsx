@@ -3719,6 +3719,162 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 중간 삽입 보정 (2026-08-24 사용자 보고)
+//
+// 디스크 구멍을 키움 보충이 메우면 캔들이 배열 **한가운데** 들어온다. 삽입 지점
+// 오른쪽 인덱스가 그만큼 밀리는데, 왼쪽 경계도 마지막 봉도 안 움직이므로 프리펜드
+// 게이트(`newEarliest < prevEarliest`)가 전부 통과시켜 보정이 없었다 — 화면은 그대로
+// 남아 다른 시점을 가리킨다. 010140 의 06-15~08-24 구간은 디스크 구멍이 16일이라
+// (06-15~07-02 연속 13일 + 07-17 + 08-17) 보충마다 반복되며 누적된다.
+//
+// 이 mock 의 `timeToIndex` 는 **삽입을 실제로 흉내낸다** — 삽입 지점보다 뒤의 time 을
+// 그 개수만큼 민다. 매핑 전환은 `setData` 시점에 일어나므로(테스트가 pending 을 세우고
+// 자식 pane 의 setData 가 적용) layout 스냅샷은 옛 매핑을, 리포지셔너는 새 매핑을 본다 —
+// 프로덕션의 실제 순서와 같다. 상수 매핑이면 shift 가 0 이라 이 테스트는 아무것도
+// 잠그지 못한다.
+// ---------------------------------------------------------------------------
+describe('LiveChartRoot mid-array gap-fill insertion', () => {
+  beforeEach(() => {
+    useLivePageStore.setState({ historicalFromDate: null, candleTimeframe: '1m' });
+    vi.useFakeTimers();
+    vi.setSystemTime(TODAY_OPEN_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const LR_FROM = 100;
+  const LR_TO = 400;
+  const VR_FROM_SEC = TODAY_OPEN_MS / 1000 + 60;
+  const VR_TO_SEC = TODAY_OPEN_MS / 1000 + 600;
+  const INSERT_SHIFT = 39;
+
+  function makeHarness() {
+    // 삽입 매핑: pivot 보다 뒤의 time 은 shift 만큼 밀린다.
+    let shift = 0;
+    let pivot = Number.POSITIVE_INFINITY;
+    let pending: { shift: number; pivot: number } | null = null;
+    const applyPending = () => {
+      if (pending) { shift = pending.shift; pivot = pending.pivot; pending = null; }
+    };
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
+      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      timeToIndex: vi.fn((t: unknown): number => {
+        const v = Math.round(t as number);
+        return v > pivot ? v + shift : v;
+      }),
+      width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+    };
+    const chart = {
+      addSeries: vi.fn(() => ({
+        // 자식 pane 의 setData 가 매핑 전환 지점이다 — 프로덕션에서 lwc 인덱스가
+        // 실제로 바뀌는 순간과 같다.
+        setData: vi.fn(() => applyPending()),
+        update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+    return { ts, chart, queueInsert: (p: { shift: number; pivot: number }) => { pending = p; } };
+  }
+
+  const bundleOf = (tsList: number[]): RangeBundle => ({
+    ...TODAY_ONLY_BUNDLE,
+    candles: tsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+
+  // 첫 봉·마지막 봉은 고정, 가운데만 늘어난다 = 보충의 지문.
+  const FIRST = TODAY_OPEN_MS + 60_000;
+  const MIDDLE = TODAY_OPEN_MS + 300_000;
+  const LAST = TODAY_OPEN_MS + 900_000;
+
+  it('중간 삽입이면 재투영한다 — 팬을 한 적 없어도(좌단을 안 건드리므로 안전)', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 보충 도착: 가운데 한 봉. 그 지점 뒤의 인덱스가 INSERT_SHIFT 만큼 밀린다.
+    h.queueInsert({ shift: INSERT_SHIFT, pivot: MIDDLE / 1000 });
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
+    expect(h.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM + INSERT_SHIFT,
+      to: LR_TO + INSERT_SHIFT,
+    });
+  });
+
+  it('SSE 성장(마지막 봉이 늘어나는 것)에는 손대지 않는다', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 오른쪽 끝에 새 봉 — lwc 가 스스로 우측을 핀하므로 앱이 개입하면 안 된다.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Crosshair → cursor store (ADR-0044)
 // ---------------------------------------------------------------------------
 
