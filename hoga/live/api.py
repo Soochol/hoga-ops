@@ -106,7 +106,7 @@ from .index_sector_rankings import (
     IndexSectorRankingResponse,
     build_index_sector_rankings,
 )
-from .lifecycle import LiveStatus, refresh_live_stream
+from .lifecycle import KiwoomGovernorSnapshot, LiveStatus, refresh_live_stream
 from .settings import load_live_settings, update_live_settings
 
 if TYPE_CHECKING:
@@ -1960,7 +1960,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 로 나가면서 소비처가 0곳이라 "계약" 이라는 말에 상대가 없었다.
         snapshot = kiwoom_rest_runtime.snapshot()
         if snapshot:
-            update["rest_capacity_scheduler"] = snapshot
+            # **모델로 검증해서 넣는다.** `model_copy(update=...)` 는 검증을 하지
+            # 않으므로 raw dict 를 그대로 대입하면 필드 선언(`KiwoomGovernorSnapshot`)과
+            # 실제 값(dict)이 어긋난 채 남는다. 그 상태로 직렬화하면 pydantic 이
+            # `PydanticSerializationUnexpectedValue` 를 경고로 흘리고 — 값은 우연히
+            # 같게 나가지만 **검증을 건너뛴 채**다. 이 줄이 그 우연을 계약으로 바꾼다.
+            update["rest_capacity_scheduler"] = KiwoomGovernorSnapshot.model_validate(snapshot)
         # ADR-0088: lifespan-owned task liveness (set on app.state at startup).
         runtime = getattr(request.app.state, "startup_runtime", None)
         if runtime is not None:
