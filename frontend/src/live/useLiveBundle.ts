@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
-import { useLivePastCandles } from '../api/livePastCandles';
+import { useLivePastCandles, type LivePastCandlesResponse } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
@@ -1383,15 +1383,59 @@ export function useLiveBundle(
   }, [isMinute, pastHoga.data?.from_date, sidecarEnabled, pastSidecars.data?.from_date]);
   const rangeWindowFromDate = isMinute ? rangePlan.from : null;
 
-  // 캘린더(D/W/M) 캔들 응답이 되싣는 from — 웜 캐시 스텝의 진행 신호(위 필드 주석).
+  // 캔들 응답이 되싣는 from — 웜 캐시 스텝의 진행 신호(위 필드 주석).
   // 활성 소스 배타 선택은 `pastDataWarnings`·`activeCandlesQuery`와 같은 규율이다.
   const settledDailyResponse = restBypassEnabled
     ? screenerDailyCandlesQuery.data
     : pastDailyCandlesQuery.data;
-  const pastSettledFromDate =
-    !isMinute && settledDailyResponse && settledDailyResponse.code === code
-      ? settledDailyResponse.from
-      : null;
+  const settledMinuteResponse = restBypassEnabled ? minuteDiskCandles.data : pastCandlesQuery.data;
+  /**
+   * 분봉 캔들 응답이 되싣는 from. 필드 이름이 소스마다 다르다 — 디스크(`/api/range`)는
+   * `from_date`, 벤더(`/api/live/past-candles`)는 `from`.
+   *
+   * **`code` 가드가 필수다.** 종목 왕복 직후가 바로 잠김이 재현되는 경로이고
+   * (`historicalFromDate` 가 null 로 리셋 → 첫 스텝 from 이 결정적 = 캐시 히트),
+   * 그 순간 이전 종목의 병합본이 아직 서빙 중이면 stale echo 를 진행 신호로 오독한다.
+   *
+   * 양쪽 다 병합본의 from 이라 **merge min** 이다(`range.ts` `mergeRangeBundles` ·
+   * `livePastCandles.ts` 의 같은 규칙) — 청크 워크백이 요청 창에 실제로 도달해야
+   * 값이 같아지므로 조기 발화가 없다.
+   *
+   * ⚠ 벤더 모드에서 250일 클램프가 걸리면(`minutePastFrom = laterDate(...)`) 요청 from 이
+   * `historicalFromDate` 보다 **나중**이라 이 값이 영영 같아지지 않는다. 무해하다 —
+   * 그 경우는 `planFillStep` 의 `earliestAllowedDate` 가드가 먼저 stop 을 낸다.
+   */
+  const settledMinuteFromDate =
+    !isMinute || !settledMinuteResponse || settledMinuteResponse.code !== code
+      ? null
+      : restBypassEnabled
+        ? (settledMinuteResponse as RangeBundle).from_date
+        : (settledMinuteResponse as LivePastCandlesResponse).from;
+  /**
+   * 분봉은 **가장 뒤처진 소스**를 싣는다.
+   *
+   * 이 값이 분봉에서 오랫동안 `null` 이었던 근거가 "병합 캐시 + 다중 소스 원자화" 였다.
+   * 그 우려는 옳지만 **답이 null 이 아니다** — null 이면 스텝 완료 신호가 둘 다 사라져
+   * (`isHistoricalDeltaFetching` 은 웜 캐시에서 `data != null` 이라 요청이 in-flight 여도
+   * false → 하강 엣지 없음) `useViewportBackfill` 3a 가 `endFill()` 에 닿지 못하고
+   * `fillKind` 가 영구 잠긴다. 그러면 3b 가 **이후 모든 좌팬을 침묵 반려**한다
+   * (2026-08-24 실측: 005380 10m hogaplay, extend 1줄 뒤 stop 없음, 이후 팬 10회 로그 0줄,
+   * 화면은 「스크롤은 되는데 캔들 빈칸」).
+   *
+   * 원자화는 **값에 담아서** 지킨다: 캔들이 목표에 닿아도 호가 지표가 아직 뒤(=더 나중
+   * 날짜)면 그 뒤처진 날짜를 낸다. 3a 의 `settledFromDate === historicalFromDate` 비교가
+   * 그만큼 늦게 성립해, 지표를 두고 캔들만 앞서 나가는 스텝 진행이 생기지 않는다.
+   * 지표가 아예 없으면(전부 끔) 캔들만으로 판정한다 — 뒤처질 상대가 없다.
+   */
+  const pastSettledFromDate = isMinute
+    ? (settledMinuteFromDate !== null
+        && indicatorCoverageFromDate !== null
+        && indicatorCoverageFromDate > settledMinuteFromDate
+        ? indicatorCoverageFromDate
+        : settledMinuteFromDate)
+    : (settledDailyResponse && settledDailyResponse.code === code
+        ? settledDailyResponse.from
+        : null);
 
   // 활성 소스의 fetch 경고만 노출 — 배타 이분화. 우회 ON 분봉은 디스크라 경고 없음([]),
   // D/W/M은 스크리너. 우회 OFF는 KIS 경로. (다른 경로 쿼리는 disabled라 스테일 경고가
