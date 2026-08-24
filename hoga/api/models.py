@@ -2152,10 +2152,17 @@ class StudyViewsFile(BaseModel):
     saves: list[StudyViewListRow] = Field(default_factory=list)
 
 
-# ── Live layout presets (ADR-0114 §4 → ADR-0119 PR-E) ─────────────────────
-# 프리셋 = **창 목록·z순서**(배치). 뷰포트·비영속 런타임은 담지 않는다(§6).
+# ── Live layout presets (ADR-0114 §4 → ADR-0119 PR-E → ADR-0159) ──────────
+# 프리셋 = **창 목록·z순서**(배치) + 차트 창의 지표 세트. 뷰포트·비영속 런타임은
+# 담지 않는다(§6).
 # 서버는 **얕은 구조 검증만** 하고 키셋을 강제하지 않는다 — 적용 시 프론트가 canonical
 # 재정규화(readWindow 재사용)하므로 새 창 kind/지표 필드 추가에 백엔드 변경이 없다.
+# ADR-0159 가 그 설계를 실제로 썼다: 차트 창 원소에 `indicators`·`indicatorModal` 이
+# 붙었지만 이 파일은 그대로다(아래 `dict[str, Any]` 통과).
+# **schema_version 을 올리지 말 것** — 스토어의 stale 버전 가드가 불일치 시 파일을
+# 빈 목록으로 대체하므로, 창 원소에 선택 키를 더하는 하위호환 변경에 버전을 올리면
+# 사용자의 프리셋이 **전부 사라진다**. v3 안에서 양방향 호환이다(구 프론트는 모르는
+# 키를 화이트리스트에서 무시하고, 새 프론트는 키 부재를 레거시로 읽는다).
 # payload 는 프론트-네이티브 camelCase 스냅샷을 그대로 담는 얕은 컨테이너다.
 class LiveLayoutPresetPayload(BaseModel):
     # windows 원소는 자유 구조(창 kind별 chart 설정 등) → dict 통과.

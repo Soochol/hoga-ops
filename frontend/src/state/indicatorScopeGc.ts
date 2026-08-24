@@ -30,6 +30,9 @@
  */
 import { windowScopeKey } from '../live/workspace/windowViewContext';
 import { useLivePageStore } from './livePage';
+import { useChartPrefsStore, type IndicatorModalByTimeframe } from './chartPrefs';
+import { normalizeBucketMap, type IndicatorSettingsByTimeframe } from './indicatorSettingsV2';
+import { sanitizeIndicatorModalBucketMap } from './chartPrefsPersistence';
 
 /**
  * 새 창에 자기 지표 세트를 심는다.
@@ -74,4 +77,84 @@ export function dropIndicatorScopesForRemovedWindows(
 ): void {
   const surviving = new Set(after.map((w) => w.id));
   dropIndicatorScopesForWindows(before.map((w) => w.id).filter((id) => !surviving.has(id)));
+}
+
+/** 프리셋 payload 의 창 원소가 실어 나르는 지표 세트 (ADR-0159).
+ *
+ *  두 키가 **쌍으로** 움직인다 — `livePage` 와 `chartPrefs` 가 한 드로어에 함께 뜨므로
+ *  (ADR-0072), 한쪽만 실리면 화면에서 절반만 프리셋 값이 된다. */
+export type WindowIndicatorPayload = {
+  indicators?: IndicatorSettingsByTimeframe;
+  indicatorModal?: IndicatorModalByTimeframe;
+};
+
+/**
+ * 창 하나의 지표 세트를 프리셋 payload 용으로 뽑는다 (ADR-0159).
+ *
+ * **엔트리가 없어도 `{}` 를 담는다.** 멤버십은 키의 존재이므로(ADR-0152), 빈 것을
+ * 생략하면 적용 시 마운트 시드가 **페이지 세트**를 복사해 저장한 것과 다른 화면이
+ * 된다 — 공장값 상태로 저장한 창이 남의 지표를 달고 열린다.
+ *
+ * 정규화 함수를 통과시키는 것이 **깊은 사본 역할도 겸한다** — 스토어 버킷 참조를
+ * payload 에 실으면 이후 편집이 저장 대기 중인 값을 오염시킨다.
+ */
+export function captureIndicatorPayloadForWindow(windowId: string): WindowIndicatorPayload {
+  const key = windowScopeKey(windowId);
+  if (!key) return {};
+  return {
+    indicators: normalizeBucketMap(useLivePageStore.getState().indicatorsByWindow[key] ?? {}),
+    indicatorModal: sanitizeIndicatorModalBucketMap(
+      useChartPrefsStore.getState().indicatorModalByWindow[key] ?? {},
+    ),
+  };
+}
+
+/**
+ * 프리셋 payload 의 지표를 적용한다 — **스냅샷 적용이 끝난 뒤에** 부른다 (ADR-0159).
+ *
+ * 순서가 계약인 이유 둘:
+ *  - 스냅샷 적용이 사라진 창의 엔트리를 회수한다. 먼저 심으면 옛 창들이 아직 맵에
+ *    남아 있어 `INDICATOR_WINDOW_SCOPE_LIMIT` 에 걸리고, 시드는 **조용히 포기**한다.
+ *  - `readWindow` 가 거부한 창(손상된 rect·공장 기본 폴백)은 스토어에 없다. 그
+ *    id 로 지표를 심으면 **어떤 창도 가진 적 없는 키**가 남고, 회수는 `before` 에
+ *    있던 id 만 걷으므로 영원히 닿지 않는다.
+ *
+ * 그래서 payload 가 아니라 **적용 후 스토어의 창 목록**을 순회한다. payload 는
+ * id → 값 색인으로만 쓴다.
+ *
+ * 지표 키가 **둘 다 없는** 창은 건너뛴다 — 이 기능 이전에 저장된 프리셋이고, 그
+ * 창은 종전대로 마운트 시드가 페이지 세트로 채운다(하위호환). 한쪽만 있으면 없는
+ * 쪽을 `{}` 로 채워 멤버십이 갈리지 않게 한다.
+ */
+export function restoreIndicatorScopesFromPayload(
+  windows: readonly { id: string; kind: string }[],
+  rawWindows: readonly unknown[],
+): void {
+  const byId = new Map<string, WindowIndicatorPayload>();
+  for (const raw of rawWindows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const w = raw as Record<string, unknown>;
+    if (typeof w.id !== 'string') continue;
+    byId.set(w.id, w as WindowIndicatorPayload);
+  }
+  const entries: {
+    windowKey: string;
+    indicators: IndicatorSettingsByTimeframe;
+    modal: IndicatorModalByTimeframe;
+  }[] = [];
+  for (const win of windows) {
+    if (win.kind !== 'chart') continue;
+    const raw = byId.get(win.id);
+    if (!raw) continue;
+    if (raw.indicators === undefined && raw.indicatorModal === undefined) continue;
+    const windowKey = windowScopeKey(win.id);
+    if (!windowKey) continue;
+    entries.push({
+      windowKey,
+      // payload 는 서버에서 온 신뢰 불가 값이다 — 저장소 로드와 같은 소독을 거친다.
+      indicators: normalizeBucketMap(raw.indicators ?? {}),
+      modal: sanitizeIndicatorModalBucketMap(raw.indicatorModal ?? {}),
+    });
+  }
+  useLivePageStore.getState().restoreWindowIndicatorScopes(entries);
 }

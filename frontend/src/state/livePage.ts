@@ -34,8 +34,10 @@ import { bindIndicatorOps, MA_PALETTE } from './indicatorOps';
 import { applyPresetEnableByTimeframe } from './indicatorPresetOps';
 import {
   dropIndicatorModalScopes,
+  restoreIndicatorModalScopes,
   seedIndicatorModalScope,
   syncIndicatorModalTimeframe,
+  type IndicatorModalByTimeframe,
 } from './chartPrefs';
 import {
   profileKeyForTimeframe,
@@ -332,6 +334,16 @@ type Store = Persisted & IndicatorSettings & {
    * 여기서 덮어쓰면 탭 전환·재마운트마다 사용자가 만진 값이 시드로 되돌아간다.
    */
   seedWindowIndicatorScope: (scope: IndicatorScope, sourceWindowKey?: string | null) => void;
+  /** 프리셋 payload 의 창별 세트를 심는다 (ADR-0159) — **시드와 달리 무조건
+   *  덮어쓴다**(프리셋 적용 = 저장된 값으로 교체). 두 스토어 동반이므로
+   *  `chartPrefs` 의 modal 세트도 같은 호출로 함께 심는다. */
+  restoreWindowIndicatorScopes: (
+    entries: readonly {
+      windowKey: string;
+      indicators: IndicatorSettingsByTimeframe;
+      modal: IndicatorModalByTimeframe;
+    }[],
+  ) => void;
   /** 사라진 창의 세트를 회수한다(창 닫힘·레이아웃 프리셋 적용·스냅샷 교체).
    *  **로드 시 일괄 청소는 하지 않는다** — 딥링크 탭은 워크스페이스를 공유 저장소에
    *  미러하지 않으므로(`workspace.ts` 의 `isDeepLinkTab`), 다른 탭이 스냅샷을 근거로
@@ -702,6 +714,26 @@ export const useLivePageStore = create<Store>((set, get) => {
       // 두 스토어의 멤버십은 항상 동반이다(ADR-0072) — 한쪽만 심으면 같은 드로어
       // 안에서 어떤 행은 창별, 어떤 행은 페이지 공유가 된다.
       seedIndicatorModalScope(scope, sourceWindowKey ?? null);
+      persistIndicators();
+    },
+
+    restoreWindowIndicatorScopes: (entries) => {
+      if (entries.length === 0) return;
+      const s = get();
+      const next = { ...s.indicatorsByWindow };
+      const modalEntries: { windowKey: string; buckets: IndicatorModalByTimeframe }[] = [];
+      for (const { windowKey, indicators, modal } of entries) {
+        if (!windowKey) continue;
+        // 상한은 **새 엔트리에만** — 이미 있는 키를 덮는 것은 맵을 키우지 않는다.
+        if (!Object.hasOwn(next, windowKey)
+          && Object.keys(next).length >= INDICATOR_WINDOW_SCOPE_LIMIT) continue;
+        next[windowKey] = indicators;
+        modalEntries.push({ windowKey, buckets: modal });
+      }
+      set({ indicatorsByWindow: next });
+      // 두 스토어의 멤버십은 항상 동반이다(ADR-0072) — 한쪽만 심으면 같은 드로어
+      // 안에서 어떤 행은 프리셋 값, 어떤 행은 옛 값이 된다.
+      restoreIndicatorModalScopes(modalEntries);
       persistIndicators();
     },
 

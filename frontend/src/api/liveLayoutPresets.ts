@@ -7,7 +7,12 @@ import type { LineStyle } from '../chart/drawing/types';
  * payload = **창 목록·z순서**. 프론트-네이티브 camelCase 를 그대로 담는 얕은 컨테이너 —
  * 백엔드는 저장/반환만, 검증·정규화는 프론트가 apply 시점에 한다
  * (`applyWorkspaceSnapshot`→`readWindow`). windows 원소는 자유 구조(창 kind별 chart
- * 설정 등). 뷰포트·비영속 런타임은 미포함(§6).
+ * 설정, 차트 창의 지표 세트 등). 뷰포트·비영속 런타임은 미포함(§6).
+ *
+ * 차트 창 원소가 싣는 지표 키(`indicators`·`indicatorModal`, ADR-0159)는 여기 타입에
+ * 나타나지 않는다 — `windows: unknown[]` 이 그 자유를 뜻하고, 조립·해석은
+ * `live/presets/layoutPresetSnapshot.ts` 와 `state/indicatorScopeGc.ts` 가 갖는다.
+ * 그래서 이 확장에 **백엔드도 wire 스냅샷도 변경이 없다**.
  */
 export type LiveLayoutPresetPayload = {
   windows: unknown[];

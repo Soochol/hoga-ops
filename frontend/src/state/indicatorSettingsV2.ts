@@ -197,7 +197,13 @@ function sanitizeSettingsPatch(raw: unknown): Partial<IndicatorSettings> {
 /** 버킷 맵 하나(4프로파일)를 정규화한다 — 두 페이지 세트가 같은 규칙을 쓴다.
  *  빈 버킷은 여기서 걷힌다(sparse 의 정의). 맵 **자체**가 비는 것은 정상이며
  *  (= 공장값), 그래서 "비었다" 와 "없다" 는 서로 다른 뜻이다 — 후자만 시드를 부른다. */
-function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
+/** 버킷 맵 하나를 정규화한다 — 저장소 로드와 **프리셋 payload 적용**이 공유한다
+ *  (ADR-0159). payload 는 서버에서 오는 신뢰 불가 값이라 같은 소독을 거쳐야 한다.
+ *
+ *  ⚠ 여기서 걷어내는 것은 **맵 안의 빈 버킷**이지 엔트리 자체가 아니다. 엔트리의
+ *  존재는 멤버십이므로(`byWindow` 주석) 호출자가 관리한다 — 빈 결과 `{}` 도
+ *  "자기 세트를 갖는 창" 의 정상 값이다. */
+export function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
   const rawBuckets = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
     : {};

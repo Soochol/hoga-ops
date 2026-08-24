@@ -150,6 +150,20 @@ export function mergeStudyIndicatorModal(
   return out;
 }
 
+/** indicator-modal 버킷 맵 하나를 정규화한다 — 저장소 로드와 **프리셋 payload
+ *  적용**이 공유한다(ADR-0159). `livePage` 쪽 `normalizeBucketMap` 의 대응물이고,
+ *  같은 규약이다: 맵 안의 빈 버킷은 걷지만 결과가 `{}` 인 것은 정상이다(멤버십은
+ *  엔트리의 존재가 정하므로 호출자가 관리한다). */
+export function sanitizeIndicatorModalBucketMap(raw: unknown): IndicatorModalByTimeframe {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: IndicatorModalByTimeframe = {};
+  for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+    const bucket = sanitizeIndicatorModalBucket((raw as Record<string, unknown>)[profileKey]);
+    if (Object.keys(bucket).length > 0) out[profileKey] = bucket;
+  }
+  return out;
+}
+
 /**
  * 창별 indicator-modal 버킷 로드 — **빈 엔트리를 보존한다**(`livePage` 의
  * `byWindow` 와 같은 멤버십 규약: 엔트리의 존재가 곧 "이 창은 자기 세트를 갖는다").
@@ -166,12 +180,7 @@ export function mergeIndicatorModalByWindow(
     if (Object.keys(out).length >= INDICATOR_WINDOW_SCOPE_LIMIT) break;
     if (!scopeKey) continue;
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const buckets: IndicatorModalByTimeframe = {};
-    for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-      const bucket = sanitizeIndicatorModalBucket((value as Record<string, unknown>)[profileKey]);
-      if (Object.keys(bucket).length > 0) buckets[profileKey] = bucket;
-    }
-    out[scopeKey] = buckets;
+    out[scopeKey] = sanitizeIndicatorModalBucketMap(value);
   }
   return out;
 }
