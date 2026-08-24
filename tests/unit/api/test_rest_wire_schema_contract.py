@@ -198,6 +198,15 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    # 스크리너 갱신 skip 사유. **오래 `str` 이라 이 층 밖에 있었다** — BE 에 named
+    # alias 가 없으면 `get_args` 로 읽을 수 없어 등록 자체가 불가능하고, 그래서 등록
+    # 누락 감사도 이 쌍을 못 봤다(`RangeMode` 와 같은 구멍). 달력 실패를 둘로 쪼개면서
+    # alias 를 만들어 함께 등록했다. 값이 갈리면 새 사유가 `SKIP_REASON_MESSAGES` 에
+    # 없어 갱신 실패가 **문구 없이** 지나간다.
+    "ScreenerUpdateSkipReason": (
+        frozenset(get_args(m.ScreenerUpdateSkipReason)),
+        "frontend/src/api/screener.ts",
+    ),
     # `/api/range` 의 mode. **BE 가 Literal 이 아니라 Query 정규식이라 오래 가드 밖에
     # 있었다** — `get_args` 로 읽을 수 없으니 등록 자체가 불가능했고, 그래서 등록 누락
     # 감사도 이 쌍을 못 봤다. models.py 에 alias 를 두어 라우트 검증과 이 대조가 같은

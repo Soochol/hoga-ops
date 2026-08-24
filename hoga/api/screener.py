@@ -16,13 +16,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api import screener_runner, screener_saves, screener_store
-from hoga.api.calendar import trading_days_in_range
+from hoga.api.calendar import TradingDayUnavailableError, trading_days_in_range
+from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import (
     SavedScreener,
     SavedScreenersFile,
     ScanRequest,
     ScreenerResponse,
     ScreenerSaveWriteRequest,
+    ScreenerUpdateSkipReason,
 )
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.screener_store import DailyBar
@@ -162,9 +164,21 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
         # KIS chk-holiday sync HTTP 였고 지금은 파일 IO 다. 비용은 줄었지만 동기 IO 인
         # 것은 그대로라 규칙은 유지한다.
         days = await asyncio.to_thread(_gap_trading_days, last, today, now=now)
-    except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
-        log.warning("screener update: trading-day list unavailable")
-        return "calendar_unavailable"
+    except TradingDayUnavailableError as e:
+        # **두 실패를 갈라서 내보낸다.** 뭉치면 화면만 보고 조치를 고를 수 없다.
+        if e.code is UpstreamCode.TRADING_DAYS_STALE:
+            log.warning("screener update: 달력 커버리지가 %s 를 못 덮는다 — 오버레이 확인", today)
+            return "calendar_coverage_behind"
+        log.warning("screener update: 거래일 소스를 읽을 수 없다 (%s)", e.code.value)
+        return "calendar_source_missing"
+    except Exception:
+        # 위 둘 밖의 무엇이든. 예상 밖 예외도 결국 "달력을 쓸 수 없다" 이고 사용자
+        # 조치는 소스 결여와 같다(로그를 본다). 그래서 같은 사유로 접되 **traceback 은
+        # 남긴다** — 그게 이 갈래와 진짜 배포 사고를 사후에 가르는 유일한 단서다.
+        # (`noqa: BLE001` 이 없는 이유: `log.exception` 이 곧 "제대로 처리했다" 라
+        # BLE001 이 애초에 발화하지 않는다 — 붙이면 RUF100 이 죽은 noqa 로 잡는다.)
+        log.exception("screener update: 거래일 조회가 예상 밖 예외로 실패")
+        return "calendar_source_missing"
     if not days:
         return "no_gap"
 
@@ -363,16 +377,19 @@ class ScreenerUpdateResponse(BaseModel):
     그래서 라우트에 ``response_model_exclude_none=True`` 가 **필수**다. 기본 직렬화면
     양쪽 가지의 키가 전부 실려(`updated: null` 등) 유니온 판별이 깨진다.
 
-    `reason` 을 Literal 로 좁히지 않은 것은 백엔드에 해당 타입 별칭이 아예 없기
-    때문이다(`_plan_update` 가 문자열을 직접 반환한다). 좁히려면 BE 에 Literal 을
-    새로 만들고 미러 registry 에 등록해야 하는데, 그건 이 배치의 범위가 아니다.
+    `reason` 은 `models.ScreenerUpdateSkipReason` 으로 좁혀 두었다 — 그 이름이
+    프론트 union 이름과 같아 ADR-0004 **2층 미러 대조**가 이 쌍을 지킨다
+    (`tests/unit/api/test_rest_wire_schema_contract.py::WIRE_ENUM_MIRRORS`).
+    *(오래 `str` 이었다. 그때 사유는 "BE 에 타입 별칭이 없다" 였는데, 별칭이 없다는
+    것이 곧 이 enum 이 무방비라는 뜻이었다 — 값 드리프트는 타입이 원리적으로 못
+    잡는다(#1183). 사유를 둘로 쪼개면서 함께 닫았다.)*
     """
 
     running: bool
     done: int | None = None
     total: int | None = None
     updated: int | None = None
-    reason: str | None = None
+    reason: ScreenerUpdateSkipReason | None = None
 
 
 def build_router(*, data_dir: Path, bus=None) -> APIRouter:
