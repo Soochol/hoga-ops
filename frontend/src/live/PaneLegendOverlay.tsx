@@ -28,7 +28,7 @@ import { buildCandleTooltip } from './candleTooltipModel';
 import {
   useIndicatorActions,
   useWindowIndicator,
-  useWindowPaneAxisShare,
+  useWindowPaneAxisMode,
   useWindowPaneGroups,
   useWindowScopeId,
   type IndicatorActions,
@@ -46,7 +46,7 @@ import {
   mergePaneIntoGroup,
   movePaneGroupBeside,
   paneGroupIndexOf,
-  resolveAxisShared,
+  resolveAxisMode,
   type PaneGroups,
 } from '../chart/paneGroups';
 import {
@@ -384,13 +384,13 @@ function GripGlyph() {
 /**
  * pane 이름 칩 — 병합/분리 드래그의 핸들이자(⠿·grab 커서), 클릭하면 병합 메뉴가
  * 열린다(드래그 임계값 `PANE_DRAG_THRESHOLD_PX` 미만의 pointerup = 클릭).
- * 병합 pane 의 멤버 칩에는 ✕(그 지표 끄기)가 붙고, 스케일이 격리된 그룹의 첫
- * 칩에는 「축」 배지(오른쪽 축 눈금 소유자)가 붙는다.
+ * 병합 pane 의 멤버 칩에는 ✕(그 지표 끄기)가 붙고, 격리 스케일 그룹의 첫 칩에는
+ * 「축」(오른쪽 축 소유), 'left' 모드의 둘째 칩에는 「좌축」 배지가 붙는다.
  */
 function PaneChip({
   paneId,
   label,
-  axisOwner,
+  axisBadge,
   showRemove,
   onRemove,
   dimmed,
@@ -401,7 +401,8 @@ function PaneChip({
 }: {
   paneId: PaneId;
   label: string;
-  axisOwner: boolean;
+  /** 축 소유 배지 텍스트('축'·'좌축') — null 이면 배지 없음. */
+  axisBadge: string | null;
   showRemove: boolean;
   onRemove: (() => void) | null;
   dimmed: boolean;
@@ -448,10 +449,12 @@ function PaneChip({
           <GripGlyph />
         </span>
         {label}
-        {axisOwner && (
+        {axisBadge !== null && (
           <span
-            aria-label="오른쪽 축 눈금 소유"
-            title="오른쪽 축 눈금은 이 지표의 것입니다"
+            aria-label={axisBadge === '좌축' ? '왼쪽 축 눈금 소유' : '오른쪽 축 눈금 소유'}
+            title={axisBadge === '좌축'
+              ? '왼쪽 축 눈금은 이 지표의 것입니다'
+              : '오른쪽 축 눈금은 이 지표의 것입니다'}
             style={{
               fontSize: 'var(--text-badge)',
               fontWeight: 700,
@@ -462,7 +465,7 @@ function PaneChip({
               lineHeight: 1.5,
             }}
           >
-            축
+            {axisBadge}
           </span>
         )}
       </button>
@@ -717,7 +720,7 @@ function PaneLegendOverlay({
 
   // 사용자 소유 pane 레이아웃(그룹) — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
   const paneGroups = useWindowPaneGroups();
-  const paneAxisShare = useWindowPaneAxisShare();
+  const paneAxisMode = useWindowPaneAxisMode();
   const indicatorActions = useIndicatorActions();
 
   // ── pane 병합 드래그 + 칩 메뉴 ──────────────────────────────────────────
@@ -1157,6 +1160,23 @@ function PaneLegendOverlay({
     plotWidth = 0; // chart tearing down
   }
 
+  // 왼쪽 축 거터('left' 모드) — lwc 는 축 컬럼 폭을 차트 전체가 나눠 가지므로 어느
+  // pane 이든 보이는 왼쪽 스케일의 최대 폭이 곧 전 pane 의 좌측 거터다. 레전드를
+  // 그만큼 밀지 않으면 칩이 왼쪽 축 눈금 위에 얹힌다. 스케일 API 가 없거나(구 lwc·
+  // 테스트 스텁) 숨김이면 0 — 종전 배치 그대로.
+  let leftAxisPx = 0;
+  try {
+    for (const p of panes) {
+      const scale = (p as { priceScale?: (id: string) => { width?: () => number } | null })
+        .priceScale?.('left');
+      const w = scale?.width?.() ?? 0;
+      if (Number.isFinite(w)) leftAxisPx = Math.max(leftAxisPx, w);
+    }
+  } catch {
+    leftAxisPx = 0; // chart tearing down
+  }
+  const leftInset = leftAxisPx > 0 ? `calc(${leftAxisPx}px + ${LEGEND_INSET})` : LEGEND_INSET;
+
   // Group rows per pane — the candle pane can hold several (MA + daily-MA +
   // flag chips), stacked vertically inside one absolutely-positioned wrapper.
   const rowsByPane = new Map<string, LegendRow[]>();
@@ -1191,7 +1211,7 @@ function PaneLegendOverlay({
         // 않는다 — 그 쿼리는 캔들 pane 에만 적용되므로 다른 pane 이 좁아지는 것은 무해.
         const rightInset =
           showMoveControls && plotWidth > 0
-            ? `calc(100% - ${plotWidth}px + ${LEGEND_INSET})`
+            ? `calc(100% - ${leftAxisPx + plotWidth}px + ${LEGEND_INSET})`
             : LEGEND_INSET;
         return (
           <div
@@ -1199,7 +1219,7 @@ function PaneLegendOverlay({
             style={{
               position: 'absolute',
               top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
-              left: LEGEND_INSET,
+              left: leftInset,
               right: rightInset,
               display: 'flex',
               // row — 이동 컨트롤이 legend 행과 **같은 줄** 우측에 붙는다(2026-08-18).
@@ -1281,11 +1301,14 @@ function PaneLegendOverlay({
                     key={member.name}
                     paneId={member.name}
                     label={PANE_DISPLAY_NAME[member.name]}
-                    axisOwner={
-                      group.length > 1
-                      && member === group[0]
-                      && !resolveAxisShared(paneGroupIds(group), paneAxisShare)
-                    }
+                    axisBadge={(() => {
+                      if (group.length <= 1) return null;
+                      const mode = resolveAxisMode(paneGroupIds(group), paneAxisMode);
+                      if (mode === 'shared') return null; // 한 축 — 소유 표시가 무의미
+                      if (member === group[0]) return '축';
+                      if (mode === 'left' && member === group[1]) return '좌축';
+                      return null;
+                    })()}
                     showRemove={group.length > 1}
                     onRemove={member.legendToggleKey
                       ? () => indicatorActions.setPanePrefForTimeframe(
@@ -1436,7 +1459,8 @@ function PaneLegendOverlay({
         if (gi < 0) return null;
         const merged = groups[gi].length > 1;
         const ownIds = paneGroupIds(groups[gi]);
-        const axisShared = resolveAxisShared(ownIds, paneAxisShare);
+        const axisMode = resolveAxisMode(ownIds, paneAxisMode);
+        const secondName = groups[gi].length > 1 ? PANE_DISPLAY_NAME[groups[gi][1].name] : null;
         // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
         const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
         const downGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
@@ -1483,22 +1507,54 @@ function PaneLegendOverlay({
               flexDirection: 'column',
             }}
           >
-            {merged && (
+            {/* y축 모드 — 현재 모드를 제외한 나머지 둘을 항목으로 노출한다.
+                공유 = 전원이 오른쪽 축 하나(오토스케일 합산 — 단위가 다르면 한쪽이
+                눌린다), 분리 = 멤버별 격리 스케일(기본), 왼쪽 축 = 둘째 멤버 눈금을
+                왼쪽에(차트 전체에 왼쪽 거터가 생기는 비용이 있어 opt-in).
+                오버라이드는 구성 키에 저장돼, 멤버가 바뀌면 기본값으로 리셋된다. */}
+            {merged && axisMode !== 'shared' && (
               <button
                 type="button"
-                data-testid="pane-menu-axis-share"
+                data-testid="pane-menu-axis-shared"
                 style={itemStyle}
                 onMouseEnter={hoverOn}
                 onMouseLeave={hoverOff}
-                // 공유 = 전원이 오른쪽 축 하나(오토스케일 합산 — 단위가 다르면 한쪽이
-                // 눌린다), 분리 = 멤버별 격리 스케일(기본). 오버라이드는 구성 키에
-                // 저장돼, 멤버가 바뀌면 기본값으로 리셋된다.
                 onClick={() => {
-                  indicatorActions.setPaneAxisShare(ownIds, !axisShared);
+                  indicatorActions.setPaneAxisMode(ownIds, 'shared');
                   setChipMenu(null);
                 }}
               >
-                {axisShared ? 'y축 분리 (멤버별 스케일)' : 'y축 공유 (한 스케일)'}
+                y축 공유 (한 스케일)
+              </button>
+            )}
+            {merged && axisMode !== 'isolated' && (
+              <button
+                type="button"
+                data-testid="pane-menu-axis-isolated"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                onClick={() => {
+                  indicatorActions.setPaneAxisMode(ownIds, 'isolated');
+                  setChipMenu(null);
+                }}
+              >
+                {axisMode === 'left' ? '왼쪽 축 숨기기 (멤버별 스케일)' : 'y축 분리 (멤버별 스케일)'}
+              </button>
+            )}
+            {merged && axisMode !== 'left' && secondName !== null && (
+              <button
+                type="button"
+                data-testid="pane-menu-axis-left"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                onClick={() => {
+                  indicatorActions.setPaneAxisMode(ownIds, 'left');
+                  setChipMenu(null);
+                }}
+              >
+                {`『${secondName}』 왼쪽 축에 표시`}
               </button>
             )}
             {merged && (

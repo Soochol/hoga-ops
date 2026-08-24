@@ -175,59 +175,107 @@ export function isSharedAxisGroup(members: readonly string[]): boolean {
 }
 
 /**
- * 그룹별 y축 공유 **수동 오버라이드** (v2 — PR #1551 후속).
+ * 병합 그룹의 y축 **모드** (v2 boolean 공유 → v3 3모드).
  *
- * 키 = 멤버 구성(정렬 join) — 그룹의 identity 를 순서와 무관하게 잡는다. 구성이
- * 바뀌면(멤버 증감) 키가 달라져 오버라이드가 **기본값으로 리셋**되는데, 이것이
- * 의도다: 새 멤버는 단위가 다를 수 있어 이전 선택을 이어받으면 안 된다.
- * 값: true = 전원 오른쪽 축 공유(합산 오토스케일), false = 멤버별 격리 강제
- * (화이트리스트 쌍도 분리 가능).
+ * - `'isolated'` — 멤버별 격리 스케일(비화이트리스트 기본값). 오른쪽 축은 대표 것.
+ * - `'shared'` — 전원 오른쪽 축 하나(오토스케일 합산; 화이트리스트 쌍의 기본값).
+ * - `'left'` — 대표는 오른쪽 축, **둘째 멤버는 왼쪽 축**(둘 다 눈금이 보인다),
+ *   셋째부터는 격리. lwc 특성상 왼쪽 축 컬럼 폭은 차트 전체가 나눠 갖는다(다른
+ *   pane 에도 빈 거터) — 그래서 opt-in 이다.
+ *
+ * 키 = 멤버 구성(정렬 join, `paneGroupKey`) — 구성이 바뀌면 키가 달라져 선택이
+ * **기본값으로 리셋**된다(의도: 새 멤버는 단위가 다를 수 있다).
  */
-export type PaneAxisShareMap = Record<string, boolean>;
+export type PaneAxisMode = 'shared' | 'isolated' | 'left';
 
-/** 그룹 구성 → 오버라이드 맵 키. 순서 무관(정렬) — 같은 멤버면 같은 그룹이다. */
-export function paneAxisShareKey(members: readonly string[]): string {
+export type PaneAxisModeMap = Record<string, PaneAxisMode>;
+
+/** 그룹 구성 → 그룹 단위 오버라이드 맵(축 모드·그룹 stretch)의 키.
+ *  순서 무관(정렬) — 같은 멤버면 같은 그룹이다. */
+export function paneGroupKey(members: readonly string[]): string {
   return [...members].sort().join(',');
 }
 
-/** 저장된 오버라이드 맵을 정규화한다 — boolean 아닌 값 드롭, 그리고 **현재
- *  paneGroups 의 2인 이상 그룹과 매칭되지 않는 키 드롭**(스테일 키가 쌓이지 않게;
- *  그룹 해체·재구성 시 자연 소멸). */
-export function normalizePaneAxisShare(
+const AXIS_MODES = new Set<string>(['shared', 'isolated', 'left']);
+
+/** 현재 paneGroups 의 2인 이상 그룹 구성 키 집합 — 그룹 단위 오버라이드 맵들의
+ *  공통 생존 판정(스테일 키는 정규화에서 걷혀 해체 시 자연 소멸). */
+function liveGroupKeys(groups: readonly (readonly PaneId[])[]): Set<string> {
+  return new Set(groups.filter((g) => g.length > 1).map((g) => paneGroupKey(g)));
+}
+
+/** 저장된 축 모드 맵을 정규화한다 — 미지 값·현재 그룹과 매칭 안 되는 키 드롭. */
+export function normalizePaneAxisMode(
   raw: unknown,
   groups: readonly (readonly PaneId[])[],
-): PaneAxisShareMap {
+): PaneAxisModeMap {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const liveKeys = new Set(
-    groups.filter((g) => g.length > 1).map((g) => paneAxisShareKey(g)),
-  );
-  const out: PaneAxisShareMap = {};
+  const liveKeys = liveGroupKeys(groups);
+  const out: PaneAxisModeMap = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value !== 'boolean') continue;
+    if (typeof value !== 'string' || !AXIS_MODES.has(value)) continue;
+    if (!liveKeys.has(key)) continue;
+    out[key] = value as PaneAxisMode;
+  }
+  return out;
+}
+
+/** 그룹 구성의 기본 축 모드 — 화이트리스트 쌍만 공유, 나머지는 격리. */
+export function defaultAxisMode(members: readonly string[]): PaneAxisMode {
+  return isSharedAxisGroup(members) ? 'shared' : 'isolated';
+}
+
+/** 그룹의 **유효** 축 모드 = 수동 오버라이드 ?? 기본값. 싱글턴은 항상 격리(무의미). */
+export function resolveAxisMode(
+  members: readonly string[],
+  modeMap: PaneAxisModeMap,
+): PaneAxisMode {
+  if (members.length <= 1) return 'isolated';
+  return modeMap[paneGroupKey(members)] ?? defaultAxisMode(members);
+}
+
+/**
+ * 그룹 단위 stretch 오버라이드 (v3) — separator 드래그로 병합 pane 을 리사이즈한
+ * 결과를 **그룹 키에** 저장한다. 없으면 멤버 최대값 파생(`paneGroupStretch`).
+ * 종전(멤버 전원에게 기록)은 분리 후 두 pane 이 같은 크기로 시작하는 부작용이
+ * 있었다 — 그룹 키 저장이면 분리 시 멤버 각자의 옛 stretch 가 살아난다.
+ */
+export type PaneGroupStretchMap = Record<string, number>;
+
+// paneOrder.ts 의 paneStretch 와 같은 경계 — 스펙 기본값 0.3~1.4 스케일 기준,
+// 밖은 손상된 저장값으로 간주(극단값이 다른 pane 을 0 으로 짓누르는 것 차단).
+const GROUP_STRETCH_MIN = 0.05;
+const GROUP_STRETCH_MAX = 20;
+
+/** 저장된 그룹 stretch 맵을 정규화한다 — 비유한·범위 밖·스테일 키 드롭. */
+export function normalizePaneGroupStretch(
+  raw: unknown,
+  groups: readonly (readonly PaneId[])[],
+): PaneGroupStretchMap {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const liveKeys = liveGroupKeys(groups);
+  const out: PaneGroupStretchMap = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    if (value < GROUP_STRETCH_MIN || value > GROUP_STRETCH_MAX) continue;
     if (!liveKeys.has(key)) continue;
     out[key] = value;
   }
   return out;
 }
 
-/** 그룹의 **유효** 축 공유 = 수동 오버라이드 ?? 화이트리스트 기본값. */
-export function resolveAxisShared(
-  members: readonly string[],
-  shareMap: PaneAxisShareMap,
-): boolean {
-  if (members.length <= 1) return false;
-  return shareMap[paneAxisShareKey(members)] ?? isSharedAxisGroup(members);
-}
-
 /**
  * 병합 pane 에서 `member` 시리즈가 쓸 priceScaleId 를 정한다.
  *
  * - 그룹의 **첫 멤버**(대표)는 원래 스케일 그대로 → 오른쪽 축 눈금은 대표 것.
- * - 나머지 멤버는 멤버별 숨은 오버레이 스케일로 격리 — 원래 id 를 **접두**로
+ * - `'shared'` 모드는 전원 원래 스케일 유지 → 축을 실제로 공유한다.
+ * - `'left'` 모드의 **둘째 멤버**는 'right' 계열이 'left' 로 간다(왼쪽 축 눈금).
+ *   누적선 오버레이('')는 왼쪽 축을 차지하면 안 되므로 격리 유지 — 솔로 pane 에서도
+ *   자기 스케일이었다.
+ * - 그 외(격리 대상)는 멤버별 숨은 오버레이 스케일 — 원래 id 를 **접두**로
  *   네임스페이스한다. 'right' 만이 아니라 ''(거래량·체결강도의 누적선 오버레이
  *   스케일)도 리매핑해야 한다: lwc 는 같은 id = 같은 스케일이라, 두 멤버의
  *   누적선이 둘 다 '' 면 한 오토스케일을 나눠 갖게 된다.
- * - 화이트리스트 조합은 전원 원래 스케일 유지 → 축을 실제로 공유한다.
  *
  * 반환이 null 이면 "리매핑 없음"(스펙의 원래 id 사용).
  *
@@ -239,12 +287,13 @@ export function priceScaleIdForGroupMember(
   group: readonly string[],
   member: string,
   originalId: string,
-  /** 유효 축 공유(`resolveAxisShared` — 수동 오버라이드 반영). 생략 시 화이트리스트
+  /** 유효 축 모드(`resolveAxisMode` — 수동 오버라이드 반영). 생략 시 화이트리스트
    *  기본값만 본다(오버라이드를 안 나르는 호출자·기존 테스트 호환). */
-  shared: boolean = isSharedAxisGroup(group),
+  mode: PaneAxisMode = defaultAxisMode(group),
 ): string | null {
   if (group.length <= 1) return null;
   if (group[0] === member) return null;
-  if (shared) return null;
+  if (mode === 'shared') return null;
+  if (mode === 'left' && group[1] === member && originalId !== '') return 'left';
   return `merged:${member}:${originalId}`;
 }

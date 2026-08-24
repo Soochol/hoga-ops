@@ -23,7 +23,7 @@ import {
   paneGroupStretch,
   type PaneSpecGroup,
 } from './paneGroupSpecs';
-import { resolveAxisShared } from '../chart/paneGroups';
+import { resolveAxisMode } from '../chart/paneGroups';
 import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
@@ -64,8 +64,9 @@ import {
   useHistoricalRangeActions,
   useIndicatorActions,
   useWindowIndicator,
-  useWindowPaneAxisShare,
+  useWindowPaneAxisMode,
   useWindowPaneGroups,
+  useWindowPaneGroupStretch,
   useWindowPaneStretch,
   useWindowScopeId,
   useWindowViewGuard,
@@ -1842,11 +1843,14 @@ export function LiveChartRoot({
   // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
   // 그 평탄화다(`chart/paneGroups.ts`).
   const paneGroups = useWindowPaneGroups();
-  // 병합 그룹별 y축 공유 오버라이드(수동 토글) — 유효값은 그룹별로 아래에서 해석.
-  const paneAxisShare = useWindowPaneAxisShare();
+  // 병합 그룹별 y축 모드 오버라이드(수동 토글) — 유효값은 그룹별로 아래에서 해석.
+  const paneAxisMode = useWindowPaneAxisMode();
   // 사용자 소유 Pane 크기 가중치(#703) — separator 드래그 결과의 SSOT.
   const paneStretch = useWindowPaneStretch();
+  // 병합 그룹별 stretch 오버라이드 — 없으면 멤버 최대값 파생(`paneGroupStretch`).
+  const paneGroupStretchOverrides = useWindowPaneGroupStretch();
   const setPaneStretch = useIndicatorActions().setPaneStretch;
+  const setPaneGroupStretch = useIndicatorActions().setPaneGroupStretch;
   // separator 드래그 진행 중 여부 — stretch 재적용 effect 의 가드.
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → 그룹(멤버 PaneId들) 매핑에 쓰는 최신 그룹 목록.
@@ -2046,7 +2050,7 @@ export function LiveChartRoot({
   const [
     { groups: visiblePaneGroups, foldedCount: foldedPaneCount, timeAxisVisible },
     observePaneFoldTarget,
-  ] = usePaneFolding(gatedPaneGroups, paneStretch);
+  ] = usePaneFolding(gatedPaneGroups, paneStretch, paneGroupStretchOverrides);
 
   // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
   // 으로 들어가 "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜
@@ -2059,11 +2063,11 @@ export function LiveChartRoot({
   // i 뒤의 모든 pane 도 자기 앞 시퀀스 안에 그 변화를 포함한다. 그래서 teardown 후
   // 남는 것은 [0..i-1] 이고, effect 가 오름차순으로 돌며 i, i+1, … 로 **append** 한다
   // (최초 마운트와 같은 경로 — 새 순서 가정이 없다).
-  // 그룹별 유효 축 공유 — 플립되면 그 pane 의 전 시리즈가 재생성되므로(priceScaleId
-  // 는 생성 시 옵션) 아래 precedingPaneKeys 의 구성 문자열에도 플래그를 싣는다.
-  const groupAxisSharedFlags = useMemo(
-    () => visiblePaneGroups.map((g) => resolveAxisShared(paneGroupIds(g), paneAxisShare)),
-    [visiblePaneGroups, paneAxisShare],
+  // 그룹별 유효 축 모드 — 바뀌면 그 pane 의 전 시리즈가 재생성되므로(priceScaleId
+  // 는 생성 시 옵션) 아래 precedingPaneKeys 의 구성 문자열에도 모드 플래그를 싣는다.
+  const groupAxisModes = useMemo(
+    () => visiblePaneGroups.map((g) => resolveAxisMode(paneGroupIds(g), paneAxisMode)),
+    [visiblePaneGroups, paneAxisMode],
   );
 
   const precedingPaneKeys = useMemo(() => {
@@ -2071,12 +2075,27 @@ export function LiveChartRoot({
     let acc = '';
     visiblePaneGroups.forEach((group, gi) => {
       keys.push(acc);
+      const mode = groupAxisModes[gi];
       const composition = group.map((s) => s.name).join(',')
-        + (groupAxisSharedFlags[gi] ? '!shared' : '');
+        + (mode === 'isolated' ? '' : `!${mode}`);
       acc = acc === '' ? composition : `${acc}|${composition}`;
     });
     return keys;
-  }, [visiblePaneGroups, groupAxisSharedFlags]);
+  }, [visiblePaneGroups, groupAxisModes]);
+
+  // 왼쪽 축 컬럼의 차트 레벨 게이트 — 시리즈를 'left' 스케일에 얹는 것만으로는
+  // 컬럼이 렌더되지 않는다(실측: pane 스케일 visible=true·시리즈 부착 상태에서도
+  // width 0, 차트 옵션을 켜야 72px 로 렌더). 어느 그룹이든 'left' 모드면 켜고,
+  // 전부 아니면 꺼서 거터를 회수한다. 컬럼 폭은 lwc 특성상 차트 전체 공유라
+  // 다른 pane 에는 빈 거터가 생긴다 — 이 비용이 'left' 가 opt-in 인 이유다.
+  useEffect(() => {
+    if (!chart) return;
+    try {
+      chart.applyOptions({ leftPriceScale: { visible: groupAxisModes.includes('left') } });
+    } catch {
+      // chart tearing down
+    }
+  }, [chart, groupAxisModes]);
 
   // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
   // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
@@ -2115,11 +2134,10 @@ export function LiveChartRoot({
         panes.forEach((p, i) => {
           const group = groups[i];
           if (!group || typeof p.setStretchFactor !== 'function') return;
-          // 저장된 Pane Stretch 우선, 없으면 스펙 기본값 — 그룹은 멤버 최대값
-          // (`paneGroupStretch`). 저장값 재적용은 멱등이라 cb identity churn
-          // (실시간 틱·refetch)이 사용자 드래그를 스펙 기본값으로 되돌리던
-          // 스냅백이 사라진다(#703).
-          p.setStretchFactor(paneGroupStretch(group, paneStretch));
+          // 그룹 키 오버라이드 우선, 없으면 멤버 유효값 최대(`paneGroupStretch`).
+          // 저장값 재적용은 멱등이라 cb identity churn(실시간 틱·refetch)이
+          // 사용자 드래그를 스펙 기본값으로 되돌리던 스냅백이 사라진다(#703).
+          p.setStretchFactor(paneGroupStretch(group, paneStretch, paneGroupStretchOverrides));
         });
       } catch {
         // chart tearing down
@@ -2130,7 +2148,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, visiblePaneGroups, paneStretch]);
+  }, [chart, cb, visiblePaneGroups, paneStretch, paneGroupStretchOverrides]);
 
   // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
   // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한
@@ -2165,10 +2183,13 @@ export function LiveChartRoot({
             if (!group || typeof p.getStretchFactor !== 'function') return;
             const f = p.getStretchFactor();
             if (!Number.isFinite(f) || f <= 0) return;
-            // 그룹 stretch 는 멤버 최대값으로 파생되므로(`paneGroupStretch`) 드래그
-            // 결과를 **멤버 전원**에게 기록한다 — 한 명만 갱신하면 다른 멤버의 더 큰
-            // 저장값이 남아 다음 적용에서 크기가 되튄다.
-            for (const spec of group) patch[spec.name] = f;
+            if (group.length > 1) {
+              // 병합 pane 은 **그룹 키에** 기록한다(v3 승격) — 멤버 개별 값을
+              // 오염시키지 않아, 분리 시 각자의 옛 크기가 살아난다.
+              setPaneGroupStretch(paneGroupIds(group), f);
+            } else {
+              patch[group[0].name] = f;
+            }
           });
           if (Object.keys(patch).length > 0) setPaneStretch(patch);
         } catch {
@@ -2185,7 +2206,7 @@ export function LiveChartRoot({
       detachOnUp();
       paneDragRef.current = false;
     };
-  }, [chart, setPaneStretch]);
+  }, [chart, setPaneStretch, setPaneGroupStretch]);
 
   // ── 최대벽 렌더의 **단일 소스** ───────────────────────────────────────────
   //
@@ -2701,7 +2722,7 @@ export function LiveChartRoot({
                 precedingPaneKey={precedingPaneKeys[gi]}
                 spec={spec}
                 groupPaneIds={paneGroupIds(group)}
-                groupAxisShared={groupAxisSharedFlags[gi]}
+                groupAxisMode={groupAxisModes[gi]}
                 contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
                 forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
                 candleAlwaysOnTop={candleAlwaysOnTop}

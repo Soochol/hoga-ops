@@ -27,7 +27,7 @@ const { mounted, paneBundles, paneContexts, paneOrderKeys, candleTooltipProps, a
     precedingPaneKey: string;
     paneIndex: number;
     groupPaneIds: readonly string[] | undefined;
-    groupAxisShared: boolean | undefined;
+    groupAxisMode: string | undefined;
   }>,
   candleTooltipProps: [] as Array<{ bundle: unknown; quoteBundle?: unknown }>,
   askPeakMounts: [] as string[],
@@ -52,7 +52,7 @@ vi.mock('../chart/RangeSeriesPane', () => ({
     precedingPaneKey: string;
     paneIndex: number;
     groupPaneIds?: readonly string[];
-    groupAxisShared?: boolean;
+    groupAxisMode?: string;
   }) => {
     mounted.push(props.spec.name);
     paneBundles.push({ name: props.spec.name, bundle: props.bundle });
@@ -62,7 +62,7 @@ vi.mock('../chart/RangeSeriesPane', () => ({
       precedingPaneKey: props.precedingPaneKey,
       paneIndex: props.paneIndex,
       groupPaneIds: props.groupPaneIds,
-      groupAxisShared: props.groupAxisShared,
+      groupAxisMode: props.groupAxisMode,
     });
     return null;
   },
@@ -127,7 +127,7 @@ vi.mock('lightweight-charts', async () => {
 
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { mergePaneIntoGroup, paneAxisShareKey, paneGroupsFromOrder } from '../chart/paneGroups';
+import { mergePaneIntoGroup, paneGroupKey, paneGroupsFromOrder } from '../chart/paneGroups';
 import type { PaneId } from '../chart/drawing/types';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import type { RangeBundle } from '../api/types';
@@ -215,7 +215,8 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
         'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
       ]),
-      paneAxisShare: {},
+      paneAxisMode: {},
+      paneGroupStretch: {},
     });
     useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', false);
   });
@@ -263,22 +264,34 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(byName.get('quote-totals')?.precedingPaneKey).toBe('candle|volume,ratio');
   });
 
-  it('y축 공유 오버라이드가 그룹에 전달되고 아래 pane 의 앞 시퀀스에도 실린다', () => {
-    // volume+ratio 병합(비화이트리스트 → 기본 분리) + 수동 공유 오버라이드.
+  it('y축 모드 오버라이드가 그룹에 전달되고 아래 pane 의 앞 시퀀스에도 실린다', () => {
+    // volume+ratio 병합(비화이트리스트 → 기본 격리) + 수동 공유 오버라이드.
     const singles = paneGroupsFromOrder(['candle', 'volume', 'ratio', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'] as PaneId[]);
     useLivePageStore.setState({
       paneGroups: mergePaneIntoGroup(singles, 'ratio', 'volume'),
-      paneAxisShare: { [paneAxisShareKey(['volume', 'ratio'])]: true },
+      paneAxisMode: { [paneGroupKey(['volume', 'ratio'])]: 'shared' },
     });
     renderAt('1m');
     const byName = new Map(paneOrderKeys.map((p) => [p.name, p]));
-    expect(byName.get('volume')?.groupAxisShared).toBe(true);
-    expect(byName.get('ratio')?.groupAxisShared).toBe(true);
-    // 플립이 시리즈 재생성을 부르므로(priceScaleId 는 생성 시 옵션) 아래 pane 의
-    // 앞 시퀀스 구성에 공유 플래그가 실린다 — #1381 메커니즘 방지의 그룹판.
+    expect(byName.get('volume')?.groupAxisMode).toBe('shared');
+    expect(byName.get('ratio')?.groupAxisMode).toBe('shared');
+    // 모드 변경이 시리즈 재생성을 부르므로(priceScaleId 는 생성 시 옵션) 아래 pane 의
+    // 앞 시퀀스 구성에 모드 플래그가 실린다 — #1381 메커니즘 방지의 그룹판.
     expect(byName.get('quote-totals')?.precedingPaneKey).toBe('candle|volume,ratio!shared');
-    // 싱글턴 pane 은 항상 false.
-    expect(byName.get('quote-totals')?.groupAxisShared).toBe(false);
+    // 싱글턴 pane 은 항상 격리(기본) — 플래그 없는 구성 문자열.
+    expect(byName.get('quote-totals')?.groupAxisMode).toBe('isolated');
+  });
+
+  it("'left' 모드도 같은 배선 — prop 과 앞 시퀀스 플래그", () => {
+    const singles = paneGroupsFromOrder(['candle', 'volume', 'ratio', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'] as PaneId[]);
+    useLivePageStore.setState({
+      paneGroups: mergePaneIntoGroup(singles, 'ratio', 'volume'),
+      paneAxisMode: { [paneGroupKey(['volume', 'ratio'])]: 'left' },
+    });
+    renderAt('1m');
+    const byName = new Map(paneOrderKeys.map((p) => [p.name, p]));
+    expect(byName.get('ratio')?.groupAxisMode).toBe('left');
+    expect(byName.get('quote-totals')?.precedingPaneKey).toBe('candle|volume,ratio!left');
   });
 
   it('pane 순서를 바꾸면 그 아래 pane 의 앞 시퀀스도 바뀐다', () => {
