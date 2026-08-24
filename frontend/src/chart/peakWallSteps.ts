@@ -61,8 +61,15 @@ export function buildPeakWallStepPoints(
   let currentDay = -2; // findByVirtual 은 -1(축 이전)을 반환할 수 있어 그와 겹치지 않는 초기값.
   let running: number | null = null;
   let pendingDayBreak = false;
+  let lastVsec = Number.NEGATIVE_INFINITY;
 
   for (const c of candles) {
+    // ⚠ 세션 밖 캔들(시간외 등)은 반드시 거른다 — `toVirtual` 은 축 밖 시각을 세션
+    // 경계로 **클램프**하므로, 서로 다른 캔들이 같은 가상초를 얻어 lwc 의
+    // "data must be asc ordered by time" 단언이 터진다(실사고 2026-08-24 — 아래
+    // dayIdx 가드는 클램프 결과가 유효 인덱스라 이를 잡지 못한다). 캔들·거래량
+    // 프로젝터가 같은 이유로 contains 를 거른다.
+    if (!axis.contains(c.ts_ms)) continue;
     const virtualMs = axis.toVirtual(c.ts_ms);
     const dayIdx = axis.findByVirtual(virtualMs);
     if (dayIdx < 0) continue; // 축 밖(미로드 구간) — 계단의 근거가 없다.
@@ -81,6 +88,11 @@ export function buildPeakWallStepPoints(
       evIdx += 1;
     }
     if (running === null) continue;
+    // 생산자 쪽 최종 불변식 — 어떤 입력에서든 같은 시각 점을 두 번 내지 않는다.
+    // contains 필터가 알려진 원인(클램프)을 막고, 이 가드가 미지의 원인을 막는다
+    // (lwc 는 위반 시 단언으로 차트 전체를 죽인다 — 점 하나 빠지는 쪽이 낫다).
+    if (vsec <= lastVsec) continue;
+    lastVsec = vsec;
     if (pendingDayBreak) {
       // 직전(이전 날 마지막) 점의 outgoing 투명 → 스텝의 **수평부**가 사라진다.
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
