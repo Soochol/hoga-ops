@@ -235,6 +235,10 @@ export function useViewportBackfill({
       /** 스냅샷 시점에 라이브 엣지에 있었나 — 소스 스왑 재착석의 분기 축.
        *  판정식은 `viewportFromRanges` 와 같다(오른쪽 끝이 마지막 봉의 1초 이내). */
       atLiveEdge: boolean;
+      /** 마지막 봉 뒤의 오른쪽 여백(논리 바). 재착석이 **그대로 재사용**한다 —
+       *  정책값으로 다시 계산하면 캔들이 옆으로 밀린다(`sourceSwapReseatRange` 의
+       *  `savedRightPaddingBars` 도크스트링에 실측). 못 재면 `null`. */
+      rightPaddingBars: number | null;
     } | null
   >(null);
   const prevAxisRef = useRef<VirtualAxis | null>(null);
@@ -350,6 +354,19 @@ export function useViewportBackfill({
         lr && vr && refIdx !== null && prevAxis && prevAxis.segments.length > 0
           ? (() => {
               const refMs = prevAxis.toReal((vr.to as number) * 1000);
+              // 여백은 **그리던 축**으로 잰다 — 마지막 봉의 논리 인덱스가 그 축에서만
+              // 유효하다. `viewportFromRanges` 의 `rightPaddingBars` 와 같은 식이다.
+              let rightPaddingBars: number | null = null;
+              if (drawnLastCandleMs !== null) {
+                const lastIdx = ts.timeToIndex(
+                  realMsToVirtualSeconds(prevAxis, drawnLastCandleMs) as Time,
+                  true,
+                );
+                if (typeof lastIdx === 'number' && Number.isFinite(lastIdx)) {
+                  const padding = lr.to - (lastIdx + 1);
+                  if (padding >= 0) rightPaddingBars = padding;
+                }
+              }
               return {
                 fromLogical: lr.from,
                 toLogical: lr.to,
@@ -357,6 +374,7 @@ export function useViewportBackfill({
                 refIdx,
                 // `viewportFromRanges` 와 같은 1초 허용오차 — toReal 왕복 오차를 먹는다.
                 atLiveEdge: drawnLastCandleMs !== null && refMs >= drawnLastCandleMs - 1000,
+                rightPaddingBars,
               };
             })()
           : null;
@@ -414,6 +432,7 @@ export function useViewportBackfill({
             Math.min(totalBars, initialVisibleBars),
             ts.width(),
           ),
+          savedRightPaddingBars: snap.rightPaddingBars,
         });
         ts.setVisibleLogicalRange(target);
         return true;

@@ -84,6 +84,38 @@ describe('sourceSwapReseatRange', () => {
     expect(r.from).toBeGreaterThanOrEqual(0);
   });
 
+  it('live edge: 화면에 떠 있던 오른쪽 여백을 그대로 쓴다(정책 재계산이 아니라)', () => {
+    // 2026-08-24 사용자 보고: 라이브 엣지에서 토글했더니 여백이 67 → 80 바로 늘어
+    // 캔들이 왼쪽으로 밀리고 오른쪽이 비었다. 화면 값은 초기 배치 이후 SSE 성장·
+    // 리사이즈·lwc 클램프를 거친 것이라 정책 재계산과 일치하지 않는다.
+    const r = sourceSwapReseatRange({
+      atLiveEdge: true,
+      spanBars: 262,
+      totalBars: 193,
+      latestIdx: 192,
+      anchorIdx: 192,
+      initialVisibleBars: 300,
+      rightOffsetBars: 80,        // 정책 재계산값 — 이걸 쓰면 캔들이 밀린다
+      savedRightPaddingBars: 67,  // 화면에 떠 있던 값
+    });
+    expect(r.to).toBe(193 + 67);
+    expect(r.from).toBe(0);
+  });
+
+  it('live edge: 여백을 못 재면 정책값으로 폴백한다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: true,
+      spanBars: 262,
+      totalBars: 193,
+      latestIdx: 192,
+      anchorIdx: 192,
+      initialVisibleBars: 300,
+      rightOffsetBars: 80,
+      savedRightPaddingBars: null,
+    });
+    expect(r.to).toBe(193 + 80);
+  });
+
   it('live edge: 데이터가 목표보다 많으면 초기 목표 봉 수를 지킨다', () => {
     const r = sourceSwapReseatRange({
       atLiveEdge: true,
