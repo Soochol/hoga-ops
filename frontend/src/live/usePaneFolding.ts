@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaneStretchMap } from '../chart/paneOrder';
+import type { PaneGroupStretchMap } from '../chart/paneGroups';
 import { paneGroupStretch, type PaneSpecGroup } from './paneGroupSpecs';
 import {
   foldPanes,
@@ -45,6 +46,7 @@ export type PaneGroupFoldResult = {
 export function usePaneFolding(
   groups: readonly PaneSpecGroup[],
   paneStretch: PaneStretchMap,
+  groupStretchOverrides?: PaneGroupStretchMap,
 ): [PaneGroupFoldResult, (el: HTMLElement | null) => void] {
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [heightPx, setHeightPx] = useState(0);
@@ -69,14 +71,15 @@ export function usePaneFolding(
   const stateRef = useRef<PaneFoldState>(INITIAL_FOLD_STATE);
 
   const { foldedCount, timeAxisVisible } = useMemo(() => {
-    const stretchOf = (group: PaneSpecGroup): number => paneGroupStretch(group, paneStretch);
+    const stretchOf = (group: PaneSpecGroup): number =>
+      paneGroupStretch(group, paneStretch, groupStretchOverrides);
     const next = foldPanes(groups, heightPx, stretchOf, stateRef.current);
     stateRef.current = {
       foldedCount: next.foldedCount,
       timeAxisVisible: next.timeAxisVisible,
     };
     return next;
-  }, [groups, heightPx, paneStretch]);
+  }, [groups, heightPx, paneStretch, groupStretchOverrides]);
 
   // 목록 identity 는 (원본, 접힘 수)에만 의존한다 — 드래그 중 높이가 1px 씩 바뀌어도
   // 접힘 수가 그대로면 같은 배열을 돌려줘 하위 재조정이 돌지 않는다.

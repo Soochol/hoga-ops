@@ -157,17 +157,44 @@ describe('normalizeIndicatorsV2', () => {
     expect(roundtripped.paneOrder).toEqual(first.paneOrder);
   });
 
-  it('paneAxisShare — 현재 그룹과 매칭되는 키만 왕복하고 스테일 키는 걷힌다', () => {
+  it('paneAxisMode — 현재 그룹과 매칭되는 키만 왕복하고 스테일 키는 걷힌다', () => {
     const v2 = normalizeIndicatorsV2({
       paneGroups: [['candle'], ['volume', 'ratio']],
-      paneAxisShare: {
-        'ratio,volume': true,               // 살아있는 그룹(정렬 키) → 유지
-        'fill-strength,quote-totals': true, // 없는 그룹 → 드롭
+      paneAxisMode: {
+        'ratio,volume': 'left',                 // 살아있는 그룹(정렬 키) → 유지
+        'fill-strength,quote-totals': 'shared', // 없는 그룹 → 드롭
+      },
+      paneGroupStretch: {
+        'ratio,volume': 0.9,
+        'fill-strength,quote-totals': 0.5,      // 없는 그룹 → 드롭
       },
     });
-    expect(v2.paneAxisShare).toEqual({ 'ratio,volume': true });
+    expect(v2.paneAxisMode).toEqual({ 'ratio,volume': 'left' });
+    expect(v2.paneGroupStretch).toEqual({ 'ratio,volume': 0.9 });
     const roundtripped = normalizeIndicatorsV2(JSON.parse(JSON.stringify(v2)));
-    expect(roundtripped.paneAxisShare).toEqual({ 'ratio,volume': true });
+    expect(roundtripped.paneAxisMode).toEqual({ 'ratio,volume': 'left' });
+    expect(roundtripped.paneGroupStretch).toEqual({ 'ratio,volume': 0.9 });
+  });
+
+  it('구 boolean paneAxisShare(PR #1553) 블롭은 모드로 변환해 읽는다 — 1회성 폴백', () => {
+    const v2 = normalizeIndicatorsV2({
+      paneGroups: [['candle'], ['volume', 'ratio'], ['investor-foreign', 'investor-institution']],
+      paneAxisShare: {
+        'ratio,volume': true,                              // → shared
+        'investor-foreign,investor-institution': false,    // → isolated (화이트리스트 뒤집기)
+      },
+    });
+    expect(v2.paneAxisMode).toEqual({
+      'ratio,volume': 'shared',
+      'investor-foreign,investor-institution': 'isolated',
+    });
+    // 모드 맵이 이미 있으면 구 키는 무시된다(변환은 부재 시에만).
+    const both = normalizeIndicatorsV2({
+      paneGroups: [['candle'], ['volume', 'ratio']],
+      paneAxisShare: { 'ratio,volume': true },
+      paneAxisMode: { 'ratio,volume': 'left' },
+    });
+    expect(both.paneAxisMode).toEqual({ 'ratio,volume': 'left' });
   });
 });
 
