@@ -124,7 +124,11 @@ describe('dailyMaFetchWindow', () => {
       candles.push({ t_ms: ms, open: 1000, high: 1000, low: 1000, close: 1000 + d, volume: 1 });
     }
     const byDate = computeDailyMaByDate(candles, period, 'close', TODAY, null);
-    expect(byDate.get(floor) ?? byDate.get(subtractDaysKst(floor, 1))).toBeDefined();
+    // floor 가 주말이면 픽스처에 그 날이 없다 — 가장 가까운 앞선 평일로 물러난다.
+    // (상수가 바뀌어 floor 의 요일이 달라져도 결정적으로 남는다.)
+    let probe = floor;
+    for (let i = 0; i < 5 && !byDate.has(probe); i += 1) probe = subtractDaysKst(probe, 1);
+    expect(byDate.get(probe)).toBeDefined();
   });
 });
 
