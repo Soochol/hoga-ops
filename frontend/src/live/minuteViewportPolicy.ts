@@ -85,15 +85,34 @@ export function sourceSwapReseatRange(args: {
   anchorIdx: number | null;
   /** 초기 배치 목표 봉 수(`initialVisibleMinuteBarsFor`). */
   initialVisibleBars: number;
-  /** 그 봉 수에 맞는 오른쪽 여백(`minuteRightOffsetBars`). */
+  /** 그 봉 수에 맞는 오른쪽 여백(`minuteRightOffsetBars`). 아래 `savedRightPaddingBars`
+   *  가 없을 때만 쓰는 **폴백**이다. */
   rightOffsetBars: number;
+  /**
+   * 스왑 **직전 화면의** 오른쪽 여백(마지막 봉 뒤 논리 바). 있으면 이것을 그대로 쓴다.
+   *
+   * 여백을 정책값으로 다시 계산하면 **캔들이 옆으로 밀린다.** 2026-08-24 사용자 보고가
+   * 그것이었다: 라이브 엣지에서 토글했는데 여백이 67 → 80 바로 늘어(626px 화면에서
+   * ≈30px) 캔들 무리가 왼쪽으로 밀리고 오른쪽이 비었다. 화면에 떠 있던 값은 초기 배치
+   * 이후 SSE 성장·리사이즈·lwc 클램프를 거친 것이라 정책 재계산과 일치하지 않는다.
+   *
+   * span 은 여전히 데이터 크기로 접는다 — 그쪽이 이 재착석의 존재 이유다. 즉 **왼쪽은
+   * 정책이, 오른쪽은 화면이** 정한다.
+   */
+  savedRightPaddingBars?: number | null;
 }): { from: number; to: number } {
   const { atLiveEdge, spanBars, totalBars, latestIdx, anchorIdx } = args;
   if (atLiveEdge || anchorIdx === null) {
     const visibleBars = Math.max(1, Math.min(totalBars, args.initialVisibleBars));
+    const padding =
+      typeof args.savedRightPaddingBars === 'number'
+        && Number.isFinite(args.savedRightPaddingBars)
+        && args.savedRightPaddingBars >= 0
+        ? args.savedRightPaddingBars
+        : args.rightOffsetBars;
     return {
       from: Math.max(0, latestIdx + 1 - visibleBars),
-      to: latestIdx + 1 + args.rightOffsetBars,
+      to: latestIdx + 1 + padding,
     };
   }
   const span = Math.max(1, Math.min(Math.round(spanBars), totalBars));
