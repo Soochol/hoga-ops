@@ -481,16 +481,34 @@ describe('planViewportContraction — 좌측 팬 창을 앞으로 당긴다', ()
     expect(CONTRACT_RETAIN_STEPS).toBeLessThan(CONTRACT_TRIGGER_STEPS);
   });
 
-  it('**한 달 창(4스텝 ≈ 20거래일)이 잡힌다** — 이 변경의 목적', () => {
-    // 2026-08-16 성능 감사가 실측한 아픈 케이스가 "028050 한 달 창 콜드 11.7초" 였다.
-    // 임계 6스텝(=30거래일) 시절엔 한 달(21거래일)이 그 아래라 **영영 안 잡혔다** —
-    // contract 가 발동조차 안 하니 로그로도 안 보였다. 임계를 되돌리면 여기서 실패한다.
-    //
-    // 스텝 산술은 `nextCoverageFrom`(1스텝 뒤로)을 재사용한다 — `stepBackFrom` 은
-    // 모듈 지역이고, 테스트가 자기 날짜 계산을 따로 쓰면 그게 또 다른 진실이 된다.
-    let monthAgo = LEFT;
-    for (let i = 0; i < 4; i += 1) monthAgo = nextCoverageFrom(null, monthAgo, TF);
-    expect(planViewportContraction(monthAgo, LEFT, TF)).not.toBeNull();
+  // ── 확장 ↔ 축소 단위 불변식 (2026-08-24) ─────────────────────────────
+  // `MAX_BATCH_STEPS_PER_DISPATCH` 주석의 **3-상수 불변식**을 값으로 못박는다:
+  // 확장 배치(≤2스텝) < 축소 trigger(3스텝) 이어야 **갓 확장한 창이 즉시 잘리지
+  // 않는다**. 세 상수가 같은 단위(스텝)를 공유하는 것이 그 성립 조건이다.
+  //
+  // 이 테스트가 없어서 실제로 깨뜨렸다(2026-08-24): 축소 임계만 거래일 고정
+  // (retain 5 / trigger 15)으로 바꿨더니 확장은 스텝 단위(10m 1스텝 = 50거래일)로
+  // 남아 **확장 1스텝이 trigger 를 넘었다**. 브라우저 실측에서 `viewport_backfill_extend`
+  // 1초 뒤 `viewport_backfill_contract` 가 그것을 되돌리는 진동이 났고
+  // (`from: 20260609 → contractTo: 20260729`), 14회 팬에도 창이 안 넓어졌다.
+  // **그 변경은 vitest 6129 · typecheck · build · e2e 를 전부 통과했다** — 브라우저에서만
+  // 잡혔다는 사실이 이 가드의 존재 이유다.
+  //
+  // 왜 스텝이 옳은 단위인가: `stepCandlesEstimate` 가 분봉 스텝을 **tf 무관 1950봉**으로
+  // 맞춰 둔다(1m 5거래일 × 390 = 10m 50거래일 × 39). 축소가 지키는 것은 메모리 상주량,
+  // 즉 **봉 수**이므로 스텝이 곧 그 불변 단위다. 거래일로 고정하면 tf 마다 상주량이
+  // 갈린다 — "10m 의 150거래일" 은 버그가 아니라 봉 수 불변이 작동한 모습이다.
+  it('갓 확장한 창은 **즉시 잘리지 않는다** — 확장 배치 < 축소 발동 임계', () => {
+    for (const tf of MINUTE_TIMEFRAMES) {
+      // 창이 뷰포트 좌단에 붙어 있는 상태에서 한 dispatch 만큼 확장한다. 스텝 산술은
+      // `nextCoverageFrom`(1스텝 뒤로)을 재사용한다 — 테스트가 자기 날짜 계산을 따로
+      // 쓰면 그게 또 다른 진실이 된다.
+      let expanded = LEFT;
+      for (let i = 0; i < MAX_BATCH_STEPS_PER_DISPATCH; i += 1) {
+        expanded = nextCoverageFrom(null, expanded, tf);
+      }
+      expect(planViewportContraction(expanded, LEFT, tf)).toBeNull();
+    }
   });
 
   it('**D/W/M 에서는 절대 자르지 않는다** — 일봉 캔들이 눈앞에서 사라지는 회귀', () => {
