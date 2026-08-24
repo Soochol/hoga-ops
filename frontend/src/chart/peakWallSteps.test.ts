@@ -4,6 +4,7 @@ import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 import type { PeakWallSegment } from './PeakWallSegmentsPrimitive';
 import { buildPeakWallStepPoints, type PeakWallStepPoint } from './peakWallSteps';
+import { LINE_HIDDEN_COLOR } from './util/auctionHide';
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────
 // 2거래일, 각 6분(09:00~09:06). 세션 갭이 있어야 거래일 경계 리셋·whitespace 끊기가
@@ -39,8 +40,7 @@ function wall(peakRealMs: number, qty: number): PeakWallSegment {
 }
 
 const vsecOf = (realMs: number): number => axis.toVirtual(realMs) / 1000;
-const valuesOf = (points: readonly PeakWallStepPoint[]) =>
-  points.map((p) => ('value' in p ? p.value : null));
+const valuesOf = (points: readonly PeakWallStepPoint[]) => points.map((p) => p.value);
 
 describe('buildPeakWallStepPoints', () => {
   it('당일 누적 최대만 그린다 — 작은 벽이 뒤에 와도 내려가지 않는다', () => {
@@ -63,22 +63,26 @@ describe('buildPeakWallStepPoints', () => {
     expect(valuesOf(out)).toEqual([29_000, 29_000, 29_000, 29_000, 29_000]);
   });
 
-  it('거래일 경계에서 리셋되고, 날 사이는 whitespace 로 끊는다', () => {
+  it('거래일 경계에서 리셋되고, 이전 날 마지막 점의 outgoing 이 투명으로 끊긴다', () => {
     const out = buildPeakWallStepPoints(
       [wall(DAY1_OPEN + 1 * MIN, 29_000), wall(DAY2_OPEN + 2 * MIN, 5_000)],
       candles, axis, '#3485FA',
     );
-    const day2First = vsecOf(DAY2_OPEN + 2 * MIN);
-    // day1 5점(1~5분, 전부 2.9만) + whitespace 1점 + day2 4점(2~5분, 전부 5천).
+    // day1 5점(1~5분, 전부 2.9만) + day2 4점(2~5분, 전부 5천) — whitespace 없음.
+    // ⚠ lwc LineSeries 는 whitespace 를 무시하고 선을 이어 그린다(실화면 검증) —
+    //   끊기는 이전 날 **마지막 점의 outgoing 색 투명**(maskOutgoingConnector)이 맡는다.
     expect(valuesOf(out)).toEqual([
       29_000, 29_000, 29_000, 29_000, 29_000,
-      null, // whitespace — 값 없음. LineSeries 가 날 사이를 직선으로 잇지 못하게 한다.
       5_000, 5_000, 5_000, 5_000,
     ]);
-    // whitespace 는 새 날 첫 값 점 1초 앞 — 실제 점과 time 충돌이 없다.
-    expect(Number(out[5].time)).toBe(day2First - 1);
+    // 경계 양쪽 두 점이 투명 — day1 마지막(outgoing=스텝 수평부)과 day2 첫 점
+    // (수직부는 도착점 색 — 실화면 검증). 나머지는 지정색 유지.
+    expect(out[4].color).toBe(LINE_HIDDEN_COLOR.color);
+    expect(out[5].color).toBe(LINE_HIDDEN_COLOR.color);
+    expect(out[3].color).toBe('#3485FA');
+    expect(out[6].color).toBe('#3485FA');
     // 리셋의 핵심: day2 값이 day1 최대(2.9만)를 물려받지 않는다.
-    expect(valuesOf(out).slice(6)).not.toContain(29_000);
+    expect(valuesOf(out).slice(5)).not.toContain(29_000);
   });
 
   it('동률은 먼저 도달한 것을 유지한다 (strict > — foldAskPeak 규약 미러)', () => {
