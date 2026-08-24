@@ -318,6 +318,10 @@ interface Props {
   ratioBundle?: RangeBundle | null;
   /** 벤더 250일 벽에 닿았다 — **벤더 모드 전용**. 디스크 모드엔 그 벽이 없다. */
   clampEngaged: boolean;
+  /** 이 번들의 캔들 소스 축(`useLiveBundle.candleSourceKey`). 값이 갈린 커밋에서
+   *  `useViewportBackfill` 이 뷰포트를 다시 앉힌다 — 미지정이면 재착석이 꺼진다
+   *  (소스 축이 없는 호출자·테스트는 종전 동작 그대로). */
+  candleSourceKey?: string;
   /** 좌측 팬 하한(YYYYMMDD) — `useLiveBundle.minuteScrollbackFloorDate`. `null`=무한.
    *  판정은 모드를 아는 훅이 하고 여기서는 나르기만 한다(그 값의 도크스트링 참조). */
   minuteScrollbackFloorDate?: string | null;
@@ -538,6 +542,7 @@ export function LiveChartRoot({
   onRetryCandles,
   ratioBundle,
   clampEngaged,
+  candleSourceKey,
   minuteScrollbackFloorDate = null,
   isPastCandlesLoading,
   isHogaLoading = false,
@@ -1218,8 +1223,10 @@ export function LiveChartRoot({
     axis,
     bundle: cb,
     timeframe,
+    venue,
     isExtending,
     code: code ?? '',
+    candleSourceKey,
     canTriggerBackfill,
     indicatorCoverageFromDate,
     rangeWindowFromDate,

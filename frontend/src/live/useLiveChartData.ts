@@ -148,6 +148,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     refetchCandles,
     depthDeltaToday,
     clampEngaged,
+    candleSourceKey,
     minuteScrollbackFloorDate,
     isPastCandlesLoading,
     isHogaLoading,
@@ -366,6 +367,9 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeLabel,
     capabilities,
     clampEngaged,
+    /** 캔들 소스 축 — 소스가 갈린 커밋에서 뷰포트를 다시 앉히는 데만 쓴다.
+     *  지수 창은 디스크 경로가 없어 항상 `'vendor'` 다(그 축이 지수엔 존재하지 않는다). */
+    candleSourceKey: activeIndexId ? ('vendor' as const) : candleSourceKey,
     minuteScrollbackFloorDate,
     isHogaLoading,
     isSidecarLoading,

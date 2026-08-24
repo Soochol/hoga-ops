@@ -53,3 +53,50 @@ export function minuteRestoreGeometry(
   );
   return { barSpan: Math.max(1, maxSpan - rightOffset), rightOffset };
 }
+
+/**
+ * 소스 스왑 재착석의 목표 논리범위 — 순수(2026-08-24).
+ *
+ * 캔들 배열이 **통째로 다른 소스의 것으로 갈린** 커밋에서 화면을 다시 앉힌다. lwc 는
+ * 이때 "마지막 봉 기준 오프셋"만 보존하므로(2026-08-24 실측: `scrollPosition` 불변),
+ * 새 소스의 봉이 적으면 span 이 데이터보다 커져 화면 왼쪽이 통째로 빈다 — 462350
+ * 10분봉에서 195봉 → 122봉, 화면이 73봉(≈320px) 미끄러진 것이 그 지문이다.
+ *
+ * 분기 축은 `computeRestoreRange` 와 같다. **라이브 엣지였는가**:
+ *  - 그렇다 → 초기 분봉 배치를 다시 적용한다. `Math.min(totalBars, …)` 클램프가 요점 —
+ *    이것만이 "span 이 데이터보다 크다" 를 고칠 수 있고, 재투영으로는 안 된다(그 값은
+ *    lwc 가 스스로 착지한 곳과 같아 EPSILON 스킵된다).
+ *  - 아니다 → 보던 시각(`anchorIdx`)을 오른쪽 끝에 두고 span 을 데이터로 클램프한다.
+ *    앵커가 새 데이터 범위 밖이면 호출자가 lwc 의 findNearest 클램프를 그대로 넘긴다 —
+ *    **가장 가까운 데이터가 사라진 캔들보다 낫다**(저장뷰 착석과 같은 판단).
+ *
+ * `from` 은 항상 `>= 0`: 음수면 왼쪽 여백이 생겨 이 함수가 고치려는 증상이 재발한다.
+ */
+export function sourceSwapReseatRange(args: {
+  /** 스왑 직전 스냅샷이 라이브 엣지였나. */
+  atLiveEdge: boolean;
+  /** 스왑 직전 화면 폭(논리 바) — 과거 분기의 줌 계승. */
+  spanBars: number;
+  /** 새 소스의 캔들 수. */
+  totalBars: number;
+  /** 새 축에서의 마지막 봉 논리 인덱스. */
+  latestIdx: number;
+  /** 새 축에 재투영한 스냅샷 오른쪽 끝. `null` 이면 라이브 엣지 배치로 폴백. */
+  anchorIdx: number | null;
+  /** 초기 배치 목표 봉 수(`initialVisibleMinuteBarsFor`). */
+  initialVisibleBars: number;
+  /** 그 봉 수에 맞는 오른쪽 여백(`minuteRightOffsetBars`). */
+  rightOffsetBars: number;
+}): { from: number; to: number } {
+  const { atLiveEdge, spanBars, totalBars, latestIdx, anchorIdx } = args;
+  if (atLiveEdge || anchorIdx === null) {
+    const visibleBars = Math.max(1, Math.min(totalBars, args.initialVisibleBars));
+    return {
+      from: Math.max(0, latestIdx + 1 - visibleBars),
+      to: latestIdx + 1 + args.rightOffsetBars,
+    };
+  }
+  const span = Math.max(1, Math.min(Math.round(spanBars), totalBars));
+  const to = Math.max(span, anchorIdx);
+  return { from: to - span, to };
+}

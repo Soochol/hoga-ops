@@ -5,6 +5,7 @@ import {
   maxRenderableSpan,
   minuteRestoreGeometry,
   minuteRightOffsetBars,
+  sourceSwapReseatRange,
 } from './minuteViewportPolicy';
 
 describe('minuteRightOffsetBars', () => {
@@ -58,5 +59,84 @@ describe('minuteRestoreGeometry', () => {
         expect(g.barSpan + g.rightOffset).toBeLessThanOrEqual(max);
       }
     }
+  });
+});
+
+describe('sourceSwapReseatRange', () => {
+  // 2026-08-24 실측(462350, 10분봉): 벤더 195봉 → 디스크 122봉, 화면 span 234.
+  // lwc 는 마지막 봉 기준 오프셋만 보존해 `[-73, 161]` 에 착지했다 — 왼쪽 73봉이 빈다.
+  const LATEST = 121;
+
+  it('live edge: span 을 데이터 크기로 접어 왼쪽 여백을 없앤다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: true,
+      spanBars: 234,
+      totalBars: 122,
+      latestIdx: LATEST,
+      anchorIdx: LATEST,
+      initialVisibleBars: 300,
+      rightOffsetBars: 40,
+    });
+    // 데이터가 300봉보다 적으므로 화면이 데이터 전체(122봉)를 담는다.
+    expect(r.from).toBe(0);
+    expect(r.to).toBe(LATEST + 1 + 40);
+    // 회귀의 지문: 왼쪽이 음수면 그만큼이 빈 공간이 된다.
+    expect(r.from).toBeGreaterThanOrEqual(0);
+  });
+
+  it('live edge: 데이터가 목표보다 많으면 초기 목표 봉 수를 지킨다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: true,
+      spanBars: 234,
+      totalBars: 1000,
+      latestIdx: 999,
+      anchorIdx: 999,
+      initialVisibleBars: 300,
+      rightOffsetBars: 40,
+    });
+    expect(r.from).toBe(1000 - 300);
+    expect(r.to).toBe(1000 + 40);
+  });
+
+  it('panned: 앵커를 오른쪽 끝에 두고 span 만 데이터로 클램프한다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: false,
+      spanBars: 234,
+      totalBars: 500,
+      latestIdx: 499,
+      anchorIdx: 300,
+      initialVisibleBars: 300,
+      rightOffsetBars: 40,
+    });
+    expect(r.to).toBe(300);
+    expect(r.to - r.from).toBe(234);
+  });
+
+  it('panned: 앵커가 span 보다 왼쪽이어도 from 이 음수로 내려가지 않는다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: false,
+      spanBars: 234,
+      totalBars: 500,
+      latestIdx: 499,
+      anchorIdx: 10,
+      initialVisibleBars: 300,
+      rightOffsetBars: 40,
+    });
+    expect(r.from).toBe(0);
+    expect(r.to).toBe(234);
+  });
+
+  it('앵커를 못 구하면 라이브 엣지 배치로 폴백한다', () => {
+    const r = sourceSwapReseatRange({
+      atLiveEdge: false,
+      spanBars: 234,
+      totalBars: 122,
+      latestIdx: LATEST,
+      anchorIdx: null,
+      initialVisibleBars: 300,
+      rightOffsetBars: 40,
+    });
+    expect(r.from).toBe(0);
+    expect(r.to).toBe(LATEST + 1 + 40);
   });
 });

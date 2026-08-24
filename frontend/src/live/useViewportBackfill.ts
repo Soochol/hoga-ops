@@ -2,7 +2,11 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { IChartApi, Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
-import type { LiveTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import type { LiveVenueOption } from '../state/liveVenue';
+import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
+import { minuteRightOffsetBars, sourceSwapReseatRange } from './minuteViewportPolicy';
+import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
   nextHistoricalFrom,
@@ -64,10 +68,36 @@ export interface ViewportBackfillArgs {
   axis: VirtualAxis;
   bundle: RangeBundle | null;
   timeframe: LiveTimeframe;
+  /** 초기 분봉 배치 재적용(소스 스왑 재착석)이 쓰는 거래소. 배치 정책의 인자다. */
+  venue?: LiveVenueOption;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle. */
   isExtending: boolean;
   /** Reset key — per-code state (snapshot, fill-step counter) clears on switch. */
   code: string;
+  /**
+   * 캔들 소스 축(`useLiveBundle.candleSourceKey`) — 값이 갈리면 **소스 스왑 재착석**이
+   * 발화한다. 미지정이면 재착석이 꺼진다(축이 없는 호출자는 종전 동작).
+   *
+   * ## 왜 별도 경로인가 — 리포지셔너로는 못 고친다
+   *
+   * 리포지셔너의 계약은 "**같은 봉**을 화면에 유지"(refMs 재투영)인데, 소스가 갈리면
+   * 그 봉이 새 소스에 **없을 수 있다**. 2026-08-24 실측(462350, 10분봉): 벤더 195봉 →
+   * 디스크 122봉(08-21·08-24 미캡처). 라이브 엣지의 refMs 를 새 축에 재투영하면 lwc 가
+   * 스스로 착지한 `[-73, 161]` 과 **정확히 같은 값**이 나와 EPSILON 스킵된다 — 즉
+   * 재투영만으로는 아무것도 바뀌지 않는다. 문제는 위치가 아니라 **span(234)이 데이터
+   * (122봉)보다 크다**는 것이고, 그건 초기 배치 정책만이 아는 사실이다.
+   *
+   * 그래서 재착석은 `computeRestoreRange` 와 **같은 축으로 갈린다**:
+   *  - 라이브 엣지였다 → 초기 분봉 배치를 다시 적용(`initialVisibleMinuteBarsFor` +
+   *    `minuteRightOffsetBars`). span 이 데이터 크기로 클램프되는 것이 요점이다.
+   *  - 과거를 보고 있었다 → refMs 앵커를 오른쪽 끝에 두고 span 을 데이터로 클램프.
+   *
+   * ⚠ **키만 보고 움직이면 안 된다.** 토글은 즉시 키를 뒤집지만 디스크 응답은 콜드에서
+   * 십수 초 뒤에 온다(실측 11.6s). 그 사이 커밋들의 캔들은 아직 **옛 소스의 것**이라
+   * 그때 앉히면 곧 도착할 데이터가 다시 화면을 밀어낸다. 그래서 판정이 두 항의 AND 다:
+   * **키가 갈렸다** AND **캔들 배열의 정체성(개수·최초 ts)이 갈렸다**.
+   */
+  candleSourceKey?: string;
   /** Backfill must not race the initial live-edge viewport placement. */
   canTriggerBackfill?: () => boolean;
   /** Coverage-gap 백필(A안): 활성 range 지표(hoga/sidecar)가 도달한 가장 최근 from_date.
@@ -175,8 +205,10 @@ export function useViewportBackfill({
   axis,
   bundle,
   timeframe,
+  venue = 'KRX',
   isExtending,
   code,
+  candleSourceKey,
   canTriggerBackfill = () => true,
   indicatorCoverageFromDate = null,
   rangeWindowFromDate = null,
@@ -195,10 +227,26 @@ export function useViewportBackfill({
   // the right edge resolved to real ms through the axis the chart was actually
   // drawn with (prevAxisRef). prevEarliestTsMsRef detects a genuine prepend.
   const preSwapRef = useRef<
-    { fromLogical: number; toLogical: number; refMs: number; refIdx: number } | null
+    {
+      fromLogical: number;
+      toLogical: number;
+      refMs: number;
+      refIdx: number;
+      /** 스냅샷 시점에 라이브 엣지에 있었나 — 소스 스왑 재착석의 분기 축.
+       *  판정식은 `viewportFromRanges` 와 같다(오른쪽 끝이 마지막 봉의 1초 이내). */
+      atLiveEdge: boolean;
+    } | null
   >(null);
   const prevAxisRef = useRef<VirtualAxis | null>(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
+  /** 직전 커밋 번들의 마지막 캔들 ms — **차트에 실제로 그려진** 데이터의 라이브 엣지다.
+   *  layout 단계의 `bundle` 은 이미 새 것이라 그것으로 재면 스왑 커밋에서 판정이 뒤집힌다. */
+  const prevLastCandleMsRef = useRef<number | null>(null);
+  /** 소스 스왑 대기 — 키가 갈린 커밋에서 서고, 캔들 정체성이 갈린 첫 커밋에서 내린다. */
+  const swapPendingRef = useRef(false);
+  const prevSourceKeyRef = useRef<string | null>(null);
+  /** `${개수}|${최초 ts_ms}` — SSE 성장(마지막 봉만 변화)과 소스 교체를 가르는 지문. */
+  const prevCandleIdentityRef = useRef<string | null>(null);
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
@@ -259,6 +307,10 @@ export function useViewportBackfill({
     preSwapRef.current = null;
     prevAxisRef.current = null;
     prevEarliestTsMsRef.current = null;
+    prevLastCandleMsRef.current = null;
+    swapPendingRef.current = false;
+    prevSourceKeyRef.current = null;
+    prevCandleIdentityRef.current = null;
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
     lastAdvancedFromRef.current = null;
@@ -281,24 +333,46 @@ export function useViewportBackfill({
     }
     const ts = chart.timeScale();
     const prevAxis = prevAxisRef.current;
+    // 차트에 **그려져 있는** 데이터의 라이브 엣지. 아래 `prevLastCandleMsRef` 대입보다
+    // 먼저 읽어야 직전 커밋 값이다 — `prevAxisRef` 와 같은 순서 계약.
+    const drawnLastCandleMs = prevLastCandleMsRef.current;
     try {
       const lr = ts.getVisibleLogicalRange();
       const vr = ts.getVisibleRange();
       const refIdx = vr ? ts.timeToIndex(vr.to as Time, true) : null;
       preSwapRef.current =
         lr && vr && refIdx !== null && prevAxis && prevAxis.segments.length > 0
-          ? {
-              fromLogical: lr.from,
-              toLogical: lr.to,
-              refMs: prevAxis.toReal((vr.to as number) * 1000),
-              refIdx,
-            }
+          ? (() => {
+              const refMs = prevAxis.toReal((vr.to as number) * 1000);
+              return {
+                fromLogical: lr.from,
+                toLogical: lr.to,
+                refMs,
+                refIdx,
+                // `viewportFromRanges` 와 같은 1초 허용오차 — toReal 왕복 오차를 먹는다.
+                atLiveEdge: drawnLastCandleMs !== null && refMs >= drawnLastCandleMs - 1000,
+              };
+            })()
           : null;
     } catch {
       preSwapRef.current = null;
     }
     prevAxisRef.current = axis;
+    const candles = bundle?.candles;
+    prevLastCandleMsRef.current = candles && candles.length > 0
+      ? candles[candles.length - 1].ts_ms
+      : null;
   }, [chart, bundle, axis]);
+
+  // 1b. 소스 스왑 대기 래치. 키는 데이터보다 **먼저** 바뀌므로(콜드 실측 11.6s) 여기서는
+  // 대기만 세우고, 실제 재착석은 효과 2가 캔들 정체성 변화를 확인한 커밋에서 한다.
+  useEffect(() => {
+    if (candleSourceKey === undefined) return;
+    if (prevSourceKeyRef.current !== null && prevSourceKeyRef.current !== candleSourceKey) {
+      swapPendingRef.current = true;
+    }
+    prevSourceKeyRef.current = candleSourceKey;
+  }, [candleSourceKey]);
 
   // 2. Repositioner. Runs after the child setData in the same commit. Only a
   // genuine LEFTWARD extension repositions — initial paint and SSE growth are
@@ -307,6 +381,43 @@ export function useViewportBackfill({
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
     const ts = chart.timeScale();
+    const candles = bundle.candles;
+    /** 소스 스왑 재착석 — 적용했으면 true(호출자가 리포지셔너를 건너뛴다). */
+    function reseatAfterSourceSwap(snap: NonNullable<typeof preSwapRef.current>): boolean {
+      const totalBars = candles.length;
+      try {
+        const latestIdx = ts.timeToIndex(
+          realMsToVirtualSeconds(axis, candles[totalBars - 1].ts_ms) as Time,
+          true,
+        );
+        if (typeof latestIdx !== 'number' || !Number.isFinite(latestIdx)) return false;
+        // 앵커가 새 데이터 밖이면 lwc 가 findNearest 로 클램프한다 — 여기서는 그것을
+        // 그대로 받는다(가장 가까운 데이터 > 사라진 캔들). 라이브 엣지 분기는 애초에
+        // 앵커를 안 쓴다.
+        const rawAnchor = ts.timeToIndex(realMsToVirtualSeconds(axis, snap.refMs) as Time, true);
+        const initialVisibleBars = initialVisibleMinuteBarsFor(timeframe, venue);
+        const target = sourceSwapReseatRange({
+          atLiveEdge: snap.atLiveEdge,
+          spanBars: snap.toLogical - snap.fromLogical,
+          totalBars,
+          latestIdx,
+          anchorIdx:
+            typeof rawAnchor === 'number' && Number.isFinite(rawAnchor) ? rawAnchor : null,
+          initialVisibleBars,
+          rightOffsetBars: minuteRightOffsetBars(
+            Math.min(totalBars, initialVisibleBars),
+            ts.width(),
+          ),
+        });
+        ts.setVisibleLogicalRange(target);
+        return true;
+      } catch (e) {
+        // 차트가 effect 사이에 사라진 경우. 조용한 no-op 이 "아직 안 고쳐졌다" 로
+        // 읽히지 않게 dev 에서 드러낸다(리포지셔너와 같은 규율).
+        if (import.meta.env.DEV) console.warn('[live] source-swap reseat threw', e);
+        return false;
+      }
+    }
     // Earliest candle actually drawn — mirror projectCandle's axis.contains
     // filter. Absolute ts_ms is stable under the axis re-base.
     let newEarliest: number | null = null;
@@ -316,10 +427,37 @@ export function useViewportBackfill({
     }
     const prevEarliest = prevEarliestTsMsRef.current;
     prevEarliestTsMsRef.current = newEarliest;
-    if (historicalRange.snapshot().historicalFromDate === null) return;
-    if (prevEarliest === null || newEarliest === null) return;
-    if (newEarliest >= prevEarliest) return;
+    // 캔들 배열의 지문. **마지막 봉을 넣지 않는 것**이 계약이다 — SSE 틱이 그것만
+    // 움직이므로, 넣으면 매 틱이 "정체성이 갈렸다" 로 읽혀 재착석이 상시 발화한다.
+    const identity = `${bundle.candles.length}|${bundle.candles[0]?.ts_ms ?? ''}`;
+    const prevIdentity = prevCandleIdentityRef.current;
+    prevCandleIdentityRef.current = identity;
+    const isMinute = isMinuteTimeframe(timeframe);
     const snap = preSwapRef.current;
+
+    // 2a. 소스 스왑 재착석. 키가 갈렸고(1b 래치) **캔들도 실제로 갈린** 첫 커밋에서
+    // 한 번. 분봉 전용이다 — 캘린더 봉의 재배치는 `LiveChartRoot` 의 초기 뷰 effect 가
+    // 소유하므로(캔들 수가 바뀌면 스스로 다시 앉힌다) 여기서 겹치면 둘이 싸운다.
+    if (swapPendingRef.current && isMinute && prevIdentity !== null && identity !== prevIdentity) {
+      swapPendingRef.current = false;
+      if (snap && reseatAfterSourceSwap(snap)) return;
+    }
+
+    if (prevEarliest === null || newEarliest === null) return;
+    // ⚠ **이 게이트를 분봉에서 풀지 말 것 — 2026-08-24 에 풀었다가 되돌렸다.**
+    //
+    // 동기는 타당했다: `historicalFromDate` 는 "좌측 팬을 한 적이 있다" 는 뜻인데
+    // **로드된 데이터 안에서** 뒤로 본 사용자는 그걸 세우지 않으므로, 그 상태의 디스크
+    // 청크 워크백 프리펜드가 보정 없이 화면을 민다. 그런데 풀어 보니 **백필이
+    // 연쇄했다**(실측: hogaplay 토글 한 번에 84봉 → 1,688봉, 아직도 진행 중).
+    //
+    // 기전: 리포지셔너의 `setVisibleLogicalRange` 는 lwc 의 논리범위 구독을 깨우고,
+    // 그것이 3b 의 좌측-팬 판정을 태운다. 워크백 프리펜드마다 화면이 최좌단에 다시
+    // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
+    // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
+    // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
+    if (historicalRange.snapshot().historicalFromDate === null) return;
+    if (newEarliest >= prevEarliest) return;
     if (!snap) return;
     try {
       // Reproject the snapshot's right-edge bar through the rebuilt axis. Its
@@ -348,7 +486,7 @@ export function useViewportBackfill({
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
       if (import.meta.env.DEV) console.warn('[live] viewport reposition threw', e);
     }
-  }, [chart, bundle, axis, historicalRange]);
+  }, [chart, bundle, axis, historicalRange, timeframe, venue]);
 
   // 3a. 진행 루프(스텝 2..N): 한 스텝이 settle할 때마다 활성 fill의 예산을 소진하며
   // 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다 — 예산과 목표는 트리거(3b)
