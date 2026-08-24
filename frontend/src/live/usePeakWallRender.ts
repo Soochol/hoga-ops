@@ -44,12 +44,11 @@ export type PeakWallRenderState = {
   /** 선 색·두께(표면이 primitive 에 그대로 넘긴다). */
   color: string;
   lineWidth: number;
-  /** 최대벽 강도 pane 의 계단 입력 — **「표시 개수」와 분리해 항상 top-3** 로 계산한
-   *  세그먼트. 계단의 뜻은 "그 시점까지 체결된 벽 중 최대" 의 running max 라, 표시
-   *  개수 1 로 자르면 그날 1등 벽이 선 시점 이전의 갱신 이력(더 이른 2·3등)이 통째로
-   *  사라진다 — 오전에 선이 없다가 오후에 생기는 주 원인이었다(사용자 보고).
-   *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다.
-   *  표시 개수가 이미 3 이면 `segments` 와 **같은 참조**다(중복 계산 없음). */
+  /** 최대벽 강도 pane 의 계단 입력 — 「표시 개수」와 분리한 **stepHistory 모드**:
+   *  후보 = 기록 갱신 시퀀스(traded_record_*) ∪ top-3, 랭크 슬라이스 없음. 계단의
+   *  뜻은 "그 시점까지 체결된 벽 중 최대" 의 running max 인데, top-3 은 최종
+   *  크기순이라 벽이 장중에 커지는 날은 오전 기록이 전부 잘렸다(사용자 보고 2회).
+   *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다. */
   stepSegments: readonly PeakWallSegment[];
 };
 
@@ -135,10 +134,10 @@ export function usePeakWallRender({
     visibleTimeCutoff,
   ]);
 
-  // 계단 입력 — 표시 개수와 분리해 항상 top-3. 사용자 표시 개수가 이미 3 이면 위
-  // `built` 와 같은 결과이므로 참조를 공유한다(이 memo 는 그때 계산하지 않는다).
+  // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
+  // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && toPeakRankLimit(allPriceRankLimit) !== 3
+    needStepSegments && applicable && enabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -148,6 +147,7 @@ export function usePeakWallRender({
         baselineStyle: { color, lineWidth },
         intraMax,
         allPriceRankLimit: 3,
+        stepHistory: true,
         visibleTimeCutoff,
         maFilter,
         dailyMaFilter,

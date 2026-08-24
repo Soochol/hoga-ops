@@ -99,6 +99,11 @@ function attachFamilies(
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
+    // 오늘 라이브 경로의 기록 폴백 — 클라이언트는 접속 이후 이벤트만 보므로 완전한
+    // 기록 시퀀스를 모른다. traded top-3 을 그대로 실으면 계단이 종전(수정 전 오늘
+    // 동작)과 동일하게 유지된다. 오늘의 완전한 기록은 서버 상태 확장 후속.
+    traded_record_peaks: families.traded,
+    traded_record_max_peaks: families.traded,
     all_peaks: families.all,
     all_max_peaks: families.all,
   };

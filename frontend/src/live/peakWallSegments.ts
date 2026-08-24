@@ -30,6 +30,8 @@ import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDai
 export type PeakWallInput = PeakBase & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
+  traded_record_peaks?: AskPeakCandidate[];
+  traded_record_max_peaks?: AskPeakCandidate[];
 };
 
 export type PeakWallLineStyle = {
@@ -174,9 +176,16 @@ function expandBaselinePeaks(
   peaks: readonly PeakWallInput[],
   limit: 1 | 2 | 3,
   intraMax: boolean,
+  stepHistory = false,
 ): PeakWallInput[] {
   const byDate = new Map<string, PeakWallInput[]>();
   for (const p of peaks) {
+    // stepHistory: 계단(as-of running max)용 후보 = 기록 갱신 시퀀스 ∪ top-3.
+    // 기록만으로 안 되는 이유: 백엔드 cap(128)이 꼬리를 자를 수 있고 구백엔드는
+    // 기록이 없다 — top-3 과의 합집합이 두 경우 다 최종 최대를 보존한다.
+    const recordCandidates = stepHistory
+      ? (intraMax ? p.traded_record_max_peaks : p.traded_record_peaks) ?? []
+      : [];
     const closeCandidates = p.traded_peaks?.length
       ? p.traded_peaks
       : (() => {
@@ -191,7 +200,7 @@ function expandBaselinePeaks(
         return closeCandidates.map((closeCandidate) => ({ ...closeCandidate }));
       })();
     const count = Math.max(closeCandidates.length, maxCandidates.length);
-    if (count === 0) continue;
+    if (count === 0 && recordCandidates.length === 0) continue;
     const expanded = byDate.get(p.date) ?? [];
     for (let i = 0; i < count; i += 1) {
       const close = closeCandidates[i] ?? closeCandidates[closeCandidates.length - 1];
@@ -199,17 +208,28 @@ function expandBaselinePeaks(
       if (!close || !max) continue;
       expanded.push(peakWallFromCandidates(p, close, max));
     }
+    // 기록 후보는 선택된 축(intraMax)의 양쪽 필드에 같은 값을 넣는다 — 계단 계산은
+    // 선택 축 하나만 읽고, 기록의 반대 축 값은 정의돼 있지 않다.
+    for (const record of recordCandidates) {
+      expanded.push(peakWallFromCandidates(p, record, record));
+    }
     byDate.set(p.date, expanded);
   }
-  return [...byDate.values()].flatMap((items) => items
-    .slice()
-    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax)
-      || selectedTMs(a, intraMax) - selectedTMs(b, intraMax)
-      || selectedPrice(a, intraMax) - selectedPrice(b, intraMax))
-    .filter((item, index, sorted) => sorted.findIndex((candidate) =>
-      selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax),
-    ) === index)
-    .slice(0, limit));
+  return [...byDate.values()].flatMap((items) => {
+    const ranked = items
+      .slice()
+      .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax)
+        || selectedTMs(a, intraMax) - selectedTMs(b, intraMax)
+        || selectedPrice(a, intraMax) - selectedPrice(b, intraMax))
+      .filter((item, index, sorted) => sorted.findIndex((candidate) =>
+        selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax)
+        // 그리기: 가격당 1개(같은 벽을 두 번 긋지 않는다 — 종전 규약 유지).
+        // 계단: 같은 가격이 다른 시각에 기록을 두 번 세울 수 있어 (가격, 시각) 키.
+        && (!stepHistory || selectedTMs(candidate, intraMax) === selectedTMs(item, intraMax)),
+      ) === index);
+    // stepHistory: 랭크로 자르지 않는다 — 계단 입력은 이력 전체가 필요하다.
+    return stepHistory ? ranked : ranked.slice(0, limit);
+  });
 }
 
 export type BuildPeakWallOverlaySegmentsArgs = {
@@ -222,6 +242,9 @@ export type BuildPeakWallOverlaySegmentsArgs = {
   intraMax: boolean;
   /** 「체결된 벽 표시 개수」 — 하루에 몇 개까지 그릴지. */
   allPriceRankLimit?: 1 | 2 | 3;
+  /** 계단(as-of running max) 입력 모드 — 후보를 기록 갱신 시퀀스 ∪ top-3 으로 잡고
+   *  랭크로 자르지 않는다. 그리기 경로는 이 옵션을 켜지 않는다. */
+  stepHistory?: boolean;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
   /** 이동평균선 필터. **필수 인자**다 — 기본값을 주면 새 호출부가 조용히 필터 없이
    *  태어난다. 필터를 안 쓰는 자리는 `null` 을 명시한다. 방향(매도는 MA 위 / 매수는
@@ -241,6 +264,7 @@ export function buildPeakWallOverlaySegments({
   baselineStyle,
   intraMax,
   allPriceRankLimit = 1,
+  stepHistory = false,
   visibleTimeCutoff,
   maFilter,
   dailyMaFilter,
@@ -253,7 +277,7 @@ export function buildPeakWallOverlaySegments({
   // 것은 그쪽이 캔들 배열을 만지므로 더 비싼 쪽을 뒤에 남기지 않기 위해서다.
   const baselinePeaks = filterPeaksAgainstDailyMa(
     filterPeaksAgainstMa(
-      expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax),
+      expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax, stepHistory),
       candles,
       axis,
       intraMax,
