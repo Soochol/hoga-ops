@@ -251,6 +251,9 @@ export function useViewportBackfill({
   const prevSourceKeyRef = useRef<string | null>(null);
   /** `${개수}|${최초 ts_ms}` — SSE 성장(마지막 봉만 변화)과 소스 교체를 가르는 지문. */
   const prevCandleIdentityRef = useRef<string | null>(null);
+  /** 직전 커밋 캔들 배열의 모양 — **중간 삽입**(디스크 구멍의 키움 보충)을 가른다.
+   *  프리펜드는 `firstMs` 가, SSE 성장은 `lastMs` 가 움직이므로 셋을 다 봐야 구분된다. */
+  const prevCandleShapeRef = useRef<{ count: number; firstMs: number; lastMs: number } | null>(null);
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
@@ -314,6 +317,7 @@ export function useViewportBackfill({
     prevLastCandleMsRef.current = null;
     swapPendingRef.current = false;
     prevCandleIdentityRef.current = null;
+    prevCandleShapeRef.current = null;
     // ⚠ `prevSourceKeyRef` 는 **일부러 리셋하지 않는다.** 여기서 null 로 만들면 1b 가
     // 다음 소스 변경을 첫 관측으로 오인해 래치를 세우지 못한다 — 1b 의 deps 는
     // `[candleSourceKey]` 라 봉·종목 전환만으로는 재실행되지 않아 null 이 그대로 남기
@@ -477,6 +481,34 @@ export function useViewportBackfill({
     }
 
     if (prevEarliest === null || newEarliest === null) return;
+
+    // 2b. **중간 삽입** — 디스크 구멍을 키움 보충이 메우면 캔들이 배열 *한가운데* 들어온다.
+    // 그 지점 오른쪽 인덱스가 삽입 개수만큼 밀리는데, 왼쪽 경계도 마지막 봉도 안 움직여
+    // 아래 프리펜드 게이트가 전부 통과시켜 버린다 — 보정 없이 화면만 다른 시점을 가리킨다.
+    // 2026-08-24 사용자 보고가 이것이었다(010140 06-15~08-24 구간의 디스크 구멍 16일:
+    // 06-15~07-02 연속 13일 + 07-17 + 08-17). 보충일마다 반복되므로 누적된다.
+    //
+    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 셋이 개수만 보면 구별되지 않는다:
+    //   프리펜드   firstMs 변함 · lastMs 불변 · count 증가  → 아래 경로가 처리
+    //   중간 삽입  firstMs 불변 · lastMs 불변 · count 증가  → 여기
+    //   SSE 성장   firstMs 불변 · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
+    //
+    // `historicalFromDate` 게이트를 우회하는 것이 안전한 이유: 중간 삽입은 **좌단을
+    // 건드리지 않아** 3b 의 좌측-팬 판정을 새로 만들지 않는다. #1566 에서 겪은 백필
+    // 폭주는 프리펜드 보정이 좌단을 다시 최좌단에 붙이면서 생긴 되먹임이었다.
+    const shape = {
+      count: candles.length,
+      firstMs: candles[0].ts_ms,
+      lastMs: candles[candles.length - 1].ts_ms,
+    };
+    const prevShape = prevCandleShapeRef.current;
+    prevCandleShapeRef.current = shape;
+    const isMidInsert =
+      prevShape !== null
+      && shape.firstMs === prevShape.firstMs
+      && shape.lastMs === prevShape.lastMs
+      && shape.count > prevShape.count;
+
     // ⚠ **이 게이트를 분봉에서 풀지 말 것 — 2026-08-24 에 풀었다가 되돌렸다.**
     //
     // 동기는 타당했다: `historicalFromDate` 는 "좌측 팬을 한 적이 있다" 는 뜻인데
@@ -489,8 +521,10 @@ export function useViewportBackfill({
     // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
     // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
     // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
-    if (historicalRange.snapshot().historicalFromDate === null) return;
-    if (newEarliest >= prevEarliest) return;
+    if (!isMidInsert) {
+      if (historicalRange.snapshot().historicalFromDate === null) return;
+      if (newEarliest >= prevEarliest) return;
+    }
     if (!snap) return;
     try {
       // Reproject the snapshot's right-edge bar through the rebuilt axis. Its
