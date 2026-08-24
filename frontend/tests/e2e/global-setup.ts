@@ -180,12 +180,20 @@ async function seedOne(code: string, date: string): Promise<void> {
   }
 }
 
-/** 거래일 캐시를 평일로 선주입 — 범위 캡처 enqueue 의 전제.
+/** 거래일 오버레이를 평일로 선주입 — 범위 캡처 enqueue 의 전제.
  *
- *  `trading_days_in_range` 는 KIS 거래일 목록을 요구하고 **폴백이 없다**. CI 에는
- *  자격증명이 없어 enqueue 가 503(`KIS_CREDENTIALS_MISSING`)으로 즉시 실패했고,
- *  자격증명이 있는 로컬은 토큰 발급 쿨다운(분당 1회)에 걸려 201/503 을 오갔다.
- *  스펙이 쓰는 달(전월·현재월)만 심는다. 자세한 근거는 `/api/test/seed-trading-days`. */
+ *  **이 함수는 여전히 필요하지만 이유가 PR-H(#1044) 로 바뀌었다.** 예전에는
+ *  `trading_days_in_range` 가 KIS 거래일 목록을 요구했고 폴백이 없어, 무자격이면
+ *  enqueue 가 503 으로 즉시 실패하고 자격이 있으면 토큰 쿨다운에 걸려 201/503 을
+ *  오갔다. 지금 조회 경로에는 벤더가 없다 — 자격증명은 무관하다.
+ *
+ *  남은 이유는 **커버리지**다. 정적 시드(`trading_days_seed.txt`)는 커밋 시점까지만
+ *  덮고 e2e 러너는 매번 새 `HOGA_DATA_DIR` 로 뜨므로 오버레이가 비어 있다. 스펙이
+ *  쓰는 달이 커버리지 밖이면 근사 경고가 붙거나 날짜 집합이 실행 시점에 따라 달라져
+ *  **개수 단언이 흔들린다.** 그래서 전월·현재월만 심는다.
+ *
+ *  ⚠ "우린 이제 KIS 를 안 쓰니 이 함수도 필요 없다" 는 오독이다 — 위 두 문단이
+ *  같은 함수의 옛 이유와 현재 이유다. 자세한 근거는 `/api/test/seed-trading-days`. */
 async function seedTradingDays(): Promise<void> {
   const now = new Date();
   const months = [

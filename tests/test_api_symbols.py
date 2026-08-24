@@ -498,7 +498,7 @@ def test_load_disk_state_valid_file(tmp_path):
         json.dumps({
             "schema_version": 3,
             "fetched_at_ms": 1747900000000,
-            "source": "kis_mst",
+            "source": "kiwoom_ka10099",
             "entries": [
                 {"code": "005930", "name": "삼성전자", "market": "KOSPI"},
                 {"code": "000660", "name": "SK하이닉스", "market": "KOSPI"},
@@ -554,7 +554,7 @@ async def test_get_all_returns_cached_entries(tmp_path, monkeypatch):
         json.dumps({
             "schema_version": 3,
             "fetched_at_ms": 99,
-            "source": "kis_mst",
+            "source": "kiwoom_ka10099",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
         }),
         encoding="utf-8",
@@ -757,7 +757,7 @@ def test_boot_autofetch_skipped_when_cache_fresh(tmp_path, monkeypatch):
         json.dumps({
             "schema_version": symbols_module.SCHEMA_VERSION,
             "fetched_at_ms": 1747900000000,
-            "source": "kis_mst",
+            "source": "kiwoom_ka10099",
             "entries": [{"code": "005930", "name": "삼성전자", "market": "KOSPI"}],
         }),
         encoding="utf-8",

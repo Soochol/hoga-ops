@@ -27,7 +27,7 @@ def compute_factor_segments(
     """rows: (date, raw_close, adj_close) — date ASC 정렬 가정.
 
     factor=adj/raw 를 run-length로 압축: factor가 직전 세그먼트-오픈 대비 tol(상대) 넘게 바뀌면
-    새 세그먼트.  tol=1e-2(기본): KIS 수정주가는 정수 반올림을 거치므로 안정 기간에도 factor가
+    새 세그먼트.  tol=1e-2(기본): 벤더 수정주가는 정수 반올림을 거치므로 안정 기간에도 factor가
     ~1e-3 규모로 흔들린다(라운딩 노이즈). tol 이 이보다 작으면 노이즈마다 새 세그먼트가 생겨
     종목당 수백 개로 불어난다(카카오 파일럿: tol=1e-4 → 129개). 실제 코퍼레이트 액션(주식 분할·
     병합)은 factor 가 수십 % 바뀌므로 tol=1e-2 는 노이즈를 흡수하면서 실제 액션은 정확히 잡는다.
@@ -141,7 +141,7 @@ def pair_raw_adj(
     """원주가·수정주가 종가를 날짜로 inner-join → compute_factor_segments 입력.
 
     양쪽에 모두 있는 날짜만, date ASC 정렬해 (date, raw_close, adj_close) 로 반환.
-    KIS 수정주가가 원주가만큼 과거로 안 닿는 날짜는 자연히 제외(그 깊은 구간은
+    벤더 수정주가가 원주가만큼 과거로 안 닿는 날짜는 자연히 제외(그 깊은 구간은
     apply_factors 의 extend-backward 가 최古 계수로 채운다, ADR-0057).
     """
     adj_by = dict(adj_close)
