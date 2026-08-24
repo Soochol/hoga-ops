@@ -3,6 +3,12 @@ import { TIMEFRAME_TO_MS } from '../api/types';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
+import {
+  flattenPaneGroups,
+  normalizePaneGroups,
+  paneGroupsFromOrder,
+  type PaneGroups,
+} from '../chart/paneGroups';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
 import {
   DEFAULT_LIVE_MAS,
@@ -244,8 +250,12 @@ export type ActiveViewProjection = {
  * /study 가 activeTab.timeframe 으로 `setIndicatorTimeframe` 을 통해 공급한다.
  */
 type Store = Persisted & IndicatorSettings & {
-  /** 사용자 소유 차트 pane 순서(전역 — 봉 무관, ADR-0114 §3 / #696). */
+  /** 사용자 소유 차트 pane 순서(전역 — 봉 무관, ADR-0114 §3 / #696).
+   *  이제 `paneGroups` 의 평탄화 **투영**이다 — 두 필드는 모든 레이아웃 액션이
+   *  함께 갱신하므로 어긋나지 않는다(flat 소비자 호환용으로 남는다). */
   paneOrder: PaneId[];
+  /** pane 병합 그룹(순열+분할) — 레이아웃의 원본(`chart/paneGroups.ts`). */
+  paneGroups: PaneGroups;
   /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
   paneStretch: PaneStretchMap;
   /** 앱 전역 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 창 세트의
@@ -352,9 +362,14 @@ type Store = Persisted & IndicatorSettings & {
   /** 다른 탭이 쓴 `live.indicators.v2` 를 다시 읽어 스토어를 맞춘다(crossTabSync).
    *  **되쓰지 않는다** — 재기록하면 그 storage 이벤트가 다시 다른 탭들을 깨운다. */
   hydrateIndicatorsFromStorage: () => void;
-  /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
-   *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
+  /** pane 순서를 통째로 교체한다(candle 은 normalizePaneOrder 가 index 0 으로
+   *  고정, ADR-0114 §3). **그룹을 싱글턴으로 리셋한다** — flat 순서를 쓰는
+   *  호출자(프리셋·구 경로)는 병합 정보가 없으므로 순서가 곧 전체 레이아웃이다.
+   *  병합을 보존하는 이동은 `setPaneGroups` 로 간다. */
   setPaneOrder: (order: PaneId[]) => void;
+  /** pane 병합 그룹을 통째로 교체한다(레전드 ↑/↓·병합/분리 드래그의 결과).
+   *  `paneOrder` 투영도 함께 갱신된다. */
+  setPaneGroups: (groups: PaneGroups) => void;
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
   setPaneStretch: (patch: PaneStretchMap) => void;
@@ -525,6 +540,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     const s = get();
     persistIndicatorsV2({
       paneOrder: s.paneOrder,
+      paneGroups: s.paneGroups,
       paneStretch: s.paneStretch,
       byTimeframe: s.indicatorsByTimeframe,
       byWindow: s.indicatorsByWindow,
@@ -611,6 +627,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     ...initialPage,
     ...resolveIndicatorSettings(initialIndicatorsV2.byTimeframe, initialPage.candleTimeframe),
     paneOrder: initialIndicatorsV2.paneOrder,
+    paneGroups: initialIndicatorsV2.paneGroups,
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
@@ -640,7 +657,15 @@ export const useLivePageStore = create<Store>((set, get) => {
       patchIndicatorsScoped(scope, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
 
     setPaneOrder: (order) => {
-      set({ paneOrder: normalizePaneOrder(order) });
+      // flat 순서 쓰기 = 그룹 싱글턴 리셋 (액션 선언부 주석 참조).
+      const normalized = normalizePaneOrder(order);
+      set({ paneOrder: normalized, paneGroups: paneGroupsFromOrder(normalized) });
+      persistIndicators();
+    },
+
+    setPaneGroups: (groups) => {
+      const normalized = normalizePaneGroups(groups);
+      set({ paneGroups: normalized, paneOrder: flattenPaneGroups(normalized) });
       persistIndicators();
     },
 
@@ -657,6 +682,9 @@ export const useLivePageStore = create<Store>((set, get) => {
       const nextPaneStretch = normalizePaneStretch(paneStretch);
       set({
         paneOrder: nextPaneOrder,
+        // 프리셋 payload 엔 그룹이 없다(레이아웃 프리셋은 flat 순서만 나른다) —
+        // 적용 = 결정론적 교체이므로 그룹도 싱글턴으로 리셋된다.
+        paneGroups: paneGroupsFromOrder(nextPaneOrder),
         paneStretch: nextPaneStretch,
         indicatorsByTimeframe: byTimeframe,
         ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
@@ -753,6 +781,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       const stored = readIndicatorsV2Storage();
       set({
         paneOrder: stored.paneOrder,
+        paneGroups: stored.paneGroups,
         paneStretch: stored.paneStretch,
         indicatorsByTimeframe: stored.byTimeframe,
         // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼

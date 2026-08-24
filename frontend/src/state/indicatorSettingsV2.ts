@@ -1,6 +1,12 @@
 import type { PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
+  flattenPaneGroups,
+  normalizePaneGroups,
+  paneGroupsFromOrder,
+  type PaneGroups,
+} from '../chart/paneGroups';
+import {
   mergeLiveIndicatorPrefs,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
@@ -40,6 +46,12 @@ export type IndicatorSettingsByTimeframe =
 
 export type PersistedIndicatorsV2 = {
   paneOrder: PaneId[];
+  /** pane 병합 그룹(순열+분할) — 이제 레이아웃의 **원본**이고 `paneOrder` 는 그
+   *  평탄화 투영이다(`chart/paneGroups.ts` 도크스트링). 둘 다 저장하는 이유는
+   *  다운그레이드 안전 — paneGroups 를 모르는 구 빌드도 순서는 읽는다. 구 빌드가
+   *  블롭을 재조립해 쓰면 이 키가 통째로 사라지고, 읽기가 paneOrder 싱글턴 파생
+   *  으로 복귀하므로 스테일 그룹이 남는 경로는 없다. */
+  paneGroups: PaneGroups;
   /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
@@ -251,8 +263,17 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   // 저장된 `studyByTimeframe` 은 **읽지 않는다**(ADR-0157). 기존 사용자의 블롭엔
   // 남아 있지만 다음 쓰기에서 사라진다 — `persistIndicators` 가 스토어에서 필드를
   // 명시로 조립하므로, 여기서 안 읽고 거기서 안 쓰면 키가 자연 소멸한다.
+  //
+  // 레이아웃은 paneGroups 가 원본이다: 키가 **있으면** 그것을 정규화해 쓰고
+  // paneOrder 는 그 평탄화로 파생한다(저장된 paneOrder 무시 — 둘이 어긋난 블롭은
+  // 구 빌드가 groups 키를 떨군 경우뿐이고, 그때는 아래 파생 분기라 어긋날 수 없다).
+  // 키가 **없으면**(구 블롭·구 빌드가 재조립한 블롭) paneOrder 싱글턴으로 파생한다.
+  const paneGroups = Array.isArray(obj.paneGroups)
+    ? normalizePaneGroups(obj.paneGroups)
+    : paneGroupsFromOrder(normalizePaneOrder(obj.paneOrder));
   return {
-    paneOrder: normalizePaneOrder(obj.paneOrder),
+    paneOrder: flattenPaneGroups(paneGroups),
+    paneGroups,
     paneStretch: normalizePaneStretch(obj.paneStretch),
     byTimeframe: normalizeBucketMap(obj.byTimeframe),
     byWindow: normalizeByWindow(obj.byWindow),
@@ -337,8 +358,11 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     if (typeof override === 'boolean') minuteView[key] = override;
   }
   const minuteDiff = diffIndicatorSettingsFromFactory(minuteView);
+  const seededPaneOrder = normalizePaneOrder(v1.paneOrder);
   return {
-    paneOrder: normalizePaneOrder(v1.paneOrder),
+    paneOrder: seededPaneOrder,
+    // v1 엔 그룹 개념이 없다 — 순서의 싱글턴 파생.
+    paneGroups: paneGroupsFromOrder(seededPaneOrder),
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
