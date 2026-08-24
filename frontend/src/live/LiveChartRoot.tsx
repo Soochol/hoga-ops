@@ -34,6 +34,7 @@ import {
   type DayBoundaryTick,
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
+import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
@@ -2240,7 +2241,15 @@ export function LiveChartRoot({
   ]);
 
   const publishCursorHover = useCallback(
-    (virtualTime: unknown, pointX?: number, fromUserPointer = false): void => {
+    (
+      virtualTime: unknown,
+      pointX?: number,
+      fromUserPointer = false,
+      /** 이 이벤트가 **합성 크로스헤어**에서 나왔는가. 호출부가 `crosshairMove`
+       *  핸들러 안에서 뽑아 넘긴다 — 왜 여기서 직접 읽으면 안 되는지는
+       *  `hasSyntheticCrosshair` 주석 참조(요약: rAF 안에서는 이미 해제된 뒤다). */
+      fromSyntheticCrosshair = false,
+    ): void => {
       if (!chart) return;
       const store = useLiveCursorStore.getState();
       // **옆 창의 호버가 sync 로 그려 준 크로스헤어는 발행하지 않는다.**
@@ -2259,6 +2268,13 @@ export function LiveChartRoot({
       // 실제 포인터 이벤트는 통과시킨다: 사용자가 이 창으로 마우스를 옮기면 그때는
       // 이 창이 발행자가 되는 게 맞다.
       if (!fromUserPointer) {
+        // ⚠ 소유자 가드만으로는 **슬롯이 비는 순간**을 못 막는다(2026-08-24 실측).
+        // 발행 창이 캔들 오른쪽 빈 공간으로 들어가면 슬롯이 `null` 이 되는데, 그
+        // 직후 이 창의 미뤄진 재발화가 착지하면 아래 조건이 통과해 **이 창이 자기
+        // stale 합성 위치로 슬롯을 차지한다**. 그러면 포인터가 있는 저쪽 창이 그걸
+        // 소비해 크로스헤어가 임의 캔들로 튀고, 주인이 바뀐 탓에 저쪽은 자기 정리
+        // 경로로 그걸 지우지도 못한다. 기전 전체는 `syntheticCrosshair.ts` 헤더.
+        if (fromSyntheticCrosshair) return;
         const syncOrigin = store.syncCursorOrigin;
         if (syncOrigin !== null && syncOrigin.windowId !== cursorOriginRef.current.windowId) {
           return;
@@ -2468,6 +2484,10 @@ export function LiveChartRoot({
       // rAF 밖에서 뽑는다 — lwc 가 param 객체를 재사용하면 프레임이 도는 사이 값이
       // 바뀔 수 있다(`point` 를 여기서 잡아 두는 것과 같은 이유).
       const hasSourceEvent = param.sourceEvent != null;
+      // 합성 여부도 **여기서** 뽑는다. rAF 안에서 읽으면 늦다 — 실측 순서가
+      // `옆 창이 슬롯 비움 → 이 창 cleanup(합성 해제) → 미뤄진 rAF 발행` 이라
+      // 그때는 항상 false 라서 가드가 통째로 무력해진다(`syntheticCrosshair.ts`).
+      const fromSyntheticCrosshair = hasSyntheticCrosshair(chart);
       pending = requestAnimationFrame(() => {
         pending = null;
         const t = typeof param.time === 'number'
@@ -2476,7 +2496,7 @@ export function LiveChartRoot({
             ?? chart.timeScale().coordinateToTime(point.x));
         // sourceEvent 가 있으면 내 마우스가 만든 이벤트다. 없으면 데이터 갱신에
         // 따른 재발화이고, 그때는 sync 소비 중인 창이 발행하지 못하게 막힌다.
-        publishCursorHover(t, point.x, hasSourceEvent);
+        publishCursorHover(t, point.x, hasSourceEvent, fromSyntheticCrosshair);
       });
     };
     chart.subscribeCrosshairMove(handler);
