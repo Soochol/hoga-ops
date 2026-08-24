@@ -164,6 +164,7 @@ export default function IndicatorPanel({
     programTradeEnabled: ind.programTradeEnabled,
     foreignNetEnabled: ind.foreignNetEnabled,
     institutionNetEnabled: ind.institutionNetEnabled,
+    peakWallPaneEnabled: ind.peakWallPaneEnabled,
   };
   const setPanePrefForTimeframe = actions.setPanePrefForTimeframe;
 

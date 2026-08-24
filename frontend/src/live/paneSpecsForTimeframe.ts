@@ -5,6 +5,7 @@ import {
   INVESTOR_FOREIGN_SPEC,
   INVESTOR_INSTITUTION_SPEC,
 } from '../chart/projectors/investorNet';
+import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
 
 /** Indicator toggles that gate which panes mount. The two investor flags are
  *  required (default off); the rest are optional and default ON when omitted
@@ -19,6 +20,10 @@ export type PaneToggles = {
   programTradeEnabled?: boolean;
   hogaPanes?: boolean;
   forceHogaPanes?: boolean;
+  /** 최대벽 강도 pane (기존 「당일 최대벽」의 시간축 표현). **opt-in** — `=== true`
+   *  일 때만 마운트한다: 위의 "생략 시 ON" 관례는 항상-켜져-있다가 togglable 이 된
+   *  pane 들의 하위호환이고, 새 pane 이 그걸 따르면 배포 순간 모든 화면에 나타난다. */
+  peakWallPaneEnabled?: boolean;
 };
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
@@ -63,6 +68,10 @@ const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   ...PANE_SPECS.map((spec) => ({ spec, gate: GATE_BY_NAME[spec.name] ?? ((): boolean => true) })),
   { spec: INVESTOR_FOREIGN_SPEC, gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: INVESTOR_INSTITUTION_SPEC, gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+  // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일
+  // (`peakWallPaneSpec`) 머리말 참조: chart/→live/ 계층 규칙 + all-base identity.
+  // 호가 파생 지표라 hogaAllowed 를 탄다(분봉 전용 · 인덱스 차트의 hogaPanes:false 존중).
+  { spec: PEAK_WALL_SPEC, gate: (tf, t): boolean => hogaAllowed(tf, t) && t.peakWallPaneEnabled === true },
 ];
 
 /**

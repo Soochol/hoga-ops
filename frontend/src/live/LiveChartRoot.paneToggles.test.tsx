@@ -183,8 +183,15 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       programTradeEnabled: true,
       foreignNetEnabled: false,
       institutionNetEnabled: false,
+      peakWallPaneEnabled: false,
       indicatorsByTimeframe: {},
       indicatorTimeframe: '1m',
+      // ⚠ paneOrder 도 기준선에 포함한다 — 종전엔 리셋이 없어 「pane 순서를 바꾸면…」
+      // 테스트의 스왑이 뒤 테스트로 샜다(뒤 테스트들이 우연히 통과했을 뿐).
+      paneOrder: [
+        'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      ],
     });
     useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', false);
   });
@@ -252,6 +259,13 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     renderAt('1m');
     expect(mounted).not.toContain('volume');
     expect(mounted[0]).toBe('candle');
+  });
+
+  it('peakWallPaneEnabled=true → peak-wall pane 이 quote-totals 뒤에 마운트 (opt-in)', () => {
+    // 기본(미지정)은 위 「기본 6 pane」 테스트가 부재를 이미 잠근다 — 여기선 켠 경로만.
+    useLivePageStore.setState({ peakWallPaneEnabled: true });
+    renderAt('1m');
+    expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'peak-wall', 'ratio', 'fill-strength', 'program-trade']);
   });
 
   it('calendar(D) → 호가 토글 무관, candle·volume만', () => {

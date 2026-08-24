@@ -19,6 +19,15 @@ const CATEGORY_TO_PANE: Record<string, PaneId> = {
   'institution-net': 'investor-institution',
 };
 
+/**
+ * 자체 nav 항목이 **의도적으로 없는** pane. 이 가드의 요구("pane 을 늘렸으면 설정
+ * 항목도 만들어라")는 독립 지표에만 성립한다 — `peak-wall` 은 독립 지표가 아니라
+ * 기존 「당일 최대벽」의 시간축 표현이라(구현 계획 §0), 설정도 그 지표의 페이지
+ * (`PeakWallsConfig`) 안 토글로 들어간다. 새 nav 항목을 만들면 P1-8 이 매도·매수를
+ * 한 항목으로 합친 결정을 되돌리는 셈이다.
+ */
+const DEPENDENT_PANES = new Set<PaneId>(['peak-wall']);
+
 describe('pane 표시 이름 — 설정 패널 ↔ 차트 레전드', () => {
   it('겹치는 pane 의 라벨이 두 표에서 같다', () => {
     const pairs = CATEGORIES.filter((c) => CATEGORY_TO_PANE[c.id]).map((c) => ({
@@ -34,7 +43,7 @@ describe('pane 표시 이름 — 설정 패널 ↔ 차트 레전드', () => {
   it('캔들을 뺀 모든 pane 이 설정 패널에 대응 항목을 갖는다', () => {
     const covered = new Set(Object.values(CATEGORY_TO_PANE));
     const missing = (Object.keys(PANE_DISPLAY_NAME) as PaneId[]).filter(
-      (id) => id !== 'candle' && !covered.has(id),
+      (id) => id !== 'candle' && !covered.has(id) && !DEPENDENT_PANES.has(id),
     );
     // PaneId 를 늘리면 tsc 가 `PANE_DISPLAY_NAME` 을 요구하지만, 위 매핑에 넣는 것까지는
     // 강제하지 못한다 — 빠뜨리면 그 pane 이 대조에서 조용히 빠지므로 여기서 막는다.

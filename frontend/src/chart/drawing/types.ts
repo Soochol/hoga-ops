@@ -57,7 +57,8 @@ export type PaneId =
   | 'fill-strength'
   | 'program-trade'
   | 'investor-foreign'
-  | 'investor-institution';
+  | 'investor-institution'
+  | 'peak-wall';
 
 interface DrawingBase {
   id: DrawingId;

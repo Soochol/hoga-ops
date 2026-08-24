@@ -94,6 +94,8 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
+import { buildPeakWallStepPoints, type PeakWallStepPoint } from '../chart/peakWallSteps';
+import { usePeakWallStepsRegistry } from './indicators/peakWallStepsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -213,6 +215,8 @@ const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
 const EMPTY_CANDLES: readonly Candle[] = [];
+// 최대벽 계단의 빈 상태 — 공유 참조여야 pane ctx 가 흔들리지 않는다.
+const EMPTY_PEAK_WALL_STEPS: readonly PeakWallStepPoint[] = [];
 // 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
 // (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_RANGE_SEGMENTS: readonly RangeSegment[] = [];
@@ -1808,6 +1812,7 @@ export function LiveChartRoot({
   const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
+  const prefPeakWallPaneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
   const prefInstitutionNetEnabled = useWindowIndicator((s) => s.institutionNetEnabled);
   const indicatorPrefs = useMemo(
     () => ({
@@ -1821,11 +1826,12 @@ export function LiveChartRoot({
       programTradeEnabled: prefProgramTradeEnabled,
       foreignNetEnabled: prefForeignNetEnabled,
       institutionNetEnabled: prefInstitutionNetEnabled,
+      peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
     [prefMovingAverages, prefMovingAverageEnabled, prefMovingAverageHidden,
       prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
-      prefInstitutionNetEnabled],
+      prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
   );
   // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
   const paneOrder = useWindowPaneOrder();
@@ -2183,6 +2189,33 @@ export function LiveChartRoot({
     visibleTimeCutoff: bidVisibleTimeCutoffForRender,
     dailyMaFilter: bidPeakDailyMaFilter,
   });
+  // ── 최대벽 강도 pane 계단 (구현 계획 §2) ──────────────────────────────
+  // pane 프로젝터는 번들·축을 못 받는 pass-through 라, 계단을 **여기서** 접어
+  // 레지스트리로 내려보낸다. pane 이 꺼져 있으면 계산하지 않는다(빈 배열 공유 참조).
+  // 세그먼트 대신 완성된 점을 넣는 이유는 peakWallStepsRegistry 주석 참조.
+  const askPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
+    () => (prefPeakWallPaneEnabled && askWall.segments.length > 0
+      ? buildPeakWallStepPoints(askWall.segments, cb?.candles ?? EMPTY_CANDLES, axis, askWall.color)
+      : EMPTY_PEAK_WALL_STEPS),
+    [prefPeakWallPaneEnabled, askWall.segments, askWall.color, cb?.candles, axis],
+  );
+  const bidPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
+    () => (prefPeakWallPaneEnabled && bidWall.segments.length > 0
+      ? buildPeakWallStepPoints(bidWall.segments, cb?.candles ?? EMPTY_CANDLES, axis, bidWall.color)
+      : EMPTY_PEAK_WALL_STEPS),
+    [prefPeakWallPaneEnabled, bidWall.segments, bidWall.color, cb?.candles, axis],
+  );
+  useEffect(() => {
+    const reg = usePeakWallStepsRegistry.getState();
+    reg.register(legendScope, 'ask', { points: askPeakWallSteps });
+    reg.register(legendScope, 'bid', { points: bidPeakWallSteps });
+    return () => {
+      const cleanup = usePeakWallStepsRegistry.getState();
+      cleanup.unregister(legendScope, 'ask');
+      cleanup.unregister(legendScope, 'bid');
+    };
+  }, [legendScope, askPeakWallSteps, bidPeakWallSteps]);
+
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
   const peakWallCandleExtremes = useMemo(
