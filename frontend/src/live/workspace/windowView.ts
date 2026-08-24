@@ -45,6 +45,7 @@ import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
 import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
 import type { PaneStretchMap } from '../../chart/paneOrder';
+import type { PaneGroups } from '../../chart/paneGroups';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 import {
@@ -267,6 +268,11 @@ export function useWindowPaneOrder(): PaneId[] {
   return useLivePageStore((s) => s.paneOrder);
 }
 
+/** pane 병합 그룹 — paneOrder 와 같은 전역 레이아웃 슬라이스(`chart/paneGroups.ts`). */
+export function useWindowPaneGroups(): PaneGroups {
+  return useLivePageStore((s) => s.paneGroups);
+}
+
 /** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
 export function useWindowPaneStretch(): PaneStretchMap {
   return useLivePageStore((s) => s.paneStretch);
@@ -282,6 +288,7 @@ export function useWindowPaneStretch(): PaneStretchMap {
 export type IndicatorActions = BoundIndicatorOps & {
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
+  setPaneGroups: (groups: PaneGroups) => void;
   setPaneStretch: (patch: PaneStretchMap) => void;
   resetIndicators: () => void;
   applyIndicatorPreset: (preset: {
@@ -304,6 +311,7 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   }
   out.setPanePrefForTimeframe = s.setPanePrefForTimeframe;
   out.setPaneOrder = s.setPaneOrder;
+  out.setPaneGroups = s.setPaneGroups;
   out.setPaneStretch = s.setPaneStretch;
   out.resetIndicators = s.resetIndicators;
   out.applyIndicatorPreset = s.applyIndicatorPreset;
@@ -340,6 +348,7 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
       ps().setPanePrefScoped(scope, timeframe, key, enabled),
     // 레이아웃(pane 순서·크기)은 창 축 대상이 아니다 — 전역 1세트 유지(ADR-0114 §3).
     setPaneOrder: (order) => ps().setPaneOrder(order),
+    setPaneGroups: (groups) => ps().setPaneGroups(groups),
     setPaneStretch: (patch) => ps().setPaneStretch(patch),
     resetIndicators: () => ps().resetIndicatorsScoped(scope, tf()),
     // 지표 프리셋은 그 **페이지 세트**를 갈아끼운다 — 즉 이 창에는 보이지 않는다.

@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneStretchMap } from '../chart/paneOrder';
+import { paneGroupStretch, type PaneSpecGroup } from './paneGroupSpecs';
 import {
   foldPanes,
   INITIAL_FOLD_STATE,
-  type PaneFoldResult,
   type PaneFoldState,
 } from './paneFolding';
+
+/** 접기 결과 — 원자 단위가 **pane 그룹**이다(그룹의 절반만 접는 상태는 없다). */
+export type PaneGroupFoldResult = {
+  groups: readonly PaneSpecGroup[];
+  foldedCount: number;
+  timeAxisVisible: boolean;
+};
 
 /**
  * 차트 컨테이너 높이를 관측해 `foldPanes` 를 적용한다 — 접기의 React 경계.
  *
  * 순수 계산(무엇을 접을지)은 `paneFolding.ts` 가, 여기서는 두 가지만 한다:
- * 높이 관측과 히스테리시스에 필요한 직전 상태 보관.
+ * 높이 관측과 히스테리시스에 필요한 직전 상태 보관. pane 병합 이후 접기의 원자
+ * 단위는 **그룹**이다 — 항목이 그룹이고 stretch 가 `paneGroupStretch` 일 뿐,
+ * 판정은 종전과 동일하다(`foldPanes` 는 제네릭).
  *
  * **피드백 루프가 없다는 점이 중요하다.** 관측 대상인 컨테이너 높이는 상위 그리드가
  * `minmax(0,1fr)` 로 확정해 주므로(#730), 접기가 pane 수를 바꿔도 컨테이너 높이는
@@ -35,9 +43,9 @@ import {
  * 없다.
  */
 export function usePaneFolding(
-  specs: readonly BoundPaneSpec[],
+  groups: readonly PaneSpecGroup[],
   paneStretch: PaneStretchMap,
-): [PaneFoldResult, (el: HTMLElement | null) => void] {
+): [PaneGroupFoldResult, (el: HTMLElement | null) => void] {
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [heightPx, setHeightPx] = useState(0);
 
@@ -61,24 +69,24 @@ export function usePaneFolding(
   const stateRef = useRef<PaneFoldState>(INITIAL_FOLD_STATE);
 
   const { foldedCount, timeAxisVisible } = useMemo(() => {
-    const stretchOf = (spec: BoundPaneSpec): number => paneStretch[spec.name] ?? spec.stretch;
-    const next = foldPanes(specs, heightPx, stretchOf, stateRef.current);
+    const stretchOf = (group: PaneSpecGroup): number => paneGroupStretch(group, paneStretch);
+    const next = foldPanes(groups, heightPx, stretchOf, stateRef.current);
     stateRef.current = {
       foldedCount: next.foldedCount,
       timeAxisVisible: next.timeAxisVisible,
     };
     return next;
-  }, [specs, heightPx, paneStretch]);
+  }, [groups, heightPx, paneStretch]);
 
   // 목록 identity 는 (원본, 접힘 수)에만 의존한다 — 드래그 중 높이가 1px 씩 바뀌어도
   // 접힘 수가 그대로면 같은 배열을 돌려줘 하위 재조정이 돌지 않는다.
-  const foldedSpecs = useMemo(
-    () => (foldedCount === 0 ? specs : specs.slice(0, specs.length - foldedCount)),
-    [specs, foldedCount],
+  const foldedGroups = useMemo(
+    () => (foldedCount === 0 ? groups : groups.slice(0, groups.length - foldedCount)),
+    [groups, foldedCount],
   );
 
   // 결과 객체는 접힘 수가 그대로면 같은 필드값을 돌려주지만 객체 자체는 매 렌더
-  // 새로 만든다 — 소비처가 구조분해로 받아 쓰므로(위 `foldedSpecs` 의 identity 가
+  // 새로 만든다 — 소비처가 구조분해로 받아 쓰므로(위 `foldedGroups` 의 identity 가
   // 실제 계약) 여기서 memo 할 이득이 없다. 튜플로 감싸도 같다.
-  return [{ specs: foldedSpecs, foldedCount, timeAxisVisible }, setEl];
+  return [{ groups: foldedGroups, foldedCount, timeAxisVisible }, setEl];
 }

@@ -130,6 +130,32 @@ describe('normalizeIndicatorsV2', () => {
     });
     expect(v2.byTimeframe).toEqual({});
   });
+
+  it('paneGroups 없는 구 블롭은 paneOrder 의 싱글턴으로 파생한다', () => {
+    const v2 = normalizeIndicatorsV2({ paneOrder: ['candle', 'ratio', 'volume'] });
+    expect(v2.paneGroups.slice(0, 3)).toEqual([['candle'], ['ratio'], ['volume']]);
+    // 투영 일관성: paneOrder = flatten(paneGroups).
+    expect(v2.paneGroups.flat()).toEqual(v2.paneOrder);
+  });
+
+  it('paneGroups 가 있으면 그것이 원본 — 저장된 paneOrder 는 무시된다', () => {
+    const v2 = normalizeIndicatorsV2({
+      paneOrder: ['candle', 'volume', 'ratio'],       // groups 와 어긋난 스테일 값
+      paneGroups: [['candle'], ['ratio', 'volume']],
+    });
+    expect(v2.paneGroups[1]).toEqual(['ratio', 'volume']);
+    expect(v2.paneOrder.slice(0, 3)).toEqual(['candle', 'ratio', 'volume']);
+    expect(v2.paneGroups.flat()).toEqual(v2.paneOrder);
+  });
+
+  it('paneGroups 왕복 — 병합 그룹이 저장/로드에서 보존된다', () => {
+    const first = normalizeIndicatorsV2({
+      paneGroups: [['candle'], ['investor-foreign', 'investor-institution'], ['volume']],
+    });
+    const roundtripped = normalizeIndicatorsV2(JSON.parse(JSON.stringify(first)));
+    expect(roundtripped.paneGroups).toEqual(first.paneGroups);
+    expect(roundtripped.paneOrder).toEqual(first.paneOrder);
+  });
 });
 
 describe('seedV2FromV1', () => {

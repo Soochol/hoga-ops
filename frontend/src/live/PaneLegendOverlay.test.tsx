@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useChartPrefsStore } from '../state/chartPrefs';
@@ -18,6 +18,7 @@ import {
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneToggles } from './paneSpecsForTimeframe';
 import { formatKoreanWonEok } from '../util/koreanNumber';
+import { flattenPaneGroups, mergePaneIntoGroup, normalizePaneGroups } from '../chart/paneGroups';
 
 // Minimal chart stub: the overlay only reads pane heights for positioning and
 // (un)subscribes to crosshair / range — no live chart needed. Latest-fallback
@@ -339,8 +340,10 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
       { label: '매도', value: 888, color: () => '#3485FA' },
     ]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.queryByText('호가비')).toBeNull();
-    expect(screen.queryByText('체결강도')).toBeNull();
+    // 숨기는 것은 **값 레전드 행**이다 — pane 이름 칩(드래그 핸들)은 별개 표면이라
+    // 남는다. 행 컨테이너 부재 + 값 부재로 단언한다.
+    expect(screen.queryByTestId('pane-legend-rows-ratio')).toBeNull();
+    expect(screen.queryByTestId('pane-legend-rows-fill-strength')).toBeNull();
     expect(screen.queryByText('777')).toBeNull();
     expect(screen.queryByText('888')).toBeNull();
   });
@@ -442,10 +445,12 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
       { label: '누적', value: 12345, color: () => '#8B5CF6' },
     ]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.getByText('거래량')).toBeInTheDocument();
-    expect(screen.getByText('5,000')).toBeInTheDocument();
-    expect(screen.getByText('누적')).toBeInTheDocument();
-    expect(screen.getByText('12,345')).toBeInTheDocument();
+    // pane 이름 칩에도 '거래량' 이 있으므로 값 행 컨테이너로 스코프한다.
+    const rows = within(screen.getByTestId('pane-legend-rows-volume'));
+    expect(rows.getByText('거래량')).toBeInTheDocument();
+    expect(rows.getByText('5,000')).toBeInTheDocument();
+    expect(rows.getByText('누적')).toBeInTheDocument();
+    expect(rows.getByText('12,345')).toBeInTheDocument();
   });
 
   it('총잔량 pane 은 spec 의 legendTitle 과 매수·매도 셀을 렌더한다', () => {
@@ -455,9 +460,10 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
       { label: '매도', value: 6789, color: () => '#3485FA' },
     ]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.getByText('총잔량')).toBeInTheDocument();
-    expect(screen.getByText('311,400')).toBeInTheDocument();
-    expect(screen.getByText('6,789')).toBeInTheDocument();
+    const rows = within(screen.getByTestId('pane-legend-rows-quote-totals'));
+    expect(rows.getByText('총잔량')).toBeInTheDocument();
+    expect(rows.getByText('311,400')).toBeInTheDocument();
+    expect(rows.getByText('6,789')).toBeInTheDocument();
   });
 
   // 2026-08-18. 이 행이 생기면서 프로그램 pane 의 `lastValueVisible`(가격축 최신값
@@ -469,8 +475,9 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
       { label: '프로그램 순매수', value: 512_800_000_000, format: formatKoreanWonEok },
     ]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.getByText('프로그램 순매수')).toBeInTheDocument();
-    expect(screen.getByText(formatKoreanWonEok(512_800_000_000))).toBeInTheDocument();
+    const rows = within(screen.getByTestId('pane-legend-rows-program-trade'));
+    expect(rows.getByText('프로그램 순매수')).toBeInTheDocument();
+    expect(rows.getByText(formatKoreanWonEok(512_800_000_000))).toBeInTheDocument();
   });
 
   // 값이 null 인 셀(토글 off / 콜드로드)은 빠지고, 남는 셀이 없으면 행 자체가 사라진다
@@ -488,7 +495,8 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.getByText('5,000')).toBeInTheDocument();
     expect(screen.queryByText('누적')).toBeNull();
-    expect(screen.queryByText('총잔량')).toBeNull();
+    // 행이 전부 비면 행 컨테이너째 사라진다(이름 칩은 별개 표면이라 남는다).
+    expect(screen.queryByTestId('pane-legend-rows-quote-totals')).toBeNull();
   });
 
   it('✕ 는 해당 pane 지표를 현재 타임프레임에서 끈다', () => {
@@ -594,9 +602,10 @@ describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 �
   });
   afterEach(cleanup);
 
-  /** ↑버튼 → 컨트롤 칩(span) → pane 래퍼. */
+  /** ↑버튼 → 컨트롤 칩(span) → 클러스터(이름 칩 + 컨트롤) → pane 래퍼. */
   const chipOf = (paneId: string) => screen.getByTestId(`pane-move-up-${paneId}`).parentElement!;
-  const wrapperOf = (paneId: string) => chipOf(paneId).parentElement!;
+  const clusterOf = (paneId: string) => chipOf(paneId).parentElement!;
+  const wrapperOf = (paneId: string) => clusterOf(paneId).parentElement!;
 
   function renderPanes(plotWidth = PLOT_WIDTH) {
     render(
@@ -627,11 +636,12 @@ describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 �
 
   it('legend 행이 없는 pane 도 컨트롤은 우측에 남는다 (auto 마진, space-between 아님)', () => {
     renderPanes();
-    // ratio 는 LEGEND_CELL_PANES 밖이라 행 스택 자체가 없다 — 자식이 컨트롤 하나뿐이라
+    // ratio 는 LEGEND_CELL_PANES 밖이라 행 스택 자체가 없다 — 자식이 클러스터 하나뿐이라
     // justifyContent:'space-between' 였다면 그 하나가 **왼쪽**으로 붙었을 자리.
+    // auto 마진은 클러스터(이름 칩 + 컨트롤)가 갖는다.
     expect(screen.queryByTestId('pane-legend-rows-ratio')).toBeNull();
-    expect(chipOf('ratio').style.marginLeft).toBe('auto');
-    expect(chipOf('volume').style.marginLeft).toBe('auto');
+    expect(clusterOf('ratio').style.marginLeft).toBe('auto');
+    expect(clusterOf('volume').style.marginLeft).toBe('auto');
   });
 
   it('컨트롤 있는 pane 의 우측 인셋은 플롯 폭으로 클램프된다 (가격축 거터 회피)', () => {
@@ -701,5 +711,124 @@ describe('PaneLegendOverlay — 지표 pref 변경 즉시 반영', () => {
     } finally {
       unregisterFlagLegendValues(null, 'ask-peak', provider);
     }
+  });
+});
+
+/**
+ * **pane 병합/분리 — 칩 메뉴·드래그 경로**(pane 병합 기능).
+ *
+ * **막는 방향**: ① 칩 클릭 메뉴의 병합/분리가 store `paneGroups` 를 실제로 바꾸는
+ * 배선(액션 미호출·잘못된 타겟), ② 드래그 커밋이 pane 본체 드롭을 병합으로,
+ * Esc 취소를 no-op 으로 처리하는 것, ③ 병합 pane 레전드의 멤버 칩·축 배지·✕.
+ * **못 보는 것**: 실브라우저 pointer capture 지오메트리(jsdom 의 rect 는 0) —
+ * 판정 자체는 `paneMergeDrag.test.ts` 가 순수 함수로 잡고, 여기는 배선만 잰다.
+ */
+describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () => {
+  beforeEach(() => {
+    resetStore();
+    // resetStore 는 paneGroups 를 건드리지 않는다 — 이 파일의 이동 컨트롤 테스트와
+    // 이 describe 자신의 앞 테스트가 setPaneGroups 로 영속 상태를 바꾸므로, 매
+    // 테스트를 canonical 싱글턴에서 시작시킨다(테스트 간 오염 차단).
+    const canonical = normalizePaneGroups(undefined);
+    useLivePageStore.setState({
+      paneGroups: canonical,
+      paneOrder: flattenPaneGroups(canonical),
+    });
+  });
+  afterEach(cleanup);
+
+  const minutePanes = () => makeChart([120, 60, 60, 60, 60, 60]);
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+  const chipButton = (paneId: string) =>
+    within(screen.getByTestId(`pane-chip-${paneId}`)).getByRole('button', { name: /이동\/병합/ });
+  const groupOf = (paneId: string) =>
+    useLivePageStore.getState().paneGroups.find((g) => g.includes(paneId as never));
+
+  const clickChip = (paneId: string) => {
+    const btn = chipButton(paneId);
+    fireEvent.pointerDown(btn, { button: 0, clientX: 400, clientY: 250 });
+    fireEvent.pointerUp(btn, { clientX: 400, clientY: 250 });
+  };
+
+  it('칩 클릭 메뉴: 아래 pane 과 합치기 → paneGroups 병합', () => {
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    clickChip('ratio');
+    expect(screen.getByTestId('pane-chip-menu')).toBeInTheDocument();
+    // 분봉 뷰: ratio 의 아래 이웃은 fill-strength.
+    fireEvent.click(screen.getByTestId('pane-menu-merge-down'));
+    expect(groupOf('ratio')).toEqual(['fill-strength', 'ratio']);
+    expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
+  });
+
+  it('칩 클릭 메뉴: 위 pane 과 합치기 — candle(그룹 0) 위 이웃은 항목이 없다', () => {
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    clickChip('volume');
+    // volume 의 위 이웃은 candle → 위 병합 항목 없음, 아래 병합만.
+    expect(screen.queryByTestId('pane-menu-merge-up')).toBeNull();
+    expect(screen.getByTestId('pane-menu-merge-down')).toBeInTheDocument();
+  });
+
+  it('병합 pane: 멤버 칩 2개 + 대표 칩 축 배지 + ✕ 로 지표 끄기, 분리 메뉴로 역연산', () => {
+    useLivePageStore.getState().setPaneGroups(
+      mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume'),
+    );
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    // 멤버 칩 둘 다 있고, 대표(volume) 칩에만 축 배지.
+    const volumeChip = screen.getByTestId('pane-chip-volume');
+    const ratioChip = screen.getByTestId('pane-chip-ratio');
+    expect(within(volumeChip).getByLabelText('오른쪽 축 눈금 소유')).toBeInTheDocument();
+    expect(within(ratioChip).queryByLabelText('오른쪽 축 눈금 소유')).toBeNull();
+    // 멤버 ✕ = legendToggleKey 로 그 지표 끄기(현재 타임프레임 버킷).
+    fireEvent.click(within(ratioChip).getByRole('button', { name: '호가비 지표 끄기' }));
+    expect(useLivePageStore.getState().ratioEnabled).toBe(false);
+    // 분리 메뉴 — 그룹이 다시 싱글턴으로.
+    clickChip('ratio');
+    fireEvent.click(screen.getByTestId('pane-menu-split'));
+    expect(groupOf('ratio')).toEqual(['ratio']);
+    expect(groupOf('volume')).toEqual(['volume']);
+  });
+
+  it('외국인+기관 병합(공유 축 화이트리스트)은 축 배지가 없다', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D', foreignNetEnabled: true, institutionNetEnabled: true });
+    useLivePageStore.getState().setPaneGroups(
+      mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'investor-institution', 'investor-foreign'),
+    );
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([200, 80, 80])}
+        timeframe="D"
+        paneToggles={{ foreignNet: true, institutionNet: true } as PaneToggles}
+      />,
+    );
+    expect(screen.getByTestId('pane-chip-investor-foreign')).toBeInTheDocument();
+    expect(screen.getByTestId('pane-chip-investor-institution')).toBeInTheDocument();
+    expect(screen.queryByLabelText('오른쪽 축 눈금 소유')).toBeNull();
+  });
+
+  it('드래그: pane 본체 드롭 = 병합 커밋, 드래그 중 틴트·고스트 표시', () => {
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    // 지오메트리 미러는 effect 라 렌더 후 준비된다. tops: 0,120,180,240,300,360.
+    const btn = chipButton('ratio');
+    fireEvent.pointerDown(btn, { button: 0, clientX: 400, clientY: 250 });
+    // quote-totals(idx2) 본체 한가운데(y=210)로 — 임계값(6px) 초과.
+    fireEvent.pointerMove(btn, { clientX: 400, clientY: 210 });
+    expect(screen.getByTestId('pane-drop-merge')).toBeInTheDocument();
+    expect(screen.getByTestId('pane-drag-ghost')).toBeInTheDocument();
+    fireEvent.pointerUp(btn, { clientX: 400, clientY: 210 });
+    expect(groupOf('ratio')).toEqual(['quote-totals', 'ratio']);
+    expect(screen.queryByTestId('pane-drop-merge')).toBeNull();
+  });
+
+  it('드래그: Esc 취소 후 pointerup 은 커밋하지 않는다', () => {
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    const before = useLivePageStore.getState().paneGroups;
+    const btn = chipButton('ratio');
+    fireEvent.pointerDown(btn, { button: 0, clientX: 400, clientY: 250 });
+    fireEvent.pointerMove(btn, { clientX: 400, clientY: 210 });
+    expect(screen.getByTestId('pane-drop-merge')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('pane-drop-merge')).toBeNull();
+    fireEvent.pointerUp(btn, { clientX: 400, clientY: 210 });
+    expect(useLivePageStore.getState().paneGroups).toEqual(before);
   });
 });

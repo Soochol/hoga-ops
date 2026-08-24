@@ -17,7 +17,12 @@ import {
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane, { type PaneBundleKind, type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
-import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import {
+  paneGroupIds,
+  paneGroupSpecsForTimeframe,
+  paneGroupStretch,
+  type PaneSpecGroup,
+} from './paneGroupSpecs';
 import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
@@ -58,7 +63,7 @@ import {
   useHistoricalRangeActions,
   useIndicatorActions,
   useWindowIndicator,
-  useWindowPaneOrder,
+  useWindowPaneGroups,
   useWindowPaneStretch,
   useWindowScopeId,
   useWindowViewGuard,
@@ -129,7 +134,6 @@ import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
-import type { BoundPaneSpec } from '../chart/paneSpecs';
 import { useDrawingHost } from '../chart/useDrawingHost';
 import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
@@ -1833,15 +1837,16 @@ export function LiveChartRoot({
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
       prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
   );
-  // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
-  const paneOrder = useWindowPaneOrder();
+  // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
+  // 그 평탄화다(`chart/paneGroups.ts`).
+  const paneGroups = useWindowPaneGroups();
   // 사용자 소유 Pane 크기 가중치(#703) — separator 드래그 결과의 SSOT.
   const paneStretch = useWindowPaneStretch();
   const setPaneStretch = useIndicatorActions().setPaneStretch;
   // separator 드래그 진행 중 여부 — stretch 재적용 effect 의 가드.
   const paneDragRef = useRef(false);
-  // 드래그 종료 시 pane index → PaneId 매핑에 쓰는 최신 spec 목록.
-  const paneSpecsRef = useRef<readonly BoundPaneSpec[]>([]);
+  // 드래그 종료 시 pane index → 그룹(멤버 PaneId들) 매핑에 쓰는 최신 그룹 목록.
+  const paneGroupsRef = useRef<readonly PaneSpecGroup[]>([]);
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
   const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   // 회피 rect 도 선·도킹 라벨과 같은 MA 필터를 타야 한다 — 안 그러면 필터로 사라진
@@ -2025,22 +2030,26 @@ export function LiveChartRoot({
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 
-  // 게이트를 통과한 pane 목록(= 사용자가 켜 둔 것). 접기 이전 상태다.
-  const gatedPaneSpecs = useMemo(
-    () => paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder),
-    [timeframe, activePaneToggles, paneOrder],
+  // 게이트를 통과한 pane 그룹 목록(= 사용자가 켜 둔 것, 병합 그룹 모양). 접기 이전.
+  const gatedPaneGroups = useMemo(
+    () => paneGroupSpecsForTimeframe(timeframe, activePaneToggles, paneGroups),
+    [timeframe, activePaneToggles, paneGroups],
   );
-  // 접기(점진적 degradation) 적용 후 실제로 마운트할 목록. stretch 재적용 effect 와
-  // 렌더 JSX 가 **반드시 같은 목록**을 봐야 pane index → PaneId 매핑이 어긋나지 않는다.
+  // 접기(점진적 degradation) 적용 후 실제로 마운트할 그룹 목록 — 접기의 원자 단위는
+  // 그룹이다(그룹의 절반만 접히는 상태 없음). stretch 재적용 effect 와 렌더 JSX 가
+  // **반드시 같은 목록**을 봐야 pane index → 그룹 매핑이 어긋나지 않는다.
   // 접기는 렌더 시점 파생값이며 저장 설정에는 쓰지 않는다(`paneFolding.ts` 참조).
   const [
-    { specs: visiblePaneSpecs, foldedCount: foldedPaneCount, timeAxisVisible },
+    { groups: visiblePaneGroups, foldedCount: foldedPaneCount, timeAxisVisible },
     observePaneFoldTarget,
-  ] = usePaneFolding(gatedPaneSpecs, paneStretch);
+  ] = usePaneFolding(gatedPaneGroups, paneStretch);
 
-  // 각 pane 앞에 놓인 pane 이름 시퀀스. `RangeSeriesPane` 의 lifecycle dep 으로 들어가
-  // "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜 필요한지는 그
-  // prop 의 JSDoc 참조(요약: 빈 pane 은 lwc 가 자동 삭제하고 아래 인덱스가 당겨진다).
+  // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
+  // 으로 들어가 "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜
+  // 필요한지는 그 prop 의 JSDoc 참조(요약: 빈 pane 은 lwc 가 자동 삭제하고 아래
+  // 인덱스가 당겨진다). 그룹 안에서 멤버가 늘거나 빠지는 것도 아래 pane 에는 같은
+  // 사건이므로(전 멤버 재생성 → pane 일시 소멸 가능) 키에 **구성**(멤버 이름들)이
+  // 들어간다 — pane 이름 하나가 아니라.
   //
   // 앞 시퀀스가 바뀐 pane 은 항상 **연속된 suffix** 를 이룬다: i 번 pane 이 바뀌면
   // i 뒤의 모든 pane 도 자기 앞 시퀀스 안에 그 변화를 포함한다. 그래서 teardown 후
@@ -2049,12 +2058,13 @@ export function LiveChartRoot({
   const precedingPaneKeys = useMemo(() => {
     const keys: string[] = [];
     let acc = '';
-    for (const spec of visiblePaneSpecs) {
+    for (const group of visiblePaneGroups) {
       keys.push(acc);
-      acc = acc === '' ? spec.name : `${acc}|${spec.name}`;
+      const composition = group.map((s) => s.name).join(',');
+      acc = acc === '' ? composition : `${acc}|${composition}`;
     }
     return keys;
-  }, [visiblePaneSpecs]);
+  }, [visiblePaneGroups]);
 
   // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
   // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
@@ -2075,8 +2085,8 @@ export function LiveChartRoot({
 
   useEffect(() => {
     if (!chart || !cb) return;
-    const specs = visiblePaneSpecs;
-    paneSpecsRef.current = specs;
+    const groups = visiblePaneGroups;
+    paneGroupsRef.current = groups;
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -2086,17 +2096,18 @@ export function LiveChartRoot({
       if (paneDragRef.current) return;
       try {
         const panes = chart.panes();
-        if (panes.length < specs.length) {
+        if (panes.length < groups.length) {
           requestAnimationFrame(apply);
           return;
         }
         panes.forEach((p, i) => {
-          const spec = specs[i];
-          if (!spec || typeof p.setStretchFactor !== 'function') return;
-          // 저장된 Pane Stretch 우선, 없으면 스펙 기본값. 저장값 재적용은
-          // 멱등이라 cb identity churn(실시간 틱·refetch)이 사용자 드래그를
-          // 스펙 기본값으로 되돌리던 스냅백이 사라진다(#703).
-          p.setStretchFactor(paneStretch[spec.name] ?? spec.stretch);
+          const group = groups[i];
+          if (!group || typeof p.setStretchFactor !== 'function') return;
+          // 저장된 Pane Stretch 우선, 없으면 스펙 기본값 — 그룹은 멤버 최대값
+          // (`paneGroupStretch`). 저장값 재적용은 멱등이라 cb identity churn
+          // (실시간 틱·refetch)이 사용자 드래그를 스펙 기본값으로 되돌리던
+          // 스냅백이 사라진다(#703).
+          p.setStretchFactor(paneGroupStretch(group, paneStretch));
         });
       } catch {
         // chart tearing down
@@ -2107,7 +2118,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, visiblePaneSpecs, paneStretch]);
+  }, [chart, cb, visiblePaneGroups, paneStretch]);
 
   // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
   // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한
@@ -2135,13 +2146,17 @@ export function LiveChartRoot({
         detachOnUp();
         paneDragRef.current = false;
         try {
-          const specs = paneSpecsRef.current;
+          const groups = paneGroupsRef.current;
           const patch: PaneStretchMap = {};
           chart.panes().forEach((p, i) => {
-            const name = specs[i]?.name;
-            if (name === undefined || typeof p.getStretchFactor !== 'function') return;
+            const group = groups[i];
+            if (!group || typeof p.getStretchFactor !== 'function') return;
             const f = p.getStretchFactor();
-            if (Number.isFinite(f) && f > 0) patch[name] = f;
+            if (!Number.isFinite(f) || f <= 0) return;
+            // 그룹 stretch 는 멤버 최대값으로 파생되므로(`paneGroupStretch`) 드래그
+            // 결과를 **멤버 전원**에게 기록한다 — 한 명만 갱신하면 다른 멤버의 더 큰
+            // 저장값이 남아 다음 적용에서 크기가 되튄다.
+            for (const spec of group) patch[spec.name] = f;
           });
           if (Object.keys(patch).length > 0) setPaneStretch(patch);
         } catch {
@@ -2660,24 +2675,29 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
-          {visiblePaneSpecs.map((spec, i) => (
-            <RangeSeriesPane
-              key={spec.name}
-              chart={chart}
-              bundle={bundleForPane(spec, cb)}
-              axis={axis}
-              paneIndex={i}
-              precedingPaneKey={precedingPaneKeys[i]}
-              spec={spec}
-              contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
-              forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
-              candleAlwaysOnTop={candleAlwaysOnTop}
-              onPrimarySeriesReady={handleSeriesReady}
-              onPrimarySeriesGone={handleSeriesGone}
-              onLegendReady={handleLegendReady}
-              onLegendGone={handleLegendGone}
-            />
-          ))}
+          {visiblePaneGroups.map((group, gi) =>
+            // 병합 그룹 = 같은 paneIndex 에 멤버당 RangeSeriesPane 1개. 각 멤버가
+            // 자기 bundleKind 그릇을 그대로 받으므로 데이터 라우팅·SSE memo 경계가
+            // 병합 전과 동일하다. key 는 spec.name — 그룹 간 이동에도 안정.
+            group.map((spec) => (
+              <RangeSeriesPane
+                key={spec.name}
+                chart={chart}
+                bundle={bundleForPane(spec, cb)}
+                axis={axis}
+                paneIndex={gi}
+                precedingPaneKey={precedingPaneKeys[gi]}
+                spec={spec}
+                groupPaneIds={paneGroupIds(group)}
+                contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
+                forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
+                candleAlwaysOnTop={candleAlwaysOnTop}
+                onPrimarySeriesReady={handleSeriesReady}
+                onPrimarySeriesGone={handleSeriesGone}
+                onLegendReady={handleLegendReady}
+                onLegendGone={handleLegendGone}
+              />
+            )))}
           {!candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
@@ -2766,7 +2786,7 @@ export function LiveChartRoot({
             chart={chart}
             timeframe={timeframe}
             paneToggles={activePaneToggles}
-            visibleSpecs={visiblePaneSpecs}
+            visibleGroups={visiblePaneGroups}
             dataEpoch={cb}
             hasDepthDelta={depthDeltaToday.length > 0}
             candles={cb?.candles}
