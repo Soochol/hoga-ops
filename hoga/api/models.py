@@ -1918,6 +1918,22 @@ class ScreenerUniverse(BaseModel):
 
 ScanBasis = Literal["eod", "intraday"]
 
+#: ``POST /api/screener/update`` 가 "작업 없음" 으로 끝난 사유.
+#:
+#: **달력 실패가 둘로 갈려 있다** — 하나로 뭉치면 화면만 보고 어느 쪽인지 알 수 없다.
+#: ``calendar_source_missing`` 은 달력 소스를 못 읽는다는 뜻이라 **배포·로그**를 봐야
+#: 하고, ``calendar_coverage_behind`` 는 시드 이후 구간을 밀어 주는 **스케줄러가
+#: 멎었다**는 신호다. 둘 다 재시도로 풀리지 않으므로 안내도 달라야 한다.
+#: (PR-H·#1044 이전에는 원격 조회라 "일시 장애 → 잠시 후 재시도" 가 맞았다.
+#: 지금은 조회 경로에 벤더가 없어 그 사건 자체가 없다 — `hoga/api/trading_days.py`.)
+ScreenerUpdateSkipReason = Literal[
+    "no_gap",
+    "not_seeded",
+    "creds_missing",
+    "calendar_source_missing",
+    "calendar_coverage_behind",
+]
+
 
 class ScanRequest(BaseModel):
     conditions: list[ConditionLeaf] = Field(default_factory=list)

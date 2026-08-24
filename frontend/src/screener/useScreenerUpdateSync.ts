@@ -26,7 +26,10 @@ export const SKIP_REASON_MESSAGES: Record<ScreenerUpdateSkipReason, string> = {
   no_gap: '이미 최신입니다',
   not_seeded: '시드되지 않음 — 운영자 CLI로 시드하세요',
   creds_missing: '키움 인증정보 없음 — 갱신 불가',
-  calendar_unavailable: '거래일 조회 불가 — 잠시 후 다시 시도하세요',
+  // **재시도 안내를 달지 않는다.** 달력 조회 경로에는 벤더가 없어(PR-H·#1044)
+  // "일시 장애" 라는 사건 자체가 없다 — 아래 둘 다 사람이 뭔가 고쳐야 풀린다.
+  calendar_source_missing: '거래일 달력 소스를 읽을 수 없음 — 배포·서버 로그를 확인하세요',
+  calendar_coverage_behind: '거래일 달력이 오늘까지 밀리지 않음 — 스케줄러를 확인하세요',
 };
 
 export function finishedMessage(e: { updated: number; reason: string | null }): ScreenerUpdateFeedback {
