@@ -4,15 +4,21 @@ import { requestSettingsModal } from './settingsModalControls';
 interface Props {
   primary: LiveBannerPrimary;
   stack: LiveBannerCause[];
+  /** 사유별 꼬리말. 정적 문구로 표현할 수 없는 값(죽은 앱키 이름 등)만 붙인다. */
+  details?: Partial<Record<LiveBannerCause, string>>;
 }
 
 const COPY: Record<LiveBannerCause, { title: string; severity: 'error' | 'warn' | 'info' }> = {
   watchlist_empty: { title: '관심종목을 먼저 추가해주세요', severity: 'info' },
   kis_token_expired: { title: 'KIS 토큰이 만료되었습니다', severity: 'warn' },
+  // 문구에 **계정 번호를 쓰지 않는다** — account 5 는 `KIWOOM_APP_KEY_6` 이라
+  // 번호를 그대로 보이면 사용자가 `KIWOOM_APP_KEY_5`(다른 키)를 찾는다. 고칠 대상의
+  // 이름은 백엔드가 실어 보내고(`auth_failing_env_keys`) `detail` 로 붙는다.
+  kiwoom_auth_failing: { title: '키움 앱키 인증 실패 — 과거 데이터 조회가 막힙니다', severity: 'error' },
   realtime_unavailable: { title: '실시간 미가동 — 호가·체결 스트림이 연결되지 않았습니다 (캔들·지수는 정상)', severity: 'warn' },
 };
 
-export function LiveStateBanner({ primary, stack }: Props) {
+export function LiveStateBanner({ primary, stack, details }: Props) {
   // Priority-1 banners render in the header band; priority-2 stackable causes stack below.
   // Render an empty placeholder when there's nothing to show: LivePage's
   // CSS grid defines 5 rows and relies on positional auto-placement, so
@@ -35,7 +41,7 @@ export function LiveStateBanner({ primary, stack }: Props) {
           We surface it as a null in the header banner area but the LiveEmptyState
           consumes the same `primary` flag — see LiveWorkarea. */}
       {stack.map((cause) => (
-        <BannerRow key={cause} cause={cause} />
+        <BannerRow key={cause} cause={cause} detail={details?.[cause]} />
       ))}
     </div>
   );
@@ -43,10 +49,12 @@ export function LiveStateBanner({ primary, stack }: Props) {
 
 function BannerRow({
   cause,
+  detail,
   onAction,
   actionLabel,
 }: {
   cause: LiveBannerCause;
+  detail?: string;
   onAction?: () => void;
   actionLabel?: string;
 }) {
@@ -70,7 +78,7 @@ function BannerRow({
       className="flex items-center justify-between border-b px-3 py-2"
       style={{ background: bg, borderColor, color: fg, fontSize: 'var(--text-sm)' }}
     >
-      <span>{c.title}</span>
+      <span>{detail ? `${c.title} (${detail})` : c.title}</span>
       {onAction && actionLabel && (
         <button
           type="button"

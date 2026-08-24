@@ -87,6 +87,48 @@ describe('projectLiveStatus', () => {
     expect(project({ inventory: { kind: 'heatmap', size: 0 } }).banner.primary).toBeNull();
   });
 
+  describe('kiwoom_auth_failing', () => {
+    const governor = (over: Record<string, unknown> = {}) => ({
+      queued: 0, inflight: 0, workers: 2, tr_buckets: 0, accounts: 6,
+      calls_by_account: {}, auth_failures_by_account: {},
+      auth_blocked_accounts: [], auth_failing_accounts: [],
+      auth_failing_env_keys: [], background_deferred_due_to_user_visible: 0,
+      ...over,
+    });
+
+    it('**정상 토큰 만료로는 뜨지 않는다** — 격리만으로 판단하지 않는다', () => {
+      // 만료는 정상 사건이고 되큐가 자가 치유하는데, 격리 창(60s)은 남는다.
+      // `auth_blocked_accounts` 로 배너를 띄우면 멀쩡한 동작에 경고가 뜬다.
+      const projection = project({
+        status: {
+          ...baseStatus,
+          rest_capacity_scheduler: governor({ auth_blocked_accounts: [0] }),
+        },
+      });
+
+      expect(projection.banner.stack).toEqual([]);
+    });
+
+    it('판정된 앱키가 있으면 스택에 쌓인다', () => {
+      const projection = project({
+        status: {
+          ...baseStatus,
+          rest_capacity_scheduler: governor({
+            auth_failing_accounts: [5],
+            auth_failing_env_keys: ['KIWOOM_APP_KEY_6'],
+          }),
+        },
+      });
+
+      expect(projection.banner.stack).toEqual(['kiwoom_auth_failing']);
+    });
+
+    it('거버너 미가동(필드 부재)이면 아무 일도 없다', () => {
+      expect(project({ status: baseStatus }).banner.stack).toEqual([]);
+      expect(project({ status: undefined }).banner.stack).toEqual([]);
+    });
+  });
+
   it('stacks token expiration without overriding the primary banner', () => {
     const projection = project({
       inventory: { kind: 'watchlist', size: 0 },

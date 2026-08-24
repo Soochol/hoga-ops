@@ -1,9 +1,10 @@
-import type { CaptureReason, LiveStatus } from '../api/liveStatus';
+import { authFailingKiwoomKeys, type CaptureReason, type LiveStatus } from '../api/liveStatus';
 import { useWatchlist } from '../watchlist/useWatchlist';
 
 export type LiveBannerCause =
   | 'watchlist_empty'
   | 'kis_token_expired'
+  | 'kiwoom_auth_failing'
   | 'realtime_unavailable';
 
 /** 헤더 밴드에 렌더되는 우선순위-1 배너 값(액션 링크 동반). 세 소비처
@@ -43,7 +44,9 @@ export interface CaptureHealthView {
  */
 export interface LiveStatusProjectionInput {
   status:
-    | (Pick<LiveStatus, 'capture_healthy'> & { capture_reason: string })
+    | (Pick<LiveStatus, 'capture_healthy' | 'rest_capacity_scheduler'> & {
+        capture_reason: string;
+      })
     | null
     | undefined;
   inventory: InventoryState;
@@ -129,6 +132,10 @@ export function projectLiveStatus({
   const reason = status?.capture_reason ?? FALLBACK_CAPTURE_REASON;
   const captureHealth = projectCaptureHealth(status?.capture_healthy ?? false, reason);
   const stack: LiveBannerCause[] = tokenExpired ? ['kis_token_expired'] : [];
+  // `status` 를 못 받은 경우까지 포함해 **모든 반환 경로가 같은 배열을 공유**하므로
+  // 여기서 한 번만 넣는다. 죽은 앱키는 지금 서버를 직접 뒤져야만 보이고, 화면에는
+  // "일부 과거구간 로딩 실패" 밖에 안 뜬다(#1088 계열의 조용한 실패).
+  if (authFailingKiwoomKeys(status).length > 0) stack.push('kiwoom_auth_failing');
 
   if (!status) {
     return { banner: { primary: null, stack }, captureHealth };

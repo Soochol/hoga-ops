@@ -629,6 +629,102 @@ async def test_snapshot_exposes_auth_failures_and_blocked_accounts() -> None:
     await s.aclose()
 
 
+async def test_single_auth_failure_does_not_flag_the_account() -> None:
+    """**정상 토큰 만료를 「죽은 앱키」로 판정하면 안 된다.**
+
+    만료는 정상 사건이고 되큐가 자가 치유한다 — 위
+    `test_snapshot_exposes_auth_failures_and_blocked_accounts` 가 그 경로이고, 거기서
+    작업은 **성공한다**. 그런데 격리 창(60s)은 남으므로 `auth_blocked_accounts` 로
+    배너를 띄우면 멀쩡한 동작에 경고가 뜬다. 판정은 `auth_failing_accounts` 가 한다.
+    """
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+
+    async def fn(client) -> None:
+        if client.account_id == 0:
+            raise _auth_error()
+
+    await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+
+    snap = s.snapshot()
+    assert snap["auth_blocked_accounts"] == [0], "격리는 걸린다(관측)"
+    assert snap["auth_failing_accounts"] == [], "그러나 판정은 아니다 — 작업은 성공했다"
+    await s.aclose()
+
+
+async def test_consecutive_auth_failures_flag_the_account() -> None:
+    """새 토큰으로도 실패하면 남은 설명은 앱키 자체다.
+
+    풀이 하나뿐이면 되큐가 같은 계정으로 돌아오므로 **연속** 2회가 만들어진다
+    (실측 2026-08-24: `KIWOOM_APP_KEY_6` 이 벤더 `8001` 로 거부돼 시도가 전부 실패).
+    """
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0)])
+
+    async def fn(_client) -> None:
+        raise _auth_error()
+
+    from hoga.live.kiwoom_errors import KiwoomAuthError
+
+    with pytest.raises(KiwoomAuthError):
+        await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+
+    assert s.snapshot()["auth_failing_accounts"] == [0]
+    await s.aclose()
+
+
+async def test_success_clears_the_consecutive_counter_but_keeps_the_total() -> None:
+    """두 카운터의 축이 다르다 — 누계는 진단 기록, 연속은 「지금 죽었나」.
+
+    이게 갈리지 않으면 며칠 켜 둔 서버에서 정상 만료가 쌓여 배너가 상주한다.
+    """
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0)])
+    fail = True
+
+    async def fn(_client) -> None:
+        nonlocal fail
+        if fail:
+            fail = False
+            raise _auth_error()
+
+    await s.submit(key="k", api_id="ka10001", priority="user_visible", call=fn)
+
+    snap = s.snapshot()
+    assert snap["auth_failures_by_account"] == {0: 1}, "누계는 남는다"
+    assert snap["auth_failing_accounts"] == [], "연속은 성공이 지운다"
+    await s.aclose()
+
+
+async def test_failing_accounts_carry_their_env_key_names() -> None:
+    """**off-by-one 을 소비자에게 넘기지 않는다.**
+
+    account 5 는 `KIWOOM_APP_KEY_6` 이다(0=접미 없음, k>0=접미 k+1). 화면이 "계정 5"
+    라고만 말하면 사용자는 `KIWOOM_APP_KEY_5` 를 찾는데 그건 **다른 키**다 — 실측
+    2026-08-24 에 그 둘이 정확히 갈렸다(6번 키는 벤더 거부, 5번 키는 REST 현역).
+    """
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(i) for i in range(6)])
+    s._consecutive_auth_failures = {0: 9, 5: 9}
+
+    snap = s.snapshot()
+    assert snap["auth_failing_accounts"] == [0, 5]
+    assert snap["auth_failing_env_keys"] == ["KIWOOM_APP_KEY", "KIWOOM_APP_KEY_6"]
+    await s.aclose()
+
+
+async def test_shrinking_pool_drops_auth_flagging() -> None:
+    """풀이 줄면 판정도 함께 버린다 — 격리와 같은 이유다(account_id 재사용)."""
+    s = _sched(workers=1)
+    s.set_clients([_AuthFailingClient(0), _AuthFailingClient(1)])
+    s._consecutive_auth_failures = {1: 5}
+    assert s.snapshot()["auth_failing_accounts"] == [1]
+
+    s.set_clients([_AuthFailingClient(0)])
+    assert s.snapshot()["auth_failing_accounts"] == []
+    await s.aclose()
+
+
 async def test_shrinking_pool_drops_auth_isolation() -> None:
     """사라진 계정의 격리가 남아 있으면, 풀이 다시 커졌을 때 **다른 앱키가** 그
     account_id 를 물려받아 애먼 격리를 산다."""
