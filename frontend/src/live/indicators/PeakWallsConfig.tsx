@@ -14,19 +14,34 @@ const SIDE_TABS: ReadonlyArray<{ value: Side; label: string }> = [
 /** 당일 매도·매수 최대벽 병합 페이지(P1-8). 좌측 nav의 두 항목을 하나로 합치고,
  *  매도|매수 서브탭으로 한 곳에서 둘을 설정한다. 각 side는 독립 on/off(표시 토글)와
  *  기존 Ask/BidPeakConfig(embedded)를 그대로 재사용한다. 색상은 매도/매수가 의도적으로
- *  달라 "복사"는 두지 않는다. */
+ *  달라 "복사"는 두지 않는다.
+ *
+ *  「표시 위치」 섹션 — 같은 벽을 그리는 두 표면을 한 결정으로 묶는다:
+ *  - 「캔들 차트에 수평선」 = 기존 눈(`askPeakHidden`/`bidPeakHidden`)의 **반전 노출**.
+ *    새 키가 아니다 — 레전드의 눈 아이콘과 같은 상태라 둘이 자동 동기화된다.
+ *    방향별이다(매도만 캔들에서 빼는 것도 가능).
+ *  - 「전용 pane 에 계단」 = `peakWallPaneEnabled`. pane 은 방향 공용(한 pane 에
+ *    두 계단)이라 이 토글도 공용이고, 어느 탭에서 봐도 **같은 하나의 상태**다.
+ *  둘 다 꺼도 지표는 계산을 유지한다(레전드 값 유지 — 눈 불변식 그대로). */
 export default function PeakWallsConfig() {
   const [side, setSide] = useState<Side>('ask');
   const askEnabled = useWindowIndicator((s) => s.askPeakEnabled);
   const bidEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const askHidden = useWindowIndicator((s) => s.askPeakHidden);
+  const bidHidden = useWindowIndicator((s) => s.bidPeakHidden);
   const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
-  const setAskEnabled = useIndicatorActions().setAskPeakEnabled;
-  const setBidEnabled = useIndicatorActions().setBidPeakEnabled;
-  const setPaneEnabled = useIndicatorActions().setPeakWallPaneEnabled;
+  const actions = useIndicatorActions();
+  const setAskEnabled = actions.setAskPeakEnabled;
+  const setBidEnabled = actions.setBidPeakEnabled;
+  const setAskHidden = actions.setAskPeakHidden;
+  const setBidHidden = actions.setBidPeakHidden;
+  const setPaneEnabled = actions.setPeakWallPaneEnabled;
 
   const isAsk = side === 'ask';
   const enabled = isAsk ? askEnabled : bidEnabled;
+  const hidden = isAsk ? askHidden : bidHidden;
   const setEnabled = isAsk ? setAskEnabled : setBidEnabled;
+  const setHidden = isAsk ? setAskHidden : setBidHidden;
   const sideLabel = isAsk ? '매도' : '매수';
 
   return (
@@ -38,18 +53,6 @@ export default function PeakWallsConfig() {
         차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
         수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다
       </p>
-      {/* pane 토글은 방향 공용(한 pane 에 매도·매수 두 계단)이라 매도|매수 서브탭
-          **바깥**에 둔다 — 탭 안에 넣으면 같은 노브가 두 번 나온다(구현 계획 §4.3). */}
-      <div className="mb-3">
-        <ToggleRow
-          label="최대벽 강도 pane 표시"
-          description="이 지표가 찾은 당일 최대벽 수량의 누적 최대 계단을 차트 아래 별도 pane 에 그립니다. 위 수평선과 같은 값의 시간축 연혁입니다."
-          checked={paneEnabled}
-          onToggle={() => setPaneEnabled(!paneEnabled)}
-          testId="settings-toggle-peakWallPaneEnabled"
-        />
-      </div>
-      <div className="border-b border-border mb-3" />
       <div
         className="mb-3 inline-flex overflow-hidden rounded-md border border-border"
         role="tablist"
@@ -81,6 +84,27 @@ export default function PeakWallsConfig() {
           checked={enabled}
           onToggle={() => setEnabled(!enabled)}
           testId={`settings-toggle-${side}PeakEnabled`}
+        />
+      </div>
+      <div className="text-sm text-fg mb-1">표시 위치</div>
+      <div className="mb-3 space-y-1">
+        {/* 눈(hidden)의 반전 — 켬 = 캔들 pane 에 수평선·라벨·화살표를 그린다.
+            마스터가 꺼져 있으면 어차피 아무것도 안 그려지므로 dim 처리한다
+            (값은 보존 — 마스터를 켜면 setEnabled 가 hidden 도 리셋한다). */}
+        <ToggleRow
+          label="캔들 차트에 수평선"
+          description={`${sideLabel} 최대벽을 캔들 위 수평선으로 그립니다. 레전드의 눈 아이콘과 같은 설정입니다.`}
+          checked={!hidden}
+          onToggle={() => setHidden(!hidden)}
+          disabled={!enabled}
+          testId={`settings-toggle-${side}PeakCandleLine`}
+        />
+        <ToggleRow
+          label="전용 pane 에 계단"
+          description="당일 최대벽 수량의 누적 최대 계단을 차트 아래 별도 pane 에 그립니다. 매도·매수 공용입니다."
+          checked={paneEnabled}
+          onToggle={() => setPaneEnabled(!paneEnabled)}
+          testId="settings-toggle-peakWallPaneEnabled"
         />
       </div>
       {isAsk ? <AskPeakConfig embedded /> : <BidPeakConfig embedded />}
