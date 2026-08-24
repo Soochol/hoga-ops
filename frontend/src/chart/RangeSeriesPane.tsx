@@ -195,6 +195,11 @@ type Props<Ctx> = {
    *  전 시리즈가 재생성되는데, 그때 아래쪽 pane 들은 `precedingPaneKey` 로 함께
    *  재생성에 참여한다(그룹 구성이 그 키에 들어간다). */
   groupPaneIds?: readonly string[];
+  /** 이 그룹의 **유효** y축 공유(`resolveAxisShared` — 수동 오버라이드 반영).
+   *  생략 시 화이트리스트 기본값. `groupPaneIds` 와 같은 dep 규율 — 플립되면 이
+   *  pane 의 전 시리즈가 재생성되고, 아래 pane 은 `precedingPaneKey`(구성에 공유
+   *  플래그 포함)로 함께 참여한다. */
+  groupAxisShared?: boolean;
   /** Optional caller-owned context for specs whose rendering depends on parent props. */
   contextOverride?: Ctx;
 };
@@ -206,10 +211,13 @@ function withGroupPriceScale(
   options: SeriesPartialOptionsMap[SeriesType],
   paneName: string,
   groupPaneIds: readonly string[] | undefined,
+  groupAxisShared: boolean | undefined,
 ): SeriesPartialOptionsMap[SeriesType] {
   if (!groupPaneIds || groupPaneIds.length <= 1) return options;
   const original = (options as { priceScaleId?: string }).priceScaleId ?? 'right';
-  const mapped = priceScaleIdForGroupMember(groupPaneIds, paneName, original);
+  const mapped = groupAxisShared === undefined
+    ? priceScaleIdForGroupMember(groupPaneIds, paneName, original)
+    : priceScaleIdForGroupMember(groupPaneIds, paneName, original, groupAxisShared);
   return mapped === null ? options : { ...options, priceScaleId: mapped };
 }
 
@@ -244,6 +252,7 @@ function RangeSeriesPaneInner<Ctx>({
   forceSetData = false,
   candleAlwaysOnTop = false,
   groupPaneIds,
+  groupAxisShared,
   contextOverride,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
@@ -287,6 +296,7 @@ function RangeSeriesPaneInner<Ctx>({
         typeof s.options === 'function' ? s.options() : s.options,
         spec.name,
         groupPaneIds,
+        groupAxisShared,
       );
       const series = chart.addSeries(s.type, options, paneIndex);
       s.afterAdd?.(series);
@@ -362,7 +372,7 @@ function RangeSeriesPaneInner<Ctx>({
     // intentionally excluded from deps so the effect doesn't churn series on
     // callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop, groupPaneIds]);
+  }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop, groupPaneIds, groupAxisShared]);
 
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
@@ -408,7 +418,7 @@ function RangeSeriesPaneInner<Ctx>({
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
       if (s.labelMarkers) labelMarkersRef.current[i]?.setMarkers(s.labelMarkers(bundle, axis, ctx));
     });
-  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, forceSetData]);
+  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, groupAxisShared, forceSetData]);
   return null;
 }
 

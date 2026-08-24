@@ -23,6 +23,7 @@ import {
   paneGroupStretch,
   type PaneSpecGroup,
 } from './paneGroupSpecs';
+import { resolveAxisShared } from '../chart/paneGroups';
 import { usePaneFolding } from './usePaneFolding';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
@@ -63,6 +64,7 @@ import {
   useHistoricalRangeActions,
   useIndicatorActions,
   useWindowIndicator,
+  useWindowPaneAxisShare,
   useWindowPaneGroups,
   useWindowPaneStretch,
   useWindowScopeId,
@@ -1840,6 +1842,8 @@ export function LiveChartRoot({
   // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
   // 그 평탄화다(`chart/paneGroups.ts`).
   const paneGroups = useWindowPaneGroups();
+  // 병합 그룹별 y축 공유 오버라이드(수동 토글) — 유효값은 그룹별로 아래에서 해석.
+  const paneAxisShare = useWindowPaneAxisShare();
   // 사용자 소유 Pane 크기 가중치(#703) — separator 드래그 결과의 SSOT.
   const paneStretch = useWindowPaneStretch();
   const setPaneStretch = useIndicatorActions().setPaneStretch;
@@ -2055,16 +2059,24 @@ export function LiveChartRoot({
   // i 뒤의 모든 pane 도 자기 앞 시퀀스 안에 그 변화를 포함한다. 그래서 teardown 후
   // 남는 것은 [0..i-1] 이고, effect 가 오름차순으로 돌며 i, i+1, … 로 **append** 한다
   // (최초 마운트와 같은 경로 — 새 순서 가정이 없다).
+  // 그룹별 유효 축 공유 — 플립되면 그 pane 의 전 시리즈가 재생성되므로(priceScaleId
+  // 는 생성 시 옵션) 아래 precedingPaneKeys 의 구성 문자열에도 플래그를 싣는다.
+  const groupAxisSharedFlags = useMemo(
+    () => visiblePaneGroups.map((g) => resolveAxisShared(paneGroupIds(g), paneAxisShare)),
+    [visiblePaneGroups, paneAxisShare],
+  );
+
   const precedingPaneKeys = useMemo(() => {
     const keys: string[] = [];
     let acc = '';
-    for (const group of visiblePaneGroups) {
+    visiblePaneGroups.forEach((group, gi) => {
       keys.push(acc);
-      const composition = group.map((s) => s.name).join(',');
+      const composition = group.map((s) => s.name).join(',')
+        + (groupAxisSharedFlags[gi] ? '!shared' : '');
       acc = acc === '' ? composition : `${acc}|${composition}`;
-    }
+    });
     return keys;
-  }, [visiblePaneGroups]);
+  }, [visiblePaneGroups, groupAxisSharedFlags]);
 
   // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
   // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
@@ -2689,6 +2701,7 @@ export function LiveChartRoot({
                 precedingPaneKey={precedingPaneKeys[gi]}
                 spec={spec}
                 groupPaneIds={paneGroupIds(group)}
+                groupAxisShared={groupAxisSharedFlags[gi]}
                 contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
                 forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
                 candleAlwaysOnTop={candleAlwaysOnTop}

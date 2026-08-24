@@ -156,6 +156,19 @@ describe('normalizeIndicatorsV2', () => {
     expect(roundtripped.paneGroups).toEqual(first.paneGroups);
     expect(roundtripped.paneOrder).toEqual(first.paneOrder);
   });
+
+  it('paneAxisShare — 현재 그룹과 매칭되는 키만 왕복하고 스테일 키는 걷힌다', () => {
+    const v2 = normalizeIndicatorsV2({
+      paneGroups: [['candle'], ['volume', 'ratio']],
+      paneAxisShare: {
+        'ratio,volume': true,               // 살아있는 그룹(정렬 키) → 유지
+        'fill-strength,quote-totals': true, // 없는 그룹 → 드롭
+      },
+    });
+    expect(v2.paneAxisShare).toEqual({ 'ratio,volume': true });
+    const roundtripped = normalizeIndicatorsV2(JSON.parse(JSON.stringify(v2)));
+    expect(roundtripped.paneAxisShare).toEqual({ 'ratio,volume': true });
+  });
 });
 
 describe('seedV2FromV1', () => {

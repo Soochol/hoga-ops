@@ -175,6 +175,51 @@ export function isSharedAxisGroup(members: readonly string[]): boolean {
 }
 
 /**
+ * 그룹별 y축 공유 **수동 오버라이드** (v2 — PR #1551 후속).
+ *
+ * 키 = 멤버 구성(정렬 join) — 그룹의 identity 를 순서와 무관하게 잡는다. 구성이
+ * 바뀌면(멤버 증감) 키가 달라져 오버라이드가 **기본값으로 리셋**되는데, 이것이
+ * 의도다: 새 멤버는 단위가 다를 수 있어 이전 선택을 이어받으면 안 된다.
+ * 값: true = 전원 오른쪽 축 공유(합산 오토스케일), false = 멤버별 격리 강제
+ * (화이트리스트 쌍도 분리 가능).
+ */
+export type PaneAxisShareMap = Record<string, boolean>;
+
+/** 그룹 구성 → 오버라이드 맵 키. 순서 무관(정렬) — 같은 멤버면 같은 그룹이다. */
+export function paneAxisShareKey(members: readonly string[]): string {
+  return [...members].sort().join(',');
+}
+
+/** 저장된 오버라이드 맵을 정규화한다 — boolean 아닌 값 드롭, 그리고 **현재
+ *  paneGroups 의 2인 이상 그룹과 매칭되지 않는 키 드롭**(스테일 키가 쌓이지 않게;
+ *  그룹 해체·재구성 시 자연 소멸). */
+export function normalizePaneAxisShare(
+  raw: unknown,
+  groups: readonly (readonly PaneId[])[],
+): PaneAxisShareMap {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const liveKeys = new Set(
+    groups.filter((g) => g.length > 1).map((g) => paneAxisShareKey(g)),
+  );
+  const out: PaneAxisShareMap = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== 'boolean') continue;
+    if (!liveKeys.has(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/** 그룹의 **유효** 축 공유 = 수동 오버라이드 ?? 화이트리스트 기본값. */
+export function resolveAxisShared(
+  members: readonly string[],
+  shareMap: PaneAxisShareMap,
+): boolean {
+  if (members.length <= 1) return false;
+  return shareMap[paneAxisShareKey(members)] ?? isSharedAxisGroup(members);
+}
+
+/**
  * 병합 pane 에서 `member` 시리즈가 쓸 priceScaleId 를 정한다.
  *
  * - 그룹의 **첫 멤버**(대표)는 원래 스케일 그대로 → 오른쪽 축 눈금은 대표 것.
@@ -194,9 +239,12 @@ export function priceScaleIdForGroupMember(
   group: readonly string[],
   member: string,
   originalId: string,
+  /** 유효 축 공유(`resolveAxisShared` — 수동 오버라이드 반영). 생략 시 화이트리스트
+   *  기본값만 본다(오버라이드를 안 나르는 호출자·기존 테스트 호환). */
+  shared: boolean = isSharedAxisGroup(group),
 ): string | null {
   if (group.length <= 1) return null;
   if (group[0] === member) return null;
-  if (isSharedAxisGroup(group)) return null;
+  if (shared) return null;
   return `merged:${member}:${originalId}`;
 }

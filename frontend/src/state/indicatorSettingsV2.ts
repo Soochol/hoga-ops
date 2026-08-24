@@ -2,8 +2,10 @@ import type { PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   flattenPaneGroups,
+  normalizePaneAxisShare,
   normalizePaneGroups,
   paneGroupsFromOrder,
+  type PaneAxisShareMap,
   type PaneGroups,
 } from '../chart/paneGroups';
 import {
@@ -52,6 +54,9 @@ export type PersistedIndicatorsV2 = {
    *  블롭을 재조립해 쓰면 이 키가 통째로 사라지고, 읽기가 paneOrder 싱글턴 파생
    *  으로 복귀하므로 스테일 그룹이 남는 경로는 없다. */
   paneGroups: PaneGroups;
+  /** 병합 그룹별 y축 공유 수동 오버라이드(`chart/paneGroups.ts`) — 키는 구성(정렬
+   *  join), 현재 그룹과 매칭 안 되는 키는 로드 시 걷힌다(스테일 소멸). */
+  paneAxisShare: PaneAxisShareMap;
   /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
@@ -274,6 +279,7 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   return {
     paneOrder: flattenPaneGroups(paneGroups),
     paneGroups,
+    paneAxisShare: normalizePaneAxisShare(obj.paneAxisShare, paneGroups),
     paneStretch: normalizePaneStretch(obj.paneStretch),
     byTimeframe: normalizeBucketMap(obj.byTimeframe),
     byWindow: normalizeByWindow(obj.byWindow),
@@ -361,8 +367,9 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
   const seededPaneOrder = normalizePaneOrder(v1.paneOrder);
   return {
     paneOrder: seededPaneOrder,
-    // v1 엔 그룹 개념이 없다 — 순서의 싱글턴 파생.
+    // v1 엔 그룹 개념이 없다 — 순서의 싱글턴 파생. 축 오버라이드도 없다.
     paneGroups: paneGroupsFromOrder(seededPaneOrder),
+    paneAxisShare: {},
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},

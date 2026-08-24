@@ -28,6 +28,7 @@ import { buildCandleTooltip } from './candleTooltipModel';
 import {
   useIndicatorActions,
   useWindowIndicator,
+  useWindowPaneAxisShare,
   useWindowPaneGroups,
   useWindowScopeId,
   type IndicatorActions,
@@ -42,10 +43,10 @@ import type { PaneId } from '../chart/drawing/types';
 import { PANE_DISPLAY_NAME } from '../chart/paneOrder';
 import {
   extractPaneToBoundary,
-  isSharedAxisGroup,
   mergePaneIntoGroup,
   movePaneGroupBeside,
   paneGroupIndexOf,
+  resolveAxisShared,
   type PaneGroups,
 } from '../chart/paneGroups';
 import {
@@ -716,6 +717,7 @@ function PaneLegendOverlay({
 
   // 사용자 소유 pane 레이아웃(그룹) — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
   const paneGroups = useWindowPaneGroups();
+  const paneAxisShare = useWindowPaneAxisShare();
   const indicatorActions = useIndicatorActions();
 
   // ── pane 병합 드래그 + 칩 메뉴 ──────────────────────────────────────────
@@ -1282,7 +1284,7 @@ function PaneLegendOverlay({
                     axisOwner={
                       group.length > 1
                       && member === group[0]
-                      && !isSharedAxisGroup(paneGroupIds(group))
+                      && !resolveAxisShared(paneGroupIds(group), paneAxisShare)
                     }
                     showRemove={group.length > 1}
                     onRemove={member.legendToggleKey
@@ -1433,6 +1435,8 @@ function PaneLegendOverlay({
         const gi = groups.findIndex((g) => g.some((s) => s.name === chipMenu.pane));
         if (gi < 0) return null;
         const merged = groups[gi].length > 1;
+        const ownIds = paneGroupIds(groups[gi]);
+        const axisShared = resolveAxisShared(ownIds, paneAxisShare);
         // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
         const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
         const downGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
@@ -1479,6 +1483,24 @@ function PaneLegendOverlay({
               flexDirection: 'column',
             }}
           >
+            {merged && (
+              <button
+                type="button"
+                data-testid="pane-menu-axis-share"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                // 공유 = 전원이 오른쪽 축 하나(오토스케일 합산 — 단위가 다르면 한쪽이
+                // 눌린다), 분리 = 멤버별 격리 스케일(기본). 오버라이드는 구성 키에
+                // 저장돼, 멤버가 바뀌면 기본값으로 리셋된다.
+                onClick={() => {
+                  indicatorActions.setPaneAxisShare(ownIds, !axisShared);
+                  setChipMenu(null);
+                }}
+              >
+                {axisShared ? 'y축 분리 (멤버별 스케일)' : 'y축 공유 (한 스케일)'}
+              </button>
+            )}
             {merged && (
               <button
                 type="button"
