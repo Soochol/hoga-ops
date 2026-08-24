@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLivePageStore } from '../../state/livePage';
 import { useDailyMaRevealGate } from './useDailyMaRevealGate';
+import { subtractDaysKst } from '../liveDateTime';
 
 const resolvedDailyCandlesMock = vi.fn();
 vi.mock('./useResolvedDailyCandles', () => ({
@@ -20,6 +21,22 @@ describe('useDailyMaRevealGate (개선안 1-B)', () => {
       dailyMovingAverageEnabled: true,
       dailyMovingAverages: [{ id: 'ma1', period: 5, color: '#fff', lineWidth: 1 }],
     } as never);
+  });
+
+  // ── displayFloorDate lockstep (2026-08-24) ───────────────────────────────
+  // 넷(오버레이 · 이 게이트 · 최대벽 필터 ask/bid)이 **같은 창**을 요청해야 일봉 fetch 가
+  // 하나로 모인다. 이 인자를 흘려보내지 않으면 게이트만 좁은 창을 따로 받는다 —
+  // 옵셔널 인자라 타입은 그 누락을 못 잡는다.
+  it('displayFloorDate 를 fetch 창에 반영한다 (누락하면 게이트만 다른 쿼리키를 쓴다)', () => {
+    resolvedDailyCandlesMock.mockReturnValue({ candles: [], isLoading: true, dataWarnings: [], error: null, sourceByDate: new Map() });
+    renderHook(() => useDailyMaRevealGate(ARGS));
+    const withoutFloor = resolvedDailyCandlesMock.mock.calls[0][0].from as string;
+
+    resolvedDailyCandlesMock.mockClear();
+    renderHook(() => useDailyMaRevealGate({ ...ARGS, displayFloorDate: subtractDaysKst(ARGS.todayKst, 700) }));
+    const withFloor = resolvedDailyCandlesMock.mock.calls[0][0].from as string;
+
+    expect(withFloor < withoutFloor).toBe(true);
   });
 
   it('reports loading while enabled + query pending with no candles yet', () => {

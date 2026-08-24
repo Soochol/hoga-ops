@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AskPeak } from '../api/types';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
 
@@ -75,5 +75,37 @@ describe('filterPeaksAgainstDailyMa — intraMax 축 선택', () => {
     const p = peak('20260820', 150, { max_price: 50 });
     expect(filterPeaksAgainstDailyMa([p], false, ASK)).toHaveLength(1);
     expect(filterPeaksAgainstDailyMa([p], true, ASK)).toHaveLength(0);
+  });
+});
+
+// ── displayFloorDate lockstep (2026-08-24) ──────────────────────────────────
+// 이 훅은 오버레이·reveal 게이트와 **같은 창**을 요청해야 캐시를 공유한다(모듈 도크스트링
+// 의 ⚠). 창 산식에 `displayFloorDate` 가 합류한 뒤로는 그 값의 일치도 같은 계약이다 —
+// 안 흘려보내면 최대벽 필터만 좁은 창을 따로 받아 일봉 fetch 가 늘고, 디스크 모드에서
+// 화면의 MA 선과 **다른 값으로** 벽을 판정한다. 옵셔널 인자라 타입은 누락을 못 잡는다.
+describe('usePeakDailyMaFilter — fetch 창', () => {
+  it('displayFloorDate 를 창에 반영한다', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useChartPrefsStore } = await import('../state/chartPrefs');
+    const { subtractDaysKst } = await import('./liveDateTime');
+    const resolved = vi.fn((_input: { from: string | null }) => (
+      { candles: [], isLoading: false, dataWarnings: [], error: null, sourceByDate: new Map() }
+    ));
+    vi.doMock('./indicators/useResolvedDailyCandles', () => ({ useResolvedDailyCandles: resolved }));
+    vi.resetModules();
+    const { usePeakDailyMaFilter } = await import('./peakWallDailyMaFilter');
+
+    useChartPrefsStore.setState({ askPeakAboveDailyMaEnabled: true, askPeakAboveDailyMaPeriod: 20 } as never);
+    const input = { side: 'ask' as const, code: '005930', venue: 'KRX' as const, todayKst: '20260824', candles: [], enabled: true };
+
+    renderHook(() => usePeakDailyMaFilter(input));
+    const withoutFloor = resolved.mock.calls[0]![0].from as string;
+
+    resolved.mockClear();
+    renderHook(() => usePeakDailyMaFilter({ ...input, displayFloorDate: subtractDaysKst('20260824', 700) }));
+    const withFloor = resolved.mock.calls[0]![0].from as string;
+
+    expect(withFloor < withoutFloor).toBe(true);
+    vi.doUnmock('./indicators/useResolvedDailyCandles');
   });
 });

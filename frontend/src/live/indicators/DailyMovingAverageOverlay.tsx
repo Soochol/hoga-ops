@@ -23,6 +23,10 @@ type Props = {
   todayKst: string;
   /** KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨 스크리너 일봉만 쓴다. */
   dailyCandleKisEnabled?: boolean;
+  /** 이 창이 덮어야 할 표시 하한(계단으로 내린 값, `useLiveChartData` 가 유일 생산자).
+   *  디스크 모드에서 250일 벽이 사라져 화면이 기본 창보다 과거로 갈 때 창을 따라 넓힌다.
+   *  reveal 게이트·최대벽 일봉MA 필터가 **같은 값**을 받아야 쿼리 키가 하나로 모인다. */
+  dailyMaWindowFloorDate?: string | null;
   override?: {
     configs: readonly LiveMAConfig[];
     masterEnabled: boolean;
@@ -43,7 +47,7 @@ const priceFormat = {
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
  *  전용: D/W/M에선 미렌더. 레전드 값은 dailyMaSeriesRegistry 등록으로 노출. */
-function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, override }: Props) {
+function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, dailyMaWindowFloorDate = null, override }: Props) {
   const storeConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
   const storeMasterEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
   const storeHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
@@ -64,7 +68,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
 
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
   // candle prepend와 lockstep(ADR-0073). lookback 산식·거래일 환산은 dailyMaProjection(테스트됨).
-  const fetchWindow = enabled ? dailyMaFetchWindow(todayKst, configs) : null;
+  const fetchWindow = enabled ? dailyMaFetchWindow(todayKst, configs, dailyMaWindowFloorDate) : null;
   const dailyQuery = useResolvedDailyCandles({
     code,
     from: fetchWindow?.from ?? null,
