@@ -126,6 +126,31 @@ describe('useViewportBackfill — backpressure gate (3b)', () => {
     expect(extendSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('발화 시점 뷰포트 재검증: 디바운스 사이에 from≥0 이벤트가 오면 반려한다', () => {
+    // 트림(contraction) 커밋의 박제: lwc 내부 re-anchor 가 잠깐 from<0 을 보고해
+    // 디바운스를 무장시키고, 같은 커밋의 리포지셔너 보정 set 이 from≥0 이벤트를
+    // 낸다 — from≥0 이벤트는 타이머를 걷지 못하므로, 발화 시점 재검증이 없으면
+    // 방금 버린 창을 재확장한다(2026-08-25 실측: contract ↔ extend 진동).
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+      }),
+    );
+
+    cap.fire({ from: -1180, to: 1 }); // lwc 과도 이벤트 — 타이머 무장
+    cap.fire({ from: 1891, to: 3094 }); // 리포지셔너 보정 — 빈공간 없음
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
   it('re-checks backpressure at debounce fire time (step starts during the 150ms wait)', () => {
     // idle 로 시작해 이벤트를 발화(타이머 무장)하고, 디바운스 만료 전에 스텝이
     // 시작(isExtending=true)되면 타이머 내부 재확인이 dispatch 를 막는다.
