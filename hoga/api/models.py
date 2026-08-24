@@ -219,6 +219,11 @@ class AskPeak(BaseModel):
     all_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 기록 갱신 시퀀스(시간순 prefix maxima, ≤128) — 최대벽 강도 pane 의 "그 시점까지
+    # 체결된 벽 중 최대" 복원용. traded_*(최종 크기순 top-3)와 축이 다르다:
+    # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
+    traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
@@ -246,6 +251,11 @@ class BidPeak(BaseModel):
     all_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 기록 갱신 시퀀스(시간순 prefix maxima, ≤128) — 최대벽 강도 pane 의 "그 시점까지
+    # 체결된 벽 중 최대" 복원용. traded_*(최종 크기순 top-3)와 축이 다르다:
+    # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
+    traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 

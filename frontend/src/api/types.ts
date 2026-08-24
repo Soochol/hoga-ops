@@ -754,6 +754,11 @@ export type PeakBase = {
 export type AskPeak = PeakBase & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
+  /** 기록 갱신 시퀀스(시간순 prefix maxima, ≤128) — 최대벽 강도 pane 의 "그 시점까지
+   *  체결된 벽 중 최대" 복원용. traded_*(최종 크기순 top-3)와 축이 다르다. 봉 무관.
+   *  구백엔드 부재 → optional. */
+  traded_record_peaks?: AskPeakCandidate[];
+  traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
 };
@@ -762,6 +767,9 @@ export type AskPeak = PeakBase & {
 export type BidPeak = PeakBase & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
+  /** ask 쪽 주석 참조 — 동일 규약 미러. */
+  traded_record_peaks?: AskPeakCandidate[];
+  traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
 };

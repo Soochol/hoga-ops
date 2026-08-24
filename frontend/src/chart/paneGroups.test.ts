@@ -4,12 +4,13 @@ import {
   flattenPaneGroups,
   mergePaneIntoGroup,
   movePaneGroupBeside,
-  normalizePaneAxisShare,
+  normalizePaneAxisMode,
   normalizePaneGroups,
-  paneAxisShareKey,
+  normalizePaneGroupStretch,
+  paneGroupKey,
   paneGroupsFromOrder,
   priceScaleIdForGroupMember,
-  resolveAxisShared,
+  resolveAxisMode,
   type PaneGroups,
 } from './paneGroups';
 import { CANONICAL_PANE_ORDER, normalizePaneOrder } from './paneOrder';
@@ -172,45 +173,76 @@ describe('movePaneGroupBeside', () => {
   });
 });
 
-describe('paneAxisShare — 그룹별 y축 공유 오버라이드', () => {
-  it('resolveAxisShared: 오버라이드 없음 = 화이트리스트 기본값', () => {
-    expect(resolveAxisShared(['investor-foreign', 'investor-institution'], {})).toBe(true);
-    expect(resolveAxisShared(['volume', 'ratio'], {})).toBe(false);
-    expect(resolveAxisShared(['volume'], {})).toBe(false); // 싱글턴은 항상 false
+describe('paneAxisMode — 그룹별 y축 모드 오버라이드', () => {
+  it('resolveAxisMode: 오버라이드 없음 = 화이트리스트 기본값(공유/격리)', () => {
+    expect(resolveAxisMode(['investor-foreign', 'investor-institution'], {})).toBe('shared');
+    expect(resolveAxisMode(['volume', 'ratio'], {})).toBe('isolated');
+    expect(resolveAxisMode(['volume'], {})).toBe('isolated'); // 싱글턴은 항상 격리(무의미)
   });
 
-  it('resolveAxisShared: 오버라이드가 기본값을 이긴다 — 양방향, 키는 순서 무관', () => {
-    const shareOn = { [paneAxisShareKey(['ratio', 'volume'])]: true };
-    expect(resolveAxisShared(['volume', 'ratio'], shareOn)).toBe(true);
-    const shareOff = {
-      [paneAxisShareKey(['investor-institution', 'investor-foreign'])]: false,
-    };
-    expect(resolveAxisShared(['investor-foreign', 'investor-institution'], shareOff)).toBe(false);
+  it('resolveAxisMode: 오버라이드가 기본값을 이긴다 — 3모드, 키는 순서 무관', () => {
+    expect(resolveAxisMode(
+      ['volume', 'ratio'], { [paneGroupKey(['ratio', 'volume'])]: 'shared' },
+    )).toBe('shared');
+    expect(resolveAxisMode(
+      ['volume', 'ratio'], { [paneGroupKey(['ratio', 'volume'])]: 'left' },
+    )).toBe('left');
+    expect(resolveAxisMode(
+      ['investor-foreign', 'investor-institution'],
+      { [paneGroupKey(['investor-institution', 'investor-foreign'])]: 'isolated' },
+    )).toBe('isolated');
   });
 
-  it('normalizePaneAxisShare: 비불리언·현재 그룹과 매칭 안 되는 키를 걷는다', () => {
+  it('normalizePaneAxisMode: 미지 값·현재 그룹과 매칭 안 되는 키를 걷는다', () => {
     const groups = mergePaneIntoGroup(normalizePaneGroups(undefined), 'ratio', 'volume');
-    const liveKey = paneAxisShareKey(['volume', 'ratio']);
-    const out = normalizePaneAxisShare(
+    const liveKey = paneGroupKey(['volume', 'ratio']);
+    const out = normalizePaneAxisMode(
       {
-        [liveKey]: true,
-        'quote-totals,fill-strength': true, // 존재하지 않는 그룹 → 드롭
-        volume: false,                       // 싱글턴 키 → 드롭
-        [paneAxisShareKey(['a', 'b'])]: 'yes', // 비불리언 → 드롭
+        [liveKey]: 'left',
+        'quote-totals,fill-strength': 'shared', // 존재하지 않는 그룹 → 드롭
+        volume: 'shared',                        // 싱글턴 키 → 드롭
+        [paneGroupKey(['a', 'b'])]: true,        // 미지 값 → 드롭
       },
       groups,
     );
-    expect(out).toEqual({ [liveKey]: true });
-    expect(normalizePaneAxisShare(null, groups)).toEqual({});
+    expect(out).toEqual({ [liveKey]: 'left' });
+    expect(normalizePaneAxisMode(null, groups)).toEqual({});
   });
 
-  it('priceScaleIdForGroupMember: shared 인자가 화이트리스트 판정을 대체한다', () => {
+  it('normalizePaneGroupStretch: 비유한·범위 밖·스테일 키를 걷는다', () => {
+    const groups = mergePaneIntoGroup(normalizePaneGroups(undefined), 'ratio', 'volume');
+    const liveKey = paneGroupKey(['volume', 'ratio']);
+    const out = normalizePaneGroupStretch(
+      {
+        [liveKey]: 1.2,
+        'quote-totals,fill-strength': 0.5, // 존재하지 않는 그룹 → 드롭
+        [paneGroupKey(['a', 'b'])]: Number.NaN, // 비유한 → 드롭
+      },
+      groups,
+    );
+    expect(out).toEqual({ [liveKey]: 1.2 });
+    expect(normalizePaneGroupStretch({ [liveKey]: 99 }, groups)).toEqual({});
+  });
+
+  it('priceScaleIdForGroupMember: mode 인자가 화이트리스트 판정을 대체한다', () => {
     // 비화이트리스트 그룹을 공유로 강제 → 리매핑 없음(전원 원 스케일).
-    expect(priceScaleIdForGroupMember(['volume', 'ratio'], 'ratio', 'right', true)).toBeNull();
+    expect(priceScaleIdForGroupMember(['volume', 'ratio'], 'ratio', 'right', 'shared')).toBeNull();
     // 화이트리스트 쌍을 분리로 강제 → 비대표 멤버 격리.
     expect(priceScaleIdForGroupMember(
-      ['investor-foreign', 'investor-institution'], 'investor-institution', 'right', false,
+      ['investor-foreign', 'investor-institution'], 'investor-institution', 'right', 'isolated',
     )).toBe('merged:investor-institution:right');
+  });
+
+  it("priceScaleIdForGroupMember: 'left' 모드 — 둘째 멤버의 right 계열만 왼쪽 축으로", () => {
+    const group = ['volume', 'fill-strength', 'ratio'];
+    // 둘째 멤버의 'right' → 'left' (왼쪽 축 눈금).
+    expect(priceScaleIdForGroupMember(group, 'fill-strength', 'right', 'left')).toBe('left');
+    // 둘째 멤버의 누적선 오버레이('')는 왼쪽 축을 차지하면 안 된다 — 격리 유지.
+    expect(priceScaleIdForGroupMember(group, 'fill-strength', '', 'left'))
+      .toBe('merged:fill-strength:');
+    // 셋째 멤버는 계속 격리, 대표는 원 스케일.
+    expect(priceScaleIdForGroupMember(group, 'ratio', 'right', 'left')).toBe('merged:ratio:right');
+    expect(priceScaleIdForGroupMember(group, 'volume', 'right', 'left')).toBeNull();
   });
 });
 

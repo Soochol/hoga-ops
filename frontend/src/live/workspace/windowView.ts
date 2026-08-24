@@ -45,7 +45,12 @@ import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
 import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
 import type { PaneStretchMap } from '../../chart/paneOrder';
-import type { PaneAxisShareMap, PaneGroups } from '../../chart/paneGroups';
+import type {
+  PaneAxisMode,
+  PaneAxisModeMap,
+  PaneGroups,
+  PaneGroupStretchMap,
+} from '../../chart/paneGroups';
 import type { PanePrefKey } from '../indicators/indicatorPaneProfiles';
 import type { PresetEnableByTimeframe } from '../presets/presetFlags';
 import {
@@ -273,9 +278,14 @@ export function useWindowPaneGroups(): PaneGroups {
   return useLivePageStore((s) => s.paneGroups);
 }
 
-/** 병합 그룹별 y축 공유 오버라이드 — 같은 레이아웃 슬라이스 규율. */
-export function useWindowPaneAxisShare(): PaneAxisShareMap {
-  return useLivePageStore((s) => s.paneAxisShare);
+/** 병합 그룹별 y축 모드 오버라이드 — 같은 레이아웃 슬라이스 규율. */
+export function useWindowPaneAxisMode(): PaneAxisModeMap {
+  return useLivePageStore((s) => s.paneAxisMode);
+}
+
+/** 병합 그룹별 stretch 오버라이드 — 같은 레이아웃 슬라이스 규율. */
+export function useWindowPaneGroupStretch(): PaneGroupStretchMap {
+  return useLivePageStore((s) => s.paneGroupStretch);
 }
 
 /** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
@@ -294,8 +304,9 @@ export type IndicatorActions = BoundIndicatorOps & {
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
   setPaneGroups: (groups: PaneGroups) => void;
-  setPaneAxisShare: (members: readonly PaneId[], shared: boolean) => void;
+  setPaneAxisMode: (members: readonly PaneId[], mode: PaneAxisMode) => void;
   setPaneStretch: (patch: PaneStretchMap) => void;
+  setPaneGroupStretch: (members: readonly PaneId[], factor: number) => void;
   resetIndicators: () => void;
   applyIndicatorPreset: (preset: {
     paneOrder: PaneId[];
@@ -318,8 +329,9 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   out.setPanePrefForTimeframe = s.setPanePrefForTimeframe;
   out.setPaneOrder = s.setPaneOrder;
   out.setPaneGroups = s.setPaneGroups;
-  out.setPaneAxisShare = s.setPaneAxisShare;
+  out.setPaneAxisMode = s.setPaneAxisMode;
   out.setPaneStretch = s.setPaneStretch;
+  out.setPaneGroupStretch = s.setPaneGroupStretch;
   out.resetIndicators = s.resetIndicators;
   out.applyIndicatorPreset = s.applyIndicatorPreset;
   return out as unknown as IndicatorActions;
@@ -356,8 +368,9 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
     // 레이아웃(pane 순서·크기)은 창 축 대상이 아니다 — 전역 1세트 유지(ADR-0114 §3).
     setPaneOrder: (order) => ps().setPaneOrder(order),
     setPaneGroups: (groups) => ps().setPaneGroups(groups),
-    setPaneAxisShare: (members, shared) => ps().setPaneAxisShare(members, shared),
+    setPaneAxisMode: (members, mode) => ps().setPaneAxisMode(members, mode),
     setPaneStretch: (patch) => ps().setPaneStretch(patch),
+    setPaneGroupStretch: (members, factor) => ps().setPaneGroupStretch(members, factor),
     resetIndicators: () => ps().resetIndicatorsScoped(scope, tf()),
     // 지표 프리셋은 그 **페이지 세트**를 갈아끼운다 — 즉 이 창에는 보이지 않는다.
     // 현재 UI 진입점이 없는 휴면 표면이라 그대로 두되(ADR-0152 Consequences),

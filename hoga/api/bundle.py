@@ -726,6 +726,8 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
+        traded_record_peaks=[_ask_candidate(date, c) for c in row.traded_record_peaks],
+        traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -743,6 +745,8 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
+        traded_record_peaks=[_ask_candidate(date, c) for c in row.traded_record_peaks],
+        traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -888,6 +892,8 @@ def _peak_with_rep_outputs(
 
     봉 무관/의존의 경계는 `snapshots.reaggregate_peak_rep` docstring 참조. 여기서
     덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
+    `traded_record_*`(기록 갱신 시퀀스)도 **덮지 않는다** — "그 시점까지의 최대" 는
+    봉 굵기와 무관한 사실이라 1분 캐시 값이 모든 봉에서 그대로 옳다.
 
     `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
     `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라

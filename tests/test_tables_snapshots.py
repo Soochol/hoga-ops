@@ -3042,3 +3042,50 @@ def test_krx_tick_boundaries_and_sql_python_agree(tmp_path: Path) -> None:
             continue  # SQL 쪽은 호출부가 (ask_p1+bid_p1) > 0 로 먼저 거른다
         got = con.execute(f"SELECT {_krx_tick_sql(str(float(price)))}").fetchone()[0]
         assert got == want, (price, got, want)
+
+
+def test_peak_record_sequence_keeps_morning_records_top3_drops() -> None:
+    """기록 갱신 시퀀스는 **시간축 prefix maxima** 다 — 최종 크기순 top-3 과 축이 다르다.
+
+    막는 방향: 벽이 장중에 커지는 날, top-3(크기순)이 전부 오후에 몰려 오전 기록이
+    잘리는 것 — 최대벽 강도 pane 이 오전에 비던 실보고(2026-08-24)의 원인.
+    못 보는 것: SQL 스캔·터치 분류(오라클 fuzz 가 본다 — test_peak_sweep_oracle).
+    """
+    import polars as pl
+
+    from hoga.tables.snapshots import _peak_record_sequence
+
+    df = pl.DataFrame({
+        # 오전: 작은 기록 2개. 오후: 큰 벽 4개(최종 top-3 은 전부 오후).
+        "price":    [100, 101, 200, 201, 202, 203],
+        "qty":      [50, 80, 900, 1000, 950, 990],
+        "intra_ms": [1000, 2000, 50_000, 60_000, 70_000, 80_000],
+        "seq":      [1, 2, 3, 4, 5, 6],
+        "touched":  [True] * 6,
+    })
+    records = _peak_record_sequence(df)
+    # 오전 기록(50, 80)이 살아남고, 오후는 갱신된 것만(900, 1000).
+    assert [(r.qty, r.intra_ms) for r in records] == [
+        (50, 1000), (80, 2000), (900, 50_000), (1000, 60_000),
+    ]
+
+
+def test_peak_record_sequence_same_snapshot_levels_deterministic() -> None:
+    """같은 스냅샷(같은 intra_ms·seq)의 여러 단계는 **최대 단계만** 기록이 된다.
+
+    막는 방향: unpivot 순서 비결정으로 같은 시각의 작은 단계가 기록에 끼거나 빠지는 것
+    — (intra_ms, seq, -qty) 정렬이 이를 결정화한다. 동률(strict >)은 기록이 아니다.
+    """
+    import polars as pl
+
+    from hoga.tables.snapshots import _peak_record_sequence
+
+    df = pl.DataFrame({
+        "price":    [100, 101, 102, 103],
+        "qty":      [500, 800, 800, 300],   # 같은 스냅샷: 500·800 / 다음 스냅샷: 800(동률)·300
+        "intra_ms": [1000, 1000, 2000, 2000],
+        "seq":      [1, 1, 2, 2],
+        "touched":  [True] * 4,
+    })
+    records = _peak_record_sequence(df)
+    assert [(r.qty, r.intra_ms) for r in records] == [(800, 1000)]

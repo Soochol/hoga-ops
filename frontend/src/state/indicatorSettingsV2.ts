@@ -2,11 +2,13 @@ import type { PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   flattenPaneGroups,
-  normalizePaneAxisShare,
+  normalizePaneAxisMode,
   normalizePaneGroups,
+  normalizePaneGroupStretch,
   paneGroupsFromOrder,
-  type PaneAxisShareMap,
+  type PaneAxisModeMap,
   type PaneGroups,
+  type PaneGroupStretchMap,
 } from '../chart/paneGroups';
 import {
   mergeLiveIndicatorPrefs,
@@ -54,9 +56,14 @@ export type PersistedIndicatorsV2 = {
    *  블롭을 재조립해 쓰면 이 키가 통째로 사라지고, 읽기가 paneOrder 싱글턴 파생
    *  으로 복귀하므로 스테일 그룹이 남는 경로는 없다. */
   paneGroups: PaneGroups;
-  /** 병합 그룹별 y축 공유 수동 오버라이드(`chart/paneGroups.ts`) — 키는 구성(정렬
-   *  join), 현재 그룹과 매칭 안 되는 키는 로드 시 걷힌다(스테일 소멸). */
-  paneAxisShare: PaneAxisShareMap;
+  /** 병합 그룹별 y축 모드 오버라이드(`chart/paneGroups.ts` — shared/isolated/left).
+   *  키는 구성(정렬 join), 현재 그룹과 매칭 안 되는 키는 로드 시 걷힌다(스테일
+   *  소멸). 구 boolean 필드(paneAxisShare, PR #1553)는 읽기 폴백으로만 남고 다음
+   *  쓰기에서 자연 소멸한다. */
+  paneAxisMode: PaneAxisModeMap;
+  /** 병합 그룹별 stretch 오버라이드 — separator 드래그가 그룹 키에 기록(멤버 개별
+   *  값 오염 없이, 분리 시 각자의 옛 크기가 살아난다). 같은 스테일 소멸 규칙. */
+  paneGroupStretch: PaneGroupStretchMap;
   /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
    *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
   paneStretch: PaneStretchMap;
@@ -276,10 +283,22 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   const paneGroups = Array.isArray(obj.paneGroups)
     ? normalizePaneGroups(obj.paneGroups)
     : paneGroupsFromOrder(normalizePaneOrder(obj.paneOrder));
+  // v2 boolean 공유 맵(paneAxisShare, PR #1553)의 1회성 읽기 폴백 — 모드 맵이
+  // 없을 때만 변환해 읽는다(true→shared, false→isolated). 다음 persist 는
+  // paneAxisMode 만 쓰므로 구 키는 자연 소멸한다(studyByTimeframe 패턴).
+  const legacyShare = obj.paneAxisMode === undefined
+    && obj.paneAxisShare && typeof obj.paneAxisShare === 'object'
+    ? Object.fromEntries(
+      Object.entries(obj.paneAxisShare as Record<string, unknown>)
+        .filter(([, v]) => typeof v === 'boolean')
+        .map(([k, v]) => [k, v ? 'shared' : 'isolated']),
+    )
+    : undefined;
   return {
     paneOrder: flattenPaneGroups(paneGroups),
     paneGroups,
-    paneAxisShare: normalizePaneAxisShare(obj.paneAxisShare, paneGroups),
+    paneAxisMode: normalizePaneAxisMode(obj.paneAxisMode ?? legacyShare, paneGroups),
+    paneGroupStretch: normalizePaneGroupStretch(obj.paneGroupStretch, paneGroups),
     paneStretch: normalizePaneStretch(obj.paneStretch),
     byTimeframe: normalizeBucketMap(obj.byTimeframe),
     byWindow: normalizeByWindow(obj.byWindow),
@@ -367,9 +386,10 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
   const seededPaneOrder = normalizePaneOrder(v1.paneOrder);
   return {
     paneOrder: seededPaneOrder,
-    // v1 엔 그룹 개념이 없다 — 순서의 싱글턴 파생. 축 오버라이드도 없다.
+    // v1 엔 그룹 개념이 없다 — 순서의 싱글턴 파생. 그룹 단위 오버라이드도 없다.
     paneGroups: paneGroupsFromOrder(seededPaneOrder),
-    paneAxisShare: {},
+    paneAxisMode: {},
+    paneGroupStretch: {},
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},

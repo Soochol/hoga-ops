@@ -892,6 +892,10 @@ class AskPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 기록 갱신 시퀀스(시간순 prefix maxima) — `_peak_record_sequence` 참조. 봉 무관.
+    #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
+    traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -940,6 +944,10 @@ class BidPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 기록 갱신 시퀀스(시간순 prefix maxima) — `_peak_record_sequence` 참조. 봉 무관.
+    #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
+    traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -2078,6 +2086,40 @@ def _peak_candidates(df: pl.DataFrame, limit: int | None) -> tuple[AskPeakCandid
     )
 
 
+_PEAK_RECORD_CAP = 128
+
+
+def _peak_record_sequence(df: pl.DataFrame) -> tuple[AskPeakCandidateRow, ...]:
+    """터치된 이벤트 프레임 → **기록 갱신 시퀀스**(시간순 prefix maxima).
+
+    "그 시점까지 체결된 벽 중 최대" 를 시간축으로 복원하는 원천이다. `traded_peaks`
+    (최종 크기순 top-3)와 축이 다르다 — 벽은 장중에 커지는 경향이 있어 top-3 이
+    전부 오후에 몰리면 오전 기록(당시엔 최대였던 작은 벽)이 잘려 나간다. 프론트
+    최대벽 강도 pane 이 오전에 비던 실보고(2026-08-24)가 그 결과였다.
+
+    - 정렬은 (intra_ms, seq) — 같은 시각이면 먼저 관측된 것이 먼저다.
+    - strict `>` — 동률은 기록이 아니다(먼저 도달 유지, `foldAskPeak` 규약).
+    - **가격별 dedup 을 하지 않는다**: 같은 가격이 오전에 작게, 오후에 크게 두 번
+      기록을 세울 수 있다 — `_peak_touched_distinct` 를 입력으로 쓰면 오전 기록이
+      사라진다.
+    - cap 은 앞에서 128개(`_PEAK_RECORD_CAP`) — 꼬리(그날 최종 최대 부근)는 어차피
+      `traded_peaks` 가 나르므로 프론트 병합이 보정한다. 앞을 자르면 오전이 다시 빈다.
+    """
+    touched = df.filter(pl.col("touched")) if "touched" in df.columns else df
+    if touched.height == 0:
+        return ()
+    # 같은 스냅샷의 10단계가 (intra_ms, seq)를 공유한다 — 동시각에선 qty 내림차순으로
+    # 최대 단계가 먼저 오게 해, 같은 시각의 더 작은 단계가 기록으로 끼는 비결정을 없앤다.
+    ordered = touched.sort(["intra_ms", "seq", "qty"], descending=[False, False, True])
+    records = ordered.filter(
+        pl.col("qty") > pl.col("qty").cum_max().shift(1, fill_value=-1),
+    ).head(_PEAK_RECORD_CAP)
+    return tuple(
+        AskPeakCandidateRow(price=p_, qty=q, intra_ms=i)
+        for p_, q, i in zip(records["price"], records["qty"], records["intra_ms"], strict=True)
+    )
+
+
 def _peak_bucket_dedup(df: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
     return _peak_rank_sort(df).unique(
@@ -2285,6 +2327,9 @@ def query_day_ask_bid_peak_dual_with_rep(
             "traded_max": _peak_scalar(cont_traded),
             "traded_peaks": _peak_candidates(rep_traded, 3),
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
+            # 기록 갱신 시퀀스 — dedup 전 원본 프레임에서(사유는 헬퍼 docstring).
+            "traded_record_peaks": _peak_record_sequence(rep),
+            "traded_record_max_peaks": _peak_record_sequence(cont),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
         }
@@ -2299,6 +2344,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
             traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
+            traded_record_peaks=ask["traded_record_peaks"],
+            traded_record_max_peaks=ask["traded_record_max_peaks"],
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
@@ -2311,6 +2358,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
             traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
+            traded_record_peaks=bid["traded_record_peaks"],
+            traded_record_max_peaks=bid["traded_record_max_peaks"],
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],

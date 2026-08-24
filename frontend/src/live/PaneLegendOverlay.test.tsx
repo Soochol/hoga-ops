@@ -23,7 +23,7 @@ import {
   flattenPaneGroups,
   mergePaneIntoGroup,
   normalizePaneGroups,
-  paneAxisShareKey,
+  paneGroupKey,
 } from '../chart/paneGroups';
 
 // Minimal chart stub: the overlay only reads pane heights for positioning and
@@ -739,7 +739,8 @@ describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () 
     useLivePageStore.setState({
       paneGroups: canonical,
       paneOrder: flattenPaneGroups(canonical),
-      paneAxisShare: {},
+      paneAxisMode: {},
+      paneGroupStretch: {},
     });
   });
   afterEach(cleanup);
@@ -795,39 +796,64 @@ describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () 
     expect(groupOf('volume')).toEqual(['volume']);
   });
 
-  it('칩 메뉴 「y축 공유」 토글 — 오버라이드 기록 + 축 배지 즉시 소멸', () => {
+  it('칩 메뉴 y축 모드 — 공유 전환 시 오버라이드 기록 + 축 배지 즉시 소멸', () => {
     useLivePageStore.getState().setPaneGroups(
       mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume'),
     );
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    // 비화이트리스트 그룹의 기본은 분리 → 대표 칩에 축 배지가 있고, 메뉴는 「공유」를 권한다.
+    // 비화이트리스트 그룹의 기본은 격리 → 대표 칩에 축 배지가 있고, 메뉴는 공유·왼쪽 축을 권한다.
     expect(
       within(screen.getByTestId('pane-chip-volume')).getByLabelText('오른쪽 축 눈금 소유'),
     ).toBeInTheDocument();
     clickChip('ratio');
-    const toggle = screen.getByTestId('pane-menu-axis-share');
-    expect(toggle.textContent).toContain('y축 공유');
-    fireEvent.click(toggle);
+    expect(screen.getByTestId('pane-menu-axis-shared')).toBeInTheDocument();
+    expect(screen.getByTestId('pane-menu-axis-left')).toBeInTheDocument();
+    expect(screen.queryByTestId('pane-menu-axis-isolated')).toBeNull(); // 현재 모드는 항목 없음
+    fireEvent.click(screen.getByTestId('pane-menu-axis-shared'));
     // 오버라이드가 구성 키(정렬)로 기록되고…
-    expect(useLivePageStore.getState().paneAxisShare)
-      .toEqual({ [paneAxisShareKey(['volume', 'ratio'])]: true });
+    expect(useLivePageStore.getState().paneAxisMode)
+      .toEqual({ [paneGroupKey(['volume', 'ratio'])]: 'shared' });
     // …공유 상태에선 축 배지가 사라지며(한 축이므로 소유 표시가 무의미), 메뉴는 「분리」로.
     expect(
       within(screen.getByTestId('pane-chip-volume')).queryByLabelText('오른쪽 축 눈금 소유'),
     ).toBeNull();
     clickChip('ratio');
-    expect(screen.getByTestId('pane-menu-axis-share').textContent).toContain('y축 분리');
+    expect(screen.getByTestId('pane-menu-axis-isolated').textContent).toContain('y축 분리');
+    expect(screen.queryByTestId('pane-menu-axis-shared')).toBeNull();
   });
 
-  it('그룹을 해체하면 그 구성의 축 오버라이드도 걷힌다 (스테일 소멸)', () => {
+  it("칩 메뉴 'left' 모드 — 둘째 멤버 이름이 항목에 실리고 좌축 배지가 붙는다", () => {
+    useLivePageStore.getState().setPaneGroups(
+      mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume'),
+    );
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    clickChip('ratio');
+    const leftItem = screen.getByTestId('pane-menu-axis-left');
+    expect(leftItem.textContent).toContain('『호가비』 왼쪽 축에 표시');
+    fireEvent.click(leftItem);
+    expect(useLivePageStore.getState().paneAxisMode)
+      .toEqual({ [paneGroupKey(['volume', 'ratio'])]: 'left' });
+    // 대표 칩 = 우축 배지, 둘째 칩 = 좌축 배지.
+    expect(
+      within(screen.getByTestId('pane-chip-volume')).getByLabelText('오른쪽 축 눈금 소유'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('pane-chip-ratio')).getByLabelText('왼쪽 축 눈금 소유'),
+    ).toBeInTheDocument();
+    // 메뉴엔 「왼쪽 축 숨기기」(격리 복귀)가 나온다.
+    clickChip('ratio');
+    expect(screen.getByTestId('pane-menu-axis-isolated').textContent).toContain('왼쪽 축 숨기기');
+  });
+
+  it('그룹을 해체하면 그 구성의 축 모드 오버라이드도 걷힌다 (스테일 소멸)', () => {
     const merged = mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume');
     useLivePageStore.getState().setPaneGroups(merged);
-    useLivePageStore.getState().setPaneAxisShare(['volume', 'ratio'], true);
+    useLivePageStore.getState().setPaneAxisMode(['volume', 'ratio'], 'shared');
     // 분리 → 매칭 그룹이 사라져 오버라이드도 정규화에서 걷힌다.
     useLivePageStore.getState().setPaneGroups(
       extractPaneToBoundary(merged, 'ratio', 2),
     );
-    expect(useLivePageStore.getState().paneAxisShare).toEqual({});
+    expect(useLivePageStore.getState().paneAxisMode).toEqual({});
   });
 
   it('외국인+기관 병합(공유 축 화이트리스트)은 축 배지가 없다', () => {
