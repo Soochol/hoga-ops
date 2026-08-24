@@ -4,9 +4,12 @@ import {
   flattenPaneGroups,
   mergePaneIntoGroup,
   movePaneGroupBeside,
+  normalizePaneAxisShare,
   normalizePaneGroups,
+  paneAxisShareKey,
   paneGroupsFromOrder,
   priceScaleIdForGroupMember,
+  resolveAxisShared,
   type PaneGroups,
 } from './paneGroups';
 import { CANONICAL_PANE_ORDER, normalizePaneOrder } from './paneOrder';
@@ -166,6 +169,48 @@ describe('movePaneGroupBeside', () => {
   it('같은 그룹의 멤버를 이웃으로 지목하면 no-op', () => {
     const merged = mergePaneIntoGroup(normalizePaneGroups(undefined), 'ratio', 'volume');
     expect(movePaneGroupBeside(merged, 'ratio', 'volume', 'before')).toBe(merged);
+  });
+});
+
+describe('paneAxisShare — 그룹별 y축 공유 오버라이드', () => {
+  it('resolveAxisShared: 오버라이드 없음 = 화이트리스트 기본값', () => {
+    expect(resolveAxisShared(['investor-foreign', 'investor-institution'], {})).toBe(true);
+    expect(resolveAxisShared(['volume', 'ratio'], {})).toBe(false);
+    expect(resolveAxisShared(['volume'], {})).toBe(false); // 싱글턴은 항상 false
+  });
+
+  it('resolveAxisShared: 오버라이드가 기본값을 이긴다 — 양방향, 키는 순서 무관', () => {
+    const shareOn = { [paneAxisShareKey(['ratio', 'volume'])]: true };
+    expect(resolveAxisShared(['volume', 'ratio'], shareOn)).toBe(true);
+    const shareOff = {
+      [paneAxisShareKey(['investor-institution', 'investor-foreign'])]: false,
+    };
+    expect(resolveAxisShared(['investor-foreign', 'investor-institution'], shareOff)).toBe(false);
+  });
+
+  it('normalizePaneAxisShare: 비불리언·현재 그룹과 매칭 안 되는 키를 걷는다', () => {
+    const groups = mergePaneIntoGroup(normalizePaneGroups(undefined), 'ratio', 'volume');
+    const liveKey = paneAxisShareKey(['volume', 'ratio']);
+    const out = normalizePaneAxisShare(
+      {
+        [liveKey]: true,
+        'quote-totals,fill-strength': true, // 존재하지 않는 그룹 → 드롭
+        volume: false,                       // 싱글턴 키 → 드롭
+        [paneAxisShareKey(['a', 'b'])]: 'yes', // 비불리언 → 드롭
+      },
+      groups,
+    );
+    expect(out).toEqual({ [liveKey]: true });
+    expect(normalizePaneAxisShare(null, groups)).toEqual({});
+  });
+
+  it('priceScaleIdForGroupMember: shared 인자가 화이트리스트 판정을 대체한다', () => {
+    // 비화이트리스트 그룹을 공유로 강제 → 리매핑 없음(전원 원 스케일).
+    expect(priceScaleIdForGroupMember(['volume', 'ratio'], 'ratio', 'right', true)).toBeNull();
+    // 화이트리스트 쌍을 분리로 강제 → 비대표 멤버 격리.
+    expect(priceScaleIdForGroupMember(
+      ['investor-foreign', 'investor-institution'], 'investor-institution', 'right', false,
+    )).toBe('merged:investor-institution:right');
   });
 });
 

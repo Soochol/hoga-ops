@@ -5,8 +5,11 @@ import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   flattenPaneGroups,
+  normalizePaneAxisShare,
   normalizePaneGroups,
+  paneAxisShareKey,
   paneGroupsFromOrder,
+  type PaneAxisShareMap,
   type PaneGroups,
 } from '../chart/paneGroups';
 import type { PresetEnableByTimeframe } from '../live/presets/presetFlags';
@@ -256,6 +259,9 @@ type Store = Persisted & IndicatorSettings & {
   paneOrder: PaneId[];
   /** pane 병합 그룹(순열+분할) — 레이아웃의 원본(`chart/paneGroups.ts`). */
   paneGroups: PaneGroups;
+  /** 병합 그룹별 y축 공유 수동 오버라이드 — 키는 구성(정렬 join), 없는 키는
+   *  화이트리스트 기본값(`resolveAxisShared`). */
+  paneAxisShare: PaneAxisShareMap;
   /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
   paneStretch: PaneStretchMap;
   /** 앱 전역 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 창 세트의
@@ -368,8 +374,11 @@ type Store = Persisted & IndicatorSettings & {
    *  병합을 보존하는 이동은 `setPaneGroups` 로 간다. */
   setPaneOrder: (order: PaneId[]) => void;
   /** pane 병합 그룹을 통째로 교체한다(레전드 ↑/↓·병합/분리 드래그의 결과).
-   *  `paneOrder` 투영도 함께 갱신된다. */
+   *  `paneOrder` 투영도 함께 갱신되고, 축 공유 오버라이드는 새 구성과 매칭되는
+   *  키만 남긴다(해체된 그룹의 키는 자연 소멸). */
   setPaneGroups: (groups: PaneGroups) => void;
+  /** 병합 그룹 하나의 y축 공유를 지정한다(칩 메뉴 「y축 공유/분리」). */
+  setPaneAxisShare: (members: readonly PaneId[], shared: boolean) => void;
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
   setPaneStretch: (patch: PaneStretchMap) => void;
@@ -542,6 +551,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     persistIndicatorsV2({
       paneOrder: s.paneOrder,
       paneGroups: s.paneGroups,
+      paneAxisShare: s.paneAxisShare,
       paneStretch: s.paneStretch,
       byTimeframe: s.indicatorsByTimeframe,
       byWindow: s.indicatorsByWindow,
@@ -629,6 +639,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     ...resolveIndicatorSettings(initialIndicatorsV2.byTimeframe, initialPage.candleTimeframe),
     paneOrder: initialIndicatorsV2.paneOrder,
     paneGroups: initialIndicatorsV2.paneGroups,
+    paneAxisShare: initialIndicatorsV2.paneAxisShare,
     paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
@@ -658,15 +669,37 @@ export const useLivePageStore = create<Store>((set, get) => {
       patchIndicatorsScoped(scope, timeframe, { [key]: enabled } as Partial<IndicatorSettings>),
 
     setPaneOrder: (order) => {
-      // flat 순서 쓰기 = 그룹 싱글턴 리셋 (액션 선언부 주석 참조).
+      // flat 순서 쓰기 = 그룹 싱글턴 리셋 (액션 선언부 주석 참조) → 축 오버라이드도
+      // 매칭 그룹이 없어져 전부 걷힌다.
       const normalized = normalizePaneOrder(order);
-      set({ paneOrder: normalized, paneGroups: paneGroupsFromOrder(normalized) });
+      const groups = paneGroupsFromOrder(normalized);
+      set({
+        paneOrder: normalized,
+        paneGroups: groups,
+        paneAxisShare: normalizePaneAxisShare(get().paneAxisShare, groups),
+      });
       persistIndicators();
     },
 
     setPaneGroups: (groups) => {
       const normalized = normalizePaneGroups(groups);
-      set({ paneGroups: normalized, paneOrder: flattenPaneGroups(normalized) });
+      set({
+        paneGroups: normalized,
+        paneOrder: flattenPaneGroups(normalized),
+        // 새 구성과 매칭되는 키만 유지 — 해체·재구성된 그룹의 오버라이드는 기본값으로.
+        paneAxisShare: normalizePaneAxisShare(get().paneAxisShare, normalized),
+      });
+      persistIndicators();
+    },
+
+    setPaneAxisShare: (members, shared) => {
+      if (members.length <= 1) return;
+      set({
+        paneAxisShare: {
+          ...get().paneAxisShare,
+          [paneAxisShareKey(members)]: shared,
+        },
+      });
       persistIndicators();
     },
 
@@ -684,8 +717,9 @@ export const useLivePageStore = create<Store>((set, get) => {
       set({
         paneOrder: nextPaneOrder,
         // 프리셋 payload 엔 그룹이 없다(레이아웃 프리셋은 flat 순서만 나른다) —
-        // 적용 = 결정론적 교체이므로 그룹도 싱글턴으로 리셋된다.
+        // 적용 = 결정론적 교체이므로 그룹도 싱글턴으로 리셋되고 축 오버라이드도 걷힌다.
         paneGroups: paneGroupsFromOrder(nextPaneOrder),
+        paneAxisShare: {},
         paneStretch: nextPaneStretch,
         indicatorsByTimeframe: byTimeframe,
         ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
@@ -783,6 +817,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       set({
         paneOrder: stored.paneOrder,
         paneGroups: stored.paneGroups,
+        paneAxisShare: stored.paneAxisShare,
         paneStretch: stored.paneStretch,
         indicatorsByTimeframe: stored.byTimeframe,
         // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼
