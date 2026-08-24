@@ -1,7 +1,10 @@
 """GET /api/inventory/calendar — per-symbol month status map.
 
-Composes disk_state.check_disk_state with the KIS trading-day list and a
+Composes disk_state.check_disk_state with the trading-day list and a
 today/17-KST overlay. Pure read-side; no mutation. See spec §5.3, §11 Q21.
+
+거래일 소스는 **정적 시드 + data_dir 오버레이**다(PR-H·#1044, `trading_days.py`) —
+조회 경로에 벤더가 없다. 이 파일에 남은 KIS 언급은 전부 그 이전의 역사다.
 """
 from __future__ import annotations
 
@@ -38,10 +41,10 @@ log = logging.getLogger(__name__)
 # (which would otherwise silently halt live capture for the rest of the
 # process, the way the old get_market_ohlcv proxy did) self-heals on the next
 # re-check instead of needing a process restart. Re-checks are throttled to
-# avoid hammering the upstream on a real holiday. (Post KRX→KIS migration the
-# data source is KIS chk-holiday via _trading_days_for, which adds its own
-# month cache + failure TTL underneath — the per-day session semantics here
-# are unchanged.)
+# avoid hammering the upstream on a real holiday. (역사: KRX→KIS 이관 시절엔
+# `_trading_days_for` 밑이 KIS chk-holiday 였고 월 캐시 + 실패 TTL 을 자체로 들고
+# 있었다. PR-H(#1044) 이후 그 밑은 **파일**이라 그 층이 전부 사라졌다 — 여기의
+# per-day session 의미론만 그때나 지금이나 그대로다.)
 _session_confirmed: set[str] = set()
 _session_last_miss_ms: dict[str, float] = {}
 _SESSION_MISS_RECHECK_S = 60.0
@@ -53,13 +56,26 @@ _data_dir: Path | None = None
 
 
 def last_failure_reason() -> UpstreamCode | None:
-    """Public accessor for the most recent KIS-availability failure."""
+    """Public accessor for the most recent trading-day source failure.
+
+    **커버리지 밖은 여기 안 잡힌다** — 그건 "모른다" 이지 실패가 아니다
+    (`_trading_days_for` 참조). 이 값이 세워졌다면 소스 파일 자체를 못 읽은 것이다.
+    """
     return _last_failure_reason
 
 
 class TradingDayUnavailableError(RuntimeError):
-    """Trading-day data unavailable (KIS chk-holiday failed).
-    Carries an UpstreamCode for HTTP surfacing."""
+    """거래일 데이터를 쓸 수 없다. HTTP 표면용 :class:`UpstreamCode` 를 싣는다.
+
+    **code 로 두 경우가 갈린다 — 호출자가 구분해야 한다:**
+
+    - ``TRADING_DAYS_UNAVAILABLE`` — 소스 파일을 못 읽었다. 배포 사고다.
+    - ``TRADING_DAYS_STALE`` — 요청 끝이 커버리지 밖이다. 오버레이가 밀려야 한다.
+
+    둘 다 **재시도로 풀리지 않는다**(PR-H·#1044 로 조회 경로에 벤더가 없어져
+    "일시 장애" 라는 사건이 사라졌다). 재시도를 안내하는 소비자는 틀린 것이다 —
+    `screener.py::_plan_update` 가 이 둘을 서로 다른 skip 사유로 갈라 내보낸다.
+    """
     def __init__(self, code: UpstreamCode) -> None:
         super().__init__(f"trading days unavailable: {code.value}")
         self.code = code
@@ -122,20 +138,21 @@ def is_trading_session_today(
 ) -> bool | None:
     """Is ``today`` a live KRX trading session right now? (ADR-0064)
 
-    Lag-free: backed by the KIS chk-holiday *calendar* (via
+    Lag-free: backed by the trading-day *calendar* (via
     :func:`_trading_days_for`), which lists the whole month — today included —
     upfront. This is the gate the live poller must use; the old daily-OHLCV
     proxy misread a live trading day as non-trading early in the session and
     (once cached) silently halted capture for the whole process.
 
-    Returns True/False, or None when KIS data is unavailable (the poller stays
-    lenient on None — losing capture for a transient outage is worse than a
-    brief burst of empty fetches). A True verdict is cached for the day; a
-    False is re-checked (throttled) so a transient miss self-heals without a
-    restart. Underneath, ``_trading_days_for`` adds its own month cache and
-    60s failure TTL, and the fetch raises on an empty month — so a cached
-    wrong-False for a real session would require KIS itself answering a
-    non-empty month that omits today.
+    Returns True/False, or None. **None 의 뜻이 PR-H(#1044) 로 바뀌었다** — 예전엔
+    "KIS 가 잠시 안 된다"(일시 장애)였고 지금은 **커버리지 밖**, 즉 정직하게 모르는
+    구간이다. 폴러가 None 에 관대한 것은 그대로 옳다: 모르는 날 캡처를 끄는 것보다
+    빈 fetch 몇 번이 싸다. True 는 하루 캐시하고 False 는 (스로틀해서) 재검사하므로
+    일시적 miss 가 재시작 없이 자가 치유된다.
+
+    *(예전 이 문단은 `_trading_days_for` 밑의 월 캐시 + 60s 실패 TTL 과 "빈 달이면
+    raise" 를 근거로 wrong-False 가 사실상 불가능하다고 논증했다. 그 층은 전부
+    사라졌다 — 지금 밑은 파일이라 빈 달과 휴장월이 같은 답을 낸다.)*
 
     ``_now_s`` is a monotonic-seconds seam for tests; production passes None.
     """
@@ -168,10 +185,13 @@ def is_trading_session_today(
 def weekdays_in_range(start: str, end: str) -> list[str]:
     """[start, end] 의 **평일**(월~금) YYYYMMDD, 오름차순. 휴장일은 모른다.
 
-    KIS 거래일 목록을 못 얻을 때의 최후 폴백이다. 자격증명이 아예 없으면
-    :func:`trading_days_in_range` 는 영원히 실패하고, 그 위에 fail-fast 로 서 있는
-    범위 캡처는 **영원히 사용할 수 없다**. 그건 "잘못된 날짜를 막는" 게 아니라
-    기능 자체를 없애는 것이다.
+    :func:`trading_days_in_range` 가 답할 수 없는 구간의 근사다. **자격증명과는
+    무관하다**(PR-H·#1044 로 조회 경로에 벤더가 없다) — 남은 사유는 **커버리지**다.
+    시드는 커밋 시점까지만 덮으므로 그 뒤 꼬리는 아무도 모른다. 거기서 fail-fast
+    하면 범위 캡처는 "잘못된 날짜를 막는" 게 아니라 기능 자체를 없앤다.
+
+    호출자(`captures.py::_trading_days_or_weekday_fallback`)는 **경계에서 자른다** —
+    커버리지 안은 정확한 거래일, 그 뒤 꼬리만 이 근사 + 경고다.
 
     휴장일이 섞여 들어가는 비용은 유계다 — 캡처가 업스트림에서 빈 응답을 받고
     ADR-0021 의 ``.no_upstream_data`` 센티넬을 남기고 끝난다(설계된 경로). 반면
@@ -197,9 +217,8 @@ def trading_days_in_range(start: str, end: str) -> list[str]:
     """Public helper used by captures.py Task 7. Returns YYYYMMDD trading days
     in [start, end] inclusive, sorted.
 
-    Raises :class:`TradingDayUnavailableError` when KIS data is unavailable for
-    any month spanned by the range — fail-fast on the enqueue path so the user
-    can't proceed with a guessed day list.
+    Raises :class:`TradingDayUnavailableError` — fail-fast on the enqueue path so
+    the user can't proceed with a guessed day list.
 
     PR-H(#1044) 이후 소스는 정적 시드 + data_dir 오버레이라, **범위 안에서는
     실패하지 않는다**. 이 예외가 남아 있는 이유는 하나뿐이다: 요청 구간이
@@ -261,13 +280,16 @@ def coverage_end() -> str | None:
 
 
 def is_trading_day(date_yyyymmdd: str) -> bool | None:
-    """Return True/False for ``date``, or None when KIS data is unavailable.
+    """Return True/False for ``date``, or None when it is beyond coverage.
 
     Policy on None is the caller's: cold-path schedulers fail-fast
     (``trading_days_in_range`` raises), live-path callers fall back to a
-    permissive default (e.g. don't gate polling so capture stays up when
-    KIS is briefly unreachable). Keeping the data accessor and the policy
+    permissive default (e.g. don't gate polling so capture stays up on a day
+    the calendar can't answer for). Keeping the data accessor and the policy
     separate avoids embedding either stance in the module.
+
+    *(None 이 "KIS 가 잠시 안 됨" 을 뜻하던 시절의 문구였다. PR-H·#1044 이후
+    None 은 오직 커버리지 밖이다 — 재시도해도 같은 답이다.)*
     """
     if _beyond_coverage(date_yyyymmdd):
         return None
@@ -436,10 +458,11 @@ def build_router(*, data_dir: Path) -> APIRouter:
     async def calendar_route(code: str = Query(..., pattern=CODE_PATTERN),
                               year: int = Query(..., ge=2000, le=2100),
                               month: int = Query(..., ge=1, le=12)) -> CalendarResponse:
-        # Offload the entire build to a threadpool so the cold-month KIS
-        # HTTP fetch inside _trading_days_for doesn't block the event loop.
-        # Warm calls (cache hit) still incur the round-trip; overhead is
-        # negligible (~microseconds) vs the per-stall (seconds) we avoid.
+        # Offload the entire build to a threadpool — disk_state 의 파일 스캔이
+        # 이벤트 루프를 막지 않게. **근거의 절반이 PR-H(#1044) 로 사라졌다**: 예전엔
+        # `_trading_days_for` 안의 콜드 월 KIS HTTP fetch 가 주된 이유였고 지금 그
+        # 자리는 파일 읽기다. 그래도 offload 는 유지한다 — 남은 동기 IO(디스크 스캔)
+        # 만으로도 초 단위 stall 이 나고, 왕복 비용은 마이크로초다.
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,

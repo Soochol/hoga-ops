@@ -134,11 +134,16 @@ export interface ScreenerStatus {
   updating?: ScreenerUpdating | null;
 }
 
+/** 손 미러 — 정본은 `hoga/api/models.py::ScreenerUpdateSkipReason` 이다.
+ *  값이 갈리면 ADR-0004 2층 대조가 실패한다
+ *  (`tests/unit/api/test_rest_wire_schema_contract.py`). 값을 늘리면
+ *  `SKIP_REASON_MESSAGES` 도 같은 PR 에서 — 그쪽은 Record 라 TS 가 강제한다. */
 export type ScreenerUpdateSkipReason =
   | 'no_gap'
   | 'not_seeded'
   | 'creds_missing'
-  | 'calendar_unavailable';
+  | 'calendar_source_missing'
+  | 'calendar_coverage_behind';
 
 export type ScreenerUpdateResponse =
   | { running: true; done: number; total: number }

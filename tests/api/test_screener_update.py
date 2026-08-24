@@ -7,6 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hoga.api import screener as _screener_mod
+from hoga.api.calendar import TradingDayUnavailableError
+from hoga.api.error_codes import UpstreamCode
 from hoga.api.screener_store import DailyBar, append_rows, last_raw_date, read_status, write_status
 from hoga.live import kiwoom_access as _kiwoom_access, kiwoom_rest_runtime as _kiwoom_runtime
 
@@ -287,16 +289,50 @@ async def test_start_update_no_gap_reason(tmp_path: Path, monkeypatch):
         "running": False, "updated": 0, "reason": "no_gap"}
 
 
-async def test_start_update_calendar_unavailable_reason(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (UpstreamCode.TRADING_DAYS_UNAVAILABLE, "calendar_source_missing"),
+        (UpstreamCode.TRADING_DAYS_STALE, "calendar_coverage_behind"),
+    ],
+)
+async def test_start_update_splits_the_two_calendar_failures(
+    tmp_path: Path, monkeypatch, code, expected,
+):
+    """달력 실패 둘은 **서로 다른 사유**로 나간다.
+
+    뭉치면 화면만 보고 조치를 고를 수 없다 — 소스 결여는 배포를, 커버리지 부족은
+    스케줄러를 봐야 한다. 한 값으로 되돌리면 이 파라미터 두 줄이 같은 값을 기대하게
+    되어 실패한다.
+    """
     _seed_archive(tmp_path, ["005930"])
     monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
 
     def boom(_f, _t):
-        raise RuntimeError("KIS holiday endpoint down")
+        raise TradingDayUnavailableError(code)
 
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", boom)
     assert await _screener_mod.start_update(tmp_path) == {
-        "running": False, "updated": 0, "reason": "calendar_unavailable"}
+        "running": False, "updated": 0, "reason": expected}
+
+
+async def test_start_update_unexpected_calendar_error_reads_as_source_missing(
+    tmp_path: Path, monkeypatch,
+):
+    """`TradingDayUnavailableError` 밖의 예외도 사용자 조치는 소스 결여와 같다.
+
+    다만 **traceback 을 남긴다** — 그게 진짜 배포 사고와 이 갈래를 사후에 가르는
+    유일한 단서다(`log.exception`).
+    """
+    _seed_archive(tmp_path, ["005930"])
+    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
+
+    def boom(_f, _t):
+        raise RuntimeError("달력 코드의 버그")
+
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", boom)
+    assert await _screener_mod.start_update(tmp_path) == {
+        "running": False, "updated": 0, "reason": "calendar_source_missing"}
 
 
 async def test_start_update_creds_missing_reason(tmp_path: Path, monkeypatch):
