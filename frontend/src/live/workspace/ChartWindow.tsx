@@ -816,6 +816,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               candleEmpty={d.workareaCandleEmpty}
               onRetryCandles={d.refetchCandles}
               clampEngaged={d.clampEngaged}
+              candleSourceKey={d.candleSourceKey}
               minuteScrollbackFloorDate={d.minuteScrollbackFloorDate}
               // ⚠ 이 줄이 사라지면 **아무것도 깨지지 않는다** — prop 이 옵셔널이라 전부
               // 컴파일되고 기본값 null 로 조용히 옛 동작(일봉 MA 가 오늘−265일쯤부터만

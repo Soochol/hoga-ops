@@ -291,6 +291,9 @@ export function overlayLiveTradesOnCalendarCandles(
   return out ?? (candles as Candle[]);
 }
 
+/** 캔들이 온 곳. 디스크 = hogaplay 캡처(분봉) 또는 스크리너 일봉(D/W/M). */
+export type CandleSourceKey = 'disk' | 'vendor';
+
 export interface UseLiveBundleResult {
   /** Full bundle = stable chart side + live hoga overlay. Consumed by hoga
    * panes (ratio/quoteTotals/fillStrength), LiveStatusBar, LiveSidebar. New ref
@@ -327,6 +330,9 @@ export interface UseLiveBundleResult {
   error: unknown;
   /** 벤더 250일 벽에 닿았다(벤더 모드 전용 — 디스크 모드엔 그 벽이 없다). */
   clampEngaged: boolean;
+  /** 이 번들의 캔들 소스 축(`'disk'` | `'vendor'`). 소비자는 뷰포트 재착석 하나다 —
+   *  반환부 주석에 "세그먼트 소스로 대신할 수 없는 이유"와 "데이터보다 먼저 바뀐다"가 있다. */
+  candleSourceKey: CandleSourceKey;
   /** 좌측 팬 하한(YYYYMMDD). `null` = 아직 막을 근거 없음. 도출은 아래 훅 본문 참조. */
   minuteScrollbackFloorDate: string | null;
   isPastCandlesLoading: boolean;
@@ -1497,6 +1503,22 @@ export function useLiveBundle(
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,
+    /**
+     * 이 번들의 캔들이 **어느 소스에서 왔나** — `'disk'`(hogaplay 캡처/스크리너 일봉)
+     * 또는 `'vendor'`(키움 REST). 소비자는 `useViewportBackfill` 하나이고, 쓰임은
+     * "소스가 바뀐 커밋에서 뷰포트를 다시 앉힌다" 뿐이다.
+     *
+     * **세그먼트의 `source` 로 대신할 수 없다.** 디스크 경로가 실어 오는 세그먼트 소스는
+     * 그날 저장된 것을 그대로 반영하므로 `kiwoom_live` 일 수 있고(`CANDLE_BEARING_SOURCES`
+     * 가 둘이다), 그러면 벤더 모드와 값이 같아져 스왑이 보이지 않는다. 보충일이
+     * `kiwoom_gapfill` 로 섞이는 것도 같은 축을 흐린다 — 그건 소스 전환이 아니라
+     * 한 소스 안의 결손 메꿈이다.
+     *
+     * ⚠ **이 값은 데이터보다 먼저 바뀐다.** 토글은 즉시 `restBypassEnabled` 를 뒤집지만
+     * 디스크 응답은 콜드에서 십수 초 뒤에 온다(2026-08-24 실측 11.6s). 그래서 소비자는
+     * 이 키만 보고 움직이면 안 되고 **캔들 배열이 실제로 갈린 커밋**을 함께 봐야 한다.
+     */
+    candleSourceKey: restBypassEnabled ? 'disk' : 'vendor',
     minuteScrollbackFloorDate,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,

@@ -3480,6 +3480,196 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 소스 스왑 뷰포트 재착석 (2026-08-24 실측)
+//
+// hogaplay 토글은 캔들 배열을 **통째로 다른 소스의 것으로** 갈아 끼우는데, 종전에는
+// 그 커밋에서 뷰포트를 다시 앉히는 주체가 아무도 없었다:
+//   · `viewKey` 에 소스가 없어 차트가 remount 되지 않고(초기 뷰 effect 는 1-샷 소진),
+//   · 리포지셔너는 `historicalFromDate === null`(라이브 엣지의 기본값)에서 리턴하며,
+//   · 설령 통과해도 재투영값이 lwc 착지점과 같아 EPSILON 스킵된다.
+// 실측(462350, 10분봉): 벤더 195봉 → 디스크 122봉에서 화면이 73봉(≈320px) 미끄러졌다.
+//
+// 계약: 소스가 갈린 커밋에서 **라이브 엣지였으면 초기 분봉 배치를 다시 적용**하고
+// (span 이 데이터 크기로 클램프되는 것이 요점), **과거를 보고 있었으면 보던 시각을
+// 앵커로 재투영**한다. 판정은 「키가 갈렸다 AND 캔들 정체성이 갈렸다」의 AND 다 —
+// 키만 보면 데이터가 아직 안 온 커밋에서 헛 앉는다(콜드 실측 11.6s 간극).
+//
+// Seam: 이 mock 의 setData 는 no-op 이고 range getter 가 정적이라, 여기서 잠그는 것은
+// **호출 계약**(언제·어느 범위로)이다. 픽셀은 브라우저 증거다(조사 노트 2026-08-24).
+// ---------------------------------------------------------------------------
+describe('LiveChartRoot source-swap viewport reseat', () => {
+  beforeEach(() => {
+    useLivePageStore.setState({ historicalFromDate: null, candleTimeframe: '1m' });
+    vi.useFakeTimers();
+    vi.setSystemTime(TODAY_OPEN_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const LR_FROM = 100;
+  const LR_TO = 400;
+  const PLOT_WIDTH = 800;
+
+  function makeTs(vrFromSec: number, vrToSec: number) {
+    return {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => ({ from: vrFromSec, to: vrToSec })),
+      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      // 논리 인덱스 대역 = (정수) virtual second — 프로덕션과 같은 축 산식으로
+      // 기대값을 유도할 수 있게 하는 대역이다(프리펜드 테스트와 같은 관례).
+      timeToIndex: vi.fn((t: unknown): number | null => Math.round(t as number)),
+      width: vi.fn(() => PLOT_WIDTH),
+      height: vi.fn(() => 28),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+    };
+  }
+
+  function buildMock(ts: Record<string, unknown>) {
+    return {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+  }
+
+  const todayBundle = (candleTsList: number[]): RangeBundle => ({
+    ...TODAY_ONLY_BUNDLE,
+    candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+  const twoSegBundle = (candleTsList: number[]): RangeBundle => ({
+    ...TWO_SEGMENT_BUNDLE,
+    candles: candleTsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+
+  /** 오늘-단일 축에서의 논리 인덱스(= 정수 virtual second, 위 mock 대역). */
+  function todayIdx(realMs: number): number {
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    return Math.round(realMsToVirtualSeconds(axis, realMs));
+  }
+
+  // 벤더 5봉 → 디스크 3봉. 라이브 엣지(오른쪽 끝 = 마지막 봉)에서 눌렀다.
+  const VENDOR_TS = [1, 2, 3, 4, 5].map((m) => TODAY_OPEN_MS + m * 60_000);
+  const DISK_TS = [1, 2, 3].map((m) => TODAY_OPEN_MS + m * 60_000);
+
+  it('live edge: 소스가 갈리면 초기 분봉 배치를 다시 적용한다(span 이 데이터로 클램프)', () => {
+    // 오른쪽 끝을 벤더 마지막 봉에 둔다 → 스냅샷의 atLiveEdge = true.
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 토글: 키가 먼저 뒤집힌다. 캔들은 아직 벤더 것 → 아무 일도 없어야 한다.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSwap);
+
+    // 디스크 응답 도착: 같은 첫 봉, 더 적은 개수 → 재착석.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(DISK_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    const latest = todayIdx(DISK_TS[2]);
+    const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    // span 이 3봉으로 접힌다 — 이 클램프가 없으면 화면 왼쪽이 통째로 빈다.
+    expect(target.from).toBe(latest + 1 - DISK_TS.length);
+    expect(target.to).toBeGreaterThan(latest);
+  });
+
+  it('panned: 소스가 갈리면 보던 시각을 앵커로 재투영한다(라이브 엣지 배치가 아니다)', () => {
+    // 오른쪽 끝을 마지막 봉보다 한참 과거로 → atLiveEdge = false.
+    const anchorMs = TODAY_OPEN_MS + 60_000;
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS), todayIdx(anchorMs));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(DISK_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    // 앵커가 오른쪽 끝, span 은 데이터(3봉)로 클램프. 라이브 엣지 분기였다면 오른쪽
+    // 여백이 붙어 to > latest 가 됐을 것이다 — 두 분기를 가르는 단언이다.
+    expect(target.to).toBe(todayIdx(anchorMs));
+    expect(target.to - target.from).toBe(DISK_TS.length);
+  });
+
+  it('키가 그대로면 재착석하지 않는다 — 프리펜드·SSE 성장은 종전 주체가 답한다', () => {
+    // 재착석 판정은 「키 변화 AND 캔들 정체성 변화」의 AND 다. 이 단언이 AND 의 왼쪽을
+    // 잰다: 캔들이 크게 갈려도 소스가 그대로면 여기서 손대지 않는다.
+    //
+    // 이 경계는 실측이 요구한 것이다(2026-08-24). 재착석의 `setVisibleLogicalRange` 는
+    // lwc 논리범위 구독을 깨워 3b 좌측-팬 판정을 태우고, 디스크 모드엔 250일 벽이 없어
+    // 되먹임이 멈추지 않는다 — 게이트를 넓혔을 때 토글 한 번에 84봉 → 1,688봉으로
+    // 워크백이 폭주했다. 그래서 재착석은 **소스가 실제로 갈린 커밋 한 번**뿐이다.
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS), todayIdx(TODAY_OPEN_MS + 60_000));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    const beforePrepend = ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 어제가 앞에 붙는다(청크 워크백). 키가 같으므로 재착석은 침묵해야 한다.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Crosshair → cursor store (ADR-0044)
 // ---------------------------------------------------------------------------
 
