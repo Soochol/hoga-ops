@@ -312,7 +312,7 @@ describe('ScreenerDrawer', () => {
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.queryByText('오늘 장중: KIS quote 반영')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('오늘 장중: 키움 시세 반영')).not.toBeInTheDocument());
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
 

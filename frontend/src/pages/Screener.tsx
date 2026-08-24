@@ -309,7 +309,7 @@ export function Screener() {
                   key={value}
                   type="button"
                   onClick={() => setBasis(value)}
-                  title={value === 'intraday' ? '조건검색 실행 시 오늘 KIS quote를 일봉 위에 임시 반영합니다' : undefined}
+                  title={value === 'intraday' ? '조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다' : undefined}
                   className={`px-3 py-[7px] text-sm ${basis === value ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
                 >
                   {value === 'intraday' ? '오늘 장중' : '전일 확정'}
@@ -379,9 +379,9 @@ export function Screener() {
             {basis === 'intraday' && (
               <span
                 className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
-                title="조건검색 실행 시 오늘 KIS quote를 일봉 위에 임시 반영합니다"
+                title="조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다"
               >
-                오늘 장중: KIS quote 반영
+                오늘 장중: 키움 시세 반영
               </span>
             )}
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />

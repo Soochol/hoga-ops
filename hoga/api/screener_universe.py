@@ -54,7 +54,7 @@ def duckdb_wheres(universe: ScreenerUniverse) -> tuple[list[str], list]:
 
 
 def apply_etf_master(df: pl.DataFrame, etf_codes: frozenset[str] | None) -> pl.DataFrame:
-    """``is_etf`` 를 심볼 마스터(KIS .mst security_type) 기준으로 덮어쓴다.
+    """``is_etf`` 를 심볼 마스터(키움 ``ka10099`` 의 증권그룹구분코드) 기준으로 덮어쓴다.
 
     stocks.parquet 의 ``is_etf`` 는 외부 DB 에서 **수동 1회 시드**된 정적 스냅샷이라
     시간이 지나면 낡는다(실측 2026-08-01: 시드 후 2개월간 갱신 경로 없음 → 마스터가

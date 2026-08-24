@@ -184,7 +184,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         """)
     else:
         con.execute("CREATE TEMP VIEW adj AS SELECT * FROM adj_hist")
-    # is_etf 는 심볼 마스터(KIS .mst)가 SSOT — stocks.parquet 의 값은 외부 DB 에서
+    # is_etf 는 심볼 마스터(키움 `ka10099`)가 SSOT — stocks.parquet 의 값은 외부 DB 에서
     # 수동 1회 시드된 정적 스냅샷이라 신규 상장 ETF 를 놓친다. 뷰 단계에서 REPLACE 로
     # 덮어쓰면 duckdb_wheres 의 `NOT stk.is_etf` 는 손대지 않아도 된다. OR 인 이유와
     # None 폴백 근거는 screener_universe.apply_etf_master 를 보라(같은 규칙의 polars 짝).
