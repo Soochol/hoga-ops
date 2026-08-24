@@ -22,7 +22,12 @@ const { mounted, paneBundles, paneContexts, paneOrderKeys, candleTooltipProps, a
   mounted: [] as string[],
   paneBundles: [] as Array<{ name: string; bundle: unknown }>,
   paneContexts: [] as Array<{ name: string; contextOverride: unknown }>,
-  paneOrderKeys: [] as Array<{ name: string; precedingPaneKey: string }>,
+  paneOrderKeys: [] as Array<{
+    name: string;
+    precedingPaneKey: string;
+    paneIndex: number;
+    groupPaneIds: readonly string[] | undefined;
+  }>,
   candleTooltipProps: [] as Array<{ bundle: unknown; quoteBundle?: unknown }>,
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
@@ -44,11 +49,18 @@ vi.mock('../chart/RangeSeriesPane', () => ({
     bundle: unknown;
     contextOverride?: unknown;
     precedingPaneKey: string;
+    paneIndex: number;
+    groupPaneIds?: readonly string[];
   }) => {
     mounted.push(props.spec.name);
     paneBundles.push({ name: props.spec.name, bundle: props.bundle });
     paneContexts.push({ name: props.spec.name, contextOverride: props.contextOverride });
-    paneOrderKeys.push({ name: props.spec.name, precedingPaneKey: props.precedingPaneKey });
+    paneOrderKeys.push({
+      name: props.spec.name,
+      precedingPaneKey: props.precedingPaneKey,
+      paneIndex: props.paneIndex,
+      groupPaneIds: props.groupPaneIds,
+    });
     return null;
   },
 }));
@@ -112,6 +124,8 @@ vi.mock('lightweight-charts', async () => {
 
 import { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
+import { mergePaneIntoGroup, paneGroupsFromOrder } from '../chart/paneGroups';
+import type { PaneId } from '../chart/drawing/types';
 import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import type { RangeBundle } from '../api/types';
 
@@ -199,7 +213,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     // 캔들은 항상 `''` — 그래서 순서가 바뀌어도 재생성에서 자동으로 빠진다(고정 pane).
     // 나머지는 누적 시퀀스. 이 값이 `RangeSeriesPane` lifecycle dep 이므로, 순서가
     // 바뀌면 "밑에서 인덱스가 밀리는" pane 들이 정확히 전부 참여한다.
-    expect(paneOrderKeys).toEqual([
+    expect(paneOrderKeys.map(({ name, precedingPaneKey }) => ({ name, precedingPaneKey }))).toEqual([
       { name: 'candle', precedingPaneKey: '' },
       { name: 'volume', precedingPaneKey: 'candle' },
       { name: 'quote-totals', precedingPaneKey: 'candle|volume' },
@@ -207,14 +221,41 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       { name: 'fill-strength', precedingPaneKey: 'candle|volume|quote-totals|ratio' },
       { name: 'program-trade', precedingPaneKey: 'candle|volume|quote-totals|ratio|fill-strength' },
     ]);
+    // 전 그룹 싱글턴이면 paneIndex 는 종전과 같은 순번이다(병합 무영향 회귀선).
+    expect(paneOrderKeys.map((p) => p.paneIndex)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('병합 그룹은 같은 paneIndex 를 공유하고 아래 pane 의 앞 시퀀스에 구성이 실린다', () => {
+    // ratio 를 volume 그룹에 병합 — 멤버 둘이 pane 하나(index 1)를 공유하고,
+    // 그 아래 pane 들의 시퀀스에는 그룹 **구성**('volume,ratio')이 들어간다.
+    const singles = paneGroupsFromOrder(['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'] as PaneId[]);
+    useLivePageStore.setState({
+      paneGroups: mergePaneIntoGroup(singles, 'ratio', 'volume'),
+    });
+    renderAt('1m');
+    const byName = new Map(paneOrderKeys.map((p) => [p.name, p]));
+    expect(byName.get('volume')?.paneIndex).toBe(1);
+    expect(byName.get('ratio')?.paneIndex).toBe(1);
+    // 같은 그룹 = 같은 앞 시퀀스 + 같은 멤버 목록(스케일 격리의 입력).
+    expect(byName.get('volume')?.precedingPaneKey).toBe('candle');
+    expect(byName.get('ratio')?.precedingPaneKey).toBe('candle');
+    expect(byName.get('volume')?.groupPaneIds).toEqual(['volume', 'ratio']);
+    expect(byName.get('ratio')?.groupPaneIds).toEqual(['volume', 'ratio']);
+    // 아래 pane 은 인덱스가 하나 당겨지고 시퀀스에 그룹 구성이 들어간다.
+    expect(byName.get('quote-totals')?.paneIndex).toBe(2);
+    expect(byName.get('quote-totals')?.precedingPaneKey).toBe('candle|volume,ratio');
   });
 
   it('pane 순서를 바꾸면 그 아래 pane 의 앞 시퀀스도 바뀐다', () => {
     // quote-totals ↔ ratio 를 맞바꾸면, 두 pane 뿐 아니라 **그 아래** pane 들의 앞
     // 시퀀스도 달라져야 한다. 안 그러면 아래 pane 이 재생성에 참여하지 않아 lwc 가
     // 인덱스를 당기는 사이 series 가 남의 pane 으로 합쳐진다.
+    // 레이아웃 원본은 paneGroups 다(paneOrder 는 투영) — setState 직접 주입이라
+    // 액션이 해 주는 동기화를 여기서 손으로 한다.
+    const reordered: PaneId[] = ['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'];
     useLivePageStore.setState({
-      paneOrder: ['candle', 'volume', 'ratio', 'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution'],
+      paneOrder: reordered,
+      paneGroups: paneGroupsFromOrder(reordered),
     });
     renderAt('1m');
     const keyOf = (name: string) => paneOrderKeys.find((p) => p.name === name)?.precedingPaneKey;

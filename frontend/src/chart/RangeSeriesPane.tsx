@@ -10,6 +10,7 @@ import {
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { classifyDataChange, syncSeriesData } from './seriesDataDiff';
+import { priceScaleIdForGroupMember } from './paneGroups';
 import {
   BrokerLateEntryMarkersPrimitive,
 } from './BrokerLateEntryMarkersPrimitive';
@@ -184,9 +185,33 @@ type Props<Ctx> = {
   /** When true, create the candle pane primary series after its same-pane
    * overlays so lightweight-charts paints candle bodies on top. */
   candleAlwaysOnTop?: boolean;
+  /** pane 병합: 이 pane(= `paneIndex`)에 함께 사는 지표들의 PaneId 목록(자기 포함,
+   *  그룹 순서 그대로). 2개 이상이면 비대표 멤버(첫 항목이 아닌 것)의 시리즈를
+   *  멤버별 숨은 스케일로 격리한다(`priceScaleIdForGroupMember` — 공유 화이트리스트
+   *  포함). 생략/싱글턴이면 스펙의 원래 스케일 그대로.
+   *
+   *  ⚠ identity 가 dep 이다 — 호출자는 구성이 같은 한 같은 배열을 넘겨야 한다
+   *  (`paneGroupSpecs.paneGroupIds` 가 그 캐시를 소유). 구성이 바뀌면 이 pane 의
+   *  전 시리즈가 재생성되는데, 그때 아래쪽 pane 들은 `precedingPaneKey` 로 함께
+   *  재생성에 참여한다(그룹 구성이 그 키에 들어간다). */
+  groupPaneIds?: readonly string[];
   /** Optional caller-owned context for specs whose rendering depends on parent props. */
   contextOverride?: Ctx;
 };
+
+/** 병합 pane 의 시리즈 옵션에 스케일 격리를 적용한다(리매핑 없으면 원본 그대로).
+ *  'right' 만이 아니라 오버레이('') id 도 리매핑 대상이다 — lwc 는 같은 id 를 같은
+ *  스케일로 합치므로, 두 멤버의 누적선이 둘 다 '' 면 오토스케일을 나눠 갖는다. */
+function withGroupPriceScale(
+  options: SeriesPartialOptionsMap[SeriesType],
+  paneName: string,
+  groupPaneIds: readonly string[] | undefined,
+): SeriesPartialOptionsMap[SeriesType] {
+  if (!groupPaneIds || groupPaneIds.length <= 1) return options;
+  const original = (options as { priceScaleId?: string }).priceScaleId ?? 'right';
+  const mapped = priceScaleIdForGroupMember(groupPaneIds, paneName, original);
+  return mapped === null ? options : { ...options, priceScaleId: mapped };
+}
 
 function creationOrderForSpec(seriesCount: number, candleAlwaysOnTop: boolean): number[] {
   if (!candleAlwaysOnTop || seriesCount <= 1) {
@@ -218,6 +243,7 @@ function RangeSeriesPaneInner<Ctx>({
   onLegendGone,
   forceSetData = false,
   candleAlwaysOnTop = false,
+  groupPaneIds,
   contextOverride,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
@@ -257,7 +283,11 @@ function RangeSeriesPaneInner<Ctx>({
     );
     creationOrder.forEach((specIndex) => {
       const s = spec.series[specIndex];
-      const options = typeof s.options === 'function' ? s.options() : s.options;
+      const options = withGroupPriceScale(
+        typeof s.options === 'function' ? s.options() : s.options,
+        spec.name,
+        groupPaneIds,
+      );
       const series = chart.addSeries(s.type, options, paneIndex);
       s.afterAdd?.(series);
       seriesList[specIndex] = series;
@@ -332,7 +362,7 @@ function RangeSeriesPaneInner<Ctx>({
     // intentionally excluded from deps so the effect doesn't churn series on
     // callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop]);
+  }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop, groupPaneIds]);
 
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's
@@ -378,7 +408,7 @@ function RangeSeriesPaneInner<Ctx>({
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
       if (s.labelMarkers) labelMarkersRef.current[i]?.setMarkers(s.labelMarkers(bundle, axis, ctx));
     });
-  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, forceSetData]);
+  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, forceSetData]);
   return null;
 }
 

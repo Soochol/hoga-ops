@@ -58,15 +58,19 @@ function installResizeObserver(): Observed[] {
 /** 공장 가중치 그대로 — 모듈 상수라 `useMemo` deps 가 안정적이다. */
 const NO_STRETCH: PaneStretchMap = {};
 
+/** 훅의 원자 단위는 pane **그룹**이다 — 싱글턴 그룹이면 판정은 flat 판과 동일
+ *  (그룹 stretch = 유일 멤버의 stretch). 모듈 상수라 `useMemo` deps 가 안정적이다. */
+const SINGLETON_GROUPS = PANE_SPECS.map((s) => [s] as const);
+
 /** `paneFolding.test.ts` 가 검증한 값: 6-pane 을 400px 에 넣으면 2개가 접힌다. */
 const FOLDING_HEIGHT_PX = 400;
 const EXPECTED_AT_400 = '2:4'; // foldedCount:남은 pane 수
 
 function Host({ present, nodeKey = 'a' }: { present: boolean; nodeKey?: string }) {
-  const [{ specs, foldedCount }, observe] = usePaneFolding(PANE_SPECS, NO_STRETCH);
+  const [{ groups, foldedCount }, observe] = usePaneFolding(SINGLETON_GROUPS, NO_STRETCH);
   return (
     <div>
-      <span data-testid="fold">{`${foldedCount}:${specs.length}`}</span>
+      <span data-testid="fold">{`${foldedCount}:${groups.length}`}</span>
       {present && <div key={nodeKey} data-testid="pane-host" ref={observe} />}
     </div>
   );

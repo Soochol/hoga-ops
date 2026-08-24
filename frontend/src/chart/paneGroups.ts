@@ -164,7 +164,7 @@ export function movePaneGroupBeside(
  * 나열한다 — 시작은 외국인+기관 순매수량(같은 주 단위·같은 ± 일별 순매수·같은 D
  * 게이트) 1쌍.
  */
-const SHARED_AXIS_SETS: readonly (readonly PaneId[])[] = [
+const SHARED_AXIS_SETS: readonly (readonly string[])[] = [
   ['investor-foreign', 'investor-institution'],
 ];
 
@@ -179,10 +179,14 @@ const SHARED_AXIS_SETS: readonly (readonly PaneId[])[] = [
  * - 화이트리스트 조합은 전원 원래 스케일 유지 → 축을 실제로 공유한다.
  *
  * 반환이 null 이면 "리매핑 없음"(스펙의 원래 id 사용).
+ *
+ * 인자가 `PaneId` 가 아니라 string 인 이유: 소비자가 `RangeSeriesPane`(chart/)의
+ * `spec.name: string` 이라, 여기서 좁히면 호출부마다 캐스트가 생긴다 — 판정은
+ * 문자열 멤버십뿐이라 넓혀도 잃는 것이 없다.
  */
 export function priceScaleIdForGroupMember(
-  group: readonly PaneId[],
-  member: PaneId,
+  group: readonly string[],
+  member: string,
   originalId: string,
 ): string | null {
   if (group.length <= 1) return null;

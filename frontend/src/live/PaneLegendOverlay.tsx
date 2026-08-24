@@ -28,7 +28,7 @@ import { buildCandleTooltip } from './candleTooltipModel';
 import {
   useIndicatorActions,
   useWindowIndicator,
-  useWindowPaneOrder,
+  useWindowPaneGroups,
   useWindowScopeId,
   type IndicatorActions,
 } from './workspace/windowView';
@@ -36,10 +36,11 @@ import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { scopeEntries } from './indicators/windowScopedRegistry';
-import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
-import type { BoundPaneSpec } from '../chart/paneSpecs';
+import type { PaneToggles } from './paneSpecsForTimeframe';
+import { paneGroupSpecsForTimeframe, type PaneSpecGroup } from './paneGroupSpecs';
 import type { PaneId } from '../chart/drawing/types';
-import { movePaneBeside, PANE_DISPLAY_NAME } from '../chart/paneOrder';
+import { PANE_DISPLAY_NAME } from '../chart/paneOrder';
+import { movePaneGroupBeside, type PaneGroups } from '../chart/paneGroups';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -61,10 +62,11 @@ type Props = {
    *  전용 뷰에서는 켜져 있어도 그릴 것이 없다 — 그때 값 없는 빈 레전드 행이 남지 않도록
    *  `applicable` 을 데이터 유무까지 좁힌다(오버레이 마운트 게이트와 일치시키는 규약). */
   hasDepthDelta?: boolean;
-  /** 접기(`paneFolding.ts`) 적용 후 실제로 마운트된 pane 목록. 주면 이걸 쓰고,
-   *  없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane 이동 컨트롤의
-   *  "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는 것처럼 보인다. */
-  visibleSpecs?: readonly BoundPaneSpec[];
+  /** 접기(`paneFolding.ts`) 적용 후 실제로 마운트된 pane **그룹** 목록(병합 반영).
+   *  주면 이걸 쓰고, 없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane
+   *  이동 컨트롤의 "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는
+   *  것처럼 보인다. */
+  visibleGroups?: readonly PaneSpecGroup[];
   /** 캔들 pane 최상단 OHLC 레전드(항상 표시)용 캔들 배열 + 가상축. `axis` 로
    *  그려진(보이는) 봉만 추려 `param.time`(가상초)→봉을 해석하고, 커서 밖이면 최신
    *  봉으로 폴백한다(CandleTooltip 과 동일 인덱싱). 둘 다 캔들 경로/segments 참조라
@@ -287,8 +289,9 @@ function PaneMoveButton({
   );
 }
 
-/** 한 pane 의 ↑/↓ 순서 이동 컨트롤. candle(idx 0)은 렌더하지 않는다. 이동은
- *  **마운트된 이웃과 스왑**이라 게이트로 부재중인 pane 을 건너뛴다(ADR-0114 §3).
+/** 한 pane(그룹)의 ↑/↓ 순서 이동 컨트롤. candle(idx 0)은 렌더하지 않는다. 이동은
+ *  **마운트된 이웃 그룹 곁으로의 인접 삽입**이라 게이트로 부재중인 pane 을 건너뛴다
+ *  (ADR-0114 §3). 병합 pane 은 **그룹 전체**가 한 덩어리로 움직인다.
  *
  *  배치: legend 행과 **같은 줄의 pane 우측 끝**(2026-08-18). 우측 끝은 컨테이너가
  *  아니라 **플롯 우측**이다 — 래퍼의 `rightInset` 이 가격축 거터를 뺀다. */
@@ -299,18 +302,19 @@ function PaneMoveControls({
   mountedCount,
   upNeighbor,
   downNeighbor,
-  paneOrder,
+  paneGroups,
 }: {
+  /** 그룹 대표(첫 멤버) — 이동 연산·testId 의 앵커. */
   paneId: PaneId;
   label: string;
   idx: number;
   mountedCount: number;
-  /** 바로 위/아래에 **마운트된** 이웃 pane(게이트로 부재중인 pane 은 건너뛴 값). */
+  /** 바로 위/아래에 **마운트된** 이웃 그룹의 대표(게이트로 부재중인 pane 은 건너뛴 값). */
   upNeighbor: PaneId | null;
   downNeighbor: PaneId | null;
-  paneOrder: readonly PaneId[];
+  paneGroups: PaneGroups;
 }) {
-  const setPaneOrder = useIndicatorActions().setPaneOrder;
+  const setPaneGroups = useIndicatorActions().setPaneGroups;
   // idx 1 의 위 이웃은 candle(고정) → 위로 이동 불가. 마지막 마운트 pane → 아래 불가.
   const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
   const canDown = idx < mountedCount - 1 && downNeighbor !== null;
@@ -335,14 +339,14 @@ function PaneMoveControls({
         label={`${label} pane 위로 이동`}
         testId={`pane-move-up-${paneId}`}
         disabled={!canUp}
-        onClick={() => { if (canUp && upNeighbor) setPaneOrder(movePaneBeside(paneOrder, paneId, upNeighbor, 'before')); }}
+        onClick={() => { if (canUp && upNeighbor) setPaneGroups(movePaneGroupBeside(paneGroups, paneId, upNeighbor, 'before')); }}
       />
       <PaneMoveButton
         dir="down"
         label={`${label} pane 아래로 이동`}
         testId={`pane-move-down-${paneId}`}
         disabled={!canDown}
-        onClick={() => { if (canDown && downNeighbor) setPaneOrder(movePaneBeside(paneOrder, paneId, downNeighbor, 'after')); }}
+        onClick={() => { if (canDown && downNeighbor) setPaneGroups(movePaneGroupBeside(paneGroups, paneId, downNeighbor, 'after')); }}
       />
     </span>
   );
@@ -576,7 +580,7 @@ function PaneLegendOverlay({
   timeframe,
   paneToggles,
   hasDepthDelta = false,
-  visibleSpecs,
+  visibleGroups,
   candles,
   axis,
   code = null,
@@ -588,8 +592,8 @@ function PaneLegendOverlay({
   const paramRef = useRef<MouseEventParams | null>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
-  // 사용자 소유 pane 순서 — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
-  const paneOrder = useWindowPaneOrder();
+  // 사용자 소유 pane 레이아웃(그룹) — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
+  const paneGroups = useWindowPaneGroups();
   // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
   // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
   const windowId = useWindowScopeId();
@@ -690,12 +694,12 @@ function PaneLegendOverlay({
     };
   }, [chart]);
 
-  // ── runtime pane order (spec) — drives both cell metadata and Y placement ──
-  const specs = visibleSpecs ?? paneSpecsForTimeframe(timeframe, paneToggles, paneOrder);
-  const specByPaneId = new Map<string, (typeof specs)[number]>();
-  specs.forEach((s) => {
+  // ── runtime pane groups — drives both cell metadata and Y placement ──
+  const groups = visibleGroups ?? paneGroupSpecsForTimeframe(timeframe, paneToggles, paneGroups);
+  const specByPaneId = new Map<string, PaneSpecGroup[number]>();
+  groups.forEach((g) => g.forEach((s) => {
     specByPaneId.set(s.name, s);
-  });
+  }));
 
   // ── value extraction (read-only over the chart API) ────────────────────
   const seriesData = paramRef.current?.seriesData ?? null;
@@ -920,14 +924,16 @@ function PaneLegendOverlay({
       // the icon buttons re-enable hits (iconBtnStyle).
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
     >
-      {/* 마운트된 pane 순서(specs)로 순회 — 레전드 행이 없는 pane 도 래퍼를 받아
-          ↑/↓ 순서 컨트롤을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더. */}
-      {specs.map((spec, idx) => {
-        const paneId = spec.name;
+      {/* 마운트된 pane 그룹 순서로 순회 — 레전드 행이 없는 pane 도 래퍼를 받아
+          ↑/↓ 순서 컨트롤을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더.
+          병합 pane 은 멤버들의 행을 그룹 순서대로 이어 붙인다. */}
+      {groups.map((group, idx) => {
+        const paneId = group[0].name;
+        const groupKey = group.map((s) => s.name).join(',');
         // Pane not mounted yet (first frame after a toggle/reorder) → skip;
         // self-heals next tick once chart.panes() includes it.
         if (idx >= paneTops.length) return null;
-        const paneRows = rowsByPane.get(paneId) ?? [];
+        const paneRows = group.flatMap((member) => rowsByPane.get(member.name) ?? []);
         const showMoveControls = idx > 0; // 캔들은 고정
         if (paneRows.length === 0 && !showMoveControls) return null;
         // 컨트롤이 있는 pane 만 플롯 우측으로 클램프한다. 캔들은 폭을 그대로 둬서
@@ -939,7 +945,7 @@ function PaneLegendOverlay({
             : LEGEND_INSET;
         return (
           <div
-            key={paneId}
+            key={groupKey}
             style={{
               position: 'absolute',
               top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
@@ -1010,13 +1016,14 @@ function PaneLegendOverlay({
                 paneId={paneId}
                 // 이름은 `PANE_DISPLAY_NAME` 에서 온다 — `spec.legendTitle` 은 셀 앞
                 // 제목 접두사라 대부분의 pane 에 일부러 없고, 그걸 쓰면 aria-label 이
-                // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다.
-                label={PANE_DISPLAY_NAME[paneId]}
+                // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다. 병합 pane 은
+                // 멤버 이름을 '+' 로 이어 그룹 전체가 움직임을 말한다.
+                label={group.map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')}
                 idx={idx}
-                mountedCount={Math.min(specs.length, paneTops.length)}
-                upNeighbor={idx - 1 >= 0 ? specs[idx - 1].name : null}
-                downNeighbor={idx + 1 < specs.length ? specs[idx + 1].name : null}
-                paneOrder={paneOrder}
+                mountedCount={Math.min(groups.length, paneTops.length)}
+                upNeighbor={idx - 1 >= 0 ? groups[idx - 1][0].name : null}
+                downNeighbor={idx + 1 < groups.length ? groups[idx + 1][0].name : null}
+                paneGroups={paneGroups}
               />
             )}
           </div>

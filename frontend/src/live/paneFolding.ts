@@ -49,13 +49,16 @@ export const INITIAL_FOLD_STATE: PaneFoldState = Object.freeze({
   timeAxisVisible: true,
 });
 
-export type PaneFoldResult = PaneFoldState & {
+export type PaneFoldResult<T = BoundPaneSpec> = PaneFoldState & {
   /** 실제로 마운트할 pane 목록 — 접힌 것을 제외한 앞쪽 슬라이스. */
-  specs: readonly BoundPaneSpec[];
+  specs: readonly T[];
 };
 
-/** pane 별 유효 stretch: 저장된 Pane Stretch(#703) 우선, 없으면 스펙 기본값. */
-export type StretchOf = (spec: BoundPaneSpec) => number;
+/** pane 별 유효 stretch: 저장된 Pane Stretch(#703) 우선, 없으면 스펙 기본값.
+ *  제네릭인 이유(pane 병합): 접기의 원자 단위가 spec 하나가 아니라 **pane 그룹**이
+ *  됐다 — 그룹의 절반만 접는 상태는 없으므로, 호출자가 그룹 목록과 그룹 stretch
+ *  (`paneGroupStretch`)를 넘긴다. 판정 로직은 항목이 무엇이든 동일하다. */
+export type StretchOf<T = BoundPaneSpec> = (item: T) => number;
 
 /**
  * 주어진 최소 가독 높이 기준으로 "몇 개를 접어야 남은 보조 pane 이 전부 그 높이를
@@ -63,10 +66,10 @@ export type StretchOf = (spec: BoundPaneSpec) => number;
  * 최소 가독 높이가 클수록 더 많이 접게 되므로 반환값은 `minAuxPx` 에 대해 단조증가 —
  * 이 단조성이 히스테리시스 dead band 가 성립하는 근거다.
  */
-function foldedCountFor(
-  specs: readonly BoundPaneSpec[],
+function foldedCountFor<T>(
+  specs: readonly T[],
   heightPx: number,
-  stretchOf: StretchOf,
+  stretchOf: StretchOf<T>,
   minAuxPx: number,
 ): number {
   const maxFold = Math.max(0, specs.length - 1); // 캔들은 남긴다
@@ -94,12 +97,12 @@ function foldedCountFor(
  * `heightPx` 가 아직 측정되지 않았으면(0 이하) 아무것도 접지 않는다 — 마운트 직후
  * ResizeObserver 가 첫 값을 주기 전에 전부 접었다가 펴는 게 훨씬 나쁘다.
  */
-export function foldPanes(
-  specs: readonly BoundPaneSpec[],
+export function foldPanes<T = BoundPaneSpec>(
+  specs: readonly T[],
   heightPx: number,
-  stretchOf: StretchOf,
+  stretchOf: StretchOf<T>,
   prev: PaneFoldState = INITIAL_FOLD_STATE,
-): PaneFoldResult {
+): PaneFoldResult<T> {
   if (!(heightPx > 0) || specs.length === 0) {
     return { specs, foldedCount: 0, timeAxisVisible: true };
   }
