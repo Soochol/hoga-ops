@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import BookPanel, { bookMidPrice } from './BookPanel';
 import { EMPTY_TRADE_SUMMARY } from '../liveSidebarAdapters';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -127,12 +127,119 @@ describe('BookPanel', () => {
       // (실측 정수 mid +10.5px). `PriceCell` 의 시/고/저 칩과 같은 규약 — 칩 유무가
       // 가격 위치를 바꾸지 않는다. jsdom 은 레이아웃을 계산하지 않으므로 여기서
       // 지킬 수 있는 건 **구조**뿐이다(픽셀 확인은 실브라우저 몫).
+      //
+      // ⚠ 단언 앵커가 뱃지 자신 → **뱃지 띠**(`PriceBadges`)로 옮겼다. 시/고/저 칩이
+      // 같은 슬롯을 쓰게 되면서 둘을 한 flex 행으로 합쳤기 때문이다(각각 absolute 면
+      // 겹친다). 계약은 그대로다 — 띠가 레이아웃 밖이고 기준이 가격 span 이다.
       renderPanel();
       const badge = screen.getByText('중');
-      expect(badge).toHaveClass('absolute');
+      const strip = badge.parentElement!;
+      expect(strip).toHaveAttribute('data-price-badges');
+      expect(strip).toHaveClass('absolute');
       // 기준 요소(= 가격 span)가 relative 여야 right-full 이 가격 왼쪽에 붙는다.
-      expect(badge.parentElement).toHaveClass('relative');
-      expect(badge.parentElement).toHaveTextContent('251,250');
+      expect(strip.parentElement).toHaveClass('relative');
+      expect(strip.parentElement).toHaveTextContent('251,250');
+    });
+
+    describe('시/고/저 칩 — 중간값도 사다리 행과 같은 규약', () => {
+      // 회귀: `중` 행은 ADR-0140 §7.1 로 **나중에 추가**된 행인데 `priceMarkers`
+      // 배선이 따라오지 않아, 중간값이 당일 시/고/저와 같아도 칩이 없었다.
+      //
+      // ⚠ 픽스처는 **갭 안쪽 가격**이어야 한다. lock(매도1 = 매수1)은 반례가 아니다
+      // — 그 가격은 매도1·매수1 `PriceCell` 로도 그려져 칩이 오히려 두 번 보인다.
+      // 여기서는 매도1 251,500 / 매수1 250,500 → 중간값 251,000 이 유효 호가지만
+      // 양쪽 사다리 어디에도 없다(= 이 행이 그 가격을 그리는 유일한 자리).
+      function gapSnap(): OrderbookSnapshot {
+        const s = snap();
+        return { ...s, bid: [{ price: 250_500, qty: 200 }, ...s.bid.slice(1)] };
+      }
+      const midRow = () => screen.getByTestId('book-mid-row');
+
+      it('중간값이 당일 고가면 `고` 칩이 붙는다', () => {
+        renderPanel({ snapshot: gapSnap(), summary: { ...SUMMARY, dayHigh: 251_000 } });
+        expect(midRow()).toHaveTextContent('251,000');
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+      });
+
+      it('시가=저가로 겹치면 `저` 하나만 — 고 > 저 > 시 우선순위', () => {
+        // 사용자 결정 2026-08-24: 한 가격에 라벨은 하나. 칩 두 개가 쌓이면 그 행만
+        // 폭이 튄다. 겹침은 드물지 않다(시가=저가 = 갭하락 후 상승).
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayOpen: 251_000, dayLow: 251_000 },
+        });
+        expect(within(midRow()).getByText('저')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('시')).toBeNull();
+      });
+
+      it('시가=고가로 겹치면 `고` 하나만', () => {
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayOpen: 251_000, dayHigh: 251_000 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('시')).toBeNull();
+      });
+
+      it('고가=저가(하루 한 가격)면 `고` 가 남는다 — 표 순서가 그 선택이다', () => {
+        // 상한가 직행처럼 하루 종일 한 가격에만 체결된 날. 두 값이 같아 어느 쪽을
+        // 골라도 가격은 같고, `DAY_MARKERS` 순서가 결정을 이미 못박고 있다.
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 251_000 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('저')).toBeNull();
+      });
+
+      it('겹치지 않으면 각 가격이 자기 칩을 그대로 갖는다', () => {
+        // 우선순위가 **겹칠 때만** 작동한다는 대조군 — 없으면 위 셋은 "칩이 하나만
+        // 뜬다" 를 증명할 뿐 "겹칠 때만 줄인다" 는 증명하지 못한다.
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 246_000, dayOpen: 251_500 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(screen.getByText('저')).toBeInTheDocument();
+        expect(screen.getByText('시')).toBeInTheDocument();
+      });
+
+      it('`중` 은 칩이 붙어도 숫자에 가장 가깝다 — 칩 유무가 `중` x 를 안 바꾼다', () => {
+        renderPanel({ snapshot: gapSnap(), summary: { ...SUMMARY, dayHigh: 251_000 } });
+        const strip = within(midRow()).getByText('중').parentElement!;
+        // 띠는 right-full 이라 **오른쪽 끝이 숫자에 붙는다** → 마지막 자식이 `중`.
+        expect(strip.lastElementChild).toHaveTextContent('중');
+        expect(strip.firstElementChild).toHaveTextContent('고');
+      });
+
+      it('소수 중간값은 분기 없이 걸러진다 — 정수 시/고/저와 === 가 성립하지 않는다', () => {
+        // 저가주에선 `.5` 가 상시다(실측 4.88%). 별도 가드 없이 엄격 비교가 막는다.
+        const s = snap();
+        const odd = { ...s, bid: [{ price: 250_999, qty: 200 }, ...s.bid.slice(1)] };
+        renderPanel({ snapshot: odd, summary: { ...SUMMARY, dayHigh: 251_249 } });
+        expect(midRow()).toHaveTextContent('251,249.5');
+        expect(within(midRow()).queryByText('고')).toBeNull();
+      });
+
+      it('사다리 한쪽이 비어 중간값이 없으면 칩도 없다', () => {
+        const s = snap();
+        renderPanel({ snapshot: { ...s, bid: [] }, summary: { ...SUMMARY, dayHigh: 251_500 } });
+        expect(midRow()).toHaveTextContent('−');
+        expect(within(midRow()).queryByText('고')).toBeNull();
+      });
+    });
+
+    it('현재가가 중간값과 같으면 박스가 붙는다 — 칩과 같은 누락이었다', () => {
+      // 형제 결함: `boxed` 도 `MidPriceRow` 에 배선돼 있지 않았다.
+      const s = snap();
+      const gap = { ...s, bid: [{ price: 250_500, qty: 200 }, ...s.bid.slice(1)] };
+      const { container } = renderPanel({ snapshot: gap, lastPrice: 251_000 });
+      const boxed = screen.getByTestId('book-mid-row').querySelector('.border-fg-dim');
+      expect(boxed).not.toBeNull();
+      // 구분선과 박스는 **다른 요소**다 — 한 요소면 박스 윗변만 색이 갈린다.
+      expect(boxed!.classList.contains('border-border')).toBe(false);
+      // 래퍼(1px) + 셀(21px) = 22px — 22행 정렬 계약 불변.
+      expect(container.querySelector('.grid')!.children[1].children).toHaveLength(22);
     });
 
     it('사다리 한쪽이 비면 대시로 남긴다 — 행은 유지(정렬 계약)', () => {
@@ -262,6 +369,56 @@ describe('BookPanel', () => {
     expect(value.className).toContain('whitespace-nowrap');
     const label = screen.getByText('250일');
     expect(label.className).toContain('whitespace-nowrap');
+  });
+
+  describe('요약표 시/고/저 칩 — 사다리 밖일 때만 (배타 규칙)', () => {
+    // 사다리는 현재가 ±10틱만 덮는다. 일중 변동이 그보다 크면 시·고·저가 밖으로
+    // 나가 칩을 붙일 행이 사라진다(실측 2026-08-24 삼성전자 −8.5%: 고가·시가 둘 다
+    // 밖). 그때 요약표가 칩을 대신 받는다 — **등장 자체가 신호**다.
+    const summaryRow = (label: string) => screen.getByText(label).parentElement!;
+
+    it('고가가 사다리 밖이면 `최고` 행에 칩이 뜬다', () => {
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 999_000 } });
+      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+    });
+
+    it('시·저도 같은 규칙이다 — 셋 다 밖이면 셋 다 뜬다', () => {
+      // 기본 픽스처가 이미 셋 다 밖이다(시 245,500 · 고 257,500 · 저 238,500 vs
+      // 사다리 246,500~256,000).
+      renderPanel();
+      expect(within(summaryRow('시작')).getByText('시')).toBeInTheDocument();
+      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+      expect(within(summaryRow('최저')).getByText('저')).toBeInTheDocument();
+    });
+
+    it('사다리 행에 있으면 요약표엔 안 뜬다 — 칩은 정확히 한쪽에만', () => {
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_500 } }); // 매도1
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
+      // 대조군: 사다리 쪽에는 있어야 한다. 없으면 위 단언은 아무것도 증명 못 한다.
+      expect(screen.getAllByText('고')).toHaveLength(1);
+    });
+
+    it('중간값이 고가여도 요약표엔 안 뜬다 — `중` 행도 가격을 그리는 자리다', () => {
+      // 이 판정에서 `중` 을 빼면 사다리와 요약표에 칩이 **동시에** 뜬다.
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } }); // = 중간값
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
+      expect(within(screen.getByTestId('book-mid-row')).getByText('고')).toBeInTheDocument();
+    });
+
+    it('값이 없으면 칩도 없다 — 대시 행에 색딱지가 붙지 않는다', () => {
+      renderPanel({ summary: { ...SUMMARY, dayOpen: null, dayHigh: null, dayLow: null } });
+      expect(screen.queryByText('고')).toBeNull();
+      expect(screen.queryByText('저')).toBeNull();
+      expect(screen.queryByText('시')).toBeNull();
+    });
+
+    it('칩이 붙어도 값은 개행되지 않는다 — 행 높이 계약의 CSS 방어선', () => {
+      // 실측 폭: 칩 달린 `최고` 111px < 이 열의 제약을 쥔 `250일` 149px 이라
+      // 칩이 새 제약이 되지 않는다. jsdom 은 폭을 못 재므로 여기선 계약(클래스)만.
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 1_319_000 } });
+      const value = within(summaryRow('최고')).getByText('고').parentElement!;
+      expect(value.className).toContain('whitespace-nowrap');
+    });
   });
 
   it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 22행 = 중앙 22행)', () => {
