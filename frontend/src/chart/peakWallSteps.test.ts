@@ -106,6 +106,31 @@ describe('buildPeakWallStepPoints', () => {
     )).toEqual([]);
   });
 
+  it('세션 밖 캔들은 점을 내지 않는다 — 클램프 중복이 lwc 단언을 못 터뜨린다', () => {
+    // ⚠ 실사고 재현(2026-08-24): `toVirtual` 은 세션 밖 시각을 경계로 **클램프**한다.
+    // **마지막 날의 마감 후(시간외) 캔들**이 둘이면 둘 다 같은 가상초로 클램프되고
+    // — 다음 세그먼트가 없어 day 리셋으로도 안 걸러진다 — setData 가
+    // "data must be asc ordered by time" 단언으로 차트 전체를 죽였다.
+    // (중간 날의 마감 후 캔들은 클램프가 다음 세그먼트로 떨어져 running=null 로
+    // 우연히 스킵된다 — 그 형태의 탐침은 가드를 지워도 안 빨개진다. red-check 실측.)
+    const withAfterHours = [
+      ...candles,
+      candle(DAY2_OPEN + 10 * MIN),   // 마지막 날 마감(+6분) 후 — 시간외 행
+      candle(DAY2_OPEN + 20 * MIN),   // 둘째 — 같은 값으로 클램프되는 쌍
+    ];
+    const out = buildPeakWallStepPoints(
+      [wall(DAY1_OPEN + 1 * MIN, 9_000), wall(DAY2_OPEN + 1 * MIN, 5_000)],
+      withAfterHours, axis, '#3485FA',
+    );
+    const times = out.map((pt) => Number(pt.time));
+    // (a) 어떤 입력에서든 시각은 강한 단조 증가 — lwc 단언의 생산자 쪽 보증.
+    expect(times.every((t, i) => i === 0 || t > times[i - 1])).toBe(true);
+    // (b) 세션 밖 캔들은 아예 기여하지 않는다 — 마지막 값 점이 day2 의 마지막
+    //     **세션 내** 캔들이다. (단조 가드만으로는 첫 클램프 점 하나가 살아남으므로
+    //     (a)와 별개 탐침이다.)
+    expect(times[times.length - 1]).toBe(vsecOf(DAY2_OPEN + 5 * MIN));
+  });
+
   it('정합: 계단의 마지막 값 === 그날 세그먼트 qty 최댓값 (오버레이 수평선과 같은 숫자)', () => {
     const day1Walls = [wall(DAY1_OPEN + 1 * MIN, 9_000), wall(DAY1_OPEN + 4 * MIN, 29_000)];
     const out = buildPeakWallStepPoints(day1Walls, candles.slice(0, 6), axis, '#3485FA');
