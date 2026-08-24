@@ -263,16 +263,31 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
 }
 
 /**
- * The cursor-tracked value for a series: the data point under the crosshair
- * when `seriesData` (from `param.seriesData`) holds it, otherwise the series'
- * latest data point. Whitespace points (no `value`) and absent series resolve
- * to null so the legend shows "—".
+ * 이 series 의 판독값. 우선순위 **셋**이고, OHLC 행의 봉 선택과 같은 순서다
+ * (`PaneLegendOverlay` 의 OHLC 주석) — 한 레전드 안에서 행마다 다른 봉을 읽으면
+ * 그것이야말로 "다른 차트" 로 읽힌다.
+ *
+ *   1. **내 마우스**가 올라간 점(`seriesData` = `param.seriesData`)
+ *   2. **옆 창이 동기화로 그려 준 봉**(`atTimeSec` = 그 봉의 가상초)
+ *   3. 최신 점(폴백)
+ *
+ * 2번이 따로 필요한 이유는 lwc 가 `setCrosshairPosition` 으로 그린 크로스헤어에
+ * 대해 `subscribeCrosshairMove` 를 **발화시키지 않기** 때문이다(`CursorSyncCrosshair`
+ * 헤더의 실측). 그래서 동기화 창은 `seriesData` 가 언제나 비어 있고, 3번만 있으면
+ * **항상 최신 봉**을 읽는다 — 선은 과거 봉에 서 있는데 숫자만 오늘이 된다.
+ *
+ * 경계 하나: `atTimeSec` 은 **정확 일치**만 본다. 그 시각에 포인트가 없으면
+ * (whitespace·결측) 3번으로 떨어지는데, 이는 **lwc 자체 크로스헤어와 같은 규칙**이다
+ * — lwc 도 그 시각에 포인트가 없는 series 를 `param.seriesData` 에서 빼므로 1번이
+ * 미스나 종전에도 최신으로 샜다. 둘을 갈라 놓으면 같은 결측이 호버할 때와 동기화될
+ * 때 다른 값을 낸다. "—" 로 바꾸려면 **호버 경로도 같이** 바꿔야 한다.
  *
  * Pure over the chart API objects — pass a `{ data() }` stub to unit-test.
  */
 export function readSeriesValue(
   series: ISeriesApi<SeriesType> | undefined,
   seriesData: ReadonlyMap<ISeriesApi<SeriesType>, unknown> | null,
+  atTimeSec: number | null = null,
 ): number | null {
   if (!series) return null;
   if (seriesData) {
@@ -284,8 +299,43 @@ export function readSeriesValue(
   const dataFn = (series as { data?: () => readonly unknown[] }).data;
   if (typeof dataFn !== 'function') return null;
   const data = dataFn.call(series);
-  const last = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : undefined;
-  return pointValue(last);
+  if (!Array.isArray(data) || data.length === 0) return null;
+  if (atTimeSec !== null) {
+    const atSync = pointValue(findPointAtTime(data, atTimeSec));
+    if (atSync !== null) return atSync;
+  }
+  return pointValue(data[data.length - 1]);
+}
+
+/** `timeSec` 에 **정확히** 서 있는 포인트(없으면 `undefined`).
+ *
+ *  series 데이터가 time 오름차순임에 기대는 이진 탐색이다 — lwc 가 그 순서를
+ *  강제하므로(정렬되지 않은 `setData` 를 거부한다) 이 차트에 들어간 것은 이미
+ *  정렬돼 있다.
+ *
+ *  `time` 이 숫자가 아니면(lwc 의 `BusinessDay` 객체) 비교할 수 없으므로 탐색을
+ *  포기한다. 이 리포의 차트는 전부 가상초(number)라 도달 경로가 없지만, 억지로
+ *  재서 엉뚱한 봉을 짚는 것보다 폴백이 낫다. */
+function findPointAtTime(data: readonly unknown[], timeSec: number): unknown {
+  let lo = 0;
+  let hi = data.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const t = pointTime(data[mid]);
+    if (t === null) return undefined;
+    if (t === timeSec) return data[mid];
+    if (t < timeSec) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+function pointTime(point: unknown): number | null {
+  if (point && typeof point === 'object' && 'time' in point) {
+    const t = (point as { time: unknown }).time;
+    if (typeof t === 'number' && Number.isFinite(t)) return t;
+  }
+  return null;
 }
 
 function pointValue(point: unknown): number | null {

@@ -39,9 +39,16 @@
  * 같은 종목 창끼리만 동기화하던 2026-08-11 동작으로 돌아간다(방향과 무관하게 일괄).
  *
  * 실측으로 확인한 성질 하나: `setCrosshairPosition` 은 그 차트의
- * `subscribeCrosshairMove` 를 **발화시키지 않는다.** 그래서 일봉 창의 레전드·툴팁은
- * 반응하지 않고(의도), 사이드바 커서를 오염시키거나 발행↔소비 피드백 루프를 만들지도
- * 않는다. 레전드까지 연동하려면 별도 경로가 필요하다 — 지금 범위 밖이다.
+ * `subscribeCrosshairMove` 를 **발화시키지 않는다.** 좋은 쪽 귀결은 사이드바 커서를
+ * 오염시키거나 발행↔소비 피드백 루프를 만들지 않는다는 것이다. 나쁜 쪽은 소비 창의
+ * `param` 이 영영 비어 있다는 것 — 거기에 기대던 표면은 **자기 힘으로 최신값으로
+ * 떨어져** 선과 숫자가 어긋난다.
+ *
+ * 그래서 **레전드는 별도 경로로 연동돼 있다**: 같은 판정을 `useCursorSyncResolution`
+ * 으로 나눠 받아 OHLC 행은 그 봉을(2026-08-22), 이동평균·pane 값 행과 flag provider
+ * 는 그 봉의 가상초로 자기 series 를 조회한다(2026-08-24, `readSeriesValue` 의
+ * `atTimeSec`). **`CandleTooltip` 은 여전히 반응하지 않는다** — 마우스를 따라다니는
+ * 표면이라 포인터가 없는 창에 띄울 자리가 없다(의도).
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';

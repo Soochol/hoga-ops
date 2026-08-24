@@ -4,6 +4,7 @@ import {
   publishWindowWarnings,
   clearWindowWarnings,
   useWindowWarnings,
+  backfillProgressDate,
 } from './windowWarningsSource';
 
 describe('windowWarningsSource', () => {
@@ -42,5 +43,51 @@ describe('windowWarningsSource', () => {
     expect(result.current.backfillEarliestDate).toBe('20260501');
     act(() => clearWindowWarnings('w1'));
     expect(result.current.backfillEarliestDate).toBeNull();
+  });
+});
+
+/**
+ * 진행 칩에 **무슨 날짜를 실을지** 정하는 순수 판정. 발행부(`ChartWindow`)가 이걸
+ * 부르므로 여기가 회귀를 잡는 자리다 — 렌더층(`TitleBarSymbolRow`) 테스트는 "발행된
+ * 값을 그린다" 만 재므로 **소스를 홀드된 번들로 되돌리는 회귀를 못 본다.**
+ */
+describe('backfillProgressDate', () => {
+  const BASE = {
+    extending: true,
+    historicalFromDate: '20260101',
+    settledFromDate: '20260609',
+    earliestSegmentDate: '20260701',
+  };
+
+  it('확장 중이 아니면 칩을 띄우지 않는다', () => {
+    expect(backfillProgressDate({ ...BASE, extending: false })).toBeNull();
+  });
+
+  it('창이 아직 없으면(초기 로드) 띄우지 않는다 — 백필이 아니라 첫 로드다', () => {
+    expect(backfillProgressDate({ ...BASE, historicalFromDate: null })).toBeNull();
+  });
+
+  it('캔들이 아직 0개면 띄우지 않는다', () => {
+    expect(backfillProgressDate({ ...BASE, earliestSegmentDate: null })).toBeNull();
+  });
+
+  // ── 이 판정의 목적 (2026-08-24) ──────────────────────────────────────
+  // 종전엔 `segments[0].date` 만 썼는데, 그 번들은 워크백 내내 `extending` 홀드
+  // (`lastSettledChartRef`)라 **날짜가 고정된다**. 실측(000270 10m, 1초 간격 샘플링):
+  // t+4~16s 동안 "6/9까지" 가 13초간 그대로였고 그 사이 7일 타일이 여러 개 도착했다.
+  // 13초 동안 같은 날짜가 멈춰 있으면 사용자에겐 **멈춘 것과 구별되지 않는다.**
+  it('홀드된 세그먼트가 아니라 **settled from** 을 싣는다 — 진행이 보여야 한다', () => {
+    // settled 가 세그먼트보다 과거 = 워크백이 그만큼 더 걸어갔다는 뜻.
+    expect(backfillProgressDate(BASE)).toBe('20260609');
+  });
+
+  it('settled 가 없는 경로(지수·미배선)는 세그먼트로 폴백한다 — 칩을 죽이지 않는다', () => {
+    expect(backfillProgressDate({ ...BASE, settledFromDate: null })).toBe('20260701');
+  });
+
+  it('settled 가 세그먼트보다 **미래면 세그먼트를 쓴다** — 칩 날짜가 뒤로 가지 않는다', () => {
+    // 축소·오늘-델타로 창이 좁아진 값이 되실리는 렌더가 있으면 표시가 후퇴한다.
+    // 진행 표시는 단조로워야 읽힌다.
+    expect(backfillProgressDate({ ...BASE, settledFromDate: '20260801' })).toBe('20260701');
   });
 });

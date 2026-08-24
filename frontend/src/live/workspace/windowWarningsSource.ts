@@ -21,6 +21,43 @@ export type WindowWarnings = {
  *  한다(새 객체 반환 시 무한 렌더). */
 const EMPTY: WindowWarnings = { backfillEarliestDate: null };
 
+/**
+ * 진행 칩(`past-backfill-progress-chip`)에 **무슨 날짜를 실을지** 정한다. 발행부
+ * (`ChartWindow`)가 부르는 순수 판정 — 게이트와 소스 선택이 한자리에 있어야 회귀를
+ * 테이블로 잡을 수 있다.
+ *
+ * **왜 `earliestSegmentDate` 를 그대로 쓰면 안 되는가.** 그 세그먼트는 워크백 내내
+ * `extending` 홀드(`useLiveBundle` 의 `lastSettledChartRef`) 대상이라 **날짜가
+ * 고정된다.** 실측(2026-08-24, 000270 10m hogaplay, 1초 간격 샘플링): t+4~16s 동안
+ * 「6/9까지」가 13초간 그대로였고 그 사이 7일 타일이 여러 개 도착했다. 13초 동안 같은
+ * 날짜가 멈춰 있으면 사용자에겐 **멈춘 것과 구별되지 않는다** — 칩이 있는데도 "고장난
+ * 것 같다" 가 되는 자리다.
+ *
+ * `settledFromDate`(캔들 병합본이 되싣는 from, PR #1561)는 홀드를 타지 않고 **타일
+ * merge 마다 갱신**되므로 진행이 보인다.
+ *
+ * 두 가지를 일부러 방어한다:
+ *  - **폴백** — `settledFromDate` 가 없는 경로(미배선·지수)에서 칩을 조용히 죽이지
+ *    않는다. 종전 소스로 되돌아간다.
+ *  - **후퇴 금지** — 축소나 오늘-델타로 좁아진 창이 되실리는 렌더에서 표시가 뒤로
+ *    가지 않게, 둘 중 **더 과거**를 쓴다. 진행 표시는 단조로워야 읽힌다.
+ */
+export function backfillProgressDate(args: {
+  /** 지금 과거 확장이 진행 중인가(`useLiveBundle` 의 `extending`). */
+  extending: boolean;
+  /** 창이 한 번이라도 확장됐는가. null 이면 백필이 아니라 첫 로드다. */
+  historicalFromDate: string | null;
+  /** 캔들 병합본이 되싣는 from — 홀드를 타지 않는다. 미배선 경로는 null. */
+  settledFromDate: string | null;
+  /** 홀드된 번들의 최고(最古) 세그먼트 날짜. 캔들이 0개면 null. */
+  earliestSegmentDate: string | null;
+}): string | null {
+  const { extending, historicalFromDate, settledFromDate, earliestSegmentDate } = args;
+  if (!extending || historicalFromDate === null || earliestSegmentDate === null) return null;
+  if (settledFromDate === null) return earliestSegmentDate;
+  return settledFromDate < earliestSegmentDate ? settledFromDate : earliestSegmentDate;
+}
+
 const byWindow = new Map<string, WindowWarnings>();
 const listeners = new Set<() => void>();
 
