@@ -32,6 +32,7 @@ from hoga.api.invariants import indicator_session_bounds, normalize_session_boun
 from hoga.api.models import (
     CLIPPED_TIMEFRAME_MS,
     AskPeak,
+    AskPeakCandidate,
     BidPeak,
     BrokerLateEntryEvent,
     DateWarning,
@@ -711,12 +712,24 @@ def _unix_or_none(date: str, intra_ms: int | None) -> int | None:
     return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
 
 
-def _ask_candidate(date: str, c: snapshots_tbl.AskPeakCandidateRow) -> dict[str, int]:
-    return {
-        "price": c.price,
-        "qty": c.qty,
-        "t_ms": ms_from_midnight_to_unix_ms(date, c.intra_ms),
-    }
+def _ask_candidate(date: str, c: snapshots_tbl.AskPeakCandidateRow) -> AskPeakCandidate:
+    """행 → wire 모델. **dict 를 돌려주지 않는다.**
+
+    소비처가 둘인데 검증 여부가 갈리기 때문이다: `AskPeak(...)` 생성자로 가는 쪽은
+    pydantic 이 dict 를 검증해 모델로 만들어 주지만, `model_copy(update=...)` 로 가는
+    쪽(`_reduced_ask_peak`)은 **검증을 하지 않아** dict 가 그대로 남는다. 그러면
+    필드 선언(`list[AskPeakCandidate]`)과 실제 값이 어긋난 채 직렬화되어
+    `PydanticSerializationUnexpectedValue` 경고가 나고, 값은 우연히 같게 나가지만
+    **검증을 건너뛴 채**다(2026-08-24 사용자 로그에서 발견).
+
+    여기서 모델로 만들면 두 경로가 같아진다 — 생성자 쪽은 모델 인스턴스를 그대로
+    받으므로 동작이 바뀌지 않는다.
+    """
+    return AskPeakCandidate(
+        price=c.price,
+        qty=c.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, c.intra_ms),
+    )
 
 
 def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> AskPeak:

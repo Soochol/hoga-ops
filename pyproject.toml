@@ -46,6 +46,21 @@ exclude = ["tests*", "explorer*"]
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
 asyncio_mode = "auto"
+filterwarnings = [
+    # pydantic 이 **선언된 타입과 다른 값**을 직렬화할 때 내는 경고를 실패로 올린다.
+    #
+    # 왜 필요한가: `model_copy(update=...)` 는 **검증을 하지 않는다.** 모델로 선언된
+    # 필드에 raw dict 를 대입해도 조용히 통과하고, 직렬화 때가 되어서야 이 경고가
+    # 흐른다. 값은 우연히 같게 나가지만 검증을 건너뛴 채라, 키가 늘거나 타입이
+    # 어긋나도 그대로 지나간다. 2026-08-24 에 두 곳에서 실제로 났다
+    # (`rest_capacity_scheduler` · `traded_peaks`).
+    #
+    # ⚠ **이 가드의 한계 — 실행되지 않는 코드는 경고를 내지 않는다.** 위 두 건 중
+    # `traded_peaks` 쪽(`bundle._peak_with_rep_outputs`)은 **테스트가 하나도 없어서**
+    # 이 필터를 그때 걸어 두었더라도 못 잡았을 것이다. 커버리지가 먼저이고 이 필터는
+    # 그 위에 얹는 그물이다.
+    "error:Pydantic serializer warnings:UserWarning",
+]
 markers = [
     # 벽시계 경과시간을 단언하는 테스트. 로컬에서는 기본으로 실행되고, CI 는
     # `-m 'not wallclock'` 으로 제외한 뒤 별도 non-blocking 잡에서 돌린다.
