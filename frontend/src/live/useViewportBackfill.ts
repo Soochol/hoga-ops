@@ -309,8 +309,14 @@ export function useViewportBackfill({
     prevEarliestTsMsRef.current = null;
     prevLastCandleMsRef.current = null;
     swapPendingRef.current = false;
-    prevSourceKeyRef.current = null;
     prevCandleIdentityRef.current = null;
+    // ⚠ `prevSourceKeyRef` 는 **일부러 리셋하지 않는다.** 여기서 null 로 만들면 1b 가
+    // 다음 소스 변경을 첫 관측으로 오인해 래치를 세우지 못한다 — 1b 의 deps 는
+    // `[candleSourceKey]` 라 봉·종목 전환만으로는 재실행되지 않아 null 이 그대로 남기
+    // 때문이다. 2026-08-24 실측이 그 구멍이었다: 새로고침 직후 토글은 고쳐졌는데
+    // **봉을 바꾼 뒤 토글하면** 종전 증상이 그대로였다(`lr [-73,161]`).
+    // 소스 축의 값은 `'disk' | 'vendor'` 둘뿐이라 종목·봉을 건너 살아남아도 stale 이
+    // 될 수 없다 — 다음 커밋의 1b 가 현재 값과 비교할 뿐이다.
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
     lastAdvancedFromRef.current = null;
@@ -438,7 +444,15 @@ export function useViewportBackfill({
     // 2a. 소스 스왑 재착석. 키가 갈렸고(1b 래치) **캔들도 실제로 갈린** 첫 커밋에서
     // 한 번. 분봉 전용이다 — 캘린더 봉의 재배치는 `LiveChartRoot` 의 초기 뷰 effect 가
     // 소유하므로(캔들 수가 바뀌면 스스로 다시 앉힌다) 여기서 겹치면 둘이 싸운다.
-    if (swapPendingRef.current && isMinute && prevIdentity !== null && identity !== prevIdentity) {
+    // `canTriggerBackfill()` 은 "초기 뷰 배치가 끝났는가" 를 나른다(그 콜백의 정의).
+    // 배치 전에 앉히면 초기 뷰 effect 와 같은 커밋에서 두 주체가 뷰포트를 다툰다.
+    if (
+      swapPendingRef.current
+      && isMinute
+      && prevIdentity !== null
+      && identity !== prevIdentity
+      && canTriggerBackfill()
+    ) {
       swapPendingRef.current = false;
       if (snap && reseatAfterSourceSwap(snap)) return;
     }
@@ -486,7 +500,7 @@ export function useViewportBackfill({
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
       if (import.meta.env.DEV) console.warn('[live] viewport reposition threw', e);
     }
-  }, [chart, bundle, axis, historicalRange, timeframe, venue]);
+  }, [chart, bundle, axis, historicalRange, timeframe, venue, canTriggerBackfill]);
 
   // 3a. 진행 루프(스텝 2..N): 한 스텝이 settle할 때마다 활성 fill의 예산을 소진하며
   // 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다 — 예산과 목표는 트리거(3b)

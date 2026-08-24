@@ -3638,6 +3638,55 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     expect(target.to - target.from).toBe(DISK_TS.length);
   });
 
+  it('봉을 바꾼 뒤 눌러도 재착석한다 — 리셋이 소스 축 기억을 지우면 안 된다', () => {
+    // 2026-08-24 사용자 보고의 정확한 경로다. 새로고침 직후 토글은 고쳐졌는데
+    // **봉을 바꾼 뒤 토글**하면 종전 증상 그대로였다(실측 `lr [-73,161]`).
+    //
+    // 기전: 봉 전환은 `[code, timeframe]` 리셋 effect 를 태우는데, 1b 래치의 deps 는
+    // `[candleSourceKey]` 뿐이라 그 커밋에 재실행되지 않는다. 리셋이 소스 축 기억을
+    // null 로 만들면 그 null 이 그대로 남고, 다음 토글에서 1b 가 "첫 관측" 으로 오인해
+    // 래치를 세우지 못한다.
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
+    // 봉 전환이 `viewKey` 를 바꿔 차트를 remount 하므로 **두 번** 만들어진다.
+    // `mockImplementation`(영구)을 쓰면 뒤따르는 테스트의 mock 까지 덮어써서
+    // 크로스헤어 스위트가 통째로 깨진다 — Once 를 필요한 수만큼 건다.
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    // 봉 전환 — 리셋 effect 가 돈다. 소스는 그대로라 1b 는 재실행되지 않는다.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    // 새 봉에서 캔들이 한 번 더 커밋된다(prevIdentity 를 세운다).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS.slice(0, 4))}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 이제 토글.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="disk"
+        bundle={todayBundle(DISK_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(beforeSwap);
+    const latest = todayIdx(DISK_TS[2]);
+    const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    expect(target.from).toBe(latest + 1 - DISK_TS.length);
+  });
+
   it('키가 그대로면 재착석하지 않는다 — 프리펜드·SSE 성장은 종전 주체가 답한다', () => {
     // 재착석 판정은 「키 변화 AND 캔들 정체성 변화」의 AND 다. 이 단언이 AND 의 왼쪽을
     // 잰다: 캔들이 크게 갈려도 소스가 그대로면 여기서 손대지 않는다.
