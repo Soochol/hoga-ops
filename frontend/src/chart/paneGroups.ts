@@ -168,6 +168,12 @@ const SHARED_AXIS_SETS: readonly (readonly string[])[] = [
   ['investor-foreign', 'investor-institution'],
 ];
 
+/** 이 멤버 구성이 화이트리스트 축 공유 조합인가(2인 이상 + 전원이 한 세트 안). */
+export function isSharedAxisGroup(members: readonly string[]): boolean {
+  if (members.length <= 1) return false;
+  return SHARED_AXIS_SETS.some((set) => members.every((id) => set.includes(id)));
+}
+
 /**
  * 병합 pane 에서 `member` 시리즈가 쓸 priceScaleId 를 정한다.
  *
@@ -191,9 +197,6 @@ export function priceScaleIdForGroupMember(
 ): string | null {
   if (group.length <= 1) return null;
   if (group[0] === member) return null;
-  const shared = SHARED_AXIS_SETS.some(
-    (set) => group.every((id) => set.includes(id)),
-  );
-  if (shared) return null;
+  if (isSharedAxisGroup(group)) return null;
   return `merged:${member}:${originalId}`;
 }

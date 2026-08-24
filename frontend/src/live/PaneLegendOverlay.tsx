@@ -16,7 +16,7 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { memo, useEffect, useMemo, useReducer, useRef, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
@@ -37,10 +37,25 @@ import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { scopeEntries } from './indicators/windowScopedRegistry';
 import type { PaneToggles } from './paneSpecsForTimeframe';
-import { paneGroupSpecsForTimeframe, type PaneSpecGroup } from './paneGroupSpecs';
+import { paneGroupIds, paneGroupSpecsForTimeframe, type PaneSpecGroup } from './paneGroupSpecs';
 import type { PaneId } from '../chart/drawing/types';
 import { PANE_DISPLAY_NAME } from '../chart/paneOrder';
-import { movePaneGroupBeside, type PaneGroups } from '../chart/paneGroups';
+import {
+  extractPaneToBoundary,
+  isSharedAxisGroup,
+  mergePaneIntoGroup,
+  movePaneGroupBeside,
+  paneGroupIndexOf,
+  type PaneGroups,
+} from '../chart/paneGroups';
+import {
+  boundaryDropLabel,
+  classifyPaneDropTarget,
+  fullBoundaryIndex,
+  mergeDropHint,
+  PANE_DRAG_THRESHOLD_PX,
+  type PaneDropTarget,
+} from './paneMergeDrag';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -325,10 +340,7 @@ function PaneMoveControls({
         gap: 'var(--space-2xs)',
         pointerEvents: 'auto',
         padding: 'var(--space-2xs)',
-        // pane 우측 정렬. `justifyContent:'space-between'` 이 아니라 auto 마진인
-        // 이유는 legend 행이 없는 pane(호가비·체결강도·투자자)에서 자식이 이
-        // 컨트롤 **하나뿐**이 되기 때문 — space-between 은 그 하나를 왼쪽에 둔다.
-        marginLeft: 'auto',
+        // 우측 정렬(marginLeft:auto)은 이제 감싸는 클러스터(칩 + 이동 버튼)가 갖는다.
         // boxStyle 의 `maxWidth:100%`+`overflow:hidden` 과 결합하면 좁은 pane 에서
         // 버튼이 잘린다. 잘려야 하는 쪽은 legend 행이고 컨트롤은 아니다.
         flexShrink: 0,
@@ -348,6 +360,112 @@ function PaneMoveControls({
         disabled={!canDown}
         onClick={() => { if (canDown && downNeighbor) setPaneGroups(movePaneGroupBeside(paneGroups, paneId, downNeighbor, 'after')); }}
       />
+    </span>
+  );
+}
+
+/** 드래그 그립(⠿) — 칩이 잡을 수 있는 물건임을 말한다. */
+function GripGlyph() {
+  return (
+    <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true">
+      {[1.5, 6.5].map((x) =>
+        [1.5, 6, 10.5].map((y) => (
+          <circle key={`${x}:${y}`} cx={x} cy={y} r="1.1" fill="currentColor" />
+        )))}
+    </svg>
+  );
+}
+
+/**
+ * pane 이름 칩 — 병합/분리 드래그의 핸들이자(⠿·grab 커서), 클릭하면 병합 메뉴가
+ * 열린다(드래그 임계값 `PANE_DRAG_THRESHOLD_PX` 미만의 pointerup = 클릭).
+ * 병합 pane 의 멤버 칩에는 ✕(그 지표 끄기)가 붙고, 스케일이 격리된 그룹의 첫
+ * 칩에는 「축」 배지(오른쪽 축 눈금 소유자)가 붙는다.
+ */
+function PaneChip({
+  paneId,
+  label,
+  axisOwner,
+  showRemove,
+  onRemove,
+  dimmed,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  paneId: PaneId;
+  label: string;
+  axisOwner: boolean;
+  showRemove: boolean;
+  onRemove: (() => void) | null;
+  dimmed: boolean;
+  onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: () => void;
+}) {
+  return (
+    <span
+      data-testid={`pane-chip-${paneId}`}
+      style={{
+        ...boxStyle,
+        gap: 'var(--space-2xs)',
+        pointerEvents: 'auto',
+        flexShrink: 0,
+        color: 'var(--fg-dim)',
+        cursor: 'grab',
+        userSelect: 'none',
+        touchAction: 'none',
+        ...(dimmed ? { opacity: 0.35 } : null),
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`${label} pane 이동/병합`}
+        title={`끌어서 다른 pane 에 합치거나 경계로 이동 · 클릭하면 메뉴`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        style={{
+          ...iconBtnStyle,
+          width: 'auto',
+          gap: 'var(--space-2xs)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          color: 'inherit',
+          cursor: 'inherit',
+          touchAction: 'none',
+        }}
+      >
+        <span aria-hidden="true" style={{ color: 'var(--fg-dimmer)', display: 'inline-flex' }}>
+          <GripGlyph />
+        </span>
+        {label}
+        {axisOwner && (
+          <span
+            aria-label="오른쪽 축 눈금 소유"
+            title="오른쪽 축 눈금은 이 지표의 것입니다"
+            style={{
+              fontSize: 'var(--text-badge)',
+              fontWeight: 700,
+              color: 'var(--bg)',
+              background: 'var(--accent)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0 var(--space-2xs)',
+              lineHeight: 1.5,
+            }}
+          >
+            축
+          </span>
+        )}
+      </button>
+      {showRemove && onRemove && (
+        <HoverIcon label={`${label} 지표 끄기`} restColor="var(--fg-dimmer)" onClick={onRemove}>
+          <CloseGlyph />
+        </HoverIcon>
+      )}
     </span>
   );
 }
@@ -594,6 +712,124 @@ function PaneLegendOverlay({
 
   // 사용자 소유 pane 레이아웃(그룹) — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
   const paneGroups = useWindowPaneGroups();
+  const indicatorActions = useIndicatorActions();
+
+  // ── pane 병합 드래그 + 칩 메뉴 ──────────────────────────────────────────
+  // 칩(pointer capture)에서 시작해 pane 본체(병합)/경계(이동·분리)로 떨어진다.
+  // 판정은 `paneMergeDrag.ts` 의 순수 함수 — 지오메트리는 아래 렌더가 레전드 Y
+  // 배치에 쓰는 것과 같은 값을 effect 로 미러한다(핸들러는 이벤트 시점에 읽는다).
+  type PaneDragState = {
+    pane: PaneId;
+    label: string;
+    fromMerged: boolean;
+    x: number;
+    y: number;
+    target: PaneDropTarget | null;
+  };
+  const [paneDrag, setPaneDrag] = useState<PaneDragState | null>(null);
+  const [chipMenu, setChipMenu] = useState<{ pane: PaneId; x: number; y: number } | null>(null);
+  const dragOriginRef = useRef<{
+    pane: PaneId; label: string; fromMerged: boolean; startX: number; startY: number;
+  } | null>(null);
+  const isDraggingRef = useRef(false);
+  const geometryRef = useRef<{
+    paneTops: number[]; paneHeights: number[]; groups: readonly PaneSpecGroup[];
+  }>({ paneTops: [], paneHeights: [], groups: [] });
+
+  const containerPoint = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+  };
+  const classifyAt = (pane: PaneId, yPx: number): PaneDropTarget | null => {
+    const g = geometryRef.current;
+    return classifyPaneDropTarget({
+      yPx, paneTops: g.paneTops, paneHeights: g.paneHeights, groups: g.groups, draggedPane: pane,
+    });
+  };
+  const chipPointerDown = (pane: PaneId, label: string, fromMerged: boolean) =>
+    (e: React.PointerEvent<HTMLElement>) => {
+      if (e.button !== 0) return;
+      dragOriginRef.current = { pane, label, fromMerged, startX: e.clientX, startY: e.clientY };
+      // jsdom 에는 없다 — 실브라우저에서만 캡처(포인터가 칩 밖으로 나가도 move/up 수신).
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    };
+  const chipPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const origin = dragOriginRef.current;
+    if (!origin) return;
+    if (!isDraggingRef.current) {
+      const moved = Math.hypot(e.clientX - origin.startX, e.clientY - origin.startY);
+      if (moved < PANE_DRAG_THRESHOLD_PX) return;
+      isDraggingRef.current = true;
+      setChipMenu(null);
+    }
+    const { x, y } = containerPoint(e);
+    setPaneDrag({
+      pane: origin.pane,
+      label: origin.label,
+      fromMerged: origin.fromMerged,
+      x,
+      y,
+      target: classifyAt(origin.pane, y),
+    });
+  };
+  const chipPointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    const origin = dragOriginRef.current;
+    dragOriginRef.current = null;
+    if (!origin) return;
+    const { x, y } = containerPoint(e);
+    if (!isDraggingRef.current) {
+      // 임계값 미만 = 클릭 → 병합/분리 메뉴(비드래그 폴백 경로).
+      setChipMenu((m) => (m?.pane === origin.pane ? null : { pane: origin.pane, x, y }));
+      return;
+    }
+    isDraggingRef.current = false;
+    setPaneDrag(null);
+    const target = classifyAt(origin.pane, y);
+    if (!target) return;
+    if (target.kind === 'merge') {
+      indicatorActions.setPaneGroups(mergePaneIntoGroup(paneGroups, origin.pane, target.targetPane));
+    } else {
+      indicatorActions.setPaneGroups(extractPaneToBoundary(
+        paneGroups,
+        origin.pane,
+        fullBoundaryIndex(paneGroups, geometryRef.current.groups, target.boundaryIndex),
+      ));
+    }
+  };
+  const chipPointerCancel = (): void => {
+    dragOriginRef.current = null;
+    isDraggingRef.current = false;
+    setPaneDrag(null);
+  };
+  // Esc = 드래그 취소·메뉴 닫기. 드래그 취소 후의 pointerup 은 origin 이 비어 no-op.
+  useEffect(() => {
+    if (!paneDrag && !chipMenu) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      chipPointerCancel();
+      setChipMenu(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneDrag !== null, chipMenu !== null]);
+  // 메뉴 밖 클릭 = 닫기. 칩 클릭 토글과 겹치지 않게 capture 단계가 아니라 bubble 로.
+  useEffect(() => {
+    if (!chipMenu) return undefined;
+    const onDown = (e: PointerEvent): void => {
+      if (!(e.target instanceof Element)) {
+        setChipMenu(null);
+        return;
+      }
+      // 메뉴 안 = 항목 클릭이 처리. 칩 위 = pointerup 의 토글이 처리(여기서 닫으면
+      // 같은 칩 재클릭이 "닫힘→즉시 재열림" 으로 오동작).
+      if (e.target.closest('[data-testid="pane-chip-menu"]')) return;
+      if (e.target.closest('[data-testid^="pane-chip-"]')) return;
+      setChipMenu(null);
+    };
+    window.addEventListener('pointerdown', onDown);
+    return () => window.removeEventListener('pointerdown', onDown);
+  }, [chipMenu]);
   // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
   // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
   const windowId = useWindowScopeId();
@@ -895,6 +1131,14 @@ function PaneLegendOverlay({
     }
   }
 
+  // 드래그 핸들러가 이벤트 시점에 읽는 지오메트리 미러 — 렌더가 쓰는 값과 같은
+  // 소스라 드롭 존과 화면이 어긋날 수 없다. (렌더 중 ref 쓰기 대신 effect —
+  // 폐기된 concurrent 렌더의 값이 남지 않게.)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    geometryRef.current = { paneTops, paneHeights, groups };
+  });
+
   // pane 플롯 폭 = 우측 가격축 거터를 **뺀** 폭. 이 오버레이 컨테이너는 거터까지
   // 덮으므로(DayBoundaryOverlay 실측: 컨테이너 560.6px vs pane 498px, 거터 62.6px)
   // 그냥 우측 정렬하면 이동 버튼이 가격 라벨 위에 얹힌다. 0(첫 프레임·teardown)이면
@@ -1010,25 +1254,268 @@ function PaneLegendOverlay({
                 ))}
               </div>
             )}
-            {/* 우측 = 이동 컨트롤. DOM 순서도 행 뒤로 옮긴다(탭 순서 = 시각 순서). */}
+            {/* 우측 = 칩(드래그 핸들) + 이동 컨트롤 클러스터. DOM 순서도 행 뒤로
+                옮긴다(탭 순서 = 시각 순서). 칩이 이 기능의 핵심 진입점이다 —
+                끌면 병합/이동, 클릭하면 메뉴(비드래그 폴백). */}
             {showMoveControls && (
-              <PaneMoveControls
-                paneId={paneId}
-                // 이름은 `PANE_DISPLAY_NAME` 에서 온다 — `spec.legendTitle` 은 셀 앞
-                // 제목 접두사라 대부분의 pane 에 일부러 없고, 그걸 쓰면 aria-label 이
-                // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다. 병합 pane 은
-                // 멤버 이름을 '+' 로 이어 그룹 전체가 움직임을 말한다.
-                label={group.map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')}
-                idx={idx}
-                mountedCount={Math.min(groups.length, paneTops.length)}
-                upNeighbor={idx - 1 >= 0 ? groups[idx - 1][0].name : null}
-                downNeighbor={idx + 1 < groups.length ? groups[idx + 1][0].name : null}
-                paneGroups={paneGroups}
-              />
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 'var(--space-2xs)',
+                  // pane 우측 정렬 — 종전 PaneMoveControls 의 auto 마진을 클러스터가
+                  // 물려받는다(legend 행 없는 pane 에서 유일 자식이어도 우측 유지).
+                  marginLeft: 'auto',
+                  flexShrink: 0,
+                  pointerEvents: 'none',
+                }}
+              >
+                {group.map((member) => (
+                  <PaneChip
+                    key={member.name}
+                    paneId={member.name}
+                    label={PANE_DISPLAY_NAME[member.name]}
+                    axisOwner={
+                      group.length > 1
+                      && member === group[0]
+                      && !isSharedAxisGroup(paneGroupIds(group))
+                    }
+                    showRemove={group.length > 1}
+                    onRemove={member.legendToggleKey
+                      ? () => indicatorActions.setPanePrefForTimeframe(
+                        timeframe, member.legendToggleKey!, false,
+                      )
+                      : null}
+                    dimmed={paneDrag?.pane === member.name}
+                    onPointerDown={chipPointerDown(
+                      member.name, PANE_DISPLAY_NAME[member.name], group.length > 1,
+                    )}
+                    onPointerMove={chipPointerMove}
+                    onPointerUp={chipPointerUp}
+                    onPointerCancel={chipPointerCancel}
+                  />
+                ))}
+                <PaneMoveControls
+                  paneId={paneId}
+                  // 이름은 `PANE_DISPLAY_NAME` 에서 온다 — `spec.legendTitle` 은 셀 앞
+                  // 제목 접두사라 대부분의 pane 에 일부러 없고, 그걸 쓰면 aria-label 이
+                  // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다. 병합 pane 은
+                  // 멤버 이름을 '+' 로 이어 그룹 전체가 움직임을 말한다.
+                  label={group.map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')}
+                  idx={idx}
+                  mountedCount={Math.min(groups.length, paneTops.length)}
+                  upNeighbor={idx - 1 >= 0 ? groups[idx - 1][0].name : null}
+                  downNeighbor={idx + 1 < groups.length ? groups[idx + 1][0].name : null}
+                  paneGroups={paneGroups}
+                />
+              </span>
             )}
           </div>
         );
       })}
+
+      {/* ── 병합 드래그 비주얼: pane 틴트+배너 / 경계 삽입선 / 고스트 칩 ── */}
+      {paneDrag && paneDrag.target?.kind === 'merge' && (() => {
+        const t = paneDrag.target;
+        const targetGroup = groups[t.paneIndex];
+        if (!targetGroup || t.paneIndex >= paneTops.length) return null;
+        const hint = mergeDropHint(paneDrag.pane, paneGroupIds(targetGroup));
+        return (
+          <div
+            data-testid="pane-drop-merge"
+            style={{
+              position: 'absolute',
+              top: paneTops[t.paneIndex] + 2,
+              height: Math.max(0, paneHeights[t.paneIndex] - 4),
+              left: 2,
+              right: 2,
+              zIndex: 6,
+              pointerEvents: 'none',
+              background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+              border: '1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent)',
+              borderRadius: 'var(--radius-md)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                background: 'var(--bg-card)',
+                border: `1px solid ${hint.warning ? 'var(--warn)' : 'var(--accent)'}`,
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-2xs) var(--space-sm)',
+                textAlign: 'center',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--fg)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {hint.title}
+              <span
+                style={{
+                  display: 'block',
+                  color: hint.warning ? 'var(--warn)' : 'var(--fg-dim)',
+                  fontSize: 'var(--text-2xs)',
+                }}
+              >
+                {hint.hint}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+      {paneDrag && paneDrag.target?.kind === 'boundary' && (
+        <div
+          data-testid="pane-drop-boundary"
+          style={{
+            position: 'absolute',
+            top: paneDrag.target.yPx - 1.5,
+            left: 2,
+            right: 2,
+            height: 3,
+            background: 'var(--accent)',
+            borderRadius: 2,
+            zIndex: 6,
+            pointerEvents: 'none',
+          }}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: -20,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--accent)',
+              color: 'var(--bg)',
+              fontSize: 'var(--text-2xs)',
+              fontWeight: 700,
+              borderRadius: 'var(--radius-sm)',
+              padding: '1px var(--space-xs)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {boundaryDropLabel(paneDrag.fromMerged)}
+          </span>
+        </div>
+      )}
+      {paneDrag && (
+        <span
+          data-testid="pane-drag-ghost"
+          style={{
+            ...boxStyle,
+            position: 'absolute',
+            left: paneDrag.x + 10,
+            top: paneDrag.y + 8,
+            zIndex: 7,
+            pointerEvents: 'none',
+            gap: 'var(--space-2xs)',
+            color: 'var(--fg)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--accent)',
+            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.4)',
+          }}
+        >
+          <span aria-hidden="true" style={{ color: 'var(--fg-dimmer)', display: 'inline-flex' }}>
+            <GripGlyph />
+          </span>
+          {paneDrag.label}
+        </span>
+      )}
+
+      {/* ── 칩 클릭 메뉴 — 드래그 없이 병합/분리하는 폴백 경로 ── */}
+      {chipMenu && (() => {
+        const gi = groups.findIndex((g) => g.some((s) => s.name === chipMenu.pane));
+        if (gi < 0) return null;
+        const merged = groups[gi].length > 1;
+        // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
+        const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
+        const downGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
+        const commit = (next: PaneGroups): void => {
+          indicatorActions.setPaneGroups(next);
+          setChipMenu(null);
+        };
+        const itemStyle: CSSProperties = {
+          display: 'block',
+          width: '100%',
+          textAlign: 'left',
+          padding: 'var(--space-2xs) var(--space-sm)',
+          border: 'none',
+          background: 'none',
+          color: 'var(--fg)',
+          fontSize: 'var(--text-xs)',
+          fontFamily: 'inherit',
+          borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        };
+        const hoverOn = (e: React.MouseEvent<HTMLButtonElement>): void => {
+          e.currentTarget.style.background = 'var(--bg-input-hover)';
+        };
+        const hoverOff = (e: React.MouseEvent<HTMLButtonElement>): void => {
+          e.currentTarget.style.background = 'none';
+        };
+        return (
+          <div
+            data-testid="pane-chip-menu"
+            style={{
+              position: 'absolute',
+              left: chipMenu.x,
+              top: chipMenu.y + 6,
+              transform: 'translateX(-100%)',
+              zIndex: 8,
+              pointerEvents: 'auto',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-strong)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+              padding: 'var(--space-2xs)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {merged && (
+              <button
+                type="button"
+                data-testid="pane-menu-split"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                onClick={() => commit(extractPaneToBoundary(
+                  paneGroups, chipMenu.pane, paneGroupIndexOf(paneGroups, chipMenu.pane) + 1,
+                ))}
+              >
+                {`『${PANE_DISPLAY_NAME[chipMenu.pane]}』 새 pane 으로 분리`}
+              </button>
+            )}
+            {upGroup && (
+              <button
+                type="button"
+                data-testid="pane-menu-merge-up"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                onClick={() => commit(mergePaneIntoGroup(paneGroups, chipMenu.pane, upGroup[0].name))}
+              >
+                {`위 pane(『${PANE_DISPLAY_NAME[upGroup[0].name]}』)과 합치기`}
+              </button>
+            )}
+            {downGroup && (
+              <button
+                type="button"
+                data-testid="pane-menu-merge-down"
+                style={itemStyle}
+                onMouseEnter={hoverOn}
+                onMouseLeave={hoverOff}
+                onClick={() => commit(mergePaneIntoGroup(paneGroups, chipMenu.pane, downGroup[0].name))}
+              >
+                {`아래 pane(『${PANE_DISPLAY_NAME[downGroup[0].name]}』)과 합치기`}
+              </button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
