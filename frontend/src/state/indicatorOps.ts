@@ -149,6 +149,8 @@ export const INDICATOR_OPS = {
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),
+  setPeakWallPaneEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ peakWallPaneEnabled: enabled }),
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),
   setInstitutionNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>

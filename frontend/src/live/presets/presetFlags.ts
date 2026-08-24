@@ -31,6 +31,7 @@ export const PRESET_INDICATOR_FLAG_KEYS = [
   'programTradeEnabled',
   'foreignNetEnabled',
   'institutionNetEnabled',
+  'peakWallPaneEnabled',
 ] as const;
 
 export type PresetIndicatorFlagKey = (typeof PRESET_INDICATOR_FLAG_KEYS)[number];

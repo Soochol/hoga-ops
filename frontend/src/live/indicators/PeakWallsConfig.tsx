@@ -19,8 +19,10 @@ export default function PeakWallsConfig() {
   const [side, setSide] = useState<Side>('ask');
   const askEnabled = useWindowIndicator((s) => s.askPeakEnabled);
   const bidEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
+  const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
   const setAskEnabled = useIndicatorActions().setAskPeakEnabled;
   const setBidEnabled = useIndicatorActions().setBidPeakEnabled;
+  const setPaneEnabled = useIndicatorActions().setPeakWallPaneEnabled;
 
   const isAsk = side === 'ask';
   const enabled = isAsk ? askEnabled : bidEnabled;
@@ -36,6 +38,18 @@ export default function PeakWallsConfig() {
         차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
         수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다
       </p>
+      {/* pane 토글은 방향 공용(한 pane 에 매도·매수 두 계단)이라 매도|매수 서브탭
+          **바깥**에 둔다 — 탭 안에 넣으면 같은 노브가 두 번 나온다(구현 계획 §4.3). */}
+      <div className="mb-3">
+        <ToggleRow
+          label="최대벽 강도 pane 표시"
+          description="이 지표가 찾은 당일 최대벽 수량의 누적 최대 계단을 차트 아래 별도 pane 에 그립니다. 위 수평선과 같은 값의 시간축 연혁입니다."
+          checked={paneEnabled}
+          onToggle={() => setPaneEnabled(!paneEnabled)}
+          testId="settings-toggle-peakWallPaneEnabled"
+        />
+      </div>
+      <div className="border-b border-border mb-3" />
       <div
         className="mb-3 inline-flex overflow-hidden rounded-md border border-border"
         role="tablist"
