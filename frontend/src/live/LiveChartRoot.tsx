@@ -378,6 +378,18 @@ interface Props {
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
    * 디스크(스크리너) 일봉만 쓴다 — study의 KIS 무호출 계약 유지. */
   dailyCandleKisEnabled?: boolean;
+  /**
+   * 일봉 MA 창이 덮어야 할 **표시 하한**(YYYYMMDD). 생산자는 `useLiveChartData` 의
+   * `dailyMaWindowFloorDate` 하나뿐이고, 여기서 오버레이·최대벽 일봉MA 필터로 갈라진다
+   * (reveal 게이트는 생산자 쪽에서 직접 받는다). 넷이 **같은 값**이라야 일봉 쿼리가
+   * 하나로 모인다.
+   *
+   * ⚠ **날것 `historicalFromDate` 를 여기로 넘기지 말 것.** 이 값은 이미 계단으로
+   * 내려져(`quantizeDailyMaFloorDate`) 90일에 한 번만 바뀐다. 날것을 넘기면 좌측 팬
+   * 프레임마다 이 컴포넌트(훅 수백 개)가 재렌더되는데, ADR-0119 C2c-2a 가 바로 그
+   * 비용 때문에 `historicalFromDate` 의 반응형 읽기를 끊어 놓았다.
+   */
+  dailyMaWindowFloorDate?: string | null;
   /** 캘린더 봉(D/W/M)의 저장 구간 밴드. null(기본) = 미표시.
    *
    *  `/study` 가 원래 유일한 생산자였고, 2026-08-21 부터 `/live` 도 저장뷰를 열면
@@ -547,6 +559,7 @@ export function LiveChartRoot({
   depthDeltaToday = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
+  dailyMaWindowFloorDate = null,
   savedRangeBand = null,
   savedRangeAnchorMs = null,
   savedRangeFromDate = null,
@@ -1864,6 +1877,7 @@ export function LiveChartRoot({
     candles: cb?.candles ?? EMPTY_CANDLES_FOR_DAILY_MA,
     enabled: isMinuteTimeframe(timeframe),
     kisEnabled: dailyCandleKisEnabled,
+    displayFloorDate: dailyMaWindowFloorDate,
   };
   const askPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'ask' });
   const bidPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'bid' });
@@ -2686,7 +2700,7 @@ export function LiveChartRoot({
           {candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}
           {visiblePaneGroups.map((group, gi) =>
@@ -2716,7 +2730,7 @@ export function LiveChartRoot({
           {!candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />

@@ -44,6 +44,24 @@ export function yesterdayKst(todayYyyymmdd: string): string {
   return subtractDaysKst(todayYyyymmdd, 1);
 }
 
+/** `from`(YYYYMMDD KST)에서 `to`까지의 **캘린더 일수**. `from > to` 면 음수.
+ *
+ * `subtractDaysKst` 의 역 — 그쪽과 같은 UTC 자정 앵커를 써서 왕복이 정확하다
+ * (`daysBetweenKst(subtractDaysKst(d, n), d) === n`). 한국엔 서머타임이 없지만
+ * `Date.UTC` 로 고정해 두면 실행 환경의 로컬 타임존과도 무관해진다. */
+export function daysBetweenKst(from: string, to: string): number {
+  const ms = utcMidnightMs(to) - utcMidnightMs(from);
+  return Math.round(ms / 86_400_000);
+}
+
+function utcMidnightMs(yyyymmdd: string): number {
+  return Date.UTC(
+    parseInt(yyyymmdd.slice(0, 4), 10),
+    parseInt(yyyymmdd.slice(4, 6), 10) - 1,
+    parseInt(yyyymmdd.slice(6, 8), 10),
+  );
+}
+
 /** YYYYMMDD KST for `n` days before `yyyymmdd`. */
 export function subtractDaysKst(yyyymmdd: string, n: number): string {
   const y = parseInt(yyyymmdd.slice(0, 4), 10);
