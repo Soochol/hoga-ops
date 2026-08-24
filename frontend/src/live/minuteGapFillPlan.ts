@@ -8,9 +8,15 @@
  *
  * 두 창 다 디스크(hogaplay)를 읽으므로(`useLiveBundle` 의 `restBypassEnabled`),
  * 캡처되지 않은 거래일은 차트에서 **그냥 사라진다.** 그 날짜 목록은 백엔드가 이미
- * `/api/range` 응답의 `missing_dates` 로 내려주고 있고(`uncaptured_trading_days`),
- * 그것은 **거래일 달력 기반**이라 주말·공휴일을 구멍으로 오인하지 않는다. 이 모듈은
- * 그 목록을 **벤더에 물어볼 요청 구간**으로 바꾸는 일만 한다.
+ * `/api/range` 응답의 `missing_dates` 로 내려주고 있고, 그것은 **거래일 달력 기반**이라
+ * 주말·공휴일을 구멍으로 오인하지 않는다. 이 모듈은 그 목록을 **벤더에 물어볼 요청
+ * 구간**으로 바꾸는 일만 한다.
+ *
+ * 백엔드에서 그 목록을 만드는 곳이 **둘**이다(`hoga/api/bundle.py`): 캡처 흔적이 전혀
+ * 없는 날(`uncaptured_trading_days`)과, 파일은 있으나 업스트림 만료 스텁이라 쓸 수 없는
+ * 날(`is_expired_upstream_stub`, 2026-08-24 합류). 뒤쪽은 **재캡처가 영구히 막힌**
+ * 클래스라 이 모듈이 유일한 복구 경로다 — 그전까지 그 날짜들은 `excluded_dates` 로만
+ * 가서 여기 닿지 않았고, 화면에서 사유 없이 사라졌다.
  *
  * ## 왜 요청을 좁혀야 하나 — 이 모듈의 존재 이유
  *
@@ -162,8 +168,9 @@ function calendarDaysBetween(a: string, b: string): number {
 /**
  * 보충 대상이 되는 결손 사유.
  *
- * `not_captured`(아직 캡처 안 함)와 `no_upstream_data`(hogaplay 가 그날을 통째로 못 줌)
- * **둘 다** 캔들은 벤더에서 다시 받을 수 있다 — 소급 불가인 것은 호가 파생 지표뿐이다.
+ * `not_captured`(아직 캡처 안 함)와 `no_upstream_data`(hogaplay 가 그날을 통째로 못 줌 —
+ * 센티넬이든 만료 스텁이든) **둘 다** 캔들은 벤더에서 다시 받을 수 있다 — 소급 불가인
+ * 것은 호가 파생 지표뿐이다.
  * 반면 `venue_unsupported`/`source_missing` 류는 그 시장·그 소스에 애초에 없다는 뜻이라
  * 키움 KRX 분봉으로 대신할 성질이 아니다(그렇게 채우면 NXT 차트에 KRX 봉이 섞인다).
  */

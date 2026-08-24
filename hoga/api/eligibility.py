@@ -142,10 +142,29 @@ _CLOSE_MS_ZERO_ERRORS = frozenset({
 })
 
 
-def _is_expired_upstream_stub(
+def is_expired_upstream_stub(
     classification: Classification, date: str, now: dt.datetime
 ) -> bool:
     """이 INVALID 가 "업스트림이 이미 못 주는 날짜" 스텁인가?
+
+    소비자가 **둘**이다. 워커 결정(`decide_capture` — 재캡처를 막는다)과 조회 조립
+    (`bundle.py` — 그 날짜를 `missing_dates` 로 표면화해 키움 보충이 보게 한다).
+    술어를 공유하는 것이 load-bearing 이다: 재캡처를 막는 판정과 "그래서 벤더로
+    채워야 한다" 는 판정이 **같은 집합**이어야 한다. 갈라지면 재캡처도 안 되고 보충도
+    안 되는 날짜가 생기는데, 그게 2026-08-24 까지의 상태였다(아래 조회 절).
+
+    ## 조회 쪽이 이 술어를 필요로 하는 이유 (2026-08-24)
+
+    이 스텁은 parquet 이 **있으므로** `list_stock_dates_in_range` 의 `captured` 에
+    집계된다 → `uncaptured_trading_days` 의 차집합에서 빠진다 → `missing_dates` 에
+    없다. 한편 error 라 `excluded_dates` 로 가는데 프론트는 그 배열을 **어디서도
+    소비하지 않는다**. 결과: 그 거래일은 안내도 없이 차트에서 사라지고, 미캡처일을
+    키움으로 채우는 보충(#1468·#1501)도 입력이 `missing_dates` 하나뿐이라 그 날을
+    보지 못했다. 실측(010140, 2026-02-13~08-24): excluded 6일 전부 이 클래스.
+
+    **재캡처가 영구히 막힌 클래스라 키움 보충이 유일한 복구 경로다** — 아래 (2)의
+    보유 창 판정이 곧 그 사실이다. 그리고 키움 분봉 보유는 380일이라 복구 창도
+    유한하다(`frontend/src/live/minuteGapFillPlan.ts` 의 실측표).
 
     hogaplay 는 보유 창을 벗어난 거래일을 요청하면 실패하는 대신 **스텁**을
     돌려준다: `info.tsv` 의 close 필드가 0 이고 이벤트도 정상의 10% 미만이다
@@ -239,7 +258,7 @@ def decide_capture(
     # 이 클래스에도 그 표시가 맞다.
     if (
         not force_retry
-        and _is_expired_upstream_stub(classification, date, now or now_kst())
+        and is_expired_upstream_stub(classification, date, now or now_kst())
     ):
         return CaptureDecision(skip_reason="upstream_gap", resume=False)
     # 미확정 갭도 보유 창 밖이면 같은 자리에 선다. ADR-0093 은 "재캡처가 갭을
