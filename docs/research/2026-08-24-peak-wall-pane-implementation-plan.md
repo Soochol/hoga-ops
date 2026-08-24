@@ -210,6 +210,10 @@ store 를 직접 켜거나 기본값을 일시적으로 뒤집어서 한다.
     (오버레이 도킹 라벨과 **같은 함수** — #839 의 규율)
 15. `legendToggleKey: 'peakWallPaneEnabled'` — 레전드 ✕ 가 pane 을 끈다
 16. 거래일 경계 처리(§5.4)와 `stretch` 값(§5.3)을 실제 화면에서 확정
+17. **`PaneLegendOverlay` 의 `LEGEND_CELL_PANES` 에 `'peak-wall'` 추가** — cells 행은
+    등록만으로는 안 보이고 이 화이트리스트(차트 밀집도 정책)에 있어야 그려진다.
+    계획이 몰랐고 실화면 도그푸딩이 잡았다. ⚠ 이 목록에 넣으면 그 pane 의
+    `lastValueVisible` 을 **같이 꺼야 한다**(이중 판독면 — spec 이 이미 끔).
 
 ---
 
@@ -260,9 +264,11 @@ cd frontend && npm run typecheck && npx vitest run && npx vite build
 3. **`stretch` 값.** 계단은 대부분 평평해 0.3(총잔량 pane 과 동급)이 과할 수 있다.
    프로토타입 실측에서 하루에 계단이 1~2번 올랐다. 0.2 로 시작해 보고 판단한다.
 
-4. **거래일 경계의 수직 낙하.** 리셋 때 선이 이어져 있어 "급락"으로 오독될 수 있다.
-   `whitespace` 포인트를 하나 끼워 날 사이를 끊는 것을 검토한다(총잔량 pane 의
-   `maskOutgoingConnector` 와 같은 발상).
+4. **거래일 경계의 수직 낙하.** ~~whitespace 로 끊는다~~ → **해결됨(PR 3 실화면 검증)**:
+   lwc LineSeries 는 whitespace 를 **무시하고 선을 이어 그린다**(setData 후
+   `series.data()` 에서도 사라짐). 실제로 끊는 것은 `maskOutgoingConnector` +
+   `LINE_HIDDEN_COLOR` 이고, WithSteps 의 수직 선분은 **도착점 색**을 쓰므로 경계
+   양쪽 두 점(이전 날 마지막 + 새 날 첫 점)을 모두 투명으로 해야 한다.
 
 5. **pane 이름은 개명 불가**(ADR-0028). `peak-wall` 로 확정한다.
 

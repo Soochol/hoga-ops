@@ -10,12 +10,13 @@
 // 쓰므로 어긋날 수 없다. 판정을 다시 하지 않는 것이 이 모듈의 요점이다
 // (docs/research/2026-08-24-peak-wall-pane-implementation-plan.md §0).
 
-import type { LineData, Time, WhitespaceData } from 'lightweight-charts';
+import type { LineData, Time } from 'lightweight-charts';
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallSegment } from './PeakWallSegmentsPrimitive';
+import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from './util/auctionHide';
 
-export type PeakWallStepPoint = LineData<Time> | WhitespaceData<Time>;
+export type PeakWallStepPoint = LineData<Time>;
 
 /**
  * 그려지는 세그먼트 → 봉별 당일 누적 최대 계단.
@@ -30,10 +31,12 @@ export type PeakWallStepPoint = LineData<Time> | WhitespaceData<Time>;
  *   "동률 비교체(먼저 도달 유지)" 규약 미러.
  * - 그날 첫 벽이 서기 전의 캔들은 점을 내지 않는다 — "당일 최대" 가 아직 없다는
  *   정직한 표현이고, 선은 첫 벽 시점에서 시작한다.
- * - **거래일 사이는 whitespace 로 끊는다.** LineSeries 는 시간 갭이 있어도 연속
- *   점을 직선으로 잇기 때문에, 리셋의 수직 낙하가 "값이 급락했다" 로 오독된다.
- *   whitespace 의 time 은 새 날 첫 값 점 1초 앞 — 캔들 간격(≥60s) 안의 빈
- *   자리라 실제 점과 충돌하지 않는다.
+ * - **거래일 사이는 이전 날 마지막 점의 outgoing 색을 투명으로 끊는다**
+ *   (`maskOutgoingConnector` + `LINE_HIDDEN_COLOR` — 총잔량 pane 이 마감 동시호가
+ *   경계에서 쓰는 그 기법). ⚠ whitespace 로는 안 된다 — 실화면 검증에서
+ *   lightweight-charts LineSeries 가 whitespace 를 **무시하고 선을 이어 그렸다**
+ *   (setData 후 `series.data()` 에서도 사라짐). 리셋의 수직 낙하가 그대로 보이면
+ *   "값이 급락했다" 로 오독된다.
  */
 export function buildPeakWallStepPoints(
   segments: readonly PeakWallSegment[],
@@ -79,8 +82,14 @@ export function buildPeakWallStepPoints(
     }
     if (running === null) continue;
     if (pendingDayBreak) {
-      out.push({ time: (vsec - 1) as Time });
+      // 직전(이전 날 마지막) 점의 outgoing 투명 → 스텝의 **수평부**가 사라진다.
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      // 새 날 첫 점도 투명 → 스텝의 **수직부**까지 사라진다(실화면 검증: WithSteps 의
+      // 수직 선분은 도착점 색을 쓴다 — 출발점만 가리면 수직 낙하가 남는다). 대가는
+      // 새 날 선이 둘째 봉부터 보이는 것(첫 점의 outgoing 도 투명이므로) — 1봉 지연.
+      out.push({ time: vsec as Time, value: running, ...LINE_HIDDEN_COLOR });
       pendingDayBreak = false;
+      continue;
     }
     out.push({ time: vsec as Time, value: running, color });
   }

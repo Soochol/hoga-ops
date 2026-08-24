@@ -109,6 +109,10 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'volume',
   'quote-totals',
   'program-trade',
+  // 최대벽 강도 pane — 계단의 현재 높이가 곧 「오늘 최대」라 커서 없이도 읽을 값이
+  // 있다(flag 행을 되살린 근거와 동일). 스펙이 lastValueVisible:false 라 위 ⚠ 의
+  // 이중 판독면 조건도 충족한다.
+  'peak-wall',
 ]);
 
 /** flag 행(값 없는 오버레이 지표)의 표시 화이트리스트 — `LEGEND_CELL_PANES` 와 같은 성격.

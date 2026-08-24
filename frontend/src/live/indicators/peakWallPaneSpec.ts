@@ -24,6 +24,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import type { PaneSpec } from '../../chart/RangeSeriesPane';
 import type { PeakWallStepPoint } from '../../chart/peakWallSteps';
 import { formatKoreanInt } from '../../util/koreanNumber';
+import { formatQtyCompact } from '../../util/formatQtyCompact';
 import { useWindowScopeId } from '../workspace/windowView';
 import { scopeEntries } from './windowScopedRegistry';
 import { usePeakWallStepsRegistry } from './peakWallStepsRegistry';
@@ -67,13 +68,19 @@ const lineOptions = {
 
 const askData = (
   _bundle: RangeBundle, _axis: VirtualAxis, ctx: PeakWallPaneCtx,
-): LineData<Time>[] => ctx.ask as LineData<Time>[];
+): LineData<Time>[] => ctx.ask.slice();
 const bidData = (
   _bundle: RangeBundle, _axis: VirtualAxis, ctx: PeakWallPaneCtx,
-): LineData<Time>[] => ctx.bid as LineData<Time>[];
+): LineData<Time>[] => ctx.bid.slice();
 
 export const PEAK_WALL_SPEC = {
   name: 'peak-wall' as const,
+  // 셀 라벨(매도/매수)이 방향만 말하므로 pane 제목이 지표를 밝힌다 — 총잔량·체결강도와
+  // 같은 근거(라벨이 pane 간 중복되는 다중 셀 pane).
+  legendTitle: '최대벽',
+  // 레전드 ✕ → setPanePrefForTimeframe(timeframe, key, false) — 이 키는
+  // INDICATOR_PANE_PREF_KEYS 소속이라 per-timeframe 버킷에 기록된다.
+  legendToggleKey: 'peakWallPaneEnabled' as const,
   // 계단은 대부분 평평해(하루 1~3회 갱신 — 프로토타입 실측) 총잔량 pane 의 0.3 은
   // 과하다. 0.2 로 시작한다(구현 계획 §5.3 — PR 3 에서 실화면으로 확정).
   stretch: 0.2,
@@ -81,7 +88,23 @@ export const PEAK_WALL_SPEC = {
   // 참조가 바뀌는 그릇을 받으면 data effect 가 틱마다 헛돈다 — 안정 참조 그릇이 맞다.
   useContext: usePeakWallPaneContext,
   series: [
-    { type: LineSeries, options: lineOptions, data: askData },
-    { type: LineSeries, options: lineOptions, data: bidData },
+    // 스와치 없음: 선 색은 창별 사용자 설정(askPeakColor/bidPeakColor)이 점에 실려
+    // 오는데, legend meta 의 color thunk 는 모듈 레벨이라 자기 창을 모른다 — 전역
+    // 투영을 읽으면 다른 창에서 틀린 색이 나온다. 라벨(매도/매수)이 방향을 이미
+    // 말하므로 생략한다(거래량 pane 의 per-bar 색 생략과 같은 결).
+    // 값 포맷은 도킹 라벨의 잔량부와 **같은 함수**(formatQtyCompact) — 두 표면이
+    // 같은 벽을 다르게 읽으면 안 된다(#839 의 규율).
+    {
+      type: LineSeries,
+      legend: { label: '매도', format: formatQtyCompact },
+      options: lineOptions,
+      data: askData,
+    },
+    {
+      type: LineSeries,
+      legend: { label: '매수', format: formatQtyCompact },
+      options: lineOptions,
+      data: bidData,
+    },
   ],
 } satisfies PaneSpec<PeakWallPaneCtx>;
