@@ -40,6 +40,41 @@ _log = logging.getLogger(__name__)
 
 # ── Wire model ─────────────────────────────────────────────────────────────────
 
+class KiwoomGovernorSnapshot(BaseModel):
+    """`kiwoom_capacity.KiwoomCapacityScheduler.snapshot()` 의 wire 모델.
+
+    **오래 `dict[str, object]` 였다.** 그 상태에서도 `/api/live/status` 로 나가긴
+    했지만 프론트에는 타입 미러도 소비도 0곳이라, ADR-0136 이 KIS 의
+    `kis_calls_today`/`kis_rate_limit_remaining` 을 두고 지적한 *"프론트 렌더 0곳인
+    죽은 필드"* 와 같은 상태였다(값이 실데이터라는 점만 달랐다).
+
+    ⚠ **필드를 빠뜨리면 500 이 아니라 조용히 사라진다** — `response_model` 이
+    선언되지 않은 키를 스트립하기 때문이다. `snapshot()` 에 키를 더하면 여기도
+    더할 것. `tests/unit/live/test_kiwoom_governor_snapshot_wire.py` 가 두 키 집합을
+    대조해 그 실수를 막는다.
+    """
+
+    queued: int
+    inflight: int
+    workers: int
+    tr_buckets: int
+    accounts: int
+    #: 계정별 **시도** 수(성공 전에 센다) — 쏠림이 없으면 앱키 증설이 배수를 못 낸다.
+    calls_by_account: dict[int, int] = Field(default_factory=dict)
+    #: 계정별 인증 실패 **누계**. 리셋되지 않으므로 "지금 죽었나" 의 답이 아니다.
+    auth_failures_by_account: dict[int, int] = Field(default_factory=dict)
+    #: 지금 격리 창(60s) 안에 있는 계정. **정상 만료도 여기 들어온다** — 배너 근거로
+    #: 쓰지 말 것.
+    auth_blocked_accounts: list[int] = Field(default_factory=list)
+    #: 연속 실패가 임계를 넘어 **앱키가 죽었다고 판정된** 계정.
+    auth_failing_accounts: list[int] = Field(default_factory=list)
+    #: 위 계정에 대응하는 **env 변수명**(`auth_failing_accounts` 와 같은 순서).
+    #: 화면은 이쪽을 보여 준다 — account 5 ↔ `KIWOOM_APP_KEY_6` 의 off-by-one 을
+    #: 소비자가 다시 계산하면 애먼 키를 지우게 된다.
+    auth_failing_env_keys: list[str] = Field(default_factory=list)
+    background_deferred_due_to_user_visible: int = 0
+
+
 class LiveStatus(BaseModel):
     """Wire model for GET /api/live/status (spec §6)."""
 
@@ -72,7 +107,8 @@ class LiveStatus(BaseModel):
     capture_missing_codes: list[str] = Field(default_factory=list)
     # broker_poll_* 필드는 제거됨 — 거래원이 키움 0F push 로 전환(PR-F2, ADR-0111 폐지).
     # 프론트 미소비(관측 전용)였음을 확인하고 additive 원칙대로 조용히 내렸다.
-    rest_capacity_scheduler: dict[str, object] | None = None
+    #: 키움 REST 유량 거버너 관측 표면. 거버너 미가동이면 None.
+    rest_capacity_scheduler: KiwoomGovernorSnapshot | None = None
     # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status route.
     cache_stats: dict[str, object] | None = None
     rest_bypass_enabled: bool = False

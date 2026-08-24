@@ -58,6 +58,13 @@ _PRIORITY_ORDER: dict[Priority, int] = {"user_visible": 0, "background": 10}
 # 더 짧으면 격리가 풀린 계정이 아직 쿨다운에 걸려 재발급에 실패하고, 실패→격리→해제→
 # 재실패를 돌며 멀쩡한 앱키의 처리량만 갉아먹는다.
 _AUTH_BLOCK_SECONDS = 60.0
+#: 「이 계정의 앱키가 죽었다」로 판정하는 **연속** 인증 실패 횟수.
+#:
+#: 1회는 판정 근거가 못 된다 — 토큰 만료는 정상 사건이고, `_recover_if_auth_failure`
+#: 가 토큰을 무효화한 뒤 요청을 **한 번** 되큐해서 자가 치유한다. 그 재시도는 새
+#: 토큰으로 나가므로, 거기서도 실패했다면 남은 설명은 앱키 자체다(실측 2026-08-24:
+#: `KIWOOM_APP_KEY_6` 이 벤더 `8001` 로 거부돼 시도 3건이 전부 실패했다).
+_AUTH_FAILING_THRESHOLD = 2
 
 
 class KiwoomCapacityOverloaded(RuntimeError):
@@ -150,7 +157,12 @@ class KiwoomCapacityScheduler:
         # 죽은 토큰은 그 계정의 **모든 TR** 을 못 쓴다. TR 버킷 하나만 밀면 같은 죽은
         # 계정이 다른 TR 로 계속 뽑힌다.
         self._auth_blocked_until: dict[int, float] = {}
+        #: 누계. 진단용이라 **리셋하지 않는다** — "이 계정이 지금까지 몇 번 실패했나".
         self._auth_failures_by_account: dict[int, int] = {}
+        #: **연속** 실패. 성공 한 번이면 0 으로 돌아간다. 누계와 따로 두는 이유는
+        #: 축이 다르기 때문이다 — 누계는 며칠 켜 두면 정상 만료만으로도 쌓이므로
+        #: "지금 죽었나" 를 물으면 거짓 양성이 난다. 판정은 이쪽으로 한다.
+        self._consecutive_auth_failures: dict[int, int] = {}
 
     # --- 공개 API -----------------------------------------------------------
 
@@ -168,6 +180,9 @@ class KiwoomCapacityScheduler:
             # 다시 커졌을 때 **다른 앱키가** 그 account_id 를 물려받아 애먼 격리를 산다.
             self._auth_blocked_until = {
                 a: t for a, t in self._auth_blocked_until.items() if a in live
+            }
+            self._consecutive_auth_failures = {
+                a: n for a, n in self._consecutive_auth_failures.items() if a in live
             }
 
     @property
@@ -203,7 +218,18 @@ class KiwoomCapacityScheduler:
 
     def snapshot(self) -> dict[str, object]:
         """관측 표면. KIS 의 `kis_calls_today`/`kis_rate_limit_remaining` 은
-        하드코딩 상수인 **죽은 필드**였다 — 이식하지 않고 여기서 새로 정의한다."""
+        하드코딩 상수인 **죽은 필드**였다 — 이식하지 않고 여기서 새로 정의한다.
+
+        키를 더하면 `lifecycle.KiwoomGovernorSnapshot` 도 함께 고칠 것 —
+        `response_model` 이 선언 안 된 키를 **조용히 스트립한다**. 두 집합은
+        `tests/unit/live/test_kiwoom_governor_snapshot_wire.py` 가 대조한다.
+        """
+        from hoga.live.kiwoom_runtime import _account_env  # noqa: PLC0415 — 순환 절단
+
+        failing = sorted(
+            a for a, n in self._consecutive_auth_failures.items()
+            if n >= _AUTH_FAILING_THRESHOLD
+        )
         return {
             "queued": self._queue.qsize(),
             "inflight": len(self._inflight),
@@ -221,6 +247,16 @@ class KiwoomCapacityScheduler:
             "auth_blocked_accounts": sorted(
                 a for a, until in self._auth_blocked_until.items() if until > time.monotonic()
             ),
+            # **판정된** 계정 — 화면 배너가 읽는 유일한 필드다. 위 두 필드와 달리
+            # 이건 관측이 아니라 **정책**이라 여기서 한 번만 계산한다(임계값이 프론트로
+            # 새면 두 곳이 갈린다). `auth_blocked_accounts` 로 배너를 띄우면 안 된다 —
+            # 정상 만료도 60초 격리를 남기므로 거짓 양성이 난다.
+            "auth_failing_accounts": failing,
+            # **off-by-one 산술을 소비자에게 넘기지 않는다.** account 5 는
+            # `KIWOOM_APP_KEY_6` 이다(0=접미 없음, k>0=접미 k+1 — `kiwoom_runtime`).
+            # 화면이 "계정 5" 라고만 말하면 사용자는 `KIWOOM_APP_KEY_5` 를 찾는데,
+            # 그건 **다른(멀쩡할 수 있는) 키**다. 고칠 대상의 이름을 그대로 준다.
+            "auth_failing_env_keys": [_account_env(a)[0] for a in failing],
             "background_deferred_due_to_user_visible": (
                 self.background_deferred_due_to_user_visible
             ),
@@ -347,6 +383,9 @@ class KiwoomCapacityScheduler:
                     continue
                 self._calls_by_account[account] = self._calls_by_account.get(account, 0) + 1
                 result = await req.call(self._client_for(account))
+                # 벤더 콜이 실제로 돌아왔다 = 이 계정의 토큰이 산다. **연속** 실패만
+                # 지운다(누계는 진단 기록이라 남긴다).
+                self._consecutive_auth_failures.pop(account, None)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — future 로 전달, 워커는 살아남는다
@@ -398,6 +437,9 @@ class KiwoomCapacityScheduler:
 
         self._auth_failures_by_account[account_id] = (
             self._auth_failures_by_account.get(account_id, 0) + 1
+        )
+        self._consecutive_auth_failures[account_id] = (
+            self._consecutive_auth_failures.get(account_id, 0) + 1
         )
         self._auth_blocked_until[account_id] = time.monotonic() + _AUTH_BLOCK_SECONDS
         client = self._client_for(account_id)

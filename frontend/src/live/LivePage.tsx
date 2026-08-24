@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
 import { focusedWindowSymbol, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
-import { useLiveStatus } from '../api/liveStatus';
+import { authFailingKiwoomKeys, useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
@@ -96,6 +96,9 @@ export function LivePage() {
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
   const banner = liveStatus.banner;
+  // 배너 문구에는 계정 번호가 아니라 **env 변수명**이 붙는다(off-by-one 함정 —
+  // account 5 는 `KIWOOM_APP_KEY_6` 이다). 이름은 백엔드가 실어 보낸다.
+  const authFailingKeys = authFailingKiwoomKeys(status);
 
   // 포커스 창이 **그리는** 종목 + 포커스 차트 창 tf — 미러·수집·타이틀의 원천.
   // `groupSymbols[activeGroupOf(s)]` 가 아니다: 포커스 창이 고정(핀)이면 그룹 종목과
@@ -213,6 +216,11 @@ export function LivePage() {
       <LiveStateBanner
         primary={activeSymbol && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
+        details={
+          authFailingKeys.length > 0
+            ? { kiwoom_auth_failing: authFailingKeys.join(', ') }
+            : undefined
+        }
       />
       <WorkspaceLiveToolbar
         captureHealth={liveStatus.captureHealth}

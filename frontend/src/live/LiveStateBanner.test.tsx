@@ -27,6 +27,26 @@ describe('LiveStateBanner', () => {
     expect(screen.queryByRole('button', { name: '설정' })).toBeNull();
   });
 
+  it('kiwoom_auth_failing 은 **고칠 env 변수명을** 보여 준다', () => {
+    // 계정 번호(5)를 그대로 보이면 사용자가 `KIWOOM_APP_KEY_5` 를 찾는데 그건 다른
+    // 키다 — account 5 ↔ `KIWOOM_APP_KEY_6`. 이름은 백엔드가 실어 보낸다.
+    render(
+      <LiveStateBanner
+        primary={null}
+        stack={['kiwoom_auth_failing']}
+        details={{ kiwoom_auth_failing: 'KIWOOM_APP_KEY_6' }}
+      />,
+    );
+
+    expect(screen.getByText(/KIWOOM_APP_KEY_6/)).toBeInTheDocument();
+    expect(screen.queryByText(/계정 5/)).toBeNull();
+  });
+
+  it('detail 이 없으면 제목만 — 꼬리말이 빈 괄호로 남지 않는다', () => {
+    render(<LiveStateBanner primary={null} stack={['kiwoom_auth_failing']} />);
+    expect(screen.getByText('키움 앱키 인증 실패 — 과거 데이터 조회가 막힙니다')).toBeInTheDocument();
+  });
+
   it('shows realtime_unavailable banner with a settings action (F2)', () => {
     render(<LiveStateBanner primary="realtime_unavailable" stack={[]} />);
     expect(screen.getByText(/실시간 미가동/)).toBeInTheDocument();

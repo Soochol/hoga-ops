@@ -1954,7 +1954,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         status = get_status()
         update: dict[str, object] = {}
         # 거버너 관측 표면 — PR-J(#1046)에서 KIS 스케줄러가 사라지고 키움 거버너가
-        # 대신한다. 키는 프론트 계약이라 유지한다(#1046 관측 절에서 정리).
+        # 대신한다. **이제 진짜 프론트 계약이다**: `KiwoomGovernorSnapshot` 으로 shape 이
+        # 선언돼 있고(`lifecycle.py`), 프론트가 `auth_failing_env_keys` 를 읽어 죽은
+        # 앱키 배너를 띄운다(`liveStatusProjection.ts`). 그전까지는 `dict[str, object]`
+        # 로 나가면서 소비처가 0곳이라 "계약" 이라는 말에 상대가 없었다.
         snapshot = kiwoom_rest_runtime.snapshot()
         if snapshot:
             update["rest_capacity_scheduler"] = snapshot

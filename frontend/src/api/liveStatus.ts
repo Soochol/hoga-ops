@@ -45,6 +45,37 @@ export interface LiveStatus {
   supervised_tasks?: SupervisedTask[];
   // 데이터 디렉터리 파일시스템의 여유. 조회 실패·미주입이면 없음.
   disk?: DiskHeadroom | null;
+  // 키움 REST 유량 거버너 관측. 거버너 미가동이면 없음.
+  rest_capacity_scheduler?: KiwoomGovernorSnapshot | null;
+}
+
+/**
+ * 키움 REST 유량 거버너 스냅샷. 미러: `hoga/live/lifecycle.py::KiwoomGovernorSnapshot`.
+ *
+ * 오래 `dict[str, object]` 로 나가면서 프론트에는 미러도 소비도 없었다 — ADR-0136 이
+ * KIS 의 `kis_calls_today` 를 두고 지적한 "렌더 0곳인 죽은 필드" 와 같은 상태였다.
+ */
+export interface KiwoomGovernorSnapshot {
+  queued: number;
+  inflight: number;
+  workers: number;
+  tr_buckets: number;
+  accounts: number;
+  /** 계정별 **시도** 수(성공 전에 센다). 쏠림이 없으면 앱키 증설이 배수를 못 낸다. */
+  calls_by_account: Record<string, number>;
+  /** 인증 실패 **누계** — 리셋되지 않으므로 "지금 죽었나" 의 답이 아니다. */
+  auth_failures_by_account: Record<string, number>;
+  /** 지금 격리 창(60s) 안. **정상 만료도 여기 들어온다** — 경고 근거로 쓰지 말 것. */
+  auth_blocked_accounts: number[];
+  /** 연속 실패가 임계를 넘어 **앱키가 죽었다고 판정된** 계정. */
+  auth_failing_accounts: number[];
+  /**
+   * 위 계정의 **env 변수명**. 화면은 이쪽을 보여 준다 — account 5 ↔
+   * `KIWOOM_APP_KEY_6` 의 off-by-one 을 여기서 다시 계산하면 애먼 키를 지우게 된다.
+   * 그래서 백엔드가 이름을 직접 실어 보낸다.
+   */
+  auth_failing_env_keys: string[];
+  background_deferred_due_to_user_visible: number;
 }
 
 /**
@@ -76,6 +107,22 @@ export interface SupervisedTask {
   name: string;
   running: boolean;
   state?: 'running' | 'dead' | 'completed' | 'not_started';
+}
+
+/**
+ * 인증이 죽었다고 **판정된** 키움 앱키의 env 변수명들. 없으면 빈 배열.
+ *
+ * `auth_blocked_accounts` 를 쓰지 않는 이유: 정상 토큰 만료도 60초 격리를 남기므로
+ * 멀쩡한 동작에 경고가 뜬다. 판정은 백엔드가 **연속** 실패로 한다
+ * (`kiwoom_capacity._AUTH_FAILING_THRESHOLD`) — 임계값을 여기로 옮기지 말 것.
+ */
+export function authFailingKiwoomKeys(
+  // 전체 `LiveStatus` 를 요구하지 않는다 — `projectLiveStatus` 가 테스트 편의를 위해
+  // **의도적으로 좁힌** 입력을 받기 때문이다(그 타입에 전체를 강요하면 모든 테스트
+  // 픽스처가 무관한 필드를 채워야 한다).
+  status: { rest_capacity_scheduler?: KiwoomGovernorSnapshot | null } | undefined | null,
+): string[] {
+  return status?.rest_capacity_scheduler?.auth_failing_env_keys ?? [];
 }
 
 /** 조용히 죽은 배경 태스크 이름들. 미기동·정상완료는 죽음이 아니다. */
