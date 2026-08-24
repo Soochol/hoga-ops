@@ -39,7 +39,7 @@ class _ScanCoalescer:
     """동일 요청 바디의 동시 /scan 을 하나의 실행으로 합친다(결과 공유).
 
     실시간 모니터링·멀티탭·연타로 같은 조건 스캔이 겹쳐 도착하면 duckdb 스캔 + depth
-    평가를 N번 중복 실행한다(intraday KIS fetch 는 screener_intraday 가 이미 15초 TTL 로
+    평가를 N번 중복 실행한다(장중 키움 시세 fetch 는 screener_intraday 가 이미 15초 TTL 로
     coalesce). 첫 요청이 공유 task 를 만들고, 겹친 요청은 같은 결과를 받는다.
 
     캐시가 아니라 in-flight 코얼레싱이다 — task 완료 즉시 슬롯을 비워 다음 요청은 새
@@ -88,7 +88,7 @@ _PROGRESS_MIN_INTERVAL_S = 1.0  # 진행 이벤트 스로틀(테스트는 0으�
 
 
 # 스펙 D6 — 스크리너 EOD ingest 컷오프 = 16:00 KST. 정규장 종가(15:30) 확정 +
-# After-Hours(15:30–16:00) 버퍼. 이 시각 전의 "오늘" 일봉은 KIS가 줘도 미확정이므로
+# After-Hours(15:30–16:00) 버퍼. 이 시각 전의 "오늘" 일봉은 벤더가 줘도 미확정이므로
 # 갭에서 제외한다 — 장중 미확정 행이 아카이브에 박제되는 것을 막는다(그렇게 박제되면
 # last_raw_date 가 오늘로 올라가 이후 no_gap 으로 재fetch까지 차단되어, 확정값으로
 # 자가 교체되지 않는 오염이 된다). captures 경로의 16:30 is_today_too_early(hogaplay
@@ -98,7 +98,11 @@ _SCREENER_EOD_CUTOFF_HOUR = 16
 
 def _gap_trading_days(last_raw_date: str, today: str, *, now: datetime) -> list[str]:
     """last_raw_date 다음날부터 today(KST)까지의 거래일 목록. 갭 없으면 [].
-    trading_days_in_range 예외(KIS 거래일 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
+    trading_days_in_range 예외는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
+    **그 예외의 의미가 PR-H(#1044) 로 바뀌었다**: 조회 경로에 벤더가 없어졌으므로
+    "거래일 원격이 먹통" 이라는 사건은 더 없다. 지금 남은 것은 둘뿐이다 —
+    소스 파일을 못 읽음(배포 사고) · 요청 끝이 달력 커버리지 초과(오버레이가 밀려야 함).
+    둘 다 재시도로 풀리지 않는다(`calendar.trading_days_in_range` 참조).
     now < 16:00 KST 면 오늘(미확정)을 제외(스펙 D6). trigger_update(갭 캐치업)와
     status(days_behind)가 공유하는 단일 갭 규칙."""
     start = next_kst_day(last_raw_date)
@@ -141,7 +145,7 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     """갱신 사전 체크. 작업이 없으면 skip reason 문자열을 반환한다.
 
     unseeded 체크가 가장 먼저 — 시드되지 않은 테스트/부트 데이터 디렉토리에서
-    calendar/KIS 작업이 돌지 않는 기존 계약 유지.
+    달력·벤더 작업이 돌지 않는 기존 계약 유지.
     """
     sdir = data_dir / "screener"
     # 동기 duckdb/polars read 는 to_thread 로 — 이벤트 루프 블로킹 방지(_commit 과 동일 규칙).
@@ -153,8 +157,10 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     now = now_kst()
     today = now.strftime("%Y%m%d")
     try:
-        # to_thread: 콜드 월이면 KIS chk-holiday sync HTTP — duckdb read 와 같은
-        # 규칙으로 이벤트 루프 밖에서.
+        # to_thread: 시드/오버레이 파일 sync read(+파싱) — duckdb read 와 같은 규칙으로
+        # 이벤트 루프 밖에서. **근거가 PR-H(#1044) 로 바뀌었다**: 예전엔 콜드 월이
+        # KIS chk-holiday sync HTTP 였고 지금은 파일 IO 다. 비용은 줄었지만 동기 IO 인
+        # 것은 그대로라 규칙은 유지한다.
         days = await asyncio.to_thread(_gap_trading_days, last, today, now=now)
     except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
         log.warning("screener update: trading-day list unavailable")
@@ -163,9 +169,9 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
         return "no_gap"
 
     # EOD 갭 캐치업은 배경 배치(종목 다수 daily fetch)이므로 Capacity Scheduler에 맡긴다.
-    # creds가 없으면 기존처럼 skip하고, 있으면 per-code 요청이 계정풀/쿨다운/예약용량 정책을 탄다.
-    # PR-F(#1042) 칼 컷오버 — 자격 게이트도 키움을 본다. reason 문자열
-    # `kis_creds_missing` 은 **프론트 계약**이라 지금 바꾸지 않는다(#1046 에서 정리).
+    # creds가 없으면 기존처럼 skip하고, 있으면 per-code 요청이 키움 거버너 정책을 탄다.
+    # PR-F(#1042) 칼 컷오버 — 자격 게이트도 키움을 본다. wire reason 은 벤더 중립
+    # (`creds_missing`)이라 프론트 union 도 그대로다 — 표시 문구만 벤더를 말한다.
     if kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
         log.warning("screener update: 키움 자격증명 없음, skip")
         return "creds_missing"
@@ -294,7 +300,7 @@ async def start_update(data_dir: Path, *, bus=None) -> dict:
 
 
 async def shutdown_update_job() -> None:
-    """lifespan 셧다운: KIS 클라이언트 teardown 전에 detached job 을 cancel+await."""
+    """lifespan 셧다운: 벤더 클라이언트 teardown 전에 detached job 을 cancel+await."""
     task = _job_task
     if task is not None and not task.done():
         task.cancel()

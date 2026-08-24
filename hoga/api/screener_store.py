@@ -77,7 +77,7 @@ from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_f
 
 @dataclass(frozen=True)
 class DailyBar:
-    """원주가 일봉 한 행 — KIS fetch와 SSOT append 사이 이음매의 타입 계약."""
+    """원주가 일봉 한 행 — 벤더 fetch와 SSOT append 사이 이음매의 타입 계약."""
     code: str
     date: dt.date
     open: float
@@ -245,9 +245,14 @@ from collections.abc import Awaitable, Callable  # noqa: E402
 
 FetchOne = Callable[[str, str, str], Awaitable[list[DailyBar]]]
 
-# KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하더라도, 스크리너 자체
-# fan-out은 보수적으로 둔다. 부팅/수동/일일 배치가 KIS quota를 벽처럼 채우지
-# 않게 기본 3, 운영 튜닝 상한 8.
+# **이 상수의 역할이 PR-F(#1042) 로 바뀌었다.** 예전엔 KIS `_get` 의 15/s
+# leaky-bucket 위에 얹는 2차 방어(공유 quota 를 벽처럼 채우지 않기)였다. 지금은
+# 유량 페이싱을 키움 거버너가 **전부** 소유한다 — 페이지 1장 = submit 1건이고
+# (`screener.py::_run_page`), 버킷은 TR별 5 req/s · 앱키별 병렬(ADR-0138)이며,
+# 이 경로는 `priority="background"` 라 user_visible 에 양보한다.
+#
+# 남은 역할은 하나다: **동시에 걷는 종목 수의 상한**. 즉 거버너 큐 깊이와 메모리를
+# 묶는 값이지 속도 손잡이가 아니다 — 올려도 병목(버킷)은 그대로라 처리량은 안 는다.
 _DEFAULT_FETCH_CONCURRENCY = 3
 _MAX_FETCH_CONCURRENCY = 8
 

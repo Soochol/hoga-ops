@@ -1,7 +1,10 @@
-"""Screener Phase-2 one-time ops: KIS factor backfill, 원주가 reconcile, impact report.
+"""Screener Phase-2 one-time ops: factor backfill, 원주가 reconcile, impact report.
 
 Reuses the Phase-1 factor store (screener_factors) and daily store (screener_store).
-KIS fetches are injected so the logic is unit-testable without live calls (ADR-0057).
+벤더 fetch 는 주입되므로 로직은 라이브 콜 없이 단위 테스트된다(ADR-0057).
+
+**벤더는 키움이다** — ADR-0057 은 KIS 를 전제로 쓰였지만 PR-F(#1042) 가 소스를
+`ka10081` 로 칼 컷오버했다(ADR-0136). 여기 배선은 :func:`run_backfill` 에 있다.
 """
 from __future__ import annotations
 
@@ -20,7 +23,10 @@ log = logging.getLogger(__name__)
 # (code, from_yyyymmdd, to_yyyymmdd) -> [(date, adj_close)] (order-agnostic; pair_raw_adj sorts)
 FetchAdj = Callable[[str, str, str], Awaitable[list[tuple[dt.date, float]]]]
 
-_BACKFILL_CONCURRENCY = 8  # KIS _get caps HTTP at 15/s; this just fills the bucket
+# 동시에 걷는 **종목 수** 상한이지 유량 손잡이가 아니다 — 페이싱은 키움 거버너가
+# 소유한다(페이지 1장 = submit 1건, `run_backfill::_run_page`). 근거는
+# `screener_store._DEFAULT_FETCH_CONCURRENCY` 주석과 같다.
+_BACKFILL_CONCURRENCY = 8
 
 
 def _raw_close_by_code(unadjusted: pl.DataFrame) -> dict[str, list[tuple[dt.date, float]]]:
@@ -38,9 +44,9 @@ async def factor_backfill(
     sdir: Path, *, fetch_adj: FetchAdj, codes: list[str] | None = None,
     batch: int = 200, concurrency: int = _BACKFILL_CONCURRENCY,
 ) -> int:
-    """전 종목 KIS 수정주가로 factors.parquet **최초 구축**. 이미 있는 종목은 skip(resumable).
+    """전 종목 벤더 수정주가로 factors.parquet **최초 구축**. 이미 있는 종목은 skip(resumable).
 
-    각 종목: 원주가 종가 + KIS 수정주가 종가를 date-join(pair_raw_adj) → compute_factor_segments.
+    각 종목: 원주가 종가 + 벤더 수정주가 종가를 date-join(pair_raw_adj) → compute_factor_segments.
     batch 마다 (기존 ∪ 신규) 를 원자적으로 기록 → 중단돼도 완료분 보존. 신규 추가 종목 수 반환.
 
     ⚠ **이 함수는 갱신 도구가 아니다 — 세그먼트가 하나라도 있는 종목은 영구히 건너뛴다.**
@@ -115,12 +121,12 @@ async def reconcile_raw(
     concurrency: int = _BACKFILL_CONCURRENCY,
     overwrite_recent_days: int = 0,
 ) -> ReconcileReport:
-    """기존 원주가를 KIS(원주가)와 대조: 겹치는 날 값 검증 + 디스크 결측일을 KIS로 보충(합집합).
+    """기존 원주가를 벤더 원주가와 대조: 겹치는 날 값 검증 + 디스크 결측일을 벤더로 보충(합집합).
 
     값 불일치: 기본은 '기록만'하고 덮어쓰지 않는다(디스크 SSOT 보존). 단 최근
     overwrite_recent_days 일 이내(disk 최대일 기준)의 불일치는 장중 데이터 오염으로 간주해
-    KIS 값으로 덮어쓴다 — append_rows 의 keep="last" 가 신규 행을 우선한다.
-    결측일(KIS엔 있고 디스크엔 없음)만 append_rows 로 union — (code,date) 멱등이 중복을 막는다.
+    벤더 값으로 덮어쓴다 — append_rows 의 keep="last" 가 신규 행을 우선한다.
+    결측일(벤더엔 있고 디스크엔 없음)만 append_rows 로 union — (code,date) 멱등이 중복을 막는다.
     원자적 기록.  recent_overwrites 는 덮어쓴 행 수(height 변화 없음).
     """
     up = sdir / "daily_unadjusted.parquet"
@@ -167,7 +173,7 @@ async def reconcile_raw(
                     mismatches += 1
                     if len(sample) < 20:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
                         sample.append((b.code, b.date.strftime("%Y-%m-%d")))
-                    # overwrite recent days: KIS is authoritative for intraday-stale raw
+                    # overwrite recent days: 벤더가 장중-stale 원주가의 권위 소스다
                     if recent_cutoff is not None and b.date >= recent_cutoff:
                         fill.append(b)
                         recent_overwrites += 1
@@ -193,7 +199,7 @@ from hoga.util.atomic_write import atomic_write_json  # noqa: E402 — appended 
 
 
 def build_impact_report(sdir: Path, *, old_path: Path) -> dict:
-    """구(휴리스틱) vs 신(KIS 계수) 수정주가를 종목별로 비교 → 어떤 종목이 바뀌었는지.
+    """구(휴리스틱) vs 신(벤더 계수) 수정주가를 종목별로 비교 → 어떤 종목이 바뀌었는지.
 
     new = 현재 daily_adjusted.parquet (factor_backfill 후 derive_adjusted 가 재생성한 것).
     old = 백필 전 보관해둔 사본(old_path). (code,date) 기준 close 가 달라진 종목을 센다.
@@ -223,14 +229,14 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
     """Plan-2 1회 백필 오케스트레이션(주입된 fetch — 테스트/프로덕션 공용).
 
     ① reconcile_raw(원주가 검증+결측 보충) ② factor_backfill(factors.parquet)
-    ③ 기존 daily_adjusted 사본 보관 ④ derive_adjusted(이제 factors 적용→ KIS 정확 수정주가)
+    ③ 기존 daily_adjusted 사본 보관 ④ derive_adjusted(이제 factors 적용→ 벤더 정확 수정주가)
     ⑤ build_impact_report. 반환: {reconcile, factors_added, impact}.
     """
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     rec = await reconcile_raw(sdir, fetch_raw=fetch_raw, overwrite_recent_days=14)
     added = await factor_backfill(sdir, fetch_adj=fetch_adj)
 
-    # write-once baseline: 재실행 시 KIS-보정본이 휴리스틱 baseline 을 덮어쓰면
+    # write-once baseline: 재실행 시 벤더-보정본이 휴리스틱 baseline 을 덮어쓰면
     # impact 리포트가 0 으로 무력화되므로, prebackfill 사본은 최초 1회만 보관한다.
     old_path = sdir / "daily_adjusted.prebackfill.parquet"
     if (sdir / "daily_adjusted.parquet").exists() and not old_path.exists():

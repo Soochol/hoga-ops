@@ -1,10 +1,14 @@
-"""KIS .mst symbol master cache + search + captured breakdown via disk_state.
+"""Symbol master cache + search + captured breakdown via disk_state.
+
+업스트림은 키움 ``ka10099`` 다 (PR-I·#1045). KIS ``.mst`` 는 이 모듈의 **역사**로만
+남아 있고, 그 무인증 성질이 커밋된 시드 스냅샷으로 옮겨갔다 —
+:func:`_fetch_symbol_master` 참조.
 
 Three-tier policy (spec §11 Q19):
 - Tier 1: lifespan calls load_disk_state() at startup (disk-backed boot).
 - Tier 2: GET-time ``asyncio.Lock`` + in-flight Future dedupe — N concurrent
-  GETs trigger exactly one .mst fetch.
-- Tier 3: .mst failure returns the last-known cache with ``status="stale"``
+  GETs trigger exactly one upstream fetch.
+- Tier 3: fetch failure returns the last-known cache with ``status="stale"``
   (or ``status="unavailable"`` if no cache ever existed).
 """
 
@@ -327,7 +331,11 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
     payload = {
         "schema_version": SCHEMA_VERSION,
         "fetched_at_ms": fetched_at_ms,
-        "source": "kis_mst",
+        # 순수 provenance breadcrumb — **되읽는 코드가 없다**(로더는 schema_version 만
+        # 검증한다). 그래서 값 교체에 마이그레이션이 필요 없고, 디스크에 남은 옛
+        # `kis_mst` 파일도 그대로 로드된다. 손으로 캐시 파일을 열어 본 사람이 소스를
+        # 오인하지 않게 하는 것이 이 필드의 유일한 쓸모다 — 그러니 정확해야 한다.
+        "source": "kiwoom_ka10099",
         "entries": [
             {"code": e.code, "name": e.name, "market": e.market,
              "security_type": e.security_type, "nxt_enabled": e.nxt_enabled}
@@ -505,7 +513,7 @@ def current_status() -> str:
 
 def needs_boot_refresh() -> bool:
     """§4.4 boot policy, owned HERE (not at the lifespan call site): schedule
-    the background .mst auto-refresh when the cache is unavailable OR a
+    the background master auto-refresh when the cache is unavailable OR a
     legacy-schema file was accepted (serve the old catalog now, converge to
     the current schema online)."""
     # PR-I(#1045): `stale` 도 포함한다. 시드 부팅이 그 상태를 만드는데, 시드는
@@ -535,9 +543,15 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
 
 
 async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
-    """POST /api/symbols/refresh — the only .mst fetch entry point.
+    """POST /api/symbols/refresh — the only upstream fetch entry point.
 
-    No credentials gate — the .mst is a static no-auth download (SPEC §7).
+    **라우트에는 자격 게이트가 없지만 갱신이 무자격으로 되는 것은 아니다** —
+    ``ka10099`` 는 인증을 요구하고, :func:`_fetch_symbol_master` 가 클라이언트 부재를
+    ``KiwoomMasterFetchError`` 로 올린다(그 실패는 Tier 3 로 흡수돼 stale 서빙이 된다).
+    무자격에서도 **검색이 사는** 것은 라우트가 아니라 커밋된 시드 스냅샷 덕이다
+    (ADR-0134). *(이 자리엔 "No credentials gate — the .mst is a static no-auth
+    download (SPEC §7)" 가 있었다. KIS `.mst` 시절엔 맞았고 PR-I·#1045 이후 틀렸다.)*
+
     Concurrency: _refresh_coordinator dedupes simultaneous clicks.
     """
     def _start_refresh_task() -> asyncio.Task[SymbolsAllResponse]:
@@ -549,7 +563,7 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
 
 
 async def aclose_refresh() -> None:
-    """Lifespan shutdown hook — cancel+await any in-flight .mst refresh worker.
+    """Lifespan shutdown hook — cancel+await any in-flight master refresh worker.
 
     The refresh worker is coordinator-owned (decoupled from its callers), so
     cancelling the ``symbols-boot-refresh`` initiator task no longer stops it.

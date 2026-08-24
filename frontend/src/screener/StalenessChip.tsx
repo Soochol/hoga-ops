@@ -6,7 +6,7 @@ interface Props {
 
 /** Header EOD archive chip. It deliberately describes the stored confirmed
  *  daily archive, not the active scan basis: intraday scans may still overlay
- *  today's KIS quote while this archive remains on the previous trading day. */
+ *  today's Kiwoom quote while this archive remains on the previous trading day. */
 export function StalenessChip({ status }: Props) {
   if (!status) return null;
   const last = status.last_raw_date;

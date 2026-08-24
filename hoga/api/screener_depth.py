@@ -147,7 +147,11 @@ def _fold_peaks(
     code: str,
     peak: snapshots_tbl.DailyDepthPeak,
 ) -> None:
-    """소스가 둘이면 side 별 최댓값을 취한다(관심=WS, 히트맵=키움 WS)."""
+    """소스가 둘 이상이면 side 별 최댓값을 취한다.
+
+    **지금은 소스가 하나라(:data:`_TODAY_SOURCES`) 이 폴드는 사실상 항등이다.**
+    둘째 소스였던 KIS WS 계층은 ADR-0118 에서 삭제됐다. 구조를 남기는 이유는
+    소스 축이 튜플이라 다시 늘 수 있어서다 — 늘 때 이 규칙이 필요하다."""
     best_ask, best_bid = out.get(code, (None, None))
     out[code] = (
         peak.ask_peak if best_ask is None else max(best_ask, peak.ask_peak),
@@ -220,8 +224,8 @@ def _today_split_peaks(
 ) -> dict[str, snapshots_tbl.DepthSplitPeak]:
     """오늘 live parquet 의 code별 기준시각 분할 peak(매도·매수 양측).
 
-    두 소스(관심=KIS WS, 히트맵=키움 WS)가 모두 있으면 **창별·side별로 각각**
-    최댓값을 취한다 — :func:`_fold_peaks` 와 같은 규칙.
+    소스가 둘 이상이면 **창별·side별로 각각** 최댓값을 취한다 —
+    :func:`_fold_peaks` 와 같은 규칙(지금은 소스가 하나라 항등이다).
 
     배치 1쿼리를 쓰고, 실패하면 같은 배치 함수를 **파일 1개짜리로** 재호출해 되돌린다.
     별도의 단건 SQL 을 만들지 않는 이유는 술어가 두 벌이 되면 정의가 갈릴 수 있어서다
