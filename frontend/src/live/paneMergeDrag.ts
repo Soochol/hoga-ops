@@ -1,7 +1,7 @@
 import type { PaneId } from '../chart/drawing/types';
 import { PANE_DISPLAY_NAME } from '../chart/paneOrder';
 import { isSharedAxisGroup, paneGroupIndexOf, type PaneGroups } from '../chart/paneGroups';
-import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import type { PaneSpecGroup } from './paneGroupSpecs';
 
 /**
@@ -91,13 +91,21 @@ function eulReul(word: string): string {
  * 게이트가 겹치는가 — 두 pane 이 **어떤 타임프레임에서든 함께 표시될 수 있는가**.
  * 게이트 지식을 여기 복제하지 않고 `paneSpecsForTimeframe` 자체에 물어 파생한다
  * (분봉 + D 두 관점이면 충분 — W/M 의 마운트 집합은 D 의 부분집합이다).
+ *
+ * ⚠ `ALL_ON` 은 **모든 opt-in 토글을 켜야 한다** — 빠진 pane 은 두 집합 어디에도
+ * 없어 어떤 조합이든 거짓 게이트 경고가 뜬다(peak-wall 이 실제 사례: 교차 PR 로
+ * `peakWallPaneEnabled === true` 게이트가 들어오며 이 함정이 생겼다). 새 opt-in
+ * pane 토글을 추가하면 여기에도 추가할 것 — `paneMergeDrag.test.ts` 의 전수
+ * 가드(모든 PaneId 는 어딘가에서 보인다)가 누락을 빨갛게 만든다.
  */
-const ALL_ON = {
+const ALL_ON: PaneToggles = {
   foreignNet: true,
   institutionNet: true,
-} as const;
+  peakWallPaneEnabled: true,
+};
 let coVisibleSets: { minute: Set<string>; daily: Set<string> } | null = null;
-function coVisible(a: PaneId, b: PaneId): boolean {
+/** 두 pane 이 같은 타임프레임에서 함께 마운트될 수 있는가(최대 토글 기준). */
+export function panesCanCoDisplay(a: PaneId, b: PaneId): boolean {
   if (!coVisibleSets) {
     coVisibleSets = {
       minute: new Set(paneSpecsForTimeframe('1m', ALL_ON).map((s) => s.name)),
@@ -123,7 +131,7 @@ export function mergeDropHint(
 ): MergeDropHint {
   const name = PANE_DISPLAY_NAME[draggedPane];
   const title = `『${name}』${eulReul(name)} 이 pane 에 합치기`;
-  if (targetGroupIds.some((id) => !coVisible(draggedPane, id))) {
+  if (targetGroupIds.some((id) => !panesCanCoDisplay(draggedPane, id))) {
     return {
       title,
       hint: '이 조합은 같은 타임프레임에서 함께 표시되지 않습니다',

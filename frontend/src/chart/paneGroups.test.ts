@@ -27,17 +27,18 @@ describe('normalizePaneGroups', () => {
       ['volume', 'nope', 'volume'],
       [],
       ['ratio', 42],
-      // quote-totals, fill-strength, program-trade, investor 2종 누락
+      // 나머지 pane 전부 누락 — canonical 순서의 싱글턴으로 뒤에 붙는다.
     ];
+    // 기대값을 CANONICAL_PANE_ORDER 에서 파생한다 — 새 pane 이 추가돼도 이 테스트가
+    // 목록 하드코딩 때문에 깨지지 않게(막는 방향은 순서·싱글턴 규칙이지 멤버 수가 아니다).
+    const appended = CANONICAL_PANE_ORDER
+      .filter((id) => !(['candle', 'volume', 'ratio'] as string[]).includes(id))
+      .map((id) => [id]);
     expect(normalizePaneGroups(raw)).toEqual([
       ['candle'],
       ['volume'],
       ['ratio'],
-      ['quote-totals'],
-      ['fill-strength'],
-      ['program-trade'],
-      ['investor-foreign'],
-      ['investor-institution'],
+      ...appended,
     ]);
   });
 

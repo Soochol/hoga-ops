@@ -202,10 +202,16 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       indicatorTimeframe: '1m',
       // ⚠ paneOrder 도 기준선에 포함한다 — 종전엔 리셋이 없어 「pane 순서를 바꾸면…」
       // 테스트의 스왑이 뒤 테스트로 샜다(뒤 테스트들이 우연히 통과했을 뿐).
+      // paneGroups(레이아웃 원본)도 같은 이유로 동기 리셋 — 병합 테스트의 그룹이
+      // 뒤 테스트로 새면 마운트 순서 단언이 전부 흔들린다.
       paneOrder: [
         'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
         'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
       ],
+      paneGroups: paneGroupsFromOrder([
+        'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      ]),
     });
     useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', false);
   });

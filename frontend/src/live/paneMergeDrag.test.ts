@@ -5,9 +5,11 @@ import {
   fullBoundaryIndex,
   mergeDropHint,
   PANE_BOUNDARY_BAND_PX,
+  panesCanCoDisplay,
 } from './paneMergeDrag';
 import { paneGroupSpecsForTimeframe } from './paneGroupSpecs';
 import { mergePaneIntoGroup, normalizePaneGroups } from '../chart/paneGroups';
+import { CANONICAL_PANE_ORDER } from '../chart/paneOrder';
 import type { PaneToggles } from './paneSpecsForTimeframe';
 
 const ALL_ON: PaneToggles = { foreignNet: true, institutionNet: true };
@@ -65,16 +67,18 @@ describe('classifyPaneDropTarget', () => {
 
 describe('fullBoundaryIndex', () => {
   it('게이트로 안 보이는 그룹이 있어도 보이는 이웃 앞으로 매핑된다', () => {
-    // 전체: [candle][volume][quote-totals][ratio][fill-strength][program-trade][inv-f][inv-i]
     const paneGroups = normalizePaneGroups(undefined);
-    // D 뷰: 호가 3종 탈락 → 보이는 것 [candle][volume][investor-foreign][investor-institution]
+    // D 뷰: 분봉 전용 pane 탈락 → 보이는 것 [candle][volume][investor-foreign][investor-institution]
     const dailyVisible = paneGroupSpecsForTimeframe('D', ALL_ON, paneGroups);
     expect(dailyVisible.map((g) => g[0].name))
       .toEqual(['candle', 'volume', 'investor-foreign', 'investor-institution']);
-    // 보이는 경계 2 = investor-foreign 앞 = 전체 인덱스 6.
-    expect(fullBoundaryIndex(paneGroups, dailyVisible, 2)).toBe(6);
-    // 맨 아래 = 마지막 보이는 그룹 뒤 = 8.
-    expect(fullBoundaryIndex(paneGroups, dailyVisible, 4)).toBe(8);
+    // 기대 인덱스는 canonical 목록에서 파생 — pane 이 추가돼도 규칙(보이는 이웃 앞)만 잰다.
+    const investorForeignIdx = paneGroups.findIndex((g) => g.includes('investor-foreign'));
+    const investorInstitutionIdx = paneGroups.findIndex((g) => g.includes('investor-institution'));
+    // 보이는 경계 2 = investor-foreign 앞.
+    expect(fullBoundaryIndex(paneGroups, dailyVisible, 2)).toBe(investorForeignIdx);
+    // 맨 아래 = 마지막 보이는 그룹(investor-institution) 뒤.
+    expect(fullBoundaryIndex(paneGroups, dailyVisible, 4)).toBe(investorInstitutionIdx + 1);
   });
 });
 
@@ -106,6 +110,23 @@ describe('mergeDropHint', () => {
   it('을/를 받침 처리', () => {
     expect(mergeDropHint('volume', ['ratio']).title).toContain('『거래량』을');
     expect(mergeDropHint('ratio', ['volume']).title).toContain('『호가비』를');
+  });
+});
+
+describe('panesCanCoDisplay — ALL_ON 전수 가드', () => {
+  it('모든 PaneId 는 최대 토글 기준 어딘가에서 보인다 — opt-in 토글 누락 감지', () => {
+    // 이 가드가 막는 방향: 새 opt-in pane 토글이 paneMergeDrag 의 ALL_ON 에 빠지면
+    // 그 pane 은 분봉·D 어느 집합에도 없어 **모든 병합 조합이 거짓 게이트 경고**가
+    // 된다(peak-wall 교차 PR 에서 실제 발생). 자기 자신과의 co-display 는 "어느
+    // 타임프레임에선가 마운트된다" 와 동치라, 누락된 토글이 여기서 빨갛게 드러난다.
+    for (const id of CANONICAL_PANE_ORDER) {
+      expect(panesCanCoDisplay(id, id), `${id} 는 ALL_ON 기준 어느 집합에도 없다`).toBe(true);
+    }
+  });
+
+  it('opt-in pane(peak-wall)도 분봉 pane 과 함께 표시 가능으로 판정된다', () => {
+    expect(mergeDropHint('peak-wall', ['volume']).warning).toBe(false);
+    expect(mergeDropHint('ratio', ['peak-wall']).warning).toBe(false);
   });
 });
 
