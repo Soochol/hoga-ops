@@ -161,14 +161,47 @@ describe('BookPanel', () => {
         expect(within(midRow()).getByText('고')).toBeInTheDocument();
       });
 
-      it('시가=저가처럼 겹쳐도 사다리 행과 같이 나란히 쌓인다', () => {
+      it('시가=저가로 겹치면 `저` 하나만 — 고 > 저 > 시 우선순위', () => {
+        // 사용자 결정 2026-08-24: 한 가격에 라벨은 하나. 칩 두 개가 쌓이면 그 행만
+        // 폭이 튄다. 겹침은 드물지 않다(시가=저가 = 갭하락 후 상승).
         renderPanel({
           snapshot: gapSnap(),
           summary: { ...SUMMARY, dayOpen: 251_000, dayLow: 251_000 },
         });
-        const chips = within(midRow());
-        expect(chips.getByText('저')).toBeInTheDocument();
-        expect(chips.getByText('시')).toBeInTheDocument();
+        expect(within(midRow()).getByText('저')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('시')).toBeNull();
+      });
+
+      it('시가=고가로 겹치면 `고` 하나만', () => {
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayOpen: 251_000, dayHigh: 251_000 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('시')).toBeNull();
+      });
+
+      it('고가=저가(하루 한 가격)면 `고` 가 남는다 — 표 순서가 그 선택이다', () => {
+        // 상한가 직행처럼 하루 종일 한 가격에만 체결된 날. 두 값이 같아 어느 쪽을
+        // 골라도 가격은 같고, `DAY_MARKERS` 순서가 결정을 이미 못박고 있다.
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 251_000 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(within(midRow()).queryByText('저')).toBeNull();
+      });
+
+      it('겹치지 않으면 각 가격이 자기 칩을 그대로 갖는다', () => {
+        // 우선순위가 **겹칠 때만** 작동한다는 대조군 — 없으면 위 셋은 "칩이 하나만
+        // 뜬다" 를 증명할 뿐 "겹칠 때만 줄인다" 는 증명하지 못한다.
+        renderPanel({
+          snapshot: gapSnap(),
+          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 246_000, dayOpen: 251_500 },
+        });
+        expect(within(midRow()).getByText('고')).toBeInTheDocument();
+        expect(screen.getByText('저')).toBeInTheDocument();
+        expect(screen.getByText('시')).toBeInTheDocument();
       });
 
       it('`중` 은 칩이 붙어도 숫자에 가장 가깝다 — 칩 유무가 `중` x 를 안 바꾼다', () => {

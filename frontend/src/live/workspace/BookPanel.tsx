@@ -290,13 +290,13 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
-                markers={priceMarkers(l.price, summary)}
+                marker={dayMarker(l.price, summary)}
               />
             ))}
             <MidPriceRow
               price={midPrice}
               baselinePrice={baselinePrice}
-              markers={priceMarkers(midPrice, summary)}
+              marker={dayMarker(midPrice, summary)}
               boxed={lastPrice !== null && midPrice === lastPrice}
             />
             {bids.map((l, i) => (
@@ -305,7 +305,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
-                markers={priceMarkers(l.price, summary)}
+                marker={dayMarker(l.price, summary)}
                 topDivider={i === 0}
               />
             ))}
@@ -443,7 +443,8 @@ function ExpectedFillBanner({
 
 type PriceMarker = { label: string; bg: string };
 
-/** 시·고·저의 라벨·색·출처를 **한 곳에서** 정의한다. 사다리 칩(`priceMarkers`)과
+/** 시·고·저의 라벨·색·출처를 **한 곳에서** 정의한다. **배열 순서가 곧 우선순위**다
+ *  (고 > 저 > 시) — `dayMarker` 가 앞에서부터 처음 맞는 하나만 고른다. 사다리 칩과
  *  요약표 칩(`offLadderChip`)이 같은 표를 보므로 색이 두 표면에서 갈릴 수 없다 —
  *  두 벌로 두면 한쪽만 고쳤을 때 같은 뜻의 칩이 다른 색으로 조용히 갈린다. */
 const DAY_MARKERS = [
@@ -456,18 +457,40 @@ const DAY_MARKERS = [
 const BADGE_CLS =
   'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
 
-/** 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
- *  시=중립 회색. 한 가격이 둘 이상(예: 시가=고가)이면 배열로 나란히 쌓는다.
+/**
+ * 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
+ * 시=중립 회색.
  *
- *  `null`(사다리 한쪽이 비어 중간값이 없는 행)을 **여기서** 흡수한다 — 호출부마다
- *  가드를 두면 `중` 행만 조건이 갈려 다시 어긋난다. 소수 중간값(`.5`)은 정수
- *  시/고/저와 `===` 가 성립하지 않아 **분기 없이** 걸러진다(저가주에선 상시다). */
-function priceMarkers(price: number | null, summary: LiveTradeSummary): PriceMarker[] {
-  if (price === null || price <= 0) return [];
-  return DAY_MARKERS.filter((m) => {
+ * **한 가격에 칩은 최대 하나다**(사용자 결정 2026-08-24). 시가=고가처럼 값이 겹치면
+ * `DAY_MARKERS` 순서대로 **고 > 저 > 시** 중 하나만 남는다. 겹침은 드물지 않다 —
+ * 시가=고가는 갭상승 후 하락, 시가=저가는 갭하락 후 상승이다.
+ *
+ * ⚠ 이유는 **가격 정렬이 아니다.** 뱃지 띠는 `absolute` 라 레이아웃 폭을 안 먹는다 —
+ * 실측으로 칩 1개 행과 2개 행의 가격 좌변이 똑같이 217.8px 였다. 두 번째 칩이 하는
+ * 일은 띠가 **왼쪽으로 16px 더 자라는** 것과 한 가격을 두 번 읽히는 것뿐이고,
+ * 줄인 것은 그 읽는 비용이다.
+ *
+ * 부수 이득 하나(실측): 하루 마커가 최대 하나가 되면서 **모든 뱃지 띠의 좌변이
+ * 199.8px 로 같아졌다.** 종전엔 겹친 행만 183.8px 로 홀로 튀어나와 칩 열이
+ * 들쭉날쭉했다 — 가격 x 는 그때도 멀쩡했으므로 이건 칩 열 자체의 정렬 문제였다.
+ *
+ * 반환형이 **배열이 아니라 `| null`** 인 것이 이 규칙의 집행 지점이다 — 배열이면
+ * "최대 하나" 가 관례로만 남아 조용히 둘로 돌아간다. 타입이 그걸 막는다.
+ *
+ * 고=저(하루 종일 한 가격에만 체결 — 상한가 직행 등)면 `고` 가 남는다. 둘이 같은
+ * 값이라 어느 쪽을 골라도 가격은 같고, 표 순서가 그 선택을 이미 못박고 있다.
+ *
+ * `null`(사다리 한쪽이 비어 중간값이 없는 행)을 **여기서** 흡수한다 — 호출부마다
+ * 가드를 두면 `중` 행만 조건이 갈려 다시 어긋난다. 소수 중간값(`.5`)은 정수
+ * 시/고/저와 `===` 가 성립하지 않아 **분기 없이** 걸러진다(저가주에선 상시다).
+ */
+function dayMarker(price: number | null, summary: LiveTradeSummary): PriceMarker | null {
+  if (price === null || price <= 0) return null;
+  const hit = DAY_MARKERS.find((m) => {
     const v = m.of(summary);
     return v !== null && price === v;
-  }).map((m) => ({ label: m.label, bg: m.bg }));
+  });
+  return hit ? { label: hit.label, bg: hit.bg } : null;
 }
 
 /**
@@ -478,9 +501,14 @@ function priceMarkers(price: number | null, summary: LiveTradeSummary): PriceMar
  * 실측 2026-08-24 삼성전자(-8.5%)는 사다리 252,500~262,500 인데 고가 272,000 ·
  * 시가 271,500 이 전부 밖이었다. 드문 경우가 아니라 변동성 있는 날의 기본값이다.
  *
- * 규칙은 **배타**다: 시/고/저 하나당 칩은 사다리 아니면 요약표, 한쪽에만 있다.
- * 그래서 「요약표에 칩이 떴다」가 곧 「그 값은 지금 사다리에 없다」를 뜻하고,
- * 칩의 **등장 자체가 신호**다(상시 표시면 아무것도 말하지 않는다).
+ * 규칙은 **배타**다: 한 값의 칩은 사다리 아니면 요약표, 한쪽에만 있다. 그래서
+ * 「요약표에 칩이 떴다」가 곧 「그 값은 지금 사다리에 없다」를 뜻하고, 칩의
+ * **등장 자체가 신호**다(상시 표시면 아무것도 말하지 않는다).
+ *
+ * ⚠ 예외 하나: 사다리 칩은 **한 가격에 하나**라(`dayMarker`, 고 > 저 > 시) 시가가
+ * 고가·저가와 **같은 가격**이고 그 가격이 사다리에 있으면 `시` 칩은 어디에도 안
+ * 뜬다 — 그 행은 `고`(또는 `저`)로 라벨되고 `시작` 행은 값만 남는다. 의도한
+ * 동작이다: 같은 가격을 두 번 라벨하지 않는 것이 우선순위 규칙의 요점이다.
  *
  * ⚠ `onScreen` 에 **중간값을 포함**한다 — `중` 행도 가격을 그리는 자리이므로,
  * 빠뜨리면 사다리에 칩이 있는데 요약표에도 뜨는 이중 표시가 된다.
@@ -510,15 +538,11 @@ function offLadderChip(
  * 두 행이 이 마크업을 각자 복제하던 것을 합친 것이다 — 갈라져 있으면 한쪽만
  * 손봤을 때 같은 자리의 뱃지가 조용히 다른 모양이 된다.
  */
-function PriceBadges({ markers, mid = false }: { markers: PriceMarker[]; mid?: boolean }) {
-  if (markers.length === 0 && !mid) return null;
+function PriceBadges({ marker, mid = false }: { marker: PriceMarker | null; mid?: boolean }) {
+  if (marker === null && !mid) return null;
   return (
     <span data-price-badges="" className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
-      {markers.map((m) => (
-        <span key={m.label} className={`flex ${BADGE_CLS} text-white ${m.bg}`}>
-          {m.label}
-        </span>
-      ))}
+      {marker && <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`}>{marker.label}</span>}
       {mid && <span className={`flex ${BADGE_CLS} bg-bg-subtle text-fg-dim`}>중</span>}
     </span>
   );
@@ -549,16 +573,16 @@ function PriceBadges({ markers, mid = false }: { markers: PriceMarker[]; mid?: b
 function MidPriceRow({
   price,
   baselinePrice,
-  markers = [],
+  marker = null,
   boxed = false,
 }: {
   price: number | null;
   baselinePrice: number | null;
-  /** 당일 시/고/저 칩 — **`PriceCell` 과 같은 규약**이다. 이 배선이 빠져 있으면
+  /** 당일 시/고/저 칩(최대 하나) — **`PriceCell` 과 같은 규약**이다. 이 배선이 빠져 있으면
    *  중간값이 사다리 20행 어디에도 없는 가격일 때(넓은 스프레드·교차) 화면에
    *  가격은 보이는데 라벨만 사라진다 — 그 행이 그 가격을 그리는 유일한 자리다.
    *  ADR-0140 §7.1 이 이 행을 추가할 때 칩·박스 배선이 따라오지 않았다. */
-  markers?: PriceMarker[];
+  marker?: PriceMarker | null;
   /** 현재가가 중간값과 같을 때의 박스 — 역시 `PriceCell` 과 같은 규약. */
   boxed?: boolean;
 }) {
@@ -586,7 +610,7 @@ function MidPriceRow({
         style={{ height: ROW_H - 1 }}
       >
         <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
-          <PriceBadges markers={markers} mid />
+          <PriceBadges marker={marker} mid />
           {price !== null ? price.toLocaleString('ko-KR') : '−'}
         </span>
         {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
@@ -605,16 +629,16 @@ function PriceCell({
   price,
   baselinePrice,
   boxed,
-  markers = [],
+  marker = null,
   topDivider = false,
 }: {
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
-  /** 당일 시/고/저 칩(priceMarkers) — 가격 숫자 왼쪽 바로 옆(가격 span 기준 right-full)에
-   *  absolute 로 얹는다. 셀 좌단 고정이던 것을 가격 옆으로 당겨 중앙에 가깝게 읽히되,
-   *  가격 x 정렬은 여전히 불변(칩 유무가 가격 위치를 안 바꾼다). */
-  markers?: PriceMarker[];
+  /** 당일 시/고/저 칩(`dayMarker`, 최대 하나) — 가격 숫자 왼쪽 바로 옆(가격 span
+   *  기준 right-full)에 absolute 로 얹는다. 셀 좌단 고정이던 것을 가격 옆으로 당겨
+   *  중앙에 가깝게 읽히되, 가격 x 정렬은 여전히 불변(칩 유무가 가격 위치를 안 바꾼다). */
+  marker?: PriceMarker | null;
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
 }) {
@@ -636,7 +660,7 @@ function PriceCell({
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
       <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
-        <PriceBadges markers={markers} />
+        <PriceBadges marker={marker} />
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
