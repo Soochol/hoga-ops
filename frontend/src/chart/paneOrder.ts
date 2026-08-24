@@ -19,6 +19,7 @@ export const CANONICAL_PANE_ORDER = [
   'candle',
   'volume',
   'quote-totals',
+  'peak-wall',
   'ratio',
   'fill-strength',
   'program-trade',
@@ -119,4 +120,5 @@ export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
   'program-trade': '프로그램 순매수',
   'investor-foreign': '외국인 순매수량',
   'investor-institution': '기관 순매수량',
+  'peak-wall': '최대벽',
 };

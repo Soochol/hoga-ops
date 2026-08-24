@@ -12,6 +12,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       volumeEnabled: true,
       wallSurgeEnabled: false,
       movingAverageHidden: false,
+      peakWallPaneEnabled: false,
       askPeakEnabled: false,
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
@@ -72,7 +73,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       brokerLateEntrySellColor: '#3b82f6',
       panePrefsByTimeframe: {},
       paneOrder: [
-        'candle', 'volume', 'quote-totals', 'ratio',
+        'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
         'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
       ],
       paneStretch: {},
@@ -221,7 +222,7 @@ describe('mergeLiveIndicatorPrefs', () => {
 describe('mergeLiveIndicatorPrefs — paneOrder', () => {
   it('defaults paneOrder to the canonical order with candle first', () => {
     expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
-      'candle', 'volume', 'quote-totals', 'ratio',
+      'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
       'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
     ]);
   });
@@ -230,7 +231,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
     const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
     expect(m.paneOrder).toEqual([
       'candle', 'ratio', 'volume',
-      'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
     ]);
   });
 });

@@ -509,7 +509,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
 
 describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
   const CANON: PaneId[] = [
-    'candle', 'volume', 'quote-totals', 'ratio',
+    'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
     'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
   ];
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
@@ -582,7 +582,7 @@ describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
 
 describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 · pane 우측)', () => {
   const CANON: PaneId[] = [
-    'candle', 'volume', 'quote-totals', 'ratio',
+    'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
     'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
   ];
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;

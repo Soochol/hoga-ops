@@ -21,6 +21,7 @@ export type IndicatorPanePrefs = {
   programTradeEnabled: boolean;
   foreignNetEnabled: boolean;
   institutionNetEnabled: boolean;
+  peakWallPaneEnabled: boolean;
 };
 
 export type PanePrefKey = keyof IndicatorPanePrefs;
@@ -42,6 +43,7 @@ export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'programTradeEnabled',
   'foreignNetEnabled',
   'institutionNetEnabled',
+  'peakWallPaneEnabled',
 ] as const;
 
 const PROFILE_KEY_SET = new Set<string>(INDICATOR_PANE_PROFILE_KEYS);
@@ -90,6 +92,7 @@ export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPa
     programTradeEnabled: indicators.programTradeEnabled,
     foreignNetEnabled: indicators.foreignNetEnabled,
     institutionNetEnabled: indicators.institutionNetEnabled,
+    peakWallPaneEnabled: indicators.peakWallPaneEnabled,
   };
 }
 
@@ -109,6 +112,7 @@ export function resolvePaneToggles(input: {
     ratioEnabled: prefs.ratioEnabled,
     fillStrengthEnabled: prefs.fillStrengthEnabled,
     programTradeEnabled: prefs.programTradeEnabled,
+    peakWallPaneEnabled: prefs.peakWallPaneEnabled,
     hogaPanes: input.hogaPanes,
     forceHogaPanes: input.forceHogaPanes,
     ...input.override,
