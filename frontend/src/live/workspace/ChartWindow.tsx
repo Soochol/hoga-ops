@@ -811,6 +811,12 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onRetryCandles={d.refetchCandles}
               clampEngaged={d.clampEngaged}
               minuteScrollbackFloorDate={d.minuteScrollbackFloorDate}
+              // ⚠ 이 줄이 사라지면 **아무것도 깨지지 않는다** — prop 이 옵셔널이라 전부
+              // 컴파일되고 기본값 null 로 조용히 옛 동작(일봉 MA 가 오늘−265일쯤부터만
+              // 그려짐)으로 돌아간다. 생산자(`useLiveChartData`)와 소비처 셋(오버레이 ·
+              // reveal 게이트 · 최대벽 일봉MA 필터)에는 각각 red-check 된 가드가 있지만
+              // **이 전달 자체를 재는 테스트는 없다.**
+              dailyMaWindowFloorDate={d.dailyMaWindowFloorDate}
               isPastCandlesLoading={d.workareaLoading}
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}
               isSidecarLoading={d.activeIndexId ? false : (d.isSidecarLoading || d.isDailyMaLoading)}

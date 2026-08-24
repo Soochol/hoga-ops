@@ -1,6 +1,7 @@
 """Route tests for GET /api/range (ADR-0013)."""
 from __future__ import annotations
 
+import datetime as dt
 import json
 from unittest.mock import patch
 
@@ -739,3 +740,96 @@ def test_range_bundle_unmocked_asymmetric_value_mapping(tmp_path) -> None:
     # --- volume_profile_* : mode=full 퇴역 후 와이어 shape 유지용 상시-빈 필드 ---
     assert rb.volume_profile_by_day == []
     assert rb.volume_profile_range.bin_count == 0
+
+
+# --- 2026-08-24: 만료 스텁이 `missing_dates` 에도 실린다 ---
+#
+# `close_ms=0` 스텁은 parquet 이 **있어서** `captured` 에 집계된다 → 차집합으로 구멍을
+# 세는 `uncaptured_trading_days` 가 못 본다 → 키움 보충(#1468·#1501)의 입력에 없다.
+# 한편 재캡처는 `is_expired_upstream_stub` 이 영구 차단한다. 즉 이 줄이 없으면 그
+# 거래일은 **어느 복구 경로에도 닿지 않는다**(실측 010140: excluded 6일 전부 이 클래스).
+
+
+def _stub_range_request(
+    app_client: TestClient, *, dates: dict[str, dict], today: dt.datetime,
+    code: str = "005930", frm: str, to: str,
+) -> dict:
+    """`dates` 의 meta 를 그대로 태워 `/api/range` 를 부르고 body 를 돌려준다."""
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch(
+            "hoga.api.queries.QueryEngine.list_stock_dates_in_range",
+            return_value=list(dates),
+        ))
+        stack.enter_context(patch(
+            "hoga.api.queries.QueryEngine.get_meta",
+            side_effect=lambda date, _code, _source="hogaplay", *, venue="KRX": dates[date],
+        ))
+        # 보유 창 판정의 기준 시각. 고정하지 않으면 이 테스트가 달력을 따라 의미를 바꾼다.
+        stack.enter_context(patch("hoga.api.bundle.now_kst", return_value=today))
+        for pcm in _stub_slice_builders():
+            stack.enter_context(pcm)
+        r = app_client.get(
+            f"/api/range?code={code}&from={frm}&to={to}&bucket_ms=60000&venue=KRX"
+            "&mode=sidecar"
+        )
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_expired_close_ms_zero_stub_is_also_reported_missing(app_client: TestClient) -> None:
+    """보유 창 밖 `close_ms=0` 은 excluded **이면서** missing 이다.
+
+    둘 다 사실이라 어느 쪽도 빼지 않는다 — 파일은 있고(excluded), 쓸 수 있는 데이터는
+    없다(missing). 소비자가 다르다: excluded 는 진단, missing 은 키움 보충의 입력이다.
+    """
+    body = _stub_range_request(
+        app_client,
+        dates={"20260518": _meta(close_ms=0), "20260520": _meta()},
+        today=dt.datetime(2026, 8, 24, 10, 0),
+        frm="20260518", to="20260520",
+    )
+
+    assert [s["date"] for s in body["segments"]] == ["20260520"]
+    assert [e["date"] for e in body["excluded_dates"]] == ["20260518"]
+    assert ("20260518", "no_upstream_data") in [
+        (m["date"], m["reason"]) for m in body["missing_dates"]
+    ]
+
+
+def test_intraday_close_ms_zero_is_not_reported_missing(app_client: TestClient) -> None:
+    """**보유 창 안**의 `close_ms=0` 은 missing 이 아니다 — 재캡처가 채운다.
+
+    세션이 아직 안 끝나 close 가 0 인 정상 상태가 여기 온다. 이걸 구멍으로 부르면
+    오늘·어제 장을 벤더로 다시 받으러 가고, 화면은 캡처가 곧 채울 날을 "업스트림이
+    영영 못 준다" 고 잘못 말한다. `is_past_upstream_retention` 게이트가 그 선이다.
+    """
+    body = _stub_range_request(
+        app_client,
+        dates={"20260518": _meta(close_ms=0)},
+        # 스텁 날짜 다음 날 — 보유 창(2일) 안이다.
+        today=dt.datetime(2026, 5, 19, 10, 0),
+        frm="20260518", to="20260518",
+    )
+
+    assert [e["date"] for e in body["excluded_dates"]] == ["20260518"]
+    assert body["missing_dates"] == []
+
+
+def test_other_invalid_meta_is_not_reported_missing(app_client: TestClient) -> None:
+    """`close_ms=0` **정확 일치**가 아닌 INVALID 는 missing 이 아니다.
+
+    20:00 마감은 open 보다 크므로 `close_in_kst_range` **하나만** 발화한다 — 만료
+    스텁이 아니라 별개 결함이고, 재캡처가 고칠 수 있으므로 벤더로 우회하면 안 된다.
+    부분집합 판정으로 느슨하게 잡으면 이 구별이 사라진다.
+    """
+    body = _stub_range_request(
+        app_client,
+        dates={"20260518": _meta(close_ms=200_000_000)},
+        today=dt.datetime(2026, 8, 24, 10, 0),
+        frm="20260518", to="20260518",
+    )
+
+    assert [e["date"] for e in body["excluded_dates"]] == ["20260518"]
+    assert body["missing_dates"] == []

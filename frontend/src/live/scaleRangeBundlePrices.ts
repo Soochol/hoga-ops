@@ -137,6 +137,8 @@ function scalePeak<T extends AskPeak | BidPeak>(peak: T, factor: number): T {
     // 라벨만 옛 척도로 남는다. 계약 테스트가 이 누락을 잡는다.
     traded_peaks: rank(peak.traded_peaks),
     traded_max_peaks: rank(peak.traded_max_peaks),
+    traded_record_peaks: rank(peak.traded_record_peaks),
+    traded_record_max_peaks: rank(peak.traded_record_max_peaks),
     all_peaks: rank(peak.all_peaks),
     all_max_peaks: rank(peak.all_max_peaks),
   };

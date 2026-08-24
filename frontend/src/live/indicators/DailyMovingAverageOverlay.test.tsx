@@ -4,6 +4,7 @@ import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
+import { subtractDaysKst } from '../liveDateTime';
 
 vi.mock('./useResolvedDailyCandles', () => ({ useResolvedDailyCandles: vi.fn() }));
 const mockUseResolvedDaily = vi.mocked(useResolvedDailyCandles);
@@ -68,6 +69,23 @@ describe('DailyMovingAverageOverlay', () => {
       dailyMovingAverageHidden: false,
     });
     useChartPrefsStore.getState().resetToDefaults();
+  });
+
+  // ── displayFloorDate lockstep (2026-08-24) ───────────────────────────────
+  // 디스크 모드(hogaplay · 저장뷰 얼림 · 전역 우회)엔 분봉 250일 벽이 없어 화면이 기본
+  // 창보다 과거로 간다. 이 prop 을 창 산식에 안 넘기면 그 구간의 MA 가 통째로 빈다
+  // (2026-08-24 실측 증상). 옵셔널 prop 이라 타입은 누락을 못 잡는다.
+  it('dailyMaWindowFloorDate 를 fetch 창에 반영한다', () => {
+    const m1 = makeChartMock();
+    renderOverlay(m1);
+    const withoutFloor = mockUseResolvedDaily.mock.calls[0][0].from as string;
+
+    mockUseResolvedDaily.mockClear();
+    const m2 = makeChartMock();
+    renderOverlay(m2, { dailyMaWindowFloorDate: subtractDaysKst('20260613', 700) });
+    const withFloor = mockUseResolvedDaily.mock.calls[0][0].from as string;
+
+    expect(withFloor < withoutFloor).toBe(true);
   });
 
   it('projects the daily MA value onto every in-session candle (day-anchored step)', () => {

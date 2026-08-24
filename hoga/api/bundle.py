@@ -26,6 +26,7 @@ from fastapi import HTTPException
 
 from hoga import perf_debug
 from hoga.api.disk_state import DiskState, classify_from_meta
+from hoga.api.eligibility import is_expired_upstream_stub
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.models import (
@@ -726,6 +727,8 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
+        traded_record_peaks=[_ask_candidate(date, c) for c in row.traded_record_peaks],
+        traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -743,6 +746,8 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
+        traded_record_peaks=[_ask_candidate(date, c) for c in row.traded_record_peaks],
+        traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -888,6 +893,8 @@ def _peak_with_rep_outputs(
 
     봉 무관/의존의 경계는 `snapshots.reaggregate_peak_rep` docstring 참조. 여기서
     덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
+    `traded_record_*`(기록 갱신 시퀀스)도 **덮지 않는다** — "그 시점까지의 최대" 는
+    봉 굵기와 무관한 사실이라 1분 캐시 값이 모든 봉에서 그대로 옳다.
 
     `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
     `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라
@@ -1977,13 +1984,16 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     # 캡처가 **아예 없는** 거래일 + 사유. `dates` 는 parquet 인벤토리 스캔이라 이들을
     # 담지 않으므로, 사유 기록을 아래 루프 안에서만 하면 이 부류는 영영 표면화되지
     # 않는다 — 화면에서 그날이 사유 없이 증발하던 원인이다(006800/20251218).
+    # 한 번만 읽어 아래 루프의 만료 스텁 판정과 **같은 시각**을 쓰게 한다. 갈라지면
+    # 자정 경계에서 "오늘이라 제외" 와 "보유 창 밖이라 스텁" 이 어긋난다.
+    now_dt = now_kst()
     uncaptured = uncaptured_trading_days(
         data_dir=engine.data_dir,
         code=code,
         from_date=from_date,
         to_date=to_date,
         captured=set(dates),
-        today=now_kst().strftime("%Y%m%d"),
+        today=now_dt.strftime("%Y%m%d"),
     )
     if not dates:
         # Spec 2026-05-27 §4.3: empty range is a normal case for /live's
@@ -2088,6 +2098,25 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             excluded.append(ExcludedDate(
                 date=d, violations=[v.to_model() for v in c.errors],
             ))
+            # **만료 스텁은 `missing_dates` 에도 싣는다**(2026-08-24). 두 배열은 원래
+            # 서로소지만("틀렸다" vs "없다") 이 클래스만은 **둘 다 사실**이다: 파일은
+            # 있는데(→ excluded) 쓸 수 있는 데이터는 없다(→ missing). 한쪽만 쓰면
+            # 그 거래일은 어느 복구 경로에도 닿지 못한다 —
+            # `is_expired_upstream_stub` 의 docstring 이 그 경위를 적는다.
+            #
+            # 사유는 기존 값을 재사용한다. 사용자에게 뜻이 같고("업스트림이 못 준다,
+            # 영구"), 새 값을 만들면 ADR-0004 2층이라 프론트 union·라벨 표까지 같은
+            # PR 에서 미러해야 한다(#1183 이 그 미러가 갈렸을 때의 사고다).
+            #
+            # ⚠ 여기서는 `uncaptured_trading_days` 와 달리 **거래일 확정을 요구하지
+            # 않는다.** 저쪽은 캡처 흔적이 **전혀 없는** 날을 다루므로 필터가 없으면
+            # 주말·공휴일이 전부 구멍이 된다. 이쪽은 스텁 파일의 존재가 곧 "그날 캡처를
+            # 시도했다" 는 증거라 그 오인이 생기지 않는다. 그리고 필터를 걸면 거래일
+            # 시드 커버리지 밖(=`None`, 모름)이 통째로 빠지는데, 그 구간이야말로 최근
+            # 날짜라 스텁이 새로 생기는 자리다. 비대칭 비용도 같은 방향이다 — 오탐은
+            # 키움 콜 1건에 빈 응답이고, 미탐은 380일 뒤 영구 소실이다.
+            if is_expired_upstream_stub(c, d, now_dt):
+                missing.append(MissingDate(date=d, reason="no_upstream_data"))
             if perf_debug.enabled():
                 log.warning(
                     "hoga_perf range_date status=invalid code=%s date=%s source=%s mode=%s "

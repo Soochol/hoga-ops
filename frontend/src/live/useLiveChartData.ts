@@ -37,6 +37,7 @@ import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices
 import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
+import { quantizeDailyMaFloorDate } from './indicators/dailyMaProjection';
 import { useWindowIndicators } from './workspace/windowView';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 peaks 훅의 메모 deps 를 churn 하지 않게. */
@@ -180,7 +181,31 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
    *  이 값이 churn 하지 않는다는 뜻이고, 하류 today-merge 훅들의 memo deps 가 그걸 전제한다. */
   const candlePathBundle = stockChartBundle ?? stockBundle;
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
-  const isDailyMaLoading = useDailyMaRevealGate({ code: activeCode, timeframe, venue, todayKst: today });
+  /**
+   * 일봉 MA 창이 덮어야 할 **표시 하한**(YYYYMMDD, 계단으로 내림). 소비처 넷
+   * (오버레이 · reveal 게이트 · 최대벽 일봉MA 필터 ask/bid)이 **이 한 값**을 공유해야
+   * 같은 react-query 키에 모인다 — 갈리면 일봉 fetch 가 그만큼 늘어난다.
+   *
+   * **왜 필요한가**: 일봉 MA 창은 today 앵커에 고정 폭(`dailyMaLookbackDays`)이고 그
+   * 폭은 분봉의 250일 벽을 전제한다. 디스크 모드(hogaplay 토글 · 저장뷰 얼림 · 전역
+   * 우회)엔 그 벽이 없어(`useLiveBundle` 의 `minutePastFrom`) 화면이 훨씬 과거로 가는데,
+   * 창은 안 따라가서 왼쪽 구간의 MA 가 통째로 비었다(2026-08-24 실측: 오늘−265일쯤부터만
+   * 그려짐 — period 를 바꿔도 그 날짜가 거의 안 움직이는 것이 이 버그의 지문이다).
+   *
+   * 벤더 모드도 자기 하한을 그대로 넘긴다 — 기본선이 오늘−249 를 이미 덮으므로 창이
+   * 안 움직인다. 그래서 여기에 모드 분기가 없다.
+   */
+  const dailyMaWindowFloorDate = useMemo(() => {
+    const raw = freeze?.fromDate ?? historicalFromDate;
+    return raw ? quantizeDailyMaFloorDate(today, raw) : null;
+  }, [freeze?.fromDate, historicalFromDate, today]);
+  const isDailyMaLoading = useDailyMaRevealGate({
+    code: activeCode,
+    timeframe,
+    venue,
+    todayKst: today,
+    displayFloorDate: dailyMaWindowFloorDate,
+  });
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(activeIndexId, timeframe, indexFrom, today);
@@ -347,6 +372,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isExtending,
     indexExtending,
     isDailyMaLoading,
+    dailyMaWindowFloorDate,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
     pastSettledFromDate,

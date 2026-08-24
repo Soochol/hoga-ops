@@ -109,8 +109,10 @@ KIND_VERSIONS: dict[str, int] = {
     # 은 capture meta 의 mtime 만 보므로 "계산 규칙이 바뀌었나" 를 모른다. 아래 문단이
     # 경고하는 /study 콜드 로드 비용(peak 재계산 = 콜드의 95%)을 이번엔 치른다: 값이
     # 실제로 달라졌으므로 구 캐시를 살려 두면 화면이 구 규칙으로 굳는다.
-    "ask_peak": 8,
-    "bid_peak": 8,
+    # 9: traded_record_peaks/traded_record_max_peaks(기록 갱신 시퀀스) 추가 —
+    #    구 캐시 모델엔 이 필드가 없어 pane 계단의 오전 이력이 비므로 재계산이 맞다.
+    "ask_peak": 9,
+    "bid_peak": 9,
     "poc": 7,
     "depth": 7,
     "depth_delta": 2,

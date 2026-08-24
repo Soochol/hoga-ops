@@ -62,6 +62,9 @@ type UsePeakDailyMaFilterInput = {
   /** 분봉 차트에서만 의미가 있다. `DailyMovingAverageOverlay` 의 게이트와 같은 조건. */
   enabled: boolean;
   kisEnabled?: boolean;
+  /** 창이 덮어야 할 표시 하한(계단으로 내린 값). 오버레이·reveal 게이트와 **같은 값**을
+   *  받아야 한다 — 아래 ⚠ 의 캐시 공유가 이 값의 일치에도 걸려 있다. */
+  displayFloorDate?: string | null;
 };
 
 const EMPTY_MAP: ReadonlyMap<string, number> = new Map();
@@ -83,6 +86,7 @@ export function usePeakDailyMaFilter({
   candles,
   enabled,
   kisEnabled = true,
+  displayFloorDate = null,
 }: UsePeakDailyMaFilterInput): PeakDailyMaFilter | null {
   const on = useActivePrefs((prefs) => (
     side === 'ask' ? prefs.askPeakAboveDailyMaEnabled : prefs.bidPeakBelowDailyMaEnabled
@@ -102,8 +106,8 @@ export function usePeakDailyMaFilter({
   }, [slotConfigs, period]);
 
   const fetchWindow = useMemo(
-    () => dailyMaFetchWindow(todayKst, fetchConfigs),
-    [todayKst, fetchConfigs],
+    () => dailyMaFetchWindow(todayKst, fetchConfigs, displayFloorDate),
+    [todayKst, fetchConfigs, displayFloorDate],
   );
 
   const daily = useResolvedDailyCandles({

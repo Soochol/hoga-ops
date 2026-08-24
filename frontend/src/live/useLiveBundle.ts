@@ -796,8 +796,9 @@ export function useLiveBundle(
     if (restBypassEnabled) {
       const disk = minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
       if (minuteGapFill.candles.length === 0) return disk;
-      // **서로소 날짜 union 이지 우선순위 병합이 아니다.** `missing_dates` 는 정의상
-      // 디스크에 없는 거래일이므로 두 집합은 겹치지 않는다 — 그래서 이 자리는 "모드당
+      // **서로소 날짜 union 이지 우선순위 병합이 아니다.** `missing_dates` 의 날짜는
+      // 정의상 번들이 **캔들을 싣지 않는** 거래일이므로 두 집합은 겹치지 않는다
+      // (만료 스텁은 파일이 있어도 INVALID 라 세그먼트가 안 만들어진다) — 이 자리는 "모드당
       // 소스 1개" 규율(위 주석)과 충돌하지 않는다. 같은 날짜를 두 소스가 다투기 시작하면
       // 그때는 이 코드가 아니라 그 전제가 깨진 것이므로, 겹침을 **버려서** 디스크를
       // 진실로 남긴다(캡처본이 호가 지표와 격자가 맞는 유일한 쪽이다).

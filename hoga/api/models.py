@@ -219,6 +219,11 @@ class AskPeak(BaseModel):
     all_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 기록 갱신 시퀀스(시간순 prefix maxima, ≤128) — 최대벽 강도 pane 의 "그 시점까지
+    # 체결된 벽 중 최대" 복원용. traded_*(최종 크기순 top-3)와 축이 다르다:
+    # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
+    traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
@@ -246,6 +251,11 @@ class BidPeak(BaseModel):
     all_max_t_ms: int | None = None
     traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 기록 갱신 시퀀스(시간순 prefix maxima, ≤128) — 최대벽 강도 pane 의 "그 시점까지
+    # 체결된 벽 중 최대" 복원용. traded_*(최종 크기순 top-3)와 축이 다르다:
+    # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
+    traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
@@ -793,7 +803,10 @@ MissingDateReason = Literal[
     "meta_unreadable",     # 경로는 있는데 meta.json 을 읽지 못했다(손상)
     # 아래 둘은 `list_stock_dates_in_range` 목록에 **애초에 없던** 날이다. 사다리는
     # 이들을 볼 기회조차 없으므로 `sources.MissingReason` 에는 대응 값이 없다.
-    "no_upstream_data",    # hogaplay 가 그날을 못 준다(ADR-0021 센티넬). 영구.
+    # hogaplay 가 그날을 못 준다. 영구. **형태가 둘**이다 — ADR-0021 센티넬(파일이
+    # 아예 없다)과 만료 스텁(close_ms=0 파일이 있다, `is_expired_upstream_stub`).
+    # 사용자가 할 수 있는 일이 같아서(없다·재캡처 무의미) 한 값을 쓴다.
+    "no_upstream_data",
     "not_captured",        # 아직 캡처하지 않았다. 캡처하면 채워진다.
 ]
 """`MissingDate.reason` 의 전체 값 — 프론트 `RangeMissingDate['reason']` 의 미러 원본.
@@ -814,6 +827,13 @@ class MissingDate(BaseModel):
     `ExcludedDate` 와 다른 것이다 — 저쪽은 데이터가 있는데 불변식을 어겨 **버린** 날이고,
     이쪽은 애초에 읽을 것이 **없는** 날이다. 둘을 한 필드에 섞으면 UI 가 "고장" 과
     "원래 없음" 을 가를 수 없다.
+
+    ⚠ **한 클래스만 두 배열에 함께 실린다**(2026-08-24): 업스트림 만료 스텁
+    (`close_ms=0`)은 파일이 있으므로 excluded 이면서, 쓸 수 있는 데이터가 없으므로
+    missing 이다. 둘 다 사실이라 어느 쪽을 빼도 정보가 준다 — 소비자가 다르기
+    때문이다(excluded=진단, missing=키움 보충의 입력). **서로소로 되돌리지 말 것**:
+    missing 에서 빼면 그 거래일은 재캡처도 보충도 닿지 않는 사각지대로 돌아간다
+    (`hoga/api/eligibility.py` 의 `is_expired_upstream_stub` 이 경위를 적는다).
 
     이 필드가 필요한 이유는 venue 축 때문이다. NXT·통합은 그 시장을 서빙할 수 있는
     source(`kiwoom_live`)가 저장을 시작한 날부터만 존재하므로, 그 이전 구간은 **정상적으로**
