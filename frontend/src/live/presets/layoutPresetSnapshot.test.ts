@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
-import type { LiveTimeframe } from '../../state/livePage';
+import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useLiveLayoutStore } from '../../state/liveLayout';
 import {
   applyPresetPayload,
@@ -31,6 +32,11 @@ beforeEach(() => {
     groupSymbols: { 1: { ...SAMSUNG } },
     chartRuntime: {},
   });
+  // 창 id 를 고정으로 재사용하므로 **매번 비운다**(ADR-0152 의 테스트 격리 항목).
+  // 안 비우면 앞 테스트가 심은 창 세트가 뒤 테스트를 가리고, 증상 서명이 "혼자
+  // 돌리면 통과, 파일 전체로 돌리면 실패" 라 머신 부하 flake 와 헷갈린다.
+  useLivePageStore.setState({ indicatorsByTimeframe: {}, indicatorsByWindow: {} });
+  useChartPrefsStore.setState({ indicatorModalByTimeframe: {}, indicatorModalByWindow: {} });
 });
 
 describe('capturePresetPayload (창·배치만 — 종목 없음)', () => {
@@ -147,5 +153,120 @@ describe('defaultPresetPayload', () => {
     const s = useWorkspaceStore.getState();
     expect(s.windows.some((w) => w.kind === 'chart')).toBe(true);
     expect(s.groupSymbols).toEqual({ 1: SAMSUNG });
+  });
+});
+
+/**
+ * 프리셋이 창별 지표를 나른다 (ADR-0159).
+ *
+ * **막는 방향**: 프리셋을 갈아탄 뒤 지표가 페이지 세트로 리셋되는 것. 종전에는 창
+ * id 의 스코프가 스냅샷 교체 때 회수돼, 창은 돌아오는데 지표는 공장값으로 열렸다.
+ *
+ * **못 보는 것**: 크로스기기. 프리셋은 서버 파일이고 지표는 localStorage 라, 다른
+ * 기기에서 payload 가 지표를 실어 나르는지는 여기서 잴 수 없다 — 그 경로가 이
+ * 기능의 주 동기지만 검증은 payload 왕복(캡처→적용)으로 대신한다.
+ *
+ * **등록 의존**: `applyPresetPayload` 가 복원을 **스냅샷 적용 뒤에** 부르는 것.
+ * 순서가 뒤집히면 "스토어에 없는 창" 케이스가 고아를 만들고 상한에서 조용히
+ * 포기한다(그 판정은 `indicatorScopeGc.test.ts`).
+ */
+const KEY_A = 'live:a';
+
+describe('프리셋 지표 왕복 (ADR-0159)', () => {
+  it('캡처가 차트 창에만 지표를 담는다 — 데이터 창은 실을 것이 없다', () => {
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: false } } },
+    });
+
+    const windows = capturePresetPayload().windows as Record<string, unknown>[];
+
+    expect(windows[0].indicators).toEqual({ minute: { volumeEnabled: false } });
+    expect(windows[1].kind).toBe('book');
+    expect(windows[1].indicators).toBeUndefined();
+  });
+
+  it('**A → B → A 왕복에서 A 의 지표가 산다** — 이 기능의 본체', () => {
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: false } } },
+    });
+    const presetA = capturePresetPayload();
+
+    // B 로 갈아탄다 — 창 id 가 갈리며 A 의 스코프가 회수된다(종전 리셋 지점).
+    applyPresetPayload({
+      windows: [chart('other', 1)], zOrder: ['other'], groupSymbols: {},
+    }, 'preset-b');
+    expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY_A)).toBe(false);
+
+    applyPresetPayload(presetA, 'preset-a');
+
+    expect(useLivePageStore.getState().indicatorsByWindow[KEY_A])
+      .toEqual({ minute: { volumeEnabled: false } });
+  });
+
+  it('**적용이 현재 창의 지표를 덮어쓴다** — 시드가 아니라 교체다', () => {
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: false } } },
+    });
+    const presetA = capturePresetPayload();
+
+    // 저장 후 사용자가 지표를 만진다(창 id 는 그대로 — 종전에 유일하게 동작하던 경로).
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: true, ratioEnabled: true } } },
+    });
+
+    applyPresetPayload(presetA, 'preset-a');
+
+    expect(useLivePageStore.getState().indicatorsByWindow[KEY_A])
+      .toEqual({ minute: { volumeEnabled: false } });
+  });
+
+  it('공장값으로 저장한 창은 페이지 세트를 물어오지 않는다 — 빈 `{}` 가 실린다', () => {
+    // 페이지 세트에 값을 심어 둔다. 빈 엔트리를 생략했다면 적용 시 이 값이 샌다.
+    useLivePageStore.setState({ indicatorsByTimeframe: { minute: { ratioEnabled: true } } });
+    const presetA = capturePresetPayload();
+
+    applyPresetPayload(presetA, 'preset-a');
+
+    expect(useLivePageStore.getState().indicatorsByWindow[KEY_A]).toEqual({});
+  });
+
+  it('지표 키 없는 옛 프리셋은 종전대로 — 복원이 아무것도 심지 않는다', () => {
+    applyPresetPayload({
+      windows: [chart('a', 1)], zOrder: ['a'], groupSymbols: {},
+    }, 'legacy');
+
+    // 마운트 시드(창 컴포넌트)가 채울 몫이라 이 시점엔 비어 있어야 한다.
+    expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY_A)).toBe(false);
+  });
+
+  it('두 스토어가 함께 왕복한다 — 절반만 프리셋 값이면 안 된다', () => {
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: false } } },
+    });
+    useChartPrefsStore.setState({
+      indicatorModalByWindow: { [KEY_A]: { minute: { surgeMarkerEnabled: false } } },
+    });
+    const presetA = capturePresetPayload();
+
+    applyPresetPayload({
+      windows: [chart('other', 1)], zOrder: ['other'], groupSymbols: {},
+    }, 'preset-b');
+    applyPresetPayload(presetA, 'preset-a');
+
+    expect(useLivePageStore.getState().indicatorsByWindow[KEY_A])
+      .toEqual({ minute: { volumeEnabled: false } });
+    expect(useChartPrefsStore.getState().indicatorModalByWindow[KEY_A])
+      .toEqual({ minute: { surgeMarkerEnabled: false } });
+  });
+
+  it('"기본 배치로 초기화" 는 지표를 싣지 않는다 — 초기화의 뜻에 맞는다', () => {
+    useLivePageStore.setState({
+      indicatorsByWindow: { [KEY_A]: { minute: { volumeEnabled: false } } },
+    });
+
+    applyPresetPayload(defaultPresetPayload(), null);
+
+    // 공장 창이 새 id 로 나므로 옛 엔트리는 회수되고, 새 창은 마운트 시드가 채운다.
+    expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY_A)).toBe(false);
   });
 });

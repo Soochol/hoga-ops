@@ -109,13 +109,14 @@ export interface WorkspaceRect {
 /**
  * 차트 창 전용 설정 — 창이 소유하는 것은 **봉뿐**이다(#708).
  *
- * 지표 설정도 한때 여기 있었지만(#712) 앱 전역 저장소(`live.indicators.v2`)로
+ * 지표 설정도 한때 여기 있었지만(#712) 전역 저장소(`live.indicators.v2`)로
  * 되돌렸다 — 워크스페이스는 탭별 sessionStorage 라, 창이 지표를 **소유하면**
  * 지표가 탭마다 갈라진다.
  *
- * 지표 세트는 이제 **페이지별**이다(ADR-0146 — `/live` ↔ `/study`). 그 축도 전역
- * localStorage 에 살지 이 스냅샷에 오지 않는다. 이 타입에 지표를 다시 넣으려는
- * 변경은 #712 를 그대로 재현하는 것이다.
+ * 지표 세트는 이제 **창별**이다(ADR-0152). 하지만 창이 갖는 것은 **스코프 키뿐**이고
+ * 내용물은 전역 localStorage 에 산다 — 이 스냅샷에는 오지 않는다. 프리셋 payload 는
+ * 지표를 싣지만(ADR-0159) 그것도 캡처 시점 조립이라 이 타입과 무관하다.
+ * 이 타입에 지표를 다시 넣으려는 변경은 #712 를 그대로 재현하는 것이다.
  */
 export interface ChartWindowConfig {
   timeframe: LiveTimeframe;
@@ -1010,10 +1011,15 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
  *  스토어 내부 참조를 잡지 않도록 창·rect·chart 값까지 새 객체로 복제한다 —
  *  프리셋 저장·비교가 나중의 스토어 변이에 오염되지 않게.
  *
- *  담기지 않는 것 셋: **종목**(프리셋은 배치만 — `WorkspaceSnapshot` 주석), **창 핀**
- *  (핀 슬롯이 종목이므로 같은 규칙 — `...w` 스프레드가 조용히 실어 나르지 않도록
- *  아래에서 명시적으로 뺀다), **지표**(전역 1세트라 창에 실을 것이 없다). 창의 group
- *  번호는 배치의 일부라 남지만, 그 번호가 어느 종목인지는 프리셋 밖의 현재 상태가 정한다. */
+ *  담기지 않는 것 둘: **종목**(프리셋은 종목을 담지 않는다 — `WorkspaceSnapshot`
+ *  주석), **창 핀**(핀 슬롯이 종목이므로 같은 규칙 — `...w` 스프레드가 조용히 실어
+ *  나르지 않도록 아래에서 명시적으로 뺀다). 창의 group 번호는 배치의 일부라 남지만,
+ *  그 번호가 어느 종목인지는 프리셋 밖의 현재 상태가 정한다.
+ *
+ *  **지표는 여기서 담지 않지만 프리셋에는 실린다**(ADR-0159) — 스토어의 창은 지표를
+ *  모르고(그 내용물이 탭별 sessionStorage 에 앉는 것이 #712 였다), 프리셋 캡처
+ *  (`capturePresetPayload`)가 전역 저장소에서 읽어 payload 에만 얹는다. 이 함수의
+ *  반환값을 sessionStorage 영속에도 쓰므로 그 분리가 곧 방어선이다. */
 export function snapshotWorkspace(): WorkspaceSnapshot {
   const s = useWorkspaceStore.getState();
   return {

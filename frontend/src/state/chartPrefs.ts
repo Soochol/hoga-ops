@@ -977,6 +977,34 @@ export function seedIndicatorModalScope(
   });
 }
 
+/**
+ * 프리셋 payload 의 창별 indicator-modal 세트를 심는다 (ADR-0159).
+ *
+ * **시드와 달리 무조건 덮어쓴다.** 프리셋 적용은 "비었으면 채우기" 가 아니라 "저장된
+ * 값으로 교체" 다 — rect 와 같은 대우다. 멱등 건너뜀을 두면 프리셋의 창이 지금 화면에
+ * 살아 있는 경우(같은 id 재적용)에 저장된 지표가 **영영 적용되지 않는다**.
+ *
+ * 상한은 **새 엔트리에만** 건다. 이미 있는 키를 덮는 것은 맵을 키우지 않으므로
+ * 막을 이유가 없고, 막으면 상한에 닿은 사용자만 조용히 절반만 복원된다.
+ *
+ * `buckets` 는 호출자가 정규화·복제해 넘긴다(`livePage` 가 유일 호출자 — 멤버십
+ * 동반 규칙).
+ */
+export function restoreIndicatorModalScopes(
+  entries: readonly { windowKey: string; buckets: IndicatorModalByTimeframe }[],
+): void {
+  if (entries.length === 0) return;
+  const s = useChartPrefsStore.getState();
+  const next = { ...s.indicatorModalByWindow };
+  for (const { windowKey, buckets } of entries) {
+    if (!windowKey) continue;
+    if (!Object.hasOwn(next, windowKey)
+      && Object.keys(next).length >= INDICATOR_WINDOW_SCOPE_LIMIT) continue;
+    next[windowKey] = buckets;
+  }
+  useChartPrefsStore.setState({ indicatorModalByWindow: next });
+}
+
 /** 사라진 창의 엔트리 회수 — 시드와 같은 이유로 `livePage` 가 유일 호출자다. */
 export function dropIndicatorModalScopes(scopeKeys: readonly string[]): void {
   const s = useChartPrefsStore.getState();
