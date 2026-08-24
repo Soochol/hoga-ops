@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -56,6 +56,9 @@ const candlesMock = {
   candles: [DEFAULT_CANDLE] as Array<typeof DEFAULT_CANDLE>,
   isPlaceholderData: false,
   isFetching: false,
+  // 응답이 되싣는 code/from — 분봉 `pastSettledFromDate`(웜 캐시 백필 진행 신호)의 입력.
+  code: '005930',
+  from: '',
   warnings: [] as Array<
     // ADR-0143: wire 가 `kind`·`is_failure` 를 함께 싣는다. 판정이 kind 축으로
     // 옮겨갔으므로 픽스처도 실제 모양이어야 한다.
@@ -65,8 +68,8 @@ const candlesMock = {
 };
 const livePastCandlesSpy = vi.fn(() => ({
   data: {
-    code: '005930',
-    from: '',
+    code: candlesMock.code,
+    from: candlesMock.from,
     to: '',
     candles: candlesMock.candles,
     cached_dates: [],
@@ -780,8 +783,8 @@ describe('useLiveBundle', () => {
     livePastCandlesSpy.mockClear();
     livePastCandlesSpy.mockImplementation(() => ({
       data: {
-        code: '005930',
-        from: '',
+        code: candlesMock.code,
+        from: candlesMock.from,
         to: '',
         candles: candlesMock.candles,
         cached_dates: [],
@@ -827,6 +830,8 @@ describe('useLiveBundle', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.code = '005930';
+    candlesMock.from = '';
     candlesMock.warnings = [];
     candlesMock.effectiveSessions = [];
     dailyCandlesMock.candles = [
@@ -1117,8 +1122,8 @@ describe('useLiveBundle', () => {
     expect(result.current.bundle!.quote_ratio.points).toEqual([]);
     livePastCandlesSpy.mockImplementation(() => ({
       data: {
-        code: '005930',
-        from: '',
+        code: candlesMock.code,
+        from: candlesMock.from,
         to: '',
         candles: candlesMock.candles,
         cached_dates: [],
@@ -2357,6 +2362,8 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.code = '005930';
+    candlesMock.from = '';
     candlesMock.warnings = [];
     screenerDailyCandlesMock.candles = [];
     rangeMock.isPlaceholderData = false;
@@ -2702,6 +2709,8 @@ describe('useLiveBundle isExtending', () => {
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
+    candlesMock.code = '005930';
+    candlesMock.from = '';
     candlesMock.warnings = [];
 	    rangeMock.isPlaceholderData = false;
 	    rangeMock.isFetching = false;
@@ -2843,6 +2852,13 @@ describe('useLiveBundle isExtending', () => {
   // 웜 캐시 백필 진행 신호(#1328). `isExtending` 이 fetch 를 전제로 하는 것과 달리
   // 이 값은 **응답이 되싣는 from** 이라, fetch 없이 캐시로 채워진 스텝도 완료로 읽힌다.
   describe('pastSettledFromDate', () => {
+    // ⚠ `mockClear()` 는 호출 기록만 지우고 **구현은 남긴다** — 여기서 세운 range
+    // 구현이 다음 테스트로 새면 그쪽에서 픽스처 불일치 TypeError 로 터진다.
+    afterEach(() => {
+      useRangeCandlesDeltaSpy.mockImplementation(() => rangeResult());
+      useRangeHogaDeltaSpy.mockImplementation(() => rangeResult());
+    });
+
     it('echoes the vendor daily response from-date on D/W/M', () => {
       dailyCandlesMock.from = '20260301';
       const { result } = renderHook(
@@ -2862,13 +2878,68 @@ describe('useLiveBundle isExtending', () => {
       expect(result.current.pastSettledFromDate).toBe('20260301');
     });
 
-    it('is null on minute timeframes (병합 캐시 + 다중 소스 원자화라 하강 엣지가 유일 신호)', () => {
-      dailyCandlesMock.from = '20260301';
+    // ── 분봉 (2026-08-24) ────────────────────────────────────────────────
+    // 종전엔 분봉이 **항상 null** 이었다("병합 캐시 + 다중 소스 원자화라 하강 엣지가
+    // 유일 신호"). 그 결정이 좌팬 백필을 영구 잠갔다: 웜 캐시 스텝은
+    // `isHistoricalDeltaFetching` 이 `(isPlaceholderData || data == null)` 때문에
+    // **요청이 in-flight 여도 false** 라 하강 엣지가 없고, 이 값마저 null 이면 스텝
+    // 완료 신호가 **둘 다** 없어 `useViewportBackfill` 3a 가 `endFill()` 에 닿지
+    // 못한다 → `fillKind` 잠김 → 3b 가 이후 모든 좌팬을 침묵 반려(2026-08-24 실측:
+    // 005380 10m hogaplay, extend 1줄 뒤 stop 없음, 이후 팬 10회 로그 0줄).
+    //
+    // 원자화 우려는 **버리지 않고 값에 담았다** — 아래 마지막 테스트가 그 계약이다.
+    it('echoes the disk (hogaplay/우회 ON) minute response from-date', () => {
+      useRangeCandlesDeltaSpy.mockImplementation(
+        () => rangeResult({ ...fallbackRangeBundle(), from_date: '20260301' }),
+      );
+      candlesMock.from = '20251111'; // 비활성 경로 — 새어 나오면 안 된다
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+      );
+      expect(result.current.pastSettledFromDate).toBe('20260301');
+    });
+
+    it('echoes the vendor minute response from-date (우회 OFF)', () => {
+      candlesMock.from = '20260301';
+      useRangeCandlesDeltaSpy.mockImplementation(
+        () => rangeResult({ ...fallbackRangeBundle(), from_date: '20251111' }),
+      ); // 비활성 경로
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      expect(result.current.pastSettledFromDate).toBe('20260301');
+    });
+
+    it('is null on minutes when the response is for a different code (종목 왕복 직후 stale echo)', () => {
+      // 종목 왕복은 잠김이 가장 잘 재현되는 경로다(`historicalFromDate` 리셋 → 첫
+      // 스텝이 결정적 = 캐시 히트). 이전 종목의 병합본이 신호로 잡히면 오발한다.
+      candlesMock.code = '000660';
+      candlesMock.from = '20260301';
       const { result } = renderHook(
         () => useLiveBundle('005930', '1m', '20260527', liveFixture),
         { wrapper: createWrapper() },
       );
       expect(result.current.pastSettledFromDate).toBeNull();
+    });
+
+    it('분봉은 **가장 뒤처진 소스**를 싣는다 — 캔들만 도달한 순간에 다음 스텝을 밀지 않는다', () => {
+      // 이것이 "다중 소스 원자화" 우려의 답이다. 캔들 병합본이 목표에 닿아도 호가
+      // 지표가 아직 뒤(=더 나중 날짜)면 그 뒤처진 날짜를 낸다 — 3a 의
+      // `settledFromDate === historicalFromDate` 비교가 그만큼 늦게 성립해,
+      // 지표를 두고 캔들만 앞서 나가는 스텝 진행이 생기지 않는다.
+      useRangeCandlesDeltaSpy.mockImplementation(
+        () => rangeResult({ ...fallbackRangeBundle(), from_date: '20260301' }),
+      );
+      useRangeHogaDeltaSpy.mockImplementation(
+        () => rangeResult({ ...fallbackRangeBundle(), from_date: '20260415' }),
+      );
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+      );
+      expect(result.current.pastSettledFromDate).toBe('20260415');
     });
 
     it('is null when the response is for a different code (종목 전환 직후 stale echo)', () => {
