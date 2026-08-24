@@ -166,12 +166,18 @@ store 를 직접 켜거나 기본값을 일시적으로 뒤집어서 한다.
 
 1. `chart/peakWallSteps.ts` — `buildPeakWallStepPoints` (순수, 테스트 포함)
 2. `live/indicators/peakWallStepsRegistry.ts` — 창 스코프 레지스트리
-3. `chart/projectors/peakWall.ts` — `PEAK_WALL_SPEC` (Line ×2, `useContext` 가 레지스트리 구독)
+3. `live/indicators/peakWallPaneSpec.ts` — `PEAK_WALL_SPEC` (Line ×2, `useContext` 가
+   레지스트리 구독). ⚠ **chart/projectors 가 아니다** — `useContext` 가 창 스코프와
+   레지스트리(둘 다 live/)를 구독하는데 chart/ 는 live/ 에 런타임 의존하지 않는다는
+   규칙이 있다(`RangeSeriesPane` 의 onLegendReady 가 콜백인 이유와 동일).
 4. `chart/drawing/types.ts` — `PaneId` 에 `'peak-wall'` 추가
 5. `chart/paneOrder.ts` — `CANONICAL_PANE_ORDER` + `PANE_DISPLAY_NAME` (`'최대벽'`)
    ⚠ 둘 다 안 하면 컴파일 실패한다(`_exhaustive` 가드 · `Record<PaneId, string>`)
-6. `chart/paneSpecs.ts` — `PANE_SPECS` 에 `quote-totals` 뒤로 삽입
-7. `live/paneSpecsForTimeframe.ts` — `GATE_BY_NAME` 에 게이트 1줄
+6. ~~`chart/paneSpecs.ts` — `PANE_SPECS` 삽입~~ **하지 않는다.** `PANE_SPECS` 에 넣으면
+   all-base 캐시 시드(`ALL_BASE_KEY`)가 어긋나 `=== PANE_SPECS` identity 계약이 깨진다
+   (프로토타입 실측: 관련 테스트 16건 실패). 투자자 pane 과 같은 **`GATED` append** 로
+   마운트하고, 표시 위치는 `CANONICAL_PANE_ORDER` 의 자리(quote-totals 뒤)가 정한다.
+7. `live/paneSpecsForTimeframe.ts` — `GATED` 에 append 1항목(게이트 포함)
 8. `state/liveIndicatorsPersistence.ts` — `peakWallPaneEnabled` (기본 `false`)
 9. `live/indicators/indicatorPaneProfiles.ts` — `IndicatorPanePrefs` 7→8키 +
    `INDICATOR_PANE_PREF_KEYS` + `pickPanePrefs` + `resolvePaneToggles`
@@ -181,6 +187,13 @@ store 를 직접 켜거나 기본값을 일시적으로 뒤집어서 한다.
 ### PR 2 — 설정 UI + 프리셋
 
 사용자가 켤 수 있게 된다(PR 1 은 store 를 손으로 건드려야 켜졌다).
+
+- 확인 완료 사항 둘(PR 1 에서 조사):
+  - **프리셋 enable 키는 자동이 아니다** — `live/presets/presetFlags.ts` 의
+    `PRESET_INDICATOR_FLAG_KEYS` 가 손 나열이라 `peakWallPaneEnabled` 를 pane 토글
+    절에 직접 추가해야 프리셋이 나른다.
+  - `paneTogglesOverride` 전달은 **불필요** — 유일 소비처(`ChartWindow`)가
+    `hogaPanes` 만 넘기고, 인덱스 창 억제는 게이트의 `hogaAllowed` 가 이미 처리한다.
 
 11. `live/indicators/PeakWallsConfig.tsx` — 매도/매수 서브탭 **바깥** 공용 섹션에 토글 1개
 12. `live/indicators/IndicatorPanel.tsx` — `CATEGORIES` 는 **건드리지 않는다**
