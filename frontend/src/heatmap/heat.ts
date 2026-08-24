@@ -53,8 +53,8 @@ export type SortMode = 'manual' | 'desc' | 'asc';
  *  오버레이로도 갱신되고, 그쪽은 150ms 로 코얼레싱돼 **초당 최대 ~6.7회** 새 Map 을
  *  낸다(liveTickOverlay.ts LIVE_FLUSH_MS). 그룹 평균(avgPct)·행 등락률은 체결 한 건에도
  *  소수점이 움직여 인접 순위가 계속 뒤집혔다 — 값이 아니라 자리가 읽기를 방해한 것이다.
- *  10초는 REST 폴링 주기와 같은 값이라 "폴링마다 한 번 정돈"으로 읽힌다. */
-export const SORT_THROTTLE_MS = 10_000;
+ *  30초는 REST 폴링 주기(10초)의 3배라 "폴링 세 번에 한 번 정돈"으로 읽힌다. */
+export const SORT_THROTTLE_MS = 30_000;
 export const HEAT_SAT = 8;          // 포화 임계(%)
 export const HEAT_MAX_ALPHA = 0.42; // 기본 최대 알파(폴백 기본값)
 /** 등락률 → 배경 색. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.

@@ -578,7 +578,7 @@ export function HeatmapDrawer() {
   //
   // pctOf 가 **두 갈래**인 이유: 표시값(그룹 헤더 평균 숫자)은 라이브여야 하고, 순서를
   // 정하는 키는 SORT_THROTTLE_MS 격자여야 한다. 갈라 두지 않으면 둘 중 하나가 반드시
-  // 틀린다 — 통째로 스로틀하면 헤더 숫자가 최대 10초 낡고, 통째로 라이브면 WS 틱
+  // 틀린다 — 통째로 스로틀하면 헤더 숫자가 최대 30초 낡고, 통째로 라이브면 WS 틱
   // flush 마다(초당 최대 ~6.7회) 그룹·행이 자리를 바꾼다. 페이지는 행 정렬이
   // HeatmapFolder 안에 있어 주입점이 다를 뿐 정책은 같다.
   const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);

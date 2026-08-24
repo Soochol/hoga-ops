@@ -51,7 +51,7 @@ export function Heatmap() {
   // 정렬 키 **전용** 시세. 그룹 순서와 행 순서가 이걸 공유하고, 표시값(셀 시세·헤더 틴트·
   // 섹터 스트립)은 계속 라이브 quoteByCode 를 본다 — 숫자는 실시간이고 자리만 정돈된다.
   // 얼리는 대상이 결과 배열이 아니라 정렬 키라서, 그룹 추가·삭제·검색 같은 **구조** 변화는
-  // 스로틀을 통과해 즉시 보인다(배열을 얼리면 삭제된 그룹이 최대 10초 남는다).
+  // 스로틀을 통과해 즉시 보인다(배열을 얼리면 삭제된 그룹이 최대 30초 남는다).
   const sortQuoteByCode = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
   // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 스로틀된 시세로 재정렬한다
   // — 예전엔 quoteByCode 를 직접 봐서 WS 틱 flush 마다(초당 최대 ~6.7회) 카드가 자리를 바꿨다.
