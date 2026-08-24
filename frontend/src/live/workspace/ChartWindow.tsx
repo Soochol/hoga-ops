@@ -51,6 +51,7 @@ import { useChartHeaderFold } from './useChartHeaderCompact';
 import {
   publishWindowWarnings,
   clearWindowWarnings,
+  backfillProgressDate,
   type WindowWarnings,
 } from './windowWarningsSource';
 import type { LiveStudySaveSource } from '../../studyViews/studySaveCommand';
@@ -604,10 +605,15 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   useEffect(() => {
     const segs = d.workareaBundle?.segments;
     const next: WindowWarnings = {
-      backfillEarliestDate:
-        extending && view.historicalFromDate != null && segs && segs.length > 0
-          ? segs[0].date
-          : null,
+      // 판정은 `backfillProgressDate` 커널이 쥔다 — 게이트와 **날짜 소스 선택**이
+      // 한자리에 있어야 회귀를 테이블로 잡는다. 특히 소스를 `segs[0].date` 로
+      // 되돌리는 회귀는 렌더층 테스트가 못 본다(그쪽은 발행된 값을 그릴 뿐이다).
+      backfillEarliestDate: backfillProgressDate({
+        extending,
+        historicalFromDate: view.historicalFromDate,
+        settledFromDate: d.activeIndexId ? d.indexSettledFromDate : d.pastSettledFromDate,
+        earliestSegmentDate: segs && segs.length > 0 ? segs[0].date : null,
+      }),
     };
     const prev = lastWarningsRef.current;
     const same = prev !== null && prev.backfillEarliestDate === next.backfillEarliestDate;
