@@ -949,6 +949,21 @@ function PaneLegendOverlay({
   // ── value extraction (read-only over the chart API) ────────────────────
   const seriesData = paramRef.current?.seriesData ?? null;
 
+  // 동기화 대상 봉의 **가상초**. 값 판독 경로 전체가 이걸 공유한다 — OHLC 는
+  // 인덱스로(`vsecToIndex`), 나머지 series 는 각자 `data()` 를 이 시각으로 조회한다
+  // (`readSeriesValue` 의 우선순위 2번). 한 레전드 안에서 행마다 다른 봉을 읽는 것을
+  // 막는 것이 요점이라, 갈래를 늘리지 말고 이 하나를 나눠 쓴다.
+  const syncTimeSec = syncResolution.kind === 'hit' && axis
+    ? axis.toVirtual(syncResolution.candle.ts_ms) / 1000
+    : null;
+  // 내 포인터가 이 차트 위면(= `seriesData` 가 있으면) 동기화 경로를 쓰지 않는다.
+  // **원리적으로 공존하지 않는다** — 포인터가 여기 있으면 이 창이 발행자이고
+  // `resolveSyncTarget` 이 자기 발행을 `none` 으로 막는다. 그래도 남기는 이유는
+  // 합성 크로스헤어 재발화(lwc 가 데이터 갱신마다 `setCrosshairPosition` 위치로
+  // `crosshairMove` 를 다시 쏜다 — `syntheticCrosshair.ts`)처럼 둘이 한 프레임에
+  // 겹쳐 보일 수 있는 엣지에서 **내 마우스가 이긴다**는 순서를 코드로 못박기 위해서다.
+  const syncValueTimeSec = seriesData === null ? syncTimeSec : null;
+
   // OHLC(항상 표시) — 우선순위 셋. 직전종가 대비 %는 buildCandleTooltip(순수, 툴팁과
   // 동일 규칙)에서.
   //
@@ -965,9 +980,7 @@ function PaneLegendOverlay({
   let ohlc: LegendOhlcValues | null = null;
   if (drawnCandles.length > 0) {
     const t = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
-    const syncIdx = syncResolution.kind === 'hit' && axis
-      ? vsecToIndex.get(axis.toVirtual(syncResolution.candle.ts_ms) / 1000)
-      : undefined;
+    const syncIdx = syncTimeSec !== null ? vsecToIndex.get(syncTimeSec) : undefined;
     const idx = (t !== null ? vsecToIndex.get(t) : undefined)
       ?? syncIdx
       ?? drawnCandles.length - 1;
@@ -987,12 +1000,15 @@ function PaneLegendOverlay({
   }
   const maValues = new Map<string, number>();
   for (const [id, series] of maSeries) {
-    const v = readSeriesValue(series, seriesData);
+    const v = readSeriesValue(series, seriesData, syncValueTimeSec);
     if (v !== null) maValues.set(id, v);
   }
+  // 일봉 MA 행은 표시 필터가 **항상** 걸러낸다(아래 `buildLegendRows` 주석: 선은
+  // 그리고 값 행만 뺀다). 그래도 같은 인자를 태우는 것은 화면 효과가 아니라 대칭
+  // 때문이다 — 행을 되살리는 날 여기만 옛 규칙으로 남아 있으면 그 사실이 조용하다.
   const dailyMaValues = new Map<string, number>();
   for (const [id, series] of dailyMaSeries) {
-    const v = readSeriesValue(series, seriesData);
+    const v = readSeriesValue(series, seriesData, syncValueTimeSec);
     if (v !== null) dailyMaValues.set(id, v);
   }
   const paneCells: PaneCellInput[] = [];
@@ -1006,7 +1022,7 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: entry.meta.label,
         color: entry.meta.color?.(),
-        value: readSeriesValue(entry.series, seriesData),
+        value: readSeriesValue(entry.series, seriesData, syncValueTimeSec),
         format: entry.meta.format,
       })),
     });
@@ -1017,7 +1033,11 @@ function PaneLegendOverlay({
   // labelMarkers) 그쪽에 배치 — pane 미마운트(호가비 off) 시 배치 단계에서 스킵.
   // 값 셀은 각 오버레이가 등록한 provider에서 커서 시각(가상초, 없으면 latest)으로 읽는다.
   const isMinute = isMinuteTimeframe(timeframe);
-  const cursorTimeSec = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
+  // 내 커서 시각이 없으면 **동기화 봉의 시각**으로 읽는다(값 series 와 같은 규칙).
+  // 실제로 보이는 곳은 분봉 소비 창의 최대벽 두 행뿐이다 — flag 는 전부
+  // `applicable: isMinute` 라 일봉 창에는 애초에 행이 없다.
+  const cursorTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
+    ?? syncValueTimeSec;
   const indicatorFlags: LegendFlagInput[] = [
     {
       id: 'ask-peak',
