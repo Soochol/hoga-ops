@@ -44,6 +44,13 @@ export type PeakWallRenderState = {
   /** 선 색·두께(표면이 primitive 에 그대로 넘긴다). */
   color: string;
   lineWidth: number;
+  /** 최대벽 강도 pane 의 계단 입력 — **「표시 개수」와 분리해 항상 top-3** 로 계산한
+   *  세그먼트. 계단의 뜻은 "그 시점까지 체결된 벽 중 최대" 의 running max 라, 표시
+   *  개수 1 로 자르면 그날 1등 벽이 선 시점 이전의 갱신 이력(더 이른 2·3등)이 통째로
+   *  사라진다 — 오전에 선이 없다가 오후에 생기는 주 원인이었다(사용자 보고).
+   *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다.
+   *  표시 개수가 이미 3 이면 `segments` 와 **같은 참조**다(중복 계산 없음). */
+  stepSegments: readonly PeakWallSegment[];
 };
 
 type Args = {
@@ -59,6 +66,8 @@ type Args = {
   visibleTimeCutoff: VisibleTimeCutoff | null;
   /** 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해 넘긴다. */
   dailyMaFilter: PeakDailyMaFilter | null;
+  /** 최대벽 강도 pane 이 켜져 있을 때만 true — 꺼져 있으면 top-3 재계산을 건너뛴다. */
+  needStepSegments?: boolean;
 };
 
 /** 빈 상태는 **공유 상수**여야 memo 결과가 참조로 안정된다(빈 배열 리터럴은 매번 새 참조). */
@@ -74,6 +83,7 @@ export function usePeakWallRender({
   applicable,
   visibleTimeCutoff,
   dailyMaFilter,
+  needStepSegments = false,
 }: Args): PeakWallRenderState {
   const isAsk = side === 'ask';
   const enabled = useWindowIndicator((s) => (isAsk ? s.askPeakEnabled : s.bidPeakEnabled));
@@ -125,6 +135,42 @@ export function usePeakWallRender({
     visibleTimeCutoff,
   ]);
 
+  // 계단 입력 — 표시 개수와 분리해 항상 top-3. 사용자 표시 개수가 이미 3 이면 위
+  // `built` 와 같은 결과이므로 참조를 공유한다(이 memo 는 그때 계산하지 않는다).
+  const stepBuilt = useMemo(() => (
+    needStepSegments && applicable && enabled && toPeakRankLimit(allPriceRankLimit) !== 3
+      ? buildPeakWallOverlaySegments({
+        peaks,
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color, lineWidth },
+        intraMax,
+        allPriceRankLimit: 3,
+        visibleTimeCutoff,
+        maFilter,
+        dailyMaFilter,
+      })
+      : null
+  ), [
+    needStepSegments,
+    allPriceRankLimit,
+    applicable,
+    axis,
+    candles,
+    color,
+    dailyMaFilter,
+    enabled,
+    intraMax,
+    lineWidth,
+    maFilter,
+    peaks,
+    segments,
+    todayKst,
+    visibleTimeCutoff,
+  ]);
+
   const drawn = enabled && !hidden;
   return useMemo(() => ({
     segments: built,
@@ -133,5 +179,6 @@ export function usePeakWallRender({
     arrows: drawn && rankArrowEnabled,
     color,
     lineWidth,
-  }), [built, color, drawn, labelEnabled, lineWidth, rankArrowEnabled]);
+    stepSegments: stepBuilt ?? built,
+  }), [built, stepBuilt, color, drawn, labelEnabled, lineWidth, rankArrowEnabled]);
 }
