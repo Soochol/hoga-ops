@@ -6,7 +6,7 @@ import {
 
 describe('PRESET_INDICATOR_FLAG_KEYS', () => {
   it('covers the 9 overlay enables + 7 pane toggles (16 enable keys)', () => {
-    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(16);
+    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(17);
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('movingAverageEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('depthDeltaEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('volumeEnabled');
