@@ -214,6 +214,203 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
   });
 });
 
+/**
+ * **동기화 봉을 OHLC 행만이 아니라 값 행 전체가 읽는다**(2026-08-24).
+ *
+ * 위 describe 가 고정한 것은 OHLC 한 행뿐이었다. 같은 레전드의 이동평균·pane 값 행은
+ * `param.seriesData` 만 보고 있어서, 동기화 창에서는(그 param 이 영영 안 온다) **항상
+ * 최신 봉**을 읽었다 — 크로스헤어는 과거 봉에 서 있는데 그 아래 이동평균 숫자만 오늘
+ * 값이라, OHLC 를 고치기 전과 같은 종류의 불일치가 한 행 아래에 남아 있었다.
+ *
+ * **이 테스트들이 막는 방향**: 값 행이 동기화 봉을 무시하고 최신으로 떨어지는 것.
+ * **못 보는 것**: 어느 행이 화면에 보이는가(표시 화이트리스트는 별도 describe 소관).
+ * 그리고 flag 행은 분봉 전용이라 아래 마지막 케이스만 그 축을 건드린다.
+ */
+describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', () => {
+  const DAY1 = Date.UTC(2025, 5, 18, 0, 0);
+  const DAY2 = Date.UTC(2025, 5, 19, 0, 0);
+  const DAY3 = Date.UTC(2025, 5, 20, 0, 0);
+  const CANDLES = [
+    { ts_ms: DAY1, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 0 },
+    { ts_ms: DAY2, open: 105, high: 130, low: 100, close: 120, vol_a: 1, vol_b: 0 },
+    { ts_ms: DAY3, open: 120, high: 140, low: 115, close: 135, vol_a: 1, vol_b: 0 },
+  ];
+  /** 항등 축 — 가상초 = ms/1000. */
+  const axis = {
+    contains: () => true,
+    toVirtual: (ms: number) => ms,
+  } as never;
+
+  /** 봉마다 다른 값을 갖는 series 스텁.
+   *
+   *  ⚠ `time` 은 **가상초**(ms/1000)여야 한다. ms 를 그대로 넣으면 조회가 정확 일치에
+   *  실패해 **최신 폴백 경로를 재면서 초록**이 된다 — 탐침이 판별식을 안 건드리는
+   *  전형이라 여기 적어 둔다. */
+  const seriesPerDay = (v1: number, v2: number, v3: number) => ({
+    data: () => [
+      { time: DAY1 / 1000, value: v1 },
+      { time: DAY2 / 1000, value: v2 },
+      { time: DAY3 / 1000, value: v3 },
+    ],
+  }) as never;
+
+  const publish = (tsMs: number) => act(() => {
+    useLiveCursorStore.getState().setSyncCursor(tsMs, {
+      windowId: 'other-window', group: null, code: '005930', timeframe: '1m',
+    });
+  });
+
+  /** 크로스헤어 핸들러를 붙잡는 차트 — 「내 마우스」 경로를 재려면 필요하다. */
+  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown }) => void) | null = null;
+  const capturingChart = () => ({
+    subscribeCrosshairMove: (h: (p: { time?: unknown; point?: unknown }) => void) => {
+      crosshairHandler = h;
+    },
+    unsubscribeCrosshairMove: () => { crosshairHandler = null; },
+    timeScale: () => ({
+      subscribeVisibleLogicalRangeChange: () => {},
+      unsubscribeVisibleLogicalRangeChange: () => {},
+      width: () => 500,
+    }),
+    panes: () => [{ getHeight: () => 120 }],
+  }) as never;
+
+  beforeEach(() => {
+    resetStore();
+    useLiveCursorStore.getState().resetCursor();
+  });
+  afterEach(cleanup);
+
+  const renderD = (chart = makeChart([120])) => render(
+    <PaneLegendOverlay
+      chart={chart}
+      timeframe="D"
+      paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+      candles={CANDLES}
+      axis={axis}
+      code="005930"
+    />,
+  );
+
+  it('이동평균 값이 **동기화 봉**을 읽는다 — 최신 봉이 아니라', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesPerDay(11100, 22200, 33300));
+    renderD();
+    // 발행 전엔 종전 규칙(최신 폴백)이다 — 이 단언이 있어야 아래 전환이 의미를 갖는다.
+    expect(screen.getByText('33,300')).toBeInTheDocument();
+
+    publish(DAY2 + 6 * 3600_000); // 그 날 낮 — 날짜 다리로 DAY2 에 스냅된다
+
+    expect(screen.getByText('22,200')).toBeInTheDocument();
+    expect(screen.queryByText('33,300')).toBeNull();
+  });
+
+  it('pane 값 행(거래량)도 동기화 봉을 읽는다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    usePaneLegendRegistry.getState().register(null, 'volume', [
+      { series: seriesPerDay(1000, 2000, 3000), meta: { label: '거래량' } },
+    ]);
+    // `volume: (_tf, t) => t.volumeEnabled !== false` — 명시적 false 는 pane 을
+    // 통째로 뺀다. 이 케이스는 pane 이 마운트돼야 성립하므로 키를 주지 않는다.
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([120, 60])}
+        timeframe="D"
+        paneToggles={{ foreignNet: false, institutionNet: false }}
+        candles={CANDLES}
+        axis={axis}
+        code="005930"
+      />,
+    );
+    publish(DAY2 + 6 * 3600_000);
+
+    // pane 이름 칩에도 '거래량' 이 있으므로 값 행 컨테이너로 스코프한다.
+    const rows = within(screen.getByTestId('pane-legend-rows-volume'));
+    expect(rows.getByText('2,000')).toBeInTheDocument();
+    expect(rows.queryByText('3,000')).toBeNull();
+  });
+
+  it('동기화 봉에 포인트가 없으면 최신값으로 떨어진다 — 호버 경로와 같은 규칙', () => {
+    // lwc 도 그 시각에 포인트가 없는 series 를 `param.seriesData` 에서 빼므로 호버할
+    // 때 이미 최신으로 샌다. 동기화만 "—" 로 다르게 두면 같은 결측이 상황에 따라
+    // 다른 값을 낸다 — 그 대칭을 고정한다.
+    useMaSeriesRegistry.getState().register(null, 'ma-1', ({
+      data: () => [
+        { time: DAY1 / 1000, value: 11100 },
+        { time: DAY3 / 1000, value: 33300 },
+      ],
+    }) as never);
+    renderD();
+    publish(DAY2 + 6 * 3600_000);
+
+    expect(screen.getByText('33,300')).toBeInTheDocument();
+  });
+
+  it('⚠ 내 마우스가 이 차트 위면 값 행은 동기화를 쓰지 않는다', async () => {
+    // 판별식은 **`seriesData` 에 이 series 가 없는** 프레임이다. 있으면 그 값이 먼저
+    // 이겨 게이트를 지워도 전부 초록이 된다(red-check 으로 확인한 구멍).
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesPerDay(11100, 22200, 33300));
+    render(
+      <PaneLegendOverlay
+        chart={capturingChart()}
+        timeframe="D"
+        paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+        candles={CANDLES}
+        axis={axis}
+        code="005930"
+      />,
+    );
+    publish(DAY2 + 6 * 3600_000); // 동기화 대상은 DAY2
+    act(() => {
+      crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 }, seriesData: new Map() });
+    });
+    await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
+
+    // 내 포인터가 여기 있으므로 DAY2(22,200)로 새지 않는다 — 최신 폴백.
+    expect(screen.getByText('33,300')).toBeInTheDocument();
+    expect(screen.queryByText('22,200')).toBeNull();
+  });
+
+  it('flag provider 도 동기화 봉의 시각을 받는다 — 일봉→분봉 방향', () => {
+    // flag 행은 전부 분봉 전용(`applicable: isMinute`)이라 소비 창이 분봉인 방향에서만
+    // 보인다. 일봉 발행의 ms 는 그 날 09:00 앵커고, 분봉 다리는 **그 날 마지막 봉**에
+    // 세운다(`snapToLastOfKstDay`) — provider 가 받는 시각도 그 봉의 것이어야 한다.
+    const MIN = 60_000;
+    const minuteCandles = [
+      { ts_ms: DAY2, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      { ts_ms: DAY2 + MIN, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      { ts_ms: DAY2 + 2 * MIN, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+    ];
+    let seen: number | null | undefined;
+    const provider: FlagLegendValueProvider = (t) => {
+      seen = t;
+      return [{ key: 'peak', value: '1,000' }];
+    };
+    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    registerFlagLegendValues(null, 'ask-peak', provider);
+    try {
+      render(
+        <PaneLegendOverlay
+          chart={makeChart([120])}
+          timeframe="1m"
+          paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+          candles={minuteCandles}
+          axis={axis}
+          code="005930"
+        />,
+      );
+      act(() => {
+        useLiveCursorStore.getState().setSyncCursor(DAY2, {
+          windowId: 'other-window', group: null, code: '005930', timeframe: 'D',
+        });
+      });
+
+      expect(seen).toBe((DAY2 + 2 * MIN) / 1000);
+    } finally {
+      unregisterFlagLegendValues(null, 'ask-peak', provider);
+    }
+  });
+});
+
 describe('PaneLegendOverlay — candle MA row', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
