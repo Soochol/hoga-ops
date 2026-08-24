@@ -93,11 +93,14 @@ vi.mock('../api/liveIndices', () => ({
   useLiveIndexCandles: () => ({ data: undefined, isLoading: false, isFetching: false }),
   useLiveIndexInvestorNet: () => ({ data: undefined }),
 }));
-vi.mock('./indicators/useDailyMaRevealGate', () => ({ useDailyMaRevealGate: () => false }));
+const revealGateSpy = vi.fn((_args: { displayFloorDate?: string | null }) => false);
+vi.mock('./indicators/useDailyMaRevealGate', () => ({
+  useDailyMaRevealGate: (...args: unknown[]) => (revealGateSpy as (...a: unknown[]) => boolean)(...args),
+}));
 
 const { useLiveChartData } = await import('./useLiveChartData');
 
-function renderForStock() {
+function renderForStock(over: Record<string, unknown> = {}) {
   return renderHook(() =>
     useLiveChartData({
       activeCode: '005930',
@@ -106,6 +109,7 @@ function renderForStock() {
       historicalFromDate: null,
       venue: 'KRX',
       investorNetEnabled: false,
+      ...over,
     }),
   );
 }
@@ -148,5 +152,56 @@ describe('useLiveChartData — depth heatmap source', () => {
     expect(first).toEqual([]);
     // 참조가 흔들리면 LiveChartRoot 의 depthHeatmapFromWire memo 가 매 렌더 깨진다.
     expect(result.current.workareaDepthHeatmap).toBe(first);
+  });
+});
+
+
+/**
+ * 일봉 MA 창의 **표시 하한** 생산 — 이 훅이 유일 생산자다.
+ *
+ * 이 파일 맨 위 도크스트링과 같은 층의 계약이다: 하류(오버레이 · reveal 게이트 ·
+ * 최대벽 일봉MA 필터)는 자기가 받은 값을 쓸 뿐이라, **무엇을 주는지**는 여기서만
+ * 지킬 수 있다. 셋 다 각자 "받은 값을 창에 반영하는가" 가드를 갖지만 그건 다른 축이다.
+ */
+describe('useLiveChartData — dailyMaWindowFloorDate', () => {
+  beforeEach(() => {
+    useLiveBundleSpy.mockReset();
+    useLiveBundleSpy.mockReturnValue(BUNDLE_RESULT);
+    revealGateSpy.mockClear();
+  });
+
+  it('하한이 없으면 null — 창 산식이 today 앵커 기본선을 그대로 쓴다', () => {
+    const { result } = renderForStock();
+    expect(result.current.dailyMaWindowFloorDate).toBeNull();
+  });
+
+  it('좌측 팬으로 넓어진 historicalFromDate 를 하한으로 삼는다', () => {
+    const { result } = renderForStock({ historicalFromDate: '20240101' });
+    expect(result.current.dailyMaWindowFloorDate).not.toBeNull();
+    // 계단으로 **내려진** 값이라 원래 하한보다 과거다(덜 덮는 방향으로는 안 움직인다).
+    expect(result.current.dailyMaWindowFloorDate! <= '20240101').toBe(true);
+  });
+
+  it('얼린 저장뷰는 그 구간의 fromDate 가 이긴다 — 얼림이 더 구체적인 요청이다', () => {
+    const { result } = renderForStock({
+      historicalFromDate: '20260101',
+      savedRangeFreeze: { fromDate: '20240301', toDate: '20240305' },
+    });
+    // 얼림이면 today 도 그 구간의 toDate 다 — 하한은 그 축에서 계산된다.
+    expect(result.current.dailyMaWindowFloorDate! <= '20240301').toBe(true);
+  });
+
+  it('하루씩 팬해도 값이 안 바뀐다 — LiveChartRoot 재렌더를 막는 계단(ADR-0119 C2c-2a)', () => {
+    // 날것을 그대로 흘리면 팬 프레임마다 이 prop 이 갈려 훅 수백 개짜리 컴포넌트가
+    // 통째로 재렌더된다. 계단이 그것을 90일에 한 번으로 접는다.
+    const a = renderForStock({ historicalFromDate: '20240101' }).result.current.dailyMaWindowFloorDate;
+    const b = renderForStock({ historicalFromDate: '20240102' }).result.current.dailyMaWindowFloorDate;
+    expect(b).toBe(a);
+  });
+
+  it('reveal 게이트에도 같은 값을 넘긴다 — 안 넘기면 게이트만 다른 쿼리키를 쓴다', () => {
+    const { result } = renderForStock({ historicalFromDate: '20240101' });
+    const passed = revealGateSpy.mock.calls.at(-1)?.[0];
+    expect(passed?.displayFloorDate).toBe(result.current.dailyMaWindowFloorDate);
   });
 });
