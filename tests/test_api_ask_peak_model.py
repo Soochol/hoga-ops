@@ -58,3 +58,45 @@ def test_peak_models_allow_nullable_post_touch_scalars() -> None:
     assert ask_peak.max_t_ms is None
     assert bid_peak.price is None
     assert bid_peak.max_t_ms is None
+
+
+def test_rep_outputs_keep_candidates_as_models_not_dicts():
+    """`_peak_with_rep_outputs` 가 후보를 **모델로** 남겨야 한다.
+
+    그 함수는 `model_copy(update=...)` 로 필드를 덮는데 **그 경로는 검증을 하지
+    않는다.** 그래서 `_ask_candidate` 가 dict 를 돌려주던 시절에는 선언
+    (`list[AskPeakCandidate]`)과 실제 값(dict)이 어긋난 채 남았고, 직렬화 때
+    `PydanticSerializationUnexpectedValue` 가 경고로 흘렀다 — 값은 우연히 같게
+    나갔지만 **검증을 건너뛴 채**였다(2026-08-24 사용자 로그에서 발견).
+
+    ⚠ **이 경로는 그전까지 테스트가 하나도 없었다.** 그래서 경고 기반 전역 가드
+    (`filterwarnings`)를 걸어도 원리적으로 못 잡았다 — 실행되지 않는 코드는 경고를
+    내지 않는다. 커버리지가 먼저다.
+    """
+    import warnings
+
+    from hoga.api.bundle import _peak_with_rep_outputs
+    from hoga.tables import snapshots as snapshots_tbl
+
+    base = AskPeak(
+        date="20260613", price=1, qty=1, t_ms=1,
+        max_price=1, max_qty=1, max_t_ms=1,
+    )
+    reduced = {
+        "all_close": (24100, 300, 34_199_927),
+        "traded_close": (24050, 200, 33_599_718),
+        "traded_peaks": (snapshots_tbl.AskPeakCandidateRow(price=24100, qty=300, intra_ms=34_199_927),),
+    }
+
+    out = _peak_with_rep_outputs(base, date="20260613", reduced=reduced)
+
+    assert out is not None
+    assert isinstance(out.traded_peaks[0], AskPeakCandidate), (
+        f"dict 가 그대로 들어갔다: {type(out.traded_peaks[0]).__name__}"
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        out.model_dump_json()
+    offenders = [str(w.message) for w in caught if "Pydantic serializer warnings" in str(w.message)]
+    assert not offenders, offenders
