@@ -820,6 +820,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               candleEmpty={d.workareaCandleEmpty}
               onRetryCandles={d.refetchCandles}
               clampEngaged={d.clampEngaged}
+              captureFloorEngaged={d.captureFloorEngaged}
               candleSourceKey={d.candleSourceKey}
               minuteScrollbackFloorDate={d.minuteScrollbackFloorDate}
               // ⚠ 이 줄이 사라지면 **아무것도 깨지지 않는다** — prop 이 옵셔널이라 전부

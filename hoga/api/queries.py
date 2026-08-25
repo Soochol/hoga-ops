@@ -743,3 +743,38 @@ class QueryEngine:
             if resolution.path is not None:
                 out.append(date)
         return out
+
+    def earliest_stock_date(
+        self, *, code: str, source_pref: str = "hogaplay", venue: Venue = "KRX",
+    ) -> str | None:
+        """이 (code, source, venue) 의 **가장 오래된 캡처 거래일**. 없으면 None.
+
+        디스크 모드(hogaplay 우회) 분봉의 **좌측 팬 바닥**이다. 벤더 모드에는 250일
+        벽이 있지만 디스크 모드의 끝은 벽이 아니라 **캡처 유무**이고, 그 사실을
+        프론트가 알 방법이 종전에는 없었다 — `minuteScrollbackFloorDate` 가 우회
+        모드에서 `null` 이라 `planFillStep` 의 정지 조건이 절대 안 걸렸다. 그래서
+        사용자가 캡처 시작 이전으로 무한히 팬할 수 있었고, 그 구간엔 데이터가
+        영원히 없어 **빈 화면 + 「과거 불러오는 중」이 계속** 뜬다(2026-08-26 사용자
+        신고: 028050 은 20260106 부터인데 창이 20251117 까지 갔다).
+
+        **오름차순 순회 중 첫 매치에서 멈춘다.** 그 앞의 날짜 디렉터리들은
+        `code_dir.is_dir()` 로 싸게 걸러지고, 비싼 `resolve_source_result` 는 후보에만
+        닿는다 — `/api/range` 가 워크백에서 타일마다 부르므로 전 범위 스캔이면 안 된다.
+
+        venue 를 받는 이유: 캡처 트리가 venue 별이라 NXT/UN 의 시작일이 KRX 와 다를
+        수 있다. 하나로 뭉치면 그 창에서 틀린 바닥이 된다.
+        """
+        base = self.data_dir / "parquet"
+        if not base.exists():
+            return None
+        for date_dir in sorted(base.iterdir()):
+            if not date_dir.is_dir():
+                continue
+            date = date_dir.name
+            if _is_non_trading_day(date):
+                continue
+            if not (date_dir / code).is_dir():
+                continue
+            if resolve_source_result(self, date, code, source_pref, venue).path is not None:
+                return date
+        return None

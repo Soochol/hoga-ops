@@ -169,6 +169,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -199,6 +200,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -229,6 +231,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -260,6 +263,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -279,6 +283,7 @@ describe('LiveChartRoot', () => {
         bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'source_missing' }] }}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -298,6 +303,7 @@ describe('LiveChartRoot', () => {
         hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -333,6 +339,7 @@ describe('LiveChartRoot', () => {
         savedRangeFrozen
         venue="KRX"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -349,6 +356,7 @@ describe('LiveChartRoot', () => {
         hogaMissingDates={[{ date: '20260527', reason: 'not_captured' }]}
         venue="KRX"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -364,6 +372,7 @@ describe('LiveChartRoot', () => {
         bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'venue_unsupported' }] }}
         venue="UN"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -384,6 +393,7 @@ describe('LiveChartRoot', () => {
         candleEmpty={{ text: '벤더 연결이 설정되지 않아 캔들을 받지 못했다', action: 'settings', actionLabel: '설정 열기' }}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -402,6 +412,7 @@ describe('LiveChartRoot', () => {
         candleEmpty={null}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -418,6 +429,7 @@ describe('LiveChartRoot', () => {
         bundle={DEFAULT_BUNDLE}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -432,6 +444,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -530,6 +543,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -607,6 +621,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={basisBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
       />,
@@ -692,6 +707,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={basisBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisClick={onCandleBasisClick}
       />,
@@ -722,6 +738,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
       />,
@@ -734,6 +751,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -853,6 +871,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(14)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -867,6 +886,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(250)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -881,6 +901,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(80)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -902,6 +923,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(464)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -932,6 +954,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -946,6 +969,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -967,6 +991,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -991,6 +1016,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1017,6 +1043,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1047,6 +1074,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1076,6 +1104,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1105,6 +1134,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1166,6 +1196,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={first}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1179,6 +1210,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={next}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1198,6 +1230,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1210,6 +1243,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(105)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1237,6 +1271,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1264,6 +1299,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1289,6 +1325,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1319,6 +1356,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1369,6 +1407,7 @@ describe('LiveChartRoot', () => {
           timeframe="1m"
           bundle={makeBundleWithCandles(100)}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
         />,
         { wrapper },
@@ -1403,6 +1442,7 @@ describe('LiveChartRoot', () => {
         timeframe: '1m' as const,
         bundle: makeBundleWithCandles(100),
         clampEngaged: false,
+        captureFloorEngaged: false,
         isPastCandlesLoading: false,
       };
       const { rerender } = render(<LiveChartRoot {...props} />, { wrapper });
@@ -1441,6 +1481,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1465,6 +1506,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeDailyCalendarBundle(30)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1489,6 +1531,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1510,6 +1553,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1532,6 +1576,7 @@ describe('LiveChartRoot', () => {
         timeframe="10m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1554,6 +1599,7 @@ describe('LiveChartRoot', () => {
         venue="UN"
         bundle={makeBundleWithCandles(900)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1580,6 +1626,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1595,6 +1642,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1632,6 +1680,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1655,6 +1704,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1672,6 +1722,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1688,6 +1739,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -1706,6 +1758,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1724,6 +1777,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={null}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1742,6 +1796,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={null}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -1766,6 +1821,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1784,6 +1840,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -1803,6 +1860,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -1816,6 +1874,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
       />,
@@ -1836,6 +1895,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -1860,6 +1920,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -1874,6 +1935,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={false}
@@ -1900,6 +1962,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -1933,6 +1996,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -1953,6 +2017,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -1971,6 +2036,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -1985,6 +2051,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
       />,
@@ -2003,6 +2070,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -2024,7 +2092,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('호출 한도');
@@ -2034,7 +2103,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={true} />,
       { wrapper },
     );
     expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('분봉 불러오는 중');
@@ -2044,7 +2114,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(screen.queryByTestId('past-candles-loading-note')).toBeNull();
@@ -2054,7 +2125,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('partial-load-chip').textContent).toContain('일부 과거구간');
@@ -2070,7 +2142,8 @@ describe('LiveChartRoot', () => {
     ];
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={warnings} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={warnings} />,
       { wrapper },
     );
     const chip = screen.getByTestId('partial-load-chip');
@@ -2083,7 +2156,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={[]} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={[]} />,
       { wrapper },
     );
     expect(screen.queryByTestId('partial-load-chip')).toBeNull();
@@ -2093,7 +2167,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={true} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={true}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('partial-load-chip')).toBeTruthy();
@@ -2186,6 +2261,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2213,6 +2289,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2241,6 +2318,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2274,6 +2352,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={emptyBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -2304,6 +2383,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2328,6 +2408,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2358,6 +2439,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2392,6 +2474,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2426,6 +2509,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="D"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2456,6 +2540,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="D"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2608,7 +2693,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforePan = ts.setVisibleLogicalRange.mock.calls.length; // initial-view call(s)
@@ -2630,7 +2716,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC (mock);
@@ -2666,7 +2753,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     act(() => {
@@ -2677,7 +2765,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
   });
@@ -2697,7 +2786,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: false }} />,
       { wrapper },
     );
@@ -2726,7 +2816,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000, barSpan: 50, atLiveEdge: true }} />,
       { wrapper },
     );
@@ -2743,7 +2834,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
           barSpan: 80,
@@ -2767,7 +2859,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 200 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
           barSpan: 80,
@@ -2796,7 +2889,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(initialCandles)}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={restoreViewport} />,
       { wrapper },
     );
@@ -2805,7 +2899,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle([...initialCandles, TODAY_OPEN_MS + 101 * 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={restoreViewport} />,
     );
 
@@ -2822,7 +2917,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 120 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: true, userAdjusted: true }} />,
       { wrapper },
     );
@@ -2845,7 +2941,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 120 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
           barSpan: 80,
@@ -2869,7 +2966,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
           barSpan: 8,
@@ -2894,7 +2992,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 463 * 60_000,
           barSpan: 1255,
@@ -2918,7 +3017,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 120 * 60_000,
           barSpan: 160,
@@ -2943,7 +3043,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
@@ -2956,7 +3057,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
@@ -2973,7 +3075,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
@@ -2988,7 +3091,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="3m"
         bundle={todayBundle(Array.from({ length: 400 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 3 * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3010,7 +3114,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS, barSpan: 120, atLiveEdge: false }} />,
       { wrapper },
     );
@@ -3030,7 +3135,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     // 트리거: 빈공간 3000바 (1m 스텝당 1,950봉) → 예산 ceil(3000/1950)=2.
@@ -3058,7 +3164,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     act(() => {
@@ -3095,13 +3202,15 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
-        clampEngaged={false} isPastCandlesLoading={true} isExtending={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={true} isExtending={true} />,
       { wrapper },
     );
     act(() => {
       rerender(
         <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
-          clampEngaged={false} isPastCandlesLoading={true} isExtending={false} />,
+          clampEngaged={false}
+          captureFloorEngaged={false} isPastCandlesLoading={true} isExtending={false} />,
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
@@ -3116,13 +3225,15 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
       { wrapper },
     );
     act(() => {
       rerender(
         <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+          clampEngaged={false}
+          captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
@@ -3139,7 +3250,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     // 트리거: 빈공간 60바 (D 스텝당 50봉) → 예산 2, 스텝 1.
@@ -3165,7 +3277,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     act(() => {
@@ -3189,7 +3302,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforeSse = ts.setVisibleLogicalRange.mock.calls.length; // initial-view only
@@ -3197,7 +3311,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 120_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // Restore must NOT fire (historicalFromDate null) — no new setVisibleLogicalRange.
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSse);
@@ -3211,7 +3326,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // Pan left → captures the reference bar + sets historicalFromDate.
@@ -3225,7 +3341,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // newEarliest >= prevEarliest → restore short-circuits, no shift.
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeHoliday);
@@ -3247,7 +3364,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1); // initial window
@@ -3263,7 +3381,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     // The initial-view effect did NOT re-fire — setVisibleLogicalRange stays at
@@ -3295,7 +3414,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3316,7 +3436,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const shiftB = expectedPrependShift(B_VR_TO);
@@ -3436,7 +3557,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
@@ -3445,7 +3567,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSwap);
 
@@ -3453,7 +3576,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const latest = todayIdx(DISK_TS[2]);
@@ -3476,18 +3600,21 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
@@ -3505,14 +3632,16 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
@@ -3540,7 +3669,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3548,13 +3678,15 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // 새 봉에서 캔들이 한 번 더 커밋된다(prevIdentity 를 세운다).
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS.slice(0, 4))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3562,7 +3694,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(beforeSwap);
@@ -3585,7 +3718,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
@@ -3595,7 +3729,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
@@ -3720,14 +3855,16 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
@@ -3737,7 +3874,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -3762,13 +3900,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3776,7 +3916,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
@@ -3793,13 +3934,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3808,7 +3951,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -3827,13 +3971,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3841,7 +3987,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
@@ -3866,13 +4013,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3883,7 +4032,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
@@ -3898,13 +4048,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3913,7 +4065,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -4020,14 +4173,16 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // contraction 은 좌측 팬이 선행된 상태에서만 발동한다 — hfd 를 실제 시나리오처럼
     // 세워, 프리펜드 게이트의 두 번째 조건(newEarliest >= prevEarliest)을 트림 판별식이
@@ -4042,7 +4197,8 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -4059,13 +4215,15 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     act(() => {
       useLivePageStore.setState({ historicalFromDate: '20260501' });
@@ -4082,7 +4240,8 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([MIDDLE, LAST + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
@@ -4117,6 +4276,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4140,6 +4300,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="D"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4163,6 +4324,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           timeframe="1m"
           bundle={DEFAULT_BUNDLE}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
           onCursorActiveChange={onCursorActiveChange}
         />,
@@ -4233,6 +4395,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
             timeframe={timeframe}
             bundle={DEFAULT_BUNDLE}
             clampEngaged={false}
+            captureFloorEngaged={false}
             isPastCandlesLoading={false}
           />,
           { wrapper },
@@ -4280,6 +4443,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           timeframe="1m"
           bundle={TODAY_ONLY_BUNDLE}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
         />,
         { wrapper },
@@ -4323,6 +4487,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4364,6 +4529,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4414,6 +4580,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4451,6 +4618,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4482,6 +4650,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4531,6 +4700,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           })),
         }}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4579,6 +4749,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
         onCursorActiveChange={onCursorActiveChange}
@@ -4620,6 +4791,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4650,6 +4822,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4661,6 +4834,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="D"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -4736,6 +4910,7 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
         timeframe={timeframe}
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4799,6 +4974,7 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
         timeframe={timeframe}
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4932,6 +5108,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         timeframe="1m"
         bundle={ONE_DAY_MINUTE_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4943,6 +5120,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         timeframe="D"
         bundle={dailyBundle()}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -4971,7 +5149,10 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
   });
 
   function chartProps(code: string, timeframe: '1m' | 'D', bundle: RangeBundle) {
-    return { code, timeframe, bundle, clampEngaged: false, isPastCandlesLoading: false } as const;
+    return {
+      code, timeframe, bundle,
+      clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false,
+    } as const;
   }
 
   it('recreates the lwc chart on a timeframe switch and disposes the old one', () => {
@@ -5100,6 +5281,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5116,6 +5298,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5142,6 +5325,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5164,6 +5348,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5238,6 +5423,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5352,6 +5538,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5371,6 +5558,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={{ ...DEFAULT_BUNDLE }}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -5391,6 +5579,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5433,6 +5622,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5459,6 +5649,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5520,7 +5711,10 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
     (chart as Record<string, unknown>).unsubscribeCrosshairMove = vi.fn();
     vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
     render(
-      <LiveChartRoot code="005930" timeframe="1m" bundle={bundle} clampEngaged={false} isPastCandlesLoading={false} />,
+      <LiveChartRoot
+        code="005930" timeframe="1m" bundle={bundle}
+        clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false}
+      />,
       { wrapper },
     );
     const axis = createVirtualAxis(

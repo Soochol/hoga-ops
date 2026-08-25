@@ -212,6 +212,7 @@ vi.mock('./useLiveBundle', () => ({
       isLoading: false,
       error: null,
       clampEngaged: false,
+      captureFloorEngaged: false,
       isPastCandlesLoading: false,
       pastDataWarnings: [],
       // 실제 훅이 항상 싣는 보충 결과 — ChartWindow 의 진행 칩 게이트가 읽는다.

@@ -319,6 +319,7 @@ interface Props {
   ratioBundle?: RangeBundle | null;
   /** 벤더 250일 벽에 닿았다 — **벤더 모드 전용**. 디스크 모드엔 그 벽이 없다. */
   clampEngaged: boolean;
+  captureFloorEngaged: boolean;
   /** 이 번들의 캔들 소스 축(`useLiveBundle.candleSourceKey`). 값이 갈린 커밋에서
    *  `useViewportBackfill` 이 뷰포트를 다시 앉힌다 — 미지정이면 재착석이 꺼진다
    *  (소스 축이 없는 호출자·테스트는 종전 동작 그대로). */
@@ -518,6 +519,7 @@ export function LiveChartRoot({
   onRetryCandles,
   ratioBundle,
   clampEngaged,
+  captureFloorEngaged,
   candleSourceKey,
   minuteScrollbackFloorDate = null,
   isPastCandlesLoading,
@@ -2894,7 +2896,7 @@ export function LiveChartRoot({
 
           ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
           추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
-      {(clampEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
+      {(clampEngaged || captureFloorEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
@@ -2921,6 +2923,14 @@ export function LiveChartRoot({
           {clampEngaged && (
             <div data-testid="clamp-engaged-chip" style={chipStyle}>
               최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
+            </div>
+          )}
+          {/* 디스크 모드의 바닥은 정책 벽이 아니라 **이 종목을 언제부터 받았는가**다.
+              문구를 가르는 이유: 벽은 기다리면 안 풀리지만 캡처 시작은 사실의 진술이라
+              사용자가 할 수 있는 일이 다르다(더 과거는 애초에 없다). */}
+          {captureFloorEngaged && (
+            <div data-testid="capture-floor-chip" style={chipStyle}>
+              저장된 가장 오래된 구간입니다
             </div>
           )}
         </div>
