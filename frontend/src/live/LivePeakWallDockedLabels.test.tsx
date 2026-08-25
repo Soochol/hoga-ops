@@ -22,8 +22,10 @@ function seg(price: number, qty: number, peakSec: number): PeakWallSegment {
 }
 
 function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
+  const segments = over.segments ?? [seg(100, 100, 60), seg(105, 300, 120)];
   return {
-    segments: [seg(100, 100, 60), seg(105, 300, 120)],
+    segments,
+    rankSegments: segments,
     stepSegments: [],
     drawn: true,
     labels: true,
@@ -40,7 +42,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
 }
 
 const EMPTY: PeakWallRenderState = {
-  segments: [], stepSegments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
+  segments: [], rankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
   allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
 };
 

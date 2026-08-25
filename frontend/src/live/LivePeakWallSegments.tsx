@@ -51,9 +51,11 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   /** 레전드가 랭킹할 세그먼트. **`hidden` 과 무관하게** 채운다 — 눈은 선만 숨기고 레전드
    *  값은 살린다(MA 규칙 미러). ref 인 이유: provider 는 비반응형 레지스트리에 등록되고
    *  레전드 렌더 시점에 lazy 하게 불리므로, 스토어/props 를 provider effect 의 deps 로
-   *  끌어오면 등록·해제만 반복된다. */
+   *  끌어오면 등록·해제만 반복된다.
+   *  입력은 `rankSegments`(체결된 벽 ∪ 전체 벽) — 화살표와 **같은 집합**이어야 레전드
+   *  1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking 머리말). */
   const legendSegmentsRef = useRef<readonly PeakWallSegment[]>([]);
-  legendSegmentsRef.current = wall.segments;
+  legendSegmentsRef.current = wall.rankSegments;
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine 과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
@@ -110,7 +112,7 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
       wall.allWallDrawn ? preparePeakWallSegmentsForRender(wall.allWallSegments) : [],
     );
     arrowPrimRef.current?.setArrows(
-      wall.arrows ? peakWallRankArrowsFromSegments(wall.segments, side, candleExtremes) : [],
+      wall.arrows ? peakWallRankArrowsFromSegments(wall.rankSegments, side, candleExtremes) : [],
       PEAK_WALL_LEGEND_RANK_LIMIT,
     );
   }, [candleExtremes, series, side, wall]);

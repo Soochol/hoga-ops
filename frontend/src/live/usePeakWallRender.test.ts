@@ -49,7 +49,13 @@ describe('usePeakWallRender', () => {
   beforeEach(() => {
     act(() => {
       useChartPrefsStore.setState({ ...DEFAULT_PREFS });
-      useLivePageStore.setState({ askPeakEnabled: true, askPeakHidden: false });
+      useLivePageStore.setState({
+        askPeakEnabled: true,
+        askPeakHidden: false,
+        // 전역 스토어는 테스트 간 살아남는다 — 하위 토글을 켜는 테스트가 앞서면
+        // "꺼짐" 전제가 오염되므로 매번 되돌린다.
+        askPeakAllWallLineEnabled: false,
+      });
     });
   });
 
@@ -212,5 +218,20 @@ describe('usePeakWallRender', () => {
     });
     const r = render(true, [ALL_PEAK]);
     expect(r.current.allWallSegments).toEqual([]);
+  });
+
+  it('rankSegments 는 체결된 벽 ∪ 전체 벽 — 하위 토글이 꺼지면 segments 와 같은 참조', () => {
+    const off = render(true, [ALL_PEAK]);
+    expect(off.current.rankSegments).toBe(off.current.segments);
+
+    act(() => {
+      useLivePageStore.setState({ askPeakAllWallLineEnabled: true });
+    });
+    const on = render(true, [ALL_PEAK]);
+    // ALL_PEAK 은 traded(110, 500)와 all(130, 900)의 가격이 달라 병합 후 2개.
+    expect(on.current.rankSegments.map((s) => [s.price, s.qty])).toEqual([
+      [110, 500],
+      [130, 900],
+    ]);
   });
 });

@@ -82,6 +82,41 @@ export function rankVisiblePeakSegments<T extends RankablePeakSegment>(
   return best.map(({ index }) => index);
 }
 
+/**
+ * 체결된 벽 + 전체 최대벽(터치 무관) 세그먼트를 **랭킹 입력 하나**로 병합한다.
+ *
+ * 왜 병합인가: 이 모듈의 랭킹은 레전드·순위 화살표·고저 라벨 회피가 **같이** 쓴다(머리말).
+ * 전체 벽을 레전드에만 넣으면 레전드 1위와 화살표 ① 이 다른 벽을 가리키게 되므로,
+ * 병합 집합을 만들어 세 소비처가 전부 이것을 받는다 — 계산은 usePeakWallRender 한 곳.
+ *
+ * 중복 규칙: 같은 (그날 time0, 가격) 벽이 두 패밀리에 다 있으면 **잔량 큰 쪽 하나**만
+ * 남긴다(도킹 라벨의 (날, 가격) 병합과 같은 축). 동점은 체결된 벽이 이긴다 — traded 가
+ * 앞에 오고 뒤 항목은 strict > 일 때만 교체하므로, 랭커의 「동점은 먼저 나온 인덱스」
+ * 규칙과도 일관된다.
+ *
+ * 전체 벽이 비면(하위 토글 off·데이터 없음) **traded 배열 참조를 그대로** 돌려준다 —
+ * 소비처 memo 가 참조로 안정된다.
+ */
+export function mergePeakWallRankSegments(
+  traded: readonly PeakWallSegment[],
+  allWall: readonly PeakWallSegment[],
+): readonly PeakWallSegment[] {
+  if (allWall.length === 0) return traded;
+  const out: PeakWallSegment[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const segment of [...traded, ...allWall]) {
+    const key = `${segment.time0 as unknown as number}|${segment.price}`;
+    const existing = indexByKey.get(key);
+    if (existing === undefined) {
+      indexByKey.set(key, out.length);
+      out.push(segment);
+    } else if (segment.qty > out[existing].qty) {
+      out[existing] = segment;
+    }
+  }
+  return out;
+}
+
 /** flag 레전드 값 셀 — 보이는 범위 상위 3개를 「순위 + 가격, 잔량」으로.
  *
  *  값 문자열은 도킹 라벨과 **같은 `formatPriceQty`** 다. 같은 벽이 화면 두 곳에서 다르게

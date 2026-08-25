@@ -33,6 +33,7 @@ import {
   toPeakRankLimit,
   type PeakWallInput,
 } from './peakWallSegments';
+import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -61,6 +62,11 @@ export type PeakWallRenderState = {
    *  (MA·컷오프·intraMax)는 체결된 벽과 동일하게 흐른다. `enabled` 기준 계산
    *  불변식도 동일하다. */
   allWallSegments: readonly PeakWallSegment[];
+  /** 「보이는 영역」 랭킹(레전드 셀 · 순위 화살표 · 고저 라벨 회피)의 **공용 입력** —
+   *  체결된 벽 ∪ 전체 벽을 (그날, 가격) 최대 qty 로 병합한 집합. 세 소비처가 이 하나를
+   *  받아야 레전드 1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking 머리말).
+   *  전체 벽이 꺼져 있으면 `segments` 와 같은 참조다. */
+  rankSegments: readonly PeakWallSegment[];
   /** 전체 최대벽 선이 실제로 그려지는가(마스터 drawn ∧ 하위 토글). */
   allWallDrawn: boolean;
   /** 전체 최대벽 도킹 라벨이 그려지는가(라벨 pref 는 방향 공용을 따른다). */
@@ -235,6 +241,12 @@ export function usePeakWallRender({
 
   const drawn = enabled && !hidden;
   const allWallDrawn = drawn && allWallEnabled;
+  // 랭킹 공용 입력 — allWallBuilt 가 비면 mergePeakWallRankSegments 가 built 참조를
+  // 그대로 돌려주므로 별도 분기 없이도 참조가 안정된다.
+  const rankSegments = useMemo(
+    () => mergePeakWallRankSegments(built, allWallBuilt),
+    [built, allWallBuilt],
+  );
   return useMemo(() => ({
     segments: built,
     drawn,
@@ -244,6 +256,7 @@ export function usePeakWallRender({
     lineWidth,
     stepSegments: stepBuilt ?? built,
     allWallSegments: allWallBuilt,
+    rankSegments,
     allWallDrawn,
     allWallLabels: allWallDrawn && labelEnabled,
     allWallColor,

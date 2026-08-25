@@ -3,6 +3,7 @@ import type { IRange, Time } from 'lightweight-charts';
 import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import {
   PEAK_WALL_LEGEND_RANK_LIMIT,
+  mergePeakWallRankSegments,
   peakWallRankLegendCells,
   rankVisiblePeakSegments,
 } from './peakWallVisibleRanking';
@@ -131,5 +132,37 @@ describe('레전드 ↔ 순위 화살표 일치', () => {
     expect(legendValues[0]).toContain('4,000');
     expect(legendValues[1]).toContain('1,000');
     expect(legendValues[2]).toContain('2,000');
+  });
+});
+
+describe('mergePeakWallRankSegments', () => {
+  it('같은 (그날, 가격) 벽은 잔량 큰 쪽 하나만 남는다', () => {
+    const traded = [seg(0, 1000, 40), seg(1000, 2000, 70)];
+    const allWall = [seg(0, 1000, 90), seg(1000, 2500, 30)];
+    const merged = mergePeakWallRankSegments(traded, allWall);
+    expect(merged.map((s) => [s.time0, s.price, s.qty])).toEqual([
+      [0, 1000, 90],    // 전체 벽 잔량이 커서 교체
+      [1000, 2000, 70], // 가격이 달라 둘 다 생존
+      [1000, 2500, 30],
+    ]);
+  });
+
+  it('동점이면 체결된 벽이 남는다(strict > 교체)', () => {
+    const traded = [seg(0, 1000, 40)];
+    const allWall = [{ ...seg(0, 1000, 40), color: '#allwall' }];
+    const merged = mergePeakWallRankSegments(traded, allWall);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].color).toBe('#base');
+  });
+
+  it('전체 벽이 비면 traded 배열 참조를 그대로 돌려준다(소비처 memo 안정)', () => {
+    const traded = [seg(0, 1000, 40)];
+    expect(mergePeakWallRankSegments(traded, [])).toBe(traded);
+  });
+
+  it('다른 날 같은 가격은 병합하지 않는다 — 키는 (그날, 가격)이다', () => {
+    const traded = [seg(0, 1000, 40)];
+    const allWall = [seg(1000, 1000, 90)];
+    expect(mergePeakWallRankSegments(traded, allWall)).toHaveLength(2);
   });
 });

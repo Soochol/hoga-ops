@@ -40,8 +40,10 @@ const EXTREMES = new Map([
 ]);
 
 function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
+  const segments = over.segments ?? SEGMENTS;
   return {
-    segments: SEGMENTS,
+    segments,
+    rankSegments: segments,
     stepSegments: SEGMENTS,
     drawn: true,
     labels: true,
@@ -177,6 +179,24 @@ describe('LivePeakWallSegments', () => {
     await waitFor(() => {
       expect(tradedPrimOf(attached).segmentsData()).toHaveLength(3);
       expect(arrowsOnly(attached)[0].arrowsData()).toEqual([]);
+    });
+  });
+
+  it('레전드·화살표는 rankSegments(체결된 벽 ∪ 전체 벽)를 같은 집합으로 받는다', async () => {
+    // 전체 벽(95, qty 4000)이 체결된 벽 셋(1000·2000·3000)을 제치고 1위가 되는 병합 집합.
+    const allWallSeg = seg(0, 95, 4000, 50);
+    const attached = renderOverlay('ask', wall({
+      rankSegments: [...SEGMENTS, allWallSeg],
+      allWallSegments: [allWallSeg],
+      allWallDrawn: true,
+    }));
+    await waitFor(() => {
+      expect(readFlagLegendValues(null, 'ask-peak', null)[0]).toMatchObject({
+        label: '1',
+        value: '95, 4k',
+      });
+      // 화살표도 같은 집합에서 나온다 — 병합분 포함 4개.
+      expect(arrowsOnly(attached)[0].arrowsData()).toHaveLength(4);
     });
   });
 
