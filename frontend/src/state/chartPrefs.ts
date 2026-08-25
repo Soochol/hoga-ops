@@ -220,13 +220,6 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'askPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매도 최대벽을 계산합니다.',
-    default: false,
-    category: 'indicator-modal',
-  },
-  {
     // 방향을 키 이름에 박아 둔다 — 매도는 위, 매수는 아래로 **비대칭**이라
     // `askPeakMaFilterEnabled` 같은 중립 이름이면 코드에서 방향을 다시 찾아야 한다.
     key: 'askPeakAboveMaEnabled',
@@ -266,13 +259,6 @@ export const CHART_TOGGLES = [
     label: '상위벽 순위 화살표',
     description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
     default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매수 최대벽을 계산합니다.',
-    default: false,
     category: 'indicator-modal',
   },
   {

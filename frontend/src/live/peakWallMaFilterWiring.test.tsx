@@ -77,7 +77,6 @@ function renderPrices(
     axis,
     todayKst: DAY,
     applicable: true,
-    visibleTimeCutoff: null,
     dailyMaFilter,
   }));
   return result.current.segments.map((s) => s.price);

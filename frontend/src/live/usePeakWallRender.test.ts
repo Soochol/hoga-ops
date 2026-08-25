@@ -33,7 +33,6 @@ function render(applicable = true, peaks: AskPeak[] = [PEAK], needStepSegments =
     axis,
     todayKst: DAY,
     applicable,
-    visibleTimeCutoff: null,
     dailyMaFilter: null,
     needStepSegments,
   })).result;

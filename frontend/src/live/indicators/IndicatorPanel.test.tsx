@@ -180,13 +180,12 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
-  it('매도 최대벽 선택 시 체결된 벽 스타일과 보이는 최신 봉 기준 토글 표시', () => {
+  it('매도 최대벽 선택 시 체결된 벽 스타일과 라벨 토글 표시', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
-    expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
@@ -357,11 +356,10 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
   });
 
-  it('매수 최대벽 선택 시 보이는 최신 봉 기준 토글 표시', () => {
+  it('매수 최대벽 선택 시 라벨 토글 표시', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
-    expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 

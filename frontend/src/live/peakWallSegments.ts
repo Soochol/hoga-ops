@@ -22,7 +22,6 @@ import {
   type PeakWallSegment,
 } from '../chart/PeakWallSegmentsPrimitive';
 import { formatPriceQty } from './peakLegendValues';
-import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, type PeakMaFilter } from './peakWallMaFilter';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
 
@@ -49,16 +48,14 @@ function allCandidate(
 
 /**
  * 전체 벽(`all_*` 패밀리, 터치 무관)을 **traded carrier 자리로 옮긴 사본**을 만든다 —
- * 「전체 최대벽」 선의 입력. 파이프라인(expandBaselinePeaks · applyPeakVisibleTimeCutoff ·
- * MA 필터)은 전부 traded carrier 를 읽으므로, 자리만 바꾸면 한 벌이 그대로 재사용된다.
+ * 「전체 최대벽」 선의 입력. 파이프라인(expandBaselinePeaks · MA 필터)은 전부 traded
+ * carrier 를 읽으므로, 자리만 바꾸면 한 벌이 그대로 재사용된다.
  *
  * 데이터의 두 모양을 다 다룬다:
  * - **과거일**(/api/range seed): `all_price/qty/t_ms` 스칼라만 있고 배열은 비어 온다
- *   (bundle._without_all_peak_rankings). → carrier 는 스칼라, `traded_peaks` 는
- *   **undefined 로 남긴다**. `[]` 를 넣으면 applyPeakVisibleTimeCutoff 의 chooseCandidate
- *   가 스칼라 폴백을 타지 못해 컷오프 아래에서 그날이 통째로 사라진다(=== undefined 검사).
- * - **오늘**(attachFamilies): `all_peaks`/`all_max_peaks` 배열이 있다. → rank-1 이 carrier,
- *   배열은 traded_peaks 로 옮겨 컷오프가 후보 재선택을 할 수 있게 한다.
+ *   (bundle._without_all_peak_rankings). → carrier 는 스칼라, 배열은 undefined.
+ * - **오늘**(attachFamilies): `all_peaks`/`all_max_peaks` 배열이 있다. → rank-1 이
+ *   carrier, 배열은 traded_peaks 로 옮긴다.
  *
  * `all_*` 가 전혀 없는 날(legacy payload)은 건너뛴다 — 그날만 선이 빠진다.
  * record 필드는 옮기지 않는다(전체 벽 선은 강도 pane 계단에 참여하지 않는다).
@@ -93,8 +90,7 @@ export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallIn
  * 같은 리맵 패턴. **cont 단일 계열**이라 close/max 구분이 없어 양쪽에 같은 값을 싣는다
  * (intraMax 토글이 이 선에는 무효 — 백엔드 AskPeakDualRow 주석의 대우).
  * 과거일 배열은 range 에서 벗기지 않으므로(최대 3개) 배열이 오면 그대로 옮기고,
- * 없으면 스칼라 폴백 — `traded_peaks: undefined` 규약은 toAllWallPeakInputs 와 동일
- * (`[]` 를 넣으면 컷오프의 chooseCandidate 스칼라 폴백이 죽는다).
+ * 없으면 스칼라 폴백 — 규약은 toAllWallPeakInputs 와 동일하다.
  */
 export function toUnreachedWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
   const out: PeakWallInput[] = [];
@@ -329,7 +325,6 @@ export type BuildPeakWallOverlaySegmentsArgs = {
   /** 계단(as-of running max) 입력 모드 — 후보를 기록 갱신 시퀀스 ∪ top-3 으로 잡고
    *  랭크로 자르지 않는다. 그리기 경로는 이 옵션을 켜지 않는다. */
   stepHistory?: boolean;
-  visibleTimeCutoff?: VisibleTimeCutoff | null;
   /** 이동평균선 필터. **필수 인자**다 — 기본값을 주면 새 호출부가 조용히 필터 없이
    *  태어난다. 필터를 안 쓰는 자리는 `null` 을 명시한다. 방향(매도는 MA 위 / 매수는
    *  아래)은 이 객체 안에 있다. */
@@ -349,11 +344,9 @@ export function buildPeakWallOverlaySegments({
   intraMax,
   allPriceRankLimit = 1,
   stepHistory = false,
-  visibleTimeCutoff,
   maFilter,
   dailyMaFilter,
 }: BuildPeakWallOverlaySegmentsArgs): PeakWallSegment[] {
-  const cutoffPeaks = applyPeakVisibleTimeCutoff(peaks, visibleTimeCutoff ?? null, { intraMax });
   // rank-then-filter: 그날 최대벽을 먼저 뽑고(expandBaselinePeaks) 그중 MA 조건에 맞는
   // 것만 남긴다. 반대로 걸면(filter-then-rank) 지표의 뜻이 "그날 최대벽"에서 "MA 위 벽 중
   // 최대"로 바뀌어, 최대벽이 조건에 걸리면 2등 벽이 대신 올라온다.
@@ -361,7 +354,7 @@ export function buildPeakWallOverlaySegments({
   // 것은 그쪽이 캔들 배열을 만지므로 더 비싼 쪽을 뒤에 남기지 않기 위해서다.
   const baselinePeaks = filterPeaksAgainstDailyMa(
     filterPeaksAgainstMa(
-      expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax, stepHistory),
+      expandBaselinePeaks(peaks, allPriceRankLimit, intraMax, stepHistory),
       candles,
       axis,
       intraMax,

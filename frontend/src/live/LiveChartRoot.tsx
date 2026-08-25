@@ -73,10 +73,9 @@ import {
 } from './workspace/windowView';
 import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
-import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
-import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
+import { type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS, realMsToYyyymmdd } from './liveDateTime';
-import { initialVisibleMinuteBarsFor, liveVenueSessionBoundsMs } from './liveVenuePolicy';
+import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
@@ -98,7 +97,7 @@ import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
@@ -115,14 +114,11 @@ import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 // (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_WALL_SURGE: readonly never[] = [];
 import {
-  deriveDayAskPeaksIncrementalAsOf,
 } from './useDayAskPeaks';
 import {
-  deriveDayBidPeaksIncrementalAsOf,
 } from './useDayBidPeaks';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
-import { nextVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import DepthHeatmapOverlay from './DepthHeatmapOverlay';
 import DepthDeltaOverlay from './DepthDeltaOverlay';
@@ -217,7 +213,6 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 const EMPTY_SYNC_CANDLES: readonly Candle[] = [];
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
-const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
@@ -357,16 +352,8 @@ interface Props {
   restoreViewport?: TabViewport | null;
   /** LivePage의 useDayAskPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayAskPeaks?: readonly AskPeak[];
-  /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
-  /** Raw backend today ask-peak payload, used only for cutoff-aware live recomputation. */
-  todayAskPeakInput?: LiveTodayAskPeak | null;
   /** LivePage의 useDayBidPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayBidPeaks?: readonly BidPeak[];
-  /** Backend today all-price bid peak — optional so existing tests/callers omit it safely. */
-  /** Raw backend today bid-peak payload, used only for cutoff-aware live recomputation. */
-  todayBidPeakInput?: LiveTodayBidPeak | null;
-  /** Raw live snapshots, used only for cutoff-aware today/live peak recomputation. */
-  liveObSnapshots?: ReadonlyArray<ObSnapshot>;
   liveTradeSnapshots?: ReadonlyArray<TradeSnapshot>;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
@@ -552,10 +539,7 @@ export function LiveChartRoot({
   pastDataWarnings,
   restoreViewport = null,
   dayAskPeaks = EMPTY_ASK_PEAKS,
-  todayAskPeakInput = null,
   dayBidPeaks = EMPTY_BID_PEAKS,
-  todayBidPeakInput = null,
-  liveObSnapshots = EMPTY_OB_SNAPSHOTS,
   liveTradeSnapshots = EMPTY_TRADE_SNAPSHOTS,
   todayKst = '',
   tradeVolumePocs = [],
@@ -1869,8 +1853,6 @@ export function LiveChartRoot({
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → 그룹(멤버 PaneId들) 매핑에 쓰는 최신 그룹 목록.
   const paneGroupsRef = useRef<readonly PaneSpecGroup[]>([]);
-  const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
-  const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   // 회피 rect 도 선·도킹 라벨과 같은 MA 필터를 타야 한다 — 안 그러면 필터로 사라진
   // 라벨을 피해 고저 극값 라벨이 pane 안쪽으로 밀리는 유령 회피가 남는다.
   // 일봉 MA 필터는 **여기 한 곳에서만** 만든다 — 데이터 fetch 가 걸린 훅이라 소비처(선 2 ·
@@ -1887,134 +1869,28 @@ export function LiveChartRoot({
   const askPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'ask' });
   const bidPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'bid' });
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
-  const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
-
-  // 「보이는 최신 봉 기준」이 **한쪽이라도 켜져 있을 때만** 구독한다. 이 값은 그 pref 가
-  // 꺼져 있으면 아래에서 통째로 버려지는데(`askVisibleTimeCutoffForRender`), 종전엔 그래도
-  // 팬 프레임마다 setState 를 해서 이 컴포넌트(훅 수백 개)를 통째로 재렌더했다. 두 pref 의
-  // 기본값이 **둘 다 false** 라 대다수 사용자가 아무 이득 없이 그 비용을 내고 있었다.
-  const visibleTimeCutoffNeeded = askPeakVisibleTimeCutoff || bidPeakVisibleTimeCutoff;
-  useEffect(() => {
-    if (!visibleTimeCutoffNeeded || !chart || !cb || !isMinuteTimeframe(timeframe)) {
-      // 이미 null 이면 setState 자체를 건너뛴다 — 안 그러면 pref 가 꺼진 상태에서
-      // deps 가 바뀔 때마다(캔들 갱신 등) 무의미한 재렌더가 한 번씩 난다.
-      setVisibleTimeCutoff((prev) => (prev === null ? prev : null));
-      return undefined;
-    }
-    const timeScale = chart.timeScale();
-    // **같은 봉이면 이전 참조를 유지한다** — `nextVisibleTimeCutoff` 가 그 비교를 갖는다.
-    // 팬 한 번의 프레임 대부분이 그 경우고(왼쪽으로 밀거나 봉 하나 안에서 줌하면 오른쪽
-    // 끝 봉은 그대로), React 가 `Object.is` 로 그 갱신을 버려 재렌더가 사라진다.
-    const update = () => {
-      setVisibleTimeCutoff((prev) => nextVisibleTimeCutoff(
-        prev,
-        cb.candles,
-        timeScale.getVisibleRange(),
-        axis,
-        TIMEFRAME_TO_MS[timeframe],
-      ));
-    };
-    update();
-    timeScale.subscribeVisibleTimeRangeChange(update);
-    return () => {
-      safeUnsubscribe(() => timeScale.unsubscribeVisibleTimeRangeChange(update));
-    };
-  }, [chart, cb, cb?.candles, axis, timeframe, visibleTimeCutoffNeeded]);
-
-  const askVisibleTimeCutoffForRender = askPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
-  const bidVisibleTimeCutoffForRender = bidPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
-  // Historical/cache-backed days only expose preclassified families, so the
-  // cutoff-aware recompute is limited to today's live path where raw OB/trade
-  // snapshots still exist. Past days keep the compatibility cutoff filter.
-  const canRecomputeAskCutoff = !!askVisibleTimeCutoffForRender
-    && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayAskPeakInput !== null);
-  const canRecomputeBidCutoff = !!bidVisibleTimeCutoffForRender
-    && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayBidPeakInput !== null);
   // 현재가 라인용 fresh 체결가 — live.trade 를 number|null 로 환원해 memo'd
   // LiveCurrentPriceLine 에 프리미티브로 전달(재구독·per-tick churn 없음). LiveChartRoot
   // 는 SSE 틱마다 재렌더되므로 Date.now() 기반 재평가 주기가 충분하다. index 뷰는
   // liveTradeSnapshots 가 빈 배열이라 null → deriveCurrentPriceLine 이 캔들 종가로 폴백.
   const liveTradePrice = freshLiveTradePrice(liveTradeSnapshots, venue, Date.now());
-  const historicalAskSeeds = useMemo(
-    () => dayAskPeaks.filter((peak) => peak.date !== todayKst),
-    [dayAskPeaks, todayKst],
-  );
-  const historicalBidSeeds = useMemo(
-    () => dayBidPeaks.filter((peak) => peak.date !== todayKst),
-    [dayBidPeaks, todayKst],
-  );
   // cutoff(as-of) 증분 소스 — 4계열(ask/bid × dayPeaks/todayAll) 각자 누적 상태를 갖는다
   // (todayAll 은 빈 trade 로 update 하므로 dayPeaks 와 공유 불가 — 공유 시 리셋 스래싱).
   // 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례). cutoff pref 를 껐다 켜도 append-only
   // prefix-guard 가 누락분을 자가 회수하고, 종목 전환(버퍼 리셋)은 참조 불일치로 전체
   // 재소비한다. batch 는 매 틱 ob/trade 를 재스캔했으나 증분은 델타만 소비한다(ADR-0106).
-  // cutoff 재계산판 최대벽의 유효-스냅샷 하한 — useLiveChartData 의 peakSessionOpenMs 와
-  // 같은 정의(선택 venue 의 개장). 두 경로가 갈리면 같은 벽이 cutoff 유무에 따라 다르게
-  // 걸러진다.
-  const peakSessionOpenMs = useMemo(
-    () => liveVenueSessionBoundsMs(todayKst, venue).open_ms,
-    [todayKst, venue],
-  );
   const askDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (askDayPeakSourceRef.current === null) askDayPeakSourceRef.current = new IncrementalPeakWallSource('ask');
   const bidDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (bidDayPeakSourceRef.current === null) bidDayPeakSourceRef.current = new IncrementalPeakWallSource('bid');
-  const renderDayAskPeaks = useMemo(
-    () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayAskPeaksIncrementalAsOf(
-        askDayPeakSourceRef.current!,
-        liveObSnapshots,
-        liveTradeSnapshots,
-        historicalAskSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayAskPeakInput,
-        askVisibleTimeCutoffForRender!.tMs,
-        cb?.candles ?? EMPTY_CANDLES,
-      )
-      : [...dayAskPeaks],
-    [
-      canRecomputeAskCutoff,
-      dayAskPeaks,
-      historicalAskSeeds,
-      liveObSnapshots,
-      liveTradeSnapshots,
-      timeframe,
-      askVisibleTimeCutoffForRender?.tMs,
-      todayAskPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-      cb?.candles,
-    ],
-  );
-  const renderDayBidPeaks = useMemo(
-    () => canRecomputeBidCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayBidPeaksIncrementalAsOf(
-        bidDayPeakSourceRef.current!,
-        liveObSnapshots,
-        liveTradeSnapshots,
-        historicalBidSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayBidPeakInput,
-        bidVisibleTimeCutoffForRender!.tMs,
-        cb?.candles ?? EMPTY_CANDLES,
-      )
-      : [...dayBidPeaks],
-    [
-      canRecomputeBidCutoff,
-      dayBidPeaks,
-      historicalBidSeeds,
-      liveObSnapshots,
-      liveTradeSnapshots,
-      timeframe,
-      bidVisibleTimeCutoffForRender?.tMs,
-      todayBidPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-      cb?.candles,
-    ],
-  );
+  // 최대벽 렌더 입력 — 시간 컷오프 제거(2026-08-25) 후 `dayPeaks` 를 그대로 쓴다.
+  // 배열 사본을 유지하는 이유: 소비처(usePeakWallRender)가 readonly 를 기대하고,
+  // 참조 안정성은 `useLiveChartData` 의 memo 가 이미 보장한다.
+  const renderDayAskPeaks = dayAskPeaks;
+  // 최대벽 렌더 입력 — 시간 컷오프 제거(2026-08-25) 후 `dayPeaks` 를 그대로 쓴다.
+  // 배열 사본을 유지하는 이유: 소비처(usePeakWallRender)가 readonly 를 기대하고,
+  // 참조 안정성은 `useLiveChartData` 의 memo 가 이미 보장한다.
+  const renderDayBidPeaks = dayBidPeaks;
   const activePaneToggles = useMemo(
     // 최상위 지표 필드는 store 가 현재 봉으로 resolve 해 둔 투영이라(PR-A #699)
     // timeframe 병합 없이 국지 override 만 얹는다.
@@ -2242,7 +2118,6 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    visibleTimeCutoff: askVisibleTimeCutoffForRender,
     dailyMaFilter: askPeakDailyMaFilter,
     needStepSegments: prefPeakWallPaneEnabled,
   });
@@ -2254,7 +2129,6 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    visibleTimeCutoff: bidVisibleTimeCutoffForRender,
     dailyMaFilter: bidPeakDailyMaFilter,
     needStepSegments: prefPeakWallPaneEnabled,
   });

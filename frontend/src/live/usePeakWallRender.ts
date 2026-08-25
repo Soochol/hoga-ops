@@ -37,7 +37,6 @@ import {
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
-import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 
 export type PeakWallRenderState = {
   /** 필터를 모두 통과한 세그먼트. **`enabled` 기준으로만** 계산한다(위 불변식 참조). */
@@ -94,7 +93,6 @@ type Args = {
   todayKst: string;
   /** 분봉 + 캔들 번들이 있는가. false 면 계산하지 않는다(지표가 분봉 전용). */
   applicable: boolean;
-  visibleTimeCutoff: VisibleTimeCutoff | null;
   /** 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해 넘긴다. */
   dailyMaFilter: PeakDailyMaFilter | null;
   /** 최대벽 강도 pane 이 켜져 있을 때만 true — 꺼져 있으면 top-3 재계산을 건너뛴다. */
@@ -112,7 +110,6 @@ export function usePeakWallRender({
   axis,
   todayKst,
   applicable,
-  visibleTimeCutoff,
   dailyMaFilter,
   needStepSegments = false,
 }: Args): PeakWallRenderState {
@@ -162,7 +159,6 @@ export function usePeakWallRender({
         baselineStyle: { color, lineWidth },
         intraMax,
         allPriceRankLimit: toPeakRankLimit(allPriceRankLimit),
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -181,7 +177,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
@@ -198,7 +193,6 @@ export function usePeakWallRender({
         baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
         intraMax,
         allPriceRankLimit: 1,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -217,7 +211,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallBuilt 주석).
@@ -232,7 +225,6 @@ export function usePeakWallRender({
         baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
         intraMax,
         allPriceRankLimit: 1,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -251,7 +243,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
@@ -268,7 +259,6 @@ export function usePeakWallRender({
         intraMax,
         allPriceRankLimit: 3,
         stepHistory: true,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -288,7 +278,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   const drawn = enabled && !hidden;

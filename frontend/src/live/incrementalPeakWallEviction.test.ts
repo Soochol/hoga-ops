@@ -79,7 +79,7 @@ function extraFromWall(snapshot: ObSnapshot, side: Side): AskPeakCandidate | nul
 type Side = 'ask' | 'bid';
 
 /** 증분 소스를 슬라이딩으로 굴리며 매 스텝 오라클과 대조. */
-function runParity(side: Side, seed: number, steps: number, asOf: boolean): void {
+function runParity(side: Side, seed: number, steps: number): void {
   const rnd = lcg(seed);
   const src = new IncrementalPeakWallSource(side);
   let ob: ObSnapshot[] = Array.from({ length: 40 }, (_u, i) => mkOb(i, rnd));
@@ -104,16 +104,10 @@ function runParity(side: Side, seed: number, steps: number, asOf: boolean): void
       rememberedWall = extraFromWall(ob[0], side);
     }
     const extras: AskPeakCandidate[] = rememberedWall ? [rememberedWall] : [];
-    const cutoff = ob[Math.floor(rnd() * ob.length)].t_ms;
-
-    const actual = asOf
-      ? src.updateAsOf(ob, trade, extras, cutoff, OPEN_MS)
-      : src.update(ob, trade, OPEN_MS, extras);
+    const actual = src.update(ob, trade, OPEN_MS, extras);
     // 오라클: 같은 입력을 **처음 보는** 인스턴스에 먹인다 → 전량 재소비 경로.
     const oracle = new IncrementalPeakWallSource(side);
-    const expected = asOf
-      ? oracle.updateAsOf(ob, trade, extras, cutoff, OPEN_MS)
-      : oracle.update(ob, trade, OPEN_MS, extras);
+    const expected = oracle.update(ob, trade, OPEN_MS, extras);
 
     expect({ step, ...actual }).toEqual({ step, ...expected });
   }
@@ -122,17 +116,12 @@ function runParity(side: Side, seed: number, steps: number, asOf: boolean): void
 describe('IncrementalPeakWallSource — 슬라이딩 축출 파리티', () => {
   for (const side of ['ask', 'bid'] as const) {
     it(`${side}: 200스텝 슬라이딩에서 오라클과 항상 같다`, () => {
-      runParity(side, 0x5eed_1234, 200, false);
-    });
-    it(`${side}: cutoff 경로(updateAsOf)도 200스텝 동안 같다`, () => {
-      // 팬 중에는 이 경로가 돈다. 축출 정확성은 여기서도 성립해야 하는데 다른 어떤
-      // 테스트도 「축출 × cutoff」 조합을 보지 않는다.
-      runParity(side, 0xc0ff_ee01, 200, true);
+      runParity(side, 0x5eed_1234, 200);
     });
   }
 
   it('여러 시드에서도 성립한다', () => {
-    for (const seed of [1, 2, 7, 42, 999, 123_457]) runParity('ask', seed, 60, false);
+    for (const seed of [1, 2, 7, 42, 999, 123_457]) runParity('ask', seed, 60);
   });
 });
 
