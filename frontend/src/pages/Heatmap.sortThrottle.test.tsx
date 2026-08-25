@@ -1,4 +1,4 @@
-import { render, screen, act, within } from '@testing-library/react';
+import { render, screen, act, within, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
@@ -145,6 +145,26 @@ describe('히트맵 정렬 스로틀 (SORT_THROTTLE_MS)', () => {
     rerender();
     expect(screen.getByTestId('heatmap-row-005930').textContent).toContain('+20.00');
     expect(codeOrder()).toEqual(INITIAL_ORDER); // 숫자는 새 값, 자리는 아직 옛 순서
+  });
+
+  it('창 안이라도 정렬 버튼 클릭은 **즉시** 최신 시세로 정렬한다 — 이후는 다시 스로틀', async () => {
+    const { rerender } = await renderAndOpenWindow();
+    setQuotes(FLIPPED);
+    rerender();
+    expect(codeOrder()).toEqual(INITIAL_ORDER); // 창 안 — 정렬 키는 갇힌 상태
+    // 그룹 정렬 클릭(desc→asc). 모드 변화 이펙트가 스로틀을 flush 하므로 **두 축 모두**
+    // 갇혀 있던 FLIPPED 키로 즉시 재정렬돼야 한다. flush 가 없다면 그룹만 asc 로 뒤집힌
+    // 옛 키 순서(['000660','005930','373220','006400'])가 나온다 — 아래 기대와 다르다.
+    act(() => { fireEvent.click(screen.getByRole('button', { name: '그룹 정렬' })); });
+    // FLIPPED 기준: 그룹 asc → f2(평균 +1.5%) 먼저, 행 desc → 그룹 안은 내림차순.
+    expect(codeOrder()).toEqual(['006400', '373220', '005930', '000660']);
+    // flush 가 연 새 창 — 직후 시세 변화는 다시 갇힌다.
+    setQuotes(INITIAL);
+    rerender();
+    expect(codeOrder()).toEqual(['006400', '373220', '005930', '000660']);
+    act(() => { vi.advanceTimersByTime(SORT_THROTTLE_MS); });
+    // INITIAL 기준: 그룹 asc → f1(평균 +1.5%) 먼저, 행 desc.
+    expect(codeOrder()).toEqual(['000660', '005930', '373220', '006400']);
   });
 
   it('창 안에서도 그룹·종목의 **추가/삭제**는 즉시 보인다', async () => {

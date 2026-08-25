@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
 import {
@@ -52,7 +52,15 @@ export function Heatmap() {
   // 섹터 스트립)은 계속 라이브 quoteByCode 를 본다 — 숫자는 실시간이고 자리만 정돈된다.
   // 얼리는 대상이 결과 배열이 아니라 정렬 키라서, 그룹 추가·삭제·검색 같은 **구조** 변화는
   // 스로틀을 통과해 즉시 보인다(배열을 얼리면 삭제된 그룹이 최대 30초 남는다).
-  const sortQuoteByCode = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  const [sortQuoteByCode, flushSortQuotes] = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  // 정렬 버튼 클릭(=모드 변화) 순간엔 스로틀을 우회해 **즉시** 최신 시세로 정렬한다 —
+  // 사용자가 방금 "정렬해 달라"고 눌렀는데 최대 30초 낡은 키로 줄을 세우면 버튼이 고장
+  // 나 보인다. 이후 틱은 다시 SORT_THROTTLE_MS 격자를 탄다(flush 가 새 창을 연다).
+  // 클릭 핸들러가 아니라 모드 구독 이펙트인 이유: 모드 스토어(heatmapPrefs)를 드로어와
+  // 공유하므로, 어느 표면에서 눌러도 양쪽이 같은 계기로 갱신된다. useLayoutEffect 라
+  // "낡은 순서로 한 프레임 → 재정렬" 이중 점프가 페인트에 오르지 않는다. 마운트 실행은
+  // no-op(flush 는 커밋할 것이 있을 때만 동작 — 콜드 로드 가드는 훅 docstring 참조).
+  useLayoutEffect(() => { flushSortQuotes(); }, [sortMode, groupSort, flushSortQuotes]);
   // 그룹 순서 = orderFolderGroups(직교 축). groupSort≠manual 이면 스로틀된 시세로 재정렬한다
   // — 예전엔 quoteByCode 를 직접 봐서 WS 틱 flush 마다(초당 최대 ~6.7회) 카드가 자리를 바꿨다.
   // ⚠️ 이는 행 'change' 모드와 "동형"이 아니다(거짓 등가): change 는 드래그를 끄지만
