@@ -372,11 +372,11 @@ describe('IndicatorPanel', () => {
   });
 
   it('신규 거래원 등장 기준 시각을 HH:MM으로 표시하고 HHMM 입력을 정규화한다', async () => {
-    useLivePageStore.setState({ brokerLateEntryStartHHMM: 930 });
+    useLivePageStore.setState({ brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }] });
     renderPanel();
     openDetail('신규 거래원 등장');
 
-    const input = screen.getByRole('textbox', { name: '신규 거래원 등장 기준 시각' }) as HTMLInputElement;
+    const input = screen.getByRole('textbox', { name: /기준 시각$/ }) as HTMLInputElement;
     // 저장값 930 → HH:MM 표시.
     expect(input.value).toBe('09:30');
 
@@ -384,14 +384,14 @@ describe('IndicatorPanel', () => {
     await userEvent.clear(input);
     await userEvent.type(input, '0900');
     fireEvent.blur(input);
-    expect(useLivePageStore.getState().brokerLateEntryStartHHMM).toBe(900);
+    expect(useLivePageStore.getState().brokerLateEntries[0].startHHMM).toBe(900);
     expect(input.value).toBe('09:00');
 
     // 콜론 형식 입력도 동일하게 파싱.
     await userEvent.clear(input);
     await userEvent.type(input, '10:05');
     fireEvent.blur(input);
-    expect(useLivePageStore.getState().brokerLateEntryStartHHMM).toBe(1005);
+    expect(useLivePageStore.getState().brokerLateEntries[0].startHHMM).toBe(1005);
     expect(input.value).toBe('10:05');
   });
 

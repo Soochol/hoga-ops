@@ -44,6 +44,7 @@ import {
 import {
   INDICATOR_OPS,
   bindIndicatorOps,
+  brokerLateEntryRemovalUndo,
   flagRemovalPatches,
   maRemovalUndo,
   type BoundIndicatorOps,
@@ -321,6 +322,10 @@ export type IndicatorActions = BoundIndicatorOps & {
    *  전부 공장값으로 되돌린다(`flagRemovalPatches`). 배열이 없는 flat 싱글턴이라
    *  "원소 제거" 대신 "손댄 적 없는 상태로" 가 삭제의 뜻이다. */
   removeFlagIndicatorWithUndo: (type: FlagIndicatorType) => void;
+  /** 배열로 승격된 flag 지표(거래원 등장)의 **인스턴스 하나** 삭제 + undo.
+   *  타입 단위 삭제(`removeFlagIndicatorWithUndo`)와 갈라 두는 이유: 그쪽은 필드를
+   *  공장값으로 되돌리는데, 배열 타입에서 그건 **다른 인스턴스까지 지운다**. */
+  removeBrokerLateEntryWithUndo: (id: string) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
   setPaneGroups: (groups: PaneGroups) => void;
@@ -349,7 +354,8 @@ function buildRemoveWithUndo(
   tfAt: () => LiveTimeframe,
 ): Pick<
   IndicatorActions,
-  'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo' | 'removeFlagIndicatorWithUndo'
+  'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo'
+  | 'removeFlagIndicatorWithUndo' | 'removeBrokerLateEntryWithUndo'
 > {
   const remove = (key: MaSliceKey, id: string) => {
     const ps = useLivePageStore.getState();
@@ -369,6 +375,17 @@ function buildRemoveWithUndo(
   return {
     removeMovingAverageWithUndo: (id) => remove('movingAverages', id),
     removeDailyMovingAverageWithUndo: (id) => remove('dailyMovingAverages', id),
+    removeBrokerLateEntryWithUndo: (id) => {
+      const ps = useLivePageStore.getState();
+      const cur = readSettings();
+      const undo = brokerLateEntryRemovalUndo(cur, id);
+      const op = INDICATOR_OPS.removeBrokerLateEntry(cur, id);
+      if (!op || !undo) return;
+      const scope = scopeAt();
+      const timeframe = tfAt();
+      ps.patchIndicatorsScoped(scope, timeframe, op);
+      ps.setIndicatorUndoToast({ ...undo, scope, timeframe });
+    },
     removeFlagIndicatorWithUndo: (type) => {
       const ps = useLivePageStore.getState();
       const { label, apply, undo } = flagRemovalPatches(

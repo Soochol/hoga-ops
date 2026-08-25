@@ -85,9 +85,7 @@ function resetStore() {
     tradeVolumePocHidden: false,
     depthHeatmapEnabled: false,
     depthHeatmapHidden: false,
-    brokerLateEntryEnabled: false,
-    brokerLateEntryHidden: false,
-    brokerLateEntrySideMode: 'both',
+    brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
     volumeEnabled: false,
     foreignNetEnabled: false,
     institutionNetEnabled: false,
@@ -631,7 +629,7 @@ describe('PaneLegendOverlay — flag 행 부활(전 종류 표시)', () => {
   });
 
   it('신규 거래원 등장(broker-late-entry)도 부활 대상이다', () => {
-    useLivePageStore.setState({ movingAverages: [], brokerLateEntryEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }] });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.getByText('신규 거래원 등장')).toBeInTheDocument();
   });
@@ -757,6 +755,43 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
     } finally {
       unregisterFlagLegendValues(null, 'ask-peak', 'main', empty);
     }
+  });
+
+  // 배열로 승격된 flag 지표(거래원 등장)는 **인스턴스마다 한 행**이고, 그 행의
+  // 눈·✕ 는 **그 인스턴스만** 건드려야 한다. 타입 단위 리셋을 쓰면 다른 세트까지
+  // 공장값으로 돌아간다 — 브라우저 실측으로 잡은 사고이고, 이 가드가 그 회귀를 막는다.
+  it('인스턴스마다 한 행이 뜨고 라벨에 기준 시각이 실린다', () => {
+    useLivePageStore.setState({ movingAverages: [], brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }, { id: 'ble-2', enabled: true, startHHMM: 1400, sideMode: 'both' as const, buyColor: '#A855F7', sellColor: '#A855F7' }] });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+
+    expect(screen.getByText('신규 거래원 09:30')).toBeInTheDocument();
+    expect(screen.getByText('신규 거래원 14:00')).toBeInTheDocument();
+  });
+
+  it('한 행의 ✕ 는 **그 인스턴스만** 지운다 (다른 세트는 그대로)', () => {
+    useLivePageStore.setState({ movingAverages: [], brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }, { id: 'ble-2', enabled: true, startHHMM: 1400, sideMode: 'both' as const, buyColor: '#A855F7', sellColor: '#A855F7' }] });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '신규 거래원 14:00 삭제' }));
+
+    const after = useLivePageStore.getState().brokerLateEntries;
+    expect(after.map((e) => e.id)).toEqual(['ble-1']);
+    // 남은 세트가 꺼지면 안 된다 — 타입 리셋 사고의 서명이 정확히 이것이었다.
+    expect(after[0].enabled).toBe(true);
+    expect(after[0].startHHMM).toBe(930);
+    // 되돌릴 기회도 남는다.
+    expect(useLivePageStore.getState().indicatorUndoToast?.label).toBe('신규 거래원 14:00 삭제됨');
+  });
+
+  it('한 행의 눈은 **그 인스턴스만** 숨긴다', () => {
+    useLivePageStore.setState({ movingAverages: [], brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }, { id: 'ble-2', enabled: true, startHHMM: 1400, sideMode: 'both' as const, buyColor: '#A855F7', sellColor: '#A855F7' }] });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '신규 거래원 09:30 표시 숨김/표시' }));
+
+    const after = useLivePageStore.getState().brokerLateEntries;
+    expect(after.find((e) => e.id === 'ble-1')?.enabled).toBe(false);
+    expect(after.find((e) => e.id === 'ble-2')?.enabled).toBe(true);
   });
 
   it('일봉(D)에서는 분봉 전용이라 행이 나오지 않는다', () => {

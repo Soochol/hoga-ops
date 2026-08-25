@@ -4,7 +4,8 @@ import {
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
-  type BrokerLateEntrySideMode,
+  BROKER_LATE_ENTRY_SLOT_LIMIT,
+  type BrokerLateEntryConfig,
   type LiveMAConfig,
 } from './liveIndicatorsPersistence';
 import type { IndicatorSettings } from './indicatorSettingsV2';
@@ -178,10 +179,8 @@ export const FLAG_INDICATOR_FIELDS: Record<
     'depthDeltaEnabled', 'depthDeltaHidden', 'depthDeltaInColor',
     'depthDeltaOutColor', 'depthDeltaMaxOpacity',
   ],
-  'broker-late-entry': [
-    'brokerLateEntryEnabled', 'brokerLateEntryHidden', 'brokerLateEntryStartHHMM',
-    'brokerLateEntrySideMode', 'brokerLateEntryBuyColor', 'brokerLateEntrySellColor',
-  ],
+  // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
+  'broker-late-entry': ['brokerLateEntries'],
 };
 
 /**
@@ -242,6 +241,22 @@ export function maRemovalUndo(
   return {
     label: `${MA_SLICE_LABEL[key]} ${slot.period} 삭제됨`,
     patch: { [key]: slots } as Partial<IndicatorSettings>,
+  };
+}
+
+/** 거래원 등장 인스턴스 삭제의 undo 스냅샷 — MA 의 `maRemovalUndo` 와 같은 규약
+ *  (배열 **전체**를 되돌린다: 원소만 다시 끼우면 순서를 복원할 수 없다). */
+export function brokerLateEntryRemovalUndo(
+  cur: IndicatorSettings,
+  id: string,
+): { label: string; patch: Partial<IndicatorSettings> } | null {
+  const target = cur.brokerLateEntries.find((e) => e.id === id);
+  if (!target) return null;
+  const hh = String(Math.floor(target.startHHMM / 100)).padStart(2, '0');
+  const mm = String(target.startHHMM % 100).padStart(2, '0');
+  return {
+    label: `신규 거래원 ${hh}:${mm} 삭제됨`,
+    patch: { brokerLateEntries: cur.brokerLateEntries },
   };
 }
 
@@ -448,26 +463,72 @@ export const INDICATOR_OPS = {
   setProgramTradeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ programTradeEnabled: enabled }),
 
-  setBrokerLateEntryEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
-      : { brokerLateEntryEnabled: false }),
-  setBrokerLateEntryHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ brokerLateEntryHidden: hidden }),
-  setBrokerLateEntryStartHHMM: (_cur: IndicatorSettings, value: number): Patch => {
-    if (!Number.isFinite(value)) {
-      return { brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM };
+  /** 인스턴스 전체 일괄 표시/숨김 — 패널의 추가·삭제가 쓰는 존재 토글이다.
+   *  MA 의 `setAllMovingAveragesEnabled` 와 같은 규약(0개면 no-op). */
+  setAllBrokerLateEntriesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.brokerLateEntries.length === 0
+      ? null
+      : { brokerLateEntries: cur.brokerLateEntries.map((e) => ({ ...e, enabled })) }),
+
+  /** 인스턴스 하나를 patch — 모르는 id 는 no-op. 기준 시각은 여기서 클램프한다. */
+  setBrokerLateEntry: (
+    cur: IndicatorSettings,
+    id: string,
+    patch: Partial<Omit<BrokerLateEntryConfig, 'id'>>,
+  ): Patch => {
+    const idx = cur.brokerLateEntries.findIndex((e) => e.id === id);
+    if (idx === -1) return null;
+    const next = { ...cur.brokerLateEntries[idx], ...patch };
+    if (patch.startHHMM !== undefined) {
+      next.startHHMM = Number.isFinite(patch.startHHMM)
+        ? normalizeBrokerLateEntryStartHHMM(patch.startHHMM)
+        : BROKER_LATE_ENTRY_DEFAULT_START_HHMM;
     }
-    return { brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) };
+    if (patch.sideMode !== undefined
+      && patch.sideMode !== 'both' && patch.sideMode !== 'buy' && patch.sideMode !== 'sell') {
+      return null;
+    }
+    const arr = cur.brokerLateEntries.slice();
+    arr[idx] = next;
+    return { brokerLateEntries: arr };
   },
-  setBrokerLateEntrySideMode: (_cur: IndicatorSettings, mode: BrokerLateEntrySideMode): Patch => {
-    if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return null;
-    return { brokerLateEntrySideMode: mode };
+
+  /** 인스턴스 추가 — 기본값으로 생기되 **기준 시각만 어긋나게** 준다. 같은 시각의
+   *  두 인스턴스는 같은 마커를 겹쳐 그려 아무 정보도 더하지 않으므로, 추가의 의도
+   *  ("다른 시각대를 같이 본다")를 기본값이 미리 반영한다. 색은 MA 팔레트에서
+   *  안 쓴 것을 골라 두 세트가 화면에서 구별된다. */
+  addBrokerLateEntry: (cur: IndicatorSettings): Patch => {
+    if (cur.brokerLateEntries.length >= BROKER_LATE_ENTRY_SLOT_LIMIT) return null;
+    const last = cur.brokerLateEntries[cur.brokerLateEntries.length - 1];
+    const used = new Set(cur.brokerLateEntries.map((e) => e.id));
+    let id = 'ble-1';
+    for (let i = 1; i <= BROKER_LATE_ENTRY_SLOT_LIMIT * 2; i++) {
+      if (!used.has(`ble-${i}`)) { id = `ble-${i}`; break; }
+    }
+    const usedColors = new Set(cur.brokerLateEntries.flatMap((e) => [
+      e.buyColor.toLowerCase(), e.sellColor.toLowerCase(),
+    ]));
+    const freeColor = MA_PALETTE.find((c) => !usedColors.has(c.toLowerCase()))
+      ?? MA_PALETTE[cur.brokerLateEntries.length % MA_PALETTE.length];
+    return {
+      brokerLateEntries: [...cur.brokerLateEntries, {
+        id,
+        enabled: true,
+        startHHMM: normalizeBrokerLateEntryStartHHMM(
+          (last?.startHHMM ?? BROKER_LATE_ENTRY_DEFAULT_START_HHMM) + 100,
+        ),
+        sideMode: last?.sideMode ?? 'both',
+        buyColor: freeColor,
+        sellColor: freeColor,
+      }],
+    };
   },
-  setBrokerLateEntryStyle: (cur: IndicatorSettings, patch: { buyColor?: string; sellColor?: string }): Patch => ({
-    brokerLateEntryBuyColor: patch.buyColor ?? cur.brokerLateEntryBuyColor,
-    brokerLateEntrySellColor: patch.sellColor ?? cur.brokerLateEntrySellColor,
-  }),
+
+  /** 인스턴스 삭제 — MA 와 같이 **마지막 하나도 지울 수 있다**(0개가 유효 상태). */
+  removeBrokerLateEntry: (cur: IndicatorSettings, id: string): Patch => {
+    const next = cur.brokerLateEntries.filter((e) => e.id !== id);
+    return next.length === cur.brokerLateEntries.length ? null : { brokerLateEntries: next };
+  },
 } as const;
 
 export type IndicatorOps = typeof INDICATOR_OPS;

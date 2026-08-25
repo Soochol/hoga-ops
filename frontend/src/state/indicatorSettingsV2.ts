@@ -12,6 +12,7 @@ import {
 } from '../chart/paneGroups';
 import {
   mergeLiveIndicatorPrefs,
+  type BrokerLateEntryConfig,
   type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
@@ -51,6 +52,19 @@ export const LEGACY_MA_MASTER_KEYS = [
 
 type LegacyMaMasterKey = (typeof LEGACY_MA_MASTER_KEYS)[number];
 
+/** 거래원 등장의 flat 6필드 — 인스턴스 배열로 접혔다(`collapseBrokerLateEntry`).
+ *  MA 마스터와 같은 규약: v1 파싱과 collapse 입력으로만 살고 v2 버킷에는 없다. */
+export const LEGACY_BROKER_LATE_ENTRY_KEYS = [
+  'brokerLateEntryEnabled',
+  'brokerLateEntryHidden',
+  'brokerLateEntryStartHHMM',
+  'brokerLateEntrySideMode',
+  'brokerLateEntryBuyColor',
+  'brokerLateEntrySellColor',
+] as const;
+
+type LegacyBrokerLateEntryKey = (typeof LEGACY_BROKER_LATE_ENTRY_KEYS)[number];
+
 /** 버킷 하나가 담는 지표 설정 전체 — v1 `PersistedIndicators` 에서 per-timeframe
  *  컨테이너(panePrefsByTimeframe)와 레이아웃(paneOrder·paneStretch), 그리고 MA 마스터
  *  토글 4형제를 뺀 것.
@@ -61,7 +75,8 @@ type LegacyMaMasterKey = (typeof LEGACY_MA_MASTER_KEYS)[number];
 export type IndicatorSettings =
   Omit<
     PersistedIndicators,
-    'panePrefsByTimeframe' | 'paneOrder' | 'paneStretch' | LegacyMaMasterKey
+    'panePrefsByTimeframe' | 'paneOrder' | 'paneStretch'
+    | LegacyMaMasterKey | LegacyBrokerLateEntryKey
   >;
 
 export type IndicatorSettingsByTimeframe =
@@ -169,6 +184,12 @@ function stripContainers(v1: PersistedIndicators): IndicatorSettings {
     movingAverageHidden: _mh,
     dailyMovingAverageEnabled: _de,
     dailyMovingAverageHidden: _dh,
+    brokerLateEntryEnabled: _be,
+    brokerLateEntryHidden: _bh,
+    brokerLateEntryStartHHMM: _bs,
+    brokerLateEntrySideMode: _bm,
+    brokerLateEntryBuyColor: _bb,
+    brokerLateEntrySellColor: _bc,
     ...settings
   } = v1;
   return settings;
@@ -206,6 +227,48 @@ function withAllSlotsEnabled(
  * 버킷(`{movingAverageEnabled:false}`)이 그 경우이고, 그때 슬롯 배열을 만들지 않으면
  * "MA 를 껐다" 는 사용자의 설정이 통째로 증발한다.
  */
+/**
+ * 거래원 등장 flat 6필드를 **인스턴스 배열로 접는다** — 레거시 버킷 1회 변환.
+ *
+ * MA 와 판별식이 같다: **값이 아니라 키의 존재**로 레거시 여부를 가른다. 값으로
+ * 판정하면(`brokerLateEntryEnabled !== true` → OFF) 새 모델에서 사용자가 켜 둔
+ * 인스턴스가 로드마다 다시 꺼진다. 접힌 결과에는 flat 키가 없어 다음 로드가
+ * no-op 이라는 점도 같다(멱등).
+ *
+ * 접기 규칙: flat 값 6개를 그대로 **인스턴스 하나**로 옮기고, 가시성은
+ * `enabled && !hidden` 으로 합친다(눈이 슬롯의 `enabled` 로 접히는 MA 와 같은 규칙).
+ * 배열 오버라이드가 이미 있으면 **그쪽이 이긴다** — 새 모델에서 편집한 값을 옛
+ * flat 값이 덮어쓰면 안 된다.
+ */
+function collapseBrokerLateEntry(
+  rawBucket: Record<string, unknown>,
+  sanitized: Partial<IndicatorSettings>,
+): Partial<IndicatorSettings> {
+  const hasLegacy = LEGACY_BROKER_LATE_ENTRY_KEYS.some((k) => Object.hasOwn(rawBucket, k));
+  if (!hasLegacy || sanitized.brokerLateEntries) return sanitized;
+
+  const factory = FACTORY_INDICATOR_SETTINGS.brokerLateEntries[0];
+  const visible = rawBucket.brokerLateEntryEnabled === true
+    && rawBucket.brokerLateEntryHidden !== true;
+  const instance: BrokerLateEntryConfig = {
+    id: factory.id,
+    enabled: visible,
+    startHHMM: typeof rawBucket.brokerLateEntryStartHHMM === 'number'
+      ? rawBucket.brokerLateEntryStartHHMM : factory.startHHMM,
+    sideMode: rawBucket.brokerLateEntrySideMode === 'buy'
+      || rawBucket.brokerLateEntrySideMode === 'sell'
+      || rawBucket.brokerLateEntrySideMode === 'both'
+      ? rawBucket.brokerLateEntrySideMode : factory.sideMode,
+    buyColor: typeof rawBucket.brokerLateEntryBuyColor === 'string'
+      ? rawBucket.brokerLateEntryBuyColor : factory.buyColor,
+    sellColor: typeof rawBucket.brokerLateEntrySellColor === 'string'
+      ? rawBucket.brokerLateEntrySellColor : factory.sellColor,
+  };
+  // 공장값과 같아지면 sparse 의 정의상 싣지 않는다(예: 껐다 켠 적만 있는 사용자).
+  if (jsonEqual([instance], FACTORY_INDICATOR_SETTINGS.brokerLateEntries)) return sanitized;
+  return { ...sanitized, brokerLateEntries: [instance] };
+}
+
 function collapseMaMasterFlags(
   rawBucket: Record<string, unknown>,
   sanitized: Partial<IndicatorSettings>,
@@ -331,7 +394,10 @@ export function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
     // collapse 는 sanitize **다음**이지만 raw 를 읽는다 — 마스터 키는
     // `INDICATOR_SETTING_KEYS` 에 없어 sanitize 가 이미 버렸기 때문이다.
     const patch = rawBucket && typeof rawBucket === 'object' && !Array.isArray(rawBucket)
-      ? collapseMaMasterFlags(rawBucket as Record<string, unknown>, sanitized)
+      ? collapseBrokerLateEntry(
+        rawBucket as Record<string, unknown>,
+        collapseMaMasterFlags(rawBucket as Record<string, unknown>, sanitized),
+      )
       : sanitized;
     if (Object.keys(patch).length > 0) out[profileKey] = patch;
   }
@@ -486,6 +552,15 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     minuteView.dailyMovingAverages,
     v1.dailyMovingAverageEnabled && !v1.dailyMovingAverageHidden,
   );
+  // 거래원 등장도 같은 규칙 — v1 은 정의상 레거시라 무조건 접는다.
+  minuteView.brokerLateEntries = [{
+    id: minuteView.brokerLateEntries[0]?.id ?? 'ble-1',
+    enabled: v1.brokerLateEntryEnabled && !v1.brokerLateEntryHidden,
+    startHHMM: v1.brokerLateEntryStartHHMM,
+    sideMode: v1.brokerLateEntrySideMode,
+    buyColor: v1.brokerLateEntryBuyColor,
+    sellColor: v1.brokerLateEntrySellColor,
+  }];
   const minutePanePrefs = normalizePanePrefsByTimeframe(v1.panePrefsByTimeframe).minute ?? {};
   for (const key of INDICATOR_PANE_PREF_KEYS) {
     const override = minutePanePrefs[key];

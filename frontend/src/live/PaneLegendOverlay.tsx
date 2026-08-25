@@ -72,6 +72,7 @@ import { FLAG_INDICATOR_TYPES, type MaSliceKey } from '../state/indicatorOps';
 import MaInstancePopover from './indicators/MaInstancePopover';
 import type { LiveMAConfig } from '../state/livePage';
 import { formatKoreanInt } from '../util/koreanNumber';
+import { formatHhmm } from '../util/tradingTime';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
@@ -527,13 +528,19 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
 // 바뀌면서 새 flag 지표를 추가할 때 고칠 곳이 하나 줄었다.
 
 /** 눈(숨김) dispatch — id → hidden setter. */
-const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolean) => void> = {
+const FLAG_SET_HIDDEN: Record<
+  LegendFlagId, (a: IndicatorActions, hidden: boolean, instanceId: string) => void
+> = {
   'ask-peak': (a, h) => a.setAskPeakHidden(h),
   'bid-peak': (a, h) => a.setBidPeakHidden(h),
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
   'depth-delta': (a, h) => a.setDepthDeltaHidden(h),
-  'broker-late-entry': (a, h) => a.setBrokerLateEntryHidden(h),
+  // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
+  // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
+  // 배열로 승격된 지표 — 눈은 **그 인스턴스만** 끄고 켠다. 타입 전체를 움직이면
+  // 09:30 세트를 숨겼는데 14:00 세트까지 사라진다.
+  'broker-late-entry': (a, h, id) => a.setBrokerLateEntry(id, { enabled: !h }),
 };
 
 const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
@@ -781,14 +788,18 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
       <HoverIcon
         label={`${row.label} 표시 숨김/표시`}
         restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => FLAG_SET_HIDDEN[row.type](indicatorActions, !row.hidden)}
+        onClick={() => FLAG_SET_HIDDEN[row.type](indicatorActions, !row.hidden, row.instanceId)}
       >
         <EyeGlyph hidden={row.hidden} />
       </HoverIcon>
       <HoverIcon
         label={`${row.label} 삭제`}
         restColor="var(--fg-dimmer)"
-        onClick={() => indicatorActions.removeFlagIndicatorWithUndo(row.type)}
+        onClick={() => (row.type === 'broker-late-entry'
+          // 배열 타입은 **인스턴스 삭제**다. 타입 단위 리셋을 쓰면 다른 세트까지
+          // 공장값으로 돌아간다(브라우저 실측으로 잡은 사고).
+          ? indicatorActions.removeBrokerLateEntryWithUndo(row.instanceId)
+          : indicatorActions.removeFlagIndicatorWithUndo(row.type))}
       >
         <CloseGlyph />
       </HoverIcon>
@@ -994,11 +1005,7 @@ function PaneLegendOverlay({
   const depthDeltaHidden = useWindowIndicator((s) => s.depthDeltaHidden);
   const depthDeltaInColor = useWindowIndicator((s) => s.depthDeltaInColor);
   const depthDeltaOutColor = useWindowIndicator((s) => s.depthDeltaOutColor);
-  const brokerLateEntryEnabled = useWindowIndicator((s) => s.brokerLateEntryEnabled);
-  const brokerLateEntryHidden = useWindowIndicator((s) => s.brokerLateEntryHidden);
-  const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
-  const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
-  const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
+  const brokerLateEntries = useWindowIndicator((s) => s.brokerLateEntries);
   // 자기 창의 등록만 고른다 — 남의 창 등록에는 같은 참조가 돌아와 재렌더가 안 난다.
   const maSeries = useMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
   const dailyMaSeries = useDailyMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
@@ -1226,23 +1233,29 @@ function PaneLegendOverlay({
       swatches: [depthDeltaInColor, depthDeltaOutColor],
       cells: readFlagLegendValues(windowId, 'depth-delta', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
-    {
+    // 신규 거래원 등장은 **인스턴스마다 한 행**이다(Phase 3 의 첫 배열 승격).
+    // 기준 시각이 다르면 세는 대상이 달라 값도 다르므로, 한 행에 몰면 어느 세트의
+    // 숫자인지 읽을 수 없다. 라벨에 시각을 실어 둘을 구별한다.
+    ...brokerLateEntries.map((instance): LegendFlagInput => ({
       type: 'broker-late-entry',
-      instanceId: FLAG_MAIN_INSTANCE,
+      instanceId: instance.id,
       paneId: 'ratio',
-      label: '신규 거래원 등장',
-      enabled: brokerLateEntryEnabled,
+      label: brokerLateEntries.length > 1
+        ? `신규 거래원 ${formatHhmm(instance.startHHMM)}`
+        : '신규 거래원 등장',
+      enabled: instance.enabled,
       applicable: isMinute,
-      hidden: brokerLateEntryHidden,
+      // 눈(hidden)은 인스턴스의 `enabled` 로 접혔다 — 이 지표에는 별도 눈이 없다.
+      hidden: false,
       // side mode에 따라 실제 그려지는 쪽의 스와치만 노출.
       swatches:
-        brokerLateEntrySideMode === 'buy'
-          ? [brokerLateEntryBuyColor]
-          : brokerLateEntrySideMode === 'sell'
-            ? [brokerLateEntrySellColor]
-            : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
-      cells: readFlagLegendValues(windowId, 'broker-late-entry', FLAG_MAIN_INSTANCE, cursorTimeSec),
-    },
+        instance.sideMode === 'buy'
+          ? [instance.buyColor]
+          : instance.sideMode === 'sell'
+            ? [instance.sellColor]
+            : [instance.buyColor, instance.sellColor],
+      cells: readFlagLegendValues(windowId, 'broker-late-entry', instance.id, cursorTimeSec),
+    })),
   ];
 
   const rows = buildLegendRows({
