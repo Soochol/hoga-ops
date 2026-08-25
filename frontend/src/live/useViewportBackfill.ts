@@ -522,11 +522,12 @@ export function useViewportBackfill({
     // 2026-08-24 사용자 보고가 이것이었다(010140 06-15~08-24 구간의 디스크 구멍 16일:
     // 06-15~07-02 연속 13일 + 07-17 + 08-17). 보충일마다 반복되므로 누적된다.
     //
-    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 넷이 개수만 보면 구별되지 않는다:
-    //   프리펜드   firstMs 과거로 · lastMs 불변 · count 증가  → 아래 경로가 처리
-    //   중간 삽입  firstMs 불변  · lastMs 불변 · count 증가  → 여기
-    //   SSE 성장   firstMs 불변  · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
-    //   좌측 트림  firstMs 미래로 · lastMs 불변 · count 감소  → isLeftTrim(아래)
+    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 다섯이 개수만 보면 구별되지 않는다:
+    //   프리펜드     firstMs 과거로 · lastMs 불변 · count 증가  → 아래 경로가 처리
+    //   중간 삽입    firstMs 불변  · lastMs 불변 · count 증가  → 여기
+    //   SSE 성장     firstMs 불변  · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
+    //   좌측 트림    firstMs 미래로 · lastMs 불변 · count 감소  → isLeftTrim(아래)
+    //   유니온 재매핑 firstMs·lastMs·count 전부 불변            → isUnionRemap(아래)
     //
     // `historicalFromDate` 게이트를 우회하는 것이 안전한 이유: 중간 삽입은 **좌단을
     // 건드리지 않아** 3b 의 좌측-팬 판정을 새로 만들지 않는다. #1566 에서 겪은 백필
@@ -569,6 +570,28 @@ export function useViewportBackfill({
       && shape.lastMs === prevShape.lastMs
       && shape.count < prevShape.count;
 
+    // 2d. **유니온 재매핑** — 캔들은 그대로인데 공유 timeScale 의 다른 기여자(호가·
+    // 사이드카 지표 포인트)가 들어오거나 빠져 **union 인덱스만 통째로 밀리는** 커밋.
+    // 소스 토글 직후가 그 진원이다: 웜 병합본이 잠깐 서빙됐다 창 트림으로 되잘리며
+    // 지표 포인트 수천 개가 출렁이는데, 캔들 모양(firstMs·lastMs·count)은 불변이라
+    // 위 네 행이 모두 눈멀었다 — 2026-08-25 사용자 실측(034020 5m 장중): 창 축소·
+    // 스왑 홀드·재착석이 전부 정상 발동하고도 최종 뷰포트가 데이터 밖에 좌초했다.
+    //
+    // 판별식이 성긴 것("전부 불변")이 안전한 이유는 **재투영이 자기 게이트를 갖기
+    // 때문**이다: 아래 경로는 shift = newIdx - refIdx 를 재고 EPSILON 안이면 아무
+    // 것도 하지 않는다. 즉 이 행이 여는 것은 "매 캔들-불변 커밋마다 timeToIndex 로
+    // 이동량을 재 본다"까지이고, 실제 set 은 유니온이 정말 밀렸을 때만 나간다
+    // (SSE 시세 틱은 lastMs 가 움직여 애초에 이 행이 아니고, 지표-불변 ref churn 은
+    // shift 0 으로 스킵된다 — 둘 다 테스트가 못박는다).
+    //
+    // 게이트 우회가 안전한 근거는 중간 삽입(2b)과 같다: 같은 봉을 고정하는 재투영은
+    // 좌단을 데이터 최좌단에 다시 붙이는 방향이 아니라 #1566 되먹임을 만들지 않는다.
+    const isUnionRemap =
+      prevShape !== null
+      && shape.firstMs === prevShape.firstMs
+      && shape.lastMs === prevShape.lastMs
+      && shape.count === prevShape.count;
+
     // ⚠ **이 게이트를 분봉에서 풀지 말 것 — 2026-08-24 에 풀었다가 되돌렸다.**
     //
     // 동기는 타당했다: `historicalFromDate` 는 "좌측 팬을 한 적이 있다" 는 뜻인데
@@ -581,7 +604,7 @@ export function useViewportBackfill({
     // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
     // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
     // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
-    if (!isMidInsert && !isLeftTrim) {
+    if (!isMidInsert && !isLeftTrim && !isUnionRemap) {
       if (historicalRange.snapshot().historicalFromDate === null) return;
       if (newEarliest >= prevEarliest) return;
     }

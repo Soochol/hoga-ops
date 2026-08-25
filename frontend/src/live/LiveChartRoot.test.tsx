@@ -3872,6 +3872,71 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
   });
+
+  it('유니온 재매핑(지표 포인트 churn)이면 재투영한다 — 캔들 모양이 안 변해도', () => {
+    // 2026-08-25 사용자 실측(034020 5m 장중 토글): 창 축소·홀드·재착석이 전부 정상
+    // 발동했는데도 최종 화면이 데이터 밖에 좌초했다. 남은 구멍은 **지표 포인트만
+    // 들어왔다 빠지는 커밋** — 공유 timeScale 의 union 인덱스는 전부 밀리는데 캔들
+    // 모양(firstMs·lastMs·count)은 불변이라 기존 판별식 네 행이 모두 눈멀었다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 지표 포인트 삽입: 모든 time 의 union 인덱스가 +INSERT_SHIFT — 캔들 배열은 동일.
+    h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 });
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
+    expect(h.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM + INSERT_SHIFT,
+      to: LR_TO + INSERT_SHIFT,
+    });
+  });
+
+  it('유니온이 안 움직인 순수 ref churn 은 손대지 않는다 — shift 0 은 스킵', () => {
+    // 위 행이 열리면 캔들 불변 커밋(SSE 시세 틱 등)마다 재투영 경로가 돈다 —
+    // 리매핑이 없으면 shift=0 이라 EPSILON 스킵으로 끝나야 중복 repaint 가 없다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 리매핑 없음 — 같은 캔들의 새 번들 ref 만.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
 });
 
 // ---------------------------------------------------------------------------
