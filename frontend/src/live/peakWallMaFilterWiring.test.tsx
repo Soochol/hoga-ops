@@ -77,7 +77,8 @@ function renderPrices(
     axis,
     todayKst: DAY,
     applicable: true,
-    dailyMaFilter,
+    // 이 파일은 **체결된 벽 계열**(`segments`)을 잰다 — 다른 계열은 필터를 걸지 않는다.
+    dailyMaFilters: { Traded: dailyMaFilter, Unreached: null, AllWall: null },
   }));
   return result.current.segments.map((s) => s.price);
 }
@@ -91,10 +92,10 @@ beforeEach(() => {
 
 describe('매도 최대벽 — 이동평균선 위 벽만', () => {
   const on = () => act(() => {
-    useChartPrefsStore.setState({ askPeakAboveMaEnabled: true, askPeakAboveMaPeriod: 3 });
+    useChartPrefsStore.setState({ askPeakTradedAboveMaEnabled: true, askPeakTradedAboveMaPeriod: 3 });
   });
   const off = () => act(() => {
-    useChartPrefsStore.setState({ askPeakAboveMaEnabled: false });
+    useChartPrefsStore.setState({ askPeakTradedAboveMaEnabled: false });
   });
 
   it('ON 이면 MA 아래 벽이 사라진다', () => {
@@ -115,10 +116,10 @@ describe('매도 최대벽 — 이동평균선 위 벽만', () => {
 
 describe('매수 최대벽 — 이동평균선 아래 벽만(매도의 거울)', () => {
   const on = () => act(() => {
-    useChartPrefsStore.setState({ bidPeakBelowMaEnabled: true, bidPeakBelowMaPeriod: 3 });
+    useChartPrefsStore.setState({ bidPeakTradedBelowMaEnabled: true, bidPeakTradedBelowMaPeriod: 3 });
   });
   const off = () => act(() => {
-    useChartPrefsStore.setState({ bidPeakBelowMaEnabled: false });
+    useChartPrefsStore.setState({ bidPeakTradedBelowMaEnabled: false });
   });
 
   it('ON 이면 MA 위 벽이 사라진다', () => {
@@ -143,7 +144,7 @@ describe('일봉 MA 필터', () => {
   beforeEach(() => {
     // 분봉 필터는 끈다 — 켜 두면 어느 필터가 걸렀는지 구별되지 않는다.
     act(() => {
-      useChartPrefsStore.setState({ askPeakAboveMaEnabled: false });
+      useChartPrefsStore.setState({ askPeakTradedAboveMaEnabled: false });
     });
   });
 
@@ -218,5 +219,97 @@ describe('체결된 벽 표시 개수가 세그먼트 수를 정한다', () => {
       useChartPrefsStore.setState({ askPeakAllPriceRankLimit: 3 });
     });
     expect(renderPrices('ask', peak())).toHaveLength(3);
+  });
+});
+
+/**
+ * ## 계열별 MA 필터(2026-08-25)
+ *
+ * 종전엔 이 필터가 **방향당 하나**라 세 계열에 똑같이 걸렸다. 이제 계열마다 자기 토글과
+ * 자기 기간을 갖는다 — 그 독립성이 실제로 세그먼트까지 닿는지 재는 것이 아래다.
+ *
+ * ⚠ 픽스처는 **두 계열 다 MA 아래**여야 한다. 매도 필터는 "MA 위만 남긴다" 이므로, 한
+ * 계열을 MA 위에 두면 그 계열은 **필터가 걸리든 말든 살아남아** 배선을 공용으로 되돌려도
+ * 결과가 같다 — 실측으로 확인했다(그 픽스처로는 red-check 이 초록이었다). 계열 구별은
+ * 가격이 아니라 **읽는 필드**(`segments` vs `allWallSegments`)가 한다.
+ */
+describe('계열별 MA 필터 — 한 계열의 설정이 다른 계열에 새지 않는다', () => {
+  /** 두 계열 다 MA(100) **아래** — 체결 90, 전체 80. 필터가 그 계열에 닿으면 사라지고,
+   *  안 닿으면 남는다. 값을 달리 둔 것은 실패 메시지에서 어느 계열인지 읽히게 하려는 것. */
+  const SPLIT: AskPeak = {
+    ...wallBelowMa(),
+    all_price: 80,
+    all_qty: 900,
+    all_t_ms: OPEN + 4 * MIN,
+    all_max_price: 80,
+    all_max_qty: 900,
+    all_max_t_ms: OPEN + 4 * MIN,
+  };
+
+  function renderBoth(dailyMaFilters: {
+    Traded: PeakDailyMaFilter | null;
+    Unreached: PeakDailyMaFilter | null;
+    AllWall: PeakDailyMaFilter | null;
+  } = { Traded: null, Unreached: null, AllWall: null }) {
+    const { result } = renderHook(() => usePeakWallRender({
+      side: 'ask',
+      peaks: [SPLIT],
+      segments: SEGMENTS,
+      candles: CANDLES,
+      axis,
+      todayKst: DAY,
+      applicable: true,
+      dailyMaFilters,
+    }));
+    return {
+      traded: result.current.segments.map((seg) => seg.price),
+      allWall: result.current.allWallSegments.map((seg) => seg.price),
+    };
+  }
+
+  beforeEach(() => {
+    act(() => {
+      useLivePageStore.setState({ askPeakAllWallLineEnabled: true });
+      // 계열 필터는 기본 ON 이다 — 이 describe 는 한 계열만 켠 상태를 재므로 전부 끈 데서
+      // 출발한다. 안 그러면 "전체 최대벽이 안 걸린다" 가 다른 계열 덕분인지 알 수 없다.
+      useChartPrefsStore.setState({
+        askPeakTradedAboveMaEnabled: false,
+        askPeakUnreachedAboveMaEnabled: false,
+        askPeakAllWallAboveMaEnabled: false,
+      });
+    });
+  });
+
+  it('체결 계열만 분봉 MA 필터를 켜면 그 계열만 걸린다', () => {
+    act(() => {
+      useChartPrefsStore.setState({
+        askPeakTradedAboveMaEnabled: true,
+        askPeakTradedAboveMaPeriod: 3,
+      });
+    });
+    const r = renderBoth();
+    expect(r.traded).toEqual([]);
+    // 전체 최대벽도 MA 아래인데 **남는다** — 그 계열 필터가 꺼져 있기 때문이다.
+    expect(r.allWall).toEqual([80]);
+  });
+
+  it('전체 계열만 켜면 그 계열만 걸린다 — 거울', () => {
+    act(() => {
+      useChartPrefsStore.setState({
+        askPeakAllWallAboveMaEnabled: true,
+        askPeakAllWallAboveMaPeriod: 3,
+      });
+    });
+    const r = renderBoth();
+    // 체결 계열은 필터가 꺼져 있어 MA 아래인데도 남는다 — 설정이 새지 않았다는 증거.
+    expect(r.traded).toEqual([90]);
+    expect(r.allWall).toEqual([]);
+  });
+
+  it('일봉 MA 필터도 계열마다 따로 흐른다', () => {
+    const daily: PeakDailyMaFilter = { side: 'ask', byDate: new Map([[DAY, 100]]) };
+    const r = renderBoth({ Traded: daily, Unreached: null, AllWall: null });
+    expect(r.traded).toEqual([]);
+    expect(r.allWall).toEqual([80]);
   });
 });

@@ -1,0 +1,482 @@
+/**
+ * 당일 최대벽 **계열별** 표시·필터 pref 레지스트리 — `chartPrefs` 가 spread 로 담는다.
+ *
+ * ## 왜 계열별인가 (2026-08-25)
+ *
+ * 최대벽에는 계열이 셋 있다(체결된 벽 · 미도달 벽 · 전체 최대벽). 계열마다 색·두께·표시
+ * 개수는 이미 자기 것을 갖고 있었는데, **그 벽을 어디에 그릴지(라벨·화살표·레전드)와
+ * 무엇을 후보로 볼지(MA 필터)는 방향 하나에 묶여** 있었다. 그래서 "체결된 벽만 라벨을
+ * 붙이고 미도달 벽은 선만" 이나 "전체 최대벽에만 일봉 MA 필터" 같은 조합이 불가능했다.
+ *
+ * 이제 7개 축이 계열마다 따로 산다. `askPeakIntraMax` 는 **의도적으로 계열 공용**이다 —
+ * 미도달 계열은 carrier 가 둘 다 같은 값이라 이 토글이 애초에 무효고(usePeakWallRender
+ * 머리말), 나머지 둘에서만 갈리는 노브를 계열별로 두면 화면의 대칭이 거짓말을 한다.
+ *
+ * ## 키 이름 규약
+ *
+ * `{side}Peak{Family}{Axis}` — side 는 `ask|bid`, Family 는 `Traded|Unreached|AllWall`.
+ * MA 축만 방향이 이름에 박힌다(`Above`/`Below`): 매도벽은 MA **위**, 매수벽은 **아래**만
+ * 남기는 **비대칭**이라, 중립 이름이면 코드에서 방향을 다시 찾아야 한다(구 키의 규약을
+ * 그대로 잇는다).
+ *
+ * ## 이 파일이 따로 있는 이유
+ *
+ * 엔트리 42개(토글 30 · 수치 12)를 `chartPrefs` 본문에 넣으면 그 파일의 나머지 60여 개
+ * 항목이 최대벽 사이에 파묻힌다. `as const` tuple 은 spread 로도 타입이 보존되므로
+ * (`[...BASE, ...PEAK_WALL_FAMILY_TOGGLES] as const`) 파생 구조 — 키 타입 · 기본값 ·
+ * 저장 검증 · 행 렌더 — 는 하나도 달라지지 않는다.
+ *
+ * ⚠ **여기에 `chartPrefs` 를 import 하지 말 것.** `enabledBy` 는 리터럴 문자열로 두고
+ * 타입 검사는 `chartPrefs` 쪽의 `satisfies` 가 한다 — 타입만이라도 역방향 import 를
+ * 만들면 `ChartToggleKey` 파생이 자기 자신을 통과하게 된다.
+ */
+
+/** 계열 셋 — 카드 순서(체결 → 미도달 → 전체)와 같다. 앞 둘은 배타적이고 전체는
+ *  그 둘과 사이 구간까지 포함한 상위집합이다. */
+export const PEAK_WALL_FAMILIES = [
+  { id: 'Traded', name: '체결된 벽' },
+  { id: 'Unreached', name: '미도달 벽' },
+  { id: 'AllWall', name: '전체 최대벽' },
+] as const;
+
+export type PeakWallFamilyId = (typeof PEAK_WALL_FAMILIES)[number]['id'];
+
+/** 계열별 토글 — 카드 안에서 렌더된다(`AskPeakConfig`/`BidPeakConfig`). 순서가 곧
+ *  화면 순서다: 표면 셋(라벨·화살표·레전드) 다음에 필터 둘. */
+export const PEAK_WALL_FAMILY_TOGGLES = [
+  // ── 매도 · 체결된 벽 ───────────────────────────────────────────────
+  {
+    key: 'askPeakTradedLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「체결된 벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakTradedLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「체결된 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakTradedRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「체결된 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakTradedAboveMaEnabled',
+    label: '이동평균선 위 벽만',
+    description: '「체결된 벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'filter',
+  },
+  {
+    key: 'askPeakTradedAboveDailyMaEnabled',
+    label: '일봉 이동평균선 위 벽만',
+    description: '「체결된 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'filter',
+  },
+  // ── 매도 · 미도달 벽 ───────────────────────────────────────────────
+  {
+    key: 'askPeakUnreachedLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「미도달 벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakUnreachedLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「미도달 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakUnreachedRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「미도달 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakUnreachedAboveMaEnabled',
+    label: '이동평균선 위 벽만',
+    description: '「미도달 벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'filter',
+  },
+  {
+    key: 'askPeakUnreachedAboveDailyMaEnabled',
+    label: '일봉 이동평균선 위 벽만',
+    description: '「미도달 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'filter',
+  },
+  // ── 매도 · 전체 최대벽 ─────────────────────────────────────────────
+  {
+    key: 'askPeakAllWallLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「전체 최대벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakAllWallLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「전체 최대벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakAllWallRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「전체 최대벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'askPeakAllWallAboveMaEnabled',
+    label: '이동평균선 위 벽만',
+    description: '「전체 최대벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'filter',
+  },
+  {
+    key: 'askPeakAllWallAboveDailyMaEnabled',
+    label: '일봉 이동평균선 위 벽만',
+    description: '「전체 최대벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'filter',
+  },
+  // ── 매수 · 체결된 벽 ───────────────────────────────────────────────
+  {
+    key: 'bidPeakTradedLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「체결된 벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakTradedLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「체결된 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakTradedRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「체결된 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakTradedBelowMaEnabled',
+    label: '이동평균선 아래 벽만',
+    description: '「체결된 벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'filter',
+  },
+  {
+    key: 'bidPeakTradedBelowDailyMaEnabled',
+    label: '일봉 이동평균선 아래 벽만',
+    description: '「체결된 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'filter',
+  },
+  // ── 매수 · 미도달 벽 ───────────────────────────────────────────────
+  {
+    key: 'bidPeakUnreachedLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「미도달 벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakUnreachedLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「미도달 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakUnreachedRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「미도달 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakUnreachedBelowMaEnabled',
+    label: '이동평균선 아래 벽만',
+    description: '「미도달 벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'filter',
+  },
+  {
+    key: 'bidPeakUnreachedBelowDailyMaEnabled',
+    label: '일봉 이동평균선 아래 벽만',
+    description: '「미도달 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'filter',
+  },
+  // ── 매수 · 전체 최대벽 ─────────────────────────────────────────────
+  {
+    key: 'bidPeakAllWallLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '「전체 최대벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakAllWallLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '「전체 최대벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakAllWallRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '「전체 최대벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'surface',
+  },
+  {
+    key: 'bidPeakAllWallBelowMaEnabled',
+    label: '이동평균선 아래 벽만',
+    description: '「전체 최대벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'filter',
+  },
+  {
+    key: 'bidPeakAllWallBelowDailyMaEnabled',
+    label: '일봉 이동평균선 아래 벽만',
+    description: '「전체 최대벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    default: true,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'filter',
+  },
+] as const;
+
+/** 계열별 MA 기간 — 각각 자기 계열의 필터 토글이 게이트한다(`enabledBy`). 범위는
+ *  이동평균선 지표의 슬롯 기간(MA_PERIOD_MIN/MAX = 2/400)과 맞춘다. 일봉 쪽 단위는
+ *  **거래일**이다(일봉 MA 는 거래일 계단 함수 — ADR-0073). */
+export const PEAK_WALL_FAMILY_NUMERICS = [
+  {
+    key: 'askPeakTradedAboveMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakTradedAboveMaEnabled',
+  },
+  {
+    key: 'askPeakTradedAboveDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakTradedAboveDailyMaEnabled',
+  },
+  {
+    key: 'askPeakUnreachedAboveMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakUnreachedAboveMaEnabled',
+  },
+  {
+    key: 'askPeakUnreachedAboveDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakUnreachedAboveDailyMaEnabled',
+  },
+  {
+    key: 'askPeakAllWallAboveMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakAllWallAboveMaEnabled',
+  },
+  {
+    key: 'askPeakAllWallAboveDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'askPeakAllWallAboveDailyMaEnabled',
+  },
+  {
+    key: 'bidPeakTradedBelowMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakTradedBelowMaEnabled',
+  },
+  {
+    key: 'bidPeakTradedBelowDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakTradedBelowDailyMaEnabled',
+  },
+  {
+    key: 'bidPeakUnreachedBelowMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakUnreachedBelowMaEnabled',
+  },
+  {
+    key: 'bidPeakUnreachedBelowDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakUnreachedBelowDailyMaEnabled',
+  },
+  {
+    key: 'bidPeakAllWallBelowMaPeriod',
+    label: '기준 이동평균 기간',
+    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakAllWallBelowMaEnabled',
+  },
+  {
+    key: 'bidPeakAllWallBelowDailyMaPeriod',
+    label: '기준 일봉 이동평균 기간',
+    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    default: 20,
+    min: 2,
+    max: 400,
+    enabledBy: 'bidPeakAllWallBelowDailyMaEnabled',
+  },
+] as const;
+
+/** `(방향, 계열, 축)` 으로 토글 키를 뽑는다 — 화면이 이 순서로 렌더한다.
+ *
+ *  왜 키 문자열을 `startsWith` 로 자르지 않는가: 규약이 확정적이어도 문자열 매칭은
+ *  **조용히 틀린다**(`AllWall` 이 `All` 접두에 걸리는 식). 엔트리가 자기 좌표를 데이터로
+ *  들고 있으면 오타는 타입에서, 누락은 빈 배열에서 바로 드러난다. */
+export function peakWallFamilyToggleKeys(
+  side: 'ask' | 'bid',
+  family: PeakWallFamilyId,
+  axis: 'surface' | 'filter',
+) {
+  return PEAK_WALL_FAMILY_TOGGLES
+    .filter((t) => t.side === side && t.family === family && t.axis === axis)
+    .map((t) => t.key);
+}

@@ -1,23 +1,40 @@
 import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import PeakWallFamilyDetails from './PeakWallFamilyDetails';
+import { usePeakWallFamilyOffCount } from './usePeakWallFamilyOffCount';
 import PeakWallFamilyCard, {
   PeakWallRankSelect,
   PeakWallSectionHead,
 } from './PeakWallFamilyCard';
 
 /**
- * 당일 매도 최대벽 상세 설정 — **축별 4구획**(2026-08-25 재구성).
+ * 당일 매도 최대벽 상세 설정 — **계열이 곧 단위**(2026-08-25 재구성 → 계열별 분리).
+ *
+ * ## 어떻게 여기까지 왔나
  *
  * 종전엔 컨트롤 14개가 한 줄로 늘어서 네 가지 질문이 섞여 있었다: 어떤 벽을 그릴까
  * (계열) · 어디에 그릴까(표면) · 무엇을 후보로 볼까(필터) · 어떻게 보일까(장식).
- * 표면 스위치는 위(캔들 수평선)와 아래(라벨·화살표)로 쪼개져 있었고, 계열에만
- * 해당하는 노브(「체결된 벽 표시 개수」)는 맨 아래에 떨어져 있었다.
+ * 1차 재구성이 그 축을 네 구획으로 갈랐다.
  *
- * 이제 축이 곧 구획이다. 계열은 카드가 되어 자기 스타일과 자기 전용 노브를 안에
- * 갖고, 표면 넷은 한곳에 모이고, 「후보 기준」에는 계산에 영향을 주는 것만 남는다.
- * (방향 공용인 「최대벽 강도 pane」은 이 컴포넌트가 아니라 **방향 탭 밖**에 있다 —
- * `PeakWallsConfig`. 공용이라는 사실을 위치로 말한다.)
+ * 그런데 구획이 갈리고 나니 **스코프가 어긋나 있다는 것**이 보였다. 계열은 셋인데
+ * 「어디에」와 「후보 기준」은 방향당 한 벌이라, "체결된 벽만 라벨을 붙이고 미도달 벽은
+ * 선만" 이나 "전체 최대벽에만 일봉 MA 필터" 같은 조합이 **원리적으로 불가능**했다.
+ *
+ * ## 지금의 배치 규칙
+ *
+ * **위치가 스코프를 말한다.** 계열 카드 안에 있으면 그 계열의 것이고, 밖에 있으면 공통이다.
+ *
+ * - **카드 안** — 마스터 토글 · 선 스타일 · 표시 개수 · 그리고 접히는 「세부 설정」
+ *   (표면 셋 + MA 필터 둘 + 각 기간). 일곱 축이 계열마다 한 벌씩이다.
+ * - **카드 밖** — 「계열 공용」 구획의 `askPeakIntraMax` 하나. 미도달 계열은 carrier 가
+ *   양쪽 같은 값이라 이 토글이 애초에 무효라(`usePeakWallRender` 머리말), 계열별로 두면
+ *   셋 중 하나가 아무 일도 하지 않는 스위치가 된다.
+ * - **탭 밖** — 방향 공용인 「최대벽 강도 pane」은 이 컴포넌트가 아니라 `PeakWallsConfig`.
+ *
+ * 세부 설정이 기본 접힘인 이유: 펼친 채로 두면 계열 3장 × 7행이라 「어떤 벽」 구획이
+ * 화면 밖으로 밀린다. 접힌 채로도 "여기 뭔가 꺼져 있다" 가 보이도록 카드가 **끈 개수**를
+ * 뱃지로 문다(`usePeakWallFamilyOffCount`).
  *
  * `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(상위가 표시).
  */
@@ -37,6 +54,10 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
   const allWallRankLimit = prefs.askPeakAllWallRankLimit;
   const unreachedRankLimit = prefs.askPeakUnreachedRankLimit;
   const { setNumericPref } = useChartPrefActions();
+  // 접힌 카드의 뱃지 — 그 계열에서 꺼 둔 세부 항목 개수.
+  const tradedOffCount = usePeakWallFamilyOffCount('ask', 'Traded');
+  const unreachedOffCount = usePeakWallFamilyOffCount('ask', 'Unreached');
+  const allWallOffCount = usePeakWallFamilyOffCount('ask', 'AllWall');
 
   return (
     <div>
@@ -73,6 +94,8 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('askPeakAllPriceRankLimit', n)}
           />
         )}
+        detailsOffCount={tradedOffCount}
+        details={<PeakWallFamilyDetails side="ask" family="Traded" />}
       />
       <PeakWallFamilyCard
         name="미도달 벽"
@@ -90,6 +113,8 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('askPeakUnreachedRankLimit', n)}
           />
         )}
+        detailsOffCount={unreachedOffCount}
+        details={<PeakWallFamilyDetails side="ask" family="Unreached" />}
       />
       <PeakWallFamilyCard
         name="전체 최대벽"
@@ -107,23 +132,18 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('askPeakAllWallRankLimit', n)}
           />
         )}
+        detailsOffCount={allWallOffCount}
+        details={<PeakWallFamilyDetails side="ask" family="AllWall" />}
       />
 
-      {/* ── 어디에 ─────────────────────────────────────────────────
-          위에서 켠 계열들이 **어느 표면에** 나오는가. 종전엔 캔들 수평선만 위쪽
-          「표시 위치」에 있고 라벨·화살표는 필터들 사이에 섞여 있었다. */}
-      <PeakWallSectionHead>어디에</PeakWallSectionHead>
-      <IndicatorPrefRows
-        toggleKeys={['askPeakLabelEnabled', 'askPeakRankArrowEnabled', 'askPeakLegendCellEnabled']}
-      />
-
-      {/* ── 후보 기준 ───────────────────────────────────────────────
-          계산에 영향을 주는 것만. MA 기간은 레지스트리의 `enabledBy` 로 각 토글
-          아래에 따라붙는다 — 여기서 손으로 배치하지 않는다. */}
-      <PeakWallSectionHead>후보 기준</PeakWallSectionHead>
-      <IndicatorPrefRows
-        toggleKeys={['askPeakIntraMax', 'askPeakAboveMaEnabled', 'askPeakAboveDailyMaEnabled']}
-      />
+      {/* ── 계열 공용 ───────────────────────────────────────────────
+          여기 남은 것은 **세 계열이 하나를 공유하는** 노브뿐이다. 표면 셋(라벨·레전드 셀·
+          화살표)과 MA 필터 둘은 계열마다 갈렸으므로 각 카드의 「세부 설정」 안으로 들어갔다
+          — 위치가 스코프를 말한다. `intraMax` 가 공용으로 남은 이유: 미도달 계열은 carrier
+          가 양쪽 같은 값이라 이 토글이 애초에 무효라(`usePeakWallRender` 머리말), 계열별로
+          두면 셋 중 하나가 아무 일도 하지 않는 스위치가 되어 화면의 대칭이 거짓말을 한다. */}
+      <PeakWallSectionHead>계열 공용</PeakWallSectionHead>
+      <IndicatorPrefRows toggleKeys={['askPeakIntraMax']} />
     </div>
   );
 }

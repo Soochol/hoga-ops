@@ -8,6 +8,7 @@ import { dailyMaFetchWindow, maxEnabledPeriod, pickTodayLiveClose } from './indi
 import { useResolvedDailyCandles } from './indicators/useResolvedDailyCandles';
 import { useWindowIndicator } from './workspace/windowView';
 import type { PeakMaFilterSide } from './peakWallMaFilter';
+import type { PeakWallFamilyId } from '../state/peakWallFamilyPrefs';
 
 /**
  * 최대벽을 **일봉 이동평균선** 기준으로 거르는 필터. 형제인 `peakWallMaFilter` 는 현재 보고
@@ -69,16 +70,39 @@ type UsePeakDailyMaFilterInput = {
 
 const EMPTY_MAP: ReadonlyMap<string, number> = new Map();
 
+/** 계열별 pref 키 표 — 분봉 필터(`peakWallMaFilter`)의 `MA_PREF_KEYS` 와 같은 이유로
+ *  동적 조립 대신 적어 둔다. */
+const DAILY_MA_PREF_KEYS = {
+  ask: {
+    Traded: { on: 'askPeakTradedAboveDailyMaEnabled', period: 'askPeakTradedAboveDailyMaPeriod' },
+    Unreached: { on: 'askPeakUnreachedAboveDailyMaEnabled', period: 'askPeakUnreachedAboveDailyMaPeriod' },
+    AllWall: { on: 'askPeakAllWallAboveDailyMaEnabled', period: 'askPeakAllWallAboveDailyMaPeriod' },
+  },
+  bid: {
+    Traded: { on: 'bidPeakTradedBelowDailyMaEnabled', period: 'bidPeakTradedBelowDailyMaPeriod' },
+    Unreached: { on: 'bidPeakUnreachedBelowDailyMaEnabled', period: 'bidPeakUnreachedBelowDailyMaPeriod' },
+    AllWall: { on: 'bidPeakAllWallBelowDailyMaEnabled', period: 'bidPeakAllWallBelowDailyMaPeriod' },
+  },
+} as const;
+
+/** 한 방향의 계열 셋 → 각 계열의 필터(꺼진 계열은 `null`). */
+export type PeakDailyMaFilters = Readonly<Record<PeakWallFamilyId, PeakDailyMaFilter | null>>;
+
 /**
- * pref + 일봉 데이터 → 필터 값. **호출부는 `LiveChartRoot` 한 곳**이고 결과를 소비처 셋에
- * 내려보낸다 — 데이터 fetch 가 걸린 훅이라 소비처마다 부르면 쿼리가 늘어난다.
+ * pref + 일봉 데이터 → **계열 셋의** 필터 값. **호출부는 `LiveChartRoot` 한 곳**이고 결과를
+ * 소비처 셋에 내려보낸다 — 데이터 fetch 가 걸린 훅이라 소비처마다 부르면 쿼리가 늘어난다.
+ *
+ * ⚠ **계열이 셋이어도 fetch 는 하나다.** 계열별로 이 훅을 세 번 부르면 기간이 갈리는 순간
+ * react-query 키가 셋으로 쪼개져 **일봉 fetch 가 3배**가 된다. 그래서 창은 켜진 계열의
+ * **최대 기간**으로 한 번 잡고, 그 한 벌의 일봉에서 계열별 `byDate` 를 파생한다. 계단 값
+ * 계산(`computeDailyMaByDate`)은 일봉 수백 개짜리라 세 벌 돌려도 fetch 한 번보다 싸다.
  *
  * ⚠ **fetch 창을 오버레이와 맞춘다.** `dailyMaFetchWindow` 는 슬롯들의 최대 period 로 창을
- * 정하므로, 내 기간이 그보다 작으면 **같은 창 = 같은 react-query 키 = 캐시 공유**다. 내
+ * 정하므로, 내 최대 기간이 그보다 작으면 **같은 창 = 같은 react-query 키 = 캐시 공유**다. 내
  * 기간이 더 클 때만 합성 슬롯을 얹어 창을 넓힌다(그 경우만 별도 쿼리가 된다). 이 정렬을
  * 빼면 일봉 fetch 가 조용히 두 배가 된다.
  */
-export function usePeakDailyMaFilter({
+export function usePeakDailyMaFilters({
   side,
   code,
   venue,
@@ -87,23 +111,35 @@ export function usePeakDailyMaFilter({
   enabled,
   kisEnabled = true,
   displayFloorDate = null,
-}: UsePeakDailyMaFilterInput): PeakDailyMaFilter | null {
-  const on = useActivePrefs((prefs) => (
-    side === 'ask' ? prefs.askPeakAboveDailyMaEnabled : prefs.bidPeakBelowDailyMaEnabled
-  ));
-  const period = useActivePrefs((prefs) => (
-    side === 'ask' ? prefs.askPeakAboveDailyMaPeriod : prefs.bidPeakBelowDailyMaPeriod
-  ));
+}: UsePeakDailyMaFilterInput): PeakDailyMaFilters {
+  const keys = DAILY_MA_PREF_KEYS[side];
+  const tradedOn = useActivePrefs((prefs) => prefs[keys.Traded.on]);
+  const tradedPeriod = useActivePrefs((prefs) => prefs[keys.Traded.period]);
+  const unreachedOn = useActivePrefs((prefs) => prefs[keys.Unreached.on]);
+  const unreachedPeriod = useActivePrefs((prefs) => prefs[keys.Unreached.period]);
+  const allWallOn = useActivePrefs((prefs) => prefs[keys.AllWall.on]);
+  const allWallPeriod = useActivePrefs((prefs) => prefs[keys.AllWall.period]);
   const slotConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
-  const active = on && enabled && !!code;
+  // 하나라도 켜져 있으면 일봉을 받는다 — 계열 단위 게이트는 아래 `byDate` 에서 건다.
+  const active = (tradedOn || unreachedOn || allWallOn) && enabled && !!code;
+
+  /** 창을 정하는 것은 **켜진** 계열의 최대 기간이다. 꺼진 계열의 기간이 창을 넓히면
+   *  안 쓰는 일봉을 받으면서 캐시 공유까지 깨진다. */
+  const maxPeriod = Math.max(
+    tradedOn ? tradedPeriod : 0,
+    unreachedOn ? unreachedPeriod : 0,
+    allWallOn ? allWallPeriod : 0,
+  );
 
   const fetchConfigs = useMemo<readonly LiveMAConfig[]>(() => {
-    if (period <= maxEnabledPeriod(slotConfigs)) return slotConfigs;
+    if (maxPeriod <= maxEnabledPeriod(slotConfigs)) return slotConfigs;
     return [
       ...slotConfigs,
-      { id: '__peakDailyMaFilter', enabled: true, period, color: '', lineWidth: 1, source: 'close' },
+      {
+        id: '__peakDailyMaFilter', enabled: true, period: maxPeriod, color: '', lineWidth: 1, source: 'close',
+      },
     ];
-  }, [slotConfigs, period]);
+  }, [slotConfigs, maxPeriod]);
 
   const fetchWindow = useMemo(
     () => dailyMaFetchWindow(todayKst, fetchConfigs, displayFloorDate),
@@ -126,15 +162,34 @@ export function usePeakDailyMaFilter({
     [active, candles, todayKst],
   );
 
-  const byDate = useMemo(
-    () => (active && daily.candles.length > 0
-      ? computeDailyMaByDate(daily.candles, period, 'close', todayKst, todayLiveClose)
+  const dailyCandles = daily.candles;
+  const tradedByDate = useMemo(
+    () => (active && tradedOn && dailyCandles.length > 0
+      ? computeDailyMaByDate(dailyCandles, tradedPeriod, 'close', todayKst, todayLiveClose)
       : EMPTY_MAP),
-    [active, daily.candles, period, todayKst, todayLiveClose],
+    [active, tradedOn, dailyCandles, tradedPeriod, todayKst, todayLiveClose],
+  );
+  const unreachedByDate = useMemo(
+    () => (active && unreachedOn && dailyCandles.length > 0
+      ? computeDailyMaByDate(dailyCandles, unreachedPeriod, 'close', todayKst, todayLiveClose)
+      : EMPTY_MAP),
+    [active, unreachedOn, dailyCandles, unreachedPeriod, todayKst, todayLiveClose],
+  );
+  const allWallByDate = useMemo(
+    () => (active && allWallOn && dailyCandles.length > 0
+      ? computeDailyMaByDate(dailyCandles, allWallPeriod, 'close', todayKst, todayLiveClose)
+      : EMPTY_MAP),
+    [active, allWallOn, dailyCandles, allWallPeriod, todayKst, todayLiveClose],
   );
 
-  return useMemo(
-    () => (active ? { side, byDate } : null),
-    [active, side, byDate],
-  );
+  return useMemo(() => ({
+    Traded: active && tradedOn ? { side, byDate: tradedByDate } : null,
+    Unreached: active && unreachedOn ? { side, byDate: unreachedByDate } : null,
+    AllWall: active && allWallOn ? { side, byDate: allWallByDate } : null,
+  }), [
+    active, side,
+    tradedOn, tradedByDate,
+    unreachedOn, unreachedByDate,
+    allWallOn, allWallByDate,
+  ]);
 }
