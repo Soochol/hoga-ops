@@ -1,13 +1,10 @@
 import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
-import PeakWallFamilyCard, { PeakWallSectionHead } from './PeakWallFamilyCard';
-
-const RANK_OPTIONS = [
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 3, label: '3' },
-] as const;
+import PeakWallFamilyCard, {
+  PeakWallRankSelect,
+  PeakWallSectionHead,
+} from './PeakWallFamilyCard';
 
 /**
  * 당일 매수 최대벽 상세 설정 — 매도판(`AskPeakConfig`)의 대칭 미러.
@@ -29,7 +26,9 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const allWallColor = useWindowIndicator((s) => s.bidPeakAllWallColor);
   const allWallLineWidth = useWindowIndicator((s) => s.bidPeakAllWallLineWidth);
   const prefs = useScopedChartPrefs();
-  const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
+  const tradedRankLimit = prefs.bidPeakAllPriceRankLimit;
+  const allWallRankLimit = prefs.bidPeakAllWallRankLimit;
+  const unreachedRankLimit = prefs.bidPeakUnreachedRankLimit;
   const { setNumericPref } = useChartPrefActions();
 
   return (
@@ -61,32 +60,11 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
         onToggle={() => actions.setBidPeakTradedLineEnabled(!tradedEnabled)}
         testId="settings-toggle-bidPeakTradedLineEnabled"
         extra={(
-          <>
-            표시 개수
-            <span
-              className="inline-flex overflow-hidden rounded-md border border-border"
-              role="group"
-              aria-label="체결된 벽 표시 개수"
-            >
-              {RANK_OPTIONS.map((option) => {
-                const selected = postTouchRankLimit === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setNumericPref('bidPeakAllPriceRankLimit', option.value)}
-                    className={[
-                      'px-2.5 py-0.5 text-xs border-r border-border last:border-r-0 transition-colors',
-                      selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-                    ].join(' ')}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </span>
-          </>
+          <PeakWallRankSelect
+            familyName="체결된 벽"
+            value={tradedRankLimit}
+            onChange={(n) => setNumericPref('bidPeakAllPriceRankLimit', n)}
+          />
         )}
       />
       <PeakWallFamilyCard
@@ -98,6 +76,13 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
         enabled={unreachedEnabled}
         onToggle={() => actions.setBidPeakUnreachedLineEnabled(!unreachedEnabled)}
         testId="settings-toggle-bidPeakUnreachedLineEnabled"
+        extra={(
+          <PeakWallRankSelect
+            familyName="미도달 벽"
+            value={unreachedRankLimit}
+            onChange={(n) => setNumericPref('bidPeakUnreachedRankLimit', n)}
+          />
+        )}
       />
       <PeakWallFamilyCard
         name="전체 최대벽"
@@ -108,6 +93,13 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
         enabled={allWallEnabled}
         onToggle={() => actions.setBidPeakAllWallLineEnabled(!allWallEnabled)}
         testId="settings-toggle-bidPeakAllWallLineEnabled"
+        extra={(
+          <PeakWallRankSelect
+            familyName="전체 최대벽"
+            value={allWallRankLimit}
+            onChange={(n) => setNumericPref('bidPeakAllWallRankLimit', n)}
+          />
+        )}
       />
 
       {/* ── 어디에 ─────────────────────────────────────────────────

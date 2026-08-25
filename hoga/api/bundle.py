@@ -893,16 +893,16 @@ _PeakT = TypeVar("_PeakT", AskPeak, BidPeak)
 
 
 def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
-    """`all_peaks`/`all_max_peaks` 전체 랭킹 배열을 range 응답에서 뺀다.
+    """(2026-08-25 이후) **더 이상 벗기지 않는다** — 그대로 통과시킨다.
 
-    이 두 배열은 하루당 수천 후보(실측 avg ~1.3k/1.6k)로 sidecar 페이로드의 99%를
-    차지하는데, range 소비처(/live·/study seed 경로)는 어느 필드도 읽지 않는다 —
-    전체 랭킹은 라이브 `ask_peak_today`(별도 상태) 전용이다. 빌더/캐시는 그대로
-    두고(단위 계약·기존 디스크 캐시 유지) 응답 조립 시점에만 벗긴다. `all_*`
-    스칼라(rank-1)는 바이트 기여가 무시 수준이라 와이어 계약 그대로 남긴다."""
-    if not peak.all_peaks and not peak.all_max_peaks:
-        return peak
-    return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
+    이 함수가 있던 이유는 배열 크기였다: `all_peaks`/`all_max_peaks` 가 하루당 수천
+    후보(실측 avg ~1.3k/1.6k)라 sidecar 페이로드의 99%였고, 당시 range 소비처는 그
+    필드를 읽지 않았다. 이제 **소스에서 top-3 로 캡**하므로(snapshots `_side_row`)
+    배열이 최대 3개이고, 프론트의 「전체 최대벽 표시 개수」가 그 3개를 읽는다.
+
+    이름과 호출부를 남겨 두는 이유: 벗기던 자리가 어디였는지가 곧 "여기서 크기가
+    문제였다" 는 기록이고, 다시 커지면 되돌릴 자리도 여기다. 지금은 항등이다."""
+    return peak
 
 
 def _peak_with_rep_outputs(
@@ -917,10 +917,10 @@ def _peak_with_rep_outputs(
     `unreached_*`(미도달 벽)도 같은 취급이다 — 판정이 (price, 당일 극값) 비교라
     cont 처럼 봉 무관이고, 그래서 cont 단일 계열로 설계했다(snapshots 필드 주석).
 
-    `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
-    `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라
-    (`useDayBidPeaks`), 과거일 전체 랭킹은 만들 이유가 없다 — 하루 1.5MB × 2 side
-    의 직렬화·디스크 쓰기가 이 결정으로 사라진다. 되살리려면 재계산해야 한다.
+    `all_peaks` 는 `reduced` 가 rep 프레임에서 **top-3 로** 만들어 준다(2026-08-25).
+    여기서 비우면 1분 캐시로 파생된 날만 rank-1 이고 직접 계산된 날은 top-3 가 되어
+    **per-day 불일치**가 생긴다. `all_max_peaks` 는 cont 파생이라 봉 무관 — base(1분
+    캐시)의 값이 이미 top-3 이므로 손대지 않는다.
     """
     if reduced is None:
         return None
@@ -933,7 +933,7 @@ def _peak_with_rep_outputs(
         "qty": traded[1] if traded else None,
         "t_ms": ms_from_midnight_to_unix_ms(date, traded[2]) if traded else None,
         "traded_peaks": [_ask_candidate(date, c) for c in reduced["traded_peaks"]],
-        "all_peaks": [], "all_max_peaks": [],
+        "all_peaks": [_ask_candidate(date, c) for c in reduced["all_peaks"]],
     })
 
 

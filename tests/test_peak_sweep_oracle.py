@@ -274,8 +274,8 @@ def oracle_query_day_ask_bid_peak_dual(
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
             "traded_record_peaks": _record_sequence(rep_classified),
             "traded_record_max_peaks": _record_sequence(cont_classified),
-            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
-            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
+            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), 3),
+            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), 3),
             "unreached": _peak_scalar(unreached),
             "unreached_peaks": _peak_candidates(_price_distinct(unreached), 3),
         }

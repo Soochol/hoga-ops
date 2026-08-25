@@ -1,6 +1,51 @@
 import type { ReactNode } from 'react';
 import MAStylePicker from './MAStylePicker';
 
+const RANK_OPTIONS = [1, 2, 3] as const;
+
+/** 계열 카드의 「표시 개수」 세그먼트 — 세 카드가 **같은 한 벌**을 쓴다.
+ *  종전엔 체결된 벽 카드에만 있어 호출부에 인라인이었는데, 셋으로 늘면서 복제가
+ *  세 벌이 될 자리였다. 라벨에 계열명을 넣어 aria 로도 어느 카드인지 읽힌다. */
+export function PeakWallRankSelect({
+  familyName,
+  value,
+  onChange,
+}: {
+  familyName: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const label = `${familyName} 표시 개수`;
+  return (
+    <>
+      표시 개수
+      <span
+        className="inline-flex overflow-hidden rounded-md border border-border"
+        role="group"
+        aria-label={label}
+      >
+        {RANK_OPTIONS.map((option) => {
+          const selected = value === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(option)}
+              className={[
+                'px-2.5 py-0.5 text-xs border-r border-border last:border-r-0 transition-colors',
+                selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
+              ].join(' ')}
+            >
+              {option}
+            </button>
+          );
+        })}
+      </span>
+    </>
+  );
+}
+
 /**
  * 「어떤 벽」 구획의 계열 카드 하나 — 토글 + 선 스타일 + (있으면) 그 계열 전용 노브.
  *
