@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
@@ -15,6 +15,54 @@ function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {})
   const onClose = props.onClose ?? (() => {});
   const timeframe = props.timeframe ?? '1m';
   return render(<IndicatorPanel onClose={onClose} timeframe={timeframe} {...props} />);
+}
+
+/**
+ * 패널의 좌측 목록은 **두 모드**다 — "내 지표"(존재하는 것, 행마다 ✕)와 카탈로그
+ * (추가할 수 있는 것, 행마다 ＋). 종전의 단일 체크박스 목록이 아니므로, 꺼져 있는
+ * 지표에 닿으려면 카탈로그로 넘어가야 한다. 아래 헬퍼가 그 왕복을 감춘다.
+ */
+
+/** 카탈로그로 전환한다(이미 카탈로그면 그대로). */
+function openCatalog(): void {
+  const toggle = screen.getByTestId('indicator-panel-mode-toggle');
+  if (toggle.textContent?.includes('추가')) fireEvent.click(toggle);
+}
+
+/** "내 지표" 목록으로 돌아간다. */
+function openMine(): void {
+  const toggle = screen.getByTestId('indicator-panel-mode-toggle');
+  if (toggle.textContent?.includes('내 지표')) fireEvent.click(toggle);
+}
+
+/** 카탈로그에서 추가 — 추가는 그 지표의 상세로 이동하고 목록으로 돌아온다. */
+function addIndicator(name: string): void {
+  openCatalog();
+  fireEvent.click(screen.getByRole('button', { name: `${name} 추가` }));
+}
+
+/** 그 지표의 상세를 연다. 없으면 먼저 추가한다(대부분의 테스트가 원하는 것은
+ *  "설정 화면을 보는 것" 이지 추가 절차 자체가 아니다). */
+function openDetail(name: string): void {
+  openMine();
+  const row = screen.queryByRole('button', { name });
+  if (row) { fireEvent.click(row); return; }
+  addIndicator(name);
+}
+
+/** 존재를 뒤집는다 — 내 지표에 있으면 ✕, 없으면 카탈로그에서 ＋.
+ *  종전 체크박스 클릭의 대응물이다. */
+function togglePresence(name: string): void {
+  openMine();
+  const remove = screen.queryByRole('button', { name: `${name} 삭제` });
+  if (remove) { fireEvent.click(remove); return; }
+  addIndicator(name);
+}
+
+/** 카탈로그에서 **추가하지 않고** 미리보기만 연다. */
+function previewDetail(name: string): void {
+  openCatalog();
+  fireEvent.click(screen.getByRole('button', { name }));
 }
 
 describe('IndicatorPanel', () => {
@@ -32,7 +80,10 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
-  it('활성 16개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
+  // 목록이 두 모드로 갈리면서 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
+  // 대신 **합집합이 16종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
+  // 그게 이 목록이 지켜야 할 총계다.
+  it('내 지표 + 카탈로그의 합집합이 16종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -42,15 +93,69 @@ describe('IndicatorPanel', () => {
       programTradeEnabled: true,
     });
     renderPanel();
-    const checkboxes = screen.getAllByRole('checkbox');
-    // 상단 3 + 10호가 9(매도/매수 최대벽 병합, 호가벽 급증 포함) + 프로그램 1 + 거래원 3
-    expect(checkboxes).toHaveLength(16);
-    expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
+    // **nav 안에서만** 센다 — 상세 pane 에도 `슬롯 삭제` 처럼 같은 접미의 버튼이 있다.
+    const labelsEndingWith = (suffix: string) => within(screen.getByRole('navigation'))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'))
+      .filter((l): l is string => !!l && l.endsWith(suffix))
+      .map((l) => l.slice(0, -suffix.length));
+    const mine = labelsEndingWith(' 삭제');
+    openCatalog();
+    const addable = labelsEndingWith(' 추가');
+
+    expect(new Set([...mine, ...addable]).size).toBe(16);
+    // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
-      const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
-      expect(cb.disabled).toBe(false);
-      expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
+      expect(mine).toContain(name);
     }
+  });
+
+  // 이 패널의 새 계약: **존재(추가·삭제)만 다룬다**. 가시성(숨김)은 레전드 눈이
+  // 전담한다 — 한 지표를 두 표면이 서로 다른 말로 조작하던 상태를 끝낸 것이 요점이다.
+  it('체크박스가 사라지고 추가·삭제 두 어휘만 남는다', () => {
+    renderPanel();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    // 공장 상태의 "내 지표" = 이동평균선 + 거래량(그 둘만 공장 ON).
+    const nav = within(screen.getByRole('navigation', { name: '내 지표' }));
+    expect(nav.getByRole('button', { name: '이동평균선 삭제' })).toBeTruthy();
+    expect(nav.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
+  });
+
+  it('추가하면 기본값으로 생기고, 그 지표의 상세로 이동한 뒤 목록으로 돌아온다', () => {
+    renderPanel();
+    addIndicator('호가비');
+
+    // 생성 — 공장값 그대로(따로 설정할 것이 없다).
+    expect(useLivePageStore.getState().ratioEnabled).toBe(true);
+    // 상세 이동 — "추가했는데 어디 갔지" 가 되지 않게.
+    expect(screen.getByRole('heading', { name: '호가비', level: 2 })).toBeTruthy();
+    // 목록 복귀 — 카탈로그에 남아 있으면 방금 추가한 것을 확인하러 한 번 더 눌러야 한다.
+    expect(screen.getByRole('navigation', { name: '내 지표' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '호가비 삭제' })).toBeTruthy();
+  });
+
+  it('카탈로그의 라벨 클릭은 **미리보기**다 — 추가하지 않는다', () => {
+    renderPanel();
+    previewDetail('호가벽 급증');
+
+    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(false);
+    // 상세는 보이고, 목록은 카탈로그에 남는다(＋ 를 누를지 결정할 수 있게).
+    expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: '지표 추가' })).toBeTruthy();
+  });
+
+  it('선택한 지표를 삭제하면 상세가 남은 첫 지표로 넘어간다', () => {
+    renderPanel();
+    // 기본 선택은 이동평균선. 그것을 지우면 거래량만 남는다.
+    togglePresence('이동평균선');
+    expect(screen.getByRole('heading', { name: '거래량', level: 2 })).toBeTruthy();
+  });
+
+  it('내 지표가 비면 안내를 띄운다', () => {
+    renderPanel();
+    togglePresence('이동평균선');
+    togglePresence('거래량');
+    expect(screen.getByText('추가한 지표가 없습니다.')).toBeTruthy();
   });
 
   it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
@@ -60,8 +165,9 @@ describe('IndicatorPanel', () => {
     }
   });
 
-  it('지표 그룹 서브헤더를 렌더', () => {
+  it('지표 그룹 서브헤더를 렌더(카탈로그)', () => {
     renderPanel();
+    openCatalog();
     expect(screen.getAllByText('상단 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('10호가 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('프로그램 지표').length).toBeGreaterThan(0);
@@ -93,44 +199,51 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('indicator-panel-shell')).toHaveClass('bg-bg-card');
-    const nav = screen.getByRole('navigation', { name: '지표 카테고리' });
+    const nav = screen.getByRole('navigation', { name: '내 지표' });
     // 좌측 컬럼(nav + 리셋 푸터)을 감싼 래퍼가 border-r 대신 bg-subtle 톤 스텝으로
     // 분리(2026-07-15 borderless 통일). 래퍼의 부모가 2-컬럼 그리드.
     const navColumn = nav.parentElement!;
     expect(navColumn).toHaveClass('bg-bg-subtle');
     expect(nav).not.toHaveClass('border-r');
     expect(navColumn.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
+    openCatalog();
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
   });
 
   it('keeps long category labels on one line in the side nav', () => {
     renderPanel();
+    openCatalog();
 
     expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toHaveClass('whitespace-nowrap');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {
     renderPanel({ capabilities: { hogaPanes: false, investorNet: 'market', studySave: false } });
+    openCatalog();
     expect(screen.queryByText('10호가 지표')).toBeNull();
     expect(screen.queryByText('프로그램 지표')).toBeNull();
     expect(screen.getByText('거래원 지표')).toBeTruthy();
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 최대벽']) {
-      expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
+      expect(screen.queryByRole('button', { name: `${name} 추가` })).toBeNull();
     }
-    expect(screen.getByRole('checkbox', { name: '외국인 순매수량' })).toBeTruthy();
-    expect(screen.getByRole('checkbox', { name: '기관 순매수량' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '외국인 순매수량 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '기관 순매수량 추가' })).toBeTruthy();
   });
 
   it('indices without investor support hide investor net categories too', () => {
     renderPanel({ capabilities: { hogaPanes: false, investorNet: 'none', studySave: false } });
-    expect(screen.queryByRole('checkbox', { name: '외국인 순매수량' })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: '기관 순매수량' })).toBeNull();
-    expect(screen.getByRole('checkbox', { name: '거래량' })).toBeTruthy();
+    openCatalog();
+    expect(screen.queryByRole('button', { name: '외국인 순매수량 추가' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '기관 순매수량 추가' })).toBeNull();
+    // 거래량은 공장값 ON 이라 "내 지표" 쪽에 있다.
+    openMine();
+    expect(screen.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
   });
 
   it('당일 최대벽(매도/매수 병합)은 10호가 지표 그룹(체결강도 뒤)에 위치', () => {
     renderPanel();
+    openCatalog();
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
@@ -148,6 +261,7 @@ describe('IndicatorPanel', () => {
 
   it('프로그램 순매수는 거래원 지표 뒤에 위치', () => {
     renderPanel();
+    openCatalog();
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
     const program = labels.indexOf('프로그램 순매수');
@@ -160,7 +274,7 @@ describe('IndicatorPanel', () => {
   it('총잔량 토글 클릭 → minute 버킷 기록 + ambient 투영 반전', () => {
     useLivePageStore.setState({ quoteTotalsEnabled: true });
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: '총잔량' }));
+    togglePresence('총잔량');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
     // ambient(1m)와 같은 프로파일이므로 최상위 투영도 함께 뒤집힌다(PR-A).
     expect(useLivePageStore.getState().quoteTotalsEnabled).toBe(false);
@@ -169,20 +283,20 @@ describe('IndicatorPanel', () => {
   it('프로그램 순매수 토글 클릭 → minute 버킷 기록 + ambient 투영 반전', () => {
     useLivePageStore.setState({ programTradeEnabled: true });
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: '프로그램 순매수' }));
+    togglePresence('프로그램 순매수');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.programTradeEnabled).toBe(false);
     expect(useLivePageStore.getState().programTradeEnabled).toBe(false);
   });
 
   it('프로그램 순매수 라벨 클릭 → 설명 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '프로그램 순매수' }));
+    openDetail('프로그램 순매수');
     expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
   it('매도 최대벽 선택 시 체결된 벽 스타일과 보이는 최신 봉 기준 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    openDetail('당일 최대벽');
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
@@ -193,13 +307,13 @@ describe('IndicatorPanel', () => {
 
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '호가비' }));
+    openDetail('호가비');
     expect(screen.getByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeTruthy();
   });
 
   it('renders broker late-entry controls under 거래원 지표', async () => {
     renderPanel();
-    await userEvent.click(screen.getByText('신규 거래원 등장'));
+    openDetail('신규 거래원 등장');
     expect(screen.getByText('기준 시각')).toBeTruthy();
     expect(screen.queryByText(new RegExp(['부재', '시간'].join(' ')))).toBeNull();
     expect(screen.getByText('표시 방향')).toBeTruthy();
@@ -213,7 +327,7 @@ describe('IndicatorPanel', () => {
   it('신규 거래원 등장 기준 시각을 HH:MM으로 표시하고 HHMM 입력을 정규화한다', async () => {
     useLivePageStore.setState({ brokerLateEntryStartHHMM: 930 });
     renderPanel();
-    await userEvent.click(screen.getByText('신규 거래원 등장'));
+    openDetail('신규 거래원 등장');
 
     const input = screen.getByRole('textbox', { name: '신규 거래원 등장 기준 시각' }) as HTMLInputElement;
     // 저장값 930 → HH:MM 표시.
@@ -238,7 +352,7 @@ describe('IndicatorPanel', () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ foreignNetEnabled: false });
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: '외국인 순매수량' }));
+    togglePresence('외국인 순매수량');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.foreignNetEnabled).toBe(true);
     expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
   });
@@ -247,7 +361,7 @@ describe('IndicatorPanel', () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ institutionNetEnabled: false });
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: '기관 순매수량' }));
+    togglePresence('기관 순매수량');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.institutionNetEnabled).toBe(true);
     expect(useLivePageStore.getState().institutionNetEnabled).toBe(true);
   });
@@ -256,13 +370,11 @@ describe('IndicatorPanel', () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ volumeEnabled: true });
     renderPanel();
-    const vol = screen.getByRole('checkbox', { name: '거래량' }) as HTMLButtonElement;
-    // 거래량은 active 카테고리 — 기본 켜짐(공장값 true), 클릭하면 토글.
-    expect(vol.disabled).toBe(false);
-    fireEvent.click(vol);
+    // 거래량은 공장값 ON — "내 지표" 에 있고 ✕ 로 지운다. 다시 넣는 것은 카탈로그 ＋.
+    togglePresence('거래량');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeEnabled).toBe(false);
-    fireEvent.click(vol);
+    togglePresence('거래량');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(true);
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
@@ -288,11 +400,16 @@ describe('IndicatorPanel', () => {
     useLivePageStore.getState().setIndicatorTimeframe('D');
 
     const view = renderPanel({ timeframe: 'D' });
-    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
+    // 꺼진 봉에서는 "내 지표" 가 아니라 카탈로그에 있다(존재 = 켜짐).
+    expect(screen.queryByRole('button', { name: '거래량 삭제' })).toBeNull();
+    openCatalog();
+    expect(screen.getByRole('button', { name: '거래량 추가' })).toBeTruthy();
 
     useLivePageStore.getState().setIndicatorTimeframe('W');
     view.rerender(<IndicatorPanel onClose={() => {}} timeframe="W" />);
-    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'true');
+    // W 버킷은 켜짐 → "내 지표" 로 옮겨 온다.
+    openMine();
+    expect(screen.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
   });
 
   it('writes pane category changes to the drawer timeframe bucket only', () => {
@@ -300,7 +417,7 @@ describe('IndicatorPanel', () => {
 
     renderPanel({ timeframe: 'D' });
 
-    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    togglePresence('거래량');
 
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBeUndefined();
@@ -313,7 +430,7 @@ describe('IndicatorPanel', () => {
 
     renderPanel({ timeframe: '3m' });
 
-    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    togglePresence('거래량');
 
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(false);
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBeUndefined();
@@ -325,10 +442,9 @@ describe('IndicatorPanel', () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.getState().setAllMovingAveragesEnabled(true);
     renderPanel();
-    const ma = screen.getByRole('checkbox', { name: '이동평균선' });
-    fireEvent.click(ma);
+    togglePresence('이동평균선');
     expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
-    fireEvent.click(ma);
+    togglePresence('이동평균선');
     expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
   });
 
@@ -344,22 +460,22 @@ describe('IndicatorPanel', () => {
 
     // 거래량 → 거래량 detail (MA detail gone). The label is a button; the
     // on/off control is the separate role=checkbox icon.
-    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    openDetail('거래량');
     expect(screen.getByText(/거래량을 막대로/)).toBeTruthy();
     expect(screen.queryByText(/지난 n일 동안/)).toBeNull();
 
     // 외국인 순매수량 → its detail.
-    fireEvent.click(screen.getByRole('button', { name: '외국인 순매수량' }));
+    openDetail('외국인 순매수량');
     expect(screen.getByText(/외국인.*순매수 수량/)).toBeTruthy();
 
     // 기관 순매수량 → its detail.
-    fireEvent.click(screen.getByRole('button', { name: '기관 순매수량' }));
+    openDetail('기관 순매수량');
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
   });
 
   it('매수 최대벽 선택 시 보이는 최신 봉 기준 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
@@ -368,7 +484,7 @@ describe('IndicatorPanel', () => {
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    openDetail('거래량');
     expect(screen.getByTestId('settings-toggle-volumeFillStrengthCumulative')).toBeTruthy();
     expect(screen.getByText('거래량 — 체결강도 누적')).toBeTruthy();
   });
@@ -378,50 +494,33 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ volumeEnabled: true });
     renderPanel();
     // Clicking the label navigates only — the checkbox is the toggle.
-    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    openDetail('거래량');
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
-  it('상세 헤더에 지표명과 마스터 토글을 표시한다', () => {
-    useLivePageStore.getState().setAllMovingAveragesEnabled(true);
+  // 헤더의 표시/숨김 스위치는 사라졌다 — 가시성은 레전드 눈이 전담하고 이 패널은
+  // 존재(추가·삭제)만 다룬다. 헤더에 남는 것은 지표명과 봉 배지다.
+  it('상세 헤더에 지표명을 표시하고 표시/숨김 스위치는 두지 않는다', () => {
     renderPanel();
-    // 헤더 h2가 그룹명이 아니라 선택된 지표명을 보여준다.
     expect(screen.getByRole('heading', { name: '이동평균선', level: 2 })).toBeTruthy();
-    // 헤더 마스터 토글(switch)은 nav 체크박스와 같은 상태를 미러링한다.
-    const masterSwitch = screen.getByRole('switch', { name: '이동평균선 표시' });
-    expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(masterSwitch);
-    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
-    expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByRole('switch', { name: '이동평균선 표시' })).toBeNull();
   });
 
-  it('헤더 마스터 토글과 nav 체크박스가 같은 상태를 공유한다', () => {
-    useLivePageStore.getState().setAllMovingAveragesEnabled(false);
-    renderPanel();
-    // 이동평균선 상세로 이동(기본 선택이지만 명시).
-    fireEvent.click(screen.getByRole('button', { name: '이동평균선' }));
-    const masterSwitch = screen.getByRole('switch', { name: '이동평균선 표시' });
-    expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
-    // nav 체크박스로 켜면 헤더 토글도 즉시 켜진 상태로 반영된다.
-    fireEvent.click(screen.getByRole('checkbox', { name: '이동평균선' }));
-    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
-    expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('당일 최대벽 nav 체크박스(병합 마스터)는 매도·매수를 함께 토글한다', () => {
+  it('당일 최대벽(병합)은 추가·삭제가 매도·매수를 함께 움직인다', () => {
     useLivePageStore.setState({ askPeakEnabled: false, bidPeakEnabled: false });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '당일 최대벽' });
-    expect(cb.getAttribute('aria-checked')).toBe('false');
-    // 둘 다 꺼짐 → 클릭 시 둘 다 켜짐.
-    fireEvent.click(cb);
+    // 둘 다 꺼짐 → 카탈로그에 있다. 추가하면 둘 다 켜진다.
+    addIndicator('당일 최대벽');
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
-    expect(cb.getAttribute('aria-checked')).toBe('true');
-    // 한쪽만 켜져 있어도 checked=true, 클릭 시 둘 다 꺼짐.
+
+    // 한쪽만 켜져 있어도 "내 지표" 에 남는다(존재 = 어느 한쪽이라도 켜짐).
     useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: false });
-    expect(cb.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(cb);
+    openMine();
+    expect(screen.getByRole('button', { name: '당일 최대벽 삭제' })).toBeTruthy();
+
+    // 삭제하면 둘 다 꺼진다.
+    togglePresence('당일 최대벽');
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
   });
@@ -430,7 +529,7 @@ describe('IndicatorPanel', () => {
     renderPanel();
     // 기본 상세는 이동평균선. 다른 카테고리 체크박스를 눌러도 이동평균선 상세가 유지된다.
     expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    togglePresence('거래량');
     expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
     expect(screen.queryByText(/거래량을 막대로/)).toBeNull();
   });
@@ -445,7 +544,7 @@ describe('IndicatorPanel', () => {
   it('카테고리별 스코프 칩은 더 이상 렌더하지 않는다', () => {
     renderPanel({ timeframe: 'D' });
     // 이동평균선(구 전역)·거래량(구 pane 스코프) 어느 쪽도 칩 없음 — 배지 하나로 통일.
-    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    openDetail('거래량');
     expect(screen.queryByText(/별 표시$/)).toBeNull();
   });
 
@@ -461,18 +560,18 @@ describe('IndicatorPanel', () => {
     renderPanel();
 
     // 1단계: '현재 봉 초기화' → 확인 행 노출(아직 리셋 안 됨).
-    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
+    openDetail('현재 봉 초기화');
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     expect(screen.getByText('분봉 초기화?')).toBeTruthy();
 
     // 취소는 되돌리지 않는다.
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    openDetail('취소');
     expect(screen.queryByText('분봉 초기화?')).toBeNull();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
 
     // 2단계: 다시 열고 '초기화' → 실제 리셋.
-    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
+    openDetail('현재 봉 초기화');
+    openDetail('초기화');
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     // 리셋은 공장값 복귀 — 현재봉 MA 공장 슬롯은 전부 켜져 있다.
@@ -488,8 +587,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
     useLivePageStore.getState().setAskPeakEnabled(true); // minute 버킷
     renderPanel({ timeframe: '1m' });
-    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
+    openDetail('현재 봉 초기화');
+    openDetail('초기화');
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
   });
@@ -499,8 +598,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ paneOrder: customOrder });
     useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
-    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
+    openDetail('현재 봉 초기화');
+    openDetail('초기화');
     // 색은 기본값으로, paneOrder는 그대로.
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     expect(useLivePageStore.getState().paneOrder).toEqual(['candle', 'ratio', 'volume']);
@@ -539,7 +638,9 @@ describe('IndicatorPanel', () => {
   it('당일 최대벽 매도 서브탭의 표시 토글로 askPeakEnabled 반전', () => {
     useLivePageStore.setState({ askPeakEnabled: false });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    // 추가는 매도·매수를 함께 켜므로(병합 카테고리) 여기서는 **미리보기**로 연다 —
+    // 재려는 것은 서브탭 스위치 하나이지 추가 흐름이 아니다.
+    previewDetail('당일 최대벽');
     // 기본 서브탭은 매도.
     fireEvent.click(screen.getByRole('switch', { name: '매도 최대벽 표시' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
@@ -548,16 +649,14 @@ describe('IndicatorPanel', () => {
   it('당일 최대 매물대 카테고리 토글', () => {
     useLivePageStore.setState({ tradeVolumePocEnabled: true });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '당일 최대 매물대' });
-    fireEvent.click(cb);
+    togglePresence('당일 최대 매물대');
     expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
   });
 
   it('연속체결 매물대 분포 카테고리 토글', () => {
     useLivePageStore.setState({ volumeDistributionEnabled: true });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '연속체결 매물대 분포' });
-    fireEvent.click(cb);
+    togglePresence('연속체결 매물대 분포');
     expect(useLivePageStore.getState().volumeDistributionEnabled).toBe(false);
   });
 
@@ -568,15 +667,15 @@ describe('IndicatorPanel', () => {
       volumeDistributionMaxColor: '#EAB308',
     });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
+    openDetail('연속체결 매물대 분포');
     fireEvent.change(screen.getByRole('spinbutton', { name: '연속체결 매물대 분포 구간 수' }), {
       target: { value: '18' },
     });
     // 색상은 이제 스와치 trigger→팝오버 패턴(ColorSwatchPicker). 팝오버를 먼저 연다.
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 #22C55E' }));
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 #EF4444' }));
+    openDetail('연속체결 매물대 분포 색상 선택');
+    openDetail('연속체결 매물대 분포 색상 #22C55E');
+    openDetail('연속체결 매물대 분포 최대 구간 색상 선택');
+    openDetail('연속체결 매물대 분포 최대 구간 색상 #EF4444');
     expect(useLivePageStore.getState().volumeDistributionRangeCount).toBe(18);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#22C55E');
     expect(useLivePageStore.getState().volumeDistributionMaxColor).toBe('#EF4444');
@@ -585,7 +684,7 @@ describe('IndicatorPanel', () => {
   it('toggles hover-cutoff mode for volume distribution', () => {
     useLivePageStore.setState({ volumeDistributionHoverCutoffEnabled: false });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
+    openDetail('연속체결 매물대 분포');
     expect(screen.getByTestId('settings-toggle-volumeDistributionHoverCutoff')).toBeTruthy();
     fireEvent.click(screen.getByRole('switch', { name: '호버 시점 누적' }));
     expect(useLivePageStore.getState().volumeDistributionHoverCutoffEnabled).toBe(true);
@@ -594,7 +693,7 @@ describe('IndicatorPanel', () => {
   it('당일 최대 매물대 선택 시 분포 최대 구간 설명 표시', () => {
     useLivePageStore.setState({ volumeDistributionRangeCount: 18 });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
+    openDetail('당일 최대 매물대');
     expect(screen.getAllByText(/연속체결 매물대 분포와 동일한 18개 가격 구간/).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '±0.25%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±0.5%' })).toBeNull();
@@ -610,9 +709,9 @@ describe('IndicatorPanel', () => {
       tradeVolumePocOpacity: 0.12,
     });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대 색상 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' }));
+    openDetail('당일 최대 매물대');
+    openDetail('당일 최대 매물대 색상 선택');
+    openDetail('당일 최대 매물대 색상 #22C55E');
     fireEvent.change(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' }), {
       target: { value: '28' },
     });
@@ -622,7 +721,7 @@ describe('IndicatorPanel', () => {
 
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    openDetail('당일 최대벽');
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
@@ -631,7 +730,7 @@ describe('IndicatorPanel', () => {
   it('당일 최대벽 매수 서브탭의 표시 토글로 bidPeakEnabled 반전', () => {
     useLivePageStore.setState({ bidPeakEnabled: false });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    previewDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     fireEvent.click(screen.getByRole('switch', { name: '매수 최대벽 표시' }));
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
@@ -639,7 +738,7 @@ describe('IndicatorPanel', () => {
 
   it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
@@ -650,52 +749,50 @@ describe('IndicatorPanel', () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.getState().setAllDailyMovingAveragesEnabled(false);
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '일봉 이동평균선' });
-    fireEvent.click(cb);
+    togglePresence('일봉 이동평균선');
     expect(useLivePageStore.getState().dailyMovingAverages.every((m) => m.enabled)).toBe(true);
   });
 
   it('일봉 이동평균선 라벨 클릭 → DailyMovingAverageConfig 노출', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선' }));
+    openDetail('일봉 이동평균선');
     expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
   });
 
   it('호가벽 급증 카테고리가 10호가 그룹에 렌더된다', () => {
     renderPanel();
-    expect(screen.getByText('호가벽 급증')).toBeInTheDocument();
+    openCatalog();
+    expect(screen.getByRole('button', { name: '호가벽 급증' })).toBeInTheDocument();
   });
 
   it('호가벽 급증 토글이 지표 슬라이스를 바꾼다 (chartPrefs 가 아니다)', () => {
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '호가벽 급증' });
-    expect(cb).not.toBeChecked();
-    fireEvent.click(cb);
+    togglePresence('호가벽 급증');
     expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
   });
 
   it('호가벽 급증 상세에 라벨 토글이 뜬다 — 등록만으로는 안 뜨므로 렌더로 확인', () => {
     renderPanel();
-    fireEvent.click(screen.getByText('호가벽 급증'));
+    openDetail('호가벽 급증');
     expect(screen.getByText('급증 마커 잔량 라벨')).toBeInTheDocument();
   });
 
   it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {
     render(<IndicatorPanel onClose={() => {}} timeframe="1m" />);
-    expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
+    openCatalog();
+    expect(screen.getByRole('button', { name: '호가 잔량 히트맵' })).toBeInTheDocument();
   });
 
   it('호가 잔량 히트맵 카테고리 토글', () => {
     useLivePageStore.setState({ depthHeatmapEnabled: false });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '호가 잔량 히트맵' });
-    fireEvent.click(cb);
+    togglePresence('호가 잔량 히트맵');
     expect(useLivePageStore.getState().depthHeatmapEnabled).toBe(true);
   });
 
   it('호가 잔량 히트맵 라벨 클릭 → 매수/매도 색상 + 불투명도 노출', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '호가 잔량 히트맵' }));
+    openDetail('호가 잔량 히트맵');
     expect(screen.getByRole('button', { name: '매수 색상 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '매도 색상 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('slider')).toBeTruthy();
@@ -707,18 +804,21 @@ describe('IndicatorPanel', () => {
   describe('hiddenCategories', () => {
     it('숨긴 지표는 목록에서 사라진다', () => {
       const { unmount } = renderPanel();
-      expect(screen.queryByText('단별 잔량 증감')).toBeTruthy();
+      openCatalog();
+      expect(screen.queryByRole('button', { name: '단별 잔량 증감' })).toBeTruthy();
       unmount();
 
       renderPanel({ hiddenCategories: ['depth-delta'] });
-      expect(screen.queryByText('단별 잔량 증감')).toBeNull();
+      openCatalog();
+      expect(screen.queryByRole('button', { name: '단별 잔량 증감' })).toBeNull();
     });
 
     it('다른 지표는 그대로 남는다 — 필터가 과하게 걷어내지 않는다', () => {
       renderPanel({ hiddenCategories: ['depth-delta'] });
+      openCatalog();
 
-      expect(screen.queryByText('호가 잔량 히트맵')).toBeTruthy();
-      expect(screen.queryByText('당일 최대벽')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '호가 잔량 히트맵' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '당일 최대벽' })).toBeTruthy();
     });
   });
 
