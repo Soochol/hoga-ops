@@ -55,6 +55,11 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     allWallLabels: false,
     allWallColor: '#all',
     allWallLineWidth: 1,
+    unreachedSegments: [],
+    unreachedDrawn: false,
+    unreachedLabels: false,
+    unreachedColor: '#unreached',
+    unreachedLineWidth: 2,
     ...over,
   };
 }
@@ -101,9 +106,10 @@ const segmentsOnly = (a: readonly unknown[]) =>
   a.filter((p): p is PeakWallSegmentsPrimitive => p instanceof PeakWallSegmentsPrimitive);
 const arrowsOnly = (a: readonly unknown[]) =>
   a.filter((p): p is PeakWallRankArrowsPrimitive => p instanceof PeakWallRankArrowsPrimitive);
-// attach 순서 = [전체 최대벽, 체결된 벽] — 전체 벽이 먼저 붙어 체결된 벽이 위에 그려진다.
+// attach 순서 = [전체 최대벽, 미도달 벽, 체결된 벽] — 하위 선이 먼저 붙어 체결된 벽이 위에 그려진다.
 const allWallPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[0];
-const tradedPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[1];
+const unreachedPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[1];
+const tradedPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[2];
 
 /**
  * **매도·매수 공용 오버레이의 배선**(2026-08-23).
@@ -200,9 +206,30 @@ describe('LivePeakWallSegments', () => {
     });
   });
 
+  it('미도달 벽 선은 unreachedDrawn 을 따라 전용 primitive 에 세워진다', async () => {
+    const unreachedSeg = [seg(0, 130, 500, 50)];
+    const attached = renderOverlay('ask', wall({
+      unreachedSegments: unreachedSeg,
+      unreachedDrawn: true,
+    }));
+    await waitFor(() => {
+      expect(unreachedPrimOf(attached).segmentsData()).toHaveLength(1);
+      expect(tradedPrimOf(attached).segmentsData()).toHaveLength(3);
+    });
+
+    const off = renderOverlay('ask', wall({
+      unreachedSegments: unreachedSeg,
+      unreachedDrawn: false,
+    }));
+    await waitFor(() => {
+      expect(tradedPrimOf(off).segmentsData()).toHaveLength(3);
+    });
+    expect(unreachedPrimOf(off).segmentsData()).toEqual([]);
+  });
+
   it('레전드는 보이는 영역 잔량 상위 3개를 순위 순으로 낸다', async () => {
     const attached = renderOverlay('bid');
-    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(2));
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(3));
     await waitFor(() => {
       expect(readFlagLegendValues(null, 'bid-peak', null)).toEqual([
         { key: 'bid-peak-1', label: '1', value: '105, 3k' },
@@ -221,7 +248,7 @@ describe('LivePeakWallSegments', () => {
    */
   it('visibleLogicalRangeChange 를 구독하지 않는다', async () => {
     const attached = renderOverlay('ask');
-    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(2));
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(3));
     expect(subscribeRangeSpy).not.toHaveBeenCalled();
   });
 });

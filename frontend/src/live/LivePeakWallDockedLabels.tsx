@@ -62,12 +62,14 @@ function LivePeakWallDockedLabels({ paneSeries, askWall, bidWall }: Props) {
         [
           ...(askWall.labels ? askWall.segments : []),
           ...(askWall.allWallLabels ? askWall.allWallSegments : []),
+          ...(askWall.unreachedLabels ? askWall.unreachedSegments : []),
         ], 'ask', visibleRange, labelBudget,
       ),
       ...livePeakWallDockedLabelsFromSegments(
         [
           ...(bidWall.labels ? bidWall.segments : []),
           ...(bidWall.allWallLabels ? bidWall.allWallSegments : []),
+          ...(bidWall.unreachedLabels ? bidWall.unreachedSegments : []),
         ], 'bid', visibleRange, labelBudget,
       ),
     ]);
@@ -76,10 +78,14 @@ function LivePeakWallDockedLabels({ paneSeries, askWall, bidWall }: Props) {
     askWall.segments,
     askWall.allWallLabels,
     askWall.allWallSegments,
+    askWall.unreachedLabels,
+    askWall.unreachedSegments,
     bidWall.labels,
     bidWall.segments,
     bidWall.allWallLabels,
     bidWall.allWallSegments,
+    bidWall.unreachedLabels,
+    bidWall.unreachedSegments,
   ]);
 
   useEffect(() => {

@@ -37,6 +37,11 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     allWallLabels: false,
     allWallColor: '#all',
     allWallLineWidth: 1,
+    unreachedSegments: [],
+    unreachedDrawn: false,
+    unreachedLabels: false,
+    unreachedColor: '#unreached',
+    unreachedLineWidth: 2,
     ...over,
   };
 }
@@ -44,6 +49,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
 const EMPTY: PeakWallRenderState = {
   segments: [], rankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
   allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
+  unreachedSegments: [], unreachedDrawn: false, unreachedLabels: false, unreachedColor: '#x', unreachedLineWidth: 1,
 };
 
 function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {

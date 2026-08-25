@@ -99,12 +99,12 @@ export function rankVisiblePeakSegments<T extends RankablePeakSegment>(
  */
 export function mergePeakWallRankSegments(
   traded: readonly PeakWallSegment[],
-  allWall: readonly PeakWallSegment[],
+  ...subLines: ReadonlyArray<readonly PeakWallSegment[]>
 ): readonly PeakWallSegment[] {
-  if (allWall.length === 0) return traded;
+  if (subLines.every((segments) => segments.length === 0)) return traded;
   const out: PeakWallSegment[] = [];
   const indexByKey = new Map<string, number>();
-  for (const segment of [...traded, ...allWall]) {
+  for (const segment of [traded, ...subLines].flat()) {
     const key = `${segment.time0 as unknown as number}|${segment.price}`;
     const existing = indexByKey.get(key);
     if (existing === undefined) {

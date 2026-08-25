@@ -1976,6 +1976,7 @@ export function LiveChartRoot({
         peakSessionOpenMs,
         todayAskPeakInput,
         askVisibleTimeCutoffForRender!.tMs,
+        cb?.candles ?? EMPTY_CANDLES,
       )
       : [...dayAskPeaks],
     [
@@ -1989,6 +1990,7 @@ export function LiveChartRoot({
       todayAskPeakInput,
       todayKst,
       peakSessionOpenMs,
+      cb?.candles,
     ],
   );
   const renderDayBidPeaks = useMemo(
@@ -2002,6 +2004,7 @@ export function LiveChartRoot({
         peakSessionOpenMs,
         todayBidPeakInput,
         bidVisibleTimeCutoffForRender!.tMs,
+        cb?.candles ?? EMPTY_CANDLES,
       )
       : [...dayBidPeaks],
     [
@@ -2015,6 +2018,7 @@ export function LiveChartRoot({
       todayBidPeakInput,
       todayKst,
       peakSessionOpenMs,
+      cb?.candles,
     ],
   );
   const activePaneToggles = useMemo(
@@ -2306,11 +2310,17 @@ export function LiveChartRoot({
       ...(askWall.allWallLabels
         ? askWall.allWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
+      ...(askWall.unreachedLabels
+        ? askWall.unreachedSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
+        : []),
       ...(bidWall.labels
         ? bidWall.segments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
       ...(bidWall.allWallLabels
         ? bidWall.allWallSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
+        : []),
+      ...(bidWall.unreachedLabels
+        ? bidWall.unreachedSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
     // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
@@ -2336,10 +2346,14 @@ export function LiveChartRoot({
     askWall.segments,
     askWall.allWallLabels,
     askWall.allWallSegments,
+    askWall.unreachedLabels,
+    askWall.unreachedSegments,
     bidWall.labels,
     bidWall.segments,
     bidWall.allWallLabels,
     bidWall.allWallSegments,
+    bidWall.unreachedLabels,
+    bidWall.unreachedSegments,
   ]);
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이

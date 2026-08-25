@@ -1,6 +1,11 @@
 import type { AskPeakCandidate } from '../api/types';
 import { isIndicatorEligibleBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import { touchWindowOf, type PeakWallClassification } from './peakWallEventClassifier';
+import {
+  combineDayExtreme,
+  isWallUnreached,
+  touchWindowOf,
+  type PeakWallClassification,
+} from './peakWallEventClassifier';
 
 const EMIT_LIMIT = 3;
 
@@ -159,6 +164,16 @@ export class IncrementalPeakWallSource {
   /** 분 → 그 분 체결가의 극값. 삽입은 O(1) 갱신, 축출은 **닿은 분만** 재계산. */
   private extremeByWindow = new Map<number, number>();
   /**
+   * 이 소스가 본 체결의 **당일 극값**(ask=max, bid=min) — 미도달 판정의 내부 절반.
+   *
+   * 창 축출에서 **지우지 않는다** — 하루 스코프의 단조 스칼라라, 창을 벗어난 체결이
+   * 세운 극값도 유효하다. 소스가 훅 수명 내내 살아 증분 소비하므로 접속 이후 구간을
+   * 연속으로 덮고, 접속 이전 구간은 호출부가 백엔드 `day_extreme` 을 인자로 합친다.
+   * reset(전량 재소비·venue 전환)은 지운다 — 그 뒤 창 내 체결로만 다시 서고, 백엔드
+   * 인자가 바닥을 받친다.
+   */
+  private tradeExtreme: number | null = null;
+  /**
    * 같은 `price:t_ms` 키가 **서로 다른 ob 스냅샷**에서 나왔다 = t_ms 중복.
    * 위 `eventSeq` 주석의 모호함이 실제로 발생했다는 뜻이라 축출을 폴백시킨다.
    *
@@ -189,9 +204,12 @@ export class IncrementalPeakWallSource {
     trade: ReadonlyArray<TradeSnapshot>,
     sessionOpenMs: number,
     extras: readonly AskPeakCandidate[] = [],
+    /** 백엔드 스냅샷의 당일 체결 극값 — 내부 극값과 합쳐 미도달 판정에 쓴다
+     *  (접속 이전 구간·reset 이후의 바닥). */
+    backendDayExtreme: number | null = null,
   ): PeakWallClassification {
     this.accumulate(ob, trade, sessionOpenMs);
-    return this.classify(extras);
+    return this.classify(extras, backendDayExtreme);
   }
 
   /** update 의 as-of-cutoff 판. 누적(ob/trade 소비)은 cutoff 무관하게 동일하고, 분류만
@@ -204,9 +222,12 @@ export class IncrementalPeakWallSource {
     extras: readonly AskPeakCandidate[],
     cutoffMs: number,
     sessionOpenMs: number,
+    /** cutoff 시점의 당일 극값(호출부가 오늘 캔들로 근사) — 백엔드 day_extreme 은
+     *  "지금" 기준이라 과거 cutoff 에 쓰면 미래 체결이 섞이므로 받지 않는다. */
+    dayExtremeAsOf: number | null = null,
   ): PeakWallClassification {
     this.accumulate(ob, trade, sessionOpenMs);
-    return this.classifyAsOf(extras, cutoffMs);
+    return this.classifyAsOf(extras, cutoffMs, dayExtremeAsOf);
   }
 
   private accumulate(
@@ -306,6 +327,7 @@ export class IncrementalPeakWallSource {
     this.touchPrices = [];
     this.touchesByWindow = new Map();
     this.extremeByWindow = new Map();
+    this.tradeExtreme = null;
     this.tMsCollisionSeen = false;
     // `fallbacks`/`lastFallbackReason` 은 **지우지 않는다** — reset 은 누적 상태를 버리는
     // 것이지 "이 창에서 폴백이 몇 번 있었나" 라는 사실을 지우는 게 아니다.
@@ -437,6 +459,9 @@ export class IncrementalPeakWallSource {
         if (!isFiniteNumber(tMs) || tMs <= 0) continue;
         this.touchTimes.push(tMs);
         this.touchPrices.push(item.price);
+        this.tradeExtreme = combineDayExtreme(
+          this.tradeExtreme, item.price, this.side,
+        );
         // 삽입은 극값의 **닫힌 연산**이라 O(1) 이다 — 새 값과 기존 극값의 max/min.
         // (삭제만 재계산이 필요하고, 그건 evictTrades 가 닿은 분에만 한다.)
         const window = touchWindowOf(tMs);
@@ -464,12 +489,22 @@ export class IncrementalPeakWallSource {
     return this.side === 'ask' ? extreme >= event.price : extreme <= event.price;
   }
 
-  private classify(extras: readonly AskPeakCandidate[]): PeakWallClassification {
+  private classify(
+    extras: readonly AskPeakCandidate[],
+    backendDayExtreme: number | null,
+  ): PeakWallClassification {
     const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
+    const unreached: AskPeakCandidate[] = [];
+    const dayExtreme = combineDayExtreme(this.tradeExtreme, backendDayExtreme, this.side);
     const consider = (candidate: AskPeakCandidate) => {
       pushTopK(all, candidate);
       if (this.isTouched(candidate)) pushTopK(touched, candidate);
+      // 백엔드 unreached 시드도 extras 로 이 판정을 다시 받는다 — 서버 스냅샷 이후
+      // 극값이 전진했으면 여기서 걸러진다(소급 재분류의 클라이언트 절반).
+      if (isWallUnreached(candidate.price, dayExtreme, this.side)) {
+        pushTopK(unreached, candidate);
+      }
     };
     for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
     // extras(백엔드 피크 후보·seed)는 호출마다 달라질 수 있어 누적하지 않고 매번
@@ -483,7 +518,7 @@ export class IncrementalPeakWallSource {
       if (this.isCoveredByLiveEvent(extra)) continue;
       consider(extra);
     }
-    return { touched, all };
+    return { touched, all, unreached };
   }
 
   /**
@@ -508,9 +543,13 @@ export class IncrementalPeakWallSource {
   private classifyAsOf(
     extras: readonly AskPeakCandidate[],
     cutoffMs: number,
+    dayExtremeAsOf: number | null,
   ): PeakWallClassification {
     const isAsk = this.side === 'ask';
     const extremeByWindow = new Map<number, number>();
+    // 미도달용 as-of 극값 — 창 내 체결(≤ cutoff)과 호출부 근사(캔들)의 결합.
+    // no-cutoff 판의 tradeExtreme 은 여기 쓰지 않는다: cutoff 이후 체결이 섞인다.
+    let dayExtreme = dayExtremeAsOf;
     for (let i = 0; i < this.touchTimes.length; i += 1) {
       const tMs = this.touchTimes[i];
       if (tMs > cutoffMs) continue;
@@ -521,6 +560,7 @@ export class IncrementalPeakWallSource {
         window,
         current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
       );
+      dayExtreme = combineDayExtreme(dayExtreme, price, this.side);
     }
     const isTouchedC = (event: AskPeakCandidate): boolean => {
       const extreme = extremeByWindow.get(touchWindowOf(event.t_ms));
@@ -529,10 +569,14 @@ export class IncrementalPeakWallSource {
     };
     const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
+    const unreached: AskPeakCandidate[] = [];
     const consider = (candidate: AskPeakCandidate) => {
       if (candidate.t_ms > cutoffMs) return;
       pushTopK(all, candidate);
       if (isTouchedC(candidate)) pushTopK(touched, candidate);
+      if (isWallUnreached(candidate.price, dayExtreme, this.side)) {
+        pushTopK(unreached, candidate);
+      }
     };
     for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
     const seenExtras = new Set<string>();
@@ -544,6 +588,6 @@ export class IncrementalPeakWallSource {
       if (this.isCoveredByLiveEvent(extra)) continue;
       consider(extra);
     }
-    return { touched, all };
+    return { touched, all, unreached };
   }
 }

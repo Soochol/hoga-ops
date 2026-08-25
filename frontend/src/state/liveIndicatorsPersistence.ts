@@ -65,6 +65,12 @@ export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const ASK_PEAK_ALL_WALL_DEFAULT_COLOR = '#93C5FD';
 export const BID_PEAK_ALL_WALL_DEFAULT_COLOR = '#FCA5A5';
 export const PEAK_ALL_WALL_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
+// 미도달 벽(당일 극값이 지배하지 못한 벽) 선 — 같은 색상군의 **가장 진한 단계**
+// (MAStylePicker 그리드 1행). 명도 사다리: 연한=전체(터치 무관), 중간=체결된 벽,
+// 진한=미도달(아직 안 깨진 벽) — 무게 의미와 맞춘다.
+export const ASK_PEAK_UNREACHED_DEFAULT_COLOR = '#1E3A8A';
+export const BID_PEAK_UNREACHED_DEFAULT_COLOR = '#7F1D1D';
+export const PEAK_UNREACHED_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
 export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
@@ -135,6 +141,12 @@ export type PersistedIndicators = {
   askPeakAllWallColor: string;
   /** 매도 전체 최대벽 선 두께. 기본 1. */
   askPeakAllWallLineWidth: 1 | 2 | 3 | 4;
+  /** 매도 「미도달 벽(당일 고가 위)」 선 — 최대벽의 하위 토글. opt-in(기본 false). */
+  askPeakUnreachedLineEnabled: boolean;
+  /** 매도 미도달 벽 선 색(hex). 기본 #1E3A8A(진남). */
+  askPeakUnreachedColor: string;
+  /** 매도 미도달 벽 선 두께. 기본 2. */
+  askPeakUnreachedLineWidth: 1 | 2 | 3 | 4;
   /** VI/상하한가 가격선 색(hex). 기본 #EAB308(노랑). */
   viLimitPriceLineColor: string;
   /** VI/상하한가 가격선 두께. 기본 3. */
@@ -153,6 +165,12 @@ export type PersistedIndicators = {
   bidPeakAllWallColor: string;
   /** 매수 전체 최대벽 선 두께. 기본 1. */
   bidPeakAllWallLineWidth: 1 | 2 | 3 | 4;
+  /** 매수 「미도달 벽(당일 저가 아래)」 선 — ask 쪽 미러. opt-in(기본 false). */
+  bidPeakUnreachedLineEnabled: boolean;
+  /** 매수 미도달 벽 선 색(hex). 기본 #7F1D1D(진적). */
+  bidPeakUnreachedColor: string;
+  /** 매수 미도달 벽 선 두께. 기본 2. */
+  bidPeakUnreachedLineWidth: 1 | 2 | 3 | 4;
   /** 당일 최대 매물대(체결량 POC) 밴드 on/off. Default TRUE. */
   tradeVolumePocEnabled: boolean;
   /** 최대 매물대 눈(숨김). 기본 false. */
@@ -352,6 +370,13 @@ export function mergeLiveIndicatorPrefs(
   const bpAllWallEnabled = obj?.bidPeakAllWallLineEnabled === true;
   const bpAllWallColor = normalizeHexColor(obj?.bidPeakAllWallColor, BID_PEAK_ALL_WALL_DEFAULT_COLOR);
   const bpAllWallWidth = normalizeLineWidth(obj?.bidPeakAllWallLineWidth, PEAK_ALL_WALL_DEFAULT_WIDTH);
+  // 미도달 벽 하위 선 — 전체 최대벽과 같은 규약(opt-in + 검증 폴백).
+  const apUnreachedEnabled = obj?.askPeakUnreachedLineEnabled === true;
+  const apUnreachedColor = normalizeHexColor(obj?.askPeakUnreachedColor, ASK_PEAK_UNREACHED_DEFAULT_COLOR);
+  const apUnreachedWidth = normalizeLineWidth(obj?.askPeakUnreachedLineWidth, PEAK_UNREACHED_DEFAULT_WIDTH);
+  const bpUnreachedEnabled = obj?.bidPeakUnreachedLineEnabled === true;
+  const bpUnreachedColor = normalizeHexColor(obj?.bidPeakUnreachedColor, BID_PEAK_UNREACHED_DEFAULT_COLOR);
+  const bpUnreachedWidth = normalizeLineWidth(obj?.bidPeakUnreachedLineWidth, PEAK_UNREACHED_DEFAULT_WIDTH);
   const viLimitPriceLineColor = typeof obj?.viLimitPriceLineColor === 'string'
     && HEX_COLOR.test(obj.viLimitPriceLineColor as string)
     ? (obj.viLimitPriceLineColor as string) : VI_LIMIT_PRICE_LINE_DEFAULT_COLOR;
@@ -478,6 +503,9 @@ export function mergeLiveIndicatorPrefs(
     askPeakAllWallLineEnabled: apAllWallEnabled,
     askPeakAllWallColor: apAllWallColor,
     askPeakAllWallLineWidth: apAllWallWidth,
+    askPeakUnreachedLineEnabled: apUnreachedEnabled,
+    askPeakUnreachedColor: apUnreachedColor,
+    askPeakUnreachedLineWidth: apUnreachedWidth,
     viLimitPriceLineColor,
     viLimitPriceLineWidth,
     bidPeakEnabled: bpEnabled,
@@ -487,6 +515,9 @@ export function mergeLiveIndicatorPrefs(
     bidPeakAllWallLineEnabled: bpAllWallEnabled,
     bidPeakAllWallColor: bpAllWallColor,
     bidPeakAllWallLineWidth: bpAllWallWidth,
+    bidPeakUnreachedLineEnabled: bpUnreachedEnabled,
+    bidPeakUnreachedColor: bpUnreachedColor,
+    bidPeakUnreachedLineWidth: bpUnreachedWidth,
     tradeVolumePocEnabled: tradeVolumePoc,
     tradeVolumePocHidden: tvpHidden,
     tradeVolumePocBandPct: tvpBandPct,

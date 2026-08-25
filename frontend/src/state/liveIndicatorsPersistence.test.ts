@@ -20,6 +20,9 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakAllWallLineEnabled: false,
       askPeakAllWallColor: '#93C5FD',
       askPeakAllWallLineWidth: 1,
+      askPeakUnreachedLineEnabled: false,
+      askPeakUnreachedColor: '#1E3A8A',
+      askPeakUnreachedLineWidth: 2,
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
@@ -29,6 +32,9 @@ describe('mergeLiveIndicatorPrefs', () => {
       bidPeakAllWallLineEnabled: false,
       bidPeakAllWallColor: '#FCA5A5',
       bidPeakAllWallLineWidth: 1,
+      bidPeakUnreachedLineEnabled: false,
+      bidPeakUnreachedColor: '#7F1D1D',
+      bidPeakUnreachedLineWidth: 2,
       tradeVolumePocEnabled: true,
       tradeVolumePocHidden: false,
       tradeVolumePocBandPct: 0.005,
@@ -513,6 +519,31 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(m.askPeakAllWallLineEnabled).toBe(false);
     expect(m.askPeakAllWallColor).toBe('#93C5FD');
     expect(m.askPeakAllWallLineWidth).toBe(1);
+  });
+  it('미도달 벽 하위 선: 유효값 보존(기본값과 다른 값) + 이상값 폴백', () => {
+    const kept = mergeLiveIndicatorPrefs({
+      askPeakUnreachedLineEnabled: true,
+      askPeakUnreachedColor: '#0F766E',
+      askPeakUnreachedLineWidth: 4,
+      bidPeakUnreachedLineEnabled: true,
+      bidPeakUnreachedColor: '#B45309',
+      bidPeakUnreachedLineWidth: 3,
+    });
+    expect(kept.askPeakUnreachedLineEnabled).toBe(true);
+    expect(kept.askPeakUnreachedColor).toBe('#0F766E');
+    expect(kept.askPeakUnreachedLineWidth).toBe(4);
+    expect(kept.bidPeakUnreachedLineEnabled).toBe(true);
+    expect(kept.bidPeakUnreachedColor).toBe('#B45309');
+    expect(kept.bidPeakUnreachedLineWidth).toBe(3);
+
+    const fallback = mergeLiveIndicatorPrefs({
+      askPeakUnreachedLineEnabled: 'yes',
+      askPeakUnreachedColor: 'navy',
+      askPeakUnreachedLineWidth: 0,
+    });
+    expect(fallback.askPeakUnreachedLineEnabled).toBe(false);
+    expect(fallback.askPeakUnreachedColor).toBe('#1E3A8A');
+    expect(fallback.askPeakUnreachedLineWidth).toBe(2);
   });
   it('VI/상하한가 선 스타일 기본값은 #EAB308/3', () => {
     const m = mergeLiveIndicatorPrefs(undefined);

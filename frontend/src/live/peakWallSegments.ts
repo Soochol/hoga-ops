@@ -34,6 +34,7 @@ export type PeakWallInput = PeakBase & {
   traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  unreached_peaks?: AskPeakCandidate[];
 };
 
 function allCandidate(
@@ -82,6 +83,36 @@ export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallIn
       max_t_ms: max?.t_ms ?? null,
       traded_peaks: closeArr,
       traded_max_peaks: maxArr,
+    });
+  }
+  return out;
+}
+
+/**
+ * 미도달 벽(`unreached_*`)을 traded carrier 자리로 옮긴 사본 — toAllWallPeakInputs 와
+ * 같은 리맵 패턴. **cont 단일 계열**이라 close/max 구분이 없어 양쪽에 같은 값을 싣는다
+ * (intraMax 토글이 이 선에는 무효 — 백엔드 AskPeakDualRow 주석의 대우).
+ * 과거일 배열은 range 에서 벗기지 않으므로(최대 3개) 배열이 오면 그대로 옮기고,
+ * 없으면 스칼라 폴백 — `traded_peaks: undefined` 규약은 toAllWallPeakInputs 와 동일
+ * (`[]` 를 넣으면 컷오프의 chooseCandidate 스칼라 폴백이 죽는다).
+ */
+export function toUnreachedWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
+  const out: PeakWallInput[] = [];
+  for (const p of peaks) {
+    const arr = p.unreached_peaks?.length ? p.unreached_peaks : undefined;
+    const rankOne = arr?.[0]
+      ?? allCandidate(p.unreached_price, p.unreached_qty, p.unreached_t_ms);
+    if (!rankOne) continue;
+    out.push({
+      date: p.date,
+      price: rankOne.price,
+      qty: rankOne.qty,
+      t_ms: rankOne.t_ms,
+      max_price: rankOne.price,
+      max_qty: rankOne.qty,
+      max_t_ms: rankOne.t_ms,
+      traded_peaks: arr,
+      traded_max_peaks: arr,
     });
   }
   return out;
