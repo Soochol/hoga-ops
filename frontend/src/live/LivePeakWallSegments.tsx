@@ -58,6 +58,11 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
    *  1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking 머리말). */
   const legendSegmentsRef = useRef<readonly PeakWallSegment[]>([]);
   legendSegmentsRef.current = wall.rankSegments;
+  /** 「레전드 순위 셀」 토글. **행은 끄지 않는다** — 등록을 걷으면 행이 사라져
+   *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록하고 여기서 빈
+   *  목록을 낼 뿐이다. ref 인 이유는 위 세그먼트와 같다(비반응형 레지스트리). */
+  const legendCellsRef = useRef(true);
+  legendCellsRef.current = wall.legendCells;
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine 과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
@@ -97,13 +102,15 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   // 프레임이 **이전 범위의 상위 3개**를 보일 수 있다. 세그먼트 집합 자체는 팬으로 안
   // 바뀌므로 ref + 실시간 범위면 충분하다.
   useEffect(() => {
-    const provider: FlagLegendValueProvider = () => peakWallRankLegendCells(
-      legendSegmentsRef.current,
-      primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
-      legendId,
-    );
-    registerFlagLegendValues(windowId, legendId, provider);
-    return () => unregisterFlagLegendValues(windowId, legendId, provider);
+    const provider: FlagLegendValueProvider = () => (legendCellsRef.current
+      ? peakWallRankLegendCells(
+        legendSegmentsRef.current,
+        primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
+        legendId,
+      )
+      : []);
+    registerFlagLegendValues(windowId, legendId, 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, legendId, 'main', provider);
   }, [windowId, legendId]);
 
   // 그리기 — 팬·줌은 구독하지 않는다. 이 계산에 보이는 범위가 들어가지 않기 때문이다

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { TRADING_TIME_MIN_HHMM } from '../../util/tradingTime';
 import { projectRatio, RATIO_SPEC, type RatioPaneContext } from './ratio';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
@@ -12,7 +13,7 @@ const baseCtx: RatioPaneContext = {
   outlierFilterEnabled: false,
   outlierThreshold: 100,
   brokerLateEntryEnabled: false,
-  brokerLateEntrySideMode: 'both',
+  brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
   brokerLateEntryBuyColor: '#ef4444',
   brokerLateEntrySellColor: '#3b82f6',
 };
@@ -180,7 +181,7 @@ describe('projectRatio', () => {
       outlierFilterEnabled: true,
       outlierThreshold: 100,
       brokerLateEntryEnabled: false,
-      brokerLateEntrySideMode: 'both',
+      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
     };
@@ -233,7 +234,7 @@ describe('projectRatio', () => {
       outlierThreshold: 10,
       intraMax: false,
       brokerLateEntryEnabled: true,
-      brokerLateEntrySideMode: 'both',
+      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
     });

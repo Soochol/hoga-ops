@@ -99,7 +99,8 @@ describe('드로어 편집은 대상 창의 세트로 간다 (ADR-0152)', () => 
     // 봉(D)이라 **봉 축으로는 구별되지 않는다** — 창 축이 유일한 기여자다.
     render(<WorkspaceIndicatorDrawer windowId="c1" onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    // 패널의 어휘가 추가/삭제로 바뀌었다 — 켜진 지표는 "내 지표" 에서 ✕ 로 지운다.
+    fireEvent.click(screen.getByRole('button', { name: '거래량 삭제' }));
 
     const s = useLivePageStore.getState();
     expect(s.indicatorsByWindow['live:c1']?.D?.volumeEnabled).toBe(false);

@@ -16,7 +16,7 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { memo, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
@@ -62,11 +62,15 @@ import {
   readSeriesValue,
   type LegendFlagId,
   type LegendFlagInput,
+  type LegendMAValue,
   type LegendOhlcValues,
   type LegendRow,
   type PaneCellInput,
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
+import { FLAG_INDICATOR_TYPES, type MaSliceKey } from '../state/indicatorOps';
+import MaInstancePopover from './indicators/MaInstancePopover';
+import type { LiveMAConfig } from '../state/livePage';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -133,19 +137,26 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'peak-wall',
 ]);
 
-/** flag 행(값 없는 오버레이 지표)의 표시 화이트리스트 — `LEGEND_CELL_PANES` 와 같은 성격.
- *  2026-07-22 에 캔들 pane 밀집도 때문에 flag 행을 **전부** 숨겼다. 당일 최대벽 두 행만
- *  2026-08-22 에 되살린다(사용자 요청): 값이 「커서가 올라간 거래일의 벽 1개」에서
- *  「보이는 영역 잔량 상위 3개」로 바뀌어, 커서를 따라다니는 단발 판독이 아니라 **화면
- *  전체의 요약**이 됐다 — 커서를 올리지 않아도 읽을 값이 있으므로 레전드 자리가 정당하다.
- *  나머지 flag(매물대·히트맵·단별잔량·신규거래원)는 계속 숨긴다.
+/**
+ * flag 행(값 없는 오버레이 지표)의 표시 목록 — 이제 **전 종류**다.
  *
- *  ⚠ 상위 3개가 비어도(보이는 범위에 벽 없음) 행은 남는다 — 행을 지우면 눈·✕ 가 함께
- *  사라져 레전드에서 지표를 끌 수 없다. */
-const LEGEND_FLAG_IDS: ReadonlySet<LegendFlagId> = new Set<LegendFlagId>([
-  'ask-peak',
-  'bid-peak',
-]);
+ * 이 상수는 화이트리스트였다. 2026-07-22 에 캔들 pane 밀집도 때문에 flag 행을 전부
+ * 숨겼고, 2026-08-22 에 당일 최대벽 두 행만 되살렸다. **이 PR 이 그 결정을 뒤집는다**
+ * — 레전드 행이 "이 지표가 떠 있다" 의 표식이자 유일한 조작 표면(눈·✕)이 된 이상,
+ * 켜 놓은 지표가 레전드에 없으면 사용자는 그것을 끄러 모달을 열어야 한다.
+ *
+ * 밀집도는 여전히 실재하는 문제지만 이제 **행 숨김이 아니라 가로 축약**으로 푼다
+ * (`global.css` 의 `.legend-ma-value` / `.legend-row-ma` 컨테이너 쿼리). 종류당 1행
+ * 이라 부활의 비용이 +4행에 그치는 것도 판단의 근거다.
+ *
+ * ⚠ 값이 비어도(보이는 범위에 벽 없음, provider 미등록) 행은 남는다 — 행을 지우면
+ * 눈·✕ 가 함께 사라져 레전드에서 지표를 끌 수 없다.
+ */
+const LEGEND_FLAG_IDS: ReadonlySet<LegendFlagId> = new Set<LegendFlagId>(FLAG_INDICATOR_TYPES);
+
+/** flat 싱글턴 flag 지표의 유일한 인스턴스 id. 배열 승격(Phase 3) 전까지 상수다 —
+ *  리터럴을 흩뿌리지 않는 이유는 승격 시 이 상수의 소비처가 곧 작업 목록이기 때문. */
+const FLAG_MAIN_INSTANCE = 'main';
 
 // Positioned by the per-pane stack wrapper (flex column), not absolutely —
 // a pane can now hold several rows (candle: MA + daily-MA + flag chips).
@@ -510,14 +521,10 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
 
 /** ✕ dispatch for flag rows — id → master toggle off. 창-스코프 절단으로
  *  actions 를 인자로 받는다(컴포넌트가 useIndicatorActions 로 공급). */
-const FLAG_TURN_OFF: Record<LegendFlagId, (a: IndicatorActions) => void> = {
-  'ask-peak': (a) => a.setAskPeakEnabled(false),
-  'bid-peak': (a) => a.setBidPeakEnabled(false),
-  'trade-volume-poc': (a) => a.setTradeVolumePocEnabled(false),
-  'depth-heatmap': (a) => a.setDepthHeatmapEnabled(false),
-  'depth-delta': (a) => a.setDepthDeltaEnabled(false),
-  'broker-late-entry': (a) => a.setBrokerLateEntryEnabled(false),
-};
+// 종전에 여기 있던 `FLAG_TURN_OFF`(종류별 `setXxxEnabled(false)` 6줄)는 사라졌다.
+// ✕ 의 뜻이 "끄기" 에서 **"삭제"** 로 바뀌었고, 그 구현은 종류별 분기가 아니라
+// `flagRemovalPatches` 의 필드표 하나다(`removeFlagIndicatorWithUndo`). 분기가 표로
+// 바뀌면서 새 flag 지표를 추가할 때 고칠 곳이 하나 줄었다.
 
 /** 눈(숨김) dispatch — id → hidden setter. */
 const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolean) => void> = {
@@ -565,63 +572,186 @@ function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
   );
 }
 
-function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
-  const setHidden = useIndicatorActions().setMovingAverageHidden;
-  const setEnabled = useIndicatorActions().setMovingAverageEnabled;
+/** 꺼진 인스턴스 칩의 불투명도 — 자리는 지키되 "지금 안 그려진다" 를 읽히게 한다.
+ *  칩을 지우지 않는 이유는 지우면 다시 켤 표면이 사라지기 때문이다(flag 행을 값
+ *  없이도 남기는 것과 같은 계약, `LEGEND_FLAG_IDS` 주석). */
+const DISABLED_CHIP_OPACITY = 0.4;
+
+/**
+ * 레전드 칩 하나 = MA 인스턴스 하나. 이 모델의 조작 표면이다.
+ *
+ *  - 클릭   → 그 인스턴스만 숨김/표시(비파괴). 꺼진 칩은 dim + 값 생략 — 오버레이가
+ *             series 를 비우므로 읽을 값이 애초에 없고, 빈 "—" 를 세워 두면 켜진
+ *             칩과 헷갈린다.
+ *  - 더블클릭 → 인스턴스 속성 popover(PR-2). 지금은 배선만 — 첫 클릭의 숨김이
+ *             둘째 클릭에서 되돌아오므로 순효과는 popover 만 열리는 것이다.
+ *  - 호버 ✕  → 그 인스턴스 삭제(파괴적) + 실행취소 토스트.
+ *
+ * ⚠ 칩은 `pointerEvents:'auto'` 다. 루트 컨테이너가 `none` 인 것은 크로스헤어가
+ * 레전드 **밑에서** 계속 추적되게 하려는 계약인데(`legendRootStyle` 주석), 칩이
+ * 조작 대상이 된 이상 그 폭만큼 사각지대를 내주는 것이 이 디자인의 값이다.
+ * 여백은 여전히 `none` 이라 사각지대는 칩 스트립에 국한된다.
+ */
+function MaChip({
+  ma,
+  label,
+  onToggle,
+  onRemove,
+  onOpenSettings,
+}: {
+  ma: LegendMAValue;
+  label: string;
+  onToggle: () => void;
+  onRemove: () => void;
+  /** 더블클릭 — 앵커 엘리먼트를 함께 넘긴다(팝오버가 이 칩에 붙어야 하므로). */
+  onOpenSettings: (anchor: HTMLElement) => void;
+}) {
+  return (
+    <span
+      className="legend-chip"
+      data-testid={`legend-ma-chip-${ma.id}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-2xs)',
+        pointerEvents: 'auto',
+        userSelect: 'none',
+        opacity: ma.enabled ? undefined : DISABLED_CHIP_OPACITY,
+      }}
+    >
+      {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
+      <button
+        type="button"
+        aria-label={`${label} ${ma.period} ${ma.enabled ? '숨김' : '표시'}`}
+        title={`${label} ${ma.period}`}
+        onClick={onToggle}
+        onDoubleClick={(e) => onOpenSettings(e.currentTarget.parentElement ?? e.currentTarget)}
+        style={{
+          padding: 0,
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          font: 'inherit',
+          color: ma.color,
+          fontWeight: 500,
+        }}
+      >
+        {ma.period}
+      </button>
+      {ma.enabled && (
+        <span className="legend-ma-value">
+          <MaValueCell value={ma.value} />
+        </span>
+      )}
+      <button
+        type="button"
+        className="legend-chip-x"
+        aria-label={`${label} ${ma.period} 삭제`}
+        title={`${label} ${ma.period} 삭제`}
+        onClick={onRemove}
+        style={{ ...iconBtnStyle, width: 14, height: 14 }}
+      >
+        <CloseGlyph />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * MA 계열 행 — 현재봉·일봉이 라벨과 액션만 다르고 구조가 같다.
+ *
+ * 눈은 **전 인스턴스 일괄 토글**이다. 종전의 타입 마스터(✕)와 타입 눈이 슬롯의
+ * `enabled` 로 접히면서 둘이 한 조작으로 합쳐졌다 — 같은 효과를 내는 버튼 둘을
+ * 나란히 두는 대신 눈 하나만 남긴다. 인스턴스 개별 삭제(칩 ✕)는 후속 PR 이고,
+ * 그때까지 슬롯 추가·삭제는 지표 패널이 담당한다.
+ */
+function MaSlotLegendRow(
+  { row, slice, label, configs, onToggleAll, onToggleOne, onRemoveOne, onPatchOne }: {
+    row: Extract<LegendRow, { kind: 'ma' | 'daily-ma' }>;
+    slice: MaSliceKey;
+    label: string;
+    /** 팝오버가 편집할 **원본 config** — 행의 칩은 표시용이라 lineWidth·source 가 없다. */
+    configs: readonly LiveMAConfig[];
+    onToggleAll: (enabled: boolean) => void;
+    onToggleOne: (id: string, enabled: boolean) => void;
+    onRemoveOne: (id: string) => void;
+    onPatchOne: (id: string, patch: Partial<LiveMAConfig>) => void;
+  },
+) {
+  const anyEnabled = row.mas.some((m) => m.enabled);
+  // 열린 팝오버의 대상 인스턴스와 그 앵커. 앵커를 state 로 드는 이유는 칩이 배열
+  // 렌더라 ref 를 미리 잡아 둘 수 없어서다 — 더블클릭한 그 엘리먼트를 받아 쥔다.
+  const [editing, setEditing] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  const anchorRef = useRef<HTMLElement | null>(null);
+  anchorRef.current = editing?.anchor ?? null;
+  const editingConfig = editing ? configs.find((c) => c.id === editing.id) ?? null : null;
+  const closePopover = useCallback(() => setEditing(null), []);
+
   return (
     <>
-      <span style={{ color: 'var(--fg-dim)' }}>이동평균선</span>
+      <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
       {row.mas.map((m) => (
-        <span
+        <MaChip
           key={m.id}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
-        >
-          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
-          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
-          <MaValueCell value={m.value} />
-        </span>
+          ma={m}
+          label={label}
+          onToggle={() => onToggleOne(m.id, !m.enabled)}
+          onRemove={() => onRemoveOne(m.id)}
+          onOpenSettings={(anchor) => setEditing({ id: m.id, anchor })}
+        />
       ))}
+      {editingConfig && (
+        <MaInstancePopover
+          slice={slice}
+          config={editingConfig}
+          anchorRef={anchorRef}
+          onChange={(patch) => onPatchOne(editingConfig.id, patch)}
+          onRemove={() => { onRemoveOne(editingConfig.id); closePopover(); }}
+          onDismiss={closePopover}
+        />
+      )}
       <HoverIcon
-        label="이동평균선 선 숨김/표시"
-        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => setHidden(!row.hidden)}
+        label={`${label} 선 숨김/표시`}
+        restColor={anyEnabled ? 'var(--fg-dimmer)' : 'var(--fg-dim)'}
+        onClick={() => onToggleAll(!anyEnabled)}
       >
-        <EyeGlyph hidden={row.hidden} />
-      </HoverIcon>
-      <HoverIcon label="이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
-        <CloseGlyph />
+        <EyeGlyph hidden={!anyEnabled} />
       </HoverIcon>
     </>
   );
 }
 
-function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
-  const setHidden = useIndicatorActions().setDailyMovingAverageHidden;
-  const setEnabled = useIndicatorActions().setDailyMovingAverageEnabled;
+function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
+  const actions = useIndicatorActions();
+  const configs = useWindowIndicator((s) => s.movingAverages);
   return (
-    <>
-      <span style={{ color: 'var(--fg-dim)' }}>일봉 이동평균선</span>
-      {row.mas.map((m) => (
-        <span
-          key={m.id}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
-        >
-          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
-          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
-          <MaValueCell value={m.value} />
-        </span>
-      ))}
-      <HoverIcon
-        label="일봉 이동평균선 선 숨김/표시"
-        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => setHidden(!row.hidden)}
-      >
-        <EyeGlyph hidden={row.hidden} />
-      </HoverIcon>
-      <HoverIcon label="일봉 이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
-        <CloseGlyph />
-      </HoverIcon>
-    </>
+    <MaSlotLegendRow
+      row={row}
+      slice="movingAverages"
+      label="이동평균선"
+      configs={configs}
+      onToggleAll={actions.setAllMovingAveragesEnabled}
+      onToggleOne={(id, enabled) => actions.setMovingAverage(id, { enabled })}
+      onRemoveOne={actions.removeMovingAverageWithUndo}
+      onPatchOne={actions.setMovingAverage}
+    />
+  );
+}
+
+function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
+  const actions = useIndicatorActions();
+  const configs = useWindowIndicator((s) => s.dailyMovingAverages);
+  return (
+    <MaSlotLegendRow
+      row={row}
+      slice="dailyMovingAverages"
+      label="일봉 이동평균선"
+      configs={configs}
+      onToggleAll={actions.setAllDailyMovingAveragesEnabled}
+      onToggleOne={(id, enabled) => actions.setDailyMovingAverage(id, { enabled })}
+      onRemoveOne={actions.removeDailyMovingAverageWithUndo}
+      onPatchOne={actions.setDailyMovingAverage}
+    />
   );
 }
 
@@ -651,14 +781,14 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
       <HoverIcon
         label={`${row.label} 표시 숨김/표시`}
         restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => FLAG_SET_HIDDEN[row.id](indicatorActions, !row.hidden)}
+        onClick={() => FLAG_SET_HIDDEN[row.type](indicatorActions, !row.hidden)}
       >
         <EyeGlyph hidden={row.hidden} />
       </HoverIcon>
       <HoverIcon
-        label={`${row.label} 지표 끄기`}
+        label={`${row.label} 삭제`}
         restColor="var(--fg-dimmer)"
-        onClick={() => FLAG_TURN_OFF[row.id](indicatorActions)}
+        onClick={() => indicatorActions.removeFlagIndicatorWithUndo(row.type)}
       >
         <CloseGlyph />
       </HoverIcon>
@@ -842,12 +972,10 @@ function PaneLegendOverlay({
   // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
   // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
   const windowId = useWindowScopeId();
+  // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
+  // 새 배열을 만들므로 재렌더 입도는 그대로다.
   const movingAverages = useWindowIndicator((s) => s.movingAverages);
-  const movingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
-  const movingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
   const dailyMovingAverages = useWindowIndicator((s) => s.dailyMovingAverages);
-  const dailyMovingAverageEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
-  const dailyMovingAverageHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
   // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
   const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled);
   const askPeakHidden = useWindowIndicator((s) => s.askPeakHidden);
@@ -1040,47 +1168,52 @@ function PaneLegendOverlay({
     ?? syncValueTimeSec;
   const indicatorFlags: LegendFlagInput[] = [
     {
-      id: 'ask-peak',
+      type: 'ask-peak',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 매도 최대벽',
       enabled: askPeakEnabled,
       applicable: isMinute,
       hidden: askPeakHidden,
       swatches: [askPeakColor],
-      cells: readFlagLegendValues(windowId, 'ask-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'ask-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'bid-peak',
+      type: 'bid-peak',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 매수 최대벽',
       enabled: bidPeakEnabled,
       applicable: isMinute,
       hidden: bidPeakHidden,
       swatches: [bidPeakColor],
-      cells: readFlagLegendValues(windowId, 'bid-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'bid-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'trade-volume-poc',
+      type: 'trade-volume-poc',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 최대 매물대',
       enabled: tradeVolumePocEnabled,
       applicable: isMinute,
       hidden: tradeVolumePocHidden,
       swatches: [tradeVolumePocColor],
-      cells: readFlagLegendValues(windowId, 'trade-volume-poc', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'trade-volume-poc', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'depth-heatmap',
+      type: 'depth-heatmap',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '호가 잔량 히트맵',
       enabled: depthHeatmapEnabled,
       applicable: isMinute,
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
-      cells: readFlagLegendValues(windowId, 'depth-heatmap', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-heatmap', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'depth-delta',
+      type: 'depth-delta',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '단별 잔량 증감',
       enabled: depthDeltaEnabled,
@@ -1091,10 +1224,11 @@ function PaneLegendOverlay({
       applicable: isMinute && hasDepthDelta,
       hidden: depthDeltaHidden,
       swatches: [depthDeltaInColor, depthDeltaOutColor],
-      cells: readFlagLegendValues(windowId, 'depth-delta', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-delta', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'broker-late-entry',
+      type: 'broker-late-entry',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'ratio',
       label: '신규 거래원 등장',
       enabled: brokerLateEntryEnabled,
@@ -1107,19 +1241,15 @@ function PaneLegendOverlay({
           : brokerLateEntrySideMode === 'sell'
             ? [brokerLateEntrySellColor]
             : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
-      cells: readFlagLegendValues(windowId, 'broker-late-entry', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'broker-late-entry', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
   ];
 
   const rows = buildLegendRows({
     ohlc,
     movingAverages,
-    movingAverageEnabled,
-    movingAverageHidden,
     maValues,
     dailyMovingAverages,
-    dailyMovingAverageEnabled,
-    dailyMovingAverageHidden,
     dailyMaValues,
     dailyMaApplicable: isMinute,
     indicatorFlags,
@@ -1137,7 +1267,7 @@ function PaneLegendOverlay({
     (r) =>
       r.kind === 'ohlc' ||
       r.kind === 'ma' ||
-      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.id)) ||
+      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.type)) ||
       (r.kind === 'cells' && LEGEND_CELL_PANES.has(r.paneId)),
   );
 
@@ -1282,7 +1412,12 @@ function PaneLegendOverlay({
                   <div
                     // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
                     // key 충돌 예방.
-                    key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
+                    key={row.kind === 'flag'
+                      ? `${row.paneId}:flag:${row.type}:${row.instanceId}`
+                      : `${row.paneId}:${row.kind}`}
+                    // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
+                    // 행이다(global.css `.legend-row-ma`).
+                    className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
                     style={boxStyle}
                   >
                     {row.kind === 'ohlc' ? (

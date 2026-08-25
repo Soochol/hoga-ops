@@ -212,18 +212,22 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
+    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
+    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
+    // (레전드 눈 아이콘이 그 자리다).
+    key: 'askPeakLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '보이는 영역의 매도 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'askPeakRankArrowEnabled',
     label: '상위벽 순위 화살표',
     description:
       '레전드 상위 3개 매도벽이 걸린 분봉의 고가 위에 ↓ 화살표와 순위를 찍습니다. 수평선은 벽 가격에 그려지므로 어느 봉이었는지는 이 화살표로 읽습니다.',
     default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'askPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매도 최대벽을 계산합니다.',
-    default: false,
     category: 'indicator-modal',
   },
   {
@@ -262,17 +266,21 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'bidPeakRankArrowEnabled',
-    label: '상위벽 순위 화살표',
-    description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
+    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
+    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
+    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
+    // (레전드 눈 아이콘이 그 자리다).
+    key: 'bidPeakLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '보이는 영역의 매수 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
     default: true,
     category: 'indicator-modal',
   },
   {
-    key: 'bidPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매수 최대벽을 계산합니다.',
-    default: false,
+    key: 'bidPeakRankArrowEnabled',
+    label: '상위벽 순위 화살표',
+    description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
+    default: true,
     category: 'indicator-modal',
   },
   {

@@ -27,12 +27,14 @@ import { formatKoreanInt } from '../../util/koreanNumber';
 import { formatQtyCompact } from '../../util/formatQtyCompact';
 import { useWindowScopeId } from '../workspace/windowView';
 import { scopeEntries } from './windowScopedRegistry';
-import { usePeakWallStepsRegistry } from './peakWallStepsRegistry';
+import {
+  PEAK_WALL_STEP_SLOTS,
+  usePeakWallStepsRegistry,
+  type PeakWallStepKey,
+} from './peakWallStepsRegistry';
 
-export type PeakWallPaneCtx = {
-  ask: readonly PeakWallStepPoint[];
-  bid: readonly PeakWallStepPoint[];
-};
+/** 슬롯 키 → 계단 점. 키 목록은 `PEAK_WALL_STEP_SLOTS` 하나에서만 온다. */
+export type PeakWallPaneCtx = Readonly<Record<PeakWallStepKey, readonly PeakWallStepPoint[]>>;
 
 /** 등록 전(첫 렌더)·스코프 미스에 돌려줄 **공유** 빈 배열 — 매번 새 `[]` 를 만들면
  *  ctx 참조가 흔들려 data effect 가 헛돈다. */
@@ -41,9 +43,16 @@ const EMPTY_POINTS: readonly PeakWallStepPoint[] = [];
 const usePeakWallPaneContext = (): PeakWallPaneCtx => {
   const scope = useWindowScopeId();
   const slots = usePeakWallStepsRegistry((s) => scopeEntries(s.byScope, scope));
-  const ask = slots.get('ask')?.points ?? EMPTY_POINTS;
-  const bid = slots.get('bid')?.points ?? EMPTY_POINTS;
-  return useMemo(() => ({ ask, bid }), [ask, bid]);
+  // 슬롯 6개를 각각 꺼내 memo deps 로 편다 — Map 자체를 dep 으로 쓰면 참조가 매번
+  // 달라져(스토어가 새 Map 을 낸다) ctx 가 흔들리고 data effect 가 헛돈다.
+  const points = PEAK_WALL_STEP_SLOTS.map((s) => slots.get(s.key)?.points ?? EMPTY_POINTS);
+  return useMemo(
+    () => Object.fromEntries(
+      PEAK_WALL_STEP_SLOTS.map((slot, i) => [slot.key, points[i]]),
+    ) as PeakWallPaneCtx,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 위 주석: 슬롯별 참조로 편다.
+    points,
+  );
 };
 
 const priceFormat = {
@@ -66,12 +75,9 @@ const lineOptions = {
   priceFormat,
 };
 
-const askData = (
+const dataFor = (key: PeakWallStepKey) => (
   _bundle: RangeBundle, _axis: VirtualAxis, ctx: PeakWallPaneCtx,
-): LineData<Time>[] => ctx.ask.slice();
-const bidData = (
-  _bundle: RangeBundle, _axis: VirtualAxis, ctx: PeakWallPaneCtx,
-): LineData<Time>[] => ctx.bid.slice();
+): LineData<Time>[] => ctx[key].slice();
 
 export const PEAK_WALL_SPEC = {
   name: 'peak-wall' as const,
@@ -87,24 +93,18 @@ export const PEAK_WALL_SPEC = {
   // bundleKind 없음(기본 candle 그릇): 이 pane 은 번들을 읽지 않지만, SSE 틱마다
   // 참조가 바뀌는 그릇을 받으면 data effect 가 틱마다 헛돈다 — 안정 참조 그릇이 맞다.
   useContext: usePeakWallPaneContext,
-  series: [
-    // 스와치 없음: 선 색은 창별 사용자 설정(askPeakColor/bidPeakColor)이 점에 실려
-    // 오는데, legend meta 의 color thunk 는 모듈 레벨이라 자기 창을 모른다 — 전역
-    // 투영을 읽으면 다른 창에서 틀린 색이 나온다. 라벨(매도/매수)이 방향을 이미
-    // 말하므로 생략한다(거래량 pane 의 per-bar 색 생략과 같은 결).
+  // 계열별 series — 레전드 라벨과 데이터 키가 **같은 상수**에서 파생된다
+    // (`PEAK_WALL_STEP_SLOTS`). 손으로 두 벌 적으면 한쪽이 조용히 빈 슬롯을 읽는다.
+    //
+    // 스와치 없음: 선 색은 창별 사용자 설정이 점에 실려 오는데, legend meta 의 color
+    // thunk 는 모듈 레벨이라 자기 창을 모른다 — 전역 투영을 읽으면 다른 창에서 틀린
+    // 색이 나온다. 라벨이 방향·계열을 이미 말하므로 생략한다.
     // 값 포맷은 도킹 라벨의 잔량부와 **같은 함수**(formatQtyCompact) — 두 표면이
     // 같은 벽을 다르게 읽으면 안 된다(#839 의 규율).
-    {
-      type: LineSeries,
-      legend: { label: '매도', format: formatQtyCompact },
-      options: lineOptions,
-      data: askData,
-    },
-    {
-      type: LineSeries,
-      legend: { label: '매수', format: formatQtyCompact },
-      options: lineOptions,
-      data: bidData,
-    },
-  ],
+  series: PEAK_WALL_STEP_SLOTS.map((slot) => ({
+    type: LineSeries,
+    legend: { label: slot.label, format: formatQtyCompact },
+    options: lineOptions,
+    data: dataFor(slot.key),
+  })),
 } satisfies PaneSpec<PeakWallPaneCtx>;

@@ -33,7 +33,6 @@ function render(applicable = true, peaks: AskPeak[] = [PEAK], needStepSegments =
     axis,
     todayKst: DAY,
     applicable,
-    visibleTimeCutoff: null,
     dailyMaFilter: null,
     needStepSegments,
   })).result;
@@ -56,6 +55,7 @@ describe('usePeakWallRender', () => {
         // "꺼짐" 전제가 오염되므로 매번 되돌린다.
         askPeakAllWallLineEnabled: false,
         askPeakUnreachedLineEnabled: false,
+        askPeakTradedLineEnabled: true,
       });
     });
   });
@@ -269,5 +269,46 @@ describe('usePeakWallRender', () => {
       [110, 500],
       [130, 900],
     ]);
+  });
+
+  // ── 계열 토글 3형제 대칭(2026-08-25 설정 재구성) ──────────────────────
+  it('체결된 벽도 자기 토글로 꺼진다 — 다른 계열은 영향받지 않는다', () => {
+    const both: AskPeak = {
+      ...PEAK,
+      all_price: 130, all_qty: 900, all_t_ms: 2 * MIN,
+      all_max_price: 130, all_max_qty: 900, all_max_t_ms: 2 * MIN,
+    };
+    act(() => {
+      useLivePageStore.setState({ askPeakAllWallLineEnabled: true });
+    });
+    const on = render(true, [both]);
+    expect(on.current.segments).toHaveLength(1);
+    expect(on.current.allWallSegments).toHaveLength(1);
+
+    // 체결된 벽만 끈다 — 그 선과 그 계단만 비고, 전체 최대벽은 그대로다.
+    act(() => {
+      useLivePageStore.setState({ askPeakTradedLineEnabled: false });
+    });
+    const off = render(true, [both]);
+    expect(off.current.segments).toEqual([]);
+    expect(off.current.allWallSegments).toHaveLength(1);
+    // 랭킹 병합 집합에는 전체 최대벽만 남는다.
+    expect(off.current.rankSegments.map((seg) => seg.price)).toEqual([130]);
+  });
+
+  it('레전드 셀 토글은 셀만 가른다 — 선·라벨·화살표는 그대로', () => {
+    const on = render();
+    expect(on.current.legendCells).toBe(true);
+
+    act(() => {
+      useChartPrefsStore.setState({ askPeakLegendCellEnabled: false });
+    });
+    const off = render();
+    expect(off.current.legendCells).toBe(false);
+    // 같은 프레임에서 나머지 표면은 무변경 — 이 토글의 범위가 셀뿐이라는 계약.
+    expect(off.current.segments).toHaveLength(1);
+    expect(off.current.drawn).toBe(true);
+    expect(off.current.labels).toBe(true);
+    expect(off.current.arrows).toBe(true);
   });
 });

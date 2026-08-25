@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TRADING_TIME_MIN_HHMM } from '../../util/tradingTime';
 
 import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -81,7 +82,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
-      sideMode: 'buy',
+      sideMode: 'buy', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -99,6 +100,45 @@ describe('projectBrokerLateEntryMarkers', () => {
     ]);
   });
 
+  // 기준 시각은 이제 **프로젝터가** 적용한다(요청은 최소 임계 고정). 동등성 자체는
+  // `brokerLateEntryMarkers.threshold.test.ts` 의 오라클이 잠그고, 여기서는 프로젝터가
+  // 그 필터를 **실제로 거는지**를 잰다 — 오라클만 있으면 배선 누락을 못 본다.
+  it('startHHMM 이전에 처음 등장한 거래원은 마커로 그리지 않는다', () => {
+    const axis = createVirtualAxis([
+      { date: '20260626', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+    ]);
+    // OPEN = 09:00 KST. +30분 = 09:30, +5시간 = 14:00.
+    const b = bundle({
+      broker_late_entries: [
+        { t_ms: OPEN + 30 * 60_000, broker: '아침증권', side: 'sell', net: -5 },
+        { t_ms: OPEN + 5 * 3_600_000, broker: '오후증권', side: 'sell', net: -5 },
+      ],
+    });
+    const ctx = {
+      auctionWindowMask: false,
+      outlierFilterEnabled: false,
+      outlierThreshold: 100,
+      sideMode: 'both' as const,
+      buyColor: '#ef4444',
+      sellColor: '#3b82f6',
+    };
+
+    // 09:00 기준 — 둘 다.
+    expect(
+      projectBrokerLateEntryMarkers(b, axis, { ...ctx, startHHMM: 900 }).map((m) => m.broker),
+    ).toEqual(['아침증권', '오후증권']);
+
+    // 14:00 기준 — 오후만. 임계와 **같은 시각**은 포함된다(경계는 이상).
+    expect(
+      projectBrokerLateEntryMarkers(b, axis, { ...ctx, startHHMM: 1400 }).map((m) => m.broker),
+    ).toEqual(['오후증권']);
+
+    // 임계를 더 올리면 비어야 한다 — 필터 방향이 뒤집혔으면 여기서 잡힌다.
+    expect(
+      projectBrokerLateEntryMarkers(b, axis, { ...ctx, startHHMM: 1430 }),
+    ).toEqual([]);
+  });
+
   it('uses the nearest earlier displayed ratio value in the same session when the exact bucket is absent', () => {
     const axis = createVirtualAxis([
       { date: '20260626', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
@@ -113,7 +153,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
-      sideMode: 'both',
+      sideMode: 'both', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -145,7 +185,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
-      sideMode: 'both',
+      sideMode: 'both', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -180,7 +220,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: true,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
-      sideMode: 'both',
+      sideMode: 'both', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -206,7 +246,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: true,
       outlierThreshold: 100,
-      sideMode: 'both',
+      sideMode: 'both', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -248,7 +288,7 @@ describe('projectBrokerLateEntryMarkers', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
-      sideMode: 'both',
+      sideMode: 'both', startHHMM: TRADING_TIME_MIN_HHMM,
       buyColor: '#ef4444',
       sellColor: '#3b82f6',
     });
@@ -317,6 +357,7 @@ describe('makeCachedBrokerLateEntryProjector (과거/당일 분리 = 풀 투영 
     sideMode: 'both' as const,
     buyColor: '#ef4444',
     sellColor: '#3b82f6',
+    startHHMM: TRADING_TIME_MIN_HHMM,
   };
 
   // 2일 히스토리 번들 — 과거일(20260626) + 당일(20260627). 당일 ratio/events 는

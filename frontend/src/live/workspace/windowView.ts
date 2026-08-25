@@ -34,13 +34,22 @@ import { useContext, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
+  FACTORY_INDICATOR_SETTINGS,
   INDICATOR_SETTING_KEYS,
   bucketsForScope,
   resolveIndicatorSettings,
   type IndicatorScope,
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
-import { INDICATOR_OPS, bindIndicatorOps, type BoundIndicatorOps } from '../../state/indicatorOps';
+import {
+  INDICATOR_OPS,
+  bindIndicatorOps,
+  flagRemovalPatches,
+  maRemovalUndo,
+  type BoundIndicatorOps,
+  type FlagIndicatorType,
+  type MaSliceKey,
+} from '../../state/indicatorOps';
 import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
 import { indexWorkareaCode, isLiveIndexId } from '../liveInstrument';
 import type { PaneId } from '../../chart/drawing/types';
@@ -301,6 +310,17 @@ export function useWindowPaneStretch(): PaneStretchMap {
  * `useLivePageStore` 이고, Provider 안이면 **대상 창의 봉 버킷**에 쓴다.
  */
 export type IndicatorActions = BoundIndicatorOps & {
+  /** 인스턴스 삭제 + undo 토스트 — 레전드 칩 ✕ 전용.
+   *
+   *  평범한 `removeMovingAverage` 와 갈라 두는 이유는 **파괴적 원클릭이기 때문**
+   *  이다. 설정 패널의 삭제는 사용자가 이미 그 화면에 들어와 있어 맥락이 있지만,
+   *  칩 ✕ 는 차트를 보다가 스치듯 눌릴 수 있어 복구 수단이 인수 조건이다. */
+  removeMovingAverageWithUndo: (id: string) => void;
+  removeDailyMovingAverageWithUndo: (id: string) => void;
+  /** flag 지표(값 series 없는 오버레이) 삭제 + undo — 그 지표가 소유한 설정 필드를
+   *  전부 공장값으로 되돌린다(`flagRemovalPatches`). 배열이 없는 flat 싱글턴이라
+   *  "원소 제거" 대신 "손댄 적 없는 상태로" 가 삭제의 뜻이다. */
+  removeFlagIndicatorWithUndo: (type: FlagIndicatorType) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
   setPaneGroups: (groups: PaneGroups) => void;
@@ -314,6 +334,53 @@ export type IndicatorActions = BoundIndicatorOps & {
     paneStretch: PaneStretchMap;
   }) => void;
 };
+
+/**
+ * 삭제 + undo 토스트 — 두 백엔드가 나눠 쓰는 구현. 다른 것은 **어느 버킷에
+ * 쓰는가**뿐이라 스코프·봉을 함수로 받는다.
+ *
+ * `scopeAt()`·`tfAt()` 을 **여기서(=삭제 시점) 한 번** 평가해 payload 에 싣는 것이
+ * 요점이다. 복원 때 다시 물으면 토스트가 떠 있는 동안 사용자가 봉을 바꾸거나 다른
+ * 창을 포커스한 경우 **엉뚱한 버킷이 되살아난다**.
+ */
+function buildRemoveWithUndo(
+  readSettings: () => IndicatorSettings,
+  scopeAt: () => IndicatorScope,
+  tfAt: () => LiveTimeframe,
+): Pick<
+  IndicatorActions,
+  'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo' | 'removeFlagIndicatorWithUndo'
+> {
+  const remove = (key: MaSliceKey, id: string) => {
+    const ps = useLivePageStore.getState();
+    const cur = readSettings();
+    const undo = maRemovalUndo(cur, key, id);
+    const op = key === 'movingAverages'
+      ? INDICATOR_OPS.removeMovingAverage(cur, id)
+      : INDICATOR_OPS.removeDailyMovingAverage(cur, id);
+    // 모르는 id 면 삭제도 토스트도 없다 — 둘 중 하나만 일어나면 "되돌리기를 눌렀는데
+    // 아무 일도 없다" 가 된다.
+    if (!op || !undo) return;
+    const scope = scopeAt();
+    const timeframe = tfAt();
+    ps.patchIndicatorsScoped(scope, timeframe, op);
+    ps.setIndicatorUndoToast({ ...undo, scope, timeframe });
+  };
+  return {
+    removeMovingAverageWithUndo: (id) => remove('movingAverages', id),
+    removeDailyMovingAverageWithUndo: (id) => remove('dailyMovingAverages', id),
+    removeFlagIndicatorWithUndo: (type) => {
+      const ps = useLivePageStore.getState();
+      const { label, apply, undo } = flagRemovalPatches(
+        readSettings(), type, FACTORY_INDICATOR_SETTINGS,
+      );
+      const scope = scopeAt();
+      const timeframe = tfAt();
+      ps.patchIndicatorsScoped(scope, timeframe, apply);
+      ps.setIndicatorUndoToast({ label, scope, timeframe, patch: undo });
+    },
+  };
+}
 
 /**
  * 전역(Provider 밖) 판 — 스토어 세터를 그대로 집는다. 세터는 ambient 봉 버킷에
@@ -334,6 +401,12 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   out.setPaneGroupStretch = s.setPaneGroupStretch;
   out.resetIndicators = s.resetIndicators;
   out.applyIndicatorPreset = s.applyIndicatorPreset;
+  // 전역 판의 대상은 ambient 봉 버킷 — 스코프는 창 없음, 봉은 호출 시점 투영 포인터.
+  Object.assign(out, buildRemoveWithUndo(
+    () => useLivePageStore.getState(),
+    () => ({ windowKey: null }),
+    () => useLivePageStore.getState().indicatorTimeframe,
+  ));
   return out as unknown as IndicatorActions;
 }
 
@@ -361,6 +434,7 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
   };
   return {
     ...bindIndicatorOps(readSettings, (patch) => ps().patchIndicatorsScoped(scope, tf(), patch)),
+    ...buildRemoveWithUndo(readSettings, () => scope, tf),
     // 호출자가 넘긴 tf 의 버킷에 기록한다 — 정상 경로에선 이 창의 봉과 같지만,
     // 드로어 재타깃/stale 렌더에서 어긋나도 조용히 다른 버킷을 오염시키지 않는다.
     setPanePrefForTimeframe: (timeframe, key, enabled) =>

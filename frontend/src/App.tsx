@@ -17,6 +17,7 @@ import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
+import IndicatorRemoveUndoToastHost from './live/IndicatorRemoveUndoToastHost';
 import PinnedActivationToastHost from './live/PinnedActivationToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ShortcutHelpHost } from './ui/ShortcutHelpModal';
@@ -158,6 +159,9 @@ export default function App() {
         <SupervisedTaskFailureToastHost />
         <DiskHeadroomToastHost />
         <DrawingClearToastHost />
+        {/* 레전드 칩 ✕(지표 인스턴스 삭제)의 실행취소 — 그림 지우기 토스트와 같은
+            부류라 나란히 둔다. 둘 다 "확인 없이 지우고 되돌릴 기회를 준다". */}
+        <IndicatorRemoveUndoToastHost />
         {/* 전 창 고정으로 클릭 종목 교체가 막힌 사건 — 전 라우트에 마운트한다.
             클릭 진입점(useJumpToLive)이 /heatmap·/screener 등 /live 밖에도 있어서,
             /live 안에 두면 정작 막힌 그 클릭에서는 호스트가 아직 없다. */}

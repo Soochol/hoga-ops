@@ -102,11 +102,147 @@ function addMaSlot(
   return [...current, next];
 }
 
+/** 슬롯 하나 삭제. **마지막 하나도 지울 수 있다** — 레전드 칩 ✕ 가 인스턴스 단위
+ *  삭제이므로 "0개" 는 도달 가능한 유효 상태다(코어서의 `normalizeMaSlots` 가 빈
+ *  배열을 보존한다). 종전의 min-1 가드는 마스터 토글이 가시성을 쥐고 있어 슬롯이
+ *  0개면 되살릴 UI 가 없던 시절의 방어였다. null 은 **모르는 id** 일 때만. */
 function removeMaSlot(current: readonly LiveMAConfig[], id: string): LiveMAConfig[] | null {
-  if (current.length <= 1) return null;
   const nextArr = current.filter((m) => m.id !== id);
   if (nextArr.length === current.length) return null; // unknown id
   return nextArr;
+}
+
+/**
+ * 값 series 없이 캔들/호가비 pane 위에 그려지는 오버레이 지표 — 레전드에서는
+ * "flag 행" 으로 나온다. 이 목록이 **정본**이고 `legendRows` 의 `LegendFlagId` 가
+ * 여기서 파생된다(레전드는 표현, 설정 스키마는 이 계층).
+ */
+export const FLAG_INDICATOR_TYPES = [
+  'ask-peak',
+  'bid-peak',
+  'trade-volume-poc',
+  'depth-heatmap',
+  'depth-delta',
+  'broker-late-entry',
+] as const;
+
+export type FlagIndicatorType = (typeof FLAG_INDICATOR_TYPES)[number];
+
+/** flag 지표의 사용자 표시명 — 레전드 라벨·undo 문구·설정 패널이 공유한다. */
+export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
+  'ask-peak': '당일 매도 최대벽',
+  'bid-peak': '당일 매수 최대벽',
+  'trade-volume-poc': '당일 최대 매물대',
+  'depth-heatmap': '호가 잔량 히트맵',
+  'depth-delta': '단별 잔량 증감',
+  'broker-late-entry': '신규 거래원 등장',
+};
+
+/**
+ * 각 flag 지표가 **소유한 설정 필드 전부** — 삭제(=공장값 리셋)의 대상 집합.
+ *
+ * 손으로 적는다. 접두사 매칭 같은 자동 발견을 쓰지 않는 이유는 이 리포가 이미
+ * 판정한 것과 같다: 이름 규칙 매칭은 **오탐과 누락이 둘 다 조용하다**. 대신
+ * `indicatorOps.flagFields.test.ts` 가 "flag 접두를 가진 `IndicatorSettings` 키는
+ * 정확히 한 목록에 속한다" 를 강제한다 — 새 필드가 늘면 그 가드가 빨개진다.
+ * 이 가드는 실제로 **세 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, #1588 의
+ * `*Unreached*` 6필드, 그리고 설정 재구성의 `*PeakTradedLineEnabled` 2필드
+ * (전부 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
+ * 이론이 아니라는 증거이고, 동시에 가드가 그 위험을 실제로 덮는다는 증거다.
+ */
+export const FLAG_INDICATOR_FIELDS: Record<
+  FlagIndicatorType,
+  readonly (keyof IndicatorSettings)[]
+> = {
+  'ask-peak': [
+    'askPeakEnabled', 'askPeakHidden', 'askPeakColor', 'askPeakLineWidth',
+    'askPeakTradedLineEnabled',
+    'askPeakAllWallLineEnabled', 'askPeakAllWallColor', 'askPeakAllWallLineWidth',
+    'askPeakUnreachedLineEnabled', 'askPeakUnreachedColor', 'askPeakUnreachedLineWidth',
+  ],
+  'bid-peak': [
+    'bidPeakEnabled', 'bidPeakHidden', 'bidPeakColor', 'bidPeakLineWidth',
+    'bidPeakTradedLineEnabled',
+    'bidPeakAllWallLineEnabled', 'bidPeakAllWallColor', 'bidPeakAllWallLineWidth',
+    'bidPeakUnreachedLineEnabled', 'bidPeakUnreachedColor', 'bidPeakUnreachedLineWidth',
+  ],
+  'trade-volume-poc': [
+    'tradeVolumePocEnabled', 'tradeVolumePocHidden', 'tradeVolumePocBandPct',
+    'tradeVolumePocColor', 'tradeVolumePocOpacity',
+  ],
+  'depth-heatmap': [
+    'depthHeatmapEnabled', 'depthHeatmapHidden', 'depthHeatmapBidColor',
+    'depthHeatmapAskColor', 'depthHeatmapMaxOpacity',
+  ],
+  'depth-delta': [
+    'depthDeltaEnabled', 'depthDeltaHidden', 'depthDeltaInColor',
+    'depthDeltaOutColor', 'depthDeltaMaxOpacity',
+  ],
+  'broker-late-entry': [
+    'brokerLateEntryEnabled', 'brokerLateEntryHidden', 'brokerLateEntryStartHHMM',
+    'brokerLateEntrySideMode', 'brokerLateEntryBuyColor', 'brokerLateEntrySellColor',
+  ],
+};
+
+/**
+ * flag 지표 삭제의 patch 쌍 — `apply` 는 공장값으로 되돌리고, `undo` 는 현재값이다.
+ *
+ * MA 는 배열에서 원소를 빼는 것이 삭제지만, flat 싱글턴 타입은 뺄 배열이 없다.
+ * 그래서 삭제 = **그 지표가 소유한 필드를 전부 공장값으로**다. 공장값과 같아진
+ * 필드는 sparse 버킷의 정의상 다음 로드에서 자연 소멸하므로("diff 제거"),
+ * 결과적으로 "이 지표에 대해 사용자가 손댄 적 없는 상태" 가 된다.
+ *
+ * 배열 승격(Phase 3) 전까지 flat 타입의 인스턴스는 언제나 하나이므로, 삭제가
+ * 곧 "그 하나를 지우는 것" 이다.
+ */
+export function flagRemovalPatches(
+  cur: IndicatorSettings,
+  type: FlagIndicatorType,
+  factory: IndicatorSettings,
+): { label: string; apply: Partial<IndicatorSettings>; undo: Partial<IndicatorSettings> } {
+  const apply: Record<string, unknown> = {};
+  const undo: Record<string, unknown> = {};
+  for (const field of FLAG_INDICATOR_FIELDS[type]) {
+    apply[field] = factory[field];
+    undo[field] = cur[field];
+  }
+  return {
+    label: `${FLAG_INDICATOR_LABEL[type]} 삭제됨`,
+    apply: apply as Partial<IndicatorSettings>,
+    undo: undo as Partial<IndicatorSettings>,
+  };
+}
+
+/** MA 계열 두 슬라이스의 사용자 표시명 — 레전드 라벨과 undo 문구가 공유한다. */
+export const MA_SLICE_LABEL = {
+  movingAverages: '이동평균선',
+  dailyMovingAverages: '일봉 이동평균선',
+} as const;
+
+export type MaSliceKey = keyof typeof MA_SLICE_LABEL;
+
+/**
+ * 슬롯 삭제의 undo 스냅샷 — **삭제를 수행하지 않는다**(호출자가 op 로 한다).
+ *
+ * 되돌릴 값이 배열 **전체**인 것이 요점이다. 지운 원소만 다시 끼우면 순서를
+ * 복원할 수 없고, 토스트가 떠 있는 동안 다른 슬롯이 편집됐을 때 어느 쪽을
+ * 이겨야 하는지도 애매해진다. 전체 스냅샷은 "그 시점으로 되돌린다" 는 한 가지
+ * 뜻만 갖는다(드로잉 `clearToast` 와 같은 규율).
+ *
+ * 모르는 id 면 null — 호출자는 삭제도 토스트도 하지 않는다.
+ */
+export function maRemovalUndo(
+  cur: IndicatorSettings,
+  key: MaSliceKey,
+  id: string,
+): { label: string; patch: Partial<IndicatorSettings> } | null {
+  const slots = cur[key];
+  const slot = slots.find((m) => m.id === id);
+  if (!slot) return null;
+  return {
+    label: `${MA_SLICE_LABEL[key]} ${slot.period} 삭제됨`,
+    patch: { [key]: slots } as Partial<IndicatorSettings>,
+  };
 }
 
 export const INDICATOR_OPS = {
@@ -122,10 +258,13 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.movingAverages, id);
     return next ? { movingAverages: next } : null;
   },
-  setMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ movingAverageEnabled: enabled }),
-  setMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ movingAverageHidden: hidden }),
+  /** 타입 전체 일괄 표시/숨김 — 마스터 토글의 후계다. 마스터가 슬롯의 `enabled` 로
+   *  접히면서(ADR) "타입을 끈다" 는 곧 "전 슬롯을 끈다" 가 됐다. 슬롯이 0개면 켤
+   *  대상이 없으므로 no-op(null) — 빈 배열에 쓰면 diff 만 늘고 화면은 그대로다. */
+  setAllMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.movingAverages.length === 0
+      ? null
+      : { movingAverages: cur.movingAverages.map((m) => ({ ...m, enabled })) }),
 
   setDailyMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.dailyMovingAverages, id, patch);
@@ -139,13 +278,11 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.dailyMovingAverages, id);
     return next ? { dailyMovingAverages: next } : null;
   },
-  // MA 마스터 규칙: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
-  setDailyMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
-      : { dailyMovingAverageEnabled: false }),
-  setDailyMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ dailyMovingAverageHidden: hidden }),
+  /** 일봉 판 — `setAllMovingAveragesEnabled` 와 같은 규약. */
+  setAllDailyMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.dailyMovingAverages.length === 0
+      ? null
+      : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled })) }),
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),
@@ -164,6 +301,8 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
+  setAskPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakTradedLineEnabled: enabled }),
   setAskPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ askPeakAllWallLineEnabled: enabled }),
   setAskPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
@@ -189,6 +328,8 @@ export const INDICATOR_OPS = {
     bidPeakColor: patch.color ?? cur.bidPeakColor,
     bidPeakLineWidth: patch.lineWidth ?? cur.bidPeakLineWidth,
   }),
+  setBidPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakTradedLineEnabled: enabled }),
   setBidPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ bidPeakAllWallLineEnabled: enabled }),
   setBidPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({

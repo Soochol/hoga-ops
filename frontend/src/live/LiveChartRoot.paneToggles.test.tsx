@@ -618,19 +618,5 @@ describe('LiveChartRoot — 보이는 최신 봉 컷오프 구독 게이트', ()
     expect(subscribeCalls()).toBe(0);
   });
 
-  it('매도 pref 를 켜면 구독한다', () => {
-    act(() => {
-      useChartPrefsStore.setState({ askPeakVisibleTimeCutoff: true });
-    });
-    renderAt('1m');
-    expect(subscribeCalls()).toBeGreaterThan(0);
-  });
 
-  it('매수 pref 만 켜도 구독한다', () => {
-    act(() => {
-      useChartPrefsStore.setState({ bidPeakVisibleTimeCutoff: true });
-    });
-    renderAt('1m');
-    expect(subscribeCalls()).toBeGreaterThan(0);
-  });
 });

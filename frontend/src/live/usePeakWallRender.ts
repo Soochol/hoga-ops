@@ -37,7 +37,6 @@ import {
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
-import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 
 export type PeakWallRenderState = {
   /** 필터를 모두 통과한 세그먼트. **`enabled` 기준으로만** 계산한다(위 불변식 참조). */
@@ -48,6 +47,10 @@ export type PeakWallRenderState = {
   labels: boolean;
   /** 순위 화살표가 그려지는가. */
   arrows: boolean;
+  /** 레전드 순위 셀을 채우는가. ⚠ **행이 아니라 셀만** 가른다 — 행이 사라지면
+   *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록돼 있고 이 값이
+   *  false 면 빈 셀 목록을 낸다. `hidden` 과 무관하다(눈은 선만 숨긴다). */
+  legendCells: boolean;
   /** 선 색·두께(표면이 primitive 에 그대로 넘긴다). */
   color: string;
   lineWidth: number;
@@ -72,6 +75,14 @@ export type PeakWallRenderState = {
    *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
   unreachedSegments: readonly PeakWallSegment[];
+  /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
+   *  않는다) 체결된 벽과 같은 running-max 빌더를 쓴다. pane 이 꺼져 있거나 이
+   *  계열 선이 꺼져 있으면 빈 배열. */
+  allWallStepSegments: readonly PeakWallSegment[];
+  /** 「미도달 벽」의 강도 pane 계단 입력. ⚠ 이 계열은 **단조가 아니다** — 극값
+   *  전진이 구성원을 빼앗으므로 소비처는 `buildUnreachedStepPoints`(비단조)를
+   *  써야 한다. running-max 빌더를 태우면 깨진 벽이 영원히 남는다. */
+  unreachedStepSegments: readonly PeakWallSegment[];
   unreachedDrawn: boolean;
   unreachedLabels: boolean;
   unreachedColor: string;
@@ -94,7 +105,6 @@ type Args = {
   todayKst: string;
   /** 분봉 + 캔들 번들이 있는가. false 면 계산하지 않는다(지표가 분봉 전용). */
   applicable: boolean;
-  visibleTimeCutoff: VisibleTimeCutoff | null;
   /** 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해 넘긴다. */
   dailyMaFilter: PeakDailyMaFilter | null;
   /** 최대벽 강도 pane 이 켜져 있을 때만 true — 꺼져 있으면 top-3 재계산을 건너뛴다. */
@@ -112,7 +122,6 @@ export function usePeakWallRender({
   axis,
   todayKst,
   applicable,
-  visibleTimeCutoff,
   dailyMaFilter,
   needStepSegments = false,
 }: Args): PeakWallRenderState {
@@ -121,6 +130,11 @@ export function usePeakWallRender({
   const hidden = useWindowIndicator((s) => (isAsk ? s.askPeakHidden : s.bidPeakHidden));
   const color = useWindowIndicator((s) => (isAsk ? s.askPeakColor : s.bidPeakColor));
   const lineWidth = useWindowIndicator((s) => (isAsk ? s.askPeakLineWidth : s.bidPeakLineWidth));
+  // 체결된 벽도 이제 **세 계열 중 하나**다 — 자기 토글로 켜고 끈다(기본 true).
+  // 마스터(`enabled`)와 다른 층위: 마스터는 계산 자체, 이건 이 계열의 선.
+  const tradedEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakTradedLineEnabled : s.bidPeakTradedLineEnabled),
+  );
   const allWallEnabled = useWindowIndicator(
     (s) => (isAsk ? s.askPeakAllWallLineEnabled : s.bidPeakAllWallLineEnabled),
   );
@@ -146,13 +160,16 @@ export function usePeakWallRender({
   const labelEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakLabelEnabled : s.bidPeakLabelEnabled),
   );
+  const legendCellEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakLegendCellEnabled : s.bidPeakLegendCellEnabled),
+  );
   const rankArrowEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakRankArrowEnabled : s.bidPeakRankArrowEnabled),
   );
   const maFilter = usePeakMaFilter(side);
 
   const built = useMemo(() => (
-    applicable && enabled
+    applicable && enabled && tradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -162,12 +179,12 @@ export function usePeakWallRender({
         baselineStyle: { color, lineWidth },
         intraMax,
         allPriceRankLimit: toPeakRankLimit(allPriceRankLimit),
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
+    tradedEnabled,
     allPriceRankLimit,
     applicable,
     axis,
@@ -181,7 +198,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
@@ -198,7 +214,6 @@ export function usePeakWallRender({
         baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
         intraMax,
         allPriceRankLimit: 1,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -217,7 +232,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallBuilt 주석).
@@ -232,7 +246,6 @@ export function usePeakWallRender({
         baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
         intraMax,
         allPriceRankLimit: 1,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
@@ -251,13 +264,57 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
+  ]);
+
+  // 하위 계열의 계단 입력 — 그리기 선과 같은 carrier 리맵을 쓰되 랭크로 자르지
+  // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
+  // top-3(과거일은 rank-1 스칼라)이다 — 빌더 docstring 이 그 근사를 적는다.
+  const allWallStepBuilt = useMemo(() => (
+    needStepSegments && applicable && enabled && allWallEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toAllWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
+        intraMax,
+        allPriceRankLimit: 3,
+        stepHistory: true,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    needStepSegments, allWallEnabled, allWallColor, allWallLineWidth, applicable,
+    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
+  ]);
+
+  const unreachedStepBuilt = useMemo(() => (
+    needStepSegments && applicable && enabled && unreachedEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toUnreachedWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
+        intraMax,
+        allPriceRankLimit: 3,
+        stepHistory: true,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    needStepSegments, unreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
+    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
   ]);
 
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled
+    needStepSegments && applicable && enabled && tradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -268,13 +325,13 @@ export function usePeakWallRender({
         intraMax,
         allPriceRankLimit: 3,
         stepHistory: true,
-        visibleTimeCutoff,
         maFilter,
         dailyMaFilter,
       })
       : null
   ), [
     needStepSegments,
+    tradedEnabled,
     allPriceRankLimit,
     applicable,
     axis,
@@ -288,7 +345,6 @@ export function usePeakWallRender({
     peaks,
     segments,
     todayKst,
-    visibleTimeCutoff,
   ]);
 
   const drawn = enabled && !hidden;
@@ -305,6 +361,7 @@ export function usePeakWallRender({
     drawn,
     labels: drawn && labelEnabled,
     arrows: drawn && rankArrowEnabled,
+    legendCells: legendCellEnabled,
     color,
     lineWidth,
     stepSegments: stepBuilt ?? built,
@@ -315,11 +372,15 @@ export function usePeakWallRender({
     allWallColor,
     allWallLineWidth,
     unreachedSegments: unreachedBuilt,
+    allWallStepSegments: allWallStepBuilt,
+    unreachedStepSegments: unreachedStepBuilt,
     unreachedDrawn,
     unreachedLabels: unreachedDrawn && labelEnabled,
     unreachedColor,
     unreachedLineWidth,
   }), [
+    allWallStepBuilt,
+    unreachedStepBuilt,
     allWallBuilt,
     allWallColor,
     allWallDrawn,
@@ -333,6 +394,7 @@ export function usePeakWallRender({
     color,
     drawn,
     labelEnabled,
+    legendCellEnabled,
     lineWidth,
     rankArrowEnabled,
   ]);

@@ -9,7 +9,6 @@ import {
   toAllWallPeakInputs,
   toUnreachedWallPeakInputs,
 } from './peakWallSegments';
-import { applyPeakVisibleTimeCutoff } from './peakWallVisibleCutoff';
 
 /**
  * 최대벽 세그먼트 빌드의 **순수 계층** 테스트.
@@ -282,43 +281,6 @@ describe('buildPeakWallOverlaySegments', () => {
   });
 
 
-  it('filters ask baseline candidates by visible-time cutoff', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const peak = {
-      date: day,
-      price: 100,
-      qty: 100,
-      t_ms: open + 60_000,
-      max_price: 100,
-      max_qty: 100,
-      max_t_ms: open + 60_000,
-      traded_peaks: [
-        { price: 100, qty: 100, t_ms: open + 60_000 },
-        { price: 101, qty: 900, t_ms: open + 180_000 },
-      ],
-      traded_max_peaks: [
-        { price: 100, qty: 100, t_ms: open + 60_000 },
-        { price: 101, qty: 900, t_ms: open + 180_000 },
-      ],
-    } as never;
-
-    const segments = buildPeakWallOverlaySegments({
-      maFilter: null,
-      dailyMaFilter: null,
-      peaks: [peak],
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [{ ts_ms: open, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      intraMax: false,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
-
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toMatchObject({ price: 100, qty: 100 });
-  });
 
 });
 
@@ -397,89 +359,7 @@ describe('live peak-wall inline label suppression', () => {
 
 describe('buildPeakWallOverlaySegments — 매수 케이스', () => {
 
-  it('filters bid baseline candidates by visible-time cutoff', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const peak = {
-      date: day,
-      price: 99,
-      qty: 90,
-      t_ms: open + 60_000,
-      max_price: 99,
-      max_qty: 90,
-      max_t_ms: open + 60_000,
-      traded_peaks: [
-        { price: 99, qty: 90, t_ms: open + 60_000 },
-        { price: 98, qty: 900, t_ms: open + 180_000 },
-      ],
-      traded_max_peaks: [
-        { price: 99, qty: 90, t_ms: open + 60_000 },
-        { price: 98, qty: 900, t_ms: open + 180_000 },
-      ],
-    };
 
-    const segments = buildPeakWallOverlaySegments({
-      maFilter: null,
-      dailyMaFilter: null,
-      peaks: [peak],
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      intraMax: false,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
-
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toMatchObject({ price: 99, qty: 90 });
-  });
-
-  it('renders top-N bid baseline candidates through the visible-time cutoff', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const peak = {
-      date: day,
-      price: 100,
-      qty: 100,
-      t_ms: open + 60_000,
-      max_price: 100,
-      max_qty: 100,
-      max_t_ms: open + 60_000,
-      traded_peaks: [
-        { price: 100, qty: 100, t_ms: open + 60_000 },
-        { price: 99, qty: 300, t_ms: open + 120_000 },
-        { price: 98, qty: 200, t_ms: open + 180_000 },
-        { price: 97, qty: 900, t_ms: open + 300_000 },
-      ],
-      traded_max_peaks: [
-        { price: 100, qty: 100, t_ms: open + 60_000 },
-        { price: 99, qty: 300, t_ms: open + 120_000 },
-        { price: 98, qty: 200, t_ms: open + 180_000 },
-        { price: 97, qty: 900, t_ms: open + 300_000 },
-      ],
-    };
-
-    const segments = buildPeakWallOverlaySegments({
-      maFilter: null,
-      dailyMaFilter: null,
-      peaks: [peak],
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [
-        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-      ],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      intraMax: false,
-      visibleTimeCutoff: { date: day, tMs: open + 180_000 },
-      allPriceRankLimit: 3,
-    });
-
-    expect(segments.map((segment) => segment.price)).toEqual([99, 98, 100]);
-  });
 
   it('treats same-price bid candidates as one wall for top-N ranks', () => {
     const day = '20260613';
@@ -531,36 +411,6 @@ describe('buildPeakWallOverlaySegments — 매수 케이스', () => {
     ]);
   });
 
-  it('omits bid baseline when cutoff mode receives explicit empty ranked candidates', () => {
-    const day = '20260613';
-    const open = Date.UTC(2026, 5, 13, 0, 0);
-    const peak = {
-      date: day,
-      price: 98,
-      qty: 900,
-      t_ms: open + 180_000,
-      max_price: 98,
-      max_qty: 900,
-      max_t_ms: open + 180_000,
-      traded_peaks: [],
-      traded_max_peaks: [],
-    };
-
-    const segments = buildPeakWallOverlaySegments({
-      maFilter: null,
-      dailyMaFilter: null,
-      peaks: [peak],
-      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
-      candles: [{ ts_ms: open, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
-      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
-      todayKst: day,
-      baselineStyle: { color: '#fff', lineWidth: 1 },
-      intraMax: false,
-      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
-    });
-
-    expect(segments).toEqual([]);
-  });
 });
 
 describe('toAllWallPeakInputs', () => {
@@ -611,22 +461,6 @@ describe('toAllWallPeakInputs', () => {
     expect(out.map((p) => p.date)).toEqual(['20260611']);
   });
 
-  it('리맵된 과거일은 시간 컷오프를 살아남는다 — traded_peaks 를 [] 로 바꾸면 깨지는 계약', () => {
-    // chooseCandidate 는 `traded_peaks === undefined` 일 때만 스칼라 폴백을 탄다.
-    // 리맵이 빈 배열을 넣으면 후보 0개로 읽혀 과거일이 컷오프 아래에서 통째로 사라진다.
-    const remapped = toAllWallPeakInputs([peak({
-      date: '20260611',
-      all_price: 200, all_qty: 900, all_t_ms: 5,
-      all_max_price: 200, all_max_qty: 900, all_max_t_ms: 5,
-      all_peaks: [], all_max_peaks: [],
-    })]);
-    const survived = applyPeakVisibleTimeCutoff(
-      remapped,
-      { date: '20260613', tMs: 1_000 },
-      { intraMax: false },
-    );
-    expect(survived.map((p) => [p.date, p.price, p.qty])).toEqual([['20260611', 200, 900]]);
-  });
 });
 
 describe('toUnreachedWallPeakInputs', () => {

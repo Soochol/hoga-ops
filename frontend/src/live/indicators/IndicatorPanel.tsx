@@ -22,8 +22,6 @@ import {
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
 import ToggleRow from '../settings/ToggleRow';
-import { ToggleSwitch } from '../settings/SettingsRow';
-import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
@@ -101,6 +99,49 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
   'institution-net': 'institutionNetEnabled',
 };
 
+/**
+ * nav 행 하나 — "내 지표"(삭제)와 "추가 카탈로그"(추가)가 같은 형태를 쓴다.
+ *
+ * 어휘가 **추가/삭제 둘뿐**인 것이 이 패널의 계약이다. 종전의 체크박스(켜기/끄기)는
+ * 레전드의 눈(숨김)과 뜻이 겹쳤다 — 같은 지표를 두 표면이 서로 다른 말로 조작하면
+ * 사용자는 어느 쪽이 무엇을 하는지 매번 다시 배워야 한다. 지금은 **패널이 존재를,
+ * 레전드가 가시성을** 맡는다.
+ */
+function IndicatorNavRow({ label, selected, onSelect, action }: {
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+  action: { kind: 'add' | 'remove'; label: string; onClick: () => void };
+}) {
+  return (
+    <ListRow
+      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+        selected
+          ? 'bg-tint-selection font-medium text-fg'
+          : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? 'true' : undefined}
+        className={`min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left ${selected ? 'text-fg' : 'text-inherit'}`}
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        aria-label={action.label}
+        title={action.label}
+        onClick={action.onClick}
+        className="ml-3 cursor-pointer p-1.5 text-fg-dim transition-colors hover:text-fg"
+      >
+        {action.kind === 'add' ? '＋' : '✕'}
+      </button>
+    </ListRow>
+  );
+}
+
 type Props = {
   onClose: () => void;
   capabilities?: LiveInstrumentCapabilities;
@@ -129,10 +170,12 @@ export default function IndicatorPanel({
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
   const actions = useIndicatorActions();
-  const maEnabled = ind.movingAverageEnabled;
-  const setMaEnabled = actions.setMovingAverageEnabled;
-  const dailyMaEnabled = ind.dailyMovingAverageEnabled;
-  const setDailyMaEnabled = actions.setDailyMovingAverageEnabled;
+  // MA 계열의 마스터 토글은 슬롯의 `enabled` 로 접혔다(ADR) — 카테고리 체크박스는
+  // "켜진 슬롯이 하나라도 있는가" 의 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
+  const maEnabled = ind.movingAverages.some((m) => m.enabled);
+  const setMaEnabled = actions.setAllMovingAveragesEnabled;
+  const dailyMaEnabled = ind.dailyMovingAverages.some((m) => m.enabled);
+  const setDailyMaEnabled = actions.setAllDailyMovingAveragesEnabled;
   const askPeakEnabled = ind.askPeakEnabled;
   const setAskPeakEnabled = actions.setAskPeakEnabled;
   const bidPeakEnabled = ind.bidPeakEnabled;
@@ -177,6 +220,8 @@ export default function IndicatorPanel({
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  // 좌측 목록의 모드 — 내 지표(존재하는 것) / 카탈로그(추가할 수 있는 것).
+  const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
   // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
   const [confirmingReset, setConfirmingReset] = useState(false);
 
@@ -219,37 +264,49 @@ export default function IndicatorPanel({
       default: return false;
     }
   };
-  const toggleFor = (id: CategoryId): (() => void) | null => {
+  /** 존재 토글 — 추가와 삭제가 **같은 슬롯의 반대 방향**이라 한 함수로 둔다.
+   *  `null` 은 조작할 수 없는 카테고리(현재 없음 — 남겨 두는 것은 총계 방어). */
+  const setPresenceFor = (id: CategoryId, present: boolean): (() => void) | null => {
     const paneKey = PANE_CATEGORY_TO_KEY[id];
-    if (paneKey) {
-      return () => setPanePrefForTimeframe(
-        timeframe,
-        paneKey,
-        !selectedPanePrefs[paneKey],
-      );
-    }
+    if (paneKey) return () => setPanePrefForTimeframe(timeframe, paneKey, present);
     switch (id) {
-      case 'moving-average': return () => setMaEnabled(!maEnabled);
-      case 'daily-moving-average': return () => setDailyMaEnabled(!dailyMaEnabled);
-      case 'peak-walls': return () => {
-        // 한쪽이라도 켜져 있으면 둘 다 끄고, 모두 꺼져 있으면 둘 다 켠다.
-        const next = !(askPeakEnabled || bidPeakEnabled);
-        setAskPeakEnabled(next);
-        setBidPeakEnabled(next);
-      };
-      case 'trade-volume-poc': return () => setTradeVolumePocEnabled(!tradeVolumePocEnabled);
-      case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
-      case 'depth-heatmap': return () => setDepthHeatmapEnabled(!depthHeatmapEnabled);
-      case 'depth-delta': return () => setDepthDeltaEnabled(!depthDeltaEnabled);
-      case 'wall-surge': return () => setWallSurgeEnabled(!wallSurgeEnabled);
-      case 'broker-late-entry': return () => setBrokerLateEntryEnabled(!brokerLateEntryEnabled);
+      case 'moving-average': return () => setMaEnabled(present);
+      case 'daily-moving-average': return () => setDailyMaEnabled(present);
+      // 병합 카테고리: 매도·매수를 함께 움직인다(레전드에서는 각각 별도 행이다).
+      case 'peak-walls': return () => { setAskPeakEnabled(present); setBidPeakEnabled(present); };
+      case 'trade-volume-poc': return () => setTradeVolumePocEnabled(present);
+      case 'volume-distribution': return () => setVolumeDistributionEnabled(present);
+      case 'depth-heatmap': return () => setDepthHeatmapEnabled(present);
+      case 'depth-delta': return () => setDepthDeltaEnabled(present);
+      case 'wall-surge': return () => setWallSurgeEnabled(present);
+      case 'broker-late-entry': return () => setBrokerLateEntryEnabled(present);
       default: return null;
     }
   };
+  const removeFor = (id: CategoryId) => setPresenceFor(id, false);
 
-  const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
-  const selectedChecked = checkedFor(selectedCategory.id);
-  const selectedToggle = toggleFor(selectedCategory.id);
+  /** 카탈로그에서 추가 — 켜고, 그 지표의 상세로 이동하고, 목록으로 돌아간다.
+   *  세 동작이 한 클릭인 이유: 추가의 목적은 "생겼다" 를 보는 것이고, 카탈로그에
+   *  남아 있으면 방금 추가한 것이 어디 갔는지 확인하러 한 번 더 눌러야 한다. */
+  const addFor = (id: CategoryId) => {
+    setPresenceFor(id, true)?.();
+    setSelected(id);
+    setMode('mine');
+  };
+
+  // "내 지표" = 지금 존재하는 것, 카탈로그 = 나머지. 두 목록의 합집합이 `categories`
+  // 라, 어느 쪽에도 안 나타나는 지표는 원리적으로 없다.
+  const active = categories.filter((c) => checkedFor(c.id));
+  const catalog = categories.filter((c) => !checkedFor(c.id));
+
+  // 선택이 삭제되면(내 지표에서 사라지면) 남은 첫 항목으로 넘긴다 — 빈 상세를
+  // 남겨 두면 "방금 지운 지표의 설정" 을 계속 보게 된다.
+  // 카탈로그에서는 아직 없는 지표도 미리 볼 수 있으므로 전체에서 찾는다. "내 지표"
+  // 모드에서는 선택이 삭제됐을 때 남은 첫 항목으로 넘긴다 — 빈 상세를 남겨 두면
+  // "방금 지운 지표의 설정" 을 계속 보게 된다.
+  const selectedCategory = mode === 'catalog'
+    ? categories.find((category) => category.id === selected) ?? categories[0]
+    : active.find((category) => category.id === selected) ?? active[0] ?? categories[0];
   const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
@@ -270,49 +327,73 @@ export default function IndicatorPanel({
             borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는
             스크롤과 무관하게 하단 고정 — nav는 flex-1로 스크롤. */}
       <div className="flex min-h-0 flex-col bg-bg-subtle">
-        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표 카테고리">
-          {categories.map((c, i) => {
-            const checked = checkedFor(c.id);
-            const onToggle = toggleFor(c.id);
-            const isSelected = selected === c.id;
-            const showHeader = i === 0 || categories[i - 1].group !== c.group;
-            return (
-              <Fragment key={c.id}>
-                {showHeader && (
-                  <div className={`px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${i !== 0 ? ' pt-3' : ''}`}>
-                    {GROUP_LABEL[c.group]}
-                  </div>
-                )}
-                <ListRow
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                    isSelected
-                      ? 'bg-tint-selection font-medium text-fg'
-                      : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelected(c.id)}
-                    aria-current={isSelected ? 'true' : undefined}
-                    className={`min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left ${isSelected ? 'text-fg' : 'text-inherit'}`}
-                  >
-                    {c.label}
-                  </button>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={checked}
-                    aria-label={c.label}
-                    onClick={() => onToggle?.()}
-                    className="ml-3 p-1.5 cursor-pointer"
-                  >
-                    <CheckIcon filled={checked} />
-                  </button>
-                </ListRow>
-              </Fragment>
-            );
-          })}
-        </nav>
+        {mode === 'mine' ? (
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="내 지표">
+            {active.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-fg-dim">
+                추가한 지표가 없습니다.
+              </p>
+            ) : (
+              active.map((c) => (
+                <IndicatorNavRow
+                  key={c.id}
+                  label={c.label}
+                  selected={selected === c.id}
+                  onSelect={() => setSelected(c.id)}
+                  action={{
+                    kind: 'remove',
+                    label: `${c.label} 삭제`,
+                    onClick: () => removeFor(c.id)?.(),
+                  }}
+                />
+              ))
+            )}
+          </nav>
+        ) : (
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표 추가">
+            {catalog.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-fg-dim">
+                추가할 수 있는 지표를 전부 쓰고 있습니다.
+              </p>
+            ) : (
+              catalog.map((c, i) => (
+                <Fragment key={c.id}>
+                  {(i === 0 || catalog[i - 1].group !== c.group) && (
+                    <div className={`px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${i !== 0 ? ' pt-3' : ''}`}>
+                      {GROUP_LABEL[c.group]}
+                    </div>
+                  )}
+                  {/* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
+                      지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
+                      마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */}
+                  <IndicatorNavRow
+                    label={c.label}
+                    selected={selected === c.id}
+                    onSelect={() => setSelected(c.id)}
+                    action={{
+                      kind: 'add',
+                      label: `${c.label} 추가`,
+                      onClick: () => addFor(c.id),
+                    }}
+                  />
+                </Fragment>
+              ))
+            )}
+          </nav>
+        )}
+        {/* 모드 전환 — "추가" 는 카탈로그를 열고, 카탈로그에서는 목록으로 돌아간다.
+            둘을 한 화면에 섞지 않는 이유: 켜고 끌 때마다 행이 두 섹션 사이를 오가면
+            방금 조준한 항목이 커서 밑에서 움직인다. */}
+        <div className="border-t border-border p-2">
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'mine' ? 'catalog' : 'mine')}
+            data-testid="indicator-panel-mode-toggle"
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
+          >
+            {mode === 'mine' ? '＋ 지표 추가' : '← 내 지표'}
+          </button>
+        </div>
         {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
             인라인 2단계 확인. */}
         <div className="border-t border-border p-2">
@@ -370,16 +451,9 @@ export default function IndicatorPanel({
               >
                 {targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}
               </span>
-              {selectedToggle && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-fg-dim">{selectedChecked ? '표시' : '숨김'}</span>
-                  <ToggleSwitch
-                    label={`${selectedCategory.label} 표시`}
-                    checked={selectedChecked}
-                    onClick={() => selectedToggle()}
-                  />
-                </div>
-              )}
+              {/* 종전에 여기 있던 표시/숨김 스위치는 사라졌다 — 가시성은 레전드 눈이
+                  전담하고 이 패널은 존재(추가·삭제)만 다룬다. 한 지표를 두 표면이 서로
+                  다른 말로 조작하던 상태를 끝낸 것이 이 PR 의 요점이다. */}
               <button
                 type="button"
                 aria-label="닫기"
@@ -392,9 +466,7 @@ export default function IndicatorPanel({
           </header>
           <section
             aria-label={selectedCategory.label}
-            className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5 transition-opacity ${
-              selectedToggle && !selectedChecked ? 'opacity-55' : ''
-            }`}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5"
           >
               {selected === 'moving-average' && <MovingAverageConfig />}
               {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}

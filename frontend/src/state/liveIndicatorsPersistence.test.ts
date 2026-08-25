@@ -17,6 +17,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
+      askPeakTradedLineEnabled: true,
       askPeakAllWallLineEnabled: false,
       askPeakAllWallColor: '#93C5FD',
       askPeakAllWallLineWidth: 1,
@@ -29,6 +30,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       bidPeakHidden: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
+      bidPeakTradedLineEnabled: true,
       bidPeakAllWallLineEnabled: false,
       bidPeakAllWallColor: '#FCA5A5',
       bidPeakAllWallLineWidth: 1,
@@ -127,6 +129,21 @@ describe('mergeLiveIndicatorPrefs', () => {
       mergeLiveIndicatorPrefs({ movingAverages: [{}, { id: 1 }] } as unknown as PersistedIndicators)
         .movingAverages,
     ).toEqual(DEFAULT_LIVE_MAS.map((m) => ({ ...m })));
+  });
+
+  // 빈 배열과 손상은 **다른 뜻**이다. `[]` 는 레전드 칩 ✕ 로 슬롯을 전부 지운 유효
+  // 상태이므로 그대로 보존해야 한다 — 여기서 공장값을 되살리면 삭제가 로드마다
+  // 취소되고 증상은 "지웠는데 새로고침하면 돌아온다" 로 나타난다. 반대로 "원소는
+  // 있는데 전부 무효" 는 위 케이스처럼 손상이라 공장값으로 복구한다.
+  it('preserves an explicitly empty slot array (user deleted every instance)', () => {
+    expect(
+      mergeLiveIndicatorPrefs({ movingAverages: [] } as unknown as PersistedIndicators)
+        .movingAverages,
+    ).toEqual([]);
+    expect(
+      mergeLiveIndicatorPrefs({ dailyMovingAverages: [] } as unknown as PersistedIndicators)
+        .dailyMovingAverages,
+    ).toEqual([]);
   });
 
   it('keeps a single valid entry when others are invalid', () => {

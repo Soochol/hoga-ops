@@ -29,8 +29,6 @@ const priceFormat = {
  *  같은 데이터 patch는 setData만 호출 — series identity churn 없음. */
 function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useWindowIndicator((s) => s.movingAverages);
-  const masterEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
-  const hidden = useWindowIndicator((s) => s.movingAverageHidden);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
   // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
@@ -96,11 +94,12 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
-      // ✕ off (master/slot disabled) clears data + hides. 눈 hide
-      // (movingAverageHidden) only flips visibility — data stays so the Pane
-      // Legend can read the SMA-at-cursor value while the line is hidden.
-      const drawn = masterEnabled && cfg.enabled;
-      s.applyOptions({ visible: drawn && !hidden });
+      // 가시성 게이트는 **슬롯의 `enabled` 하나**다(ADR — 레전드 칩 = 인스턴스).
+      // 종전엔 타입 마스터 × 타입 눈 × 슬롯의 삼중이었고, 눈만 data 를 남겨 레전드가
+      // 숨긴 선의 값을 읽을 수 있었다. 이제 꺼진 인스턴스는 레전드에서도 dim 칩으로
+      // 값 없이 표시되므로 판독할 값이 필요 없다 — data 를 비워 계산도 아낀다.
+      const drawn = cfg.enabled;
+      s.applyOptions({ visible: drawn });
       if (!drawn) {
         s.setData([]);
         continue;
@@ -118,7 +117,9 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
     // every MA series when the chart instance changes (/live remounts the
     // chart per (code, timeframe) view) — the fresh series start empty and
     // must be re-pushed in the same commit.
-  }, [chart, bundle, axis, configs, masterEnabled, hidden]);
+    // 가시성이 `configs` 안(슬롯의 `enabled`)으로 들어와 별도 dep 이 필요 없다 —
+    // 칩 눈 토글이 새 배열을 만들므로 이 effect 가 그대로 재실행된다.
+  }, [chart, bundle, axis, configs]);
 
   return null;
 }

@@ -30,16 +30,22 @@
 
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { LiveMAConfig } from '../state/livePage';
+import type { FlagIndicatorType } from '../state/indicatorOps';
 import type { PaneId } from '../chart/drawing/types';
 import type { PanePrefKey } from './indicators/indicatorPaneProfiles';
 import { formatKoreanInt } from '../util/koreanNumber';
 
-/** One moving-average slot's legend cell: swatch color + period + value. */
+/** One moving-average slot's legend chip: swatch color + period + value.
+ *
+ *  `enabled` 는 **인스턴스의 가시성**이다(종전 타입 마스터·타입 눈이 여기로 접혔다).
+ *  꺼진 슬롯도 행에서 빠지지 않고 dim 칩으로 남는다 — 칩이 사라지면 다시 켤 표면이
+ *  없어지기 때문이고, 이게 flag 행을 값 없이도 유지하는 규칙과 같은 계약이다. */
 export type LegendMAValue = {
   id: string;
   color: string;
   period: number;
   value: number | null;
+  enabled: boolean;
 };
 
 /** One rendered cell of a generic pane legend row: an optional swatch, a label,
@@ -53,16 +59,12 @@ export type LegendCell = {
 };
 
 /** Overlay indicators without a cursor value — legend shows a name chip
- *  (swatches + label + ✕) only. Ids double as the ✕ → store-setter dispatch
- *  key in `PaneLegendOverlay`. Most draw on the candle pane; broker late-entry
- *  markers attach to the ratio pane (RATIO_SPEC `labelMarkers`). */
-export type LegendFlagId =
-  | 'ask-peak'
-  | 'bid-peak'
-  | 'trade-volume-poc'
-  | 'depth-heatmap'
-  | 'depth-delta'
-  | 'broker-late-entry';
+ *  (swatches + label + ✕) only. Most draw on the candle pane; broker late-entry
+ *  markers attach to the ratio pane (RATIO_SPEC `labelMarkers`).
+ *
+ *  정본은 `state/indicatorOps` 의 `FLAG_INDICATOR_TYPES` 다 — 삭제 대상 필드표가
+ *  거기 살고, 레전드는 그 목록의 **표현**이다. 이름은 소비처 호환으로 남긴다. */
+export type LegendFlagId = FlagIndicatorType;
 
 /** One pre-formatted value cell of a flag row (values come from
  *  `flagLegendValueRegistry` providers — 지표별 포맷을 provider가 소유). */
@@ -78,7 +80,13 @@ export type LegendFlagCell = {
  *  timeframe" (all five are minute-only, mirroring their mount gates).
  *  `hidden` = 눈 토글(그리기만 숨김 — 행과 값은 유지, MA 규칙 미러). */
 export type LegendFlagInput = {
-  id: LegendFlagId;
+  /** 지표 **종류**(구 `id`). 인스턴스가 아니다. */
+  type: LegendFlagId;
+  /** 그 종류 안에서의 인스턴스 — flat 싱글턴은 `'main'` 고정.
+   *  값이 하나뿐인데도 축을 세우는 이유: 값 provider 레지스트리와 ✕ 디스패치가
+   *  **종류만으로 키하면 두 번째 인스턴스가 첫 번째를 조용히 덮는다**(창 스코프를
+   *  키에 넣은 것과 같은 사고 — `flagLegendValueRegistry` 헤더의 실측 사례). */
+  instanceId: string;
   paneId: PaneId;
   label: string;
   enabled: boolean;
@@ -106,12 +114,13 @@ export type LegendOhlcValues = {
 /** A single pane's legend row. */
 export type LegendRow =
   | ({ paneId: 'candle'; kind: 'ohlc' } & LegendOhlcValues)
-  | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[]; hidden: boolean }
-  | { paneId: 'candle'; kind: 'daily-ma'; mas: LegendMAValue[]; hidden: boolean }
+  | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[] }
+  | { paneId: 'candle'; kind: 'daily-ma'; mas: LegendMAValue[] }
   | {
       paneId: PaneId;
       kind: 'flag';
-      id: LegendFlagId;
+      type: LegendFlagId;
+      instanceId: string;
       label: string;
       swatches: readonly string[];
       hidden: boolean;
@@ -149,18 +158,12 @@ export type BuildLegendRowsInput = {
    *  there are no drawn candles (cold load / empty view). */
   ohlc?: LegendOhlcValues | null;
   movingAverages: ReadonlyArray<LiveMAConfig>;
-  /** MA master toggle. When off the overlay clears the series, so a row would
-   *  read all-null on an invisible line — suppress it instead. */
-  movingAverageEnabled: boolean;
-  movingAverageHidden: boolean;
   /** slot id → value at cursor (or latest). Missing id → the cell shows "—". */
   maValues: ReadonlyMap<string, number>;
   /** Daily-MA mirror of the MA fields. `dailyMaApplicable` = minute timeframe
    *  (the overlay clears its series on D/W/M, so a row would read all "—").
    *  Optional so callers without a daily-MA context (tests) can omit them. */
   dailyMovingAverages?: ReadonlyArray<LiveMAConfig>;
-  dailyMovingAverageEnabled?: boolean;
-  dailyMovingAverageHidden?: boolean;
   dailyMaValues?: ReadonlyMap<string, number>;
   dailyMaApplicable?: boolean;
   /** Flag indicators (no cursor value) across panes. Rows emit for
@@ -169,6 +172,21 @@ export type BuildLegendRowsInput = {
   /** One entry per legend-bearing pane currently mounted (registry snapshot). */
   paneCells: ReadonlyArray<PaneCellInput>;
 };
+
+/** 슬롯 배열 → 레전드 칩 배열. 꺼진 슬롯은 값을 싣지 않는다(오버레이가 series 를
+ *  비우므로 어차피 없다) — dim 칩이 숫자 자리를 비우고 서는 것이 의도다. */
+function toLegendMaValues(
+  configs: ReadonlyArray<LiveMAConfig>,
+  values: ReadonlyMap<string, number> | undefined,
+): LegendMAValue[] {
+  return configs.map((m) => ({
+    id: m.id,
+    color: m.color,
+    period: m.period,
+    value: m.enabled ? values?.get(m.id) ?? null : null,
+    enabled: m.enabled,
+  }));
+}
 
 export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
   const rows: LegendRow[] = [];
@@ -179,42 +197,18 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
     rows.push({ paneId: 'candle', kind: 'ohlc', ...input.ohlc });
   }
 
-  // Candle pane — one row aggregating every enabled MA slot. Gated on the
-  // master toggle (see field doc) so an invisible line never leaves an empty
-  // "—" row behind.
-  if (input.movingAverageEnabled) {
-    const mas: LegendMAValue[] = input.movingAverages
-      .filter((m) => m.enabled)
-      .map((m) => ({
-        id: m.id,
-        color: m.color,
-        period: m.period,
-        value: input.maValues.get(m.id) ?? null,
-      }));
-    if (mas.length > 0) {
-      rows.push({ paneId: 'candle', kind: 'ma', mas, hidden: input.movingAverageHidden });
-    }
-  }
+  // Candle pane — 타입당 한 행, 행 안의 칩이 인스턴스(ADR). 켜짐 여부로 슬롯을
+  // 거르지 **않는다**: 꺼진 슬롯은 dim 칩으로 남아야 다시 켤 수 있다. 그래서 행이
+  // 사라지는 유일한 조건은 슬롯 자체가 0개인 것이고, 그건 사용자가 전부 지운
+  // 유효 상태다.
+  const mas = toLegendMaValues(input.movingAverages, input.maValues);
+  if (mas.length > 0) rows.push({ paneId: 'candle', kind: 'ma', mas });
 
-  // Candle pane — daily-MA row, the MA row's mirror with an extra timeframe
-  // gate (see field doc).
-  if (input.dailyMovingAverageEnabled && input.dailyMaApplicable) {
-    const mas: LegendMAValue[] = (input.dailyMovingAverages ?? [])
-      .filter((m) => m.enabled)
-      .map((m) => ({
-        id: m.id,
-        color: m.color,
-        period: m.period,
-        value: input.dailyMaValues?.get(m.id) ?? null,
-      }));
-    if (mas.length > 0) {
-      rows.push({
-        paneId: 'candle',
-        kind: 'daily-ma',
-        mas,
-        hidden: input.dailyMovingAverageHidden ?? false,
-      });
-    }
+  // daily-MA 행 — MA 행의 미러 + 봉 게이트(오버레이가 D/W/M 에서 series 를 비우므로
+  // 행을 내면 전부 "—" 가 된다).
+  if (input.dailyMaApplicable) {
+    const dailyMas = toLegendMaValues(input.dailyMovingAverages ?? [], input.dailyMaValues);
+    if (dailyMas.length > 0) rows.push({ paneId: 'candle', kind: 'daily-ma', mas: dailyMas });
   }
 
   // Generic pane rows. A null-valued cell means the series holds no data (its
@@ -251,7 +245,8 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
     rows.push({
       paneId: flag.paneId,
       kind: 'flag',
-      id: flag.id,
+      type: flag.type,
+      instanceId: flag.instanceId,
       label: flag.label,
       swatches: flag.swatches,
       hidden: flag.hidden,
