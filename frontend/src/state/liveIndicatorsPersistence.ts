@@ -153,6 +153,10 @@ export type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 매도 「체결된 벽」 선 — 세 계열 중 하나로서의 토글. **기본 true** 라
+   *  기존 스토어·공장값의 동작이 그대로다(종전엔 마스터가 곧 이 선이었다).
+   *  끄면 전체·미도달만 남는다. */
+  askPeakTradedLineEnabled: boolean;
   /** 매도 「전체 최대벽(터치 무관)」 선 — 최대벽의 하위 토글. opt-in(기본 false).
    *  ⚠ `askPeakAllPriceRankLimit`(체결된 벽 표시 개수, chartPrefs)와 무관하다. */
   askPeakAllWallLineEnabled: boolean;
@@ -178,6 +182,10 @@ export type PersistedIndicators = {
   bidPeakColor: string;
   /** 매수 최대벽 선 두께. 기본 2. */
   bidPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 매수 「체결된 벽」 선 — 세 계열 중 하나로서의 토글. **기본 true** 라
+   *  기존 스토어·공장값의 동작이 그대로다(종전엔 마스터가 곧 이 선이었다).
+   *  끄면 전체·미도달만 남는다. */
+  bidPeakTradedLineEnabled: boolean;
   /** 매수 「전체 최대벽(터치 무관)」 선 — ask 쪽 미러. opt-in(기본 false). */
   bidPeakAllWallLineEnabled: boolean;
   /** 매수 전체 최대벽 선 색(hex). 기본 #FCA5A5(연빨강). */
@@ -411,6 +419,10 @@ export function mergeLiveIndicatorPrefs(
   const bpAllWallEnabled = obj?.bidPeakAllWallLineEnabled === true;
   const bpAllWallColor = normalizeHexColor(obj?.bidPeakAllWallColor, BID_PEAK_ALL_WALL_DEFAULT_COLOR);
   const bpAllWallWidth = normalizeLineWidth(obj?.bidPeakAllWallLineWidth, PEAK_ALL_WALL_DEFAULT_WIDTH);
+  // 체결된 벽 선 — **opt-out** 이다(`volumeEnabled` 규약: false 리터럴만 OFF).
+  // opt-in 으로 두면 기존 스토어에 키가 없어 로드마다 체결된 벽이 사라진다.
+  const apTradedLine = obj?.askPeakTradedLineEnabled !== false;
+  const bpTradedLine = obj?.bidPeakTradedLineEnabled !== false;
   // 미도달 벽 하위 선 — 전체 최대벽과 같은 규약(opt-in + 검증 폴백).
   const apUnreachedEnabled = obj?.askPeakUnreachedLineEnabled === true;
   const apUnreachedColor = normalizeHexColor(obj?.askPeakUnreachedColor, ASK_PEAK_UNREACHED_DEFAULT_COLOR);
@@ -537,6 +549,7 @@ export function mergeLiveIndicatorPrefs(
     askPeakHidden: apHidden,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
+    askPeakTradedLineEnabled: apTradedLine,
     askPeakAllWallLineEnabled: apAllWallEnabled,
     askPeakAllWallColor: apAllWallColor,
     askPeakAllWallLineWidth: apAllWallWidth,
@@ -549,6 +562,7 @@ export function mergeLiveIndicatorPrefs(
     bidPeakHidden: bpHidden,
     bidPeakColor: bpColor,
     bidPeakLineWidth: bpWidth,
+    bidPeakTradedLineEnabled: bpTradedLine,
     bidPeakAllWallLineEnabled: bpAllWallEnabled,
     bidPeakAllWallColor: bpAllWallColor,
     bidPeakAllWallLineWidth: bpAllWallWidth,

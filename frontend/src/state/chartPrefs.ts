@@ -212,6 +212,17 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
+    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
+    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
+    // (레전드 눈 아이콘이 그 자리다).
+    key: 'askPeakLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '보이는 영역의 매도 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'askPeakRankArrowEnabled',
     label: '상위벽 순위 화살표',
     description:
@@ -251,6 +262,17 @@ export const CHART_TOGGLES = [
     key: 'bidPeakLabelEnabled',
     label: '최대벽 라벨 표시',
     description: '당일 매수 최대벽 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
+    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
+    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
+    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
+    // (레전드 눈 아이콘이 그 자리다).
+    key: 'bidPeakLegendCellEnabled',
+    label: '레전드 순위 셀',
+    description: '보이는 영역의 매수 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
     default: true,
     category: 'indicator-modal',
   },

@@ -48,6 +48,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     drawn: true,
     labels: true,
     arrows: true,
+    legendCells: true,
     color: '#base',
     lineWidth: 2,
     allWallSegments: [],

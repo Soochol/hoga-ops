@@ -145,8 +145,9 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
  * 판정한 것과 같다: 이름 규칙 매칭은 **오탐과 누락이 둘 다 조용하다**. 대신
  * `indicatorOps.flagFields.test.ts` 가 "flag 접두를 가진 `IndicatorSettings` 키는
  * 정확히 한 목록에 속한다" 를 강제한다 — 새 필드가 늘면 그 가드가 빨개진다.
- * 이 가드는 실제로 **두 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, 그리고 #1588 의
- * `*Unreached*` 6필드(둘 다 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
+ * 이 가드는 실제로 **세 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, #1588 의
+ * `*Unreached*` 6필드, 그리고 설정 재구성의 `*PeakTradedLineEnabled` 2필드
+ * (전부 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
  * 이론이 아니라는 증거이고, 동시에 가드가 그 위험을 실제로 덮는다는 증거다.
  */
 export const FLAG_INDICATOR_FIELDS: Record<
@@ -155,11 +156,13 @@ export const FLAG_INDICATOR_FIELDS: Record<
 > = {
   'ask-peak': [
     'askPeakEnabled', 'askPeakHidden', 'askPeakColor', 'askPeakLineWidth',
+    'askPeakTradedLineEnabled',
     'askPeakAllWallLineEnabled', 'askPeakAllWallColor', 'askPeakAllWallLineWidth',
     'askPeakUnreachedLineEnabled', 'askPeakUnreachedColor', 'askPeakUnreachedLineWidth',
   ],
   'bid-peak': [
     'bidPeakEnabled', 'bidPeakHidden', 'bidPeakColor', 'bidPeakLineWidth',
+    'bidPeakTradedLineEnabled',
     'bidPeakAllWallLineEnabled', 'bidPeakAllWallColor', 'bidPeakAllWallLineWidth',
     'bidPeakUnreachedLineEnabled', 'bidPeakUnreachedColor', 'bidPeakUnreachedLineWidth',
   ],
@@ -298,6 +301,8 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
+  setAskPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakTradedLineEnabled: enabled }),
   setAskPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ askPeakAllWallLineEnabled: enabled }),
   setAskPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
@@ -323,6 +328,8 @@ export const INDICATOR_OPS = {
     bidPeakColor: patch.color ?? cur.bidPeakColor,
     bidPeakLineWidth: patch.lineWidth ?? cur.bidPeakLineWidth,
   }),
+  setBidPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakTradedLineEnabled: enabled }),
   setBidPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ bidPeakAllWallLineEnabled: enabled }),
   setBidPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({

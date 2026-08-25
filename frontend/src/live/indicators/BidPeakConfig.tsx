@@ -1,8 +1,7 @@
 import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
-import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
-import ToggleRow from '../settings/ToggleRow';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import PeakWallFamilyCard, { PeakWallSectionHead } from './PeakWallFamilyCard';
 
 const RANK_OPTIONS = [
   { value: 1, label: '1' },
@@ -10,25 +9,29 @@ const RANK_OPTIONS = [
   { value: 3, label: '3' },
 ] as const;
 
-/** `embedded` — 병합된 「당일 최대벽」 페이지의 서브탭 안에서 렌더될 때 제목·설명을
- *  숨긴다(상위가 이미 표시). 단독 카테고리로 쓰이던 시절과의 호환을 위해 기본 false. */
+/**
+ * 당일 매수 최대벽 상세 설정 — 매도판(`AskPeakConfig`)의 대칭 미러.
+ *
+ * 구조·근거는 그쪽 주석을 볼 것. 방향으로 갈리는 것은 미도달 판정의 기준(고가↔저가)과
+ * MA 필터 방향(위↔아래)뿐이다.
+ *
+ * `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(상위가 표시).
+ */
 export default function BidPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
+  const actions = useIndicatorActions();
+  const tradedEnabled = useWindowIndicator((s) => s.bidPeakTradedLineEnabled);
   const color = useWindowIndicator((s) => s.bidPeakColor);
   const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
-  const setStyle = useIndicatorActions().setBidPeakStyle;
-  const allWallEnabled = useWindowIndicator((s) => s.bidPeakAllWallLineEnabled);
-  const allWallColor = useWindowIndicator((s) => s.bidPeakAllWallColor);
-  const allWallLineWidth = useWindowIndicator((s) => s.bidPeakAllWallLineWidth);
-  const setAllWallEnabled = useIndicatorActions().setBidPeakAllWallLineEnabled;
-  const setAllWallStyle = useIndicatorActions().setBidPeakAllWallStyle;
   const unreachedEnabled = useWindowIndicator((s) => s.bidPeakUnreachedLineEnabled);
   const unreachedColor = useWindowIndicator((s) => s.bidPeakUnreachedColor);
   const unreachedLineWidth = useWindowIndicator((s) => s.bidPeakUnreachedLineWidth);
-  const setUnreachedEnabled = useIndicatorActions().setBidPeakUnreachedLineEnabled;
-  const setUnreachedStyle = useIndicatorActions().setBidPeakUnreachedStyle;
+  const allWallEnabled = useWindowIndicator((s) => s.bidPeakAllWallLineEnabled);
+  const allWallColor = useWindowIndicator((s) => s.bidPeakAllWallColor);
+  const allWallLineWidth = useWindowIndicator((s) => s.bidPeakAllWallLineWidth);
   const prefs = useScopedChartPrefs();
   const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
   const { setNumericPref } = useChartPrefActions();
+
   return (
     <div>
       {!embedded && (
@@ -37,83 +40,91 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
             당일 매수 최대벽 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
           </h3>
           <p className="text-fg-dim text-xs mb-3">
-            차트에 보이는 거래일마다, 그 날 매수 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-            수평선을 그립니다. 그 벽이 서 있던 1분 안에 체결이 그 가격을 친 것만 「체결된 벽」으로 봅니다.
-            분봉 차트에서만 표시됩니다
+            차트에 보이는 거래일마다, 그 날 매수 10호가 중 한 단계에 가장 크게 걸렸던 물량의
+            가격에 그날 구간만큼 수평선을 그립니다. 분봉 차트에서만 표시됩니다
           </p>
         </>
       )}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">체결된 벽</span>
-          <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="체결된 벽" />
-        </div>
-      </div>
-      <div className="border-b border-border my-3" />
-      <ToggleRow
-        label="전체 최대벽 (터치 무관)"
-        description="체결 터치 여부와 무관하게 그 날 가장 크게 걸렸던 벽의 가격에도 수평선을 그립니다. 체결된 벽을 포함하므로 두 선이 같은 가격에 겹칠 수 있습니다."
-        checked={allWallEnabled}
-        onToggle={() => setAllWallEnabled(!allWallEnabled)}
-        testId="settings-toggle-bidPeakAllWallLineEnabled"
+
+      {/* ── 어떤 벽 ─────────────────────────────────────────────────
+          순서는 체결 → 미도달 → 전체. 앞 둘은 **배타적**이고(체결됐다면 당일 저가가
+          그 가격에 닿았다는 뜻이라 미도달일 수 없다) 전체는 그 둘과 사이 구간까지
+          포함한 상위집합이라, 이 순서로 읽으면 설명 세 줄이 포함 관계를 만든다. */}
+      <PeakWallSectionHead>어떤 벽</PeakWallSectionHead>
+      <PeakWallFamilyCard
+        name="체결된 벽"
+        description="그 벽이 서 있던 1분 안에 체결이 그 가격을 쳤다"
+        color={color}
+        lineWidth={lineWidth}
+        onStyleChange={actions.setBidPeakStyle}
+        enabled={tradedEnabled}
+        onToggle={() => actions.setBidPeakTradedLineEnabled(!tradedEnabled)}
+        testId="settings-toggle-bidPeakTradedLineEnabled"
+        extra={(
+          <>
+            표시 개수
+            <span
+              className="inline-flex overflow-hidden rounded-md border border-border"
+              role="group"
+              aria-label="체결된 벽 표시 개수"
+            >
+              {RANK_OPTIONS.map((option) => {
+                const selected = postTouchRankLimit === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setNumericPref('bidPeakAllPriceRankLimit', option.value)}
+                    className={[
+                      'px-2.5 py-0.5 text-xs border-r border-border last:border-r-0 transition-colors',
+                      selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
+                    ].join(' ')}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </span>
+          </>
+        )}
       />
-      {allWallEnabled && (
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-sm text-fg">전체 최대벽</span>
-          <MAStylePicker
-            color={allWallColor}
-            lineWidth={allWallLineWidth}
-            onChange={setAllWallStyle}
-            label="전체 최대벽"
-          />
-        </div>
-      )}
-      <div className="border-b border-border my-3" />
-      <ToggleRow
-        label="미도달 벽"
-        description="당일 저가보다 아래에 걸렸던 벽 중 최대 — 아직 시장가가 닿지 않은 매수벽입니다. 저가가 갱신되면 그 위 벽은 목록에서 빠집니다."
-        checked={unreachedEnabled}
-        onToggle={() => setUnreachedEnabled(!unreachedEnabled)}
+      <PeakWallFamilyCard
+        name="미도달 벽"
+        description="당일 저가가 아직 그 가격에 닿지 않았다 — 위와 배타"
+        color={unreachedColor}
+        lineWidth={unreachedLineWidth}
+        onStyleChange={actions.setBidPeakUnreachedStyle}
+        enabled={unreachedEnabled}
+        onToggle={() => actions.setBidPeakUnreachedLineEnabled(!unreachedEnabled)}
         testId="settings-toggle-bidPeakUnreachedLineEnabled"
       />
-      {unreachedEnabled && (
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-sm text-fg">미도달 벽</span>
-          <MAStylePicker
-            color={unreachedColor}
-            lineWidth={unreachedLineWidth}
-            onChange={setUnreachedStyle}
-            label="미도달 벽"
-          />
-        </div>
-      )}
-      <div className="border-b border-border my-3" />
-      <IndicatorPrefRows
-        toggleKeys={['bidPeakIntraMax', 'bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}
+      <PeakWallFamilyCard
+        name="전체 최대벽"
+        description="터치 무관 — 위 둘과 그 사이까지 포함한 그날 최대"
+        color={allWallColor}
+        lineWidth={allWallLineWidth}
+        onStyleChange={actions.setBidPeakAllWallStyle}
+        enabled={allWallEnabled}
+        onToggle={() => actions.setBidPeakAllWallLineEnabled(!allWallEnabled)}
+        testId="settings-toggle-bidPeakAllWallLineEnabled"
       />
-      <div className="border-b border-border my-2" />
-      <div>
-        <div className="text-sm text-fg mb-2">체결된 벽 표시 개수</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="체결된 벽 표시 개수">
-          {RANK_OPTIONS.map((option) => {
-            const selected = postTouchRankLimit === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => setNumericPref('bidPeakAllPriceRankLimit', option.value)}
-                className={[
-                  'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
-                  selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-                ].join(' ')}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+
+      {/* ── 어디에 ─────────────────────────────────────────────────
+          위에서 켠 계열들이 **어느 표면에** 나오는가. 종전엔 캔들 수평선만 위쪽
+          「표시 위치」에 있고 라벨·화살표는 필터들 사이에 섞여 있었다. */}
+      <PeakWallSectionHead>어디에</PeakWallSectionHead>
+      <IndicatorPrefRows
+        toggleKeys={['bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakLegendCellEnabled']}
+      />
+
+      {/* ── 후보 기준 ───────────────────────────────────────────────
+          계산에 영향을 주는 것만. MA 기간은 레지스트리의 `enabledBy` 로 각 토글
+          아래에 따라붙는다 — 여기서 손으로 배치하지 않는다. */}
+      <PeakWallSectionHead>후보 기준</PeakWallSectionHead>
+      <IndicatorPrefRows
+        toggleKeys={['bidPeakIntraMax', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}
+      />
     </div>
   );
 }

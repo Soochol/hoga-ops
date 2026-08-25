@@ -294,13 +294,61 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
-  it('매도 최대벽 선택 시 체결된 벽 스타일과 라벨 토글 표시', () => {
+  /**
+   * **축별 4구획**(2026-08-25 재구성)이 화면에 실제로 서는가.
+   *
+   * 막는 방향: 구획이 사라지거나, 계열 노브가 다시 구획 밖으로 새는 것. 종전엔
+   * 「체결된 벽 표시 개수」가 패널 맨 아래에 있어 어느 선 얘긴지 물어야 했다.
+   * 못 보는 것: 구획 **순서**(DOM 순서 단언은 리플로우마다 깨져 값이 없다).
+   */
+  it('매도 최대벽 — 세 구획 머리와 계열 카드 3장이 선다', () => {
     renderPanel();
     openDetail('당일 최대벽');
+    for (const head of ['어떤 벽', '어디에', '후보 기준']) {
+      expect(screen.getByText(head)).toBeTruthy();
+    }
+    // 계열 3형제가 **대칭**이다 — 종전엔 체결된 벽만 토글이 없었다.
+    for (const key of [
+      'settings-toggle-askPeakTradedLineEnabled',
+      'settings-toggle-askPeakUnreachedLineEnabled',
+      'settings-toggle-askPeakAllWallLineEnabled',
+    ]) {
+      expect(screen.getByTestId(key)).toBeTruthy();
+    }
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
-    // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
-    expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
-    expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
+    // 「표시 개수」는 체결된 벽 카드 **안**에 있다(패널 맨 아래가 아니라).
+    expect(screen.getByRole('group', { name: '체결된 벽 표시 개수' })).toBeTruthy();
+  });
+
+  it('매도 최대벽 — 「어디에」 구획에 표면 토글 셋이 모인다', () => {
+    renderPanel();
+    openDetail('당일 최대벽');
+    for (const key of [
+      'settings-toggle-askPeakLabelEnabled',
+      'settings-toggle-askPeakRankArrowEnabled',
+      'settings-toggle-askPeakLegendCellEnabled',
+    ]) {
+      expect(screen.getByTestId(key)).toBeTruthy();
+    }
+    // 캔들 수평선은 방향별이라 탭 안(상위 페이지)에 남는다.
+    expect(screen.getByTestId('settings-toggle-askPeakCandleLine')).toBeTruthy();
+  });
+
+  /**
+   * **공용 설정은 탭 밖이다** — 이 PR 의 구조적 요점.
+   *
+   * 「최대벽 강도 pane」은 매도·매수가 상태 하나를 공유하는데 종전엔 방향 탭 안에
+   * 있었다. 탭을 바꿔도 **같은 DOM 노드**가 남는 것이 "탭에 속하지 않는다" 의 증거다.
+   */
+  it('강도 pane 토글은 방향 탭을 바꿔도 같은 노드로 남는다(탭 밖)', () => {
+    renderPanel();
+    openDetail('당일 최대벽');
+    const onAsk = screen.getByTestId('settings-toggle-peakWallPaneEnabled');
+    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
+    expect(screen.getByTestId('settings-toggle-peakWallPaneEnabled')).toBe(onAsk);
+    // 반면 계열 카드는 탭을 따라 방향이 바뀐다.
+    expect(screen.queryByTestId('settings-toggle-askPeakTradedLineEnabled')).toBeNull();
+    expect(screen.getByTestId('settings-toggle-bidPeakTradedLineEnabled')).toBeTruthy();
   });
 
 
@@ -472,11 +520,22 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
   });
 
-  it('매수 최대벽 선택 시 라벨 토글 표시', () => {
+  it('매수 최대벽 — 매도판과 같은 4구획 대칭', () => {
     renderPanel();
     openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
-    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
+    for (const head of ['어떤 벽', '어디에', '후보 기준']) {
+      expect(screen.getByText(head)).toBeTruthy();
+    }
+    for (const key of [
+      'settings-toggle-bidPeakTradedLineEnabled',
+      'settings-toggle-bidPeakUnreachedLineEnabled',
+      'settings-toggle-bidPeakAllWallLineEnabled',
+      'settings-toggle-bidPeakLabelEnabled',
+      'settings-toggle-bidPeakLegendCellEnabled',
+    ]) {
+      expect(screen.getByTestId(key)).toBeTruthy();
+    }
   });
 
 
