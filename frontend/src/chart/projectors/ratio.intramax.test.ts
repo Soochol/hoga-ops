@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { TRADING_TIME_MIN_HHMM } from '../../util/tradingTime';
 import { projectRatioPoints, type RatioPaneContext } from './ratio';
 import type { QuoteRatioPoint } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -22,10 +21,7 @@ const base: RatioPaneContext = {
   auctionWindowMask: false,
   outlierFilterEnabled: false,
   outlierThreshold: 100,
-  brokerLateEntryEnabled: false,
-  brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
-  brokerLateEntryBuyColor: '#ef4444',
-  brokerLateEntrySellColor: '#3b82f6',
+  brokerLateEntries: [],
 };
 
 describe('호가비 Intra-Bar Max 스위치', () => {

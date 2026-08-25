@@ -574,11 +574,14 @@ export function useLiveBundle(
     depthHeatmapEnabled,
     depthDeltaEnabled,
     wallSurgeEnabled,
-    brokerLateEntryEnabled,
+    brokerLateEntries,
     programTradeEnabled,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
   } = useWindowIndicators();
+  // 인스턴스가 하나라도 켜져 있으면 조회한다 — 임계는 클라이언트 필터라 요청은
+  // 인스턴스 수와 무관하게 **하나**다(#1595).
+  const brokerLateEntryEnabled = brokerLateEntries.some((e) => e.enabled);
   // 데이터 창 수요와 OR 한 유효 fetch 게이트(ADR-0119 PR-D). 아래 fetch 경로는
   // 전부 eff* 를 쓰고, pane 표시 게이트는 이 훅 밖(useWindowIndicator)이라 불변.
   const effProgramTradeEnabled = programTradeEnabled || !!options.sidecarDemands?.programTrade;

@@ -191,8 +191,8 @@ export default function IndicatorPanel({
   const volumeDistributionMaxColor = ind.volumeDistributionMaxColor;
   const setVolumeDistributionRangeCount = actions.setVolumeDistributionRangeCount;
   const setVolumeDistributionStyle = actions.setVolumeDistributionStyle;
-  const brokerLateEntryEnabled = ind.brokerLateEntryEnabled;
-  const setBrokerLateEntryEnabled = actions.setBrokerLateEntryEnabled;
+  const brokerLateEntryEnabled = ind.brokerLateEntries.some((e) => e.enabled);
+  const setBrokerLateEntryEnabled = actions.setAllBrokerLateEntriesEnabled;
   const depthHeatmapEnabled = ind.depthHeatmapEnabled;
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
   const depthDeltaEnabled = ind.depthDeltaEnabled;

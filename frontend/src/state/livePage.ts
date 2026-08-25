@@ -26,6 +26,8 @@ import {
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
   type LiveMAConfig,
+  BROKER_LATE_ENTRY_SLOT_LIMIT,
+  type BrokerLateEntryConfig,
   type BrokerLateEntrySideMode,
 } from './liveIndicatorsPersistence';
 import {
@@ -76,8 +78,11 @@ export {
   TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
+  BROKER_LATE_ENTRY_SLOT_LIMIT,
 };
-export type { BrokerLateEntrySideMode, LiveMAConfig, IndicatorSettings };
+export type {
+  BrokerLateEntryConfig, BrokerLateEntrySideMode, LiveMAConfig, IndicatorSettings,
+};
 // 슬롯 색 palette 는 indicatorOps 로 이관 — 기존 임포트 호환 재수출.
 export { MA_PALETTE };
 
@@ -465,11 +470,10 @@ type Store = Persisted & IndicatorSettings & {
   setRatioLevelStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
   setProgramTradeEnabled: (enabled: boolean) => void;
-  setBrokerLateEntryEnabled: (enabled: boolean) => void;
-  setBrokerLateEntryHidden: (hidden: boolean) => void;
-  setBrokerLateEntryStartHHMM: (value: number) => void;
-  setBrokerLateEntrySideMode: (mode: BrokerLateEntrySideMode) => void;
-  setBrokerLateEntryStyle: (patch: { buyColor?: string; sellColor?: string }) => void;
+  setAllBrokerLateEntriesEnabled: (enabled: boolean) => void;
+  setBrokerLateEntry: (id: string, patch: Partial<Omit<BrokerLateEntryConfig, 'id'>>) => void;
+  addBrokerLateEntry: () => void;
+  removeBrokerLateEntry: (id: string) => void;
   setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addDailyMovingAverage: () => void;
   removeDailyMovingAverage: (id: string) => void;

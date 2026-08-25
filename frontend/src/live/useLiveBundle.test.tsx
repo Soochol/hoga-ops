@@ -854,7 +854,7 @@ describe('useLiveBundle', () => {
       askPeakEnabled: false,
       bidPeakEnabled: false,
       programTradeEnabled: true,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
       // sidecar 레인을 여는 플래그라 기준선에 못 박는다 — 안 그러면 이 지표를 켜는
       // 테스트가 뒤 테스트로 새어 "전부 off" 전제를 조용히 무너뜨린다.
       wallSurgeEnabled: false,
@@ -1292,7 +1292,7 @@ describe('useLiveBundle', () => {
       programTradeEnabled: false,
       askPeakEnabled: false,
       bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
     });
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
@@ -1319,7 +1319,7 @@ describe('useLiveBundle', () => {
       programTradeEnabled: false,
       askPeakEnabled: false,
       bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
       depthHeatmapEnabled: false,
       depthDeltaEnabled: false,
       wallSurgeEnabled: true,
@@ -1498,7 +1498,7 @@ describe('useLiveBundle', () => {
     useLivePageStore.setState({
       askPeakEnabled: false,
       bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
       programTradeEnabled: false,
       tradeVolumePocEnabled: false,
       volumeDistributionEnabled: false,
@@ -1787,7 +1787,7 @@ describe('useLiveBundle', () => {
   });
 
   it('merges sidecar broker late entries into the hoga pane bundle', () => {
-    useLivePageStore.setState({ brokerLateEntryEnabled: true });
+    useLivePageStore.setState({ brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }] });
     const sidecarBundle = {
       code: '005930',
       from_date: '20260520',

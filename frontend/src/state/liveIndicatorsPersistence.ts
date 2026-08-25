@@ -105,9 +105,48 @@ export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
 export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
 export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
 export type BrokerLateEntrySideMode = 'both' | 'buy' | 'sell';
+
+/**
+ * 신규 거래원 등장 **인스턴스 하나**. MA 슬롯(`LiveMAConfig`)과 같은 규약이다 —
+ * 배열 index 가 아니라 **안정 id** 로 식별해, 중간 삭제가 다른 인스턴스의 레전드
+ * 칩·마커 identity 를 흔들지 않게 한다.
+ *
+ * 이 지표가 첫 배열 승격 대상인 이유: 기준 시각을 달리한 두 세트(예: 09:30 빨강 +
+ * 14:00 보라)가 실사용 시나리오이고, 설정이 전부 이 blob 안에 있어 chartPrefs 와의
+ * 2-store 분기가 없다.
+ */
+export type BrokerLateEntryConfig = {
+  id: string;
+  /** 인스턴스의 가시성 — MA 슬롯과 같이 **이 하나가 유효 게이트**다. */
+  enabled: boolean;
+  /** 기준 시각(HHMM). 클라이언트 필터라 바꿔도 재조회가 없다(#1595). */
+  startHHMM: number;
+  sideMode: BrokerLateEntrySideMode;
+  buyColor: string;
+  sellColor: string;
+};
+
+/** 인스턴스 상한 — MA 와 같은 값을 쓴다(같은 이유: 손상 blob 의 무한 증식 방어이자
+ *  레전드 한 줄에 들어가는 현실적 개수). */
+export const BROKER_LATE_ENTRY_SLOT_LIMIT = 8;
 export const BROKER_LATE_ENTRY_DEFAULT_START_HHMM = 930;
 export const BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR = '#ef4444';
 export const BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR = '#3b82f6';
+
+/** 공장 인스턴스 — **`enabled: false`**(opt-in). 종전에는 마스터 토글
+ *  (`brokerLateEntryEnabled`, 기본 false)이 opt-in 을 담당했는데 그게 슬롯으로
+ *  접히면서 유효 게이트가 `enabled` 하나뿐이 됐다(MA 의 `DEFAULT_DAILY_MAS` 와 같은
+ *  사연). true 로 두면 공장 상태에서 마커가 갑자기 그려진다. */
+export const DEFAULT_BROKER_LATE_ENTRIES: readonly BrokerLateEntryConfig[] = Object.freeze([
+  {
+    id: 'ble-1',
+    enabled: false,
+    startHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
+    sideMode: 'both' as const,
+    buyColor: BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR,
+    sellColor: BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR,
+  },
+]) as readonly BrokerLateEntryConfig[];
 
 // 총잔량/호가비 현재값 수평선(price line) — opt-in. 색 기본은 각 pane 라인색과
 // 같게 두되 모양을 dashed로 해 실선 데이터 라인과 시각적으로 구분한다(현재가 라인과 동일 컨벤션).
@@ -285,17 +324,31 @@ export type PersistedIndicators = {
   fillStrengthEnabled: boolean;
   /** 프로그램 순매수 pane on/off. Default TRUE. */
   programTradeEnabled: boolean;
-  /** 신규 거래원 등장 마커 on/off. opt-in(기본 false). */
+  /**
+   * 신규 거래원 등장 **인스턴스 배열**. 같은 지표를 기준 시각만 달리해 여러 개
+   * 띄울 수 있다(Phase 3 의 첫 대상 — 타입 도크스트링 참조).
+   *
+   * MA 와 같은 sparse 규약: 빈 배열은 "전부 지웠다" 는 **유효 상태**이고, 손상만
+   * 공장값으로 복구한다(`normalizeSlotArray`).
+   */
+  brokerLateEntries: BrokerLateEntryConfig[];
+  /**
+   * @deprecated **레거시 입력 전용** — v2 설정에는 없다(`collapseBrokerLateEntry`).
+   *
+   * flat 6필드가 인스턴스 배열로 접혔다. MA 마스터 4형제와 같은 사연이고, 같은
+   * 이유로 타입에는 남는다: v1 blob 파싱과 v2 버킷 collapse 의 **입력**이기 때문.
+   * 새 코드가 이 값을 화면 게이트로 쓰면 안 된다.
+   */
   brokerLateEntryEnabled: boolean;
-  /** 거래원 등장 마커 눈(숨김). 기본 false. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryHidden: boolean;
-  /** 신규 거래원 등장 기준 시각(HHMM). 기본 930. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryStartHHMM: number;
-  /** 신규 거래원 등장 표시 방향. 기본 both. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
-  /** 신규 거래원 등장 매수 마커 색상(hex). 기본 #ef4444. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryBuyColor: string;
-  /** 신규 거래원 등장 매도 마커 색상(hex). 기본 #3b82f6. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntrySellColor: string;
   /** 일봉 이동평균선 슬롯(현재봉 movingAverages와 별개, ADR-0073). */
   dailyMovingAverages: LiveMAConfig[];
@@ -340,11 +393,35 @@ function isValidEntry(m: unknown): m is LiveMAConfig {
  * 공장값으로 복구한다. 두 경우를 구별하지 않으면 손상이 조용히 "지표 실종" 으로
  * 위장한다 — 그래서 판별식은 `kept.length` 가 아니라 **`raw.length`** 다.
  */
-function normalizeMaSlots(raw: unknown, factory: readonly LiveMAConfig[]): LiveMAConfig[] {
+function normalizeSlotArray<T>(
+  raw: unknown,
+  factory: readonly T[],
+  isValid: (v: unknown) => v is T,
+  limit: number,
+): T[] {
   if (!Array.isArray(raw)) return factory.map((m) => ({ ...m }));
   if (raw.length === 0) return [];
-  const kept = raw.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
+  const kept = raw.filter(isValid).slice(0, limit);
   return kept.length > 0 ? kept : factory.map((m) => ({ ...m }));
+}
+
+function normalizeMaSlots(raw: unknown, factory: readonly LiveMAConfig[]): LiveMAConfig[] {
+  return normalizeSlotArray(raw, factory, isValidEntry, MA_SLOT_LIMIT);
+}
+
+/** 거래원 등장 인스턴스 하나의 검증기 — MA 의 `isValidEntry` 와 같은 역할. */
+function isValidBrokerLateEntry(v: unknown): v is BrokerLateEntryConfig {
+  if (!v || typeof v !== 'object') return false;
+  const e = v as Record<string, unknown>;
+  return (
+    typeof e.id === 'string' && e.id.length > 0
+    && typeof e.enabled === 'boolean'
+    // 기준 시각은 정규장 창 안이어야 한다 — 밖이면 마커가 통째로 비거나 전부 뜬다.
+    && typeof e.startHHMM === 'number' && normalizeHHMM(e.startHHMM) === e.startHHMM
+    && (e.sideMode === 'both' || e.sideMode === 'buy' || e.sideMode === 'sell')
+    && typeof e.buyColor === 'string' && HEX_COLOR.test(e.buyColor)
+    && typeof e.sellColor === 'string' && HEX_COLOR.test(e.sellColor)
+  );
 }
 
 function normalizeHexColor(value: unknown, fallback: string): string {
@@ -502,6 +579,12 @@ export function mergeLiveIndicatorPrefs(
     obj?.brokerLateEntryBuyColor,
     BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR,
   );
+  const brokerLateEntries = normalizeSlotArray(
+    obj?.brokerLateEntries,
+    DEFAULT_BROKER_LATE_ENTRIES,
+    isValidBrokerLateEntry,
+    BROKER_LATE_ENTRY_SLOT_LIMIT,
+  );
   const brokerLateEntrySellColor = normalizeHexColor(
     obj?.brokerLateEntrySellColor,
     BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR,
@@ -612,6 +695,7 @@ export function mergeLiveIndicatorPrefs(
     ratioLevelStyle,
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
+    brokerLateEntries,
     brokerLateEntryEnabled,
     brokerLateEntryHidden,
     brokerLateEntryStartHHMM,

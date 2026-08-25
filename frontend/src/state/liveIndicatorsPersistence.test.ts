@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLiveIndicatorPrefs, DEFAULT_DAILY_MAS, type PersistedIndicators } from './liveIndicatorsPersistence';
+import {
+  mergeLiveIndicatorPrefs,
+  DEFAULT_BROKER_LATE_ENTRIES,
+  DEFAULT_DAILY_MAS,
+  type PersistedIndicators,
+} from './liveIndicatorsPersistence';
 import { DEFAULT_LIVE_MAS } from './livePage';
 
 describe('mergeLiveIndicatorPrefs', () => {
@@ -79,6 +84,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       ratioLevelStyle: 'dashed',
       fillStrengthEnabled: true,
       programTradeEnabled: true,
+      // 인스턴스 배열(Phase 3) — flat 6필드는 레거시 입력으로만 남는다.
+      brokerLateEntries: DEFAULT_BROKER_LATE_ENTRIES.map((e) => ({ ...e })),
       brokerLateEntryEnabled: false,
       brokerLateEntryHidden: false,
       brokerLateEntryStartHHMM: 930,
@@ -224,6 +231,8 @@ describe('mergeLiveIndicatorPrefs', () => {
 
   it('normalizes broker late-entry defaults and invalid persisted values', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toMatchObject({
+      // 인스턴스 배열(Phase 3) — flat 6필드는 레거시 입력으로만 남는다.
+      brokerLateEntries: DEFAULT_BROKER_LATE_ENTRIES.map((e) => ({ ...e })),
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 930,
       brokerLateEntrySideMode: 'both',

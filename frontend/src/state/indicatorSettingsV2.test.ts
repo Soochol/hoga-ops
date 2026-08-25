@@ -35,7 +35,8 @@ describe('FACTORY_INDICATOR_SETTINGS', () => {
     expect(f.bidPeakEnabled).toBe(false);
     expect(f.depthHeatmapEnabled).toBe(false);
     expect(f.depthDeltaEnabled).toBe(false);
-    expect(f.brokerLateEntryEnabled).toBe(false);
+    // 거래원 등장도 인스턴스 배열로 승격 — opt-in 은 공장 인스턴스가 꺼진 것으로 표현된다.
+    expect(f.brokerLateEntries.every((e) => e.enabled)).toBe(false);
     // 일봉 MA 는 opt-in — 마스터가 없어진 지금 그 표현은 공장 슬롯이 꺼져 있는 것이다.
     expect(f.dailyMovingAverages.every((m) => m.enabled)).toBe(false);
     expect(f.foreignNetEnabled).toBe(false);
@@ -61,13 +62,13 @@ describe('resolveIndicatorSettings', () => {
   it('applies only the matching bucket (1m~30m share the minute bucket)', () => {
     const byTimeframe = {
       minute: { askPeakEnabled: true },
-      D: { quoteTotalsEnabled: true, brokerLateEntryEnabled: true },
+      D: { quoteTotalsEnabled: true, wallSurgeEnabled: true },
     };
     expect(resolveIndicatorSettings(byTimeframe, '1m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '30m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '1m').quoteTotalsEnabled).toBe(false);
     expect(resolveIndicatorSettings(byTimeframe, 'D').quoteTotalsEnabled).toBe(true);
-    expect(resolveIndicatorSettings(byTimeframe, 'D').brokerLateEntryEnabled).toBe(true);
+    expect(resolveIndicatorSettings(byTimeframe, 'D').wallSurgeEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, 'W')).toEqual(FACTORY_INDICATOR_SETTINGS);
   });
 });
@@ -246,6 +247,60 @@ describe('normalizeIndicatorsV2 — MA 마스터 접기', () => {
     const twice = normalizeIndicatorsV2(JSON.parse(JSON.stringify(once)));
     expect(twice.byTimeframe).toEqual(once.byTimeframe);
     expect(twice.byTimeframe.minute!.dailyMovingAverages!.every((m) => m.enabled)).toBe(true);
+  });
+
+  // 거래원 등장의 flat 6필드 → 인스턴스 배열 접기(Phase 3 의 첫 배열 승격).
+  // MA 와 판별식이 같다 — **값이 아니라 키의 존재**.
+  it('flat 6필드가 인스턴스 하나로 접히고 flat 키는 사라진다', () => {
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: {
+        minute: {
+          brokerLateEntryEnabled: true,
+          brokerLateEntryStartHHMM: 1400,
+          brokerLateEntrySideMode: 'buy',
+          brokerLateEntryBuyColor: '#123456',
+        },
+      },
+    });
+    const bucket = v2.byTimeframe.minute!;
+    expect('brokerLateEntryEnabled' in bucket).toBe(false);
+    expect(bucket.brokerLateEntries).toEqual([{
+      id: 'ble-1',
+      enabled: true,
+      startHHMM: 1400,
+      sideMode: 'buy',
+      buyColor: '#123456',
+      sellColor: '#3b82f6',
+    }]);
+  });
+
+  it('눈(hidden)은 인스턴스의 enabled 로 접힌다', () => {
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: { minute: { brokerLateEntryEnabled: true, brokerLateEntryHidden: true } },
+    });
+    // 켜져 있었지만 숨김이었으면 결과는 "안 보임" — 공장값과 같아져 버킷이 빈다.
+    expect(v2.byTimeframe.minute).toBeUndefined();
+  });
+
+  it('배열 오버라이드가 이미 있으면 flat 값이 덮지 않는다', () => {
+    const mine = [{
+      id: 'ble-9', enabled: true, startHHMM: 1000,
+      sideMode: 'sell' as const, buyColor: '#aaaaaa', sellColor: '#bbbbbb',
+    }];
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: {
+        minute: { brokerLateEntries: mine, brokerLateEntryEnabled: false, brokerLateEntryStartHHMM: 930 },
+      },
+    });
+    expect(v2.byTimeframe.minute!.brokerLateEntries).toEqual(mine);
+  });
+
+  it('거래원 접힘도 멱등이다 — 접힌 결과엔 flat 키가 없다', () => {
+    const once = normalizeIndicatorsV2({
+      byTimeframe: { minute: { brokerLateEntryEnabled: true, brokerLateEntryStartHHMM: 1400 } },
+    });
+    const twice = normalizeIndicatorsV2(JSON.parse(JSON.stringify(once)));
+    expect(twice.byTimeframe).toEqual(once.byTimeframe);
   });
 
   it('슬롯을 전부 지운 상태(빈 배열)가 정규화 왕복에서 살아남는다', () => {

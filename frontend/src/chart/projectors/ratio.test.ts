@@ -12,10 +12,7 @@ const baseCtx: RatioPaneContext = {
   auctionWindowMask: false,
   outlierFilterEnabled: false,
   outlierThreshold: 100,
-  brokerLateEntryEnabled: false,
-  brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
-  brokerLateEntryBuyColor: '#ef4444',
-  brokerLateEntrySellColor: '#3b82f6',
+  brokerLateEntries: [],
 };
 
 describe('projectRatio', () => {
@@ -180,10 +177,7 @@ describe('projectRatio', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: true,
       outlierThreshold: 100,
-      brokerLateEntryEnabled: false,
-      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
-      brokerLateEntryBuyColor: '#ef4444',
-      brokerLateEntrySellColor: '#3b82f6',
+      brokerLateEntries: [],
     };
     const data = projectRatio(bundle, axis, ctx) as { time: number; value: number }[];
     // Below threshold → kept
@@ -233,10 +227,14 @@ describe('projectRatio', () => {
       outlierFilterEnabled: false,
       outlierThreshold: 10,
       intraMax: false,
-      brokerLateEntryEnabled: true,
-      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
-      brokerLateEntryBuyColor: '#ef4444',
-      brokerLateEntrySellColor: '#3b82f6',
+      brokerLateEntries: [{
+        id: 'ble-1',
+        enabled: true,
+        startHHMM: TRADING_TIME_MIN_HHMM,
+        sideMode: 'both' as const,
+        buyColor: '#ef4444',
+        sellColor: '#3b82f6',
+      }],
     });
 
     expect(markers?.[0]).toMatchObject({
@@ -244,6 +242,70 @@ describe('projectRatio', () => {
       side: 'buy',
       color: '#ef4444',
     });
+  });
+
+  // Phase 3 의 인수 조건 — **인스턴스마다 다른 기준 시각으로 각각 그린다**.
+  // 요청은 하나 그대로다(임계가 클라이언트 필터라, #1595).
+  it('인스턴스 둘이 각자의 기준 시각·색으로 따로 그려진다', () => {
+    const sessionOpenMs = Date.UTC(2026, 4, 27, 0, 0, 0); // 09:00 KST
+    const axis = createVirtualAxis([
+      { date: '20260527', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
+    ]);
+    const ratioAt = (t: number) => ({
+      t, bid_total: 200, ask_total: 100, bid_max: 200, ask_max: 100,
+      imb_max_bid: 200, imb_max_ask: 100, band_pct: 0, tick: 0,
+    });
+    const bundle: any = {
+      code: '005930', from_date: '20260527', to_date: '20260527',
+      segments: [{ date: '20260527', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
+      candles: [], bucket_ms: 60_000,
+      quote_ratio: { points: [ratioAt(sessionOpenMs), ratioAt(sessionOpenMs + 5 * 3_600_000)] },
+      broker_late_entries: [
+        // 09:00 등장 — 09:30 세트에는 안 잡히고 09:00 세트에만 잡힌다.
+        { t_ms: sessionOpenMs, broker: '아침증권', side: 'buy' },
+        // 14:00 등장 — 두 세트 모두에 잡힌다.
+        { t_ms: sessionOpenMs + 5 * 3_600_000, broker: '오후증권', side: 'buy' },
+      ],
+    };
+
+    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+      auctionWindowMask: false,
+      outlierFilterEnabled: false,
+      outlierThreshold: 10,
+      intraMax: false,
+      brokerLateEntries: [
+        { id: 'ble-1', enabled: true, startHHMM: 900, sideMode: 'both' as const, buyColor: '#111111', sellColor: '#111111' },
+        { id: 'ble-2', enabled: true, startHHMM: 1400, sideMode: 'both' as const, buyColor: '#222222', sellColor: '#222222' },
+      ],
+    });
+
+    // 09:00 세트는 둘 다, 14:00 세트는 오후만 — 합쳐서 셋.
+    expect(markers.map((m: any) => `${m.broker}:${m.color}`)).toEqual([
+      '아침증권:#111111',
+      '오후증권:#111111',
+      '오후증권:#222222',
+    ]);
+  });
+
+  it('꺼진 인스턴스는 그리지 않는다', () => {
+    const sessionOpenMs = Date.UTC(2026, 4, 27, 0, 0, 0);
+    const axis = createVirtualAxis([
+      { date: '20260527', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
+    ]);
+    const bundle: any = {
+      code: '005930', from_date: '20260527', to_date: '20260527',
+      segments: [{ date: '20260527', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
+      candles: [], bucket_ms: 60_000,
+      quote_ratio: { points: [{ t: sessionOpenMs, bid_total: 200, ask_total: 100, bid_max: 200, ask_max: 100, imb_max_bid: 200, imb_max_ask: 100, band_pct: 0, tick: 0 }] },
+      broker_late_entries: [{ t_ms: sessionOpenMs, broker: '삼성증권', side: 'buy' }],
+    };
+    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+      auctionWindowMask: false, outlierFilterEnabled: false, outlierThreshold: 10, intraMax: false,
+      brokerLateEntries: [
+        { id: 'ble-1', enabled: false, startHHMM: 900, sideMode: 'both' as const, buyColor: '#111111', sellColor: '#111111' },
+      ],
+    });
+    expect(markers).toEqual([]);
   });
 });
 
