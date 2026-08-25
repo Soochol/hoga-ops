@@ -100,7 +100,7 @@ vi.mock('lightweight-charts', async () => {
         subscribeVisibleTimeRangeChange: vi.fn(), unsubscribeVisibleTimeRangeChange: vi.fn(),
         subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
         applyOptions: vi.fn(), fitContent: vi.fn(), scrollToRealTime: vi.fn(), scrollToPosition: vi.fn(),
-        setVisibleLogicalRange: vi.fn(), getVisibleRange: vi.fn(() => null), setVisibleRange: vi.fn(),
+        setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null), getVisibleRange: vi.fn(() => null), setVisibleRange: vi.fn(),
         width: vi.fn(() => 900), timeToIndex: vi.fn(() => null),
         timeToCoordinate: vi.fn(() => null),
       };

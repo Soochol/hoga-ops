@@ -38,6 +38,28 @@ function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | nul
  * 된다. 분봉 250일 클램프·D/W/M 데이터 고갈이 보통 먼저 멈춘다. */
 const MAX_FILL_STEPS = 60;
 
+/** 화면에서 데이터가 이 비율 이하만 덮으면 **사실상 빈 화면**으로 본다(3e 판정).
+ *
+ * `logical.from < 0` 만으로는 안 된다 — 정상 좌팬도 매 이벤트에서 음수를 보고하고,
+ * 그건 3b 가 이미 처리한다. 3e 가 노리는 것은 **화면이 통째로 whitespace 인데
+ * 아무도 안 채우고 있는** 상태다(실측 클램프: span 402 중 데이터 1바 = 0.25%).
+ * 0.1 은 그 둘 사이를 넉넉히 가르는 값이고, 위로 틀리면 3e 가 덜 발화할 뿐이라
+ * 안전 방향이다(3b 가 여전히 정상 경로를 쥔다). */
+const EMPTY_VIEWPORT_DATA_RATIO = 0.1;
+
+/** 3e 가 한 클램프 구간에서 자동으로 이어붙일 수 있는 스텝 수 상한.
+ *
+ * ⚠ **디스크 모드(hogaplay ON)에는 좌측 바닥이 없다** — `minuteScrollbackFloorDate`
+ * 가 `restBypassEnabled` 에서 `null` 이라 `planFillStep` 의 `earliestAllowedDate`
+ * stop 이 절대 안 걸리고, `extendHistoricalRange` 도 단조 감소 가드만 있지 하한을
+ * 모른다. 즉 **종료를 보장하는 것은 이 상수뿐이다.**
+ *
+ * 3 인 근거: 예산 추정(`fillBudgetSteps`)이 빗나가는 정상 사례는 1~2 스텝이면
+ * 흡수된다. 그보다 길게 이어져야 하는 구간은 데이터가 원래 없는 곳이므로, 자동으로
+ * 계속 파고드는 것보다 **멈추고 사용자 조작을 기다리는 편**이 낫다(그 조작이 곧
+ * 뷰포트 이벤트라 3b 가 정상적으로 이어받는다). */
+const MAX_CLAMP_RECOVERY_STEPS = 3;
+
 /** coverage_gap 트리거 판정(3b lazy-fetch·3c 초기표시 공유). viewport 좌단 가시
  * 날짜가 활성 range 지표 커버리지(coverageFrom)보다 과거면 range 창을 그 좌단까지
  * 당기는 확장 계획을 반환, 아니면 null. window-base nextCoverageFrom 을 쓴다 —
@@ -278,6 +300,12 @@ export function useViewportBackfill({
    *  판정하지 않기 위한 키. **쌍이어야 한다**: 한쪽만 키로 두면 다른 쪽이 바뀌어도
    *  마킹이 걸린 채라 그 요청이 조용히 무시된다. */
   const targetFilledForRef = useRef<string | null>(null);
+  /** 3e 가 이번 클램프 구간에서 이어붙인 스텝 수. 화면이 다시 채워지면 0 으로 돌아간다
+   *  — 그 복귀가 곧 "이 구간은 끝났다" 는 신호다. */
+  const clampRecoveryStepsRef = useRef(0);
+  /** 3e 가 마지막으로 확장을 건 시점의 `historicalFromDate`. 창이 그대로면(단조 감소
+   *  가드에 막혔거나 바닥) 같은 커밋을 반복해도 다시 밀지 않는다. */
+  const clampLastFromRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -1056,4 +1084,83 @@ export function useViewportBackfill({
     });
     historicalRange.extend(plan.nextFrom);
   }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, jumpFromDate, rangeWindowFromDate, code, historicalRange]);
+
+  // 3e 의 래치는 **(code, timeframe) 스코프**다. 종목이나 봉이 갈리면 다른 축의
+  // 날짜가 우연히 같아 "이미 밀었다" 로 오인될 수 있어, 경계에서 명시적으로 지운다.
+  useEffect(() => {
+    clampRecoveryStepsRef.current = 0;
+    clampLastFromRef.current = null;
+  }, [code, timeframe]);
+
+  // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.
+  //
+  // 3b 의 유일한 입력은 `subscribeVisibleLogicalRangeChange` 다. 그런데 데이터 좌단까지
+  // 팬하면 lwc 는 화면 폭만큼의 whitespace 만 허용하고 **클램프**한다 — 논리 범위가 더
+  // 변하지 않으니 이벤트가 끊기고, 그 하나에 매달린 3b 도 함께 죽는다. 화면은
+  // whitespace 100% 로 멈춘 채 남는다. 2026-08-25 실측(010140 5m hogaplay ON, 백엔드
+  // 지연 4.5s): 드래그 7회 + 60초 대기에 `viewport_backfill_*` 로그 **0줄**, 우측으로
+  // 한 화면 되돌렸다 오면 즉시 부활 — **잠김이 아니라 이벤트 고갈**이다(잠김이라면
+  // 왕복해도 안 살아난다. 그 서명은 `project-minute-backfill-warm-cache-lock`).
+  //
+  // 3c·3d 와 같은 계열이고 트리거 소스만 다르다: 저쪽은 "저장 뷰포트가 지표 커버리지
+  // 밖", "화면이 팬 없이 옮겨졌다", 이쪽은 "이벤트가 끊긴 채 화면이 비었다".
+  //
+  // **왜 그 상태가 생기나**: `planFillStep` 의 실질 종료 조건은 `stepCount >= budget`
+  // 이고, 그 예산은 트리거 순간의 whitespace 로 **추정**한다(`fillBudgetSteps`).
+  // 확장한 구간이 캡처 구멍이면 캔들이 안 늘어 추정이 빗나가고, whitespace 가 남은 채
+  // fill 이 끝난다. 원래는 다음 뷰포트 이벤트가 새 예산을 발급하는데 클램프면 그
+  // 이벤트가 영영 안 온다 — 그 발급을 여기서 대신한다.
+  //
+  // ⚠ 이것은 **탈출구지 속도 개선이 아니다.** 워크백 자체가 느려서 생기는 동결
+  // (타일당 수 초 × 스텝당 10타일)은 이 효과와 무관한 별건이다.
+  useEffect(() => {
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    const lr = chart.timeScale().getVisibleLogicalRange();
+    if (!lr) return;
+    const span = lr.to - lr.from;
+    if (span <= 0) return;
+    // 화면이 다시 채워졌으면 이 클램프 구간은 끝났다 — 래치를 되돌린다. 이 복귀가
+    // 곧 성공 신호라, 다음 구간은 온전한 상한을 새로 받는다.
+    if (lr.to - Math.max(lr.from, 0) > span * EMPTY_VIEWPORT_DATA_RATIO) {
+      clampRecoveryStepsRef.current = 0;
+      clampLastFromRef.current = null;
+      return;
+    }
+    // 좌측 클램프만 다룬다. `from >= 0` 인데 데이터가 비는 것은 우측 whitespace 쪽
+    // 이야기라 확장으로 풀 문제가 아니다.
+    if (lr.from >= 0) return;
+    if (!canTriggerBackfill()) return;
+    if (axis.segments.length === 0) return;
+    // 3b 와 같은 백프레셔 — 진행 중인 fill 의 동결된 예산을 덮어쓰지 않는다.
+    if (isExtendingRef.current || fillKindRef.current !== null) return;
+    if (clampRecoveryStepsRef.current >= MAX_CLAMP_RECOVERY_STEPS) return;
+    const cur = historicalRange.snapshot().historicalFromDate;
+    // 창이 그대로면 직전 확장이 아무 데도 못 갔다는 뜻이다(단조 감소 가드 또는 바닥).
+    // 같은 자리에서 커밋마다 다시 미는 것을 여기서 끊는다.
+    if (clampLastFromRef.current === cur) return;
+    const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
+    const steps = dispatchStepsFor(timeframe, budget);
+    const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+    clampRecoveryStepsRef.current += 1;
+    clampLastFromRef.current = cur;
+    // 나머지 워크백은 3a 가 이어받는다 — kind 가 `left_pan` 이어야 종료 조건도 같다.
+    fillKindRef.current = 'left_pan';
+    fillBudgetRef.current = budget;
+    fillCoverageTargetRef.current = null;
+    fillStepCountRef.current = steps;
+    livePerfLog('viewport_backfill_extend', {
+      code,
+      timeframe,
+      trigger: 'clamp_recovery',
+      logicalFrom: lr.from,
+      from: cur,
+      nextFrom,
+      steps,
+      stepCount: fillStepCountRef.current,
+      budget,
+      clampStep: clampRecoveryStepsRef.current,
+      candleCount: bundle.candles.length,
+    });
+    historicalRange.extend(nextFrom);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, code, historicalRange]);
 }
