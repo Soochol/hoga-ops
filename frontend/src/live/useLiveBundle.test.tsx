@@ -2702,7 +2702,17 @@ describe('useLiveBundle extension atomization gate', () => {
 	    expect(result.current.chartBundle!.candles).toHaveLength(2);
 	  });
 
-	  it('HOLDS the last-settled chartBundle while sidecar delta is still fetching', () => {
+	  it('사이드카만 워크백 중이면 캔들을 붙잡지 않는다 — 빈 화면을 만들던 홀드였다', () => {
+	    // **2026-08-25 계약 변경.** 종전에는 sidecar 도 캔들을 홀드했다. 그런데 sidecar 는
+	    // 좌팬 워크백에서 압도적으로 느린 레인이다 — 실측(010140 5m 7일 타일):
+	    // candles 0.22~0.40s · hoga 0.21~0.96s · **sidecar 4.5~6.3s**, 그중 ~90%가
+	    // `depth_delta`(단별 잔량 증감) 단독이고 비용은 **처음 보는 날짜**에만 든다
+	    // (`PastIndicatorsCache` 디스크 영속, 재요청 0.069s). 그 5초가 캔들까지 붙잡은
+	    // 것이 사용자가 본 "스크롤해도 빈 화면" 의 실체였다.
+	    //
+	    // 원자성 계약은 안 깨진다 — sidecar 가 늦게 실리는 커밋은 **캔들 모양(firstMs·
+	    // lastMs·count)이 불변**이라 리포지셔너의 `isUnionRemap` 행(useViewportBackfill
+	    // 2d, #1580)이 정확히 그 자리를 맡는다. 캔들·호가의 프리펜드 원자화는 그대로다.
 	    useLivePageStore.setState({ historicalFromDate: '20260420' });
 	    const sidecarState = {
 	      isPlaceholderData: false,
@@ -2731,8 +2741,34 @@ describe('useLiveBundle extension atomization gate', () => {
 	    ];
 	    rerender({ live: liveWithOb(1779840120000) });
 
-	    expect(result.current.chartBundle).toBe(settled);
-	    expect(result.current.chartBundle!.candles).toHaveLength(1);
+	    expect(result.current.chartBundle).not.toBe(settled); // 캔들이 먼저 앉는다
+	    expect(result.current.chartBundle!.candles).toHaveLength(2);
+	  });
+
+	  it('사이드카가 아직 돌면 `isExtending` 은 유지된다 — 진행 신호까지 놓으면 스텝이 앞질러 간다', () => {
+	    // 홀드에서만 뺐고 **진행 신호에서는 빼지 않았다.** 셋이 여기 달려 있다:
+	    //   ① 3a settle-loop 의 하강 엣지 — 먼저 내리면 sidecar 가 나는 중에 다음 스텝이
+	    //      dispatch 되고 그 re-key 가 진행 중인 요청을 버린다(지표가 영영 안 앉는다).
+	    //   ② 진행 칩(`past-backfill-progress-chip`)이 이 값을 읽는다 — 빼면 sidecar
+	    //      워크백 동안 칩이 꺼진 채 지표만 조용히 채워져 "지표가 안 나온다" 로 읽힌다.
+	    //   ③ 3e 클램프 탈출구(useViewportBackfill)의 백프레셔가 그 위에 선다.
+	    useLivePageStore.setState({ historicalFromDate: '20260420' });
+	    const sidecarState = {
+	      isPlaceholderData: true,
+	      isFetching: true,
+	      isHistoricalDeltaFetching: true,
+	    };
+	    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      ...sidecarState,
+	    }));
+	    const { result } = renderHook(
+	      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+	      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+	    );
+	    expect(result.current.isExtending).toBe(true);
 	  });
 
 	  it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
