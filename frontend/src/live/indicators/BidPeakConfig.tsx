@@ -89,7 +89,7 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
       )}
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows
-        toggleKeys={['bidPeakIntraMax', 'bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakVisibleTimeCutoff', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}
+        toggleKeys={['bidPeakIntraMax', 'bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}
       />
       <div className="border-b border-border my-2" />
       <div>

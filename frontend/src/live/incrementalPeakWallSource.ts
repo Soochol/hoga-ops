@@ -85,7 +85,7 @@ function pushTopK(top: AskPeakCandidate[], candidate: AskPeakCandidate): void {
  *  **정확성은 언제나 폴백이 보증한다.** t_ms 중복처럼 축출 판정이 모호해지는
  *  입력에서는 sticky 플래그가 서서 ②로 떨어진다. 증분은 오직 "같은 결과를 덜 계산해서"
  *  얻는 수단이고, 그 등식을 `incrementalPeakWallEviction.test.ts` 가 매 스텝 오라클과
- *  대조해 못박는다(ask/bid × 일반/cutoff, 고정 시드).
+ *  대조해 못박는다(ask/bid, 고정 시드).
  *
  *  분류(classify)는 매 호출 누적 이벤트 전체에 대한 단일 숫자 패스다: touched 판정은
  *  **분 단위 체결가 극값 맵** 조회(배치 touchExtremeByWindow/isWallTouched와 동일 수식,
@@ -121,9 +121,9 @@ export class IncrementalPeakWallSource {
    * 축출당 상각 O(1).
    *
    * ⚠ **`eventIndexByKey` 를 읽는 곳은 전부 `index >= this.head` 를 같이 봐야 한다.**
-   * 세 곳이다: `consumeOb`(없는 것으로 취급해 새로 push), `classify`·`classifyAsOf` 의
-   * extras dedup(죽은 이벤트와 qty 가 같다고 extras 를 건너뛰면 배치와 갈린다 — 배치는
-   * 그 이벤트가 창에서 사라졌으므로 extras 를 **고려**한다).
+   * 두 곳이다: `consumeOb`(없는 것으로 취급해 새로 push), `classify` 의 extras dedup
+   * (죽은 이벤트와 qty 가 같다고 extras 를 건너뛰면 배치와 갈린다 — 배치는 그 이벤트가
+   * 창에서 사라졌으므로 extras 를 **고려**한다).
    */
   private head = 0;
   /**
@@ -210,24 +210,6 @@ export class IncrementalPeakWallSource {
   ): PeakWallClassification {
     this.accumulate(ob, trade, sessionOpenMs);
     return this.classify(extras, backendDayExtreme);
-  }
-
-  /** update 의 as-of-cutoff 판. 누적(ob/trade 소비)은 cutoff 무관하게 동일하고, 분류만
-   *  t_ms <= cutoffMs 로 제한한다 — 배치 deriveDay*Peaks(cutoff)와 동일하게 cutoff 이하
-   *  ob/trade 로 벽·터치를 재평가한다(터치 관계도 cutoff 기준). ob/trade 재스캔 없이
-   *  누적 구조만 필터링하므로 틱당 비용이 히스토리 재빌드에서 분리된다. */
-  updateAsOf(
-    ob: ReadonlyArray<ObSnapshot>,
-    trade: ReadonlyArray<TradeSnapshot>,
-    extras: readonly AskPeakCandidate[],
-    cutoffMs: number,
-    sessionOpenMs: number,
-    /** cutoff 시점의 당일 극값(호출부가 오늘 캔들로 근사) — 백엔드 day_extreme 은
-     *  "지금" 기준이라 과거 cutoff 에 쓰면 미래 체결이 섞이므로 받지 않는다. */
-    dayExtremeAsOf: number | null = null,
-  ): PeakWallClassification {
-    this.accumulate(ob, trade, sessionOpenMs);
-    return this.classifyAsOf(extras, cutoffMs, dayExtremeAsOf);
   }
 
   private accumulate(
@@ -535,59 +517,4 @@ export class IncrementalPeakWallSource {
     return this.events[index].qty === extra.qty;
   }
 
-  /** classify 의 as-of-cutoff 판. 이벤트·extras·터치를 t_ms <= cutoffMs 로 제한한다.
-   *  cutoff 는 팬으로 이동하므로 캐시하지 않고 호출마다 O(n) 으로 분 극값 맵을 다시
-   *  만든다. 배치 mergedAskFamilies 의 cutoff 분기와 동일: cutoff 이하 터치로만 벽의
-   *  touched 여부를 재평가한다(경계 분은 부분만 반영된다 — 그게 "그 시각까지 본 것"
-   *  이라는 cutoff 의 의미다). no-cutoff classify 의 dedup·top-3 규칙을 그대로 상속. */
-  private classifyAsOf(
-    extras: readonly AskPeakCandidate[],
-    cutoffMs: number,
-    dayExtremeAsOf: number | null,
-  ): PeakWallClassification {
-    const isAsk = this.side === 'ask';
-    const extremeByWindow = new Map<number, number>();
-    // 미도달용 as-of 극값 — 창 내 체결(≤ cutoff)과 호출부 근사(캔들)의 결합.
-    // no-cutoff 판의 tradeExtreme 은 여기 쓰지 않는다: cutoff 이후 체결이 섞인다.
-    let dayExtreme = dayExtremeAsOf;
-    for (let i = 0; i < this.touchTimes.length; i += 1) {
-      const tMs = this.touchTimes[i];
-      if (tMs > cutoffMs) continue;
-      const window = touchWindowOf(tMs);
-      const current = extremeByWindow.get(window);
-      const price = this.touchPrices[i];
-      extremeByWindow.set(
-        window,
-        current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
-      );
-      dayExtreme = combineDayExtreme(dayExtreme, price, this.side);
-    }
-    const isTouchedC = (event: AskPeakCandidate): boolean => {
-      const extreme = extremeByWindow.get(touchWindowOf(event.t_ms));
-      if (extreme === undefined) return false;
-      return isAsk ? extreme >= event.price : extreme <= event.price;
-    };
-    const touched: AskPeakCandidate[] = [];
-    const all: AskPeakCandidate[] = [];
-    const unreached: AskPeakCandidate[] = [];
-    const consider = (candidate: AskPeakCandidate) => {
-      if (candidate.t_ms > cutoffMs) return;
-      pushTopK(all, candidate);
-      if (isTouchedC(candidate)) pushTopK(touched, candidate);
-      if (isWallUnreached(candidate.price, dayExtreme, this.side)) {
-        pushTopK(unreached, candidate);
-      }
-    };
-    for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
-    const seenExtras = new Set<string>();
-    for (const extra of extras) {
-      if (extra.t_ms > cutoffMs) continue;
-      const uniqKey = `${extra.price}:${extra.qty}:${extra.t_ms}`;
-      if (seenExtras.has(uniqKey)) continue;
-      seenExtras.add(uniqKey);
-      if (this.isCoveredByLiveEvent(extra)) continue;
-      consider(extra);
-    }
-    return { touched, all, unreached };
-  }
 }
