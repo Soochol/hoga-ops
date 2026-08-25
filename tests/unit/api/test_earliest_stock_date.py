@@ -35,7 +35,7 @@ def seen(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """해석이 실제로 닿은 날짜들 — **조기 종료**를 값으로 재기 위한 기록."""
     hit: list[str] = []
 
-    def _fake(engine, date, code, pref, venue="KRX"):  # noqa: ANN001, ANN202, ARG001
+    def _fake(engine, date, code, pref, venue="KRX"):  # noqa: ANN001, ARG001
         hit.append(date)
         return _Resolved(Path("/x"))
 
@@ -103,7 +103,7 @@ def test_venue_is_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     그 창에서 **틀린 바닥**이 된다."""
     got: list[str] = []
 
-    def _fake(engine, date, code, pref, venue="KRX"):  # noqa: ANN001, ANN202, ARG001
+    def _fake(engine, date, code, pref, venue="KRX"):  # noqa: ANN001, ARG001
         got.append(venue)
         return _Resolved(Path("/x"))
 

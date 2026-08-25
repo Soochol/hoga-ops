@@ -66,7 +66,12 @@ _CANDLE_PATH_IDENTIFIERS = (
 _ROUTES = _REPO_ROOT / "hoga/api/routes.py"
 
 # ``RangeBundle`` 의 스칼라 필드 — 슬라이스가 아니다(ADR-0013 의 범위 식별자).
-_SCALAR_FIELDS = frozenset({"code", "from_date", "to_date", "bucket_ms"})
+# 시계열 슬라이스가 아닌 스칼라 메타. `earliest_captured_date` 는 디스크 모드 좌팬의
+# **바닥**(그 (code,source,venue) 의 가장 오래된 캡처일)이라 슬라이스 레지스트리의
+# 대상이 아니다 — 배열도 캐시 kind 도 없다.
+_SCALAR_FIELDS = frozenset({
+    "code", "from_date", "to_date", "bucket_ms", "earliest_captured_date",
+})
 
 # 슬라이스에 대응하지 않는 캐시 kind 와 그 사유. 늘리려면 사유를 함께 적는다.
 _NON_SLICE_CACHE_KINDS: dict[str, str] = {
