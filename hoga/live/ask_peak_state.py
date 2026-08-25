@@ -56,6 +56,15 @@ class _TodaySidePeakState:
     touch_extreme_by_minute: dict[int, int] = field(default_factory=dict)
     #: 터치된 벽 top-3.
     closed_traded: list[Peak] = field(default_factory=list)
+    #: 당일 연속 체결가의 극값(ask=max, bid=min) — 미도달 판정의 기준. None = 체결 0건.
+    day_extreme: int | None = None
+    #: 미도달 벽 — 극값이 지배하지 못한 가격의 최대 잔량. **가격별 딕셔너리가 불가피한
+    #: 계열이다**: 극값 전진이 top 후보를 소급 무효화하면 4위 이하가 되살아나야 해서
+    #: `_offer_all` 의 top-3 접기 전제("밀려난 후보가 되살아날 일이 없다")가 깨진다.
+    #: 크기는 극값 위에서 관측된 distinct 가격 수로 유계이고(극값 전진이 계속 걷어냄),
+    #: 틱 경로 비용은 레벨당 O(1) 삽입 + 신고가 시에만 O(size) 축출이다. **랭킹은
+    #: 여기서 하지 않는다** — snapshot() 에서만 정렬한다(틱 경로 밖).
+    unreached_by_price: dict[int, Peak] = field(default_factory=dict)
     observed_peak_events: dict[PeakEventKey, Peak] = field(default_factory=dict)
     all_best_by_price_time: dict[tuple[int, int], Peak] = field(default_factory=dict)
     #: 양 스트림에서 본 가장 최근 분 — 창 청소의 기준(단조).
@@ -93,6 +102,17 @@ class _TodaySidePeakState:
         self.touch_extreme_by_minute[minute] = self._extend_touch_extreme(
             self.touch_extreme_by_minute.get(minute), price,
         )
+        # 당일 극값 — 전진했을 때만 미도달 딕셔너리를 걷어낸다(도달한 가격의 소급 제거).
+        previous_extreme = self.day_extreme
+        self.day_extreme = self._extend_touch_extreme(previous_extreme, price)
+        if self.day_extreme != previous_extreme and self.unreached_by_price:
+            reached = [
+                wall_price
+                for wall_price in self.unreached_by_price
+                if self._is_touched_by_price(self.day_extreme, wall_price)
+            ]
+            for wall_price in reached:
+                self.unreached_by_price.pop(wall_price, None)
         # 이 체결이 닫는 것은 **같은 분의** 대기 벽뿐이다.
         pending = self.pending_by_minute.get(minute)
         if pending:
@@ -124,6 +144,13 @@ class _TodaySidePeakState:
 
             peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
             self._offer_all(peak)
+            # 미도달 — 당일 극값이 아직 지배하지 못한 가격만 담는다. 극값은 단조라
+            # "삽입 시점에 이하였던 가격"은 최종에도 이하이므로 처음부터 안 담는 것이
+            # 하루 스코프 정의와 일치하고, 나중에 도달하면 ingest_trade 가 걷어낸다.
+            if self.day_extreme is None or not self._is_touched_by_price(self.day_extreme, price):
+                self.unreached_by_price[price] = _larger_peak(
+                    self.unreached_by_price.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
+                )
             if extreme is not None and self._is_touched_by_price(extreme, price):
                 self._record_closed_peak(peak)
                 continue
@@ -196,6 +223,10 @@ class _TodaySidePeakState:
         all_peak = all_peaks[0] if all_peaks else None
         if all_peak is None:
             return None
+        # 미도달 랭킹은 여기서만 정렬한다 — snapshot() 은 payload 생성 시에만 불리므로
+        # O(n log n) 이 틱 경로에 얹히지 않는다(필드 주석 참조).
+        unreached_peaks = _top_ranked_peaks(self.unreached_by_price.values())
+        unreached = unreached_peaks[0] if unreached_peaks else None
         return {
             "coverage": self.coverage,
             "traded_price": traded.price if traded is not None else None,
@@ -206,6 +237,13 @@ class _TodaySidePeakState:
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
             "all_peaks": [_peak_payload(p) for p in all_peaks],
+            "unreached_price": unreached.price if unreached is not None else None,
+            "unreached_qty": unreached.qty if unreached is not None else None,
+            "unreached_t_ms": unreached.t_ms if unreached is not None else None,
+            "unreached_peaks": [_peak_payload(p) for p in unreached_peaks],
+            # 클라이언트 재필터의 기준 — 프론트는 이 값과 자기 버퍼의 체결 극값을 합쳐
+            # 서버 스냅샷 이후의 극값 전진을 따라간다.
+            "day_extreme": self.day_extreme,
         }
 
     def _refresh_rank_ones(self) -> None:
@@ -245,6 +283,24 @@ class _TodaySidePeakState:
             self._offer_all(peak)
         for peak in other.closed_traded:
             self._record_closed_peak(peak)
+        # 미도달 — 극값을 먼저 합치고(둘 중 더 지배적인 쪽), 딕셔너리를 larger 로 합친 뒤
+        # 합쳐진 극값으로 걷어낸다. 순서가 멱등성을 만든다: 같은 재생본을 두 번 흡수해도
+        # 극값·딕셔너리 모두 고정점이다.
+        if other.day_extreme is not None:
+            self.day_extreme = self._extend_touch_extreme(self.day_extreme, other.day_extreme)
+        for peak in other.unreached_by_price.values():
+            self.unreached_by_price[peak.price] = _larger_peak(
+                self.unreached_by_price.get(peak.price),
+                price=peak.price, qty=peak.qty, t_ms=peak.t_ms, seq=peak.seq,
+            )
+        if self.day_extreme is not None:
+            reached = [
+                wall_price
+                for wall_price in self.unreached_by_price
+                if self._is_touched_by_price(self.day_extreme, wall_price)
+            ]
+            for wall_price in reached:
+                self.unreached_by_price.pop(wall_price, None)
         self._refresh_rank_ones()
 
 

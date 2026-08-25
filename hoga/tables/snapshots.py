@@ -896,6 +896,15 @@ class AskPeakDualRow:
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
     traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달 벽 — 당일 연속거래 체결 극값이 **가격으로 지배하지 못한**(ask: price >
+    #: 당일 고가, bid: price < 당일 저가) 유효 이벤트의 rank-1/top-3. **cont(틱-max)
+    #: 단일 계열**이다: 판정이 (price, 당일 극값) 비교라 봉과 무관하고, rep/cont 를
+    #: 가르면 캐시 재집계(reaggregate_peak_rep)가 day extreme 을 날라야 한다. 체결이
+    #: 0건인 날은 전부 미도달이다.
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_intra_ms: int | None = None
+    unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -948,6 +957,11 @@ class BidPeakDualRow:
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
     traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달 벽 — AskPeakDualRow 의 같은 필드 주석 참조(대칭 규약, bid 는 당일 저가 기준).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_intra_ms: int | None = None
+    unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -2255,6 +2269,30 @@ def reaggregate_peak_rep(
     }
 
 
+def _unreached_wall_frame(
+    events: pl.DataFrame, touches: pl.DataFrame, *, side: str,
+) -> pl.DataFrame:
+    """미도달 벽 필터 — 당일 연속거래 체결 극값이 **가격으로 지배하지 못한** 이벤트만.
+
+    ask 는 ``price > 당일 고가``, bid 는 ``price < 당일 저가``. 극값은 그날 체결
+    전체(``touches``)의 max/min 이라 봉과 무관한 스칼라 하나다 — 동일분 터치
+    (ADR-0156)와 달리 판정이 하루 스코프이고, 그래서 값이 소급 재분류된다(장중
+    고가 갱신 시 벽이 이 계열에서 **빠진다**). 체결이 0건인 날은 전부 미도달이다.
+    """
+    if events.height == 0 or touches.height == 0:
+        return events
+    if side == "ask":
+        return events.filter(pl.col("price") > touches["price"].max())
+    return events.filter(pl.col("price") < touches["price"].min())
+
+
+def _peak_price_distinct(classified: pl.DataFrame) -> pl.DataFrame:
+    """가격당 rank-1 — `_peak_touched_distinct` 의 터치 필터 없는 판(미도달 top-3 용)."""
+    return _peak_rank_sort(classified).unique(
+        subset=["price"], keep="first", maintain_order=True,
+    )
+
+
 def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     """터치된 이벤트만 남기고 **가격당 rank-1** — 같은 가격이 top-N 슬롯을 독식하지
     않게 한다.
@@ -2320,6 +2358,9 @@ def query_day_ask_bid_peak_dual_with_rep(
         rep_traded = _peak_touched_distinct(rep)
         cont_traded = _peak_touched_distinct(cont)
 
+        # 미도달 계열 — cont(틱-max) 단일 계열(사유는 AskPeakDualRow 필드 주석).
+        unreached_frame = _unreached_wall_frame(cont, touches, side=side)
+
         return {
             "all_close": all_close,
             "all_max": all_max,
@@ -2332,6 +2373,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             "traded_record_max_peaks": _peak_record_sequence(cont),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
+            "unreached": _peak_scalar(unreached_frame),
+            "unreached_peaks": _peak_candidates(_peak_price_distinct(unreached_frame), 3),
         }
 
     ask = _side_row("ask")
@@ -2339,7 +2382,7 @@ def query_day_ask_bid_peak_dual_with_rep(
 
     ask_row: AskPeakDualRow | None = None
     if ask is not None:
-        tc, tm = ask["traded_close"], ask["traded_max"]
+        tc, tm, ur = ask["traded_close"], ask["traded_max"], ask["unreached"]
         ask_row = AskPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2349,11 +2392,14 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=ask["unreached_peaks"],
         )
 
     bid_row: BidPeakDualRow | None = None
     if bid is not None:
-        tc, tm = bid["traded_close"], bid["traded_max"]
+        tc, tm, ur = bid["traded_close"], bid["traded_max"], bid["unreached"]
         bid_row = BidPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2363,6 +2409,9 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=bid["unreached_peaks"],
         )
     return ask_row, bid_row, rep_rows_out
 

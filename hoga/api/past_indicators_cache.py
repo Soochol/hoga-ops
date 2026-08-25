@@ -111,8 +111,9 @@ KIND_VERSIONS: dict[str, int] = {
     # 실제로 달라졌으므로 구 캐시를 살려 두면 화면이 구 규칙으로 굳는다.
     # 9: traded_record_peaks/traded_record_max_peaks(기록 갱신 시퀀스) 추가 —
     #    구 캐시 모델엔 이 필드가 없어 pane 계단의 오전 이력이 비므로 재계산이 맞다.
-    "ask_peak": 9,
-    "bid_peak": 9,
+    # 10: unreached_*(미도달 벽 — 당일 극값이 지배하지 못한 벽) 추가 — 같은 사유.
+    "ask_peak": 10,
+    "bid_peak": 10,
     "poc": 7,
     "depth": 7,
     "depth_delta": 2,

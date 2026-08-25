@@ -748,6 +748,9 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        unreached_price=row.unreached_price, unreached_qty=row.unreached_qty,
+        unreached_t_ms=_unix_or_none(date, row.unreached_intra_ms),
+        unreached_peaks=[_ask_candidate(date, c) for c in row.unreached_peaks],
     )
 
 
@@ -767,6 +770,9 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        unreached_price=row.unreached_price, unreached_qty=row.unreached_qty,
+        unreached_t_ms=_unix_or_none(date, row.unreached_intra_ms),
+        unreached_peaks=[_ask_candidate(date, c) for c in row.unreached_peaks],
     )
 
 
@@ -908,6 +914,8 @@ def _peak_with_rep_outputs(
     덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
     `traded_record_*`(기록 갱신 시퀀스)도 **덮지 않는다** — "그 시점까지의 최대" 는
     봉 굵기와 무관한 사실이라 1분 캐시 값이 모든 봉에서 그대로 옳다.
+    `unreached_*`(미도달 벽)도 같은 취급이다 — 판정이 (price, 당일 극값) 비교라
+    cont 처럼 봉 무관이고, 그래서 cont 단일 계열로 설계했다(snapshots 필드 주석).
 
     `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
     `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라

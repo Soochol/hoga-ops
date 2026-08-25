@@ -226,6 +226,13 @@ class AskPeak(BaseModel):
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달 벽(당일 고가 위) — cont 단일 계열 rank-1 스칼라 + top-3. top-3 은 최대
+    # 3개라 all_peaks 처럼 벗기지 않는다(_without_all_peak_rankings 대상 아님).
+    # None/[] = 구 캐시·legacy payload(그날은 프론트가 선을 건너뛴다).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_t_ms: int | None = None
+    unreached_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class BidPeak(BaseModel):
@@ -258,6 +265,11 @@ class BidPeak(BaseModel):
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달 벽(당일 저가 아래) — AskPeak 의 같은 필드 주석 참조(대칭 미러).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_t_ms: int | None = None
+    unreached_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class QuoteRatioPoint(BaseModel):

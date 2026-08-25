@@ -748,6 +748,11 @@ export type PeakBase = {
   all_max_price?: number | null;
   all_max_qty?: number | null;
   all_max_t_ms?: number | null;
+  /** 미도달 벽(당일 극값이 지배하지 못한 벽) rank-1 — **cont 단일 계열**이라 close/max
+   *  구분이 없다(백엔드 AskPeakDualRow 주석). None = 구 캐시·legacy payload. */
+  unreached_price?: number | null;
+  unreached_qty?: number | null;
+  unreached_t_ms?: number | null;
 };
 
 /** hoga/api/models.py::AskPeak 미러. 후보 배열은 매도벽 표시용 ask-only 확장. */
@@ -761,6 +766,8 @@ export type AskPeak = PeakBase & {
   traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  /** 미도달 벽 top-3 — all_peaks 와 달리 /api/range 에서 벗기지 않는다(최대 3개). */
+  unreached_peaks?: AskPeakCandidate[];
 };
 
 /** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
@@ -772,6 +779,8 @@ export type BidPeak = PeakBase & {
   traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  /** ask 쪽 주석 참조 — 동일 규약 미러. */
+  unreached_peaks?: AskPeakCandidate[];
 };
 
 export type TradeVolumePocWire = {
