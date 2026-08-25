@@ -146,7 +146,6 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       null,
-      null,
       'KRX',
     ]);
   });
@@ -206,7 +205,6 @@ describe('buildRangeBundleRequest', () => {
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
-        depthDeltaEnabled: false,
       },
     });
 
@@ -215,9 +213,8 @@ describe('buildRangeBundleRequest', () => {
     expect(request.url).toContain('&program_trade_enabled=false');
     expect(request.url).toContain('&trade_volume_poc_enabled=false');
     expect(request.url).toContain('&depth_heatmap_enabled=false');
-    expect(request.url).toContain('&depth_delta_enabled=false');
-    // venue 가 키의 맨 끝이라 여섯 게이트는 그 앞 구간이다(ADR-0140).
-    expect(request.queryKey.slice(-7, -1)).toEqual([false, false, false, false, false, false]);
+    // venue 가 키의 맨 끝이라 다섯 게이트는 그 앞 구간이다(ADR-0140).
+    expect(request.queryKey.slice(-6, -1)).toEqual([false, false, false, false, false]);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -301,7 +298,6 @@ describe('buildRangeBundleRequest', () => {
       undefined,
       null,
       'kiwoom_live',
-      null,
       null,
       null,
       null,
@@ -1032,7 +1028,6 @@ describe('rangeBundleQueryOptions', () => {
       12,
       'kiwoom_live',
       'hoga',
-      null,
       null,
       null,
       null,
@@ -1952,7 +1947,6 @@ describe('rangePlaceholderData', () => {
     null,
     null,
     null,
-    null,
     'KRX',
   ];
 
@@ -1973,7 +1967,6 @@ describe('rangePlaceholderData', () => {
       null,
       'kiwoom_live',
       'hoga',
-      null,
       null,
       null,
       null,
@@ -2009,7 +2002,6 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
-      null,
       'KRX',
     ];
 
@@ -2039,7 +2031,6 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
-      null,
       'KRX',
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
@@ -2058,7 +2049,6 @@ describe('rangePlaceholderData', () => {
       null,
       'kiwoom_live',
       'sidecar',
-      null,
       null,
       null,
       null,
@@ -2097,18 +2087,18 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
-      null,
       'NXT', // ← baseKey 는 'KRX'
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
   });
 
-  // depth_delta 토글은 화면 증상이 없다 — pane 렌더 게이트가 번들이 아니라 스토어
+  // 히트맵 토글은 화면 증상이 없다 — pane 렌더 게이트가 번들이 아니라 스토어
   // 플래그(`useWindowIndicator`)라 옛 데이터가 placeholder 에 남아도 그려지지 않는다.
-  // 그래도 "placeholder 는 옵션이 같은 사본" 이라는 계약은 지켜야 한다: 바로 옆
-  // 히트맵(idx 20)이 그렇게 하고 있고, 둘의 비대칭은 의도가 아니라 갱신 누락이었다.
-  it('drops previous data when the depth delta toggle changes', () => {
+  // 그래도 "placeholder 는 옵션이 같은 사본" 이라는 계약은 지켜야 한다 — 게이트가
+  // 늘 때 이 목록(PLACEHOLDER_COMPATIBLE_KEY_INDICES) 갱신을 빠뜨리면 무증상으로
+  // 샌다(#490 이 그 사고였다).
+  it('drops previous data when the depth heatmap toggle changes', () => {
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
       '005930',
@@ -2125,7 +2115,6 @@ describe('rangePlaceholderData', () => {
       null,
       'kiwoom_live',
       'hoga',
-      null,
       null,
       null,
       null,
@@ -2378,7 +2367,6 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
       trade_volume_pocs: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
       volume_distributions: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
       depth_heatmap: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
-      depth_delta: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
       wall_surge: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
       broker_late_entries: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
       program_trade: { source: 'kis_program_trade', points: [0, 1, 2].map((i) => ({ t: at(i) })) },
@@ -2400,7 +2388,6 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
     expect(out.trade_volume_pocs).toHaveLength(2);
     expect(out.volume_distributions).toHaveLength(2);
     expect(out.depth_heatmap).toHaveLength(2);
-    expect(out.depth_delta).toHaveLength(2);
     expect(out.wall_surge).toHaveLength(2);
     expect(out.broker_late_entries).toHaveLength(2);
     expect(out.program_trade?.points).toHaveLength(2);

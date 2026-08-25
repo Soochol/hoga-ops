@@ -504,7 +504,7 @@ rollupOptions: { output: { codeSplitting: { groups: [
 
 | # | 장치 | 잡는 회귀 | 규모 |
 |---|---|---|---|
-| a | ✅ **구현됨** **초기 로드 합계 테스트** — `dist/index.html` 의 entry+modulepreload+**stylesheet** raw/gzip 합계를 상한과 대조. **지표 정의를 JS+CSS 로 명시**하고 vite.config 주석의 기준선을 재현 가능한 형태(측정 스크립트 동봉)로 교체 | §0.2 의 지표 혼용 재발, 조용한 번들 증가 | S |
+| a | ⛔ **제거됨(2026-08-25)** — 한때 구현됐으나 사용자 결정으로 걷어냈다(`scripts/initialLoadBudget*.ts` 삭제). 아래 항목의 의도는 기록으로 남긴다. **초기 로드 합계 테스트** — `dist/index.html` 의 entry+modulepreload+**stylesheet** raw/gzip 합계를 상한과 대조. **지표 정의를 JS+CSS 로 명시**하고 vite.config 주석의 기준선을 재현 가능한 형태(측정 스크립트 동봉)로 교체 | §0.2 의 지표 혼용 재발, 조용한 번들 증가 | S |
 | b | ✅ **구현됨**(소스맵 대신 **마커 문자열**) **소속 단언** — `dist/assets/*.js.map` 의 `sources` 에서 `react-dom` 이 `react-*.js` 안에 있는지 | 청크 배정이 조용히 무력화되는 것(4-1) | S |
 | c | ✅ **구현됨**(`it.fails` 마커) **축출 호출 수 테스트** — `useDayPeaks.perf.test.tsx` + `tradeVolumePoc.test.ts` 에 **선두 절단** 케이스. 지금 반드시 빨개야 한다 | 1-3 의 재발. 기존 테스트가 이 축을 원리적으로 못 본다 | S |
 | d | ✅ **구현됨**(#1348) **렌더 카운트 테스트** — 코어의 `windowItem` 주입 슬롯에 카운터 더미를 넣어 "드래그에 참여하지 않은 창의 렌더 증가 = 0" | 2-1 의 재발. 이 성질은 주석에만 있고 한 번도 검증된 적이 없다 | S |

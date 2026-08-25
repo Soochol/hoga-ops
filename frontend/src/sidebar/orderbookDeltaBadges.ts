@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { isContinuousBook, type ObSnapshot } from '../live/bucketHogaSeries';
-import { sameDeltaChain } from '../live/depthDelta';
+import { sameDeltaChain } from '../live/liveVenuePolicy';
 
 /** 10호가 카드의 HTS식 순간 증감 뱃지 상태.
  *

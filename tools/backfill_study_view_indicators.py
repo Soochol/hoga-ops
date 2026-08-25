@@ -1,13 +1,14 @@
 """저장뷰 구간의 봉 종속 호가 지표를 미리 계산해 `PastIndicatorsCache` 를 채운다.
 
-**왜 필요한가.** 봉 종속 지표(`depth`·`ask_peak`·`bid_peak`·`depth_delta`)는 캐시
-파일명에 `bucket_ms` 가 들어간다. 그래서 지표를 **새로 도입하면 그 이전에 만들어진
-저장뷰 구간은 전부 그 지표에 대해 콜드**가 된다 — 계산될 기회 자체가 없었기 때문이다.
+**왜 필요한가.** 봉 종속 지표(`depth`·`ask_peak`·`bid_peak`)는 캐시 파일명에
+`bucket_ms` 가 들어간다. 그래서 지표를 **새로 도입하면 그 이전에 만들어진 저장뷰
+구간은 전부 그 지표에 대해 콜드**가 된다 — 계산될 기회 자체가 없었기 때문이다.
 
-실측(2026-08-13)이 그 구조를 그대로 보여줬다. `depth_delta` 는 2026-07-20 에 들어왔고
-(#748), 분봉 저장뷰 63개 중 58개가 그전에 만들어졌다:
+실측(2026-08-13)이 그 구조를 그대로 보여줬다. 그때 막 들어온 지표(2026-07-20 도입,
+#748 — 지금은 제거된 단별 잔량 증감)를 기준으로, 분봉 저장뷰 63개 중 58개가 그전에
+만들어졌다:
 
-    저장뷰 생성 시점        depth_delta warm    depth warm
+    저장뷰 생성 시점        신규 지표 warm      depth warm
     도입 이전 (58개)              5.8%           88.5%
     도입 이후 ( 5개)             88.8%           92.1%
 
@@ -20,7 +21,7 @@
 프로세스에서 돌아 레인과 무관하다. 캐시 쓰기는 `atomic_write_json` 이라 dev 서버가
 같은 파일을 동시에 써도 안전하다.
 
-**왜 상위 함수인가.** 슬라이스 함수(`build_depth_delta_slice` 등)를 직접 부르면
+**왜 상위 함수인가.** 슬라이스 함수(`build_depth_heatmap_slice` 등)를 직접 부르면
 세션 경계를 호출부가 재현해야 하는데, 그 값이 계산 결과에 들어간다. 상위 함수를
 그대로 쓰면 실제 요청 경로와 **같은 값**이 흐르므로 캐시가 정합적이다.
 
@@ -54,7 +55,7 @@ from hoga.config import resolve_data_dir
 # 이 스크립트가 채우는 지표. 캐시 파일명이 `{date}.{이름}.{bucket_ms}.json` 이라
 # **봉을 바꾸면 통째로 콜드**가 되는 것들이다. `ratio`/`fill` 은 파일명에 봉이 없어
 # 대상이 아니고, poc/vdist 는 가격 범위가 키라 모듈 docstring 의 이유로 제외한다.
-BUCKET_KEYED_INDICATORS = ("depth", "ask_peak", "bid_peak", "depth_delta")
+BUCKET_KEYED_INDICATORS = ("depth", "ask_peak", "bid_peak")
 
 TIMEFRAME_TO_MS = {
     "1m": 60_000,
@@ -124,7 +125,7 @@ def _captured_dates(
 def _missing_cells(data_dir: Path, code: str, dates: list[str], bucket_ms: int) -> int:
     """(지표 × 날짜) 단위 미계산 건수.
 
-    캐시는 **지표별 × 날짜별**이라(`bundle.py` 의 `get_depth`/`get_depth_delta` 등이
+    캐시는 **지표별 × 날짜별**이라(`bundle.py` 의 `get_depth`/`get_ask_peak` 등이
     각각 `CACHE_MISS` 를 본다) 한 날짜에 하나만 비어도 그 하나만 계산된다. 그래서
     "날짜 단위 콜드" 로 세면 비용이 과대평가된다.
     """
@@ -251,7 +252,6 @@ def _run(args: argparse.Namespace, data_dir: Path, saves: list, engine: QueryEng
             ask_peaks_enabled=True,
             bid_peaks_enabled=True,
             depth_heatmap_enabled=True,
-            depth_delta_enabled=True,
             program_trade_enabled=False,
         )
         written = _cache_file_count(data_dir, code) - before

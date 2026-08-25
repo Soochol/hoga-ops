@@ -842,7 +842,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               todayKst={d.today}
               tradeVolumePocs={d.tradeVolumePocs}
               depthHeatmap={d.workareaDepthHeatmap}
-              depthDeltaToday={d.depthDeltaToday}
               onViewportCaptureReady={handleViewportCaptureReady}
               // 창 간 동기화(크로스헤어 · 기간 · 줌)를 켠다. **범위는 창 헤더의 번호
               // (링크 그룹)** 다 — 번호가 다르면 아무것도 공유하지 않는다(사용자 결정

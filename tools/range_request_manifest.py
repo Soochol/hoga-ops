@@ -54,7 +54,6 @@ class RangeRequestOptions(BaseModel):
     program_trade_enabled: bool
     trade_volume_poc_enabled: bool
     depth_heatmap_enabled: bool
-    depth_delta_enabled: bool
 
     @field_validator("bucket_ms")
     @classmethod
@@ -126,8 +125,6 @@ class RangeRequestManifest(BaseModel):
             expected.add("build_program_trade_series")
         if self.request.depth_heatmap_enabled:
             expected.add("build_depth_heatmap_slice")
-        if self.request.depth_delta_enabled:
-            expected.add("build_depth_delta_slice")
         return frozenset(expected)
 
     def request_kwargs(

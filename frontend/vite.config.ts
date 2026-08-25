@@ -1,6 +1,5 @@
 import { defineConfig, type Plugin } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-import { initialLoadBudget } from './scripts/initialLoadBudget'
 
 /**
  * e2e 전용 `/config.json` 재정의.
@@ -34,20 +33,19 @@ function e2eConfigJson(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), e2eConfigJson(), initialLoadBudget()],
+  plugins: [react(), e2eConfigJson()],
   build: {
     // 기본 500KB. `live-workspace` 는 eager 라우트(`/live`) 자신의 청크이고,
     // heatmap·studyViews 를 그룹에서 뺀 뒤 `/live` 가 실제로 쓰는 모듈이 여기로
     // 흡수된다. 이 경고를 끄는 게 아니라 임계를 실제 최대 청크보다 약간 위로 올려,
     // 여기서 더 커지면 다시 알려 주도록 남긴다.
     //
-    // ⚠ **이건 개별 청크만 본다.** 추적해야 하는 지표는 **초기 로드 합계**이고,
-    // 그건 `scripts/initialLoadBudget.ts` 가 빌드 안에서 강제한다(경고가 아니라 실패).
-    // 종전엔 그 합계를 아무도 안 봐서 조용히 늘었고, 주석에 적혀 있던 기준선
-    // 「1071 KB」는 **JS 전용** 수치라 나중에 잰 JS+CSS 값과 직접 비교돼 「+159 KB
-    // 회귀」라는 없는 사고를 만들었다(like-for-like 는 +111 KB, 그중 절반은 의도된
-    // 폰트 self-host). 그래서 숫자를 주석에 적는 대신 **측정 코드**를 뒀다 —
-    // 지표 정의(무엇을 세는가)가 코드에 있어야 다음 사람이 같은 방식으로 잰다.
+    // ⚠ **이건 개별 청크만 본다 — 초기 로드 합계를 보는 것은 아무것도 없다**
+    // (2026-08-25 에 `scripts/initialLoadBudget.ts` 를 사용자 결정으로 제거했다).
+    // 합계를 다시 재게 된다면 **측정 정의부터 코드로 고정할 것**: 종전 기준선
+    // 「1071 KB」는 **JS 전용** 수치였는데 나중에 잰 JS+CSS 값과 직접 비교돼
+    // 「+159 KB 회귀」라는 없는 사고를 만들었다(like-for-like 는 +111 KB, 그중 절반은
+    // 의도된 폰트 self-host).
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
@@ -75,8 +73,10 @@ export default defineConfig({
          *      를 한 줄만 고쳐도 그 67 KB 가 매 배포마다 다시 내려갔다. 벤더를 자기
          *      청크로 빼면 그 재다운로드가 사라진다(첫 방문 +, 이후 배포 −).
          *
-         * 실제 소속은 `scripts/initialLoadBudget.ts` 의 마커 문자열 검사가 지킨다 —
-         * 이 규칙이 다시 조용히 죽으면 빌드가 실패한다.
+         * ⚠ **이 소속을 검사하는 것은 이제 아무것도 없다**(2026-08-25, 위 예산 플러그인과
+         * 함께 제거). 이 규칙이 다시 조용히 죽어도 빌드는 통과한다 — 청크 파일명을
+         * 근거로 무언가를 판단하기 전에 **소스맵으로 귀속을 재확인할 것**. 위 4배
+         * 오독이 정확히 그 절차를 건너뛴 결과다.
          */
         codeSplitting: {
           groups: [

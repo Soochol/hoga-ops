@@ -53,8 +53,8 @@ describe('wall_surge merge', () => {
     expect(merged.wall_surge!.map((e) => e.t_ms)).toEqual([1_000, 3_000]);
   });
 
-  // dedup 키가 t_ms 하나면 여기서 이벤트가 사라진다 — depth_heatmap/depth_delta 는
-  // 버킷당 1점이라 t_ms 로 충분하지만 호가벽은 한 스냅샷에 여러 건이 설 수 있다.
+  // dedup 키가 t_ms 하나면 여기서 이벤트가 사라진다 — depth_heatmap 은 버킷당
+  // 1점이라 t_ms 로 충분하지만 호가벽은 한 스냅샷에 여러 건이 설 수 있다.
   it('같은 시각의 매도·매수 벽과 다른 가격대를 모두 남긴다', () => {
     const previous: RangeBundle = {
       ...fakeBundle,

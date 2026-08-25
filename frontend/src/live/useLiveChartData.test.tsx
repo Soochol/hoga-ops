@@ -61,7 +61,6 @@ const BUNDLE_RESULT = {
   bundle: MERGED_BUNDLE as RangeBundle | null,
   chartBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
   hogaBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
-  depthDeltaToday: [],
   clampEngaged: false,
   isLoading: false,
   error: null,

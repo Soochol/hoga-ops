@@ -146,7 +146,6 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     hogaMissingDates,
     candleEmpty,
     refetchCandles,
-    depthDeltaToday,
     clampEngaged,
     candleSourceKey,
     minuteScrollbackFloorDate,
@@ -385,11 +384,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     dayBidPeaks,
     tradeVolumePocs,
     liveSaveBundle,
-    // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.
-    depthDeltaToday: activeIndexId ? [] : depthDeltaToday,
     /** 번들 지표에 적용된 날짜별 수정계수 — `/api/range` 를 따로 호출하는 데이터 창이
      *  같은 척도를 쓰게 하는 통로(`scaleRangeBundlePrices`). 지수는 호가 지표 자체가
-     *  없으므로 `undefined`(`depthDeltaToday` 와 같은 규율). */
+     *  없으므로 `undefined` — 지수 워크에어리어는 호가 유래 필드를 흘리지 않는다는
+     *  공통 규율이다(`workareaHogaMissingDates` 도 같다). */
     adjustFactors: activeIndexId ? undefined : adjustFactors,
     /** 디스크 창(얼린 저장뷰 · 창별 hogaplay 소스)의 키움 보충 결과.
      *  **로딩 게이트에는 넣지 않는다** — 보충은 디스크
@@ -402,7 +400,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     workareaChartBundle,
     workareaHogaBundle,
     /** 호가 결손 사유 — 번들과 **따로** 흘린다(#1133). 지수 워크에어리어는 호가장이
-     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`depthDeltaToday` 와 같은 규율). */
+     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`adjustFactors` 와 같은 규율). */
     workareaHogaMissingDates: activeIndexId ? [] : hogaMissingDates,
     /** 캔들 빈 상태 — 지수 워크에어리어는 캔들 파이프라인이 달라(indexBundle) 이
      *  판별의 대상이 아니다. `workareaHogaMissingDates` 와 같은 규율. */
