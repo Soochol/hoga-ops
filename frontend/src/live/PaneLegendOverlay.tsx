@@ -571,22 +571,81 @@ function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
  *  없이도 남기는 것과 같은 계약, `LEGEND_FLAG_IDS` 주석). */
 const DISABLED_CHIP_OPACITY = 0.4;
 
-/** 레전드 칩 하나 = MA 인스턴스 하나. 꺼진 칩은 dim + 값 생략 — 오버레이가 series
- *  를 비우므로 읽을 값이 애초에 없고, 빈 "—" 를 세워 두면 켜진 칩과 헷갈린다. */
-function MaChip({ ma }: { ma: LegendMAValue }) {
+/**
+ * 레전드 칩 하나 = MA 인스턴스 하나. 이 모델의 조작 표면이다.
+ *
+ *  - 클릭   → 그 인스턴스만 숨김/표시(비파괴). 꺼진 칩은 dim + 값 생략 — 오버레이가
+ *             series 를 비우므로 읽을 값이 애초에 없고, 빈 "—" 를 세워 두면 켜진
+ *             칩과 헷갈린다.
+ *  - 더블클릭 → 인스턴스 속성 popover(PR-2). 지금은 배선만 — 첫 클릭의 숨김이
+ *             둘째 클릭에서 되돌아오므로 순효과는 popover 만 열리는 것이다.
+ *  - 호버 ✕  → 그 인스턴스 삭제(파괴적) + 실행취소 토스트.
+ *
+ * ⚠ 칩은 `pointerEvents:'auto'` 다. 루트 컨테이너가 `none` 인 것은 크로스헤어가
+ * 레전드 **밑에서** 계속 추적되게 하려는 계약인데(`legendRootStyle` 주석), 칩이
+ * 조작 대상이 된 이상 그 폭만큼 사각지대를 내주는 것이 이 디자인의 값이다.
+ * 여백은 여전히 `none` 이라 사각지대는 칩 스트립에 국한된다.
+ */
+function MaChip({
+  ma,
+  label,
+  onToggle,
+  onRemove,
+  onOpenSettings,
+}: {
+  ma: LegendMAValue;
+  label: string;
+  onToggle: () => void;
+  onRemove: () => void;
+  onOpenSettings: () => void;
+}) {
   return (
     <span
+      className="legend-chip"
       data-testid={`legend-ma-chip-${ma.id}`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 'var(--space-2xs)',
+        pointerEvents: 'auto',
+        userSelect: 'none',
         opacity: ma.enabled ? undefined : DISABLED_CHIP_OPACITY,
       }}
     >
       {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
-      <span style={{ color: ma.color, fontWeight: 500 }}>{ma.period}</span>
-      {ma.enabled && <MaValueCell value={ma.value} />}
+      <button
+        type="button"
+        aria-label={`${label} ${ma.period} ${ma.enabled ? '숨김' : '표시'}`}
+        title={`${label} ${ma.period}`}
+        onClick={onToggle}
+        onDoubleClick={onOpenSettings}
+        style={{
+          padding: 0,
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          font: 'inherit',
+          color: ma.color,
+          fontWeight: 500,
+        }}
+      >
+        {ma.period}
+      </button>
+      {ma.enabled && (
+        <span className="legend-ma-value">
+          <MaValueCell value={ma.value} />
+        </span>
+      )}
+      <button
+        type="button"
+        className="legend-chip-x"
+        aria-label={`${label} ${ma.period} 삭제`}
+        title={`${label} ${ma.period} 삭제`}
+        onClick={onRemove}
+        style={{ ...iconBtnStyle, width: 14, height: 14 }}
+      >
+        <CloseGlyph />
+      </button>
     </span>
   );
 }
@@ -600,17 +659,28 @@ function MaChip({ ma }: { ma: LegendMAValue }) {
  * 그때까지 슬롯 추가·삭제는 지표 패널이 담당한다.
  */
 function MaSlotLegendRow(
-  { row, label, onToggleAll }: {
+  { row, label, onToggleAll, onToggleOne, onRemoveOne }: {
     row: Extract<LegendRow, { kind: 'ma' | 'daily-ma' }>;
     label: string;
     onToggleAll: (enabled: boolean) => void;
+    onToggleOne: (id: string, enabled: boolean) => void;
+    onRemoveOne: (id: string) => void;
   },
 ) {
   const anyEnabled = row.mas.some((m) => m.enabled);
   return (
     <>
       <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
-      {row.mas.map((m) => <MaChip key={m.id} ma={m} />)}
+      {row.mas.map((m) => (
+        <MaChip
+          key={m.id}
+          ma={m}
+          label={label}
+          onToggle={() => onToggleOne(m.id, !m.enabled)}
+          onRemove={() => onRemoveOne(m.id)}
+          onOpenSettings={() => openInstanceSettings()}
+        />
+      ))}
       <HoverIcon
         label={`${label} 선 숨김/표시`}
         restColor={anyEnabled ? 'var(--fg-dimmer)' : 'var(--fg-dim)'}
@@ -622,14 +692,35 @@ function MaSlotLegendRow(
   );
 }
 
+/** 칩 더블클릭의 착지점 — PR-2 의 인스턴스 속성 popover 가 여기에 꽂힌다.
+ *  지금 no-op 인 것은 의도다: 이벤트 배선(리스너·전파·크로스헤어 사각지대)을 이번
+ *  PR 에서 확정해 두면 popover 는 내용물만 얹으면 된다. */
+function openInstanceSettings(): void {}
+
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
-  const setAllEnabled = useIndicatorActions().setAllMovingAveragesEnabled;
-  return <MaSlotLegendRow row={row} label="이동평균선" onToggleAll={setAllEnabled} />;
+  const actions = useIndicatorActions();
+  return (
+    <MaSlotLegendRow
+      row={row}
+      label="이동평균선"
+      onToggleAll={actions.setAllMovingAveragesEnabled}
+      onToggleOne={(id, enabled) => actions.setMovingAverage(id, { enabled })}
+      onRemoveOne={actions.removeMovingAverageWithUndo}
+    />
+  );
 }
 
 function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
-  const setAllEnabled = useIndicatorActions().setAllDailyMovingAveragesEnabled;
-  return <MaSlotLegendRow row={row} label="일봉 이동평균선" onToggleAll={setAllEnabled} />;
+  const actions = useIndicatorActions();
+  return (
+    <MaSlotLegendRow
+      row={row}
+      label="일봉 이동평균선"
+      onToggleAll={actions.setAllDailyMovingAveragesEnabled}
+      onToggleOne={(id, enabled) => actions.setDailyMovingAverage(id, { enabled })}
+      onRemoveOne={actions.removeDailyMovingAverageWithUndo}
+    />
+  );
 }
 
 function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
@@ -1284,6 +1375,9 @@ function PaneLegendOverlay({
                     // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
                     // key 충돌 예방.
                     key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
+                    // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
+                    // 행이다(global.css `.legend-row-ma`).
+                    className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
                     style={boxStyle}
                   >
                     {row.kind === 'ohlc' ? (

@@ -255,6 +255,18 @@ export type ActiveViewProjection = {
  * 기록한 뒤 투영을 갱신한다. ambient 는 /live 가 candleTimeframe 으로,
  * /study 가 activeTab.timeframe 으로 `setIndicatorTimeframe` 을 통해 공급한다.
  */
+/** 삭제 undo 토스트 1건 — 문구 + 되돌릴 대상(스코프·봉)과 되돌릴 값(patch). */
+export type IndicatorUndoToast = {
+  /** 토스트 문구. 예: "이동평균선 20 삭제됨". */
+  label: string;
+  /** **삭제 시점의** 스코프 — 그 창의 버킷으로 되돌린다. */
+  scope: IndicatorScope;
+  /** **삭제 시점의** 봉 — 그 버킷으로 되돌린다. */
+  timeframe: LiveTimeframe;
+  /** 삭제 직전 값(배열 전체 스냅샷). */
+  patch: Partial<IndicatorSettings>;
+};
+
 type Store = Persisted & IndicatorSettings & {
   /** 사용자 소유 차트 pane 순서(전역 — 봉 무관, ADR-0114 §3 / #696).
    *  이제 `paneGroups` 의 평탄화 **투영**이다 — 두 필드는 모든 레이아웃 액션이
@@ -279,6 +291,25 @@ type Store = Persisted & IndicatorSettings & {
   indicatorsByWindow: Record<string, IndicatorSettingsByTimeframe>;
   /** 지표 설정이 현재 투영된 봉 — 보는 차트의 timeframe 과 항상 일치해야 한다. */
   indicatorTimeframe: LiveTimeframe;
+  /**
+   * 인스턴스 삭제 undo 토스트의 트리거 데이터 — **런타임 전용**(영속 안 됨).
+   *
+   * 레전드 칩 ✕ 가 파괴적 원클릭이라 복구 수단이 인수 조건이다. 모델은 드로잉의
+   * `clearToast` 선례를 그대로 복제한다: undo 스택 pop 이 아니라 **삭제 직전
+   * 스냅샷을 되돌리는 평범한 변이**라, 토스트가 떠 있는 동안 다른 편집이 있었어도
+   * 정확하고 그 복원 자체가 다시 undo 가능하다.
+   *
+   * `scope`·`timeframe` 은 **삭제 시점에 평가해 싣는다**(호출 시점 재평가 아님).
+   * 토스트 중 사용자가 봉을 바꾸거나 다른 창을 포커스해도 복원이 원래 창×봉
+   * 버킷에 착지해야 하기 때문이다.
+   */
+  indicatorUndoToast: IndicatorUndoToast | null;
+  /** 삭제 시점 스냅샷을 슬롯에 싣는다(op 적용 **후** 호출). */
+  setIndicatorUndoToast: (payload: IndicatorUndoToast) => void;
+  /** 복원 없이 닫기(자동 소멸·수동 닫기). */
+  dismissIndicatorUndoToast: () => void;
+  /** 스냅샷을 되돌리고 닫는다 — 캡처된 스코프·봉으로 간다. */
+  restoreIndicatorUndoToast: () => void;
   /** 페이지가 현재 봉을 공급한다(/live=candleTimeframe·/study=activeTab.timeframe). */
   setIndicatorTimeframe: (tf: LiveTimeframe) => void;
   /** 직전 분봉 뷰에서 팬으로 넓힌 historicalFromDate의 런타임 기억.
@@ -651,6 +682,16 @@ export const useLivePageStore = create<Store>((set, get) => {
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
     indicatorTimeframe: initialPage.candleTimeframe,
+    indicatorUndoToast: null,
+    setIndicatorUndoToast: (payload) => set({ indicatorUndoToast: payload }),
+    dismissIndicatorUndoToast: () => set({ indicatorUndoToast: null }),
+    restoreIndicatorUndoToast: () => {
+      const payload = get().indicatorUndoToast;
+      if (!payload) return;
+      // 캡처된 스코프·봉으로 되돌린다 — 지금 보고 있는 창/봉이 아니다.
+      patchIndicatorsScoped(payload.scope, payload.timeframe, payload.patch);
+      set({ indicatorUndoToast: null });
+    },
     lastMinuteHistoricalFromDate: null,
     savedRangeFocus: null,
 
@@ -773,6 +814,10 @@ export const useLivePageStore = create<Store>((set, get) => {
           Object.assign(next, FACTORY_INDICATOR_SETTINGS);
         }
       }
+      // 대기 중인 삭제 undo 는 여기서 무효화한다. 남겨 두면 리셋 직후의 실행취소가
+      // 방금 공장값으로 돌린 버킷에 옛 슬롯 배열을 다시 심어, **리셋을 부분적으로
+      // 되돌린다** — 사용자가 보기엔 "초기화했는데 이평선만 옛날 것" 이다.
+      next.indicatorUndoToast = null;
       set(next as Partial<Store>);
       persistIndicators();
     },

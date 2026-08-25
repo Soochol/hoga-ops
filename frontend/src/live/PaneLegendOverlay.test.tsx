@@ -458,6 +458,46 @@ describe('PaneLegendOverlay — candle MA row', () => {
     expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
   });
 
+  // 칩 = 인스턴스. 클릭은 그 인스턴스만 숨기고(비파괴), ✕ 는 그 인스턴스만 지운다.
+  // 행 전체를 건드리는 것은 눈 하나뿐이다.
+  it('클릭한 칩만 숨겨진다 — 나머지 인스턴스는 그대로다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    useLivePageStore.setState({
+      movingAverages: [
+        { id: 'ma-1', enabled: true, period: 5, color: '#EC4899', lineWidth: 1, source: 'close' },
+        { id: 'ma-2', enabled: true, period: 20, color: '#F97316', lineWidth: 1, source: 'close' },
+      ],
+    });
+    renderOverlay();
+    const target = useLivePageStore.getState().movingAverages[1];
+    fireEvent.click(screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` }));
+
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after.find((m) => m.id === target.id)?.enabled).toBe(false);
+    expect(after.filter((m) => m.id !== target.id).every((m) => m.enabled)).toBe(true);
+    // 숨겼다고 칩이 사라지면 다시 켤 표면이 없다.
+    expect(screen.getByTestId(`legend-ma-chip-${target.id}`)).toBeInTheDocument();
+  });
+
+  it('칩 ✕ 는 그 인스턴스만 지우고 실행취소 토스트를 남긴다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    useLivePageStore.setState({
+      movingAverages: [
+        { id: 'ma-1', enabled: true, period: 5, color: '#EC4899', lineWidth: 1, source: 'close' },
+        { id: 'ma-2', enabled: true, period: 20, color: '#F97316', lineWidth: 1, source: 'close' },
+      ],
+    });
+    renderOverlay();
+    const before = useLivePageStore.getState().movingAverages;
+    const target = before[1];
+    fireEvent.click(screen.getByRole('button', { name: `이동평균선 ${target.period} 삭제` }));
+
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after.map((m) => m.id)).toEqual(before.filter((m) => m.id !== target.id).map((m) => m.id));
+    expect(useLivePageStore.getState().indicatorUndoToast?.label)
+      .toBe(`이동평균선 ${target.period} 삭제됨`);
+  });
+
   it('keeps the row (and its chips) when every slot is off, so it can be turned back on', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     useLivePageStore.setState({
