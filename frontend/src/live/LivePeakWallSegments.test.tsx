@@ -197,7 +197,7 @@ describe('LivePeakWallSegments', () => {
       allWallDrawn: true,
     }));
     await waitFor(() => {
-      expect(readFlagLegendValues(null, 'ask-peak', null)[0]).toMatchObject({
+      expect(readFlagLegendValues(null, 'ask-peak', 'main', null)[0]).toMatchObject({
         label: '1',
         value: '95, 4k',
       });
