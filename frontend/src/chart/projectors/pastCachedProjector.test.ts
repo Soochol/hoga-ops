@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { TRADING_TIME_MIN_HHMM } from '../../util/tradingTime';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { projectRatio, projectRatioPoints, RATIO_SPEC, type RatioPaneContext } from './ratio';
 import { projectBid, projectBidPoints, projectAsk, projectAskPoints, QUOTE_TOTALS_SPEC } from './quoteTotals';
@@ -104,7 +105,7 @@ const CTX_MASKED: RatioPaneContext = {
   outlierFilterEnabled: true,
   outlierThreshold: 100,
   brokerLateEntryEnabled: false,
-  brokerLateEntrySideMode: 'both',
+  brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
   brokerLateEntryBuyColor: '#ef4444',
   brokerLateEntrySellColor: '#3b82f6',
 };
@@ -147,7 +148,7 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
       outlierFilterEnabled: false,
       outlierThreshold: 100,
       brokerLateEntryEnabled: false,
-      brokerLateEntrySideMode: 'both',
+      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
     };
@@ -278,7 +279,7 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
       outlierFilterEnabled: false,
       outlierThreshold: 100,
       brokerLateEntryEnabled: false,
-      brokerLateEntrySideMode: 'both',
+      brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
     };
@@ -393,7 +394,7 @@ describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF �
     outlierThreshold: 100,
     intraMax: false,
     brokerLateEntryEnabled: false,
-    brokerLateEntrySideMode: 'both',
+    brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
     brokerLateEntryBuyColor: '#ef4444',
     brokerLateEntrySellColor: '#3b82f6',
   };
@@ -403,7 +404,7 @@ describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF �
     outlierThreshold: 100,
     intraMax: true,
     brokerLateEntryEnabled: false,
-    brokerLateEntrySideMode: 'both',
+    brokerLateEntrySideMode: 'both', brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
     brokerLateEntryBuyColor: '#ef4444',
     brokerLateEntrySellColor: '#3b82f6',
   };
