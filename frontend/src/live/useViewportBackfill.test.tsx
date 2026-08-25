@@ -924,7 +924,12 @@ describe('useViewportBackfill — 빈 화면 클램프 탈출 (3e)', () => {
   it('창이 그대로면 재발화하지 않는다 — 바닥에서 커밋마다 밀면 안 된다', () => {
     const { rerender } = renderClamped();
     expect(extendSpy).toHaveBeenCalledTimes(1);
-    rerender({}); // 같은 historicalFromDate 로 다음 커밋(SSE 틱 등)
+    // ⚠ **백프레셔를 먼저 풀어야 이 테스트가 뭔가를 증명한다.** 첫 발화가 세운
+    // `fillKind` 가 남아 있으면 그 가드에 먼저 막혀, 창 동일 반려를 통째로 지워도
+    // 초록이다(2026-08-25 red-check 에서 실제로 그랬다). settle 을 태워 백프레셔를
+    // 걷고, `historicalFromDate` 만 그대로 두는 것이 이 판정의 유일 변수다.
+    rerender({ isExtending: true });
+    rerender({ isExtending: false }); // 창이 안 움직였다 — 확장이 아무 데도 못 갔다
     rerender({});
     expect(extendSpy).toHaveBeenCalledTimes(1);
   });
