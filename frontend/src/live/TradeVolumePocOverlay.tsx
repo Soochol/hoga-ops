@@ -127,8 +127,8 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
       if (!poc) return [];
       return [{ key: 'trade-volume-poc', value: formatPriceQty(poc.centerPrice, poc.qty) }];
     };
-    registerFlagLegendValues(windowId, 'trade-volume-poc', provider);
-    return () => unregisterFlagLegendValues(windowId, 'trade-volume-poc', provider);
+    registerFlagLegendValues(windowId, 'trade-volume-poc', 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, 'trade-volume-poc', 'main', provider);
   }, [windowId, pocs, axis]);
 
   return null;

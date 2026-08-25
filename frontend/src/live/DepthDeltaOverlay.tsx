@@ -205,8 +205,8 @@ function DepthDeltaOverlay({ chart, paneSeries, axis, points }: Props) {
       }
       return out;
     };
-    registerFlagLegendValues(windowId, 'depth-delta', provider);
-    return () => unregisterFlagLegendValues(windowId, 'depth-delta', provider);
+    registerFlagLegendValues(windowId, 'depth-delta', 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, 'depth-delta', 'main', provider);
   }, [windowId, points, axis, inColor, outColor]);
 
   return null;

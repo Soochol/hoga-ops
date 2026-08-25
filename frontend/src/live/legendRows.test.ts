@@ -150,15 +150,15 @@ describe('buildLegendRows — candle daily-MA row', () => {
 
 describe('buildLegendRows — flag rows', () => {
   const flags: LegendFlagInput[] = [
-    { id: 'ask-peak', paneId: 'candle', label: '당일 매도 최대벽', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#F04452'] },
-    { id: 'bid-peak', paneId: 'candle', label: '당일 매수 최대벽', enabled: false, applicable: true, hidden: false, cells: [], swatches: ['#3485FA'] },
-    { id: 'depth-heatmap', paneId: 'candle', label: '호가 잔량 히트맵', enabled: true, applicable: false, hidden: false, cells: [], swatches: ['#3485FA', '#F04452'] },
+    { type: 'ask-peak', instanceId: 'main', paneId: 'candle', label: '당일 매도 최대벽', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#F04452'] },
+    { type: 'bid-peak', instanceId: 'main', paneId: 'candle', label: '당일 매수 최대벽', enabled: false, applicable: true, hidden: false, cells: [], swatches: ['#3485FA'] },
+    { type: 'depth-heatmap', instanceId: 'main', paneId: 'candle', label: '호가 잔량 히트맵', enabled: true, applicable: false, hidden: false, cells: [], swatches: ['#3485FA', '#F04452'] },
   ];
 
   it('emits rows only for enabled && applicable flags, in input order', () => {
     const rows = buildLegendRows({ ...base, indicatorFlags: flags });
     const flagRows = rows.filter((r) => r.kind === 'flag');
-    expect(flagRows.map((r) => r.kind === 'flag' && r.id)).toEqual(['ask-peak']);
+    expect(flagRows.map((r) => r.kind === 'flag' && r.type)).toEqual(['ask-peak']);
     expect(flagRows[0].kind === 'flag' && flagRows[0].label).toBe('당일 매도 최대벽');
     expect(flagRows[0].kind === 'flag' && flagRows[0].swatches).toEqual(['#F04452']);
   });
@@ -170,7 +170,7 @@ describe('buildLegendRows — flag rows', () => {
       dailyMovingAverages: [ma({ id: 'dma-1' })],
       dailyMaApplicable: true,
       indicatorFlags: [
-        { id: 'trade-volume-poc', paneId: 'candle', label: '당일 최대 매물대', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#A855F7'] },
+        { type: 'trade-volume-poc', instanceId: 'main', paneId: 'candle', label: '당일 최대 매물대', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#A855F7'] },
       ],
     });
     expect(rows.filter((r) => r.paneId === 'candle').map((r) => r.kind)).toEqual([
@@ -185,7 +185,8 @@ describe('buildLegendRows — flag rows', () => {
       ...base,
       indicatorFlags: [
         {
-          id: 'ask-peak',
+          type: 'ask-peak',
+          instanceId: 'main',
           paneId: 'candle',
           label: '당일 매도 최대벽',
           enabled: true,
@@ -213,12 +214,12 @@ describe('buildLegendRows — flag rows', () => {
         },
       ],
       indicatorFlags: [
-        { id: 'broker-late-entry', paneId: 'ratio', label: '신규 거래원 등장', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#F04452', '#3485FA'] },
+        { type: 'broker-late-entry', instanceId: 'main', paneId: 'ratio', label: '신규 거래원 등장', enabled: true, applicable: true, hidden: false, cells: [], swatches: ['#F04452', '#3485FA'] },
       ],
     });
     const ratioRows = rows.filter((r) => r.paneId === 'ratio');
     expect(ratioRows.map((r) => r.kind)).toEqual(['cells', 'flag']);
-    expect(ratioRows[1].kind === 'flag' && ratioRows[1].id).toBe('broker-late-entry');
+    expect(ratioRows[1].kind === 'flag' && ratioRows[1].type).toBe('broker-late-entry');
   });
 });
 

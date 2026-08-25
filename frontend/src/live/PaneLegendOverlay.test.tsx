@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
+import { FACTORY_INDICATOR_SETTINGS } from '../state/indicatorSettingsV2';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveCursorStore } from './useLiveCursorStore';
@@ -382,7 +383,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
       return [{ key: 'peak', value: '1,000' }];
     };
     useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
-    registerFlagLegendValues(null, 'ask-peak', provider);
+    registerFlagLegendValues(null, 'ask-peak', 'main', provider);
     try {
       render(
         <PaneLegendOverlay
@@ -402,7 +403,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
 
       expect(seen).toBe((DAY2 + 2 * MIN) / 1000);
     } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', provider);
+      unregisterFlagLegendValues(null, 'ask-peak', 'main', provider);
     }
   });
 });
@@ -539,14 +540,19 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
 // 밀집도). 거래량·총잔량은 2026-08-04 에, 프로그램 순매수는 2026-08-18 에 되살렸다
 // (아래 describe). 행 생성 로직은 legendRows.test.ts 가, flag 값 provider 스코프는
 // flagLegendValueRegistry.test.ts 가 계속 커버한다.
-describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => {
+// 2026-07-22 에 밀집도를 이유로 flag 행을 전부 숨겼고, 2026-08-22 에 당일 최대벽 둘만
+// 되살렸다. **이 PR 이 그 결정을 뒤집는다** — 레전드 행이 지표의 유일한 조작 표면(눈·✕)이
+// 된 이상, 켜 놓은 지표가 레전드에 없으면 끄러 모달을 열어야 한다. 밀집도는 이제 행 숨김이
+// 아니라 가로 축약(container query)으로 푼다. cells pane 화이트리스트는 **그대로**다 —
+// 그쪽은 값 판독면 이중화가 근거라 이 결정과 무관하다.
+describe('PaneLegendOverlay — flag 행 부활(전 종류 표시)', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
 
   const minutePanes = () => makeChart([120, 60, 60, 60, 60, 60]);
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
 
-  it('화이트리스트 밖 flag 지표는 값 행이 렌더되지 않는다(이동평균선은 유지)', () => {
+  it('종전에 숨겼던 flag 지표도 켜면 행이 뜬다', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     useLivePageStore.setState({
       tradeVolumePocEnabled: true,
@@ -554,27 +560,33 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
     });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.getByText('이동평균선')).toBeInTheDocument();
-    expect(screen.queryByText('당일 최대 매물대')).toBeNull();
-    expect(screen.queryByText('호가 잔량 히트맵')).toBeNull();
+    expect(screen.getByText('당일 최대 매물대')).toBeInTheDocument();
+    expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
   });
 
-  it('신규 거래원 등장(broker-late-entry)도 숨긴다', () => {
+  it('꺼진 flag 지표는 여전히 행이 없다 — 부활은 화이트리스트 해제이지 무조건 표시가 아니다', () => {
+    useLivePageStore.setState({ movingAverages: [], tradeVolumePocEnabled: false });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.queryByText('당일 최대 매물대')).toBeNull();
+  });
+
+  it('신규 거래원 등장(broker-late-entry)도 부활 대상이다', () => {
     useLivePageStore.setState({ movingAverages: [], brokerLateEntryEnabled: true });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
+    expect(screen.getByText('신규 거래원 등장')).toBeInTheDocument();
   });
 
-  it('화이트리스트 밖 flag 의 provider 값도 표시되지 않는다', () => {
+  it('부활한 flag 의 provider 값도 함께 표시된다', () => {
     useLivePageStore.setState({ tradeVolumePocEnabled: true });
     const provider: FlagLegendValueProvider = () => [
       { key: 'trade-volume-poc', value: '300,000, 12.3만' },
     ];
-    registerFlagLegendValues(null, 'trade-volume-poc', provider);
+    registerFlagLegendValues(null, 'trade-volume-poc', 'main', provider);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-      expect(screen.queryByText('300,000, 12.3만')).toBeNull();
+      expect(screen.getByText('300,000, 12.3만')).toBeInTheDocument();
     } finally {
-      unregisterFlagLegendValues(null, 'trade-volume-poc', provider);
+      unregisterFlagLegendValues(null, 'trade-volume-poc', 'main', provider);
     }
   });
 
@@ -623,7 +635,7 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
 
   it('보이는 영역 상위 3개를 순위 라벨과 함께 표시한다', () => {
     useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
-    registerFlagLegendValues(null, 'ask-peak', topThree);
+    registerFlagLegendValues(null, 'ask-peak', 'main', topThree);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
       expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
@@ -632,43 +644,70 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
       expect(screen.getByText('918,000, 0.9k')).toBeInTheDocument();
       ['1', '2', '3'].forEach((rank) => expect(screen.getByText(rank)).toBeInTheDocument());
     } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', topThree);
+      unregisterFlagLegendValues(null, 'ask-peak', 'main', topThree);
     }
   });
 
-  it('눈·✕ 아이콘 2개가 붙고 각각 숨김·끄기를 디스패치한다', () => {
+  // 눈은 그대로 비파괴 숨김이고, ✕ 의 뜻만 "끄기" → **"삭제"** 로 바뀌었다.
+  // flat 싱글턴은 뺄 배열이 없으므로 삭제 = 그 지표가 소유한 필드를 전부 공장값으로.
+  it('눈은 숨김을, ✕ 는 삭제(공장값 리셋)를 디스패치한다', () => {
     useLivePageStore.setState({ movingAverages: [], bidPeakEnabled: true });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽 표시 숨김/표시' }));
     expect(useLivePageStore.getState().bidPeakHidden).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽 지표 끄기' }));
+
+    useLivePageStore.setState({ bidPeakColor: '#123456', bidPeakLineWidth: 4 });
+    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽 삭제' }));
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
+    // 끄기와 달리 **손댄 값도 함께 되돌아간다** — 이게 삭제와 끄기의 차이다.
+    expect(useLivePageStore.getState().bidPeakColor)
+      .toBe(FACTORY_INDICATOR_SETTINGS.bidPeakColor);
+    expect(useLivePageStore.getState().bidPeakLineWidth)
+      .toBe(FACTORY_INDICATOR_SETTINGS.bidPeakLineWidth);
+    // 되돌릴 기회를 남긴다(칩 ✕ 와 같은 규율).
+    expect(useLivePageStore.getState().indicatorUndoToast?.label).toBe('당일 매수 최대벽 삭제됨');
+  });
+
+  it('flag ✕ 의 실행취소가 삭제 전 설정을 되살린다', () => {
+    useLivePageStore.setState({
+      movingAverages: [],
+      bidPeakEnabled: true,
+      bidPeakColor: '#123456',
+      bidPeakLineWidth: 4,
+    });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽 삭제' }));
+
+    useLivePageStore.getState().restoreIndicatorUndoToast();
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().bidPeakColor).toBe('#123456');
+    expect(useLivePageStore.getState().bidPeakLineWidth).toBe(4);
   });
 
   it('보이는 영역에 벽이 없어(셀 0개) 값이 비어도 행과 아이콘은 남는다', () => {
     useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     const empty: FlagLegendValueProvider = () => [];
-    registerFlagLegendValues(null, 'ask-peak', empty);
+    registerFlagLegendValues(null, 'ask-peak', 'main', empty);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
       expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: '당일 매도 최대벽 지표 끄기' }),
+        screen.getByRole('button', { name: '당일 매도 최대벽 삭제' }),
       ).toBeInTheDocument();
     } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', empty);
+      unregisterFlagLegendValues(null, 'ask-peak', 'main', empty);
     }
   });
 
   it('일봉(D)에서는 분봉 전용이라 행이 나오지 않는다', () => {
     useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
-    registerFlagLegendValues(null, 'ask-peak', topThree);
+    registerFlagLegendValues(null, 'ask-peak', 'main', topThree);
     try {
       render(<PaneLegendOverlay chart={makeChart([120])} timeframe="D" paneToggles={toggles} />);
       expect(screen.queryByText('당일 매도 최대벽')).toBeNull();
       expect(screen.queryByText('934,000, 1.8k')).toBeNull();
     } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', topThree);
+      unregisterFlagLegendValues(null, 'ask-peak', 'main', topThree);
     }
   });
 });
@@ -937,7 +976,7 @@ describe('PaneLegendOverlay — 지표 pref 변경 즉시 반영', () => {
       label: '1',
       value: `${useChartPrefsStore.getState().askPeakAllPriceRankLimit}개`,
     }];
-    registerFlagLegendValues(null, 'ask-peak', provider);
+    registerFlagLegendValues(null, 'ask-peak', 'main', provider);
     try {
       render(
         <PaneLegendOverlay
@@ -955,7 +994,7 @@ describe('PaneLegendOverlay — 지표 pref 변경 즉시 반영', () => {
       expect(screen.getByText('3개')).toBeInTheDocument();
       expect(screen.queryByText('1개')).toBeNull();
     } finally {
-      unregisterFlagLegendValues(null, 'ask-peak', provider);
+      unregisterFlagLegendValues(null, 'ask-peak', 'main', provider);
     }
   });
 });

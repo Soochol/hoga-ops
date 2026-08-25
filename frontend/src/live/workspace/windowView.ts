@@ -34,6 +34,7 @@ import { useContext, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import {
+  FACTORY_INDICATOR_SETTINGS,
   INDICATOR_SETTING_KEYS,
   bucketsForScope,
   resolveIndicatorSettings,
@@ -43,8 +44,10 @@ import {
 import {
   INDICATOR_OPS,
   bindIndicatorOps,
+  flagRemovalPatches,
   maRemovalUndo,
   type BoundIndicatorOps,
+  type FlagIndicatorType,
   type MaSliceKey,
 } from '../../state/indicatorOps';
 import { useWorkspaceStore, windowSymbolOf } from '../../state/workspace';
@@ -314,6 +317,10 @@ export type IndicatorActions = BoundIndicatorOps & {
    *  칩 ✕ 는 차트를 보다가 스치듯 눌릴 수 있어 복구 수단이 인수 조건이다. */
   removeMovingAverageWithUndo: (id: string) => void;
   removeDailyMovingAverageWithUndo: (id: string) => void;
+  /** flag 지표(값 series 없는 오버레이) 삭제 + undo — 그 지표가 소유한 설정 필드를
+   *  전부 공장값으로 되돌린다(`flagRemovalPatches`). 배열이 없는 flat 싱글턴이라
+   *  "원소 제거" 대신 "손댄 적 없는 상태로" 가 삭제의 뜻이다. */
+  removeFlagIndicatorWithUndo: (type: FlagIndicatorType) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
   setPaneGroups: (groups: PaneGroups) => void;
@@ -340,7 +347,10 @@ function buildRemoveWithUndo(
   readSettings: () => IndicatorSettings,
   scopeAt: () => IndicatorScope,
   tfAt: () => LiveTimeframe,
-): Pick<IndicatorActions, 'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo'> {
+): Pick<
+  IndicatorActions,
+  'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo' | 'removeFlagIndicatorWithUndo'
+> {
   const remove = (key: MaSliceKey, id: string) => {
     const ps = useLivePageStore.getState();
     const cur = readSettings();
@@ -359,6 +369,16 @@ function buildRemoveWithUndo(
   return {
     removeMovingAverageWithUndo: (id) => remove('movingAverages', id),
     removeDailyMovingAverageWithUndo: (id) => remove('dailyMovingAverages', id),
+    removeFlagIndicatorWithUndo: (type) => {
+      const ps = useLivePageStore.getState();
+      const { label, apply, undo } = flagRemovalPatches(
+        readSettings(), type, FACTORY_INDICATOR_SETTINGS,
+      );
+      const scope = scopeAt();
+      const timeframe = tfAt();
+      ps.patchIndicatorsScoped(scope, timeframe, apply);
+      ps.setIndicatorUndoToast({ label, scope, timeframe, patch: undo });
+    },
   };
 }
 

@@ -40,13 +40,26 @@ export type FlagLegendScopeId = string | null;
  *  최신 provider를 lazy 하게 읽으면 충분하다. 첫 마운트 프레임에 값이 비어도
  *  다음 tick(가시범위 구독 rAF)에서 self-heal — pane geometry와 동일 규칙.
  *  (창 스코프도 이 계약 안에서 해결한다 — context/zustand 로 옮기지 말 것.) */
-const byScope = new Map<FlagLegendScopeId, Map<LegendFlagId, FlagLegendValueProvider>>();
+const byScope = new Map<FlagLegendScopeId, Map<string, FlagLegendValueProvider>>();
+
+/** 안쪽 키 — **(종류, 인스턴스)** 다. 종류만으로 키하면 같은 지표의 두 번째
+ *  인스턴스가 첫 번째의 provider 를 조용히 덮어, 한 인스턴스의 값이 다른 인스턴스의
+ *  행에 뜬다. 이는 이 파일이 창 스코프를 키에 넣은 것과 **같은 사고**다(헤더의 #706
+ *  실측: 두 창이 같은 지표를 켜면 나중 창의 값이 앞선 창 레전드에 나왔다).
+ *
+ *  바깥 키(창)와 달리 합성 문자열인 이유: 두 값 모두 문자열이라 중첩 Map 을 한 겹
+ *  더 쌓는 것보다 싸고, 종류가 닫힌 목록이라 구분자 충돌이 불가능하다. */
+export function flagInstanceKey(type: LegendFlagId, instanceId: string): string {
+  return `${type}:${instanceId}`;
+}
 
 export function registerFlagLegendValues(
   scope: FlagLegendScopeId,
-  id: LegendFlagId,
+  type: LegendFlagId,
+  instanceId: string,
   provider: FlagLegendValueProvider,
 ): void {
+  const id = flagInstanceKey(type, instanceId);
   let scoped = byScope.get(scope);
   if (!scoped) {
     scoped = new Map();
@@ -59,9 +72,11 @@ export function registerFlagLegendValues(
  *  cleanup from a previous effect must not clobber the fresh registration). */
 export function unregisterFlagLegendValues(
   scope: FlagLegendScopeId,
-  id: LegendFlagId,
+  type: LegendFlagId,
+  instanceId: string,
   provider: FlagLegendValueProvider,
 ): void {
+  const id = flagInstanceKey(type, instanceId);
   const scoped = byScope.get(scope);
   if (!scoped || scoped.get(id) !== provider) return;
   scoped.delete(id);
@@ -70,10 +85,11 @@ export function unregisterFlagLegendValues(
 
 export function readFlagLegendValues(
   scope: FlagLegendScopeId,
-  id: LegendFlagId,
+  type: LegendFlagId,
+  instanceId: string,
   cursorTimeSec: number | null,
 ): FlagLegendValueCell[] {
-  const provider = byScope.get(scope)?.get(id);
+  const provider = byScope.get(scope)?.get(flagInstanceKey(type, instanceId));
   if (!provider) return [];
   try {
     return provider(cursorTimeSec);

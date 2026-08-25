@@ -112,6 +112,100 @@ function removeMaSlot(current: readonly LiveMAConfig[], id: string): LiveMAConfi
   return nextArr;
 }
 
+/**
+ * 값 series 없이 캔들/호가비 pane 위에 그려지는 오버레이 지표 — 레전드에서는
+ * "flag 행" 으로 나온다. 이 목록이 **정본**이고 `legendRows` 의 `LegendFlagId` 가
+ * 여기서 파생된다(레전드는 표현, 설정 스키마는 이 계층).
+ */
+export const FLAG_INDICATOR_TYPES = [
+  'ask-peak',
+  'bid-peak',
+  'trade-volume-poc',
+  'depth-heatmap',
+  'depth-delta',
+  'broker-late-entry',
+] as const;
+
+export type FlagIndicatorType = (typeof FLAG_INDICATOR_TYPES)[number];
+
+/** flag 지표의 사용자 표시명 — 레전드 라벨·undo 문구·설정 패널이 공유한다. */
+export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
+  'ask-peak': '당일 매도 최대벽',
+  'bid-peak': '당일 매수 최대벽',
+  'trade-volume-poc': '당일 최대 매물대',
+  'depth-heatmap': '호가 잔량 히트맵',
+  'depth-delta': '단별 잔량 증감',
+  'broker-late-entry': '신규 거래원 등장',
+};
+
+/**
+ * 각 flag 지표가 **소유한 설정 필드 전부** — 삭제(=공장값 리셋)의 대상 집합.
+ *
+ * 손으로 적는다. 접두사 매칭 같은 자동 발견을 쓰지 않는 이유는 이 리포가 이미
+ * 판정한 것과 같다: 이름 규칙 매칭은 **오탐과 누락이 둘 다 조용하다**. 대신
+ * `indicatorOps.flagFields.test.ts` 가 "flag 접두를 가진 `IndicatorSettings` 키는
+ * 정확히 한 목록에 속한다" 를 강제한다 — 새 필드가 늘면 그 가드가 빨개진다.
+ * (실제로 그 상황이 있었다: #1582 가 `askPeakAllWall*` 3필드를 얹었다.)
+ */
+export const FLAG_INDICATOR_FIELDS: Record<
+  FlagIndicatorType,
+  readonly (keyof IndicatorSettings)[]
+> = {
+  'ask-peak': [
+    'askPeakEnabled', 'askPeakHidden', 'askPeakColor', 'askPeakLineWidth',
+    'askPeakAllWallLineEnabled', 'askPeakAllWallColor', 'askPeakAllWallLineWidth',
+  ],
+  'bid-peak': [
+    'bidPeakEnabled', 'bidPeakHidden', 'bidPeakColor', 'bidPeakLineWidth',
+    'bidPeakAllWallLineEnabled', 'bidPeakAllWallColor', 'bidPeakAllWallLineWidth',
+  ],
+  'trade-volume-poc': [
+    'tradeVolumePocEnabled', 'tradeVolumePocHidden', 'tradeVolumePocBandPct',
+    'tradeVolumePocColor', 'tradeVolumePocOpacity',
+  ],
+  'depth-heatmap': [
+    'depthHeatmapEnabled', 'depthHeatmapHidden', 'depthHeatmapBidColor',
+    'depthHeatmapAskColor', 'depthHeatmapMaxOpacity',
+  ],
+  'depth-delta': [
+    'depthDeltaEnabled', 'depthDeltaHidden', 'depthDeltaInColor',
+    'depthDeltaOutColor', 'depthDeltaMaxOpacity',
+  ],
+  'broker-late-entry': [
+    'brokerLateEntryEnabled', 'brokerLateEntryHidden', 'brokerLateEntryStartHHMM',
+    'brokerLateEntrySideMode', 'brokerLateEntryBuyColor', 'brokerLateEntrySellColor',
+  ],
+};
+
+/**
+ * flag 지표 삭제의 patch 쌍 — `apply` 는 공장값으로 되돌리고, `undo` 는 현재값이다.
+ *
+ * MA 는 배열에서 원소를 빼는 것이 삭제지만, flat 싱글턴 타입은 뺄 배열이 없다.
+ * 그래서 삭제 = **그 지표가 소유한 필드를 전부 공장값으로**다. 공장값과 같아진
+ * 필드는 sparse 버킷의 정의상 다음 로드에서 자연 소멸하므로("diff 제거"),
+ * 결과적으로 "이 지표에 대해 사용자가 손댄 적 없는 상태" 가 된다.
+ *
+ * 배열 승격(Phase 3) 전까지 flat 타입의 인스턴스는 언제나 하나이므로, 삭제가
+ * 곧 "그 하나를 지우는 것" 이다.
+ */
+export function flagRemovalPatches(
+  cur: IndicatorSettings,
+  type: FlagIndicatorType,
+  factory: IndicatorSettings,
+): { label: string; apply: Partial<IndicatorSettings>; undo: Partial<IndicatorSettings> } {
+  const apply: Record<string, unknown> = {};
+  const undo: Record<string, unknown> = {};
+  for (const field of FLAG_INDICATOR_FIELDS[type]) {
+    apply[field] = factory[field];
+    undo[field] = cur[field];
+  }
+  return {
+    label: `${FLAG_INDICATOR_LABEL[type]} 삭제됨`,
+    apply: apply as Partial<IndicatorSettings>,
+    undo: undo as Partial<IndicatorSettings>,
+  };
+}
+
 /** MA 계열 두 슬라이스의 사용자 표시명 — 레전드 라벨과 undo 문구가 공유한다. */
 export const MA_SLICE_LABEL = {
   movingAverages: '이동평균선',
