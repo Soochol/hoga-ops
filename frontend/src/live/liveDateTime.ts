@@ -397,6 +397,48 @@ export function planViewportContraction(
   return keepFrom > historicalFromDate ? keepFrom : null;
 }
 
+/** 소스 토글 축소가 뷰포트 좌단보다 **이만큼 과거까지는 남기는** 여유(거래일).
+ *
+ *  단위가 `CONTRACT_RETAIN_STEPS`(스텝, tf 스케일)와 달리 **평거래일**인 이유:
+ *  위 ⚠("단위를 거래일로 바꾸지 말 것")가 지키는 두 근거가 여기엔 둘 다 없다.
+ *  ① 그 상수들의 불변 단위는 메모리 상주량(스텝=1950봉)인데, 이 축소가 캡하는
+ *  비용은 봉 수가 아니라 **콜드 재취득 왕복 수**고 그 단위는 7일 타일이다.
+ *  ② 3-상수 진동 불변식은 확장(스텝)과 축소(트리거)가 **반복 상호작용**할 때의
+ *  이야기인데, 이 축소는 소스 전환 시 1회성이고 트리거 쌍이 없다 — 이후 확장은
+ *  사용자 팬이 결정한다. 5거래일 ≈ 타일 하나 값이라, 여유가 요청 granularity 와
+ *  같은 자릿수로 떨어진다. */
+export const SOURCE_SWAP_RETAIN_TRADING_DAYS = 5;
+
+/** 소스 토글(hogaplay ↔ 벤더) 시 창을 **뷰포트 기준으로 당길** 목표 from. 당길
+ *  필요 없으면 null.
+ *
+ *  토글은 캔들 소스 축만 갈리는 재키인데, 창(historicalFromDate)을 그대로 두면
+ *  이전 소스가 벌어놓은 깊은 창을 새 소스가 **콜드로 전량 재취득**한다 — 2026-08-25
+ *  실측(000660/010060 5m 장중): 55거래일 창 = 7일 타일 11개 × 모드 2~3종 직렬
+ *  워크백 = 수십 초. 화면에 보이는 것은 그중 한두 타일뿐이다. 그래서 전환 시 창을
+ *  뷰포트가 요구하는 만큼으로 접고, 깊이는 이후 좌측 팬(3b)이 지연 로딩으로 번다.
+ *
+ *  **막는 방향**: 깊은 창 상속으로 인한 전환 시 콜드 재취득 폭주.
+ *  **뷰포트보다 얕게 자르지 않는다**: keepFrom 은 항상 뷰포트 좌단보다 과거라
+ *  보고 있는 구간이 창에서 빠지는 방향으로는 못 간다(과거 모드/점프 창 안전).
+ *  **못 보는 것**: 전환 직후 한 커밋 동안 나갈 수 있는 최신 타일 1개(passive
+ *  effect 타이밍) — 낭비 상한이 타일 하나라 수용한다. */
+export function planSourceSwapContraction(
+  historicalFromDate: string | null,
+  viewportLeftDate: string,
+  tf: LiveTimeframe,
+): string | null {
+  // 분봉 전용 — 소스 토글 자체가 분봉 전용이고(D/W/M 버튼 비활성), 일봉 창의
+  // historicalFromDate 는 캔들 창 자체라 여기서 접으면 화면 데이터가 사라진다
+  // (planViewportContraction 의 D/W/M 게이트와 같은 근거).
+  if (!isMinuteTimeframe(tf)) return null;
+  // 창이 없으면(초기 상태 = 기본 5거래일 시드) 접을 것도 없다.
+  if (historicalFromDate === null) return null;
+  const keepFrom = subtractWeekdaysKst(viewportLeftDate, SOURCE_SWAP_RETAIN_TRADING_DAYS);
+  // 앞으로 당기는 방향만 — 창이 이미 뷰포트 근방이면 손대지 않는다.
+  return keepFrom > historicalFromDate ? keepFrom : null;
+}
+
 /** 한 스텝이 실제로 가져오는 봉 수 추정. 제스처 예산 산정의 분모.
  * 분봉은 `STEP_TRADING_DAYS`거래일 × (거래분/일 ÷ 봉분) — 1m 한 스텝은
  * 5×390 = 1,950봉이다. D/W/M은 STEP_TRADING_DAYS가 캔들 50개에서 유도됐으므로
