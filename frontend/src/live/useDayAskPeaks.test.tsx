@@ -208,7 +208,7 @@ describe('useDayAskPeaks', () => {
     ]);
   });
 
-  it('backend today payload에 traded peak가 없으면 오늘 기준선을 만들지 않는다', () => {
+  it('backend today payload에 traded peak가 없으면 오늘 체결 기준선을 만들지 않는다(행은 전체 벽 패밀리로만 남는다)', () => {
     const restPeak = todayAskPeak({
       traded_price: null,
       traded_qty: null,
@@ -220,7 +220,12 @@ describe('useDayAskPeaks', () => {
       () => useDayAskPeaks([deep(5, 15000)], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 체결된 벽 carrier 는 비어 그 선은 오늘을 건너뛰지만, 전체 최대벽 선(터치 무관)의
+    // 원천인 all 패밀리가 있으므로 행 자체는 남는다.
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today).toMatchObject({ price: null, qty: null, t_ms: null });
+    expect(today?.traded_peaks).toEqual([]);
+    expect(today?.all_peaks?.length).toBeGreaterThan(0);
   });
 
   it('REST today seed keeps updating traded baseline from later trade prices and OB walls', () => {
@@ -263,7 +268,10 @@ describe('useDayAskPeaks', () => {
       trades: [],
       ob: [deep(atKst(9, 20), 20000, 27000)],
     });
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 터치 전: 체결 기준선 carrier 는 비어 있고 all 패밀리만 벽을 든다.
+    const untouched = result.current.find((p) => p.date === '20260613');
+    expect(untouched?.price).toBeNull();
+    expect(untouched?.all_peaks).toContainEqual({ price: 27000, qty: 20000, t_ms: atKst(9, 20) });
 
     rerender({
       trades: [trade(atKst(9, 20) + 40_000, [
@@ -363,7 +371,10 @@ describe('useDayAskPeaks', () => {
       () => useDayAskPeaks([], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 체결 기준선(carrier)은 승격되지 않는다 — 행은 전체 벽 패밀리 운반용으로만 남는다.
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today).toMatchObject({ price: null, qty: null, t_ms: null });
+    expect(today?.all_peaks).toContainEqual({ price: 26000, qty: 12000, t_ms: atKst(9, 11) });
   });
 
   // ── 유효 스냅샷 술어(동시호가·VI 3호가 붕괴 배제) ─────────────────────────

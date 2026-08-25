@@ -48,6 +48,11 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     arrows: true,
     color: '#base',
     lineWidth: 2,
+    allWallSegments: [],
+    allWallDrawn: false,
+    allWallLabels: false,
+    allWallColor: '#all',
+    allWallLineWidth: 1,
     ...over,
   };
 }
@@ -94,6 +99,9 @@ const segmentsOnly = (a: readonly unknown[]) =>
   a.filter((p): p is PeakWallSegmentsPrimitive => p instanceof PeakWallSegmentsPrimitive);
 const arrowsOnly = (a: readonly unknown[]) =>
   a.filter((p): p is PeakWallRankArrowsPrimitive => p instanceof PeakWallRankArrowsPrimitive);
+// attach 순서 = [전체 최대벽, 체결된 벽] — 전체 벽이 먼저 붙어 체결된 벽이 위에 그려진다.
+const allWallPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[0];
+const tradedPrimOf = (a: readonly unknown[]) => segmentsOnly(a)[1];
 
 /**
  * **매도·매수 공용 오버레이의 배선**(2026-08-23).
@@ -111,10 +119,31 @@ describe('LivePeakWallSegments', () => {
   it('그려질 때 선과 화살표를 모두 세운다', async () => {
     const attached = renderOverlay('ask');
     await waitFor(() => {
-      expect(segmentsOnly(attached)[0].segmentsData()).toHaveLength(3);
+      expect(tradedPrimOf(attached).segmentsData()).toHaveLength(3);
       expect(arrowsOnly(attached)[0].arrowsData()).toHaveLength(3);
       expect(arrowsOnly(attached)[0].rankLimit()).toBe(PEAK_WALL_LEGEND_RANK_LIMIT);
     });
+  });
+
+  it('전체 최대벽 선은 allWallDrawn 을 따라 전용 primitive 에 세워진다', async () => {
+    const allSegments = [seg(0, 95, 4000, 50)];
+    const attached = renderOverlay('ask', wall({
+      allWallSegments: allSegments,
+      allWallDrawn: true,
+    }));
+    await waitFor(() => {
+      expect(allWallPrimOf(attached).segmentsData()).toHaveLength(1);
+      expect(tradedPrimOf(attached).segmentsData()).toHaveLength(3);
+    });
+
+    const off = renderOverlay('ask', wall({
+      allWallSegments: allSegments,
+      allWallDrawn: false,
+    }));
+    await waitFor(() => {
+      expect(tradedPrimOf(off).segmentsData()).toHaveLength(3);
+    });
+    expect(allWallPrimOf(off).segmentsData()).toEqual([]);
   });
 
   it('매도는 봉 고가에, 매수는 봉 저가에 화살표를 매단다', async () => {
@@ -137,7 +166,7 @@ describe('LivePeakWallSegments', () => {
   it('drawn=false 면 선·화살표는 비지만 레전드 값은 남는다', async () => {
     const attached = renderOverlay('ask', wall({ drawn: false, labels: false, arrows: false }));
     await waitFor(() => {
-      expect(segmentsOnly(attached)[0].segmentsData()).toEqual([]);
+      expect(tradedPrimOf(attached).segmentsData()).toEqual([]);
       expect(arrowsOnly(attached)[0].arrowsData()).toEqual([]);
       expect(readFlagLegendValues(null, 'ask-peak', null)).toHaveLength(3);
     });
@@ -146,14 +175,14 @@ describe('LivePeakWallSegments', () => {
   it('화살표만 끄면 선은 남는다', async () => {
     const attached = renderOverlay('ask', wall({ arrows: false }));
     await waitFor(() => {
-      expect(segmentsOnly(attached)[0].segmentsData()).toHaveLength(3);
+      expect(tradedPrimOf(attached).segmentsData()).toHaveLength(3);
       expect(arrowsOnly(attached)[0].arrowsData()).toEqual([]);
     });
   });
 
   it('레전드는 보이는 영역 잔량 상위 3개를 순위 순으로 낸다', async () => {
     const attached = renderOverlay('bid');
-    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(2));
     await waitFor(() => {
       expect(readFlagLegendValues(null, 'bid-peak', null)).toEqual([
         { key: 'bid-peak-1', label: '1', value: '105, 3k' },
@@ -172,7 +201,7 @@ describe('LivePeakWallSegments', () => {
    */
   it('visibleLogicalRangeChange 를 구독하지 않는다', async () => {
     const attached = renderOverlay('ask');
-    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(1));
+    await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(2));
     expect(subscribeRangeSpy).not.toHaveBeenCalled();
   });
 });

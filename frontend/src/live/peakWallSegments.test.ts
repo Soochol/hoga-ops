@@ -6,7 +6,9 @@ import {
   buildPeakWallOverlaySegments,
   buildPeakWallSegments,
   preparePeakWallSegmentsForRender,
+  toAllWallPeakInputs,
 } from './peakWallSegments';
+import { applyPeakVisibleTimeCutoff } from './peakWallVisibleCutoff';
 
 /**
  * 최대벽 세그먼트 빌드의 **순수 계층** 테스트.
@@ -558,11 +560,70 @@ describe('buildPeakWallOverlaySegments — 매수 케이스', () => {
 
     expect(segments).toEqual([]);
   });
+});
 
+describe('toAllWallPeakInputs', () => {
+  it('과거일(스칼라만)은 all_* 를 carrier 로 옮기고 traded_peaks 는 undefined 로 남긴다', () => {
+    const out = toAllWallPeakInputs([peak({
+      date: '20260611',
+      price: 100, qty: 10, t_ms: 1, max_price: 101, max_qty: 11, max_t_ms: 2,
+      all_price: 200, all_qty: 900, all_t_ms: 5,
+      all_max_price: 201, all_max_qty: 950, all_max_t_ms: 6,
+      all_peaks: [], all_max_peaks: [],
+    })]);
 
+    expect(out).toEqual([{
+      date: '20260611',
+      price: 200, qty: 900, t_ms: 5,
+      max_price: 201, max_qty: 950, max_t_ms: 6,
+      traded_peaks: undefined,
+      traded_max_peaks: undefined,
+    }]);
+  });
 
+  it('오늘(배열)은 rank-1 이 carrier, 배열은 traded 슬롯으로 옮긴다', () => {
+    const allPeaks = [
+      { price: 300, qty: 5000, t_ms: 10 },
+      { price: 310, qty: 4000, t_ms: 11 },
+    ];
+    const out = toAllWallPeakInputs([peak({
+      date: '20260613',
+      price: null, qty: null, t_ms: null,
+      all_peaks: allPeaks,
+      all_max_peaks: allPeaks,
+    })]);
 
+    expect(out[0]).toMatchObject({
+      date: '20260613',
+      price: 300, qty: 5000, t_ms: 10,
+      max_price: 300, max_qty: 5000, max_t_ms: 10,
+    });
+    expect(out[0].traded_peaks).toBe(allPeaks);
+    expect(out[0].traded_max_peaks).toBe(allPeaks);
+  });
 
+  it('all_* 가 전혀 없는 날(legacy payload)은 건너뛴다', () => {
+    const out = toAllWallPeakInputs([
+      peak({ date: '20260610', price: 100, qty: 10, t_ms: 1 }),
+      peak({ date: '20260611', all_price: 200, all_qty: 900, all_t_ms: 5 }),
+    ]);
+    expect(out.map((p) => p.date)).toEqual(['20260611']);
+  });
 
-
+  it('리맵된 과거일은 시간 컷오프를 살아남는다 — traded_peaks 를 [] 로 바꾸면 깨지는 계약', () => {
+    // chooseCandidate 는 `traded_peaks === undefined` 일 때만 스칼라 폴백을 탄다.
+    // 리맵이 빈 배열을 넣으면 후보 0개로 읽혀 과거일이 컷오프 아래에서 통째로 사라진다.
+    const remapped = toAllWallPeakInputs([peak({
+      date: '20260611',
+      all_price: 200, all_qty: 900, all_t_ms: 5,
+      all_max_price: 200, all_max_qty: 900, all_max_t_ms: 5,
+      all_peaks: [], all_max_peaks: [],
+    })]);
+    const survived = applyPeakVisibleTimeCutoff(
+      remapped,
+      { date: '20260613', tMs: 1_000 },
+      { intraMax: false },
+    );
+    expect(survived.map((p) => [p.date, p.price, p.qty])).toEqual([['20260611', 200, 900]]);
+  });
 });

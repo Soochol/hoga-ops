@@ -91,6 +91,29 @@ function askPeakFromCandidate(date: string, candidate: AskPeakCandidate): AskPea
   };
 }
 
+/** 오늘 행 push — traded rank-1 이 base carrier. traded 가 없어도 all 패밀리가 있으면
+ *  **빈 carrier(null)** 로 행을 만든다: 「전체 최대벽」 선(터치 무관)은 첫 터치 전에도
+ *  존재해야 한다. null carrier 는 체결된 벽 선에서 후보 없음으로 걸러진다
+ *  (expandBaselinePeaks 의 scalar 폴백이 null 을 버린다). 세 derive 판이 이 꼬리를
+ *  공유한다 — 갈라지면 배치·증분 동등성이 깨진다. */
+function pushTodayAskPeak(out: AskPeak[], todayKst: string, families: PeakFamilies): AskPeak[] {
+  const traded = families.traded[0];
+  if (traded) {
+    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
+  } else if (families.all.length > 0) {
+    out.push(attachFamilies({
+      date: todayKst,
+      price: null,
+      qty: null,
+      t_ms: null,
+      max_price: null,
+      max_qty: null,
+      max_t_ms: null,
+    }, families));
+  }
+  return out;
+}
+
 function attachFamilies(
   peak: AskPeak,
   families: PeakFamilies,
@@ -185,10 +208,7 @@ export function deriveDayAskPeaks(
   void todayCandles;
   const families = mergedAskFamilies(ob, trade, todayAskPeak, sessionOpenMs, visibleTimeCutoff);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayAskPeak(out, todayKst, families);
 }
 
 /** deriveDayAskPeaks의 증분판(no-cutoff 전용). source가 ob/trade 스캔을 누적으로
@@ -209,10 +229,7 @@ export function deriveDayAskPeaksIncremental(
   ]);
   const families = askFamiliesFromClassified(classified, backend);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayAskPeak(out, todayKst, families);
 }
 /** classify 결과 → cutoff 패밀리 조립. mergedAskFamilies 의 cutoff 분기(라인 174-185)와
  *  동일: backend 를 별도 병합하지 않고(이미 sourceEvents/extras 로 접힘) 분류 결과를 랭크만
@@ -243,10 +260,7 @@ export function deriveDayAskPeaksIncrementalAsOf(
   ], cutoffMs, sessionOpenMs);
   const families = askFamiliesFromClassifiedCutoff(classified);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayAskPeak(out, todayKst, families);
 }
 
 export function useDayAskPeaks(

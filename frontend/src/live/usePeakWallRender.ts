@@ -27,7 +27,12 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import { useActivePrefs } from '../state/chartPrefs';
 import { useWindowIndicator } from './workspace/windowView';
-import { buildPeakWallOverlaySegments, toPeakRankLimit, type PeakWallInput } from './peakWallSegments';
+import {
+  buildPeakWallOverlaySegments,
+  toAllWallPeakInputs,
+  toPeakRankLimit,
+  type PeakWallInput,
+} from './peakWallSegments';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -50,6 +55,18 @@ export type PeakWallRenderState = {
    *  크기순이라 벽이 장중에 커지는 날은 오전 기록이 전부 잘렸다(사용자 보고 2회).
    *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다. */
   stepSegments: readonly PeakWallSegment[];
+  /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
+   *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. rank-1/일 고정
+   *  (과거일 wire 가 rank-1 스칼라뿐이라 표시 개수 노브는 받지 않는다). 필터
+   *  (MA·컷오프·intraMax)는 체결된 벽과 동일하게 흐른다. `enabled` 기준 계산
+   *  불변식도 동일하다. */
+  allWallSegments: readonly PeakWallSegment[];
+  /** 전체 최대벽 선이 실제로 그려지는가(마스터 drawn ∧ 하위 토글). */
+  allWallDrawn: boolean;
+  /** 전체 최대벽 도킹 라벨이 그려지는가(라벨 pref 는 방향 공용을 따른다). */
+  allWallLabels: boolean;
+  allWallColor: string;
+  allWallLineWidth: number;
 };
 
 type Args = {
@@ -89,6 +106,15 @@ export function usePeakWallRender({
   const hidden = useWindowIndicator((s) => (isAsk ? s.askPeakHidden : s.bidPeakHidden));
   const color = useWindowIndicator((s) => (isAsk ? s.askPeakColor : s.bidPeakColor));
   const lineWidth = useWindowIndicator((s) => (isAsk ? s.askPeakLineWidth : s.bidPeakLineWidth));
+  const allWallEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakAllWallLineEnabled : s.bidPeakAllWallLineEnabled),
+  );
+  const allWallColor = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakAllWallColor : s.bidPeakAllWallColor),
+  );
+  const allWallLineWidth = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakAllWallLineWidth : s.bidPeakAllWallLineWidth),
+  );
   const intraMax = useActivePrefs((s) => (isAsk ? s.askPeakIntraMax : s.bidPeakIntraMax));
   const allPriceRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllPriceRankLimit : s.bidPeakAllPriceRankLimit),
@@ -134,6 +160,42 @@ export function usePeakWallRender({
     visibleTimeCutoff,
   ]);
 
+  // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
+  // rank-1/일 고정: 과거일 wire 는 all rank-1 스칼라뿐이라(배열은 range 에서 벗겨짐)
+  // 표시 개수 노브를 받으면 오늘만 2·3개가 그려져 날마다 개수가 달라 보인다.
+  const allWallBuilt = useMemo(() => (
+    applicable && enabled && allWallEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toAllWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
+        intraMax,
+        allPriceRankLimit: 1,
+        visibleTimeCutoff,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    allWallEnabled,
+    allWallColor,
+    allWallLineWidth,
+    applicable,
+    axis,
+    candles,
+    dailyMaFilter,
+    enabled,
+    intraMax,
+    maFilter,
+    peaks,
+    segments,
+    todayKst,
+    visibleTimeCutoff,
+  ]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -172,6 +234,7 @@ export function usePeakWallRender({
   ]);
 
   const drawn = enabled && !hidden;
+  const allWallDrawn = drawn && allWallEnabled;
   return useMemo(() => ({
     segments: built,
     drawn,
@@ -180,5 +243,22 @@ export function usePeakWallRender({
     color,
     lineWidth,
     stepSegments: stepBuilt ?? built,
-  }), [built, stepBuilt, color, drawn, labelEnabled, lineWidth, rankArrowEnabled]);
+    allWallSegments: allWallBuilt,
+    allWallDrawn,
+    allWallLabels: allWallDrawn && labelEnabled,
+    allWallColor,
+    allWallLineWidth,
+  }), [
+    allWallBuilt,
+    allWallColor,
+    allWallDrawn,
+    allWallLineWidth,
+    built,
+    stepBuilt,
+    color,
+    drawn,
+    labelEnabled,
+    lineWidth,
+    rankArrowEnabled,
+  ]);
 }

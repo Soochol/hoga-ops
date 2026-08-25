@@ -32,7 +32,60 @@ export type PeakWallInput = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  all_peaks?: AskPeakCandidate[];
+  all_max_peaks?: AskPeakCandidate[];
 };
+
+function allCandidate(
+  price: number | null | undefined,
+  qty: number | null | undefined,
+  tMs: number | null | undefined,
+): AskPeakCandidate | null {
+  return finiteNumber(price) && finiteNumber(qty) && finiteNumber(tMs)
+    ? { price, qty, t_ms: tMs }
+    : null;
+}
+
+/**
+ * 전체 벽(`all_*` 패밀리, 터치 무관)을 **traded carrier 자리로 옮긴 사본**을 만든다 —
+ * 「전체 최대벽」 선의 입력. 파이프라인(expandBaselinePeaks · applyPeakVisibleTimeCutoff ·
+ * MA 필터)은 전부 traded carrier 를 읽으므로, 자리만 바꾸면 한 벌이 그대로 재사용된다.
+ *
+ * 데이터의 두 모양을 다 다룬다:
+ * - **과거일**(/api/range seed): `all_price/qty/t_ms` 스칼라만 있고 배열은 비어 온다
+ *   (bundle._without_all_peak_rankings). → carrier 는 스칼라, `traded_peaks` 는
+ *   **undefined 로 남긴다**. `[]` 를 넣으면 applyPeakVisibleTimeCutoff 의 chooseCandidate
+ *   가 스칼라 폴백을 타지 못해 컷오프 아래에서 그날이 통째로 사라진다(=== undefined 검사).
+ * - **오늘**(attachFamilies): `all_peaks`/`all_max_peaks` 배열이 있다. → rank-1 이 carrier,
+ *   배열은 traded_peaks 로 옮겨 컷오프가 후보 재선택을 할 수 있게 한다.
+ *
+ * `all_*` 가 전혀 없는 날(legacy payload)은 건너뛴다 — 그날만 선이 빠진다.
+ * record 필드는 옮기지 않는다(전체 벽 선은 강도 pane 계단에 참여하지 않는다).
+ */
+export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
+  const out: PeakWallInput[] = [];
+  for (const p of peaks) {
+    const closeArr = p.all_peaks?.length ? p.all_peaks : undefined;
+    const maxArr = p.all_max_peaks?.length ? p.all_max_peaks : undefined;
+    const close = closeArr?.[0] ?? allCandidate(p.all_price, p.all_qty, p.all_t_ms);
+    const max = maxArr?.[0]
+      ?? allCandidate(p.all_max_price, p.all_max_qty, p.all_max_t_ms)
+      ?? close;
+    if (!close && !max) continue;
+    out.push({
+      date: p.date,
+      price: close?.price ?? null,
+      qty: close?.qty ?? null,
+      t_ms: close?.t_ms ?? null,
+      max_price: max?.price ?? null,
+      max_qty: max?.qty ?? null,
+      max_t_ms: max?.t_ms ?? null,
+      traded_peaks: closeArr,
+      traded_max_peaks: maxArr,
+    });
+  }
+  return out;
+}
 
 export type PeakWallLineStyle = {
   color: string;

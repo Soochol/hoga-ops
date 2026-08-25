@@ -89,7 +89,10 @@ describe('useDayBidPeaks', () => {
       [candle(atKst(10, 42), 23700, 23900)],
     ));
 
-    expect(byDate(result.current)['20260613']).toBeUndefined();
+    // 체결 기준선(carrier)은 승격되지 않는다 — 행은 전체 벽 패밀리 운반용으로만 남는다.
+    const today = byDate(result.current)['20260613'];
+    expect(today).toMatchObject({ price: null, qty: null, t_ms: null });
+    expect(today.all_peaks).toContainEqual({ price: 23800, qty: 12000, t_ms: atKst(10, 42) });
   });
 
   it('preserves REST traded bid candidates for current-day cutoff recalculation', () => {
@@ -165,7 +168,10 @@ describe('useDayBidPeaks', () => {
       trades: [],
       ob: [deep(atKst(9, 20), [[23800, 20000], ...Array(9).fill([1, 1])] as Array<[number, number]>)],
     });
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 터치 전: 체결 기준선 carrier 는 비어 있고 all 패밀리만 벽을 든다.
+    const untouched = result.current.find((p) => p.date === '20260613');
+    expect(untouched?.price).toBeNull();
+    expect(untouched?.all_peaks).toContainEqual({ price: 23800, qty: 20000, t_ms: atKst(9, 20) });
 
     rerender({
       trades: [trade(atKst(9, 20) + 40_000, [

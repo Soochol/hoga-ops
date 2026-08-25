@@ -30,12 +30,18 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     arrows: true,
     color: '#base',
     lineWidth: 2,
+    allWallSegments: [],
+    allWallDrawn: false,
+    allWallLabels: false,
+    allWallColor: '#all',
+    allWallLineWidth: 1,
     ...over,
   };
 }
 
 const EMPTY: PeakWallRenderState = {
   segments: [], stepSegments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
+  allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
 };
 
 function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {
