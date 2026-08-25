@@ -129,10 +129,12 @@ export default function IndicatorPanel({
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
   const actions = useIndicatorActions();
-  const maEnabled = ind.movingAverageEnabled;
-  const setMaEnabled = actions.setMovingAverageEnabled;
-  const dailyMaEnabled = ind.dailyMovingAverageEnabled;
-  const setDailyMaEnabled = actions.setDailyMovingAverageEnabled;
+  // MA 계열의 마스터 토글은 슬롯의 `enabled` 로 접혔다(ADR) — 카테고리 체크박스는
+  // "켜진 슬롯이 하나라도 있는가" 의 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
+  const maEnabled = ind.movingAverages.some((m) => m.enabled);
+  const setMaEnabled = actions.setAllMovingAveragesEnabled;
+  const dailyMaEnabled = ind.dailyMovingAverages.some((m) => m.enabled);
+  const setDailyMaEnabled = actions.setAllDailyMovingAveragesEnabled;
   const askPeakEnabled = ind.askPeakEnabled;
   const setAskPeakEnabled = actions.setAskPeakEnabled;
   const bidPeakEnabled = ind.bidPeakEnabled;

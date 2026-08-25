@@ -103,10 +103,10 @@ beforeEach(() => {
 describe('useIndicatorActions — Provider 밖(전역 ambient 봉)', () => {
   it('ambient 봉 버킷에 쓰고 최상위 투영도 갱신한다', () => {
     const { result } = renderHook(() => useIndicatorActions());
-    result.current.setMovingAverageEnabled(false);
+    result.current.setAllMovingAveragesEnabled(false);
     // Provider 밖은 창이 없으므로 페이지 세트로 간다(ADR-0152 의 폴백).
-    expect(pageBucket('minute')?.movingAverageEnabled).toBe(false);
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(pageBucket('minute')?.movingAverages?.some((m) => m.enabled)).toBe(false);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
     expect(useLivePageStore.getState().indicatorsByWindow).toEqual({});
   });
 });

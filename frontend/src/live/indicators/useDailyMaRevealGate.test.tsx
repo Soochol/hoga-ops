@@ -16,10 +16,9 @@ describe('useDailyMaRevealGate (개선안 1-B)', () => {
   beforeEach(() => {
     resolvedDailyCandlesMock.mockReset();
     resolvedDailyCandlesMock.mockReturnValue({ candles: [], isLoading: false, dataWarnings: [], error: null, sourceByDate: new Map() });
-    // 일봉 MA 활성 + 슬롯 하나.
+    // 일봉 MA 활성 = **켜진 슬롯의 존재**(마스터 토글이 슬롯으로 접혔다).
     useLivePageStore.setState({
-      dailyMovingAverageEnabled: true,
-      dailyMovingAverages: [{ id: 'ma1', period: 5, color: '#fff', lineWidth: 1 }],
+      dailyMovingAverages: [{ id: 'ma1', enabled: true, period: 5, color: '#fff', lineWidth: 1 }],
     } as never);
   });
 
@@ -55,8 +54,10 @@ describe('useDailyMaRevealGate (개선안 1-B)', () => {
     expect(result.current).toBe(false);
   });
 
-  it('does not hold when daily MA is disabled (enabled=false)', () => {
-    useLivePageStore.setState({ dailyMovingAverageEnabled: false } as never);
+  it('does not hold when every daily slot is disabled', () => {
+    useLivePageStore.setState({
+      dailyMovingAverages: [{ id: 'ma1', enabled: false, period: 5, color: '#fff', lineWidth: 1 }],
+    } as never);
     resolvedDailyCandlesMock.mockReturnValue({ candles: [], isLoading: true, dataWarnings: [], error: null, sourceByDate: new Map() });
     const { result } = renderHook(() => useDailyMaRevealGate(ARGS));
     expect(result.current).toBe(false);

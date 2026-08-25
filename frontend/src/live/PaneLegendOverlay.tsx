@@ -62,6 +62,7 @@ import {
   readSeriesValue,
   type LegendFlagId,
   type LegendFlagInput,
+  type LegendMAValue,
   type LegendOhlcValues,
   type LegendRow,
   type PaneCellInput,
@@ -565,64 +566,70 @@ function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
   );
 }
 
-function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
-  const setHidden = useIndicatorActions().setMovingAverageHidden;
-  const setEnabled = useIndicatorActions().setMovingAverageEnabled;
+/** 꺼진 인스턴스 칩의 불투명도 — 자리는 지키되 "지금 안 그려진다" 를 읽히게 한다.
+ *  칩을 지우지 않는 이유는 지우면 다시 켤 표면이 사라지기 때문이다(flag 행을 값
+ *  없이도 남기는 것과 같은 계약, `LEGEND_FLAG_IDS` 주석). */
+const DISABLED_CHIP_OPACITY = 0.4;
+
+/** 레전드 칩 하나 = MA 인스턴스 하나. 꺼진 칩은 dim + 값 생략 — 오버레이가 series
+ *  를 비우므로 읽을 값이 애초에 없고, 빈 "—" 를 세워 두면 켜진 칩과 헷갈린다. */
+function MaChip({ ma }: { ma: LegendMAValue }) {
+  return (
+    <span
+      data-testid={`legend-ma-chip-${ma.id}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-2xs)',
+        opacity: ma.enabled ? undefined : DISABLED_CHIP_OPACITY,
+      }}
+    >
+      {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
+      <span style={{ color: ma.color, fontWeight: 500 }}>{ma.period}</span>
+      {ma.enabled && <MaValueCell value={ma.value} />}
+    </span>
+  );
+}
+
+/**
+ * MA 계열 행 — 현재봉·일봉이 라벨과 액션만 다르고 구조가 같다.
+ *
+ * 눈은 **전 인스턴스 일괄 토글**이다. 종전의 타입 마스터(✕)와 타입 눈이 슬롯의
+ * `enabled` 로 접히면서 둘이 한 조작으로 합쳐졌다 — 같은 효과를 내는 버튼 둘을
+ * 나란히 두는 대신 눈 하나만 남긴다. 인스턴스 개별 삭제(칩 ✕)는 후속 PR 이고,
+ * 그때까지 슬롯 추가·삭제는 지표 패널이 담당한다.
+ */
+function MaSlotLegendRow(
+  { row, label, onToggleAll }: {
+    row: Extract<LegendRow, { kind: 'ma' | 'daily-ma' }>;
+    label: string;
+    onToggleAll: (enabled: boolean) => void;
+  },
+) {
+  const anyEnabled = row.mas.some((m) => m.enabled);
   return (
     <>
-      <span style={{ color: 'var(--fg-dim)' }}>이동평균선</span>
-      {row.mas.map((m) => (
-        <span
-          key={m.id}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
-        >
-          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
-          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
-          <MaValueCell value={m.value} />
-        </span>
-      ))}
+      <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
+      {row.mas.map((m) => <MaChip key={m.id} ma={m} />)}
       <HoverIcon
-        label="이동평균선 선 숨김/표시"
-        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => setHidden(!row.hidden)}
+        label={`${label} 선 숨김/표시`}
+        restColor={anyEnabled ? 'var(--fg-dimmer)' : 'var(--fg-dim)'}
+        onClick={() => onToggleAll(!anyEnabled)}
       >
-        <EyeGlyph hidden={row.hidden} />
-      </HoverIcon>
-      <HoverIcon label="이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
-        <CloseGlyph />
+        <EyeGlyph hidden={!anyEnabled} />
       </HoverIcon>
     </>
   );
 }
 
+function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
+  const setAllEnabled = useIndicatorActions().setAllMovingAveragesEnabled;
+  return <MaSlotLegendRow row={row} label="이동평균선" onToggleAll={setAllEnabled} />;
+}
+
 function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
-  const setHidden = useIndicatorActions().setDailyMovingAverageHidden;
-  const setEnabled = useIndicatorActions().setDailyMovingAverageEnabled;
-  return (
-    <>
-      <span style={{ color: 'var(--fg-dim)' }}>일봉 이동평균선</span>
-      {row.mas.map((m) => (
-        <span
-          key={m.id}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
-        >
-          {/* 색 점 + 회색 기간 2요소를 "색 입힌 기간" 1요소로 통합(밀집도 개선 B). */}
-          <span style={{ color: m.color, fontWeight: 500 }}>{m.period}</span>
-          <MaValueCell value={m.value} />
-        </span>
-      ))}
-      <HoverIcon
-        label="일봉 이동평균선 선 숨김/표시"
-        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => setHidden(!row.hidden)}
-      >
-        <EyeGlyph hidden={row.hidden} />
-      </HoverIcon>
-      <HoverIcon label="일봉 이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
-        <CloseGlyph />
-      </HoverIcon>
-    </>
-  );
+  const setAllEnabled = useIndicatorActions().setAllDailyMovingAveragesEnabled;
+  return <MaSlotLegendRow row={row} label="일봉 이동평균선" onToggleAll={setAllEnabled} />;
 }
 
 function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
@@ -842,12 +849,10 @@ function PaneLegendOverlay({
   // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
   // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
   const windowId = useWindowScopeId();
+  // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
+  // 새 배열을 만들므로 재렌더 입도는 그대로다.
   const movingAverages = useWindowIndicator((s) => s.movingAverages);
-  const movingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
-  const movingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
   const dailyMovingAverages = useWindowIndicator((s) => s.dailyMovingAverages);
-  const dailyMovingAverageEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
-  const dailyMovingAverageHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
   // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
   const askPeakEnabled = useWindowIndicator((s) => s.askPeakEnabled);
   const askPeakHidden = useWindowIndicator((s) => s.askPeakHidden);
@@ -1114,12 +1119,8 @@ function PaneLegendOverlay({
   const rows = buildLegendRows({
     ohlc,
     movingAverages,
-    movingAverageEnabled,
-    movingAverageHidden,
     maValues,
     dailyMovingAverages,
-    dailyMovingAverageEnabled,
-    dailyMovingAverageHidden,
     dailyMaValues,
     dailyMaApplicable: isMinute,
     indicatorFlags,

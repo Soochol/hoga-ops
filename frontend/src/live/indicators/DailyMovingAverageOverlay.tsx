@@ -27,10 +27,10 @@ type Props = {
    *  디스크 모드에서 250일 벽이 사라져 화면이 기본 창보다 과거로 갈 때 창을 따라 넓힌다.
    *  reveal 게이트·최대벽 일봉MA 필터가 **같은 값**을 받아야 쿼리 키가 하나로 모인다. */
   dailyMaWindowFloorDate?: string | null;
+  /** 가시성이 슬롯 안(`enabled`)으로 접혔으므로 configs 하나면 충분하다 —
+   *  종전의 masterEnabled·hidden 은 그 값에서 파생된다. */
   override?: {
     configs: readonly LiveMAConfig[];
-    masterEnabled: boolean;
-    hidden: boolean;
   };
 };
 
@@ -49,18 +49,16 @@ const priceFormat = {
  *  전용: D/W/M에선 미렌더. 레전드 값은 dailyMaSeriesRegistry 등록으로 노출. */
 function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, dailyMaWindowFloorDate = null, override }: Props) {
   const storeConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
-  const storeMasterEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
-  const storeHidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
   const configs = override?.configs ?? storeConfigs;
-  const masterEnabled = override?.masterEnabled ?? storeMasterEnabled;
-  const hidden = override?.hidden ?? storeHidden;
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
   // 지수 제외: 일봉 소스가 `/api/live/past-daily-candles`(6자리 종목 전용)라 지수
   // 코드로는 애초에 시리즈가 그려지지 않는다. 즉 기능 제거가 아니라 헛요청 제거다
   // (지수 일봉 MA 를 지원하려면 `/api/live/index-candles` D 를 태워야 한다 — 별건).
-  const enabled = masterEnabled
+  // 종전 마스터 토글의 자리 — 이제 "켜진 슬롯이 하나라도 있는가" 다. 전부 꺼져
+  // 있으면 일봉 fetch 까지 통째로 건너뛴다(마스터 off 와 같은 절약).
+  const enabled = configs.some((c) => c.enabled)
     && isMinuteTimeframe(timeframe)
     && !!code
     && !isIndexWorkareaCode(code)
@@ -144,7 +142,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
       const s = map.get(cfg.id);
       if (!s) continue;
       const drawn = enabled && cfg.enabled;
-      s.applyOptions({ visible: drawn && !hidden });
+      s.applyOptions({ visible: drawn });
       if (!drawn) {
         s.setData([]);
         continue;
@@ -161,7 +159,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
     }
     // `chart` dep: /live remounts the chart per (code, timeframe); fresh series
     // start empty and must be re-pushed in the same commit (MovingAverageOverlay 동일).
-  }, [chart, bundle, axis, configs, enabled, hidden, daily, todayKst, todayLiveClose]);
+  }, [chart, bundle, axis, configs, enabled, daily, todayKst, todayLiveClose]);
 
   return null;
 }

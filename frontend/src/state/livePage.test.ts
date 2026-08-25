@@ -425,16 +425,15 @@ describe('useLivePageStore.movingAverages', () => {
     expect(after.find((m) => m.id === targetId)).toBeUndefined();
   });
 
-  it('removeMovingAverage refuses to drop the last slot', () => {
-    // Reduce to 1.
+  // 종전엔 min-1 가드가 있었다 — 마스터 토글이 가시성을 쥐던 시절, 슬롯이 0개면
+  // 되살릴 UI 가 없었기 때문이다. 레전드 칩 ✕ 가 인스턴스 단위 삭제가 되면서
+  // 0개는 사용자가 의도적으로 도달하는 유효 상태가 됐다.
+  it('removeMovingAverage can drop the last slot (0 slots is a valid state)', () => {
     const ids = useLivePageStore.getState().movingAverages.map((m) => m.id);
-    for (const id of ids.slice(1)) {
+    for (const id of ids) {
       useLivePageStore.getState().removeMovingAverage(id);
     }
-    expect(useLivePageStore.getState().movingAverages).toHaveLength(1);
-    const single = useLivePageStore.getState().movingAverages;
-    useLivePageStore.getState().removeMovingAverage(single[0].id);
-    expect(useLivePageStore.getState().movingAverages).toBe(single);
+    expect(useLivePageStore.getState().movingAverages).toEqual([]);
   });
 
   it('removeMovingAverage is no-op for unknown id', () => {

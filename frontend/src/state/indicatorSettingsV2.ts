@@ -12,6 +12,7 @@ import {
 } from '../chart/paneGroups';
 import {
   mergeLiveIndicatorPrefs,
+  type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
 import { takeWindowIndicatorsForMigration } from './indicatorsWindowMigration';
@@ -39,11 +40,29 @@ import type { LiveTimeframe } from './livePage';
  * Provider 밖 폴백**으로 남는다. 해석은 `bucketsForScope` 한 곳에 모여 있다.
  */
 
+/** MA 마스터 토글 4형제 — v1 에만 있고 v2 버킷에는 없다(`collapseMaMasterFlags`).
+ *  `stripContainers` 와 `IndicatorSettings` 가 같은 목록을 봐야 하므로 상수로 둔다. */
+export const LEGACY_MA_MASTER_KEYS = [
+  'movingAverageEnabled',
+  'movingAverageHidden',
+  'dailyMovingAverageEnabled',
+  'dailyMovingAverageHidden',
+] as const;
+
+type LegacyMaMasterKey = (typeof LEGACY_MA_MASTER_KEYS)[number];
+
 /** 버킷 하나가 담는 지표 설정 전체 — v1 `PersistedIndicators` 에서 per-timeframe
- *  컨테이너(panePrefsByTimeframe)와 레이아웃(paneOrder·paneStretch)만 뺀 것.
- *  paneStretch(#703)는 paneOrder 와 함께 v2 레이아웃 슬라이스에 산다(버킷 아님). */
+ *  컨테이너(panePrefsByTimeframe)와 레이아웃(paneOrder·paneStretch), 그리고 MA 마스터
+ *  토글 4형제를 뺀 것.
+ *
+ *  paneStretch(#703)는 paneOrder 와 함께 v2 레이아웃 슬라이스에 산다(버킷 아님).
+ *  마스터 토글이 빠진 이유는 레이아웃과 달라서 **접혔기** 때문이다 — 유효 게이트가
+ *  `slot.enabled` 하나로 줄었다(`collapseMaMasterFlags` 도크스트링). */
 export type IndicatorSettings =
-  Omit<PersistedIndicators, 'panePrefsByTimeframe' | 'paneOrder' | 'paneStretch'>;
+  Omit<
+    PersistedIndicators,
+    'panePrefsByTimeframe' | 'paneOrder' | 'paneStretch' | LegacyMaMasterKey
+  >;
 
 export type IndicatorSettingsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorSettings>>>;
@@ -139,8 +158,82 @@ function stripContainers(v1: PersistedIndicators): IndicatorSettings {
   // paneStretch(#703)도 레이아웃이라 버킷 설정에서 제외 — 그러지 않으면
   // FACTORY_INDICATOR_SETTINGS 가 paneStretch:{} 를 실어, reset/applyPreset 의
   // `...FACTORY`/`...resolveIndicatorSettings` 스프레드가 실제 값을 덮어쓴다.
-  const { panePrefsByTimeframe: _p, paneOrder: _o, paneStretch: _s, ...settings } = v1;
+  // MA 마스터 4형제도 같이 뺀다 — 여기서 빠지면 `INDICATOR_SETTING_KEYS` 에서
+  // 자동으로 사라지고, 그 결과 sanitize 가 안 받고 persist 가 안 쓴다(자연 소멸,
+  // `studyByTimeframe`·`paneAxisShare` 와 같은 관례).
+  const {
+    panePrefsByTimeframe: _p,
+    paneOrder: _o,
+    paneStretch: _s,
+    movingAverageEnabled: _me,
+    movingAverageHidden: _mh,
+    dailyMovingAverageEnabled: _de,
+    dailyMovingAverageHidden: _dh,
+    ...settings
+  } = v1;
   return settings;
+}
+
+/** 슬롯 배열 전체의 `enabled` 를 한 값으로 세운다(참조 비교를 위해 새 배열). */
+function withAllSlotsEnabled(
+  slots: readonly LiveMAConfig[],
+  enabled: boolean,
+): LiveMAConfig[] {
+  return slots.map((slot) => (slot.enabled === enabled ? slot : { ...slot, enabled }));
+}
+
+/**
+ * MA 마스터 토글 4형제를 **슬롯의 `enabled` 로 접는다** — 레거시 버킷 1회 변환.
+ *
+ * 종전 모델의 가시성은 삼중이었다: 타입 마스터(`movingAverageEnabled`) × 타입 눈
+ * (`movingAverageHidden`) × 슬롯(`slot.enabled`). 레전드 칩이 인스턴스 단위 조작
+ * 표면이 되면서 인스턴스마다 켜고 끌 값이 필요해졌고, 남길 수 있는 것은 슬롯의
+ * `enabled` 하나뿐이라 위 둘을 여기로 접는다.
+ *
+ * **판별식은 값이 아니라 키의 존재다.** 마스터 키가 없는 버킷은 이 변환 이후에
+ * 쓰인 것(= 이미 접힌 것)이므로 건드리면 안 된다. 값으로 판정하면 —
+ * `dailyMovingAverageEnabled !== true` 를 "마스터 OFF" 로 읽으면 — 새 모델에서
+ * 사용자가 켜 둔 일봉 슬롯이 **로드마다 다시 꺼진다**(키가 없으니 언제나 OFF 로
+ * 읽힌다). 같은 성질이 멱등성의 근거이기도 하다: 접힌 결과에는 마스터 키가 없어
+ * 다음 로드가 no-op 이다.
+ *
+ * 접기 규칙:
+ *  - 현재봉: 마스터가 false 이거나 눈이 켜져 있으면 전 슬롯 off. (마스터 기본 true)
+ *  - 일봉: 마스터가 true 이고 눈이 꺼져 있을 때만 전 슬롯 on, 그 밖엔 전 슬롯 off.
+ *    (마스터 기본 false — opt-in 이라 조건이 뒤집힌다)
+ *
+ * 슬롯 오버라이드가 없으면 공장 슬롯을 기준으로 만든다 — 마스터만 담긴 레거시
+ * 버킷(`{movingAverageEnabled:false}`)이 그 경우이고, 그때 슬롯 배열을 만들지 않으면
+ * "MA 를 껐다" 는 사용자의 설정이 통째로 증발한다.
+ */
+function collapseMaMasterFlags(
+  rawBucket: Record<string, unknown>,
+  sanitized: Partial<IndicatorSettings>,
+): Partial<IndicatorSettings> {
+  const has = (key: LegacyMaMasterKey): boolean => Object.hasOwn(rawBucket, key);
+  const hasLive = has('movingAverageEnabled') || has('movingAverageHidden');
+  const hasDaily = has('dailyMovingAverageEnabled') || has('dailyMovingAverageHidden');
+  if (!hasLive && !hasDaily) return sanitized;
+
+  const out = { ...sanitized };
+  if (hasLive) {
+    const visible = rawBucket.movingAverageEnabled !== false
+      && rawBucket.movingAverageHidden !== true;
+    const slots = out.movingAverages ?? FACTORY_INDICATOR_SETTINGS.movingAverages;
+    out.movingAverages = withAllSlotsEnabled(slots, visible);
+  }
+  if (hasDaily) {
+    const visible = rawBucket.dailyMovingAverageEnabled === true
+      && rawBucket.dailyMovingAverageHidden !== true;
+    const slots = out.dailyMovingAverages ?? FACTORY_INDICATOR_SETTINGS.dailyMovingAverages;
+    out.dailyMovingAverages = withAllSlotsEnabled(slots, visible);
+  }
+  // 접은 결과가 공장값과 같아지는 경우가 있다(예: 일봉 마스터 OFF → 공장값과 동일한
+  // all-disabled). sparse 의 정의가 "공장값과의 diff" 이므로 여기서 걷어낸다.
+  for (const key of ['movingAverages', 'dailyMovingAverages'] as const) {
+    if (key in out && jsonEqual(out[key], FACTORY_INDICATOR_SETTINGS[key])) delete out[key];
+  }
+  return out;
 }
 
 /** 공장 기본값 (#697 보충 정정): 거래량 + 이동평균선(기본 슬롯)만 on, 그 외 지표
@@ -233,7 +326,13 @@ export function normalizeBucketMap(raw: unknown): IndicatorSettingsByTimeframe {
     : {};
   const out: IndicatorSettingsByTimeframe = {};
   for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-    const patch = sanitizeSettingsPatch(rawBuckets[profileKey]);
+    const rawBucket = rawBuckets[profileKey];
+    const sanitized = sanitizeSettingsPatch(rawBucket);
+    // collapse 는 sanitize **다음**이지만 raw 를 읽는다 — 마스터 키는
+    // `INDICATOR_SETTING_KEYS` 에 없어 sanitize 가 이미 버렸기 때문이다.
+    const patch = rawBucket && typeof rawBucket === 'object' && !Array.isArray(rawBucket)
+      ? collapseMaMasterFlags(rawBucket as Record<string, unknown>, sanitized)
+      : sanitized;
     if (Object.keys(patch).length > 0) out[profileKey] = patch;
   }
   return out;
@@ -377,6 +476,16 @@ export function cloneIndicatorBuckets(
 export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
   const v1 = mergeLiveIndicatorPrefs(v1raw);
   const minuteView: IndicatorSettings = { ...stripContainers(v1) };
+  // v1 blob 은 **정의상 레거시**라 마스터 4형제가 언제나 실려 있다(코어서가 기본값을
+  // 채운다). 그래서 v2 버킷과 달리 키 존재를 물을 필요 없이 무조건 접는다.
+  minuteView.movingAverages = withAllSlotsEnabled(
+    minuteView.movingAverages,
+    v1.movingAverageEnabled && !v1.movingAverageHidden,
+  );
+  minuteView.dailyMovingAverages = withAllSlotsEnabled(
+    minuteView.dailyMovingAverages,
+    v1.dailyMovingAverageEnabled && !v1.dailyMovingAverageHidden,
+  );
   const minutePanePrefs = normalizePanePrefsByTimeframe(v1.panePrefsByTimeframe).minute ?? {};
   for (const key of INDICATOR_PANE_PREF_KEYS) {
     const override = minutePanePrefs[key];

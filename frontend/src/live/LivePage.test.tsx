@@ -993,8 +993,6 @@ describe('LivePage shell', () => {
     }];
     seedWorkspace('1m', {
       minute: {
-        dailyMovingAverageEnabled: true,
-        dailyMovingAverageHidden: true,
         dailyMovingAverages: [
           { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
         ],

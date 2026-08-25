@@ -43,8 +43,6 @@ describe('MovingAverageOverlay', () => {
     cleanup();
     useLivePageStore.setState({
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
     });
     useChartPrefsStore.getState().resetToDefaults();
     useMaSeriesRegistry.setState({ byScope: new Map() });
@@ -192,17 +190,20 @@ describe('MovingAverageOverlay', () => {
     expect(data[3]).toEqual({ time: 5, value: 4.5 });
   });
 
-  it('movingAverageHidden=true hides via visible:false but keeps SMA data (legend reads it)', () => {
+  // 삼중 상태가 슬롯의 `enabled` 하나로 접히면서 "숨김은 data 유지" 시맨틱이
+  // 폐기됐다 — 꺼진 인스턴스는 레전드에서도 dim 칩(값 없음)이라 판독할 값이 없다.
+  it('slot disabled → visible:false AND data cleared', () => {
     const m = makeChartMock();
-    useLivePageStore.setState({ movingAverageEnabled: true, movingAverageHidden: true });
+    useLivePageStore.setState({
+      movingAverages: DEFAULT_LIVE_MAS.map((s) => ({ ...s, enabled: false })),
+    });
     render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
     const first = m.addSeries.mock.results[0].value as {
       applyOptions: ReturnType<typeof vi.fn>; setData: ReturnType<typeof vi.fn>;
     };
     const visibleCalls = first.applyOptions.mock.calls.filter((c) => 'visible' in (c[0] as object));
     expect(visibleCalls.some((c) => (c[0] as { visible: boolean }).visible === false)).toBe(true);
-    const lastSetData = first.setData.mock.calls.at(-1)?.[0] as unknown[];
-    expect(lastSetData.length).toBeGreaterThan(0); // data NOT cleared — only hidden
+    expect(first.setData.mock.calls.at(-1)?.[0]).toEqual([]);
   });
 
   it('registers each MA series in maSeriesRegistry by slot id', () => {

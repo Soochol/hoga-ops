@@ -102,8 +102,11 @@ function addMaSlot(
   return [...current, next];
 }
 
+/** 슬롯 하나 삭제. **마지막 하나도 지울 수 있다** — 레전드 칩 ✕ 가 인스턴스 단위
+ *  삭제이므로 "0개" 는 도달 가능한 유효 상태다(코어서의 `normalizeMaSlots` 가 빈
+ *  배열을 보존한다). 종전의 min-1 가드는 마스터 토글이 가시성을 쥐고 있어 슬롯이
+ *  0개면 되살릴 UI 가 없던 시절의 방어였다. null 은 **모르는 id** 일 때만. */
 function removeMaSlot(current: readonly LiveMAConfig[], id: string): LiveMAConfig[] | null {
-  if (current.length <= 1) return null;
   const nextArr = current.filter((m) => m.id !== id);
   if (nextArr.length === current.length) return null; // unknown id
   return nextArr;
@@ -122,10 +125,13 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.movingAverages, id);
     return next ? { movingAverages: next } : null;
   },
-  setMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ movingAverageEnabled: enabled }),
-  setMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ movingAverageHidden: hidden }),
+  /** 타입 전체 일괄 표시/숨김 — 마스터 토글의 후계다. 마스터가 슬롯의 `enabled` 로
+   *  접히면서(ADR) "타입을 끈다" 는 곧 "전 슬롯을 끈다" 가 됐다. 슬롯이 0개면 켤
+   *  대상이 없으므로 no-op(null) — 빈 배열에 쓰면 diff 만 늘고 화면은 그대로다. */
+  setAllMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.movingAverages.length === 0
+      ? null
+      : { movingAverages: cur.movingAverages.map((m) => ({ ...m, enabled })) }),
 
   setDailyMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.dailyMovingAverages, id, patch);
@@ -139,13 +145,11 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.dailyMovingAverages, id);
     return next ? { dailyMovingAverages: next } : null;
   },
-  // MA 마스터 규칙: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
-  setDailyMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
-      : { dailyMovingAverageEnabled: false }),
-  setDailyMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ dailyMovingAverageHidden: hidden }),
+  /** 일봉 판 — `setAllMovingAveragesEnabled` 와 같은 규약. */
+  setAllDailyMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.dailyMovingAverages.length === 0
+      ? null
+      : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled })) }),
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),

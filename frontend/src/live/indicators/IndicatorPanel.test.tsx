@@ -319,15 +319,17 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBeUndefined();
   });
 
-  it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {
+  // 마스터 토글이 슬롯의 `enabled` 로 접혔다 — 체크박스는 "켜진 슬롯이 있는가" 의
+  // 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
+  it('clicking 이동평균선 checkbox flips every MA slot together', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
-    useLivePageStore.setState({ movingAverageEnabled: true });
+    useLivePageStore.getState().setAllMovingAveragesEnabled(true);
     renderPanel();
     const ma = screen.getByRole('checkbox', { name: '이동평균선' });
     fireEvent.click(ma);
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
     fireEvent.click(ma);
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
+    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
   });
 
   it('renders MovingAverageConfig in the right pane', () => {
@@ -381,7 +383,7 @@ describe('IndicatorPanel', () => {
   });
 
   it('상세 헤더에 지표명과 마스터 토글을 표시한다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: true });
+    useLivePageStore.getState().setAllMovingAveragesEnabled(true);
     renderPanel();
     // 헤더 h2가 그룹명이 아니라 선택된 지표명을 보여준다.
     expect(screen.getByRole('heading', { name: '이동평균선', level: 2 })).toBeTruthy();
@@ -389,12 +391,12 @@ describe('IndicatorPanel', () => {
     const masterSwitch = screen.getByRole('switch', { name: '이동평균선 표시' });
     expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(masterSwitch);
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
     expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
   });
 
   it('헤더 마스터 토글과 nav 체크박스가 같은 상태를 공유한다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.getState().setAllMovingAveragesEnabled(false);
     renderPanel();
     // 이동평균선 상세로 이동(기본 선택이지만 명시).
     fireEvent.click(screen.getByRole('button', { name: '이동평균선' }));
@@ -402,7 +404,7 @@ describe('IndicatorPanel', () => {
     expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
     // nav 체크박스로 켜면 헤더 토글도 즉시 켜진 상태로 반영된다.
     fireEvent.click(screen.getByRole('checkbox', { name: '이동평균선' }));
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
+    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
     expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
   });
 
@@ -451,7 +453,7 @@ describe('IndicatorPanel', () => {
     // 현재 봉(1m) 버킷에 실제 오버라이드를 쓴다(setter 경유).
     useLivePageStore.getState().setAskPeakEnabled(true);
     useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
-    useLivePageStore.getState().setMovingAverageEnabled(false);
+    useLivePageStore.getState().setAllMovingAveragesEnabled(false);
     useChartPrefsStore.getState().setNumericPref('surgeStartHHMM', 1030);
     useChartPrefsStore.getState().setNumericPref('ratioOutlierThreshold', 500);
     // 차트 전반 flat(⚙️ 설정 항목)은 드로어 리셋이 건드리면 안 된다.
@@ -473,7 +475,8 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
+    // 리셋은 공장값 복귀 — 현재봉 MA 공장 슬롯은 전부 켜져 있다.
+    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
     expect(useChartPrefsStore.getState().surgeStartHHMM).toBe(900);
     expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(100);
     // 차트 전반 flat 은 초기화되지 않는다(#699 — 리셋은 현재 봉 버킷만).
@@ -643,13 +646,13 @@ describe('IndicatorPanel', () => {
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('일봉 이동평균선 체크박스 토글 → dailyMovingAverageEnabled 반전', async () => {
+  it('일봉 이동평균선 체크박스 토글 → 전 슬롯 반전', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
-    useLivePageStore.setState({ dailyMovingAverageEnabled: false });
+    useLivePageStore.getState().setAllDailyMovingAveragesEnabled(false);
     renderPanel();
     const cb = screen.getByRole('checkbox', { name: '일봉 이동평균선' });
     fireEvent.click(cb);
-    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(true);
+    expect(useLivePageStore.getState().dailyMovingAverages.every((m) => m.enabled)).toBe(true);
   });
 
   it('일봉 이동평균선 라벨 클릭 → DailyMovingAverageConfig 노출', () => {
