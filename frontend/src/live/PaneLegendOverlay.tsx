@@ -16,7 +16,7 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { memo, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
@@ -68,7 +68,9 @@ import {
   type PaneCellInput,
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
-import { FLAG_INDICATOR_TYPES } from '../state/indicatorOps';
+import { FLAG_INDICATOR_TYPES, type MaSliceKey } from '../state/indicatorOps';
+import MaInstancePopover from './indicators/MaInstancePopover';
+import type { LiveMAConfig } from '../state/livePage';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -601,7 +603,8 @@ function MaChip({
   label: string;
   onToggle: () => void;
   onRemove: () => void;
-  onOpenSettings: () => void;
+  /** 더블클릭 — 앵커 엘리먼트를 함께 넘긴다(팝오버가 이 칩에 붙어야 하므로). */
+  onOpenSettings: (anchor: HTMLElement) => void;
 }) {
   return (
     <span
@@ -622,7 +625,7 @@ function MaChip({
         aria-label={`${label} ${ma.period} ${ma.enabled ? '숨김' : '표시'}`}
         title={`${label} ${ma.period}`}
         onClick={onToggle}
-        onDoubleClick={onOpenSettings}
+        onDoubleClick={(e) => onOpenSettings(e.currentTarget.parentElement ?? e.currentTarget)}
         style={{
           padding: 0,
           border: 'none',
@@ -663,15 +666,27 @@ function MaChip({
  * 그때까지 슬롯 추가·삭제는 지표 패널이 담당한다.
  */
 function MaSlotLegendRow(
-  { row, label, onToggleAll, onToggleOne, onRemoveOne }: {
+  { row, slice, label, configs, onToggleAll, onToggleOne, onRemoveOne, onPatchOne }: {
     row: Extract<LegendRow, { kind: 'ma' | 'daily-ma' }>;
+    slice: MaSliceKey;
     label: string;
+    /** 팝오버가 편집할 **원본 config** — 행의 칩은 표시용이라 lineWidth·source 가 없다. */
+    configs: readonly LiveMAConfig[];
     onToggleAll: (enabled: boolean) => void;
     onToggleOne: (id: string, enabled: boolean) => void;
     onRemoveOne: (id: string) => void;
+    onPatchOne: (id: string, patch: Partial<LiveMAConfig>) => void;
   },
 ) {
   const anyEnabled = row.mas.some((m) => m.enabled);
+  // 열린 팝오버의 대상 인스턴스와 그 앵커. 앵커를 state 로 드는 이유는 칩이 배열
+  // 렌더라 ref 를 미리 잡아 둘 수 없어서다 — 더블클릭한 그 엘리먼트를 받아 쥔다.
+  const [editing, setEditing] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  const anchorRef = useRef<HTMLElement | null>(null);
+  anchorRef.current = editing?.anchor ?? null;
+  const editingConfig = editing ? configs.find((c) => c.id === editing.id) ?? null : null;
+  const closePopover = useCallback(() => setEditing(null), []);
+
   return (
     <>
       <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
@@ -682,9 +697,19 @@ function MaSlotLegendRow(
           label={label}
           onToggle={() => onToggleOne(m.id, !m.enabled)}
           onRemove={() => onRemoveOne(m.id)}
-          onOpenSettings={() => openInstanceSettings()}
+          onOpenSettings={(anchor) => setEditing({ id: m.id, anchor })}
         />
       ))}
+      {editingConfig && (
+        <MaInstancePopover
+          slice={slice}
+          config={editingConfig}
+          anchorRef={anchorRef}
+          onChange={(patch) => onPatchOne(editingConfig.id, patch)}
+          onRemove={() => { onRemoveOne(editingConfig.id); closePopover(); }}
+          onDismiss={closePopover}
+        />
+      )}
       <HoverIcon
         label={`${label} 선 숨김/표시`}
         restColor={anyEnabled ? 'var(--fg-dimmer)' : 'var(--fg-dim)'}
@@ -696,33 +721,36 @@ function MaSlotLegendRow(
   );
 }
 
-/** 칩 더블클릭의 착지점 — PR-2 의 인스턴스 속성 popover 가 여기에 꽂힌다.
- *  지금 no-op 인 것은 의도다: 이벤트 배선(리스너·전파·크로스헤어 사각지대)을 이번
- *  PR 에서 확정해 두면 popover 는 내용물만 얹으면 된다. */
-function openInstanceSettings(): void {}
-
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
   const actions = useIndicatorActions();
+  const configs = useWindowIndicator((s) => s.movingAverages);
   return (
     <MaSlotLegendRow
       row={row}
+      slice="movingAverages"
       label="이동평균선"
+      configs={configs}
       onToggleAll={actions.setAllMovingAveragesEnabled}
       onToggleOne={(id, enabled) => actions.setMovingAverage(id, { enabled })}
       onRemoveOne={actions.removeMovingAverageWithUndo}
+      onPatchOne={actions.setMovingAverage}
     />
   );
 }
 
 function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
   const actions = useIndicatorActions();
+  const configs = useWindowIndicator((s) => s.dailyMovingAverages);
   return (
     <MaSlotLegendRow
       row={row}
+      slice="dailyMovingAverages"
       label="일봉 이동평균선"
+      configs={configs}
       onToggleAll={actions.setAllDailyMovingAveragesEnabled}
       onToggleOne={(id, enabled) => actions.setDailyMovingAverage(id, { enabled })}
       onRemoveOne={actions.removeDailyMovingAverageWithUndo}
+      onPatchOne={actions.setDailyMovingAverage}
     />
   );
 }
