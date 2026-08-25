@@ -3875,6 +3875,175 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 좌측 트림(창 축소) 재투영 (2026-08-25 사용자 보고)
+//
+// 창 축소(`planViewportContraction` → `trimRangeBundleBefore`)는 디스크 모드
+// (hogaplay/우회) 분봉에서 캔들 배열 **왼쪽을 실제로 잘라낸다** — 벤더 모드는 캔들이
+// 별도 병합 캐시라 지표만 잘리지만, 디스크 캔들은 range 창에서 직접 온다. 트림은
+// `segments[0]` 을 옮겨 축 원점까지 재매핑하는, 프리펜드와 같은 좌표 전면 무효화인데
+// 종전엔 이 변이만 보정자가 없어 lwc 재앵커가 제멋대로 착지했다(010140 1m 실측:
+// 11-08 팬 중 12-05 로 +23거래일 순간이동 → from<0 이벤트가 left_pan 재확장을 태워
+// contract ↔ extend 진동).
+//
+// 하네스는 mid-insert describe 와 같은 원리다: `timeToIndex` 가 트림을 실제로
+// 흉내내고(모든 time 의 union 인덱스가 제거된 개수만큼 내려간다), 매핑 전환은 자식
+// pane 의 setData 시점이다 — layout 스냅샷은 옛 매핑을, 리포지셔너는 새 매핑을 본다.
+// ---------------------------------------------------------------------------
+describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
+  beforeEach(() => {
+    useLivePageStore.setState({ historicalFromDate: null, candleTimeframe: '1m' });
+    vi.useFakeTimers();
+    vi.setSystemTime(TODAY_OPEN_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const LR_FROM = 100;
+  const LR_TO = 400;
+  const VR_FROM_SEC = TODAY_OPEN_MS / 1000 + 60;
+  const VR_TO_SEC = TODAY_OPEN_MS / 1000 + 600;
+  const TRIM_SHIFT = 39;
+
+  function makeHarness() {
+    // 트림 매핑: pivot 보다 뒤의 time 은 shift 만큼 이동한다(트림은 음수 shift —
+    // 왼쪽이 잘리면 남은 모든 봉의 union 인덱스가 내려간다).
+    let shift = 0;
+    let pivot = Number.POSITIVE_INFINITY;
+    let pending: { shift: number; pivot: number } | null = null;
+    const applyPending = () => {
+      if (pending) { shift = pending.shift; pivot = pending.pivot; pending = null; }
+    };
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
+      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      timeToIndex: vi.fn((t: unknown): number => {
+        const v = Math.round(t as number);
+        return v > pivot ? v + shift : v;
+      }),
+      width: vi.fn(() => 800),
+      height: vi.fn(() => 28),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+    };
+    const chart = {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(() => applyPending()),
+        update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+    };
+    return { ts, chart, queueRemap: (p: { shift: number; pivot: number }) => { pending = p; } };
+  }
+
+  const bundleOf = (tsList: number[]): RangeBundle => ({
+    ...TODAY_ONLY_BUNDLE,
+    candles: tsList.map((ts_ms) => ({ ts_ms, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 })),
+  });
+
+  // 트림의 지문: 첫 봉이 미래로 이동, 마지막 봉 고정, 개수 감소.
+  const FIRST = TODAY_OPEN_MS + 60_000;
+  const MIDDLE = TODAY_OPEN_MS + 300_000;
+  const LAST = TODAY_OPEN_MS + 900_000;
+
+  it('좌측 트림이면 재투영한다 — 같은 봉이 화면에 남는다', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    // contraction 은 좌측 팬이 선행된 상태에서만 발동한다 — hfd 를 실제 시나리오처럼
+    // 세워, 프리펜드 게이트의 두 번째 조건(newEarliest >= prevEarliest)을 트림 판별식이
+    // 우회해야 함을 함께 잠근다.
+    act(() => {
+      useLivePageStore.setState({ historicalFromDate: '20260501' });
+    });
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 트림 도착: 첫 봉이 잘린다. 남은 봉들의 union 인덱스가 TRIM_SHIFT 만큼 내려간다.
+    h.queueRemap({ shift: -TRIM_SHIFT, pivot: 0 });
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
+    expect(h.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM - TRIM_SHIFT,
+      to: LR_TO - TRIM_SHIFT,
+    });
+  });
+
+  it('좌단·우단이 함께 바뀌면(소스 교체 모양) 손대지 않는다 — 판별식은 lastMs 불변을 요구한다', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    act(() => {
+      useLivePageStore.setState({ historicalFromDate: '20260501' });
+    });
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 첫 봉 전진 + 개수 감소지만 **마지막 봉도 움직였다** — 트림이 아니라 교체다.
+    // 교체의 소유자는 소스 스왑 재착석(2a)이지 이 경로가 아니다.
+    //
+    // 리매핑을 트림 케이스와 똑같이 큐한다 — 안 하면 shift=0 이라 EPSILON 스킵으로
+    // 판별식과 무관하게 통과해, 이 단언이 lastMs 조건을 전혀 잠그지 못한다
+    // (red-check 실측: 조건을 빼도 초록이었다).
+    h.queueRemap({ shift: -TRIM_SHIFT, pivot: 0 });
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([MIDDLE, LAST + 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Crosshair → cursor store (ADR-0044)
 // ---------------------------------------------------------------------------
 

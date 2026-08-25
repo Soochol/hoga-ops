@@ -302,6 +302,10 @@ export function useViewportBackfill({
   // every SSE tick (same rationale as candleCountRef above).
   const isExtendingRef = useRef(false);
   isExtendingRef.current = isExtending;
+  /** 가장 최근 논리범위 이벤트의 from. 3b 디바운스의 발화 시점 재검증용 — 트림/프리펜드
+   *  커밋 중 lwc 과도 이벤트(from<0)가 타이머를 무장시켜도, 리포지셔너의 보정 set 이 내는
+   *  후속 이벤트(from≥0)가 이 값을 덮어써 발화가 반려된다(디바운스 arming 분기 주석 참조). */
+  const latestLogicalFromRef = useRef<number | null>(null);
   // Coverage-gap 신호 미러. 3b 구독 effect의 deps에 넣지 않으려는 목적 —
   // indicatorCoverageFromDate는 좌측 팬 확장 때만 바뀌지만(SSE 틱은 from_date 불변),
   // deps에 두면 번들 참조 churn 시 재구독 위험이 있어 candleCountRef 패턴을 따른다.
@@ -332,6 +336,7 @@ export function useViewportBackfill({
     fillBudgetRef.current = 0;
     fillCoverageTargetRef.current = null;
     initialCoverageCheckedRef.current = false;
+    latestLogicalFromRef.current = null;
   }, [code, timeframe]);
 
   // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
@@ -402,10 +407,12 @@ export function useViewportBackfill({
     prevSourceKeyRef.current = candleSourceKey;
   }, [candleSourceKey]);
 
-  // 2. Repositioner. Runs after the child setData in the same commit. Only a
-  // genuine LEFTWARD extension repositions — initial paint and SSE growth are
-  // owned by LiveChartRoot's initial-view effect (mutually exclusive via
-  // historicalFromDate), and holiday-only chunks change nothing on screen.
+  // 2. Repositioner. Runs after the child setData in the same commit. Three
+  // mutations reposition — leftward extension (prepend), mid-array insertion
+  // (2b), and left trim (2c, contraction) — because each remaps the union
+  // index space. Initial paint and SSE growth are owned by LiveChartRoot's
+  // initial-view effect (mutually exclusive via historicalFromDate), and
+  // holiday-only chunks change nothing on screen.
   useEffect(() => {
     if (!chart || !bundle || bundle.candles.length === 0) return;
     const ts = chart.timeScale();
@@ -488,10 +495,11 @@ export function useViewportBackfill({
     // 2026-08-24 사용자 보고가 이것이었다(010140 06-15~08-24 구간의 디스크 구멍 16일:
     // 06-15~07-02 연속 13일 + 07-17 + 08-17). 보충일마다 반복되므로 누적된다.
     //
-    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 셋이 개수만 보면 구별되지 않는다:
-    //   프리펜드   firstMs 변함 · lastMs 불변 · count 증가  → 아래 경로가 처리
-    //   중간 삽입  firstMs 불변 · lastMs 불변 · count 증가  → 여기
-    //   SSE 성장   firstMs 불변 · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
+    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 넷이 개수만 보면 구별되지 않는다:
+    //   프리펜드   firstMs 과거로 · lastMs 불변 · count 증가  → 아래 경로가 처리
+    //   중간 삽입  firstMs 불변  · lastMs 불변 · count 증가  → 여기
+    //   SSE 성장   firstMs 불변  · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
+    //   좌측 트림  firstMs 미래로 · lastMs 불변 · count 감소  → isLeftTrim(아래)
     //
     // `historicalFromDate` 게이트를 우회하는 것이 안전한 이유: 중간 삽입은 **좌단을
     // 건드리지 않아** 3b 의 좌측-팬 판정을 새로 만들지 않는다. #1566 에서 겪은 백필
@@ -509,6 +517,31 @@ export function useViewportBackfill({
       && shape.lastMs === prevShape.lastMs
       && shape.count > prevShape.count;
 
+    // 2c. **좌측 트림** — 창 축소(`planViewportContraction` → `historicalRange.contract`
+    // → `trimRangeBundleBefore`)는 디스크 모드(hogaplay/우회) 분봉에서 캔들 배열
+    // **왼쪽을 실제로 잘라낸다**. 벤더 모드는 캔들이 별도 병합 캐시라 지표만 잘리지만,
+    // 디스크 캔들은 range 창에서 직접 오므로(`useLiveBundle` minuteDiskCandles) 커널
+    // 게이트의 전제("분봉 캔들은 병합 캐시가 깊이를 보존" — `planViewportContraction`
+    // 주석)가 성립하지 않는다. 트림은 `segments[0]` 을 옮겨 축 원점까지 재매핑하는,
+    // 프리펜드와 같은 좌표 전면 무효화인데 종전엔 이 변이만 보정자가 없어 lwc 재앵커가
+    // 제멋대로 착지했다 — 2026-08-25 실측(010140 1m hogaplay ON): 11-08 팬 중 12-05 로
+    // +23거래일 순간이동, 그 상태의 from<0 이벤트가 left_pan 재확장을 태워 방금 버린
+    // 구간을 재요청(contract 1초 뒤 extend), contract ↔ extend 진동.
+    //
+    // 아래 게이트 우회가 안전한 근거(⚠ #1566 되먹임과 다른 이유): 트림은 뷰포트
+    // 좌단보다 CONTRACT_RETAIN_STEPS(1스텝) 과거까지 남기므로 화면의 봉이 전부 살아
+    // 있고, 같은 봉을 고정하는 재투영은 from≥0 로 끝나 3b 의 좌측-팬 판정을 만들지
+    // 않는다. 재-contract 도 없다 — 트림 직후 창-뷰포트 간격이 정확히 RETAIN(1) <
+    // TRIGGER(3) 라 `planViewportContraction` 이 null 을 돌려준다.
+    //
+    // lastMs 불변 조건이 급소다: 좌단·우단이 함께 바뀌는 것은 트림이 아니라 소스
+    // 교체(2a 의 소유)이고, 그때 이 경로가 함께 움직이면 두 주체가 뷰포트를 다툰다.
+    const isLeftTrim =
+      prevShape !== null
+      && shape.firstMs > prevShape.firstMs
+      && shape.lastMs === prevShape.lastMs
+      && shape.count < prevShape.count;
+
     // ⚠ **이 게이트를 분봉에서 풀지 말 것 — 2026-08-24 에 풀었다가 되돌렸다.**
     //
     // 동기는 타당했다: `historicalFromDate` 는 "좌측 팬을 한 적이 있다" 는 뜻인데
@@ -521,7 +554,7 @@ export function useViewportBackfill({
     // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
     // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
     // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
-    if (!isMidInsert) {
+    if (!isMidInsert && !isLeftTrim) {
       if (historicalRange.snapshot().historicalFromDate === null) return;
       if (newEarliest >= prevEarliest) return;
     }
@@ -667,6 +700,10 @@ export function useViewportBackfill({
     const ts = chart.timeScale();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
+      // 모든 게이트보다 먼저 — 게이트에 반려되는 이벤트(백프레셔 포함)도 "가장 최근
+      // 뷰포트 보고" 로서는 유효하고, 발화 시점 재검증이 그 최신값을 읽는다.
+      const reportedFrom = (range as { from?: number | null } | null)?.from;
+      if (typeof reportedFrom === 'number') latestLogicalFromRef.current = reportedFrom;
       if (!canTriggerBackfill()) return;
       // Lazy-fetch runs for every LiveTimeframe, including D/W/M. Without
       // this, D/W/M users dragging past the leftmost bar saw nothing happen.
@@ -755,6 +792,30 @@ export function useViewportBackfill({
             from: cur,
           });
           return;
+        }
+        // 발화 시점 뷰포트 재검증(left_pan): 트림/프리펜드 커밋 중 lwc 내부 re-anchor 가
+        // 잠깐 from<0 을 보고해 이 디바운스를 무장시킬 수 있다. 2026-08-25 실측(010140
+        // 1m hogaplay ON): contract 의 트림 커밋에서 lwc 과도 이벤트(-1180)가 디바운스를
+        // 세웠고, 리포지셔너(2c)가 같은 커밋에서 뷰포트를 되돌린 뒤에도 150ms 뒤 타이머가
+        // 방금 버린 창을 재확장했다 — contract ↔ extend 진동. from≥0 이벤트는 이 분기에
+        // 도달하지 않아 타이머를 걷지 못하므로, 발화 시점에 **가장 최근 이벤트**의 from
+        // 으로 빈공간이 실제로 남아 있는지 재확인한다(리포지셔너의 보정 set 도 구독
+        // 이벤트를 내므로 ref 가 항상 최신이다). 디바운스 사이에 사용자가 오른쪽으로
+        // 되돌아온 경우도 같은 이유로 반려된다 — 채울 빈공간이 없다. coverage_gap 은
+        // from≥0 트리거라 이 서명이 성립하지 않아 대상이 아니다.
+        if (trigger === 'left_pan') {
+          const latest = latestLogicalFromRef.current;
+          if (latest === null || latest >= 0) {
+            livePerfLog('viewport_backfill_skip', {
+              code,
+              timeframe,
+              trigger,
+              logicalFrom: r.from,
+              latestLogicalFrom: latest,
+              from: cur,
+            });
+            return;
+          }
         }
         // fill 상태는 실제 dispatch 직전에만 동결 — 위의 가드들로 반려된 이벤트가
         // 유령 활성 fill을 남기면(안 그러면) falling edge가 없어 영구 잠금된다.
