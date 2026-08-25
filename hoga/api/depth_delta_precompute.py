@@ -43,14 +43,12 @@ OFF **0.11초**(10배). `depth_heatmap` 은 0.02~0.03초라 껐다 켜도 무변
 """
 from __future__ import annotations
 
-import datetime as dt
 import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from hoga.api.bundle import build_depth_delta_slice
-from hoga.api.calendar import TradingDayUnavailableError, coverage_end, trading_days_in_range
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine
@@ -62,7 +60,7 @@ log = logging.getLogger(__name__)
 #: 상한에 닿지 않고, 첫 도입이나 며칠 밀린 뒤에만 여러 런에 걸쳐 따라잡는다.
 MAX_PAIRS_PER_RUN = 450
 
-#: 얼마나 거슬러 올라가며 빈 곳을 채울지(거래일). 5 = 대략 한 주. 그보다 오래된 날은
+#: 얼마나 거슬러 올라가며 빈 곳을 채울지(캡처가 있는 날). 5 = 대략 한 주. 그보다 오래된 날은
 #: 사용자가 볼 확률이 낮고, 봐도 종전처럼 콜드로 계산되므로 손해가 아니라 **비용을
 #: 안 쓰는 것**이다. 넓히면 디스크만 는다(1분 산출 ~610KB/일/종목 실측).
 LOOKBACK_TRADING_DAYS = 5
@@ -76,6 +74,8 @@ PRECOMPUTE_VENUE = "KRX"
 PRECOMPUTE_SOURCE = "hogaplay"
 
 _ONE_MINUTE_MS = 60_000
+#: `YYYYMMDD` 디렉터리 이름의 길이 — 캡처 트리에서 날짜 디렉터리만 고르는 판정.
+_DATE_DIR_LEN = 8
 
 
 @dataclass
@@ -122,31 +122,30 @@ def _captured_codes(data_dir: Path, date: str) -> list[str]:
     return out
 
 
-def _recent_trading_days(today_kst: str, *, lookback: int) -> list[str]:
-    """오늘 **이전**의 최근 거래일들(최신 → 과거).
+def _recent_captured_dates(data_dir: Path, today_kst: str, *, lookback: int) -> list[str]:
+    """캡처가 있는 최근 날짜들 — 오늘 **이전**, 최신 → 과거.
 
-    오늘을 빼는 것은 `_indicator_cacheable` 이 과거일만 저장하기 때문이다 — 오늘을
-    넘겨도 계산만 하고 버려져 순수 낭비가 된다. 달력 커버리지 밖이면 빈 목록이라
-    이 배치는 조용히 아무것도 하지 않는다(근사로 밀고 나가지 않는다).
+    오늘을 빼는 것은 `_indicator_cacheable` 이 과거일만 저장하기 때문이다. 오늘을
+    넘기면 계산만 하고 버려져 순수 낭비다.
+
+    ⚠ **거래일 달력을 쓰지 않는다.** 처음엔 `trading_days_in_range` 로 열거했는데,
+    실데이터 드라이런에서 대상이 `['20260803']` 하나로 나왔다 — 정적 시드의 커버리지
+    끝이 거기라(`coverage_end()`) 오늘(20260826)까지 자르면 **최근 3주가 통째로
+    빠진다.** 유닛 테스트는 열거를 stub 해서 이 구멍을 못 봤다.
+
+    캡처 디렉터리의 존재가 곧 "그날 장이 있었고 우리가 받았다" 의 증거이므로 달력보다
+    강한 진실이다. 주말·공휴일 디렉터리는 애초에 생기지 않고, 설령 빈 디렉터리가 있어도
+    `_captured_codes` 가 `snapshots.parquet` 부재로 걸러 빈 목록을 돌려준다.
     """
-    end_d = dt.date(int(today_kst[:4]), int(today_kst[4:6]), int(today_kst[6:8]))
-    # 거래일 밀도가 최악(연휴)이어도 lookback 개를 담도록 넉넉히 잡는다.
-    start = (end_d - dt.timedelta(days=lookback * 3 + 10)).strftime("%Y%m%d")
-    # ⚠ 달력 커버리지 밖이면 `trading_days_in_range` 가 **던진다**(추측 목록 금지).
-    # 그 경우 이 배치는 조용히 아무것도 안 한다 — 근사 날짜로 파케이를 스캔하느니
-    # 종전처럼 조회 시점에 계산하는 편이 옳다. `end` 를 커버리지 안쪽으로 당겨
-    # 예외 자체를 피하고, 그래도 없으면 빈 목록이다.
-    cov_end = coverage_end()
-    end = min(today_kst, cov_end) if cov_end else today_kst
-    if end < start:
+    root = data_dir / "parquet"
+    if not root.is_dir():
         return []
-    try:
-        days = trading_days_in_range(start, end)
-    except TradingDayUnavailableError:
-        log.warning("depth_delta precompute: trading-day coverage miss %s~%s", start, end)
-        return []
-    past = [d for d in days if d < today_kst]
-    return sorted(past, reverse=True)[:lookback]
+    dates = [
+        p.name for p in root.iterdir()
+        if p.is_dir() and len(p.name) == _DATE_DIR_LEN and p.name.isdigit()
+        and p.name < today_kst
+    ]
+    return sorted(dates, reverse=True)[:lookback]
 
 
 def precompute_depth_delta_1m(
@@ -165,7 +164,7 @@ def precompute_depth_delta_1m(
     result = PrecomputeResult()
     cache = engine.indicators_cache
     data_dir = engine.data_dir
-    result.dates = _recent_trading_days(today_kst, lookback=lookback)
+    result.dates = _recent_captured_dates(data_dir, today_kst, lookback=lookback)
 
     for date in result.dates:
         for code in _captured_codes(data_dir, date):

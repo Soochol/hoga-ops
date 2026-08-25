@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from hoga.api import depth_delta_precompute as ddp
-from hoga.api.error_codes import UpstreamCode
 from hoga.api.past_indicators_cache import CACHE_MISS
 
 
@@ -51,7 +50,7 @@ def wiring(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int]]:
 def _stub_enumeration(
     monkeypatch: pytest.MonkeyPatch, *, dates: list[str], codes: list[str],
 ) -> None:
-    monkeypatch.setattr(ddp, "_recent_trading_days", lambda *a, **k: dates)
+    monkeypatch.setattr(ddp, "_recent_captured_dates", lambda *a, **k: dates)
     monkeypatch.setattr(ddp, "_captured_codes", lambda *a, **k: codes)
 
 
@@ -131,34 +130,50 @@ def test_failure_of_one_pair_does_not_stop_the_run(
     assert calls == ["bad", "good"]
 
 
-def test_today_is_never_enumerated(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_today_is_never_enumerated(tmp_path: Path) -> None:
     """**오늘은 대상이 아니다.**
 
     `_indicator_cacheable` 이 과거일만 저장하므로 오늘을 넘기면 계산만 하고 버려진다
     — 순수 낭비다. 그 게이트를 여기서 복제하지 않는 대신, 열거 단계가 오늘을 배제하는
     것을 값으로 박는다.
     """
-    monkeypatch.setattr(ddp, "coverage_end", lambda: "20260825")
-    monkeypatch.setattr(
-        ddp, "trading_days_in_range",
-        lambda start, end: ["20260820", "20260821", "20260824", "20260825"],
-    )
+    root = tmp_path / "parquet"
+    for d in ("20260820", "20260821", "20260824", "20260825", "20260826"):
+        (root / d).mkdir(parents=True)
 
-    days = ddp._recent_trading_days("20260825", lookback=5)
+    days = ddp._recent_captured_dates(tmp_path, "20260826", lookback=5)
 
-    assert "20260825" not in days
-    assert days == ["20260824", "20260821", "20260820"]  # 최신 → 과거
+    assert "20260826" not in days
+    assert days == ["20260825", "20260824", "20260821", "20260820"]  # 최신 → 과거
 
 
-def test_calendar_coverage_miss_yields_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """달력 커버리지 밖이면 **추측하지 않고 아무것도 안 한다**.
+def test_enumeration_does_not_depend_on_the_trading_day_calendar(tmp_path: Path) -> None:
+    """캡처 디렉터리가 진실이다 — 달력 커버리지가 뒤처져도 최근 날짜를 놓치지 않는다.
 
-    근사 날짜로 파케이를 스캔하느니 종전처럼 조회 시점에 계산하는 편이 옳다.
+    실데이터 드라이런에서 잡힌 구멍이다: 거래일 시드의 `coverage_end()` 가 20260803
+    이라, 달력으로 자르면 오늘(20260826)까지의 **최근 3주가 통째로 빠졌다**. 유닛이
+    열거를 stub 하고 있어 못 봤던 자리라, 이 테스트가 그 회귀를 막는다.
     """
-    def _raise(start: str, end: str) -> list[str]:
-        raise ddp.TradingDayUnavailableError(UpstreamCode.TRADING_DAYS_UNAVAILABLE)
+    root = tmp_path / "parquet"
+    for d in ("20260803", "20260825"):
+        (root / d).mkdir(parents=True)
 
-    monkeypatch.setattr(ddp, "coverage_end", lambda: None)
-    monkeypatch.setattr(ddp, "trading_days_in_range", _raise)
+    days = ddp._recent_captured_dates(tmp_path, "20260826", lookback=5)
 
-    assert ddp._recent_trading_days("20260825", lookback=5) == []
+    assert days[0] == "20260825"  # 시드 커버리지(20260803) 밖이어도 잡힌다
+
+
+def test_lookback_caps_the_window(tmp_path: Path) -> None:
+    """창은 최신부터 `lookback` 개까지 — 넓히면 디스크만 는다(~610KB/일/종목)."""
+    root = tmp_path / "parquet"
+    for d in ("20260819", "20260820", "20260821", "20260824", "20260825"):
+        (root / d).mkdir(parents=True)
+
+    assert ddp._recent_captured_dates(tmp_path, "20260826", lookback=2) == [
+        "20260825", "20260824",
+    ]
+
+
+def test_missing_capture_tree_yields_nothing(tmp_path: Path) -> None:
+    """캡처 트리가 없으면 조용히 아무것도 안 한다(빈 워크트리·새 머신)."""
+    assert ddp._recent_captured_dates(tmp_path, "20260826", lookback=5) == []
