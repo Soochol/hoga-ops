@@ -91,6 +91,25 @@ function bidPeakFromCandidate(date: string, candidate: AskPeakCandidate): BidPea
   };
 }
 
+/** 오늘 행 push — ask 쪽 pushTodayAskPeak 미러(사유는 그쪽 주석 참조). */
+function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamilies): BidPeak[] {
+  const traded = families.traded[0];
+  if (traded) {
+    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
+  } else if (families.all.length > 0) {
+    out.push(attachFamilies({
+      date: todayKst,
+      price: null,
+      qty: null,
+      t_ms: null,
+      max_price: null,
+      max_qty: null,
+      max_t_ms: null,
+    }, families));
+  }
+  return out;
+}
+
 function attachFamilies(
   peak: BidPeak,
   families: PeakFamilies,
@@ -179,10 +198,7 @@ export function deriveDayBidPeaks(
   void todayCandles;
   const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs, visibleTimeCutoff);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayBidPeak(out, todayKst, families);
 }
 
 export function deriveDayBidPeaksIncremental(
@@ -201,10 +217,7 @@ export function deriveDayBidPeaksIncremental(
   ]);
   const families = bidFamiliesFromClassified(classified, backend);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayBidPeak(out, todayKst, families);
 }
 /** mergedBidFamilies 의 cutoff 분기와 동일(증분 경로 전용). */
 function bidFamiliesFromClassifiedCutoff(classified: PeakWallClassification): PeakFamilies {
@@ -232,10 +245,7 @@ export function deriveDayBidPeaksIncrementalAsOf(
   ], cutoffMs, sessionOpenMs);
   const families = bidFamiliesFromClassifiedCutoff(classified);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayBidPeak(out, todayKst, families);
 }
 
 export function useDayBidPeaks(

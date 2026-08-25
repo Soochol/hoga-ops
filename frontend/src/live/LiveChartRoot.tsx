@@ -2303,8 +2303,14 @@ export function LiveChartRoot({
       ...(askWall.labels
         ? askWall.segments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
+      ...(askWall.allWallLabels
+        ? askWall.allWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
+        : []),
       ...(bidWall.labels
         ? bidWall.segments.map((segment) => ({ ...segment, side: 'bid' as const }))
+        : []),
+      ...(bidWall.allWallLabels
+        ? bidWall.allWallSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
     // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
@@ -2325,7 +2331,16 @@ export function LiveChartRoot({
       side: s.side,
       label: s.label,
     }));
-  }, [askWall.labels, askWall.segments, bidWall.labels, bidWall.segments]);
+  }, [
+    askWall.labels,
+    askWall.segments,
+    askWall.allWallLabels,
+    askWall.allWallSegments,
+    bidWall.labels,
+    bidWall.segments,
+    bidWall.allWallLabels,
+    bidWall.allWallSegments,
+  ]);
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
   // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.

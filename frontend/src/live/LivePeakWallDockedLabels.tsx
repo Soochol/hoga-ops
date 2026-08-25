@@ -54,15 +54,33 @@ function LivePeakWallDockedLabels({ paneSeries, askWall, bidWall }: Props) {
     const labelBudget = peakLabelBudgetForBarSpacing(timeScale?.options?.().barSpacing ?? 0);
     // side 는 라벨의 세로 방향을 가른다 — 매도는 선 위, 매수는 선 아래. 같은 분봉에
     // 양쪽 벽이 동시에 잡히는 최빈 겹침이 배치 없이 해소된다.
+    // 전체 최대벽(터치 무관) 세그먼트는 체결된 벽과 **한 호출로 합쳐** 넘긴다 —
+    // 따로 부르면 side 당 라벨 예산이 두 배가 되고, 같은 (날, 가격) 벽이 칩 두 장으로
+    // 겹친다(함수 내부의 최대 qty 1개 병합이 호출 단위라서).
     prim.setLabels([
       ...livePeakWallDockedLabelsFromSegments(
-        askWall.labels ? askWall.segments : [], 'ask', visibleRange, labelBudget,
+        [
+          ...(askWall.labels ? askWall.segments : []),
+          ...(askWall.allWallLabels ? askWall.allWallSegments : []),
+        ], 'ask', visibleRange, labelBudget,
       ),
       ...livePeakWallDockedLabelsFromSegments(
-        bidWall.labels ? bidWall.segments : [], 'bid', visibleRange, labelBudget,
+        [
+          ...(bidWall.labels ? bidWall.segments : []),
+          ...(bidWall.allWallLabels ? bidWall.allWallSegments : []),
+        ], 'bid', visibleRange, labelBudget,
       ),
     ]);
-  }, [askWall.labels, askWall.segments, bidWall.labels, bidWall.segments]);
+  }, [
+    askWall.labels,
+    askWall.segments,
+    askWall.allWallLabels,
+    askWall.allWallSegments,
+    bidWall.labels,
+    bidWall.segments,
+    bidWall.allWallLabels,
+    bidWall.allWallSegments,
+  ]);
 
   useEffect(() => {
     updateLabels();

@@ -155,4 +155,62 @@ describe('usePeakWallRender', () => {
     });
     expect(render().current.segments).toBe(render().current.segments);
   });
+
+  // ── 전체 최대벽(터치 무관) 하위 선 ────────────────────────────────────────
+  const ALL_PEAK: AskPeak = {
+    ...PEAK,
+    all_price: 130,
+    all_qty: 900,
+    all_t_ms: 2 * MIN,
+    all_max_price: 130,
+    all_max_qty: 900,
+    all_max_t_ms: 2 * MIN,
+  };
+
+  it('전체 최대벽 선은 opt-in — 기본은 비고, 켜면 all_* carrier 로 세그먼트를 짓는다', () => {
+    const off = render(true, [ALL_PEAK]);
+    expect(off.current.allWallSegments).toEqual([]);
+    expect(off.current.allWallDrawn).toBe(false);
+
+    act(() => {
+      useLivePageStore.setState({
+        askPeakAllWallLineEnabled: true,
+        askPeakAllWallColor: '#93C5FD',
+        askPeakAllWallLineWidth: 1,
+      });
+    });
+    const on = render(true, [ALL_PEAK]);
+    expect(on.current.allWallDrawn).toBe(true);
+    expect(on.current.allWallLabels).toBe(true);
+    expect(on.current.allWallSegments).toHaveLength(1);
+    expect(on.current.allWallSegments[0]).toMatchObject({
+      price: 130, qty: 900, color: '#93C5FD', lineWidth: 1,
+    });
+    // 체결된 벽 선은 영향받지 않는다.
+    expect(on.current.segments[0]).toMatchObject({ price: 110, qty: 500 });
+  });
+
+  it('눈(hidden)은 전체 최대벽도 drawn 만 내리고 segments 는 남긴다', () => {
+    act(() => {
+      useLivePageStore.setState({
+        askPeakAllWallLineEnabled: true,
+        askPeakHidden: true,
+      });
+    });
+    const r = render(true, [ALL_PEAK]);
+    expect(r.current.allWallSegments).toHaveLength(1);
+    expect(r.current.allWallDrawn).toBe(false);
+    expect(r.current.allWallLabels).toBe(false);
+  });
+
+  it('마스터를 끄면(enabled=false) 전체 최대벽 세그먼트도 빈다', () => {
+    act(() => {
+      useLivePageStore.setState({
+        askPeakAllWallLineEnabled: true,
+        askPeakEnabled: false,
+      });
+    });
+    const r = render(true, [ALL_PEAK]);
+    expect(r.current.allWallSegments).toEqual([]);
+  });
 });

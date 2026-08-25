@@ -43,6 +43,10 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   const windowId = useWindowScopeId();
   const legendId = side === 'ask' ? 'ask-peak' : 'bid-peak';
   const primRef = useRef<PeakWallSegmentsPrimitive | null>(null);
+  /** 전체 최대벽(터치 무관) 선 전용 primitive. **체결된 벽보다 먼저 attach** 한다 —
+   *  primitive 는 attach 순으로 그려지므로 두 선이 같은 가격에 겹치면(전체 rank-1 이
+   *  터치된 날) 체결된 벽이 위에 남는다. */
+  const allWallPrimRef = useRef<PeakWallSegmentsPrimitive | null>(null);
   const arrowPrimRef = useRef<PeakWallRankArrowsPrimitive | null>(null);
   /** 레전드가 랭킹할 세그먼트. **`hidden` 과 무관하게** 채운다 — 눈은 선만 숨기고 레전드
    *  값은 살린다(MA 규칙 미러). ref 인 이유: provider 는 비반응형 레지스트리에 등록되고
@@ -54,19 +58,24 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   // 생성: series 핸들당 1회(LiveCurrentPriceLine 과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
     if (!series) return;
+    const allWallPrim = new PeakWallSegmentsPrimitive();
     const prim = new PeakWallSegmentsPrimitive();
     const arrowPrim = new PeakWallRankArrowsPrimitive();
+    series.attachPrimitive(allWallPrim);
     series.attachPrimitive(prim);
     series.attachPrimitive(arrowPrim);
+    allWallPrimRef.current = allWallPrim;
     primRef.current = prim;
     arrowPrimRef.current = arrowPrim;
     return () => {
       try {
+        series.detachPrimitive(allWallPrim);
         series.detachPrimitive(prim);
         series.detachPrimitive(arrowPrim);
       } catch {
         /* chart already torn down */
       }
+      allWallPrimRef.current = null;
       primRef.current = null;
       arrowPrimRef.current = null;
     };
@@ -94,6 +103,11 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   useEffect(() => {
     primRef.current?.setSegments(
       wall.drawn ? preparePeakWallSegmentsForRender(wall.segments) : [],
+    );
+    // 전체 최대벽(터치 무관) 선 — 라벨·화살표는 여기서 그리지 않는다(라벨은 도킹
+    // 라벨 primitive 공용, 화살표·레전드는 체결된 벽 전용이 v1 의 결정).
+    allWallPrimRef.current?.setSegments(
+      wall.allWallDrawn ? preparePeakWallSegmentsForRender(wall.allWallSegments) : [],
     );
     arrowPrimRef.current?.setArrows(
       wall.arrows ? peakWallRankArrowsFromSegments(wall.segments, side, candleExtremes) : [],

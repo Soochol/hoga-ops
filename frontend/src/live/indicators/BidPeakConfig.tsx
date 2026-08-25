@@ -1,6 +1,7 @@
 import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
+import ToggleRow from '../settings/ToggleRow';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 const RANK_OPTIONS = [
@@ -15,6 +16,11 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const color = useWindowIndicator((s) => s.bidPeakColor);
   const lineWidth = useWindowIndicator((s) => s.bidPeakLineWidth);
   const setStyle = useIndicatorActions().setBidPeakStyle;
+  const allWallEnabled = useWindowIndicator((s) => s.bidPeakAllWallLineEnabled);
+  const allWallColor = useWindowIndicator((s) => s.bidPeakAllWallColor);
+  const allWallLineWidth = useWindowIndicator((s) => s.bidPeakAllWallLineWidth);
+  const setAllWallEnabled = useIndicatorActions().setBidPeakAllWallLineEnabled;
+  const setAllWallStyle = useIndicatorActions().setBidPeakAllWallStyle;
   const prefs = useScopedChartPrefs();
   const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
   const { setNumericPref } = useChartPrefActions();
@@ -38,6 +44,25 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
           <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="체결된 벽" />
         </div>
       </div>
+      <div className="border-b border-border my-3" />
+      <ToggleRow
+        label="전체 최대벽 (터치 무관)"
+        description="체결 터치 여부와 무관하게 그 날 가장 크게 걸렸던 벽의 가격에도 수평선을 그립니다. 체결된 벽을 포함하므로 두 선이 같은 가격에 겹칠 수 있습니다."
+        checked={allWallEnabled}
+        onToggle={() => setAllWallEnabled(!allWallEnabled)}
+        testId="settings-toggle-bidPeakAllWallLineEnabled"
+      />
+      {allWallEnabled && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-sm text-fg">전체 최대벽</span>
+          <MAStylePicker
+            color={allWallColor}
+            lineWidth={allWallLineWidth}
+            onChange={setAllWallStyle}
+            label="전체 최대벽"
+          />
+        </div>
+      )}
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows
         toggleKeys={['bidPeakIntraMax', 'bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakVisibleTimeCutoff', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}

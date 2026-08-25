@@ -17,12 +17,18 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
+      askPeakAllWallLineEnabled: false,
+      askPeakAllWallColor: '#93C5FD',
+      askPeakAllWallLineWidth: 1,
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
       bidPeakHidden: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
+      bidPeakAllWallLineEnabled: false,
+      bidPeakAllWallColor: '#FCA5A5',
+      bidPeakAllWallLineWidth: 1,
       tradeVolumePocEnabled: true,
       tradeVolumePocHidden: false,
       tradeVolumePocBandPct: 0.005,
@@ -472,6 +478,41 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(m.askPeakEnabled).toBe(true);
     expect(m.askPeakColor).toBe('#EF4444');
     expect(m.askPeakLineWidth).toBe(3);
+  });
+  it('전체 최대벽 하위 선: 레거시 기본 off/#93C5FD·#FCA5A5/1', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.askPeakAllWallLineEnabled).toBe(false);
+    expect(m.askPeakAllWallColor).toBe('#93C5FD');
+    expect(m.askPeakAllWallLineWidth).toBe(1);
+    expect(m.bidPeakAllWallLineEnabled).toBe(false);
+    expect(m.bidPeakAllWallColor).toBe('#FCA5A5');
+    expect(m.bidPeakAllWallLineWidth).toBe(1);
+  });
+  it('전체 최대벽 하위 선: 유효값 보존(기본값과 다른 값으로)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      askPeakAllWallLineEnabled: true,
+      askPeakAllWallColor: '#7E22CE',
+      askPeakAllWallLineWidth: 3,
+      bidPeakAllWallLineEnabled: true,
+      bidPeakAllWallColor: '#0F766E',
+      bidPeakAllWallLineWidth: 4,
+    });
+    expect(m.askPeakAllWallLineEnabled).toBe(true);
+    expect(m.askPeakAllWallColor).toBe('#7E22CE');
+    expect(m.askPeakAllWallLineWidth).toBe(3);
+    expect(m.bidPeakAllWallLineEnabled).toBe(true);
+    expect(m.bidPeakAllWallColor).toBe('#0F766E');
+    expect(m.bidPeakAllWallLineWidth).toBe(4);
+  });
+  it('전체 최대벽 하위 선: 이상값은 기본값 폴백', () => {
+    const m = mergeLiveIndicatorPrefs({
+      askPeakAllWallLineEnabled: 'yes',
+      askPeakAllWallColor: 'skyblue',
+      askPeakAllWallLineWidth: 9,
+    });
+    expect(m.askPeakAllWallLineEnabled).toBe(false);
+    expect(m.askPeakAllWallColor).toBe('#93C5FD');
+    expect(m.askPeakAllWallLineWidth).toBe(1);
   });
   it('VI/상하한가 선 스타일 기본값은 #EAB308/3', () => {
     const m = mergeLiveIndicatorPrefs(undefined);

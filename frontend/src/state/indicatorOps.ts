@@ -164,6 +164,12 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
+  setAskPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakAllWallLineEnabled: enabled }),
+  setAskPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    askPeakAllWallColor: patch.color ?? cur.askPeakAllWallColor,
+    askPeakAllWallLineWidth: patch.lineWidth ?? cur.askPeakAllWallLineWidth,
+  }),
   setViLimitPriceLineStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     viLimitPriceLineColor: patch.color ?? cur.viLimitPriceLineColor,
     viLimitPriceLineWidth: patch.lineWidth ?? cur.viLimitPriceLineWidth,
@@ -176,6 +182,12 @@ export const INDICATOR_OPS = {
   setBidPeakStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     bidPeakColor: patch.color ?? cur.bidPeakColor,
     bidPeakLineWidth: patch.lineWidth ?? cur.bidPeakLineWidth,
+  }),
+  setBidPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakAllWallLineEnabled: enabled }),
+  setBidPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    bidPeakAllWallColor: patch.color ?? cur.bidPeakAllWallColor,
+    bidPeakAllWallLineWidth: patch.lineWidth ?? cur.bidPeakAllWallLineWidth,
   }),
 
   setTradeVolumePocEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
