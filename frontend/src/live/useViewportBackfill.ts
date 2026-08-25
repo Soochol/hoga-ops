@@ -13,6 +13,7 @@ import {
   nextCoverageFrom,
   planFillStep,
   planViewportContraction,
+  planSourceSwapContraction,
   fillBudgetSteps,
   dispatchStepsFor,
   realMsToYyyymmdd,
@@ -397,15 +398,41 @@ export function useViewportBackfill({
       : null;
   }, [chart, bundle, axis]);
 
-  // 1b. 소스 스왑 대기 래치. 키는 데이터보다 **먼저** 바뀌므로(콜드 실측 11.6s) 여기서는
-  // 대기만 세우고, 실제 재착석은 효과 2가 캔들 정체성 변화를 확인한 커밋에서 한다.
+  // 1b. 소스 스왑 대기 래치 + **뷰포트 기준 창 축소**. 키는 데이터보다 **먼저**
+  // 바뀌므로(콜드 실측 11.6s) 여기서는 대기만 세우고, 실제 재착석은 효과 2가 캔들
+  // 정체성 변화를 확인한 커밋에서 한다.
+  //
+  // 창 축소(2026-08-25): 토글이 이전 소스가 벌어놓은 깊은 창을 상속하면 새 소스가
+  // 그것을 콜드로 전량 재취득한다(실측 55거래일 = 7일 타일 11개 × 모드 2~3종 직렬
+  // = 수십 초). 키가 갈리는 커밋의 차트는 아직 옛 소스를 그리고 있으므로 그 뷰포트가
+  // "사용자가 보고 있는 것"이고, 창을 그 기준으로 당긴다 — 깊이는 이후 좌측 팬(3b)이
+  // 지연 로딩으로 번다. 판정은 `planSourceSwapContraction`(커널, 테이블 테스트)이
+  // 쥔다: 뷰포트보다 얕게 자르지 않고, 전진 방향만, 분봉 전용.
+  //
+  // 이 dispatch 는 렌더 뒤 passive effect 라 키 플립 커밋의 첫 타일 요청 하나는
+  // 깊은 창 기준으로 나갈 수 있다 — 워크백이 타일 단위 직렬이라 낭비 상한이 타일
+  // 하나이고, 다음 커밋부터 축소된 창으로 계획이 다시 선다.
   useEffect(() => {
     if (candleSourceKey === undefined) return;
     if (prevSourceKeyRef.current !== null && prevSourceKeyRef.current !== candleSourceKey) {
       swapPendingRef.current = true;
+      if (chart && axis.segments.length > 0 && canTriggerBackfill()) {
+        const leftDate = readViewportLeftDate(chart, axis);
+        const cur = historicalRange.snapshot().historicalFromDate;
+        const contractTo = leftDate
+          ? planSourceSwapContraction(cur, leftDate, timeframe)
+          : null;
+        if (contractTo !== null) {
+          livePerfLog('viewport_backfill_contract', {
+            code, timeframe, trigger: 'source_swap', from: cur, contractTo, leftDate,
+          });
+          historicalRange.contract(contractTo);
+        }
+      }
     }
     prevSourceKeyRef.current = candleSourceKey;
-  }, [candleSourceKey]);
+    // 키 이외의 deps 는 prevSourceKeyRef 가드로 no-op — 재실행은 관측일 뿐이다.
+  }, [candleSourceKey, chart, axis, timeframe, canTriggerBackfill, historicalRange, code]);
 
   // 2. Repositioner. Runs after the child setData in the same commit. Three
   // mutations reposition — leftward extension (prepend), mid-array insertion

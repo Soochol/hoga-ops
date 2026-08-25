@@ -177,6 +177,68 @@ describe('useViewportBackfill — backpressure gate (3b)', () => {
   });
 });
 
+describe('useViewportBackfill — 소스 토글 창 축소 (1b)', () => {
+  // 토글은 캔들 소스 축만 갈리는 재키인데, 창(historicalFromDate)을 그대로 두면
+  // 이전 소스가 벌어놓은 깊은 창을 새 소스가 콜드로 전량 재취득한다(2026-08-25
+  // 실측 55거래일 = 타일 11개 × 모드 직렬 = 수십 초). 소스 축이 갈리는 커밋에서
+  // 창을 뷰포트 기준(planSourceSwapContraction)으로 당기고, 깊이는 이후 좌측
+  // 팬(3b)이 지연 로딩으로 번다.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '5m',
+      historicalFromDate: '20260601',
+    });
+  });
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  function renderWithSource(initialSrc: string) {
+    const cap = chartWithCapturedHandler();
+    return renderHook(
+      ({ src }: { src: string }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '5m',
+          isExtending: false,
+          code: '005930',
+          candleSourceKey: src,
+          canTriggerBackfill: () => true,
+        }),
+      { initialProps: { src: initialSrc } },
+    );
+  }
+
+  it('소스 축이 갈리면 창을 뷰포트 좌단 - 5거래일로 당긴다', () => {
+    const { rerender } = renderWithSource('vendor');
+    // 마운트 첫 관측은 축이 갈린 것이 아니다 — 당기지 않는다.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260601');
+
+    rerender({ src: 'disk' });
+    // axis 세션 = 20260709(목) → 뷰포트 좌단 '20260709' → 5거래일 과거 = '20260702'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260702');
+  });
+
+  it('창이 없으면(초기 시드) 아무것도 하지 않는다', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { rerender } = renderWithSource('vendor');
+    rerender({ src: 'disk' });
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
+  it('같은 축 값의 재실행(dep churn)은 당기지 않는다', () => {
+    const { rerender } = renderWithSource('disk');
+    rerender({ src: 'disk' });
+    rerender({ src: 'disk' });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260601');
+  });
+});
+
 describe('useViewportBackfill — settle-loop continuity (3a) is unaffected by the gate', () => {
   let extendSpy: ReturnType<typeof vi.spyOn>;
 

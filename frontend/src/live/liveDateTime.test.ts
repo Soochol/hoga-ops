@@ -18,6 +18,7 @@ import {
   initialCandleTargetFor,
   initialHistoricalDaysFor,
   planViewportContraction,
+  planSourceSwapContraction,
   CONTRACT_RETAIN_STEPS,
   CONTRACT_TRIGGER_STEPS,
 } from './liveDateTime';
@@ -442,6 +443,31 @@ describe('initialCandleTargetFor — 초기 분봉 창 (5거래일)', () => {
   });
   it('D는 기존 1년(350캘린더일) 유지', () => {
     expect(initialHistoricalDaysFor('D')).toBe(350);
+  });
+});
+
+describe('planSourceSwapContraction — 소스 토글 시 창을 뷰포트 기준으로 당긴다', () => {
+  const TF = '5m' as const;
+  const LEFT = '20260814'; // 금요일. keepFrom = 5거래일 과거 = 20260807.
+
+  it('창이 없으면(초기 상태 = 기본 시드) 자르지 않는다', () => {
+    expect(planSourceSwapContraction(null, LEFT, TF)).toBeNull();
+  });
+
+  it('캘린더 봉은 자르지 않는다 — 일봉의 창은 캔들 창 자체다', () => {
+    expect(planSourceSwapContraction('20250101', LEFT, 'D')).toBeNull();
+  });
+
+  it('깊은 창은 뷰포트 좌단 - 5거래일로 당긴다 — 보고 있는 구간은 창에 남는다', () => {
+    const next = planSourceSwapContraction('20260601', LEFT, TF);
+    expect(next).toBe('20260807'); // 08-14(금) 기준 주말 스킵 5거래일
+    expect(next! < LEFT).toBe(true); // 뷰포트보다 얕게 자르지 않는다
+  });
+
+  it('창이 이미 뷰포트 근방이면 손대지 않는다 — 전진 방향만', () => {
+    expect(planSourceSwapContraction('20260810', LEFT, TF)).toBeNull();
+    // 경계: keepFrom 과 같으면 당길 것이 없다.
+    expect(planSourceSwapContraction('20260807', LEFT, TF)).toBeNull();
   });
 });
 
