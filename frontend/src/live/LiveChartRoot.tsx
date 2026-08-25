@@ -455,8 +455,6 @@ interface Props {
   };
   dailyMovingAverageOverride?: {
     configs: readonly LiveMAConfig[];
-    masterEnabled: boolean;
-    hidden: boolean;
   };
   tradeVolumePocOverride?: {
     enabled?: boolean;
@@ -1831,8 +1829,6 @@ export function LiveChartRoot({
 
   // 창-스코프 절단 — 필드별 구독으로 전역 폴백의 재렌더 입도 보존.
   const prefMovingAverages = useWindowIndicator((s) => s.movingAverages);
-  const prefMovingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
-  const prefMovingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
   const prefVolumeEnabled = useWindowIndicator((s) => s.volumeEnabled);
   const prefQuoteTotalsEnabled = useWindowIndicator((s) => s.quoteTotalsEnabled);
   const prefRatioEnabled = useWindowIndicator((s) => s.ratioEnabled);
@@ -1844,8 +1840,6 @@ export function LiveChartRoot({
   const indicatorPrefs = useMemo(
     () => ({
       movingAverages: prefMovingAverages,
-      movingAverageEnabled: prefMovingAverageEnabled,
-      movingAverageHidden: prefMovingAverageHidden,
       volumeEnabled: prefVolumeEnabled,
       quoteTotalsEnabled: prefQuoteTotalsEnabled,
       ratioEnabled: prefRatioEnabled,
@@ -1855,7 +1849,7 @@ export function LiveChartRoot({
       institutionNetEnabled: prefInstitutionNetEnabled,
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
-    [prefMovingAverages, prefMovingAverageEnabled, prefMovingAverageHidden,
+    [prefMovingAverages,
       prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
       prefInstitutionNetEnabled, prefPeakWallPaneEnabled],

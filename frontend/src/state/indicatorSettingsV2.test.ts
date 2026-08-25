@@ -20,8 +20,10 @@ describe('FACTORY_INDICATOR_SETTINGS', () => {
   it('turns on only volume + moving averages (#697 보충 정정)', () => {
     const f = FACTORY_INDICATOR_SETTINGS;
     expect(f.volumeEnabled).toBe(true);
-    expect(f.movingAverageEnabled).toBe(true);
+    // 마스터 토글이 슬롯의 `enabled` 로 접혔다 — 현재봉 MA 가 켜져 있다는 것은
+    // 이제 "공장 슬롯이 전부 enabled" 라는 뜻이다.
     expect(f.movingAverages).toEqual(DEFAULT_LIVE_MAS.map((m) => ({ ...m })));
+    expect(f.movingAverages.every((m) => m.enabled)).toBe(true);
     // 나머지 마스터 토글은 전부 off.
     expect(f.quoteTotalsEnabled).toBe(false);
     expect(f.ratioEnabled).toBe(false);
@@ -34,7 +36,8 @@ describe('FACTORY_INDICATOR_SETTINGS', () => {
     expect(f.depthHeatmapEnabled).toBe(false);
     expect(f.depthDeltaEnabled).toBe(false);
     expect(f.brokerLateEntryEnabled).toBe(false);
-    expect(f.dailyMovingAverageEnabled).toBe(false);
+    // 일봉 MA 는 opt-in — 마스터가 없어진 지금 그 표현은 공장 슬롯이 꺼져 있는 것이다.
+    expect(f.dailyMovingAverages.every((m) => m.enabled)).toBe(false);
     expect(f.foreignNetEnabled).toBe(false);
     expect(f.institutionNetEnabled).toBe(false);
     // 하위 파라미터 기본값은 유지 — 켜는 순간 기존 기본 구성이 나온다.
@@ -58,13 +61,13 @@ describe('resolveIndicatorSettings', () => {
   it('applies only the matching bucket (1m~30m share the minute bucket)', () => {
     const byTimeframe = {
       minute: { askPeakEnabled: true },
-      D: { quoteTotalsEnabled: true, movingAverageEnabled: false },
+      D: { quoteTotalsEnabled: true, brokerLateEntryEnabled: true },
     };
     expect(resolveIndicatorSettings(byTimeframe, '1m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '30m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '1m').quoteTotalsEnabled).toBe(false);
     expect(resolveIndicatorSettings(byTimeframe, 'D').quoteTotalsEnabled).toBe(true);
-    expect(resolveIndicatorSettings(byTimeframe, 'D').movingAverageEnabled).toBe(false);
+    expect(resolveIndicatorSettings(byTimeframe, 'D').brokerLateEntryEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, 'W')).toEqual(FACTORY_INDICATOR_SETTINGS);
   });
 });
@@ -195,6 +198,61 @@ describe('normalizeIndicatorsV2', () => {
       paneAxisMode: { 'ratio,volume': 'left' },
     });
     expect(both.paneAxisMode).toEqual({ 'ratio,volume': 'left' });
+  });
+});
+
+// MA 마스터 토글 4형제 → 슬롯 `enabled` 로 접기(레거시 버킷 1회 변환).
+//
+// 판별식이 **값이 아니라 키의 존재**라는 것이 이 그룹의 요점이다. 값으로 판정하면
+// (`dailyMovingAverageEnabled !== true` → 마스터 OFF) 새 모델에서 사용자가 켜 둔
+// 일봉 슬롯이 로드마다 다시 꺼지고, 같은 성질이 멱등성의 근거이기도 하다.
+describe('normalizeIndicatorsV2 — MA 마스터 접기', () => {
+  it('마스터만 담긴 레거시 버킷을 슬롯으로 전파하고 마스터 키는 버린다', () => {
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: { minute: { movingAverageEnabled: false } },
+    });
+    const bucket = v2.byTimeframe.minute!;
+    expect('movingAverageEnabled' in bucket).toBe(false);
+    expect(bucket.movingAverages).toHaveLength(DEFAULT_LIVE_MAS.length);
+    expect(bucket.movingAverages!.every((m) => !m.enabled)).toBe(true);
+  });
+
+  it('타입 눈(hidden)도 같은 자리로 접힌다', () => {
+    const v2 = normalizeIndicatorsV2({
+      byTimeframe: { minute: { movingAverageHidden: true } },
+    });
+    expect(v2.byTimeframe.minute!.movingAverages!.every((m) => !m.enabled)).toBe(true);
+  });
+
+  it('일봉은 마스터 ON 일 때만 슬롯을 켠다(opt-in 이라 조건이 뒤집힌다)', () => {
+    const on = normalizeIndicatorsV2({
+      byTimeframe: { minute: { dailyMovingAverageEnabled: true } },
+    });
+    expect(on.byTimeframe.minute!.dailyMovingAverages!.every((m) => m.enabled)).toBe(true);
+
+    // 마스터 OFF 는 공장값(전 슬롯 off)과 같아지므로 diff 에서 걷힌다 = 버킷이 빈다.
+    const off = normalizeIndicatorsV2({
+      byTimeframe: { minute: { dailyMovingAverageEnabled: false } },
+    });
+    expect(off.byTimeframe.minute).toBeUndefined();
+  });
+
+  it('마스터 키가 없는 버킷은 건드리지 않는다 — 접힘은 멱등이다', () => {
+    // 접힌 결과에는 마스터 키가 없다. 그걸 다시 정규화해도 슬롯이 그대로여야
+    // "로드마다 다시 꺼진다" 는 회귀가 생기지 않는다.
+    const once = normalizeIndicatorsV2({
+      byTimeframe: { minute: { dailyMovingAverageEnabled: true } },
+    });
+    const twice = normalizeIndicatorsV2(JSON.parse(JSON.stringify(once)));
+    expect(twice.byTimeframe).toEqual(once.byTimeframe);
+    expect(twice.byTimeframe.minute!.dailyMovingAverages!.every((m) => m.enabled)).toBe(true);
+  });
+
+  it('슬롯을 전부 지운 상태(빈 배열)가 정규화 왕복에서 살아남는다', () => {
+    const v2 = normalizeIndicatorsV2({ byTimeframe: { minute: { movingAverages: [] } } });
+    expect(v2.byTimeframe.minute!.movingAverages).toEqual([]);
+    const roundtripped = normalizeIndicatorsV2(JSON.parse(JSON.stringify(v2)));
+    expect(roundtripped.byTimeframe.minute!.movingAverages).toEqual([]);
   });
 });
 

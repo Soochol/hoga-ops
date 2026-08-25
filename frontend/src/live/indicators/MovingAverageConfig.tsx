@@ -8,7 +8,6 @@ export default function MovingAverageConfig() {
   const addMA = useIndicatorActions().addMovingAverage;
   const removeMA = useIndicatorActions().removeMovingAverage;
   const atLimit = configs.length >= MA_SLOT_LIMIT;
-  const canRemove = configs.length > 1;
 
   return (
     <div>
@@ -24,7 +23,7 @@ export default function MovingAverageConfig() {
             key={cfg.id}
             index={i}
             config={cfg}
-            canRemove={canRemove}
+            canRemove
             onChange={(patch) => setMA(cfg.id, patch)}
             onRemove={() => removeMA(cfg.id)}
           />

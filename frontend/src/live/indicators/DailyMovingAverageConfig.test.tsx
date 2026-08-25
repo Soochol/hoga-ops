@@ -7,8 +7,6 @@ describe('DailyMovingAverageConfig', () => {
   beforeEach(() => {
     useLivePageStore.setState({
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
-      dailyMovingAverageEnabled: false,
-      dailyMovingAverageHidden: false,
     });
   });
 
@@ -37,33 +35,26 @@ describe('DailyMovingAverageConfig', () => {
     expect(screen.getByText(/분봉 차트에서만 표시/)).toBeTruthy();
   });
 
-  it('상세 pane에서 일봉 MA 표시를 켤 수 있다', () => {
+  // 마스터 토글과 타입 눈이 슬롯의 `enabled` 로 접혔다 — 토글 하나가 전 슬롯을
+  // 함께 켜고 끄고, 체크 상태는 "켜진 슬롯이 있는가" 의 파생이다.
+  it('상세 pane에서 일봉 MA 표시를 켜면 전 슬롯이 함께 켜진다', () => {
     render(<DailyMovingAverageConfig />);
     const toggle = screen.getByRole('switch', { name: '일봉 MA 표시' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(toggle);
 
-    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(true);
+    expect(useLivePageStore.getState().dailyMovingAverages.every((m) => m.enabled)).toBe(true);
   });
 
-  it('일봉 MA 표시를 켜면 저장된 숨김 상태도 해제한다', () => {
-    useLivePageStore.setState({ dailyMovingAverageHidden: true });
+  it('켜진 상태에서 다시 누르면 전 슬롯이 함께 꺼진다', () => {
+    useLivePageStore.getState().setAllDailyMovingAveragesEnabled(true);
     render(<DailyMovingAverageConfig />);
-
-    fireEvent.click(screen.getByRole('switch', { name: '일봉 MA 표시' }));
-
-    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(true);
-    expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(false);
-  });
-
-  it('상세 pane에서 일봉 MA 선 숨김을 토글할 수 있다', () => {
-    render(<DailyMovingAverageConfig />);
-    const toggle = screen.getByRole('switch', { name: '일봉 MA 선 숨김' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    const toggle = screen.getByRole('switch', { name: '일봉 MA 표시' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
 
     fireEvent.click(toggle);
 
-    expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(true);
+    expect(useLivePageStore.getState().dailyMovingAverages.some((m) => m.enabled)).toBe(false);
   });
 });

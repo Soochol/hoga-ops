@@ -76,10 +76,6 @@ function resetStore() {
     movingAverages: [
       { id: 'ma-1', enabled: true, period: 5, color: '#EC4899', lineWidth: 1, source: 'close' },
     ],
-    movingAverageEnabled: true,
-    movingAverageHidden: false,
-    dailyMovingAverageEnabled: false,
-    dailyMovingAverageHidden: false,
     askPeakEnabled: false,
     askPeakHidden: false,
     bidPeakEnabled: false,
@@ -305,7 +301,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
   });
 
   it('pane 값 행(거래량)도 동기화 봉을 읽는다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     usePaneLegendRegistry.getState().register(null, 'volume', [
       { series: seriesPerDay(1000, 2000, 3000), meta: { label: '거래량' } },
     ]);
@@ -385,7 +381,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
       seen = t;
       return [{ key: 'peak', value: '1,000' }];
     };
-    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     registerFlagLegendValues(null, 'ask-peak', provider);
     try {
       render(
@@ -450,18 +446,26 @@ describe('PaneLegendOverlay — candle MA row', () => {
     expect(dataCalls).toBeGreaterThan(afterFirst);
   });
 
-  it('✕ on the MA row turns the moving-average master off', () => {
-    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
-    renderOverlay();
-    fireEvent.click(screen.getByRole('button', { name: '이동평균선 지표 끄기' }));
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
-  });
-
-  it('eye on the MA row toggles movingAverageHidden', () => {
+  // 타입 마스터(✕)와 타입 눈이 슬롯의 `enabled` 로 접히면서 두 버튼이 하나로 합쳐졌다
+  // — 같은 효과를 내는 버튼을 나란히 두지 않는다. 인스턴스 개별 삭제는 칩 ✕(후속 PR).
+  it('eye on the MA row toggles every slot together', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     renderOverlay();
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
-    expect(useLivePageStore.getState().movingAverageHidden).toBe(true);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
+    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
+  });
+
+  it('keeps the row (and its chips) when every slot is off, so it can be turned back on', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    useLivePageStore.setState({
+      movingAverages: useLivePageStore.getState().movingAverages.map((m) => ({ ...m, enabled: false })),
+    });
+    renderOverlay();
+    expect(screen.getByTestId('legend-ma-chip-ma-1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' })).toBeInTheDocument();
   });
 });
 
@@ -477,8 +481,7 @@ describe('PaneLegendOverlay — candle daily-MA row', () => {
   // 자체는 dailyMaSeriesRegistry 가 계속 그리므로 여기 검증 범위 밖(선은 유지).
   it('never renders the daily-MA row in the legend even on a minute timeframe', () => {
     useLivePageStore.setState({
-      movingAverageEnabled: false,
-      dailyMovingAverageEnabled: true,
+      movingAverages: [],
       dailyMovingAverages: [
         { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
       ],
@@ -516,7 +519,7 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
   });
 
   it('신규 거래원 등장(broker-late-entry)도 숨긴다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], brokerLateEntryEnabled: true });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.queryByText('신규 거래원 등장')).toBeNull();
   });
@@ -536,7 +539,7 @@ describe('PaneLegendOverlay — 지표 값 레전드 숨김(2026-07-22)', () => 
   });
 
   it('거래량·총잔량 밖의 cells pane(호가비·체결강도)은 등록돼 있어도 숨긴다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     registerLegend('ratio', [{ label: '호가비', value: 1.23 }]);
     registerLegend('fill-strength', [
       { label: '매수', value: 777, color: () => '#F04452' },
@@ -579,7 +582,7 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
   ];
 
   it('보이는 영역 상위 3개를 순위 라벨과 함께 표시한다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     registerFlagLegendValues(null, 'ask-peak', topThree);
     try {
       render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
@@ -594,7 +597,7 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
   });
 
   it('눈·✕ 아이콘 2개가 붙고 각각 숨김·끄기를 디스패치한다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, bidPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], bidPeakEnabled: true });
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽 표시 숨김/표시' }));
     expect(useLivePageStore.getState().bidPeakHidden).toBe(true);
@@ -603,7 +606,7 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
   });
 
   it('보이는 영역에 벽이 없어(셀 0개) 값이 비어도 행과 아이콘은 남는다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     const empty: FlagLegendValueProvider = () => [];
     registerFlagLegendValues(null, 'ask-peak', empty);
     try {
@@ -618,7 +621,7 @@ describe('PaneLegendOverlay — 당일 최대벽 flag 행(2026-08-22)', () => {
   });
 
   it('일봉(D)에서는 분봉 전용이라 행이 나오지 않는다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     registerFlagLegendValues(null, 'ask-peak', topThree);
     try {
       render(<PaneLegendOverlay chart={makeChart([120])} timeframe="D" paneToggles={toggles} />);
@@ -642,7 +645,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
 
   it('거래량 pane 의 값 행을 렌더한다(라벨 + 최신값 폴백)', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     registerLegend('volume', [
       { label: '거래량', value: 5000 },
       { label: '누적', value: 12345, color: () => '#8B5CF6' },
@@ -657,7 +660,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
   });
 
   it('총잔량 pane 은 spec 의 legendTitle 과 매수·매도 셀을 렌더한다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     registerLegend('quote-totals', [
       { label: '매수', value: 311400, color: () => '#F04452' },
       { label: '매도', value: 6789, color: () => '#3485FA' },
@@ -673,7 +676,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
   // 칩)을 껐다 — 두 판독면은 갱신 주기가 달라 같이 켜면 한 시리즈가 두 숫자로 보인다.
   // 그 짝은 projector 쪽 옵션이라 여기서 못 재고, programTrade.test.ts 가 맡는다.
   it('프로그램 순매수 pane 의 값 행을 렌더한다(억 단위 포맷)', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     registerLegend('program-trade', [
       { label: '프로그램 순매수', value: 512_800_000_000, format: formatKoreanWonEok },
     ]);
@@ -686,7 +689,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
   // 값이 null 인 셀(토글 off / 콜드로드)은 빠지고, 남는 셀이 없으면 행 자체가 사라진다
   // — buildLegendRows 의 범용 규칙(legendRows.ts)이 여기서도 그대로 성립한다.
   it('값 없는 셀은 빠지고, 전부 비면 행이 사라진다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false });
+    useLivePageStore.setState({ movingAverages: [] });
     registerLegend('volume', [
       { label: '거래량', value: 5000 },
       { label: '누적', value: null },
@@ -707,7 +710,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
     // §IndicatorSettings), 분봉 버킷에 쓴 결과가 최상위에 반영되려면 둘이 같은
     // 프로파일이어야 한다.
     useLivePageStore.setState({
-      movingAverageEnabled: false,
+      movingAverages: [],
       indicatorTimeframe: '1m',
       volumeEnabled: true,
     });
@@ -886,7 +889,7 @@ describe('PaneLegendOverlay — 지표 pref 변경 즉시 반영', () => {
   afterEach(cleanup);
 
   it('크로스헤어·팬 없이 pref 만 바꿔도 flag 값이 갱신된다', () => {
-    useLivePageStore.setState({ movingAverageEnabled: false, askPeakEnabled: true });
+    useLivePageStore.setState({ movingAverages: [], askPeakEnabled: true });
     // provider 는 호출 시점에 pref 를 읽는다 — 실제 provider 들이 컴포넌트 상태(= pref
     // 파생)를 캡처하는 것과 같은 성질을 최소 형태로 흉내낸다.
     const provider: FlagLegendValueProvider = () => [{

@@ -31,12 +31,14 @@ describe('MovingAverageConfig', () => {
     expect(addBtn.disabled).toBe(true);
   });
 
-  it('remove button hidden when only one slot remains', () => {
-    // Reduce to 1.
+  // 마지막 슬롯도 지울 수 있다 — 레전드 칩 ✕ 가 인스턴스 단위 삭제라 0개가 도달
+  // 가능한 유효 상태이고, 그 규칙을 설정 패널도 같이 따른다.
+  it('remove button stays on the last slot (0 slots is a valid state)', () => {
     const ids = useLivePageStore.getState().movingAverages.map((m) => m.id);
     for (const id of ids.slice(1)) useLivePageStore.getState().removeMovingAverage(id);
     render(<MovingAverageConfig />);
-    expect(screen.queryByRole('button', { name: '슬롯 삭제' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '슬롯 삭제' }));
+    expect(useLivePageStore.getState().movingAverages).toEqual([]);
   });
 
   it('header shows 지표명 + tooltip-helper', () => {

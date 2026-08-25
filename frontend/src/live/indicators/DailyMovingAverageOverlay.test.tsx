@@ -65,8 +65,6 @@ describe('DailyMovingAverageOverlay', () => {
     } as never);
     useLivePageStore.setState({
       dailyMovingAverages: oneSlot.map((m) => ({ ...m })) as never,
-      dailyMovingAverageEnabled: true,
-      dailyMovingAverageHidden: false,
     });
     useChartPrefsStore.getState().resetToDefaults();
   });
@@ -183,8 +181,10 @@ describe('DailyMovingAverageOverlay', () => {
     expect(m.removeSeries).not.toHaveBeenCalled();
   });
 
-  it('master off → setData([])', () => {
-    useLivePageStore.setState({ dailyMovingAverageEnabled: false });
+  it('every slot disabled → setData([])', () => {
+    useLivePageStore.setState({
+      dailyMovingAverages: oneSlot.map((m) => ({ ...m, enabled: false })) as never,
+    });
     const m = makeChartMock();
     renderOverlay(m);
     const first = m.addSeries.mock.results[0].value as { setData: ReturnType<typeof vi.fn> };

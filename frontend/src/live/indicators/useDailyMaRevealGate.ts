@@ -24,9 +24,11 @@ export function useDailyMaRevealGate(args: {
   /** 창이 덮어야 할 표시 하한(계단으로 내린 값). 소비처 넷이 공유한다 — 위 도크스트링. */
   displayFloorDate?: string | null;
 }): boolean {
-  const masterEnabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
   const configs = useWindowIndicator((s) => s.dailyMovingAverages);
-  const enabled = masterEnabled && isMinuteTimeframe(args.timeframe) && !!args.code && !!args.todayKst;
+  // 오버레이(`DailyMovingAverageOverlay`)의 fetch 게이트와 **같은 식**이어야 쿼리 키가
+  // 하나로 모인다 — 마스터 토글이 슬롯으로 접힌 뒤로 그 자리는 "켜진 슬롯 존재" 다.
+  const enabled = configs.some((c) => c.enabled)
+    && isMinuteTimeframe(args.timeframe) && !!args.code && !!args.todayKst;
   const fetchWindow = enabled ? dailyMaFetchWindow(args.todayKst, configs, args.displayFloorDate) : null;
   const dailyQuery = useResolvedDailyCandles({
     code: args.code,

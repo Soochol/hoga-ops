@@ -314,7 +314,7 @@ type Store = Persisted & IndicatorSettings & {
   setMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addMovingAverage: () => void;
   removeMovingAverage: (id: string) => void;
-  setMovingAverageEnabled: (enabled: boolean) => void;
+  setAllMovingAveragesEnabled: (enabled: boolean) => void;
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
   /** 지정한 봉의 버킷에 pane 토글을 기록한다(레전드 ✕ 등 명시적 timeframe 호출용).
@@ -407,7 +407,6 @@ type Store = Persisted & IndicatorSettings & {
   resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setPeakWallPaneEnabled: (enabled: boolean) => void;
-  setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakHidden: (hidden: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
@@ -443,8 +442,7 @@ type Store = Persisted & IndicatorSettings & {
   setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addDailyMovingAverage: () => void;
   removeDailyMovingAverage: (id: string) => void;
-  setDailyMovingAverageEnabled: (enabled: boolean) => void;
-  setDailyMovingAverageHidden: (hidden: boolean) => void;
+  setAllDailyMovingAveragesEnabled: (enabled: boolean) => void;
 };
 
 const DEFAULTS: Persisted = {
