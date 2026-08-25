@@ -86,14 +86,19 @@ def test_rep_outputs_keep_candidates_as_models_not_dicts():
         "all_close": (24100, 300, 34_199_927),
         "traded_close": (24050, 200, 33_599_718),
         "traded_peaks": (snapshots_tbl.AskPeakCandidateRow(price=24100, qty=300, intra_ms=34_199_927),),
+        # `reaggregate_peak_rep` 가 2026-08-25 부터 함께 낸다(굵은 봉의 all top-3).
+        # 픽스처가 생산자 모양을 따라가야 이 테스트가 실제 경로를 재는 것이 된다.
+        "all_peaks": (snapshots_tbl.AskPeakCandidateRow(price=24150, qty=500, intra_ms=34_100_000),),
     }
 
     out = _peak_with_rep_outputs(base, date="20260613", reduced=reduced)
 
     assert out is not None
-    assert isinstance(out.traded_peaks[0], AskPeakCandidate), (
-        f"dict 가 그대로 들어갔다: {type(out.traded_peaks[0]).__name__}"
-    )
+    for field in ("traded_peaks", "all_peaks"):
+        first = getattr(out, field)[0]
+        assert isinstance(first, AskPeakCandidate), (
+            f"{field} 에 dict 가 그대로 들어갔다: {type(first).__name__}"
+        )
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

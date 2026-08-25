@@ -112,8 +112,10 @@ KIND_VERSIONS: dict[str, int] = {
     # 9: traded_record_peaks/traded_record_max_peaks(기록 갱신 시퀀스) 추가 —
     #    구 캐시 모델엔 이 필드가 없어 pane 계단의 오전 이력이 비므로 재계산이 맞다.
     # 10: unreached_*(미도달 벽 — 당일 극값이 지배하지 못한 벽) 추가 — 같은 사유.
-    "ask_peak": 10,
-    "bid_peak": 10,
+    # 11: all_peaks/all_max_peaks 를 **top-3 로 캡**(종전 전량 ~1.3k/1.6k). 값이
+    #     달라졌고(잘렸고) 구 캐시는 전량이라 페이로드가 되살아나므로 범프한다.
+    "ask_peak": 11,
+    "bid_peak": 11,
     "poc": 7,
     "depth": 7,
     "depth_delta": 2,

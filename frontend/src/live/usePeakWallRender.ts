@@ -160,6 +160,14 @@ export function usePeakWallRender({
   const labelEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakLabelEnabled : s.bidPeakLabelEnabled),
   );
+  // 계열별 「표시 개수」 — 종전엔 전체·미도달이 rank-1 고정이었다(과거일 wire 가
+  // rank-1 스칼라뿐이었기 때문). 백엔드가 top-3 를 싣게 되면서 풀렸다.
+  const allWallRankLimit = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallRankLimit : s.bidPeakAllWallRankLimit),
+  );
+  const unreachedRankLimit = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedRankLimit : s.bidPeakUnreachedRankLimit),
+  );
   const legendCellEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakLegendCellEnabled : s.bidPeakLegendCellEnabled),
   );
@@ -213,7 +221,7 @@ export function usePeakWallRender({
         todayKst,
         baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
         intraMax,
-        allPriceRankLimit: 1,
+        allPriceRankLimit: toPeakRankLimit(allWallRankLimit),
         maFilter,
         dailyMaFilter,
       })
@@ -222,6 +230,7 @@ export function usePeakWallRender({
     allWallEnabled,
     allWallColor,
     allWallLineWidth,
+    allWallRankLimit,
     applicable,
     axis,
     candles,
@@ -245,7 +254,7 @@ export function usePeakWallRender({
         todayKst,
         baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
         intraMax,
-        allPriceRankLimit: 1,
+        allPriceRankLimit: toPeakRankLimit(unreachedRankLimit),
         maFilter,
         dailyMaFilter,
       })
@@ -254,6 +263,7 @@ export function usePeakWallRender({
     unreachedEnabled,
     unreachedColor,
     unreachedLineWidth,
+    unreachedRankLimit,
     applicable,
     axis,
     candles,
