@@ -53,9 +53,9 @@ export interface HeatmapFolderProps {
   /** code → 마지막 캡처 성공일(YYYYMMDD). 헤더의 '미수집 N' 칩과 행 툴팁이 쓴다
    *  (ADR-0142). 미전달이면 캡처 표시가 통째로 빠진다 — 단독 렌더/테스트용. */
   captureMarkers?: Record<string, string>;
-  /** 이 그룹에서 캡처가 뒤처진 코드(보드가 전체 마커로 한 번 계산해 내려준다).
-   *  그룹마다 재계산하지 않는 이유: 기준일은 **보드 전체 마커의 최댓값**이라
-   *  그룹 안에서만 보면 기준이 그룹마다 달라진다. */
+  /** 이 그룹에서 캡처가 뒤처진 코드(보드가 전체 마커로 한 번 계산해 내려준다) —
+   *  헤더 '미수집 N' 칩 집계 전용. 그룹마다 재계산하지 않는 이유: 기준일은 **보드
+   *  전체 마커의 최댓값**이라 그룹 안에서만 보면 기준이 그룹마다 달라진다. */
   laggingCodes?: ReadonlySet<string>;
   /** 헤더의 '＋종목' 팝오버를 자동으로 연다(새 그룹 생성 직후 — 보드가 지정). */
   autoOpenAdd?: boolean;
@@ -110,8 +110,9 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
       // 캡처 상태는 행에 자리를 만들지 않고 툴팁으로만 싣는다 — 히트맵 행은 밀도가
       // 1차 정책이라(HeatmapRow 주석) 271행 × 날짜 배지는 칼럼을 못 낸다. 그룹 헤더
       // 칩이 "몇 개 뒤처졌나"를, 이 툴팁이 "이 종목은 언제였나"를 답한다.
+      // (2026-08-25: 뒤처진 행의 종목명 --error 강조는 사용자 요청으로 제거 —
+      // laggingCodes 는 이제 헤더 칩 집계에만 쓰인다.)
       captureTitle: captureMarkers ? captureLagTitle(captureMarkers, e.code) : undefined,
-      captureLagging: laggingCodes?.has(e.code) ?? false,
     };
     if (!dragEnabled) {
       return <HeatmapRow key={e.code} {...common} onClick={(ev) => onPick(e.code, e.name, ev)} />;

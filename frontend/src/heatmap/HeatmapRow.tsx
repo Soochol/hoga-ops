@@ -33,11 +33,10 @@ export interface HeatmapRowProps {
    *  QuoteRow active 선례와 동일(좌측 accent 바 없이 배경만). */
   matched?: boolean;
   /** 마지막 캡처 성공일 툴팁 문구(ADR-0142). 행에 **칼럼을 만들지 않는다** — 이 행은
-   *  밀도가 1차 정책이라 271행 × 날짜 셀을 감당할 폭이 없다. */
+   *  밀도가 1차 정책이라 271행 × 날짜 셀을 감당할 폭이 없다.
+   *  (2026-08-25: 뒤처진 행의 종목명 --error 강조(captureLagging prop)는 사용자 요청으로
+   *  제거 — 행 단위 결손 정보는 이 툴팁이, 집계는 그룹 헤더의 '미수집 N' 칩이 남는다.) */
   captureTitle?: string;
-  /** 캡처가 최신 수집일보다 뒤처진 행 — 종목명을 --error 로 낮춘다(점 하나를 더
-   *  그리면 4칼럼 그리드에 5번째 트랙이 필요하다). */
-  captureLagging?: boolean;
 }
 
 /** 칼럼형 행: 종목명 │ 캔들 │ 현재가 │ 등락률. 등락은 배경 워시 없이 priceDirClass
@@ -52,7 +51,7 @@ export interface HeatmapRowProps {
 export function HeatmapRow({
   name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
-  captureTitle, captureLagging,
+  captureTitle,
 }: HeatmapRowProps) {
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
@@ -141,22 +140,21 @@ export function HeatmapRow({
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span
-        className={`truncate text-xs ${captureLagging ? 'text-error' : 'text-fg-dim'}`}
+        className="truncate text-xs text-fg-dim"
         // title 은 캡처 지연 안내 전용으로 둔다. 잘린 이름을 읽게 하려고 `?? name`
         // 폴백을 넣어 봤다가 되돌렸다 — ① `HeatmapFolder.test` 의 "마커를 안 넘기면
         // 캡처 표시가 통째로 빠진다" 계약을 깨고, ② 무엇보다 **276행 전부에 호버
         // 툴팁이 생긴다**. 아래 폭 재배분으로 잘림이 1행까지 줄었는데, 그 1행을
         // 위해 275행에 툴팁을 켜는 건 남는 거래가 아니다.
         title={captureTitle}
-        data-capture-lagging={captureLagging ? '' : undefined}
       >
         {/* 동시호가 예상 마커 — 관심종목 QuoteRow 와 같은 표기·같은 자리(이름 앞).
             truncate 는 부모인 이 span(그리드 아이템)에 걸려 있어 inline 마커는 자기
             폭을 갖지 않는다: 긴 종목명은 뒤쪽이 잘리고 마커는 항상 남는다.
-            색을 **명시**하는 이유는 QuoteRow 에 없는 축 때문이다 — captureLagging 이면
-            부모가 text-error 라, 상속시키면 마커까지 빨개진다. 크기는 이름에서 상속
-            (text-xs); 별표 글리프는 이미 작아 text-2xs 로 더 줄이면 밀도 다이얼
-            하단에서 사라진다(QuoteRow 2026-08-14 판단과 동일). */}
+            명시적 text-fg-dim 은 QuoteRow 와 자구까지 동일하게 유지(표기 대칭이 이
+            마커의 존재 이유다). 크기는 이름에서 상속(text-xs); 별표 글리프는 이미 작아
+            text-2xs 로 더 줄이면 밀도 다이얼 하단에서 사라진다(QuoteRow 2026-08-14
+            판단과 동일). */}
         {showExpected && (
           <span className="text-fg-dim" data-testid={`${testId}-expected-marker`}>*</span>
         )}
