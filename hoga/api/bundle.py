@@ -1541,6 +1541,7 @@ def _empty_range_bundle(
     *,
     excluded: list[ExcludedDate],
     missing: list[MissingDate] | None = None,
+    earliest_captured: str | None = None,
 ) -> RangeBundle:
     """Empty RangeBundle for the no-captured-data and all-INVALID branches
     (spec 2026-05-27 §4.3). Mirrors the success-path shape with empty series
@@ -1555,6 +1556,9 @@ def _empty_range_bundle(
         from_date=from_date,
         to_date=to_date,
         bucket_ms=bucket_ms,
+        # ⚠ **이 분기에서 특히 중요하다.** 캡처 시작 이전으로 조회하면 여기로 떨어지는데
+        # (위 도크스트링), 그 응답이 곧 "바닥을 지났다" 를 프론트에 알릴 유일한 자리다.
+        earliest_captured_date=earliest_captured,
         segments=[],
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
@@ -2234,6 +2238,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # DataWarning UX without 404 round-trips.
         return _empty_range_bundle(
             code, from_date, to_date, bucket_ms, excluded=excluded, missing=missing,
+            earliest_captured=engine.earliest_stock_date(
+                code=code, source_pref=source_pref, venue=cast("Venue", venue),
+            ),
         )
 
     return RangeBundle(
@@ -2241,6 +2248,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         from_date=from_date,
         to_date=to_date,
         bucket_ms=bucket_ms,
+        # 디스크 모드 좌측 팬의 바닥. 프론트가 `minuteScrollbackFloorDate` 에 물린다 —
+        # 없으면 캡처 시작 이전으로 무한히 팬해 빈 화면이 된다(모델 필드 주석 참조).
+        earliest_captured_date=engine.earliest_stock_date(
+            code=code, source_pref=source_pref, venue=cast("Venue", venue),
+        ),
         segments=segments,
         candles=candles,
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),

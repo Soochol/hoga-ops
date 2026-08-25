@@ -322,6 +322,8 @@ export interface UseLiveBundleResult {
   error: unknown;
   /** 벤더 250일 벽에 닿았다(벤더 모드 전용 — 디스크 모드엔 그 벽이 없다). */
   clampEngaged: boolean;
+  /** 디스크 모드에서 **캡처 시작**에 닿았는가 — 벤더 250일 벽과 문구가 다르다. */
+  captureFloorEngaged: boolean;
   /** 이 번들의 캔들 소스 축(`'disk'` | `'vendor'`). 소비자는 뷰포트 재착석 하나다 —
    *  반환부 주석에 "세그먼트 소스로 대신할 수 없는 이유"와 "데이터보다 먼저 바뀐다"가 있다. */
   candleSourceKey: CandleSourceKey;
@@ -1374,17 +1376,41 @@ export function useLiveBundle(
    * (`earliestAllowedMinuteDate(todayKstYyyymmdd())`), 하한이 모드에 따라 갈리는 값이
    * 된 이상 모드를 아는 쪽이 정해야 한다.
    */
-  const minuteScrollbackFloorDate = !isMinute || restBypassEnabled
+  // 디스크 모드의 바닥은 **캡처 시작**이다(백엔드 `earliest_captured_date`).
+  //
+  // 종전에는 이 값이 우회 ON 에서 통째로 `null` 이었다 — 그래서 `planFillStep` 의
+  // `earliestAllowedDate` 정지 조건이 절대 안 걸렸고, 사용자가 캡처 시작 이전으로
+  // **무한히 팬**할 수 있었다. 그 구간엔 데이터가 영원히 없으므로 화면은 빈 채로
+  // 남고 「과거 불러오는 중」만 계속 뜬다(2026-08-26 신고: 028050 캡처는 26-01-06
+  // 부터인데 창이 25-11-17 까지 갔다 — 7주 밖).
+  //
+  // 이 한 줄이 서면 기존 경로가 전부 살아난다: `planFillStep` 의 stop · 3b/3e 의
+  // 게이트 · 아래 도달 안내. 그래서 새 정지 기계를 만들지 않았다.
+  const diskEarliestCaptured = restBypassEnabled
+    ? (minuteDiskCandles.data?.earliest_captured_date ?? null)
+    : null;
+  const minuteScrollbackFloorDate = !isMinute
     ? null
-    : earliestAllowedMinute;
+    : restBypassEnabled
+      ? diskEarliestCaptured
+      : earliestAllowedMinute;
 
   // 벽에 닿았다는 칩(`clamp-engaged-chip`)의 신호. **벤더 모드 전용이다** — 디스크
   // 모드에는 250일 벽이 없으므로 「최대 250일까지 표시됩니다」가 거짓말이 된다.
-  // 디스크 모드의 끝은 벽이 아니라 캡처 유무라, 그쪽 안내는 별도 신호로 준다.
   const clampEngaged = isMinute
     && !restBypassEnabled
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
+
+  // 디스크 모드의 같은 신호 — 문구가 달라야 해서 **별도 플래그**다. 벽("정책상 여기까지")
+  // 과 캡처 시작("이 종목은 여기부터 받았다")은 사용자가 할 수 있는 일이 다르다.
+  // `diskEarliestCaptured` 가 null 이면(응답 전·구백엔드) 켜지 않는다 — 모르는 것을
+  // "바닥" 이라고 말하지 않는다.
+  const captureFloorEngaged = isMinute
+    && restBypassEnabled
+    && historicalFromDate != null
+    && diskEarliestCaptured != null
+    && historicalFromDate <= diskEarliestCaptured;
 
 
   // Coverage-gap 백필(A안) 신호. 캔들은 병합 캐시로 수개월 복원되는데 range 지표는
@@ -1523,6 +1549,7 @@ export function useLiveBundle(
     isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,
+    captureFloorEngaged,
     /**
      * 이 번들의 캔들이 **어느 소스에서 왔나** — `'disk'`(hogaplay 캡처/스크리너 일봉)
      * 또는 `'vendor'`(키움 REST). 소비자는 `useViewportBackfill` 하나이고, 쓰임은

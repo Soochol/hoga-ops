@@ -172,6 +172,7 @@ function renderAt(timeframe: '1m' | 'D' | 'W' | 'M', props: Partial<ComponentPro
       timeframe={timeframe}
       bundle={DEFAULT_BUNDLE}
       clampEngaged={false}
+      captureFloorEngaged={false}
       isPastCandlesLoading={false}
       {...props}
     />,
@@ -450,6 +451,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         bundle={afterTick}
         chartBundle={chartBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -527,6 +529,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         viewIdentity="view-a"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -540,6 +543,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         viewIdentity="view-b"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );

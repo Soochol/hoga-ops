@@ -120,6 +120,7 @@ describe('LiveChartRoot drawing hover passthrough', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCursorActiveChange={onCursorActiveChange}
       />,

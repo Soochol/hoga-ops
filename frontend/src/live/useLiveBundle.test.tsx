@@ -158,9 +158,12 @@ const rangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDel
 // 디스크 캔들(`mode=candles`) 전용 상태. `rangeMock` 과 **분리해 둔다** — 공유하면
 // "지표는 멎었는데 캔들 청크 워크백만 돈다" 를 세울 수 없어, `extending` 배선을
 // 되돌려도 hoga/sidecar 쪽이 대신 hold 를 걸어 테스트가 초록으로 남는다.
-const candlesRangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
+const candlesRangeMock: {
+  isPlaceholderData: boolean; isFetching: boolean; isHistoricalDeltaFetching: boolean;
+  data: unknown;
+} = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false, data: null };
 const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
-  data: null,
+  data: candlesRangeMock.data,
   isLoading: false,
   error: null,
   isPlaceholderData: candlesRangeMock.isPlaceholderData,
@@ -3082,6 +3085,22 @@ describe('useLiveBundle isExtending', () => {
  * **못 보는 것**: 백필이 이 값을 실제로 쓰는지(그건 `useViewportBackfill` 의 계약이다).
  */
 describe('minuteScrollbackFloorDate · clampEngaged', () => {
+  /** 디스크 캔들 응답을 **이 테스트 안에서만** 세운다.
+   *
+   *  ⚠ 모듈 상단 `candlesRangeMock` 만 바꾸면 안 된다 — 다른 헬퍼가
+   *  `mockImplementation` 으로 spy 를 `data: null` 고정 구현으로 복원해 두고, 그게
+   *  이후 테스트에 남는다(테스트 격리 누수). 여기서 직접 구현을 세워야 판정에 닿는다. */
+  function withDiskBundle(bundle: unknown): void {
+    useRangeCandlesDeltaSpy.mockImplementation(() => ({
+      data: bundle,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+      isHistoricalDeltaFetching: false,
+    }));
+  }
+
   it('벤더 분봉은 250일 벽을 하한으로 준다', () => {
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
@@ -3090,12 +3109,46 @@ describe('minuteScrollbackFloorDate · clampEngaged', () => {
     expect(result.current.minuteScrollbackFloorDate).toBe('20250920');
   });
 
-  it('디스크 모드는 하한이 없다(null) — 벽은 벤더 span 캡이라 이 경로엔 없다', () => {
+  it('디스크 모드는 응답이 하한을 말해 주기 전까진 null — 모르는 것을 바닥이라 하지 않는다', () => {
+    // 구백엔드(필드 부재)이거나 아직 첫 응답 전. 여기서 임의의 날짜를 바닥으로 세우면
+    // 있는 데이터를 못 보게 막는다 — 모를 때는 종전대로 열어 둔다.
+    withDiskBundle(null);
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
       { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
     expect(result.current.minuteScrollbackFloorDate).toBeNull();
+  });
+
+  it('디스크 모드의 하한은 **캡처 시작**이다 — 응답의 earliest_captured_date', () => {
+    // 이 한 줄이 없어서 사용자가 캡처 시작 이전으로 무한히 팬했고, 그 구간엔 데이터가
+    // 영원히 없어 빈 화면 + 「과거 불러오는 중」이 계속 떴다(2026-08-26, 028050).
+    // 이 값이 서면 `planFillStep` 의 정지 조건과 3b/3e 게이트가 그대로 살아난다.
+    withDiskBundle({ earliest_captured_date: '20260106' });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(result.current.minuteScrollbackFloorDate).toBe('20260106');
+  });
+
+  it('captureFloorEngaged 는 창이 캡처 시작에 닿았을 때만 선다', () => {
+    withDiskBundle({ earliest_captured_date: '20260106' });
+    useLivePageStore.setState({ historicalFromDate: '20260301' }); // 아직 안쪽
+    const inside = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(inside.result.current.captureFloorEngaged).toBe(false);
+
+    useLivePageStore.setState({ historicalFromDate: '20260106' }); // 바닥
+    const atFloor = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(atFloor.result.current.captureFloorEngaged).toBe(true);
+    // 벤더 전용 칩은 이 경로에서 서면 안 된다 — 문구가 「최대 250일」이라 거짓말이 된다.
+    expect(atFloor.result.current.clampEngaged).toBe(false);
   });
 
   it('캘린더 봉은 애초에 하한이 없다', () => {

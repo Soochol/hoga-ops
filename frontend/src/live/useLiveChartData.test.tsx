@@ -62,6 +62,7 @@ const BUNDLE_RESULT = {
   chartBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
   hogaBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
   clampEngaged: false,
+  captureFloorEngaged: false,
   isLoading: false,
   error: null,
   isPastCandlesLoading: false,

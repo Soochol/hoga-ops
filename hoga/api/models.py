@@ -988,6 +988,15 @@ class RangeBundle(BaseModel):
     fill_strength: FillStrength
     volume_profile_range: VolumeProfile
     volume_profile_by_day: list[VolumeProfile]
+    #: 이 (code, source, venue) 의 **가장 오래된 캡처 거래일**(YYYYMMDD). 캡처가 없으면 None.
+    #:
+    #: 디스크 모드(hogaplay 우회) 분봉의 **좌측 팬 바닥**이다. 벤더 모드에는 250일 벽이
+    #: 있지만 디스크 모드의 끝은 벽이 아니라 캡처 유무이고, 프론트는 그걸 알 방법이
+    #: 없었다 — 그래서 사용자가 캡처 시작 이전으로 무한히 팬해 **빈 화면 + 「과거
+    #: 불러오는 중」이 계속** 뜨는 상태가 됐다(2026-08-26 신고). 프론트가 이 값을
+    #: `minuteScrollbackFloorDate` 에 물리면 `planFillStep` 의 정지 조건과 벽 도달
+    #: 안내가 우회 모드에서도 살아난다.
+    earliest_captured_date: str | None = None
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
     # 읽을 데이터가 없어 빠진 거래일 + 사유(#1133). 기본 []라 기존 클라 무영향.

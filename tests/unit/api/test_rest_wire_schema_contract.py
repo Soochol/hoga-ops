@@ -100,6 +100,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     ),
     "RangeBundle": frozenset(
         {
+            "earliest_captured_date",
             "code",
             "from_date",
             "to_date",
