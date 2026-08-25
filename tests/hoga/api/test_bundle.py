@@ -158,6 +158,9 @@ def _engine_with_meta_for_dates(dates):
         "regular_session_open_ms": 90_000_000,
         "regular_session_close_ms": 153_000_000,
     }
+    # 새 wire 필드(디스크 좌팬 바닥)는 pydantic 이 str|None 을 요구한다 —
+    # MagicMock 기본 반환이 그대로 들어가면 ValidationError 다.
+    eng.earliest_stock_date.return_value = None
     eng.indicators_cache = None
     return eng
 
