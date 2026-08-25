@@ -3,9 +3,15 @@ import type { Candle, PeakBase } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { computeSMA } from '../chart/projectors/movingAverage';
 import { useActivePrefs } from '../state/chartPrefs';
+import type { PeakWallFamilyId } from '../state/peakWallFamilyPrefs';
 
 /** 최대벽 이동평균 필터의 방향. 매도벽은 MA **위**만, 매수벽은 MA **아래**만 남긴다 —
- *  저항은 평균 위, 지지는 평균 아래에 선다는 읽기의 대칭. */
+ *  저항은 평균 위, 지지는 평균 아래에 선다는 읽기의 대칭.
+ *
+ *  ⚠ 이 필터는 2026-08-25 부터 **계열별**이다(체결된 벽 · 미도달 벽 · 전체 최대벽). 훅은
+ *  `(side, family)` 를 받고 호출부(`usePeakWallRender`)가 계열마다 한 번씩 부른다. 세션
+ *  필터 + SMA 결과는 캔들 배열 참조에 매달린 `byPeriod` 캐시라 기간이 셋으로 갈려도 훑기는
+ *  기간당 한 번이다. */
 export type PeakMaFilterSide = 'ask' | 'bid';
 
 export type PeakMaFilter = {
@@ -14,6 +20,22 @@ export type PeakMaFilter = {
    *  참조하지 않는 이유는 모듈 상단 주석 참고. */
   period: number;
 };
+
+/** 계열별 pref 키 표 — 동적 조립(`` `${side}Peak${family}...` ``) 대신 **적어 둔다**.
+ *  키가 문자열 연산으로 만들어지면 오타가 타입을 통과하고, 「그 pref 가 어디서 읽히는가」를
+ *  grep 으로 못 찾는다. 42개 키의 절반이 이 표를 지나므로 검색 가능성이 특히 값싸다. */
+const MA_PREF_KEYS = {
+  ask: {
+    Traded: { on: 'askPeakTradedAboveMaEnabled', period: 'askPeakTradedAboveMaPeriod' },
+    Unreached: { on: 'askPeakUnreachedAboveMaEnabled', period: 'askPeakUnreachedAboveMaPeriod' },
+    AllWall: { on: 'askPeakAllWallAboveMaEnabled', period: 'askPeakAllWallAboveMaPeriod' },
+  },
+  bid: {
+    Traded: { on: 'bidPeakTradedBelowMaEnabled', period: 'bidPeakTradedBelowMaPeriod' },
+    Unreached: { on: 'bidPeakUnreachedBelowMaEnabled', period: 'bidPeakUnreachedBelowMaPeriod' },
+    AllWall: { on: 'bidPeakAllWallBelowMaEnabled', period: 'bidPeakAllWallBelowMaPeriod' },
+  },
+} as const;
 
 /**
  * 최대벽 세그먼트를 **그 벽이 걸린 봉의 이동평균선** 기준으로 거르는 순수 로직.
@@ -30,13 +52,13 @@ export type PeakMaFilter = {
  * 조용한 무동작이 되고, 슬롯마다 `source` 가 달라(hl2·ohlc4) 판정 기준이 사용자 모르게
  * 바뀐다. 그래서 기간만 받고 소스는 `close` 로 고정한다 — MA 선을 끈 채로도 필터는 산다.
  */
-export function usePeakMaFilter(side: PeakMaFilterSide): PeakMaFilter | null {
-  const enabled = useActivePrefs((prefs) => (
-    side === 'ask' ? prefs.askPeakAboveMaEnabled : prefs.bidPeakBelowMaEnabled
-  ));
-  const period = useActivePrefs((prefs) => (
-    side === 'ask' ? prefs.askPeakAboveMaPeriod : prefs.bidPeakBelowMaPeriod
-  ));
+export function usePeakMaFilter(
+  side: PeakMaFilterSide,
+  family: PeakWallFamilyId,
+): PeakMaFilter | null {
+  const keys = MA_PREF_KEYS[side][family];
+  const enabled = useActivePrefs((prefs) => prefs[keys.on]);
+  const period = useActivePrefs((prefs) => prefs[keys.period]);
   // 원시값 둘을 따로 구독하고 여기서 합친다 — selector 안에서 객체를 만들면 매 렌더
   // 새 참조가 나와 zustand 의 Object.is 비교가 항상 "변했다"로 읽는다.
   return useMemo(() => (enabled ? { side, period } : null), [side, enabled, period]);

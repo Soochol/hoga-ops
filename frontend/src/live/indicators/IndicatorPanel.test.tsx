@@ -301,12 +301,15 @@ describe('IndicatorPanel', () => {
    * 「체결된 벽 표시 개수」가 패널 맨 아래에 있어 어느 선 얘긴지 물어야 했다.
    * 못 보는 것: 구획 **순서**(DOM 순서 단언은 리플로우마다 깨져 값이 없다).
    */
-  it('매도 최대벽 — 세 구획 머리와 계열 카드 3장이 선다', () => {
+  it('매도 최대벽 — 구획 머리와 계열 카드 3장이 선다', () => {
     renderPanel();
     openDetail('당일 최대벽');
-    for (const head of ['어떤 벽', '어디에', '후보 기준']) {
+    // 카드 밖에 남은 구획은 둘뿐이다 — 「어디에」·「후보 기준」은 계열마다 갈려
+    // 각 카드의 「세부 설정」 안으로 들어갔다(2026-08-25).
+    for (const head of ['어떤 벽', '계열 공용']) {
       expect(screen.getByText(head)).toBeTruthy();
     }
+    expect(screen.queryByText('어디에')).toBeNull();
     // 계열 3형제가 **대칭**이다 — 종전엔 체결된 벽만 토글이 없었다.
     for (const key of [
       'settings-toggle-askPeakTradedLineEnabled',
@@ -320,15 +323,18 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('group', { name: '체결된 벽 표시 개수' })).toBeTruthy();
   });
 
-  it('매도 최대벽 — 「어디에」 구획에 표면 토글 셋이 모인다', () => {
+  it('매도 최대벽 — 표면 토글 셋은 **계열 카드마다** 자기 벌로 선다', () => {
     renderPanel();
     openDetail('당일 최대벽');
-    for (const key of [
-      'settings-toggle-askPeakLabelEnabled',
-      'settings-toggle-askPeakRankArrowEnabled',
-      'settings-toggle-askPeakLegendCellEnabled',
-    ]) {
-      expect(screen.getByTestId(key)).toBeTruthy();
+    // 세 카드를 각각 펼쳐 그 카드 안에서 찾는다 — 스코프 없이 찾으면 계열 하나만
+    // 배선돼 있어도 통과한다(같은 라벨의 행이 이제 방향당 셋이다).
+    for (const family of ['Traded', 'Unreached', 'AllWall'] as const) {
+      fireEvent.click(screen.getByTestId(`settings-toggle-askPeak${family}LineEnabled-details`));
+      const panel = within(screen.getByTestId(`peak-wall-family-details-ask-${family}`));
+      expect(panel.getByTestId(`settings-toggle-askPeak${family}LabelEnabled`)).toBeTruthy();
+      expect(panel.getByTestId(`settings-toggle-askPeak${family}RankArrowEnabled`)).toBeTruthy();
+      expect(panel.getByTestId(`settings-toggle-askPeak${family}LegendCellEnabled`)).toBeTruthy();
+      expect(panel.getByText('어디에')).toBeTruthy();
     }
     // 캔들 수평선은 방향별이라 탭 안(상위 페이지)에 남는다.
     expect(screen.getByTestId('settings-toggle-askPeakCandleLine')).toBeTruthy();
@@ -520,22 +526,24 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
   });
 
-  it('매수 최대벽 — 매도판과 같은 4구획 대칭', () => {
+  it('매수 최대벽 — 매도판과 같은 구조 대칭', () => {
     renderPanel();
     openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
-    for (const head of ['어떤 벽', '어디에', '후보 기준']) {
+    for (const head of ['어떤 벽', '계열 공용']) {
       expect(screen.getByText(head)).toBeTruthy();
     }
     for (const key of [
       'settings-toggle-bidPeakTradedLineEnabled',
       'settings-toggle-bidPeakUnreachedLineEnabled',
       'settings-toggle-bidPeakAllWallLineEnabled',
-      'settings-toggle-bidPeakLabelEnabled',
-      'settings-toggle-bidPeakLegendCellEnabled',
     ]) {
       expect(screen.getByTestId(key)).toBeTruthy();
     }
+    fireEvent.click(screen.getByTestId('settings-toggle-bidPeakTradedLineEnabled-details'));
+    const panel = within(screen.getByTestId('peak-wall-family-details-bid-Traded'));
+    expect(panel.getByTestId('settings-toggle-bidPeakTradedLabelEnabled')).toBeTruthy();
+    expect(panel.getByTestId('settings-toggle-bidPeakTradedLegendCellEnabled')).toBeTruthy();
   });
 
 
@@ -799,7 +807,8 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('settings-toggle-bidPeakTradedLineEnabled-details'));
+    expect(screen.getByTestId('settings-toggle-bidPeakTradedLabelEnabled')).toBeTruthy();
   });
 
   it('일봉 이동평균선 체크박스 토글 → 전 슬롯 반전', async () => {

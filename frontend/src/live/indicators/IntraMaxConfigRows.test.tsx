@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import AskPeakConfig from './AskPeakConfig';
@@ -23,9 +23,11 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
   });
 
-  it('AskPeakConfig에 askPeakLabelEnabled 토글', () => {
+  it('AskPeakConfig에 askPeakTradedLabelEnabled 토글 — 계열 카드의 세부 설정 안', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
+    // 라벨 토글은 2026-08-25 부터 **계열마다** 있고 접히는 「세부 설정」 안에 산다.
+    fireEvent.click(screen.getByTestId('settings-toggle-askPeakTradedLineEnabled-details'));
+    expect(screen.getByTestId('settings-toggle-askPeakTradedLabelEnabled')).toBeTruthy();
   });
 
   it('AskPeakConfig에 체결된 벽 스타일 컨트롤', () => {
@@ -58,8 +60,10 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
   });
 
-  it('BidPeakConfig에 bidPeakLabelEnabled 토글', () => {
+  it('BidPeakConfig에 bidPeakTradedLabelEnabled 토글 — 계열 카드의 세부 설정 안', () => {
     render(<BidPeakConfig />);
-    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
+    // 라벨 토글은 2026-08-25 부터 **계열마다** 있고 접히는 「세부 설정」 안에 산다.
+    fireEvent.click(screen.getByTestId('settings-toggle-bidPeakTradedLineEnabled-details'));
+    expect(screen.getByTestId('settings-toggle-bidPeakTradedLabelEnabled')).toBeTruthy();
   });
 });

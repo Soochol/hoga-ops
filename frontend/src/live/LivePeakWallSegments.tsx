@@ -54,11 +54,13 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
    *  값은 살린다(MA 규칙 미러). ref 인 이유: provider 는 비반응형 레지스트리에 등록되고
    *  레전드 렌더 시점에 lazy 하게 불리므로, 스토어/props 를 provider effect 의 deps 로
    *  끌어오면 등록·해제만 반복된다.
-   *  입력은 `rankSegments`(체결된 벽 ∪ 전체 벽) — 화살표와 **같은 집합**이어야 레전드
-   *  1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking 머리말). */
+   *  입력은 `legendRankSegments` — **레전드 참여가 켜진 계열만** 담은 집합이다. 계열별
+   *  참여가 생기기 전에는 화살표와 한 집합이라 레전드 1위 = 화살표 ① 이 자동으로
+   *  보장됐다. 이제는 두 표면에 서로 다른 계열을 켜면 번호가 갈릴 수 있고, 그것이 그
+   *  설정의 뜻이다(랭커 자체는 여전히 하나 — peakWallVisibleRanking 머리말). */
   const legendSegmentsRef = useRef<readonly PeakWallSegment[]>([]);
-  legendSegmentsRef.current = wall.rankSegments;
-  /** 「레전드 순위 셀」 토글. **행은 끄지 않는다** — 등록을 걷으면 행이 사라져
+  legendSegmentsRef.current = wall.legendRankSegments;
+  /** 「레전드 순위 셀」이 **한 계열이라도** 켜져 있는가. **행은 끄지 않는다** — 등록을 걷으면 행이 사라져
    *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록하고 여기서 빈
    *  목록을 낼 뿐이다. ref 인 이유는 위 세그먼트와 같다(비반응형 레지스트리). */
   const legendCellsRef = useRef(true);
@@ -129,7 +131,9 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
       wall.unreachedDrawn ? preparePeakWallSegmentsForRender(wall.unreachedSegments) : [],
     );
     arrowPrimRef.current?.setArrows(
-      wall.arrows ? peakWallRankArrowsFromSegments(wall.rankSegments, side, candleExtremes) : [],
+      wall.arrows
+        ? peakWallRankArrowsFromSegments(wall.arrowRankSegments, side, candleExtremes)
+        : [],
       PEAK_WALL_LEGEND_RANK_LIMIT,
     );
   }, [candleExtremes, series, side, wall]);

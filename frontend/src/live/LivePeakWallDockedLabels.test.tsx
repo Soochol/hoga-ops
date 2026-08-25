@@ -25,7 +25,8 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
   const segments = over.segments ?? [seg(100, 100, 60), seg(105, 300, 120)];
   return {
     segments,
-    rankSegments: segments,
+    legendRankSegments: segments,
+    arrowRankSegments: segments,
     stepSegments: [],
     drawn: true,
     labels: true,
@@ -50,7 +51,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
 }
 
 const EMPTY: PeakWallRenderState = {
-  segments: [], rankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, legendCells: true, color: '#x', lineWidth: 1,
+  segments: [], legendRankSegments: [], arrowRankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, legendCells: true, color: '#x', lineWidth: 1,
   allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
   unreachedSegments: [], allWallStepSegments: [], unreachedStepSegments: [], unreachedDrawn: false, unreachedLabels: false, unreachedColor: '#x', unreachedLineWidth: 1,
 };

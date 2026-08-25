@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import MAStylePicker from './MAStylePicker';
 
 const RANK_OPTIONS = [1, 2, 3] as const;
@@ -57,7 +57,9 @@ export function PeakWallRankSelect({
  *
  * ## 상태를 갖지 않는다 (⚠ 의도)
  *
- * 값·setter 를 전부 props 로 받는다. 병행 세션이 지표를 **인스턴스 모델**(레전드 칩 =
+ * 값·setter 를 전부 props 로 받는다. 예외는 `details` 의 열림 여부 하나뿐인데, 그건 저장되는
+ * 설정이 아니라 이 카드의 표현 상태다 — 그래서 **끈 항목 개수(`detailsOffCount`)조차 여기서
+ * 세지 않고 숫자로 받는다**. 세려면 pref 를 읽어야 하고, 그 순간 이 파일이 저장소를 알게 된다. 병행 세션이 지표를 **인스턴스 모델**(레전드 칩 =
  * 인스턴스, 슬롯 배열)로 옮기는 중이고, 최대벽 계열은 언젠가 그 모델에 흡수될 후보다.
  * 지금 여기에 자체 상태 모양(`PeakWallFamilyConfig` 같은 타입)을 만들면 **세 번째
  * 패턴**이 생겨 그 흡수가 더 비싸진다. 이 파일은 표현 계층에만 머문다.
@@ -72,6 +74,8 @@ export default function PeakWallFamilyCard({
   onToggle,
   testId,
   extra,
+  details,
+  detailsOffCount,
 }: {
   name: string;
   /** 한 줄 설명 — 세 카드가 나란히 있을 때 **셋의 관계**를 그 자리에서 알려 준다. */
@@ -84,7 +88,15 @@ export default function PeakWallFamilyCard({
   testId: string;
   /** 이 계열에만 있는 노브(예: 체결된 벽의 표시 개수). 없으면 구분선도 안 그린다. */
   extra?: ReactNode;
+  /** 접히는 「세부 설정」 — 이 계열의 표면(라벨·레전드 셀·화살표)과 후보 기준(MA 둘).
+   *  기본 접힘: 계열이 셋이라 전부 펼치면 21행이 되어 「어떤 벽」 구획이 화면 밖으로 밀린다. */
+  details?: ReactNode;
+  /** 그 계열에서 **꺼 둔** 세부 항목 개수. 전부 기본값(켜짐)이면 0 이고 뱃지도 안 뜬다.
+   *  접힌 채로도 "여기 뭔가 꺼져 있다" 가 보여야 한다 — 안 보이면 라벨이 안 뜨는 이유를
+   *  다시 찾게 된다. */
+  detailsOffCount?: number;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <div className="mt-1.5 rounded-lg border border-border bg-bg-subtle px-2.5 py-2">
       <div className="flex items-start justify-between gap-3">
@@ -125,10 +137,30 @@ export default function PeakWallFamilyCard({
           </button>
         </div>
       </div>
-      {extra !== undefined && (
+      {(extra !== undefined || details !== undefined) && (
         <div className="mt-2 flex items-center gap-2 border-t border-dashed border-border pt-2 text-xs text-fg-dim">
           {extra}
+          {details !== undefined && (
+            <button
+              type="button"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              data-testid={`${testId}-details`}
+              className="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-bg-elevated px-2 py-0.5 text-xs text-fg-dim transition-colors hover:text-fg"
+            >
+              세부 설정
+              {detailsOffCount !== undefined && detailsOffCount > 0 && (
+                <span className="rounded-full bg-accent px-1.5 text-2xs font-semibold text-accent-fg">
+                  {detailsOffCount}
+                </span>
+              )}
+              <span aria-hidden="true">{detailsOpen ? '▴' : '▾'}</span>
+            </button>
+          )}
         </div>
+      )}
+      {details !== undefined && detailsOpen && (
+        <div className="mt-1">{details}</div>
       )}
     </div>
   );

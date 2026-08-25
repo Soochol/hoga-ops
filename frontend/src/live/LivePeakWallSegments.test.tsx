@@ -43,7 +43,8 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
   const segments = over.segments ?? SEGMENTS;
   return {
     segments,
-    rankSegments: segments,
+    legendRankSegments: segments,
+    arrowRankSegments: segments,
     stepSegments: SEGMENTS,
     drawn: true,
     labels: true,
@@ -191,11 +192,12 @@ describe('LivePeakWallSegments', () => {
     });
   });
 
-  it('레전드·화살표는 rankSegments(체결된 벽 ∪ 전체 벽)를 같은 집합으로 받는다', async () => {
+  it('레전드·화살표는 legendRankSegments(체결된 벽 ∪ 전체 벽)를 같은 집합으로 받는다', async () => {
     // 전체 벽(95, qty 4000)이 체결된 벽 셋(1000·2000·3000)을 제치고 1위가 되는 병합 집합.
     const allWallSeg = seg(0, 95, 4000, 50);
     const attached = renderOverlay('ask', wall({
-      rankSegments: [...SEGMENTS, allWallSeg],
+      legendRankSegments: [...SEGMENTS, allWallSeg],
+      arrowRankSegments: [...SEGMENTS, allWallSeg],
       allWallSegments: [allWallSeg],
       allWallDrawn: true,
     }));
