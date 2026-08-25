@@ -499,6 +499,66 @@ describe('PaneLegendOverlay — candle MA row', () => {
       .toBe(`이동평균선 ${target.period} 삭제됨`);
   });
 
+  // 칩 더블클릭 → 인스턴스 속성 팝오버. 첫 클릭의 숨김이 둘째 클릭에서 되돌아오므로
+  // 순효과는 "팝오버만 열림" 이다(그 왕복도 여기서 못 박는다).
+  it('칩 더블클릭이 그 인스턴스의 속성 팝오버를 연다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    renderOverlay();
+    const target = useLivePageStore.getState().movingAverages[0];
+    const chipButton = screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` });
+
+    fireEvent.doubleClick(chipButton);
+
+    const popover = screen.getByTestId('ma-instance-popover');
+    expect(popover).toBeInTheDocument();
+    expect(popover.getAttribute('aria-label')).toBe(`이동평균선 ${target.period} 속성`);
+  });
+
+  it('팝오버에서 기간을 바꾸면 그 인스턴스만 갱신된다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    renderOverlay();
+    const before = useLivePageStore.getState().movingAverages;
+    const target = before[0];
+    fireEvent.doubleClick(screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` }));
+
+    const input = screen.getByRole('spinbutton', { name: '길이 길이' });
+    fireEvent.change(input, { target: { value: '33' } });
+    fireEvent.blur(input);
+
+    const after = useLivePageStore.getState().movingAverages;
+    expect(after.find((m) => m.id === target.id)?.period).toBe(33);
+    // 나머지 인스턴스는 손대지 않는다.
+    expect(after.filter((m) => m.id !== target.id).map((m) => m.period))
+      .toEqual(before.filter((m) => m.id !== target.id).map((m) => m.period));
+  });
+
+  it('팝오버의 삭제는 그 인스턴스를 지우고 팝오버를 닫는다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    renderOverlay();
+    const target = useLivePageStore.getState().movingAverages[0];
+    fireEvent.doubleClick(screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` }));
+
+    fireEvent.click(screen.getByRole('button', { name: '슬롯 삭제' }));
+
+    expect(useLivePageStore.getState().movingAverages.map((m) => m.id)).not.toContain(target.id);
+    expect(screen.queryByTestId('ma-instance-popover')).toBeNull();
+    // 칩 ✕ 와 같은 규율 — 되돌릴 기회를 남긴다.
+    expect(useLivePageStore.getState().indicatorUndoToast?.label)
+      .toBe(`이동평균선 ${target.period} 삭제됨`);
+  });
+
+  it('바깥 mousedown 으로 팝오버가 닫힌다', () => {
+    useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
+    renderOverlay();
+    const target = useLivePageStore.getState().movingAverages[0];
+    fireEvent.doubleClick(screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` }));
+    expect(screen.getByTestId('ma-instance-popover')).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByTestId('ma-instance-popover')).toBeNull();
+  });
+
   it('keeps the row (and its chips) when every slot is off, so it can be turned back on', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     useLivePageStore.setState({
