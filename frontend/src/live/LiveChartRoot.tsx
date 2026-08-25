@@ -2344,18 +2344,20 @@ export function LiveChartRoot({
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
   // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.
+  // 입력은 rankSegments(체결된 벽 ∪ 전체 벽) — 오버레이의 화살표와 같은 집합이어야
+  // 그려지는 화살표만 정확히 피한다.
   const highLowAvoidRankArrows = useMemo(() => [
     ...(askWall.arrows
-      ? peakWallRankArrowsFromSegments(askWall.segments, 'ask', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(askWall.rankSegments, 'ask', peakWallCandleExtremes)
       : []),
     ...(bidWall.arrows
-      ? peakWallRankArrowsFromSegments(bidWall.segments, 'bid', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(bidWall.rankSegments, 'bid', peakWallCandleExtremes)
       : []),
   ], [
     askWall.arrows,
-    askWall.segments,
+    askWall.rankSegments,
     bidWall.arrows,
-    bidWall.segments,
+    bidWall.rankSegments,
     peakWallCandleExtremes,
   ]);
 
