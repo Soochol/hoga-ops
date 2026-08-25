@@ -116,6 +116,43 @@ describe('sourceSwapReseatRange', () => {
     expect(r.to).toBe(193 + 80);
   });
 
+  it('live edge: 병적 여백은 계승하지 않고 정책값으로 폴백한다', () => {
+    // 2026-08-25 실측(000660, 5분봉, 장중): 좌초된 뷰포트(데이터 우측 ~3,400바 밖)의
+    // 여백이 lwc scrollPosition 으로 고착된 뒤, 재착석의 여백 계승이 그 값(3,534바)을
+    // '화면에 떠 있던 여백'으로 오인해 토글 양방향에서 충실히 복제했다 — 눌러도 눌러도
+    // 빈 화면. 계승 계약("재계산하면 캔들이 밀린다")은 정책값 근처의 값에만 성립한다:
+    // 어떤 정상 상태에서도 여백이 화면에 보일 데이터(visibleBars)를 넘을 수 없으므로,
+    // 그 밖의 값은 오염으로 보고 정책값으로 폴백한다.
+    const r = sourceSwapReseatRange({
+      atLiveEdge: true,
+      spanBars: 3535,
+      totalBars: 3725,
+      latestIdx: 3724,
+      anchorIdx: 3724,
+      initialVisibleBars: 300,
+      rightOffsetBars: 80,
+      savedRightPaddingBars: 3534, // 좌초가 만든 값 — 여백일 수 없는 크기
+    });
+    expect(r.to).toBe(3725 + 80);
+    expect(r.from).toBe(3725 - 300);
+  });
+
+  it('live edge: 계승 상한은 max(정책 여백, visibleBars) — 경계는 계승, 그 위는 폴백', () => {
+    const base = {
+      atLiveEdge: true,
+      spanBars: 262,
+      totalBars: 193, // visibleBars = min(193, 300) = 193 > 정책 80 → 상한 193
+      latestIdx: 192,
+      anchorIdx: 192,
+      initialVisibleBars: 300,
+      rightOffsetBars: 80,
+    };
+    // 경계값(=193)은 화면 값으로 인정 — 계승.
+    expect(sourceSwapReseatRange({ ...base, savedRightPaddingBars: 193 }).to).toBe(193 + 193);
+    // 경계 초과(194)는 오염 — 정책값 폴백.
+    expect(sourceSwapReseatRange({ ...base, savedRightPaddingBars: 194 }).to).toBe(193 + 80);
+  });
+
   it('live edge: 데이터가 목표보다 많으면 초기 목표 봉 수를 지킨다', () => {
     const r = sourceSwapReseatRange({
       atLiveEdge: true,

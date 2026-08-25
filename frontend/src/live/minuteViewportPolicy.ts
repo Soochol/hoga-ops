@@ -98,16 +98,29 @@ export function sourceSwapReseatRange(args: {
    *
    * span 은 여전히 데이터 크기로 접는다 — 그쪽이 이 재착석의 존재 이유다. 즉 **왼쪽은
    * 정책이, 오른쪽은 화면이** 정한다.
+   *
+   * ⚠ **계승에는 sanity 상한이 있다 — `max(rightOffsetBars, visibleBars)`.**
+   * 이 계약은 "화면에 떠 있던 값 ≈ 정책값 근처" 라는 전제 위에 서 있는데, 그 전제가
+   * 깨지는 경로가 실재한다(2026-08-25 실측, 000660 5분봉 장중): 뷰포트가 데이터 우측
+   * 수천 바 밖에 좌초하면 그 거리가 lwc 내부 scrollPosition(3,534바)으로 고착되고,
+   * 스냅샷은 그것을 '여백'으로 잰다. 무조건 계승하면 재착석이 좌초를 토글 양방향에서
+   * 충실히 복제해 **눌러도 눌러도 빈 화면**이 된다. 여백의 의미(가격 라벨 거터)상
+   * 화면에 보일 데이터(visibleBars)를 넘는 값은 어떤 정상 상태에서도 나올 수 없으므로,
+   * 상한 밖은 오염으로 보고 정책값으로 폴백한다 — 절단(clamp-to-bound)이 아니라
+   * 폴백인 이유: 상한 언저리로 자르면 여전히 화면 절반이 빈다. 정상 케이스(67 vs 정책
+   * 80)는 상한과 두 자릿수 차이가 나므로 이 판정에 걸리지 않는다.
    */
   savedRightPaddingBars?: number | null;
 }): { from: number; to: number } {
   const { atLiveEdge, spanBars, totalBars, latestIdx, anchorIdx } = args;
   if (atLiveEdge || anchorIdx === null) {
     const visibleBars = Math.max(1, Math.min(totalBars, args.initialVisibleBars));
+    const maxSanePadding = Math.max(args.rightOffsetBars, visibleBars);
     const padding =
       typeof args.savedRightPaddingBars === 'number'
         && Number.isFinite(args.savedRightPaddingBars)
         && args.savedRightPaddingBars >= 0
+        && args.savedRightPaddingBars <= maxSanePadding
         ? args.savedRightPaddingBars
         : args.rightOffsetBars;
     return {
