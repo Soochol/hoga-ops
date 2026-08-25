@@ -113,7 +113,7 @@ import {
 } from './indicators/peakWallStepsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
-import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
+import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
 import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
 /** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
@@ -1874,8 +1874,9 @@ export function LiveChartRoot({
     kisEnabled: dailyCandleKisEnabled,
     displayFloorDate: dailyMaWindowFloorDate,
   };
-  const askPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'ask' });
-  const bidPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'bid' });
+  // 방향당 한 번 — 계열 셋의 필터를 함께 돌려준다(일봉 fetch 는 여전히 방향당 하나).
+  const askPeakDailyMaFilters = usePeakDailyMaFilters({ ...peakDailyMaInput, side: 'ask' });
+  const bidPeakDailyMaFilters = usePeakDailyMaFilters({ ...peakDailyMaInput, side: 'bid' });
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   // 현재가 라인용 fresh 체결가 — live.trade 를 number|null 로 환원해 memo'd
   // LiveCurrentPriceLine 에 프리미티브로 전달(재구독·per-tick churn 없음). LiveChartRoot
@@ -2126,7 +2127,7 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    dailyMaFilter: askPeakDailyMaFilter,
+    dailyMaFilters: askPeakDailyMaFilters,
     needStepSegments: prefPeakWallPaneEnabled,
   });
   const bidWall = usePeakWallRender({
@@ -2137,7 +2138,7 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    dailyMaFilter: bidPeakDailyMaFilter,
+    dailyMaFilters: bidPeakDailyMaFilters,
     needStepSegments: prefPeakWallPaneEnabled,
   });
   // ── 최대벽 강도 pane 계단 (구현 계획 §2) ──────────────────────────────
@@ -2253,20 +2254,21 @@ export function LiveChartRoot({
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
   // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.
-  // 입력은 rankSegments(체결된 벽 ∪ 전체 벽) — 오버레이의 화살표와 같은 집합이어야
-  // 그려지는 화살표만 정확히 피한다.
+  // 입력은 **`arrowRankSegments`** — 화살표 참여가 켜진 계열만 담은 집합이다. 레전드
+  // 집합(`legendRankSegments`)은 계열 구성이 다를 수 있으므로 여기 쓰면 화면에 없는
+  // 화살표를 피하게 된다. 오버레이의 화살표와 **같은 집합**이어야 한다.
   const highLowAvoidRankArrows = useMemo(() => [
     ...(askWall.arrows
-      ? peakWallRankArrowsFromSegments(askWall.rankSegments, 'ask', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(askWall.arrowRankSegments, 'ask', peakWallCandleExtremes)
       : []),
     ...(bidWall.arrows
-      ? peakWallRankArrowsFromSegments(bidWall.rankSegments, 'bid', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(bidWall.arrowRankSegments, 'bid', peakWallCandleExtremes)
       : []),
   ], [
     askWall.arrows,
-    askWall.rankSegments,
+    askWall.arrowRankSegments,
     bidWall.arrows,
-    bidWall.rankSegments,
+    bidWall.arrowRankSegments,
     peakWallCandleExtremes,
   ]);
 

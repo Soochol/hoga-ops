@@ -83,7 +83,7 @@ describe('filterPeaksAgainstDailyMa — intraMax 축 선택', () => {
 // 의 ⚠). 창 산식에 `displayFloorDate` 가 합류한 뒤로는 그 값의 일치도 같은 계약이다 —
 // 안 흘려보내면 최대벽 필터만 좁은 창을 따로 받아 일봉 fetch 가 늘고, 디스크 모드에서
 // 화면의 MA 선과 **다른 값으로** 벽을 판정한다. 옵셔널 인자라 타입은 누락을 못 잡는다.
-describe('usePeakDailyMaFilter — fetch 창', () => {
+describe('usePeakDailyMaFilters — fetch 창', () => {
   it('displayFloorDate 를 창에 반영한다', async () => {
     const { renderHook } = await import('@testing-library/react');
     const { useChartPrefsStore } = await import('../state/chartPrefs');
@@ -93,16 +93,20 @@ describe('usePeakDailyMaFilter — fetch 창', () => {
     ));
     vi.doMock('./indicators/useResolvedDailyCandles', () => ({ useResolvedDailyCandles: resolved }));
     vi.resetModules();
-    const { usePeakDailyMaFilter } = await import('./peakWallDailyMaFilter');
+    const { usePeakDailyMaFilters } = await import('./peakWallDailyMaFilter');
 
-    useChartPrefsStore.setState({ askPeakAboveDailyMaEnabled: true, askPeakAboveDailyMaPeriod: 20 } as never);
+    useChartPrefsStore.setState({
+      askPeakTradedAboveDailyMaEnabled: true, askPeakTradedAboveDailyMaPeriod: 20,
+    } as never);
     const input = { side: 'ask' as const, code: '005930', venue: 'KRX' as const, todayKst: '20260824', candles: [], enabled: true };
 
-    renderHook(() => usePeakDailyMaFilter(input));
+    renderHook(() => usePeakDailyMaFilters(input));
     const withoutFloor = resolved.mock.calls[0]![0].from as string;
 
     resolved.mockClear();
-    renderHook(() => usePeakDailyMaFilter({ ...input, displayFloorDate: subtractDaysKst('20260824', 700) }));
+    renderHook(() => usePeakDailyMaFilters({
+      ...input, displayFloorDate: subtractDaysKst('20260824', 700),
+    }));
     const withFloor = resolved.mock.calls[0]![0].from as string;
 
     expect(withFloor < withoutFloor).toBe(true);

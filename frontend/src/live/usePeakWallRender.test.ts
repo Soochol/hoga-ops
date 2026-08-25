@@ -7,6 +7,9 @@ import { DEFAULT_PREFS, useChartPrefsStore } from '../state/chartPrefs';
 import { useLivePageStore } from '../state/livePage';
 import { usePeakWallRender } from './usePeakWallRender';
 
+/** 계열 셋 모두 일봉 MA 필터 없음 — 이 파일의 기본 배선. */
+const NO_DAILY_MA_FILTERS = { Traded: null, Unreached: null, AllWall: null } as const;
+
 const MIN = 60_000;
 const DAY = '20260822';
 const axis = { toVirtual: (ms: number) => ms, contains: () => true } as unknown as VirtualAxis;
@@ -33,7 +36,7 @@ function render(applicable = true, peaks: AskPeak[] = [PEAK], needStepSegments =
     axis,
     todayKst: DAY,
     applicable,
-    dailyMaFilter: null,
+    dailyMaFilters: NO_DAILY_MA_FILTERS,
     needStepSegments,
   })).result;
 }
@@ -94,7 +97,7 @@ describe('usePeakWallRender', () => {
 
   it('라벨·화살표 토글은 각자 자기 플래그만 내린다', () => {
     act(() => {
-      useChartPrefsStore.setState({ askPeakLabelEnabled: false });
+      useChartPrefsStore.setState({ askPeakTradedLabelEnabled: false });
     });
     const r = render();
     expect(r.current.drawn).toBe(true);
@@ -102,7 +105,12 @@ describe('usePeakWallRender', () => {
     expect(r.current.arrows).toBe(true);
 
     act(() => {
-      useChartPrefsStore.setState({ askPeakLabelEnabled: true, askPeakRankArrowEnabled: false });
+      useChartPrefsStore.setState({
+        askPeakTradedLabelEnabled: true,
+        askPeakTradedRankArrowEnabled: false,
+        askPeakUnreachedRankArrowEnabled: false,
+        askPeakAllWallRankArrowEnabled: false,
+      });
     });
     const r2 = render();
     expect(r2.current.labels).toBe(true);
@@ -245,8 +253,8 @@ describe('usePeakWallRender', () => {
     expect(on.current.unreachedSegments[0]).toMatchObject({
       price: 140, qty: 700, color: '#1E3A8A', lineWidth: 2,
     });
-    // rankSegments 병합 집합에도 들어간다(레전드·화살표·회피 공용).
-    expect(on.current.rankSegments.map((s) => s.price)).toContain(140);
+    // legendRankSegments 병합 집합에도 들어간다(레전드·화살표·회피 공용).
+    expect(on.current.legendRankSegments.map((s) => s.price)).toContain(140);
 
     act(() => {
       useLivePageStore.setState({ askPeakHidden: true });
@@ -256,16 +264,16 @@ describe('usePeakWallRender', () => {
     expect(hidden.current.unreachedDrawn).toBe(false);
   });
 
-  it('rankSegments 는 체결된 벽 ∪ 전체 벽 — 하위 토글이 꺼지면 segments 와 같은 참조', () => {
+  it('legendRankSegments 는 체결된 벽 ∪ 전체 벽 — 하위 토글이 꺼지면 segments 와 같은 참조', () => {
     const off = render(true, [ALL_PEAK]);
-    expect(off.current.rankSegments).toBe(off.current.segments);
+    expect(off.current.legendRankSegments).toBe(off.current.segments);
 
     act(() => {
       useLivePageStore.setState({ askPeakAllWallLineEnabled: true });
     });
     const on = render(true, [ALL_PEAK]);
     // ALL_PEAK 은 traded(110, 500)와 all(130, 900)의 가격이 달라 병합 후 2개.
-    expect(on.current.rankSegments.map((s) => [s.price, s.qty])).toEqual([
+    expect(on.current.legendRankSegments.map((s) => [s.price, s.qty])).toEqual([
       [110, 500],
       [130, 900],
     ]);
@@ -293,7 +301,7 @@ describe('usePeakWallRender', () => {
     expect(off.current.segments).toEqual([]);
     expect(off.current.allWallSegments).toHaveLength(1);
     // 랭킹 병합 집합에는 전체 최대벽만 남는다.
-    expect(off.current.rankSegments.map((seg) => seg.price)).toEqual([130]);
+    expect(off.current.legendRankSegments.map((seg) => seg.price)).toEqual([130]);
   });
 
   it('레전드 셀 토글은 셀만 가른다 — 선·라벨·화살표는 그대로', () => {
@@ -301,7 +309,11 @@ describe('usePeakWallRender', () => {
     expect(on.current.legendCells).toBe(true);
 
     act(() => {
-      useChartPrefsStore.setState({ askPeakLegendCellEnabled: false });
+      useChartPrefsStore.setState({
+        askPeakTradedLegendCellEnabled: false,
+        askPeakUnreachedLegendCellEnabled: false,
+        askPeakAllWallLegendCellEnabled: false,
+      });
     });
     const off = render();
     expect(off.current.legendCells).toBe(false);
@@ -361,5 +373,83 @@ describe('usePeakWallRender', () => {
     expect(more.current.unreachedSegments).toHaveLength(2);
     // 체결된 벽은 자기 키를 따르므로 그대로 1 이다.
     expect(more.current.segments).toHaveLength(1);
+  });
+
+  // ── 계열별 표면 축(2026-08-25) ────────────────────────────────────────
+  //
+  // 라벨 · 레전드 순위 셀 · 상위벽 순위 화살표는 종전에 **방향당 하나**였다. 계열마다
+  // 갈린 뒤로 두 가지가 새로 가능해졌고, 아래 셋이 그것을 값으로 못 박는다:
+  //   1. 한 계열의 표면만 끄고 나머지 계열은 살린다
+  //   2. 레전드와 화살표가 **서로 다른 계열 집합**을 본다(의도된 결과)
+  describe('계열별 표면', () => {
+    /** 체결(110/500)과 전체(130/900)가 **다른 가격**인 벽 — 두 계열이 랭킹에서 구별된다. */
+    const BOTH: AskPeak = {
+      ...PEAK,
+      all_price: 130,
+      all_qty: 900,
+      all_t_ms: 2 * MIN,
+      all_max_price: 130,
+      all_max_qty: 900,
+      all_max_t_ms: 2 * MIN,
+    };
+    const withAllWall = () => act(() => {
+      useLivePageStore.setState({ askPeakAllWallLineEnabled: true });
+    });
+
+    it('체결된 벽 라벨만 끄면 전체 최대벽 라벨은 그대로다', () => {
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({ askPeakTradedLabelEnabled: false });
+      });
+      const r = render(true, [BOTH]);
+      expect(r.current.labels).toBe(false);
+      expect(r.current.allWallLabels).toBe(true);
+      // 선은 둘 다 살아 있다 — 라벨 토글의 범위가 라벨뿐이라는 계약.
+      expect(r.current.segments).toHaveLength(1);
+      expect(r.current.allWallSegments).toHaveLength(1);
+    });
+
+    it('화살표 참여를 끈 계열은 arrowRankSegments 에서 빠진다', () => {
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({ askPeakAllWallRankArrowEnabled: false });
+      });
+      const r = render(true, [BOTH]);
+      expect(r.current.arrowRankSegments.map((seg) => seg.price)).toEqual([110]);
+      // 화살표 자체는 남은 계열 때문에 계속 그려진다.
+      expect(r.current.arrows).toBe(true);
+    });
+
+    /**
+     * **이번 변경의 의미론적 요점.** 종전엔 랭킹 집합이 하나뿐이라 레전드 ①②③ 과 화살표
+     * ①②③ 이 원리적으로 같은 벽을 가리켰다. 계열별 참여가 생긴 뒤로는 두 표면에 서로
+     * 다른 계열을 켜면 **번호가 갈릴 수 있고, 그것이 그 설정의 뜻이다.**
+     */
+    it('레전드와 화살표는 서로 다른 계열 집합을 볼 수 있다', () => {
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({
+          askPeakAllWallRankArrowEnabled: false,
+          askPeakTradedLegendCellEnabled: false,
+        });
+      });
+      const r = render(true, [BOTH]);
+      expect(r.current.arrowRankSegments.map((seg) => seg.price)).toEqual([110]);
+      expect(r.current.legendRankSegments.map((seg) => seg.price)).toEqual([130]);
+    });
+
+    it('세 계열 모두 화살표 참여를 끄면 arrows 가 내려간다', () => {
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({
+          askPeakTradedRankArrowEnabled: false,
+          askPeakUnreachedRankArrowEnabled: false,
+          askPeakAllWallRankArrowEnabled: false,
+        });
+      });
+      const r = render(true, [BOTH]);
+      expect(r.current.arrows).toBe(false);
+      expect(r.current.arrowRankSegments).toEqual([]);
+    });
   });
 });

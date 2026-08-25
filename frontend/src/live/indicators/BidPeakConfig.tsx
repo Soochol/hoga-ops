@@ -1,6 +1,8 @@
 import { useScopedChartPrefs, useChartPrefActions } from '../../state/chartPrefs';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import PeakWallFamilyDetails from './PeakWallFamilyDetails';
+import { usePeakWallFamilyOffCount } from './usePeakWallFamilyOffCount';
 import PeakWallFamilyCard, {
   PeakWallRankSelect,
   PeakWallSectionHead,
@@ -30,6 +32,10 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const allWallRankLimit = prefs.bidPeakAllWallRankLimit;
   const unreachedRankLimit = prefs.bidPeakUnreachedRankLimit;
   const { setNumericPref } = useChartPrefActions();
+  // 접힌 카드의 뱃지 — 그 계열에서 꺼 둔 세부 항목 개수.
+  const tradedOffCount = usePeakWallFamilyOffCount('bid', 'Traded');
+  const unreachedOffCount = usePeakWallFamilyOffCount('bid', 'Unreached');
+  const allWallOffCount = usePeakWallFamilyOffCount('bid', 'AllWall');
 
   return (
     <div>
@@ -66,6 +72,8 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('bidPeakAllPriceRankLimit', n)}
           />
         )}
+        detailsOffCount={tradedOffCount}
+        details={<PeakWallFamilyDetails side="bid" family="Traded" />}
       />
       <PeakWallFamilyCard
         name="미도달 벽"
@@ -83,6 +91,8 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('bidPeakUnreachedRankLimit', n)}
           />
         )}
+        detailsOffCount={unreachedOffCount}
+        details={<PeakWallFamilyDetails side="bid" family="Unreached" />}
       />
       <PeakWallFamilyCard
         name="전체 최대벽"
@@ -100,23 +110,18 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
             onChange={(n) => setNumericPref('bidPeakAllWallRankLimit', n)}
           />
         )}
+        detailsOffCount={allWallOffCount}
+        details={<PeakWallFamilyDetails side="bid" family="AllWall" />}
       />
 
-      {/* ── 어디에 ─────────────────────────────────────────────────
-          위에서 켠 계열들이 **어느 표면에** 나오는가. 종전엔 캔들 수평선만 위쪽
-          「표시 위치」에 있고 라벨·화살표는 필터들 사이에 섞여 있었다. */}
-      <PeakWallSectionHead>어디에</PeakWallSectionHead>
-      <IndicatorPrefRows
-        toggleKeys={['bidPeakLabelEnabled', 'bidPeakRankArrowEnabled', 'bidPeakLegendCellEnabled']}
-      />
-
-      {/* ── 후보 기준 ───────────────────────────────────────────────
-          계산에 영향을 주는 것만. MA 기간은 레지스트리의 `enabledBy` 로 각 토글
-          아래에 따라붙는다 — 여기서 손으로 배치하지 않는다. */}
-      <PeakWallSectionHead>후보 기준</PeakWallSectionHead>
-      <IndicatorPrefRows
-        toggleKeys={['bidPeakIntraMax', 'bidPeakBelowMaEnabled', 'bidPeakBelowDailyMaEnabled']}
-      />
+      {/* ── 계열 공용 ───────────────────────────────────────────────
+          여기 남은 것은 **세 계열이 하나를 공유하는** 노브뿐이다. 표면 셋(라벨·레전드 셀·
+          화살표)과 MA 필터 둘은 계열마다 갈렸으므로 각 카드의 「세부 설정」 안으로 들어갔다
+          — 위치가 스코프를 말한다. `intraMax` 가 공용으로 남은 이유: 미도달 계열은 carrier
+          가 양쪽 같은 값이라 이 토글이 애초에 무효라(`usePeakWallRender` 머리말), 계열별로
+          두면 셋 중 하나가 아무 일도 하지 않는 스위치가 되어 화면의 대칭이 거짓말을 한다. */}
+      <PeakWallSectionHead>계열 공용</PeakWallSectionHead>
+      <IndicatorPrefRows toggleKeys={['bidPeakIntraMax']} />
     </div>
   );
 }

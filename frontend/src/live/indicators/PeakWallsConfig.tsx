@@ -22,7 +22,8 @@ const SIDE_TABS: ReadonlyArray<{ value: Side; label: string }> = [
  *
  *  - **탭 안(방향별)** — 마스터 토글 · 「캔들 차트에 수평선」(눈 `*PeakHidden` 의
  *    반전 노출 — 새 키가 아니라 레전드 눈 아이콘과 같은 상태다) · 그리고
- *    `Ask/BidPeakConfig` 의 4구획 전체.
+ *    `Ask/BidPeakConfig` 전체(계열 카드 3장 + 「계열 공용」 구획). 그 안에서 다시
+ *    **계열별/계열 공용**이 갈리는데, 그 층의 배치 규칙은 `AskPeakConfig` 머리말에 있다.
  *  - **탭 밖(공용)** — 「최대벽 강도 pane」(`peakWallPaneEnabled`). 한 pane 에 양방향
  *    계단이 함께 살아 상태가 하나뿐이라, 매도 탭에서 켜면 매수도 켜진다. 그 사실을
  *    탭 경계 밖이라는 **위치**로 말한다.

@@ -36,7 +36,7 @@ import {
 } from './peakWallSegments';
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
-import type { PeakDailyMaFilter } from './peakWallDailyMaFilter';
+import type { PeakDailyMaFilters } from './peakWallDailyMaFilter';
 
 export type PeakWallRenderState = {
   /** 필터를 모두 통과한 세그먼트. **`enabled` 기준으로만** 계산한다(위 불변식 참조). */
@@ -45,7 +45,7 @@ export type PeakWallRenderState = {
   drawn: boolean;
   /** 도킹 라벨이 그려지는가. */
   labels: boolean;
-  /** 순위 화살표가 그려지는가. */
+  /** 순위 화살표가 하나라도 그려지는가 — 계열별 참여는 `arrowRankSegments` 가 담는다. */
   arrows: boolean;
   /** 레전드 순위 셀을 채우는가. ⚠ **행이 아니라 셀만** 가른다 — 행이 사라지면
    *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록돼 있고 이 값이
@@ -66,11 +66,19 @@ export type PeakWallRenderState = {
    *  (MA·컷오프·intraMax)는 체결된 벽과 동일하게 흐른다. `enabled` 기준 계산
    *  불변식도 동일하다. */
   allWallSegments: readonly PeakWallSegment[];
-  /** 「보이는 영역」 랭킹(레전드 셀 · 순위 화살표 · 고저 라벨 회피)의 **공용 입력** —
-   *  체결된 벽 ∪ 전체 벽 ∪ 미도달 벽을 (그날, 가격) 최대 qty 로 병합한 집합. 세 소비처가
-   *  이 하나를 받아야 레전드 1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking
-   *  머리말). 하위 선이 전부 꺼져 있으면 `segments` 와 같은 참조다. */
-  rankSegments: readonly PeakWallSegment[];
+  /** 레전드 순위 셀의 랭킹 입력 — **레전드 참여가 켜진 계열만** 병합한 집합.
+   *  `hidden` 과 무관하다(눈은 선만 숨긴다). */
+  legendRankSegments: readonly PeakWallSegment[];
+  /** 순위 화살표 · **고저 극값 라벨 회피**의 랭킹 입력 — 화살표 참여가 켜진 계열만.
+   *
+   *  ⚠ 회피 rect 는 반드시 이쪽을 쓴다. 「그려지는 화살표만 피한다」가 그 계산의 뜻이라
+   *  레전드 집합을 넘기면 화면에 없는 화살표를 피하고 있는 벽이 생긴다.
+   *
+   *  ⚠ 레전드와 이 집합이 다를 수 있다는 것이 계열별 분리의 **의도된 결과**다. 두 표면에
+   *  서로 다른 계열을 켜면 레전드 ②와 화살표 ②가 다른 벽을 가리킨다 — 종전엔 집합이
+   *  하나라 원리적으로 불가능했던 상태다(peakWallVisibleRanking 머리말의 "같은 함수를
+   *  써야 한다" 는 **랭커**를 말하는 것이고, 그 규칙은 여기서도 지켜진다). */
+  arrowRankSegments: readonly PeakWallSegment[];
   /** 「미도달 벽」 하위 선 — unreached 패밀리의 carrier 리맵(toUnreachedWallPeakInputs).
    *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
@@ -89,7 +97,7 @@ export type PeakWallRenderState = {
   unreachedLineWidth: number;
   /** 전체 최대벽 선이 실제로 그려지는가(마스터 drawn ∧ 하위 토글). */
   allWallDrawn: boolean;
-  /** 전체 최대벽 도킹 라벨이 그려지는가(라벨 pref 는 방향 공용을 따른다). */
+  /** 전체 최대벽 도킹 라벨이 그려지는가(이 계열 전용 라벨 pref). */
   allWallLabels: boolean;
   allWallColor: string;
   allWallLineWidth: number;
@@ -105,8 +113,9 @@ type Args = {
   todayKst: string;
   /** 분봉 + 캔들 번들이 있는가. false 면 계산하지 않는다(지표가 분봉 전용). */
   applicable: boolean;
-  /** 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해 넘긴다. */
-  dailyMaFilter: PeakDailyMaFilter | null;
+  /** 계열별 일봉 MA 필터 — 데이터 fetch 가 걸린 훅이라 `LiveChartRoot` 가 한 번 계산해
+   *  넘긴다(계열이 셋이어도 fetch 는 하나 — `usePeakDailyMaFilters` 머리말). */
+  dailyMaFilters: PeakDailyMaFilters;
   /** 최대벽 강도 pane 이 켜져 있을 때만 true — 꺼져 있으면 top-3 재계산을 건너뛴다. */
   needStepSegments?: boolean;
 };
@@ -122,7 +131,7 @@ export function usePeakWallRender({
   axis,
   todayKst,
   applicable,
-  dailyMaFilter,
+  dailyMaFilters,
   needStepSegments = false,
 }: Args): PeakWallRenderState {
   const isAsk = side === 'ask';
@@ -157,8 +166,16 @@ export function usePeakWallRender({
   const allPriceRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllPriceRankLimit : s.bidPeakAllPriceRankLimit),
   );
-  const labelEnabled = useActivePrefs(
-    (s) => (isAsk ? s.askPeakLabelEnabled : s.bidPeakLabelEnabled),
+  // 표면 셋(라벨 · 화살표 · 레전드 셀)은 이제 **계열마다** 따로다. 종전엔 방향당 하나라
+  // "체결된 벽만 라벨" 같은 조합이 원리적으로 불가능했다.
+  const tradedLabelEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakTradedLabelEnabled : s.bidPeakTradedLabelEnabled),
+  );
+  const unreachedLabelEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedLabelEnabled : s.bidPeakUnreachedLabelEnabled),
+  );
+  const allWallLabelEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallLabelEnabled : s.bidPeakAllWallLabelEnabled),
   );
   // 계열별 「표시 개수」 — 종전엔 전체·미도달이 rank-1 고정이었다(과거일 wire 가
   // rank-1 스칼라뿐이었기 때문). 백엔드가 top-3 를 싣게 되면서 풀렸다.
@@ -168,13 +185,32 @@ export function usePeakWallRender({
   const unreachedRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakUnreachedRankLimit : s.bidPeakUnreachedRankLimit),
   );
-  const legendCellEnabled = useActivePrefs(
-    (s) => (isAsk ? s.askPeakLegendCellEnabled : s.bidPeakLegendCellEnabled),
+  const tradedLegendCellEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakTradedLegendCellEnabled : s.bidPeakTradedLegendCellEnabled),
   );
-  const rankArrowEnabled = useActivePrefs(
-    (s) => (isAsk ? s.askPeakRankArrowEnabled : s.bidPeakRankArrowEnabled),
+  const unreachedLegendCellEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedLegendCellEnabled : s.bidPeakUnreachedLegendCellEnabled),
   );
-  const maFilter = usePeakMaFilter(side);
+  const allWallLegendCellEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallLegendCellEnabled : s.bidPeakAllWallLegendCellEnabled),
+  );
+  const tradedRankArrowEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakTradedRankArrowEnabled : s.bidPeakTradedRankArrowEnabled),
+  );
+  const unreachedRankArrowEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedRankArrowEnabled : s.bidPeakUnreachedRankArrowEnabled),
+  );
+  const allWallRankArrowEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallRankArrowEnabled : s.bidPeakAllWallRankArrowEnabled),
+  );
+  // 분봉 MA 필터도 계열별 — 훅을 셋 부른다(각자 자기 pref 쌍을 읽는다). 세션 필터 + SMA
+  // 결과는 캔들 배열 참조에 매달린 `byPeriod` 캐시라, 기간이 갈려도 훑기는 기간당 한 번이다.
+  const tradedMaFilter = usePeakMaFilter(side, 'Traded');
+  const unreachedMaFilter = usePeakMaFilter(side, 'Unreached');
+  const allWallMaFilter = usePeakMaFilter(side, 'AllWall');
+  const tradedDailyMaFilter = dailyMaFilters.Traded;
+  const unreachedDailyMaFilter = dailyMaFilters.Unreached;
+  const allWallDailyMaFilter = dailyMaFilters.AllWall;
 
   const built = useMemo(() => (
     applicable && enabled && tradedEnabled
@@ -187,8 +223,8 @@ export function usePeakWallRender({
         baselineStyle: { color, lineWidth },
         intraMax,
         allPriceRankLimit: toPeakRankLimit(allPriceRankLimit),
-        maFilter,
-        dailyMaFilter,
+        maFilter: tradedMaFilter,
+        dailyMaFilter: tradedDailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
@@ -198,11 +234,11 @@ export function usePeakWallRender({
     axis,
     candles,
     color,
-    dailyMaFilter,
+    tradedDailyMaFilter,
     enabled,
     intraMax,
     lineWidth,
-    maFilter,
+    tradedMaFilter,
     peaks,
     segments,
     todayKst,
@@ -222,8 +258,8 @@ export function usePeakWallRender({
         baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
         intraMax,
         allPriceRankLimit: toPeakRankLimit(allWallRankLimit),
-        maFilter,
-        dailyMaFilter,
+        maFilter: allWallMaFilter,
+        dailyMaFilter: allWallDailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
@@ -234,10 +270,10 @@ export function usePeakWallRender({
     applicable,
     axis,
     candles,
-    dailyMaFilter,
+    allWallDailyMaFilter,
     enabled,
     intraMax,
-    maFilter,
+    allWallMaFilter,
     peaks,
     segments,
     todayKst,
@@ -255,8 +291,8 @@ export function usePeakWallRender({
         baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
         intraMax,
         allPriceRankLimit: toPeakRankLimit(unreachedRankLimit),
-        maFilter,
-        dailyMaFilter,
+        maFilter: unreachedMaFilter,
+        dailyMaFilter: unreachedDailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
@@ -267,10 +303,10 @@ export function usePeakWallRender({
     applicable,
     axis,
     candles,
-    dailyMaFilter,
+    unreachedDailyMaFilter,
     enabled,
     intraMax,
-    maFilter,
+    unreachedMaFilter,
     peaks,
     segments,
     todayKst,
@@ -291,13 +327,13 @@ export function usePeakWallRender({
         intraMax,
         allPriceRankLimit: 3,
         stepHistory: true,
-        maFilter,
-        dailyMaFilter,
+        maFilter: allWallMaFilter,
+        dailyMaFilter: allWallDailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
     needStepSegments, allWallEnabled, allWallColor, allWallLineWidth, applicable,
-    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
+    axis, candles, allWallDailyMaFilter, enabled, intraMax, allWallMaFilter, peaks, segments, todayKst,
   ]);
 
   const unreachedStepBuilt = useMemo(() => (
@@ -312,13 +348,13 @@ export function usePeakWallRender({
         intraMax,
         allPriceRankLimit: 3,
         stepHistory: true,
-        maFilter,
-        dailyMaFilter,
+        maFilter: unreachedMaFilter,
+        dailyMaFilter: unreachedDailyMaFilter,
       })
       : EMPTY_SEGMENTS
   ), [
     needStepSegments, unreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
-    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
+    axis, candles, unreachedDailyMaFilter, enabled, intraMax, unreachedMaFilter, peaks, segments, todayKst,
   ]);
 
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
@@ -335,8 +371,8 @@ export function usePeakWallRender({
         intraMax,
         allPriceRankLimit: 3,
         stepHistory: true,
-        maFilter,
-        dailyMaFilter,
+        maFilter: tradedMaFilter,
+        dailyMaFilter: tradedDailyMaFilter,
       })
       : null
   ), [
@@ -347,11 +383,11 @@ export function usePeakWallRender({
     axis,
     candles,
     color,
-    dailyMaFilter,
+    tradedDailyMaFilter,
     enabled,
     intraMax,
     lineWidth,
-    maFilter,
+    tradedMaFilter,
     peaks,
     segments,
     todayKst,
@@ -360,32 +396,57 @@ export function usePeakWallRender({
   const drawn = enabled && !hidden;
   const allWallDrawn = drawn && allWallEnabled;
   const unreachedDrawn = drawn && unreachedEnabled;
-  // 랭킹 공용 입력 — 하위 선이 전부 비면 mergePeakWallRankSegments 가 built 참조를
-  // 그대로 돌려주므로 별도 분기 없이도 참조가 안정된다.
-  const rankSegments = useMemo(
-    () => mergePeakWallRankSegments(built, allWallBuilt, unreachedBuilt),
-    [built, allWallBuilt, unreachedBuilt],
+  // 랭킹 입력 — **표면마다 자기 후보 집합**을 병합한다. 참여가 꺼진 계열은 빈 배열로
+  // 들어가므로 랭킹에서 빠지고, 켜진 계열이 하나도 없으면 결과도 빈 집합이다.
+  // 계열 선 자체가 꺼져 있으면(`*Enabled`) 그 계열의 `built` 가 이미 비어 있어 여기서
+  // 다시 볼 필요가 없다 — 그 게이트는 빌더가 갖는다.
+  const legendRankSegments = useMemo(
+    () => mergePeakWallRankSegments(
+      tradedLegendCellEnabled ? built : EMPTY_SEGMENTS,
+      allWallLegendCellEnabled ? allWallBuilt : EMPTY_SEGMENTS,
+      unreachedLegendCellEnabled ? unreachedBuilt : EMPTY_SEGMENTS,
+    ),
+    [
+      built, allWallBuilt, unreachedBuilt,
+      tradedLegendCellEnabled, allWallLegendCellEnabled, unreachedLegendCellEnabled,
+    ],
+  );
+  const arrowRankSegments = useMemo(
+    () => mergePeakWallRankSegments(
+      tradedRankArrowEnabled ? built : EMPTY_SEGMENTS,
+      allWallRankArrowEnabled ? allWallBuilt : EMPTY_SEGMENTS,
+      unreachedRankArrowEnabled ? unreachedBuilt : EMPTY_SEGMENTS,
+    ),
+    [
+      built, allWallBuilt, unreachedBuilt,
+      tradedRankArrowEnabled, allWallRankArrowEnabled, unreachedRankArrowEnabled,
+    ],
   );
   return useMemo(() => ({
     segments: built,
     drawn,
-    labels: drawn && labelEnabled,
-    arrows: drawn && rankArrowEnabled,
-    legendCells: legendCellEnabled,
+    labels: drawn && tradedLabelEnabled,
+    // 「하나라도 그리는가」 — 어느 계열이 그려지는지는 `arrowRankSegments` 가 담는다.
+    arrows: drawn
+      && (tradedRankArrowEnabled || allWallRankArrowEnabled || unreachedRankArrowEnabled),
+    legendCells: tradedLegendCellEnabled
+      || allWallLegendCellEnabled
+      || unreachedLegendCellEnabled,
     color,
     lineWidth,
     stepSegments: stepBuilt ?? built,
     allWallSegments: allWallBuilt,
-    rankSegments,
+    legendRankSegments,
+    arrowRankSegments,
     allWallDrawn,
-    allWallLabels: allWallDrawn && labelEnabled,
+    allWallLabels: allWallDrawn && allWallLabelEnabled,
     allWallColor,
     allWallLineWidth,
     unreachedSegments: unreachedBuilt,
     allWallStepSegments: allWallStepBuilt,
     unreachedStepSegments: unreachedStepBuilt,
     unreachedDrawn,
-    unreachedLabels: unreachedDrawn && labelEnabled,
+    unreachedLabels: unreachedDrawn && unreachedLabelEnabled,
     unreachedColor,
     unreachedLineWidth,
   }), [
@@ -403,9 +464,17 @@ export function usePeakWallRender({
     stepBuilt,
     color,
     drawn,
-    labelEnabled,
-    legendCellEnabled,
+    tradedLabelEnabled,
+    unreachedLabelEnabled,
+    allWallLabelEnabled,
+    tradedLegendCellEnabled,
+    unreachedLegendCellEnabled,
+    allWallLegendCellEnabled,
+    tradedRankArrowEnabled,
+    unreachedRankArrowEnabled,
+    allWallRankArrowEnabled,
     lineWidth,
-    rankArrowEnabled,
+    legendRankSegments,
+    arrowRankSegments,
   ]);
 }

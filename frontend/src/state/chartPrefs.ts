@@ -17,6 +17,11 @@
  * sub-pref alone is not load-bearing). Nesting is one level — a gated toggle
  * must not itself be a parent.
  */
+import {
+  PEAK_WALL_FAMILY_NUMERICS,
+  PEAK_WALL_FAMILY_TOGGLES,
+} from './peakWallFamilyPrefs';
+
 export const CHART_TOGGLES = [
   {
     key: 'auctionWindowMask',
@@ -205,99 +210,11 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'askPeakLabelEnabled',
-    label: '최대벽 라벨 표시',
-    description: '당일 매도 최대벽 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
-    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
-    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
-    // (레전드 눈 아이콘이 그 자리다).
-    key: 'askPeakLegendCellEnabled',
-    label: '레전드 순위 셀',
-    description: '보이는 영역의 매도 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'askPeakRankArrowEnabled',
-    label: '상위벽 순위 화살표',
-    description:
-      '레전드 상위 3개 매도벽이 걸린 분봉의 고가 위에 ↓ 화살표와 순위를 찍습니다. 수평선은 벽 가격에 그려지므로 어느 봉이었는지는 이 화살표로 읽습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 방향을 키 이름에 박아 둔다 — 매도는 위, 매수는 아래로 **비대칭**이라
-    // `askPeakMaFilterEnabled` 같은 중립 이름이면 코드에서 방향을 다시 찾아야 한다.
-    key: 'askPeakAboveMaEnabled',
-    label: '이동평균선 위 벽만',
-    description:
-      '벽이 걸린 분봉의 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 형제: `askPeakAboveMaEnabled`(현재 보고 있는 분봉의 MA). 둘은 **독립 필터**라 둘 다
-    // 켜면 교집합이다 — 분봉 MA 위 **그리고** 일봉 MA 위인 벽만 남는다.
-    key: 'askPeakAboveDailyMaEnabled',
-    label: '일봉 이동평균선 위 벽만',
-    description:
-      '벽이 걸린 거래일의 일봉 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
     key: 'bidPeakIntraMax',
     label: '분봉 내 최댓값 기준',
     description:
       '분봉 종가 호가창 대신 분봉 내 순간 최대 매수벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
     default: false,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakLabelEnabled',
-    label: '최대벽 라벨 표시',
-    description: '당일 매수 최대벽 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 표면 토글 셋(수평선·라벨·화살표) 중 레전드 몫. **기본 true** 라 기존 동작이
-    // 그대로다 — 종전엔 레전드 셀에 끄는 표면이 아예 없었다.
-    // 끄는 것은 **셀뿐이고 행은 남는다** — 행이 사라지면 다시 켤 표면이 없어진다
-    // (레전드 눈 아이콘이 그 자리다).
-    key: 'bidPeakLegendCellEnabled',
-    label: '레전드 순위 셀',
-    description: '보이는 영역의 매수 최대벽 상위 3개를 레전드에 순위와 함께 표시합니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakRankArrowEnabled',
-    label: '상위벽 순위 화살표',
-    description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 매도의 거울: 저항은 평균 위, 지지는 평균 아래에 선다는 읽기의 대칭.
-    key: 'bidPeakBelowMaEnabled',
-    label: '이동평균선 아래 벽만',
-    description:
-      '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakBelowDailyMaEnabled',
-    label: '일봉 이동평균선 아래 벽만',
-    description:
-      '벽이 걸린 거래일의 일봉 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
-    default: true,
     category: 'indicator-modal',
   },
   {
@@ -327,6 +244,12 @@ export const CHART_TOGGLES = [
     default: true,
     category: 'trade-window',
   },
+  // ── 당일 최대벽 계열별 축 ──────────────────────────────────────────
+  // 라벨·화살표·레전드 셀·MA 필터 둘은 **계열마다** 따로 산다(체결된 벽 · 미도달 벽 ·
+  // 전체 최대벽). 42개 엔트리가 여기 본문에 있으면 나머지 항목이 그 사이에 파묻혀서
+  // 별 파일로 뺐다 — `as const` tuple 은 spread 로도 타입이 보존되므로 키 타입 ·
+  // 기본값 · 저장 검증 · 행 렌더의 파생은 하나도 달라지지 않는다.
+  ...PEAK_WALL_FAMILY_TOGGLES,
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
@@ -472,46 +395,6 @@ export const CHART_NUMERIC_PREFS = [
     kind: 'time',
   },
   {
-    // 범위는 이동평균선 지표의 슬롯 기간(MA_PERIOD_MIN/MAX = 2/400)과 맞춘다. 그 상수를
-    // import 하지 않는 것은 의존 방향 때문 — chartPrefs 는 live 지표 저장소를 모른다.
-    // 기본 20 은 사용자가 지목한 값이자 기본 MA 슬롯(5·20·60·120)에 있는 기간.
-    key: 'askPeakAboveMaPeriod',
-    label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'askPeakAboveMaEnabled',
-  },
-  {
-    // 일봉 MA 는 거래일 계단 함수라(ADR-0073) 기간 단위가 **거래일**이다.
-    key: 'askPeakAboveDailyMaPeriod',
-    label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'askPeakAboveDailyMaEnabled',
-  },
-  {
-    key: 'bidPeakBelowDailyMaPeriod',
-    label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'bidPeakBelowDailyMaEnabled',
-  },
-  {
-    key: 'bidPeakBelowMaPeriod',
-    label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'bidPeakBelowMaEnabled',
-  },
-  {
     // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `askPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
@@ -602,6 +485,8 @@ export const CHART_NUMERIC_PREFS = [
     enabledBy: 'tradeHighlightEnabled',
     category: 'trade-window',
   },
+  // 계열별 MA 기간 — 각 계열의 필터 토글이 `enabledBy` 로 게이트한다(위 spread 의 짝).
+  ...PEAK_WALL_FAMILY_NUMERICS,
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
