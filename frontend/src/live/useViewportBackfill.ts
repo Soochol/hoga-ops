@@ -473,6 +473,14 @@ export function useViewportBackfill({
           savedRightPaddingBars: snap.rightPaddingBars,
         });
         ts.setVisibleLogicalRange(target);
+        // **내구화** — range set 만으로는 lwc 내부 scrollPosition(마지막 봉 기준
+        // 오른쪽 오프셋)이 갱신되지 않아, 다음 setData 재앵커가 직전 오프셋으로
+        // 화면을 되돌린다(2026-08-25 실측: 재착석 223ms 뒤 lwc 가 토글 전 span 을
+        // 재적용했고, 그 덮인 화면을 후속 재투영이 고정해 [-2040,1083] 허공으로
+        // 갔다. set 직후 scrollPosition() 이 여전히 옛값 3534 였던 오전 실측이
+        // 같은 근거다). scrollToPosition 이 그 내부 상태를 바꾸는 유일한 경로다 —
+        // 단위는 (오른쪽 끝 논리 인덱스 − 마지막 봉 인덱스).
+        ts.scrollToPosition(target.to - latestIdx, false);
         return true;
       } catch (e) {
         // 차트가 effect 사이에 사라진 경우. 조용한 no-op 이 "아직 안 고쳐졌다" 로
@@ -631,6 +639,17 @@ export function useViewportBackfill({
         return;
       }
       ts.setVisibleLogicalRange(target);
+      // **내구화** — range set 은 lwc 내부 scrollPosition(마지막 봉 기준 오른쪽
+      // 오프셋)을 갱신하지 않아, 다음 setData 재앵커가 직전 오프셋으로 화면을
+      // 되돌린다(근거·실측은 `reseatAfterSourceSwap` 의 같은 주석). 재투영이 앉힌
+      // 자리를 내부 상태에도 새겨 고정이 커밋을 넘어 살아남게 한다.
+      const lastIdx = ts.timeToIndex(
+        realMsToVirtualSeconds(axis, candles[candles.length - 1].ts_ms) as Time,
+        true,
+      );
+      if (typeof lastIdx === 'number' && Number.isFinite(lastIdx)) {
+        ts.scrollToPosition(target.to - lastIdx, false);
+      }
     } catch (e) {
       // Reachable in practice only when the chart tears down between effect
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
