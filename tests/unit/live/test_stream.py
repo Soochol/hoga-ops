@@ -399,6 +399,16 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
             {"price": 101, "qty": 3, "t_ms": now + 5_000},
             {"price": 103, "qty": 1, "t_ms": now + 5_000},
         ],
+        # 당일 고가 101 위의 벽만 미도달이다(101 벽은 도달로 제외).
+        "unreached_price": 102,
+        "unreached_qty": 9,
+        "unreached_t_ms": now + 5_000,
+        "unreached_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now + 5_000},
+            {"price": 103, "qty": 1, "t_ms": now + 5_000},
+            {"price": 104, "qty": 1, "t_ms": now + 5_000},
+        ],
+        "day_extreme": 101,
     }
 
 
@@ -429,6 +439,16 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
             {"price": 70_000, "qty": 5_000, "t_ms": now + 5_000},
             {"price": 68_450, "qty": 100, "t_ms": now + 5_000},
         ],
+        # 당일 저가 70,000 아래의 벽만 미도달이다(70,000 매수벽은 도달로 제외).
+        "unreached_price": 68_900,
+        "unreached_qty": 12_000,
+        "unreached_t_ms": now + 5_000,
+        "unreached_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": now + 5_000},
+            {"price": 68_450, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_500, "qty": 100, "t_ms": now + 5_000},
+        ],
+        "day_extreme": 70_000,
     }
 
 
@@ -475,6 +495,15 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_pa
             {"price": 101, "qty": 3, "t_ms": now},
             {"price": 103, "qty": 1, "t_ms": now},
         ],
+        "unreached_price": 102,
+        "unreached_qty": 9,
+        "unreached_t_ms": now,
+        "unreached_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
+            {"price": 104, "qty": 1, "t_ms": now},
+        ],
+        "day_extreme": 101,
     }
 
 
@@ -516,6 +545,15 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
             {"price": 70_000, "qty": 5_000, "t_ms": now},
             {"price": 68_450, "qty": 100, "t_ms": now},
         ],
+        "unreached_price": 68_900,
+        "unreached_qty": 12_000,
+        "unreached_t_ms": now,
+        "unreached_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": now},
+            {"price": 68_450, "qty": 100, "t_ms": now},
+            {"price": 68_500, "qty": 100, "t_ms": now},
+        ],
+        "day_extreme": 70_000,
     }
 
 
@@ -542,6 +580,16 @@ async def test_on_tick_orderbook_populates_all_peak_arrays_without_trades(tmp_pa
             {"price": 101, "qty": 3, "t_ms": now},
             {"price": 103, "qty": 1, "t_ms": now},
         ],
+        # 체결 0건 — 극값이 없으니 모든 벽이 미도달이다.
+        "unreached_price": 102,
+        "unreached_qty": 9,
+        "unreached_t_ms": now,
+        "unreached_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now},
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
+        ],
+        "day_extreme": None,
     }
 
 
@@ -585,6 +633,16 @@ async def test_on_tick_continuous_trade_touches_every_same_minute_wall_at_or_bel
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
             {"price": 103, "qty": 1, "t_ms": now},
         ],
+        # 극값 101 이 101 벽을 소급 제거 — 이후 101@8 도 삽입 시점에 이미 도달이라 안 담긴다.
+        "unreached_price": 102,
+        "unreached_qty": 9,
+        "unreached_t_ms": now,
+        "unreached_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
+            {"price": 104, "qty": 1, "t_ms": now},
+        ],
+        "day_extreme": 101,
     }
 
 
@@ -825,6 +883,16 @@ async def test_today_peak_seed_loads_full_day_ask_peak_and_full_coverage(tmp_pat
             {"price": 10_400, "qty": 700, "t_ms": _kst_ms(9, 10)},
             {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
         ],
+        # 재생 극값 10,100 이 10,100 벽을 제거 — 그 위 세 벽만 미도달이다.
+        "unreached_price": 10_200,
+        "unreached_qty": 900,
+        "unreached_t_ms": _kst_ms(9, 10),
+        "unreached_peaks": [
+            {"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)},
+            {"price": 10_400, "qty": 700, "t_ms": _kst_ms(9, 10)},
+            {"price": 10_300, "qty": 10, "t_ms": _kst_ms(9, 10)},
+        ],
+        "day_extreme": 10_100,
     }
 
 
@@ -894,6 +962,16 @@ async def test_today_peak_seed_loads_full_day_bid_peak_and_full_coverage(tmp_pat
                 "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
             },
         ],
+        # 재생 저가 70,000 아래의 벽만 미도달(70,000 매수벽은 도달로 제외).
+        "unreached_price": 68_900,
+        "unreached_qty": 12_000,
+        "unreached_t_ms": _bid_ob_ms,
+        "unreached_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": _bid_ob_ms},
+            {"price": 68_450, "qty": 100, "t_ms": _bid_ob_ms},
+            {"price": 68_500, "qty": 100, "t_ms": _bid_ob_ms},
+        ],
+        "day_extreme": 70_000,
     }
 
 

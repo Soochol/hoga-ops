@@ -52,6 +52,8 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     # 최대벽 — 가격 변형이 네 갈래다(체결/전체 × 스냅샷/일중최대; ADR-0156 이 미체결 계열 제거)
     "AskPeak.price", "AskPeak.max_price", "AskPeak.all_price", "AskPeak.all_max_price",
     "BidPeak.price", "BidPeak.max_price", "BidPeak.all_price", "BidPeak.all_max_price",
+    # 미도달 벽 — cont 단일 계열이라 rank-1 스칼라 하나(close/max 구분 없음).
+    "AskPeak.unreached_price", "BidPeak.unreached_price",
     "AskPeakCandidate.price",
     # VI·상하한 히트
     "PriceLevelHit.price",
@@ -131,11 +133,15 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     # 가격 분류를 받는다. FE 곱셈은 scalePeak 의 rank() 가 담당(다른 배열과 동일).
     "AskPeak.traded_record_peaks", "AskPeak.traded_record_max_peaks",
     "AskPeak.all_peaks", "AskPeak.all_max_peaks",
+    # 미도달 — 컨테이너·수량·시각. 가격은 내부 AskPeakCandidate.price 가 받고
+    # FE 곱셈은 scalePeak 의 rank() + unreached_price 스칼라가 담당.
+    "AskPeak.unreached_peaks", "AskPeak.unreached_qty", "AskPeak.unreached_t_ms",
     "BidPeak.date", "BidPeak.qty", "BidPeak.t_ms", "BidPeak.max_qty", "BidPeak.max_t_ms",
     "BidPeak.all_qty", "BidPeak.all_t_ms", "BidPeak.all_max_qty", "BidPeak.all_max_t_ms",
     "BidPeak.traded_peaks", "BidPeak.traded_max_peaks",
     "BidPeak.traded_record_peaks", "BidPeak.traded_record_max_peaks",
     "BidPeak.all_peaks", "BidPeak.all_max_peaks",
+    "BidPeak.unreached_peaks", "BidPeak.unreached_qty", "BidPeak.unreached_t_ms",
     "AskPeakCandidate.qty", "AskPeakCandidate.t_ms",
     "PriceLevelHit.date", "PriceLevelHit.t_ms", "PriceLevelHit.kind",
     "PriceLevelHit.direction", "PriceLevelHit.pct",

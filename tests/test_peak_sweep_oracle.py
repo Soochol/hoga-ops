@@ -203,6 +203,36 @@ def _peak_scalar(rows: list[_WallEvent]) -> tuple[int, int, int] | None:
     return (e.price, e.qty, e.intra_ms)
 
 
+def _unreached_rows(
+    classified: list[tuple[_WallEvent, bool]],
+    touches: list[_Touch],
+    *,
+    side: str,
+) -> list[_WallEvent]:
+    """미도달의 소박한 판: 당일 체결 극값이 가격으로 지배하지 못한 이벤트 전부.
+
+    체결이 0건이면 전부 미도달이다. 프로덕션(`_unreached_wall_frame`)과 구조를
+    공유하지 않도록 이벤트별 전수 비교로 둔다.
+    """
+    rows = [e for e, _t in classified]
+    if not touches:
+        return rows
+    if side == "ask":
+        extreme = max(t.price for t in touches)
+        return [e for e in rows if e.price > extreme]
+    extreme = min(t.price for t in touches)
+    return [e for e in rows if e.price < extreme]
+
+
+def _price_distinct(rows: list[_WallEvent]) -> list[_WallEvent]:
+    best: dict[int, _WallEvent] = {}
+    for e in rows:
+        cur = best.get(e.price)
+        if cur is None or _event_rank_key(e) < _event_rank_key(cur):
+            best[e.price] = e
+    return list(best.values())
+
+
 def oracle_query_day_ask_bid_peak_dual(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -233,6 +263,7 @@ def oracle_query_day_ask_bid_peak_dual(
 
         rep_traded = list(rep_distinct.values())
         cont_traded = list(cont_distinct.values())
+        unreached = _unreached_rows(cont_classified, touches, side=side)
 
         return {
             "all_close": all_close,
@@ -245,6 +276,8 @@ def oracle_query_day_ask_bid_peak_dual(
             "traded_record_max_peaks": _record_sequence(cont_classified),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
+            "unreached": _peak_scalar(unreached),
+            "unreached_peaks": _peak_candidates(_price_distinct(unreached), 3),
         }
 
     ask = _side_row("ask")
@@ -252,7 +285,7 @@ def oracle_query_day_ask_bid_peak_dual(
 
     ask_row: AskPeakDualRow | None = None
     if ask is not None:
-        tc, tm = ask["traded_close"], ask["traded_max"]
+        tc, tm, ur = ask["traded_close"], ask["traded_max"], ask["unreached"]
         ask_row = AskPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -262,11 +295,14 @@ def oracle_query_day_ask_bid_peak_dual(
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=ask["unreached_peaks"],
         )
 
     bid_row: BidPeakDualRow | None = None
     if bid is not None:
-        tc, tm = bid["traded_close"], bid["traded_max"]
+        tc, tm, ur = bid["traded_close"], bid["traded_max"], bid["unreached"]
         bid_row = BidPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -276,6 +312,9 @@ def oracle_query_day_ask_bid_peak_dual(
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=bid["unreached_peaks"],
         )
     return ask_row, bid_row
 

@@ -40,6 +40,12 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
         "all_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        # 체결 0건 — 극값이 없으니 모든 벽이 미도달이다.
+        "unreached_price": 10_100,
+        "unreached_qty": 500,
+        "unreached_t_ms": at(10, 1_000),
+        "unreached_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "day_extreme": None,
     }
 
     state.ingest_trade(price=10_100, side=1, t_ms=at(10, 2_000))
@@ -54,6 +60,12 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
         "all_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        # 체결 극값(10_100)이 벽 가격에 도달 — 미도달에서 소급 제거된다.
+        "unreached_price": None,
+        "unreached_qty": None,
+        "unreached_t_ms": None,
+        "unreached_peaks": [],
+        "day_extreme": 10_100,
     }
 
 
@@ -274,3 +286,77 @@ def test_rank_one_matches_full_sort_first_element() -> None:
             assert _rank_one(peaks) == _ranked_peaks(peaks)[0]
 
     assert _rank_one([]) is None
+
+
+# ── 미도달(unreached) 계열 ────────────────────────────────────────────────────
+
+
+def test_unreached_eviction_revives_lower_ranked_wall():
+    """극값 전진이 1위를 소급 제거하면 **하위 벽이 되살아나야 한다** — top-3 offer
+    (`_offer_all`)로는 원리적으로 안 되는 성질이라 가격별 딕셔너리가 존재하는 이유다."""
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10), asks=[
+        {"price": 10_100, "qty": 900},   # 미도달 1위
+        {"price": 10_300, "qty": 300},   # 미도달 2위
+    ])
+
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_100, 900)
+
+    # 체결이 10_200 까지 도달 — 10_100 벽은 소급 제거, 10_300 이 1위로 부활.
+    state.ingest_trade(price=10_200, side=1, t_ms=at(11))
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_300, 300)
+    assert snap["day_extreme"] == 10_200
+    assert snap["unreached_peaks"] == [{"price": 10_300, "qty": 300, "t_ms": at(10)}]
+
+
+def test_unreached_skips_prices_already_dominated_at_insert():
+    """삽입 시점에 이미 극값 이하인 가격은 처음부터 담지 않는다 — 극값이 단조라
+    하루 스코프 정의(최종 극값 기준)와 일치한다."""
+    state = TodayAskPeakState()
+    state.ingest_trade(price=10_200, side=1, t_ms=at(10))
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[
+        {"price": 10_150, "qty": 900},   # 이미 도달된 가격 — 미도달 아님
+        {"price": 10_250, "qty": 100},
+    ])
+
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_250, 100)
+
+
+def test_unreached_bid_symmetry_uses_day_low():
+    state = TodayBidPeakState()
+    state.ingest_orderbook(t_ms=at(10), bids=[
+        {"price": 9_900, "qty": 700},
+        {"price": 9_700, "qty": 200},
+    ])
+    state.ingest_trade(price=9_800, side=-1, t_ms=at(11))
+
+    snap = state.snapshot()
+    # 저가 9_800 이 9_900 을 지배(<=) — 9_700 만 미도달로 남는다.
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (9_700, 200)
+    assert snap["day_extreme"] == 9_800
+
+
+def test_merge_from_absorbs_unreached_and_extreme_idempotently():
+    """재생본 흡수: 극값은 더 지배적인 쪽, 딕셔너리는 larger 병합 후 걷어냄 — 같은
+    재생본을 두 번 흡수해도 고정점이다(merge_from 의 멱등 규약)."""
+    live = TodayAskPeakState()
+    live.ingest_orderbook(t_ms=at(20), asks=[{"price": 10_400, "qty": 50}])
+
+    replay = TodayAskPeakState()
+    replay.ingest_orderbook(t_ms=at(5), asks=[
+        {"price": 10_300, "qty": 800},
+        {"price": 10_400, "qty": 400},
+    ])
+    replay.ingest_trade(price=10_350, side=1, t_ms=at(6))  # 10_300 은 재생 안에서 도달
+
+    live.merge_from(replay)
+    first = live.snapshot()
+    # 재생 극값(10_350)이 흡수돼 10_300 은 없고, 10_400 은 larger(400) 로 병합.
+    assert (first["unreached_price"], first["unreached_qty"]) == (10_400, 400)
+    assert first["day_extreme"] == 10_350
+
+    live.merge_from(replay)
+    assert live.snapshot() == first
