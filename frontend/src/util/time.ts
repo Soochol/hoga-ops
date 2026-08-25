@@ -116,6 +116,21 @@ export function unixMsToKSTClock(ms: number): string {
 }
 
 /**
+ * Unix ms → 그 순간의 **KST 시각(HHMM 정수)**. `900` = 09:00.
+ *
+ * 장중 임계(기준 시각)를 클라이언트에서 적용하기 위한 것 — 임계는 시:분이고
+ * 이벤트는 절대 시각이라, 둘을 비교하려면 하루 안의 위치로 내려야 한다. 날짜가
+ * 여러 개인 구간에서도 자동으로 맞는다(각 이벤트가 자기 날의 시각으로 환산된다).
+ *
+ * `unixMsToKSTClock` 과 같은 +9h 시프트 규약을 쓴다 — 두 함수가 갈리면 같은 순간이
+ * 화면과 필터에서 다른 시각으로 읽힌다.
+ */
+export function unixMsToKSTHhmm(ms: number): number {
+  const d = new Date(ms + 9 * 60 * 60 * 1000); // shift to KST
+  return d.getUTCHours() * 100 + d.getUTCMinutes();
+}
+
+/**
  * Format a Unix-ms timestamp as the YYYYMMDD of the KST calendar day it
  * falls into. Used by the read-path Cursor → Stock-Date resolver:
  * `useCursor` needs the Stock-Date matching the chart's right-edge

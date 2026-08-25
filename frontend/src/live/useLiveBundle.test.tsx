@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -300,7 +301,6 @@ describe('planLiveRangeRequest', () => {
       depthDeltaEnabled: false,
       wallSurgeEnabled: true,
       brokerLateEntryEnabled: true,
-      brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
@@ -315,7 +315,9 @@ describe('planLiveRangeRequest', () => {
         askPeaksEnabled: false,
         bidPeaksEnabled: true,
         brokerLateEntriesEnabled: true,
-        brokerLateEntryStartHHMM: 945,
+        // 기준 시각은 **항상 최소값**으로 보낸다 — 사용자의 임계는 클라이언트 필터라
+        // 쿼리 키에서 빠졌다(그래서 시각을 바꿔도 재조회가 없다).
+        brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
         programTradeEnabled: true,
         tradeVolumePocEnabled: true,
         depthHeatmapEnabled: true,
@@ -349,7 +351,6 @@ describe('planLiveRangeRequest', () => {
     depthDeltaEnabled: false,
     wallSurgeEnabled: false,
     brokerLateEntryEnabled: false,
-    brokerLateEntryStartHHMM: 900,
     programTradeEnabled: false,
     volumeDistributionEnabled: false,
     volumeDistributionRangeCount: 12,
@@ -381,7 +382,6 @@ describe('planLiveRangeRequest', () => {
       depthDeltaEnabled: false,
       wallSurgeEnabled: true,
       brokerLateEntryEnabled: false,
-      brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
       volumeDistributionEnabled: false,
       volumeDistributionRangeCount: 12,
@@ -442,7 +442,6 @@ describe('planLiveRangeRequest — 저장뷰 얼림', () => {
     depthDeltaEnabled: false,
     wallSurgeEnabled: true,
     brokerLateEntryEnabled: true,
-    brokerLateEntryStartHHMM: 945,
     programTradeEnabled: true,
     volumeDistributionEnabled: true,
     volumeDistributionRangeCount: 12,
