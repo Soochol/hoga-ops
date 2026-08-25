@@ -214,6 +214,11 @@ vi.mock('./useLiveBundle', () => ({
       clampEngaged: false,
       isPastCandlesLoading: false,
       pastDataWarnings: [],
+      // 실제 훅이 항상 싣는 보충 결과 — ChartWindow 의 진행 칩 게이트가 읽는다.
+      gapFill: {
+        candles: [], filledDates: new Set<string>(), rescaledDates: [],
+        unfillableCount: 0, deferredCount: 0, remainingRuns: 0, isFetching: false,
+      },
     };
   },
 }));

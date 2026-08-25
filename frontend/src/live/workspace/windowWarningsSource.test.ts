@@ -90,4 +90,29 @@ describe('backfillProgressDate', () => {
     // 진행 표시는 단조로워야 읽힌다.
     expect(backfillProgressDate({ ...BASE, settledFromDate: '20260801' })).toBe('20260701');
   });
+
+  // ── 보충(gap fill) 대기도 칩을 세운다 (2026-08-25) ────────────────────
+  // 구멍 구간을 팬으로 건널 때의 실측(010140 5m, 06-15~07-02 캡처 구멍 16일):
+  // extend→stop 은 7초에 끝났지만 그 뒤 키움 보충 3콜이 도는 십수 초 동안 화면은
+  // whitespace 였고, 칩은 extending 게이트라 꺼져 있었다 — **가장 긴 대기가 표시
+  // 없는 구간**이라 사용자에겐 "갑자기 빈 화면 = 고장" 으로 읽혔다.
+  it('확장이 끝나도 보충이 남아 있으면 칩을 유지한다', () => {
+    expect(
+      backfillProgressDate({ ...BASE, extending: false, gapFillPending: true }),
+    ).toBe('20260609');
+  });
+
+  it('보충도 확장도 없으면 종전대로 null — 게이트가 넓어지기만 한 것이 아니다', () => {
+    expect(
+      backfillProgressDate({ ...BASE, extending: false, gapFillPending: false }),
+    ).toBeNull();
+  });
+
+  it('보충 대기라도 창이 없으면(첫 로드) 띄우지 않는다 — 기존 게이트는 그대로다', () => {
+    expect(
+      backfillProgressDate({
+        ...BASE, extending: false, gapFillPending: true, historicalFromDate: null,
+      }),
+    ).toBeNull();
+  });
 });

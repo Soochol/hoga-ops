@@ -244,7 +244,13 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
 
   const accRef = useRef<Accumulator>(emptyAccumulator());
   const processedRef = useRef<Set<string>>(new Set());
-  /** 두 ref 의 **버전**. 흡수 1회당 정확히 1 오른다 — 렌더 트리거를 겸한다. */
+  /** 이미 처리(흡수 또는 실패 포기)한 **날짜** — run 재계획의 증분 축.
+   *  run 키 집합(processedRef)만으로는 부족하다: 창이 자라면 같은 구멍이 더 넓은
+   *  [from,to] 의 **다른 키**로 재계획돼 이미 받은 날짜를 겹쳐 페치한다. */
+  const processedDatesRef = useRef<Set<string>>(new Set());
+  /** 지금 fetch 중인 run 래치 — 선언은 여기, 붙드는 이유는 아래 `run` 메모 주석. */
+  const activeRunRef = useRef<GapFillRun | null>(null);
+  /** 세 ref 의 **버전**. 흡수 1회당 정확히 1 오른다 — 렌더 트리거를 겸한다. */
   const [absorbed, setAbsorbed] = useState(0);
   const [seenIdentity, setSeenIdentity] = useState(identity);
   if (seenIdentity !== identity) {
@@ -254,21 +260,57 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
     setAbsorbed(0);
     accRef.current = emptyAccumulator();
     processedRef.current = new Set();
+    processedDatesRef.current = new Set();
+    activeRunRef.current = null;
   }
 
   /**
-   * 아직 처리하지 않은 **첫 run**.
+   * **요청 계획은 아직 처리하지 않은 날짜로만 다시 세운다** (2026-08-25).
    *
-   * 인덱스 커서가 아니라 처리 집합으로 고른다 — 계획이 자라도(팬) 이미 받은 run 을
-   * 다시 걷지 않기 위해서다. `chunkRun` 이 **뒤(최신)에서부터** 자르므로 앞쪽에 오래된
-   * 날짜가 붙어도 기존 청크의 키가 그대로 남아, 새로 생긴 청크만 요청된다.
+   * 종전 주석은 "`chunkRun` 이 뒤에서부터 자르므로 기존 청크의 키가 그대로 남는다"
+   * 였는데, 그 성질은 **가득 찬 청크에만** 성립한다. 구멍 하나가 창 확장을 따라
+   * 왼쪽으로 자라면 마지막(부분) 청크의 from 이 매번 갈려 **다른 키의 상위집합**으로
+   * 재계획됐다 — 실측(010140 5m, 06-15~07-02 구멍): 0624~0702 ⊂ 0617~0702 ⊂
+   * 0611~0702 세 번 겹쳐 페치(55→94→126KB). 흡수한 날짜를 계획 입력에서 빼면 다음
+   * 요청이 **새 날짜만** 덮고, 구멍 건너기의 빈 화면 시간이 그만큼 준다.
+   *
+   * ⚠ 전체 계획(`plan`)은 그대로 남는다 — `wantedDates` 가 전체 계획에서 나와야
+   * 이미 채운 날짜의 봉이 화면 fold 에서 살아남는다. 실패한 run 의 날짜도 처리로
+   * 표시한다(`retry: false` 철학 그대로 — 종전엔 상위집합 재계획이 우연히 재시도를
+   * 만들었는데, 그건 보장이 아니라 낭비의 부산물이었다).
+   */
+  const unfilledMissing = useMemo(
+    () => (missingDates ?? []).filter((m) => !processedDatesRef.current.has(m.date)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedDatesRef 의 버전
+    [missingDates, absorbed, seenIdentity],
+  );
+  const runPlan = useMemo(
+    () => (active
+      ? planMinuteGapFill({ missingDates: unfilledMissing, todayKstYyyymmdd, bucketMs })
+      : { runs: [], unfillable: [], deferred: [] }),
+    [active, unfilledMissing, todayKstYyyymmdd, bucketMs],
+  );
+
+  /**
+   * 아직 처리하지 않은 **첫 run** — 단, **진행 중인 run 은 settle 까지 붙든다.**
+   *
+   * 흡수 전에 창이 또 자라면(서버가 빠를 때의 실제 순서) 재계획이 상위집합 run 을
+   * 만드는데, 거기로 갈아타는 순간 미완 fetch 는 버려지고 같은 구간을 처음부터 다시
+   * 받는다 — 날짜 증분화만으로는 못 막는 두 번째 겹침 경로다(도그푸딩 실측: 0702 →
+   * 0625~0702 → 0618~0702 → 0611~0702 상위집합 연쇄). 래치는 흡수(성공·실패 모두
+   * processedRef 마킹)에서 풀리고, 그다음 재계획은 증분이라 새 날짜만 남는다.
    */
   const run = useMemo<GapFillRun | null>(
-    () => (active
-      ? plan.runs.find((r) => !processedRef.current.has(gapFillRunKey(r))) ?? null
-      : null),
+    () => {
+      if (!active) { activeRunRef.current = null; return null; }
+      const held = activeRunRef.current;
+      if (held && !processedRef.current.has(gapFillRunKey(held))) return held;
+      const next = runPlan.runs.find((r) => !processedRef.current.has(gapFillRunKey(r))) ?? null;
+      activeRunRef.current = next;
+      return next;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedRef 의 버전
-    [active, plan.runs, absorbed, seenIdentity],
+    [active, runPlan.runs, absorbed, seenIdentity],
   );
 
   const query = useQuery({
@@ -299,6 +341,7 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
       return;
     }
     processedRef.current.add(key);
+    for (const date of run.dates) processedDatesRef.current.add(date);
     setAbsorbed((n) => n + 1);
   }, [run, data, isSuccess, isError]);
 
@@ -328,9 +371,9 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
   // 인덱스 차가 아니라 **미처리 run 수**다 — 계획이 자라도(팬) 이미 받은 run 은 세지
   // 않는다. 이 값이 0 이면 이 창의 보충이 끝났다는 뜻이고 빈 상태·안내가 그걸 읽는다.
   const remainingRuns = useMemo(
-    () => plan.runs.filter((r) => !processedRef.current.has(gapFillRunKey(r))).length,
+    () => runPlan.runs.filter((r) => !processedRef.current.has(gapFillRunKey(r))).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedRef 의 버전
-    [plan.runs, absorbed, seenIdentity],
+    [runPlan.runs, absorbed, seenIdentity],
   );
   return useMemo<MinuteGapFillResult>(
     () => (active

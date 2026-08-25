@@ -610,6 +610,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       // 되돌리는 회귀는 렌더층 테스트가 못 본다(그쪽은 발행된 값을 그릴 뿐이다).
       backfillEarliestDate: backfillProgressDate({
         extending,
+        // 키움 보충 대기 — 구멍 구간을 건널 때 확장이 끝난 뒤에도 이어지는 가장 긴
+        // 대기다(커널 도크스트링의 실측). 지수 창은 보충 경로가 없다.
+        gapFillPending:
+          !d.activeIndexId && (d.gapFill.isFetching || d.gapFill.remainingRuns > 0),
         historicalFromDate: view.historicalFromDate,
         settledFromDate: d.activeIndexId ? d.indexSettledFromDate : d.pastSettledFromDate,
         earliestSegmentDate: segs && segs.length > 0 ? segs[0].date : null,

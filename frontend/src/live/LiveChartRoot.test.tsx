@@ -3418,10 +3418,13 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // The initial-view effect did NOT re-fire (still no scrollToPosition);
-    // the repositioner added exactly one setVisibleLogicalRange (1 → 2).
-    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+    // The initial-view effect did NOT re-fire — setVisibleLogicalRange stays at
+    // exactly 2 (initial window + the repositioner's one reposition). The
+    // repositioner's set now carries ONE durability sync (scrollToPosition,
+    // 2026-08-25 내구화 계약) — a re-fired initial view would have added a third
+    // setVisibleLogicalRange, which the count above rules out.
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+    expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
   });
 
   // Staleness-freedom regression (/diagnose 2026-06-05, the saga's crown jewel).
@@ -3610,6 +3613,39 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // span 이 3봉으로 접힌다 — 이 클램프가 없으면 화면 왼쪽이 통째로 빈다.
     expect(target.from).toBe(latest + 1 - DISK_TS.length);
     expect(target.to).toBeGreaterThan(latest);
+  });
+
+  it('재착석은 내구적이어야 한다 — range set 뒤 scrollToPosition 으로 내부 오프셋 동기화', () => {
+    // 2026-08-25 사용자 실측(047040 5m 장중): 재착석이 정상 위치에 앉혔는데
+    // **다음 데이터 커밋에서 lwc 가 토글 전 내부 scrollPosition(span 3123)을 도로
+    // 재적용**해 재착석을 덮었고, 그 덮인 화면을 후속 재투영이 충실히 고정해
+    // [-2040,1083] 허공으로 갔다. setVisibleLogicalRange 는 lwc 내부 오프셋을
+    // 갱신하지 않는다(오전 실측: set 직후 scrollPosition() 이 여전히 3534) —
+    // scrollToPosition 만이 setData 재앵커가 참조하는 상태를 바꾼다.
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(DISK_TS)}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    const latest = todayIdx(DISK_TS[2]);
+    // lwc 의 scrollPosition 단위 = 오른쪽 끝 논리 인덱스 - 마지막 봉 인덱스.
+    expect(ts.scrollToPosition).toHaveBeenLastCalledWith(target.to - latest, false);
   });
 
   it('panned: 소스가 갈리면 보던 시각을 앵커로 재투영한다(라이브 엣지 배치가 아니다)', () => {
@@ -3844,6 +3880,14 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       from: LR_FROM + INSERT_SHIFT,
       to: LR_TO + INSERT_SHIFT,
     });
+    // 내구성: 재투영도 lwc 내부 오프셋을 함께 동기화해야 다음 setData 재앵커가
+    // 이 고정을 되돌리지 못한다(2026-08-25 실측 — 재착석 항목의 근거와 동일).
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const lastIdx = Math.round(realMsToVirtualSeconds(axis, LAST)) + INSERT_SHIFT;
+    expect(h.ts.scrollToPosition).toHaveBeenLastCalledWith((LR_TO + INSERT_SHIFT) - lastIdx, false);
   });
 
   it('SSE 성장(마지막 봉이 늘어나는 것)에는 손대지 않는다', () => {
