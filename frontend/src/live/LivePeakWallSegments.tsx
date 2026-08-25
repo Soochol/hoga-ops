@@ -93,8 +93,8 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
       primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
       legendId,
     );
-    registerFlagLegendValues(windowId, legendId, provider);
-    return () => unregisterFlagLegendValues(windowId, legendId, provider);
+    registerFlagLegendValues(windowId, legendId, 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, legendId, 'main', provider);
   }, [windowId, legendId]);
 
   // 그리기 — 팬·줌은 구독하지 않는다. 이 계산에 보이는 범위가 들어가지 않기 때문이다

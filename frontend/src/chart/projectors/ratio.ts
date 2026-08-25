@@ -308,7 +308,7 @@ export const RATIO_SPEC = {
         // 모듈 전역 스냅샷을 없앴다(멀티창에서 마지막 창이 전역 값을 덮어쓰던 원인).
         // 비반응형 Map 이라 이 갱신은 레전드 재렌더를 유발하지 않는다(P1 유지);
         // 레전드는 크로스헤어/dataEpoch 시점에 최신 provider 를 lazy 하게 읽는다.
-        registerFlagLegendValues(ctx.windowId ?? null, 'broker-late-entry', (cursorTimeSec) =>
+        registerFlagLegendValues(ctx.windowId ?? null, 'broker-late-entry', 'main', (cursorTimeSec) =>
           brokerLegendCells(points, axis, cursorTimeSec),
         );
         return ctx.brokerLateEntryHidden ? [] : points;

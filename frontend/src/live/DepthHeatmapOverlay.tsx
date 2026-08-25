@@ -256,8 +256,8 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       if (maxAsk) out.push({ key: 'dh-ask', label: '매도', color: askColor, value: formatPriceQty(maxAsk.price, maxAsk.qty) });
       return out;
     };
-    registerFlagLegendValues(windowId, 'depth-heatmap', provider);
-    return () => unregisterFlagLegendValues(windowId, 'depth-heatmap', provider);
+    registerFlagLegendValues(windowId, 'depth-heatmap', 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, 'depth-heatmap', 'main', provider);
   }, [windowId, points, axis, intraMax, bidColor, askColor]);
 
   return null;

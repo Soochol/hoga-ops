@@ -30,6 +30,7 @@
 
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { LiveMAConfig } from '../state/livePage';
+import type { FlagIndicatorType } from '../state/indicatorOps';
 import type { PaneId } from '../chart/drawing/types';
 import type { PanePrefKey } from './indicators/indicatorPaneProfiles';
 import { formatKoreanInt } from '../util/koreanNumber';
@@ -58,16 +59,12 @@ export type LegendCell = {
 };
 
 /** Overlay indicators without a cursor value — legend shows a name chip
- *  (swatches + label + ✕) only. Ids double as the ✕ → store-setter dispatch
- *  key in `PaneLegendOverlay`. Most draw on the candle pane; broker late-entry
- *  markers attach to the ratio pane (RATIO_SPEC `labelMarkers`). */
-export type LegendFlagId =
-  | 'ask-peak'
-  | 'bid-peak'
-  | 'trade-volume-poc'
-  | 'depth-heatmap'
-  | 'depth-delta'
-  | 'broker-late-entry';
+ *  (swatches + label + ✕) only. Most draw on the candle pane; broker late-entry
+ *  markers attach to the ratio pane (RATIO_SPEC `labelMarkers`).
+ *
+ *  정본은 `state/indicatorOps` 의 `FLAG_INDICATOR_TYPES` 다 — 삭제 대상 필드표가
+ *  거기 살고, 레전드는 그 목록의 **표현**이다. 이름은 소비처 호환으로 남긴다. */
+export type LegendFlagId = FlagIndicatorType;
 
 /** One pre-formatted value cell of a flag row (values come from
  *  `flagLegendValueRegistry` providers — 지표별 포맷을 provider가 소유). */
@@ -83,7 +80,13 @@ export type LegendFlagCell = {
  *  timeframe" (all five are minute-only, mirroring their mount gates).
  *  `hidden` = 눈 토글(그리기만 숨김 — 행과 값은 유지, MA 규칙 미러). */
 export type LegendFlagInput = {
-  id: LegendFlagId;
+  /** 지표 **종류**(구 `id`). 인스턴스가 아니다. */
+  type: LegendFlagId;
+  /** 그 종류 안에서의 인스턴스 — flat 싱글턴은 `'main'` 고정.
+   *  값이 하나뿐인데도 축을 세우는 이유: 값 provider 레지스트리와 ✕ 디스패치가
+   *  **종류만으로 키하면 두 번째 인스턴스가 첫 번째를 조용히 덮는다**(창 스코프를
+   *  키에 넣은 것과 같은 사고 — `flagLegendValueRegistry` 헤더의 실측 사례). */
+  instanceId: string;
   paneId: PaneId;
   label: string;
   enabled: boolean;
@@ -116,7 +119,8 @@ export type LegendRow =
   | {
       paneId: PaneId;
       kind: 'flag';
-      id: LegendFlagId;
+      type: LegendFlagId;
+      instanceId: string;
       label: string;
       swatches: readonly string[];
       hidden: boolean;
@@ -241,7 +245,8 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
     rows.push({
       paneId: flag.paneId,
       kind: 'flag',
-      id: flag.id,
+      type: flag.type,
+      instanceId: flag.instanceId,
       label: flag.label,
       swatches: flag.swatches,
       hidden: flag.hidden,

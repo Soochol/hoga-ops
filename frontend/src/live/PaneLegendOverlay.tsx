@@ -68,6 +68,7 @@ import {
   type PaneCellInput,
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
+import { FLAG_INDICATOR_TYPES } from '../state/indicatorOps';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -134,19 +135,26 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'peak-wall',
 ]);
 
-/** flag 행(값 없는 오버레이 지표)의 표시 화이트리스트 — `LEGEND_CELL_PANES` 와 같은 성격.
- *  2026-07-22 에 캔들 pane 밀집도 때문에 flag 행을 **전부** 숨겼다. 당일 최대벽 두 행만
- *  2026-08-22 에 되살린다(사용자 요청): 값이 「커서가 올라간 거래일의 벽 1개」에서
- *  「보이는 영역 잔량 상위 3개」로 바뀌어, 커서를 따라다니는 단발 판독이 아니라 **화면
- *  전체의 요약**이 됐다 — 커서를 올리지 않아도 읽을 값이 있으므로 레전드 자리가 정당하다.
- *  나머지 flag(매물대·히트맵·단별잔량·신규거래원)는 계속 숨긴다.
+/**
+ * flag 행(값 없는 오버레이 지표)의 표시 목록 — 이제 **전 종류**다.
  *
- *  ⚠ 상위 3개가 비어도(보이는 범위에 벽 없음) 행은 남는다 — 행을 지우면 눈·✕ 가 함께
- *  사라져 레전드에서 지표를 끌 수 없다. */
-const LEGEND_FLAG_IDS: ReadonlySet<LegendFlagId> = new Set<LegendFlagId>([
-  'ask-peak',
-  'bid-peak',
-]);
+ * 이 상수는 화이트리스트였다. 2026-07-22 에 캔들 pane 밀집도 때문에 flag 행을 전부
+ * 숨겼고, 2026-08-22 에 당일 최대벽 두 행만 되살렸다. **이 PR 이 그 결정을 뒤집는다**
+ * — 레전드 행이 "이 지표가 떠 있다" 의 표식이자 유일한 조작 표면(눈·✕)이 된 이상,
+ * 켜 놓은 지표가 레전드에 없으면 사용자는 그것을 끄러 모달을 열어야 한다.
+ *
+ * 밀집도는 여전히 실재하는 문제지만 이제 **행 숨김이 아니라 가로 축약**으로 푼다
+ * (`global.css` 의 `.legend-ma-value` / `.legend-row-ma` 컨테이너 쿼리). 종류당 1행
+ * 이라 부활의 비용이 +4행에 그치는 것도 판단의 근거다.
+ *
+ * ⚠ 값이 비어도(보이는 범위에 벽 없음, provider 미등록) 행은 남는다 — 행을 지우면
+ * 눈·✕ 가 함께 사라져 레전드에서 지표를 끌 수 없다.
+ */
+const LEGEND_FLAG_IDS: ReadonlySet<LegendFlagId> = new Set<LegendFlagId>(FLAG_INDICATOR_TYPES);
+
+/** flat 싱글턴 flag 지표의 유일한 인스턴스 id. 배열 승격(Phase 3) 전까지 상수다 —
+ *  리터럴을 흩뿌리지 않는 이유는 승격 시 이 상수의 소비처가 곧 작업 목록이기 때문. */
+const FLAG_MAIN_INSTANCE = 'main';
 
 // Positioned by the per-pane stack wrapper (flex column), not absolutely —
 // a pane can now hold several rows (candle: MA + daily-MA + flag chips).
@@ -511,14 +519,10 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
 
 /** ✕ dispatch for flag rows — id → master toggle off. 창-스코프 절단으로
  *  actions 를 인자로 받는다(컴포넌트가 useIndicatorActions 로 공급). */
-const FLAG_TURN_OFF: Record<LegendFlagId, (a: IndicatorActions) => void> = {
-  'ask-peak': (a) => a.setAskPeakEnabled(false),
-  'bid-peak': (a) => a.setBidPeakEnabled(false),
-  'trade-volume-poc': (a) => a.setTradeVolumePocEnabled(false),
-  'depth-heatmap': (a) => a.setDepthHeatmapEnabled(false),
-  'depth-delta': (a) => a.setDepthDeltaEnabled(false),
-  'broker-late-entry': (a) => a.setBrokerLateEntryEnabled(false),
-};
+// 종전에 여기 있던 `FLAG_TURN_OFF`(종류별 `setXxxEnabled(false)` 6줄)는 사라졌다.
+// ✕ 의 뜻이 "끄기" 에서 **"삭제"** 로 바뀌었고, 그 구현은 종류별 분기가 아니라
+// `flagRemovalPatches` 의 필드표 하나다(`removeFlagIndicatorWithUndo`). 분기가 표로
+// 바뀌면서 새 flag 지표를 추가할 때 고칠 곳이 하나 줄었다.
 
 /** 눈(숨김) dispatch — id → hidden setter. */
 const FLAG_SET_HIDDEN: Record<LegendFlagId, (a: IndicatorActions, hidden: boolean) => void> = {
@@ -749,14 +753,14 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
       <HoverIcon
         label={`${row.label} 표시 숨김/표시`}
         restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
-        onClick={() => FLAG_SET_HIDDEN[row.id](indicatorActions, !row.hidden)}
+        onClick={() => FLAG_SET_HIDDEN[row.type](indicatorActions, !row.hidden)}
       >
         <EyeGlyph hidden={row.hidden} />
       </HoverIcon>
       <HoverIcon
-        label={`${row.label} 지표 끄기`}
+        label={`${row.label} 삭제`}
         restColor="var(--fg-dimmer)"
-        onClick={() => FLAG_TURN_OFF[row.id](indicatorActions)}
+        onClick={() => indicatorActions.removeFlagIndicatorWithUndo(row.type)}
       >
         <CloseGlyph />
       </HoverIcon>
@@ -1136,47 +1140,52 @@ function PaneLegendOverlay({
     ?? syncValueTimeSec;
   const indicatorFlags: LegendFlagInput[] = [
     {
-      id: 'ask-peak',
+      type: 'ask-peak',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 매도 최대벽',
       enabled: askPeakEnabled,
       applicable: isMinute,
       hidden: askPeakHidden,
       swatches: [askPeakColor],
-      cells: readFlagLegendValues(windowId, 'ask-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'ask-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'bid-peak',
+      type: 'bid-peak',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 매수 최대벽',
       enabled: bidPeakEnabled,
       applicable: isMinute,
       hidden: bidPeakHidden,
       swatches: [bidPeakColor],
-      cells: readFlagLegendValues(windowId, 'bid-peak', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'bid-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'trade-volume-poc',
+      type: 'trade-volume-poc',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '당일 최대 매물대',
       enabled: tradeVolumePocEnabled,
       applicable: isMinute,
       hidden: tradeVolumePocHidden,
       swatches: [tradeVolumePocColor],
-      cells: readFlagLegendValues(windowId, 'trade-volume-poc', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'trade-volume-poc', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'depth-heatmap',
+      type: 'depth-heatmap',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '호가 잔량 히트맵',
       enabled: depthHeatmapEnabled,
       applicable: isMinute,
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
-      cells: readFlagLegendValues(windowId, 'depth-heatmap', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-heatmap', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'depth-delta',
+      type: 'depth-delta',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'candle',
       label: '단별 잔량 증감',
       enabled: depthDeltaEnabled,
@@ -1187,10 +1196,11 @@ function PaneLegendOverlay({
       applicable: isMinute && hasDepthDelta,
       hidden: depthDeltaHidden,
       swatches: [depthDeltaInColor, depthDeltaOutColor],
-      cells: readFlagLegendValues(windowId, 'depth-delta', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'depth-delta', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     {
-      id: 'broker-late-entry',
+      type: 'broker-late-entry',
+      instanceId: FLAG_MAIN_INSTANCE,
       paneId: 'ratio',
       label: '신규 거래원 등장',
       enabled: brokerLateEntryEnabled,
@@ -1203,7 +1213,7 @@ function PaneLegendOverlay({
           : brokerLateEntrySideMode === 'sell'
             ? [brokerLateEntrySellColor]
             : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
-      cells: readFlagLegendValues(windowId, 'broker-late-entry', cursorTimeSec),
+      cells: readFlagLegendValues(windowId, 'broker-late-entry', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
   ];
 
@@ -1229,7 +1239,7 @@ function PaneLegendOverlay({
     (r) =>
       r.kind === 'ohlc' ||
       r.kind === 'ma' ||
-      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.id)) ||
+      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.type)) ||
       (r.kind === 'cells' && LEGEND_CELL_PANES.has(r.paneId)),
   );
 
@@ -1374,7 +1384,9 @@ function PaneLegendOverlay({
                   <div
                     // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
                     // key 충돌 예방.
-                    key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
+                    key={row.kind === 'flag'
+                      ? `${row.paneId}:flag:${row.type}:${row.instanceId}`
+                      : `${row.paneId}:${row.kind}`}
                     // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
                     // 행이다(global.css `.legend-row-ma`).
                     className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}

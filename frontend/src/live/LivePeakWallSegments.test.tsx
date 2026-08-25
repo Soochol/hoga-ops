@@ -168,7 +168,7 @@ describe('LivePeakWallSegments', () => {
     await waitFor(() => {
       expect(tradedPrimOf(attached).segmentsData()).toEqual([]);
       expect(arrowsOnly(attached)[0].arrowsData()).toEqual([]);
-      expect(readFlagLegendValues(null, 'ask-peak', null)).toHaveLength(3);
+      expect(readFlagLegendValues(null, 'ask-peak', 'main', null)).toHaveLength(3);
     });
   });
 
@@ -184,7 +184,7 @@ describe('LivePeakWallSegments', () => {
     const attached = renderOverlay('bid');
     await waitFor(() => expect(segmentsOnly(attached)).toHaveLength(2));
     await waitFor(() => {
-      expect(readFlagLegendValues(null, 'bid-peak', null)).toEqual([
+      expect(readFlagLegendValues(null, 'bid-peak', 'main', null)).toEqual([
         { key: 'bid-peak-1', label: '1', value: '105, 3k' },
         { key: 'bid-peak-2', label: '2', value: '110, 2k' },
         { key: 'bid-peak-3', label: '3', value: '100, 1k' },
