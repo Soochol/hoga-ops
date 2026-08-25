@@ -1209,12 +1209,36 @@ export function useLiveBundle(
   // follows via the spread below; its points don't drive the viewport, so
   // letting them settle a beat later than the held chart is harmless.
   const lastSettledChartRef = useRef<RangeBundle | null>(null);
-  const chartBundle = extending && lastSettledChartRef.current
-    ? lastSettledChartRef.current
-    : computedChartBundle;
+  // 소스 토글 원자화(2026-08-25 사용자 실측). hogaplay 토글은 **세 번째 재키 종류**다 —
+  // 같은 (code, tf) 에서 캔들 소스 축만 갈린다. 위 `extending` 홀드는
+  // `historicalFromDate != null`(팬 전용) 게이트라 팬한 적 없는 창에서 토글하면 안
+  // 걸리고, 소스 분기(minuteKisCandles)는 토글 커밋에서 즉시 뒤집혀 새 소스의 콜드
+  // fetch 가 끝날 때까지 캔들이 빈 배열이 된다 — 실측(000660/010060 5m 장중): 5m 초기
+  // 창 77일의 디스크 워크백 동안 30초+ 완전 빈 화면, 진행 칩도 없음(그것도 extending
+  // 기반). 소스 스왑 재착석(useViewportBackfill 2a)의 도크스트링("그 사이 커밋들의
+  // 캔들은 아직 옛 소스의 것")이 전제하는 홀드의 실체가 이것이다.
+  //
+  // (code, bucket_ms) 일치 가드가 code/tf 전환과의 경계다 — 그 전환들은 위 주석의
+  // 결정대로 홀드 없이 통과해야 하고(이전 종목/봉 번들에 멈추면 안 된다), 마침 그
+  // 전환들에선 settled 번들의 code/bucket_ms 가 갈려 자연히 배제된다. `data == null
+  // && isFetching` 이 "콜드" 판정이다: 웜(복원 병합본 즉시 서빙)은 data 가 있어 홀드
+  // 없이 바로 스왑하고, fetch 가 최종 실패하면 isFetching 하강으로 풀려 빈 상태 안내
+  // (candleEmpty)가 종전대로 나온다. 첫 타일이 오는 순간 풀리므로 이후 워크백은
+  // 점진 프리펜드로 이어진다.
+  const settledChart = lastSettledChartRef.current;
+  const sourceSwapHold =
+    isMinute
+    && settledChart !== null
+    && settledChart.code === code
+    && settledChart.bucket_ms === bucketMs
+    && (restBypassEnabled
+      ? minuteDiskCandles.data == null && minuteDiskCandles.isFetching
+      : pastCandlesQuery.data == null && pastCandlesQuery.isFetching);
+  const holdChart = extending || sourceSwapHold;
+  const chartBundle = holdChart && settledChart ? settledChart : computedChartBundle;
   useEffect(() => {
-    if (!extending) lastSettledChartRef.current = computedChartBundle;
-  }, [extending, computedChartBundle]);
+    if (!holdChart) lastSettledChartRef.current = computedChartBundle;
+  }, [holdChart, computedChartBundle]);
 
   // 콜드 분봉 로드 원자화(2026-07-08 venue=UN 간헐 크래시): 콜드 로드에선 mode=hoga가
   // past-candles보다 먼저 settle해 호가 pane 시리즈(2천+점)가 먼저 커밋되는데, 그 뒤
