@@ -34,7 +34,6 @@ describe('FACTORY_INDICATOR_SETTINGS', () => {
     expect(f.askPeakEnabled).toBe(false);
     expect(f.bidPeakEnabled).toBe(false);
     expect(f.depthHeatmapEnabled).toBe(false);
-    expect(f.depthDeltaEnabled).toBe(false);
     // 거래원 등장도 인스턴스 배열로 승격 — opt-in 은 공장 인스턴스가 꺼진 것으로 표현된다.
     expect(f.brokerLateEntries.every((e) => e.enabled)).toBe(false);
     // 일봉 MA 는 opt-in — 마스터가 없어진 지금 그 표현은 공장 슬롯이 꺼져 있는 것이다.

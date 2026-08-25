@@ -32,12 +32,6 @@ import {
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import { deriveCandleEmptyState, type CandleEmptyState } from './candleEmptyState';
-import type { DepthDeltaPoint } from './depthDelta';
-import {
-  combineDepthDeltaBackendLive,
-  depthDeltaFromWire,
-  mergeDepthDeltaSession,
-} from './depthDeltaSession';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import {
@@ -316,9 +310,6 @@ export interface UseLiveBundleResult {
   candleEmpty: CandleEmptyState | null;
   /** 활성 캔들 쿼리 재조회 — 빈 상태의 "다시 시도" 가 쓴다. */
   refetchCandles: () => void;
-  /** 오늘의 단별 잔량 증감 버킷(분봉). 과거일 소스가 없는 **오늘 전용** 지표라
-   * RangeBundle 이 아니라 별도 필드로 나간다 — 자세한 근거는 `HogaSeries.depth_delta_today`. */
-  depthDeltaToday: readonly DepthDeltaPoint[];
   /** 이 번들의 지표에 적용된 날짜별 수정계수(`YYYYMMDD` → 계수). `/api/range` 를 따로
    *  호출하는 소비자가 **같은 척도**를 쓰게 하는 통로다 — `scaleRangeBundlePrices` 참조.
    *  우회 ON 이면 `undefined`(그 모드는 캔들도 디스크라 환산 자체가 없다). */
@@ -477,7 +468,6 @@ export type LiveRangeRequestPlan = {
     programTradeEnabled: boolean;
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
-    depthDeltaEnabled: boolean;
     wallSurgeEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
@@ -494,7 +484,6 @@ export function planLiveRangeRequest(args: {
   bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
-  depthDeltaEnabled: boolean;
   wallSurgeEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   programTradeEnabled: boolean;
@@ -540,7 +529,6 @@ export function planLiveRangeRequest(args: {
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
-      depthDeltaEnabled: enableMinute && args.depthDeltaEnabled,
       wallSurgeEnabled: enableMinute && args.wallSurgeEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
@@ -572,7 +560,6 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    depthDeltaEnabled,
     wallSurgeEnabled,
     brokerLateEntries,
     programTradeEnabled,
@@ -887,7 +874,6 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    depthDeltaEnabled,
     wallSurgeEnabled,
     brokerLateEntryEnabled,
     programTradeEnabled: effProgramTradeEnabled,
@@ -934,7 +920,6 @@ export function useLiveBundle(
       rangePlan.options.programTradeEnabled ||
       rangePlan.options.tradeVolumePocEnabled ||
       rangePlan.options.depthHeatmapEnabled ||
-      rangePlan.options.depthDeltaEnabled ||
       rangePlan.options.wallSurgeEnabled ||
       rangePlan.options.volumeDistributionBins != null
     )
@@ -1073,7 +1058,6 @@ export function useLiveBundle(
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
       built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
-      built.depth_delta = sidecarSource.depth_delta ?? [];
       built.wall_surge = sidecarSource.wall_surge ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
@@ -1143,16 +1127,15 @@ export function useLiveBundle(
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
-        // 꺼진 지표는 계산하지 않는다. 이 둘은 15분 버퍼 전체를 훑는 O(n) 이고 기본
+        // 꺼진 지표는 계산하지 않는다. 히트맵은 15분 버퍼 전체를 훑는 O(n) 이고 기본
         // OFF 인데 종전엔 토글과 무관하게 매 flush 돌았다 — 실측상 전체 재빌드 비용의
         // 73~94%(자세한 근거는 BuildHogaSeriesInput 주석). 소비처는 전부 이 창의
         // 차트 오버레이라 같은 토글로 게이트돼 있어, 끄면 애초에 그릴 대상이 없다.
         depthHeatmapEnabled,
-        depthDeltaEnabled,
       }),
     [
       todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs,
-      depthHeatmapEnabled, depthDeltaEnabled,
+      depthHeatmapEnabled,
     ],
   );
   const livePriceLevelHits = useMemo(
@@ -1198,9 +1181,36 @@ export function useLiveBundle(
   // lasts as long as the slower past-fetch (bounded by the global retry:1),
   // pausing today's right edge — acceptable because the user is panned into
   // history, not watching the live edge.
-  const extending = historicalFromDate != null && (isMinute
+  // **사이드카는 홀드에서 빠지고 진행 신호에는 남는다** (2026-08-25).
+  //
+  // 좌팬 워크백에서 sidecar 는 압도적으로 느린 레인이다 — 실측(010140 5m, 7일 타일):
+  // `mode=candles` 0.22~0.40초 · `mode=hoga` 0.21~0.96초 · **`mode=sidecar` 4.5~6.3초**,
+  // 그중 ~90% 가 `depth_delta`(단별 잔량 증감) 단독이다(전부 ON 1.19초 → 그것만 OFF
+  // 0.11초). 비용은 **처음 보는 날짜**에만 든다(`PastIndicatorsCache` 디스크 영속,
+  // 재요청 0.069초). 즉 한 번도 안 본 과거로 팬하면 스텝마다 그 5초를 새로 문다.
+  //
+  // 그 5초가 종전엔 캔들까지 붙잡았다 — 사용자가 본 "스크롤해도 빈 화면" 의 실체다.
+  // 홀드에서 빼면 캔들·호가가 먼저 앉고 지표는 뒤따른다.
+  //
+  // **원자성 계약이 깨지지 않는 근거**: 아래 홀드가 지키는 것은 "프리펜드가 한 커밋에"
+  // 인데, sidecar 가 늦게 실리는 커밋은 **캔들 모양(firstMs·lastMs·count)이 불변**이라
+  // 리포지셔너의 `isUnionRemap` 행(useViewportBackfill 2d, #1580)이 정확히 그 자리를
+  // 맡는다 — 그 행이 존재하는 이유가 "호가·**사이드카** 지표 포인트가 들어오거나 빠져
+  // union 인덱스만 통째로 밀리는 커밋" 이다. 캔들·호가의 프리펜드 원자화는 그대로다.
+  //
+  // ⚠ **진행 신호(`extending` = `isExtending`)에서는 빼지 않는다.** 셋이 거기 달려 있다:
+  //   ① 3a settle-loop 의 `settledByFetch`(하강 엣지) — 먼저 내리면 sidecar 가 아직
+  //      나는 중에 다음 스텝이 dispatch 되고, 그 re-key 가 진행 중인 sidecar 요청을
+  //      버린다. 반복되면 지표가 영영 안 앉는다.
+  //   ② 진행 칩(`past-backfill-progress-chip`)이 이 값을 읽는다 — 빼면 sidecar 워크백
+  //      동안 칩이 꺼진 채 지표만 조용히 채워져 "지표가 안 나온다" 로 읽힌다.
+  //   ③ 3e 클램프 탈출구(useViewportBackfill)의 백프레셔가 `fillKind` 위에 서는데,
+  //      그 수명이 이 신호에 맞물린다 — 먼저 내리면 캔들이 막 앉은 중간 커밋에서
+  //      3e 가 불필요한 확장을 쏜다.
+  const sidecarExtending = historicalFromDate != null
+    && isMinute && sidecarEnabled && pastSidecars.isHistoricalDeltaFetching;
+  const chartHoldPending = historicalFromDate != null && (isMinute
     ? pastHoga.isHistoricalDeltaFetching ||
-      (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||
       // 우회 ON에선 차트 캔들이 벤더 REST가 아니라 디스크(minuteDiskCandles)에서 온다.
       // 그 쿼리도 이제 델타 훅이므로(2026-08-23) 위 두 지표와 **같은 신호**를 쓴다 —
@@ -1212,6 +1222,8 @@ export function useLiveBundle(
       minuteDiskCandles.isHistoricalDeltaFetching
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
+  // 진행 신호 = 홀드 대상 + 사이드카. 소비자는 3a settle-loop · 진행 칩 · 3e 백프레셔.
+  const extending = chartHoldPending || sidecarExtending;
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
   // protects — the viewport shift is candle-index-based). The hoga overlay
   // follows via the spread below; its points don't drive the viewport, so
@@ -1242,7 +1254,10 @@ export function useLiveBundle(
     && (restBypassEnabled
       ? minuteDiskCandles.data == null && minuteDiskCandles.isFetching
       : pastCandlesQuery.data == null && pastCandlesQuery.isFetching);
-  const holdChart = extending || sourceSwapHold;
+  // 홀드는 `chartHoldPending`(사이드카 제외)으로 건다 — 위 「사이드카는 홀드에서
+  // 빠지고 진행 신호에는 남는다」 주석 참조. `extending` 을 쓰면 5초짜리 sidecar 가
+  // 캔들을 다시 붙잡아 빈 화면이 그대로 돌아온다.
+  const holdChart = chartHoldPending || sourceSwapHold;
   const chartBundle = holdChart && settledChart ? settledChart : computedChartBundle;
   useEffect(() => {
     if (!holdChart) lastSettledChartRef.current = computedChartBundle;
@@ -1263,40 +1278,10 @@ export function useLiveBundle(
       quote_ratio: { bucket_ms: bucketMs, points: [] },
       fill_strength: { bucket_ms: bucketMs, points: [] },
       depth_heatmap_today: [],
-      depth_delta_today: [],
     }),
     [bucketMs],
   );
   const committedHogaSeries = holdHogaSeriesForColdCandles ? emptyHogaSeries : hogaSeries;
-
-  // 증감 세션 누적 — live.ob 가 15분 시간창이라 버킷터 출력만 쓰면 커버리지가 "오늘"이
-  // 아니라 "최근 15분"이 된다(depthDeltaSession 주석 참조). 종목·거래일·버킷 크기가
-  // 바뀌면 누적을 버린다. merge 는 멱등하고 무변화 시 같은 참조를 돌려주므로 렌더 중
-  // 호출이 안전하다.
-  const deltaSessionRef = useRef<{ key: string; points: readonly DepthDeltaPoint[] }>({
-    key: '',
-    points: [],
-  });
-  const deltaSessionKey = `${code ?? ''}|${todayKstYyyymmdd}|${bucketMs}`;
-  if (deltaSessionRef.current.key !== deltaSessionKey) {
-    deltaSessionRef.current = { key: deltaSessionKey, points: [] };
-  }
-  deltaSessionRef.current.points = mergeDepthDeltaSession(
-    deltaSessionRef.current.points,
-    committedHogaSeries.depth_delta_today,
-  );
-  const liveDeltaPoints = deltaSessionRef.current.points;
-  // 백엔드 슬라이스(캡처 스냅샷 ~10s 표본의 diff — 과거일 + 오늘의 페이지 열기 이전
-  // 구간)와 라이브 세션 누적을 결합한다. 이게 "켜자마자 빈 화면" 문제의 해소 지점:
-  // 종전에는 라이브 누적(페이지 로드 이후)만 있어 커버리지가 세션 시작부터였다.
-  const backendDeltaPoints = useMemo(
-    () => depthDeltaFromWire(chartBundle?.depth_delta),
-    [chartBundle?.depth_delta],
-  );
-  const depthDeltaToday = useMemo(
-    () => combineDepthDeltaBackendLive(backendDeltaPoints, liveDeltaPoints),
-    [backendDeltaPoints, liveDeltaPoints],
-  );
 
   // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
   // shares its segments/candles refs, so the VirtualAxis stays single-build and
@@ -1523,9 +1508,6 @@ export function useLiveBundle(
       hasInstrument: !!code,
     }),
     refetchCandles,
-    /** 오늘의 단별 잔량 증감 버킷(세션 누적). 과거일 소스가 없어(설계 §5) RangeBundle 에
-     *  싣지 않고 도메인 그대로 내보낸다 — wire 왕복도, 백엔드 플래그도 필요 없다. */
-    depthDeltaToday,
     /** 이 번들의 지표에 적용된 날짜별 수정계수. `/api/range` 를 **따로 호출하는**
      *  소비자(예: `useVolumeDistributionCutoffProfile`)가 같은 척도를 쓰게 하려고
      *  내보낸다 — 여기서 안 주면 그 경로만 원주가로 남아 옆문으로 어긋난다.

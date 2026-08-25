@@ -79,10 +79,6 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneToggles: PaneToggles;
-  /** 단별 잔량 증감 데이터 유무. 이 지표는 오늘 SSE 에서만 나오므로 /study 나 과거일
-   *  전용 뷰에서는 켜져 있어도 그릴 것이 없다 — 그때 값 없는 빈 레전드 행이 남지 않도록
-   *  `applicable` 을 데이터 유무까지 좁힌다(오버레이 마운트 게이트와 일치시키는 규약). */
-  hasDepthDelta?: boolean;
   /** 접기(`paneFolding.ts`) 적용 후 실제로 마운트된 pane **그룹** 목록(병합 반영).
    *  주면 이걸 쓰고, 없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane
    *  이동 컨트롤의 "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는
@@ -209,7 +205,7 @@ const valueCellStyle: CSSProperties = {
 
 // MA/일봉MA 값은 양수 KRX 가격(최대 ~9자 "9,999,999")이라 OHLC 음수 최악값용 12ch
 // 대신 9ch 만 예약 — 반사(reflow) 방지는 유지하되 칸마다 남던 여백을 줄인다. flag·cells
-// 행은 음수(단별 잔량 증감)·큰 수(총잔량)가 있어 공용 12ch 를 그대로 쓴다.
+// 행은 음수·큰 수(총잔량)가 있어 공용 12ch 를 그대로 쓴다.
 const maValueCellStyle: CSSProperties = {
   minWidth: '9ch',
   textAlign: 'right',
@@ -535,7 +531,6 @@ const FLAG_SET_HIDDEN: Record<
   'bid-peak': (a, h) => a.setBidPeakHidden(h),
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
-  'depth-delta': (a, h) => a.setDepthDeltaHidden(h),
   // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
   // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
   // 배열로 승격된 지표 — 눈은 **그 인스턴스만** 끄고 켠다. 타입 전체를 움직이면
@@ -846,7 +841,6 @@ function PaneLegendOverlay({
   chart,
   timeframe,
   paneToggles,
-  hasDepthDelta = false,
   visibleGroups,
   candles,
   axis,
@@ -1001,10 +995,6 @@ function PaneLegendOverlay({
   const depthHeatmapHidden = useWindowIndicator((s) => s.depthHeatmapHidden);
   const depthHeatmapBidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
   const depthHeatmapAskColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
-  const depthDeltaEnabled = useWindowIndicator((s) => s.depthDeltaEnabled);
-  const depthDeltaHidden = useWindowIndicator((s) => s.depthDeltaHidden);
-  const depthDeltaInColor = useWindowIndicator((s) => s.depthDeltaInColor);
-  const depthDeltaOutColor = useWindowIndicator((s) => s.depthDeltaOutColor);
   const brokerLateEntries = useWindowIndicator((s) => s.brokerLateEntries);
   // 자기 창의 등록만 고른다 — 남의 창 등록에는 같은 참조가 돌아와 재렌더가 안 난다.
   const maSeries = useMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
@@ -1217,21 +1207,6 @@ function PaneLegendOverlay({
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
       cells: readFlagLegendValues(windowId, 'depth-heatmap', FLAG_MAIN_INSTANCE, cursorTimeSec),
-    },
-    {
-      type: 'depth-delta',
-      instanceId: FLAG_MAIN_INSTANCE,
-      paneId: 'candle',
-      label: '단별 잔량 증감',
-      enabled: depthDeltaEnabled,
-      // applicable 은 오버레이 마운트 게이트(shouldShowDepthDeltaOverlay)와 **같은
-      // 3조건**이어야 한다 — 어긋나면 그려지지 않는 지표의 빈 행이 레전드에 남는다.
-      // 이 지표만 데이터 유무까지 보는 이유: 오늘 SSE 가 유일한 소스라 /study·과거일
-      // 전용 뷰에서는 켜져 있어도 그릴 것이 없다(히트맵은 과거일 소스가 있어 무관).
-      applicable: isMinute && hasDepthDelta,
-      hidden: depthDeltaHidden,
-      swatches: [depthDeltaInColor, depthDeltaOutColor],
-      cells: readFlagLegendValues(windowId, 'depth-delta', FLAG_MAIN_INSTANCE, cursorTimeSec),
     },
     // 신규 거래원 등장은 **인스턴스마다 한 행**이다(Phase 3 의 첫 배열 승격).
     // 기준 시각이 다르면 세는 대상이 달라 값도 다르므로, 한 행에 몰면 어느 세트의

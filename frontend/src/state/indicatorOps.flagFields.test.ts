@@ -26,7 +26,6 @@ const FLAG_FIELD_PREFIXES: Record<string, string> = {
   bidPeak: 'bid-peak',
   tradeVolumePoc: 'trade-volume-poc',
   depthHeatmap: 'depth-heatmap',
-  depthDelta: 'depth-delta',
   brokerLateEntry: 'broker-late-entry',
 };
 

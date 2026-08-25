@@ -81,9 +81,9 @@ describe('IndicatorPanel', () => {
   });
 
   // 목록이 두 모드로 갈리면서 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
-  // 대신 **합집합이 16종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
+  // 대신 **합집합이 15종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
   // 그게 이 목록이 지켜야 할 총계다.
-  it('내 지표 + 카탈로그의 합집합이 16종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  it('내 지표 + 카탈로그의 합집합이 15종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -103,7 +103,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const addable = labelsEndingWith(' 추가');
 
-    expect(new Set([...mine, ...addable]).size).toBe(16);
+    expect(new Set([...mine, ...addable]).size).toBe(15);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);
@@ -865,22 +865,22 @@ describe('IndicatorPanel', () => {
   });
 
   // `hiddenCategories` 는 `capabilities` 와 **다른 축**이다: 저쪽은 "이 종목에 그
-  // 데이터가 있는가", 이쪽은 "이 화면이 그 지표를 그리는가". `/study` 가 단별 잔량
-  // 증감을 렌더하지 않으면서 토글만 보여 주던 것을 없애기 위한 것이다.
+  // 데이터가 있는가", 이쪽은 "이 화면이 그 지표를 그리는가". 그 지표를 렌더하지 않는
+  // 화면이 토글만 보여 주던 것을 없애기 위한 것이다.
   describe('hiddenCategories', () => {
     it('숨긴 지표는 목록에서 사라진다', () => {
       const { unmount } = renderPanel();
       openCatalog();
-      expect(screen.queryByRole('button', { name: '단별 잔량 증감' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeTruthy();
       unmount();
 
-      renderPanel({ hiddenCategories: ['depth-delta'] });
+      renderPanel({ hiddenCategories: ['trade-volume-poc'] });
       openCatalog();
-      expect(screen.queryByRole('button', { name: '단별 잔량 증감' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeNull();
     });
 
     it('다른 지표는 그대로 남는다 — 필터가 과하게 걷어내지 않는다', () => {
-      renderPanel({ hiddenCategories: ['depth-delta'] });
+      renderPanel({ hiddenCategories: ['trade-volume-poc'] });
       openCatalog();
 
       expect(screen.queryByRole('button', { name: '호가 잔량 히트맵' })).toBeTruthy();

@@ -45,7 +45,6 @@ from hoga.api.models import (
     BidPeak,
     BrokerLateEntryEvent,
     DayVolumeDistribution,
-    DepthDeltaPoint,
     DepthHeatmapPoint,
     TradeVolumePoc,
     WallSurgeEvent,
@@ -118,7 +117,6 @@ KIND_VERSIONS: dict[str, int] = {
     "bid_peak": 11,
     "poc": 7,
     "depth": 7,
-    "depth_delta": 2,
     "wall_surge": 1,
     "vdist": 7,
     "broker_late": 6,
@@ -129,12 +127,9 @@ KIND_VERSIONS: dict[str, int] = {
     # 2 (ADR-0156): `touched` 의 의미가 바뀌었다. 값 자체는 이제 **분 스코프**라 표시 봉과
     # 무관하고, 그래서 아래 "1분 고정" 계약과 굵은 봉 파생이 그대로 성립한다.
     "peak_rep": 2,
-    # 1분 버킷별 사다리 가격 집합. depth_delta 의 tick(중앙값)은 결합적이지 않아
-    # 값으로는 못 접고 **집합의 합집합**이 있어야 한다 — 그 원료.
-    "depth_delta_prices": 1,
 }
 
-Kind = Literal["ratio", "fill", "peak_rep", "depth_delta_prices"]
+Kind = Literal["ratio", "fill", "peak_rep"]
 DEFAULT_MEM_MAX_ENTRIES = 512
 # depth_heatmap 항목은 하루치 40컬럼 × 수백 버킷 ≈ 1.5MB/entry (ratio의 ~20배).
 # 공용 512 상한을 그대로 쓰면 최악 수백 MB가 되므로 전용 소형 상한을 둔다 —
@@ -173,7 +168,6 @@ class PastIndicatorsCache:
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
         self._mem_peak_rep: OrderedDict[tuple[str, str, str, str], list[PeakRepRow]] = OrderedDict()
-        self._mem_dd_prices: OrderedDict[tuple[str, str, str, str], list[list[int]]] = OrderedDict()
         self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
         self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
@@ -190,11 +184,6 @@ class PastIndicatorsCache:
         # 때문. bucket_ms 별 결과 캐시가 단순·정확하다.
         self._mem_depth: OrderedDict[
             tuple[str, str, str, str, int], list[DepthHeatmapPoint]
-        ] = OrderedDict()
-        # depth_delta 는 증감 있는 가격만 담아 depth 보다 훨씬 작다(희소).
-        # 공용 512 LRU 편승 — depth 처럼 전용 상한 불필요.
-        self._mem_depth_delta: OrderedDict[
-            tuple[str, str, str, str, int], list[DepthDeltaPoint]
         ] = OrderedDict()
         # ⚠ wall_surge 키에는 **bucket_ms 가 없다**. 이벤트는 봉과 무관한 시점 사실이라
         # 버킷을 키에 넣으면 무효화만 배수로 늘고, 새 봉 종속 지표가 기존 저장뷰를 통째로
@@ -228,7 +217,7 @@ class PastIndicatorsCache:
         self._gen: dict[tuple[str, str, str, str], int] = {}
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
             self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
-            self._mem_trade_volume_poc, self._mem_depth, self._mem_depth_delta,
+            self._mem_trade_volume_poc, self._mem_depth,
             self._mem_wall_surge,
             self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
         )
@@ -238,8 +227,8 @@ class PastIndicatorsCache:
         self._stats: dict[str, CacheStats] = {
             kind: CacheStats()
             for kind in (
-                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
-                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep", "depth_delta_prices",
+                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth",
+                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep",
             )
         }
 
@@ -251,13 +240,11 @@ class PastIndicatorsCache:
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
-            "depth_delta": len(self._mem_depth_delta),
             "wall_surge": len(self._mem_wall_surge),
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
             "peak_rep": len(self._mem_peak_rep),
-            "depth_delta_prices": len(self._mem_dd_prices),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -445,38 +432,6 @@ class PastIndicatorsCache:
         stats = self._stats["peak_rep"]
         stats.record_store()
         self._mem_put(self._mem_peak_rep, (code, date, source, venue), rows, stats)
-
-    def get_depth_delta_prices(
-        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
-    ) -> list[list[int]] | object:
-        """1분 사다리 가격 행 `[bucket_intra_ms, side(0=ask), *prices]`. 미스는 `CACHE_MISS`.
-
-        dict 가 아니라 **행 리스트**인 것은 이 파일의 list kind 공용 계약(빈 값도
-        유효한 캐시값)에 맞추기 위해서다 — 사전↔행 변환은 호출부가 한다.
-        """
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue)
-        stats = self._stats["depth_delta_prices"]
-        hit = self._mem_hit(self._mem_dd_prices, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        rows = self._read(code, date, source, "depth_delta_prices", venue=venue)
-        if rows is None:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_dd_prices, key, rows, stats)
-        return rows
-
-    def store_depth_delta_prices(
-        self, code: str, date: str, source: str,
-        rows: list[list[int]], *, venue: Venue = "KRX",
-    ) -> None:
-        self._write(code, date, source, "depth_delta_prices", rows, venue=venue)
-        stats = self._stats["depth_delta_prices"]
-        stats.record_store()
-        self._mem_put(self._mem_dd_prices, (code, date, source, venue), rows, stats)
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
@@ -825,47 +780,6 @@ class PastIndicatorsCache:
             kind="depth",
         )
 
-    # ── depth_delta (단별 잔량 증감) ─────────────────────────────────────────────
-
-    def _depth_delta_path(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> Path:
-        return self._model_path(code, date, source, f"depth_delta.{bucket_ms}", venue=venue)
-
-    def get_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
-    ) -> list[DepthDeltaPoint] | object:
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue, bucket_ms)
-        stats = self._stats["depth_delta"]
-        hit = self._mem_hit(self._mem_depth_delta, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        value = self._read_model_list_cache(
-            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
-            DepthDeltaPoint,
-            payload_key="points",
-            kind="depth_delta",
-        )
-        if value is _CACHE_MISS:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_depth_delta, key, value, stats)  # type: ignore[arg-type]
-        return value  # type: ignore[return-value]
-
-    def store_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint], *, venue: Venue = "KRX"
-    ) -> None:
-        stats = self._stats["depth_delta"]
-        stats.record_store()
-        self._mem_put(self._mem_depth_delta, (code, date, source, venue, bucket_ms), points, stats)
-        self._write_model_list_cache(
-            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
-            points,
-            payload_key="points",
-            kind="depth_delta",
-        )
-
     # ── wall_surge (호가벽 급증) ────────────────────────────────────────────────
 
     def _wall_surge_path(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> Path:
@@ -993,10 +907,10 @@ class PastIndicatorsCache:
         캐시값이라 미스와 구분된다.
 
         종전엔 depth 계열 3종(`depth`·`depth_delta`·`wall_surge`)이 이 헬퍼와 **동형인
-        본문을 각자 인라인으로** 들고 있었다 — `get_depth_delta` 와 `get_wall_surge` 는
-        각 35줄 중 26줄이 문자 단위로 같았고, 나머지 9줄도 전부 토큰 치환이었다. 이
-        헬퍼가 그때 이미 있었는데 두 메서드가 파일에서 **헬퍼보다 앞에 정의**돼 있어
-        재사용되지 않았다. 지금은 넷 다 이 경로를 쓴다."""
+        본문을 각자 인라인으로** 들고 있었다 — 각 35줄 중 26줄이 문자 단위로 같았고,
+        나머지 9줄도 전부 토큰 치환이었다. 이 헬퍼가 그때 이미 있었는데 그 메서드들이
+        파일에서 **헬퍼보다 앞에 정의**돼 있어 재사용되지 않았다. 지금은 남은 것이
+        전부 이 경로를 쓴다(`depth_delta` 는 2026-08-25 에 제거)."""
         if not path.exists():
             return _CACHE_MISS
         try:

@@ -72,7 +72,6 @@ _SCALAR_FIELDS = frozenset({"code", "from_date", "to_date", "bucket_ms"})
 _NON_SLICE_CACHE_KINDS: dict[str, str] = {
     "continuous_before": "volume_distributions 계산의 보조값이라 wire 필드가 없다",
     "peak_rep": "ask_peak/bid_peak 를 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
-    "depth_delta_prices": "depth_delta 의 tick 을 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
 }
 
 
@@ -222,7 +221,7 @@ def test_placeholder_compatibility_matches_the_index_list() -> None:
 
     이 축이 어긋나면 옵션을 바꿔도 placeholder 가 유지돼 **옛 데이터가 화면에 남는다**.
     그런데 기존 테스트들은 새 인덱스를 양쪽 키에서 같은 값으로 고정하므로 누락이
-    무증상이다 — 실제로 venue·depth_delta 가 그렇게 빠져 있었다(#1340).
+    무증상이다 — 실제로 venue 와 단별 잔량 증감 토글이 그렇게 빠져 있었다(#1340).
     """
     text = _strip_ts_comments(_RANGE_REQUEST.read_text(encoding="utf-8"))
     block = _balanced_block(text, "PLACEHOLDER_COMPATIBLE_KEY_INDICES", "= [")

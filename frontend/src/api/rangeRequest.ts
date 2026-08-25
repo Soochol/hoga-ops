@@ -13,7 +13,6 @@ export type RangeRequestOptions = {
   programTradeEnabled?: boolean | null;
   tradeVolumePocEnabled?: boolean | null;
   depthHeatmapEnabled?: boolean | null;
-  depthDeltaEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -60,7 +59,6 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
-  boolean | null,
   // venue 는 **맨 끝**이다 — 중간에 넣으면 기존 인덱스가 전부 밀려, 키를 인덱스로
   // 읽는 소비자(RANGE_QUERY_KEY_*_INDEX)와 계약 테스트가 위치만으로 깨진다.
   // 키 안의 순서는 캐시 식별에 의미가 없다.
@@ -88,11 +86,11 @@ export type RangeBundleRequest = {
  *  **queryKey 에 축을 추가하면 이 목록도 같이 늘린다.** 늘리지 않으면 그 옵션을 바꿔도
  *  placeholder 가 유지돼 옛 데이터가 남는데, 기존 테스트들은 새 인덱스를 양쪽 키에서
  *  같은 값으로 고정하므로 **아무것도 빨개지지 않는다** — 누락이 무증상이다.
- *  실제로 `depthDeltaEnabled`(21)와 `venue`(22)가 그렇게 빠져 있었다. #490 이
+ *  실제로 단별 잔량 증감 토글과 `venue` 가 그렇게 빠져 있었다. #490 이
  *  "RangeQueryKey 튜플·queryKey 배열·이 목록에 추가" 라고 세 곳을 커밋 메시지에
  *  적어 뒀지만, 그 규칙이 코드에 없어 다음 두 축이 그대로 샜다. */
 const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [
-  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
 ] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
@@ -115,7 +113,6 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const programTradeEnabled = options.programTradeEnabled ?? null;
   const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
   const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
-  const depthDeltaEnabled = options.depthDeltaEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -149,7 +146,6 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     programTradeEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    depthDeltaEnabled,
     input.venue,  // 맨 끝(위 타입 주석 참조)
   ];
 
@@ -166,7 +162,6 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
   addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
   addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
-  addBoolParam(params, 'depth_delta_enabled', depthDeltaEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);

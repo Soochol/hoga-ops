@@ -16,7 +16,6 @@
     "bid_peaks_enabled": false,
     "program_trade_enabled": false,
     "trade_volume_poc_enabled": false,
-    "depth_heatmap_enabled": false,
-    "depth_delta_enabled": false
+    "depth_heatmap_enabled": false
   }
 }

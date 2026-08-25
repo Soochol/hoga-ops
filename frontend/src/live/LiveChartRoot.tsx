@@ -129,8 +129,6 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import DepthHeatmapOverlay from './DepthHeatmapOverlay';
-import DepthDeltaOverlay from './DepthDeltaOverlay';
-import type { DepthDeltaPoint } from './depthDelta';
 import { depthHeatmapFromWire } from './depthHeatmapWire';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -369,10 +367,6 @@ interface Props {
   tradeVolumePocs?: readonly TradeVolumePoc[];
   /** 분봉 호가 잔량 히트맵 원본 wire — LiveChartRoot 내부에서 변환. */
   depthHeatmap?: readonly DepthHeatmapPointWire[];
-  /** 오늘의 단별 잔량 증감 버킷. 과거일 소스가 없는 오늘 전용 지표라 wire 를 거치지 않고
-   *  도메인 그대로 받는다(`useLiveBundle().depthDeltaToday`). /study 등 SSE 가 없는
-   *  호출부는 넘기지 않으면 되고, 그러면 마운트 게이트가 pointCount 0 으로 자연히 닫힌다. */
-  depthDeltaToday?: readonly DepthDeltaPoint[];
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
@@ -508,17 +502,6 @@ export function shouldShowDepthHeatmapOverlay(
   return isMinuteTimeframe(timeframe) && enabled && pointCount > 0;
 }
 
-/** 증감 오버레이 마운트 게이트. 히트맵과 같은 3조건이지만 소스가 오늘(SSE) 전용이라
- *  과거일만 보는 뷰포트에서는 pointCount 0 으로 자연히 닫힌다. `hidden` 은 여기 넣지
- *  않는다 — 숨김은 그리기만 끄고 마운트/레전드는 유지하는 것이 규약이다. */
-export function shouldShowDepthDeltaOverlay(
-  timeframe: LiveTimeframe,
-  enabled: boolean,
-  pointCount: number,
-): boolean {
-  return isMinuteTimeframe(timeframe) && enabled && pointCount > 0;
-}
-
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
@@ -552,7 +535,6 @@ export function LiveChartRoot({
   todayKst = '',
   tradeVolumePocs = [],
   depthHeatmap = [],
-  depthDeltaToday = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   dailyMaWindowFloorDate = null,
@@ -2596,19 +2578,13 @@ export function LiveChartRoot({
     tradeVolumePocs.length,
   );
   const depthHeatmapPoints = useMemo(() => depthHeatmapFromWire(depthHeatmap), [depthHeatmap]);
+  // enabled 만 여기서 구독한다 — hidden/색/불투명도는 오버레이 내부에서 읽어야
+  // 그 변경이 LiveChartRoot 전체를 재렌더하지 않는다(리프 격리).
   const depthHeatmapEnabledStore = useWindowIndicator((s) => s.depthHeatmapEnabled);
   const showDepthHeatmapOverlay = shouldShowDepthHeatmapOverlay(
     timeframe,
     depthHeatmapEnabledStore,
     depthHeatmapPoints.length,
-  );
-  // enabled 만 여기서 구독한다 — hidden/색/불투명도는 오버레이 내부에서 읽어야
-  // 그 변경이 LiveChartRoot 전체를 재렌더하지 않는다(리프 격리).
-  const depthDeltaEnabledStore = useWindowIndicator((s) => s.depthDeltaEnabled);
-  const showDepthDeltaOverlay = shouldShowDepthDeltaOverlay(
-    timeframe,
-    depthDeltaEnabledStore,
-    depthDeltaToday.length,
   );
 
   return (
@@ -2744,14 +2720,6 @@ export function LiveChartRoot({
               points={depthHeatmapPoints}
             />
           )}
-          {showDepthDeltaOverlay && (
-            <DepthDeltaOverlay
-              chart={chart}
-              paneSeries={paneSeries}
-              axis={axis}
-              points={depthDeltaToday}
-            />
-          )}
           <DrawingOverlay
             chart={chart}
             axis={axis}
@@ -2773,7 +2741,6 @@ export function LiveChartRoot({
             paneToggles={activePaneToggles}
             visibleGroups={visiblePaneGroups}
             dataEpoch={cb}
-            hasDepthDelta={depthDeltaToday.length > 0}
             candles={cb?.candles}
             axis={axis}
             code={code}

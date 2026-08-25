@@ -399,47 +399,35 @@ describe('createIncrementalHogaSeriesBuilder', () => {
   // ── 꺼진 지표 게이트 (2026-07-29 실측) ────────────────────────────────────
   // 히트맵·증감은 15분 버퍼 전체를 훑는 O(n) 인데 **기본 OFF** 이고, 종전엔 토글과
   // 무관하게 매 flush 계산됐다. 실측상 전체 재빌드 비용의 73~94% 가 이 둘이었다.
-  describe('히트맵·증감 계산 게이트', () => {
+  describe('히트맵 계산 게이트', () => {
     const ob = [
       shapedOb(TODAY_OPEN, 100, 80, false),
       shapedOb(TODAY_OPEN + 10_000, 120, 70, false),
       shapedOb(TODAY_OPEN + 70_000, 90, 110, false),
     ];
-    const withFlags = (heat: boolean, delta: boolean) => ({
+    const withFlags = (heat: boolean) => ({
       ...baseInput, sseOb: ob, sseTrade: [],
-      depthHeatmapEnabled: heat, depthDeltaEnabled: delta,
+      depthHeatmapEnabled: heat,
     });
 
     it('끄면 해당 배열이 비고, 켜면 종전과 같은 결과다', () => {
-      const on = buildHogaSeries(withFlags(true, true));
+      const on = buildHogaSeries(withFlags(true));
       expect(on.depth_heatmap_today.length).toBeGreaterThan(0);
-      expect(on.depth_delta_today.length).toBeGreaterThan(0);
 
-      const off = buildHogaSeries(withFlags(false, false));
+      const off = buildHogaSeries(withFlags(false));
       expect(off.depth_heatmap_today).toEqual([]);
-      expect(off.depth_delta_today).toEqual([]);
       // 끈다고 호가비·체결강도까지 달라지면 안 된다.
       expect(off.quote_ratio).toEqual(on.quote_ratio);
       expect(off.fill_strength).toEqual(on.fill_strength);
     });
 
-    it('한쪽만 켠 조합이 서로 독립이다 (둘 다 기본 OFF 라 실제 설정 조합이다)', () => {
-      const heatOnly = buildHogaSeries(withFlags(true, false));
-      expect(heatOnly.depth_heatmap_today.length).toBeGreaterThan(0);
-      expect(heatOnly.depth_delta_today).toEqual([]);
-
-      const deltaOnly = buildHogaSeries(withFlags(false, true));
-      expect(deltaOnly.depth_heatmap_today).toEqual([]);
-      expect(deltaOnly.depth_delta_today.length).toBeGreaterThan(0);
-    });
-
     it('증분 빌더가 플래그별로 오라클과 일치한다', () => {
-      for (const [heat, delta] of [[true, true], [true, false], [false, true], [false, false]] as const) {
+      for (const heat of [true, false] as const) {
         const build = createIncrementalHogaSeriesBuilder();
         for (let i = 0; i <= ob.length; i += 1) {
           const input = {
             ...baseInput, sseOb: ob.slice(0, i), sseTrade: [],
-            depthHeatmapEnabled: heat, depthDeltaEnabled: delta,
+            depthHeatmapEnabled: heat,
           };
           expect(build(input)).toEqual(buildHogaSeries(input));
         }
@@ -448,11 +436,11 @@ describe('createIncrementalHogaSeriesBuilder', () => {
 
     it('장중에 토글을 켜면 누적을 재빌드해 오라클과 일치한다', () => {
       const build = createIncrementalHogaSeriesBuilder();
-      // 꺼진 채로 전 구간을 흘려보낸다 — 이 동안 히트맵/증감 버킷은 안 쌓인다.
-      build(withFlags(false, false));
+      // 꺼진 채로 전 구간을 흘려보낸다 — 이 동안 히트맵 버킷은 안 쌓인다.
+      build(withFlags(false));
       // 켜는 순간 플래그 변화가 리셋 트리거라 전체를 다시 채워야 한다. 리셋이 없으면
       // 앞 구간이 빠진 반쪽짜리 결과가 나온다.
-      expect(build(withFlags(true, true))).toEqual(buildHogaSeries(withFlags(true, true)));
+      expect(build(withFlags(true))).toEqual(buildHogaSeries(withFlags(true)));
     });
   });
 
@@ -587,208 +575,6 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     expect(out.depth_heatmap_today).toEqual(
       buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
     );
-  });
-
-  // --- 단별 잔량 증감(depth_delta_today) ---
-  // 사다리는 고정 가격대(매도 200..209 / 매수 199..190)를 쓴다. 그래야 두 스냅샷의
-  // 가격 교집합이 10단 전부라 "증감"만 남고 창 이동 효과가 섞이지 않는다.
-  const askLadder = (top: number, qtys: readonly number[]) =>
-    qtys.map((qty, i) => ({ price: top + i, qty }));
-  const bidLadder = (top: number, qtys: readonly number[]) =>
-    qtys.map((qty, i) => ({ price: top - i, qty }));
-  const flat = (head: number) => [head, 10, 10, 10, 10, 10, 10, 10, 10, 10];
-  /** 최선호가 잔량만 바꾸는 연속북 틱 — 나머지 9단은 10 으로 고정(증감 0). */
-  const deltaOb = (t: number, askHead: number, bidHead: number, venue?: 'KRX' | 'NXT') => ({
-    t_ms: t,
-    total_ask_qty: askHead + 90,
-    total_bid_qty: bidHead + 90,
-    asks: askLadder(200, flat(askHead)),
-    bids: bidLadder(199, flat(bidHead)),
-    ...(venue ? { venue } : {}),
-  });
-
-  it('matches buildHogaSeries on depth_delta_today at every prefix', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      deltaOb(TODAY_OPEN + 11_000, 800, 300),
-      deltaOb(TODAY_OPEN + 21_000, 650, 300),
-      deltaOb(TODAY_OPEN + 71_000, 650, 900), // 다음 분봉 버킷
-    ];
-    for (let i = 0; i <= ob.length; i++) {
-      const input = { ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] };
-      expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
-    }
-  });
-
-  it('accumulates per-price inflow and outflow within a bucket, attributed to the later tick', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400), // baseline — 증감 없음
-      deltaOb(TODAY_OPEN + 11_000, 800, 300), // 매도 +300, 매수 -100
-      deltaOb(TODAY_OPEN + 21_000, 650, 300), // 매도 -150, 매수 0
-    ];
-    let out;
-    for (let i = 1; i <= ob.length; i++) {
-      out = buildIncremental({ ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] });
-    }
-    // 첫 틱은 baseline 이라 기여 0 → 버킷은 하나(TODAY_OPEN), gross 는 상쇄되지 않는다.
-    expect(out!.depth_delta_today).toEqual([
-      {
-        tMs: TODAY_OPEN,
-        askDelta: [{ price: 200, inQty: 300, outQty: 150 }],
-        bidDelta: [{ price: 199, inQty: 0, outQty: 100 }],
-        askTick: 1, bidTick: 1,
-      },
-    ]);
-    expect(out!.depth_delta_today).toEqual(
-      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_delta_today,
-    );
-  });
-
-  it('drops a bucket whose book never changed (빈 컬럼)', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      deltaOb(TODAY_OPEN + 11_000, 500, 400), // 동일 북 → 증감 0
-    ];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildIncremental(input).depth_delta_today).toEqual([]);
-    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
-  });
-
-  it('breaks the diff chain across an auction tick instead of diffing over it', () => {
-    // 장중 VI 로 3호가 붕괴(ineligible)가 끼면, 그 앞뒤 연속북을 이어 diff 하지 않는다.
-    // 이어 붙이면 관측되지 않은 구간의 변화가 한 버킷에 통째로 찍힌다.
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      shapedOb(TODAY_OPEN + 11_000, 900, 800, true), // 동시호가/VI → 체인 차단
-      deltaOb(TODAY_OPEN + 21_000, 500_000, 400_000), // 거대한 갭이지만 증감 아님
-    ];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildIncremental(input).depth_delta_today).toEqual([]);
-    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
-  });
-
-  it('breaks the diff chain across a totals-only tick (book 관측 상실)', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      { t_ms: TODAY_OPEN + 11_000, total_ask_qty: 590, total_bid_qty: 490 },
-      deltaOb(TODAY_OPEN + 21_000, 500_000, 400_000),
-    ];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildIncremental(input).depth_delta_today).toEqual([]);
-    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
-  });
-
-  it('breaks the diff chain when the venue swaps (KRX↔NXT 는 별개 호가장)', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400, 'KRX'),
-      deltaOb(TODAY_OPEN + 11_000, 900, 800, 'NXT'), // 교차 diff 금지
-      deltaOb(TODAY_OPEN + 21_000, 950, 800, 'NXT'), // NXT 끼리는 정상 diff
-    ];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildIncremental(input).depth_delta_today).toEqual([
-      {
-        tMs: TODAY_OPEN,
-        askDelta: [{ price: 200, inQty: 50, outQty: 0 }],
-        bidDelta: [],
-        askTick: 1, bidTick: 1,
-      },
-    ]);
-    expect(buildIncremental(input).depth_delta_today).toEqual(
-      buildHogaSeries(input).depth_delta_today,
-    );
-  });
-
-  it('세션 마감 뒤 틱만 있으면 증감을 방출하지 않는다 (KRX 차트 × NXT 애프터마켓)', () => {
-    // 실제 재현(2026-07-20 19:00): KRX 차트(마감 15:30)를 보는데 15분 SSE 버퍼가 통째로
-    // NXT 애프터마켓 틱이면, 히트맵식 +Infinity 폴백은 19:00 버킷을 만들어낸다. 그 버킷은
-    // 차트 가상축에 자리가 없어 그려지지 않는데 레전드에는 값이 찍히는 유령 상태가 된다.
-    const AFTER = TODAY_CLOSE + 3.5 * 3600_000; // 19:00 KST
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [shapedOb(AFTER, 100, 100, false), shapedOb(AFTER + 1000, 600, 100, false)];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildHogaSeries(input).depth_delta_today).toEqual([]);
-    expect(buildIncremental(input)).toEqual(buildHogaSeries(input)); // 오라클 파리티
-  });
-
-  it('통합(UN) 세션처럼 마감이 늦으면 같은 틱이 살아난다', () => {
-    // 같은 19:00 틱이라도 세션 상한이 20:00 이면(통합 venue) 축에 자리가 있으므로 방출한다.
-    const AFTER = TODAY_CLOSE + 3.5 * 3600_000;
-    const UN_SESSION = { open_ms: TODAY_OPEN, close_ms: TODAY_OPEN + 11 * 3600_000 }; // 20:00
-    const ob = [shapedOb(AFTER, 100, 100, false), shapedOb(AFTER + 1000, 600, 100, false)];
-    const out = buildHogaSeries({
-      ...baseInput, todaySession: UN_SESSION, sseOb: ob, sseTrade: [],
-    }).depth_delta_today;
-    expect(out.length).toBe(1);
-    // contLvls 는 10단 전부 같은 qty → 각 가격이 +500.
-    expect(out[0].askDelta.every((l) => l.inQty === 500 && l.outQty === 0)).toBe(true);
-  });
-
-  it('drops pre-open ticks from depth_delta_today (ADR-0062 v3 개장 하한)', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN - 60_000, 500, 400), // 08:59 — baseline 조차 되지 못한다
-      deltaOb(TODAY_OPEN + 1_000, 900, 800),
-      deltaOb(TODAY_OPEN + 11_000, 950, 800),
-    ];
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    // 개장 후 두 틱 사이의 +50 만 남는다(개장 전 틱을 baseline 으로 쓰지 않는다).
-    expect(buildIncremental(input).depth_delta_today).toEqual([
-      { tMs: TODAY_OPEN, askDelta: [{ price: 200, inQty: 50, outQty: 0 }], bidDelta: [], askTick: 1, bidTick: 1 },
-    ]);
-    expect(buildIncremental(input).depth_delta_today).toEqual(
-      buildHogaSeries(input).depth_delta_today,
-    );
-  });
-
-  it('matches the oracle after the live buffer slides (baseline must not survive reset)', () => {
-    // reset() 이 prevDeltaBook 을 비우지 않으면, 잘려나간 앞 스냅샷과 diff 해
-    // 오라클이 결코 만들지 않는 유령 증감이 첫 버킷에 찍힌다.
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const full = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      deltaOb(TODAY_OPEN + 61_000, 900, 400),
-      deltaOb(TODAY_OPEN + 121_000, 100, 400),
-    ];
-    buildIncremental({ ...baseInput, sseOb: full.slice(0, 2), sseTrade: [] });
-
-    const input = { ...baseInput, sseOb: full.slice(1), sseTrade: [] };
-    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
-  });
-
-  it('matches the oracle when a later continuous book moves the auction boundary forward', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      shapedOb(TODAY_OPEN + 61_000, 900, 800, true),
-      deltaOb(TODAY_OPEN + 121_000, 700, 400),
-    ];
-    buildIncremental({ ...baseInput, sseOb: ob.slice(0, 2), sseTrade: [] });
-
-    const input = { ...baseInput, sseOb: ob, sseTrade: [] };
-    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
-  });
-
-  it('preserves delta point identity for unchanged buckets across ticks', () => {
-    const buildIncremental = createIncrementalHogaSeriesBuilder();
-    const ob = [
-      deltaOb(TODAY_OPEN + 1_000, 500, 400),
-      deltaOb(TODAY_OPEN + 11_000, 600, 400), // bucketA 에 증감 기록
-      deltaOb(TODAY_OPEN + 71_000, 700, 400), // bucketB 생성
-      deltaOb(TODAY_OPEN + 81_000, 900, 400), // bucketB 만 갱신
-    ];
-    const first = buildIncremental({ ...baseInput, sseOb: ob.slice(0, 3), sseTrade: [] });
-    const aBefore = first.depth_delta_today[0];
-    const bBefore = first.depth_delta_today[1];
-
-    const second = buildIncremental({ ...baseInput, sseOb: ob, sseTrade: [] });
-    expect(second.depth_delta_today[0]).toBe(aBefore);
-    expect(second.depth_delta_today[1]).not.toBe(bBefore);
   });
 
   it('falls back safely when an appended snapshot arrives out of time order', () => {
