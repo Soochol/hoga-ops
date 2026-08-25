@@ -311,4 +311,55 @@ describe('usePeakWallRender', () => {
     expect(off.current.labels).toBe(true);
     expect(off.current.arrows).toBe(true);
   });
+
+  /**
+   * **계열별 「표시 개수」**(2026-08-25) — 종전엔 전체·미도달이 rank-1 고정이었다.
+   * 과거일 wire 가 rank-1 스칼라뿐이었기 때문이고, 백엔드가 top-3 를 싣게 되며 풀렸다.
+   *
+   * 막는 방향: 세 계열 중 하나가 다시 하드코딩 1 로 돌아가는 것.
+   * 못 보는 것: 계단(stepHistory)은 랭크로 자르지 않는다 — 의도된 3 고정이다.
+   */
+  it('전체·미도달도 자기 표시 개수를 따른다', () => {
+    const three = [
+      { price: 131, qty: 900, t_ms: 2 * MIN },
+      { price: 132, qty: 800, t_ms: 2 * MIN },
+      { price: 133, qty: 700, t_ms: 2 * MIN },
+    ];
+    const peak: AskPeak = {
+      ...PEAK,
+      all_price: 131, all_qty: 900, all_t_ms: 2 * MIN,
+      all_max_price: 131, all_max_qty: 900, all_max_t_ms: 2 * MIN,
+      all_peaks: three, all_max_peaks: three,
+      unreached_price: 141, unreached_qty: 600, unreached_t_ms: 2 * MIN,
+      unreached_peaks: [
+        { price: 141, qty: 600, t_ms: 2 * MIN },
+        { price: 142, qty: 500, t_ms: 2 * MIN },
+        { price: 143, qty: 400, t_ms: 2 * MIN },
+      ],
+    };
+    act(() => {
+      useLivePageStore.setState({
+        askPeakAllWallLineEnabled: true,
+        askPeakUnreachedLineEnabled: true,
+      });
+    });
+
+    // 기본 1 — 계열당 한 줄.
+    const one = render(true, [peak]);
+    expect(one.current.allWallSegments).toHaveLength(1);
+    expect(one.current.unreachedSegments).toHaveLength(1);
+
+    // 각자 올린다 — 서로 간섭하지 않는다.
+    act(() => {
+      useChartPrefsStore.setState({
+        askPeakAllWallRankLimit: 3,
+        askPeakUnreachedRankLimit: 2,
+      });
+    });
+    const more = render(true, [peak]);
+    expect(more.current.allWallSegments).toHaveLength(3);
+    expect(more.current.unreachedSegments).toHaveLength(2);
+    // 체결된 벽은 자기 키를 따르므로 그대로 1 이다.
+    expect(more.current.segments).toHaveLength(1);
+  });
 });

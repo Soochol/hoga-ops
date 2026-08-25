@@ -516,9 +516,30 @@ export const CHART_NUMERIC_PREFS = [
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `askPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
     // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
+    // ⚠ 형제 키 둘이 더 있다: `askPeakAllWallRankLimit`(전체 최대벽) ·
+    //    `askPeakUnreachedRankLimit`(미도달 벽). 셋을 grep 으로 혼동하지 말 것 —
+    //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'askPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakAllWallRankLimit',
+    label: '전체 최대벽 표시 개수',
+    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakUnreachedRankLimit',
+    label: '미도달 벽 표시 개수',
+    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -529,9 +550,30 @@ export const CHART_NUMERIC_PREFS = [
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `bidPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
     // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
+    // ⚠ 형제 키 둘이 더 있다: `bidPeakAllWallRankLimit`(전체 최대벽) ·
+    //    `bidPeakUnreachedRankLimit`(미도달 벽). 셋을 grep 으로 혼동하지 말 것 —
+    //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'bidPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakAllWallRankLimit',
+    label: '전체 최대벽 표시 개수',
+    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakUnreachedRankLimit',
+    label: '미도달 벽 표시 개수',
+    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,

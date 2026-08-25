@@ -1510,13 +1510,15 @@ def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -
     assert bundle.depth_heatmap == []
 
 
-def test_build_range_bundle_strips_all_peak_rankings() -> None:
-    """range 응답의 ask/bid_peaks는 all_peaks/all_max_peaks 전체 랭킹을 싣지 않는다.
+def test_build_range_bundle_keeps_capped_all_peak_rankings() -> None:
+    """range 응답이 all_peaks/all_max_peaks 를 **그대로 싣는다**(2026-08-25).
 
-    두 배열은 하루당 수천 후보로 sidecar 페이로드의 99%인데 range 소비처가 읽지
-    않는다(전체 랭킹은 라이브 ask_peak_today 전용). traded_* 랭킹과
-    all_* 스칼라는 와이어 계약 그대로 남아야 한다. 캐시된 과거일 entry(빌더를
-    거치지 않는 경로)도 조립 시점 스트립으로 커버되는 계약의 회귀 가드."""
+    종전엔 벗겼다 — 배열이 하루당 수천 후보라 sidecar 페이로드의 99%였고 소비처가
+    없었기 때문이다. 이제 소스에서 top-3 로 캡하므로(snapshots `_side_row`) 크기
+    문제가 사라졌고, 프론트의 「전체 최대벽 표시 개수」가 그 3개를 읽는다.
+
+    **막는 방향**: 스트립이 되살아나 표시 개수 2·3 이 조용히 rank-1 로 떨어지는 것.
+    못 보는 것: 캡 자체(소스 계약이라 `test_peak_sweep_oracle` 이 본다)."""
     import contextlib
     from unittest.mock import patch
 
@@ -1547,13 +1549,12 @@ def test_build_range_bundle_strips_all_peak_rankings() -> None:
         )
 
     for peak in (rb.ask_peaks[0], rb.bid_peaks[0]):
-        assert peak.all_peaks == []
-        assert peak.all_max_peaks == []
+        assert [c.model_dump() for c in peak.all_peaks] == [candidate] * 4
+        assert [c.model_dump() for c in peak.all_max_peaks] == [candidate] * 4
         assert [c.model_dump() for c in peak.traded_peaks] == [candidate]
         assert (peak.all_price, peak.all_qty, peak.all_t_ms) == (70_300, 6000, 2)
-    # 원본 객체는 변형하지 않는다(캐시 공유 객체 오염 방지).
-    assert len(ask.all_peaks) == 4
-    assert len(bid.all_max_peaks) == 4
+    # 픽스처가 4개인 것은 의도다 — 이 자리는 **통과 여부**를 재고, 3개 캡은 소스
+    # 계약이라 오라클이 잰다. 여기서 캡을 재면 두 곳이 같은 것을 다르게 말한다.
 
 
 def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
@@ -1848,15 +1849,12 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
-    assert [c.model_dump() for c in p.all_peaks[:8]] == [
+    # **top-3 캡**(2026-08-25) — 종전엔 전량이라 `[:8]` 로 잘라 봤다. 이제 소스가
+    # 3개만 만든다(프론트 「표시 개수」 상한과 같은 수).
+    assert [c.model_dump() for c in p.all_peaks] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
         {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
-        {"price": 27000, "qty": 7000, "t_ms": 1781049660000},
-        {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
-        {"price": 25000, "qty": 3000, "t_ms": 1781049720000},
-        {"price": 25000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 29000, "qty": 500, "t_ms": 1781049660000},
     ]
 
 
@@ -2070,15 +2068,12 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
-    assert [c.model_dump() for c in p.all_peaks[:8]] == [
+    # **top-3 캡**(2026-08-25) — 종전엔 전량이라 `[:8]` 로 잘라 봤다. 이제 소스가
+    # 3개만 만든다(프론트 「표시 개수」 상한과 같은 수).
+    assert [c.model_dump() for c in p.all_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
-        {"price": 69800, "qty": 7000, "t_ms": 1781049660000},
-        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
-        {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
-        {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 69600, "qty": 500, "t_ms": 1781049660000},
     ]
 
 

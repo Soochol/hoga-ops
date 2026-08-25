@@ -2266,6 +2266,10 @@ def reaggregate_peak_rep(
         "all_close": all_close,
         "traded_close": _peak_scalar(rep_traded),
         "traded_peaks": _peak_candidates(rep_traded, 3),
+        # 굵은 봉의 all top-3 — **여기서 안 만들면 per-day 불일치가 생긴다**:
+        # 1분 캐시로 파생된 날만 rank-1 이고 직접 계산된 날은 top-3 가 된다.
+        # rep 프레임이 이미 손에 있어 비용은 무시 수준이다(rows 는 메모리 안).
+        "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), 3),
     }
 
 
@@ -2371,8 +2375,11 @@ def query_day_ask_bid_peak_dual_with_rep(
             # 기록 갱신 시퀀스 — dedup 전 원본 프레임에서(사유는 헬퍼 docstring).
             "traded_record_peaks": _peak_record_sequence(rep),
             "traded_record_max_peaks": _peak_record_sequence(cont),
-            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
-            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
+            # **top-3 캡**(2026-08-25). 종전엔 전량(하루 avg ~1.3k/1.6k)을 만들어
+            # 캐시에 쓰고 `/api/range` 가 다시 벗겼다 — 소비처가 0 이었다.
+            # 3 인 이유: 프론트 「표시 개수」 상한이 3 이다(`toPeakRankLimit`).
+            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), 3),
+            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), 3),
             "unreached": _peak_scalar(unreached_frame),
             "unreached_peaks": _peak_candidates(_peak_price_distinct(unreached_frame), 3),
         }
