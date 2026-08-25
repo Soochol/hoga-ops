@@ -4,6 +4,7 @@ import type { BrokerLateEntryEvent, QuoteRatioPoint, RangeBundle } from '../../a
 import type { BrokerLateEntrySideMode } from '../../state/liveIndicatorsPersistence';
 import { brokerDisplayShort } from '../../sidebar/brokerDisplayNames';
 import { quoteImbalance } from '../../util/imbalance';
+import { unixMsToKSTHhmm } from '../../util/time';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { isAuctionHidden } from '../util/auctionHide';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
@@ -29,6 +30,20 @@ export type BrokerLateEntryProjectionContext = BrokerLateEntryRatioInputs & {
   sideMode: BrokerLateEntrySideMode;
   buyColor: string;
   sellColor: string;
+  /**
+   * 기준 시각(HHMM) — **클라이언트에서 적용한다**.
+   *
+   * 백엔드도 같은 임계를 받지만(`broker_late_entry_start_hhmm`), 요청은 이제 항상
+   * 최소값(09:00)으로 보낸다. 근거는 백엔드 알고리즘의 성질이다: 이벤트의 `t_ms` 는
+   * (거래원, 방향)의 **첫 등장 시각**이고, 임계는 그보다 이른 것을 seen-set 으로
+   * 걸러낼 뿐이다. 따라서 최소 임계의 결과를 `t_ms >= T` 로 거르면 **임계 T 의 결과와
+   * 정확히 같다**(`brokerLateEntryMarkers.threshold.test.ts` 가 그 동등성을 잠근다).
+   *
+   * 그래서 얻는 것 셋: ① 인스턴스마다 다른 임계를 **한 번의 조회**로 그릴 수 있고,
+   * ② 임계를 바꿔도 재조회가 없어 즉시 반영되며, ③ 백엔드 캐시가 임계별로 쪼개지지
+   * 않는다(종전엔 (code,date,source,start_hhmm) 키였다).
+   */
+  startHHMM: number;
 };
 
 export type BrokerLateEntryMarkerContext = BrokerLateEntryProjectionContext;
@@ -117,6 +132,7 @@ function projectMarkersFromRatioPoints(
   const markers: BrokerLateEntryMarkerPoint[] = [];
   for (const event of events) {
     if (!sideAllowed(event.side, ctx.sideMode)) continue;
+    if (unixMsToKSTHhmm(event.t_ms) < ctx.startHHMM) continue;
     const anchor = findMarkerAnchorPoint(ratioPoints, event, axis, ctx);
     if (!anchor) continue;
     markers.push({

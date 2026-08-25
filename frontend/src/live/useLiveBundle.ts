@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
 import type { WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
@@ -496,7 +497,6 @@ export function planLiveRangeRequest(args: {
   depthDeltaEnabled: boolean;
   wallSurgeEnabled: boolean;
   brokerLateEntryEnabled: boolean;
-  brokerLateEntryStartHHMM: number;
   programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
   volumeDistributionRangeCount: number;
@@ -529,7 +529,14 @@ export function planLiveRangeRequest(args: {
       askPeaksEnabled: enableMinute && args.askPeakEnabled,
       bidPeaksEnabled: enableMinute && args.bidPeakEnabled,
       brokerLateEntriesEnabled: args.brokerLateEntryEnabled,
-      brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
+      // **항상 최소 임계로 조회한다.** 백엔드가 돌려주는 `t_ms` 는 (거래원, 방향)의
+      // 첫 등장 시각이고 임계는 그보다 이른 것을 걸러낼 뿐이라, 최소 임계의 결과를
+      // 클라이언트에서 `t_ms >= T` 로 거르면 임계 T 의 결과와 정확히 같다
+      // (`brokerLateEntryMarkers.ts` 의 `startHHMM` 도크스트링 · 동등성 테스트).
+      //
+      // 그래서 사용자의 기준 시각이 **쿼리 키에서 빠진다** — 시각을 바꿔도 재조회가
+      // 없어 즉시 반영되고, 백엔드 캐시도 임계별로 쪼개지지 않는다.
+      brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? TRADING_TIME_MIN_HHMM : null,
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
@@ -568,7 +575,6 @@ export function useLiveBundle(
     depthDeltaEnabled,
     wallSurgeEnabled,
     brokerLateEntryEnabled,
-    brokerLateEntryStartHHMM,
     programTradeEnabled,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
@@ -881,7 +887,6 @@ export function useLiveBundle(
     depthDeltaEnabled,
     wallSurgeEnabled,
     brokerLateEntryEnabled,
-    brokerLateEntryStartHHMM,
     programTradeEnabled: effProgramTradeEnabled,
     volumeDistributionEnabled: effVolumeDistributionEnabled,
     volumeDistributionRangeCount,

@@ -72,6 +72,9 @@ export type RatioPaneContext = {
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
   brokerLateEntryBuyColor: string;
   brokerLateEntrySellColor: string;
+  /** 기준 시각(HHMM) — 이제 **클라이언트 필터**다. 요청은 최소값 고정
+   *  (`brokerLateEntryMarkers.ts` 의 `startHHMM` 도크스트링에 근거). */
+  brokerLateEntryStartHHMM: number;
   /** 이 pane 을 그리는 차트 창(멀티창 #706). 레전드 값 provider 등록 스코프로만
    *  쓰이고 투영 자체에는 관여하지 않는다 — 그래서 optional(순수 투영 테스트/`/study`
    *  는 생략 = 전역 스코프). */
@@ -164,6 +167,7 @@ const useRatioContext = (): RatioPaneContext => {
   const brokerLateEntrySideMode = useWindowIndicator((s) => s.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = useWindowIndicator((s) => s.brokerLateEntryBuyColor);
   const brokerLateEntrySellColor = useWindowIndicator((s) => s.brokerLateEntrySellColor);
+  const brokerLateEntryStartHHMM = useWindowIndicator((s) => s.brokerLateEntryStartHHMM);
   // 레전드 값 provider 등록 스코프(멀티창) — 창 수명 동안 불변이라 ctx identity 를
   // 흔들지 않는다. 컨텍스트만 읽으므로 전역 스토어 구독도 늘지 않는다.
   const windowId = useWindowScopeId();
@@ -174,10 +178,11 @@ const useRatioContext = (): RatioPaneContext => {
       brokerLateEntrySideMode,
       brokerLateEntryBuyColor,
       brokerLateEntrySellColor,
+      brokerLateEntryStartHHMM,
       windowId,
     }),
     [brokerLateEntryEnabled, brokerLateEntryHidden, brokerLateEntrySideMode,
-      brokerLateEntryBuyColor, brokerLateEntrySellColor, windowId],
+      brokerLateEntryBuyColor, brokerLateEntrySellColor, brokerLateEntryStartHHMM, windowId],
   );
 
   return useMemo(
@@ -195,6 +200,7 @@ const useRatioContext = (): RatioPaneContext => {
       brokerPrefs.brokerLateEntrySideMode,
       brokerPrefs.brokerLateEntryBuyColor,
       brokerPrefs.brokerLateEntrySellColor,
+      brokerPrefs.brokerLateEntryStartHHMM,
       brokerPrefs.windowId,
     ],
   );
@@ -302,6 +308,7 @@ export const RATIO_SPEC = {
               sideMode: ctx.brokerLateEntrySideMode,
               buyColor: ctx.brokerLateEntryBuyColor,
               sellColor: ctx.brokerLateEntrySellColor,
+              startHHMM: ctx.brokerLateEntryStartHHMM,
             })
           : [];
         // 레전드 값 provider 를 이 창 스코프에 재등록 — points/axis 를 클로저에 담아
