@@ -47,6 +47,10 @@ export type PeakWallRenderState = {
   labels: boolean;
   /** 순위 화살표가 그려지는가. */
   arrows: boolean;
+  /** 레전드 순위 셀을 채우는가. ⚠ **행이 아니라 셀만** 가른다 — 행이 사라지면
+   *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록돼 있고 이 값이
+   *  false 면 빈 셀 목록을 낸다. `hidden` 과 무관하다(눈은 선만 숨긴다). */
+  legendCells: boolean;
   /** 선 색·두께(표면이 primitive 에 그대로 넘긴다). */
   color: string;
   lineWidth: number;
@@ -126,6 +130,11 @@ export function usePeakWallRender({
   const hidden = useWindowIndicator((s) => (isAsk ? s.askPeakHidden : s.bidPeakHidden));
   const color = useWindowIndicator((s) => (isAsk ? s.askPeakColor : s.bidPeakColor));
   const lineWidth = useWindowIndicator((s) => (isAsk ? s.askPeakLineWidth : s.bidPeakLineWidth));
+  // 체결된 벽도 이제 **세 계열 중 하나**다 — 자기 토글로 켜고 끈다(기본 true).
+  // 마스터(`enabled`)와 다른 층위: 마스터는 계산 자체, 이건 이 계열의 선.
+  const tradedEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakTradedLineEnabled : s.bidPeakTradedLineEnabled),
+  );
   const allWallEnabled = useWindowIndicator(
     (s) => (isAsk ? s.askPeakAllWallLineEnabled : s.bidPeakAllWallLineEnabled),
   );
@@ -151,13 +160,16 @@ export function usePeakWallRender({
   const labelEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakLabelEnabled : s.bidPeakLabelEnabled),
   );
+  const legendCellEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakLegendCellEnabled : s.bidPeakLegendCellEnabled),
+  );
   const rankArrowEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakRankArrowEnabled : s.bidPeakRankArrowEnabled),
   );
   const maFilter = usePeakMaFilter(side);
 
   const built = useMemo(() => (
-    applicable && enabled
+    applicable && enabled && tradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -172,6 +184,7 @@ export function usePeakWallRender({
       })
       : EMPTY_SEGMENTS
   ), [
+    tradedEnabled,
     allPriceRankLimit,
     applicable,
     axis,
@@ -301,7 +314,7 @@ export function usePeakWallRender({
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled
+    needStepSegments && applicable && enabled && tradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -318,6 +331,7 @@ export function usePeakWallRender({
       : null
   ), [
     needStepSegments,
+    tradedEnabled,
     allPriceRankLimit,
     applicable,
     axis,
@@ -347,6 +361,7 @@ export function usePeakWallRender({
     drawn,
     labels: drawn && labelEnabled,
     arrows: drawn && rankArrowEnabled,
+    legendCells: legendCellEnabled,
     color,
     lineWidth,
     stepSegments: stepBuilt ?? built,
@@ -379,6 +394,7 @@ export function usePeakWallRender({
     color,
     drawn,
     labelEnabled,
+    legendCellEnabled,
     lineWidth,
     rankArrowEnabled,
   ]);
