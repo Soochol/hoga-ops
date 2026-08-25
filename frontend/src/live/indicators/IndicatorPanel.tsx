@@ -8,7 +8,6 @@ import InvestorNetConfig from './InvestorNetConfig';
 import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
 import DepthHeatmapConfig from './DepthHeatmapConfig';
-import DepthDeltaConfig from './DepthDeltaConfig';
 import WallSurgeConfig from './WallSurgeConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
@@ -41,7 +40,6 @@ export type CategoryId =
   | 'peak-walls'
   | 'trade-volume-poc'
   | 'depth-heatmap'
-  | 'depth-delta'
   | 'wall-surge'
   | 'volume-distribution'
   | 'quote-totals'
@@ -72,7 +70,6 @@ export const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: G
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga' },
-  { id: 'depth-delta',     label: '단별 잔량 증감',   group: 'hoga' },
   { id: 'wall-surge',      label: '호가벽 급증',     group: 'hoga' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
@@ -195,8 +192,6 @@ export default function IndicatorPanel({
   const setBrokerLateEntryEnabled = actions.setAllBrokerLateEntriesEnabled;
   const depthHeatmapEnabled = ind.depthHeatmapEnabled;
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
-  const depthDeltaEnabled = ind.depthDeltaEnabled;
-  const setDepthDeltaEnabled = actions.setDepthDeltaEnabled;
   const wallSurgeEnabled = ind.wallSurgeEnabled;
   const setWallSurgeEnabled = actions.setWallSurgeEnabled;
   const paneIndicators: PanePrefsIndicatorSource = {
@@ -258,7 +253,6 @@ export default function IndicatorPanel({
       case 'trade-volume-poc': return tradeVolumePocEnabled;
       case 'volume-distribution': return volumeDistributionEnabled;
       case 'depth-heatmap': return depthHeatmapEnabled;
-      case 'depth-delta': return depthDeltaEnabled;
       case 'wall-surge': return wallSurgeEnabled;
       case 'broker-late-entry': return brokerLateEntryEnabled;
       default: return false;
@@ -277,7 +271,6 @@ export default function IndicatorPanel({
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(present);
       case 'volume-distribution': return () => setVolumeDistributionEnabled(present);
       case 'depth-heatmap': return () => setDepthHeatmapEnabled(present);
-      case 'depth-delta': return () => setDepthDeltaEnabled(present);
       case 'wall-surge': return () => setWallSurgeEnabled(present);
       case 'broker-late-entry': return () => setBrokerLateEntryEnabled(present);
       default: return null;
@@ -477,7 +470,6 @@ export default function IndicatorPanel({
               {selected === 'peak-walls' && <PeakWallsConfig />}
               {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
               {selected === 'depth-heatmap' && <DepthHeatmapConfig />}
-              {selected === 'depth-delta' && <DepthDeltaConfig />}
               {selected === 'wall-surge' && <WallSurgeConfig />}
               {selected === 'volume-distribution' && (
                 <div>

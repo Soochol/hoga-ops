@@ -571,7 +571,8 @@ function outsideCoveredSegment(pointMs: number, bundle: RangeBundle): boolean {
  * `mergeRangeBundles` 는 `from_date = min(previous, next)` 라 **단조 증가**한다.
  * 좌측 팬으로 한 번 3개월까지 넓히면 다시 줌인해도 안 줄어들어, 1시간을 보면서도
  * 3개월치를 계속 들고 있게 된다(2026-08-21 실측: 3개월 sidecar 29.2MB — 그중
- * depth_heatmap 14.7MB + depth_delta 11.1MB). 이 함수가 그 단조성을 끊는다.
+ * depth_heatmap 14.7MB, 단별 잔량 증감 11.1MB. 증감은 2026-08-25 에 제거됐다).
+ * 이 함수가 그 단조성을 끊는다.
  *
  * ## 진동 방지는 **호출부 책임**이다
  *
@@ -616,7 +617,6 @@ export function trimRangeBundleBefore(bundle: RangeBundle, retainFrom: string): 
     volume_distributions: afterDate(bundle.volume_distributions),
     broker_late_entries: afterMs(bundle.broker_late_entries, (e) => e.t_ms),
     depth_heatmap: afterMs(bundle.depth_heatmap, (p) => p.t_ms),
-    depth_delta: afterMs(bundle.depth_delta, (p) => p.t_ms),
     wall_surge: afterMs(bundle.wall_surge, (e) => e.t_ms),
     program_trade: bundle.program_trade
       ? { ...bundle.program_trade, points: afterMs(bundle.program_trade.points, (p) => p.t) }
@@ -709,12 +709,7 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
       (p) => String(p.t_ms),
       (a, b) => a.t_ms - b.t_ms,
     ),
-    depth_delta: uniqueBy(
-      [...(previous.depth_delta ?? []), ...(next.depth_delta ?? [])],
-      (p) => String(p.t_ms),
-      (a, b) => a.t_ms - b.t_ms,
-    ),
-    // 시각 단위 병합이되 위 둘(`depth_heatmap`·`depth_delta`)과 **키가 다르다** — 한
+    // 시각 단위 병합이되 위(`depth_heatmap`)와 **키가 다르다** — 한
     // 스냅샷 시각에 매도·매수 벽이 동시에, 또는 다른 호가 레벨에서 함께 설 수 있어
     // `t_ms` 만으로 묶으면 그중 하나만 남는다.
     //

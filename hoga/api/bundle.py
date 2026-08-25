@@ -37,7 +37,6 @@ from hoga.api.models import (
     BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
-    DepthDeltaPoint,
     DepthHeatmapPoint,
     ExcludedDate,
     FillStrength,
@@ -1309,151 +1308,6 @@ def build_depth_heatmap_slice(
     return out
 
 
-def build_depth_delta_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    bucket_ms: int,
-    source: str = "hogaplay",
-    venue: Venue = "KRX",
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
-    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
-) -> list[DepthDeltaPoint]:
-    """연속 스냅샷 diff 의 버킷 합(단별 잔량 증감)을 DepthDeltaPoint 리스트로.
-
-    build_depth_heatmap_slice 와 완전 대칭 — 같은 캐시 게이트(완료 과거일 =
-    PastIndicatorsCache, 오늘 = short-TTL + coalescer), 같은 세션 경계 전달, 같은
-    unix 변환. diff 규칙(공통 가격 교집합·side 분리·체인 차단)은
-    query_bucketed_depth_delta 참조. 오늘자는 프로모션이 진행 중이라 페이지를 연
-    시점 이전 구간을 이 슬라이스가 채우고, 이후는 프론트 라이브 diff 가 잇는다.
-    """
-    cache = _resolve_cache(engine, cache)
-    today_kst = _resolve_today_kst(today_kst)
-    try:
-        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
-    except (FileNotFoundError, StockDateNotFound):
-        return []
-    if not path_obj.exists():
-        return []
-    cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
-    if cacheable:
-        cached = cache.get_depth_delta(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
-        if cached is not CACHE_MISS:
-            return cached  # type: ignore[return-value]
-    one = snapshots_tbl.ONE_MINUTE_MS
-    if cacheable and bucket_ms != one and bucket_ms % one == 0:
-        # 굵은 봉은 **파케이를 읽지 않는다** — 1분 결과와 1분 사다리 가격 집합에서
-        # 파생한다. 유입/유출은 합, tick 은 가격 집합의 합집합에서 다시 중앙값
-        # (`snapshots.reaggregate_depth_delta`). 1분 산출이 없으면 여기서 한 번만
-        # 만든다(스캔 1회).
-        assert cache is not None
-        midnight = ms_from_midnight_to_unix_ms(date, 0)
-        base_pts = cache.get_depth_delta(code, date, source, one, venue=venue)
-        ladder = cache.get_depth_delta_prices(code, date, source, venue=venue)
-        if base_pts is CACHE_MISS or ladder is CACHE_MISS:
-            def _compute_1m() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
-                # out 파라미터를 **반환값에 실어** coalescer 와 안전하게 쓴다 —
-                # 바깥 dict 를 닫아 쓰면 다른 스레드의 비행이 이기는 순간 빈 채로 남는다.
-                prices: dict[tuple[int, str], list[int]] = {}
-                rows = snapshots_tbl.query_bucketed_depth_delta(
-                    engine.conn, path=path_obj, bucket_ms=one,
-                    session_open_ms=session_open_ms, session_close_ms=session_close_ms,
-                    out_ladder_prices=prices,
-                )
-                return rows, prices
-
-            rows_1m, prices_1m = SLICE_COALESCER.run(
-                ("depth_delta_1m", code, date, source, venue), _compute_1m,
-            )
-            base_pts = [
-                DepthDeltaPoint(
-                    t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                    asks=[[p, i, o] for p, i, o in r.ask],
-                    bids=[[p, i, o] for p, i, o in r.bid],
-                    ask_tick=r.ask_tick, bid_tick=r.bid_tick,
-                )
-                for r in rows_1m
-            ]
-            cache.store_depth_delta(code, date, source, one, base_pts, venue=venue)
-            ladder = [
-                [intra, 0 if side == "ask" else 1, *ps]
-                for (intra, side), ps in sorted(prices_1m.items())
-            ]
-            cache.store_depth_delta_prices(code, date, source, ladder, venue=venue)
-        # 캐시는 wire 모델(unix `t_ms`)을 담고 축약 함수는 자정 기준 `bucket_intra_ms`
-        # 를 먹는다 — KST 는 서머타임이 없어 오프셋이 상수라 뺄셈으로 오간다.
-        buckets_1m = [
-            snapshots_tbl.DepthDeltaBucket(
-                bucket_intra_ms=p.t_ms - midnight,
-                ask=tuple((a[0], a[1], a[2]) for a in p.asks),
-                bid=tuple((b[0], b[1], b[2]) for b in p.bids),
-                ask_tick=p.ask_tick, bid_tick=p.bid_tick,
-            )
-            for p in cast("list[DepthDeltaPoint]", base_pts)
-        ]
-        ladder_map = {
-            (r[0], "ask" if r[1] == 0 else "bid"): r[2:]
-            for r in cast("list[list[int]]", ladder)
-        }
-        merged = snapshots_tbl.reaggregate_depth_delta(buckets_1m, ladder_map, bucket_ms=bucket_ms)
-        return [
-            DepthDeltaPoint(
-                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                asks=[[p, i, o] for p, i, o in r.ask],
-                bids=[[p, i, o] for p, i, o in r.bid],
-                ask_tick=r.ask_tick, bid_tick=r.bid_tick,
-            )
-            for r in merged
-        ]
-
-    is_today = today_kst is not None and date == today_kst
-    delta_key = ("depth_delta", code, date, source, venue, bucket_ms)
-    if is_today:
-        hit, cached = TODAY_TTL.lookup(delta_key)
-        if hit:
-            return cached
-    def _compute_delta() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
-        prices: dict[tuple[int, str], list[int]] = {}
-        got = snapshots_tbl.query_bucketed_depth_delta(
-            engine.conn,
-            path=path_obj,
-            bucket_ms=bucket_ms,
-            session_open_ms=session_open_ms,
-            session_close_ms=session_close_ms,
-            out_ladder_prices=prices,
-        )
-        return got, prices
-
-    rows, ladder_1m = SLICE_COALESCER.run(delta_key, _compute_delta)
-    # 1분으로 계산한 김에 가격 집합도 저장한다 — 없으면 **이 종목의 첫 굵은 봉
-    # 요청이 같은 스캔을 한 번 더** 한다(실측 4.2s 뒤 4.1s).
-    if cacheable and bucket_ms == one:
-        cache.store_depth_delta_prices(  # type: ignore[union-attr]
-            code, date, source,
-            [[intra, 0 if side == "ask" else 1, *ps] for (intra, side), ps in sorted(ladder_1m.items())],
-            venue=venue,
-        )
-    out: list[DepthDeltaPoint] = []
-    for r in rows:
-        out.append(
-            DepthDeltaPoint(
-                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                asks=[[p, i, o] for p, i, o in r.ask],
-                bids=[[p, i, o] for p, i, o in r.bid],
-                ask_tick=r.ask_tick,
-                bid_tick=r.bid_tick,
-            )
-        )
-    if cacheable:
-        cache.store_depth_delta(code, date, source, bucket_ms, out, venue=venue)  # type: ignore[union-attr]
-    elif is_today:
-        TODAY_TTL.put(delta_key, out)
-    return out
-
-
 def build_wall_surge_slice(
     engine: QueryEngine,
     *,
@@ -1468,7 +1322,7 @@ def build_wall_surge_slice(
 ) -> list[WallSurgeEvent]:
     """호가벽 급증 이벤트를 WallSurgeEvent 리스트로.
 
-    build_depth_delta_slice 와 같은 캐시 게이트(완료 과거일 = PastIndicatorsCache,
+build_depth_heatmap_slice 와 같은 캐시 게이트(완료 과거일 = PastIndicatorsCache,
     오늘 = short-TTL + coalescer)를 쓰되 **bucket_ms 축이 없다** — 이벤트는 봉과 무관한
     시점 사실이라 캐시 키가 (code, date, source, venue) 로 충분하고, 봉이 바뀌어도
     재계산이 필요 없다.
@@ -1953,7 +1807,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
     depth_heatmap_enabled: bool = True,
-    depth_delta_enabled: bool = True,
     wall_surge_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
@@ -1994,7 +1847,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
-    include_depth_delta = include_optional_sidecar_slices and depth_delta_enabled
     include_wall_surge = include_optional_sidecar_slices and wall_surge_enabled
     include_program_trade = program_trade_enabled and sidecar_only
 
@@ -2050,7 +1902,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
-    depth_delta: list[DepthDeltaPoint] = []
     wall_surge: list[WallSurgeEvent] = []
     included_dates: list[str] = []
 
@@ -2344,20 +2195,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 )
             )
         gil_breathe_at = _gil_breathe(gil_breathe_at)
-        if include_depth_delta:
-            depth_delta.extend(
-                build_depth_delta_slice(
-                    engine,
-                    code=code,
-                    date=d,
-                    bucket_ms=bucket_ms,
-                    source=source,
-                    venue=venue,
-                    session_open_ms=ind_open_ms,
-                    session_close_ms=ind_close_ms,
-                )
-            )
-        gil_breathe_at = _gil_breathe(gil_breathe_at)
         if include_wall_surge:
             wall_surge.extend(
                 build_wall_surge_slice(
@@ -2420,7 +2257,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         depth_heatmap=depth_heatmap,
-        depth_delta=depth_delta,
         wall_surge=wall_surge,
         volume_distributions=volume_distributions,
         program_trade=(

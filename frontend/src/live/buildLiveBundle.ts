@@ -28,14 +28,6 @@ import {
 } from './liveDateTime';
 import { quoteImbalance } from '../util/imbalance';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
-import {
-  foldLevelDiff,
-  ladderTick,
-  makeDeltaPoint,
-  sameDeltaChain,
-  type DeltaAcc,
-  type DepthDeltaPoint,
-} from './depthDelta';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -79,21 +71,20 @@ export interface BuildHogaSeriesInput {
   sseTrade: readonly TradeSnapshot[];
   bucketMs: number;
   /**
-   * 호가 히트맵 / 단별 잔량증감을 **계산할지**. 생략 = true.
+   * 호가 히트맵을 **계산할지**. 생략 = true.
    *
-   * 왜 있나: 이 둘은 15분 버퍼 전체를 훑는 O(n) 작업이고 **기본 OFF 인 지표**인데
-   * 종전엔 토글과 무관하게 매 flush 계산됐다. 실측(2026-07-29, 버퍼 9k~36k 스냅샷)
-   * 에서 전체 재빌드 비용의 **73~94% 가 이 둘**이었고 그중 대부분이 증감이다
-   * (9k: 전체 31.6ms 중 증감 21.2ms). 15분 슬라이딩 버퍼가 앞을 자르기 시작하면
-   * prefix-guard 가 깨져 유입률 ≥ flush율(6.67/s)인 구간에선 **매 flush 가 전체
-   * 재빌드**가 되므로, 끈 사용자에게 이 비용은 전액 낭비였다.
+   * 왜 있나: 15분 버퍼 전체를 훑는 O(n) 작업이고 **기본 OFF 인 지표**인데 종전엔
+   * 토글과 무관하게 매 flush 계산됐다. 실측(2026-07-29, 버퍼 9k~36k 스냅샷)에서
+   * 히트맵과 단별 잔량 증감(2026-08-25 제거)이 **전체 재빌드 비용의 73~94%** 를
+   * 차지했다. 15분 슬라이딩 버퍼가 앞을 자르기 시작하면 prefix-guard 가 깨져
+   * 유입률 ≥ flush율(6.67/s)인 구간에선 **매 flush 가 전체 재빌드**가 되므로,
+   * 끈 사용자에게 이 비용은 전액 낭비였다.
    *
    * 기본이 true 인 이유: 이 함수는 `IncrementalHogaBucketer` 의 **패리티 오라클**
    * 이라 기존 테스트가 플래그 없이 호출한다. 기본을 켜 두면 오라클 계약이 그대로고
    * 게이트는 /live 호출부만 옵트인한다.
    */
   depthHeatmapEnabled?: boolean;
-  depthDeltaEnabled?: boolean;
 }
 
 export interface HogaSeries {
@@ -105,15 +96,6 @@ export interface HogaSeries {
    * contribute nothing. Past-date depth lives on `RangeBundle.depth_heatmap`;
    * the bundle merge (Task 6) stitches the two. */
   depth_heatmap_today: DepthHeatmapPoint[];
-  /** 오늘의 단별 잔량 증감 버킷 — 연속된 두 호가 스냅샷을 가격 교집합으로 diff 해
-   * 분봉 버킷마다 가격별 유입/유출을 합산한 것. 히트맵이 "얼마나 쌓여 있나"(상태)라면
-   * 이쪽은 "언제 얼마나 들어오고 빠졌나"(흐름)다.
-   *
-   * v1 은 **오늘 전용**이다: 과거일 `RangeBundle.depth_heatmap` 은 분봉당 close/max
-   * 스냅샷만 있어 분 내부 증감이 이미 소실됐고, close-to-close 근사는 오늘과 정밀도가
-   * 달라 같은 지표로 보이면 오독을 부른다. 과거일은 백엔드가 캡처 원본에서 집계해
-   * 서빙하는 후속 작업(설계 §5a)으로 미룬다 — 그래서 wire 왕복도 없다. */
-  depth_delta_today: DepthDeltaPoint[];
 }
 
 interface PastHogaSeries {
@@ -150,7 +132,7 @@ function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionClose
 export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   const {
     todaySession, pastBundle, sseOb, sseTrade, bucketMs,
-    depthHeatmapEnabled = true, depthDeltaEnabled = true,
+    depthHeatmapEnabled = true,
   } = input;
 
   // ADR-0049 / spec §3 — filter (not clip) past points whose t escapes
@@ -192,9 +174,6 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
     depth_heatmap_today: depthHeatmapEnabled
       ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms)
-      : [],
-    depth_delta_today: depthDeltaEnabled
-      ? bucketDepthDelta(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms)
       : [],
   };
 }
@@ -247,87 +226,6 @@ export function bucketDepthHeatmap(
   });
 }
 
-/** One-shot depth-DELTA bucketing — the stateless oracle mirrored by
- * `IncrementalHogaBucketer`'s per-tick fold. Walks the snapshots in time order
- * keeping a single `prev` baseline and folds each consecutive pair's per-price
- * change into the bucket of the LATER tick (변화가 관측된 시각).
- *
- * The eligibility gate is byte-identical to `bucketDepthHeatmap`'s, but the
- * treatment of a rejected tick differs in a load-bearing way: instead of merely
- * skipping it, a rejected tick **drops the baseline** (`prev = null`). Diffing
- * across an excluded stretch (개장/종가 동시호가, 장중 VI 붕괴, book 없는
- * totals-only 틱) would attribute an unbounded, unobserved interval of change to
- * a single bucket — and the 10단 관측창이 그 사이 크게 미끄러졌을 가능성이 높아
- * 교집합 규칙만으로는 아티팩트를 막지 못한다. Venue 전환(KRX↔NXT)도 같은 이유로
- * 체인을 끊는다(별개 호가장).
- *
- * 빈 버킷(폴드는 했지만 증감이 전부 0)은 방출하지 않는다 — depth 경로의 "배제 버킷 =
- * 빈 컬럼" 정책과 같고, 증분 미러도 `makeDeltaPoint` 의 null 로 같은 결정을 내린다. */
-export function bucketDepthDelta(
-  ob: readonly ObSnapshot[],
-  bucketMs: number,
-  sessionCloseMs: number = Number.POSITIVE_INFINITY,
-  sessionOpenMs: number = Number.NEGATIVE_INFINITY,
-): DepthDeltaPoint[] {
-  const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
-  let lastContinuousMs = Number.NEGATIVE_INFINITY;
-  for (const s of obSorted) {
-    if (s.t_ms <= sessionCloseMs && isContinuousBook(s)) lastContinuousMs = s.t_ms;
-  }
-  // 경계를 못 찾았으면 히트맵처럼 +Infinity 로 **열지 않는다**. 버퍼가 통째로 세션 마감
-  // 뒤인 상황(KRX 차트로 NXT 애프터마켓을 보는 경우 — 15분 창이 전부 15:30 이후)이 정확히
-  // 그 경우인데, 열어 주면 19:00 같은 세션 밖 시각에 버킷이 생긴다. 그런 버킷은 차트
-  // 가상축에 자리가 없어 **그려지지 않으면서 레전드에는 값이 찍히는** 유령 상태를 만든다
-  // (증감은 과거일 소스가 없어 이 버퍼가 유일한 입력이라 출력 전체가 유령이 된다).
-  // 세션 상한으로 닫으면 KRX 차트에서는 조용히 비고(레전드 행도 hasDepthDelta 로 사라짐),
-  // 통합(UN) 차트에서는 세션이 20:00 까지라 NXT 시간대가 그대로 살아난다.
-  // ⚠ 이 문장은 오래도록 **약속만** 이었다 — 호출부가 KRX 정규장을 고정으로 넘겨서
-  // UN/NXT 에서도 상한이 15:30 이었다. 지금은 `todaySession` 이 선택 venue 를 타므로
-  // 실제로 성립한다. 경계를 다시 손보면 이 문장이 참인지 **실측으로** 확인할 것.
-  if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = sessionCloseMs;
-
-  const byBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number }>();
-  const order: number[] = [];
-  let prev: ObSnapshot | null = null;
-  for (const s of obSorted) {
-    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s, sessionOpenMs) || !s.asks || !s.bids) {
-      prev = null;
-      continue;
-    }
-    if (prev?.asks && prev.bids && sameDeltaChain(prev, s)) {
-      const t = bucketStartMs(s.t_ms, bucketMs);
-      let accs = byBucket.get(t);
-      if (!accs) {
-        accs = {
-          ask: new Map(),
-          bid: new Map(),
-          askTick: Number.POSITIVE_INFINITY,
-          bidTick: Number.POSITIVE_INFINITY,
-        };
-        byBucket.set(t, accs);
-        order.push(t);
-      }
-      foldLevelDiff(prev.asks, s.asks, accs.ask);
-      foldLevelDiff(prev.bids, s.bids, accs.bid);
-      // 마지막으로 **관측된** 틱을 쓴다(최솟값 고착 금지). 사다리가 잠시 퇴화해
-      // 틱을 못 구한 틱(Infinity)은 앞서 구한 값을 지운다는 뜻이 아니므로 건너뛴다.
-      const at = ladderTick(s.asks);
-      if (Number.isFinite(at)) accs.askTick = at;
-      const bt = ladderTick(s.bids);
-      if (Number.isFinite(bt)) accs.bidTick = bt;
-    }
-    prev = s;
-  }
-
-  const out: DepthDeltaPoint[] = [];
-  for (const t of order) {
-    const accs = byBucket.get(t)!;
-    const point = makeDeltaPoint(t, accs.ask, accs.bid, accs.askTick, accs.bidTick);
-    if (point) out.push(point);
-  }
-  return out;
-}
-
 function isOrderedByTime<T extends { t_ms: number }>(items: readonly T[]): boolean {
   for (let i = 1; i < items.length; i++) {
     if (items[i - 1].t_ms > items[i].t_ms) return false;
@@ -349,7 +247,6 @@ class IncrementalHogaBucketer {
   // 꺼져 있던 동안 그 지표의 버킷을 안 쌓았으므로, 켜지는 순간 누적 상태가 반쪽이라
   // 전체 재빌드로 다시 채워야 한다.
   private depthHeatmapEnabled = true;
-  private depthDeltaEnabled = true;
   private obLength = 0;
   private tradeLength = 0;
   private lastObRef: ObSnapshot | null = null;
@@ -375,15 +272,6 @@ class IncrementalHogaBucketer {
   // 배열을 in-place mutate 하면 이 불변식이 깨진다 — 항상 새 point 로 교체할 것.
   private depthByBucket = new Map<number, { point: DepthHeatmapPoint; maxTotal: number }>();
   private depthOrder: number[] = [];
-  // 증감(delta) 상태. 누적기(ask/bid)는 point 의 **형제**로 둔다 — point 안에 넣고
-  // in-place 로 더하면 위의 참조 안정 불변식이 깨진다. `point: null` 은 "아직 0 이 아닌
-  // 증감이 없는 버킷"이며 방출에서 제외된다(오라클의 빈 버킷 드롭과 대응).
-  private deltaByBucket = new Map<number, { ask: DeltaAcc; bid: DeltaAcc; askTick: number; bidTick: number; point: DepthDeltaPoint | null }>();
-  private deltaOrder: number[] = [];
-  // 틱 간 baseline. ⚠️ reset() 에서 반드시 null 로 되돌려야 한다 — 안 그러면 슬라이딩
-  // 윈도우가 앞을 잘라낸 뒤 rebuild 할 때, **현재 배열에 없는** 스냅샷과 diff 해서
-  // 오라클이 결코 만들지 않는 유령 증감이 첫 버킷에 찍힌다(패리티 계약 위반).
-  private prevDeltaBook: ObSnapshot | null = null;
 
   update(
     ob: readonly ObSnapshot[],
@@ -392,18 +280,16 @@ class IncrementalHogaBucketer {
     sessionCloseMs: number,
     sessionOpenMs: number,
     depthHeatmapEnabled: boolean,
-    depthDeltaEnabled: boolean,
   ): {
     quoteRatioPoints: QuoteRatioPoint[];
     fillStrengthPoints: FillStrengthPoint[];
     depthHeatmapToday: DepthHeatmapPoint[];
-    depthDeltaToday: DepthDeltaPoint[];
   } {
     // 안전망: 조금이라도 다루기 애매하면 통짜 재빌드로 떨어진다. 재빌드는 "현재
     // 배열만" 보고 오라클과 같은 답을 내므로 정합이 구조적으로 보장된다 — 빠른
     // 경로가 감당 못 하는 입력에서 **틀린 값** 대신 **느린 값**이 나오게 하는 장치다.
     const rebuild = () => {
-      this.reset(bucketMs, sessionCloseMs, sessionOpenMs, depthHeatmapEnabled, depthDeltaEnabled);
+      this.reset(bucketMs, sessionCloseMs, sessionOpenMs, depthHeatmapEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
       this.appendOb(obSorted);
@@ -416,8 +302,7 @@ class IncrementalHogaBucketer {
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
       this.sessionOpenMs !== sessionOpenMs ||
-      this.depthHeatmapEnabled !== depthHeatmapEnabled ||
-      this.depthDeltaEnabled !== depthDeltaEnabled
+      this.depthHeatmapEnabled !== depthHeatmapEnabled
     ) {
       return rebuild();
     }
@@ -493,13 +378,7 @@ class IncrementalHogaBucketer {
       this.clearObBucket(headBucket);
       let end = 0;
       while (end < ob.length && bucketStartMs(ob[end].t_ms, this.bucketMs) === headBucket) end += 1;
-      // 선두 버킷은 오라클과 같이 **체인 시작(prev=null)** 으로 접어야 한다. 뒤 버킷의
-      // baseline 은 건드리면 안 되므로 원복한다 — 그 기준 스냅샷은 그대로 창 안에 있다.
-      const savedPrevDelta = this.prevDeltaBook;
-      this.prevDeltaBook = null;
-      const ok = this.appendOb(ob.slice(0, end));
-      this.prevDeltaBook = savedPrevDelta;
-      if (!ok) return false;
+      if (!this.appendOb(ob.slice(0, end))) return false;
     }
     if (tradeEvicted) {
       const headBucket = bucketStartMs(trade[0].t_ms, this.bucketMs);
@@ -514,7 +393,6 @@ class IncrementalHogaBucketer {
     this.quoteOrder.sort((a, b) => a - b);
     this.fillOrder.sort((a, b) => a - b);
     this.depthOrder.sort((a, b) => a - b);
-    this.deltaOrder.sort((a, b) => a - b);
     // 버린 버킷에 있던 연속장 틱은 더 이상 경계가 될 수 없다.
     let boundary: number | null = null;
     for (const v of this.continuousByBucket.values()) {
@@ -527,23 +405,19 @@ class IncrementalHogaBucketer {
   private dropObBucketsBefore(headBucket: number): void {
     for (const t of [...this.quoteByBucket.keys()]) if (t < headBucket) this.quoteByBucket.delete(t);
     for (const t of [...this.depthByBucket.keys()]) if (t < headBucket) this.depthByBucket.delete(t);
-    for (const t of [...this.deltaByBucket.keys()]) if (t < headBucket) this.deltaByBucket.delete(t);
     for (const t of [...this.seenPre]) if (t < headBucket) this.seenPre.delete(t);
     for (const t of [...this.continuousByBucket.keys()]) if (t < headBucket) this.continuousByBucket.delete(t);
     this.quoteOrder = this.quoteOrder.filter((t) => t >= headBucket);
     this.depthOrder = this.depthOrder.filter((t) => t >= headBucket);
-    this.deltaOrder = this.deltaOrder.filter((t) => t >= headBucket);
   }
 
   private clearObBucket(bucket: number): void {
     this.quoteByBucket.delete(bucket);
     this.depthByBucket.delete(bucket);
-    this.deltaByBucket.delete(bucket);
     this.seenPre.delete(bucket);
     this.continuousByBucket.delete(bucket);
     this.quoteOrder = this.quoteOrder.filter((t) => t !== bucket);
     this.depthOrder = this.depthOrder.filter((t) => t !== bucket);
-    this.deltaOrder = this.deltaOrder.filter((t) => t !== bucket);
   }
 
   private dropFillBucketsBefore(headBucket: number): void {
@@ -561,13 +435,11 @@ class IncrementalHogaBucketer {
     sessionCloseMs: number,
     sessionOpenMs: number,
     depthHeatmapEnabled: boolean,
-    depthDeltaEnabled: boolean,
   ) {
     this.bucketMs = bucketMs;
     this.sessionCloseMs = sessionCloseMs;
     this.sessionOpenMs = sessionOpenMs;
     this.depthHeatmapEnabled = depthHeatmapEnabled;
-    this.depthDeltaEnabled = depthDeltaEnabled;
     this.obLength = 0;
     this.tradeLength = 0;
     this.lastObRef = null;
@@ -585,10 +457,6 @@ class IncrementalHogaBucketer {
     this.fillOrder = [];
     this.depthByBucket = new Map();
     this.depthOrder = [];
-    this.deltaByBucket = new Map();
-    this.deltaOrder = [];
-    // load-bearing: rebuild 은 "현재 배열만" 보고 오라클과 같은 답을 내야 한다.
-    this.prevDeltaBook = null;
   }
 
   private rememberInputs(ob: readonly ObSnapshot[], trade: readonly TradeSnapshot[]) {
@@ -644,24 +512,12 @@ class IncrementalHogaBucketer {
 
     this.continuousBoundaryMs = nextBoundary;
     const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
-    // 증감 전용 상한 — 히트맵(threshold)과 갈라지는 유일한 지점. 경계를 못 찾았을 때
-    // 히트맵은 +Infinity 로 열지만 증감은 세션 마감으로 닫는다(bucketDepthDelta 의 같은
-    // 분기 주석 참조: 버퍼가 통째로 마감 뒤면 세션 밖 유령 버킷만 나온다).
-    const deltaThreshold = this.continuousBoundaryMs ?? this.sessionCloseMs;
     for (const s of obs) {
       const t = bucketStartMs(s.t_ms, this.bucketMs);
       // ADR-0062 v2/v3 (동시호가 배제 통일): bucketHogaSeries와 동일하게 시간 상한 +
       // 공용 술어 isIndicatorEligibleBook(구조 + 개장 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
       // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
-      if (this.depthDeltaEnabled) {
-        const deltaEligible = s.t_ms <= deltaThreshold
-          && isIndicatorEligibleBook(s, this.sessionOpenMs) && !!s.asks && !!s.bids;
-        // 증감 체인 차단 — bucketDepthDelta 의 `prev = null; continue;` 와 **같은 조건**을
-        // 한 곳에 모은다. 배제 구간(동시호가·VI·개장전)이나 book 없는 totals-only 틱을
-        // 가로지르는 diff 는 관측되지 않은 구간의 변화를 한 버킷에 몰아넣기 때문이다.
-        if (!deltaEligible) this.prevDeltaBook = null;
-      }
       if (s.t_ms <= threshold && isIndicatorEligibleBook(s, this.sessionOpenMs)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
@@ -712,10 +568,6 @@ class IncrementalHogaBucketer {
             },
           });
         }
-        // 증감 폴드 — bucketDepthDelta 를 미러한다. 직전 eligible book 과의 가격
-        // 교집합 diff 를 이 틱의 버킷에 누적한다. 히트맵 래칫과 **독립**으로 가른다 —
-        // 한쪽만 켠 조합이 실제 설정이라(둘 다 기본 OFF) 묶으면 안 된다.
-        if (s.asks && s.bids && this.depthDeltaEnabled) this.foldDelta(t, s);
       } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
         this.quoteOrder.push(t);
         this.quoteByBucket.set(t, {
@@ -732,42 +584,6 @@ class IncrementalHogaBucketer {
       this.maxProcessedObT = this.maxProcessedObT === null ? s.t_ms : Math.max(this.maxProcessedObT, s.t_ms);
     }
     return true;
-  }
-
-  /** 직전 eligible book 대비 증감을 버킷 `t` 에 누적하고 baseline 을 `s` 로 옮긴다.
-   *  호출 전에 `s.asks`/`s.bids` 존재와 eligibility 가 보장돼야 한다(호출부 게이트). */
-  private foldDelta(t: number, s: ObSnapshot) {
-    const prev = this.prevDeltaBook;
-    this.prevDeltaBook = s;
-    // baseline 이 없거나(체인 시작) 거래소가 바뀌었으면 이 틱은 기준만 세우고 끝.
-    if (!prev?.asks || !prev.bids || !sameDeltaChain(prev, s)) return;
-    let entry = this.deltaByBucket.get(t);
-    if (!entry) {
-      entry = {
-        ask: new Map(),
-        bid: new Map(),
-        askTick: Number.POSITIVE_INFINITY,
-        bidTick: Number.POSITIVE_INFINITY,
-        point: null,
-      };
-      this.deltaByBucket.set(t, entry);
-      this.deltaOrder.push(t);
-    }
-    // 두 fold 는 **둘 다** 실행해야 한다 — `||` 로 단축평가하면 매도만 변한 틱에서
-    // 매수 누적이 통째로 유실된다.
-    const askFolded = foldLevelDiff(prev.asks, s.asks!, entry.ask);
-    const bidFolded = foldLevelDiff(prev.bids, s.bids!, entry.bid);
-    const prevAskTick = entry.askTick;
-    const prevBidTick = entry.bidTick;
-    const at = ladderTick(s.asks!);
-    if (Number.isFinite(at)) entry.askTick = at;
-    const bt = ladderTick(s.bids!);
-    if (Number.isFinite(bt)) entry.bidTick = bt;
-    // 내용이 안 바뀌었으면 point 를 재생성하지 않는다 — 참조 안정 불변식.
-    // (틱이 바뀌면 셀 높이가 달라지므로 그때도 재생성해야 오라클과 일치한다.)
-    const tickChanged = entry.askTick !== prevAskTick || entry.bidTick !== prevBidTick;
-    if (!askFolded && !bidFolded && !tickChanged) return;
-    entry.point = makeDeltaPoint(t, entry.ask, entry.bid, entry.askTick, entry.bidTick);
   }
 
   private appendTrade(trades: readonly TradeSnapshot[]) {
@@ -793,10 +609,6 @@ class IncrementalHogaBucketer {
       fillStrengthPoints: this.fillOrder.map((t) => ({ ...this.fillByBucket.get(t)! })),
       // 갱신 안 된 버킷은 저장된 point 를 그대로 반환 → 참조 안정(틱당 재할당 = 변경 버킷뿐).
       depthHeatmapToday: this.depthOrder.map((t) => this.depthByBucket.get(t)!.point),
-      // point===null = 폴드는 했지만 증감이 전부 0 인 버킷 → 오라클과 같이 방출 제외.
-      depthDeltaToday: this.deltaOrder
-        .map((t) => this.deltaByBucket.get(t)!.point)
-        .filter((p): p is DepthDeltaPoint => p !== null),
     };
   }
 }
@@ -813,7 +625,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
   return (input: BuildHogaSeriesInput): HogaSeries => {
     const {
       todaySession, pastBundle, sseOb, sseTrade, bucketMs,
-      depthHeatmapEnabled = true, depthDeltaEnabled = true,
+      depthHeatmapEnabled = true,
     } = input;
     if (pastBundleRef !== pastBundle || pastSessionCloseMs !== todaySession.close_ms) {
       pastBundleRef = pastBundle;
@@ -827,7 +639,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
 
     const sseBuckets = bucketer.update(
       sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms,
-      depthHeatmapEnabled, depthDeltaEnabled,
+      depthHeatmapEnabled,
     );
     const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > cachedPastMaxQrT);
     const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > cachedPastMaxFsT);
@@ -836,9 +648,6 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
       quote_ratio: { bucket_ms: bucketMs, points: [...cachedPastQR, ...incrementalQR] },
       fill_strength: { bucket_ms: bucketMs, points: [...cachedPastFS, ...incrementalFS] },
       depth_heatmap_today: sseBuckets.depthHeatmapToday,
-      // depth 와 같이 pastMax 필터를 걸지 않는다 — 증감은 과거일 소스가 없어(오늘 전용)
-      // 겹칠 상대가 아예 없다.
-      depth_delta_today: sseBuckets.depthDeltaToday,
     };
   };
 }
@@ -974,7 +783,6 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     price_level_hits: pastBundle?.price_level_hits ?? [],
     trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
     depth_heatmap: pastBundle?.depth_heatmap ?? [],
-    depth_delta: pastBundle?.depth_delta ?? [],
     // 결손 사유는 **캔들 경로로도** 통과시킨다. 그날이 왜 없는지는 곧 캔들이 빈
     // 이유이기도 한데, `missing_dates` 가 optional 이라 목록에서 빠져도 타입이
     // 아무 말을 안 했다 — 응답엔 있고 화면엔 없는 #1333 형태가 정확히 이것이다.

@@ -60,7 +60,6 @@ def _manifest(
         "program_trade_enabled": False,
         "trade_volume_poc_enabled": False,
         "depth_heatmap_enabled": False,
-        "depth_delta_enabled": False,
     }
     request.update(request_overrides)
     return RangeRequestManifest.model_validate(

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   effectiveLiveVenue,
+  sameDeltaChain,
   initialVisibleMinuteBarsFor,
   isLiveVenueSessionNow,
   liveVenueAcceptsFrame,
@@ -124,4 +125,12 @@ describe('liveVenuePolicy', () => {
     });
   });
 
+});
+
+describe('sameDeltaChain', () => {
+  it('allows same-venue pairs and blocks cross-venue pairs', () => {
+    expect(sameDeltaChain({ venue: 'KRX' }, { venue: 'KRX' })).toBe(true);
+    expect(sameDeltaChain({}, {})).toBe(true); // 구백엔드(무태그) = 같은 장으로 해석
+    expect(sameDeltaChain({ venue: 'KRX' }, { venue: 'NXT' })).toBe(false);
+  });
 });

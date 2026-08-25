@@ -123,7 +123,6 @@ export const FLAG_INDICATOR_TYPES = [
   'bid-peak',
   'trade-volume-poc',
   'depth-heatmap',
-  'depth-delta',
   'broker-late-entry',
 ] as const;
 
@@ -135,7 +134,6 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   'bid-peak': '당일 매수 최대벽',
   'trade-volume-poc': '당일 최대 매물대',
   'depth-heatmap': '호가 잔량 히트맵',
-  'depth-delta': '단별 잔량 증감',
   'broker-late-entry': '신규 거래원 등장',
 };
 
@@ -174,10 +172,6 @@ export const FLAG_INDICATOR_FIELDS: Record<
   'depth-heatmap': [
     'depthHeatmapEnabled', 'depthHeatmapHidden', 'depthHeatmapBidColor',
     'depthHeatmapAskColor', 'depthHeatmapMaxOpacity',
-  ],
-  'depth-delta': [
-    'depthDeltaEnabled', 'depthDeltaHidden', 'depthDeltaInColor',
-    'depthDeltaOutColor', 'depthDeltaMaxOpacity',
   ],
   // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
   'broker-late-entry': ['brokerLateEntries'],
@@ -391,22 +385,6 @@ export const INDICATOR_OPS = {
 
   setWallSurgeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ wallSurgeEnabled: enabled }),
-
-  setDepthDeltaEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { depthDeltaEnabled: true, depthDeltaHidden: false }
-      : { depthDeltaEnabled: false }),
-  setDepthDeltaHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ depthDeltaHidden: hidden }),
-  setDepthDeltaStyle: (cur: IndicatorSettings, patch: { inColor?: string; outColor?: string; maxOpacity?: number }): Patch => ({
-    depthDeltaInColor: patch.inColor ?? cur.depthDeltaInColor,
-    depthDeltaOutColor: patch.outColor ?? cur.depthDeltaOutColor,
-    // 코어서(0.2~1)와 슬라이더 min/max 와 **같은 범위**여야 한다 — tradeVolumePoc 의
-    // 0~1 을 복사해 오면 op 가 코어서가 거부하는 값을 만들어 저장 시 되돌아간다.
-    depthDeltaMaxOpacity: patch.maxOpacity === undefined
-      ? cur.depthDeltaMaxOpacity
-      : clamp(patch.maxOpacity, 0.2, 1),
-  }),
 
   setVolumeDistributionEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeDistributionEnabled: enabled }),

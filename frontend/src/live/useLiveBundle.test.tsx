@@ -298,7 +298,6 @@ describe('planLiveRangeRequest', () => {
       bidPeakEnabled: true,
       tradeVolumePocEnabled: true,
       depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
       wallSurgeEnabled: true,
       brokerLateEntryEnabled: true,
       programTradeEnabled: true,
@@ -321,7 +320,6 @@ describe('planLiveRangeRequest', () => {
         programTradeEnabled: true,
         tradeVolumePocEnabled: true,
         depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
         wallSurgeEnabled: true,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
@@ -348,7 +346,6 @@ describe('planLiveRangeRequest', () => {
     bidPeakEnabled: false,
     tradeVolumePocEnabled: false,
     depthHeatmapEnabled: false,
-    depthDeltaEnabled: false,
     wallSurgeEnabled: false,
     brokerLateEntryEnabled: false,
     programTradeEnabled: false,
@@ -379,7 +376,6 @@ describe('planLiveRangeRequest', () => {
       bidPeakEnabled: true,
       tradeVolumePocEnabled: false,
       depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
       wallSurgeEnabled: true,
       brokerLateEntryEnabled: false,
       programTradeEnabled: true,
@@ -400,8 +396,7 @@ describe('planLiveRangeRequest', () => {
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
-        depthDeltaEnabled: false,
-        // 캘린더 봉에서는 args 가 true 여도 enableMinute 게이트가 끈다 — 설정 패널이
+          // 캘린더 봉에서는 args 가 true 여도 enableMinute 게이트가 끈다 — 설정 패널이
         // 약속한 "분봉 차트에서만 표시됩니다" 와 요청 축을 맞춘다.
         wallSurgeEnabled: false,
         volumeDistributionBins: null,
@@ -439,7 +434,6 @@ describe('planLiveRangeRequest — 저장뷰 얼림', () => {
     bidPeakEnabled: true,
     tradeVolumePocEnabled: true,
     depthHeatmapEnabled: true,
-    depthDeltaEnabled: false,
     wallSurgeEnabled: true,
     brokerLateEntryEnabled: true,
     programTradeEnabled: true,
@@ -1074,9 +1068,9 @@ describe('useLiveBundle', () => {
   // 0-센티넬이 됐다. 10호가 창과 pane 레전드에는 값이 찍히는데 **라인만** 사라져서
   // "데이터가 안 온다"로 오진하기 쉬웠다.
   //
-  // `bucketDepthDelta` 주석은 이미 "통합(UN) 차트에서는 세션이 20:00 까지라 NXT
-  // 시간대가 그대로 살아난다"고 약속하고 있었다 — 약속을 지키는 건 술어가 아니라
-  // **호출부의 인자**다. 그래서 단언 대상은 빌더 출력이지 술어가 아니다.
+  // 호가 버킷터 주석은 이미 "통합(UN) 차트에서는 세션이 20:00 까지라 NXT 시간대가
+  // 그대로 살아난다"고 약속하고 있었다 — 약속을 지키는 건 술어가 아니라 **호출부의
+  // 인자**다. 그래서 단언 대상은 빌더 출력이지 술어가 아니다.
   const nxtSessionSnapshots = () => {
     const open0900 = 1779840000000;                   // 20260527 09:00 KST
     return {
@@ -1321,7 +1315,6 @@ describe('useLiveBundle', () => {
       bidPeakEnabled: false,
       brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
       depthHeatmapEnabled: false,
-      depthDeltaEnabled: false,
       wallSurgeEnabled: true,
     });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });

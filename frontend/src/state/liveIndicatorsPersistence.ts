@@ -88,18 +88,6 @@ export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
 export const DEPTH_HEATMAP_DEFAULT_BID_COLOR = '#F04452';
 export const DEPTH_HEATMAP_DEFAULT_ASK_COLOR = '#3485FA';
 export const DEPTH_HEATMAP_DEFAULT_MAX_OPACITY = 0.7;
-// 단별 잔량 증감 **차트 오버레이 전용** 색. 히트맵의 빨강·파랑과 다른 색조를 쓰는 이유는
-// **레이어 겹침**이다 — 같은 셀 위에 잔량 증감과 호가 히트맵이 동시에 켜질 수 있어 색이
-// 충돌하면 판독이 불가능해진다. teal/fuchsia 는 양 테마(#121216 / #FDFCF8) 모두에서 읽히는
-// 중간 명도다. 기본 불투명도는 히트맵(0.7)보다 낮게 잡아 두 레이어가 겹칠 때 아래층이 완전히
-// 묻히지 않게 한다.
-//
-// ⚠️ 호가창 증감 뱃지(BookPanel)는 2026-07-21부터 이 상수를 쓰지 않는다 —
-// 겹치는 레이어가 없어 KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass)이 더 직관적이다.
-// 두 표면의 색이 다른 것은 의도된 분기다(DESIGN.md 2026-07-21 changelog).
-export const DEPTH_DELTA_DEFAULT_IN_COLOR = '#0D9488';
-export const DEPTH_DELTA_DEFAULT_OUT_COLOR = '#C026D3';
-export const DEPTH_DELTA_DEFAULT_MAX_OPACITY = 0.55;
 const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
 export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
 export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
@@ -259,16 +247,6 @@ export type PersistedIndicators = {
   depthHeatmapMaxOpacity: number;
   /** 호가벽 급증 마커 on/off. Default FALSE — 하루 수십 건이라 켜는 것이 선택이다. */
   wallSurgeEnabled: boolean;
-  /** 단별 잔량 증감 on/off. Default FALSE. */
-  depthDeltaEnabled: boolean;
-  /** 증감 눈(숨김). 기본 false. */
-  depthDeltaHidden: boolean;
-  /** 잔량 유입(증가) 색(hex). 기본 #0D9488(teal). */
-  depthDeltaInColor: string;
-  /** 잔량 유출(감소) 색(hex). 기본 #C026D3(fuchsia). */
-  depthDeltaOutColor: string;
-  /** 단별 잔량 증감 최대 불투명도(0.2~1). 기본 0.55. */
-  depthDeltaMaxOpacity: number;
   /** 연속체결 매물대 분포 on/off. Default TRUE. */
   volumeDistributionEnabled: boolean;
   /** 연속체결 매물대 분포 hover cutoff mode. Default FALSE. */
@@ -552,17 +530,6 @@ export function mergeLiveIndicatorPrefs(
     ? dhOpacityRaw
     : DEPTH_HEATMAP_DEFAULT_MAX_OPACITY;
   const wallSurgeEnabled = obj?.wallSurgeEnabled === true;
-  const depthDeltaEnabled = obj?.depthDeltaEnabled === true;
-  const depthDeltaHidden = obj?.depthDeltaHidden === true;
-  const ddInColor = normalizeHexColor(obj?.depthDeltaInColor, DEPTH_DELTA_DEFAULT_IN_COLOR);
-  const ddOutColor = normalizeHexColor(obj?.depthDeltaOutColor, DEPTH_DELTA_DEFAULT_OUT_COLOR);
-  const ddOpacityRaw = obj?.depthDeltaMaxOpacity;
-  const ddMaxOpacity = typeof ddOpacityRaw === 'number'
-    && Number.isFinite(ddOpacityRaw)
-    && ddOpacityRaw >= 0.2
-    && ddOpacityRaw <= 1
-    ? ddOpacityRaw
-    : DEPTH_DELTA_DEFAULT_MAX_OPACITY;
   const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
   const volumeDistributionHoverCutoffEnabled = obj?.volumeDistributionHoverCutoffEnabled === true;
   const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
@@ -663,11 +630,6 @@ export function mergeLiveIndicatorPrefs(
     depthHeatmapAskColor: dhAskColor,
     depthHeatmapMaxOpacity: dhMaxOpacity,
     wallSurgeEnabled,
-    depthDeltaEnabled,
-    depthDeltaHidden,
-    depthDeltaInColor: ddInColor,
-    depthDeltaOutColor: ddOutColor,
-    depthDeltaMaxOpacity: ddMaxOpacity,
     volumeDistributionEnabled,
     volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount,

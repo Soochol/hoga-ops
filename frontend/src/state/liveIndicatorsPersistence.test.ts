@@ -52,11 +52,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       depthHeatmapBidColor: '#F04452',
       depthHeatmapAskColor: '#3485FA',
       depthHeatmapMaxOpacity: 0.7,
-      depthDeltaEnabled: false,
-      depthDeltaHidden: false,
-      depthDeltaInColor: '#0D9488',
-      depthDeltaOutColor: '#C026D3',
-      depthDeltaMaxOpacity: 0.55,
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 10,
@@ -397,30 +392,17 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(merged.depthHeatmapAskColor).toBe('#123abc');
     expect(merged.depthHeatmapMaxOpacity).toBeCloseTo(0.5, 5);
   });
-  it('depthDelta 기본값을 채운다', () => {
-    const merged = mergeLiveIndicatorPrefs({});
-    expect(merged.depthDeltaEnabled).toBe(false);
-    expect(merged.depthDeltaHidden).toBe(false);
-    expect(merged.depthDeltaInColor).toBe('#0D9488');
-    expect(merged.depthDeltaOutColor).toBe('#C026D3');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.55, 5);
-  });
-  it('depthDelta 잘못된 색/불투명도는 기본값으로 폴백', () => {
+  // 제거된 지표(단별 잔량 증감, 2026-08-25)의 키는 **이미 저장된 브라우저**에 남아
+  // 있다. 정규화가 화이트리스트 방식이라 조용히 버려지는데, 그 성질이 깨지면 옛 키가
+  // 되살아나 저장 payload 를 오염시키므로 여기서 못 박는다.
+  it('제거된 지표의 옛 키는 조용히 버린다', () => {
     const merged = mergeLiveIndicatorPrefs({
-      depthDeltaInColor: '#f44', depthDeltaOutColor: 'nope', depthDeltaMaxOpacity: 0.1,
+      depthDeltaEnabled: true, depthDeltaInColor: '#123abc', depthDeltaMaxOpacity: 0.35,
     } as never);
-    // 3자리 hex 는 HEX_COLOR(6자리)가 거부한다 — UI 가 만들 수 있는 색은 전부 6자리여야 한다.
-    expect(merged.depthDeltaInColor).toBe('#0D9488');
-    expect(merged.depthDeltaOutColor).toBe('#C026D3');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.55, 5);
-  });
-  it('depthDelta 유효한 값은 보존한다', () => {
-    const merged = mergeLiveIndicatorPrefs({
-      depthDeltaEnabled: true, depthDeltaOutColor: '#123abc', depthDeltaMaxOpacity: 0.35,
-    } as never);
-    expect(merged.depthDeltaEnabled).toBe(true);
-    expect(merged.depthDeltaOutColor).toBe('#123abc');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.35, 5);
+    expect('depthDeltaEnabled' in merged).toBe(false);
+    expect('depthDeltaInColor' in merged).toBe(false);
+    // 나머지 정규화는 정상 동작한다 — 알 수 없는 키가 폴백 전체를 흔들지 않는다.
+    expect(merged.depthHeatmapEnabled).toBe(false);
   });
   it('연속체결 매물대 분포 기본값/범위/색상 정규화', () => {
     const defaults = mergeLiveIndicatorPrefs(undefined);

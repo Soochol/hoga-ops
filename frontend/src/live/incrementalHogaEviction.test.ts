@@ -59,10 +59,10 @@ describe('증분 버킷터 — 슬라이딩 버퍼 패리티', () => {
   const base = { todaySession: { open_ms: OPEN, close_ms: CLOSE }, pastBundle: null, bucketMs: BUCKET };
 
   for (const [seed, flags] of [
-    [1, { depthHeatmapEnabled: false, depthDeltaEnabled: false }],
-    [2, { depthHeatmapEnabled: true, depthDeltaEnabled: true }],
-    [3, { depthHeatmapEnabled: true, depthDeltaEnabled: false }],
-    [4, { depthHeatmapEnabled: false, depthDeltaEnabled: true }],
+    [1, { depthHeatmapEnabled: false }],
+    [2, { depthHeatmapEnabled: true }],
+    [3, { depthHeatmapEnabled: true }],
+    [4, { depthHeatmapEnabled: false }],
   ] as const) {
     it(`seed=${seed} · 축출이 진행되는 동안 매 스텝 오라클과 일치한다 (${JSON.stringify(flags)})`, () => {
       // 25분치 = 15분 보존 창을 확실히 넘겨 축출이 오래 지속되게 한다.
@@ -153,7 +153,6 @@ describe('증분 버킷터 — 슬라이딩 버퍼 패리티', () => {
       return {
         ...base,
         depthHeatmapEnabled: true,
-        depthDeltaEnabled: true,
         sseOb: windowed(ob.slice(0, i), nowMs),
         sseTrade: windowed(trade.filter((s) => s.t_ms <= nowMs), nowMs),
       };

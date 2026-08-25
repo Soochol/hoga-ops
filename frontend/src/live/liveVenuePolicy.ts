@@ -18,7 +18,8 @@ import {
  *
  * ⚠ **명명 타입인 것이 요점이다.** 이 유니온은 인라인 리터럴로 6개 파일에 흩어져
  * 있었다(`liveVenuePolicy` · `liveTickOverlay`×2 · `bucketHogaSeries`×2 ·
- * `depthDelta`×2). `'UN'` 을 추가할 때 하나를 빠뜨려도 **타입 에러가 안 난다** —
+ * 그리고 지금은 제거된 단별 잔량 증감 모듈×2). `'UN'` 을 추가할 때 하나를 빠뜨려도
+ * **타입 에러가 안 난다** —
  * 좁은 쪽이 넓은 쪽에 할당 가능하고, `liveTickOverlay` 는 `as` 캐스팅이라 검사
  * 자체가 없다. 그러면 UN 프레임이 런타임에 조용히 걸러진다.
  */
@@ -165,6 +166,21 @@ export function liveVenueAcceptsFrame(
   tagVenue: LiveFrameVenue | undefined,
 ): boolean {
   return (tagVenue ?? 'KRX') === selectedVenue;
+}
+
+/**
+ * 연속 두 호가 스냅샷을 **이어서 diff 해도 되는가** — 같은 거래소(venue)여야 한다.
+ * KRX 호가장과 NXT 호가장은 별개 장부라 교차 diff 는 무의미하다(#524 시분할).
+ *
+ * 단별 잔량 증감 지표(`depthDelta`)와 함께 태어났지만 그 지표가 제거된 뒤에도 남는다 —
+ * 사이드바 10호가 카드의 증감 배지(`orderbookDeltaBadges`)가 같은 판정을 쓴다. venue
+ * 정책이 실체라서 여기(SSOT)에 둔다.
+ */
+export function sameDeltaChain(
+  prev: { venue?: LiveFrameVenue },
+  cur: { venue?: LiveFrameVenue },
+): boolean {
+  return prev.venue === cur.venue;
 }
 
 export function initialVisibleMinuteBarsFor(

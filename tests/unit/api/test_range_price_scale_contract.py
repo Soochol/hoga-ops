@@ -14,8 +14,8 @@
 ## 왜 자동 분류가 아닌가
 
 이름 규칙(`*price*`)으로 자동 판별하면 오탐과 누락이 **둘 다 조용하다**. 실제로 이
-번들의 가격 필드 중 셋은 이름에 `price` 가 없다 — `depth_heatmap`/`depth_delta` 의
-`[price, qty]` **위치 가격**과 `ask_tick`/`bid_tick`(호가 단위). 반대로 `price_step`
+번들의 가격 필드 중 일부는 이름에 `price` 가 없다 — `depth_heatmap` 의
+`[price, qty]` **위치 가격**이 그렇다. 반대로 `price_step`
 류의 이름이 붙었지만 스케일 대상이 아닌 값도 생길 수 있다. 그래서 전 필드를 **손으로**
 두 목록에 나눠 담고, 어느 쪽에도 없는 새 필드가 나타나면 실패시킨다.
 
@@ -59,13 +59,10 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     "PriceLevelHit.price",
     # 거래량 POC
     "TradeVolumePoc.center_price", "TradeVolumePoc.low_price", "TradeVolumePoc.high_price",
-    # 호가 잔량 히트맵·증감 — **이름 없는 위치 가격**([price, qty] 튜플의 첫 원소).
+    # 호가 잔량 히트맵 — **이름 없는 위치 가격**([price, qty] 튜플의 첫 원소).
     # `price` 로 grep 해도 안 걸리는 자리라 여기 명시적으로 적는다.
     "DepthHeatmapPoint.asks", "DepthHeatmapPoint.bids",
     "DepthHeatmapPoint.asks_max", "DepthHeatmapPoint.bids_max",
-    "DepthDeltaPoint.asks", "DepthDeltaPoint.bids",
-    # 호가 단위 — 이름에 `price` 가 없지만 **가격공간 값**이다(셀 높이).
-    "DepthDeltaPoint.ask_tick", "DepthDeltaPoint.bid_tick",
     # 커서 스팟 10호가 — 히트맵과 **같은 순간 같은 레벨**을 다른 창에 숫자로 띄우므로
     # 척도가 갈리면 사용자가 두 숫자를 동시에 본다.
     "ApiOrderbookLevel.price",
@@ -83,7 +80,7 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "RangeBundle.volume_profile_range", "RangeBundle.volume_profile_by_day",
     "RangeBundle.excluded_dates", "RangeBundle.data_warnings", "RangeBundle.missing_dates",
     "RangeBundle.ask_peaks", "RangeBundle.bid_peaks", "RangeBundle.depth_heatmap",
-    "RangeBundle.depth_delta", "RangeBundle.broker_late_entries",
+    "RangeBundle.broker_late_entries",
     "RangeBundle.price_level_hits", "RangeBundle.trade_volume_pocs",
     "RangeBundle.volume_distributions", "RangeBundle.program_trade",
     "RangeBundle.wall_surge",
@@ -148,7 +145,6 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "TradeVolumePoc.date", "TradeVolumePoc.qty", "TradeVolumePoc.t_ms",
     "TradeVolumePoc.band_pct",
     "DepthHeatmapPoint.t_ms",
-    "DepthDeltaPoint.t_ms",
     "BrokerLateEntryEvent.t_ms", "BrokerLateEntryEvent.broker",
     "BrokerLateEntryEvent.side", "BrokerLateEntryEvent.net",
     "ProgramTradeSeries.points",

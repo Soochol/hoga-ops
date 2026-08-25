@@ -738,9 +738,9 @@ function QtyBar({
             뱃지를 덮어 읽을 수 없다. 잔량은 flex-1 로 남은 폭을 먹고 가격축 쪽으로
             정렬하므로 뱃지가 없어도 위치가 흔들리지 않는다. */}
         {/* 증감 색 = KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass SSOT).
-            차트 오버레이(DepthDeltaOverlay)는 계속 teal/fuchsia 다 — 거긴 호가
-            히트맵(빨강·파랑)과 같은 셀에 겹쳐 켜지므로 색이 충돌하면 판독 불가라
-            다른 색조가 필수지만, 이 뱃지는 겹치는 레이어가 없다. */}
+            겹치는 레이어가 없어 관례색을 그대로 쓴다 — 차트 위에 같은 셀로 겹쳐 그리던
+            증감 오버레이는 teal/fuchsia 를 썼지만(히트맵과의 색 충돌 회피), 2026-08-25
+            에 제거됐다. */}
         {badge !== null && (
           <span className={`shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}

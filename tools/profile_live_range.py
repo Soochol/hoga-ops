@@ -44,7 +44,6 @@ PROFILED_FUNCTIONS: tuple[str, ...] = (
     "build_broker_late_entries_slice",
     "build_volume_distribution_slice",
     "build_depth_heatmap_slice",
-    "build_depth_delta_slice",
 )
 
 SUPPORTED_MODES: tuple[str, ...] = ("hoga", "sidecar", "candles")
@@ -117,7 +116,6 @@ def profile_range_case(
             "ask_peaks": len(result.ask_peaks),
             "bid_peaks": len(result.bid_peaks),
             "depth_heatmap": len(result.depth_heatmap),
-            "depth_delta": len(result.depth_delta),
         },
         "functions": {
             name: {"total_ms": round(totals[name], 3), "calls": calls[name]}
