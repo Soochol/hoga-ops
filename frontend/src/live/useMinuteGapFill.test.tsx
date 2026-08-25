@@ -156,6 +156,69 @@ describe('useMinuteGapFill — 요청 폭', () => {
     expect(spy.mock.calls[1][0]).toContain('from=20260401');
   });
 
+  it('창이 자라도 이미 받은 날짜는 다시 요청하지 않는다 — 겹침 없는 증분 요청', async () => {
+    // 2026-08-25 실측(010140 5m, 06-15~07-02 구멍): 창이 7일 타일로 자라며
+    // missing_dates 가 왼쪽으로 늘 때마다 계획이 매번 커져 0624~0702 ⊂ 0617~0702 ⊂
+    // 0611~0702 세 번을 겹쳐 페치했다(55→94→126KB). 이미 흡수한 날짜는 run 계획에서
+    // 빼면 다음 요청이 **새 날짜만** 덮는다 — 구멍 건너기의 빈 화면 시간이 그만큼 준다.
+    const spy = stubBackend(['20260629', '20260630', '20260701', '20260702']);
+    const { result, rerender } = renderHook(
+      (p: UseMinuteGapFillArgs) => useMinuteGapFill(p),
+      { wrapper: wrap(newClient()), initialProps: { ...BASE, missingDates: missing('20260701', '20260702') } },
+    );
+    await waitFor(() => expect(result.current.filledDates.size).toBe(2));
+    expect(spy.mock.calls[0][0]).toContain('from=20260701');
+
+    // 창 확장: 구멍이 왼쪽으로 자란다(연속 구간 — 병합 규칙상 한 run 으로 합쳐지는 모양).
+    rerender({ ...BASE, missingDates: missing('20260629', '20260630', '20260701', '20260702') });
+    await waitFor(() => expect(result.current.filledDates.size).toBe(4));
+
+    const second = spy.mock.calls.at(-1)?.[0] as string;
+    expect(second).toContain('from=20260629');
+    // 이미 받은 0701~0702 를 다시 포함하면 안 된다 — to 가 새 날짜의 끝에서 멎는다.
+    expect(second).toContain('to=20260630');
+  });
+
+  it('진행 중 run 은 계획이 자라도 붙든다 — 미완 fetch 를 상위집합으로 갈아타지 않는다', async () => {
+    // 흡수 전에 창이 또 자라면(서버가 빠를 때의 실제 순서) 재계획이 상위집합 run 을
+    // 만들고, 거기로 갈아타는 순간 미완 fetch 는 버려지고 같은 구간을 다시 받는다 —
+    // 날짜 증분화만으로는 못 막는 두 번째 겹침 경로다(도그푸딩 실측: 0702 →
+    // 0625~0702 → 0618~0702 → 0611~0702). 진행 중 run 은 settle 까지 붙들어야
+    // 흡수 → 증분 재계획의 순서가 보장된다.
+    let release!: () => void;
+    const gate = new Promise<void>((res) => { release = res; });
+    const days = ['20260629', '20260630', '20260701', '20260702'];
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      const from = params.get('from')!;
+      const to = params.get('to')!;
+      if (spy.mock.calls.length === 1) await gate; // 첫 요청을 미완으로 붙든다
+      const covered = days.filter((d) => d >= from && d <= to);
+      return {
+        code: params.get('code')!, from, to, venue: 'KRX', bucket_ms: 60_000,
+        candles: covered.flatMap(barsFor), cached_dates: [], fresh_dates: covered,
+        data_warnings: [], adjust_factors: Object.fromEntries(covered.map((d) => [d, 1])),
+      } as LivePastCandlesResponse as never;
+    });
+
+    const { result, rerender } = renderHook(
+      (p: UseMinuteGapFillArgs) => useMinuteGapFill(p),
+      { wrapper: wrap(newClient()), initialProps: { ...BASE, missingDates: missing('20260701', '20260702') } },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+
+    // 첫 요청이 아직 미완인 채 창이 자란다 — 갈아타면 여기서 두 번째 요청이 나간다.
+    rerender({ ...BASE, missingDates: missing('20260629', '20260630', '20260701', '20260702') });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    release();
+    await waitFor(() => expect(result.current.filledDates.size).toBe(4));
+    const second = spy.mock.calls.at(-1)?.[0] as string;
+    expect(second).toContain('from=20260629');
+    expect(second).toContain('to=20260630');
+  });
+
   it('보유 기간 밖만 있으면 요청조차 하지 않는다', async () => {
     const spy = stubBackend(['20240827']);
     const { result } = renderHook(
