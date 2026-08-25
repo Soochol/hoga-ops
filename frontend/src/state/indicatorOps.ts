@@ -112,6 +112,38 @@ function removeMaSlot(current: readonly LiveMAConfig[], id: string): LiveMAConfi
   return nextArr;
 }
 
+/** MA 계열 두 슬라이스의 사용자 표시명 — 레전드 라벨과 undo 문구가 공유한다. */
+export const MA_SLICE_LABEL = {
+  movingAverages: '이동평균선',
+  dailyMovingAverages: '일봉 이동평균선',
+} as const;
+
+export type MaSliceKey = keyof typeof MA_SLICE_LABEL;
+
+/**
+ * 슬롯 삭제의 undo 스냅샷 — **삭제를 수행하지 않는다**(호출자가 op 로 한다).
+ *
+ * 되돌릴 값이 배열 **전체**인 것이 요점이다. 지운 원소만 다시 끼우면 순서를
+ * 복원할 수 없고, 토스트가 떠 있는 동안 다른 슬롯이 편집됐을 때 어느 쪽을
+ * 이겨야 하는지도 애매해진다. 전체 스냅샷은 "그 시점으로 되돌린다" 는 한 가지
+ * 뜻만 갖는다(드로잉 `clearToast` 와 같은 규율).
+ *
+ * 모르는 id 면 null — 호출자는 삭제도 토스트도 하지 않는다.
+ */
+export function maRemovalUndo(
+  cur: IndicatorSettings,
+  key: MaSliceKey,
+  id: string,
+): { label: string; patch: Partial<IndicatorSettings> } | null {
+  const slots = cur[key];
+  const slot = slots.find((m) => m.id === id);
+  if (!slot) return null;
+  return {
+    label: `${MA_SLICE_LABEL[key]} ${slot.period} 삭제됨`,
+    patch: { [key]: slots } as Partial<IndicatorSettings>,
+  };
+}
+
 export const INDICATOR_OPS = {
   setMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.movingAverages, id, patch);
