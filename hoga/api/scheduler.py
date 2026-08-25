@@ -244,43 +244,6 @@ async def _daily_run(data_dir: Path) -> bool:
     except Exception:  # prune 실패가 enqueue를 막으면 안 됨
         log.exception("daily run: prune failed; continuing")
 
-    # Stage 10: `depth_delta` 1분 산출 사전 생성 — 좌팬 워크백의 콜드를 야간으로 옮긴다.
-    #
-    # 근거는 `depth_delta_precompute` 모듈 docstring 의 실측표다: 워크백 타일 비용의
-    # 지배항이 `mode=sidecar` 이고 그 안의 ~90% 가 이 지표 하나이며, 비용은 **처음 보는
-    # 날짜에만** 든다(재요청 0.069초). 즉 미리 만들어 두면 사용자 조회가 캐시를 탄다.
-    #
-    # prune 처럼 **거래일 게이트 앞**에 둔다 — 주말·공휴일에도 밀린 날을 따라잡아야 하고,
-    # 큐를 건드리지 않으므로 enqueue 와 독립이다. 자체 QueryEngine 을 쓰고 닫는 것은
-    # 하루 한 번이라 비용이 무시할 수 있고, 앱 엔진의 커넥션 수명과 얽히지 않기 때문이다
-    # (`engine.conn` 은 접근마다 커서를 새로 내므로 to_thread 안에서 안전하다).
-    try:
-        from hoga.api.depth_delta_precompute import (  # noqa: PLC0415
-            precompute_depth_delta_1m,
-        )
-        from hoga.api.queries import QueryEngine  # noqa: PLC0415
-        engine = QueryEngine(data_dir)
-        try:
-            pre = await asyncio.to_thread(
-                precompute_depth_delta_1m, engine, today_kst=now_kst().strftime("%Y%m%d"),
-            )
-        finally:
-            engine.close()
-        log.info(
-            "daily depth_delta precompute: computed=%d cached=%d failed=%d "
-            "dates=%d elapsed=%.1fs",
-            pre.computed, pre.already_cached, pre.failed, len(pre.dates),
-            pre.elapsed_ms / 1000,
-        )
-        # 상한 절단은 **반드시 보이게** 한다 — 조용한 캡은 "다 했다" 로 읽힌다.
-        if pre.capped:
-            log.warning(
-                "daily depth_delta precompute: hit per-run cap (%d) — %d pairs deferred "
-                "to the next run", pre.computed, pre.remaining,
-            )
-    except Exception:  # 사전 생성 실패는 조회 시 콜드로 되돌아갈 뿐이다
-        log.exception("daily run: depth_delta precompute failed; continuing")
-
     return await run_trading_stage(data_dir)
 
 
