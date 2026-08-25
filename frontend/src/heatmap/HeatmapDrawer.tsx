@@ -582,7 +582,11 @@ export function HeatmapDrawer() {
   // flush 마다(초당 최대 ~6.7회) 그룹·행이 자리를 바꾼다. 페이지는 행 정렬이
   // HeatmapFolder 안에 있어 주입점이 다를 뿐 정책은 같다.
   const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
-  const sortQuoteByCode = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  const [sortQuoteByCode, flushSortQuotes] = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
+  // 정렬 버튼 클릭(=모드 변화) 순간엔 스로틀을 우회해 즉시 최신 시세로 정렬 — 페이지
+  // (pages/Heatmap.tsx)와 동일 계약. 모드 스토어를 공유하므로 어느 표면의 클릭이든
+  // 양쪽이 같이 갱신되고, 마운트 실행은 no-op 다(훅 docstring 의 콜드 로드 가드).
+  useLayoutEffect(() => { flushSortQuotes(); }, [sortMode, groupSort, flushSortQuotes]);
   const sortPctOf = useMemo(() => makePctOf(sortQuoteByCode), [sortQuoteByCode]);
   const visibleGroups = useMemo(() => {
     if (!data) return [];

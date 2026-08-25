@@ -70,7 +70,7 @@ it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 �
 
 // --- 캡처 결손 표시 (ADR-0142) ---------------------------------------------
 
-it('뒤처진 종목이 있으면 헤더에 미수집 칩, 그 행만 --error 로 낮춘다', () => {
+it('뒤처진 종목이 있으면 헤더에 미수집 칩 — 행 종목명은 빨개지지 않는다', () => {
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={() => {}}
     captureMarkers={{ '005930': '20260806', '000660': '20260804' }}
@@ -81,8 +81,10 @@ it('뒤처진 종목이 있으면 헤더에 미수집 칩, 그 행만 --error �
   // 상태 semantic 색 — 시세 색(등락 적/청)과 섞이면 안 되는 축이다(DESIGN.md 색 규율).
   expect(chip).toHaveClass('text-error');
 
-  expect(screen.getByText('SK하이닉스')).toHaveAttribute('data-capture-lagging');
-  expect(screen.getByText('삼성전자')).not.toHaveAttribute('data-capture-lagging');
+  // 2026-08-25: 뒤처진 행의 종목명 --error 강조는 사용자 요청으로 제거. 행 단위
+  // 정보는 툴팁(아래 테스트)이, 집계는 위 칩이 담당한다 — 이름은 항상 중립 dim.
+  expect(screen.getByText('SK하이닉스')).toHaveClass('text-fg-dim');
+  expect(screen.getByText('SK하이닉스')).not.toHaveClass('text-error');
 });
 
 it('결손이 없으면 칩 자체를 그리지 않는다 — 정상은 침묵한다', () => {
