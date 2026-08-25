@@ -292,6 +292,52 @@ describe('seedV2FromV1', () => {
     expect(v2.paneOrder).toContain('volume');
   });
 
+  // v1 blob 은 **정의상 레거시**라 마스터 4형제가 언제나 실려 있다(코어서가 기본값을
+  // 채운다). 그래서 v2 버킷과 달리 키 존재를 묻지 않고 무조건 접는데, 그 경로가
+  // 곧 **기존 사용자의 업그레이드 길**이다 — 여기가 비면 "MA 를 꺼 뒀는데 업데이트
+  // 후 다시 켜져 있다" 가 된다(마스터 필드는 스키마에서 빠지고 슬롯은 enabled:true
+  // 그대로 남기 때문). 아래 두 테스트가 그 경로의 유일한 가드다.
+  it('v1 의 MA 마스터 off 를 슬롯으로 옮긴다 (업그레이드 후 다시 켜지지 않는다)', () => {
+    const v2 = seedV2FromV1({
+      movingAverages: [
+        { id: 'ma-1', enabled: true, period: 9, color: '#EC4899', lineWidth: 2, source: 'close' },
+      ],
+      movingAverageEnabled: false,
+    });
+    const minute = v2.byTimeframe.minute ?? {};
+    expect(minute.movingAverages).toEqual([
+      { id: 'ma-1', enabled: false, period: 9, color: '#EC4899', lineWidth: 2, source: 'close' },
+    ]);
+    // 타입 눈도 같은 자리로 접힌다.
+    const hiddenSeed = seedV2FromV1({
+      movingAverages: [
+        { id: 'ma-1', enabled: true, period: 9, color: '#EC4899', lineWidth: 2, source: 'close' },
+      ],
+      movingAverageHidden: true,
+    });
+    expect(hiddenSeed.byTimeframe.minute!.movingAverages!.every((m) => m.enabled)).toBe(false);
+  });
+
+  it('v1 의 일봉 MA 마스터 on 을 슬롯으로 옮긴다 (opt-in 이라 조건이 뒤집힌다)', () => {
+    const v2 = seedV2FromV1({
+      dailyMovingAverages: [
+        { id: 'dma-1', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+      ],
+      dailyMovingAverageEnabled: true,
+    });
+    expect(v2.byTimeframe.minute!.dailyMovingAverages!.every((m) => m.enabled)).toBe(true);
+
+    // 마스터가 꺼져 있었으면 슬롯이 enabled:true 여도 안 그려졌다 — 새 공장값(전 슬롯
+    // off)과 같아지므로 diff 에서 빠진다.
+    const off = seedV2FromV1({
+      dailyMovingAverages: [
+        { id: 'dma-1', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+      ],
+      dailyMovingAverageEnabled: false,
+    });
+    expect(off.byTimeframe.minute?.dailyMovingAverages).toBeUndefined();
+  });
+
   it('seeds nothing beyond old-default drift for a pristine v1 blob', () => {
     const v2 = seedV2FromV1({});
     // v1 공장 상태와 새 공장값의 차이 = 구 기본값 TRUE였던 5개 pane/지표뿐.
