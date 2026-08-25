@@ -71,6 +71,14 @@ export type PeakWallRenderState = {
    *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
   unreachedSegments: readonly PeakWallSegment[];
+  /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
+   *  않는다) 체결된 벽과 같은 running-max 빌더를 쓴다. pane 이 꺼져 있거나 이
+   *  계열 선이 꺼져 있으면 빈 배열. */
+  allWallStepSegments: readonly PeakWallSegment[];
+  /** 「미도달 벽」의 강도 pane 계단 입력. ⚠ 이 계열은 **단조가 아니다** — 극값
+   *  전진이 구성원을 빼앗으므로 소비처는 `buildUnreachedStepPoints`(비단조)를
+   *  써야 한다. running-max 빌더를 태우면 깨진 벽이 영원히 남는다. */
+  unreachedStepSegments: readonly PeakWallSegment[];
   unreachedDrawn: boolean;
   unreachedLabels: boolean;
   unreachedColor: string;
@@ -245,6 +253,51 @@ export function usePeakWallRender({
     todayKst,
   ]);
 
+  // 하위 계열의 계단 입력 — 그리기 선과 같은 carrier 리맵을 쓰되 랭크로 자르지
+  // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
+  // top-3(과거일은 rank-1 스칼라)이다 — 빌더 docstring 이 그 근사를 적는다.
+  const allWallStepBuilt = useMemo(() => (
+    needStepSegments && applicable && enabled && allWallEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toAllWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: allWallColor, lineWidth: allWallLineWidth },
+        intraMax,
+        allPriceRankLimit: 3,
+        stepHistory: true,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    needStepSegments, allWallEnabled, allWallColor, allWallLineWidth, applicable,
+    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
+  ]);
+
+  const unreachedStepBuilt = useMemo(() => (
+    needStepSegments && applicable && enabled && unreachedEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toUnreachedWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
+        intraMax,
+        allPriceRankLimit: 3,
+        stepHistory: true,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    needStepSegments, unreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
+    axis, candles, dailyMaFilter, enabled, intraMax, maFilter, peaks, segments, todayKst,
+  ]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -304,11 +357,15 @@ export function usePeakWallRender({
     allWallColor,
     allWallLineWidth,
     unreachedSegments: unreachedBuilt,
+    allWallStepSegments: allWallStepBuilt,
+    unreachedStepSegments: unreachedStepBuilt,
     unreachedDrawn,
     unreachedLabels: unreachedDrawn && labelEnabled,
     unreachedColor,
     unreachedLineWidth,
   }), [
+    allWallStepBuilt,
+    unreachedStepBuilt,
     allWallBuilt,
     allWallColor,
     allWallDrawn,

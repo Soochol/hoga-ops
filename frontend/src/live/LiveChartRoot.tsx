@@ -101,8 +101,16 @@ import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
-import { buildPeakWallStepPoints, type PeakWallStepPoint } from '../chart/peakWallSteps';
-import { usePeakWallStepsRegistry } from './indicators/peakWallStepsRegistry';
+import {
+  buildPeakWallStepPoints,
+  buildUnreachedStepPoints,
+  type PeakWallStepPoint,
+} from '../chart/peakWallSteps';
+import {
+  PEAK_WALL_STEP_SLOTS,
+  usePeakWallStepsRegistry,
+  type PeakWallStepKey,
+} from './indicators/peakWallStepsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
@@ -2136,28 +2144,47 @@ export function LiveChartRoot({
   // pane 프로젝터는 번들·축을 못 받는 pass-through 라, 계단을 **여기서** 접어
   // 레지스트리로 내려보낸다. pane 이 꺼져 있으면 계산하지 않는다(빈 배열 공유 참조).
   // 세그먼트 대신 완성된 점을 넣는 이유는 peakWallStepsRegistry 주석 참조.
-  const askPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && askWall.stepSegments.length > 0
-      ? buildPeakWallStepPoints(askWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, askWall.color)
-      : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, askWall.stepSegments, askWall.color, cb?.candles, axis],
-  );
-  const bidPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && bidWall.stepSegments.length > 0
-      ? buildPeakWallStepPoints(bidWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, bidWall.color)
-      : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, bidWall.stepSegments, bidWall.color, cb?.candles, axis],
-  );
+  // 강도 pane 계단 — **캔들 pane 의 세 선과 1:1**(2026-08-25). 어느 계열이 나오는지는
+  // 그 계열의 선 토글을 따라가고(pane 전용 키 없음), 체결된 벽은 토글이 없어 pane 이
+  // 켜지면 항상 나온다 = 종전 동작 보존.
+  //
+  // ⚠ 미도달만 **다른 빌더**를 쓴다. 그 계열은 극값 전진이 구성원을 빼앗아 단조가
+  // 아니므로 running max 를 태우면 이미 깨진 벽이 계단에 영원히 남는다
+  // (`buildUnreachedStepPoints` docstring).
+  const peakWallStepPoints = useMemo(() => {
+    const candlesForSteps = cb?.candles ?? EMPTY_CANDLES;
+    const monotone = (segs: readonly PeakWallSegment[], color: string) => (
+      prefPeakWallPaneEnabled && segs.length > 0
+        ? buildPeakWallStepPoints(segs, candlesForSteps, axis, color)
+        : EMPTY_PEAK_WALL_STEPS
+    );
+    const unreached = (
+      segs: readonly PeakWallSegment[], color: string, side: 'ask' | 'bid',
+    ) => (
+      prefPeakWallPaneEnabled && segs.length > 0
+        ? buildUnreachedStepPoints(segs, candlesForSteps, axis, color, side)
+        : EMPTY_PEAK_WALL_STEPS
+    );
+    return {
+      'ask-traded': monotone(askWall.stepSegments, askWall.color),
+      'ask-all': monotone(askWall.allWallStepSegments, askWall.allWallColor),
+      'ask-unreached': unreached(askWall.unreachedStepSegments, askWall.unreachedColor, 'ask'),
+      'bid-traded': monotone(bidWall.stepSegments, bidWall.color),
+      'bid-all': monotone(bidWall.allWallStepSegments, bidWall.allWallColor),
+      'bid-unreached': unreached(bidWall.unreachedStepSegments, bidWall.unreachedColor, 'bid'),
+    } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
+  }, [prefPeakWallPaneEnabled, cb?.candles, axis, askWall, bidWall]);
+
   useEffect(() => {
     const reg = usePeakWallStepsRegistry.getState();
-    reg.register(legendScope, 'ask', { points: askPeakWallSteps });
-    reg.register(legendScope, 'bid', { points: bidPeakWallSteps });
+    for (const slot of PEAK_WALL_STEP_SLOTS) {
+      reg.register(legendScope, slot.key, { points: peakWallStepPoints[slot.key] });
+    }
     return () => {
       const cleanup = usePeakWallStepsRegistry.getState();
-      cleanup.unregister(legendScope, 'ask');
-      cleanup.unregister(legendScope, 'bid');
+      for (const slot of PEAK_WALL_STEP_SLOTS) cleanup.unregister(legendScope, slot.key);
     };
-  }, [legendScope, askPeakWallSteps, bidPeakWallSteps]);
+  }, [legendScope, peakWallStepPoints]);
 
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */

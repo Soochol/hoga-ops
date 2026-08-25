@@ -56,6 +56,8 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     allWallColor: '#all',
     allWallLineWidth: 1,
     unreachedSegments: [],
+    allWallStepSegments: [],
+    unreachedStepSegments: [],
     unreachedDrawn: false,
     unreachedLabels: false,
     unreachedColor: '#unreached',

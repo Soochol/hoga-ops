@@ -107,3 +107,112 @@ export function buildPeakWallStepPoints(
   }
   return out;
 }
+
+/**
+ * 미도달 벽 전용 계단 — **누적 최대가 아니다**.
+ *
+ * 「전체 최대벽」과 달리 미도달 계열은 **구성원이 빠져나간다**: 당일 극값이 전진해
+ * 어떤 벽의 가격에 닿으면 그 벽은 그 시점부터 미도달이 아니다. 그래서 running max
+ * (`buildPeakWallStepPoints`)를 쓰면 이미 깨진 벽이 계단 높이로 영원히 남는 **틀린
+ * 선**이 된다 — 단조가 아닌 계열에 단조 빌더를 쓴 것이다.
+ *
+ * 대신 매 봉에서 그 시점 기준으로 다시 판정한다:
+ *
+ *   계단(t) = max{ 벽ᵢ.qty : 벽ᵢ.시각 ≤ t 이고 벽ᵢ 가 t 시점에 아직 미도달 }
+ *
+ * 미도달 판정의 극값은 **캔들에서** 만든다 — 세션 시작부터 t 까지의 누적 고가(ask)
+ * /저가(bid). 후보가 3개 이하라 봉마다 다시 훑어도 O(봉수 × 3) 이다.
+ *
+ * ⚠ **문서화된 근사**: 입력 세그먼트는 그 계열의 top-3(과거일은 wire 가 rank-1
+ * 스칼라뿐이라 1개)이다. 따라서 이 선은 "모든 미도달 벽 중 최대" 가 아니라
+ * "**top-3 후보 중** 그 시점에 미도달인 것의 최대" 다. 4위 이하가 살아남아도 보이지
+ * 않는다 — 구백엔드 기록 필드가 없을 때 traded 계단이 top-3 으로 떨어지는 것과 같은
+ * 등급의 근사이고, 그 이상은 wire 가 나르지 않는다.
+ *
+ * 후보가 전부 도달당해 계열이 비면 **0 을 그리지 않는다** — 0 은 "미도달 벽이 0주"
+ * 라는 뜻이 되어 급락으로 오독된다. 대신 마지막 점의 outgoing 을 투명으로 끊어
+ * 선을 거기서 멈춘다(거래일 경계와 같은 기법 — whitespace 는 lwc 가 무시한다).
+ * 극값은 단조라 한 거래일 안에서 한 번 비면 그날은 다시 차지 않는다.
+ */
+export function buildUnreachedStepPoints(
+  segments: readonly PeakWallSegment[],
+  candles: readonly Candle[],
+  axis: VirtualAxis,
+  color: string,
+  side: 'ask' | 'bid',
+): PeakWallStepPoint[] {
+  if (segments.length === 0 || candles.length === 0 || axis.segments.length === 0) return [];
+  const isAsk = side === 'ask';
+
+  const events = segments
+    .map((s) => {
+      const vsec = Number(s.peakTime);
+      return { vsec, qty: s.qty, price: s.price, dayIdx: axis.findByVirtual(vsec * 1000) };
+    })
+    .filter((e) => Number.isFinite(e.vsec) && Number.isFinite(e.qty)
+      && Number.isFinite(e.price) && e.dayIdx >= 0);
+  if (events.length === 0) return [];
+
+  const out: PeakWallStepPoint[] = [];
+  let currentDay = -2;
+  let dayExtreme: number | null = null;
+  let emittedToday = false;
+  let closedToday = false;
+  let pendingDayBreak = false;
+  let lastVsec = Number.NEGATIVE_INFINITY;
+
+  for (const c of candles) {
+    // 세션 밖 캔들 제외 — 사유는 buildPeakWallStepPoints 의 같은 가드 주석 참조.
+    if (!axis.contains(c.ts_ms)) continue;
+    const virtualMs = axis.toVirtual(c.ts_ms);
+    const dayIdx = axis.findByVirtual(virtualMs);
+    if (dayIdx < 0) continue;
+    if (dayIdx !== currentDay) {
+      currentDay = dayIdx;
+      dayExtreme = null;
+      emittedToday = false;
+      closedToday = false;
+      pendingDayBreak = out.length > 0;
+    }
+    // 당일 누적 극값 — 세션 시작부터 이 봉까지.
+    const level = isAsk ? c.high : c.low;
+    if (Number.isFinite(level)) {
+      dayExtreme = dayExtreme === null
+        ? level
+        : (isAsk ? Math.max(dayExtreme, level) : Math.min(dayExtreme, level));
+    }
+    if (closedToday) continue;
+
+    const vsec = virtualMs / 1000;
+    let best: number | null = null;
+    for (const ev of events) {
+      if (ev.dayIdx !== dayIdx || ev.vsec > vsec) continue;
+      // 미도달 = 극값이 아직 이 가격을 지배하지 못했다(ask: price > 고가).
+      const unreached = dayExtreme === null
+        || (isAsk ? ev.price > dayExtreme : ev.price < dayExtreme);
+      if (!unreached) continue;
+      if (best === null || ev.qty > best) best = ev.qty;
+    }
+
+    if (best === null) {
+      // 그날 이미 선을 그렸다면 여기서 끊는다(0 을 그리지 않는다).
+      if (emittedToday) {
+        maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+        closedToday = true;
+      }
+      continue;
+    }
+    if (vsec <= lastVsec) continue;
+    lastVsec = vsec;
+    if (pendingDayBreak) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      out.push({ time: vsec as Time, value: best, ...LINE_HIDDEN_COLOR });
+      pendingDayBreak = false;
+      emittedToday = true;
+      continue;
+    }
+    out.push({ time: vsec as Time, value: best, color });
+    emittedToday = true;
+  }
+  return out;
+}
