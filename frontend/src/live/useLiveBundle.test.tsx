@@ -947,6 +947,95 @@ describe('useLiveBundle', () => {
       apiSpy.mockRestore();
     });
 
+    /**
+     * 소스 토글 원자화(2026-08-25 사용자 실측).
+     *
+     * 토글은 세 번째 재키 종류다 — 같은 (code, tf) 에서 캔들 소스 축만 갈린다.
+     * 기존 홀드는 `historicalFromDate != null`(팬 전용) 게이트라, 팬한 적 없는 창에서
+     * 토글하면 소스 분기가 즉시 뒤집혀 새 소스의 콜드 fetch(5m 초기 창 77일 워크백,
+     * 장중 실측 30초+)가 끝날 때까지 캔들이 빈 배열 — 완전 빈 화면이었다. 소스 스왑
+     * 재착석(2a)의 도크스트링("그 사이 커밋들의 캔들은 아직 옛 소스의 것")이 전제하는
+     * 홀드가 실제로는 없었던 것이다.
+     *
+     * **막는 방향**: 토글 커밋~새 소스 첫 데이터 사이의 빈 화면(양방향).
+     * **함께 잠그는 경계**: code·tf 전환은 종전 결정대로 홀드 없이 통과해야 한다 —
+     * 이전 종목/봉의 번들에 멈추는 것이 이 홀드의 유일한 위험이다.
+     */
+    it('토글 직후 새 소스가 콜드면 이전 소스 번들을 홀드한다 — 빈 화면 금지', () => {
+      const { result, rerender } = renderHook(
+        ({ hp }: { hp: boolean }) =>
+          useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: hp }),
+        { wrapper: createWrapper(), initialProps: { hp: false } },
+      );
+      // 벤더로 settle (픽스처 종가 70,050).
+      expect(result.current.chartBundle!.candles.map((c) => c.close)).toContain(70_050);
+
+      // 디스크 콜드: 데이터 없음 + fetch 중 — 워크백 첫 타일이 아직이다.
+      useRangeCandlesDeltaSpy.mockImplementation(() => ({
+        data: null, isLoading: true, error: null,
+        isPlaceholderData: false, isFetching: true, isHistoricalDeltaFetching: true,
+      }));
+      rerender({ hp: true });
+      expect(result.current.chartBundle).not.toBeNull();
+      expect(result.current.chartBundle!.candles.map((c) => c.close)).toContain(70_050);
+
+      // 디스크 도착 → 홀드 해제, 스왑 완료(디스크 종가 71,234).
+      serveDisk();
+      rerender({ hp: true });
+      const closes = result.current.chartBundle!.candles.map((c) => c.close);
+      expect(closes).toContain(71_234);
+      expect(closes).not.toContain(70_050);
+    });
+
+    it('토글 해제 방향도 대칭 — 벤더가 콜드면 디스크 번들을 홀드한다', () => {
+      serveDisk();
+      const { result, rerender } = renderHook(
+        ({ hp }: { hp: boolean }) =>
+          useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: hp }),
+        { wrapper: createWrapper(), initialProps: { hp: true } },
+      );
+      expect(result.current.chartBundle!.candles.map((c) => c.close)).toContain(71_234);
+
+      livePastCandlesSpy.mockImplementation(() => ({
+        data: undefined, isLoading: true, error: null,
+        isPlaceholderData: false, isFetching: true,
+      }) as never);
+      rerender({ hp: false });
+      expect(result.current.chartBundle).not.toBeNull();
+      expect(result.current.chartBundle!.candles.map((c) => c.close)).toContain(71_234);
+    });
+
+    it('종목 전환은 홀드하지 않는다 — 이전 종목 번들에 멈추면 안 된다', () => {
+      const { result, rerender } = renderHook(
+        ({ code }: { code: string }) => useLiveBundle(code, '1m', '20260527', liveFixture),
+        { wrapper: createWrapper(), initialProps: { code: '005930' } },
+      );
+      expect(result.current.chartBundle!.code).toBe('005930');
+
+      // 새 종목의 벤더 캔들이 콜드 — 홀드 조건과 같은 신호인데 code 만 다르다.
+      livePastCandlesSpy.mockImplementation(() => ({
+        data: undefined, isLoading: true, error: null,
+        isPlaceholderData: false, isFetching: true,
+      }) as never);
+      rerender({ code: '000660' });
+      expect(result.current.chartBundle?.code).not.toBe('005930');
+    });
+
+    it('타임프레임 전환은 홀드하지 않는다 — bucket 이 다른 번들에 멈추면 안 된다', () => {
+      const { result, rerender } = renderHook(
+        ({ tf }: { tf: '1m' | '5m' }) => useLiveBundle('005930', tf, '20260527', liveFixture),
+        { wrapper: createWrapper(), initialProps: { tf: '1m' as '1m' | '5m' } },
+      );
+      expect(result.current.chartBundle!.bucket_ms).toBe(60_000);
+
+      livePastCandlesSpy.mockImplementation(() => ({
+        data: undefined, isLoading: true, error: null,
+        isPlaceholderData: false, isFetching: true,
+      }) as never);
+      rerender({ tf: '5m' });
+      expect(result.current.chartBundle?.bucket_ms).not.toBe(60_000);
+    });
+
     it('빈 상태가 "설정 열기" 대신 창 소스 문구를 낸다', () => {
       useRangeCandlesDeltaSpy.mockImplementation((...args: unknown[]) => {
         const options = args[6] as { mode?: string } | undefined;
