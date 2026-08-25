@@ -5,6 +5,7 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   classifyBidWallEvents,
+  dayExtremeFromCandles,
   rankPeakCandidates,
   toTouchTicksFromTrades,
   toWallEventsFromOrderbooks,
@@ -19,6 +20,8 @@ type PeakFamilies = {
   traded: AskPeakCandidate[];
   /** 터치 무관 전체 벽 — 「보이는 영역 최대벽」의 원천. */
   all: AskPeakCandidate[];
+  /** 미도달 벽(당일 저가 기준) — ask 쪽 PeakFamilies 주석 참조(백엔드 별도 병합 없음). */
+  unreached: AskPeakCandidate[];
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -56,7 +59,7 @@ function toCandidate(
 
 function candidateFromPrefix(
   peak: LiveTodayBidPeak | null,
-  prefix: 'traded' | 'all',
+  prefix: 'traded' | 'all' | 'unreached',
 ): AskPeakCandidate | null {
   if (!peak) return null;
   return toCandidate(
@@ -73,9 +76,13 @@ function backendPeakFamilies(todayBidPeak: LiveTodayBidPeak | null): PeakFamilie
   const all = todayBidPeak?.all_peaks?.length
     ? todayBidPeak.all_peaks
     : [candidateFromPrefix(todayBidPeak, 'all')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
+  const unreached = todayBidPeak?.unreached_peaks?.length
+    ? todayBidPeak.unreached_peaks
+    : [candidateFromPrefix(todayBidPeak, 'unreached')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
   return {
     traded: rankPeakCandidates(traded),
     all: rankPeakCandidates(all),
+    unreached: rankPeakCandidates(unreached),
   };
 }
 
@@ -120,6 +127,10 @@ function attachFamilies(
     traded_max_peaks: families.traded,
     all_peaks: families.all,
     all_max_peaks: families.all,
+    unreached_price: families.unreached[0]?.price ?? null,
+    unreached_qty: families.unreached[0]?.qty ?? null,
+    unreached_t_ms: families.unreached[0]?.t_ms ?? null,
+    unreached_peaks: families.unreached,
   };
 }
 
@@ -131,7 +142,8 @@ function bidFamiliesFromClassified(
 ): PeakFamilies {
   const traded = mergeRankedCandidates(classified.touched, backend.traded);
   const all = mergeRankedCandidates(classified.all, backend.all, traded);
-  return { traded, all };
+  // unreached 는 백엔드를 병합하지 않는다 — PeakFamilies 필드 주석 참조(재필터가 요점).
+  return { traded, all, unreached: rankPeakCandidates(classified.unreached) };
 }
 
 function mergedBidFamilies(
@@ -140,6 +152,7 @@ function mergedBidFamilies(
   todayBidPeak: LiveTodayBidPeak | null,
   sessionOpenMs: number,
   visibleTimeCutoff: VisibleTimeCutoff | null = null,
+  todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): PeakFamilies {
   const backend = backendPeakFamilies(todayBidPeak);
   const filteredOb = visibleTimeCutoff
@@ -165,12 +178,18 @@ function mergedBidFamilies(
     ...toWallEventsFromOrderbooks(filteredOb, 'bid', sessionOpenMs),
     ...filterCandidates(backend.all),
     ...filterCandidates(backend.traded),
+    ...filterCandidates(backend.unreached),
   ]);
-  const classified = classifyBidWallEvents(sourceEvents, touchTicks);
+  // 미도달 극값 — ask 쪽 mergedAskFamilies 의 같은 자리 주석 참조(cutoff 는 캔들 근사).
+  const dayExtremeArg = visibleTimeCutoff
+    ? dayExtremeFromCandles(todayCandles, 'bid', sessionOpenMs, visibleTimeCutoff.tMs)
+    : todayBidPeak?.day_extreme ?? null;
+  const classified = classifyBidWallEvents(sourceEvents, touchTicks, dayExtremeArg);
   if (visibleTimeCutoff) {
     return {
       traded: rankPeakCandidates(classified.touched),
       all: rankPeakCandidates(classified.all),
+      unreached: rankPeakCandidates(classified.unreached),
     };
   }
   return bidFamiliesFromClassified(classified, backend);
@@ -195,8 +214,9 @@ export function deriveDayBidPeaks(
   visibleTimeCutoff: VisibleTimeCutoff | null = null,
 ): BidPeak[] {
   void code;
-  void todayCandles;
-  const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs, visibleTimeCutoff);
+  const families = mergedBidFamilies(
+    ob, trade, todayBidPeak, sessionOpenMs, visibleTimeCutoff, todayCandles,
+  );
   const out = seeds.filter((peak) => peak.date !== todayKst);
   return pushTodayBidPeak(out, todayKst, families);
 }
@@ -214,7 +234,8 @@ export function deriveDayBidPeaksIncremental(
   const classified = source.update(ob, trade, sessionOpenMs, [
     ...backend.all,
     ...backend.traded,
-  ]);
+    ...backend.unreached,
+  ], todayBidPeak?.day_extreme ?? null);
   const families = bidFamiliesFromClassified(classified, backend);
   const out = seeds.filter((peak) => peak.date !== todayKst);
   return pushTodayBidPeak(out, todayKst, families);
@@ -224,6 +245,7 @@ function bidFamiliesFromClassifiedCutoff(classified: PeakWallClassification): Pe
   return {
     traded: rankPeakCandidates(classified.touched),
     all: rankPeakCandidates(classified.all),
+    unreached: rankPeakCandidates(classified.unreached),
   };
 }
 
@@ -237,12 +259,16 @@ export function deriveDayBidPeaksIncrementalAsOf(
   sessionOpenMs: number,
   todayBidPeak: LiveTodayBidPeak | null,
   cutoffMs: number,
+  /** 미도달 극값의 cutoff 근사 원천(오늘 캔들) — ask 쪽과 동일. */
+  todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
   const backend = backendPeakFamilies(todayBidPeak);
   const classified = source.updateAsOf(ob, trade, [
     ...backend.all,
     ...backend.traded,
-  ], cutoffMs, sessionOpenMs);
+    ...backend.unreached,
+  ], cutoffMs, sessionOpenMs,
+  dayExtremeFromCandles(todayCandles, 'bid', sessionOpenMs, cutoffMs));
   const families = bidFamiliesFromClassifiedCutoff(classified);
   const out = seeds.filter((peak) => peak.date !== todayKst);
   return pushTodayBidPeak(out, todayKst, families);

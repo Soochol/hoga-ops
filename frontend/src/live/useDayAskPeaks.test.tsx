@@ -430,3 +430,61 @@ describe('useDayAskPeaks', () => {
   // flaky했다. 이 훅이 쓰는 IncrementalPeakWallSource의 append-only 델타 소비(perf를
   // 담보하는 실제 불변식)는 useDayPeaks.perf.test.tsx가 결정론적 호출횟수로 검증한다.
 });
+
+describe('useDayAskPeaks — 미도달 벽 패밀리', () => {
+  it('백엔드 unreached 시드는 새 고가로 재필터된다(소급 제거의 클라이언트 절반)', () => {
+    const restPeak = todayAskPeak({
+      day_extreme: 26_000,
+      unreached_price: 26_500,
+      unreached_qty: 8_000,
+      unreached_t_ms: atKst(9, 5),
+    });
+    const { result, rerender } = renderHook(
+      ({ trades }: { trades: TradeSnapshot[] }) =>
+        useDayAskPeaks([], trades, [], '20260613', OPEN_MS, '005930', restPeak),
+      { initialProps: { trades: [] as TradeSnapshot[] } },
+    );
+
+    // 고가 26,000 아래에서는 26,500 벽이 미도달로 살아 있다.
+    let today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks).toContainEqual({ price: 26_500, qty: 8_000, t_ms: atKst(9, 5) });
+
+    // 버퍼 체결이 26,600 신고가를 찍으면 시드가 걸러진다 — 백엔드 스냅샷은 그대로인데도.
+    rerender({
+      trades: [trade(atKst(9, 30), [{ t_ms: atKst(9, 30), side: 1, price: 26_600, qty: 1 }])],
+    });
+    today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks ?? []).not.toContainEqual(
+      { price: 26_500, qty: 8_000, t_ms: atKst(9, 5) },
+    );
+  });
+
+  it('창 내 벽은 백엔드 day_extreme 기준으로 미도달이 갈린다(접속 이전 고가 반영)', () => {
+    const restPeak = todayAskPeak({ day_extreme: 26_000 });
+    const t = atKst(9, 20);
+    const { result } = renderHook(() => useDayAskPeaks(
+      // 26,300 벽(고가 위)과 25,900 벽(고가 아래) — 체결 틱 없이 호가만.
+      [deep(t, 4_000, 26_300), deep(t + 1_000, 9_000, 25_900)],
+      [],
+      [],
+      '20260613', OPEN_MS, '005930', restPeak,
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks).toContainEqual({ price: 26_300, qty: 4_000, t_ms: t });
+    expect(today?.unreached_peaks ?? []).not.toContainEqual(
+      { price: 25_900, qty: 9_000, t_ms: t + 1_000 },
+    );
+    // rank-1 스칼라도 같은 후보를 나른다(리맵의 carrier).
+    expect(today?.unreached_price).toBe(26_300);
+  });
+
+  it('체결 극값을 아예 모르면(백엔드 없음·체결 0건) 모든 벽이 미도달이다', () => {
+    const t = atKst(9, 20);
+    const { result } = renderHook(() => useDayAskPeaks(
+      [deep(t, 7_000, 26_100)], [], [], '20260613', OPEN_MS, '005930',
+    ));
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks?.[0]).toEqual({ price: 26_100, qty: 7_000, t_ms: t });
+  });
+});

@@ -21,6 +21,11 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
   const allWallLineWidth = useWindowIndicator((s) => s.bidPeakAllWallLineWidth);
   const setAllWallEnabled = useIndicatorActions().setBidPeakAllWallLineEnabled;
   const setAllWallStyle = useIndicatorActions().setBidPeakAllWallStyle;
+  const unreachedEnabled = useWindowIndicator((s) => s.bidPeakUnreachedLineEnabled);
+  const unreachedColor = useWindowIndicator((s) => s.bidPeakUnreachedColor);
+  const unreachedLineWidth = useWindowIndicator((s) => s.bidPeakUnreachedLineWidth);
+  const setUnreachedEnabled = useIndicatorActions().setBidPeakUnreachedLineEnabled;
+  const setUnreachedStyle = useIndicatorActions().setBidPeakUnreachedStyle;
   const prefs = useScopedChartPrefs();
   const postTouchRankLimit = prefs.bidPeakAllPriceRankLimit;
   const { setNumericPref } = useChartPrefActions();
@@ -60,6 +65,25 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
             lineWidth={allWallLineWidth}
             onChange={setAllWallStyle}
             label="전체 최대벽"
+          />
+        </div>
+      )}
+      <div className="border-b border-border my-3" />
+      <ToggleRow
+        label="미도달 벽"
+        description="당일 저가보다 아래에 걸렸던 벽 중 최대 — 아직 시장가가 닿지 않은 매수벽입니다. 저가가 갱신되면 그 위 벽은 목록에서 빠집니다."
+        checked={unreachedEnabled}
+        onToggle={() => setUnreachedEnabled(!unreachedEnabled)}
+        testId="settings-toggle-bidPeakUnreachedLineEnabled"
+      />
+      {unreachedEnabled && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-sm text-fg">미도달 벽</span>
+          <MAStylePicker
+            color={unreachedColor}
+            lineWidth={unreachedLineWidth}
+            onChange={setUnreachedStyle}
+            label="미도달 벽"
           />
         </div>
       )}

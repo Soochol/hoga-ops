@@ -7,6 +7,7 @@ import {
   buildPeakWallSegments,
   preparePeakWallSegmentsForRender,
   toAllWallPeakInputs,
+  toUnreachedWallPeakInputs,
 } from './peakWallSegments';
 import { applyPeakVisibleTimeCutoff } from './peakWallVisibleCutoff';
 
@@ -625,5 +626,44 @@ describe('toAllWallPeakInputs', () => {
       { intraMax: false },
     );
     expect(survived.map((p) => [p.date, p.price, p.qty])).toEqual([['20260611', 200, 900]]);
+  });
+});
+
+describe('toUnreachedWallPeakInputs', () => {
+  it('배열이 있으면 rank-1 이 양 carrier(close=max — cont 단일 계열), 배열은 traded 슬롯으로', () => {
+    const arr = [
+      { price: 300, qty: 5000, t_ms: 10 },
+      { price: 310, qty: 4000, t_ms: 11 },
+    ];
+    const out = toUnreachedWallPeakInputs([peak({ date: '20260613', unreached_peaks: arr })]);
+    expect(out[0]).toMatchObject({
+      price: 300, qty: 5000, t_ms: 10,
+      max_price: 300, max_qty: 5000, max_t_ms: 10,
+    });
+    expect(out[0].traded_peaks).toBe(arr);
+    expect(out[0].traded_max_peaks).toBe(arr);
+  });
+
+  it('배열이 없으면 스칼라 폴백 — traded_peaks 는 undefined(컷오프 스칼라 폴백 계약)', () => {
+    const out = toUnreachedWallPeakInputs([peak({
+      date: '20260611',
+      unreached_price: 200, unreached_qty: 900, unreached_t_ms: 5,
+      unreached_peaks: [],
+    })]);
+    expect(out).toEqual([{
+      date: '20260611',
+      price: 200, qty: 900, t_ms: 5,
+      max_price: 200, max_qty: 900, max_t_ms: 5,
+      traded_peaks: undefined,
+      traded_max_peaks: undefined,
+    }]);
+  });
+
+  it('unreached 가 전혀 없는 날(구 캐시·legacy)은 건너뛴다', () => {
+    const out = toUnreachedWallPeakInputs([
+      peak({ date: '20260610', price: 100, qty: 10, t_ms: 1 }),
+      peak({ date: '20260611', unreached_price: 200, unreached_qty: 900, unreached_t_ms: 5 }),
+    ]);
+    expect(out.map((p) => p.date)).toEqual(['20260611']);
   });
 });

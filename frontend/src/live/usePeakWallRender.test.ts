@@ -55,6 +55,7 @@ describe('usePeakWallRender', () => {
         // 전역 스토어는 테스트 간 살아남는다 — 하위 토글을 켜는 테스트가 앞서면
         // "꺼짐" 전제가 오염되므로 매번 되돌린다.
         askPeakAllWallLineEnabled: false,
+        askPeakUnreachedLineEnabled: false,
       });
     });
   });
@@ -218,6 +219,41 @@ describe('usePeakWallRender', () => {
     });
     const r = render(true, [ALL_PEAK]);
     expect(r.current.allWallSegments).toEqual([]);
+  });
+
+  it('미도달 벽 선은 opt-in — 켜면 unreached carrier 로 세그먼트를 짓고, 눈은 drawn 만 내린다', () => {
+    const UNREACHED_PEAK: AskPeak = {
+      ...PEAK,
+      unreached_price: 140,
+      unreached_qty: 700,
+      unreached_t_ms: 2 * MIN,
+    };
+    const off = render(true, [UNREACHED_PEAK]);
+    expect(off.current.unreachedSegments).toEqual([]);
+    expect(off.current.unreachedDrawn).toBe(false);
+
+    act(() => {
+      useLivePageStore.setState({
+        askPeakUnreachedLineEnabled: true,
+        askPeakUnreachedColor: '#1E3A8A',
+        askPeakUnreachedLineWidth: 2,
+      });
+    });
+    const on = render(true, [UNREACHED_PEAK]);
+    expect(on.current.unreachedDrawn).toBe(true);
+    expect(on.current.unreachedSegments).toHaveLength(1);
+    expect(on.current.unreachedSegments[0]).toMatchObject({
+      price: 140, qty: 700, color: '#1E3A8A', lineWidth: 2,
+    });
+    // rankSegments 병합 집합에도 들어간다(레전드·화살표·회피 공용).
+    expect(on.current.rankSegments.map((s) => s.price)).toContain(140);
+
+    act(() => {
+      useLivePageStore.setState({ askPeakHidden: true });
+    });
+    const hidden = render(true, [UNREACHED_PEAK]);
+    expect(hidden.current.unreachedSegments).toHaveLength(1);
+    expect(hidden.current.unreachedDrawn).toBe(false);
   });
 
   it('rankSegments 는 체결된 벽 ∪ 전체 벽 — 하위 토글이 꺼지면 segments 와 같은 참조', () => {

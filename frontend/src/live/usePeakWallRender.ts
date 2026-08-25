@@ -31,6 +31,7 @@ import {
   buildPeakWallOverlaySegments,
   toAllWallPeakInputs,
   toPeakRankLimit,
+  toUnreachedWallPeakInputs,
   type PeakWallInput,
 } from './peakWallSegments';
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
@@ -63,10 +64,18 @@ export type PeakWallRenderState = {
    *  불변식도 동일하다. */
   allWallSegments: readonly PeakWallSegment[];
   /** 「보이는 영역」 랭킹(레전드 셀 · 순위 화살표 · 고저 라벨 회피)의 **공용 입력** —
-   *  체결된 벽 ∪ 전체 벽을 (그날, 가격) 최대 qty 로 병합한 집합. 세 소비처가 이 하나를
-   *  받아야 레전드 1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking 머리말).
-   *  전체 벽이 꺼져 있으면 `segments` 와 같은 참조다. */
+   *  체결된 벽 ∪ 전체 벽 ∪ 미도달 벽을 (그날, 가격) 최대 qty 로 병합한 집합. 세 소비처가
+   *  이 하나를 받아야 레전드 1위와 화살표 ① 이 같은 벽을 가리킨다(peakWallVisibleRanking
+   *  머리말). 하위 선이 전부 꺼져 있으면 `segments` 와 같은 참조다. */
   rankSegments: readonly PeakWallSegment[];
+  /** 「미도달 벽」 하위 선 — unreached 패밀리의 carrier 리맵(toUnreachedWallPeakInputs).
+   *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
+   *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
+  unreachedSegments: readonly PeakWallSegment[];
+  unreachedDrawn: boolean;
+  unreachedLabels: boolean;
+  unreachedColor: string;
+  unreachedLineWidth: number;
   /** 전체 최대벽 선이 실제로 그려지는가(마스터 drawn ∧ 하위 토글). */
   allWallDrawn: boolean;
   /** 전체 최대벽 도킹 라벨이 그려지는가(라벨 pref 는 방향 공용을 따른다). */
@@ -120,6 +129,15 @@ export function usePeakWallRender({
   );
   const allWallLineWidth = useWindowIndicator(
     (s) => (isAsk ? s.askPeakAllWallLineWidth : s.bidPeakAllWallLineWidth),
+  );
+  const unreachedEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakUnreachedLineEnabled : s.bidPeakUnreachedLineEnabled),
+  );
+  const unreachedColor = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakUnreachedColor : s.bidPeakUnreachedColor),
+  );
+  const unreachedLineWidth = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakUnreachedLineWidth : s.bidPeakUnreachedLineWidth),
   );
   const intraMax = useActivePrefs((s) => (isAsk ? s.askPeakIntraMax : s.bidPeakIntraMax));
   const allPriceRankLimit = useActivePrefs(
@@ -202,6 +220,40 @@ export function usePeakWallRender({
     visibleTimeCutoff,
   ]);
 
+  // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallBuilt 주석).
+  const unreachedBuilt = useMemo(() => (
+    applicable && enabled && unreachedEnabled
+      ? buildPeakWallOverlaySegments({
+        peaks: toUnreachedWallPeakInputs(peaks),
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color: unreachedColor, lineWidth: unreachedLineWidth },
+        intraMax,
+        allPriceRankLimit: 1,
+        visibleTimeCutoff,
+        maFilter,
+        dailyMaFilter,
+      })
+      : EMPTY_SEGMENTS
+  ), [
+    unreachedEnabled,
+    unreachedColor,
+    unreachedLineWidth,
+    applicable,
+    axis,
+    candles,
+    dailyMaFilter,
+    enabled,
+    intraMax,
+    maFilter,
+    peaks,
+    segments,
+    todayKst,
+    visibleTimeCutoff,
+  ]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -241,11 +293,12 @@ export function usePeakWallRender({
 
   const drawn = enabled && !hidden;
   const allWallDrawn = drawn && allWallEnabled;
-  // 랭킹 공용 입력 — allWallBuilt 가 비면 mergePeakWallRankSegments 가 built 참조를
+  const unreachedDrawn = drawn && unreachedEnabled;
+  // 랭킹 공용 입력 — 하위 선이 전부 비면 mergePeakWallRankSegments 가 built 참조를
   // 그대로 돌려주므로 별도 분기 없이도 참조가 안정된다.
   const rankSegments = useMemo(
-    () => mergePeakWallRankSegments(built, allWallBuilt),
-    [built, allWallBuilt],
+    () => mergePeakWallRankSegments(built, allWallBuilt, unreachedBuilt),
+    [built, allWallBuilt, unreachedBuilt],
   );
   return useMemo(() => ({
     segments: built,
@@ -261,11 +314,20 @@ export function usePeakWallRender({
     allWallLabels: allWallDrawn && labelEnabled,
     allWallColor,
     allWallLineWidth,
+    unreachedSegments: unreachedBuilt,
+    unreachedDrawn,
+    unreachedLabels: unreachedDrawn && labelEnabled,
+    unreachedColor,
+    unreachedLineWidth,
   }), [
     allWallBuilt,
     allWallColor,
     allWallDrawn,
     allWallLineWidth,
+    unreachedBuilt,
+    unreachedColor,
+    unreachedDrawn,
+    unreachedLineWidth,
     built,
     stepBuilt,
     color,
