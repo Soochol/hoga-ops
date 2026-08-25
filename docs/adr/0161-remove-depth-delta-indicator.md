@@ -58,10 +58,29 @@
 
 1. **디스크 캐시의 고아 파일.** `{data_dir}/kis-past-indicators/**/*.depth_delta.*.json`
    과 `*.depth_delta_prices.json` 은 읽는 코드가 없어져 그대로 남는다. 사용자 데이터라
-   이 PR 은 건드리지 않는다. 정리하려면:
+   이 PR 은 건드리지 않는다. 실측(2026-08-26 사용자 머신): **11,796 파일 · 2.0 GB**
+   (`depth_delta.<bucket>` 11,577 + `depth_delta_prices` 219), 캐시 전체 27 GB 중.
+
+   ⚠ **`$HOGA_DATA_DIR` 로 경로를 만들지 말 것.** 그 환경변수는 **보통 설정돼 있지
+   않고**, 빈 문자열이면 `find "/kis-past-indicators"` 가 되어 루트를 뒤진다(실측으로
+   한 번 겪었다 — 다행히 그 경로가 없어 에러로 끝났다). 경로의 진실 소스는
+   `hoga.config.resolve_data_dir()` 이므로 거기서 뽑는다:
 
    ```bash
-   find "$HOGA_DATA_DIR/kis-past-indicators" -name '*.depth_delta*.json' -delete
+   D=$(uv run python -c "from hoga.config import resolve_data_dir; print(resolve_data_dir())")/kis-past-indicators
+   ```
+
+   **지우기 전에 세어 본다** — 글롭이 살아 있는 `depth.<bucket>`(히트맵)이나
+   `wall_surge` 를 건드리지 않는지가 요점이다:
+
+   ```bash
+   find "$D" -name '*.depth_delta*.json' -printf '%f\n' | sed -E 's/^[0-9]{8}\.//; s/\.[0-9]+\.json$/.<bucket>/; s/\.json$//' | sort | uniq -c
+   ```
+
+   `depth_delta.<bucket>` 과 `depth_delta_prices` 두 줄만 나오면 지운다:
+
+   ```bash
+   find "$D" -name '*.depth_delta*.json' -delete
    ```
 
 2. **브라우저 localStorage 의 `depthDelta*` 키.** 지표 설정 정규화가 화이트리스트
