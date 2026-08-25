@@ -627,6 +627,22 @@ export function useViewportBackfill({
       const newIdx = ts.timeToIndex(refVirtual as Time, true);
       if (newIdx === null) return;
       const shift = newIdx - snap.refIdx;
+      // **축이 안 움직였으면 보정할 것이 없다 — 사용자 입력이 이긴다.**
+      //
+      // shift 는 "기준 봉의 union 인덱스가 이 커밋에서 얼마나 밀렸나" 다. 0 이면
+      // 좌표계가 그대로라는 뜻이고, 그때 스냅샷과 현재 위치의 차이는 **전부 사용자가
+      // 만든 것**이다(드래그·휠). 그걸 스냅샷으로 되돌리면 입력을 취소하게 된다.
+      //
+      // 아래 EPSILON 게이트로는 못 거른다 — 그 비교는 「lwc 가 알아서 제자리를 지켰다」와
+      // 「사용자가 그 사이 움직였다」를 **구별하지 못한다**(둘 다 target 과 cur 이 다를
+      // 뿐이다). 스냅샷은 레이아웃 단계, 이 effect 는 passive 단계라 그 사이에 프레임이
+      // 뜨고, 드래그 중이면 사용자는 이미 움직인 뒤다.
+      //
+      // 2026-08-25 사용자 보고가 이것이었다: 드래그로 스크롤하면 차트가 좌우로 흔들린다.
+      // SSE 틱은 마지막 봉 값만 갱신해 캔들 모양이 불변이라 `isUnionRemap` 행에 걸려
+      // 이 경로를 **매 틱** 타는데(그전엔 진짜 프리펜드에서만 탔다), 그때마다 드래그를
+      // 스냅샷 위치로 되돌려 진동이 됐다.
+      if (shift === 0) return;
       const target = { from: snap.fromLogical + shift, to: snap.toLogical + shift };
       // Live-edge case (①): lwc preserved the view on its own — re-setting the
       // same range would only risk a redundant repaint. Skip within tolerance.

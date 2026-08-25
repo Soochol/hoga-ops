@@ -3793,6 +3793,13 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const applyPending = () => {
       if (pending) { shift = pending.shift; pivot = pending.pivot; pending = null; }
     };
+    // **드래그 대역** — 0 이 아니면 `getVisibleLogicalRange` 가 호출될 때마다 화면이
+    // 그만큼 왼쪽으로 흐른다. 사용자가 끌고 있는 상태를 흉내낸다: 레이아웃 단계의
+    // 스냅샷과 passive 단계의 리포지셔너가 **다른 위치**를 보게 되는 것이 요점이다
+    // (실제 React 에서 그 둘 사이에 프레임이 뜬다). 정적 대역으로는 이 축이 구조적으로
+    // 관측 불가라, 이 필드가 없으면 아래 회귀 테스트가 항상 초록이다.
+    let dragPerCall = 0;
+    let dragged = 0;
     const ts = {
       subscribeVisibleTimeRangeChange: vi.fn(),
       unsubscribeVisibleTimeRangeChange: vi.fn(),
@@ -3804,7 +3811,11 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       scrollToPosition: vi.fn(),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
-      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      getVisibleLogicalRange: vi.fn(() => {
+        const r = { from: LR_FROM - dragged, to: LR_TO - dragged };
+        dragged += dragPerCall;
+        return r;
+      }),
       timeToIndex: vi.fn((t: unknown): number => {
         const v = Math.round(t as number);
         return v > pivot ? v + shift : v;
@@ -3835,7 +3846,13 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
-    return { ts, chart, queueInsert: (p: { shift: number; pivot: number }) => { pending = p; } };
+    return {
+      ts,
+      chart,
+      queueInsert: (p: { shift: number; pivot: number }) => { pending = p; },
+      /** 사용자가 끌고 있는 상태로 전환 — 이후 뷰 조회마다 화면이 `bars` 만큼 흐른다. */
+      startDrag: (bars: number) => { dragPerCall = bars; },
+    };
   }
 
   const bundleOf = (tsList: number[]): RangeBundle => ({
@@ -3980,6 +3997,78 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+
+  it('드래그 중 축이 안 움직인 커밋은 화면을 되돌리지 않는다 — 사용자 입력이 이긴다', () => {
+    // 2026-08-25 사용자 보고: 드래그로 스크롤하면 차트가 좌우로 흔들린다.
+    //
+    // 기전: 스냅샷은 **레이아웃** 단계, 리포지셔너는 **passive** 단계라 그 사이에
+    // 프레임이 뜬다. 드래그 중이면 사용자는 이미 그만큼 움직인 뒤다. 축이 전혀 안
+    // 움직인 커밋(shift 0)에서도 목표가 "스냅샷 위치"로 잡히고, 현재 위치와 다르니
+    // EPSILON 게이트를 통과해 **되돌리기가 실행**됐다 — 장중 SSE 틱마다 반복되어
+    // 진동으로 보인다. SSE 틱은 마지막 봉 값만 갱신해 캔들 모양이 불변이므로
+    // `isUnionRemap` 행에 걸려 이 경로를 매 틱 탄다.
+    //
+    // EPSILON 비교는 「lwc 가 알아서 제자리를 지켰다」와 「사용자가 그 사이 움직였다」를
+    // 구별하지 못한다. 구별하는 값은 **shift** 다: 0 이면 축이 안 움직였다는 뜻이고,
+    // 스냅샷과 현재의 차이는 전부 사용자가 만든 것이라 보존해야 한다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 사용자가 끌기 시작한다 — 뷰 조회마다 화면이 흐르므로 스냅샷(레이아웃)과
+    // 리포지셔너(passive)가 서로 다른 위치를 본다.
+    h.startDrag(5);
+    // SSE 틱: 캔들 배열은 모양이 같고 축도 안 움직인다(리매핑 큐 없음).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+    // 내부 오프셋도 건드리면 안 된다 — 되돌림이 다음 커밋까지 살아남는다(#1581).
+    expect(h.ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('드래그 중이어도 축이 **실제로** 밀렸으면 재투영한다 — 게이트가 넓어지기만 한 게 아니다', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    h.startDrag(5);
+    h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 }); // 지표 포인트 삽입 = 진짜 재매핑
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
   });
 });
 
