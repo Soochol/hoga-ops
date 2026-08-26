@@ -16,6 +16,18 @@
  * reads the pref is still responsible for honoring the parent toggle too (the
  * sub-pref alone is not load-bearing). Nesting is one level — a gated toggle
  * must not itself be a parent.
+ *
+ * `group` (설정 모달 카테고리의 최상위 토글은 **필수**): ⚙️ 설정 모달의 소그룹
+ * (`CHART_TOGGLE_GROUPS`). 소그룹 매핑을 UI 쪽에 두면 토글 추가 시 두 곳을 고쳐야
+ * 하고 하나를 빠뜨리면 행이 조용히 사라진다 — 그래서 레지스트리가 소유한다
+ * (2026-08-26 설정 패널 리디자인, 프로토타입 C 채택). `SettingsSections` 는 그룹
+ * 순회로만 렌더하므로 group 없는 최상위 chart/trade-window 토글은 **렌더되지
+ * 않는다**; `SettingsSections.test.tsx` 의 레지스트리 가드가 그 누락을 빨갛게
+ * 만든다. `enabledBy` 로 게이트된 하위 토글은 부모를 따라가므로 group 을 갖지
+ * 않고, indicator-modal 카테고리는 소그룹이 없다.
+ *
+ * **이 배열의 chart 카테고리 구간은 등록 순서 = 화면 순서다** (`IndicatorPrefRows`
+ * 의 기존 계약). 같은 group 의 엔트리를 이웃하게 유지할 것.
  */
 import {
   PEAK_WALL_FAMILY_NUMERICS,
@@ -23,41 +35,56 @@ import {
 } from './peakWallFamilyPrefs';
 
 export const CHART_TOGGLES = [
-  {
-    key: 'auctionWindowMask',
-    label: '동시호가 구간 지표 숨김',
-    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
-    default: true,
-  },
-  {
-    key: 'dayBoundaryEnabled',
-    label: '날짜 구분선',
-    description: '분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.',
-    default: true,
-  },
-  {
-    key: 'horizontalGridLinesEnabled',
-    label: '가로 구분선',
-    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
-    default: true,
-  },
-  {
-    key: 'verticalGridLinesEnabled',
-    label: '세로 구분선',
-    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
-    default: true,
-  },
+  // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
   {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
     description: '캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
     default: false,
+    group: 'candle',
   },
   {
     key: 'candleAlwaysOnTop',
     label: '캔들이 항상 위',
     description: '캔들 pane에서 이동평균선 등 같은 pane의 보조 지표보다 캔들을 위에 그립니다.',
     default: false,
+    group: 'candle',
+  },
+  {
+    key: 'auctionWindowMask',
+    label: '동시호가 구간 지표 숨김',
+    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
+    default: true,
+    group: 'candle',
+  },
+  {
+    key: 'candleTooltipEnabled',
+    label: '캔들 정보 툴팁',
+    description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
+    default: false,
+    group: 'candle',
+  },
+  // ── 차트 › 격자 · 구분선 ───────────────────────────────────────────
+  {
+    key: 'dayBoundaryEnabled',
+    label: '날짜 구분선',
+    description: '분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.',
+    default: true,
+    group: 'grid',
+  },
+  {
+    key: 'horizontalGridLinesEnabled',
+    label: '가로 구분선',
+    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
+    default: true,
+    group: 'grid',
+  },
+  {
+    key: 'verticalGridLinesEnabled',
+    label: '세로 구분선',
+    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
+    default: true,
+    group: 'grid',
   },
   {
     key: 'ratioOutlierFilterEnabled',
@@ -83,12 +110,7 @@ export const CHART_TOGGLES = [
     default: false,
     category: 'indicator-modal',
   },
-  {
-    key: 'candleTooltipEnabled',
-    label: '캔들 정보 툴팁',
-    description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
-    default: false,
-  },
+  // ── 차트 › 창 간 동기화 ────────────────────────────────────────────
   {
     key: 'cursorSyncCrossSymbol',
     label: '크로스헤어 동기화 — 다른 종목까지',
@@ -100,6 +122,7 @@ export const CHART_TOGGLES = [
       + '표시하고(지수 창 포함), 끄면 같은 종목을 보는 창끼리만 표시합니다. '
       + '그 날이 상대 창에 없으면 가장자리에 방향과 날짜만 표시합니다.',
     default: true,
+    group: 'sync',
   },
   {
     key: 'rangeSyncEnabled',
@@ -111,13 +134,16 @@ export const CHART_TOGGLES = [
       + '휠로 움직일 때만 따라가며 새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 '
       + '창끼리만 동작하고 종목 범위는 위 설정을 따릅니다.',
     default: true,
+    group: 'sync',
   },
+  // ── 차트 › 가격 표시 ───────────────────────────────────────────────
   {
     key: 'highLowLabelsEnabled',
     label: '고저 극값 라벨',
     description:
       '현재 보이는 차트 범위의 최고가·최저가 봉에 현재가의 극값 대비율(가격·%·시각) 라벨을 표시합니다. (고가=빨강, 저가=파랑)',
     default: true,
+    group: 'price',
   },
   {
     key: 'highLowHighLineEnabled',
@@ -156,6 +182,7 @@ export const CHART_TOGGLES = [
     label: 'VI/상하한가 선',
     description: '가격이 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 가격선으로 표시합니다.',
     default: true,
+    group: 'price',
   },
   {
     key: 'surgeMarkerEnabled',
@@ -235,6 +262,7 @@ export const CHART_TOGGLES = [
       '체결가 × 체결량이 기준 금액 이상인 체결의 체결량 칸을 배경색으로 강조합니다.',
     default: true,
     category: 'trade-window',
+    group: 'trade',
   },
   // ── 당일 최대벽 계열별 축 ──────────────────────────────────────────
   // 라벨·화살표·레전드 셀·MA 필터 둘은 **계열마다** 따로 산다(체결된 벽 · 미도달 벽 ·
@@ -276,6 +304,31 @@ export function gatedByOf(
   t: (typeof CHART_TOGGLES)[number],
 ): ChartToggleKey | undefined {
   return 'enabledBy' in t ? t.enabledBy : undefined;
+}
+
+/** ⚙️ 설정 모달의 소그룹 — **순서가 곧 화면 순서**다(2026-08-26 설정 패널 리디자인,
+ *  프로토타입 C 채택). `SettingsSections` 가 이 목록을 순회하며 각 그룹의 최상위
+ *  토글(`groupOf`)을 모아 소제목 아래 렌더한다. 그룹 추가 = 여기 한 줄 + 토글의
+ *  `group` 필드. 카테고리(섹션)와 직교한다 — chart 섹션이 4개, trade-window 섹션이
+ *  1개를 쓴다. */
+export const CHART_TOGGLE_GROUPS = [
+  { id: 'candle', label: '캔들 · 지표' },
+  { id: 'grid', label: '격자 · 구분선' },
+  { id: 'sync', label: '창 간 동기화' },
+  { id: 'price', label: '가격 표시' },
+  { id: 'trade', label: '체결 강조' },
+] as const;
+
+export type ChartToggleGroupId = (typeof CHART_TOGGLE_GROUPS)[number]['id'];
+
+/** Resolve a CHART_TOGGLES entry's settings-modal subgroup, or undefined for
+ *  entries that don't render as top-level settings rows (indicator-modal
+ *  category, and `enabledBy`-gated children that follow their parent). Same
+ *  `in` narrowing trick as `categoryOf`. */
+export function groupOf(
+  t: (typeof CHART_TOGGLES)[number],
+): ChartToggleGroupId | undefined {
+  return 'group' in t ? t.group : undefined;
 }
 
 /**
