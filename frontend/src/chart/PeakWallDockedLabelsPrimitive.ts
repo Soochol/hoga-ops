@@ -116,6 +116,7 @@ export function peakWallDockedLabelCandidates({
       textWidth: width,
       side: label.side,
       paneWidth,
+      timeMarker: label.timeMarker,
       horizontalScale,
       verticalScale,
     });

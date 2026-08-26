@@ -2220,6 +2220,10 @@ export function LiveChartRoot({
       peakTime: s.peakTime,
       side: s.side,
       label: s.label,
+      // 회피 간격은 발생 시점 화살표 유무를 따라간다 — 세그먼트가 그 값을 싣고 온다
+      // (`usePeakWallRender` 의 withPeakWallSurfaces). 빠뜨리면 화살표를 꺼도 라벨이
+      // 빈 자리를 피해 떠 있는 유령 회피가 남는다.
+      timeMarker: s.timeMarker !== false,
     }));
   }, [
     askWall.labels,

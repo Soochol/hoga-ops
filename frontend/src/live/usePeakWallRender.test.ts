@@ -409,6 +409,35 @@ describe('usePeakWallRender', () => {
       expect(r.current.allWallSegments).toHaveLength(1);
     });
 
+    it('수평선과 발생 시점 화살표는 서로 독립이다 — 세그먼트에 실려 내려간다', () => {
+      // 두 토글이 **세그먼트에** 실리는 것이 계약이다(선 primitive · 도킹 라벨 ·
+      // 고저 라벨 회피 셋이 같은 배열을 보므로, 여기서 실어야 셋이 어긋나지 않는다).
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({
+          askPeakTradedHorizontalLineEnabled: false,
+          askPeakAllWallTimeMarkerEnabled: false,
+        });
+      });
+      const r = render(true, [BOTH]);
+      // 체결된 벽: 선만 끔 → 화살표는 남는다.
+      expect(r.current.segments[0].horizontalLine).toBe(false);
+      expect(r.current.segments[0].timeMarker).toBe(true);
+      // 전체 최대벽: 화살표만 끔 → 선은 남는다. 한 계열의 설정이 다른 계열로 새지 않는다.
+      expect(r.current.allWallSegments[0].horizontalLine).toBe(true);
+      expect(r.current.allWallSegments[0].timeMarker).toBe(false);
+      // 계열의 **존재**는 그대로다 — 이 둘은 「어떻게 그릴지」이지 「그릴지」가 아니다.
+      expect(r.current.drawn).toBe(true);
+      expect(r.current.allWallDrawn).toBe(true);
+    });
+
+    it('둘 다 켜져 있으면 세그먼트 배열 참조가 유지된다', () => {
+      // 기본 상태에서 사본을 만들면 하류 memo 와 primitive 재갱신이 매번 헛돈다.
+      const r = render(true, [BOTH]);
+      expect(r.current.segments[0].horizontalLine).toBeUndefined();
+      expect(r.current.segments[0].timeMarker).toBeUndefined();
+    });
+
     it('화살표 참여를 끈 계열은 arrowRankSegments 에서 빠진다', () => {
       withAllWall();
       act(() => {

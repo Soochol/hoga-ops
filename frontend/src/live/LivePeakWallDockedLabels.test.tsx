@@ -46,6 +46,12 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     unreachedLabels: false,
     unreachedColor: '#unreached',
     unreachedLineWidth: 2,
+    tradedHorizontalLine: true,
+    tradedTimeMarker: true,
+    allWallHorizontalLine: true,
+    allWallTimeMarker: true,
+    unreachedHorizontalLine: true,
+    unreachedTimeMarker: true,
     ...over,
   };
 }
@@ -54,6 +60,12 @@ const EMPTY: PeakWallRenderState = {
   segments: [], legendRankSegments: [], arrowRankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, legendCells: true, color: '#x', lineWidth: 1,
   allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
   unreachedSegments: [], allWallStepSegments: [], unreachedStepSegments: [], unreachedDrawn: false, unreachedLabels: false, unreachedColor: '#x', unreachedLineWidth: 1,
+    tradedHorizontalLine: true,
+    tradedTimeMarker: true,
+    allWallHorizontalLine: true,
+    allWallTimeMarker: true,
+    unreachedHorizontalLine: true,
+    unreachedTimeMarker: true,
 };
 
 function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {
