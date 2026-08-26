@@ -132,3 +132,47 @@ export function sourceSwapReseatRange(args: {
   const to = Math.max(span, anchorIdx);
   return { from: to - span, to };
 }
+
+/**
+ * 소스 스왑 재착석이 **어느 앵커로** 앉을지 고른다 — 강제 이동은 사용자의 앵커를
+ * 잃게 하지 않는다.
+ *
+ * 배경: 디스크(2024-08~)와 벤더(250일 롤링)는 데이터 깊이가 다르다. 깊은 과거를 보다
+ * 소스를 바꾸면 그 시각이 새 소스에 없어 lwc 가 가장 가까운 봉으로 **강제 클램프**한다
+ * (2026-08-26 실측: sp −16,362 → 데이터 맨 앞, 팬 깊이를 바꿔도 항상 같은 값으로 수렴).
+ * 그 커밋 이후의 스냅샷은 클램프 착지를 담으므로, 사용자가 되돌아와도(토글-백) 원래
+ * 보던 곳이 아니라 **착지점**으로 앉는다 — 왕복이 위치를 잃는 경로다.
+ *
+ * 그래서 강제 클램프가 일어난 스왑은 **원래 앵커를 따로 보관**하고(`forced`), 다음
+ * 스왑에서 이 함수가 둘 중 하나를 고른다:
+ *
+ *  - `forced` — 사용자가 착지점에서 **움직이지 않았다면**(왕복 의도) 원래 위치로 복원.
+ *  - `fresh` — 사용자가 그 사이 **의미 있게 움직였다면**(새 의도) 지금 보는 곳을 승계.
+ *
+ * "움직였다" 의 판별은 **인덱스 거리**다: 강제 착지 봉과 현재 스냅샷의 오른쪽 끝을
+ * **같은 축**(스왑 커밋의 새 축)에 재투영해 화면 폭(`spanBars`) 이내면 안 움직인 것.
+ * 시간(ms) 비교를 쓰지 않는 이유: 가상축이 밤·주말을 접으므로 실시간 차이는 세션
+ * 거리와 무관하게 폭발한다 — 하루 경계를 살짝 걸친 팬이 "크게 움직였다" 로 오판된다.
+ *
+ * `freshAtLiveEdge` 는 명시적 의도 신호라 휴리스틱보다 먼저다 — 라이브 엣지로 돌아간
+ * 사용자는 복원을 원하지 않는다. 재투영이 실패하면(`null`) 검증 불가이므로 보수적으로
+ * `fresh` 다(잘못된 복원 > 복원 없음).
+ */
+export function pickSwapAnchor(args: {
+  /** 보관된 강제-이동 앵커가 있는가. */
+  hasForced: boolean;
+  /** 현재 스냅샷이 라이브 엣지인가 — 그렇다면 복원하지 않는다(명시적 의도). */
+  freshAtLiveEdge: boolean;
+  /** 현재 스냅샷 오른쪽 끝을 새 축에 재투영한 인덱스. 실패 시 null. */
+  freshIdx: number | null;
+  /** 강제 착지 봉을 같은 축에 재투영한 인덱스. 실패 시 null. */
+  landedIdx: number | null;
+  /** 현재 스냅샷의 화면 폭(논리 바) — "안 움직였다" 의 허용 반경. */
+  spanBars: number;
+}): 'fresh' | 'forced' {
+  if (!args.hasForced) return 'fresh';
+  if (args.freshAtLiveEdge) return 'fresh';
+  if (args.freshIdx === null || args.landedIdx === null) return 'fresh';
+  return Math.abs(args.freshIdx - args.landedIdx) <= args.spanBars ? 'forced' : 'fresh';
+}
+

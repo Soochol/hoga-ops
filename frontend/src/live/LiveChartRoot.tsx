@@ -1209,7 +1209,7 @@ export function LiveChartRoot({
     });
   }, [minuteJumpState, clearMinuteJump, retryMinuteJump, onMinuteJumpChange]);
 
-  useViewportBackfill({
+  const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,
     bundle: cb,
@@ -1228,6 +1228,15 @@ export function LiveChartRoot({
     // 긁는 창이 생긴다(그 prop 주석의 그 사고).
     jumpFromDate: minuteJump.backfillFromDate,
   });
+  // 강제 클램프 착지 안내의 표시 수명. `seq` 가 deps 라 같은 경계로 다시 착지해도
+  // 타이머가 재시작한다. 8초: 읽을 시간은 주되 차트 위 상주물이 되지 않게.
+  const [swapNoticeVisible, setSwapNoticeVisible] = useState(false);
+  useEffect(() => {
+    if (!sourceSwapClampNotice) { setSwapNoticeVisible(false); return undefined; }
+    setSwapNoticeVisible(true);
+    const t = setTimeout(() => setSwapNoticeVisible(false), 8000);
+    return () => clearTimeout(t);
+  }, [sourceSwapClampNotice]);
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
   const getLiveRightOffsetBars = useCallback((visibleBars: number, plotWidth: number) => (
@@ -2917,7 +2926,7 @@ export function LiveChartRoot({
 
           ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
           추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
-      {(clampEngaged || captureFloorEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
+      {(clampEngaged || captureFloorEngaged || (swapNoticeVisible && sourceSwapClampNotice !== null) || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
@@ -2952,6 +2961,14 @@ export function LiveChartRoot({
           {captureFloorEngaged && (
             <div data-testid="capture-floor-chip" style={chipStyle}>
               저장된 가장 오래된 구간입니다
+            </div>
+          )}
+          {/* 소스 스왑 강제 착지 — 보던 구간이 새 소스에 없어 옮겨졌음을 말한다.
+              「복귀합니다」 약속은 넣지 않는다: 복원은 창 생존에 조건부라(#1579 계열
+              축소가 사이에 끼면 실패), 약속은 복원이 실측으로 안정된 뒤에 넣는다. */}
+          {swapNoticeVisible && sourceSwapClampNotice !== null && (
+            <div data-testid="source-swap-clamp-chip" style={chipStyle}>
+              {`${sourceSwapClampNotice.boundaryYmd.slice(4, 6)}/${sourceSwapClampNotice.boundaryYmd.slice(6, 8)} 이전은 이 소스에 없어 가장 가까운 위치로 이동했습니다`}
             </div>
           )}
         </div>
