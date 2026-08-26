@@ -1,122 +1,89 @@
 import { useState } from 'react';
-import ToggleRow from '../settings/ToggleRow';
-import AskPeakConfig from './AskPeakConfig';
-import BidPeakConfig from './BidPeakConfig';
+import type { PeakWallFamilyId } from '../../state/peakWallFamilyPrefs';
+import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import PeakWallMatrix from './PeakWallMatrix';
+import PeakWallRelationSchema from './PeakWallRelationSchema';
+import PeakWallDetailZone from './PeakWallDetailZone';
 
 type Side = 'ask' | 'bid';
 
-const SIDE_TABS: ReadonlyArray<{ value: Side; label: string }> = [
-  { value: 'ask', label: '매도' },
-  { value: 'bid', label: '매수' },
-];
-
-/** 당일 매도·매수 최대벽 병합 페이지(P1-8). 좌측 nav의 두 항목을 하나로 합치고,
- *  매도|매수 서브탭으로 한 곳에서 둘을 설정한다. 색상은 매도/매수가 의도적으로 달라
- *  "복사"는 두지 않는다.
+/**
+ * 당일 최대벽 설정 — **방향 × 계열 매트릭스** + 고른 칸의 세부.
  *
- *  ## 무엇이 탭 안이고 무엇이 밖인가 (2026-08-25 재구성의 요점)
+ * ## 위치가 스코프를 말한다 (한 문법으로)
  *
- *  이 페이지의 컨트롤은 **스코프가 두 종류**인데 종전엔 둘 다 탭 안에 있어서 구별이
- *  화면에 없었다. 이제 위치가 스코프를 말한다:
+ * 2026-08-25 재구성이 세운 규칙("카드 안이면 그 계열, 밖이면 공통")은 옳았지만,
+ * 매도|매수 **탭** 때문에 관례가 하나로 안 모였다 — 방향 공용 항목은 "탭 밖" 이라는
+ * 두 번째 관례를 따로 만들어야 했고, 그 관례는 화면에서 읽히지 않았다(탭 경계는
+ * 눈에 보이는 선이 아니다). 열·행·푸터·매트릭스 밖 네 자리가 그 관례들을 흡수한다:
  *
- *  - **탭 안(방향별)** — 마스터 토글 · 「캔들 차트에 수평선」(눈 `*PeakHidden` 의
- *    반전 노출 — 새 키가 아니라 레전드 눈 아이콘과 같은 상태다) · 그리고
- *    `Ask/BidPeakConfig` 전체(계열 카드 3장 + 「계열 공용」 구획). 그 안에서 다시
- *    **계열별/계열 공용**이 갈리는데, 그 층의 배치 규칙은 `AskPeakConfig` 머리말에 있다.
- *  - **탭 밖(공용)** — 「최대벽 강도 pane」(`peakWallPaneEnabled`). 한 pane 에 양방향
- *    계단이 함께 살아 상태가 하나뿐이라, 매도 탭에서 켜면 매수도 켜진다. 그 사실을
- *    탭 경계 밖이라는 **위치**로 말한다.
+ * - 열 머리 = 방향 마스터 · 셀 = 방향 × 계열 · 푸터 행 = 방향별 계열 공용
+ * - **매트릭스 밖 = 방향까지 공용** — 강도 pane 이 여기다. 한 pane 에 양방향 계단이
+ *   함께 살아 상태가 하나뿐이라, 매도에서 켜면 매수도 켜진다. 그 사실을 배지와
+ *   위치로 함께 말한다.
  *
- *  마스터를 꺼도 지표는 레전드 값을 유지한다(눈 불변식 그대로). */
+ * 탭이 사라지면서 **절반의 상태를 항상 숨기던 것**도 끝났다. 두 방향이 완전한
+ * 미러라 나란히 두면 대칭이 그대로 보인다.
+ *
+ * 제목·설명은 이 컴포넌트가 갖지 않는다 — 카테고리 표가 패널 헤더에서 말한다.
+ */
 export default function PeakWallsConfig() {
-  const [side, setSide] = useState<Side>('ask');
-  const askEnabled = useWindowIndicator((s) => s.askPeakEnabled);
-  const bidEnabled = useWindowIndicator((s) => s.bidPeakEnabled);
-  const askHidden = useWindowIndicator((s) => s.askPeakHidden);
-  const bidHidden = useWindowIndicator((s) => s.bidPeakHidden);
-  const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
-  const actions = useIndicatorActions();
-  const setAskEnabled = actions.setAskPeakEnabled;
-  const setBidEnabled = actions.setBidPeakEnabled;
-  const setAskHidden = actions.setAskPeakHidden;
-  const setBidHidden = actions.setBidPeakHidden;
-  const setPaneEnabled = actions.setPeakWallPaneEnabled;
+  // 어느 칸의 세부를 보고 있는가. **저장되는 설정이 아니라 표현 상태**라 창을
+  // 다시 열면 매도·체결된 벽으로 돌아온다(패널이 `key={windowId}` 로 재마운트).
+  const [cell, setCell] = useState<{ side: Side; family: PeakWallFamilyId }>({
+    side: 'ask',
+    family: 'Traded',
+  });
 
-  const isAsk = side === 'ask';
-  const enabled = isAsk ? askEnabled : bidEnabled;
-  const hidden = isAsk ? askHidden : bidHidden;
-  const setEnabled = isAsk ? setAskEnabled : setBidEnabled;
-  const setHidden = isAsk ? setAskHidden : setBidHidden;
-  const sideLabel = isAsk ? '매도' : '매수';
+  const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  const setPaneEnabled = useIndicatorActions().setPeakWallPaneEnabled;
+
+  const tradedColor = useWindowIndicator((s) => (cell.side === 'ask' ? s.askPeakColor : s.bidPeakColor));
+  const unreachedColor = useWindowIndicator((s) => (cell.side === 'ask' ? s.askPeakUnreachedColor : s.bidPeakUnreachedColor));
+  const allWallColor = useWindowIndicator((s) => (cell.side === 'ask' ? s.askPeakAllWallColor : s.bidPeakAllWallColor));
 
   return (
     <div>
-      <div
-        className="mb-3 inline-flex overflow-hidden rounded-md border border-border"
-        role="tablist"
-        aria-label="최대벽 방향"
-      >
-        {SIDE_TABS.map((tab) => {
-          const selected = tab.value === side;
-          return (
-            <button
-              key={tab.value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setSide(tab.value)}
-              className={[
-                'px-4 py-1.5 text-sm transition-colors',
-                selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-              ].join(' ')}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mb-3">
-        <ToggleRow
-          label={`${sideLabel} 최대벽 표시`}
-          description={`${sideLabel} 방향 최대벽을 차트에 표시합니다.`}
-          checked={enabled}
-          onToggle={() => setEnabled(!enabled)}
-          testId={`settings-toggle-${side}PeakEnabled`}
-        />
-      </div>
-      {/* 눈(hidden)의 반전 — 켬 = 캔들 pane 에 수평선·라벨·화살표를 그린다. 방향별이라
-          탭 안에 남는다(아래 pane 토글과 갈리는 지점). 마스터가 꺼져 있으면 어차피
-          아무것도 안 그려지므로 dim (값은 보존 — 마스터를 켜면 setEnabled 가 리셋). */}
-      <div className="mb-1">
-        <ToggleRow
-          label="캔들 차트에 수평선"
-          description={`${sideLabel} 최대벽을 캔들 위 수평선으로 그립니다. 레전드의 눈 아이콘과 같은 설정입니다.`}
-          checked={!hidden}
-          onToggle={() => setHidden(!hidden)}
-          disabled={!enabled}
-          testId={`settings-toggle-${side}PeakCandleLine`}
-        />
-      </div>
-      {isAsk ? <AskPeakConfig /> : <BidPeakConfig />}
+      <PeakWallRelationSchema
+        side={cell.side}
+        tradedColor={tradedColor}
+        unreachedColor={unreachedColor}
+        allWallColor={allWallColor}
+      />
 
-      {/* ── 방향 공용 ────────────────────────────────────────────────────
-          **탭 밖이다.** 이 토글은 매도·매수가 하나를 공유하는데(한 pane 에 두 방향의
-          계단이 함께 산다) 종전엔 방향 탭 **안**에 있어서, 매도 탭에서 켜면 매수도
-          켜지는 것이 화면상 설명되지 않았다. 위치를 옮겨 공용이라는 사실을 구조로
-          말한다 — 탭 경계 밖에 있으면 탭에 속하지 않는다. */}
-      <div className="mt-4 rounded-lg border border-border bg-bg-subtle p-3">
-        <span className="mb-2 inline-block rounded-full border border-border-strong px-1.5 py-px text-2xs font-semibold uppercase tracking-wide text-fg-dim">
-          매도 · 매수 공용
-        </span>
-        <ToggleRow
-          label="최대벽 강도 pane"
-          description="위에서 켠 계열의 계단을 차트 아래 별도 pane 에 그립니다. 한 pane 을 양방향이 공유합니다. 미도달 벽은 고가가 벽을 넘으면 계단이 내려갑니다."
-          checked={paneEnabled}
-          onToggle={() => setPaneEnabled(!paneEnabled)}
-          testId="settings-toggle-peakWallPaneEnabled"
-        />
+      <div className="mt-4">
+        <PeakWallMatrix selected={cell} onSelect={setCell} />
       </div>
+
+      {/* 방향까지 공용 — 매트릭스 **밖**이다. 한 pane 을 양방향이 공유하므로 열
+          아래에 둘 수가 없다(어느 열에 두든 거짓말이 된다). */}
+      <div className="mt-3 rounded-lg bg-bg-subtle px-3 py-1">
+        {/* `ToggleRow` 대신 직접 조립하는 이유: 저쪽은 라벨 하나를 표시 텍스트와
+            스위치 aria-label 로 겸해 쓰므로 문자열이어야 한다. 여기는 배지가 붙은
+            노드라, 보이는 라벨과 읽히는 이름을 갈라 준다. */}
+        <SettingsRow
+          testId="peak-wall-pane-row"
+          label={(
+            <span className="flex items-center gap-2">
+              최대벽 강도 pane
+              <span className="rounded-full border border-border-strong px-1.5 py-px text-2xs font-semibold uppercase text-fg-dim">
+                매도 · 매수 공용
+              </span>
+            </span>
+          )}
+          description="위에서 켠 계열의 계단을 차트 아래 별도 pane 에 그립니다. 한 pane 을 양방향이 공유합니다. 미도달 벽은 고가가 벽을 넘으면 계단이 내려갑니다."
+        >
+          <ToggleSwitch
+            label="최대벽 강도 pane"
+            checked={paneEnabled}
+            onClick={() => setPaneEnabled(!paneEnabled)}
+            data-testid="settings-toggle-peakWallPaneEnabled"
+          />
+        </SettingsRow>
+      </div>
+
+      <PeakWallDetailZone side={cell.side} family={cell.family} />
     </div>
   );
 }
