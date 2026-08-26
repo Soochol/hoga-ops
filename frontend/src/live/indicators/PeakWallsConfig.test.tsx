@@ -18,6 +18,9 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
   beforeEach(() => {
     useLivePageStore.setState({
       peakWallPaneEnabled: false,
+      peakWallPaneTradedEnabled: true,
+      peakWallPaneUnreachedEnabled: false,
+      peakWallPaneAllWallEnabled: false,
       askPeakEnabled: true,
       askPeakHidden: false,
       bidPeakEnabled: true,
@@ -78,6 +81,51 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
 
     fireEvent.click(screen.getByTestId('settings-toggle-peakWallPaneEnabled'));
     expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
+  });
+
+  /**
+   * 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 **다른 키**다.
+   *
+   * **막는 방향**: 이 셋이 `{side}Peak{Family}LineEnabled` 로 다시 배선되는 것.
+   * 그러면 화면엔 스위치가 둘인데 상태는 하나라 서로를 조용히 덮는다.
+   */
+  it('강도 pane 계열 셋이 각자 자기 키만 움직인다', () => {
+    // pane 이 꺼져 있으면 셋이 잠겨 클릭이 no-op 이다(아래 테스트가 그 잠금을 잰다).
+    useLivePageStore.setState({ peakWallPaneEnabled: true });
+    render(<PeakWallsConfig />);
+    const rows = [
+      { key: 'peakWallPaneTradedEnabled', line: 'askPeakTradedLineEnabled' },
+      { key: 'peakWallPaneUnreachedEnabled', line: 'askPeakUnreachedLineEnabled' },
+      { key: 'peakWallPaneAllWallEnabled', line: 'askPeakAllWallLineEnabled' },
+    ] as const;
+
+    for (const row of rows) {
+      const before = useLivePageStore.getState();
+      const wasPane = before[row.key];
+      const wasLine = before[row.line];
+      fireEvent.click(screen.getByTestId(`settings-toggle-${row.key}`));
+      const after = useLivePageStore.getState();
+
+      expect(after[row.key]).toBe(!wasPane);
+      // 같은 계열의 **캔들 선**은 안 움직인다 — 두 표면이 독립이라는 것이 요점이다.
+      expect(after[row.line]).toBe(wasLine);
+      // 다른 두 pane 키도 그대로다.
+      for (const other of rows) {
+        if (other.key === row.key) continue;
+        expect(after[other.key]).toBe(before[other.key]);
+      }
+    }
+  });
+
+  // pane 이 꺼져 있으면 계열 셋은 잠기되 **값은 보존**한다(`enabledBy` 게이트 시맨틱).
+  it('pane 마스터가 꺼져 있으면 계열 셋이 잠긴다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: false, peakWallPaneTradedEnabled: true });
+    render(<PeakWallsConfig />);
+    const traded = screen.getByTestId('settings-toggle-peakWallPaneTradedEnabled');
+    expect(traded).toBeDisabled();
+    // 잠겼어도 저장된 값은 살아 있다 — 다시 켜면 그 선택으로 돌아온다.
+    expect(traded.getAttribute('aria-checked')).toBe('true');
+    expect(useLivePageStore.getState().peakWallPaneTradedEnabled).toBe(true);
   });
 
   // 계열 스위치는 **그 방향 × 그 계열**만 움직인다. 여섯이 서로 새면 단계가 말하는

@@ -49,9 +49,13 @@ export type PeakWallStepSlot = {
  *
  * **계열별로 갈라진 이유**(2026-08-25): 종전 키는 `'ask' | 'bid'` 뿐이라 계단이 체결된
  * 벽 하나만 나를 수 있었다. 캔들 pane 은 세 선을 그리는데 강도 pane 만 하나였던
- * 비대칭을 없앤다. 어느 계열이 나오는지는 **캔들 선 토글을 따라간다** — pane 전용
- * 키를 새로 만들지 않는다. 세 계열 모두 자기 선 토글을 갖고(`{side}Peak{Family}
- * LineEnabled`), 계단도 그 토글을 탄다(`usePeakWallRender` 의 `stepBuilt` 계열).
+ * 비대칭을 없앤다.
+ *
+ * **어느 계열이 나오는가는 pane 전용 키가 정한다**(2026-08-26): `peakWallPane
+ * {Traded,Unreached,AllWall}Enabled` — **방향 공용**이고 캔들 선 토글과 독립이다.
+ * 종전엔 캔들 선 토글을 따라갔는데, 두 표면이 답하는 질문이 다르므로("그날 어디에
+ * 벽이 있었나" vs "그 벽이 언제 얼마나 자랐나") 한쪽만 보고 싶은 조합이 원리적으로
+ * 불가능했다. 슬롯은 그대로 6개(방향 2 × 계열 3)이고 **pane 은 하나**다.
  */
 export const usePeakWallStepsRegistry =
   createWindowScopedRegistry<PeakWallStepKey, PeakWallStepSlot>();

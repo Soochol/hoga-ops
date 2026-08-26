@@ -443,6 +443,10 @@ type Store = Persisted & IndicatorSettings & {
   resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setPeakWallPaneEnabled: (enabled: boolean) => void;
+  setPeakWallPaneFamilyEnabled: (
+    family: 'Traded' | 'Unreached' | 'AllWall',
+    enabled: boolean,
+  ) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakHidden: (hidden: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;

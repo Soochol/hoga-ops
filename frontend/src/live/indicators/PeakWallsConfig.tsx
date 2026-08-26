@@ -477,13 +477,38 @@ function SurfaceStage({ side, family }: { side: Side; family: PeakWallFamilyId }
 
 // ── ⑤ 강도 pane ───────────────────────────────────────────────────────────
 
+/** pane 계열 셋의 상태 키 — 방향이 없다(pane 자체가 매도·매수 공용이므로). */
+const PANE_FAMILY_KEY = {
+  Traded: 'peakWallPaneTradedEnabled',
+  Unreached: 'peakWallPaneUnreachedEnabled',
+  AllWall: 'peakWallPaneAllWallEnabled',
+} as const;
+
+/** 계열별 계단이 무엇을 뜻하는지 — 셋의 성질이 실제로 다르다(단조 / 비단조). */
+const PANE_FAMILY_HINT: Record<PeakWallFamilyId, string> = {
+  Traded: '그 시점까지 체결된 벽 중 최대. 기록 갱신 시퀀스라 계단이 내려가지 않습니다.',
+  Unreached: '아직 안 닿은 벽 중 최대. **고가가 벽을 넘으면 계단이 내려갑니다**(단조 아님).',
+  AllWall: '터치 무관 그날 최대. 벽이 빠져나가지 않아 계단이 내려가지 않습니다.',
+};
+
 /**
  * 방향까지 공용 — 한 pane 을 양방향 계단이 함께 쓰므로 상태가 하나뿐이다. 매도에서
  * 켜면 매수도 켜진다. 그 사실을 배지와 **마지막 단계**라는 위치로 함께 말한다.
+ *
+ * ## 계열 셋이 pane 전용 키를 갖는다
+ *
+ * 종전엔 "어느 계열이 pane 에 나오는가" 를 **캔들 선 토글이 정했다**. 그래서 캔들에서
+ * 지운 계열을 pane 에서만 계속 보거나, 반대로 캔들에만 두고 pane 은 비우는 조합이
+ * 원리적으로 불가능했다 — 두 표면이 답하는 질문이 다른데("그날 어디에 벽이 있었나" vs
+ * "그 벽이 언제 얼마나 자랐나") 스위치가 하나였던 것이다.
+ *
+ * 셋 다 **같은 pane 에** 그린다(`PEAK_WALL_STEP_SLOTS` 6슬롯 = 방향 2 × 계열 3).
+ * pane 을 늘리지 않는 것이 이 설정의 전제다 — 계단 셋은 같은 y 축(잔량)이라 겹쳐
+ * 읽는 것이 의미가 있고, pane 이 셋이면 화면 부동산만 먹는다.
  */
 function PaneStage() {
-  const enabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
-  const setEnabled = useIndicatorActions().setPeakWallPaneEnabled;
+  const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  const actions = useIndicatorActions();
   return (
     <Stage n={5} title="강도 pane">
       {/* `ToggleRow` 대신 직접 조립하는 이유: 저쪽은 라벨 하나를 표시 텍스트와 스위치
@@ -499,16 +524,49 @@ function PaneStage() {
             </span>
           </span>
         )}
-        description="위에서 켠 계열의 계단을 차트 아래 별도 pane 에 그립니다. 한 pane 을 양방향이 공유합니다. 미도달 벽은 고가가 벽을 넘으면 계단이 내려갑니다."
+        description="아래에서 고른 계열의 계단을 차트 아래 별도 pane **하나**에 그립니다. 매도·매수가 그 pane 을 공유합니다."
       >
         <ToggleSwitch
           label="최대벽 강도 pane"
-          checked={enabled}
-          onClick={() => setEnabled(!enabled)}
+          checked={paneEnabled}
+          onClick={() => actions.setPeakWallPaneEnabled(!paneEnabled)}
           data-testid="settings-toggle-peakWallPaneEnabled"
         />
       </SettingsRow>
+
+      {/* 계열 셋 — pane 이 꺼져 있으면 dim 하되 **값은 보존**한다(`enabledBy` 와 같은
+          게이트 시맨틱). 들여쓰기가 "이건 위 스위치에 딸린 것" 을 위치로 말한다. */}
+      <div className="ml-4">
+        {PEAK_WALL_FAMILIES.map((family) => (
+          <PaneFamilyRow key={family.id} family={family.id} name={family.name} gateOpen={paneEnabled} />
+        ))}
+      </div>
     </Stage>
+  );
+}
+
+function PaneFamilyRow({ family, name, gateOpen }: {
+  family: PeakWallFamilyId;
+  name: string;
+  gateOpen: boolean;
+}) {
+  const checked = useWindowIndicator((s) => s[PANE_FAMILY_KEY[family]]);
+  const setFamily = useIndicatorActions().setPeakWallPaneFamilyEnabled;
+  return (
+    <SettingsRow
+      testId={`peak-wall-pane-family-row-${family}`}
+      label={name}
+      description={PANE_FAMILY_HINT[family]}
+      disabled={!gateOpen}
+    >
+      <ToggleSwitch
+        label={`강도 pane ${name}`}
+        checked={checked}
+        disabled={!gateOpen}
+        onClick={() => setFamily(family, !checked)}
+        data-testid={`settings-toggle-${PANE_FAMILY_KEY[family]}`}
+      />
+    </SettingsRow>
   );
 }
 
