@@ -18,7 +18,7 @@ export function SettingsRow({
   return (
     <div
       data-testid={testId}
-      className={`flex items-start justify-between gap-4 border-b border-border py-3 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
+      className={`flex items-start justify-between gap-4 border-b border-border py-2 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
     >
       <div className="min-w-0 flex-1">
         <div className="text-fg text-sm">{label}</div>
