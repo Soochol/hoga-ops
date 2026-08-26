@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hoga-ops — 설정 패널 리디자인 제안 (2026-08-26)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* ============================================================================
+   설정 패널 리디자인 제안 — 정적 목업 (기능 명세 포함)
+   토큰·보드·핀 관례는 2026-08-26-indicator-panel-redesign.html 과 동일.
+   테마: Toss Light(사용자 기본값) + Obsidian 검증 보드.
+   ========================================================================= */
+:root {
+  --bg:            #f6f7f9;
+  --bg-card:       #ffffff;
+  --bg-subtle:     #f2f4f6;
+  --bg-input:      #ffffff;
+  --bg-input-hover:#f2f4f6;
+  --border:        #e5e8eb;
+  --border-strong: #d1d6db;
+  --fg:            #191f28;
+  --fg-dim:        #4e5968;
+  --fg-dimmer:     #8b95a1;
+  --accent:        #3182f6;
+  --accent-fg:     #ffffff;
+  --error:         #e42939;
+  --tint-selection:rgba(49,130,246,0.10);
+  --tint-neutral:  rgba(107,118,128,0.10);
+  --shadow-overlay:0 8px 24px rgba(30,39,50,0.16);
+  --shadow-panel:  0 2px 8px rgba(30,39,50,0.12);
+  --shadow-modal:  0 16px 48px rgba(30,39,50,0.2);
+  --font-ui: 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui,
+             'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --t-badge: 8.5px; --t-2xs: 9px; --t-xs: 10.5px; --t-sm: 11.5px;
+  --t-base: 13px; --t-md: 14px; --t-lg: 16px;
+  --r-sm: 2px; --r-md: 4px; --r-lg: 6px;
+}
+/* Obsidian 검증 스코프 — color 재선언 필수(상속 잉크가 다크에 잠긴다, 지난 판 실측) */
+.theme-obsidian {
+  color:var(--fg);
+  --bg:            #121216;
+  --bg-card:       #121216;
+  --bg-subtle:     #0E0E11;
+  --bg-input:      #101014;
+  --bg-input-hover:#1A1A20;
+  --border:        #232329;
+  --border-strong: #33333C;
+  --fg:            #ECECF1;
+  --fg-dim:        #9A9AA8;
+  --fg-dimmer:     #63636F;
+  --accent:        #F0B429;
+  --accent-fg:     #1a1305;
+  --error:         #F25C7A;
+  --tint-selection:rgba(240,180,41,0.10);
+  --tint-neutral:  rgba(148,163,184,0.10);
+  --shadow-overlay:0 8px 24px rgba(0,0,0,0.4);
+  --shadow-panel:  0 18px 60px rgba(0,0,0,0.35);
+  --shadow-modal:  0 24px 80px rgba(0,0,0,0.45);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:var(--bg); }
+body {
+  color:var(--fg); font-family:var(--font-ui); font-size:var(--t-base);
+  line-height:1.5; -webkit-font-smoothing:antialiased; letter-spacing:normal;
+}
+.num { font-variant-numeric:tabular-nums; }
+button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+input { font:inherit; color:inherit; }
+
+/* ─── 문서 크롬 (지표 목업과 동일 관례) ─── */
+.doc { max-width:1120px; margin:0 auto; padding:56px 32px 96px; }
+.doc-eyebrow { font-size:var(--t-xs); font-weight:600; text-transform:uppercase; color:var(--fg-dim); }
+.doc h1 { font-size:28px; font-weight:700; margin:6px 0 12px; }
+.doc-thesis { max-width:72ch; color:var(--fg-dim); font-size:var(--t-md); }
+.doc-thesis strong { color:var(--fg); font-weight:600; }
+.kept { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
+.kept-chip {
+  font-size:var(--t-xs); color:var(--fg-dim); border:1px solid var(--border);
+  border-radius:999px; padding:3px 10px; background:var(--bg-card);
+}
+.kept-chip b { color:var(--fg); font-weight:600; }
+.sec { margin-top:64px; }
+.sec-eyebrow { font-size:var(--t-xs); font-weight:600; text-transform:uppercase; color:var(--accent); }
+.sec h2 { font-size:20px; font-weight:700; margin:4px 0 8px; }
+.sec-lede { color:var(--fg-dim); max-width:72ch; margin-bottom:24px; }
+.diag { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; }
+.diag-card { background:var(--bg-card); border-radius:var(--r-lg); box-shadow:var(--shadow-panel); padding:16px 18px; }
+.diag-card h3 { font-size:var(--t-md); font-weight:600; margin-bottom:6px; }
+.diag-card h3 .no {
+  display:inline-block; width:18px; height:18px; margin-right:8px; border-radius:50%;
+  background:rgba(228,41,57,0.10); color:var(--error);
+  font-size:var(--t-xs); font-weight:700; text-align:center; line-height:18px;
+}
+.diag-card p { font-size:var(--t-sm); color:var(--fg-dim); }
+.board {
+  position:relative; background:var(--bg); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:48px 40px; margin-top:20px;
+  display:flex; justify-content:center;
+}
+.board-tag { position:absolute; top:14px; left:16px; font-size:var(--t-xs); font-weight:600; color:var(--fg-dim); text-transform:uppercase; }
+.notes { margin-top:16px; display:grid; grid-template-columns:repeat(2,1fr); gap:6px 24px; }
+.note { display:flex; gap:10px; align-items:flex-start; font-size:var(--t-sm); color:var(--fg-dim); }
+.note b { color:var(--fg); font-weight:600; }
+.pin {
+  flex:none; width:18px; height:18px; margin-top:1px; border-radius:50%;
+  background:var(--accent); color:var(--accent-fg);
+  font-size:var(--t-xs); font-weight:700; text-align:center; line-height:18px;
+}
+.pin.on-board { position:absolute; z-index:5; box-shadow:0 0 0 3px var(--bg); }
+
+/* ─── 모달 (지표 패널과 같은 셸: 760 × 240 nav) ─── */
+.modal {
+  position:relative; width:760px; height:820px;
+  display:grid; grid-template-columns:240px minmax(0,1fr);
+  background:var(--bg-card); border-radius:var(--r-lg); overflow:hidden;
+  box-shadow:var(--shadow-modal);
+}
+.sp-nav { background:var(--bg-subtle); display:flex; flex-direction:column; min-height:0; }
+.sp-search { padding:10px 10px 6px; }
+.sp-search-box {
+  display:flex; align-items:center; gap:6px; height:28px; padding:0 8px;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-lg);
+}
+.sp-search-box.focused { border-color:var(--accent); }
+.sp-search-box svg { flex:none; color:var(--fg-dim); }
+.sp-search-box input { width:100%; border:none; outline:none; background:transparent; font-size:var(--t-sm); }
+.sp-search-box input::placeholder { color:var(--fg-dimmer); }
+.sp-list { flex:1; min-height:0; overflow-y:auto; padding:2px 8px 10px; }
+.sp-ghead {
+  padding:12px 8px 4px; font-size:var(--t-xs); font-weight:600;
+  text-transform:uppercase; color:var(--fg-dim);
+}
+.sp-item {
+  display:block; width:100%; text-align:left;
+  padding:7px 12px; margin-bottom:2px; border-radius:var(--r-lg);
+  font-size:var(--t-base); color:var(--fg-dim);
+  transition:background-color 80ms ease-in-out, color 80ms ease-in-out;
+}
+.sp-item:hover { background:var(--bg-input-hover); color:var(--fg); }
+.sp-item.selected { background:var(--tint-selection); color:var(--fg); font-weight:500; }
+
+.sp-detail { display:flex; flex-direction:column; min-height:0; background:var(--bg-card); }
+.sp-dhead { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 10px; }
+.sp-dhead h2 { font-size:var(--t-lg); font-weight:600; }
+.sp-close { color:var(--fg-dim); font-size:15px; padding:2px 4px; }
+.sp-close:hover { color:var(--fg); }
+.sp-body { flex:1; min-height:0; overflow-y:auto; padding:0 20px 18px; }
+
+/* 소그룹 헤더 — 지표 패널 카탈로그의 그룹 헤더와 같은 문법 */
+.sg-head {
+  margin:16px 0 2px; font-size:var(--t-xs); font-weight:600;
+  text-transform:uppercase; color:var(--fg-dim);
+}
+.sg-head:first-child { margin-top:6px; }
+
+/* 설정 행 — **단일 구분선 + py 8px**. 현행은 행 border 와 별도 divider(my-2)가
+   겹쳐 행 사이가 이중선 + 17px 이었다. */
+.sr {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  padding:8px 0; border-bottom:1px solid var(--border);
+}
+.sr:last-child { border-bottom:none; }
+.sr .txt { min-width:0; flex:1; }
+.sr .lbl { font-size:var(--t-base); color:var(--fg); }
+.sr .dsc { margin-top:1px; font-size:var(--t-xs); color:var(--fg-dim); }
+.sr .ctl { flex:none; padding-top:2px; }
+/* 종속 행 — 부모의 것임을 위치(들여쓰기)로, 부모 OFF 를 dim 으로 말한다 */
+.sr.child { margin-left:16px; }
+.sr.dimmed { opacity:0.4; pointer-events:none; }
+
+/* 스위치 (표현용) */
+.sw { position:relative; display:inline-flex; width:36px; height:20px; border-radius:999px;
+  border:1px solid var(--border); background:var(--bg-input-hover); }
+.sw i { position:absolute; top:1.5px; left:2px; width:15px; height:15px; border-radius:50%; background:var(--fg-dim); }
+.sw.on { background:var(--accent); border-color:var(--accent); }
+.sw.on i { background:var(--accent-fg); left:auto; right:2px; }
+
+/* 스타일 스와치 (MAStylePicker 트리거 표현) */
+.swatch {
+  display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 7px;
+  border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg-input);
+}
+.swatch .line { width:22px; height:0; border-top:2px solid; border-radius:1px;
+  box-shadow:0 0 0 1px rgba(25,31,40,0.08); }
+.theme-obsidian .swatch .line { box-shadow:0 0 0 1px rgba(255,255,255,0.14); }
+.swatch .caret { color:var(--fg-dimmer); font-size:7px; }
+
+/* 검색 결과의 섹션 배지 */
+.sec-badge {
+  display:inline-block; margin-left:8px; padding:1px 7px; border-radius:999px;
+  font-size:var(--t-2xs); font-weight:600; color:var(--fg-dim);
+  background:var(--tint-neutral); vertical-align:1px;
+}
+mark { background:var(--tint-selection); color:var(--fg); font-weight:600; border-radius:var(--r-sm); padding:0 1px; }
+
+/* 대응표·구현 노트 (지표 목업과 동일 관례) */
+.map-table { width:100%; border-collapse:collapse; margin-top:14px; }
+.map-table th { text-align:left; font-size:var(--t-xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim); padding:6px 10px; border-bottom:1px solid var(--border-strong); }
+.map-table td { font-size:var(--t-sm); padding:6px 10px; vertical-align:top; border-bottom:1px solid var(--border); }
+.map-table td:first-child { color:var(--fg); white-space:nowrap; }
+.map-table td:last-child { color:var(--fg-dim); }
+.impl { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.impl-card { background:var(--bg-card); border-radius:var(--r-lg); box-shadow:var(--shadow-panel); padding:16px 18px; }
+.impl-card h3 { font-size:var(--t-md); font-weight:600; margin-bottom:6px; }
+.impl-card p, .impl-card li { font-size:var(--t-sm); color:var(--fg-dim); }
+.impl-card ul { padding-left:16px; display:grid; gap:4px; }
+.impl-card b { color:var(--fg); font-weight:600; }
+.impl-card .math { margin-top:8px; padding:8px 10px; background:var(--bg-subtle);
+  border-radius:var(--r-md); font-size:var(--t-xs); color:var(--fg-dim); font-variant-numeric:tabular-nums; }
+.doc-foot { margin-top:72px; padding-top:16px; border-top:1px solid var(--border); font-size:var(--t-xs); color:var(--fg-dim); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 16 16">
+      <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="10.2" y1="10.2" x2="13.5" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="doc">
+
+  <div class="doc-eyebrow">hoga-ops 디자인 제안 · 2026-08-26</div>
+  <h1>설정 패널 리디자인</h1>
+  <p class="doc-thesis">
+    설정 항목 자체는 좋은데 <strong>배치가 그것을 숨긴다</strong> — 차트 섹션 하나가
+    1,705px(가용 807px, 두 화면 이상 스크롤)이고, 소그룹 없는 평목록에 이중 구분선이
+    끼어 있으며, 종속 행(스타일 피커)이 부모와 무관한 독립 행처럼 떠 있다.
+    제안은 셋이다: <strong>종속 행 문법 통일</strong>(가장 강한 축 — 죽은 컨트롤 결함
+    포함) · <strong>소그룹 + 밀도</strong> · <strong>전 섹션 행 검색</strong>(가장 비싼
+    축 — 독립 채택 가능). 지표 패널과 같은 셸을 공유하므로 시각 문법도 그쪽과 맞춘다.
+  </p>
+  <div class="kept">
+    <span class="kept-chip"><b>760px · nav 240px</b> 공용 상수 불변 (지표 패널과 동기화 계약)</span>
+    <span class="kept-chip"><b>설명 전문 유지</b> — 정보-우선 DNA, 접기·클램프 없음 (결정)</span>
+    <span class="kept-chip"><b>레지스트리 주도 유지</b> — 소그룹은 CHART_TOGGLES 의 필드로</span>
+    <span class="kept-chip"><b>nav 글리프 없음</b> — 8개 텍스트 항목은 이미 스캔된다</span>
+  </div>
+
+  <section class="sec">
+    <div class="sec-eyebrow">진단 (2026-08-26 실측)</div>
+    <h2>현행의 네 가지 마찰</h2>
+    <div class="diag">
+      <div class="diag-card">
+        <h3><span class="no">1</span>종속 행이 부모와 무관하게 떠 있다 — 그리고 하나는 죽는다</h3>
+        <p>「날짜 구분선 스타일」은 「날짜 구분선」의 것인데 평행한 독립 행이고,
+        <b>게이트조차 없다</b> — 구분선을 꺼도 스타일 피커가 활성이다(아무것도 바꾸지
+        않는 컨트롤). 반면 「강조 배경색」은 들여쓰기+dim 게이트다. 같은 관계가 두
+        문법으로 그려져 있고, 그중 하나는 이 리포가 두 번 사냥한 「죽은 컨트롤」이다.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">2</span>행 사이가 이중선 + 17px 이다</h3>
+        <p>행 자체의 <code>border-b</code> 위에 별도 divider(<code>border-b my-2</code>)가
+        겹친다 — 자식이 있는 행 뒤에서는 <b>헤어라인이 두 줄</b> 보이고, 행간 비용이
+        구분선만 17px 이다. 행 높이 59~74px 와 합쳐 차트 섹션이 1,705px.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">3</span>13행 평목록 — 소그룹이 없다</h3>
+        <p>차트 섹션 안에 실제로는 네 가지 질문이 섞여 있다: 캔들과 지표가 화면을
+        나누는 방식 · 격자와 구분선 · 창 간 동기화 · 가격 표시. 순서에도 그 구조가
+        없어(격자 사이에 캔들 항목이 낌) 찾으려면 전체를 훑어야 한다.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">4</span>"그 설정 어디 있지" 에 답이 없다</h3>
+        <p>8개 섹션에 걸쳐 항목이 있는데 검색이 없다. 지표 패널과 달리 여기서의 질문은
+        목록 필터가 아니라 <b>위치 찾기</b>다 — 「급증 마커 시작 시각」이 차트인지
+        체결창인지 지표 모달인지 기억해야 한다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 아트보드 ① — 차트 섹션 리디자인 ═══════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ①</div>
+    <h2>소그룹 + 밀도 + 종속 행 문법</h2>
+    <p class="sec-lede">
+      차트 섹션을 소그룹 4개로 재편하고, 행을 단일 구분선 + 8px 패딩으로 조인다.
+      종속 행은 전부 <strong>들여쓰기 + 부모 OFF 시 dim</strong> 한 문법으로.
+      설명은 전문 그대로다 — 밀도는 패딩과 구분선에서만 얻는다.
+      nav 는 「설정 / 정보」 2군으로 갈라 정보성 섹션이 설정 사이에 섞이지 않는다.
+    </p>
+
+    <div class="board">
+      <span class="board-tag">Toss Light · 760×820 · 실척</span>
+
+      <span class="pin on-board" style="top:70px;  left:calc(50% - 380px - 9px);">1</span>
+      <span class="pin on-board" style="top:118px; left:calc(50% - 380px - 9px);">2</span>
+      <span class="pin on-board" style="top:114px; left:calc(50% + 380px - 9px);">3</span>
+      <span class="pin on-board" style="top:488px; left:calc(50% + 380px - 9px);">4</span>
+      <span class="pin on-board" style="top:700px; left:calc(50% + 380px - 9px);">5</span>
+
+      <div class="modal">
+        <aside class="sp-nav">
+          <div class="sp-search">
+            <div class="sp-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="설정 검색" aria-label="설정 검색">
+            </div>
+          </div>
+          <div class="sp-list">
+            <div class="sp-ghead">설정</div>
+            <button class="sp-item selected">차트</button>
+            <button class="sp-item">체결창</button>
+            <button class="sp-item">알림</button>
+            <button class="sp-item">데이터소스</button>
+            <button class="sp-item">테마</button>
+            <div class="sp-ghead">정보</div>
+            <button class="sp-item">Symbol Master</button>
+            <button class="sp-item">앱 정보</button>
+            <button class="sp-item">로드맵</button>
+          </div>
+        </aside>
+        <section class="sp-detail">
+          <header class="sp-dhead">
+            <h2>차트</h2>
+            <button class="sp-close" aria-label="닫기">✕</button>
+          </header>
+          <div class="sp-body">
+            <div class="sg-head">캔들 · 지표</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">캔들 기준 Y축</span>
+                <div class="dsc">캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">캔들이 항상 위</span>
+                <div class="dsc">캔들 pane에서 이동평균선 등 같은 pane의 보조 지표보다 캔들을 위에 그립니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">동시호가 구간 지표 숨김</span>
+                <div class="dsc">15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">캔들 정보 툴팁</span>
+                <div class="dsc">캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.</div></span>
+              <span class="ctl"><span class="sw"><i></i></span></span>
+            </div>
+
+            <div class="sg-head">격자 · 구분선</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">날짜 구분선</span>
+                <div class="dsc">분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">스타일</span>
+                <div class="dsc">거래일 경계 세로 점선의 색상과 두께</div></span>
+              <span class="ctl"><span class="swatch"><span class="line" style="border-color:#4e5968"></span><span class="caret">▾</span></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">가로 구분선</span>
+                <div class="dsc">차트 배경의 가격축 방향 가로 격자선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">세로 구분선</span>
+                <div class="dsc">차트 배경의 시간축 방향 세로 격자선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+
+            <div class="sg-head">창 간 동기화</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">크로스헤어 동기화 — 다른 종목까지</span>
+                <div class="dsc">한 창에 마우스를 올린 위치를 다른 창의 크로스헤어로 표시합니다 (분봉·일봉 창끼리 네 방향 모두). 모든 동기화는 창 헤더의 번호가 같은 창끼리만 동작하며, 이 설정은 그 안에서 종목 축을 정합니다 — 켜면 종목이 달라도 표시하고(지수 창 포함), 끄면 같은 종목을 보는 창끼리만 표시합니다. 그 날이 상대 창에 없으면 가장자리에 방향과 날짜만 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">같은 봉 창끼리 기간 동기화</span>
+                <div class="dsc">일봉끼리(주봉·월봉도 같은 봉끼리) 보이는 구간을 위치·배율 모두 똑같이 맞춥니다. 캔들 오른쪽 여백까지 같이 옮깁니다. 분봉 창은 이 동기화에 참여하지 않습니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+
+            <div class="sg-head">가격 표시</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">고저 극값 라벨</span>
+                <div class="dsc">보이는 범위의 최고가·최저가 캔들 옆에 값을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">고가 가격선</span>
+                <div class="dsc">보이는 범위 최고가에 수평선을 그립니다.</div></span>
+              <span class="ctl" style="display:flex; gap:6px; align-items:center;">
+                <span class="swatch"><span class="line" style="border-color:#de2b39"></span><span class="caret">▾</span></span>
+                <span class="sw on"><i></i></span>
+              </span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">저가 가격선</span>
+                <div class="dsc">보이는 범위 최저가에 수평선을 그립니다.</div></span>
+              <span class="ctl"><span class="sw"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">이전일 고가선</span>
+                <div class="dsc">직전 거래일 고가에 수평선을 그립니다.</div></span>
+              <span class="ctl"><span class="sw"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">이전일 저가선</span>
+                <div class="dsc">직전 거래일 저가에 수평선을 그립니다.</div></span>
+              <span class="ctl"><span class="sw"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">VI/상하한가 선</span>
+                <div class="dsc">VI 가격대와 상한가·하한가 가격선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">스타일</span>
+                <div class="dsc">VI·상하한가 선의 색상과 두께</div></span>
+              <span class="ctl"><span class="swatch"><span class="line" style="border-color:#EAB308"></span><span class="caret">▾</span></span></span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>검색 신설</b> — 아트보드 ② 참조.
+        열리면 포커스, Esc 사다리(검색어 → 패널)는 지표 패널과 동일.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>nav 2군.</b> 매일 만지는
+        「설정」(차트·체결창·알림·데이터소스·테마)과 가끔 여는 「정보」(Symbol Master·앱
+        정보·로드맵)를 small-caps 로 가른다 — 항목·순서는 그대로, 자리만 읽힌다.</span></div>
+      <div class="note"><span class="pin">3</span><span><b>소그룹 4개.</b> 「캔들 · 지표」는
+        넷 다 <b>캔들과 지표가 화면을 나누는 방식</b>을 정하는 항목이라 묶었다(동시호가
+        숨김 포함 — 1행짜리 그룹을 만들지 않기 위한 판단이기도 하다). 격자 · 구분선 /
+        창 간 동기화 / 가격 표시가 나머지 셋.</span></div>
+      <div class="note"><span class="pin">4</span><span><b>종속 행 한 문법.</b> 스타일
+        피커·하위 선은 전부 부모 아래 <b>들여쓰기</b>, 부모 OFF 면 <b>dim</b>(기존
+        enabledBy 게이트 시맨틱). 라벨도 「날짜 구분선 스타일」→「스타일」로 준다 —
+        누구 것인지는 위치가 말한다. 하위 4선은 레지스트리 그대로 <b>각각 별도 행</b>
+        이고, 선별 스타일 피커는 각 선 토글에 게이트된다(목업은 고가 가격선에만
+        대표로 그렸다).</span></div>
+      <div class="note"><span class="pin">5</span><span><b>설명 전문 유지 (결정).</b>
+        크로스헤어 5줄 설명은 소음이 아니라 내용이다 — 접기·클램프는 이 리포에 선례가
+        없는 상호작용을 새로 만들 뿐. 밀도는 <b>이중 구분선 폐지 + py 12→8px</b> 에서만
+        얻는다.</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 아트보드 ② — 전 섹션 행 검색 ═══════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ② · 독립 채택 (가장 비싼 축)</div>
+    <h2>전 섹션 행 검색 — 그 자리에서 바로 조작</h2>
+    <div class="note" style="border:1px solid var(--warn, #d97706); border-radius:8px; padding:10px 12px; margin:10px 0;">
+      <b>⚠ 2026-08-26 후기 — 이 아트보드의 「검색 결과 뷰 + 섹션 배지」 모델은 대체됐다.</b>
+      프로토타입 3안(A 현행 · B 이 제안 · C 단일 스크롤 + 목차) 실기기 판정에서 사용자가
+      <b>C</b> 를 골랐다. C 에서 검색은 별도 결과 뷰가 아니라 <b>인라인 필터</b>다 — 문서가
+      항상 전부 펼쳐져 있으므로 일치하는 행만 그 자리에 남기면 되고, 소속을 말할 섹션
+      배지도 필요 없다(섹션 제목이 문서에 그대로 있다). 아래 배지·결과 뷰 스펙은 B 모델의
+      사료로만 읽을 것. 검색 대상 경계(레지스트리 행만 · 자유 마크업 섹션 제외)와 Esc
+      사다리는 C 에도 그대로 승계됐다.
+    </div>
+    <p class="sec-lede">
+      「구분선」을 치면 우측 상세가 <strong>전 섹션의 일치 행</strong>으로 바뀐다.
+      행마다 소속 섹션 배지가 붙고, <strong>점프하지 않는다</strong> — 결과 행에서
+      바로 토글·피커를 조작한다(지표 패널의 "행 위에서 바로" 문법). 검색을 지우면
+      보던 섹션으로 돌아온다. 이 축은 새 표면(결과 뷰)이 필요해 셋 중 가장 비싸다 —
+      소그룹·밀도만 먼저 채택해도 된다.
+    </p>
+
+    <div class="board">
+      <span class="board-tag">Toss Light · 검색 상태</span>
+      <span class="pin on-board" style="top:96px;  left:calc(50% + 380px - 9px);">1</span>
+      <span class="pin on-board" style="top:186px; left:calc(50% + 380px - 9px);">2</span>
+
+      <div class="modal" style="height:560px;">
+        <aside class="sp-nav">
+          <div class="sp-search">
+            <div class="sp-search-box focused">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" value="구분선" aria-label="설정 검색">
+            </div>
+            <div style="padding:5px 4px 0; font-size:var(--t-xs); color:var(--fg-dim);">4개 일치 · Esc 로 지우기</div>
+          </div>
+          <div class="sp-list" style="opacity:.45;">
+            <div class="sp-ghead">설정</div>
+            <button class="sp-item selected">차트</button>
+            <button class="sp-item">체결창</button>
+            <button class="sp-item">알림</button>
+            <button class="sp-item">데이터소스</button>
+            <button class="sp-item">테마</button>
+            <div class="sp-ghead">정보</div>
+            <button class="sp-item">Symbol Master</button>
+            <button class="sp-item">앱 정보</button>
+            <button class="sp-item">로드맵</button>
+          </div>
+        </aside>
+        <section class="sp-detail">
+          <header class="sp-dhead">
+            <h2>검색 결과</h2>
+            <button class="sp-close" aria-label="닫기">✕</button>
+          </header>
+          <div class="sp-body">
+            <div class="sr">
+              <span class="txt"><span class="lbl">날짜 <mark>구분선</mark><span class="sec-badge">차트</span></span>
+                <div class="dsc">분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">스타일<span class="sec-badge">차트</span></span>
+                <div class="dsc">거래일 경계 세로 점선의 색상과 두께 — 부모가 일치하면 종속 행도 함께 온다</div></span>
+              <span class="ctl"><span class="swatch"><span class="line" style="border-color:#4e5968"></span><span class="caret">▾</span></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">가로 <mark>구분선</mark><span class="sec-badge">차트</span></span>
+                <div class="dsc">차트 배경의 가격축 방향 가로 격자선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">세로 <mark>구분선</mark><span class="sec-badge">차트</span></span>
+                <div class="dsc">차트 배경의 시간축 방향 세로 격자선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>점프하지 않는다.</b> 결과 행에서
+        바로 조작 — 점프는 검색 맥락을 잃고, "어느 섹션인가"는 배지가 이미 답한다.
+        nav 는 dim 으로 물러나되 클릭하면 검색을 지우고 그 섹션으로 간다.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>종속 행은 부모를 따라온다.</b>
+        「날짜 구분선」이 일치하면 그 스타일 행도 함께 온다(반대는 아니다 — 「스타일」만
+        일치하는 검색어면 부모 라벨을 앞에 붙인 한 행으로). 검색 대상은 라벨 + 설명이고,
+        검색은 <b>지표 모달 소관(indicator-modal 카테고리)은 제외</b>한다 — 그건 지표
+        패널의 검색이 답한다.</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 아트보드 ③ — Obsidian 검증 ═══════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ③</div>
+    <h2>Obsidian 검증</h2>
+    <p class="sec-lede">같은 마크업, 토큰만 Obsidian — 새 표면(소그룹 헤더 · 종속 dim ·
+      섹션 배지)이 전부 토큰을 읽는다는 증명.</p>
+
+    <div class="board theme-obsidian">
+      <span class="board-tag">Obsidian · 동일 마크업 (발췌)</span>
+      <div class="modal" style="height:560px;">
+        <aside class="sp-nav">
+          <div class="sp-search">
+            <div class="sp-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="설정 검색" aria-label="설정 검색">
+            </div>
+          </div>
+          <div class="sp-list">
+            <div class="sp-ghead">설정</div>
+            <button class="sp-item selected">차트</button>
+            <button class="sp-item">체결창</button>
+            <button class="sp-item">알림</button>
+            <button class="sp-item">데이터소스</button>
+            <button class="sp-item">테마</button>
+            <div class="sp-ghead">정보</div>
+            <button class="sp-item">Symbol Master</button>
+            <button class="sp-item">앱 정보</button>
+            <button class="sp-item">로드맵</button>
+          </div>
+        </aside>
+        <section class="sp-detail">
+          <header class="sp-dhead">
+            <h2>차트</h2>
+            <button class="sp-close" aria-label="닫기">✕</button>
+          </header>
+          <div class="sp-body">
+            <div class="sg-head">격자 · 구분선</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">날짜 구분선</span>
+                <div class="dsc">분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sr child">
+              <span class="txt"><span class="lbl">스타일</span>
+                <div class="dsc">거래일 경계 세로 점선의 색상과 두께</div></span>
+              <span class="ctl"><span class="swatch"><span class="line" style="border-color:#9A9AA8"></span><span class="caret">▾</span></span></span>
+            </div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">가로 구분선</span>
+                <div class="dsc">차트 배경의 가격축 방향 가로 격자선을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+            <div class="sg-head">가격 표시</div>
+            <div class="sr">
+              <span class="txt"><span class="lbl">고저 극값 라벨</span>
+                <div class="dsc">보이는 범위의 최고가·최저가 캔들 옆에 값을 표시합니다.</div></span>
+              <span class="ctl"><span class="sw"><i></i></span></span>
+            </div>
+            <div class="sr child dimmed">
+              <span class="txt"><span class="lbl">고가 가격선</span>
+                <div class="dsc">부모가 꺼져 있어 dim — 값은 보존된다</div></span>
+              <span class="ctl"><span class="sw on"><i></i></span></span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 대응표 + 구현 노트 ═══════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">전수 대응</div>
+    <h2>현행 → 새 자리</h2>
+    <table class="map-table">
+      <thead><tr><th>현행</th><th>새 자리</th></tr></thead>
+      <tbody>
+        <tr><td>행 사이 divider div (<code>border-b my-2</code>)</td><td>폐지 — 행 자체의 border-b 하나만 (이중선·17px 소멸)</td></tr>
+        <tr><td>행 패딩 py-3 (12px)</td><td>py-2 (8px) — 설명 전문은 유지</td></tr>
+        <tr><td>날짜 구분선 스타일 (평행 독립 행 · <b>게이트 없음</b>)</td><td>부모 아래 들여쓰기 + 부모 OFF 시 dim — 죽은 컨트롤 해소</td></tr>
+        <tr><td>VI/상하한가 선 스타일 (평행 독립 행)</td><td>동일 — 부모 아래 들여쓰기 + dim</td></tr>
+        <tr><td>강조 배경색 (이미 ml-4 + dim)</td><td>유지 — 이 문법이 정본이 된다</td></tr>
+        <tr><td>고저 극값 라벨의 하위 4선 (enabledBy 들여쓰기)</td><td>유지 — 「가격 표시」 그룹 안으로</td></tr>
+        <tr><td>차트 섹션 평목록 13행</td><td>소그룹 4개: 캔들·지표 / 격자·구분선 / 창 간 동기화 / 가격 표시</td></tr>
+        <tr><td>nav 8항목 평목록</td><td>「설정 / 정보」 2군 small-caps (항목·순서 불변)</td></tr>
+        <tr><td>체결창 섹션 (대량 체결 강조 + 게이트된 배경색·기준 금액)</td><td><b>무변경</b> — 이미 정본 문법(들여쓰기+dim)이라 이 리디자인의 기준점이다</td></tr>
+        <tr><td>알림·데이터소스·테마·정보군 (자유 마크업 섹션)</td><td><b>범위 밖</b> — 레지스트리 행이 아니라 소그룹·검색 대상이 아니다</td></tr>
+        <tr><td>검색 없음</td><td>전 섹션 행 검색 + 섹션 배지 + 그 자리 조작 (독립 채택)</td></tr>
+        <tr><td>상태 키·저장 모델</td><td><b>전부 불변</b> — 표현만 재구성</td></tr>
+      </tbody>
+    </table>
+
+    <div class="impl" style="margin-top:24px;">
+      <div class="impl-card">
+        <h3>높이 수지 (차트 섹션, 실측 기반)</h3>
+        <div class="math">
+          현행: 콘텐츠 <b>1,705px</b> (행 59~74px + divider 17px×12곳, 2026-08-26 실측)<br>
+          제안: 행 py 12→8 · divider 폐지 · 소그룹 헤더 4개 추가<br>
+          → 이 목업 실척 렌더 실측 <b>1,062px (−38%)</b>, 같은 항목 구성
+          (하위 4선 각각 별도 행 + 대표 스와치 포함).<br>
+          가용 807px 기준 스크롤 2.1화면 → <b>1.3화면</b>.
+        </div>
+        <p style="margin-top:8px;">스크롤 자체는 남는다 — 목표는 제거가 아니라
+        <b>소그룹 헤더가 스크롤 중의 이정표</b>가 되는 것이다.</p>
+      </div>
+      <div class="impl-card">
+        <h3>소그룹은 레지스트리가 소유한다</h3>
+        <p><code>CHART_TOGGLES</code> 에 <code>group</code> 필드를 더한다 — 컴포넌트에
+        키 목록을 하드코딩하면 토글 추가가 두 곳 수정이 된다(레지스트리 주도 원칙 위반).
+        그룹 라벨↔실렌더 드리프트는 paneNames 방식의 상수 대조 테스트로 가드.</p>
+      </div>
+      <div class="impl-card">
+        <h3>공용 셸 계약 불변</h3>
+        <p><code>WORKSPACE_PANEL_*</code> 상수(760 · 240 · 높이)는 손대지 않는다 —
+        지표 패널과의 동기화를 <code>App.test.tsx</code> / <code>IndicatorPanel.test.tsx</code>
+        가 양쪽에서 단언한다. 검색 박스·small-caps 헤더·행 밀도는 지표 패널과 같은
+        시각 문법이라 두 패널을 오갈 때 같은 앱으로 읽힌다.</p>
+      </div>
+      <div class="impl-card">
+        <h3>검색의 경계 (이 축을 채택할 때)</h3>
+        <ul>
+          <li>검색 대상 = 라벨 + 설명. <b>indicator-modal 카테고리는 제외</b> — 그건
+            지표 패널 검색의 소관이고, 여기 나오면 같은 행이 두 표면에서 검색된다.</li>
+          <li>결과에서 바로 조작(점프 없음). nav 클릭 = 검색 지우고 그 섹션으로.</li>
+          <li>Esc 사다리·IME <code>isComposing</code> 가드는 지표 패널과 동일 구현.</li>
+          <li>알림·데이터소스처럼 자유 마크업 섹션은 검색 대상 밖(레지스트리 행만) —
+            그 경계를 빈 상태 문구에 명시한다.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="doc-foot">
+    정적 목업 — 상호작용은 명세 텍스트로만 담았다. 토큰은 tokens.css 실값. 세 축
+    (종속 문법 · 소그룹+밀도 · 검색)은 독립 채택 가능하며 검색이 가장 비싸다.
+    승인 시 이 파일이 DESIGN.md 결정 로그의 1차 사료가 된다.
+  </footer>
+</div>
+</body>
+</html>
