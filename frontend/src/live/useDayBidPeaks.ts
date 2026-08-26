@@ -13,6 +13,8 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import {
   buildPeakRecordSeries,
   todaySeedRow,
+  withSessionRecords,
+  PeakRecordAccumulator,
   type PeakRecordSeries,
 } from './peakWallRecordSeries';
 
@@ -241,12 +243,20 @@ export function useDayBidPeaks(
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
-  void code;
   void todayCandles;
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
+  // 접속 이후 기록 누적 — **derive 밖**이다(사유는 `PeakRecordAccumulator` 주석: derive 는
+  // 배치판과 값이 같아야 하는데 배치는 축출된 기록을 원리적으로 못 가진다).
+  const recordsRef = useRef<PeakRecordAccumulator | null>(null);
+  if (recordsRef.current === null) recordsRef.current = new PeakRecordAccumulator();
   return useMemo(
-    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
-    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak],
+    () => withSessionRecords(
+      deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
+      recordsRef.current!,
+      todayKst,
+      `${code}|${todayKst}|${sessionOpenMs}`,
+    ),
+    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak, code],
   );
 }

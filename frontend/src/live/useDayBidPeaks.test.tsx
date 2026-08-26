@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayBidPeaks } from './useDayBidPeaks';
+import { useDayBidPeaks, deriveDayBidPeaksIncremental } from './useDayBidPeaks';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import type { BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -209,7 +210,13 @@ describe('useDayBidPeaks — 기록 갱신 시퀀스', () => {
     };
     const { result } = renderHook(() => useDayBidPeaks(
       [], [], [seed], '20260613', OPEN_MS, '005930',
-      todayBidPeak({ traded_record_peaks: [afternoon] }),
+      // 라이브 top-3 을 기록과 같은 벽으로 맞춘다 — 사유는 ask 쪽 같은 테스트 주석.
+      todayBidPeak({
+        traded_record_peaks: [afternoon],
+        traded_price: afternoon.price,
+        traded_qty: afternoon.qty,
+        traded_t_ms: afternoon.t_ms,
+      }),
     ));
 
     const today = byDate(result.current)['20260613'];
@@ -218,12 +225,50 @@ describe('useDayBidPeaks — 기록 갱신 시퀀스', () => {
     expect(today.traded_record_max_peaks).toEqual([morning, afternoon]);
   });
 
-  it('두 출처에 기록이 없으면 **비운다** — top-3 을 기록 자리에 넣지 않는다', () => {
-    const { result } = renderHook(() => useDayBidPeaks(
-      [], [], [], '20260613', OPEN_MS, '005930', todayBidPeak(),
-    ));
+  it('순위가 갱신돼도 접속 이후에 세운 기록은 남는다', () => {
+    // 판별식은 **단조성**이다 — 사유는 ask 쪽 같은 이름의 테스트 주석.
+    // 사다리는 10단을 채운다(`isContinuousBook` 게이트) — 채움 단(price 1)은 체결가
+    // 이하가 아니라 터치되지 않으므로 판정에 끼지 않는다.
+    const book = (price: number, qty: number): Array<[number, number]> =>
+      [[price, qty], ...Array(9).fill([1, 1])] as Array<[number, number]>;
+    const early = atKst(9, 20);
+    const earlyTrade = trade(early + 1_000, [
+      { t_ms: early + 1_000, side: 1, price: 23_800, qty: 10 },
+    ]);
+    const { result, rerender } = renderHook(
+      ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
+        useDayBidPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
+      { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
+    );
 
-    const today = byDate(result.current)['20260613'];
+    rerender({ ob: [deep(early, book(23_800, 1_000))], trades: [earlyTrade] });
+    const first = byDate(result.current)['20260613'];
+    expect(first.traded_record_peaks).toContainEqual({ price: 23_800, qty: 1_000, t_ms: early });
+
+    const late = atKst(13, 0);
+    rerender({
+      ob: [
+        deep(early, book(23_800, 1_000)),
+        deep(late, book(23_790, 50_000)),
+        deep(late + 1_000, book(23_780, 40_000)),
+        deep(late + 2_000, book(23_770, 30_000)),
+      ],
+      trades: [
+        earlyTrade,
+        trade(late + 3_000, [{ t_ms: late + 3_000, side: 1, price: 23_770, qty: 10 }]),
+      ],
+    });
+    const second = byDate(result.current)['20260613'];
+    expect(second.traded_peaks).not.toContainEqual({ price: 23_800, qty: 1_000, t_ms: early });
+    expect(second.traded_record_peaks).toContainEqual({ price: 23_800, qty: 1_000, t_ms: early });
+  });
+
+  it('derive 자체는 기록 자리에 top-3 을 넣지 않는다(누적은 훅의 일이다)', () => {
+    const rows = deriveDayBidPeaksIncremental(
+      new IncrementalPeakWallSource('bid'),
+      [], [], [], '20260613', OPEN_MS, todayBidPeak(),
+    );
+    const today = byDate(rows)['20260613'];
     expect(today.traded_peaks?.length).toBeGreaterThan(0);
     expect(today.traded_record_peaks).toEqual([]);
     expect(today.traded_record_max_peaks).toEqual([]);
