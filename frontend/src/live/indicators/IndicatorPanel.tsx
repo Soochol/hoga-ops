@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
@@ -60,6 +60,22 @@ const GROUP_LABEL: Record<GroupId, string> = {
 
 /** 미추가 행에 넘기는 고정 빈 배열 — 매 렌더 새 리터럴을 만들지 않는다. */
 const EMPTY_DOT_COLORS: readonly string[] = [];
+
+/** 검색어와 겹치는 구간을 표시한다. 강조는 tint 배경 + 굵기 — 색 규율 안에 있다
+ *  (액센트 잉크를 쓰면 UI 상태색이 데이터 라벨로 새어 나간다). */
+function HighlightedLabel({ label, query }: { label: string; query: string }) {
+  const at = query === '' ? -1 : label.indexOf(query);
+  if (at < 0) return <>{label}</>;
+  return (
+    <>
+      {label.slice(0, at)}
+      <mark className="rounded-sm bg-tint-selection font-semibold text-fg">
+        {label.slice(at, at + query.length)}
+      </mark>
+      {label.slice(at + query.length)}
+    </>
+  );
+}
 
 /** 차트의 어디에 그려지는가. 글리프가 암시하는 것을 헤더가 텍스트로 확정한다. */
 type Placement = 'overlay' | 'pane';
@@ -147,20 +163,30 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
  * 미리 보는 중이면 tint 는 켜지고 잉크는 흐린 채다. 선택은 배경 tint 만으로 말한다 —
  * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
  */
-function IndicatorNavRow({ label, added, selected, dotColors, onSelect, action }: {
+function IndicatorNavRow({
+  label, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action,
+}: {
   label: string;
   added: boolean;
   selected: boolean;
+  /** ↑↓ 로 짚은 행 — 선택(tint)과 **다른 축**이다. 포커스는 검색창에 남아 있고
+   *  이 링이 "Enter 를 누르면 여기" 를 말한다. */
+  kbdFocused: boolean;
+  query: string;
   /** 차트에 그려지는 색들 — 비어 있으면 점을 찍지 않는다(`indicatorDotColors`). */
   dotColors: readonly string[];
+  kbdIndex: number;
   onSelect: () => void;
   action: { kind: 'add' | 'remove'; label: string; onClick: () => void };
 }) {
   return (
     <ListRow
+      data-kbd-index={kbdIndex}
       className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
         selected ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
-      } ${added ? 'font-medium text-fg' : 'text-fg-dim hover:text-fg'}`}
+      } ${added ? 'font-medium text-fg' : 'text-fg-dim hover:text-fg'} ${
+        kbdFocused ? 'outline outline-2 -outline-offset-2 outline-accent' : ''
+      }`}
     >
       <button
         type="button"
@@ -168,7 +194,7 @@ function IndicatorNavRow({ label, added, selected, dotColors, onSelect, action }
         aria-current={selected ? 'true' : undefined}
         className="min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left text-inherit"
       >
-        {label}
+        <HighlightedLabel label={label} query={query} />
       </button>
       {dotColors.length > 0 && (
         // 장식이 아니라 데이터라 `aria-hidden` 이다 — 색은 스크린리더가 읽을 수 없고,
@@ -264,6 +290,12 @@ export default function IndicatorPanel({
   // 우측 상세가 어느 카테고리를 보여주는가. 행의 라벨을 누르면 여기가 바뀐다 —
   // 추가 여부와 무관하다(아직 없는 지표도 골라서 미리 볼 수 있다).
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  // 검색어와 ↑↓ 커서. 창을 바꾸면 패널이 재마운트되므로(`key={windowId}`) 둘 다
+  // 초기화된다 — 이전 창에서 치던 검색어가 따라오지 않는 것이 맞다.
+  const [query, setQuery] = useState('');
+  // -1 = 커서 없음(마우스만 썼다). 검색어를 치면 첫 결과로 내려앉는다.
+  const [kbdIndex, setKbdIndex] = useState(-1);
+  const listRef = useRef<HTMLDivElement>(null);
   // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
   const [confirmingReset, setConfirmingReset] = useState(false);
 
@@ -340,15 +372,60 @@ export default function IndicatorPanel({
   //
   // 그룹은 `categories` 순서를 그대로 접는다(정렬하지 않는다) — capability 로 통째로
   // 빠지는 그룹이 있어 빈 그룹은 헤더째 나타나지 않는다.
+  //
+  // 검색은 `categories` **다음** 단계다 — capability 게이트를 통과한 것만 검색된다.
+  // 순서를 바꾸면 이 종목에 없는 지표가 검색으로 되살아난다.
+  const trimmedQuery = query.trim();
+  const visible = trimmedQuery === ''
+    ? categories
+    : categories.filter((c) => c.label.includes(trimmedQuery));
+
+  // 그룹 헤더는 **일치가 있는 그룹만** 남는다 — 카운트는 그 그룹의 전체(필터 전)를
+  // 세지 않고 지금 보이는 것을 센다. 검색 중에 "2/8" 이 뜨면 8개가 어디 있는지를
+  // 찾게 되는데, 그 여섯은 검색어가 가린 것이지 사라진 것이 아니다.
   const groups: ReadonlyArray<{ id: GroupId; items: typeof categories }> = (() => {
     const out: Array<{ id: GroupId; items: typeof categories }> = [];
-    for (const category of categories) {
+    for (const category of visible) {
       const last = out[out.length - 1];
       if (last && last.id === category.group) last.items.push(category);
       else out.push({ id: category.group, items: [category] });
     }
     return out;
   })();
+
+  // ↑↓ 가 짚는 대상은 **보이는 행의 평탄한 순서**다. 검색으로 목록이 줄면 커서도
+  // 범위 안으로 당겨야 하므로, 렌더마다 클램프하지 않고 검색어 변경에서 0으로 되돌린다.
+  const kbdTarget = kbdIndex >= 0 ? visible[kbdIndex] : undefined;
+  const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    // **한글 조합 중의 Enter 는 글자 확정이지 명령이 아니다.** 이 가드가 없으면
+    // "매물" 을 치는 도중 확정 Enter 가 선택으로 새어 나간다.
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setKbdIndex((i) => Math.min(visible.length - 1, i + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setKbdIndex((i) => Math.max(0, i - 1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      // **선택까지만.** 추가는 ＋ 나 미리보기 CTA 로만 — 보기 전에 차트가 바뀌면
+      // 안 된다는 어휘 규약(라벨=미리보기)이 키보드에도 그대로 적용된다.
+      if (kbdTarget) setSelected(kbdTarget.id);
+    } else if (event.key === 'Escape' && query !== '') {
+      // 검색어가 있으면 Escape 는 **검색만** 지운다. 전파를 끊지 않으면 ModalShell 의
+      // document 리스너가 이어받아 패널까지 닫힌다.
+      event.stopPropagation();
+      setQuery('');
+      setKbdIndex(-1);
+    }
+  };
+
+  useEffect(() => {
+    if (kbdIndex < 0) return;
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-kbd-index="${kbdIndex}"]`);
+    // jsdom 에는 scrollIntoView 가 없다 — 있으면 쓴다.
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [kbdIndex]);
 
   // 선택은 존재와 독립이다 — 아직 추가하지 않은 지표도 골라서 미리 볼 수 있으므로
   // 전체에서 찾는다. 삭제해도 선택은 그 자리에 남는다(상세가 미리보기로 바뀔 뿐).
@@ -378,7 +455,34 @@ export default function IndicatorPanel({
             borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는
             스크롤과 무관하게 하단 고정 — nav는 flex-1로 스크롤. */}
       <div className="flex min-h-0 flex-col bg-bg-subtle">
-        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표">
+        {/* 검색은 **nav 안**이다 — 밖에 래퍼를 하나 더 두면 "nav 의 부모가 톤 면,
+            그 부모가 2열 그리드" 라는 레이아웃 앵커(가드가 재고 있다)가 한 겹
+            어긋난다. */}
+        <nav className="flex min-h-0 flex-1 flex-col" aria-label="지표">
+          <div className="p-2 pb-1">
+            <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
+                <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="10.2" y1="10.2" x2="13.5" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                aria-label="지표 검색"
+                placeholder="지표 검색"
+                data-testid="indicator-panel-search"
+                onChange={(event) => { setQuery(event.currentTarget.value); setKbdIndex(0); }}
+                onKeyDown={onSearchKeyDown}
+                // 전역 `:focus-visible` 액센트 링은 맨 `outline-none` 으로는 안 꺼진다
+                // (특이도) — variant 를 써야 한다. 테두리는 래퍼가 focus-within 으로 진다.
+                className="w-full bg-transparent text-sm text-fg placeholder:text-fg-dimmer focus-visible:outline-none"
+              />
+            </div>
+          </div>
+          <div ref={listRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+          {visible.length === 0 && (
+            <p className="px-3 py-4 text-sm text-fg-dim">일치하는 지표 없음</p>
+          )}
           {groups.map((group, gi) => {
             const addedCount = group.items.filter((c) => checkedFor(c.id)).length;
             return (
@@ -391,6 +495,8 @@ export default function IndicatorPanel({
                 </div>
                 {group.items.map((c) => {
                   const added = checkedFor(c.id);
+                  // ↑↓ 는 그룹을 가로지르므로 커서 번호는 **보이는 행 전체**의 순번이다.
+                  const flatIndex = visible.indexOf(c);
                   return (
                     /* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
                        지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
@@ -400,6 +506,9 @@ export default function IndicatorPanel({
                       label={c.label}
                       added={added}
                       selected={selected === c.id}
+                      kbdFocused={kbdIndex === flatIndex}
+                      kbdIndex={flatIndex}
+                      query={trimmedQuery}
                       dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
                       onSelect={() => setSelected(c.id)}
                       action={added
@@ -411,6 +520,7 @@ export default function IndicatorPanel({
               </Fragment>
             );
           })}
+          </div>
         </nav>
         {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
             인라인 2단계 확인. */}

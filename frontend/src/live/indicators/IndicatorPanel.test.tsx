@@ -205,6 +205,90 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('button', { name: '이동평균선 추가' })).toBeTruthy();
   });
 
+  describe('검색', () => {
+    const search = () => screen.getByTestId('indicator-panel-search') as HTMLInputElement;
+
+    it('입력하면 일치하는 행만 남고, 그 그룹 헤더는 유지된다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+
+      expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '당일 최대 매물대' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '이동평균선' })).toBeNull();
+      // 소속 그룹은 남고 — "어느 계열의 지표인가" 가 결과에서도 읽힌다.
+      expect(screen.getByText('10호가 지표')).toBeTruthy();
+      // 일치가 하나도 없는 그룹은 헤더째 사라진다.
+      expect(screen.queryByText('상단 지표')).toBeNull();
+    });
+
+    it('일치가 없으면 빈 상태를 알린다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '없는지표' } });
+      expect(screen.getByText('일치하는 지표 없음')).toBeTruthy();
+    });
+
+    it('일치 구간을 강조한다', () => {
+      const { container } = renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      const marks = container.querySelectorAll('mark');
+      expect(marks).toHaveLength(2);
+      expect(marks[0].textContent).toBe('매물');
+    });
+
+    // 검색은 capability 게이트 **다음** 단계다 — 순서가 뒤집히면 이 종목에 없는
+    // 지표가 검색으로 되살아난다.
+    it('capability 로 걸러진 지표는 검색으로도 돌아오지 않는다', () => {
+      renderPanel({ capabilities: { hogaPanes: false, investorNet: 'market', studySave: false } });
+      fireEvent.change(search(), { target: { value: '매물' } });
+      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeNull();
+      expect(screen.getByText('일치하는 지표 없음')).toBeTruthy();
+    });
+
+    it('열리면 검색창이 포커스를 받는다', () => {
+      renderPanel();
+      expect(document.activeElement).toBe(search());
+    });
+
+    it('↑↓ 로 짚고 Enter 로 고른다 — 추가는 하지 않는다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      // 검색 직후 커서는 첫 결과(연속체결 매물대 분포).
+      fireEvent.keyDown(search(), { key: 'ArrowDown' });  // → 당일 최대 매물대
+      fireEvent.keyDown(search(), { key: 'Enter' });
+
+      expect(screen.getByRole('heading', { name: '당일 최대 매물대', level: 2 })).toBeTruthy();
+      // 선택까지만 — 보기 전에 차트가 바뀌면 안 된다는 어휘 규약이 키보드에도 적용된다.
+      expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
+      expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+    });
+
+    // 한글 조합 중의 Enter 는 **글자 확정**이지 명령이 아니다. 이 가드가 없으면
+    // "매물" 을 치는 도중의 확정 Enter 가 선택으로 새어 나간다.
+    it('조합 중(IME) Enter 는 선택으로 새지 않는다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      const before = screen.getByRole('heading', { level: 2 }).textContent;
+
+      fireEvent.keyDown(search(), { key: 'Enter', isComposing: true });
+      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(before);
+    });
+
+    // Escape 사다리 — 검색어가 있으면 검색만 지우고, 없으면 패널을 닫는다.
+    // 전파를 끊지 않으면 ModalShell 의 document 리스너가 이어받아 함께 닫힌다.
+    it('Escape 는 검색어를 먼저 지우고, 빈 검색에서만 패널을 닫는다', () => {
+      const onClose = vi.fn();
+      renderPanel({ onClose });
+      fireEvent.change(search(), { target: { value: '매물' } });
+
+      fireEvent.keyDown(search(), { key: 'Escape' });
+      expect(search().value).toBe('');
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
     renderPanel();
     for (const name of ['일목균형표', '볼린저밴드', '슈퍼트렌드', '매물대분석', '엔벨로프', '윌리엄스 프랙탈']) {
