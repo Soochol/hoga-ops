@@ -10,6 +10,12 @@ import {
   type PeakWallClassification,
 } from './peakWallEventClassifier';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
+import {
+  buildPeakRecordSeries,
+  todaySeedRow,
+  EMPTY_PEAK_RECORD_SERIES,
+  type PeakRecordSeries,
+} from './peakWallRecordSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -97,10 +103,15 @@ function bidPeakFromCandidate(date: string, candidate: AskPeakCandidate): BidPea
 }
 
 /** 오늘 행 push — ask 쪽 pushTodayAskPeak 미러(사유는 그쪽 주석 참조). */
-function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamilies): BidPeak[] {
+function pushTodayBidPeak(
+  out: BidPeak[],
+  todayKst: string,
+  families: PeakFamilies,
+  records: PeakRecordSeries,
+): BidPeak[] {
   const traded = families.traded[0];
   if (traded) {
-    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
+    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families, records));
   } else if (families.all.length > 0) {
     out.push(attachFamilies({
       date: todayKst,
@@ -110,7 +121,7 @@ function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamili
       max_price: null,
       max_qty: null,
       max_t_ms: null,
-    }, families));
+    }, families, records));
   }
   return out;
 }
@@ -118,11 +129,16 @@ function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamili
 function attachFamilies(
   peak: BidPeak,
   families: PeakFamilies,
+  records: PeakRecordSeries = EMPTY_PEAK_RECORD_SERIES,
 ): BidPeak {
   return {
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
+    // 기록 갱신 시퀀스 — ask 쪽 attachFamilies 와 **같은 배선**이다. 종전엔 이 두 줄이
+    // 매수에만 통째로 없었고(매도는 top-3 을 실었다), 결과가 같아 드리프트가 안 보였다.
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -168,7 +184,10 @@ export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): 
   const date = todayBidPeak?.date;
   const traded = families.traded[0];
   if (!date || !traded) return null;
-  return attachFamilies(bidPeakFromCandidate(date, traded), families);
+  // seed 없이 라이브 스냅샷만 — 이 헬퍼는 `/api/range` 번들을 받지 않는다.
+  return attachFamilies(
+    bidPeakFromCandidate(date, traded), families, buildPeakRecordSeries(null, todayBidPeak),
+  );
 }
 
 export function deriveDayBidPeaks(
@@ -184,8 +203,9 @@ export function deriveDayBidPeaks(
   void code;
   void todayCandles;
   const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families);
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function deriveDayBidPeaksIncremental(
@@ -204,8 +224,9 @@ export function deriveDayBidPeaksIncremental(
     ...backend.unreached,
   ], todayBidPeak?.day_extreme ?? null);
   const families = bidFamiliesFromClassified(classified, backend);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families);
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function useDayBidPeaks(
