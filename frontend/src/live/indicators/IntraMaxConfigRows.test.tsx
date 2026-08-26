@@ -17,26 +17,34 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-ratioIntraMax')).toBeTruthy();
   });
 
-  // 최대벽의 intraMax 는 **방향별이되 계열 공용**이라 매트릭스 푸터 행이다(2026-08-26).
-  // 두 방향이 나란히 있으므로 한 번의 렌더로 둘 다 잰다 — 종전엔 탭을 오가야 했다.
-  it('최대벽 매트릭스 푸터에 방향별 intraMax 토글이 나란히 선다', () => {
+  // 최대벽의 intraMax 는 **방향별이되 계열 공용**이라 단계 ③ 의 배지 달린 행이다.
+  // 파이프라인은 한 번에 한 방향이므로 방향을 고르며 둘 다 잰다 — 배선이 방향별이라는
+  // 것이 요점이고, 한쪽만 배선돼 있어도 통과하지 않게 **둘 다** 집는다.
+  it('단계 ③ 에 그 방향의 intraMax 토글이 선다', () => {
     render(<PeakWallsConfig />);
     expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-bidPeakIntraMax')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-askPeakIntraMax')).toBeNull();
   });
 
-  it('고른 칸의 세부 존에 그 계열의 라벨 토글이 있다', () => {
+  it('고른 칸의 세부에 그 계열의 라벨 토글이 있다', () => {
     render(<PeakWallsConfig />);
     // 기본 선택(매도 · 체결된 벽)의 것이 바로 보인다 — 펼치는 단계가 없다.
     expect(screen.getByTestId('settings-toggle-askPeakTradedLabelEnabled')).toBeTruthy();
 
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: '매수 체결된 벽' }));
     expect(screen.getByTestId('settings-toggle-bidPeakTradedLabelEnabled')).toBeTruthy();
   });
 
-  it('매트릭스 셀에 계열 스타일 컨트롤이 있다', () => {
+  it('단계 ④ 에 고른 계열의 스타일 컨트롤이 있다', () => {
     render(<PeakWallsConfig />);
     expect(screen.getByRole('button', { name: '매도 체결된 벽 스타일 선택' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
     expect(screen.getByRole('button', { name: '매수 체결된 벽 스타일 선택' })).toBeTruthy();
     // 미체결 선은 ADR-0156 에서 제거됐다 — 컨트롤이 남아 있으면 죽은 설정을 렌더한다.
     expect(screen.queryByText('미체결된 벽')).toBeNull();
@@ -48,12 +56,15 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
    *
    * **막는 방향**: 컨트롤만 되살아나 죽은 설정을 렌더하는 것(매수 쪽이 정확히 그 상태로
    * 한 달 넘게 있었다 — 노브는 있는데 강조 색이 없어 아무 시각 변화도 없었다).
-   * 매트릭스는 두 방향을 한 화면에 두므로 한 번의 렌더가 양쪽을 다 덮는다.
+   * 파이프라인은 한 번에 한 방향이라 **양쪽을 다 돌아야** 이 가드가 유효하다.
    */
   it('「보이는 영역 최대벽」 컨트롤이 두 방향 어디에도 없다', () => {
     render(<PeakWallsConfig />);
-    expect(screen.queryByText('보이는 영역 최대벽')).toBeNull();
-    expect(screen.queryByText('보이는 영역 최대벽 표시 개수')).toBeNull();
-    expect(screen.queryByRole('group', { name: '보이는 영역 최대벽 표시 개수' })).toBeNull();
+    for (const side of ['매도', '매수'] as const) {
+      fireEvent.click(screen.getByRole('button', { name: `${side} 설정 열기` }));
+      expect(screen.queryByText('보이는 영역 최대벽')).toBeNull();
+      expect(screen.queryByText('보이는 영역 최대벽 표시 개수')).toBeNull();
+      expect(screen.queryByRole('group', { name: '보이는 영역 최대벽 표시 개수' })).toBeNull();
+    }
   });
 });

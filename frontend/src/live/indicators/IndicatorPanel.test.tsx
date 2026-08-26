@@ -497,14 +497,16 @@ describe('IndicatorPanel', () => {
   // 뜨는가. 매트릭스 내부의 스코프 문법·배선은 `PeakWallsConfig.test.tsx` 와
   // `PeakWallMaConfigRow.test.tsx` 가 컴포넌트 단독 렌더로 더 정확히 잰다
   // (패널 경유로 다시 재면 같은 단언이 두 파일에서 갈라진다).
-  it('당일 최대벽을 고르면 두 방향이 한 화면에 선다', () => {
+  // 파이프라인은 한 번에 한 방향이지만, **마스터와 눈은 단계 ① 에 둘 다** 있다 —
+  // 반대쪽을 켜고 끄러 단계를 오갈 일이 없다는 것이 그 배치의 계약이다.
+  it('당일 최대벽을 고르면 단계 ① 에 두 방향의 마스터가 함께 선다', () => {
     renderPanel();
     openDetail('당일 최대벽');
-    // 탭이 사라졌다 — 절반의 상태가 숨지 않는다.
-    expect(screen.queryByRole('tab', { name: '매수' })).toBeNull();
-    expect(screen.getByTestId('settings-toggle-askPeakTradedLineEnabled')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-bidPeakTradedLineEnabled')).toBeTruthy();
-    // 방향까지 공용인 강도 pane 은 매트릭스 밖에 하나만.
+    expect(screen.getByTestId('settings-toggle-askPeakEnabled')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-bidPeakEnabled')).toBeTruthy();
+    expect(screen.getByTestId('peak-wall-eye-ask')).toBeTruthy();
+    expect(screen.getByTestId('peak-wall-eye-bid')).toBeTruthy();
+    // 방향까지 공용인 강도 pane 은 마지막 단계에 하나만.
     expect(screen.getAllByTestId('settings-toggle-peakWallPaneEnabled')).toHaveLength(1);
   });
 
@@ -955,9 +957,9 @@ describe('IndicatorPanel', () => {
   it('최대벽 스타일 컨트롤이 방향마다 서고, 죽은 컨트롤은 없다', () => {
     renderPanel();
     openDetail('당일 최대벽');
-    // 스타일 피커의 이름이 방향까지 진다 — 여섯 칸이 한 화면에 있으므로 계열
-    // 이름만으로는 어느 것인지 모호하다.
+    // 스타일 피커의 이름이 방향까지 진다 — 계열 이름만으로는 어느 방향인지 모호하다.
     expect(screen.getByRole('button', { name: '매도 체결된 벽 스타일 선택' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
     expect(screen.getByRole('button', { name: '매수 체결된 벽 스타일 선택' })).toBeTruthy();
     // 「보이는 영역 최대벽」 스타일 컨트롤은 2026-08-23 제거(레전드·화살표의 ①②③ 과 중복).
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
@@ -975,6 +977,7 @@ describe('IndicatorPanel', () => {
   it('매수 칸을 고르면 그 칸의 세부가 열린다', () => {
     renderPanel();
     openDetail('당일 최대벽');
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '매수 체결된 벽' }));
     expect(screen.getByTestId('settings-toggle-bidPeakTradedLabelEnabled')).toBeTruthy();

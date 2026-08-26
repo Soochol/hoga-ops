@@ -81,8 +81,9 @@ export type PeakWallRenderState = {
    *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다. */
   stepSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
-   *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. rank-1/일 고정
-   *  (과거일 wire 가 rank-1 스칼라뿐이라 표시 개수 노브는 받지 않는다). 필터
+   *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
+   *  받는다**(`askPeakAllWallRankLimit`) — 2026-08-25 부터 백엔드가 과거일에도
+   *  top-3 를 싣는다(`snapshots.py` 의 `_peak_candidates(..., 3)`). 필터
    *  (MA·컷오프·intraMax)는 체결된 벽과 동일하게 흐른다. `enabled` 기준 계산
    *  불변식도 동일하다. */
   allWallSegments: readonly PeakWallSegment[];
@@ -100,7 +101,8 @@ export type PeakWallRenderState = {
    *  써야 한다" 는 **랭커**를 말하는 것이고, 그 규칙은 여기서도 지켜진다). */
   arrowRankSegments: readonly PeakWallSegment[];
   /** 「미도달 벽」 하위 선 — unreached 패밀리의 carrier 리맵(toUnreachedWallPeakInputs).
-   *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
+   *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이다. 표시 개수 노브는
+   *  **받는다**(`unreached_peaks` 는 range 에서 벗기지 않는 top-3 다).
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
   unreachedSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
@@ -314,8 +316,9 @@ export function usePeakWallRender({
   const built = tradedResult.segments;
 
   // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
-  // rank-1/일 고정: 과거일 wire 는 all rank-1 스칼라뿐이라(배열은 range 에서 벗겨짐)
-  // 표시 개수 노브를 받으면 오늘만 2·3개가 그려져 날마다 개수가 달라 보인다.
+  // **표시 개수 노브를 받는다.** 종전 주석은 "과거일 wire 가 rank-1 스칼라뿐" 이라
+  // 고정이라고 적었는데, 2026-08-25 에 백엔드가 rep 프레임에서 top-3 를 만들면서
+  // 그 전제가 사라졌다(실측 2026-08-26: rank 1→3 에서 표시 5→7개).
   const allWallResult = useMemo(() => (
     applicable && enabled && allWallEnabled
       ? buildPeakWallOverlayResult({
