@@ -67,9 +67,10 @@ describe('deriveHogaMissingNotice', () => {
   });
 
   it('no_upstream_data 는 날짜를 말한다 — 한 건이면 그 날짜', () => {
-    // 이 부류는 "호가 기록 없음" 으로 뭉뚱그리면 절반만 맞다. 그날은 호가만이 아니라
-    // **캔들까지 전부** 없기 때문이다. 그리고 희소하므로(전체 429거래일 중 4일) 날짜를
-    // 지목할 수 있다 — 사용자가 차트에서 어디가 빠졌는지 바로 찾는다.
+    // 캔들이 **보충되지 않은** 업스트림 결손일 — 그날은 호가만이 아니라 캔들까지 없어
+    // 차트에 빈칸으로 남는다. "호가 기록 없음" 으로 뭉뚱그리면 절반만 맞다. 그리고
+    // 희소하므로(전체 429거래일 중 4일) 날짜를 지목할 수 있다 — 사용자가 차트에서
+    // 어디가 빠졌는지 바로 찾는다. `datesWithCandles` 미지정이 곧 "보충 없음" 이다.
     expect(deriveHogaMissingNotice({
       missingDates: [{ date: '20251218', reason: 'no_upstream_data' }],
       venue: 'KRX',
@@ -141,9 +142,9 @@ describe('deriveHogaMissingNotice', () => {
 });
 
 describe('deriveHogaMissingDetail', () => {
-  it('업스트림 결손은 "캔들만 표시" 라고 말하면 안 된다 — 캔들도 없다', () => {
-    // 기본 문구(#1133)는 호가 pane 전용 맥락이라 이 사유에는 **틀린 말**이다.
-    // 그날은 호가·체결·캔들이 전부 없어 차트에서 통째로 빠진다.
+  it('캔들이 없는 업스트림 결손은 "캔들만 표시" 라고 말하면 안 된다', () => {
+    // 기본 문구(#1133)는 호가 pane 전용 맥락이라 **보충되지 않은** 이 사유에는
+    // 틀린 말이다. 그날은 호가·체결·캔들이 전부 없어 차트에서 통째로 빠진다.
     expect(deriveHogaMissingDetail([{ date: '20251218', reason: 'no_upstream_data' }]))
       .toBe('그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.');
   });
@@ -151,6 +152,96 @@ describe('deriveHogaMissingDetail', () => {
   it('그 외 사유는 종전 문구를 유지한다', () => {
     expect(deriveHogaMissingDetail([{ date: '20260701', reason: 'source_missing' }]))
       .toBe('이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.');
+  });
+
+  it('캔들이 보충된 업스트림 결손은 기본 문구로 돌아간다 — 그날 없는 건 호가뿐이다', () => {
+    // 시각 문구와 **같은 헬퍼**로 갈리는지 재는 자리다. 여기가 갈리면 화면엔
+    // 「호가 기록 없는 구간 포함」인데 스크린리더엔 「캔들과 호가가 모두 없어」가 남는다.
+    expect(deriveHogaMissingDetail(
+      [{ date: '20251218', reason: 'no_upstream_data' }],
+      new Set(['20251218']),
+    )).toBe('이 구간은 호가 지표를 만들 데이터가 없어 캔들만 표시됩니다.');
+  });
+
+  it('보충되지 않은 날이 하나라도 남으면 캔들 결손을 말한다', () => {
+    expect(deriveHogaMissingDetail(
+      [
+        { date: '20251218', reason: 'no_upstream_data' },
+        { date: '20251219', reason: 'no_upstream_data' },
+      ],
+      new Set(['20251218']),
+    )).toBe('그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.');
+  });
+});
+
+/**
+ * 키움 보충·벤더 REST 가 캔들을 되받아 온 `no_upstream_data` 날짜 (2026-08-26).
+ *
+ * 실측 010140 의 `20260313`·`20260319`·`20260518` 이 그 경우였다 — 각 날짜당 5분봉
+ * 78봉이 정상으로 그려지는데 안내는 「업스트림 데이터 없음 3일」이었고, 옆에 뜬
+ * 「hogaplay · 키움 보충」 배지와 정면으로 모순됐다.
+ *
+ * **판별식이 `datesWithCandles` 하나여야 한다** — 같은 `missingDates` 에 이 집합만
+ * 넣고 빼서 출력이 갈리는지가 이 묶음의 red-check 다. 갈리지 않으면 수정이 불활성이다.
+ */
+describe('deriveHogaMissingNotice — 캔들이 보충된 업스트림 결손', () => {
+  const upstream = (date: string) => ({ date, reason: 'no_upstream_data' });
+  const THREE = [upstream('20260313'), upstream('20260319'), upstream('20260518')];
+
+  it('전부 보충됐으면 「업스트림 데이터 없음」이라고 말하지 않는다', () => {
+    // 대조군: 같은 입력에 집합만 없으면 종전 문구가 나온다(아래 마지막 케이스).
+    expect(deriveHogaMissingNotice({
+      missingDates: THREE,
+      venue: 'KRX',
+      hasAnyHogaPoints: true,
+      datesWithCandles: new Set(['20260313', '20260319', '20260518']),
+    })).toBe('호가 기록 없는 구간 포함');
+  });
+
+  it('보충됐고 호가 포인트가 전혀 없으면 「호가 기록 없음」', () => {
+    // `no_upstream_data` 가 ABSENT_REASONS 에 남아 있어야 성립한다. 빼면 이 케이스가
+    // `!absent` 분기로 떨어져 「호가 기록 손상」 오진이 된다 — 손상이 아니다.
+    expect(deriveHogaMissingNotice({
+      missingDates: THREE,
+      venue: 'KRX',
+      hasAnyHogaPoints: false,
+      datesWithCandles: new Set(['20260313', '20260319', '20260518']),
+    })).toBe('호가 기록 없음');
+  });
+
+  it('일부만 보충됐으면 **남은 것만** 센다', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: THREE,
+      venue: 'KRX',
+      hasAnyHogaPoints: false,
+      datesWithCandles: new Set(['20260313']),
+    })).toBe('업스트림 데이터 없음 2일');
+  });
+
+  it('한 날만 남으면 그 날짜를 지목한다 — 차트의 빈칸이 실제로 하나다', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: THREE,
+      venue: 'KRX',
+      hasAnyHogaPoints: false,
+      datesWithCandles: new Set(['20260313', '20260319']),
+    })).toBe('05/18 업스트림 데이터 없음');
+  });
+
+  it('venue 결손은 보충 대상이 아니라 집합이 있어도 그대로 말한다', () => {
+    // `FILLABLE_REASONS`(minuteGapFillPlan.ts)가 이 사유를 안 채운다 — NXT 차트에
+    // KRX 봉을 섞지 않기 위해서다. 문구도 그 정책을 따라야 한다.
+    expect(deriveHogaMissingNotice({
+      missingDates: [{ date: '20260313', reason: 'venue_unsupported' }],
+      venue: 'NXT',
+      hasAnyHogaPoints: false,
+      datesWithCandles: new Set(['20260313']),
+    })).toBe('NXT 호가 기록 없음');
+  });
+
+  it('집합을 안 주면 종전 동작 그대로 — 기존 호출부가 회귀하지 않는다', () => {
+    expect(deriveHogaMissingNotice({
+      missingDates: THREE, venue: 'KRX', hasAnyHogaPoints: true,
+    })).toBe('업스트림 데이터 없음 3일');
   });
 });
 

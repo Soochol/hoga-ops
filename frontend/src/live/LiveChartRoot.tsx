@@ -628,6 +628,22 @@ export function LiveChartRoot({
   // 번들은 캔들이 없으면 통째로 null 이라, 정작 "왜 비었나" 를 물어야 할 상황에서
   // 사유가 함께 사라진다(자격증명 미설정·벤더 장애). prop 은 그 그릇 밖에 있다.
   const missingDates = hogaMissingDates ?? paneHogaBundle?.missing_dates;
+  /**
+   * 캔들이 **실제로 그려진** 거래일 — `no_upstream_data` 문구의 판별식(2026-08-26).
+   *
+   * `buildChartBundle` 이 세그먼트를 `kisCandles` 에서 직접 파생하므로("divider ⟺
+   * candle for that day") 이 집합이 곧 화면에 캔들이 있는 날짜다. 키움 보충분은
+   * 그 배열에 병합돼 들어오고, 벤더 모드는 전 구간이 벤더 캔들이라 **두 모드가 한
+   * 축으로** 덮인다 — `gapFill.filledDates` 를 배관하면 벤더 모드가 남는다.
+   *
+   * ⚠ **오늘은 뺀다.** 오늘 세그먼트는 캔들이 없어도 라이브 신호만으로 생기므로
+   * (`buildChartBundle` 의 "today segment") 그대로 쓰면 캔들 없는 오늘을 "있다" 로
+   * 센다. `todayKst` 가 빈 문자열이면(프롭 미지정) 날짜와 절대 같지 않아 무해하다.
+   */
+  const datesWithCandles = useMemo(
+    () => new Set((cb?.segments ?? []).map((seg) => seg.date).filter((d) => d !== todayKst)),
+    [cb?.segments, todayKst],
+  );
   const hogaMissingText = useMemo(
     () =>
       deriveHogaMissingNotice({
@@ -635,8 +651,9 @@ export function LiveChartRoot({
         venue,
         hasAnyHogaPoints: (paneHogaBundle?.quote_ratio.points.length ?? 0) > 0,
         includeNotCaptured: savedRangeFrozen,
+        datesWithCandles,
       }),
-    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen],
+    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen, datesWithCandles],
   );
   // 캔들이 없으면 **캔들 결손만** 말한다. 차트 자체가 없는데 "호가 기록 없음" 부터
   // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다
@@ -2614,7 +2631,7 @@ export function LiveChartRoot({
         stacked={foldedPaneCount > 0}
         // 뒷문장이 사유마다 갈린다 — 기본값은 호가 pane 전용이라 업스트림 결손엔 틀린다.
         ariaLabel={showHogaMissing
-          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates)}`
+          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates, datesWithCandles)}`
           : undefined}
       />
       {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
