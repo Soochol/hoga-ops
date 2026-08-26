@@ -61,8 +61,9 @@ export default function PeakWallsConfig() {
     <div>
       <Stage n={1} title="방향" hint="두 방향은 완전한 미러입니다">
         <div className="flex gap-2">
-          <SideCard side="ask" active={side === 'ask'} onPick={() => setSide('ask')} />
-          <SideCard side="bid" active={side === 'bid'} onPick={() => setSide('bid')} />
+          {SIDES.map((s) => (
+            <SideCard key={s.id} side={s.id} active={side === s.id} onPick={() => setSide(s.id)} />
+          ))}
         </div>
       </Stage>
 
@@ -119,6 +120,13 @@ function Stage({ n, title, hint, right, children }: {
 // ── ① 방향 ────────────────────────────────────────────────────────────────
 
 const SIDE_LABEL: Record<Side, string> = { ask: '매도', bid: '매수' };
+
+/** 방향 두 개의 렌더 순서 — 단계 ① 의 카드와 ⑤ 의 열이 **같은 배열**을 쓴다.
+ *  두 곳에 손으로 적으면 언젠가 순서가 갈리고, 그때 ⑤ 의 열 라벨이 거짓말을 한다. */
+const SIDES: ReadonlyArray<{ id: Side; label: string }> = [
+  { id: 'ask', label: SIDE_LABEL.ask },
+  { id: 'bid', label: SIDE_LABEL.bid },
+];
 
 /**
  * 방향 카드 — 마스터 스위치와 눈이 **나란히** 앉는다.
@@ -477,34 +485,48 @@ function SurfaceStage({ side, family }: { side: Side; family: PeakWallFamilyId }
 
 // ── ⑤ 강도 pane ───────────────────────────────────────────────────────────
 
-/** pane 계열 셋의 상태 키 — 방향이 없다(pane 자체가 매도·매수 공용이므로). */
-const PANE_FAMILY_KEY = {
-  Traded: 'peakWallPaneTradedEnabled',
-  Unreached: 'peakWallPaneUnreachedEnabled',
-  AllWall: 'peakWallPaneAllWallEnabled',
+/** pane 슬롯 6칸의 상태 키 — `PEAK_WALL_STEP_SLOTS` 와 1:1. 문자열로 조립하지 않는다. */
+const PANE_SLOT_KEY = {
+  ask: {
+    Traded: 'askPeakTradedPaneEnabled',
+    Unreached: 'askPeakUnreachedPaneEnabled',
+    AllWall: 'askPeakAllWallPaneEnabled',
+  },
+  bid: {
+    Traded: 'bidPeakTradedPaneEnabled',
+    Unreached: 'bidPeakUnreachedPaneEnabled',
+    AllWall: 'bidPeakAllWallPaneEnabled',
+  },
 } as const;
 
 /** 계열별 계단이 무엇을 뜻하는지 — 셋의 성질이 실제로 다르다(단조 / 비단조). */
 const PANE_FAMILY_HINT: Record<PeakWallFamilyId, string> = {
   Traded: '그 시점까지 체결된 벽 중 최대. 기록 갱신 시퀀스라 계단이 내려가지 않습니다.',
-  Unreached: '아직 안 닿은 벽 중 최대. **고가가 벽을 넘으면 계단이 내려갑니다**(단조 아님).',
+  Unreached: '아직 안 닿은 벽 중 최대. 고가가 벽을 넘으면 계단이 내려갑니다(단조 아님).',
   AllWall: '터치 무관 그날 최대. 벽이 빠져나가지 않아 계단이 내려가지 않습니다.',
 };
 
+/** 스위치 두 개가 앉는 격자 — 열 라벨과 스위치가 **같은 트랙**이라 어긋날 수 없다.
+ *  종전 매트릭스는 라벨을 열 왼쪽에 두고 스위치를 `justify-between` 으로 오른쪽 끝에
+ *  붙여, 마스터가 자기 라벨보다 옆 열에 가까웠다(실측 103px vs 16px). */
+const PANE_GRID = 'grid grid-cols-[minmax(0,1fr)_40px_40px] items-center gap-x-2';
+
 /**
- * 방향까지 공용 — 한 pane 을 양방향 계단이 함께 쓰므로 상태가 하나뿐이다. 매도에서
- * 켜면 매수도 켜진다. 그 사실을 배지와 **마지막 단계**라는 위치로 함께 말한다.
+ * 방향까지 공용 — 한 pane 을 양방향 계단이 함께 쓰므로 pane 자체의 상태는 하나뿐이다.
+ * 그 사실을 배지와 **마지막 단계**라는 위치로 함께 말한다.
  *
- * ## 계열 셋이 pane 전용 키를 갖는다
+ * ## 그 안에 무엇을 넣을지는 칸마다 고른다
  *
- * 종전엔 "어느 계열이 pane 에 나오는가" 를 **캔들 선 토글이 정했다**. 그래서 캔들에서
- * 지운 계열을 pane 에서만 계속 보거나, 반대로 캔들에만 두고 pane 은 비우는 조합이
- * 원리적으로 불가능했다 — 두 표면이 답하는 질문이 다른데("그날 어디에 벽이 있었나" vs
- * "그 벽이 언제 얼마나 자랐나") 스위치가 하나였던 것이다.
+ * pane 은 하나여도 슬롯은 여섯이다(`PEAK_WALL_STEP_SLOTS` = 방향 2 × 계열 3). 매도
+ * 셋만 겹쳐 보거나, 양방향의 체결된 벽만 마주 보게 두는 것이 실제 읽기 방식이라
+ * **여섯 칸을 각각 켜고 끈다**. pane 을 쪼개지는 않는다 — 계단이 전부 같은 y 축
+ * (잔량)이라 겹쳐 읽는 것이 의미가 있고, pane 을 늘리면 화면 부동산만 먹는다.
  *
- * 셋 다 **같은 pane 에** 그린다(`PEAK_WALL_STEP_SLOTS` 6슬롯 = 방향 2 × 계열 3).
- * pane 을 늘리지 않는 것이 이 설정의 전제다 — 계단 셋은 같은 y 축(잔량)이라 겹쳐
- * 읽는 것이 의미가 있고, pane 이 셋이면 화면 부동산만 먹는다.
+ * ## 캔들 선 토글과 독립이다
+ *
+ * 종전엔 pane 이 `{side}Peak{Family}LineEnabled` 를 따라갔다. 두 표면이 답하는 질문이
+ * 다른데(캔들 = 「그날 어디에 벽이 있었나」, pane = 「그 벽이 언제 얼마나 자랐나」)
+ * 스위치가 하나라, 한쪽만 보는 조합이 원리적으로 불가능했다.
  */
 function PaneStage() {
   const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
@@ -524,7 +546,7 @@ function PaneStage() {
             </span>
           </span>
         )}
-        description="아래에서 고른 계열의 계단을 차트 아래 별도 pane **하나**에 그립니다. 매도·매수가 그 pane 을 공유합니다."
+        description="아래에서 고른 칸의 계단을 차트 아래 별도 pane 하나에 그립니다. 매도·매수가 그 pane 을 공유합니다."
       >
         <ToggleSwitch
           label="최대벽 강도 pane"
@@ -534,39 +556,66 @@ function PaneStage() {
         />
       </SettingsRow>
 
-      {/* 계열 셋 — pane 이 꺼져 있으면 dim 하되 **값은 보존**한다(`enabledBy` 와 같은
+      {/* 슬롯 6칸 — pane 이 꺼져 있으면 dim 하되 **값은 보존**한다(`enabledBy` 와 같은
           게이트 시맨틱). 들여쓰기가 "이건 위 스위치에 딸린 것" 을 위치로 말한다. */}
-      <div className="ml-4">
+      <div className={`ml-4 ${paneEnabled ? '' : 'opacity-50'}`}>
+        <div className={`${PANE_GRID} pb-1 pt-2`}>
+          <span />
+          {SIDES.map((side) => (
+            <span key={side.id} className="text-center text-2xs font-semibold text-fg-dim">
+              {side.label}
+            </span>
+          ))}
+        </div>
         {PEAK_WALL_FAMILIES.map((family) => (
-          <PaneFamilyRow key={family.id} family={family.id} name={family.name} gateOpen={paneEnabled} />
+          <PaneSlotRow key={family.id} family={family.id} name={family.name} gateOpen={paneEnabled} />
         ))}
       </div>
     </Stage>
   );
 }
 
-function PaneFamilyRow({ family, name, gateOpen }: {
+/** 계열 한 줄 = 그 계열의 매도·매수 슬롯 둘. 설명은 계열의 것이라 행이 소유한다. */
+function PaneSlotRow({ family, name, gateOpen }: {
   family: PeakWallFamilyId;
   name: string;
   gateOpen: boolean;
 }) {
-  const checked = useWindowIndicator((s) => s[PANE_FAMILY_KEY[family]]);
-  const setFamily = useIndicatorActions().setPeakWallPaneFamilyEnabled;
   return (
-    <SettingsRow
-      testId={`peak-wall-pane-family-row-${family}`}
-      label={name}
-      description={PANE_FAMILY_HINT[family]}
-      disabled={!gateOpen}
+    <div
+      data-testid={`peak-wall-pane-family-row-${family}`}
+      className={`${PANE_GRID} border-b border-border py-2 last:border-b-0`}
     >
+      <div className="min-w-0">
+        <div className="text-sm text-fg">{name}</div>
+        <div className="mt-0.5 text-xs text-fg-dim">{PANE_FAMILY_HINT[family]}</div>
+      </div>
+      {SIDES.map((side) => (
+        <PaneSlotSwitch key={side.id} side={side.id} family={family} name={name} gateOpen={gateOpen} />
+      ))}
+    </div>
+  );
+}
+
+function PaneSlotSwitch({ side, family, name, gateOpen }: {
+  side: Side;
+  family: PeakWallFamilyId;
+  name: string;
+  gateOpen: boolean;
+}) {
+  const key = PANE_SLOT_KEY[side][family];
+  const checked = useWindowIndicator((s) => s[key]);
+  const setSlot = useIndicatorActions().setPeakWallPaneSlotEnabled;
+  return (
+    <div className="flex justify-center">
       <ToggleSwitch
-        label={`강도 pane ${name}`}
+        label={`강도 pane ${SIDE_LABEL[side]} ${name}`}
         checked={checked}
         disabled={!gateOpen}
-        onClick={() => setFamily(family, !checked)}
-        data-testid={`settings-toggle-${PANE_FAMILY_KEY[family]}`}
+        onClick={() => setSlot(side, family, !checked)}
+        data-testid={`settings-toggle-${key}`}
       />
-    </SettingsRow>
+    </div>
   );
 }
 

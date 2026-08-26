@@ -112,12 +112,12 @@ export type PeakWallRenderState = {
   unreachedSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
    *  않는다) 체결된 벽과 같은 running-max 빌더를 쓴다. pane 이 꺼져 있거나
-   *  `peakWallPaneAllWallEnabled` 가 꺼져 있으면 빈 배열 — **캔들 선 토글과 무관**하다. */
+   *  `{side}PeakAllWallPaneEnabled` 가 꺼져 있으면 빈 배열 — **캔들 선 토글과 무관**하다. */
   allWallStepSegments: readonly PeakWallSegment[];
   /** 「미도달 벽」의 강도 pane 계단 입력. ⚠ 이 계열은 **단조가 아니다** — 극값
    *  전진이 구성원을 빼앗으므로 소비처는 `buildUnreachedStepPoints`(비단조)를
    *  써야 한다. running-max 빌더를 태우면 깨진 벽이 영원히 남는다.
-   *  게이트는 `peakWallPaneUnreachedEnabled` — **캔들 선 토글과 무관**하다. */
+   *  게이트는 `{side}PeakUnreachedPaneEnabled` — **캔들 선 토글과 무관**하다. */
   unreachedStepSegments: readonly PeakWallSegment[];
   unreachedDrawn: boolean;
   unreachedLabels: boolean;
@@ -216,12 +216,19 @@ export function usePeakWallRender({
   const unreachedLineWidth = useWindowIndicator(
     (s) => (isAsk ? s.askPeakUnreachedLineWidth : s.bidPeakUnreachedLineWidth),
   );
-  // 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 **독립**이다. 종전엔
+  // 강도 pane 의 슬롯 — **이 방향의 계열 셋**이고 캔들 선 토글과 **독립**이다. 종전엔
   // pane 이 `{side}Peak{Family}LineEnabled` 를 따라가서, 캔들에서 지운 계열을 pane
-  // 에서만 보는(또는 그 반대의) 조합이 원리적으로 불가능했다.
-  const paneTradedEnabled = useWindowIndicator((s) => s.peakWallPaneTradedEnabled);
-  const paneUnreachedEnabled = useWindowIndicator((s) => s.peakWallPaneUnreachedEnabled);
-  const paneAllWallEnabled = useWindowIndicator((s) => s.peakWallPaneAllWallEnabled);
+  // 에서만 보는(또는 그 반대의) 조합이 원리적으로 불가능했다. pane 은 하나이고
+  // 매도·매수가 공유하지만, **무엇을 넣을지는 칸마다** 고른다(슬롯 6칸과 1:1).
+  const paneTradedEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakTradedPaneEnabled : s.bidPeakTradedPaneEnabled),
+  );
+  const paneUnreachedEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakUnreachedPaneEnabled : s.bidPeakUnreachedPaneEnabled),
+  );
+  const paneAllWallEnabled = useWindowIndicator(
+    (s) => (isAsk ? s.askPeakAllWallPaneEnabled : s.bidPeakAllWallPaneEnabled),
+  );
   const intraMax = useActivePrefs((s) => (isAsk ? s.askPeakIntraMax : s.bidPeakIntraMax));
   const allPriceRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllPriceRankLimit : s.bidPeakAllPriceRankLimit),

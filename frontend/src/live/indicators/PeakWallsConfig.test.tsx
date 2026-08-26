@@ -18,9 +18,12 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
   beforeEach(() => {
     useLivePageStore.setState({
       peakWallPaneEnabled: false,
-      peakWallPaneTradedEnabled: true,
-      peakWallPaneUnreachedEnabled: false,
-      peakWallPaneAllWallEnabled: false,
+      askPeakTradedPaneEnabled: true,
+      askPeakUnreachedPaneEnabled: false,
+      askPeakAllWallPaneEnabled: false,
+      bidPeakTradedPaneEnabled: true,
+      bidPeakUnreachedPaneEnabled: false,
+      bidPeakAllWallPaneEnabled: false,
       askPeakEnabled: true,
       askPeakHidden: false,
       bidPeakEnabled: true,
@@ -84,48 +87,67 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
   });
 
   /**
-   * 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 **다른 키**다.
+   * 강도 pane 의 슬롯 6칸(방향 × 계열) — `PEAK_WALL_STEP_SLOTS` 와 1:1 이고 캔들 선
+   * 토글과 **다른 키**다.
    *
-   * **막는 방향**: 이 셋이 `{side}Peak{Family}LineEnabled` 로 다시 배선되는 것.
-   * 그러면 화면엔 스위치가 둘인데 상태는 하나라 서로를 조용히 덮는다.
+   * **막는 방향** 둘: (1) 이 여섯이 `{side}Peak{Family}LineEnabled` 로 다시 배선되는
+   * 것 — 화면엔 스위치가 둘인데 상태는 하나라 서로를 조용히 덮는다. (2) 여섯이 방향을
+   * 잃고 셋으로 합쳐지는 것 — 매도를 껐는데 매수도 꺼진다.
    */
-  it('강도 pane 계열 셋이 각자 자기 키만 움직인다', () => {
-    // pane 이 꺼져 있으면 셋이 잠겨 클릭이 no-op 이다(아래 테스트가 그 잠금을 잰다).
+  it('강도 pane 슬롯 6칸이 각자 자기 키만 움직인다', () => {
+    // pane 이 꺼져 있으면 여섯이 잠겨 클릭이 no-op 이다(아래 테스트가 그 잠금을 잰다).
     useLivePageStore.setState({ peakWallPaneEnabled: true });
     render(<PeakWallsConfig />);
-    const rows = [
-      { key: 'peakWallPaneTradedEnabled', line: 'askPeakTradedLineEnabled' },
-      { key: 'peakWallPaneUnreachedEnabled', line: 'askPeakUnreachedLineEnabled' },
-      { key: 'peakWallPaneAllWallEnabled', line: 'askPeakAllWallLineEnabled' },
+    const slots = [
+      { key: 'askPeakTradedPaneEnabled', line: 'askPeakTradedLineEnabled' },
+      { key: 'askPeakUnreachedPaneEnabled', line: 'askPeakUnreachedLineEnabled' },
+      { key: 'askPeakAllWallPaneEnabled', line: 'askPeakAllWallLineEnabled' },
+      { key: 'bidPeakTradedPaneEnabled', line: 'bidPeakTradedLineEnabled' },
+      { key: 'bidPeakUnreachedPaneEnabled', line: 'bidPeakUnreachedLineEnabled' },
+      { key: 'bidPeakAllWallPaneEnabled', line: 'bidPeakAllWallLineEnabled' },
     ] as const;
 
-    for (const row of rows) {
+    for (const slot of slots) {
       const before = useLivePageStore.getState();
-      const wasPane = before[row.key];
-      const wasLine = before[row.line];
-      fireEvent.click(screen.getByTestId(`settings-toggle-${row.key}`));
+      const wasPane = before[slot.key];
+      const wasLine = before[slot.line];
+      fireEvent.click(screen.getByTestId(`settings-toggle-${slot.key}`));
       const after = useLivePageStore.getState();
 
-      expect(after[row.key]).toBe(!wasPane);
-      // 같은 계열의 **캔들 선**은 안 움직인다 — 두 표면이 독립이라는 것이 요점이다.
-      expect(after[row.line]).toBe(wasLine);
-      // 다른 두 pane 키도 그대로다.
-      for (const other of rows) {
-        if (other.key === row.key) continue;
+      expect(after[slot.key]).toBe(!wasPane);
+      // 같은 칸의 **캔들 선**은 안 움직인다 — 두 표면이 독립이라는 것이 요점이다.
+      expect(after[slot.line]).toBe(wasLine);
+      // 다른 다섯 슬롯도 그대로다 — 방향이 합쳐지면 여기서 빨개진다.
+      for (const other of slots) {
+        if (other.key === slot.key) continue;
         expect(after[other.key]).toBe(before[other.key]);
       }
     }
   });
 
-  // pane 이 꺼져 있으면 계열 셋은 잠기되 **값은 보존**한다(`enabledBy` 게이트 시맨틱).
-  it('pane 마스터가 꺼져 있으면 계열 셋이 잠긴다', () => {
-    useLivePageStore.setState({ peakWallPaneEnabled: false, peakWallPaneTradedEnabled: true });
+  // 단계 ① 이 방향을 고르는 자리지만, ⑤ 는 **양방향을 함께** 둔다 — pane 이 하나라
+  // 그 안의 구성은 한 화면에서 정하는 것이 맞다.
+  it('강도 pane 슬롯은 방향을 고르지 않아도 여섯이 다 보인다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: true });
     render(<PeakWallsConfig />);
-    const traded = screen.getByTestId('settings-toggle-peakWallPaneTradedEnabled');
+    for (const key of [
+      'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
+      'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
+    ]) {
+      expect(screen.getByTestId(`settings-toggle-${key}`)).toBeTruthy();
+    }
+  });
+
+  // pane 이 꺼져 있으면 여섯은 잠기되 **값은 보존**한다(`enabledBy` 게이트 시맨틱).
+  it('pane 마스터가 꺼져 있으면 슬롯 6칸이 잠긴다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: false, askPeakTradedPaneEnabled: true });
+    render(<PeakWallsConfig />);
+    const traded = screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled');
     expect(traded).toBeDisabled();
+    expect(screen.getByTestId('settings-toggle-bidPeakAllWallPaneEnabled')).toBeDisabled();
     // 잠겼어도 저장된 값은 살아 있다 — 다시 켜면 그 선택으로 돌아온다.
     expect(traded.getAttribute('aria-checked')).toBe('true');
-    expect(useLivePageStore.getState().peakWallPaneTradedEnabled).toBe(true);
+    expect(useLivePageStore.getState().askPeakTradedPaneEnabled).toBe(true);
   });
 
   // 계열 스위치는 **그 방향 × 그 계열**만 움직인다. 여섯이 서로 새면 단계가 말하는
