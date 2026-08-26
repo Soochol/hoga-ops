@@ -52,13 +52,6 @@ export default function PeakWallsConfig() {
 
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        당일 최대벽 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-        수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다
-      </p>
       <div
         className="mb-3 inline-flex overflow-hidden rounded-md border border-border"
         role="tablist"
@@ -105,7 +98,7 @@ export default function PeakWallsConfig() {
           testId={`settings-toggle-${side}PeakCandleLine`}
         />
       </div>
-      {isAsk ? <AskPeakConfig embedded /> : <BidPeakConfig embedded />}
+      {isAsk ? <AskPeakConfig /> : <BidPeakConfig />}
 
       {/* ── 방향 공용 ────────────────────────────────────────────────────
           **탭 밖이다.** 이 토글은 매도·매수가 하나를 공유하는데(한 pane 에 두 방향의

@@ -1,0 +1,1824 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hoga-ops — 보조지표 패널 리디자인 제안 (2026-08-26)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* ============================================================================
+   보조지표 패널 리디자인 제안 — 정적 목업 (기능 명세 포함)
+   테마: Toss Light(사용자 기본값) + Obsidian 검증 아트보드.
+   토큰은 frontend/src/styles/tokens.css 의 실값을 그대로 옮겼다 — 이 파일에서
+   새 색을 발명하지 않는다. 3분류 색 규율(UI 상태 / 시스템 상태 / 시세) 계승.
+   ========================================================================= */
+:root {
+  /* ── Toss Light 팔레트 (tokens.css [data-theme='toss-light'] 실값) ── */
+  --bg:            #f6f7f9;
+  --bg-card:       #ffffff;
+  --bg-subtle:     #f2f4f6;
+  --bg-input:      #ffffff;
+  --bg-input-hover:#f2f4f6;
+  --border:        #e5e8eb;
+  --border-strong: #d1d6db;
+  --fg:            #191f28;
+  --fg-dim:        #4e5968;
+  --fg-dimmer:     #8b95a1;
+  --accent:        #3182f6;
+  --accent-fg:     #ffffff;
+  --success:       #03b26c;
+  --error:         #e42939;
+  --price-up:      #de2b39;
+  --price-down:    #1957c2;
+  --tint-selection:rgba(49,130,246,0.10);
+  --tint-error:    rgba(228,41,57,0.10);
+  --tint-neutral:  rgba(107,118,128,0.10);
+  --warn:          #eb7300;
+  --tint-warn:     rgba(235,115,0,0.10);
+  --shadow-overlay:0 8px 24px rgba(30,39,50,0.16);
+  --shadow-panel:  0 2px 8px rgba(30,39,50,0.12);
+  --shadow-modal:  0 16px 48px rgba(30,39,50,0.2);
+
+  --font-ui: 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui,
+             'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+
+  /* 타입 스케일 (DESIGN.md 1.0× base intent) */
+  --t-badge: 8.5px; --t-2xs: 9px; --t-xs: 10.5px; --t-sm: 11.5px;
+  --t-base: 13px; --t-md: 14px; --t-lg: 16px; --t-xl: 22px;
+  /* radius 폐쇄 5단 */
+  --r-sm: 2px; --r-md: 4px; --r-lg: 6px;
+}
+/* Obsidian 검증 스코프 — 색만 갈린다(밀도·타이포는 테마 독립).
+   color 재선언 필수: body 에서 계산된 잉크색이 상속으로 내려오므로,
+   스코프에서 다시 var(--fg) 를 읽게 해야 무색 지정 요소(h2 등)가 뒤집힌다. */
+.theme-obsidian {
+  color:var(--fg);
+  --bg:            #121216;
+  --bg-card:       #121216;
+  --bg-subtle:     #0E0E11;
+  --bg-input:      #101014;
+  --bg-input-hover:#1A1A20;
+  --border:        #232329;
+  --border-strong: #33333C;
+  --fg:            #ECECF1;
+  --fg-dim:        #9A9AA8;
+  --fg-dimmer:     #63636F;
+  --accent:        #F0B429;
+  --accent-fg:     #1a1305;
+  --success:       #2FBF71;
+  --error:         #F25C7A;
+  --price-up:      #F04452;
+  --price-down:    #3485FA;
+  --tint-selection:rgba(240,180,41,0.10);
+  --tint-error:    rgba(242,92,122,0.10);
+  --tint-neutral:  rgba(148,163,184,0.10);
+  --warn:          #F59E0B;
+  --tint-warn:     rgba(245,158,11,0.10);
+  --shadow-overlay:0 8px 24px rgba(0,0,0,0.4);
+  --shadow-panel:  0 18px 60px rgba(0,0,0,0.35);
+  --shadow-modal:  0 24px 80px rgba(0,0,0,0.45);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:var(--bg); }
+body {
+  color:var(--fg);
+  font-family:var(--font-ui);
+  font-size:var(--t-base);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  letter-spacing:normal; /* 시스템은 자간을 만지지 않는다 */
+}
+.num { font-variant-numeric:tabular-nums; } /* font-data 등가 — 모든 숫자에 */
+button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+input, select { font:inherit; color:inherit; }
+
+/* ─────────────────────────── 문서 레이아웃 ─────────────────────────── */
+.doc { max-width:1120px; margin:0 auto; padding:56px 32px 96px; }
+.doc-eyebrow {
+  font-size:var(--t-xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim);
+}
+.doc h1 { font-size:28px; font-weight:700; margin:6px 0 12px; }
+.doc-thesis { max-width:72ch; color:var(--fg-dim); font-size:var(--t-md); }
+.doc-thesis strong { color:var(--fg); font-weight:600; }
+
+.kept {
+  display:flex; flex-wrap:wrap; gap:6px; margin-top:16px;
+}
+.kept-chip {
+  font-size:var(--t-xs); color:var(--fg-dim);
+  border:1px solid var(--border); border-radius:999px;
+  padding:3px 10px; background:var(--bg-card);
+}
+.kept-chip b { color:var(--fg); font-weight:600; }
+
+.sec { margin-top:64px; }
+.sec-eyebrow {
+  font-size:var(--t-xs); font-weight:600; text-transform:uppercase;
+  color:var(--accent);
+}
+.sec h2 { font-size:20px; font-weight:700; margin:4px 0 8px; }
+.sec-lede { color:var(--fg-dim); max-width:72ch; margin-bottom:24px; }
+
+/* 진단 카드 */
+.diag { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; }
+.diag-card {
+  background:var(--bg-card); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-panel); padding:16px 18px;
+}
+.diag-card h3 { font-size:var(--t-md); font-weight:600; margin-bottom:6px; }
+.diag-card h3 .no {
+  display:inline-block; width:18px; height:18px; margin-right:8px;
+  border-radius:50%; background:var(--tint-error); color:var(--error);
+  font-size:var(--t-xs); font-weight:700; text-align:center; line-height:18px;
+}
+.diag-card p { font-size:var(--t-sm); color:var(--fg-dim); }
+
+/* 아트보드 */
+.board {
+  position:relative;
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--r-lg);
+  padding:48px 40px; margin-top:20px;
+  display:flex; justify-content:center;
+}
+.theme-obsidian.board { border-color:#2a2a31; }
+.board-tag {
+  position:absolute; top:14px; left:16px;
+  font-size:var(--t-xs); font-weight:600; color:var(--fg-dim);
+  text-transform:uppercase;
+}
+.notes { margin-top:16px; display:grid; grid-template-columns:repeat(2,1fr); gap:6px 24px; }
+.note { display:flex; gap:10px; align-items:flex-start; font-size:var(--t-sm); color:var(--fg-dim); }
+.note b { color:var(--fg); font-weight:600; }
+.pin {
+  flex:none; width:18px; height:18px; margin-top:1px; border-radius:50%;
+  background:var(--accent); color:var(--accent-fg);
+  font-size:var(--t-xs); font-weight:700; text-align:center; line-height:18px;
+}
+.pin.on-board { position:absolute; z-index:5; box-shadow:0 0 0 3px var(--bg); }
+
+/* ────────────────────────────── 모달 목업 ────────────────────────────── */
+.modal {
+  position:relative;
+  width:760px; height:700px;
+  display:grid; grid-template-columns:240px minmax(0,1fr);
+  background:var(--bg-card); border-radius:var(--r-lg); overflow:hidden;
+  box-shadow:var(--shadow-modal);
+}
+.modal.nav-only { width:240px; grid-template-columns:240px; height:auto; }
+
+/* 좌측 nav — bg-subtle recessed 면 (설정/지표 nav 의 승인 용례) */
+.ip-nav {
+  background:var(--bg-subtle);
+  display:flex; flex-direction:column; min-height:0;
+}
+.ip-search { padding:10px 10px 6px; }
+.ip-search-box {
+  display:flex; align-items:center; gap:6px;
+  height:28px; padding:0 8px;
+  background:var(--bg-input); border:1px solid var(--border);
+  border-radius:var(--r-lg);
+}
+.ip-search-box svg { flex:none; color:var(--fg-dim); }
+.ip-search-box input {
+  width:100%; border:none; outline:none; background:transparent;
+  font-size:var(--t-sm);
+}
+.ip-search-box input::placeholder { color:var(--fg-dimmer); }
+.ip-search-box.focused { border-color:var(--accent); }
+.ip-search-meta { padding:5px 4px 0; font-size:var(--t-xs); color:var(--fg-dim); }
+
+.ip-list { flex:1; min-height:0; overflow-y:auto; padding:2px 8px 10px; }
+.ip-ghead {
+  display:flex; align-items:baseline; justify-content:space-between;
+  padding:12px 8px 4px;
+  font-size:var(--t-xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim);
+}
+.ip-ghead .gcount { font-weight:500; font-variant-numeric:tabular-nums; }
+
+.ip-row {
+  position:relative;
+  display:flex; align-items:center; gap:8px;
+  height:32px; padding:0 4px 0 8px; margin-bottom:2px;
+  border-radius:var(--r-lg);
+  color:var(--fg-dim);
+  transition:background-color 80ms ease-in-out, color 80ms ease-in-out;
+  cursor:pointer;
+}
+.ip-row:hover { background:var(--bg-input-hover); color:var(--fg); }
+/* 선택 = tint 배경만. 좌측 액센트 바 금지(2026-07-23 통일 규칙) */
+.ip-row.selected { background:var(--tint-selection); color:var(--fg); }
+.ip-row.selected .ip-name { font-weight:500; }
+.ip-row.added { color:var(--fg); }
+.ip-row.added .ip-name { font-weight:500; }
+.ip-row.kbd-focus { outline:2px solid var(--accent); outline-offset:-2px; }
+
+.ip-glyph { flex:none; width:16px; height:16px; color:var(--fg-dim); }
+.ip-row.added .ip-glyph, .ip-row.selected .ip-glyph { color:var(--fg); }
+.ip-name { flex:1; min-width:0; font-size:var(--t-base); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; }
+.ip-name mark {
+  background:var(--tint-selection); color:var(--fg); font-weight:600;
+  border-radius:var(--r-sm); padding:0 1px;
+}
+/* 인스턴스 색 점 — 차트에 실제 그려지는 색의 메아리(장식이 아니라 데이터) */
+.ip-dots { flex:none; display:flex; gap:3px; align-items:center; }
+.ip-dots i {
+  width:6px; height:6px; border-radius:50%;
+  border:1px solid rgba(0,0,0,0.12); /* 밝은 색이 흰 배경에 잠기지 않게 상시 헤어라인 */
+}
+.theme-obsidian .ip-dots i { border-color:rgba(255,255,255,0.14); }
+.ip-act {
+  flex:none; width:22px; height:22px; border-radius:var(--r-md);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--fg-dim); font-size:12px; line-height:1;
+  transition:background-color 80ms ease-in-out, color 80ms ease-in-out;
+}
+.ip-act:hover { background:var(--bg-input-hover); color:var(--fg); }
+.ip-act.remove:hover { background:var(--tint-error); color:var(--error); }
+
+/* 우측 디테일 */
+.ip-detail { display:flex; flex-direction:column; min-height:0; background:var(--bg-card); }
+.ip-dhead {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:16px 20px 10px;
+}
+.ip-eyebrow { font-size:var(--t-xs); font-weight:600; text-transform:uppercase; color:var(--fg-dim); }
+.ip-eyebrow .place { color:var(--fg-dimmer); font-weight:500; }
+.ip-dhead h2 { font-size:var(--t-lg); font-weight:600; margin-top:1px; }
+.ip-dactions { display:flex; align-items:center; gap:8px; flex:none; padding-top:2px; }
+.ip-scope {
+  font-size:var(--t-xs); color:var(--fg-dim);
+  border:1px solid var(--border); border-radius:999px; padding:2px 9px;
+  white-space:nowrap;
+}
+.ip-iconb {
+  width:24px; height:24px; border-radius:var(--r-md);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--fg-dim); font-size:14px;
+  transition:background-color 80ms ease-in-out, color 80ms ease-in-out;
+}
+.ip-iconb:hover { background:var(--bg-input-hover); color:var(--fg); }
+
+.ip-dbody { flex:1; min-height:0; overflow-y:auto; padding:2px 20px 20px; }
+.ip-desc { font-size:var(--t-sm); color:var(--fg-dim); max-width:60ch; }
+
+.ip-slabel {
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin:18px 0 8px;
+  font-size:var(--t-xs); font-weight:600; text-transform:uppercase; color:var(--fg-dim);
+}
+.ip-slabel .cnt { font-weight:500; font-variant-numeric:tabular-nums; }
+
+/* 인스턴스 표 — 공통 폼 문법: 열 헤더 + 정렬 그리드 (컨트롤은 좌측 클러스터) */
+.ip-cols, .ip-inst {
+  display:grid; grid-template-columns:96px 132px 88px 28px;
+  gap:8px; align-items:center;
+}
+.ip-cols {
+  font-size:var(--t-2xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dimmer); padding:0 2px 4px;
+}
+.ip-inst { height:36px; padding:0 2px; border-radius:var(--r-md); }
+.ip-inst:hover { background:var(--bg-input-hover); }
+.ip-swatch {
+  display:flex; align-items:center; gap:5px;
+  height:26px; padding:0 7px;
+  border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--bg-input);
+}
+.ip-swatch:hover { border-color:var(--border-strong); }
+.ip-swatch .line {
+  width:26px; height:0; border-top-style:solid; border-radius:1px;
+  /* 밝은 사용자 색(#F8FAFC 등)이 흰 배경에 잠기지 않게 — 색 점과 같은 헤어라인 규칙 */
+  box-shadow:0 0 0 1px rgba(25,31,40,0.10);
+}
+.theme-obsidian .ip-swatch .line { box-shadow:0 0 0 1px rgba(255,255,255,0.14); }
+.ip-swatch .caret { color:var(--fg-dimmer); font-size:8px; }
+.ip-select {
+  height:26px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 8px; font-size:var(--t-sm);
+  border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--bg-input); color:var(--fg);
+}
+.ip-select:hover { border-color:var(--border-strong); }
+.ip-select .caret { color:var(--fg-dimmer); font-size:8px; }
+.ip-num {
+  height:26px; width:100%; padding:0 8px; text-align:right;
+  font-size:var(--t-sm); font-variant-numeric:tabular-nums;
+  border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--bg-input); color:var(--fg);
+}
+.ip-addline {
+  margin-top:6px; padding:6px 2px;
+  font-size:var(--t-sm); color:var(--fg-dim); text-align:left;
+  border-radius:var(--r-md);
+}
+.ip-addline:hover { background:var(--bg-input-hover); color:var(--fg); }
+
+.ip-hint {
+  display:flex; gap:7px; align-items:flex-start;
+  margin-top:20px; padding:9px 11px;
+  background:var(--bg-subtle); border-radius:var(--r-lg);
+  font-size:var(--t-xs); color:var(--fg-dim);
+}
+.ip-hint svg { flex:none; margin-top:1px; color:var(--fg-dim); }
+
+/* 미추가 미리보기 카드 상태 */
+.ip-preview-schema {
+  margin:16px 0 0;
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  background:var(--bg-subtle);
+  padding:14px 16px 12px;
+  display:flex; gap:18px; align-items:center;
+}
+.ip-preview-schema .cap { font-size:var(--t-xs); color:var(--fg-dim); }
+.ip-preview-schema .cap b { display:block; color:var(--fg); font-weight:600; font-size:var(--t-sm); margin-bottom:2px; }
+.ip-defaults { margin-top:16px; }
+.ip-defaults-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:7px 2px; font-size:var(--t-sm);
+  border-bottom:1px solid var(--border);
+}
+.ip-defaults-row:last-child { border-bottom:none; }
+.ip-defaults-row .k { color:var(--fg-dim); }
+.ip-defaults-row .v { color:var(--fg); font-variant-numeric:tabular-nums; }
+.ip-cta-row { margin-top:20px; display:flex; align-items:center; gap:12px; }
+.ip-cta {
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--accent); color:var(--accent-fg);
+  font-size:var(--t-base); font-weight:600;
+  padding:8px 16px; border-radius:var(--r-lg);
+  transition:filter 80ms ease-in-out;
+}
+.ip-cta:hover { filter:brightness(1.06); }
+.ip-cta-note { font-size:var(--t-xs); color:var(--fg-dim); max-width:32ch; }
+
+/* ⋯ 오버플로 메뉴 스펙 인셋 */
+.menu-spec {
+  width:236px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-lg); box-shadow:var(--shadow-overlay); padding:4px;
+}
+.menu-spec .mi {
+  display:block; width:100%; text-align:left;
+  padding:7px 10px; border-radius:var(--r-md); font-size:var(--t-sm);
+}
+.menu-spec .mi:hover { background:var(--bg-input-hover); }
+.menu-spec .mi small { display:block; font-size:var(--t-xs); color:var(--fg-dim); }
+.menu-spec .confirm {
+  margin-top:2px; padding:7px 10px; border-top:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  font-size:var(--t-xs); color:var(--fg-dim);
+}
+.menu-spec .confirm .btns { display:flex; gap:4px; }
+.menu-spec .confirm button { font-size:var(--t-xs); padding:3px 8px; border-radius:var(--r-md); }
+.menu-spec .confirm .cancel:hover { background:var(--bg-input-hover); }
+.menu-spec .confirm .go { background:var(--error); color:#fff; font-weight:600; }
+
+/* ── 아트보드 ⑤ — 당일 최대벽: 방향 × 계열 매트릭스 ── */
+.pw-schema {
+  margin:14px 0 0;
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  background:var(--bg-subtle); padding:12px 14px;
+}
+.pw-schema-legend { display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; }
+.pw-schema-legend span {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:var(--t-xs); color:var(--fg-dim);
+}
+.pw-schema-legend i { width:14px; height:0; border-top:2px solid; border-radius:1px; }
+
+.pw-mhead, .pw-mrow {
+  display:grid; grid-template-columns:116px 1fr 1fr; gap:8px; align-items:center;
+}
+.pw-mhead { padding:2px 0 6px; }
+.pw-side-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 8px; font-size:var(--t-sm); font-weight:600;
+}
+.pw-mrow { border-top:1px solid var(--border); padding:5px 0; }
+.pw-rowlabel .n { font-size:var(--t-sm); font-weight:500; }
+.pw-rowlabel .s { font-size:var(--t-2xs); color:var(--fg-dim); margin-top:1px; }
+.pw-cell {
+  display:flex; align-items:center; gap:6px;
+  padding:6px; border-radius:var(--r-lg); cursor:pointer;
+  transition:background-color 80ms ease-in-out;
+}
+.pw-cell:hover { background:var(--bg-input-hover); }
+.pw-cell.selected { background:var(--tint-selection); } /* 선택 = tint 만 (규칙) */
+.pw-cell.off { opacity:0.55; }
+
+/* 미니 스위치 — 매트릭스 밀도용 26×15 */
+.msw {
+  flex:none; width:26px; height:15px; border-radius:999px; position:relative;
+  border:1px solid var(--border); background:var(--bg-input-hover);
+  transition:background-color 150ms ease-in-out;
+}
+.msw i {
+  position:absolute; top:1px; left:1px; width:11px; height:11px;
+  border-radius:50%; background:var(--fg-dim); transition:transform 150ms ease-in-out;
+}
+.msw.on { background:var(--accent); border-color:var(--accent); }
+.msw.on i { background:var(--accent-fg); transform:translateX(11px); }
+
+.pw-swatch {
+  display:flex; align-items:center; gap:4px; height:22px; padding:0 6px;
+  border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg-input);
+}
+.pw-swatch .line {
+  width:18px; height:0; border-top-style:solid; border-radius:1px;
+  box-shadow:0 0 0 1px rgba(25,31,40,0.08);
+}
+.theme-obsidian .pw-swatch .line { box-shadow:0 0 0 1px rgba(255,255,255,0.14); }
+.pw-swatch .caret { color:var(--fg-dimmer); font-size:7px; }
+
+.rank3 {
+  display:inline-flex; overflow:hidden;
+  border:1px solid var(--border); border-radius:var(--r-md);
+}
+.rank3 button {
+  width:17px; height:20px; font-size:var(--t-2xs); font-variant-numeric:tabular-nums;
+  color:var(--fg-dim); border-right:1px solid var(--border);
+}
+.rank3 button:last-child { border-right:none; }
+.rank3 button.sel { background:var(--accent); color:var(--accent-fg); }
+
+.pw-funnel {
+  display:inline-flex; align-items:center; gap:2px; margin-left:auto;
+  font-size:var(--t-2xs); font-variant-numeric:tabular-nums; color:var(--fg-dim);
+}
+.pw-funnel svg { width:9px; height:9px; }
+.pw-funnel.warn { color:var(--warn); font-weight:700; }
+
+/* 방향 공용 푸터 행 + 전역 행 */
+.pw-shared-label { display:flex; align-items:center; gap:5px; }
+.pw-shared-label svg { color:var(--fg-dim); }
+.pw-global {
+  margin-top:10px; display:flex; align-items:center; justify-content:space-between;
+  padding:8px 10px; border-radius:var(--r-lg); background:var(--bg-subtle);
+}
+.pw-global .gl { font-size:var(--t-sm); }
+.pw-global .gd { font-size:var(--t-2xs); color:var(--fg-dim); margin-top:1px; }
+.pw-global .badge {
+  font-size:var(--t-badge); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim); border:1px solid var(--border-strong); border-radius:999px;
+  padding:1px 6px; margin-left:8px; vertical-align:1px;
+}
+
+/* 선택 셀의 세부 존 */
+.pw-zone {
+  margin-top:14px; background:var(--bg-subtle);
+  border-radius:var(--r-lg); padding:11px 14px 6px;
+}
+.pw-zone-head {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding-bottom:4px;
+}
+.pw-zone-head .t { font-size:var(--t-sm); font-weight:600; }
+.pw-readout {
+  font-size:var(--t-2xs); color:var(--fg-dim);
+  background:var(--tint-neutral); border-radius:999px; padding:2px 8px;
+  font-variant-numeric:tabular-nums;
+}
+.pw-readout.warn { color:var(--warn); background:var(--tint-warn); }
+.pw-zlabel {
+  margin:8px 0 0; font-size:var(--t-2xs); font-weight:600;
+  text-transform:uppercase; color:var(--fg-dimmer);
+}
+.pw-trow {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:6px 0; border-bottom:1px solid var(--border);
+}
+.pw-trow:last-of-type { border-bottom:none; }
+.pw-trow .tl { font-size:var(--t-sm); }
+.pw-trow .td { font-size:var(--t-2xs); color:var(--fg-dim); margin-top:1px; }
+.pw-trow .ctr { display:flex; align-items:center; gap:8px; flex:none; }
+.pw-mini-num {
+  width:52px; height:24px; padding:0 7px; text-align:right;
+  font-size:var(--t-sm); font-variant-numeric:tabular-nums;
+  border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--bg-input); color:var(--fg);
+}
+.pw-zone-foot { padding:7px 0 5px; font-size:var(--t-2xs); color:var(--fg-dim); }
+
+/* 현행 → 새 자리 대응표 */
+.map-table { width:100%; border-collapse:collapse; margin-top:14px; }
+.map-table th {
+  text-align:left; font-size:var(--t-xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim); padding:6px 10px; border-bottom:1px solid var(--border-strong);
+}
+.map-table td {
+  font-size:var(--t-sm); padding:6px 10px; vertical-align:top;
+  border-bottom:1px solid var(--border);
+}
+.map-table td:first-child { color:var(--fg); white-space:nowrap; }
+.map-table td:last-child { color:var(--fg-dim); }
+.map-table .gone { color:var(--fg-dim); font-style:normal; }
+
+/* 글리프 스펙 그리드 */
+.glyph-grid {
+  display:grid; grid-template-columns:repeat(5, 1fr); gap:10px;
+}
+.glyph-cell {
+  background:var(--bg-card); border-radius:var(--r-lg); box-shadow:var(--shadow-panel);
+  padding:14px 12px 12px; text-align:center;
+}
+.glyph-cell svg { width:28px; height:28px; color:var(--fg); }
+.glyph-cell .gname { margin-top:8px; font-size:var(--t-sm); font-weight:500; }
+.glyph-cell .gtype {
+  margin-top:3px; display:inline-block;
+  font-size:var(--t-2xs); font-weight:600; text-transform:uppercase;
+  color:var(--fg-dim); background:var(--tint-neutral);
+  border-radius:var(--r-sm); padding:1px 6px;
+}
+
+/* 구현 노트 */
+.impl { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.impl-card {
+  background:var(--bg-card); border-radius:var(--r-lg); box-shadow:var(--shadow-panel);
+  padding:16px 18px;
+}
+.impl-card h3 { font-size:var(--t-md); font-weight:600; margin-bottom:6px; }
+.impl-card p, .impl-card li { font-size:var(--t-sm); color:var(--fg-dim); }
+.impl-card ul { padding-left:16px; display:grid; gap:4px; }
+.impl-card b { color:var(--fg); font-weight:600; }
+.impl-card .math {
+  margin-top:8px; padding:8px 10px; background:var(--bg-subtle);
+  border-radius:var(--r-md); font-size:var(--t-xs); color:var(--fg-dim);
+  font-variant-numeric:tabular-nums;
+}
+
+.doc-foot {
+  margin-top:72px; padding-top:16px; border-top:1px solid var(--border);
+  font-size:var(--t-xs); color:var(--fg-dim);
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ 지표 글리프 심볼 정의 (15종 + 고스트 프레임) ═══════════════
+     규칙: 단색 currentColor. 오버레이 지표 = 캔들 고스트(불투명도 .2) 위에 마크,
+     하단 패널 지표 = y=9.75 구분선 아래 스트립에 마크. 글리프 하나가
+     "어떻게 생겼나 + 어디에 그려지나"를 동시에 답한다. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 오버레이용 캔들 고스트 -->
+    <g id="ghost-candles" opacity="0.2">
+      <line x1="4.5" y1="2.5" x2="4.5" y2="12.5" stroke="currentColor" stroke-width="1"/>
+      <rect x="3" y="5" width="3" height="4.5" rx="0.5" fill="currentColor"/>
+      <line x1="10.5" y1="1.5" x2="10.5" y2="11" stroke="currentColor" stroke-width="1"/>
+      <rect x="9" y="3.5" width="3" height="5" rx="0.5" fill="currentColor"/>
+    </g>
+    <!-- 하단 패널용 프레임: 축소된 고스트 + 구분선 -->
+    <g id="pane-frame">
+      <g opacity="0.16">
+        <rect x="3.5" y="2.5" width="2.5" height="4" rx="0.5" fill="currentColor"/>
+        <rect x="9.5" y="1.5" width="2.5" height="4.5" rx="0.5" fill="currentColor"/>
+      </g>
+      <line x1="1" y1="8.75" x2="15" y2="8.75" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+    </g>
+
+    <symbol id="g-ma" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <path d="M1.5 11.5 C4 10.5 5 6.5 8 6.5 C11 6.5 12 4.5 14.5 3.5"
+            fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-dma" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <path d="M1.5 12 C4.5 11.5 6 8 9 7 C11.5 6.2 13 5 14.5 4.5"
+            fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+            stroke-dasharray="2.6 2"/>
+    </symbol>
+    <symbol id="g-vol" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <rect x="2"  y="12.5" width="2.4" height="2.5" fill="currentColor"/>
+      <rect x="5.2" y="11"  width="2.4" height="4"   fill="currentColor"/>
+      <rect x="8.4" y="12"  width="2.4" height="3"   fill="currentColor"/>
+      <rect x="11.6" y="10.5" width="2.4" height="4.5" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-quote-totals" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <path d="M1.5 11.5 L6 12.5 L10 11 L14.5 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M1.5 14 L6 13 L10 14.2 L14.5 13.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.5"/>
+    </symbol>
+    <symbol id="g-ratio" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <line x1="1.5" y1="12.75" x2="14.5" y2="12.75" stroke="currentColor" stroke-width="0.8" opacity="0.35" stroke-dasharray="1.5 1.5"/>
+      <path d="M1.5 13.5 L5 11 L8.5 14 L11.5 11.5 L14.5 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-fill" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <path d="M1.5 14 C4 14 5 10.8 8 11.5 C11 12.2 12.5 11 14.5 11.2"
+            fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-vd" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <rect x="8"  y="3"    width="6.5" height="2" fill="currentColor" opacity="0.45"/>
+      <rect x="10" y="6.2"  width="4.5" height="2" fill="currentColor"/>
+      <rect x="6.5" y="9.4" width="8"   height="2" fill="currentColor" opacity="0.7"/>
+      <rect x="11" y="12.6" width="3.5" height="2" fill="currentColor" opacity="0.45"/>
+    </symbol>
+    <symbol id="g-poc" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <line x1="1" y1="7.5" x2="15" y2="7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-peak-walls" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <line x1="6" y1="4"  x2="15" y2="4"  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="1" y1="11.5" x2="10" y2="11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+    </symbol>
+    <symbol id="g-heatmap" viewBox="0 0 16 16">
+      <rect x="2"  y="2"  width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.25"/>
+      <rect x="8.5" y="2"  width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.55"/>
+      <rect x="2"  y="5.4" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.85"/>
+      <rect x="8.5" y="5.4" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.35"/>
+      <rect x="2"  y="8.8" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.45"/>
+      <rect x="8.5" y="8.8" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.7"/>
+      <rect x="2"  y="12.2" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.2"/>
+      <rect x="8.5" y="12.2" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.4"/>
+    </symbol>
+    <symbol id="g-wall-surge" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <path d="M8 12.5 L8 5.5 M5.2 8.3 L8 5.5 L10.8 8.3"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="g-foreign" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <line x1="1" y1="12.25" x2="15" y2="12.25" stroke="currentColor" stroke-width="0.8" opacity="0.35"/>
+      <rect x="2"   y="10"    width="2.4" height="2.25" fill="currentColor"/>
+      <rect x="5.2" y="12.25" width="2.4" height="2.2"  fill="currentColor" opacity="0.5"/>
+      <rect x="8.4" y="9.4"   width="2.4" height="2.85" fill="currentColor"/>
+      <rect x="11.6" y="10.6" width="2.4" height="1.65" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-inst" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <line x1="1" y1="12.25" x2="15" y2="12.25" stroke="currentColor" stroke-width="0.8" opacity="0.35"/>
+      <rect x="2"   y="12.25" width="2.4" height="2.4"  fill="currentColor" opacity="0.5"/>
+      <rect x="5.2" y="10.3"  width="2.4" height="1.95" fill="currentColor"/>
+      <rect x="8.4" y="12.25" width="2.4" height="1.6"  fill="currentColor" opacity="0.5"/>
+      <rect x="11.6" y="9.6"  width="2.4" height="2.65" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-broker" viewBox="0 0 16 16">
+      <use href="#ghost-candles"/>
+      <line x1="13" y1="3" x2="13" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M13 3 L7.5 5 L13 7 Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-program" viewBox="0 0 16 16">
+      <use href="#pane-frame"/>
+      <line x1="1" y1="12.5" x2="15" y2="12.5" stroke="currentColor" stroke-width="0.8" opacity="0.35"/>
+      <path d="M1.5 13.8 L4.5 11 L8 13.5 L11 10.5 L14.5 11.5"
+            fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </symbol>
+    <!-- 문서 UI 아이콘 -->
+    <symbol id="i-search" viewBox="0 0 16 16">
+      <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="10.2" y1="10.2" x2="13.5" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16">
+      <path d="M1.5 8 C3.5 4.7 6 3.2 8 3.2 C10 3.2 12.5 4.7 14.5 8 C12.5 11.3 10 12.8 8 12.8 C6 12.8 3.5 11.3 1.5 8 Z"
+            fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <circle cx="8" cy="8" r="2" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-funnel" viewBox="0 0 16 16">
+      <path d="M2 3 H14 L9.8 8.5 V13 L6.2 11.2 V8.5 Z" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="doc">
+
+  <!-- ══════════════════════════ 헤더 ══════════════════════════ -->
+  <div class="doc-eyebrow">hoga-ops 디자인 제안 · 2026-08-26</div>
+  <h1>보조지표 패널 리디자인</h1>
+  <p class="doc-thesis">
+    두 개의 목록(내 지표 ↔ 카탈로그)을 오가던 패널을 <strong>고정 순서의 단일 리스트</strong>로
+    합치고, 지표마다 <strong>생김새와 그려질 위치를 동시에 말하는 글리프</strong>를 부여한다.
+    아직 추가하지 않은 지표는 설정 폼 대신 <strong>미리보기 카드</strong>로 답하고,
+    검색을 신설하며, 파괴적 초기화는 ⋯ 메뉴로 물러난다.
+    확정된 결정은 전부 그대로다 — 이 제안은 그 결정들 <em>안에서의</em> 재설계다.
+  </p>
+  <div class="kept">
+    <span class="kept-chip"><b>중앙 모달</b> 유지 — 2026-08-21 A/B 사용자 결정</span>
+    <span class="kept-chip"><b>추가/삭제 어휘</b> 유지 — 가시성은 레전드 눈 (2026-08-25)</span>
+    <span class="kept-chip"><b>라벨=미리보기 · ＋=추가</b> 유지</span>
+    <span class="kept-chip"><b>760px · nav 240px</b> 상수 유지 (workspacePanel.ts)</span>
+    <span class="kept-chip"><b>선택 행 = tint 배경만</b> — 액센트 바 금지 규칙 준수</span>
+  </div>
+
+  <!-- ══════════════════════════ 진단 ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">진단</div>
+    <h2>현행 패널의 네 가지 마찰</h2>
+    <div class="diag">
+      <div class="diag-card">
+        <h3><span class="no">1</span>모드 플립이 전체 그림을 가린다</h3>
+        <p>「내 지표」와 「카탈로그」가 서로를 완전히 대체한다. 15개 중 무엇이 켜져
+        있는지 한 화면에서 볼 수 없고, 추가 한 번에 목록 전체가 갈아엎어진다.
+        「내 지표」 모드에서는 그룹 구조도 사라진다.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">2</span>텍스트 행만으로는 지표를 못 그려본다</h3>
+        <p>「호가벽 급증」이 선인지 마커인지, 캔들 위에 겹치는지 하단 패널을 차지하는지
+        이름만으로 유추해야 한다. 추가해 보기 전까지 차트에 무슨 일이 생길지 모른다.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">3</span>존재하지 않는 지표의 설정 폼이 열린다</h3>
+        <p>카탈로그에서 라벨을 누르면(미리보기 의도) 우측에 <em>추가되지 않은</em> 지표의
+        편집 가능한 설정 폼이 그대로 뜬다. 미리보기와 편집이 같은 화면이라
+        "지금 이걸 만지면 무슨 일이 나는가"가 불분명하다.</p>
+      </div>
+      <div class="diag-card">
+        <h3><span class="no">4</span>검색이 없고, 파괴적 액션이 상석에 있다</h3>
+        <p>15개 항목에 검색이 없다. 반면 가장 위험한 「현재 봉 초기화」는 nav 하단에
+        상시 노출되어 매일 쓰는 목록의 높이(실측 903px 요구)를 잡아먹는다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 아트보드 ① ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ①</div>
+    <h2>단일 리스트 + 통일된 설정 문법</h2>
+    <p class="sec-lede">
+      기본 상태. 좌측은 전 지표가 <strong>항상 같은 자리</strong>에 있는 단일 리스트 —
+      추가 여부는 행이 이동하는 대신 행 <strong>안의</strong> 상태(글리프 톤 · 이름 무게 ·
+      인스턴스 색 점 · ＋/✕)로 바뀐다. 우측은 추가된 「이동평균선」의 설정.
+    </p>
+
+    <div class="board">
+      <span class="board-tag">Toss Light · 760×700 · 실척</span>
+
+      <!-- 핀 -->
+      <span class="pin on-board" style="top:70px;  left:calc(50% - 380px - 9px);">1</span>
+      <span class="pin on-board" style="top:115px; left:calc(50% - 380px - 9px);">2</span>
+      <span class="pin on-board" style="top:210px; left:calc(50% - 380px - 9px);">3</span>
+      <span class="pin on-board" style="top:66px;  left:calc(50% + 380px - 9px);">4</span>
+      <span class="pin on-board" style="top:195px; left:calc(50% + 380px - 9px);">5</span>
+      <span class="pin on-board" style="top:418px; left:calc(50% + 380px - 9px);">6</span>
+
+      <div class="modal">
+        <!-- ───────── nav ───────── -->
+        <aside class="ip-nav">
+          <div class="ip-search">
+            <div class="ip-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="지표 검색" aria-label="지표 검색">
+            </div>
+          </div>
+          <div class="ip-list">
+            <div class="ip-ghead">상단 지표 <span class="gcount num">2/3</span></div>
+            <div class="ip-row added selected">
+              <svg class="ip-glyph"><use href="#g-ma"/></svg>
+              <span class="ip-name">이동평균선</span>
+              <span class="ip-dots">
+                <i style="background:#EC4899"></i><i style="background:#F97316"></i>
+                <i style="background:#22C55E"></i><i style="background:#F8FAFC"></i>
+              </span>
+              <button class="ip-act remove" title="이동평균선 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-dma"/></svg>
+              <span class="ip-name">일봉 이동평균선</span>
+              <button class="ip-act" title="일봉 이동평균선 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-vol"/></svg>
+              <span class="ip-name">거래량</span>
+              <span class="ip-dots"><i style="background:#64748B"></i></span>
+              <button class="ip-act remove" title="거래량 삭제">✕</button>
+            </div>
+
+            <div class="ip-ghead">10호가 지표 <span class="gcount num">2/8</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-quote-totals"/></svg>
+              <span class="ip-name">총잔량</span>
+              <button class="ip-act" title="총잔량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-ratio"/></svg>
+              <span class="ip-name">호가비</span>
+              <button class="ip-act" title="호가비 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-fill"/></svg>
+              <span class="ip-name">체결강도</span>
+              <span class="ip-dots"><i style="background:#8B5CF6"></i></span>
+              <button class="ip-act remove" title="체결강도 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-vd"/></svg>
+              <span class="ip-name">연속체결 매물대 분포</span>
+              <button class="ip-act" title="연속체결 매물대 분포 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-poc"/></svg>
+              <span class="ip-name">당일 최대 매물대</span>
+              <button class="ip-act" title="당일 최대 매물대 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-peak-walls"/></svg>
+              <span class="ip-name">당일 최대벽</span>
+              <button class="ip-act" title="당일 최대벽 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-heatmap"/></svg>
+              <span class="ip-name">호가 잔량 히트맵</span>
+              <span class="ip-dots"><i style="background:#F04452"></i><i style="background:#3485FA"></i></span>
+              <button class="ip-act remove" title="호가 잔량 히트맵 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-wall-surge"/></svg>
+              <span class="ip-name">호가벽 급증</span>
+              <button class="ip-act" title="호가벽 급증 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">거래원 지표 <span class="gcount num">0/3</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-foreign"/></svg>
+              <span class="ip-name">외국인 순매수량</span>
+              <button class="ip-act" title="외국인 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-inst"/></svg>
+              <span class="ip-name">기관 순매수량</span>
+              <button class="ip-act" title="기관 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-broker"/></svg>
+              <span class="ip-name">신규 거래원 등장</span>
+              <button class="ip-act" title="신규 거래원 등장 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">프로그램 지표 <span class="gcount num">0/1</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-program"/></svg>
+              <span class="ip-name">프로그램 순매수</span>
+              <button class="ip-act" title="프로그램 순매수 추가">＋</button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ───────── detail ───────── -->
+        <section class="ip-detail">
+          <header class="ip-dhead">
+            <div>
+              <div class="ip-eyebrow">상단 지표 <span class="place">· 캔들 오버레이</span></div>
+              <h2>이동평균선</h2>
+            </div>
+            <div class="ip-dactions">
+              <span class="ip-scope">삼성전자 · 분봉</span>
+              <button class="ip-iconb" title="패널 메뉴">⋯</button>
+              <button class="ip-iconb" title="닫기">✕</button>
+            </div>
+          </header>
+          <div class="ip-dbody">
+            <p class="ip-desc">지난 n봉 동안의 주가 평균값을 이은 선입니다. 기간을 여러 개
+            두면 각각 독립된 선으로 그려집니다.</p>
+
+            <div class="ip-slabel">구성 <span class="cnt num">기간 4</span></div>
+            <div class="ip-cols"><span>색 · 선</span><span>기준가</span><span>기간</span><span></span></div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#EC4899; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="5" aria-label="기간 1">
+              <button class="ip-act remove" title="기간 1 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#F97316; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="20" aria-label="기간 2">
+              <button class="ip-act remove" title="기간 2 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#22C55E; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="60" aria-label="기간 3">
+              <button class="ip-act remove" title="기간 3 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#F8FAFC; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="120" aria-label="기간 4">
+              <button class="ip-act remove" title="기간 4 삭제">✕</button>
+            </div>
+            <button class="ip-addline">＋ 기간 추가</button>
+
+            <div class="ip-hint">
+              <svg width="12" height="12"><use href="#i-eye"/></svg>
+              <span>표시/숨김은 차트 레전드의 눈 아이콘이 담당합니다 — 이 패널은
+              추가와 삭제, 그리고 세부 설정만 다룹니다.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>검색 신설.</b> 패널이 열리면 검색이
+        포커스를 받는다. 입력 즉시 필터 — 아트보드 ③ 참조.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>단일 리스트.</b> 모드 플립 폐지.
+        전 지표가 카탈로그 고정 순서로 항상 보이므로 행이 커서 밑에서 움직일 일이 없다 —
+        2모드 분리의 원래 근거를 구조로 해소한다. 그룹 헤더의 <b>2/3</b> 카운트가
+        "몇 개나 쓰고 있나"를 상시 답한다.</span></div>
+      <div class="note"><span class="pin">3</span><span><b>행 안의 상태.</b> 추가된 지표는
+        이름이 진해지고(500), 차트에 실제 그려지는 <b>인스턴스 색 점</b>이 붙는다 — 점은
+        장식이 아니라 레전드·차트와 같은 색의 메아리다. 액션은 미추가 ＋ / 추가됨 ✕ 하나뿐.
+        라벨 클릭=미리보기, ＋=추가 어휘는 그대로다.</span></div>
+      <div class="note"><span class="pin">4</span><span><b>위치를 말하는 eyebrow.</b>
+        그룹명 옆에 <b>캔들 오버레이 / 하단 패널</b>을 명시 — 글리프가 암시한 것을
+        텍스트로 확정한다.</span></div>
+      <div class="note"><span class="pin">5</span><span><b>통일된 설정 문법.</b> 인스턴스형
+        지표(이동평균·거래원 등장 등)는 전부 <b>열 헤더 + 정렬 그리드 + ＋ 행 추가</b>의
+        같은 문법을 쓴다. 숫자는 전부 tnum 우측 정렬. 밝은 색 스와치는 상시 헤어라인
+        보더로 흰 배경에서도 읽힌다.</span></div>
+      <div class="note"><span class="pin">6</span><span><b>어휘 힌트.</b> "왜 여기엔 켜기/끄기가
+        없지?"라는 첫 의문에 패널이 스스로 답한다 — 가시성은 레전드 눈의 소관.</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 아트보드 ② ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ②</div>
+    <h2>미추가 지표 = 미리보기 카드</h2>
+    <p class="sec-lede">
+      카탈로그에서 「당일 최대벽」 라벨을 눌러 미리보는 상태. 설정 폼 대신
+      <strong>설명 + 그려질 위치 스키마 + 기본값 요약 + 추가 CTA</strong>가 뜬다.
+      "추가하면 차트에 무슨 일이 생기는가"를 폼 없이 답하고, 편집은 추가 후에만 연다.
+    </p>
+
+    <div class="board">
+      <span class="board-tag">Toss Light · 미리보기 상태</span>
+
+      <span class="pin on-board" style="top:445px; left:calc(50% - 380px - 9px);">1</span>
+      <span class="pin on-board" style="top:255px; left:calc(50% + 380px - 9px);">2</span>
+      <span class="pin on-board" style="top:498px; left:calc(50% + 380px - 9px);">3</span>
+
+      <div class="modal">
+        <aside class="ip-nav">
+          <div class="ip-search">
+            <div class="ip-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="지표 검색" aria-label="지표 검색">
+            </div>
+          </div>
+          <div class="ip-list">
+            <div class="ip-ghead">상단 지표 <span class="gcount num">2/3</span></div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-ma"/></svg>
+              <span class="ip-name">이동평균선</span>
+              <span class="ip-dots">
+                <i style="background:#EC4899"></i><i style="background:#F97316"></i>
+                <i style="background:#22C55E"></i><i style="background:#F8FAFC"></i>
+              </span>
+              <button class="ip-act remove" title="이동평균선 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-dma"/></svg>
+              <span class="ip-name">일봉 이동평균선</span>
+              <button class="ip-act" title="일봉 이동평균선 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-vol"/></svg>
+              <span class="ip-name">거래량</span>
+              <span class="ip-dots"><i style="background:#64748B"></i></span>
+              <button class="ip-act remove" title="거래량 삭제">✕</button>
+            </div>
+
+            <div class="ip-ghead">10호가 지표 <span class="gcount num">2/8</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-quote-totals"/></svg>
+              <span class="ip-name">총잔량</span>
+              <button class="ip-act" title="총잔량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-ratio"/></svg>
+              <span class="ip-name">호가비</span>
+              <button class="ip-act" title="호가비 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-fill"/></svg>
+              <span class="ip-name">체결강도</span>
+              <span class="ip-dots"><i style="background:#8B5CF6"></i></span>
+              <button class="ip-act remove" title="체결강도 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-vd"/></svg>
+              <span class="ip-name">연속체결 매물대 분포</span>
+              <button class="ip-act" title="연속체결 매물대 분포 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-poc"/></svg>
+              <span class="ip-name">당일 최대 매물대</span>
+              <button class="ip-act" title="당일 최대 매물대 추가">＋</button>
+            </div>
+            <div class="ip-row selected">
+              <svg class="ip-glyph"><use href="#g-peak-walls"/></svg>
+              <span class="ip-name">당일 최대벽</span>
+              <button class="ip-act" title="당일 최대벽 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-heatmap"/></svg>
+              <span class="ip-name">호가 잔량 히트맵</span>
+              <span class="ip-dots"><i style="background:#F04452"></i><i style="background:#3485FA"></i></span>
+              <button class="ip-act remove" title="호가 잔량 히트맵 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-wall-surge"/></svg>
+              <span class="ip-name">호가벽 급증</span>
+              <button class="ip-act" title="호가벽 급증 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">거래원 지표 <span class="gcount num">0/3</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-foreign"/></svg>
+              <span class="ip-name">외국인 순매수량</span>
+              <button class="ip-act" title="외국인 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-inst"/></svg>
+              <span class="ip-name">기관 순매수량</span>
+              <button class="ip-act" title="기관 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-broker"/></svg>
+              <span class="ip-name">신규 거래원 등장</span>
+              <button class="ip-act" title="신규 거래원 등장 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">프로그램 지표 <span class="gcount num">0/1</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-program"/></svg>
+              <span class="ip-name">프로그램 순매수</span>
+              <button class="ip-act" title="프로그램 순매수 추가">＋</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="ip-detail">
+          <header class="ip-dhead">
+            <div>
+              <div class="ip-eyebrow">10호가 지표 <span class="place">· 캔들 오버레이 · 분봉 전용</span></div>
+              <h2>당일 최대벽</h2>
+            </div>
+            <div class="ip-dactions">
+              <span class="ip-scope">삼성전자 · 분봉</span>
+              <button class="ip-iconb" title="패널 메뉴">⋯</button>
+              <button class="ip-iconb" title="닫기">✕</button>
+            </div>
+          </header>
+          <div class="ip-dbody">
+            <p class="ip-desc">차트에 보이는 거래일마다, 그날 10호가 중 한 단계에 가장 크게
+            걸렸던 물량의 가격에 그날 구간만큼 수평선을 그립니다. 매도벽과 매수벽을 각각
+            설정합니다.</p>
+
+            <div class="ip-preview-schema">
+              <!-- 그려질 위치 스키마 — 시세색 규율: 매도=price-down(청), 매수=price-up(적) -->
+              <svg width="220" height="110" viewBox="0 0 220 110" role="img"
+                   aria-label="당일 최대벽이 캔들 차트 위에 그려지는 위치">
+                <rect x="0.5" y="0.5" width="219" height="109" rx="5"
+                      fill="var(--bg-card)" stroke="var(--border)"/>
+                <g opacity="0.35" stroke="var(--fg-dimmer)" stroke-width="1">
+                  <line x1="30" y1="30" x2="30" y2="88"/><rect x="24" y="44" width="12" height="26" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                  <line x1="62" y1="22" x2="62" y2="80"/><rect x="56" y="34" width="12" height="24" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                  <line x1="94" y1="30" x2="94" y2="72"/><rect x="88" y="38" width="12" height="20" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                  <line x1="126" y1="18" x2="126" y2="66"/><rect x="120" y="26" width="12" height="24" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                  <line x1="158" y1="24" x2="158" y2="60"/><rect x="152" y="30" width="12" height="18" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                  <line x1="190" y1="16" x2="190" y2="56"/><rect x="184" y="22" width="12" height="20" rx="1" fill="var(--fg-dimmer)" stroke="none"/>
+                </g>
+                <line x1="112" y1="20" x2="208" y2="20" stroke="var(--price-down)" stroke-width="3" stroke-linecap="round"/>
+                <line x1="14" y1="78" x2="110" y2="78" stroke="var(--price-up)" stroke-width="3" stroke-linecap="round"/>
+                <text x="206" y="34" text-anchor="end" font-size="9" fill="var(--price-down)">매도 최대벽</text>
+                <text x="16" y="92" font-size="9" fill="var(--price-up)">매수 최대벽</text>
+              </svg>
+              <div class="cap">
+                <b>캔들 위 오버레이</b>
+                하단 패널을 차지하지 않고 가격축 위에 직접 그려집니다.
+                일봉·주봉에서는 표시되지 않습니다.
+              </div>
+            </div>
+
+            <div class="ip-slabel">기본 구성</div>
+            <div class="ip-defaults">
+              <div class="ip-defaults-row"><span class="k">방향</span><span class="v">매도 · 매수 각각</span></div>
+              <div class="ip-defaults-row"><span class="k">벽 종류</span><span class="v">체결된 벽 · 표시 1개</span></div>
+              <div class="ip-defaults-row"><span class="k">수평선</span><span class="v">캔들 차트에 표시</span></div>
+            </div>
+
+            <div class="ip-cta-row">
+              <button class="ip-cta">＋ 차트에 추가</button>
+              <span class="ip-cta-note">추가하면 차트에 바로 그려지고, 세부 설정이
+              이 자리에서 이어집니다.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>선택 ≠ 추가.</b> 미추가 지표를
+        선택하면 행은 tint 로 표시되지만 색 점은 없다 — "보고 있다"와 "차트에 있다"가
+        시각적으로 갈린다.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>위치 스키마.</b> 어느 자리에
+        무엇이 그려지는지 실제 시세색(매도=청·매수=적, KRX 규율)으로 보여준다.
+        분봉 전용 같은 제약도 여기서 미리 말한다.</span></div>
+      <div class="note"><span class="pin">3</span><span><b>추가가 유일한 CTA.</b> 미리보기
+        상태의 액센트는 이 버튼 하나다. 추가 즉시 이 화면이 설정 폼(아트보드 ① 문법)으로
+        전환되므로 "추가 → 어디 갔지?" 없이 흐름이 이어진다. 폼 전환은 150ms ease-out
+        페이드 하나 — 행은 움직이지 않는다.</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 아트보드 ③ ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ③</div>
+    <h2>검색 + 오버플로 메뉴</h2>
+    <p class="sec-lede">
+      좌: 「매물」 검색 상태 — 일치 그룹만 남고 일치 부분이 강조된다. 첫 결과가 키보드
+      포커스(전역 focus-visible 액센트 링, inset −2px)를 받는다.
+      우: ⋯ 오버플로 메뉴 — 「현재 봉 초기화」가 상시 푸터에서 이곳으로 물러난다
+      (파괴적 사다리 2단: 인라인 2단계 확인 유지).
+    </p>
+
+    <div class="board" style="gap:48px; align-items:flex-start;">
+      <span class="board-tag">Toss Light · 부분 상태 2종</span>
+
+      <span class="pin on-board" style="top:126px; left:calc(50% - 262px - 9px);">1</span>
+      <span class="pin on-board" style="top:162px; left:calc(50% - 262px - 9px);">2</span>
+      <span class="pin on-board" style="top:60px;  left:calc(50% + 262px - 9px);">3</span>
+
+      <div class="modal nav-only">
+        <aside class="ip-nav">
+          <div class="ip-search">
+            <div class="ip-search-box focused">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" value="매물" aria-label="지표 검색">
+            </div>
+            <div class="ip-search-meta">2개 일치 · Esc 로 지우기</div>
+          </div>
+          <div class="ip-list" style="padding-bottom:14px;">
+            <div class="ip-ghead">10호가 지표</div>
+            <div class="ip-row kbd-focus">
+              <svg class="ip-glyph"><use href="#g-vd"/></svg>
+              <span class="ip-name">연속체결 <mark>매물</mark>대 분포</span>
+              <button class="ip-act" title="연속체결 매물대 분포 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-poc"/></svg>
+              <span class="ip-name">당일 최대 <mark>매물</mark>대</span>
+              <button class="ip-act" title="당일 최대 매물대 추가">＋</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div>
+        <div class="menu-spec">
+          <button class="mi">
+            분봉 지표 초기화
+            <small>이 창의 분봉 설정만 기본값으로 되돌립니다</small>
+          </button>
+          <div class="confirm">
+            <span>분봉 초기화?</span>
+            <span class="btns">
+              <button class="cancel">취소</button>
+              <button class="go">초기화</button>
+            </span>
+          </div>
+        </div>
+        <p style="margin-top:10px; max-width:236px; font-size:var(--t-xs); color:var(--fg-dim);">
+          메뉴 열림 → 항목 클릭 → 같은 자리 인라인 확인. 현행과 같은 보호 수준을
+          유지하면서 nav 하단 상시 푸터 2행(모드 전환 + 초기화)을 없앤다.
+        </p>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>검색은 그룹을 보존한다.</b>
+        일치 행만 남되 소속 그룹 헤더는 유지 — "어느 계열의 지표인가"가 결과에서도
+        읽힌다. 강조는 tint 배경 + 600 무게(색 규율 안). 일치가 없으면
+        "일치하는 지표 없음" 빈 상태 한 줄.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>키보드 흐름.</b> 열림 → 검색
+        포커스 → ↑↓ 이동 → <b>Enter = 선택(미리보기)</b> → Esc(검색 지우기 → 패널 닫기
+        순). 추가는 어디서든 명시적이다 — 행의 ＋ 또는 미리보기의 [차트에 추가].
+        Enter 를 추가에 걸지 않는 이유는 어휘 결정과 같다: 보기 전에 차트가 바뀌면
+        안 된다. 전역 focus-visible 규칙 그대로.</span></div>
+      <div class="note"><span class="pin">3</span><span><b>초기화의 새 자리.</b> ⋯ 메뉴
+        안으로 — 빈도가 낮고 파괴적인 액션이 매일 쓰는 목록의 상석을 차지하지 않는다.
+        보호 수준(인라인 2단 확인)은 그대로다.</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 아트보드 ④ ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ④</div>
+    <h2>Obsidian 검증</h2>
+    <p class="sec-lede">
+      같은 마크업, 토큰만 Obsidian — 새 표면(글리프 · 색 점 · 미리보기 스키마 · 열 헤더)이
+      전부 토큰을 읽는다는 증명. 색 점의 헤어라인은 다크에서 흰 계열 보더로 뒤집힌다.
+    </p>
+
+    <div class="board theme-obsidian">
+      <span class="board-tag">Obsidian · 동일 마크업</span>
+      <div class="modal">
+        <aside class="ip-nav">
+          <div class="ip-search">
+            <div class="ip-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="지표 검색" aria-label="지표 검색">
+            </div>
+          </div>
+          <div class="ip-list">
+            <div class="ip-ghead">상단 지표 <span class="gcount num">2/3</span></div>
+            <div class="ip-row added selected">
+              <svg class="ip-glyph"><use href="#g-ma"/></svg>
+              <span class="ip-name">이동평균선</span>
+              <span class="ip-dots">
+                <i style="background:#EC4899"></i><i style="background:#F97316"></i>
+                <i style="background:#22C55E"></i><i style="background:#F8FAFC"></i>
+              </span>
+              <button class="ip-act remove" title="이동평균선 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-dma"/></svg>
+              <span class="ip-name">일봉 이동평균선</span>
+              <button class="ip-act" title="일봉 이동평균선 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-vol"/></svg>
+              <span class="ip-name">거래량</span>
+              <span class="ip-dots"><i style="background:#64748B"></i></span>
+              <button class="ip-act remove" title="거래량 삭제">✕</button>
+            </div>
+
+            <div class="ip-ghead">10호가 지표 <span class="gcount num">2/8</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-quote-totals"/></svg>
+              <span class="ip-name">총잔량</span>
+              <button class="ip-act" title="총잔량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-ratio"/></svg>
+              <span class="ip-name">호가비</span>
+              <button class="ip-act" title="호가비 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-fill"/></svg>
+              <span class="ip-name">체결강도</span>
+              <span class="ip-dots"><i style="background:#8B5CF6"></i></span>
+              <button class="ip-act remove" title="체결강도 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-vd"/></svg>
+              <span class="ip-name">연속체결 매물대 분포</span>
+              <button class="ip-act" title="연속체결 매물대 분포 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-poc"/></svg>
+              <span class="ip-name">당일 최대 매물대</span>
+              <button class="ip-act" title="당일 최대 매물대 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-peak-walls"/></svg>
+              <span class="ip-name">당일 최대벽</span>
+              <button class="ip-act" title="당일 최대벽 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-heatmap"/></svg>
+              <span class="ip-name">호가 잔량 히트맵</span>
+              <span class="ip-dots"><i style="background:#F04452"></i><i style="background:#3485FA"></i></span>
+              <button class="ip-act remove" title="호가 잔량 히트맵 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-wall-surge"/></svg>
+              <span class="ip-name">호가벽 급증</span>
+              <button class="ip-act" title="호가벽 급증 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">거래원 지표 <span class="gcount num">0/3</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-foreign"/></svg>
+              <span class="ip-name">외국인 순매수량</span>
+              <button class="ip-act" title="외국인 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-inst"/></svg>
+              <span class="ip-name">기관 순매수량</span>
+              <button class="ip-act" title="기관 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-broker"/></svg>
+              <span class="ip-name">신규 거래원 등장</span>
+              <button class="ip-act" title="신규 거래원 등장 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">프로그램 지표 <span class="gcount num">0/1</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-program"/></svg>
+              <span class="ip-name">프로그램 순매수</span>
+              <button class="ip-act" title="프로그램 순매수 추가">＋</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="ip-detail">
+          <header class="ip-dhead">
+            <div>
+              <div class="ip-eyebrow">상단 지표 <span class="place">· 캔들 오버레이</span></div>
+              <h2>이동평균선</h2>
+            </div>
+            <div class="ip-dactions">
+              <span class="ip-scope">삼성전자 · 분봉</span>
+              <button class="ip-iconb" title="패널 메뉴">⋯</button>
+              <button class="ip-iconb" title="닫기">✕</button>
+            </div>
+          </header>
+          <div class="ip-dbody">
+            <p class="ip-desc">지난 n봉 동안의 주가 평균값을 이은 선입니다. 기간을 여러 개
+            두면 각각 독립된 선으로 그려집니다.</p>
+
+            <div class="ip-slabel">구성 <span class="cnt num">기간 4</span></div>
+            <div class="ip-cols"><span>색 · 선</span><span>기준가</span><span>기간</span><span></span></div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#EC4899; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="5" aria-label="기간 1">
+              <button class="ip-act remove" title="기간 1 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#F97316; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="20" aria-label="기간 2">
+              <button class="ip-act remove" title="기간 2 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#22C55E; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="60" aria-label="기간 3">
+              <button class="ip-act remove" title="기간 3 삭제">✕</button>
+            </div>
+            <div class="ip-inst">
+              <button class="ip-swatch" title="색·선 스타일">
+                <span class="line" style="border-color:#F8FAFC; border-top-width:2px;"></span>
+                <span class="caret">▾</span>
+              </button>
+              <button class="ip-select">종가 <span class="caret">▾</span></button>
+              <input class="ip-num" value="120" aria-label="기간 4">
+              <button class="ip-act remove" title="기간 4 삭제">✕</button>
+            </div>
+            <button class="ip-addline">＋ 기간 추가</button>
+
+            <div class="ip-hint">
+              <svg width="12" height="12"><use href="#i-eye"/></svg>
+              <span>표시/숨김은 차트 레전드의 눈 아이콘이 담당합니다 — 이 패널은
+              추가와 삭제, 그리고 세부 설정만 다룹니다.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 아트보드 ⑤ ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">아트보드 ⑤ · 심화 적용</div>
+    <h2>당일 최대벽 — 방향 × 계열 매트릭스</h2>
+    <p class="sec-lede">
+      가장 복잡한 지표에 새 문법을 적용한 심화안. 매도|매수 탭을 없애고
+      <strong>열=방향, 행=계열의 매트릭스</strong>로 편다 — 2026-08-25 재구성이 세운
+      "위치가 스코프를 말한다" 원칙의 완성이다(탭 안/밖 관례가 필요했던 이유가
+      탭 그 자체였다). 셀을 선택하면 그 계열×방향의 세부가 아래 존에 열리고,
+      <strong>깔때기와 표시 개수 리드아웃</strong>이 "벽이 왜 안 보이나"(2026-08-26 조사:
+      MA 필터 기본 ON)에 화면이 직접 답하게 한다.
+    </p>
+
+    <div class="board">
+      <span class="board-tag">Toss Light · 당일 최대벽 설정</span>
+
+      <span class="pin on-board" style="top:440px; left:calc(50% - 380px - 9px);">1</span>
+      <span class="pin on-board" style="top:378px; left:calc(50% + 380px - 9px);">2</span>
+      <span class="pin on-board" style="top:417px; left:calc(50% + 380px - 9px);">3</span>
+      <span class="pin on-board" style="top:468px; left:calc(50% + 380px - 9px);">4</span>
+      <span class="pin on-board" style="top:600px; left:calc(50% + 380px - 9px);">5</span>
+      <span class="pin on-board" style="top:715px; left:calc(50% + 380px - 9px);">6</span>
+
+      <div class="modal" style="height:auto;">
+        <aside class="ip-nav">
+          <div class="ip-search">
+            <div class="ip-search-box">
+              <svg width="12" height="12"><use href="#i-search"/></svg>
+              <input type="text" placeholder="지표 검색" aria-label="지표 검색">
+            </div>
+          </div>
+          <div class="ip-list">
+            <div class="ip-ghead">상단 지표 <span class="gcount num">2/3</span></div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-ma"/></svg>
+              <span class="ip-name">이동평균선</span>
+              <span class="ip-dots">
+                <i style="background:#EC4899"></i><i style="background:#F97316"></i>
+                <i style="background:#22C55E"></i><i style="background:#F8FAFC"></i>
+              </span>
+              <button class="ip-act remove" title="이동평균선 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-dma"/></svg>
+              <span class="ip-name">일봉 이동평균선</span>
+              <button class="ip-act" title="일봉 이동평균선 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-vol"/></svg>
+              <span class="ip-name">거래량</span>
+              <span class="ip-dots"><i style="background:#64748B"></i></span>
+              <button class="ip-act remove" title="거래량 삭제">✕</button>
+            </div>
+
+            <div class="ip-ghead">10호가 지표 <span class="gcount num">3/8</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-quote-totals"/></svg>
+              <span class="ip-name">총잔량</span>
+              <button class="ip-act" title="총잔량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-ratio"/></svg>
+              <span class="ip-name">호가비</span>
+              <button class="ip-act" title="호가비 추가">＋</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-fill"/></svg>
+              <span class="ip-name">체결강도</span>
+              <span class="ip-dots"><i style="background:#8B5CF6"></i></span>
+              <button class="ip-act remove" title="체결강도 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-vd"/></svg>
+              <span class="ip-name">연속체결 매물대 분포</span>
+              <button class="ip-act" title="연속체결 매물대 분포 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-poc"/></svg>
+              <span class="ip-name">당일 최대 매물대</span>
+              <button class="ip-act" title="당일 최대 매물대 추가">＋</button>
+            </div>
+            <div class="ip-row added selected">
+              <svg class="ip-glyph"><use href="#g-peak-walls"/></svg>
+              <span class="ip-name">당일 최대벽</span>
+              <span class="ip-dots">
+                <i style="background:#1D4ED8"></i><i style="background:#1E3A8A"></i>
+                <i style="background:#DC2626"></i>
+              </span>
+              <button class="ip-act remove" title="당일 최대벽 삭제">✕</button>
+            </div>
+            <div class="ip-row added">
+              <svg class="ip-glyph"><use href="#g-heatmap"/></svg>
+              <span class="ip-name">호가 잔량 히트맵</span>
+              <span class="ip-dots"><i style="background:#F04452"></i><i style="background:#3485FA"></i></span>
+              <button class="ip-act remove" title="호가 잔량 히트맵 삭제">✕</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-wall-surge"/></svg>
+              <span class="ip-name">호가벽 급증</span>
+              <button class="ip-act" title="호가벽 급증 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">거래원 지표 <span class="gcount num">0/3</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-foreign"/></svg>
+              <span class="ip-name">외국인 순매수량</span>
+              <button class="ip-act" title="외국인 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-inst"/></svg>
+              <span class="ip-name">기관 순매수량</span>
+              <button class="ip-act" title="기관 순매수량 추가">＋</button>
+            </div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-broker"/></svg>
+              <span class="ip-name">신규 거래원 등장</span>
+              <button class="ip-act" title="신규 거래원 등장 추가">＋</button>
+            </div>
+
+            <div class="ip-ghead">프로그램 지표 <span class="gcount num">0/1</span></div>
+            <div class="ip-row">
+              <svg class="ip-glyph"><use href="#g-program"/></svg>
+              <span class="ip-name">프로그램 순매수</span>
+              <button class="ip-act" title="프로그램 순매수 추가">＋</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="ip-detail">
+          <header class="ip-dhead">
+            <div>
+              <div class="ip-eyebrow">10호가 지표 <span class="place">· 캔들 오버레이 · 분봉 전용</span></div>
+              <h2>당일 최대벽</h2>
+            </div>
+            <div class="ip-dactions">
+              <span class="ip-scope">삼성전자 · 분봉</span>
+              <button class="ip-iconb" title="패널 메뉴">⋯</button>
+              <button class="ip-iconb" title="닫기">✕</button>
+            </div>
+          </header>
+          <div class="ip-dbody" style="padding-bottom:16px;">
+            <p class="ip-desc">거래일마다 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에
+            그날 구간만큼 수평선을 그립니다.</p>
+
+            <!-- 계열 관계도 — 세 계열이 당일 고가를 기준으로 갈린다 (매도 방향 예시).
+                 색은 각 계열의 실제 기본 hex — 아트보드 ②의 스키마(방향 구분,
+                 시세색 토큰)와 답하는 질문이 다르다. -->
+            <div class="pw-schema">
+              <svg width="100%" viewBox="0 0 440 92" role="img"
+                   aria-label="체결된 벽·미도달 벽·전체 최대벽이 당일 고가를 기준으로 갈리는 관계">
+                <g opacity="0.3">
+                  <line x1="60"  y1="18" x2="60"  y2="80" stroke="var(--fg-dimmer)"/>
+                  <rect x="53" y="34" width="14" height="30" rx="1" fill="var(--fg-dimmer)"/>
+                  <line x1="130" y1="12" x2="130" y2="74" stroke="var(--fg-dimmer)"/>
+                  <rect x="123" y="24" width="14" height="30" rx="1" fill="var(--fg-dimmer)"/>
+                  <line x1="200" y1="20" x2="200" y2="84" stroke="var(--fg-dimmer)"/>
+                  <rect x="193" y="36" width="14" height="32" rx="1" fill="var(--fg-dimmer)"/>
+                  <line x1="270" y1="26" x2="270" y2="86" stroke="var(--fg-dimmer)"/>
+                  <rect x="263" y="42" width="14" height="30" rx="1" fill="var(--fg-dimmer)"/>
+                </g>
+                <line x1="8" y1="30" x2="352" y2="30" stroke="var(--fg-dim)" stroke-width="1"
+                      stroke-dasharray="4 3"/>
+                <text x="358" y="33" font-size="9" fill="var(--fg-dim)">당일 고가</text>
+                <line x1="240" y1="14" x2="400" y2="14" stroke="#1E3A8A" stroke-width="2.5" stroke-linecap="round"/>
+                <text x="406" y="17" font-size="9" fill="#1E3A8A">미도달</text>
+                <line x1="30" y1="48" x2="190" y2="48" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"/>
+                <text x="196" y="51" font-size="9" fill="#1D4ED8">체결됨</text>
+                <line x1="110" y1="74" x2="310" y2="74" stroke="#93C5FD" stroke-width="2.5" stroke-linecap="round"/>
+                <text x="316" y="77" font-size="9" fill="#93C5FD">전체 최대</text>
+              </svg>
+              <div class="pw-schema-legend">
+                <span><i style="border-color:#1D4ED8"></i>체결된 벽 — 체결이 그 가격을 쳤다</span>
+                <span><i style="border-color:#1E3A8A"></i>미도달 벽 — 고가가 안 닿았다 (배타)</span>
+                <span><i style="border-color:#93C5FD"></i>전체 최대벽 — 터치 무관 상위집합</span>
+              </div>
+            </div>
+
+            <div class="ip-slabel" style="margin-top:16px;">어떤 벽 — 방향 × 계열</div>
+            <div class="pw-mhead">
+              <span></span>
+              <div class="pw-side-head"><span>매도</span><span class="msw on" role="switch" aria-checked="true" aria-label="매도 최대벽"><i></i></span></div>
+              <div class="pw-side-head"><span>매수</span><span class="msw on" role="switch" aria-checked="true" aria-label="매수 최대벽"><i></i></span></div>
+            </div>
+            <div class="pw-mrow">
+              <div class="pw-rowlabel"><div class="n">체결된 벽</div><div class="s">체결이 그 가격을 쳤다</div></div>
+              <div class="pw-cell selected" aria-label="매도 체결된 벽 — 선택됨">
+                <span class="msw on"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#1D4ED8; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+                <span class="pw-funnel" title="후보 필터 2개 작동 중"><svg><use href="#i-funnel"/></svg>2</span>
+              </div>
+              <div class="pw-cell" aria-label="매수 체결된 벽">
+                <span class="msw on"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#DC2626; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+                <span class="pw-funnel warn" title="켜져 있으나 필터가 전부 숨김 — 지금 0개 표시"><svg><use href="#i-funnel"/></svg>0</span>
+              </div>
+            </div>
+            <div class="pw-mrow">
+              <div class="pw-rowlabel"><div class="n">미도달 벽</div><div class="s">고가가 아직 안 닿았다 — 위와 배타</div></div>
+              <div class="pw-cell" aria-label="매도 미도달 벽">
+                <span class="msw on"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#1E3A8A; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+                <span class="pw-funnel" title="후보 필터 2개 작동 중"><svg><use href="#i-funnel"/></svg>2</span>
+              </div>
+              <div class="pw-cell off" aria-label="매수 미도달 벽 — 꺼짐">
+                <span class="msw"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#7F1D1D; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+              </div>
+            </div>
+            <div class="pw-mrow">
+              <div class="pw-rowlabel"><div class="n">전체 최대벽</div><div class="s">터치 무관 — 그날 최대 상위집합</div></div>
+              <div class="pw-cell off" aria-label="매도 전체 최대벽 — 꺼짐">
+                <span class="msw"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#93C5FD; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+              </div>
+              <div class="pw-cell off" aria-label="매수 전체 최대벽 — 꺼짐">
+                <span class="msw"><i></i></span>
+                <span class="pw-swatch"><span class="line" style="border-color:#FCA5A5; border-top-width:2px;"></span><span class="caret">▾</span></span>
+                <span class="rank3"><button class="sel">1</button><button>2</button><button>3</button></span>
+              </div>
+            </div>
+            <div class="pw-mrow">
+              <div class="pw-rowlabel pw-shared-label">
+                <svg width="12" height="12"><use href="#i-eye"/></svg>
+                <div><div class="n">캔들 수평선</div><div class="s">레전드 눈과 같은 설정</div></div>
+              </div>
+              <div class="pw-cell"><span class="msw on"><i></i></span></div>
+              <div class="pw-cell"><span class="msw on"><i></i></span></div>
+            </div>
+            <div class="pw-mrow">
+              <div class="pw-rowlabel"><div class="n">분봉 내 최댓값 기준</div><div class="s">봉 내 순간 최대 벽까지 포함 — 과거 거래일에만 효과</div></div>
+              <div class="pw-cell"><span class="msw"><i></i></span></div>
+              <div class="pw-cell"><span class="msw"><i></i></span></div>
+            </div>
+
+            <div class="pw-global">
+              <div>
+                <span class="gl">최대벽 강도 pane<span class="badge">매도·매수 공용</span></span>
+                <div class="gd">켠 계열의 계단을 차트 아래 별도 pane 에 — 한 pane 을 양방향이 공유합니다</div>
+              </div>
+              <span class="msw"><i></i></span>
+            </div>
+
+            <!-- 선택 셀(매도 · 체결된 벽)의 세부 존 -->
+            <div class="pw-zone">
+              <div class="pw-zone-head">
+                <span class="t">매도 · 체결된 벽</span>
+                <span class="pw-readout num">지금 1개 표시 · 2개 필터로 숨김</span>
+              </div>
+              <div class="pw-zlabel">어디에</div>
+              <div class="pw-trow"><span class="tl">가격 라벨</span><span class="ctr"><span class="msw on"><i></i></span></span></div>
+              <div class="pw-trow"><span class="tl">레전드 순위 셀</span><span class="ctr"><span class="msw on"><i></i></span></span></div>
+              <div class="pw-trow"><span class="tl">상위벽 순위 화살표</span><span class="ctr"><span class="msw"><i></i></span></span></div>
+              <div class="pw-zlabel">후보 기준</div>
+              <div class="pw-trow">
+                <span><span class="tl">분봉 MA 위만</span><div class="td">분봉 MA 위의 벽만 후보로 봅니다</div></span>
+                <span class="ctr"><input class="pw-mini-num" value="20" aria-label="분봉 MA 기간"><span class="msw on"><i></i></span></span>
+              </div>
+              <div class="pw-trow">
+                <span><span class="tl">일봉 MA 위만</span><div class="td">일봉 MA 위의 벽만 후보로 봅니다</div></span>
+                <span class="ctr"><input class="pw-mini-num" value="20" aria-label="일봉 MA 기간"><span class="msw on"><i></i></span></span>
+              </div>
+              <div class="pw-zone-foot">두 필터는 교집합으로 적용됩니다 — 둘 다 통과한 벽만 그려집니다.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">1</span><span><b>추가 상태의 색 점 = 켜진 계열의
+        실제 색.</b> 매도 체결(#1D4ED8)·매도 미도달(#1E3A8A)·매수 체결(#DC2626) 세 점 —
+        점은 최대 4개에서 캡하고 초과는 생략한다.</span></div>
+      <div class="note"><span class="pin">2</span><span><b>열 머리 = 방향 마스터.</b> 종전의
+        「매도 최대벽 표시」 토글이 열 머리로 승격 — 스코프가 위치로 보인다. <b>스펙:
+        두 열을 모두 끄면 존재 삭제와 동일하다</b>(현행 의미 그대로) — 행이 미추가로
+        돌아가고 이 화면은 미리보기 카드로 전환된다. 전환 직전 확인은 두지 않되,
+        <b>이 경로에도 undo 토스트를 배선한다</b> — 현행 토스트는 레전드 칩 ✕ 경로에만
+        걸려 있으므로 배선은 스펙 요구사항이다.</span></div>
+      <div class="note"><span class="pin">3</span><span><b>셀 = 계열×방향의 최소 제어.</b>
+        스위치·색·표시 개수가 셀 안에, 선택(tint)하면 그 셀의 세부가 아래 존에 열린다.
+        종전 구조는 전부 펼치면 3계열×7행=21행이라 아코디언이 필수였다 — 매트릭스+존은
+        <b>5행 + 세부 7행</b>으로 같은 정보를 상시 화면 안에 둔다.</span></div>
+      <div class="note"><span class="pin">4</span><span><b>깔때기 = 작동 중인 후보 필터 수.</b>
+        중립(fg-dim)이면 "필터가 있지만 벽이 그려지는 중", <b>warn 이면 켜져 있는데 지금
+        0개</b> — "벽이 왜 안 보이나"의 답이 접힌 메뉴 속이 아니라 셀 위에 뜬다. 종전의
+        「끈 개수」 뱃지는 폐지하고 역할을 깔때기+리드아웃이 승계한다.</span></div>
+      <div class="note"><span class="pin">5</span><span><b>공용의 위치 문법 완성.</b> 방향
+        공용(캔들 수평선·봉 내 최대)은 매트릭스 푸터 행 — 열 아래 정렬이 "방향별 값"을,
+        전역(강도 pane)은 매트릭스 밖 배지 행이 "하나뿐"을 말한다. 「분봉 내 최댓값
+        기준」(intraMax)을 계열별로 내리지 않는 이유도 유지된다(미도달 계열엔 무효
+        스위치가 된다).</span></div>
+      <div class="note"><span class="pin">6</span><span><b>표시 개수 리드아웃.</b> "지금 1개
+        표시 · 2개 필터로 숨김" — 렌더 경로와 같은 셀렉터에서 세므로 새 데이터가 필요
+        없다. 0개일 때 warn 톤. 필터 <b>기본값(현재 4종 모두 ON) 재검토는 별도 결정</b>으로
+        남긴다 — 2026-08-26 조사가 근거다.</span></div>
+    </div>
+
+    <table class="map-table">
+      <thead><tr><th>현행 컨트롤</th><th>새 자리</th></tr></thead>
+      <tbody>
+        <tr><td>매도|매수 서브탭</td><td>폐지 — 두 방향이 열로 나란히 (상태 키 아님, 표현 상태였음)</td></tr>
+        <tr><td>「매도/매수 최대벽 표시」 마스터 ×2</td><td>열 머리 스위치 (askPeakEnabled · bidPeakEnabled 그대로)</td></tr>
+        <tr><td>「캔들 차트에 수평선」 ×2 (눈 반전)</td><td>방향 공용 푸터 행 — 눈 아이콘으로 레전드와의 동일성 명시</td></tr>
+        <tr><td>계열 카드 3장 ×2방향</td><td>매트릭스 셀 6개 (스위치·색·선폭 키 그대로)</td></tr>
+        <tr><td>「표시 개수」 1|2|3 ×6</td><td>셀 안 미니 세그먼트 (rankLimit 키 그대로)</td></tr>
+        <tr><td>「세부 설정」 아코디언 — 표면 3 + 필터 2(+기간) ×6</td><td>선택 셀의 세부 존 (항상 한 벌만 펼침; 키 그대로)</td></tr>
+        <tr><td>「끈 개수」 뱃지</td><td><span class="gone">폐지 — 역할은 깔때기(활성 필터 수·warn)와 리드아웃이 승계</span></td></tr>
+        <tr><td>「계열 공용」 intraMax ×2</td><td>방향 공용 푸터 행 (계열별로 내리지 않음 — 무효 스위치 방지)</td></tr>
+        <tr><td>「매도·매수 공용」 최대벽 강도 pane</td><td>매트릭스 밖 전역 행 + 배지 (peakWallPaneEnabled 그대로)</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px; font-size:var(--t-sm); color:var(--fg-dim); max-width:76ch;">
+      <b style="color:var(--fg);">상태 키 변경 없음 — 표현만 재구성.</b> 리드아웃·깔때기는
+      렌더 경로가 이미 계산하는 필터 결과에서 세고, 지표가 분봉 전용이므로 일·주·월봉에서는
+      뜨지 않는다. 아트보드 ②의 스키마(방향 구분 — 시세색 토큰)와 이 보드의 스키마(계열
+      구분 — 각 계열의 실제 기본 hex)는 답하는 질문이 다르다. 매트릭스(구조)와
+      깔때기·리드아웃(가시화)은 <b style="color:var(--fg);">독립 채택 가능</b>하다 —
+      현행 카드 구조를 유지한 채 깔때기·리드아웃만 얹어도 "왜 안 보이나" 문제는 풀린다.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════ 글리프 스펙 ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">시그니처</div>
+    <h2>지표 글리프 시스템 — 15종</h2>
+    <p class="sec-lede">
+      단색(currentColor) 16px 미니 스키마틱. <strong>오버레이 지표는 캔들 고스트 위에
+      마크를, 하단 패널 지표는 구분선 아래 스트립에 마크를</strong> 그린다 — 글리프
+      하나가 "무엇을 그리나"와 "어디에 그리나"를 동시에 답한다. 색을 쓰지 않으므로
+      3분류 색 규율과 충돌하지 않고, 이후 차트 레전드 칩·창 추가 메뉴에도 재사용할 수 있다.
+    </p>
+    <div class="glyph-grid">
+      <div class="glyph-cell"><svg><use href="#g-ma"/></svg><div class="gname">이동평균선</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-dma"/></svg><div class="gname">일봉 이동평균선</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-vol"/></svg><div class="gname">거래량</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-quote-totals"/></svg><div class="gname">총잔량</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-ratio"/></svg><div class="gname">호가비</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-fill"/></svg><div class="gname">체결강도</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-vd"/></svg><div class="gname">연속체결 매물대 분포</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-poc"/></svg><div class="gname">당일 최대 매물대</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-peak-walls"/></svg><div class="gname">당일 최대벽</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-heatmap"/></svg><div class="gname">호가 잔량 히트맵</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-wall-surge"/></svg><div class="gname">호가벽 급증</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-foreign"/></svg><div class="gname">외국인 순매수량</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-inst"/></svg><div class="gname">기관 순매수량</div><div class="gtype">하단 패널</div></div>
+      <div class="glyph-cell"><svg><use href="#g-broker"/></svg><div class="gname">신규 거래원 등장</div><div class="gtype">오버레이</div></div>
+      <div class="glyph-cell"><svg><use href="#g-program"/></svg><div class="gname">프로그램 순매수</div><div class="gtype">하단 패널</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ 구현 노트 ══════════════════════════ -->
+  <section class="sec">
+    <div class="sec-eyebrow">구현 노트</div>
+    <h2>수치와 경계 조건</h2>
+    <div class="impl">
+      <div class="impl-card">
+        <h3>높이 수지 — 스크롤이 사라진다</h3>
+        <p>단일 리스트는 푸터 2행(모드 전환 + 초기화)을 없애고 검색 1행을 더한다.</p>
+        <div class="math">
+          현행: nav 16항목 903px + 푸터 ≈100px ≈ <b>1,003px</b><br>
+          제안: 검색 44 + 그룹헤더 4×28 + 행 15×34 + 패딩 ≈ <b>682px</b> (−32%)<br>
+          → 카드 h-[min(960px,86vh)] 기준, 세로 ~800px 화면부터 nav 무스크롤.
+        </div>
+        <p style="margin-top:8px;">그래도 부족해지면 결정 로그가 지정한 탈출구는
+        <b>그룹 접기</b>다(2026-08-21 재검토 트리거) — 이 구조는 그룹 헤더가 이미
+        있으므로 접기를 바로 얹을 수 있다.</p>
+      </div>
+      <div class="impl-card">
+        <h3>행이 움직이지 않는다는 계약</h3>
+        <p>2모드 분리의 원래 근거는 "켜고 끌 때 행이 두 섹션 사이를 오가면 방금 조준한
+        항목이 커서 밑에서 움직인다"였다. 단일 리스트는 <b>정렬을 상태와 무관하게
+        고정</b>해 같은 문제를 구조로 해소한다 — 추가/삭제 시 바뀌는 것은 행 내부의
+        상태뿐, 위치는 불변. 모션도 같은 계약을 따른다: 디테일 전환 150ms ease-out
+        페이드, 색 점 등장 150ms, hover 80ms. 리스트 reflow 애니메이션은 없다.</p>
+      </div>
+      <div class="impl-card">
+        <h3>능력(capability) 필터는 그대로 탄다</h3>
+        <p>이 목업은 주식 종목 창(전 지표 노출) 기준이다. 실제로는 현행과 같은 필터가
+        단일 리스트에도 적용된다 — 지수 창은 <b>10호가·프로그램 그룹 자체가</b> 사라지고,
+        투자자 순매수가 없는 종목은 거래원 그룹의 해당 행이 빠지며,
+        <code>hiddenCategories</code>(워크스페이스가 안 그리는 지표)도 동일하게 제외된다.
+        빈 그룹은 헤더째 숨긴다.</p>
+      </div>
+      <div class="impl-card">
+        <h3>바뀌지 않는 것</h3>
+        <ul>
+          <li><b>저장 모델</b> — 창×봉 버킷, 즉시 적용. 스코프 칩(삼성전자 · 분봉)과
+          툴팁 문구 유지.</li>
+          <li><b>삭제 undo 토스트</b> — 행 ✕ 의 배선은 현행 그대로.</li>
+          <li><b>ModalShell·workspacePanel.ts 상수</b> — 폭 760 · nav 240 · 높이 계약과
+          설정 패널과의 동기화 테스트(<code>IndicatorPanel.test.tsx</code>) 유지.</li>
+          <li><b>각 지표의 세부 설정 컴포넌트</b> — 폼 문법(열 헤더 그리드·섹션
+          라벨)만 공통 프리미티브로 감싼다. 로직 변경 없음.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="impl" style="margin-top:12px;">
+      <div class="impl-card" style="grid-column:1 / -1;">
+        <h3>이후로 미루는 것</h3>
+        <p><b>pane 미니맵</b>(차트의 오버레이·하단 패널 스택을 도식으로 보여주고 칩 클릭으로
+        설정 이동) — 이번 판의 시그니처는 글리프 하나로 제한한다. 글리프의
+        <b>레전드 칩 재사용</b>도 별도 판으로: 패널↔레전드↔차트가 같은 글리프·색으로
+        이어지면 세 표면의 동일성이 완성되지만, 레전드는 이 패널과 다른 밀도 제약을
+        갖는다(차트 위 반투명 surface). 먼저 패널에서 글리프를 검증한 뒤 옮긴다.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="doc-foot">
+    정적 목업 — 상호작용(hover 제외)은 명세 텍스트로만 담았다. 토큰 실값은
+    frontend/src/styles/tokens.css 에서 옮겼으며 새 색·새 자간·임의 px 타이포는 없다.
+    승인 시 이 파일이 DESIGN.md 결정 로그의 1차 사료가 된다.
+  </footer>
+</div>
+</body>
+</html>

@@ -18,51 +18,43 @@ function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {})
 }
 
 /**
- * 패널의 좌측 목록은 **두 모드**다 — "내 지표"(존재하는 것, 행마다 ✕)와 카탈로그
- * (추가할 수 있는 것, 행마다 ＋). 종전의 단일 체크박스 목록이 아니므로, 꺼져 있는
- * 지표에 닿으려면 카탈로그로 넘어가야 한다. 아래 헬퍼가 그 왕복을 감춘다.
+ * 좌측 목록은 **하나**다 — 전 지표가 고정 순서로 항상 있고, 추가 여부는 행 안의
+ * 상태(잉크 농도 + ＋/✕)로 나타난다. 종전엔 "내 지표"와 카탈로그 두 모드였고
+ * 아래 헬퍼들이 그 왕복을 감췄다. 왕복이 사라졌으므로 헬퍼는 이름만 남기고
+ * 본문이 단순해졌다 — 이름을 유지하는 이유는 이 파일의 60여 개 단언이 전부
+ * 이 어휘로 쓰여 있어서다.
  */
 
-/** 카탈로그로 전환한다(이미 카탈로그면 그대로). */
-function openCatalog(): void {
-  const toggle = screen.getByTestId('indicator-panel-mode-toggle');
-  if (toggle.textContent?.includes('추가')) fireEvent.click(toggle);
-}
-
-/** "내 지표" 목록으로 돌아간다. */
-function openMine(): void {
-  const toggle = screen.getByTestId('indicator-panel-mode-toggle');
-  if (toggle.textContent?.includes('내 지표')) fireEvent.click(toggle);
-}
-
-/** 카탈로그에서 추가 — 추가는 그 지표의 상세로 이동하고 목록으로 돌아온다. */
+/** ＋ 를 눌러 추가한다. 추가는 그 지표의 상세로 선택을 옮긴다(행은 안 움직인다). */
 function addIndicator(name: string): void {
-  openCatalog();
   fireEvent.click(screen.getByRole('button', { name: `${name} 추가` }));
 }
 
-/** 그 지표의 상세를 연다. 없으면 먼저 추가한다(대부분의 테스트가 원하는 것은
- *  "설정 화면을 보는 것" 이지 추가 절차 자체가 아니다). */
+/** 그 지표의 상세를 연다. 없으면 먼저 추가한다 — 대부분의 테스트가 원하는 것은
+ *  "설정 화면을 조작하는 것" 이지 추가 절차 자체가 아니다. */
 function openDetail(name: string): void {
-  openMine();
-  const row = screen.queryByRole('button', { name });
-  if (row) { fireEvent.click(row); return; }
-  addIndicator(name);
+  const add = screen.queryByRole('button', { name: `${name} 추가` });
+  if (add) { fireEvent.click(add); return; }
+  fireEvent.click(screen.getByRole('button', { name }));
 }
 
-/** 존재를 뒤집는다 — 내 지표에 있으면 ✕, 없으면 카탈로그에서 ＋.
- *  종전 체크박스 클릭의 대응물이다. */
+/** 존재를 뒤집는다 — 있으면 ✕, 없으면 ＋. 종전 체크박스 클릭의 대응물이다. */
 function togglePresence(name: string): void {
-  openMine();
   const remove = screen.queryByRole('button', { name: `${name} 삭제` });
   if (remove) { fireEvent.click(remove); return; }
   addIndicator(name);
 }
 
-/** 카탈로그에서 **추가하지 않고** 미리보기만 연다. */
+/** **추가하지 않고** 라벨만 눌러 미리 본다. */
 function previewDetail(name: string): void {
-  openCatalog();
   fireEvent.click(screen.getByRole('button', { name }));
+}
+
+/** ⋯ 메뉴를 열고 초기화 항목까지 눌러 확인 행을 띄운다(아직 리셋 안 됨).
+ *  종전엔 nav 하단 상시 푸터 버튼이라 이름으로 바로 눌렀다. */
+function armReset(): void {
+  fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+  fireEvent.click(screen.getByTestId('indicator-panel-menu-reset'));
 }
 
 describe('IndicatorPanel', () => {
@@ -80,10 +72,10 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
-  // 목록이 두 모드로 갈리면서 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
-  // 대신 **합집합이 15종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
-  // 그게 이 목록이 지켜야 할 총계다.
-  it('내 지표 + 카탈로그의 합집합이 15종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  // 목록이 하나가 되면서 "전 카테고리가 한 화면에" 가 다시 성립한다 — 종전엔 모드가
+  // 갈려 합집합으로만 잴 수 있었다. 15종이 **동시에** 보이고, 켜진 것은 ✕ 를,
+  // 꺼진 것은 ＋ 를 진다.
+  it('15종이 한 목록에 동시에 보이고, 추가 여부가 행의 액션을 가른다', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -100,11 +92,12 @@ describe('IndicatorPanel', () => {
       .filter((l): l is string => !!l && l.endsWith(suffix))
       .map((l) => l.slice(0, -suffix.length));
     const mine = labelsEndingWith(' 삭제');
-    openCatalog();
     const addable = labelsEndingWith(' 추가');
 
+    // 모드 전환 없이 한 번에 — 두 배열이 같은 목록에서 동시에 나온다.
+    expect(mine.length + addable.length).toBe(15);
     expect(new Set([...mine, ...addable]).size).toBe(15);
-    // 켜 둔 것은 전부 "내 지표" 쪽이다.
+    // 켜 둔 것은 전부 ✕ 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);
     }
@@ -116,12 +109,12 @@ describe('IndicatorPanel', () => {
     renderPanel();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     // 공장 상태의 "내 지표" = 이동평균선 + 거래량(그 둘만 공장 ON).
-    const nav = within(screen.getByRole('navigation', { name: '내 지표' }));
+    const nav = within(screen.getByRole('navigation', { name: '지표' }));
     expect(nav.getByRole('button', { name: '이동평균선 삭제' })).toBeTruthy();
     expect(nav.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
   });
 
-  it('추가하면 기본값으로 생기고, 그 지표의 상세로 이동한 뒤 목록으로 돌아온다', () => {
+  it('추가하면 기본값으로 생기고, 그 지표의 상세로 선택이 옮겨간다', () => {
     renderPanel();
     addIndicator('호가비');
 
@@ -129,33 +122,178 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().ratioEnabled).toBe(true);
     // 상세 이동 — "추가했는데 어디 갔지" 가 되지 않게.
     expect(screen.getByRole('heading', { name: '호가비', level: 2 })).toBeTruthy();
-    // 목록 복귀 — 카탈로그에 남아 있으면 방금 추가한 것을 확인하러 한 번 더 눌러야 한다.
-    expect(screen.getByRole('navigation', { name: '내 지표' })).toBeTruthy();
+    // 같은 행이 그 자리에서 ＋ → ✕ 로 바뀐다(행은 이동하지 않는다).
     expect(screen.getByRole('button', { name: '호가비 삭제' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '호가비 추가' })).toBeNull();
   });
 
-  it('카탈로그의 라벨 클릭은 **미리보기**다 — 추가하지 않는다', () => {
+  // 목록의 순서는 **존재 여부와 무관하게 고정**이다. 이것이 종전 2모드 분리의 근거
+  // ("켜고 끌 때 행이 두 구역 사이를 오가면 방금 조준한 항목이 커서 밑에서 움직인다")
+  // 를 구조로 해소한 자리라, 순서가 흔들리면 그 해소가 무효가 된다.
+  it('추가·삭제해도 행 순서가 그대로다', () => {
+    renderPanel();
+    const order = () => within(screen.getByRole('navigation'))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'))
+      .filter((l): l is string => !!l)
+      .map((l) => l.replace(/ (추가|삭제)$/, ''));
+
+    const before = order();
+    addIndicator('호가비');       // 없던 것을 켠다
+    togglePresence('이동평균선');  // 있던 것을 끈다
+    expect(order()).toEqual(before);
+  });
+
+  // 색 점은 장식이 아니라 **차트에 그려지는 색의 메아리**다 — 패널·레전드·캔버스가
+  // 같은 색을 쓰면 "이 행이 저 선" 이 이름을 읽지 않아도 선다. 색 자체의 매핑은
+  // `indicatorDotColors.test.ts` 가 재고, 여기서는 배선만 본다.
+  it('추가된 행에만 색 점을 찍는다', () => {
+    renderPanel();
+    const enabledMas = useLivePageStore.getState().movingAverages.filter((m) => m.enabled);
+    const maRow = screen.getByRole('button', { name: '이동평균선' }).parentElement!;
+    expect(maRow.querySelectorAll('i')).toHaveLength(enabledMas.length);
+
+    // 아직 추가하지 않은 지표에는 그려지는 색이 없으므로 점도 없다.
+    expect(screen.getByRole('button', { name: '호가비' }).parentElement!.querySelectorAll('i'))
+      .toHaveLength(0);
+  });
+
+  it('라벨 클릭은 **미리보기**다 — 추가하지 않는다', () => {
     renderPanel();
     previewDetail('호가벽 급증');
 
     expect(useLivePageStore.getState().wallSurgeEnabled).toBe(false);
-    // 상세는 보이고, 목록은 카탈로그에 남는다(＋ 를 누를지 결정할 수 있게).
+    // 상세는 보이고, 그 행은 여전히 ＋ 다(누를지 결정할 수 있게).
     expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: '지표 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '호가벽 급증 추가' })).toBeTruthy();
   });
 
-  it('선택한 지표를 삭제하면 상세가 남은 첫 지표로 넘어간다', () => {
+  // 미리보기의 **정의가 바뀌었다**: 종전엔 아직 존재하지 않는 지표의 편집 가능한
+  // 설정 폼이 떴다(어휘는 미리보기인데 화면은 편집기). 이제는 카드다.
+  it('미추가 지표의 상세는 설정 폼이 아니라 미리보기 카드다', () => {
     renderPanel();
-    // 기본 선택은 이동평균선. 그것을 지우면 거래량만 남는다.
-    togglePresence('이동평균선');
-    expect(screen.getByRole('heading', { name: '거래량', level: 2 })).toBeTruthy();
+    previewDetail('호가벽 급증');
+
+    expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+    // 그 지표의 설정 컨트롤은 하나도 없다 — 만질 수 없는 것을 보여 주지 않는다.
+    expect(screen.queryByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeNull();
+    // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
+    expect(screen.getByText(/한 호가 레벨에 물량이 순간적으로 몰린/)).toBeTruthy();
   });
 
-  it('내 지표가 비면 안내를 띄운다', () => {
+  it('미리보기의 CTA 로 추가하면 그 자리가 설정 폼이 된다', () => {
+    renderPanel();
+    previewDetail('호가벽 급증');
+    fireEvent.click(screen.getByRole('button', { name: '＋ 차트에 추가' }));
+
+    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
+    // 선택은 그대로 — 추가했다고 다른 지표로 튀지 않는다.
+    expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
+    expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
+    expect(screen.getByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeTruthy();
+  });
+
+  it('추가된 지표를 삭제하면 그 자리가 다시 미리보기 카드가 된다', () => {
+    renderPanel();
+    openDetail('호가벽 급증');
+    expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
+
+    togglePresence('호가벽 급증');
+    expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+  });
+
+  // 종전엔 삭제하면 "남은 첫 지표" 로 점프했다 — 목록이 「내 지표」뿐이라 지운 것이
+  // 목록에서도 사라졌기 때문이다. 단일 리스트에서는 행이 그대로 있으므로 선택도
+  // 그 자리에 남는다. 점프는 이제 사용자가 조준한 곳을 뺏는 동작이 된다.
+  it('선택한 지표를 삭제해도 선택은 그 자리에 남는다', () => {
     renderPanel();
     togglePresence('이동평균선');
-    togglePresence('거래량');
-    expect(screen.getByText('추가한 지표가 없습니다.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이동평균선', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '이동평균선 추가' })).toBeTruthy();
+  });
+
+  describe('검색', () => {
+    const search = () => screen.getByTestId('indicator-panel-search') as HTMLInputElement;
+
+    it('입력하면 일치하는 행만 남고, 그 그룹 헤더는 유지된다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+
+      expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '당일 최대 매물대' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: '이동평균선' })).toBeNull();
+      // 소속 그룹은 남고 — "어느 계열의 지표인가" 가 결과에서도 읽힌다.
+      expect(screen.getByText('10호가 지표')).toBeTruthy();
+      // 일치가 하나도 없는 그룹은 헤더째 사라진다.
+      expect(screen.queryByText('상단 지표')).toBeNull();
+    });
+
+    it('일치가 없으면 빈 상태를 알린다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '없는지표' } });
+      expect(screen.getByText('일치하는 지표 없음')).toBeTruthy();
+    });
+
+    it('일치 구간을 강조한다', () => {
+      const { container } = renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      const marks = container.querySelectorAll('mark');
+      expect(marks).toHaveLength(2);
+      expect(marks[0].textContent).toBe('매물');
+    });
+
+    // 검색은 capability 게이트 **다음** 단계다 — 순서가 뒤집히면 이 종목에 없는
+    // 지표가 검색으로 되살아난다.
+    it('capability 로 걸러진 지표는 검색으로도 돌아오지 않는다', () => {
+      renderPanel({ capabilities: { hogaPanes: false, investorNet: 'market', studySave: false } });
+      fireEvent.change(search(), { target: { value: '매물' } });
+      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeNull();
+      expect(screen.getByText('일치하는 지표 없음')).toBeTruthy();
+    });
+
+    it('열리면 검색창이 포커스를 받는다', () => {
+      renderPanel();
+      expect(document.activeElement).toBe(search());
+    });
+
+    it('↑↓ 로 짚고 Enter 로 고른다 — 추가는 하지 않는다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      // 검색 직후 커서는 첫 결과(연속체결 매물대 분포).
+      fireEvent.keyDown(search(), { key: 'ArrowDown' });  // → 당일 최대 매물대
+      fireEvent.keyDown(search(), { key: 'Enter' });
+
+      expect(screen.getByRole('heading', { name: '당일 최대 매물대', level: 2 })).toBeTruthy();
+      // 선택까지만 — 보기 전에 차트가 바뀌면 안 된다는 어휘 규약이 키보드에도 적용된다.
+      expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
+      expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+    });
+
+    // 한글 조합 중의 Enter 는 **글자 확정**이지 명령이 아니다. 이 가드가 없으면
+    // "매물" 을 치는 도중의 확정 Enter 가 선택으로 새어 나간다.
+    it('조합 중(IME) Enter 는 선택으로 새지 않는다', () => {
+      renderPanel();
+      fireEvent.change(search(), { target: { value: '매물' } });
+      const before = screen.getByRole('heading', { level: 2 }).textContent;
+
+      fireEvent.keyDown(search(), { key: 'Enter', isComposing: true });
+      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(before);
+    });
+
+    // Escape 사다리 — 검색어가 있으면 검색만 지우고, 없으면 패널을 닫는다.
+    // 전파를 끊지 않으면 ModalShell 의 document 리스너가 이어받아 함께 닫힌다.
+    it('Escape 는 검색어를 먼저 지우고, 빈 검색에서만 패널을 닫는다', () => {
+      const onClose = vi.fn();
+      renderPanel({ onClose });
+      fireEvent.change(search(), { target: { value: '매물' } });
+
+      fireEvent.keyDown(search(), { key: 'Escape' });
+      expect(search().value).toBe('');
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
@@ -165,13 +303,24 @@ describe('IndicatorPanel', () => {
     }
   });
 
-  it('지표 그룹 서브헤더를 렌더(카탈로그)', () => {
+  it('지표 그룹 서브헤더를 렌더한다', () => {
     renderPanel();
-    openCatalog();
     expect(screen.getAllByText('상단 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('10호가 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('프로그램 지표').length).toBeGreaterThan(0);
     expect(screen.getAllByText('거래원 지표').length).toBeGreaterThan(0);
+  });
+
+  // 그룹 헤더의 카운트 — "이 계열에서 몇 개나 쓰고 있나". 목록이 하나라 셀 수는
+  // 있지만, 그룹이 길면 여전히 세어야 한다.
+  it('그룹 헤더가 추가 개수를 세고, 추가하면 따라 올라간다', () => {
+    renderPanel();
+    // 상단 지표 3종 중 공장 ON 은 이동평균선·거래량 둘.
+    const top = screen.getByText('상단 지표').parentElement!;
+    expect(within(top).getByText('2/3')).toBeTruthy();
+
+    addIndicator('일봉 이동평균선');
+    expect(within(screen.getByText('상단 지표').parentElement!).getByText('3/3')).toBeTruthy();
   });
 
   // 2026-08-21 우측 드로어 → 중앙 모달 전환에서 배운 것: 그때 **지표 패널 쪽에는
@@ -199,27 +348,25 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('indicator-panel-shell')).toHaveClass('bg-bg-card');
-    const nav = screen.getByRole('navigation', { name: '내 지표' });
+    const nav = screen.getByRole('navigation', { name: '지표' });
     // 좌측 컬럼(nav + 리셋 푸터)을 감싼 래퍼가 border-r 대신 bg-subtle 톤 스텝으로
     // 분리(2026-07-15 borderless 통일). 래퍼의 부모가 2-컬럼 그리드.
     const navColumn = nav.parentElement!;
     expect(navColumn).toHaveClass('bg-bg-subtle');
     expect(nav).not.toHaveClass('border-r');
     expect(navColumn.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
-    openCatalog();
-    expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
+    // 그룹 헤더는 라벨과 카운트를 나란히 두므로 타이포는 두 조각을 감싼 행이 진다.
+    expect(screen.getByText('10호가 지표').parentElement).toHaveClass('uppercase');
   });
 
   it('keeps long category labels on one line in the side nav', () => {
     renderPanel();
-    openCatalog();
 
     expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toHaveClass('whitespace-nowrap');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {
     renderPanel({ capabilities: { hogaPanes: false, investorNet: 'market', studySave: false } });
-    openCatalog();
     expect(screen.queryByText('10호가 지표')).toBeNull();
     expect(screen.queryByText('프로그램 지표')).toBeNull();
     expect(screen.getByText('거래원 지표')).toBeTruthy();
@@ -233,17 +380,14 @@ describe('IndicatorPanel', () => {
 
   it('indices without investor support hide investor net categories too', () => {
     renderPanel({ capabilities: { hogaPanes: false, investorNet: 'none', studySave: false } });
-    openCatalog();
     expect(screen.queryByRole('button', { name: '외국인 순매수량 추가' })).toBeNull();
     expect(screen.queryByRole('button', { name: '기관 순매수량 추가' })).toBeNull();
     // 거래량은 공장값 ON 이라 "내 지표" 쪽에 있다.
-    openMine();
     expect(screen.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
   });
 
   it('당일 최대벽(매도/매수 병합)은 10호가 지표 그룹(체결강도 뒤)에 위치', () => {
     renderPanel();
-    openCatalog();
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
@@ -261,7 +405,6 @@ describe('IndicatorPanel', () => {
 
   it('프로그램 순매수는 거래원 지표 뒤에 위치', () => {
     renderPanel();
-    openCatalog();
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
     const program = labels.indexOf('프로그램 순매수');
@@ -455,13 +598,11 @@ describe('IndicatorPanel', () => {
     const view = renderPanel({ timeframe: 'D' });
     // 꺼진 봉에서는 "내 지표" 가 아니라 카탈로그에 있다(존재 = 켜짐).
     expect(screen.queryByRole('button', { name: '거래량 삭제' })).toBeNull();
-    openCatalog();
     expect(screen.getByRole('button', { name: '거래량 추가' })).toBeTruthy();
 
     useLivePageStore.getState().setIndicatorTimeframe('W');
     view.rerender(<IndicatorPanel onClose={() => {}} timeframe="W" />);
     // W 버킷은 켜짐 → "내 지표" 로 옮겨 온다.
-    openMine();
     expect(screen.getByRole('button', { name: '거래량 삭제' })).toBeTruthy();
   });
 
@@ -581,7 +722,6 @@ describe('IndicatorPanel', () => {
 
     // 한쪽만 켜져 있어도 "내 지표" 에 남는다(존재 = 어느 한쪽이라도 켜짐).
     useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: false });
-    openMine();
     expect(screen.getByRole('button', { name: '당일 최대벽 삭제' })).toBeTruthy();
 
     // 삭제하면 둘 다 꺼진다.
@@ -624,19 +764,19 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false);
     renderPanel();
 
-    // 1단계: '현재 봉 초기화' → 확인 행 노출(아직 리셋 안 됨).
-    openDetail('현재 봉 초기화');
+    // 1단계: ⋯ → '분봉 지표 초기화' → 확인 행 노출(아직 리셋 안 됨).
+    armReset();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     expect(screen.getByText('분봉 초기화?')).toBeTruthy();
 
     // 취소는 되돌리지 않는다.
-    openDetail('취소');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.queryByText('분봉 초기화?')).toBeNull();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
 
     // 2단계: 다시 열고 '초기화' → 실제 리셋.
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     // 리셋은 공장값 복귀 — 현재봉 MA 공장 슬롯은 전부 켜져 있다.
@@ -652,8 +792,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
     useLivePageStore.getState().setAskPeakEnabled(true); // minute 버킷
     renderPanel({ timeframe: '1m' });
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
   });
@@ -663,11 +803,45 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ paneOrder: customOrder });
     useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
     renderPanel();
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     // 색은 기본값으로, paneOrder는 그대로.
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     expect(useLivePageStore.getState().paneOrder).toEqual(['candle', 'ratio', 'volume']);
+  });
+
+  // 초기화가 nav 상시 푸터에서 헤더 ⋯ 로 물러났다 — 가장 위험하고 가장 드물게 쓰는
+  // 것이 매일 쓰는 목록의 자리를 차지하고 있었다.
+  it('초기화는 ⋯ 메뉴 안에 있고, 목록에는 상시 노출되지 않는다', () => {
+    renderPanel();
+    expect(screen.queryByTestId('indicator-panel-menu-reset')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+    expect(screen.getByTestId('indicator-panel-menu-reset').textContent).toContain('분봉 지표 초기화');
+  });
+
+  // ⋯ 트리거의 이름이 '닫기' 가 아니어야 한다 — 헤더 ✕ 와 겹치면 "닫기 버튼 하나"
+  // 를 재는 아래 단언이 둘을 잡는다.
+  it('⋯ 는 닫기 버튼 수를 늘리지 않는다', () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+    expect(screen.getAllByRole('button', { name: '닫기' })).toHaveLength(1);
+  });
+
+  // Escape 사다리의 두 번째 칸. ModalShell 의 Escape 리스너는 document 에 있고
+  // 팝오버의 것은 window 라 document 가 먼저 발화한다 — 가로채지 않으면 메뉴를
+  // 취소하려던 Escape 가 패널을 통째로 닫는다.
+  it('메뉴가 열려 있으면 Escape 는 메뉴만 닫는다', () => {
+    const onClose = vi.fn();
+    renderPanel({ onClose });
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('indicator-panel-menu-reset')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('Escape calls onClose', () => {
@@ -700,15 +874,20 @@ describe('IndicatorPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('당일 최대벽 매도 서브탭의 표시 토글로 askPeakEnabled 반전', () => {
-    useLivePageStore.setState({ askPeakEnabled: false });
+  // 종전엔 **미추가 상태의 미리보기 폼**에서 이 스위치를 눌렀다 — 추가가 매도·매수를
+  // 함께 켜기 때문에 "매도만" 을 재려면 그 우회가 필요했다. 미리보기가 카드가 되면서
+  // 그 경로는 사라졌고(존재하지 않는 지표를 편집하던 것이 애초에 결함이었다), 대신
+  // 추가해서 둘 다 켠 뒤 **한쪽만 끄는** 방향으로 잰다. 반대 방향이 안 움직이는 것도
+  // 함께 못 박으므로 종전보다 강한 단언이다.
+  it('당일 최대벽 매도 서브탭의 표시 토글은 askPeakEnabled 만 움직인다', () => {
     renderPanel();
-    // 추가는 매도·매수를 함께 켜므로(병합 카테고리) 여기서는 **미리보기**로 연다 —
-    // 재려는 것은 서브탭 스위치 하나이지 추가 흐름이 아니다.
-    previewDetail('당일 최대벽');
+    openDetail('당일 최대벽');
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+
     // 기본 서브탭은 매도.
     fireEvent.click(screen.getByRole('switch', { name: '매도 최대벽 표시' }));
-    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
   });
 
   it('당일 최대 매물대 카테고리 토글', () => {
@@ -792,13 +971,14 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
   });
 
-  it('당일 최대벽 매수 서브탭의 표시 토글로 bidPeakEnabled 반전', () => {
-    useLivePageStore.setState({ bidPeakEnabled: false });
+  it('당일 최대벽 매수 서브탭의 표시 토글은 bidPeakEnabled 만 움직인다', () => {
     renderPanel();
-    previewDetail('당일 최대벽');
+    openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '매수 최대벽 표시' }));
-    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
   });
 
   it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {
@@ -827,7 +1007,6 @@ describe('IndicatorPanel', () => {
 
   it('호가벽 급증 카테고리가 10호가 그룹에 렌더된다', () => {
     renderPanel();
-    openCatalog();
     expect(screen.getByRole('button', { name: '호가벽 급증' })).toBeInTheDocument();
   });
 
@@ -845,7 +1024,6 @@ describe('IndicatorPanel', () => {
 
   it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {
     render(<IndicatorPanel onClose={() => {}} timeframe="1m" />);
-    openCatalog();
     expect(screen.getByRole('button', { name: '호가 잔량 히트맵' })).toBeInTheDocument();
   });
 
@@ -864,28 +1042,9 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('slider')).toBeTruthy();
   });
 
-  // `hiddenCategories` 는 `capabilities` 와 **다른 축**이다: 저쪽은 "이 종목에 그
-  // 데이터가 있는가", 이쪽은 "이 화면이 그 지표를 그리는가". 그 지표를 렌더하지 않는
-  // 화면이 토글만 보여 주던 것을 없애기 위한 것이다.
-  describe('hiddenCategories', () => {
-    it('숨긴 지표는 목록에서 사라진다', () => {
-      const { unmount } = renderPanel();
-      openCatalog();
-      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeTruthy();
-      unmount();
-
-      renderPanel({ hiddenCategories: ['trade-volume-poc'] });
-      openCatalog();
-      expect(screen.queryByRole('button', { name: '당일 최대 매물대' })).toBeNull();
-    });
-
-    it('다른 지표는 그대로 남는다 — 필터가 과하게 걷어내지 않는다', () => {
-      renderPanel({ hiddenCategories: ['trade-volume-poc'] });
-      openCatalog();
-
-      expect(screen.queryByRole('button', { name: '호가 잔량 히트맵' })).toBeTruthy();
-      expect(screen.queryByRole('button', { name: '당일 최대벽' })).toBeTruthy();
-    });
-  });
+  // 종전의 `describe('hiddenCategories')` 두 건은 그 prop 과 함께 사라졌다 —
+  // "이 화면이 그 지표를 그리는가" 축을 위해 만든 확장점이었으나 그 축을 쓰던
+  // 화면(`/study`)이 폐지되면서 프로덕션 호출부가 0이 됐다. 목록에서 지표를
+  // 걷어내는 축은 이제 `capabilities` 하나뿐이고, 그쪽 가드는 위에 있다.
 
 });

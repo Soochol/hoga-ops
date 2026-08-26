@@ -26,7 +26,7 @@ describe('당일 최대벽 — 계열별 세부 설정(표면 셋 + MA 필터 �
   afterEach(cleanup);
 
   it('매도 — 계열 카드마다 자기 몫의 표면·필터·기간이 한 벌씩 선다', () => {
-    render(<AskPeakConfig embedded />);
+    render(<AskPeakConfig />);
     // 접힌 상태에서는 어느 계열의 것도 나와 있지 않다.
     expect(screen.queryByTestId('settings-toggle-askPeakTradedAboveMaEnabled')).toBeNull();
 
@@ -44,7 +44,7 @@ describe('당일 최대벽 — 계열별 세부 설정(표면 셋 + MA 필터 �
   });
 
   it('매수 — 매도판의 거울(MA 방향만 아래)', () => {
-    render(<BidPeakConfig embedded />);
+    render(<BidPeakConfig />);
     expect(screen.queryByTestId('settings-toggle-bidPeakTradedBelowMaEnabled')).toBeNull();
 
     for (const { family, card } of FAMILIES) {

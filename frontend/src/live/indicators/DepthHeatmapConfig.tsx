@@ -10,13 +10,6 @@ export default function DepthHeatmapConfig() {
   const setStyle = useIndicatorActions().setDepthHeatmapStyle;
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        호가 잔량 히트맵 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        각 분봉 시점의 10호가 매수·매도 잔량을 캔들 뒤 색상 강도로 표시합니다. 강도는 화면에
-        보이는 범위의 최대 잔량 기준으로 정규화됩니다. 분봉 차트에서만 표시됩니다
-      </p>
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-fg">매수 색상</span>

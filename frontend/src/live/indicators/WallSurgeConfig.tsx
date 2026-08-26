@@ -8,14 +8,11 @@ import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 export default function WallSurgeConfig() {
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        호가벽 급증 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
+      {/* 요약 한 줄은 카테고리 표(CATEGORIES.description)가 헤더에서 말한다. 여기
+          남은 것은 그 요약에 안 들어가는 읽는 법 — 방향과, 이웃 지표와의 분담이다. */}
       <p className="text-fg-dim text-xs mb-3">
-        한 호가 레벨에 물량이 순간적으로 몰린 지점을 캔들 차트의 그 가격 위치에 삼각형으로
-        표시합니다. 매도벽은 아래를, 매수벽은 위를 가리킵니다. 잔량이 많은 것이 아니라
-        <b> 짧은 시간에 갑자기 늘어난 것</b>을 잡습니다 — 큰 벽이 어디 있는지는 당일 최대벽이
-        답합니다. 분봉 차트에서만 표시됩니다
+        매도벽은 아래를, 매수벽은 위를 가리킵니다. 큰 벽이 <b>어디</b> 있는지는 당일
+        최대벽이 답하고, 이 지표는 <b>언제 갑자기 늘었는지</b>를 답합니다
       </p>
       <p className="text-fg-dim text-xs mb-3">
         채움이 그 벽의 결말입니다. <b>채운 삼각형</b>은 반대 세력이 체결로 먹었거나 가격이
