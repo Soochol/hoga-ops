@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayAskPeaks } from './useDayAskPeaks';
+import { useDayAskPeaks, deriveDayAskPeaksIncremental } from './useDayAskPeaks';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import { classifyAskWallEvents, toWallEventsFromOrderbooks } from './peakWallEventClassifier';
 import type { AskPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
@@ -458,8 +459,9 @@ describe('useDayAskPeaks — 미도달 벽 패밀리', () => {
 });
 
 describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계단의 입력)', () => {
-  // 오늘 행은 라이브 파생이 통째로 대체하지만(`seeds.filter`), 기록만은 seed 에서
-  // 건져 와야 한다. 종전엔 이 자리에 top-3 이 들어가 있어서, 장중에 더 큰 벽이 서서
+  // 오늘 행은 라이브 파생이 통째로 대체하지만(`seeds.filter`), 기록만은 세 출처에서
+  // 모아야 한다: seed(개장~프로모션) · 라이브 스냅샷(마운트 시점 서버 상태) · 접속 이후
+  // 누적. 종전엔 이 자리에 **그 순간의 top-3** 이 들어가 있어서, 장중에 더 큰 벽이 서서
   // top-3 이 뒤로 몰릴 때마다 계단의 **왼쪽 끝이 오른쪽으로 후퇴**했다.
 
   const seedWithRecords = (records: {
@@ -484,9 +486,10 @@ describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계�
     const today = result.current.find((p) => p.date === '20260613')!;
     // carrier 는 여전히 라이브 파생이다(seed 의 5000 이 아니다) — 버리는 규약은 그대로.
     expect(today.qty).toBe(9000);
-    // 그러나 오전 기록은 남는다. 두 축이 **따로** 실린다(seed 는 rep/cont 가 다르다).
-    expect(today.traded_record_peaks).toEqual([morning]);
-    expect(today.traded_record_max_peaks).toEqual([morningCont]);
+    // 오전 기록이 남는다. 두 축이 **따로** 실린다(seed 는 rep/cont 가 다르다).
+    expect(today.traded_record_peaks).toContainEqual(morning);
+    expect(today.traded_record_max_peaks).toContainEqual(morningCont);
+    expect(today.traded_record_max_peaks).not.toContainEqual(morning);
   });
 
   it('기록은 seed(오전)와 라이브 스냅샷(당일 전체)의 합집합이다', () => {
@@ -495,7 +498,14 @@ describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계�
     const { result } = renderHook(() => useDayAskPeaks(
       [], [], [seedWithRecords({ close: [morning], max: [morning] })],
       '20260613', OPEN_MS, '005930',
-      todayAskPeak({ traded_record_peaks: [afternoon] }),
+      // 라이브 top-3 을 기록과 같은 벽으로 맞춰 둔다 — 누적기 기여가 이 둘과 겹쳐
+      // 합집합이 정확히 둘이 되므로, 이 테스트가 재는 것이 **병합**만 남는다.
+      todayAskPeak({
+        traded_record_peaks: [afternoon],
+        traded_price: afternoon.price,
+        traded_qty: afternoon.qty,
+        traded_t_ms: afternoon.t_ms,
+      }),
     ));
 
     const today = result.current.find((p) => p.date === '20260613')!;
@@ -503,14 +513,79 @@ describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계�
     expect(today.traded_record_max_peaks).toEqual([morning, afternoon]);
   });
 
-  it('두 출처에 기록이 없으면 **비운다** — top-3 을 기록 자리에 넣지 않는다', () => {
-    // 하류(expandBaselinePeaks)가 기록 ∪ top-3 을 후보로 쓰므로 폴백은 거기서 난다.
-    // 여기서 top-3 을 실으면 "기록" 이라는 필드의 뜻이 조용히 무너진다.
-    const { result } = renderHook(() => useDayAskPeaks(
-      [], [], [], '20260613', OPEN_MS, '005930', todayAskPeak(),
-    ));
+  // ── 접속 이후 누적(옵션 b) — 잔여 창을 닫는 절 ─────────────────────────────
+  //
+  // 판별식은 **단조성**이다: 첫 프레임만 보면 누적기와 "top-3 을 그냥 싣기" 가 구별되지
+  // 않는다(관측이 한 번뿐이라 합집합 = 그 top-3). 순위가 갱신된 **뒤에** 이전 기록이
+  // 남아 있는가가 두 동작을 가른다 — 그게 사용자가 보고한 증상이다.
 
-    const today = result.current.find((p) => p.date === '20260613')!;
+  it('순위가 갱신돼도 접속 이후에 세운 기록은 남는다', () => {
+    const early = atKst(9, 20);
+    const { result, rerender } = renderHook(
+      ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
+      { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
+    );
+
+    // 09:20 — 작은 벽 하나가 서고 체결이 그걸 때린다. 그 순간의 유일한 기록이다.
+    rerender({
+      ob: [deep(early, 1_000)],
+      trades: [trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }])],
+    });
+    const first = result.current.find((p) => p.date === '20260613')!;
+    expect(first.traded_record_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+
+    // 13:00 — 훨씬 큰 벽 셋이 서서 top-3 을 통째로 밀어낸다.
+    const late = atKst(13, 0);
+    rerender({
+      ob: [
+        deep(early, 1_000),
+        deep(late, 50_000, 26_010),
+        deep(late + 1_000, 40_000, 26_020),
+        deep(late + 2_000, 30_000, 26_030),
+      ],
+      trades: [
+        trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }]),
+        trade(late + 3_000, [{ t_ms: late + 3_000, side: 1, price: 26_030, qty: 10 }]),
+      ],
+    });
+    const second = result.current.find((p) => p.date === '20260613')!;
+    // top-3 에서는 밀려났지만…
+    expect(second.traded_peaks).not.toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+    // …기록에는 남는다. 이게 없으면 계단의 09:20 계단이 사라진다.
+    expect(second.traded_record_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+    expect(second.traded_record_max_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+  });
+
+  it('종목이 바뀌면 누적을 버린다 — 옛 종목의 기록이 새 종목에 새지 않는다', () => {
+    const early = atKst(9, 20);
+    const props = {
+      ob: [deep(early, 1_000)],
+      trades: [trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }])],
+      code: '005930',
+    };
+    const { result, rerender } = renderHook(
+      ({ ob, trades, code }: typeof props) =>
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, code),
+      { initialProps: props },
+    );
+    expect(result.current.find((p) => p.date === '20260613')!.traded_record_peaks)
+      .toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+
+    // 같은 버퍼를 그대로 두고 종목만 바꾼다 — 누적기만 재는 조작이다.
+    rerender({ ...props, ob: [], trades: [], code: '000660' });
+    const after = result.current.find((p) => p.date === '20260613');
+    expect(after?.traded_record_peaks ?? []).toEqual([]);
+  });
+
+  it('derive 자체는 기록 자리에 top-3 을 넣지 않는다(누적은 훅의 일이다)', () => {
+    // 하류(expandBaselinePeaks)가 기록 ∪ top-3 을 후보로 쓰므로 폴백은 거기서 난다.
+    // derive 가 top-3 을 실으면 배치판과의 동등성 위에서 "기록" 의 뜻이 무너진다.
+    const rows = deriveDayAskPeaksIncremental(
+      new IncrementalPeakWallSource('ask'),
+      [], [], [], '20260613', OPEN_MS, todayAskPeak(),
+    );
+    const today = rows.find((p) => p.date === '20260613')!;
     expect(today.traded_peaks?.length).toBeGreaterThan(0);
     expect(today.traded_record_peaks).toEqual([]);
     expect(today.traded_record_max_peaks).toEqual([]);
