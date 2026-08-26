@@ -31,15 +31,28 @@ export function SettingsRow({
   );
 }
 
+/** 스위치 치수 두 벌.
+ *
+ *  `sm` 은 설정 **행**이 아니라 표의 **셀** 안에 들어가는 크기다 — 최대벽 매트릭스는
+ *  한 셀에 스위치·색·개수를 함께 담으므로 `md` 로는 행 높이가 두 배가 된다.
+ *  트랙 폭 − 노브 폭 − 여백 2 = 이동 거리라, 세 값이 함께 움직여야 한다. */
+const SWITCH_SIZE = {
+  md: { track: 'h-5 w-9', knob: 'h-4 w-4', on: 'translate-x-[18px]', off: 'translate-x-[2px]' },
+  sm: { track: 'h-[15px] w-[26px]', knob: 'h-[11px] w-[11px]', on: 'translate-x-[13px]', off: 'translate-x-[2px]' },
+} as const;
+
 export function ToggleSwitch({
   label,
   checked,
+  size = 'md',
   className = '',
   ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'aria-checked'> & {
   label: string;
   checked: boolean;
+  size?: keyof typeof SWITCH_SIZE;
 }) {
+  const dim = SWITCH_SIZE[size];
   return (
     <button
       type="button"
@@ -47,13 +60,13 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       {...props}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
+      className={`relative inline-flex ${dim.track} shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
         checked ? 'border-accent bg-accent' : 'border-border bg-bg-input-hover'
       } ${className}`.trim()}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
-          checked ? 'bg-accent-fg translate-x-[18px]' : 'bg-fg-dim translate-x-[2px]'
+        className={`inline-block ${dim.knob} transform rounded-full transition-transform ${
+          checked ? `bg-accent-fg ${dim.on}` : `bg-fg-dim ${dim.off}`
         }`}
       />
     </button>
