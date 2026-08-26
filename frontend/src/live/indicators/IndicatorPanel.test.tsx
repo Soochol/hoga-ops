@@ -161,6 +161,40 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('button', { name: '호가벽 급증 추가' })).toBeTruthy();
   });
 
+  // 미리보기의 **정의가 바뀌었다**: 종전엔 아직 존재하지 않는 지표의 편집 가능한
+  // 설정 폼이 떴다(어휘는 미리보기인데 화면은 편집기). 이제는 카드다.
+  it('미추가 지표의 상세는 설정 폼이 아니라 미리보기 카드다', () => {
+    renderPanel();
+    previewDetail('호가벽 급증');
+
+    expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+    // 그 지표의 설정 컨트롤은 하나도 없다 — 만질 수 없는 것을 보여 주지 않는다.
+    expect(screen.queryByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeNull();
+    // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
+    expect(screen.getByText(/한 호가 레벨에 물량이 순간적으로 몰린/)).toBeTruthy();
+  });
+
+  it('미리보기의 CTA 로 추가하면 그 자리가 설정 폼이 된다', () => {
+    renderPanel();
+    previewDetail('호가벽 급증');
+    fireEvent.click(screen.getByRole('button', { name: '＋ 차트에 추가' }));
+
+    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
+    // 선택은 그대로 — 추가했다고 다른 지표로 튀지 않는다.
+    expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
+    expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
+    expect(screen.getByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeTruthy();
+  });
+
+  it('추가된 지표를 삭제하면 그 자리가 다시 미리보기 카드가 된다', () => {
+    renderPanel();
+    openDetail('호가벽 급증');
+    expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
+
+    togglePresence('호가벽 급증');
+    expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+  });
+
   // 종전엔 삭제하면 "남은 첫 지표" 로 점프했다 — 목록이 「내 지표」뿐이라 지운 것이
   // 목록에서도 사라졌기 때문이다. 단일 리스트에서는 행이 그대로 있으므로 선택도
   // 그 자리에 남는다. 점프는 이제 사용자가 조준한 곳을 뺏는 동작이 된다.
@@ -715,15 +749,20 @@ describe('IndicatorPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('당일 최대벽 매도 서브탭의 표시 토글로 askPeakEnabled 반전', () => {
-    useLivePageStore.setState({ askPeakEnabled: false });
+  // 종전엔 **미추가 상태의 미리보기 폼**에서 이 스위치를 눌렀다 — 추가가 매도·매수를
+  // 함께 켜기 때문에 "매도만" 을 재려면 그 우회가 필요했다. 미리보기가 카드가 되면서
+  // 그 경로는 사라졌고(존재하지 않는 지표를 편집하던 것이 애초에 결함이었다), 대신
+  // 추가해서 둘 다 켠 뒤 **한쪽만 끄는** 방향으로 잰다. 반대 방향이 안 움직이는 것도
+  // 함께 못 박으므로 종전보다 강한 단언이다.
+  it('당일 최대벽 매도 서브탭의 표시 토글은 askPeakEnabled 만 움직인다', () => {
     renderPanel();
-    // 추가는 매도·매수를 함께 켜므로(병합 카테고리) 여기서는 **미리보기**로 연다 —
-    // 재려는 것은 서브탭 스위치 하나이지 추가 흐름이 아니다.
-    previewDetail('당일 최대벽');
+    openDetail('당일 최대벽');
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+
     // 기본 서브탭은 매도.
     fireEvent.click(screen.getByRole('switch', { name: '매도 최대벽 표시' }));
-    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
   });
 
   it('당일 최대 매물대 카테고리 토글', () => {
@@ -807,13 +846,14 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeNull();
   });
 
-  it('당일 최대벽 매수 서브탭의 표시 토글로 bidPeakEnabled 반전', () => {
-    useLivePageStore.setState({ bidPeakEnabled: false });
+  it('당일 최대벽 매수 서브탭의 표시 토글은 bidPeakEnabled 만 움직인다', () => {
     renderPanel();
-    previewDetail('당일 최대벽');
+    openDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('tab', { name: '매수' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '매수 최대벽 표시' }));
-    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
   });
 
   it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {

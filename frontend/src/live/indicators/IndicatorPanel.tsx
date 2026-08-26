@@ -21,6 +21,7 @@ import {
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
 import { dotColorsFor } from './indicatorDotColors';
+import IndicatorPreviewCard from './IndicatorPreviewCard';
 import ToggleRow from '../settings/ToggleRow';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
@@ -352,6 +353,11 @@ export default function IndicatorPanel({
   // 선택은 존재와 독립이다 — 아직 추가하지 않은 지표도 골라서 미리 볼 수 있으므로
   // 전체에서 찾는다. 삭제해도 선택은 그 자리에 남는다(상세가 미리보기로 바뀔 뿐).
   const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
+  // 상세 본문은 `selected` 가 아니라 **폴백까지 거친 결과**를 따른다 — capability 로
+  // 걸러진 지표가 선택돼 있으면 헤더는 폴백을 그리는데 본문만 아무것도 안 그리는
+  // 어긋남이 생긴다.
+  const selectedId = selectedCategory.id;
+  const selectedAdded = checkedFor(selectedId);
   const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
@@ -487,16 +493,25 @@ export default function IndicatorPanel({
               {/* 설명은 카테고리 표가 소유한다 — Config 안에 두면 아직 추가하지
                   않은 지표(Config 를 렌더하지 않는다)에서는 읽을 수가 없다. */}
               <p className="text-xs text-fg-dim">{selectedCategory.description}</p>
-              {selected === 'moving-average' && <MovingAverageConfig />}
-              {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}
-              {selected === 'volume' && <VolumeConfig />}
-              {(selected === 'foreign-net' || selected === 'institution-net') && <InvestorNetConfig />}
-              {selected === 'broker-late-entry' && <BrokerLateEntryConfig />}
-              {selected === 'peak-walls' && <PeakWallsConfig />}
-              {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
-              {selected === 'depth-heatmap' && <DepthHeatmapConfig />}
-              {selected === 'wall-surge' && <WallSurgeConfig />}
-              {selected === 'volume-distribution' && (
+              {/* 없으면 미리보기, 있으면 설정. 종전엔 아직 존재하지 않는 지표에도
+                  **편집 가능한** 설정 폼이 떠서, 저 스위치를 만지면 무슨 일이 나는지가
+                  화면에 없었다. 추가하면 이 자리가 그대로 폼이 된다(선택 불변). */}
+              {!selectedAdded && (
+                <IndicatorPreviewCard
+                  placementLabel={PLACEMENT_LABEL[selectedCategory.placement]}
+                  onAdd={() => addFor(selectedCategory.id)}
+                />
+              )}
+              {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
+              {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
+              {selectedAdded && selectedId === 'volume' && <VolumeConfig />}
+              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig />}
+              {selectedAdded && selectedId === 'broker-late-entry' && <BrokerLateEntryConfig />}
+              {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}
+              {selectedAdded && selectedId === 'trade-volume-poc' && <TradeVolumePocConfig />}
+              {selectedAdded && selectedId === 'depth-heatmap' && <DepthHeatmapConfig />}
+              {selectedAdded && selectedId === 'wall-surge' && <WallSurgeConfig />}
+              {selectedAdded && selectedId === 'volume-distribution' && (
                 <div>
                   <div className="mb-3">
                     <label className="flex items-center justify-between gap-3 text-sm text-fg">
@@ -550,9 +565,9 @@ export default function IndicatorPanel({
                   </div>
                 </div>
               )}
-              {selected === 'quote-totals' && <QuoteTotalsConfig />}
-              {selected === 'ratio' && <RatioConfig />}
-              {selected === 'fill-strength' && <FillStrengthConfig />}
+              {selectedAdded && selectedId === 'quote-totals' && <QuoteTotalsConfig />}
+              {selectedAdded && selectedId === 'ratio' && <RatioConfig />}
+              {selectedAdded && selectedId === 'fill-strength' && <FillStrengthConfig />}
               {selected === 'program-trade' && <ProgramTradeConfig />}
           </section>
         </div>
