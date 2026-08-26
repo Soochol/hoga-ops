@@ -125,6 +125,42 @@ describe('usePeakWallRender', () => {
     expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
   });
 
+  /**
+   * **막는 방향**: 미도달 계단의 후보를 화면 선과 같은 `unreached_peaks` top-3 으로
+   * 되돌리는 것(2026-08-26 이전 배선).
+   *
+   * 판별식은 「미도달 벽이 하나도 안 남은 날」이다 — 구 배선은 그날 행 자체를 건너뛰어
+   * 계단이 통째로 비었고, 그래서 빌더의 0-fill 이 발화할 기회조차 없었다. 실측
+   * 20260824(갭상승 후 종일 하락)가 바로 그 하루다.
+   */
+  it('미도달 계단은 그날 다른 계열의 벽도 후보로 쓴다 — unreached 가 0인 날에도 계단이 선다', () => {
+    act(() => {
+      useLivePageStore.setState({
+        askPeakUnreachedLineEnabled: false,
+        askPeakUnreachedPaneEnabled: true,
+      });
+    });
+    const noSurvivor: AskPeak = {
+      ...PEAK,
+      // 미도달 벽 0개 — 그날 알려진 벽은 체결 기록뿐이다.
+      unreached_peaks: [],
+      traded_record_peaks: [{ price: 105, qty: 300, t_ms: MIN }],
+    };
+    const r = render(true, [noSurvivor], true);
+    expect(r.current.unreachedSegments).toHaveLength(0);          // 화면 선은 그대로 0
+    expect(r.current.unreachedStepSegments.length).toBeGreaterThan(0);
+  });
+
+  /** 「없음 구간」 색은 계열 본색에서 파생된다 — 사용자가 색을 바꾸면 같이 따라간다. */
+  it('unreachedAbsentColor 는 계열 색의 흐린 판이다', () => {
+    act(() => {
+      useLivePageStore.setState({ askPeakUnreachedColor: '#1E3A8A' });
+    });
+    const r = render(true, [PEAK], true);
+    expect(r.current.unreachedColor).toBe('#1E3A8A');
+    expect(r.current.unreachedAbsentColor).toBe('rgba(30, 58, 138, 0.3)');
+  });
+
   /** pane 마스터가 꺼져 있으면 슬롯이 켜져 있어도 계산하지 않는다(`needStepSegments`). */
   it('pane 마스터가 꺼져 있으면 슬롯과 무관하게 계단이 없다', () => {
     const r = render(true, [PEAK], false);

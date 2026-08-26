@@ -121,18 +121,31 @@ export function buildPeakWallStepPoints(
  *   계단(t) = max{ 벽ᵢ.qty : 벽ᵢ.시각 ≤ t 이고 벽ᵢ 가 t 시점에 아직 미도달 }
  *
  * 미도달 판정의 극값은 **캔들에서** 만든다 — 세션 시작부터 t 까지의 누적 고가(ask)
- * /저가(bid). 후보가 3개 이하라 봉마다 다시 훑어도 O(봉수 × 3) 이다.
+ * /저가(bid).
  *
- * ⚠ **문서화된 근사**: 입력 세그먼트는 그 계열의 top-3(과거일은 wire 가 rank-1
- * 스칼라뿐이라 1개)이다. 따라서 이 선은 "모든 미도달 벽 중 최대" 가 아니라
- * "**top-3 후보 중** 그 시점에 미도달인 것의 최대" 다. 4위 이하가 살아남아도 보이지
- * 않는다 — 구백엔드 기록 필드가 없을 때 traded 계단이 top-3 으로 떨어지는 것과 같은
- * 등급의 근사이고, 그 이상은 wire 가 나르지 않는다.
+ * ## 후보가 비는 봉은 0 을 낸다 (2026-08-26 — 종전엔 선을 끊었다)
  *
- * 후보가 전부 도달당해 계열이 비면 **0 을 그리지 않는다** — 0 은 "미도달 벽이 0주"
- * 라는 뜻이 되어 급락으로 오독된다. 대신 마지막 점의 outgoing 을 투명으로 끊어
- * 선을 거기서 멈춘다(거래일 경계와 같은 기법 — whitespace 는 lwc 가 무시한다).
- * 극값은 단조라 한 거래일 안에서 한 번 비면 그날은 다시 차지 않는다.
+ * 위 집합이 공집합이면 **그 시점에 미도달 벽이 없다**는 뜻이고, 그건 부재가 아니라
+ * 값이다. 그래서 `0` 을 내되 점 색을 `absentColor`(계열 본색의 흐린 판) 로 바꾼다 —
+ * "값이 0 으로 급락했다" 가 아니라 "이 구간엔 미도달 벽이 없었다" 로 읽히게 하는 것이
+ * 요점이다. 종전 docstring 은 0 을 급락 오독 때문에 기각했는데, **오독은 데이터가
+ * 아니라 표기의 문제**라 색으로 푼다.
+ *
+ * 기각 근거의 나머지 절반(「top-3 절단 때문에 0 이 거짓일 수 있다」)은 입력 쪽에서
+ * 닫았다 — 계단 후보가 `toUnreachedStepPeakInputs` 로 그날 알려진 벽 전체가 됐다
+ * (실측 3 → 33~150개). **그 확장 없이 0-fill 만 하면 종전 docstring 이 기각한 바로
+ * 그것**이 되므로 둘은 한 묶음이다.
+ *
+ * ⚠ 그래도 0 이 100% 확실하지는 않다 — wire 가 top-3 밖 벽을 나르지 않는다. 남은
+ * 근사는 조사 기록에 적혀 있다
+ * (`docs/research/2026-08-26-peak-wall-pane-unreached-gap-review.md`).
+ *
+ * **벽 데이터가 아예 없는 거래일에는 아무것도 내지 않는다.** 캡처 누락과 "전부 도달"
+ * 은 다른 상태이고, 전자에 0 을 그리면 하지 않은 주장을 하는 것이다. 판별은 그날에
+ * 속한 후보가 하나라도 있는가로 한다.
+ *
+ * 거래일 경계는 종전대로 `maskOutgoingConnector` + 투명 첫 점으로 끊는다
+ * (whitespace 로는 안 된다 — `buildPeakWallStepPoints` 머리말의 실측 참조).
  */
 export function buildUnreachedStepPoints(
   segments: readonly PeakWallSegment[],
@@ -140,26 +153,39 @@ export function buildUnreachedStepPoints(
   axis: VirtualAxis,
   color: string,
   side: 'ask' | 'bid',
+  absentColor: string,
 ): PeakWallStepPoint[] {
   if (segments.length === 0 || candles.length === 0 || axis.segments.length === 0) return [];
   const isAsk = side === 'ask';
 
-  const events = segments
-    .map((s) => {
-      const vsec = Number(s.peakTime);
-      return { vsec, qty: s.qty, price: s.price, dayIdx: axis.findByVirtual(vsec * 1000) };
-    })
-    .filter((e) => Number.isFinite(e.vsec) && Number.isFinite(e.qty)
-      && Number.isFinite(e.price) && e.dayIdx >= 0);
-  if (events.length === 0) return [];
+  type Candidate = { vsec: number; qty: number; price: number };
+  // 후보를 **거래일별로** 미리 나누고 각 날 안에서 기립 순으로 정렬한다. 봉마다 전체
+  // 풀을 훑던 종전 구조는 후보가 3개일 때의 것이고, 풀이 그날 알려진 벽 전체로 넓어진
+  // 지금은 O(봉수 × 풀크기) 가 그대로 비용이 된다(실측 400봉 × 150후보 / 일).
+  const byDay = new Map<number, Candidate[]>();
+  for (const s of segments) {
+    const vsec = Number(s.peakTime);
+    const dayIdx = axis.findByVirtual(vsec * 1000);
+    if (!Number.isFinite(vsec) || !Number.isFinite(s.qty)
+      || !Number.isFinite(s.price) || dayIdx < 0) continue;
+    const bucket = byDay.get(dayIdx);
+    const candidate = { vsec, qty: s.qty, price: s.price };
+    if (bucket) bucket.push(candidate);
+    else byDay.set(dayIdx, [candidate]);
+  }
+  if (byDay.size === 0) return [];
+  for (const bucket of byDay.values()) bucket.sort((a, b) => a.vsec - b.vsec);
 
   const out: PeakWallStepPoint[] = [];
   let currentDay = -2;
   let dayExtreme: number | null = null;
-  let emittedToday = false;
-  let closedToday = false;
   let pendingDayBreak = false;
   let lastVsec = Number.NEGATIVE_INFINITY;
+  let dayCandidates: Candidate[] = [];
+  let nextCandidate = 0;
+  /** 아직 도달당하지 않은 후보만 남는다 — 극값은 단조라 이탈은 **영구적**이고,
+   *  한 번 지운 후보를 다시 볼 일이 없다. */
+  let alive: Candidate[] = [];
 
   for (const c of candles) {
     // 세션 밖 캔들 제외 — 사유는 buildPeakWallStepPoints 의 같은 가드 주석 참조.
@@ -170,10 +196,14 @@ export function buildUnreachedStepPoints(
     if (dayIdx !== currentDay) {
       currentDay = dayIdx;
       dayExtreme = null;
-      emittedToday = false;
-      closedToday = false;
       pendingDayBreak = out.length > 0;
+      dayCandidates = byDay.get(dayIdx) ?? [];
+      nextCandidate = 0;
+      alive = [];
     }
+    // 그날 벽 데이터 자체가 없다 — 0 을 주장할 근거가 없으므로 점을 내지 않는다.
+    if (dayCandidates.length === 0) continue;
+
     // 당일 누적 극값 — 세션 시작부터 이 봉까지.
     const level = isAsk ? c.high : c.low;
     if (Number.isFinite(level)) {
@@ -181,38 +211,43 @@ export function buildUnreachedStepPoints(
         ? level
         : (isAsk ? Math.max(dayExtreme, level) : Math.min(dayExtreme, level));
     }
-    if (closedToday) continue;
 
     const vsec = virtualMs / 1000;
-    let best: number | null = null;
-    for (const ev of events) {
-      if (ev.dayIdx !== dayIdx || ev.vsec > vsec) continue;
-      // 미도달 = 극값이 아직 이 가격을 지배하지 못했다(ask: price > 고가).
-      const unreached = dayExtreme === null
-        || (isAsk ? ev.price > dayExtreme : ev.price < dayExtreme);
-      if (!unreached) continue;
-      if (best === null || ev.qty > best) best = ev.qty;
+    while (nextCandidate < dayCandidates.length
+      && dayCandidates[nextCandidate].vsec <= vsec) {
+      alive.push(dayCandidates[nextCandidate]);
+      nextCandidate += 1;
     }
 
-    if (best === null) {
-      // 그날 이미 선을 그렸다면 여기서 끊는다(0 을 그리지 않는다).
-      if (emittedToday) {
-        maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
-        closedToday = true;
-      }
-      continue;
+    // 살아 있는 후보를 훑으며 도달한 것을 제자리에서 걷어내고 최댓값을 고른다.
+    let best: number | null = null;
+    let kept = 0;
+    for (const candidate of alive) {
+      // 미도달 = 극값이 아직 이 가격을 지배하지 못했다(ask: price > 고가).
+      const unreached = dayExtreme === null
+        || (isAsk ? candidate.price > dayExtreme : candidate.price < dayExtreme);
+      if (!unreached) continue;
+      alive[kept] = candidate;
+      kept += 1;
+      if (best === null || candidate.qty > best) best = candidate.qty;
     }
+    alive.length = kept;
+
+    // 생산자 쪽 최종 불변식 — 어떤 입력에서든 같은 시각 점을 두 번 내지 않는다
+    // (lwc 는 위반 시 단언으로 차트 전체를 죽인다 — 점 하나 빠지는 쪽이 낫다).
     if (vsec <= lastVsec) continue;
     lastVsec = vsec;
     if (pendingDayBreak) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
-      out.push({ time: vsec as Time, value: best, ...LINE_HIDDEN_COLOR });
+      out.push({ time: vsec as Time, value: best ?? 0, ...LINE_HIDDEN_COLOR });
       pendingDayBreak = false;
-      emittedToday = true;
       continue;
     }
-    out.push({ time: vsec as Time, value: best, color });
-    emittedToday = true;
+    out.push({
+      time: vsec as Time,
+      value: best ?? 0,
+      color: best === null ? absentColor : color,
+    });
   }
   return out;
 }

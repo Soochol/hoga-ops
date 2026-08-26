@@ -63,6 +63,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     unreachedDrawn: false,
     unreachedLabels: false,
     unreachedColor: '#unreached',
+    unreachedAbsentColor: '#unreached-absent',
     unreachedLineWidth: 2,
     tradedHorizontalLine: true,
     tradedTimeMarker: true,

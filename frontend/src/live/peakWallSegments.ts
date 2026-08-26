@@ -114,6 +114,91 @@ export function toUnreachedWallPeakInputs(peaks: readonly PeakWallInput[]): Peak
   return out;
 }
 
+/**
+ * 미도달 벽의 **강도 pane 계단 전용** 입력 — 화면의 미도달 선(`toUnreachedWallPeakInputs`)과
+ * 는 다른 함수다. 캔들 표면의 벽 개수는 그대로 두고 **계단의 후보만** 넓힌다.
+ *
+ * ## 왜 넓히나 (2026-08-26)
+ *
+ * 계단 후보가 `unreached_peaks` top-3 뿐이면, 「그 시점에 미도달인 벽이 없다」는 판정이
+ * **top-3 절단 때문일 수도** 있다. 그 불확실성 때문에 종전 빌더는 후보가 비면 0 을 그리지
+ * 않고 선을 끊었고(빈 구간), 그것이 사용자가 본 "빈 공간" 이다.
+ *
+ * 후보를 그날 wire 가 나르는 벽 **전부**(실측 3 → 33~150개)로 넓히면 그 0 이 진짜 0 에
+ * 훨씬 가까워진다 — 그래서 이 확장과 `buildUnreachedStepPoints` 의 0-fill 은 **한 묶음**이다.
+ * 확장만으로는 커버리지가 거의 안 는다(실측 +0~6%p, ask 기준): 미도달 판정 기준이 현재가가
+ * 아니라 **당일 누적 극값**이라, 되돌림 뒤 선 벽은 기립하는 순간 이미 도달 상태다.
+ * 조사 기록은 `docs/research/2026-08-26-peak-wall-pane-unreached-gap-review.md`.
+ *
+ * ⚠ 이 풀을 **표시 개수 카운트에 연결하지 말 것** — 같은 벽이 여러 필드로 들어와
+ * 개수가 무효가 된다(계단은 `max` 판정이라 무해하고, 실측에서 `(가격, 시각)` 이 같은데
+ * `qty` 가 갈리는 후보는 0건이었다).
+ *
+ * 그날 후보가 **하나도 없으면 행을 내지 않는다** — 그래야 빌더가 "벽 데이터가 없는 날"
+ * 과 "벽은 있었는데 전부 도달당한 날" 을 구별해 전자에는 0 을 주장하지 않는다.
+ */
+export function toUnreachedStepPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
+  const out: PeakWallInput[] = [];
+  for (const p of peaks) {
+    const unreachedArr = p.unreached_peaks?.length ? p.unreached_peaks : undefined;
+    const rankOne = unreachedArr?.[0]
+      ?? allCandidate(p.unreached_price, p.unreached_qty, p.unreached_t_ms);
+    const pool = mergePeakCandidates(
+      unreachedArr,
+      rankOne ? [rankOne] : undefined,
+      p.traded_peaks,
+      p.traded_max_peaks,
+      p.traded_record_peaks,
+      p.traded_record_max_peaks,
+      p.all_peaks,
+      p.all_max_peaks,
+      candidateList(allCandidate(p.price, p.qty, p.t_ms)),
+      candidateList(allCandidate(p.max_price, p.max_qty, p.max_t_ms)),
+      candidateList(allCandidate(p.all_price, p.all_qty, p.all_t_ms)),
+      candidateList(allCandidate(p.all_max_price, p.all_max_qty, p.all_max_t_ms)),
+    );
+    if (pool.length === 0) continue;
+    // carrier 는 미도달 rank-1 이 있으면 그것 — 없는 날(그날 전부 도달)에도 계단은
+    // 나와야 하므로 풀의 첫 후보로 채운다. 이 carrier 는 계단 계산에 쓰이지 않고
+    // (`stepHistory` 는 record 자리를 읽는다) 파이프라인의 형식 요구만 만족시킨다.
+    const carrier = rankOne ?? pool[0];
+    out.push({
+      date: p.date,
+      price: carrier.price,
+      qty: carrier.qty,
+      t_ms: carrier.t_ms,
+      max_price: carrier.price,
+      max_qty: carrier.qty,
+      max_t_ms: carrier.t_ms,
+      traded_peaks: unreachedArr,
+      traded_max_peaks: unreachedArr,
+      // cont 단일 계열이라 양 축에 같은 풀 — intraMax 토글 무효 규약은 그대로다.
+      traded_record_peaks: pool,
+      traded_record_max_peaks: pool,
+    });
+  }
+  return out;
+}
+
+function candidateList(candidate: AskPeakCandidate | null): AskPeakCandidate[] | undefined {
+  return candidate ? [candidate] : undefined;
+}
+
+/** `(price, qty, t_ms)` 키로 후보를 합친다 — 같은 벽이 여러 필드에 실려 온다. */
+function mergePeakCandidates(
+  ...groups: ReadonlyArray<readonly AskPeakCandidate[] | null | undefined>
+): AskPeakCandidate[] {
+  const out: AskPeakCandidate[] = [];
+  const seen = new Set<string>();
+  for (const candidate of groups.flatMap((group) => group ?? [])) {
+    const key = `${candidate.price}:${candidate.qty}:${candidate.t_ms}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+  }
+  return out;
+}
+
 export type PeakWallLineStyle = {
   color: string;
   lineWidth: number;

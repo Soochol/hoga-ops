@@ -140,15 +140,26 @@ describe('buildPeakWallStepPoints', () => {
 });
 
 /**
- * **미도달 계단은 단조가 아니다** — 이 파일에서 재는 유일한 축.
+ * 미도달 계단이 재는 축 **둘**.
  *
- * 막는 방향: 미도달 계열에 running max 빌더(`buildPeakWallStepPoints`)를 쓰는 것.
- * 그 빌더는 이미 깨진 벽을 계단 높이로 영원히 남기므로 **틀린 선**이 된다.
- * 아래 첫 테스트가 그 대조를 값으로 못박는다(같은 입력에 두 빌더를 태운다).
+ * ① **단조가 아니다** — 막는 방향: 미도달 계열에 running max 빌더
+ * (`buildPeakWallStepPoints`)를 쓰는 것. 그 빌더는 이미 깨진 벽을 계단 높이로 영원히
+ * 남기므로 **틀린 선**이 된다. 첫 테스트가 같은 입력에 두 빌더를 태워 그 대조를 값으로
+ * 못박는다.
  *
- * 못 보는 것: top-3 밖의 4위 벽 — wire 가 나르지 않는다(빌더 docstring 의 근사).
+ * ② **후보가 비는 봉은 0(흐린 색)** — 막는 방향: 선을 끊어 빈 구간을 만드는 것
+ * (2026-08-26 이전 동작). 「그 시점에 미도달 벽이 없다」는 부재가 아니라 값이고, 색이
+ * 그 구간을 급락과 구별한다. **단, 그날 벽 데이터가 아예 없으면 0 도 내지 않는다** —
+ * 캡처 누락에 0 을 그리면 하지 않은 주장을 하는 것이다.
+ *
+ * 못 보는 것: top-3 밖의 벽 — wire 가 나르지 않는다. 그 절단이 0 을 거짓으로 만들 수
+ * 있어 **후보 풀 확장(`toUnreachedStepPeakInputs`)이 0-fill 의 전제**이고, 그쪽 대조는
+ * `live/peakWallSegments.test.ts` 가 잰다. 이 파일은 빌더만 본다.
  */
 describe('buildUnreachedStepPoints', () => {
+  const COLOR = '#1E3A8A';
+  const ABSENT = 'rgba(30, 58, 138, 0.3)';
+
   // 고가가 장중에 오르는 하루: 09:00~09:02 는 105, 09:03 부터 **1,200 까지** 오른다.
   // 매도 미도달 판정은 `price > 누적 고가` 라 1,100 벽은 09:03 에 도달당한다.
   const risingDay: Candle[] = [0, 1, 2, 3, 4, 5].map((i) => ({
@@ -165,26 +176,49 @@ describe('buildUnreachedStepPoints', () => {
       priced(DAY1_OPEN, 9_000, 1_100),        // 09:03 에 고가 1,200 이 지배 → 이탈
       priced(DAY1_OPEN, 3_000, 5_000),        // 계속 미도달(5,000 > 1,200)
     ];
-    const unreached = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
+    const unreached = buildUnreachedStepPoints(segments, risingDay, axis, COLOR, 'ask', ABSENT);
     const values = valuesOf(unreached);
 
     // 09:00~09:02 는 9,000(둘 다 미도달), 09:03 부터 3,000 으로 **하락**.
     expect(values).toEqual([9_000, 9_000, 9_000, 3_000, 3_000, 3_000]);
+    // 값이 있는 구간은 전부 본색이다 — 흐린 색은 0 구간의 표시다.
+    expect(unreached.map((p) => p.color)).toEqual(Array(6).fill(COLOR));
 
     // 대조: 같은 입력을 running max 빌더에 태우면 9,000 이 끝까지 남는다 —
     // 이 테스트가 잡는 것이 정확히 그 차이다.
-    const monotone = valuesOf(buildPeakWallStepPoints(segments, risingDay, axis, '#1E3A8A'));
+    const monotone = valuesOf(buildPeakWallStepPoints(segments, risingDay, axis, COLOR));
     expect(monotone).toEqual([9_000, 9_000, 9_000, 9_000, 9_000, 9_000]);
   });
 
-  it('후보가 전부 도달당하면 0 을 그리지 않고 선을 끊는다', () => {
+  it('후보가 전부 도달당하면 선을 끊지 않고 0 을 흐린 색으로 잇는다', () => {
     const segments = [priced(DAY1_OPEN, 9_000, 1_100)];
-    const points = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
+    const points = buildUnreachedStepPoints(segments, risingDay, axis, COLOR, 'ask', ABSENT);
 
-    // 09:00~09:02 세 점만 남고 그 뒤는 점이 없다 — 0 이 아니라 **부재**.
-    expect(valuesOf(points)).toEqual([9_000, 9_000, 9_000]);
-    // 마지막 점의 outgoing 이 끊겨 선이 이어지지 않는다(거래일 경계와 같은 기법).
-    expect(points[points.length - 1]).toMatchObject(LINE_HIDDEN_COLOR);
+    // 09:03 부터 미도달 벽이 없다 — 부재가 아니라 **0** 이고, 봉은 계속 나온다.
+    expect(valuesOf(points)).toEqual([9_000, 9_000, 9_000, 0, 0, 0]);
+    expect(points.map((p) => p.color)).toEqual(
+      [COLOR, COLOR, COLOR, ABSENT, ABSENT, ABSENT],
+    );
+  });
+
+  it('벽이 서기 전 봉도 0(흐린 색)으로 채운다 — 그날 벽 데이터는 있으므로', () => {
+    const segments = [priced(DAY1_OPEN + 2 * MIN, 9_000, 5_000)];
+    const points = buildUnreachedStepPoints(segments, risingDay, axis, COLOR, 'ask', ABSENT);
+    // 6봉 전부 나온다(종전엔 09:02 부터 4봉).
+    expect(points.map((p) => Number(p.time))).toEqual(
+      [0, 1, 2, 3, 4, 5].map((i) => vsecOf(DAY1_OPEN + i * MIN)),
+    );
+    expect(valuesOf(points)).toEqual([0, 0, 9_000, 9_000, 9_000, 9_000]);
+    expect(points.slice(0, 2).map((p) => p.color)).toEqual([ABSENT, ABSENT]);
+  });
+
+  it('벽 데이터가 없는 거래일에는 0 도 내지 않는다 — 캡처 누락과 「전부 도달」은 다르다', () => {
+    // 벽은 DAY1 에만 있고 DAY2 에는 없다. DAY2 의 6봉은 점이 없어야 한다.
+    const segments = [priced(DAY1_OPEN, 9_000, 5_000)];
+    const points = buildUnreachedStepPoints(segments, candles, axis, COLOR, 'ask', ABSENT);
+    const day2Start = vsecOf(DAY2_OPEN);
+    expect(points.every((p) => Number(p.time) < day2Start)).toBe(true);
+    expect(points).toHaveLength(6);
   });
 
   it('매수는 저가 기준으로 대칭이다', () => {
@@ -197,16 +231,22 @@ describe('buildUnreachedStepPoints', () => {
       priced(DAY1_OPEN, 3_000, 100),   // 계속 미도달(100 < 500)
     ];
     const values = valuesOf(
-      buildUnreachedStepPoints(segments, fallingDay, axis, '#7F1D1D', 'bid'),
+      buildUnreachedStepPoints(segments, fallingDay, axis, '#7F1D1D', 'bid', ABSENT),
     );
     expect(values).toEqual([9_000, 9_000, 9_000, 3_000, 3_000, 3_000]);
   });
 
-  it('벽이 선 시각 이전 봉에는 점을 내지 않는다', () => {
-    const segments = [priced(DAY1_OPEN + 2 * MIN, 9_000, 5_000)];
-    const points = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
-    expect(points.map((p) => Number(p.time))).toEqual(
-      [2, 3, 4, 5].map((i) => vsecOf(DAY1_OPEN + i * MIN)),
-    );
+  it('거래일 경계는 종전대로 투명으로 끊는다 — 0-fill 이 그 처리를 삼키지 않는다', () => {
+    const segments = [
+      priced(DAY1_OPEN, 9_000, 5_000),
+      priced(DAY2_OPEN, 4_000, 5_000),
+    ];
+    const points = buildUnreachedStepPoints(segments, candles, axis, COLOR, 'ask', ABSENT);
+    const day2Start = vsecOf(DAY2_OPEN);
+    const boundary = points.findIndex((p) => Number(p.time) >= day2Start);
+    expect(boundary).toBeGreaterThan(0);
+    // 이전 날 마지막 점(수평부)과 새 날 첫 점(수직부)이 둘 다 투명.
+    expect(points[boundary - 1]).toMatchObject(LINE_HIDDEN_COLOR);
+    expect(points[boundary]).toMatchObject(LINE_HIDDEN_COLOR);
   });
 });

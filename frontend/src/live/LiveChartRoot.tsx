@@ -2165,19 +2165,26 @@ export function LiveChartRoot({
         : EMPTY_PEAK_WALL_STEPS
     );
     const unreached = (
-      segs: readonly PeakWallSegment[], color: string, side: 'ask' | 'bid',
+      segs: readonly PeakWallSegment[], color: string, absentColor: string,
+      side: 'ask' | 'bid',
     ) => (
       prefPeakWallPaneEnabled && segs.length > 0
-        ? buildUnreachedStepPoints(segs, candlesForSteps, axis, color, side)
+        ? buildUnreachedStepPoints(segs, candlesForSteps, axis, color, side, absentColor)
         : EMPTY_PEAK_WALL_STEPS
     );
     return {
       'ask-traded': monotone(askWall.stepSegments, askWall.color),
       'ask-all': monotone(askWall.allWallStepSegments, askWall.allWallColor),
-      'ask-unreached': unreached(askWall.unreachedStepSegments, askWall.unreachedColor, 'ask'),
+      'ask-unreached': unreached(
+        askWall.unreachedStepSegments, askWall.unreachedColor,
+        askWall.unreachedAbsentColor, 'ask',
+      ),
       'bid-traded': monotone(bidWall.stepSegments, bidWall.color),
       'bid-all': monotone(bidWall.allWallStepSegments, bidWall.allWallColor),
-      'bid-unreached': unreached(bidWall.unreachedStepSegments, bidWall.unreachedColor, 'bid'),
+      'bid-unreached': unreached(
+        bidWall.unreachedStepSegments, bidWall.unreachedColor,
+        bidWall.unreachedAbsentColor, 'bid',
+      ),
     } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
   }, [prefPeakWallPaneEnabled, cb?.candles, axis, askWall, bidWall]);
 

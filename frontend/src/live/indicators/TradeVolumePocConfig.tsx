@@ -1,16 +1,11 @@
 import ColorSwatchPicker from './ColorSwatchPicker';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import { withAlpha } from '../../chart/util/colorAlpha';
 
-function hexToRgba(hex: string, opacity: number): string {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!match) return `rgba(168, 85, 247, ${Math.max(0, Math.min(1, opacity))})`;
-  const raw = match[1];
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  const alpha = Math.max(0, Math.min(1, opacity));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
+/** hex 파싱 실패 시의 POC 기본색 폴백 — 종전 하드코딩과 같은 보라. */
+const POC_FALLBACK_RGB = '168, 85, 247';
+
+
 
 export default function TradeVolumePocConfig() {
   const color = useWindowIndicator((s) => s.tradeVolumePocColor);
@@ -27,7 +22,7 @@ export default function TradeVolumePocConfig() {
           <div
             aria-hidden="true"
             className="h-6 w-10 rounded border border-border-subtle"
-            style={{ backgroundColor: hexToRgba(color, opacity), borderColor: color }}
+            style={{ backgroundColor: withAlpha(color, opacity, `rgba(${POC_FALLBACK_RGB}, ${opacity})`), borderColor: color }}
           />
           <ColorSwatchPicker
             label="당일 최대 매물대 색상"

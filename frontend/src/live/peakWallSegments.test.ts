@@ -9,6 +9,7 @@ import {
   preparePeakWallSegmentsForRender,
   toAllWallPeakInputs,
   toUnreachedWallPeakInputs,
+  toUnreachedStepPeakInputs,
 } from './peakWallSegments';
 
 /**
@@ -577,5 +578,84 @@ describe('toUnreachedWallPeakInputs', () => {
       peak({ date: '20260611', unreached_price: 200, unreached_qty: 900, unreached_t_ms: 5 }),
     ]);
     expect(out.map((p) => p.date)).toEqual(['20260611']);
+  });
+});
+
+/**
+ * 강도 pane 계단 전용 후보 풀 — **화면의 미도달 선과 갈라진다**는 것이 이 describe 의 축.
+ *
+ * 막는 방향 둘:
+ * ① 계단 후보를 `unreached_peaks` top-3 으로 되돌리는 것. 그러면 「미도달 벽 없음」(0)
+ *    이 top-3 절단 탓인지 진짜인지 구별되지 않아, 빌더의 0-fill 이 종전 docstring 이
+ *    기각한 「거짓 0」이 된다.
+ * ② 이 확장이 **화면의 벽 개수**로 새는 것. 캔들 표면의 미도달 선은 그대로 top-3 이고,
+ *    그 입력은 `toUnreachedWallPeakInputs` 다(위 describe).
+ *
+ * 못 보는 것: wire 가 안 나르는 top-3 밖 벽. 빌더 쪽 축은 `chart/peakWallSteps.test.ts`.
+ */
+describe('toUnreachedStepPeakInputs', () => {
+  it('그날 알려진 벽을 전부 record 슬롯에 모은다 — 화면 top-3 보다 넓다', () => {
+    const out = toUnreachedStepPeakInputs([peak({
+      date: '20260613',
+      unreached_peaks: [{ price: 300, qty: 5_000, t_ms: 10 }],
+      traded_peaks: [{ price: 250, qty: 7_000, t_ms: 20 }],
+      traded_record_peaks: [{ price: 240, qty: 1_000, t_ms: 5 }],
+      all_peaks: [{ price: 260, qty: 2_000, t_ms: 30 }],
+    })]);
+    // record 슬롯 = 네 계열의 합집합. 화면 선(traded_peaks 슬롯)은 미도달 top-3 그대로.
+    expect(out[0].traded_record_peaks).toEqual([
+      { price: 300, qty: 5_000, t_ms: 10 },
+      { price: 250, qty: 7_000, t_ms: 20 },
+      { price: 240, qty: 1_000, t_ms: 5 },
+      { price: 260, qty: 2_000, t_ms: 30 },
+    ]);
+    expect(out[0].traded_peaks).toEqual([{ price: 300, qty: 5_000, t_ms: 10 }]);
+    // cont 단일 계열 규약 — 양 축에 같은 풀(intraMax 토글 무효).
+    expect(out[0].traded_record_max_peaks).toEqual(out[0].traded_record_peaks);
+  });
+
+  it('같은 벽이 여러 필드로 와도 (가격,잔량,시각) 키로 한 번만 담는다', () => {
+    const wall = { price: 300, qty: 5_000, t_ms: 10 };
+    const out = toUnreachedStepPeakInputs([peak({
+      date: '20260613',
+      unreached_peaks: [wall],
+      traded_peaks: [wall],
+      traded_record_peaks: [wall],
+      all_max_peaks: [wall],
+    })]);
+    expect(out[0].traded_record_peaks).toEqual([wall]);
+  });
+
+  it('미도달 벽이 하나도 없는 날도 행을 낸다 — 그날 0 을 그릴 근거가 되는 벽이 있으므로', () => {
+    const out = toUnreachedStepPeakInputs([peak({
+      date: '20260824',
+      traded_record_peaks: [{ price: 240, qty: 1_000, t_ms: 5 }],
+    })]);
+    expect(out).toHaveLength(1);
+    // carrier 는 풀의 첫 후보로 채워진다(계단 계산이 읽지 않는 형식 자리).
+    expect(out[0]).toMatchObject({ date: '20260824', price: 240, qty: 1_000, t_ms: 5 });
+    expect(out[0].traded_peaks).toBeUndefined();
+  });
+
+  it('벽 후보가 전혀 없는 날은 건너뛴다 — 빌더가 0 을 주장하지 않게', () => {
+    const out = toUnreachedStepPeakInputs([
+      peak({ date: '20260610' }),
+      peak({ date: '20260611', unreached_price: 200, unreached_qty: 900, unreached_t_ms: 5 }),
+    ]);
+    expect(out.map((row) => row.date)).toEqual(['20260611']);
+  });
+
+  it('스칼라만 오는 과거일도 풀에 들어간다(배열이 벗겨진 payload)', () => {
+    const out = toUnreachedStepPeakInputs([peak({
+      date: '20260611',
+      price: 100, qty: 10, t_ms: 1,
+      all_price: 120, all_qty: 30, all_t_ms: 3,
+      unreached_price: 200, unreached_qty: 900, unreached_t_ms: 5,
+    })]);
+    expect(out[0].traded_record_peaks).toEqual([
+      { price: 200, qty: 900, t_ms: 5 },
+      { price: 100, qty: 10, t_ms: 1 },
+      { price: 120, qty: 30, t_ms: 3 },
+    ]);
   });
 });

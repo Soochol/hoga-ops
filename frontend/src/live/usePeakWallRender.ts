@@ -25,6 +25,7 @@ import { useMemo } from 'react';
 import type { Candle, RangeSegment } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
+import { withAlpha } from '../chart/util/colorAlpha';
 import { useActivePrefs } from '../state/chartPrefs';
 import { useWindowIndicator } from './workspace/windowView';
 import {
@@ -33,12 +34,16 @@ import {
   toAllWallPeakInputs,
   toPeakRankLimit,
   toUnreachedWallPeakInputs,
+  toUnreachedStepPeakInputs,
   type PeakWallInput,
   type PeakWallOverlayResult,
 } from './peakWallSegments';
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilters } from './peakWallDailyMaFilter';
+
+/** 강도 pane 계단에서 「미도달 벽 없음」 구간을 그릴 때 계열 본색에 씌우는 알파. */
+const UNREACHED_ABSENT_ALPHA = 0.3;
 
 /** 계열의 두 표면 토글(수평선 · 발생 시점 화살표)을 **세그먼트에 실어** 내려보낸다.
  *
@@ -122,6 +127,10 @@ export type PeakWallRenderState = {
   unreachedDrawn: boolean;
   unreachedLabels: boolean;
   unreachedColor: string;
+  /** 강도 pane 계단에서 **미도달 벽이 없던 구간**(값 0)의 점 색 — 계열 본색의 흐린 판.
+   *  0 이 급락으로 오독되지 않게 하는 것이 전부이므로 색상은 본색을 따라간다
+   *  (`buildUnreachedStepPoints` 머리말). */
+  unreachedAbsentColor: string;
   unreachedLineWidth: number;
   /** 전체 최대벽 선이 실제로 그려지는가(마스터 drawn ∧ 하위 토글). */
   allWallDrawn: boolean;
@@ -215,6 +224,13 @@ export function usePeakWallRender({
   );
   const unreachedLineWidth = useWindowIndicator(
     (s) => (isAsk ? s.askPeakUnreachedLineWidth : s.bidPeakUnreachedLineWidth),
+  );
+  // 「미도달 벽 없음」 구간(값 0)의 점 색. 계열 본색을 그대로 흐리게 만든다 — 다른 색을
+  // 쓰면 사용자가 계열 색을 바꿨을 때 두 색의 관계가 깨진다. 알파는 투명 sentinel 과
+  // 본색 사이의 값이라, 선으로는 읽히되 값 구간과 혼동되지 않는다.
+  const unreachedAbsentColor = useMemo(
+    () => withAlpha(unreachedColor, UNREACHED_ABSENT_ALPHA),
+    [unreachedColor],
   );
   // 강도 pane 의 슬롯 — **이 방향의 계열 셋**이고 캔들 선 토글과 **독립**이다. 종전엔
   // pane 이 `{side}Peak{Family}LineEnabled` 를 따라가서, 캔들에서 지운 계열을 pane
@@ -432,7 +448,9 @@ export function usePeakWallRender({
   const unreachedStepBuilt = useMemo(() => (
     needStepSegments && applicable && enabled && paneUnreachedEnabled
       ? buildPeakWallOverlaySegments({
-        peaks: toUnreachedWallPeakInputs(peaks),
+        // 계단 후보는 화면의 미도달 선(top-3)보다 넓다 — `toUnreachedStepPeakInputs`
+        // 머리말 참조. 화면의 벽 개수는 그대로다.
+        peaks: toUnreachedStepPeakInputs(peaks),
         segments,
         candles,
         axis,
@@ -554,6 +572,7 @@ export function usePeakWallRender({
     unreachedDrawn,
     unreachedLabels: unreachedDrawn && unreachedLabelEnabled,
     unreachedColor,
+    unreachedAbsentColor,
     unreachedLineWidth,
     tradedHorizontalLine: tradedHorizontalLineEnabled,
     tradedTimeMarker: tradedTimeMarkerEnabled,
@@ -587,6 +606,7 @@ export function usePeakWallRender({
     allWallColor,
     allWallDrawn,
     allWallLineWidth,
+    unreachedAbsentColor,
     unreachedColor,
     unreachedDrawn,
     unreachedLineWidth,

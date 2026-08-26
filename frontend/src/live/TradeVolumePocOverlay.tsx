@@ -15,18 +15,13 @@ import {
   type FlagLegendValueProvider,
 } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty, legendCursorDate } from './peakLegendValues';
+import { withAlpha } from '../chart/util/colorAlpha';
+
+/** hex 파싱 실패 시의 POC 기본색 폴백 — 종전 하드코딩과 같은 보라. */
+const POC_FALLBACK_RGB = '168, 85, 247';
+
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 
-function hexToRgba(hex: string, opacity: number): string {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!match) return `rgba(168, 85, 247, ${Math.max(0, Math.min(1, opacity))})`;
-  const raw = match[1];
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  const alpha = Math.max(0, Math.min(1, opacity));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -92,7 +87,7 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
   const primitiveRef = useRef<TradeVolumePocPrimitive | null>(null);
   // 레전드 값 provider 의 창 스코프(멀티창).
   const windowId = useWindowScopeId();
-  const fillColor = useMemo(() => hexToRgba(color, opacity), [color, opacity]);
+  const fillColor = useMemo(() => withAlpha(color, opacity, `rgba(${POC_FALLBACK_RGB}, ${opacity})`), [color, opacity]);
   const segment = useMemo(
     () => buildTradeVolumePocSegments(pocs, segments, candles, axis, todayKst, fillColor),
     [pocs, segments, candles, axis, todayKst, fillColor],
