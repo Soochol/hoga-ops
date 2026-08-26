@@ -17,6 +17,7 @@ import {
   fillBudgetSteps,
   dispatchStepsFor,
   realMsToYyyymmdd,
+  planRestoreSeat,
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
@@ -284,6 +285,20 @@ export function useViewportBackfill({
    * 리셋 효과에서도 비운다. persist 없음 — stale 위치 복원 함정(#1579)의 전례.
    */
   const forcedSwapRef = useRef<{ snap: PreSwapSnap; landedRefMs: number } | null>(null);
+  /**
+   * 복원 대기 — pick 이 복원을 골랐는데 **창 축소가 앵커를 창 밖으로 밀어낸** 경우.
+   *
+   * #1614 실측이 이 상태의 존재 이유다: `choice: forced` 직후 착석이 다시 anchorOut
+   * (토글 사이 수 초에 contraction 이 창을 57일로 접음). 복원 의도는 이미 확인됐으므로
+   * 창을 앵커까지 다시 넓히는 것은 투기가 아니다 — 여기 대기를 세우고, 워크백이 창을
+   * 덮으면(`planRestoreSeat`) 앉는다. 대기 중에는 3b 의 축소를 멈춘다(안 멈추면
+   * 확장↔축소 진동 — `planViewportContraction` 의 히스테리시스는 증분 ≤2스텝 전용이라
+   * 복원용 깊은 확장을 원리적으로 못 지킨다).
+   *
+   * 해제 경로 다섯: 착석 성공 · 바닥 밖(cancel_floor) · 사용자가 착지점에서 화면 폭
+   * 이상 이동 · 새 소스 스왑(1b 래치) · (code, timeframe) 리셋.
+   */
+  const pendingRestoreRef = useRef<{ snap: PreSwapSnap; landedRefMs: number; anchorYmd: string } | null>(null);
   const swapNoticeSeqRef = useRef(0);
   const prevAxisRef = useRef<VirtualAxis | null>(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
@@ -388,6 +403,7 @@ export function useViewportBackfill({
     initialCoverageCheckedRef.current = false;
     latestLogicalFromRef.current = null;
     forcedSwapRef.current = null;
+    pendingRestoreRef.current = null;
     setSourceSwapClampNotice(null);
   }, [code, timeframe]);
 
@@ -514,7 +530,10 @@ export function useViewportBackfill({
     const ts = chart.timeScale();
     const candles = bundle.candles;
     /** 소스 스왑 재착석 — 적용했으면 true(호출자가 리포지셔너를 건너뛴다). */
-    function reseatAfterSourceSwap(snap: NonNullable<typeof preSwapRef.current>): boolean {
+    function reseatAfterSourceSwap(
+      snap: NonNullable<typeof preSwapRef.current>,
+      opts?: { restoreIntent?: boolean },
+    ): boolean {
       const totalBars = candles.length;
       try {
         const latestIdx = ts.timeToIndex(
@@ -584,6 +603,28 @@ export function useViewportBackfill({
             boundaryYmd: realMsToYyyymmdd(candles[0].ts_ms),
             seq: swapNoticeSeqRef.current,
           });
+          // **복원 의도가 확인된 착지라면**(pick 이 forced 를 골랐다) 여기서 멈추지
+          // 않는다 — 창 축소가 앵커를 밀어낸 것이니 창을 앵커까지 다시 넓히고 대기를
+          // 세운다(#1614 의 「pick 이 이겨도 창이 지면 진다」 그 자리). 확장은 사용자
+          // 의도(토글-백 + 안 움직임) 확인 뒤라 투기가 아니다. 바닥 밖이면 세우지
+          // 않는다 — 어떤 워크백도 못 덮는 대기는 거짓 약속이다.
+          if (opts?.restoreIntent) {
+            const anchorYmd = realMsToYyyymmdd(snap.refMs);
+            const floorYmd = minuteScrollbackFloorDate;
+            if (floorYmd === null || anchorYmd >= floorYmd) {
+              pendingRestoreRef.current = { snap, landedRefMs: landedBar.ts_ms, anchorYmd };
+              historicalRange.extend(anchorYmd);
+              livePerfLog('viewport_restore', {
+                code, timeframe, phase: 'armed',
+                d: `anchor=${anchorYmd} floor=${floorYmd ?? 'null'}`,
+              });
+            } else {
+              livePerfLog('viewport_restore', {
+                code, timeframe, phase: 'cancel_floor',
+                d: `anchor=${anchorYmd} floor=${floorYmd ?? 'null'}`,
+              });
+            }
+          }
         }
         return true;
       } catch (e) {
@@ -627,9 +668,12 @@ export function useViewportBackfill({
       // fresh(= 클램프 착지) 대신 보관된 원래 앵커로 앉는다(왕복 복원). 판별과 근거는
       // `pickSwapAnchor` 커널 도크스트링. 보관분은 여기서 무조건 비운다 — 재착석이
       // 다시 anchorOut 이면 스스로 재보관하므로(위 강제 착지 절) 실패에도 자기 유지된다.
+      // 새 스왑은 이전 복원 대기를 무효화한다 — 이 스왑의 pick 이 다시 판단한다.
+      pendingRestoreRef.current = null;
       const forced = forcedSwapRef.current;
       forcedSwapRef.current = null;
       let chosenSnap = snap;
+      let restoreIntent = false;
       if (snap && forced && chart) {
         let freshIdx: number | null = null;
         let landedIdx: number | null = null;
@@ -647,13 +691,13 @@ export function useViewportBackfill({
           landedIdx,
           spanBars: snap.toLogical - snap.fromLogical,
         });
-        if (choice === 'forced') chosenSnap = forced.snap;
+        if (choice === 'forced') { chosenSnap = forced.snap; restoreIntent = true; }
         livePerfLog('viewport_reseat_pick', {
           code, timeframe, choice,
           d: `freshIdx=${freshIdx === null ? 'null' : Math.round(freshIdx)} landedIdx=${landedIdx === null ? 'null' : Math.round(landedIdx)} span=${Math.round(snap.toLogical - snap.fromLogical)} liveEdge=${snap.atLiveEdge}`,
         });
       }
-      if (chosenSnap && reseatAfterSourceSwap(chosenSnap)) return;
+      if (chosenSnap && reseatAfterSourceSwap(chosenSnap, { restoreIntent })) return;
       // 스냅샷이 없거나 재착석이 스스로 포기한 경우. 여기까지 왔다는 것은 래치는
       // 옳게 섰는데 **실행이 안 됐다**는 뜻이라, 아래 반려 로그와 사유가 다르다.
       livePerfLog('viewport_reseat_skip', {
@@ -674,6 +718,52 @@ export function useViewportBackfill({
             ? 'identity_unchanged'
             : 'initial_view_pending',
       });
+    }
+
+    // 2a'. **복원 대기의 처분** — 스왑이 아닌 커밋마다, 세워 둔 복원이 앉을 수 있는지
+    // 본다. 판정 셋은 `planRestoreSeat` 커널(창이 앵커를 덮으면 seat — 캔들 도착이
+    // 아니라 **창 기준**인 이유는 그 도크스트링). 여기 오기 전에 사용자 이동을 먼저
+    // 가른다: 착지점에서 화면 폭 이상 멀어졌으면 사용자가 개입한 것이라 대기를 버린다
+    // — 복원이 드래그를 되돌리면 안 된다(2b/2d 의 「사용자 입력이 이긴다」와 같은 규율).
+    const pendingRestore = pendingRestoreRef.current;
+    if (pendingRestore && isMinute && snap && canTriggerBackfill()) {
+      let moved = false;
+      try {
+        const tsr = chart.timeScale();
+        const f = tsr.timeToIndex(realMsToVirtualSeconds(axis, snap.refMs) as Time, true);
+        const l = tsr.timeToIndex(
+          realMsToVirtualSeconds(axis, pendingRestore.landedRefMs) as Time, true,
+        );
+        if (
+          typeof f === 'number' && Number.isFinite(f)
+          && typeof l === 'number' && Number.isFinite(l)
+        ) {
+          moved = Math.abs(f - l) > snap.toLogical - snap.fromLogical;
+        }
+      } catch { /* 판정 불가 → 안 움직인 것으로 두고 창 판정으로 진행 */ }
+      if (moved) {
+        pendingRestoreRef.current = null;
+        livePerfLog('viewport_restore', { code, timeframe, phase: 'cancel_moved' });
+      } else {
+        const plan = planRestoreSeat({
+          anchorYmd: pendingRestore.anchorYmd,
+          floorYmd: minuteScrollbackFloorDate,
+          historicalFromDate: historicalRange.snapshot().historicalFromDate,
+        });
+        if (plan === 'cancel_floor') {
+          pendingRestoreRef.current = null;
+          livePerfLog('viewport_restore', { code, timeframe, phase: 'cancel_floor' });
+        } else if (plan === 'seat') {
+          // 처분은 **터미널**이다 — 착석이 앵커 옆 구멍 클램프로 끝나도 대기를 다시
+          // 세우지 않는다(restoreIntent 미전달). 재시도 루프가 이 표면의 적이다.
+          pendingRestoreRef.current = null;
+          const seated = reseatAfterSourceSwap(pendingRestore.snap);
+          livePerfLog('viewport_restore', {
+            code, timeframe, phase: seated ? 'seated' : 'seat_failed',
+          });
+          if (seated) return;
+        }
+      }
     }
 
     if (prevEarliest === null || newEarliest === null) return;
@@ -1008,7 +1098,15 @@ export function useViewportBackfill({
           //
           // 확장 판정 **뒤**에 두는 것이 요점이다 — 앞에 두면 같은 이벤트에서 자르고
           // 곧바로 늘리는 왕복이 가능해진다.
-          const leftDate = readViewportLeftDate(chart, axis);
+          // **복원 대기 중에는 축소를 멈춘다.** 복원 확장(깊은 창)과 이 축소가 만나면
+          // 확장↔축소 진동이다 — `planViewportContraction` 의 히스테리시스(트리거
+          // 3스텝)는 증분 확장 ≤2스텝을 전제한 3-상수 불변식이라, 복원용 ~8스텝
+          // 확장을 원리적으로 못 지킨다(#1614 실측 「pick 이 이겨도 창이 지면 진다」의
+          // 창이 지는 경로가 정확히 이 축소다). 대기는 다섯 경로로 반드시 풀리므로
+          // (armed 주석) 이 정지는 유계다.
+          const leftDate = pendingRestoreRef.current === null
+            ? readViewportLeftDate(chart, axis)
+            : null;
           const contractTo = leftDate
             ? planViewportContraction(cur, leftDate, timeframe)
             : null;

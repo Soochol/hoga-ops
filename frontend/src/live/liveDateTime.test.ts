@@ -21,6 +21,7 @@ import {
   planSourceSwapContraction,
   CONTRACT_RETAIN_STEPS,
   CONTRACT_TRIGGER_STEPS,
+  planRestoreSeat,
 } from './liveDateTime';
 import { PAST_CHUNK_CALENDAR_DAYS, pastChunkCalendarDays } from '../api/livePastCandles';
 import { MINUTE_TIMEFRAMES, fetchBucketMsFor } from '../state/livePage';
@@ -554,6 +555,27 @@ describe('planViewportContraction — 좌측 팬 창을 앞으로 당긴다', ()
     let monthAgo = LEFT;
     for (let i = 0; i < 4; i += 1) monthAgo = nextCoverageFrom(null, monthAgo, TF);
     expect(planViewportContraction(monthAgo, monthAgo, TF)).toBeNull();
+  });
+});
+
+describe('planRestoreSeat — 복원 대기의 처분(#1614 후속)', () => {
+  it('창이 앵커를 덮으면 seat — 판정은 캔들이 아니라 창이다(구멍이면 최근접 클램프가 낫다)', () => {
+    expect(planRestoreSeat({ anchorYmd: '20260210', floorYmd: null, historicalFromDate: '20260210' })).toBe('seat');
+    expect(planRestoreSeat({ anchorYmd: '20260210', floorYmd: null, historicalFromDate: '20260105' })).toBe('seat');
+  });
+
+  it('창이 아직 못 미치면 wait — 워크백이 도는 중이다', () => {
+    expect(planRestoreSeat({ anchorYmd: '20260210', floorYmd: null, historicalFromDate: '20260601' })).toBe('wait');
+  });
+
+  it('바닥 밖 앵커는 cancel_floor — 어떤 워크백도 못 덮는 대기는 거짓 약속이다', () => {
+    expect(planRestoreSeat({ anchorYmd: '20251001', floorYmd: '20260106', historicalFromDate: '20260601' })).toBe('cancel_floor');
+    // 바닥과 같은 날은 덮을 수 있다 — 경계는 열려 있다.
+    expect(planRestoreSeat({ anchorYmd: '20260106', floorYmd: '20260106', historicalFromDate: '20260601' })).toBe('wait');
+  });
+
+  it('창 없음(null)은 전체 이력 초기 상태 — 덮인 것으로 본다', () => {
+    expect(planRestoreSeat({ anchorYmd: '20260210', floorYmd: null, historicalFromDate: null })).toBe('seat');
   });
 });
 
