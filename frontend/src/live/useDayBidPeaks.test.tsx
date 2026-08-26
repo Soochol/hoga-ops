@@ -191,3 +191,41 @@ describe('useDayBidPeaks', () => {
   // flaky했다. IncrementalPeakWallSource의 append-only 델타 소비는 useDayPeaks.perf
   // .test.tsx가 결정론적으로 검증한다(ask/bid 공유 소스).
 });
+
+describe('useDayBidPeaks — 기록 갱신 시퀀스', () => {
+  // 종전엔 매수 `attachFamilies` 에 기록 필드가 **통째로 없었다**(매도는 top-3 을
+  // 실었다). 결과는 같아 드리프트가 안 보였고, 조립이 두 벌이라 한쪽만 고치는 수정이
+  // 가능했다 — 지금은 `peakWallRecordSeries` 한 벌을 공유한다.
+
+  it('오늘 seed 행은 버려져도 기록 갱신 시퀀스는 오늘 행에 살아남는다', () => {
+    const morning = { price: 23800, qty: 5000, t_ms: atKst(9, 1) };
+    const afternoon = { price: 23700, qty: 9000, t_ms: atKst(13, 0) };
+    const seed: BidPeak = {
+      date: '20260613',
+      price: 23800, qty: 5000, t_ms: atKst(9, 1),
+      max_price: 23800, max_qty: 5000, max_t_ms: atKst(9, 1),
+      traded_record_peaks: [morning],
+      traded_record_max_peaks: [morning],
+    };
+    const { result } = renderHook(() => useDayBidPeaks(
+      [], [], [seed], '20260613', OPEN_MS, '005930',
+      todayBidPeak({ traded_record_peaks: [afternoon] }),
+    ));
+
+    const today = byDate(result.current)['20260613'];
+    expect(today.qty).toBe(9000);                       // carrier 는 라이브 파생
+    expect(today.traded_record_peaks).toEqual([morning, afternoon]);
+    expect(today.traded_record_max_peaks).toEqual([morning, afternoon]);
+  });
+
+  it('두 출처에 기록이 없으면 **비운다** — top-3 을 기록 자리에 넣지 않는다', () => {
+    const { result } = renderHook(() => useDayBidPeaks(
+      [], [], [], '20260613', OPEN_MS, '005930', todayBidPeak(),
+    ));
+
+    const today = byDate(result.current)['20260613'];
+    expect(today.traded_peaks?.length).toBeGreaterThan(0);
+    expect(today.traded_record_peaks).toEqual([]);
+    expect(today.traded_record_max_peaks).toEqual([]);
+  });
+});

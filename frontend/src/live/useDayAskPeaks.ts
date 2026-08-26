@@ -10,6 +10,11 @@ import {
   type PeakWallClassification,
 } from './peakWallEventClassifier';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
+import {
+  buildPeakRecordSeries,
+  todaySeedRow,
+  type PeakRecordSeries,
+} from './peakWallRecordSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -47,6 +52,7 @@ function uniqueCandidates(candidates: readonly AskPeakCandidate[]): AskPeakCandi
 function mergeRankedCandidates(...groups: ReadonlyArray<readonly AskPeakCandidate[]>): AskPeakCandidate[] {
   return rankPeakCandidates(groups.flatMap((group) => group));
 }
+
 function toCandidate(
   price: unknown,
   qty: unknown,
@@ -103,10 +109,15 @@ function askPeakFromCandidate(date: string, candidate: AskPeakCandidate): AskPea
  *  존재해야 한다. null carrier 는 체결된 벽 선에서 후보 없음으로 걸러진다
  *  (expandBaselinePeaks 의 scalar 폴백이 null 을 버린다). 세 derive 판이 이 꼬리를
  *  공유한다 — 갈라지면 배치·증분 동등성이 깨진다. */
-function pushTodayAskPeak(out: AskPeak[], todayKst: string, families: PeakFamilies): AskPeak[] {
+function pushTodayAskPeak(
+  out: AskPeak[],
+  todayKst: string,
+  families: PeakFamilies,
+  records: PeakRecordSeries,
+): AskPeak[] {
   const traded = families.traded[0];
   if (traded) {
-    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
+    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families, records));
   } else if (families.all.length > 0) {
     out.push(attachFamilies({
       date: todayKst,
@@ -116,7 +127,7 @@ function pushTodayAskPeak(out: AskPeak[], todayKst: string, families: PeakFamili
       max_price: null,
       max_qty: null,
       max_t_ms: null,
-    }, families));
+    }, families, records));
   }
   return out;
 }
@@ -124,16 +135,21 @@ function pushTodayAskPeak(out: AskPeak[], todayKst: string, families: PeakFamili
 function attachFamilies(
   peak: AskPeak,
   families: PeakFamilies,
+  /** **필수 인자다** — 기본값을 주면 새 호출부가 조용히 기록 없이 태어난다
+   *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
+   *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
+  records: PeakRecordSeries,
 ): AskPeak {
   return {
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
-    // 오늘 라이브 경로의 기록 폴백 — 클라이언트는 접속 이후 이벤트만 보므로 완전한
-    // 기록 시퀀스를 모른다. traded top-3 을 그대로 실으면 계단이 종전(수정 전 오늘
-    // 동작)과 동일하게 유지된다. 오늘의 완전한 기록은 서버 상태 확장 후속.
-    traded_record_peaks: families.traded,
-    traded_record_max_peaks: families.traded,
+    // 기록 갱신 시퀀스 — `buildPeakRecordSeries` 가 seed(개장~프로모션) + 라이브 스냅샷
+    // (서버 상태 당일 전체)에서 모은 값이다. 여기에 top-3 을 넣으면 계단의 왼쪽 끝이
+    // 순위 갱신마다 오른쪽으로 후퇴한다(이 수정 전의 증상). 비면 `expandBaselinePeaks`
+    // 가 top-3 으로 떨어지므로 구백엔드에서도 종전 동작이 유지된다.
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -180,7 +196,10 @@ export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): 
   const date = todayAskPeak?.date;
   const traded = families.traded[0];
   if (!date || !traded) return null;
-  return attachFamilies(askPeakFromCandidate(date, traded), families);
+  // seed 없이 라이브 스냅샷만 — 이 헬퍼는 `/api/range` 번들을 받지 않는다.
+  return attachFamilies(
+    askPeakFromCandidate(date, traded), families, buildPeakRecordSeries(null, todayAskPeak),
+  );
 }
 
 export function deriveDayAskPeaks(
@@ -196,8 +215,9 @@ export function deriveDayAskPeaks(
   void code;
   void todayCandles;
   const families = mergedAskFamilies(ob, trade, todayAskPeak, sessionOpenMs);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families);
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak));
 }
 
 /** deriveDayAskPeaks의 증분판(no-cutoff 전용). source가 ob/trade 스캔을 누적으로
@@ -218,8 +238,9 @@ export function deriveDayAskPeaksIncremental(
     ...backend.unreached,
   ], todayAskPeak?.day_extreme ?? null);
   const families = askFamiliesFromClassified(classified, backend);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families);
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak));
 }
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,

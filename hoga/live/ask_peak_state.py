@@ -7,6 +7,12 @@ from typing import ClassVar, Literal
 
 _EMIT_LIMIT = 3
 
+#: 기록 갱신 시퀀스의 상한. 과거일 경로(`snapshots._PEAK_RECORD_CAP`)와 **같은 값이어야
+#: 한다** — 오늘과 과거일이 같은 근사를 쓰는 것이 이 계열의 계약이다. 넘치면 **뒤를**
+#: 자른다(앞을 자르면 오전이 다시 빈다 — 그 docstring 이 사고 경위를 적는다). 꼬리는
+#: `traded_peaks`(그날 최종 top-3)가 나르므로 프론트 병합이 보정한다.
+_TRADED_RECORD_CAP = 128
+
 #: 터치 판정 창(ADR-0156). 백엔드 과거일 경로(`snapshots.ONE_MINUTE_MS`)와 **같은 값이어야
 #: 한다** — 오늘 실시간과 과거일이 같은 규칙으로 계산되는 것이 그 ADR 의 요구다.
 _TOUCH_WINDOW_MS = 60_000
@@ -56,6 +62,12 @@ class _TodaySidePeakState:
     touch_extreme_by_minute: dict[int, int] = field(default_factory=dict)
     #: 터치된 벽 top-3.
     closed_traded: list[Peak] = field(default_factory=list)
+    #: 터치된 벽의 **기록 갱신 시퀀스**(시간순 prefix maxima) — 최대벽 강도 pane 의
+    #: 계단 입력. `closed_traded`(최종 크기순 top-3)와 **축이 다르다**: 벽은 장중에
+    #: 커지는 경향이 있어 top-3 이 오후에 몰리면 "그때는 최대였던 오전의 작은 벽" 이
+    #: 전부 잘린다(과거일 경로가 같은 이유로 `_peak_record_sequence` 를 따로 둔다).
+    #: 유지는 `_offer_record` 가 증분으로 — 틱 경로 위라 정렬을 두지 않는다.
+    traded_record: list[Peak] = field(default_factory=list)
     #: 당일 연속 체결가의 극값(ask=max, bid=min) — 미도달 판정의 기준. None = 체결 0건.
     day_extreme: int | None = None
     #: 미도달 벽 — 극값이 지배하지 못한 가격의 최대 잔량. **가격별 딕셔너리가 불가피한
@@ -233,6 +245,12 @@ class _TodaySidePeakState:
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,
             "traded_peaks": [_peak_payload(p) for p in traded_peaks],
+            # 기록 갱신 시퀀스 — 최대벽 강도 pane 의 계단 입력(`traded_record` 필드
+            # 주석). **rep/cont 를 가르지 않는다**: 라이브 상태는 버킷 대표라는 개념이
+            # 없어 두 축이 같은 값이고, 프론트도 오늘분은 `traded_peaks`/
+            # `traded_max_peaks` 에 이미 같은 배열을 싣는다. 그래서 필드도 하나만 내고
+            # 프론트가 양쪽 축에 같은 배열을 배선한다(`attachFamilies`).
+            "traded_record_peaks": [_peak_payload(p) for p in self.traded_record],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -263,6 +281,43 @@ class _TodaySidePeakState:
 
     def _record_closed_peak(self, peak: Peak) -> None:
         self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
+        self._offer_record(peak)
+
+    def _offer_record(self, peak: Peak) -> None:
+        """기록 갱신 시퀀스에 터치된 벽 하나를 제시한다 — **도착 순서에 무관**하고 멱등.
+
+        ## 왜 도착 순서를 못 믿는가
+
+        `_record_closed_peak` 이 불리는 순간은 벽이 **터치된** 때이지 벽이 **선** 때가
+        아니다. 같은 분 안에서 나중에 관측된 벽이 먼저 터치될 수 있으므로(즉시 터치 vs
+        `pending_by_minute` 를 거쳐 체결 틱이 닫는 경로), 도착 순서로 running max 를
+        접으면 시퀀스가 틀린다. 그래서 여기서 **시각 순서로** 접는다.
+
+        ## 불변식
+
+        `traded_record` 는 항상 (t_ms 오름차순, qty 순증가) — 즉 제시된 벽들의 정확한
+        prefix maxima 다. qty 가 순증가이므로 "그 시각까지의 최대" 는 **바로 앞 항목
+        하나**이고, 판정이 O(1) 이다(틱 경로 위라 이것이 요건이다 — 이 클래스의 다른
+        메서드 주석 참조).
+
+        동률은 **먼저 도달한 것을 유지**한다(strict `>`) — `foldAskPeak`·
+        `_peak_record_sequence` 와 같은 규약. 그래서 같은 벽을 두 번 제시해도 두 번째가
+        동률로 거부되어 멱등이다(`merge_from` 이 이에 기댄다).
+        """
+        records = self.traded_record
+        # 삽입 위치를 뒤에서 훑는다 — 도착이 거의 시간순이라 상각 O(1)(끝에 붙는다).
+        i = len(records)
+        while i > 0 and records[i - 1].t_ms > peak.t_ms:
+            i -= 1
+        if i > 0 and records[i - 1].qty >= peak.qty:
+            return          # 자기 시각 이전의 최대를 못 이긴다 → 기록이 아니다
+        # 뒤늦게 도착한 **앞선 시각**의 벽은 뒤 항목들을 소급 무효화한다(그 항목들이
+        # 이제 "그 시각까지의 최대" 가 아니다). 순증가 불변식을 여기서 되돌린다.
+        j = i
+        while j < len(records) and records[j].qty <= peak.qty:
+            j += 1
+        records[i:j] = [peak]
+        del records[_TRADED_RECORD_CAP:]
 
     def merge_from(self, other: _TodaySidePeakState) -> None:
         """다른 상태(오늘 JSONL 재생본)의 **확정 계열만** 흡수한다.
@@ -283,6 +338,11 @@ class _TodaySidePeakState:
             self._offer_all(peak)
         for peak in other.closed_traded:
             self._record_closed_peak(peak)
+        # 기록 시퀀스는 **따로** 흡수한다 — `closed_traded` 는 top-3 라 재생본의 오전
+        # 기록이 거기 없다(그게 이 계열이 따로 있는 이유다). `_offer_record` 가 순서
+        # 무관·멱등이라 그대로 제시하면 된다.
+        for peak in other.traded_record:
+            self._offer_record(peak)
         # 미도달 — 극값을 먼저 합치고(둘 중 더 지배적인 쪽), 딕셔너리를 larger 로 합친 뒤
         # 합쳐진 극값으로 걷어낸다. 순서가 멱등성을 만든다: 같은 재생본을 두 번 흡수해도
         # 극값·딕셔너리 모두 고정점이다.

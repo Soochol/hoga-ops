@@ -456,3 +456,63 @@ describe('useDayAskPeaks — 미도달 벽 패밀리', () => {
     expect(today?.unreached_peaks?.[0]).toEqual({ price: 26_100, qty: 7_000, t_ms: t });
   });
 });
+
+describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계단의 입력)', () => {
+  // 오늘 행은 라이브 파생이 통째로 대체하지만(`seeds.filter`), 기록만은 seed 에서
+  // 건져 와야 한다. 종전엔 이 자리에 top-3 이 들어가 있어서, 장중에 더 큰 벽이 서서
+  // top-3 이 뒤로 몰릴 때마다 계단의 **왼쪽 끝이 오른쪽으로 후퇴**했다.
+
+  const seedWithRecords = (records: {
+    close: AskPeak['traded_record_peaks'];
+    max: AskPeak['traded_record_max_peaks'];
+  }): AskPeak => ({
+    date: '20260613',
+    price: 25100, qty: 5000, t_ms: atKst(9, 1),
+    max_price: 25100, max_qty: 5000, max_t_ms: atKst(9, 1),
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
+  });
+
+  it('오늘 seed 행은 버려져도 기록 갱신 시퀀스는 오늘 행에 살아남는다', () => {
+    const morning = { price: 25100, qty: 5000, t_ms: atKst(9, 1) };
+    const morningCont = { price: 25100, qty: 5200, t_ms: atKst(9, 1) };
+    const { result } = renderHook(() => useDayAskPeaks(
+      [], [], [seedWithRecords({ close: [morning], max: [morningCont] })],
+      '20260613', OPEN_MS, '005930', todayAskPeak(),
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613')!;
+    // carrier 는 여전히 라이브 파생이다(seed 의 5000 이 아니다) — 버리는 규약은 그대로.
+    expect(today.qty).toBe(9000);
+    // 그러나 오전 기록은 남는다. 두 축이 **따로** 실린다(seed 는 rep/cont 가 다르다).
+    expect(today.traded_record_peaks).toEqual([morning]);
+    expect(today.traded_record_max_peaks).toEqual([morningCont]);
+  });
+
+  it('기록은 seed(오전)와 라이브 스냅샷(당일 전체)의 합집합이다', () => {
+    const morning = { price: 25100, qty: 5000, t_ms: atKst(9, 1) };
+    const afternoon = { price: 25500, qty: 9000, t_ms: atKst(13, 0) };
+    const { result } = renderHook(() => useDayAskPeaks(
+      [], [], [seedWithRecords({ close: [morning], max: [morning] })],
+      '20260613', OPEN_MS, '005930',
+      todayAskPeak({ traded_record_peaks: [afternoon] }),
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613')!;
+    expect(today.traded_record_peaks).toEqual([morning, afternoon]);
+    expect(today.traded_record_max_peaks).toEqual([morning, afternoon]);
+  });
+
+  it('두 출처에 기록이 없으면 **비운다** — top-3 을 기록 자리에 넣지 않는다', () => {
+    // 하류(expandBaselinePeaks)가 기록 ∪ top-3 을 후보로 쓰므로 폴백은 거기서 난다.
+    // 여기서 top-3 을 실으면 "기록" 이라는 필드의 뜻이 조용히 무너진다.
+    const { result } = renderHook(() => useDayAskPeaks(
+      [], [], [], '20260613', OPEN_MS, '005930', todayAskPeak(),
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613')!;
+    expect(today.traded_peaks?.length).toBeGreaterThan(0);
+    expect(today.traded_record_peaks).toEqual([]);
+    expect(today.traded_record_max_peaks).toEqual([]);
+  });
+});
