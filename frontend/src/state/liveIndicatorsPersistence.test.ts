@@ -15,7 +15,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       foreignNetEnabled: false,
       institutionNetEnabled: false,
       volumeEnabled: true,
-      wallSurgeEnabled: false,
       movingAverageHidden: false,
       peakWallPaneEnabled: false,
       askPeakEnabled: false,

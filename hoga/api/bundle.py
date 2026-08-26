@@ -51,7 +51,6 @@ from hoga.api.models import (
     TradeVolumePoc,
     VolumeDistributionBin,
     VolumeProfile,
-    WallSurgeEvent,
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
@@ -1308,94 +1307,6 @@ def build_depth_heatmap_slice(
     return out
 
 
-def build_wall_surge_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    source: str = "hogaplay",
-    venue: Venue = "KRX",
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
-    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
-) -> list[WallSurgeEvent]:
-    """호가벽 급증 이벤트를 WallSurgeEvent 리스트로.
-
-build_depth_heatmap_slice 와 같은 캐시 게이트(완료 과거일 = PastIndicatorsCache,
-    오늘 = short-TTL + coalescer)를 쓰되 **bucket_ms 축이 없다** — 이벤트는 봉과 무관한
-    시점 사실이라 캐시 키가 (code, date, source, venue) 로 충분하고, 봉이 바뀌어도
-    재계산이 필요 없다.
-
-    체결 데이터(trades.parquet)는 결말 판정에만 쓴다. 없으면 소화/취소를 가를 수 없어
-    체결량 0 으로 판정되므로, 파일이 없으면 넘기지 않는다.
-    """
-    cache = _resolve_cache(engine, cache)
-    today_kst = _resolve_today_kst(today_kst)
-    try:
-        parquet_dir = engine.parquet_dir(date, code, source, venue=venue)
-    except (FileNotFoundError, StockDateNotFound):
-        return []
-    path_obj = parquet_dir / "snapshots.parquet"
-    if not path_obj.exists():
-        return []
-    trades_obj = parquet_dir / "trades.parquet"
-    trades_path = trades_obj if trades_obj.exists() else None
-
-    # bucket_ms 가 없는 지표라 게이트에는 대표값을 넘긴다(캐시 키에는 들어가지 않는다).
-    cacheable = _indicator_cacheable(cache, today_kst, date, _ONE_MINUTE_MS)
-    if cacheable:
-        cached = cache.get_wall_surge(code, date, source, venue=venue)  # type: ignore[union-attr]
-        if cached is not CACHE_MISS:
-            return cached  # type: ignore[return-value]
-    is_today = today_kst is not None and date == today_kst
-    key = ("wall_surge", code, date, source, venue)
-    if is_today:
-        hit, cached = TODAY_TTL.lookup(key)
-        if hit:
-            return cached
-    # 창은 **소스의 스냅샷 간격에 맞춘다** — hogaplay 는 중앙값 407ms 라 10초면 표본이
-    # 넉넉하지만, kiwoom_live 는 저장 간격이 10초라 같은 창에서 표본 부족으로 전량
-    # 탈락한다(실측 1%). 소스를 여기서 아는 김에 함께 정한다.
-    window_ms = (
-        snapshots_tbl.WALL_SURGE_WINDOW_MS
-        if source == "hogaplay"
-        else snapshots_tbl.WALL_SURGE_WINDOW_MS_SPARSE
-    )
-    rows = SLICE_COALESCER.run(
-        key,
-        lambda: snapshots_tbl.query_wall_surge(
-            engine.conn,
-            path=path_obj,
-            trades_path=trades_path,
-            session_open_ms=session_open_ms,
-            session_close_ms=session_close_ms,
-            window_ms=window_ms,
-        ),
-    )
-    out = [
-        WallSurgeEvent(
-            t_ms=ms_from_midnight_to_unix_ms(date, r.intra_ms),
-            side=r.side,  # type: ignore[arg-type]
-            price=r.price,
-            qty=r.qty,
-            jump=r.jump,
-            total=r.total,
-            kind=r.kind,  # type: ignore[arg-type]
-            blind_ms=r.blind_ms,
-            outcome=r.outcome,  # type: ignore[arg-type]
-            filled_qty=r.filled_qty,
-            duration_ms=r.duration_ms,
-        )
-        for r in rows
-    ]
-    if cacheable:
-        cache.store_wall_surge(code, date, source, out, venue=venue)  # type: ignore[union-attr]
-    elif is_today:
-        TODAY_TTL.put(key, out)
-    return out
-
-
 def _first_trailing_single_price_book_hhmmssms(
     engine: QueryEngine,
     *,
@@ -1811,7 +1722,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
     depth_heatmap_enabled: bool = True,
-    wall_surge_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1851,7 +1761,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
-    include_wall_surge = include_optional_sidecar_slices and wall_surge_enabled
     include_program_trade = program_trade_enabled and sidecar_only
 
     dates = engine.list_stock_dates_in_range(
@@ -1906,7 +1815,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
-    wall_surge: list[WallSurgeEvent] = []
     included_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
@@ -2198,19 +2106,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     session_close_ms=ind_close_ms,
                 )
             )
-        gil_breathe_at = _gil_breathe(gil_breathe_at)
-        if include_wall_surge:
-            wall_surge.extend(
-                build_wall_surge_slice(
-                    engine,
-                    code=code,
-                    date=d,
-                    source=source,
-                    venue=venue,
-                    session_open_ms=ind_open_ms,
-                    session_close_ms=ind_close_ms,
-                )
-            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -2269,7 +2164,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         depth_heatmap=depth_heatmap,
-        wall_surge=wall_surge,
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(

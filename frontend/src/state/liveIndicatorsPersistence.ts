@@ -245,8 +245,6 @@ export type PersistedIndicators = {
   depthHeatmapAskColor: string;
   /** 호가 잔량 히트맵 최대 불투명도(0.2~1). 기본 0.7. */
   depthHeatmapMaxOpacity: number;
-  /** 호가벽 급증 마커 on/off. Default FALSE — 하루 수십 건이라 켜는 것이 선택이다. */
-  wallSurgeEnabled: boolean;
   /** 연속체결 매물대 분포 on/off. Default TRUE. */
   volumeDistributionEnabled: boolean;
   /** 연속체결 매물대 분포 hover cutoff mode. Default FALSE. */
@@ -529,7 +527,6 @@ export function mergeLiveIndicatorPrefs(
     && dhOpacityRaw <= 1
     ? dhOpacityRaw
     : DEPTH_HEATMAP_DEFAULT_MAX_OPACITY;
-  const wallSurgeEnabled = obj?.wallSurgeEnabled === true;
   const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
   const volumeDistributionHoverCutoffEnabled = obj?.volumeDistributionHoverCutoffEnabled === true;
   const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
@@ -629,7 +626,6 @@ export function mergeLiveIndicatorPrefs(
     depthHeatmapBidColor: dhBidColor,
     depthHeatmapAskColor: dhAskColor,
     depthHeatmapMaxOpacity: dhMaxOpacity,
-    wallSurgeEnabled,
     volumeDistributionEnabled,
     volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount,

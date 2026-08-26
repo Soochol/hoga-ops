@@ -3,7 +3,7 @@
  * `/api/range` 응답(`RangeBundle`)에 슬라이스를 하나 추가하려면 서로를 모르는 명시 열거
  * 목록을 **전부** 지나가야 한다 — 요청 술어 · 캐시 키 · 델타 병합 · 번들 조립 · 백엔드
  * 게이트 · 과거일 캐시. 어느 하나가 빠져도 타입은 통과하고, 증상은 한참 뒤에 온다.
- * 호가벽 급증(`wall_surge`)이 그래서 PR 세 건(#1321 → #1325 → #1333)에 걸쳐 들어왔다.
+ * 호가벽 급증이 그래서 PR 세 건(#1321 → #1325 → #1333)에 걸쳐 들어왔다(그 지표는 2026-08-26 제거).
  *
  * 이 파일은 그 축들을 **손으로 선언**한다. ADR-0004 가 기각한 codegen 이 아니다 —
  * 손 미러를 유지한 채 "몇 군데인지" 만 한 곳에서 세게 한다. 실제 강제는
@@ -239,19 +239,6 @@ export const RANGE_BUNDLE_SLICES: readonly RangeSliceSpec[] = [
     inChartBundle: true,
     cacheKind: 'depth',
     note: '',
-  },
-  {
-    field: 'wall_surge',
-    httpFlag: null,
-    requestOption: null,
-    queryKeyIndex: null,
-    placeholderCompatible: false,
-    backendGate: 'include_wall_surge',
-    mergeRule: 'unfiltered',
-    todaySource: 'none',
-    inChartBundle: false,
-    cacheKind: 'wall_surge',
-    note: '축 4개가 빈다. 빌더는 wall_surge_enabled 파라미터를 받지만 routes.py 가 전달하지 않아 HTTP 로 도달 불가이고, 그래서 프론트에도 요청 옵션·캐시 키 축이 없다. chartBundle 반환 목록에도 없어 useLiveBundle 이 사후 대입한다. 토글을 살릴지 지울지가 미결이다.',
   },
   {
     field: 'broker_late_entries',

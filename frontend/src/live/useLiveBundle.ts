@@ -470,7 +470,6 @@ export type LiveRangeRequestPlan = {
     programTradeEnabled: boolean;
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
-    wallSurgeEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -486,7 +485,6 @@ export function planLiveRangeRequest(args: {
   bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
-  wallSurgeEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
@@ -531,7 +529,6 @@ export function planLiveRangeRequest(args: {
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
-      wallSurgeEnabled: enableMinute && args.wallSurgeEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -562,7 +559,6 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    wallSurgeEnabled,
     brokerLateEntries,
     programTradeEnabled,
     volumeDistributionEnabled,
@@ -876,7 +872,6 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    wallSurgeEnabled,
     brokerLateEntryEnabled,
     programTradeEnabled: effProgramTradeEnabled,
     volumeDistributionEnabled: effVolumeDistributionEnabled,
@@ -922,7 +917,6 @@ export function useLiveBundle(
       rangePlan.options.programTradeEnabled ||
       rangePlan.options.tradeVolumePocEnabled ||
       rangePlan.options.depthHeatmapEnabled ||
-      rangePlan.options.wallSurgeEnabled ||
       rangePlan.options.volumeDistributionBins != null
     )
   );
@@ -1060,7 +1054,6 @@ export function useLiveBundle(
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
       built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
-      built.wall_surge = sidecarSource.wall_surge ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }
@@ -1191,7 +1184,8 @@ export function useLiveBundle(
   //
   // ⚠ 당시 그 5초의 ~90% 는 `depth_delta` 단독이었는데 **그 지표는 이후 제거됐다**
   // (ADR-0161). 즉 위 4.5~6.3초는 **지금의 값이 아니다** — 남은 슬라이스(당일 최대벽 ·
-  // 매물대 · 프로그램 순매수 · 호가벽 급증 · 연속체결 분포)의 당시 실측은 0.01~0.22초다.
+  // 매물대 · 프로그램 순매수 · 연속체결 분포)의 당시 실측은 0.01~0.22초다
+  // (그 목록에 있던 호가벽 급증도 2026-08-26 에 제거됐다).
   //
   // **그래도 이 분리는 유지한다.** 근거가 "sidecar 가 느리다" 가 아니라 **"캔들의
   // 프리펜드 원자성에 sidecar 가 필요하지 않다"** 이기 때문이다(아래 근거 절). 레인이

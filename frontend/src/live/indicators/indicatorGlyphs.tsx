@@ -3,8 +3,8 @@
  *
  * ## 글리프가 두 가지를 동시에 말한다
  *
- * 이름만으로는 「호가벽 급증」이 선인지 마커인지, 캔들 위에 겹치는지 차트 아래
- * pane 을 새로 먹는지 알 수 없다. 그래서 그림 문법을 둘로 갈랐다:
+ * 이름만으로는 그 지표가 선인지 마커인지, 캔들 위에 겹치는지 차트 아래 pane 을
+ * 새로 먹는지 알 수 없다. 그래서 그림 문법을 둘로 갈랐다:
  *
  * - **오버레이 지표** — 흐린 캔들 고스트 **위**에 그 지표의 마크를 얹는다.
  * - **하단 패널 지표** — 구분선 **아래** 스트립에 마크를 그린다.
@@ -152,16 +152,6 @@ export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
       <rect x="8.5" y="8.8" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.7" />
       <rect x="2" y="12.2" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.2" />
       <rect x="8.5" y="12.2" width="5.5" height="2.6" rx="0.5" fill="currentColor" opacity="0.4" />
-    </>,
-  ),
-  // 급증은 "갑자기 늘었다" 라 화살표다 — 최대벽의 수평선과 한눈에 갈린다.
-  'wall-surge': svg(
-    <>
-      {GHOST_CANDLES}
-      <path
-        d="M8 12.5 L8 5.5 M5.2 8.3 L8 5.5 L10.8 8.3"
-        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-      />
     </>,
   ),
   // 투자자 순매수는 0 기준선 양쪽으로 뻗는 막대. 외국인은 매수 우위 모양,

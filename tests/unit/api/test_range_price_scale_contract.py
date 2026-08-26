@@ -66,9 +66,6 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     # 커서 스팟 10호가 — 히트맵과 **같은 순간 같은 레벨**을 다른 창에 숫자로 띄우므로
     # 척도가 갈리면 사용자가 두 숫자를 동시에 본다.
     "ApiOrderbookLevel.price",
-    # 호가벽 급증 — 마커가 **캔들과 같은 가격축에 앉는다**. 환산이 빠지면 마커만
-    # 원주가 높이에 찍혀 캔들과 어긋난다(#1303 과 같은 종류의 사고).
-    "WallSurgeEvent.price",
 })
 
 #: 척도와 무관한 필드(수량·시각·식별자·사유). 새 필드가 여기 있으면 환산 불필요라는
@@ -85,14 +82,6 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "RangeBundle.broker_late_entries",
     "RangeBundle.price_level_hits", "RangeBundle.trade_volume_pocs",
     "RangeBundle.volume_distributions", "RangeBundle.program_trade",
-    "RangeBundle.wall_surge",
-    # 호가벽 급증의 나머지 — 잔량·증가량·체결량은 **수량**(주식 수)이고, 총잔량도
-    # 같은 이유로 환산 대상이 아니다(QuoteRatioPoint.ask_total 과 같은 판단).
-    # kind/outcome/side 는 분류값, t_ms·blind_ms·duration_ms 는 시간이다.
-    "WallSurgeEvent.t_ms", "WallSurgeEvent.side", "WallSurgeEvent.qty",
-    "WallSurgeEvent.jump", "WallSurgeEvent.total", "WallSurgeEvent.kind",
-    "WallSurgeEvent.blind_ms", "WallSurgeEvent.outcome",
-    "WallSurgeEvent.filled_qty", "WallSurgeEvent.duration_ms",
     "RangeSegment.date", "RangeSegment.session_open_ms", "RangeSegment.session_close_ms",
     "RangeSegment.source", "RangeSegment.gap_ms",
     "ApiCandle.ts_ms", "ApiCandle.vol_a", "ApiCandle.vol_b",
