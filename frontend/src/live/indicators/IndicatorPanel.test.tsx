@@ -296,6 +296,17 @@ describe('IndicatorPanel', () => {
     });
   });
 
+  // 글리프는 행마다 하나씩, 장식으로만 붙는다 — 접근성 이름이 오염되면 이 파일의
+  // `getByRole('button', { name })` 단언 전부가 흔들린다.
+  it('행마다 글리프가 하나씩 붙되 접근성 이름은 라벨 그대로다', () => {
+    renderPanel();
+    const nav = screen.getByRole('navigation');
+    expect(nav.querySelectorAll('[data-kbd-index] svg[aria-hidden="true"]').length)
+      .toBeGreaterThanOrEqual(15);
+    // 이름으로 여전히 정확히 잡힌다.
+    expect(screen.getByRole('button', { name: '이동평균선' })).toBeTruthy();
+  });
+
   it('삭제된 placeholder는 더 이상 렌더되지 않는다', () => {
     renderPanel();
     for (const name of ['일목균형표', '볼린저밴드', '슈퍼트렌드', '매물대분석', '엔벨로프', '윌리엄스 프랙탈']) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode } from 'react';
 import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
@@ -21,6 +21,7 @@ import {
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
 import { dotColorsFor } from './indicatorDotColors';
+import { INDICATOR_GLYPH } from './indicatorGlyphs';
 import IndicatorPreviewCard from './IndicatorPreviewCard';
 import IndicatorPanelMenu from './IndicatorPanelMenu';
 import ToggleRow from '../settings/ToggleRow';
@@ -165,9 +166,11 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
  * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
  */
 function IndicatorNavRow({
-  label, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action,
+  label, glyph, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action,
 }: {
   label: string;
+  /** 무엇을 그리는 지표이고 어디에 그려지는가 — `indicatorGlyphs`. */
+  glyph: ReactNode;
   added: boolean;
   selected: boolean;
   /** ↑↓ 로 짚은 행 — 선택(tint)과 **다른 축**이다. 포커스는 검색창에 남아 있고
@@ -193,9 +196,14 @@ function IndicatorNavRow({
         type="button"
         onClick={onSelect}
         aria-current={selected ? 'true' : undefined}
-        className="min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left text-inherit"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 whitespace-nowrap text-left text-inherit"
       >
-        <HighlightedLabel label={label} query={query} />
+        {/* 글리프는 잉크를 행과 공유한다 — 미추가 행에서 함께 흐려져야 "아직 없다"
+            가 한 덩어리로 읽힌다. `aria-hidden` 이라 접근성 이름은 라벨 그대로다. */}
+        <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
+        <span className="min-w-0 truncate">
+          <HighlightedLabel label={label} query={query} />
+        </span>
       </button>
       {dotColors.length > 0 && (
         // 장식이 아니라 데이터라 `aria-hidden` 이다 — 색은 스크린리더가 읽을 수 없고,
@@ -518,6 +526,7 @@ export default function IndicatorPanel({
                     <IndicatorNavRow
                       key={c.id}
                       label={c.label}
+                      glyph={INDICATOR_GLYPH[c.id]}
                       added={added}
                       selected={selected === c.id}
                       kbdFocused={kbdIndex === flatIndex}
@@ -595,6 +604,7 @@ export default function IndicatorPanel({
                   화면에 없었다. 추가하면 이 자리가 그대로 폼이 된다(선택 불변). */}
               {!selectedAdded && (
                 <IndicatorPreviewCard
+                  glyph={INDICATOR_GLYPH[selectedId]}
                   placementLabel={PLACEMENT_LABEL[selectedCategory.placement]}
                   onAdd={() => addFor(selectedCategory.id)}
                 />
