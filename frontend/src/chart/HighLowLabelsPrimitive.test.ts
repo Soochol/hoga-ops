@@ -260,8 +260,13 @@ describe('HighLowLabelsPrimitive', () => {
 
   it('derives wall-chip avoid rects at draw time and yields the high label past them', () => {
     // 회귀 가드: 회피 rect 는 상위에서 픽셀로 구워 넘기지 않고 {price,time0,time1,peakTime}
-    // 에서 매 프레임 변환돼야 한다(축 리스케일 정합). wall 가격을 상단 가장자리 근처(y=15)로
-    // 매핑하면 x-겹침인 상단 고정 고가 라벨이 그 칩 rect 를 피해 아래로 밀린다.
+    // 에서 매 프레임 변환돼야 한다(축 리스케일 정합). wall 가격을 상단 근처(y=30)로 매핑하면
+    // x-겹침인 상단 고정 고가 라벨이 그 칩 rect 를 피해 아래로 밀린다.
+    //
+    // ⚠ y 는 **칩이 화면 안에 남는** 값이어야 한다. 매도 칩은 선 위로
+    // `LABEL_GAP_PX + PEAK_MARKER_CLEARANCE_PX`(=14) + 패딩만큼 올라가므로, 종전 픽스처(y=15)는
+    // 발생 시점 마커가 점에서 화살표로 커진 2026-08-26 이후 칩을 pane 밖으로 밀어내
+    // **피할 대상이 사라졌다**(고가 라벨이 가장자리에 그대로 머물러 가드가 조용히 죽었다).
     const WALL_PRICE = 38_805;
     const wall: AvoidWallLabel = {
       price: WALL_PRICE,
@@ -271,7 +276,7 @@ describe('HighLowLabelsPrimitive', () => {
       side: 'ask',
       label: '38,805, 1.2M',
     };
-    const stubs = makeAxisStubs({ priceToCoordinate: (p) => (p === WALL_PRICE ? 15 : 150) });
+    const stubs = makeAxisStubs({ priceToCoordinate: (p) => (p === WALL_PRICE ? 30 : 150) });
     const { prim } = attach(stubs, () => snapshot({ avoidWallLabels: [wall] }));
     const c = makeCanvasSpy();
 

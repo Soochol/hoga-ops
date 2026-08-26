@@ -64,6 +64,12 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     unreachedLabels: false,
     unreachedColor: '#unreached',
     unreachedLineWidth: 2,
+    tradedHorizontalLine: true,
+    tradedTimeMarker: true,
+    allWallHorizontalLine: true,
+    allWallTimeMarker: true,
+    unreachedHorizontalLine: true,
+    unreachedTimeMarker: true,
     ...over,
   };
 }
