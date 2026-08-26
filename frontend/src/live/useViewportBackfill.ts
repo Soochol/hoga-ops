@@ -542,12 +542,7 @@ export function useViewportBackfill({
           code,
           timeframe,
           kind: 'source_swap',
-          from: Math.round(target.from),
-          to: Math.round(target.to),
-          spBefore: Math.round(spBefore),
-          spAfter: Math.round(ts.scrollPosition()),
-          anchorOutside: rawAnchor === null || !Number.isFinite(rawAnchor as number),
-          totalBars,
+          d: `from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} anchorOut=${rawAnchor === null || !Number.isFinite(rawAnchor as number)} total=${totalBars} snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} latest=${Math.round(latestIdx)}`,
         });
         return true;
       } catch (e) {
@@ -763,11 +758,10 @@ export function useViewportBackfill({
         code,
         timeframe,
         kind: isMidInsert ? 'mid_insert' : isLeftTrim ? 'left_trim' : isUnionRemap ? 'union_remap' : 'prepend',
-        shift: Math.round(shift),
-        from: Math.round(target.from),
-        to: Math.round(target.to),
-        spBefore: Math.round(spBefore),
-        spAfter: Math.round(ts.scrollPosition()),
+        // ⚠ **한 문자열로 싣는다.** 브라우저 console 이 객체 payload 를 앞쪽 몇 필드에서
+        // 잘라 버려(2026-08-26 실측: `from` 다음이 통째로 사라졌다) 정작 진단에 쓰는
+        // 값들이 안 보였다. 이 표면의 관측은 "읽히는 형태" 까지가 요구사항이다.
+        d: `shift=${Math.round(shift)} from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())}`,
       });
     } catch (e) {
       // Reachable in practice only when the chart tears down between effect
