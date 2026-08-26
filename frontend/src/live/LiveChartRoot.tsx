@@ -628,6 +628,22 @@ export function LiveChartRoot({
   // 번들은 캔들이 없으면 통째로 null 이라, 정작 "왜 비었나" 를 물어야 할 상황에서
   // 사유가 함께 사라진다(자격증명 미설정·벤더 장애). prop 은 그 그릇 밖에 있다.
   const missingDates = hogaMissingDates ?? paneHogaBundle?.missing_dates;
+  /**
+   * 캔들이 **실제로 그려진** 거래일 — `no_upstream_data` 문구의 판별식(2026-08-26).
+   *
+   * `buildChartBundle` 이 세그먼트를 `kisCandles` 에서 직접 파생하므로("divider ⟺
+   * candle for that day") 이 집합이 곧 화면에 캔들이 있는 날짜다. 키움 보충분은
+   * 그 배열에 병합돼 들어오고, 벤더 모드는 전 구간이 벤더 캔들이라 **두 모드가 한
+   * 축으로** 덮인다 — `gapFill.filledDates` 를 배관하면 벤더 모드가 남는다.
+   *
+   * ⚠ **오늘은 뺀다.** 오늘 세그먼트는 캔들이 없어도 라이브 신호만으로 생기므로
+   * (`buildChartBundle` 의 "today segment") 그대로 쓰면 캔들 없는 오늘을 "있다" 로
+   * 센다. `todayKst` 가 빈 문자열이면(프롭 미지정) 날짜와 절대 같지 않아 무해하다.
+   */
+  const datesWithCandles = useMemo(
+    () => new Set((cb?.segments ?? []).map((seg) => seg.date).filter((d) => d !== todayKst)),
+    [cb?.segments, todayKst],
+  );
   const hogaMissingText = useMemo(
     () =>
       deriveHogaMissingNotice({
@@ -635,8 +651,9 @@ export function LiveChartRoot({
         venue,
         hasAnyHogaPoints: (paneHogaBundle?.quote_ratio.points.length ?? 0) > 0,
         includeNotCaptured: savedRangeFrozen,
+        datesWithCandles,
       }),
-    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen],
+    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen, datesWithCandles],
   );
   // 캔들이 없으면 **캔들 결손만** 말한다. 차트 자체가 없는데 "호가 기록 없음" 부터
   // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다
@@ -1192,7 +1209,7 @@ export function LiveChartRoot({
     });
   }, [minuteJumpState, clearMinuteJump, retryMinuteJump, onMinuteJumpChange]);
 
-  useViewportBackfill({
+  const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,
     bundle: cb,
@@ -1211,6 +1228,15 @@ export function LiveChartRoot({
     // 긁는 창이 생긴다(그 prop 주석의 그 사고).
     jumpFromDate: minuteJump.backfillFromDate,
   });
+  // 강제 클램프 착지 안내의 표시 수명. `seq` 가 deps 라 같은 경계로 다시 착지해도
+  // 타이머가 재시작한다. 8초: 읽을 시간은 주되 차트 위 상주물이 되지 않게.
+  const [swapNoticeVisible, setSwapNoticeVisible] = useState(false);
+  useEffect(() => {
+    if (!sourceSwapClampNotice) { setSwapNoticeVisible(false); return undefined; }
+    setSwapNoticeVisible(true);
+    const t = setTimeout(() => setSwapNoticeVisible(false), 8000);
+    return () => clearTimeout(t);
+  }, [sourceSwapClampNotice]);
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
   const getLiveRightOffsetBars = useCallback((visibleBars: number, plotWidth: number) => (
@@ -2614,7 +2640,7 @@ export function LiveChartRoot({
         stacked={foldedPaneCount > 0}
         // 뒷문장이 사유마다 갈린다 — 기본값은 호가 pane 전용이라 업스트림 결손엔 틀린다.
         ariaLabel={showHogaMissing
-          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates)}`
+          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates, datesWithCandles)}`
           : undefined}
       />
       {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
@@ -2900,7 +2926,7 @@ export function LiveChartRoot({
 
           ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
           추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
-      {(clampEngaged || captureFloorEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
+      {(clampEngaged || captureFloorEngaged || (swapNoticeVisible && sourceSwapClampNotice !== null) || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
@@ -2935,6 +2961,14 @@ export function LiveChartRoot({
           {captureFloorEngaged && (
             <div data-testid="capture-floor-chip" style={chipStyle}>
               저장된 가장 오래된 구간입니다
+            </div>
+          )}
+          {/* 소스 스왑 강제 착지 — 보던 구간이 새 소스에 없어 옮겨졌음을 말한다.
+              「복귀합니다」 약속은 넣지 않는다: 복원은 창 생존에 조건부라(#1579 계열
+              축소가 사이에 끼면 실패), 약속은 복원이 실측으로 안정된 뒤에 넣는다. */}
+          {swapNoticeVisible && sourceSwapClampNotice !== null && (
+            <div data-testid="source-swap-clamp-chip" style={chipStyle}>
+              {`${sourceSwapClampNotice.boundaryYmd.slice(4, 6)}/${sourceSwapClampNotice.boundaryYmd.slice(6, 8)} 이전은 이 소스에 없어 가장 가까운 위치로 이동했습니다`}
             </div>
           )}
         </div>

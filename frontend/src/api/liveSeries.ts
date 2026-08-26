@@ -20,6 +20,15 @@ export type LiveTodayPeakBase = {
   traded_qty: number | null;
   traded_t_ms: number | null;
   traded_peaks?: AskPeakCandidate[];
+  /** 터치된 벽의 **기록 갱신 시퀀스**(시간순 prefix maxima) — 최대벽 강도 pane 계단의
+   *  입력. `traded_peaks`(최종 크기순 top-3)와 **축이 다르다**: 벽은 장중에 커지는
+   *  경향이라 top-3 이 오후에 몰리면 오전 기록이 전부 잘린다.
+   *
+   *  ⚠ **rep/cont 를 가르지 않는 단일 배열이다** — 라이브 상태엔 버킷 대표라는 개념이
+   *  없어 두 축이 같은 값이다(백엔드 `snapshot()` 주석). 프론트는 이 하나를
+   *  `traded_record_peaks`·`traded_record_max_peaks` 양쪽에 배선한다. 구백엔드 부재
+   *  → optional. */
+  traded_record_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

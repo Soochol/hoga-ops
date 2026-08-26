@@ -391,6 +391,7 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
         "traded_qty": 3,
         "traded_t_ms": now + 5_000,
         "traded_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
+        "traded_record_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now + 5_000,
@@ -431,6 +432,7 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
         "traded_qty": 5_000,
         "traded_t_ms": now + 5_000,
         "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
+        "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": now + 5_000,
@@ -487,6 +489,7 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_pa
         "traded_peaks": [
             {"price": 101, "qty": 3, "t_ms": now},
         ],
+        "traded_record_peaks": [{"price": 101, "qty": 3, "t_ms": now}],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
@@ -537,6 +540,7 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
         "traded_peaks": [
             {"price": 70_000, "qty": 5_000, "t_ms": now},
         ],
+        "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now}],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": now,
@@ -572,6 +576,7 @@ async def test_on_tick_orderbook_populates_all_peak_arrays_without_trades(tmp_pa
         "traded_qty": None,
         "traded_t_ms": None,
         "traded_peaks": [],
+        "traded_record_peaks": [],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
@@ -625,6 +630,12 @@ async def test_on_tick_continuous_trade_touches_every_same_minute_wall_at_or_bel
             {"price": 101, "qty": 3, "t_ms": now},
         ],
         # `all_*` 은 가격당 최댓값으로 접힌다(터치 무관) — 102 는 9, 101 은 8.
+        # 같은 가격이 두 번 기록을 세운다 — 기록 시퀀스는 **가격별 dedup 을 하지
+        # 않는다**(과거일 `_peak_record_sequence` 와 같은 규약).
+        "traded_record_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 101, "qty": 8, "t_ms": now + 2_000},
+        ],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
@@ -875,6 +886,7 @@ async def test_today_peak_seed_loads_full_day_ask_peak_and_full_coverage(tmp_pat
         "traded_qty": None,
         "traded_t_ms": None,
         "traded_peaks": [],
+        "traded_record_peaks": [],
         "all_price": 10_200,
         "all_qty": 900,
         "all_t_ms": _kst_ms(9, 10),
@@ -942,6 +954,7 @@ async def test_today_peak_seed_loads_full_day_bid_peak_and_full_coverage(tmp_pat
         "traded_qty": 5_000,
         "traded_t_ms": _bid_ob_ms,
         "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
+        "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),

@@ -59,6 +59,12 @@ vi.mock('lightweight-charts', async () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        // ⚠ `scrollPosition` 은 **빼면 안 된다**(2026-08-26). 재착석 경로가 관측용으로
+        // 이걸 부르는데(`useViewportBackfill` 의 `spBefore`), 그 호출이 실패를 삼키는
+        // `try/catch` 안이라 메서드가 없으면 **TypeError 가 아니라 "재착석 미발화"** 로
+        // 나타난다 — 이 파일의 재착석 테스트 11개가 그렇게 한꺼번에 죽었고 실패 서명은
+        // 원인과 무관해 보이는 `expected 1 to be greater than 1` 이었다. lwc 5.2.0
+        // `ITimeScaleApi` 에 실재하는 메서드다(프로덕션은 무해했다).
         scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -437,6 +443,65 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
+  /**
+   * `no_upstream_data` 의 문구를 가르는 판별식을 **이 컴포넌트가 실제로 공급하는가**
+   * (2026-08-26).
+   *
+   * ── 막는 방향 ─────────────────────────────────────────────────────────
+   * `hogaMissingNotice.test.ts` 가 다 잡는 것처럼 보이지만 **배선은 원리적으로 못 본다** —
+   * 여기서 `datesWithCandles` 를 안 넘기면 순수 함수는 기본값(빈 집합)으로 종전 동작을
+   * 내고 그 파일은 전부 초록인 채 수정 전체가 불활성이 된다. 이 두 케이스가 그 자리다.
+   *
+   * ── 왜 두 개인가 ──────────────────────────────────────────────────────
+   * 두 케이스는 **날짜 하나만** 다르다(세그먼트에 있나 없나). 그래서 출력이 갈리면
+   * 그 차이를 만든 것은 판별식뿐이다. 하나만 두면 "우연히 그 문구" 를 배제 못 한다.
+   *
+   * ── 못 보는 것 ────────────────────────────────────────────────────────
+   * 보충분이 `bundle.segments` 에 실리는가 — 그 조립은 `useLiveBundle` 소유다
+   * (`buildChartBundle` 이 세그먼트를 캔들 배열에서 파생한다).
+   */
+  it('캔들이 있는 업스트림 결손일은 「업스트림 데이터 없음」이라고 하지 않는다', () => {
+    // 20260527 은 DEFAULT_BUNDLE 의 세그먼트에 있다 = 그날 캔들이 그려져 있다.
+    // 키움 보충·벤더 REST 가 되받아 온 날이 이 모양이고, 그날 없는 것은 호가뿐이다.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260527', reason: 'no_upstream_data' }]}
+        venue="KRX"
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const notice = screen.getByTestId('hoga-missing-notice');
+    expect(notice).toHaveTextContent('호가 기록 없음');
+    // 뒷문장도 같이 돌아야 한다 — 안 그러면 모순이 스크린리더에만 남는다.
+    expect(notice.getAttribute('aria-label')).toContain('캔들만 표시됩니다');
+  });
+
+  it('캔들이 없는 업스트림 결손일은 종전대로 날짜를 지목한다 — 대조군', () => {
+    // 20260526 은 세그먼트에 없다 = 차트에 빈칸으로 남은 날이다.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260526', reason: 'no_upstream_data' }]}
+        venue="KRX"
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const notice = screen.getByTestId('hoga-missing-notice');
+    expect(notice).toHaveTextContent('05/26 업스트림 데이터 없음');
+    expect(notice.getAttribute('aria-label')).toContain('캔들과 호가가 모두 없어');
   });
 
   it('prevents the browser image context menu inside the chart area', () => {

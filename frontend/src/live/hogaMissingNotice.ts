@@ -22,8 +22,13 @@ import { LIVE_VENUE_LABELS, type LiveVenueOption } from '../state/liveVenue';
 /** 데이터가 원리적으로 없는 사유 — "고장" 이 아니라 "원래 없음". */
 const ABSENT_REASONS = new Set([
   'venue_unsupported', 'source_missing', 'stock_date_missing',
-  // hogaplay 가 그날을 통째로 못 준다(ADR-0021). venue 결손과 같은 부류다 —
-  // 소급 복구가 안 되고 사용자가 할 수 있는 일이 없다는 점에서 동일하다.
+  // hogaplay 가 그날을 통째로 못 준다(ADR-0021). **호가 축에서는** venue 결손과 같은
+  // 부류다 — 호가 스냅샷은 소급 복구가 안 되고 사용자가 할 수 있는 일이 없다.
+  //
+  // ⚠ **캔들 축은 다르다.** 키움 보충(`minuteGapFillPlan.ts` 의 `FILLABLE_REASONS`)과
+  // 벤더 REST 는 이 날의 캔들을 되받아 온다 — 이 사유가 곧 "차트에서 빠진 날" 은
+  // 아니다. 그래서 여기 남는 것이 맞고(호가는 정말로 영구히 없다), 캔들까지 없다는
+  // 말은 `datesWithCandles` 로 갈라 낸다(아래 `upstreamWithoutCandles`).
   'no_upstream_data',
 ]);
 
@@ -50,17 +55,50 @@ function monthDay(yyyymmdd: string): string {
   return `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6, 8)}`;
 }
 
+/** `datesWithCandles` 미지정 시의 기본 — 종전 동작(전부 "캔들도 없다")을 그대로 낸다. */
+const NO_DATES: ReadonlySet<string> = new Set<string>();
+
+/**
+ * 「업스트림 데이터 없음」이라고 **말해도 되는** 날짜만 남긴다 (2026-08-26).
+ *
+ * `no_upstream_data` 는 원래 "그날은 캔들도 호가도 없다" 는 뜻으로 쓰였는데, 키움 보충
+ * (`useMinuteGapFill`)과 벤더 REST 가 그 날의 **캔들을 되받아 오면서 전제가 깨졌다** —
+ * 실측(010140, `20260313`·`20260319`·`20260518`)에서 세 날 모두 5분봉 78봉이 정상으로
+ * 그려지는데 안내는 「업스트림 데이터 없음 3일」이었고, 바로 옆에 「hogaplay · 키움 보충」
+ * 배지가 떠서 두 문구가 서로를 부정했다. 사용자는 그걸 데이터 결손으로 읽는다.
+ *
+ * **판별식을 "보충이 돌았는가"(`gapFill.filledDates`)가 아니라 "캔들이 그려졌는가"로
+ * 둔 것이 요점이다.** 보충은 디스크 모드에서만 도는데(`useLiveBundle` 의 `enabled`),
+ * 벤더 모드는 애초에 전 구간 캔들을 벤더에서 받으므로 같은 모순이 그쪽에도 있었다.
+ * 화면에 그려진 캔들을 세면 두 모드가 한 축으로 덮이고, 보충이 **실패·포기**한 날
+ * (척도 불일치·보유 기간 밖·상한 유예)은 자동으로 이 문구를 유지한다.
+ */
+function upstreamWithoutCandles(
+  missing: readonly RangeMissingDate[],
+  datesWithCandles: ReadonlySet<string>,
+): readonly RangeMissingDate[] {
+  return missing.filter(
+    (m) => m.reason === 'no_upstream_data' && !datesWithCandles.has(m.date),
+  );
+}
+
 /**
  * 스크린리더용 뒷문장. 시각 문구는 한 줄이어야 차트를 안 가리므로 "왜" 는 여기서 말한다.
  *
  * 사유마다 갈리는 이유: #1133 의 기본 문구는 **호가 pane 전용** 맥락이라
  * "캔들만 표시됩니다" 라고 하는데, 업스트림 결손은 캔들까지 없어 그 말이 **틀린다**.
+ *
+ * ⚠ 캔들이 보충된 업스트림 결손일은 그 예외가 **다시 뒤집힌다** — 그날은 캔들만 있고
+ * 호가만 없으니 기본 문구가 문자 그대로 참이다. 그래서 `datesWithCandles` 를 받아
+ * 시각 문구와 **같은 헬퍼**로 가른다: 둘이 갈리면 화면엔 「호가 기록 없는 구간 포함」,
+ * 스크린리더엔 「캔들과 호가가 모두 없어」가 나와 고치려던 모순이 거기에만 남는다.
  */
 export function deriveHogaMissingDetail(
   missingDates: readonly RangeMissingDate[] | undefined,
+  datesWithCandles: ReadonlySet<string> = NO_DATES,
 ): string {
   const reasons = missingDates ?? [];
-  if (reasons.some((m) => m.reason === 'no_upstream_data')) {
+  if (upstreamWithoutCandles(reasons, datesWithCandles).length > 0) {
     return '그날은 캔들과 호가가 모두 없어 차트에서 빠집니다.';
   }
   // 미캡처만 남았다면 **행동 가능한** 상태다 — 그 점을 말해야 안내가 쓸모를 갖는다.
@@ -84,6 +122,11 @@ export interface HogaMissingNoticeInput {
    * 종목 22일), 거기서 켜면 배너가 상시 들어와 진짜 결손이 묻힌다.
    */
   includeNotCaptured?: boolean;
+  /**
+   * 캔들이 **실제로 그려진** 거래일. `no_upstream_data` 의 문구를 가르는 판별식이다
+   * (`upstreamWithoutCandles`). 미지정이면 빈 집합 — 종전 동작 그대로다.
+   */
+  datesWithCandles?: ReadonlySet<string>;
 }
 
 /**
@@ -97,6 +140,7 @@ export function deriveHogaMissingNotice({
   venue,
   hasAnyHogaPoints,
   includeNotCaptured = false,
+  datesWithCandles = NO_DATES,
 }: HogaMissingNoticeInput): string | null {
   if (!missingDates || missingDates.length === 0) return null;
 
@@ -112,11 +156,14 @@ export function deriveHogaMissingNotice({
     return null;
   }
 
-  // 업스트림 결손은 **가장 구체적인 사유**라 먼저 말한다. venue 결손("이 시장엔 원래
-  // 없음")과 달리 특정 날짜를 지목할 수 있고, 희소해서(전체 429거래일 중 4일) 지목이
-  // 실제로 유용하다. "호가 기록 없음" 으로 뭉치면 절반만 맞는 말이 된다 — 그날은
-  // 호가만이 아니라 캔들까지 전부 없다.
-  const upstream = relevant.filter((m) => m.reason === 'no_upstream_data');
+  // 업스트림 결손 중 **캔들까지 없는 날**은 가장 구체적인 사유라 먼저 말한다. venue
+  // 결손("이 시장엔 원래 없음")과 달리 특정 날짜를 지목할 수 있고, 희소해서(전체
+  // 429거래일 중 4일) 지목이 실제로 유용하다 — 사용자가 차트의 어느 빈칸인지 바로 찾는다.
+  //
+  // 캔들이 보충된 날은 **여기서 빠져** 아래 `absent` 분기로 흘러 「호가 기록 없는 구간
+  // 포함」이 된다. 그게 그 날의 실제 상태다(캔들 있음 · 호가 없음). 빈칸이 아닌 날을
+  // 지목하면 사용자가 멀쩡한 캔들을 결손으로 읽는다 — 이 수정이 고친 증상이다.
+  const upstream = upstreamWithoutCandles(relevant, datesWithCandles);
   if (upstream.length === 1) return `${monthDay(upstream[0].date)} 업스트림 데이터 없음`;
   if (upstream.length > 1) return `업스트림 데이터 없음 ${upstream.length}일`;
 

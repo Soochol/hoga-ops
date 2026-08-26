@@ -10,6 +10,13 @@ import {
   type PeakWallClassification,
 } from './peakWallEventClassifier';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
+import {
+  buildPeakRecordSeries,
+  todaySeedRow,
+  withSessionRecords,
+  PeakRecordAccumulator,
+  type PeakRecordSeries,
+} from './peakWallRecordSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -97,10 +104,15 @@ function bidPeakFromCandidate(date: string, candidate: AskPeakCandidate): BidPea
 }
 
 /** 오늘 행 push — ask 쪽 pushTodayAskPeak 미러(사유는 그쪽 주석 참조). */
-function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamilies): BidPeak[] {
+function pushTodayBidPeak(
+  out: BidPeak[],
+  todayKst: string,
+  families: PeakFamilies,
+  records: PeakRecordSeries,
+): BidPeak[] {
   const traded = families.traded[0];
   if (traded) {
-    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
+    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families, records));
   } else if (families.all.length > 0) {
     out.push(attachFamilies({
       date: todayKst,
@@ -110,7 +122,7 @@ function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamili
       max_price: null,
       max_qty: null,
       max_t_ms: null,
-    }, families));
+    }, families, records));
   }
   return out;
 }
@@ -118,11 +130,19 @@ function pushTodayBidPeak(out: BidPeak[], todayKst: string, families: PeakFamili
 function attachFamilies(
   peak: BidPeak,
   families: PeakFamilies,
+  /** **필수 인자다** — 기본값을 주면 새 호출부가 조용히 기록 없이 태어난다
+   *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
+   *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
+  records: PeakRecordSeries,
 ): BidPeak {
   return {
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
+    // 기록 갱신 시퀀스 — ask 쪽 attachFamilies 와 **같은 배선**이다. 종전엔 이 두 줄이
+    // 매수에만 통째로 없었고(매도는 top-3 을 실었다), 결과가 같아 드리프트가 안 보였다.
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -163,13 +183,6 @@ function mergedBidFamilies(
   );
   return bidFamiliesFromClassified(classified, backend);
 }
-export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
-  const families = backendPeakFamilies(todayBidPeak);
-  const date = todayBidPeak?.date;
-  const traded = families.traded[0];
-  if (!date || !traded) return null;
-  return attachFamilies(bidPeakFromCandidate(date, traded), families);
-}
 
 export function deriveDayBidPeaks(
   ob: ReadonlyArray<ObSnapshot>,
@@ -184,8 +197,9 @@ export function deriveDayBidPeaks(
   void code;
   void todayCandles;
   const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families);
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function deriveDayBidPeaksIncremental(
@@ -204,8 +218,9 @@ export function deriveDayBidPeaksIncremental(
     ...backend.unreached,
   ], todayBidPeak?.day_extreme ?? null);
   const families = bidFamiliesFromClassified(classified, backend);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families);
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function useDayBidPeaks(
@@ -218,12 +233,20 @@ export function useDayBidPeaks(
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
-  void code;
   void todayCandles;
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
+  // 접속 이후 기록 누적 — **derive 밖**이다(사유는 `PeakRecordAccumulator` 주석: derive 는
+  // 배치판과 값이 같아야 하는데 배치는 축출된 기록을 원리적으로 못 가진다).
+  const recordsRef = useRef<PeakRecordAccumulator | null>(null);
+  if (recordsRef.current === null) recordsRef.current = new PeakRecordAccumulator();
   return useMemo(
-    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
-    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak],
+    () => withSessionRecords(
+      deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
+      recordsRef.current!,
+      todayKst,
+      `${code}|${todayKst}|${sessionOpenMs}`,
+    ),
+    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak, code],
   );
 }
