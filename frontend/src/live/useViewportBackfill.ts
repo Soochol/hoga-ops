@@ -313,6 +313,10 @@ export function useViewportBackfill({
   /** 직전 커밋 캔들 배열의 모양 — **중간 삽입**(디스크 구멍의 키움 보충)을 가른다.
    *  프리펜드는 `firstMs` 가, SSE 성장은 `lastMs` 가 움직이므로 셋을 다 봐야 구분된다. */
   const prevCandleShapeRef = useRef<{ count: number; firstMs: number; lastMs: number } | null>(null);
+  /** 직전 재투영이 **앉히려던** scrollPosition. 다음 커밋의 실제 값과 비교해
+   *  「보정은 옳게 앉았는데 그 뒤 커밋이 덮었나」(#1581 계열)를 가른다 — set 직후
+   *  읽기는 한 프레임 늦어 그 자리에서는 판정할 수 없다(`spA` 가 항상 옛값인 이유). */
+  const lastSeatedSpRef = useRef<number | null>(null);
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
@@ -856,11 +860,45 @@ export function useViewportBackfill({
     // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
     // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
     // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
+    // **이 커밋이 어떤 변이였나를 값으로 남긴다** (2026-08-26 계측).
+    //
+    // 판별식 표(2b/2c/2d + 프리펜드)는 firstMs·lastMs·count 세 축의 **조합**으로
+    // 서는데, 표에 없는 조합이 오면 조용히 기본 프리펜드 경로로 떨어진다. 실측된
+    // 예가 「프리펜드 + 우측 SSE 성장 동시」(firstMs 과거로 **그리고** lastMs 변함)로,
+    // 이때 sp 이동량(438)이 shift(391)와 어긋났다. 세 델타를 직접 찍어 두면 그
+    // 조합이 로그에서 바로 읽힌다 — 지금까지는 shift 하나로 역산해야 했다.
+    const dFirst = prevShape ? shape.firstMs - prevShape.firstMs : null;
+    const dLast = prevShape ? shape.lastMs - prevShape.lastMs : null;
+    const dCount = prevShape ? shape.count - prevShape.count : null;
+    const mutation = `dFirst=${dFirst} dLast=${dLast} dCount=${dCount}`;
+    /** 반려도 로그한다 — 반려 경로가 침묵이면 「보정이 틀렸다」와 「보정이 아예 안
+     *  돌았다」가 구별되지 않는다(2a 가 #1597 에서 배운 것과 같은 규율). */
+    //
+    // ⚠ **사유도 `d` 안에 넣는다.** 브라우저 console 은 객체 payload 를 앞쪽 **4 필드**
+    // 까지만 보여 준다(2026-08-26 실측: `code/timeframe/kind/reason` 이 차지하자
+    // `d` 가 통째로 사라졌다). 값이 안 읽히는 계측은 계측이 아니다.
+    const skip = (reason: string, extra = '') => {
+      livePerfLog('viewport_reseat_skip', {
+        code,
+        timeframe,
+        kind: 'prepend_family',
+        d: `reason=${reason} ${mutation}${extra}`,
+      });
+    };
     if (!isMidInsert && !isLeftTrim && !isUnionRemap) {
-      if (historicalRange.snapshot().historicalFromDate === null) return;
-      if (newEarliest >= prevEarliest) return;
+      if (historicalRange.snapshot().historicalFromDate === null) {
+        skip('no_historical_from');
+        return;
+      }
+      if (newEarliest >= prevEarliest) {
+        skip('not_leftward');
+        return;
+      }
     }
-    if (!snap) return;
+    if (!snap) {
+      skip('no_snapshot');
+      return;
+    }
     try {
       // Reproject the snapshot's right-edge bar through the rebuilt axis. Its
       // union index moved by exactly the number of points inserted ahead of it;
@@ -869,8 +907,16 @@ export function useViewportBackfill({
       // toReal→toVirtual round-trip can land a hair off a bar boundary.
       const refVirtual = Math.round(axis.toVirtual(snap.refMs) / 1000);
       const newIdx = ts.timeToIndex(refVirtual as Time, true);
-      if (newIdx === null) return;
+      if (newIdx === null) {
+        skip('no_new_index');
+        return;
+      }
       const shift = newIdx - snap.refIdx;
+      // 앵커가 **실제 봉 위**였나. `timeToIndex(x, true)` 는 findNearest 라 빈 자리도
+      // 유한한 인덱스를 돌려주므로, 그 값만으로는 「봉을 짚었다」와 「가장 가까운 봉으로
+      // 접혔다」가 구별되지 않는다 — 2a 가 `anchorOut` 을 원본 시각 비교로 재는 것과
+      // 같은 이유다(그 도크스트링의 ⚠ 절). false 인자가 그 구별을 준다.
+      const anchorOnBar = ts.timeToIndex(refVirtual as Time, false) !== null;
       // **축이 안 움직였으면 보정할 것이 없다 — 사용자 입력이 이긴다.**
       //
       // shift 는 "기준 봉의 union 인덱스가 이 커밋에서 얼마나 밀렸나" 다. 0 이면
@@ -886,7 +932,10 @@ export function useViewportBackfill({
       // SSE 틱은 마지막 봉 값만 갱신해 캔들 모양이 불변이라 `isUnionRemap` 행에 걸려
       // 이 경로를 **매 틱** 타는데(그전엔 진짜 프리펜드에서만 탔다), 그때마다 드래그를
       // 스냅샷 위치로 되돌려 진동이 됐다.
-      if (shift === 0) return;
+      if (shift === 0) {
+        skip('shift_zero', ` refIdx=${Math.round(snap.refIdx)} newIdx=${Math.round(newIdx)} onBar=${anchorOnBar}`);
+        return;
+      }
       const target = { from: snap.fromLogical + shift, to: snap.toLogical + shift };
       // Live-edge case (①): lwc preserved the view on its own — re-setting the
       // same range would only risk a redundant repaint. Skip within tolerance.
@@ -896,9 +945,17 @@ export function useViewportBackfill({
         Math.abs(cur.from - target.from) < REPOSITION_EPSILON &&
         Math.abs(cur.to - target.to) < REPOSITION_EPSILON
       ) {
+        skip('already_seated', ` shift=${Math.round(shift)}`);
         return;
       }
       const spBefore = ts.scrollPosition();
+      // **직전 보정이 앉힌 자리가 이 커밋까지 살아남았나.** 살아남았으면 spBefore 는
+      // 그 값이고, 그 사이 setData 재앵커가 덮었으면 다르다 — 그 차이가 #1581 계열의
+      // 직접 증거다. 지금까지는 `spA` 로 재려 했는데 set 직후 읽기가 한 프레임 늦어
+      // 항상 옛값이었고, 그래서 「덮였다」가 한 번도 값으로 잡히지 않았다.
+      const seatDrift = lastSeatedSpRef.current === null
+        ? null
+        : Math.round(spBefore - lastSeatedSpRef.current);
       ts.setVisibleLogicalRange(target);
       // **내구화** — range set 은 lwc 내부 scrollPosition(마지막 봉 기준 오른쪽
       // 오프셋)을 갱신하지 않아, 다음 setData 재앵커가 직전 오프셋으로 화면을
@@ -910,6 +967,9 @@ export function useViewportBackfill({
       );
       if (typeof lastIdx === 'number' && Number.isFinite(lastIdx)) {
         ts.scrollToPosition(target.to - lastIdx, false);
+        lastSeatedSpRef.current = target.to - lastIdx;
+      } else {
+        lastSeatedSpRef.current = null;
       }
       // 어느 행이 이 재투영을 열었는지까지 남긴다 — 판별식 표(2b/2c/2d + 프리펜드)의
       // 어느 줄이 실제로 작동했는지는 지금까지 추측이었고, 그 추측이 이 표면의
@@ -922,7 +982,16 @@ export function useViewportBackfill({
         // ⚠ **한 문자열로 싣는다.** 브라우저 console 이 객체 payload 를 앞쪽 몇 필드에서
         // 잘라 버려(2026-08-26 실측: `from` 다음이 통째로 사라졌다) 정작 진단에 쓰는
         // 값들이 안 보였다. 이 표면의 관측은 "읽히는 형태" 까지가 요구사항이다.
-        d: `shift=${Math.round(shift)} from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())}`,
+        // ⚠ **한 문자열로 싣는다.** 브라우저 console 이 객체 payload 를 앞쪽 몇
+        // 필드에서 잘라(2026-08-26 실측) 정작 진단에 쓰는 값이 안 보였다.
+        //
+        // 읽는 법(2026-08-26 계측 추가분):
+        //  - `seatDrift`  직전 보정이 앉힌 자리가 이 커밋까지 살아남았나. 0 이 아니면
+        //                 그 사이 setData 재앵커가 덮은 것이다(#1581 계열).
+        //  - `dFirst/dLast/dCount`  이 커밋의 변이. **dFirst≠0 이면서 dLast≠0** 이면
+        //                 판별식 표에 없는 조합(프리펜드+우측 성장 동시)이다.
+        //  - `onBar`      앵커가 실제 봉 위였나. false 면 shift 가 클램프값끼리의 차다.
+        d: `shift=${Math.round(shift)} from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} seatDrift=${seatDrift} refIdx=${Math.round(snap.refIdx)} newIdx=${Math.round(newIdx)} onBar=${anchorOnBar} ${mutation}`,
       });
     } catch (e) {
       // Reachable in practice only when the chart tears down between effect
