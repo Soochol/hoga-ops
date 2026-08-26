@@ -59,10 +59,13 @@ describe('usePeakWallRender', () => {
         askPeakAllWallLineEnabled: false,
         askPeakUnreachedLineEnabled: false,
         askPeakTradedLineEnabled: true,
-        // 강도 pane 의 계열 셋도 전역이라 같은 이유로 되돌린다(공장값 T/F/F).
-        peakWallPaneTradedEnabled: true,
-        peakWallPaneUnreachedEnabled: false,
-        peakWallPaneAllWallEnabled: false,
+        // 강도 pane 슬롯도 전역이라 같은 이유로 되돌린다(공장값 양 방향 T/F/F).
+        askPeakTradedPaneEnabled: true,
+        askPeakUnreachedPaneEnabled: false,
+        askPeakAllWallPaneEnabled: false,
+        bidPeakTradedPaneEnabled: true,
+        bidPeakUnreachedPaneEnabled: false,
+        bidPeakAllWallPaneEnabled: false,
       });
     });
   });
@@ -75,23 +78,23 @@ describe('usePeakWallRender', () => {
    * 조합이 원리적으로 불가능했다. 두 방향을 **각각** 재야 한다: 한쪽만 재면
    * "그냥 둘 다 끄는" 구현도 통과한다.
    */
-  it('강도 pane 계열은 캔들 선 토글과 독립이다 — 양방향', () => {
-    // ① 캔들 선 ON · pane 계열 OFF → 그리기는 살고 계단만 빈다.
+  it('강도 pane 슬롯은 캔들 선 토글과 독립이다 — 양방향', () => {
+    // ① 캔들 선 ON · pane 슬롯 OFF → 그리기는 살고 계단만 빈다.
     act(() => {
       useLivePageStore.setState({
         askPeakTradedLineEnabled: true,
-        peakWallPaneTradedEnabled: false,
+        askPeakTradedPaneEnabled: false,
       });
     });
     const onlyCandle = render(true, [PEAK], true);
     expect(onlyCandle.current.segments).toHaveLength(1);
     expect(onlyCandle.current.stepSegments).toHaveLength(0);
 
-    // ② 캔들 선 OFF · pane 계열 ON → 계단만 산다. **이게 종전에 불가능했던 조합이다.**
+    // ② 캔들 선 OFF · pane 슬롯 ON → 계단만 산다. **이게 종전에 불가능했던 조합이다.**
     act(() => {
       useLivePageStore.setState({
         askPeakTradedLineEnabled: false,
-        peakWallPaneTradedEnabled: true,
+        askPeakTradedPaneEnabled: true,
       });
     });
     const onlyPane = render(true, [PEAK], true);
@@ -101,13 +104,13 @@ describe('usePeakWallRender', () => {
 
   // 나머지 두 계열도 자기 pane 키를 탄다 — 하나만 배선하고 나머지를 캔들 토글에
   // 남겨 두는 절반 구현이 통과하지 않게.
-  it('미도달·전체 계단도 각자 pane 키를 탄다 (캔들 선은 끈 채)', () => {
+  it('미도달·전체 계단도 각자 pane 슬롯을 탄다 (캔들 선은 끈 채)', () => {
     act(() => {
       useLivePageStore.setState({
         askPeakUnreachedLineEnabled: false,
         askPeakAllWallLineEnabled: false,
-        peakWallPaneUnreachedEnabled: true,
-        peakWallPaneAllWallEnabled: true,
+        askPeakUnreachedPaneEnabled: true,
+        askPeakAllWallPaneEnabled: true,
       });
     });
     const withArrays: AskPeak = {
@@ -122,10 +125,43 @@ describe('usePeakWallRender', () => {
     expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
   });
 
-  /** pane 마스터가 꺼져 있으면 계열 키가 켜져 있어도 계산하지 않는다(`needStepSegments`). */
-  it('pane 마스터가 꺼져 있으면 계열 키와 무관하게 계단이 없다', () => {
+  /** pane 마스터가 꺼져 있으면 슬롯이 켜져 있어도 계산하지 않는다(`needStepSegments`). */
+  it('pane 마스터가 꺼져 있으면 슬롯과 무관하게 계단이 없다', () => {
     const r = render(true, [PEAK], false);
     expect(r.current.stepSegments).toHaveLength(0);
+  });
+
+  /**
+   * **막는 방향**: 여섯 슬롯이 방향을 잃고 다시 하나로 합쳐지는 것.
+   *
+   * 이 훅은 방향당 한 번 불리므로, 매도 슬롯을 끄면 **매도 계단만** 비어야 한다.
+   * 키가 방향 공용으로 되돌아가면 이 단언이 빨개진다.
+   */
+  it('pane 슬롯은 방향별이다 — 매도를 꺼도 매수는 산다', () => {
+    act(() => {
+      useLivePageStore.setState({
+        askPeakTradedPaneEnabled: false,
+        bidPeakTradedPaneEnabled: true,
+        bidPeakEnabled: true,
+        bidPeakHidden: false,
+        bidPeakTradedLineEnabled: true,
+      });
+    });
+    const ask = render(true, [PEAK], true);
+    expect(ask.current.stepSegments).toHaveLength(0);
+
+    const bid = renderHook(() => usePeakWallRender({
+      side: 'bid',
+      peaks: [PEAK],
+      segments: SEGMENTS,
+      candles: CANDLES,
+      axis,
+      todayKst: DAY,
+      applicable: true,
+      dailyMaFilters: NO_DAILY_MA_FILTERS,
+      needStepSegments: true,
+    })).result;
+    expect(bid.current.stepSegments).toHaveLength(1);
   });
 
   /**

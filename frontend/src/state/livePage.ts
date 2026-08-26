@@ -443,7 +443,8 @@ type Store = Persisted & IndicatorSettings & {
   resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setPeakWallPaneEnabled: (enabled: boolean) => void;
-  setPeakWallPaneFamilyEnabled: (
+  setPeakWallPaneSlotEnabled: (
+    side: 'ask' | 'bid',
     family: 'Traded' | 'Unreached' | 'AllWall',
     enabled: boolean,
   ) => void;
