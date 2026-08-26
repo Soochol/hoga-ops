@@ -534,15 +534,21 @@ export function useViewportBackfill({
         // 값이 안 바뀌었으면 set 이 안 먹은 것이고, 바뀐 뒤 나중에 되돌아왔으면
         // 후속 setData 재앵커다(#1581 의 실패 서명).
         //
-        // `anchorOutside` 는 **다른 갈래**를 연다 — 스왑 전 위치가 새 소스의 데이터
+        // `anchorOut` 은 **다른 갈래**를 연다 — 스왑 전 위치가 새 소스의 데이터
         // 범위 밖이면(디스크→벤더는 250일 벽이 있어 흔하다) 재착석의 목표 자체가
-        // 없다. 그건 "원위치 보존" 이 아니라 "그 깊이까지 창을 확장" 이 옳은 동작이라
-        // 2a 의 능력 밖이고, 이 플래그가 그 판정을 공짜로 만든다.
+        // 없고, lwc 가 가장 가까운 봉으로 클램프해 화면이 **크게 점프한다.**
+        //
+        // ⚠ ** 로는 이 판정을 못 한다** — 그 함수가 이미
+        // 클램프된 인덱스를 돌려주므로 결과는 항상 유한하고, 종전 판정
+        // ()은 **언제나 false** 였다. 2026-08-26
+        // 실측이 그 눈먼 상태를 보여 준다: 팬 위치 −23,880바에서 토글 OFF 하니
+        // `target from=0 · total=12757`(벤더 250일치)로 클램프됐는데 그때도
+        // `anchorOut=false` 였다. 원본 시각을 **첫 봉과 직접 비교**해야 한다.
         livePerfLog('viewport_reseat', {
           code,
           timeframe,
           kind: 'source_swap',
-          d: `from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} anchorOut=${rawAnchor === null || !Number.isFinite(rawAnchor as number)} total=${totalBars} snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} latest=${Math.round(latestIdx)}`,
+          d: `from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} anchorOut=${snap.refMs < candles[0].ts_ms} total=${totalBars} snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} latest=${Math.round(latestIdx)}`,
         });
         return true;
       } catch (e) {
