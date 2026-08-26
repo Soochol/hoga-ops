@@ -38,6 +38,24 @@ import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
 import type { PeakDailyMaFilters } from './peakWallDailyMaFilter';
 
+/** 계열의 두 표면 토글(수평선 · 발생 시점 화살표)을 **세그먼트에 실어** 내려보낸다.
+ *
+ * primitive 에 세터를 다는 대신 이 자리를 고른 이유: 이 훅이 내보내는 세그먼트를
+ * **세 소비처가 공유**한다 — 선 primitive · 도킹 라벨 · 고저 라벨 회피 rect. 여기서
+ * 실어 두면 셋이 자동으로 같은 값을 보고, 특히 회피 간격이 화살표 유무를 따라간다
+ * (화살표를 껐는데 라벨만 비켜서면 빈 공간을 피해 떠 있는 **유령 회피**가 된다).
+ *
+ * 둘 다 켜져 있으면 **원본 배열을 그대로 돌려준다** — 기본 상태에서 참조가 바뀌지
+ * 않아야 하류 memo 와 primitive 재갱신이 헛돌지 않는다. */
+function withPeakWallSurfaces(
+  segments: readonly PeakWallSegment[],
+  horizontalLine: boolean,
+  timeMarker: boolean,
+): readonly PeakWallSegment[] {
+  if (horizontalLine && timeMarker) return segments;
+  return segments.map((segment) => ({ ...segment, horizontalLine, timeMarker }));
+}
+
 export type PeakWallRenderState = {
   /** 필터를 모두 통과한 세그먼트. **`enabled` 기준으로만** 계산한다(위 불변식 참조). */
   segments: readonly PeakWallSegment[];
@@ -101,6 +119,16 @@ export type PeakWallRenderState = {
   allWallLabels: boolean;
   allWallColor: string;
   allWallLineWidth: number;
+  // ── 계열별 표면 둘 (2026-08-26) ────────────────────────────────────────
+  // 수평선과 발생 시점 화살표는 **서로 독립**이다. 계열 `*Drawn` 이 그 계열이 화면에
+  // 있는지를 말하고, 이 여섯은 있는 계열을 **어떻게 그릴지**를 말한다. 세그먼트에
+  // 실려 primitive 까지 내려가며(도킹 라벨의 회피 간격도 화살표 쪽을 따라간다).
+  tradedHorizontalLine: boolean;
+  tradedTimeMarker: boolean;
+  allWallHorizontalLine: boolean;
+  allWallTimeMarker: boolean;
+  unreachedHorizontalLine: boolean;
+  unreachedTimeMarker: boolean;
 };
 
 type Args = {
@@ -168,6 +196,28 @@ export function usePeakWallRender({
   );
   // 표면 셋(라벨 · 화살표 · 레전드 셀)은 이제 **계열마다** 따로다. 종전엔 방향당 하나라
   // "체결된 벽만 라벨" 같은 조합이 원리적으로 불가능했다.
+  // 수평선과 발생 시점 화살표는 **독립 토글**이다(2026-08-26). 종전엔 계열 선 토글
+  // (`*LineEnabled`) 하나가 둘을 함께 켰다. 네 조합이 전부 유효하다 — 화살표는 벽 가격 y 에
+  // 앵커하므로 선이 없어도 위치를 말하고, 둘 다 끄면 라벨만 남는 표시가 된다.
+  // 계열 선 토글은 그대로 **계열의 존재**를 뜻한다(꺼지면 세그먼트가 아예 안 온다).
+  const tradedHorizontalLineEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakTradedHorizontalLineEnabled : s.bidPeakTradedHorizontalLineEnabled),
+  );
+  const tradedTimeMarkerEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakTradedTimeMarkerEnabled : s.bidPeakTradedTimeMarkerEnabled),
+  );
+  const allWallHorizontalLineEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallHorizontalLineEnabled : s.bidPeakAllWallHorizontalLineEnabled),
+  );
+  const allWallTimeMarkerEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakAllWallTimeMarkerEnabled : s.bidPeakAllWallTimeMarkerEnabled),
+  );
+  const unreachedHorizontalLineEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedHorizontalLineEnabled : s.bidPeakUnreachedHorizontalLineEnabled),
+  );
+  const unreachedTimeMarkerEnabled = useActivePrefs(
+    (s) => (isAsk ? s.askPeakUnreachedTimeMarkerEnabled : s.bidPeakUnreachedTimeMarkerEnabled),
+  );
   const tradedLabelEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakTradedLabelEnabled : s.bidPeakTradedLabelEnabled),
   );
@@ -422,8 +472,21 @@ export function usePeakWallRender({
       tradedRankArrowEnabled, allWallRankArrowEnabled, unreachedRankArrowEnabled,
     ],
   );
+  // 표면 플래그를 세그먼트에 실어 내보낸다(위 `withPeakWallSurfaces` 주석 참조).
+  const surfacedSegments = useMemo(
+    () => withPeakWallSurfaces(built, tradedHorizontalLineEnabled, tradedTimeMarkerEnabled),
+    [built, tradedHorizontalLineEnabled, tradedTimeMarkerEnabled],
+  );
+  const surfacedAllWallSegments = useMemo(
+    () => withPeakWallSurfaces(allWallBuilt, allWallHorizontalLineEnabled, allWallTimeMarkerEnabled),
+    [allWallBuilt, allWallHorizontalLineEnabled, allWallTimeMarkerEnabled],
+  );
+  const surfacedUnreachedSegments = useMemo(
+    () => withPeakWallSurfaces(unreachedBuilt, unreachedHorizontalLineEnabled, unreachedTimeMarkerEnabled),
+    [unreachedBuilt, unreachedHorizontalLineEnabled, unreachedTimeMarkerEnabled],
+  );
   return useMemo(() => ({
-    segments: built,
+    segments: surfacedSegments,
     drawn,
     labels: drawn && tradedLabelEnabled,
     // 「하나라도 그리는가」 — 어느 계열이 그려지는지는 `arrowRankSegments` 가 담는다.
@@ -435,28 +498,41 @@ export function usePeakWallRender({
     color,
     lineWidth,
     stepSegments: stepBuilt ?? built,
-    allWallSegments: allWallBuilt,
+    allWallSegments: surfacedAllWallSegments,
     legendRankSegments,
     arrowRankSegments,
     allWallDrawn,
     allWallLabels: allWallDrawn && allWallLabelEnabled,
     allWallColor,
     allWallLineWidth,
-    unreachedSegments: unreachedBuilt,
+    unreachedSegments: surfacedUnreachedSegments,
     allWallStepSegments: allWallStepBuilt,
     unreachedStepSegments: unreachedStepBuilt,
     unreachedDrawn,
     unreachedLabels: unreachedDrawn && unreachedLabelEnabled,
     unreachedColor,
     unreachedLineWidth,
+    tradedHorizontalLine: tradedHorizontalLineEnabled,
+    tradedTimeMarker: tradedTimeMarkerEnabled,
+    allWallHorizontalLine: allWallHorizontalLineEnabled,
+    allWallTimeMarker: allWallTimeMarkerEnabled,
+    unreachedHorizontalLine: unreachedHorizontalLineEnabled,
+    unreachedTimeMarker: unreachedTimeMarkerEnabled,
   }), [
+    surfacedSegments,
+    surfacedAllWallSegments,
+    surfacedUnreachedSegments,
+    tradedHorizontalLineEnabled,
+    tradedTimeMarkerEnabled,
+    allWallHorizontalLineEnabled,
+    allWallTimeMarkerEnabled,
+    unreachedHorizontalLineEnabled,
+    unreachedTimeMarkerEnabled,
     allWallStepBuilt,
     unreachedStepBuilt,
-    allWallBuilt,
     allWallColor,
     allWallDrawn,
     allWallLineWidth,
-    unreachedBuilt,
     unreachedColor,
     unreachedDrawn,
     unreachedLineWidth,
