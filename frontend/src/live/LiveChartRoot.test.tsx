@@ -4674,10 +4674,13 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
     const lastCandleMs = TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms;
 
-    // Internal blank band (X on/left of the last candle at x=200) → still pins.
+    // 마지막 캔들 **왼쪽**의 빈 띠도 비운다(2026-08-26 계약 변경 — 위 형제 테스트의
+    // 주석 참조). 종전엔 여기서 마지막 캔들에 고정했고, 그것이 옆 창 크로스헤어를
+    // 끌어갔다. `lastCandleMs` 는 아래 fixture 전제 가드로만 남긴다.
+    expect(lastCandleMs).toBeGreaterThan(0);
     act(() => fire({ point: { x: 150 } }));
     await flush();
-    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
 
     // Right-offset whitespace (X right of the last candle) → cursor cleared.
     act(() => fire({ point: { x: 640 } }));
@@ -4859,7 +4862,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(onCursorActiveChange).toHaveBeenCalledTimes(1);
   });
 
-  it('crosshair inside chart whitespace with no resolvable time pins spot indicators to the latest candle', async () => {
+  it('crosshair inside chart whitespace with no resolvable time CLEARS the cursor (좌우 동일 규칙)', async () => {
+    // 2026-08-26 계약 변경. 종전엔 마지막 캔들 **왼쪽**의 빈 띠에서 사이드바를 마지막
+    // 캔들에 고정했는데, 그 고정이 `publishCursorMs` 를 타면서 **크로스헤어 동기화
+    // 채널까지** 발행해 **옆 창들의 크로스헤어를 마지막 캔들로 끌어갔다**(사용자 보고).
+    // 좌우를 같은 규칙으로 통일한다 — 빈 띠엔 가리킬 봉이 없다.
     render(
       <LiveChartRoot
         code="005930"
@@ -4885,9 +4892,8 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     await flush();
 
     expect(ts.coordinateToTime).toHaveBeenCalledWith(240);
-    expect(useLiveCursorStore.getState().cursorMs).toBe(
-      TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms,
-    );
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 
   it('clears cursor when timeframe switches from minute to calendar', () => {
