@@ -137,6 +137,20 @@ describe('IndicatorPanel', () => {
     expect(order()).toEqual(before);
   });
 
+  // 색 점은 장식이 아니라 **차트에 그려지는 색의 메아리**다 — 패널·레전드·캔버스가
+  // 같은 색을 쓰면 "이 행이 저 선" 이 이름을 읽지 않아도 선다. 색 자체의 매핑은
+  // `indicatorDotColors.test.ts` 가 재고, 여기서는 배선만 본다.
+  it('추가된 행에만 색 점을 찍는다', () => {
+    renderPanel();
+    const enabledMas = useLivePageStore.getState().movingAverages.filter((m) => m.enabled);
+    const maRow = screen.getByRole('button', { name: '이동평균선' }).parentElement!;
+    expect(maRow.querySelectorAll('i')).toHaveLength(enabledMas.length);
+
+    // 아직 추가하지 않은 지표에는 그려지는 색이 없으므로 점도 없다.
+    expect(screen.getByRole('button', { name: '호가비' }).parentElement!.querySelectorAll('i'))
+      .toHaveLength(0);
+  });
+
   it('라벨 클릭은 **미리보기**다 — 추가하지 않는다', () => {
     renderPanel();
     previewDetail('호가벽 급증');

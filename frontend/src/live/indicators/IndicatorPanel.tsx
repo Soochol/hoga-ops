@@ -20,6 +20,7 @@ import {
   type PanePrefKey,
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
+import { dotColorsFor } from './indicatorDotColors';
 import ToggleRow from '../settings/ToggleRow';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
@@ -55,6 +56,9 @@ const GROUP_LABEL: Record<GroupId, string> = {
   program: '프로그램 지표',
   broker: '거래원 지표',
 };
+
+/** 미추가 행에 넘기는 고정 빈 배열 — 매 렌더 새 리터럴을 만들지 않는다. */
+const EMPTY_DOT_COLORS: readonly string[] = [];
 
 /** 차트의 어디에 그려지는가. 글리프가 암시하는 것을 헤더가 텍스트로 확정한다. */
 type Placement = 'overlay' | 'pane';
@@ -142,10 +146,12 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
  * 미리 보는 중이면 tint 는 켜지고 잉크는 흐린 채다. 선택은 배경 tint 만으로 말한다 —
  * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
  */
-function IndicatorNavRow({ label, added, selected, onSelect, action }: {
+function IndicatorNavRow({ label, added, selected, dotColors, onSelect, action }: {
   label: string;
   added: boolean;
   selected: boolean;
+  /** 차트에 그려지는 색들 — 비어 있으면 점을 찍지 않는다(`indicatorDotColors`). */
+  dotColors: readonly string[];
   onSelect: () => void;
   action: { kind: 'add' | 'remove'; label: string; onClick: () => void };
 }) {
@@ -163,6 +169,21 @@ function IndicatorNavRow({ label, added, selected, onSelect, action }: {
       >
         {label}
       </button>
+      {dotColors.length > 0 && (
+        // 장식이 아니라 데이터라 `aria-hidden` 이다 — 색은 스크린리더가 읽을 수 없고,
+        // 이 행이 무엇인지는 라벨이 이미 말한다. 밝은 사용자 색이 밝은 배경에
+        // 잠기지 않도록 상시 헤어라인을 두른다(테마 무관하게 옅은 검정 → 다크에서도
+        // 흰 점의 윤곽이 남는다).
+        <span aria-hidden="true" className="ml-2 flex shrink-0 items-center gap-[3px]">
+          {dotColors.map((color, i) => (
+            <i
+              key={i}
+              className="size-1.5 rounded-full ring-1 ring-inset ring-black/15"
+              style={{ background: color }}
+            />
+          ))}
+        </span>
+      )}
       <button
         type="button"
         aria-label={action.label}
@@ -373,6 +394,7 @@ export default function IndicatorPanel({
                       label={c.label}
                       added={added}
                       selected={selected === c.id}
+                      dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
                       onSelect={() => setSelected(c.id)}
                       action={added
                         ? { kind: 'remove', label: `${c.label} 삭제`, onClick: () => removeFor(c.id)?.() }
