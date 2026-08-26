@@ -191,16 +191,6 @@ function mergedAskFamilies(
   );
   return askFamiliesFromClassified(classified, backend);
 }
-export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
-  const families = backendPeakFamilies(todayAskPeak);
-  const date = todayAskPeak?.date;
-  const traded = families.traded[0];
-  if (!date || !traded) return null;
-  // seed 없이 라이브 스냅샷만 — 이 헬퍼는 `/api/range` 번들을 받지 않는다.
-  return attachFamilies(
-    askPeakFromCandidate(date, traded), families, buildPeakRecordSeries(null, todayAskPeak),
-  );
-}
 
 export function deriveDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
