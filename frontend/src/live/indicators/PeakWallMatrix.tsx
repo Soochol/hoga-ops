@@ -4,6 +4,7 @@ import { PEAK_WALL_FAMILIES, type PeakWallFamilyId } from '../../state/peakWallF
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 import { ToggleSwitch } from '../settings/SettingsRow';
 import MAStylePicker from './MAStylePicker';
+import { usePeakWallFilterState } from './usePeakWallFilterState';
 
 type Side = 'ask' | 'bid';
 const SIDES: ReadonlyArray<{ id: Side; label: string }> = [
@@ -33,6 +34,41 @@ const RANK_KEY: Record<Side, Record<PeakWallFamilyId, NumericPrefKey>> = {
 };
 
 const RANK_OPTIONS = [1, 2, 3] as const;
+
+/**
+ * 셀의 깔때기 — **지금 이 칸에 걸려 있는 후보 필터 수**.
+ *
+ * 이게 없으면 "당일 최대벽이 왜 안 보이지" 의 답이 세부 존을 열어야만 보인다.
+ * 필터 둘의 공장값이 **둘 다 켜짐**이라 손대지 않은 칸은 2로 시작한다 — 숫자가
+ * 크다는 것은 사용자가 뭔가를 했다는 뜻이 아니라 **기본이 최대**라는 뜻이다.
+ *
+ * warn 톤은 셋을 모두 만족할 때만: 계열이 켜져 있고 · 지금 그려진 게 0이고 ·
+ * **필터가 실제로 뭔가를 걸렀다**. 셋째가 없으면 "그날 벽이 없었던 날" 에도
+ * 경보가 떠서 곧 무시된다.
+ */
+function FilterFunnel({
+  count, warn,
+}: {
+  count: number;
+  warn: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <span
+      title={warn
+        ? '켜져 있는데 지금 그려진 벽이 없습니다 — 후보가 전부 필터에 걸렸습니다'
+        : `후보 필터 ${count}개 작동 중`}
+      className={`ml-auto inline-flex shrink-0 items-center gap-px text-2xs tabular-nums ${
+        warn ? 'font-bold text-warn' : 'text-fg-dim'
+      }`}
+    >
+      <svg aria-hidden="true" width="9" height="9" viewBox="0 0 16 16">
+        <path d="M2 3 H14 L9.8 8.5 V13 L6.2 11.2 V8.5 Z" fill="currentColor" />
+      </svg>
+      {count}
+    </span>
+  );
+}
 
 /**
  * 1|2|3 세그먼트 — 트랙은 채우고 활성만 tint 로 든다.
@@ -73,6 +109,24 @@ function RankSelect({
       })}
     </span>
   );
+}
+
+/** 셀 하나의 깔때기 — 훅이 셀마다 불려야 해서 컴포넌트로 나눈다(조건부 훅 금지). */
+function CellFunnel({
+  side, family, lineEnabled,
+}: {
+  side: Side;
+  family: PeakWallFamilyId;
+  lineEnabled: boolean;
+}) {
+  const { activeFilterCount, counts } = usePeakWallFilterState(side, family);
+  // 계열이 꺼져 있으면 개수가 0인 게 당연하다 — 필터 탓이 아니므로 경보하지 않는다.
+  // `counts` 부재는 "차트가 아직/아예 발행하지 않았다"(일·주·월봉) 이지 0이 아니다.
+  const warn = lineEnabled
+    && counts !== undefined
+    && counts.shown === 0
+    && counts.hiddenByFilter > 0;
+  return <FilterFunnel count={activeFilterCount} warn={warn} />;
 }
 
 /**
@@ -217,6 +271,7 @@ export default function PeakWallMatrix({
                   value={prefs[RANK_KEY[side.id][family.id]]}
                   onChange={(n) => setNumericPref(RANK_KEY[side.id][family.id], n)}
                 />
+                <CellFunnel side={side.id} family={family.id} lineEnabled={on} />
               </div>
             );
           })}
