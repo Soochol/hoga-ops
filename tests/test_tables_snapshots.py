@@ -707,6 +707,76 @@ def test_query_bucketed_depth_heatmap_max_total_snapshot(tmp_path: Path) -> None
     assert r.bid_prices_max == tuple(range(10, 0, -1))
 
 
+def test_query_bucketed_depth_heatmap_per_price_max_differs_from_total_argmax(
+    tmp_path: Path,
+) -> None:
+    """``*_pmax``(가격대마다 따로 최댓값)가 ``*_max``(총잔량 argmax 스냅샷)와 **갈리는지**.
+
+    두 계열이 갈리려면 **어떤 가격의 최고 시점이 총잔량 최고 시점과 달라야** 한다.
+    레벨 잔량을 균일하게 두면(기존 max 테스트가 그렇다) 두 값이 우연히 같아져서
+    이 테스트가 아무것도 증명하지 못하므로, 최우선 호가만 다른 시점에 최고가 되게 짠다.
+
+    실측을 축소한 것이다 — 005930 20260825 14:35 258,500원: 자기 최고 순간 93,543
+    vs 총잔량 최고 순간 61,057(그 사이 10초). 사용자가 「당일 최대벽」과 히트맵을
+    대조하다 발견한 20% 격차의 정체가 이 차이였다.
+    """
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    obs = [
+        # t1: 최우선 호가가 자기 최고(900). 총잔량 = 900 + 9*10 + 10*10 = 1090.
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(900,) + (10,) * 9, bid_q=(10,) * 10),
+        # t2: 총잔량 최고(500*20 = 10000) — 그러나 최우선 호가는 500 뿐이다.
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(500,) * 10, bid_q=(500,) * 10),
+        # t3: 종가(마지막).
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(300,) * 10, bid_q=(300,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    assert len(rows) == 1
+    r = rows[0]
+
+    # 총잔량 argmax 는 t2 의 사진 통째 — 최우선 호가가 900 이었던 순간을 **놓친다**.
+    assert r.ask_qtys_max[0] == 500
+    # 가격대별은 그 순간을 잡는다. 나머지 레벨은 t2 가 최고(500).
+    assert r.ask_qtys_pmax == (900,) + (500,) * 9
+    assert r.bid_qtys_pmax == (500,) * 10
+
+    # 정렬 규약 — ask 가격 오름차순 · bid 내림차순(`DepthHeatmapPoint` 가 프론트에
+    # 약속한 순서). `_ob` 는 ask_p=range(1,11), bid_p=range(10,0,-1).
+    assert r.ask_prices_pmax == tuple(range(1, 11))
+    assert r.bid_prices_pmax == tuple(range(10, 0, -1))
+
+
+def test_query_bucketed_depth_heatmap_per_price_max_drops_zero_qty_levels(
+    tmp_path: Path,
+) -> None:
+    """가격대별 최댓값에서 잔량 0 레벨은 **셀을 만들지 않는다**.
+
+    ``*_max`` 쪽은 "그 사진에 그렇게 찍혔다" 라 0 도 사실이지만, 가격대별에서 0 은
+    "그 버킷에 후보가 없었다" 는 뜻이라 셀을 그리면 거짓이 된다. 프론트 누적기
+    (`foldPriceMax`)도 같은 규약이다."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    # 레벨 4..10 > 0 이어야 deep book 으로 인정되므로 0 은 레벨 2 에만 둔다.
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(100, 0) + (100,) * 8, bid_q=(100,) * 10),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(200, 0) + (200,) * 8, bid_q=(200,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    r = rows[0]
+    # ask_p=2 는 두 틱 모두 0 이라 빠진다 → 9개.
+    assert len(r.ask_prices_pmax) == 9
+    assert 2 not in r.ask_prices_pmax
+    assert all(q > 0 for q in r.ask_qtys_pmax)
+    # `*_max` 는 그대로 10칸(0 포함) — 두 계열의 규약이 다르다는 것이 요점이다.
+    assert len(r.ask_qtys_max) == 10
+
+
 def test_query_bucketed_depth_heatmap_excludes_intraday_vi_in_mixed_bucket(tmp_path: Path) -> None:
     """ADR-0062 v2 (VI 통일): 한 버킷에 연속거래 책 + 그보다 **시간상 늦은** 장중 VI
     붕괴책이 섞이면, 대표는 늦은 VI가 아니라 연속거래 책이어야 한다(_DEEP_BOOK_SQL).

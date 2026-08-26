@@ -799,6 +799,11 @@ export type DepthHeatmapPointWire = {
   bids: [number, number][];
   asks_max?: [number, number][];
   bids_max?: [number, number][];
+  /** 가격대마다 따로 잰 최댓값 — `asks_max`(총잔량 최대 **순간의 사진**)와 축이 다르다.
+   *  길이가 10 고정이 아니고(그 버킷에 등장한 distinct 가격 수), 세로로 읽으면 실제로
+   *  동시에 존재한 적 없는 호가창이다. 대신 각 셀이 「당일 최대벽」과 같은 값이다. */
+  asks_price_max?: [number, number][];
+  bids_price_max?: [number, number][];
 };
 
 export type RangeBundle = {

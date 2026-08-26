@@ -733,6 +733,9 @@ describe('mergeDepthHeatmapToday', () => {
       bids: [[69_900, 200]],
       asks_max: [[70_200, 350]],
       bids_max: [[69_900, 250]],
+      // 도메인 point 가 가격대별 계열을 안 실으면 빈 배열로 나간다(optional 계약).
+      asks_price_max: [],
+      bids_price_max: [],
     });
   });
 
@@ -754,6 +757,8 @@ describe('mergeDepthHeatmapToday', () => {
       bids: [[70_000, 888]],
       asks_max: [[70_100, 999]],
       bids_max: [[70_000, 888]],
+      asks_price_max: [],
+      bids_price_max: [],
     });
   });
 
@@ -764,7 +769,9 @@ describe('mergeDepthHeatmapToday', () => {
       mergeDepthHeatmapToday(undefined, [
         { tMs: 300, asks: [], bids: [], asksMax: [], bidsMax: [] },
       ]),
-    ).toEqual([{ t_ms: 300, asks: [], bids: [], asks_max: [], bids_max: [] }]);
+    ).toEqual([
+      { t_ms: 300, asks: [], bids: [], asks_max: [], bids_max: [], asks_price_max: [], bids_price_max: [] },
+    ]);
   });
 });
 

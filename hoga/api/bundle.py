@@ -1298,6 +1298,12 @@ def build_depth_heatmap_slice(
                 bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys, strict=True)],
                 asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max, strict=True)],
                 bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max, strict=True)],
+                asks_price_max=[
+                    [p, q] for p, q in zip(r.ask_prices_pmax, r.ask_qtys_pmax, strict=True)
+                ],
+                bids_price_max=[
+                    [p, q] for p, q in zip(r.bid_prices_pmax, r.bid_qtys_pmax, strict=True)
+                ],
             )
         )
     if cacheable:

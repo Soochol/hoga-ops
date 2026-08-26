@@ -1391,6 +1391,18 @@ class DepthHeatmapRow:
 
     ``*_max`` 필드(분봉 내 최댓값): 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던
     스냅샷의 40컬럼(캔들 고가처럼 "분봉 내 최댓값 기준" 토글용). 대표(종가)와 독립.
+
+    ``*_pmax`` 필드(가격대마다 따로 최댓값): **가격대별로 각자** 그 버킷에서 가장
+    컸던 잔량. ``*_max`` 와 **축이 다르다** — 저쪽은 총잔량으로 순간 하나를 골라
+    그 사진을 통째로 쓰고, 이쪽은 가격마다 자기 최고점을 따로 잰다. 그래서 한 행이
+    실제로 동시에 존재한 호가창이 아니고, 개수도 10 고정이 아니다(그 버킷에 등장한
+    distinct 가격 수 — 실측 평균 10.6, p90 11~19, 최대 30).
+
+    이 계열이 필요한 이유: 「당일 최대벽」이 재는 값이 바로 이것이라(가격당 rank-1
+    이 곧 그 가격의 최댓값) ``*_max`` 와 대조하면 같은 벽이 다른 수량으로 보였다.
+    실측(005930 20260825 14:35 258,500원): 자기 최고 순간 93,543 vs 총잔량 최고
+    순간 61,057. ``*_max`` 가 종가보다 **작아지는** 경우까지 있다(같은 날 260,000원
+    max 179,217 < close 179,435) — 총잔량 argmax 가 그 가격대에는 최고가 아니라서다.
     """
 
     bucket_intra_ms: int
@@ -1402,6 +1414,12 @@ class DepthHeatmapRow:
     ask_qtys_max: tuple[int, ...]
     bid_prices_max: tuple[int, ...]
     bid_qtys_max: tuple[int, ...]
+    #: 가변 길이. 기본값이 있는 이유는 순전히 기존 호출부(테스트 픽스처) 호환이다 —
+    #: 실제 쿼리는 언제나 넷을 다 채운다.
+    ask_prices_pmax: tuple[int, ...] = ()
+    ask_qtys_pmax: tuple[int, ...] = ()
+    bid_prices_pmax: tuple[int, ...] = ()
+    bid_qtys_pmax: tuple[int, ...] = ()
 
 
 def query_bucketed_depth_heatmap(
@@ -1427,6 +1445,15 @@ def query_bucketed_depth_heatmap(
     ``*_max`` 필드는 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던 스냅샷의 40컬럼
     (캔들 고가처럼 "분봉 내 최댓값 기준"). 사전 필터로 유효 행만 남으므로 정렬 키는
     ``total`` 단독이다(종전 struct_pack(is_pre, total)의 is_pre 우선 정렬은 이제 불필요).
+
+    ``*_pmax`` 필드는 **가격대마다 따로** 잰 최댓값이다(축 차이는 DepthHeatmapRow
+    docstring). 20레벨 unpivot → ``GROUP BY (bucket, side, price)`` → 버킷당 리스트
+    한 벌. **같은 ``keyed`` CTE 를 재사용하므로 파케이 스캔은 늘지 않는다** — 늘어나는
+    것은 해시 집계 하나이고, 입력이 이미 세션 내 유효 행으로 좁혀져 있다.
+
+    정렬은 SQL 이 한다(ask 가격 오름차순 · bid 내림차순) — ``DepthHeatmapPoint``
+    모델이 프론트에 약속한 순서이고, 파이썬에서 다시 정렬하면 그 약속이 두 곳에
+    적히게 된다.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     last_continuous_ms = (
@@ -1455,6 +1482,15 @@ def query_bucketed_depth_heatmap(
         f"ask_p{i}, ask_q{i}, bid_p{i}, bid_q{i}"
         for i in range(1, ORDERBOOK_LEVELS + 1)
     )
+    # 20레벨 unpivot — `keyed` 를 재사용하므로 파케이 스캔은 여전히 한 번이다.
+    # qty 0 레벨은 여기서 뺀다: `*_max` 쪽은 "그 사진에 그렇게 찍혔다" 라 0 도 사실이지만
+    # 가격대별 최댓값에서 0 은 **후보가 없었다는 뜻**이라 셀을 만들면 거짓이 된다.
+    pmax_level_selects = " UNION ALL ".join(
+        f"SELECT bucket, '{side}' AS side, {p}{i} AS price, {q}{i} AS qty "
+        f"FROM keyed WHERE {p}{i} > 0 AND {q}{i} > 0"
+        for side, p, q in (("ask", "ask_p", "ask_q"), ("bid", "bid_p", "bid_q"))
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
 
     rows = con.execute(
         f"""
@@ -1465,13 +1501,34 @@ def query_bucketed_depth_heatmap(
                  {passthrough_cols}
           FROM read_parquet(?)
           WHERE {where_pred}
+        ),
+        reps AS (
+          SELECT bucket,
+                 arg_max(struct_pack({struct_body}), rep_key) AS rep,
+                 arg_max(struct_pack({struct_body}), total) AS rep_max
+          FROM keyed
+          GROUP BY bucket
+        ),
+        levels AS ({pmax_level_selects}),
+        per_price AS (
+          SELECT bucket, side, price, max(qty) AS qty
+          FROM levels
+          GROUP BY bucket, side, price
+        ),
+        per_bucket AS (
+          SELECT bucket,
+                 list(struct_pack(price := price, qty := qty) ORDER BY price ASC)
+                   FILTER (WHERE side = 'ask') AS ask_pmax,
+                 list(struct_pack(price := price, qty := qty) ORDER BY price DESC)
+                   FILTER (WHERE side = 'bid') AS bid_pmax
+          FROM per_price
+          GROUP BY bucket
         )
-        SELECT bucket * {bucket_ms} AS bucket_intra_ms,
-               arg_max(struct_pack({struct_body}), rep_key) AS rep,
-               arg_max(struct_pack({struct_body}), total) AS rep_max
-        FROM keyed
-        GROUP BY bucket
-        ORDER BY bucket
+        SELECT r.bucket * {bucket_ms} AS bucket_intra_ms,
+               r.rep, r.rep_max, b.ask_pmax, b.bid_pmax
+        FROM reps r
+        LEFT JOIN per_bucket b ON b.bucket = r.bucket
+        ORDER BY r.bucket
         """,
         [str(path)],
     ).fetchall()
@@ -1479,6 +1536,8 @@ def query_bucketed_depth_heatmap(
     for r in rows:
         rep = r[1]
         rep_max = r[2]
+        ask_pmax = r[3] or ()
+        bid_pmax = r[4] or ()
         out.append(
             DepthHeatmapRow(
                 bucket_intra_ms=int(r[0]),
@@ -1490,6 +1549,10 @@ def query_bucketed_depth_heatmap(
                 ask_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_ASK_Q_KEYS),
                 bid_prices_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_P_KEYS),
                 bid_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_Q_KEYS),
+                ask_prices_pmax=tuple(int(lv["price"]) for lv in ask_pmax),
+                ask_qtys_pmax=tuple(int(lv["qty"]) for lv in ask_pmax),
+                bid_prices_pmax=tuple(int(lv["price"]) for lv in bid_pmax),
+                bid_qtys_pmax=tuple(int(lv["qty"]) for lv in bid_pmax),
             )
         )
     return out

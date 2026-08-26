@@ -517,10 +517,56 @@ describe('createIncrementalHogaSeriesBuilder', () => {
         bids: contLvls(100),
         asksMax: contLvls(500), // max = 900-total tick
         bidsMax: contLvls(400),
+        // 가격별 최댓값 = 세 틱의 가격별 max. 이 픽스처는 레벨 qty 가 균일해서
+        // 총잔량 피크 틱과 **우연히 같다** — 둘이 갈리는 판정은 아래 테스트가 한다.
+        // bid 는 가격 **내림차순**이 규약이라(`DepthHeatmapPoint`) 픽스처 순서와 반대다.
+        asksPriceMax: contLvls(500),
+        bidsPriceMax: [...contLvls(400)].reverse(),
       },
     ]);
     // oracle parity — the one-shot builder produces the identical series.
     expect(out!.depth_heatmap_today).toEqual(
+      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
+    );
+  });
+
+  it('가격대별 최댓값은 총잔량 피크 틱의 사진과 다르다 — 가격마다 자기 최고 순간을 잡는다', () => {
+    // 이 리포가 실제로 겪은 혼동의 최소 재현이다(005930 20260825 14:35 258,500원:
+    // 자기 최고 순간 93,543 vs 총잔량 최고 순간 61,057). 두 값이 갈리려면 **어떤 가격의
+    // 최고 시점이 총잔량 최고 시점과 달라야** 하므로, 레벨 qty 를 균일하게 두면
+    // (contLvls) 이 테스트는 아무것도 증명하지 못한다 — 그래서 직접 만든다.
+    // **10레벨이어야 한다** — `isIndicatorEligibleBook` 의 구조 술어가 얕은 북을
+    // 동시호가로 보고 버킷을 통째로 드롭한다(2레벨로 쓰면 시리즈가 비어 이 테스트가
+    // "undefined 읽기" 로 죽는다; 실제로 그렇게 한 번 죽였다).
+    const asksOf = (best: number, rest: number) =>
+      Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty: i === 0 ? best : rest }));
+    const ob = [
+      // t0: 최우선 호가(100)가 자기 최고(93). 총잔량은 183 으로 2등.
+      {
+        t_ms: TODAY_OPEN,
+        total_ask_qty: 183, total_bid_qty: 10,
+        asks: asksOf(93, 10), bids: contLvls(1),
+      },
+      // t1: 총잔량 최고(610) — 하지만 100 은 여기서 61 밖에 안 된다.
+      {
+        t_ms: TODAY_OPEN + 10_000,
+        total_ask_qty: 610, total_bid_qty: 10,
+        asks: asksOf(61, 61), bids: contLvls(1),
+      },
+    ];
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    let built;
+    for (let i = 1; i <= ob.length; i++) {
+      built = buildIncremental({ ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] });
+    }
+    const out = built!;
+    const point = out.depth_heatmap_today[0];
+    // 총잔량 피크 = t1 의 사진 통째. 최우선 호가는 61 — 93 이었던 순간을 **놓친다**.
+    expect(point.asksMax).toEqual(asksOf(61, 61));
+    // 가격대별 = 100 은 t0 에서(93), 나머지는 t1 에서(61) — **한 순간의 호가창이 아니다**.
+    expect(point.asksPriceMax).toEqual(asksOf(93, 61));
+    // 배치 오라클도 같은 답이어야 한다(배치·증분 동등성).
+    expect(out.depth_heatmap_today).toEqual(
       buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
     );
   });

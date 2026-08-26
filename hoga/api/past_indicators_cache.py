@@ -115,7 +115,11 @@ KIND_VERSIONS: dict[str, int] = {
     "ask_peak": 11,
     "bid_peak": 11,
     "poc": 7,
-    "depth": 7,
+    # 8: asks_price_max/bids_price_max(가격대마다 따로 잰 최댓값) 추가. 구 캐시엔 그
+    #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새
+    #    모드를 켠 사용자에게 히트맵이 통째로 비어 보인다(에러가 아니라 무증상이다).
+    #    depth 재계산은 peak 과 달리 싸다 — 범프 비용이 낮은 쪽이다.
+    "depth": 8,
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
