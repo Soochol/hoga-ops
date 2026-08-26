@@ -12,6 +12,7 @@ import type {
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { rankVisiblePeakSegments } from '../live/peakWallVisibleRanking';
 import { xCoordinateOrNearest, type PeakWallLabelSide } from './PeakWallSegmentsPrimitive';
+import { ARROW_HALF_WIDTH_PX, ARROW_HEIGHT_PX, drawPeakWallArrow } from './peakWallArrowShape';
 
 /**
  * 당일 최대벽 **순위 화살표** — 보이는 영역 잔량 상위 N 개의 벽이 걸린 분봉을 캔들
@@ -45,12 +46,17 @@ export interface PeakWallRankArrow {
   color: string;
 }
 
-/** 캔들 극값과 화살표 끝 사이. */
+/** 캔들 극값과 화살표 끝 사이. 이 마커만 앵커에서 띄운다 — 세그먼트 쪽 화살표는 끝이
+ *  벽 가격 선에 **닿아야** "이 시각에 벽이 섰다" 가 읽힌다. */
 export const ARROW_GAP_PX = 4;
-export const ARROW_HEIGHT_PX = 11;
-export const ARROW_HEAD_HEIGHT_PX = 5;
-export const ARROW_HALF_WIDTH_PX = 3.5;
-export const ARROW_SHAFT_WIDTH_PX = 1.5;
+// 도형 상수는 `peakWallArrowShape` 가 소유한다(세그먼트 마커와 공유). 여기서 다시 내보내는
+// 것은 기존 소비처(이 파일의 테스트)를 위한 호환 통로일 뿐 — 값을 바꾸려면 그쪽을 고친다.
+export {
+  ARROW_HEIGHT_PX,
+  ARROW_HEAD_HEIGHT_PX,
+  ARROW_HALF_WIDTH_PX,
+  ARROW_SHAFT_WIDTH_PX,
+} from './peakWallArrowShape';
 /** 화살표 꼬리와 순위 숫자 사이. */
 export const RANK_GAP_PX = 2;
 export const RANK_FONT_PX = 10;
@@ -98,10 +104,6 @@ class PeakWallRankArrowsRenderer implements IPrimitivePaneRenderer {
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
       const gap = ARROW_GAP_PX * vr;
-      const height = ARROW_HEIGHT_PX * vr;
-      const headHeight = ARROW_HEAD_HEIGHT_PX * vr;
-      const halfW = ARROW_HALF_WIDTH_PX * hr;
-      const shaftW = Math.max(1, ARROW_SHAFT_WIDTH_PX * hr);
       const rankGap = RANK_GAP_PX * vr;
       const fontPx = RANK_FONT_PX * vr;
 
@@ -118,25 +120,15 @@ class PeakWallRankArrowsRenderer implements IPrimitivePaneRenderer {
         if (cx < 0 || cx > scope.bitmapSize.width) return;
         // 매도는 위로, 매수는 아래로. dir 하나로 두 방향을 같은 식에 태운다.
         const dir = a.side === 'ask' ? -1 : 1;
-        const tipY = anchorY + dir * gap;
-        const tailY = tipY + dir * height;
-        const headBaseY = tipY + dir * headHeight;
-
-        ctx.fillStyle = a.color;
-        ctx.strokeStyle = a.color;
-        // 축(shaft) — 급증 마커의 속 찬 삼각형과 형태를 가르는 부분.
-        ctx.lineWidth = shaftW;
-        ctx.beginPath();
-        ctx.moveTo(cx, tailY);
-        ctx.lineTo(cx, headBaseY);
-        ctx.stroke();
-        // 머리(head).
-        ctx.beginPath();
-        ctx.moveTo(cx, tipY);
-        ctx.lineTo(cx - halfW, headBaseY);
-        ctx.lineTo(cx + halfW, headBaseY);
-        ctx.closePath();
-        ctx.fill();
+        // 도형은 세그먼트 마커와 **같은 한 벌**을 쓴다(`peakWallArrowShape`).
+        const tailY = drawPeakWallArrow(ctx, {
+          cx,
+          tipY: anchorY + dir * gap,
+          dir,
+          color: a.color,
+          horizontalPixelRatio: hr,
+          verticalPixelRatio: vr,
+        });
         // 순위 숫자 — 레전드의 1/2/3 과 **같은 랭커**에서 나오므로 항상 일치한다.
         // baseline 은 텍스트 아랫변이라 매도는 꼬리 위, 매수는 꼬리 아래 한 줄.
         ctx.textBaseline = a.side === 'ask' ? 'bottom' : 'top';

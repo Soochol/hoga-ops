@@ -220,6 +220,7 @@ function wallAvoidRects(
         wall.label,
         wall.side,
         paneWidth,
+        wall.timeMarker !== false,
       );
       if (rect !== null) rects.push(rect);
     }
