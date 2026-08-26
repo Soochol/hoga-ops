@@ -7,6 +7,7 @@ import {
   minuteRightOffsetBars,
   pickSwapAnchor,
   sourceSwapReseatRange,
+  viewportHasReprojectableAnchor,
 } from './minuteViewportPolicy';
 
 describe('minuteRightOffsetBars', () => {
@@ -241,3 +242,33 @@ describe('pickSwapAnchor — 강제 이동은 사용자의 앵커를 잃게 하�
   });
 });
 
+
+describe('viewportHasReprojectableAnchor — 재투영 자격', () => {
+  it('정상 좌팬(화면 대부분이 데이터)은 재투영을 받는다', () => {
+    expect(viewportHasReprojectableAnchor(-100, 300)).toBe(true);
+  });
+
+  it('⚠ 화면이 거의 전부 whitespace 면 재투영을 받지 않는다 (2026-08-26 사용자 로그)', () => {
+    // 실측 스냅샷: 화면 [-2226, 1] — 2227 바 중 데이터가 1 바.
+    expect(viewportHasReprojectableAnchor(-2226, 1)).toBe(false);
+  });
+
+  it('화면이 통째로 데이터 왼쪽 밖이어도 false (음수 폭으로 게이트를 통과하지 않는다)', () => {
+    expect(viewportHasReprojectableAnchor(-500, -100)).toBe(false);
+  });
+
+  it('경계 — 데이터가 정확히 10% 면 아직 false, 그보다 많으면 true', () => {
+    // span 1000, 데이터 100 → 비율 0.10 (경계는 "이하"라 false)
+    expect(viewportHasReprojectableAnchor(-900, 100)).toBe(false);
+    expect(viewportHasReprojectableAnchor(-899, 101)).toBe(true);
+  });
+
+  it('폭이 0 이하인 퇴화 입력은 재투영하지 않는다', () => {
+    expect(viewportHasReprojectableAnchor(50, 50)).toBe(false);
+    expect(viewportHasReprojectableAnchor(50, 10)).toBe(false);
+  });
+
+  it('라이브 엣지(오른쪽 여백이 있는 정상 화면)는 재투영을 받는다', () => {
+    expect(viewportHasReprojectableAnchor(200, 500)).toBe(true);
+  });
+});

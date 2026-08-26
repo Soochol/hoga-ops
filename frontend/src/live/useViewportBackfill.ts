@@ -5,7 +5,12 @@ import type { RangeBundle } from '../api/types';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
-import { minuteRightOffsetBars, pickSwapAnchor, sourceSwapReseatRange } from './minuteViewportPolicy';
+import {
+  minuteRightOffsetBars,
+  pickSwapAnchor,
+  sourceSwapReseatRange,
+  viewportHasReprojectableAnchor,
+} from './minuteViewportPolicy';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
@@ -897,6 +902,21 @@ export function useViewportBackfill({
     }
     if (!snap) {
       skip('no_snapshot');
+      return;
+    }
+    // **고정할 봉이 화면에 없으면 고정하지 않는다.** 좌팬으로 데이터 왼쪽 밖까지
+    // 나간 화면은 거의 전부 whitespace 라, 이 재투영의 계약("사용자가 보던 봉을
+    // 고정")이 성립할 대상 자체가 없다. 그때 재투영이 실제로 하는 일은 **좌팬이
+    // 불러온 데이터를 건너뛰고 화면을 미래로 되돌리는 것**이다 — 판정 근거와 사용자
+    // 로그는 `viewportHasReprojectableAnchor` 도크스트링에 있다.
+    //
+    // 건너뛰면 lwc 의 setData 재앵커가 남아 프리펜드된 봉이 왼쪽 whitespace 를 채우고,
+    // 화면이 데이터를 되찾으면 비율이 문턱을 넘어 재투영이 저절로 다시 켜진다.
+    if (!viewportHasReprojectableAnchor(snap.fromLogical, snap.toLogical)) {
+      skip(
+        'viewport_mostly_whitespace',
+        ` snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} refIdx=${Math.round(snap.refIdx)}`,
+      );
       return;
     }
     try {

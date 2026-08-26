@@ -2,6 +2,65 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 export const MINUTE_RIGHT_LABEL_GUTTER_PX = 180;
 
+/** 화면이 이 비율 이하만 데이터면 **사실상 빈 화면**으로 본다.
+ *  `useViewportBackfill` 의 3e(빈 화면 클램프 탈출)와 **같은 문턱**이다 — 같은 상태를
+ *  두 곳이 다른 값으로 판정하면 「탈출구는 도는데 재투영은 계속 틀리는」 구간이 생긴다. */
+const REPROJECTABLE_DATA_RATIO = 0.1;
+
+/**
+ * 이 뷰포트가 **재투영을 받을 자격이 있는가**.
+ *
+ * 리포지셔너(효과 2)의 계약은 「축이 밀린 만큼 화면을 옮겨 **사용자가 보던 봉**을
+ * 고정한다」인데, 그 계약은 **화면에 그 봉이 있을 때만** 뜻이 있다. 좌팬으로 데이터
+ * 왼쪽 밖까지 나가면 화면은 거의 전부 whitespace 고, 거기엔 고정할 봉이 없다.
+ *
+ * ## 그 상태에서 재투영이 하는 일이 정확히 사용자가 겪은 버그다
+ *
+ * 2026-08-26 사용자 로그(010140 3분봉, hogaplay ON, 좌팬):
+ *
+ * ```
+ * shift=640 from=-1586 to=641  seatDrift=765   refIdx=1 onBar=true
+ * shift=644 from=-1582 to=645  seatDrift=901   refIdx=1 onBar=true
+ * shift=517 from=-1709 to=518  seatDrift=888   refIdx=1 onBar=true
+ * …
+ * shift=3386 from=1160 to=3387 seatDrift=5155  refIdx=1 onBar=true
+ * ```
+ *
+ * `refIdx=1` 이 매번 반복된다 — 화면 오른쪽 끝이 **데이터의 두 번째 봉**에 붙어 있다는
+ * 뜻이고, 스냅샷은 `[-2226, 1]`(2227 바 중 데이터 1 바)이었다. 그 상태에서
+ * `shift = newIdx - refIdx` 는 사실상 **프리펜드된 봉 수**가 되고,
+ * `to = snap.toLogical + shift = 1 + 프리펜드수` 는 **새로 온 데이터의 오른쪽 끝**이다.
+ *
+ * 즉 사용자는 「더 과거를 보려고」 빈 곳까지 끌었는데, 재투영이 그 요청으로 도착한
+ * 데이터를 **건너뛰고** 화면을 미래로 되돌린다. `seatDrift` 가 765 → 5155 로 **양수만
+ * 누적**하는 것이 그 증거다(좌팬은 음수 방향이므로 사용자 입력으로는 설명되지 않는다).
+ * 마지막 줄에서 `from` 이 양수로 넘어가는 순간이 화면이 데이터 한복판으로 튀는 순간이다.
+ *
+ * ## 그래서 자격을 뺀다 — 무엇으로 대체되는가
+ *
+ * 재투영을 건너뛰면 lightweight-charts 의 setData 재앵커(마지막 봉 기준 오프셋 보존)가
+ * 그대로 남고, 프리펜드된 봉들이 화면 왼쪽 whitespace 를 **채운다**. 그것이 좌팬의
+ * 원래 의도다. 데이터가 화면을 되찾으면 비율이 문턱을 넘어 재투영이 다시 켜진다.
+ *
+ * ⚠ **소스 스왑 재착석(`sourceSwapReseatRange`)에는 이 자격 검사가 없다.** 같은 사각이
+ * 있을 수 있으나 사용자 로그가 증명한 것은 프리펜드 계열뿐이라 여기서 넓히지 않는다
+ * (이 표면이 여섯 번 재작업된 방식이 정확히 그 확대였다).
+ *
+ * @param fromLogical 스냅샷 화면 왼쪽(논리 바). 데이터 밖이면 음수.
+ * @param toLogical   스냅샷 화면 오른쪽(논리 바).
+ */
+export function viewportHasReprojectableAnchor(
+  fromLogical: number,
+  toLogical: number,
+): boolean {
+  const span = toLogical - fromLogical;
+  if (!(span > 0)) return false;
+  // 화면 안의 **데이터** 폭. 오른쪽 끝마저 0 보다 작으면(화면이 통째로 데이터 왼쪽
+  // 밖) 음수가 나오므로 0 으로 접는다 — 접지 않으면 음수 폭이 비율 비교를 통과한다.
+  const dataBars = Math.max(0, toLogical - Math.max(fromLogical, 0));
+  return dataBars > span * REPROJECTABLE_DATA_RATIO;
+}
+
 export function minuteRightOffsetBars(visibleBars: number, plotWidth: number): number {
   const configured = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
   if (plotWidth <= MINUTE_RIGHT_LABEL_GUTTER_PX || visibleBars <= 0) return configured;
