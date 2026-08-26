@@ -21,10 +21,6 @@ export default function TradeVolumePocConfig() {
 
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">당일 최대 매물대</h3>
-      <p className="text-fg-dim text-xs mb-3">
-        정규장 연속매매 체결량을 연속체결 매물대 분포와 동일한 가격 구간에 누적하고, 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.
-      </p>
       <div className="mb-3">
         <div className="text-xs text-fg-dim mb-1.5">색상</div>
         <div className="flex items-center gap-2">

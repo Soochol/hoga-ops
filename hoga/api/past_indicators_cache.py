@@ -47,7 +47,6 @@ from hoga.api.models import (
     DayVolumeDistribution,
     DepthHeatmapPoint,
     TradeVolumePoc,
-    WallSurgeEvent,
 )
 from hoga.live.venue import Venue
 from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
@@ -117,7 +116,6 @@ KIND_VERSIONS: dict[str, int] = {
     "bid_peak": 11,
     "poc": 7,
     "depth": 7,
-    "wall_surge": 1,
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
@@ -185,13 +183,6 @@ class PastIndicatorsCache:
         self._mem_depth: OrderedDict[
             tuple[str, str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
-        # ⚠ wall_surge 키에는 **bucket_ms 가 없다**. 이벤트는 봉과 무관한 시점 사실이라
-        # 버킷을 키에 넣으면 무효화만 배수로 늘고, 새 봉 종속 지표가 기존 저장뷰를 통째로
-        # 콜드로 만드는 문제까지 따라온다. 대신 판정 상수(WALL_SURGE_*)가 사용자 조절식이
-        # 되는 날에는 그 값이 키에 들어가거나 KIND_VERSIONS 가 올라가야 한다.
-        self._mem_wall_surge: OrderedDict[
-            tuple[str, str, str, str], list[WallSurgeEvent]
-        ] = OrderedDict()
         # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
         # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
         self._mem_vdist: OrderedDict[
@@ -218,7 +209,6 @@ class PastIndicatorsCache:
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
             self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
             self._mem_trade_volume_poc, self._mem_depth,
-            self._mem_wall_surge,
             self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
         )
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
@@ -228,7 +218,7 @@ class PastIndicatorsCache:
             kind: CacheStats()
             for kind in (
                 "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth",
-                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep",
+                "vdist", "broker_late", "continuous_before", "peak_rep",
             )
         }
 
@@ -240,7 +230,6 @@ class PastIndicatorsCache:
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
-            "wall_surge": len(self._mem_wall_surge),
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
@@ -780,47 +769,6 @@ class PastIndicatorsCache:
             kind="depth",
         )
 
-    # ── wall_surge (호가벽 급증) ────────────────────────────────────────────────
-
-    def _wall_surge_path(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> Path:
-        return self._model_path(code, date, source, "wall_surge", venue=venue)
-
-    def get_wall_surge(
-        self, code: str, date: str, source: str, *, venue: Venue = "KRX"
-    ) -> list[WallSurgeEvent] | object:
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue)
-        stats = self._stats["wall_surge"]
-        hit = self._mem_hit(self._mem_wall_surge, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        value = self._read_model_list_cache(
-            self._wall_surge_path(code, date, source, venue=venue),
-            WallSurgeEvent,
-            payload_key="events",
-            kind="wall_surge",
-        )
-        if value is _CACHE_MISS:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_wall_surge, key, value, stats)  # type: ignore[arg-type]
-        return value  # type: ignore[return-value]
-
-    def store_wall_surge(
-        self, code: str, date: str, source: str, events: list[WallSurgeEvent], *, venue: Venue = "KRX"
-    ) -> None:
-        stats = self._stats["wall_surge"]
-        stats.record_store()
-        self._mem_put(self._mem_wall_surge, (code, date, source, venue), events, stats)
-        self._write_model_list_cache(
-            self._wall_surge_path(code, date, source, venue=venue),
-            events,
-            payload_key="events",
-            kind="wall_surge",
-        )
-
     # ── volume_distribution (체결 분포) ──────────────────────────────────────────
 
     def _vdist_path(
@@ -909,8 +857,9 @@ class PastIndicatorsCache:
         종전엔 depth 계열 3종(`depth`·`depth_delta`·`wall_surge`)이 이 헬퍼와 **동형인
         본문을 각자 인라인으로** 들고 있었다 — 각 35줄 중 26줄이 문자 단위로 같았고,
         나머지 9줄도 전부 토큰 치환이었다. 이 헬퍼가 그때 이미 있었는데 그 메서드들이
-        파일에서 **헬퍼보다 앞에 정의**돼 있어 재사용되지 않았다. 지금은 남은 것이
-        전부 이 경로를 쓴다(`depth_delta` 는 2026-08-25 에 제거)."""
+        파일에서 **헬퍼보다 앞에 정의**돼 있어 재사용되지 않았다. 그 셋 중 둘은 이후
+        지표째 제거됐고(`depth_delta` 2026-08-25 · `wall_surge` 2026-08-26), 남은
+        `depth` 와 나머지 kind 가 이 경로를 쓴다."""
         if not path.exists():
             return _CACHE_MISS
         try:

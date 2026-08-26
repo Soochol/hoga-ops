@@ -15,6 +15,18 @@ describe('MovingAverageConfig', () => {
     expect(screen.getAllByRole('spinbutton')).toHaveLength(DEFAULT_LIVE_MAS.length);
   });
 
+  // 열 헤더는 슬롯이 있을 때만 뜬다 — 빈 표의 머리만 남으면 설명이 아니라 잔해다.
+  it('슬롯이 있으면 열 헤더를 그리고, 0개가 되면 헤더도 사라진다', () => {
+    const { rerender } = render(<MovingAverageConfig />);
+    expect(screen.getByText('기준가')).toBeTruthy();
+
+    for (const id of useLivePageStore.getState().movingAverages.map((m) => m.id)) {
+      useLivePageStore.getState().removeMovingAverage(id);
+    }
+    rerender(<MovingAverageConfig />);
+    expect(screen.queryByText('기준가')).toBeNull();
+  });
+
   it('"기간 추가" button appends a slot', () => {
     render(<MovingAverageConfig />);
     const addBtn = screen.getByRole('button', { name: /기간 추가/ });
@@ -41,9 +53,7 @@ describe('MovingAverageConfig', () => {
     expect(useLivePageStore.getState().movingAverages).toEqual([]);
   });
 
-  it('header shows 지표명 + tooltip-helper', () => {
-    render(<MovingAverageConfig />);
-    expect(screen.getByText('이동평균선')).toBeTruthy();
-    expect(screen.getByText(/지난 n일 동안 주가 평균값/)).toBeTruthy();
-  });
+  // 종전의 `header shows 지표명 + tooltip-helper` 는 여기서 사라졌다 — 제목·설명은
+  // 이제 Config 가 아니라 카테고리 표가 소유하고 패널 헤더가 그린다. 그 자리의
+  // 회귀 가드는 `IndicatorPanel.test.tsx` 의 설명 텍스트 단언들이다.
 });

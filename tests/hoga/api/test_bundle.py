@@ -2499,10 +2499,10 @@ def test_build_range_bundle_breathes_once_per_date():
             mode="candles",
         )
 
-    # **일자당 정확히 8회** = 루프 상단 1 + 빌더 블록 앞 7 (quote_ratio · peaks ·
-    # poc · broker_late · vdist · heatmap · wall_surge). 지점 하나를 지우면
+    # **일자당 정확히 7회** = 루프 상단 1 + 빌더 블록 앞 6 (quote_ratio · peaks ·
+    # poc · broker_late · vdist · heatmap). 지점 하나를 지우면
     # 여기서 떨어진다 — 오늘 재계산(과거 36ms vs 오늘 1,379ms, 그중 peaks 577ms)이
     # 한 덩어리로 돌아가는 회귀다. **빌더를 추가하면 그 앞에 지점을 넣고 이 수를
     # 올릴 것** — mergeRangeBundles 가 필드를 전수 나열하는 것과 같은 규율이다.
-    assert breathe.call_count == 8 * len(dates)
+    assert breathe.call_count == 7 * len(dates)
 

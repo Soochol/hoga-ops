@@ -114,11 +114,6 @@ export default function BrokerLateEntryConfig() {
 
   return (
     <div>
-      <h3 className="pb-1 text-base font-medium text-fg">신규 거래원 등장</h3>
-      <p className="mb-3 text-xs text-fg-dim">
-        기준 시각 이후에 처음 등장한 거래원을 마커로 표시합니다. 시각대를 나눠 보려면
-        세트를 추가하세요.
-      </p>
       <div className="flex flex-col gap-3">
         {instances.map((instance, i) => (
           <InstanceBlock

@@ -42,6 +42,7 @@ import {
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import {
+  FLAG_INDICATOR_LABEL,
   INDICATOR_OPS,
   bindIndicatorOps,
   brokerLateEntryRemovalUndo,
@@ -326,6 +327,13 @@ export type IndicatorActions = BoundIndicatorOps & {
    *  타입 단위 삭제(`removeFlagIndicatorWithUndo`)와 갈라 두는 이유: 그쪽은 필드를
    *  공장값으로 되돌리는데, 배열 타입에서 그건 **다른 인스턴스까지 지운다**. */
   removeBrokerLateEntryWithUndo: (id: string) => void;
+  /** 최대벽 방향 마스터 — 끄는 쪽이 **마지막 방향**이면 undo 토스트를 함께 띄운다.
+   *
+   *  패널의 존재 판정이 `askPeakEnabled || bidPeakEnabled` 라, 두 방향을 다 끄는
+   *  것은 곧 「당일 최대벽」을 목록에서 지우는 것과 같다. 방향 매트릭스에서는 그
+   *  삭제가 **평범해 보이는 두 번의 클릭**으로 도달하므로, 레전드 칩 ✕ 와 같은
+   *  복구 수단을 준다. 마지막이 아닌 클릭은 지표가 남아 있으니 토스트가 없다. */
+  setPeakSideEnabledWithUndo: (side: 'ask' | 'bid', enabled: boolean) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setPaneOrder: (order: PaneId[]) => void;
   setPaneGroups: (groups: PaneGroups) => void;
@@ -356,6 +364,7 @@ function buildRemoveWithUndo(
   IndicatorActions,
   'removeMovingAverageWithUndo' | 'removeDailyMovingAverageWithUndo'
   | 'removeFlagIndicatorWithUndo' | 'removeBrokerLateEntryWithUndo'
+  | 'setPeakSideEnabledWithUndo'
 > {
   const remove = (key: MaSliceKey, id: string) => {
     const ps = useLivePageStore.getState();
@@ -395,6 +404,37 @@ function buildRemoveWithUndo(
       const timeframe = tfAt();
       ps.patchIndicatorsScoped(scope, timeframe, apply);
       ps.setIndicatorUndoToast({ label, scope, timeframe, patch: undo });
+    },
+    setPeakSideEnabledWithUndo: (side, enabled) => {
+      const ps = useLivePageStore.getState();
+      const cur = readSettings();
+      const other = side === 'ask' ? 'bid' : 'ask';
+      const op = side === 'ask'
+        ? INDICATOR_OPS.setAskPeakEnabled(cur, enabled)
+        : INDICATOR_OPS.setBidPeakEnabled(cur, enabled);
+      if (!op) return;
+      const scope = scopeAt();
+      const timeframe = tfAt();
+      ps.patchIndicatorsScoped(scope, timeframe, op);
+
+      // 토스트는 **마지막 방향을 끄는 전이**에서만. 이미 꺼진 것을 또 끄거나 켜는
+      // 클릭은 지표를 없애지 않으므로 되돌릴 것도 없다.
+      const becomesEmpty = !enabled
+        && cur[`${side}PeakEnabled`]
+        && !cur[`${other}PeakEnabled`];
+      if (!becomesEmpty) return;
+      ps.setIndicatorUndoToast({
+        label: `${FLAG_INDICATOR_LABEL[`${side}-peak`]} 삭제됨`,
+        scope,
+        timeframe,
+        // **`Hidden` 도 함께 싣는다.** 복원은 op 를 우회하는 raw patch 인데,
+        // `set{Side}PeakEnabled(true)` 는 `Hidden: false` 를 같이 쓴다 — 그 사이에
+        // 사용자가 다시 추가했다가 undo 를 누르면 눈 상태가 스냅샷과 어긋난다.
+        patch: {
+          [`${side}PeakEnabled`]: cur[`${side}PeakEnabled`],
+          [`${side}PeakHidden`]: cur[`${side}PeakHidden`],
+        } as Partial<IndicatorSettings>,
+      });
     },
   };
 }

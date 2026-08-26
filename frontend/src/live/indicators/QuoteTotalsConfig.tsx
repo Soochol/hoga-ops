@@ -29,12 +29,6 @@ export default function QuoteTotalsConfig() {
   const setDayMaxAskStyle = useIndicatorActions().setQuoteTotalsDayMaxAskStyle;
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        총잔량 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        해당 분봉 시점의 매수·매도 호가 총잔량을 라인으로 표시합니다.
-      </p>
       <SignColorLegend up="매수 총잔량" down="매도 총잔량" />
       <div className="border-b border-border my-3" />
       <ToggleRow

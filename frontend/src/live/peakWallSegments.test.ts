@@ -3,6 +3,7 @@ import type { AskPeak, BidPeak, Candle, RangeSegment } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { createVirtualAxis } from '../util/virtualAxis';
 import {
+  buildPeakWallOverlayResult,
   buildPeakWallOverlaySegments,
   buildPeakWallSegments,
   preparePeakWallSegmentsForRender,
@@ -131,6 +132,83 @@ describe('buildPeakWallSegments', () => {
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);
+  });
+});
+
+/**
+ * 개수는 **필터 경계에서** 재야 한다.
+ *
+ * 밖에서 `candidateCount − segments.length` 로 빼면 틀린다 — 필터 뒤의 세그먼트
+ * 매핑에서 더 빠지는 것이 있기 때문이다(그 date 의 `RangeSegment` 가 없거나 값이
+ * 비유한). 그 손실이 "필터로 숨김" 에 섞이면 사용자는 끄지도 않은 필터를 탓한다.
+ *
+ * 그래서 이 픽스처는 **세 층을 일부러 갈라 놓는다**: 후보 3 → 필터가 1 제거 →
+ * 매핑에서 1 탈락 → 그려진 것 1. 즉 `shown + hiddenByFilter ≠ candidateCount` 가
+ * 정상이고, 이 단언이 그걸 못 박는다.
+ */
+describe('buildPeakWallOverlayResult — 개수는 필터 경계에서 잰다', () => {
+  it('매핑 탈락은 hiddenByFilter 에 섞이지 않는다', () => {
+    const day = '20260613';
+    const orphan = '20260610'; // segments 에 없는 날 → 매핑에서 탈락한다
+    // period 1 → 각 캔들의 SMA = 그 캔들의 종가. side 'ask' 는 `price > ma` 만 남긴다.
+    // 마지막 캔들 종가를 100_250 으로 올려 그 시각의 후보(100_200)만 걸리게 한다.
+    const closeAt = (ts_ms: number, close: number): Candle =>
+      ({ ts_ms, open: close, high: close, low: close, close, vol_a: 1, vol_b: 0 }) as Candle;
+    const out = buildPeakWallOverlayResult({
+      maFilter: { period: 1, side: 'ask' },
+      dailyMaFilter: null,
+      peaks: [
+        {
+          date: day,
+          price: 100400, qty: 22_300, t_ms: 60_000,
+          max_price: 100400, max_qty: 22_300, max_t_ms: 60_000,
+          traded_peaks: [
+            { price: 100400, qty: 22_800, t_ms: 120_000 },
+            { price: 100200, qty: 20_000, t_ms: 240_000 },
+          ],
+          traded_max_peaks: [
+            { price: 100400, qty: 22_800, t_ms: 120_000 },
+            { price: 100200, qty: 20_000, t_ms: 240_000 },
+          ],
+        },
+        peak({ date: orphan, price: 100_300, qty: 21_000, t_ms: 1 }),
+      ],
+      segments: [seg(day, 0, 360_000)],
+      candles: [
+        closeAt(60_000, 1), closeAt(120_000, 1), closeAt(180_000, 1),
+        closeAt(240_000, 100_250),
+      ],
+      axis,
+      todayKst: day,
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      intraMax: false,
+      allPriceRankLimit: 3,
+    });
+
+    expect(out.candidateCount).toBe(3);
+    // 필터가 자른 것은 하나(100200) — 고아 후보는 아직 살아 있다.
+    expect(out.candidateCount - out.filteredCount).toBe(1);
+    // 그러나 그려진 것은 하나뿐이다: 고아가 매핑에서 또 빠진다.
+    expect(out.segments).toHaveLength(1);
+    // **합이 총수가 아니다** — 이게 이 테스트의 요점이다.
+    expect(out.segments.length + (out.candidateCount - out.filteredCount))
+      .not.toBe(out.candidateCount);
+  });
+
+  it('세그먼트만 쓰는 위임은 같은 결과를 준다 — 기존 호출부 무변경', () => {
+    const day = '20260613';
+    const args = {
+      maFilter: null,
+      dailyMaFilter: null,
+      peaks: [peak({ date: day, price: 100, qty: 10, t_ms: 1 })],
+      segments: [seg(day, 0, 1000)],
+      candles: [candle(500)],
+      axis,
+      todayKst: day,
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 as const },
+      intraMax: false,
+    };
+    expect(buildPeakWallOverlaySegments(args)).toEqual(buildPeakWallOverlayResult(args).segments);
   });
 });
 

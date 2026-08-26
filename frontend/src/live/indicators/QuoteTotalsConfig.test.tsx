@@ -26,9 +26,9 @@ describe('QuoteTotalsConfig', () => {
   beforeEach(() => {
     useLivePageStore.setState({ quoteTotalsDayMaxLineEnabled: false, quoteTotalsLevelLineEnabled: false });
   });
-  it('제목·범례·급증 마커 토글을 렌더', () => {
+  // 제목은 더 이상 이 컴포넌트의 것이 아니다 — 카테고리 표가 패널 헤더에서 그린다.
+  it('범례·급증 마커 토글을 렌더', () => {
     render(<QuoteTotalsConfig />);
-    expect(screen.getByText('총잔량')).toBeTruthy();
     expect(screen.getByText(/매수 총잔량 빨강/)).toBeTruthy();
     expect(screen.getByText(/매도 총잔량 파랑/)).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-surgeMarkerEnabled')).toBeTruthy();

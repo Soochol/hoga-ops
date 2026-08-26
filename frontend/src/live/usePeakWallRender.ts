@@ -28,11 +28,13 @@ import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmen
 import { useActivePrefs } from '../state/chartPrefs';
 import { useWindowIndicator } from './workspace/windowView';
 import {
+  buildPeakWallOverlayResult,
   buildPeakWallOverlaySegments,
   toAllWallPeakInputs,
   toPeakRankLimit,
   toUnreachedWallPeakInputs,
   type PeakWallInput,
+  type PeakWallOverlayResult,
 } from './peakWallSegments';
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
@@ -79,8 +81,9 @@ export type PeakWallRenderState = {
    *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다. */
   stepSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
-   *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. rank-1/일 고정
-   *  (과거일 wire 가 rank-1 스칼라뿐이라 표시 개수 노브는 받지 않는다). 필터
+   *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
+   *  받는다**(`askPeakAllWallRankLimit`) — 2026-08-25 부터 백엔드가 과거일에도
+   *  top-3 를 싣는다(`snapshots.py` 의 `_peak_candidates(..., 3)`). 필터
    *  (MA·컷오프·intraMax)는 체결된 벽과 동일하게 흐른다. `enabled` 기준 계산
    *  불변식도 동일하다. */
   allWallSegments: readonly PeakWallSegment[];
@@ -98,7 +101,8 @@ export type PeakWallRenderState = {
    *  써야 한다" 는 **랭커**를 말하는 것이고, 그 규칙은 여기서도 지켜진다). */
   arrowRankSegments: readonly PeakWallSegment[];
   /** 「미도달 벽」 하위 선 — unreached 패밀리의 carrier 리맵(toUnreachedWallPeakInputs).
-   *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이고, rank-1/일 고정.
+   *  cont 단일 계열이라 intraMax 토글이 무효(양 carrier 동일값)이다. 표시 개수 노브는
+   *  **받는다**(`unreached_peaks` 는 range 에서 벗기지 않는 top-3 다).
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
   unreachedSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
@@ -129,6 +133,16 @@ export type PeakWallRenderState = {
   allWallTimeMarker: boolean;
   unreachedHorizontalLine: boolean;
   unreachedTimeMarker: boolean;
+  /** 계열별 개수 — 설정 패널의 깔때기·리드아웃이 읽는다(`peakWallCountsRegistry`).
+   *
+   *  **flat 원시값으로 내보낸다.** 중첩 객체면 값이 같아도 매 렌더 새 참조가 되고,
+   *  이걸 deps 로 쓰는 발행 effect 가 팬·줌마다 스토어를 다시 쓴다. */
+  tradedShownCount: number;
+  tradedHiddenByFilterCount: number;
+  allWallShownCount: number;
+  allWallHiddenByFilterCount: number;
+  unreachedShownCount: number;
+  unreachedHiddenByFilterCount: number;
 };
 
 type Args = {
@@ -150,6 +164,12 @@ type Args = {
 
 /** 빈 상태는 **공유 상수**여야 memo 결과가 참조로 안정된다(빈 배열 리터럴은 매번 새 참조). */
 const EMPTY_SEGMENTS: readonly PeakWallSegment[] = [];
+/** 게이트가 닫힌 계열의 공유 결과 — 매 렌더 새 객체를 만들면 아래 memo 가 헛돈다. */
+const EMPTY_RESULT: PeakWallOverlayResult = {
+  segments: EMPTY_SEGMENTS as PeakWallSegment[],
+  candidateCount: 0,
+  filteredCount: 0,
+};
 
 export function usePeakWallRender({
   side,
@@ -262,9 +282,9 @@ export function usePeakWallRender({
   const unreachedDailyMaFilter = dailyMaFilters.Unreached;
   const allWallDailyMaFilter = dailyMaFilters.AllWall;
 
-  const built = useMemo(() => (
+  const tradedResult = useMemo(() => (
     applicable && enabled && tradedEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks,
         segments,
         candles,
@@ -276,7 +296,7 @@ export function usePeakWallRender({
         maFilter: tradedMaFilter,
         dailyMaFilter: tradedDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     tradedEnabled,
     allPriceRankLimit,
@@ -293,13 +313,15 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const built = tradedResult.segments;
 
   // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
-  // rank-1/일 고정: 과거일 wire 는 all rank-1 스칼라뿐이라(배열은 range 에서 벗겨짐)
-  // 표시 개수 노브를 받으면 오늘만 2·3개가 그려져 날마다 개수가 달라 보인다.
-  const allWallBuilt = useMemo(() => (
+  // **표시 개수 노브를 받는다.** 종전 주석은 "과거일 wire 가 rank-1 스칼라뿐" 이라
+  // 고정이라고 적었는데, 2026-08-25 에 백엔드가 rep 프레임에서 top-3 를 만들면서
+  // 그 전제가 사라졌다(실측 2026-08-26: rank 1→3 에서 표시 5→7개).
+  const allWallResult = useMemo(() => (
     applicable && enabled && allWallEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks: toAllWallPeakInputs(peaks),
         segments,
         candles,
@@ -311,7 +333,7 @@ export function usePeakWallRender({
         maFilter: allWallMaFilter,
         dailyMaFilter: allWallDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     allWallEnabled,
     allWallColor,
@@ -328,11 +350,12 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const allWallBuilt = allWallResult.segments;
 
-  // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallBuilt 주석).
-  const unreachedBuilt = useMemo(() => (
+  // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallResult 주석).
+  const unreachedResult = useMemo(() => (
     applicable && enabled && unreachedEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks: toUnreachedWallPeakInputs(peaks),
         segments,
         candles,
@@ -344,7 +367,7 @@ export function usePeakWallRender({
         maFilter: unreachedMaFilter,
         dailyMaFilter: unreachedDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     unreachedEnabled,
     unreachedColor,
@@ -361,6 +384,7 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const unreachedBuilt = unreachedResult.segments;
 
   // 하위 계열의 계단 입력 — 그리기 선과 같은 carrier 리맵을 쓰되 랭크로 자르지
   // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
@@ -518,7 +542,18 @@ export function usePeakWallRender({
     allWallTimeMarker: allWallTimeMarkerEnabled,
     unreachedHorizontalLine: unreachedHorizontalLineEnabled,
     unreachedTimeMarker: unreachedTimeMarkerEnabled,
+    // 계열별 개수 — **flat 원시값**이다. 중첩 객체로 내보내면 값이 그대로여도 매
+    // 렌더 새 참조가 되어, 이걸 deps 로 쓰는 발행 effect 가 팬·줌마다 다시 돈다.
+    tradedShownCount: tradedResult.segments.length,
+    tradedHiddenByFilterCount: tradedResult.candidateCount - tradedResult.filteredCount,
+    allWallShownCount: allWallResult.segments.length,
+    allWallHiddenByFilterCount: allWallResult.candidateCount - allWallResult.filteredCount,
+    unreachedShownCount: unreachedResult.segments.length,
+    unreachedHiddenByFilterCount: unreachedResult.candidateCount - unreachedResult.filteredCount,
   }), [
+    tradedResult,
+    allWallResult,
+    unreachedResult,
     surfacedSegments,
     surfacedAllWallSegments,
     surfacedUnreachedSegments,

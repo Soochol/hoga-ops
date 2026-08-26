@@ -21,7 +21,9 @@ export const ARROW_HEIGHT_PX = 11;
 export const ARROW_HEAD_HEIGHT_PX = 5;
 /** 머리 밑변의 반폭. */
 export const ARROW_HALF_WIDTH_PX = 3.5;
-/** 축 선 두께. 「호가벽 급증」의 속 찬 삼각형과 형태를 가르는 부분이다. */
+/** 축 선 두께. 한때 같은 pane 에 있던 「호가벽 급증」의 속 찬 삼각형과 형태를 가르던
+ *  부분이다 — 그 지표는 2026-08-26 에 제거됐지만(ADR-0162), 축이 있어야 화살표로
+ *  읽히므로 형태는 그대로 둔다. */
 export const ARROW_SHAFT_WIDTH_PX = 1.5;
 
 export type PeakWallArrowInput = {

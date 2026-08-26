@@ -52,6 +52,12 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     allWallTimeMarker: true,
     unreachedHorizontalLine: true,
     unreachedTimeMarker: true,
+    tradedShownCount: 0,
+    tradedHiddenByFilterCount: 0,
+    allWallShownCount: 0,
+    allWallHiddenByFilterCount: 0,
+    unreachedShownCount: 0,
+    unreachedHiddenByFilterCount: 0,
     ...over,
   };
 }
@@ -66,6 +72,12 @@ const EMPTY: PeakWallRenderState = {
     allWallTimeMarker: true,
     unreachedHorizontalLine: true,
     unreachedTimeMarker: true,
+    tradedShownCount: 0,
+    tradedHiddenByFilterCount: 0,
+    allWallShownCount: 0,
+    allWallHiddenByFilterCount: 0,
+    unreachedShownCount: 0,
+    unreachedHiddenByFilterCount: 0,
 };
 
 function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {

@@ -111,16 +111,11 @@ import {
   usePeakWallStepsRegistry,
   type PeakWallStepKey,
 } from './indicators/peakWallStepsRegistry';
+import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
-import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
-/** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
- *  memo 를 매번 깨뜨린다. */
-// 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
-// (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
-const EMPTY_WALL_SURGE: readonly never[] = [];
 import {
 } from './useDayAskPeaks';
 import {
@@ -2197,6 +2192,18 @@ export function LiveChartRoot({
     };
   }, [legendScope, peakWallStepPoints]);
 
+  // ── 최대벽 개수 발행 (설정 패널의 깔때기·리드아웃) ────────────────────────
+  // deps 계약(원시값 12개)이 이 기능의 성능 위험 전부라, 그 계약을 테스트가 잡을 수
+  // 있도록 훅으로 빼 뒀다 — `usePeakWallCountsPublisher` 머리말 참조.
+  usePeakWallCountsPublisher(legendScope, peakWallApplicable, {
+    'ask-traded': { shown: askWall.tradedShownCount, hiddenByFilter: askWall.tradedHiddenByFilterCount },
+    'ask-all': { shown: askWall.allWallShownCount, hiddenByFilter: askWall.allWallHiddenByFilterCount },
+    'ask-unreached': { shown: askWall.unreachedShownCount, hiddenByFilter: askWall.unreachedHiddenByFilterCount },
+    'bid-traded': { shown: bidWall.tradedShownCount, hiddenByFilter: bidWall.tradedHiddenByFilterCount },
+    'bid-all': { shown: bidWall.allWallShownCount, hiddenByFilter: bidWall.allWallHiddenByFilterCount },
+    'bid-unreached': { shown: bidWall.unreachedShownCount, hiddenByFilter: bidWall.unreachedHiddenByFilterCount },
+  });
+
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
   const peakWallCandleExtremes = useMemo(
@@ -2700,14 +2707,6 @@ export function LiveChartRoot({
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
           {isMinuteTimeframe(timeframe) && (
             <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} axis={axis} />
-          )}
-          {isMinuteTimeframe(timeframe) && (
-            <LiveWallSurgeMarkers
-              paneSeries={paneSeries}
-              events={cb.wall_surge ?? EMPTY_WALL_SURGE}
-              candles={cb.candles}
-              axis={axis}
-            />
           )}
           {isMinuteTimeframe(timeframe) && (
             <LivePeakWallSegments
