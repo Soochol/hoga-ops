@@ -19,7 +19,6 @@ from hoga.api.models import (
     DepthHeatmapPoint,
     TradeVolumePoc,
     VolumeDistributionBin,
-    WallSurgeEvent,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS, KIND_VERSIONS, PastIndicatorsCache
 from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
@@ -624,8 +623,8 @@ def test_kind_tables_cover_every_kind() -> None:
     """두 표가 `KIND_VERSIONS` 전수를 덮는가.
 
     **이 테스트가 이 파일에서 가장 중요한 한 줄이다.** 명제를 표로 모아도 새 kind 를
-    표에 넣는 것이 규율로 남으면 결국 또 빠진다 — 실제로 `wall_surge`(그리고 그때 함께
-    있었고 지금은 제거된 `depth_delta`)가 그렇게 캐시 테스트 0건이었고, 단일 모델 계열은
+    표에 넣는 것이 규율로 남으면 결국 또 빠진다 — 실제로 `wall_surge`·`depth_delta`
+    (둘 다 이후 지표째 제거됐다)가 그렇게 캐시 테스트 0건이었고, 단일 모델 계열은
     버전 축이 통째로 비어 있었다. 여기가
     빨개지면 "표에 한 줄" 이 규율이 아니라 **요구**가 된다.
     """
@@ -666,10 +665,10 @@ def test_model_kind_corrupt_file_is_a_miss(case: _ModelKindCase, tmp_path: Path)
 # 손으로 반복돼 있었고(버전 불일치 7회 · 재캡처 5회 · 빈 결과 6회 · 디스크 생존 7회),
 # 그래서 새 kind 가 생겨도 **아무도 그 표에 넣지 않는 일**이 벌어졌다 — 실제로
 # `wall_surge` 는 캐시 단위 테스트가 **0건**이었다(roundtrip · 버전 · `[]`-유효 ·
-# 손상 전부 없음). 이제 표에 한 줄을 더하면 다섯 명제가 함께 붙는다.
+# 손상 전부 없음 — 그 지표는 2026-08-26 에 제거됐다). 표에 한 줄을 더하면 다섯 명제가
+# 함께 붙는다.
 #
-# kind **고유** 명제(POC 의 cutoff 제외, `wall_surge` 의 bucket_ms 부재, ratio 의 7-tuple
-# 직렬화 등)는 이 표가 아니라 각자의 자리에 그대로 둔다 — 표는 공통분만 담는다.
+# kind **고유** 명제(POC 의 cutoff 제외, ratio 의 7-tuple 직렬화 등)는 이 표가 아니라 각자의 자리에 그대로 둔다 — 표는 공통분만 담는다.
 
 
 @dataclass(frozen=True)
@@ -687,9 +686,6 @@ _PEAK_REP_SAMPLE = [
     PeakRepRow(bucket_id=3, side="ask", price=70_100, qty=900, intra_ms=180_000, seq=2, touched=True),
     PeakRepRow(bucket_id=3, side="bid", price=70_000, qty=800, intra_ms=180_000, seq=2, touched=False),
 ]
-_WALL_SURGE_SAMPLE = [
-    WallSurgeEvent(t_ms=1_764_000_000_000, side="ask", price=70_100, qty=900, jump=700, total=5_000, kind="grow")
-]
 
 _LIST_KIND_CASES = [
     _ListKindCase(
@@ -705,13 +701,6 @@ _LIST_KIND_CASES = [
         lambda c, v: c.store_depth(CODE, DATE, SRC, 60_000, v),
         lambda c: c.get_depth(CODE, DATE, SRC, 60_000),
         _DEPTH,
-    ),
-    _ListKindCase(
-        "wall_surge",
-        f"{DATE}.wall_surge.json",
-        lambda c, v: c.store_wall_surge(CODE, DATE, SRC, v),
-        lambda c: c.get_wall_surge(CODE, DATE, SRC),
-        _WALL_SURGE_SAMPLE,
     ),
     _ListKindCase(
         "broker_late",
@@ -960,15 +949,13 @@ def _instrument(cache: PastIndicatorsCache) -> _TrackedLock:
             setattr(cache, name, _LockAssertingDict(lock, name, value))
     # _all_mem_dicts 는 같은 객체들의 튜플이라 교체 후 다시 묶어야 purge 가 새 dict 를 본다.
     # 이 목록이 프로덕션 `_all_mem_dicts` 보다 짧으면 그만큼이 **감시 밖**이 된다 —
-    # 실제로 `_mem_wall_surge` 가 빠져 있었고 아무도 몰랐다. 개수를 못 박아 재발을 막는다.
+    # 실제로 (지금은 제거된) `_mem_wall_surge` 가 빠져 있었고 아무도 몰랐다.
+    # 개수를 못 박아 재발을 막는다.
     _production_count = len(cache._all_mem_dicts)
     cache._all_mem_dicts = tuple(
         getattr(cache, n) for n in (
             "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
             "_mem_trade_volume_poc", "_mem_depth",
-            # `_mem_wall_surge` 가 빠져 있었다 — 프로덕션 `_all_mem_dicts` 보다 이 목록이
-            # 하나 짧아서, wall_surge dict 의 락 위반을 아무도 못 봤다.
-            "_mem_wall_surge",
             "_mem_vdist", "_mem_broker_late", "_mem_continuous_before",
         )
     )

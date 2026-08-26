@@ -8,7 +8,6 @@ import InvestorNetConfig from './InvestorNetConfig';
 import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
 import DepthHeatmapConfig from './DepthHeatmapConfig';
-import WallSurgeConfig from './WallSurgeConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
@@ -44,7 +43,6 @@ export type CategoryId =
   | 'peak-walls'
   | 'trade-volume-poc'
   | 'depth-heatmap'
-  | 'wall-surge'
   | 'volume-distribution'
   | 'quote-totals'
   | 'ratio'
@@ -121,8 +119,6 @@ export const CATEGORIES: ReadonlyArray<{
     description: '차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼 수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga', placement: 'overlay',
     description: '각 분봉 시점의 10호가 매수·매도 잔량을 캔들 뒤 색상 강도로 표시합니다. 강도는 화면에 보이는 범위의 최대 잔량 기준으로 정규화됩니다. 분봉 차트에서만 표시됩니다' },
-  { id: 'wall-surge',      label: '호가벽 급증',     group: 'hoga', placement: 'overlay',
-    description: '한 호가 레벨에 물량이 순간적으로 몰린 지점을 캔들 차트의 그 가격 위치에 삼각형으로 표시합니다. 잔량이 많은 것이 아니라 짧은 시간에 갑자기 늘어난 것을 잡습니다. 분봉 차트에서만 표시됩니다' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker',  placement: 'pane',
     description: '일자별 외국인의 순매수 수량(매수 − 매도)을 막대로 표시합니다.' },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker',  placement: 'pane',
@@ -278,8 +274,6 @@ export default function IndicatorPanel({
   const setBrokerLateEntryEnabled = actions.setAllBrokerLateEntriesEnabled;
   const depthHeatmapEnabled = ind.depthHeatmapEnabled;
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
-  const wallSurgeEnabled = ind.wallSurgeEnabled;
-  const setWallSurgeEnabled = actions.setWallSurgeEnabled;
   const paneIndicators: PanePrefsIndicatorSource = {
     volumeEnabled: ind.volumeEnabled,
     quoteTotalsEnabled: ind.quoteTotalsEnabled,
@@ -360,7 +354,6 @@ export default function IndicatorPanel({
       case 'trade-volume-poc': return tradeVolumePocEnabled;
       case 'volume-distribution': return volumeDistributionEnabled;
       case 'depth-heatmap': return depthHeatmapEnabled;
-      case 'wall-surge': return wallSurgeEnabled;
       case 'broker-late-entry': return brokerLateEntryEnabled;
       default: return false;
     }
@@ -378,7 +371,6 @@ export default function IndicatorPanel({
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(present);
       case 'volume-distribution': return () => setVolumeDistributionEnabled(present);
       case 'depth-heatmap': return () => setDepthHeatmapEnabled(present);
-      case 'wall-surge': return () => setWallSurgeEnabled(present);
       case 'broker-late-entry': return () => setBrokerLateEntryEnabled(present);
       default: return null;
     }
@@ -640,7 +632,6 @@ export default function IndicatorPanel({
               {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}
               {selectedAdded && selectedId === 'trade-volume-poc' && <TradeVolumePocConfig />}
               {selectedAdded && selectedId === 'depth-heatmap' && <DepthHeatmapConfig />}
-              {selectedAdded && selectedId === 'wall-surge' && <WallSurgeConfig />}
               {selectedAdded && selectedId === 'volume-distribution' && (
                 <div>
                   <div className="mb-3">

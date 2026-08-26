@@ -7,8 +7,8 @@ describe('INDICATOR_GLYPH', () => {
   // `Record<CategoryId, …>` 가 컴파일 타임에 이미 강제하지만, 그건 **타입에 있는**
   // 카테고리만 본다. 이 루프는 화면에 실제로 뜨는 표(`CATEGORIES`)와 대조한다 —
   // 둘이 갈리면(표에는 있는데 타입에 없거나 그 반대) 여기서 드러난다.
-  it('CATEGORIES 의 15종 전부에 글리프가 있다', () => {
-    expect(CATEGORIES).toHaveLength(15);
+  it('CATEGORIES 의 14종 전부에 글리프가 있다', () => {
+    expect(CATEGORIES).toHaveLength(14);
     for (const category of CATEGORIES) {
       expect(INDICATOR_GLYPH[category.id]).toBeTruthy();
     }

@@ -924,45 +924,6 @@ class DayVolumeDistribution(BaseModel):
     bins: list[VolumeDistributionBin]
 
 
-# ── 호가벽 급증 (Wall Surge) ────────────────────────────────────────────────
-# 설계: docs/superpowers/specs/2026-08-14-sell-wall-surge-indicator-design.md
-#
-# ⚠ 두 Literal 은 **named alias 여야 한다**. 필드 인라인 Literal 은 계약 테스트 2층의
-# 등록 누락 감사가 보지 못해, BE 가 값을 늘려도 프론트 union 이 조용히 뒤처진다(#1183).
-# wire 값은 영문이고 한글 라벨은 프론트 라벨 표가 가진다.
-WallSurgeKind = Literal["pierce", "grow", "reappear"]
-WallSurgeOutcome = Literal["consumed", "broken", "pulled", "held"]
-
-
-class WallSurgeEvent(BaseModel):
-    """한 호가 레벨에 물량이 급증한 사건 하나.
-
-    ``kind`` 는 baseline 을 어디서 구했는지이자 곧 **시점 신뢰도**다 —
-    ``pierce``(반대측 자리였다 = 0 확정) · ``grow``(창 안 관측 대비)는 초 단위로
-    정확하고, ``reappear``(창 밖, 당일 마지막 관측 대비)는 **크기만** 정확하다.
-    ``blind_ms`` 가 그 불확실성의 폭(시야 밖 체류시간)이고 reappear 일 때만 채워진다.
-
-    ``outcome`` 이 **null 이면 결말 미정** — 데이터 끝에서 추적 창이 덜 찬 사건이다.
-    "아직 모른다" 와 "버텼다(held)" 는 다른 사실이라 프론트가 미정색으로 가른다.
-    ⚠ 이 null 은 정당한 값이므로 ``response_model_exclude_none`` 으로 지우면 안 된다.
-
-    ``t_ms`` 는 unix ms(ApiCandle.ts_ms 와 같은 축), ``price`` 는 벽이 선 가격,
-    ``jump`` 는 baseline 대비 증가량, ``total`` 은 그 시점 해당 측 총잔량.
-    """
-
-    t_ms: int
-    side: Literal["ask", "bid"]
-    price: int
-    qty: int
-    jump: int
-    total: int
-    kind: WallSurgeKind
-    blind_ms: int | None = None
-    outcome: WallSurgeOutcome | None = None
-    filled_qty: int = 0
-    duration_ms: int | None = None
-
-
 class RangeBundle(BaseModel):
     """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
 
@@ -1008,7 +969,6 @@ class RangeBundle(BaseModel):
     bid_peaks: list[BidPeak] = Field(default_factory=list)
     # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
     depth_heatmap: list[DepthHeatmapPoint] = Field(default_factory=list)
-    wall_surge: list[WallSurgeEvent] = Field(default_factory=list)
     broker_late_entries: list[BrokerLateEntryEvent] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)

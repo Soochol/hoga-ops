@@ -61,13 +61,13 @@ describe('resolveIndicatorSettings', () => {
   it('applies only the matching bucket (1m~30m share the minute bucket)', () => {
     const byTimeframe = {
       minute: { askPeakEnabled: true },
-      D: { quoteTotalsEnabled: true, wallSurgeEnabled: true },
+      D: { quoteTotalsEnabled: true, depthHeatmapEnabled: true },
     };
     expect(resolveIndicatorSettings(byTimeframe, '1m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '30m').askPeakEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, '1m').quoteTotalsEnabled).toBe(false);
     expect(resolveIndicatorSettings(byTimeframe, 'D').quoteTotalsEnabled).toBe(true);
-    expect(resolveIndicatorSettings(byTimeframe, 'D').wallSurgeEnabled).toBe(true);
+    expect(resolveIndicatorSettings(byTimeframe, 'D').depthHeatmapEnabled).toBe(true);
     expect(resolveIndicatorSettings(byTimeframe, 'W')).toEqual(FACTORY_INDICATOR_SETTINGS);
   });
 });

@@ -91,9 +91,9 @@ describe('IndicatorPanel', () => {
   });
 
   // 목록이 두 모드로 갈리므로 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
-  // 대신 **합집합이 15종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
+  // 대신 **합집합이 14종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
   // 그게 이 목록이 지켜야 할 총계다.
-  it('내 지표 + 카탈로그의 합집합이 15종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  it('내 지표 + 카탈로그의 합집합이 14종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -113,7 +113,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const addable = labelsEndingWith(' 추가');
 
-    expect(new Set([...mine, ...addable]).size).toBe(15);
+    expect(new Set([...mine, ...addable]).size).toBe(14);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);
@@ -161,37 +161,37 @@ describe('IndicatorPanel', () => {
 
   it('라벨 클릭은 **미리보기**다 — 추가하지 않는다', () => {
     renderPanel();
-    previewDetail('호가벽 급증');
+    previewDetail('당일 최대벽');
 
-    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(false);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     // 상세는 보이고, 그 행은 여전히 ＋ 다(누를지 결정할 수 있게).
-    expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '호가벽 급증 추가' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '당일 최대벽 추가' })).toBeTruthy();
   });
 
   // 미리보기의 **정의가 바뀌었다**: 종전엔 아직 존재하지 않는 지표의 편집 가능한
   // 설정 폼이 떴다(어휘는 미리보기인데 화면은 편집기). 이제는 카드다.
   it('미추가 지표의 상세는 설정 폼이 아니라 미리보기 카드다', () => {
     renderPanel();
-    previewDetail('호가벽 급증');
+    previewDetail('당일 최대벽');
 
     expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
     // 그 지표의 설정 컨트롤은 하나도 없다 — 만질 수 없는 것을 보여 주지 않는다.
-    expect(screen.queryByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeNull();
+    expect(screen.queryByTestId('settings-toggle-askPeakIntraMax')).toBeNull();
     // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
-    expect(screen.getByText(/한 호가 레벨에 물량이 순간적으로 몰린/)).toBeTruthy();
+    expect(screen.getByText(/그 날 10호가 중 한 단계에 가장 크게 걸렸던/)).toBeTruthy();
   });
 
   it('미리보기의 CTA 로 추가하면 그 자리가 설정 폼이 된다', () => {
     renderPanel();
-    previewDetail('호가벽 급증');
+    previewDetail('당일 최대벽');
     fireEvent.click(screen.getByRole('button', { name: '＋ 차트에 추가' }));
 
-    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     // 선택은 그대로 — 추가했다고 다른 지표로 튀지 않는다.
-    expect(screen.getByRole('heading', { name: '호가벽 급증', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 2 })).toBeTruthy();
     expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
-    expect(screen.getByTestId('settings-toggle-wallSurgeLabelEnabled')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
   });
 
   // 삭제하면 그 행이 「내 지표」에서 사라지므로 선택도 남은 첫 항목으로 넘어간다 —
@@ -992,24 +992,6 @@ describe('IndicatorPanel', () => {
     renderPanel();
     openDetail('일봉 이동평균선');
     expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
-  });
-
-  it('호가벽 급증 카테고리가 10호가 그룹에 렌더된다', () => {
-    renderPanel();
-    openCatalog();
-    expect(screen.getByRole('button', { name: '호가벽 급증' })).toBeInTheDocument();
-  });
-
-  it('호가벽 급증 토글이 지표 슬라이스를 바꾼다 (chartPrefs 가 아니다)', () => {
-    renderPanel();
-    togglePresence('호가벽 급증');
-    expect(useLivePageStore.getState().wallSurgeEnabled).toBe(true);
-  });
-
-  it('호가벽 급증 상세에 라벨 토글이 뜬다 — 등록만으로는 안 뜨므로 렌더로 확인', () => {
-    renderPanel();
-    openDetail('호가벽 급증');
-    expect(screen.getByText('급증 마커 잔량 라벨')).toBeInTheDocument();
   });
 
   it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {
