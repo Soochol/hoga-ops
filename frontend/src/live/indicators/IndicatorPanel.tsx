@@ -116,7 +116,7 @@ export const CATEGORIES: ReadonlyArray<{
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga', placement: 'overlay',
     description: '정규장 연속매매 체결량을 연속체결 매물대 분포와 동일한 가격 구간에 누적하고, 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.' },
   { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga', placement: 'overlay',
-    description: '차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼 수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다' },
+    description: '차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격을 표시합니다. 계열 셋(체결된 벽·미도달 벽·전체 최대벽)을 각각 수평선·화살표·라벨·레전드로 그리고, 강도 계단을 별도 pane 에 낼 수 있습니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga', placement: 'overlay',
     description: '각 분봉 시점의 10호가 매수·매도 잔량을 캔들 뒤 색상 강도로 표시합니다. 강도는 화면에 보이는 범위의 최대 잔량 기준으로 정규화됩니다. 분봉 차트에서만 표시됩니다' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker',  placement: 'pane',

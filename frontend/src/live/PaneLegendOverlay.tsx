@@ -22,6 +22,7 @@ import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
+import EyeGlyph from './EyeGlyph';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { priceDirClass } from '../ui/priceDir';
 import { buildCandleTooltip } from './candleTooltipModel';
@@ -495,23 +496,6 @@ function CloseGlyph() {
         strokeWidth="2"
         strokeLinecap="round"
       />
-    </svg>
-  );
-}
-
-function EyeGlyph({ hidden }: { hidden: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path
-        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-      {hidden && (
-        // Struck-through eye = MA lines hidden (distinct from ✕ = off).
-        <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      )}
     </svg>
   );
 }

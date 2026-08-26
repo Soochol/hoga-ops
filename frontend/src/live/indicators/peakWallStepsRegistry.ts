@@ -50,8 +50,8 @@ export type PeakWallStepSlot = {
  * **계열별로 갈라진 이유**(2026-08-25): 종전 키는 `'ask' | 'bid'` 뿐이라 계단이 체결된
  * 벽 하나만 나를 수 있었다. 캔들 pane 은 세 선을 그리는데 강도 pane 만 하나였던
  * 비대칭을 없앤다. 어느 계열이 나오는지는 **캔들 선 토글을 따라간다** — pane 전용
- * 키를 새로 만들지 않는다(체결된 벽은 토글이 없어 pane 이 켜지면 항상 나온다 =
- * 종전 동작 보존).
+ * 키를 새로 만들지 않는다. 세 계열 모두 자기 선 토글을 갖고(`{side}Peak{Family}
+ * LineEnabled`), 계단도 그 토글을 탄다(`usePeakWallRender` 의 `stepBuilt` 계열).
  */
 export const usePeakWallStepsRegistry =
   createWindowScopedRegistry<PeakWallStepKey, PeakWallStepSlot>();
