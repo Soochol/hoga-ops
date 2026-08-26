@@ -14,9 +14,9 @@ import PeakWallFamilyCard, {
  * 구조·근거는 그쪽 주석을 볼 것. 방향으로 갈리는 것은 미도달 판정의 기준(고가↔저가)과
  * MA 필터 방향(위↔아래)뿐이다.
  *
- * `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(상위가 표시).
+ * 제목·설명은 매도판과 마찬가지로 카테고리 표가 헤더에서 말한다(`embedded` 소멸).
  */
-export default function BidPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
+export default function BidPeakConfig() {
   const actions = useIndicatorActions();
   const tradedEnabled = useWindowIndicator((s) => s.bidPeakTradedLineEnabled);
   const color = useWindowIndicator((s) => s.bidPeakColor);
@@ -39,18 +39,6 @@ export default function BidPeakConfig({ embedded = false }: { embedded?: boolean
 
   return (
     <div>
-      {!embedded && (
-        <>
-          <h3 className="text-fg text-base font-medium pb-1">
-            당일 매수 최대벽 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-          </h3>
-          <p className="text-fg-dim text-xs mb-3">
-            차트에 보이는 거래일마다, 그 날 매수 10호가 중 한 단계에 가장 크게 걸렸던 물량의
-            가격에 그날 구간만큼 수평선을 그립니다. 분봉 차트에서만 표시됩니다
-          </p>
-        </>
-      )}
-
       {/* ── 어떤 벽 ─────────────────────────────────────────────────
           순서는 체결 → 미도달 → 전체. 앞 둘은 **배타적**이고(체결됐다면 당일 저가가
           그 가격에 닿았다는 뜻이라 미도달일 수 없다) 전체는 그 둘과 사이 구간까지

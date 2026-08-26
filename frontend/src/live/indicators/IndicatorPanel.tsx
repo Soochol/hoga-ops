@@ -56,25 +56,58 @@ const GROUP_LABEL: Record<GroupId, string> = {
   broker: '거래원 지표',
 };
 
+/** 차트의 어디에 그려지는가. 글리프가 암시하는 것을 헤더가 텍스트로 확정한다. */
+type Placement = 'overlay' | 'pane';
+const PLACEMENT_LABEL: Record<Placement, string> = {
+  overlay: '캔들 오버레이',
+  pane: '하단 패널',
+};
+
 // 드리프트 테스트(`IndicatorPanel.paneNames.test.ts`)가 pane 을 가진 항목의 라벨을
 // `PANE_DISPLAY_NAME` 과 대조하므로 export 한다 — 같은 pane 을 설정 패널과 차트
 // 레전드가 다르게 부르면 안 된다.
-export const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
-  { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
-  { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top'  },
-  { id: 'volume',          label: '거래량',           group: 'top'  },
-  { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
-  { id: 'ratio',           label: '호가비',           group: 'hoga' },
-  { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
-  { id: 'volume-distribution', label: '연속체결 매물대 분포', group: 'hoga' },
-  { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
-  { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga' },
-  { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga' },
-  { id: 'wall-surge',      label: '호가벽 급증',     group: 'hoga' },
-  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
-  { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
-  { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
-  { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
+//
+// `description` 은 각 Config 컴포넌트가 자기 `h3`+`p` 로 들고 있던 문장을 그대로
+// 올린 것이다. 한 지표의 이름과 설명을 패널 헤더와 Config 가 각자 적고 있으면
+// 언젠가 갈린다 — 미리보기 카드(아직 추가하지 않은 지표)는 Config 를 렌더하지
+// 않으므로 설명이 Config 안에 있으면 **애초에 닿지도 못한다**.
+export const CATEGORIES: ReadonlyArray<{
+  id: CategoryId;
+  label: string;
+  group: GroupId;
+  description: string;
+  placement: Placement;
+}> = [
+  { id: 'moving-average',  label: '이동평균선',       group: 'top',  placement: 'overlay',
+    description: '지난 n일 동안 주가 평균값을 이은 선' },
+  { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top',  placement: 'overlay',
+    description: '일봉 종가 기준 이평선을 분봉 차트에 투영 · 분봉 차트에서만 표시됩니다' },
+  { id: 'volume',          label: '거래량',           group: 'top',  placement: 'pane',
+    description: '해당 봉 동안 체결된 거래량을 막대로 표시합니다.' },
+  { id: 'quote-totals',    label: '총잔량',           group: 'hoga', placement: 'pane',
+    description: '해당 분봉 시점의 매수·매도 호가 총잔량을 라인으로 표시합니다.' },
+  { id: 'ratio',           label: '호가비',           group: 'hoga', placement: 'pane',
+    description: '매수·매도 호가 총잔량의 불균형(우위)을 0 기준선 위아래로 표시합니다.' },
+  { id: 'fill-strength',   label: '체결강도',         group: 'hoga', placement: 'pane',
+    description: '해당 분봉 동안 체결된 매수·매도 물량을 막대로 표시합니다.' },
+  { id: 'volume-distribution', label: '연속체결 매물대 분포', group: 'hoga', placement: 'overlay',
+    description: '정규장 연속매매 체결만 집계한 가격대별 체결량 분포를 거래일 단위로 표시합니다. 가격 구간은 각 Stock-Date 캔들 저가-고가 범위를 기준으로 나눕니다.' },
+  { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga', placement: 'overlay',
+    description: '정규장 연속매매 체결량을 연속체결 매물대 분포와 동일한 가격 구간에 누적하고, 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.' },
+  { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga', placement: 'overlay',
+    description: '차트에 보이는 거래일마다, 그 날 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼 수평선을 그립니다. 매도·매수를 각각 설정합니다. 분봉 차트에서만 표시됩니다' },
+  { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga', placement: 'overlay',
+    description: '각 분봉 시점의 10호가 매수·매도 잔량을 캔들 뒤 색상 강도로 표시합니다. 강도는 화면에 보이는 범위의 최대 잔량 기준으로 정규화됩니다. 분봉 차트에서만 표시됩니다' },
+  { id: 'wall-surge',      label: '호가벽 급증',     group: 'hoga', placement: 'overlay',
+    description: '한 호가 레벨에 물량이 순간적으로 몰린 지점을 캔들 차트의 그 가격 위치에 삼각형으로 표시합니다. 잔량이 많은 것이 아니라 짧은 시간에 갑자기 늘어난 것을 잡습니다. 분봉 차트에서만 표시됩니다' },
+  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker',  placement: 'pane',
+    description: '일자별 외국인의 순매수 수량(매수 − 매도)을 막대로 표시합니다.' },
+  { id: 'institution-net', label: '기관 순매수량',    group: 'broker',  placement: 'pane',
+    description: '일자별 기관의 순매수 수량(매수 − 매도)을 막대로 표시합니다.' },
+  { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker', placement: 'overlay',
+    description: '기준 시각 이후에 처음 등장한 거래원을 마커로 표시합니다. 시각대를 나눠 보려면 세트를 추가하세요.' },
+  { id: 'program-trade',   label: '프로그램 순매수',  group: 'program', placement: 'pane',
+    description: 'KIS REST 저장 데이터의 시간별 프로그램 누적 순매수 금액을 표시합니다.' },
 ];
 
 // 모든 지표 설정이 현재 봉(분/일/주/월) 버킷에 저장되므로(#699), 카테고리별
@@ -427,8 +460,12 @@ export default function IndicatorPanel({
               마스터 토글을 우측에 상주시켜 스크롤과 무관하게 켜짐/꺼짐을 읽고 바꾼다. */}
           <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
             <div className="min-w-0">
+              {/* eyebrow 는 그룹 + **어디에 그려지는가**. 후자가 없으면 "추가하면 캔들
+                  위에 겹치나, 아래 pane 을 새로 먹나" 를 켜 보고 알게 된다. 두 조각
+                  모두 `--fg-dim` — 소형 텍스트에 `--fg-dimmer` 는 대비 미달이라
+                  쓰지 않는다(DESIGN.md 텍스트 대비 규칙). */}
               <div className="text-xs font-medium uppercase text-fg-dim">
-                {GROUP_LABEL[selectedCategory.group]}
+                {GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}
               </div>
               <h2 className="truncate text-lg font-semibold text-fg">{selectedCategory.label}</h2>
             </div>
@@ -461,11 +498,13 @@ export default function IndicatorPanel({
             aria-label={selectedCategory.label}
             className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5"
           >
+              {/* 설명은 카테고리 표가 소유한다 — Config 안에 두면 아직 추가하지
+                  않은 지표(Config 를 렌더하지 않는다)에서는 읽을 수가 없다. */}
+              <p className="text-xs text-fg-dim">{selectedCategory.description}</p>
               {selected === 'moving-average' && <MovingAverageConfig />}
               {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selected === 'volume' && <VolumeConfig />}
-              {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
-              {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
+              {(selected === 'foreign-net' || selected === 'institution-net') && <InvestorNetConfig />}
               {selected === 'broker-late-entry' && <BrokerLateEntryConfig />}
               {selected === 'peak-walls' && <PeakWallsConfig />}
               {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
@@ -473,10 +512,6 @@ export default function IndicatorPanel({
               {selected === 'wall-surge' && <WallSurgeConfig />}
               {selected === 'volume-distribution' && (
                 <div>
-                  <h3 className="pb-1 text-base font-medium text-fg">연속체결 매물대 분포</h3>
-                  <p className="mb-3 text-xs text-fg-dim">
-                    정규장 연속매매 체결만 집계한 가격대별 체결량 분포를 거래일 단위로 표시합니다. 가격 구간은 각 Stock-Date 캔들 저가-고가 범위를 기준으로 나눕니다.
-                  </p>
                   <div className="mb-3">
                     <label className="flex items-center justify-between gap-3 text-sm text-fg">
                       <span>구간 수</span>

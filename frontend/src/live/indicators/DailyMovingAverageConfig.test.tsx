@@ -29,11 +29,9 @@ describe('DailyMovingAverageConfig', () => {
     expect((screen.getByRole('button', { name: /기간 추가/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('header + 분봉 전용 안내 표시', () => {
-    render(<DailyMovingAverageConfig />);
-    expect(screen.getByText('일봉 이동평균선')).toBeTruthy();
-    expect(screen.getByText(/분봉 차트에서만 표시/)).toBeTruthy();
-  });
+  // 종전의 `header + 분봉 전용 안내 표시` 는 사라졌다 — 제목도 「분봉 차트에서만
+  // 표시됩니다」도 이제 카테고리 표의 description 이고, 패널 헤더가 그린다.
+  // 그 자리의 가드는 `IndicatorPanel.test.tsx` 의 설명 텍스트 단언이다.
 
   // 마스터 토글과 타입 눈이 슬롯의 `enabled` 로 접혔다 — 토글 하나가 전 슬롯을
   // 함께 켜고 끄고, 체크 상태는 "켜진 슬롯이 있는가" 의 파생이다.

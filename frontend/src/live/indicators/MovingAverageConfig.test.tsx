@@ -41,9 +41,7 @@ describe('MovingAverageConfig', () => {
     expect(useLivePageStore.getState().movingAverages).toEqual([]);
   });
 
-  it('header shows 지표명 + tooltip-helper', () => {
-    render(<MovingAverageConfig />);
-    expect(screen.getByText('이동평균선')).toBeTruthy();
-    expect(screen.getByText(/지난 n일 동안 주가 평균값/)).toBeTruthy();
-  });
+  // 종전의 `header shows 지표명 + tooltip-helper` 는 여기서 사라졌다 — 제목·설명은
+  // 이제 Config 가 아니라 카테고리 표가 소유하고 패널 헤더가 그린다. 그 자리의
+  // 회귀 가드는 `IndicatorPanel.test.tsx` 의 설명 텍스트 단언들이다.
 });

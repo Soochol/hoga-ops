@@ -36,9 +36,10 @@ import PeakWallFamilyCard, {
  * 화면 밖으로 밀린다. 접힌 채로도 "여기 뭔가 꺼져 있다" 가 보이도록 카드가 **끈 개수**를
  * 뱃지로 문다(`usePeakWallFamilyOffCount`).
  *
- * `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(상위가 표시).
+ * 제목·설명은 이 컴포넌트가 갖지 않는다 — 카테고리 표(`CATEGORIES`)가 패널 헤더에서
+ * 말한다. 종전의 `embedded` prop 은 그 이관으로 분기할 것이 없어져 사라졌다.
  */
-export default function AskPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
+export default function AskPeakConfig() {
   const actions = useIndicatorActions();
   const tradedEnabled = useWindowIndicator((s) => s.askPeakTradedLineEnabled);
   const color = useWindowIndicator((s) => s.askPeakColor);
@@ -61,18 +62,6 @@ export default function AskPeakConfig({ embedded = false }: { embedded?: boolean
 
   return (
     <div>
-      {!embedded && (
-        <>
-          <h3 className="text-fg text-base font-medium pb-1">
-            당일 매도 최대벽 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-          </h3>
-          <p className="text-fg-dim text-xs mb-3">
-            차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의
-            가격에 그날 구간만큼 수평선을 그립니다. 분봉 차트에서만 표시됩니다
-          </p>
-        </>
-      )}
-
       {/* ── 어떤 벽 ─────────────────────────────────────────────────
           순서는 체결 → 미도달 → 전체. 앞 둘은 **배타적**이고(체결됐다면 당일 고가가
           그 가격에 닿았다는 뜻이라 미도달일 수 없다) 전체는 그 둘과 사이 구간까지
