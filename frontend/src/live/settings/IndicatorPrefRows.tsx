@@ -29,8 +29,13 @@ import LineStyleRow from './LineStyleRow';
  */
 export default function IndicatorPrefRows({
   toggleKeys,
+  highlight,
 }: {
   toggleKeys: readonly ChartToggleKey[];
+  /** 설정 필터의 검색어 — 토글 라벨의 일치 구간을 표시한다(부모·하위 토글 모두).
+   *  수치·선 스타일 행은 강조하지 않는다 — 필터 매칭은 유닛(부모+하위) 단위라
+   *  행이 함께 남는 것으로 충분하고, 그쪽 라벨까지 마크업을 스레딩할 값이 없다. */
+  highlight?: string;
 }) {
   // 읽기·쓰기 모두 이 서브트리의 창 봉 버킷을 향한다(Provider 밖=ambient 폴백).
   const prefs = useScopedChartPrefs();
@@ -60,6 +65,7 @@ export default function IndicatorPrefRows({
               checked={prefs[toggle.key]}
               onToggle={() => setToggle(toggle.key, !prefs[toggle.key])}
               testId={`settings-toggle-${toggle.key}`}
+              highlight={highlight}
             />
             {(gatedToggles.length > 0 || gatedNumerics.length > 0 || gatedLines.length > 0) && (
               <div className="ml-4">
@@ -72,6 +78,7 @@ export default function IndicatorPrefRows({
                       onToggle={() => setToggle(def.key, !prefs[def.key])}
                       testId={`settings-toggle-${def.key}`}
                       disabled={!gateOpen}
+                      highlight={highlight}
                     />
                     {/* 하위 토글이 **자기 하위 numeric 을 갖는 경우**(`quoteTotalsTickNormalize`
                         → 확인 문턱). 이걸 빠뜨리면 토글을 부모 아래로 옮기는 순간 그 노브가
