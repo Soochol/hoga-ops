@@ -144,9 +144,9 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
  * 판정한 것과 같다: 이름 규칙 매칭은 **오탐과 누락이 둘 다 조용하다**. 대신
  * `indicatorOps.flagFields.test.ts` 가 "flag 접두를 가진 `IndicatorSettings` 키는
  * 정확히 한 목록에 속한다" 를 강제한다 — 새 필드가 늘면 그 가드가 빨개진다.
- * 이 가드는 실제로 **세 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, #1588 의
- * `*Unreached*` 6필드, 그리고 설정 재구성의 `*PeakTradedLineEnabled` 2필드
- * (전부 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
+ * 이 가드는 실제로 **네 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, #1588 의
+ * `*Unreached*` 6필드, 설정 재구성의 `*PeakTradedLineEnabled` 2필드, 그리고 강도 pane
+ * 슬롯의 `*Pane Enabled` 6필드(앞 셋은 전부 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
  * 이론이 아니라는 증거이고, 동시에 가드가 그 위험을 실제로 덮는다는 증거다.
  */
 export const FLAG_INDICATOR_FIELDS: Record<
@@ -158,12 +158,15 @@ export const FLAG_INDICATOR_FIELDS: Record<
     'askPeakTradedLineEnabled',
     'askPeakAllWallLineEnabled', 'askPeakAllWallColor', 'askPeakAllWallLineWidth',
     'askPeakUnreachedLineEnabled', 'askPeakUnreachedColor', 'askPeakUnreachedLineWidth',
+    // 강도 pane 슬롯 — 이 지표가 사라지면 pane 구성도 함께 공장값으로 돌아간다.
+    'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
   ],
   'bid-peak': [
     'bidPeakEnabled', 'bidPeakHidden', 'bidPeakColor', 'bidPeakLineWidth',
     'bidPeakTradedLineEnabled',
     'bidPeakAllWallLineEnabled', 'bidPeakAllWallColor', 'bidPeakAllWallLineWidth',
     'bidPeakUnreachedLineEnabled', 'bidPeakUnreachedColor', 'bidPeakUnreachedLineWidth',
+    'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
   ],
   'trade-volume-poc': [
     'tradeVolumePocEnabled', 'tradeVolumePocHidden', 'tradeVolumePocBandPct',
@@ -297,17 +300,23 @@ export const INDICATOR_OPS = {
     ({ volumeEnabled: enabled }),
   setPeakWallPaneEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ peakWallPaneEnabled: enabled }),
-  /** 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 독립이다
-   *  (`liveIndicatorsPersistence` 의 `peakWallPaneTradedEnabled` 주석). 키를 문자열로
+  /** 강도 pane 의 슬롯 6칸(방향 × 계열) — 캔들 선 토글과 독립이다
+   *  (`liveIndicatorsPersistence` 의 `askPeakTradedPaneEnabled` 주석). 키를 문자열로
    *  조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다. */
-  setPeakWallPaneFamilyEnabled: (
+  setPeakWallPaneSlotEnabled: (
     _cur: IndicatorSettings,
+    side: 'ask' | 'bid',
     family: 'Traded' | 'Unreached' | 'AllWall',
     enabled: boolean,
   ): Patch => {
-    if (family === 'Traded') return { peakWallPaneTradedEnabled: enabled };
-    if (family === 'Unreached') return { peakWallPaneUnreachedEnabled: enabled };
-    return { peakWallPaneAllWallEnabled: enabled };
+    if (side === 'ask') {
+      if (family === 'Traded') return { askPeakTradedPaneEnabled: enabled };
+      if (family === 'Unreached') return { askPeakUnreachedPaneEnabled: enabled };
+      return { askPeakAllWallPaneEnabled: enabled };
+    }
+    if (family === 'Traded') return { bidPeakTradedPaneEnabled: enabled };
+    if (family === 'Unreached') return { bidPeakUnreachedPaneEnabled: enabled };
+    return { bidPeakAllWallPaneEnabled: enabled };
   },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),

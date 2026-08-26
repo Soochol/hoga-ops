@@ -172,18 +172,26 @@ export type PersistedIndicators = {
   movingAverageHidden: boolean;
   /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
   peakWallPaneEnabled: boolean;
-  /** 강도 pane 에 「체결된 벽」 계단을 낼 것인가. **기본 true** — 공장 상태에서
+  /** 강도 pane 에 「매도 · 체결된 벽」 계단을 낼 것인가. **기본 true** — 공장 상태에서
    *  pane 을 켜면 종전과 똑같이 체결된 벽만 나온다.
    *
-   *  ⚠ 이 셋은 **방향 공용**이다(pane 자체가 매도·매수 공용이므로). 그리고 캔들
-   *  오버레이의 계열 선 토글(`{side}Peak{Family}LineEnabled`)과 **독립**이다 —
-   *  종전엔 pane 이 그 토글을 따라갔지만, 캔들에서 지운 계열을 pane 에서는 계속
-   *  보고 싶은(또는 그 반대의) 조합이 원리적으로 불가능했다. */
-  peakWallPaneTradedEnabled: boolean;
-  /** 강도 pane 에 「미도달 벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
-  peakWallPaneUnreachedEnabled: boolean;
-  /** 강도 pane 에 「전체 최대벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
-  peakWallPaneAllWallEnabled: boolean;
+   *  ⚠ **pane 슬롯과 1:1 인 여섯 키**다(`PEAK_WALL_STEP_SLOTS` = 방향 2 × 계열 3).
+   *  pane 자체는 하나이고 매도·매수가 그 하나를 공유하지만, **무엇을 그 안에 넣을지는
+   *  칸마다 고를 수 있어야** 한다 — 매도 셋만 보거나, 양방향의 체결된 벽만 겹쳐 보는
+   *  것이 실제 읽기 방식이다.
+   *
+   *  캔들 오버레이의 계열 선 토글(`{side}Peak{Family}LineEnabled`)과는 **독립**이다.
+   *  두 표면이 답하는 질문이 다르기 때문이다 — 캔들은 「그날 어디에 벽이 있었나」,
+   *  pane 은 「그 벽이 언제 얼마나 자랐나」. */
+  askPeakTradedPaneEnabled: boolean;
+  /** 강도 pane 에 「매도 · 미도달 벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
+  askPeakUnreachedPaneEnabled: boolean;
+  /** 강도 pane 에 「매도 · 전체 최대벽」 계단을. opt-in(기본 false). */
+  askPeakAllWallPaneEnabled: boolean;
+  /** 매수판 — 매도와 같은 규약(체결만 기본 true). */
+  bidPeakTradedPaneEnabled: boolean;
+  bidPeakUnreachedPaneEnabled: boolean;
+  bidPeakAllWallPaneEnabled: boolean;
   /** 당일 매도 최대벽 토글. opt-in(기본 false). */
   askPeakEnabled: boolean;
   /** 매도 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
@@ -471,11 +479,29 @@ export function mergeLiveIndicatorPrefs(
   // 최대벽 강도 pane — opt-in (default false). 오버레이(askPeak/bidPeak)와 별개 토글:
   // pane 은 오버레이의 표현이지만 화면 부동산을 차지하므로 켜는 결정은 따로 받는다.
   const pwPaneEnabled = obj?.peakWallPaneEnabled === true;
-  // pane 계열 셋 — 체결된 벽만 기본 true 라, 공장 상태에서 pane 을 켜면 종전과 같은
-  // 화면이 나온다(종전 규칙은 "캔들 선 토글을 따라간다" 였고 그 공장값이 T/F/F 였다).
-  const pwPaneTraded = obj?.peakWallPaneTradedEnabled !== false;
-  const pwPaneUnreached = obj?.peakWallPaneUnreachedEnabled === true;
-  const pwPaneAllWall = obj?.peakWallPaneAllWallEnabled === true;
+  // pane 슬롯 6칸 — 체결된 벽만 기본 true 라, 공장 상태에서 pane 을 켜면 종전과 같은
+  // 화면이 나온다(종전 규칙은 "캔들 선 토글을 따라간다" 였고 그 공장값이 양 방향 T/F/F).
+  //
+  // ⚠ **레거시 시드**: 같은 날(2026-08-26) 잠깐 살았던 **방향 공용 3키**를 값이 있을
+  // 때만 양 방향의 씨앗으로 쓴다. 반나절짜리 키라 마이그레이션이 과해 보이지만, 그새
+  // 만진 사용자의 선택을 조용히 되돌리는 것이 더 나쁘다. 새 키가 하나라도 저장돼
+  // 있으면 그쪽이 이긴다(구키는 그때 이미 안 쓰이고 있었다는 뜻).
+  const legacyPaneFamily = (key: 'peakWallPaneTradedEnabled' | 'peakWallPaneUnreachedEnabled' | 'peakWallPaneAllWallEnabled') =>
+    (typeof obj?.[key] === 'boolean' ? obj[key] as boolean : undefined);
+  const paneSlot = (
+    fresh: unknown,
+    legacy: boolean | undefined,
+    fallback: boolean,
+  ): boolean => (typeof fresh === 'boolean' ? fresh : legacy ?? fallback);
+  const legacyTraded = legacyPaneFamily('peakWallPaneTradedEnabled');
+  const legacyUnreached = legacyPaneFamily('peakWallPaneUnreachedEnabled');
+  const legacyAllWall = legacyPaneFamily('peakWallPaneAllWallEnabled');
+  const apTradedPane = paneSlot(obj?.askPeakTradedPaneEnabled, legacyTraded, true);
+  const apUnreachedPane = paneSlot(obj?.askPeakUnreachedPaneEnabled, legacyUnreached, false);
+  const apAllWallPane = paneSlot(obj?.askPeakAllWallPaneEnabled, legacyAllWall, false);
+  const bpTradedPane = paneSlot(obj?.bidPeakTradedPaneEnabled, legacyTraded, true);
+  const bpUnreachedPane = paneSlot(obj?.bidPeakUnreachedPaneEnabled, legacyUnreached, false);
+  const bpAllWallPane = paneSlot(obj?.bidPeakAllWallPaneEnabled, legacyAllWall, false);
   const apEnabled = obj?.askPeakEnabled === true;
   const apHidden = obj?.askPeakHidden === true;
   const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
@@ -609,9 +635,12 @@ export function mergeLiveIndicatorPrefs(
     volumeEnabled: vol,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,
-    peakWallPaneTradedEnabled: pwPaneTraded,
-    peakWallPaneUnreachedEnabled: pwPaneUnreached,
-    peakWallPaneAllWallEnabled: pwPaneAllWall,
+    askPeakTradedPaneEnabled: apTradedPane,
+    askPeakUnreachedPaneEnabled: apUnreachedPane,
+    askPeakAllWallPaneEnabled: apAllWallPane,
+    bidPeakTradedPaneEnabled: bpTradedPane,
+    bidPeakUnreachedPaneEnabled: bpUnreachedPane,
+    bidPeakAllWallPaneEnabled: bpAllWallPane,
     askPeakEnabled: apEnabled,
     askPeakHidden: apHidden,
     askPeakColor: apColor,

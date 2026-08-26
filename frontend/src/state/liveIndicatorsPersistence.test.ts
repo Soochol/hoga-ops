@@ -17,11 +17,14 @@ describe('mergeLiveIndicatorPrefs', () => {
       volumeEnabled: true,
       movingAverageHidden: false,
       peakWallPaneEnabled: false,
-      // pane 계열 셋 — 체결된 벽만 true 라, pane 을 켜면 공장 상태에서 종전과
-      // 같은 화면이 나온다(종전 규칙 "캔들 선 토글을 따라간다" 의 공장값이 T/F/F).
-      peakWallPaneTradedEnabled: true,
-      peakWallPaneUnreachedEnabled: false,
-      peakWallPaneAllWallEnabled: false,
+      // pane 슬롯 6칸 — 체결된 벽만 true 라, pane 을 켜면 공장 상태에서 종전과
+      // 같은 화면이 나온다(종전 규칙 "캔들 선 토글을 따라간다" 의 공장값이 양 방향 T/F/F).
+      askPeakTradedPaneEnabled: true,
+      askPeakUnreachedPaneEnabled: false,
+      askPeakAllWallPaneEnabled: false,
+      bidPeakTradedPaneEnabled: true,
+      bidPeakUnreachedPaneEnabled: false,
+      bidPeakAllWallPaneEnabled: false,
       askPeakEnabled: false,
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
