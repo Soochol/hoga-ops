@@ -2361,39 +2361,26 @@ export function LiveChartRoot({
         ? virtualTime
         : (typeof pointX === 'number' ? chart.timeScale().coordinateToTime(pointX) : null);
       const lastMs = lastCandleMsRef.current;
-      // No usable time while still inside the chart surface means the pointer
-      // is over a blank band. Two kinds, distinguished by X:
-      //  - Right-offset whitespace (X right of the last candle): lwc reports no
-      //    time past the last bar (param.time undefined, coordinateToTime null),
-      //    so this branch — not the numeric one below — is the live path there.
-      //    It is temporally "now/future" → drop spot mode, return the sidebar to
-      //    latest (WS), same clear path as mouse-leave.
-      //  - Internal blank band (X on/left of the last candle): keep the sidebar
-      //    pinned to the latest concrete candle.
+      // 차트 면 **안**인데 쓸 수 있는 시각이 없다 = 포인터가 빈 띠 위다.
+      // **좌우를 가리지 않고 커서를 비운다** — 가리키고 있는 봉이 없기 때문이다.
+      //
+      // 종전에는 X 로 둘을 갈랐다: 마지막 캔들 **오른쪽**이면 비우고, **왼쪽**(과거
+      // 구간의 빈 띠)이면 사이드바를 마지막 캔들에 고정했다. 그 고정이 사이드바만
+      // 건드린 것이 아니라는 것이 2026-08-26 사용자 보고의 정체다 —
+      // `publishCursorMs` 는 세 채널(커서 상태·사이드바·**크로스헤어 동기화**)을
+      // 함께 태우므로, 빈 띠 호버가 `setSyncCursor(마지막 캔들)` 까지 발행했다.
+      // 그 값을 옆 창의 `CursorSyncCrosshair` 가 소비해 **그 창들의 크로스헤어가
+      // 마지막 캔들로 점프**했다(자기 창은 origin 게이트로 배제되므로 남의 창에서만
+      // 보인다 — 창을 하나만 띄우면 재현되지 않는 이유).
+      //
+      // 사용자 결정(2026-08-26)으로 사이드바 고정도 함께 뺐다: 오른쪽 빈 공간과
+      // 같은 규칙으로 통일한다. 그래서 좌우 판별(`timeToCoordinate` 비교)이 통째로
+      // 불필요해졌고, 세 갈래가 이 하나로 합쳐졌다.
+      //
+      // ⚠ 포인터가 차트 **밖**으로 나간 경우는 여기 오지 않는다 — 그쪽은 `point`
+      // 자체가 없어 구독 핸들러가 `clearCursorForLeave` 지연 경로로 보낸다.
       if (typeof t !== 'number' || axis.segments.length === 0) {
-        if (
-          lastMs !== null
-          && typeof pointX === 'number'
-          && axis.segments.length > 0
-        ) {
-          const lastCoord = chart.timeScale().timeToCoordinate(
-            realMsToVirtualSeconds(axis, lastMs) as Time,
-          );
-          if (lastCoord !== null && pointX > lastCoord) {
-            publishBasisHover(null);
-            publishCursorActive(false);
-            store.clearCursor();
-            clearSidebarCursor();
-            publishedCursorMsRef.current = null;
-            return;
-          }
-        }
-        if (lastMs !== null) {
-          publishBasisHover(kstDateFromMs(lastMs));
-          publishCursorActive(true);
-          publishCursorMs(lastMs);
-          return;
-        }
+        publishBasisHover(null);
         publishCursorActive(false);
         store.clearCursor();
         clearSidebarCursor();
