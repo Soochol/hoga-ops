@@ -15,6 +15,18 @@ describe('MovingAverageConfig', () => {
     expect(screen.getAllByRole('spinbutton')).toHaveLength(DEFAULT_LIVE_MAS.length);
   });
 
+  // 열 헤더는 슬롯이 있을 때만 뜬다 — 빈 표의 머리만 남으면 설명이 아니라 잔해다.
+  it('슬롯이 있으면 열 헤더를 그리고, 0개가 되면 헤더도 사라진다', () => {
+    const { rerender } = render(<MovingAverageConfig />);
+    expect(screen.getByText('기준가')).toBeTruthy();
+
+    for (const id of useLivePageStore.getState().movingAverages.map((m) => m.id)) {
+      useLivePageStore.getState().removeMovingAverage(id);
+    }
+    rerender(<MovingAverageConfig />);
+    expect(screen.queryByText('기준가')).toBeNull();
+  });
+
   it('"기간 추가" button appends a slot', () => {
     render(<MovingAverageConfig />);
     const addBtn = screen.getByRole('button', { name: /기간 추가/ });
