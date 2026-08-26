@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
@@ -22,6 +22,7 @@ import {
 } from './indicatorPaneProfiles';
 import { dotColorsFor } from './indicatorDotColors';
 import IndicatorPreviewCard from './IndicatorPreviewCard';
+import IndicatorPanelMenu from './IndicatorPanelMenu';
 import ToggleRow from '../settings/ToggleRow';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
@@ -182,7 +183,7 @@ function IndicatorNavRow({
   return (
     <ListRow
       data-kbd-index={kbdIndex}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+      className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
         selected ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
       } ${added ? 'font-medium text-fg' : 'text-fg-dim hover:text-fg'} ${
         kbdFocused ? 'outline outline-2 -outline-offset-2 outline-accent' : ''
@@ -216,7 +217,9 @@ function IndicatorNavRow({
         aria-label={action.label}
         title={action.label}
         onClick={action.onClick}
-        className="ml-3 cursor-pointer p-1.5 text-fg-dim transition-colors hover:text-fg"
+        // 고정 크기 정사각 — 행 높이를 이 버튼의 패딩이 정하게 두면 목록이 조용히
+        // 길어진다(실측 45px/행 → 목록 827px). 밀도는 이 패널의 성격이다.
+        className="ml-2 flex size-[22px] shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
       >
         {action.kind === 'add' ? '＋' : '✕'}
       </button>
@@ -296,16 +299,27 @@ export default function IndicatorPanel({
   // -1 = 커서 없음(마우스만 썼다). 검색어를 치면 첫 결과로 내려앉는다.
   const [kbdIndex, setKbdIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement>(null);
-  // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
-  const [confirmingReset, setConfirmingReset] = useState(false);
+  // 헤더 ⋯ 메뉴. **열림 상태를 패널이 쥔다** — Escape 를 가로채려면 지금 메뉴가
+  // 떠 있는지를 알아야 하기 때문이다(아래 `handleEscape`).
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // "현재 봉 초기화"(PR-C #699): 지표 버킷과 indicator-modal chartPrefs 버킷을
-  // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 드로어 밖이라 건드리지 않는다.
+  // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 패널 밖이라 건드리지 않는다.
   const handleReset = () => {
     resetIndicators();
     resetChartPrefsBucket();
-    setConfirmingReset(false);
   };
+
+  /** Escape 사다리의 두 번째 칸 — 메뉴가 떠 있으면 **메뉴만** 닫는다.
+   *
+   *  `ModalShell` 의 Escape 리스너는 `document`, 팝오버의 것은 `window` 라 document
+   *  쪽이 먼저 발화한다. 즉 메뉴를 열어 둔 채 Escape 를 누르면 패널이 통째로 닫히고
+   *  메뉴는 그 뒤에 사라진다 — 사용자가 취소하려던 것은 메뉴 하나였는데.
+   *  (첫 칸은 검색어 지우기이고, 그건 입력이 전파를 끊어서 여기까지 오지 않는다.) */
+  const handleEscape = useCallback(() => {
+    if (menuOpen) { setMenuOpen(false); return; }
+    onClose();
+  }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
@@ -445,7 +459,7 @@ export default function IndicatorPanel({
       ariaLabel="지표"
       width={WORKSPACE_PANEL_WIDTH_CLASS}
       height={WORKSPACE_PANEL_HEIGHT_CLASS}
-      onClose={onClose}
+      onClose={handleEscape}
     >
       <div
         data-testid="indicator-panel-shell"
@@ -522,40 +536,6 @@ export default function IndicatorPanel({
           })}
           </div>
         </nav>
-        {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
-            인라인 2단계 확인. */}
-        <div className="border-t border-border p-2">
-          {confirmingReset ? (
-            <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-xs text-fg-dim">{currentTimeframeLabel} 초기화?</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setConfirmingReset(false)}
-                  className="rounded px-2 py-1 text-xs text-fg-dim hover:text-fg"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="rounded px-2 py-1 text-xs font-medium"
-                  style={{ background: 'var(--error)', color: 'var(--fg)' }}
-                >
-                  초기화
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingReset(true)}
-              className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
-            >
-              현재 봉 초기화
-            </button>
-          )}
-        </div>
       </div>
         <div className="flex min-h-0 flex-col">
           {/* 헤더는 그룹명이 아니라 '지금 편집 중인 지표'를 보여준다(그룹은 eyebrow).
@@ -586,6 +566,13 @@ export default function IndicatorPanel({
               {/* 종전에 여기 있던 표시/숨김 스위치는 사라졌다 — 가시성은 레전드 눈이
                   전담하고 이 패널은 존재(추가·삭제)만 다룬다. 한 지표를 두 표면이 서로
                   다른 말로 조작하던 상태를 끝낸 것이 이 PR 의 요점이다. */}
+              <IndicatorPanelMenu
+                open={menuOpen}
+                onOpenChange={setMenuOpen}
+                resetLabel={`${currentTimeframeLabel} 지표 초기화`}
+                confirmLabel={`${currentTimeframeLabel} 초기화?`}
+                onReset={handleReset}
+              />
               <button
                 type="button"
                 aria-label="닫기"

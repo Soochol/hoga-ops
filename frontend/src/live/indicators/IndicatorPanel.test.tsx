@@ -50,6 +50,13 @@ function previewDetail(name: string): void {
   fireEvent.click(screen.getByRole('button', { name }));
 }
 
+/** ⋯ 메뉴를 열고 초기화 항목까지 눌러 확인 행을 띄운다(아직 리셋 안 됨).
+ *  종전엔 nav 하단 상시 푸터 버튼이라 이름으로 바로 눌렀다. */
+function armReset(): void {
+  fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+  fireEvent.click(screen.getByTestId('indicator-panel-menu-reset'));
+}
+
 describe('IndicatorPanel', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -757,19 +764,19 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false);
     renderPanel();
 
-    // 1단계: '현재 봉 초기화' → 확인 행 노출(아직 리셋 안 됨).
-    openDetail('현재 봉 초기화');
+    // 1단계: ⋯ → '분봉 지표 초기화' → 확인 행 노출(아직 리셋 안 됨).
+    armReset();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     expect(screen.getByText('분봉 초기화?')).toBeTruthy();
 
     // 취소는 되돌리지 않는다.
-    openDetail('취소');
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.queryByText('분봉 초기화?')).toBeNull();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
 
     // 2단계: 다시 열고 '초기화' → 실제 리셋.
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     // 리셋은 공장값 복귀 — 현재봉 MA 공장 슬롯은 전부 켜져 있다.
@@ -785,8 +792,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
     useLivePageStore.getState().setAskPeakEnabled(true); // minute 버킷
     renderPanel({ timeframe: '1m' });
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
     expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
   });
@@ -796,11 +803,45 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ paneOrder: customOrder });
     useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
     renderPanel();
-    openDetail('현재 봉 초기화');
-    openDetail('초기화');
+    armReset();
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     // 색은 기본값으로, paneOrder는 그대로.
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     expect(useLivePageStore.getState().paneOrder).toEqual(['candle', 'ratio', 'volume']);
+  });
+
+  // 초기화가 nav 상시 푸터에서 헤더 ⋯ 로 물러났다 — 가장 위험하고 가장 드물게 쓰는
+  // 것이 매일 쓰는 목록의 자리를 차지하고 있었다.
+  it('초기화는 ⋯ 메뉴 안에 있고, 목록에는 상시 노출되지 않는다', () => {
+    renderPanel();
+    expect(screen.queryByTestId('indicator-panel-menu-reset')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+    expect(screen.getByTestId('indicator-panel-menu-reset').textContent).toContain('분봉 지표 초기화');
+  });
+
+  // ⋯ 트리거의 이름이 '닫기' 가 아니어야 한다 — 헤더 ✕ 와 겹치면 "닫기 버튼 하나"
+  // 를 재는 아래 단언이 둘을 잡는다.
+  it('⋯ 는 닫기 버튼 수를 늘리지 않는다', () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+    expect(screen.getAllByRole('button', { name: '닫기' })).toHaveLength(1);
+  });
+
+  // Escape 사다리의 두 번째 칸. ModalShell 의 Escape 리스너는 document 에 있고
+  // 팝오버의 것은 window 라 document 가 먼저 발화한다 — 가로채지 않으면 메뉴를
+  // 취소하려던 Escape 가 패널을 통째로 닫는다.
+  it('메뉴가 열려 있으면 Escape 는 메뉴만 닫는다', () => {
+    const onClose = vi.fn();
+    renderPanel({ onClose });
+    fireEvent.click(screen.getByRole('button', { name: '패널 메뉴' }));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('indicator-panel-menu-reset')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('Escape calls onClose', () => {

@@ -25,8 +25,15 @@ type Props = {
  *  하나만 편집할 때 그렇고, 그 팝오버의 폭 상수도 이 트랙의 최소폭에서 나왔다).
  *  합치는 순간 그 소비처가 트랙 없는 행을 그린다.
  *
- *  대신 **헤더가 같은 문자열을 import** 해서 열을 맞춘다 — 복사하면 갈린다. */
-export const MA_ROW_GRID = 'grid grid-cols-[56px_auto_1fr_72px_24px] items-center gap-2';
+ *  대신 **헤더가 같은 문자열을 import** 해서 열을 맞춘다 — 복사하면 갈린다.
+ *
+ *  ⚠ **스와치 열이 `auto` 면 안 된다.** 헤더와 행은 서로 다른 grid 이고, `auto` 는
+ *  각자의 콘텐츠로 풀린다 — 헤더는 「색 · 선」 글자 폭(≈22px), 행은 `MAStylePicker`
+ *  트리거 폭(59px)이 되어 **열이 37px 어긋났다**(2026-08-26 실측). 트리거는 내부가
+ *  전부 고정 px(dot 10 + 선 26 + caret + padding)라 폭이 결정적이므로 고정 트랙으로
+ *  못 박는다. 트리거가 커지면 셀 밖으로 삐져나와 **눈에 띈다** — 조용히 어긋나는
+ *  것보다 낫다. */
+export const MA_ROW_GRID = 'grid grid-cols-[56px_60px_1fr_72px_24px] items-center gap-2';
 
 export default function MovingAverageRow({
   index, config, canRemove, onChange, onRemove, periodLabel,
