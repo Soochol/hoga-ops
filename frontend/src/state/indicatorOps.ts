@@ -383,8 +383,6 @@ export const INDICATOR_OPS = {
       : clamp(patch.maxOpacity, 0.2, 1),
   }),
 
-  setWallSurgeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ wallSurgeEnabled: enabled }),
 
   setVolumeDistributionEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeDistributionEnabled: enabled }),

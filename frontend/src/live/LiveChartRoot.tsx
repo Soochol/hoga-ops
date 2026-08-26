@@ -115,13 +115,7 @@ import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry'
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
-import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
 
-/** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
- *  memo 를 매번 깨뜨린다. */
-// 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
-// (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
-const EMPTY_WALL_SURGE: readonly never[] = [];
 import {
 } from './useDayAskPeaks';
 import {
@@ -2713,14 +2707,6 @@ export function LiveChartRoot({
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
           {isMinuteTimeframe(timeframe) && (
             <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} axis={axis} />
-          )}
-          {isMinuteTimeframe(timeframe) && (
-            <LiveWallSurgeMarkers
-              paneSeries={paneSeries}
-              events={cb.wall_surge ?? EMPTY_WALL_SURGE}
-              candles={cb.candles}
-              axis={axis}
-            />
           )}
           {isMinuteTimeframe(timeframe) && (
             <LivePeakWallSegments

@@ -76,10 +76,10 @@ describe('dotColorsFor', () => {
 
   // 카테고리가 늘어날 때 이 표를 같이 보게 하는 총계 가드. 색이 있는 쪽/없는 쪽
   // 어느 편에 넣을지는 판단이지만, **판단했다는 사실**은 여기서 강제된다.
-  it('15종 전부가 색 축에서 한쪽에 속한다', () => {
+  it('14종 전부가 색 축에서 한쪽에 속한다', () => {
     const ind = base();
     const withDots = CATEGORIES.filter((c) => dotColorsFor(c.id, ind).length > 0);
     const withoutDots = CATEGORIES.filter((c) => dotColorsFor(c.id, ind).length === 0);
-    expect(withDots.length + withoutDots.length).toBe(15);
+    expect(withDots.length + withoutDots.length).toBe(14);
   });
 });

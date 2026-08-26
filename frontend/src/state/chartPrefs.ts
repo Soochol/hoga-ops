@@ -165,14 +165,6 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'wallSurgeLabelEnabled',
-    label: '급증 마커 잔량 라벨',
-    description:
-      '화면에 보이는 마커 중 증가량 상위 몇 건에 잔량 라벨을 상시 표시합니다. 하루 수십 건이라 전건 라벨은 서로 겹칩니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
     key: 'quoteTotalsTickNormalize',
     label: '호가단위 변화 보정',
     description:
@@ -338,18 +330,6 @@ export const CHART_NUMERIC_PREFS = [
     min: 2,
     max: 10_000,
     enabledBy: 'ratioOutlierFilterEnabled',
-  },
-  {
-    key: 'wallSurgeLabelCount',
-    label: '급증 마커 라벨 개수',
-    description:
-      '증가량 상위 몇 건까지 잔량 라벨을 상시 표시할지. 나머지는 마커만 찍고 호버로 봅니다 — ' +
-      '하루 수십 건이라 전건 라벨은 서로 겹칩니다. 기준은 **화면에 보이는 범위**라, ' +
-      '확대·축소하면 그 안에서 다시 상위 N 건을 고릅니다.',
-    default: 4,
-    min: 0,
-    max: 10,
-    enabledBy: 'wallSurgeLabelEnabled',
   },
   {
     key: 'surgeApproachPct',

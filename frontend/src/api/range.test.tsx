@@ -2367,7 +2367,6 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
       trade_volume_pocs: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
       volume_distributions: ['20260601', '20260602', '20260603'].map((date) => ({ date })),
       depth_heatmap: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
-      wall_surge: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
       broker_late_entries: [0, 1, 2].map((i) => ({ t_ms: at(i) })),
       program_trade: { source: 'kis_program_trade', points: [0, 1, 2].map((i) => ({ t: at(i) })) },
     } as unknown as RangeBundle;
@@ -2388,7 +2387,6 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
     expect(out.trade_volume_pocs).toHaveLength(2);
     expect(out.volume_distributions).toHaveLength(2);
     expect(out.depth_heatmap).toHaveLength(2);
-    expect(out.wall_surge).toHaveLength(2);
     expect(out.broker_late_entries).toHaveLength(2);
     expect(out.program_trade?.points).toHaveLength(2);
   });
