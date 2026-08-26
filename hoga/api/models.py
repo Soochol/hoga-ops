@@ -898,6 +898,13 @@ class DepthHeatmapPoint(BaseModel):
     ``asks_max``/``bids_max``는 분봉 내 총잔량 최대 스냅샷의 분포(캔들 고가
     직관) — 토글로 ``asks``/``bids``와 교체해 렌더한다. 형식은 동일한
     ``[price, qty]`` 10단계.
+
+    ``asks_price_max``/``bids_price_max``는 **가격대마다 따로** 잰 최댓값이다.
+    앞의 두 계열과 달리 **한 순간의 호가창이 아니다** — 가격마다 자기 최고점이
+    서로 다른 순간에서 오므로, 이 배열을 세로로 읽으면 실제로 동시에 존재한 적
+    없는 호가창이 된다. 그 대가로 각 셀은 「당일 최대벽」이 재는 값과 정확히
+    같아진다(그 지표도 가격당 최댓값이다). 정렬 규약은 동일하고 **길이는 10 고정이
+    아니다**(그 버킷에 등장한 distinct 가격 수).
     """
 
     t_ms: int
@@ -905,6 +912,8 @@ class DepthHeatmapPoint(BaseModel):
     bids: list[list[int]] = Field(default_factory=list)
     asks_max: list[list[int]] = Field(default_factory=list)
     bids_max: list[list[int]] = Field(default_factory=list)
+    asks_price_max: list[list[int]] = Field(default_factory=list)
+    bids_price_max: list[list[int]] = Field(default_factory=list)
 
 
 class VolumeDistributionBin(BaseModel):

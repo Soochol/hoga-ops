@@ -178,10 +178,44 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   };
 }
 
+/** 버킷당 가격→최대잔량 누적기. CLOSE·MAX 와 달리 **스냅샷을 고르는 것이 아니라
+ *  가격마다 따로 접는다** — 그래서 결과 한 벌은 어느 한 순간의 호가창이 아니다.
+ *  엔트리 수는 그 버킷에 등장한 distinct 가격 수(실측 평균 10.6, 최대 30). */
+type PriceMaxAcc = { asks: Map<number, number>; bids: Map<number, number> };
+
+function newPriceMaxAcc(): PriceMaxAcc {
+  return { asks: new Map(), bids: new Map() };
+}
+
+/** 한 스냅샷의 10호가를 가격별 최댓값에 접는다. qty 0 은 담지 않는다 — 가격대별
+ *  최댓값에서 0 은 "후보가 없었다" 는 뜻이라 셀을 만들면 거짓이 된다(백엔드 SQL 의
+ *  `qty > 0` 사전 필터와 같은 규약). */
+function foldPriceMax(acc: PriceMaxAcc, s: ObSnapshot): void {
+  for (const lv of s.asks ?? []) {
+    if (lv.qty <= 0) continue;
+    const cur = acc.asks.get(lv.price);
+    if (cur === undefined || lv.qty > cur) acc.asks.set(lv.price, lv.qty);
+  }
+  for (const lv of s.bids ?? []) {
+    if (lv.qty <= 0) continue;
+    const cur = acc.bids.get(lv.price);
+    if (cur === undefined || lv.qty > cur) acc.bids.set(lv.price, lv.qty);
+  }
+}
+
+/** 누적 Map → 정렬된 레벨 배열. ask 가격 오름차순 · bid 내림차순 — 백엔드
+ *  `DepthHeatmapPoint` 가 프론트에 약속한 순서와 **같은 규약**이다. */
+function priceMaxLevels(m: ReadonlyMap<number, number>, side: 'ask' | 'bid'): OrderbookLevel[] {
+  const out = [...m].map(([price, qty]) => ({ price, qty }));
+  out.sort((a, b) => (side === 'ask' ? a.price - b.price : b.price - a.price));
+  return out;
+}
+
 /** One-shot depth-heatmap bucketing — the stateless oracle mirrored by
  * `IncrementalHogaBucketer`'s per-tick ratchet. Per minute bucket it keeps two
  * 10-level books: CLOSE (the last continuous-book tick) and MAX (the tick whose
- * total bid+ask qty peaked). Gated identically to the quote ratchet: only ticks
+ * total bid+ask qty peaked), plus PRICE-MAX (per-price maxima across the bucket's
+ * ticks — not a single snapshot). Gated identically to the quote ratchet: only ticks
  * at/before the structural closing-auction boundary (`s.t_ms <= lastContinuousMs`)
  * count, and only ticks carrying `asks`/`bids` (totals-only ticks are skipped so
  * the minute-chart totals path never fabricates an empty book). Strict `>` on the
@@ -201,7 +235,11 @@ export function bucketDepthHeatmap(
 
   const byBucket = new Map<
     number,
-    { close: { asks: OrderbookLevel[]; bids: OrderbookLevel[] }; max: { asks: OrderbookLevel[]; bids: OrderbookLevel[]; total: number } }
+    {
+      close: { asks: OrderbookLevel[]; bids: OrderbookLevel[] };
+      max: { asks: OrderbookLevel[]; bids: OrderbookLevel[]; total: number };
+      priceMax: PriceMaxAcc;
+    }
   >();
   const order: number[] = [];
   for (const s of obSorted) {
@@ -218,11 +256,21 @@ export function bucketDepthHeatmap(
     const close = { asks: s.asks, bids: s.bids };
     const max =
       !prev || curTotal > prev.max.total ? { asks: s.asks, bids: s.bids, total: curTotal } : prev.max;
-    byBucket.set(t, { close, max });
+    const priceMax = prev?.priceMax ?? newPriceMaxAcc();
+    foldPriceMax(priceMax, s);
+    byBucket.set(t, { close, max, priceMax });
   }
   return order.map((t) => {
     const d = byBucket.get(t)!;
-    return { tMs: t, asks: d.close.asks, bids: d.close.bids, asksMax: d.max.asks, bidsMax: d.max.bids };
+    return {
+      tMs: t,
+      asks: d.close.asks,
+      bids: d.close.bids,
+      asksMax: d.max.asks,
+      bidsMax: d.max.bids,
+      asksPriceMax: priceMaxLevels(d.priceMax.asks, 'ask'),
+      bidsPriceMax: priceMaxLevels(d.priceMax.bids, 'bid'),
+    };
   });
 }
 
@@ -270,7 +318,10 @@ class IncrementalHogaBucketer {
   // 하류 depthPointToWire / depthHeatmapFromWire 의 WeakMap 캐시가 이 불변식에
   // 의존한다(내용 변경 = 객체 교체 → 미변경 버킷은 캐시 히트). ⚠️ point 내부
   // 배열을 in-place mutate 하면 이 불변식이 깨진다 — 항상 새 point 로 교체할 것.
-  private depthByBucket = new Map<number, { point: DepthHeatmapPoint; maxTotal: number }>();
+  private depthByBucket = new Map<
+    number,
+    { point: DepthHeatmapPoint; maxTotal: number; priceMax: PriceMaxAcc }
+  >();
   private depthOrder: number[] = [];
 
   update(
@@ -549,7 +600,8 @@ class IncrementalHogaBucketer {
         // carry the 10-level book contribute; totals-only ticks (asks/bids absent)
         // update quote totals but never fabricate a depth book. CLOSE = latest
         // tick; MAX = the tick whose total bid+ask qty peaked (strict `>` keeps the
-        // earliest at a tie, same single-snapshot argmax as imb_max).
+        // earliest at a tie, same single-snapshot argmax as imb_max); PRICE-MAX =
+        // per-price maxima folded across the bucket's ticks.
         if (s.asks && s.bids && this.depthHeatmapEnabled) {
           const curTotal = s.total_bid_qty + s.total_ask_qty;
           const prevD = this.depthByBucket.get(t);
@@ -557,14 +609,21 @@ class IncrementalHogaBucketer {
           // CLOSE = 최신 틱(활성 버킷은 매 틱 새 point 로 정당히 교체). MAX = 총잔량
           // 피크 틱 — strict `>` 로 동률 시 앞선 것 유지(imb_max 와 동일 argmax).
           const keepMax = prevD !== undefined && curTotal <= prevD.maxTotal;
+          // 누적 Map 은 **버킷 객체에 남긴다**(point 밖) — 매 틱 재구축하면 그 버킷의
+          // 이전 틱 최댓값이 사라져 CLOSE 와 같아진다. 정렬 배열만 point 로 나간다.
+          const priceMax = prevD?.priceMax ?? newPriceMaxAcc();
+          foldPriceMax(priceMax, s);
           this.depthByBucket.set(t, {
             maxTotal: keepMax ? prevD.maxTotal : curTotal,
+            priceMax,
             point: {
               tMs: t,
               asks: s.asks,
               bids: s.bids,
               asksMax: keepMax ? prevD.point.asksMax : s.asks,
               bidsMax: keepMax ? prevD.point.bidsMax : s.bids,
+              asksPriceMax: priceMaxLevels(priceMax.asks, 'ask'),
+              bidsPriceMax: priceMaxLevels(priceMax.bids, 'bid'),
             },
           });
         }

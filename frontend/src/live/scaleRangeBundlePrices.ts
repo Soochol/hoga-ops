@@ -167,6 +167,14 @@ function scaleHeatmapPoint(
     bids: scaleLevels(point.bids, factor),
     asks_max: point.asks_max ? scaleLevels(point.asks_max, factor) : point.asks_max,
     bids_max: point.bids_max ? scaleLevels(point.bids_max, factor) : point.bids_max,
+    // 새 계열도 **가격**이라 같이 환산해야 한다 — 빠뜨리면 액면분할 종목에서 이 모드만
+    // 원가격으로 남아 캔들과 어긋난다(다른 두 계열은 멀쩡해서 더 늦게 발견된다).
+    asks_price_max: point.asks_price_max
+      ? scaleLevels(point.asks_price_max, factor)
+      : point.asks_price_max,
+    bids_price_max: point.bids_price_max
+      ? scaleLevels(point.bids_price_max, factor)
+      : point.bids_price_max,
   };
 }
 

@@ -63,6 +63,10 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     # `price` 로 grep 해도 안 걸리는 자리라 여기 명시적으로 적는다.
     "DepthHeatmapPoint.asks", "DepthHeatmapPoint.bids",
     "DepthHeatmapPoint.asks_max", "DepthHeatmapPoint.bids_max",
+    # 가격대마다 따로 잰 최댓값 — 같은 [price, qty] 모양이라 **같이 환산해야 한다**.
+    # 빠뜨리면 이 모드만 원가격으로 남아 캔들과 어긋나는데, 다른 두 계열이 멀쩡해서
+    # 훨씬 늦게 발견된다(그래서 이 가드가 새 필드를 분류하라고 막아섰다).
+    "DepthHeatmapPoint.asks_price_max", "DepthHeatmapPoint.bids_price_max",
     # 커서 스팟 10호가 — 히트맵과 **같은 순간 같은 레벨**을 다른 창에 숫자로 띄우므로
     # 척도가 갈리면 사용자가 두 숫자를 동시에 본다.
     "ApiOrderbookLevel.price",
