@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 /**
  * 아직 추가하지 않은 지표의 상세 — **설정 폼이 아니라 미리보기**다.
  *
@@ -15,18 +17,24 @@
  * 지표마다 손으로 그린 그림 15장이 필요해지고, 그 그림은 설정이 바뀌면 낡는다.)
  */
 export default function IndicatorPreviewCard({
+  glyph,
   placementLabel,
   onAdd,
 }: {
+  /** 목록 행과 **같은 글리프** — 방금 고른 행이 이 화면이라는 연결이 그림으로 선다. */
+  glyph: ReactNode;
   /** '캔들 오버레이' / '하단 패널' — 헤더 eyebrow 와 같은 값. */
   placementLabel: string;
   onAdd: () => void;
 }) {
   return (
     <div data-testid="indicator-preview-card">
-      <p className="rounded-lg bg-bg-subtle px-4 py-3 text-xs text-fg-dim">
-        아직 이 차트에 추가하지 않은 지표입니다. 추가하면 <b className="font-medium text-fg">{placementLabel}</b>
-        에 그려집니다.
+      <p className="flex items-center gap-2.5 rounded-lg bg-bg-subtle px-4 py-3 text-xs text-fg-dim">
+        <span className="flex size-4 shrink-0 items-center justify-center text-fg-dim">{glyph}</span>
+        <span>
+          아직 이 차트에 추가하지 않은 지표입니다. 추가하면{' '}
+          <b className="font-medium text-fg">{placementLabel}</b>에 그려집니다.
+        </span>
       </p>
       <div className="mt-4 flex items-center gap-3">
         {/* 미리보기 상태의 액센트는 이 버튼 **하나**다 — 여기서 할 수 있는 일이
