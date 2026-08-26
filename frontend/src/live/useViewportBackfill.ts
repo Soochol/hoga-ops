@@ -500,6 +500,7 @@ export function useViewportBackfill({
           ),
           savedRightPaddingBars: snap.rightPaddingBars,
         });
+        const spBefore = ts.scrollPosition();
         ts.setVisibleLogicalRange(target);
         // **내구화** — range set 만으로는 lwc 내부 scrollPosition(마지막 봉 기준
         // 오른쪽 오프셋)이 갱신되지 않아, 다음 setData 재앵커가 직전 오프셋으로
@@ -509,6 +510,27 @@ export function useViewportBackfill({
         // 같은 근거다). scrollToPosition 이 그 내부 상태를 바꾸는 유일한 경로다 —
         // 단위는 (오른쪽 끝 논리 인덱스 − 마지막 봉 인덱스).
         ts.scrollToPosition(target.to - latestIdx, false);
+        // **관측** — 이 표면은 여섯 번 다시 고쳐졌고(#1576~#1581 · #1583), 매번
+        // "발화했는데 되돌려졌나 / 애초에 발화를 안 했나" 를 브라우저에서 가르지
+        // 못한 것이 재작업의 원인이었다. `spBefore`→`spAfter` 가 그 둘을 가른다:
+        // 값이 안 바뀌었으면 set 이 안 먹은 것이고, 바뀐 뒤 나중에 되돌아왔으면
+        // 후속 setData 재앵커다(#1581 의 실패 서명).
+        //
+        // `anchorOutside` 는 **다른 갈래**를 연다 — 스왑 전 위치가 새 소스의 데이터
+        // 범위 밖이면(디스크→벤더는 250일 벽이 있어 흔하다) 재착석의 목표 자체가
+        // 없다. 그건 "원위치 보존" 이 아니라 "그 깊이까지 창을 확장" 이 옳은 동작이라
+        // 2a 의 능력 밖이고, 이 플래그가 그 판정을 공짜로 만든다.
+        livePerfLog('viewport_reseat', {
+          code,
+          timeframe,
+          kind: 'source_swap',
+          from: Math.round(target.from),
+          to: Math.round(target.to),
+          spBefore: Math.round(spBefore),
+          spAfter: Math.round(ts.scrollPosition()),
+          anchorOutside: rawAnchor === null || !Number.isFinite(rawAnchor as number),
+          totalBars,
+        });
         return true;
       } catch (e) {
         // 차트가 effect 사이에 사라진 경우. 조용한 no-op 이 "아직 안 고쳐졌다" 로
@@ -548,6 +570,26 @@ export function useViewportBackfill({
     ) {
       swapPendingRef.current = false;
       if (snap && reseatAfterSourceSwap(snap)) return;
+      // 스냅샷이 없거나 재착석이 스스로 포기한 경우. 여기까지 왔다는 것은 래치는
+      // 옳게 섰는데 **실행이 안 됐다**는 뜻이라, 아래 반려 로그와 사유가 다르다.
+      livePerfLog('viewport_reseat_skip', {
+        code, timeframe, kind: 'source_swap', reason: snap ? 'reseat_returned_false' : 'no_snapshot',
+      });
+    } else if (swapPendingRef.current && isMinute) {
+      // **반려 사유를 말한다.** 2a 는 게이트 넷을 모두 통과해야 발화하는데, 종전에는
+      // 어디서 떨어졌는지 알 길이 없어 "안 고쳐졌다" 와 "발화 조건이 아니었다" 가
+      // 구별되지 않았다 — #1597 에서 배운 규율(반려 경로가 로그 이전이면 완전 침묵)을
+      // 이 표면에 적용한다. 래치가 선 커밋에서만 찍으므로 상시 소음이 아니다.
+      livePerfLog('viewport_reseat_skip', {
+        code,
+        timeframe,
+        kind: 'source_swap',
+        reason: prevIdentity === null
+          ? 'no_prev_identity'
+          : identity === prevIdentity
+            ? 'identity_unchanged'
+            : 'initial_view_pending',
+      });
     }
 
     if (prevEarliest === null || newEarliest === null) return;
@@ -682,6 +724,7 @@ export function useViewportBackfill({
       ) {
         return;
       }
+      const spBefore = ts.scrollPosition();
       ts.setVisibleLogicalRange(target);
       // **내구화** — range set 은 lwc 내부 scrollPosition(마지막 봉 기준 오른쪽
       // 오프셋)을 갱신하지 않아, 다음 setData 재앵커가 직전 오프셋으로 화면을
@@ -694,6 +737,20 @@ export function useViewportBackfill({
       if (typeof lastIdx === 'number' && Number.isFinite(lastIdx)) {
         ts.scrollToPosition(target.to - lastIdx, false);
       }
+      // 어느 행이 이 재투영을 열었는지까지 남긴다 — 판별식 표(2b/2c/2d + 프리펜드)의
+      // 어느 줄이 실제로 작동했는지는 지금까지 추측이었고, 그 추측이 이 표면의
+      // 재작업을 낳았다. `shift` 가 곧 "축이 얼마나 밀렸나" 이므로 값이 이상하면
+      // 그 자체가 진단이다.
+      livePerfLog('viewport_reseat', {
+        code,
+        timeframe,
+        kind: isMidInsert ? 'mid_insert' : isLeftTrim ? 'left_trim' : isUnionRemap ? 'union_remap' : 'prepend',
+        shift: Math.round(shift),
+        from: Math.round(target.from),
+        to: Math.round(target.to),
+        spBefore: Math.round(spBefore),
+        spAfter: Math.round(ts.scrollPosition()),
+      });
     } catch (e) {
       // Reachable in practice only when the chart tears down between effect
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
