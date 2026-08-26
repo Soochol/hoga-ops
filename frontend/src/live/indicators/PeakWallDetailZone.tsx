@@ -4,6 +4,22 @@ import {
   type PeakWallFamilyId,
 } from '../../state/peakWallFamilyPrefs';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
+import { useWindowIndicator } from '../workspace/windowView';
+import { usePeakWallFilterState } from './usePeakWallFilterState';
+
+/** 계열 선 토글의 상태 키 — 리드아웃이 "이 계열이 켜져 있나" 를 물을 때 쓴다. */
+const PEAK_LINE_KEY = {
+  ask: {
+    Traded: 'askPeakTradedLineEnabled',
+    Unreached: 'askPeakUnreachedLineEnabled',
+    AllWall: 'askPeakAllWallLineEnabled',
+  },
+  bid: {
+    Traded: 'bidPeakTradedLineEnabled',
+    Unreached: 'bidPeakUnreachedLineEnabled',
+    AllWall: 'bidPeakAllWallLineEnabled',
+  },
+} as const;
 
 /**
  * 매트릭스에서 고른 **한 칸(방향 × 계열)**의 세부 — 표면 다섯과 후보 기준 둘.
@@ -23,6 +39,54 @@ import IndicatorPrefRows from '../settings/IndicatorPrefRows';
  * MA 기간 입력은 `enabledBy` 로 각 필터 토글 **아래에 자동으로 따라붙는다**.
  * 손으로 배치하면 레지스트리와 갈린다.
  */
+/**
+ * 「지금 N개 표시 · M개 필터로 숨김」 — 이 존의 설정이 **실제로 무엇을 하고 있는지**.
+ *
+ * ## 언제 뜨지 않는가 (셋 다 이유가 다르다)
+ *
+ * - **계열이 꺼져 있으면**: 개수가 0인 게 당연하다. 그 0을 보여 주면 "필터가 다
+ *   걸렀다" 와 구별되지 않는다 — 애초에 안 그리기로 한 것이다.
+ * - **엔트리가 없으면**: 차트가 발행하지 않았다는 뜻이다(일·주·월봉은 이 지표가
+ *   적용되지 않는다). 부재가 신호이므로 0으로 대체하지 않는다.
+ * - **눈이 꺼져 있으면**: 문구를 바꾼다. 세그먼트 계산은 눈(hidden)을 보지 않으므로
+ *   (`usePeakWallRender` 의 불변식) "표시" 라고 쓰면 거짓말이 된다 — 세어 둔 것은
+ *   후보이지 화면에 있는 것이 아니다.
+ *
+ * ## 합이 총수가 아니다
+ *
+ * `N + M ≠ 후보 총수` 가 정상이다 — 필터 뒤에 세그먼트 매핑에서 더 빠지는 것이
+ * 있다(`buildPeakWallOverlayResult` 참조). 그래서 총수를 주장하지 않는다.
+ */
+function PeakWallReadout({
+  side, family,
+}: {
+  side: 'ask' | 'bid';
+  family: PeakWallFamilyId;
+}) {
+  const { counts } = usePeakWallFilterState(side, family);
+  const lineEnabled = useWindowIndicator((s) => s[PEAK_LINE_KEY[side][family]]);
+  const hidden = useWindowIndicator((s) => (side === 'ask' ? s.askPeakHidden : s.bidPeakHidden));
+  const sideEnabled = useWindowIndicator((s) => (side === 'ask' ? s.askPeakEnabled : s.bidPeakEnabled));
+
+  if (!sideEnabled || !lineEnabled || counts === undefined) return null;
+
+  const alarming = counts.shown === 0 && counts.hiddenByFilter > 0;
+  const text = hidden
+    ? `수평선 숨김 — 후보 ${counts.shown}개 · ${counts.hiddenByFilter}개 필터로 제외`
+    : `지금 ${counts.shown}개 표시 · ${counts.hiddenByFilter}개 필터로 숨김`;
+
+  return (
+    <span
+      data-testid={`peak-wall-readout-${side}-${family}`}
+      className={`shrink-0 rounded-full px-2 py-0.5 text-2xs tabular-nums ${
+        alarming ? 'bg-tint-warn text-warn' : 'bg-tint-neutral text-fg-dim'
+      }`}
+    >
+      {text}
+    </span>
+  );
+}
+
 export default function PeakWallDetailZone({
   side,
   family,
@@ -38,8 +102,11 @@ export default function PeakWallDetailZone({
       data-testid={`peak-wall-detail-zone-${side}-${family}`}
       className="mt-3 rounded-lg bg-bg-subtle px-3.5 pb-2 pt-2.5"
     >
-      <div className="pb-1 text-sm font-semibold text-fg">
-        {sideLabel} · {familyLabel}
+      <div className="flex items-baseline justify-between gap-3 pb-1">
+        <span className="text-sm font-semibold text-fg">
+          {sideLabel} · {familyLabel}
+        </span>
+        <PeakWallReadout side={side} family={family} />
       </div>
 
       <div className="mt-1 text-2xs font-semibold uppercase text-fg-dim">어디에</div>

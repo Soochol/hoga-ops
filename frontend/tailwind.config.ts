@@ -66,6 +66,8 @@ export default {
         'tint-selection':  'var(--tint-selection)',
         'tint-success':    'var(--tint-success)',
         'tint-error':      'var(--tint-error)',
+        // `--tint-warn` 은 네 테마에 진작 있었는데 매핑만 없어 쓸 수가 없었다.
+        'tint-warn':       'var(--tint-warn)',
         'tint-neutral':    'var(--tint-neutral)',
         'tint-success-border': 'var(--tint-success-border)',
         'tint-error-border':   'var(--tint-error-border)',

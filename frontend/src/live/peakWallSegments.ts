@@ -334,7 +334,23 @@ export type BuildPeakWallOverlaySegmentsArgs = {
   dailyMaFilter: PeakDailyMaFilter | null;
 };
 
-export function buildPeakWallOverlaySegments({
+/** 세그먼트 + **필터 경계에서 잰 두 개수**.
+ *
+ *  `hiddenByFilter` 를 화면에 쓰려면 이 함수 **안에서** 재야 한다. 밖에서
+ *  `candidateCount − segments.length` 로 빼면 틀린다 — `buildPeakWallSegments` 가
+ *  필터 **후에** 그 date 의 `RangeSegment` 가 없는 peak 과 비유한 값을 추가로 버리기
+ *  때문이다. 그 매핑 손실이 "필터로 숨김" 에 섞이면 사용자는 끄지도 않은 필터를
+ *  탓하게 된다. 그래서 `shown + hiddenByFilter ≠ candidateCount` 가 **정상**이고,
+ *  UI 는 그 합이 총수라고 주장하지 않는다. */
+export type PeakWallOverlayResult = {
+  segments: PeakWallSegment[];
+  /** 랭크 슬라이스까지 끝난 후보 수 — 필터가 보기 전의 모집단. */
+  candidateCount: number;
+  /** 두 MA 필터를 통과한 수(세그먼트 매핑 전). */
+  filteredCount: number;
+};
+
+export function buildPeakWallOverlayResult({
   peaks,
   segments,
   candles,
@@ -346,15 +362,16 @@ export function buildPeakWallOverlaySegments({
   stepHistory = false,
   maFilter,
   dailyMaFilter,
-}: BuildPeakWallOverlaySegmentsArgs): PeakWallSegment[] {
+}: BuildPeakWallOverlaySegmentsArgs): PeakWallOverlayResult {
   // rank-then-filter: 그날 최대벽을 먼저 뽑고(expandBaselinePeaks) 그중 MA 조건에 맞는
   // 것만 남긴다. 반대로 걸면(filter-then-rank) 지표의 뜻이 "그날 최대벽"에서 "MA 위 벽 중
   // 최대"로 바뀌어, 최대벽이 조건에 걸리면 2등 벽이 대신 올라온다.
   // 두 필터는 순차 교집합이다. 순서는 결과에 영향이 없다(둘 다 술어) — 분봉 쪽을 먼저 두는
   // 것은 그쪽이 캔들 배열을 만지므로 더 비싼 쪽을 뒤에 남기지 않기 위해서다.
+  const candidates = expandBaselinePeaks(peaks, allPriceRankLimit, intraMax, stepHistory);
   const baselinePeaks = filterPeaksAgainstDailyMa(
     filterPeaksAgainstMa(
-      expandBaselinePeaks(peaks, allPriceRankLimit, intraMax, stepHistory),
+      candidates,
       candles,
       axis,
       intraMax,
@@ -363,14 +380,26 @@ export function buildPeakWallOverlaySegments({
     intraMax,
     dailyMaFilter,
   );
-  return buildPeakWallSegments(
-    baselinePeaks,
-    segments,
-    candles,
-    axis,
-    todayKst,
-    baselineStyle.color,
-    baselineStyle.lineWidth,
-    intraMax,
-  );
+  return {
+    segments: buildPeakWallSegments(
+      baselinePeaks,
+      segments,
+      candles,
+      axis,
+      todayKst,
+      baselineStyle.color,
+      baselineStyle.lineWidth,
+      intraMax,
+    ),
+    candidateCount: candidates.length,
+    filteredCount: baselinePeaks.length,
+  };
+}
+
+/** 세그먼트만 필요한 호출부용 얇은 위임 — 계단 경로처럼 개수가 무의미한 곳이 쓴다
+ *  (`stepHistory: true` 는 랭크 슬라이스를 하지 않아 후보 수가 뜻을 갖지 않는다). */
+export function buildPeakWallOverlaySegments(
+  args: BuildPeakWallOverlaySegmentsArgs,
+): PeakWallSegment[] {
+  return buildPeakWallOverlayResult(args).segments;
 }

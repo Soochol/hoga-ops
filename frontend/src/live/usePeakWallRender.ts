@@ -28,11 +28,13 @@ import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmen
 import { useActivePrefs } from '../state/chartPrefs';
 import { useWindowIndicator } from './workspace/windowView';
 import {
+  buildPeakWallOverlayResult,
   buildPeakWallOverlaySegments,
   toAllWallPeakInputs,
   toPeakRankLimit,
   toUnreachedWallPeakInputs,
   type PeakWallInput,
+  type PeakWallOverlayResult,
 } from './peakWallSegments';
 import { mergePeakWallRankSegments } from './peakWallVisibleRanking';
 import { usePeakMaFilter } from './peakWallMaFilter';
@@ -129,6 +131,16 @@ export type PeakWallRenderState = {
   allWallTimeMarker: boolean;
   unreachedHorizontalLine: boolean;
   unreachedTimeMarker: boolean;
+  /** 계열별 개수 — 설정 패널의 깔때기·리드아웃이 읽는다(`peakWallCountsRegistry`).
+   *
+   *  **flat 원시값으로 내보낸다.** 중첩 객체면 값이 같아도 매 렌더 새 참조가 되고,
+   *  이걸 deps 로 쓰는 발행 effect 가 팬·줌마다 스토어를 다시 쓴다. */
+  tradedShownCount: number;
+  tradedHiddenByFilterCount: number;
+  allWallShownCount: number;
+  allWallHiddenByFilterCount: number;
+  unreachedShownCount: number;
+  unreachedHiddenByFilterCount: number;
 };
 
 type Args = {
@@ -150,6 +162,12 @@ type Args = {
 
 /** 빈 상태는 **공유 상수**여야 memo 결과가 참조로 안정된다(빈 배열 리터럴은 매번 새 참조). */
 const EMPTY_SEGMENTS: readonly PeakWallSegment[] = [];
+/** 게이트가 닫힌 계열의 공유 결과 — 매 렌더 새 객체를 만들면 아래 memo 가 헛돈다. */
+const EMPTY_RESULT: PeakWallOverlayResult = {
+  segments: EMPTY_SEGMENTS as PeakWallSegment[],
+  candidateCount: 0,
+  filteredCount: 0,
+};
 
 export function usePeakWallRender({
   side,
@@ -262,9 +280,9 @@ export function usePeakWallRender({
   const unreachedDailyMaFilter = dailyMaFilters.Unreached;
   const allWallDailyMaFilter = dailyMaFilters.AllWall;
 
-  const built = useMemo(() => (
+  const tradedResult = useMemo(() => (
     applicable && enabled && tradedEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks,
         segments,
         candles,
@@ -276,7 +294,7 @@ export function usePeakWallRender({
         maFilter: tradedMaFilter,
         dailyMaFilter: tradedDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     tradedEnabled,
     allPriceRankLimit,
@@ -293,13 +311,14 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const built = tradedResult.segments;
 
   // 전체 최대벽(터치 무관) 하위 선 — carrier 리맵 후 같은 빌더를 재사용한다.
   // rank-1/일 고정: 과거일 wire 는 all rank-1 스칼라뿐이라(배열은 range 에서 벗겨짐)
   // 표시 개수 노브를 받으면 오늘만 2·3개가 그려져 날마다 개수가 달라 보인다.
-  const allWallBuilt = useMemo(() => (
+  const allWallResult = useMemo(() => (
     applicable && enabled && allWallEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks: toAllWallPeakInputs(peaks),
         segments,
         candles,
@@ -311,7 +330,7 @@ export function usePeakWallRender({
         maFilter: allWallMaFilter,
         dailyMaFilter: allWallDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     allWallEnabled,
     allWallColor,
@@ -328,11 +347,12 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const allWallBuilt = allWallResult.segments;
 
-  // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallBuilt 주석).
-  const unreachedBuilt = useMemo(() => (
+  // 미도달 벽 하위 선 — 전체 최대벽과 같은 리맵·rank-1 규약(위 allWallResult 주석).
+  const unreachedResult = useMemo(() => (
     applicable && enabled && unreachedEnabled
-      ? buildPeakWallOverlaySegments({
+      ? buildPeakWallOverlayResult({
         peaks: toUnreachedWallPeakInputs(peaks),
         segments,
         candles,
@@ -344,7 +364,7 @@ export function usePeakWallRender({
         maFilter: unreachedMaFilter,
         dailyMaFilter: unreachedDailyMaFilter,
       })
-      : EMPTY_SEGMENTS
+      : EMPTY_RESULT
   ), [
     unreachedEnabled,
     unreachedColor,
@@ -361,6 +381,7 @@ export function usePeakWallRender({
     segments,
     todayKst,
   ]);
+  const unreachedBuilt = unreachedResult.segments;
 
   // 하위 계열의 계단 입력 — 그리기 선과 같은 carrier 리맵을 쓰되 랭크로 자르지
   // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
@@ -518,7 +539,18 @@ export function usePeakWallRender({
     allWallTimeMarker: allWallTimeMarkerEnabled,
     unreachedHorizontalLine: unreachedHorizontalLineEnabled,
     unreachedTimeMarker: unreachedTimeMarkerEnabled,
+    // 계열별 개수 — **flat 원시값**이다. 중첩 객체로 내보내면 값이 그대로여도 매
+    // 렌더 새 참조가 되어, 이걸 deps 로 쓰는 발행 effect 가 팬·줌마다 다시 돈다.
+    tradedShownCount: tradedResult.segments.length,
+    tradedHiddenByFilterCount: tradedResult.candidateCount - tradedResult.filteredCount,
+    allWallShownCount: allWallResult.segments.length,
+    allWallHiddenByFilterCount: allWallResult.candidateCount - allWallResult.filteredCount,
+    unreachedShownCount: unreachedResult.segments.length,
+    unreachedHiddenByFilterCount: unreachedResult.candidateCount - unreachedResult.filteredCount,
   }), [
+    tradedResult,
+    allWallResult,
+    unreachedResult,
     surfacedSegments,
     surfacedAllWallSegments,
     surfacedUnreachedSegments,

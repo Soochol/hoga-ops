@@ -111,6 +111,7 @@ import {
   usePeakWallStepsRegistry,
   type PeakWallStepKey,
 } from './indicators/peakWallStepsRegistry';
+import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
@@ -2196,6 +2197,18 @@ export function LiveChartRoot({
       for (const slot of PEAK_WALL_STEP_SLOTS) cleanup.unregister(legendScope, slot.key);
     };
   }, [legendScope, peakWallStepPoints]);
+
+  // ── 최대벽 개수 발행 (설정 패널의 깔때기·리드아웃) ────────────────────────
+  // deps 계약(원시값 12개)이 이 기능의 성능 위험 전부라, 그 계약을 테스트가 잡을 수
+  // 있도록 훅으로 빼 뒀다 — `usePeakWallCountsPublisher` 머리말 참조.
+  usePeakWallCountsPublisher(legendScope, peakWallApplicable, {
+    'ask-traded': { shown: askWall.tradedShownCount, hiddenByFilter: askWall.tradedHiddenByFilterCount },
+    'ask-all': { shown: askWall.allWallShownCount, hiddenByFilter: askWall.allWallHiddenByFilterCount },
+    'ask-unreached': { shown: askWall.unreachedShownCount, hiddenByFilter: askWall.unreachedHiddenByFilterCount },
+    'bid-traded': { shown: bidWall.tradedShownCount, hiddenByFilter: bidWall.tradedHiddenByFilterCount },
+    'bid-all': { shown: bidWall.allWallShownCount, hiddenByFilter: bidWall.allWallHiddenByFilterCount },
+    'bid-unreached': { shown: bidWall.unreachedShownCount, hiddenByFilter: bidWall.unreachedHiddenByFilterCount },
+  });
 
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
