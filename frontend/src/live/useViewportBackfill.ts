@@ -441,7 +441,25 @@ export function useViewportBackfill({
   // 깊은 창 기준으로 나갈 수 있다 — 워크백이 타일 단위 직렬이라 낭비 상한이 타일
   // 하나이고, 다음 커밋부터 축소된 창으로 계획이 다시 선다.
   useEffect(() => {
-    if (candleSourceKey === undefined) return;
+    if (candleSourceKey === undefined) {
+      // 이 조기 반환이 서면 **1b 전체가 무력**이다 — 래치도 창 축소도 안 돌고,
+      // 그래서 2a 재착석이 애초에 존재하지 않게 된다. 소비자가 이 prop 을 안 넘기면
+      // 조용히 그렇게 되므로(optional prop) 그 사실을 말하게 한다.
+      livePerfLog('viewport_source_key', { code, timeframe, reason: 'prop_undefined' });
+      return;
+    }
+    // **래치 자체의 관측** — 2a 의 반려 로그는 이 래치가 선 뒤에만 찍히므로, 래치가
+    // 애초에 안 서면 재착석 계열 전체가 완전 침묵이다. 그 침묵이 "재착석이 실패했다"
+    // 로 오독되면 엉뚱한 곳을 고치게 된다. 키가 실제로 갈렸는지를 값으로 남긴다.
+    if (prevSourceKeyRef.current !== candleSourceKey) {
+      livePerfLog('viewport_source_key', {
+        code,
+        timeframe,
+        prev: prevSourceKeyRef.current,
+        next: candleSourceKey,
+        latched: prevSourceKeyRef.current !== null,
+      });
+    }
     if (prevSourceKeyRef.current !== null && prevSourceKeyRef.current !== candleSourceKey) {
       swapPendingRef.current = true;
       if (chart && axis.segments.length > 0 && canTriggerBackfill()) {
