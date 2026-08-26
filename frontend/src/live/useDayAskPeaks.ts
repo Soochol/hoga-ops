@@ -13,7 +13,6 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import {
   buildPeakRecordSeries,
   todaySeedRow,
-  EMPTY_PEAK_RECORD_SERIES,
   type PeakRecordSeries,
 } from './peakWallRecordSeries';
 
@@ -136,7 +135,10 @@ function pushTodayAskPeak(
 function attachFamilies(
   peak: AskPeak,
   families: PeakFamilies,
-  records: PeakRecordSeries = EMPTY_PEAK_RECORD_SERIES,
+  /** **필수 인자다** — 기본값을 주면 새 호출부가 조용히 기록 없이 태어난다
+   *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
+   *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
+  records: PeakRecordSeries,
 ): AskPeak {
   return {
     ...peak,

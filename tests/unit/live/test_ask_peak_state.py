@@ -482,3 +482,15 @@ def test_bid_record_sequence_uses_the_same_maintenance():
         state.ingest_trade(price=price, side=1, t_ms=at(10 + i, 2_000))
 
     assert [p["qty"] for p in state.snapshot()["traded_record_peaks"]] == [100, 200, 300, 400]
+
+def test_constants_mirror_the_past_day_path():
+    """오늘과 과거일이 **같은 규칙**으로 계산되는 것이 ADR-0156 의 요구인데, 두 상수 모두
+    주석으로만 묶여 있었다 — 값으로 묶는다.
+
+    막는 방향: 한쪽만 바뀌는 것. 못 보는 것: 두 값을 **같이** 바꾸는 변경(그건 의도된
+    변경이므로 여기서 막을 일이 아니다)과, 미러라고 주석에 적히지 않은 다른 상수들.
+    """
+    from hoga.tables import snapshots
+
+    assert _TOUCH_WINDOW_MS == snapshots.ONE_MINUTE_MS
+    assert _TRADED_RECORD_CAP == snapshots._PEAK_RECORD_CAP
