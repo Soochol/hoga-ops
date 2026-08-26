@@ -130,15 +130,21 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
 };
 
 /**
- * nav 행 하나 — "내 지표"(삭제)와 "추가 카탈로그"(추가)가 같은 형태를 쓴다.
+ * nav 행 하나 — 목록이 하나뿐이므로 **한 형태가 두 상태를 진다**.
  *
  * 어휘가 **추가/삭제 둘뿐**인 것이 이 패널의 계약이다. 종전의 체크박스(켜기/끄기)는
  * 레전드의 눈(숨김)과 뜻이 겹쳤다 — 같은 지표를 두 표면이 서로 다른 말로 조작하면
  * 사용자는 어느 쪽이 무엇을 하는지 매번 다시 배워야 한다. 지금은 **패널이 존재를,
  * 레전드가 가시성을** 맡는다.
+ *
+ * 두 축이 독립이라는 것이 요점이다: `added` 는 "차트에 있는가"(잉크 농도 + ＋/✕),
+ * `selected` 는 "지금 보고 있는가"(tint 배경). 아직 추가하지 않은 지표를 골라
+ * 미리 보는 중이면 tint 는 켜지고 잉크는 흐린 채다. 선택은 배경 tint 만으로 말한다 —
+ * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
  */
-function IndicatorNavRow({ label, selected, onSelect, action }: {
+function IndicatorNavRow({ label, added, selected, onSelect, action }: {
   label: string;
+  added: boolean;
   selected: boolean;
   onSelect: () => void;
   action: { kind: 'add' | 'remove'; label: string; onClick: () => void };
@@ -146,16 +152,14 @@ function IndicatorNavRow({ label, selected, onSelect, action }: {
   return (
     <ListRow
       className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-        selected
-          ? 'bg-tint-selection font-medium text-fg'
-          : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-      }`}
+        selected ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
+      } ${added ? 'font-medium text-fg' : 'text-fg-dim hover:text-fg'}`}
     >
       <button
         type="button"
         onClick={onSelect}
         aria-current={selected ? 'true' : undefined}
-        className={`min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left ${selected ? 'text-fg' : 'text-inherit'}`}
+        className="min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left text-inherit"
       >
         {label}
       </button>
@@ -178,23 +182,13 @@ type Props = {
   timeframe: LiveTimeframe;
   /** 멀티창 대상 창 표시(#712) — "종목명" 등. 없으면 기존 단일 뷰 헤더. */
   targetLabel?: string;
-  /** 이 워크스페이스가 **그리지 않는** 지표 — 목록에서 뺀다.
-   *
-   *  `capabilities` 와 다른 축이다: 저쪽은 "이 종목/시장에 그 데이터가 있는가"(ETF 는
-   *  투자자 순매수가 없다 등)이고, 이쪽은 "이 화면이 그 지표를 렌더하는가" 다.
-   *  토글만 있고 아무것도 안 그려지는 항목을 없애기 위한 것이라, 숨기는 쪽은
-   *  **데이터 요청도 같이 꺼야 한다**(`/study` 는 `studyReferenceQueries` 에서 끈다). */
-  hiddenCategories?: readonly CategoryId[];
 };
-
-const NO_HIDDEN_CATEGORIES: readonly CategoryId[] = [];
 
 export default function IndicatorPanel({
   onClose,
   capabilities = STOCK_CAPABILITIES,
   timeframe,
   targetLabel,
-  hiddenCategories = NO_HIDDEN_CATEGORIES,
 }: Props) {
   // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
@@ -245,11 +239,9 @@ export default function IndicatorPanel({
   // 포커스를 따라다니는 전역 슬롯이 정해, 창마다 엉뚱한 봉의 설정이 적용됐다.
   const { resetIndicatorModalBucket: resetChartPrefsBucket } = useChartPrefActions();
 
-  // Which category's detail pane shows on the right. Clicking a category label
-  // navigates here; the checkbox icon toggles its master switch separately.
+  // 우측 상세가 어느 카테고리를 보여주는가. 행의 라벨을 누르면 여기가 바뀐다 —
+  // 추가 여부와 무관하다(아직 없는 지표도 골라서 미리 볼 수 있다).
   const [selected, setSelected] = useState<CategoryId>('moving-average');
-  // 좌측 목록의 모드 — 내 지표(존재하는 것) / 카탈로그(추가할 수 있는 것).
-  const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
   // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
   const [confirmingReset, setConfirmingReset] = useState(false);
 
@@ -262,7 +254,6 @@ export default function IndicatorPanel({
   };
 
   const categories = CATEGORIES.filter((c) => {
-    if (hiddenCategories.includes(c.id)) return false;
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
       return false;
@@ -311,28 +302,35 @@ export default function IndicatorPanel({
   };
   const removeFor = (id: CategoryId) => setPresenceFor(id, false);
 
-  /** 카탈로그에서 추가 — 켜고, 그 지표의 상세로 이동하고, 목록으로 돌아간다.
-   *  세 동작이 한 클릭인 이유: 추가의 목적은 "생겼다" 를 보는 것이고, 카탈로그에
-   *  남아 있으면 방금 추가한 것이 어디 갔는지 확인하러 한 번 더 눌러야 한다. */
+  /** 추가 — 켜고, 그 지표의 상세로 옮긴다. 추가의 목적은 "생겼다" 를 보는 것이라
+   *  선택이 따라가지 않으면 방금 추가한 것을 확인하러 한 번 더 눌러야 한다.
+   *  **행은 움직이지 않는다** — 목록 순서가 존재 여부와 무관하기 때문이다. */
   const addFor = (id: CategoryId) => {
     setPresenceFor(id, true)?.();
     setSelected(id);
-    setMode('mine');
   };
 
-  // "내 지표" = 지금 존재하는 것, 카탈로그 = 나머지. 두 목록의 합집합이 `categories`
-  // 라, 어느 쪽에도 안 나타나는 지표는 원리적으로 없다.
-  const active = categories.filter((c) => checkedFor(c.id));
-  const catalog = categories.filter((c) => !checkedFor(c.id));
+  // 목록은 **하나**다. 종전엔 "내 지표"와 카탈로그로 갈려 있었고, 그 분리의 근거는
+  // "켜고 끌 때 행이 두 구역 사이를 오가면 방금 조준한 항목이 커서 밑에서 움직인다"
+  // 였다. 순서를 존재 여부와 무관하게 고정하면 그 문제 자체가 사라진다 — 추가·삭제로
+  // 바뀌는 것은 행 **안**의 상태뿐이다. 대신 15개 중 무엇이 켜져 있는지가 한 화면에
+  // 보이고, 그룹 헤더의 카운트가 그 총계를 말한다.
+  //
+  // 그룹은 `categories` 순서를 그대로 접는다(정렬하지 않는다) — capability 로 통째로
+  // 빠지는 그룹이 있어 빈 그룹은 헤더째 나타나지 않는다.
+  const groups: ReadonlyArray<{ id: GroupId; items: typeof categories }> = (() => {
+    const out: Array<{ id: GroupId; items: typeof categories }> = [];
+    for (const category of categories) {
+      const last = out[out.length - 1];
+      if (last && last.id === category.group) last.items.push(category);
+      else out.push({ id: category.group, items: [category] });
+    }
+    return out;
+  })();
 
-  // 선택이 삭제되면(내 지표에서 사라지면) 남은 첫 항목으로 넘긴다 — 빈 상세를
-  // 남겨 두면 "방금 지운 지표의 설정" 을 계속 보게 된다.
-  // 카탈로그에서는 아직 없는 지표도 미리 볼 수 있으므로 전체에서 찾는다. "내 지표"
-  // 모드에서는 선택이 삭제됐을 때 남은 첫 항목으로 넘긴다 — 빈 상세를 남겨 두면
-  // "방금 지운 지표의 설정" 을 계속 보게 된다.
-  const selectedCategory = mode === 'catalog'
-    ? categories.find((category) => category.id === selected) ?? categories[0]
-    : active.find((category) => category.id === selected) ?? active[0] ?? categories[0];
+  // 선택은 존재와 독립이다 — 아직 추가하지 않은 지표도 골라서 미리 볼 수 있으므로
+  // 전체에서 찾는다. 삭제해도 선택은 그 자리에 남는다(상세가 미리보기로 바뀔 뿐).
+  const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
   const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
@@ -353,73 +351,39 @@ export default function IndicatorPanel({
             borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는
             스크롤과 무관하게 하단 고정 — nav는 flex-1로 스크롤. */}
       <div className="flex min-h-0 flex-col bg-bg-subtle">
-        {mode === 'mine' ? (
-          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="내 지표">
-            {active.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-fg-dim">
-                추가한 지표가 없습니다.
-              </p>
-            ) : (
-              active.map((c) => (
-                <IndicatorNavRow
-                  key={c.id}
-                  label={c.label}
-                  selected={selected === c.id}
-                  onSelect={() => setSelected(c.id)}
-                  action={{
-                    kind: 'remove',
-                    label: `${c.label} 삭제`,
-                    onClick: () => removeFor(c.id)?.(),
-                  }}
-                />
-              ))
-            )}
-          </nav>
-        ) : (
-          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표 추가">
-            {catalog.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-fg-dim">
-                추가할 수 있는 지표를 전부 쓰고 있습니다.
-              </p>
-            ) : (
-              catalog.map((c, i) => (
-                <Fragment key={c.id}>
-                  {(i === 0 || catalog[i - 1].group !== c.group) && (
-                    <div className={`px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${i !== 0 ? ' pt-3' : ''}`}>
-                      {GROUP_LABEL[c.group]}
-                    </div>
-                  )}
-                  {/* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
-                      지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
-                      마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */}
-                  <IndicatorNavRow
-                    label={c.label}
-                    selected={selected === c.id}
-                    onSelect={() => setSelected(c.id)}
-                    action={{
-                      kind: 'add',
-                      label: `${c.label} 추가`,
-                      onClick: () => addFor(c.id),
-                    }}
-                  />
-                </Fragment>
-              ))
-            )}
-          </nav>
-        )}
-        {/* 모드 전환 — "추가" 는 카탈로그를 열고, 카탈로그에서는 목록으로 돌아간다.
-            둘을 한 화면에 섞지 않는 이유: 켜고 끌 때마다 행이 두 섹션 사이를 오가면
-            방금 조준한 항목이 커서 밑에서 움직인다. */}
-        <div className="border-t border-border p-2">
-          <button
-            type="button"
-            onClick={() => setMode(mode === 'mine' ? 'catalog' : 'mine')}
-            data-testid="indicator-panel-mode-toggle"
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
-          >
-            {mode === 'mine' ? '＋ 지표 추가' : '← 내 지표'}
-          </button>
-        </div>
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표">
+          {groups.map((group, gi) => {
+            const addedCount = group.items.filter((c) => checkedFor(c.id)).length;
+            return (
+              <Fragment key={group.id}>
+                {/* 카운트는 "이 계열에서 몇 개나 쓰고 있나" — 목록이 하나가 되면서
+                    한눈에 셀 수 있게 됐지만, 그룹이 길면 여전히 세어야 한다. */}
+                <div className={`flex items-baseline justify-between px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${gi !== 0 ? ' pt-3' : ''}`}>
+                  <span>{GROUP_LABEL[group.id]}</span>
+                  <span className="font-medium tabular-nums">{addedCount}/{group.items.length}</span>
+                </div>
+                {group.items.map((c) => {
+                  const added = checkedFor(c.id);
+                  return (
+                    /* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
+                       지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
+                       마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */
+                    <IndicatorNavRow
+                      key={c.id}
+                      label={c.label}
+                      added={added}
+                      selected={selected === c.id}
+                      onSelect={() => setSelected(c.id)}
+                      action={added
+                        ? { kind: 'remove', label: `${c.label} 삭제`, onClick: () => removeFor(c.id)?.() }
+                        : { kind: 'add', label: `${c.label} 추가`, onClick: () => addFor(c.id) }}
+                    />
+                  );
+                })}
+              </Fragment>
+            );
+          })}
+        </nav>
         {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
             인라인 2단계 확인. */}
         <div className="border-t border-border p-2">
