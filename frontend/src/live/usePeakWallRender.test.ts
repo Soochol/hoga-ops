@@ -59,8 +59,73 @@ describe('usePeakWallRender', () => {
         askPeakAllWallLineEnabled: false,
         askPeakUnreachedLineEnabled: false,
         askPeakTradedLineEnabled: true,
+        // 강도 pane 의 계열 셋도 전역이라 같은 이유로 되돌린다(공장값 T/F/F).
+        peakWallPaneTradedEnabled: true,
+        peakWallPaneUnreachedEnabled: false,
+        peakWallPaneAllWallEnabled: false,
       });
     });
+  });
+
+  /**
+   * **막는 방향**: 강도 pane 의 계열 선택이 다시 캔들 선 토글에 물리는 것.
+   *
+   * 두 표면이 답하는 질문이 다르다 — 캔들 오버레이는 "그날 어디에 벽이 있었나",
+   * 강도 pane 은 "그 벽이 언제 얼마나 자랐나". 종전엔 스위치가 하나라 한쪽만 보는
+   * 조합이 원리적으로 불가능했다. 두 방향을 **각각** 재야 한다: 한쪽만 재면
+   * "그냥 둘 다 끄는" 구현도 통과한다.
+   */
+  it('강도 pane 계열은 캔들 선 토글과 독립이다 — 양방향', () => {
+    // ① 캔들 선 ON · pane 계열 OFF → 그리기는 살고 계단만 빈다.
+    act(() => {
+      useLivePageStore.setState({
+        askPeakTradedLineEnabled: true,
+        peakWallPaneTradedEnabled: false,
+      });
+    });
+    const onlyCandle = render(true, [PEAK], true);
+    expect(onlyCandle.current.segments).toHaveLength(1);
+    expect(onlyCandle.current.stepSegments).toHaveLength(0);
+
+    // ② 캔들 선 OFF · pane 계열 ON → 계단만 산다. **이게 종전에 불가능했던 조합이다.**
+    act(() => {
+      useLivePageStore.setState({
+        askPeakTradedLineEnabled: false,
+        peakWallPaneTradedEnabled: true,
+      });
+    });
+    const onlyPane = render(true, [PEAK], true);
+    expect(onlyPane.current.segments).toHaveLength(0);
+    expect(onlyPane.current.stepSegments).toHaveLength(1);
+  });
+
+  // 나머지 두 계열도 자기 pane 키를 탄다 — 하나만 배선하고 나머지를 캔들 토글에
+  // 남겨 두는 절반 구현이 통과하지 않게.
+  it('미도달·전체 계단도 각자 pane 키를 탄다 (캔들 선은 끈 채)', () => {
+    act(() => {
+      useLivePageStore.setState({
+        askPeakUnreachedLineEnabled: false,
+        askPeakAllWallLineEnabled: false,
+        peakWallPaneUnreachedEnabled: true,
+        peakWallPaneAllWallEnabled: true,
+      });
+    });
+    const withArrays: AskPeak = {
+      ...PEAK,
+      unreached_peaks: [{ price: 120, qty: 700, t_ms: MIN }],
+      all_peaks: [{ price: 115, qty: 900, t_ms: MIN }],
+    };
+    const r = render(true, [withArrays], true);
+    expect(r.current.unreachedSegments).toHaveLength(0);   // 캔들 선은 꺼짐
+    expect(r.current.allWallSegments).toHaveLength(0);
+    expect(r.current.unreachedStepSegments.length).toBeGreaterThan(0);
+    expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
+  });
+
+  /** pane 마스터가 꺼져 있으면 계열 키가 켜져 있어도 계산하지 않는다(`needStepSegments`). */
+  it('pane 마스터가 꺼져 있으면 계열 키와 무관하게 계단이 없다', () => {
+    const r = render(true, [PEAK], false);
+    expect(r.current.stepSegments).toHaveLength(0);
   });
 
   /**

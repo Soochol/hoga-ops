@@ -74,11 +74,16 @@ export type PeakWallRenderState = {
   /** 선 색·두께(표면이 primitive 에 그대로 넘긴다). */
   color: string;
   lineWidth: number;
-  /** 최대벽 강도 pane 의 계단 입력 — 「표시 개수」와 분리한 **stepHistory 모드**:
+  /** 최대벽 강도 pane 의 「체결된 벽」 계단 입력 — 「표시 개수」와 분리한 **stepHistory 모드**:
    *  후보 = 기록 갱신 시퀀스(traded_record_*) ∪ top-3, 랭크 슬라이스 없음. 계단의
    *  뜻은 "그 시점까지 체결된 벽 중 최대" 의 running max 인데, top-3 은 최종
    *  크기순이라 벽이 장중에 커지는 날은 오전 기록이 전부 잘렸다(사용자 보고 2회).
-   *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다. */
+   *  필터(MA·시간 컷오프·intraMax)는 그리기 세그먼트와 동일하게 흐른다.
+   *
+   *  ⚠ **게이트가 닫히면 빈 배열이다** — 종전엔 `stepBuilt ?? built` 로 그리기
+   *  세그먼트에 떨어져, 소비처가 pane 을 다시 게이트해 주는 것에 의존했다. pane 계열
+   *  토글이 생기면서 "pane 은 켜졌고 이 계열만 꺼진" 상태가 존재하므로 그 의존이
+   *  깨진다. 세 계단이 전부 자기 게이트로 비운다. */
   stepSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
    *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
@@ -106,12 +111,13 @@ export type PeakWallRenderState = {
    *  극값 전진의 소급 재분류로 **값이 줄어들 수도** 있다(래칫 아님). */
   unreachedSegments: readonly PeakWallSegment[];
   /** 「전체 최대벽」의 강도 pane 계단 입력. 이 계열은 **단조**라(벽이 빠져나가지
-   *  않는다) 체결된 벽과 같은 running-max 빌더를 쓴다. pane 이 꺼져 있거나 이
-   *  계열 선이 꺼져 있으면 빈 배열. */
+   *  않는다) 체결된 벽과 같은 running-max 빌더를 쓴다. pane 이 꺼져 있거나
+   *  `peakWallPaneAllWallEnabled` 가 꺼져 있으면 빈 배열 — **캔들 선 토글과 무관**하다. */
   allWallStepSegments: readonly PeakWallSegment[];
   /** 「미도달 벽」의 강도 pane 계단 입력. ⚠ 이 계열은 **단조가 아니다** — 극값
    *  전진이 구성원을 빼앗으므로 소비처는 `buildUnreachedStepPoints`(비단조)를
-   *  써야 한다. running-max 빌더를 태우면 깨진 벽이 영원히 남는다. */
+   *  써야 한다. running-max 빌더를 태우면 깨진 벽이 영원히 남는다.
+   *  게이트는 `peakWallPaneUnreachedEnabled` — **캔들 선 토글과 무관**하다. */
   unreachedStepSegments: readonly PeakWallSegment[];
   unreachedDrawn: boolean;
   unreachedLabels: boolean;
@@ -210,6 +216,12 @@ export function usePeakWallRender({
   const unreachedLineWidth = useWindowIndicator(
     (s) => (isAsk ? s.askPeakUnreachedLineWidth : s.bidPeakUnreachedLineWidth),
   );
+  // 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 **독립**이다. 종전엔
+  // pane 이 `{side}Peak{Family}LineEnabled` 를 따라가서, 캔들에서 지운 계열을 pane
+  // 에서만 보는(또는 그 반대의) 조합이 원리적으로 불가능했다.
+  const paneTradedEnabled = useWindowIndicator((s) => s.peakWallPaneTradedEnabled);
+  const paneUnreachedEnabled = useWindowIndicator((s) => s.peakWallPaneUnreachedEnabled);
+  const paneAllWallEnabled = useWindowIndicator((s) => s.peakWallPaneAllWallEnabled);
   const intraMax = useActivePrefs((s) => (isAsk ? s.askPeakIntraMax : s.bidPeakIntraMax));
   const allPriceRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllPriceRankLimit : s.bidPeakAllPriceRankLimit),
@@ -390,7 +402,7 @@ export function usePeakWallRender({
   // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
   // top-3(과거일은 rank-1 스칼라)이다 — 빌더 docstring 이 그 근사를 적는다.
   const allWallStepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && allWallEnabled
+    needStepSegments && applicable && enabled && paneAllWallEnabled
       ? buildPeakWallOverlaySegments({
         peaks: toAllWallPeakInputs(peaks),
         segments,
@@ -406,12 +418,12 @@ export function usePeakWallRender({
       })
       : EMPTY_SEGMENTS
   ), [
-    needStepSegments, allWallEnabled, allWallColor, allWallLineWidth, applicable,
+    needStepSegments, paneAllWallEnabled, allWallColor, allWallLineWidth, applicable,
     axis, candles, allWallDailyMaFilter, enabled, intraMax, allWallMaFilter, peaks, segments, todayKst,
   ]);
 
   const unreachedStepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && unreachedEnabled
+    needStepSegments && applicable && enabled && paneUnreachedEnabled
       ? buildPeakWallOverlaySegments({
         peaks: toUnreachedWallPeakInputs(peaks),
         segments,
@@ -427,14 +439,14 @@ export function usePeakWallRender({
       })
       : EMPTY_SEGMENTS
   ), [
-    needStepSegments, unreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
+    needStepSegments, paneUnreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
     axis, candles, unreachedDailyMaFilter, enabled, intraMax, unreachedMaFilter, peaks, segments, todayKst,
   ]);
 
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && tradedEnabled
+    needStepSegments && applicable && enabled && paneTradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -448,10 +460,10 @@ export function usePeakWallRender({
         maFilter: tradedMaFilter,
         dailyMaFilter: tradedDailyMaFilter,
       })
-      : null
+      : EMPTY_SEGMENTS
   ), [
     needStepSegments,
-    tradedEnabled,
+    paneTradedEnabled,
     allPriceRankLimit,
     applicable,
     axis,
@@ -521,7 +533,7 @@ export function usePeakWallRender({
       || unreachedLegendCellEnabled,
     color,
     lineWidth,
-    stepSegments: stepBuilt ?? built,
+    stepSegments: stepBuilt,
     allWallSegments: surfacedAllWallSegments,
     legendRankSegments,
     arrowRankSegments,
@@ -571,7 +583,8 @@ export function usePeakWallRender({
     unreachedColor,
     unreachedDrawn,
     unreachedLineWidth,
-    built,
+    // `built` 는 더 이상 이 memo 가 읽지 않는다 — `stepSegments` 의 `?? built` 폴백을
+    // 걷어냈기 때문(계열별 pane 게이트가 생기며 그 폴백이 거짓말이 됐다).
     stepBuilt,
     color,
     drawn,
