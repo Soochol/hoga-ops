@@ -172,6 +172,18 @@ export type PersistedIndicators = {
   movingAverageHidden: boolean;
   /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
   peakWallPaneEnabled: boolean;
+  /** 강도 pane 에 「체결된 벽」 계단을 낼 것인가. **기본 true** — 공장 상태에서
+   *  pane 을 켜면 종전과 똑같이 체결된 벽만 나온다.
+   *
+   *  ⚠ 이 셋은 **방향 공용**이다(pane 자체가 매도·매수 공용이므로). 그리고 캔들
+   *  오버레이의 계열 선 토글(`{side}Peak{Family}LineEnabled`)과 **독립**이다 —
+   *  종전엔 pane 이 그 토글을 따라갔지만, 캔들에서 지운 계열을 pane 에서는 계속
+   *  보고 싶은(또는 그 반대의) 조합이 원리적으로 불가능했다. */
+  peakWallPaneTradedEnabled: boolean;
+  /** 강도 pane 에 「미도달 벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
+  peakWallPaneUnreachedEnabled: boolean;
+  /** 강도 pane 에 「전체 최대벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
+  peakWallPaneAllWallEnabled: boolean;
   /** 당일 매도 최대벽 토글. opt-in(기본 false). */
   askPeakEnabled: boolean;
   /** 매도 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
@@ -459,6 +471,11 @@ export function mergeLiveIndicatorPrefs(
   // 최대벽 강도 pane — opt-in (default false). 오버레이(askPeak/bidPeak)와 별개 토글:
   // pane 은 오버레이의 표현이지만 화면 부동산을 차지하므로 켜는 결정은 따로 받는다.
   const pwPaneEnabled = obj?.peakWallPaneEnabled === true;
+  // pane 계열 셋 — 체결된 벽만 기본 true 라, 공장 상태에서 pane 을 켜면 종전과 같은
+  // 화면이 나온다(종전 규칙은 "캔들 선 토글을 따라간다" 였고 그 공장값이 T/F/F 였다).
+  const pwPaneTraded = obj?.peakWallPaneTradedEnabled !== false;
+  const pwPaneUnreached = obj?.peakWallPaneUnreachedEnabled === true;
+  const pwPaneAllWall = obj?.peakWallPaneAllWallEnabled === true;
   const apEnabled = obj?.askPeakEnabled === true;
   const apHidden = obj?.askPeakHidden === true;
   const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
@@ -592,6 +609,9 @@ export function mergeLiveIndicatorPrefs(
     volumeEnabled: vol,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,
+    peakWallPaneTradedEnabled: pwPaneTraded,
+    peakWallPaneUnreachedEnabled: pwPaneUnreached,
+    peakWallPaneAllWallEnabled: pwPaneAllWall,
     askPeakEnabled: apEnabled,
     askPeakHidden: apHidden,
     askPeakColor: apColor,

@@ -297,6 +297,18 @@ export const INDICATOR_OPS = {
     ({ volumeEnabled: enabled }),
   setPeakWallPaneEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ peakWallPaneEnabled: enabled }),
+  /** 강도 pane 의 계열 셋 — **방향 공용**이고 캔들 선 토글과 독립이다
+   *  (`liveIndicatorsPersistence` 의 `peakWallPaneTradedEnabled` 주석). 키를 문자열로
+   *  조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다. */
+  setPeakWallPaneFamilyEnabled: (
+    _cur: IndicatorSettings,
+    family: 'Traded' | 'Unreached' | 'AllWall',
+    enabled: boolean,
+  ): Patch => {
+    if (family === 'Traded') return { peakWallPaneTradedEnabled: enabled };
+    if (family === 'Unreached') return { peakWallPaneUnreachedEnabled: enabled };
+    return { peakWallPaneAllWallEnabled: enabled };
+  },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),
   setInstitutionNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
