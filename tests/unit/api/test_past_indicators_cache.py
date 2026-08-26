@@ -668,7 +668,8 @@ def test_model_kind_corrupt_file_is_a_miss(case: _ModelKindCase, tmp_path: Path)
 # 손상 전부 없음 — 그 지표는 2026-08-26 에 제거됐다). 표에 한 줄을 더하면 다섯 명제가
 # 함께 붙는다.
 #
-# kind **고유** 명제(POC 의 cutoff 제외, ratio 의 7-tuple 직렬화 등)는 이 표가 아니라 각자의 자리에 그대로 둔다 — 표는 공통분만 담는다.
+# kind **고유** 명제(POC 의 cutoff 제외, ratio 의 7-tuple 직렬화 등)는 이 표가 아니라
+# 각자의 자리에 그대로 둔다 — 표는 공통분만 담는다.
 
 
 @dataclass(frozen=True)
