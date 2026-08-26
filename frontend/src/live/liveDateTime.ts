@@ -526,3 +526,34 @@ export function planFillStep(
     steps: 1, // 날짜 수렴이 종료 조건 — 묶으면 목표를 지나쳐 과다 요청(#582)
   };
 }
+
+/**
+ * 복원 대기(pendingRestore)의 이번 커밋 처분 — 앉는가 · 기다리는가 · 포기하는가.
+ *
+ * 배경(#1614 실측): 소스 스왑 왕복에서 `pickSwapAnchor` 가 복원을 골라도, 토글 사이에
+ * 창 축소가 끼면 앵커가 서빙 창 밖이라 착석이 다시 클램프된다 — **pick 이 이겨도
+ * 창이 지면 진다.** 그래서 복원 의도가 확인된 스왑은 창을 앵커까지 다시 넓히고
+ * (`historicalRange.extend`), 워크백이 도착할 때까지 대기를 들고 있다가 이 함수의
+ * 판정으로 앉는다.
+ *
+ * `seat` 의 판정이 **캔들이 아니라 창(from-date)** 인 이유: 앵커 날짜가 마침 캡처
+ * 구멍이면 그 시각의 캔들은 영영 안 오지만, 창이 앵커를 덮으면 워크백은 끝난 것이다
+ * — 그때 앉으면 재착석의 최근접 클램프가 구멍 옆 봉에 앉힌다(사라진 캔들보다 낫다,
+ * 재착석과 같은 판단). 캔들 도착을 기다리면 그 경우 영원히 `wait` 다.
+ *
+ * `cancel_floor`: 바닥(벤더 250일 벽 · 디스크 최초 캡처일 #1606)보다 과거의 앵커는
+ * 어떤 워크백도 못 덮는다 — 대기를 세우는 것 자체가 거짓 약속이라 즉시 포기한다.
+ */
+export function planRestoreSeat(args: {
+  /** 복원 목표(YYYYMMDD) — 강제 클램프가 삼킨 앵커의 날짜. */
+  anchorYmd: string;
+  /** 좌측 바닥(YYYYMMDD). null = 바닥 미상(가능성을 닫지 않는다). */
+  floorYmd: string | null;
+  /** 현재 요청 창의 from. null = 창 없음(전체 이력 초기 상태) — 덮인 것으로 본다. */
+  historicalFromDate: string | null;
+}): 'seat' | 'wait' | 'cancel_floor' {
+  if (args.floorYmd !== null && args.anchorYmd < args.floorYmd) return 'cancel_floor';
+  if (args.historicalFromDate === null) return 'seat';
+  return args.historicalFromDate <= args.anchorYmd ? 'seat' : 'wait';
+}
+
