@@ -301,6 +301,13 @@ export default function IndicatorPanel({
   // 우측 상세가 어느 카테고리를 보여주는가. 행의 라벨을 누르면 여기가 바뀐다 —
   // 추가 여부와 무관하다(아직 없는 지표도 골라서 미리 볼 수 있다).
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  // 좌측 목록의 모드 — 내 지표(존재하는 것) / 카탈로그(추가할 수 있는 것).
+  //
+  // 2026-08-26 에 한 번 단일 리스트로 합쳤다가 **사용자 결정으로 되돌렸다**. 합친
+  // 판의 이점(15종이 한 화면, 행이 안 움직임)보다 「지금 쓰는 것」과 「추가할 수 있는
+  // 것」이 **섞이지 않는 것**이 중요하다는 판단이다 — 매일 여는 목록은 대개 전자만
+  // 보려고 여는 것이고, 후자는 가끔 찾으러 들어가는 곳이다.
+  const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
   // 검색어와 ↑↓ 커서. 창을 바꾸면 패널이 재마운트되므로(`key={windowId}`) 둘 다
   // 초기화된다 — 이전 창에서 치던 검색어가 따라오지 않는 것이 맞다.
   const [query, setQuery] = useState('');
@@ -378,42 +385,28 @@ export default function IndicatorPanel({
   };
   const removeFor = (id: CategoryId) => setPresenceFor(id, false);
 
-  /** 추가 — 켜고, 그 지표의 상세로 옮긴다. 추가의 목적은 "생겼다" 를 보는 것이라
-   *  선택이 따라가지 않으면 방금 추가한 것을 확인하러 한 번 더 눌러야 한다.
-   *  **행은 움직이지 않는다** — 목록 순서가 존재 여부와 무관하기 때문이다. */
+  /** 카탈로그에서 추가 — 켜고, 그 지표의 상세로 이동하고, 목록으로 돌아간다.
+   *  세 동작이 한 클릭인 이유: 추가의 목적은 "생겼다" 를 보는 것이고, 카탈로그에
+   *  남아 있으면 방금 추가한 것이 어디 갔는지 확인하러 한 번 더 눌러야 한다. */
   const addFor = (id: CategoryId) => {
     setPresenceFor(id, true)?.();
     setSelected(id);
+    setMode('mine');
   };
 
-  // 목록은 **하나**다. 종전엔 "내 지표"와 카탈로그로 갈려 있었고, 그 분리의 근거는
-  // "켜고 끌 때 행이 두 구역 사이를 오가면 방금 조준한 항목이 커서 밑에서 움직인다"
-  // 였다. 순서를 존재 여부와 무관하게 고정하면 그 문제 자체가 사라진다 — 추가·삭제로
-  // 바뀌는 것은 행 **안**의 상태뿐이다. 대신 15개 중 무엇이 켜져 있는지가 한 화면에
-  // 보이고, 그룹 헤더의 카운트가 그 총계를 말한다.
-  //
-  // 그룹은 `categories` 순서를 그대로 접는다(정렬하지 않는다) — capability 로 통째로
-  // 빠지는 그룹이 있어 빈 그룹은 헤더째 나타나지 않는다.
+  // "내 지표" = 지금 존재하는 것, 카탈로그 = 나머지. 두 목록의 합집합이 `categories`
+  // 라, 어느 쪽에도 안 나타나는 지표는 원리적으로 없다.
   //
   // 검색은 `categories` **다음** 단계다 — capability 게이트를 통과한 것만 검색된다.
-  // 순서를 바꾸면 이 종목에 없는 지표가 검색으로 되살아난다.
+  // 순서를 바꾸면 이 종목에 없는 지표가 검색으로 되살아난다. 그리고 검색은 **지금
+  // 보고 있는 모드 안에서만** 거른다: 「내 지표」에서 친 검색어가 아직 추가하지 않은
+  // 지표를 끌어오면 두 목록을 가른 의미가 없어진다.
   const trimmedQuery = query.trim();
-  const visible = trimmedQuery === ''
-    ? categories
-    : categories.filter((c) => c.label.includes(trimmedQuery));
-
-  // 그룹 헤더는 **일치가 있는 그룹만** 남는다 — 카운트는 그 그룹의 전체(필터 전)를
-  // 세지 않고 지금 보이는 것을 센다. 검색 중에 "2/8" 이 뜨면 8개가 어디 있는지를
-  // 찾게 되는데, 그 여섯은 검색어가 가린 것이지 사라진 것이 아니다.
-  const groups: ReadonlyArray<{ id: GroupId; items: typeof categories }> = (() => {
-    const out: Array<{ id: GroupId; items: typeof categories }> = [];
-    for (const category of visible) {
-      const last = out[out.length - 1];
-      if (last && last.id === category.group) last.items.push(category);
-      else out.push({ id: category.group, items: [category] });
-    }
-    return out;
-  })();
+  const matches = (label: string) => trimmedQuery === '' || label.includes(trimmedQuery);
+  const active = categories.filter((c) => checkedFor(c.id) && matches(c.label));
+  const catalog = categories.filter((c) => !checkedFor(c.id) && matches(c.label));
+  /** ↑↓ 가 짚는 대상 — 지금 모드의 보이는 행들. */
+  const visible = mode === 'mine' ? active : catalog;
 
   // ↑↓ 가 짚는 대상은 **보이는 행의 평탄한 순서**다. 검색으로 목록이 줄면 커서도
   // 범위 안으로 당겨야 하므로, 렌더마다 클램프하지 않고 검색어 변경에서 0으로 되돌린다.
@@ -449,9 +442,14 @@ export default function IndicatorPanel({
     row?.scrollIntoView?.({ block: 'nearest' });
   }, [kbdIndex]);
 
-  // 선택은 존재와 독립이다 — 아직 추가하지 않은 지표도 골라서 미리 볼 수 있으므로
-  // 전체에서 찾는다. 삭제해도 선택은 그 자리에 남는다(상세가 미리보기로 바뀔 뿐).
-  const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
+  // 카탈로그에서는 아직 없는 지표도 미리 볼 수 있으므로 전체에서 찾는다. "내 지표"
+  // 모드에서는 선택이 삭제됐을 때 남은 첫 항목으로 넘긴다 — 그 모드의 목록에서 방금
+  // 지운 행이 사라지므로, 선택을 그대로 두면 목록에 없는 것의 설정을 보게 된다.
+  const selectedCategory = mode === 'catalog'
+    ? categories.find((category) => category.id === selected) ?? categories[0]
+    : categories.find((category) => category.id === selected && checkedFor(category.id))
+      ?? categories.find((category) => checkedFor(category.id))
+      ?? categories[0];
   // 상세 본문은 `selected` 가 아니라 **폴백까지 거친 결과**를 따른다 — capability 로
   // 걸러진 지표가 선택돼 있으면 헤더는 폴백을 그리는데 본문만 아무것도 안 그리는
   // 어긋남이 생긴다.
@@ -480,7 +478,10 @@ export default function IndicatorPanel({
         {/* 검색은 **nav 안**이다 — 밖에 래퍼를 하나 더 두면 "nav 의 부모가 톤 면,
             그 부모가 2열 그리드" 라는 레이아웃 앵커(가드가 재고 있다)가 한 겹
             어긋난다. */}
-        <nav className="flex min-h-0 flex-1 flex-col" aria-label="지표">
+        <nav
+          className="flex min-h-0 flex-1 flex-col"
+          aria-label={mode === 'mine' ? '내 지표' : '지표 추가'}
+        >
           <div className="p-2 pb-1">
             <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
@@ -501,50 +502,72 @@ export default function IndicatorPanel({
               />
             </div>
           </div>
+          {/* 「내 지표」는 **평리스트**, 카탈로그는 **그룹 헤더가 있는 목록**이다.
+              비대칭이 아니라 각 목록이 답하는 질문이 달라서다 — 전자는 "내가 지금 뭘
+              쓰나"(대개 몇 개라 셀 수 있다), 후자는 "뭐가 더 있나"(계열로 훑는다). */}
           <div ref={listRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
-          {visible.length === 0 && (
-            <p className="px-3 py-4 text-sm text-fg-dim">일치하는 지표 없음</p>
-          )}
-          {groups.map((group, gi) => {
-            const addedCount = group.items.filter((c) => checkedFor(c.id)).length;
-            return (
-              <Fragment key={group.id}>
-                {/* 카운트는 "이 계열에서 몇 개나 쓰고 있나" — 목록이 하나가 되면서
-                    한눈에 셀 수 있게 됐지만, 그룹이 길면 여전히 세어야 한다. */}
-                <div className={`flex items-baseline justify-between px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${gi !== 0 ? ' pt-3' : ''}`}>
-                  <span>{GROUP_LABEL[group.id]}</span>
-                  <span className="font-medium tabular-nums">{addedCount}/{group.items.length}</span>
-                </div>
-                {group.items.map((c) => {
-                  const added = checkedFor(c.id);
-                  // ↑↓ 는 그룹을 가로지르므로 커서 번호는 **보이는 행 전체**의 순번이다.
-                  const flatIndex = visible.indexOf(c);
-                  return (
-                    /* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
-                       지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
-                       마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */
-                    <IndicatorNavRow
-                      key={c.id}
-                      label={c.label}
-                      glyph={INDICATOR_GLYPH[c.id]}
-                      added={added}
-                      selected={selected === c.id}
-                      kbdFocused={kbdIndex === flatIndex}
-                      kbdIndex={flatIndex}
-                      query={trimmedQuery}
-                      dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
-                      onSelect={() => setSelected(c.id)}
-                      action={added
-                        ? { kind: 'remove', label: `${c.label} 삭제`, onClick: () => removeFor(c.id)?.() }
-                        : { kind: 'add', label: `${c.label} 추가`, onClick: () => addFor(c.id) }}
-                    />
-                  );
-                })}
-              </Fragment>
-            );
-          })}
+            {visible.length === 0 && (
+              <p className="px-3 py-4 text-sm text-fg-dim">
+                {trimmedQuery !== ''
+                  ? '일치하는 지표 없음'
+                  : mode === 'mine'
+                    ? '추가한 지표가 없습니다.'
+                    : '추가할 수 있는 지표를 전부 쓰고 있습니다.'}
+              </p>
+            )}
+            {visible.map((c, i) => {
+              const added = checkedFor(c.id);
+              // 그룹 헤더는 카탈로그에만. 같은 그룹이 이어지는 동안은 한 번만 낸다.
+              const groupHead = mode === 'catalog'
+                && (i === 0 || visible[i - 1].group !== c.group);
+              return (
+                <Fragment key={c.id}>
+                  {groupHead && (
+                    <div className={`px-3 pb-1 text-xs font-semibold uppercase text-fg-dim${i !== 0 ? ' pt-3' : ''}`}>
+                      {GROUP_LABEL[c.group]}
+                    </div>
+                  )}
+                  {/* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
+                      지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
+                      마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */}
+                  <IndicatorNavRow
+                    label={c.label}
+                    glyph={INDICATOR_GLYPH[c.id]}
+                    added={added}
+                    selected={selected === c.id}
+                    kbdFocused={kbdIndex === i}
+                    kbdIndex={i}
+                    query={trimmedQuery}
+                    dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
+                    onSelect={() => setSelected(c.id)}
+                    action={added
+                      ? { kind: 'remove', label: `${c.label} 삭제`, onClick: () => removeFor(c.id)?.() }
+                      : { kind: 'add', label: `${c.label} 추가`, onClick: () => addFor(c.id) }}
+                  />
+                </Fragment>
+              );
+            })}
           </div>
         </nav>
+        {/* 모드 전환 — "추가" 는 카탈로그를 열고, 카탈로그에서는 목록으로 돌아간다.
+            둘을 한 화면에 섞지 않는 이유: 매일 여는 목록은 대개 「지금 쓰는 것」만
+            보려고 여는 것이고, 「추가할 수 있는 것」은 가끔 찾으러 들어가는 곳이다.
+            전환할 때 검색어는 지운다 — 한쪽에서 친 검색어가 다른 목록에 그대로
+            걸려 있으면 "왜 비어 있지" 가 된다. */}
+        <div className="border-t border-border p-2">
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === 'mine' ? 'catalog' : 'mine');
+              setQuery('');
+              setKbdIndex(-1);
+            }}
+            data-testid="indicator-panel-mode-toggle"
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
+          >
+            {mode === 'mine' ? '＋ 지표 추가' : '← 내 지표'}
+          </button>
+        </div>
       </div>
         <div className="flex min-h-0 flex-col">
           {/* 헤더는 그룹명이 아니라 '지금 편집 중인 지표'를 보여준다(그룹은 eyebrow).
