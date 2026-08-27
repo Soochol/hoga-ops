@@ -297,18 +297,20 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
    * 목적지 구간으로 나가므로, 로딩이 끝났다는 것이 곧 "그 구간을 받아 봤다" 이다.
    * 종전처럼 캔들 도착을 지켜볼 필요가 없다(도착이 곧 착지였던 구조가 사라졌다).
    */
-  const minuteJumpState = useMemo(
-    () => minuteJumpChipState({
+  const minuteJumpState = useMemo(() => {
+    // 착지 날짜는 **그려진 마지막 봉**이다 — 목적지 상한이 아니라(#1506). 주·월 칸의
+    // 상한은 달력상의 칸 끝이라 비거래일일 수 있고, 그때 우단은 그 앞 거래일이 된다.
+    const cs = d.workareaChartBundle?.candles;
+    return minuteJumpChipState({
       date: minuteJumpTarget.date,
       floorDate: d.minuteScrollbackFloorDate,
       isLoading: d.workareaLoading,
-      hasCandles: (d.workareaChartBundle?.candles.length ?? 0) > 0,
-    }),
-    [
-      minuteJumpTarget.date, d.minuteScrollbackFloorDate,
-      d.workareaLoading, d.workareaChartBundle,
-    ],
-  );
+      lastCandleDate: cs && cs.length > 0 ? unixMsToKSTDate(cs[cs.length - 1].ts_ms) : null,
+    });
+  }, [
+    minuteJumpTarget.date, d.minuteScrollbackFloorDate,
+    d.workareaLoading, d.workareaChartBundle,
+  ]);
 
   // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
   const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;

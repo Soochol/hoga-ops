@@ -49,7 +49,14 @@ import { useHistoricalRangeActions } from './workspace/windowView';
  * 고르라**는 뜻이고, 봉이 없는 것은 그 날 시장이 그랬다는 뜻이라 대안이 다르다.
  */
 export type MinuteJumpState = {
-  /** 칩이 말할 KST 날짜(YYYYMMDD) — 클램프된 목적지. */
+  /**
+   * 칩이 말할 KST 날짜(YYYYMMDD).
+   *
+   * `landed` 면 **실제로 그려진 마지막 봉의 날짜**이고, 그 전에는 목적지 칸의 상한이다.
+   * 둘을 구별하는 이유(#1506): 상한은 **칸의 달력상 끝**이라 비거래일일 수 있다(주봉
+   * 칸이면 일요일). 착지한 뒤에도 그 날짜를 계속 말하면 **차트가 보여주지 않는 날을
+   * 이름 붙이는 칩**이 된다 — 실측 2026-08-23: 주봉 상한 08-23(일)인데 착지는 08-21.
+   */
   date: string;
   status: 'seeking' | 'landed' | 'no-data' | 'out-of-retention';
   /**
@@ -76,10 +83,15 @@ export function minuteJumpChipState(args: {
   floorDate: string | null;
   /** 과거 캔들을 불러오는 중인가. */
   isLoading: boolean;
-  /** 그려진 캔들이 있는가. */
-  hasCandles: boolean;
+  /**
+   * 이 창이 그리고 있는 **마지막 봉의 KST 날짜**. `null` = 봉이 없다.
+   *
+   * 「봉이 있는가」와 「착지 날짜」를 **한 값으로** 받는다. 둘을 따로 받으면 어긋날 수
+   * 있고, 어긋나는 쪽이 곧 #1506 이다 — 칩이 차트에 없는 날짜를 말하는 상태.
+   */
+  lastCandleDate: string | null;
 }): MinuteJumpState | null {
-  const { date, floorDate, isLoading, hasCandles } = args;
+  const { date, floorDate, isLoading, lastCandleDate } = args;
   if (date === null) return null;
   // 하한이 `null`(디스크 모드·미측정)이면 막지 않는다 — 모르는 것을 못 간다고
   // 말하지 않는다.
@@ -87,8 +99,10 @@ export function minuteJumpChipState(args: {
     return { date, status: 'out-of-retention', floorDate };
   }
   if (isLoading) return { date, status: 'seeking' };
-  if (!hasCandles) return { date, status: 'no-data' };
-  return { date, status: 'landed' };
+  if (lastCandleDate === null) return { date, status: 'no-data' };
+  // ⚠ **착지하면 목적지가 아니라 앉은 봉의 날짜를 말한다**(#1506) — 타입 도크스트링의
+  // 그 이유다. 우단이 목적지가 됐어도 그 날이 거래일이 아니면 마지막 봉은 그 앞이다.
+  return { date: lastCandleDate, status: 'landed' };
 }
 
 export type MinuteJumpTarget = {

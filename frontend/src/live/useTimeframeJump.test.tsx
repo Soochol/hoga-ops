@@ -202,7 +202,9 @@ describe('창의 시작일 리셋', () => {
 });
 
 describe('칩 상태', () => {
-  const base = { date: '20260821', floorDate: '20251217', isLoading: false, hasCandles: true };
+  const base = {
+    date: '20260821', floorDate: '20251217', isLoading: false, lastCandleDate: '20260821',
+  };
 
   it('점프가 없으면 칩도 없다', () => {
     expect(minuteJumpChipState({ ...base, date: null })).toBeNull();
@@ -218,7 +220,27 @@ describe('칩 상태', () => {
 
   // 「받아 봤는데 없다」를 seeking 에 뭉치면 칩이 영원히 "불러오는 중" 을 표시한다.
   it('받아 왔는데 봉이 없으면 no-data — seeking 에 뭉치지 않는다', () => {
-    expect(minuteJumpChipState({ ...base, hasCandles: false })?.status).toBe('no-data');
+    expect(minuteJumpChipState({ ...base, lastCandleDate: null })?.status).toBe('no-data');
+  });
+
+  /**
+   * #1506 의 계약 — **착지하면 목적지가 아니라 앉은 봉의 날짜를 말한다.**
+   *
+   * 주·월 칸의 상한은 달력상의 칸 끝이라 비거래일일 수 있다(주봉 칸이면 일요일).
+   * 우단이 그 날로 가도 마지막 봉은 그 앞 거래일이므로, 상한을 계속 말하면 **차트가
+   * 보여주지 않는 날을 이름 붙이는 칩**이 된다(실측 2026-08-23: 주봉 상한 08-23(일),
+   * 착지 08-21).
+   */
+  it('착지 날짜는 **앉은 봉**이다 — 목적지 상한이 아니라', () => {
+    const s = minuteJumpChipState({ ...base, date: '20260823', lastCandleDate: '20260821' });
+    expect(s?.status).toBe('landed');
+    expect(s?.date).toBe('20260821');
+  });
+
+  // 착지 **전**에는 앉은 봉이 없으므로 목적지를 말한다(그때는 그것이 유일한 사실이다).
+  it('착지 전에는 목적지를 말한다', () => {
+    const s = minuteJumpChipState({ ...base, date: '20260823', isLoading: true });
+    expect(s?.date).toBe('20260823');
   });
 
   it('하한 밖이면 out-of-retention 이고 **그 창의 하한 날짜**를 함께 낸다', () => {
