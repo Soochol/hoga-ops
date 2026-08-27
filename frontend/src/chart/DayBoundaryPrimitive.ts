@@ -12,6 +12,7 @@ import type {
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { DayBoundaryTick } from './sessionSpans';
+import { resolveTokensThemed } from '../util/tokens';
 
 /**
  * 점선 리듬 — DOM 시절 `repeating-linear-gradient(to bottom, color 0 3px,
@@ -20,19 +21,33 @@ import type { DayBoundaryTick } from './sessionSpans';
 export const DAY_BOUNDARY_DASH: readonly [number, number] = [3, 3];
 
 /**
+ * 선 두께 — **1px 고정**. DESIGN.md 는 hairline 을 px 로 못박는다(density dial 이
+ * 굵기를 흔들면 픽셀 격자 정렬이 깨진다). 사용자 설정이 아니라 상수인 이유는
+ * 이 모듈 하단 docstring 참조.
+ */
+export const DAY_BOUNDARY_LINE_WIDTH = 1;
+
+/**
+ * 색은 **draw 시점에 지연 해석**한다 — 테마(obsidian/ledger/toss-*) 전환이 그대로
+ * 따라온다(`StudySavedRangeBandPrimitive` TOKEN_SPEC 선례).
+ *
+ * `--chart-day-boundary` 는 이 표시 전용 토큰이다. `--border-strong` ·
+ * `--chart-pane-divider` 를 재사용하지 **않는** 이유는 그 계열이 네 테마 모두에서
+ * `--bg-card` 대비 1.5~2.1:1 이라 WCAG 1.4.11(비텍스트 3:1)에 못 미치기 때문이다
+ * (DESIGN.md 가 스스로 "아직 미해결"로 적어 둔 그룹이다). 실측:
+ * `--grid` 1.08~1.19 · `--border-strong` 1.46~2.14 · `--chart-pane-divider` 1.46~2.01.
+ * 전용 토큰은 3.04~4.44:1 을 지킨다.
+ */
+const TOKEN_SPEC = {
+  line: ['--chart-day-boundary', '#6d6d7b'],
+} as const;
+
+/**
  * 매 프레임 draw 가 읽는 입력. **pull 방식** — 축 스케일은 팬/줌마다 바뀌므로
  * 상위에서 좌표를 미리 구우면 그 시점에 굳는다(`StudySavedRangeBandSnapshot` 선례).
  * 그래서 여기 담기는 건 **좌표가 아니라 시각**이다.
  */
-export type DayBoundarySnapshot = {
-  boundaries: readonly DayBoundaryTick[];
-  /** prefs 의 `dayBoundaryColor` (hex). */
-  color: string;
-  /** prefs 의 `dayBoundaryLineWidth` (1~4). */
-  lineWidth: number;
-};
-
-export type DayBoundarySource = () => DayBoundarySnapshot | null;
+export type DayBoundarySource = () => readonly DayBoundaryTick[] | null;
 
 /** 그릴 자리가 확정된 구분선 — `x` 는 stroke **중심** 좌표다(아래 정렬 규칙 참조). */
 export type PlacedBoundary = Readonly<{ date: string; x: number }>;
@@ -94,8 +109,8 @@ class DayBoundaryRenderer implements IPrimitivePaneRenderer {
 
   draw(target: CanvasRenderingTarget2D): void {
     const chart = this._source.chartApi();
-    const snap = this._source.snapshot();
-    if (!chart || snap === null || snap.boundaries.length === 0) return;
+    const boundaries = this._source.snapshot();
+    if (!chart || boundaries === null || boundaries.length === 0) return;
 
     const read = coordinateReader(chart.timeScale());
 
@@ -108,14 +123,14 @@ class DayBoundaryRenderer implements IPrimitivePaneRenderer {
       const { width, height } = scope.mediaSize;
       if (width <= 0 || height <= 0) return;
 
-      const placed = computeBoundaryLines(snap.boundaries, read, snap.lineWidth, width);
+      const placed = computeBoundaryLines(boundaries, read, DAY_BOUNDARY_LINE_WIDTH, width);
       if (placed.length === 0) return;
 
       const ctx = scope.context;
       ctx.save();
       ctx.setLineDash([...DAY_BOUNDARY_DASH]);
-      ctx.strokeStyle = snap.color;
-      ctx.lineWidth = snap.lineWidth;
+      ctx.strokeStyle = resolveTokensThemed(TOKEN_SPEC).line;
+      ctx.lineWidth = DAY_BOUNDARY_LINE_WIDTH;
       // 모든 구분선을 한 path 로 모아 stroke 한 번 — 경계마다 stroke 를 부르면
       // 같은 그림에 상태 전환만 늘어난다.
       ctx.beginPath();
@@ -165,6 +180,20 @@ class DayBoundaryPaneView implements IPrimitivePaneView {
  *
  * zOrder 는 `'top'` — DOM 시절 `z-10` 으로 캔버스 위에 올려 두던 것과 시각적으로
  * 같다(`StudySavedRangeBandPrimitive` 와 같은 판단).
+ *
+ * ## 왜 색·두께가 사용자 설정이 아닌가 (2026-08-27 결정)
+ *
+ * 종전엔 `dayBoundaryColor`/`dayBoundaryLineWidth` prefs 와 설정 모달의 스타일
+ * 피커가 있었다. 그것을 걷어낸 이유는 두 가지다:
+ *
+ * 1. **날짜 구분선은 격자선과 같은 차트 구조물**이지 사용자가 튜닝할 데이터
+ *    레이어가 아니다. 켜고 끄는 토글도 같은 이유로 없앴다(분봉에서 항상 그린다 —
+ *    D/W/M 은 한 캔들이 곧 하루라 애초에 그릴 자리가 없다).
+ * 2. **색을 고를 자유는 대비 3:1 을 깨뜨릴 자유와 같이 온다.** 종전 기본값
+ *    `#64748B` 는 네 테마 모두 3.75~4.76:1 로 멀쩡했지만 그건 우연히 잘 고른
+ *    중립값이었고, 피커는 그 보장을 사용자에게 떠넘겼다. 게다가 그 값은 ledger
+ *    (따뜻한 종이 팔레트)에서 **차가운 슬레이트 블루로 겉돌았다** — 테마 토큰이
+ *    푸는 것이 정확히 이 문제다.
  */
 export class DayBoundaryPrimitive implements ISeriesPrimitive<Time> {
   private readonly _source: DayBoundarySource;
@@ -203,7 +232,7 @@ export class DayBoundaryPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate?.();
   }
 
-  snapshot(): DayBoundarySnapshot | null {
+  snapshot(): readonly DayBoundaryTick[] | null {
     return this._source();
   }
 

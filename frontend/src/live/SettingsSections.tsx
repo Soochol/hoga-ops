@@ -4,7 +4,6 @@ import {
   CHART_NUMERIC_PREFS,
   CHART_TOGGLES,
   CHART_TOGGLE_GROUPS,
-  DAY_BOUNDARY_COLOR_DEFAULT,
   TRADE_HIGHLIGHT_COLOR_DEFAULT,
   categoryOf,
   gatedByOf,
@@ -82,10 +81,6 @@ const LABEL: Record<NavId, string> = {
 
 /** 레지스트리 밖의 손 스타일 행(아래 세 컴포넌트) — 라벨·설명을 여기 상수로 두고
  *  렌더와 검색 코퍼스가 **같은 문자열**을 읽는다(각자 적으면 검색만 낡는다). */
-const DAY_BOUNDARY_STYLE_ROW = {
-  label: '날짜 구분선 스타일',
-  description: '거래일 경계를 표시하는 세로 점선의 색상과 두께입니다',
-} as const;
 const VI_LINE_STYLE_ROW = {
   label: 'VI/상하한가 선 스타일',
   description: 'VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다',
@@ -95,7 +90,6 @@ const TRADE_HIGHLIGHT_COLOR_ROW = {
   description: '대량 체결의 체결량 칸에 칠할 배경색입니다',
 } as const;
 const CUSTOM_ROW_TEXT: Partial<Record<ChartToggleKey, string>> = {
-  dayBoundaryEnabled: `${DAY_BOUNDARY_STYLE_ROW.label} ${DAY_BOUNDARY_STYLE_ROW.description}`,
   viLimitPriceDotsEnabled: `${VI_LINE_STYLE_ROW.label} ${VI_LINE_STYLE_ROW.description}`,
   tradeHighlightEnabled: `${TRADE_HIGHLIGHT_COLOR_ROW.label} ${TRADE_HIGHLIGHT_COLOR_ROW.description}`,
 };
@@ -142,30 +136,6 @@ function GroupHead({ label }: { label: string }) {
 function GatedStyleRow({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   return (
     <div className={`ml-4 ${enabled ? '' : 'pointer-events-none opacity-40'}`}>{children}</div>
-  );
-}
-
-function DayBoundaryStyleRow({ highlight }: { highlight?: string }) {
-  const enabled = useChartPrefsStore((s) => s.dayBoundaryEnabled);
-  const color = useChartPrefsStore((s) => s.dayBoundaryColor);
-  const lineWidth = useChartPrefsStore((s) => s.dayBoundaryLineWidth);
-  const setStyle = useChartPrefsStore((s) => s.setDayBoundaryStyle);
-
-  return (
-    <GatedStyleRow enabled={enabled}>
-      <SettingsRow
-        label={highlightLabel(DAY_BOUNDARY_STYLE_ROW.label, highlight)}
-        description={DAY_BOUNDARY_STYLE_ROW.description}
-      >
-        <MAStylePicker
-          color={color}
-          lineWidth={lineWidth}
-          onChange={setStyle}
-          label="날짜 구분선"
-          extraColors={[DAY_BOUNDARY_COLOR_DEFAULT]}
-        />
-      </SettingsRow>
-    </GatedStyleRow>
   );
 }
 
@@ -416,7 +386,6 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
                     {group.units.map((unit) => (
                       <Fragment key={unit.key}>
                         <IndicatorPrefRows toggleKeys={[unit.key]} highlight={filtering ? trimmed : undefined} />
-                        {unit.key === 'dayBoundaryEnabled' && <DayBoundaryStyleRow highlight={filtering ? trimmed : undefined} />}
                         {unit.key === 'viLimitPriceDotsEnabled' && <ViLimitPriceLineStyleRow highlight={filtering ? trimmed : undefined} />}
                         {unit.key === 'tradeHighlightEnabled' && <TradeHighlightColorRow highlight={filtering ? trimmed : undefined} />}
                       </Fragment>

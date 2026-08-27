@@ -54,6 +54,13 @@
      화면에서 가장 밝은 선이라 "분리는 톤+간격" 규칙과 충돌 — border-strong 근처
      #3a3a42(Δ~35)로 낮춰 pane 경계는 남기되 소음을 없앤다. */
   --chart-pane-divider: #3a3a42;
+  /* Day boundary — 분봉 차트에서 거래일이 바뀌는 지점의 세로 점선.
+     pane separator 와 같은 "차트 구조선" 계열이지만 **한 단계 강하다**: separator 는
+     레이아웃 경계라 억제가 미덕인 반면, 이 선은 캔들 위를 지나며 "여기서 날이 바뀐다"
+     를 읽혀야 한다. 그래서 --border 계열(1.1~2.1:1, DESIGN.md 가 WCAG 1.4.11 미달로
+     명시)이 아니라 --fg-dimmer 근방에서 **--bg-card 대비 3:1 이상**을 지킨다.
+     값을 바꿀 때 그 대비를 다시 잴 것. */
+  --chart-day-boundary: #6d6d7b; /* 3.67:1 — --fg-dimmer #63636f 한 단계 위 */
 
   /* ───── Color · Foreground ───── */
   --fg: #ececf1;
@@ -213,6 +220,13 @@
      너무 진해 pane마다 굵은 선처럼 읽힘 — border-strong 근처 #bcb4a0(Δ~55)로 낮춰
      경계는 남기되 소음을 줄인다(다크 --chart-pane-divider 완화와 대칭). */
   --chart-pane-divider: #bcb4a0;
+  /* Day boundary — 분봉 차트에서 거래일이 바뀌는 지점의 세로 점선.
+     pane separator 와 같은 "차트 구조선" 계열이지만 **한 단계 강하다**: separator 는
+     레이아웃 경계라 억제가 미덕인 반면, 이 선은 캔들 위를 지나며 "여기서 날이 바뀐다"
+     를 읽혀야 한다. 그래서 --border 계열(1.1~2.1:1, DESIGN.md 가 WCAG 1.4.11 미달로
+     명시)이 아니라 --fg-dimmer 근방에서 **--bg-card 대비 3:1 이상**을 지킨다.
+     값을 바꿀 때 그 대비를 다시 잴 것. */
+  --chart-day-boundary: #8a8271; /* 3.71:1 — 종이 팔레트의 **따뜻한** 축(pane divider 를 어둡게). 차가운 슬레이트 블루는 이 테마에서 겉돈다 */
 
   /* ───── Foreground (ink) ───── */
   --fg: #1e2732;
@@ -305,6 +319,13 @@
   /* Pane separator — one step up from --border so panes read on white cards
      (Toss's own pane rules are very faint; grey300 keeps a legible seam). */
   --chart-pane-divider: #d1d6db;
+  /* Day boundary — 분봉 차트에서 거래일이 바뀌는 지점의 세로 점선.
+     pane separator 와 같은 "차트 구조선" 계열이지만 **한 단계 강하다**: separator 는
+     레이아웃 경계라 억제가 미덕인 반면, 이 선은 캔들 위를 지나며 "여기서 날이 바뀐다"
+     를 읽혀야 한다. 그래서 --border 계열(1.1~2.1:1, DESIGN.md 가 WCAG 1.4.11 미달로
+     명시)이 아니라 --fg-dimmer 근방에서 **--bg-card 대비 3:1 이상**을 지킨다.
+     값을 바꿀 때 그 대비를 다시 잴 것. */
+  --chart-day-boundary: #8b95a1; /* 3.04:1 — grey500, --fg-dimmer 와 같은 값 */
 
   /* ───── Foreground (ink greys) ───── */
   --fg: #191f28;         /* grey900 — txt-primary */
@@ -403,6 +424,13 @@
   --border: #2c2c35;         /* grey100 */
   --border-strong: #4d4d59;  /* grey300 */
   --chart-pane-divider: #3e3f49; /* grey300-ish, softened */
+  /* Day boundary — 분봉 차트에서 거래일이 바뀌는 지점의 세로 점선.
+     pane separator 와 같은 "차트 구조선" 계열이지만 **한 단계 강하다**: separator 는
+     레이아웃 경계라 억제가 미덕인 반면, 이 선은 캔들 위를 지나며 "여기서 날이 바뀐다"
+     를 읽혀야 한다. 그래서 --border 계열(1.1~2.1:1, DESIGN.md 가 WCAG 1.4.11 미달로
+     명시)이 아니라 --fg-dimmer 근방에서 **--bg-card 대비 3:1 이상**을 지킨다.
+     값을 바꿀 때 그 대비를 다시 잴 것. */
+  --chart-day-boundary: #7e7e87; /* 4.44:1 — grey500, --fg-dimmer 와 같은 값 */
 
   /* ───── Foreground (off-white ink — NOT pure #fff, see block header) ───── */
   --fg: #eceff5;         /* ≈ txt-primary rgba(242,246,255,0.9) */

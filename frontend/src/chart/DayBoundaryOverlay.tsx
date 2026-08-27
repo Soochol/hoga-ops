@@ -1,8 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import type { DayBoundaryTick } from './sessionSpans';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
-import { useActivePrefs } from '../state/chartPrefs';
-import { DayBoundaryPrimitive, type DayBoundarySnapshot } from './DayBoundaryPrimitive';
+import { DayBoundaryPrimitive } from './DayBoundaryPrimitive';
 
 type Props = {
   /**
@@ -39,32 +38,30 @@ type Props = {
  * 된다(`StudySavedRangeBandHost` 와 같은 판단).
  *
  * N 세그먼트 → N-1 경계(첫 세그먼트 앞에는 긋지 않는다).
+ *
+ * **prefs 를 읽지 않는다.** 색은 `--chart-day-boundary` 토큰을 primitive 가 draw
+ * 시점에 해석하고, 두께는 1px 상수이며, 켜고 끄는 토글은 없다(분봉이면 항상
+ * 그린다) — 그 결정의 근거는 `DayBoundaryPrimitive` 의 docstring 참조.
  */
 function DayBoundaryOverlay({ paneSeries, boundaries }: Props) {
-  const enabled = useActivePrefs((prefs) => prefs.dayBoundaryEnabled);
-  const color = useActivePrefs((prefs) => prefs.dayBoundaryColor);
-  const lineWidth = useActivePrefs((prefs) => prefs.dayBoundaryLineWidth);
-
-  const snapshotRef = useRef<DayBoundarySnapshot | null>(null);
   const primsRef = useRef<DayBoundaryPrimitive[]>([]);
+  const boundariesRef = useRef<readonly DayBoundaryTick[]>(boundaries);
 
   // 스냅샷 갱신은 **아래 attach effect 보다 먼저** 돌아야 첫 프레임이 빈 그림이 되지
-  // 않는다(React 는 effect 를 선언 순서로 실행한다). 담기는 건 좌표가 아니라 시각·
-  // 스타일이라, 팬/줌은 여기 deps 를 건드리지 않는다 — 그래서 이 effect 는 데이터가
-  // 실제로 바뀔 때만 돈다.
+  // 않는다(React 는 effect 를 선언 순서로 실행한다). 담기는 건 좌표가 아니라 시각이라,
+  // 팬/줌은 여기 deps 를 건드리지 않는다 — 그래서 이 effect 는 데이터가 실제로 바뀔
+  // 때만 돈다.
   //
   // `boundaries` 는 호출부가 값이 같으면 이전 참조를 유지하도록 안정화한다
   // (`sameDayBoundaryTicks`) — 그 전제가 깨지면 SSE 틱마다 헛된 repaint 를 부른다.
   useEffect(() => {
-    snapshotRef.current = { boundaries, color, lineWidth };
+    boundariesRef.current = boundaries;
     for (const prim of primsRef.current) prim.requestUpdate();
-  }, [boundaries, color, lineWidth]);
+  }, [boundaries]);
 
   useEffect(() => {
-    if (!enabled) return;
-
     const attached = [...paneSeries.values()].map((series) => {
-      const prim = new DayBoundaryPrimitive(() => snapshotRef.current);
+      const prim = new DayBoundaryPrimitive(() => boundariesRef.current);
       series.attachPrimitive(prim);
       prim.requestUpdate();
       return { series, prim };
@@ -80,7 +77,7 @@ function DayBoundaryOverlay({ paneSeries, boundaries }: Props) {
       }
       primsRef.current = [];
     };
-  }, [paneSeries, enabled]);
+  }, [paneSeries]);
 
   return null;
 }

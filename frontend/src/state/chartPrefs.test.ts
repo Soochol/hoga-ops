@@ -267,43 +267,27 @@ describe('총잔량 급증 설정', () => {
   });
 });
 
-describe('날짜 구분선 설정', () => {
-  it('defaults to current visual behavior', () => {
-    expect(DEFAULT_PREFS.dayBoundaryEnabled).toBe(true);
-    expect(DEFAULT_PREFS.dayBoundaryColor).toBe('#64748B');
-    expect(DEFAULT_PREFS.dayBoundaryLineWidth).toBe(1);
-  });
-
-  it('mergePrefs preserves valid day boundary style values', () => {
+// 날짜 구분선의 색·두께·토글 prefs 는 2026-08-27 에 사라졌다 — 색은
+// `--chart-day-boundary` 토큰, 두께는 1px 상수, 표시는 분봉이면 항상이다
+// (`DayBoundaryPrimitive` docstring 이 근거를 갖는다). 남는 계약은 하나:
+// **이미 저장된 옛 값이 hydrate 를 깨뜨리지 않는다.** persistence 가 allowlist
+// 방식이라 마이그레이션 코드 없이 제거할 수 있었던 근거가 이것이고, 여기가
+// 그 근거를 기록하는 유일한 자리다.
+describe('사라진 날짜 구분선 prefs', () => {
+  it('옛 저장값을 조용히 무시한다 — 마이그레이션 없이 제거된 근거', () => {
     const merged = mergePrefs({
       dayBoundaryEnabled: false,
       dayBoundaryColor: '#EF4444',
       dayBoundaryLineWidth: 3,
+      // 같은 payload 의 살아 있는 키는 정상 병합돼야 한다 — 무시가 "통째로
+      // 버린다"는 뜻이 아님을 여기서 못박는다.
+      horizontalGridLinesEnabled: false,
     });
 
-    expect(merged.dayBoundaryEnabled).toBe(false);
-    expect(merged.dayBoundaryColor).toBe('#EF4444');
-    expect(merged.dayBoundaryLineWidth).toBe(3);
-  });
-
-  it('mergePrefs falls back for invalid day boundary style values', () => {
-    const merged = mergePrefs({
-      dayBoundaryColor: 'red',
-      dayBoundaryLineWidth: 9,
-    });
-
-    expect(merged.dayBoundaryColor).toBe(DEFAULT_PREFS.dayBoundaryColor);
-    expect(merged.dayBoundaryLineWidth).toBe(DEFAULT_PREFS.dayBoundaryLineWidth);
-  });
-
-  it('setDayBoundaryStyle updates color and width independently', () => {
-    useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#22C55E' });
-    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
-    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(1);
-
-    useChartPrefsStore.getState().setDayBoundaryStyle({ lineWidth: 4 });
-    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
-    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(4);
+    expect('dayBoundaryEnabled' in merged).toBe(false);
+    expect('dayBoundaryColor' in merged).toBe(false);
+    expect('dayBoundaryLineWidth' in merged).toBe(false);
+    expect(merged.horizontalGridLinesEnabled).toBe(false);
   });
 });
 

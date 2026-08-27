@@ -8,7 +8,6 @@ import {
   resolveIndicatorModalPrefs,
   type ChartLineWidth,
   type ChartViewPrefs,
-  type DayBoundaryLineWidth,
   type IndicatorModalByTimeframe,
   type IndicatorModalPrefKey,
 } from './chartPrefs';
@@ -20,14 +19,11 @@ import { attachPersistence } from './persistentSubscriber';
 export const CHART_PREFS_KEY = 'hoga.chart.prefs.v1';
 const WRITE_DEBOUNCE_MS = 250;
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-const DAY_BOUNDARY_WIDTHS = new Set([1, 2, 3, 4]);
-
-function isDayBoundaryLineWidth(v: unknown): v is DayBoundaryLineWidth {
-  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
-}
+/** `MAStylePicker` 가 제공하는 네 단계 — 모든 선 스타일이 공유한다. */
+const CHART_LINE_WIDTHS = new Set([1, 2, 3, 4]);
 
 function isChartLineWidth(v: unknown): v is ChartLineWidth {
-  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
+  return typeof v === 'number' && CHART_LINE_WIDTHS.has(v);
 }
 
 /** 레지스트리 규칙으로 한 키의 값을 검증한다 — 무효면 undefined. */
@@ -62,12 +58,6 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
     if (isIndicatorModalPrefKey(p.key)) continue;
     const v = validatePrefValue(p.key, obj[p.key]);
     if (v !== undefined) (out as Record<string, unknown>)[p.key] = v;
-  }
-  if (typeof obj.dayBoundaryColor === 'string' && HEX_COLOR_RE.test(obj.dayBoundaryColor)) {
-    out.dayBoundaryColor = obj.dayBoundaryColor.toUpperCase();
-  }
-  if (isDayBoundaryLineWidth(obj.dayBoundaryLineWidth)) {
-    out.dayBoundaryLineWidth = obj.dayBoundaryLineWidth;
   }
   if (typeof obj.tradeHighlightColor === 'string' && HEX_COLOR_RE.test(obj.tradeHighlightColor)) {
     out.tradeHighlightColor = obj.tradeHighlightColor.toUpperCase();

@@ -119,6 +119,7 @@ The design system has a **single density dial** at `:root font-size`.
   | `--border` | `#232329` | `#E4E0D3` | Default borders, dividers |
   | `--border-strong` | `#33333C` | `#C9C3B2` | Active borders, vertical dividers |
   | `--chart-pane-divider` | `#3a3a42` | `#bcb4a0` | Chart pane separators only (lightweight-charts `layout.panes`); `--border-strong` 근처 톤으로 pane 경계는 남기되 소음은 억제(2026-07-15 완화 — 이전 다크 `#63636f`/라이트 `#9a917c`는 화면 최강 선이라 "분리는 톤+간격" 규칙과 충돌) |
+  | `--chart-day-boundary` | `#6d6d7b` | `#8a8271` | 분봉 차트의 거래일 경계 세로 점선(`DayBoundaryPrimitive`). **`--border` 계열을 재사용하지 않는다** — 아래 접근성 절 참조. `--bg-card` 대비 3:1 이상이 이 토큰의 계약이고(다크 3.67:1 / 라이트 3.71:1), 값을 바꿀 때 그 대비를 다시 잰다. 라이트는 종이 팔레트의 **따뜻한** 축을 따른다(차가운 슬레이트 블루 `#64748B` 가 겉돌던 것을 2026-08-27 에 교정) |
   | `--fg` | `#ECECF1` | `#1E2732` | Primary text |
   | `--fg-dim` | `#9A9AA8` | `#5C6673` | Secondary text, dim labels |
   | `--fg-dimmer` | `#63636F` | `#8B94A0` | **비활성(disabled) 요소와 장식 글리프 전용.** 3차 *텍스트* 에는 쓰지 않는다 — 아래 대비 규칙 참조 |
@@ -138,7 +139,7 @@ The design system has a **single density dial** at `:root font-size`.
   manual-select theme benchmarked from tossinvest.com's live design tokens. Key
   differences from Ledger (which it does NOT replace):
   - **Surfaces revive the layer step** (Ledger unifies `--bg`==`--bg-card`; Toss Light does not): `--bg #f6f7f9` (grey floor) with `--bg-card #ffffff` (white cards), so panels separate by luminance the way the reference does. `--bg-subtle`/`--bg-input-hover` `#f2f4f6`.
-  - **Ink greys:** `--fg #191f28` · `--fg-dim #4e5968` · `--fg-dimmer #8b95a1`. Borders `--border #e5e8eb` · `--border-strong`/`--chart-pane-divider #d1d6db`.
+  - **Ink greys:** `--fg #191f28` · `--fg-dim #4e5968` · `--fg-dimmer #8b95a1`. Borders `--border #e5e8eb` · `--border-strong`/`--chart-pane-divider #d1d6db`. Day boundary `--chart-day-boundary #8b95a1` (grey500 — 3.04:1).
   - **Accent = toss blue** `#3182f6` (hover `#2272eb`, fg white). `--success #03b26c` · `--error #e42939` · `--warn #eb7300`.
   - **Price direction (KRX):** `--price-up #de2b39` (red) · `--price-down #1957c2` (blue).
   - **⚠ Sanctioned exception to the three-way color discipline — accent-vs-price blue collision:** Toss's brand accent is blue and Toss's "down" price is also blue; Toss has no "UI color ≠ price color" rule so it lets them overlap. We keep the toss-blue accent (it *is* the theme's identity) and instead push `--price-down` one tone **darker** (`#1957c2`, blue800) than the accent (`#3182f6`) so the two blues separate. accent rides SOLID-FILL contexts (buttons, active tab, focus, crosshair); down-price rides text/border. **The two blues being close is this decision, not a bug** — mirrors the pre-existing `--error`/`--price-up` both-red overlap. Not perfect on the highest-density surfaces (a blue crosshair over a blue down-candle can read close); accepted for this theme. Elevation/MA tokens reuse the Ledger paper values (both are light surfaces).
@@ -146,7 +147,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Toss Dark palette (2026-07-22, `[data-theme='toss-dark']`):** the dark counterpart of
   Toss Light, benchmarked from tossinvest.com's live *dark* tokens. Also manual-select only.
   - **Surfaces revive the layer step** (inverted from light): `--bg #101013` (near-black floor) with `--bg-card #17171c` (cards sit *lighter* than the floor), `--bg-subtle #0c0c0f` (chrome sunk below the floor), `--bg-input #202027` / hover `#2c2c35`.
-  - **Off-white ink (NOT pure white):** `--fg #eceff5` — Toss's dark txt-primary is `rgba(242,246,255,0.9)`, deliberately avoiding `#ffffff` to cut glare. `--fg-dim #c3c3c6` (grey700) · `--fg-dimmer #7e7e87` (grey500). Borders `--border #2c2c35` (grey100, kept subtle) · `--border-strong`/`--chart-pane-divider` `#4d4d59`/`#3e3f49`.
+  - **Off-white ink (NOT pure white):** `--fg #eceff5` — Toss's dark txt-primary is `rgba(242,246,255,0.9)`, deliberately avoiding `#ffffff` to cut glare. `--fg-dim #c3c3c6` (grey700) · `--fg-dimmer #7e7e87` (grey500). Day boundary `--chart-day-boundary #7e7e87` (grey500 — 4.44:1). Borders `--border #2c2c35` (grey100, kept subtle) · `--border-strong`/`--chart-pane-divider` `#4d4d59`/`#3e3f49`.
   - **Accent = toss blue** `#3182f6` (hover `#2562b9`, fg white). `--success #16bb76` · `--error #f65a68` · `--warn #fcb50c`.
   - **Price direction (KRX):** `--price-up #f5445a` (red) · `--price-down #56a3ff` (blue).
   - **⚠ Same sanctioned accent-vs-price exception, INVERTED direction:** on a dark surface a *darker* down-blue (Toss Light's fix) would sink into the background, so here `--price-down #56a3ff` is pushed **lighter** than the `#3182f6` accent instead. Separation direction is set by background luminance. Elevation/MA tokens reuse the Obsidian dark values.
@@ -210,6 +211,12 @@ The design system has a **single density dial** at `:root font-size`.
   - **`--border` 계열은 아직 미해결:** `--border` 1.20:1 / 1.29:1, `--border-strong`
     1.71:1 로 WCAG 1.4.11(비텍스트 3:1)에 못 미친다. 입력 필드 경계가 사실상 보이지
     않는다는 뜻이다. 텍스트 축과 별개 문제라 이번 승격에 포함하지 않았다.
+    - **따라서 캔들 위에 그리는 선에 이 계열을 재사용하지 말 것.** 네 테마 실측:
+      `--grid` 1.08~1.19 · `--border-strong` 1.46~2.14 · `--chart-pane-divider`
+      1.46~2.01 — "테마 토큰이니 안전하다" 는 직관이 여기서 **반대로** 나온다.
+      2026-08-27 에 날짜 구분선을 테마화하며 이 함정을 만났고, 전용 토큰
+      (`--chart-day-boundary`, 3.04~4.44:1)을 새로 두어 피했다. 같은 상황이 오면
+      기존 토큰을 고르지 말고 **전용 슬롯을 만들고 대비를 적어 둘 것**.
 
 - **Semantic (banners / toasts):** read the token (values vary per theme).
   - Success: `--success`
