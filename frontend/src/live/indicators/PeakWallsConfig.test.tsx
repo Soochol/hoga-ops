@@ -71,19 +71,22 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
     expect(screen.getByTestId('peak-wall-eye-ask')).toBeDisabled();
     // 반대 카드는 살아 있다 — 잠금이 방향별이라는 것이 요점이다.
     expect(screen.getByTestId('peak-wall-eye-bid')).not.toBeDisabled();
-    // pane 은 방향까지 공용이라 side 마스터에 물리지 않는다.
-    expect(screen.getByTestId('settings-toggle-peakWallPaneEnabled')).not.toBeDisabled();
+    // pane 슬롯은 방향 마스터에 물리지 않는다 — 계단은 「그날 어디에 벽이 있었나」가
+    // 아니라 「그 벽이 언제 얼마나 자랐나」를 답하는 다른 표면이다.
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled')).not.toBeDisabled();
   });
 
-  // 방향까지 공용이라 **마지막 단계**다 — 한 pane 을 양방향이 공유하므로 어느 방향
-  // 아래에 두든 거짓말이 된다.
-  it('강도 pane 토글은 단계 ⑤ 에 하나만 있고, 공용 배지를 단다', () => {
+  /**
+   * ⑤ 에는 **스위치가 없다** — pane 의 있다/없다는 ② 의 여섯 칸이 정한다.
+   *
+   * **막는 방향**: 마스터 토글이 되살아나는 것. 그 스위치와 여섯 칸은 같은 질문에 두 번
+   * 답해서, 화면에 함께 두는 한 어긋난 조합(빈 pane · 무효 저장값)이 반드시 생긴다.
+   * 방향 공용이라는 사실은 배지가 계속 말한다.
+   */
+  it('⑤ 에는 pane 스위치가 없고, 공용 배지만 남는다', () => {
     render(<PeakWallsConfig />);
-    expect(screen.getAllByTestId('settings-toggle-peakWallPaneEnabled')).toHaveLength(1);
+    expect(screen.queryByTestId('settings-toggle-peakWallPaneEnabled')).toBeNull();
     expect(screen.getByText('매도 · 매수 공용')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('settings-toggle-peakWallPaneEnabled'));
-    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
   });
 
   /**
@@ -181,10 +184,13 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
   });
 
   /**
-   * 접혀서 화면에 없는 저장값을 **⑤ 요약이 계속 든다** — 마스터를 되켰을 때 무엇이
-   * 돌아오는지가 거기서만 보인다.
+   * pane 이 없으면 요약도 **없다고 말한다** — 저장돼 있는 칸을 세지 않는다.
+   *
+   * 그 값들은 다음 클릭에 버려지기 때문이다(여는 클릭이 나머지 다섯을 함께 닫는다).
+   * **막는 방향**: 요약이 「되켜면 이게 돌아온다」고 약속하는 것 — 그 약속은 지켜지지
+   * 않는다.
    */
-  it('마스터가 닫혀 있어도 ⑤ 요약은 보존된 칸을 계속 말한다', () => {
+  it('pane 이 없으면 요약은 저장된 칸을 세지 않는다', () => {
     useLivePageStore.setState({
       peakWallPaneEnabled: false,
       askPeakTradedPaneEnabled: true,
@@ -192,20 +198,27 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
     });
     render(<PeakWallsConfig />);
     const summary = screen.getByTestId('peak-wall-pane-summary').textContent ?? '';
-    expect(summary).toContain('매도 체결된 벽');
-    expect(summary).toContain('매수 전체 최대벽');
+    expect(summary).toContain('pane 없음');
+    expect(summary).not.toContain('매도 체결된 벽');
   });
 
   /**
-   * 슬롯 스위치의 이름은 사용자에게 **「이 계단을 pane 에 추가」** 다. 그러니 켰는데
-   * 마스터가 닫혀 있어 아무 일도 안 일어나는 상태가 있으면 안 된다.
+   * **pane 의 존재 = 여섯 칸의 OR** (2026-08-27, 사용자 결정). 칸이 하나라도 켜지면
+   * pane 이 있고, 여섯이 다 꺼지면 없다.
    *
-   * **막는 방향** 둘: (1) 옛 게이트(`disabled`)가 되살아나는 것 — 「먼저 저 위 스위치를
-   * 켜라」는 뜻인데 그 스위치를 이제 이 행이 대신 켠다. (2) 끄기가 마스터를 함께 닫는
-   * 것 — 마지막 칸을 껐다가 되켤 때 무엇이 돌아오는지가 안 보이게 된다.
+   * **막는 방향** 둘: (1) 옛 게이트(`disabled`)가 되살아나는 것. (2) 마지막 칸을 껐는데
+   * pane 이 남는 것 — 빈 pane 이 화면 부동산을 먹는다.
    */
-  it('슬롯을 켜면 pane 마스터가 함께 열리고, 꺼도 닫히지 않는다', () => {
-    useLivePageStore.setState({ peakWallPaneEnabled: false, askPeakTradedPaneEnabled: false });
+  it('마지막 칸을 끄면 pane 이 사라지고, 켜면 생긴다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: false,
+      askPeakTradedPaneEnabled: false,
+      askPeakUnreachedPaneEnabled: false,
+      askPeakAllWallPaneEnabled: false,
+      bidPeakTradedPaneEnabled: false,
+      bidPeakUnreachedPaneEnabled: false,
+      bidPeakAllWallPaneEnabled: false,
+    });
     render(<PeakWallsConfig />);
     const traded = screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled');
     expect(traded).not.toBeDisabled();
@@ -216,7 +229,62 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
 
     fireEvent.click(traded);
     expect(useLivePageStore.getState().askPeakTradedPaneEnabled).toBe(false);
+    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(false);
+  });
+
+  /**
+   * 판정은 **여섯 전부**이지 화면에 보이는 셋이 아니다. pane 은 매도·매수가 공유하는
+   * 하나라, 매수 칸이 살아 있는 동안 매도 셋을 다 꺼도 pane 은 남아야 한다.
+   *
+   * **막는 방향**: 판정이 「고른 방향의 셋」으로 좁아지는 것 — 그러면 매도를 비우는
+   * 순간 매수 계단이 함께 사라진다.
+   */
+  it('반대 방향 칸이 살아 있으면 이쪽을 다 꺼도 pane 이 남는다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: true,
+      askPeakTradedPaneEnabled: true,
+      askPeakUnreachedPaneEnabled: false,
+      askPeakAllWallPaneEnabled: false,
+      bidPeakTradedPaneEnabled: true,
+      bidPeakUnreachedPaneEnabled: false,
+      bidPeakAllWallPaneEnabled: false,
+    });
+    render(<PeakWallsConfig />);
+
+    fireEvent.click(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled'));
+    // 매도는 이제 셋 다 꺼졌지만 매수 체결된 벽이 남아 있다.
     expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
+    // 그 사실이 화면에 있어야 한다 — 매수 칸은 이 방향 화면에 보이지 않는다.
+    expect(screen.getByTestId('peak-wall-pane-summary').textContent).toContain('매수 체결된 벽');
+
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
+    fireEvent.click(screen.getByTestId('settings-toggle-bidPeakTradedPaneEnabled'));
+    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(false);
+  });
+
+  /**
+   * **닫혀 있던 pane 을 여는 클릭은 그 칸 하나만 넣는다.**
+   *
+   * 공장값이 양방향 체결된 벽 슬롯을 켜 둔 채라, 마스터만 열면 「미도달 벽 하나를 켰는데
+   * 계단이 셋 뜨는」 일이 생긴다. **막는 방향**: 접혀 있던 저장값이 arm 과 함께 되살아나
+   * 켜기와 끄기의 대칭이 깨지는 것.
+   */
+  it('닫혀 있던 pane 을 여는 클릭은 저장된 다른 칸을 되살리지 않는다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: false,
+      askPeakTradedPaneEnabled: true,   // 공장값 — 접혀 있어 화면엔 꺼짐
+      bidPeakTradedPaneEnabled: true,   // 〃
+      askPeakUnreachedPaneEnabled: false,
+    });
+    render(<PeakWallsConfig />);
+
+    fireEvent.click(screen.getByTestId('settings-toggle-askPeakUnreachedPaneEnabled'));
+    const after = useLivePageStore.getState();
+    expect(after.peakWallPaneEnabled).toBe(true);
+    expect(after.askPeakUnreachedPaneEnabled).toBe(true);
+    expect(after.askPeakTradedPaneEnabled).toBe(false);
+    expect(after.bidPeakTradedPaneEnabled).toBe(false);
+    expect(screen.getByTestId('peak-wall-pane-summary').textContent).toBe('1칸: 매도 미도달 벽');
   });
 
   // 계열 스위치는 **그 방향 × 그 계열**만 움직인다. 여섯이 서로 새면 단계가 말하는

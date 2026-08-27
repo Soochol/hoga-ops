@@ -506,8 +506,10 @@ describe('IndicatorPanel', () => {
     expect(screen.getByTestId('settings-toggle-bidPeakEnabled')).toBeTruthy();
     expect(screen.getByTestId('peak-wall-eye-ask')).toBeTruthy();
     expect(screen.getByTestId('peak-wall-eye-bid')).toBeTruthy();
-    // 방향까지 공용인 강도 pane 은 마지막 단계에 하나만.
-    expect(screen.getAllByTestId('settings-toggle-peakWallPaneEnabled')).toHaveLength(1);
+    // 강도 pane 에는 스위치가 없다 — 있다/없다는 ② 의 여섯 칸이 정한다(2026-08-27).
+    // 그 칸 셋은 고른 방향의 것이라 ② 에 앉는다.
+    expect(screen.queryByTestId('settings-toggle-peakWallPaneEnabled')).toBeNull();
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled')).toBeTruthy();
   });
 
 
