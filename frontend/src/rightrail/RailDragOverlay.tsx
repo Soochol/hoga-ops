@@ -28,15 +28,37 @@ const FLY_BACK: DropAnimation = {
  *
  * `wrapperElement="ul"` 인 이유: 고스트로 넘어오는 행이 `<li>`(QuoteRow·MemoRow)다.
  */
-export function RailDragOverlay({ droppedOnChart, children }: {
+export function RailDragOverlay({ droppedOnChart, fitContentHeight = false, children }: {
   droppedOnChart: boolean;
+  /**
+   * 고스트 **높이**를 내용에 맞춘다(기본은 원본 노드 높이).
+   *
+   * dnd-kit 은 오버레이 래퍼에 액티브 노드의 rect 를 `width`/`height` 로 박아 넣는다
+   * (core 의 `Animation` 컴포넌트). 원본이 **행**인 드래그에서는 둘 다 맞다 — 행 클론이
+   * 행 크기여야 한다. 하지만 원본이 **블록**인 드래그(관심종목의 그룹 = 헤더+종목들,
+   * 실측 129~579px)에서는 높이가 곧 빈 판때기가 된다: children 이 한 줄짜리 칩이어도
+   * 래퍼는 그룹 높이 그대로라 `bg-bg-card`+`shadow-overlay` 사각형이 커서를 따라온다.
+   *
+   * **폭은 덮지 않는다.** 블록 폭은 곧 레일 컬럼 폭이라 원래 맞고, `auto` 로 줄이면
+   * 칩이 아래 원본 행보다 좁아져 원본의 우측(개수 숫자)이 삐져나온 이중상이 된다
+   * (실측). 폭을 남겨 두면 칩이 착지 슬롯을 정확히 덮어 "헤더를 들어 올린" 그림이 된다.
+   *
+   * `style` 이 dnd-kit 의 width/height **뒤에** 펼쳐지므로(같은 컴포넌트) 덮을 수 있다.
+   * 이 값이 오버레이 DOM 의 실측 rect 를 바꾸고, 그 rect 가 곧 `collisionRect` 이라
+   * (DndContext: `draggingNodeRect = dragOverlay.rect ?? activeNodeRect`) **충돌 판정
+   * 기준도 칩 높이로 함께 좁아진다** — 보이는 것과 겨냥되는 것이 갈리지 않는다.
+   */
+  fitContentHeight?: boolean;
   children: React.ReactNode;
 }) {
   return createPortal(
     <DragOverlay
       wrapperElement="ul"
       dropAnimation={droppedOnChart ? null : FLY_BACK}
-      style={{ listStyle: 'none', margin: 0, padding: 0 }}
+      style={{
+        listStyle: 'none', margin: 0, padding: 0,
+        ...(fitContentHeight ? { height: 'auto' } : {}),
+      }}
       className="rounded overflow-hidden bg-bg-card shadow-overlay cursor-grabbing"
     >
       {children}
