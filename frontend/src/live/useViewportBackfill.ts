@@ -191,19 +191,6 @@ export interface ViewportBackfillArgs {
    * (2026-08-23 페이지 삭제로 이 경로의 소비자는 없다).
    */
   minuteScrollbackFloorDate?: string | null;
-  /**
-   * 이 창에 걸린 **기간 점프**의 목적지(YYYYMMDD). null = 점프 없음.
-   *
-   * 저장뷰와 **정확히 같은 문제**라 3d 가 둘을 함께 받는다: 순간 이동이라 팬
-   * 이벤트가 없어 3b 가 발화하지 않고, 단발 `extend` 는 한 청크에서 멎는다. 둘 중
-   * 더 과거를 목표로 삼아 한 번에 워크백한다 — 저장뷰를 연 채로 점프하면 두 구간이
-   * 모두 필요하고, 목표를 하나만 두면 나머지가 영영 안 채워진다.
-   *
-   * ⚠ **게이트를 통과한 값이어야 한다.** 스토어의 원시 점프 슬롯을 그대로 물리면
-   * 창번호·종목이 달라 **받지도 않은** 점프를 위해 과거를 긁는 창이 생긴다
-   * (`useTimeframeJump.backfillFromDate` 가 그 게이트를 통과한 결과다).
-   */
-  jumpFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -259,7 +246,6 @@ export function useViewportBackfill({
   settledFromDate = null,
   savedRangeFromDate = null,
   minuteScrollbackFloorDate = null,
-  jumpFromDate = null,
 }: ViewportBackfillArgs): {
   /** 강제 클램프 착지 안내 — 새 소스에 없는 구간에서 스왑해 가장 가까운 위치로
    *  옮겨졌을 때 한 번 선다. `seq` 는 같은 경계로 반복 착지해도 칩이 다시 뜨게 한다. */
@@ -1338,10 +1324,10 @@ export function useViewportBackfill({
   // 워크백을 넘긴다**. `coverage_gap` kind 를 그대로 쓰는 이유는 종료 조건이 정확히
   // 같기 때문이다 — 요청 창이 목표 날짜에 닿으면 `planFillStep` 이 stop 한다.
   //
-  // 소스가 둘인 것은 **같은 실패를 공유하기 때문**이다. 저장뷰 적용도 점프도 팬을
-  // 만들지 않아 3b 가 침묵하고, 단발 `extend` 로는 한 청크에서 멎는다. 목표는 둘 중
-  // **더 과거**다 — 저장뷰를 연 채로 점프하면 두 구간이 모두 필요하고, 목표를 하나만
-  // 두면 나머지가 영영 안 채워진다.
+  // ⚠ **기간 점프는 더 이상 이 경로를 타지 않는다.** 종전엔 점프도 「팬 없는 순간
+  // 이동」이라 같은 소스였는데, 지금은 창의 **우단**을 목적지로 옮겨(`asOfDate`)
+  // 첫 요청이 곧바로 그 구간으로 나간다 — 워크백할 거리가 애초에 없다. 저장뷰는
+  // 시작일을 고정하는 다른 축이라 이 경로가 그대로 필요하다.
   //
   // ⚠ **단발 `extend` 로는 안 된다.** 그건 `historicalFromDate` 를 한 번 세팅할 뿐이라
   // 백엔드가 한 청크만 주고 끝나고, `fillKind` 가 null 이라 3a 가 이어받지 못한다.
@@ -1349,10 +1335,8 @@ export function useViewportBackfill({
   //
   // 요청이 바뀌면 다시 판정한다(키가 두 날짜의 쌍) — 1회 마킹인 3c 와 다른 점이고,
   // 다른 저장뷰를 열거나 다른 날로 점프하면 그 구간까지 다시 채워야 하므로 그래야 한다.
-  const spotTargetFromDate = [savedRangeFromDate, jumpFromDate]
-    .filter((d): d is string => d !== null)
-    .reduce<string | null>((acc, d) => (acc === null || d < acc ? d : acc), null);
-  const spotTargetKey = `${savedRangeFromDate ?? ''}|${jumpFromDate ?? ''}`;
+  const spotTargetFromDate = savedRangeFromDate;
+  const spotTargetKey = savedRangeFromDate ?? '';
   useEffect(() => {
     if (spotTargetFromDate === null) {
       targetFilledForRef.current = null;
@@ -1400,8 +1384,7 @@ export function useViewportBackfill({
     livePerfLog('viewport_backfill_extend', {
       code,
       timeframe,
-      // 어느 순간 이동이 이 fill 을 세웠는가 — 둘이 겹치면 목표가 더 과거인 쪽이다.
-      trigger: spotTargetFromDate === jumpFromDate ? 'timeframe_jump' : 'saved_range',
+      trigger: 'saved_range',
       from: cur,
       nextFrom: plan.nextFrom,
       coverageTarget: target,
@@ -1410,7 +1393,7 @@ export function useViewportBackfill({
       candleCount: bundle.candles.length,
     });
     historicalRange.extend(plan.nextFrom);
-  }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, jumpFromDate, rangeWindowFromDate, code, historicalRange]);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, rangeWindowFromDate, code, historicalRange]);
 
   // 3e 의 래치는 **(code, timeframe) 스코프**다. 종목이나 봉이 갈리면 다른 축의
   // 날짜가 우연히 같아 "이미 밀었다" 로 오인될 수 있어, 경계에서 명시적으로 지운다.

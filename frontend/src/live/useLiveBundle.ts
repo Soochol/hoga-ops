@@ -49,6 +49,10 @@ import {
   subtractDaysKst,
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
+  vendorMinuteRetentionFloorDate,
+  // 훅 인자 `todayKstYyyymmdd`(= 창의 기준일)와 이름이 겹친다. 겹치는 쪽이 **의도**라
+  // 별칭을 준다 — 벤더 실보유만이 기준일이 아니라 실제 달력을 앵커로 하는 값이다.
+  todayKstYyyymmdd as realTodayKstYyyymmdd,
   isKstWeekend,
 } from './liveDateTime';
 import {
@@ -492,13 +496,28 @@ export function planLiveRangeRequest(args: {
   volumeDistributionPriceRange: { min: number; max: number } | null;
   /** 저장뷰 얼림 시작일 — `UseLiveBundleOptions.frozenRangeFrom` 과 같은 값·같은 의미. */
   frozenRangeFrom?: string | null;
+  /**
+   * **실제 오늘**(KST). `todayKstYyyymmdd` 가 창의 기준일로 대체될 수 있어서
+   * (기간 점프) 달력 기준의 사실을 재는 값이 따로 필요하다 — 지금은 벤더 분봉
+   * 실보유 하한 하나가 그것을 쓴다. 미지정이면 기준일로 폴백(= 평소 동작).
+   *
+   * 순수 함수를 유지하려고 **인자로 받는다** — 안에서 `todayKstYyyymmdd()` 를 부르면
+   * 이 함수의 출력이 벽시계에 달리고 테스트가 날짜를 고정할 수 없다.
+   */
+  realTodayKst?: string;
   /** 이 창이 디스크를 읽는가(`restBypassEnabled`). 250일 벽을 우회하는 축. */
   diskSource?: boolean;
 }): LiveRangeRequestPlan {
   const isMinute = isMinuteTimeframe(args.timeframe);
   const frozenFrom = args.frozenRangeFrom ?? null;
+  // 시작일이 기준일보다 나중이면 무시한다 — 근거는 훅 본체의 같은 줄(기간 점프가
+  // 우단을 과거로 옮기면 팬 이력이 `from > to` 를 만든다).
+  const windowFrom = args.historicalFromDate !== null
+    && args.historicalFromDate <= args.todayKstYyyymmdd
+    ? args.historicalFromDate
+    : null;
   const seedFrom = frozenFrom
-    ?? args.historicalFromDate
+    ?? windowFrom
     ?? subtractDaysKst(args.todayKstYyyymmdd, initialHistoricalDaysFor(args.timeframe));
   // **디스크를 읽는 창은 250일 벽을 타지 않는다** — 그 숫자는 벤더 엔드포인트의 span
   // 캡(`hoga/live/api.py` `_PAST_MAX_DAYS`)이라 `/api/range` 에는 존재하지 않는다.
@@ -506,7 +525,12 @@ export function planLiveRangeRequest(args: {
   // (창별 hogaplay 소스 · 전역 우회). 셋 다 같은 파일을 읽으므로 벽의 근거가 셋 다 없다.
   const minutePastFrom = frozenFrom || args.diskSource === true
     ? seedFrom
-    : laterDate(seedFrom, earliestAllowedMinuteDate(args.todayKstYyyymmdd));
+    : laterDate(seedFrom, laterDate(
+      earliestAllowedMinuteDate(args.todayKstYyyymmdd),
+      // 미지정이면 기준일로 폴백한다 — 기준일이 오늘인 평소에는 두 값이 같아서
+      // 벽이 종전과 동일하다(회귀 0). 점프한 창에서만 갈린다.
+      vendorMinuteRetentionFloorDate(args.realTodayKst ?? args.todayKstYyyymmdd),
+    ));
   const enableMinute = !!(args.code && isMinute && minutePastFrom <= args.todayKstYyyymmdd);
   return {
     code: enableMinute ? args.code : null,
@@ -611,10 +635,29 @@ export function useLiveBundle(
   // 아예 안 부른다(위 `restBypassEnabled` 가 디스크로 보낸다). 여기서 같이 자르면 저장뷰가
   // 가리키는 구간이 **디스크에는 있는데 화면에는 없는** 상태가 된다 — 이 기능이 고치려던
   // 바로 그 증상이다.
+  //
+  // ⚠ **기준일보다 나중인 시작일은 무시한다.** `todayKstYyyymmdd` 는 창의 기준일이고
+  // (기간 점프가 그것을 과거로 옮긴다 — `useMinuteJumpTarget`), 창의 시작일은 그와
+  // 무관하게 살아 있다. 팬한 적 없는 창은 시작일이 오늘−5거래일쯤이라 두 달 전으로
+  // 점프하면 `from > to` 가 되어 `enableMinute` 가 꺼지고 **창이 통째로 빈다**.
+  // 점프 훅이 시작일을 리셋하지만 그것은 effect 라 한 커밋 늦으므로, 원리적 차단은
+  // 여기 있어야 한다(스토어 위생은 그쪽이 맡는다).
+  const windowSeedFrom = historicalFromDate !== null && historicalFromDate <= todayKstYyyymmdd
+    ? historicalFromDate
+    : null;
   const seedFrom = frozenRangeFrom
-    ?? historicalFromDate
+    ?? windowSeedFrom
     ?? subtractDaysKst(todayKstYyyymmdd, initialHistoricalDaysFor(timeframe));
-  const earliestAllowedMinute = earliestAllowedMinuteDate(todayKstYyyymmdd);
+  // 벤더 하한은 **두 겹**이다 — 늦은 쪽이 이긴다.
+  //  ① span 캡(250일): 한 요청의 폭 제한이라 창의 우단을 따라 움직인다.
+  //  ② 실보유(382일): 벤더가 달력 기준으로 들고 있는 깊이라 **실제 오늘**을 앵커로 한다.
+  // 우단이 오늘로 고정이던 동안에는 ①이 항상 늦어서 ②가 드러날 자리가 없었다. 점프가
+  // 우단을 옮기면서 ①이 과거로 물러나므로, ②를 겹치지 않으면 갈 수 없는 날을 갈 수
+  // 있다고 말하게 된다(요청은 200 으로 통과하고 빈 배열이 온다).
+  const earliestAllowedMinute = laterDate(
+    earliestAllowedMinuteDate(todayKstYyyymmdd),
+    vendorMinuteRetentionFloorDate(realTodayKstYyyymmdd()),
+  );
   // 벽 우회의 축은 **얼림이 아니라 디스크**다 — 근거는 `planLiveRangeRequest` 의 같은 줄.
   const minutePastFrom = frozenRangeFrom || restBypassEnabled
     ? seedFrom
@@ -878,6 +921,8 @@ export function useLiveBundle(
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
     frozenRangeFrom,
+    // 벤더 실보유 하한이 재는 것은 **달력의 사실**이라 기준일이 아니라 실제 오늘이다.
+    realTodayKst: realTodayKstYyyymmdd(),
     // 지표 경로도 **같이** 벽을 우회해야 한다 — 캔들만 풀면 250일 밖에서 봉은 그려지고
     // 호가비·체결강도·체결량 POC 만 조용히 비어, 그 구간이 "지표가 없는 날" 로 읽힌다.
     diskSource: restBypassEnabled,

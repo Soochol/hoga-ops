@@ -1,121 +1,157 @@
 /**
  * 기간 점프의 **소비 배선** — 판정과 수식은 `chart/timeframeJump.ts` 가 갖고, 여기서는
- * 그것을 lightweight-charts 와 DOM 이벤트에 붙인다.
+ * 그것을 창의 **데이터 창 우단**(기준일)으로 옮긴다.
  *
  * 발행 쪽에는 훅이 없다. 점프는 제스처를 추적하는 것이 아니라 **버튼 한 번**이라
- * 스토어 액션(`requestTimeframeJump`)을 직접 부르면 끝이다 — 기간 동기화가 발행
- * 훅을 갖는 이유(제스처 구간 만들기)가 여기엔 없다.
+ * 스토어 액션(`requestTimeframeJump`)을 직접 부르면 끝이다.
  *
- * ── 착지는 **재시도**가 필요하고, 그래서 래치가 필요하다 ──────────────────
- * 두 달 전으로 점프하면 그 날 봉은 아직 로드돼 있지 않다. 백필이 채워 줄 때까지
- * 기다렸다가 앉아야 하므로 착지는 `candles` 가 바뀔 때마다 재시도한다.
+ * ── 왜 착지 코드가 없는가 — 이 훅은 「어디를 보나」가 아니라 「무엇을 받나」다 ──
  *
- * 그 재시도를 **끄지 않으면 창이 사용자 손에서 벗어난다.** 분봉 번들은 SSE 틱마다
- * 갱신되므로(실측 초당 ~8회) 착지한 뒤에도 이펙트가 계속 돌고, 사용자가 팬으로
- * 빠져나가려 할 때마다 도로 끌려온다. 그래서 `seq` 하나는 **한 번만 착지한다**
- * (`settledSeqRef`), 그리고 착지 전이라도 사용자가 그 창을 만지면 그 seq 를
- * **포기한다**. 두 경로가 같은 래치를 쓰므로 상태 전이는 seq 당 단방향이다.
+ * 종전 구현은 창의 페치 구간이 `[from, **오늘**]` 로 고정된 것을 전제로, 목적지가
+ * 그 창에 들어올 때까지 `from` 을 스텝 단위로 걸어 내리고(최대 60스텝) 캔들이 도착할
+ * 때마다 그 칸의 마지막 봉을 찾아 뷰포트를 앉혔다. 두 달 전으로 점프하면 **목적지와
+ * 오늘 사이 전 구간의 분봉**을 받아야 했다 — 사용자가 보지도 않을 데이터다.
  *
- * 같은 날짜로 다시 누르면 `seq` 가 올라가 새 명령이 되고 래치가 자연히 풀린다 —
- * 스토어가 값 동일 no-op 을 하지 않는 이유가 그것이다.
+ * 지금은 창의 **우단을 목적지로 옮긴다**(`asOfDate`). 그러면 첫 요청이 곧바로
+ * `[목적지−청크, 목적지]` 로 나가 한 왕복에 끝나고, **데이터의 오른쪽 끝이 곧 목적지**가
+ * 되므로 착지는 차트의 초기 배치가 그대로 한다 — 뷰포트를 미는 코드가 필요 없다.
+ * 그 재배치를 유발하는 것이 `viewSeg` 이고(창의 `viewIdentity` 에 섞이면 차트가
+ * remount 된다), 이는 저장뷰 칩 × 가 라이브 복귀를 겸하는 것과 **같은 경로**다.
+ *
+ * 함께 사라진 것: 백필 목표(`backfillFromDate`) · 착지 재시도 · seq 래치 · 중단
+ * (`aborted`)과 ↻. 래치와 중단은 "백필을 기다리는 동안 사용자가 팬하면 뒤늦게
+ * 끌려간다" 를 막던 장치인데, 기다림 자체가 한 왕복으로 줄어 그 창이 닫혔다.
+ *
+ * ── 좌측 팬은 그대로 산다 ────────────────────────────────────────────────
+ * 우단만 고정하고 `from` 은 자유다. 그래서 `planPastCandlesDelta` 의
+ * `canReusePrevious` 경로(`requestTo = previous.from − 1`)가 종전과 똑같이 왼쪽
+ * 청크를 이어붙인다 — 저장뷰 얼림(`frozenRangeFrom`)과 갈리는 지점이 여기다.
+ * 저쪽은 시작일까지 고정해 백필을 멈추지만, 점프는 "어디서부터 보나" 를 정하지 않는다.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { IChartApi, Time } from 'lightweight-charts';
 import { useLiveCursorStore } from './useLiveCursorStore';
-import { realMsToVirtualSeconds } from './viewportAnchor';
-import { minuteRightOffsetBars } from './minuteViewportPolicy';
 import { realMsToYyyymmdd } from './liveDateTime';
-import { savedRangeAnchorTs } from './savedRangeAnchor';
-import type { SyncCandle } from '../chart/cursorSync';
-import { jumpedLogicalRange, resolveTimeframeJump } from '../chart/timeframeJump';
+import { resolveTimeframeJump } from '../chart/timeframeJump';
 import type { LiveTimeframe } from '../state/livePage';
-import type { VirtualAxis } from '../util/virtualAxis';
+import { useHistoricalRangeActions } from './workspace/windowView';
 
 /**
  * 이 분봉 창에 걸린 점프의 화면 상태 — 칩이 읽는다.
  *
- * `out-of-retention` 이 따로 있는 이유: 그건 "아직 안 왔다" 가 아니라 **영영 안
- * 온다** 이고, 사용자가 할 수 있는 일도 다르다(기다림 vs 포기). 하나로 뭉치면
- * 칩이 영원히 "불러오는 중" 을 표시한다 — 침묵보다 나쁜 종류의 거짓말이다.
+ * 넷이 각각 **사용자가 할 수 있는 일**로 갈린다:
+ *  - `seeking` — 기다리면 온다(그 구간을 받는 중).
+ *  - `landed` — 도착했다. 칩은 돌아갈 문으로만 남는다.
+ *  - `no-data` — 받아 왔는데 그 구간에 봉이 없다. 기다려도 안 온다.
+ *  - `out-of-retention` — 이 창의 하한 밖이라 **영영** 안 온다.
  *
- * `aborted` 도 같은 축에서 갈라져 나왔다. 종전엔 중단을 `landed` 에 뭉쳐서, 칩이 두
- * 경우에 **모두 참인 것**(대상 날짜)밖에 말할 수 없었다 — 창이 움직인 적 없는데
- * "이동했다" 고 하면 거짓이기 때문이다. 중단은 사용자 자신의 행동이라 구별할 수 있는
- * 사실이므로 따로 말하고, 되돌릴 문(`retry`)을 준다.
+ * 마지막 둘을 `seeking` 에 뭉치면 칩이 영원히 "불러오는 중" 을 표시한다 — 침묵보다
+ * 나쁜 종류의 거짓말이다. 그리고 그 둘끼리도 갈라야 한다: 하한 밖은 **다른 날짜를
+ * 고르라**는 뜻이고, 봉이 없는 것은 그 날 시장이 그랬다는 뜻이라 대안이 다르다.
  */
 export type MinuteJumpState = {
   /**
    * 칩이 말할 KST 날짜(YYYYMMDD).
    *
-   * `landed` 면 **실제로 앉은 봉의 날짜**이고, 그 전에는 목적지 칸의 상한 날짜다.
-   * 둘을 구별하는 이유: 새 계약에서 상한은 **칸의 달력상 끝**이라 비거래일일 수 있다
-   * (주봉이면 일요일). 착지한 뒤에도 그 날짜를 계속 말하면 **차트가 보여주지 않는
-   * 날을 이름 붙이는 칩**이 되는데, 그것이 #1506 에서 고친 「거짓말하는 칩」과 정확히
-   * 같은 모양이다.
+   * `landed` 면 **실제로 그려진 마지막 봉의 날짜**이고, 그 전에는 목적지 칸의 상한이다.
+   * 둘을 구별하는 이유(#1506): 상한은 **칸의 달력상 끝**이라 비거래일일 수 있다(주봉
+   * 칸이면 일요일). 착지한 뒤에도 그 날짜를 계속 말하면 **차트가 보여주지 않는 날을
+   * 이름 붙이는 칩**이 된다 — 실측 2026-08-23: 주봉 상한 08-23(일)인데 착지는 08-21.
    */
   date: string;
-  status: 'seeking' | 'landed' | 'aborted' | 'out-of-retention';
+  status: 'seeking' | 'landed' | 'no-data' | 'out-of-retention';
   /**
    * `out-of-retention` 일 때 **이 창이 불러올 수 있는 가장 이른 날**(YYYYMMDD).
    *
-   * 칩이 상수로 적던 「보유 기간(13개월)」을 대신한다. 그 문구는 이중으로 틀렸다 —
-   * 벤더 벽은 250일이고(`earliestAllowedMinuteDate`), 디스크 모드에는 벽 자체가 없다.
-   * 값을 상태가 나르면 두 모드에서 모두 맞고, 벽이 바뀌어도 문구가 따라온다.
+   * 상수로 적던 「보유 기간(13개월)」을 대신한다. 그 문구는 모드에 따라 틀렸다 —
+   * 벤더 벽은 두 겹(span 캡 · 실보유)이고 디스크 모드는 캡처가 있는 만큼이다.
+   * 값을 상태가 나르면 세 모드에서 모두 맞는다.
    */
   floorDate?: string;
 };
 
-export type TimeframeJumpResult = {
-  /** 칩에 그릴 상태. 걸린 점프가 없으면 null. */
-  state: MinuteJumpState | null;
+/**
+ * 칩에 그릴 상태 — **데이터 훅 뒤에서** 부른다(하한·로딩을 알아야 한다).
+ *
+ * 순수 함수인 이유: 이 판정의 입력 넷이 서로 다른 훅에서 나와(점프 슬롯 · 번들의
+ * 하한 · 쿼리의 로딩 · 캔들 배열) 한 훅 안에 모을 수 없다. 판정만 떼면 소비처가
+ * 어디서 부르든 같은 답을 낸다.
+ */
+export function minuteJumpChipState(args: {
+  /** 이 창에 걸린 점프의 목적지 날짜. `null` = 점프 없음. */
+  date: string | null;
+  /** 이 창이 불러올 수 있는 가장 이른 날. `null` = 모름 — **막지 않는다**. */
+  floorDate: string | null;
+  /** 과거 캔들을 불러오는 중인가. */
+  isLoading: boolean;
   /**
-   * 이 창이 백필로 채워야 할 시작일(YYYYMMDD). **게이트를 통과한 명령만** 나온다 —
-   * 원시 슬롯을 백필에 그대로 물리면 창번호·종목이 달라 **받지도 않은** 점프를 위해
-   * 과거를 긁는 창이 생긴다.
-   */
-  backfillFromDate: string | null;
-  /** 칩의 × — 이 창만 점프에서 풀고 라이브 엣지로 돌아간다. */
-  clear: () => void;
-  /**
-   * 칩의 ↻ — 같은 목적지로 **다시** 보낸다(중단 뒤 되돌릴 문).
+   * 이 창이 그리고 있는 **마지막 봉의 KST 날짜**. `null` = 봉이 없다.
    *
-   * 원래 발행(`origin`)을 그대로 재사용하므로 게이트 판정이 갈리지 않는다. 새 seq 가
-   * 매겨져 래치가 풀리는데, 그것이 안전한 것은 seq 가 단조 증가하기 때문이다 —
-   * #1508 이전에는 슬롯이 비워지면 되감겨 재발행이 옛 래치에 걸려 죽었다.
+   * 「봉이 있는가」와 「착지 날짜」를 **한 값으로** 받는다. 둘을 따로 받으면 어긋날 수
+   * 있고, 어긋나는 쪽이 곧 #1506 이다 — 칩이 차트에 없는 날짜를 말하는 상태.
    */
-  retry: () => void;
+  lastCandleDate: string | null;
+}): MinuteJumpState | null {
+  const { date, floorDate, isLoading, lastCandleDate } = args;
+  if (date === null) return null;
+  // 하한이 `null`(디스크 모드·미측정)이면 막지 않는다 — 모르는 것을 못 간다고
+  // 말하지 않는다.
+  if (floorDate !== null && date < floorDate) {
+    return { date, status: 'out-of-retention', floorDate };
+  }
+  if (isLoading) return { date, status: 'seeking' };
+  if (lastCandleDate === null) return { date, status: 'no-data' };
+  // ⚠ **착지하면 목적지가 아니라 앉은 봉의 날짜를 말한다**(#1506) — 타입 도크스트링의
+  // 그 이유다. 우단이 목적지가 됐어도 그 날이 거래일이 아니면 마지막 봉은 그 앞이다.
+  return { date: lastCandleDate, status: 'landed' };
+}
+
+export type MinuteJumpTarget = {
+  /**
+   * 이 창의 **데이터 창 우단**(YYYYMMDD). `null` = 평소의 라이브 창.
+   *
+   * `useLiveChartData` 의 `asOfDate` 로 그대로 넘어가 그 훅의 "오늘" 이 된다.
+   * 목적지가 **오늘 이후**면 `null` 이다 — 그때는 라이브 창이 이미 그 자리이고,
+   * 기준일을 세우면 SSE 만 끊겨 실시간이 죽는다.
+   */
+  asOfDate: string | null;
+  /** 칩이 말할 목적지(오늘로 클램프). 점프 없으면 `null`. */
+  date: string | null;
+  /**
+   * 창의 `viewIdentity` 에 섞을 조각. 값이 갈리면 차트가 remount 되고 초기 배치가
+   * 다시 적용된다 — **착지가 일어나는 자리**다.
+   *
+   * `seq` 를 섞는 이유: 같은 목적지로 다시 눌러도 다시 착지해야 한다(종전 ↻ 의
+   * 역할). 목적지만 섞으면 두 번째 누름이 값 동일로 묻힌다.
+   */
+  viewSeg: string | null;
+  /** 칩의 × — 이 창만 점프에서 풀고 라이브로 돌아간다. */
+  clear: () => void;
 };
 
-export function useTimeframeJump(params: {
-  chart: IChartApi | null;
-  axis: VirtualAxis;
-  /** 이 창의 차트 컨테이너 — 사용자 제스처(중단 신호)를 여기서 듣는다. */
-  containerRef: { current: HTMLElement | null };
-  /** 이 창이 그리고 있는 캔들. **ts 오름차순**이어야 한다(스냅이 이진 탐색). */
-  candles: readonly SyncCandle[];
-  /**
-   * 이 창의 좌측 팬 하한(`useLiveBundle.minuteScrollbackFloorDate`). `null` = 무한.
-   *
-   * **판정이 여기 있는 이유**: 하한은 모드에 따라 갈린다(벤더=250일 벽, 디스크=캡처가
-   * 있는 만큼). 그 값을 아는 것은 **이 분봉 창뿐**이고, 발행하는 일봉 창은 항상
-   * `null` 을 본다 — 그래서 「갈 수 없다」는 발행 측이 아니라 소비 측이 말한다.
-   */
-  minuteScrollbackFloorDate: string | null;
-  /** 기능 토글 + 이 봉이 점프를 받는가. 꺼져 있으면 구독도 하지 않는다. */
+/**
+ * 이 창에 걸린 점프 → 기준일. **데이터 훅보다 위에서** 부른다.
+ *
+ * 순환을 피하려고 칩 상태와 갈라져 있다: 기준일은 데이터 훅의 **입력**이고 칩 상태는
+ * 그 **출력**(하한·로딩)을 읽는다. 한 훅에 두면 자기 출력을 자기 입력으로 먹는다.
+ */
+export function useMinuteJumpTarget(params: {
+  /** 기능 게이트 + 이 봉이 점프를 받는가. 꺼져 있으면 구독도 하지 않는다. */
   enabled: boolean;
   myWindowId: string | null;
   myTimeframe: LiveTimeframe;
   myGroup: number | null;
   myCode: string | null;
   allowCrossSymbol: boolean;
-}): TimeframeJumpResult {
-  const {
-    chart, axis, containerRef, candles, enabled, minuteScrollbackFloorDate,
-    myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
-  } = params;
+  /**
+   * 실제 오늘(KST). 목적지 상한을 여기로 클램프한다 — 주·월 칸의 상한은 **달력상의
+   * 칸 끝**이라 미래일 수 있고(8월 칸 → 08-31), 미래를 우단으로 보내면 백엔드가
+   * 422(`DATE_IN_FUTURE`)를 낸다.
+   */
+  todayKst: string;
+}): MinuteJumpTarget {
+  const { enabled, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, todayKst } = params;
   const jumpRequest = useLiveCursorStore((s) => s.jumpRequest);
-  const axisRef = useRef(axis);
-  axisRef.current = axis;
+  const historicalRange = useHistoricalRangeActions();
 
   // 이 창이 추종을 시작한 시점의 명령 번호. 이보다 큰 것만 본다 — 슬롯에 남아 있던
   // 옛 명령을 새로 연 창이 적용하면 그 창의 초기 뷰 배치와 싸운다(기간 동기화의
@@ -142,131 +178,44 @@ export function useTimeframeJump(params: {
     enabled, jumpRequest, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, dismissedSeq,
   ]);
 
-  // 이 seq 는 끝났다 — 착지했거나 사용자가 그 창을 만져 포기했거나.
+  // 칸의 **포함 상한**을 오늘로 클램프한 것이 목적지다. 칸 시작(`fromMs`)은 쓰지
+  // 않는다 — 종전엔 그것이 백필 목표였지만, 이제 창이 우단에서 왼쪽으로 자라므로
+  // 시작일을 지정할 이유가 없다(지정하면 좌측 팬을 얼리는 저장뷰가 된다).
+  const date = live === null
+    ? null
+    : (() => {
+      const upper = realMsToYyyymmdd(live.toMs);
+      return upper > todayKst ? todayKst : upper;
+    })();
+  // 목적지가 오늘이면 데이터 레버를 세우지 않는다 — 라이브 창이 이미 그 구간이고,
+  // 세우면 SSE 구독만 끊겨 실시간이 조용히 죽는다. 착지는 `viewSeg` 가 여전히
+  // 하므로(remount → 초기 배치 = 라이브 엣지) 「오늘로 되돌리는 점프」도 동작한다.
+  const asOfDate = date !== null && date < todayKst ? date : null;
+  const viewSeg = live === null || date === null ? null : `jd=${date}#${live.seq}`;
+
+  // 창의 백필 시작일을 리셋한다 — 기준일이 서고 풀릴 때마다.
   //
-  // ref 와 state 를 **함께** 든다. ref 는 rAF 안에서의 즉시 판정용(중단은 포인터
-  // 이벤트로 오므로 다음 렌더를 기다릴 수 없다), state 는 칩이 「불러오는 중」을
-  // 끄기 위한 렌더 트리거용이다. 둘이 갈리지 않도록 쓰는 자리를 이 함수 하나로 묶는다.
-  const settledSeqRef = useRef<number | null>(null);
-  const [settledSeq, setSettledSeq] = useState<number | null>(null);
-  /** 실제로 앉은 봉의 날짜. **중단이면 null** — 그 경우 앉은 봉이 없다. */
-  const [settledDate, setSettledDate] = useState<string | null>(null);
-  const settle = useCallback((seq: number, landedDate: string | null = null) => {
-    settledSeqRef.current = seq;
-    setSettledSeq(seq);
-    setSettledDate(landedDate);
-  }, []);
-
-  // 상한 날짜 — 칩(착지 전)과 보유 한계 판정이 읽는다. 백필은 **칸 시작**을 쓴다(아래).
-  const targetDate = live === null ? null : realMsToYyyymmdd(live.toMs);
-  const backfillDate = live === null ? null : realMsToYyyymmdd(live.fromMs);
-  // 이 창의 하한 밖이면 백필해도 빈 응답만 온다 — 착지도 시도하지 않는다.
-  // 하한이 `null`(디스크 모드·미측정)이면 **막지 않는다**: 모르는 것을 못 간다고
-  // 말하지 않는다(그쪽은 캡처가 있는 만큼 더 과거를 볼 수 있다).
-  const outOfRetention = targetDate !== null
-    && minuteScrollbackFloorDate !== null
-    && targetDate < minuteScrollbackFloorDate;
-
-  // ── 착지 ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!chart || live === null || outOfRetention) return;
-    if (settledSeqRef.current === live.seq) return;
-    if (candles.length === 0) return;
-    // 그 **칸의 마지막 봉** — 상한 이하에서 뒤로 훑는다.
-    //
-    // ⚠ **칸 밖으로는 내려가지 않는다.** `savedRangeAnchorTs` 는 상한 이하의 마지막
-    // 봉을 주므로 칸이 아직 비어 있으면 **그 앞 칸의 봉**을 돌려준다. 그대로 앉으면
-    // 백필 도중에 엉뚱한 구간으로 조기 착지하고 래치까지 걸려 되돌릴 수도 없다.
-    // 종전 `snapToLastOfKstDay` 도 그 날 봉이 없으면 물러났다 — 같은 성질이다.
-    const anchorTs = savedRangeAnchorTs(candles, live.toMs);
-    // 아직 그 칸이 안 왔다 — 래치를 걸지 **않고** 물러난다. 백필이 캔들을 채우면
-    // 이 이펙트가 다시 돌아 그때 앉는다.
-    if (anchorTs === null || anchorTs < live.fromMs) return;
-    const raf = requestAnimationFrame(() => {
-      // 예약과 실행 사이에 사용자가 만졌을 수 있다.
-      if (settledSeqRef.current === live.seq) return;
-      const ts = chart.timeScale();
-      // 실행 시점에 다시 읽는다 — 폭은 그 사이 바뀔 수 있고, 낡은 값으로 앉히면
-      // 그게 곧 튐이다(`useRangeSyncFollow` 와 같은 처방).
-      const current = ts.getVisibleLogicalRange();
-      if (!current) return;
-      const anchorIndex = ts.timeToIndex?.(
-        realMsToVirtualSeconds(axisRef.current, anchorTs) as Time,
-        true,
-      );
-      if (typeof anchorIndex !== 'number' || !Number.isFinite(anchorIndex)) return;
-      const next = jumpedLogicalRange({
-        anchorIndex,
-        current,
-        // 원시 `rightOffset` 이 아니다 — 분봉 창은 가격 라벨 거터를 봉 수로 환산해
-        // 따로 비운다. 그걸 무시하면 착지한 봉이 라벨 밑에 깔린다.
-        rightOffsetBars: minuteRightOffsetBars(current.to - current.from, ts.width()),
-      });
-      // ⚠ **`next` 가 null 이어도 래치를 건다.** null 은 "이미 그 자리" 라는 뜻이고,
-      // 그때 래치를 빼먹으면 틱마다 이 이펙트가 다시 돌아 사용자가 팬으로 빠져나갈
-      // 수 없다 — 바로 이 훅이 막으려는 그 증상이다.
-      settle(live.seq, realMsToYyyymmdd(anchorTs));
-      if (next) ts.setVisibleLogicalRange(next);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [chart, live, outOfRetention, candles, settle]);
-
-  // ── 중단 — 사용자가 그 창을 만지면 그 명령은 끝난 것으로 본다 ────────────
+  // ⚠ **이것이 없으면 두 방향으로 어긋난다.** ① 좌팬으로 깊어진 시작일이 남으면 ×
+  // 로 라이브에 돌아왔을 때 그 깊이를 그대로 다시 요청한다. ② 점프로 들어갈 때는
+  // 시작일이 기준일보다 **나중**일 수 있어(팬한 적 없는 창은 오늘−5거래일쯤)
+  // `from > to` 가 된다. ②는 `useLiveBundle` 의 seed 계산이 원리적으로도 막지만
+  // (기준일보다 나중인 시작일은 무시), 스토어에 죽은 값을 남기지 않는 것이 이쪽이다.
   //
-  // 착지 **전**에도 유효하다: 백필을 기다리는 동안 사용자가 다른 구간으로 팬했는데
-  // 뒤늦게 캔들이 도착해 끌어가면, 사용자 입장에서는 아무 조작 없이 화면이 튄다.
+  // ⚠ **마운트에서는 부르지 않는다.** deps 만으로 걸면 첫 커밋에서도 발화해 창이
+  // 복원한 시작일(워크스페이스 persist)을 지운다 — 점프와 무관한 창까지 매번
+  // 초기 폭으로 되돌아간다. 그래서 "값이 실제로 갈렸는가" 를 ref 로 따로 센다.
+  const prevAsOfRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    const target = containerRef.current;
-    if (!target || live === null) return;
-    if (settledSeqRef.current === live.seq) return;
-    const abort = () => settle(live.seq);
-    // capture — lwc 의 핸들러(캔버스=타겟)보다 먼저 듣는다. 기간 동기화 발행이
-    // 같은 이유로 같은 단계를 쓴다.
-    target.addEventListener('pointerdown', abort, { capture: true });
-    target.addEventListener('wheel', abort, { passive: true, capture: true });
-    return () => {
-      target.removeEventListener('pointerdown', abort, { capture: true });
-      target.removeEventListener('wheel', abort, { capture: true });
-    };
-  }, [containerRef, live, settle]);
-
-  const retry = useCallback(() => {
-    if (live === null) return;
-    useLiveCursorStore.getState().requestTimeframeJump(live.fromMs, live.toMs, live.origin);
-  }, [live]);
+    const prev = prevAsOfRef.current;
+    prevAsOfRef.current = asOfDate;
+    if (prev === undefined || prev === asOfDate) return;
+    historicalRange.reset();
+  }, [asOfDate, historicalRange]);
 
   const clear = useCallback(() => {
     if (live === null) return;
     setDismissedSeq(live.seq);
-    // 라이브 엣지로 복귀 — 저장뷰 칩의 × 와 같은 계약("데려다주되 가두지 않는다" 의
-    // 반대편: 풀면 원래 자리로).
-    chart?.timeScale().scrollToRealTime();
-  }, [chart, live]);
+  }, [live]);
 
-  const state = useMemo<MinuteJumpState | null>(() => {
-    if (live === null || targetDate === null) return null;
-    if (outOfRetention) {
-      return {
-        date: targetDate,
-        status: 'out-of-retention',
-        ...(minuteScrollbackFloorDate === null ? {} : { floorDate: minuteScrollbackFloorDate }),
-      };
-    }
-    if (settledSeq !== live.seq) return { date: targetDate, status: 'seeking' };
-    // 앉은 봉이 없으면 중단이다 — 착지 경로만 날짜를 남긴다(`settle` 의 두 번째 인자).
-    if (settledDate === null) return { date: targetDate, status: 'aborted' };
-    // 착지했으면 **앉은 봉의 날짜**를 말한다.
-    return { date: settledDate, status: 'landed' };
-  }, [live, targetDate, outOfRetention, settledSeq, settledDate, minuteScrollbackFloorDate]);
-
-  return {
-    state,
-    // 보유 한계 밖은 백필 대상이 아니다 — 긁어도 빈 응답만 온다.
-    //
-    // ⚠ **상한이 아니라 칸 시작이다.** 상한을 물리면 로드 구간이 `[칸 끝, 지금]` 이
-    // 되어 착지 대상인 그 칸의 봉이 영영 안 온다(`JumpPublication.fromMs` 주석).
-    backfillFromDate: live !== null && !outOfRetention ? backfillDate : null,
-    clear,
-    retry,
-  };
+  return { asOfDate, date, viewSeg, clear };
 }

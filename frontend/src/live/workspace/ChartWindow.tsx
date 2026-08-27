@@ -84,10 +84,12 @@ import { JumpToMinuteButton } from './JumpToMinuteButton';
 import type { JumpRange } from '../minuteJumpDestination';
 import { MinuteJumpChip } from './MinuteJumpChip';
 import { ViewedDateChip } from './ViewedDateChip';
-import { canPublishTimeframeJump } from '../../chart/timeframeJump';
+import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../../chart/timeframeJump';
 import { jumpReceiverIds, registerJumpRunner } from './jumpControls';
 import { useLiveCursorStore } from '../useLiveCursorStore';
-import type { MinuteJumpState } from '../useTimeframeJump';
+import { useActivePrefs } from '../../state/chartPrefs';
+import { todayKstYyyymmdd } from '../liveDateTime';
+import { minuteJumpChipState, useMinuteJumpTarget } from '../useTimeframeJump';
 import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import type { CollectVisibleRange } from './collectDialogControls';
 import { unixMsToKSTDate } from '../../util/time';
@@ -252,6 +254,30 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     }
     return stockInstrument(symbol.code, symbol.name);
   }, [symbol]);
+  /**
+   * 「분봉으로」로 이 창에 걸린 **기준일** — 데이터 창의 우단.
+   *
+   * ⚠ **`useLiveChartData` 보다 위에서 부른다.** 기준일은 그 훅의 **입력**이라
+   * 순서가 뒤집히면 한 커밋 늦게 반영되고, 그 사이 창은 라이브 구간을 한 번 받았다가
+   * 버린다(요청 낭비 + 화면 깜빡임). 칩 상태는 반대로 그 훅의 출력(하한·로딩)을
+   * 읽어야 해서 **아래**에서 계산한다 — 그래서 훅이 둘로 갈라져 있다.
+   *
+   * 얼린 창은 점프를 받지 않는다: 저장뷰는 구간을 지정한 더 구체적인 요청이고,
+   * 둘 다 서면 우단을 두 값이 다투게 된다.
+   */
+  // 종목 축만 크로스헤어와 공유한다 — 세 동기화가 이미 그 토글을 함께 쓴다.
+  // 동기화 토글(`rangeSyncEnabled`)에는 묶지 **않는다**: 저것은 "따라다닐 것인가" 이고
+  // 점프는 누를 때만 한 번 움직이는 명령이라 끌 이유가 애초에 없다.
+  const jumpCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  const minuteJumpTarget = useMinuteJumpTarget({
+    enabled: savedRangeFreeze === null && isTimeframeJumpTarget(view.timeframe),
+    myWindowId: win.id,
+    myTimeframe: view.timeframe,
+    myGroup: win.group,
+    myCode: view.code,
+    allowCrossSymbol: jumpCrossSymbol,
+    todayKst: todayKstYyyymmdd(),
+  });
   const d = useLiveChartData({
     activeCode: view.code,
     activeInstrument: instrument,
@@ -262,7 +288,29 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     sidecarDemands,
     savedRangeFreeze,
     hogaplaySource: hogaplaySourceEnabled,
+    asOfDate: minuteJumpTarget.asOfDate,
   });
+  /**
+   * 칩에 그릴 상태 — 데이터 훅의 출력으로 판정한다.
+   *
+   * `workareaLoading` 이 `seeking` 의 축인 이유: 기준일이 서면 요청이 곧바로
+   * 목적지 구간으로 나가므로, 로딩이 끝났다는 것이 곧 "그 구간을 받아 봤다" 이다.
+   * 종전처럼 캔들 도착을 지켜볼 필요가 없다(도착이 곧 착지였던 구조가 사라졌다).
+   */
+  const minuteJumpState = useMemo(() => {
+    // 착지 날짜는 **그려진 마지막 봉**이다 — 목적지 상한이 아니라(#1506). 주·월 칸의
+    // 상한은 달력상의 칸 끝이라 비거래일일 수 있고, 그때 우단은 그 앞 거래일이 된다.
+    const cs = d.workareaChartBundle?.candles;
+    return minuteJumpChipState({
+      date: minuteJumpTarget.date,
+      floorDate: d.minuteScrollbackFloorDate,
+      isLoading: d.workareaLoading,
+      lastCandleDate: cs && cs.length > 0 ? unixMsToKSTDate(cs[cs.length - 1].ts_ms) : null,
+    });
+  }, [
+    minuteJumpTarget.date, d.minuteScrollbackFloorDate,
+    d.workareaLoading, d.workareaChartBundle,
+  ]);
 
   // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
   const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;
@@ -354,7 +402,20 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
 
   const baseIdentity = d.workareaCode ? `${d.workareaCode}:${venue}` : venue;
-  const viewIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}` : baseIdentity;
+  const savedIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}` : baseIdentity;
+  /**
+   * 점프 조각을 섞는 것이 **착지 그 자체다.**
+   *
+   * `viewIdentity` 가 갈리면 `LiveChartRoot` 의 차트가 remount 되고 초기 뷰 배치가
+   * 다시 적용된다. 기준일이 선 창은 데이터의 오른쪽 끝이 곧 목적지이므로, 그 초기
+   * 배치가 그대로 「목적지에 앉기」다 — 뷰포트를 미는 코드가 따로 없는 이유다.
+   * 칩 × 로 풀면 조각이 빠져 다시 remount 되고, 그때의 오른쪽 끝은 라이브 엣지다.
+   * 저장뷰 칩의 × 가 라이브 복귀를 겸하는 것과 **같은 경로**(`sv=` 조각)이고,
+   * 그래서 새 복귀 코드도 없다.
+   */
+  const viewIdentity = minuteJumpTarget.viewSeg
+    ? `${savedIdentity}:${minuteJumpTarget.viewSeg}`
+    : savedIdentity;
 
   // 헤더가 좁아지면 액션 라벨을 접는다(#762) — 관측 대상은 컨테이너 폭이라
   // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
@@ -388,11 +449,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     date: string | null;
     returnToLive: () => void;
   }>({ date: null, returnToLive: () => {} });
-  const [minuteJump, setMinuteJump] = useState<{
-    state: MinuteJumpState | null;
-    clear: () => void;
-    retry: () => void;
-  }>({ state: null, clear: () => {}, retry: () => {} });
   // 발행 판정은 **여기 하나**다. 버튼과 `g` 가 각자 판정하면 "버튼은 막았는데
   // 단축키는 보내는" 상태가 생기고, 그 어긋남은 눌러 보기 전엔 안 보인다.
   const runJump = useCallback(() => {
@@ -701,13 +757,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             <ViewedDateChip date={viewedDate.date} onReturn={viewedDate.returnToLive} />
           </div>
         )}
-        {minuteJump.state && (
+        {minuteJumpState && (
           <div className="ml-1 flex min-w-0 items-center">
-            <MinuteJumpChip
-              state={minuteJump.state}
-              onClear={minuteJump.clear}
-              onRetry={minuteJump.retry}
-            />
+            <MinuteJumpChip state={minuteJumpState} onClear={minuteJumpTarget.clear} />
           </div>
         )}
         {/* hogaplay 소스 칩 — 저장뷰 칩과 **같은 자리·다른 의미**다. 둘이 동시에 뜰 수
@@ -810,7 +862,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onJumpSourceReady={(read) => { jumpSourceRef.current = read; }}
               onJumpDestinationChange={setJumpDestination}
               onViewedDateChange={setViewedDate}
-              onMinuteJumpChange={setMinuteJump}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}

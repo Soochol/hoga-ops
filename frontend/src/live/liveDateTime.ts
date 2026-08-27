@@ -20,9 +20,37 @@ const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
 export const PAST_CANDLES_MAX_DAYS = 250;
 
 /** 250일 클램프 하한 날짜(YYYYMMDD KST). 분봉 fetch는 이 날짜보다 과거로 못 간다.
- * 250일 윈도가 오늘을 포함하므로 오늘 − 249. */
+ * 250일 윈도가 오늘을 포함하므로 오늘 − 249.
+ *
+ * ⚠ **인자는 「오늘」이 아니라 창의 기준일이다.** 백엔드 제약은 `to − from + 1 > 250`
+ * 즉 **span 캡**이라(`hoga/live/api.py` `_PAST_MAX_DAYS`), 창의 우단이 과거로 가면
+ * 이 벽도 같이 간다. 프론트가 늘 `to = 오늘` 을 보내던 시절에 절대 하한처럼 보였을
+ * 뿐이다. 기간 점프(`useMinuteJumpTarget`)가 그 우단을 옮기는 첫 소비자다.
+ *
+ * 그래서 이 함수만으로는 **하한이 부족하다** — span 캡 아래에 벤더 실보유가 따로
+ * 있다(`vendorMinuteRetentionFloorDate`). 둘의 늦은 쪽이 진짜 하한이다. */
 export function earliestAllowedMinuteDate(todayKstYyyymmdd: string): string {
   return subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
+}
+
+/** 키움 분봉 **실보유** 깊이(캘린더일). 실측(2026-08-21): 382일 전은 봉이 오고
+ * 400일 전은 빈 배열이 온다 — 그 사이 어디가 진짜 경계인지는 모르므로 **살아 있는
+ * 것이 확인된 값**을 쓴다(넘겨 잡으면 갈 수 있다고 말해 놓고 빈 화면을 준다).
+ *
+ * `PAST_CANDLES_MAX_DAYS`(250)와 **다른 종류의 벽**이다: 저쪽은 한 요청의 span 캡이라
+ * 창의 우단을 옮기면 따라 움직이고, 이쪽은 벤더가 **실제 달력 기준**으로 들고 있는
+ * 깊이라 창을 어디에 두든 움직이지 않는다. 우단이 고정(`to = 오늘`)이던 동안에는
+ * 250이 항상 더 늦어서 이 벽이 드러날 자리가 없었다. */
+export const MINUTE_VENDOR_RETENTION_DAYS = 382;
+
+/** 벤더 분봉이 실제로 살아 있는 가장 이른 날(YYYYMMDD KST).
+ *
+ * ⚠ **인자는 실제 오늘이어야 한다** — 창의 기준일이 아니다. 벤더 보유는 달력의
+ * 사실이라 창을 과거에 앉힌다고 깊어지지 않는다. 이 리포의 「얼림 레버는 `today`
+ * 한 줄」 규율에서 의도적으로 빠지는 유일한 값이고, 그래서 호출부가 기준일이 아니라
+ * `todayKstYyyymmdd()` 를 직접 넘긴다. */
+export function vendorMinuteRetentionFloorDate(realTodayKstYyyymmdd: string): string {
+  return subtractDaysKst(realTodayKstYyyymmdd, MINUTE_VENDOR_RETENTION_DAYS - 1);
 }
 
 /** Today's YYYYMMDD in KST. */

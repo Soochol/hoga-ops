@@ -366,6 +366,65 @@ describe('planLiveRangeRequest', () => {
     expect(planLiveRangeRequest({ ...WALL_ARGS, frozenRangeFrom: '20240827' }).from).toBe('20240827');
   });
 
+  /**
+   * ── 기간 점프: 우단이 과거로 가면 벽도 따라간다 ──────────────────────────
+   *
+   * 백엔드 제약은 `to − from + 1 > 250` 즉 **span 캡**이라(`_PAST_MAX_DAYS`), 창의
+   * 우단이 과거로 가면 이 벽도 같이 간다. 프론트가 늘 `to = 오늘` 을 보내던 시절에
+   * 절대 하한처럼 보였을 뿐이다.
+   *
+   * `realTodayKst` 를 함께 주는 이유는 아래 실보유 케이스가 설명한다.
+   */
+  const JUMPED_ARGS = {
+    ...WALL_ARGS,
+    // 창의 기준일 = 점프 목적지. 실제 오늘은 여전히 20260822 다.
+    todayKstYyyymmdd: '20260601',
+    realTodayKst: '20260822',
+    // 시작일은 `WALL_ARGS` 의 값(20240827)을 그대로 쓴다 — 벽은 **하한**이라 요청
+    // 창이 그보다 얕으면 드러나지 않는다.
+  };
+
+  it('기준일이 과거면 250일 벽이 그 기준으로 재정렬된다', () => {
+    // 오늘 기준이면 20251216 이 벽이지만, 우단이 20260601 이면 3개월 더 깊어진다.
+    expect(planLiveRangeRequest(JUMPED_ARGS).from).toBe('20250925');
+    expect(planLiveRangeRequest(JUMPED_ARGS).to).toBe('20260601');
+  });
+
+  /**
+   * span 캡 아래에 **벤더 실보유**(실측 382일)가 따로 있다. 우단이 고정이던 동안에는
+   * span 캡이 항상 더 늦어서 이 벽이 드러날 자리가 없었다 — 점프가 우단을 옮기면서
+   * span 캡이 과거로 물러나므로, 겹치지 않으면 **갈 수 없는 날을 갈 수 있다고 말하게
+   * 된다**(요청은 200 으로 통과하고 빈 배열이 온다).
+   *
+   * 그래서 이 값의 앵커는 창의 기준일이 아니라 **실제 오늘**이다.
+   */
+  it('실보유 하한이 span 캡보다 늦으면 그쪽이 이긴다', () => {
+    const deep = { ...JUMPED_ARGS, todayKstYyyymmdd: '20251001' };
+    // span 캡만 보면 20250125 지만, 실보유는 20250806 부터다.
+    expect(planLiveRangeRequest(deep).from).toBe('20250806');
+  });
+
+  it('실보유 앵커는 **실제 오늘**이다 — 기준일을 따라가지 않는다', () => {
+    const deep = { ...JUMPED_ARGS, todayKstYyyymmdd: '20251001' };
+    // 실제 오늘이 한 달 뒤면 실보유 하한도 한 달 뒤로 밀린다(같은 기준일인데도).
+    expect(planLiveRangeRequest({ ...deep, realTodayKst: '20260922' }).from).toBe('20250906');
+  });
+
+  /**
+   * 좌팬 이력이 남은 창으로 과거를 점프하면 `from > to` 가 되어 `enableMinute` 가
+   * 꺼지고 **창이 통째로 빈다**. 점프 훅이 시작일을 리셋하지만 그것은 effect 라 한
+   * 커밋 늦으므로, 원리적 차단은 이 계산부에 있어야 한다.
+   */
+  it('시작일이 기준일보다 나중이면 무시한다 — from > to 로 창이 죽지 않는다', () => {
+    const plan = planLiveRangeRequest({
+      ...JUMPED_ARGS,
+      historicalFromDate: '20260815', // 기준일(20260601)보다 나중
+    });
+    expect(plan.code).toBe('005930');
+    expect(plan.from! <= plan.to!).toBe(true);
+    expect(plan.from).not.toBe('20260815');
+  });
+
   it('disables /api/range for calendar timeframes and gates disabled optional slices', () => {
     expect(planLiveRangeRequest({
       code: '005930',
