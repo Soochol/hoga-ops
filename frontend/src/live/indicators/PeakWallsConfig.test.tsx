@@ -93,25 +93,27 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
    * **막는 방향** 둘: (1) 이 여섯이 `{side}Peak{Family}LineEnabled` 로 다시 배선되는
    * 것 — 화면엔 스위치가 둘인데 상태는 하나라 서로를 조용히 덮는다. (2) 여섯이 방향을
    * 잃고 셋으로 합쳐지는 것 — 매도를 껐는데 매수도 꺼진다.
+   *
+   * 2026-08-27 부터 스위치가 ② 의 계열 행에 있으므로 **한 화면에는 셋뿐이다**.
+   * 나머지 셋은 ① 에서 방향을 바꿔 닿는다 — 그래서 이 순회가 방향 카드를 함께 누른다.
    */
   it('강도 pane 슬롯 6칸이 각자 자기 키만 움직인다', () => {
-    // pane 이 꺼져 있으면 여섯이 잠겨 클릭이 no-op 이다(아래 테스트가 그 잠금을 잰다).
-    useLivePageStore.setState({ peakWallPaneEnabled: true });
     render(<PeakWallsConfig />);
     const slots = [
-      { key: 'askPeakTradedPaneEnabled', line: 'askPeakTradedLineEnabled' },
-      { key: 'askPeakUnreachedPaneEnabled', line: 'askPeakUnreachedLineEnabled' },
-      { key: 'askPeakAllWallPaneEnabled', line: 'askPeakAllWallLineEnabled' },
-      { key: 'bidPeakTradedPaneEnabled', line: 'bidPeakTradedLineEnabled' },
-      { key: 'bidPeakUnreachedPaneEnabled', line: 'bidPeakUnreachedLineEnabled' },
-      { key: 'bidPeakAllWallPaneEnabled', line: 'bidPeakAllWallLineEnabled' },
+      { side: 'ask', name: '매도 체결된 벽', key: 'askPeakTradedPaneEnabled', line: 'askPeakTradedLineEnabled' },
+      { side: 'ask', name: '매도 미도달 벽', key: 'askPeakUnreachedPaneEnabled', line: 'askPeakUnreachedLineEnabled' },
+      { side: 'ask', name: '매도 전체 최대벽', key: 'askPeakAllWallPaneEnabled', line: 'askPeakAllWallLineEnabled' },
+      { side: 'bid', name: '매수 체결된 벽', key: 'bidPeakTradedPaneEnabled', line: 'bidPeakTradedLineEnabled' },
+      { side: 'bid', name: '매수 미도달 벽', key: 'bidPeakUnreachedPaneEnabled', line: 'bidPeakUnreachedLineEnabled' },
+      { side: 'bid', name: '매수 전체 최대벽', key: 'bidPeakAllWallPaneEnabled', line: 'bidPeakAllWallLineEnabled' },
     ] as const;
 
     for (const slot of slots) {
+      fireEvent.click(screen.getByRole('button', { name: `${slot.side === 'ask' ? '매도' : '매수'} 설정 열기` }));
       const before = useLivePageStore.getState();
       const wasPane = before[slot.key];
       const wasLine = before[slot.line];
-      fireEvent.click(screen.getByTestId(`settings-toggle-${slot.key}`));
+      fireEvent.click(screen.getByRole('switch', { name: `강도 pane ${slot.name}` }));
       const after = useLivePageStore.getState();
 
       expect(after[slot.key]).toBe(!wasPane);
@@ -125,29 +127,55 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
     }
   });
 
-  // 단계 ① 이 방향을 고르는 자리지만, ⑤ 는 **양방향을 함께** 둔다 — pane 이 하나라
-  // 그 안의 구성은 한 화면에서 정하는 것이 맞다.
-  it('강도 pane 슬롯은 방향을 고르지 않아도 여섯이 다 보인다', () => {
-    useLivePageStore.setState({ peakWallPaneEnabled: true });
+  /**
+   * 슬롯의 스코프는 **고른 방향**이다 — ⑤ 매트릭스가 ② 로 내려오며 뒤집힌 단언.
+   *
+   * **막는 방향**: 여섯이 다시 한 화면에 모이는 것(그러면 ① 의 방향 선택이 pane 에만
+   * 무의미해진다), 그리고 반대쪽이 **완전히 침묵하는 것** — 요약 줄이 그걸 막는다.
+   * 요약이 없으면 「분명 껐는데 계단이 남아 있다」의 답이 화면 밖에 있게 된다.
+   */
+  it('슬롯은 고른 방향의 셋만 보이고, 반대쪽은 ⑤ 요약이 말한다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: true,
+      askPeakTradedPaneEnabled: true,
+      bidPeakAllWallPaneEnabled: true,
+    });
     render(<PeakWallsConfig />);
-    for (const key of [
-      'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
-      'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
-    ]) {
-      expect(screen.getByTestId(`settings-toggle-${key}`)).toBeTruthy();
-    }
+
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-bidPeakTradedPaneEnabled')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '매수 설정 열기' }));
+    expect(screen.getByTestId('settings-toggle-bidPeakTradedPaneEnabled')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-askPeakTradedPaneEnabled')).toBeNull();
+
+    // 요약은 방향을 가리지 않는다 — 지금 pane 에 들어 있는 것 전부를 든다.
+    const summary = screen.getByTestId('peak-wall-pane-summary').textContent ?? '';
+    expect(summary).toContain('매도 체결된 벽');
+    expect(summary).toContain('매수 전체 최대벽');
   });
 
-  // pane 이 꺼져 있으면 여섯은 잠기되 **값은 보존**한다(`enabledBy` 게이트 시맨틱).
-  it('pane 마스터가 꺼져 있으면 슬롯 6칸이 잠긴다', () => {
-    useLivePageStore.setState({ peakWallPaneEnabled: false, askPeakTradedPaneEnabled: true });
+  /**
+   * 슬롯 스위치의 이름은 사용자에게 **「이 계단을 pane 에 추가」** 다. 그러니 켰는데
+   * 마스터가 닫혀 있어 아무 일도 안 일어나는 상태가 있으면 안 된다.
+   *
+   * **막는 방향** 둘: (1) 옛 게이트(`disabled`)가 되살아나는 것 — 「먼저 저 위 스위치를
+   * 켜라」는 뜻인데 그 스위치를 이제 이 행이 대신 켠다. (2) 끄기가 마스터를 함께 닫는
+   * 것 — 마지막 칸을 껐다가 되켤 때 무엇이 돌아오는지가 안 보이게 된다.
+   */
+  it('슬롯을 켜면 pane 마스터가 함께 열리고, 꺼도 닫히지 않는다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: false, askPeakTradedPaneEnabled: false });
     render(<PeakWallsConfig />);
     const traded = screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled');
-    expect(traded).toBeDisabled();
-    expect(screen.getByTestId('settings-toggle-bidPeakAllWallPaneEnabled')).toBeDisabled();
-    // 잠겼어도 저장된 값은 살아 있다 — 다시 켜면 그 선택으로 돌아온다.
-    expect(traded.getAttribute('aria-checked')).toBe('true');
+    expect(traded).not.toBeDisabled();
+
+    fireEvent.click(traded);
     expect(useLivePageStore.getState().askPeakTradedPaneEnabled).toBe(true);
+    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
+
+    fireEvent.click(traded);
+    expect(useLivePageStore.getState().askPeakTradedPaneEnabled).toBe(false);
+    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
   });
 
   // 계열 스위치는 **그 방향 × 그 계열**만 움직인다. 여섯이 서로 새면 단계가 말하는
