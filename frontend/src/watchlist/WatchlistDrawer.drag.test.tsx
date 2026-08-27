@@ -10,14 +10,28 @@ import { WATCHLIST_KEY } from './watchlistKeys';
 
 // ADR-0057: 패널 드래그의 wiring contract만 검증 — 실제 dnd-kit 포인터/충돌은 e2e가 담당.
 // DndContext를 passthrough로 모킹해 주입된 onDragEnd를 캡처하고, useSortable은 no-op으로 둔다.
-const h = vi.hoisted(() => ({
-  onDragStart: null as null | ((e: unknown) => void),
-  onDragEnd: null as null | ((e: unknown) => void),
-  /** 마지막 렌더에서 DragOverlay 가 받은 dropAnimation. null = 낙하 애니메이션 끔. */
-  dropAnimation: undefined as unknown,
-  onPointerDown: vi.fn(),
-  setActivatorNodeRef: vi.fn(),
-}));
+const h = vi.hoisted(() => {
+  /** 그룹 드래그로 전 그룹이 접힐 때 드롭 타깃을 다시 재라는 요청(RemeasureOnCollapse).
+   *  **모의에 이 키가 없으면** 훅이 `undefined()` 를 불러 터진다 — 배선을 재는 김에
+   *  존재도 같이 고정한다. */
+  const measureDroppableContainers = vi.fn();
+  return {
+    onDragStart: null as null | ((e: unknown) => void),
+    onDragEnd: null as null | ((e: unknown) => void),
+    /** 마지막 렌더에서 DragOverlay 가 받은 dropAnimation. null = 낙하 애니메이션 끔. */
+    dropAnimation: undefined as unknown,
+    /** 마지막 렌더에서 DragOverlay 가 받은 style — `fitContent` 배선을 여기서 잰다.
+     *  dnd-kit 이 래퍼에 박는 width/height 를 덮는 것이 그 prop 의 전부이므로, 실제
+     *  픽셀이 아니라 **넘어간 선언**을 재는 것이 이 층에서 가능한 최대다(ADR-0057). */
+    overlayStyle: undefined as undefined | Record<string, unknown>,
+    onPointerDown: vi.fn(),
+    setActivatorNodeRef: vi.fn(),
+    measureDroppableContainers,
+    /** `useDndContext()` 의 반환값 — **참조가 고정돼야 한다.** 실물 컨텍스트는 memo 라
+     *  안정적이고, 매 렌더 새 객체를 주면 이 값을 deps 에 넣은 effect 가 무한히 재실행된다. */
+    dndContext: { active: null, over: null, measureDroppableContainers },
+  };
+});
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
@@ -35,10 +49,11 @@ vi.mock('@dnd-kit/core', async (orig) => {
     // passthrough 모킹에는 그 컨텍스트가 없으므로 고스트가 영원히 안 뜬다. 여기서
     // 검증하는 것은 렌더 위치가 아니라 **고스트에 무엇이 실리는가**(wiring)이므로
     // children 을 그대로 통과시킨다. 실제 오버레이 배치는 e2e 담당(ADR-0057).
-    DragOverlay: ({ children, dropAnimation }: {
-      children: React.ReactNode; dropAnimation: unknown;
+    DragOverlay: ({ children, dropAnimation, style }: {
+      children: React.ReactNode; dropAnimation: unknown; style?: Record<string, unknown>;
     }) => {
       h.dropAnimation = dropAnimation;
+      h.overlayStyle = style;
       return <>{children}</>;
     },
     useSensor: () => ({}),
@@ -47,7 +62,7 @@ vi.mock('@dnd-kit/core', async (orig) => {
     // 그룹 드롭존(v5)은 실물 훅이 아니라 스텁으로 — 여기서 재는 것은 onDragEnd 배선이고,
     // 실제 히트 영역·하이라이트는 e2e 담당(ADR-0057). 히트맵 드로어 테스트와 같은 선례.
     useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
-    useDndContext: () => ({ active: null, over: null }),
+    useDndContext: () => h.dndContext,
   };
 });
 vi.mock('@dnd-kit/sortable', async (orig) => {
@@ -92,8 +107,10 @@ describe('WatchlistDrawer drag wiring', () => {
     h.onDragStart = null;
     h.onDragEnd = null;
     h.dropAnimation = undefined;
+    h.overlayStyle = undefined;
     h.onPointerDown.mockClear();
     h.setActivatorNodeRef.mockClear();
+    h.measureDroppableContainers.mockClear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
@@ -361,15 +378,123 @@ describe('WatchlistDrawer drag wiring', () => {
     }
   });
 
-  it('makes no ghost for a folder drag — the group block transform already reads right', async () => {
+  // --- 그룹(폴더) 드래그의 손·눈 피드백 ---
+  //
+  // 이 절이 뒤집은 것: 여기 있던 테스트는 "폴더는 고스트를 만들지 않는다 — 그룹 블록
+  // transform 이 이미 적절하다" 였다. 그 전제가 브라우저 실측으로 틀렸다(2026-08-27).
+  // 오버레이 껍데기는 드래그 종류와 무관하게 **항상 마운트**돼 있어서, children 이
+  // null 이면 그룹 크기의 **빈 카드**(280×129, innerHTML 길이 0)가 커서를 따라왔고,
+  // 동시에 dnd-kit 이 `useDragOverlay = Boolean(dragOverlay.rect !== null)` 로 오버레이
+  // 유무를 판단하는 탓에 원본 블록은 포인터가 아니라 **착지 예정지**로 순간이동했다
+  // (포인터 330px vs 블록 733px).
+  //
+  // 막는 방향: 폴더 드래그에서 고스트 내용이 **비는 것**. 못 보는 것: 실제 픽셀 크기와
+  // 배치(오버레이는 body 포털 + fixed라 jsdom 에서 의미 없다) — 그건 e2e 담당(ADR-0057).
+  const startFolderDrag = (id = 'f_0000000a') => act(() => {
+    h.onDragStart!({ active: { id, data: { current: { type: 'folder' } } } });
+  });
+  const endDrag = (active: unknown) => act(() => {
+    h.onDragEnd!({ active, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+  });
+
+  it('puts the grabbed group name + count on the drag ghost, and clears it when the drag ends', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
+
+    startFolderDrag();
+    const ghost = screen.getByTestId('watchlist-drag-ghost');
+    // 스윙 폴더 = ENTRIES 2건. 이름만이 아니라 **개수까지** — 접힌 채로 옮기므로
+    // 손에 든 것이 "몇 종목짜리 그룹인지"가 화면 어디에도 남지 않는다.
+    expect(ghost).toHaveTextContent('스윙');
+    expect(ghost).toHaveTextContent('2');
+
+    endDrag({ id: 'f_0000000a', data: { current: { type: 'folder' } } });
+    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
+  });
+
+  it('caps the folder ghost height to its content, and leaves the width alone', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    act(() => {
-      h.onDragStart!({ active: { id: 'f_0000000a', data: { current: { type: 'folder' } } } });
-    });
-    expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
+    startFolderDrag();
+    // 높이는 덮는다 — dnd-kit 이 래퍼에 박는 height(=액티브 노드 = 그룹 블록 전체)를
+    // 그대로 두면 한 줄짜리 칩 주위로 빈 카드가 남는다.
+    expect(h.overlayStyle).toMatchObject({ height: 'auto' });
+    // 폭은 **덮지 않는다** — 블록 폭이 곧 레일 컬럼 폭이라 원래 맞고, 좁히면 칩이 아래
+    // 원본 행보다 작아져 원본의 개수 숫자가 삐져나온 이중상이 된다(실측).
+    expect(h.overlayStyle).not.toHaveProperty('width');
+
+    endDrag({ id: 'f_0000000a', data: { current: { type: 'folder' } } });
+    act(() => { h.onDragStart!(DRAG_START); });   // 종목 행 드래그는 원본 크기 그대로
+    expect(h.overlayStyle).not.toHaveProperty('height');
+  });
+
+  // --- 그룹 드래그 중 전 그룹 접기(B) ---
+  //
+  // 막는 방향: 높이가 제각각인 블록(실측 129~579px, 뷰포트 622px)을 그대로 둔 채
+  // closestCenter 로 재는 것. 못 보는 것: 접힘이 **실제로** 충돌 기하를 고치는지는
+  // 레이아웃이 없는 jsdom 에서 잴 수 없다 — 여기서는 "행이 사라졌다가 돌아온다" 와
+  // "재측정을 요청한다" 라는 두 관측 가능한 결과만 고정한다.
+  it('renders every group header-only while a group drag is in flight, and restores rows after', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
+
+    startFolderDrag();
+    // 잡은 그룹만이 아니라 **전부** — 중간에 긴 블록이 하나라도 남으면 균일 높이라는
+    // 전제가 그대로 깨진다. 헤더는 남아야 겨냥할 곳이 있다.
+    expect(rowNames()).toEqual([]);
+    expect(screen.getAllByTestId('watchlist-group-header').length).toBeGreaterThan(0);
+
+    endDrag({ id: 'f_0000000a', data: { current: { type: 'folder' } } });
+    await waitFor(() =>
+      expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']));
+  });
+
+  it('leaves the persisted collapse state untouched — the drag-time collapse is render-only', async () => {
+    // 사용자가 '장기'만 접어 둔 상태에서 출발한다.
+    window.localStorage.setItem('watchlist.collapsed', JSON.stringify({ keys: ['f_0000000b'] }));
+    const savedKeys = () =>
+      JSON.parse(window.localStorage.getItem('watchlist.collapsed') ?? '{"keys":null}').keys;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    startFolderDrag();
+    expect(rowNames()).toEqual([]);                 // 화면은 전부 접혔는데
+    expect(savedKeys()).toEqual(['f_0000000b']);    // 저장된 값은 그대로다
+
+    endDrag({ id: 'f_0000000a', data: { current: { type: 'folder' } } });
+    // 드래그가 끝나면 사용자가 펼쳐 두었던 '스윙'이 그대로 돌아온다.
+    await waitFor(() =>
+      expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']));
+    expect(savedKeys()).toEqual(['f_0000000b']);
+  });
+
+  it('asks dnd-kit to re-measure drop targets when the groups collapse', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    h.measureDroppableContainers.mockClear();
+
+    startFolderDrag();
+    // 접힘 **전** rect 로 충돌을 재면 겨냥과 착지가 갈린다. 빈 배열 = 전부 다시 재기.
+    expect(h.measureDroppableContainers).toHaveBeenCalledWith([]);
+  });
+
+  it('makes no folder ghost for an entry drag — rows keep their own row-shaped ghost', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    act(() => { h.onDragStart!(DRAG_START); });
+    // 종목 드래그는 접지 않는다 — 그룹 간 이동의 드롭 타깃이 바로 그 행들이다.
+    expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
+    expect(screen.getByTestId('watchlist-drag-ghost')).toHaveTextContent('삼성전자');
   });
 
   it('entry-drag in one folder does not affect another folder default-sort behavior', async () => {

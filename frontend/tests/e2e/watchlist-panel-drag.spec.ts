@@ -173,7 +173,7 @@ test.describe('Watchlist panel drag', () => {
       .getByTestId('watchlist-row-005930')).toBeVisible();
   });
 
-  test('그룹 헤더 ⠿ 드래그가 folders/order를 PUT하고 그룹을 재배치한다', async ({ page }) => {
+  test('그룹 헤더 드래그가 전 그룹을 접고, folders/order를 PUT하고 그룹을 재배치한다', async ({ page }) => {
     await installLiveMocks(page);
     let folderOrder = ['f_a', 'f_b'];
     const FNAMES: Record<string, string> = { f_a: '스윙', f_b: '장기' };
@@ -209,17 +209,30 @@ test.describe('Watchlist panel drag', () => {
     // 끌면 그룹 드래그가 시작된다. `group-drag-handle` 은 앱에 존재한 적 없는 testid 다.
     const handle = await page.getByTestId('watchlist-group-f_a')
       .getByTestId('watchlist-group-header').boundingBox();
-    const target = await page.getByTestId('watchlist-group-f_b').boundingBox();
-    if (!handle || !target) throw new Error('handle/target has no bounding box');
+    if (!handle) throw new Error('handle has no bounding box');
     const fx = handle.x + handle.width / 2;
     const fy = handle.y + handle.height / 2;
-    const ty = target.y + target.height / 2;
     await page.mouse.move(fx, fy);
     await page.mouse.down();
-    await page.mouse.move(fx, fy + 8, { steps: 4 });
+    await page.mouse.move(fx, fy + 8, { steps: 4 });   // 5px 임계 넘김 = 드래그 활성화
+
+    // 드래그가 붙은 **뒤에** 재는 것이 중요하다. 활성화되면 전 그룹이 헤더만 남게
+    // 접히면서 대상 그룹의 상자가 그 자리에서 줄어든다 — 시작 전 좌표로 겨냥하면
+    // 엉뚱한 곳을 노린다(블록이 클수록 더 크게 어긋난다).
+    await expect(page.getByTestId('watchlist-row-005930')).toBeHidden();
+    await expect(page.getByTestId('watchlist-row-000660')).toBeHidden();
+    // 손에는 그룹명 + 개수 칩이 들려 있다. 빈 오버레이 카드가 아니다.
+    await expect(page.getByTestId('watchlist-drag-ghost')).toContainText('스윙');
+
+    const target = await page.getByTestId('watchlist-group-f_b').boundingBox();
+    if (!target) throw new Error('target has no bounding box');
+    const ty = target.y + target.height / 2;
     await page.mouse.move(fx, ty, { steps: 15 });
     await page.mouse.move(fx, ty + 2, { steps: 2 });
     await page.mouse.up();
+
+    // 드롭이 끝나면 행이 돌아온다 — 접힘은 드래그 동안의 렌더 오버라이드일 뿐이다.
+    await expect(page.getByTestId('watchlist-row-005930')).toBeVisible();
 
     await expect.poll(() => lastPut?.ordered_ids ?? null).toEqual(['f_b', 'f_a']);
     await expect.poll(groupsInDom).toEqual(['f_b', 'f_a']);
