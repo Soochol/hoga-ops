@@ -297,9 +297,11 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // 화면엔 15:30 정지본이 뜨므로, 라벨이 그 사실을 말해야 한다.
     venue: effectiveVenue,
     isSpot,
-    // 지금 그리는 것이 저장본이면 라벨이 "마지막" 이라고 말한다 — 더 이상 변하지
-    // 않는 값을 "지금 호가" 처럼 보이면 안 된다.
-    afterHoursIsStored: afterHoursBook.data?.source === 'stored',
+    // 저장본이면 **그 시각**을 라벨에 싣는다. 저장은 프론트가 마지막으로 본 순간에
+    // 일어나므로(라우트 write-through) 언제 값인지 말하지 않으면 그날 최종가로
+    // 오해한다.
+    afterHoursStoredAtMs:
+      afterHoursBook.data?.source === 'stored' ? afterHoursBook.data.fetched_at_ms : null,
   });
   // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
   // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나

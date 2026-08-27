@@ -22,12 +22,23 @@ JSON 한 파일로 충분하다.
 채 한 번도 움직이지 않았다. 그것을 "언제 값인가" 로 쓰면 저장본이 전부 16:00 으로
 찍힌다. 보관은 하되(원본 보존) 신선도 판단에는 쓰지 않는다.
 
-## writer 는 폴러 하나뿐이다
+## writer 는 **라우트**다 — 벤더를 지나가는 응답을 그대로 적는다
 
-라우트는 읽기만 한다. 그래서 잠금이 없고, 대신 **한 주기의 결과를 모아 한 번**
-쓴다(`save_cycle`) — 종목마다 read-modify-write 하면 같은 파일을 주기당 N 번 다시
-쓰게 되고, 중간에 죽으면 부분 상태가 남는다. temp + rename 이라 독자는 언제 읽어도
-온전한 한 주기를 본다.
+주기적으로 벤더를 치는 레코더가 있었다가 없앴다(2026-08-27). 프론트가 이미 5초마다
+`ka10087` 을 치고 있는데 그 응답을 아무도 저장하지 않아서, 저장을 위해 **또** 치는
+구조였다 — 실측으로 2시간에 13,320콜을 쓰고 그중 98.3% 를 버렸다(마지막 한 장만
+저장되므로). 지금은 라우트가 벤더 응답을 만드는 자리에서 곧바로 적는다: **추가 벤더
+호출이 0** 이다.
+
+그래서 저장 트리거가 **프론트에 달려 있다** — 그날 한 번도 열어보지 않은 종목은
+저장본이 없고, 17:00 에 창을 닫았으면 마지막 저장본은 17:00 것이다. 화면이 저장본의
+시각을 함께 보여야 하는 이유가 이것이다(`krxAfterHoursLabel` 의 `stored` 분기).
+
+## 잠금이 없는 근거
+
+단일 워커(ADR-0038)에 이벤트 루프가 단일 스레드라, 라우트가 `to_thread` 없이 동기로
+쓰면 쓰기끼리 **직렬화가 보장된다**. 비동기로 흩으면 오히려 겹친다. 파일도 작다
+(종목당 ~500B). temp + rename 이라 독자는 언제 읽어도 온전한 파일을 본다.
 """
 from __future__ import annotations
 
@@ -37,8 +48,12 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from hoga.util.timeenc import KST
+
+if TYPE_CHECKING:  # 순환 없음(그쪽은 이 모듈을 모른다) — 런타임 import 만 피한다.
+    from hoga.live.kiwoom_after_hours import AfterHoursBook
 
 log = logging.getLogger(__name__)
 
@@ -57,8 +72,9 @@ class StoredAfterHoursBook:
     체결될 것" 이라는 뜻이라 **체결이 끝난 뒤에는 의미가 없다** — 저녁에 보는 화면에
     "예상" 을 띄우면 그것이 확정 체결인지 아닌지를 말할 방법이 없다.
 
-    (폴러가 그 TR 을 안 치는 것은 아니다. `get()` 재사용이라 `ka10001` 도 함께 나가고
-    결과를 버릴 뿐이다 — 이유는 `start_after_hours_recorder` 의 유량 절.)
+    (`ka10001` 자체는 여전히 나간다 — fetcher 의 `get()` 이 `ka10087` 과 한 묶음으로
+    치기 때문이다. 다만 그건 **프론트가 화면을 그리려고 이미 부른 호출**이고 저장이
+    보태는 몫은 0 이다.)
     """
 
     code: str
@@ -83,6 +99,30 @@ def today_kst_yyyymmdd() -> str:
     더 이상 "오늘" 이 아니라 조회가 비고, 그것이 곧 "장중 시간외 = 없음" 이다.
     """
     return datetime.now(KST).strftime("%Y%m%d")
+
+
+def stored_book_from(
+    code: str, book: AfterHoursBook, fetched_at_ms: int
+) -> StoredAfterHoursBook:
+    """벤더 파싱 결과(`kiwoom_after_hours.AfterHoursBook`) → 저장 모양.
+
+    라우트가 응답을 만드는 자리에서 부르는 어댑터다. 여기 두는 이유는 **저장 모양을
+    아는 쪽이 변환을 소유해야** 필드를 늘릴 때 한 곳만 고치기 때문이다.
+
+    `exp_*`·`fills` 는 담지 않는다 — `StoredAfterHoursBook` 의 이유 참조.
+    """
+    return StoredAfterHoursBook(
+        code=code,
+        ask=tuple((lv.price, lv.qty) for lv in book.ask),
+        bid=tuple((lv.price, lv.qty) for lv in book.bid),
+        total_ask_qty=book.total_ask_qty,
+        total_bid_qty=book.total_bid_qty,
+        cur_price=book.cur_price,
+        close_price=book.close_price,
+        acc_volume=book.acc_volume,
+        base_tm=book.base_tm,
+        fetched_at_ms=fetched_at_ms,
+    )
 
 
 def _day_path(data_dir: Path, yyyymmdd: str) -> Path:
@@ -143,14 +183,15 @@ def _read_day(data_dir: Path, yyyymmdd: str) -> dict:
     return codes if isinstance(codes, dict) else {}
 
 
-def save_cycle(
+def save_books(
     data_dir: Path, yyyymmdd: str, books: dict[str, StoredAfterHoursBook]
 ) -> None:
-    """한 폴링 주기의 결과를 병합 저장한다. 빈 dict 면 아무것도 하지 않는다.
+    """종목별 마지막 호가를 병합 저장한다. 빈 dict 면 아무것도 하지 않는다.
 
-    **병합이다** — 이번 주기에 실패한 종목의 직전 값을 지우지 않는다. 벤더 한 건이
-    실패했다고 그 종목의 저장본이 사라지면, 마감 캡처 한 번의 실패가 그날 데이터를
-    통째로 날린다.
+    **병합이다** — 이번에 넘어오지 않은 종목의 직전 값을 지우지 않는다. 라우트는 한
+    번에 한 종목만 적으므로 통째 교체면 마지막에 조회된 종목 하나만 남는다.
+
+    (이름이 `save_cycle` 이었다 — 폴링 주기를 전제한 이름인데 그 폴러가 사라졌다.)
     """
     if not books:
         return

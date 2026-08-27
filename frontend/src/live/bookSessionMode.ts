@@ -24,7 +24,7 @@
  * 시각을 손으로 두 곳에 적으면 갈린다 — `liveVenueSessionWindowLabel` 이 자기
  * docstring 에 그 위험을 적어 둔 것과 같은 형태의 함정이다.
  */
-import { unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
+import { unixMsToKSTClock, unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 사다리가 어느 장의 것인가. */
@@ -100,11 +100,21 @@ export function resolveBookSessionMode(
  */
 export function krxAfterHoursLabel(
   nowMs: number = Date.now(),
-  opts: { stored?: boolean } = {},
+  opts: { storedAtMs?: number | null } = {},
 ): string {
   // 저장본은 **더 이상 변하지 않는다** — 그 사실을 말하지 않으면 화면이 멈춘 값을
   // "지금 호가" 처럼 보인다. 얼어붙은 표시에 시각·상태를 붙이는 이 리포의 규율.
-  if (opts.stored) return '시간외 · 마지막';
+  //
+  // ⚠ "마지막" 만으로는 부족하다. 저장은 **프론트가 마지막으로 본 순간**에 일어나므로
+  // (라우트 write-through — `after_hours_store` 모듈 docstring) 17:00 에 창을 닫았으면
+  // 저장본도 17:00 것이지 18:00 직전이 아니다. 몇 시 값인지 말하지 않으면 그 값을
+  // 그날 최종가로 오해한다.
+  //
+  // 시각은 `fetched_at_ms`(관측 시각)에서 온다 — 벤더의 `base_tm` 은 실측에서
+  // `"160000"` 에 고정된 채 움직이지 않았다(`liveAfterHoursBook` 참조).
+  if (opts.storedAtMs != null) {
+    return `시간외 · ${unixMsToKSTClock(opts.storedAtMs).slice(0, 5)}`;
+  }
   const hhmm = unixMsToKSTHhmm(nowMs);
   const inSinglePrice =
     hhmm >= AFTER_HOURS_SINGLE_PRICE_OPEN && hhmm < AFTER_HOURS_SINGLE_PRICE_CLOSE;
@@ -164,8 +174,10 @@ export function bookSessionControl(args: {
   venue: LiveVenueOption;
   /** 스팟 커서(과거 시점) 중인가 — 그때는 세션 선택 자체가 무의미하다. */
   isSpot: boolean;
-  /** 지금 그릴 시간외 호가가 **저장본**인가(`source === 'stored'`). 라벨이 갈린다. */
-  afterHoursIsStored?: boolean;
+  /** 지금 그릴 시간외 호가가 **저장본**이면 그 관측 시각(`fetched_at_ms`), 아니면
+   *  null. 값이 있으면 라벨이 시각을 단다 — 저장 시점이 "마지막으로 본 순간" 이라
+   *  언제 값인지 말해야 오해가 없다. */
+  afterHoursStoredAtMs?: number | null;
   nowMs?: number;
 }): BookSessionControl {
   const { nxtEnabled, venue, isSpot } = args;
@@ -184,7 +196,7 @@ export function bookSessionControl(args: {
     return {
       kind: 'toggle',
       regularLabel: '정규장',
-      afterHoursLabel: krxAfterHoursLabel(nowMs, { stored: args.afterHoursIsStored }),
+      afterHoursLabel: krxAfterHoursLabel(nowMs, { storedAtMs: args.afterHoursStoredAtMs }),
     };
   }
   return { kind: 'none' };

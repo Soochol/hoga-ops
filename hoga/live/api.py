@@ -23,6 +23,7 @@ from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate, LiveTimeframeModel
 from hoga.api.params import CODE_PATTERN
 from hoga.live import (
+    after_hours_store,
     kis_runtime,
     kiwoom_access,
     kiwoom_index_rest,
@@ -1901,6 +1902,45 @@ class AfterHoursBookResponse(BaseModel):
     source: Literal["kiwoom", "stored"] = "kiwoom"
 
 
+#: 종목별로 **마지막으로 디스크에 적은** `fetched_at_ms`. 중복 쓰기를 거르는 근거다.
+#:
+#: 프론트는 5초마다 묻지만 fetcher TTL 은 3초라 같은 값이 다시 온다 — 그때 파일을
+#: 또 쓰면 아무것도 바뀌지 않은 채 I/O 만 는다. 재시작으로 비어도 한 번 더 쓸 뿐이라
+#: 영속화할 이유가 없다.
+_last_saved_after_hours_at: dict[str, int] = {}
+
+
+def _save_after_hours_book(
+    code: str, book: object, fetched_at_ms: int, data_dir: Path | None
+) -> None:
+    """벤더 응답을 지나가는 자리에서 적는다 — **추가 벤더 호출 0**.
+
+    주기적으로 훑는 레코더가 있었다가 없앴다(2026-08-27). 프론트가 이미 5초마다
+    `ka10087` 을 치는데 그 응답을 아무도 저장하지 않아서, 저장하려고 **또** 치는
+    구조였다(2시간 13,320콜 중 98.3% 폐기). 지금은 이 함수가 그 자리를 대신한다.
+
+    **동기로 쓴다.** 단일 워커(ADR-0038) + 이벤트 루프 단일 스레드라 `to_thread` 없이
+    써야 쓰기끼리 직렬화가 보장된다 — 비동기로 흩으면 오히려 겹친다.
+
+    실패를 삼킨다: 저장은 이 라우트의 **부수 효과**이고 본 일은 호가를 답하는 것이다.
+    디스크가 꽉 찼다고 화면이 죽어선 안 된다.
+    """
+    if data_dir is None:
+        return
+    if _last_saved_after_hours_at.get(code) == fetched_at_ms:
+        return  # fetcher 캐시 히트 — 같은 값을 다시 쓸 이유가 없다
+    try:
+        after_hours_store.save_books(
+            data_dir,
+            after_hours_store.today_kst_yyyymmdd(),
+            {code: after_hours_store.stored_book_from(code, book, fetched_at_ms)},
+        )
+    except OSError:
+        log.warning("live.after_hours.write_through_failed code=%s", code)
+        return
+    _last_saved_after_hours_at[code] = fetched_at_ms
+
+
 def _stored_after_hours_response(code: str, data_dir: Path | None) -> AfterHoursBookResponse:
     """창 밖 응답 — 그날 레코더가 남긴 마지막 한 장, 없으면 `active=False`.
 
@@ -3161,6 +3201,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             return AfterHoursBookResponse(
                 code=code, active=False, base_tm=book.base_tm, fetched_at_ms=fetched_at_ms,
             )
+        # 지나가는 김에 적는다 — 이것이 18:00 이후 이 호가를 볼 수 있게 하는 유일한
+        # 경로다. 빈 사다리(`has_quotes=False`)는 위에서 이미 걸러졌으므로 여기 오는
+        # 것만 저장 가치가 있다.
+        _save_after_hours_book(code, book, fetched_at_ms, data_dir)
         return AfterHoursBookResponse(
             code=book.code,
             active=True,

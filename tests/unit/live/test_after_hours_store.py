@@ -7,7 +7,7 @@ from pathlib import Path
 from hoga.live.after_hours_store import (
     StoredAfterHoursBook,
     load_book,
-    save_cycle,
+    save_books,
     stored_codes,
 )
 
@@ -31,12 +31,12 @@ def _book(code: str, *, fetched_at_ms: int = 1_787_000_000_000) -> StoredAfterHo
 
 def test_roundtrip_preserves_every_field(tmp_path: Path) -> None:
     saved = _book("005930")
-    save_cycle(tmp_path, DAY, {"005930": saved})
+    save_books(tmp_path, DAY, {"005930": saved})
     assert load_book(tmp_path, DAY, "005930") == saved
 
 
 def test_missing_code_is_none_not_error(tmp_path: Path) -> None:
-    save_cycle(tmp_path, DAY, {"005930": _book("005930")})
+    save_books(tmp_path, DAY, {"005930": _book("005930")})
     assert load_book(tmp_path, DAY, "000660") is None
 
 
@@ -50,22 +50,22 @@ def test_cycle_merges_instead_of_replacing(tmp_path: Path) -> None:
     통째 교체면 마감 캡처 한 번의 실패가 그날 데이터를 날린다 — 마감 캡처야말로
     가장 중요한 한 장이라 그때의 부분 실패에 가장 강해야 한다.
     """
-    save_cycle(tmp_path, DAY, {"005930": _book("005930"), "000660": _book("000660")})
+    save_books(tmp_path, DAY, {"005930": _book("005930"), "000660": _book("000660")})
     # 다음 주기에 005930 만 성공했다.
     later = _book("005930", fetched_at_ms=1_787_000_600_000)
-    save_cycle(tmp_path, DAY, {"005930": later})
+    save_books(tmp_path, DAY, {"005930": later})
     assert load_book(tmp_path, DAY, "005930") == later
     assert load_book(tmp_path, DAY, "000660") is not None
     assert stored_codes(tmp_path, DAY) == ("000660", "005930")
 
 
 def test_empty_cycle_writes_nothing(tmp_path: Path) -> None:
-    save_cycle(tmp_path, DAY, {})
+    save_books(tmp_path, DAY, {})
     assert not (tmp_path / "after_hours").exists()
 
 
 def test_write_is_atomic_no_temp_left_behind(tmp_path: Path) -> None:
-    save_cycle(tmp_path, DAY, {"005930": _book("005930")})
+    save_books(tmp_path, DAY, {"005930": _book("005930")})
     assert list((tmp_path / "after_hours").glob("*.tmp")) == []
 
 
@@ -76,7 +76,7 @@ def test_corrupt_file_reads_as_empty(tmp_path: Path) -> None:
     p.write_text("{ not json", encoding="utf-8")
     assert load_book(tmp_path, DAY, "005930") is None
     # 그리고 그 위에 정상 저장이 된다(손상이 영구 고장이 아니다).
-    save_cycle(tmp_path, DAY, {"005930": _book("005930")})
+    save_books(tmp_path, DAY, {"005930": _book("005930")})
     assert load_book(tmp_path, DAY, "005930") is not None
 
 
@@ -89,7 +89,7 @@ def test_unknown_schema_reads_as_empty(tmp_path: Path) -> None:
 
 def test_malformed_row_drops_only_that_code(tmp_path: Path) -> None:
     """한 종목의 모양이 깨져도 **파일 전체를 버리지 않는다**."""
-    save_cycle(tmp_path, DAY, {"005930": _book("005930")})
+    save_books(tmp_path, DAY, {"005930": _book("005930")})
     p = tmp_path / "after_hours" / f"{DAY}.json"
     doc = json.loads(p.read_text(encoding="utf-8"))
     doc["codes"]["000660"] = {"ask": "not-a-list"}
