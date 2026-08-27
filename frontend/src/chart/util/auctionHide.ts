@@ -16,9 +16,12 @@ import type { VirtualAxis } from '../../util/virtualAxis';
  * "filter at source" model)? Two lightweight-charts v5 behaviours block it:
  *   1. Time-scale is bar-index based. Dropping points shrinks the range past
  *      the auction window, so `timeToCoordinate(t)` returns null for any `t`
- *      beyond the surviving data — which silently breaks every DOM overlay
- *      that positions itself by wall-clock time (`DayBoundaryOverlay`,
- *      `DrawingOverlay`, peak-wall/POC labels). Keeping the points as
+ *      beyond the surviving data — which silently breaks every overlay that
+ *      positions itself by wall-clock time (`DayBoundaryOverlay`,
+ *      `DrawingOverlay`, peak-wall/POC labels). The constraint is about the
+ *      time-scale lookup, not the drawing surface: it holds for canvas
+ *      primitives exactly as it did for the DOM overlays some of these have
+ *      since become. Keeping the points as
  *      transparent sentinels preserves that bar-index density.
  *      (ADR-0029 wrote this consequence against `AuctionWindowOverlay`, the
  *      15:20–15:30 background band — that component was deleted 2026-08-09,
