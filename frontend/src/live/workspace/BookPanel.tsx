@@ -10,12 +10,10 @@
  * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
  * 항목을 늘리거나 줄일 때 SUMMARY_ROWS 개수를 함께 맞출 것.
  *
- * **이 패널은 /live 와 /study 가 공유하는 단일 10호가 표면이다** — /live 는
- * DataWindow, /study 는 studyWindowContents 의 BookContent 가 각각 자기 자료원으로
- * props 를 채워 렌더한다. 따라서 여기의 레이아웃·색 규약을 바꾸면 두 페이지가
- * 함께 바뀐다. (#808 이전엔 /study 만 좁은 2열 표 sidebar/OrderbookTable 을 썼는데,
- * 같은 이름의 창이 페이지마다 다르게 생기는 것이 창 모델의 취지에 반해 이 패널로
- * 통일했다. 그 컴포넌트는 소비처가 0이 되어 삭제됐다.)
+ * **소비처는 `DataWindow` 하나다.** 한때 `/study` 의 BookContent 와 공유하는 단일
+ * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
+ * `/study` 를 "같은 패널을 쓰는 다른 화면" 으로 언급하는데, 그건 **왜 그 처리가
+ * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
@@ -23,6 +21,8 @@ import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
 import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
+import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
+import { otherBookSessionMode } from '../bookSessionMode';
 import { BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W } from './bookPanelMetrics';
 
 /** 체결 리스트 한 줄. */
@@ -79,6 +79,19 @@ type Props = {
    * "그 시장에 없는 단계" 임을 말하는 유일한 장치다.
    */
   afterHoursLabel?: string;
+  /**
+   * 하단 스트립 중앙에 그릴 세션 표시(`bookSessionMode.bookSessionControl` 의 결과).
+   *
+   * 미지정이면 `none` — 종전의 조건부 "시간외" 출처 표시로 동작한다. 이 패널을
+   * 쓰는 다른 표면(체결 틱 테이블 등)이 세션 개념 없이 그대로 살도록 하는 기본값이다.
+   */
+  sessionControl?: BookSessionControl;
+  /** 지금 그려지고 있는 사다리가 어느 장의 것인가. 라벨 선택에만 쓴다 — 사다리
+   *  자체를 고르는 것은 호출부(`DataWindow`)의 일이다. */
+  sessionMode?: BookSessionMode;
+  /** 토글 클릭. 미지정이면 버튼이 그려져도 아무 일도 하지 않으므로, 갈래 A 를
+   *  넘기는 호출부는 반드시 함께 넘긴다. */
+  onSelectSessionMode?: (mode: BookSessionMode) => void;
   /**
    * 사다리가 **현재 커서의 것이 아닐 수 있다** — 새 시점의 조회가 비행 중.
    *
@@ -142,11 +155,17 @@ export default function BookPanel({
   vi = null,
   afterHoursTotals = null,
   afterHoursLabel = '시간외',
+  sessionControl = { kind: 'none' },
+  sessionMode = 'regular',
+  onSelectSessionMode,
   stale = false,
 }: Props) {
   // 스냅샷 파생 블록에만 얹는 딤. 값은 읽히되 확정이 아님을 말한다 — 전환은
   // DESIGN.md Motion 의 상태 전환 규격(150ms ease-in-out).
   const staleDim = `transition-opacity duration-150 ease-in-out${stale ? ' opacity-50' : ''}`;
+  /** 갈래 A(토글 있음)에서 시간외를 보고 있는가 — 빈 상태 문구가 여기서 갈린다.
+   *  갈래 B·모름에서는 `false` 라 종전 문구가 그대로 나온다. */
+  const inAfterHoursMode = sessionControl.kind === 'toggle' && sessionMode === 'afterHours';
   if (snapshot === undefined) return <PanelState>커서 위치 불러오는 중…</PanelState>;
   // 사다리가 없어도 **시간외 총잔량은 그린다.** 이 분기가 없으면 0E 가 정상 수신 중인데도
   // 화면이 통째로 "호가 데이터 없음" 이 된다 — 장전 시간외 종가매매(08:30–08:40)가 그
@@ -162,19 +181,33 @@ export default function BookPanel({
   // 만들면 10단이 전부 0 인 가짜 호가창이 된다. 제도상으로도 이 구간은 전일종가 단일가라
   // 사다리라는 개념 자체가 없다. 그려야 할 실체는 총잔량 두 개뿐이다.
   if (snapshot === null) {
-    if (afterHoursTotals === null) return <PanelState>호가 데이터 없음</PanelState>;
+    if (afterHoursTotals === null) {
+      // 시간외 모드에서 사다리가 없는 것은 **"호가 데이터 없음" 과 다른 사실**이다:
+      // 장중이면 그 장이 아직 안 열렸다는 뜻이고, 18:00 이후면 벤더 창이 닫혔다는
+      // 뜻이다. 정규장 데이터는 멀쩡히 있으므로 일반 문구는 화면과 모순된다.
+      return <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>;
+    }
     return (
       <div className="flex h-full flex-col bg-bg-card">
         <div className="flex min-h-0 flex-1">
           {/* "호가 데이터 없음"(위 분기)과 문구를 갈라 둔다 — 여기는 아래 스트립에
-              살아 있는 숫자가 그려지는 상태라, 같은 문구면 화면과 모순된다. */}
-          <PanelState>정규장 호가 없음 (시간외 잔량만 수신 중)</PanelState>
+              살아 있는 숫자가 그려지는 상태라, 같은 문구면 화면과 모순된다.
+              시간외 모드의 문구가 다른 이유: 그 구간(15:40–16:00 종가매매)은 당일
+              종가 단일 가격이라 **사다리라는 개념이 없다** — 결손이 아니다. */}
+          <PanelState>
+            {inAfterHoursMode
+              ? '시간외 사다리 없음 (총잔량만)'
+              : '정규장 호가 없음 (시간외 잔량만 수신 중)'}
+          </PanelState>
         </div>
         <TotalQtyStrip
           totals={afterHoursTotals}
           maskRatio={maskRatio}
           afterHoursTotals={afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
+          sessionControl={sessionControl}
+          sessionMode={sessionMode}
+          onSelectSessionMode={onSelectSessionMode}
         />
       </div>
     );
@@ -391,6 +424,9 @@ export default function BookPanel({
         maskRatio={maskRatio}
         afterHoursTotals={afterHoursTotals}
         afterHoursLabel={afterHoursLabel}
+        sessionControl={sessionControl}
+        sessionMode={sessionMode}
+        onSelectSessionMode={onSelectSessionMode}
         dimClass={afterHoursTotals === null ? staleDim : ''}
       />
     </div>
@@ -853,8 +889,16 @@ function TotalQtyStrip({
   maskRatio,
   afterHoursTotals,
   afterHoursLabel,
+  sessionControl,
+  sessionMode,
+  onSelectSessionMode,
   dimClass = '',
 }: {
+  /** 스트립 중앙에 그릴 세션 선택기. `none` 이면 종전의 조건부 출처 표시로 폴백한다 —
+   *  `nxt_enabled` 를 모르는 창에서 오늘과 같이 동작해야 하기 때문이다. */
+  sessionControl: BookSessionControl;
+  sessionMode: BookSessionMode;
+  onSelectSessionMode?: (mode: BookSessionMode) => void;
   /** 그릴 총잔량. **어느 출처를 쓸지는 호출부가 정한다** — 시간외 값이 있으면 그것,
    *  없으면 사다리 스냅샷의 총잔량. 여기서 `snapshot` 을 직접 받아 `?? ` 로 떨어뜨리면
    *  "사다리도 없고 시간외도 없다" 는 **불가능한 상태가 타입에 생기고**, 그 폴백이
@@ -891,9 +935,11 @@ function TotalQtyStrip({
       )}
       {/* 중앙 라벨("판매대기 · 구매대기")은 사용자 요청으로 삭제(2026-07-21) —
           색·좌우 위치가 의미를 이미 전달하고, aria-label 이 접근성을 담당한다.
-          아래 "시간외"는 그 상시 라벨의 부활이 아니라 **조건부 출처 표시**다:
-          이 숫자만 시간외 값이고 위 사다리는 정규장 마지막 값이라 둘의 합이
-          안 맞는데, 그 불일치를 설명하는 장치가 이것뿐이다. */}
+          지금 그 자리에 있는 것은 **세션 선택기**다(`BookSessionCenter`). 원래는
+          "시간외" 조건부 출처 표시였는데, 그 표시가 설명하던 불일치(사다리는 정규장
+          15:30 · 총잔량만 시간외)가 세션 모드 도입으로 **사라졌다** — 이제 모드가
+          사다리와 총잔량을 같은 장으로 묶는다(`bookSessionMode`). 남은 하중은
+          16:00–18:00 의 빈 바깥 5행 설명이고, 그건 토글의 선택 라벨이 그대로 진다. */}
       <div className="flex items-center justify-between px-2 py-1">
         <span
           aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask.toLocaleString('ko-KR')}`}
@@ -901,21 +947,17 @@ function TotalQtyStrip({
         >
           {ask.toLocaleString('ko-KR')}
         </span>
-        {isAfterHours && (
-          // 여기 라벨 아래에 누적 체결량("체결 17,474")을 두 줄로 쌓았었다. **뺐다**
-          // (사용자 결정 2026-08-19) — 그것을 두었던 근거가 무효가 됐기 때문이다.
-          // 원 주석은 "시간외 단일가는 개별 체결 내역이 없어 이 누적이 그 구간에
-          // 움직이는 유일한 체결 신호" 였는데, #1417 이 체결창에 주기별 개별 행을
-          // 그리면서 그 자리가 생겼다. 총**잔량** 스트립에 체결**량**이 얹혀 있던
-          // 것은 자리가 없던 시절의 임시방편이었고, 이제는 축이 다른 숫자가 같은
-          // 줄에 섞여 있는 것일 뿐이다.
-          <span
-            className="whitespace-nowrap text-xs text-fg-dim"
-            data-testid="book-total-after-hours"
-          >
-            {afterHoursLabel}
-          </span>
-        )}
+        {/* 여기 라벨 아래에 누적 체결량("체결 17,474")을 두 줄로 쌓았었다. **뺐다**
+            (사용자 결정 2026-08-19) — 그것을 두었던 근거가 무효가 됐기 때문이다.
+            원 주석은 "시간외 단일가는 개별 체결 내역이 없어 이 누적이 그 구간에
+            움직이는 유일한 체결 신호" 였는데, #1417 이 체결창에 주기별 개별 행을
+            그리면서 그 자리가 생겼다. */}
+        <BookSessionCenter
+          control={sessionControl}
+          mode={sessionMode}
+          onSelect={onSelectSessionMode}
+          fallbackLabel={isAfterHours ? afterHoursLabel : null}
+        />
         <span
           aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매수총잔량 ${bid.toLocaleString('ko-KR')}`}
           className="font-data text-sm tabular-nums text-price-up"
@@ -924,6 +966,66 @@ function TotalQtyStrip({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * 총잔량 스트립 중앙의 세션 표시 — 갈래에 따라 **버튼이거나 텍스트다**.
+ *
+ * 지금 보고 있는 장의 이름 **하나만** 그린다(두 개를 나란히 두지 않는다). 자리가
+ * 총잔량 두 숫자 사이라 좁고, 참조 화면(토스)도 현재 상태 하나를 밑줄로 보이고
+ * 누르면 전환하는 규약이다.
+ *
+ * **밑줄이 곧 "누를 수 있다" 의 신호다.** 그래서 갈래 B(NXT)는 밑줄 없는 텍스트로
+ * 그린다 — 클릭 안 되는 것에 밑줄을 주면 "왜 안 눌리지" 가 된다.
+ */
+function BookSessionCenter({
+  control,
+  mode,
+  onSelect,
+  fallbackLabel,
+}: {
+  control: BookSessionControl;
+  mode: BookSessionMode;
+  onSelect?: (mode: BookSessionMode) => void;
+  /** `control.kind === 'none'` 일 때의 종전 동작 — 시간외 총잔량이면 그 라벨. */
+  fallbackLabel: string | null;
+}) {
+  if (control.kind === 'toggle') {
+    const labelFor = (m: BookSessionMode) =>
+      m === 'regular' ? control.regularLabel : control.afterHoursLabel;
+    const next = otherBookSessionMode(mode);
+    return (
+      <button
+        type="button"
+        onClick={() => onSelect?.(next)}
+        // 라벨만으로는 "지금 이 장을 보고 있다" 인지 "누르면 이 장으로 간다" 인지
+        // 알 수 없다 — 스크린리더에는 둘 다 말한다.
+        aria-label={`${labelFor(mode)} 호가 표시 중 — 누르면 ${labelFor(next)}`}
+        title={`${labelFor(next)} 보기`}
+        className="whitespace-nowrap text-xs text-fg-dim underline decoration-dotted underline-offset-2 transition-colors duration-150 ease-in-out hover:text-fg"
+        data-testid="book-session-toggle"
+        data-mode={mode}
+      >
+        {labelFor(mode)}
+      </button>
+    );
+  }
+  if (control.kind === 'label') {
+    return (
+      <span
+        className="whitespace-nowrap text-xs text-fg-dim"
+        data-testid="book-session-label"
+      >
+        {control.label}
+      </span>
+    );
+  }
+  if (fallbackLabel === null) return null;
+  return (
+    <span className="whitespace-nowrap text-xs text-fg-dim" data-testid="book-total-after-hours">
+      {fallbackLabel}
+    </span>
   );
 }
 

@@ -6,7 +6,6 @@ import {
   isLiveVenueSessionNow,
   liveVenueAcceptsFrame,
   liveVenueDisplayLabel,
-  liveVenueKeepsHogaKrx,
   liveVenueRefetchInterval,
   liveVenueSessionBoundsMs,
   liveVenueSessionWindowLabel,
@@ -30,8 +29,6 @@ describe('liveVenuePolicy', () => {
       close_ms: MON_OPEN_MS + 11 * HOUR,
     });
     expect(initialVisibleMinuteBarsFor('1m', 'UN')).toBe(300);
-    expect(liveVenueKeepsHogaKrx('UN')).toBe(true);
-    expect(liveVenueKeepsHogaKrx('KRX')).toBe(false);
   });
 
   it('derives the session-window label from the same branch as the bounds', () => {

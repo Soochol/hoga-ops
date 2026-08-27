@@ -18,7 +18,7 @@
  * kind 별로 필요한 훅이 다르므로 하위 컴포넌트로 분기한다(한 컴포넌트에서 조건부
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel, { type BookTrade } from './BookPanel';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
@@ -43,7 +43,14 @@ import {
 } from '../../api/useLiveCursor';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import { useEffectiveVenue } from '../useEffectiveVenue';
+import { useEffectiveVenue, useNxtEnabledResolver } from '../useEffectiveVenue';
+import {
+  bookSessionControl,
+  bookSessionEpoch,
+  resolveBookSessionMode,
+  type BookSessionMode,
+  type BookSessionOverride,
+} from '../bookSessionMode';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
@@ -168,6 +175,20 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
   );
 }
 
+/** 세션 경계(`bookSessionEpoch` 가 바뀌는 순간)를 넘길 때 스스로 갱신되게 하는 최소 틱.
+ *
+ *  없어도 장중에는 맞는다 — WS·폴링이 리렌더를 계속 만들기 때문이다. 문제는 그
+ *  유발원이 **사라지는 구간**이다: 18:00 에 시간외 폴링이 멎으면 그 뒤로는 리렌더가
+ *  없어 '시간외 단일가' 라벨이 밤새 남는다. 얼어붙은 표시를 이 리포가 반복해서
+ *  다뤄 온 실패 유형이라 1분 틱 하나로 닫는다(경계 오차 최대 60초). */
+function useSessionClockTick(): void {
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
+}
+
 function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 아래로 넘기는 것은 **선택값**이다. WS 꼬리(useLiveSeries)도 파케이 스팟
   // (useLiveOrderbookAtCursor)도 각자 `useEffectiveVenue` 로 같은 해석을 하므로
@@ -236,15 +257,52 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     inactiveSnapshot: latestSnapshot,
     bufferFallbackSnapshot: bufferSnap,
   });
+  // ── 세션 모드 ────────────────────────────────────────────────────────────
+  // 갈래 판정은 **종목의 NXT 상장 여부**다(`bookSessionMode`). 갈래 A(KRX 전용)만
+  // 토글을 갖고, 그 토글이 **사다리·총잔량·체결창의 출처를 한꺼번에** 가른다.
+  //
+  // 셋을 함께 묶는 것이 요점이다. 종전엔 사다리(15:30 정규장)와 총잔량(0E 시간외)의
+  // 출처가 갈려 "합이 안 맞는 게 정상" 이었고 라벨이 그 불일치를 설명했는데, 모드가
+  // 생기면 설명할 불일치 자체가 없어진다 — 한 모드는 한 장만 보여준다.
+  const nxtEnabledOf = useNxtEnabledResolver();
+  const effectiveVenue = useEffectiveVenue(code, venue);
+  // 시계가 경계를 넘으면 스스로 갱신되게 한다. 18:00 이후엔 시간외 폴링이 멎어
+  // 리렌더 유발원이 사라지므로, 이게 없으면 '시간외 단일가' 라벨이 밤새 남는다.
+  useSessionClockTick();
+  // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
+  // 하기 위해서다(탭이 잠들어 있다 깨어나도 맞는다. `bookSessionMode` docstring).
+  const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
+  const sessionMode = resolveBookSessionMode(sessionOverride);
+  const sessionControl = bookSessionControl({
+    nxtEnabled: nxtEnabledOf(code),
+    // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
+    // 화면엔 15:30 정지본이 뜨므로, 라벨이 그 사실을 말해야 한다.
+    venue: effectiveVenue,
+    isSpot,
+  });
+  const selectSessionMode = useCallback((mode: BookSessionMode) => {
+    setSessionOverride({ mode, epoch: bookSessionEpoch() });
+  }, []);
+  /** 모드가 출처를 가르는가 — 갈래 A 에서만 참. 갈래 B·모름은 종전 동작 그대로다. */
+  const modeGated = sessionControl.kind === 'toggle';
+  const showAfterHours = !modeGated || sessionMode === 'afterHours';
   // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
   // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
   // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
-  const snapshot = singlePriceSnapshot ?? regularSnapshot;
+  //
+  // 갈래 A 의 시간외 모드에서는 그 폴백을 **하지 않는다**. 정규장 사다리를 "시간외"
+  // 라벨 아래 두면 라벨이 거짓말이 되고, 되돌릴 토글이 바로 옆에 있기 때문이다.
+  const snapshot = modeGated
+    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regularSnapshot)
+    : (singlePriceSnapshot ?? regularSnapshot);
   // 하단 총잔량 스트립의 두 모드. deltaBadges 와 같은 규율로 스팟 중에는 전부 끈다.
   //   16:00–18:00  ka10087 총잔량(사다리와 같은 출처라 합이 맞는다)
-  //   15:40–16:00  WS 0E 총잔량(사다리는 15:30 정규장 값이라 합이 안 맞는 게 정상)
+  //   15:40–16:00  WS 0E 총잔량(사다리 없음 — 그 구간은 단일 가격이라 사다리가 없다)
   const afterHoursTotals = useMemo(() => {
     if (isSpot) return null;
+    // 정규장 모드에서는 시간외 값으로 덮지 않는다 — 그러면 사다리와 총잔량이 다시
+    // 다른 장을 가리킨다.
+    if (!showAfterHours) return null;
     if (singlePriceSnapshot !== null) {
       // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
       // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
@@ -254,7 +312,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
     // KRX 시간외 총잔량이 그 위에 덮인다(판정 근거는 `latestAfterHoursTotals`).
     return latestAfterHoursTotals(live.afterHours, latestSnapshot?.ts_ms ?? null);
-  }, [isSpot, singlePriceSnapshot, live.afterHours, afterHoursBook.data, latestSnapshot]);
+  }, [isSpot, showAfterHours, singlePriceSnapshot, live.afterHours, afterHoursBook.data, latestSnapshot]);
   const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
@@ -411,16 +469,20 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 시간외 단일가 구간에는 **합성 체결**이 체결창을 채운다. WS 체결(0B)은 16:00 에
   // 끊기므로 `recentTrades` 는 그때부터 15:59 의 화석이고, 그것을 "지금 흐르는 체결"
   // 자리에 두면 시각이 안 보이는 만큼 조용히 거짓이 된다.
-  const bookTrades = singlePriceSnapshot !== null ? singlePriceFills : recentTrades;
+  //
+  // ⚠ 판정에 `showAfterHours` 가 들어간다 — 갈래 A 의 정규장 모드에서는 시간외
+  // 응답이 도착해 있어도 **쓰지 않는다.** 사다리만 정규장으로 되돌리고 체결창은
+  // 시간외 체결을 그리면 한 창이 두 장을 동시에 보이게 된다.
+  const useSinglePrice = showAfterHours && singlePriceSnapshot !== null;
+  const bookTrades = useSinglePrice ? singlePriceFills : recentTrades;
   // 사다리에서 현재가 행을 강조하는 값. 시간외에는 벤더 현재가를 **직접** 쓴다 —
   // 체결창이 비어 있을 수 있고(첫 관측은 기준선이라 행이 없다), 15:59 가격은 시간외
   // 5단 어디에도 없어 강조가 사라지거나 엉뚱한 행에 붙는다.
-  const lastPrice =
-    singlePriceSnapshot !== null
-      ? (afterHoursBook.data?.cur_price ?? null)
-      : recentTrades.length > 0
-        ? recentTrades[0].price
-        : null;
+  const lastPrice = useSinglePrice
+    ? (afterHoursBook.data?.cur_price ?? null)
+    : recentTrades.length > 0
+      ? recentTrades[0].price
+      : null;
   // 상하한가·250일은 **날짜** 단위 상수다 — 오늘 스팟(시각만 과거)에서는 유효하고
   // 과거 날짜에서만 거짓이라, 시각 단위 누적인 summary 와 게이트가 다르다.
   const spotLimits = isPastDateCursor ? null : (stockLimits.data ?? null);
@@ -431,7 +493,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const spotVi = isSpot ? null : (viStatus.data?.vi ?? null);
   // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
   // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
-  const bookStale = singlePriceSnapshot === null && spotOrderbookStale;
+  const bookStale = !useSinglePrice && spotOrderbookStale;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
   // 비우므로 사다리는 `undefined` 로 떨어져 "커서 위치 불러오는 중…" 을 그리는데,
   // 그 위에 실패 칩을 얹으면 한 화면이 "실패했다" 와 "불러오는 중" 을 동시에
@@ -476,6 +538,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           snapshot={snapshot}
           afterHoursTotals={afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
+          sessionControl={sessionControl}
+          sessionMode={sessionMode}
+          onSelectSessionMode={selectSessionMode}
           baselinePrice={baselinePrice}
           summary={summary}
           trades={bookTrades}
