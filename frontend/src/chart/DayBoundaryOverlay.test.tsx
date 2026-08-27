@@ -1,27 +1,37 @@
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { ISeriesApi } from 'lightweight-charts';
 import DayBoundaryOverlay from './DayBoundaryOverlay';
-import { useChartPrefsStore } from '../state/chartPrefs';
+import { DayBoundaryPrimitive } from './DayBoundaryPrimitive';
 import type { DayBoundaryTick } from './sessionSpans';
+import type { PaneSeriesMap } from './drawing/chartCoordinates';
+import type { PaneId } from './drawing/types';
+import { useChartPrefsStore } from '../state/chartPrefs';
 
-function makeChart(paneWidth = 498, timeAxisHeight = 28) {
-  const subscribers = new Set<() => void>();
-  const timeScale = {
-    timeToCoordinate: vi.fn(() => 120),
-    // pane 폭 / 시간축 높이 — 오버레이는 이 둘로 스스로를 pane 영역에 가둬
-    // 구분선이 우측 가격 라벨과 하단 날짜 라벨 위로 새지 않게 한다.
-    width: vi.fn(() => paneWidth),
-    height: vi.fn(() => timeAxisHeight),
-    subscribeVisibleLogicalRangeChange: vi.fn((cb: () => void) => subscribers.add(cb)),
-    unsubscribeVisibleLogicalRangeChange: vi.fn((cb: () => void) => subscribers.delete(cb)),
-  };
+const boundaries: readonly DayBoundaryTick[] = [{ date: '20260616', virtualMs: 1_800_000 }];
 
+function makeSeries() {
   return {
-    timeScale: () => timeScale,
+    attachPrimitive: vi.fn(),
+    detachPrimitive: vi.fn(),
+  } as unknown as ISeriesApi<'Candlestick'> & {
+    attachPrimitive: ReturnType<typeof vi.fn>;
+    detachPrimitive: ReturnType<typeof vi.fn>;
   };
 }
 
-const boundaries: readonly DayBoundaryTick[] = [{ date: '20260616', virtualMs: 1_800_000 }];
+function makePaneSeries(...paneIds: string[]) {
+  const entries = paneIds.map((id) => [id as PaneId, makeSeries()] as const);
+  return {
+    map: new Map(entries) as unknown as PaneSeriesMap,
+    series: entries.map(([, s]) => s),
+  };
+}
+
+/** 해당 series 에 붙은 primitive — host 가 draw 시점에 넘길 스냅샷을 여기서 읽는다. */
+function attachedPrimitive(series: ReturnType<typeof makeSeries>): DayBoundaryPrimitive {
+  return series.attachPrimitive.mock.calls[0][0] as DayBoundaryPrimitive;
+}
 
 describe('DayBoundaryOverlay', () => {
   beforeEach(() => {
@@ -30,66 +40,110 @@ describe('DayBoundaryOverlay', () => {
 
   afterEach(cleanup);
 
-  it('renders no boundary when disabled', () => {
-    useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
-    render(<DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />);
+  // 구분선은 캔들 pane 바닥에서 끊기면 안 된다 — 옛 DOM 오버레이는 차트 전체 높이를
+  // 덮어 거래량·보조지표 pane 까지 이어졌고, primitive 는 자기가 달린 pane 캔버스에만
+  // 그리므로 pane 마다 하나씩 붙여야 그 모양이 유지된다.
+  it('모든 pane 에 primitive 를 하나씩 붙인다 — 캔들 pane 에만 붙이면 선이 끊긴다', () => {
+    const { map, series } = makePaneSeries('candle', 'volume', 'ratio');
 
-    expect(screen.queryByTestId('day-boundary-20260616')).toBeNull();
-  });
+    render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
 
-  it('applies configured color and line width', () => {
-    useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#EF4444', lineWidth: 3 });
-    render(<DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />);
-
-    const boundary = screen.getByTestId('day-boundary-20260616');
-    expect(boundary.style.width).toBe('3px');
-    expect(boundary.style.backgroundImage).toContain('rgb(239, 68, 68)');
-  });
-
-  // 축 누수 회귀 — 컨테이너를 pane 영역으로 잘라 두지 않으면 x > paneWidth 인
-  // 구분선이 우측 가격 라벨 배경 위에, 선의 아래쪽 끝이 하단 시간축의 날짜 라벨
-  // 위에 그려진다. 폭·높이·overflow 중 하나만 빠져도 새므로 셋 다 단언한다.
-  it('clips itself to the pane box so lines never reach either axis gutter', () => {
-    render(<DayBoundaryOverlay chart={makeChart(498, 28) as never} boundaries={boundaries} />);
-
-    const clip = screen.getByTestId('day-boundary-clip');
-    expect(clip.style.width).toBe('498px');
-    expect(clip.style.bottom).toBe('28px');
-    expect(clip.className).toContain('overflow-hidden');
-    // 컨테이너가 우측·하단으로 늘어나지 않도록 `inset-0`/`inset-y-0` 가 아니라
-    // 좌상단 고정 + 명시 폭·bottom 이어야 한다.
-    expect(clip.className).not.toContain('inset-0');
-    expect(clip.className).not.toContain('inset-y-0');
-  });
-
-  it('attaches the resize observer after enabling from a disabled start', async () => {
-    const observe = vi.fn();
-    const disconnect = vi.fn();
-    const ResizeObserverMock = vi.fn(function ResizeObserverMock() {
-      return { observe, disconnect };
-    });
-    const originalResizeObserver = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = ResizeObserverMock as never;
-    useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
-
-    try {
-      render(
-        <div data-testid="chart-host">
-          <DayBoundaryOverlay chart={makeChart() as never} boundaries={boundaries} />
-        </div>,
-      );
-
-      expect(observe).not.toHaveBeenCalled();
-
-      act(() => {
-        useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', true);
-      });
-
-      await waitFor(() => {
-        expect(observe).toHaveBeenCalledWith(screen.getByTestId('chart-host'));
-      });
-    } finally {
-      globalThis.ResizeObserver = originalResizeObserver;
+    for (const s of series) {
+      expect(s.attachPrimitive).toHaveBeenCalledTimes(1);
+      expect(s.attachPrimitive.mock.calls[0][0]).toBeInstanceOf(DayBoundaryPrimitive);
     }
+  });
+
+  it('언마운트 시 붙인 primitive 를 전부 뗀다', () => {
+    const { map, series } = makePaneSeries('candle', 'volume');
+
+    const { unmount } = render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+    unmount();
+
+    for (const s of series) {
+      expect(s.detachPrimitive).toHaveBeenCalledTimes(1);
+      expect(s.detachPrimitive.mock.calls[0][0]).toBe(s.attachPrimitive.mock.calls[0][0]);
+    }
+  });
+
+  it('꺼져 있으면 아무 pane 에도 붙이지 않는다', () => {
+    useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
+    const { map, series } = makePaneSeries('candle', 'volume');
+
+    render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+
+    for (const s of series) expect(s.attachPrimitive).not.toHaveBeenCalled();
+  });
+
+  it('꺼진 채 마운트했다가 켜면 그때 붙는다', () => {
+    useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
+    const { map, series } = makePaneSeries('candle');
+
+    render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+    expect(series[0].attachPrimitive).not.toHaveBeenCalled();
+
+    act(() => {
+      useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', true);
+    });
+
+    expect(series[0].attachPrimitive).toHaveBeenCalledTimes(1);
+    // 붙자마자 스냅샷이 서 있어야 첫 프레임이 빈 그림이 되지 않는다.
+    expect(attachedPrimitive(series[0]).snapshot()).toMatchObject({ boundaries });
+  });
+
+  it('켜져 있다가 끄면 뗀다', () => {
+    const { map, series } = makePaneSeries('candle');
+
+    render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+
+    act(() => {
+      useChartPrefsStore.getState().setToggle('dayBoundaryEnabled', false);
+    });
+
+    expect(series[0].detachPrimitive).toHaveBeenCalledTimes(1);
+  });
+
+  // 스타일 변경은 팬/줌과 달리 lwc 가 스스로 다시 그릴 이유가 없다 — 호스트가
+  // 스냅샷을 갈고 **repaint 를 요청해야** 화면에 반영된다. 요청을 빠뜨리면 색을
+  // 바꿔도 다음 팬 전까지 옛 색이 남는다.
+  it('설정한 색·두께를 스냅샷으로 넘기고 repaint 를 요청한다', () => {
+    const requestUpdate = vi.spyOn(DayBoundaryPrimitive.prototype, 'requestUpdate');
+    const { map, series } = makePaneSeries('candle');
+
+    render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+    const attachCalls = requestUpdate.mock.calls.length;
+
+    act(() => {
+      useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#EF4444', lineWidth: 3 });
+    });
+
+    expect(attachedPrimitive(series[0]).snapshot()).toEqual({
+      boundaries,
+      color: '#EF4444',
+      lineWidth: 3,
+    });
+    expect(requestUpdate.mock.calls.length).toBeGreaterThan(attachCalls);
+    requestUpdate.mockRestore();
+  });
+
+  // 이 컴포넌트가 DOM 을 그리면 그리기 경로가 둘로 갈리고, 그 경로가 곧 한 프레임
+  // 팬 지연이었다. 그리기는 전적으로 캔버스 패스가 한다.
+  it('DOM 을 그리지 않는다 — 그리기는 캔버스 패스가 한다', () => {
+    const { map } = makePaneSeries('candle');
+
+    const { container } = render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+
+    expect(container.innerHTML).toBe('');
+  });
+
+  // 값이 같은데 재부착하면 팬 중 구분선이 한 프레임 사라진다.
+  it('같은 paneSeries·boundaries 로 재렌더해도 재부착하지 않는다', () => {
+    const { map, series } = makePaneSeries('candle');
+
+    const { rerender } = render(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+    rerender(<DayBoundaryOverlay paneSeries={map} boundaries={boundaries} />);
+
+    expect(series[0].attachPrimitive).toHaveBeenCalledTimes(1);
+    expect(series[0].detachPrimitive).not.toHaveBeenCalled();
   });
 });
