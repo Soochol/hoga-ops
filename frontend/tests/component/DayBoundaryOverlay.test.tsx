@@ -4,6 +4,7 @@ import type { ISeriesApi } from 'lightweight-charts';
 
 import DayBoundaryOverlay from '../../src/chart/DayBoundaryOverlay';
 import {
+  DAY_BOUNDARY_LINE_WIDTH,
   computeBoundaryLines,
   type DayBoundaryPrimitive,
 } from '../../src/chart/DayBoundaryPrimitive';
@@ -42,7 +43,7 @@ function drawnBoundaryDates(
   const snap = prim?.snapshot();
   if (!snap) return [];
   // pane 폭 498 — 옛 mock 축의 실측값 그대로.
-  return computeBoundaryLines(snap.boundaries, timeToCoordinate, snap.lineWidth, 498).map(
+  return computeBoundaryLines(snap, timeToCoordinate, DAY_BOUNDARY_LINE_WIDTH, 498).map(
     (b) => b.date,
   );
 }

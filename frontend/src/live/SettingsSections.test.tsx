@@ -153,35 +153,15 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(screen.getByRole('region', { name: '차트' })).not.toHaveClass('bg-bg-card');
   });
 
-  it('날짜 구분선 스타일 팔레트에서 기본 색상을 다시 선택할 수 있다', () => {
-    renderSettings();
-    fireEvent.click(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' }));
-
-    expect(screen.getByRole('button', { name: '날짜 구분선 색상 #64748B' })).toBeTruthy();
-  });
-
-  it('날짜 구분선 스타일 행은 토글 바로 다음, 가로 구분선 토글 전에 보인다', () => {
-    // 종속 행은 부모 바로 아래가 자리다(들여쓰기 문법). 소그룹 재편으로 이웃이
-    // 캔들 툴팁 → 가로 구분선으로 바뀌었다(격자 · 구분선 그룹).
-    renderSettings();
-
-    const dayBoundaryToggle = screen.getByTestId('settings-toggle-dayBoundaryEnabled');
-    const styleButton = screen.getByRole('button', { name: '날짜 구분선 스타일 선택' });
-    const horizontalGridToggle = screen.getByTestId('settings-toggle-horizontalGridLinesEnabled');
-
-    expect(
-      dayBoundaryToggle.compareDocumentPosition(styleButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      styleButton.compareDocumentPosition(horizontalGridToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('이동된 토글은 설정 모달에 없다 (급증·누적·극단값필터)', () => {
+  it('이동·제거된 토글은 설정 모달에 없다 (급증·누적·극단값필터·날짜 구분선)', () => {
     renderSettings();
     expect(screen.queryByTestId('settings-toggle-surgeMarkerEnabled')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-fillStrengthCumulative')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeNull();
+    // 날짜 구분선은 **이동이 아니라 제거**다(2026-08-27) — 색은 테마 토큰, 두께는
+    // 1px 상수, 표시는 분봉이면 항상. 스타일 피커도 같이 사라졌다.
+    expect(screen.queryByTestId('settings-toggle-dayBoundaryEnabled')).toBeNull();
+    expect(screen.queryByRole('button', { name: '날짜 구분선 스타일 선택' })).toBeNull();
   });
 
   it('토글 클릭이 chartPrefs 스토어에 반영된다', () => {
@@ -211,19 +191,6 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
   // ── 종속 스타일 행 게이트 — 죽은 컨트롤 결함의 재발 방지 ──────────────────
   // 종전엔 날짜 구분선·VI 스타일 행이 게이트 없이 서 있어서 부모를 꺼도 피커가
   // 살아 있었다. 게이트 문법은 하위 토글과 동일: 들여쓰기 + dim + 클릭 차단.
-
-  it('날짜 구분선을 끄면 스타일 행이 dim 된다 (값은 보존)', () => {
-    renderSettings();
-    const styleButton = () => screen.getByRole('button', { name: '날짜 구분선 스타일 선택' });
-    expect(styleButton().closest('.pointer-events-none')).toBeNull();
-
-    const row = screen.getByTestId('settings-toggle-dayBoundaryEnabled');
-    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
-
-    expect(styleButton().closest('.pointer-events-none')).not.toBeNull();
-    // 값 보존 — 스타일 자체는 그대로다(다시 켜면 이전 선택이 돌아온다).
-    expect(useChartPrefsStore.getState().dayBoundaryColor).toBeTruthy();
-  });
 
   it('VI/상하한가 선을 끄면 스타일 행이 dim 된다', () => {
     renderSettings();
@@ -290,7 +257,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
     expect(screen.getByTestId('settings-toggle-highLowLabelsEnabled')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-highLowPriorHighLineEnabled')).toBeTruthy();
-    expect(screen.queryByTestId('settings-toggle-dayBoundaryEnabled')).toBeNull();
+    expect(screen.queryByTestId('settings-toggle-horizontalGridLinesEnabled')).toBeNull();
   });
 
   it('필터 — 아무것도 안 걸리면 빈 상태가 검색 경계를 말한다', () => {

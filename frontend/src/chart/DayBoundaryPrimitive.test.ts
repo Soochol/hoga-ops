@@ -11,9 +11,9 @@ import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import {
   DAY_BOUNDARY_DASH,
+  DAY_BOUNDARY_LINE_WIDTH,
   DayBoundaryPrimitive,
   computeBoundaryLines,
-  type DayBoundarySnapshot,
 } from './DayBoundaryPrimitive';
 import type { DayBoundaryTick } from './sessionSpans';
 
@@ -129,7 +129,10 @@ function makeAxisStubs(init?: { timeToCoordinate?: (t: number) => number | null 
   return { state, chart, series };
 }
 
-function attach(stubs: ReturnType<typeof makeAxisStubs>, source: () => DayBoundarySnapshot | null) {
+function attach(
+  stubs: ReturnType<typeof makeAxisStubs>,
+  source: () => readonly DayBoundaryTick[] | null,
+) {
   const prim = new DayBoundaryPrimitive(source);
   const requestUpdate = vi.fn();
   prim.attached({ chart: stubs.chart, series: stubs.series, requestUpdate } as never);
@@ -152,12 +155,26 @@ function segments(c: ReturnType<typeof makeCanvasSpy>): number[][] {
   });
 }
 
-const snapshot: DayBoundarySnapshot = { boundaries: TICKS, color: '#64748B', lineWidth: 1 };
+/** 테마 캐시(`resolveTokensThemed`)는 `data-theme` 를 키로 쓴다 — 테스트마다 **고유
+ *  키**를 써야 다른 테스트가 채운 슬롯을 읽지 않는다. */
+function withTheme(theme: string, color: string, run: () => void) {
+  const root = document.documentElement;
+  const prevTheme = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', theme);
+  root.style.setProperty('--chart-day-boundary', color);
+  try {
+    run();
+  } finally {
+    root.style.removeProperty('--chart-day-boundary');
+    if (prevTheme === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', prevTheme);
+  }
+}
 
 describe('DayBoundaryPrimitive', () => {
   it('경계마다 pane 높이 전체를 관통하는 세로선을 긋는다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     draw(prim, c, { w: 500, h: 200 });
@@ -170,7 +187,7 @@ describe('DayBoundaryPrimitive', () => {
 
   it('DOM 시절 gradient 와 같은 3px/3px 점선으로 긋는다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     draw(prim, c);
@@ -178,21 +195,42 @@ describe('DayBoundaryPrimitive', () => {
     expect(c.setLineDash).toHaveBeenCalledWith([...DAY_BOUNDARY_DASH]);
   });
 
-  it('prefs 의 색·두께를 그대로 쓴다', () => {
+  // 색은 prefs 가 아니라 `--chart-day-boundary` 토큰이 갖는다(2026-08-27). 해석이
+  // draw **시점**이라 테마 전환이 그대로 따라온다 — 부착 시점에 구우면 테마를 바꾼
+  // 뒤 첫 팬까지 옛 색이 남는다.
+  it('테마 토큰 색으로 긋는다 — draw 시점 해석이라 테마 전환이 따라온다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => ({ ...snapshot, color: '#EF4444', lineWidth: 3 }));
+    const { prim } = attach(stubs, () => TICKS);
+
+    withTheme('test-dark-tone', '#6d6d7b', () => {
+      const c = makeCanvasSpy();
+      draw(prim, c);
+      expect(c.strokeStyle).toBe('#6d6d7b');
+    });
+
+    // 같은 primitive·같은 스냅샷 — 테마만 바뀌었는데 색이 따라와야 한다.
+    withTheme('test-paper-tone', '#8a8271', () => {
+      const c = makeCanvasSpy();
+      draw(prim, c);
+      expect(c.strokeStyle).toBe('#8a8271');
+    });
+  });
+
+  it('두께는 1px 상수다 — 사용자 설정이 아니다', () => {
+    const stubs = makeAxisStubs();
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     draw(prim, c);
 
-    expect(c.strokeStyle).toBe('#EF4444');
-    expect(c.lineWidth).toBe(3);
+    expect(c.lineWidth).toBe(DAY_BOUNDARY_LINE_WIDTH);
+    expect(DAY_BOUNDARY_LINE_WIDTH).toBe(1);
   });
 
   // 선 하나마다 stroke 를 부르면 같은 그림에 상태 전환만 늘어난다.
   it('모든 선을 한 path 에 모아 stroke 를 한 번만 부른다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     draw(prim, c);
@@ -213,7 +251,7 @@ describe('DayBoundaryPrimitive', () => {
 
   it('그릴 경계가 하나도 없으면 stroke 를 부르지 않는다', () => {
     const stubs = makeAxisStubs({ timeToCoordinate: () => null });
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     draw(prim, c);
@@ -226,7 +264,7 @@ describe('DayBoundaryPrimitive', () => {
     // 구분선이 새 프레임 좌표로 나와야 한다. DOM 오버레이 시절엔 여기서 구독 → rAF →
     // React 렌더를 거쳐야 했고, 그 지연이 곧 캔들을 뒤따라오는 구분선이었다.
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
 
     const before = makeCanvasSpy();
     draw(prim, before, { w: 500, h: 200 });
@@ -252,7 +290,7 @@ describe('DayBoundaryPrimitive', () => {
         throw new Error('chart disposed');
       },
     });
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     const c = makeCanvasSpy();
 
     expect(() => draw(prim, c)).not.toThrow();
@@ -261,7 +299,7 @@ describe('DayBoundaryPrimitive', () => {
 
   it('detach 후에는 그리지 않는다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => snapshot);
+    const { prim } = attach(stubs, () => TICKS);
     prim.detached();
     const c = makeCanvasSpy();
 

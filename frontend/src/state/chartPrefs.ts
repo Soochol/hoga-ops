@@ -66,13 +66,6 @@ export const CHART_TOGGLES = [
   },
   // ── 차트 › 격자 · 구분선 ───────────────────────────────────────────
   {
-    key: 'dayBoundaryEnabled',
-    label: '날짜 구분선',
-    description: '분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.',
-    default: true,
-    group: 'grid',
-  },
-  {
     key: 'horizontalGridLinesEnabled',
     label: '가로 구분선',
     description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
@@ -543,9 +536,6 @@ export const CHART_NUMERIC_PREFS = [
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 
-export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
-export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
-export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
 /** 선 두께 — `MAStylePicker` 가 제공하는 네 단계. */
 export type ChartLineWidth = 1 | 2 | 3 | 4;
 
@@ -637,8 +627,6 @@ export type ChartViewPrefs =
   & { [K in ChartLineStyleKey as `${K}Color`]: string }
   & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth }
   & {
-    dayBoundaryColor: string;
-    dayBoundaryLineWidth: DayBoundaryLineWidth;
     tradeHighlightColor: string;
     // VI/상하한가 선 스타일 — 원래 지표 버킷(창×봉)에 있었는데, 정작 자기
     // 토글(`viLimitPriceDotsEnabled`)은 여기 전역이라 한 기능이 두 저장소로
@@ -668,8 +656,6 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
   ...LINE_STYLE_DEFAULTS,
-  dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
-  dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
   tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
   viLimitPriceLineColor: VI_LIMIT_PRICE_LINE_DEFAULT_COLOR,
   viLimitPriceLineWidth: VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH,
@@ -778,7 +764,6 @@ type ChartPrefsStore = ChartViewPrefs & {
   /** 지정한 (스코프 × 봉)의 indicator-modal 버킷만 비운다(드로어 "현재 봉 초기화").
    *  창 스코프에서는 **엔트리를 남기고** 그 봉 버킷만 비운다(livePage 와 같은 규약). */
   resetIndicatorModalBucketScoped: (scope: IndicatorScope, tf: LiveTimeframe) => void;
-  setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
   /** `CHART_LINE_STYLES` 한 엔트리의 색·두께를 patch 한다. 색 `''` 는 "고르지 않음"
@@ -868,12 +853,6 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
 
     setPrefScoped: (scope, tf, key, value) => writePrefScoped(scope, tf, key, value),
 
-
-    setDayBoundaryStyle: (patch) =>
-      set((s) => ({
-        dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
-        dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
-      })),
 
     setTradeHighlightColor: (color) => set({ tradeHighlightColor: color }),
 
