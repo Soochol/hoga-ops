@@ -26,6 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from hoga.live import last_ob_store
 from hoga.live.after_hours_store import (
     StoredAfterHoursBook,
     save_cycle,
@@ -829,6 +830,80 @@ def start_after_hours_recorder(
 
     return asyncio.create_task(loop(), name="after-hours-recorder")
 
+
+
+#: 마지막 호가 디스크 flush 주기. 값이 바뀌었을 때만 쓰므로(버전 비교) 장이 끝나면
+#: 실제 쓰기가 0 이 된다 — 주기를 짧게 잡아도 밤새 도는 비용이 없다.
+_LAST_OB_FLUSH_INTERVAL_S = 60.0
+
+
+def start_last_ob_flusher(
+    data_dir: Path, *, interval_s: float = _LAST_OB_FLUSH_INTERVAL_S
+) -> asyncio.Task:
+    """`LiveBuffer._last_ob` 를 디스크에 내리는 태스크 — **벤더를 치지 않는다.**
+
+    ## 왜 필요한가
+
+    마지막 호가는 프로세스 메모리에만 있어서 재시작에 **전 종목이 함께 죽는다**
+    (2026-08-27 실측: 장 마감 후 기동한 백엔드에서 005930 포함 전 종목 0 건, 10호가
+    창이 통째로 빔). 장이 끝난 뒤라 다시 채울 소스도 없다. 이 루프가 그 구멍만 닫는다.
+
+    수집 경로를 새로 만들지 않는 것이 요점이다 — WS 는 이미 흐르고 `_last_ob` 는 이미
+    갱신된다(`LiveBuffer.publish`). 여기는 **디스크 왕복만** 한다.
+
+    ## 바뀐 게 없으면 쓰지 않는다
+
+    `last_ob_snapshot()` 이 함께 주는 버전을 직전 성공분과 비교한다. 그래서:
+
+        09:00–15:30  0D 흐름 → 버전 증가 → 매 주기 flush
+        15:30 (KRX)  0D 끊김 → 버전 고정 → **쓰기 0**, 파일엔 15:30 값이 남는다
+        20:00 (NXT)  같은 방식
+
+    즉 **"지금이 마감이니 저장하자" 는 시계 판정이 어디에도 없다.** 벤더가 멈추는 것이
+    곧 마지막이고, 세션 경계 시각(KRX 15:30 · NXT 20:00)을 코드가 알 필요가 없다.
+
+    비교가 `>` 가 아니라 `!=` 인 것도 의도다 — 버퍼가 새로 만들어지면(테스트 훅
+    `reset_for_tests`) 버전이 0 으로 돌아가는데, `>` 면 그 뒤 갱신을 영영 못 쓴다.
+
+    ## 실패는 다음 주기가 재시도한다
+
+    쓰기가 실패하면 `last_version` 을 갱신하지 않으므로 같은 버전이 그대로 남아 다음
+    주기에 다시 시도된다. 불리언 dirty 를 읽는 쪽에서 clear 하는 방식이었다면 그
+    실패분이 영영 저장되지 않았을 것이다(`_last_ob_version` 선언부 주석).
+    """
+    last_version = -1
+
+    async def loop() -> None:
+        nonlocal last_version
+        while True:
+            try:
+                # **매 주기 버퍼를 다시 읽는다** — 인스턴스를 캡처해 두면 교체된 뒤
+                # 죽은 객체를 붙들고 있게 된다(`get_capture_worker_tasks` 와 같은 규율).
+                entries, version = await get_buffer().last_ob_snapshot()
+                if version != last_version:
+                    last_ob_store.save(data_dir, entries)
+                    last_version = version
+            except Exception:  # noqa: BLE001 — flush 실패가 수집을 멈추면 안 된다
+                _log.exception("live.last_ob.flush_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="last-ob-flusher")
+
+
+async def restore_last_ob_from_disk(data_dir: Path) -> int:
+    """기동 시 1회 — 디스크의 마지막 호가를 버퍼에 되돌린다. 반환은 주입 건수.
+
+    **프로덕션에서 버퍼는 모듈 로드 시 한 번만 만들어진다**(`_buffer` 선언부). 재생성은
+    `reset_for_tests` 뿐이라 복원 지점도 기동 한 곳이면 족하다.
+
+    살아 있는 값을 덮지 않으므로(`restore_last_ob`) WS 수신과의 순서에 무관하다.
+    """
+    entries = last_ob_store.load(data_dir)
+    if not entries:
+        return 0
+    restored = await get_buffer().restore_last_ob(entries)
+    _log.info("live.last_ob.restored count=%d", restored)
+    return restored
 
 
 def start_trading_calendar_refresher(

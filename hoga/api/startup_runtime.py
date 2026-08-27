@@ -62,6 +62,14 @@ class StartupRuntimeDeps:
     # 프로그램매매 수집기 태스크 접근자. 라이브 런타임 소유라 라이브 시작/정지에 따라
     # 생겼다 사라진다 — 없으면 "죽음"이 아니라 미기동이므로 목록에서 생략한다.
     get_program_trade_task: Callable[[], TaskOrNone] | None = None
+    #: lifespan 이 소유한 주기 태스크 접근자(달력 리프레셔·마지막호가 flusher 등).
+    #: 런타임이 핸들을 갖지 않으므로 **호출 시점에 다시 읽는다** —
+    #: `get_capture_worker_tasks` 와 같은 규율이다.
+    #:
+    #: 이 목록에 실어야 하는 이유는 그것들이 **조용히 죽기 때문**이다: flusher 는
+    #: 값이 바뀔 때만 쓰므로 평소 로그가 없고, 죽어도 다음 재시작 때 "왜 복원이
+    #: 안 되지" 로만 드러난다.
+    get_lifespan_tasks: Callable[[], Sequence[asyncio.Task]] | None = None
     # 인벤토리 watchdog 옵서버(스레드). asyncio 태스크가 아니라 별도 판정이 필요하다.
     # 미주입이면 목록에서 생략.
     get_inventory_observer: Callable[[], object | None] | None = None
@@ -180,6 +188,8 @@ class AppStartupRuntime:
         ]
         if self.deps.get_capture_worker_tasks is not None:
             tasks.extend((t.get_name(), t) for t in self.deps.get_capture_worker_tasks())
+        if self.deps.get_lifespan_tasks is not None:
+            tasks.extend((t.get_name(), t) for t in self.deps.get_lifespan_tasks())
         if self.deps.get_program_trade_task is not None:
             # 라이브가 꺼져 있으면 태스크가 없다 — 미기동을 dead 로 보고하지 않기 위해
             # 아예 목록에서 뺀다(not_started 로 넣으면 경보는 안 나지만 UI 가 "정지"
