@@ -2463,6 +2463,38 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     });
   });
 
+  /**
+   * ── 캔들 축(`candleSourceKey`)에 **기준일**이 들어간다 ──────────────────────
+   *
+   * 이 키가 갈리면 `useViewportBackfill` 의 재착석이 발화해 화면을 **새 데이터 크기로**
+   * 다시 앉힌다. 기간 점프는 창의 캔들을 통째로 다른 구간의 것으로 갈아치우므로 그
+   * 재착석이 필요하다.
+   *
+   * **없으면 무슨 일이 나는가**(2026-08-27 실측, 10분봉): 점프가 차트를 remount 시키면
+   * 초기 배치가 **옛 번들(라이브 2094봉)** 로 1회 소진돼 span 542 로 굳는다. 그 뒤
+   * 목적지 데이터 234봉이 도착하면 화면이 데이터의 2배가 되고, lwc 가 좌팬을 클램프해
+   * **드래그가 벽에 막힌다** — 팬이 막히니 좌팬 백필(3b)을 유발할 방법도 없는 데드락이다.
+   * 사용자 신고 「왼쪽으로 스크롤해서 데이터 가져오는 게 동작 안 함」이 이것이었다.
+   */
+  it('캔들 축에 기준일이 들어간다 — 점프가 재착석을 깨우는 통로다', () => {
+    const a = renderHook(() => useLiveBundle('005930', '1m', '20260619', liveFixture), { wrapper });
+    const b = renderHook(() => useLiveBundle('005930', '1m', '20260827', liveFixture), { wrapper });
+    expect(a.result.current.candleSourceKey).not.toBe(b.result.current.candleSourceKey);
+  });
+
+  // 소스 축은 그대로 살아 있어야 한다 — 기준일을 더하면서 덮어쓰면 hogaplay 토글의
+  // 재착석(#1614/#1615 사가)이 조용히 죽는다.
+  it('소스 축도 여전히 키를 가른다 (회귀 가드)', () => {
+    const vendor = renderHook(
+      () => useLiveBundle('005930', '1m', '20260827', liveFixture), { wrapper },
+    );
+    const disk = renderHook(
+      () => useLiveBundle('005930', '1m', '20260827', liveFixture, { hogaplaySourceEnabled: true }),
+      { wrapper },
+    );
+    expect(vendor.result.current.candleSourceKey).not.toBe(disk.result.current.candleSourceKey);
+  });
+
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
     renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];

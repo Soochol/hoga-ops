@@ -290,8 +290,29 @@ export function overlayLiveTradesOnCalendarCandles(
   return out ?? (candles as Candle[]);
 }
 
-/** 캔들이 온 곳. 디스크 = hogaplay 캡처(분봉) 또는 스크리너 일봉(D/W/M). */
-export type CandleSourceKey = 'disk' | 'vendor';
+/**
+ * **이 창의 캔들 축** — 값이 갈리면 `useViewportBackfill` 의 재착석이 발화한다.
+ *
+ * 두 조각의 합이다:
+ *  - **소스** — 디스크(hogaplay 캡처 분봉 · 스크리너 일봉) vs 벤더.
+ *  - **기준일** — 창의 데이터 우단(`todayKstYyyymmdd` 인자). 기간 점프가 이것을
+ *    목적지로 옮긴다.
+ *
+ * ⚠ **기준일이 왜 여기 들어가는가**(#1638 후속): 점프는 창의 캔들을 통째로 다른
+ * 구간의 것으로 갈아치우는데, 그때 화면 폭이 **옛 데이터 기준으로 굳어 있으면**
+ * `span > 데이터` 가 되어 lwc 가 좌팬을 클램프한다 — 팬이 막히니 좌팬 백필(3b)을
+ * 유발할 방법도 없는 데드락이다. 실측(2026-08-27, 10분봉): 초기 배치가 옛 번들
+ * 2094봉으로 소진돼 span 542 로 굳은 뒤 목적지 데이터 234봉이 도착 → 화면이 데이터의
+ * 2배 → 드래그가 벽에 막힘.
+ *
+ * 이 키에 기준일을 태우면 재착석이 그 상황을 그대로 처리한다: `atLiveEdge` 면 초기
+ * 배치를 **새 데이터 크기로** 다시 적용하고(`Math.min(totalBars, …)` 이 요점),
+ * 과거를 보던 중이었으면 앵커를 새 축에 재투영한다. 그 판정은 「키가 갈렸다 AND 캔들
+ * 정체성이 갈렸다」의 AND 라, 응답이 늦게 와도 옛 데이터로 앉지 않는다.
+ *
+ * 점프가 없으면 기준일은 오늘로 고정이라 값이 종전과 같다 — 회귀가 구조적으로 0 이다.
+ */
+export type CandleSourceKey = string;
 
 export interface UseLiveBundleResult {
   /** Full bundle = stable chart side + live hoga overlay. Consumed by hoga
@@ -1604,7 +1625,7 @@ export function useLiveBundle(
      * 디스크 응답은 콜드에서 십수 초 뒤에 온다(2026-08-24 실측 11.6s). 그래서 소비자는
      * 이 키만 보고 움직이면 안 되고 **캔들 배열이 실제로 갈린 커밋**을 함께 봐야 한다.
      */
-    candleSourceKey: restBypassEnabled ? 'disk' : 'vendor',
+    candleSourceKey: `${restBypassEnabled ? 'disk' : 'vendor'}|${todayKstYyyymmdd}`,
     minuteScrollbackFloorDate,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
