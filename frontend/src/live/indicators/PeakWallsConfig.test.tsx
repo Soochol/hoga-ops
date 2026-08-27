@@ -98,6 +98,9 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
    * 나머지 셋은 ① 에서 방향을 바꿔 닿는다 — 그래서 이 순회가 방향 카드를 함께 누른다.
    */
   it('강도 pane 슬롯 6칸이 각자 자기 키만 움직인다', () => {
+    // 마스터를 먼저 연다 — 닫혀 있으면 표시가 `마스터 && 슬롯` 으로 접혀 클릭이
+    // 언제나 「추가」가 된다(아래 테스트가 그 접힘을 잰다).
+    useLivePageStore.setState({ peakWallPaneEnabled: true });
     render(<PeakWallsConfig />);
     const slots = [
       { side: 'ask', name: '매도 체결된 벽', key: 'askPeakTradedPaneEnabled', line: 'askPeakTradedLineEnabled' },
@@ -150,6 +153,44 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
     expect(screen.queryByTestId('settings-toggle-askPeakTradedPaneEnabled')).toBeNull();
 
     // 요약은 방향을 가리지 않는다 — 지금 pane 에 들어 있는 것 전부를 든다.
+    const summary = screen.getByTestId('peak-wall-pane-summary').textContent ?? '';
+    expect(summary).toContain('매도 체결된 벽');
+    expect(summary).toContain('매수 전체 최대벽');
+  });
+
+  /**
+   * 마스터가 닫혀 있으면 저장값이 무엇이든 그 계단은 **pane 에 없다**. 스위치가
+   * 저장값을 그대로 그리면 「켜져 있는데 pane 이 없는」 스위치가 첫 화면에 뜬다 —
+   * 공장값이 정확히 그 조합이라(체결된 벽 슬롯 켜짐 · 마스터 꺼짐) 가정이 아니라
+   * 기본 상태다(2026-08-27 실측).
+   *
+   * **막는 방향**: 표시가 저장값으로 되돌아가는 것. 그리고 그때의 클릭이 「끄기」로
+   * 해석돼, 켜려고 누른 사용자가 pane 을 못 얻는 것.
+   */
+  it('마스터가 닫혀 있으면 슬롯은 꺼진 것으로 접히고, 누르면 pane 이 열린다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: false, askPeakTradedPaneEnabled: true });
+    render(<PeakWallsConfig />);
+    const traded = screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled');
+    expect(traded.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(traded);
+    expect(useLivePageStore.getState().peakWallPaneEnabled).toBe(true);
+    // 저장값은 이미 켜져 있었으므로 그대로다 — 클릭이 연 것은 마스터다.
+    expect(useLivePageStore.getState().askPeakTradedPaneEnabled).toBe(true);
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled').getAttribute('aria-checked')).toBe('true');
+  });
+
+  /**
+   * 접혀서 화면에 없는 저장값을 **⑤ 요약이 계속 든다** — 마스터를 되켰을 때 무엇이
+   * 돌아오는지가 거기서만 보인다.
+   */
+  it('마스터가 닫혀 있어도 ⑤ 요약은 보존된 칸을 계속 말한다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: false,
+      askPeakTradedPaneEnabled: true,
+      bidPeakAllWallPaneEnabled: true,
+    });
+    render(<PeakWallsConfig />);
     const summary = screen.getByTestId('peak-wall-pane-summary').textContent ?? '';
     expect(summary).toContain('매도 체결된 벽');
     expect(summary).toContain('매수 전체 최대벽');

@@ -353,9 +353,24 @@ function FamilyRow({ side, family, name, active, onPick }: {
  * (`setPeakWallPaneSlotEnabled` 의 결합). 사용자에게 이 스위치의 이름은 「pane 에
  * 추가」이므로, 켰는데 pane 이 없어서 아무 일도 안 일어나는 상태가 있으면 안 된다.
  *
- * 종전에는 ⑤ 의 6칸 매트릭스에 있었고 마스터가 꺼져 있으면 `disabled` 였다. 이제
- * 잠그지 않는다 — 잠금은 「먼저 저 위 스위치를 켜라」는 뜻인데, 그 스위치가 이제
- * 이 행이 대신 켜 준다.
+ * ## 표시는 저장값이 아니라 **지금 pane 에 있는가** 다
+ *
+ * 슬롯 키와 마스터(`peakWallPaneEnabled`)는 별개 상태이고, 공장값이 서로 어긋난다 —
+ * 체결된 벽 슬롯은 켜짐, 마스터는 꺼짐. 저장값을 그대로 그리면 **켜져 있는데 pane 이
+ * 없는** 스위치가 첫 화면에 뜬다(2026-08-27 실측). 종전 ⑤ 매트릭스에서는 그 여섯이
+ * dim + `disabled` 라 「미리 정해 둔 값」으로 읽혔는데, 계열 행으로 내려오며 그 맥락을
+ * 잃었다.
+ *
+ * 그래서 `checked` 를 `마스터 && 슬롯` 으로 접는다. 그러면 스위치의 뜻이 이름과
+ * 같아진다 — **표시 = 지금 pane 에 그려지고 있는가**, 클릭 = 그걸 뒤집는다. 마스터가
+ * 닫혀 있으면 저장값이 무엇이든 「없다」이므로 클릭은 언제나 **추가**이고, `!inPane`
+ * 이 `true` 라 `setPeakWallPaneSlotEnabled` 의 결합이 마스터를 연다.
+ *
+ * 접힌 저장값이 화면에서 완전히 사라지지는 않는다 — ⑤ 의 요약 줄이 dim 으로 계속
+ * 들고 있어, 마스터를 되켰을 때 무엇이 돌아오는지가 거기서 보인다.
+ *
+ * 종전의 `disabled` 는 없앤다 — 잠금은 「먼저 저 위 스위치를 켜라」는 뜻인데, 그
+ * 스위치를 이제 이 행이 대신 켠다.
  *
  * 스코프는 **고른 방향 × 이 계열** 하나다. 반대 방향의 슬롯은 ① 에서 방향을 바꿔
  * 닿는다 — 패널 전체가 쓰는 문법(위치가 스코프를 말한다)을 pane 만 예외로 두지 않는다.
@@ -366,7 +381,9 @@ function PaneSlotSwitch({ side, family, name }: {
   name: string;
 }) {
   const key = PANE_SLOT_KEY[side][family];
-  const checked = useWindowIndicator((s) => s[key]);
+  const slotOn = useWindowIndicator((s) => s[key]);
+  const paneOn = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  const inPane = paneOn && slotOn;
   const setSlot = useIndicatorActions().setPeakWallPaneSlotEnabled;
   return (
     <span className="flex justify-center">
@@ -374,8 +391,8 @@ function PaneSlotSwitch({ side, family, name }: {
         size="sm"
         label={`강도 pane ${SIDE_LABEL[side]} ${name}`}
         title={PANE_FAMILY_HINT[family]}
-        checked={checked}
-        onClick={() => setSlot(side, family, !checked)}
+        checked={inPane}
+        onClick={() => setSlot(side, family, !inPane)}
         data-testid={`settings-toggle-${key}`}
       />
     </span>
@@ -647,7 +664,8 @@ function PaneStage() {
  * 줄이 그 반대쪽을 계속 말해 준다(① 의 카드가 각자 개수를 드는 것과 같은 장치).
  *
  * 마스터가 꺼져 있으면 dim 하되 **문구는 그대로** 둔다 — 슬롯 값은 보존되므로
- * 다시 켰을 때 무엇이 돌아오는지가 미리 보인다.
+ * 다시 켰을 때 무엇이 돌아오는지가 미리 보인다. 그때 ② 의 스위치들은 전부 꺼진 것으로
+ * 접히므로(`PaneSlotSwitch` 참조) 이 줄이 **보존된 값의 유일한 창구**다.
  */
 function PaneSlotSummary({ gateOpen }: { gateOpen: boolean }) {
   const ind = useWindowIndicator((s) => s);
