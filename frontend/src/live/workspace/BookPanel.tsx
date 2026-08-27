@@ -187,7 +187,23 @@ export default function BookPanel({
       // 시간외 모드에서 사다리가 없는 것은 **"호가 데이터 없음" 과 다른 사실**이다:
       // 장중이면 그 장이 아직 안 열렸다는 뜻이고, 18:00 이후면 벤더 창이 닫혔다는
       // 뜻이다. 정규장 데이터는 멀쩡히 있으므로 일반 문구는 화면과 모순된다.
-      return <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>;
+      //
+      // ⚠ **이 상태에서 세션 컨트롤이 특히 살아 있어야 한다.** 화면에 아무것도 없는
+      // 상태라 사용자가 할 수 있는 유일한 행동이 "정규장으로 되돌리기" 인데, 그 수단이
+      // 사라지면 막다른 길이 된다 — 이 기능이 애초에 고치려던 바로 그 상태다
+      // (16:00 에 자동 전환된 뒤 되돌릴 수 없음).
+      return (
+        <div className="flex h-full flex-col bg-bg-card">
+          <div className="flex min-h-0 flex-1">
+            <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>
+          </div>
+          <SessionOnlyStrip
+            control={sessionControl}
+            mode={sessionMode}
+            onSelect={onSelectSessionMode}
+          />
+        </div>
+      );
     }
     return (
       <div className="flex h-full flex-col bg-bg-card">
@@ -1028,6 +1044,40 @@ function BookSessionCenter({
     <span className="whitespace-nowrap text-xs text-fg-dim" data-testid="book-total-after-hours">
       {fallbackLabel}
     </span>
+  );
+}
+
+/**
+ * 세션 컨트롤만 있는 하단 바 — **사다리도 총잔량도 없을 때** 쓴다.
+ *
+ * `TotalQtyStrip` 을 재사용할 수 없다: 그쪽은 그릴 총잔량이 있다는 전제(non-null 계약)
+ * 위에 서 있고, 없을 때 0 을 넣으면 `0fr 0fr` 격자가 된다.
+ *
+ * **왜 따로 만들 값어치가 있는가**: 컨트롤의 수명이 총잔량의 수명에 묶여 있었다.
+ * 하단 스트립은 원래 총잔량을 그리는 자리라 총잔량이 없으면 통째로 건너뛰는 것이
+ * 옳았는데, 거기에 세션 컨트롤을 얹으면서 **독립적인 두 가지가 한 조건을 공유**하게
+ * 됐다(2026-08-27 실측: 장 마감 후 시간외 모드에서 토글이 통째로 사라져 정규장으로
+ * 되돌아갈 수 없었다).
+ *
+ * 갈래가 없으면(`none`) 아무것도 그리지 않는다 — 그때는 종전처럼 빈 화면이 맞다.
+ */
+function SessionOnlyStrip({
+  control,
+  mode,
+  onSelect,
+}: {
+  control: BookSessionControl;
+  mode: BookSessionMode;
+  onSelect?: (mode: BookSessionMode) => void;
+}) {
+  if (control.kind === 'none') return null;
+  return (
+    <div
+      className="flex items-center justify-center border-t border-border px-2 py-1"
+      data-testid="book-session-only-strip"
+    >
+      <BookSessionCenter control={control} mode={mode} onSelect={onSelect} fallbackLabel={null} />
+    </div>
   );
 }
 

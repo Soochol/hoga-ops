@@ -817,3 +817,69 @@ describe('BookPanel 세션 표시 (10호가 정책)', () => {
     expect(screen.getByText('정규장 호가 없음 (시간외 잔량만 수신 중)')).toBeInTheDocument();
   });
 });
+
+describe('BookPanel 빈 상태에서도 세션 컨트롤은 산다', () => {
+  const TOGGLE = {
+    kind: 'toggle' as const,
+    regularLabel: '정규장',
+    afterHoursLabel: '시간외',
+  };
+
+  function renderEmpty(over: Partial<Parameters<typeof BookPanel>[0]> = {}) {
+    return render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        {...over}
+      />,
+    );
+  }
+
+  it('⚠ 사다리도 총잔량도 없을 때 **되돌아갈 수단이 남아야 한다**', () => {
+    // 2026-08-27 실측 회귀: 장 마감 후 시간외 모드에서 토글이 통째로 사라져
+    // 정규장으로 돌아갈 방법이 없었다 — 이 기능이 애초에 고치려던 막다른 길이
+    // 데이터 없는 상태에서 그대로 재현됐다.
+    renderEmpty({ sessionControl: TOGGLE, sessionMode: 'afterHours' });
+    expect(screen.getByText('시간외 호가 없음')).toBeInTheDocument();
+    expect(screen.getByTestId('book-session-toggle')).toHaveTextContent('시간외');
+  });
+
+  it('빈 상태의 토글이 실제로 동작한다', () => {
+    const onSelect = vi.fn();
+    renderEmpty({
+      sessionControl: TOGGLE,
+      sessionMode: 'afterHours',
+      onSelectSessionMode: onSelect,
+    });
+    fireEvent.click(screen.getByTestId('book-session-toggle'));
+    expect(onSelect).toHaveBeenCalledWith('regular');
+  });
+
+  it('갈래 B(NXT)는 빈 상태에서도 라벨만', () => {
+    renderEmpty({ sessionControl: { kind: 'label', label: '애프터마켓 · 마지막' } });
+    expect(screen.getByTestId('book-session-label')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-toggle')).not.toBeInTheDocument();
+  });
+
+  it('갈래가 없으면 바 자체를 그리지 않는다 — 종전처럼 빈 화면', () => {
+    renderEmpty({ sessionControl: { kind: 'none' } });
+    expect(screen.getByText('호가 데이터 없음')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-only-strip')).not.toBeInTheDocument();
+  });
+
+  it('총잔량이 있는 빈 상태에서는 종전대로 총잔량 스트립이 그린다', () => {
+    // 바가 둘로 겹치지 않는다 — 그쪽 경로는 `TotalQtyStrip` 하나만 쓴다.
+    renderEmpty({
+      sessionControl: TOGGLE,
+      sessionMode: 'afterHours',
+      afterHoursTotals: { ask: 1_000, bid: 2_000 },
+    });
+    expect(screen.getByTestId('book-total-strip')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-only-strip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('book-session-toggle')).toBeInTheDocument();
+  });
+});
