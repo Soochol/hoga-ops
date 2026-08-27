@@ -51,11 +51,18 @@ export type PeakWallStepSlot = {
  * 벽 하나만 나를 수 있었다. 캔들 pane 은 세 선을 그리는데 강도 pane 만 하나였던
  * 비대칭을 없앤다.
  *
- * **어느 계열이 나오는가는 pane 전용 키가 정한다**(2026-08-26): `peakWallPane
- * {Traded,Unreached,AllWall}Enabled` — **방향 공용**이고 캔들 선 토글과 독립이다.
- * 종전엔 캔들 선 토글을 따라갔는데, 두 표면이 답하는 질문이 다르므로("그날 어디에
- * 벽이 있었나" vs "그 벽이 언제 얼마나 자랐나") 한쪽만 보고 싶은 조합이 원리적으로
- * 불가능했다. 슬롯은 그대로 6개(방향 2 × 계열 3)이고 **pane 은 하나**다.
+ * **어느 계열이 나오는가는 pane 전용 키가 정한다**(2026-08-26): `{side}Peak{Family}
+ * PaneEnabled` 여섯 — **방향별**이고 캔들 선 토글과 독립이다. 종전엔 캔들 선 토글을
+ * 따라갔는데, 두 표면이 답하는 질문이 다르므로("그날 어디에 벽이 있었나" vs "그 벽이
+ * 언제 얼마나 자랐나") 한쪽만 보고 싶은 조합이 원리적으로 불가능했다. 슬롯은 6개
+ * (방향 2 × 계열 3)이고 **pane 은 하나**다 — 방향 공용인 것은 pane 쪽
+ * (`peakWallPaneEnabled`)이지 슬롯이 아니다.
+ *
+ * **실효 조건은 그 둘의 곱이다**: `LiveChartRoot` 가 `needStepSegments:
+ * peakWallPaneEnabled` 로 계단 계산 자체를 게이트하고, `usePeakWallRender` 가 그 안에서
+ * 다시 슬롯 키를 본다. 마스터가 닫혀 있으면 슬롯이 켜져 있어도 **계단이 계산되지
+ * 않는다** — 설정 패널의 슬롯 스위치가 `마스터 && 슬롯` 으로 접혀 보이는 이유가
+ * 그것이다(`PeakWallsConfig` 의 `PaneSlotSwitch`). 화면이 이 식을 그대로 그린다.
  */
 export const usePeakWallStepsRegistry =
   createWindowScopedRegistry<PeakWallStepKey, PeakWallStepSlot>();

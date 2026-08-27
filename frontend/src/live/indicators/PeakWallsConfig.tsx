@@ -43,6 +43,12 @@ type Side = 'ask' | 'bid';
  * 단계 번호가 곧 스코프의 깊이다 — ① 방향 · ② 그 방향의 계열 · ③④ 고른 칸(방향×계열) ·
  * ⑤ 지표 전체(양방향 공용). 종전 매트릭스가 자리 넷으로 하던 일을 순서가 한다.
  *
+ * 2026-08-27 에 그 규칙이 **마지막 예외를 흡수했다**. ⑤ 가 들고 있던 pane 슬롯 6칸
+ * (방향 2 × 계열 3)은 ① 에서 방향을 이미 골랐는데도 저 혼자 방향을 다시 물었다 —
+ * 패널 안에 남은 유일한 매트릭스였다. 그 칸을 ② 의 계열 행으로 내리면 방향은 ① 이
+ * 답한 그대로 상속되고, 계열의 두 표면(캔들 선 · 강도 pane)이 같은 줄에서 마주 본다.
+ * ⑤ 에 남는 것은 pane 자체(있다/없다)와 지금 들어 있는 것의 요약뿐이다.
+ *
  * ## 「눈」은 그 방향 **전부**를 숨긴다
  *
  * 종전 이 자리의 라벨은 「캔들 수평선」이었는데 **거짓이었다** — `{side}PeakHidden` 은
@@ -70,6 +76,7 @@ export default function PeakWallsConfig() {
       <Stage n={2} title="계열" hint="앞 둘은 배타 · 전체는 상위집합">
         <FamilySchema side={side} />
         <div className="mt-1">
+          <FamilyHeader />
           {PEAK_WALL_FAMILIES.map((f) => (
             <FamilyRow
               key={f.id}
@@ -228,6 +235,39 @@ const FAMILY_HINT: Record<PeakWallFamilyId, string> = {
   AllWall: '터치 무관 — 그날 최대 상위집합',
 };
 
+/** pane 슬롯 6칸의 상태 키 — `PEAK_WALL_STEP_SLOTS` 와 1:1. 문자열로 조립하지 않는다.
+ *  계열 행(②)이 고른 방향의 셋을 쓰고, ⑤ 가 여섯 전체를 요약에 쓴다. */
+const PANE_SLOT_KEY = {
+  ask: {
+    Traded: 'askPeakTradedPaneEnabled',
+    Unreached: 'askPeakUnreachedPaneEnabled',
+    AllWall: 'askPeakAllWallPaneEnabled',
+  },
+  bid: {
+    Traded: 'bidPeakTradedPaneEnabled',
+    Unreached: 'bidPeakUnreachedPaneEnabled',
+    AllWall: 'bidPeakAllWallPaneEnabled',
+  },
+} as const;
+
+/** 계열별 계단이 무엇을 뜻하는지 — 셋의 성질이 실제로 다르다(단조 / 비단조).
+ *  종전엔 ⑤ 매트릭스의 행 설명이었고, 슬롯이 계열 행으로 이사하면서 그 토글의
+ *  `title` 이 됐다. 설명을 버리지 않되 행 높이를 두 배로 만들지도 않는 자리다. */
+const PANE_FAMILY_HINT: Record<PeakWallFamilyId, string> = {
+  Traded: '그 시점까지 체결된 벽 중 최대. 기록 갱신 시퀀스라 계단이 내려가지 않습니다.',
+  Unreached: '아직 안 닿은 벽 중 최대. 고가가 벽을 넘으면 계단이 내려갑니다(단조 아님).',
+  AllWall: '터치 무관 그날 최대. 벽이 빠져나가지 않아 계단이 내려가지 않습니다.',
+};
+
+/**
+ * 계열 한 줄의 트랙 — 헤더 라벨과 컨트롤이 **같은 격자**라 어긋날 수 없다.
+ *
+ * 두 스위치가 양 끝에 앉는 것이 배치의 요점이다: 왼쪽은 **캔들 위의 선**, 오른쪽은
+ * **차트 아래 강도 pane**. 둘을 나란히 붙이면 어느 쪽이 무엇인지 스위치 모양만으로는
+ * 구별되지 않는다 — 화면상의 거리가 두 표면의 거리를 흉내 낸다.
+ */
+const FAMILY_GRID = 'grid grid-cols-[auto_auto_minmax(0,1fr)_24px_40px] items-center gap-x-2';
+
 function FamilySchema({ side }: { side: Side }) {
   const ind = useWindowIndicator((s) => s);
   const actions = useIndicatorActions();
@@ -238,6 +278,19 @@ function FamilySchema({ side }: { side: Side }) {
       unreachedColor={familyStyle(ind, actions, side, 'Unreached').color}
       allWallColor={familyStyle(ind, actions, side, 'AllWall').color}
     />
+  );
+}
+
+/** 계열 표의 열 머리 — 두 스위치가 각자 어느 표면의 것인지 **한 번만** 적는다.
+ *  행마다 텍스트 라벨을 붙이면 세 번 반복되고, 안 붙이면 오른쪽 스위치의 정체가
+ *  `title` 안에만 남는다. */
+function FamilyHeader() {
+  return (
+    <div className={`${FAMILY_GRID} px-2 pb-0.5`} aria-hidden="true">
+      <span className="col-span-3 text-2xs font-semibold uppercase text-fg-dim">캔들 선</span>
+      <span className="text-right text-2xs font-semibold text-fg-dim">개수</span>
+      <span className="text-center text-2xs font-semibold text-fg-dim">pane</span>
+    </div>
   );
 }
 
@@ -266,9 +319,9 @@ function FamilyRow({ side, family, name, active, onPick }: {
         event.preventDefault();
         onPick();
       }}
-      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${
+      className={`${FAMILY_GRID} cursor-pointer rounded-md px-2 py-1.5 transition-colors ${
         active ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
-      } ${on ? '' : 'opacity-55'}`}
+      }`}
     >
       <ToggleSwitch
         size="sm"
@@ -278,16 +331,76 @@ function FamilyRow({ side, family, name, active, onPick }: {
         data-testid={`settings-toggle-${side}Peak${family}LineEnabled`}
       />
       <span aria-hidden="true" className="h-0.5 w-5 shrink-0 rounded-sm" style={{ backgroundColor: style.color }} />
-      <span className="min-w-0 flex-1">
+      {/* 선이 꺼져 있어도 **이름과 pane 스위치는 흐려지지 않는다** — 두 표면이
+          독립이라 선을 끈 채 계단만 보는 조합이 정상이다. dim 은 선 쪽 묶음
+          (스위치·색·이름)에만 건다. */}
+      <span className={`min-w-0 ${on ? '' : 'opacity-55'}`}>
         <span className="block truncate text-sm font-medium text-fg">{name}</span>
         <span className="block truncate text-2xs text-fg-dim">{FAMILY_HINT[family]}</span>
       </span>
       {/* 계열이 꺼져 있거나 차트가 발행하지 않았으면(일·주·월봉) 숫자를 주장하지
           않는다 — 그 0 은 필터 탓이 아니다. */}
-      <span className="shrink-0 text-2xs tabular-nums text-fg-dim">
+      <span className={`text-right text-2xs tabular-nums text-fg-dim ${on ? '' : 'opacity-55'}`}>
         {on && counts ? `${counts.shown}` : '—'}
       </span>
+      <PaneSlotSwitch side={side} family={family} name={name} />
     </div>
+  );
+}
+
+/**
+ * 이 계열의 계단을 강도 pane 에 넣는 스위치 — **켜면 pane 이 함께 열린다**
+ * (`setPeakWallPaneSlotEnabled` 의 결합). 사용자에게 이 스위치의 이름은 「pane 에
+ * 추가」이므로, 켰는데 pane 이 없어서 아무 일도 안 일어나는 상태가 있으면 안 된다.
+ *
+ * ## 표시는 저장값이 아니라 **지금 pane 에 있는가** 다
+ *
+ * 슬롯 키와 마스터(`peakWallPaneEnabled`)는 별개 상태이고, 공장값이 서로 어긋난다 —
+ * 체결된 벽 슬롯은 켜짐, 마스터는 꺼짐. 저장값을 그대로 그리면 **켜져 있는데 pane 이
+ * 없는** 스위치가 첫 화면에 뜬다(2026-08-27 실측). 종전 ⑤ 매트릭스에서는 그 여섯이
+ * dim + `disabled` 라 「미리 정해 둔 값」으로 읽혔는데, 계열 행으로 내려오며 그 맥락을
+ * 잃었다.
+ *
+ * 그래서 `checked` 를 `마스터 && 슬롯` 으로 접는다. 그러면 스위치의 뜻이 이름과
+ * 같아진다 — **표시 = 지금 pane 에 그려지고 있는가**, 클릭 = 그걸 뒤집는다. 마스터가
+ * 닫혀 있으면 저장값이 무엇이든 「없다」이므로 클릭은 언제나 **추가**이고, `!inPane`
+ * 이 `true` 라 `setPeakWallPaneSlotEnabled` 의 결합이 마스터를 연다.
+ *
+ * 이 접힘은 **렌더 경로의 실효 조건과 같은 식**이다 — `LiveChartRoot` 가
+ * `needStepSegments: peakWallPaneEnabled` 로 계단 계산을 게이트하고 `usePeakWallRender`
+ * 가 그 안에서 슬롯 키를 본다. 즉 화면이 새 규칙을 발명하는 것이 아니라, 이미 참이던
+ * 곱을 그리기 시작한 것이다.
+ *
+ * 접힌 저장값이 화면에서 완전히 사라지지는 않는다 — ⑤ 의 요약 줄이 dim 으로 계속
+ * 들고 있어, 마스터를 되켰을 때 무엇이 돌아오는지가 거기서 보인다.
+ *
+ * 종전의 `disabled` 는 없앤다 — 잠금은 「먼저 저 위 스위치를 켜라」는 뜻인데, 그
+ * 스위치를 이제 이 행이 대신 켠다.
+ *
+ * 스코프는 **고른 방향 × 이 계열** 하나다. 반대 방향의 슬롯은 ① 에서 방향을 바꿔
+ * 닿는다 — 패널 전체가 쓰는 문법(위치가 스코프를 말한다)을 pane 만 예외로 두지 않는다.
+ */
+function PaneSlotSwitch({ side, family, name }: {
+  side: Side;
+  family: PeakWallFamilyId;
+  name: string;
+}) {
+  const key = PANE_SLOT_KEY[side][family];
+  const slotOn = useWindowIndicator((s) => s[key]);
+  const paneOn = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  const inPane = paneOn && slotOn;
+  const setSlot = useIndicatorActions().setPeakWallPaneSlotEnabled;
+  return (
+    <span className="flex justify-center">
+      <ToggleSwitch
+        size="sm"
+        label={`강도 pane ${SIDE_LABEL[side]} ${name}`}
+        title={PANE_FAMILY_HINT[family]}
+        checked={inPane}
+        onClick={() => setSlot(side, family, !inPane)}
+        data-testid={`settings-toggle-${key}`}
+      />
+    </span>
   );
 }
 
@@ -485,48 +598,35 @@ function SurfaceStage({ side, family }: { side: Side; family: PeakWallFamilyId }
 
 // ── ⑤ 강도 pane ───────────────────────────────────────────────────────────
 
-/** pane 슬롯 6칸의 상태 키 — `PEAK_WALL_STEP_SLOTS` 와 1:1. 문자열로 조립하지 않는다. */
-const PANE_SLOT_KEY = {
-  ask: {
-    Traded: 'askPeakTradedPaneEnabled',
-    Unreached: 'askPeakUnreachedPaneEnabled',
-    AllWall: 'askPeakAllWallPaneEnabled',
-  },
-  bid: {
-    Traded: 'bidPeakTradedPaneEnabled',
-    Unreached: 'bidPeakUnreachedPaneEnabled',
-    AllWall: 'bidPeakAllWallPaneEnabled',
-  },
-} as const;
-
-/** 계열별 계단이 무엇을 뜻하는지 — 셋의 성질이 실제로 다르다(단조 / 비단조). */
-const PANE_FAMILY_HINT: Record<PeakWallFamilyId, string> = {
-  Traded: '그 시점까지 체결된 벽 중 최대. 기록 갱신 시퀀스라 계단이 내려가지 않습니다.',
-  Unreached: '아직 안 닿은 벽 중 최대. 고가가 벽을 넘으면 계단이 내려갑니다(단조 아님).',
-  AllWall: '터치 무관 그날 최대. 벽이 빠져나가지 않아 계단이 내려가지 않습니다.',
-};
-
-/** 스위치 두 개가 앉는 격자 — 열 라벨과 스위치가 **같은 트랙**이라 어긋날 수 없다.
- *  종전 매트릭스는 라벨을 열 왼쪽에 두고 스위치를 `justify-between` 으로 오른쪽 끝에
- *  붙여, 마스터가 자기 라벨보다 옆 열에 가까웠다(실측 103px vs 16px). */
-const PANE_GRID = 'grid grid-cols-[minmax(0,1fr)_40px_40px] items-center gap-x-2';
-
 /**
  * 방향까지 공용 — 한 pane 을 양방향 계단이 함께 쓰므로 pane 자체의 상태는 하나뿐이다.
  * 그 사실을 배지와 **마지막 단계**라는 위치로 함께 말한다.
  *
- * ## 그 안에 무엇을 넣을지는 칸마다 고른다
+ * ## 슬롯 6칸은 여기 없다 (2026-08-27)
  *
- * pane 은 하나여도 슬롯은 여섯이다(`PEAK_WALL_STEP_SLOTS` = 방향 2 × 계열 3). 매도
- * 셋만 겹쳐 보거나, 양방향의 체결된 벽만 마주 보게 두는 것이 실제 읽기 방식이라
- * **여섯 칸을 각각 켜고 끈다**. pane 을 쪼개지는 않는다 — 계단이 전부 같은 y 축
- * (잔량)이라 겹쳐 읽는 것이 의미가 있고, pane 을 늘리면 화면 부동산만 먹는다.
+ * 종전엔 이 단계가 마스터 아래 **방향 2 × 계열 3 매트릭스**를 들고 있었다. 그 표는
+ * 두 방향을 한눈에 보여 주는 대신, 패널의 나머지가 쓰는 문법(단계 번호 = 스코프 깊이)
+ * 을 저 혼자 어겼다 — ① 에서 방향을 이미 골랐는데 ⑤ 만 다시 방향을 물었다.
+ *
+ * 칸을 계열 행(②)으로 내리면 그 물음이 사라진다: 고른 방향의 세 계열이 각자 「pane 에
+ * 추가」 스위치를 들고, 반대 방향은 ① 에서 방향을 바꿔 닿는다. 계열의 두 표면(캔들 선 ·
+ * 강도 pane)이 **같은 줄에서 마주 보는** 것이 덤으로 따라온다.
+ *
+ * **버린 것**은 여섯 칸의 동시 조망이다. 그 대가로 이 단계가 요약 줄을 든다 — 지금
+ * pane 에 무엇이 들어 있는지를 방향 구분 없이 한 줄로 적는다.
+ *
+ * ## pane 을 쪼개지 않는다
+ *
+ * 계열마다 스위치가 생겨도 pane 은 여전히 하나다(`PEAK_WALL_SPEC` 도 하나).
+ * 계단이 전부 같은 y 축(잔량)이라 겹쳐 읽는 것이 의미가 있고, pane 을 늘리면 화면
+ * 부동산만 먹는다.
  *
  * ## 캔들 선 토글과 독립이다
  *
  * 종전엔 pane 이 `{side}Peak{Family}LineEnabled` 를 따라갔다. 두 표면이 답하는 질문이
  * 다른데(캔들 = 「그날 어디에 벽이 있었나」, pane = 「그 벽이 언제 얼마나 자랐나」)
- * 스위치가 하나라, 한쪽만 보는 조합이 원리적으로 불가능했다.
+ * 스위치가 하나라, 한쪽만 보는 조합이 원리적으로 불가능했다. 한 줄에 나란히 앉은
+ * 지금도 두 스위치는 서로를 건드리지 않는다.
  */
 function PaneStage() {
   const paneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
@@ -546,7 +646,7 @@ function PaneStage() {
             </span>
           </span>
         )}
-        description="아래에서 고른 칸의 계단을 차트 아래 별도 pane 하나에 그립니다. 매도·매수가 그 pane 을 공유합니다."
+        description="② 계열에서 「pane」 스위치를 켠 계단을 차트 아래 별도 pane 하나에 그립니다. 매도·매수가 그 pane 을 공유합니다."
       >
         <ToggleSwitch
           label="최대벽 강도 pane"
@@ -556,66 +656,37 @@ function PaneStage() {
         />
       </SettingsRow>
 
-      {/* 슬롯 6칸 — pane 이 꺼져 있으면 dim 하되 **값은 보존**한다(`enabledBy` 와 같은
-          게이트 시맨틱). 들여쓰기가 "이건 위 스위치에 딸린 것" 을 위치로 말한다. */}
-      <div className={`ml-4 ${paneEnabled ? '' : 'opacity-50'}`}>
-        <div className={`${PANE_GRID} pb-1 pt-2`}>
-          <span />
-          {SIDES.map((side) => (
-            <span key={side.id} className="text-center text-2xs font-semibold text-fg-dim">
-              {side.label}
-            </span>
-          ))}
-        </div>
-        {PEAK_WALL_FAMILIES.map((family) => (
-          <PaneSlotRow key={family.id} family={family.id} name={family.name} gateOpen={paneEnabled} />
-        ))}
-      </div>
+      <PaneSlotSummary gateOpen={paneEnabled} />
     </Stage>
   );
 }
 
-/** 계열 한 줄 = 그 계열의 매도·매수 슬롯 둘. 설명은 계열의 것이라 행이 소유한다. */
-function PaneSlotRow({ family, name, gateOpen }: {
-  family: PeakWallFamilyId;
-  name: string;
-  gateOpen: boolean;
-}) {
-  return (
-    <div
-      data-testid={`peak-wall-pane-family-row-${family}`}
-      className={`${PANE_GRID} border-b border-border py-2 last:border-b-0`}
-    >
-      <div className="min-w-0">
-        <div className="text-sm text-fg">{name}</div>
-        <div className="mt-0.5 text-xs text-fg-dim">{PANE_FAMILY_HINT[family]}</div>
-      </div>
-      {SIDES.map((side) => (
-        <PaneSlotSwitch key={side.id} side={side.id} family={family} name={name} gateOpen={gateOpen} />
-      ))}
-    </div>
-  );
-}
+/**
+ * 지금 pane 에 들어 있는 것 — 매트릭스가 사라지며 잃은 **조망**을 대신한다.
+ *
+ * 방향을 함께 적는 이유가 여기에 있다: ② 의 스위치는 고른 방향의 것이라, 반대 방향에
+ * 켜 둔 칸이 화면에서 완전히 침묵하면 「분명 껐는데 계단이 남아 있다」가 된다. 이
+ * 줄이 그 반대쪽을 계속 말해 준다(① 의 카드가 각자 개수를 드는 것과 같은 장치).
+ *
+ * 마스터가 꺼져 있으면 dim 하되 **문구는 그대로** 둔다 — 슬롯 값은 보존되므로
+ * 다시 켰을 때 무엇이 돌아오는지가 미리 보인다. 그때 ② 의 스위치들은 전부 꺼진 것으로
+ * 접히므로(`PaneSlotSwitch` 참조) 이 줄이 **보존된 값의 유일한 창구**다.
+ */
+function PaneSlotSummary({ gateOpen }: { gateOpen: boolean }) {
+  const ind = useWindowIndicator((s) => s);
+  const on = SIDES.flatMap((side) => PEAK_WALL_FAMILIES
+    .filter((family) => ind[PANE_SLOT_KEY[side.id][family.id]])
+    .map((family) => `${side.label} ${family.name}`));
 
-function PaneSlotSwitch({ side, family, name, gateOpen }: {
-  side: Side;
-  family: PeakWallFamilyId;
-  name: string;
-  gateOpen: boolean;
-}) {
-  const key = PANE_SLOT_KEY[side][family];
-  const checked = useWindowIndicator((s) => s[key]);
-  const setSlot = useIndicatorActions().setPeakWallPaneSlotEnabled;
   return (
-    <div className="flex justify-center">
-      <ToggleSwitch
-        label={`강도 pane ${SIDE_LABEL[side]} ${name}`}
-        checked={checked}
-        disabled={!gateOpen}
-        onClick={() => setSlot(side, family, !checked)}
-        data-testid={`settings-toggle-${key}`}
-      />
-    </div>
+    <p
+      data-testid="peak-wall-pane-summary"
+      className={`ml-4 mt-1 text-2xs text-fg-dim ${gateOpen ? '' : 'opacity-50'}`}
+    >
+      {on.length === 0
+        ? '넣은 계단이 없습니다 — ② 계열의 「pane」 스위치로 넣습니다.'
+        : `${on.length}칸: ${on.join(' · ')}`}
+    </p>
   );
 }
 

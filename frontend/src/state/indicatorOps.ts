@@ -302,21 +302,35 @@ export const INDICATOR_OPS = {
     ({ peakWallPaneEnabled: enabled }),
   /** 강도 pane 의 슬롯 6칸(방향 × 계열) — 캔들 선 토글과 독립이다
    *  (`liveIndicatorsPersistence` 의 `askPeakTradedPaneEnabled` 주석). 키를 문자열로
-   *  조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다. */
+   *  조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다.
+   *
+   *  ## 켜기는 마스터를 함께 연다 (2026-08-27)
+   *
+   *  슬롯 토글이 앉는 자리가 단계 ② 의 계열 행이라, 사용자에게 그 스위치는
+   *  **「이 계단을 pane 에 추가」** 다. 마스터(`peakWallPaneEnabled`)가 꺼져 있으면
+   *  pane spec 게이트가 닫혀 있어(`paneSpecsForTimeframe`) 켜도 아무것도 나타나지
+   *  않으므로, 켜는 쪽만 마스터를 함께 연다. `setAskPeakEnabled` 가
+   *  `askPeakHidden: false` 를 같은 패치에 넣는 것과 같은 결합이다 — 두 번 쓰지 않고
+   *  한 패치에 두는 이유도 같다(undo 한 항목, 프리셋 경로에서도 결합 유지).
+   *
+   *  **끄기는 마스터를 건드리지 않는다.** 마지막 칸을 끄면 pane 이 비는데, 그건 이미
+   *  오늘도 가능한 상태이고(마스터만 켜고 여섯을 다 끈 경우) 자동으로 닫으면 다시
+   *  켤 때 어느 칸이 살아나는지가 사용자에게 안 보인다. */
   setPeakWallPaneSlotEnabled: (
     _cur: IndicatorSettings,
     side: 'ask' | 'bid',
     family: 'Traded' | 'Unreached' | 'AllWall',
     enabled: boolean,
   ): Patch => {
+    const arm = enabled ? { peakWallPaneEnabled: true } : {};
     if (side === 'ask') {
-      if (family === 'Traded') return { askPeakTradedPaneEnabled: enabled };
-      if (family === 'Unreached') return { askPeakUnreachedPaneEnabled: enabled };
-      return { askPeakAllWallPaneEnabled: enabled };
+      if (family === 'Traded') return { ...arm, askPeakTradedPaneEnabled: enabled };
+      if (family === 'Unreached') return { ...arm, askPeakUnreachedPaneEnabled: enabled };
+      return { ...arm, askPeakAllWallPaneEnabled: enabled };
     }
-    if (family === 'Traded') return { bidPeakTradedPaneEnabled: enabled };
-    if (family === 'Unreached') return { bidPeakUnreachedPaneEnabled: enabled };
-    return { bidPeakAllWallPaneEnabled: enabled };
+    if (family === 'Traded') return { ...arm, bidPeakTradedPaneEnabled: enabled };
+    if (family === 'Unreached') return { ...arm, bidPeakUnreachedPaneEnabled: enabled };
+    return { ...arm, bidPeakAllWallPaneEnabled: enabled };
   },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),
