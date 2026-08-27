@@ -1,37 +1,50 @@
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { IChartApi } from 'lightweight-charts';
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ISeriesApi } from 'lightweight-charts';
 
 import DayBoundaryOverlay from '../../src/chart/DayBoundaryOverlay';
+import {
+  computeBoundaryLines,
+  type DayBoundaryPrimitive,
+} from '../../src/chart/DayBoundaryPrimitive';
 import { resolveDayBoundaryTicks } from '../../src/chart/sessionSpans';
+import type { DayBoundaryTick } from '../../src/chart/sessionSpans';
+import type { PaneSeriesMap } from '../../src/chart/drawing/chartCoordinates';
+import type { PaneId } from '../../src/chart/drawing/types';
 import { createVirtualAxis, type VirtualAxis } from '../../src/util/virtualAxis';
+import { useChartPrefsStore } from '../../src/state/chartPrefs';
 import type { Candle } from '../../src/api/types';
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      disconnect() {}
-      unobserve() {}
-    } as unknown as typeof ResizeObserver;
-  }
+afterEach(cleanup);
+beforeEach(() => {
+  useChartPrefsStore.getState().resetToDefaults();
 });
 
-afterEach(cleanup);
+/**
+ * 이 파일이 묻는 것은 **"이 캔들 데이터 + 이 축에서 구분선이 몇 개, 어느 날짜에
+ * 서는가"** 다. 옛 DOM 구현에선 그 답을 `[data-day-boundary]` 노드 수로 읽었지만
+ * 질문 자체는 DOM 과 무관하다 — 이제 host 가 primitive 에 넘긴 스냅샷을 `draw` 가
+ * 쓰는 바로 그 함수(`computeBoundaryLines`)에 태워 같은 답을 읽는다.
+ */
+function drawnBoundaryDates(
+  boundaries: readonly DayBoundaryTick[],
+  timeToCoordinate: (virtualSec: number) => number | null,
+): string[] {
+  const series = {
+    attachPrimitive: vi.fn(),
+    detachPrimitive: vi.fn(),
+  } as unknown as ISeriesApi<'Candlestick'> & { attachPrimitive: ReturnType<typeof vi.fn> };
+  const paneSeries = new Map([['candle' as PaneId, series]]) as unknown as PaneSeriesMap;
 
-function makeMockChart(timeToCoordReturns: (sec: number) => number | null): IChartApi {
-  const handlers: Array<(r: unknown) => void> = [];
-  return {
-    timeScale: () => ({
-      timeToCoordinate: (sec: number) => timeToCoordReturns(sec),
-      // 오버레이가 스스로를 pane 영역으로 자르기 위해 읽는다(가격축·시간축 누수 방지).
-      width: () => 498,
-      height: () => 28,
-      subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => handlers.push(h),
-      unsubscribeVisibleLogicalRangeChange: vi.fn(),
-    }),
-    chartElement: () => document.createElement('div'),
-  } as unknown as IChartApi;
+  render(<DayBoundaryOverlay paneSeries={paneSeries} boundaries={boundaries} />);
+
+  const prim = series.attachPrimitive.mock.calls[0]?.[0] as DayBoundaryPrimitive | undefined;
+  const snap = prim?.snapshot();
+  if (!snap) return [];
+  // pane 폭 498 — 옛 mock 축의 실측값 그대로.
+  return computeBoundaryLines(snap.boundaries, timeToCoordinate, snap.lineWidth, 498).map(
+    (b) => b.date,
+  );
 }
 
 /**
@@ -40,14 +53,14 @@ function makeMockChart(timeToCoordReturns: (sec: number) => number | null): ICha
  * (005380 3분봉: 20260602 개장 정각 → null, 그 날 첫 캔들 09:12 → 372.08px), 이
  * 성질 때문에 구분선이 사라졌다.
  */
-function makeChartWithPointsAt(candles: readonly Candle[], axis: VirtualAxis): IChartApi {
+function pointsAt(candles: readonly Candle[], axis: VirtualAxis) {
   const known = new Set(
     candles
       .map((c) => axis.classifyAndProject(c.ts_ms))
       .filter((p) => p.contained)
       .map((p) => p.virtual / 1000),
   );
-  return makeMockChart((sec) => (known.has(sec) ? 200 : null));
+  return (sec: number) => (known.has(sec) ? 200 : null);
 }
 
 function candlesEvery3m(openMs: number, skipMinutes = 0, count = 4): Candle[] {
@@ -87,33 +100,13 @@ function ticksFor(raw: typeof RAW_SEGMENTS) {
 }
 
 describe('DayBoundaryOverlay', () => {
-  it('renders nothing for N=1 segments (no boundaries)', () => {
-    const { container } = render(
-      <DayBoundaryOverlay chart={makeMockChart(() => 100)} boundaries={ticksFor([RAW_SEGMENTS[0]])} />,
-    );
-    expect(container.querySelectorAll('[data-day-boundary]').length).toBe(0);
+  it('세그먼트가 하나면 경계가 없다', () => {
+    expect(drawnBoundaryDates(ticksFor([RAW_SEGMENTS[0]]), () => 100)).toEqual([]);
   });
 
-  it('renders N-1 boundary divs for N segments', () => {
-    render(<DayBoundaryOverlay chart={makeMockChart(() => 200)} boundaries={ticksFor(RAW_SEGMENTS)} />);
+  it('N 세그먼트 → N-1 경계', () => {
     // 3 segments → 2 boundaries
-    expect(document.querySelectorAll('[data-day-boundary]').length).toBe(2);
-  });
-
-  it('renders the divider only — no date chip (the adaptive x-axis owns dates)', () => {
-    const { container } = render(
-      <DayBoundaryOverlay
-        chart={makeMockChart(() => 150)}
-        boundaries={ticksFor(RAW_SEGMENTS.slice(0, 2))}
-      />,
-    );
-    // The MM/DD chip was removed (commit b6cd06f) — date/month labels are now
-    // rendered by the x-axis (util/kstHorzScaleBehavior). The boundary div is a
-    // bare divider with no text content.
-    expect(screen.queryByText('5/13')).not.toBeInTheDocument();
-    const boundary = container.querySelector('[data-day-boundary]');
-    expect(boundary).not.toBeNull();
-    expect(boundary?.textContent).toBe('');
+    expect(drawnBoundaryDates(ticksFor(RAW_SEGMENTS), () => 200)).toEqual(['20260513', '20260514']);
   });
 
   // 실측 결손의 회귀 가드 — 첫 캔들이 개장 정각이 아닌 날(005380 의 20260318 은
@@ -128,22 +121,53 @@ describe('DayBoundaryOverlay', () => {
       ...candlesEvery3m(raw[1].sessionOpenMs, 12),
     ];
 
-    render(
-      <DayBoundaryOverlay
-        chart={makeChartWithPointsAt(candles, axis)}
-        boundaries={resolveDayBoundaryTicks(candles, axis)}
-      />,
-    );
-
-    expect(document.querySelectorAll('[data-day-boundary]').length).toBe(1);
-    expect(document.querySelector('[data-day-boundary="20260513"]')).not.toBeNull();
+    expect(
+      drawnBoundaryDates(resolveDayBoundaryTicks(candles, axis), pointsAt(candles, axis)),
+    ).toEqual(['20260513']);
   });
 
   // 좌표가 없으면(뷰가 아직 그 구간을 모르는 등) 그 줄만 빠진다 — 남은 방어.
   it('좌표를 못 얻은 경계는 그 줄만 건너뛴다', () => {
-    render(<DayBoundaryOverlay chart={makeMockChart(() => null)} boundaries={ticksFor(RAW_SEGMENTS)} />);
-    expect(document.querySelectorAll('[data-day-boundary]').length).toBe(0);
-    // 컨테이너는 남는다 — 경계가 0개인 것과 축이 없는 것은 다른 상태다.
-    expect(document.querySelector('[data-testid="day-boundary-clip"]')).not.toBeNull();
+    expect(drawnBoundaryDates(ticksFor(RAW_SEGMENTS), () => null)).toEqual([]);
+  });
+
+  // 날짜 칩은 커밋 b6cd06f 에서 제거됐다 — 날짜·월 라벨은 적응형 x 축이 그린다
+  // (`util/kstHorzScaleBehavior`). primitive 는 선만 그으므로 캔버스에 글자를
+  // 쓰는 호출이 있으면 그 결정이 뒤집힌 것이다.
+  it('선만 긋는다 — 날짜 칩은 x 축이 갖는다', () => {
+    const series = {
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+    } as unknown as ISeriesApi<'Candlestick'> & { attachPrimitive: ReturnType<typeof vi.fn> };
+    const paneSeries = new Map([['candle' as PaneId, series]]) as unknown as PaneSeriesMap;
+    render(<DayBoundaryOverlay paneSeries={paneSeries} boundaries={ticksFor(RAW_SEGMENTS)} />);
+    const prim = series.attachPrimitive.mock.calls[0][0] as DayBoundaryPrimitive;
+    prim.attached({
+      chart: { timeScale: () => ({ timeToCoordinate: () => 200 }) },
+      series,
+      requestUpdate: vi.fn(),
+    } as never);
+
+    const ctx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      strokeText: vi.fn(),
+      strokeStyle: '',
+      lineWidth: 0,
+    };
+    prim.paneViews()[0].renderer()?.draw({
+      useMediaCoordinateSpace: <T,>(f: (scope: never) => T): T =>
+        f({ context: ctx, mediaSize: { width: 498, height: 200 } } as never),
+    } as never);
+
+    expect(ctx.stroke).toHaveBeenCalled();
+    expect(ctx.fillText).not.toHaveBeenCalled();
+    expect(ctx.strokeText).not.toHaveBeenCalled();
   });
 });

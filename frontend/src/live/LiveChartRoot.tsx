@@ -2784,7 +2784,7 @@ export function LiveChartRoot({
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
           {isMinuteTimeframe(timeframe) && (
-            <DayBoundaryOverlay chart={chart} boundaries={dayBoundaryTicks} />
+            <DayBoundaryOverlay paneSeries={paneSeries} boundaries={dayBoundaryTicks} />
           )}
           {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧
               화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트).
