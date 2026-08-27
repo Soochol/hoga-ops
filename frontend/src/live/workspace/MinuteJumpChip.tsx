@@ -7,15 +7,17 @@
  * 지표 수만큼 줄이 늘어나므로 좌표를 피해 가는 방식으로는 구조적으로 못 막는다.
  *
  * ── 상태 넷이 각각 다른 말을 한다 ────────────────────────────────────────
- * `seeking` 은 **기다리면 온다**(백필 진행 중), `out-of-retention` 은 **영영 안
- * 온다**(그 창의 하한 밖). 하나로 뭉치면 칩이 영원히 "불러오는 중" 을 표시하는데,
- * 그건 침묵보다 나쁜 종류의 거짓말이다. `landed` 는 도착했다는 사실만 남긴다 —
- * 그 상태에서 사용자는 자유롭게 팬할 수 있고 칩은 돌아갈 문으로만 남는다.
+ * `seeking` 은 **기다리면 온다**(그 구간을 받는 중), `no-data` 는 **받아 봤는데
+ * 없다**, `out-of-retention` 은 **영영 안 온다**(그 창의 하한 밖). 하나로 뭉치면 칩이
+ * 영원히 "불러오는 중" 을 표시하는데, 그건 침묵보다 나쁜 종류의 거짓말이다.
+ * `landed` 는 도착했다는 사실만 남긴다 — 그 상태에서 사용자는 자유롭게 팬할 수 있고
+ * 칩은 돌아갈 문으로만 남는다.
  *
- * `aborted` 는 **사용자가 기다리는 동안 그 창을 만져서** 명령이 포기된 경우다. 종전엔
- * 이것이 `landed` 에 뭉쳐 있어 칩이 "이동했다" 고 말할 수 없었다(중단된 창은 움직인
- * 적이 없으므로 거짓이 된다). 갈라 놓으니 그 상태에서 할 수 있는 일(↻ 로 다시 보내기)도
- * 화면에 둘 수 있다.
+ * ⚠ **종전의 `aborted` 와 ↻ 는 없다.** 그 상태는 "백필이 목적지까지 걸어오는 동안
+ * 사용자가 그 창을 만졌다" 였는데, 이제 창의 우단을 목적지로 옮겨 한 왕복에 받으므로
+ * (`useMinuteJumpTarget`) 중단될 대기 구간 자체가 사라졌다. 같은 목적지로 다시 보내는
+ * 일도 발행 창에서 버튼을 한 번 더 누르면 되고, 그때 새 `seq` 가 매겨져 착지가 다시
+ * 일어난다.
  */
 import { jumpDateLabel } from '../../chart/timeframeJump';
 import { todayKstYyyymmdd } from '../liveDateTime';
@@ -24,42 +26,39 @@ import type { MinuteJumpState } from '../useTimeframeJump';
 export function MinuteJumpChip({
   state,
   onClear,
-  onRetry,
 }: {
   state: MinuteJumpState;
   onClear: () => void;
-  /** ↻ — 중단된 명령을 같은 목적지로 다시 보낸다. */
-  onRetry: () => void;
 }) {
   const label = jumpDateLabel(state.date, todayKstYyyymmdd());
   const warn = state.status === 'out-of-retention';
-  // 중단은 **오류가 아니라 사용자 행동**이라 경고 톤을 쓰지 않는다.
+  // `no-data` 는 경고 톤을 **쓰지 않는다** — 그 날 그 종목에 봉이 없다는 것은 시장의
+  // 사실이지 이 창의 고장이 아니다. 경고색은 사용자가 뭔가 다르게 할 수 있을 때만 쓴다.
   const tone = warn ? 'var(--warn)' : 'var(--fg-muted)';
 
   const text = state.status === 'seeking'
     ? `점프 ${label} · 불러오는 중`
-    : state.status === 'aborted'
-      ? `점프 ${label} · 중단됨`
+    : state.status === 'no-data'
+      ? `점프 ${label} · 봉 없음`
       : warn
         ? `점프 ${label} · 갈 수 없음`
         : `점프 ${label}`;
 
   // 칩은 좁고 툴팁은 안 좁다 — **무엇이** 문제인지는 칩에, **결과와 대안**은 여기에.
   // `savedRangeNotice` 의 text/detail 분담과 같은 규율이다.
-  // ⚠ **`landed` 에도 "이동했습니다" 를 쓰지 않는다.** 종전엔 그 상태가 착지와 중단을
-  // 함께 담아서 두 경우에 모두 참인 것(대상)밖에 적을 수 없었다. 지금은 `aborted` 가
-  // 갈라져 나왔지만 문구는 그대로 둔다 — 착지한 창에서 사용자가 이미 팬해 다른 곳을
-  // 보고 있을 수 있고, 그때 "이동했습니다" 는 다시 현재와 어긋난다. 칩이 항상 참인
-  // 것만 말한다는 규율이 문구를 정한다.
+  // ⚠ **`landed` 에도 "이동했습니다" 를 쓰지 않는다.** 착지한 창에서 사용자가 이미
+  // 팬해 다른 곳을 보고 있을 수 있고, 그때 "이동했습니다" 는 현재와 어긋난다. 칩이
+  // 항상 참인 것만 말한다는 규율이 문구를 정한다.
   //
   // ⚠ **보유 기간을 상수로 적지 않는다.** 종전 문구는 「보유 기간(13개월)」이었는데
-  // 이중으로 틀렸다 — 벤더 벽은 250일이고, 디스크(hogaplay) 모드에는 벽 자체가 없다.
-  // 이제 그 창의 실제 하한을 상태가 나른다(`floorDate`). 값이 없으면(모드가 하한을
-  // 모른다) 기간 문장을 **아예 빼고** 대안만 말한다 — 모르는 것을 지어내지 않는다.
+  // 모드마다 틀렸다 — 벤더 하한은 두 겹이고(span 캡은 창의 우단을 따라 움직이고
+  // 실보유는 달력에 붙박여 있다) 디스크 모드는 캡처가 있는 만큼이다. 이제 그 창의
+  // 실제 하한을 상태가 나른다(`floorDate`). 값이 없으면(모드가 하한을 모른다) 기간
+  // 문장을 **아예 빼고** 대안만 말한다 — 모르는 것을 지어내지 않는다.
   const detail = state.status === 'seeking'
     ? `점프 대상 ${state.date}. 그 구간의 분봉을 불러오는 중입니다.`
-    : state.status === 'aborted'
-      ? `점프 대상 ${state.date}. 불러오는 동안 차트를 조작해 이동이 중단됐습니다. ↻ 를 누르면 다시 보냅니다.`
+    : state.status === 'no-data'
+      ? `점프 대상 ${state.date}. 그 구간을 조회했지만 봉이 없습니다(휴장일이거나 이 종목의 데이터가 없는 구간입니다). × 를 누르면 최근 시각으로 돌아갑니다.`
       : warn
         ? [
           state.floorDate === undefined
@@ -82,18 +81,6 @@ export function MinuteJumpChip({
         style={{ background: tone }}
       />
       <span className="truncate">{text}</span>
-      {state.status === 'aborted' && (
-        <button
-          type="button"
-          aria-label="기간 점프 다시 시도"
-          title="같은 목적지로 다시 보냅니다"
-          onClick={onRetry}
-          className="shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
-          style={{ color: 'var(--fg-muted)' }}
-        >
-          ↻
-        </button>
-      )}
       <button
         type="button"
         aria-label="기간 점프 해제"

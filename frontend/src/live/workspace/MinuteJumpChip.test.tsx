@@ -6,25 +6,34 @@ import type { MinuteJumpState } from '../useTimeframeJump';
 afterEach(cleanup);
 
 const chip = () => screen.getByTestId('live-minute-jump-chip');
-const show = (state: MinuteJumpState, onRetry = vi.fn(), onClear = vi.fn()) => {
-  render(<MinuteJumpChip state={state} onClear={onClear} onRetry={onRetry} />);
-  return { onRetry, onClear };
+const show = (state: MinuteJumpState, onClear = vi.fn()) => {
+  render(<MinuteJumpChip state={state} onClear={onClear} />);
+  return { onClear };
 };
 
 describe('MinuteJumpChip', () => {
-  it('불러오는 중에는 재시도를 권하지 않는다 — 기다리면 온다', () => {
+  it('불러오는 중이라고 말한다 — 기다리면 온다', () => {
     show({ date: '20260821', status: 'seeking' });
     expect(chip().textContent).toContain('불러오는 중');
-    expect(screen.queryByLabelText('기간 점프 다시 시도')).toBeNull();
   });
 
-  // 종전엔 중단이 `landed` 에 뭉쳐 있어 칩이 아무 말도 못 했다 — 창이 움직인 적 없는데
-  // "이동했다" 고 하면 거짓이기 때문이다. 갈라 놓으니 되돌릴 문도 화면에 둘 수 있다.
-  it('중단은 그렇게 말하고 **다시 보낼 문**을 준다', () => {
-    const { onRetry } = show({ date: '20260821', status: 'aborted' });
-    expect(chip().textContent).toContain('중단됨');
-    fireEvent.click(screen.getByLabelText('기간 점프 다시 시도'));
-    expect(onRetry).toHaveBeenCalledTimes(1);
+  // 「받아 봤는데 없다」를 `seeking` 에 뭉치면 칩이 영원히 "불러오는 중" 을 표시한다.
+  // 그 상태에서 사용자가 할 일은 기다리는 것이 **아니라** 다른 날을 고르거나 푸는 것이다.
+  it('봉이 없으면 그렇게 말한다 — 기다리라고 하지 않는다', () => {
+    show({ date: '20260821', status: 'no-data' });
+    expect(chip().textContent).toContain('봉 없음');
+    expect(chip().textContent).not.toContain('불러오는 중');
+    expect(chip().getAttribute('title')).toContain('봉이 없습니다');
+  });
+
+  // 봉이 없는 것은 시장의 사실이지 이 창의 고장이 아니다 — 경고색은 사용자가 뭔가
+  // 다르게 할 수 있는 `out-of-retention` 에만 쓴다.
+  it('경고 톤은 하한 밖에만 쓴다', () => {
+    show({ date: '20260821', status: 'no-data' });
+    expect(chip().getAttribute('style')).not.toContain('--warn');
+    cleanup();
+    show({ date: '20250101', status: 'out-of-retention', floorDate: '20251217' });
+    expect(chip().getAttribute('style')).toContain('--warn');
   });
 
   it('착지에는 "이동했습니다" 를 쓰지 않는다 — 그 뒤 사용자가 팬했을 수 있다', () => {

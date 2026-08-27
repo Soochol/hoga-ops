@@ -1,464 +1,266 @@
+/**
+ * 기간 점프 소비 — **기준일**(창의 데이터 우단)과 칩 상태.
+ *
+ * 종전 이 파일은 착지·래치·중단·백필 목표를 쟀다. 그 넷은 「목적지까지 걸어가는」
+ * 구조의 부속이었고, 우단을 목적지로 옮기면서 함께 사라졌다(모듈 헤더 참조).
+ * 지금 재는 것은 둘이다 — **어떤 명령이 우단을 옮기는가**, 그리고 **칩이 무엇을
+ * 말하는가**.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { useRef } from 'react';
-import { useTimeframeJump } from './useTimeframeJump';
+import { act, cleanup, render } from '@testing-library/react';
+import { minuteJumpChipState, useMinuteJumpTarget, type MinuteJumpTarget } from './useTimeframeJump';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
-import { minuteRightOffsetBars } from './minuteViewportPolicy';
-import { bucketEndMs } from './minuteJumpDestination';
-import { earliestAllowedMinuteDate, realMsToYyyymmdd, todayKstYyyymmdd } from './liveDateTime';
-import type { SyncCandle } from '../chart/cursorSync';
-import type { VirtualAxis } from '../util/virtualAxis';
-
-/** 축은 항등 — `realMsToVirtualSeconds` 가 ms/1000 을 반올림하므로 인덱스 = 초. */
-const axis = {
-  toReal: (v: number) => v,
-  toVirtual: (ms: number) => ms,
-} as unknown as VirtualAxis;
+import { useLivePageStore } from '../state/livePage';
 
 const DAILY_ORIGIN: SidebarCursorOrigin = {
   windowId: 'daily-window', group: 1, code: '064350', timeframe: 'D',
 };
 
-/** 시스템 시각을 고정한다 — 보유 한계(13개월) 판정이 `Date.now()` 를 읽는다.
- *  `Date` 만 가짜로 둔다: rAF 까지 가짜로 두면 착지가 영영 안 돈다. */
-const NOW = new Date('2026-08-22T05:00:00Z').getTime(); // KST 14:00
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** KST 기준 `daysAgo` 일 전 09:00 + `minute` 분. */
-function bar(daysAgo: number, minute: number): SyncCandle {
-  const kstMidnightUtc = Math.floor((NOW - daysAgo * DAY_MS + 9 * 3_600_000) / DAY_MS) * DAY_MS
-    - 9 * 3_600_000;
-  return { ts_ms: kstMidnightUtc + 9 * 3_600_000 + minute * 60_000, close: 1000 };
+const TODAY = '20260822';
+/** KST 09:00 = UTC 00:00 — 날짜 변환이 경계에 걸리지 않는 시각을 고른다. */
+function kstMs(yyyymmdd: string, hour = 12): number {
+  const y = Number(yyyymmdd.slice(0, 4));
+  const m = Number(yyyymmdd.slice(4, 6));
+  const d = Number(yyyymmdd.slice(6, 8));
+  return Date.UTC(y, m - 1, d, hour - 9);
 }
 
-/** 어제(=목적지 날) 3봉 + 오늘 2봉. 어제 마지막 봉이 착지 대상이다. */
-const YESTERDAY_LAST = bar(1, 380);
-const FULL_CANDLES: readonly SyncCandle[] = [
-  bar(1, 0), bar(1, 200), YESTERDAY_LAST, bar(0, 0), bar(0, 200),
-];
-/** 아직 백필이 어제까지 안 온 상태 — 오늘 것만 있다. */
-const TODAY_ONLY: readonly SyncCandle[] = [bar(0, 0), bar(0, 200)];
-
-const PLOT_WIDTH = 1_000;
-const CURRENT_LOGICAL = { from: 100, to: 200 };
-
-const setVisibleLogicalRange = vi.fn();
-const scrollToRealTime = vi.fn();
-
-function makeChart() {
-  const timeScale = {
-    getVisibleLogicalRange: () => CURRENT_LOGICAL,
-    timeToIndex: (t: number) => t,
-    width: () => PLOT_WIDTH,
-    setVisibleLogicalRange,
-    scrollToRealTime,
-  };
-  return { timeScale: () => timeScale };
-}
+let latest: MinuteJumpTarget;
 
 function Consumer(props: {
-  candles: readonly SyncCandle[];
   myGroup?: number | null;
   myTimeframe?: '1m' | 'D';
-  /** 좌측 팬 하한. 미지정이면 벤더 모드(250일 벽), `null` 이면 디스크 모드(무한). */
-  floor?: string | null;
-  onResult?: (r: ReturnType<typeof useTimeframeJump>) => void;
+  enabled?: boolean;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const result = useTimeframeJump({
-    chart: makeChart() as never,
-    axis,
-    containerRef,
-    candles: props.candles,
-    enabled: true,
-    minuteScrollbackFloorDate:
-      props.floor === undefined ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : props.floor,
+  latest = useMinuteJumpTarget({
+    enabled: props.enabled ?? true,
     myWindowId: 'minute-window',
     myTimeframe: props.myTimeframe ?? '1m',
     myGroup: props.myGroup === undefined ? 1 : props.myGroup,
     myCode: '064350',
     allowCrossSymbol: false,
+    todayKst: TODAY,
   });
-  props.onResult?.(result);
-  lastResult = result;
-  return (
-    <div ref={containerRef} data-testid="pane">
-      <span data-testid="status">{result.state?.status ?? 'none'}</span>
-      <span data-testid="date">{result.state?.date ?? ''}</span>
-      <span data-testid="backfill">{result.backfillFromDate ?? ''}</span>
-    </div>
-  );
+  return null;
 }
 
-/** 마지막 렌더의 훅 반환 — `retry()` 처럼 명령형 API 를 스펙에서 부르기 위해. */
-let lastResult: ReturnType<typeof useTimeframeJump> | null = null;
-
-/** rAF 한 프레임 — 착지는 rAF 로 미룬다. */
-const flushFrame = async () => {
-  await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
-};
-
-/**
- * 점프 발행. 인자가 **칸 시작**이고 상한은 그 날 끝으로 잡는다 — 일봉 발행의 모양이다
- * (`bucketEndMs('D', …)` 와 같은 값). 주·월봉 칸은 개별 스펙이 직접 만든다.
- */
-async function requestJump(fromMs: number, origin: SidebarCursorOrigin = DAILY_ORIGIN) {
-  await act(async () => {
-    useLiveCursorStore.getState().requestTimeframeJump(
-      fromMs, bucketEndMs('D', fromMs, Date.now()), origin,
-    );
-  });
+function mount(props: Parameters<typeof Consumer>[0] = {}) {
+  render(<Consumer {...props} />);
 }
 
-/** 앵커 봉이 화면 오른쪽 끝에 서는 논리 범위(테스트가 기대하는 값). */
-function expectedRange(anchor: SyncCandle) {
-  const span = CURRENT_LOGICAL.to - CURRENT_LOGICAL.from;
-  const to = Math.round(anchor.ts_ms / 1000) + 1 + minuteRightOffsetBars(span, PLOT_WIDTH);
-  return { from: to - span, to };
+/** 발행 창이 보내는 것과 같은 모양 — 칸의 시작·포함 상한. */
+function publish(fromDate: string, toDate: string, origin = DAILY_ORIGIN) {
+  act(() => {
+    useLiveCursorStore.getState().requestTimeframeJump(kstMs(fromDate, 9), kstMs(toDate, 15), origin);
+  });
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(NOW);
-  useLiveCursorStore.getState().resetCursor();
-  lastResult = null;
-  setVisibleLogicalRange.mockClear();
-  scrollToRealTime.mockClear();
+  useLiveCursorStore.setState({ jumpRequest: null });
+  useLivePageStore.getState().resetHistoricalRange();
 });
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
+afterEach(cleanup);
 
-describe('착지', () => {
-  it('그 날 **마지막 봉**을 화면 오른쪽 끝에 놓는다', async () => {
-    render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(bar(1, 0).ts_ms); // 그 날 아무 시각이나 — 날짜만 읽는다
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
+describe('기준일 — 창의 데이터 우단을 목적지로 옮긴다', () => {
+  it('점프 전에는 라이브 창이다(기준일 없음)', () => {
+    mount();
+    expect(latest.asOfDate).toBeNull();
+    expect(latest.viewSeg).toBeNull();
+    expect(latest.date).toBeNull();
   });
 
-  it('폭은 옮기지 않는다 — 일봉 폭을 분봉에 씌우면 렌더 한계를 넘는다', async () => {
-    render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    const applied = setVisibleLogicalRange.mock.calls[0][0];
-    expect(applied.to - applied.from).toBe(CURRENT_LOGICAL.to - CURRENT_LOGICAL.from);
+  it('과거로 점프하면 그 날이 우단이 된다', () => {
+    mount();
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBe('20260821');
+    expect(latest.date).toBe('20260821');
   });
 
-  it('착지하면 상태가 landed 로 간다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('landed');
-  });
-});
-
-describe('래치 — seq 하나는 한 번만 착지한다', () => {
-  it('착지 뒤 캔들이 갱신돼도 다시 앉히지 않는다 (SSE 틱마다 끌려오지 않는다)', async () => {
-    const { rerender } = render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-
-    // 틱이 새 캔들을 붙인다 — 배열 정체성이 바뀌므로 이펙트가 다시 돈다.
-    for (let i = 0; i < 3; i += 1) {
-      rerender(<Consumer candles={[...FULL_CANDLES, bar(0, 300 + i)]} />);
-      await flushFrame();
-    }
-    expect(setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+  // 칸 시작(`fromMs`)은 종전의 **백필 목표**였다. 지금은 창이 우단에서 왼쪽으로
+  // 자라므로 시작일을 지정하면 좌측 팬을 얼리는 저장뷰가 된다 — 안 쓰는 것이 계약이다.
+  it('칸 **시작**은 쓰지 않는다 — 우단만 옮긴다', () => {
+    mount();
+    publish('20260601', '20260821');
+    expect(latest.asOfDate).toBe('20260821');
   });
 
-  it('같은 날짜로 다시 누르면 seq 가 올라 래치가 풀린다', async () => {
-    render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+  // 주·월 칸의 상한은 달력상의 칸 끝이라 미래일 수 있다(8월 칸 → 08-31).
+  // 미래를 우단으로 보내면 백엔드가 422(DATE_IN_FUTURE)를 낸다.
+  it('상한이 미래면 오늘로 클램프한다', () => {
+    mount();
+    publish('20260803', '20260831');
+    expect(latest.date).toBe(TODAY);
+  });
+
+  // 라이브 창이 이미 그 구간이다. 기준일을 세우면 SSE 구독만 끊겨 실시간이 죽는다.
+  it('목적지가 오늘이면 데이터 레버를 세우지 않는다 — 착지는 여전히 한다', () => {
+    mount();
+    publish('20260818', TODAY);
+    expect(latest.asOfDate).toBeNull();
+    expect(latest.viewSeg).not.toBeNull();
   });
 });
 
-/**
- * #1506 — 크로스헤어 채널 정리가 점프 명령을 연쇄 소거하던 결함.
- *
- * `resetCursorFrom` 은 크로스헤어 정리 경로인데, 주인 판정이 **커서 origin 만** 본다
- * (`sidebarCursorOrigin ?? syncCursorOrigin`). 커서를 아무도 발행하지 않았으면
- * 주인 없음으로 통과해 `resetCursor()` 가 돌고, 그것이 `jumpRequest` 까지 비웠다.
- * 실측 트리거는 **발행 창의 봉 전환**이었다(일→주) — 그 창의 차트가 재생성되며
- * 자기 정리 경로를 태운다.
- */
-describe('채널 소거 (#1506)', () => {
-  it('크로스헤어 정리가 진행 중인 점프를 지우지 않는다', async () => {
-    const { getByTestId, rerender } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('seeking');
-
-    // 발행 창이 봉을 바꿔 자기 차트 정리 경로를 태운다. 커서 발행자가 없으므로
-    // 주인 판정을 그대로 통과한다 — 그때 점프까지 지워지면 안 된다.
-    await act(async () => {
-      useLiveCursorStore.getState().resetCursorFrom(DAILY_ORIGIN.windowId);
-    });
-    expect(getByTestId('status').textContent).toBe('seeking');
-
-    // 그리고 백필이 오면 여전히 앉는다. **`rerender` 여야 한다** — 새로 `render`
-    // 하면 그 창의 baseline seq 가 지금 seq 로 잡혀 명령을 무시한다(그건 이 스펙이
-    // 재는 것과 다른 축이다).
-    rerender(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
+describe('착지 — viewSeg 가 차트 remount 를 유발한다', () => {
+  it('목적지가 갈리면 조각도 갈린다', () => {
+    mount();
+    publish('20260817', '20260821');
+    const first = latest.viewSeg;
+    publish('20260810', '20260814');
+    expect(latest.viewSeg).not.toBe(first);
   });
 
-  it('슬롯이 비워진 뒤의 새 점프도 착지한다 — seq 는 되감기지 않는다', async () => {
-    // 첫 점프가 착지하며 그 seq 로 래치를 건다.
-    render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-
-    // 슬롯이 통째로 비워진다(테스트 초기화 경로 = 프로덕션의 연쇄 소거와 같은 자리).
-    await act(async () => {
-      useLiveCursorStore.setState({ jumpRequest: null });
-    });
-
-    // 다른 날짜로 다시 누른다. seq 가 1 로 되감기면 이미 걸린 래치에 걸려
-    // **조용히 무시되고 칩만 `landed` 를 표시한다** — 그것이 이 이슈의 증상이다.
-    const TODAY_LAST = bar(0, 200);
-    await requestJump(TODAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledTimes(2);
-    expect(setVisibleLogicalRange).toHaveBeenLastCalledWith(expectedRange(TODAY_LAST));
-  });
-});
-
-describe('재시도 — 백필을 기다린다', () => {
-  it('그 날 봉이 아직 없으면 움직이지 않고 seeking 으로 남는다', async () => {
-    const { getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-    expect(getByTestId('status').textContent).toBe('seeking');
-  });
-
-  it('백필이 그 날을 채우면 그때 앉는다', async () => {
-    const { rerender, getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    rerender(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
-    expect(getByTestId('status').textContent).toBe('landed');
-  });
-});
-
-describe('중단 — 사용자가 그 창을 만지면 포기한다', () => {
-  it('기다리는 동안 팬하면 뒤늦게 캔들이 와도 끌어가지 않는다', async () => {
-    const { rerender, getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    fireEvent.pointerDown(getByTestId('pane'));
-    rerender(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-  });
-
-  it('휠도 같은 중단 신호다', async () => {
-    const { rerender } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    fireEvent.wheel(document.querySelector('[data-testid="pane"]')!);
-    rerender(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * F1 — 주·월봉은 칸의 **마지막** 거래일로 간다.
- *
- * 실측(2026-08-23, 005930): 최신 봉을 보고 있는데도 주봉은 08-18, 월봉은 08-03 으로
- * 떨어졌다(마지막 거래일은 08-21 — 월봉은 3주가 어긋났다). 캘린더 봉의 `ts_ms` 가 칸의
- * **시작**이라 그것을 그대로 목적지로 쓴 결과다.
- *
- * 거래일 달력은 쓰지 않는다 — 발행은 **달력상의 칸 끝**만 주고, 그 안의 마지막 거래일을
- * 고르는 일은 이 창이 자기 캔들로 한다.
- */
-describe('캘린더 칸 — 마지막 거래일로 간다', () => {
-  /** 8/18(화)·8/20(목)·8/21(금) 봉. 8/17 은 대체공휴일이라 그 주 첫 거래일이 화요일이다. */
-  const WEEK_CANDLES: readonly SyncCandle[] = [
-    bar(4, 0), bar(4, 200), bar(2, 0), bar(1, 0), YESTERDAY_LAST,
-  ];
-
-  async function requestWeekJump() {
-    const fromMs = bar(4, 0).ts_ms;
-    await act(async () => {
-      useLiveCursorStore.getState().requestTimeframeJump(
-        fromMs, bucketEndMs('W', fromMs, Date.now()), DAILY_ORIGIN,
-      );
-    });
-  }
-
-  it('칸의 첫 거래일이 아니라 **마지막 봉**에 앉는다', async () => {
-    render(<Consumer candles={WEEK_CANDLES} />);
-    await requestWeekJump();
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
-  });
-
-  it('칩은 **앉은 봉의 날짜**를 말한다 — 상한(비거래일일 수 있다)이 아니라', async () => {
-    const { getByTestId } = render(<Consumer candles={WEEK_CANDLES} />);
-    await requestWeekJump();
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('landed');
-    expect(getByTestId('date').textContent).toBe(realMsToYyyymmdd(YESTERDAY_LAST.ts_ms));
-  });
-
-  it('백필은 **칸 시작**을 목표로 한다 — 상한을 물리면 그 칸이 영영 안 온다', async () => {
-    const { getByTestId } = render(<Consumer candles={WEEK_CANDLES} />);
-    await requestWeekJump();
-    await flushFrame();
-    expect(getByTestId('backfill').textContent).toBe(realMsToYyyymmdd(bar(4, 0).ts_ms));
-  });
-
-  // 상한 이하의 마지막 봉을 그냥 고르면, 칸이 아직 비어 있을 때 **그 앞 칸의 봉**에
-  // 앉아 버린다. 백필 도중에 엉뚱한 구간으로 조기 착지하고 래치까지 걸려 되돌릴 수 없다.
-  it('칸이 아직 비어 있으면 그 앞 봉으로 내려앉지 않고 기다린다', async () => {
-    const BEFORE_WEEK: readonly SyncCandle[] = [bar(9, 0), bar(9, 200)];
-    const { getByTestId } = render(<Consumer candles={BEFORE_WEEK} />);
-    await requestWeekJump();
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-    expect(getByTestId('status').textContent).toBe('seeking');
+  // 종전 ↻ 의 역할. 목적지만 섞으면 두 번째 누름이 값 동일로 묻혀 착지가 안 일어난다.
+  it('**같은 목적지**로 다시 눌러도 조각이 갈린다 (seq)', () => {
+    mount();
+    publish('20260817', '20260821');
+    const first = latest.viewSeg;
+    publish('20260817', '20260821');
+    expect(latest.viewSeg).not.toBe(first);
   });
 });
 
 describe('게이트', () => {
-  it('창번호가 다르면 아무 일도 없다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} myGroup={2} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-    expect(getByTestId('status').textContent).toBe('none');
-    // 받지도 않은 점프를 위해 과거를 긁지 않는다.
-    expect(getByTestId('backfill').textContent).toBe('');
+  it('창번호가 다르면 아무 일도 없다', () => {
+    mount({ myGroup: 2 });
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBeNull();
+    expect(latest.viewSeg).toBeNull();
   });
 
-  it('마운트 전에 있던 발행은 무시한다 (baseline seq)', async () => {
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-    expect(getByTestId('status').textContent).toBe('none');
-  });
-});
-
-describe('보유 한계 밖', () => {
-  const OLD_MS = NOW - 400 * DAY_MS;
-
-  it('상태만 알리고 움직이지 않는다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(OLD_MS);
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('out-of-retention');
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
+  it('캘린더 봉 창은 받지 않는다 — 발행 쪽이다', () => {
+    mount({ myTimeframe: 'D', enabled: false });
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBeNull();
   });
 
-  it('백필 목표로도 내보내지 않는다 — 긁어도 빈 응답만 온다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(OLD_MS);
-    await flushFrame();
-    expect(getByTestId('backfill').textContent).toBe('');
+  // 슬롯에 남아 있던 옛 명령을 새로 연 창이 적용하면 그 창의 초기 배치와 싸운다.
+  it('마운트 전에 있던 발행은 무시한다 (baseline seq)', () => {
+    act(() => {
+      useLiveCursorStore.getState().requestTimeframeJump(
+        kstMs('20260817', 9), kstMs('20260821', 15), DAILY_ORIGIN,
+      );
+    });
+    mount();
+    expect(latest.asOfDate).toBeNull();
   });
 });
 
-describe('백필 목표', () => {
-  it('게이트를 통과한 목적지 날짜를 내보낸다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(getByTestId('backfill').textContent).toBe(getByTestId('date').textContent);
-    expect(getByTestId('backfill').textContent).toMatch(/^\d{8}$/);
+describe('해제 — × 는 이 창만 푼다', () => {
+  it('기준일과 조각이 함께 내려간다', () => {
+    mount();
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBe('20260821');
+    act(() => latest.clear());
+    expect(latest.asOfDate).toBeNull();
+    expect(latest.viewSeg).toBeNull();
   });
-});
 
-describe('해제', () => {
-  it('× 는 이 창만 풀고 라이브 엣지로 돌아간다', async () => {
-    let latest: ReturnType<typeof useTimeframeJump> | null = null;
-    const { getByTestId } = render(
-      <Consumer candles={FULL_CANDLES} onResult={(r) => { latest = r; }} />,
-    );
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('landed');
-
-    await act(async () => { latest!.clear(); });
-    expect(getByTestId('status').textContent).toBe('none');
-    expect(scrollToRealTime).toHaveBeenCalled();
-    // 슬롯은 그대로 둔다 — 지우면 **다른 분봉 창의 칩까지** 사라진다.
+  // 슬롯은 그룹 공용이라 지우면 **다른 분봉 창의 칩까지** 사라진다.
+  it('슬롯은 지우지 않는다 — 해제는 창의 로컬 사실이다', () => {
+    mount();
+    publish('20260817', '20260821');
+    act(() => latest.clear());
     expect(useLiveCursorStore.getState().jumpRequest).not.toBeNull();
   });
-});
 
-describe('중단은 착지와 구별되지 않는다 — 그래서 문구가 「이동했다」를 주장하면 안 된다', () => {
-  // 스피너를 꺼야 한다는 제약은 그대로다 — 중단도 **정착**이다. 다만 종전엔 그것을
-  // `landed` 로 뭉쳐서, 칩이 두 경우에 모두 참인 것(대상 날짜)밖에 말할 수 없었다.
-  // 중단은 사용자 자신의 행동이라 구별할 수 있는 사실이므로 따로 말한다.
-  it('중단된 seq 는 `aborted` 로 정착한다 — 스피너는 꺼지되 착지와 뭉치지 않는다', async () => {
-    const { getByTestId } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('seeking');
-    // 백필을 기다리는 동안 사용자가 그 창을 만진다 — 창은 **움직인 적이 없다**.
-    fireEvent.pointerDown(getByTestId('pane'));
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('aborted');
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled();
-  });
-
-  // 중단 뒤 다시 데려다 달라는 것은 유효한 요구다. 이 경로는 #1508 의 seq 단조화를
-  // **end-to-end 로 증명**하기도 한다 — 되감기던 시절엔 재시도가 래치에 걸려 죽었다.
-  it('중단 뒤 재시도하면 같은 목적지로 착지한다', async () => {
-    const { getByTestId, rerender } = render(<Consumer candles={TODAY_ONLY} />);
-    await requestJump(YESTERDAY_LAST.ts_ms);
-    await flushFrame();
-    fireEvent.pointerDown(getByTestId('pane'));
-    await flushFrame();
-    expect(getByTestId('status').textContent).toBe('aborted');
-
-    rerender(<Consumer candles={FULL_CANDLES} />);
-    await flushFrame();
-    expect(setVisibleLogicalRange).not.toHaveBeenCalled(); // 포기한 seq 는 부활하지 않는다
-
-    await act(async () => { lastResult?.retry(); });
-    await flushFrame();
-    expect(setVisibleLogicalRange).toHaveBeenCalledWith(expectedRange(YESTERDAY_LAST));
-    expect(getByTestId('status').textContent).toBe('landed');
+  it('푼 뒤 새 점프는 다시 받는다', () => {
+    mount();
+    publish('20260817', '20260821');
+    act(() => latest.clear());
+    publish('20260810', '20260814');
+    expect(latest.asOfDate).toBe('20260814');
   });
 });
 
-describe('하한은 창마다 다르다 — 디스크 모드는 막지 않는다 (#1497)', () => {
-  const OLD_MS = NOW - 400 * DAY_MS;
-
-  // 칩이 「보유 기간(13개월)」을 **상수로** 적고 있었다. 실제 벽은 250일이고, 디스크
-  // 모드에는 벽 자체가 없다 — 이중으로 틀린 문구였다. 값을 상태가 나르면 두 모드에서
-  // 모두 맞고, 다음에 벽이 바뀌어도 문구가 따라온다.
-  it('갈 수 없다고 말할 때 **그 창의 실제 하한 날짜**를 함께 낸다', async () => {
-    const seen: (ReturnType<typeof useTimeframeJump>)[] = [];
-    render(<Consumer candles={FULL_CANDLES} onResult={(r) => seen.push(r)} />);
-    await requestJump(OLD_MS);
-    await flushFrame();
-    const state = seen[seen.length - 1].state;
-    expect(state?.status).toBe('out-of-retention');
-    expect(state?.floorDate).toBe(earliestAllowedMinuteDate(todayKstYyyymmdd()));
+describe('창의 시작일 리셋', () => {
+  // 팬한 적 없는 창은 시작일이 오늘−5거래일쯤이라, 두 달 전으로 점프하면
+  // `from > to` 가 된다. 라이브로 돌아올 때는 반대로 깊어진 시작일이 남는다.
+  it('기준일이 서면 리셋한다', () => {
+    mount();
+    act(() => { useLivePageStore.getState().extendHistoricalRange('20260701'); });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260701');
+    publish('20260817', '20260821');
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
-  it('하한이 null 이면 같은 날짜라도 out-of-retention 이 아니다', async () => {
-    const { getByTestId } = render(<Consumer candles={FULL_CANDLES} floor={null} />);
-    await requestJump(OLD_MS);
-    await flushFrame();
-    expect(getByTestId('status').textContent).not.toBe('out-of-retention');
-    // 백필 목표로도 나간다 — 디스크에는 그 구간이 있을 수 있다.
-    expect(getByTestId('backfill').textContent).toMatch(/^\d{8}$/);
+  it('풀 때도 리셋한다', () => {
+    mount();
+    publish('20260817', '20260821');
+    act(() => { useLivePageStore.getState().extendHistoricalRange('20260601'); });
+    act(() => latest.clear());
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
+  // deps 만으로 걸면 첫 커밋에서도 발화해 창이 복원한 시작일을 지운다 —
+  // 점프와 무관한 창까지 매번 초기 폭으로 돌아간다.
+  it('마운트에서는 부르지 않는다', () => {
+    act(() => { useLivePageStore.getState().extendHistoricalRange('20260701'); });
+    mount();
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260701');
   });
 });
+
+describe('칩 상태', () => {
+  const base = { date: '20260821', floorDate: '20251217', isLoading: false, hasCandles: true };
+
+  it('점프가 없으면 칩도 없다', () => {
+    expect(minuteJumpChipState({ ...base, date: null })).toBeNull();
+  });
+
+  it('불러오는 중이면 seeking', () => {
+    expect(minuteJumpChipState({ ...base, isLoading: true })?.status).toBe('seeking');
+  });
+
+  it('받아 왔고 봉이 있으면 landed', () => {
+    expect(minuteJumpChipState(base)?.status).toBe('landed');
+  });
+
+  // 「받아 봤는데 없다」를 seeking 에 뭉치면 칩이 영원히 "불러오는 중" 을 표시한다.
+  it('받아 왔는데 봉이 없으면 no-data — seeking 에 뭉치지 않는다', () => {
+    expect(minuteJumpChipState({ ...base, hasCandles: false })?.status).toBe('no-data');
+  });
+
+  it('하한 밖이면 out-of-retention 이고 **그 창의 하한 날짜**를 함께 낸다', () => {
+    const s = minuteJumpChipState({ ...base, date: '20250101' });
+    expect(s?.status).toBe('out-of-retention');
+    expect(s?.floorDate).toBe('20251217');
+  });
+
+  // 디스크 모드는 하한을 모른다 — 모르는 것을 못 간다고 말하지 않는다.
+  it('하한이 null 이면 같은 날짜라도 막지 않는다', () => {
+    const s = minuteJumpChipState({ ...base, date: '20250101', floorDate: null });
+    expect(s?.status).toBe('landed');
+  });
+
+  // 하한 판정이 로딩보다 **먼저**다: 영영 안 올 것을 "불러오는 중" 으로 표시하면
+  // 사용자가 기다린다.
+  it('하한 밖이면 로딩 중이어도 out-of-retention 이다', () => {
+    const s = minuteJumpChipState({ ...base, date: '20250101', isLoading: true });
+    expect(s?.status).toBe('out-of-retention');
+  });
+});
+
+describe('점프 채널은 크로스헤어 정리에 지워지지 않는다 (#1506)', () => {
+  // 발행 창이 봉을 바꾸면 자기 차트 정리 경로를 탄다 — 그때 점프까지 지워지면 안 된다.
+  it('발행 창의 커서 정리가 기준일을 지우지 않는다', () => {
+    mount();
+    publish('20260817', '20260821');
+    act(() => { useLiveCursorStore.getState().resetCursorFrom(DAILY_ORIGIN.windowId); });
+    expect(latest.asOfDate).toBe('20260821');
+  });
+});
+
+/** 발행 슬롯의 seq 는 단조 증가여야 한다 — 되감기면 새 발행이 옛 baseline 에 걸려 죽는다. */
+describe('seq 단조성 (#1508)', () => {
+  it('슬롯이 통째로 비워진 뒤의 발행도 받는다', () => {
+    mount();
+    publish('20260817', '20260821');
+    act(() => { useLiveCursorStore.setState({ jumpRequest: null }); });
+    publish('20260810', '20260814');
+    expect(latest.asOfDate).toBe('20260814');
+  });
+});
+
+/** 콘솔 경고를 실패로 승격하지는 않지만, 훅이 조용히 죽는 것은 잡는다. */
+afterEach(() => vi.restoreAllMocks());

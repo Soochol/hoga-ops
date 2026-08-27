@@ -44,8 +44,7 @@ import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
-import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../chart/timeframeJump';
-import { useTimeframeJump, type MinuteJumpState } from './useTimeframeJump';
+import { canPublishTimeframeJump } from '../chart/timeframeJump';
 import type { Candle, RangeSegment } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
@@ -470,12 +469,6 @@ interface Props {
    * 캘린더 봉 창은 축이 이미 날짜를 찍으므로 이 경로를 태우지 않는다.
    */
   onViewedDateChange?: (view: { date: string | null; returnToLive: () => void }) => void;
-  /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
-  onMinuteJumpChange?: (jump: {
-    state: MinuteJumpState | null;
-    clear: () => void;
-    retry: () => void;
-  }) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
   onCandleBasisHover?: (date: string | null) => void;
@@ -547,7 +540,6 @@ export function LiveChartRoot({
   onJumpSourceReady,
   onJumpDestinationChange,
   onViewedDateChange,
-  onMinuteJumpChange,
   onCursorActiveChange,
   onCandleBasisHover,
   onCandleBasisClick,
@@ -1078,14 +1070,10 @@ export function LiveChartRoot({
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
-  // ── 기간 점프 ───────────────────────────────────────────────────────────
-  // 동기화 토글(`rangeSyncEnabled`)에 묶지 **않는다**. 저것은 "따라다닐 것인가" 를
-  // 정하는 스위치이고 점프는 사용자가 누를 때만 한 번 움직이는 명령이라, 끌 이유가
-  // 애초에 없다(안 누르면 아무 일도 일어나지 않는다). 종목 축만 크로스헤어와
-  // 공유한다 — 세 동기화가 이미 그 토글을 함께 쓴다.
-  //
-  // ⚠ **백필 호출보다 위에 있어야 한다** — `backfillFromDate` 를 그쪽에 넘긴다.
-  const jumpCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  // ── 기간 점프 **발행** ──────────────────────────────────────────────────
+  // 소비 쪽(어느 구간을 받나 · 칩)은 여기 없다 — 창의 데이터 우단을 정하는 일이라
+  // `ChartWindow` 가 `useMinuteJumpTarget` 으로 소유한다. 이 파일에 남은 것은 발행
+  // 창이 **목적지를 읽는 통로**뿐이다(차트 좌표와 캔들 배열이 여기에만 있다).
   /**
    * 목적지 = **이 창에서 보이는 가장 오른쪽 캔들**. 규칙은 이것 하나다
    * (2026-08-22 사용자 결정).
@@ -1184,26 +1172,6 @@ export function LiveChartRoot({
     };
   }, [chart, timeframe, onViewedDateChange, returnToLive]);
 
-  const minuteJump = useTimeframeJump({
-    chart,
-    axis,
-    containerRef,
-    candles: cb?.candles ?? EMPTY_CANDLES,
-    enabled: isTimeframeJumpTarget(timeframe),
-    minuteScrollbackFloorDate,
-    myWindowId: winCtxWindowId,
-    myTimeframe: timeframe,
-    myGroup: winCtxGroup,
-    myCode: code,
-    allowCrossSymbol: jumpCrossSymbol,
-  });
-  const { state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump } = minuteJump;
-  useEffect(() => {
-    onMinuteJumpChange?.({
-      state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump,
-    });
-  }, [minuteJumpState, clearMinuteJump, retryMinuteJump, onMinuteJumpChange]);
-
   const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,
@@ -1219,9 +1187,6 @@ export function LiveChartRoot({
     settledFromDate,
     savedRangeFromDate,
     minuteScrollbackFloorDate,
-    // 게이트를 통과한 값이다 — 원시 슬롯을 물리면 받지도 않은 점프를 위해 과거를
-    // 긁는 창이 생긴다(그 prop 주석의 그 사고).
-    jumpFromDate: minuteJump.backfillFromDate,
   });
   // 강제 클램프 착지 안내의 표시 수명. `seq` 가 deps 라 같은 경계로 다시 착지해도
   // 타이머가 재시작한다. 8초: 읽을 시간은 주되 차트 위 상주물이 되지 않게.
