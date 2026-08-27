@@ -66,8 +66,10 @@ from hoga.live.lifecycle import (
     get_today_ask_peak as live_get_today_ask_peak,
     get_today_bid_peak as live_get_today_bid_peak,
     get_vi_status as live_get_vi_status,
+    restore_last_ob_from_disk,
     start_after_hours_recorder,
     start_kiwoom_session_watchdog,
+    start_last_ob_flusher,
     start_live_stream,
     start_sector_broadcast,
     start_today_promoter,
@@ -76,6 +78,33 @@ from hoga.live.lifecycle import (
     stop_today_promoter,
 )
 from hoga.live.migrate import migrate_to_v2_layout
+
+
+async def _cancel_tasks(*tasks: asyncio.Task) -> None:
+    """lifespan 이 소유한 주기 태스크들을 순서대로 취소하고 회수한다.
+
+    취소 예외를 삼키는 것은 종료 경로의 관례다 — 여기서 올리면 뒤따르는 teardown
+    (스크리너 job · 심볼 워커 · KIS)이 통째로 건너뛰어진다.
+    """
+    for task in tasks:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+
+
+async def _start_last_ob_persistence(data_dir: Path) -> asyncio.Task:
+    """마지막 호가 복원 + flush 태스크 기동 — **재시작이 화면을 비우지 않게** 한다.
+
+    이 값은 프로세스 메모리에만 있어서 재시작에 **전 종목이 함께 죽었다**(2026-08-27
+    실측: 장 마감 후 기동한 백엔드에서 005930 포함 전 종목 0 건, 10호가 창이 통째로
+    빔). 복원이 WS 수신보다 먼저 끝나든 나중이든 안전하다 — 살아 있는 값을 덮지 않는다.
+
+    두 줄을 굳이 함수로 묶은 이유는 `lifespan` 의 문장 수 상한(PLR0915) 때문이다.
+    """
+    await restore_last_ob_from_disk(data_dir)
+    # 그 뒤로는 이 태스크가 **바뀌었을 때만** 디스크에 내린다(벤더 호출 0).
+    return start_last_ob_flusher(data_dir)
+
 
 # CORS 와 OriginGuard 가 **공유**하는 단일 출처의 정적 기본값. 두 곳에 리터럴을
 # 따로 두면 한쪽만 고쳐져 "CORS 는 통과하는데 가드가 막는"(또는 그 반대) 상태가
@@ -283,6 +312,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         set_captures_bus(bus, loop)
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
         _captures_module._workers = _captures_module.start_capture_pool(data_dir)
+        lifespan_tasks: list[asyncio.Task] = []
         startup_runtime = await start_app_runtime(
             data_dir,
             deps=StartupRuntimeDeps(
@@ -305,6 +335,8 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
                 aclose_kis_capacity_scheduler=kiwoom_rest_runtime.aclose,
                 aclose_kis_client=aclose_kis_client,
                 get_kiwoom_capture_codes=get_kiwoom_capture_codes,
+                # 아래에서 채워지는 리스트를 **늦게** 읽는다 — 이 시점엔 아직 비어 있다.
+                get_lifespan_tasks=lambda: lifespan_tasks,
                 # ADR-0088 확장: 캡처 워커 풀과 프로그램매매 수집기도 liveness 를
                 # 노출한다. 둘은 lifespan/라이브 런타임이 각각 소유해 런타임이 핸들을
                 # 들고 있지 않으므로 접근자로 주입한다(호출 시점에 다시 읽는다).
@@ -322,7 +354,12 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         # 거래일 달력 오버레이 갱신(PR-H·#1044). **배선이 빠져 있었다** — 함수만
         # 만들고 lifespan 에 안 달아 오버레이가 자라지 않았고, 정적 시드 생성일
         # 다음 날부터 오늘이 커버리지 밖이 됐다(실측 2026-08-04).
-        calendar_refresher = start_trading_calendar_refresher(data_dir)
+        # lifespan 이 소유하는 주기 태스크들. `start_app_runtime` 이 **이보다 먼저**
+        # 불리므로 liveness 접근자(`get_lifespan_tasks`)가 이 리스트를 늦게 읽는다.
+        lifespan_tasks.extend([
+            start_trading_calendar_refresher(data_dir),
+            await _start_last_ob_persistence(data_dir),
+        ])
 
         # 시간외 단일가 마지막 호가 레코더 — 저녁에 그날 시간외를 볼 수 있게 하는
         # 유일한 저장 경로다(`after_hours_store` 모듈 docstring). 16:00–18:00 창
@@ -371,12 +408,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             # 앱을 수백 번 만든다 — 복원이 없으면 이 전역 설정이 그 프로세스 전체로
             # 새어 GC 동작에 의존하는 다른 테스트를 흔든다.
             gc.set_threshold(*gc_prev_threshold)
-            calendar_refresher.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await calendar_refresher
-            after_hours_recorder.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await after_hours_recorder
+            await _cancel_tasks(*lifespan_tasks, after_hours_recorder)
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
