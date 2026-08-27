@@ -46,14 +46,14 @@ from hoga.api.sentiment_routes import build_router as build_sentiment_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_view_routes import build_router as build_study_view_router
-from hoga.api.symbols import build_router as build_symbols_router, nxt_enabled_by_code
+from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
-from hoga.live import api as live_api, kiwoom_rest_runtime
+from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
@@ -67,7 +67,6 @@ from hoga.live.lifecycle import (
     get_today_bid_peak as live_get_today_bid_peak,
     get_vi_status as live_get_vi_status,
     restore_last_ob_from_disk,
-    start_after_hours_recorder,
     start_kiwoom_session_watchdog,
     start_last_ob_flusher,
     start_live_stream,
@@ -361,40 +360,6 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             await _start_last_ob_persistence(data_dir),
         ])
 
-        # 시간외 단일가 마지막 호가 레코더 — 저녁에 그날 시간외를 볼 수 있게 하는
-        # 유일한 저장 경로다(`after_hours_store` 모듈 docstring). 16:00–18:00 창
-        # 판정은 태스크 안에 있고, 여기서는 **무엇을 훑을지**만 정한다.
-        def _after_hours_record_codes() -> list[str]:
-            """watchlist ∩ **NXT 미상장**. 그 교집합이 아니면 훑지 않는다.
-
-            - fetcher 미배선(무자격 dev·워크트리)이면 **빈 목록**이다. 예외를 던지게
-              두면 매 주기 종목 수만큼 스택트레이스가 쌓인다 — 조용히 쉬는 것이
-              키움 경로의 관례다(ADR-0134).
-            - NXT 상장 종목을 빼는 것이 load-bearing: 그쪽 10호가 창에는 세션 토글이
-              없어(`bookSessionMode` 갈래 B) 저장해도 화면에 나올 길이 없고,
-              애프터마켓 호가는 WS 로 와서 이미 링버퍼에 쌓인다. 표시되지 않을
-              데이터를 위해 자격증명을 쥔 프로세스가 벤더를 치지 않는다.
-            - 마스터 미도착이면 `nxt_enabled_by_code()` 가 None 이라 빈 목록이 된다.
-              **모름을 미상장으로 취급하지 않는다** — 그랬다가는 NXT 종목까지 훑는다.
-            """
-            if live_api.kiwoom_after_hours_fetcher_instance is None:
-                return []
-            nxt = nxt_enabled_by_code()
-            if not nxt:
-                return []
-            return [c for c in get_kiwoom_capture_codes() if nxt.get(c) is False]
-
-        async def _fetch_after_hours(code: str):
-            # 인스턴스는 라이브 스트림 기동 시 배선되므로 **호출 시점에 다시 읽는다**
-            # (`get_capture_worker_tasks` 와 같은 접근자 주입 규율).
-            fetcher = live_api.kiwoom_after_hours_fetcher_instance
-            if fetcher is None:
-                raise RuntimeError("kiwoom after-hours fetcher not wired")
-            return await fetcher.get(code)
-
-        after_hours_recorder = start_after_hours_recorder(
-            data_dir, get_codes=_after_hours_record_codes, fetch=_fetch_after_hours,
-        )
         # GC gen0 임계 상향 — **기동이 끝난 뒤** 건다(상주 객체가 다 올라온 시점).
         gc_prev_threshold = gc.get_threshold()
         gc_gen0 = gc_gen0_threshold()
@@ -408,7 +373,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             # 앱을 수백 번 만든다 — 복원이 없으면 이 전역 설정이 그 프로세스 전체로
             # 새어 GC 동작에 의존하는 다른 테스트를 흔든다.
             gc.set_threshold(*gc_prev_threshold)
-            await _cancel_tasks(*lifespan_tasks, after_hours_recorder)
+            await _cancel_tasks(*lifespan_tasks)
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.

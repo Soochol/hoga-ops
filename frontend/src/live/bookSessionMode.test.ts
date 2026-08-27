@@ -105,11 +105,20 @@ describe('krxAfterHoursLabel — 빈 5행을 설명하는 하중', () => {
     expect(krxAfterHoursLabel(kst(DAY, 18, 0))).toBe('시간외');
   });
 
-  it('저장본이면 시각과 무관하게 "마지막" 이라고 말한다', () => {
-    // 더 이상 변하지 않는 값을 "지금 호가" 처럼 보이면 안 된다.
-    expect(krxAfterHoursLabel(kst(DAY, 21, 0), { stored: true })).toBe('시간외 · 마지막');
-    // 창 안이어도 저장본이면 같다(그 조합은 정상 경로엔 없지만 판정은 stored 우선).
-    expect(krxAfterHoursLabel(kst(DAY, 16, 30), { stored: true })).toBe('시간외 · 마지막');
+  it('저장본이면 **몇 시 값인지** 말한다', () => {
+    // "마지막" 만으로는 부족하다 — 저장은 프론트가 마지막으로 본 순간에 일어나므로
+    // 17:02 에 창을 닫았으면 저장본도 17:02 것이지 18:00 직전이 아니다.
+    expect(krxAfterHoursLabel(kst(DAY, 21, 0), { storedAtMs: kst(DAY, 17, 2) })).toBe(
+      '시간외 · 17:02',
+    );
+    // 창 안이어도 저장본이면 같다(판정은 storedAtMs 우선).
+    expect(krxAfterHoursLabel(kst(DAY, 16, 30), { storedAtMs: kst(DAY, 16, 5) })).toBe(
+      '시간외 · 16:05',
+    );
+  });
+
+  it('저장본이 아니면 시각을 달지 않는다', () => {
+    expect(krxAfterHoursLabel(kst(DAY, 21, 0), { storedAtMs: null })).toBe('시간외');
   });
 });
 
@@ -170,11 +179,11 @@ describe('bookSessionControl — 갈래 판정', () => {
     expect(c).toEqual({ kind: 'label', label: '정규장' });
   });
 
-  it('저장본을 그리는 중이면 토글 라벨이 "마지막" 을 단다', () => {
+  it('저장본을 그리는 중이면 토글 라벨이 그 시각을 단다', () => {
     const c = bookSessionControl({
-      ...base, nxtEnabled: false, afterHoursIsStored: true, nowMs: kst(DAY, 21, 0),
+      ...base, nxtEnabled: false, afterHoursStoredAtMs: kst(DAY, 17, 2), nowMs: kst(DAY, 21, 0),
     });
-    expect(c).toMatchObject({ kind: 'toggle', afterHoursLabel: '시간외 · 마지막' });
+    expect(c).toMatchObject({ kind: 'toggle', afterHoursLabel: '시간외 · 17:02' });
   });
 
   it.each([[null], [undefined]])('nxt_enabled=%s(모름)이면 아무것도 그리지 않는다', (v) => {

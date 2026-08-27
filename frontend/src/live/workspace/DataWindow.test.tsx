@@ -933,7 +933,8 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
 
 describe('DataWindow 시간외 저장본 (Phase B)', () => {
   const symbol = { code: '005930', name: '삼성전자' };
-  const STORED_TS = 1_787_000_888_000;
+  /** KST 17:02 — 저장본 라벨이 이 시각을 그대로 보인다. */
+  const STORED_TS = Date.UTC(2026, 7, 27, 8, 2);
   /** 2026-08-27(목) 21:00 KST — 시간외 창 **밖**. 벤더는 답하지 않는다. */
   const AT_2100_KST = Date.UTC(2026, 7, 27, 12, 0);
   const AT_1630_KST = Date.UTC(2026, 7, 27, 7, 30);
@@ -990,13 +991,14 @@ describe('DataWindow 시간외 저장본 (Phase B)', () => {
     expect(screen.getByText(`snapshot:${STORED_TS}`)).toBeInTheDocument();
   });
 
-  it('저장본이면 라벨이 "마지막" 이라고 말한다', () => {
-    // 더 이상 변하지 않는 값을 "지금 호가" 처럼 보이면 안 된다.
+  it('저장본이면 라벨이 **몇 시 값인지** 말한다', () => {
+    // "마지막" 만으로는 부족하다 — 저장은 프론트가 마지막으로 본 순간에 일어나므로
+    // 17:02 에 창을 닫았으면 저장본도 17:02 것이지 18:00 직전이 아니다.
     vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
     seedKrxOnly();
     afterHoursBookResult.data = storedResponse();
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
-    expect(screen.getByText('ahLabel:시간외 · 마지막')).toBeInTheDocument();
+    expect(screen.getByText('ahLabel:시간외 · 17:02')).toBeInTheDocument();
   });
 
   it('창 밖 조회는 **갈래 A 가 시간외를 가리킬 때만** 켠다', () => {

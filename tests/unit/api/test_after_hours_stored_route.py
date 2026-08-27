@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hoga.live.after_hours_store import StoredAfterHoursBook, save_cycle
+from hoga.live.after_hours_store import StoredAfterHoursBook, save_books
 from hoga.live.api import AfterHoursBookResponse, _stored_after_hours_response
 
 DAY = "20260827"
@@ -30,7 +30,7 @@ def _stored(code: str = "005930") -> StoredAfterHoursBook:
 
 
 def _seed(tmp_path: Path, monkeypatch, *, day: str = DAY) -> None:
-    save_cycle(tmp_path, day, {"005930": _stored()})
+    save_books(tmp_path, day, {"005930": _stored()})
     monkeypatch.setattr("hoga.live.api.today_kst_yyyymmdd", lambda: DAY)
 
 
@@ -65,7 +65,7 @@ def test_yesterday_file_is_not_served_today(tmp_path, monkeypatch) -> None:
 
     날짜 조건을 따로 쓰지 않는다: 오늘 파일만 읽으므로 저절로 그렇게 된다.
     """
-    save_cycle(tmp_path, "20260826", {"005930": _stored()})
+    save_books(tmp_path, "20260826", {"005930": _stored()})
     monkeypatch.setattr("hoga.live.api.today_kst_yyyymmdd", lambda: DAY)
     assert _stored_after_hours_response("005930", tmp_path).active is False
 
