@@ -366,6 +366,11 @@ function FamilyRow({ side, family, name, active, onPick }: {
  * 닫혀 있으면 저장값이 무엇이든 「없다」이므로 클릭은 언제나 **추가**이고, `!inPane`
  * 이 `true` 라 `setPeakWallPaneSlotEnabled` 의 결합이 마스터를 연다.
  *
+ * 이 접힘은 **렌더 경로의 실효 조건과 같은 식**이다 — `LiveChartRoot` 가
+ * `needStepSegments: peakWallPaneEnabled` 로 계단 계산을 게이트하고 `usePeakWallRender`
+ * 가 그 안에서 슬롯 키를 본다. 즉 화면이 새 규칙을 발명하는 것이 아니라, 이미 참이던
+ * 곱을 그리기 시작한 것이다.
+ *
  * 접힌 저장값이 화면에서 완전히 사라지지는 않는다 — ⑤ 의 요약 줄이 dim 으로 계속
  * 들고 있어, 마스터를 되켰을 때 무엇이 돌아오는지가 거기서 보인다.
  *
