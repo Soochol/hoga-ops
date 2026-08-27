@@ -98,7 +98,13 @@ export function resolveBookSessionMode(
  * "그 시장에 없는 단계" 임을 말하는 장치가 이 라벨뿐이다. 토글이 되어도 그 국면에서는
  * 문안을 유지한다.
  */
-export function krxAfterHoursLabel(nowMs: number = Date.now()): string {
+export function krxAfterHoursLabel(
+  nowMs: number = Date.now(),
+  opts: { stored?: boolean } = {},
+): string {
+  // 저장본은 **더 이상 변하지 않는다** — 그 사실을 말하지 않으면 화면이 멈춘 값을
+  // "지금 호가" 처럼 보인다. 얼어붙은 표시에 시각·상태를 붙이는 이 리포의 규율.
+  if (opts.stored) return '시간외 · 마지막';
   const hhmm = unixMsToKSTHhmm(nowMs);
   const inSinglePrice =
     hhmm >= AFTER_HOURS_SINGLE_PRICE_OPEN && hhmm < AFTER_HOURS_SINGLE_PRICE_CLOSE;
@@ -126,6 +132,21 @@ export function nxtPhaseLabel(nowMs: number = Date.now()): string {
 }
 
 /**
+ * 이 종목·이 창에 **세션 토글이 있는가**(= 갈래 A 인가).
+ *
+ * `bookSessionControl` 에서 떼어낸 이유는 순환 때문이다: 컨트롤은 "지금 그리는 것이
+ * 저장본인가" 를 알아야 라벨을 정하는데, 그 답은 조회 결과에서 오고, 조회 여부는
+ * 갈래가 정한다. 갈래는 **종목 능력만으로** 정해지고 데이터에 의존하지 않으므로
+ * 여기서 먼저 답할 수 있다.
+ */
+export function hasBookSessionToggle(
+  nxtEnabled: boolean | null | undefined,
+  isSpot: boolean,
+): boolean {
+  return !isSpot && nxtEnabled === false;
+}
+
+/**
  * 하단 스트립 중앙에 그릴 것을 정한다.
  *
  * ## ⚠ 갈래 B 라벨 조건에 **venue 가 들어간다**
@@ -143,6 +164,8 @@ export function bookSessionControl(args: {
   venue: LiveVenueOption;
   /** 스팟 커서(과거 시점) 중인가 — 그때는 세션 선택 자체가 무의미하다. */
   isSpot: boolean;
+  /** 지금 그릴 시간외 호가가 **저장본**인가(`source === 'stored'`). 라벨이 갈린다. */
+  afterHoursIsStored?: boolean;
   nowMs?: number;
 }): BookSessionControl {
   const { nxtEnabled, venue, isSpot } = args;
@@ -157,11 +180,11 @@ export function bookSessionControl(args: {
     }
     return { kind: 'label', label: nxtPhaseLabel(nowMs) };
   }
-  if (nxtEnabled === false) {
+  if (hasBookSessionToggle(nxtEnabled, isSpot)) {
     return {
       kind: 'toggle',
       regularLabel: '정규장',
-      afterHoursLabel: krxAfterHoursLabel(nowMs),
+      afterHoursLabel: krxAfterHoursLabel(nowMs, { stored: args.afterHoursIsStored }),
     };
   }
   return { kind: 'none' };

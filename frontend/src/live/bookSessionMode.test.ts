@@ -104,6 +104,13 @@ describe('krxAfterHoursLabel — 빈 5행을 설명하는 하중', () => {
   it('18:00 정각에 문안이 풀린다 — 그 뒤 사다리는 벤더 실시간이 아니다', () => {
     expect(krxAfterHoursLabel(kst(DAY, 18, 0))).toBe('시간외');
   });
+
+  it('저장본이면 시각과 무관하게 "마지막" 이라고 말한다', () => {
+    // 더 이상 변하지 않는 값을 "지금 호가" 처럼 보이면 안 된다.
+    expect(krxAfterHoursLabel(kst(DAY, 21, 0), { stored: true })).toBe('시간외 · 마지막');
+    // 창 안이어도 저장본이면 같다(그 조합은 정상 경로엔 없지만 판정은 stored 우선).
+    expect(krxAfterHoursLabel(kst(DAY, 16, 30), { stored: true })).toBe('시간외 · 마지막');
+  });
 });
 
 describe('nxtPhaseLabel', () => {
@@ -161,6 +168,13 @@ describe('bookSessionControl — 갈래 판정', () => {
       ...base, nxtEnabled: true, venue: 'KRX', nowMs: kst(DAY, 11, 0),
     });
     expect(c).toEqual({ kind: 'label', label: '정규장' });
+  });
+
+  it('저장본을 그리는 중이면 토글 라벨이 "마지막" 을 단다', () => {
+    const c = bookSessionControl({
+      ...base, nxtEnabled: false, afterHoursIsStored: true, nowMs: kst(DAY, 21, 0),
+    });
+    expect(c).toMatchObject({ kind: 'toggle', afterHoursLabel: '시간외 · 마지막' });
   });
 
   it.each([[null], [undefined]])('nxt_enabled=%s(모름)이면 아무것도 그리지 않는다', (v) => {

@@ -46,6 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
+from hoga.live.api import AfterHoursBookResponse
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.lifecycle import LiveStatus
 
@@ -234,6 +235,17 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     # ⚠ FE 에 `Timeframe`(types.ts)이라는 **다른 타입**이 따로 있다 — 분봉 6개 전용
     # (`TIMEFRAME_TO_MS` 의 키)이라 여기 짝이 아니다. 이름 규칙으로 자동 매칭했다면
     # 그쪽을 짚어 상시 빨간 테스트가 됐을 것이고, 그게 자동 발견을 안 하는 이유다.
+    # **양쪽 다 필드 인라인이라 감사가 못 보는 쌍** — 손 등록 부류다. BE 는
+    # `AfterHoursBookResponse.source` 의 인라인 `Literal`, FE 는 같은 이유로 named
+    # alias 를 만들어 꺼냈다.
+    #
+    # 값이 갈리면 무증상이다: 백엔드가 `'stored'` 를 보내는데 프론트 union 이
+    # `'kiwoom'` 뿐이면 타입 에러 없이 그냥 통과하고, "저장본이라 더 이상 안 변한다"
+    # 는 신호를 프론트가 못 읽어 **닫힌 창에 5초 폴링을 계속 건다**.
+    "LiveAfterHoursSource": (
+        frozenset(get_args(AfterHoursBookResponse.model_fields["source"].annotation)),
+        "frontend/src/api/liveAfterHoursBook.ts",
+    ),
     "LiveTimeframe": (
         frozenset(get_args(m.StudyViewReference.model_fields["timeframe"].annotation)),
         "frontend/src/state/livePage.ts",

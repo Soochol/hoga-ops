@@ -32,6 +32,7 @@ from hoga.live import (
     kiwoom_rest_runtime,
     kiwoom_runtime,
 )
+from hoga.live.after_hours_store import load_book as load_stored_after_hours_book, today_kst_yyyymmdd
 from hoga.live.data_warnings import (
     LiveDataWarning,
     make_data_warning,
@@ -1885,8 +1886,58 @@ class AfterHoursBookResponse(BaseModel):
     #: `t_ms` 는 관측 시각이고 `side` 는 아예 없다. 관측이 없던 주기는 비고,
     #: **그것이 정상**이다 — 빈 자리를 메우려 여러 주기를 한 줄로 합치지 않는다.
     fills: list[AfterHoursFillModel] = Field(default_factory=list)
+    #: 이 응답이 **언제 값인가**. 벤더 실시간이면 방금, 저장본이면 그날 17:5x 다.
+    #: `base_tm` 이 아니라 이것이 신선도의 근거다(위 `base_tm` 주석의 실측).
     fetched_at_ms: int = 0
-    source: Literal["kiwoom"] = "kiwoom"
+    #: 어디서 왔는가 — **두 값이 다른 계약이다**.
+    #:
+    #:   'kiwoom'  16:00–18:00 벤더 실시간. 계속 변한다.
+    #:   'stored'  창 밖에서 내주는 그날 마지막 저장본(`after_hours_store`).
+    #:             **더 이상 변하지 않는다** — 프론트는 폴링을 걸지 말아야 하고,
+    #:             화면은 "지금 호가" 가 아니라 "마지막 호가" 라고 말해야 한다.
+    #:
+    #: ⚠ 프론트 union 미러(`LiveAfterHoursBookResponse.source`)를 **같은 PR 에서**
+    #: 고칠 것(ADR-0004). 값 드리프트는 손 미러에서 타입이 원리적으로 못 잡는다.
+    source: Literal["kiwoom", "stored"] = "kiwoom"
+
+
+def _stored_after_hours_response(code: str, data_dir: Path | None) -> AfterHoursBookResponse:
+    """창 밖 응답 — 그날 레코더가 남긴 마지막 한 장, 없으면 `active=False`.
+
+    18:00 이 지나면 `ka10087` 은 답하지 않고 그 호가는 WS 경로가 아니라 링버퍼에도
+    없다. 즉 이 함수가 **저녁에 그날 시간외를 볼 수 있는 유일한 경로**다.
+
+    `source='stored'` 로 실어 보내는 것이 계약의 요점이다 — 이 값은 더 이상 변하지
+    않으므로 프론트가 폴링을 걸어선 안 되고, 화면도 "지금" 이 아니라 "마지막" 이라고
+    말해야 한다. 시각은 `fetched_at_ms`(관측 시각)이고 `base_tm` 이 아니다.
+
+    **예상체결(`exp_*`)과 체결(`fills`)은 비어 있다.** 저장하지 않기 때문이고, 그
+    판단은 의도적이다: 예상체결은 "이 가격에 체결될 것" 이라는 뜻이라 체결이 끝난
+    뒤에는 의미가 없다. 합성 체결도 마찬가지로 관측 시각 기반이라 저장 가치가 낮다.
+    """
+    if data_dir is None:
+        return AfterHoursBookResponse(code=code, active=False)
+    stored = load_stored_after_hours_book(data_dir, today_kst_yyyymmdd(), code)
+    if stored is None:
+        return AfterHoursBookResponse(code=code, active=False)
+    return AfterHoursBookResponse(
+        code=stored.code,
+        active=True,
+        base_tm=stored.base_tm,
+        ask=[AfterHoursLevelModel(price=p, qty=q) for p, q in stored.ask],
+        bid=[AfterHoursLevelModel(price=p, qty=q) for p, q in stored.bid],
+        total_ask_qty=stored.total_ask_qty,
+        total_bid_qty=stored.total_bid_qty,
+        cur_price=stored.cur_price,
+        # 등락률은 **다시 계산하지 않는다.** 분모(당일 종가)와 분자를 저장본에서
+        # 재조립하면 벤더가 준 값과 미세하게 갈릴 수 있고, 프론트가 두 값을 같은
+        # 자리에 그린다. 종가를 실어 보내면 화면이 필요할 때 자기 규약으로 만든다.
+        change_pct=None,
+        acc_volume=stored.acc_volume,
+        close_price=stored.close_price,
+        fetched_at_ms=stored.fetched_at_ms,
+        source="stored",
+    )
 
 
 class RankingRowModel(BaseModel):
@@ -3090,7 +3141,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # ⚠ 이 모듈에서 `time` 은 **`datetime.time`** 이다(상단 import) — 벽시계는
         # `monotonic_time` 별칭으로 들어와 있다. `time.time()` 이라고 쓰면 죽는다.
         if not is_after_hours_single_price_window(int(monotonic_time.time() * 1000)):
-            return AfterHoursBookResponse(code=code, active=False)
+            # 창 밖에서는 **벤더를 치지 않는다**(위 docstring). 대신 그날 레코더가
+            # 남긴 마지막 한 장을 내준다 — 그것이 18:00 이후 이 호가를 볼 수 있는
+            # 유일한 경로다(`after_hours_store` 모듈 docstring).
+            return _stored_after_hours_response(code, data_dir)
         if kiwoom_after_hours_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:

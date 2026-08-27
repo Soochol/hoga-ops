@@ -47,6 +47,7 @@ import { useEffectiveVenue, useNxtEnabledResolver } from '../useEffectiveVenue';
 import {
   bookSessionControl,
   bookSessionEpoch,
+  hasBookSessionToggle,
   resolveBookSessionMode,
   type BookSessionMode,
   type BookSessionOverride,
@@ -233,10 +234,43 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         : null,
     [isSpot, spotSnap, spotTimeframe, scope.cursorMs, venueOb],
   );
-  // 시간외 단일가 5단(ka10087) — 16:00–18:00 창에서만 폴링한다. 그 구간엔 WS 가
-  // 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
+  // ── 세션 모드 ────────────────────────────────────────────────────────────
+  // 갈래 판정은 **종목의 NXT 상장 여부**다(`bookSessionMode`). 갈래 A(KRX 전용)만
+  // 토글을 갖고, 그 토글이 **사다리·총잔량·체결창의 출처를 한꺼번에** 가른다.
+  //
+  // 셋을 함께 묶는 것이 요점이다. 종전엔 사다리(15:30 정규장)와 총잔량(0E 시간외)의
+  // 출처가 갈려 "합이 안 맞는 게 정상" 이었고 라벨이 그 불일치를 설명했는데, 모드가
+  // 생기면 설명할 불일치 자체가 없어진다 — 한 모드는 한 장만 보여준다.
+  //
+  // 이 블록이 아래 조회들보다 **앞에 와야 한다**: 시간외 조회를 창 밖에서도 걸지가
+  // 모드에 달렸기 때문이다.
+  const nxtEnabledOf = useNxtEnabledResolver();
+  const nxtEnabled = nxtEnabledOf(code);
+  const effectiveVenue = useEffectiveVenue(code, venue);
+  // 시계가 경계를 넘으면 스스로 갱신되게 한다. 18:00 이후엔 시간외 폴링이 멎어
+  // 리렌더 유발원이 사라지므로, 이게 없으면 '시간외 단일가' 라벨이 밤새 남는다.
+  useSessionClockTick();
+  // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
+  // 하기 위해서다(탭이 잠들었다 깨어나도 맞는다. `bookSessionMode` docstring).
+  const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
+  const sessionMode = resolveBookSessionMode(sessionOverride);
+  const selectSessionMode = useCallback((mode: BookSessionMode) => {
+    setSessionOverride({ mode, epoch: bookSessionEpoch() });
+  }, []);
+  /** 모드가 출처를 가르는가 — 갈래 A 에서만 참. 갈래 B·모름은 종전 동작 그대로다. */
+  const modeGated = hasBookSessionToggle(nxtEnabled, isSpot);
+  const showAfterHours = !modeGated || sessionMode === 'afterHours';
+
+  // 시간외 단일가 5단(ka10087) — 16:00–18:00 창에서는 벤더를 폴링한다. 그 구간엔 WS
+  // 가 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
   // 아예 끈다 — 과거 시점 위에 "지금 호가"를 얹으면 거짓 정보다.
-  const afterHoursBook = useAfterHoursBook(isSpot ? null : code);
+  //
+  // `includeStored` 는 **창 밖 조회**를 연다(그날 마지막 저장본). 갈래 A 가 시간외를
+  // 가리킬 때만 켜는 이유: 모든 창이 종일 이걸 물으면 저장본이 없는 종목에까지
+  // 무의미한 왕복이 생긴다.
+  const afterHoursBook = useAfterHoursBook(isSpot ? null : code, {
+    includeStored: modeGated && sessionMode === 'afterHours',
+  });
   // 예상체결(`exp_price`/`exp_qty`)은 이 응답에 **함께** 실려 온다 — 백엔드가 ka10087
   // 과 ka10001 을 같은 TTL 축에서 치기 때문이다. 따로 폴링하지 않는 이유는 두 값의
   // 시점이 갈리면 사다리와 배너가 다른 순간을 가리키기 때문이다.
@@ -257,35 +291,16 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     inactiveSnapshot: latestSnapshot,
     bufferFallbackSnapshot: bufferSnap,
   });
-  // ── 세션 모드 ────────────────────────────────────────────────────────────
-  // 갈래 판정은 **종목의 NXT 상장 여부**다(`bookSessionMode`). 갈래 A(KRX 전용)만
-  // 토글을 갖고, 그 토글이 **사다리·총잔량·체결창의 출처를 한꺼번에** 가른다.
-  //
-  // 셋을 함께 묶는 것이 요점이다. 종전엔 사다리(15:30 정규장)와 총잔량(0E 시간외)의
-  // 출처가 갈려 "합이 안 맞는 게 정상" 이었고 라벨이 그 불일치를 설명했는데, 모드가
-  // 생기면 설명할 불일치 자체가 없어진다 — 한 모드는 한 장만 보여준다.
-  const nxtEnabledOf = useNxtEnabledResolver();
-  const effectiveVenue = useEffectiveVenue(code, venue);
-  // 시계가 경계를 넘으면 스스로 갱신되게 한다. 18:00 이후엔 시간외 폴링이 멎어
-  // 리렌더 유발원이 사라지므로, 이게 없으면 '시간외 단일가' 라벨이 밤새 남는다.
-  useSessionClockTick();
-  // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
-  // 하기 위해서다(탭이 잠들어 있다 깨어나도 맞는다. `bookSessionMode` docstring).
-  const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
-  const sessionMode = resolveBookSessionMode(sessionOverride);
   const sessionControl = bookSessionControl({
-    nxtEnabled: nxtEnabledOf(code),
+    nxtEnabled,
     // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
     // 화면엔 15:30 정지본이 뜨므로, 라벨이 그 사실을 말해야 한다.
     venue: effectiveVenue,
     isSpot,
+    // 지금 그리는 것이 저장본이면 라벨이 "마지막" 이라고 말한다 — 더 이상 변하지
+    // 않는 값을 "지금 호가" 처럼 보이면 안 된다.
+    afterHoursIsStored: afterHoursBook.data?.source === 'stored',
   });
-  const selectSessionMode = useCallback((mode: BookSessionMode) => {
-    setSessionOverride({ mode, epoch: bookSessionEpoch() });
-  }, []);
-  /** 모드가 출처를 가르는가 — 갈래 A 에서만 참. 갈래 B·모름은 종전 동작 그대로다. */
-  const modeGated = sessionControl.kind === 'toggle';
-  const showAfterHours = !modeGated || sessionMode === 'afterHours';
   // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
   // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
   // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
