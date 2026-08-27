@@ -26,6 +26,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from hoga.live.after_hours_store import (
+    StoredAfterHoursBook,
+    save_cycle,
+    today_kst_yyyymmdd,
+)
+from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.util.timeenc import KST
 
 from . import kis_runtime
@@ -713,6 +719,116 @@ async def start_sector_broadcast(
             await asyncio.sleep(interval_s)
 
     return asyncio.create_task(loop(), name="kiwoom-sector-broadcast")
+
+
+#: 시간외 마지막 호가 레코더의 주기. 시간외 단일가는 10분 주기로 체결되지만
+#: 호가는 계속 접수되므로 그보다 촘촘하게 잡는다. 이 값이 그대로 벤더 유량이 된다 —
+#: 종목 N 개면 주기당 N 콜이다.
+_AFTER_HOURS_RECORD_INTERVAL_S = 120.0
+#: 종목 사이 간격. `ka10087` 버킷의 초당 상한(`kiwoom_capacity.DEFAULT_TR_RATE_PER_SEC`
+#: = 5)의 한참 아래로 눌러 둔다 — 이 fetcher 는 거버너를 타지 않으므로(직접 httpx)
+#: 페이싱을 여기서 스스로 해야 한다.
+_AFTER_HOURS_RECORD_CODE_GAP_S = 0.25
+
+
+def start_after_hours_recorder(
+    data_dir: Path,
+    *,
+    get_codes: Callable[[], list[str]],
+    fetch: Callable[[str], object],
+    interval_s: float = _AFTER_HOURS_RECORD_INTERVAL_S,
+    code_gap_s: float = _AFTER_HOURS_RECORD_CODE_GAP_S,
+) -> asyncio.Task:
+    """시간외 단일가 마지막 호가를 일자 파일에 적는 레코더 (16:00–18:00 KST).
+
+    ## 왜 이 태스크가 있는가
+
+    `ka10087` 은 그 창 밖에서 답하지 않는다. 프론트가 그때그때 폴링해 화면에만 들고
+    있으므로 **18:00 이 지나거나 새로고침하면 그날 시간외가 사라진다** — 저장하는
+    주체가 아무도 없다(WS 경로가 아니라 링버퍼에도 안 쌓인다). 이 루프가 그 구멍만
+    닫는다: 창 안에서 주기적으로 훑어 종목당 마지막 한 장을 남긴다.
+
+    ## 대상은 **watchlist ∩ NXT 미상장** 이다
+
+    `get_codes` 가 그 교집합을 준다. NXT 상장 종목을 빼는 것이 load-bearing 이다 —
+    그쪽 10호가 창에는 세션 토글이 없어(`bookSessionMode` 갈래 B) 저장해도 화면에
+    나올 길이 없고, 애프터마켓 호가는 어차피 WS 로 와서 링버퍼에 쌓인다. 표시되지
+    않을 데이터를 위해 자격증명을 쥔 프로세스가 벤더를 치는 것은 이 리포가 반복해서
+    대가를 치른 형태다.
+
+    ## ⚠ 유량 — `ka10001` 도 함께 나간다
+
+    `fetch` 는 fetcher 의 `get()` 이고, 그 안에서 `ka10087`(호가)과 `ka10001`(예상체결)을
+    **같은 TTL 축에서 친다**. 예상체결을 저장하지도 않으면서 치는 셈이지만, 별도
+    경로를 만들지 않는 이유는 그 fetcher 의 TTL 캐시가 `(book, expected)` 를 한 쌍으로
+    들고 **프론트 경로와 공유**하기 때문이다 — book 만 담는 경로가 캐시에 `(book, None)`
+    을 쓰면 같은 종목을 보고 있는 사용자의 예상체결 배너가 3초 동안 빈다.
+
+    그래서 캐시를 공유한 채 두고 유량만 눌렀다: 2분 주기 × N 종목이면 TR 당 ~0.2 콜/초
+    로, 버킷 상한(5/s)의 4% 다. **이 fetcher 는 거버너를 타지 않으므로**(직접 httpx)
+    페이싱은 아래 `code_gap_s` 가 스스로 한다.
+
+    ## 실패는 종목 단위로 격리한다
+
+    한 종목이 실패해도 나머지를 계속 훑고, 그 주기의 성공분만 **병합** 저장한다
+    (`save_cycle`). 통째 교체면 마감 직전 주기의 부분 실패가 그날 데이터를 날린다.
+
+    ## 마감 캡처를 따로 두지 않는다
+
+    18:00 직전 주기가 곧 마감 캡처다 — 2분 주기면 마지막 실행이 17:58–18:00 에
+    들어온다. 별도 시각 트리거를 두면 "창 판정" 이 두 곳으로 갈린다.
+
+    자격증명이 없으면 `fetch` 가 매번 실패해 저장할 것이 없고, 루프는 조용히 돈다.
+    호출자가 fetcher 미배선을 알면 아예 시작하지 않는 편이 낫다.
+    """
+    async def _record_once() -> None:
+        codes = get_codes()
+        if not codes:
+            return
+        books: dict[str, StoredAfterHoursBook] = {}
+        for i, code in enumerate(codes):
+            # ⚠ **간격은 루프 맨 앞에 있어야 한다.** 아래 두 `continue`(fetch 실패 ·
+            # 빈 사다리)가 흔한 경로다 — 대부분의 종목에 시간외 주문이 없어 빈
+            # 사다리가 정상이다. 간격이 뒤에 있으면 그 종목들이 HTTP 지연(실측
+            # 30~170ms)만으로 연달아 나가 초당 5~10콜이 되고, ka10087 버킷의 상한
+            # (`kiwoom_capacity.DEFAULT_TR_RATE_PER_SEC` = 5)을 넘는다.
+            if i > 0:
+                await asyncio.sleep(code_gap_s)
+            try:
+                view = await fetch(code)  # type: ignore[misc]
+            except Exception:  # noqa: BLE001 — 한 종목 실패가 나머지를 막지 않는다
+                _log.exception("live.after_hours.record_fetch_failed code=%s", code)
+                continue
+            book = view.book  # type: ignore[attr-defined]
+            # 전 단계가 0 이면 그 종목에 시간외 주문이 없다는 뜻 — 빈 사다리를 저장하면
+            # 저녁 조회가 "있는데 비었다" 로 보인다. 라우트가 같은 판정을 한다.
+            if not book.has_quotes:
+                continue
+            books[code] = StoredAfterHoursBook(
+                code=code,
+                ask=tuple((lv.price, lv.qty) for lv in book.ask),
+                bid=tuple((lv.price, lv.qty) for lv in book.bid),
+                total_ask_qty=book.total_ask_qty,
+                total_bid_qty=book.total_bid_qty,
+                cur_price=book.cur_price,
+                close_price=book.close_price,
+                acc_volume=book.acc_volume,
+                base_tm=book.base_tm,
+                fetched_at_ms=view.fetched_at_ms,  # type: ignore[attr-defined]
+            )
+        save_cycle(data_dir, today_kst_yyyymmdd(), books)
+
+    async def loop() -> None:
+        while True:
+            try:
+                if is_after_hours_single_price_window(int(time.time() * 1000)):
+                    await _record_once()
+            except Exception:  # noqa: BLE001 — 레코더가 죽으면 저녁 조회만 빈다
+                _log.exception("live.after_hours.record_cycle_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="after-hours-recorder")
+
 
 
 def start_trading_calendar_refresher(

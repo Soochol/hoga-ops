@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -58,9 +58,27 @@ vi.mock('../../api/liveSeries', () => ({
 // 다른 경로**를 탄다(그 시간대에 돌리면 훅이 실제 fetch 를 시도한다). 창 밖 동작을
 // 기본으로 고정하고, 창 안 동작은 전용 스펙(`liveAfterHoursBook.test.ts`)이 순수
 // 함수로 검증한다.
+//
+// 세션 모드 스펙만 `afterHoursBookResult` 를 채워 "창 안" 을 흉내낸다 — 그때는
+// 실시각이 아니라 `Date.now` 스파이가 국면을 정한다.
+const afterHoursBookResult = vi.hoisted(() => ({ data: undefined as unknown }));
+//: 마지막 호출의 옵션. `includeStored` 가 **창 밖 벤더 왕복의 게이트**라 값이 아니라
+//: 인자를 검사해야 계약이 잡힌다.
+const afterHoursBookOpts = vi.hoisted(() => ({ last: undefined as unknown }));
 vi.mock('../../api/liveAfterHoursBook', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/liveAfterHoursBook')>()),
-  useAfterHoursBook: () => ({ data: undefined }),
+  useAfterHoursBook: (_code: string | null, opts?: unknown) => {
+    afterHoursBookOpts.last = opts;
+    return afterHoursBookResult;
+  },
+}));
+
+// 심볼 마스터 — `useNxtEnabledResolver` 의 자료원이다. 기본은 **빈 마스터**라
+// 전 코드가 `undefined`(모름)이고, 그러면 세션 갈래가 `none` 이 되어 이 파일의
+// 나머지 스펙이 종전 경로를 그대로 탄다.
+const symbolMaster = vi.hoisted(() => ({ symbols: [] as unknown[] }));
+vi.mock('../../capture/useSymbols', () => ({
+  useSymbols: () => ({ data: { symbols: symbolMaster.symbols } }),
 }));
 
 // 스팟 훅은 게이트(코드 인자) 검증용 스파이 — 실제 fetch 는 useLiveCursor.test 소관.
@@ -80,12 +98,22 @@ vi.mock('./BookPanel', () => ({
     limits,
     vi: viEvent,
     stale,
+    snapshot,
+    afterHoursTotals,
+    sessionControl,
+    sessionMode,
+    onSelectSessionMode,
   }: {
     maskRatio: boolean;
     baselinePrice: number | null;
     limits: unknown;
     vi: unknown;
     stale?: boolean;
+    snapshot: { ts_ms: number } | null | undefined;
+    afterHoursTotals?: { ask: number; bid: number } | null;
+    sessionControl?: { kind: string; afterHoursLabel?: string };
+    sessionMode?: string;
+    onSelectSessionMode?: (mode: string) => void;
   }) => (
     <div>
       <div>mask:{String(maskRatio)}</div>
@@ -93,6 +121,30 @@ vi.mock('./BookPanel', () => ({
       <div>limits:{limits === null || limits === undefined ? 'null' : 'set'}</div>
       <div>vi:{viEvent === null || viEvent === undefined ? 'null' : 'set'}</div>
       <div>stale:{String(stale ?? false)}</div>
+      {/* 세션 스펙의 관측점. `ts_ms` 로 **어느 장의 사다리인지** 를 가른다 —
+          모드 게이트가 실제로 소스를 바꾸는지는 이것 말고 볼 방법이 없다. */}
+      <div>
+        snapshot:
+        {snapshot === undefined ? 'undefined' : snapshot === null ? 'null' : String(snapshot.ts_ms)}
+      </div>
+      <div>
+        session:{sessionControl?.kind ?? 'none'}/{sessionMode ?? 'regular'}
+      </div>
+      <div>
+        ahLabel:
+        {sessionControl && 'afterHoursLabel' in sessionControl
+          ? (sessionControl as { afterHoursLabel: string }).afterHoursLabel
+          : '-'}
+      </div>
+      {/* 모드가 사다리와 총잔량을 **함께** 묶는지의 관측점. 사다리만 되돌리고
+          총잔량은 시간외로 남으면 한 창이 두 장을 보이게 된다. */}
+      <div>totals:{afterHoursTotals === null || afterHoursTotals === undefined ? 'null' : 'set'}</div>
+      <button type="button" onClick={() => onSelectSessionMode?.('afterHours')}>
+        go-after-hours
+      </button>
+      <button type="button" onClick={() => onSelectSessionMode?.('regular')}>
+        go-regular
+      </button>
     </div>
   ),
 }));
@@ -738,5 +790,246 @@ describe('resolveBookBaseline', () => {
     expect(
       resolveBookBaseline({ ...base, isPastDateLadder: true, singlePriceActive: true }),
     ).toBe(208_500);
+  });
+});
+
+describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  /** 정규장 마지막 스냅샷의 시각 — 사다리 판별자로 쓴다. */
+  const REGULAR_TS = 1787_000_000_000;
+  /** 시간외 응답의 `fetched_at_ms` — `afterHoursBookToSnapshot` 이 이걸 ts_ms 로 옮긴다. */
+  const AFTER_HOURS_TS = 1787_000_999_000;
+  /** 2026-08-27(목) 16:30 KST — 시간외 단일가 창 안. */
+  const AT_1630_KST = Date.UTC(2026, 7, 27, 7, 30);
+
+  function obAt(tMs: number) {
+    const levels = (base: number) =>
+      Array.from({ length: 5 }, (_, i) => ({ price: 1000 + i, qty: base + i }));
+    return { t_ms: tMs, total_ask_qty: 10, total_bid_qty: 10, asks: levels(1), bids: levels(2) };
+  }
+
+  function afterHoursResponse() {
+    return {
+      code: symbol.code,
+      active: true,
+      base_tm: '160000',
+      ask: Array.from({ length: 5 }, (_, i) => ({ price: 2000 + i, qty: 50 + i })),
+      bid: Array.from({ length: 5 }, (_, i) => ({ price: 1900 - i, qty: 60 + i })),
+      total_ask_qty: 777,
+      total_bid_qty: 888,
+      cur_price: 1950,
+      change_pct: 0,
+      acc_volume: 0,
+      close_price: 1950,
+      exp_price: null,
+      exp_qty: null,
+      fills: [],
+      fetched_at_ms: AFTER_HOURS_TS,
+      source: 'kiwoom' as const,
+    };
+  }
+
+  /** 코드→`nxt_enabled` 를 심는다. `undefined` 면 마스터에 그 코드가 없는 상태(=모름). */
+  function seedMaster(nxtEnabled: boolean | undefined) {
+    symbolMaster.symbols =
+      nxtEnabled === undefined
+        ? []
+        : [{ code: symbol.code, name: symbol.name, market: 'KOSPI', nxt_enabled: nxtEnabled }];
+  }
+
+  beforeEach(() => {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
+    // 실시각이 아니라 이 값이 국면을 정한다 — fake timers 를 켜지 않는 이유는
+    // `useSessionClockTick` 의 setInterval 까지 테스트가 쥐게 되기 때문이다.
+    vi.spyOn(Date, 'now').mockReturnValue(AT_1630_KST);
+    liveSeriesBuffers.ob = [obAt(REGULAR_TS)];
+    afterHoursBookResult.data = afterHoursResponse();
+  });
+
+  afterEach(() => {
+    vi.mocked(Date.now).mockRestore();
+    liveSeriesBuffers.ob = [];
+    afterHoursBookResult.data = undefined;
+    symbolMaster.symbols = [];
+  });
+
+  describe('갈래 A — KRX 전용 종목(nxt_enabled=false)', () => {
+    beforeEach(() => seedMaster(false));
+
+    it('16:30 기본은 시간외 — 시계를 따르므로 클릭 없이 전환된다', () => {
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText('session:toggle/afterHours')).toBeInTheDocument();
+      expect(screen.getByText(`snapshot:${AFTER_HOURS_TS}`)).toBeInTheDocument();
+    });
+
+    it('정규장을 누르면 **사다리가 15:30 정지본으로 되돌아간다**', () => {
+      // 이 기능의 핵심 배선이다 — 종전엔 시간외 응답이 오면 되돌릴 수단이 없었다.
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      fireEvent.click(screen.getByText('go-regular'));
+      expect(screen.getByText('session:toggle/regular')).toBeInTheDocument();
+      expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
+    });
+
+    it('정규장 모드는 총잔량도 함께 되돌린다 — 한 창은 한 장만 보인다', () => {
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText('totals:set')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('go-regular'));
+      expect(screen.getByText('totals:null')).toBeInTheDocument();
+    });
+
+    it('다시 시간외로 돌아올 수 있다', () => {
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      fireEvent.click(screen.getByText('go-regular'));
+      fireEvent.click(screen.getByText('go-after-hours'));
+      expect(screen.getByText(`snapshot:${AFTER_HOURS_TS}`)).toBeInTheDocument();
+    });
+
+    it('시간외 모드인데 응답이 없으면 정규장으로 폴백하지 않는다 — 빈 사다리다', () => {
+      // 폴백하면 "시간외" 라벨 아래 정규장 사다리가 놓여 라벨이 거짓말이 된다.
+      // 되돌릴 토글이 바로 옆에 있으므로 비우는 편이 정직하다.
+      afterHoursBookResult.data = undefined;
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText('session:toggle/afterHours')).toBeInTheDocument();
+      expect(screen.getByText('snapshot:null')).toBeInTheDocument();
+    });
+  });
+
+  describe('갈래 B — NXT 상장 종목(nxt_enabled=true)', () => {
+    beforeEach(() => seedMaster(true));
+
+    it('토글이 아니라 라벨이고, 사다리 동작은 종전 그대로다', () => {
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText('session:label/afterHours')).toBeInTheDocument();
+      // 갈래 B 는 모드가 소스를 가르지 않는다 — 시간외 응답이 있으면 그것.
+      expect(screen.getByText(`snapshot:${AFTER_HOURS_TS}`)).toBeInTheDocument();
+    });
+  });
+
+  describe('모름 — 마스터에 없는 코드', () => {
+    beforeEach(() => seedMaster(undefined));
+
+    it('아무것도 그리지 않고 종전 경로를 탄다', () => {
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText('session:none/afterHours')).toBeInTheDocument();
+      expect(screen.getByText(`snapshot:${AFTER_HOURS_TS}`)).toBeInTheDocument();
+    });
+  });
+
+  describe('스팟 커서', () => {
+    beforeEach(() => seedMaster(false));
+
+    it('과거 시점 위에서는 세션 선택을 숨긴다', () => {
+      publishGroupChartLink(chartLink({ todayKst: '20260827' }));
+      useLiveCursorStore.getState().setSidebarCursor(AT_1630_KST - 3_600_000, {
+        windowId: 'cw1', group: 1, timeframe: '1m', code: symbol.code,
+      });
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      expect(screen.getByText(/^session:none\//)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('DataWindow 시간외 저장본 (Phase B)', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  const STORED_TS = 1_787_000_888_000;
+  /** 2026-08-27(목) 21:00 KST — 시간외 창 **밖**. 벤더는 답하지 않는다. */
+  const AT_2100_KST = Date.UTC(2026, 7, 27, 12, 0);
+  const AT_1630_KST = Date.UTC(2026, 7, 27, 7, 30);
+
+  function storedResponse() {
+    return {
+      code: symbol.code,
+      active: true,
+      base_tm: '160000',
+      ask: [{ price: 2000, qty: 50 }],
+      bid: [{ price: 1990, qty: 60 }],
+      total_ask_qty: 50,
+      total_bid_qty: 60,
+      cur_price: 1995,
+      change_pct: null,
+      acc_volume: 12_345,
+      close_price: 1995,
+      exp_price: null,
+      exp_qty: null,
+      fills: [],
+      fetched_at_ms: STORED_TS,
+      source: 'stored' as const,
+    };
+  }
+
+  function seedKrxOnly() {
+    symbolMaster.symbols = [
+      { code: symbol.code, name: symbol.name, market: 'KOSPI', nxt_enabled: false },
+    ];
+  }
+
+  beforeEach(() => {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
+    liveSeriesBuffers.ob = [];
+    afterHoursBookOpts.last = undefined;
+  });
+
+  afterEach(() => {
+    vi.mocked(Date.now).mockRestore();
+    afterHoursBookResult.data = undefined;
+    symbolMaster.symbols = [];
+    liveSeriesBuffers.ob = [];
+  });
+
+  it('21시에도 저장본으로 사다리를 그린다 — Phase B 가 닫은 구멍', () => {
+    // 이 칸이 Phase A 에서 비어 있던 유일한 셀이다("18:00 이후 새로고침").
+    vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
+    seedKrxOnly();
+    afterHoursBookResult.data = storedResponse();
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('session:toggle/afterHours')).toBeInTheDocument();
+    expect(screen.getByText(`snapshot:${STORED_TS}`)).toBeInTheDocument();
+  });
+
+  it('저장본이면 라벨이 "마지막" 이라고 말한다', () => {
+    // 더 이상 변하지 않는 값을 "지금 호가" 처럼 보이면 안 된다.
+    vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
+    seedKrxOnly();
+    afterHoursBookResult.data = storedResponse();
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('ahLabel:시간외 · 마지막')).toBeInTheDocument();
+  });
+
+  it('창 밖 조회는 **갈래 A 가 시간외를 가리킬 때만** 켠다', () => {
+    // 유량 계약이다 — 모든 창이 종일 이걸 물으면 저장본 없는 종목에까지 왕복이 생긴다.
+    vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
+    seedKrxOnly();
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(afterHoursBookOpts.last).toMatchObject({ includeStored: true });
+  });
+
+  it('정규장 모드로 되돌리면 창 밖 조회를 끈다', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
+    seedKrxOnly();
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    fireEvent.click(screen.getByText('go-regular'));
+    expect(afterHoursBookOpts.last).toMatchObject({ includeStored: false });
+  });
+
+  it('NXT 종목은 창 밖 조회를 켜지 않는다 — 그 데이터가 화면에 나올 길이 없다', () => {
+    // 갈래 B 에는 토글이 없고, 애프터마켓 호가는 WS 로 와서 이미 링버퍼에 쌓인다.
+    vi.spyOn(Date, 'now').mockReturnValue(AT_2100_KST);
+    symbolMaster.symbols = [
+      { code: symbol.code, name: symbol.name, market: 'KOSPI', nxt_enabled: true },
+    ];
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(afterHoursBookOpts.last).toMatchObject({ includeStored: false });
+  });
+
+  it('창 안(16:30)에서는 라벨이 저장본 문안이 아니다', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(AT_1630_KST);
+    seedKrxOnly();
+    afterHoursBookResult.data = { ...storedResponse(), source: 'kiwoom' as const };
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('ahLabel:시간외 단일가')).toBeInTheDocument();
   });
 });

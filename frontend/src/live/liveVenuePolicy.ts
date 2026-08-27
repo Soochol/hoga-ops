@@ -29,10 +29,6 @@ export function liveVenueDisplayLabel(venue: LiveVenueOption): string {
   return LIVE_VENUE_LABELS[venue];
 }
 
-export function liveVenueKeepsHogaKrx(venue: LiveVenueOption): boolean {
-  return venue !== 'KRX';
-}
-
 export function liveVenueUsesExtendedMinuteWindow(venue: LiveVenueOption): boolean {
   return venue !== 'KRX';
 }
