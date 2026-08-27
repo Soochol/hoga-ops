@@ -442,7 +442,6 @@ type Store = Persisted & IndicatorSettings & {
    *  별도 스토어라 호출부에서 함께 리셋한다. */
   resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
-  setPeakWallPaneEnabled: (enabled: boolean) => void;
   setPeakWallPaneSlotEnabled: (
     side: 'ask' | 'bid',
     family: 'Traded' | 'Unreached' | 'AllWall',

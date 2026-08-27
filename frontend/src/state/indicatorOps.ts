@@ -66,6 +66,65 @@ function normalizeBrokerLateEntryStartHHMM(value: number): number {
 
 type Patch = Partial<IndicatorSettings> | null;
 
+/**
+ * 강도 pane 슬롯 6칸(방향 × 계열)의 키.
+ *
+ * pane 의 존재가 이 여섯의 **OR** 이므로(`setPeakWallPaneSlotEnabled`), 한 칸을 움직일
+ * 때마다 나머지 다섯을 읽어야 한다 — 좌표(방향 × 계열) 표와 평평한 목록을 함께 두는
+ * 이유가 그것이다. 문자열로 조립하지 않는다: 오타가 타입을 통과하고, 「그 상태가
+ * 어디서 읽히는가」를 grep 으로 못 찾게 된다.
+ */
+type PeakWallPaneSlotKey =
+  | 'askPeakTradedPaneEnabled' | 'askPeakUnreachedPaneEnabled' | 'askPeakAllWallPaneEnabled'
+  | 'bidPeakTradedPaneEnabled' | 'bidPeakUnreachedPaneEnabled' | 'bidPeakAllWallPaneEnabled';
+
+const PEAK_WALL_PANE_SLOT_KEY: Record<
+  'ask' | 'bid',
+  Record<'Traded' | 'Unreached' | 'AllWall', PeakWallPaneSlotKey>
+> = {
+  ask: {
+    Traded: 'askPeakTradedPaneEnabled',
+    Unreached: 'askPeakUnreachedPaneEnabled',
+    AllWall: 'askPeakAllWallPaneEnabled',
+  },
+  bid: {
+    Traded: 'bidPeakTradedPaneEnabled',
+    Unreached: 'bidPeakUnreachedPaneEnabled',
+    AllWall: 'bidPeakAllWallPaneEnabled',
+  },
+};
+
+const PEAK_WALL_PANE_SLOT_KEYS: readonly PeakWallPaneSlotKey[] = [
+  'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
+  'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
+];
+
+/** 한 칸만 담은 패치. 계산된 키(`{ [key]: value }`)를 쓰면 TS 가 `{ [k: string]: boolean }`
+ *  으로 넓혀 `Partial<IndicatorSettings>` 에 붙지 않으므로 여섯을 명시로 편다. */
+function paneSlotPatch(key: PeakWallPaneSlotKey, value: boolean): Partial<IndicatorSettings> {
+  switch (key) {
+    case 'askPeakTradedPaneEnabled': return { askPeakTradedPaneEnabled: value };
+    case 'askPeakUnreachedPaneEnabled': return { askPeakUnreachedPaneEnabled: value };
+    case 'askPeakAllWallPaneEnabled': return { askPeakAllWallPaneEnabled: value };
+    case 'bidPeakTradedPaneEnabled': return { bidPeakTradedPaneEnabled: value };
+    case 'bidPeakUnreachedPaneEnabled': return { bidPeakUnreachedPaneEnabled: value };
+    case 'bidPeakAllWallPaneEnabled': return { bidPeakAllWallPaneEnabled: value };
+  }
+}
+
+/** 이 칸만 켜고 나머지 다섯을 끈 패치 — **닫혀 있던 pane 을 여는 클릭**이 쓴다.
+ *  왜 저장값을 살리지 않는지는 `setPeakWallPaneSlotEnabled` 의 주석에 있다. */
+function onlyPaneSlot(key: PeakWallPaneSlotKey): Partial<IndicatorSettings> {
+  return {
+    askPeakTradedPaneEnabled: key === 'askPeakTradedPaneEnabled',
+    askPeakUnreachedPaneEnabled: key === 'askPeakUnreachedPaneEnabled',
+    askPeakAllWallPaneEnabled: key === 'askPeakAllWallPaneEnabled',
+    bidPeakTradedPaneEnabled: key === 'bidPeakTradedPaneEnabled',
+    bidPeakUnreachedPaneEnabled: key === 'bidPeakUnreachedPaneEnabled',
+    bidPeakAllWallPaneEnabled: key === 'bidPeakAllWallPaneEnabled',
+  };
+}
+
 function patchMaSlot(
   current: readonly LiveMAConfig[],
   id: string,
@@ -298,39 +357,49 @@ export const INDICATOR_OPS = {
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),
-  setPeakWallPaneEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ peakWallPaneEnabled: enabled }),
-  /** 강도 pane 의 슬롯 6칸(방향 × 계열) — 캔들 선 토글과 독립이다
-   *  (`liveIndicatorsPersistence` 의 `askPeakTradedPaneEnabled` 주석). 키를 문자열로
-   *  조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다.
+  /**
+   * 강도 pane 의 슬롯 6칸(방향 × 계열) — 캔들 선 토글과 독립이다
+   * (`liveIndicatorsPersistence` 의 `askPeakTradedPaneEnabled` 주석). 키를 문자열로
+   * 조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다.
    *
-   *  ## 켜기는 마스터를 함께 연다 (2026-08-27)
+   * ## pane 의 존재 = 여섯 칸의 OR (2026-08-27, 사용자 결정)
    *
-   *  슬롯 토글이 앉는 자리가 단계 ② 의 계열 행이라, 사용자에게 그 스위치는
-   *  **「이 계단을 pane 에 추가」** 다. 마스터(`peakWallPaneEnabled`)가 꺼져 있으면
-   *  pane spec 게이트가 닫혀 있어(`paneSpecsForTimeframe`) 켜도 아무것도 나타나지
-   *  않으므로, 켜는 쪽만 마스터를 함께 연다. `setAskPeakEnabled` 가
-   *  `askPeakHidden: false` 를 같은 패치에 넣는 것과 같은 결합이다 — 두 번 쓰지 않고
-   *  한 패치에 두는 이유도 같다(undo 한 항목, 프리셋 경로에서도 결합 유지).
+   * 마스터(`peakWallPaneEnabled`)는 더 이상 사람이 직접 미는 스위치가 아니다.
+   * 설정 패널 ⑤ 의 토글을 없애고 **이 op 이 마스터를 관리한다** — 칸이 하나라도
+   * 켜지면 pane 이 있고, 여섯이 다 꺼지면 없다. 종전엔 켜기만 마스터를 열었고
+   * 끄기는 건드리지 않아, 「칸은 다 껐는데 빈 pane 이 남는」 상태가 있었다.
    *
-   *  **끄기는 마스터를 건드리지 않는다.** 마지막 칸을 끄면 pane 이 비는데, 그건 이미
-   *  오늘도 가능한 상태이고(마스터만 켜고 여섯을 다 끈 경우) 자동으로 닫으면 다시
-   *  켤 때 어느 칸이 살아나는지가 사용자에게 안 보인다. */
+   * **판정은 여섯 전부다 — 화면에 보이는 셋이 아니다.** pane 은 매도·매수가 공유하는
+   * 하나라, 매수 칸이 켜져 있는 동안 매도 셋을 다 꺼도 pane 은 남아야 한다(그 안에
+   * 매수 계단이 있다). 그 사실은 ⑤ 의 요약 줄이 화면에서 말한다.
+   *
+   * ## 닫혀 있던 pane 을 여는 클릭은 **그 칸 하나만** 넣는다
+   *
+   * 공장값이 양방향 체결된 벽 슬롯을 켜 둔 채라(`liveIndicatorsPersistence`), 단순히
+   * 마스터만 열면 「미도달 벽 하나를 켰는데 계단이 셋 뜨는」 일이 생긴다 — 저장돼
+   * 있던 두 칸이 함께 되살아나기 때문이다. 켜기와 끄기가 대칭이려면(끄면 그것만,
+   * 켜면 그것만) 여는 순간에 나머지 다섯을 함께 닫아야 한다.
+   *
+   * 그 대가로 **접혀 있던 저장값은 다음 arm 에서 버려진다**. 설정 패널의 요약 줄이
+   * 「되켜면 무엇이 돌아오는지」를 말하지 않고 **지금 들어 있는 것만** 말하는 이유다.
+   *
+   * 한 패치에 담는 이유는 `setAskPeakEnabled` 가 `askPeakHidden: false` 를 함께 쓰는
+   * 것과 같다 — undo 한 항목, 프리셋 경로에서도 결합 유지.
+   */
   setPeakWallPaneSlotEnabled: (
-    _cur: IndicatorSettings,
+    cur: IndicatorSettings,
     side: 'ask' | 'bid',
     family: 'Traded' | 'Unreached' | 'AllWall',
     enabled: boolean,
   ): Patch => {
-    const arm = enabled ? { peakWallPaneEnabled: true } : {};
-    if (side === 'ask') {
-      if (family === 'Traded') return { ...arm, askPeakTradedPaneEnabled: enabled };
-      if (family === 'Unreached') return { ...arm, askPeakUnreachedPaneEnabled: enabled };
-      return { ...arm, askPeakAllWallPaneEnabled: enabled };
+    const key = PEAK_WALL_PANE_SLOT_KEY[side][family];
+    if (!enabled) {
+      // 마지막 칸이면 pane 이 사라진다 — 나머지 다섯을 읽어 판정한다.
+      const othersOn = PEAK_WALL_PANE_SLOT_KEYS.some((k) => k !== key && cur[k]);
+      return { ...paneSlotPatch(key, false), peakWallPaneEnabled: othersOn };
     }
-    if (family === 'Traded') return { ...arm, bidPeakTradedPaneEnabled: enabled };
-    if (family === 'Unreached') return { ...arm, bidPeakUnreachedPaneEnabled: enabled };
-    return { ...arm, bidPeakAllWallPaneEnabled: enabled };
+    if (!cur.peakWallPaneEnabled) return { ...onlyPaneSlot(key), peakWallPaneEnabled: true };
+    return { ...paneSlotPatch(key, true), peakWallPaneEnabled: true };
   },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),
