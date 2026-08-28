@@ -896,6 +896,45 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       expect(screen.getByText('totals:null')).toBeInTheDocument();
     });
 
+    it('⚠ 정규장으로 되돌리면 **등락률 분모도** 전일종가로 돌아온다', () => {
+      // 사용자 보고 2026-08-28: 사다리·체결창은 정규장으로 돌아오는데 등락률만
+      // 시간외 기준(당일 종가)에 남았다. 한 창 안에 두 기준이 섞이는 오류이고,
+      // `resolveBookBaseline` docstring 이 시각 축에서 고쳤다고 적어 둔 그 버그가
+      // **모드 축에서 재발**한 것이다(028050 실측: 같은 47,900 이 −0.42% vs −3.82%).
+      //
+      // 분모는 화면에 숫자로 안 보이므로 사다리·체결창이 맞으면 눈에 안 띈다 —
+      // 그래서 단언으로 못박는다.
+      const prevClose = 2100; // 전일종가. 시간외 응답의 close_price(1950)와 달라야 한다.
+      // ⚠ 픽스처 시각을 **오늘로 맞춘다**. 부모 describe 의 `REGULAR_TS`/`AFTER_HOURS_TS`
+      // 는 날짜 판별자로만 쓰는 임의 값이라 모킹된 오늘(8/27)과 다르고, 그러면
+      // `isPastDateLadder` 가 먼저 걸려 분모가 **과거 날짜 갈래로 빠진다**(우선순위 1).
+      // 그 상태에서는 이 스펙이 재고 싶은 분기에 도달조차 못 한다.
+      const todayLadderMs = Date.UTC(2026, 7, 27, 6, 30); // 15:30 KST
+      const todayAfterHoursMs = Date.UTC(2026, 7, 27, 7, 30); // 16:30 KST
+      liveSeriesBuffers.ob = [obAt(todayLadderMs)];
+      afterHoursBookResult.data = { ...afterHoursResponse(), fetched_at_ms: todayAfterHoursMs };
+      vi.mocked(useQuoteByCode).mockReturnValue(
+        new Map([
+          [
+            symbol.code,
+            {
+              code: symbol.code,
+              price: 1950,
+              change_pct: 0,
+              change_won: 0,
+              baseline_price: prevClose,
+              change_pct_source: 'kis',
+            } as LiveQuote,
+          ],
+        ]),
+      );
+      renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+      // 16:30 기본은 시간외 — 그 구간의 분모는 **당일 종가**가 맞다.
+      expect(screen.getByText('baseline:1950')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('go-regular'));
+      expect(screen.getByText(`baseline:${prevClose}`)).toBeInTheDocument();
+    });
+
     it('다시 시간외로 돌아올 수 있다', () => {
       renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
       fireEvent.click(screen.getByText('go-regular'));

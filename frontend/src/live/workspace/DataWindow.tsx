@@ -282,6 +282,22 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     () => afterHoursBookToSnapshot(afterHoursBook.data),
     [afterHoursBook.data],
   );
+  /**
+   * 시간외 단일가 응답을 **이 창이 실제로 쓰는가** — 쓰면 그 스냅샷, 아니면 null.
+   *
+   * ⚠ **게이트를 값에 굽는 것이 요점이다.** 종전에는 소비처마다
+   * `showAfterHours && singlePriceSnapshot !== null` 을 손으로 따로 적었고, 그 중
+   * **등락률 분모 한 곳만 `showAfterHours` 를 빠뜨렸다**. 결과: 갈래 A 에서 16:00–18:00
+   * 에 정규장으로 되돌리면 사다리·체결창·총잔량은 정규장인데 **분모만 시간외 종가**로
+   * 남아 한 창에 두 기준이 섞였다(사용자 보고 2026-08-28). `resolveBookBaseline` 이
+   * 시각 축에서 고쳤다고 적어 둔 바로 그 오류가 모드 축에서 재발한 것이다.
+   *
+   * 소비처가 이 값 하나만 보면 같은 실수가 구조적으로 불가능해진다.
+   *
+   * ⚠ 사다리(`snapshot`)는 **이 값을 쓰지 않는다.** 갈래 A 의 시간외 모드는 응답이
+   * 없어도 정규장으로 폴백하지 않는다는 별도 규약이라 식이 다르다(아래 참조).
+   */
+  const activeSinglePrice = showAfterHours ? singlePriceSnapshot : null;
   // 합성 체결 — 이 구간의 체결창 내용이다. 벤더가 개별 체결을 주지 않아 백엔드가
   // 누적 증분에서 만든 것이고(`AfterHoursFillModel`), **WS 체결 경로를 타지 않는다**.
   // 그래서 venue 필터와도 무관하다 — 애초에 그 파이프에 들어오지 않는다.
@@ -315,10 +331,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // ka10087 총잔량은 **사다리와 한 몸이다** — 같은 응답에서 왔고 합이 맞는다.
     // 그래서 시간외 모드에서만 쓴다. 정규장 모드의 사다리는 정규장 값이라, 거기에
     // 5단 총잔량을 얹으면 두 숫자가 화면에 없는 사다리를 설명하게 된다.
-    if (showAfterHours && singlePriceSnapshot !== null) {
+    if (activeSinglePrice !== null) {
       // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
       // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
-      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
+      return { ask: activeSinglePrice.tot_ask, bid: activeSinglePrice.tot_bid };
     }
     // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
     // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
@@ -342,10 +358,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // 신호가 사라지는 회귀가 된다.
     return snapshot != null && realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
   }, [
-    isSpot, showAfterHours, singlePriceSnapshot, live.afterHours, afterHoursBook.data,
+    isSpot, showAfterHours, activeSinglePrice, live.afterHours, afterHoursBook.data,
     latestSnapshot, snapshot, todayKst,
   ]);
-  const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
+  const afterHoursLabel = activeSinglePrice !== null ? '시간외 단일가' : '시간외';
   const sessionControl = bookSessionControl({
     nxtEnabled,
     // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
@@ -432,7 +448,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const baselinePrice = resolveBookBaseline({
     isPastDateLadder,
     ladderBaseline,
-    singlePriceActive: singlePriceSnapshot !== null,
+    singlePriceActive: activeSinglePrice !== null,
     singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline,
   });
@@ -524,7 +540,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // ⚠ 판정에 `showAfterHours` 가 들어간다 — 갈래 A 의 정규장 모드에서는 시간외
   // 응답이 도착해 있어도 **쓰지 않는다.** 사다리만 정규장으로 되돌리고 체결창은
   // 시간외 체결을 그리면 한 창이 두 장을 동시에 보이게 된다.
-  const useSinglePrice = showAfterHours && singlePriceSnapshot !== null;
+  const useSinglePrice = activeSinglePrice !== null;
   const bookTrades = useSinglePrice ? singlePriceFills : recentTrades;
   // 사다리에서 현재가 행을 강조하는 값. 시간외에는 벤더 현재가를 **직접** 쓴다 —
   // 체결창이 비어 있을 수 있고(첫 관측은 기준선이라 행이 없다), 15:59 가격은 시간외
