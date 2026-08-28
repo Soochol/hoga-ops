@@ -750,6 +750,15 @@ def prune(
             "(ADR-0135). Irreversible: that day can never be re-parsed."
         ),
     ),
+    include_stale_incomplete: bool = typer.Option(
+        False, "--include-stale-incomplete",
+        help=(
+            "Also prune CLIENT_INCOMPLETE raw past the retention window whose "
+            "parquet already exists. hogaplay upstream keeps ~18h, so past the "
+            "window the resume it guards is physically impossible (ADR-0163). "
+            "Raw without parquet is never touched — that is the only copy."
+        ),
+    ),
     include_dead_trees: bool = typer.Option(
         False, "--include-dead-trees",
         help=(
@@ -769,6 +778,11 @@ def prune(
     already declared terminal (``decide_capture`` skips them). ADR-0075's
     Trigger Condition anticipated exactly this: "비-COMPLETE raw 누적이 디스크를
     위협하면 --include-partial 옵트인 또는 별도 진단 도구를 도입한다."
+
+    ``--include-stale-incomplete`` opens the biggest class (ADR-0163). Measured
+    2026-08-27: CLIENT_INCOMPLETE held 124.7 GiB of which only 5.1 GiB (4%) was
+    still inside the upstream window — the rest reached 367 days old while being
+    preserved as "resume sources" that can never be resumed.
     """
     from hoga.api.prune import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         disk_headroom,
@@ -788,6 +802,7 @@ def prune(
         data_dir, retention_days=retention, now=prune_default_now(), execute=execute,
         include_confirmed_gaps=include_confirmed_gaps,
         include_expired_unconfirmed=include_expired_unconfirmed,
+        include_stale_incomplete=include_stale_incomplete,
     )
     if execute:
         gib = result.reclaimed_bytes / 1024**3
