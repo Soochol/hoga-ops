@@ -906,19 +906,35 @@ def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
 def _peak_with_rep_outputs(
     base: _PeakT, *, date: str, reduced: dict[str, Any] | None,
 ) -> _PeakT | None:
-    """1분 peak(`base`)의 **봉 무관 절반**에 `reduced`(봉 의존 절반)를 덮어쓴다.
+    """1분 peak(`base`) 위에 `reduced`(굵은 봉 rep 재집계)를 덮어쓴다.
 
-    봉 무관/의존의 경계는 `snapshots.reaggregate_peak_rep` docstring 참조. 여기서
-    덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
-    `traded_record_*`(기록 갱신 시퀀스)도 **덮지 않는다** — "그 시점까지의 최대" 는
-    봉 굵기와 무관한 사실이라 1분 캐시 값이 모든 봉에서 그대로 옳다.
-    `unreached_*`(미도달 벽)도 같은 취급이다 — 판정이 (price, 당일 극값) 비교라
-    cont 처럼 봉 무관이고, 그래서 cont 단일 계열로 설계했다(snapshots 필드 주석).
+    덮는 필드는 `snapshots.reaggregate_peak_rep` 이 만들어 주는 것 전부다. 나머지는
+    base(1분) 값을 그대로 나른다 — 그 이유가 필드마다 **두 가지로 갈리므로** 아래를
+    구분해서 읽을 것. 하나로 뭉뚱그린 옛 설명("손대지 않는 것 = 봉 무관")은 틀렸다.
 
-    `all_peaks` 는 `reduced` 가 rep 프레임에서 **top-3 로** 만들어 준다(2026-08-25).
-    여기서 비우면 1분 캐시로 파생된 날만 rank-1 이고 직접 계산된 날은 top-3 가 되어
-    **per-day 불일치**가 생긴다. `all_max_peaks` 는 cont 파생이라 봉 무관 — base(1분
-    캐시)의 값이 이미 top-3 이므로 손대지 않는다.
+    **(1) 진짜 봉 무관 — 어느 봉으로 계산해도 같은 값**
+    `max_*` · `all_max_*` 스칼라, `traded_max_peaks`, `traded_record_max_peaks` 는
+    cont(틱-max) 프레임 산물이고 cont 는 유효 스냅샷 **전체**를 보므로 봉과 무관하다.
+    `unreached_*` 도 판정이 (price, 당일 체결 극값) 비교라 봉과 무관하다.
+    `test_peak_max_fields_are_bucket_independent` 가 이 성질을 건다.
+
+    **(2) 봉 의존이지만 1분 값을 정본으로 고정 — 재파생이 불가능하거나 부적절해서**
+    `all_max_peaks` 는 이름과 달리 **봉 의존이다**: 생산자 `_peak_bucket_dedup` 이
+    `subset=["price", "bucket_id"]` 로 접으므로 봉이 굵어지면 같은 가격의 여러 후보가
+    하나로 합쳐져 top-3 구성이 달라진다(실측 2026-08-28, 실데이터 3일 중 2일 · 픽스처
+    전 봉에서 재현). 그런데 재파생하려면 cont 행이 필요한데 **캐시에는 rep 행만 있다**
+    (`store_peak_rep`) — 원리적으로 못 덮는다. 그래서 1분 값이 정본이다.
+    `traded_record_peaks`(기록 갱신 시퀀스)도 rep 프레임 산물이라 봉 의존이지만, 1분
+    시퀀스가 더 촘촘해 "그 시점까지의 최대" 로서 더 옳으므로 역시 1분이 정본이다.
+
+    (2)의 정본 선언이 이 함수의 계약이다. **정본이 하나여야 하는 이유**: 굵은 봉
+    요청은 캐시 유무에 따라 이 파생 경로 또는 직접-굵은봉 조회로 갈리는데, 정본이
+    없으면 같은 (종목, 날짜, 봉)이 캐시 상태에 따라 다른 값을 낸다. `ask_peak`/
+    `bid_peak` 캐시 버전 12 범프가 그 규약 이전에 쌓인 항목을 걷어낸다.
+
+    `all_peaks` 는 (2)와 달리 rep 에서 만들 수 있으므로 `reduced` 가 봉에 맞게 다시
+    만들어 준다(2026-08-25). 여기서 비우면 파생된 날만 rank-1 이고 직접 계산된 날은
+    top-3 가 되어 per-day 불일치가 생긴다.
     """
     if reduced is None:
         return None
