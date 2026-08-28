@@ -35,7 +35,7 @@ vi.mock('./SectorRankingWindow', () => ({
 // 다만 형성 중 봉 힌트는 **버퍼가 답해야** 성립하는 상태라(파케이 미승격 →
 // orderbookSnapshotAtCursor 폴백) 그 describe 만 `ob` 를 채운다. `vi.mock` factory 는
 // hoisting 되어 외부 변수를 직접 참조하면 초기화 전 접근이 되므로 `vi.hoisted` 로 뺀다.
-const liveSeriesBuffers = vi.hoisted(() => ({ ob: [] as unknown[] }));
+const liveSeriesBuffers = vi.hoisted(() => ({ ob: [] as unknown[], afterHours: [] as unknown[] }));
 vi.mock('../../api/liveSeries', () => ({
   useLiveSeries: () => ({
     initial: undefined,
@@ -48,7 +48,7 @@ vi.mock('../../api/liveSeries', () => ({
     // ⚠ 이 mock 은 `LiveSeriesData` 로 타입되지 않는다 — 키를 빠뜨려도 tsc 가 못 잡고,
     // 소비처가 그 키를 읽는 순간 런타임 크래시로만 드러난다(afterHours 추가 때 실제로
     // latest 모드 7건이 통째로 죽었다). 훅 반환에 키를 늘리면 여기도 늘릴 것.
-    afterHours: [],
+    afterHours: liveSeriesBuffers.afterHours,
     expected: [],
   }),
 }));
@@ -111,7 +111,7 @@ vi.mock('./BookPanel', () => ({
     stale?: boolean;
     snapshot: { ts_ms: number } | null | undefined;
     afterHoursTotals?: { ask: number; bid: number } | null;
-    sessionControl?: { kind: string; afterHoursLabel?: string };
+    sessionControl?: { kind: string; afterHoursLabel?: string; regularLabel?: string };
     sessionMode?: string;
     onSelectSessionMode?: (mode: string) => void;
   }) => (
@@ -136,8 +136,19 @@ vi.mock('./BookPanel', () => ({
           ? (sessionControl as { afterHoursLabel: string }).afterHoursLabel
           : '-'}
       </div>
-      {/* 모드가 사다리와 총잔량을 **함께** 묶는지의 관측점. 사다리만 되돌리고
-          총잔량은 시간외로 남으면 한 창이 두 장을 보이게 된다. */}
+      {/* 정규장 라벨의 관측점 — 잔량만 시간외인 상태를 라벨이 말하는지 본다.
+          `ahLabel` 과 따로 두는 이유: 그 상태에서 **화면에 그려지는 것은 이쪽**이다
+          (선택된 모드가 정규장이므로). */}
+      <div>
+        regLabel:
+        {sessionControl && 'regularLabel' in sessionControl
+          ? (sessionControl as { regularLabel: string }).regularLabel
+          : '-'}
+      </div>
+      {/* 모드가 사다리와 총잔량을 **함께** 묶는지의 관측점. 16:00–18:00 에서는 그
+          묶음이 계약이고(ka10087 총잔량은 사다리와 한 몸), 15:40–16:00 정규장 모드
+          에서는 **의도적으로 갈린다** — 그 구간엔 시간외 사다리가 없어서 묶을 대상이
+          한쪽뿐이다(2026-08-28). 두 경우를 아래 스펙이 각각 못박는다. */}
       <div>totals:{afterHoursTotals === null || afterHoursTotals === undefined ? 'null' : 'set'}</div>
       <button type="button" onClick={() => onSelectSessionMode?.('afterHours')}>
         go-after-hours
@@ -872,7 +883,13 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
     });
 
-    it('정규장 모드는 총잔량도 함께 되돌린다 — 한 창은 한 장만 보인다', () => {
+    it('16:00–18:00 정규장 모드는 총잔량도 함께 되돌린다 — ka10087 은 사다리와 한 몸이다', () => {
+      // ⚠ 이 단언은 **0E 가 없다는 픽스처 전제** 위에 선다(이 describe 는 `afterHours`
+      // 버퍼를 심지 않는다). 실제 16:30 은 그렇지 않다 — 0E 프레임은 링버퍼에 **남아
+      // 있으므로**, 그 시각에 정규장을 누르면 15:59 의 마지막 0E 가 덮이고 라벨이 그
+      // 사실과 사다리 시각을 단다(오버레이 조건은 시계가 아니라 "0E 가 사다리보다 최신
+      // + 같은 날짜" 다). 여기서 못박는 축은 그쪽이 아니라 **ka10087 총잔량과 사다리의
+      // 결합**이다: 시간외 응답이 있는 동안 정규장 모드는 그 5단 총잔량을 쓰지 않는다.
       renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
       expect(screen.getByText('totals:set')).toBeInTheDocument();
       fireEvent.click(screen.getByText('go-regular'));
@@ -893,6 +910,69 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
       expect(screen.getByText('session:toggle/afterHours')).toBeInTheDocument();
       expect(screen.getByText('snapshot:null')).toBeInTheDocument();
+    });
+
+    describe('15:40–16:00 — 사다리는 15:30 정규장, 잔량만 시간외(사용자 결정 2026-08-28)', () => {
+      /** 2026-08-27(목) 15:47 KST — 시간외 종가매매 구간. 기본 모드는 **아직 정규장**이다
+       *  (`defaultBookSessionMode` 가 16:00 에 뒤집힌다). 즉 아래 스펙은 클릭 없이 뜨는
+       *  첫 화면을 재는 것이다. */
+      const AT_1547_KST = Date.UTC(2026, 7, 27, 6, 47);
+      /** 그날 15:30 KST — KRX 전용 종목의 0D 가 끊긴 시각이자 화면에 남는 사다리. */
+      const TODAY_1530 = Date.UTC(2026, 7, 27, 6, 30);
+      /** 어제 15:30. `last_ob` 는 날짜를 넘겨 복원되므로 이 상태가 실재한다(#1639). */
+      const YESTERDAY_1530 = Date.UTC(2026, 7, 26, 6, 30);
+
+      /** 0E 총잔량 프레임. 값은 실측 모양을 따른다 — 이 구간의 매도 잔량은 0 에 붙는다. */
+      function ahAt(tMs: number) {
+        return { t_ms: tMs, total_ask_qty: 0, total_bid_qty: 3827 };
+      }
+
+      beforeEach(() => {
+        vi.mocked(Date.now).mockReturnValue(AT_1547_KST);
+        // ka10087 창(16:00–18:00) **밖**이다 — 이 20분의 시간외 신호는 0E 두 숫자뿐이다.
+        afterHoursBookResult.data = undefined;
+        liveSeriesBuffers.ob = [obAt(TODAY_1530)];
+        liveSeriesBuffers.afterHours = [ahAt(AT_1547_KST)];
+      });
+
+      afterEach(() => {
+        liveSeriesBuffers.afterHours = [];
+      });
+
+      it('사다리를 유지한 채 총잔량만 시간외로 간다 — 클릭 없이', () => {
+        // 이 기능의 핵심 배선이다. 종전엔 두 모드 중 **어느 쪽도** 이 조합을 못 줬다:
+        // 정규장은 잔량이 15:30 에 얼어붙고, 시간외는 사다리가 통째로 비었다.
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText('session:toggle/regular')).toBeInTheDocument();
+        expect(screen.getByText(`snapshot:${TODAY_1530}`)).toBeInTheDocument();
+        expect(screen.getByText('totals:set')).toBeInTheDocument();
+      });
+
+      it('그 상태를 **라벨이 말한다** — 사다리 시각까지', () => {
+        // 이 패널은 사다리 시각을 다른 어디에도 그리지 않는다(2026-08-28 확인).
+        // 라벨이 시각을 빼면 좌우 두 숫자를 15:30 사다리의 합으로 읽게 된다.
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText('regLabel:정규장 15:30 · 잔량 시간외')).toBeInTheDocument();
+      });
+
+      it('⚠ 어제 사다리 위에는 덮지 않는다 — 두 숫자가 다른 날을 가리킨다', () => {
+        // 장전 08:30–08:40 이 이 상태다. 0E 의 t_ms 가드는 "사다리가 멈췄나" 만 보므로
+        // 날짜 차이는 원리적으로 못 잡는다 — 그래서 날짜 가드가 따로 있다.
+        liveSeriesBuffers.ob = [obAt(YESTERDAY_1530)];
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText(`snapshot:${YESTERDAY_1530}`)).toBeInTheDocument();
+        expect(screen.getByText('totals:null')).toBeInTheDocument();
+        // 덮지 않았으면 라벨도 말하지 않아야 한다 — 라벨과 화면은 같은 조건을 탄다.
+        expect(screen.getByText('regLabel:정규장')).toBeInTheDocument();
+      });
+
+      it('시간외 모드로 넘기면 종전대로 — 사다리는 비고 잔량만 남는다', () => {
+        // 이 구간엔 시간외 사다리가 아예 없다(단일 가격). 폴백하지 않는 규약은 그대로다.
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        fireEvent.click(screen.getByText('go-after-hours'));
+        expect(screen.getByText('snapshot:null')).toBeInTheDocument();
+        expect(screen.getByText('totals:set')).toBeInTheDocument();
+      });
     });
   });
 

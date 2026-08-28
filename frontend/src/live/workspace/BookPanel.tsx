@@ -954,10 +954,14 @@ function TotalQtyStrip({
       {/* 중앙 라벨("판매대기 · 구매대기")은 사용자 요청으로 삭제(2026-07-21) —
           색·좌우 위치가 의미를 이미 전달하고, aria-label 이 접근성을 담당한다.
           지금 그 자리에 있는 것은 **세션 선택기**다(`BookSessionCenter`). 원래는
-          "시간외" 조건부 출처 표시였는데, 그 표시가 설명하던 불일치(사다리는 정규장
-          15:30 · 총잔량만 시간외)가 세션 모드 도입으로 **사라졌다** — 이제 모드가
-          사다리와 총잔량을 같은 장으로 묶는다(`bookSessionMode`). 남은 하중은
-          16:00–18:00 의 빈 바깥 5행 설명이고, 그건 토글의 선택 라벨이 그대로 진다. */}
+          "시간외" 조건부 출처 표시(`fallbackLabel`)였고 그것이 설명하던 불일치는
+          "사다리는 정규장 15:30 · 총잔량만 시간외" 였다.
+          ⚠ **그 불일치는 2026-08-28 에 돌아왔다** — 15:40–16:00 의 정규장 모드가
+          다시 그 상태다(`DataWindow` 의 `afterHoursTotals`). 갈래 A 에서는 이 자리를
+          토글이 차지해 `fallbackLabel` 이 그려지지 않으므로, 설명 하중은 토글의
+          `regularLabel`('정규장 · 잔량 시간외')이 진다. 갈래 없음(`none`)에서는
+          종전대로 `fallbackLabel` 이 그 일을 한다. 나머지 하중은 16:00–18:00 의 빈
+          바깥 5행 설명이고, 그건 시간외 선택 라벨이 그대로 진다. */}
       <div className="flex items-center justify-between px-2 py-1">
         <span
           aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask.toLocaleString('ko-KR')}`}

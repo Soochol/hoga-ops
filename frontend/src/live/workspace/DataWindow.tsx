@@ -238,9 +238,13 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 갈래 판정은 **종목의 NXT 상장 여부**다(`bookSessionMode`). 갈래 A(KRX 전용)만
   // 토글을 갖고, 그 토글이 **사다리·총잔량·체결창의 출처를 한꺼번에** 가른다.
   //
-  // 셋을 함께 묶는 것이 요점이다. 종전엔 사다리(15:30 정규장)와 총잔량(0E 시간외)의
-  // 출처가 갈려 "합이 안 맞는 게 정상" 이었고 라벨이 그 불일치를 설명했는데, 모드가
-  // 생기면 설명할 불일치 자체가 없어진다 — 한 모드는 한 장만 보여준다.
+  // 셋을 함께 묶는 것이 요점이다 — 한 모드는 한 장만 보여준다.
+  //
+  // ⚠ **예외가 하나 있고, 의도된 것이다**(2026-08-28). 15:40–16:00 의 정규장 모드는
+  // 사다리(15:30 정규장)와 총잔량(0E 시간외)의 출처가 갈린다. 그 구간엔 시간외
+  // 사다리라는 것이 아예 없어서(단일 가격) 묶을 대상이 한쪽뿐이고, 묶겠다고 0E 를
+  // 버리면 **그 20분의 유일한 실시간 신호**가 화면에서 사라진다. 그래서 종전의
+  // "합이 안 맞는 게 정상 + 라벨이 설명" 규약을 그 구간에만 되살렸다(`afterHoursTotals`).
   //
   // 이 블록이 아래 조회들보다 **앞에 와야 한다**: 시간외 조회를 창 밖에서도 걸지가
   // 모드에 달렸기 때문이다.
@@ -291,6 +295,57 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     inactiveSnapshot: latestSnapshot,
     bufferFallbackSnapshot: bufferSnap,
   });
+  // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
+  // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
+  // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
+  //
+  // 갈래 A 의 시간외 모드에서는 그 폴백을 **하지 않는다**. 정규장 사다리를 "시간외"
+  // 라벨 아래 두면 라벨이 거짓말이 되고, 되돌릴 토글이 바로 옆에 있기 때문이다.
+  const snapshot = modeGated
+    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regularSnapshot)
+    : (singlePriceSnapshot ?? regularSnapshot);
+  // 오늘(KST). 등락률 기준가 판정과 아래 총잔량 날짜 가드가 **같은 값을 봐야** 한다 —
+  // 둘이 갈리면 자정 근처에서 한쪽만 날짜를 넘긴다.
+  const todayKst = link?.todayKst ?? realMsToYyyymmdd(Date.now());
+  // 하단 총잔량 스트립의 출처. deltaBadges 와 같은 규율로 스팟 중에는 전부 끈다.
+  //   16:00–18:00  ka10087 총잔량(사다리와 같은 출처라 합이 맞는다)
+  //   15:40–16:00  WS 0E 총잔량(사다리는 15:30 정규장 마지막 — 합이 **안 맞는 게 정상**)
+  const afterHoursTotals = useMemo(() => {
+    if (isSpot) return null;
+    // ka10087 총잔량은 **사다리와 한 몸이다** — 같은 응답에서 왔고 합이 맞는다.
+    // 그래서 시간외 모드에서만 쓴다. 정규장 모드의 사다리는 정규장 값이라, 거기에
+    // 5단 총잔량을 얹으면 두 숫자가 화면에 없는 사다리를 설명하게 된다.
+    if (showAfterHours && singlePriceSnapshot !== null) {
+      // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
+      // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
+      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
+    }
+    // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
+    // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
+    // KRX 시간외 총잔량이 그 위에 덮인다(판정 근거는 `latestAfterHoursTotals`).
+    const totals = latestAfterHoursTotals(live.afterHours, latestSnapshot?.ts_ms ?? null);
+    if (totals === null || showAfterHours) return totals;
+    // ── 여기부터가 갈래 A 의 **정규장 모드**다(사용자 결정 2026-08-28).
+    //
+    // 종전엔 여기서 `null` 로 끊었다. 근거는 "모드가 사다리와 총잔량을 같은 장으로
+    // 묶는다" 였는데, 그 규율이 15:40–16:00 을 **두 모드 모두 쓸 수 없게** 만들었다:
+    // 정규장 모드는 사다리가 있지만 잔량이 15:30 에 얼어붙고(스트립이 스냅샷 총잔량
+    // 으로 떨어진다), 시간외 모드는 잔량이 살아 있지만 사다리가 통째로 빈다(그 구간엔
+    // ka10087 창이 아직 안 열렸다). 그 20분에 존재하는 **유일한 실시간 호가 신호가
+    // 0E 두 숫자**이므로 정규장 사다리 위에 그것을 얹고, 출처가 갈렸다는 사실은
+    // 라벨이 말한다(`regularTotalsAreAfterHours`).
+    //
+    // 날짜 가드가 **여기에만** 붙는다: `last_ob` 는 날짜를 넘겨 복원되므로 장전
+    // 08:30–08:40 에는 화면의 사다리가 **어제** 것이다. 그 위에 오늘 0E 를 얹으면 두
+    // 숫자가 다른 날을 가리킨다. 시간외 모드(`showAfterHours`)에는 걸지 **않는다** —
+    // 그쪽은 사다리 없이 총잔량만 그리는 화면이라 섞일 것이 없고, 걸면 아침의 유일한
+    // 신호가 사라지는 회귀가 된다.
+    return snapshot != null && realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
+  }, [
+    isSpot, showAfterHours, singlePriceSnapshot, live.afterHours, afterHoursBook.data,
+    latestSnapshot, snapshot, todayKst,
+  ]);
+  const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const sessionControl = bookSessionControl({
     nxtEnabled,
     // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
@@ -302,35 +357,14 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // 오해한다.
     afterHoursStoredAtMs:
       afterHoursBook.data?.source === 'stored' ? afterHoursBook.data.fetched_at_ms : null,
+    // 정규장 모드인데 하단 총잔량만 시간외 값이면 **그리고 있는 사다리의 시각**.
+    // **렌더 조건을 다시 쓰지 않고 그 결과를 넘긴다** — 조건을 두 곳에 적으면 라벨이
+    // 화면과 갈린다(저장값을 그린 토글이 첫 화면에서 거짓말한 그 함정과 같은 형태).
+    regularLadderAtMs:
+      sessionMode === 'regular' && afterHoursTotals !== null && snapshot != null
+        ? snapshot.ts_ms
+        : null,
   });
-  // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
-  // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
-  // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
-  //
-  // 갈래 A 의 시간외 모드에서는 그 폴백을 **하지 않는다**. 정규장 사다리를 "시간외"
-  // 라벨 아래 두면 라벨이 거짓말이 되고, 되돌릴 토글이 바로 옆에 있기 때문이다.
-  const snapshot = modeGated
-    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regularSnapshot)
-    : (singlePriceSnapshot ?? regularSnapshot);
-  // 하단 총잔량 스트립의 두 모드. deltaBadges 와 같은 규율로 스팟 중에는 전부 끈다.
-  //   16:00–18:00  ka10087 총잔량(사다리와 같은 출처라 합이 맞는다)
-  //   15:40–16:00  WS 0E 총잔량(사다리 없음 — 그 구간은 단일 가격이라 사다리가 없다)
-  const afterHoursTotals = useMemo(() => {
-    if (isSpot) return null;
-    // 정규장 모드에서는 시간외 값으로 덮지 않는다 — 그러면 사다리와 총잔량이 다시
-    // 다른 장을 가리킨다.
-    if (!showAfterHours) return null;
-    if (singlePriceSnapshot !== null) {
-      // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
-      // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
-      return { ask: singlePriceSnapshot.tot_ask, bid: singlePriceSnapshot.tot_bid };
-    }
-    // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
-    // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
-    // KRX 시간외 총잔량이 그 위에 덮인다(판정 근거는 `latestAfterHoursTotals`).
-    return latestAfterHoursTotals(live.afterHours, latestSnapshot?.ts_ms ?? null);
-  }, [isSpot, showAfterHours, singlePriceSnapshot, live.afterHours, afterHoursBook.data, latestSnapshot]);
-  const afterHoursLabel = singlePriceSnapshot !== null ? '시간외 단일가' : '시간외';
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
@@ -343,7 +377,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   //
   // 같은 BookPanel 을 쓰는 /study 의 BookContent 는 처음부터 커서 날짜의 전일종가를
   // 썼다 — 표시 컴포넌트는 통일해 놓고 자료 조달만 두 벌로 갈라져 한쪽만 옳았다.
-  const todayKst = link?.todayKst ?? realMsToYyyymmdd(Date.now());
+  // `todayKst` 는 위 총잔량 날짜 가드와 공유한다(그쪽이 먼저 필요해 앞으로 올렸다).
   const cursorDate = isSpot && scope.cursorMs !== null ? realMsToYyyymmdd(scope.cursorMs) : null;
   const isPastDateCursor = cursorDate !== null && cursorDate < todayKst;
   // 조회창은 **오늘까지 한 벌로 고정**한다. /study 처럼 to 를 커서 날짜로 잡으면

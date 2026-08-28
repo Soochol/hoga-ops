@@ -145,6 +145,42 @@ describe('bookSessionControl — 갈래 판정', () => {
     expect(c).toEqual({ kind: 'toggle', regularLabel: '정규장', afterHoursLabel: '시간외' });
   });
 
+  it('잔량만 시간외이면 정규장 라벨이 **사다리 시각과 함께** 그 사실을 단다', () => {
+    // 15:40–16:00 의 갈래 A 가 그 상태다: 사다리는 15:30 정규장, 좌우 두 숫자만 0E.
+    // '정규장' 하나만 그리면 그 숫자들이 사다리의 합인 것처럼 읽힌다.
+    const c = bookSessionControl({
+      ...base,
+      nxtEnabled: false,
+      nowMs: kst(DAY, 15, 47),
+      regularLadderAtMs: kst(DAY, 15, 30),
+    });
+    expect(c).toMatchObject({ kind: 'toggle', regularLabel: '정규장 15:30 · 잔량 시간외' });
+  });
+
+  it('⚠ 시각은 **사다리에서 파생된다** — 15:30 이 하드코딩된 것이 아니다', () => {
+    // 마지막 0D 가 15:29:5x 이거나 종목·venue 에 따라 다른 시각에 끊긴다. 상수로
+    // 박으면 라벨이 화면과 다른 시각을 말한다.
+    const c = bookSessionControl({
+      ...base,
+      nxtEnabled: false,
+      nowMs: kst(DAY, 15, 47),
+      regularLadderAtMs: kst(DAY, 15, 29),
+    });
+    expect(c).toMatchObject({ kind: 'toggle', regularLabel: '정규장 15:29 · 잔량 시간외' });
+  });
+
+  it('같은 시각이라도 잔량이 정규장 값이면 문안을 붙이지 않는다', () => {
+    // 라벨은 **시각이 아니라 실제 덮임 여부**를 따라야 한다. 시각으로 판정하면
+    // 0E 가 안 오는 종목·구간에서 라벨만 혼자 불일치를 주장한다.
+    const c = bookSessionControl({
+      ...base,
+      nxtEnabled: false,
+      nowMs: kst(DAY, 15, 47),
+      regularLadderAtMs: null,
+    });
+    expect(c).toMatchObject({ kind: 'toggle', regularLabel: '정규장' });
+  });
+
   it('nxt_enabled=false 는 16:00–18:00 에 단일가 문안을 단다', () => {
     const c = bookSessionControl({ ...base, nxtEnabled: false, nowMs: kst(DAY, 16, 30) });
     expect(c).toMatchObject({ kind: 'toggle', afterHoursLabel: '시간외 단일가' });
