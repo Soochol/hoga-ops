@@ -93,6 +93,33 @@ class PruneResult:
     skipped_bytes_by_state: dict[str, int] = field(default_factory=dict)
 
 
+def resolve_include_stale_incomplete() -> bool:
+    """HOGA_PRUNE_STALE_INCOMPLETE truthy 판정 — 유예 밖 CLIENT_INCOMPLETE 회수 옵트인.
+
+    기본 off. 켜면 일일 자동 prune 도 이 클래스를 회수한다(ADR-0163).
+    """
+    return os.environ.get("HOGA_PRUNE_STALE_INCOMPLETE", "").strip() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _has_parsed_parquet(data_dir: Path, code: str, date: str) -> bool:
+    """이 (date,code) 의 **파싱 결과가 디스크에 남아 있는가.**
+
+    `reclaim_stale_incomplete` 의 안전 조건이다. CLIENT_INCOMPLETE 는 "받다 만" 상태라
+    raw 를 지우면 더 받을 수 없는데, 이미 받은 만큼이 parquet 에 있으면 **그 부분은
+    보존된다**. parquet 이 없으면 raw 가 그 (date,code) 의 유일한 사본이므로 지우면
+    데이터가 통째로 사라진다 — 나이와 무관하게 보존한다.
+
+    실측 2026-08-27: 유예 밖 CLIENT_INCOMPLETE 1,048건 중 1,007건(96.1%)이 parquet 을
+    갖고 있었고, 나머지 41건이 이 술어가 지키는 대상이다.
+    """
+    pq = data_dir / "parquet" / date / code
+    if not pq.is_dir():
+        return False
+    return any(pq.rglob("*.parquet"))
+
+
 def _hogaplay_classification(data_dir: Path, code: str, date: str) -> Classification:
     """이 (date,code)의 hogaplay-source Classification.
 
@@ -114,6 +141,7 @@ def _is_prunable(
     *,
     include_confirmed_gaps: bool,
     reclaim_expired_unconfirmed: bool = False,
+    reclaim_stale_incomplete: bool = False,
 ) -> bool:
     """이 상태의 raw 를 삭제해도 되는가?
 
@@ -124,7 +152,14 @@ def _is_prunable(
     **모든 partial 이 아니라 확인된 갭만** 포함한다. 그 경계가 load-bearing 이다:
 
     - ``CLIENT_INCOMPLETE`` — 우리 수집이 중간에 멈춘 상태. raw 가 resume 커서의
-      소스다. 지우면 재개가 불가능해지고 처음부터 다시 받아야 한다. 절대 포함 불가.
+      소스다. 지우면 재개가 불가능해지고 처음부터 다시 받아야 한다. **유예 안에서는**
+      절대 포함 불가.
+      유예 **밖**이면 얘기가 다르다(ADR-0163): hogaplay 업스트림 보유가 ~18시간이라
+      유예(기본 3일)를 통과한 시점에 resume 도 처음부터 받기도 물리적으로 불가능하다.
+      그 raw 는 "재개 소스" 가 아니라 **재개할 수 없는 재개 소스**다. 실측
+      2026-08-27: CLIENT_INCOMPLETE 124.7GB 중 업스트림 창 안은 5.1GB(4%)뿐이고
+      나머지 110.3GB 는 최대 367일 된 것까지 있었다. 옵트인
+      (``reclaim_stale_incomplete``, 기본 off)으로만 열린다.
     - ``SOURCE_PARTIAL`` + ``upstream_gap_confirmed=False`` — 수집은 끝났지만
       갭이 업스트림 탓인지 아직 미확정이다. **보유 창 안이면** decide_capture 가
       재캡처를 다시 시도할 수 있는 대상이라 제외한다.
@@ -146,6 +181,12 @@ def _is_prunable(
     """
     if cls.state == DiskState.COMPLETE:
         return True
+    if cls.state == DiskState.CLIENT_INCOMPLETE:
+        # ⚠ 호출자가 **parquet 존재까지 확인한 뒤** 이 인자를 켠다(_scan). 여기서
+        # 상태만 보고 켜면 parquet 이 없는 raw — 그 (date,code) 의 **유일한 사본** —
+        # 까지 지운다. 실측 2026-08-27: 유예 밖 CLIENT_INCOMPLETE 1,048건 중 41건
+        # (3.9%)이 그런 경우였다.
+        return reclaim_stale_incomplete
     if cls.state != DiskState.SOURCE_PARTIAL:
         return False
     if cls.upstream_gap_confirmed:
@@ -195,6 +236,7 @@ def _scan(
     data_dir: Path, *, retention_days: int, now: dt.datetime,
     include_confirmed_gaps: bool = False,
     include_expired_unconfirmed: bool = False,
+    include_stale_incomplete: bool = False,
 ) -> tuple[list[PruneCandidate], dict[str, int], dict[str, int]]:
     """raw/ 를 한 번 순회해 (후보, 보존 사유별 건수, 보존 사유별 바이트) 를 낸다.
 
@@ -229,6 +271,13 @@ def _scan(
             code = code_dir.name
             cls = _hogaplay_classification(data_dir, code, date)
             size = _dir_size(code_dir)
+            # parquet 존재는 **여기서** 확인한다 — `_is_prunable` 은 상태만 보므로,
+            # 유일 사본 보호를 그쪽에 맡기면 술어가 디스크를 읽어야 한다.
+            has_parquet = (
+                _has_parsed_parquet(data_dir, code, date)
+                if cls.state == DiskState.CLIENT_INCOMPLETE
+                else False
+            )
             prunable = _is_prunable(
                 cls,
                 include_confirmed_gaps=include_confirmed_gaps,
@@ -236,9 +285,15 @@ def _scan(
                     include_expired_unconfirmed
                     and is_expired_unconfirmed_gap(cls, date, now)
                 ),
+                reclaim_stale_incomplete=include_stale_incomplete and has_parquet,
             )
             if not prunable:
-                _note(_skip_reason(cls, date, now), size)
+                reason = _skip_reason(cls, date, now)
+                if cls.state == DiskState.CLIENT_INCOMPLETE and not has_parquet:
+                    # 라벨을 갈라야 "플래그를 켰는데 왜 안 줄지" 가 보인다 — 이쪽은
+                    # 옵트인으로도 열리지 않는 유일 사본이다.
+                    reason = "client_incomplete(no_parquet)"
+                _note(reason, size)
                 continue
             out.append(PruneCandidate(
                 date=date, code=code, raw_dir=code_dir, size_bytes=size,
@@ -250,6 +305,7 @@ def find_prunable(
     data_dir: Path, *, retention_days: int, now: dt.datetime,
     include_confirmed_gaps: bool = False,
     include_expired_unconfirmed: bool = False,
+    include_stale_incomplete: bool = False,
 ) -> list[PruneCandidate]:
     """raw/ 순회 → 날짜 컷오프 통과(date < today−N 달력일) + 상태 게이트를
     통과한 (date,code)만 PruneCandidate로 반환한다. 부작용 없음.
@@ -263,6 +319,7 @@ def find_prunable(
         data_dir, retention_days=retention_days, now=now,
         include_confirmed_gaps=include_confirmed_gaps,
         include_expired_unconfirmed=include_expired_unconfirmed,
+        include_stale_incomplete=include_stale_incomplete,
     )
     return candidates
 
@@ -294,6 +351,7 @@ def prune_raw(
     data_dir: Path, *, retention_days: int, now: dt.datetime, execute: bool,
     include_confirmed_gaps: bool = False,
     include_expired_unconfirmed: bool = False,
+    include_stale_incomplete: bool = False,
 ) -> PruneResult:
     """find_prunable 후보를 (execute면) rmtree로 삭제하고 결과를 반환한다.
 
@@ -308,6 +366,7 @@ def prune_raw(
         data_dir, retention_days=retention_days, now=now,
         include_confirmed_gaps=include_confirmed_gaps,
         include_expired_unconfirmed=include_expired_unconfirmed,
+        include_stale_incomplete=include_stale_incomplete,
     )
     deleted = 0
     reclaimed = 0

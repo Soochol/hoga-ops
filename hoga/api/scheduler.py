@@ -188,17 +188,20 @@ async def _daily_run(data_dir: Path) -> bool:
         resolve_derived_retention_days,
         resolve_include_confirmed_gaps,
         resolve_include_expired_unconfirmed,
+        resolve_include_stale_incomplete,
         resolve_retention_days,
     )
     try:
-        # 게이트 확장 두 단계 모두 env 옵트인이고, 별도 타이머가 아니라 이 일일
+        # 게이트 확장 세 단계 모두 env 옵트인이고, 별도 타이머가 아니라 이 일일
         # 실행에 편승한다(부품 최소). HOGA_PRUNE_CONFIRMED_GAPS=확인된 업스트림
-        # 갭(#998) · HOGA_PRUNE_EXPIRED_UNCONFIRMED=보유 창 밖 미확정 갭(ADR-0135).
+        # 갭(#998) · HOGA_PRUNE_EXPIRED_UNCONFIRMED=보유 창 밖 미확정 갭(ADR-0135) ·
+        # HOGA_PRUNE_STALE_INCOMPLETE=유예 밖 미완 캡처(ADR-0163, 최대 클래스).
         pruned = await asyncio.to_thread(
             prune_raw, data_dir,
             retention_days=resolve_retention_days(), now=now_kst(), execute=True,
             include_confirmed_gaps=resolve_include_confirmed_gaps(),
             include_expired_unconfirmed=resolve_include_expired_unconfirmed(),
+            include_stale_incomplete=resolve_include_stale_incomplete(),
         )
         log.info(
             "daily prune: removed %d dirs, reclaimed %.2f GiB",
