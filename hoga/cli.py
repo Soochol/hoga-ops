@@ -261,6 +261,49 @@ def depth_daily_sweep(
     )
 
 
+@app.command(name="peak-prewarm")
+def peak_prewarm_cmd(
+    limit: int = typer.Option(0, "--limit", help="계산 상한(0=무제한). 일일 런은 2000."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="대상만 세고 계산하지 않음"),
+    code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
+) -> None:
+    """과거일 **1분** 최대벽 캐시를 미리 채운다 — 콜드 sidecar 로드를 없앤다.
+
+    1분 한 번이 `ask_peak`·`bid_peak`·`peak_rep` 셋을 채우고 3m~240m 은 스캔 없이
+    파생되므로(실측 ~70배) 봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
+    모듈 docstring.
+
+    같은 함수를 일일 런(17:00)이 상한 2000 으로 부른다 — 이 명령은 그 상한 없이
+    **즉시 전량**을 채우고 싶을 때 쓴다(캐시 버전 범프 직후 등). 멱등·증분이라
+    중단 후 재실행이 안전하고, 최신 날짜부터 채운다.
+
+    ⚠ 전량은 오래 걸린다. 먼저 `--dry-run` 으로 대상 수를 보고 결정할 것 —
+    hogaplay 는 스톡데이트당 ~0.37s, kiwoom_live 는 ~0.07s 다(2026-08-28 실측).
+    """
+    import time  # noqa: PLC0415 — CLI-local
+
+    from hoga.api import peak_prewarm  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    t0 = time.time()
+    try:
+        res = peak_prewarm.prewarm(
+            data_dir,
+            codes={code} if code else None,
+            limit=limit or None,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        console.print(f"[red]peak-prewarm failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    label = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]peak-prewarm {label}[/green] in {time.time() - t0:.0f}s: "
+        f"scanned={res.scanned} warmed={res.warmed} skipped={res.skipped} "
+        f"failed={res.failed} truncated={res.truncated}"
+    )
+
+
 @app.command(name="backfill-live-meta")
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),

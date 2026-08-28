@@ -372,6 +372,26 @@ async def run_trading_stage(data_dir: Path) -> bool:
             log.info("daily run: deriv-flow closing snapshot rows=%d", rows)
     except Exception:
         log.exception("daily run: deriv-flow catch-up failed; continuing")
+
+    # 과거일 1분 최대벽 캐시 warm — 콜드 sidecar 의 74%가 peak 이고(2026-08-19 실측)
+    # 1분 한 번이 모든 봉을 커버한다(근거는 peak_prewarm 모듈 docstring).
+    #
+    # **맨 마지막에 두는 것이 의도적이다.** 이 단계는 상한(`DEFAULT_LIMIT`)까지 돌면
+    # 수 분~십수 분이 걸릴 수 있는데, 위의 investor/deriv flow 는 벤더를 부르는
+    # 시간 민감 작업이다. 앞에 두면 캐시 워밍이 그것들을 밀어낸다.
+    #
+    # 상한이 있으므로 한 번에 다 차지 않는다 — 최신 날짜부터 채우고 증분이라 다음
+    # 런이 남은 것을 이어받는다. 실패는 삼켜서 다음 런이 다시 잡는다(멱등).
+    try:
+        from hoga.api import peak_prewarm  # noqa: PLC0415
+        res = await asyncio.to_thread(peak_prewarm.prewarm, data_dir)
+        if res.warmed or res.failed:
+            log.info(
+                "daily run: peak prewarm warmed=%d skipped=%d failed=%d truncated=%s",
+                res.warmed, res.skipped, res.failed, res.truncated,
+            )
+    except Exception:
+        log.exception("daily run: peak prewarm failed; continuing")
     return True
 
 
