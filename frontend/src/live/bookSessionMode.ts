@@ -122,6 +122,26 @@ export function krxAfterHoursLabel(
 }
 
 /**
+ * 갈래 A 의 정규장 라벨 — 평소엔 '정규장' 하나, **잔량만 시간외일 때는 그 사실과
+ * 사다리 시각을 함께** 단다(예: `정규장 15:30 · 잔량 시간외`).
+ *
+ * ⚠ 이 문안은 하중을 받는다. 15:40–16:00 에는 사다리(15:30 정규장 마지막)와 좌우 두
+ * 숫자(0E 시간외)의 출처가 갈려 **"사다리 잔량 합 ≠ 총잔량" 이 정상**인데, 그 불일치를
+ * 말하는 장치가 이 라벨뿐이다 — 종전에 같은 역할을 하던 `TotalQtyStrip` 의
+ * `fallbackLabel` 은 갈래 A 에서 토글에 자리를 내주고 그려지지 않는다.
+ *
+ * 시각을 **하드코딩하지 않고 사다리에서 파생**한다. 15:30 이 아닌 경우가 실제로 있다
+ * (마지막 0D 프레임이 15:29:5x 이거나, 종목·venue 에 따라 다른 시각에 끊긴다).
+ *
+ * 폭 실측(2026-08-28, `/live` 문서 안 `text-xs`): 113px. 좌우 총잔량이 7자리씩인
+ * 최악 조합(114px)과 합쳐도 호가창 하한 폭의 내부(439px)에 여유가 212px 남는다.
+ */
+export function krxRegularLabel(ladderAtMs: number | null | undefined): string {
+  if (ladderAtMs == null) return '정규장';
+  return `정규장 ${unixMsToKSTClock(ladderAtMs).slice(0, 5)} · 잔량 시간외`;
+}
+
+/**
  * 갈래 B 의 현재 국면 라벨 — NXT 세션표(`session_gate` 의 venue 별 단일가 표와 같은
  * 근거: 증권사 안내 4곳 일치, 2026-08-07 확인).
  *
@@ -178,6 +198,20 @@ export function bookSessionControl(args: {
    *  null. 값이 있으면 라벨이 시각을 단다 — 저장 시점이 "마지막으로 본 순간" 이라
    *  언제 값인지 말해야 오해가 없다. */
   afterHoursStoredAtMs?: number | null;
+  /**
+   * 정규장 모드인데 **하단 총잔량만** 시간외(0E) 값이면 지금 그려지는 **사다리의
+   * 시각**(`snapshot.ts_ms`). 그 상태가 아니면 null.
+   *
+   * ⚠ **불리언이 아니라 시각인 것이 요점이다.** 이 패널은 사다리 시각을 어디에도
+   * 그리지 않는다(2026-08-28 확인 — `unixMsToKSTClock` 을 쓰지 않는다). 그래서 "잔량이
+   * 시간외" 라고만 말하면 사다리가 몇 시 것인지 화면에서 알 길이 없고, 좌우 두 숫자를
+   * 그 사다리의 합으로 읽게 된다. 저장본에 관측 시각을 다는 `afterHoursStoredAtMs` 와
+   * 같은 규율이다 — 얼어붙은 값에는 시각을 붙인다.
+   *
+   * ⚠ **호출부는 이 값을 렌더 조건에서 직접 파생시켜야 한다.** 조건을 여기서 다시
+   * 쓰면(시각·모드로 재판정) 라벨과 화면이 갈린다.
+   */
+  regularLadderAtMs?: number | null;
   nowMs?: number;
 }): BookSessionControl {
   const { nxtEnabled, venue, isSpot } = args;
@@ -195,7 +229,7 @@ export function bookSessionControl(args: {
   if (hasBookSessionToggle(nxtEnabled, isSpot)) {
     return {
       kind: 'toggle',
-      regularLabel: '정규장',
+      regularLabel: krxRegularLabel(args.regularLadderAtMs),
       afterHoursLabel: krxAfterHoursLabel(nowMs, { storedAtMs: args.afterHoursStoredAtMs }),
     };
   }
