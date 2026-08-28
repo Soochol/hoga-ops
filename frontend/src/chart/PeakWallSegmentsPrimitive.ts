@@ -55,6 +55,16 @@ export interface PeakWallSegment {
   /** 수평선을 그리는가. **생략 = 그린다**(구 호출부 호환).
    *  계열별 「수평선 표시」 토글이 여기로 흘러든다. */
   horizontalLine?: boolean;
+  /** 수평선을 **벽이 걸린 시점부터 오른쪽으로만** 긋는가. **생략 = 좌우 전 구간**.
+   *  계열별 「우측으로만 확장」 토글. 끝점(`time1`)은 이 값과 무관하게 같다 —
+   *  달라지는 것은 시작점뿐이라, 벽이 서기 전 구간에 선이 지나가지 않는다.
+   *
+   *  ⚠ 이것이 `time0` 을 바꾸지 않고 **플래그로 오는 이유**: `time0` 은 좌표이면서
+   *  동시에 「그날」의 식별자다(`dayPriceKey` · `mergePeakWallRankSegments` 의
+   *  `time0|price` 중복 키). peakTime 으로 갈아끼우면 같은 날 같은 가격의 두 계열이
+   *  `t_ms` 차이로 다른 키가 되어 중복 제거가 풀리고, 레전드 ①②가 같은 벽을 두 번
+   *  가리킨다 — 타입이 못 잡는 회귀다. */
+  horizontalLineRightOnly?: boolean;
   /** 발생 시점 화살표를 찍는가. **생략 = 찍는다**.
    *  계열별 「발생 시점 화살표」 토글. 라벨 회피 간격도 이 값을 따라간다 — 화살표가
    *  없는데 비켜 서면 라벨이 빈 공간을 피해 떠 있는 **유령 회피**가 된다. */
@@ -68,6 +78,33 @@ export function segmentDrawsHorizontalLine(segment: Pick<PeakWallSegment, 'horiz
 }
 export function segmentDrawsTimeMarker(segment: Pick<PeakWallSegment, 'timeMarker'>): boolean {
   return segment.timeMarker !== false;
+}
+/** 수평선이 「우측으로만」인가 — 위 둘과 달리 **생략 = 꺼짐**이다(기존 동작이 좌우 전
+ *  구간이므로, 구 호출부와 저장이 없는 사용자가 종전 그림을 그대로 받는다). */
+export function segmentExtendsRightOnly(
+  segment: Pick<PeakWallSegment, 'horizontalLineRightOnly'>,
+): boolean {
+  return segment.horizontalLineRightOnly === true;
+}
+
+/** 수평선의 **시작 x** — 「우측으로만 확장」이면 벽이 걸린 지점, 아니면 그날 시작.
+ *  끝 x 는 어느 쪽이든 `x1` 이라 여기 인자로 오지 않는다.
+ *
+ *  draw 에 인라인으로 두지 않고 뽑은 이유는 `peakXFromCoordinate` 와 같다 — draw 는
+ *  canvas·chart api 없이 못 돌려서, 인라인이면 이 분기가 테스트 밖으로 나간다.
+ *  좌표계는 호출자가 정한다(bitmap 이면 셋 다 bitmap).
+ *
+ *  클램프는 보험이다: 보간 폴백은 이미 `[x0, x1]` 안이지만 `timeToCoordinate` 가 값을
+ *  준 경우엔 캔들 스냅 오차로 구간 밖을 가리킬 수 있고, 그러면 선이 그날 구간 밖으로
+ *  새거나 (x1 을 넘으면) 길이가 음수가 된다. */
+export function peakWallLineStartX(
+  segment: Pick<PeakWallSegment, 'horizontalLineRightOnly'>,
+  peakX: number,
+  x0: number,
+  x1: number,
+): number {
+  if (!segmentExtendsRightOnly(segment)) return x0;
+  return clamp(peakX, Math.min(x0, x1), Math.max(x0, x1));
 }
 
 /** 최대벽 라벨의 측면 — 매도는 선 위, 매수는 선 아래에 붙어 같은 분봉에서 서로 비켜간다. */
@@ -464,19 +501,12 @@ class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
         const px0 = x0 * hr;
         const px1 = x1 * hr;
         const py = y * vr;
-        // 수평 세그먼트 — 계열별 「수평선 표시」 토글을 세그먼트가 실어 온다.
-        if (segmentDrawsHorizontalLine(s)) {
-          ctx.beginPath();
-          ctx.strokeStyle = s.color;
-          ctx.lineWidth = Math.max(1, s.lineWidth) * vr;
-          ctx.moveTo(px0, py);
-          ctx.lineTo(px1, py);
-          ctx.stroke();
-        }
         // peak 발생 시점 마커(그 날 언제 최대벽이었는지). timeToCoordinate(peakTime)가 정확하지만,
         // peak 시각이 로드된 캔들 범위 밖이면 null을 내 마커가 누락된다(일부만 보이던 버그). 그럴 때는
         // 세그먼트 끝점(x0~x1) 사이를 peakTime의 [time0,time1] 내 위치로 선형 보간해 폴백 — 선이
         // 그려지는 한 마커도 항상 그려진다(보간은 세션 내 가상시각이 x와 단조라 근사 정확).
+        //
+        // 선보다 **먼저** 잰다 — 「우측으로만 확장」의 시작점이 이 x 이기 때문이다.
         const rawPeakX = timeScale.timeToCoordinate(s.peakTime);
         const pxPeak = peakXFromCoordinate(
           rawPeakX === null ? null : rawPeakX * hr,
@@ -486,6 +516,17 @@ class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
           px0,
           px1,
         );
+        // 수평 세그먼트 — 계열별 「수평선 표시」 토글을 세그먼트가 실어 온다.
+        // 「우측으로만 확장」은 시작점만 벽이 걸린 x 로 옮긴다(끝점은 그대로 그날 끝).
+        if (segmentDrawsHorizontalLine(s)) {
+          const lineX0 = peakWallLineStartX(s, pxPeak, px0, px1);
+          ctx.beginPath();
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = Math.max(1, s.lineWidth) * vr;
+          ctx.moveTo(lineX0, py);
+          ctx.lineTo(px1, py);
+          ctx.stroke();
+        }
         // 순위 화살표와 **같은 도형**(`peakWallArrowShape`). 끝이 벽 가격 선에 닿고 몸통은
         // 라벨과 같은 쪽으로 뻗는다 — 매도는 위에서 아래를, 매수는 아래에서 위를 가리킨다.
         //

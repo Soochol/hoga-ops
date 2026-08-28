@@ -47,15 +47,27 @@ import type { PeakDailyMaFilters } from './peakWallDailyMaFilter';
  * 실어 두면 셋이 자동으로 같은 값을 보고, 특히 회피 간격이 화살표 유무를 따라간다
  * (화살표를 껐는데 라벨만 비켜서면 빈 공간을 피해 떠 있는 **유령 회피**가 된다).
  *
- * 둘 다 켜져 있으면 **원본 배열을 그대로 돌려준다** — 기본 상태에서 참조가 바뀌지
- * 않아야 하류 memo 와 primitive 재갱신이 헛돌지 않는다. */
+ * 전부 **공장값이면 원본 배열을 그대로 돌려준다** — 기본 상태에서 참조가 바뀌지
+ * 않아야 하류 memo 와 primitive 재갱신이 헛돌지 않는다.
+ *
+ * ⚠ 그 조건은 「켜짐」이 아니라 **「공장값」**이다. `horizontalLineRightOnly` 는 기본이
+ * 꺼짐이라 `!rightOnly` 로 들어간다. 여기서 `horizontalLine && timeMarker` 만 보고
+ * 빠져나가면, **가장 흔한 설정(선·화살표 둘 다 켜짐)에서 우측 확장이 세그먼트에 실리지
+ * 않아 토글이 조용히 무효**가 된다 — 저장값은 켜져 있는데 화면은 안 바뀌는 그 서명이다.
+ * 새 표면을 더할 때도 같은 규칙: 공장값 판정에 반드시 넣는다. */
 function withPeakWallSurfaces(
   segments: readonly PeakWallSegment[],
   horizontalLine: boolean,
   timeMarker: boolean,
+  horizontalLineRightOnly: boolean,
 ): readonly PeakWallSegment[] {
-  if (horizontalLine && timeMarker) return segments;
-  return segments.map((segment) => ({ ...segment, horizontalLine, timeMarker }));
+  if (horizontalLine && timeMarker && !horizontalLineRightOnly) return segments;
+  return segments.map((segment) => ({
+    ...segment,
+    horizontalLine,
+    timeMarker,
+    horizontalLineRightOnly,
+  }));
 }
 
 export type PeakWallRenderState = {
@@ -244,6 +256,26 @@ export function usePeakWallRender({
   );
   const tradedTimeMarkerEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakTradedTimeMarkerEnabled : s.bidPeakTradedTimeMarkerEnabled),
+  );
+  // 「우측으로만 확장」 셋 — 수평선의 **시작점**만 벽이 걸린 시각으로 옮긴다(끝점은 그대로).
+  // 부모(`*HorizontalLineEnabled`)를 여기서 다시 곱하지 않는 이유: 이 값은 선을 그릴지가
+  // 아니라 **어떻게 그릴지**라, 부모가 꺼지면 선 자체가 안 그려져 자동으로 무효가 된다
+  // (`segmentDrawsHorizontalLine` 안에서만 읽힌다). 곱해 두면 부모를 껐다 켤 때 값이
+  // 살아 있는지가 이 훅에 달린 것처럼 보여 `enabledBy` 의 "값은 보존" 규약과 어긋난다.
+  const tradedHorizontalLineRightOnly = useActivePrefs(
+    (s) => (isAsk
+      ? s.askPeakTradedHorizontalLineRightOnlyEnabled
+      : s.bidPeakTradedHorizontalLineRightOnlyEnabled),
+  );
+  const allWallHorizontalLineRightOnly = useActivePrefs(
+    (s) => (isAsk
+      ? s.askPeakAllWallHorizontalLineRightOnlyEnabled
+      : s.bidPeakAllWallHorizontalLineRightOnlyEnabled),
+  );
+  const unreachedHorizontalLineRightOnly = useActivePrefs(
+    (s) => (isAsk
+      ? s.askPeakUnreachedHorizontalLineRightOnlyEnabled
+      : s.bidPeakUnreachedHorizontalLineRightOnlyEnabled),
   );
   const allWallHorizontalLineEnabled = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllWallHorizontalLineEnabled : s.bidPeakAllWallHorizontalLineEnabled),
@@ -517,16 +549,41 @@ export function usePeakWallRender({
   );
   // 표면 플래그를 세그먼트에 실어 내보낸다(위 `withPeakWallSurfaces` 주석 참조).
   const surfacedSegments = useMemo(
-    () => withPeakWallSurfaces(built, tradedHorizontalLineEnabled, tradedTimeMarkerEnabled),
-    [built, tradedHorizontalLineEnabled, tradedTimeMarkerEnabled],
+    () => withPeakWallSurfaces(
+      built,
+      tradedHorizontalLineEnabled,
+      tradedTimeMarkerEnabled,
+      tradedHorizontalLineRightOnly,
+    ),
+    [built, tradedHorizontalLineEnabled, tradedTimeMarkerEnabled, tradedHorizontalLineRightOnly],
   );
   const surfacedAllWallSegments = useMemo(
-    () => withPeakWallSurfaces(allWallBuilt, allWallHorizontalLineEnabled, allWallTimeMarkerEnabled),
-    [allWallBuilt, allWallHorizontalLineEnabled, allWallTimeMarkerEnabled],
+    () => withPeakWallSurfaces(
+      allWallBuilt,
+      allWallHorizontalLineEnabled,
+      allWallTimeMarkerEnabled,
+      allWallHorizontalLineRightOnly,
+    ),
+    [
+      allWallBuilt,
+      allWallHorizontalLineEnabled,
+      allWallTimeMarkerEnabled,
+      allWallHorizontalLineRightOnly,
+    ],
   );
   const surfacedUnreachedSegments = useMemo(
-    () => withPeakWallSurfaces(unreachedBuilt, unreachedHorizontalLineEnabled, unreachedTimeMarkerEnabled),
-    [unreachedBuilt, unreachedHorizontalLineEnabled, unreachedTimeMarkerEnabled],
+    () => withPeakWallSurfaces(
+      unreachedBuilt,
+      unreachedHorizontalLineEnabled,
+      unreachedTimeMarkerEnabled,
+      unreachedHorizontalLineRightOnly,
+    ),
+    [
+      unreachedBuilt,
+      unreachedHorizontalLineEnabled,
+      unreachedTimeMarkerEnabled,
+      unreachedHorizontalLineRightOnly,
+    ],
   );
   return useMemo(() => ({
     segments: surfacedSegments,

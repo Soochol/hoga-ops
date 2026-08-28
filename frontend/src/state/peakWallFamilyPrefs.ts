@@ -8,7 +8,7 @@
  * 무엇을 후보로 볼지(MA 필터)는 방향 하나에 묶여** 있었다. 그래서 "체결된 벽만 라벨을
  * 붙이고 미도달 벽은 선만" 이나 "전체 최대벽에만 일봉 MA 필터" 같은 조합이 불가능했다.
  *
- * 이제 7개 축이 계열마다 따로 산다. `askPeakIntraMax` 는 **의도적으로 계열 공용**이다 —
+ * 이제 8개 축이 계열마다 따로 산다. `askPeakIntraMax` 는 **의도적으로 계열 공용**이다 —
  * 미도달 계열은 carrier 가 둘 다 같은 값이라 이 토글이 애초에 무효고(usePeakWallRender
  * 머리말), 나머지 둘에서만 갈리는 노브를 계열별로 두면 화면의 대칭이 거짓말을 한다.
  *
@@ -21,7 +21,7 @@
  *
  * ## 이 파일이 따로 있는 이유
  *
- * 엔트리 42개(토글 30 · 수치 12)를 `chartPrefs` 본문에 넣으면 그 파일의 나머지 60여 개
+ * 엔트리 60개(토글 48 · 수치 12)를 `chartPrefs` 본문에 넣으면 그 파일의 나머지 60여 개
  * 항목이 최대벽 사이에 파묻힌다. `as const` tuple 은 spread 로도 타입이 보존되므로
  * (`[...BASE, ...PEAK_WALL_FAMILY_TOGGLES] as const`) 파생 구조 — 키 타입 · 기본값 ·
  * 저장 검증 · 행 렌더 — 는 하나도 달라지지 않는다.
@@ -42,7 +42,9 @@ export const PEAK_WALL_FAMILIES = [
 export type PeakWallFamilyId = (typeof PEAK_WALL_FAMILIES)[number]['id'];
 
 /** 계열별 토글 — 카드 안에서 렌더된다(`AskPeakConfig`/`BidPeakConfig`). 순서가 곧
- *  화면 순서다: 표면 셋(라벨·화살표·레전드) 다음에 필터 둘. */
+ *  화면 순서다: 표면 다섯(수평선 · 발생 시점 화살표 · 라벨 · 레전드 셀 · 순위 화살표)
+ *  다음에 필터 둘. 「우측으로만 확장」은 `enabledBy` 로 수평선 아래에 중첩되므로
+ *  그 바로 뒤에 둔다 — 부모와 떨어지면 들여쓴 행이 남의 밑에 붙는다. */
 export const PEAK_WALL_FAMILY_TOGGLES = [
   // ── 매도 · 체결된 벽 ───────────────────────────────────────────────
   {
@@ -54,6 +56,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     side: 'ask',
     family: 'Traded',
     axis: 'surface',
+  },
+  {
+    key: 'askPeakTradedHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「체결된 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Traded',
+    axis: 'surface',
+    enabledBy: 'askPeakTradedHorizontalLineEnabled',
   },
   {
     key: 'askPeakTradedTimeMarkerEnabled',
@@ -127,6 +140,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     axis: 'surface',
   },
   {
+    key: 'askPeakUnreachedHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「미도달 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'Unreached',
+    axis: 'surface',
+    enabledBy: 'askPeakUnreachedHorizontalLineEnabled',
+  },
+  {
     key: 'askPeakUnreachedTimeMarkerEnabled',
     label: '발생 시점 화살표',
     description: '「미도달 벽」이 걸린 시점에 화살표를 찍습니다(↓ 위에서 아래로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
@@ -196,6 +220,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     side: 'ask',
     family: 'AllWall',
     axis: 'surface',
+  },
+  {
+    key: 'askPeakAllWallHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「전체 최대벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'ask',
+    family: 'AllWall',
+    axis: 'surface',
+    enabledBy: 'askPeakAllWallHorizontalLineEnabled',
   },
   {
     key: 'askPeakAllWallTimeMarkerEnabled',
@@ -269,6 +304,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     axis: 'surface',
   },
   {
+    key: 'bidPeakTradedHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「체결된 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Traded',
+    axis: 'surface',
+    enabledBy: 'bidPeakTradedHorizontalLineEnabled',
+  },
+  {
     key: 'bidPeakTradedTimeMarkerEnabled',
     label: '발생 시점 화살표',
     description: '「체결된 벽」이 걸린 시점에 화살표를 찍습니다(↑ 아래에서 위로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
@@ -340,6 +386,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     axis: 'surface',
   },
   {
+    key: 'bidPeakUnreachedHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「미도달 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'Unreached',
+    axis: 'surface',
+    enabledBy: 'bidPeakUnreachedHorizontalLineEnabled',
+  },
+  {
     key: 'bidPeakUnreachedTimeMarkerEnabled',
     label: '발생 시점 화살표',
     description: '「미도달 벽」이 걸린 시점에 화살표를 찍습니다(↑ 아래에서 위로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
@@ -409,6 +466,17 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
     side: 'bid',
     family: 'AllWall',
     axis: 'surface',
+  },
+  {
+    key: 'bidPeakAllWallHorizontalLineRightOnlyEnabled',
+    label: '우측으로만 확장',
+    description: '「전체 최대벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    default: false,
+    category: 'indicator-modal',
+    side: 'bid',
+    family: 'AllWall',
+    axis: 'surface',
+    enabledBy: 'bidPeakAllWallHorizontalLineEnabled',
   },
   {
     key: 'bidPeakAllWallTimeMarkerEnabled',

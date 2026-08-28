@@ -5,6 +5,7 @@ import {
   layoutPeakWallLabels,
   peakWallChipGeometry,
   peakXFromCoordinate,
+  peakWallLineStartX,
   LABEL_BOX_X_PAD_PX,
   LABEL_BOX_Y_PAD_PX,
   LABEL_FONT_PX,
@@ -484,5 +485,34 @@ describe('peakWallChipGeometry', () => {
   it('좌표가 유한하지 않으면 null — 그 프레임은 라벨을 건너뛴다', () => {
     expect(peakWallChipGeometry({ ...base, side: 'ask', peakX: Number.NaN })).toBeNull();
     expect(peakWallChipGeometry({ ...base, side: 'ask', lineY: Number.POSITIVE_INFINITY })).toBeNull();
+  });
+});
+
+describe('peakWallLineStartX', () => {
+  // 좌우 확장(기존)과 우측만(신규)의 **유일한 차이**가 이 시작 x 다. 끝 x 는 어느
+  // 쪽이든 x1 이라 여기 나오지 않는다 — 「그날 마감(오늘은 라이브 엣지)까지」가 두
+  // 모드의 공통 계약이다.
+  const DAY = { x0: 100, x1: 900 } as const;
+
+  it('공장값(생략)은 그날 시작에서 긋는다 — 저장이 없는 사용자는 종전 그림을 받는다', () => {
+    expect(peakWallLineStartX({}, 500, DAY.x0, DAY.x1)).toBe(100);
+    expect(peakWallLineStartX({ horizontalLineRightOnly: false }, 500, DAY.x0, DAY.x1)).toBe(100);
+  });
+
+  it('우측으로만 확장이면 벽이 걸린 x 에서 긋는다', () => {
+    expect(peakWallLineStartX({ horizontalLineRightOnly: true }, 500, DAY.x0, DAY.x1)).toBe(500);
+  });
+
+  // 클램프 red-check. `timeToCoordinate` 가 캔들 스냅 오차로 그날 구간 밖을 가리키면
+  // 클램프 없이는 선이 이웃 날로 새거나(왼쪽) 길이가 음수가 된다(오른쪽).
+  it('벽 x 가 그날 구간 밖이면 구간 안으로 잘린다', () => {
+    const on = { horizontalLineRightOnly: true };
+    expect(peakWallLineStartX(on, 40, DAY.x0, DAY.x1)).toBe(100);
+    expect(peakWallLineStartX(on, 1200, DAY.x0, DAY.x1)).toBe(900);
+  });
+
+  it('x0 > x1 로 뒤집혀 와도 두 끝 사이로 잘린다', () => {
+    // 좌표는 시간 순서를 보장하지 않는다(호출자가 bitmap 배율을 곱해 넘긴다).
+    expect(peakWallLineStartX({ horizontalLineRightOnly: true }, 40, 900, 100)).toBe(100);
   });
 });
