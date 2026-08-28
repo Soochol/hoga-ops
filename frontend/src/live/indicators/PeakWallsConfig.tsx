@@ -566,9 +566,19 @@ function FilterStage({ side, family }: { side: Side; family: PeakWallFamilyId })
 
 // ── ④ 표현 ────────────────────────────────────────────────────────────────
 
-/** 표면 다섯의 두 갈래 — 캔들 위에 그리는 것과 랭킹에 참여하는 것. 종전엔 「어디에」
- *  아래 평평한 다섯 형제라 성격이 다른 둘이 섞여 있었다. */
-const ON_CANDLE_AXES = ['HorizontalLine', 'TimeMarker', 'Label'] as const;
+/** 표면의 두 갈래 — 캔들 위에 그리는 것과 랭킹에 참여하는 것. 종전엔 「어디에」
+ *  아래 평평한 다섯 형제라 성격이 다른 둘이 섞여 있었다.
+ *
+ *  ⚠ 매칭이 `endsWith(`${axis}Enabled`)` 라 **새 축은 여기에 등록해야 한다**. 빠뜨리면
+ *  타입도 테스트도 조용한 채 그 행이 「랭킹 참여」 쪽으로 떨어진다 —
+ *  `HorizontalLineRightOnlyEnabled` 는 `HorizontalLineEnabled` 로 끝나지 않으므로
+ *  부모 접미로는 잡히지 않는다(중첩 행이라 더더욱 부모 옆에 있어야 한다). */
+const ON_CANDLE_AXES = [
+  'HorizontalLine',
+  'HorizontalLineRightOnly',
+  'TimeMarker',
+  'Label',
+] as const;
 
 function SurfaceStage({ side, family }: { side: Side; family: PeakWallFamilyId }) {
   const ind = useWindowIndicator((s) => s);

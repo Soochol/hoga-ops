@@ -532,11 +532,34 @@ describe('usePeakWallRender', () => {
       expect(r.current.allWallDrawn).toBe(true);
     });
 
-    it('둘 다 켜져 있으면 세그먼트 배열 참조가 유지된다', () => {
+    it('전부 공장값이면 세그먼트 배열 참조가 유지된다', () => {
       // 기본 상태에서 사본을 만들면 하류 memo 와 primitive 재갱신이 매번 헛돈다.
       const r = render(true, [BOTH]);
       expect(r.current.segments[0].horizontalLine).toBeUndefined();
       expect(r.current.segments[0].timeMarker).toBeUndefined();
+      // 우측 확장도 공장값(꺼짐)이라 사본을 유발하지 않는다.
+      expect(r.current.segments[0].horizontalLineRightOnly).toBeUndefined();
+    });
+
+    /**
+     * **fast path red-check.** `withPeakWallSurfaces` 의 공장값 판정에서 `!rightOnly` 를
+     * 빼면 이 단언만 빨개진다 — 그리고 그 결함은 **선·화살표가 둘 다 켜진 가장 흔한
+     * 설정에서만** 나타난다(하나라도 꺼 두면 사본 경로를 타서 우연히 통과한다).
+     * 사용자에게는 「저장은 켜졌는데 화면은 그대로」로 보이는 형태다.
+     */
+    it('우측으로만 확장은 선·화살표가 둘 다 켜진 상태에서도 세그먼트에 실린다', () => {
+      withAllWall();
+      act(() => {
+        useChartPrefsStore.setState({ askPeakTradedHorizontalLineRightOnlyEnabled: true });
+      });
+      const r = render(true, [BOTH]);
+      expect(r.current.segments[0].horizontalLine).toBe(true);
+      expect(r.current.segments[0].timeMarker).toBe(true);
+      expect(r.current.segments[0].horizontalLineRightOnly).toBe(true);
+      // 계열 격리 — 전체 최대벽은 자기 pref 를 따르므로 켜지지 않는다.
+      expect(r.current.allWallSegments[0].horizontalLineRightOnly).toBeFalsy();
+      // 계열의 **존재**는 그대로다 — 이건 「어떻게 그릴지」이지 「그릴지」가 아니다.
+      expect(r.current.drawn).toBe(true);
     });
 
     it('화살표 참여를 끈 계열은 arrowRankSegments 에서 빠진다', () => {
