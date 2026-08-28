@@ -1727,6 +1727,69 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     assert cache.has_ask_peak("005930", "20260610", "hogaplay", 180_000)
 
 
+def test_coarse_bucket_peaks_pin_1m_canon(tmp_path) -> None:
+    """굵은 봉 peak 은 **1분 정본**을 낸다 — 캐시 상태가 값을 바꾸지 않는다.
+
+    `all_max_peaks`·`traded_record_peaks` 는 봉 의존인데(`_peak_bucket_dedup` 이
+    `bucket_id` 로 접는다 — `test_bucket_dependent_fields_are_pinned_to_1m_canon`)
+    파생 경로가 재파생하지 못해 1분 값을 나른다. 그것을 **정본으로 확정**한 것이
+    `_peak_with_rep_outputs` 의 계약이고, 이 테스트가 그 계약을 조립 지점에서 건다.
+
+    **막는 방향**: 굵은 봉이 직접-굵은봉 계산으로 돌아가 **캐시 유무에 따라 값이
+    갈리는 것**. 2026-08-28 실측으로 실데이터 3일 중 2일에서 확인된 결함이고,
+    `ask_peak`/`bid_peak` 캐시 v12 범프가 그 규약 이전에 쌓인 항목을 걷어낸다.
+
+    **못 보는 것**: 오늘자. 오늘은 아직 이 파생 경로를 타지 않는다
+    (`_peak_slices_from_1m_cache` 가 `date == today_kst` 에 None 을 돌려준다).
+    """
+    from hoga.api.bundle import build_ask_bid_peak_slices
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+    from hoga.tables.snapshots import query_day_ask_bid_peak_dual
+    from tests.test_tables_snapshots import _peak_reagg_fixture
+
+    # 봉을 바꾸면 `all_max_peaks` 가 실제로 갈리는 픽스처(그 파일이 근거를 적는다).
+    _peak_reagg_fixture(tmp_path)
+    cache = PastIndicatorsCache(tmp_path / "cachedir")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
+    eng.conn = duckdb.connect()
+    kw = {
+        "code": "005930", "date": "20260610", "source": "hogaplay",
+        "today_kst": "20260613", "cache": cache,
+        "session_open_ms": 90_000_000, "session_close_ms": 153_000_000,
+    }
+
+    base_ask, base_bid = build_ask_bid_peak_slices(eng, bucket_ms=60_000, **kw)
+    cold_ask, cold_bid = build_ask_bid_peak_slices(eng, bucket_ms=300_000, **kw)
+    warm_ask, warm_bid = build_ask_bid_peak_slices(eng, bucket_ms=300_000, **kw)
+
+    # 직접-굵은봉 조회 = 정본이 **아닌** 쪽. 이것과 갈라져야 파생을 탔다는 증거가 된다.
+    direct_ask, direct_bid = query_day_ask_bid_peak_dual(
+        eng.conn, path=tmp_path / "snapshots.parquet",
+        trades_path=tmp_path / "trades.parquet", bucket_ms=300_000,
+        session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+
+    def _pq(peaks) -> list[tuple[int, int]]:
+        """와이어 모델과 행 dataclass 를 같은 축으로 — 타입이 달라 직접 비교가 안 된다."""
+        return [(p.price, p.qty) for p in peaks]
+
+    for side, base, cold, warm, direct in (
+        ("ask", base_ask, cold_ask, warm_ask, direct_ask),
+        ("bid", base_bid, cold_bid, warm_bid, direct_bid),
+    ):
+        assert base is not None and cold is not None and warm is not None, side
+        assert direct is not None, side
+        for field in ("all_max_peaks", "traded_record_peaks"):
+            assert getattr(cold, field) == getattr(base, field), f"{side} {field} 1분 정본"
+            assert getattr(warm, field) == getattr(cold, field), f"{side} {field} 콜드↔웜"
+        # 파생 경로를 실제로 탔는가 — 안 탔다면 직접-굵은봉 값이 나오고, 그건 이
+        # 픽스처에서 1분 값과 다르다(그 차이가 없으면 위 단언이 우연히 통과한다).
+        assert _pq(cold.all_max_peaks) != _pq(direct.all_max_peaks), (
+            f"{side}: 파생 경로를 안 타고 직접-굵은봉 값이 나왔다"
+        )
+
+
 def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
     """build_ask_peak_slice가 close 변종과 틱-max 변종(max_*)을 모두 배선한다."""
     from unittest.mock import MagicMock

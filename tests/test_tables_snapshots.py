@@ -1689,10 +1689,17 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
     이 동치가 봉별 재계산을 없앨 수 있는 유일한 근거다(ratio/fill 의
     `test_indicator_reaggregate` 와 같은 역할).
 
-    **막는 방향**: 축약이 직접 조회와 어긋나는 쪽. `all_peaks`/`all_max_peaks`
-    는 비교하지 않는다 — 과거일에는 의도적으로 만들지 않기로 한 필드다
-    (`_peak_with_rep_outputs` docstring). **못 보는 것**: 봉 무관 절반(`*_max*`)
-    이 정말 봉과 무관한지는 아래 별도 테스트가 본다.
+    **막는 방향**: 축약이 직접 조회와 어긋나는 쪽 — `reaggregate_peak_rep` 이
+    만드는 **모든** 출력 키에 대해. 키 집합 자체도 함께 고정한다: 키가 늘면
+    비교 없이 지나가는 필드가 생기고, 그것이 정확히 아래 "못 보는 것" 이 실제
+    드리프트로 번진 경로였다(2026-08-28).
+
+    **못 보는 것**: 이 함수가 **만들지 않는** 필드. 두 부류이고 사유가 다르다 —
+    ① 진짜 봉 무관(`*_max*` 스칼라·`traded_max_peaks`·`traded_record_max_peaks`·
+    `unreached_*`)은 `test_peak_max_fields_are_bucket_independent` 가 본다.
+    ② **봉 의존인데 1분을 정본으로 고정한 것**(`all_max_peaks`·
+    `traded_record_peaks`)은 `test_bucket_dependent_fields_are_pinned_to_1m_canon`
+    이 본다. ②를 "봉 무관" 으로 착각한 주석이 이 테스트의 구멍과 짝이었다.
     """
     snapshots, trades = _peak_reagg_fixture(tmp_path)
     con = _con_for(snapshots)
@@ -1710,6 +1717,11 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
             [r for r in rep_rows if r.side == side], side=side, bucket_ms=bucket_ms,
         )
         assert direct is not None and reduced is not None, side
+        # 키 집합 고정 — 늘어난 키는 아래 단언을 못 받으므로 여기서 걸린다.
+        assert set(reduced) == {
+            "side", "all_close", "traded_close", "traded_peaks", "all_peaks",
+        }, f"{side} reduced keys"
+        assert reduced["side"] == side
         assert reduced["all_close"] == (
             direct.all_price, direct.all_qty, direct.all_intra_ms,
         ), f"{side} all_close"
@@ -1717,6 +1729,59 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
             (direct.price, direct.qty, direct.intra_ms) if direct.price is not None else None
         ), f"{side} traded_close"
         assert reduced["traded_peaks"] == direct.traded_peaks, f"{side} traded_peaks"
+        assert reduced["all_peaks"] == direct.all_peaks, f"{side} all_peaks"
+
+
+@pytest.mark.parametrize("bucket_ms", [180_000, 300_000, 600_000])
+def test_bucket_dependent_fields_are_pinned_to_1m_canon(
+    tmp_path: Path, bucket_ms: int,
+) -> None:
+    """`all_max_peaks`·`traded_record_peaks` 는 **봉 의존인데 1분이 정본이다**.
+
+    두 사실을 한 자리에서 건다:
+
+    1. **봉 의존이다** — 굵은 봉으로 직접 조회하면 1분과 값이 다르다.
+       `all_max_peaks` 는 `_peak_bucket_dedup` 이 `subset=["price", "bucket_id"]`
+       로 접기 때문이고(이름이 `*_max*` 라 봉 무관으로 오해받았다),
+       `traded_record_peaks` 는 rep 프레임 산물이기 때문이다.
+    2. **그래도 1분 값이 나간다** — `reaggregate_peak_rep` 이 이 둘을 만들지
+       않으므로 `_peak_with_rep_outputs` 가 base(1분)를 그대로 나른다. 재파생하려면
+       cont 행이 필요한데 캐시에는 rep 행만 있어 원리적으로 불가능하다.
+
+    **막는 방향**: 누군가 이 둘을 "봉 무관" 으로 되돌려 적거나
+    `test_peak_max_fields_are_bucket_independent` 에 끼워 넣는 것. 그러면 1번
+    단언이 빨개진다. **못 보는 것**: 1분 정본이 굵은 봉 정본보다 *더 옳은가* —
+    그것은 값 판단이라 테스트가 아니라 `_peak_with_rep_outputs` docstring 이 논증한다.
+    """
+    snapshots, trades = _peak_reagg_fixture(tmp_path)
+    con = _con_for(snapshots)
+    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+
+    base_ask, base_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+    coarse_ask, coarse_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=bucket_ms, **kw,
+    )
+    _, _, rep_rows = query_day_ask_bid_peak_dual_with_rep(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+
+    for side, base, coarse in (
+        ("ask", base_ask, coarse_ask), ("bid", base_bid, coarse_bid),
+    ):
+        assert base is not None and coarse is not None, side
+        for field in ("all_max_peaks", "traded_record_peaks"):
+            assert getattr(base, field) != getattr(coarse, field), (
+                f"{side} {field} @{bucket_ms}: 봉 의존이어야 한다 — 같다면 이 필드가 "
+                f"정말 봉 무관이 되었거나 픽스처가 그 차이를 잃은 것이다"
+            )
+        # 2번: 축약이 이 둘을 만들지 않으므로 파생 결과에 base 값이 남는다.
+        reduced = reaggregate_peak_rep(
+            [r for r in rep_rows if r.side == side], side=side, bucket_ms=bucket_ms,
+        )
+        assert reduced is not None
+        assert "all_max_peaks" not in reduced and "traded_record_peaks" not in reduced, side
 
 
 def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
