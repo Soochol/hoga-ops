@@ -11,7 +11,6 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
-import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
@@ -151,11 +150,6 @@ export function Heatmap() {
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
   };
 
-  const scrollToFolder = (folderId: string) => {
-    document.getElementById(`heatmap-folder-${folderId}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
   // 장마감 + 시세 커버리지 희박(절반 미만)이면 '—' 행이 보드를 뒤덮는다 — 이게 오류가
@@ -221,7 +215,6 @@ export function Heatmap() {
             장마감 — 시세 없는 종목의 값(—)은 다음 장 시작 후 채워집니다
           </div>
         )}
-        <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
         {showNewGroup && (
           <GroupNameModal
             title="새 그룹 만들기"
