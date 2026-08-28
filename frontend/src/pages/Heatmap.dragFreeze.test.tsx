@@ -77,7 +77,7 @@ function renderPage() {
   const qc = new QueryClient();
   return render(<QueryClientProvider client={qc}><MemoryRouter><Heatmap /></MemoryRouter></QueryClientProvider>);
 }
-// 보드에 렌더된 폴더 div(id=heatmap-folder-*)의 DOM 순서 = orderedGroups 순서. (스트립 칩엔 id 없음)
+// 보드에 렌더된 폴더 div(id=heatmap-folder-*)의 DOM 순서 = orderedGroups 순서.
 const folderOrder = () => Array.from(document.querySelectorAll('[id^="heatmap-folder-"]')).map((el) => el.id);
 
 beforeEach(() => {
@@ -89,7 +89,7 @@ beforeEach(() => {
 
 it('G1: 행 드래그 active 동안 groupSort 변경에도 그룹 순서 동결, drag-end 후 재정렬', async () => {
   renderPage();
-  await screen.findAllByText('반도체'); // 스트립 칩+헤더로 다수 → 렌더 대기
+  await screen.findByText('반도체'); // 그룹 헤더 렌더 대기
   expect(folderOrder()).toEqual(['heatmap-folder-f1', 'heatmap-folder-f2']); // manual=folder.order
 
   expect(h.onDragStart).toBeTruthy();

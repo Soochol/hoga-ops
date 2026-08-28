@@ -59,7 +59,7 @@ beforeEach(() => {
   activateLiveCode.mockClear();
   openLiveInNewTab.mockClear();
   useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });   // eng-review D2: 기본 manual
-  Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — 스트립 점프 대비
+  Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — FolderAddButton 자동 스크롤 대비
   // 매 테스트 open 기본값으로 리셋 — per-test override가 다음 테스트로 누수되지 않게.
   vi.mocked(useLiveQuoteOverlay).mockReturnValue({
     quoteByCode: new Map([
@@ -81,7 +81,7 @@ it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () =>
   expect(routeShell).not.toHaveClass('border');
   expect(routeShell).not.toHaveClass('shadow-panel');
   expect(await screen.findByTestId('heatmap-board')).toBeInTheDocument();
-  expect((await screen.findAllByText('반도체')).length).toBeGreaterThanOrEqual(2);
+  expect(await screen.findByText('반도체')).toBeInTheDocument();   // 폴더명은 그룹 헤더 한 곳(스트립 제거)
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('● 장중')).toBeInTheDocument();
   expect(screen.queryByLabelText(/색 범례/)).toBeNull();   // #6: 범례 삭제
@@ -130,7 +130,7 @@ it('Ctrl/Meta-click 은 새 브라우저 탭으로 열고 현재 뷰는 그대�
 
 it('기본 manual=order 순, 종목 정렬 1클릭(manual→desc) 시 등락률 내림차순', async () => {
   renderPage();
-  await screen.findAllByText('반도체');   // 스트립 칩+헤더로 중복 → All (렌더 대기용)
+  await screen.findByText('반도체');   // 그룹 헤더 렌더 대기
   const manual = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
   expect(manual).toEqual(['삼성전자', 'SK하이닉스']);          // order 0,1
   fireEvent.click(screen.getByRole('button', { name: '종목 정렬' }));   // manual→desc
@@ -143,20 +143,6 @@ it('히트맵은 quote-only 표면이라 Live Capture 상태를 조회하지 않
   expect(await screen.findByText('삼성전자')).toBeInTheDocument();
   expect(screen.queryByText('KIS 자격증명이 설정되지 않았습니다')).toBeNull();
   expect(useLiveStatusMock).not.toHaveBeenCalled();
-});
-
-it('섹터 온도 스트립 칩 렌더(반도체 평균 +1.5%)', async () => {
-  renderPage();
-  // 005930 -2%, 000660 +5% → 평균 +1.5%
-  expect(await screen.findByRole('button', { name: /반도체 평균 \+1\.5% — 카드로 이동/ })).toBeInTheDocument();
-});
-
-it('스트립 칩 클릭 → 해당 카드로 scrollIntoView', async () => {
-  renderPage();
-  fireEvent.click(await screen.findByRole('button', { name: /반도체 평균/ }));
-  expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
-    expect.objectContaining({ behavior: 'smooth' }),
-  );
 });
 
 it('그룹 정렬 순환 버튼: 클릭마다 store.groupSort 갱신(manual→desc→asc→manual)(#7)', async () => {
