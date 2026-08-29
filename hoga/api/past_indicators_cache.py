@@ -189,10 +189,15 @@ class PastIndicatorsCache:
             tuple[str, str, str, str, int, int, int], TradeVolumePoc | None
         ] = OrderedDict()
         # depth_heatmap 은 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
-        # ratio/fill 처럼 1m 저장 후 재집계하지 않는 이유: depth 대표 선택이
-        # "연속거래 우선 + 완전-동시호가 버킷 폴백"의 조건부 argmax라, 1m 행에서
-        # coarse 대표를 정확히 복원하려면 선택 근거(is_pre)를 함께 저장해야 하기
-        # 때문. bucket_ms 별 결과 캐시가 단순·정확하다.
+        # ⚠ **이유로 적혀 있던 근거는 무효다(2026-08-29 확인).** 종전 설명은 "대표
+        # 선택이 is_pre 조건부 argmax라 1m 행에서 복원 불가" 였는데, ADR-0062 v3 가
+        # 유효 스냅샷을 WHERE 사전 필터로 거르면서 **대표는 버킷의 마지막 행**이 됐다
+        # (`query_bucketed_depth_heatmap` docstring: "종전 is_pre CASE + last-in-bucket
+        # 폴백 방출을 대체"). 즉 `rep` 는 재집계 가능하다.
+        # 현재의 진짜 블로커는 `rep_max` 다 — 정렬 키 `total` 이 `DepthHeatmapPoint`
+        # 에 없어 보조 kind 가 필요하고, `arg_max` 동률에서 peak 이 겪은 정본 문제가
+        # 재발할 수 있다. 판단에 필요한 실측은 `bundle.build_depth_heatmap_slice`
+        # docstring 에 있다.
         self._mem_depth: OrderedDict[
             tuple[str, str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
