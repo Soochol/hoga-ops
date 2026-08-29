@@ -59,9 +59,53 @@
 | 8 | ✅ **구현됨** 섹터 랭킹 당일 경로가 캐시를 전부 우회 | C-3 | WEAKENED | **18.4배**(423→23 ms, 871k행→296행) | S | 중간 |
 | 9 | ✅ **구현됨** `range-merged` identity 고아 2시간 상주 | E-2 | CONFIRMED | 지표 토글 시 23 MB 급 누적 차단 | M | 낮음~중간 |
 | 10 | ✅ **구현됨** `manualChunks` 무력화 → 청크 이름이 거짓 | D-1 | WEAKENED | **0 바이트**. 계측 정직성 | S | 낮음 |
-| 11 | `/live` 내부 lazy 경계 0개 | D-2 | WEAKENED | 초기 로드 −33.2 KB raw / −9 KB gzip | M | 낮음 |
+| 11 | ⚠ **시도→기각** `/live` 내부 lazy 경계 0개 | D-2 | **REFUTED** | ~~−33.2 KB~~ → **실측 +244 B** (아래 §11 참조) | M | 낮음 |
 
 C-2(이벤트 루프 기아)는 **1단계가 #5 와 동일 수정**이라 별도 항목으로 세우지 않고, 남은 계측 부분만 트랙 4 로 넘겼다.
+
+## §11 — `/live` lazy 경계: 시도했고 **기각한다** (2026-08-29)
+
+표의 마지막 미착수 항목이었다. 구현해 봤고 **예상 효과가 나오지 않아 되돌렸다.**
+`−33.2 KB` 는 `IndicatorPanel.tsx` + `*Config.tsx` 의 **파일 크기 합**이지 초기 로드
+절감이 아니었다 — 그 파일들이 초기 로드에서 실제로 빠지는지는 확인된 적이 없었다.
+
+세 가지 조합을 실측했다(baseline 초기 로드 **1,420,334 B**, entry+modulepreload+CSS):
+
+| 시도 | 초기 로드 | 차이 |
+|---|---:|---:|
+| ① `LivePage` 에서 드로어를 `lazy()` + `targetChartWindow` 를 정의 쪽(`state/workspace`)에서 직접 import | 1,420,578 | **+244 B** |
+| ② ① + `live-workspace` 그룹에서 `live/indicators/` 를 제외 | 1,420,578 | **+244 B** |
+| ③ ① + 드로어 UI 만 `indicator-drawer` 명시 그룹으로 분리 | 1,422,457 | **+2,123 B** |
+
+③ 은 청크 분리 **자체는 성공**했다(`live-workspace` 771 KB → 590 KB, `indicator-drawer`
+183 KB 생성). 그런데 그 183 KB 가 `index.html` 의 modulepreload 에 그대로 들어가
+합계가 오히려 늘었다.
+
+### 왜 안 되는가 — 두 가지가 겹쳐 있다
+
+1. **`live/indicators/` 는 드로어 전용 디렉터리가 아니다.** 같은 폴더에 **차트가 항상
+   쓰는 런타임 모듈**이 섞여 있다 — `maSeriesRegistry` · `dailyMaSeriesRegistry` ·
+   `paneLegendRegistry` · `flagLegendValueRegistry` · `windowScopedRegistry` ·
+   `dailyMaProjection` · `useResolvedDailyCandles` · `useDailyMaRevealGate` 를
+   `PaneLegendOverlay` · `useLiveChartData` · `peakWallDailyMaFilter` ·
+   `TradeVolumePocOverlay` 등이 **정적 import** 한다. 그래서 디렉터리 단위 제외(②)가
+   불가능하다.
+2. **수동 그룹 규칙은 도달성 분석을 우회한다.** 이것은 이 문서가 이미 아는 사실이고
+   (`vite.config.ts` 의 heatmap·studyViews 제외 주석: *"경로로 묶으면 그 디렉터리의 한
+   파일이라도 정적 도달 시 청크 전체가 modulepreload 로 끌려온다"*), ③ 이 그 재현이다.
+   명시 그룹으로 만든 청크는 `lazy()` 여부와 무관하게 preload 목록에 실린다.
+
+### 되살리려면 무엇이 선행되어야 하나
+
+`live/indicators/` 를 **드로어 UI 와 차트 런타임으로 물리적으로 가르는 것**이 선행
+조건이다(예: `live/indicators/drawer/` 신설). 그 뒤에야 ② 형태의 그룹 제외가 의미를
+갖고, rolldown 의 자동 분할이 실제 도달성으로 나눌 수 있다. **디렉터리 분리 없이
+lazy 만 거는 것은 바이트를 늘린다** — 위 표가 그 증거다.
+
+부수 확인: `targetChartWindow` 는 정의가 이미 `state/workspace.ts` 에 있고
+`WorkspaceIndicatorDrawer` 는 re-export 만 한다. 감사가 예상한 "export 를 별도 파일로
+옮기는 선행 리팩터" 는 **불필요하다**(import 경로만 바꾸면 된다). 다만 그것만으로는
+위 두 원인이 남으므로 효과가 없다.
 
 > **표 정합 (2026-08-29).** #9 는 랜딩했는데 마커가 안 붙어 있었다 —
 > `frontend/src/api/range.ts:357` `MERGED_LIVE_RANGE_MAX_ENTRIES = 12` 와 그 회수
