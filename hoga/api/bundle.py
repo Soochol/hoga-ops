@@ -2036,7 +2036,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
-    include_program_trade = program_trade_enabled and sidecar_only
+    # ⚠ `not cutoff_sidecar` 가 **load-bearing** 이다. cutoff sidecar 는 매물대 커서
+    # 스크럽이 부르는 요청이고 소비처가 `volume_distributions` **하나뿐**인데
+    # (`useVolumeDistributionCutoffProfile.ts`), 이 가드가 없으면 커서를 한 칸 옮길
+    # 때마다 프로그램매매 계열을 통째로 다시 만들어 실어 보낸다. 오늘분은 봉으로 접지도
+    # 않아서(아래 `build_program_trade_series`) 원해상도 ~845점이 매번 나간다.
+    # 형제 슬라이스들은 `include_optional_sidecar_slices` 로, `broker_late_entries` 는
+    # 자기 자리에서 같은 가드를 이미 걸고 있었다 — 여기만 빠져 있었다.
+    include_program_trade = program_trade_enabled and sidecar_only and not cutoff_sidecar
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
