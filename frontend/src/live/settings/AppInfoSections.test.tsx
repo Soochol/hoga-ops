@@ -142,14 +142,16 @@ describe('AppInfoSections — 테마', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useThemePrefsStore.setState({ themePreference: 'auto' });
+    useThemePrefsStore.setState({ themePreference: 'toss-dark' });
   });
 
-  it('renders the theme options with auto pressed by default', () => {
+  it('renders the theme options with the current one pressed', () => {
     renderWithQuery(<ThemeSection />);
-    expect(screen.getByRole('button', { name: '자동' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Toss Dark' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Obsidian' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: 'Ledger' })).toHaveAttribute('aria-pressed', 'false');
+    // `auto`(라벨 '자동')는 2026-08-30 에 제거됐다 — 되살아나면 여기서 빨개진다.
+    expect(screen.queryByRole('button', { name: '자동' })).toBeNull();
   });
 
   it('clicking Ledger updates the store and aria-pressed', async () => {

@@ -4,40 +4,28 @@ import { persistJson, readJsonObject } from './persist';
 /**
  * UI theme preference — a global per-user setting.
  *
- * - `obsidian`   — the dark trading-terminal theme (default).
+ * - `obsidian`   — the dark trading-terminal theme.
  * - `ledger`     — the light paper/research theme (ivory + banker's green).
  * - `toss-light` — the Toss Securities benchmark light theme (white + toss blue).
- *                  **The default preference** (2026-08-07). Still never produced
- *                  by `auto` — being the default and being auto-reachable are
- *                  different things (see below).
+ *                  **The default preference** (2026-08-07).
  * - `toss-dark`  — the Toss Securities benchmark dark theme (near-black + toss blue).
- *                  Manual-select only, same as toss-light.
- * - `auto`       — pick per route: the chart-heavy live surfaces stay dark, the
- *                  review/analysis surfaces go light. See {@link effectiveTheme}.
  *
- * The *preference* (obsidian/ledger/toss-light/toss-dark/auto) is what we
- * persist; the *effective* theme (obsidian/ledger/toss-light/toss-dark) is what
- * drives `<html data-theme>`. The DOM sync has **two** writers, and the split
- * is load-bearing (see {@link subscribeThemeToDom}): a preference change is
- * applied *synchronously inside `set()`* by that subscription, and App.tsx's
- * effect owns the route axis (`auto` switching per pathname). An inline
- * bootstrap in index.html paints the first value — it must stay in sync with
- * {@link effectiveTheme}.
+ * **선호가 곧 테마다** — 네 값은 그대로 `<html data-theme>` 가 된다. 라우트별로
+ * 갈리는 `auto` 가 있던 시절에는 preference(5개)와 effective theme(4개)이 다른
+ * 개념이었고 `effectiveTheme(pref, pathname)` 이 그 사이를 옮겼다. 2026-08-30 에
+ * `auto` 를 제거하면서 그 층이 통째로 사라졌다(사유는 DEFAULT_THEME_PREFERENCE 참조).
  *
- * The two toss-* themes are intentionally kept OUT of `auto`: `auto` only
- * chooses between dark (obsidian) and the default light (ledger) per route, so
- * the extra palettes don't force a "which dark? which light?" branch into the
- * route logic — they are opt-in via an explicit preference only.
+ * DOM 쓰기의 **유일한 지점**은 {@link subscribeThemeToDom} 이다 — 선호 변경이
+ * `set()` 안에서 동기로 반영된다. index.html 의 인라인 부트스트랩이 첫 페인트 값을
+ * 칠하고, 그 복제는 themePrefs.test.ts 가 지킨다.
  */
-export type ThemePreference = 'obsidian' | 'ledger' | 'toss-light' | 'toss-dark' | 'auto';
-export type EffectiveTheme = 'obsidian' | 'ledger' | 'toss-light' | 'toss-dark';
+export type ThemePreference = 'obsidian' | 'ledger' | 'toss-light' | 'toss-dark';
 
 export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
   'obsidian',
   'ledger',
   'toss-light',
   'toss-dark',
-  'auto',
 ];
 
 const STORAGE_KEY = 'ui.themePreference.v1';
@@ -45,9 +33,20 @@ const STORAGE_KEY = 'ui.themePreference.v1';
 /**
  * Preference used when nothing is stored (2026-08-07, 사용자 결정).
  *
- * Was `auto`, which picks a theme *per route* — so a single nav click
+ * Was `auto`, which picked a theme *per route* — so a single nav click
  * (히트맵 → 스크리너) flipped the whole app between dark and light. An explicit
  * default removes the route branch entirely: one theme everywhere.
+ *
+ * **`auto` 자체는 2026-08-30 에 제거됐다**(사용자 결정). 기본값에서 밀려난 뒤로
+ * 남은 값어치는 "그 뒤집힘을 원하는 사람을 위한 옵션" 뿐이었는데, 그 옵션 하나가
+ * 지고 있던 비용이 컸다: ① index.html 부트스트랩에 라우트 맵이 **복제**돼 있었고
+ * 실제로 한 번 어긋나 FOUC 를 냈다(`/market`), ② 그 복제를 지키는 가드 테스트,
+ * ③ 라우트 축을 위한 **두 번째 DOM writer**(App.tsx), ④ 그 writer 가 자식 이펙트보다
+ * 늦어 생기는 순서 갭(#1656 이 의도적으로 남긴 엣지), ⑤ preference ≠ effective
+ * theme 이라는 개념 이중화. 다섯 가지가 `auto` 와 함께 사라졌다.
+ *
+ * 저장된 `'auto'` 는 마이그레이션 없이 이 기본값으로 폴백한다 — `readStorage` 가
+ * 화이트리스트 검증이라 목록에 없는 값은 `null` 이 된다.
  *
  * The cost is documented and accepted: Toss Light's accent and `--price-down`
  * are both blue (measured ΔE 17.3, vs 80.8 in Ledger and 139.2 in Obsidian).
@@ -59,24 +58,6 @@ const STORAGE_KEY = 'ui.themePreference.v1';
  * run before any module loads). themePrefs.test.ts fails if the two diverge.
  */
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'toss-light';
-
-/** Route prefixes that stay dark under `auto`. Everything else goes light. */
-// '/market'(시장 종합)은 장중 모니터링 표면이라 /live·/heatmap 과 같은 Obsidian 쪽이다.
-// export 인 이유는 소비처가 있어서가 아니라 **테스트가 index.html 의 복제본과
-// 대조**하기 때문이다(themePrefs.test.ts). 이 목록만 고치면 첫 페인트가 어긋난다.
-export const OBSIDIAN_ROUTE_PREFIXES = ['/live', '/heatmap', '/market'];
-
-/**
- * Resolve a preference + current pathname to the theme that should be applied.
- * `auto` maps the chart-heavy live surfaces to obsidian and the rest to ledger;
- * an explicit preference ignores the route.
- */
-export function effectiveTheme(pref: ThemePreference, pathname: string): EffectiveTheme {
-  if (pref !== 'auto') return pref;
-  return OBSIDIAN_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-    ? 'obsidian'
-    : 'ledger';
-}
 
 function readStorage(): ThemePreference | null {
   const obj = readJsonObject(STORAGE_KEY);
@@ -125,10 +106,8 @@ export const useThemePrefsStore = create<Store>((set) => ({
  * `hydrateFromStorage` runs the same validation as the initializer, so there is
  * one parse/validate path instead of two that can drift.
  *
- * Applying it to `<html data-theme>` is {@link subscribeThemeToDom}'s job: the
- * store change fires that listener, and under `auto` each tab resolves against
- * *its own* pathname — which is the point of keeping the preference (not the
- * effective theme) as the shared value.
+ * Applying it to `<html data-theme>` is {@link subscribeThemeToDom}'s job — the
+ * store change fires that listener in every tab that mirrored the value.
  *
  * Returns an unsubscribe function (useEffect cleanup shape).
  */
@@ -142,9 +121,11 @@ export function subscribeToThemePreferenceStorage(): () => void {
 }
 
 /**
- * Apply the effective theme to `<html data-theme>` **the instant the preference
- * changes** — synchronously inside zustand's `set()`, before React flushes the
- * re-render it triggers.
+ * Write the preference to `<html data-theme>` **the instant it changes** —
+ * synchronously inside zustand's `set()`, before React flushes the re-render it
+ * triggers. **이 앱에서 `data-theme` 를 쓰는 유일한 지점이다**(첫 페인트 부트스트랩
+ * 제외). `auto` 가 있던 시절엔 App.tsx 의 이펙트가 라우트 축을 나눠 가졌지만,
+ * 그 축이 사라지면서 writer 가 하나로 줄었다.
  *
  * ⚠️ 이 동기성이 이 함수의 존재 이유다. App.tsx 의 이펙트만으로는 부족했고,
  * `useLayoutEffect` 로 바꿔도 부족하다 — **React 는 이펙트를 자식부터 실행한다**.
@@ -157,19 +138,21 @@ export function subscribeToThemePreferenceStorage(): () => void {
  * 유지하고, 우발적 리렌더가 뒤늦게 고쳐 주기 때문이다(실측 2026-08-29: 클릭
  * 직후 캔버스 상위 3색의 **픽셀 카운트까지 동일**, 즉 리드로우 0회).
  *
- * 라우트 축(`auto` 의 pathname 전환)은 App.tsx 의 이펙트가 계속 소유한다 —
- * 여기서는 `window.location.pathname` 으로 현재 라우트를 읽으므로 두 writer 가
- * 같은 값을 쓴다(멱등 이중 쓰기라 무해).
+ * **등록 시 현재 값을 한 번 쓴다** — 구독만 걸면 *변경*에만 반응하므로 마운트 시점의
+ * 동기화가 사라진다. 정상 경로에서는 index.html 부트스트랩이 같은 localStorage 를
+ * 같은 화이트리스트로 읽어 이미 일치하지만, 부트스트랩이 **예외로 떨어지면**
+ * (localStorage 차단 등) `catch` 가 'obsidian' 을 써 놓고 스토어는 다른 값으로
+ * 서 있다. 그 어긋남을 고칠 것이 아무것도 없어진다 — `auto` 시절 App 이펙트가
+ * 마운트 때 우연히 해 주던 일이라, 옮기면서 같이 잃기 쉽다(실제로 잃었고 App.test
+ * 의 탭 전역 테스트가 잡았다).
  *
  * Returns an unsubscribe function (useEffect cleanup shape).
  */
 export function subscribeThemeToDom(): () => void {
-  return useThemePrefsStore.subscribe((state) => {
-    document.documentElement.setAttribute(
-      'data-theme',
-      effectiveTheme(state.themePreference, window.location.pathname),
-    );
-  });
+  const apply = (pref: ThemePreference) =>
+    document.documentElement.setAttribute('data-theme', pref);
+  apply(useThemePrefsStore.getState().themePreference);
+  return useThemePrefsStore.subscribe((state) => apply(state.themePreference));
 }
 
 /**
@@ -181,9 +164,9 @@ export function subscribeThemeToDom(): () => void {
  * 밖의 DOM 변경이라 그 자체로는 어떤 컴포넌트도 리렌더시키지 않는다. 구독이
  * 없으면 차트는 다음 **우발적** 리렌더까지 옛 팔레트로 남는다.
  *
- * effective theme 이 그대로인 pref 변경(`/live` 에서 auto → obsidian)은 리렌더만
- * 되고 리마운트는 안 된다 — viewKey 세그먼트가 preference 가 아니라 effective
- * theme 을 쓰기 때문이다.
+ * `auto` 가 있던 시절엔 「effective theme 이 그대로인 pref 변경」(`/live` 에서
+ * auto → obsidian)이 있어서 리렌더만 되고 리마운트는 안 되는 경우가 존재했다.
+ * 선호가 곧 테마인 지금은 모든 선호 변경이 곧 테마 변경이라 항상 리마운트로 간다.
  */
 export function useThemeChangeRerender(): void {
   useThemePrefsStore((s) => s.themePreference);

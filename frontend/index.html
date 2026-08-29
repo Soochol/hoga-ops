@@ -15,27 +15,25 @@
     <!-- Theme bootstrap: set <html data-theme> BEFORE the module graph loads so
          the first paint is the right theme and projector modules resolve their
          colors against it (no FOUC, no wrong-theme chart cache). Mirrors
-         state/themePrefs.ts — DEFAULT_THEME_PREFERENCE and the auto route map
+         state/themePrefs.ts — DEFAULT_THEME_PREFERENCE and the allowed values
          are duplicated here because this must run before any module loads.
 
-         The duplication drifted once: OBSIDIAN_ROUTE_PREFIXES gained '/market'
-         and this list did not, so `auto` painted /market ledger and then flipped
-         it to obsidian — exactly the FOUC this block exists to prevent.
-         themePrefs.test.ts now parses this file and fails on any divergence, so
+         The preference IS the theme, so this block just validates and writes.
+         It used to resolve a route map too (the `auto` preference), and that
+         copy drifted once: OBSIDIAN_ROUTE_PREFIXES gained '/market' and this
+         list did not, so `auto` painted /market ledger and then flipped it to
+         obsidian — exactly the FOUC this block exists to prevent. `auto` was
+         removed 2026-08-30 and the route map went with it; the remaining
+         duplication (default + allowed values) is still guarded —
+         themePrefs.test.ts parses this file and fails on any divergence, so
          edit BOTH sides or the test will tell you. -->
     <script>
       (function () {
         try {
           var raw = localStorage.getItem('ui.themePreference.v1');
           var pref = raw ? JSON.parse(raw).themePreference : 'toss-light';
-          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'toss-light' && pref !== 'toss-dark' && pref !== 'auto') pref = 'toss-light';
-          var theme = pref;
-          if (pref === 'auto') {
-            var p = location.pathname;
-            var dark = p === '/live' || p.indexOf('/live/') === 0 || p === '/heatmap' || p.indexOf('/heatmap/') === 0 || p === '/market' || p.indexOf('/market/') === 0;
-            theme = dark ? 'obsidian' : 'ledger';
-          }
-          document.documentElement.setAttribute('data-theme', theme);
+          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'toss-light' && pref !== 'toss-dark') pref = 'toss-light';
+          document.documentElement.setAttribute('data-theme', pref);
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'obsidian');
         }
