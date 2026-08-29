@@ -724,8 +724,13 @@ def build_ask_peak_slice(
     과거일(today_kst != date)은 불변이라 cache로 1회 계산 후 재사용(범위 내 N일 재스캔 회피).
 
     ``bucket_ms``로 총잔량 지표와 동일한 버킷 대표 위에서 집계(틱 max 아님). 세션 경계
-    (``session_open_ms``/``session_close_ms``, native HHMMSSmmm)로 동시호가 배제 —
-    캐시 키에 ``bucket_ms``가 포함되므로 분봉 전환 시 재계산된다."""
+    (``session_open_ms``/``session_close_ms``, native HHMMSSmmm)로 동시호가 배제.
+
+    ⚠ **이 함수는 `trades.parquet` 이 없는 스톡데이트 전용 폴백이다**(호출부:
+    `build_ask_bid_peak_slices`). 캐시 키에 ``bucket_ms``가 포함되므로 그 경로에서는
+    분봉 전환이 재계산이다 — **주 경로는 더 이상 그렇지 않다**. 오늘·과거일 모두 1분
+    으로 한 번 스캔하고 굵은 봉은 rep 재집계로 파생한다(`_today_peak_slices` ·
+    `_peak_slices_from_1m_cache`). 이 문장을 "peak 은 봉마다 재계산된다" 로 읽지 말 것."""
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_ask_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
@@ -1396,10 +1401,29 @@ def build_depth_heatmap_slice(
     형제 지표(호가비·체결강도·매도벽·POC)와 동일하게 완료된 과거일은
     PastIndicatorsCache로 1회 계산 후 재사용한다(ADR-0043/0090 게이트를
     ``_indicator_cacheable``로 자가-해석). ratio/fill 과 달리 1m 저장+재집계가
-    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다 — 대표 선택이
-    조건부 argmax라 1m 행에서 coarse 대표를 정확히 복원할 수 없기 때문
-    (past_indicators_cache._mem_depth 주석 참조). 오늘은 프로모션 진행 중이라
-    항상 재계산.
+    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
+
+    ⚠ **그 이유로 적혀 있던 근거는 이미 무효다(2026-08-29 확인).** 종전 설명은
+    "대표 선택이 조건부 argmax라 1m 행에서 coarse 대표를 복원할 수 없다" 였는데,
+    ADR-0062 v3 가 유효 스냅샷을 WHERE 로 사전 필터하면서 **대표는 그냥 버킷의
+    마지막 행**(``rep_key = intra_ms``)이 됐다 — `query_bucketed_depth_heatmap`
+    docstring 이 "종전 is_pre CASE + last-in-bucket 폴백 방출을 대체" 라고 적는다.
+    즉 `rep` 는 ratio 의 last-in-window 와 동형이라 재집계가 가능하다.
+
+    그런데도 안 하는 **현재의** 이유는 둘이고, 근거의 성격이 다르다:
+    ① `rep_max`(총잔량 최대 스냅샷)를 파생하려면 정렬 키인 ``total`` 이 필요한데
+       그 값이 `DepthHeatmapPoint` 에 없다 — `peak_rep` 같은 보조 kind 가 필요하다.
+    ② peak 이 겪은 "정본" 문제(`_peak_with_rep_outputs` 참조)가 `arg_max` 동률에서
+       재발할 수 있어 등가성 테스트 + `KIND_VERSIONS["depth"]` 범프가 전제다.
+
+    착수 판단용 실측(2026-08-29, 005930 hogaplay 20일): 봉별 콜드 계산이 1분
+    **3.39s** · 5분 1.51s · 15분 1.14s 다 — peak 과 달리 **비용이 버킷 수에
+    비례**하므로 "1분에서 파생" 이 자동으로 이득은 아니다. 다만 워크스페이스 기본
+    봉이 `1m` 이라(`frontend/src/state/liveDefaultLayout.ts`) 1분 계산은 대개 어차피
+    발생하고, **1분 캐시가 있을 때만 파생**하는 기회주의적 형태면 손해 시나리오가
+    사라진다. 봉 3종을 도는 사용자 기준 6.04s → 3.4s.
+
+    오늘은 프로모션 진행 중이라 항상 재계산.
 
     ``session_open_ms``는 개장 동시호가 배제의 하한(ADR-0062 v3) — 쿼리의 공용 술어
     ``_book_indicator_eligible_sql``로 전달된다. 호가비·매도벽과 동일 규칙.
