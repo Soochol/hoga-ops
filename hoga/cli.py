@@ -304,6 +304,41 @@ def peak_prewarm_cmd(
     )
 
 
+@app.command(name="prune-indicator-cache")
+def prune_indicator_cache_cmd(
+    yes: bool = typer.Option(False, "--yes", help="실제로 지운다(기본은 세기만)"),
+) -> None:
+    """죽은 버전의 지표 캐시 파일을 지운다.
+
+    `KIND_VERSIONS` 범프는 **읽을 때 stale 로 판정**할 뿐이라 디스크의 옛 파일이
+    그대로 쌓인다. 읽기 경로가 조용히 무시하므로 정확성 문제가 아니라 **공간**
+    문제이고, 그래서 언제 돌려도 안전하고 안 돌려도 동작이 바뀌지 않는다.
+
+    기본은 세기만 한다 — 규모를 보고 `--yes` 로 실행할 것. 버전이 **낮은** 것만
+    지우므로(높은 것은 더 새 코드가 쓴 것) 롤백 여지를 남긴다. 멱등.
+    """
+    import time  # noqa: PLC0415 — CLI-local
+
+    from hoga.api import indicator_cache_prune  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    t0 = time.time()
+    try:
+        res = indicator_cache_prune.prune(data_dir, dry_run=not yes)
+    except Exception as e:
+        console.print(f"[red]prune-indicator-cache failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    label = "deleted" if yes else "dry-run"
+    console.print(
+        f"[green]prune-indicator-cache {label}[/green] in {time.time() - t0:.0f}s: "
+        f"scanned={res.scanned} stale={res.stale} retired={res.retired} "
+        f"deleted={res.deleted} freed={res.bytes_freed / 1e9:.2f}GB "
+        f"unreadable={res.unreadable} unknown_kind={res.unknown_kind}"
+    )
+    if not yes and (res.stale or res.retired):
+        console.print("[yellow]실제로 지우려면 --yes 를 붙여 다시 실행하세요.[/yellow]")
+
+
 @app.command(name="backfill-live-meta")
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
