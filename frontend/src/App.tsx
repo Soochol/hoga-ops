@@ -28,7 +28,7 @@ import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from './live/workspacePanel';
 import { registerSettingsModalOpener } from './live/settingsModalControls';
-import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
+import { effectiveTheme, subscribeThemeToDom, useThemePrefsStore } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
 
 /*
@@ -113,9 +113,21 @@ export default function App() {
   // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
   useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
 
-  // Keep <html data-theme> in sync with the preference + current route. The
-  // index.html bootstrap sets the first-paint value; this owns every change
-  // after (preference toggle in Settings, or an auto-mode route switch).
+  // `<html data-theme>` 의 writer 는 **둘**이고 분담이 중요하다.
+  //
+  // ① 선호 변경 — `subscribeThemeToDom()`. 이펙트가 **아니라** 스토어 구독이어야
+  //    하는 이유는 순서다: React 는 이펙트를 자식부터 실행하므로, 이 이펙트가
+  //    쓰기 전에 차트(자식)의 생성 이펙트가 이미 옛 CSS 변수를 읽어 캔버스를
+  //    그린다. 구독 리스너는 `set()` 안에서 동기로 돌아 그 커밋보다 앞선다.
+  //    (증상은 "테마가 안 바뀐다" 가 아니라 "스크롤해야 바뀐다" 였다 —
+  //     themePrefs.ts 의 함수 주석에 실측이 있다.)
+  // ② 라우트 변경 — 아래 이펙트. `auto` 는 pathname 으로 갈리는데 그 전환은
+  //    스토어를 건드리지 않아 ①이 볼 수 없다. 선호가 바뀌는 경우엔 둘이 같은
+  //    값을 쓰는 멱등 이중 쓰기라 무해하다.
+  //
+  // index.html 의 부트스트랩이 첫 페인트 값을 쓰고, 마운트 시 아래 이펙트가 그
+  // 값을 라우트에 맞춰 확정한다.
+  useEffect(subscribeThemeToDom, []);
   const themePreference = useThemePrefsStore((s) => s.themePreference);
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', effectiveTheme(themePreference, pathname));
