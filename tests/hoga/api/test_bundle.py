@@ -704,7 +704,11 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
+    from hoga.api.models import (
+        DayVolumeDistribution,
+        ProgramTradeSeries,
+        VolumeDistributionBin,
+    )
     from hoga.tables.candles import ApiCandle
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
@@ -733,6 +737,19 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
         ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
+        # cutoff sidecar 의 소비처는 `volume_distributions` 하나뿐이다
+        # (`useVolumeDistributionCutoffProfile.ts`). 프로그램매매는 형제들과 달리
+        # `include_optional_sidecar_slices` 를 안 타서 **이 가드가 빠져 있었고**,
+        # 커서를 한 칸 옮길 때마다 오늘분 원해상도 ~845점이 다시 만들어졌다.
+        # ⚠ 빈 **모델**을 돌려준다(None 이 아니라). None 이면 가드가 없을 때 호출부가
+        # `RangeBundle` 검증에서 먼저 터져, 실패가 "가드가 빠졌다" 가 아니라 pydantic
+        # ValidationError 로 나온다 — 원인을 말하지 않는 red 다.
+        program_builder = stack.enter_context(
+            patch.object(
+                bundle_mod, "build_program_trade_series",
+                return_value=ProgramTradeSeries(),
+            )
+        )
 
         rb = build_range_bundle(
             mock_engine,
@@ -755,6 +772,7 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
     ask_bid_builder.assert_not_called()
     broker_builder.assert_not_called()
     poc_builder.assert_not_called()
+    program_builder.assert_not_called()
 
 
 def test_build_range_bundle_uses_combined_ask_bid_peak_builder():

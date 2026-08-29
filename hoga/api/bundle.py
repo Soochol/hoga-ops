@@ -414,19 +414,34 @@ def build_quote_ratio_slice(
             )
             cache.store_ratio(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_ratio(rows_1m, bucket_ms)
-    else:
-        is_today = today_kst is not None and date == today_kst
-        ttl_key = ("ratio", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms)
-        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
-        if hit:
-            rows = cached
-        else:
-            rows = snapshots_tbl.query_bucketed_ratio(
-                engine.conn, path=path_obj, bucket_ms=bucket_ms,
+    elif (
+        today_kst is not None and date == today_kst
+        and bucket_ms % _ONE_MINUTE_MS == 0
+    ):
+        # 오늘도 **1분으로 한 번만** 스캔하고 굵은 봉은 재집계한다 — 위 과거일 분기가
+        # 이미 하는 일이고, 차이는 저장소뿐이다(디스크 캐시 → 프로세스 TTL; ADR-0043 의
+        # 금지는 영속 캐시 한정이다). `reaggregate_ratio == 직접 조회` 등가성은
+        # `test_indicator_reaggregate` 가 이미 증명하므로 새 계약이 아니다.
+        #
+        # 키에 `bucket_ms` 가 **없다**: 스캔이 1분 고정이라 봉이 키일 이유가 없고,
+        # 있으면 봉 전환마다 미스가 난다. 실측(2026-08-29, hogaplay 85k행): 종전엔
+        # 1분 27.8ms → 5분 28.0ms → 15분 32.8ms 로 봉마다 풀 스캔이었고, 과거일은
+        # 같은 데이터에서 0.4ms/0.2ms 였다. 픽스 전 peak 과 같은 결함이다.
+        ttl_key = ("ratio_1m", code, date, source, venue, session_open_ms, session_close_ms)
+        hit, rows_1m = TODAY_TTL.lookup(ttl_key)
+        if not hit:
+            rows_1m = snapshots_tbl.query_bucketed_ratio(
+                engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
                 session_open_ms=session_open_ms, session_close_ms=session_close_ms,
             )
-            if is_today:
-                TODAY_TTL.put(ttl_key, rows)
+            TODAY_TTL.put(ttl_key, rows_1m)
+        rows = reaggregate_ratio(rows_1m, bucket_ms)
+    else:
+        # 여기 남는 것: 분 미만 봉(재집계할 1분 행이 없다) · 캐시 없는 과거일(테스트).
+        rows = snapshots_tbl.query_bucketed_ratio(
+            engine.conn, path=path_obj, bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
@@ -642,25 +657,40 @@ def build_fill_strength_slice(
                 return FillStrength(bucket_ms=bucket_ms, points=[])
             cache.store_fill(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_fill(rows_1m, bucket_ms)
-    else:
-        is_today = today_kst is not None and date == today_kst
-        ttl_key = ("fill", code, date, source, venue, bucket_ms)
-        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
-        if hit:
-            rows = cached
-        else:
-            direct = _query_fill_rows(engine, code_dir, bucket_ms)
-            if direct is None:
-                # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
+    elif (
+        today_kst is not None and date == today_kst
+        and bucket_ms % _ONE_MINUTE_MS == 0
+    ):
+        # 오늘도 **1분으로 한 번만** 스캔하고 굵은 봉은 재집계한다 — 위 과거일 분기와
+        # 같은 구조이고 저장소만 다르다(디스크 → 프로세스 TTL). fill 은 순수 SUM
+        # GROUP BY 라 재집계가 정확하다(이 함수 상단 주석 + `reaggregate_fill`).
+        #
+        # 키에 `bucket_ms` 가 **없다**: 스캔이 1분 고정이라 봉이 키일 이유가 없고,
+        # 있으면 봉 전환마다 미스가 난다. 실측(2026-08-29): 종전 1분 18.0ms → 5분
+        # 16.0ms → 15분 15.7ms 로 봉마다 재스캔이었고, 과거일은 0.2ms/0.1ms 였다.
+        ttl_key = ("fill_1m", code, date, source, venue)
+        hit, rows_1m = TODAY_TTL.lookup(ttl_key)
+        if not hit:
+            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS)
+            if rows_1m is None:
+                # ADR-0043: fills·trades 둘 다 없음 = 유효한 "체결 없음".
+                # **None 은 캐시하지 않는다** — 시가 직후 파일이 늦게 생길 수 있고
+                # stale None 이 최대 TTL 만큼 그것을 가린다(기존 테스트가 잠근다).
                 return FillStrength(bucket_ms=bucket_ms, points=[])
-            rows = direct
-            if is_today:
-                # ADR-0090: _query_fill_rows가 fills.parquet 우선·trades 폴백이라, trades
-                # 유래 결과를 캐시한 뒤 fills.parquet이 같은 15s 창 안에 늦게 도착하면 이후
-                # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
-                # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL이
-                # 이미 수용한 15s staleness 예산 안이라 허용한다.
-                TODAY_TTL.put(ttl_key, rows)
+            # ADR-0090: `_query_fill_rows` 가 fills.parquet 우선·trades 폴백이라, trades
+            # 유래 결과를 캐시한 뒤 fills.parquet 이 같은 15s 창 안에 늦게 도착하면 이후
+            # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
+            # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL 이
+            # 이미 수용한 15s staleness 예산 안이라 허용한다.
+            TODAY_TTL.put(ttl_key, rows_1m)
+        rows = reaggregate_fill(rows_1m, bucket_ms)
+    else:
+        # 여기 남는 것: 분 미만 봉(재집계할 1분 행이 없다) · 캐시 없는 과거일(테스트).
+        direct = _query_fill_rows(engine, code_dir, bucket_ms)
+        if direct is None:
+            # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
+            return FillStrength(bucket_ms=bucket_ms, points=[])
+        rows = direct
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
@@ -2036,7 +2066,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
-    include_program_trade = program_trade_enabled and sidecar_only
+    # ⚠ `not cutoff_sidecar` 가 **load-bearing** 이다. cutoff sidecar 는 매물대 커서
+    # 스크럽이 부르는 요청이고 소비처가 `volume_distributions` **하나뿐**인데
+    # (`useVolumeDistributionCutoffProfile.ts`), 이 가드가 없으면 커서를 한 칸 옮길
+    # 때마다 프로그램매매 계열을 통째로 다시 만들어 실어 보낸다. 오늘분은 봉으로 접지도
+    # 않아서(아래 `build_program_trade_series`) 원해상도 ~845점이 매번 나간다.
+    # 형제 슬라이스들은 `include_optional_sidecar_slices` 로, `broker_late_entries` 는
+    # 자기 자리에서 같은 가드를 이미 걸고 있었다 — 여기만 빠져 있었다.
+    include_program_trade = program_trade_enabled and sidecar_only and not cutoff_sidecar
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
