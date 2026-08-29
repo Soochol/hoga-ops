@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections.abc import Collection, Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -1718,6 +1720,131 @@ def _gil_breathe(last_yield_at: float) -> float:
     return time.monotonic()
 
 
+# 일자 루프 **앞**에서 과거일 peak 캐시를 채우는 유계 병렬 prefetch.
+#
+# ## 왜 peak 만 병렬인가 — 두 실측은 분모가 다르다
+#
+#   * **peak 계산 단독**: 12 동시가 13.2s → 7.1s(`slice_coalescer` 주석), 12일
+#     4-way 가 4.58s → 2.14s(2026-08-28 실측). polars/DuckDB 라 GIL 을 놓는다.
+#   * **일자 루프 전체**: 6스레드에서 wall **7.1배 팽창**(routes.py 상단 실측).
+#     본문이 96.7% 순수 파이썬이고, 팽창의 절반은 GIL 이 아니라 **GC**
+#     stop-the-world 다.
+#
+# 둘 다 옳다. 그래서 병렬은 peak 에만 걸고 **루프는 순차로 남긴다** — 그 결과
+# `_gil_breathe` 처방(#998)·누적 리스트 13개의 순서·`excluded`/`warnings_list` 의
+# 미정렬 계약·per-date perf 로그 델타가 **전부 무변경**이다. routes.py 가 미착수로
+# 적어 둔 방향(ADR-0085 v3.2, 모드 기반 분리)과 같은 쪽이다.
+#
+# ## 왜 ThreadPoolExecutor 인가
+#
+# 리포의 기존 유계 패턴은 전부 `anyio.CapacityLimiter` / `asyncio.Semaphore` 인데,
+# 여기는 `to_thread` **안쪽의 동기 컨텍스트**라 async 프리미티브를 쓸 수 없다.
+# anyio 기본 풀(40토큰 공용)에 중첩하는 것은 routes.py 가 경고하는 **동기 라우트
+# 기아**를 정면으로 밟는다(`/api/live/status` 폴링 등이 같은 풀을 쓴다). 전용
+# 풀을 요청 수명만큼만 열고 닫는다.
+#
+# ⚠ **레인 상한과 곱해진다.** routes.py 의 sweep 표는 요청당 컴퓨트 스레드 1개를
+# 전제로 측정됐으므로, 실효 스레드는 `상한 × 여기 워커 수`가 된다. 기본값을 3 으로
+# 낮게 둔 이유이고, 이 값을 올리려면 그 sweep 을 다시 돌려야 한다.
+_PEAK_PREFETCH_WORKERS_ENV = "HOGA_RANGE_PEAK_PREFETCH_WORKERS"
+_DEFAULT_PEAK_PREFETCH_WORKERS = 3
+#: 콜드 날짜가 이 수 미만이면 건너뛴다 — 풀을 띄우는 비용이 이득을 넘는다.
+_MIN_PREFETCH_TARGETS = 2
+
+
+def _peak_prefetch_workers() -> int:
+    raw = os.environ.get(_PEAK_PREFETCH_WORKERS_ENV)
+    if raw is None:
+        return _DEFAULT_PEAK_PREFETCH_WORKERS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_PEAK_PREFETCH_WORKERS
+
+
+def _prefetch_peak_caches(
+    engine: QueryEngine,
+    *,
+    code: str,
+    dates: Iterable[str],
+    source_pref: str,
+    venue: Venue,
+    bucket_ms: int,
+    cache: PastIndicatorsCache | None,
+    today_kst: str | None,
+) -> int:
+    """일자 루프 전에 과거일 peak 캐시를 채운다. 실제로 계산한 날짜 수를 돌려준다.
+
+    루프 본문은 **한 줄도 바뀌지 않는다** — 도달했을 때 이미 캐시 히트이기 때문이다.
+    호출도 `build_ask_bid_peak_slices` 를 요청 파라미터 그대로 쓰므로 기존
+    `SLICE_COALESCER` 키를 그대로 타고(굵은 봉이면 `peak_dual_1m`, 1분이면
+    `peak_dual`), 동시 요청과 자연히 합쳐진다. 키를 새로 만들면 같은 스캔이 두 번
+    돈다.
+
+    콜드 판정에 **1분 캐시**를 쓰는 것이 요점이다 — 그것이 있으면 어떤 봉이든
+    파생으로 ~5ms 라 prefetch 할 이유가 없다(실측 2026-08-28: 콜드 304ms ↔ 파생
+    3.3ms).
+
+    오늘자는 대상이 아니다(ADR-0043 — 디스크 캐시가 없다). 소스·세션 경계는 루프와
+    **같은 함수**로 정한다; 갈라지면 여기서 만든 캐시를 루프가 다른 키로 찾아
+    **낭비가 되지만 값이 틀리지는 않는다**(실패 모드가 성능이지 정합성이 아니다).
+    """
+    if cache is None or today_kst is None:
+        return 0
+    one = snapshots_tbl.ONE_MINUTE_MS
+    targets: list[tuple[str, str, int | None, int | None]] = []
+    for d in dates:
+        if d >= today_kst:
+            continue
+        try:
+            resolution = resolve_source_result(engine, d, code, source_pref, venue)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
+        if resolution.path is None:
+            continue
+        source = resolution.source
+        if (
+            cache.has_ask_peak(code, d, source, one, venue=venue)
+            and cache.has_bid_peak(code, d, source, one, venue=venue)
+        ):
+            continue
+        try:
+            meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
+            norm_meta, _ = normalize_session_bounds(meta)
+            open_ms, close_ms = indicator_session_bounds(norm_meta)
+        except (FileNotFoundError, ValueError, OSError, KeyError):
+            # 메타를 못 읽거나 경계 키가 없는 날 — 루프가 같은 판정을 다시 하고
+            # excluded/missing 으로 표면화한다. prefetch 는 조용히 빠진다.
+            continue
+        targets.append((d, source, open_ms, close_ms))
+
+    if len(targets) < _MIN_PREFETCH_TARGETS:
+        return 0
+
+    def _one(target: tuple[str, str, int | None, int | None]) -> None:
+        d, source, open_ms, close_ms = target
+        try:
+            build_ask_bid_peak_slices(
+                engine, code=code, date=d, bucket_ms=bucket_ms,
+                source=source, venue=venue,
+                session_open_ms=open_ms, session_close_ms=close_ms,
+                cache=cache, today_kst=today_kst,
+            )
+        except Exception:
+            # prefetch 실패는 **사용자에게 보이지 않는다** — 루프가 같은 날짜를 정상
+            # 경로로 계산한다. 여기서 올리면 캐시 워밍이 요청을 죽인다. 그래도
+            # warning 인 이유: 반복되면 병렬 이득이 통째로 사라지는데 증상이 "조금
+            # 느리다" 뿐이라, 로그가 유일한 단서다.
+            log.exception(
+                "peak prefetch failed for %s/%s; the day loop will recompute", code, d,
+            )
+
+    workers = min(_peak_prefetch_workers(), len(targets))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="peak-prefetch") as ex:
+        list(ex.map(_one, targets))
+    return len(targets)
+
+
 def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
@@ -1841,6 +1968,22 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
+
+    # 콜드 범위의 peak 을 루프 **앞에서** 유계 병렬로 채운다. 루프는 순차 그대로이고
+    # (근거는 `_prefetch_peak_caches` 위 주석) 도달했을 때 캐시 히트라 본문 무변경이다.
+    # 전부 warm 이면 즉시 0 을 돌려주므로 웜 경로에 비용이 없다.
+    if include_ask_peaks or include_bid_peaks:
+        _prefetch_peak_caches(
+            engine,
+            code=code, dates=dates, source_pref=source_pref, venue=venue,
+            bucket_ms=bucket_ms,
+            # `_RESOLVE` 로 자가-해석시켜 빌더와 **같은** 캐시/오늘 판정을 쓴다.
+            # 이 호출이 `engine.indicators_cache` 의 락 없는 lazy init 을 루프 전에
+            # 한 번 touch 하는 역할도 겸한다(queries.py — 병렬 첫 접근이 인스턴스를
+            # 두 개 만들 수 있다).
+            cache=_resolve_cache(engine, _RESOLVE),
+            today_kst=_resolve_today_kst(_RESOLVE),
+        )
 
     gil_breathe_at = time.monotonic()
     for d in dates:
