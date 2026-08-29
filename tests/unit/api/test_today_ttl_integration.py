@@ -170,6 +170,62 @@ def test_today_peak_dual_second_call_within_ttl_skips_query(peak_fixture):
     assert r1 == r2
 
 
+def test_today_ratio_bucket_switch_reuses_the_same_1m_scan(ratio_fixture):
+    """오늘 호가비도 봉을 바꿔도 **스캔은 한 번**이고, 그 한 번은 1분이다.
+
+    과거일은 진작부터 1분 캐시 + `reaggregate_ratio` 였는데 오늘 경로만 요청 봉으로
+    직접 스캔했다 — 픽스 전 peak 과 같은 모양이다. 실측(2026-08-29, hogaplay 85k행):
+    종전 1분 27.8ms → 5분 28.0ms → 15분 32.8ms, 과거일은 같은 데이터에서 0.4/0.2ms.
+
+    **막는 방향**: TTL 키에 `bucket_ms` 를 되돌려 넣는 것, 그리고 오늘 스캔을 요청
+    봉으로 되돌리는 것. **못 보는 것**: 재집계 값이 직접 조회와 같은지 —
+    `test_indicator_reaggregate` 가 본다.
+    """
+    engine, code, date, source = ratio_fixture
+    base = {"code": code, "date": date, "source": source, "cache": None, "today_kst": date}
+    with patch.object(
+        bundle_mod.snapshots_tbl, "query_bucketed_ratio",
+        wraps=bundle_mod.snapshots_tbl.query_bucketed_ratio,
+    ) as spy:
+        for bms in (60_000, 300_000, 900_000, 60_000):
+            bundle_mod.build_quote_ratio_slice(engine, bucket_ms=bms, **base)
+    assert spy.call_count == 1, "봉을 바꿀 때마다 오늘 parquet 을 다시 읽었다"
+    assert spy.call_args.kwargs["bucket_ms"] == 60_000, "오늘 스캔은 1분 고정이어야 한다"
+
+
+def test_today_fill_bucket_switch_reuses_the_same_1m_scan(fill_fixture):
+    """오늘 체결강도도 같다 — 순수 SUM GROUP BY 라 재집계가 정확하다."""
+    engine, code, date, source = fill_fixture
+    base = {"code": code, "date": date, "source": source, "cache": None, "today_kst": date}
+    with patch.object(
+        bundle_mod, "_query_fill_rows", wraps=bundle_mod._query_fill_rows,
+    ) as spy:
+        for bms in (60_000, 300_000, 900_000, 60_000):
+            bundle_mod.build_fill_strength_slice(engine, bucket_ms=bms, **base)
+    assert spy.call_count == 1, "봉을 바꿀 때마다 오늘 parquet 을 다시 읽었다"
+    # `_query_fill_rows(engine, code_dir, bucket_ms)` — 위치 인자 3번째가 봉이다.
+    assert spy.call_args.args[2] == 60_000, "오늘 스캔은 1분 고정이어야 한다"
+
+
+def test_today_sub_minute_bucket_still_queries_directly(ratio_fixture):
+    """분 미만 봉은 재집계할 1분 행이 없으므로 **직접 조회로 남는다**.
+
+    과거일 게이트(`_indicator_cacheable`)가 같은 이유로 `bucket_ms % 1m == 0` 을
+    요구한다. 오늘 경로에 그 조건을 안 걸면 `reaggregate_ratio` 가 분 미만 봉을
+    받아 잘못된 집계를 낸다.
+    """
+    engine, code, date, source = ratio_fixture
+    with patch.object(
+        bundle_mod.snapshots_tbl, "query_bucketed_ratio",
+        wraps=bundle_mod.snapshots_tbl.query_bucketed_ratio,
+    ) as spy:
+        bundle_mod.build_quote_ratio_slice(
+            engine, code=code, date=date, source=source, bucket_ms=1_000,
+            cache=None, today_kst=date,
+        )
+    assert spy.call_args.kwargs["bucket_ms"] == 1_000
+
+
 def test_today_peak_bucket_switch_reuses_the_same_1m_scan(peak_fixture):
     """오늘 봉을 바꿔도 **스캔은 한 번**이고, 그 한 번은 1분이다.
 
