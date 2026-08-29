@@ -3,6 +3,7 @@ import {
   DEFAULT_THEME_PREFERENCE,
   effectiveTheme,
   OBSIDIAN_ROUTE_PREFIXES,
+  subscribeThemeToDom,
   subscribeToThemePreferenceStorage,
   THEME_PREFERENCE_OPTIONS,
   useThemePrefsStore,
@@ -160,5 +161,75 @@ describe('useThemePrefsStore', () => {
       'toss-dark',
       'auto',
     ]);
+  });
+});
+
+describe('subscribeThemeToDom', () => {
+  const root = document.documentElement;
+  let prevTheme: string | null = null;
+
+  beforeEach(() => {
+    prevTheme = root.getAttribute('data-theme');
+  });
+  afterEach(() => {
+    // 속성이 다음 테스트로 새면 `currentThemeKey()` 를 읽는 차트/토큰 테스트가
+    // 조용히 다른 팔레트를 본다.
+    if (prevTheme === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', prevTheme);
+  });
+
+  it('선호 변경을 `set()` 안에서 **동기로** DOM 에 반영한다', () => {
+    // 이 테스트의 대상은 값이 아니라 **시점**이다. 이펙트(또는 layoutEffect) 기반
+    // 구현이면 이 시점의 DOM 은 아직 옛 값이고, 그 한 커밋의 지연이 캔버스를 옛
+    // 팔레트로 그리게 한다 — 사용자에게는 "스크롤해야 바뀐다" 로 보였다.
+    const unsubscribe = subscribeThemeToDom();
+    root.setAttribute('data-theme', 'toss-light');
+
+    useThemePrefsStore.getState().setThemePreference('obsidian');
+
+    // `await` 도 `act()` 도 없다. 그게 단언의 내용이다.
+    expect(root.getAttribute('data-theme')).toBe('obsidian');
+    unsubscribe();
+  });
+
+  it('`auto` 는 현재 pathname 으로 해석한다', () => {
+    const unsubscribe = subscribeThemeToDom();
+    window.history.pushState({}, '', '/live');
+
+    useThemePrefsStore.getState().setThemePreference('auto');
+    expect(root.getAttribute('data-theme')).toBe('obsidian');
+
+    window.history.pushState({}, '', '/screener');
+    useThemePrefsStore.getState().setThemePreference('ledger');
+    useThemePrefsStore.getState().setThemePreference('auto');
+    expect(root.getAttribute('data-theme')).toBe('ledger');
+
+    window.history.pushState({}, '', '/');
+    unsubscribe();
+  });
+
+  it('구독 해제 후에는 쓰지 않는다', () => {
+    const unsubscribe = subscribeThemeToDom();
+    unsubscribe();
+    root.setAttribute('data-theme', 'toss-light');
+
+    useThemePrefsStore.getState().setThemePreference('obsidian');
+
+    expect(root.getAttribute('data-theme')).toBe('toss-light');
+  });
+
+  it('다른 탭의 변경(hydrateFromStorage)도 같은 경로로 반영된다', () => {
+    // `subscribeToThemePreferenceStorage` 는 `set()` 을 태우므로 이 구독이 그대로
+    // 이어받는다 — 크로스탭 동기화에 별도 DOM writer 를 만들지 않는 근거다.
+    const unsubscribeDom = subscribeThemeToDom();
+    const unsubscribeStorage = subscribeToThemePreferenceStorage();
+    root.setAttribute('data-theme', 'toss-light');
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'toss-dark' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+
+    expect(root.getAttribute('data-theme')).toBe('toss-dark');
+    unsubscribeStorage();
+    unsubscribeDom();
   });
 });

@@ -9,6 +9,7 @@ import {
 } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
+import { useThemeChangeRerender } from '../state/themePrefs';
 import {
   chartCrosshairOptions,
   CHART_LAYOUT_OPTIONS,
@@ -650,11 +651,18 @@ export function LiveChartRoot({
   // "알 권리" 이고, 완결성 자동 교체를 폐지했기에 특히 필요하다(모듈 주석).
   const sourceBadge = useMemo(() => deriveSourceBadge(cb?.segments), [cb?.segments]);
   // Load identity for the per-view chart remount and the reveal cover. The
-  // theme segment forces a full chart rebuild if the theme ever changes while
-  // this stays mounted — module-resolved series colors and axis-lifetime
-  // projection caches are otherwise frozen at their first resolution. In the
-  // shipped UX a theme swap already coincides with an unmount (route change /
-  // settings modal), so this is a forward-safety net, not the primary path.
+  // theme segment forces a full chart rebuild when the theme changes while this
+  // stays mounted — module-resolved series colors and axis-lifetime projection
+  // caches are otherwise frozen at their first resolution. **This is the
+  // primary path, not a safety net**: 설정 모달은 차트를 언마운트하지 않으므로
+  // (모달이 열린 채 배경에 차트가 살아 있다) 테마 전환은 여기서만 반영된다.
+  //
+  // 두 줄이 한 쌍이다. `currentThemeKey()` 는 DOM 을 읽을 뿐이라 그 자체로는
+  // 리렌더를 못 만든다 — 리렌더를 만드는 것은 아래 구독이고, DOM 이 이미 새 값인
+  // 것은 `subscribeThemeToDom()` 이 보장한다(themePrefs.ts). 구독을 빼면 차트는
+  // **다음 우발적 리렌더까지 옛 팔레트로 남는다** — 사용자가 본 "스크롤해야
+  // 바뀐다" 가 정확히 그것이었다.
+  useThemeChangeRerender();
   const themeSeg = currentThemeKey();
   const viewKey = viewIdentity
     ? `${code ?? ''}|${timeframe}|${viewIdentity}|${themeSeg}`

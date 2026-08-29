@@ -17,9 +17,11 @@ import { persistJson, readJsonObject } from './persist';
  *
  * The *preference* (obsidian/ledger/toss-light/toss-dark/auto) is what we
  * persist; the *effective* theme (obsidian/ledger/toss-light/toss-dark) is what
- * drives `<html data-theme>`. The DOM sync lives in App.tsx (and an inline
- * bootstrap in index.html for the first paint) so the store stays a pure state
- * holder — see index.html's bootstrap, which must stay in sync with
+ * drives `<html data-theme>`. The DOM sync has **two** writers, and the split
+ * is load-bearing (see {@link subscribeThemeToDom}): a preference change is
+ * applied *synchronously inside `set()`* by that subscription, and App.tsx's
+ * effect owns the route axis (`auto` switching per pathname). An inline
+ * bootstrap in index.html paints the first value — it must stay in sync with
  * {@link effectiveTheme}.
  *
  * The two toss-* themes are intentionally kept OUT of `auto`: `auto` only
@@ -123,10 +125,10 @@ export const useThemePrefsStore = create<Store>((set) => ({
  * `hydrateFromStorage` runs the same validation as the initializer, so there is
  * one parse/validate path instead of two that can drift.
  *
- * Applying it to `<html data-theme>` is still App.tsx's existing effect: the
- * store change re-runs it, and under `auto` each tab resolves against *its own*
- * pathname — which is the point of keeping the preference (not the effective
- * theme) as the shared value.
+ * Applying it to `<html data-theme>` is {@link subscribeThemeToDom}'s job: the
+ * store change fires that listener, and under `auto` each tab resolves against
+ * *its own* pathname — which is the point of keeping the preference (not the
+ * effective theme) as the shared value.
  *
  * Returns an unsubscribe function (useEffect cleanup shape).
  */
@@ -137,4 +139,52 @@ export function subscribeToThemePreferenceStorage(): () => void {
   };
   window.addEventListener('storage', onStorage);
   return () => window.removeEventListener('storage', onStorage);
+}
+
+/**
+ * Apply the effective theme to `<html data-theme>` **the instant the preference
+ * changes** — synchronously inside zustand's `set()`, before React flushes the
+ * re-render it triggers.
+ *
+ * ⚠️ 이 동기성이 이 함수의 존재 이유다. App.tsx 의 이펙트만으로는 부족했고,
+ * `useLayoutEffect` 로 바꿔도 부족하다 — **React 는 이펙트를 자식부터 실행한다**.
+ * 테마 변경 커밋에서 차트(자식)의 생성 이펙트가 App(부모)의 DOM 쓰기보다 먼저
+ * 돌아, `resolveTokensThemed` 가 **옛 CSS 변수**를 읽는다. 구독 리스너는 그
+ * 커밋 자체보다 앞서므로 이후의 모든 렌더·이펙트가 새 속성을 본다.
+ *
+ * 이게 없으면 증상은 "테마가 안 바뀐다" 가 아니라 **"바로 안 바뀌고 스크롤하면
+ * 바뀐다"** 로 나타난다 — 캔버스는 CSS 변수를 못 읽어 다시 그릴 때까지 옛 색을
+ * 유지하고, 우발적 리렌더가 뒤늦게 고쳐 주기 때문이다(실측 2026-08-29: 클릭
+ * 직후 캔버스 상위 3색의 **픽셀 카운트까지 동일**, 즉 리드로우 0회).
+ *
+ * 라우트 축(`auto` 의 pathname 전환)은 App.tsx 의 이펙트가 계속 소유한다 —
+ * 여기서는 `window.location.pathname` 으로 현재 라우트를 읽으므로 두 writer 가
+ * 같은 값을 쓴다(멱등 이중 쓰기라 무해).
+ *
+ * Returns an unsubscribe function (useEffect cleanup shape).
+ */
+export function subscribeThemeToDom(): () => void {
+  return useThemePrefsStore.subscribe((state) => {
+    document.documentElement.setAttribute(
+      'data-theme',
+      effectiveTheme(state.themePreference, window.location.pathname),
+    );
+  });
+}
+
+/**
+ * 테마 변경을 **구독자의 리렌더로** 만든다. 반환값이 없는 것이 의도다 — 호출부가
+ * 원하는 건 값이 아니라 리렌더이고, 실제 테마 문자열은 `currentThemeKey()` 가
+ * DOM 에서 읽는다(그쪽이 {@link subscribeThemeToDom} 덕에 이미 새 값이다).
+ *
+ * 캔버스 루트(`LiveChartRoot`)가 이걸 필요로 하는 이유: `data-theme` 는 React
+ * 밖의 DOM 변경이라 그 자체로는 어떤 컴포넌트도 리렌더시키지 않는다. 구독이
+ * 없으면 차트는 다음 **우발적** 리렌더까지 옛 팔레트로 남는다.
+ *
+ * effective theme 이 그대로인 pref 변경(`/live` 에서 auto → obsidian)은 리렌더만
+ * 되고 리마운트는 안 된다 — viewKey 세그먼트가 preference 가 아니라 effective
+ * theme 을 쓰기 때문이다.
+ */
+export function useThemeChangeRerender(): void {
+  useThemePrefsStore((s) => s.themePreference);
 }
