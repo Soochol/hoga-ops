@@ -170,6 +170,58 @@ def test_today_peak_dual_second_call_within_ttl_skips_query(peak_fixture):
     assert r1 == r2
 
 
+def test_today_peak_bucket_switch_reuses_the_same_1m_scan(peak_fixture):
+    """오늘 봉을 바꿔도 **스캔은 한 번**이고, 그 한 번은 1분이다.
+
+    종전에는 TTL 키에 `bucket_ms` 가 있어 1분→5분→15분 전환이 봉마다 풀 스캔이었다.
+    비용은 버킷 수가 아니라 원본 스캔에 있으므로(봉을 60배 굵혀도 0.33s 로 그대로,
+    2026-08-28 실측) 그 재스캔은 전액 낭비였다. 이제 오늘도 과거일처럼 1분으로 한 번
+    스캔하고 굵은 봉은 rep 에서 파생한다(~5ms).
+
+    **막는 방향**: TTL 키에 `bucket_ms` 를 되돌려 넣는 것(call_count 가 봉 수만큼
+    는다)과, 오늘 스캔을 요청 봉으로 되돌리는 것(`bucket_ms` 단언이 깨진다).
+    **못 보는 것**: 파생 값이 직접 조회와 맞는지 — 그것은
+    `test_reaggregate_peak_rep_matches_direct_query` 의 몫이다.
+    """
+    engine, code, date, source = peak_fixture
+    base = {
+        "code": code, "date": date, "source": source,
+        "session_open_ms": 90_000_000, "session_close_ms": 153_000_000,
+        "cache": None, "today_kst": date,
+    }
+    with patch.object(
+        bundle_mod.snapshots_tbl, "query_day_ask_bid_peak_dual_with_rep",
+        wraps=bundle_mod.snapshots_tbl.query_day_ask_bid_peak_dual_with_rep,
+    ) as spy:
+        results = [
+            bundle_mod.build_ask_bid_peak_slices(engine, bucket_ms=bms, **base)
+            for bms in (60_000, 300_000, 900_000, 60_000)
+        ]
+    assert spy.call_count == 1, "봉을 바꿀 때마다 오늘 parquet 을 다시 읽었다"
+    assert spy.call_args.kwargs["bucket_ms"] == 60_000, "오늘 스캔은 1분 고정이어야 한다"
+    # 네 번의 요청이 모두 값을 돌려받는다(파생이 None 으로 붕괴하지 않는다).
+    for ask, bid in results:
+        assert ask is not None and bid is not None
+
+
+def test_today_peak_ttl_holds_one_entry_across_buckets(peak_fixture):
+    """봉이 셋이어도 TTL 엔트리는 **하나**다 — 키에서 `bucket_ms` 가 빠졌다는 증거.
+
+    엔트리를 봉마다 두면 같은 스캔 결과가 중복 저장될 뿐 아니라, `(ask, bid, rep)`
+    의 만료가 어긋나 **cont 절반과 rep 절반이 다른 세대**가 될 수 있다(오늘 parquet
+    은 5분마다 통째로 overwrite 된다). 한 키·한 값이 그 레이스를 원천 차단한다.
+    """
+    engine, code, date, source = peak_fixture
+    base = {
+        "code": code, "date": date, "source": source,
+        "session_open_ms": 90_000_000, "session_close_ms": 153_000_000,
+        "cache": None, "today_kst": date,
+    }
+    for bms in (60_000, 300_000, 900_000):
+        bundle_mod.build_ask_bid_peak_slices(engine, bucket_ms=bms, **base)
+    assert bundle_mod.TODAY_TTL.stats_snapshot()["size"] == 1
+
+
 def test_today_depth_second_call_within_ttl_skips_query(ratio_fixture):
     engine, code, date, source = ratio_fixture  # snapshots.parquet 최소 세트
     with patch.object(
