@@ -1060,3 +1060,62 @@ describe('cross-pane drag clamp', () => {
     expect(ctx.clampYToPane).toHaveBeenCalledWith('volume', 9999);
   });
 });
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('잠긴 드로잉의 도구 게이트', () => {
+  const lockedHline: Drawing = {
+    id: 'h1', kind: 'hline', price: 70_000, color: '#14B8A6',
+    width: 2, lineStyle: 'solid', paneId: 'candle', locked: true,
+  };
+  const lockedTrendline: Drawing = {
+    id: 't1', kind: 'trendline',
+    a: { realMs: 1_700_000_000_000, price: 70_000 },
+    b: { realMs: 1_700_000_600_000, price: 71_000 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', locked: true,
+  };
+
+  it('선택은 잠금과 무관하게 허용된다 — 잠금 해제의 유일한 경로가 선택이다', () => {
+    const ctx = makeCtx({ drawings: [lockedHline], hitTestAt: vi.fn(() => lockedHline) });
+    selectTool.onPointerDown!(ctx);
+
+    expect(ctx.setSelected).toHaveBeenCalledWith('h1');
+  });
+
+  it('잠긴 도형은 본체 드래그를 시작하지 않는다', () => {
+    const ctx = makeCtx({ drawings: [lockedHline], hitTestAt: vi.fn(() => lockedHline) });
+    selectTool.onPointerDown!(ctx);
+
+    expect(ctx.dragRef.current).toBeNull();
+    expect(ctx.capturePointer).not.toHaveBeenCalled();
+  });
+
+  // 핸들 분기는 hitTestAt 보다 **앞**에 있어서 별도 게이트가 필요하다 — 커서가
+  // 끝점 위에 있으면 본체 히트 판정에 닿기 전에 handle 드래그가 서 버린다.
+  it('잠긴 트렌드라인은 끝점 핸들 드래그도 시작하지 않는다', () => {
+    const ctx = makeCtx({
+      px: 100, py: 200, // 아래 투영 스텁이 a 끝점을 정확히 (100,200) 에 놓는다
+      drawings: [lockedTrendline],
+      selectedId: 't1',
+      realMsToCanvasX: vi.fn(() => 100),
+      priceToCanvasY: vi.fn(() => 200),
+    });
+    selectTool.onPointerDown!(ctx);
+
+    expect(ctx.dragRef.current).toBeNull();
+  });
+
+  it('지우개는 잠긴 도형을 통과한다', () => {
+    const ctx = makeCtx({ hitTestAt: vi.fn(() => lockedHline) });
+    eraserTool.onPointerDown!(ctx);
+
+    expect(ctx.remove).not.toHaveBeenCalled();
+  });
+
+  it('지우개는 잠기지 않은 도형은 그대로 지운다', () => {
+    const unlocked: Drawing = { ...lockedHline, locked: false };
+    const ctx = makeCtx({ hitTestAt: vi.fn(() => unlocked) });
+    eraserTool.onPointerDown!(ctx);
+
+    expect(ctx.remove).toHaveBeenCalledWith('h1');
+  });
+});

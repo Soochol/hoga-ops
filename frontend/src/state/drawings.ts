@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import type {
   Drawing, DrawingId, DrawingTool, DrawingDefaults, DrawingKind, DrawingStyle,
 } from '../chart/drawing/types';
-import { INITIAL_DEFAULTS } from '../chart/drawing/types';
+import { INITIAL_DEFAULTS, isLocked, isUnlockOnlyPatch } from '../chart/drawing/types';
 import {
   loadDrawings, saveDrawings,
   loadDefaults, saveDefaults,
@@ -135,7 +135,13 @@ export type ClearToast = { scope: string; count: number; snapshot: Drawing[] } |
  *  메뉴 컴포넌트에 두면 메뉴가 닫힌 채 눌린 단축키가 게이트를 우회한다 — 그래서
  *  스토어가 트리거를 갖고 `DrawingClearConfirmHost` 가 표현을 갖는다(clearToast 와
  *  같은 host-owned 모델, ADR-0107). `count` 는 문구에 쓸 삭제 예정 개수. */
-export type ClearConfirm = { scope: string; count: number } | null;
+export type ClearConfirm = {
+  scope: string;
+  /** 실제로 지워질 개수 — 잠긴 것은 빠져 있다. */
+  count: number;
+  /** 잠겨서 남을 개수. 0 이면 팝업이 그 문장을 아예 안 쓴다. */
+  lockedCount: number;
+} | null;
 
 // 키는 전부 `scope` = `${code}|${slot}` (drawingScope). 종목뿐 아니라 타임프레임
 // 슬롯(분/일/주/월)까지 가르므로, 같은 종목이라도 분봉에 그린 도형은 일봉에
@@ -189,7 +195,14 @@ type Actions = {
   // 종목·봉에 귀속된다. add 류는 "이 차트(=이 scope)에 그린다"가 항상 호출부
   // 문맥에 있으므로 인자로 받는 편이 원천적으로 안전하다.
   add(scope: string, d: Drawing): void;
+  /**
+   * 잠긴 드로잉은 **이 액션이 거부한다**(ADR-0164). 유일한 예외는 키가 `locked`
+   * 뿐인 패치 — 그게 잠금 해제 통로다. UI 쪽 disabled 는 감촉이고, 정확성의
+   * 단일 관문은 여기다(진입점이 속성 패널·ToolCtx·키보드로 셋이라 UI 에 흩으면
+   * 셋을 다 지켜야 한다).
+   */
   update(scope: string, id: DrawingId, patch: Partial<Drawing>): void;
+  /** 잠긴 드로잉은 거부한다 — `update` 와 같은 관문. */
   remove(scope: string, id: DrawingId): void;
   /** 확인 팝업을 띄운다 — `clearAll` 의 유일한 UI 진입로. 지울 게 없으면
    *  아무 일도 일어나지 않는다(빈 목록에 "정말 지울까요" 를 묻지 않는다). */
@@ -199,7 +212,12 @@ type Actions = {
   clearAll(scope: string): void;
   /** Replace the drawing list for `scope` with `items` as a normal, undoable
    *  mutation. Used by the clearAll undo-toast (restores the pre-clear
-   *  snapshot) and by import. */
+   *  snapshot) and by import.
+   *
+   *  잠금을 **보지 않는다**(undo/redo/import 도 같다). 이들은 배열 전체를
+   *  갈아끼우는 스냅샷 이동이지 항목 편집이 아니라, 항목별 게이트가 구조적으로
+   *  성립하지 않는다 — 억지로 넣으면 "되돌렸는데 일부만 돌아왔다"는 더 나쁜
+   *  상태가 된다. 잠금은 편집에 대한 방어이지 시간 이동에 대한 방어가 아니다. */
   restore(scope: string, items: Drawing[]): void;
   /** Append imported drawings to `scope` with fresh ids, as a single
    *  undoable step. Returns the number appended. */
@@ -346,6 +364,11 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
 
     update(scope, id, patch) {
       const current = get().byScope.get(scope) ?? [];
+      // ⚠ 잠금 검사는 recordHistory **앞**이어야 한다(ADR-0164). 뒤에 두면 거부된
+      // 편집마다 무의미한 undo 스냅샷이 쌓이는 데서 그치지 않고, recordHistory 가
+      // redo 스택을 비우므로 **잠긴 도형에 색을 몇 번 누른 것만으로 Ctrl+Shift+Z
+      // 가 죽는다** — 화면 어디에도 원인이 안 보이는 종류의 고장이다.
+      if (isLocked(current.find((d) => d.id === id)) && !isUnlockOnlyPatch(patch)) return;
       recordHistory(scope, current, 'update', id);
       const next = current.map((d) => (d.id === id ? ({ ...d, ...patch } as Drawing) : d));
       const byScope = new Map(get().byScope);
@@ -399,7 +422,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
 
     remove(scope, id) {
       const current = get().byScope.get(scope) ?? [];
-      if (!current.some((d) => d.id === id)) return;
+      const target = current.find((d) => d.id === id);
+      // 잠금 검사가 기존 존재 검사와 같은 자리(recordHistory 앞)에 붙는다 — 사유는
+      // update 의 주석과 같다.
+      if (target == null || isLocked(target)) return;
       recordHistory(scope, current, 'remove', id);
       const next = current.filter((d) => d.id !== id);
       const byScope = new Map(get().byScope);
@@ -413,9 +439,12 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     },
 
     requestClearAll(scope) {
-      const count = (get().byScope.get(scope) ?? []).length;
-      if (count === 0) return; // 지울 게 없으면 팝업도 없다
-      set({ clearConfirm: { scope, count } });
+      const items = get().byScope.get(scope) ?? [];
+      // 세는 대상은 **실제로 지워질 것**이다. 잠긴 것까지 세면 팝업이 "5개가
+      // 삭제됩니다" 라 해 놓고 3개만 지우는 거짓말이 된다.
+      const count = items.filter((d) => !isLocked(d)).length;
+      if (count === 0) return; // 지울 게 없으면 팝업도 없다(전부 잠긴 경우 포함)
+      set({ clearConfirm: { scope, count, lockedCount: items.length - count } });
     },
 
     cancelClearAll() {
@@ -424,19 +453,31 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
 
     clearAll(scope) {
       const current = get().byScope.get(scope) ?? [];
+      // 잠긴 것은 남는다 — "지워지지 않는다"의 문자 그대로다(ADR-0164).
+      const survivors = current.filter((d) => isLocked(d));
+      const removedCount = current.length - survivors.length;
       // 확인 팝업은 이 액션의 성패와 무관하게 닫힌다 — 빈 목록으로 조기 반환해도
       // 팝업이 남으면 확인 버튼이 죽은 채로 떠 있게 된다.
-      if (current.length === 0) {
+      if (removedCount === 0) {
         if (get().clearConfirm != null) set({ clearConfirm: null });
         return; // nothing to clear → no history, no toast
       }
       recordHistory(scope, current, 'clearAll');
       const byScope = new Map(get().byScope);
-      byScope.set(scope, []);
+      byScope.set(scope, survivors);
+      // 선택 해제는 **지워진 경우에만** — 잠겨서 살아남은 도형이 선택돼 있었다면
+      // 그 선택은 유효하다. 그리고 그 선택이 곧 속성 패널이고, 패널의 자물쇠가
+      // 잠금 해제의 유일한 경로다.
+      const selected = get().selectedByScope.get(scope) ?? null;
+      const selectionSurvives = selected != null && survivors.some((d) => d.id === selected);
       set({
         byScope,
-        selectedByScope: new Map(get().selectedByScope).set(scope, null),
-        clearToast: { scope, count: current.length, snapshot: current },
+        selectedByScope: selectionSurvives
+          ? get().selectedByScope
+          : new Map(get().selectedByScope).set(scope, null),
+        // snapshot 은 지운 것만이 아니라 **지우기 직전 전체**다. 실행취소는 배열을
+        // 통째로 갈아끼우므로(restore) 살아남은 잠긴 도형이 중복 부활하지 않는다.
+        clearToast: { scope, count: removedCount, snapshot: current },
         clearConfirm: null,
       });
       queuePersist(scope);

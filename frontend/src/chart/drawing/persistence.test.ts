@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Drawing } from './types';
 import {
   loadDrawings, saveDrawings, storageKey, legacyStorageKey, drawingScope,
-  loadDefaults, saveDefaults, DEFAULTS_KEY,
+  loadDefaults, saveDefaults, DEFAULTS_KEY, normalizeItems,
 } from './persistence';
 import { PANE_SPECS } from '../paneSpecs';
 import { INITIAL_DEFAULTS, INITIAL_STYLE, initialStyleByKind } from './types';
@@ -297,5 +297,34 @@ describe('drawing defaults persistence', () => {
       v: 2, value: { styleByKind: partial, magnet: false, hiddenAll: false },
     }));
     expect(loadDefaults().styleByKind.rect).toEqual(INITIAL_STYLE);
+  });
+});
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('normalizeItems — locked', () => {
+  const base = {
+    id: 'h1', kind: 'hline' as const, price: 100, color: '#14B8A6',
+    width: 2, lineStyle: 'solid' as const, paneId: 'candle' as const,
+  };
+
+  it('locked: true 는 그대로 살아남는다', () => {
+    expect(normalizeItems([{ ...base, locked: true }])[0].locked).toBe(true);
+  });
+
+  it('필드가 없던 예전 드로잉은 필드 없이 남는다 (부재 = 잠금 없음)', () => {
+    expect('locked' in normalizeItems([base])[0]).toBe(false);
+  });
+
+  // truthy 이지만 true 가 아닌 값(손으로 고친 export)은 `isLocked` 의 `=== true`
+  // 에 잠금 없음으로 읽히면서 사람 눈엔 잠긴 것으로 보인다 — 그 간극을 없앤다.
+  it('true 가 아닌 truthy 값은 버린다', () => {
+    for (const bad of [1, 'yes', {}]) {
+      const out = normalizeItems([{ ...base, locked: bad }]);
+      expect('locked' in out[0]).toBe(false);
+    }
+  });
+
+  it('locked: false 도 부재로 접는다', () => {
+    expect('locked' in normalizeItems([{ ...base, locked: false }])[0]).toBe(false);
   });
 });

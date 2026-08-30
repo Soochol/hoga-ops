@@ -79,7 +79,7 @@ describe('DrawingMenu', () => {
     await openMenu();
     await userEvent.click(screen.getByTestId('drawing-menu-clear'));
 
-    expect(useDrawingsStore.getState().clearConfirm).toEqual({ scope, count: 1 });
+    expect(useDrawingsStore.getState().clearConfirm).toEqual({ scope, count: 1, lockedCount: 0 });
     expect(useDrawingsStore.getState().drawingsFor(scope)).toHaveLength(1);
     expect(useDrawingsStore.getState().drawingsFor(other)).toHaveLength(1);
   });

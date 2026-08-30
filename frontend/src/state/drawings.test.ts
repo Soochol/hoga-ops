@@ -317,7 +317,7 @@ describe('useDrawingsStore — clearAll 확인 팝업', () => {
     s().add(A, mkHline('h2', 200));
     s().requestClearAll(A);
 
-    expect(s().clearConfirm).toEqual({ scope: A, count: 2 });
+    expect(s().clearConfirm).toEqual({ scope: A, count: 2, lockedCount: 0 });
     expect(s().drawingsFor(A)).toHaveLength(2); // 확인 전엔 그대로
     expect(s().clearToast).toBeNull(); // 삭제가 없었으니 토스트도 없다
   });
@@ -352,7 +352,7 @@ describe('useDrawingsStore — clearAll 확인 팝업', () => {
   it('빈 목록으로 조기 반환해도 확인 슬롯은 닫는다', () => {
     // 팝업이 떠 있는 사이 다른 창이 Ctrl+Z 로 이미 비워버린 상황 — 슬롯을 직접
     // 채워 재현한다(requestClearAll 은 빈 목록엔 슬롯을 안 연다).
-    useDrawingsStore.setState({ clearConfirm: { scope: A, count: 1 } });
+    useDrawingsStore.setState({ clearConfirm: { scope: A, count: 1, lockedCount: 0 } });
     s().clearAll(A);
 
     expect(s().clearConfirm).toBeNull();
@@ -578,5 +578,169 @@ describe('useDrawingsStore — 스코프 캐시 상한', () => {
     for (let i = 1; i < 40; i += 1) useDrawingsStore.getState().setActiveScope(scopeAt(i));
 
     expect(useDrawingsStore.getState().byScope.has(pending)).toBe(true);
+  });
+});
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('useDrawingsStore — 잠금', () => {
+  const s = () => useDrawingsStore.getState();
+
+  /** 잠긴 hline 하나만 있는 scope A 를 만든다. */
+  function seedLocked(id = 'h1'): void {
+    s().add(A, mkHline(id, 100));
+    s().update(A, id, { locked: true });
+  }
+
+  it('잠긴 드로잉은 update 를 거부한다', () => {
+    seedLocked();
+    s().update(A, 'h1', { color: '#FFFFFF' });
+
+    expect(s().drawingsFor(A)[0].color).toBe('#FFD60A');
+  });
+
+  it('잠긴 드로잉은 remove 를 거부한다', () => {
+    seedLocked();
+    s().remove(A, 'h1');
+
+    expect(s().drawingsFor(A)).toHaveLength(1);
+  });
+
+  it('키가 locked 뿐인 패치는 통과한다 — 잠금 해제의 유일한 통로', () => {
+    seedLocked();
+    s().update(A, 'h1', { locked: false });
+
+    expect(s().drawingsFor(A)[0].locked).toBe(false);
+    // 풀렸으니 이제 평범한 편집이 먹는다.
+    s().update(A, 'h1', { color: '#FFFFFF' });
+    expect(s().drawingsFor(A)[0].color).toBe('#FFFFFF');
+  });
+
+  // locked 를 끼워 넣어 편집을 무임승차시키는 경로를 막는다. 통과시키면 사용자는
+  // 잠긴 상태에서 색이 바뀌는 것을 보게 된다.
+  it('locked 에 다른 키가 섞인 패치는 거부한다', () => {
+    seedLocked();
+    s().update(A, 'h1', { locked: false, color: '#FFFFFF' } as Partial<Drawing>);
+
+    expect(s().drawingsFor(A)[0].locked).toBe(true);
+    expect(s().drawingsFor(A)[0].color).toBe('#FFD60A');
+  });
+
+  // ⚠ 이 테스트가 이 기능의 핵심 함정을 지킨다. 잠금 검사가 recordHistory 뒤로
+  // 가면 거부된 편집마다 undo 스냅샷이 쌓이고 redo 스택이 비워진다 — 잠긴 선에
+  // 색을 몇 번 누른 것만으로 Ctrl+Shift+Z 가 죽는데 화면엔 아무 단서도 없다.
+  it('거부된 편집은 redo 스택을 비우지 않는다', () => {
+    // h1 을 먼저 잠근 뒤 redo 항목을 만든다 — 잠그기 자체는 정당한 변이라
+    // recordHistory 를 타고 redo 를 비우므로, 순서가 반대면 이 테스트는 잠금이
+    // 아니라 잠그기를 재게 된다.
+    s().add(A, mkHline('h1', 100));
+    s().update(A, 'h1', { locked: true });
+    s().add(A, mkHline('h2', 200));
+    s().undo(A); // h2 제거 → redo 스택에 1개
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h1']);
+
+    s().update(A, 'h1', { color: '#FFFFFF' }); // 거부됨
+    s().remove(A, 'h1'); // 거부됨
+
+    // 게이트가 recordHistory 뒤에 있으면 위 두 줄이 redo 를 비워 h2 가 안 온다.
+    s().redo(A);
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h1', 'h2']);
+  });
+
+  it('거부된 편집은 undo 스택에도 쌓이지 않는다', () => {
+    seedLocked();
+    s().update(A, 'h1', { color: '#FFFFFF' }); // 거부됨
+    s().update(A, 'h1', { width: 9 }); // 거부됨
+    s().remove(A, 'h1'); // 거부됨
+
+    // 쓰레기 스냅샷이 쌓였다면 첫 undo 는 "잠긴 상태 → 잠긴 상태" 라 잠금이
+    // 안 풀린다. 한 번의 undo 가 곧장 잠그기 직전으로 가야 한다.
+    s().undo(A);
+    expect(s().drawingsFor(A)[0].locked).toBeUndefined();
+  });
+
+  it('거부된 패치는 per-kind 스타일 기본값도 건드리지 않는다', () => {
+    seedLocked();
+    const before = s().styleForKind('hline').color;
+    s().update(A, 'h1', { color: '#FFFFFF' });
+
+    expect(s().styleForKind('hline').color).toBe(before);
+  });
+
+  // 잠그기 자체는 평범한 update 라 되돌릴 수 있어야 한다. 못 되돌리면 실수로
+  // 잠근 것이 Ctrl+Z 로 안 풀린다.
+  it('잠그기 자체는 되돌릴 수 있다', () => {
+    seedLocked();
+    s().undo(A);
+
+    expect(s().drawingsFor(A)[0].locked).toBeUndefined();
+  });
+
+  it('모두 지우기는 잠긴 것을 남긴다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().clearAll(A);
+
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h2']);
+    // 토스트 개수는 **실제로 지운 수**다.
+    expect(s().clearToast).toMatchObject({ scope: A, count: 1 });
+  });
+
+  it('모두 지우기 실행취소는 잠긴 것을 중복 부활시키지 않는다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().clearAll(A);
+    s().restore(A, s().clearToast!.snapshot);
+
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h1', 'h2']);
+  });
+
+  it('requestClearAll 은 지워질 개수만 세고 잠긴 개수를 따로 보고한다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().requestClearAll(A);
+
+    expect(s().clearConfirm).toEqual({ scope: A, count: 1, lockedCount: 1 });
+  });
+
+  it('전부 잠겼으면 확인 팝업을 아예 열지 않는다', () => {
+    seedLocked();
+    s().requestClearAll(A);
+
+    expect(s().clearConfirm).toBeNull();
+  });
+
+  // 살아남은 잠긴 도형이 선택돼 있었다면 그 선택은 유효하다. 무조건 해제하면
+  // 속성 패널이 사라지는데, 그 패널의 자물쇠가 잠금 해제의 유일한 경로다.
+  it('모두 지우기 뒤에도 살아남은 도형의 선택은 유지된다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().setSelected(A, 'h2');
+    s().clearAll(A);
+
+    expect(s().selectedFor(A)).toBe('h2');
+  });
+
+  it('지워진 도형이 선택돼 있었다면 선택은 해제된다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().setSelected(A, 'h1');
+    s().clearAll(A);
+
+    expect(s().selectedFor(A)).toBeNull();
+  });
+
+  // undo/redo/restore/import 는 배열 통째 교체라 잠금을 보지 않는다 — 항목별
+  // 게이트가 구조적으로 성립하지 않는다(ADR-0164).
+  it('undo 는 잠긴 도형도 이전 상태로 되돌린다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().update(A, 'h1', { locked: true });
+    s().restore(A, []); // 잠금을 무시하고 통째 교체
+
+    expect(s().drawingsFor(A)).toEqual([]);
   });
 });

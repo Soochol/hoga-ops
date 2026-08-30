@@ -13,6 +13,7 @@ import {
   LINE_STYLES,
   RECT_FILL_OPACITIES,
   TEXT_FONT_SIZES,
+  isLocked,
   type LineStyle,
   type Drawing,
 } from './drawing/types';
@@ -68,6 +69,15 @@ export default function DrawingPropertyPanel({ scope }: Props) {
   if (activeTool !== 'select' || selectedId == null || drawing == null || hiddenAll || scope == null) return null;
 
   const id = selectedId;
+  // 잠기면 자물쇠만 살아 있다. 이건 정확성이 아니라 감촉이다 — 스토어가 어차피
+  // 거부하므로(ADR-0164), 여기 disabled 는 "눌리는데 아무 일도 안 나는 버튼"이
+  // 고장으로 읽히는 것을 막는 몫이다.
+  const locked = isLocked(drawing);
+  const controlDisabled = locked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover';
+  // 잠금은 열려 있던 팝오버도 닫는다. `useDismissablePopover` 는 **바깥** mousedown
+  // 에만 반응하는데 자물쇠 버튼은 rootRef 안이라, 이 파생이 없으면 색상 팔레트를
+  // 펼쳐 둔 채 잠갔을 때 그 팔레트가 전부 죽은 채로 남아 있는다.
+  const shownPopover: OpenPopover = locked ? null : openPopover;
 
   const pickColor = (color: string) => {
     useDrawingsStore.getState().update(scope, id, { color });
@@ -115,8 +125,9 @@ export default function DrawingPropertyPanel({ scope }: Props) {
         type="button"
         data-testid="drawing-color-trigger"
         aria-label="색상"
+        disabled={locked}
         onClick={() => setOpenPopover(openPopover === 'color' ? null : 'color')}
-        className="h-7 px-2 inline-flex flex-col items-center justify-center rounded gap-0.5 hover:bg-bg-input-hover"
+        className={'h-7 px-2 inline-flex flex-col items-center justify-center rounded gap-0.5' + controlDisabled}
       >
         <span className="text-sm leading-none">✎</span>
         <span
@@ -129,7 +140,7 @@ export default function DrawingPropertyPanel({ scope }: Props) {
       {/* min-w-max: containing block 인 툴바가 좁아지면 shrink-to-fit 으로 눌려
           grid-cols-4 의 minmax(0,1fr) 열이 붕괴하고 스와치가 겹친다(형제 메뉴들의
           min-w-[7rem] 과 달리 여기는 고정폭 자식 격자라 max-content 가 기준). */}
-      {openPopover === 'color' && (
+      {shownPopover === 'color' && (
         <div className="absolute top-full left-0 mt-1 min-w-max bg-bg-card border border-border rounded-md p-2 shadow-xl">
           <div className="grid grid-cols-4 gap-1.5">
             {COLOR_PALETTE.map((hex) => {
@@ -158,15 +169,16 @@ export default function DrawingPropertyPanel({ scope }: Props) {
         type="button"
         data-testid="drawing-thickness-trigger"
         aria-label="두께"
+        disabled={locked}
         onClick={() => setOpenPopover(openPopover === 'thickness' ? null : 'thickness')}
-        className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-bg-input-hover text-xs"
+        className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
       >
         <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: drawing.width }} />
         <span className="tabular-nums">{drawing.width}px</span>
       </button>
       )}
 
-      {!isText && openPopover === 'thickness' && (
+      {!isText && shownPopover === 'thickness' && (
         <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
           {STROKE_WIDTHS.map((w) => {
             const isSelected = w === drawing.width;
@@ -195,8 +207,9 @@ export default function DrawingPropertyPanel({ scope }: Props) {
         data-testid="drawing-line-style-trigger"
         data-current-style={drawing.lineStyle}
         aria-label="선 스타일"
+        disabled={locked}
         onClick={() => setOpenPopover(openPopover === 'lineStyle' ? null : 'lineStyle')}
-        className="h-7 px-2 inline-flex items-center rounded hover:bg-bg-input-hover"
+        className={'h-7 px-2 inline-flex items-center rounded' + controlDisabled}
       >
         <span
           className="inline-block w-4 border-t border-fg"
@@ -205,7 +218,7 @@ export default function DrawingPropertyPanel({ scope }: Props) {
       </button>
       )}
 
-      {!isText && openPopover === 'lineStyle' && (
+      {!isText && shownPopover === 'lineStyle' && (
         <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
           {LINE_STYLES.map((style) => {
             const isSelected = style === drawing.lineStyle;
@@ -237,8 +250,9 @@ export default function DrawingPropertyPanel({ scope }: Props) {
             type="button"
             data-testid="drawing-fill-trigger"
             aria-label="채우기 농도"
+            disabled={locked}
             onClick={() => setOpenPopover(openPopover === 'fill' ? null : 'fill')}
-            className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-bg-input-hover text-xs"
+            className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
           >
             <span
               className="inline-block h-4 w-4 rounded-sm border border-fg-dim"
@@ -247,7 +261,7 @@ export default function DrawingPropertyPanel({ scope }: Props) {
             <span className="tabular-nums">{Math.round(drawing.fillOpacity * 100)}%</span>
           </button>
 
-          {openPopover === 'fill' && (
+          {shownPopover === 'fill' && (
             <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
               {RECT_FILL_OPACITIES.map((op) => {
                 const isSelected = op === drawing.fillOpacity;
@@ -281,14 +295,15 @@ export default function DrawingPropertyPanel({ scope }: Props) {
             type="button"
             data-testid="drawing-font-size-trigger"
             aria-label="글자 크기"
+            disabled={locked}
             onClick={() => setOpenPopover(openPopover === 'fontSize' ? null : 'fontSize')}
-            className="h-7 px-2 inline-flex items-center gap-1 rounded hover:bg-bg-input-hover text-xs"
+            className={'h-7 px-2 inline-flex items-center gap-1 rounded text-xs' + controlDisabled}
           >
             <span className="font-semibold leading-none">A</span>
             <span className="tabular-nums">{drawing.fontSize}px</span>
           </button>
 
-          {openPopover === 'fontSize' && (
+          {shownPopover === 'fontSize' && (
             <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
               {TEXT_FONT_SIZES.map((size) => {
                 const isSelected = size === drawing.fontSize;
@@ -314,12 +329,32 @@ export default function DrawingPropertyPanel({ scope }: Props) {
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
+      {/* 자물쇠는 이 툴바에서 **잠금 상태와 무관하게 항상 살아 있는 유일한 컨트롤**
+          이다 — 잠금을 푸는 다른 경로가 없다. 그래서 삭제 왼쪽, 구분선 오른쪽에
+          둔다(스타일 그룹과 분리, 파괴적 동작 앞). */}
+      <button
+        type="button"
+        data-testid="drawing-lock"
+        aria-label={locked ? '잠금 해제' : '잠금'}
+        aria-pressed={locked}
+        title={locked ? '잠금 해제 — 이동·수정·삭제가 다시 가능해집니다' : '잠금 — 이동·수정·삭제를 막습니다'}
+        onClick={() => useDrawingsStore.getState().update(scope, id, { locked: !locked } as Partial<Drawing>)}
+        className={
+          'h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover ' +
+          (locked ? 'bg-tint-selection text-accent' : 'text-fg-dim')
+        }
+      >
+        {locked ? '🔒' : '🔓'}
+      </button>
       <button
         type="button"
         data-testid="drawing-delete"
         aria-label="삭제"
+        disabled={locked}
         onClick={() => useDrawingsStore.getState().remove(scope, id)}
-        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover text-[#F43F5E]"
+        className={
+          'h-7 w-7 inline-flex items-center justify-center rounded text-[#F43F5E]' + controlDisabled
+        }
       >
         🗑
       </button>
