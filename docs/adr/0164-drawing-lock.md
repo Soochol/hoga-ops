@@ -80,8 +80,15 @@ against editing, not against time travel.
 **Selection stays allowed on a locked drawing.** This is a design invariant, not an
 oversight: the property panel is the only unlock affordance and it renders only for a
 selected drawing. Gating selection would let a user lock a shape and then have no way to
-ever unlock it. Consequently `hitTest`, the overlay's pointer-events gate, and the
-empty-click deselect rule are untouched.
+ever unlock it.
+
+> **Amended 2026-08-30 (same decision, second pass).** The first implementation kept the
+> pointer-events gate at `'auto'` over a locked drawing so that `selectTool` could still
+> select it. That is what produced the rough edge recorded below: the overlay swallowed
+> the pointer, so a drag on a locked shape did nothing at all — the chart would not even
+> pan. The gate now hit-tests `unlockedOnly(drawings)` and stays `'none'` over locked
+> shapes, and the window-level `mousedown` listener took over selecting them. See
+> "Pan passes through a locked drawing" below.
 
 **A duplicate (Ctrl+D) is born unlocked.** `cloneWithOffset` spreads the source, so
 `locked: true` would carry over and the copy — 14px down-right of a shape the user
@@ -112,12 +119,51 @@ non-`true` value from a hand-edited export would otherwise read as locked to a h
 - Lock is **not** part of `DrawingStyle` — it is per-drawing state, not a tool preference.
   Putting it in the per-kind defaults would make every new shape born locked.
 
+## Pan passes through a locked drawing (2026-08-30)
+
+The pointer-events gate hit-tests `unlockedOnly(drawings)` rather than the full list.
+Over a locked shape it therefore reports no hit and stays `'none'`, lightweight-charts
+receives the pointer, and the chart pans exactly as it does over empty space.
+
+The alternative was to keep swallowing the event and re-emit it to lightweight-charts.
+That machinery exists only for hover (`forwardHoverToChart`), and extending it to a full
+press-move-release sequence would have to reproduce lwc's own pointer capture. **Not
+swallowing the event in the first place needs no machinery at all** — which is the whole
+of this change.
+
+Selection had to move with it: a locked drawing's click never reaches the overlay now, so
+`selectTool` cannot select it. The window-level `mousedown` listener that already
+implements empty-click deselect took the job, via the pure
+`resolveSelectModeMouseDown` → `'deselect'` | `'select-locked'` | `'none'`. Three
+consequences worth stating:
+
+- **The filter is applied to the list, not to the winner.** `hitTestDrawings` returns the
+  topmost match, so hit-testing first and then checking `locked` would let a locked shape
+  drawn on top mask an unlocked one beneath it — that shape would silently stop being
+  grabbable. `unlockedOnly` runs first.
+- **The listener's mount condition widened** from "something is selected" to "this chart
+  has any drawings," because selecting a locked shape starts from nothing-selected.
+- **The inside-rect test is what keeps it multi-window safe.** The listener is on
+  `window`, so every chart window sees every click; only the window whose rect contains
+  the click acts, which is what stops a click in window A writing a selection into window
+  B's scope (ADR-0119 C2c-2b).
+
+The cursor question resolved itself: with the gate at `'none'`, the cursor over a locked
+drawing is lightweight-charts' own crosshair, which already means "the chart responds
+here."
+
+**Accepted behaviour:** pressing on a locked drawing selects it on `mousedown` (same
+moment as deselect), so starting a pan there pops the property panel mid-pan. That reads
+as a coherent story — "you grabbed it, it is locked, here is the unlock" — and a
+click-versus-drag movement threshold would be a separate decision.
+
+**Remaining narrow edge:** a locked drawing overlapping an unlocked one. The gate is
+`'auto'` (an unlocked shape is there), so the overlay takes the pointer, and
+`hitTestAt`'s topmost-wins rule hands `selectTool` the locked one — the drag is inert and
+does not pan. Keeping topmost-wins is the right call (it is what every other selection
+path uses); the case is rare enough not to special-case.
+
 ## Deliberately out of scope
 
 - A "모두 잠금 / 모두 해제" entry in the Drawing Menu.
 - A lock badge glyph on the canvas (a locked drawing is identifiable only by selecting it).
-- Changing the cursor over a locked drawing. Because the overlay's pointer-events gate
-  keeps `'auto'` on a hit (selection must stay possible), a drag on a locked shape does
-  nothing at all — it does not pan the chart either. Re-emitting a swallowed pointer event
-  to lightweight-charts has no existing mechanism outside the hover path, so this is a
-  known rough edge rather than an oversight.

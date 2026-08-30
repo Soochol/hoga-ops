@@ -1,7 +1,21 @@
 // frontend/src/chart/drawing/hitTest.ts
 
 import type { Drawing, PaneId } from './types';
-import { HIT_THRESHOLD, subBarOffsetPx } from './types';
+import { HIT_THRESHOLD, subBarOffsetPx, isLocked } from './types';
+
+/**
+ * The subset the pointer-events gate hit-tests against: everything that is not
+ * locked. Lives here, beside `hitTestDrawings`, because the two are only ever
+ * used together and the ORDER of composition is the whole point.
+ *
+ * Filter the list, then hit-test — never hit-test, then check the winner for
+ * `locked`. `hitTestDrawings` returns the TOPMOST match, so a locked drawing
+ * drawn over an unlocked one would answer for both, and the live shape beneath
+ * it would silently stop being grabbable. See ADR-0164.
+ */
+export function unlockedOnly(drawings: readonly Drawing[]): Drawing[] {
+  return drawings.filter((d) => !isLocked(d));
+}
 
 export type Pixel = { x: number; y: number };
 
