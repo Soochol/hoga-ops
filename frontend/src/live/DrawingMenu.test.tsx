@@ -106,4 +106,68 @@ describe('DrawingMenu', () => {
     expect(screen.getByTestId('drawing-menu-trigger')).not.toHaveTextContent('그리기');
     expect(screen.getByTestId('drawing-menu-trigger')).toHaveAttribute('aria-label', '그리기');
   });
+
+  // ── 모두 잠금 / 해제 (ADR-0164 후속) ────────────────────────────────────
+  describe('모두 잠금', () => {
+    const SCOPE = drawingScopeFor(CODE, TF)!;
+    const s = () => useDrawingsStore.getState();
+    const mk = (id: string, price: number) => ({
+      id, kind: 'hline' as const, price, color: '#FFD60A',
+      width: 1.5, lineStyle: 'solid' as const, paneId: 'candle' as const,
+    });
+
+    it('도형이 없으면 비활성이다 — 잠글 것이 없다', async () => {
+      render(<DrawingMenu code={CODE} timeframe={TF} />);
+      await openMenu();
+      expect(screen.getByTestId('drawing-menu-lock-all')).toBeDisabled();
+    });
+
+    it('하나라도 안 잠겼으면 라벨이 「모두 잠금」이고 누르면 전부 잠근다', async () => {
+      s().add(SCOPE, mk('h1', 100));
+      s().add(SCOPE, mk('h2', 200));
+      render(<DrawingMenu code={CODE} timeframe={TF} />);
+      await openMenu();
+
+      const item = screen.getByTestId('drawing-menu-lock-all');
+      expect(item).toHaveTextContent('모두 잠금');
+      await userEvent.click(item);
+
+      expect(s().drawingsFor(SCOPE).every((d) => d.locked === true)).toBe(true);
+    });
+
+    // 라벨이 **다음에 할 일**을 말해야 한다 — 항목을 둘로 나누면 둘 중 하나는
+    // 항상 아무 일도 안 하는 죽은 항목이 된다.
+    it('전부 잠겼으면 라벨이 「모두 잠금 해제」로 바뀌고 누르면 전부 푼다', async () => {
+      s().add(SCOPE, mk('h1', 100));
+      s().setLockedAll(SCOPE, true);
+      render(<DrawingMenu code={CODE} timeframe={TF} />);
+      await openMenu();
+
+      const item = screen.getByTestId('drawing-menu-lock-all');
+      expect(item).toHaveTextContent('모두 잠금 해제');
+      await userEvent.click(item);
+
+      expect(s().drawingsFor(SCOPE).every((d) => d.locked === undefined)).toBe(true);
+    });
+
+    it('부분 잠금이면 개수를 함께 보여 준다', async () => {
+      s().add(SCOPE, mk('h1', 100));
+      s().add(SCOPE, mk('h2', 200));
+      s().add(SCOPE, mk('h3', 300));
+      s().update(SCOPE, 'h2', { locked: true });
+      render(<DrawingMenu code={CODE} timeframe={TF} />);
+      await openMenu();
+
+      const item = screen.getByTestId('drawing-menu-lock-all');
+      expect(item).toHaveTextContent('모두 잠금');
+      expect(item).toHaveTextContent('1/3');
+    });
+
+    it('0/N 과 N/N 에는 개수를 붙이지 않는다 — 라벨이 이미 말한다', async () => {
+      s().add(SCOPE, mk('h1', 100));
+      render(<DrawingMenu code={CODE} timeframe={TF} />);
+      await openMenu();
+      expect(screen.getByTestId('drawing-menu-lock-all')).not.toHaveTextContent('/');
+    });
+  });
 });

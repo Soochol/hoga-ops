@@ -63,6 +63,24 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
   const magnet = useDrawingsStore((state) => state.defaults.magnet);
   const setDefaults = useDrawingsStore((state) => state.setDefaults);
   const requestClearAll = useDrawingsStore((state) => state.requestClearAll);
+  const setLockedAll = useDrawingsStore((state) => state.setLockedAll);
+  // 항목 라벨이 **다음에 할 일**을 말해야 하므로 개수가 아니라 상태를 센다.
+  // 하나라도 안 잠겼으면 다음 동작은 '모두 잠금', 전부 잠겼으면 '모두 해제'.
+  //
+  // 원시값 두 개로 나눠 뽑는다 — `{total, locked}` 객체를 돌려주면 셀렉터가 매번
+  // 새 참조를 내고 zustand 의 기본 비교(Object.is)가 늘 불일치라, 스토어의 **아무**
+  // 변화에나 이 메뉴가 리렌더된다.
+  const drawingCount = useDrawingsStore(
+    (state) => (scope == null ? 0 : (state.byScope.get(scope) ?? []).length),
+  );
+  const lockedCount = useDrawingsStore((state) => {
+    if (scope == null) return 0;
+    let n = 0;
+    for (const d of state.byScope.get(scope) ?? []) if (d.locked === true) n += 1;
+    return n;
+  });
+  const allLocked = drawingCount > 0 && lockedCount === drawingCount;
+  const canLockToggle = scope != null && drawingCount > 0;
 
   const close = useCallback(() => setOpen(false), []);
   useDismissablePopover(open, wrapRef, close);
@@ -135,6 +153,30 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             }`}
           />
         </span>
+      </button>
+
+      {/* 잠금 일괄 토글. 두 항목(잠금/해제)으로 나누지 않는 이유는 둘 중 하나가
+          항상 아무 일도 안 하는 죽은 항목이 되기 때문이다 — 라벨이 다음에 할 일을
+          말하면 그 모호함이 없다. 스토어가 **한 번의 되돌리기**로 묶는다(ADR-0164). */}
+      <button
+        type="button"
+        role="menuitem"
+        data-testid="drawing-menu-lock-all"
+        disabled={!canLockToggle}
+        onClick={() => {
+          if (canLockToggle) setLockedAll(scope, !allLocked);
+          setOpen(false);
+        }}
+        className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
+      >
+        <span aria-hidden="true" className="w-4 text-center">{allLocked ? '🔓' : '🔒'}</span>
+        <span>{allLocked ? '모두 잠금 해제' : '모두 잠금'}</span>
+        {/* 부분 잠금일 때만 개수를 붙인다 — 0/N 과 N/N 은 라벨이 이미 말한다. */}
+        {lockedCount > 0 && !allLocked && (
+          <span className="ml-auto font-data text-2xs text-fg-dim">
+            {lockedCount}/{drawingCount}
+          </span>
+        )}
       </button>
 
       <div className="my-1 border-t border-border" />

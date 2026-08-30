@@ -11,6 +11,7 @@ import {
   renderHlinePriceBadge,
   renderTrendlineDraft,
   formatMeasureLabel,
+  lockBadgeAnchor,
   type ProjectCtx,
   dashPattern,
 } from './render';
@@ -32,6 +33,7 @@ function makeCanvasSpy() {
     fill: vi.fn(),
     fillRect: vi.fn(),
     strokeRect: vi.fn(),
+    arc: vi.fn(),
     fillText: vi.fn(),
     rect: vi.fn(),
     roundRect: vi.fn(),
@@ -52,6 +54,7 @@ function makeCanvasSpy() {
     fillText: ReturnType<typeof vi.fn>;
     fillRect: ReturnType<typeof vi.fn>;
     stroke: ReturnType<typeof vi.fn>;
+    arc: ReturnType<typeof vi.fn>;
     setLineDash: ReturnType<typeof vi.fn>;
     bezierCurveTo: ReturnType<typeof vi.fn>;
   };
@@ -575,5 +578,63 @@ describe('선택 핸들 — 잠긴 도형에는 그리지 않는다', () => {
     expect(lockedSelected.stroke.mock.calls.length).toBeGreaterThan(
       unselected.stroke.mock.calls.length,
     );
+  });
+});
+
+// ── 잠금 배지 (ADR-0164 후속) ──────────────────────────────────────────────
+describe('잠금 배지', () => {
+  const hline: Hline = {
+    id: 'h1', kind: 'hline', price: 100,
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+  const trendline: Trendline = {
+    id: 't1', kind: 'trendline',
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  /** 배지 shackle 은 유일한 `arc` 호출이다 — 다른 렌더 경로는 arc 를 안 쓴다. */
+  const badges = (c: ReturnType<typeof makeCanvasSpy>) => c.arc.mock.calls.length;
+
+  it('잠기지 않은 도형에는 배지를 안 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), hline, false);
+    expect(badges(c)).toBe(0);
+  });
+
+  it('잠긴 도형에는 배지를 그린다 — 선택하지 않아도 알아볼 수 있어야 한다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...hline, locked: true }, false);
+    expect(badges(c)).toBe(1);
+  });
+
+  it('선택 여부와 무관하게 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...hline, locked: true }, true);
+    expect(badges(c)).toBe(1);
+  });
+
+  // hline 은 화면 전폭이라 의미 있는 X 가 없다 — 항상 화면에 있는 왼쪽 가장자리에
+  // 고정한다. priceToY 가 300-price 이므로 price 100 → y 200.
+  it('hline 배지는 왼쪽 가장자리, 선의 y 위에 붙는다', () => {
+    const a = lockBadgeAnchor(makeProjectCtxWithProjection(), hline);
+    expect(a).toEqual({ x: 9, y: 200 - 9 });
+  });
+
+  // 사용자가 어느 방향으로 그렸든 배지는 도형의 **위쪽**에 붙어야 한다.
+  it('트렌드라인 배지는 그린 방향과 무관하게 위쪽 끝점에 붙는다', () => {
+    const ctx = makeProjectCtxWithProjection();
+    const forward = lockBadgeAnchor(ctx, trendline);
+    const reversed = lockBadgeAnchor(ctx, { ...trendline, a: trendline.b, b: trendline.a });
+    expect(forward).toEqual(reversed);
+  });
+
+  it('투영이 안 되면 앵커가 null 이고 배지도 안 그려진다', () => {
+    // makeProjectCtx 의 realMsToX 는 항상 null, priceToY 는 200.
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtx(), { ...trendline, locked: true }, false);
+    expect(lockBadgeAnchor(makeProjectCtx(), trendline)).toBeNull();
+    expect(badges(c)).toBe(0);
   });
 });

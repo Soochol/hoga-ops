@@ -58,7 +58,7 @@ export function drawingBarMsFor(
 // Each entry holds the PRE-mutation array reference — free to capture because
 // every mutation action immutably replaces the array, so the old reference is
 // a durable past state (never mutated in place).
-type HistoryOp = 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import';
+type HistoryOp = 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import' | 'lockAll';
 type HistoryEntry = { items: Drawing[]; op: HistoryOp; targetId?: string; at: number };
 type ScopeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 
@@ -204,6 +204,12 @@ type Actions = {
   update(scope: string, id: DrawingId, patch: Partial<Drawing>): void;
   /** 잠긴 드로잉은 거부한다 — `update` 와 같은 관문. */
   remove(scope: string, id: DrawingId): void;
+  /**
+   * scope 의 모든 드로잉을 한꺼번에 잠그거나 푼다. **되돌리기 한 단계**다 —
+   * 항목마다 `update` 를 부르면 20개를 잠근 뒤 Ctrl+Z 를 20번 눌러야 한다.
+   * 바뀔 것이 없으면 이력도 남기지 않는다.
+   */
+  setLockedAll(scope: string, locked: boolean): void;
   /** 확인 팝업을 띄운다 — `clearAll` 의 유일한 UI 진입로. 지울 게 없으면
    *  아무 일도 일어나지 않는다(빈 목록에 "정말 지울까요" 를 묻지 않는다). */
   requestClearAll(scope: string): void;
@@ -435,6 +441,27 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         patch.selectedByScope = new Map(get().selectedByScope).set(scope, null);
       }
       set(patch);
+      queuePersist(scope);
+    },
+
+    setLockedAll(scope, locked) {
+      const current = get().byScope.get(scope) ?? [];
+      // 이미 전부 그 상태면 아무 일도 하지 않는다 — 빈 undo 단계를 만들지 않기
+      // 위해서다(redo 스택까지 비운다, ADR-0164).
+      if (current.length === 0 || current.every((d) => isLocked(d) === locked)) return;
+      recordHistory(scope, current, 'lockAll');
+      const next = current.map((d) => {
+        if (isLocked(d) === locked) return d;
+        if (locked) return { ...d, locked: true } as Drawing;
+        // 해제는 필드를 지운다 — 부재가 곧 "잠금 없음" 이라(스키마의 표현),
+        // `locked: false` 를 남기면 같은 뜻을 두 가지로 저장하게 된다.
+        const { locked: _drop, ...rest } = d;
+        void _drop;
+        return rest as Drawing;
+      });
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, next);
+      set({ byScope });
       queuePersist(scope);
     },
 
