@@ -736,7 +736,7 @@ describe('useDrawingsStore — 잠금', () => {
 
   // undo/redo/restore/import 는 배열 통째 교체라 잠금을 보지 않는다 — 항목별
   // 게이트가 구조적으로 성립하지 않는다(ADR-0164).
-  it('undo 는 잠긴 도형도 이전 상태로 되돌린다', () => {
+  it('restore 는 잠금을 무시하고 배열을 통째로 교체한다', () => {
     s().add(A, mkHline('h1', 100));
     s().update(A, 'h1', { locked: true });
     s().restore(A, []); // 잠금을 무시하고 통째 교체
