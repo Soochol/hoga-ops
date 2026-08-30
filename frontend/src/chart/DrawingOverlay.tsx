@@ -18,7 +18,7 @@ import {
   type DrawingsSource,
 } from './DrawingsPrimitive';
 import type { Drawing, PaneId, Point } from './drawing/types';
-import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
+import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
@@ -359,9 +359,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = useDrawingsStore.getState().selectedByScope.get(keyScope) ?? null;
-        if (id) {
-          useDrawingsStore.getState().remove(keyScope, id);
+        const store = useDrawingsStore.getState();
+        const id = store.selectedByScope.get(keyScope) ?? null;
+        // 잠긴 도형이면 preventDefault 도 하지 않는다 — 키를 삼키지 않고 흘려
+        // 보내는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
+        const target = id == null ? null : store.byScope.get(keyScope)?.find((d) => d.id === id);
+        if (id && !isLocked(target)) {
+          store.remove(keyScope, id);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
@@ -804,7 +808,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const hit = hitTestAt(px, py);
-    if (hit && hit.kind === 'text') {
+    // 잠긴 라벨은 편집기를 열지 않는다. 열어 두고 커밋만 스토어가 거부하면
+    // 사용자는 글자를 고쳐 넣고 Enter 를 친 뒤에야 안 먹혔다는 걸 안다.
+    if (hit && hit.kind === 'text' && !isLocked(hit)) {
       setTextEdit({ id: hit.id, at: hit.at, paneId: hit.paneId, initial: hit.text, fontSize: hit.fontSize, px, py });
       setTextValue(hit.text);
       e.preventDefault();

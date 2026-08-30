@@ -135,7 +135,7 @@ describe('DrawingOverlay Alt+C — 모두 지우기', () => {
 
     altC();
 
-    expect(s().clearConfirm).toEqual({ scope: SCOPE, count: 1 });
+    expect(s().clearConfirm).toEqual({ scope: SCOPE, count: 1, lockedCount: 0 });
     expect(s().drawingsFor(SCOPE)).toHaveLength(1);
   });
 
@@ -950,5 +950,78 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     await flushFrame();
 
     expect(events).toHaveLength(0);
+  });
+});
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('DrawingOverlay Delete — 잠금 게이트', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  function renderOverlay() {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope={SCOPE}
+        paneSeries={new Map()}
+      />,
+    );
+  }
+
+  const hline = { id: 'h1', kind: 'hline', price: 100, paneId: 'candle' } as never;
+
+  function seed(locked: boolean) {
+    s().importDrawings(SCOPE, [hline]);
+    const id = s().drawingsFor(SCOPE)[0].id; // importDrawings 는 id 를 재발급한다
+    if (locked) s().update(SCOPE, id, { locked: true });
+    s().setSelected(SCOPE, id);
+    return id;
+  }
+
+  it('잠기지 않은 선택 도형은 Delete 로 지워진다', () => {
+    seed(false);
+    renderOverlay();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(s().drawingsFor(SCOPE)).toHaveLength(0);
+  });
+
+  // ⚠ 이 테스트는 **여기 게이트를 지목하지 못한다** — 실측(red-check)으로 확인:
+  // 오버레이의 isLocked 검사를 지워도 통과한다. 스토어의 remove 가 이미 막기
+  // 때문이다(ADR-0164, 정확성의 단일 관문). 그래도 남긴다: 사용자가 실제로 겪는
+  // 결과이고 두 게이트가 함께 사라지는 회귀를 잡는다. 오버레이 게이트만
+  // 지목하는 것은 아래 preventDefault 테스트다.
+  it('잠긴 선택 도형은 Delete 로 지워지지 않는다', () => {
+    seed(true);
+    renderOverlay();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(s().drawingsFor(SCOPE)).toHaveLength(1);
+  });
+
+  // 키를 삼키지 않는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
+  // 오버레이 게이트가 **유일한 기여자**인 유일한 단언이라 red-check 도 여기서 난다.
+  it('잠긴 도형에서는 키 이벤트를 삼키지 않는다', () => {
+    seed(true);
+    renderOverlay();
+
+    const notPrevented = fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(notPrevented).toBe(true); // preventDefault 가 안 불렸다
   });
 });

@@ -70,6 +70,20 @@ interface DrawingBase {
   lineStyle: LineStyle;
   /** Pane this drawing belongs to. Required. See ADR-0028. */
   paneId: PaneId;
+  /**
+   * Lock. When true the store REFUSES every `update` (except the unlock patch
+   * itself) and every `remove` for this drawing — see ADR-0164.
+   *
+   * Optional, and ABSENT means unlocked: every drawing persisted before this
+   * field existed stays valid and stays editable, so no schema version bump
+   * was needed (bumping `Wrapper.v` would have made `readKey` discard every
+   * user's existing drawings wholesale).
+   *
+   * NOT part of `DrawingStyle` — lock is per-drawing state, not a tool
+   * preference. Sticking it in the per-kind defaults would make every newly
+   * drawn shape born locked.
+   */
+  locked?: boolean;
 }
 
 export interface Hline extends DrawingBase {
@@ -184,6 +198,28 @@ export function subBarOffsetPx(p: Pencil, i: number, barPx: number | undefined):
 }
 
 export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil;
+
+/** True iff `d` is locked. Absent `locked` reads as unlocked — the one place
+ *  that decision is spelled out, so no caller has to remember it. */
+export function isLocked(d: Drawing | null | undefined): boolean {
+  return d?.locked === true;
+}
+
+/**
+ * True iff `patch` touches nothing but `locked` — the ONE patch a locked
+ * drawing accepts, and therefore the only route back out of the lock.
+ *
+ * Keyed on the patch's key SET rather than on "does it contain locked",
+ * because `{ locked: false, color: '#fff' }` must be refused: it would let a
+ * caller smuggle an edit through on the unlock's coattails, and the user never
+ * saw an unlocked shape before that color landed.
+ *
+ * An empty patch also passes. It is a no-op by construction, so allowing it
+ * costs nothing and keeps the predicate a plain subset test.
+ */
+export function isUnlockOnlyPatch(patch: Partial<Drawing>): boolean {
+  return Object.keys(patch).every((k) => k === 'locked');
+}
 
 /** Default fill alpha for a freshly-created rectangle. */
 export const RECT_DEFAULT_FILL_OPACITY = 0.1;

@@ -14,7 +14,7 @@ import type {
   PaneId,
   LineStyle,
 } from './types';
-import { subBarOffsetPx } from './types';
+import { subBarOffsetPx, isLocked } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
 import { catmullRomSpans } from './smooth';
@@ -358,7 +358,7 @@ function renderRectShape(
   drawHaloThenMain(c, r, selected, () => {
     c.strokeRect(box.x, box.y, box.w, box.h);
   });
-  if (selected) {
+  if (showHandles(r, selected)) {
     drawHandle(c, r.color, box.x, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y + box.h);
@@ -453,7 +453,7 @@ function renderMeasureShape(
   c.setLineDash([4, 3]);
   c.strokeRect(box.x, box.y, box.w, box.h);
   c.restore();
-  if (selected) {
+  if (showHandles(m, selected)) {
     // Handles at the two diagonal endpoints (a, b) — the drag anchors.
     const xa = ctx.realMsToX(m.a.realMs);
     const ya = ctx.priceToY(m.a.price);
@@ -565,7 +565,7 @@ function renderTrendline(
     c.lineTo(x2, yb);
     c.stroke();
   });
-  if (selected) {
+  if (showHandles(t, selected)) {
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
@@ -638,6 +638,17 @@ export function renderTrendlineDraft(
   });
   c.restore();
   renderTrendlineDeltaGuide(c, ctx, d, xa, xa, xb, ya);
+}
+
+/**
+ * Endpoint/corner handles are drawn only for a selected drawing that can
+ * actually be dragged by them. A LOCKED drawing keeps its selection halo — the
+ * user must be able to see what they picked, and picking is the only route to
+ * the unlock button — but loses the handles, which exist solely to advertise
+ * "grab me here" and would be a lie (ADR-0164).
+ */
+function showHandles(d: Drawing, selected: boolean): boolean {
+  return selected && !isLocked(d);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {

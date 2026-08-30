@@ -37,6 +37,7 @@ import {
   type Rect,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
+  isLocked,
 } from './types';
 import { translateDrawing, clampDPriceForDrawing, clampDBarForDrawing } from './translate';
 import { constrainAngle } from './snap';
@@ -333,9 +334,14 @@ export const selectTool: DrawingToolSpec = {
   cursor: 'default',
   shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
-    const selected = ctx.selectedId
+    const rawSelected = ctx.selectedId
       ? ctx.drawings.find((d) => d.id === ctx.selectedId)
       : null;
+    // 잠긴 도형은 핸들 경로에서 아예 빠진다 — 아래 두 블록은 `selected` 가
+    // null 이면 통째로 건너뛴다. 스토어가 어차피 update 를 거부하므로 이건
+    // 정확성이 아니라 감촉이다: 게이트가 없으면 dragRef 가 서서 포인터를
+    // 캡처하고, 사용자는 잡아서 끌고 있는데 도형만 안 따라오는 상태를 본다.
+    const selected = isLocked(rawSelected) ? null : rawSelected;
     // Trendline and measure share the 2-endpoint (a/b) handle-drag path.
     if (selected && (selected.kind === 'trendline' || selected.kind === 'measure')) {
       const xa = ctx.realMsToCanvasX(selected.a.realMs);
@@ -382,7 +388,12 @@ export const selectTool: DrawingToolSpec = {
       }
     }
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
+    // 선택은 잠금과 무관하게 **항상** 허용한다. 속성 패널의 자물쇠 버튼이 잠금
+    // 해제의 유일한 경로이고, 그 패널은 선택돼야 뜬다 — 여기서 잠긴 도형의
+    // 선택을 막으면 사용자가 자기 도형을 영구히 못 푸는 상태에 갇힌다(ADR-0164).
     ctx.setSelected(hit?.id ?? null);
+    // 이동만 막는다. 아래 vline/body 분기는 전부 이 반환 뒤에 있다.
+    if (isLocked(hit)) return;
     // vline body drag is horizontal-only and resolved off the time axis alone,
     // so it doesn't touch (and doesn't require) any pane's price scale.
     if (hit && hit.kind === 'vline') {
@@ -910,7 +921,10 @@ export const eraserTool: DrawingToolSpec = {
   shortcut: { alt: true, key: 'e' },
   onPointerDown(ctx) {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
-    if (hit) ctx.remove(hit.id);
+    // 잠긴 것은 지우개가 **통과한다** — 지우개는 연속 삭제가 정상 흐름이라
+    // (그래서 auto-revert 에서도 빠져 있다) 잠긴 도형 위를 지나가는 일이 잦다.
+    // 스토어가 어차피 거부하므로 여기 게이트는 의도의 표명이다.
+    if (hit && !isLocked(hit)) ctx.remove(hit.id);
   },
 };
 
