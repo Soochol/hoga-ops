@@ -157,11 +157,37 @@ moment as deselect), so starting a pan there pops the property panel mid-pan. Th
 as a coherent story — "you grabbed it, it is locked, here is the unlock" — and a
 click-versus-drag movement threshold would be a separate decision.
 
-**Remaining narrow edge:** a locked drawing overlapping an unlocked one. The gate is
-`'auto'` (an unlocked shape is there), so the overlay takes the pointer, and
-`hitTestAt`'s topmost-wins rule hands `selectTool` the locked one — the drag is inert and
-does not pan. Keeping topmost-wins is the right call (it is what every other selection
-path uses); the case is rare enough not to special-case.
+**The overlap case (closed 2026-08-30, fourth pass).** Originally recorded here as a
+narrow edge left unfixed: a locked drawing overlapping an unlocked one. The gate is
+`'auto'` (an unlocked shape is there), so the overlay takes the pointer — and then
+`hitTestAt`'s topmost-wins rule handed `selectTool` the locked one, producing a click that
+neither grabbed the live shape nor panned the chart.
+
+The diagnosis "topmost-wins is right, so live with it" was wrong. The defect was never
+topmost-wins; it was that **the gate and the tool asked different questions**. The gate
+asked "is there an unlocked shape here?" and opened; `selectTool` asked "what is on top?"
+and got something else. Whenever those two disagree the overlay owns a pointer it has
+nothing to do with.
+
+The fix is to ask the same question on both sides, not to special-case the overlap:
+
+- `ToolCtx` gains `hitTestUnlockedAt`, and `selectTool.onPointerDown` selects and drags
+  from that instead of `hitTestAt`. Topmost-wins is untouched — it now runs over the list
+  the gate already committed to.
+- `resolveSelectModeMouseDown` takes `unlockedHit` and returns `'none'` whenever it is
+  non-null. Without this the two sides would both act: `pointerdown` (overlay, selects the
+  live shape) precedes `mousedown` (listener, would select the locked one), so the user
+  would grab one shape and watch another get selected.
+
+Territory is now split exactly at the gate, with no overlap: `'auto'` ⇒ the overlay owns
+the click and acts on the topmost **unlocked** shape; `'none'` ⇒ the window listener owns
+it and may select a locked one.
+
+**Consequence:** a locked drawing fully covered by an unlocked one cannot be selected by
+clicking, so its lock button is out of reach. The escape hatch is the Drawing Menu's
+**모두 잠금 해제**, which ignores hit-testing entirely — that item is therefore
+load-bearing, not merely a convenience. The old behaviour was strictly worse: it made the
+user's *live* drawing unreachable and killed the pan as well.
 
 ## Bulk toggle and canvas badge (2026-08-30, third pass)
 
