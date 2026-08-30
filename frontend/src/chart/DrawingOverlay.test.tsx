@@ -17,28 +17,46 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import DrawingOverlay, { __test__ } from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
+import type { Drawing } from './drawing/types';
 
-const { shouldDeselectOnClick } = __test__;
+const { resolveSelectModeMouseDown } = __test__;
 
-describe('shouldDeselectOnClick', () => {
+/** 히트 스텁 — 술어가 보는 것은 `locked` 뿐이라 나머지 필드는 형식만 맞춘다. */
+function hitDrawing(locked: boolean): Drawing {
+  return {
+    id: 'h1', kind: 'hline', price: 100, color: '#14B8A6',
+    width: 2, lineStyle: 'solid', paneId: 'candle',
+    ...(locked ? { locked: true } : {}),
+  };
+}
+
+describe('resolveSelectModeMouseDown', () => {
   const rect = { width: 800, height: 400 };
+  const inside = { x: 100, y: 50 };
 
-  it('returns true when the click is inside the overlay and misses every drawing', () => {
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, false, false)).toBe(true);
+  it('빈 곳 클릭은 선택을 해제한다 (ADR-0030)', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, null, false)).toBe('deselect');
   });
 
-  it('returns false when the click is inside the overlay but hits a drawing', () => {
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, false)).toBe(false);
+  // 잠기지 않은 도형 위에서는 오버레이가 'auto' 라 selectTool 이 선택을 맡는다.
+  // 여기서도 선택하면 같은 값을 두 번 쓰는 셈이다.
+  it('잠기지 않은 도형을 맞히면 아무것도 하지 않는다 — selectTool 의 몫', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, hitDrawing(false), false)).toBe('none');
   });
 
-  it('returns false when the click is outside the overlay bounds', () => {
-    // Outside on the right edge.
-    expect(shouldDeselectOnClick({ x: 900, y: 50 }, rect, false, false)).toBe(false);
-    // Outside on the bottom edge.
-    expect(shouldDeselectOnClick({ x: 100, y: 500 }, rect, false, false)).toBe(false);
-    // Negative — pointer is left/above the overlay.
-    expect(shouldDeselectOnClick({ x: -1, y: 50 }, rect, false, false)).toBe(false);
-    expect(shouldDeselectOnClick({ x: 100, y: -1 }, rect, false, false)).toBe(false);
+  // 게이트가 잠긴 도형 위에서 'none' 이라 오버레이는 이 클릭을 **아예 못 본다**.
+  // 이 분기가 없으면 잠긴 도형은 영영 선택되지 않고, 따라서 영영 못 푼다.
+  it('잠긴 도형을 맞히면 선택한다 — 오버레이가 그 클릭을 못 받기 때문', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, hitDrawing(true), false)).toBe('select-locked');
+  });
+
+  // 리스너가 window 에 붙어 창마다 모든 클릭을 본다. rect 밖을 걸러 내는 것이
+  // 곧 "남의 창 클릭으로 내 scope 를 쓰지 않는다"는 보장이다(ADR-0119 C2c-2b).
+  it('오버레이 rect 밖 클릭은 어느 분기도 타지 않는다', () => {
+    for (const p of [{ x: 900, y: 50 }, { x: 100, y: 500 }, { x: -1, y: 50 }, { x: 100, y: -1 }]) {
+      expect(resolveSelectModeMouseDown(p, rect, null, false)).toBe('none');
+      expect(resolveSelectModeMouseDown(p, rect, hitDrawing(true), false)).toBe('none');
+    }
   });
 
   // ADR-0032 — Drawing Property Panel guard. The panel renders over the
@@ -47,18 +65,14 @@ describe('shouldDeselectOnClick', () => {
   // user's edit (color / thickness / lineStyle) registers. The delete
   // button worked anyway because it captured `id` in a closure before
   // selectedId went null — masking the bug. This test pins the guard.
-  it('returns false when the click originates on the Drawing Property Panel, even if otherwise eligible', () => {
-    // Inside the overlay, misses every drawing — would normally deselect.
-    // The panel guard wins.
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, false, true)).toBe(false);
+  it('속성 패널에서 시작한 클릭은 해제하지 않는다', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, null, true)).toBe('none');
   });
 
-  it('the panel guard does not override a click that already hits a drawing', () => {
-    // No state change required either way — the click hits a drawing, so
-    // empty-click semantics never apply. Asserting both panel-true and
-    // panel-false return the same answer keeps the rule orthogonal.
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, true)).toBe(false);
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, false)).toBe(false);
+  // 패널 위에서 자물쇠를 누르는 순간이 정확히 이 경우다 — 그 클릭이 선택을
+  // 다시 쓰면 팝오버 상태가 흔들린다.
+  it('패널 가드는 잠긴 도형 히트보다 우선한다', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, hitDrawing(true), true)).toBe('none');
   });
 });
 
