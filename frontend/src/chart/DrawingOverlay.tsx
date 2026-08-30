@@ -61,15 +61,26 @@ export type SelectModeMouseDown = 'deselect' | 'select-locked' | 'none';
  *
  *  - `'deselect'` — the empty-click rule (ADR-0030): a click inside the
  *    overlay's rect that hit no Drawing clears the selection.
- *  - `'select-locked'` — the click hit a LOCKED Drawing. The overlay does not
- *    receive that click at all (the pointer-events gate deliberately leaves it
- *    `'none'` over locked shapes so the chart can pan), so `selectTool` never
- *    runs and this listener is the only thing that can select it. Without this
- *    branch a locked drawing could never be selected, and therefore never
- *    unlocked — the panel's lock button is the only unlock route (ADR-0164).
- *  - `'none'` — everything else, including a hit on an UNLOCKED Drawing: there
- *    the overlay is `'auto'` and `selectTool.onPointerDown` owns the selection.
- *    Selecting here too would be a redundant second write.
+ *  - `'select-locked'` — the click hit a locked Drawing AND nothing unlocked.
+ *    The overlay does not receive that click at all (the pointer-events gate
+ *    deliberately leaves it `'none'` there so the chart can pan), so
+ *    `selectTool` never runs and this listener is the only thing that can
+ *    select it. Without this branch a locked drawing could never be selected,
+ *    and therefore never unlocked — the panel's lock button is the only unlock
+ *    route (ADR-0164).
+ *  - `'none'` — everything else, including any click where an UNLOCKED Drawing
+ *    is under the cursor: there the overlay is `'auto'` and
+ *    `selectTool.onPointerDown` owns the selection.
+ *
+ * `unlockedHit` is what splits the last two, and it is the SAME value the
+ * pointer-events gate keys on — that is the point. Deciding from `hit` alone
+ * breaks when a locked drawing overlaps an unlocked one: `hit` is the locked
+ * one (topmost wins), so this listener would fire `'select-locked'` on a click
+ * the overlay is already handling. `pointerdown` precedes `mousedown`, so the
+ * overlay's selection of the live shape would land first and then be
+ * overwritten here — the user grabs one shape and watches another get
+ * selected. Both sides keying on the gate's own question keeps their territory
+ * split exactly at the gate, with no overlap.
  *
  * The property-panel guard is load-bearing: the panel renders over the
  * chart (its pixels fall inside the overlay's rect by construction), and
@@ -91,6 +102,7 @@ function resolveSelectModeMouseDown(
   click: { x: number; y: number },
   rect: { width: number; height: number },
   hit: Drawing | null,
+  unlockedHit: Drawing | null,
   isOnPropertyPanel: boolean,
 ): SelectModeMouseDown {
   if (isOnPropertyPanel) return 'none';
@@ -100,7 +112,13 @@ function resolveSelectModeMouseDown(
     click.x <= rect.width &&
     click.y <= rect.height;
   if (!inside) return 'none';
+  // 잠기지 않은 것이 하나라도 커서 아래 있으면 게이트가 'auto' 이고, 그 클릭의
+  // 주인은 오버레이다. 여기서 손대면 두 번 쓴다.
+  if (unlockedHit != null) return 'none';
   if (hit == null) return 'deselect';
+  // 여기 도달했다면 hit 은 잠긴 것이다(잠기지 않았다면 unlockedHit 에 잡혔다).
+  // 그래도 명시적으로 확인한다 — 두 히트 테스트가 언젠가 임계값이 갈리면 이
+  // 함의가 조용히 깨지는데, 그때 엉뚱한 도형을 선택하느니 아무것도 안 하는 게 낫다.
   return isLocked(hit) ? 'select-locked' : 'none';
 }
 
@@ -643,6 +661,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       canvasYToPrice,
       barPx: () => barPitchPx(chart),
       hitTestAt,
+      hitTestUnlockedAt,
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
@@ -1040,7 +1059,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       const rect = container.getBoundingClientRect();
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const hit = hitTestAt(click.x, click.y);
-      switch (resolveSelectModeMouseDown(click, rect, hit, isOnPropertyPanel)) {
+      const unlockedHit = hitTestUnlockedAt(click.x, click.y);
+      switch (resolveSelectModeMouseDown(click, rect, hit, unlockedHit, isOnPropertyPanel)) {
         case 'deselect':
           useDrawingsStore.getState().setSelected(scope, null);
           break;

@@ -48,6 +48,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     priceToCanvasY: vi.fn(() => 200),
     canvasYToPrice: vi.fn(() => defaultPoint.price),
     hitTestAt: vi.fn(() => null),
+    hitTestUnlockedAt: vi.fn(() => null),
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
@@ -76,7 +77,20 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     remove: vi.fn(),
     setSelected: vi.fn(),
   };
-  return { ...base, ...overrides };
+  const ctx = { ...base, ...overrides };
+  // `hitTestUnlockedAt` 을 따로 주지 않은 테스트는 `hitTestAt` 의 답에서 잠긴 것만
+  // 걸러 받는다 — 도형이 하나뿐인 대부분의 테스트에서 제품과 같은 답이다.
+  //
+  // ⚠ 제품은 **목록을** 거르고 여기서는 **승자를** 거른다. 둘은 정확히 겹침
+  // 케이스에서 갈리므로(위의 잠긴 도형이 아래 살아 있는 것을 가린다), 그 케이스를
+  // 재는 테스트는 두 함수를 **명시적으로** 갈라 줘야 한다.
+  if (!('hitTestUnlockedAt' in overrides)) {
+    ctx.hitTestUnlockedAt = (px, py) => {
+      const h = ctx.hitTestAt(px, py);
+      return h != null && h.locked !== true ? h : null;
+    };
+  }
+  return ctx;
 }
 
 describe('TOOLS registry shape', () => {
@@ -1074,11 +1088,42 @@ describe('잠긴 드로잉의 도구 게이트', () => {
     color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', locked: true,
   };
 
-  it('선택은 잠금과 무관하게 허용된다 — 잠금 해제의 유일한 경로가 선택이다', () => {
+  // 잠긴 도형의 **선택**은 이제 selectTool 이 아니라 window mousedown 리스너의
+  // 몫이다(`resolveSelectModeMouseDown`) — 게이트가 'none' 이라 이 오버레이는
+  // 그 클릭을 애초에 못 받는다. 여기서 고르면 담당 구역이 겹친다.
+  it('잠긴 도형만 있으면 아무것도 고르지 않는다 — 선택은 window 리스너의 몫', () => {
     const ctx = makeCtx({ drawings: [lockedHline], hitTestAt: vi.fn(() => lockedHline) });
     selectTool.onPointerDown!(ctx);
 
-    expect(ctx.setSelected).toHaveBeenCalledWith('h1');
+    expect(ctx.setSelected).toHaveBeenCalledWith(null);
+  });
+
+  // ⚠ 겹침 케이스. 게이트가 오버레이에 포인터를 준 이유는 "잠기지 않은 게 여기
+  // 있다" 이므로 도구도 그것을 집어야 한다. 전체 목록으로 고르면 위의 잠긴 도형이
+  // 최상단으로 이겨서, **잡지도 못하고 차트 팬도 안 되는** 죽은 클릭이 된다.
+  it('잠긴 도형이 위에 겹쳐 있어도 아래 잠기지 않은 도형을 집는다', () => {
+    const live: Drawing = { ...lockedHline, id: 'live', locked: false };
+    const ctx = makeCtx({
+      drawings: [live, lockedHline],
+      hitTestAt: vi.fn(() => lockedHline), // 최상단은 잠긴 것
+      hitTestUnlockedAt: vi.fn(() => live), // 게이트가 보는 것은 아래 살아 있는 것
+    });
+    selectTool.onPointerDown!(ctx);
+
+    expect(ctx.setSelected).toHaveBeenCalledWith('live');
+  });
+
+  it('겹침에서 집은 도형은 실제로 드래그가 시작된다', () => {
+    const live: Drawing = { ...lockedHline, id: 'live', locked: false };
+    const ctx = makeCtx({
+      drawings: [live, lockedHline],
+      hitTestAt: vi.fn(() => lockedHline),
+      hitTestUnlockedAt: vi.fn(() => live),
+    });
+    selectTool.onPointerDown!(ctx);
+
+    expect(ctx.dragRef.current).toMatchObject({ kind: 'body', id: 'live' });
+    expect(ctx.capturePointer).toHaveBeenCalled();
   });
 
   it('잠긴 도형은 본체 드래그를 시작하지 않는다', () => {

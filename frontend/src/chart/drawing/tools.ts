@@ -205,6 +205,17 @@ export type ToolCtx = {
   canvasYToPrice(py: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
+  /**
+   * Same, but over `unlockedOnly(drawings)` — the topmost drawing the overlay
+   * can actually act on.
+   *
+   * This is the SAME question the pointer-events gate asks, and select mode has
+   * to ask it too or the two disagree: the gate opens because an unlocked shape
+   * is here, then `hitTestAt` hands the tool a locked shape lying on top of it,
+   * and the result is a click that neither grabs the live shape nor pans the
+   * chart. See ADR-0164.
+   */
+  hitTestUnlockedAt(px: number, py: number): Drawing | null;
 
   /** PaneId of the pane the cursor is currently in. */
   paneIdAtY(py: number): PaneId;
@@ -387,13 +398,17 @@ export const selectTool: DrawingToolSpec = {
         return;
       }
     }
-    const hit = ctx.hitTestAt(ctx.px, ctx.py);
-    // 선택은 잠금과 무관하게 **항상** 허용한다. 속성 패널의 자물쇠 버튼이 잠금
-    // 해제의 유일한 경로이고, 그 패널은 선택돼야 뜬다 — 여기서 잠긴 도형의
-    // 선택을 막으면 사용자가 자기 도형을 영구히 못 푸는 상태에 갇힌다(ADR-0164).
+    // **잠긴 것을 건너뛰고** 고른다. 게이트가 이 오버레이에 포인터를 준 이유가
+    // "여기 잠기지 않은 도형이 있다" 이므로, 도구도 같은 것을 집어야 한다.
+    // 전체 목록으로 고르면 위에 얹힌 잠긴 도형이 최상단으로 이겨서, 아래 살아
+    // 있는 도형을 **잡지도 못하고 차트 팬도 안 되는** 죽은 클릭이 된다(ADR-0164).
+    //
+    // 잠긴 도형의 선택은 여기가 아니라 window mousedown 리스너의 몫이다
+    // (`resolveSelectModeMouseDown`) — 그쪽은 게이트가 'none' 일 때, 즉 이
+    // 오버레이가 클릭을 아예 못 받을 때 작동한다. 둘의 담당 구역이 게이트를
+    // 경계로 정확히 나뉘고 겹치지 않는다.
+    const hit = ctx.hitTestUnlockedAt(ctx.px, ctx.py);
     ctx.setSelected(hit?.id ?? null);
-    // 이동만 막는다. 아래 vline/body 분기는 전부 이 반환 뒤에 있다.
-    if (isLocked(hit)) return;
     // vline body drag is horizontal-only and resolved off the time axis alone,
     // so it doesn't touch (and doesn't require) any pane's price scale.
     if (hit && hit.kind === 'vline') {
