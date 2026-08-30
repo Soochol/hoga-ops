@@ -744,3 +744,84 @@ describe('useDrawingsStore — 잠금', () => {
     expect(s().drawingsFor(A)).toEqual([]);
   });
 });
+
+// ── 일괄 잠금 (ADR-0164 후속) ──────────────────────────────────────────────
+describe('useDrawingsStore — setLockedAll', () => {
+  const s = () => useDrawingsStore.getState();
+
+  function seedThree() {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().add(A, mkHline('h3', 300));
+  }
+
+  it('전부 잠근다', () => {
+    seedThree();
+    s().setLockedAll(A, true);
+
+    expect(s().drawingsFor(A).map((d) => d.locked)).toEqual([true, true, true]);
+  });
+
+  it('부분 잠금 상태에서도 나머지를 마저 잠근다', () => {
+    seedThree();
+    s().update(A, 'h2', { locked: true });
+    s().setLockedAll(A, true);
+
+    expect(s().drawingsFor(A).every((d) => d.locked === true)).toBe(true);
+  });
+
+  // 해제는 `locked: false` 를 남기지 않고 **필드를 지운다** — 부재가 곧 "잠금 없음"
+  // 이라는 스키마의 표현이고, 둘 다 쓰면 같은 뜻이 두 가지로 저장된다.
+  it('해제는 필드를 남기지 않고 지운다', () => {
+    seedThree();
+    s().setLockedAll(A, true);
+    s().setLockedAll(A, false);
+
+    for (const d of s().drawingsFor(A)) expect('locked' in d).toBe(false);
+  });
+
+  // ⚠ 이 액션의 존재 이유. 항목마다 update 를 부르면 20개를 잠근 뒤 Ctrl+Z 를
+  // 20번 눌러야 한다.
+  it('되돌리기 한 단계로 묶인다', () => {
+    seedThree();
+    s().setLockedAll(A, true);
+    s().undo(A);
+
+    expect(s().drawingsFor(A).every((d) => d.locked === undefined)).toBe(true);
+  });
+
+  it('바뀔 것이 없으면 이력을 남기지 않는다', () => {
+    seedThree();
+    s().setLockedAll(A, true);
+    s().setLockedAll(A, true); // no-op 이어야 한다
+    s().undo(A);
+
+    // 빈 단계가 쌓였다면 이 undo 가 그 빈 단계를 먹고 잠금이 남아 있다.
+    expect(s().drawingsFor(A).every((d) => d.locked === undefined)).toBe(true);
+  });
+
+  it('빈 scope 에서는 아무 일도 하지 않는다', () => {
+    s().setLockedAll(A, true);
+    expect(s().drawingsFor(A)).toEqual([]);
+  });
+
+  it('요청한 scope 만 잠근다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(B, mkHline('h2', 200));
+    s().setLockedAll(A, true);
+
+    expect(s().drawingsFor(A)[0].locked).toBe(true);
+    expect(s().drawingsFor(B)[0].locked).toBeUndefined();
+  });
+
+  // 일괄 잠금 뒤엔 개별 편집이 전부 막혀야 한다 — 게이트를 우회하지 않는다는 확인.
+  it('일괄 잠금 뒤 개별 편집·삭제가 막힌다', () => {
+    seedThree();
+    s().setLockedAll(A, true);
+    s().update(A, 'h1', { color: '#FFFFFF' });
+    s().remove(A, 'h2');
+
+    expect(s().drawingsFor(A)).toHaveLength(3);
+    expect(s().drawingsFor(A)[0].color).toBe('#FFD60A');
+  });
+});

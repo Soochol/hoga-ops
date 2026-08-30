@@ -163,7 +163,40 @@ click-versus-drag movement threshold would be a separate decision.
 does not pan. Keeping topmost-wins is the right call (it is what every other selection
 path uses); the case is rare enough not to special-case.
 
+## Bulk toggle and canvas badge (2026-08-30, third pass)
+
+Both were listed out of scope above and have since shipped.
+
+**`setLockedAll(scope, locked)` — one undo step.** Calling `update` per item would make
+locking twenty drawings cost twenty Ctrl+Z presses; the action records history once, under
+its own `'lockAll'` op so it never merges into an adjacent `'update'` step. It no-ops (and
+records nothing) when every drawing is already in the requested state, because an empty
+undo entry would still clear the redo stack. Unlocking **deletes** the field rather than
+writing `locked: false` — absence is the schema's own way of saying unlocked, and storing
+the same meaning two ways invites a `=== true` / truthiness split later.
+
+**One menu item, not two.** The label states the next action ("모두 잠금" / "모두 잠금
+해제") and flips on `lockedCount === total`. Two fixed items would leave one of them dead
+at all times. A partial state shows `N/M` on the right; `0/N` and `N/N` omit it because
+the label already says which one it is.
+
+**The badge is a vector padlock, not a 🔒 glyph.** Emoji ignore `fillStyle`, so a glyph
+could not take the drawing's own colour, and they rasterize differently per platform, so
+its size on a DPR-scaled canvas would be unpredictable. `lockBadgeAnchor` gives one anchor
+per kind, offset off the geometry rather than over it: hline pins to the left edge (it
+spans the full width, so it has no meaningful X), vline to the top, trendline/measure to
+whichever endpoint is visually higher (so the badge sits at the shape's top regardless of
+draw direction), rect to the normalized top-left, text/pencil to their anchor. A shape
+that cannot be projected yields `null` and simply gets no badge.
+
+The badge renders for every locked drawing, selected or not — the point is to answer
+"which of these are locked?" at a glance, which a selection-only or hover-only reveal
+cannot. Locked drawings are few by construction (locking is deliberate and per-drawing),
+so the clutter cost is small.
+
 ## Deliberately out of scope
 
-- A "모두 잠금 / 모두 해제" entry in the Drawing Menu.
-- A lock badge glyph on the canvas (a locked drawing is identifiable only by selecting it).
+- Cross-scope bulk lock (the menu item acts on the current chart's scope only, like
+  "모두 지우기" beside it).
+- A keyboard shortcut for the bulk toggle — the Alt namespace is dense already and this is
+  not a per-second action.
