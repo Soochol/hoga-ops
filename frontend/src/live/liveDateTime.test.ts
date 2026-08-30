@@ -14,6 +14,7 @@ import {
   dispatchStepsFor,
   MAX_BATCH_STEPS_PER_DISPATCH,
   planFillStep,
+  canAdvanceHistoricalWindow,
   isKrxRegularSessionNow,
   initialCandleTargetFor,
   initialHistoricalDaysFor,
@@ -250,6 +251,40 @@ describe('fillBudgetSteps / stepCandlesEstimate — 제스처 예산 산정', ()
     expect(fillBudgetSteps(350, '30m')).toBe(1); // 스텝이 1,950봉이라 1개로 충분
     expect(fillBudgetSteps(60, 'D')).toBe(2); // ceil(60/50)
     expect(fillBudgetSteps(0, '1m')).toBe(1); // 트리거됐다면 최소 1스텝
+  });
+});
+
+describe('canAdvanceHistoricalWindow — 확장이 서빙 창을 실제로 움직이는가', () => {
+  // 이 술어가 `false` 인 자리에 fill 을 세우면 dispatch 가 no-op 이라 진행 루프의
+  // settle 신호가 둘 다 죽고 `fillKind` 가 영구 잠긴다(2026-08-30 실측).
+  it.each([
+    // [창, 바닥, 기대, 사유]
+    ['20260601', '20260601', false, '바닥과 같다 — 요청이 이미 클램프돼 있다'],
+    ['20260501', '20260601', false, '바닥보다 과거 — 역시 클램프'],
+    ['20260701', '20260601', true, '바닥보다 미래 — 이 확장은 요청을 바꾼다'],
+    ['20260601', null, true, '바닥 미상 — 모르는 것을 바닥이라 하지 않는다'],
+    [null, '20260601', true, '창 없음 — 첫 확장은 언제나 창을 만든다'],
+    [null, null, true, '둘 다 없음'],
+  ] as const)('%s / floor=%s → %s (%s)', (from, floor, expected, _why) => {
+    expect(canAdvanceHistoricalWindow(from, floor)).toBe(expected);
+  });
+
+  it('planFillStep 의 바닥 stop 과 **같은 판정**이다 — 정의가 갈리면 그 틈이 잠김이다', () => {
+    const base = {
+      kind: 'left_pan' as const,
+      historicalFromDate: '20260601',
+      axisEarliestMs: Date.UTC(2026, 5, 1),
+      earliestAllowedDate: '20260601',
+      timeframe: '1m' as const,
+      stepCount: 0,
+      budget: 5,
+    };
+    expect(canAdvanceHistoricalWindow(base.historicalFromDate, base.earliestAllowedDate)).toBe(false);
+    expect(planFillStep(base)).toEqual({ action: 'stop' });
+
+    const above = { ...base, earliestAllowedDate: '20260501' };
+    expect(canAdvanceHistoricalWindow(above.historicalFromDate, above.earliestAllowedDate)).toBe(true);
+    expect(planFillStep(above).action).toBe('fetch');
   });
 });
 
