@@ -771,12 +771,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       drawings,
       selectedId,
       selectedIds,
-      // 잠긴 것을 **먼저 걸러낸 뒤** 판정한다 — hitTest 와 같은 합성 순서
-      // (ADR-0164). 잠긴 도형이 집합에 들어오면 그룹 이동이 그것만 못 옮기고
-      // 조용히 빠지는, 설명할 수 없는 상태가 된다. 숨김 레이어에서는 아무것도
-      // 고르지 않는다 — hitTestIn 의 hiddenAll 가드와 같은 이유.
+      // 마퀴는 **잠긴 것도 담는다.** 지목과 편집이 다른 일이기 때문이다 — 잠긴
+      // 도형을 여럿 담을 수 있어야 한꺼번에 풀 수 있고, 이동·수정·삭제는 스토어의
+      // 관문이 여전히 막는다(ADR-0164). 그래서 여기엔 `unlockedOnly` 합성이 없다.
+      // 숨김 레이어에서는 아무것도 고르지 않는다 — hitTestIn 의 hiddenAll 가드와
+      // 같은 이유(화면에 없는 것을 고를 수는 없다).
       drawingsInRect: (r: MarqueeRect) =>
-        defaults.hiddenAll ? [] : drawingsInRect(hitCoords(), unlockedOnly(drawings), r),
+        defaults.hiddenAll ? [] : drawingsInRect(hitCoords(), drawings, r),
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
       // never read this (they don't create shapes), so INITIAL_STYLE is a safe
       // filler there.
