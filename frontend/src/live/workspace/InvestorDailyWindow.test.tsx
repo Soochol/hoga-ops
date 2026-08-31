@@ -174,6 +174,33 @@ describe('InvestorDailyWindow', () => {
     expect(screen.getByRole('button', { name: /표시 단위/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('축 전환이 도착하기 전에는 **전환 중임을 말한다** — 버튼이 죽은 것과 구별된다', () => {
+    // 축을 처음 바꾸면 벤더 콜드 walk-back 이라 실측 4~9초가 걸린다(2026-08-31
+    // /browse). 그동안 옛 값이 제 단위로 얌전히 서 있으면 사용자에겐 아무 일도
+    // 안 일어난 것으로 보인다 — 실제 사용자 보고였다.
+    mockPoints([point('20260803')], 'qty_shares');   // 데이터는 아직 수량
+    useInvestorEstimateUnitStore.setState({ unit: 'amount' });  // 요청은 금액
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+
+    expect(screen.getByText('억 조회 중')).toBeInTheDocument();
+    const row = screen.getByTestId('investor-daily-row-20260803');
+    expect(row.closest('table')).toHaveAttribute('data-axis-pending');
+    // 표는 **지우지 않는다** — 축을 오갈 때마다 사라지면 비교가 끊긴다. 범위를 행으로
+    // 좁히는 것은 단일 행 픽스처에서 누적행이 같은 값을 들기 때문이다(표 전체로
+    // 찾으면 "multiple elements" 로 터진다).
+    expect(within(row).getByText('+8,658,155')).toBeInTheDocument();
+  });
+
+  it('축이 도착하면 흐림과 문구가 함께 사라진다', () => {
+    mockPoints([point('20260803')], 'qty_shares');
+    useInvestorEstimateUnitStore.setState({ unit: 'qty' });
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+
+    expect(screen.queryByText(/조회 중/)).toBeNull();
+    const table = screen.getByTestId('investor-daily-row-20260803').closest('table');
+    expect(table).not.toHaveAttribute('data-axis-pending');
+  });
+
   it('unit 이 없는 옛 백엔드 응답은 수량으로 읽는다', () => {
     useLivePastInvestorNet.mockReturnValue({
       data: { points: [point('20260803')] }, isLoading: false, error: null,
