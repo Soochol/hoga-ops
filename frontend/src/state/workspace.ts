@@ -172,11 +172,13 @@ export interface WorkspaceWindow {
    * 된 이상 소비처가 각자 `groupSymbols[win.group]` 를 직독하면 핀 창만 조용히
    * 옛 종목을 그린다(구독 코드 집합이 그 사고의 최단 경로다 — `liveOpenCodesKey`).
    *
-   * **프리셋에는 담기지 않되, 적용은 이월한다.** payload 는 핀을 싣지도 읽지도
-   * 않는다(`snapshotWorkspace`·`normalizeWorkspaceSnapshot`) — `groupSymbols` 를 뺀
-   * 것과 같은 이유로, 프리셋은 배치를 담고 종목을 담지 않는다. 대신 적용
-   * (`applyWorkspaceSnapshot`)이 id 가 살아남는 창의 핀을 나가는 상태에서 이월한다 —
-   * groupSymbols 보존과 같은 규칙("프리셋은 보던 종목을 바꾸지 않는다")의 창 쪽 절반.
+   * **프리셋에는 값이 담기지 않되, 적용은 이월·물질화한다.** payload 는 핀 **종목**을
+   * 싣지도 읽지도 않는다(`snapshotWorkspace`·`normalizeWorkspaceSnapshot`) —
+   * `groupSymbols` 를 뺀 것과 같은 이유로, 프리셋은 배치를 담고 종목을 담지 않는다.
+   * 대신 ① 적용(`applyWorkspaceSnapshot`)이 id 가 살아남는 창의 핀을 나가는 상태에서
+   * 이월하고 — groupSymbols 보존과 같은 규칙("프리셋은 보던 종목을 바꾸지 않는다")의
+   * 창 쪽 절반 — ② 프리셋 층은 **여부만** `wasPinned` 로 실어 적용 시점의 표시
+   * 종목으로 물질화한다(ADR-0165, `pinWindows`·`layoutPresetSnapshot.ts`).
    */
   pinned?: GroupSymbol;
 }
@@ -234,6 +236,15 @@ type Store = Persisted & {
    * 없다 — UI 도 그때 버튼을 비활성화한다).
    */
   toggleWindowPin: (id: string) => void;
+  /**
+   * 지목된 창들을 **지금 그리는 종목**으로 핀한다 — 프리셋 핀 복원(ADR-0165)의 문.
+   *
+   * 켜기 전용이다: 이미 핀인 창은 건너뛰고(이월된 핀이 물질화보다 우선),
+   * 표시 종목이 없는 창도 건너뛴다(빈 핀은 표현 불가 — `toggleWindowPin` 과 같은
+   * 규칙). 목록에 없는 창의 핀을 **풀지 않는다** — 끄기까지 복원하면 표시 종목이
+   * 바뀌어 "프리셋은 보던 종목을 안 바꾼다" 상위 계약을 깬다.
+   */
+  pinWindows: (ids: readonly string[]) => void;
   /**
    * 창 하나에 종목을 쓴다 — **드롭 경로의 문**. 핀 창이면 창 슬롯에, 아니면 종전대로
    * 그 창의 그룹에 쓴다(그룹 동료 창들이 같이 따라오는 링크 동작 유지).
@@ -815,6 +826,25 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         windows,
         ...(symbolChanged ? { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) } : {}),
       };
+    });
+  },
+
+  pinWindows: (ids) => {
+    set((state) => {
+      const wanted = new Set(ids);
+      let changed = false;
+      const windows = state.windows.map((w) => {
+        if (!wanted.has(w.id) || w.pinned) return w;
+        const symbol = windowSymbolOf(state, w);
+        if (!symbol) return w;
+        changed = true;
+        return { ...w, pinned: symbol };
+      });
+      if (!changed) return {};
+      persistFromState({ ...state, windows });
+      // 지금 보던 종목을 그대로 드는 것이라 런타임은 안 건드린다(toggleWindowPin
+      // 의 켜기 경로와 동일).
+      return { windows };
     });
   },
 
