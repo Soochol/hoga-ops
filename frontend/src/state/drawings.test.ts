@@ -961,3 +961,79 @@ describe('useDrawingsStore — 다중 선택', () => {
     expect(s().selectedFor(A)).toEqual(['h1']);
   });
 });
+
+// ── 겹침 순서 · 일괄 추가 · 선택 교체 ────────────────────────────────────
+describe('useDrawingsStore — reorder / addMany / setSelection', () => {
+  const s = () => useDrawingsStore.getState();
+  const ids = () => s().drawingsFor(A).map((d) => d.id);
+  const seed4 = () => {
+    ['a', 'b', 'c', 'd'].forEach((id, i) => s().add(A, mkHline(id, 100 * (i + 1))));
+  };
+
+  it('setSelection 은 합집합이 아니라 교체다', () => {
+    seed4();
+    s().addToSelection(A, ['a', 'b']);
+    s().setSelection(A, ['c']);
+    expect(s().selectedFor(A)).toEqual(['c']);
+  });
+
+  it('addMany 는 되돌리기 한 단계다', () => {
+    seed4();
+    s().addMany(A, [mkHline('x', 900), mkHline('y', 950)]);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd', 'x', 'y']);
+    s().undo(A);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('addMany 는 빈 목록에 아무 일도 하지 않는다', () => {
+    seed4();
+    s().addMany(A, []);
+    s().undo(A); // 직전 add 가 되돌려지면 = 빈 단계가 없었다는 뜻
+    expect(ids()).toEqual(['a', 'b', 'c']);
+  });
+
+  // ⚠ 안정 분할. 옮기는 것들끼리 순서가 뒤바뀌면 화면에는 아무 설명이 없다.
+  it('맨 앞으로 — 옮기는 것들의 상대 순서를 지킨다', () => {
+    seed4();
+    s().reorder(A, ['a', 'c'], 'front');
+    expect(ids()).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('맨 뒤로 — 마찬가지로 상대 순서를 지킨다', () => {
+    seed4();
+    s().reorder(A, ['b', 'd'], 'back');
+    expect(ids()).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('reorder 는 되돌리기 한 단계다', () => {
+    seed4();
+    s().reorder(A, ['a'], 'front');
+    expect(ids()).toEqual(['b', 'c', 'd', 'a']);
+    s().undo(A);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  // 이미 그 끝에 몰려 있으면 이력을 남기지 않는다 — 빈 undo 단계는 redo 스택을
+  // 비우므로 무해하지 않다.
+  it('이미 맨 앞이면 아무 일도 하지 않는다', () => {
+    seed4();
+    s().reorder(A, ['c', 'd'], 'front');
+    s().undo(A); // 직전 add 가 되돌려지면 = 빈 단계가 없었다
+    expect(ids()).toEqual(['a', 'b', 'c']);
+  });
+
+  // 순서 변경은 "클릭이 어느 도형에 가는가" 를 바꾸므로 편집이다(ADR-0164).
+  it('잠긴 도형은 순서가 바뀌지 않는다', () => {
+    seed4();
+    s().update(A, 'a', { locked: true });
+    s().reorder(A, ['a', 'b'], 'front');
+    expect(ids()).toEqual(['a', 'c', 'd', 'b']);
+  });
+
+  it('전부 잠겼으면 아무 일도 하지 않는다', () => {
+    seed4();
+    s().update(A, 'a', { locked: true });
+    s().reorder(A, ['a'], 'front');
+    expect(ids()).toEqual(['a', 'b', 'c', 'd']);
+  });
+});

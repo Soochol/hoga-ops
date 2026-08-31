@@ -23,7 +23,7 @@ import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import type { AlignGuide } from './drawing/alignSnap';
 import { resetGestureRefs, type GestureRefs } from './drawing/gestureReset';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
-import type { TimeShift } from './drawing/translate';
+import { planGroupTranslate, type TimeShift } from './drawing/translate';
 import {
   drawingsInRect, hitTestDrawings, marqueeRect, unlockedOnly,
   type HitCoord, type MarqueeRect,
@@ -256,6 +256,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // latest closure over the current coordinate helpers — same pattern as
   // snapshotRef. Set just before the return.
   const duplicateSelectedRef = useRef<() => void>(() => {});
+  /** 방향키 미세 이동 — (dx, dy) 는 -1/0/1, `big` 은 Shift(열 배). 복제와 같은
+   *  이유로 ref 경유다: 키다운 effect 가 `[]` deps 라 좌표 클로저가 stale 이 된다. */
+  const nudgeSelectedRef = useRef<(dx: number, dy: number, big: boolean) => void>(() => {});
   // 같은 이유로 언마운트 정리가 최신 되돌리기 상태를 걷게 하는 통로.
   const cancelForwardRef = useRef<() => void>(() => {});
 
@@ -432,6 +435,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           e.preventDefault(); // suppress the browser bookmark dialog
           return;
         }
+        if (key === 'a') {
+          // 전체 선택. **잠긴 것도 담는다** — 그래야 "전부 고르고 전부 풀기" 가
+          // 한 흐름이 된다(ADR-0164 는 편집만 막는다). 숨김 레이어에서는 건너뛴다:
+          // 화면에 없는 것을 고를 수는 없고, 그 상태에선 속성 툴바도 뜨지 않는다.
+          const store = useDrawingsStore.getState();
+          if (!store.defaults.hiddenAll) {
+            store.setSelection(keyScope, (store.byScope.get(keyScope) ?? []).map((d) => d.id));
+          }
+          e.preventDefault(); // 브라우저 전체 선택을 막는다
+          return;
+        }
       }
 
       // Alt+C = 모두 지우기. 도구 전환이 아니라 TOOLS 레지스트리 밖이고
@@ -447,6 +461,28 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       const shortcutKind = matchShortcut(e);
       if (shortcutKind) {
         useDrawingsStore.getState().setActiveTool(shortcutKind);
+        e.preventDefault();
+        return;
+      }
+      // 방향키 미세 이동. **선택이 있을 때만** 키를 가져간다 — 선택이 없으면
+      // 흘려보내 페이지·차트가 평소대로 반응하게 한다(Delete 와 같은 정직성 규칙).
+      //
+      // ⚠ 단, 선택이 있으면 **아무것도 안 움직여도 preventDefault 한다**(전부 잠긴
+      // 경우). 여기서 키를 흘리면 페이지가 스크롤되어, 고른 도형이 화면 밖으로
+      // 밀려나는 것처럼 보인다 — Delete 와 갈리는 지점이고, 갈리는 이유는 "관심
+      // 없다" 와 "관심은 있는데 지금은 못 움직인다" 가 다른 상태이기 때문이다.
+      const NUDGE: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        // 화면 y 는 아래로 증가한다 — 위 화살표가 -1.
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      const nudge = NUDGE[e.key];
+      if (nudge) {
+        const store = useDrawingsStore.getState();
+        if ((store.selectedByScope.get(keyScope) ?? []).length === 0) return;
+        nudgeSelectedRef.current(nudge[0], nudge[1], e.shiftKey);
         e.preventDefault();
         return;
       }
@@ -771,12 +807,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       drawings,
       selectedId,
       selectedIds,
-      // 잠긴 것을 **먼저 걸러낸 뒤** 판정한다 — hitTest 와 같은 합성 순서
-      // (ADR-0164). 잠긴 도형이 집합에 들어오면 그룹 이동이 그것만 못 옮기고
-      // 조용히 빠지는, 설명할 수 없는 상태가 된다. 숨김 레이어에서는 아무것도
-      // 고르지 않는다 — hitTestIn 의 hiddenAll 가드와 같은 이유.
+      // 마퀴는 **잠긴 것도 담는다.** 지목과 편집이 다른 일이기 때문이다 — 잠긴
+      // 도형을 여럿 담을 수 있어야 한꺼번에 풀 수 있고, 이동·수정·삭제는 스토어의
+      // 관문이 여전히 막는다(ADR-0164). 그래서 여기엔 `unlockedOnly` 합성이 없다.
+      // 숨김 레이어에서는 아무것도 고르지 않는다 — hitTestIn 의 hiddenAll 가드와
+      // 같은 이유(화면에 없는 것을 고를 수는 없다).
       drawingsInRect: (r: MarqueeRect) =>
-        defaults.hiddenAll ? [] : drawingsInRect(hitCoords(), unlockedOnly(drawings), r),
+        defaults.hiddenAll ? [] : drawingsInRect(hitCoords(), drawings, r),
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
       // never read this (they don't create shapes), so INITIAL_STYLE is a safe
       // filler there.
@@ -1261,17 +1298,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   duplicateSelectedRef.current = () => {
     const store = useDrawingsStore.getState();
     if (scope == null) return;
-    // 복제는 **단일 선택 전용**이다. 다중 복제 자체는 어렵지 않지만 `add` 를 N번
-    // 부르면 되돌리기가 N단계로 쪼개진다 — 일괄 추가(addMany)까지 세우는 것은
-    // 이번 범위 밖이라, 집합을 골라 둔 상태에서는 조용히 아무 일도 하지 않는다
-    // (엉뚱하게 하나만 복제하는 것보다 낫다).
     const ids = store.selectedByScope.get(scope) ?? EMPTY_SELECTION;
-    if (ids.length !== 1) return;
-    const id = ids[0];
-    const d = store.byScope.get(scope)?.find((x) => x.id === id);
-    if (d == null) return;
+    if (ids.length === 0) return;
+    const items = store.byScope.get(scope) ?? EMPTY_DRAWINGS;
+    const members = ids
+      .map((id) => items.find((x) => x.id === id))
+      .filter((d): d is Drawing => d != null);
+    if (members.length === 0) return;
     const OFFSET_PX = 14;
-    const ref = refCoords(d);
+    // 오프셋은 **한 번만** 계산해 전원에게 적용한다(기준은 primary = 마지막 멤버).
+    // 멤버마다 자기 ref 로 재면 팬·구간이 다를 때 델타가 갈려 **대형이 어긋난 채로
+    // 복제된다** — 그룹 이동이 하나의 델타를 공유하는 것과 같은 이유다.
+    const ref = refCoords(members[members.length - 1]);
+    const refPaneId = members[members.length - 1].paneId;
     // Horizontal offset in BAR ORDINALS, applied per-vertex through dragBars
     // (same domain as body-drag). The ref vertex is pixel-derived and thus
     // always lands on-axis, but a flat real-ms delta would strand the OTHER
@@ -1292,15 +1331,61 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       }
     }
     if (ref.price != null) {
-      const y = priceToCanvasY(ref.price, d.paneId);
+      const y = priceToCanvasY(ref.price, refPaneId);
       if (y != null) {
-        const shifted = canvasYToPrice(y + OFFSET_PX, d.paneId);
+        const shifted = canvasYToPrice(y + OFFSET_PX, refPaneId);
         if (shifted != null) dPrice = shifted - ref.price;
       }
     }
-    const clone = cloneWithOffset(d, shiftMs, dPrice);
-    store.add(scope, clone);
-    store.setSelected(scope, clone.id);
+    // 사본은 **잠금이 풀린 채로** 태어난다(cloneWithOffset) — 복제는 쓸 수 있는
+    // 도형을 달라는 요청이지 못 움직이는 것을 하나 더 달라는 요청이 아니다.
+    const clones = members.map((d) => cloneWithOffset(d, shiftMs, dPrice));
+    store.addMany(scope, clones);
+    // 선택은 사본으로 옮겨 간다 — 단일 복제가 하던 것과 같고, 곧바로 이어서
+    // 옮기거나 스타일을 바꿀 수 있다.
+    store.setSelection(scope, clones.map((c) => c.id));
+  };
+
+  /**
+   * 방향키 미세 이동. 수평은 **1 봉**, 수직은 **1 픽셀**이 한 걸음이고 Shift 가
+   * 열 배로 늘린다.
+   *
+   * 축마다 단위가 다른 것은 차트 좌표계가 실제로 비대칭이기 때문이다: 시간축은
+   * 봉이라는 이산 격자이고(`toReal` 이 격자로 반올림한다 — 0.3봉 같은 것은 존재할
+   * 수 없다), 가격축은 연속이다. 수평을 픽셀로 받으면 반올림에 먹혀 어떤 키는
+   * 아무 일도 안 하고 어떤 키는 한 봉을 뛴다.
+   *
+   * `barSized` 가 거짓이면 수평을 건너뛴다 — 그때 1 단위는 봉이 아니라 가상 ms 조각
+   * 이라, "한 봉 옮긴다" 는 약속을 지킬 수 없다(DragBarDomain 이 경고하는 "델타를
+   * 봉 개수로 읽는 소비자" 가 정확히 이 경우다). 수직은 그대로 동작한다.
+   */
+  nudgeSelectedRef.current = (dx, dy, big) => {
+    const store = useDrawingsStore.getState();
+    if (scope == null) return;
+    const ids = store.selectedByScope.get(scope) ?? EMPTY_SELECTION;
+    if (ids.length === 0) return;
+    const items = store.byScope.get(scope) ?? EMPTY_DRAWINGS;
+    // 잠긴 것은 계획 단계에서 뺀다 — 그룹 드래그와 같은 규칙이라, 하나가 잠겼다고
+    // 나머지가 함께 얼어붙지 않는다.
+    const members = ids
+      .map((id) => items.find((x) => x.id === id))
+      .filter((d): d is Drawing => d != null && !isLocked(d));
+    if (members.length === 0) return;
+    const step = big ? 10 : 1;
+    const dBar = dragBars.barSized ? dx * step : 0;
+    const dyPx = dy * step;
+    if (dBar === 0 && dyPx === 0) return;
+    store.updateMany(
+      scope,
+      planGroupTranslate(members, dBar, dyPx, {
+        priceToCanvasY,
+        canvasYToPrice,
+        priceBoundsForPane,
+        toBar: dragBars.toBar,
+        toReal: dragBars.toReal,
+        originBar: dragBars.originBar,
+      }),
+    );
   };
 
   // Screen position of the open text editor. Re-projects the anchor so the box

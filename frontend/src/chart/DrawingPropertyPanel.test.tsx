@@ -333,15 +333,15 @@ describe('DrawingPropertyPanel — 다중 선택', () => {
     expect(s().drawingsFor(SCOPE).map((d) => d.id)).toEqual(['h3']);
   });
 
-  // 잠근 뒤 선택을 비우는 이유: 잠긴 것을 집합에 남겨 두면 헤일로는 있는데
-  // 끌리지 않는, 화면이 설명하지 못하는 상태가 된다.
-  it('잠금은 선택한 것만 잠그고 선택을 비운다', () => {
+  // 잠근 뒤에도 선택은 남는다. 잠긴 채 선택된 상태가 이제 정당하기 때문이다 —
+  // 그 상태의 툴바가 곧 해제 버튼을 내밀므로 잠금이 그 자리에서 되돌려진다.
+  it('잠금은 선택한 것만 잠그고 선택은 유지한다', () => {
     render(<DrawingPropertyPanel scope={SCOPE} />);
     act(() => {
       fireEvent.click(screen.getByTestId('drawing-multi-lock'));
     });
     expect(s().drawingsFor(SCOPE).map((d) => d.locked === true)).toEqual([true, true, false]);
-    expect(s().selectedFor(SCOPE)).toEqual([]);
+    expect(s().selectedFor(SCOPE)).toEqual(['h1', 'h2']);
   });
 
   it('하나로 접히면 다시 스타일 편집기로 돌아온다', () => {
@@ -582,5 +582,232 @@ describe('DrawingPropertyPanel — 우측 확장', () => {
     const toggle = screen.getByTestId('drawing-extend-right') as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
     expect((screen.getByTestId('drawing-extend-to-view') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// ─── 다중 선택 — 잠긴 도형이 섞였을 때 ──────────────────────────────────────
+//
+// 잠긴 것도 고를 수 있게 된 이유는 하나다: **여러 개를 한꺼번에 풀기 위해서**다.
+// 그전에는 하나씩 골라 단일 패널의 자물쇠를 누르는 길밖에 없었다. 이동·수정·삭제를
+// 막는 것은 그대로다(ADR-0164) — 선택은 지목이지 편집이 아니다.
+describe('DrawingPropertyPanel — 잠금 혼재', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const mk = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+
+  const seed = (lockedIds: string[]) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    ['h1', 'h2', 'h3'].forEach((id, i) => s().add(SCOPE, mk(id, 1000 * (i + 1))));
+    lockedIds.forEach((id) => s().update(SCOPE, id, { locked: true }));
+    s().addToSelection(SCOPE, ['h1', 'h2', 'h3']);
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+  };
+  const lockedFlags = () => s().drawingsFor(SCOPE).map((d) => d.locked === true);
+
+  it('잠긴 개수를 함께 보여 준다 — 일부만 움직이는 드래그를 설명한다', () => {
+    seed(['h2']);
+    expect(screen.getByTestId('drawing-multi-count').textContent).toBe('3개 선택 · 1 잠김');
+  });
+
+  it('하나도 안 잠겼으면 개수 뒤에 아무것도 붙지 않는다', () => {
+    seed([]);
+    expect(screen.getByTestId('drawing-multi-count').textContent).toBe('3개 선택');
+  });
+
+  it('일부만 잠겼으면 자물쇠는 여전히 "잠금" 방향이다', () => {
+    seed(['h2']);
+    const lock = screen.getByTestId('drawing-multi-lock');
+    expect(lock.getAttribute('aria-label')).toBe('선택 잠금');
+    fireEvent.click(lock);
+    expect(lockedFlags()).toEqual([true, true, true]);
+  });
+
+  // ⚠ 이 기능의 존재 이유. `updateMany` 의 `locked` 전용 패치 예외가 없으면
+  // 여기서 아무 일도 일어나지 않는다.
+  it('전부 잠겼으면 자물쇠가 "해제" 로 바뀌고, 한 번에 다 풀린다', () => {
+    seed(['h1', 'h2', 'h3']);
+    const lock = screen.getByTestId('drawing-multi-lock');
+    expect(lock.getAttribute('aria-label')).toBe('선택 잠금 해제');
+    fireEvent.click(lock);
+    expect(lockedFlags()).toEqual([false, false, false]);
+  });
+
+  it('일괄 잠금 해제는 되돌리기 한 단계다', () => {
+    seed(['h1', 'h2', 'h3']);
+    fireEvent.click(screen.getByTestId('drawing-multi-lock'));
+    expect(lockedFlags()).toEqual([false, false, false]);
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(lockedFlags()).toEqual([true, true, true]);
+  });
+
+  // 숨기지 않고 비활성한다 — 눌리는데 아무 일도 안 나는 버튼이 고장으로 읽힌다.
+  it('전부 잠겼으면 스타일·삭제가 비활성된다(자물쇠만 살아 있다)', () => {
+    seed(['h1', 'h2', 'h3']);
+    expect(screen.getByTestId('drawing-color-trigger')).toBeDisabled();
+    expect(screen.getByTestId('drawing-thickness-trigger')).toBeDisabled();
+    expect(screen.getByTestId('drawing-multi-delete')).toBeDisabled();
+    expect(screen.getByTestId('drawing-multi-lock')).not.toBeDisabled();
+  });
+
+  it('하나라도 안 잠겼으면 스타일·삭제가 살아 있다', () => {
+    seed(['h1', 'h2']);
+    expect(screen.getByTestId('drawing-color-trigger')).not.toBeDisabled();
+    expect(screen.getByTestId('drawing-multi-delete')).not.toBeDisabled();
+  });
+
+  // 표시는 잠긴 것까지 읽고, 편집은 잠기지 않은 것에만 간다. 그래서 적용 뒤에도
+  // 잠긴 멤버가 옛 값을 지켜 "혼합" 이 남을 수 있다 — 거짓이 아니라 사실이다.
+  it('일괄 스타일은 잠기지 않은 것에만 적용되고, 남은 차이는 혼합으로 보인다', () => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    s().add(SCOPE, { ...mk('h1', 1000), width: 1 } as Drawing);
+    s().add(SCOPE, { ...mk('h2', 2000), width: 1 } as Drawing);
+    s().update(SCOPE, 'h2', { locked: true });
+    s().addToSelection(SCOPE, ['h1', 'h2']);
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('1px');
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-thickness-item-5'));
+
+    expect(s().drawingsFor(SCOPE).map((d) => (d as { width: number }).width)).toEqual([5, 1]);
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('혼합');
+  });
+});
+
+// ─── 겹침 순서 버튼 ────────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 겹침 순서', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const mk = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+  const ids = () => s().drawingsFor(SCOPE).map((d) => d.id);
+
+  const seed = (selected: string[]) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    ['h1', 'h2', 'h3'].forEach((id, i) => s().add(SCOPE, mk(id, 1000 * (i + 1))));
+    s().addToSelection(SCOPE, selected);
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+  };
+
+  it('단일 선택 패널에도 있다', () => {
+    seed(['h1']);
+    fireEvent.click(screen.getByTestId('drawing-bring-front'));
+    expect(ids()).toEqual(['h2', 'h3', 'h1']);
+  });
+
+  it('다중 툴바에서 집합 전체를 옮긴다', () => {
+    seed(['h1', 'h2']);
+    fireEvent.click(screen.getByTestId('drawing-send-back'));
+    expect(ids()).toEqual(['h1', 'h2', 'h3']); // 이미 앞이라 그대로
+    fireEvent.click(screen.getByTestId('drawing-bring-front'));
+    expect(ids()).toEqual(['h3', 'h1', 'h2']);
+  });
+
+  it('잠긴 단일 선택에서는 비활성된다', () => {
+    seed(['h1']);
+    act(() => {
+      s().update(SCOPE, 'h1', { locked: true });
+    });
+    expect(screen.getByTestId('drawing-bring-front')).toBeDisabled();
+  });
+
+  it('전부 잠긴 다중 선택에서도 비활성된다', () => {
+    seed(['h1', 'h2']);
+    act(() => {
+      s().updateMany(SCOPE, ['h1', 'h2'].map((id) => ({ id, patch: { locked: true } as Partial<Drawing> })));
+    });
+    expect(screen.getByTestId('drawing-send-back')).toBeDisabled();
+  });
+});
+
+// ─── 정렬·분배 팝오버 ──────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 정렬·분배', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  // 선형 스텁 — 1 000 ms = 1 px, 가격 1 = 1 px.
+  const coords = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    canvasXToRealMs: (px: number) => px * 1_000,
+    priceToCanvasY: (price: number) => 400 - price,
+    canvasYToPrice: (py: number) => 400 - py,
+    priceBoundsForPane: () => ({ top: 10_000, bottom: -10_000 }),
+    toBar: (ms: number) => ms,
+    toReal: (b: number) => b,
+    originBar: -Infinity,
+  };
+
+  const hline = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+  const rect = (id: string, ms: number): Drawing =>
+    ({
+      id, kind: 'rect',
+      a: { realMs: ms, price: 100 }, b: { realMs: ms + 10_000, price: 200 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', fillOpacity: 0.1, paneId: 'candle',
+    }) as Drawing;
+
+  const seed = (items: Drawing[], withCoords = true) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    items.forEach((d) => s().add(SCOPE, d));
+    s().addToSelection(SCOPE, items.map((d) => d.id));
+    render(
+      <DrawingPropertyPanel
+        scope={SCOPE}
+        resolveAlignCoords={withCoords ? () => coords : undefined}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('drawing-align-trigger'));
+  };
+
+  // ⚠ 이 기능을 두 번 미루게 했던 문제의 UI 쪽 답. 축을 통째로 포기하지 않고
+  // 그 축에서 그 종류를 뺀다.
+  it('hline 만 고르면 가로 항목만 비활성된다', () => {
+    seed([hline('h1', 100), hline('h2', 200)]);
+    expect(screen.getByTestId('drawing-align-left')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-right')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-top')).not.toBeDisabled();
+    expect(screen.getByTestId('drawing-align-bottom')).not.toBeDisabled();
+  });
+
+  it('사각형 둘이면 정렬은 되고 분배는 안 된다 — 둘은 양 끝이다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)]);
+    expect(screen.getByTestId('drawing-align-left')).not.toBeDisabled();
+    expect(screen.getByTestId('drawing-distribute-horizontal')).toBeDisabled();
+  });
+
+  it('셋이면 분배가 열린다', () => {
+    seed([rect('r1', 0), rect('r2', 30_000), rect('r3', 90_000)]);
+    expect(screen.getByTestId('drawing-distribute-horizontal')).not.toBeDisabled();
+  });
+
+  // 좌표를 못 얻으면(차트 미부착) 눌러도 할 일이 없다 — 비활성이 정직하다.
+  it('좌표가 없으면 전부 비활성된다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)], false);
+    expect(screen.getByTestId('drawing-align-left')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-top')).toBeDisabled();
+  });
+
+  it('정렬은 실제로 적용되고 되돌리기 한 단계다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)]);
+    fireEvent.click(screen.getByTestId('drawing-align-left'));
+
+    const xs = () => s().drawingsFor(SCOPE).map((d) => (d as { a: { realMs: number } }).a.realMs);
+    expect(xs()).toEqual([0, 0]);
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(xs()).toEqual([0, 50_000]);
+  });
+
+  it('분배는 사이를 고르게 벌린다', () => {
+    seed([rect('r1', 0), rect('r2', 10_000), rect('r3', 90_000)]);
+    fireEvent.click(screen.getByTestId('drawing-distribute-horizontal'));
+    expect(
+      s().drawingsFor(SCOPE).map((d) => (d as { a: { realMs: number } }).a.realMs),
+    ).toEqual([0, 45_000, 90_000]);
   });
 });

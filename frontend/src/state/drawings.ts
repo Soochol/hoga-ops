@@ -62,7 +62,9 @@ type HistoryOp =
   | 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import' | 'lockAll'
   // 다중 선택의 일괄 변이. 항목마다 update/remove 를 부르면 5개를 옮긴 뒤 Ctrl+Z 를
   // 5번 눌러야 한다 — setLockedAll 이 같은 이유로 이미 한 단계다.
-  | 'updateMany' | 'removeMany';
+  | 'updateMany' | 'removeMany'
+  // 배열 순서 자체를 바꾸는 변이(겹침 순서). 클릭이 낱개로 오므로 병합 창이 없다.
+  | 'addMany' | 'reorder';
 type HistoryEntry = { items: Drawing[]; op: HistoryOp; targetId?: string; at: number };
 type ScopeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 
@@ -219,6 +221,10 @@ type Actions = {
   /** 마퀴 커밋: `ids` 를 현재 선택에 **합집합**으로 더한다(중복 무시, 순서 보존).
    *  마퀴는 Shift 아래에서만 존재하는 제스처라 "더하기" 외의 해석이 없다. */
   addToSelection(scope: string, ids: readonly DrawingId[]): void;
+  /** 선택을 `ids` 로 **교체**한다(전체 선택·복제 후 새 도형 선택). 합집합이 아니라
+   *  교체인 이유: "전체 선택" 은 지금 목록과 정확히 같아야 하고, 복제 뒤에는 원본이
+   *  아니라 사본이 선택돼야 한다. */
+  setSelection(scope: string, ids: readonly DrawingId[]): void;
   /**
    * 모든 scope 의 선택을 비운다(도구는 건드리지 않는다). 그리기 도구로 **진입할 때**
    * 부른다 — 불변식은 "그리기 모드 ⇒ 선택 없음" 이다. select 모드에서 고른 도형이
@@ -262,7 +268,7 @@ type Actions = {
   /** 잠긴 드로잉은 거부한다 — `update` 와 같은 관문. */
   remove(scope: string, id: DrawingId): void;
   /**
-   * 여러 드로잉을 **한 번의 되돌리기 단계로** 패치한다(다중 선택 이동).
+   * 여러 드로잉을 **한 번의 되돌리기 단계로** 패치한다(다중 선택 이동·스타일·잠금).
    *
    * `update` 를 N번 부르는 것과 세 가지가 다르고, 그 셋이 이 액션의 존재 이유다:
    *  - 이력이 **한 단계**다. 5개를 끌고 Ctrl+Z 를 5번 누르는 일이 없다.
@@ -272,11 +278,30 @@ type Actions = {
    *    실해는 없지만, 배치가 그 경로를 N번 도는 것 자체가 낭비다.
    *
    * 잠긴 항목은 조용히 건너뛴다(ADR-0164) — 잠긴 것 하나 때문에 나머지 이동을
-   * 통째로 거부하면 "왜 아무것도 안 움직이지" 가 된다.
+   * 통째로 거부하면 "왜 아무것도 안 움직이지" 가 된다. **단, 키가 `locked` 뿐인
+   * 패치는 잠긴 항목에도 적용된다** — 단건 `update` 와 같은 예외이고, 일괄 잠금
+   * 해제가 지나는 길이다.
    */
   updateMany(scope: string, patches: ReadonlyArray<{ id: DrawingId; patch: Partial<Drawing> }>): void;
   /** 여러 드로잉을 **한 번의 되돌리기 단계로** 지운다. 잠긴 것은 남는다. */
   removeMany(scope: string, ids: readonly DrawingId[]): void;
+  /** 여러 드로잉을 **한 번의 되돌리기 단계로** 추가한다(다중 복제). `add` 와 같이
+   *  잠금 관문이 없다 — 새로 만드는 것이라 막을 대상이 없다. */
+  addMany(scope: string, items: readonly Drawing[]): void;
+  /**
+   * 겹침 순서를 바꾼다 — `ids` 를 배열의 맨 뒤(`'front'`) 또는 맨 앞(`'back'`)으로.
+   *
+   * 배열 순서가 곧 z-order 다: 렌더는 앞에서 뒤로 그리므로 **뒤쪽이 위에 보이고**,
+   * `hitTestDrawings` 는 뒤에서부터 훑어 최상단을 집는다. 그래서 "맨 앞으로" 가
+   * 배열의 끝으로 보내는 것이다.
+   *
+   * 옮겨지는 것들의 **상대 순서는 보존된다**(안정 분할). 안 그러면 함께 올린 도형들이
+   * 저희끼리 순서를 바꿔 버리는데, 화면에는 아무 설명이 없다.
+   *
+   * 잠긴 것은 빠진다. 순서 변경은 "클릭이 어느 도형에 가는가" 를 바꾸므로 편집이다
+   * (측정이 아니다 — ADR-0164 의 경계는 그 선에 있다).
+   */
+  reorder(scope: string, ids: readonly DrawingId[], to: 'front' | 'back'): void;
   /**
    * scope 의 모든 드로잉을 한꺼번에 잠그거나 푼다. **되돌리기 한 단계**다 —
    * 항목마다 `update` 를 부르면 20개를 잠근 뒤 Ctrl+Z 를 20번 눌러야 한다.
@@ -426,6 +451,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ selectedByScope: withSelection(get().selectedByScope, scope, next) });
     },
 
+    setSelection(scope, ids) {
+      set({ selectedByScope: withSelection(get().selectedByScope, scope, ids) });
+    },
+
     addToSelection(scope, ids) {
       if (ids.length === 0) return;
       const cur = get().selectedByScope.get(scope) ?? EMPTY_SELECTION;
@@ -534,19 +563,28 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     updateMany(scope, patches) {
       const current = get().byScope.get(scope) ?? [];
       // 잠긴 것은 여기서 빠진다 — update 와 같은 관문이되, 거부가 배치 전체가
-      // 아니라 항목 단위다. (잠금 해제 통로는 단건 update 하나로 충분하므로
-      // isUnlockOnlyPatch 예외는 이쪽에 없다.)
+      // 아니라 항목 단위다.
+      //
+      // **유일한 예외도 update 와 같다: 키가 `locked` 뿐인 패치.** 그게 일괄 잠금
+      // 해제의 통로다. 다중 선택이 잠긴 도형을 담을 수 있게 된 이상 단건 update
+      // 만으로는 부족하다 — 열 개를 풀려고 열 번 고르고 열 번 누르는 것이 애초에
+      // 이 기능이 없애려는 수고다.
       const byId = new Map(patches.map((p) => [p.id, p.patch]));
-      const applicable = current.filter((d) => byId.has(d.id) && !isLocked(d));
+      const applicable = current.filter(
+        (d) => byId.has(d.id) && (!isLocked(d) || isUnlockOnlyPatch(byId.get(d.id)!)),
+      );
       if (applicable.length === 0) return;
       // 병합 키: 실제로 적용될 id 들의 정렬 시그니처. 잠긴 것을 뺀 뒤에 만드는
       // 이유는 그것이 곧 "이 배치가 무엇을 건드리는가" 이기 때문이다.
       const signature = applicable.map((d) => d.id).sort().join(',');
       recordHistory(scope, current, 'updateMany', signature);
-      const next = current.map((d) => {
-        const patch = byId.get(d.id);
-        return patch != null && !isLocked(d) ? ({ ...d, ...patch } as Drawing) : d;
-      });
+      // 무엇을 적용할지는 `applicable` 이 이미 정했다. 여기서 조건을 다시 쓰면
+      // 두 곳이 갈릴 수 있다 — 실제로 갈렸다(필터에 잠금 해제 예외를 넣고 이쪽을
+      // 빠뜨려서, 일괄 해제가 이력만 남기고 아무것도 바꾸지 않았다).
+      const applicableIds = new Set(applicable.map((d) => d.id));
+      const next = current.map((d) =>
+        applicableIds.has(d.id) ? ({ ...d, ...byId.get(d.id) } as Drawing) : d,
+      );
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
       set({ byScope });
@@ -566,6 +604,39 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
       set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next) });
+      queuePersist(scope);
+    },
+
+    addMany(scope, items) {
+      if (items.length === 0) return;
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'addMany', items.map((d) => d.id).sort().join(','));
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, [...current, ...items]);
+      set({ byScope });
+      queuePersist(scope);
+    },
+
+    reorder(scope, ids, to) {
+      const current = get().byScope.get(scope) ?? [];
+      const moving = new Set(
+        current.filter((d) => ids.includes(d.id) && !isLocked(d)).map((d) => d.id),
+      );
+      if (moving.size === 0) return;
+      // 이미 그 끝에 몰려 있으면 아무 일도 하지 않는다 — 빈 undo 단계는 redo 스택을
+      // 비우므로 무해하지 않다(setLockedAll 과 같은 사유).
+      const tailIsAllMoving = (arr: readonly Drawing[]) =>
+        arr.slice(arr.length - moving.size).every((d) => moving.has(d.id));
+      const headIsAllMoving = (arr: readonly Drawing[]) =>
+        arr.slice(0, moving.size).every((d) => moving.has(d.id));
+      if (to === 'front' ? tailIsAllMoving(current) : headIsAllMoving(current)) return;
+      // 안정 분할 — 양쪽 다 원래 순서를 지킨다.
+      const moved = current.filter((d) => moving.has(d.id));
+      const rest = current.filter((d) => !moving.has(d.id));
+      recordHistory(scope, current, 'reorder', [...moving].sort().join(','));
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, to === 'front' ? [...rest, ...moved] : [...moved, ...rest]);
+      set({ byScope });
       queuePersist(scope);
     },
 

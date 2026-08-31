@@ -8,6 +8,10 @@ import { useCallback, useMemo, useState, useRef } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
+  eligibleFor, planAlign, planDistribute,
+  type AlignCoords, type AlignEdge, type DistributeAxis,
+} from './drawing/translate';
+import {
   COLOR_PALETTE,
   STROKE_WIDTHS,
   LINE_STYLES,
@@ -38,6 +42,12 @@ type Props = {
    * 없으면 그 버튼은 비활성이고 나머지 컨트롤은 그대로 동작한다.
    */
   resolveVisibleRightRealMs?: () => number | null;
+  /**
+   * 정렬·분배가 쓸 좌표 뭉치. `resolveVisibleRightRealMs` 와 같은 이유로 함수다 —
+   * 이 패널은 `IChartApi` 를 쥐지 않고, 차트를 아는 호스트가 만들어 내려 준다.
+   * 없으면 정렬 버튼이 비활성이고 나머지는 그대로 동작한다.
+   */
+  resolveAlignCoords?: () => AlignCoords | null;
 };
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -49,7 +59,7 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
 const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
   style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
-type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | null;
+type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | 'align' | null;
 
 /** 참조 안정 빈 목록 — 셀렉터 fallback (EMPTY_SELECTION 과 같은 이유). */
 const EMPTY_DRAWINGS: readonly Drawing[] = [];
@@ -245,8 +255,123 @@ function FontSizePopover({ current, onPick }: { current: number | null; onPick: 
   );
 }
 
+/** 정렬 6 + 분배 2. 각 항목이 자기 비활성 조건을 함께 들고 다닌다. */
+const ALIGN_ITEMS: { edge: AlignEdge; label: string }[] = [
+  { edge: 'left', label: '왼쪽' },
+  { edge: 'hcenter', label: '가로 가운데' },
+  { edge: 'right', label: '오른쪽' },
+  { edge: 'top', label: '위' },
+  { edge: 'vcenter', label: '세로 가운데' },
+  { edge: 'bottom', label: '아래' },
+];
+const DISTRIBUTE_ITEMS: { axis: DistributeAxis; label: string }[] = [
+  { axis: 'horizontal', label: '가로 균등' },
+  { axis: 'vertical', label: '세로 균등' },
+];
+
 /**
- * 다중 선택 툴바 — 개수, 집합 전체에 뜻이 통하는 스타일 편집, 그리고 잠금·삭제.
+ * 정렬·분배 팝오버.
+ *
+ * 비활성 판정이 커널과 **같은 술어**(`eligibleFor`)를 쓴다 — 갈리면 눌리는데 아무
+ * 일도 안 하는 버튼이 생긴다. 정렬은 그 축에 자격 있는 멤버가 **둘 이상**, 분배는
+ * **셋 이상**이어야 한다(둘은 양 끝이라 나눌 사이가 없다).
+ *
+ * hline 은 x 축에, vline 은 y 축에 자격이 없다 — 각각 캔버스 전폭·전고를 차지해
+ * 그 축의 "가장자리" 가 없기 때문이다. 그래서 hline 만 고른 선택에서는 가로 항목이
+ * 전부 비활성이고 세로 항목은 살아 있다.
+ */
+function AlignPopover({
+  members, coords, onDone,
+}: {
+  members: readonly Drawing[];
+  coords: AlignCoords | null;
+  onDone: (patches: { id: string; patch: Partial<Drawing> }[]) => void;
+}) {
+  const xCount = eligibleFor(members, 'x').length;
+  const yCount = eligibleFor(members, 'y').length;
+  const canAlign = (edge: AlignEdge) =>
+    coords != null && (edge === 'left' || edge === 'hcenter' || edge === 'right' ? xCount : yCount) >= 2;
+  const canDistribute = (axis: DistributeAxis) =>
+    coords != null && (axis === 'horizontal' ? xCount : yCount) >= 3;
+  const itemCls = (enabled: boolean) =>
+    'w-full px-2 py-1 flex items-center rounded text-xs ' +
+    (enabled ? 'text-fg hover:bg-bg-input-hover' : 'text-fg-dim opacity-40 cursor-not-allowed');
+
+  return (
+    <PopoverShell>
+      {ALIGN_ITEMS.map(({ edge, label }) => (
+        <button
+          key={edge}
+          type="button"
+          data-testid={`drawing-align-${edge}`}
+          disabled={!canAlign(edge)}
+          onClick={() => coords && onDone(planAlign(members, edge, coords))}
+          className={itemCls(canAlign(edge))}
+        >
+          {label}
+        </button>
+      ))}
+      <div className="my-1 h-px bg-border" />
+      {DISTRIBUTE_ITEMS.map(({ axis, label }) => (
+        <button
+          key={axis}
+          type="button"
+          data-testid={`drawing-distribute-${axis}`}
+          disabled={!canDistribute(axis)}
+          onClick={() => coords && onDone(planDistribute(members, axis, coords))}
+          className={itemCls(canDistribute(axis))}
+        >
+          {label}
+        </button>
+      ))}
+    </PopoverShell>
+  );
+}
+
+/**
+ * 겹침 순서 버튼 한 쌍 — 단일 패널과 다중 툴바가 함께 쓴다.
+ *
+ * 배열 순서가 곧 z-order 이고, 그것이 **클릭이 어느 도형에 가는지**를 정한다
+ * (`hitTestDrawings` 는 뒤에서부터 훑어 최상단을 집는다). 겹친 도형 중 아래 것을
+ * 골라 올릴 방법이 그전에는 없었다.
+ */
+function ZOrderButtons({
+  scope, ids, disabled,
+}: { scope: string; ids: readonly string[]; disabled: boolean }) {
+  const cls =
+    'h-7 w-7 inline-flex items-center justify-center rounded text-xs text-fg-dim' +
+    (disabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover');
+  const move = (to: 'front' | 'back') => useDrawingsStore.getState().reorder(scope, ids, to);
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="drawing-bring-front"
+        aria-label="맨 앞으로"
+        title="맨 앞으로 — 겹친 도형 위로 올립니다"
+        disabled={disabled}
+        onClick={() => move('front')}
+        className={cls}
+      >
+        앞
+      </button>
+      <button
+        type="button"
+        data-testid="drawing-send-back"
+        aria-label="맨 뒤로"
+        title="맨 뒤로 — 겹친 도형 아래로 내립니다"
+        disabled={disabled}
+        onClick={() => move('back')}
+        className={cls}
+      >
+        뒤
+      </button>
+    </>
+  );
+}
+
+/**
+ * 다중 선택 툴바 — 개수, 스타일 일괄 편집, 겹침 순서, 잠금·삭제.
  *
  * 컨트롤이 뜨는 규칙은 하나다: **그 속성을 가진 멤버가 하나라도 있으면 뜬다.**
  * 적용도 그 멤버들에게만 간다(`kindHasProp`). 그래서 추세선과 텍스트를 함께 골라
@@ -261,13 +386,25 @@ function FontSizePopover({ current, onPick }: { current: number | null; onPick: 
  * 의 sticky 에 귀속시킬지가 정의되지 않는다. 단건 편집과 비대칭이지만, 임의로 하나를
  * 고르는 것보다 안 건드리는 편이 설명 가능하다.
  *
- * 잠금이 **거는 방향만** 있는 것도 의도다. 다중 선택은 잠기지 않은 것만 모으므로
- * (hitTestUnlockedAt · drawingsInRect 모두 unlockedOnly 위에서 돈다) 이 집합에
- * 잠긴 도형은 원리적으로 없다. 그래서 "해제" 는 집합에 대상이 없고, 잠근 뒤에는
- * 선택을 비운다 — 잠긴 것을 선택에 남겨 두면 헤일로는 있는데 끌리지 않는,
- * 설명 없는 상태가 된다.
+ * **집합에는 잠긴 도형이 섞일 수 있다.** 그래서 자물쇠는 토글이고(하나라도 안
+ * 잠겼으면 잠금, 전부 잠겼으면 해제), 잠근 뒤에도 선택을 비우지 않는다 — 잠긴
+ * 채로 선택된 상태가 이제 정당하기 때문이다. 그 상태의 툴바가 곧 해제 버튼을
+ * 내밀므로 잠금이 **그 자리에서 되돌려진다**.
+ *
+ * 표시는 잠긴 것까지 읽고, **편집은 잠기지 않은 것에만 간다**(#1667 의 문장을
+ * 빌리면 "a lock forbids editing, not measuring"). 그래서 일괄 적용 뒤에도 잠긴
+ * 멤버가 옛 값을 지켜 "혼합" 이 남을 수 있다 — 거짓이 아니라 사실이다.
+ *
+ * 적용 대상이 하나도 없는 컨트롤은 **숨기지 않고 비활성**한다. 단일 패널이 같은
+ * 판단을 한다: 눌리는데 아무 일도 안 나는 버튼이 고장으로 읽힌다.
  */
-function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly string[] }) {
+function MultiSelectionToolbar({
+  scope, ids, resolveAlignCoords,
+}: {
+  scope: string;
+  ids: readonly string[];
+  resolveAlignCoords?: () => AlignCoords | null;
+}) {
   // 도형 배열은 **안정 참조**를 구독하고 멤버는 파생한다. 셀렉터 안에서 filter/map
   // 하면 매 렌더 새 배열이라 무한 리렌더가 된다(EMPTY_SELECTION 과 같은 함정).
   const items = useDrawingsStore((s) => s.byScope.get(scope) ?? EMPTY_DRAWINGS);
@@ -279,6 +416,13 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
   const rootRef = useRef<HTMLDivElement>(null);
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissablePopover(openPopover != null, rootRef, closePopover);
+
+  // 잠금 혼재. `allLocked` 는 자물쇠의 방향을, `lockedCount` 는 개수 표시를 정한다
+  // (DrawingMenu 의 일괄 잠금과 같은 규칙).
+  const lockedCount = members.filter((m) => isLocked(m)).length;
+  const allLocked = members.length > 0 && lockedCount === members.length;
+  /** 이 속성을 실제로 고칠 수 있는 멤버가 있는가 — 없으면 컨트롤을 비활성한다. */
+  const editable = (prop: StyleProp) => carriersOf(members, prop).some((m) => !isLocked(m));
 
   const color = commonValue(members, 'color') as string | null | undefined;
   const width = commonValue(members, 'width') as number | null | undefined;
@@ -298,7 +442,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
 
   const toggle = (which: Exclude<OpenPopover, null>) =>
     setOpenPopover(openPopover === which ? null : which);
-  const triggerClass = 'h-7 px-2 inline-flex items-center rounded hover:bg-bg-input-hover';
+  const triggerBase = 'h-7 px-2 inline-flex items-center rounded';
+  const triggerClass = (prop: StyleProp) =>
+    triggerBase + (editable(prop) ? ' hover:bg-bg-input-hover' : ' opacity-40 cursor-not-allowed');
   // 혼합일 때의 색 바 — 값이 하나로 정해지지 않았음을 색 대신 줄무늬로 말한다.
   const MIXED_BAR = 'repeating-linear-gradient(45deg, var(--fg-dim) 0 2px, transparent 2px 4px)';
 
@@ -311,7 +457,7 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
       style={{ top: TOP_DOCK_Y, left: '50%', transform: 'translateX(-50%)' }}
     >
       <span data-testid="drawing-multi-count" className="mr-1 text-xs text-fg-dim tabular-nums">
-        {ids.length}개 선택
+        {ids.length}개 선택{lockedCount > 0 && ` · ${lockedCount} 잠김`}
       </span>
       <div className="w-px h-4 bg-border mx-0.5" />
 
@@ -319,8 +465,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
         type="button"
         data-testid="drawing-color-trigger"
         aria-label="색상"
+        disabled={!editable('color')}
         onClick={() => toggle('color')}
-        className={triggerClass + ' flex-col justify-center gap-0.5'}
+        className={triggerClass('color') + ' flex-col justify-center gap-0.5'}
       >
         <span className="text-sm leading-none">✎</span>
         <span
@@ -338,8 +485,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
           type="button"
           data-testid="drawing-thickness-trigger"
           aria-label="두께"
+          disabled={!editable('width')}
           onClick={() => toggle('thickness')}
-          className={triggerClass + ' gap-1.5 text-xs'}
+          className={triggerClass('width') + ' gap-1.5 text-xs'}
         >
           <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: width ?? 1 }} />
           <span className="tabular-nums">{width == null ? MIXED_LABEL : `${width}px`}</span>
@@ -355,8 +503,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
           data-testid="drawing-line-style-trigger"
           data-current-style={lineStyle ?? 'mixed'}
           aria-label="선 스타일"
+          disabled={!editable('lineStyle')}
           onClick={() => toggle('lineStyle')}
-          className={triggerClass}
+          className={triggerClass('lineStyle')}
         >
           <span
             className="inline-block w-4 border-t border-fg"
@@ -377,8 +526,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
           type="button"
           data-testid="drawing-fill-trigger"
           aria-label="채우기 농도"
+          disabled={!editable('fillOpacity')}
           onClick={() => toggle('fill')}
-          className={triggerClass + ' gap-1.5 text-xs'}
+          className={triggerClass('fillOpacity') + ' gap-1.5 text-xs'}
         >
           <span
             className="inline-block h-4 w-4 rounded-sm border border-fg-dim"
@@ -402,8 +552,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
           type="button"
           data-testid="drawing-font-size-trigger"
           aria-label="글자 크기"
+          disabled={!editable('fontSize')}
           onClick={() => toggle('fontSize')}
-          className={triggerClass + ' gap-1 text-xs'}
+          className={triggerClass('fontSize') + ' gap-1 text-xs'}
         >
           <span className="font-semibold leading-none">A</span>
           <span className="tabular-nums">{fontSize == null ? MIXED_LABEL : `${fontSize}px`}</span>
@@ -416,25 +567,69 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
       <div className="w-px h-4 bg-border mx-0.5" />
       <button
         type="button"
-        data-testid="drawing-multi-lock"
-        aria-label="선택 잠금"
-        title="선택한 도형을 잠급니다 — 이동·수정·삭제를 막습니다"
-        onClick={() => {
-          const store = useDrawingsStore.getState();
-          store.updateMany(scope, ids.map((id) => ({ id, patch: { locked: true } as Partial<Drawing> })));
-          store.setSelected(scope, null);
-        }}
-        className="h-7 w-7 inline-flex items-center justify-center rounded text-fg-dim hover:bg-bg-input-hover"
+        data-testid="drawing-align-trigger"
+        aria-label="정렬"
+        title="정렬·분배"
+        disabled={allLocked}
+        onClick={() => toggle('align')}
+        className={
+          'h-7 px-2 inline-flex items-center rounded text-xs text-fg-dim' +
+          (allLocked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
+        }
       >
-        🔒
+        정렬
+      </button>
+      {openPopover === 'align' && (
+        <AlignPopover
+          members={members}
+          // 좌표는 **팝오버를 여는 시점**이 아니라 누르는 시점에 굳는다 — 그 사이
+          // 팬·줌이 있었다면 옛 좌표로 정렬해서 눈에 보이는 것과 어긋난다.
+          coords={resolveAlignCoords?.() ?? null}
+          onDone={(patches) => {
+            useDrawingsStore.getState().updateMany(scope, patches);
+            setOpenPopover(null);
+          }}
+        />
+      )}
+      {/* 순서 변경은 편집이라 전부 잠겼으면 비활성된다 — 스타일·삭제와 같은 판정. */}
+      <ZOrderButtons scope={scope} ids={ids} disabled={allLocked} />
+      <button
+        type="button"
+        data-testid="drawing-multi-lock"
+        aria-label={allLocked ? '선택 잠금 해제' : '선택 잠금'}
+        aria-pressed={allLocked}
+        title={
+          allLocked
+            ? '선택한 도형의 잠금을 함께 풉니다'
+            : '선택한 도형을 잠급니다 — 이동·수정·삭제를 막습니다'
+        }
+        onClick={() =>
+          useDrawingsStore.getState().updateMany(
+            scope,
+            // 키가 `locked` 뿐인 패치라 잠긴 항목에도 적용된다 — 그것이 일괄 해제의
+            // 통로다(updateMany 참조). 해제는 `false` 를 쓴다: 단일 패널과 같은
+            // 표현이고, 저장 단계가 `locked !== true` 를 지운다(persistence).
+            ids.map((id) => ({ id, patch: { locked: !allLocked } as Partial<Drawing> })),
+          )
+        }
+        className={
+          'h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover ' +
+          (allLocked ? 'bg-tint-selection text-accent' : 'text-fg-dim')
+        }
+      >
+        {allLocked ? '🔒' : '🔓'}
       </button>
       <button
         type="button"
         data-testid="drawing-multi-delete"
         aria-label="선택 삭제"
         title="선택한 도형을 모두 삭제합니다 (Delete)"
+        disabled={allLocked}
         onClick={() => useDrawingsStore.getState().removeMany(scope, ids)}
-        className="h-7 w-7 inline-flex items-center justify-center rounded text-[#F43F5E] hover:bg-bg-input-hover"
+        className={
+          'h-7 w-7 inline-flex items-center justify-center rounded text-[#F43F5E]' +
+          (allLocked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
+        }
       >
         🗑
       </button>
@@ -442,7 +637,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
   );
 }
 
-export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs }: Props) {
+export default function DrawingPropertyPanel({
+  scope, resolveVisibleRightRealMs, resolveAlignCoords,
+}: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
     scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
@@ -473,7 +670,13 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
   if (activeTool !== 'select' || selectedIds.length === 0 || hiddenAll || scope == null) return null;
 
   if (selectedIds.length > 1) {
-    return <MultiSelectionToolbar scope={scope} ids={selectedIds} />;
+    return (
+      <MultiSelectionToolbar
+        scope={scope}
+        ids={selectedIds}
+        resolveAlignCoords={resolveAlignCoords}
+      />
+    );
   }
   if (drawing == null) return null;
 
@@ -713,6 +916,7 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
+      <ZOrderButtons scope={scope} ids={[id]} disabled={locked} />
       {/* 자물쇠는 이 툴바에서 **잠금 상태와 무관하게 항상 살아 있는 유일한 컨트롤**
           이다 — 잠금을 푸는 다른 경로가 없다. 그래서 삭제 왼쪽, 구분선 오른쪽에
           둔다(스타일 그룹과 분리, 파괴적 동작 앞). */}
