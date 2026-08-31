@@ -12,6 +12,7 @@ function refs(over: Partial<Record<keyof GestureRefs, unknown>> = {}): GestureRe
     pencilDraft: { current: pick('pencilDraft', { points: [] }) },
     rectDraft: { current: pick('rectDraft', { a: 1 }) },
     measureDraft: { current: pick('measureDraft', { a: 1 }) },
+    marqueeDraft: { current: pick('marqueeDraft', { ax: 1, ay: 1 }) },
     dragRef: { current: pick('dragRef', { kind: 'body' }) },
     alignGuides: { current: pick('alignGuides', { guides: [1], color: '#fff' }) },
   };
@@ -31,12 +32,20 @@ describe('resetGestureRefs', () => {
     expect(resetGestureRefs(refs({ alignGuides: null })).guidesCleared).toBe(false);
   });
 
+  it('reports whether a 마퀴 was up — its box is DOM and needs its own repaint', () => {
+    expect(resetGestureRefs(refs()).marqueeCleared).toBe(true);
+    expect(resetGestureRefs(refs({ marqueeDraft: null })).marqueeCleared).toBe(false);
+    // keepDrag 는 마퀴도 남기므로 지운 것이 없다 — 다시 그릴 이유도 없다.
+    expect(resetGestureRefs(refs(), { keepDrag: true }).marqueeCleared).toBe(false);
+  });
+
   it('keeps the drag when asked — Escape must not strand a captured pointer', () => {
     // onPointerUp reads dragRef to decide whether to release the capture; if
-    // Escape nulled it, the release would never run.
+    // Escape nulled it, the release would never run. 마퀴도 캡처를 쥐므로 같다.
     const r = refs();
     resetGestureRefs(r, { keepDrag: true });
     expect(r.dragRef.current).not.toBeNull();
+    expect(r.marqueeDraft.current).not.toBeNull();
     // …but the guides still go, because a guide belongs to the gesture.
     expect(r.alignGuides.current).toBeNull();
     expect(r.rectDraft.current).toBeNull();

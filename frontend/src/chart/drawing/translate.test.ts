@@ -5,6 +5,7 @@ import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } fr
 import {
   clampDPriceForDrawing,
   clampDBarForDrawing,
+  planGroupTranslate,
   pricesOf,
   timesOf,
   translateDrawing,
@@ -332,5 +333,86 @@ describe('clampDBarForDrawing — left-edge shape-preserving cap', () => {
   it('leaves an hline unclamped (no time vertices to protect)', () => {
     const h: Hline = { id: 'h', kind: 'hline', price: 5, ...baseStyle, paneId: 'candle' };
     expect(clampDBarForDrawing(h, -9_999, 0, identity)).toBe(-9_999);
+  });
+});
+
+/** 다중 선택 이동의 계획 단계. 단건 translateDrawing 과 다른 점 둘을 고정한다:
+ *  ① 세로 델타가 픽셀이라 팬마다 다른 가격으로 풀린다, ② 클램프가 집합 전체로
+ *  계산돼 한 도형이 경계에 닿아도 대형이 무너지지 않는다. */
+describe('planGroupTranslate', () => {
+  const style = { color: '#14B8A6', width: 1.5, lineStyle: 'solid' as const };
+  const hline = (id: string, price: number, paneId: 'candle' | 'ind0' = 'candle'): Hline =>
+    ({ id, kind: 'hline', price, ...style, paneId }) as Hline;
+
+  // 캔들 팬: y = 400 - price (1원 = 1px). 지표 팬: y = 800 - price*10 (1 = 10px).
+  // 두 팬의 축척이 10배 다른 것이 이 테스트들의 요점이다.
+  const Y0 = { candle: 400, ind0: 800 } as const;
+  const SCALE = { candle: 1, ind0: 10 } as const;
+  const coords = {
+    priceToCanvasY: (price: number, paneId: string) =>
+      Y0[paneId as 'candle' | 'ind0'] - price * SCALE[paneId as 'candle' | 'ind0'],
+    canvasYToPrice: (py: number, paneId: string) =>
+      (Y0[paneId as 'candle' | 'ind0'] - py) / SCALE[paneId as 'candle' | 'ind0'],
+    priceBoundsForPane: () => ({ top: 1_000, bottom: 0 }),
+    toBar: (ms: number) => ms,
+    toReal: (b: number) => b,
+    originBar: -Infinity,
+  };
+
+  it('같은 픽셀 이동이 팬마다 자기 축척의 가격 변화로 풀린다', () => {
+    const members = [hline('c', 100, 'candle'), hline('i', 50, 'ind0')];
+    // 위로 20px (화면 y 감소).
+    const plan = planGroupTranslate(members, 0, -20, coords);
+    // 캔들 팬은 1px = 1원 → +20, 지표 팬은 10px = 1 → +2.
+    expect(plan).toEqual([
+      { id: 'c', patch: { price: 120 } },
+      { id: 'i', patch: { price: 52 } },
+    ]);
+  });
+
+  it('가로 이동은 공유 도메인이라 전원이 같은 Δbar 로 움직인다', () => {
+    const v = (id: string, realMs: number): Vline =>
+      ({ id, kind: 'vline', realMs, ...style, paneId: 'candle' }) as Vline;
+    const plan = planGroupTranslate([v('v1', 1_000), v('v2', 5_000)], 250, 0, coords);
+    expect(plan).toEqual([
+      { id: 'v1', patch: { realMs: 1_250 } },
+      { id: 'v2', patch: { realMs: 5_250 } },
+    ]);
+  });
+
+  // ⚠ 이것이 그룹 클램프의 존재 이유다. 도형마다 따로 캡을 걸면 천장에 닿은
+  // 하나만 멈추고 나머지는 계속 올라가, 사용자가 골라 둔 배치가 드래그 도중
+  // 뭉개진다. 집합의 최소 허용치를 전원에게 적용하면 간격이 보존된다.
+  it('한 도형이 팬 경계에 닿으면 집합 전체가 거기서 멈춘다 — 간격 보존', () => {
+    // 캔들 팬 상단(y=0)은 가격 400. 990 은 이미 위쪽에 붙어 있어 +10 까지만 갈 수 있다.
+    const bounded = {
+      ...coords,
+      priceBoundsForPane: () => ({ top: 1_000, bottom: 0 }),
+    };
+    const members = [hline('top', 990), hline('bottom', 100)];
+    const plan = planGroupTranslate(members, 0, -50, bounded);
+    // 위로 50px = +50원을 요청했지만 'top' 이 +10 밖에 못 간다 → 둘 다 +10.
+    expect(plan).toEqual([
+      { id: 'top', patch: { price: 1_000 } },
+      { id: 'bottom', patch: { price: 110 } },
+    ]);
+    // 간격이 그대로다.
+    const prices = plan.map((p) => (p.patch as { price: number }).price);
+    expect(prices[0] - prices[1]).toBe(990 - 100);
+  });
+
+  it('vline 은 세로 성분이 없어 픽셀 이동을 그냥 흘린다', () => {
+    const v: Vline = { id: 'v', kind: 'vline', realMs: 1_000, ...style, paneId: 'candle' };
+    expect(planGroupTranslate([v], 0, -80, coords)).toEqual([{ id: 'v', patch: { realMs: 1_000 } }]);
+  });
+
+  // 순서 무관성: 각 멤버의 허용치를 **원래 요청**에 대해 재기 때문이다. 진행
+  // 중인 최소값에 대해 재면 목록 순서가 결과를 바꾼다.
+  it('멤버 순서가 결과를 바꾸지 않는다', () => {
+    const a = hline('top', 990);
+    const b = hline('bottom', 100);
+    const forward = planGroupTranslate([a, b], 0, -50, coords);
+    const backward = planGroupTranslate([b, a], 0, -50, coords);
+    expect(backward.map((p) => p.patch)).toEqual([forward[1].patch, forward[0].patch]);
   });
 });

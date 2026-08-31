@@ -58,7 +58,11 @@ export function drawingBarMsFor(
 // Each entry holds the PRE-mutation array reference — free to capture because
 // every mutation action immutably replaces the array, so the old reference is
 // a durable past state (never mutated in place).
-type HistoryOp = 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import' | 'lockAll';
+type HistoryOp =
+  | 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import' | 'lockAll'
+  // 다중 선택의 일괄 변이. 항목마다 update/remove 를 부르면 5개를 옮긴 뒤 Ctrl+Z 를
+  // 5번 눌러야 한다 — setLockedAll 이 같은 이유로 이미 한 단계다.
+  | 'updateMany' | 'removeMany';
 type HistoryEntry = { items: Drawing[]; op: HistoryOp; targetId?: string; at: number };
 type ScopeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 
@@ -111,10 +115,13 @@ function recordHistory(
   const h = historyFor(scope);
   const last = h.undo[h.undo.length - 1];
   const t = nowMs();
+  // 다중 드래그는 targetId 가 **정렬된 id 시그니처**다(updateMany 참조). 같은
+  // 집합을 계속 끄는 동안에만 합쳐지고, 집합이 달라지면 새 단계가 된다 — 단건
+  // update 와 정확히 같은 규칙을 키만 바꿔 적용한 것이다.
   if (
-    op === 'update' &&
+    (op === 'update' || op === 'updateMany') &&
     last != null &&
-    last.op === 'update' &&
+    last.op === op &&
     last.targetId === targetId &&
     t - last.at < UPDATE_MERGE_MS
   ) {
@@ -143,6 +150,41 @@ export type ClearConfirm = {
   lockedCount: number;
 } | null;
 
+/** 선택 없음을 나타내는 **공유** 빈 배열.
+ *
+ *  셀렉터가 `s.selectedByScope.get(scope) ?? []` 를 쓰면 fallback 이 매 렌더
+ *  새 배열이라 zustand 의 얕은 비교가 항상 "바뀜"으로 읽고, 구독한 컴포넌트가
+ *  끝없이 리렌더한다. 상수 하나를 공유하면 참조가 안정된다. */
+export const EMPTY_SELECTION: readonly DrawingId[] = [];
+
+/** `scope` 의 선택을 `ids` 로 교체한 새 맵. 내용이 같으면 **원본을 그대로**
+ *  돌려준다 — 선택이 안 바뀐 변이(예: 다른 도형 이동)가 구독자를 깨우지 않게. */
+function withSelection(
+  map: Map<string, readonly DrawingId[]>,
+  scope: string,
+  ids: readonly DrawingId[],
+): Map<string, readonly DrawingId[]> {
+  const cur = map.get(scope) ?? EMPTY_SELECTION;
+  if (cur.length === ids.length && cur.every((id, i) => id === ids[i])) return map;
+  return new Map(map).set(scope, ids.length === 0 ? EMPTY_SELECTION : ids);
+}
+
+/** 목록에서 사라진 id 를 선택에서 걷어낸 새 맵(살아남은 순서는 보존).
+ *
+ *  삭제·undo·redo·clearAll 이 공유하는 하나의 규칙이다. 단일 선택 시절엔 각
+ *  액션이 "내 선택이 살아남았나" 를 제각기 물었고, 다중에서는 그 질문이 **부분
+ *  생존**으로 바뀐다 — 3개 중 1개만 잠겨 남았다면 선택도 그 1개만 남아야 한다. */
+function pruneSelection(
+  map: Map<string, readonly DrawingId[]>,
+  scope: string,
+  items: readonly Drawing[],
+): Map<string, readonly DrawingId[]> {
+  const cur = map.get(scope);
+  if (cur == null || cur.length === 0) return map;
+  const alive = cur.filter((id) => items.some((d) => d.id === id));
+  return alive.length === cur.length ? map : withSelection(map, scope, alive);
+}
+
 // 키는 전부 `scope` = `${code}|${slot}` (drawingScope). 종목뿐 아니라 타임프레임
 // 슬롯(분/일/주/월)까지 가르므로, 같은 종목이라도 분봉에 그린 도형은 일봉에
 // 나타나지 않는다. 스토어 자료구조는 키를 해석하지 않는다 — 불투명 문자열.
@@ -151,10 +193,17 @@ type State = {
   loadedScopes: Set<string>;
   activeScope: string | null;
   activeTool: DrawingTool;
-  /** 선택된 드로잉 — scope 별(ADR-0119 C2c-2b 후속). 드로잉이 (종목, 슬롯)
+  /** 선택된 드로잉들 — scope 별(ADR-0119 C2c-2b 후속). 드로잉이 (종목, 슬롯)
    *  귀속이라 선택도 같은 단위여야 다른 종목·다른 봉 창끼리 선택이 경합하지
-   *  않는다 (같은 scope 창끼리는 선택 공유 = 드로잉 공유와 정합). */
-  selectedByScope: Map<string, DrawingId | null>;
+   *  않는다 (같은 scope 창끼리는 선택 공유 = 드로잉 공유와 정합).
+   *
+   *  **순서가 있는 배열이고 빈 배열이 "선택 없음"** 이다(null 아님). 마지막
+   *  원소가 primary — 끝점·모서리 핸들은 단일 선택일 때만 뜨므로 실질적으로
+   *  "집합이 1개일 때 그 하나"를 가리킨다. 배열인 이유는 두 가지: Set 은
+   *  zustand 셀렉터의 얕은 비교와 궁합이 나쁘고(매번 새 객체), 순서가 있어야
+   *  나중에 정렬·primary 규칙을 붙일 수 있다. 조회 쪽에서 멤버십이 필요하면
+   *  소비자가 화면 단위로 Set 을 파생한다(프레임마다 만들지 않도록). */
+  selectedByScope: Map<string, readonly DrawingId[]>;
   defaults: DrawingDefaults;
   clearToast: ClearToast;
   clearConfirm: ClearConfirm;
@@ -163,7 +212,13 @@ type State = {
 type Actions = {
   setActiveScope(scope: string | null): void;
   setActiveTool(tool: DrawingTool): void;
+  /** 선택을 `id` 하나로 **교체**한다(null 이면 비운다) — 다중 선택을 접는 경로. */
   setSelected(scope: string, id: DrawingId | null): void;
+  /** Shift+클릭: 이미 있으면 빼고, 없으면 끝에 붙인다(붙인 쪽이 primary). */
+  toggleSelected(scope: string, id: DrawingId): void;
+  /** 마퀴 커밋: `ids` 를 현재 선택에 **합집합**으로 더한다(중복 무시, 순서 보존).
+   *  마퀴는 Shift 아래에서만 존재하는 제스처라 "더하기" 외의 해석이 없다. */
+  addToSelection(scope: string, ids: readonly DrawingId[]): void;
   /**
    * 모든 scope 의 선택을 비운다(도구는 건드리지 않는다). 그리기 도구로 **진입할 때**
    * 부른다 — 불변식은 "그리기 모드 ⇒ 선택 없음" 이다. select 모드에서 고른 도형이
@@ -187,8 +242,10 @@ type Actions = {
    * scope 에 귀속**되는 것이고, 균일한 해제에는 오귀속이 없다.
    */
   exitDrawingMode(): void;
-  /** scope 의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByScope selector 직독). */
-  selectedFor(scope: string): DrawingId | null;
+  /** scope 의 현재 선택 — 비반응형 조회(소비자 렌더는 selectedByScope selector 직독).
+   *  선택이 없으면 **공유 빈 배열**(EMPTY_SELECTION)을 돌려준다 — 매번 새 `[]` 를
+   *  만들면 이 값을 그대로 셀렉터에 쓰는 소비자가 무한 리렌더에 빠진다. */
+  selectedFor(scope: string): readonly DrawingId[];
   drawingsFor(scope: string): Drawing[];
   // 변이 op 는 호출자가 scope 를 명시한다(ADR-0119 C2c-2b) — 멀티창에서 전역
   // activeScope(마지막 마운트 창이 이김)를 경유하면 다른 창의 드로잉이 엉뚱한
@@ -204,6 +261,22 @@ type Actions = {
   update(scope: string, id: DrawingId, patch: Partial<Drawing>): void;
   /** 잠긴 드로잉은 거부한다 — `update` 와 같은 관문. */
   remove(scope: string, id: DrawingId): void;
+  /**
+   * 여러 드로잉을 **한 번의 되돌리기 단계로** 패치한다(다중 선택 이동).
+   *
+   * `update` 를 N번 부르는 것과 세 가지가 다르고, 그 셋이 이 액션의 존재 이유다:
+   *  - 이력이 **한 단계**다. 5개를 끌고 Ctrl+Z 를 5번 누르는 일이 없다.
+   *  - 드래그 병합 키가 **정렬된 id 시그니처**라, 같은 집합을 계속 끄는 동안
+   *    한 단계로 합쳐진다(단건 update 의 targetId 병합과 같은 규칙).
+   *  - per-kind 스타일 동기화를 **타지 않는다**. 이동 패치엔 스타일 키가 없어
+   *    실해는 없지만, 배치가 그 경로를 N번 도는 것 자체가 낭비다.
+   *
+   * 잠긴 항목은 조용히 건너뛴다(ADR-0164) — 잠긴 것 하나 때문에 나머지 이동을
+   * 통째로 거부하면 "왜 아무것도 안 움직이지" 가 된다.
+   */
+  updateMany(scope: string, patches: ReadonlyArray<{ id: DrawingId; patch: Partial<Drawing> }>): void;
+  /** 여러 드로잉을 **한 번의 되돌리기 단계로** 지운다. 잠긴 것은 남는다. */
+  removeMany(scope: string, ids: readonly DrawingId[]): void;
   /**
    * scope 의 모든 드로잉을 한꺼번에 잠그거나 푼다. **되돌리기 한 단계**다 —
    * 항목마다 `update` 를 부르면 20개를 잠근 뒤 Ctrl+Z 를 20번 눌러야 한다.
@@ -338,9 +411,27 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     },
 
     setSelected(scope, id) {
-      const selectedByScope = new Map(get().selectedByScope);
-      selectedByScope.set(scope, id);
-      set({ selectedByScope });
+      set({
+        selectedByScope: withSelection(
+          get().selectedByScope,
+          scope,
+          id == null ? EMPTY_SELECTION : [id],
+        ),
+      });
+    },
+
+    toggleSelected(scope, id) {
+      const cur = get().selectedByScope.get(scope) ?? EMPTY_SELECTION;
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      set({ selectedByScope: withSelection(get().selectedByScope, scope, next) });
+    },
+
+    addToSelection(scope, ids) {
+      if (ids.length === 0) return;
+      const cur = get().selectedByScope.get(scope) ?? EMPTY_SELECTION;
+      const fresh = ids.filter((id) => !cur.includes(id));
+      if (fresh.length === 0) return;
+      set({ selectedByScope: withSelection(get().selectedByScope, scope, [...cur, ...fresh]) });
     },
 
     clearAllSelections() {
@@ -352,7 +443,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     },
 
     selectedFor(scope) {
-      return get().selectedByScope.get(scope) ?? null;
+      return get().selectedByScope.get(scope) ?? EMPTY_SELECTION;
     },
 
     drawingsFor(scope) {
@@ -436,11 +527,45 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const next = current.filter((d) => d.id !== id);
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
-      const patch: Partial<State> = { byScope };
-      if (get().selectedByScope.get(scope) === id) {
-        patch.selectedByScope = new Map(get().selectedByScope).set(scope, null);
-      }
-      set(patch);
+      set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next) });
+      queuePersist(scope);
+    },
+
+    updateMany(scope, patches) {
+      const current = get().byScope.get(scope) ?? [];
+      // 잠긴 것은 여기서 빠진다 — update 와 같은 관문이되, 거부가 배치 전체가
+      // 아니라 항목 단위다. (잠금 해제 통로는 단건 update 하나로 충분하므로
+      // isUnlockOnlyPatch 예외는 이쪽에 없다.)
+      const byId = new Map(patches.map((p) => [p.id, p.patch]));
+      const applicable = current.filter((d) => byId.has(d.id) && !isLocked(d));
+      if (applicable.length === 0) return;
+      // 병합 키: 실제로 적용될 id 들의 정렬 시그니처. 잠긴 것을 뺀 뒤에 만드는
+      // 이유는 그것이 곧 "이 배치가 무엇을 건드리는가" 이기 때문이다.
+      const signature = applicable.map((d) => d.id).sort().join(',');
+      recordHistory(scope, current, 'updateMany', signature);
+      const next = current.map((d) => {
+        const patch = byId.get(d.id);
+        return patch != null && !isLocked(d) ? ({ ...d, ...patch } as Drawing) : d;
+      });
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, next);
+      set({ byScope });
+      queuePersist(scope);
+    },
+
+    removeMany(scope, ids) {
+      const current = get().byScope.get(scope) ?? [];
+      const doomed = new Set(
+        current.filter((d) => ids.includes(d.id) && !isLocked(d)).map((d) => d.id),
+      );
+      // 지울 게 하나도 없으면 이력도 남기지 않는다 — 빈 undo 단계는 redo 스택까지
+      // 비우므로 무해하지 않다(setLockedAll 주석과 같은 사유).
+      if (doomed.size === 0) return;
+      recordHistory(scope, current, 'removeMany', [...doomed].sort().join(','));
+      const next = current.filter((d) => !doomed.has(d.id));
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, next);
+      set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next) });
       queuePersist(scope);
     },
 
@@ -495,13 +620,9 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       // 선택 해제는 **지워진 경우에만** — 잠겨서 살아남은 도형이 선택돼 있었다면
       // 그 선택은 유효하다. 그리고 그 선택이 곧 속성 패널이고, 패널의 자물쇠가
       // 잠금 해제의 유일한 경로다.
-      const selected = get().selectedByScope.get(scope) ?? null;
-      const selectionSurvives = selected != null && survivors.some((d) => d.id === selected);
       set({
         byScope,
-        selectedByScope: selectionSurvives
-          ? get().selectedByScope
-          : new Map(get().selectedByScope).set(scope, null),
+        selectedByScope: pruneSelection(get().selectedByScope, scope, survivors),
         // snapshot 은 지운 것만이 아니라 **지우기 직전 전체**다. 실행취소는 배열을
         // 통째로 갈아끼우므로(restore) 살아남은 잠긴 도형이 중복 부활하지 않는다.
         clearToast: { scope, count: removedCount, snapshot: current },
@@ -516,7 +637,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const byScope = new Map(get().byScope);
       byScope.set(scope, items);
       // 선택은 scope 별이라 복원 대상 scope 의 선택만 리셋(다른 scope 무영향).
-      set({ byScope, selectedByScope: new Map(get().selectedByScope).set(scope, null) });
+      set({ byScope, selectedByScope: withSelection(get().selectedByScope, scope, EMPTY_SELECTION) });
       queuePersist(scope);
     },
 
@@ -544,12 +665,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.redo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byScope = new Map(get().byScope);
       byScope.set(scope, entry.items);
-      const sel = get().selectedByScope.get(scope) ?? null;
-      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
-      const selectedByScope = stillPresent
-        ? get().selectedByScope
-        : new Map(get().selectedByScope).set(scope, null);
-      set({ byScope, selectedByScope });
+      set({
+        byScope,
+        selectedByScope: pruneSelection(get().selectedByScope, scope, entry.items),
+      });
       queuePersist(scope);
     },
 
@@ -561,12 +680,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       h.undo.push({ items: cur, op: entry.op, targetId: entry.targetId, at: nowMs() });
       const byScope = new Map(get().byScope);
       byScope.set(scope, entry.items);
-      const sel = get().selectedByScope.get(scope) ?? null;
-      const stillPresent = sel != null && entry.items.some((d) => d.id === sel);
-      const selectedByScope = stillPresent
-        ? get().selectedByScope
-        : new Map(get().selectedByScope).set(scope, null);
-      set({ byScope, selectedByScope });
+      set({
+        byScope,
+        selectedByScope: pruneSelection(get().selectedByScope, scope, entry.items),
+      });
       queuePersist(scope);
     },
 

@@ -11,7 +11,7 @@
 // so its translate-by-(Δms, Δprice) collapses to a price-only shift.
 // Trendline shifts both endpoints. Pencil shifts every vertex.
 
-import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
+import type { Drawing, Hline, Measure, PaneId, Pencil, Rect, Text, Trendline, Vline } from './types';
 
 /**
  * Horizontal shift for a translation: either a flat Δrealms or a mapping
@@ -209,4 +209,97 @@ export function clampDPriceForDrawing(
     maxDown = Math.max(maxDown, lo - p);
   }
   return Math.max(maxDown, Math.min(maxUp, dPrice));
+}
+
+// ─── group translation (다중 선택 이동) ─────────────────────────────────────
+
+/** Coordinate access `planGroupTranslate` needs, injected so the plan is a pure
+ *  function of numbers (same SR-5 shape as HitCoord). */
+export type GroupTranslateCoords = {
+  priceToCanvasY(price: number, paneId: PaneId): number | null;
+  canvasYToPrice(py: number, paneId: PaneId): number | null;
+  priceBoundsForPane(paneId: PaneId): { top: number; bottom: number } | null;
+  toBar(realMs: number): number;
+  toReal(bar: number): number;
+  originBar: number;
+};
+
+/** The magnitude-smaller of two same-signed deltas (0 wins over everything). */
+function signedMin(a: number, b: number): number {
+  return a >= 0 ? Math.min(a, b) : Math.max(a, b);
+}
+
+/**
+ * Plan a group body-drag: one Δbar and one PIXEL Δy for the whole selection,
+ * turned into per-drawing patches.
+ *
+ * Two things make this more than a loop over `translateDrawing`:
+ *
+ * **1. The vertical delta travels in PIXELS, not price.** A selection may span
+ * panes, and each pane has its own price scale — a candle-pane Δprice of 500원
+ * means nothing on an RSI pane. Carrying the cursor's Δy and converting it
+ * per member (project the member's own reference price to Y, add Δy, read the
+ * price back) is what makes cross-pane group drag land where the cursor went.
+ * This is the same trick `duplicateSelectedRef` uses for its 14px offset.
+ *
+ * **2. The clamps are computed for the SET, then applied to everyone.** Capping
+ * each member against its own pane bounds independently would stop the topmost
+ * shape while the others kept going — the formation the user selected would
+ * deform mid-drag. So each member reports the largest delta IT can take, and
+ * the whole group moves by the smallest of those. That is the same
+ * shape-preserving argument `clampDPriceForDrawing` makes for the vertices of
+ * one drawing, one level up.
+ *
+ * Every member's allowance is computed against the RAW request (never against a
+ * running minimum), so the result does not depend on the order of `members`.
+ */
+export function planGroupTranslate(
+  members: readonly Drawing[],
+  dBarRaw: number,
+  dyPxRaw: number,
+  coords: GroupTranslateCoords,
+): { id: string; patch: Partial<Drawing> }[] {
+  // ── horizontal: shared bar-ordinal domain, so cap directly in bars ──────
+  let dBar = dBarRaw;
+  for (const m of members) {
+    dBar = signedMin(dBar, clampDBarForDrawing(m, dBarRaw, coords.originBar, coords.toBar));
+  }
+
+  // ── vertical: cap in PIXELS so panes with different scales agree ────────
+  let dyPx = dyPxRaw;
+  for (const m of members) {
+    const prices = pricesOf(m);
+    if (prices.length === 0) continue; // vline: no vertical component at all
+    const bounds = coords.priceBoundsForPane(m.paneId);
+    const ref = prices[0];
+    const y0 = coords.priceToCanvasY(ref, m.paneId);
+    if (bounds == null || y0 == null) continue;
+    const want = coords.canvasYToPrice(y0 + dyPxRaw, m.paneId);
+    if (want == null) continue;
+    const rawDPrice = want - ref;
+    const capped = clampDPriceForDrawing(m, rawDPrice, bounds);
+    if (capped === rawDPrice) continue;
+    // Re-express this member's price cap as a pixel cap so it is comparable
+    // with the other panes'.
+    const yCap = coords.priceToCanvasY(ref + capped, m.paneId);
+    if (yCap != null) dyPx = signedMin(dyPx, yCap - y0);
+  }
+
+  const shift = (ms: number) => coords.toReal(coords.toBar(ms) + dBar);
+  const out: { id: string; patch: Partial<Drawing> }[] = [];
+  for (const m of members) {
+    const prices = pricesOf(m);
+    let dPrice = 0;
+    if (prices.length > 0 && dyPx !== 0) {
+      const ref = prices[0];
+      const y0 = coords.priceToCanvasY(ref, m.paneId);
+      const moved = y0 == null ? null : coords.canvasYToPrice(y0 + dyPx, m.paneId);
+      if (moved != null) dPrice = moved - ref;
+    }
+    // Emit even when both deltas are 0: the shift round-trip is the identity
+    // for a healthy vertex and HEALS one stranded in an inter-session gap by an
+    // old real-ms drag (same reasoning as the single-drag path).
+    out.push({ id: m.id, patch: translateDrawing(m, shift, dPrice) });
+  }
+  return out;
 }

@@ -39,7 +39,10 @@ import {
   HIT_THRESHOLD,
   isLocked,
 } from './types';
-import { translateDrawing, clampDPriceForDrawing, clampDBarForDrawing } from './translate';
+import {
+  translateDrawing, clampDPriceForDrawing, clampDBarForDrawing, planGroupTranslate,
+} from './translate';
+import { marqueeRect, type MarqueeRect } from './hitTest';
 import { constrainAngle } from './snap';
 import {
   alignSnapBox,
@@ -110,6 +113,31 @@ export type RectDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId
 /** A per-gesture draft for the measure tool. Same 2-point drag shape as rect. */
 export type MeasureDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
 
+/**
+ * An in-flight 마퀴 (Shift+드래그 on empty space). Pixel-space, because that is
+ * what the user is aiming with — it is never converted to data coordinates, and
+ * it dies at pointerup. `additive` is not a field: a marquee only exists under
+ * Shift, so union is its only reading.
+ */
+export type MarqueeDraft = {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  pointerId: number;
+};
+
+/** Movement below this (px, from the press point) is a click, not a drag. Used
+ *  ONLY by the multi-selection body drag, where it decides whether a plain
+ *  click on a member collapses the set to that one member. Single-drag keeps
+ *  its zero-slop behavior — it has no such decision to make. */
+export const MULTI_DRAG_SLOP_PX = 3;
+
+/** A marquee smaller than this in BOTH axes is treated as a stray Shift+click
+ *  on empty space and selects nothing (rather than "everything under a 1px
+ *  box", which reads as a random selection). */
+export const MARQUEE_MIN_PX = 4;
+
 /** Active drag in select mode. `body` translates the whole drawing;
  *  `handle` moves one endpoint of a trendline only. */
 export type DragMode =
@@ -164,7 +192,38 @@ export type DragMode =
     }
   // Vline body drag — horizontal only, resolved off the time axis alone so it
   // survives its origin pane being toggled off (no price scale needed).
-  | { kind: 'vline-body'; id: string; lastRealMs: number | null; pointerId: number; paneId: PaneId };
+  | { kind: 'vline-body'; id: string; lastRealMs: number | null; pointerId: number; paneId: PaneId }
+  // Group body drag: every member of a multi-selection moves together.
+  //
+  // ⚠ 단건 `body` 와 달리 여기는 **프레임 간 누적**이다(lastRealMs/lastPy 를 매
+  // 프레임 커서로 옮긴다). 그 방식이 성립하는 이유는 하나뿐이다 — **그룹 이동은
+  // 정렬 스냅을 쓰지 않는다.** `body` 가 절대 앵커링으로 옮겨 간 사유(스냅 보정이
+  // 누적기에 들어가면, 스냅이 풀린 뒤에도 도형이 그만큼 커서에서 영구히 어긋난다)
+  // 가 여기엔 아직 해당하지 않는다.
+  //
+  // 그러므로 **그룹 이동에 정렬 스냅을 붙이려면 먼저 절대 앵커링으로 옮겨야 한다.**
+  // 순서를 바꾸면 그 버그가 그대로 되살아난다.
+  | {
+      kind: 'body-multi';
+      ids: readonly string[];
+      lastRealMs: number | null;
+      /** Vertical anchor in PIXELS, not price — the members may live on panes
+       *  with different price scales, so a price delta is not shareable. */
+      lastPy: number;
+      /** Press point, for the click-vs-drag slop test. */
+      startPx: number;
+      startPy: number;
+      /** Which member was pressed. On a click (slop never crossed) the set
+       *  collapses to it — the standard editor behavior: press-and-drag moves
+       *  the group, press-and-release picks one out of it. */
+      pressedId: string;
+      /** Latched once the slop is crossed. Until then NO patch is issued, so a
+       *  1px hand tremor cannot write a translate (and an undo entry) that the
+       *  collapse would then have to talk around. */
+      moved: boolean;
+      pointerId: number;
+      paneId: PaneId;
+    };
 
 /** A React-style ref bucket. Spec'd as the minimal shape the tools
  *  mutate, so tests can pass plain `{ current: null }` objects. */
@@ -266,8 +325,20 @@ export type ToolCtx = {
 
   /** The current Drawing list for the active Code. */
   drawings: readonly Drawing[];
-  /** Currently selected drawing id, if any. */
+  /**
+   * The selected drawing id **when exactly one is selected**, else null.
+   *
+   * Deliberately not "the primary of the set": every reader of this field is a
+   * handle path (trendline endpoints, rect corners), and handles must not
+   * appear during a multi-selection — a handle and the group-drag would then
+   * both claim the same pixel, and the invisible-to-the-user winner decides
+   * whether the user resizes one shape or moves five. Collapsing the field to
+   * "single selection only" makes that gate structural instead of a condition
+   * every handle path has to remember.
+   */
   selectedId: string | null;
+  /** The whole selection, in order (empty = nothing selected). */
+  selectedIds: readonly string[];
   /** The sticky style for the ACTIVE tool (this gesture's kind). The overlay
    *  narrows the per-kind defaults down to one slot before building the ctx, so
    *  a constructor just reads `ctx.defaults.color/width/lineStyle` (+ fillOpacity
@@ -280,6 +351,7 @@ export type ToolCtx = {
   pencilDraft: Ref<PencilDraft | null>;
   rectDraft: Ref<RectDraft | null>;
   measureDraft: Ref<MeasureDraft | null>;
+  marqueeDraft: Ref<MarqueeDraft | null>;
   dragRef: Ref<DragMode | null>;
 
   /** Open the text editor at `at` in `paneId` to author a new label. `px`/`py`
@@ -320,6 +392,15 @@ export type ToolCtx = {
   update(id: string, patch: Partial<Drawing>): void;
   remove(id: string): void;
   setSelected(id: string | null): void;
+  /** Shift+click: add/remove one id from the selection. */
+  toggleSelected(id: string): void;
+  /** Marquee commit: union `ids` into the selection. */
+  addToSelection(ids: readonly string[]): void;
+  /** Batch patch — one undo step for the whole group (see the store action). */
+  updateMany(patches: ReadonlyArray<{ id: string; patch: Partial<Drawing> }>): void;
+  /** Every UNLOCKED drawing intersecting a pixel rectangle (marquee commit).
+   *  The overlay binds `drawingsInRect` over `unlockedOnly(drawings)`. */
+  drawingsInRect(rect: MarqueeRect): Drawing[];
   /** Legacy post-commit hook kept in the context for compatibility with older
    *  tests/callers. Current drawing tools keep their active tool after commit
    *  and select the new drawing through `setSelected` instead. */
@@ -485,6 +566,29 @@ export const selectTool: DrawingToolSpec = {
   cursor: 'default',
   shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
+    // ── Shift: 선택을 편집하는 제스처. 드래그는 절대 시작하지 않는다 ────────
+    //
+    // 도형 위면 토글, 빈 곳이면 마퀴. 둘을 한 modifier 로 묶는 이유는 사용자가
+    // 겨냥한 것이 "선택에 더하기" 하나로 같기 때문이다 — 도형을 정확히 맞히면
+    // 그 하나가, 빗나가면 감싼 범위가 들어온다. Shift 를 누른 채 도형을 끌어
+    // 옮기는 경로가 없는 것도 의도다: 그러면 토글과 이동이 같은 픽셀에서
+    // 경합하고, 사용자는 "고르려다 옮겨 버린" 상태를 되돌려야 한다.
+    if (ctx.shiftKey) {
+      const shiftHit = ctx.hitTestUnlockedAt(ctx.px, ctx.py);
+      if (shiftHit) {
+        ctx.toggleSelected(shiftHit.id);
+        return;
+      }
+      ctx.marqueeDraft.current = {
+        ax: ctx.px,
+        ay: ctx.py,
+        bx: ctx.px,
+        by: ctx.py,
+        pointerId: ctx.pointerId,
+      };
+      ctx.capturePointer();
+      return;
+    }
     const rawSelected = ctx.selectedId
       ? ctx.drawings.find((d) => d.id === ctx.selectedId)
       : null;
@@ -548,6 +652,25 @@ export const selectTool: DrawingToolSpec = {
     // 오버레이가 클릭을 아예 못 받을 때 작동한다. 둘의 담당 구역이 게이트를
     // 경계로 정확히 나뉘고 겹치지 않는다.
     const hit = ctx.hitTestUnlockedAt(ctx.px, ctx.py);
+    // 여러 개가 선택된 상태에서 **그중 하나**를 잡았다면 집합 전체를 끈다. 선택은
+    // 여기서 건드리지 않는다 — 끌지 않고 놓았을 때만(slop 미달) pointerUp 이
+    // 이 하나로 접는다.
+    if (hit && ctx.selectedIds.length > 1 && ctx.selectedIds.includes(hit.id)) {
+      ctx.dragRef.current = {
+        kind: 'body-multi',
+        ids: ctx.selectedIds,
+        lastRealMs: ctx.canvasXToRealMs(ctx.px),
+        lastPy: ctx.py,
+        startPx: ctx.px,
+        startPy: ctx.py,
+        pressedId: hit.id,
+        moved: false,
+        pointerId: ctx.pointerId,
+        paneId: hit.paneId,
+      };
+      ctx.capturePointer();
+      return;
+    }
     ctx.setSelected(hit?.id ?? null);
     // vline body drag is horizontal-only and resolved off the time axis alone,
     // so it doesn't touch (and doesn't require) any pane's price scale.
@@ -588,8 +711,47 @@ export const selectTool: DrawingToolSpec = {
     }
   },
   onPointerMove(ctx) {
+    const marquee = ctx.marqueeDraft.current;
+    if (marquee && marquee.pointerId === ctx.pointerId) {
+      marquee.bx = ctx.px;
+      marquee.by = ctx.py;
+      // 드래프트는 React state 가 아니므로 스스로 리렌더를 못 낸다.
+      ctx.requestRedraw();
+      return;
+    }
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
+    if (drag.kind === 'body-multi') {
+      // 클릭/드래그 판정: slop 을 넘기 전엔 **아무 패치도 내지 않는다**. 앵커
+      // (lastPy/lastRealMs)도 그대로 두므로, 넘는 순간 눌린 지점부터의 이동량이
+      // 한 번에 반영된다 — 커서가 실제로 간 거리와 일치한다.
+      if (!drag.moved) {
+        if (Math.hypot(ctx.px - drag.startPx, ctx.py - drag.startPy) < MULTI_DRAG_SLOP_PX) return;
+        drag.moved = true;
+      }
+      // 잠긴 것은 여기서 이미 빠진다. 스토어도 거부하지만, 계획 단계에서 빼야
+      // 그룹 클램프가 "움직일 수 없는 도형" 때문에 전체를 얼리지 않는다.
+      const members = ctx.drawings.filter((d) => drag.ids.includes(d.id) && !isLocked(d));
+      if (members.length === 0) return;
+      const curRealMs = ctx.canvasXToRealMs(ctx.px);
+      const dBar =
+        curRealMs != null && drag.lastRealMs != null
+          ? ctx.dragBars.toBar(curRealMs) - ctx.dragBars.toBar(drag.lastRealMs)
+          : 0;
+      ctx.updateMany(
+        planGroupTranslate(members, dBar, ctx.py - drag.lastPy, {
+          priceToCanvasY: ctx.priceToCanvasY,
+          canvasYToPrice: ctx.canvasYToPrice,
+          priceBoundsForPane: ctx.priceBoundsForPane,
+          toBar: ctx.dragBars.toBar,
+          toReal: ctx.dragBars.toReal,
+          originBar: ctx.dragBars.originBar,
+        }),
+      );
+      if (curRealMs != null) drag.lastRealMs = curRealMs;
+      drag.lastPy = ctx.py;
+      return;
+    }
     // vline body drag: horizontal only, no price scale involved. The delta is
     // taken in bar ordinals (see the body branch below for why).
     if (drag.kind === 'vline-body') {
@@ -751,8 +913,25 @@ export const selectTool: DrawingToolSpec = {
     }
   },
   onPointerUp(ctx) {
+    const marquee = ctx.marqueeDraft.current;
+    if (marquee && marquee.pointerId === ctx.pointerId) {
+      ctx.marqueeDraft.current = null;
+      ctx.releasePointer();
+      const rect = marqueeRect(marquee.ax, marquee.ay, marquee.bx, marquee.by);
+      // 빈 곳 Shift+클릭(사실상 0px 박스)은 아무것도 고르지 않는다 — 선택을
+      // 지우지도 않는다. 마퀴를 놓친 클릭이 애써 모은 집합을 날리면 안 된다.
+      const wide = rect.x2 - rect.x1 >= MARQUEE_MIN_PX;
+      const tall = rect.y2 - rect.y1 >= MARQUEE_MIN_PX;
+      if (wide || tall) {
+        ctx.addToSelection(ctx.drawingsInRect(rect).map((d) => d.id));
+      }
+      ctx.requestRedraw(); // 마퀴 사각형을 화면에서 지운다
+      return;
+    }
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
+    // 끌지 않고 놓은 멤버 클릭 → 집합을 그 하나로 접는다.
+    if (drag.kind === 'body-multi' && !drag.moved) ctx.setSelected(drag.pressedId);
     ctx.dragRef.current = null;
     // Guides are per-gesture: leaving them up would paint a line against a
     // shape that is no longer moving.

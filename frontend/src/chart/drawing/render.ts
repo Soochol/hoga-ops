@@ -346,6 +346,8 @@ function renderRectShape(
   ctx: ProjectCtx,
   r: Rect,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const box = projectRect(ctx, r.a, r.b);
   if (box == null) return;
@@ -359,7 +361,7 @@ function renderRectShape(
   drawHaloThenMain(c, r, selected, () => {
     c.strokeRect(box.x, box.y, box.w, box.h);
   });
-  if (showHandles(r, selected)) {
+  if (showHandles(r, handles)) {
     drawHandle(c, r.color, box.x, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y + box.h);
@@ -387,7 +389,7 @@ export function renderRectDraft(
   };
   c.save();
   c.globalAlpha = 0.9;
-  renderRectShape(c, ctx, draft, false);
+  renderRectShape(c, ctx, draft, false, false);
   c.restore();
 }
 
@@ -438,6 +440,8 @@ function renderMeasureShape(
   ctx: ProjectCtx,
   m: Measure,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const box = projectRect(ctx, m.a, m.b);
   if (box == null) return;
@@ -454,7 +458,7 @@ function renderMeasureShape(
   c.setLineDash([4, 3]);
   c.strokeRect(box.x, box.y, box.w, box.h);
   c.restore();
-  if (showHandles(m, selected)) {
+  if (showHandles(m, handles)) {
     // Handles at the two diagonal endpoints (a, b) — the drag anchors.
     const xa = ctx.realMsToX(m.a.realMs);
     const ya = ctx.priceToY(m.a.price);
@@ -484,7 +488,7 @@ export function renderMeasureDraft(
     lineStyle: 'dashed',
     paneId: ctx.paneId,
   };
-  renderMeasureShape(c, ctx, draft, false);
+  renderMeasureShape(c, ctx, draft, false, false);
 }
 
 function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selected: boolean) {
@@ -551,6 +555,8 @@ function renderTrendline(
   ctx: ProjectCtx,
   t: Trendline,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const xa = ctx.realMsToX(t.a.realMs);
   const ya = ctx.priceToY(t.a.price);
@@ -566,7 +572,7 @@ function renderTrendline(
     c.lineTo(x2, yb);
     c.stroke();
   });
-  if (showHandles(t, selected)) {
+  if (showHandles(t, handles)) {
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
@@ -642,14 +648,15 @@ export function renderTrendlineDraft(
 }
 
 /**
- * Endpoint/corner handles are drawn only for a selected drawing that can
- * actually be dragged by them. A LOCKED drawing keeps its selection halo — the
+ * Endpoint/corner handles are drawn only for a drawing whose handles are
+ * ENABLED (single selection — see renderDrawingBody) and that can actually be
+ * dragged by them. A LOCKED drawing keeps its selection halo — the
  * user must be able to see what they picked, and picking is the only route to
  * the unlock button — but loses the handles, which exist solely to advertise
  * "grab me here" and would be a lie (ADR-0164).
  */
-function showHandles(d: Drawing, selected: boolean): boolean {
-  return selected && !isLocked(d);
+function showHandles(d: Drawing, handles: boolean): boolean {
+  return handles && !isLocked(d);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {
@@ -905,7 +912,7 @@ export function renderDrawing(
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
-  opts: { vlineTimeBadge?: boolean } = {},
+  opts: { vlineTimeBadge?: boolean; handles?: boolean } = {},
 ) {
   renderDrawingBody(c, ctx, d, selected, opts);
   // Drawn last so it is never overpainted by the shape it labels. A locked
@@ -921,19 +928,24 @@ function renderDrawingBody(
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
-  opts: { vlineTimeBadge?: boolean },
+  opts: { vlineTimeBadge?: boolean; handles?: boolean },
 ) {
+  // 헤일로와 핸들은 **다른 질문**이다. 다중 선택에서는 모두가 헤일로를 갖되
+  // 핸들은 아무도 갖지 않는다 — 핸들과 그룹 이동이 같은 픽셀을 두고 다투면,
+  // 눌러 보기 전에는 어느 쪽이 이길지 알 수 없기 때문이다. 기본값이 `selected`
+  // 라 이 옵션을 넘기지 않는 호출부(드래프트 미리보기)는 전과 같이 동작한다.
+  const handles = opts.handles ?? selected;
   switch (d.kind) {
     case 'hline':
       return renderHline(c, ctx, d, selected);
     case 'vline':
       return renderVline(c, ctx, d, selected, opts.vlineTimeBadge ?? true);
     case 'trendline':
-      return renderTrendline(c, ctx, d, selected);
+      return renderTrendline(c, ctx, d, selected, handles);
     case 'rect':
-      return renderRectShape(c, ctx, d, selected);
+      return renderRectShape(c, ctx, d, selected, handles);
     case 'measure':
-      return renderMeasureShape(c, ctx, d, selected);
+      return renderMeasureShape(c, ctx, d, selected, handles);
     case 'text':
       return renderText(c, ctx, d, selected);
     case 'pencil':

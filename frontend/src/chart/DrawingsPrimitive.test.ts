@@ -80,7 +80,8 @@ const STYLE: DrawingStyle = {
 function snapshot(over: Partial<DrawingsSnapshot> = {}): DrawingsSnapshot {
   return {
     drawings: [],
-    selectedId: null,
+    selectedIds: new Set<string>(),
+    handlesId: null,
     hiddenAll: false,
     axis,
     drafts: { trendline: null, rect: null, measure: null, pencil: null },

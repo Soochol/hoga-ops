@@ -26,6 +26,8 @@ export type GestureRefs = {
   pencilDraft: AnyRef;
   rectDraft: AnyRef;
   measureDraft: AnyRef;
+  /** In-flight 마퀴 (Shift+드래그 선택 상자). */
+  marqueeDraft: AnyRef;
   /** In-flight body/handle drag. */
   dragRef: AnyRef;
   /** Alignment guide lines published for the current drag. */
@@ -34,9 +36,10 @@ export type GestureRefs = {
 
 export type GestureResetOptions = {
   /**
-   * Leave `dragRef` alone. Escape needs this: a live drag still has a captured
-   * pointer, and `onPointerUp` reads `dragRef` to decide whether to release it.
-   * Clearing it here would strand the capture on the overlay.
+   * Leave the refs of a POINTER-HOLDING gesture alone — `dragRef` and
+   * `marqueeDraft`. Escape needs this: both hold a captured pointer, and
+   * `onPointerUp` reads them to decide whether to release it. Clearing them
+   * here would strand the capture on the overlay.
    */
   keepDrag?: boolean;
 };
@@ -44,20 +47,27 @@ export type GestureResetOptions = {
 /**
  * Null every ref one gesture owns.
  *
- * Returns whether the alignment guides were actually showing, so the caller
- * knows whether a repaint is owed — a redraw on every Escape would be wasted
- * work on the overwhelmingly common case where nothing was drawn.
+ * Returns what was actually showing, so the caller knows whether a repaint is
+ * owed — a redraw on every Escape would be wasted work on the overwhelmingly
+ * common case where nothing was drawn. Two flags rather than one because the
+ * two things live on different surfaces: the guides are canvas (a primitive
+ * repaint), the 마퀴 box is DOM (`syncMarqueeBox`). `requestRedraw` drives both,
+ * but a caller that only cares about one still reads the right answer.
  */
 export function resetGestureRefs(
   refs: GestureRefs,
   opts: GestureResetOptions = {},
-): { guidesCleared: boolean } {
+): { guidesCleared: boolean; marqueeCleared: boolean } {
   refs.trendlineDraft.current = null;
   refs.pencilDraft.current = null;
   refs.rectDraft.current = null;
   refs.measureDraft.current = null;
-  if (!opts.keepDrag) refs.dragRef.current = null;
+  const marqueeCleared = !opts.keepDrag && refs.marqueeDraft.current !== null;
+  if (!opts.keepDrag) {
+    refs.marqueeDraft.current = null;
+    refs.dragRef.current = null;
+  }
   const guidesCleared = refs.alignGuides.current !== null;
   refs.alignGuides.current = null;
-  return { guidesCleared };
+  return { guidesCleared, marqueeCleared };
 }
