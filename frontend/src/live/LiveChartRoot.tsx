@@ -135,7 +135,11 @@ import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import { useDrawingHost } from '../chart/useDrawingHost';
-import { canvasXToRealMs } from '../chart/drawing/chartCoordinates';
+import {
+  canvasXToRealMs, realMsToCanvasX, priceToCanvasY, canvasYToPrice,
+  priceBoundsForPane, dragBarDomain,
+} from '../chart/drawing/chartCoordinates';
+import type { AlignCoords } from '../chart/drawing/translate';
 import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
@@ -747,6 +751,7 @@ export function LiveChartRoot({
    * 용도다). 축이 비었거나 차트가 아직 안 붙었으면 null 이고, 패널은 그때 버튼을
    * 비활성으로 둔다 — 눌러도 아무 일 없는 버튼보다 낫다.
    */
+
   const resolveVisibleRightRealMs = useCallback((): number | null => {
     if (chart == null) return null;
     const width = chart.timeScale().width();
@@ -795,6 +800,35 @@ export function LiveChartRoot({
     (name: string) => unregisterPaneLegend(legendScope, name as PaneId),
     [unregisterPaneLegend, legendScope],
   );
+
+  /**
+   * 정렬·분배가 쓸 좌표 뭉치. `resolveVisibleRightRealMs` 와 같은 패턴이다 — 차트를
+   * 아는 쪽이 값을 만들어 내려주고, **속성 패널은 여전히 `IChartApi` 를 받지 않는다.**
+   *
+   * 좌표 규칙이 두 곳으로 갈라지는 것이 아니다: 여기서 부르는 것도 오버레이가 부르는
+   * 것도 `chartCoordinates` 의 같은 순수 함수들이고, 이 함수는 그것들을 한 번에
+   * 묶어 건네줄 뿐이다.
+   */
+  const resolveAlignCoords = useCallback((): AlignCoords | null => {
+    if (chart == null) return null;
+    const candles = cb?.candles;
+    const bucketMs = drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined);
+    const future =
+      candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
+        ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
+        : undefined;
+    const bars = dragBarDomain(axis, future);
+    return {
+      realMsToCanvasX: (ms) => realMsToCanvasX(chart, axis, ms, future),
+      canvasXToRealMs: (px) => canvasXToRealMs(chart, axis, px, future),
+      priceToCanvasY: (price, paneId) => priceToCanvasY(chart, paneSeries, paneId, price),
+      canvasYToPrice: (py, paneId) => canvasYToPrice(chart, paneSeries, paneId, py),
+      priceBoundsForPane: (paneId) => priceBoundsForPane(chart, paneSeries, paneId),
+      toBar: bars.toBar,
+      toReal: bars.toReal,
+      originBar: bars.originBar,
+    };
+  }, [chart, axis, paneSeries, cb, timeframe]);
 
   // axisRef / timeframeRef bridge the latest axis + timeframe to the
   // once-mounted chart's imperative callbacks (the timeFormatter +
@@ -2782,6 +2816,7 @@ export function LiveChartRoot({
           <DrawingPropertyPanel
             scope={drawingScope}
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}
+            resolveAlignCoords={resolveAlignCoords}
           />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a

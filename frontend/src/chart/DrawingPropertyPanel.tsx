@@ -8,6 +8,10 @@ import { useCallback, useMemo, useState, useRef } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
+  eligibleFor, planAlign, planDistribute,
+  type AlignCoords, type AlignEdge, type DistributeAxis,
+} from './drawing/translate';
+import {
   COLOR_PALETTE,
   STROKE_WIDTHS,
   LINE_STYLES,
@@ -38,6 +42,12 @@ type Props = {
    * 없으면 그 버튼은 비활성이고 나머지 컨트롤은 그대로 동작한다.
    */
   resolveVisibleRightRealMs?: () => number | null;
+  /**
+   * 정렬·분배가 쓸 좌표 뭉치. `resolveVisibleRightRealMs` 와 같은 이유로 함수다 —
+   * 이 패널은 `IChartApi` 를 쥐지 않고, 차트를 아는 호스트가 만들어 내려 준다.
+   * 없으면 정렬 버튼이 비활성이고 나머지는 그대로 동작한다.
+   */
+  resolveAlignCoords?: () => AlignCoords | null;
 };
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -49,7 +59,7 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
 const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
   style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
-type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | null;
+type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | 'align' | null;
 
 /** 참조 안정 빈 목록 — 셀렉터 fallback (EMPTY_SELECTION 과 같은 이유). */
 const EMPTY_DRAWINGS: readonly Drawing[] = [];
@@ -245,6 +255,79 @@ function FontSizePopover({ current, onPick }: { current: number | null; onPick: 
   );
 }
 
+/** 정렬 6 + 분배 2. 각 항목이 자기 비활성 조건을 함께 들고 다닌다. */
+const ALIGN_ITEMS: { edge: AlignEdge; label: string }[] = [
+  { edge: 'left', label: '왼쪽' },
+  { edge: 'hcenter', label: '가로 가운데' },
+  { edge: 'right', label: '오른쪽' },
+  { edge: 'top', label: '위' },
+  { edge: 'vcenter', label: '세로 가운데' },
+  { edge: 'bottom', label: '아래' },
+];
+const DISTRIBUTE_ITEMS: { axis: DistributeAxis; label: string }[] = [
+  { axis: 'horizontal', label: '가로 균등' },
+  { axis: 'vertical', label: '세로 균등' },
+];
+
+/**
+ * 정렬·분배 팝오버.
+ *
+ * 비활성 판정이 커널과 **같은 술어**(`eligibleFor`)를 쓴다 — 갈리면 눌리는데 아무
+ * 일도 안 하는 버튼이 생긴다. 정렬은 그 축에 자격 있는 멤버가 **둘 이상**, 분배는
+ * **셋 이상**이어야 한다(둘은 양 끝이라 나눌 사이가 없다).
+ *
+ * hline 은 x 축에, vline 은 y 축에 자격이 없다 — 각각 캔버스 전폭·전고를 차지해
+ * 그 축의 "가장자리" 가 없기 때문이다. 그래서 hline 만 고른 선택에서는 가로 항목이
+ * 전부 비활성이고 세로 항목은 살아 있다.
+ */
+function AlignPopover({
+  members, coords, onDone,
+}: {
+  members: readonly Drawing[];
+  coords: AlignCoords | null;
+  onDone: (patches: { id: string; patch: Partial<Drawing> }[]) => void;
+}) {
+  const xCount = eligibleFor(members, 'x').length;
+  const yCount = eligibleFor(members, 'y').length;
+  const canAlign = (edge: AlignEdge) =>
+    coords != null && (edge === 'left' || edge === 'hcenter' || edge === 'right' ? xCount : yCount) >= 2;
+  const canDistribute = (axis: DistributeAxis) =>
+    coords != null && (axis === 'horizontal' ? xCount : yCount) >= 3;
+  const itemCls = (enabled: boolean) =>
+    'w-full px-2 py-1 flex items-center rounded text-xs ' +
+    (enabled ? 'text-fg hover:bg-bg-input-hover' : 'text-fg-dim opacity-40 cursor-not-allowed');
+
+  return (
+    <PopoverShell>
+      {ALIGN_ITEMS.map(({ edge, label }) => (
+        <button
+          key={edge}
+          type="button"
+          data-testid={`drawing-align-${edge}`}
+          disabled={!canAlign(edge)}
+          onClick={() => coords && onDone(planAlign(members, edge, coords))}
+          className={itemCls(canAlign(edge))}
+        >
+          {label}
+        </button>
+      ))}
+      <div className="my-1 h-px bg-border" />
+      {DISTRIBUTE_ITEMS.map(({ axis, label }) => (
+        <button
+          key={axis}
+          type="button"
+          data-testid={`drawing-distribute-${axis}`}
+          disabled={!canDistribute(axis)}
+          onClick={() => coords && onDone(planDistribute(members, axis, coords))}
+          className={itemCls(canDistribute(axis))}
+        >
+          {label}
+        </button>
+      ))}
+    </PopoverShell>
+  );
+}
+
 /**
  * 겹침 순서 버튼 한 쌍 — 단일 패널과 다중 툴바가 함께 쓴다.
  *
@@ -315,7 +398,13 @@ function ZOrderButtons({
  * 적용 대상이 하나도 없는 컨트롤은 **숨기지 않고 비활성**한다. 단일 패널이 같은
  * 판단을 한다: 눌리는데 아무 일도 안 나는 버튼이 고장으로 읽힌다.
  */
-function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly string[] }) {
+function MultiSelectionToolbar({
+  scope, ids, resolveAlignCoords,
+}: {
+  scope: string;
+  ids: readonly string[];
+  resolveAlignCoords?: () => AlignCoords | null;
+}) {
   // 도형 배열은 **안정 참조**를 구독하고 멤버는 파생한다. 셀렉터 안에서 filter/map
   // 하면 매 렌더 새 배열이라 무한 리렌더가 된다(EMPTY_SELECTION 과 같은 함정).
   const items = useDrawingsStore((s) => s.byScope.get(scope) ?? EMPTY_DRAWINGS);
@@ -476,6 +565,32 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
+      <button
+        type="button"
+        data-testid="drawing-align-trigger"
+        aria-label="정렬"
+        title="정렬·분배"
+        disabled={allLocked}
+        onClick={() => toggle('align')}
+        className={
+          'h-7 px-2 inline-flex items-center rounded text-xs text-fg-dim' +
+          (allLocked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
+        }
+      >
+        정렬
+      </button>
+      {openPopover === 'align' && (
+        <AlignPopover
+          members={members}
+          // 좌표는 **팝오버를 여는 시점**이 아니라 누르는 시점에 굳는다 — 그 사이
+          // 팬·줌이 있었다면 옛 좌표로 정렬해서 눈에 보이는 것과 어긋난다.
+          coords={resolveAlignCoords?.() ?? null}
+          onDone={(patches) => {
+            useDrawingsStore.getState().updateMany(scope, patches);
+            setOpenPopover(null);
+          }}
+        />
+      )}
       {/* 순서 변경은 편집이라 전부 잠겼으면 비활성된다 — 스타일·삭제와 같은 판정. */}
       <ZOrderButtons scope={scope} ids={ids} disabled={allLocked} />
       <button
@@ -522,7 +637,9 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
   );
 }
 
-export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs }: Props) {
+export default function DrawingPropertyPanel({
+  scope, resolveVisibleRightRealMs, resolveAlignCoords,
+}: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
     scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
@@ -553,7 +670,13 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
   if (activeTool !== 'select' || selectedIds.length === 0 || hiddenAll || scope == null) return null;
 
   if (selectedIds.length > 1) {
-    return <MultiSelectionToolbar scope={scope} ids={selectedIds} />;
+    return (
+      <MultiSelectionToolbar
+        scope={scope}
+        ids={selectedIds}
+        resolveAlignCoords={resolveAlignCoords}
+      />
+    );
   }
   if (drawing == null) return null;
 

@@ -12,6 +12,7 @@
 // Trendline shifts both endpoints. Pencil shifts every vertex.
 
 import type { Drawing, Hline, Measure, PaneId, Pencil, Rect, Text, Trendline, Vline } from './types';
+import { isLocked } from './types';
 
 /**
  * Horizontal shift for a translation: either a flat Δrealms or a mapping
@@ -301,5 +302,192 @@ export function planGroupTranslate(
     // old real-ms drag (same reasoning as the single-drag path).
     out.push({ id: m.id, patch: translateDrawing(m, shift, dPrice) });
   }
+  return out;
+}
+
+// ─── align / distribute (다중 선택 정렬·분배) ───────────────────────────────
+//
+// 이 두 연산이 그룹 이동과 다른 점 하나가 설계를 전부 결정한다: **멤버마다 델타가
+// 다르다.** 그래서 `planGroupTranslate` 의 "집합 최소 클램프" 규칙이 여기엔 없다 —
+// 대형을 지키는 것이 목적인 이동과 달리, 정렬은 대형을 **바꾸는** 것이 목적이라
+// 각자 자기 팬 안에 남기만 하면 된다.
+
+/** 정렬 기준 모서리. 화면 y 는 아래로 증가하므로 'top' 이 최소 y 다. */
+export type AlignEdge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+/** 분배 축. */
+export type DistributeAxis = 'horizontal' | 'vertical';
+
+/** 정렬·분배가 다루는 축. */
+export type GeometryAxis = 'x' | 'y';
+
+export type AlignCoords = GroupTranslateCoords & {
+  realMsToCanvasX(realMs: number): number | null;
+  /** 픽셀 X → realMs. 캔들 오른쪽 빈 구간에서는 null 이라 그 멤버의 수평 이동을
+   *  건너뛴다(다른 경로들과 같은 degrade). */
+  canvasXToRealMs(px: number): number | null;
+};
+
+/**
+ * 이 도형이 그 축에 **범위를 갖는가**.
+ *
+ * 정렬이 "가장 흔한 두 종류에 정의되지 않는다" 는 문제의 답이 여기다. hline 은
+ * 캔버스 전폭을 차지해 x 범위가 없고(`timesOf` 가 빈 배열), vline 은 전고를 차지해
+ * y 범위가 없다. 축을 통째로 포기할 일이 아니라 **그 축에서 그 종류를 빼면** 된다 —
+ * hline 여럿을 가격축으로 정렬·분배하는 것은 여전히 뜻이 통하고, 실제로 유용하다.
+ *
+ * 팝오버의 비활성 판정과 커널이 **같은 술어를 쓴다**(스타일 일괄의 `kindHasProp` 과
+ * 같은 규율) — 갈리면 눌리는데 아무 일도 안 하는 버튼이 생긴다.
+ *
+ * ⚠ 커널 안에서는 이 술어가 `pixelSpan` 의 null 판정과 **겹친다**(축 값이 없으면
+ * 투영할 것도 없다). 그래서 이 함수를 지워도 계획 결과는 변하지 않는다 — 이걸
+ * 지키는 것은 커널 테스트가 아니라 **아래 술어 단위 테스트와 팝오버의 비활성
+ * 테스트**다. 진짜 소비자는 UI 쪽이다: 거기엔 투영이 없어서 이 술어 말고는 "이
+ * 버튼이 할 일이 있는가" 를 물을 방법이 없다.
+ */
+export function hasAxis(drawing: Drawing, axis: GeometryAxis): boolean {
+  return (axis === 'x' ? timesOf(drawing) : pricesOf(drawing)).length > 0;
+}
+
+/** 그 축에서 실제로 옮길 수 있는 멤버들 — 축 범위가 있고 잠기지 않은 것. */
+export function eligibleFor(members: readonly Drawing[], axis: GeometryAxis): Drawing[] {
+  return members.filter((m) => !isLocked(m) && hasAxis(m, axis));
+}
+
+type Span = { min: number; max: number; center: number };
+
+/** 멤버의 픽셀 범위. 투영이 하나도 안 되면 null(그 멤버는 이번 연산에서 빠진다). */
+function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | null {
+  const values = axis === 'x' ? timesOf(m) : pricesOf(m);
+  const projected: number[] = [];
+  for (const v of values) {
+    const px = axis === 'x' ? coords.realMsToCanvasX(v) : coords.priceToCanvasY(v, m.paneId);
+    if (px != null) projected.push(px);
+  }
+  if (projected.length === 0) return null;
+  const min = Math.min(...projected);
+  const max = Math.max(...projected);
+  return { min, max, center: (min + max) / 2 };
+}
+
+/** 픽셀 델타 하나를 그 멤버의 도메인 패치로 바꾼다(축 하나만 움직인다). */
+function patchFromPixelDelta(
+  m: Drawing,
+  axis: GeometryAxis,
+  deltaPx: number,
+  coords: AlignCoords,
+): Partial<Drawing> | null {
+  if (deltaPx === 0) return null;
+  if (axis === 'x') {
+    const times = timesOf(m);
+    const ref = times[0];
+    const x = coords.realMsToCanvasX(ref);
+    if (x == null) return null;
+    const moved = coords.canvasXToRealMs(x + deltaPx);
+    if (moved == null) return null; // 빈 구간 — 이 멤버는 가만히 둔다
+    // 봉 서수로 옮긴다. 평평한 Δms 는 정확히 이 파일이 존재하는 이유인 "세션 사이
+    // 틈에 정점이 갇히는" 버그를 부른다.
+    const rawDBar = coords.toBar(moved) - coords.toBar(ref);
+    const dBar = clampDBarForDrawing(m, rawDBar, coords.originBar, coords.toBar);
+    if (dBar === 0) return null;
+    const shift = (ms: number) => coords.toReal(coords.toBar(ms) + dBar);
+    return translateDrawing(m, shift, 0);
+  }
+  const prices = pricesOf(m);
+  const ref = prices[0];
+  const y = coords.priceToCanvasY(ref, m.paneId);
+  if (y == null) return null;
+  const moved = coords.canvasYToPrice(y + deltaPx, m.paneId);
+  if (moved == null) return null;
+  const bounds = coords.priceBoundsForPane(m.paneId);
+  const rawDPrice = moved - ref;
+  // 멤버별 클램프 — 집합 최소가 아니다. 정렬은 대형을 바꾸는 연산이라, 한 멤버가
+  // 팬 경계에 걸린다고 나머지까지 붙잡아 둘 이유가 없다.
+  const dPrice = bounds ? clampDPriceForDrawing(m, rawDPrice, bounds) : rawDPrice;
+  if (dPrice === 0) return null;
+  return translateDrawing(m, 0, dPrice);
+}
+
+const AXIS_OF: Record<AlignEdge, GeometryAxis> = {
+  left: 'x', hcenter: 'x', right: 'x',
+  top: 'y', vcenter: 'y', bottom: 'y',
+};
+
+/**
+ * 선택을 한 모서리에 맞춘다.
+ *
+ * 기준은 **자격 있는 멤버들의 픽셀 외곽**이다(전체 멤버가 아니다) — hline 이 섞인
+ * 선택을 좌측 정렬할 때 hline 은 기준에도, 대상에도 들어가지 않는다.
+ *
+ * 자격자가 하나뿐이면 자기 자신에게 맞추는 셈이라 빈 배열을 돌려준다. 그 판정이 곧
+ * 버튼의 비활성 조건이다(`eligibleFor(...).length >= 2`).
+ */
+export function planAlign(
+  members: readonly Drawing[],
+  edge: AlignEdge,
+  coords: AlignCoords,
+): { id: string; patch: Partial<Drawing> }[] {
+  const axis = AXIS_OF[edge];
+  const targets = eligibleFor(members, axis)
+    .map((m) => ({ m, span: pixelSpan(m, axis, coords) }))
+    .filter((t): t is { m: Drawing; span: Span } => t.span != null);
+  if (targets.length < 2) return [];
+
+  const at =
+    edge === 'left' || edge === 'top'
+      ? Math.min(...targets.map((t) => t.span.min))
+      : edge === 'right' || edge === 'bottom'
+        ? Math.max(...targets.map((t) => t.span.max))
+        : (Math.min(...targets.map((t) => t.span.min)) +
+            Math.max(...targets.map((t) => t.span.max))) /
+          2;
+
+  const out: { id: string; patch: Partial<Drawing> }[] = [];
+  for (const { m, span } of targets) {
+    const from =
+      edge === 'left' || edge === 'top'
+        ? span.min
+        : edge === 'right' || edge === 'bottom'
+          ? span.max
+          : span.center;
+    const patch = patchFromPixelDelta(m, axis, at - from, coords);
+    if (patch) out.push({ id: m.id, patch });
+  }
+  return out;
+}
+
+/**
+ * 선택을 축 방향으로 **균등 간격**으로 편다.
+ *
+ * 양 끝은 그대로 두고 사이를 고르게 나눈다(편집기의 표준 동작). 중심 기준이라
+ * 크기가 제각각인 도형들도 시각적으로 고르게 놓인다.
+ *
+ * 셋 미만이면 빈 배열이다 — 둘은 양 끝이라 나눌 사이가 없다.
+ */
+export function planDistribute(
+  members: readonly Drawing[],
+  axis: DistributeAxis,
+  coords: AlignCoords,
+): { id: string; patch: Partial<Drawing> }[] {
+  const geo: GeometryAxis = axis === 'horizontal' ? 'x' : 'y';
+  const targets = eligibleFor(members, geo)
+    .map((m, i) => ({ m, i, span: pixelSpan(m, geo, coords) }))
+    .filter((t): t is { m: Drawing; i: number; span: Span } => t.span != null);
+  if (targets.length < 3) return [];
+
+  // 중심으로 줄 세운다. 중심이 같은 둘은 **배열 순서**로 갈라 결과가 결정적이게
+  // 한다(정렬이 불안정하면 같은 입력이 다른 그림을 낸다).
+  const sorted = [...targets].sort((a, b) => a.span.center - b.span.center || a.i - b.i);
+  const first = sorted[0].span.center;
+  const last = sorted[sorted.length - 1].span.center;
+  const total = last - first;
+  // 전원이 한 점에 몰려 있으면 나눌 것이 없다 — 0 으로 나누지 않는다.
+  if (total === 0) return [];
+  const gap = total / (sorted.length - 1);
+
+  const out: { id: string; patch: Partial<Drawing> }[] = [];
+  sorted.forEach((t, idx) => {
+    const patch = patchFromPixelDelta(t.m, geo, first + idx * gap - t.span.center, coords);
+    if (patch) out.push({ id: t.m.id, patch });
+  });
   return out;
 }
