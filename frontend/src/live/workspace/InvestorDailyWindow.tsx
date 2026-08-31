@@ -97,15 +97,20 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             <thead className="sticky top-0 z-20 text-fg-dim">
               <tr>
                 <HeadCell sticky className="text-left">날짜</HeadCell>
+                {/* 그룹 라벨은 **왼쪽 정렬이다 — 가운데 정렬이면 안 보인다.**
+                    기관 세부는 8컬럼(493px)을 덮는데 창은 그보다 좁아서, 가운데에
+                    놓으면 라벨이 늘 스크롤 밖에 선다(실측: 중심 600px vs 가시폭
+                    551px). 왼쪽에 두면 구분선 바로 뒤라 그룹이 시작하는 곳에서
+                    읽힌다. 이건 단위 테스트가 원리적으로 못 보는 부류다. */}
                 <th
                   colSpan={TOP_COLUMN_COUNT}
-                  className="border-b border-border bg-bg-card px-1 py-1 text-center text-2xs font-medium text-fg-dimmer"
+                  className="border-b border-border bg-bg-card px-1.5 py-1 text-left text-2xs font-medium text-fg-dimmer"
                 >
                   상위 주체 · 합 0
                 </th>
                 <th
                   colSpan={ORGN_COLUMN_COUNT}
-                  className="border-b border-l border-border bg-bg-card px-1 py-1 text-center text-2xs font-medium text-fg-dimmer"
+                  className="border-b border-l border-border bg-bg-card px-1.5 py-1 text-left text-2xs font-medium text-fg-dimmer"
                 >
                   기관 세부 · 합 = 기관계
                 </th>
