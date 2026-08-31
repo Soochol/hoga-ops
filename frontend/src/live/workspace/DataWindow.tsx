@@ -66,6 +66,7 @@ import {
   latestAfterHoursTotals,
   latestOrderbookSnapshot,
   latestTradeSummary,
+  fillDayOhlcFromQuote,
   orderbookSnapshotAtCursor,
 } from '../liveSidebarAdapters';
 import {
@@ -515,9 +516,18 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 0B 가 실어 오는 값은 "지금 이 순간의 누적"이라 과거 커서(스팟) 시점의 값이
   // 아니다 — 스팟에서 latest 를 그대로 보여주면 호가는 과거인데 요약만 현재인
   // 시점 불일치가 생긴다. 그래서 스팟이면 비운다(패널이 "−" 로 렌더).
+  //
+  // 시·고·저만 시세 오버레이(`quote`)가 뒤를 받친다 — 마감 후 표시 링버퍼가 비면 0B 가
+  // 통째로 사라져 요약이 전 칸 대시가 되기 때문이다(근거·규약은 `fillDayOhlcFromQuote`).
+  //
+  // **폴백도 같은 `isSpot` 게이트 안에 둔다.** `quote` 는 정의상 "지금" 값이라, 과거
+  // 커서 위에 얹으면 바로 위 주석이 막으려던 시점 불일치를 폴백이 되살린다.
+  //
+  // venue 는 이미 맞아 있다 — 두 입력이 같은 유효 venue 를 탄다(`venueTrade` 는
+  // `useLiveSeries` 가 필터, `quote` 는 `useLiveQuoteOverlay` 가 코드별로 해석).
   const summary = useMemo(
-    () => (isSpot ? EMPTY_TRADE_SUMMARY : latestTradeSummary(venueTrade)),
-    [isSpot, venueTrade],
+    () => (isSpot ? EMPTY_TRADE_SUMMARY : fillDayOhlcFromQuote(latestTradeSummary(venueTrade), quote)),
+    [isSpot, venueTrade, quote],
   );
   // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
   // 뒤에서부터 펼치고, 표시분(9행 — BookPanel 3열 바닥 정렬)보다 넉넉히 잡아 자른다.

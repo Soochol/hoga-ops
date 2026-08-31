@@ -239,6 +239,61 @@ export function latestTradeSummary(trade: readonly RawSnapshot[]): LiveTradeSumm
   return out;
 }
 
+/** 이 폴백이 읽는 `LiveQuote` 의 부분집합. 전체 타입을 끌어오지 않는 이유는 그쪽이
+ *  react-query 훅 모듈이고, 어댑터는 조회 수단을 몰라야 하기 때문이다. */
+export type QuoteDayOhlc = {
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+};
+
+/**
+ * 당일 시·고·저를 시세 오버레이로 메운다 — `latestTradeSummary` 의 **결손 보충**이다.
+ *
+ * 위 함수의 유일한 출처인 WS `0B` 는 15:30 에 끊기고, 표시 링버퍼는 보존이 15분이다.
+ * 그래서 마감 후 **새로 연 탭**에서는 요약이 전 칸 대시가 된다(이미 열려 있던 탭은
+ * 화석을 계속 그린다 — 프론트 축출은 들어온 프레임 기준이라 멎으면 함께 멎는다).
+ * 사다리는 `LiveBuffer._last_ob` 사이드카가 디스크까지 살려 두므로, 결과는 "사다리는
+ * 멀쩡한데 요약만 빈" 반쪽 화면이다(사용자 보고 2026-08-31).
+ *
+ * **새 조회를 만들지 않는다.** `/api/live/quotes`(키움 `ka10095`)는 이 창이 등락률
+ * 분모로 이미 폴링하고 있고, 같은 응답에 당일 시·고·저가 실려 온다.
+ *
+ * 왜 **필드별** 폴백인가: `latestTradeSummary` 자체가 키별로 독립해 "가장 최근에
+ * 관측된 값" 을 잡는 규약이다. 그 규약을 이어받으면 **시각 판정이 필요 없다** —
+ * 장중엔 `0B` 가 값을 들고 있어 폴백이 저절로 no-op 이고, 마감 후엔 저절로 발화한다.
+ * 시계로 갈랐다면 경계마다 두 출처가 다투는 자리를 새로 만들었을 것이다.
+ *
+ * 메우지 못하는 넷(거래량·거래대금·체결강도·어제보다)은 **대시로 남긴다.** 같은 TR
+ * 에 있지만 wire 에 아직 실리지 않았다 — 채우려면 백엔드 모델과 프론트 미러를 같은
+ * PR 에서 함께 고쳐야 한다(ADR-0004).
+ *
+ * ⚠ `positive` 를 통과시키는 것이 필수다. 벤더 파서(`kiwoom_multi_quote._abs_int`)는
+ * `"0"` 을 **0 으로 통과시킨다** — 첫 체결 전 종목이 그렇게 온다. 그대로 실으면
+ * 요약이 대시 대신 "0" 을 그리고, 사다리 칩 판정(`offLadderChip`)까지 0 을 가격으로
+ * 다룬다. "미제공" 과 "진짜 0" 을 여기서 갈라 놔야 그 아래가 전부 종전 규약이다.
+ *
+ * ⚠ 장전(pre_open)은 백엔드가 이 세 필드를 통째로 `None` 으로 지운다
+ * (`_to_live_quote`) — 어제 값이 오늘 아침 화면에 새는 경로가 원천에서 막혀 있어
+ * 여기서 날짜를 다시 재지 않는다.
+ */
+export function fillDayOhlcFromQuote(
+  summary: LiveTradeSummary,
+  quote: QuoteDayOhlc | null | undefined,
+): LiveTradeSummary {
+  if (quote == null) return summary;
+  const dayOpen = summary.dayOpen ?? positive(quote.open);
+  const dayHigh = summary.dayHigh ?? positive(quote.high);
+  const dayLow = summary.dayLow ?? positive(quote.low);
+  // 아무것도 안 메웠으면 **같은 객체를 돌려준다** — 소비처 useMemo 가 이 값을 그대로
+  // 내보내므로, 매번 새 객체면 장중 내내 요약 패널이 헛 리렌더한다. 판정식이 아래
+  // 리터럴과 같은 세 값을 쓰므로 둘이 어긋날 수 없다.
+  if (dayOpen === summary.dayOpen && dayHigh === summary.dayHigh && dayLow === summary.dayLow) {
+    return summary;
+  }
+  return { ...summary, dayOpen, dayHigh, dayLow };
+}
+
 /**
  * ADR-0044 amendment (2026-06-11) — derive the bucket-representative orderbook
  * snapshot for `cursorMs` from the in-memory SSE buffer (`live.ob`), CLIENT-SIDE.

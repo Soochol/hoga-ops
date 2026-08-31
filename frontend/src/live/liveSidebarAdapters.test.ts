@@ -7,6 +7,8 @@ import {
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
   latestTradeSummary,
+  fillDayOhlcFromQuote,
+  EMPTY_TRADE_SUMMARY,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -304,6 +306,52 @@ describe('latestTradeSummary', () => {
     expect(s.cumValue).toBeNull();
     expect(s.fillStrengthPct).toBeNull();
     expect(s.dayLow).toBe(240_000);
+  });
+});
+
+describe('fillDayOhlcFromQuote', () => {
+  const empty = { ...EMPTY_TRADE_SUMMARY };
+
+  it('0B 가 비면 시세 오버레이의 당일 시·고·저로 메운다', () => {
+    const s = fillDayOhlcFromQuote(empty, { open: 458_500, high: 462_500, low: 424_500 });
+    expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([458_500, 462_500, 424_500]);
+  });
+
+  it('0B 값이 있으면 건드리지 않는다 — 폴백은 결손일 때만', () => {
+    const ws = { ...empty, dayOpen: 250_000, dayHigh: 251_000, dayLow: 249_000 };
+    const s = fillDayOhlcFromQuote(ws, { open: 1, high: 2, low: 3 });
+    expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([250_000, 251_000, 249_000]);
+    // 아무것도 안 메웠으면 **같은 객체**여야 한다 — 소비처 useMemo 의 헛 리렌더 방지.
+    expect(s).toBe(ws);
+  });
+
+  it('필드별로 독립이다 — 고가만 있으면 시·저만 메운다', () => {
+    const s = fillDayOhlcFromQuote({ ...empty, dayHigh: 470_000 }, {
+      open: 458_500, high: 462_500, low: 424_500,
+    });
+    expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([458_500, 470_000, 424_500]);
+  });
+
+  it('⚠ 시세의 0 을 값으로 싣지 않는다 — 벤더 파서가 "0" 을 통과시킨다', () => {
+    // `kiwoom_multi_quote._abs_int` 는 0 을 걸러 주지 않으므로 첫 체결 전 종목이
+    // 0 으로 온다. 그대로 실으면 대시 자리에 "0" 이 뜨고 사다리 칩 판정까지 0 을
+    // 가격으로 다룬다 — 여기가 "미제공" 과 "진짜 0" 을 가르는 유일한 지점이다.
+    const s = fillDayOhlcFromQuote(empty, { open: 0, high: 0, low: 0 });
+    expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([null, null, null]);
+    expect(s).toBe(empty);
+  });
+
+  it('시세가 없으면(undefined·null) 그대로 돌려준다', () => {
+    expect(fillDayOhlcFromQuote(empty, undefined)).toBe(empty);
+    expect(fillDayOhlcFromQuote(empty, null)).toBe(empty);
+  });
+
+  it('폴백이 다른 요약 칸을 지어내지 않는다 — 이 단계는 시·고·저뿐', () => {
+    // 거래량·거래대금·체결강도·어제보다는 같은 TR 에 있지만 wire 밖이라 범위 밖이다.
+    const s = fillDayOhlcFromQuote(empty, { open: 458_500, high: 462_500, low: 424_500 });
+    expect([s.cumVolume, s.cumValue, s.fillStrengthPct, s.vsPrevVolumePct]).toEqual([
+      null, null, null, null,
+    ]);
   });
 });
 
