@@ -62,7 +62,9 @@ type HistoryOp =
   | 'add' | 'update' | 'remove' | 'clearAll' | 'restore' | 'import' | 'lockAll'
   // 다중 선택의 일괄 변이. 항목마다 update/remove 를 부르면 5개를 옮긴 뒤 Ctrl+Z 를
   // 5번 눌러야 한다 — setLockedAll 이 같은 이유로 이미 한 단계다.
-  | 'updateMany' | 'removeMany';
+  | 'updateMany' | 'removeMany'
+  // 배열 순서 자체를 바꾸는 변이(겹침 순서). 클릭이 낱개로 오므로 병합 창이 없다.
+  | 'addMany' | 'reorder';
 type HistoryEntry = { items: Drawing[]; op: HistoryOp; targetId?: string; at: number };
 type ScopeHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 
@@ -219,6 +221,10 @@ type Actions = {
   /** 마퀴 커밋: `ids` 를 현재 선택에 **합집합**으로 더한다(중복 무시, 순서 보존).
    *  마퀴는 Shift 아래에서만 존재하는 제스처라 "더하기" 외의 해석이 없다. */
   addToSelection(scope: string, ids: readonly DrawingId[]): void;
+  /** 선택을 `ids` 로 **교체**한다(전체 선택·복제 후 새 도형 선택). 합집합이 아니라
+   *  교체인 이유: "전체 선택" 은 지금 목록과 정확히 같아야 하고, 복제 뒤에는 원본이
+   *  아니라 사본이 선택돼야 한다. */
+  setSelection(scope: string, ids: readonly DrawingId[]): void;
   /**
    * 모든 scope 의 선택을 비운다(도구는 건드리지 않는다). 그리기 도구로 **진입할 때**
    * 부른다 — 불변식은 "그리기 모드 ⇒ 선택 없음" 이다. select 모드에서 고른 도형이
@@ -279,6 +285,23 @@ type Actions = {
   updateMany(scope: string, patches: ReadonlyArray<{ id: DrawingId; patch: Partial<Drawing> }>): void;
   /** 여러 드로잉을 **한 번의 되돌리기 단계로** 지운다. 잠긴 것은 남는다. */
   removeMany(scope: string, ids: readonly DrawingId[]): void;
+  /** 여러 드로잉을 **한 번의 되돌리기 단계로** 추가한다(다중 복제). `add` 와 같이
+   *  잠금 관문이 없다 — 새로 만드는 것이라 막을 대상이 없다. */
+  addMany(scope: string, items: readonly Drawing[]): void;
+  /**
+   * 겹침 순서를 바꾼다 — `ids` 를 배열의 맨 뒤(`'front'`) 또는 맨 앞(`'back'`)으로.
+   *
+   * 배열 순서가 곧 z-order 다: 렌더는 앞에서 뒤로 그리므로 **뒤쪽이 위에 보이고**,
+   * `hitTestDrawings` 는 뒤에서부터 훑어 최상단을 집는다. 그래서 "맨 앞으로" 가
+   * 배열의 끝으로 보내는 것이다.
+   *
+   * 옮겨지는 것들의 **상대 순서는 보존된다**(안정 분할). 안 그러면 함께 올린 도형들이
+   * 저희끼리 순서를 바꿔 버리는데, 화면에는 아무 설명이 없다.
+   *
+   * 잠긴 것은 빠진다. 순서 변경은 "클릭이 어느 도형에 가는가" 를 바꾸므로 편집이다
+   * (측정이 아니다 — ADR-0164 의 경계는 그 선에 있다).
+   */
+  reorder(scope: string, ids: readonly DrawingId[], to: 'front' | 'back'): void;
   /**
    * scope 의 모든 드로잉을 한꺼번에 잠그거나 푼다. **되돌리기 한 단계**다 —
    * 항목마다 `update` 를 부르면 20개를 잠근 뒤 Ctrl+Z 를 20번 눌러야 한다.
@@ -426,6 +449,10 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const cur = get().selectedByScope.get(scope) ?? EMPTY_SELECTION;
       const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
       set({ selectedByScope: withSelection(get().selectedByScope, scope, next) });
+    },
+
+    setSelection(scope, ids) {
+      set({ selectedByScope: withSelection(get().selectedByScope, scope, ids) });
     },
 
     addToSelection(scope, ids) {
@@ -577,6 +604,39 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
       set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next) });
+      queuePersist(scope);
+    },
+
+    addMany(scope, items) {
+      if (items.length === 0) return;
+      const current = get().byScope.get(scope) ?? [];
+      recordHistory(scope, current, 'addMany', items.map((d) => d.id).sort().join(','));
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, [...current, ...items]);
+      set({ byScope });
+      queuePersist(scope);
+    },
+
+    reorder(scope, ids, to) {
+      const current = get().byScope.get(scope) ?? [];
+      const moving = new Set(
+        current.filter((d) => ids.includes(d.id) && !isLocked(d)).map((d) => d.id),
+      );
+      if (moving.size === 0) return;
+      // 이미 그 끝에 몰려 있으면 아무 일도 하지 않는다 — 빈 undo 단계는 redo 스택을
+      // 비우므로 무해하지 않다(setLockedAll 과 같은 사유).
+      const tailIsAllMoving = (arr: readonly Drawing[]) =>
+        arr.slice(arr.length - moving.size).every((d) => moving.has(d.id));
+      const headIsAllMoving = (arr: readonly Drawing[]) =>
+        arr.slice(0, moving.size).every((d) => moving.has(d.id));
+      if (to === 'front' ? tailIsAllMoving(current) : headIsAllMoving(current)) return;
+      // 안정 분할 — 양쪽 다 원래 순서를 지킨다.
+      const moved = current.filter((d) => moving.has(d.id));
+      const rest = current.filter((d) => !moving.has(d.id));
+      recordHistory(scope, current, 'reorder', [...moving].sort().join(','));
+      const byScope = new Map(get().byScope);
+      byScope.set(scope, to === 'front' ? [...rest, ...moved] : [...moved, ...rest]);
+      set({ byScope });
       queuePersist(scope);
     },
 

@@ -90,7 +90,14 @@ export function ShortcutHelpModal({ route, onClose }: { route: HelpRoute; onClos
               {(drawTools ?? []).map((t) => (
                 <Row key={t.key} keys={[`⌥${t.key}`]} desc={t.label} />
               ))}
+              <Row keys={['⇧클릭']} desc="선택에 더하기/빼기" />
+              <Row keys={['⇧드래그']} desc="범위로 여러 개 선택" />
+              <Row keys={['↑', '↓', '←', '→']} desc="선택 미세 이동 (⇧ 크게)" />
               <Row keys={['Del']} desc="선택한 그리기 삭제" />
+              <Row keys={['Ctrl', 'A']} desc="이 차트의 그리기 전체 선택" />
+              <Row keys={['Ctrl', 'D']} desc="선택 복제" />
+              <Row keys={['Ctrl', 'Z']} desc="실행취소 (⇧ 다시실행)" />
+              <Row keys={['⌥C']} desc="모두 지우기" />
             </Section>
           </>
         )}
