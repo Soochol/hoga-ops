@@ -723,3 +723,91 @@ describe('DrawingPropertyPanel — 겹침 순서', () => {
     expect(screen.getByTestId('drawing-send-back')).toBeDisabled();
   });
 });
+
+// ─── 정렬·분배 팝오버 ──────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 정렬·분배', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  // 선형 스텁 — 1 000 ms = 1 px, 가격 1 = 1 px.
+  const coords = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    canvasXToRealMs: (px: number) => px * 1_000,
+    priceToCanvasY: (price: number) => 400 - price,
+    canvasYToPrice: (py: number) => 400 - py,
+    priceBoundsForPane: () => ({ top: 10_000, bottom: -10_000 }),
+    toBar: (ms: number) => ms,
+    toReal: (b: number) => b,
+    originBar: -Infinity,
+  };
+
+  const hline = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+  const rect = (id: string, ms: number): Drawing =>
+    ({
+      id, kind: 'rect',
+      a: { realMs: ms, price: 100 }, b: { realMs: ms + 10_000, price: 200 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', fillOpacity: 0.1, paneId: 'candle',
+    }) as Drawing;
+
+  const seed = (items: Drawing[], withCoords = true) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    items.forEach((d) => s().add(SCOPE, d));
+    s().addToSelection(SCOPE, items.map((d) => d.id));
+    render(
+      <DrawingPropertyPanel
+        scope={SCOPE}
+        resolveAlignCoords={withCoords ? () => coords : undefined}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('drawing-align-trigger'));
+  };
+
+  // ⚠ 이 기능을 두 번 미루게 했던 문제의 UI 쪽 답. 축을 통째로 포기하지 않고
+  // 그 축에서 그 종류를 뺀다.
+  it('hline 만 고르면 가로 항목만 비활성된다', () => {
+    seed([hline('h1', 100), hline('h2', 200)]);
+    expect(screen.getByTestId('drawing-align-left')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-right')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-top')).not.toBeDisabled();
+    expect(screen.getByTestId('drawing-align-bottom')).not.toBeDisabled();
+  });
+
+  it('사각형 둘이면 정렬은 되고 분배는 안 된다 — 둘은 양 끝이다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)]);
+    expect(screen.getByTestId('drawing-align-left')).not.toBeDisabled();
+    expect(screen.getByTestId('drawing-distribute-horizontal')).toBeDisabled();
+  });
+
+  it('셋이면 분배가 열린다', () => {
+    seed([rect('r1', 0), rect('r2', 30_000), rect('r3', 90_000)]);
+    expect(screen.getByTestId('drawing-distribute-horizontal')).not.toBeDisabled();
+  });
+
+  // 좌표를 못 얻으면(차트 미부착) 눌러도 할 일이 없다 — 비활성이 정직하다.
+  it('좌표가 없으면 전부 비활성된다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)], false);
+    expect(screen.getByTestId('drawing-align-left')).toBeDisabled();
+    expect(screen.getByTestId('drawing-align-top')).toBeDisabled();
+  });
+
+  it('정렬은 실제로 적용되고 되돌리기 한 단계다', () => {
+    seed([rect('r1', 0), rect('r2', 50_000)]);
+    fireEvent.click(screen.getByTestId('drawing-align-left'));
+
+    const xs = () => s().drawingsFor(SCOPE).map((d) => (d as { a: { realMs: number } }).a.realMs);
+    expect(xs()).toEqual([0, 0]);
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(xs()).toEqual([0, 50_000]);
+  });
+
+  it('분배는 사이를 고르게 벌린다', () => {
+    seed([rect('r1', 0), rect('r2', 10_000), rect('r3', 90_000)]);
+    fireEvent.click(screen.getByTestId('drawing-distribute-horizontal'));
+    expect(
+      s().drawingsFor(SCOPE).map((d) => (d as { a: { realMs: number } }).a.realMs),
+    ).toEqual([0, 45_000, 90_000]);
+  });
+});
