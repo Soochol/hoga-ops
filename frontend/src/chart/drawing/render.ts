@@ -17,6 +17,7 @@ import type {
 import { subBarOffsetPx, isLocked } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
+import type { AlignGuide } from './alignSnap';
 import { catmullRomSpans } from './smooth';
 
 /**
@@ -349,6 +350,8 @@ function renderRectShape(
   ctx: ProjectCtx,
   r: Rect,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const box = projectRect(ctx, r.a, r.b);
   if (box == null) return;
@@ -362,7 +365,7 @@ function renderRectShape(
   drawHaloThenMain(c, r, selected, () => {
     c.strokeRect(box.x, box.y, box.w, box.h);
   });
-  if (showHandles(r, selected)) {
+  if (showHandles(r, handles)) {
     drawHandle(c, r.color, box.x, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y + box.h);
@@ -390,7 +393,7 @@ export function renderRectDraft(
   };
   c.save();
   c.globalAlpha = 0.9;
-  renderRectShape(c, ctx, draft, false);
+  renderRectShape(c, ctx, draft, false, false);
   c.restore();
 }
 
@@ -447,6 +450,8 @@ function renderMeasureShape(
   ctx: ProjectCtx,
   m: Measure,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const box = projectRect(ctx, m.a, m.b);
   if (box == null) return;
@@ -463,7 +468,7 @@ function renderMeasureShape(
   c.setLineDash([4, 3]);
   c.strokeRect(box.x, box.y, box.w, box.h);
   c.restore();
-  if (showHandles(m, selected)) {
+  if (showHandles(m, handles)) {
     // Handles at the two diagonal endpoints (a, b) — the drag anchors.
     const xa = ctx.realMsToX(m.a.realMs);
     const ya = ctx.priceToY(m.a.price);
@@ -493,7 +498,7 @@ export function renderMeasureDraft(
     lineStyle: 'dashed',
     paneId: ctx.paneId,
   };
-  renderMeasureShape(c, ctx, draft, false);
+  renderMeasureShape(c, ctx, draft, false, false);
 }
 
 function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selected: boolean) {
@@ -560,6 +565,8 @@ function renderTrendline(
   ctx: ProjectCtx,
   t: Trendline,
   selected: boolean,
+  /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
+  handles: boolean,
 ) {
   const xa = ctx.realMsToX(t.a.realMs);
   const ya = ctx.priceToY(t.a.price);
@@ -575,7 +582,7 @@ function renderTrendline(
     c.lineTo(x2, yb);
     c.stroke();
   });
-  if (showHandles(t, selected)) {
+  if (showHandles(t, handles)) {
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
@@ -651,14 +658,15 @@ export function renderTrendlineDraft(
 }
 
 /**
- * Endpoint/corner handles are drawn only for a selected drawing that can
- * actually be dragged by them. A LOCKED drawing keeps its selection halo — the
+ * Endpoint/corner handles are drawn only for a drawing whose handles are
+ * ENABLED (single selection — see renderDrawingBody) and that can actually be
+ * dragged by them. A LOCKED drawing keeps its selection halo — the
  * user must be able to see what they picked, and picking is the only route to
  * the unlock button — but loses the handles, which exist solely to advertise
  * "grab me here" and would be a lie (ADR-0164).
  */
-function showHandles(d: Drawing, selected: boolean): boolean {
-  return selected && !isLocked(d);
+function showHandles(d: Drawing, handles: boolean): boolean {
+  return handles && !isLocked(d);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {
@@ -770,6 +778,72 @@ export function renderGhostPreview(
   c.restore();
 }
 
+/**
+ * How far an alignment guide overshoots the two boxes it connects, in canvas px.
+ *
+ * This is the guide's ONLY visible signal, which is why it is generous. A guide
+ * sits by definition ON the aligned edge, so the stretch between the two shapes
+ * is hidden under their own strokes — measured in the browser, the 6 px first
+ * tried left barely a tick past the corner handles. The overshoot is the part
+ * that reads.
+ */
+const GUIDE_OVERSHOOT = 14;
+
+/**
+ * Alignment guide lines for an in-flight drag — the visual half of shape
+ * snapping. Drawn in the DRAGGED shape's own color rather than `--accent`:
+ * canvas cannot read CSS custom properties (see `textFont`), and the ghost's
+ * snap dot already set the precedent that magnet feedback wears the user's
+ * annotation color.
+ *
+ * Silent about anything it cannot project. A guide is transient feedback; a
+ * fallback position for one would be a line pointing at the wrong place, which
+ * is worse than no line at all.
+ */
+export function renderAlignGuides(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  guides: readonly AlignGuide[],
+  color: string,
+) {
+  const mine = guides.filter((g) => g.paneId === ctx.paneId);
+  if (mine.length === 0) return;
+  c.save();
+  c.strokeStyle = color;
+  c.globalAlpha = 0.85;
+  c.lineWidth = 1;
+  // Coarser than any shape's dash (`dashPattern` maxes at 3x/2x the stroke
+  // width): the guide wears the dragged shape's colour, so the dash rhythm is
+  // what separates it from the outline it is lying on top of.
+  c.setLineDash([7, 5]);
+  for (const g of mine) {
+    if (g.axis === 'x') {
+      const x = ctx.realMsToX(g.at);
+      const y1 = ctx.priceToY(g.from);
+      const y2 = ctx.priceToY(g.to);
+      if (x == null || y1 == null || y2 == null) continue;
+      const lo = Math.min(y1, y2) - GUIDE_OVERSHOOT;
+      const hi = Math.max(y1, y2) + GUIDE_OVERSHOOT;
+      c.beginPath();
+      c.moveTo(x, lo);
+      c.lineTo(x, hi);
+      c.stroke();
+    } else {
+      const y = ctx.priceToY(g.at);
+      const x1 = ctx.realMsToX(g.from);
+      const x2 = ctx.realMsToX(g.to);
+      if (y == null || x1 == null || x2 == null) continue;
+      const lo = Math.min(x1, x2) - GUIDE_OVERSHOOT;
+      const hi = Math.max(x1, x2) + GUIDE_OVERSHOOT;
+      c.beginPath();
+      c.moveTo(lo, y);
+      c.lineTo(hi, y);
+      c.stroke();
+    }
+  }
+  c.restore();
+}
+
 /** Inset of the lock badge from the shape, in canvas px. */
 const LOCK_BADGE_GAP = 9;
 
@@ -848,7 +922,7 @@ export function renderDrawing(
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
-  opts: { vlineTimeBadge?: boolean } = {},
+  opts: { vlineTimeBadge?: boolean; handles?: boolean } = {},
 ) {
   renderDrawingBody(c, ctx, d, selected, opts);
   // Drawn last so it is never overpainted by the shape it labels. A locked
@@ -864,19 +938,24 @@ function renderDrawingBody(
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
-  opts: { vlineTimeBadge?: boolean },
+  opts: { vlineTimeBadge?: boolean; handles?: boolean },
 ) {
+  // 헤일로와 핸들은 **다른 질문**이다. 다중 선택에서는 모두가 헤일로를 갖되
+  // 핸들은 아무도 갖지 않는다 — 핸들과 그룹 이동이 같은 픽셀을 두고 다투면,
+  // 눌러 보기 전에는 어느 쪽이 이길지 알 수 없기 때문이다. 기본값이 `selected`
+  // 라 이 옵션을 넘기지 않는 호출부(드래프트 미리보기)는 전과 같이 동작한다.
+  const handles = opts.handles ?? selected;
   switch (d.kind) {
     case 'hline':
       return renderHline(c, ctx, d, selected);
     case 'vline':
       return renderVline(c, ctx, d, selected, opts.vlineTimeBadge ?? true);
     case 'trendline':
-      return renderTrendline(c, ctx, d, selected);
+      return renderTrendline(c, ctx, d, selected, handles);
     case 'rect':
-      return renderRectShape(c, ctx, d, selected);
+      return renderRectShape(c, ctx, d, selected, handles);
     case 'measure':
-      return renderMeasureShape(c, ctx, d, selected);
+      return renderMeasureShape(c, ctx, d, selected, handles);
     case 'text':
       return renderText(c, ctx, d, selected);
     case 'pencil':

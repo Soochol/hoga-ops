@@ -675,3 +675,60 @@ def test_expected_frame_rejects_future_stamp() -> None:
         {"type": "0H", "item": "005930", "values": {"20": "163000", "10": "-47900", "15": "1"}},
         date="20260818", now_ms=hhmmssms_to_unix_ms("20260818", 90000000),
     ) is None
+
+
+# ── bad_field 로그 접기 (2026-08-31 장중 실측 대응) ──────────────────────────
+#
+# 배경: `0H`(주식예상체결) 파싱 실패가 하루 8,862건(08-28 은 16,094건) 찍혔고 전부
+# KRX 였다. 동시호가에 몰려 08:56 한 분에 942건(초당 16건)이었는데, 동기 파일 I/O 라
+# 그 자체가 이벤트 루프 부담이다(같은 시간대 `loop_lag` 10.2초).
+#
+# 종전 로그는 `type`·`code` 만 찍어 **어느 FID 가 문제인지 알 수 없었다**. 실패 경로가
+# 셋이라(시각 FID 부재 → KeyError, 시각/가격/수량 비숫자 → ValueError) 예외 문자열과
+# 수신 FID 목록이 곧 판별식이다.
+
+
+def _bad_0h_row(code: str = "005930") -> dict:
+    """시각 FID(20)가 빠진 `0H` — 실측 실패 후보 중 KeyError 경로."""
+    return {"type": "0H", "item": code, "values": {"10": "70000", "15": "100"}}
+
+
+def test_bad_field_logs_detail_once_per_type_and_code(caplog):
+    """첫 1회는 **상세** warning, 같은 (타입, 종목) 반복은 접는다.
+
+    **막는 방향**: 매 프레임 warning(폭주) 과 `type`·`code` 만 찍는 빈약한 로그.
+    상세가 없으면 다음 사람이 파서를 역추적해야 한다 — 이번에 실제로 그랬다.
+    """
+    from hoga.live import kiwoom_frames as kf
+
+    kf._BAD_FIELD_SEEN.clear()
+    with caplog.at_level("WARNING", logger="hoga.live.kiwoom_frames"):
+        assert parse_real_row(_bad_0h_row(), date=DATE, now_ms=NOW_MS) is None
+        assert parse_real_row(_bad_0h_row(), date=DATE, now_ms=NOW_MS) is None
+
+    warns = [r for r in caplog.records if "bad_field" in r.getMessage()]
+    assert len(warns) == 1, "같은 (타입, 종목)이 두 번 warning 을 냈다"
+    msg = warns[0].getMessage()
+    # 판별식 둘: 예외 종류와, 그 프레임이 **실제로 갖고 있던** FID 목록.
+    assert "KeyError" in msg, msg
+    assert "'10'" in msg and "'15'" in msg, msg
+    assert "type=0H" in msg and "code=005930" in msg, msg
+
+
+def test_bad_field_still_reports_a_new_code(caplog):
+    """접기는 (타입, 종목) 단위다 — 다른 종목의 첫 실패는 **여전히 보인다**.
+
+    **막는 방향**: 전역 1회로 접어 새 종목의 실패가 조용히 묻히는 것.
+    """
+    from hoga.live import kiwoom_frames as kf
+
+    kf._BAD_FIELD_SEEN.clear()
+    with caplog.at_level("WARNING", logger="hoga.live.kiwoom_frames"):
+        parse_real_row(_bad_0h_row("005930"), date=DATE, now_ms=NOW_MS)
+        parse_real_row(_bad_0h_row("000660"), date=DATE, now_ms=NOW_MS)
+
+    codes = {
+        r.getMessage().split("code=")[1].split()[0]
+        for r in caplog.records if "bad_field" in r.getMessage()
+    }
+    assert codes == {"005930", "000660"}

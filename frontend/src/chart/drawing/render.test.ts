@@ -12,6 +12,7 @@ import {
   renderTrendlineDraft,
   formatMeasureLabel,
   lockBadgeAnchor,
+  renderAlignGuides,
   type ProjectCtx,
   dashPattern,
 } from './render';
@@ -636,5 +637,74 @@ describe('잠금 배지', () => {
     renderDrawing(c, makeProjectCtx(), { ...trendline, locked: true }, false);
     expect(lockBadgeAnchor(makeProjectCtx(), trendline)).toBeNull();
     expect(badges(c)).toBe(0);
+  });
+});
+
+describe('renderAlignGuides', () => {
+  it('draws a vertical line at the aligned time, overshooting both boxes', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection(); // x = ms/1000, y = 300 − price
+    renderAlignGuides(
+      c,
+      ctx,
+      [{ axis: 'x', paneId: 'candle', at: 120_000, from: 100, to: 250 }],
+      '#14B8A6',
+    );
+    // from/to are prices → y 200 and y 50; the line runs GUIDE_OVERSHOOT past
+    // each end (50 − 14 = 36, 200 + 14 = 214).
+    expect(c.moveTo).toHaveBeenCalledWith(120, 36);
+    expect(c.lineTo).toHaveBeenCalledWith(120, 214);
+    expect(c.setLineDash).toHaveBeenCalledWith([7, 5]);
+  });
+
+  it('draws a horizontal line at the aligned price', () => {
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'candle', at: 100, from: 50_000, to: 120_000 }],
+      '#14B8A6',
+    );
+    expect(c.moveTo).toHaveBeenCalledWith(36, 200);
+    expect(c.lineTo).toHaveBeenCalledWith(134, 200);
+  });
+
+  it('wears the dragged shape colour rather than a hardcoded accent', () => {
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'candle', at: 100, from: 50_000, to: 120_000 }],
+      '#F43F5E',
+    );
+    expect(c.strokeStyle).toBe('#F43F5E');
+  });
+
+  it('skips a guide that belongs to another pane', () => {
+    // A price only means something on the scale it came from — drawing a
+    // volume-pane guide on the candle canvas would put a line at a fabricated
+    // level.
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'volume', at: 100, from: 50_000, to: 120_000 }],
+      '#14B8A6',
+    );
+    expect(c.stroke).not.toHaveBeenCalled();
+    expect(c.save).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when a coordinate cannot be projected', () => {
+    // No fallback position: a guide pointing at the wrong place is worse than
+    // no guide.
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtx(), // realMsToX → null
+      [{ axis: 'x', paneId: 'candle', at: 120_000, from: 100, to: 250 }],
+      '#14B8A6',
+    );
+    expect(c.stroke).not.toHaveBeenCalled();
   });
 });

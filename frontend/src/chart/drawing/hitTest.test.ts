@@ -4,7 +4,9 @@ import {
   distanceToHline,
   distanceToSegment,
   distanceToPolyline,
+  drawingsInRect,
   hitTestDrawings,
+  marqueeRect,
   unlockedOnly,
   type HitCoord,
 } from './hitTest';
@@ -268,5 +270,126 @@ describe('unlockedOnly — 포인터 게이트가 보는 부분집합', () => {
     expect(hitTestDrawings(coord, stack, 50, 100)?.id).toBe('locked');
     // 먼저 거르면 아래 살아 있는 도형이 제대로 잡힌다.
     expect(hitTestDrawings(coord, unlockedOnly(stack), 50, 100)?.id).toBe('live');
+  });
+});
+
+/** 마퀴(Shift+드래그) 커널. `hitTestDrawings` 와 같은 투영 bag 위에서 돌지만
+ *  묻는 것이 다르다 — 점과의 거리가 아니라 **사각형과의 교차**다. */
+describe('drawingsInRect', () => {
+  const style = { color: '#14B8A6', width: 1.5, lineStyle: 'solid' as const };
+  // 가격 100 → y 100 (1:1), 시각 ms → x 그대로. 스텁이 항등이라 기대값을 픽셀로
+  // 직접 읽을 수 있다.
+  const coord: HitCoord = {
+    realMsToCanvasX: (ms) => ms,
+    priceToCanvasY: (price) => price,
+    paneIdAtY: () => 'candle',
+    canvasWidth: 800,
+    measureTextWidth: (text, sizePx) => text.length * sizePx * 0.6,
+  };
+  const box = { x1: 100, y1: 100, x2: 200, y2: 200 };
+
+  const hline = (price: number, id = 'h'): Drawing =>
+    ({ id, kind: 'hline', price, ...style, paneId: 'candle' }) as Drawing;
+  const vline = (realMs: number, id = 'v'): Drawing =>
+    ({ id, kind: 'vline', realMs, ...style, paneId: 'candle' }) as Drawing;
+  const trend = (
+    a: [number, number],
+    b: [number, number],
+    id = 't',
+  ): Drawing =>
+    ({
+      id, kind: 'trendline',
+      a: { realMs: a[0], price: a[1] }, b: { realMs: b[0], price: b[1] },
+      ...style, paneId: 'candle',
+    }) as Drawing;
+
+  const ids = (list: Drawing[]) => drawingsInRect(coord, list, box).map((d) => d.id);
+
+  // 포함(containment)이 아니라 교차인 이유가 이 두 케이스다. hline 은 캔버스
+  // 전폭을, vline 은 전고를 차지하므로 어떤 박스에도 "들어갈" 수 없다 —
+  // 포함 규칙이었다면 가장 흔한 두 도형을 마퀴가 영영 못 집는다.
+  it('hline 은 y 만 본다 — 박스의 x 범위와 무관하게 잡힌다', () => {
+    expect(ids([hline(150)])).toEqual(['h']);
+    expect(ids([hline(99)])).toEqual([]);
+    expect(ids([hline(201)])).toEqual([]);
+  });
+
+  it('vline 은 x 만 본다', () => {
+    expect(ids([vline(150)])).toEqual(['v']);
+    expect(ids([vline(99)])).toEqual([]);
+  });
+
+  it('추세선은 박스를 관통하기만 해도 잡힌다 — 양 끝이 밖이어도', () => {
+    expect(ids([trend([0, 0], [300, 300])])).toEqual(['t']);
+  });
+
+  it('박스 안에 완전히 든 추세선도 잡힌다', () => {
+    expect(ids([trend([120, 120], [180, 180])])).toEqual(['t']);
+  });
+
+  it('스치지 않는 추세선은 잡히지 않는다', () => {
+    // 박스 왼쪽 위를 지나가는 평행선.
+    expect(ids([trend([0, 0], [90, 90])])).toEqual([]);
+  });
+
+  it('사각형은 겹치기만 하면 잡힌다(모서리만 걸쳐도)', () => {
+    const r: Drawing = {
+      id: 'r', kind: 'rect',
+      a: { realMs: 190, price: 190 }, b: { realMs: 400, price: 400 },
+      ...style, fillOpacity: 0.1, paneId: 'candle',
+    } as Drawing;
+    expect(ids([r])).toEqual(['r']);
+  });
+
+  it('연필은 획의 한 구간만 걸쳐도 잡힌다', () => {
+    const p: Drawing = {
+      id: 'p', kind: 'pencil',
+      points: [
+        { realMs: 0, price: 0 },
+        { realMs: 150, price: 150 },
+        { realMs: 500, price: 500 },
+      ],
+      ...style, paneId: 'candle',
+    } as Drawing;
+    expect(ids([p])).toEqual(['p']);
+  });
+
+  it('점 하나짜리 연필 획도 박스 안이면 잡힌다', () => {
+    const dot: Drawing = {
+      id: 'dot', kind: 'pencil',
+      points: [{ realMs: 150, price: 150 }],
+      ...style, paneId: 'candle',
+    } as Drawing;
+    expect(ids([dot])).toEqual(['dot']);
+  });
+
+  it('텍스트는 그려지는 박스로 판정한다', () => {
+    const t = (realMs: number, price: number, id: string): Drawing =>
+      ({ id, kind: 'text', at: { realMs, price }, text: 'ab', fontSize: 10, ...style, paneId: 'candle' }) as Drawing;
+    // (150,150) 에서 폭 12(=2글자×10×0.6), 높이 10 → 박스 안.
+    expect(ids([t(150, 150, 'in')])).toEqual(['in']);
+    // 앵커가 박스 오른쪽 밖이면 폭을 더해도 돌아오지 않는다.
+    expect(ids([t(210, 150, 'out')])).toEqual([]);
+  });
+
+  it('여러 개를 목록(z) 순서 그대로 돌려준다', () => {
+    expect(ids([hline(150, 'h1'), vline(150, 'v1'), hline(160, 'h2')])).toEqual(['h1', 'v1', 'h2']);
+  });
+
+  // 잠금은 이 커널이 아니라 **호출자**가 거른다(ADR-0164 의 합성 순서: 걸러낸 뒤
+  // 판정). 여기서 잠긴 것을 걸렀다면 그 규칙이 두 군데로 흩어진다.
+  it('잠금은 보지 않는다 — unlockedOnly 와 합성해서 쓴다', () => {
+    const locked = { ...hline(150, 'lk'), locked: true } as Drawing;
+    expect(ids([locked])).toEqual(['lk']);
+    expect(drawingsInRect(coord, unlockedOnly([locked]), box)).toEqual([]);
+  });
+});
+
+describe('marqueeRect', () => {
+  it('어느 방향으로 끌어도 같은 사각형으로 정규화된다', () => {
+    const expected = { x1: 10, y1: 20, x2: 50, y2: 80 };
+    expect(marqueeRect(10, 20, 50, 80)).toEqual(expected);
+    expect(marqueeRect(50, 80, 10, 20)).toEqual(expected);
+    expect(marqueeRect(50, 20, 10, 80)).toEqual(expected);
   });
 });

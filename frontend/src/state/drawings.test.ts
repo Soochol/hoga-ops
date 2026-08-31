@@ -28,7 +28,7 @@ describe('useDrawingsStore — Code partitioning', () => {
     const s = useDrawingsStore.getState();
     expect(s.activeScope).toBeNull();
     expect(s.activeTool).toBe('select');
-    expect(s.selectedFor(A)).toBeNull();
+    expect(s.selectedFor(A)).toEqual([]);
     expect(s.drawingsFor(A)).toEqual([]);
   });
 
@@ -49,11 +49,11 @@ describe('useDrawingsStore — Code partitioning', () => {
     useDrawingsStore.getState().setActiveScope(A);
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     useDrawingsStore.getState().setSelected(A, 'h1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['h1']);
     // 종목별이라 다른 종목으로 전환해도 A 의 선택은 유지된다(창별 독립 선택).
     useDrawingsStore.getState().setActiveScope(B);
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
-    expect(useDrawingsStore.getState().selectedFor(B)).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['h1']);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual([]);
   });
 });
 
@@ -124,8 +124,8 @@ describe('useDrawingsStore — timeframe slot partitioning', () => {
     s().add(A, mkHline('m1', 100));
     s().add(A_DAILY, mkHline('d1', 200));
     s().setSelected(A, 'm1');
-    expect(s().selectedFor(A)).toBe('m1');
-    expect(s().selectedFor(A_DAILY)).toBeNull();
+    expect(s().selectedFor(A)).toEqual(['m1']);
+    expect(s().selectedFor(A_DAILY)).toEqual([]);
   });
 
   it('each slot persists under its own key', () => {
@@ -147,12 +147,12 @@ describe('useDrawingsStore — mutations', () => {
     useDrawingsStore.getState().add(B, mkHline('b1', 2));
     useDrawingsStore.getState().setSelected(A, 'a1');
     useDrawingsStore.getState().setSelected(B, 'b1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('a1');
-    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['a1']);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual(['b1']);
     // A 의 드로잉 제거 → A 선택만 해제, B 유지.
     useDrawingsStore.getState().remove(A, 'a1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
-    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual([]);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual(['b1']);
   });
 
   it('mutations target the explicit code regardless of activeScope (멀티창, C2c-2b)', () => {
@@ -182,7 +182,7 @@ describe('useDrawingsStore — mutations', () => {
     useDrawingsStore.getState().setSelected(A, 'h1');
     useDrawingsStore.getState().remove(A, 'h1');
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(0);
-    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual([]);
   });
 
   it('clearAll empties the active Code list only', () => {
@@ -296,7 +296,7 @@ describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
     s().add(A, mkHline('h1', 100));
     s().setSelected(A, 'h1');
     s().undo(A); // h1 removed by undo → selection must clear
-    expect(s().selectedFor(A)).toBeNull();
+    expect(s().selectedFor(A)).toEqual([]);
   });
 
   it('undo/redo persist to localStorage', () => {
@@ -721,7 +721,7 @@ describe('useDrawingsStore — 잠금', () => {
     s().setSelected(A, 'h2');
     s().clearAll(A);
 
-    expect(s().selectedFor(A)).toBe('h2');
+    expect(s().selectedFor(A)).toEqual(['h2']);
   });
 
   it('지워진 도형이 선택돼 있었다면 선택은 해제된다', () => {
@@ -731,7 +731,7 @@ describe('useDrawingsStore — 잠금', () => {
     s().setSelected(A, 'h1');
     s().clearAll(A);
 
-    expect(s().selectedFor(A)).toBeNull();
+    expect(s().selectedFor(A)).toEqual([]);
   });
 
   // undo/redo/restore/import 는 배열 통째 교체라 잠금을 보지 않는다 — 항목별
@@ -823,5 +823,141 @@ describe('useDrawingsStore — setLockedAll', () => {
 
     expect(s().drawingsFor(A)).toHaveLength(3);
     expect(s().drawingsFor(A)[0].color).toBe('#FFD60A');
+  });
+});
+
+// ── 다중 선택 ──────────────────────────────────────────────────────────────
+describe('useDrawingsStore — 다중 선택', () => {
+  const s = () => useDrawingsStore.getState();
+  const seed3 = () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().add(A, mkHline('h3', 300));
+  };
+
+  it('toggleSelected 는 없으면 끝에 붙이고 있으면 뺀다', () => {
+    seed3();
+    s().toggleSelected(A, 'h1');
+    s().toggleSelected(A, 'h3');
+    expect(s().selectedFor(A)).toEqual(['h1', 'h3']);
+    s().toggleSelected(A, 'h1');
+    expect(s().selectedFor(A)).toEqual(['h3']);
+  });
+
+  it('addToSelection 은 합집합이다 — 이미 있는 것은 순서를 지킨다', () => {
+    seed3();
+    s().setSelected(A, 'h2');
+    s().addToSelection(A, ['h1', 'h2', 'h3']);
+    expect(s().selectedFor(A)).toEqual(['h2', 'h1', 'h3']);
+  });
+
+  it('setSelected(null) 은 집합 전체를 비운다', () => {
+    seed3();
+    s().addToSelection(A, ['h1', 'h2']);
+    s().setSelected(A, null);
+    expect(s().selectedFor(A)).toEqual([]);
+  });
+
+  it('선택 없음은 항상 같은 배열 참조다 — 셀렉터가 무한 리렌더에 빠지지 않도록', () => {
+    expect(s().selectedFor(A)).toBe(s().selectedFor(B));
+  });
+
+  it('선택은 여전히 scope 별이다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(B, mkHline('b1', 100));
+    s().addToSelection(A, ['h1']);
+    expect(s().selectedFor(A)).toEqual(['h1']);
+    expect(s().selectedFor(B)).toEqual([]);
+  });
+
+  // ⚠ 이 액션의 존재 이유. 항목마다 update 를 부르면 3개를 옮긴 뒤 Ctrl+Z 를
+  // 3번 눌러야 한다.
+  it('updateMany 는 되돌리기 한 단계다', () => {
+    seed3();
+    s().updateMany(A, [
+      { id: 'h1', patch: { price: 111 } },
+      { id: 'h2', patch: { price: 222 } },
+      { id: 'h3', patch: { price: 333 } },
+    ]);
+    expect(s().drawingsFor(A).map((d) => (d as { price: number }).price)).toEqual([111, 222, 333]);
+
+    s().undo(A);
+    expect(s().drawingsFor(A).map((d) => (d as { price: number }).price)).toEqual([100, 200, 300]);
+  });
+
+  it('updateMany 는 잠긴 항목만 건너뛰고 나머지는 옮긴다', () => {
+    seed3();
+    s().update(A, 'h2', { locked: true });
+    s().updateMany(A, [
+      { id: 'h1', patch: { price: 111 } },
+      { id: 'h2', patch: { price: 222 } },
+    ]);
+    expect(s().drawingsFor(A).map((d) => (d as { price: number }).price)).toEqual([111, 200, 300]);
+  });
+
+  it('updateMany 는 적용될 것이 하나도 없으면 이력을 남기지 않는다', () => {
+    seed3();
+    s().update(A, 'h1', { locked: true });
+    s().updateMany(A, [{ id: 'h1', patch: { price: 999 } }]);
+    // 직전 변이(잠금)가 그대로 되돌려지면 = 그 사이에 빈 단계가 없다는 뜻.
+    s().undo(A);
+    expect(s().drawingsFor(A).find((d) => d.id === 'h1')).toEqual(mkHline('h1', 100));
+  });
+
+  // 같은 집합을 계속 끄는 동안은 한 단계로 합쳐진다(단건 update 와 같은 규칙,
+  // 키만 정렬된 id 시그니처).
+  it('같은 집합의 연속 updateMany 는 한 단계로 합쳐진다', () => {
+    seed3();
+    for (const price of [110, 120, 130]) {
+      s().updateMany(A, [
+        { id: 'h1', patch: { price } },
+        { id: 'h2', patch: { price: price + 100 } },
+      ]);
+    }
+    s().undo(A);
+    expect(s().drawingsFor(A).map((d) => (d as { price: number }).price)).toEqual([100, 200, 300]);
+  });
+
+  it('집합이 달라지면 새 단계가 시작된다', () => {
+    seed3();
+    s().updateMany(A, [{ id: 'h1', patch: { price: 110 } }]);
+    s().updateMany(A, [{ id: 'h2', patch: { price: 210 } }]);
+    s().undo(A);
+    expect(s().drawingsFor(A).map((d) => (d as { price: number }).price)).toEqual([110, 200, 300]);
+  });
+
+  it('removeMany 는 되돌리기 한 단계이고 잠긴 것은 남긴다', () => {
+    seed3();
+    s().update(A, 'h2', { locked: true });
+    s().removeMany(A, ['h1', 'h2', 'h3']);
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h2']);
+
+    s().undo(A);
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h1', 'h2', 'h3']);
+  });
+
+  it('removeMany 는 지울 게 없으면 아무 일도 하지 않는다', () => {
+    seed3();
+    s().update(A, 'h1', { locked: true });
+    s().removeMany(A, ['h1']);
+    s().undo(A);
+    expect(s().drawingsFor(A).find((d) => d.id === 'h1')).toEqual(mkHline('h1', 100));
+  });
+
+  // 부분 생존. 단일 선택 시절엔 "내 선택이 살아남았나"였고, 집합에서는 살아남은
+  // 것만 남아야 한다.
+  it('삭제 뒤 선택은 살아남은 것만 남는다', () => {
+    seed3();
+    s().addToSelection(A, ['h1', 'h2', 'h3']);
+    s().removeMany(A, ['h1', 'h3']);
+    expect(s().selectedFor(A)).toEqual(['h2']);
+  });
+
+  it('undo 로 사라진 도형은 선택에서도 빠진다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().addToSelection(A, ['h1', 'h2']);
+    s().undo(A); // h2 추가를 되돌린다
+    expect(s().selectedFor(A)).toEqual(['h1']);
   });
 });

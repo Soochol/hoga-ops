@@ -166,7 +166,7 @@ describe('DrawingPropertyPanel — delete', () => {
     const { container } = render(<DrawingPropertyPanel scope="005930|minute" />);
     fireEvent.click(screen.getByTestId('drawing-delete'));
     expect(useDrawingsStore.getState().byScope.get('005930|minute')).toEqual([]);
-    expect(useDrawingsStore.getState().selectedFor('005930|minute')).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor('005930|minute')).toEqual([]);
     expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
   });
 });
@@ -290,5 +290,201 @@ describe('DrawingPropertyPanel — 잠금', () => {
     const { container } = render(<DrawingPropertyPanel scope={SCOPE} />);
 
     expect(container.querySelector('[data-drawing-property-panel]')).not.toBeNull();
+  });
+});
+
+// ─── 다중 선택 툴바 ────────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 다중 선택', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const mk = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+
+  beforeEach(() => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    s().add(SCOPE, mk('h1', 1000));
+    s().add(SCOPE, mk('h2', 2000));
+    s().add(SCOPE, mk('h3', 3000));
+    s().addToSelection(SCOPE, ['h1', 'h2']);
+  });
+
+  it('단일 편집기 대신 다중 툴바가 뜬다 — 스타일 컨트롤은 함께 온다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.getByTestId('drawing-multi-selection-panel')).toBeTruthy();
+    // 집합이 전부 hline 이므로 색·두께·선 스타일이 뜨고, 텍스트/사각형 전용
+    // 컨트롤은 뜨지 않는다(그 속성을 가진 멤버가 없다).
+    expect(screen.getByTestId('drawing-color-trigger')).toBeTruthy();
+    expect(screen.getByTestId('drawing-thickness-trigger')).toBeTruthy();
+    expect(screen.getByTestId('drawing-line-style-trigger')).toBeTruthy();
+    expect(screen.queryByTestId('drawing-font-size-trigger')).toBeNull();
+    expect(screen.queryByTestId('drawing-fill-trigger')).toBeNull();
+  });
+
+  it('선택 개수를 보여 준다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.getByTestId('drawing-multi-count').textContent).toBe('2개 선택');
+  });
+
+  it('삭제는 선택한 것만 지운다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    act(() => {
+      fireEvent.click(screen.getByTestId('drawing-multi-delete'));
+    });
+    expect(s().drawingsFor(SCOPE).map((d) => d.id)).toEqual(['h3']);
+  });
+
+  // 잠근 뒤 선택을 비우는 이유: 잠긴 것을 집합에 남겨 두면 헤일로는 있는데
+  // 끌리지 않는, 화면이 설명하지 못하는 상태가 된다.
+  it('잠금은 선택한 것만 잠그고 선택을 비운다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    act(() => {
+      fireEvent.click(screen.getByTestId('drawing-multi-lock'));
+    });
+    expect(s().drawingsFor(SCOPE).map((d) => d.locked === true)).toEqual([true, true, false]);
+    expect(s().selectedFor(SCOPE)).toEqual([]);
+  });
+
+  it('하나로 접히면 다시 스타일 편집기로 돌아온다', () => {
+    s().setSelected(SCOPE, 'h1');
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.queryByTestId('drawing-multi-selection-panel')).toBeNull();
+    expect(screen.getByTestId('drawing-color-trigger')).toBeTruthy();
+  });
+});
+
+// ─── 다중 선택 — 스타일 일괄 편집 ──────────────────────────────────────────
+describe('DrawingPropertyPanel — 스타일 일괄 편집', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  const hline = (id: string, over: Partial<Drawing> = {}): Drawing =>
+    ({ ...HLINE, id, ...over }) as Drawing;
+  const text = (id: string, over: Record<string, unknown> = {}): Drawing =>
+    ({
+      id, kind: 'text', at: { realMs: 1_700_000_000_000, price: 1000 }, text: '메모',
+      fontSize: 13, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', ...over,
+    }) as Drawing;
+  const rect = (id: string, over: Record<string, unknown> = {}): Drawing =>
+    ({
+      id, kind: 'rect',
+      a: { realMs: 1_700_000_000_000, price: 1000 }, b: { realMs: 1_700_000_600_000, price: 2000 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', fillOpacity: 0.1, paneId: 'candle', ...over,
+    }) as Drawing;
+
+  const seed = (...items: Drawing[]) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    items.forEach((d) => s().add(SCOPE, d));
+    s().addToSelection(SCOPE, items.map((d) => d.id));
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+  };
+  const get = (id: string) => s().drawingsFor(SCOPE).find((d) => d.id === id)!;
+
+  // ── 어떤 컨트롤이 뜨는가: 그 속성을 가진 멤버가 하나라도 있으면 ──────────
+  it('텍스트가 섞이면 글자 크기 컨트롤이 함께 뜬다', () => {
+    seed(hline('h1'), text('t1'));
+    expect(screen.getByTestId('drawing-font-size-trigger')).toBeTruthy();
+    // 두께는 hline 이 가지고 있으므로 여전히 뜬다.
+    expect(screen.getByTestId('drawing-thickness-trigger')).toBeTruthy();
+  });
+
+  it('텍스트만 고르면 두께·선 스타일이 사라진다', () => {
+    seed(text('t1'), text('t2'));
+    expect(screen.queryByTestId('drawing-thickness-trigger')).toBeNull();
+    expect(screen.queryByTestId('drawing-line-style-trigger')).toBeNull();
+    expect(screen.getByTestId('drawing-font-size-trigger')).toBeTruthy();
+  });
+
+  it('사각형이 섞이면 채우기 농도가 뜬다', () => {
+    seed(hline('h1'), rect('r1'));
+    expect(screen.getByTestId('drawing-fill-trigger')).toBeTruthy();
+  });
+
+  // ── 혼합 판정은 carrier 만 센다 ──────────────────────────────────────────
+  it('값이 모두 같으면 그 값을 보여 준다', () => {
+    seed(hline('h1', { width: 3 }), hline('h2', { width: 3 }));
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('3px');
+  });
+
+  it('값이 갈리면 "혼합" 을 보여 준다', () => {
+    seed(hline('h1', { width: 1 }), hline('h2', { width: 4 }));
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('혼합');
+  });
+
+  // ⚠ 텍스트는 두께가 **갈린** 게 아니라 두께라는 개념이 없다. carrier 가 아닌
+  // 멤버를 혼합 계산에 넣으면 "2px 두 개 + 텍스트" 가 혼합으로 보인다.
+  it('두께를 안 가진 멤버는 혼합 판정에 들어가지 않는다', () => {
+    seed(hline('h1', { width: 2 }), hline('h2', { width: 2 }), text('t1', { width: 5 }));
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('2px');
+    expect(screen.getByTestId('drawing-thickness-trigger').textContent).not.toContain('혼합');
+  });
+
+  it('혼합일 때는 팝오버의 어느 줄도 강조되지 않는다', () => {
+    seed(hline('h1', { width: 1 }), hline('h2', { width: 4 }));
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    const highlighted = STROKE_WIDTHS.filter((w) =>
+      screen.getByTestId(`drawing-thickness-item-${w}`).className.includes('text-accent'),
+    );
+    expect(highlighted).toEqual([]);
+  });
+
+  // ── 적용 ────────────────────────────────────────────────────────────────
+  it('색은 집합 전체에 적용된다', () => {
+    seed(hline('h1'), text('t1'), rect('r1'));
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+    fireEvent.click(screen.getByTestId(`drawing-color-swatch-${COLOR_PALETTE[2]}`));
+    expect(s().drawingsFor(SCOPE).map((d) => d.color)).toEqual([
+      COLOR_PALETTE[2], COLOR_PALETTE[2], COLOR_PALETTE[2],
+    ]);
+  });
+
+  // ⚠ 부분 적용. 텍스트에 width 를 흘리면 저장 데이터에 유령 필드가 남는다.
+  it('두께는 그 속성을 가진 멤버에게만 간다 — 텍스트는 건너뛴다', () => {
+    seed(hline('h1', { width: 1 }), text('t1'));
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-thickness-item-5'));
+    expect((get('h1') as { width: number }).width).toBe(5);
+    expect((get('t1') as { width?: number }).width).toBe(2); // 원래 값 그대로
+  });
+
+  it('글자 크기는 텍스트에게만 간다', () => {
+    seed(hline('h1'), text('t1', { fontSize: 13 }));
+    fireEvent.click(screen.getByTestId('drawing-font-size-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-font-size-item-20'));
+    expect((get('t1') as { fontSize: number }).fontSize).toBe(20);
+    expect(get('h1')).not.toHaveProperty('fontSize');
+  });
+
+  it('일괄 편집은 되돌리기 한 단계다', () => {
+    seed(hline('h1', { color: '#14B8A6' }), hline('h2', { color: '#14B8A6' }));
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+    fireEvent.click(screen.getByTestId(`drawing-color-swatch-${COLOR_PALETTE[1]}`));
+    expect(s().drawingsFor(SCOPE).map((d) => d.color)).toEqual([COLOR_PALETTE[1], COLOR_PALETTE[1]]);
+
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(s().drawingsFor(SCOPE).map((d) => d.color)).toEqual(['#14B8A6', '#14B8A6']);
+  });
+
+  // sticky(다음에 그릴 도형이 물려받는 마지막 스타일)는 건드리지 않는다 — 종류가
+  // 섞인 배치를 어느 kind 에 귀속시킬지 정의가 없다. 단건 편집과의 의도적 비대칭.
+  it('일괄 편집은 per-kind sticky 를 갱신하지 않는다', () => {
+    const before = s().styleForKind('hline').color;
+    seed(hline('h1'), hline('h2'));
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+    fireEvent.click(screen.getByTestId(`drawing-color-swatch-${COLOR_PALETTE[3]}`));
+    expect(s().styleForKind('hline').color).toBe(before);
+  });
+
+  it('잠긴 멤버는 일괄 편집에서 빠진다', () => {
+    seed(hline('h1', { width: 1 }), hline('h2', { width: 1 }));
+    act(() => {
+      s().update(SCOPE, 'h2', { locked: true });
+    });
+    fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
+    fireEvent.click(screen.getByTestId('drawing-thickness-item-5'));
+    expect((get('h1') as { width: number }).width).toBe(5);
+    expect((get('h2') as { width: number }).width).toBe(1);
   });
 });
