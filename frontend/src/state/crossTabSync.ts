@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { LIVE_SETTINGS_KEY, subscribeToLiveSettingsPing } from '../api/liveSettings';
 import { useChartPrefsStore } from './chartPrefs';
 import { subscribeToChartPrefsStorage } from './chartPrefsPersistence';
+import { subscribeToInvestorDailySpanStorage } from './investorDailySpan';
 import { subscribeToInvestorEstimateUnitStorage } from './investorEstimateUnit';
 import { subscribeToIndicatorsStorage } from './livePage';
 import { subscribeToLiveVenueStorage } from './liveVenue';
@@ -36,6 +37,7 @@ export function useCrossTabSync(): void {
   useEffect(() => subscribeToThemePreferenceStorage(), []);
   useEffect(() => subscribeToLiveVenueStorage(), []);
   useEffect(() => subscribeToInvestorEstimateUnitStorage(), []);
+  useEffect(() => subscribeToInvestorDailySpanStorage(), []);
   // 보조지표는 두 스토어에 나뉘어 산다(ADR-0072) — 「지표」 드로어라는 한 표면을
   // 이루므로 둘 다 동기화하지 않으면 같은 드로어 안에서 일부 행만 따라온다.
   useEffect(() => subscribeToIndicatorsStorage(), []);

@@ -26,6 +26,7 @@ import TradeTickTable from '../../sidebar/TradeTickTable';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
 import { InvestorTrendEstimateCard } from '../../sidebar/InvestorTrendEstimateCard';
+import { InvestorDailyWindow } from './InvestorDailyWindow';
 import {
   resolveBrokerCardProps,
   resolveCursorDetailScope,
@@ -140,6 +141,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <TradeWindow code={code} />;
     case 'investor':
       return <InvestorWindow code={code} />;
+    case 'investor-daily':
+      return <InvestorDailyPane win={win} code={code} />;
     case 'vdist':
       return <VdistWindow win={win} code={code} />;
     case 'program':
@@ -727,6 +730,18 @@ function TradeWindow({ code }: { code: string }) {
       <TradeTickTable view={view} highlight={highlight} />
     </div>
   );
+}
+
+/** 일별 투자자 — 커서 날짜만 위에서 풀어 넘긴다.
+ *
+ *  `useGroupCursor` 를 표 컴포넌트 안에서 부르지 않는 이유: 그러면 표가 워크스페이스
+ *  스토어에 묶여 단위 테스트가 그룹 배선까지 세워야 한다. 거래원·프로그램 창과 같은
+ *  의미론(같은 링크 그룹 차트의 호버만 통과)을 여기 한 겹에서 해석한다.
+ */
+function InvestorDailyPane({ win, code }: { win: WorkspaceWindow; code: string }) {
+  const { cursorMs } = useGroupCursor(win.group);
+  const cursorDate = cursorMs === null ? null : realMsToYyyymmdd(cursorMs);
+  return <InvestorDailyWindow code={code} cursorDate={cursorDate} />;
 }
 
 function InvestorWindow({ code }: { code: string }) {

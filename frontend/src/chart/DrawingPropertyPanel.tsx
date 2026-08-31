@@ -399,11 +399,12 @@ function ZOrderButtons({
  * 판단을 한다: 눌리는데 아무 일도 안 나는 버튼이 고장으로 읽힌다.
  */
 function MultiSelectionToolbar({
-  scope, ids, resolveAlignCoords,
+  scope, ids, resolveAlignCoords, resolveVisibleRightRealMs,
 }: {
   scope: string;
   ids: readonly string[];
   resolveAlignCoords?: () => AlignCoords | null;
+  resolveVisibleRightRealMs?: () => number | null;
 }) {
   // 도형 배열은 **안정 참조**를 구독하고 멤버는 파생한다. 셀렉터 안에서 filter/map
   // 하면 매 렌더 새 배열이라 무한 리렌더가 된다(EMPTY_SELECTION 과 같은 함정).
@@ -423,6 +424,17 @@ function MultiSelectionToolbar({
   const allLocked = members.length > 0 && lockedCount === members.length;
   /** 이 속성을 실제로 고칠 수 있는 멤버가 있는가 — 없으면 컨트롤을 비활성한다. */
   const editable = (prop: StyleProp) => carriersOf(members, prop).some((m) => !isLocked(m));
+
+  // 우측 확장은 사각형 전용 **속성**이지 스타일이 아니다 — 불리언이고 토글 의미라
+  // `StyleProp` 의 혼합값·팝오버 기계에 맞지 않는다. 잠금 버튼과 같은 모양으로 다룬다.
+  const rects = members.filter((m) => m.kind === 'rect');
+  const allExtended = rects.length > 0 && rects.every((r) => isExtendedRight(r));
+  const canToggleExtend = rects.some((r) => !isLocked(r));
+  // "보이는 영역까지" 는 무한 확장 중인 사각형에 아무것도 바꾸지 않는다(이미 화면 끝
+  // 이다) — 단일 패널이 같은 이유로 비활성한다. 손댈 수 있는 사각형이 하나도 없으면
+  // 버튼을 죽인다: 눌리는데 아무 일도 안 나는 것이 고장으로 읽힌다.
+  const extendToViewTargets = rects.filter((r) => !isLocked(r) && !isExtendedRight(r));
+  const canExtendToView = resolveVisibleRightRealMs != null && extendToViewTargets.length > 0;
 
   const color = commonValue(members, 'color') as string | null | undefined;
   const width = commonValue(members, 'width') as number | null | undefined;
@@ -545,6 +557,79 @@ function MultiSelectionToolbar({
           previewColor={color ?? 'var(--fg-dim)'}
           onPick={(op) => apply('fillOpacity', op)}
         />
+      )}
+
+      {/* 단일 패널과 **같은 testid** 를 쓴다 — 단일과 다중은 배타적으로 렌더되므로
+          충돌하지 않고, 복사본 testid 를 만들면 grep 표면이 갈린다(팝오버와 같은 규율).
+          글리프의 뜻도 그대로다: `→` 는 끝이 열려 "계속 간다", `⇥` 는 "여기서 멈춘다". */}
+      {rects.length > 0 && (
+        <>
+          <button
+            type="button"
+            data-testid="drawing-extend-right"
+            aria-label="우측 무한 확장"
+            aria-pressed={allExtended}
+            disabled={!canToggleExtend}
+            title={
+              allExtended
+                ? '선택한 사각형의 우측 무한 확장을 함께 해제합니다'
+                : '선택한 사각형의 오른쪽 변을 항상 화면 끝에 붙입니다'
+            }
+            onClick={() =>
+              useDrawingsStore.getState().updateMany(
+                scope,
+                // 해제도 `false` 를 쓴다 — 단일 패널과 같은 표현이고, 저장 단계가
+                // `extendRight !== true` 를 지운다(persistence).
+                rects.map((r) => ({ id: r.id, patch: { extendRight: !allExtended } as Partial<Drawing> })),
+              )
+            }
+            className={
+              'h-7 w-7 inline-flex items-center justify-center rounded leading-none' +
+              (!canToggleExtend
+                ? ' opacity-40 cursor-not-allowed'
+                : allExtended
+                  ? ' bg-tint-selection text-accent'
+                  : ' text-fg-dim hover:bg-bg-input-hover')
+            }
+          >
+            →
+          </button>
+          <button
+            type="button"
+            data-testid="drawing-extend-to-view"
+            aria-label="보이는 영역까지 우측 확장"
+            disabled={!canExtendToView}
+            title={
+              allExtended
+                ? '우측 무한 확장이 켜져 있어 이미 화면 끝까지 닿아 있습니다'
+                : '선택한 사각형의 오른쪽 변을 지금 화면 끝에 맞춥니다 (Ctrl+Z 로 되돌리기)'
+            }
+            onClick={() => {
+              // 좌표는 **누르는 시점**에 한 번만 굳힌다 — 멤버마다 다시 물으면 그 사이
+              // 팬·줌이 끼어들어 사각형마다 다른 끝에 맞을 수 있다(정렬과 같은 규칙).
+              const rightMs = resolveVisibleRightRealMs?.() ?? null;
+              if (rightMs == null) return;
+              const patches = extendToViewTargets.flatMap((r) => {
+                if (r.kind !== 'rect') return [];
+                // 어느 코너가 오른쪽인지는 저장 순서(a/b)가 아니라 realMs 비교로 정한다.
+                // 핸들을 가로질러 끌면 `a` 가 `b` 의 오른쪽에 놓이므로, `b` 를 고정으로
+                // 삼으면 그 사각형은 **왼쪽 변이 끌려가 뒤집힌다**(단일 패널의 함정을
+                // 그대로 옮겨 왔다). price 는 보존한다 — 이 버튼은 가로 폭만 다룬다.
+                const farKey = r.b.realMs >= r.a.realMs ? 'b' : 'a';
+                const far = r[farKey];
+                if (far.realMs === rightMs) return []; // 이미 그 자리
+                return [{ id: r.id, patch: { [farKey]: { realMs: rightMs, price: far.price } } as Partial<Drawing> }];
+              });
+              useDrawingsStore.getState().updateMany(scope, patches);
+            }}
+            className={
+              'h-7 w-7 inline-flex items-center justify-center rounded leading-none' +
+              (canExtendToView ? ' text-fg-dim hover:bg-bg-input-hover' : ' opacity-40 cursor-not-allowed')
+            }
+          >
+            ⇥
+          </button>
+        </>
       )}
 
       {fontSize !== undefined && (
@@ -675,6 +760,7 @@ export default function DrawingPropertyPanel({
         scope={scope}
         ids={selectedIds}
         resolveAlignCoords={resolveAlignCoords}
+        resolveVisibleRightRealMs={resolveVisibleRightRealMs}
       />
     );
   }

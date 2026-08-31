@@ -40,9 +40,12 @@ class LiveInvestorNetBackfill:
         cache: PastDailyCandlesCache,
         scheduler: KiwoomRestScheduler,
         walkback: Walkback,
+        axis: str = kiwoom_investor.AMT_QTY_QUANTITY,
     ) -> None:
         self._data_dir = data_dir
         self._cache = cache
+        # 축은 인스턴스 차원이다 — `collect` 도크스트링이 이유를 적는다.
+        self._axis = axis
         self._scheduler = scheduler
         self._walkback = walkback
         # Coalesce concurrent same-code cold walk-backs (see single_flight.py):
@@ -58,6 +61,12 @@ class LiveInvestorNetBackfill:
         too: date,
         today_d: date,
     ) -> dict:
+        """축은 **인스턴스가 든다**(`self._axis`) — 호출 인자가 아니다.
+
+        캐시가 인스턴스마다 하나라서 그렇다. 축을 인자로 받으면 한 캐시에 두 축의
+        배치가 섞여 들어가고, 키에 축이 없으므로 **수량 배치가 금액 요청에 그대로
+        응답한다** — 값이 그럴듯해서 화면에서도 안 드러난다.
+        """
         async def fetch_batch(code_: str, from_s: str, to_s: str):
             # PR-E(#1041) 칼 컷오버 — 소스는 키움 ka10059 다. 계정 차원(cooldown_scope·
             # data_dir)은 사라졌다: 키움 유량은 TR별이라 고를 계정이 없다(#1015).
@@ -74,7 +83,8 @@ class LiveInvestorNetBackfill:
                 """
                 return kiwoom_access.run_with_capacity(
                     self._scheduler,   # 주입된 거버너 — 테스트가 갈아끼우는 이음매다
-                    key=("live-investor-net", code_, from_s, to_s, page_idx),
+                    # 축이 키에 든다 — 빠지면 두 축의 같은 구간이 서로를 중복제거한다.
+                    key=("live-investor-net", self._axis, code_, from_s, to_s, page_idx),
                     api_id="ka10059",
                     priority="background",
                     client=client,
@@ -82,7 +92,7 @@ class LiveInvestorNetBackfill:
                 )
 
             result = await kiwoom_investor.fetch_investor_net(
-                client, code_, from_s, to_s, run_page=_run_page,
+                client, code_, from_s, to_s, axis=self._axis, run_page=_run_page,
             )
             # 세 번째 칸(`covered_to`)은 `None` 이다 — `ka10059` 커서는 `to` 상대라
             # 요청 구간 밖을 받지 않는다. 일봉만 기준일에서 걸어 내려오며 넓게
@@ -106,8 +116,14 @@ class LiveInvestorNetBackfill:
 
 
 def _investor_point_to_dict(p) -> dict:
+    """종목 경로 직렬화. **지수 경로에는 같은 이름의 사본이 따로 있다**
+    (`live_index_investor_net.py`) — 그쪽은 주체 분해가 없어 이 키를 싣지 않는다.
+    합치지 않는 이유가 그 비대칭이다.
+    """
     return {
         "t_ms": p.t_ms,
         "foreign_net": p.foreign_net,
         "institution_net": p.institution_net,
+        # 캐시에 그대로 들어가는 dict 다 — 모델 객체를 넣으면 JSON 직렬화가 깨진다.
+        "breakdown": p.breakdown.model_dump() if p.breakdown is not None else None,
     }

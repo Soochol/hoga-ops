@@ -14,6 +14,7 @@ import {
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
+  canAdvanceHistoricalWindow,
   nextHistoricalFrom,
   nextCoverageFrom,
   planFillStep,
@@ -373,6 +374,11 @@ export function useViewportBackfill({
   coverageFromRef.current = indicatorCoverageFromDate;
   const rangeWindowFromRef = useRef<string | null>(null);
   rangeWindowFromRef.current = rangeWindowFromDate;
+  /** 좌측 바닥 미러. 3b 는 구독 핸들러 **안에서** 읽으므로 prop 을 직접 보면 클로저가
+   *  낡는다(그 effect 의 deps 에 바닥이 없다). deps 에 넣으면 바닥이 바뀔 때마다
+   *  재구독하므로 `coverageFromRef` 와 같은 미러를 쓴다. */
+  const minuteFloorRef = useRef<string | null>(null);
+  minuteFloorRef.current = minuteScrollbackFloorDate;
 
   useEffect(() => {
     preSwapRef.current = null;
@@ -1156,6 +1162,32 @@ export function useViewportBackfill({
       let steps = 1;
       let coverageTarget: string | null = null;
       if (r.from < 0) {
+        // **바닥에 닿은 창에는 fill 을 세우지 않는다.** 세우면 dispatch 가 no-op 이라
+        // (요청이 바닥에서 클램프돼 쿼리 키 불변 → fetch 0) 3a 의 settle 신호가 둘 다
+        // 죽고 `fillKind` 가 영구 잠긴다 — 근거·실측은 `canAdvanceHistoricalWindow`.
+        // 여기서 반려해도 잃는 것이 없다: 진행 루프도 같은 술어로 stop 을 냈을 자리다.
+        //
+        // `coverage_gap`(아래 else)에는 걸지 않는다 — 그 fill 은 바닥에서 **애초에
+        // 서지 않기** 때문이다. coverage 분기는 `r.from >= 0`(화면이 데이터 안)에서만
+        // 도달하므로 뷰포트 좌단이 최좌단 캔들보다 뒤이고, 벤더 모드의 range 창은
+        // 캔들과 **같은 값으로 클램프된다**(`planLiveRangeRequest` 의 `minutePastFrom`
+        // — 디스크 모드만 `seedFrom` 그대로다). 즉 바닥에서는 커버리지도 함께 바닥에
+        // 서 있어 `planCoverageGapFill` 의 갭 조건(좌단 < 커버리지)이 성립하지 않는다.
+        //
+        // ⚠ 이 논증은 **정착 상태**의 것이다. 과도 커밋에서 갭이 잠깐 서면 같은 잠김이
+        // 원리적으로 가능하다 — 관측된 적은 없다. 관측되면 이 술어를 그 분기에도 걸면
+        // 된다(넘길 값이 같다). **막는 쪽이 아니라 여기 남기는 쪽이 기본인 이유**는
+        // 한 번도 발화한 적 없는 가드가 다음 사람에게 거짓 안전을 팔기 때문이다.
+        if (!canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
+          // 반려를 말한다 — 이 경로가 침묵이면 "바닥이라 안 온다" 와 "고장나서 안 온다"
+          // 가 구별되지 않는다(#1597 에서 배운 규율).
+          livePerfLog('viewport_backfill_floor', {
+            code,
+            timeframe,
+            d: `trigger=left_pan from=${cur} floor=${minuteFloorRef.current} logicalFrom=${Math.round(r.from)}`,
+          });
+          return;
+        }
         trigger = 'left_pan';
         budget = Math.min(fillBudgetSteps(-r.from, timeframe), MAX_FILL_STEPS);
         // 첫 dispatch도 3a와 같은 배치 폭을 쓴다(ADR-0120) — 여기만 1스텝이면
@@ -1448,6 +1480,18 @@ export function useViewportBackfill({
     // 창이 그대로면 직전 확장이 아무 데도 못 갔다는 뜻이다(단조 감소 가드 또는 바닥).
     // 같은 자리에서 커밋마다 다시 미는 것을 여기서 끊는다.
     if (clampLastFromRef.current === cur) return;
+    // **바닥에 닿았으면 세우지 않는다** — 3b 와 같은 술어, 같은 이유
+    // (`canAdvanceHistoricalWindow`). 이 잠김을 실제로 만든 것이 3e 였다: 빈 화면
+    // 판정은 바닥에서도 참이라 3e 가 계속 깨어나는데, 그 확장이 no-op 이므로 첫 발화가
+    // 곧바로 `fillKind` 를 영구히 물고 앉는다(2026-08-30 실측).
+    if (!canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
+      livePerfLog('viewport_backfill_floor', {
+        code,
+        timeframe,
+        d: `trigger=clamp_recovery from=${cur} floor=${minuteFloorRef.current} logicalFrom=${Math.round(lr.from)}`,
+      });
+      return;
+    }
     const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
     const steps = dispatchStepsFor(timeframe, budget);
     const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);

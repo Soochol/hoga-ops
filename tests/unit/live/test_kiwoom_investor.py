@@ -37,10 +37,21 @@ KOSDAQ150 = RepresentativeIndex(
     investor_scope="none", enabled_by_default=True,
 )
 
-# 실측 행(005930, 20260803, amt_qty_tp=2). KIS 대조값: 외국인 -3,896,489 · 기관 -5,039,954
+# 실측 행(005930, 20260803, amt_qty_tp=2, unit_tp=1). 주체 13종 **전수**다.
+#
+# 2026-08-31 에 같은 TR 을 다시 떠서 채웠고, 그때 이미 있던 4개 값(`frgnr_invsr`·
+# `natfor`·`orgn`·`ind_invsr`)이 **한 자리도 다르지 않았다** — 아래 KIS 대조값이
+# 4주 뒤에도 재현된다는 교차 확인이다. 세부는 조작한 값이 아니라 같은 응답의 나머지다.
+#
+#   KIS 대조값: 외국인 -3,896,489(= frgnr_invsr + natfor) · 기관 -5,039,954
+#   기관계 == 세부 8종 합:  -3563890 +51236 -1292721 +8289 +6344 -129133 -120079 +0
+#   5주체 합 == 0:          8658155 -3923675 -5039954 +278288 +27186
 ROW_59 = {
     "dt": "20260803", "frgnr_invsr": "-3923675", "natfor": "27186",
-    "orgn": "-5039954", "ind_invsr": "8658155",
+    "orgn": "-5039954", "ind_invsr": "8658155", "etc_corp": "278288",
+    "fnnc_invt": "-3563890", "insrnc": "51236", "invtrt": "-1292721",
+    "etc_fnnc": "8289", "bank": "6344", "penfnd_etc": "-129133",
+    "samo_fund": "-120079", "natn": "0",
 }
 
 
@@ -121,6 +132,72 @@ async def test_investor_net_parses_and_anchors_at_0900() -> None:
     got = datetime.datetime.fromtimestamp(p.t_ms / 1000, tz=KST)
     assert (got.hour, got.minute) == (9, 0), "일봉과 같은 09:00 앵커"
     await c.aclose()
+
+
+async def test_investor_net_carries_all_eleven_breakdown_subjects() -> None:
+    """`ka10059` 는 13주체를 준다 — 그중 상위 둘을 뺀 11개가 `breakdown` 이다.
+
+    이 표면이 없던 시절 백엔드는 응답에서 **개인을 포함해 11개를 버렸다**. 필드를
+    지우는 회귀는 타입이 못 잡으므로(전부 `int`) 값으로 못 박는다.
+    """
+    c = _client(lambda _r: _ok("stk_invsr_orgn", [ROW_59]))
+    res = await fetch_investor_net(c, "005930", "20260803", "20260803")
+    await c.aclose()
+
+    b = res.points[0].breakdown
+    assert b is not None, "종목 경로는 주체 분해를 채운다"
+    assert b.individual == 8_658_155
+    assert b.other_corp == 278_288
+    # 내외국인은 부모 foreign_net 에 **이미 합산**돼 있다 — 여기 있는 것은 표시용
+    # 세부이지 다시 더할 값이 아니다.
+    assert b.native_foreign == 27_186
+    assert res.points[0].foreign_net == -3_923_675 + 27_186
+    assert (b.fin_invest, b.insurance, b.trust, b.other_fin) == (
+        -3_563_890, 51_236, -1_292_721, 8_289,
+    )
+    assert (b.bank, b.pension, b.private_fund, b.nation) == (
+        6_344, -129_133, -120_079, 0,
+    )
+
+
+async def test_breakdown_sums_to_institution_without_a_residual() -> None:
+    """기관 세부 8종의 합 == 기관계. 화면이 "잔차/기타" 컬럼 없이 접히는 근거다."""
+    c = _client(lambda _r: _ok("stk_invsr_orgn", [ROW_59]))
+    res = await fetch_investor_net(c, "005930", "20260803", "20260803")
+    await c.aclose()
+
+    p = res.points[0]
+    b = p.breakdown
+    assert b is not None
+    parts = (
+        b.fin_invest, b.insurance, b.trust, b.other_fin,
+        b.bank, b.pension, b.private_fund, b.nation,
+    )
+    assert sum(parts) == p.institution_net
+    assert res.violations == [], "항등식이 맞으면 경고가 없어야 한다"
+
+
+async def test_orgn_mismatch_warns_but_keeps_the_row() -> None:
+    """세부 합이 기관계와 어긋나면 **경고만** 하고 행은 남긴다.
+
+    막는 방향: 벤더가 세부를 덜 주거나 정의를 바꾼 종목을 화면이 조용히 지나치는
+    것. 못 보는 것: 상위 3주체 자체의 오류(대조할 항등식이 없다).
+
+    행을 버리지 않는 이유 — 상위 주체는 벤더가 직접 준 값이라 여전히 옳고, 버리면
+    멀쩡한 날이 표에서 사라져 "그날은 거래가 없었다" 처럼 보인다.
+    """
+    broken = ROW_59 | {"invtrt": "-1292722"}  # 1주 어긋뜨린다
+    c = _client(lambda _r: _ok("stk_invsr_orgn", [broken]))
+    res = await fetch_investor_net(c, "005930", "20260803", "20260803")
+    await c.aclose()
+
+    assert len(res.points) == 1, "행은 남는다"
+    assert res.points[0].institution_net == -5_039_954, "기관계는 벤더값 그대로"
+    assert len(res.violations) == 1
+    v = res.violations[0]
+    assert v.date_yyyymmdd == "20260803"
+    assert "orgn_mismatch" in v.detail
+    assert "차 1" in v.detail
 
 
 async def test_investor_net_filters_range_and_dedupes() -> None:
