@@ -289,8 +289,19 @@ export type ToolCtx = {
   capturePointer(): void;
   releasePointer(): void;
 
-  /** Convert (px, py) → (realMs, price) using `paneId`'s price scale. */
+  /** Convert (px, py) → (realMs, price) using `paneId`'s price scale.
+   *  Magnet snapping is already applied when the toggle is on. */
   pixelToData(px: number, py: number, paneId: PaneId): Point | null;
+  /**
+   * The same conversion with the MAGNET OFF — the cursor's own point.
+   *
+   * Only for undoing a snap that collapsed a shape: `rectTool` compares the
+   * snapped corner against its anchor and falls back to this on the axis that
+   * degenerated. Never use it to place a point (that would silently ignore the
+   * user's magnet); the snapped value is the intent, this is the escape hatch
+   * for when honouring that intent would produce nothing at all.
+   */
+  pixelToDataUnsnapped(px: number, py: number, paneId: PaneId): Point | null;
   /** Convert a stored realMs to a canvas X. Returns null when the realMs
    *  falls outside every Virtual Axis segment. */
   realMsToCanvasX(realMs: number): number | null;
@@ -1245,6 +1256,43 @@ export const trendlineTool: DrawingToolSpec = {
 };
 
 // ─── rect ──────────────────────────────────────────────────────────────────
+/**
+ * 스냅이 앵커와 같은 값으로 눌러 버린 축만 **스냅 이전 커서 좌표**로 되돌린다.
+ *
+ * 왜 필요한가: 빈 밴드에서는 `nearestCandleIndex` 가 **항상 마지막 캔들**을 준다 —
+ * 오른쪽에 다른 후보가 없다. 그 캔들이 도지(O=H=L=C, 장 마감 후 종가 단일가 봉이
+ * 대표적)면 가격 하나가 `SNAP_PX` 16px 양쪽 **세로 32px 전체**를 삼키고, 그 안에서
+ * 시작해 그 안에서 끝낸 드래그는 두 모서리가 같은 price 를 갖는다. 사각형은 어느 한
+ * 축만 무너져도 거부되므로(아래 `||`), 사용자에게는 **아무 일도 일어나지 않는다** —
+ * 오류도 없고 도형도 없다. /live 실측 재현(2026-08-31): 자석 ON · 밴드
+ * (500,80)→(580,100) 은 안 그려지고, 같은 세로 폭이라도 축 안이거나 끝점이 스냅
+ * 반경 밖이면 그려졌다.
+ *
+ * 자석은 **정렬을 돕는 장치이지 도형을 없애는 장치가 아니다.** `alignSnapBox` 의
+ * `acceptX`/`acceptY` 가 이미 같은 판단을 한다 — 캡에 잘릴 보정은 안 하느니만 못하다.
+ *
+ * **무너진 축만** 되돌리는 이유: 반대 축의 스냅은 사용자가 의도한 정렬이고, 둘 다
+ * 풀면 자석을 켠 의미가 사라진다. 되돌린 뒤에도 여전히 같으면(제자리 클릭 같은 진짜
+ * 퇴화) 호출부의 거부가 그대로 걸린다 — 이 함수는 **판정하지 않고 좌표만 고친다.**
+ */
+function uncollapseCorner(
+  ctx: ToolCtx,
+  anchor: Point,
+  snapped: Point,
+  py: number,
+  paneId: PaneId,
+): Point {
+  const flatMs = snapped.realMs === anchor.realMs;
+  const flatPrice = snapped.price === anchor.price;
+  if (!flatMs && !flatPrice) return snapped;
+  const cursor = ctx.pixelToDataUnsnapped(ctx.px, py, paneId);
+  if (!cursor) return snapped;
+  return {
+    realMs: flatMs ? cursor.realMs : snapped.realMs,
+    price: flatPrice ? cursor.price : snapped.price,
+  };
+}
+
 export const rectTool: DrawingToolSpec = {
   kind: 'rect',
   label: '사각형',
@@ -1281,13 +1329,17 @@ export const rectTool: DrawingToolSpec = {
     const raw = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
     // Commit the SNAPPED corner, not the raw one: the preview showed the
     // aligned box, so anything else would visibly shift on pointer-up.
-    const data = raw ? snapPointToRects(ctx, raw, draft.paneId).point : null;
+    const snapped = raw ? snapPointToRects(ctx, raw, draft.paneId).point : null;
     ctx.rectDraft.current = null;
     ctx.setAlignGuides([]);
     ctx.releasePointer();
-    if (!data) return;
+    if (!snapped) return;
+    // 스냅이 이 모서리를 앵커 위로 눌러 버렸으면 그 축만 커서 좌표로 되살린다 —
+    // 안 그러면 아래 거부가 삼켜 사용자에게 아무 일도 일어나지 않는다.
+    const data = uncollapseCorner(ctx, draft.a, snapped, clampedY, draft.paneId);
     // Reject a zero-area rect: EITHER axis collapsing (same time OR same price)
-    // makes it a degenerate line, not a box.
+    // makes it a degenerate line, not a box. 되살린 뒤에도 같다면 커서가 정말로
+    // 그 자리에 있는 것이므로 거부가 맞다.
     if (data.realMs === draft.a.realMs || data.price === draft.a.price) return;
     const id = nanoid(8);
     ctx.add({

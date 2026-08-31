@@ -793,6 +793,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       alignSnapEnabled: defaults.magnet && !(e.ctrlKey || e.metaKey),
       setAlignGuides,
       pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
+      pixelToDataUnsnapped: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, false),
       realMsToCanvasX,
       canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
       priceToCanvasY,
