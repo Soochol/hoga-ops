@@ -325,6 +325,10 @@ export type AlignCoords = GroupTranslateCoords & {
   /** 픽셀 X → realMs. 캔들 오른쪽 빈 구간에서는 null 이라 그 멤버의 수평 이동을
    *  건너뛴다(다른 경로들과 같은 degrade). */
   canvasXToRealMs(px: number): number | null;
+  /** 텍스트 라벨의 픽셀 폭 — 렌더와 같은 글꼴로 잰다. 없으면 텍스트의 x 범위가
+   *  앵커 한 점으로 접힌다(스텁이 이 값을 안 주는 커널 테스트가 그 경우다).
+   *  `HitCoord.measureTextWidth` 와 같은 이유로 optional 이다. */
+  measureTextWidth?(text: string, sizePx: number): number;
 };
 
 /**
@@ -355,7 +359,19 @@ export function eligibleFor(members: readonly Drawing[], axis: GeometryAxis): Dr
 
 type Span = { min: number; max: number; center: number };
 
-/** 멤버의 픽셀 범위. 투영이 하나도 안 되면 null(그 멤버는 이번 연산에서 빠진다). */
+/**
+ * 멤버의 픽셀 범위. 투영이 하나도 안 되면 null(그 멤버는 이번 연산에서 빠진다).
+ *
+ * **텍스트는 앵커가 아니라 그려지는 상자로 잰다.** 도메인 좌표(`pricesOf`/`timesOf`)
+ * 는 글상자의 왼쪽 위 한 점뿐인데, 그 점으로 '세로 가운데' 를 맞추면 텍스트의 *위*
+ * 가 중심선에 놓여 반 글자 높이만큼 어긋나 보인다. 글꼴 크기는 이미 CSS 픽셀이고
+ * 폭은 주입된 측정기가 주므로, **픽셀 공간에서만** 상자를 채우면 도메인 커널은
+ * 순수한 채로 남는다.
+ *
+ * ⚠ 히트 테스트의 상자와 **일부러 다르다.** 그쪽은 누르기 쉬우라고 ±3/±2/+4 픽셀을
+ * 덧대지만, 정렬이 맞춰야 하는 것은 눈에 보이는 **그려진** 상자다. 두 값이 어긋난
+ * 것은 실수가 아니니 "고치지" 말 것.
+ */
 function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | null {
   const values = axis === 'x' ? timesOf(m) : pricesOf(m);
   const projected: number[] = [];
@@ -364,8 +380,16 @@ function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | 
     if (px != null) projected.push(px);
   }
   if (projected.length === 0) return null;
-  const min = Math.min(...projected);
-  const max = Math.max(...projected);
+  let min = Math.min(...projected);
+  let max = Math.max(...projected);
+  if (m.kind === 'text') {
+    if (axis === 'y') {
+      max = min + m.fontSize;
+    } else {
+      const w = coords.measureTextWidth?.(m.text, m.fontSize);
+      if (w != null) max = min + w;
+    }
+  }
   return { min, max, center: (min + max) / 2 };
 }
 
