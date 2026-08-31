@@ -1043,6 +1043,15 @@ export function useLiveBundle(
    *
    * 델타 훅이 아니라 `useRange` 인 이유: 단일 날짜라 확장할 구간이 없다. `todayKst`
    * 를 넘겨 5분 리페치(`TODAY_RANGE_REFETCH_MS`)만 켠다.
+   *
+   * **소비처 없이 도는 일은 없다.** 게이트의 `effProgramTradeEnabled` 는 캘린더 봉에서
+   * 사실상 데이터 창 수요 하나로 접힌다 — 지표 설정이 타임프레임별 버킷이고
+   * `byTimeframe.D/W/M` 은 시드가 없어 공장값(`programTradeEnabled: false`)이기
+   * 때문이다(분봉 버킷만 v1 이관으로 true 를 물려받았다). 즉 D/W/M 에서 이 쿼리를
+   * 켜는 것은 `sidecarDemands.programTrade` 뿐이고, 그건 **프로그램 창이 있는 그룹의
+   * 링크 발행 차트**에만 들어간다. 2026-08-31 실측(/browse · fetch 인터셉터): 창이
+   * 있으면 종목 전환마다 이 요청이 잡히고(005930·000660), 창을 닫으면 같은 탐침에
+   * 종목을 또 바꿔도 `/api/range` 가 **0건**이다.
    */
   const programOnlySidecarEnabled = !!(code && !isMinute && effProgramTradeEnabled);
   const programOnlySidecarOptions = useMemo<RangeRequestOptions>(
