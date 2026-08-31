@@ -886,10 +886,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     pencilDraft.current = null;
     rectDraft.current = null;
     measureDraft.current = null;
+    // ⚠ 마퀴를 빠뜨리면 **select 모드가 통째로 잠긴다**. 남은 draft 는 게이트를
+    // 얼리고(applyGate·onHover 가 진행 중인 제스처를 보호하려고 조기 반환한다),
+    // 그 얼어붙은 값은 'auto' 라 빈 곳의 차트 팬이 죽는다. 키보드 effect 도 같은
+    // 조건으로 조기 반환하므로 Escape 로도 못 푼다 — 리마운트 전까지 회복 불가다.
+    marqueeDraft.current = null;
     dragRef.current = null;
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
+    requestRedraw(); // 마퀴 상자를 지운다(ref 만 비우면 DOM 에 그대로 남는다)
     try {
       (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -899,6 +905,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     resetGesture();
+    requestRedraw();
     // Escape 와 같은 출구를 쓴다 — 종전엔 `setActiveTool('select')` 만 해서 선택이
     // 남았고, 하필 속성 패널은 select 모드에서만 뜨므로 **우클릭한 순간 툴바가 새로
     // 튀어나왔다**. 사용자에겐 "안 풀렸다" 로 읽혀 한 번 더 누르게 만들었다(그 두

@@ -123,6 +123,42 @@ describe('DrawingOverlay context menu', () => {
     expect(prevented).toBe(true);
     expect(useDrawingsStore.getState().activeTool).toBe('select');
   });
+
+  // ⚠ 진행 중인 마퀴를 남긴 채 제스처가 끊기면 **select 모드가 통째로 잠긴다**:
+  // 남은 draft 가 게이트 갱신을 막고(applyGate·onHover 의 진행-중 보호), 얼어붙은
+  // 값이 'auto' 라 빈 곳의 차트 팬이 죽는다. 키보드 effect 도 같은 조건으로 조기
+  // 반환해서 Escape 로도 못 푼다 — 리마운트 전까지 회복 불가다.
+  it.each([
+    ['우클릭', (el: Element) => fireEvent.contextMenu(el)],
+    ['포인터 취소', (el: Element) => fireEvent.pointerCancel(el, { pointerId: 1 })],
+  ])('%s은 진행 중인 마퀴를 지운다', (_label, abort) => {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    const { container } = render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope="005930|minute"
+        paneSeries={new Map()}
+      />,
+    );
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+    const box = container.querySelector('[data-drawing-marquee]') as HTMLElement;
+
+    // Shift+빈 곳 드래그 = 마퀴. 상자는 첫 이동에서 화면에 선다.
+    fireEvent.pointerDown(overlay, { pointerId: 1, clientX: 10, clientY: 10, shiftKey: true });
+    fireEvent.pointerMove(overlay, { pointerId: 1, clientX: 60, clientY: 50, shiftKey: true });
+    expect(box.style.display).toBe('block');
+
+    abort(overlay);
+
+    expect(box.style.display).toBe('none');
+  });
 });
 
 describe('DrawingOverlay Alt+C — 모두 지우기', () => {
