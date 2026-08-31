@@ -427,6 +427,217 @@ describe('useViewportBackfill — 좌측 바닥 도달 (3b/3e 가 fill 을 세�
   });
 });
 
+describe('useViewportBackfill — 스텝 착지점을 바닥 위로 자른다 (#1662 의 짝)', () => {
+  // 위 describe 의 게이트는 **창**을 본다("이미 바닥이면 세우지 않는다"). 그것만으로는
+  // 잠김이 남는다 — 창이 바닥 **위**여도 한 스텝이 바닥을 지나칠 수 있고, 그 아래는
+  // 요청이 서빙 단계에서 클램프돼(`minutePastFrom`) 서빙 창이 요청과 갈린다. 그러면
+  // 3a 의 캐시 settle(`settledFromDate === cur`)이 원리적으로 성립하지 못하고, 같은
+  // 바닥 창이 이미 캐시에 있으면 fetch 도 안 나 하강 엣지까지 없다 → `fillKind` 영구 잠금.
+  //
+  // 2026-08-31 브라우저 실측(035420, 사용자 dev 백엔드, 벤더 모드, floor=20251225):
+  //   extend {trigger: clamp_recovery, from: 20260126, nextFrom: 20250530}
+  //   stop 없음 · past-candles 요청 0건 → 이후 좌팬 3회에 viewport_backfill_* 0줄
+  // 지나치는 것은 예외가 아니라 넓은 분봉의 정상이다 — 60m 스텝(300거래일 ≈ 420캘린더일)
+  // 이 250일 벽보다 넓다.
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      // 3b 의 디바운스는 발화 시점에 `viewGuard` 로 봉을 재확인한다 — 스토어 봉이
+      // 인자와 다르면 dispatch 전에 반려돼 이 테스트가 아무것도 재지 못한다.
+      candleTimeframe: '60m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  /** 스텝 폭이 벽보다 넓은 조합. 창(20260601)은 바닥(20260501) 위라 게이트는 통과한다. */
+  const FLOOR = '20260501';
+
+  it('3b(left_pan): 바닥을 지나치는 스텝은 **바닥에 정확히** 앉는다', () => {
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        minuteScrollbackFloorDate: FLOOR,
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledWith(FLOOR);
+  });
+
+  it('3e(clamp_recovery): 같은 클램프 — 실측에서 잠김을 만든 로그가 이 경로였다', () => {
+    // 화면 폭의 10% 이하만 데이터 = 3e 발화 조건(span 101, 덮인 폭 1).
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        minuteScrollbackFloorDate: FLOOR,
+      }),
+    );
+
+    expect(extendSpy).toHaveBeenCalledWith(FLOOR);
+  });
+
+  it('3c(initial_coverage): 게이트가 아예 없는 경로라 클램프가 유일한 방어다', () => {
+    // 3b·3e 와 달리 3c 에는 `canAdvanceHistoricalWindow` 게이트가 없다(#1662 가 coverage
+    // 계열을 의도적으로 비켜 갔다). 그래서 초기 표시 판정 **한 번**으로 창이 벽 아래로
+    // 내려갈 수 있었다 — 브라우저 실측의 60m 마운트가 정확히 그 자리였다
+    // (`extend {trigger: initial_coverage, from: null, nextFrom: 20250630}`, floor 20251225).
+    renderHook(() =>
+      useViewportBackfill({
+        chart: chartWithCapturedHandler().chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭
+        rangeWindowFromDate: '20260601',
+        minuteScrollbackFloorDate: FLOOR,
+      }),
+    );
+
+    expect(extendSpy).toHaveBeenCalledWith(FLOOR);
+  });
+
+  it('바닥을 **모르면** 자르지 않는다 (D/W/M · 디스크 응답 전)', () => {
+    // 모르는 것을 바닥이라고 말하지 않는 규율 — `canAdvanceHistoricalWindow` 와 같다.
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        // minuteScrollbackFloorDate 미지정 = null
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    expect(String(extendSpy.mock.calls[0][0]) < FLOOR).toBe(true);
+  });
+
+  it('스텝이 바닥에 못 미치면 값이 **비트 단위로** 그대로다', () => {
+    // 클램프가 정상 워크백의 보폭을 건드리지 않는다는 것을, 기대값을 손으로 적는
+    // 대신 **바닥 없는 같은 실행과 대조**해서 증명한다(커널 재구현이 아니다).
+    function dispatchedWith(floor: string | null): unknown {
+      extendSpy.mockClear();
+      const cap = chartWithCapturedHandler();
+      const { unmount } = renderHook(() =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '60m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: () => true,
+          minuteScrollbackFloorDate: floor,
+        }),
+      );
+      cap.fire({ from: -300, to: 100 });
+      vi.advanceTimersByTime(150);
+      const arg = extendSpy.mock.calls[0]?.[0];
+      unmount();
+      return arg;
+    }
+
+    const noFloor = dispatchedWith(null);
+    const deepFloor = dispatchedWith('20200101'); // 스텝이 절대 못 닿는 바닥
+    expect(deepFloor).toBe(noFloor);
+  });
+
+  // ── 3c 는 클램프만으로 부족하다 — 게이트도 물어야 한다 ────────────────────────
+  // 클램프는 착지점을 바닥에 앉히는데, 창이 **이미 바닥**이면 그 착지점이 창과 같아진다
+  // → `extendHistoricalRange` 의 단조 감소 가드가 dispatch 를 통째로 삼킨다(no-op).
+  // 그런데 3c 는 그 전에 이미 `fillKind` 를 세운 뒤다 → 쿼리 키 불변 = fetch 0 →
+  // 하강 엣지 없음. 남는 탈출구는 3a 의 캐시 settle 뿐인데, **3c 가 발화하는 조건 자체가
+  // 지표 커버리지가 뒤처졌다는 것**이라 `settledFromDate`(= 뒤처진 지표 날짜)가 `cur`
+  // (= 바닥)과 갈린다 → 그 신호도 죽는다. 즉 3c 는 클램프 뒤에도 잠길 수 있다.
+  function floorLogsFor(trigger: string): string[] {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_floor')
+      .map(([, payload]) => String((payload as { d?: unknown }).d ?? ''))
+      .filter((d) => d.includes(`trigger=${trigger}`));
+  }
+
+  function renderInitialCoverage(floor: string | null, chart: ReturnType<typeof chartWithCapturedHandler>) {
+    return renderHook(() =>
+      useViewportBackfill({
+        chart: chart.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭
+        rangeWindowFromDate: '20260601',
+        minuteScrollbackFloorDate: floor,
+      }),
+    );
+  }
+
+  it('3c: 바닥에 앉은 창에는 fill 을 세우지 않는다 — 반려를 말한다', () => {
+    vi.mocked(livePerfLog).mockClear();
+    // 창(스토어 20260601)과 바닥이 같다 = 이미 바닥.
+    renderInitialCoverage('20260601', chartWithCapturedHandler());
+
+    expect(extendSpy).not.toHaveBeenCalled();
+    expect(floorLogsFor('initial_coverage')).toHaveLength(1);
+  });
+
+  it('3c: 그 반려가 **잠금이 아니다** — 다음 좌팬이 여전히 판정에 도달한다', () => {
+    // 2단계 red-check(이 표면의 규율): 첫 단언만으로는 "바닥이라 안 함"과 "잠겨서 안 함"
+    // 이 구별되지 않는다. 3b 의 백프레셔 게이트는 로그 **앞**이라, fill 이 서 있으면
+    // 이후 좌팬은 한 줄도 남기지 못한다. 반려 뒤에도 로그가 나오는 것이 곧 미잠금이다.
+    vi.mocked(livePerfLog).mockClear();
+    const cap = chartWithCapturedHandler();
+    renderInitialCoverage('20260601', cap);
+    expect(floorLogsFor('left_pan')).toHaveLength(0);
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(floorLogsFor('left_pan')).toHaveLength(1);
+  });
+
+  it('3c: 바닥이 아니면 종전대로 발화한다 — 게이트가 정상 경로를 먹지 않는다', () => {
+    renderInitialCoverage('20260501', chartWithCapturedHandler());
+    expect(extendSpy).toHaveBeenCalledWith('20260501');
+  });
+});
+
 describe('useViewportBackfill — 소스 토글 창 축소 (1b)', () => {
   // 토글은 캔들 소스 축만 갈리는 재키인데, 창(historicalFromDate)을 그대로 두면
   // 이전 소스가 벌어놓은 깊은 창을 새 소스가 콜드로 전량 재취득한다(2026-08-25
@@ -663,6 +874,120 @@ describe('useViewportBackfill — coverage-gap trigger (3b, A안)', () => {
     vi.advanceTimersByTime(150);
 
     expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  // ── 바닥에 앉은 창의 coverage 분기 ────────────────────────────────────────────
+  // 종전 주석은 "바닥에서는 커버리지도 함께 바닥에 서 있어 갭 조건이 성립하지 않는다"
+  // 며 이 분기에 술어를 생략했다. 2026-08-31 실측이 그 전제를 뒤집었다 — 창이 바닥
+  // (20251225)에 앉은 채 갭이 서서 `extend {coverage_gap, from: 20251225,
+  // next: 20251225}` 라는 no-op dispatch 가 나갔다.
+  function coverageFloorLogs(): string[] {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_floor')
+      .map(([, payload]) => String((payload as { d?: unknown }).d ?? ''))
+      .filter((d) => d.includes('trigger=coverage_gap'));
+  }
+
+  function renderCoverageAtFloor(floor: string | null) {
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭 있음
+        rangeWindowFromDate: '20260601',
+        minuteScrollbackFloorDate: floor,
+      }),
+    );
+    return cap;
+  }
+
+  it('바닥에 앉은 창에는 coverage fill 도 세우지 않는다 — 반려를 말한다', () => {
+    vi.mocked(livePerfLog).mockClear();
+    const cap = renderCoverageAtFloor('20260601'); // 창(20260601)과 같다 = 바닥
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+    expect(coverageFloorLogs()).toHaveLength(1);
+  });
+
+  it('⚠ 반려해도 **축소는 살아 있다** — 조기 반환이면 여기서 스스로 빠져나올 길이 닫힌다', () => {
+    // 이 표면의 급소. 확장·축소가 같은 이벤트 핸들러를 공유하므로, 바닥 반려를
+    // `return` 으로 처리하면 잠긴 창을 되감는 유일한 경로까지 함께 죽는다.
+    // 바닥에 앉은 창이야말로 되감을 여지가 가장 큰 상태다.
+    const contractSpy = vi
+      .spyOn(useLivePageStore.getState(), 'contractHistoricalRange')
+      .mockImplementation(() => {});
+    try {
+      const cap = renderCoverageAtFloor('20260601');
+      cap.fire({ from: 5, to: 100 });
+      vi.advanceTimersByTime(150);
+
+      // 창(20260601)이 뷰포트 좌단(20260709)보다 3스텝 넘게 과거 → 히스테리시스 발동.
+      // 리테인 1스텝 = 20260709 의 5거래일 전 = 20260702.
+      expect(contractSpy).toHaveBeenCalledWith('20260702');
+    } finally {
+      contractSpy.mockRestore();
+    }
+  });
+
+  it('반려는 **에피소드당 한 줄** — 3b 는 이벤트마다 깨어난다(#1680 과 같은 규율)', () => {
+    vi.mocked(livePerfLog).mockClear();
+    // 축소를 no-op 으로 묶어 **창을 고정**한다 — 안 그러면 첫 이벤트의 축소가 창을
+    // 바닥 밖으로 빼내 두 번째 이벤트부터는 반려 자체가 사라진다(그 탈출은 아래
+    // 별도 테스트가 잰다). 여기서 재려는 것은 "같은 `창|바닥` 에서 몇 줄인가" 다.
+    const contractSpy = vi
+      .spyOn(useLivePageStore.getState(), 'contractHistoricalRange')
+      .mockImplementation(() => {});
+    try {
+      const cap = renderCoverageAtFloor('20260601');
+      // 실제 드래그는 초당 수십 이벤트다. 창도 바닥도 그대로면 새 사실이 없다.
+      for (let i = 0; i < 8; i += 1) {
+        cap.fire({ from: 5 + i, to: 100 + i });
+        vi.advanceTimersByTime(150);
+      }
+
+      expect(coverageFloorLogs()).toHaveLength(1);
+      expect(extendSpy).not.toHaveBeenCalled();
+    } finally {
+      contractSpy.mockRestore();
+    }
+  });
+
+  it('반려 → 축소 → 정상 확장으로 **스스로 빠져나온다** (막다른 길이 아니다)', () => {
+    // 위 두 테스트를 잇는 종단 단언. 이것이 초록이어야 "바닥 반려" 가 정지가 아니라
+    // **경유지**임이 증명된다 — 축소가 창을 바닥 밖으로 빼내면 같은 핸들러가 다음
+    // 이벤트에서 종전대로 확장한다. (이 동작은 축소를 스텁하지 않은 실제 스토어로
+    // 잰다 — 첫 발견이 「스텁 없는 반복 이벤트 테스트」의 실패였다.)
+    vi.mocked(livePerfLog).mockClear();
+    const cap = renderCoverageAtFloor('20260601');
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(coverageFloorLogs()).toHaveLength(1);
+    expect(extendSpy).not.toHaveBeenCalled();
+    // 축소가 창을 뷰포트 기준으로 당겼다 = 더 이상 바닥이 아니다.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260702');
+
+    cap.fire({ from: 6, to: 101 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('바닥이 아니면 종전대로 확장한다 — 게이트가 정상 경로를 먹지 않는다', () => {
+    const cap = renderCoverageAtFloor('20260501'); // 창(20260601)보다 과거 = 여유 있음
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
   });
 
   it('respects backpressure: no coverage step while a step is already in flight', () => {

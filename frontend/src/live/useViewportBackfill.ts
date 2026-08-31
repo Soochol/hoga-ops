@@ -15,6 +15,7 @@ import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
   canAdvanceHistoricalWindow,
+  clampFromToFloor,
   nextHistoricalFrom,
   nextCoverageFrom,
   planFillStep,
@@ -94,12 +95,19 @@ function planCoverageGapFill(
   historicalFromDate: string | null,
   coverageFrom: string | null,
   windowFrom: string | null,
+  earliestAllowedDate: string | null,
 ): { nextFrom: string; coverageTarget: string } | null {
   if (coverageFrom === null || windowFrom === null) return null;
   const leftDate = readViewportLeftDate(chart, axis);
   if (leftDate === null || leftDate >= coverageFrom) return null;
   return {
-    nextFrom: nextCoverageFrom(historicalFromDate, windowFrom, timeframe),
+    // 착지점을 바닥 위로 자른다 — 지나치면 서빙 창이 요청과 갈려 3a 가 영영 settle
+    // 하지 못한다(`clampFromToFloor`). 3c 의 첫 스텝이 실제로 그 자리였다: 60m 은
+    // 스텝 폭이 벽보다 넓어 **초기 표시 판정 한 번**으로 창이 벽 아래로 내려간다.
+    nextFrom: clampFromToFloor(
+      nextCoverageFrom(historicalFromDate, windowFrom, timeframe),
+      earliestAllowedDate,
+    ),
     coverageTarget: leftDate,
   };
 }
@@ -357,6 +365,14 @@ export function useViewportBackfill({
    *  중복 제거가 아니라 **두 번째 정지 판정**이 되어, 바닥이 풀린 뒤의 탈출까지 막는다
    *  (#1662 가 "판정이 두 벌이면 그 틈이 다시 잠김이 된다" 로 경고한 바로 그 모양). */
   const clampFloorSaidForRef = useRef<string | null>(null);
+  /** 3b **coverage 분기**의 바닥 반려를 이미 말한 `창|바닥` 쌍. #1680 과 같은 이유,
+   *  같은 모양이다 — 다만 이쪽이 더 급하다: 3b 는 **뷰포트 이벤트마다** 깨어나므로
+   *  실제 드래그(~60 event/s)에서는 3e 의 커밋 박자(~200ms)보다 훨씬 빽빽하다.
+   *
+   *  ⚠ 이 래치는 **로그만** 끊는다(#1680 의 규율 그대로). 반려 자체는 매 이벤트에서
+   *  다시 판정되고, 창이나 바닥이 움직이면 새 사실이므로 다시 말한다. 갭이 닫히거나
+   *  바닥을 벗어나면 그 구간이 끝난 것이라 아래에서 `null` 로 되돌린다. */
+  const covFloorSaidForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -1186,17 +1202,22 @@ export function useViewportBackfill({
         // 죽고 `fillKind` 가 영구 잠긴다 — 근거·실측은 `canAdvanceHistoricalWindow`.
         // 여기서 반려해도 잃는 것이 없다: 진행 루프도 같은 술어로 stop 을 냈을 자리다.
         //
-        // `coverage_gap`(아래 else)에는 걸지 않는다 — 그 fill 은 바닥에서 **애초에
-        // 서지 않기** 때문이다. coverage 분기는 `r.from >= 0`(화면이 데이터 안)에서만
-        // 도달하므로 뷰포트 좌단이 최좌단 캔들보다 뒤이고, 벤더 모드의 range 창은
-        // 캔들과 **같은 값으로 클램프된다**(`planLiveRangeRequest` 의 `minutePastFrom`
-        // — 디스크 모드만 `seedFrom` 그대로다). 즉 바닥에서는 커버리지도 함께 바닥에
-        // 서 있어 `planCoverageGapFill` 의 갭 조건(좌단 < 커버리지)이 성립하지 않는다.
+        // `coverage_gap`(아래 else)에는 걸지 않는다. ⚠ **종전의 근거는 틀렸다** —
+        // "바닥에서는 커버리지도 함께 바닥에 서 있어 갭 조건이 성립하지 않는다" 고
+        // 적혀 있었는데, 2026-08-31 브라우저 실측에서 창이 바닥(20251225)에 앉은 채
+        // 갭이 **섰다**(`extend {trigger: coverage_gap, from: 20251225, next: 20251225}`,
+        // coverageTarget=20260807). 즉 no-op dispatch 는 실제로 일어난다.
         //
-        // ⚠ 이 논증은 **정착 상태**의 것이다. 과도 커밋에서 갭이 잠깐 서면 같은 잠김이
-        // 원리적으로 가능하다 — 관측된 적은 없다. 관측되면 이 술어를 그 분기에도 걸면
-        // 된다(넘길 값이 같다). **막는 쪽이 아니라 여기 남기는 쪽이 기본인 이유**는
-        // 한 번도 발화한 적 없는 가드가 다음 사람에게 거짓 안전을 팔기 때문이다.
+        // 그럼에도 여기 남기는 근거는 **실측으로 잠기지 않았다**는 것이다: 짝이 되는
+        // `stop` 이 400ms 뒤에 왔다(3a 의 캐시 settle — 지표 커버리지가 바닥까지 따라온
+        // 뒤에는 `settledFromDate === cur` 이 성립한다). 한 번도 발화한 적 없는 가드가
+        // 다음 사람에게 거짓 안전을 팔기 때문에, 관측되지 않은 잠김에 가드를 세우지
+        // 않는다. **관측되면** 그때 이 술어를 걸되 — 여기서 조기 반환하면 아래 축소
+        // 분기까지 함께 닫히므로 — 반려를 로그로 말하고 **축소로 떨어뜨려야** 한다.
+        //
+        // 3c 는 다르다. 그쪽은 같은 no-op 이 **잠김으로 이어지는 것이 재현**돼 게이트를
+        // 걸었다(3c 주석 참조) — 1회성 래치라 재판정이 없어 캐시 settle 이 늦으면
+        // 되살아날 커밋 자체가 없다.
         if (!canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
           // 반려를 말한다 — 이 경로가 침묵이면 "바닥이라 안 온다" 와 "고장나서 안 온다"
           // 가 구별되지 않는다(#1597 에서 배운 규율).
@@ -1212,15 +1233,57 @@ export function useViewportBackfill({
         // 첫 dispatch도 3a와 같은 배치 폭을 쓴다(ADR-0120) — 여기만 1스텝이면
         // 딥 팬의 첫 왕복이 나머지보다 좁아 계단이 생긴다.
         steps = dispatchStepsFor(timeframe, budget);
-        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+        // 스텝이 바닥을 지나치지 않게 자른다 — 게이트(위)가 보는 것은 **창**이고
+        // 잠김을 만드는 것은 **착지점**이다(`clampFromToFloor`).
+        nextFrom = clampFromToFloor(
+          nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps),
+          minuteFloorRef.current,
+        );
       } else {
         const covPlan = planCoverageGapFill(
           chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
+          minuteFloorRef.current,
         );
-        if (!covPlan) {
+        // **바닥에 앉은 창에는 coverage fill 도 세우지 않는다** — 3b left_pan·3c·3e 와
+        // 같은 술어다. 벤더 모드의 range 창은 캔들과 **같은 값으로 클램프되므로**
+        // (`planLiveRangeRequest` 의 `minutePastFrom`; 디스크 모드만 `seedFrom` 그대로)
+        // 바닥 아래 요청은 쿼리 키를 바꾸지 못한다 = fetch 0 → 3a 의 두 settle 신호가
+        // 둘 다 죽는다.
+        //
+        // ⚠ **여기서 조기 반환하면 안 된다.** 아래 축소 분기는 잠기거나 과하게 넓어진
+        // 창에서 **스스로 빠져나오는 유일한 길**이고, 확장·축소가 이 한 이벤트 핸들러를
+        // 공유한다. 그래서 반려는 "확장을 세우지 않는다" 까지만 하고 **축소로
+        // 떨어뜨린다** — 바닥에 앉은 창이야말로 되감을 여지가 가장 큰 상태다.
+        //
+        // 종전 주석은 "바닥에서는 커버리지도 함께 바닥에 서 있어 갭 조건이 성립하지
+        // 않는다" 며 이 술어를 생략했는데, 2026-08-31 실측이 그 전제를 뒤집었다 —
+        // 창이 바닥(20251225)에 앉은 채 갭이 서서 `extend {coverage_gap, from: 20251225,
+        // next: 20251225}` 라는 **no-op dispatch** 가 나갔다(그때는 지표가 바닥까지
+        // 따라온 덕에 캐시 settle 이 살아 400ms 뒤 stop 이 왔지만, 그 구제는 타이밍이지
+        // 계약이 아니다 — 3c 에서는 같은 모양이 실제로 잠겼다).
+        let blockedByFloor = false;
+        if (covPlan !== null && !canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
+          blockedByFloor = true;
+          // 반려는 말한다(#1597). 다만 **에피소드당 한 줄**이다 — 3b 는 이벤트마다
+          // 깨어나므로 무조건 찍으면 정지 상태가 드래그 내내 활동처럼 보인다(#1680).
+          const said = `${cur}|${minuteFloorRef.current}`;
+          if (covFloorSaidForRef.current !== said) {
+            covFloorSaidForRef.current = said;
+            livePerfLog('viewport_backfill_floor', {
+              code,
+              timeframe,
+              d: `trigger=coverage_gap from=${cur} floor=${minuteFloorRef.current} coverageTarget=${covPlan.coverageTarget}`,
+            });
+          }
+        } else {
+          // 갭이 닫혔거나 바닥을 벗어났다 = 구간 종료. 다음 구간은 새 에피소드다.
+          covFloorSaidForRef.current = null;
+        }
+        if (!covPlan || blockedByFloor) {
           // **확장이 필요 없는 순간이 곧 축소를 볼 자리다.** 여기 도달했다는 것은
-          // 뷰포트 좌단이 커버리지 오른쪽이라는 뜻이므로, 창이 과하게 넓으면 앞으로
-          // 당긴다(`planViewportContraction` 이 히스테리시스를 쥔다).
+          // 뷰포트 좌단이 커버리지 오른쪽(갭 없음)이거나 **창이 바닥에 앉아 더 못 간다**
+          // 는 뜻이므로, 창이 과하게 넓으면 앞으로 당긴다(`planViewportContraction` 이
+          // 히스테리시스를 쥔다).
           //
           // 확장 판정 **뒤**에 두는 것이 요점이다 — 앞에 두면 같은 이벤트에서 자르고
           // 곧바로 늘리는 왕복이 가능해진다.
@@ -1348,8 +1411,40 @@ export function useViewportBackfill({
     const cur = historicalRange.snapshot().historicalFromDate;
     const covPlan = planCoverageGapFill(
       chart, axis, timeframe, cur, indicatorCoverageFromDate, rangeWindowFromDate,
+      minuteScrollbackFloorDate,
     );
     if (!covPlan) return; // 갭 없음 — 마킹된 채 종료(반복 판정 금지)
+    // **바닥에 앉은 창에는 fill 을 세우지 않는다** — 3b·3e 와 같은 술어, 같은 이유.
+    //
+    // 클램프(`clampFromToFloor`)만으로는 부족하다. 그건 "스텝이 바닥을 **지나친다**" 를
+    // 닫는데, 창이 **이미 바닥**이면 클램프된 착지점이 창과 같아져
+    // `extendHistoricalRange` 의 단조 감소 가드가 dispatch 를 통째로 삼킨다(no-op) —
+    // 그런데 `fillKind` 는 그 앞에서 이미 서 있다.
+    //
+    // 남는 탈출구는 3a 의 캐시 settle(`settledFromDate === cur`)뿐인데 **그것이 보장되지
+    // 않는다**: 3c 가 발화하는 조건 자체가 "지표 커버리지가 뷰포트보다 뒤처졌다" 이고
+    // `pastSettledFromDate` 는 **가장 뒤처진 소스**를 싣으므로(`useLiveBundle`), 지표가
+    // 아직 바닥까지 못 온 동안은 `settledFromDate` 가 `cur`(바닥)과 갈린다. 지표가
+    // 따라잡으면 살아나지만 그건 **타이밍**이지 계약이 아니다 — 두 신호가 같은 창에서
+    // 다 죽으면 `endFill()` 미도달이고, 훅 테스트가 그 상태를 재현한다(반려 뒤 좌팬
+    // 로그 0줄).
+    //
+    // #1662 는 coverage 계열을 "벤더 캔들 바닥으로 클램프되지 않는다" 는 논증으로
+    // 비켜 갔는데, **벤더 모드에서는 그 전제가 틀리다** — range 창도 캔들과 같은 값으로
+    // 클램프된다(`planLiveRangeRequest` 의 `minutePastFrom`; 3b coverage 분기 주석이
+    // 이미 그렇게 적고 있다). 2026-08-31 브라우저 실측이 그 잠금을 잡았다.
+    //
+    // 3b 의 coverage 분기에는 여전히 걸지 않는다 — 그쪽은 `!covPlan` 이 **축소**로
+    // 이어지는 자리라 조기 반환이 탈출구를 함께 닫고, 무엇보다 그 경로의 잠금은 아직
+    // 관측된 적이 없다(한 번도 발화한 적 없는 가드는 거짓 안전을 판다).
+    if (!canAdvanceHistoricalWindow(cur, minuteScrollbackFloorDate)) {
+      livePerfLog('viewport_backfill_floor', {
+        code,
+        timeframe,
+        d: `trigger=initial_coverage from=${cur} floor=${minuteScrollbackFloorDate} coverageTarget=${covPlan.coverageTarget}`,
+      });
+      return;
+    }
     fillKindRef.current = 'coverage_gap';
     fillBudgetRef.current = MAX_FILL_STEPS;
     fillCoverageTargetRef.current = covPlan.coverageTarget;
@@ -1452,6 +1547,7 @@ export function useViewportBackfill({
     clampRecoveryStepsRef.current = 0;
     clampLastFromRef.current = null;
     clampFloorSaidForRef.current = null;
+    covFloorSaidForRef.current = null;
   }, [code, timeframe]);
 
   // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.
@@ -1525,7 +1621,10 @@ export function useViewportBackfill({
     }
     const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
     const steps = dispatchStepsFor(timeframe, budget);
-    const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+    const nextFrom = clampFromToFloor(
+      nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps),
+      minuteFloorRef.current,
+    );
     clampRecoveryStepsRef.current += 1;
     clampLastFromRef.current = cur;
     // 나머지 워크백은 3a 가 이어받는다 — kind 가 `left_pan` 이어야 종료 조건도 같다.
