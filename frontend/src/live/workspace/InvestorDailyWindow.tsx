@@ -17,6 +17,22 @@
  * 요청이 나간다. 벤더 페이지가 100행(≈5개월)이라 가장 긴 기간도 콜 1회에 들어오므로,
  * 넉넉한 달력 구간을 한 번 받고 **자르기는 클라에서** 한다(`buildInvestorDailyTable`).
  *
+ * ## 단위 토글 — 축은 서버가, 표시는 응답이 정한다
+ *
+ * `ka10059` 는 수량·금액을 **한 응답에 주지 않는다**(별개 콜). 그래서 축이 쿼리
+ * 키에 들어가고, 토글은 다시 받아 온다 — 첫 전환에만 벤더 콜 하나가 더 나고
+ * 그 뒤로는 축별 캐시가 받는다.
+ *
+ * ⚠ **셀 포맷은 `data.unit` 이 고른다 — 저장된 토글이 아니다.** 축 전환 직후
+ * `placeholderData` 가 옛 축의 값을 넘겨주는 한 프레임이 있는데, 그때 토글을
+ * 따르면 1,589,169주가 "15,892억" 으로 그려진다(100배 오독). 칩의 눌림 상태만
+ * 스토어를 따르고 숫자는 데이터를 따른다.
+ *
+ * 단위 스토어는 **잠정투자자 카드와 공유한다**(`live.investorEstimateUnit.v1`).
+ * 두 창이 나란히 뜬 채 단위가 서로 다르면 비교 자체가 불가능해진다 — 그 스토어가
+ * 존재하는 이유가 그것이고, 표시 단위도 주/억으로 같다(`formatAmount` 가 백만원을
+ * 억으로 접는다).
+ *
  * ## 가로 스크롤이 `table-fixed` 대신인 이유
  *
  * 12개 값 컬럼은 어떤 창 폭에도 다 안 들어간다. `table-fixed` 로 두면 폭이
@@ -28,10 +44,18 @@
 import { useMemo } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
-import { formatQty, qtyClass } from '../../sidebar/InvestorTrendEstimateCard';
+import type { InvestorNetUnit } from '../../api/types';
 import {
-  useInvestorDailySpanStore,
-} from '../../state/investorDailySpan';
+  formatAmount,
+  formatQty,
+  qtyClass,
+} from '../../sidebar/InvestorTrendEstimateCard';
+import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
+import {
+  INVESTOR_ESTIMATE_UNIT_LABELS,
+  useInvestorEstimateUnitStore,
+  type InvestorEstimateUnit,
+} from '../../state/investorEstimateUnit';
 import {
   buildInvestorDailyTable,
   INVESTOR_COLUMNS,
@@ -58,6 +82,8 @@ type Props = {
 export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const span = useInvestorDailySpanStore((s) => s.span);
   const setSpan = useInvestorDailySpanStore((s) => s.setSpan);
+  const unit = useInvestorEstimateUnitStore((s) => s.unit);
+  const toggleUnit = useInvestorEstimateUnitStore((s) => s.toggleUnit);
 
   // 오늘을 렌더마다 새로 읽지 않는다 — 자정을 넘겨도 창이 스스로 갱신되지는 않지만,
   // 매 렌더 새 문자열이면 쿼리 키가 흔들려 캐시가 무의미해진다. 날짜 경계는
@@ -65,8 +91,11 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const today = useMemo(() => todayKstYyyymmdd(), []);
   const from = useMemo(() => subtractDaysKst(today, REQUEST_CALENDAR_DAYS), [today]);
 
-  const query = useLivePastInvestorNet(code, from, today);
+  const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty');
   const points = query.data?.points;
+  // **데이터가 자기 단위를 말한다.** 없으면(옛 백엔드) 수량으로 읽는다 — 그게
+  // 이 라우트가 축 파라미터를 갖기 전의 유일한 축이었다.
+  const dataUnit: InvestorNetUnit = query.data?.unit ?? 'qty_shares';
   const table = useMemo(
     () => buildInvestorDailyTable(points ?? [], span),
     [points, span],
@@ -77,7 +106,10 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   return (
     <div className="flex h-full flex-col bg-bg-card">
       <div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1">
-        <SpanChips span={span} onSelect={setSpan} />
+        <div className="flex min-w-0 items-center gap-2">
+          <SpanChips span={span} onSelect={setSpan} />
+          <UnitChip unit={unit} onToggle={toggleUnit} />
+        </div>
         {/* 상태는 표가 거짓말을 하고 있을 때만 한 줄이 생긴다 — 항상 있는 크롬이면
             그게 라벨이 된다(잠정투자자 카드와 같은 방침).
             행이 없을 때는 **본문이 같은 문구를 크게 말하므로** 여기서는 뺀다 —
@@ -142,6 +174,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                       <ValueCell
                         key={column.key}
                         value={row.values[column.key]}
+                        dataUnit={dataUnit}
                         className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                       />
                     ))}
@@ -168,6 +201,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                   <ValueCell
                     key={column.key}
                     value={table.totals[column.key]}
+                    dataUnit={dataUnit}
                     foot
                     className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                   />
@@ -258,10 +292,13 @@ function DateCell({ date, isToday }: { date: string; isToday: boolean }) {
 
 function ValueCell({
   value,
+  dataUnit,
   className = '',
   foot = false,
 }: {
   value: number | null;
+  /** **응답이 말한 단위** — 토글이 아니다(위 도크스트링). */
+  dataUnit: InvestorNetUnit;
   className?: string;
   foot?: boolean;
 }) {
@@ -273,8 +310,45 @@ function ValueCell({
         foot ? 'border-t border-border bg-bg-card font-medium' : ''
       } ${qtyClass(value)} ${className}`}
     >
-      {value === null ? '' : formatQty(value)}
+      {value === null ? '' : formatCell(value, dataUnit)}
     </td>
+  );
+}
+
+/** 단위별 포맷 분기 SSOT. `amt_eok`(지수 경로)는 이 창에 오지 않지만 union 이
+ *  하나라 남겨 둔다 — 억원 값을 백만원 포맷터에 넣으면 100배 작아진다. */
+function formatCell(value: number, dataUnit: InvestorNetUnit): string {
+  if (dataUnit === 'qty_shares') return formatQty(value);
+  if (dataUnit === 'amt_mwon') return formatAmount(value);
+  // amt_eok — 이미 억이므로 백만원으로 되돌린 뒤 같은 포맷터를 태운다.
+  return formatAmount(value * 100);
+}
+
+/** 단위 칩 — 잠정투자자 카드와 **같은 스토어**를 쓴다(위 도크스트링).
+ *  눌림 상태는 스토어를 따르고, 셀 숫자는 응답을 따른다. */
+function UnitChip({
+  unit,
+  onToggle,
+}: {
+  unit: InvestorEstimateUnit;
+  onToggle: () => void;
+}) {
+  const isAmount = unit === 'amount';
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={isAmount}
+      aria-label={`표시 단위 ${isAmount ? '금액' : '수량'}, 누르면 ${isAmount ? '수량' : '금액'}`}
+      title={isAmount ? '금액(억원) — 누르면 수량(주)' : '수량(주) — 누르면 금액(억원)'}
+      className={`shrink-0 rounded border px-1.5 py-px text-2xs leading-normal transition-colors ${
+        isAmount
+          ? 'border-accent text-accent'
+          : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
+      }`}
+    >
+      {INVESTOR_ESTIMATE_UNIT_LABELS[unit]}
+    </button>
   );
 }
 

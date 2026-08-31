@@ -17,6 +17,19 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+InvestorNetUnit = Literal["qty_shares", "amt_mwon", "amt_eok"]
+"""순매수 값의 물리량. **응답이 스스로 말한다**(#1119).
+
+    qty_shares  주(株)      — 종목 경로 수량 축(`ka10059`, `amt_qty_tp=2`)
+    amt_mwon    백만원      — 종목 경로 금액 축(`ka10059`, `amt_qty_tp=1`)
+    amt_eok     억원        — 지수/시장 경로(`ka10051`)
+
+세 값이 **한 alias 에 모여 있는 것이 요점**이다. 프론트 미러(`InvestorNetUnit` in
+`frontend/src/api/types.ts`)가 이 목록과 1:1 이고, 계약 테스트가 둘을 직접 대조한다
+(ADR-0004 · `WIRE_ENUM_MIRRORS`). 라우트마다 인라인 `Literal` 을 적으면 그 감사가
+원리적으로 못 본다 — 값 드리프트는 타입이 안 잡는다(#1183).
+"""
+
 
 class InvestorSubjectBreakdown(BaseModel):
     """`ka10059` 종목 경로의 주체 분해 — 13주체 중 `InvestorNetPoint` 가 이미 들고

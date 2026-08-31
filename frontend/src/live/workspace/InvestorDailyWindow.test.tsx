@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InvestorNetPoint, InvestorSubjectBreakdown } from '../../api/types';
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
+import { useInvestorEstimateUnitStore } from '../../state/investorEstimateUnit';
 import { todayKstYyyymmdd } from '../liveDateTime';
 
 const useLivePastInvestorNet = vi.fn();
@@ -39,8 +40,10 @@ const point = (date: string, breakdown: InvestorSubjectBreakdown | null = MEASUR
   breakdown,
 });
 
-function mockPoints(points: InvestorNetPoint[]) {
-  useLivePastInvestorNet.mockReturnValue({ data: { points }, isLoading: false, error: null });
+function mockPoints(points: InvestorNetPoint[], unit = 'qty_shares') {
+  useLivePastInvestorNet.mockReturnValue({
+    data: { points, unit }, isLoading: false, error: null,
+  });
 }
 
 const DATES = ['20260728', '20260729', '20260730', '20260731', '20260803', '20260804'];
@@ -48,6 +51,7 @@ const DATES = ['20260728', '20260729', '20260730', '20260731', '20260803', '2026
 beforeEach(() => {
   useLivePastInvestorNet.mockReset();
   useInvestorDailySpanStore.setState({ span: 20 });
+  useInvestorEstimateUnitStore.setState({ unit: 'qty' });
 });
 
 describe('InvestorDailyWindow', () => {
@@ -127,6 +131,58 @@ describe('InvestorDailyWindow', () => {
     const stale = screen.getByTestId('investor-daily-row-20260804');
     expect(within(stale).queryByText('0')).toBeNull();
     expect(screen.getByText('−1일')).toBeInTheDocument();
+  });
+
+  it('단위 토글이 축을 서버로 넘긴다 — ka10059 는 한 응답에 두 축을 안 준다', () => {
+    mockPoints([point('20260803')]);
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    expect(useLivePastInvestorNet.mock.calls.at(-1)?.[3]).toBe('qty');
+
+    fireEvent.click(screen.getByRole('button', { name: /표시 단위/ }));
+
+    expect(useLivePastInvestorNet.mock.calls.at(-1)?.[3]).toBe('amount');
+  });
+
+  it('금액 응답은 억으로 접어 그린다', () => {
+    // 실측 금액 축 행(005930 · 20260828 · amt_qty_tp=1, 백만원).
+    // 409,731백만원 = 4,097.31억 → 10억 이상이라 소수 0자리(formatAmount 규칙).
+    mockPoints([{
+      t_ms: anchor('20260803'),
+      foreign_net: -503_783,
+      institution_net: -427_253,
+      breakdown: { ...MEASURED, individual: 409_731 },
+    }], 'amt_mwon');
+    useInvestorEstimateUnitStore.setState({ unit: 'amount' });
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+
+    const row = screen.getByTestId('investor-daily-row-20260803');
+    expect(within(row).getByText('+4,097억')).toBeInTheDocument();
+  });
+
+  it('⚠ 셀은 **응답의 단위**로 그린다 — 토글이 앞서가도 옛 값을 새 단위로 안 읽는다', () => {
+    // 축이 쿼리 키에 들어 있어 전환 직후 `placeholderData` 가 옛 축(수량) 데이터를
+    // 넘겨주는 프레임이 있다. 그때 스토어를 따라 포맷하면 1,589,169주가
+    // "15,892억" 으로 그려진다(#1119 부류, 100배 오독).
+    mockPoints([point('20260803')], 'qty_shares');   // 데이터는 아직 수량
+    useInvestorEstimateUnitStore.setState({ unit: 'amount' });  // 토글은 이미 금액
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+
+    const row = screen.getByTestId('investor-daily-row-20260803');
+    expect(within(row).getByText('+8,658,155')).toBeInTheDocument();
+    expect(within(row).queryByText(/억/)).toBeNull();
+    // 칩은 스토어를 따른다 — 눌림 상태와 숫자의 출처가 다른 것이 요점이다.
+    expect(screen.getByRole('button', { name: /표시 단위/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('unit 이 없는 옛 백엔드 응답은 수량으로 읽는다', () => {
+    useLivePastInvestorNet.mockReturnValue({
+      data: { points: [point('20260803')] }, isLoading: false, error: null,
+    });
+    useInvestorEstimateUnitStore.setState({ unit: 'amount' });
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+
+    const row = screen.getByTestId('investor-daily-row-20260803');
+    expect(within(row).getByText('+8,658,155')).toBeInTheDocument();
   });
 
   it('데이터가 없으면 빈 상태를 보여 준다 — 무자격 dev 의 정상 경로다', () => {

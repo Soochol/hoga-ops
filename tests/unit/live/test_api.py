@@ -1932,10 +1932,10 @@ def _kiwoom_investor_seam(monkeypatch):
 
     _fake_kiwoom_client["client"] = None
 
-    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, run_page=None):
+    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, axis="2", run_page=None):
         if run_page is not None:
             await run_page(_fake_page_fetch, 0)
-        return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd)
+        return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd, axis=axis)
 
     async def _market_day(client, index, date_yyyymmdd):
         # ka10051 은 하루치 TR 이다(ADR-0137) — 페이크 클라이언트는 아직 구간 API 라
@@ -2056,16 +2056,19 @@ class _FakeKisForInvestor:
 
     def __init__(self):
         self.calls: list[tuple[str, str, str]] = []
+        #: 어댑터에 도달한 축("2"=수량 · "1"=금액) — 라우트가 축을 뚫는지 본다.
+        self.axes: list[str] = []
         self.violations: list[InvestorNetInvariantViolation] = []
         self.raise_rate_limit_on_call: int | None = None
         #: 실으면 모든 포인트가 같은 분해를 든다. 기본 None 은 지수 경로와 같은 모양이다.
         self.breakdown: InvestorSubjectBreakdown | None = None
 
     async def fetch_investor_net(
-        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, *, axis: str = "2"
     ) -> InvestorNetFetchResult:
         idx = len(self.calls)
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        self.axes.append(axis)
         if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
             from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
@@ -2241,6 +2244,67 @@ def test_past_investor_net_wire_carries_every_breakdown_key(tmp_path, monkeypatc
     }
 
 
+def test_past_investor_net_axis_reaches_vendor_and_declares_its_unit(
+    tmp_path, monkeypatch,
+) -> None:
+    """`axis` 가 벤더 `amt_qty_tp` 까지 닿고, 응답이 **자기 단위를 말한다**.
+
+    막는 방향 둘: ① 축이 라우트에서 삼켜져 늘 수량이 오는 것 ② 축은 바뀌었는데
+    `unit` 이 안 따라와 프론트가 주를 억으로 그리는 것(#1119 부류, 100배 오독).
+
+    못 보는 것: 값 자체(페이크가 정한다). 벤더 축의 단위는
+    `test_kiwoom_investor.py` 와 실측 프로브가 본다.
+    """
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    with TestClient(app) as c:
+        q = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240102")
+        a = c.get(
+            "/api/live/past-investor-net?code=005930&from=20240101&to=20240102&axis=amount"
+        )
+
+    assert q.json()["unit"] == "qty_shares"
+    assert a.json()["unit"] == "amt_mwon"
+    # 벤더 코드는 이름과 반대다 — 2 가 수량, 1 이 금액(kiwoom_investor 함정 ①).
+    assert fake.axes == ["2", "1"], "축이 어댑터까지 닿아야 한다"
+
+
+def test_past_investor_net_axes_do_not_share_a_cache(tmp_path, monkeypatch) -> None:
+    """두 축은 **캐시를 나눠 쓰지 않는다.**
+
+    한 캐시를 공유하면 배치 키에 축이 없어서 먼저 채워진 축의 배치가 다른 축의
+    요청에 그대로 응답한다 — 수량을 금액으로 읽는 사고이고, 값이 그럴듯해서
+    화면에서도 안 드러난다. 같은 구간을 두 축으로 물었을 때 **벤더 콜이 두 번**
+    나가는 것이 그 분리의 관측 가능한 증거다.
+    """
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    url = "/api/live/past-investor-net?code=005930&from=20240101&to=20240102"
+    with TestClient(app) as c:
+        c.get(url)
+        c.get(f"{url}&axis=amount")
+        # 각 축의 두 번째 요청은 자기 캐시가 받는다 — 콜이 늘지 않아야 한다.
+        c.get(url)
+        c.get(f"{url}&axis=amount")
+
+    assert fake.axes == ["2", "1"], f"축별 1콜씩이어야 한다: {fake.axes}"
+
+
+def test_past_investor_net_rejects_unknown_axis(tmp_path, monkeypatch) -> None:
+    """모르는 축은 422 다 — 조용히 수량으로 떨어지지 않는다.
+
+    폴백하면 프론트가 금액을 요청했다고 믿는 채로 주를 받는다. `unit` 이 진실을
+    말하므로 화면이 틀리지는 않지만, 토글이 **아무 일도 안 하는** 상태가 된다.
+    """
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    with TestClient(app) as c:
+        r = c.get(
+            "/api/live/past-investor-net?code=005930&from=20240101&to=20240102&axis=eok"
+        )
+    assert r.status_code == 422
+
+
 def test_past_candles_ignores_kis_account_health(tmp_path, monkeypatch) -> None:
     """PR-G(#1043) 칼 컷오버 회귀 가드 — **계정 차원이 통째로 사라졌다.**
 
@@ -2364,8 +2428,9 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> 
 
 def test_past_investor_net_empty_result_cached(tmp_path, monkeypatch) -> None:
     class _EmptyKis(_FakeKisForInvestor):
-        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd):
+        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd, *, axis="2"):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            self.axes.append(axis)
             return InvestorNetFetchResult(points=[], violations=[])
 
     fake = _EmptyKis()

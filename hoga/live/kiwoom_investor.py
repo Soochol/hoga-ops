@@ -18,14 +18,26 @@
 검산: 952,097백만원 ÷ 3,923,675주 = 242,650원/주 — 당일 범위(238,000~249,500)
 안이다. `1` 을 쓰면 **금액을 수량 자리에 넣는다.**
 
+`ka10059` 도 같은 표다(2026-08-31 실측, 005930 · 20260828): `amt_qty_tp=1` 이
+**백만원**이고 `acc_trde_prica` 와 같은 축이다. 검산 409,731백만원 ÷ 1,589,169주
+= 257,830원/주 vs 당일 종가 257,000원 — 0.3%(VWAP↔종가) 차이.
+
 **② `unit_tp` 는 TR 마다 다르다 — `ka10059` 에서는 실제로 스케일을 바꾼다.**
 이 주석의 초판은 "무의미하다(`1` 과 `1000` 의 응답이 완전히 같다)" 고 단정했다.
 `ka10064` 에는 맞을지 몰라도 **`ka10059` 에서는 틀리다** (2026-08-31 실측,
 005930 · 20260828):
 
-    unit_tp="1"     ind_invsr  1,589,169   ← **주**
-    unit_tp="1000"  ind_invsr      1,589   ← **천주**
-    (`acc_trde_qty` 는 둘 다 15,106,746 — 투자자 컬럼만 스케일된다)
+    수량 축(amt_qty_tp=2)
+      unit_tp="1"     ind_invsr  1,589,169   ← **주**
+      unit_tp="1000"  ind_invsr      1,589   ← **천주**
+      (`acc_trde_qty` 는 둘 다 15,106,746 — 투자자 컬럼만 스케일된다)
+
+    금액 축(amt_qty_tp=1)
+      unit_tp="1"     ind_invsr    409,731
+      unit_tp="1000"  ind_invsr    409,731   ← **같다. 이 축에서는 무시된다**
+
+**즉 축까지 내려가야 맞다.** 앞선 정정은 "`ka10059` 에서는 스케일이 바뀐다" 로
+TR 까지만 좁혔는데, 같은 TR 안에서도 **수량 축만** 스케일된다(2026-08-31 실측).
 
 프로덕션은 아래 `UNIT_TP_SHARES = "1"` 을 넘겨 **주 단위로 무사**하다. 위험한 건
 값이 아니라 옛 이름(`UNIT_TP_IGNORED`)과 옛 주석이었다 — "무의미" 를 믿고 `1000`
@@ -75,8 +87,9 @@ AMT_QTY_QUANTITY = "2"
 KA10051_AMT_EOK = "0"
 # **금액**축(백만원). 1 이 금액이다 — 직관과 반대라 상수로 못 박는다.
 AMT_QTY_AMOUNT = "1"
-# `ka10059` 투자자 컬럼의 **수량 단위**를 주(株)로 고정한다. `1000` 이면 천주로
-# 스케일된다 — 무의미한 값이 아니다(함정 ②의 정정).
+# `ka10059` **수량 축**의 단위를 주(株)로 고정한다. `1000` 이면 천주로 스케일된다 —
+# 무의미한 값이 아니다(함정 ②의 정정). **금액 축에서는 무시된다**(실측) — 그래도
+# 필수 파라미터라 두 축 모두 이 값을 보낸다.
 UNIT_TP_SHARES = "1"
 
 # `ka10064` 축 → 그 축이 채우는 행 필드 3개. 단위가 이름에 박혀 있어야 축이 뒤바뀐
@@ -101,6 +114,19 @@ _ORGN_PARTS: tuple[tuple[str, str], ...] = (
     ("samo_fund", "private_fund"),
     ("natn", "nation"),
 )
+
+#: 금액 축의 항등식 허용오차(백만원). **수량 축은 0 이다 — 느슨하게 하지 말 것.**
+#:
+#: 벤더가 컬럼마다 **독립적으로** 백만원 단위 반올림을 하므로, 반올림한 값들의 합은
+#: 합의 반올림과 다를 수 있다. 관여하는 반올림은 세부 8개 + `orgn` 자신 = 9개이고
+#: 각각 ±0.5 이라 정수 편차의 상한은 4다. 실측(005930 100행)은 최대 2였다 — 여유는
+#: 이론에서 나온 것이지 표본에서 나온 것이 아니다.
+#:
+#: `_ORGN_PARTS` 에서 **파생한다** — 컬럼 목록을 복사해 두면 목록이 늘 때 상한만
+#: 뒤처져서, 늘어난 컬럼의 반올림이 그대로 오탐이 된다.
+#:
+#: 구조적 결손(컬럼 하나 누락)은 이 축에서도 ~200,000 규모라 4로 충분히 잡힌다.
+_AMOUNT_ROUNDING_TOLERANCE = (len(_ORGN_PARTS) + 1) // 2
 
 _TRDE_TP_ALL = "0"
 _STEX_ALL = "3"
@@ -167,13 +193,20 @@ async def fetch_investor_net(
     from_yyyymmdd: str,
     to_yyyymmdd: str,
     *,
+    axis: str = AMT_QTY_QUANTITY,
     run_page: PageRunner | None = None,
 ) -> InvestorNetFetchResult:
     """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
 
+    `axis` 는 `AMT_QTY_QUANTITY`(주) 또는 `AMT_QTY_AMOUNT`(백만원)다. **한 응답에
+    둘이 함께 오지 않는다** — 별개의 콜이라 축을 바꾸면 벤더 콜이 하나 더 난다.
+    기본값이 수량인 것은 일봉 차트 pane 이 그 축을 쓰기 때문이다.
+
     `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
     주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
     """
+    # 금액 축은 컬럼마다 반올림돼 오므로 항등식이 정확히 맞지 않는다(위 상수).
+    tolerance = _AMOUNT_ROUNDING_TOLERANCE if axis == AMT_QTY_AMOUNT else 0
     def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
         oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
         return bool(oldest) and oldest < from_yyyymmdd
@@ -182,7 +215,7 @@ async def fetch_investor_net(
         "ka10059",
         {
             "stk_cd": code, "dt": to_yyyymmdd,
-            "amt_qty_tp": AMT_QTY_QUANTITY, "trde_tp": _TRDE_TP_ALL,
+            "amt_qty_tp": axis, "trde_tp": _TRDE_TP_ALL,
             "unit_tp": UNIT_TP_SHARES,
         },
         max_pages=_MAX_PAGES,
@@ -211,12 +244,12 @@ async def fetch_investor_net(
         # 준 값이라 여전히 옳고, 버리면 멀쩡한 날이 화면에서 사라진다. 대신 경고를
         # 실어 "세부의 합이 기관계와 다르다" 를 화면이 말할 수 있게 한다.
         parts_sum = sum(parts.values())
-        if parts_sum != institution:
+        if abs(parts_sum - institution) > tolerance:
             violations.append(InvestorNetInvariantViolation(
                 date_yyyymmdd=date_s, reason="malformed_row",
                 detail=(
                     f"orgn_mismatch: 기관계 {institution} ≠ 세부 8종 합 {parts_sum} "
-                    f"(차 {institution - parts_sum})"
+                    f"(차 {institution - parts_sum}, 허용 ±{tolerance})"
                 ),
             ))
         points.append(InvestorNetPoint(

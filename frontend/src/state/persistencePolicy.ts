@@ -94,7 +94,7 @@ export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
     module: 'state/investorEstimateUnit.ts',
     policy: 'shared-synced',
     hydrator: { module: 'state/investorEstimateUnit.ts', method: 'hydrateFromStorage' },
-    note: '단위(주/억)가 갈리면 나란히 놓고 비교하는 일 자체가 불가능하다 — 거래소와 같은 축(2026-08-17).',
+    note: '단위(주/억)가 갈리면 나란히 놓고 비교하는 일 자체가 불가능하다 — 거래소와 같은 축(2026-08-17). 잠정투자자·일별 투자자 **두 창**을 함께 지배한다(#1675).',
   },
   {
     key: 'live.investorDailySpan.v1',

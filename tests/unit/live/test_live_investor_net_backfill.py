@@ -54,6 +54,8 @@ async def _fake_page_fetch(_client):
 class _FakeKis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
+        #: 어댑터에 도달한 축 — 백필이 자기 인스턴스 축을 넘기는지 여기서 본다.
+        self.axes: list[str] = []
 
     async def fetch_investor_net(
         self,
@@ -62,6 +64,7 @@ class _FakeKis:
         from_yyyymmdd: str,
         to_yyyymmdd: str,
         *,
+        axis: str = "2",
         run_page=None,
     ) -> InvestorNetFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
@@ -140,7 +143,9 @@ async def test_live_investor_net_backfill_schedules_background_request(tmp_path,
         {
             # key 끝의 0 은 **페이지 인덱스**다 — 거버너 단위가 walk 전체가 아니라
             # 페이지라는 뜻이고, 그것이 유량 페이싱의 전제다(ADR-0137).
-            "key": ("live-investor-net", "005930", "20240101", "20240105", 0),
+            # 축("2"=수량)이 키에 든다 — 빠지면 두 축의 같은 구간이 서로를
+            # 중복제거해서, 금액 요청이 수량 walk 의 결과를 받는다.
+            "key": ("live-investor-net", "2", "005930", "20240101", "20240105", 0),
             "api_id": "ka10059",
             "priority": "background",
         }
@@ -162,6 +167,7 @@ class _GatedKis(_FakeKis):
         from_yyyymmdd: str,
         to_yyyymmdd: str,
         *,
+        axis: str = "2",
         run_page=None,
     ) -> InvestorNetFetchResult:
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
