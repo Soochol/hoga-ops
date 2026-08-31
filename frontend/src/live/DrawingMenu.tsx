@@ -137,7 +137,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
         aria-checked={magnet}
         onClick={() => setDefaults({ magnet: !magnet })}
         className={itemClass(false)}
-        title="캔들에 스냅 (Ctrl로 일시 해제)"
+        title="캔들 · 도형에 스냅 (Ctrl로 일시 해제)"
       >
         <span aria-hidden="true" className="w-4 text-center">🧲</span>
         <span>자석</span>

@@ -20,6 +20,7 @@ import {
 import type { Drawing, PaneId, Point } from './drawing/types';
 import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
+import type { AlignGuide } from './drawing/alignSnap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
 import { hitTestDrawings, unlockedOnly } from './drawing/hitTest';
@@ -195,6 +196,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // magnet snapping already resolved, so each pane's primitive can project it.
   // Null when not hovering with those tools.
   const ghostRef = useRef<GhostPreview | null>(null);
+  /** Alignment guides for the in-flight drag. A ref, not state: it changes on
+   *  every pointermove and a setState per sample would re-render the whole
+   *  overlay at pointer cadence. */
+  const alignGuidesRef = useRef<{ guides: readonly AlignGuide[]; color: string } | null>(null);
   // Last known cursor position in CLIENT coords, tracked unconditionally. The
   // pointer-events gate needs it to settle the moment select mode is entered —
   // without a remembered position it can only wait for the next mousemove, and
@@ -319,6 +324,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       pencil: defaults.styleByKind.pencil,
     },
     ghost: ghostRef.current,
+    alignGuides: alignGuidesRef.current,
     onFrame: textEdit ? syncTextEditorPosition : undefined,
   });
 
@@ -614,6 +620,35 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     return { kind: 'vline', style, cursorPx: px, cursorPaneId, price: cursorPrice, realMs, snapped };
   };
 
+  /**
+   * Publish (or clear) the drag's alignment guides.
+   *
+   * The COLOR is resolved here rather than inside the tool: a tool knows the
+   * geometry that snapped but not which drawing the user is holding, and the
+   * guide has to wear that drawing's color (see `renderAlignGuides`). During a
+   * creation drag there is no such drawing yet, so the rect tool's own sticky
+   * color stands in — which is exactly the color the draft is being drawn in.
+   *
+   * The clear path early-returns when nothing was showing, so the common case
+   * (a drag that never snaps) costs no redraws at all.
+   */
+  const setAlignGuides = (guides: readonly AlignGuide[]) => {
+    if (guides.length === 0) {
+      if (alignGuidesRef.current !== null) {
+        alignGuidesRef.current = null;
+        requestRedraw();
+      }
+      return;
+    }
+    const draggingId = dragRef.current?.id;
+    const dragging = draggingId ? drawings.find((d) => d.id === draggingId) : undefined;
+    alignGuidesRef.current = {
+      guides,
+      color: dragging?.color ?? defaults.styleByKind.rect.color,
+    };
+    requestRedraw();
+  };
+
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
@@ -654,6 +689,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           // Never captured, or released already — nothing to undo.
         }
       },
+      // Shape alignment rides the SAME magnet toggle and the same Ctrl/Meta
+      // override as candle snapping — the user already calls this "자석" and
+      // splitting it into a second switch would make the toggle mean half of
+      // what it says. Unlike the candle magnet it does not require loaded
+      // candles: its references are other rectangles.
+      alignSnapEnabled: defaults.magnet && !(e.ctrlKey || e.metaKey),
+      setAlignGuides,
       pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
       realMsToCanvasX,
       canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
@@ -844,6 +886,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     rectDraft.current = null;
     measureDraft.current = null;
     dragRef.current = null;
+    // A guide belongs to a gesture. Escape / right-click / pointercancel all
+    // end the gesture, so the line must go with it.
+    if (alignGuidesRef.current !== null) {
+      alignGuidesRef.current = null;
+      requestRedraw();
+    }
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
