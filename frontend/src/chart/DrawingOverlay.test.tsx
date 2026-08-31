@@ -1163,3 +1163,129 @@ describe('DrawingOverlay Delete — 잠금 게이트', () => {
     expect(notPrevented).toBe(true); // preventDefault 가 안 불렸다
   });
 });
+
+// ─── 키보드 — 전체 선택 · 미세 이동 · 다중 복제 ────────────────────────────
+describe('DrawingOverlay 키보드 — 다중 선택 편의', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const hline = (id: string, price: number): Drawing => ({
+    id, kind: 'hline', price, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  const mount = (ids: string[] = []) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    ['h1', 'h2', 'h3'].forEach((id, i) => s().add(SCOPE, hline(id, 100 * (i + 1))));
+    if (ids.length > 0) s().addToSelection(SCOPE, ids);
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope={SCOPE}
+        paneSeries={new Map()}
+      />,
+    );
+  };
+
+  /** window keydown 을 쏘고 preventDefault 여부를 돌려준다. */
+  const key = (init: KeyboardEventInit) => {
+    const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+    act(() => {
+      window.dispatchEvent(ev);
+    });
+    return ev.defaultPrevented;
+  };
+
+  it('Ctrl+A 는 이 차트의 그리기를 전부 고른다 — 잠긴 것도', () => {
+    mount();
+    act(() => {
+      s().update(SCOPE, 'h2', { locked: true });
+    });
+    expect(key({ key: 'a', ctrlKey: true })).toBe(true);
+    expect(s().selectedFor(SCOPE)).toEqual(['h1', 'h2', 'h3']);
+  });
+
+  it('Ctrl+A 는 합집합이 아니라 교체다 — 지워진 id 가 남지 않는다', () => {
+    mount(['h1']);
+    act(() => {
+      s().removeMany(SCOPE, ['h1']);
+    });
+    key({ key: 'a', ctrlKey: true });
+    expect(s().selectedFor(SCOPE)).toEqual(['h2', 'h3']);
+  });
+
+  it('숨김 레이어에서는 전체 선택이 아무 일도 하지 않는다', () => {
+    mount();
+    act(() => {
+      s().setDefaults({ hiddenAll: true });
+    });
+    key({ key: 'a', ctrlKey: true });
+    expect(s().selectedFor(SCOPE)).toEqual([]);
+  });
+
+  // ⚠ 방향키는 Delete 와 정직성 규칙이 갈린다. 선택이 없으면 흘려보내고(차트·페이지가
+  // 평소대로 반응한다), 선택이 있으면 **아무것도 못 움직여도** 키를 가져간다 —
+  // 흘려보내면 페이지가 스크롤되어 고른 도형이 밀려나는 것처럼 보인다.
+  it('선택이 없으면 방향키를 흘려보낸다', () => {
+    mount();
+    expect(key({ key: 'ArrowUp' })).toBe(false);
+  });
+
+  it('선택이 있으면 방향키를 가져간다', () => {
+    mount(['h1']);
+    expect(key({ key: 'ArrowUp' })).toBe(true);
+  });
+
+  it('전부 잠겼어도 방향키는 가져간다 — 페이지가 스크롤되면 안 된다', () => {
+    mount(['h1']);
+    act(() => {
+      s().update(SCOPE, 'h1', { locked: true });
+    });
+    expect(key({ key: 'ArrowDown' })).toBe(true);
+  });
+
+  it('Ctrl+D 는 선택 전체를 복제하고 선택을 사본으로 옮긴다', () => {
+    mount(['h1', 'h3']);
+    key({ key: 'd', ctrlKey: true });
+
+    const all = s().drawingsFor(SCOPE);
+    expect(all).toHaveLength(5);
+    const clones = all.slice(3);
+    // 사본이 새 id 를 갖고, 선택이 그쪽으로 옮겨 갔다.
+    expect(s().selectedFor(SCOPE)).toEqual(clones.map((c) => c.id));
+    expect(clones.map((c) => c.id)).not.toContain('h1');
+  });
+
+  it('사본은 잠금이 풀린 채로 태어난다', () => {
+    mount(['h1']);
+    act(() => {
+      s().update(SCOPE, 'h1', { locked: true });
+    });
+    key({ key: 'd', ctrlKey: true });
+    const clone = s().drawingsFor(SCOPE).at(-1)!;
+    expect(clone.locked).toBeUndefined();
+  });
+
+  it('다중 복제는 되돌리기 한 단계다', () => {
+    mount(['h1', 'h2', 'h3']);
+    key({ key: 'd', ctrlKey: true });
+    expect(s().drawingsFor(SCOPE)).toHaveLength(6);
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(s().drawingsFor(SCOPE)).toHaveLength(3);
+  });
+
+  it('선택이 없으면 복제도 하지 않는다', () => {
+    mount();
+    key({ key: 'd', ctrlKey: true });
+    expect(s().drawingsFor(SCOPE)).toHaveLength(3);
+  });
+});

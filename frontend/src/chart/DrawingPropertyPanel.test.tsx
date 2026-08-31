@@ -677,3 +677,49 @@ describe('DrawingPropertyPanel — 잠금 혼재', () => {
     expect(screen.getByTestId('drawing-thickness-trigger').textContent).toContain('혼합');
   });
 });
+
+// ─── 겹침 순서 버튼 ────────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 겹침 순서', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const mk = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+  const ids = () => s().drawingsFor(SCOPE).map((d) => d.id);
+
+  const seed = (selected: string[]) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    ['h1', 'h2', 'h3'].forEach((id, i) => s().add(SCOPE, mk(id, 1000 * (i + 1))));
+    s().addToSelection(SCOPE, selected);
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+  };
+
+  it('단일 선택 패널에도 있다', () => {
+    seed(['h1']);
+    fireEvent.click(screen.getByTestId('drawing-bring-front'));
+    expect(ids()).toEqual(['h2', 'h3', 'h1']);
+  });
+
+  it('다중 툴바에서 집합 전체를 옮긴다', () => {
+    seed(['h1', 'h2']);
+    fireEvent.click(screen.getByTestId('drawing-send-back'));
+    expect(ids()).toEqual(['h1', 'h2', 'h3']); // 이미 앞이라 그대로
+    fireEvent.click(screen.getByTestId('drawing-bring-front'));
+    expect(ids()).toEqual(['h3', 'h1', 'h2']);
+  });
+
+  it('잠긴 단일 선택에서는 비활성된다', () => {
+    seed(['h1']);
+    act(() => {
+      s().update(SCOPE, 'h1', { locked: true });
+    });
+    expect(screen.getByTestId('drawing-bring-front')).toBeDisabled();
+  });
+
+  it('전부 잠긴 다중 선택에서도 비활성된다', () => {
+    seed(['h1', 'h2']);
+    act(() => {
+      s().updateMany(SCOPE, ['h1', 'h2'].map((id) => ({ id, patch: { locked: true } as Partial<Drawing> })));
+    });
+    expect(screen.getByTestId('drawing-send-back')).toBeDisabled();
+  });
+});

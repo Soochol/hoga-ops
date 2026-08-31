@@ -246,7 +246,49 @@ function FontSizePopover({ current, onPick }: { current: number | null; onPick: 
 }
 
 /**
- * 다중 선택 툴바 — 개수, 집합 전체에 뜻이 통하는 스타일 편집, 그리고 잠금·삭제.
+ * 겹침 순서 버튼 한 쌍 — 단일 패널과 다중 툴바가 함께 쓴다.
+ *
+ * 배열 순서가 곧 z-order 이고, 그것이 **클릭이 어느 도형에 가는지**를 정한다
+ * (`hitTestDrawings` 는 뒤에서부터 훑어 최상단을 집는다). 겹친 도형 중 아래 것을
+ * 골라 올릴 방법이 그전에는 없었다.
+ */
+function ZOrderButtons({
+  scope, ids, disabled,
+}: { scope: string; ids: readonly string[]; disabled: boolean }) {
+  const cls =
+    'h-7 w-7 inline-flex items-center justify-center rounded text-xs text-fg-dim' +
+    (disabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover');
+  const move = (to: 'front' | 'back') => useDrawingsStore.getState().reorder(scope, ids, to);
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="drawing-bring-front"
+        aria-label="맨 앞으로"
+        title="맨 앞으로 — 겹친 도형 위로 올립니다"
+        disabled={disabled}
+        onClick={() => move('front')}
+        className={cls}
+      >
+        앞
+      </button>
+      <button
+        type="button"
+        data-testid="drawing-send-back"
+        aria-label="맨 뒤로"
+        title="맨 뒤로 — 겹친 도형 아래로 내립니다"
+        disabled={disabled}
+        onClick={() => move('back')}
+        className={cls}
+      >
+        뒤
+      </button>
+    </>
+  );
+}
+
+/**
+ * 다중 선택 툴바 — 개수, 스타일 일괄 편집, 겹침 순서, 잠금·삭제.
  *
  * 컨트롤이 뜨는 규칙은 하나다: **그 속성을 가진 멤버가 하나라도 있으면 뜬다.**
  * 적용도 그 멤버들에게만 간다(`kindHasProp`). 그래서 추세선과 텍스트를 함께 골라
@@ -434,6 +476,8 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
+      {/* 순서 변경은 편집이라 전부 잠겼으면 비활성된다 — 스타일·삭제와 같은 판정. */}
+      <ZOrderButtons scope={scope} ids={ids} disabled={allLocked} />
       <button
         type="button"
         data-testid="drawing-multi-lock"
@@ -749,6 +793,7 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
+      <ZOrderButtons scope={scope} ids={[id]} disabled={locked} />
       {/* 자물쇠는 이 툴바에서 **잠금 상태와 무관하게 항상 살아 있는 유일한 컨트롤**
           이다 — 잠금을 푸는 다른 경로가 없다. 그래서 삭제 왼쪽, 구분선 오른쪽에
           둔다(스타일 그룹과 분리, 파괴적 동작 앞). */}
