@@ -21,6 +21,7 @@ import type { Drawing, PaneId, Point } from './drawing/types';
 import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import type { AlignGuide } from './drawing/alignSnap';
+import { resetGestureRefs, type GestureRefs } from './drawing/gestureReset';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
 import { hitTestDrawings, unlockedOnly } from './drawing/hitTest';
@@ -200,6 +201,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
    *  every pointermove and a setState per sample would re-render the whole
    *  overlay at pointer cadence. */
   const alignGuidesRef = useRef<{ guides: readonly AlignGuide[]; color: string } | null>(null);
+  /** Everything one gesture owns, bundled so all three exits (Escape,
+   *  right-click, pointercancel) clear the SAME list. Stable identity: the
+   *  keydown effect below has `[]` deps and captures this once. */
+  const gestureRefs = useRef<GestureRefs>({
+    trendlineDraft,
+    pencilDraft,
+    rectDraft,
+    measureDraft,
+    dragRef,
+    alignGuides: alignGuidesRef,
+  }).current;
   // Last known cursor position in CLIENT coords, tracked unconditionally. The
   // pointer-events gate needs it to settle the moment select mode is entered —
   // without a remembered position it can only wait for the next mousemove, and
@@ -422,10 +434,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // 되돌리는지 외워야 하므로, 예측 가능성을 택했다. 두 경로가 같은 스토어
         // 액션을 부르는 것이 곧 "결과가 항상 같다" 는 보장이다.
         useDrawingsStore.getState().exitDrawingMode();
-        trendlineDraft.current = null;
-        pencilDraft.current = null;
-        rectDraft.current = null;
-        measureDraft.current = null;
+        // `keepDrag`: a live drag still holds a captured pointer, and
+        // `onPointerUp` reads `dragRef` to decide whether to release it.
+        const { guidesCleared } = resetGestureRefs(gestureRefs, { keepDrag: true });
+        if (guidesCleared) requestRedraw();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -881,17 +893,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // pointer lost) and contextmenu. Keep this in sync with the draft refs the
   // tools own — a new draft-bearing tool must reset here too.
   const resetGesture = () => {
-    trendlineDraft.current = null;
-    pencilDraft.current = null;
-    rectDraft.current = null;
-    measureDraft.current = null;
-    dragRef.current = null;
-    // A guide belongs to a gesture. Escape / right-click / pointercancel all
-    // end the gesture, so the line must go with it.
-    if (alignGuidesRef.current !== null) {
-      alignGuidesRef.current = null;
-      requestRedraw();
-    }
+    const { guidesCleared } = resetGestureRefs(gestureRefs);
+    if (guidesCleared) requestRedraw();
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
