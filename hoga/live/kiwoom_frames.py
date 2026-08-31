@@ -120,6 +120,13 @@ def _reject_if_not_today(tick: WsTick, *, now_ms: int) -> WsTick | None:
     return tick
 
 
+#: `bad_field` 상세 로그를 (타입, 종목) 당 1회로 접기 위한 표. 조합 수가 유계라
+#: (타입 6종 × 구독 종목) 무한 증가하지 않는다. 프로세스 수명 동안 유지 — 같은 종목이
+#: 같은 타입으로 계속 실패하는 것은 **한 번 알면 되는 사실**이고, 새 종목·새 타입의
+#: 실패는 여전히 첫 1회가 뜬다. 재시작하면 다시 한 바퀴 찍힌다(그게 의도다).
+_BAD_FIELD_SEEN: set[tuple[str | None, str]] = set()
+
+
 def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | None:
     """REAL 메시지의 data[] 원소 1개 → WsTick. 미지원 type·불량 프레임은 None.
 
@@ -145,9 +152,32 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
         now_parser = _NOW_STAMPED_PARSERS.get(typ)
         if now_parser is not None:
             return now_parser(code, values, now_ms=now_ms, venue=venue)
-    except (ValueError, KeyError):
+    except (ValueError, KeyError) as e:
         # 숫자 불량/필드 부재는 프레임 1건 손실로 격리 — recv 루프까지 전파 금지.
-        _log.warning("live.kiwoom.bad_field type=%s code=%s", typ, code)
+        #
+        # **(타입, 종목) 당 첫 1회만 상세 warning 을 내고 이후는 debug 로 접는다.**
+        # 종전엔 매 프레임 warning 이라 동시호가에 폭주했다 — 실측 2026-08-31
+        # 08:56 **942건/분**(초당 16건), 하루 8,862건(08-28 은 16,094건). 전부
+        # `0H`(주식예상체결)이고 전부 KRX 였다. 동기 파일 I/O 라 그 자체가 이벤트
+        # 루프 부담이고, 같은 시간대에 `loop_lag` 10.2초가 찍혔다.
+        #
+        # 접는 단위가 (타입, 종목) 인 이유: 한 종목이 조용해도 **다른 종목의 새 실패는
+        # 여전히 보여야** 하고, 조합 수가 유계다(6 타입 × 구독 종목). 세션 1회면
+        # 하루 8,862 → 284 건(실측 distinct 종목 수)으로 31배 준다.
+        #
+        # 상세를 처음 1회에 싣는 것이 이 변경의 값어치다 — 종전 로그는 `type`·`code`
+        # 만 찍어서 **어느 FID 가 문제인지 알 수 없었다**(그걸 알아내려고 파서를
+        # 역추적해야 했다). 실패 경로가 셋(시각 FID 부재 → KeyError, 시각/가격/수량이
+        # 비숫자 → ValueError)이라 예외 문자열과 수신 FID 목록이 곧 판별식이다.
+        seen_key = (typ, code)
+        if seen_key in _BAD_FIELD_SEEN:
+            _log.debug("live.kiwoom.bad_field type=%s code=%s (반복)", typ, code)
+        else:
+            _BAD_FIELD_SEEN.add(seen_key)
+            _log.warning(
+                "live.kiwoom.bad_field type=%s code=%s err=%s fids=%s",
+                typ, code, f"{type(e).__name__}: {e}", sorted(values),
+            )
         return None
     return None
 

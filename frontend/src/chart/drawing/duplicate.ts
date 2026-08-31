@@ -35,6 +35,12 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
  *  computed off the ref vertex would strand the OTHER vertices inside an
  *  inter-session gap whenever the ref's +14px crosses a session boundary.
  *
+ *  `Rect.extendRight` rides along on the spread, deliberately: extension is
+ *  part of the SHAPE (it changes what the box looks like), so a copy of an
+ *  extended box must also be extended. That is the opposite call from `locked`
+ *  below, and the difference is the point — lock is a restriction on editing,
+ *  not a property of the drawing.
+ *
  *  ⚠ The clone is born UNLOCKED. `{ ...d }` would carry `locked: true` over,
  *  and the copy — 14px down-right of a shape the user deliberately pinned —
  *  could then be neither moved nor deleted. Duplicating is a request for a

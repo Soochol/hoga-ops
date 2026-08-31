@@ -12,6 +12,7 @@ import {
   renderTrendlineDraft,
   formatMeasureLabel,
   lockBadgeAnchor,
+  renderAlignGuides,
   type ProjectCtx,
   dashPattern,
 } from './render';
@@ -581,6 +582,70 @@ describe('선택 핸들 — 잠긴 도형에는 그리지 않는다', () => {
   });
 });
 
+// ── 우측 확장 ──────────────────────────────────────────────────────────────
+//
+// `extendRight` 는 저장 좌표를 건드리지 않고 **투영만** 바꾼다. 그래서 여기서 재는
+// 것은 "그려진 상자" 이고, 같은 계산(`rectXSpan`)을 hitTest.test.ts 가 "잡히는
+// 상자" 쪽에서 다시 잰다 — 둘이 갈리면 사각형이 보이는 자리에서 안 잡힌다.
+describe('사각형 우측 확장 — 렌더', () => {
+  const rect: Rect = {
+    id: 'r1', kind: 'rect',
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', fillOpacity: 0.1,
+  };
+  // realMsToX = realMs/1000 → a.x=100, b.x=200. priceToY = 300-price → 200 / 150.
+  // ctx.width = 800 이 곧 확장의 목적지다.
+  const box = (c: ReturnType<typeof makeCanvasSpy>) =>
+    (c.strokeRect as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as number[];
+  function countHandles(c: ReturnType<typeof makeCanvasSpy>): number {
+    return c.fillRect.mock.calls.filter((args) => args[2] === 6 && args[3] === 6).length;
+  }
+
+  it('꺼져 있으면 그린 두 코너 사이만 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), rect, false);
+    expect(box(c)).toEqual([100, 150, 100, 50]);
+  });
+
+  it('켜면 오른쪽 변이 캔버스 끝(ctx.width)까지 간다 — 왼쪽 변과 세로는 그대로', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...rect, extendRight: true }, false);
+    expect(box(c)).toEqual([100, 150, 700, 50]);
+  });
+
+  it('채우기도 같은 폭으로 확장된다 — 테두리만 늘어나면 반쯤 칠해진 상자가 된다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...rect, extendRight: true }, false);
+    // 6×6 핸들이 아닌 fillRect = 본체 채우기.
+    const fills = c.fillRect.mock.calls.filter((args) => !(args[2] === 6 && args[3] === 6));
+    expect(fills[0]).toEqual([100, 150, 700, 50]);
+  });
+
+  it('이미 화면 밖까지 뻗은 상자는 되돌려 당기지 않는다 — 확장은 늘리기만 한다', () => {
+    const c = makeCanvasSpy();
+    // b.x = 1_200_000/1000 = 1200 > width(800).
+    renderDrawing(
+      c,
+      makeProjectCtxWithProjection(),
+      { ...rect, b: { realMs: 1_200_000, price: 150 }, extendRight: true },
+      false,
+    );
+    expect(box(c)[2]).toBe(1100); // 1200 - 100
+  });
+
+  it('확장 중에는 오른쪽 코너 핸들 2개를 그리지 않는다 — 그 변은 끌 대상이 아니다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...rect, extendRight: true }, true);
+    expect(countHandles(c)).toBe(2);
+    // 남은 둘은 **왼쪽** 변의 것이다 — 개수만 세면 엉뚱한 두 개가 남아도 통과한다.
+    const handleXs = c.fillRect.mock.calls
+      .filter((args) => args[2] === 6 && args[3] === 6)
+      .map((args) => (args[0] as number) + 3); // drawHandle 은 중심에서 -3 한다
+    expect(handleXs).toEqual([100, 100]);
+  });
+});
+
 // ── 잠금 배지 (ADR-0164 후속) ──────────────────────────────────────────────
 describe('잠금 배지', () => {
   const hline: Hline = {
@@ -636,5 +701,74 @@ describe('잠금 배지', () => {
     renderDrawing(c, makeProjectCtx(), { ...trendline, locked: true }, false);
     expect(lockBadgeAnchor(makeProjectCtx(), trendline)).toBeNull();
     expect(badges(c)).toBe(0);
+  });
+});
+
+describe('renderAlignGuides', () => {
+  it('draws a vertical line at the aligned time, overshooting both boxes', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection(); // x = ms/1000, y = 300 − price
+    renderAlignGuides(
+      c,
+      ctx,
+      [{ axis: 'x', paneId: 'candle', at: 120_000, from: 100, to: 250 }],
+      '#14B8A6',
+    );
+    // from/to are prices → y 200 and y 50; the line runs GUIDE_OVERSHOOT past
+    // each end (50 − 14 = 36, 200 + 14 = 214).
+    expect(c.moveTo).toHaveBeenCalledWith(120, 36);
+    expect(c.lineTo).toHaveBeenCalledWith(120, 214);
+    expect(c.setLineDash).toHaveBeenCalledWith([7, 5]);
+  });
+
+  it('draws a horizontal line at the aligned price', () => {
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'candle', at: 100, from: 50_000, to: 120_000 }],
+      '#14B8A6',
+    );
+    expect(c.moveTo).toHaveBeenCalledWith(36, 200);
+    expect(c.lineTo).toHaveBeenCalledWith(134, 200);
+  });
+
+  it('wears the dragged shape colour rather than a hardcoded accent', () => {
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'candle', at: 100, from: 50_000, to: 120_000 }],
+      '#F43F5E',
+    );
+    expect(c.strokeStyle).toBe('#F43F5E');
+  });
+
+  it('skips a guide that belongs to another pane', () => {
+    // A price only means something on the scale it came from — drawing a
+    // volume-pane guide on the candle canvas would put a line at a fabricated
+    // level.
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtxWithProjection(),
+      [{ axis: 'y', paneId: 'volume', at: 100, from: 50_000, to: 120_000 }],
+      '#14B8A6',
+    );
+    expect(c.stroke).not.toHaveBeenCalled();
+    expect(c.save).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when a coordinate cannot be projected', () => {
+    // No fallback position: a guide pointing at the wrong place is worse than
+    // no guide.
+    const c = makeCanvasSpy();
+    renderAlignGuides(
+      c,
+      makeProjectCtx(), // realMsToX → null
+      [{ axis: 'x', paneId: 'candle', at: 120_000, from: 100, to: 250 }],
+      '#14B8A6',
+    );
+    expect(c.stroke).not.toHaveBeenCalled();
   });
 });

@@ -39,6 +39,7 @@ import {
 } from './drawing/chartCoordinates';
 import {
   renderDrawing,
+  renderAlignGuides,
   renderGhostPreview,
   renderHlinePriceBadge,
   renderMeasureDraft,
@@ -48,6 +49,7 @@ import {
   type ProjectCtx,
 } from './drawing/render';
 import type { Drawing, DrawingStyle, Hline, PaneId } from './drawing/types';
+import type { AlignGuide } from './drawing/alignSnap';
 import type {
   MeasureDraft,
   PencilDraft,
@@ -58,13 +60,23 @@ import type {
 /** Everything the renderer needs for one frame. */
 export type DrawingsSnapshot = {
   drawings: readonly Drawing[];
-  selectedId: string | null;
+  /** 선택 멤버십. 오버레이가 선택 배열에서 파생해 넘긴다 — 이 getter 는 lwc 의
+   *  draw 마다(팬 × 팬 수) 불리므로 여기서 Set 을 만들면 안 된다. */
+  selectedIds: ReadonlySet<string>;
+  /** 끝점·모서리 핸들을 그릴 도형. **단일 선택일 때만** non-null — 다중에서
+   *  핸들이 뜨면 핸들 드래그와 그룹 이동이 같은 픽셀에서 경합한다. */
+  handlesId: string | null;
   /** Hidden layer — draw nothing (drafts included; no gesture runs while hidden). */
   hiddenAll: boolean;
   axis: VirtualAxis;
   future?: FutureBand;
   bucketMs?: number;
   lastRealMs?: number;
+  /** The loaded bars, for the measure readout's column count. Carried as data
+   *  (like `axis` / `bucketMs`) rather than as a prebuilt domain so the renderer
+   *  keeps deriving its own — one definition of "one column", shared with the
+   *  drag. See DragBarDomain. */
+  candles?: readonly { ts_ms: number }[];
   /** In-flight creation gestures. Live on refs in the overlay, so they change
    *  without a React render — hence the pull-based source below. */
   drafts: {
@@ -79,6 +91,13 @@ export type DrawingsSnapshot = {
     pencil: DrawingStyle;
   };
   ghost: GhostPreview | null;
+  /**
+   * Alignment guides for the in-flight drag, plus the color to draw them in
+   * (the dragged shape's own — see `renderAlignGuides`). Null while nothing is
+   * snapping. Lives on a ref like the drafts above: it changes at pointer
+   * cadence, not at React's.
+   */
+  alignGuides: { guides: readonly AlignGuide[]; color: string } | null;
   /**
    * Called at the end of each pane's draw, inside lwc's frame. Lets the overlay
    * reposition DOM it anchors to chart coordinates (the text editor) in the
@@ -151,6 +170,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         axis: snap.axis,
         bucketMs: snap.bucketMs,
         lastRealMs: snap.lastRealMs,
+        candles: snap.candles,
         // Read once per frame, not once per point: `logicalToCoordinate` is a
         // model call, and a pencil stroke can carry thousands of vertices.
         barPx: barPitchPx(chart) ?? undefined,
@@ -160,15 +180,16 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
       // draw order the single-canvas overlay had.
       for (const d of snap.drawings) {
         if (d.kind === 'vline' || d.paneId !== paneId) continue;
-        renderDrawing(c, ctx, d, d.id === snap.selectedId);
+        renderDrawing(c, ctx, d, snap.selectedIds.has(d.id), { handles: d.id === snap.handlesId });
       }
       for (const d of snap.drawings) {
         // A vline spans every pane, so every pane's primitive draws it —
         // including panes it did not originate on. That also preserves the old
         // behaviour where a vline survives its origin pane being toggled off.
         if (d.kind !== 'vline') continue;
-        renderDrawing(c, ctx, d, d.id === snap.selectedId, {
+        renderDrawing(c, ctx, d, snap.selectedIds.has(d.id), {
           vlineTimeBadge: snap.timeBadgePaneId == null || snap.timeBadgePaneId === paneId,
+          handles: d.id === snap.handlesId,
         });
       }
 
@@ -204,6 +225,10 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
       }
 
       if (snap.ghost) renderGhostPreview(c, ctx, snap.ghost);
+      // Last, so a guide is never buried under the shapes it measures.
+      if (snap.alignGuides) {
+        renderAlignGuides(c, ctx, snap.alignGuides.guides, snap.alignGuides.color);
+      }
     });
 
     // Outside the coordinate scope: this repositions DOM, not canvas.
@@ -254,7 +279,7 @@ class DrawingsPriceAxisRenderer implements IPrimitivePaneRenderer {
         lastRealMs: snap.lastRealMs,
       };
       for (const h of hlines) {
-        renderHlinePriceBadge(c, ctx, h, h.id === snap.selectedId);
+        renderHlinePriceBadge(c, ctx, h, snap.selectedIds.has(h.id));
       }
     });
   }
