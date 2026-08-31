@@ -330,6 +330,101 @@ describe('useViewportBackfill — 좌측 바닥 도달 (3b/3e 가 fill 을 세�
 
     expect(extendSpy).toHaveBeenCalledTimes(1);
   });
+
+  // ── 3e 바닥 반려의 **말하는 횟수** ────────────────────────────────────────
+  // 3e 는 `bundle`·`axis` 를 deps 로 갖는 effect 라 데이터 커밋마다 깨어난다. 바닥에
+  // 앉아 있으면 매 커밋이 같은 반려에 도달하는데, 그 분기는 dispatch 가 아니라서
+  // 스텝 카운터(상한 3)도 창-동일 래치도 건드리지 않는다 → 같은 줄이 무한히 찍힌다.
+  // 2026-08-31 실측(035420 60m 바닥): 4초에 12줄, 약 200ms 간격.
+  function floorLogCount(): number {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_floor').length;
+  }
+
+  it('3e: 바닥 반려는 커밋이 반복돼도 한 번만 말한다', () => {
+    vi.mocked(livePerfLog).mockClear();
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    // axis·콜백을 렌더 밖으로 올려 **bundle 정체성만** 바뀌게 한다 — 그러지 않으면
+    // 매 렌더가 모든 deps 를 갈아 "커밋마다 깨어난다" 를 재는 것이 아니게 된다.
+    const axis = axisWithOneSession();
+    const canTrigger = () => true;
+    const { rerender } = renderHook(
+      ({ bundle }: { bundle: RangeBundle }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis,
+          bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: canTrigger,
+          minuteScrollbackFloorDate: '20260601', // 창(20260601)과 같다 = 바닥
+        }),
+      { initialProps: { bundle: bundleWithCandles() } },
+    );
+
+    expect(floorLogCount()).toBe(1);
+    // 데이터 커밋 4회 — 창도 바닥도 그대로다. 새 사실이 없으므로 새 줄도 없다.
+    for (let i = 0; i < 4; i++) rerender({ bundle: bundleWithCandles() });
+    expect(floorLogCount()).toBe(1);
+  });
+
+  it('3e: 바닥이 움직이면 다시 말한다 — 침묵은 그 상태에만 매인다', () => {
+    // ⚠ 바닥은 3e 의 deps 가 아니라 **ref 미러**로 읽힌다 — 그 값만 바꿔서는 이
+    // effect 가 깨어나지 않는다. 실제로 바닥을 움직이는 사건(hogaplay 소스 토글)은
+    // 캔들 소스를 갈아 `bundle` 을 함께 바꾸므로, 프로덕션에서는 둘이 같이 온다.
+    // 테스트도 그 쌍으로 민다 — 바닥만 흔드는 것은 존재하지 않는 사건이다.
+    vi.mocked(livePerfLog).mockClear();
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    const axis = axisWithOneSession();
+    const canTrigger = () => true;
+    const { rerender } = renderHook(
+      ({ floor, bundle }: { floor: string; bundle: RangeBundle }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis,
+          bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: canTrigger,
+          minuteScrollbackFloorDate: floor,
+        }),
+      { initialProps: { floor: '20260601', bundle: bundleWithCandles() } },
+    );
+
+    expect(floorLogCount()).toBe(1);
+    // 바닥이 더 뒤로 물러났다(여전히 창 위 = 계속 반려). 상태가 달라졌으니 다시 말한다.
+    rerender({ floor: '20260701', bundle: bundleWithCandles() });
+    expect(floorLogCount()).toBe(2);
+  });
+
+  it('3e: 반려 래치는 바닥이 풀린 뒤의 탈출을 막지 않는다 (정지 판정이 아니다)', () => {
+    // 이 래치를 바닥 술어 **바깥**에 두면 로그 중복 제거가 아니라 두 번째 정지
+    // 판정이 되어, 바닥이 사라져도 3e 가 영영 안 선다 — #1662 가 경고한 그 모양이다.
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    const axis = axisWithOneSession();
+    const canTrigger = () => true;
+    const { rerender } = renderHook(
+      ({ floor, bundle }: { floor: string | null; bundle: RangeBundle }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis,
+          bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: canTrigger,
+          minuteScrollbackFloorDate: floor,
+        }),
+      { initialProps: { floor: '20260601' as string | null, bundle: bundleWithCandles() } },
+    );
+
+    expect(extendSpy).not.toHaveBeenCalled(); // 바닥 — 반려 래치가 걸린 상태
+    // 디스크 소스로 전환 = 좌측 바닥 없음. 소스가 갈리면 캔들도 갈리므로 bundle 도 새것.
+    rerender({ floor: null, bundle: bundleWithCandles() });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('useViewportBackfill — 소스 토글 창 축소 (1b)', () => {

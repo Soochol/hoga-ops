@@ -338,6 +338,25 @@ export function useViewportBackfill({
   /** 3e 가 마지막으로 확장을 건 시점의 `historicalFromDate`. 창이 그대로면(단조 감소
    *  가드에 막혔거나 바닥) 같은 커밋을 반복해도 다시 밀지 않는다. */
   const clampLastFromRef = useRef<string | null>(null);
+  /** 3e 의 바닥 반려를 **이미 말한** `창|바닥` 쌍. **로그 중복만** 끊는다.
+   *
+   *  3e 는 `bundle`·`axis` 를 deps 로 갖는 effect 라 **데이터 커밋마다 깨어난다**.
+   *  바닥에 앉아 있으면 그 깨어남이 매번 같은 반려에 도달하는데, 반려 분기는
+   *  dispatch 가 아니라서 위 두 래치(스텝 카운터·창 동일)를 **아무것도 건드리지
+   *  않는다** — 그래서 상한 3 이 영영 안 걸리고 같은 줄이 무한히 찍힌다(2026-08-31
+   *  실측: 035420 60m 바닥에서 4초에 12줄, 약 200ms 간격).
+   *
+   *  피해는 진단이다. 이 리포는 백필 계열을 **로그 유무·박자**로 가른다(느린 워크백 ↔
+   *  이벤트 고갈 ↔ 잠김). 초당 여러 줄로 반복되는 반려는 다른 이벤트를 묻고, 무엇보다
+   *  **활동처럼 보인다** — 정지 신호가 진행 신호로 위장하는 것이 이 표면의 가장 비싼
+   *  오독이다.
+   *
+   *  ⚠ **키가 쌍인 것이 요점이다**(`창|바닥`). 창만 키로 두면 소스 토글로 바닥이
+   *  사라져도(`minuteScrollbackFloorDate` 가 디스크 모드에서 null) 같은 창이라 침묵한
+   *  채 남는다. 그리고 이 래치는 **반드시 바닥 술어 안쪽**에 둔다 — 바깥에 두면 로그
+   *  중복 제거가 아니라 **두 번째 정지 판정**이 되어, 바닥이 풀린 뒤의 탈출까지 막는다
+   *  (#1662 가 "판정이 두 벌이면 그 틈이 다시 잠김이 된다" 로 경고한 바로 그 모양). */
+  const clampFloorSaidForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -1432,6 +1451,7 @@ export function useViewportBackfill({
   useEffect(() => {
     clampRecoveryStepsRef.current = 0;
     clampLastFromRef.current = null;
+    clampFloorSaidForRef.current = null;
   }, [code, timeframe]);
 
   // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.
@@ -1466,6 +1486,9 @@ export function useViewportBackfill({
     if (lr.to - Math.max(lr.from, 0) > span * EMPTY_VIEWPORT_DATA_RATIO) {
       clampRecoveryStepsRef.current = 0;
       clampLastFromRef.current = null;
+      // 반려 래치도 같이 푼다 — 다음 클램프 구간은 새 에피소드이고, 에피소드마다
+      // 한 줄이 이 로그의 계약이다.
+      clampFloorSaidForRef.current = null;
       return;
     }
     // 좌측 클램프만 다룬다. `from >= 0` 인데 데이터가 비는 것은 우측 whitespace 쪽
@@ -1485,11 +1508,19 @@ export function useViewportBackfill({
     // 판정은 바닥에서도 참이라 3e 가 계속 깨어나는데, 그 확장이 no-op 이므로 첫 발화가
     // 곧바로 `fillKind` 를 영구히 물고 앉는다(2026-08-30 실측).
     if (!canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
-      livePerfLog('viewport_backfill_floor', {
-        code,
-        timeframe,
-        d: `trigger=clamp_recovery from=${cur} floor=${minuteFloorRef.current} logicalFrom=${Math.round(lr.from)}`,
-      });
+      // 반려는 **말해야 한다** — 침묵이면 "바닥이라 안 온다" 와 "고장나서 안 온다" 가
+      // 구별되지 않는다(#1597 에서 배운 규율). 다만 **한 번만** 말한다: 여기 도달하는
+      // 조건이 데이터 커밋마다 참이라, 무조건 찍으면 정지 상태가 초당 여러 줄의
+      // 활동처럼 보인다. 창이나 바닥이 움직이면 그건 새 사실이므로 다시 말한다.
+      const said = `${cur}|${minuteFloorRef.current}`;
+      if (clampFloorSaidForRef.current !== said) {
+        clampFloorSaidForRef.current = said;
+        livePerfLog('viewport_backfill_floor', {
+          code,
+          timeframe,
+          d: `trigger=clamp_recovery from=${cur} floor=${minuteFloorRef.current} logicalFrom=${Math.round(lr.from)}`,
+        });
+      }
       return;
     }
     const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
