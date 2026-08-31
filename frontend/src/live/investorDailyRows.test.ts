@@ -75,7 +75,8 @@ describe('buildInvestorDailyTable', () => {
   });
 
   it('분해가 없는 행은 0 이 아니라 null 이고, 합계에서 빠진 사실을 센다', () => {
-    // 옛 응답을 든 웜 캐시(ADR-0048: 메모리 전용 · 재기동이 유일한 무효화).
+    // 이 필드를 싣기 전의 백엔드(FE/BE 버전 스큐 — 워크트리 프론트가 사용자
+    // dev 서버를 타는 구성이 그 모양이다).
     const stale = point('20260804', { breakdown: null });
     const { rows, totals, missingBreakdown } = buildInvestorDailyTable(
       [point('20260803'), stale],

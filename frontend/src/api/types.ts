@@ -713,8 +713,9 @@ export type InvestorNetPoint = {
   institution_net: number;
   /** 주체 분해 — **종목 경로만** 채운다(`ka10059`). 지수/시장 경로(`ka10051`)는
    *  분해 자체가 없어 `null` 이다. `null`(경로에 없음)과 0(그날 순매수 0)은 다른
-   *  뜻이라 백엔드가 `exclude_none` 을 걸지 않는다. 옛 응답을 든 웜 캐시에서는
-   *  키가 아예 없을 수 있어 옵셔널이다(프로세스 재기동이 유일한 무효화, ADR-0048). */
+   *  뜻이라 백엔드가 `exclude_none` 을 걸지 않는다. **옵셔널인 이유는 버전 스큐**다 —
+   *  이 필드를 싣기 전의 백엔드를 타면 키가 아예 없다(워크트리 프론트가 사용자
+   *  dev 서버를 프록시로 타는 구성이 그렇다). */
   breakdown?: InvestorSubjectBreakdown | null;
 };
 

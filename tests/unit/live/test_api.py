@@ -1901,7 +1901,15 @@ from hoga.live.investor import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
     InvestorNetPoint,
+    InvestorSubjectBreakdown,
     InvestorTrendEstimateRow,
+)
+
+#: 실측 분해(005930 · 20260803 · ka10059). 백엔드 `ROW_59` 와 같은 응답이다.
+MEASURED_BREAKDOWN = InvestorSubjectBreakdown(
+    individual=8_658_155, native_foreign=27_186, other_corp=278_288,
+    fin_invest=-3_563_890, insurance=51_236, trust=-1_292_721, other_fin=8_289,
+    bank=6_344, pension=-129_133, private_fund=-120_079, nation=0,
 )
 
 # 투자자 3표면의 페이크 클라이언트를 라우트에 흘려보내는 홀더.
@@ -2050,6 +2058,8 @@ class _FakeKisForInvestor:
         self.calls: list[tuple[str, str, str]] = []
         self.violations: list[InvestorNetInvariantViolation] = []
         self.raise_rate_limit_on_call: int | None = None
+        #: 실으면 모든 포인트가 같은 분해를 든다. 기본 None 은 지수 경로와 같은 모양이다.
+        self.breakdown: InvestorSubjectBreakdown | None = None
 
     async def fetch_investor_net(
         self, code: str, from_yyyymmdd: str, to_yyyymmdd: str
@@ -2077,6 +2087,7 @@ class _FakeKisForInvestor:
                     t_ms=int(cur.timestamp() * 1000),
                     foreign_net=100,
                     institution_net=-50,
+                    breakdown=self.breakdown,
                 )
             )
             cur = cur + _td(days=1)
@@ -2192,6 +2203,42 @@ def test_past_investor_net_ignores_kis_account_health(tmp_path, monkeypatch) -> 
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
     assert r.status_code == 200, "KIS 계정이 전부 degraded 여도 키움 경로는 산다"
     assert len(fake.calls) == 1
+
+
+def test_past_investor_net_wire_carries_every_breakdown_key(tmp_path, monkeypatch) -> None:
+    """주체 분해 11키가 **wire 까지** 살아 나온다.
+
+    막는 방향: `response_model` 의 조용한 필드 스트립. FastAPI 는 선언되지 않은 키를
+    에러 없이 버리므로, `LiveInvestorSubjectBreakdown` 이 도메인 모델과 어긋나면
+    화면에서만 값이 사라지고 아무것도 빨개지지 않는다 — 이 리포가 반복해서 다룬
+    실패 유형이다(CLAUDE.md "API wire 계약").
+
+    못 보는 것: 값 자체의 정확성(페이크가 정한다). 그건 `kiwoom_investor` 의 파싱
+    테스트가 실측 행으로 본다.
+
+    이 층이 왜 따로 필요한가 — 도메인 테스트는 `fetch_investor_net` 을 **직접** 불러
+    wire 를 건너뛰고, 지수 경로 테스트는 분해가 `None` 인 경우만 지난다. 둘 다
+    통과하는 채로 11키가 통째로 사라질 수 있다.
+    """
+    fake = _FakeKisForInvestor()
+    fake.breakdown = MEASURED_BREAKDOWN
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240102")
+
+    assert r.status_code == 200
+    got = r.json()["points"][0]["breakdown"]
+    assert got == MEASURED_BREAKDOWN.model_dump(), (
+        "wire 분해가 도메인 모델과 어긋났다 — response_model 이 키를 버렸거나 "
+        "LiveInvestorSubjectBreakdown 이 뒤처졌다."
+    )
+    # 키 집합을 따로 한 번 더 못 박는다: 위 비교가 통과해도 **양쪽이 함께 줄면**
+    # 조용히 지나가기 때문이다(도메인에서 지우면 model_dump 도 같이 줄어든다).
+    assert set(got) == {
+        "individual", "native_foreign", "other_corp",
+        "fin_invest", "insurance", "trust", "other_fin",
+        "bank", "pension", "private_fund", "nation",
+    }
 
 
 def test_past_candles_ignores_kis_account_health(tmp_path, monkeypatch) -> None:
