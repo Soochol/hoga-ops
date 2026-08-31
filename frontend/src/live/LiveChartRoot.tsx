@@ -1649,10 +1649,24 @@ export function LiveChartRoot({
         // `'index:KOSPI'` 와 영영 달랐고, 이 복원이 지수에선 한 번도 돌지 않았다.
         // 느슨한 truthy-게이트였다면 다른 마운트의 분봉 배치가 live
         // store를 extend하는 월경이 가능하다.
-        const remembered = historicalRange.snapshot().lastMinuteHistoricalFromDate;
+        // 봉 엄격 동등: 기억은 **그 값을 만든 분봉에서만** 유효하다. 창의 깊이가
+        // 봉에 상대적이기 때문이다 — 좌팬 한 제스처가 내려가는 폭이 스텝 크기
+        // (`STEP_TRADING_DAYS`)에 비례해 60m 은 300거래일, 1m 은 5거래일이다.
+        // 60m 이 만든 깊이를 1m 이 물려받으면 1m 에게는 **정상 사용으로 절대
+        // 도달하지 않는 창**이 되고, 실제로 그렇게 됐다(2026-08-31 실측, 035420:
+        // 60m 좌팬으로 `20240506` 까지 내려간 뒤 1m 전환 → past-candles 청크
+        // 5연속 · 5~6만 봉 통짜 수신 · 뷰포트가 라이브 엣지가 아닌 2026-02 로 밀림.
+        // `viewport_backfill_contract {from:20240506, contractTo:20260824}` 가
+        // 뒤늦게 되감지만 페치와 화면 밀림은 이미 벌어진 뒤다).
+        // 도장이 `null`(=모름)이면 건너뛴다 — 모르는 것을 "맞다" 로 읽지 않는다.
+        // 봉이 갈리면 복원 없이 그 봉의 공장 창(초기 5거래일 시드)으로 시작하고,
+        // 깊이는 사용자의 좌측 팬이 그 봉의 속도로 다시 번다.
+        const memory = historicalRange.snapshot();
+        const remembered = memory.lastMinuteHistoricalFromDate;
         const view = viewGuard();
         if (
           remembered !== null &&
+          memory.lastMinuteHistoricalTimeframe === timeframe &&
           view.timeframe === timeframe &&
           view.code === code
         ) {

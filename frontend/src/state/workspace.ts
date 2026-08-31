@@ -130,6 +130,11 @@ export interface ChartWindowConfig {
 export interface ChartWindowRuntime {
   historicalFromDate: string | null;
   lastMinuteHistoricalFromDate: string | null;
+  /** 위 기억을 **만든 분봉**. 날짜 하나만으로는 복원이 안전하지 않아서 짝으로 든다 —
+   *  창의 깊이는 봉에 상대적이다(`SavedRangeFocus.savedTimeframe`/`savedBarSpan` 이
+   *  같은 이유로 짝이다). 복원 규칙은 `LiveChartRoot` 1-샷 자리의 주석에 있다.
+   *  **날짜와 반드시 함께 갱신한다** — 아래 `setChartTimeframe` 참조. */
+  lastMinuteHistoricalTimeframe: MinuteTimeframe | null;
   /**
    * 이 창을 **저장 데이터(hogaplay 캡처 디스크)로만** 읽는가 — 헤더의 hogaplay
    * 버튼이 세운다(`useLiveBundle` 의 `hogaplaySourceEnabled`).
@@ -684,6 +689,7 @@ function withoutPin(win: WorkspaceWindow): WorkspaceWindow {
 const EMPTY_RUNTIME: ChartWindowRuntime = {
   historicalFromDate: null,
   lastMinuteHistoricalFromDate: null,
+  lastMinuteHistoricalTimeframe: null,
   hogaplaySource: false,
 };
 
@@ -963,16 +969,29 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         ...(isMinuteTimeframe(tf) ? { lastMinuteTimeframe: tf } : {}),
       }));
       if (!windows) return {};
-      // 분봉을 떠나는 순간의 pan 창 기억 + 백필 리셋(livePage setCandleTimeframe
-      // 미러 — `??` 폴백 의미는 livePage 주석 참조).
+      // 분봉을 떠나는 순간의 pan 창 기억 + 백필 리셋(livePage projectActiveView
+      // 미러 — 폴백 의미는 livePage 주석 참조).
       const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+      const prevTf = prev.timeframe;
+      // 날짜와 **그 날짜를 만든 봉**은 한 쌍으로만 움직인다. 갈라지면 조용히 틀린다:
+      // 분봉을 팬 없이 스쳐 지나가는 전환(1m 깊게 팬 → 60m 그냥 보기 → 1m)에서
+      // 봉만 무조건 덮어쓰면 1m 이 만든 날짜에 '60m' 도장이 찍혀, 정작 1m 복귀 때
+      // 복원이 봉 불일치로 조용히 죽는다. 그래서 날짜를 새로 쓸 때만 봉도 쓴다.
+      const remembered =
+        isMinuteTimeframe(prevTf) && rt.historicalFromDate !== null
+          ? {
+            lastMinuteHistoricalFromDate: rt.historicalFromDate,
+            lastMinuteHistoricalTimeframe: prevTf,
+          }
+          : {
+            lastMinuteHistoricalFromDate: rt.lastMinuteHistoricalFromDate,
+            lastMinuteHistoricalTimeframe: rt.lastMinuteHistoricalTimeframe,
+          };
       const chartRuntime = {
         ...state.chartRuntime,
         [id]: {
           historicalFromDate: null,
-          lastMinuteHistoricalFromDate: isMinuteTimeframe(prev.timeframe)
-            ? rt.historicalFromDate ?? rt.lastMinuteHistoricalFromDate
-            : rt.lastMinuteHistoricalFromDate,
+          ...remembered,
           // hogaplay 소스는 **분봉끼리는 따라온다**. 소스 선택은 구간이 아니라
           // "무엇을 읽을 것인가" 라 봉을 바꿨다고 되돌릴 이유가 없다 — 위
           // `historicalFromDate` 리셋과 축이 다르다. 캘린더 봉으로 나갈 때만 내린다:

@@ -662,7 +662,7 @@ describe('LivePage shell', () => {
     };
     seedWorkspace('1m');
     useWorkspaceStore.setState({
-      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260601', lastMinuteHistoricalFromDate: null } },
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260601', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null } },
     });
 
     renderWithRouter('/live?index=KOSPI');
@@ -705,7 +705,7 @@ describe('LivePage shell', () => {
     };
     seedWorkspace('D', { D: { foreignNetEnabled: true } });
     useWorkspaceStore.setState({
-      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null } },
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null } },
     });
 
     renderWithRouter('/live?index=KOSPI');
@@ -732,7 +732,7 @@ describe('LivePage shell', () => {
     };
     seedWorkspace('D', { D: { foreignNetEnabled: true } });
     useWorkspaceStore.setState({
-      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null } },
+      chartRuntime: { [TEST_WIN]: { historicalFromDate: '20260619', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null } },
     });
 
     renderWithRouter('/live?index=KOSPI200');
