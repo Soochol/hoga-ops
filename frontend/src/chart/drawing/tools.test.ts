@@ -1170,3 +1170,176 @@ describe('잠긴 드로잉의 도구 게이트', () => {
     expect(ctx.remove).toHaveBeenCalledWith('h1');
   });
 });
+
+// ─── selectTool — 다중 선택 ────────────────────────────────────────────────
+//
+// Shift 는 select 모드에서 비어 있던 modifier 다(그리기 중 각도 스냅에만 쓰였다).
+// 여기서 셋을 고정한다: Shift+클릭 = 토글, Shift+빈 곳 = 마퀴, 멤버를 잡으면
+// 집합 전체가 움직이되 **끌지 않고 놓으면** 그 하나로 접힌다.
+describe('selectTool — 다중 선택', () => {
+  const hline = (id: string, price: number): Drawing => ({
+    id, kind: 'hline', price, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  it('Shift+클릭은 선택을 교체하지 않고 토글한다', () => {
+    const target = hline('h1', 100);
+    const ctx = makeCtx({ shiftKey: true, hitTestAt: vi.fn(() => target) });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.toggleSelected).toHaveBeenCalledWith('h1');
+    expect(ctx.setSelected).not.toHaveBeenCalled();
+    // 토글은 선택을 고르는 제스처지 이동이 아니다 — 드래그를 세우면 고르려다
+    // 옮겨 버린 상태를 되돌려야 한다.
+    expect(ctx.dragRef.current).toBeNull();
+  });
+
+  it('Shift+빈 곳 누르기는 마퀴를 시작한다', () => {
+    const ctx = makeCtx({ shiftKey: true, px: 10, py: 20, hitTestAt: vi.fn(() => null) });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.marqueeDraft.current).toEqual({ ax: 10, ay: 20, bx: 10, by: 20, pointerId: 1 });
+    expect(ctx.capturePointer).toHaveBeenCalledOnce();
+    // 빈 곳 Shift+클릭이 선택을 지우지 않는다 — 모아 둔 집합을 날리면 안 된다.
+    expect(ctx.setSelected).not.toHaveBeenCalled();
+  });
+
+  it('마퀴 드래그가 사각형을 넓히고 다시 그리게 한다', () => {
+    const ctx = makeCtx({
+      px: 90, py: 120,
+      marqueeDraft: { current: { ax: 10, ay: 20, bx: 10, by: 20, pointerId: 1 } },
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.marqueeDraft.current).toMatchObject({ bx: 90, by: 120 });
+    expect(ctx.requestRedraw).toHaveBeenCalled();
+  });
+
+  it('마퀴를 놓으면 감싼 도형들이 선택에 더해진다', () => {
+    const found = [hline('h1', 100), hline('h2', 200)];
+    const ctx = makeCtx({
+      px: 90, py: 120,
+      marqueeDraft: { current: { ax: 10, ay: 20, bx: 90, by: 120, pointerId: 1 } },
+      drawingsInRect: vi.fn(() => found),
+    });
+    selectTool.onPointerUp!(ctx);
+    expect(ctx.drawingsInRect).toHaveBeenCalledWith({ x1: 10, y1: 20, x2: 90, y2: 120 });
+    expect(ctx.addToSelection).toHaveBeenCalledWith(['h1', 'h2']);
+    expect(ctx.marqueeDraft.current).toBeNull();
+  });
+
+  // 빗나간 Shift+클릭(사실상 0px 상자)은 아무것도 고르지 않는다. 히트 테스트를
+  // 아예 돌리지 않는 것이 요점 — 1px 상자에 걸린 것이 "무작위 선택"으로 보인다.
+  it('너무 작은 마퀴는 아무것도 고르지 않는다', () => {
+    const ctx = makeCtx({
+      marqueeDraft: { current: { ax: 10, ay: 20, bx: 12, by: 21, pointerId: 1 } },
+      drawingsInRect: vi.fn(() => [hline('h1', 100)]),
+    });
+    selectTool.onPointerUp!(ctx);
+    expect(ctx.drawingsInRect).not.toHaveBeenCalled();
+    expect(ctx.addToSelection).not.toHaveBeenCalled();
+  });
+
+  it('여러 개가 선택된 상태에서 멤버를 잡으면 그룹 드래그가 선다 — 선택은 그대로', () => {
+    const target = hline('h1', 100);
+    const ctx = makeCtx({
+      hitTestAt: vi.fn(() => target),
+      selectedIds: ['h1', 'h2'],
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current?.kind).toBe('body-multi');
+    expect((ctx.dragRef.current as { ids: readonly string[] }).ids).toEqual(['h1', 'h2']);
+    expect(ctx.setSelected).not.toHaveBeenCalled();
+  });
+
+  it('한 개만 선택된 상태에서는 예전처럼 단건 body 드래그다', () => {
+    const target = hline('h1', 100);
+    const ctx = makeCtx({ hitTestAt: vi.fn(() => target), selectedIds: ['h1'] });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current?.kind).toBe('body');
+  });
+
+  it('집합 밖의 도형을 잡으면 단일 선택으로 바뀐다', () => {
+    const other = hline('h9', 900);
+    const ctx = makeCtx({ hitTestAt: vi.fn(() => other), selectedIds: ['h1', 'h2'] });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.setSelected).toHaveBeenCalledWith('h9');
+    expect(ctx.dragRef.current?.kind).toBe('body');
+  });
+
+  const multiDrag = (over: Partial<ToolCtx> = {}) =>
+    makeCtx({
+      drawings: [hline('h1', 100), hline('h2', 200)],
+      dragRef: {
+        current: {
+          kind: 'body-multi', ids: ['h1', 'h2'],
+          lastRealMs: 1_700_000_000_000, lastPy: 200,
+          startPx: 100, startPy: 200, pressedId: 'h1', moved: false,
+          pointerId: 1, paneId: 'candle',
+        },
+      },
+      ...over,
+    });
+
+  // slop: 손 떨림 1~2px 이 이동(과 되돌리기 단계)을 쓰면, 그 뒤의 "클릭으로
+  // 접기"가 이미 일어난 변이를 설명해야 한다. 넘기 전엔 아무 패치도 내지 않는다.
+  it('slop 안의 미세한 움직임은 아무것도 옮기지 않는다', () => {
+    const ctx = multiDrag({ px: 101, py: 201 });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('slop 을 넘으면 집합 전체가 한 번의 배치로 움직인다', () => {
+    const ctx = multiDrag({ px: 100, py: 210 });
+    selectTool.onPointerMove!(ctx);
+    expect(ctx.updateMany).toHaveBeenCalledOnce();
+    expect(
+      (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
+        .map((p: { id: string }) => p.id),
+    ).toEqual(['h1', 'h2']);
+    expect((ctx.dragRef.current as { moved: boolean }).moved).toBe(true);
+  });
+
+  it('잠긴 멤버는 그룹 이동에서 빠진다', () => {
+    const ctx = multiDrag({
+      px: 100, py: 210,
+      drawings: [hline('h1', 100), { ...hline('h2', 200), locked: true }],
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(
+      (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[0][0]
+        .map((p: { id: string }) => p.id),
+    ).toEqual(['h1']);
+  });
+
+  it('끌지 않고 놓으면 집합이 눌린 하나로 접힌다', () => {
+    const ctx = multiDrag();
+    selectTool.onPointerUp!(ctx);
+    expect(ctx.setSelected).toHaveBeenCalledWith('h1');
+    expect(ctx.dragRef.current).toBeNull();
+  });
+
+  it('실제로 끌었다면 놓아도 집합이 유지된다', () => {
+    const ctx = multiDrag({ px: 100, py: 210 });
+    selectTool.onPointerMove!(ctx);
+    selectTool.onPointerUp!(ctx);
+    expect(ctx.setSelected).not.toHaveBeenCalled();
+  });
+
+  // 핸들은 단일 선택 전용이다. ToolCtx.selectedId 가 "정확히 하나일 때만" 이라
+  // 다중에서는 값 자체가 null 이고, 핸들 분기가 구조적으로 닫힌다.
+  it('다중 선택에서는 추세선 끝점 핸들을 잡지 않는다', () => {
+    const t: Drawing = {
+      id: 't1', kind: 'trendline',
+      a: { realMs: 1_700_000_000_000, price: 100 },
+      b: { realMs: 1_700_000_600_000, price: 200 },
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+    };
+    const ctx = makeCtx({
+      // 커서가 끝점 a 바로 위(스텁 투영이 100,200 을 준다).
+      px: 100, py: 200,
+      drawings: [t],
+      selectedId: null,          // 다중 → primary 없음
+      selectedIds: ['t1', 'x2'],
+      hitTestAt: vi.fn(() => t),
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current?.kind).toBe('body-multi');
+  });
+});

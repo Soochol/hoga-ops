@@ -78,6 +78,15 @@ describe('resolveSelectModeMouseDown', () => {
     expect(resolveSelectModeMouseDown(inside, rect, null, null, true, false)).toBe('none');
   });
 
+  // ⚠ 다중 선택에서 가장 아픈 실수를 막는 가드. 이 리스너는 window 에 붙어
+  // **게이트와 무관하게** 모든 mousedown 을 보므로, Shift 를 인지하지 못하면
+  // 마퀴를 시작하려고 빈 곳을 누르는 순간 'deselect' 가 나가 애써 모은 집합이
+  // 통째로 사라진다. 도형을 빗맞힌 Shift+클릭도 같다.
+  it('Shift 가 눌린 클릭은 어느 분기도 타지 않는다 — 오버레이의 몫', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, null, null, false, true)).toBe('none');
+    expect(resolveSelectModeMouseDown(inside, rect, locked, null, false, true)).toBe('none');
+  });
+
   // 패널 위에서 자물쇠를 누르는 순간이 정확히 이 경우다.
   it('패널 가드는 잠긴 도형 히트보다 우선한다', () => {
     expect(resolveSelectModeMouseDown(inside, rect, locked, null, true, false)).toBe('none');

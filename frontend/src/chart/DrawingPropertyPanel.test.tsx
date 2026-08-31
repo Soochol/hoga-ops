@@ -292,3 +292,58 @@ describe('DrawingPropertyPanel — 잠금', () => {
     expect(container.querySelector('[data-drawing-property-panel]')).not.toBeNull();
   });
 });
+
+// ─── 다중 선택 툴바 ────────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 다중 선택', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const mk = (id: string, price: number): Drawing => ({ ...HLINE, id, price });
+
+  beforeEach(() => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    s().add(SCOPE, mk('h1', 1000));
+    s().add(SCOPE, mk('h2', 2000));
+    s().add(SCOPE, mk('h3', 3000));
+    s().addToSelection(SCOPE, ['h1', 'h2']);
+  });
+
+  it('스타일 편집기 대신 슬림 툴바가 뜬다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.getByTestId('drawing-multi-selection-panel')).toBeTruthy();
+    // 종류가 섞이면 공통 속성이 정의되지 않으므로 스타일 컨트롤은 없다.
+    expect(screen.queryByTestId('drawing-color-trigger')).toBeNull();
+    expect(screen.queryByTestId('drawing-thickness-trigger')).toBeNull();
+  });
+
+  it('선택 개수를 보여 준다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.getByTestId('drawing-multi-count').textContent).toBe('2개 선택');
+  });
+
+  it('삭제는 선택한 것만 지운다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    act(() => {
+      fireEvent.click(screen.getByTestId('drawing-multi-delete'));
+    });
+    expect(s().drawingsFor(SCOPE).map((d) => d.id)).toEqual(['h3']);
+  });
+
+  // 잠근 뒤 선택을 비우는 이유: 잠긴 것을 집합에 남겨 두면 헤일로는 있는데
+  // 끌리지 않는, 화면이 설명하지 못하는 상태가 된다.
+  it('잠금은 선택한 것만 잠그고 선택을 비운다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    act(() => {
+      fireEvent.click(screen.getByTestId('drawing-multi-lock'));
+    });
+    expect(s().drawingsFor(SCOPE).map((d) => d.locked === true)).toEqual([true, true, false]);
+    expect(s().selectedFor(SCOPE)).toEqual([]);
+  });
+
+  it('하나로 접히면 다시 스타일 편집기로 돌아온다', () => {
+    s().setSelected(SCOPE, 'h1');
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.queryByTestId('drawing-multi-selection-panel')).toBeNull();
+    expect(screen.getByTestId('drawing-color-trigger')).toBeTruthy();
+  });
+});
