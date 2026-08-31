@@ -33,7 +33,14 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
  *  so every kind's geometry moves consistently. `dMs` takes the function form
  *  for gap-aware virtual-domain shifts (see TimeShift): a flat real-ms offset
  *  computed off the ref vertex would strand the OTHER vertices inside an
- *  inter-session gap whenever the ref's +14px crosses a session boundary. */
+ *  inter-session gap whenever the ref's +14px crosses a session boundary.
+ *
+ *  ⚠ The clone is born UNLOCKED. `{ ...d }` would carry `locked: true` over,
+ *  and the copy — 14px down-right of a shape the user deliberately pinned —
+ *  could then be neither moved nor deleted. Duplicating is a request for a
+ *  workable shape, not for a second immovable one (ADR-0164). */
 export function cloneWithOffset(d: Drawing, dMs: TimeShift, dPrice: number): Drawing {
-  return { ...d, ...translateDrawing(d, dMs, dPrice), id: nanoid(8) } as Drawing;
+  const clone = { ...d, ...translateDrawing(d, dMs, dPrice), id: nanoid(8) } as Drawing;
+  delete clone.locked;
+  return clone;
 }

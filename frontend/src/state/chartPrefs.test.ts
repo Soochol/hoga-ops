@@ -36,7 +36,7 @@ import {
   mergeStudyIndicatorModal,
   CHART_PREFS_KEY,
 } from './chartPrefsPersistence';
-import { resolveIndicatorModalPrefs } from './chartPrefs';
+import { isIndicatorModalPrefKey, resolveIndicatorModalPrefs } from './chartPrefs';
 
 /** 구 flat 블롭이 hydrate 를 거친 뒤 분봉 뷰에서 보이는 유효값(PR-B) —
  *  indicator-modal 키는 minute 버킷 시드 ⊕ 기본값 투영으로 읽힌다. */
@@ -58,6 +58,77 @@ describe('chartPrefsPersistence', () => {
     // indicator-modal 키는 flat 에서 더 이상 읽지 않는다(PR-B) — 시드 경로로만.
     expect(merged.ratioOutlierThreshold).toBe(DEFAULT_PREFS.ratioOutlierThreshold);
     expect(hydratedMinuteView({ ratioOutlierThreshold: 50 }).ratioOutlierThreshold).toBe(50);
+  });
+
+  /**
+   * ## 구 **방향 공용** 최대벽 키 → 계열 셋 (2026-08-25)
+   *
+   * 라벨·레전드 셀·화살표·MA 필터 둘(+기간)은 방향당 하나였다가 계열마다 갈렸다. 저장이
+   * 기본값과의 sparse diff 라, 이 펼침이 없으면 **그 일곱을 손댔던 사용자만** 조용히
+   * 기본값으로 돌아간다 — 증상은 "왜 갑자기 라벨이 다시 뜨지" 로 온다.
+   *
+   * 되돌아가는 쪽이 기본값(켜짐)이라 **테스트는 반드시 `false` 를 저장해 둔 상태로** 재야
+   * 한다. `true` 로 재면 펼침이 없어도 기본값과 같아서 초록이다.
+   */
+  it('구 방향 공용 최대벽 키를 계열 셋으로 펼친다', () => {
+    const view = hydratedMinuteView({
+      indicatorModalByTimeframe: {
+        minute: {
+          askPeakLabelEnabled: false,
+          askPeakAboveDailyMaPeriod: 60,
+          bidPeakBelowMaEnabled: false,
+        },
+      },
+    });
+    for (const key of [
+      'askPeakTradedLabelEnabled', 'askPeakUnreachedLabelEnabled', 'askPeakAllWallLabelEnabled',
+    ] as const) {
+      expect(view[key]).toBe(false);
+    }
+    for (const key of [
+      'askPeakTradedAboveDailyMaPeriod',
+      'askPeakUnreachedAboveDailyMaPeriod',
+      'askPeakAllWallAboveDailyMaPeriod',
+    ] as const) {
+      expect(view[key]).toBe(60);
+    }
+    expect(view.bidPeakTradedBelowMaEnabled).toBe(false);
+    expect(view.bidPeakAllWallBelowMaEnabled).toBe(false);
+    // 손대지 않은 축은 그대로 기본값 — 펼침이 이웃 키까지 건드리지 않는다.
+    expect(view.askPeakTradedLegendCellEnabled).toBe(DEFAULT_PREFS.askPeakTradedLegendCellEnabled);
+    expect(view.askPeakTradedAboveMaPeriod).toBe(DEFAULT_PREFS.askPeakTradedAboveMaPeriod);
+  });
+
+  it('새 계열 키가 이미 저장돼 있으면 구 키가 그것을 덮지 않는다', () => {
+    const view = hydratedMinuteView({
+      indicatorModalByTimeframe: {
+        minute: {
+          askPeakLabelEnabled: false,
+          // 사용자가 이미 계열별로 다시 켠 상태 — 구 키가 이겨서는 안 된다.
+          askPeakAllWallLabelEnabled: true,
+        },
+      },
+    });
+    expect(view.askPeakTradedLabelEnabled).toBe(false);
+    expect(view.askPeakAllWallLabelEnabled).toBe(true);
+  });
+
+  /** 계열별 키가 **indicator-modal 멤버십**에 들어가야 봉별 버킷에 저장되고 드로어의
+   *  「현재 봉 초기화」가 함께 걷는다. 멤버십은 레지스트리의 `category` 에서 파생되므로
+   *  엔트리에 그 필드를 빠뜨리면 여기서 걸린다 — 빠뜨리면 그 옵션만 조용히 전역 flat 로
+   *  새고, 봉을 바꿔도 값이 따라오지 않는다. */
+  it('계열별 최대벽 키는 indicator-modal 스코프에 속한다', () => {
+    for (const key of [
+      'askPeakTradedLabelEnabled',
+      'askPeakUnreachedRankArrowEnabled',
+      'askPeakAllWallAboveDailyMaEnabled',
+      'bidPeakTradedBelowMaEnabled',
+      'bidPeakAllWallLegendCellEnabled',
+      'askPeakTradedAboveMaPeriod',
+      'bidPeakUnreachedBelowDailyMaPeriod',
+    ]) {
+      expect(isIndicatorModalPrefKey(key)).toBe(true);
+    }
   });
 
   it('uses the new key, not replay.tabs.*', () => {
@@ -196,43 +267,27 @@ describe('총잔량 급증 설정', () => {
   });
 });
 
-describe('날짜 구분선 설정', () => {
-  it('defaults to current visual behavior', () => {
-    expect(DEFAULT_PREFS.dayBoundaryEnabled).toBe(true);
-    expect(DEFAULT_PREFS.dayBoundaryColor).toBe('#64748B');
-    expect(DEFAULT_PREFS.dayBoundaryLineWidth).toBe(1);
-  });
-
-  it('mergePrefs preserves valid day boundary style values', () => {
+// 날짜 구분선의 색·두께·토글 prefs 는 2026-08-27 에 사라졌다 — 색은
+// `--chart-day-boundary` 토큰, 두께는 1px 상수, 표시는 분봉이면 항상이다
+// (`DayBoundaryPrimitive` docstring 이 근거를 갖는다). 남는 계약은 하나:
+// **이미 저장된 옛 값이 hydrate 를 깨뜨리지 않는다.** persistence 가 allowlist
+// 방식이라 마이그레이션 코드 없이 제거할 수 있었던 근거가 이것이고, 여기가
+// 그 근거를 기록하는 유일한 자리다.
+describe('사라진 날짜 구분선 prefs', () => {
+  it('옛 저장값을 조용히 무시한다 — 마이그레이션 없이 제거된 근거', () => {
     const merged = mergePrefs({
       dayBoundaryEnabled: false,
       dayBoundaryColor: '#EF4444',
       dayBoundaryLineWidth: 3,
+      // 같은 payload 의 살아 있는 키는 정상 병합돼야 한다 — 무시가 "통째로
+      // 버린다"는 뜻이 아님을 여기서 못박는다.
+      horizontalGridLinesEnabled: false,
     });
 
-    expect(merged.dayBoundaryEnabled).toBe(false);
-    expect(merged.dayBoundaryColor).toBe('#EF4444');
-    expect(merged.dayBoundaryLineWidth).toBe(3);
-  });
-
-  it('mergePrefs falls back for invalid day boundary style values', () => {
-    const merged = mergePrefs({
-      dayBoundaryColor: 'red',
-      dayBoundaryLineWidth: 9,
-    });
-
-    expect(merged.dayBoundaryColor).toBe(DEFAULT_PREFS.dayBoundaryColor);
-    expect(merged.dayBoundaryLineWidth).toBe(DEFAULT_PREFS.dayBoundaryLineWidth);
-  });
-
-  it('setDayBoundaryStyle updates color and width independently', () => {
-    useChartPrefsStore.getState().setDayBoundaryStyle({ color: '#22C55E' });
-    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
-    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(1);
-
-    useChartPrefsStore.getState().setDayBoundaryStyle({ lineWidth: 4 });
-    expect(useChartPrefsStore.getState().dayBoundaryColor).toBe('#22C55E');
-    expect(useChartPrefsStore.getState().dayBoundaryLineWidth).toBe(4);
+    expect('dayBoundaryEnabled' in merged).toBe(false);
+    expect('dayBoundaryColor' in merged).toBe(false);
+    expect('dayBoundaryLineWidth' in merged).toBe(false);
+    expect(merged.horizontalGridLinesEnabled).toBe(false);
   });
 });
 
@@ -265,17 +320,19 @@ describe('차트 배경 구분선 설정', () => {
 
 describe('ask peak all-price toggle', () => {
   it('label display toggles default on and persist false', () => {
-    const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakLabelEnabled');
-    const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakLabelEnabled');
+    const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakTradedLabelEnabled');
+    const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakTradedLabelEnabled');
 
-    expect(DEFAULT_PREFS.askPeakLabelEnabled).toBe(true);
-    expect(DEFAULT_PREFS.bidPeakLabelEnabled).toBe(true);
+    expect(DEFAULT_PREFS.askPeakTradedLabelEnabled).toBe(true);
+    expect(DEFAULT_PREFS.bidPeakTradedLabelEnabled).toBe(true);
     expect(ask?.label).toBe('최대벽 라벨 표시');
     expect(bid?.label).toBe('최대벽 라벨 표시');
     expect(categoryOf(ask!)).toBe('indicator-modal');
     expect(categoryOf(bid!)).toBe('indicator-modal');
-    expect(hydratedMinuteView({ askPeakLabelEnabled: false }).askPeakLabelEnabled).toBe(false);
-    expect(hydratedMinuteView({ bidPeakLabelEnabled: false }).bidPeakLabelEnabled).toBe(false);
+    expect(hydratedMinuteView({ askPeakTradedLabelEnabled: false }).askPeakTradedLabelEnabled)
+      .toBe(false);
+    expect(hydratedMinuteView({ bidPeakTradedLabelEnabled: false }).bidPeakTradedLabelEnabled)
+      .toBe(false);
   });
 
   it('rank limit defaults to 1 and persists valid 1..3 values', () => {
@@ -313,30 +370,6 @@ describe('ask peak all-price toggle', () => {
     // 미체결 계열은 pref 표에서 사라졌다 — 남아 있으면 UI 가 죽은 항목을 렌더한다.
     expect(CHART_NUMERIC_PREFS.some((p) => p.key.endsWith('UntradedRankLimit'))).toBe(false);
     expect(CHART_TOGGLES.some((t) => t.key.endsWith('PeakShowAllPrices'))).toBe(false);
-  });
-});
-
-describe('peak wall visible-time cutoff toggles', () => {
-  it('defaults both cutoff toggles off in the indicator modal', () => {
-    const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakVisibleTimeCutoff');
-    const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakVisibleTimeCutoff');
-
-    expect(DEFAULT_PREFS.askPeakVisibleTimeCutoff).toBe(false);
-    expect(DEFAULT_PREFS.bidPeakVisibleTimeCutoff).toBe(false);
-    expect(ask?.label).toBe('보이는 최신 봉 기준');
-    expect(bid?.label).toBe('보이는 최신 봉 기준');
-    expect(categoryOf(ask!)).toBe('indicator-modal');
-    expect(categoryOf(bid!)).toBe('indicator-modal');
-  });
-
-  it('persists ask and bid cutoff toggles independently', () => {
-    const askOnly = hydratedMinuteView({ askPeakVisibleTimeCutoff: true });
-    expect(askOnly.askPeakVisibleTimeCutoff).toBe(true);
-    expect(askOnly.bidPeakVisibleTimeCutoff).toBe(false);
-
-    const bidOnly = hydratedMinuteView({ bidPeakVisibleTimeCutoff: true });
-    expect(bidOnly.askPeakVisibleTimeCutoff).toBe(false);
-    expect(bidOnly.bidPeakVisibleTimeCutoff).toBe(true);
   });
 });
 

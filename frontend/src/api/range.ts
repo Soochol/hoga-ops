@@ -571,7 +571,8 @@ function outsideCoveredSegment(pointMs: number, bundle: RangeBundle): boolean {
  * `mergeRangeBundles` 는 `from_date = min(previous, next)` 라 **단조 증가**한다.
  * 좌측 팬으로 한 번 3개월까지 넓히면 다시 줌인해도 안 줄어들어, 1시간을 보면서도
  * 3개월치를 계속 들고 있게 된다(2026-08-21 실측: 3개월 sidecar 29.2MB — 그중
- * depth_heatmap 14.7MB + depth_delta 11.1MB). 이 함수가 그 단조성을 끊는다.
+ * depth_heatmap 14.7MB, 단별 잔량 증감 11.1MB. 증감은 2026-08-25 에 제거됐다).
+ * 이 함수가 그 단조성을 끊는다.
  *
  * ## 진동 방지는 **호출부 책임**이다
  *
@@ -616,8 +617,6 @@ export function trimRangeBundleBefore(bundle: RangeBundle, retainFrom: string): 
     volume_distributions: afterDate(bundle.volume_distributions),
     broker_late_entries: afterMs(bundle.broker_late_entries, (e) => e.t_ms),
     depth_heatmap: afterMs(bundle.depth_heatmap, (p) => p.t_ms),
-    depth_delta: afterMs(bundle.depth_delta, (p) => p.t_ms),
-    wall_surge: afterMs(bundle.wall_surge, (e) => e.t_ms),
     program_trade: bundle.program_trade
       ? { ...bundle.program_trade, points: afterMs(bundle.program_trade.points, (p) => p.t) }
       : bundle.program_trade,
@@ -704,36 +703,20 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
     // Per-bucket (not per-date) merge like fill_strength.points: dedup by t_ms,
     // ascending. uniqueBy keeps the LAST occurrence, so [previous, next] → next
     // (latest) wins per overlapping bucket.
-    depth_heatmap: uniqueBy(
-      [...(previous.depth_heatmap ?? []), ...(next.depth_heatmap ?? [])],
-      (p) => String(p.t_ms),
-      (a, b) => a.t_ms - b.t_ms,
-    ),
-    depth_delta: uniqueBy(
-      [...(previous.depth_delta ?? []), ...(next.depth_delta ?? [])],
-      (p) => String(p.t_ms),
-      (a, b) => a.t_ms - b.t_ms,
-    ),
-    // 시각 단위 병합이되 위 둘(`depth_heatmap`·`depth_delta`)과 **키가 다르다** — 한
-    // 스냅샷 시각에 매도·매수 벽이 동시에, 또는 다른 호가 레벨에서 함께 설 수 있어
-    // `t_ms` 만으로 묶으면 그중 하나만 남는다.
     //
-    // **`previous` 는 거르지 않는다.** 이 함수 안에 병합 규칙이 두 종류 공존하므로 왜
+    // **`previous` 를 거르지 않는다** — 이 함수엔 병합 규칙이 두 종류 공존하므로 왜
     // 이쪽인지 남긴다. `broker_late_entries`·`program_trade` 는 next 가 다시 내려준
     // 세그먼트 안의 previous 를 `outsideCoveredSegment` 로 버리는데, 그건 **재계산에서
     // 항목이 사라질 수 있을 때** 필요한 방어다(사라진 항목은 대응할 키가 없어 dedup 이
-    // 못 잡는다). 호가벽 판정에는 그 일이 없다 — `query_wall_surge` 의 임계가
-    // `avg(tot) OVER (… UNBOUNDED PRECEDING AND CURRENT ROW)` 인 **당일 러닝 prefix
-    // 집계**이고 baseline·`lag` 도 전부 lookback 이라(윈도우에 `FOLLOWING` 이 하나도
-    // 없다), 데이터가 뒤로 늘어나도 **과거 시각의 판정이 불변**이다. 나중에 확정되는
-    // 것은 결말(`outcome`)뿐이고 그건 키가 같아 `uniqueBy` 가 뒤를 남긴다.
-    // **prefix 집계인가가 이 선택의 판별식이다.**
+    // 못 잡는다). **판별식은 「그 값이 prefix 집계인가」다** — 백엔드 산출이 lookback
+    // 만 쓰면(윈도우에 `FOLLOWING` 이 없으면) 데이터가 뒤로 늘어나도 과거 시각의 값이
+    // 불변이라 거를 이유가 없다.
     //
-    // 이 항목이 아예 없으면 최상위 `...next` 로 낙착돼 청크를 이어 붙일 때마다 앞 구간이
-    // 통째로 사라진다(#1333 — 좌측 팬 프리페치의 빈 청크 하나가 전량을 지웠다).
-    wall_surge: uniqueBy(
-      [...(previous.wall_surge ?? []), ...(next.wall_surge ?? [])],
-      (e) => `${e.t_ms}|${e.side}|${e.price}`,
+    // 이 항목이 아예 없으면 최상위 `...next` 로 낙착돼 청크를 이어 붙일 때마다 앞
+    // 구간이 통째로 사라진다(#1333 — 좌측 팬 프리페치의 빈 청크 하나가 전량을 지웠다).
+    depth_heatmap: uniqueBy(
+      [...(previous.depth_heatmap ?? []), ...(next.depth_heatmap ?? [])],
+      (p) => String(p.t_ms),
       (a, b) => a.t_ms - b.t_ms,
     ),
     volume_distributions: uniqueBy(

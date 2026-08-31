@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_THEME_PREFERENCE,
-  effectiveTheme,
-  OBSIDIAN_ROUTE_PREFIXES,
+  subscribeThemeToDom,
   subscribeToThemePreferenceStorage,
   THEME_PREFERENCE_OPTIONS,
   useThemePrefsStore,
@@ -16,43 +15,25 @@ const STORAGE_KEY = 'ui.themePreference.v1';
 
 beforeEach(() => {
   localStorage.clear();
-  // Reset the singleton store to its default between tests.
-  useThemePrefsStore.setState({ themePreference: 'auto' });
+  // Reset the singleton store to a non-default value between tests, so a test
+  // that asserts the default can't pass by accident.
+  useThemePrefsStore.setState({ themePreference: 'ledger' });
 });
 afterEach(() => localStorage.clear());
 
-describe('effectiveTheme', () => {
-  it('maps auto → obsidian on live/heatmap/market, ledger elsewhere', () => {
-    expect(effectiveTheme('auto', '/live')).toBe('obsidian');
-    expect(effectiveTheme('auto', '/live/anything')).toBe('obsidian');
-    expect(effectiveTheme('auto', '/heatmap')).toBe('obsidian');
-    // '/market' 은 목록에 있는데 이 테스트에도 index.html 에도 없었다 — 커버리지
-    // 구멍이 드리프트 위치와 정확히 일치했다.
-    expect(effectiveTheme('auto', '/market')).toBe('obsidian');
-    expect(effectiveTheme('auto', '/study')).toBe('ledger');
-    expect(effectiveTheme('auto', '/screener')).toBe('ledger');
-    expect(effectiveTheme('auto', '/settings')).toBe('ledger');
-    expect(effectiveTheme('auto', '/')).toBe('ledger');
-  });
-
-  it('ignores the route for an explicit preference', () => {
-    expect(effectiveTheme('obsidian', '/study')).toBe('obsidian');
-    expect(effectiveTheme('ledger', '/live')).toBe('ledger');
-    // toss-* are manual-only: an explicit preference is returned as-is on
-    // every route, and `auto` never resolves to them (see the maps above).
-    expect(effectiveTheme('toss-light', '/live')).toBe('toss-light');
-    expect(effectiveTheme('toss-light', '/settings')).toBe('toss-light');
-    expect(effectiveTheme('toss-dark', '/live')).toBe('toss-dark');
-    expect(effectiveTheme('toss-dark', '/settings')).toBe('toss-dark');
-  });
-
-  it('does not treat a look-alike prefix as a live route', () => {
-    // '/liveries' must NOT match '/live'.
-    expect(effectiveTheme('auto', '/liveries')).toBe('ledger');
-  });
-});
-
 describe('useThemePrefsStore', () => {
+  it('저장된 `auto` 는 기본값으로 폴백한다 (2026-08-30 제거)', () => {
+    // `auto` 는 **유효값이었다** — 이 폴백은 제거가 만든 새 경로이지 기존 동작이
+    // 아니다. 마이그레이션 코드를 안 쓴 근거가 여기 걸려 있으므로, 화이트리스트가
+    // 느슨해지면(예: 검증을 typeof 문자열로만 바꾸면) 여기서 빨개져야 한다.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'auto' }));
+    useThemePrefsStore.getState().hydrateFromStorage();
+    expect(useThemePrefsStore.getState().themePreference).toBe('ledger'); // beforeEach 값 = 변화 없음
+
+    // 모듈 로드 시점의 초기값 경로도 같은 화이트리스트를 탄다.
+    expect(THEME_PREFERENCE_OPTIONS).not.toContain('auto' as ThemePreference);
+  });
+
   it('falls back to DEFAULT_THEME_PREFERENCE when nothing is stored', () => {
     // 저장값이 없을 때 스토어가 무엇으로 시작하는지는 모듈 로드 시점에 한 번
     // 정해지므로(beforeEach 가 덮어쓴다) 상수 자체를 못박는다. 라우트별 테마
@@ -83,10 +64,13 @@ describe('useThemePrefsStore', () => {
 
   /**
    * index.html 의 첫 페인트 부트스트랩은 이 모듈을 import 할 수 없다(모듈 그래프
-   * 로드 전에 돌아야 FOUC·잘못된 테마 차트 캐시를 막는다). 그래서 기본값과 auto
-   * 라우트 맵이 **복제**돼 있고, 실제로 한 번 어긋났다 — `OBSIDIAN_ROUTE_PREFIXES`
-   * 에 '/market' 이 추가됐는데 index.html 은 안 따라가서, auto 로 /market 에
-   * 진입하면 ledger 로 칠했다가 obsidian 으로 뒤집혔다.
+   * 로드 전에 돌아야 FOUC·잘못된 테마 차트 캐시를 막는다). 그래서 **기본값과 허용
+   * 목록이 복제**돼 있다.
+   *
+   * 복제는 실제로 어긋난 적이 있다 — `auto` 시절 라우트 맵이 한쪽에만 '/market' 을
+   * 얻어서, auto 로 /market 에 진입하면 ledger 로 칠했다가 obsidian 으로 뒤집혔다
+   * (그 블록이 막으려던 FOUC 그 자체). 라우트 맵은 `auto` 와 함께 사라졌지만 나머지
+   * 두 복제는 남았고, 같은 방식으로 어긋날 수 있다.
    *
    * 복제를 없앨 수 없으니 이탈을 실패로 만든다.
    */
@@ -101,13 +85,6 @@ describe('useThemePrefsStore', () => {
       expect(fallback, '유효성 폴백 분기를 찾지 못했다').not.toBeNull();
       expect(ternary![1]).toBe(DEFAULT_THEME_PREFERENCE);
       expect(fallback![1]).toBe(DEFAULT_THEME_PREFERENCE);
-    });
-
-    it('auto 다크 라우트 목록이 OBSIDIAN_ROUTE_PREFIXES 와 같다', () => {
-      const line = INDEX_HTML.split('\n').find((l) => l.includes('var dark ='));
-      expect(line, 'index.html 의 `var dark =` 줄을 찾지 못했다').toBeDefined();
-      const routes = [...line!.matchAll(/'(\/[a-z]+)\/?'/g)].map((m) => m[1]);
-      expect([...new Set(routes)].sort()).toEqual([...OBSIDIAN_ROUTE_PREFIXES].sort());
     });
 
     it('허용 선호값 목록이 THEME_PREFERENCE_OPTIONS 와 같다', () => {
@@ -147,18 +124,92 @@ describe('useThemePrefsStore', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'obsidian' }));
       window.dispatchEvent(new StorageEvent('storage', { key: 'live.page.v1' }));
 
-      expect(useThemePrefsStore.getState().themePreference).toBe('auto'); // beforeEach 값
+      expect(useThemePrefsStore.getState().themePreference).toBe('ledger'); // beforeEach 값
       unsubscribe();
     });
   });
 
-  it('exposes exactly the five options', () => {
+  it('exposes exactly the four options', () => {
     expect([...THEME_PREFERENCE_OPTIONS]).toEqual([
       'obsidian',
       'ledger',
       'toss-light',
       'toss-dark',
-      'auto',
     ]);
+  });
+});
+
+describe('subscribeThemeToDom', () => {
+  const root = document.documentElement;
+  let prevTheme: string | null = null;
+
+  beforeEach(() => {
+    prevTheme = root.getAttribute('data-theme');
+  });
+  afterEach(() => {
+    // 속성이 다음 테스트로 새면 `currentThemeKey()` 를 읽는 차트/토큰 테스트가
+    // 조용히 다른 팔레트를 본다.
+    if (prevTheme === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', prevTheme);
+    // pathname 도 여기서 되돌린다. 테스트 본문 끝에서 되돌리면 **그 테스트가 실패한
+    // 순간 복구가 실행되지 않아** 뒤 테스트들이 남은 경로에서 돌고, 실패가 번져서
+    // 어느 것이 진짜 결함인지 안 보인다(라우트 무관성 red-check 에서 실측: 목표 1개
+    // 대신 3개가 빨개졌다).
+    window.history.pushState({}, '', '/');
+  });
+
+  it('선호 변경을 `set()` 안에서 **동기로** DOM 에 반영한다', () => {
+    // 이 테스트의 대상은 값이 아니라 **시점**이다. 이펙트(또는 layoutEffect) 기반
+    // 구현이면 이 시점의 DOM 은 아직 옛 값이고, 그 한 커밋의 지연이 캔버스를 옛
+    // 팔레트로 그리게 한다 — 사용자에게는 "스크롤해야 바뀐다" 로 보였다.
+    const unsubscribe = subscribeThemeToDom();
+    root.setAttribute('data-theme', 'toss-light');
+
+    useThemePrefsStore.getState().setThemePreference('obsidian');
+
+    // `await` 도 `act()` 도 없다. 그게 단언의 내용이다.
+    expect(root.getAttribute('data-theme')).toBe('obsidian');
+    unsubscribe();
+  });
+
+  it('라우트와 무관하게 선호를 그대로 쓴다', () => {
+    // `auto` 제거(2026-08-30)가 만든 계약이다: **선호가 곧 테마**이고 pathname 은
+    // 입력이 아니다. 라우트 분기가 되살아나면 여기서 빨개진다 — 그게 두 번째 DOM
+    // writer 와 index.html 라우트 맵 복제를 다시 불러오는 첫 걸음이다.
+    const unsubscribe = subscribeThemeToDom();
+
+    window.history.pushState({}, '', '/live'); // auto 시절 obsidian 이던 라우트
+    useThemePrefsStore.getState().setThemePreference('toss-light');
+    expect(root.getAttribute('data-theme')).toBe('toss-light');
+
+    window.history.pushState({}, '', '/screener'); // auto 시절 ledger 이던 라우트
+    useThemePrefsStore.getState().setThemePreference('obsidian');
+    expect(root.getAttribute('data-theme')).toBe('obsidian');
+    unsubscribe();
+  });
+
+  it('구독 해제 후에는 쓰지 않는다', () => {
+    const unsubscribe = subscribeThemeToDom();
+    unsubscribe();
+    root.setAttribute('data-theme', 'toss-light');
+
+    useThemePrefsStore.getState().setThemePreference('obsidian');
+
+    expect(root.getAttribute('data-theme')).toBe('toss-light');
+  });
+
+  it('다른 탭의 변경(hydrateFromStorage)도 같은 경로로 반영된다', () => {
+    // `subscribeToThemePreferenceStorage` 는 `set()` 을 태우므로 이 구독이 그대로
+    // 이어받는다 — 크로스탭 동기화에 별도 DOM writer 를 만들지 않는 근거다.
+    const unsubscribeDom = subscribeThemeToDom();
+    const unsubscribeStorage = subscribeToThemePreferenceStorage();
+    root.setAttribute('data-theme', 'toss-light');
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ themePreference: 'toss-dark' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+
+    expect(root.getAttribute('data-theme')).toBe('toss-dark');
+    unsubscribeStorage();
+    unsubscribeDom();
   });
 });

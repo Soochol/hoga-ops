@@ -261,6 +261,84 @@ def depth_daily_sweep(
     )
 
 
+@app.command(name="peak-prewarm")
+def peak_prewarm_cmd(
+    limit: int = typer.Option(0, "--limit", help="계산 상한(0=무제한). 일일 런은 2000."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="대상만 세고 계산하지 않음"),
+    code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
+) -> None:
+    """과거일 **1분** 최대벽 캐시를 미리 채운다 — 콜드 sidecar 로드를 없앤다.
+
+    1분 한 번이 `ask_peak`·`bid_peak`·`peak_rep` 셋을 채우고 3m~240m 은 스캔 없이
+    파생되므로(실측 ~70배) 봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
+    모듈 docstring.
+
+    같은 함수를 일일 런(17:00)이 상한 2000 으로 부른다 — 이 명령은 그 상한 없이
+    **즉시 전량**을 채우고 싶을 때 쓴다(캐시 버전 범프 직후 등). 멱등·증분이라
+    중단 후 재실행이 안전하고, 최신 날짜부터 채운다.
+
+    ⚠ 전량은 오래 걸린다. 먼저 `--dry-run` 으로 대상 수를 보고 결정할 것 —
+    hogaplay 는 스톡데이트당 ~0.37s, kiwoom_live 는 ~0.07s 다(2026-08-28 실측).
+    """
+    import time  # noqa: PLC0415 — CLI-local
+
+    from hoga.api import peak_prewarm  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    t0 = time.time()
+    try:
+        res = peak_prewarm.prewarm(
+            data_dir,
+            codes={code} if code else None,
+            limit=limit or None,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        console.print(f"[red]peak-prewarm failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    label = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]peak-prewarm {label}[/green] in {time.time() - t0:.0f}s: "
+        f"scanned={res.scanned} warmed={res.warmed} skipped={res.skipped} "
+        f"failed={res.failed} truncated={res.truncated}"
+    )
+
+
+@app.command(name="prune-indicator-cache")
+def prune_indicator_cache_cmd(
+    yes: bool = typer.Option(False, "--yes", help="실제로 지운다(기본은 세기만)"),
+) -> None:
+    """죽은 버전의 지표 캐시 파일을 지운다.
+
+    `KIND_VERSIONS` 범프는 **읽을 때 stale 로 판정**할 뿐이라 디스크의 옛 파일이
+    그대로 쌓인다. 읽기 경로가 조용히 무시하므로 정확성 문제가 아니라 **공간**
+    문제이고, 그래서 언제 돌려도 안전하고 안 돌려도 동작이 바뀌지 않는다.
+
+    기본은 세기만 한다 — 규모를 보고 `--yes` 로 실행할 것. 버전이 **낮은** 것만
+    지우므로(높은 것은 더 새 코드가 쓴 것) 롤백 여지를 남긴다. 멱등.
+    """
+    import time  # noqa: PLC0415 — CLI-local
+
+    from hoga.api import indicator_cache_prune  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    t0 = time.time()
+    try:
+        res = indicator_cache_prune.prune(data_dir, dry_run=not yes)
+    except Exception as e:
+        console.print(f"[red]prune-indicator-cache failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    label = "deleted" if yes else "dry-run"
+    console.print(
+        f"[green]prune-indicator-cache {label}[/green] in {time.time() - t0:.0f}s: "
+        f"scanned={res.scanned} stale={res.stale} retired={res.retired} "
+        f"deleted={res.deleted} freed={res.bytes_freed / 1e9:.2f}GB "
+        f"unreadable={res.unreadable} unknown_kind={res.unknown_kind}"
+    )
+    if not yes and (res.stale or res.retired):
+        console.print("[yellow]실제로 지우려면 --yes 를 붙여 다시 실행하세요.[/yellow]")
+
+
 @app.command(name="backfill-live-meta")
 def backfill_live_meta_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
@@ -750,6 +828,15 @@ def prune(
             "(ADR-0135). Irreversible: that day can never be re-parsed."
         ),
     ),
+    include_stale_incomplete: bool = typer.Option(
+        False, "--include-stale-incomplete",
+        help=(
+            "Also prune CLIENT_INCOMPLETE raw past the retention window whose "
+            "parquet already exists. hogaplay upstream keeps ~18h, so past the "
+            "window the resume it guards is physically impossible (ADR-0163). "
+            "Raw without parquet is never touched — that is the only copy."
+        ),
+    ),
     include_dead_trees: bool = typer.Option(
         False, "--include-dead-trees",
         help=(
@@ -769,6 +856,11 @@ def prune(
     already declared terminal (``decide_capture`` skips them). ADR-0075's
     Trigger Condition anticipated exactly this: "비-COMPLETE raw 누적이 디스크를
     위협하면 --include-partial 옵트인 또는 별도 진단 도구를 도입한다."
+
+    ``--include-stale-incomplete`` opens the biggest class (ADR-0163). Measured
+    2026-08-27: CLIENT_INCOMPLETE held 124.7 GiB of which only 5.1 GiB (4%) was
+    still inside the upstream window — the rest reached 367 days old while being
+    preserved as "resume sources" that can never be resumed.
     """
     from hoga.api.prune import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         disk_headroom,
@@ -788,6 +880,7 @@ def prune(
         data_dir, retention_days=retention, now=prune_default_now(), execute=execute,
         include_confirmed_gaps=include_confirmed_gaps,
         include_expired_unconfirmed=include_expired_unconfirmed,
+        include_stale_incomplete=include_stale_incomplete,
     )
     if execute:
         gib = result.reclaimed_bytes / 1024**3

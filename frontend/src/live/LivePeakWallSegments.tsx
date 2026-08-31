@@ -38,39 +38,68 @@ type Props = {
  *
  * 방향으로 갈리는 것은 **레전드 키와 화살표 앵커(고가/저가)** 둘뿐이라 side 하나로 족하다.
  */
+
 function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const windowId = useWindowScopeId();
   const legendId = side === 'ask' ? 'ask-peak' : 'bid-peak';
   const primRef = useRef<PeakWallSegmentsPrimitive | null>(null);
+  /** 전체 최대벽(터치 무관) 선 전용 primitive. **체결된 벽보다 먼저 attach** 한다 —
+   *  primitive 는 attach 순으로 그려지므로 두 선이 같은 가격에 겹치면(전체 rank-1 이
+   *  터치된 날) 체결된 벽이 위에 남는다. */
+  const allWallPrimRef = useRef<PeakWallSegmentsPrimitive | null>(null);
+  /** 미도달 벽 선 전용 primitive — 전체 벽과 같은 이유로 체결된 벽보다 먼저 attach. */
+  const unreachedPrimRef = useRef<PeakWallSegmentsPrimitive | null>(null);
   const arrowPrimRef = useRef<PeakWallRankArrowsPrimitive | null>(null);
   /** 레전드가 랭킹할 세그먼트. **`hidden` 과 무관하게** 채운다 — 눈은 선만 숨기고 레전드
    *  값은 살린다(MA 규칙 미러). ref 인 이유: provider 는 비반응형 레지스트리에 등록되고
    *  레전드 렌더 시점에 lazy 하게 불리므로, 스토어/props 를 provider effect 의 deps 로
-   *  끌어오면 등록·해제만 반복된다. */
+   *  끌어오면 등록·해제만 반복된다.
+   *  입력은 `legendRankSegments` — **레전드 참여가 켜진 계열만** 담은 집합이다. 계열별
+   *  참여가 생기기 전에는 화살표와 한 집합이라 레전드 1위 = 화살표 ① 이 자동으로
+   *  보장됐다. 이제는 두 표면에 서로 다른 계열을 켜면 번호가 갈릴 수 있고, 그것이 그
+   *  설정의 뜻이다(랭커 자체는 여전히 하나 — peakWallVisibleRanking 머리말). */
   const legendSegmentsRef = useRef<readonly PeakWallSegment[]>([]);
-  legendSegmentsRef.current = wall.segments;
+  legendSegmentsRef.current = wall.legendRankSegments;
+  /** 「레전드 순위 셀」이 **한 계열이라도** 켜져 있는가. **행은 끄지 않는다** — 등록을 걷으면 행이 사라져
+   *  다시 켤 표면(눈 아이콘)이 없어진다. provider 는 늘 등록하고 여기서 빈
+   *  목록을 낼 뿐이다. ref 인 이유는 위 세그먼트와 같다(비반응형 레지스트리). */
+  const legendCellsRef = useRef(true);
+  legendCellsRef.current = wall.legendCells;
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine 과 동일 — tf·종목 전환에도 핸들 유지).
   useEffect(() => {
     if (!series) return;
-    const prim = new PeakWallSegmentsPrimitive();
+    // side 는 발생 시점 화살표의 방향 — 세 계열 모두 이 컴포넌트의 방향을 따른다.
+    const allWallPrim = new PeakWallSegmentsPrimitive(side);
+    const unreachedPrim = new PeakWallSegmentsPrimitive(side);
+    const prim = new PeakWallSegmentsPrimitive(side);
     const arrowPrim = new PeakWallRankArrowsPrimitive();
+    series.attachPrimitive(allWallPrim);
+    series.attachPrimitive(unreachedPrim);
     series.attachPrimitive(prim);
     series.attachPrimitive(arrowPrim);
+    allWallPrimRef.current = allWallPrim;
+    unreachedPrimRef.current = unreachedPrim;
     primRef.current = prim;
     arrowPrimRef.current = arrowPrim;
     return () => {
       try {
+        series.detachPrimitive(allWallPrim);
+        series.detachPrimitive(unreachedPrim);
         series.detachPrimitive(prim);
         series.detachPrimitive(arrowPrim);
       } catch {
         /* chart already torn down */
       }
+      allWallPrimRef.current = null;
+      unreachedPrimRef.current = null;
       primRef.current = null;
       arrowPrimRef.current = null;
     };
-  }, [series]);
+    // `side` 는 이 컴포넌트의 마운트 정체성이라 실제로는 안 바뀌지만, primitive 생성자
+    // 인자이므로 deps 에 둔다(바뀌면 재생성이 맞다).
+  }, [series, side]);
 
   // 레전드 값 provider — **보이는 영역**의 잔량 상위 3개.
   //
@@ -79,13 +108,15 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   // 프레임이 **이전 범위의 상위 3개**를 보일 수 있다. 세그먼트 집합 자체는 팬으로 안
   // 바뀌므로 ref + 실시간 범위면 충분하다.
   useEffect(() => {
-    const provider: FlagLegendValueProvider = () => peakWallRankLegendCells(
-      legendSegmentsRef.current,
-      primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
-      legendId,
-    );
-    registerFlagLegendValues(windowId, legendId, provider);
-    return () => unregisterFlagLegendValues(windowId, legendId, provider);
+    const provider: FlagLegendValueProvider = () => (legendCellsRef.current
+      ? peakWallRankLegendCells(
+        legendSegmentsRef.current,
+        primRef.current?.chartApi()?.timeScale().getVisibleRange() ?? null,
+        legendId,
+      )
+      : []);
+    registerFlagLegendValues(windowId, legendId, 'main', provider);
+    return () => unregisterFlagLegendValues(windowId, legendId, 'main', provider);
   }, [windowId, legendId]);
 
   // 그리기 — 팬·줌은 구독하지 않는다. 이 계산에 보이는 범위가 들어가지 않기 때문이다
@@ -93,10 +124,26 @@ function LivePeakWallSegments({ paneSeries, side, wall, candleExtremes }: Props)
   // 입력을 다시 넣으면 구독도 같이 되살려야 한다.
   useEffect(() => {
     primRef.current?.setSegments(
-      wall.drawn ? preparePeakWallSegmentsForRender(wall.segments) : [],
+      wall.drawn
+        ? preparePeakWallSegmentsForRender(wall.segments)
+        : [],
+    );
+    // 전체 최대벽(터치 무관) 선 — 라벨은 도킹 라벨 primitive 공용, 레전드·화살표는
+    // rankSegments 병합 집합이 담당한다.
+    allWallPrimRef.current?.setSegments(
+      wall.allWallDrawn
+        ? preparePeakWallSegmentsForRender(wall.allWallSegments)
+        : [],
+    );
+    unreachedPrimRef.current?.setSegments(
+      wall.unreachedDrawn
+        ? preparePeakWallSegmentsForRender(wall.unreachedSegments)
+        : [],
     );
     arrowPrimRef.current?.setArrows(
-      wall.arrows ? peakWallRankArrowsFromSegments(wall.segments, side, candleExtremes) : [],
+      wall.arrows
+        ? peakWallRankArrowsFromSegments(wall.arrowRankSegments, side, candleExtremes)
+        : [],
       PEAK_WALL_LEGEND_RANK_LIMIT,
     );
   }, [candleExtremes, series, side, wall]);

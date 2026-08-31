@@ -227,3 +227,68 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
     expect(screen.queryByTestId('drawing-panel-grip')).toBeNull();
   });
 });
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('DrawingPropertyPanel — 잠금', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    s().add(SCOPE, HLINE);
+    s().setSelected(SCOPE, 'h1');
+  });
+
+  it('자물쇠 버튼이 잠금을 켠다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+
+    expect(s().drawingsFor(SCOPE)[0].locked).toBe(true);
+  });
+
+  it('잠긴 상태에서 다시 누르면 풀린다 — 자물쇠는 잠겨도 살아 있어야 한다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+
+    expect(s().drawingsFor(SCOPE)[0].locked).toBe(false);
+  });
+
+  it('잠기면 스타일·삭제 컨트롤이 전부 비활성이고 자물쇠만 살아 있다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+
+    for (const id of ['drawing-color-trigger', 'drawing-thickness-trigger', 'drawing-line-style-trigger', 'drawing-delete']) {
+      expect(screen.getByTestId(id)).toBeDisabled();
+    }
+    expect(screen.getByTestId('drawing-lock')).not.toBeDisabled();
+  });
+
+  it('잠금 상태는 aria-pressed 로 노출된다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    expect(screen.getByTestId('drawing-lock')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+    expect(screen.getByTestId('drawing-lock')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // useDismissablePopover 는 rootRef **바깥** mousedown 에만 반응하는데 자물쇠는
+  // 그 안에 있다 — 파생 게이트가 없으면 팔레트가 죽은 채 펼쳐진 상태로 남는다.
+  it('열려 있던 팝오버는 잠그는 순간 닫힌다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+    expect(screen.getAllByTestId(/^drawing-color-swatch-/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByTestId('drawing-lock'));
+    expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
+  });
+
+  // 잠긴 도형도 선택되면 패널이 떠야 한다 — 이 패널의 자물쇠가 해제의 유일한
+  // 경로라, 패널이 숨으면 사용자가 자기 도형을 영구히 못 푼다.
+  it('잠긴 도형이 선택돼도 패널은 뜬다', () => {
+    s().update(SCOPE, 'h1', { locked: true });
+    const { container } = render(<DrawingPropertyPanel scope={SCOPE} />);
+
+    expect(container.querySelector('[data-drawing-property-panel]')).not.toBeNull();
+  });
+});

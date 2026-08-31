@@ -27,6 +27,14 @@ export default function DrawingClearConfirmHost() {
         <>
           이 차트에 그린 그림 <b className="font-data">{clearConfirm.count}</b>개가 모두
           삭제됩니다. 계속할까요?
+          {/* 잠긴 것이 있을 때만 나온다. count 는 이미 잠긴 것을 뺀 수라, 이 문장이
+              없으면 "5개 그렸는데 3개라고 하네" 가 설명 없는 불일치로 읽힌다. */}
+          {clearConfirm.lockedCount > 0 && (
+            <>
+              {' '}
+              잠긴 <b className="font-data">{clearConfirm.lockedCount}</b>개는 유지됩니다.
+            </>
+          )}
         </>
       }
       confirmLabel="모두 지우기"

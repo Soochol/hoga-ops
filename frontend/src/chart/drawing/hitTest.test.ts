@@ -5,6 +5,7 @@ import {
   distanceToSegment,
   distanceToPolyline,
   hitTestDrawings,
+  unlockedOnly,
   type HitCoord,
 } from './hitTest';
 import type { Drawing } from './types';
@@ -228,5 +229,44 @@ describe('hitTestDrawings', () => {
   it('skips a drawing whose projected coordinates are null (off-axis)', () => {
     const offAxis: HitCoord = { ...coord, priceToCanvasY: () => null };
     expect(hitTestDrawings(offAxis, [hline('h1', 100)], 50, 100)).toBeNull();
+  });
+});
+
+// ── 잠금 게이트 (ADR-0164) ─────────────────────────────────────────────────
+describe('unlockedOnly — 포인터 게이트가 보는 부분집합', () => {
+  const coord: HitCoord = {
+    realMsToCanvasX: (realMs) => realMs,
+    priceToCanvasY: (price) => price,
+    paneIdAtY: () => 'candle',
+  };
+  const hline = (id: string, price: number, locked?: boolean): Drawing => ({
+    id, kind: 'hline', price, paneId: 'candle',
+    color: '#fff', width: 2, lineStyle: 'solid',
+    ...(locked ? { locked: true } : {}),
+  });
+
+  it('잠긴 것을 빼고 나머지는 순서까지 그대로 남긴다', () => {
+    const a = hline('a', 10);
+    const locked = hline('b', 20, true);
+    const c = hline('c', 30);
+    expect(unlockedOnly([a, locked, c])).toEqual([a, c]);
+  });
+
+  it('전부 잠겼으면 빈 배열 — 게이트는 pointerEvents 를 none 으로 둔다', () => {
+    expect(unlockedOnly([hline('a', 10, true)])).toEqual([]);
+  });
+
+  // ⚠ 이 케이스가 "먼저 거르고 히트 판정" 순서의 존재 이유다. hitTestDrawings 는
+  // **최상단** 매치를 돌려주므로, 히트부터 하고 결과의 locked 를 보면 위에 있는
+  // 잠긴 도형이 아래 살아 있는 도형을 가려 버린다 — 그 도형이 조용히 안 잡히게 된다.
+  it('겹쳐 있을 때 위의 잠긴 도형이 아래 잠기지 않은 도형을 가리지 않는다', () => {
+    const live = hline('live', 100);
+    const lockedOnTop = hline('locked', 100, true); // 같은 y, 나중에 그려져 위
+    const stack = [live, lockedOnTop];
+
+    // 히트부터 하면 최상단인 잠긴 것이 이긴다 — 이게 틀린 순서다.
+    expect(hitTestDrawings(coord, stack, 50, 100)?.id).toBe('locked');
+    // 먼저 거르면 아래 살아 있는 도형이 제대로 잡힌다.
+    expect(hitTestDrawings(coord, unlockedOnly(stack), 50, 100)?.id).toBe('live');
   });
 });

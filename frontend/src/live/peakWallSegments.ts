@@ -22,7 +22,6 @@ import {
   type PeakWallSegment,
 } from '../chart/PeakWallSegmentsPrimitive';
 import { formatPriceQty } from './peakLegendValues';
-import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import { filterPeaksAgainstMa, type PeakMaFilter } from './peakWallMaFilter';
 import { filterPeaksAgainstDailyMa, type PeakDailyMaFilter } from './peakWallDailyMaFilter';
 
@@ -32,7 +31,88 @@ export type PeakWallInput = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  all_peaks?: AskPeakCandidate[];
+  all_max_peaks?: AskPeakCandidate[];
+  unreached_peaks?: AskPeakCandidate[];
 };
+
+function allCandidate(
+  price: number | null | undefined,
+  qty: number | null | undefined,
+  tMs: number | null | undefined,
+): AskPeakCandidate | null {
+  return finiteNumber(price) && finiteNumber(qty) && finiteNumber(tMs)
+    ? { price, qty, t_ms: tMs }
+    : null;
+}
+
+/**
+ * 전체 벽(`all_*` 패밀리, 터치 무관)을 **traded carrier 자리로 옮긴 사본**을 만든다 —
+ * 「전체 최대벽」 선의 입력. 파이프라인(expandBaselinePeaks · MA 필터)은 전부 traded
+ * carrier 를 읽으므로, 자리만 바꾸면 한 벌이 그대로 재사용된다.
+ *
+ * 데이터의 두 모양을 다 다룬다:
+ * - **과거일**(/api/range seed): `all_price/qty/t_ms` 스칼라만 있고 배열은 비어 온다
+ *   (bundle._without_all_peak_rankings). → carrier 는 스칼라, 배열은 undefined.
+ * - **오늘**(attachFamilies): `all_peaks`/`all_max_peaks` 배열이 있다. → rank-1 이
+ *   carrier, 배열은 traded_peaks 로 옮긴다.
+ *
+ * `all_*` 가 전혀 없는 날(legacy payload)은 건너뛴다 — 그날만 선이 빠진다.
+ * record 필드는 옮기지 않는다(전체 벽 선은 강도 pane 계단에 참여하지 않는다).
+ */
+export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
+  const out: PeakWallInput[] = [];
+  for (const p of peaks) {
+    const closeArr = p.all_peaks?.length ? p.all_peaks : undefined;
+    const maxArr = p.all_max_peaks?.length ? p.all_max_peaks : undefined;
+    const close = closeArr?.[0] ?? allCandidate(p.all_price, p.all_qty, p.all_t_ms);
+    const max = maxArr?.[0]
+      ?? allCandidate(p.all_max_price, p.all_max_qty, p.all_max_t_ms)
+      ?? close;
+    if (!close && !max) continue;
+    out.push({
+      date: p.date,
+      price: close?.price ?? null,
+      qty: close?.qty ?? null,
+      t_ms: close?.t_ms ?? null,
+      max_price: max?.price ?? null,
+      max_qty: max?.qty ?? null,
+      max_t_ms: max?.t_ms ?? null,
+      traded_peaks: closeArr,
+      traded_max_peaks: maxArr,
+    });
+  }
+  return out;
+}
+
+/**
+ * 미도달 벽(`unreached_*`)을 traded carrier 자리로 옮긴 사본 — toAllWallPeakInputs 와
+ * 같은 리맵 패턴. **cont 단일 계열**이라 close/max 구분이 없어 양쪽에 같은 값을 싣는다
+ * (intraMax 토글이 이 선에는 무효 — 백엔드 AskPeakDualRow 주석의 대우).
+ * 과거일 배열은 range 에서 벗기지 않으므로(최대 3개) 배열이 오면 그대로 옮기고,
+ * 없으면 스칼라 폴백 — 규약은 toAllWallPeakInputs 와 동일하다.
+ */
+export function toUnreachedWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
+  const out: PeakWallInput[] = [];
+  for (const p of peaks) {
+    const arr = p.unreached_peaks?.length ? p.unreached_peaks : undefined;
+    const rankOne = arr?.[0]
+      ?? allCandidate(p.unreached_price, p.unreached_qty, p.unreached_t_ms);
+    if (!rankOne) continue;
+    out.push({
+      date: p.date,
+      price: rankOne.price,
+      qty: rankOne.qty,
+      t_ms: rankOne.t_ms,
+      max_price: rankOne.price,
+      max_qty: rankOne.qty,
+      max_t_ms: rankOne.t_ms,
+      traded_peaks: arr,
+      traded_max_peaks: arr,
+    });
+  }
+  return out;
+}
 
 export type PeakWallLineStyle = {
   color: string;
@@ -245,7 +325,6 @@ export type BuildPeakWallOverlaySegmentsArgs = {
   /** 계단(as-of running max) 입력 모드 — 후보를 기록 갱신 시퀀스 ∪ top-3 으로 잡고
    *  랭크로 자르지 않는다. 그리기 경로는 이 옵션을 켜지 않는다. */
   stepHistory?: boolean;
-  visibleTimeCutoff?: VisibleTimeCutoff | null;
   /** 이동평균선 필터. **필수 인자**다 — 기본값을 주면 새 호출부가 조용히 필터 없이
    *  태어난다. 필터를 안 쓰는 자리는 `null` 을 명시한다. 방향(매도는 MA 위 / 매수는
    *  아래)은 이 객체 안에 있다. */
@@ -255,7 +334,23 @@ export type BuildPeakWallOverlaySegmentsArgs = {
   dailyMaFilter: PeakDailyMaFilter | null;
 };
 
-export function buildPeakWallOverlaySegments({
+/** 세그먼트 + **필터 경계에서 잰 두 개수**.
+ *
+ *  `hiddenByFilter` 를 화면에 쓰려면 이 함수 **안에서** 재야 한다. 밖에서
+ *  `candidateCount − segments.length` 로 빼면 틀린다 — `buildPeakWallSegments` 가
+ *  필터 **후에** 그 date 의 `RangeSegment` 가 없는 peak 과 비유한 값을 추가로 버리기
+ *  때문이다. 그 매핑 손실이 "필터로 숨김" 에 섞이면 사용자는 끄지도 않은 필터를
+ *  탓하게 된다. 그래서 `shown + hiddenByFilter ≠ candidateCount` 가 **정상**이고,
+ *  UI 는 그 합이 총수라고 주장하지 않는다. */
+export type PeakWallOverlayResult = {
+  segments: PeakWallSegment[];
+  /** 랭크 슬라이스까지 끝난 후보 수 — 필터가 보기 전의 모집단. */
+  candidateCount: number;
+  /** 두 MA 필터를 통과한 수(세그먼트 매핑 전). */
+  filteredCount: number;
+};
+
+export function buildPeakWallOverlayResult({
   peaks,
   segments,
   candles,
@@ -265,19 +360,18 @@ export function buildPeakWallOverlaySegments({
   intraMax,
   allPriceRankLimit = 1,
   stepHistory = false,
-  visibleTimeCutoff,
   maFilter,
   dailyMaFilter,
-}: BuildPeakWallOverlaySegmentsArgs): PeakWallSegment[] {
-  const cutoffPeaks = applyPeakVisibleTimeCutoff(peaks, visibleTimeCutoff ?? null, { intraMax });
+}: BuildPeakWallOverlaySegmentsArgs): PeakWallOverlayResult {
   // rank-then-filter: 그날 최대벽을 먼저 뽑고(expandBaselinePeaks) 그중 MA 조건에 맞는
   // 것만 남긴다. 반대로 걸면(filter-then-rank) 지표의 뜻이 "그날 최대벽"에서 "MA 위 벽 중
   // 최대"로 바뀌어, 최대벽이 조건에 걸리면 2등 벽이 대신 올라온다.
   // 두 필터는 순차 교집합이다. 순서는 결과에 영향이 없다(둘 다 술어) — 분봉 쪽을 먼저 두는
   // 것은 그쪽이 캔들 배열을 만지므로 더 비싼 쪽을 뒤에 남기지 않기 위해서다.
+  const candidates = expandBaselinePeaks(peaks, allPriceRankLimit, intraMax, stepHistory);
   const baselinePeaks = filterPeaksAgainstDailyMa(
     filterPeaksAgainstMa(
-      expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax, stepHistory),
+      candidates,
       candles,
       axis,
       intraMax,
@@ -286,14 +380,26 @@ export function buildPeakWallOverlaySegments({
     intraMax,
     dailyMaFilter,
   );
-  return buildPeakWallSegments(
-    baselinePeaks,
-    segments,
-    candles,
-    axis,
-    todayKst,
-    baselineStyle.color,
-    baselineStyle.lineWidth,
-    intraMax,
-  );
+  return {
+    segments: buildPeakWallSegments(
+      baselinePeaks,
+      segments,
+      candles,
+      axis,
+      todayKst,
+      baselineStyle.color,
+      baselineStyle.lineWidth,
+      intraMax,
+    ),
+    candidateCount: candidates.length,
+    filteredCount: baselinePeaks.length,
+  };
+}
+
+/** 세그먼트만 필요한 호출부용 얇은 위임 — 계단 경로처럼 개수가 무의미한 곳이 쓴다
+ *  (`stepHistory: true` 는 랭크 슬라이스를 하지 않아 후보 수가 뜻을 갖지 않는다). */
+export function buildPeakWallOverlaySegments(
+  args: BuildPeakWallOverlaySegmentsArgs,
+): PeakWallSegment[] {
+  return buildPeakWallOverlayResult(args).segments;
 }

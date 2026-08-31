@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import BookPanel, { bookMidPrice } from './BookPanel';
 import { EMPTY_TRADE_SUMMARY } from '../liveSidebarAdapters';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -687,5 +687,199 @@ describe('BookPanel stale 딤', () => {
     // 상태와 무관하게 통과하는 vacuous 가드가 된다. testid 로 지목할 것.
     renderPanel({ stale: true, afterHoursTotals: { ask: 10, bid: 20 } });
     expect(dimOf(screen.getByTestId('book-total-strip'))).not.toContain('opacity-50');
+  });
+});
+
+describe('BookPanel 세션 표시 (10호가 정책)', () => {
+  const TOGGLE = {
+    kind: 'toggle' as const,
+    regularLabel: '정규장',
+    afterHoursLabel: '시간외 단일가',
+  };
+
+  it('갈래 A — 지금 보고 있는 장의 이름 **하나만** 그린다', () => {
+    // 두 라벨을 나란히 두지 않는 것이 규약이다(자리가 총잔량 두 숫자 사이라 좁다).
+    renderPanel({ sessionControl: TOGGLE, sessionMode: 'regular' });
+    const btn = screen.getByTestId('book-session-toggle');
+    expect(btn).toHaveTextContent('정규장');
+    expect(screen.queryByText('시간외 단일가')).not.toBeInTheDocument();
+  });
+
+  it('갈래 A — 누르면 반대 모드를 통지한다', () => {
+    const onSelect = vi.fn();
+    renderPanel({
+      sessionControl: TOGGLE,
+      sessionMode: 'regular',
+      onSelectSessionMode: onSelect,
+    });
+    fireEvent.click(screen.getByTestId('book-session-toggle'));
+    expect(onSelect).toHaveBeenCalledWith('afterHours');
+  });
+
+  it('갈래 A — 시간외를 보는 중이면 다음 클릭은 정규장이다', () => {
+    const onSelect = vi.fn();
+    renderPanel({
+      sessionControl: TOGGLE,
+      sessionMode: 'afterHours',
+      onSelectSessionMode: onSelect,
+    });
+    const btn = screen.getByTestId('book-session-toggle');
+    expect(btn).toHaveTextContent('시간외 단일가');
+    fireEvent.click(btn);
+    expect(onSelect).toHaveBeenCalledWith('regular');
+  });
+
+  it('갈래 A — 라벨만으로는 방향을 모르므로 스크린리더에 둘 다 말한다', () => {
+    renderPanel({ sessionControl: TOGGLE, sessionMode: 'regular' });
+    expect(screen.getByTestId('book-session-toggle')).toHaveAttribute(
+      'aria-label',
+      '정규장 호가 표시 중 — 누르면 시간외 단일가',
+    );
+  });
+
+  it('갈래 B(NXT) — 라벨은 버튼이 아니다', () => {
+    // 밑줄=누를 수 있다 의 신호를 지킨다. 클릭 안 되는 것에 밑줄을 주면
+    // "왜 안 눌리지" 가 된다.
+    renderPanel({ sessionControl: { kind: 'label', label: '애프터마켓' } });
+    expect(screen.getByTestId('book-session-label')).toHaveTextContent('애프터마켓');
+    expect(screen.queryByTestId('book-session-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /애프터마켓/ })).not.toBeInTheDocument();
+  });
+
+  it('모름(kind=none) — 종전의 조건부 시간외 출처 표시로 폴백한다', () => {
+    // `nxt_enabled` 를 모르는 창은 오늘과 똑같이 동작해야 한다.
+    renderPanel({
+      sessionControl: { kind: 'none' },
+      afterHoursTotals: { ask: 1_000, bid: 2_000 },
+      afterHoursLabel: '시간외',
+    });
+    expect(screen.getByTestId('book-total-after-hours')).toHaveTextContent('시간외');
+    expect(screen.queryByTestId('book-session-toggle')).not.toBeInTheDocument();
+  });
+
+  it('모름 + 시간외 값도 없으면 중앙은 비어 있다', () => {
+    renderPanel({ sessionControl: { kind: 'none' } });
+    expect(screen.queryByTestId('book-total-after-hours')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-label')).not.toBeInTheDocument();
+  });
+
+  it('시간외 모드에서 사다리가 없으면 "호가 데이터 없음" 이 아니다', () => {
+    // 정규장 데이터는 멀쩡히 있다 — 없는 것은 **그 장의** 호가다.
+    render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        sessionControl={TOGGLE}
+        sessionMode="afterHours"
+      />,
+    );
+    expect(screen.getByText('시간외 호가 없음')).toBeInTheDocument();
+    expect(screen.queryByText('호가 데이터 없음')).not.toBeInTheDocument();
+  });
+
+  it('시간외 모드 + 총잔량만 = 사다리 개념이 없는 구간(15:40–16:00)', () => {
+    render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        afterHoursTotals={{ ask: 1_000, bid: 2_000 }}
+        sessionControl={TOGGLE}
+        sessionMode="afterHours"
+      />,
+    );
+    expect(screen.getByText('시간외 사다리 없음 (총잔량만)')).toBeInTheDocument();
+    // 그 상태에서도 토글은 살아 있어야 정규장으로 되돌아갈 수 있다.
+    expect(screen.getByTestId('book-session-toggle')).toBeInTheDocument();
+  });
+
+  it('정규장 모드에서는 종전 문구를 그대로 쓴다', () => {
+    render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        afterHoursTotals={{ ask: 1_000, bid: 2_000 }}
+        sessionControl={TOGGLE}
+        sessionMode="regular"
+      />,
+    );
+    expect(screen.getByText('정규장 호가 없음 (시간외 잔량만 수신 중)')).toBeInTheDocument();
+  });
+});
+
+describe('BookPanel 빈 상태에서도 세션 컨트롤은 산다', () => {
+  const TOGGLE = {
+    kind: 'toggle' as const,
+    regularLabel: '정규장',
+    afterHoursLabel: '시간외',
+  };
+
+  function renderEmpty(over: Partial<Parameters<typeof BookPanel>[0]> = {}) {
+    return render(
+      <BookPanel
+        snapshot={null}
+        baselinePrice={null}
+        summary={EMPTY_TRADE_SUMMARY}
+        trades={[]}
+        maskRatio={false}
+        lastPrice={null}
+        {...over}
+      />,
+    );
+  }
+
+  it('⚠ 사다리도 총잔량도 없을 때 **되돌아갈 수단이 남아야 한다**', () => {
+    // 2026-08-27 실측 회귀: 장 마감 후 시간외 모드에서 토글이 통째로 사라져
+    // 정규장으로 돌아갈 방법이 없었다 — 이 기능이 애초에 고치려던 막다른 길이
+    // 데이터 없는 상태에서 그대로 재현됐다.
+    renderEmpty({ sessionControl: TOGGLE, sessionMode: 'afterHours' });
+    expect(screen.getByText('시간외 호가 없음')).toBeInTheDocument();
+    expect(screen.getByTestId('book-session-toggle')).toHaveTextContent('시간외');
+  });
+
+  it('빈 상태의 토글이 실제로 동작한다', () => {
+    const onSelect = vi.fn();
+    renderEmpty({
+      sessionControl: TOGGLE,
+      sessionMode: 'afterHours',
+      onSelectSessionMode: onSelect,
+    });
+    fireEvent.click(screen.getByTestId('book-session-toggle'));
+    expect(onSelect).toHaveBeenCalledWith('regular');
+  });
+
+  it('갈래 B(NXT)는 빈 상태에서도 라벨만', () => {
+    renderEmpty({ sessionControl: { kind: 'label', label: '애프터마켓 · 마지막' } });
+    expect(screen.getByTestId('book-session-label')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-toggle')).not.toBeInTheDocument();
+  });
+
+  it('갈래가 없으면 바 자체를 그리지 않는다 — 종전처럼 빈 화면', () => {
+    renderEmpty({ sessionControl: { kind: 'none' } });
+    expect(screen.getByText('호가 데이터 없음')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-only-strip')).not.toBeInTheDocument();
+  });
+
+  it('총잔량이 있는 빈 상태에서는 종전대로 총잔량 스트립이 그린다', () => {
+    // 바가 둘로 겹치지 않는다 — 그쪽 경로는 `TotalQtyStrip` 하나만 쓴다.
+    renderEmpty({
+      sessionControl: TOGGLE,
+      sessionMode: 'afterHours',
+      afterHoursTotals: { ask: 1_000, bid: 2_000 },
+    });
+    expect(screen.getByTestId('book-total-strip')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-session-only-strip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('book-session-toggle')).toBeInTheDocument();
   });
 });

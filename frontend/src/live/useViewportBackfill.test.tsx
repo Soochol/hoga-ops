@@ -10,7 +10,15 @@ import {
   type WindowViewValue,
 } from './workspace/windowView';
 import { createVirtualAxis } from '../util/virtualAxis';
+import { livePerfLog } from '../util/perfDebug';
 import type { RangeBundle } from '../api/types';
+
+// 반려 사유를 값으로 읽기 위해 계측을 가로챈다. 실제 구현은 debug 플래그가 꺼져 있으면
+// no-op 이라 **아무것도 관측되지 않는다** — 테스트에서 사유를 재려면 모킹이 유일한 길이다.
+vi.mock('../util/perfDebug', () => ({
+  livePerfLog: vi.fn(),
+  livePerfDebugEnabled: () => false,
+}));
 
 // 09:00–15:30 KST 세션 한 개짜리 축 — segments.length>0 이라 3a/3b 가 조기 반환하지
 // 않는다. sessionOpenMs 는 nextHistoricalFrom 의 axisEarliestMs 인자로만 쓰인다.
@@ -843,5 +851,225 @@ describe('useViewportBackfill — 창 스코프(Provider 안)', () => {
     seedWindow({ code: '005930', name: '삼성전자' });
     panLeft('000660', '000660'); // 차트가 든 코드와 창의 현재 종목이 불일치
     expect(extendSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useViewportBackfill — 빈 화면 클램프 탈출 (3e)', () => {
+  // 3b 는 `subscribeVisibleLogicalRangeChange` 에만 발화한다. 그런데 데이터 좌단까지
+  // 팬하면 lwc 가 화면 폭만큼의 whitespace 만 허용하고 **클램프**하므로 논리 범위가
+  // 더 변하지 않고 → 이벤트가 끊기고 → 트리거도 함께 죽는다. 그 상태에서 화면은
+  // whitespace 100% 인 채 멈춘다(2026-08-25 실측: 드래그 7회 + 60초 대기에 로그 0줄).
+  //
+  // 3e 는 3c/3d 와 같은 계열이다 — "뷰포트 이벤트가 없는 자리"를 커밋으로 메운다.
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  /** 클램프된 차트 — 화면 402바 중 데이터는 우측 끝 1바뿐. **이벤트는 쏘지 않는다.** */
+  function chartWithViewport(from: number, to: number) {
+    const ts = {
+      getVisibleLogicalRange: vi.fn(() => ({ from, to })),
+      getVisibleRange: vi.fn(() => ({ from: 1, to: 2 })),
+      timeToIndex: vi.fn(() => 0),
+      setVisibleLogicalRange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    };
+    return { chart: { timeScale: () => ts } as never, ts };
+  }
+
+  type Props = { from?: number; to?: number; isExtending?: boolean; historicalFromDate?: string };
+  function renderClamped(initialProps: Props = {}) {
+    // indicatorCoverage 를 뷰포트 좌단보다 과거로 줘 **3c 를 잠재운다** — 안 그러면
+    // 3c 의 발화를 3e 의 것으로 오독한다.
+    return renderHook(
+      (p: Props) => {
+        if (p.historicalFromDate) {
+          useLivePageStore.setState({ historicalFromDate: p.historicalFromDate });
+        }
+        return useViewportBackfill({
+          chart: chartWithViewport(p.from ?? -401, p.to ?? 1).chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '1m',
+          isExtending: p.isExtending ?? false,
+          code: '005930',
+          canTriggerBackfill: () => true,
+          indicatorCoverageFromDate: '20260601',
+          rangeWindowFromDate: '20260601',
+        });
+      },
+      { initialProps },
+    );
+  }
+
+  it('화면이 사실상 빈 채 멈춰 있으면 **뷰포트 이벤트 없이** 확장한다', () => {
+    renderClamped();
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('데이터가 화면을 덮고 있으면 발화하지 않는다 — 정상 좌팬은 3b 의 일이다', () => {
+    renderClamped({ from: -5, to: 100 });
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('창이 그대로면 재발화하지 않는다 — 바닥에서 커밋마다 밀면 안 된다', () => {
+    const { rerender } = renderClamped();
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    // ⚠ **백프레셔를 먼저 풀어야 이 테스트가 뭔가를 증명한다.** 첫 발화가 세운
+    // `fillKind` 가 남아 있으면 그 가드에 먼저 막혀, 창 동일 반려를 통째로 지워도
+    // 초록이다(2026-08-25 red-check 에서 실제로 그랬다). settle 을 태워 백프레셔를
+    // 걷고, `historicalFromDate` 만 그대로 두는 것이 이 판정의 유일 변수다.
+    rerender({ isExtending: true });
+    rerender({ isExtending: false }); // 창이 안 움직였다 — 확장이 아무 데도 못 갔다
+    rerender({});
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  /** 한 스텝의 실제 수명: 확장 → fetch(isExtending↑) → settle(↓)에서 3a 가 예산
+   *  소진을 보고 `endFill`. 그 해제가 있어야 다음 3e 판정이 백프레셔를 통과한다 —
+   *  **토글 없이 rerender 만 하면 자기가 세운 fillKind 에 자기가 막힌다.** */
+  function settleStep(
+    rerender: (p: Props) => void,
+    historicalFromDate: string,
+  ) {
+    rerender({ isExtending: true });
+    rerender({ isExtending: false, historicalFromDate });
+  }
+
+  it('창이 실제로 뒤로 갔으면 다음 스텝을 잇는다 — 구멍 구간을 건너려면 필요하다', () => {
+    const { rerender } = renderClamped();
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    settleStep(rerender, '20260501');
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('재시도 상한을 넘으면 멈춘다 — 디스크 모드엔 좌측 바닥이 없다(무한 방지)', () => {
+    const { rerender } = renderClamped();
+    for (const d of ['20260501', '20260401', '20260301', '20260201', '20260101']) {
+      settleStep(rerender, d);
+    }
+    expect(extendSpy.mock.calls.length).toBe(3);
+  });
+
+  it('화면이 다시 채워지면 상한이 되돌아온다 — 다음 구간은 새 예산을 받는다', () => {
+    const { rerender } = renderClamped();
+    settleStep(rerender, '20260501');
+    settleStep(rerender, '20260401');
+    expect(extendSpy).toHaveBeenCalledTimes(3); // 상한 소진
+    rerender({ from: -5, to: 100, historicalFromDate: '20260401' }); // 데이터가 화면을 덮었다
+    settleStep(rerender, '20260301');
+    expect(extendSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it('백프레셔: 진행 중인 스텝이 있으면 발화하지 않는다', () => {
+    renderClamped({ isExtending: true });
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useViewportBackfill — 재투영 자격 배선 (2, 프리펜드 계열)', () => {
+  // 커널(`viewportHasReprojectableAnchor`)의 판정은 minuteViewportPolicy.test 가 테이블로
+  // 잰다. 여기서 재는 것은 **그 커널이 실제로 이 경로에 물려 있는가** 하나다 —
+  // 2026-08-26 사용자 로그의 실패는 판정이 틀려서가 아니라 **판정이 없어서** 났다.
+  beforeEach(() => {
+    vi.mocked(livePerfLog).mockClear();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      // 프리펜드 게이트("좌측 팬을 한 적이 있다")를 통과시킨다.
+      historicalFromDate: '20260601',
+    });
+  });
+
+  /** 스냅샷이 저장할 뷰포트를 지정하는 차트. 이벤트는 쏘지 않는다. */
+  function chartAt(from: number, to: number) {
+    const ts = {
+      getVisibleLogicalRange: vi.fn(() => ({ from, to })),
+      getVisibleRange: vi.fn(() => ({ from: 1, to: 2 })),
+      timeToIndex: vi.fn(() => 7),
+      setVisibleLogicalRange: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
+      scrollToPosition: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      width: vi.fn(() => 640),
+    };
+    return { chart: { timeScale: () => ts } as never, ts };
+  }
+
+  /** 캔들 좌단이 과거로 늘어난 번들 — 프리펜드 커밋을 흉내낸다.
+   *
+   * ⚠ 시각은 **축 세션 안**이어야 한다. 리포지셔너는 `axis.contains(ts_ms)` 로 캔들을
+   * 거르므로, 축 밖 시각이면 `newEarliest === null` 로 **게이트 앞에서 조기 반환**한다
+   * — 이 테스트를 처음 쓸 때 그 픽스처(`ts_ms: 1_000`)로 빨간 결과를 얻고 코드를
+   * 의심했다. 빨간 이유가 대상 코드인지 탐침인지부터 가를 것. */
+  const SESSION_OPEN_MS = Date.UTC(2026, 6, 9, 0, 0); // 2026-07-09 09:00 KST
+  function bundleFrom(offsetsMin: number[]): RangeBundle {
+    const base = bundleWithCandles();
+    return {
+      ...base,
+      candles: offsetsMin.map((m) => ({
+        ts_ms: SESSION_OPEN_MS + m * 60_000,
+        open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0,
+      })),
+    };
+  }
+
+  function skipReasons(): string[] {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_reseat_skip')
+      .map(([, payload]) => String((payload as { d?: unknown }).d ?? ''));
+  }
+
+  /** 첫 렌더는 prevAxis 를 세우기만 한다(스냅샷은 두 번째 커밋부터 존재). */
+  function renderPrepend(from: number, to: number) {
+    const { chart } = chartAt(from, to);
+    const view = renderHook(
+      (p: { bundle: RangeBundle }) =>
+        useViewportBackfill({
+          chart,
+          axis: axisWithOneSession(),
+          bundle: p.bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: () => true,
+        }),
+      { initialProps: { bundle: bundleFrom([120]) } },
+    );
+    // 스냅샷은 **두 번째 커밋부터** 존재한다(첫 커밋엔 prevAxis 가 없다). 프리펜드를
+    // 세 번째 커밋에 두어 snap·prevShape·prevEarliest 가 모두 선 상태에서 재도록 한다.
+    view.rerender({ bundle: bundleFrom([120]) });
+    vi.mocked(livePerfLog).mockClear();
+    // 좌단이 과거로 이동 = 프리펜드.
+    view.rerender({ bundle: bundleFrom([30, 120]) });
+    return view;
+  }
+
+  it('화면이 거의 전부 whitespace 면 재투영을 **반려하고 그 사실을 로그로 남긴다**', () => {
+    renderPrepend(-2226, 1);
+    expect(skipReasons().some((d) => d.includes('viewport_mostly_whitespace'))).toBe(true);
+  });
+
+  it('데이터가 화면을 덮고 있으면 그 사유로 반려하지 않는다 — 정상 좌팬은 종전대로다', () => {
+    renderPrepend(-5, 100);
+    expect(skipReasons().some((d) => d.includes('viewport_mostly_whitespace'))).toBe(false);
   });
 });

@@ -58,23 +58,6 @@ describe('scaleRangeBundlePrices', () => {
     expect(out.depth_heatmap![0].bids_max).toEqual([[19175, 42]]);
   });
 
-  it('잔량 증감은 in/out 수량을 보존하고 **ask_tick/bid_tick 도** 곱한다', () => {
-    // tick 은 이름에 price 가 없는 가격공간 값이라 눈으로 훑으면 빠뜨리는 자리다.
-    // 안 곱하면 증감 셀 높이만 옛 척도로 남아 가격축과 어긋난다.
-    const b = bundle({
-      depth_delta: [
-        { t_ms: T_0612, asks: [[37950, 65, -212]], bids: [[37900, 30, -10]], ask_tick: 50, bid_tick: 50 },
-      ],
-    });
-
-    const out = scaleRangeBundlePrices(b, FACTORS);
-
-    expect(out.depth_delta![0].asks).toEqual([[18975, 65, -212]]);
-    expect(out.depth_delta![0].bids).toEqual([[18950, 30, -10]]);
-    expect(out.depth_delta![0].ask_tick).toBe(25);
-    expect(out.depth_delta![0].bid_tick).toBe(25);
-  });
-
   it('최대벽의 **모든** 가격 변형과 순위 배열을 곱한다', () => {
     const b = bundle({
       ask_peaks: [{

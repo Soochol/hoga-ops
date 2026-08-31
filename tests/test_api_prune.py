@@ -286,14 +286,27 @@ def test_daily_run_calls_prune_before_trading_gate(
 # 유예 밖 raw 351GB 중 COMPLETE 는 0건, SOURCE_PARTIAL 이 1,263건 187GB.
 #
 # 게이트를 넓히되 **확인된 갭만** 포함한다. 그 경계가 이 묶음의 핵심이고,
-# 특히 CLIENT_INCOMPLETE 가 절대 포함되지 않아야 한다 — 그 raw 는 resume 커서의
-# 소스라 지우면 재개가 불가능해진다.
+# 특히 CLIENT_INCOMPLETE 가 **갭 옵트인으로는** 포함되지 않아야 한다 — 그 raw 는
+# resume 커서의 소스라 지우면 재개가 불가능해진다.
+#
+# (ADR-0163 이 그 클래스에 **별도** 옵트인을 열었다. 유예 밖이면 업스트림 보유가
+# 끝나 재개 자체가 불가능하다는 다른 논증이고, 스위치도 따로다 — 아래 전용 묶음.)
 # ---------------------------------------------------------------------------
 
 
-def _seed(data_dir: Path, code: str, date: str, **meta: object) -> None:
+def _seed(
+    data_dir: Path, code: str, date: str, *, with_parquet: bool = True, **meta: object
+) -> None:
+    """파싱이 끝난 (date,code) 를 만든다.
+
+    `with_parquet` 가 기본 True 인 것은 **현실이 그렇기 때문**이다 — 파서는 meta.json
+    과 `*.parquet` 를 함께 쓴다. meta 만 있는 상태는 ADR-0163 게이트가 "유일 사본" 으로
+    보호하는 예외라, 그것을 재현하는 테스트만 False 를 넘긴다.
+    """
     _write_meta_source(data_dir, code, date, "hogaplay", **meta)
     _make_raw(data_dir, code, date)
+    if with_parquet:
+        _write_parquet_files(data_dir, code, date)
 
 
 def test_confirmed_gap_is_prunable_only_with_optin(tmp_data_dir: Path) -> None:
@@ -318,12 +331,12 @@ def test_unconfirmed_gap_stays_held_even_with_optin(tmp_data_dir: Path) -> None:
     ) == []
 
 
-def test_client_incomplete_never_prunable(tmp_data_dir: Path) -> None:
-    """가장 중요한 안전 속성: 옵트인해도 resume 소스는 건드리지 않는다.
+def test_client_incomplete_not_prunable_by_gap_optins(tmp_data_dir: Path) -> None:
+    """**갭 옵트인은** resume 소스를 건드리지 않는다.
 
-    CLIENT_INCOMPLETE 의 raw 는 재개 커서가 가리키는 대상이다. 지우면 그 Stock-Date
-    는 처음부터 다시 받아야 하고, hogaplay 업스트림 보유가 ~18시간이라 과거분은
-    영영 못 받는다.
+    CLIENT_INCOMPLETE 의 raw 는 재개 커서가 가리키는 대상이라, 갭 확정 여부를 근거로
+    삼는 옵트인과는 논증 자체가 다르다. 이 클래스를 여는 것은 ADR-0163 의 **별도**
+    스위치이고, 그쪽은 나이와 parquet 존재를 함께 요구한다(아래 전용 묶음).
     """
     _seed(tmp_data_dir, "005930", "20260605", collection_complete=False)
 
@@ -688,3 +701,106 @@ def test_prune_derived_includes_investor_flow_intraday_only(tmp_data_dir: Path) 
     assert (intraday / "20260612.jsonl").exists()
     assert (intraday / "20250101.jsonl.corrupt-x").exists()  # 날짜 이름이 아니면 안 건드린다
     assert (daily / "20250101.json").exists()                # 확정본은 영구
+
+
+# ---------------------------------------------------------------------------
+# ADR-0163 — 유예 밖 CLIENT_INCOMPLETE 회수 (resume 할 수 없는 resume 소스)
+#
+# ADR-0075 는 이 클래스를 절대 삭제 불가로 두었다. 근거는 "raw 가 resume 커서의
+# 소스" 였는데, 그 전제는 **업스트림에 데이터가 남아 있을 때만** 성립한다. hogaplay
+# 보유가 ~18시간이라 유예(3일)를 통과한 시점엔 재개도 재수집도 물리적으로 불가능하다.
+#
+# 실측 2026-08-27: CLIENT_INCOMPLETE 124.7GB 중 업스트림 창 안은 5.1GB(4%)뿐이고,
+# 가장 오래된 것이 367일 전이었다.
+#
+# 이 묶음이 지키는 경계는 **parquet 존재**다. 나이만으로 열면 그 (date,code) 의
+# 유일한 사본을 지운다(실측 1,048건 중 41건).
+# ---------------------------------------------------------------------------
+
+
+def _write_parquet_files(data_dir: Path, code: str, date: str, source: str = "hogaplay") -> None:
+    """파싱 결과가 남아 있는 상태를 만든다 — meta.json 만으로는 부족하다.
+
+    `_has_parsed_parquet` 는 실제 `*.parquet` 를 찾는다. 기존 픽스처(`_write_meta_*`)는
+    meta 만 쓰므로 이 헬퍼 없이는 "parquet 없음" 으로 판정된다.
+    """
+    p = data_dir / "parquet" / date / code / source
+    p.mkdir(parents=True, exist_ok=True)
+    for name in ("snapshots", "trades", "brokers", "candles"):
+        (p / f"{name}.parquet").write_bytes(b"PAR1")
+
+
+def test_stale_incomplete_prunable_only_with_optin(tmp_data_dir: Path) -> None:
+    """유예 밖 CLIENT_INCOMPLETE + parquet 존재 → 옵트인해야 후보."""
+    _seed(tmp_data_dir, "005930", "20260605", collection_complete=False)
+
+    assert find_prunable(tmp_data_dir, retention_days=3, now=_NOW) == []
+
+    cands = find_prunable(
+        tmp_data_dir, retention_days=3, now=_NOW, include_stale_incomplete=True,
+    )
+    assert [(c.date, c.code) for c in cands] == [("20260605", "005930")]
+
+
+def test_stale_incomplete_without_parquet_is_never_prunable(tmp_data_dir: Path) -> None:
+    """⚠ **이 묶음의 핵심 안전 속성.**
+
+    parquet 이 없으면 raw 가 그 (date,code) 의 유일한 사본이다. 나이만 보고 열면
+    데이터가 통째로 사라진다 — 실측에서 유예 밖 1,048건 중 41건이 이 상태였다.
+    """
+    _seed(tmp_data_dir, "005930", "20260605",
+          with_parquet=False, collection_complete=False)
+    # meta.json 은 있지만 `.parquet` 파일이 없다 = 파싱 결과가 디스크에 없다.
+
+    assert find_prunable(
+        tmp_data_dir, retention_days=3, now=_NOW, include_stale_incomplete=True,
+    ) == []
+
+
+def test_stale_incomplete_inside_grace_is_kept(tmp_data_dir: Path) -> None:
+    """유예 안이면 옵트인해도 보존 — 그 구간은 resume 이 아직 유효하다.
+
+    나이 조건을 별도 인자로 두지 않는 근거이기도 하다: `_scan` 이 이미 유예 밖만
+    순회하고, 업스트림 보유(~18h)가 유예(3일)보다 짧아 통과 시점에 창 밖이다.
+    """
+    _seed(tmp_data_dir, "005930", "20260612", collection_complete=False)  # _NOW=06-13
+
+    assert find_prunable(
+        tmp_data_dir, retention_days=3, now=_NOW, include_stale_incomplete=True,
+    ) == []
+
+
+def test_no_parquet_gets_its_own_skip_label(tmp_data_dir: Path) -> None:
+    """보존 사유를 갈라야 "옵트인을 켰는데 왜 안 줄지" 가 출력에서 보인다."""
+    _seed(tmp_data_dir, "005930", "20260605",
+          with_parquet=False, collection_complete=False)
+    _seed(tmp_data_dir, "000660", "20260605", collection_complete=False)
+
+    res = prune_raw(tmp_data_dir, retention_days=3, now=_NOW, execute=False)
+
+    # 옵트인 없이는 둘 다 보존되지만 사유가 갈린다.
+    assert res.skipped_by_state["client_incomplete(no_parquet)"] == 1
+    assert res.skipped_by_state["client_incomplete"] == 1
+
+
+def test_stale_incomplete_optin_does_not_widen_other_classes(tmp_data_dir: Path) -> None:
+    """스위치가 따로인 것을 고정 — 이 옵트인이 갭 클래스를 열지 않는다."""
+    _seed(tmp_data_dir, "000660", "20260605",
+          collection_complete=True, is_partial=True, identical_capture_count=2)
+
+    assert find_prunable(
+        tmp_data_dir, retention_days=3, now=_NOW, include_stale_incomplete=True,
+    ) == []
+
+
+def test_cli_passes_stale_incomplete_flag(tmp_data_dir: Path, monkeypatch) -> None:
+    """CLI 플래그가 실제로 게이트까지 전달되는지 — 배선이 빠지면 무증상이다."""
+    monkeypatch.setattr("hoga.config.resolve_data_dir", lambda: tmp_data_dir)
+    monkeypatch.setattr("hoga.cli.resolve_data_dir", lambda: tmp_data_dir)
+    _seed(tmp_data_dir, "005930", "20260605", collection_complete=False)
+
+    out = _runner.invoke(app, ["prune"]).output
+    assert "would delete 0 dirs" in out
+
+    out = _runner.invoke(app, ["prune", "--include-stale-incomplete"]).output
+    assert "would delete 1 dirs" in out

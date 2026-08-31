@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { deriveDayAskPeaks, useDayAskPeaks } from './useDayAskPeaks';
+import { useDayAskPeaks, deriveDayAskPeaksIncremental } from './useDayAskPeaks';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import { classifyAskWallEvents, toWallEventsFromOrderbooks } from './peakWallEventClassifier';
 import type { AskPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
@@ -208,7 +209,7 @@ describe('useDayAskPeaks', () => {
     ]);
   });
 
-  it('backend today payload에 traded peak가 없으면 오늘 기준선을 만들지 않는다', () => {
+  it('backend today payload에 traded peak가 없으면 오늘 체결 기준선을 만들지 않는다(행은 전체 벽 패밀리로만 남는다)', () => {
     const restPeak = todayAskPeak({
       traded_price: null,
       traded_qty: null,
@@ -220,7 +221,12 @@ describe('useDayAskPeaks', () => {
       () => useDayAskPeaks([deep(5, 15000)], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 체결된 벽 carrier 는 비어 그 선은 오늘을 건너뛰지만, 전체 최대벽 선(터치 무관)의
+    // 원천인 all 패밀리가 있으므로 행 자체는 남는다.
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today).toMatchObject({ price: null, qty: null, t_ms: null });
+    expect(today?.traded_peaks).toEqual([]);
+    expect(today?.all_peaks?.length).toBeGreaterThan(0);
   });
 
   it('REST today seed keeps updating traded baseline from later trade prices and OB walls', () => {
@@ -263,7 +269,10 @@ describe('useDayAskPeaks', () => {
       trades: [],
       ob: [deep(atKst(9, 20), 20000, 27000)],
     });
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 터치 전: 체결 기준선 carrier 는 비어 있고 all 패밀리만 벽을 든다.
+    const untouched = result.current.find((p) => p.date === '20260613');
+    expect(untouched?.price).toBeNull();
+    expect(untouched?.all_peaks).toContainEqual({ price: 27000, qty: 20000, t_ms: atKst(9, 20) });
 
     rerender({
       trades: [trade(atKst(9, 20) + 40_000, [
@@ -319,38 +328,6 @@ describe('useDayAskPeaks', () => {
     });
   });
 
-  it('excludes a wall whose only touch lies after the cutoff', () => {
-    const wallT = atKst(9, 10);
-    const cutoff = { date: '20260613', tMs: Date.UTC(2026, 5, 13, 0, 10, 59, 999) };
-    const peaks = deriveDayAskPeaks(
-      [
-        deep(atKst(9, 9), 1000, 25900),
-        deep(wallT, 1200, 26000),
-      ],
-      [
-        trade(atKst(9, 9, ), [{ t_ms: atKst(9, 9), side: 1, price: 25900, qty: 10 }]),
-        trade(atKst(9, 12), [{ t_ms: atKst(9, 12), side: 1, price: 26000, qty: 10 }]),
-      ],
-      [],
-      '20260613',
-      OPEN_MS,
-      '005930',
-      null,
-      [],
-      cutoff,
-    );
-
-    expect(byDate(peaks)['20260613']).toMatchObject({
-      price: 25900,
-      qty: 1000,
-      t_ms: atKst(9, 9),
-    });
-    // 09:10 벽(1200)은 컷오프 이후 체결로만 닿으므로 체결 후보가 아니다.
-    expect(byDate(peaks)['20260613'].traded_peaks)
-      .toContainEqual({ price: 25900, qty: 1000, t_ms: atKst(9, 9) });
-    expect(byDate(peaks)['20260613'].traded_peaks)
-      .not.toContainEqual({ price: 26000, qty: 1200, t_ms: wallT });
-  });
 
   it('omits today traded baseline when no traded peak exists even though all-price REST data exists', () => {
     const restPeak = todayAskPeak({
@@ -363,7 +340,10 @@ describe('useDayAskPeaks', () => {
       () => useDayAskPeaks([], [], [], '20260613', OPEN_MS, '005930', restPeak),
     );
 
-    expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
+    // 체결 기준선(carrier)은 승격되지 않는다 — 행은 전체 벽 패밀리 운반용으로만 남는다.
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today).toMatchObject({ price: null, qty: null, t_ms: null });
+    expect(today?.all_peaks).toContainEqual({ price: 26000, qty: 12000, t_ms: atKst(9, 11) });
   });
 
   // ── 유효 스냅샷 술어(동시호가·VI 3호가 붕괴 배제) ─────────────────────────
@@ -418,4 +398,196 @@ describe('useDayAskPeaks', () => {
   // (제거됨, issue #434) 대량 버퍼 무정지 벽시계 테스트는 full-suite 워커 경합에
   // flaky했다. 이 훅이 쓰는 IncrementalPeakWallSource의 append-only 델타 소비(perf를
   // 담보하는 실제 불변식)는 useDayPeaks.perf.test.tsx가 결정론적 호출횟수로 검증한다.
+});
+
+describe('useDayAskPeaks — 미도달 벽 패밀리', () => {
+  it('백엔드 unreached 시드는 새 고가로 재필터된다(소급 제거의 클라이언트 절반)', () => {
+    const restPeak = todayAskPeak({
+      day_extreme: 26_000,
+      unreached_price: 26_500,
+      unreached_qty: 8_000,
+      unreached_t_ms: atKst(9, 5),
+    });
+    const { result, rerender } = renderHook(
+      ({ trades }: { trades: TradeSnapshot[] }) =>
+        useDayAskPeaks([], trades, [], '20260613', OPEN_MS, '005930', restPeak),
+      { initialProps: { trades: [] as TradeSnapshot[] } },
+    );
+
+    // 고가 26,000 아래에서는 26,500 벽이 미도달로 살아 있다.
+    let today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks).toContainEqual({ price: 26_500, qty: 8_000, t_ms: atKst(9, 5) });
+
+    // 버퍼 체결이 26,600 신고가를 찍으면 시드가 걸러진다 — 백엔드 스냅샷은 그대로인데도.
+    rerender({
+      trades: [trade(atKst(9, 30), [{ t_ms: atKst(9, 30), side: 1, price: 26_600, qty: 1 }])],
+    });
+    today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks ?? []).not.toContainEqual(
+      { price: 26_500, qty: 8_000, t_ms: atKst(9, 5) },
+    );
+  });
+
+  it('창 내 벽은 백엔드 day_extreme 기준으로 미도달이 갈린다(접속 이전 고가 반영)', () => {
+    const restPeak = todayAskPeak({ day_extreme: 26_000 });
+    const t = atKst(9, 20);
+    const { result } = renderHook(() => useDayAskPeaks(
+      // 26,300 벽(고가 위)과 25,900 벽(고가 아래) — 체결 틱 없이 호가만.
+      [deep(t, 4_000, 26_300), deep(t + 1_000, 9_000, 25_900)],
+      [],
+      [],
+      '20260613', OPEN_MS, '005930', restPeak,
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks).toContainEqual({ price: 26_300, qty: 4_000, t_ms: t });
+    expect(today?.unreached_peaks ?? []).not.toContainEqual(
+      { price: 25_900, qty: 9_000, t_ms: t + 1_000 },
+    );
+    // rank-1 스칼라도 같은 후보를 나른다(리맵의 carrier).
+    expect(today?.unreached_price).toBe(26_300);
+  });
+
+  it('체결 극값을 아예 모르면(백엔드 없음·체결 0건) 모든 벽이 미도달이다', () => {
+    const t = atKst(9, 20);
+    const { result } = renderHook(() => useDayAskPeaks(
+      [deep(t, 7_000, 26_100)], [], [], '20260613', OPEN_MS, '005930',
+    ));
+    const today = result.current.find((p) => p.date === '20260613');
+    expect(today?.unreached_peaks?.[0]).toEqual({ price: 26_100, qty: 7_000, t_ms: t });
+  });
+});
+
+describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계단의 입력)', () => {
+  // 오늘 행은 라이브 파생이 통째로 대체하지만(`seeds.filter`), 기록만은 세 출처에서
+  // 모아야 한다: seed(개장~프로모션) · 라이브 스냅샷(마운트 시점 서버 상태) · 접속 이후
+  // 누적. 종전엔 이 자리에 **그 순간의 top-3** 이 들어가 있어서, 장중에 더 큰 벽이 서서
+  // top-3 이 뒤로 몰릴 때마다 계단의 **왼쪽 끝이 오른쪽으로 후퇴**했다.
+
+  const seedWithRecords = (records: {
+    close: AskPeak['traded_record_peaks'];
+    max: AskPeak['traded_record_max_peaks'];
+  }): AskPeak => ({
+    date: '20260613',
+    price: 25100, qty: 5000, t_ms: atKst(9, 1),
+    max_price: 25100, max_qty: 5000, max_t_ms: atKst(9, 1),
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
+  });
+
+  it('오늘 seed 행은 버려져도 기록 갱신 시퀀스는 오늘 행에 살아남는다', () => {
+    const morning = { price: 25100, qty: 5000, t_ms: atKst(9, 1) };
+    const morningCont = { price: 25100, qty: 5200, t_ms: atKst(9, 1) };
+    const { result } = renderHook(() => useDayAskPeaks(
+      [], [], [seedWithRecords({ close: [morning], max: [morningCont] })],
+      '20260613', OPEN_MS, '005930', todayAskPeak(),
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613')!;
+    // carrier 는 여전히 라이브 파생이다(seed 의 5000 이 아니다) — 버리는 규약은 그대로.
+    expect(today.qty).toBe(9000);
+    // 오전 기록이 남는다. 두 축이 **따로** 실린다(seed 는 rep/cont 가 다르다).
+    expect(today.traded_record_peaks).toContainEqual(morning);
+    expect(today.traded_record_max_peaks).toContainEqual(morningCont);
+    expect(today.traded_record_max_peaks).not.toContainEqual(morning);
+  });
+
+  it('기록은 seed(오전)와 라이브 스냅샷(당일 전체)의 합집합이다', () => {
+    const morning = { price: 25100, qty: 5000, t_ms: atKst(9, 1) };
+    const afternoon = { price: 25500, qty: 9000, t_ms: atKst(13, 0) };
+    const { result } = renderHook(() => useDayAskPeaks(
+      [], [], [seedWithRecords({ close: [morning], max: [morning] })],
+      '20260613', OPEN_MS, '005930',
+      // 라이브 top-3 을 기록과 같은 벽으로 맞춰 둔다 — 누적기 기여가 이 둘과 겹쳐
+      // 합집합이 정확히 둘이 되므로, 이 테스트가 재는 것이 **병합**만 남는다.
+      todayAskPeak({
+        traded_record_peaks: [afternoon],
+        traded_price: afternoon.price,
+        traded_qty: afternoon.qty,
+        traded_t_ms: afternoon.t_ms,
+      }),
+    ));
+
+    const today = result.current.find((p) => p.date === '20260613')!;
+    expect(today.traded_record_peaks).toEqual([morning, afternoon]);
+    expect(today.traded_record_max_peaks).toEqual([morning, afternoon]);
+  });
+
+  // ── 접속 이후 누적(옵션 b) — 잔여 창을 닫는 절 ─────────────────────────────
+  //
+  // 판별식은 **단조성**이다: 첫 프레임만 보면 누적기와 "top-3 을 그냥 싣기" 가 구별되지
+  // 않는다(관측이 한 번뿐이라 합집합 = 그 top-3). 순위가 갱신된 **뒤에** 이전 기록이
+  // 남아 있는가가 두 동작을 가른다 — 그게 사용자가 보고한 증상이다.
+
+  it('순위가 갱신돼도 접속 이후에 세운 기록은 남는다', () => {
+    const early = atKst(9, 20);
+    const { result, rerender } = renderHook(
+      ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, '005930'),
+      { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
+    );
+
+    // 09:20 — 작은 벽 하나가 서고 체결이 그걸 때린다. 그 순간의 유일한 기록이다.
+    rerender({
+      ob: [deep(early, 1_000)],
+      trades: [trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }])],
+    });
+    const first = result.current.find((p) => p.date === '20260613')!;
+    expect(first.traded_record_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+
+    // 13:00 — 훨씬 큰 벽 셋이 서서 top-3 을 통째로 밀어낸다.
+    const late = atKst(13, 0);
+    rerender({
+      ob: [
+        deep(early, 1_000),
+        deep(late, 50_000, 26_010),
+        deep(late + 1_000, 40_000, 26_020),
+        deep(late + 2_000, 30_000, 26_030),
+      ],
+      trades: [
+        trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }]),
+        trade(late + 3_000, [{ t_ms: late + 3_000, side: 1, price: 26_030, qty: 10 }]),
+      ],
+    });
+    const second = result.current.find((p) => p.date === '20260613')!;
+    // top-3 에서는 밀려났지만…
+    expect(second.traded_peaks).not.toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+    // …기록에는 남는다. 이게 없으면 계단의 09:20 계단이 사라진다.
+    expect(second.traded_record_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+    expect(second.traded_record_max_peaks).toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+  });
+
+  it('종목이 바뀌면 누적을 버린다 — 옛 종목의 기록이 새 종목에 새지 않는다', () => {
+    const early = atKst(9, 20);
+    const props = {
+      ob: [deep(early, 1_000)],
+      trades: [trade(early + 1_000, [{ t_ms: early + 1_000, side: 1, price: 26000, qty: 10 }])],
+      code: '005930',
+    };
+    const { result, rerender } = renderHook(
+      ({ ob, trades, code }: typeof props) =>
+        useDayAskPeaks(ob, trades, [], '20260613', OPEN_MS, code),
+      { initialProps: props },
+    );
+    expect(result.current.find((p) => p.date === '20260613')!.traded_record_peaks)
+      .toContainEqual({ price: 26000, qty: 1_000, t_ms: early });
+
+    // 같은 버퍼를 그대로 두고 종목만 바꾼다 — 누적기만 재는 조작이다.
+    rerender({ ...props, ob: [], trades: [], code: '000660' });
+    const after = result.current.find((p) => p.date === '20260613');
+    expect(after?.traded_record_peaks ?? []).toEqual([]);
+  });
+
+  it('derive 자체는 기록 자리에 top-3 을 넣지 않는다(누적은 훅의 일이다)', () => {
+    // 하류(expandBaselinePeaks)가 기록 ∪ top-3 을 후보로 쓰므로 폴백은 거기서 난다.
+    // derive 가 top-3 을 실으면 배치판과의 동등성 위에서 "기록" 의 뜻이 무너진다.
+    const rows = deriveDayAskPeaksIncremental(
+      new IncrementalPeakWallSource('ask'),
+      [], [], [], '20260613', OPEN_MS, todayAskPeak(),
+    );
+    const today = rows.find((p) => p.date === '20260613')!;
+    expect(today.traded_peaks?.length).toBeGreaterThan(0);
+    expect(today.traded_record_peaks).toEqual([]);
+    expect(today.traded_record_max_peaks).toEqual([]);
+  });
 });

@@ -7,40 +7,24 @@ import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView
  *  슬라이스를 쓴다. MovingAverageRow(prop-driven)를 그대로 재사용. ADR-0073. */
 export default function DailyMovingAverageConfig() {
   const configs = useWindowIndicator((s) => s.dailyMovingAverages);
-  const enabled = useWindowIndicator((s) => s.dailyMovingAverageEnabled);
-  const hidden = useWindowIndicator((s) => s.dailyMovingAverageHidden);
-  const setEnabled = useIndicatorActions().setDailyMovingAverageEnabled;
-  const setHidden = useIndicatorActions().setDailyMovingAverageHidden;
+  // 마스터 토글과 타입 눈이 슬롯의 `enabled` 로 접혔다(ADR) — "표시" 는 이제
+  // 켜진 슬롯의 존재이고, 토글은 전 슬롯을 함께 켜고 끈다.
+  const enabled = configs.some((c) => c.enabled);
+  const setAllEnabled = useIndicatorActions().setAllDailyMovingAveragesEnabled;
   const setMA = useIndicatorActions().setDailyMovingAverage;
   const addMA = useIndicatorActions().addDailyMovingAverage;
   const removeMA = useIndicatorActions().removeDailyMovingAverage;
   const atLimit = configs.length >= MA_SLOT_LIMIT;
-  const canRemove = configs.length > 1;
 
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        일봉 이동평균선 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        일봉 종가 기준 이평선을 분봉 차트에 투영 · 분봉 차트에서만 표시됩니다
-      </p>
       <div className="mb-3">
         <ToggleRow
           label="일봉 MA 표시"
           description="분봉 차트 위에 일봉 종가 기준 이평선을 표시합니다."
           checked={enabled}
-          onToggle={() => setEnabled(!enabled)}
+          onToggle={() => setAllEnabled(!enabled)}
           testId="settings-toggle-dailyMovingAverage"
-        />
-      </div>
-      <div className="mb-3">
-        <ToggleRow
-          label="일봉 MA 선 숨김"
-          description="설정은 유지하고 분봉 차트의 일봉 MA 선만 숨깁니다."
-          checked={hidden}
-          onToggle={() => setHidden(!hidden)}
-          testId="settings-toggle-dailyMovingAverageHidden"
         />
       </div>
       <div>
@@ -49,7 +33,7 @@ export default function DailyMovingAverageConfig() {
             key={cfg.id}
             index={i}
             config={cfg}
-            canRemove={canRemove}
+            canRemove
             onChange={(patch) => setMA(cfg.id, patch)}
             onRemove={() => removeMA(cfg.id)}
           />

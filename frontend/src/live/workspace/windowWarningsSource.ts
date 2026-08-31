@@ -45,6 +45,15 @@ const EMPTY: WindowWarnings = { backfillEarliestDate: null };
 export function backfillProgressDate(args: {
   /** 지금 과거 확장이 진행 중인가(`useLiveBundle` 의 `extending`). */
   extending: boolean;
+  /**
+   * 키움 분봉 보충(`useMinuteGapFill`)이 아직 도는 중인가(fetch 중이거나 미처리
+   * run 잔여). 구멍 구간을 팬으로 건널 때의 실측(2026-08-25, 010140 5m,
+   * 06-15~07-02 캡처 구멍): extend→stop 은 7초에 끝났지만 그 뒤 보충 콜들이 도는
+   * 십수 초 동안 화면은 whitespace 였고 칩은 extending 게이트라 꺼져 있었다 —
+   * **가장 긴 대기가 표시 없는 구간**이라 "갑자기 빈 화면 = 고장" 으로 읽혔다.
+   * 미배선 호출자는 생략(false) — 종전 게이트 그대로다.
+   */
+  gapFillPending?: boolean;
   /** 창이 한 번이라도 확장됐는가. null 이면 백필이 아니라 첫 로드다. */
   historicalFromDate: string | null;
   /** 캔들 병합본이 되싣는 from — 홀드를 타지 않는다. 미배선 경로는 null. */
@@ -52,8 +61,11 @@ export function backfillProgressDate(args: {
   /** 홀드된 번들의 최고(最古) 세그먼트 날짜. 캔들이 0개면 null. */
   earliestSegmentDate: string | null;
 }): string | null {
-  const { extending, historicalFromDate, settledFromDate, earliestSegmentDate } = args;
-  if (!extending || historicalFromDate === null || earliestSegmentDate === null) return null;
+  const {
+    extending, gapFillPending = false, historicalFromDate, settledFromDate, earliestSegmentDate,
+  } = args;
+  if (!extending && !gapFillPending) return null;
+  if (historicalFromDate === null || earliestSegmentDate === null) return null;
   if (settledFromDate === null) return earliestSegmentDate;
   return settledFromDate < earliestSegmentDate ? settledFromDate : earliestSegmentDate;
 }

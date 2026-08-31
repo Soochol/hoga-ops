@@ -18,7 +18,7 @@ export interface LiveQuote {
   /** 전일대비 등락액(원). 장전(pre_open)·무데이터 시 null. */
   change_won: number | null;
   /** 당일 OHLC(멀티시세 inter2_oprc/hgpr/lwpr). **optional** — 필수면 screener·
-   *  live-price-line·SectorTempStrip.test 등 범위 밖 6파일이 tsc 에러. 와이어는 항상 키를
+   *  live-price-line 등 범위 밖 파일이 tsc 에러(도입 시 실측 6파일). 와이어는 항상 키를
    *  보내지만(FastAPI 전필드 직렬화) 타입은 느슨히, 호출부에서 `?? null` 강제. */
   open?: number | null;
   high?: number | null;

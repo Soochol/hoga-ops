@@ -14,8 +14,8 @@
 ## 왜 자동 분류가 아닌가
 
 이름 규칙(`*price*`)으로 자동 판별하면 오탐과 누락이 **둘 다 조용하다**. 실제로 이
-번들의 가격 필드 중 셋은 이름에 `price` 가 없다 — `depth_heatmap`/`depth_delta` 의
-`[price, qty]` **위치 가격**과 `ask_tick`/`bid_tick`(호가 단위). 반대로 `price_step`
+번들의 가격 필드 중 일부는 이름에 `price` 가 없다 — `depth_heatmap` 의
+`[price, qty]` **위치 가격**이 그렇다. 반대로 `price_step`
 류의 이름이 붙었지만 스케일 대상이 아닌 값도 생길 수 있다. 그래서 전 필드를 **손으로**
 두 목록에 나눠 담고, 어느 쪽에도 없는 새 필드가 나타나면 실패시킨다.
 
@@ -52,46 +52,40 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     # 최대벽 — 가격 변형이 네 갈래다(체결/전체 × 스냅샷/일중최대; ADR-0156 이 미체결 계열 제거)
     "AskPeak.price", "AskPeak.max_price", "AskPeak.all_price", "AskPeak.all_max_price",
     "BidPeak.price", "BidPeak.max_price", "BidPeak.all_price", "BidPeak.all_max_price",
+    # 미도달 벽 — cont 단일 계열이라 rank-1 스칼라 하나(close/max 구분 없음).
+    "AskPeak.unreached_price", "BidPeak.unreached_price",
     "AskPeakCandidate.price",
     # VI·상하한 히트
     "PriceLevelHit.price",
     # 거래량 POC
     "TradeVolumePoc.center_price", "TradeVolumePoc.low_price", "TradeVolumePoc.high_price",
-    # 호가 잔량 히트맵·증감 — **이름 없는 위치 가격**([price, qty] 튜플의 첫 원소).
+    # 호가 잔량 히트맵 — **이름 없는 위치 가격**([price, qty] 튜플의 첫 원소).
     # `price` 로 grep 해도 안 걸리는 자리라 여기 명시적으로 적는다.
     "DepthHeatmapPoint.asks", "DepthHeatmapPoint.bids",
     "DepthHeatmapPoint.asks_max", "DepthHeatmapPoint.bids_max",
-    "DepthDeltaPoint.asks", "DepthDeltaPoint.bids",
-    # 호가 단위 — 이름에 `price` 가 없지만 **가격공간 값**이다(셀 높이).
-    "DepthDeltaPoint.ask_tick", "DepthDeltaPoint.bid_tick",
+    # 가격대마다 따로 잰 최댓값 — 같은 [price, qty] 모양이라 **같이 환산해야 한다**.
+    # 빠뜨리면 이 모드만 원가격으로 남아 캔들과 어긋나는데, 다른 두 계열이 멀쩡해서
+    # 훨씬 늦게 발견된다(그래서 이 가드가 새 필드를 분류하라고 막아섰다).
+    "DepthHeatmapPoint.asks_price_max", "DepthHeatmapPoint.bids_price_max",
     # 커서 스팟 10호가 — 히트맵과 **같은 순간 같은 레벨**을 다른 창에 숫자로 띄우므로
     # 척도가 갈리면 사용자가 두 숫자를 동시에 본다.
     "ApiOrderbookLevel.price",
-    # 호가벽 급증 — 마커가 **캔들과 같은 가격축에 앉는다**. 환산이 빠지면 마커만
-    # 원주가 높이에 찍혀 캔들과 어긋난다(#1303 과 같은 종류의 사고).
-    "WallSurgeEvent.price",
 })
 
 #: 척도와 무관한 필드(수량·시각·식별자·사유). 새 필드가 여기 있으면 환산 불필요라는
 #: **판단을 남긴 것**이다 — 자동 분류가 아니라 사람이 한 번 본 흔적이 남는다.
 NON_PRICE_FIELDS: frozenset[str] = frozenset({
+    # 디스크 좌팬의 **바닥**(가장 오래된 캡처일, YYYYMMDD) — 날짜지 가격이 아니다.
+    "RangeBundle.earliest_captured_date",
     "RangeBundle.code", "RangeBundle.from_date", "RangeBundle.to_date",
     "RangeBundle.bucket_ms", "RangeBundle.segments", "RangeBundle.candles",
     "RangeBundle.quote_ratio", "RangeBundle.fill_strength",
     "RangeBundle.volume_profile_range", "RangeBundle.volume_profile_by_day",
     "RangeBundle.excluded_dates", "RangeBundle.data_warnings", "RangeBundle.missing_dates",
     "RangeBundle.ask_peaks", "RangeBundle.bid_peaks", "RangeBundle.depth_heatmap",
-    "RangeBundle.depth_delta", "RangeBundle.broker_late_entries",
+    "RangeBundle.broker_late_entries",
     "RangeBundle.price_level_hits", "RangeBundle.trade_volume_pocs",
     "RangeBundle.volume_distributions", "RangeBundle.program_trade",
-    "RangeBundle.wall_surge",
-    # 호가벽 급증의 나머지 — 잔량·증가량·체결량은 **수량**(주식 수)이고, 총잔량도
-    # 같은 이유로 환산 대상이 아니다(QuoteRatioPoint.ask_total 과 같은 판단).
-    # kind/outcome/side 는 분류값, t_ms·blind_ms·duration_ms 는 시간이다.
-    "WallSurgeEvent.t_ms", "WallSurgeEvent.side", "WallSurgeEvent.qty",
-    "WallSurgeEvent.jump", "WallSurgeEvent.total", "WallSurgeEvent.kind",
-    "WallSurgeEvent.blind_ms", "WallSurgeEvent.outcome",
-    "WallSurgeEvent.filled_qty", "WallSurgeEvent.duration_ms",
     "RangeSegment.date", "RangeSegment.session_open_ms", "RangeSegment.session_close_ms",
     "RangeSegment.source", "RangeSegment.gap_ms",
     "ApiCandle.ts_ms", "ApiCandle.vol_a", "ApiCandle.vol_b",
@@ -131,18 +125,21 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     # 가격 분류를 받는다. FE 곱셈은 scalePeak 의 rank() 가 담당(다른 배열과 동일).
     "AskPeak.traded_record_peaks", "AskPeak.traded_record_max_peaks",
     "AskPeak.all_peaks", "AskPeak.all_max_peaks",
+    # 미도달 — 컨테이너·수량·시각. 가격은 내부 AskPeakCandidate.price 가 받고
+    # FE 곱셈은 scalePeak 의 rank() + unreached_price 스칼라가 담당.
+    "AskPeak.unreached_peaks", "AskPeak.unreached_qty", "AskPeak.unreached_t_ms",
     "BidPeak.date", "BidPeak.qty", "BidPeak.t_ms", "BidPeak.max_qty", "BidPeak.max_t_ms",
     "BidPeak.all_qty", "BidPeak.all_t_ms", "BidPeak.all_max_qty", "BidPeak.all_max_t_ms",
     "BidPeak.traded_peaks", "BidPeak.traded_max_peaks",
     "BidPeak.traded_record_peaks", "BidPeak.traded_record_max_peaks",
     "BidPeak.all_peaks", "BidPeak.all_max_peaks",
+    "BidPeak.unreached_peaks", "BidPeak.unreached_qty", "BidPeak.unreached_t_ms",
     "AskPeakCandidate.qty", "AskPeakCandidate.t_ms",
     "PriceLevelHit.date", "PriceLevelHit.t_ms", "PriceLevelHit.kind",
     "PriceLevelHit.direction", "PriceLevelHit.pct",
     "TradeVolumePoc.date", "TradeVolumePoc.qty", "TradeVolumePoc.t_ms",
     "TradeVolumePoc.band_pct",
     "DepthHeatmapPoint.t_ms",
-    "DepthDeltaPoint.t_ms",
     "BrokerLateEntryEvent.t_ms", "BrokerLateEntryEvent.broker",
     "BrokerLateEntryEvent.side", "BrokerLateEntryEvent.net",
     "ProgramTradeSeries.points",

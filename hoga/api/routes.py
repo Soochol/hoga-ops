@@ -160,6 +160,21 @@ RANGE_WIDE_SPAN_DAYS = int(os.environ.get("HOGA_RANGE_WIDE_SPAN_DAYS", "") or 30
 # 채택값이 공유 상한과 **같은 2**인 것은 우연이 아니다 — 이득의 정체는 "sidecar 를 더
 # 돌린다" 가 아니라 **"서로를 막지 않는다"** 다. 두 상수를 한 값으로 합치지 말 것:
 # 근거가 다르고(이쪽은 모드 팽창률, 저쪽은 GIL 직렬화) 다음 재측정에서 갈릴 값이다.
+#
+# ⚠ **peak prefetch(요청 내부 병렬) 도입 후 재측정했다 — 2를 유지한다 (2026-08-29).**
+# 그 변경은 실효 스레드를 `상한 × 워커`로 만들어 위 sweep 의 전제(요청당 1 스레드)를
+# 깼으므로, 위 명령대로 다시 돌렸다. 혼합 부하 16 동시(콜드 sidecar 4 + hoga 12),
+# 교대 대조 2라운드 median:
+#
+#     상한   wall   heavy중앙  light중앙  전체평균
+#     1     15.88s   15.60s     2.40s     5.17s
+#     2     15.91s   15.62s     2.47s     5.24s   ← 유지
+#     4     16.13s   15.59s     2.50s     5.34s
+#
+# 세 값의 차이가 wall 1.6% · heavy 0.2% 로 **라운드 간 드리프트(0.6~1.4s)보다 작다** —
+# 즉 이 부하에서 상한은 판별력이 없고, 바꿀 근거가 없다는 뜻이지 "1이 최선" 이라는
+# 뜻이 아니다. prefetch 워커 쪽 표와 그 판단은 `bundle._PEAK_PREFETCH_WORKERS_ENV`
+# 주석에 있다(그쪽은 heavy↔light 재분배가 실제로 보인다).
 RANGE_SIDECAR_CONCURRENCY = int(os.environ.get("HOGA_RANGE_SIDECAR_CONCURRENCY", "") or 2)
 
 # `mode=candles` 의 레인. 값 규약은 위 sidecar 노브와 같다(-1 공유 · 0 무제한 · N 레인).
@@ -705,7 +720,6 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         program_trade_enabled: bool = Query(True),
         trade_volume_poc_enabled: bool = Query(True),
         depth_heatmap_enabled: bool = Query(True),
-        depth_delta_enabled: bool = Query(True),
         # 값 목록은 `RangeMode`(models.py)가 유일 출처다 — 여기 정규식을 손으로 다시
         # 적으면 그 사본이 곧 드리프트 지점이 된다(퇴역한 `full` 이 프론트에 남은 것이
         # 정확히 그 사고였다).
@@ -812,7 +826,6 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                         program_trade_enabled=program_trade_enabled,
                         trade_volume_poc_enabled=trade_volume_poc_enabled,
                         depth_heatmap_enabled=depth_heatmap_enabled,
-                        depth_delta_enabled=depth_delta_enabled,
                         mode=mode,
                     ),
                 )

@@ -45,10 +45,8 @@ from hoga.api.models import (
     BidPeak,
     BrokerLateEntryEvent,
     DayVolumeDistribution,
-    DepthDeltaPoint,
     DepthHeatmapPoint,
     TradeVolumePoc,
-    WallSurgeEvent,
 )
 from hoga.live.venue import Venue
 from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
@@ -111,12 +109,26 @@ KIND_VERSIONS: dict[str, int] = {
     # 실제로 달라졌으므로 구 캐시를 살려 두면 화면이 구 규칙으로 굳는다.
     # 9: traded_record_peaks/traded_record_max_peaks(기록 갱신 시퀀스) 추가 —
     #    구 캐시 모델엔 이 필드가 없어 pane 계단의 오전 이력이 비므로 재계산이 맞다.
-    "ask_peak": 9,
-    "bid_peak": 9,
+    # 10: unreached_*(미도달 벽 — 당일 극값이 지배하지 못한 벽) 추가 — 같은 사유.
+    # 11: all_peaks/all_max_peaks 를 **top-3 로 캡**(종전 전량 ~1.3k/1.6k). 값이
+    #     달라졌고(잘렸고) 구 캐시는 전량이라 페이로드가 되살아나므로 범프한다.
+    # 12: **1분 정본 규약**(`bundle._peak_with_rep_outputs`). `all_max_peaks` 와
+    #     `traded_record_peaks` 는 봉 의존인데(실측 2026-08-28: `_peak_bucket_dedup`
+    #     이 `bucket_id` 로 접는다) 굵은 봉 요청이 캐시 유무에 따라 **직접-굵은봉 값**
+    #     또는 **1분 파생 값**으로 갈렸다. 1분을 정본으로 확정했으므로, 그 규약 이전에
+    #     직접-굵은봉 경로가 남긴 항목은 비정본이라 걷어낸다.
+    #     범프 비용을 감수하는 근거: 굵은 봉 캐시는 파생 경로 도입 이후 **사실상 생성이
+    #     멈췄고**(이 머신 실측 15,952건 중 2026-08-19 이후 1건), 무효화된 굵은 봉은
+    #     rep 에서 ~5ms 로 재파생된다. 실제 재스캔 비용은 1분 항목뿐이고 그것은
+    #     온디맨드로 자연히 채워진다.
+    "ask_peak": 12,
+    "bid_peak": 12,
     "poc": 7,
-    "depth": 7,
-    "depth_delta": 2,
-    "wall_surge": 1,
+    # 8: asks_price_max/bids_price_max(가격대마다 따로 잰 최댓값) 추가. 구 캐시엔 그
+    #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새
+    #    모드를 켠 사용자에게 히트맵이 통째로 비어 보인다(에러가 아니라 무증상이다).
+    #    depth 재계산은 peak 과 달리 싸다 — 범프 비용이 낮은 쪽이다.
+    "depth": 8,
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
@@ -126,12 +138,9 @@ KIND_VERSIONS: dict[str, int] = {
     # 2 (ADR-0156): `touched` 의 의미가 바뀌었다. 값 자체는 이제 **분 스코프**라 표시 봉과
     # 무관하고, 그래서 아래 "1분 고정" 계약과 굵은 봉 파생이 그대로 성립한다.
     "peak_rep": 2,
-    # 1분 버킷별 사다리 가격 집합. depth_delta 의 tick(중앙값)은 결합적이지 않아
-    # 값으로는 못 접고 **집합의 합집합**이 있어야 한다 — 그 원료.
-    "depth_delta_prices": 1,
 }
 
-Kind = Literal["ratio", "fill", "peak_rep", "depth_delta_prices"]
+Kind = Literal["ratio", "fill", "peak_rep"]
 DEFAULT_MEM_MAX_ENTRIES = 512
 # depth_heatmap 항목은 하루치 40컬럼 × 수백 버킷 ≈ 1.5MB/entry (ratio의 ~20배).
 # 공용 512 상한을 그대로 쓰면 최악 수백 MB가 되므로 전용 소형 상한을 둔다 —
@@ -170,7 +179,6 @@ class PastIndicatorsCache:
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
         self._mem_peak_rep: OrderedDict[tuple[str, str, str, str], list[PeakRepRow]] = OrderedDict()
-        self._mem_dd_prices: OrderedDict[tuple[str, str, str, str], list[list[int]]] = OrderedDict()
         self._mem_ratio: OrderedDict[tuple[str, str, str, str], list[QuoteRatioRow]] = OrderedDict()
         self._mem_fill: OrderedDict[tuple[str, str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
@@ -181,24 +189,17 @@ class PastIndicatorsCache:
             tuple[str, str, str, str, int, int, int], TradeVolumePoc | None
         ] = OrderedDict()
         # depth_heatmap 은 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
-        # ratio/fill 처럼 1m 저장 후 재집계하지 않는 이유: depth 대표 선택이
-        # "연속거래 우선 + 완전-동시호가 버킷 폴백"의 조건부 argmax라, 1m 행에서
-        # coarse 대표를 정확히 복원하려면 선택 근거(is_pre)를 함께 저장해야 하기
-        # 때문. bucket_ms 별 결과 캐시가 단순·정확하다.
+        # ⚠ **이유로 적혀 있던 근거는 무효다(2026-08-29 확인).** 종전 설명은 "대표
+        # 선택이 is_pre 조건부 argmax라 1m 행에서 복원 불가" 였는데, ADR-0062 v3 가
+        # 유효 스냅샷을 WHERE 사전 필터로 거르면서 **대표는 버킷의 마지막 행**이 됐다
+        # (`query_bucketed_depth_heatmap` docstring: "종전 is_pre CASE + last-in-bucket
+        # 폴백 방출을 대체"). 즉 `rep` 는 재집계 가능하다.
+        # 현재의 진짜 블로커는 `rep_max` 다 — 정렬 키 `total` 이 `DepthHeatmapPoint`
+        # 에 없어 보조 kind 가 필요하고, `arg_max` 동률에서 peak 이 겪은 정본 문제가
+        # 재발할 수 있다. 판단에 필요한 실측은 `bundle.build_depth_heatmap_slice`
+        # docstring 에 있다.
         self._mem_depth: OrderedDict[
             tuple[str, str, str, str, int], list[DepthHeatmapPoint]
-        ] = OrderedDict()
-        # depth_delta 는 증감 있는 가격만 담아 depth 보다 훨씬 작다(희소).
-        # 공용 512 LRU 편승 — depth 처럼 전용 상한 불필요.
-        self._mem_depth_delta: OrderedDict[
-            tuple[str, str, str, str, int], list[DepthDeltaPoint]
-        ] = OrderedDict()
-        # ⚠ wall_surge 키에는 **bucket_ms 가 없다**. 이벤트는 봉과 무관한 시점 사실이라
-        # 버킷을 키에 넣으면 무효화만 배수로 늘고, 새 봉 종속 지표가 기존 저장뷰를 통째로
-        # 콜드로 만드는 문제까지 따라온다. 대신 판정 상수(WALL_SURGE_*)가 사용자 조절식이
-        # 되는 날에는 그 값이 키에 들어가거나 KIND_VERSIONS 가 올라가야 한다.
-        self._mem_wall_surge: OrderedDict[
-            tuple[str, str, str, str], list[WallSurgeEvent]
         ] = OrderedDict()
         # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
         # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
@@ -225,8 +226,7 @@ class PastIndicatorsCache:
         self._gen: dict[tuple[str, str, str, str], int] = {}
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
             self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
-            self._mem_trade_volume_poc, self._mem_depth, self._mem_depth_delta,
-            self._mem_wall_surge,
+            self._mem_trade_volume_poc, self._mem_depth,
             self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
         )
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
@@ -235,8 +235,8 @@ class PastIndicatorsCache:
         self._stats: dict[str, CacheStats] = {
             kind: CacheStats()
             for kind in (
-                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth", "depth_delta",
-                "wall_surge", "vdist", "broker_late", "continuous_before", "peak_rep", "depth_delta_prices",
+                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth",
+                "vdist", "broker_late", "continuous_before", "peak_rep",
             )
         }
 
@@ -248,13 +248,10 @@ class PastIndicatorsCache:
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
-            "depth_delta": len(self._mem_depth_delta),
-            "wall_surge": len(self._mem_wall_surge),
             "vdist": len(self._mem_vdist),
             "broker_late": len(self._mem_broker_late),
             "continuous_before": len(self._mem_continuous_before),
             "peak_rep": len(self._mem_peak_rep),
-            "depth_delta_prices": len(self._mem_dd_prices),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -442,38 +439,6 @@ class PastIndicatorsCache:
         stats = self._stats["peak_rep"]
         stats.record_store()
         self._mem_put(self._mem_peak_rep, (code, date, source, venue), rows, stats)
-
-    def get_depth_delta_prices(
-        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
-    ) -> list[list[int]] | object:
-        """1분 사다리 가격 행 `[bucket_intra_ms, side(0=ask), *prices]`. 미스는 `CACHE_MISS`.
-
-        dict 가 아니라 **행 리스트**인 것은 이 파일의 list kind 공용 계약(빈 값도
-        유효한 캐시값)에 맞추기 위해서다 — 사전↔행 변환은 호출부가 한다.
-        """
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue)
-        stats = self._stats["depth_delta_prices"]
-        hit = self._mem_hit(self._mem_dd_prices, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        rows = self._read(code, date, source, "depth_delta_prices", venue=venue)
-        if rows is None:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_dd_prices, key, rows, stats)
-        return rows
-
-    def store_depth_delta_prices(
-        self, code: str, date: str, source: str,
-        rows: list[list[int]], *, venue: Venue = "KRX",
-    ) -> None:
-        self._write(code, date, source, "depth_delta_prices", rows, venue=venue)
-        stats = self._stats["depth_delta_prices"]
-        stats.record_store()
-        self._mem_put(self._mem_dd_prices, (code, date, source, venue), rows, stats)
 
     # ── ratio (호가비) ─────────────────────────────────────────────────────────
 
@@ -822,88 +787,6 @@ class PastIndicatorsCache:
             kind="depth",
         )
 
-    # ── depth_delta (단별 잔량 증감) ─────────────────────────────────────────────
-
-    def _depth_delta_path(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> Path:
-        return self._model_path(code, date, source, f"depth_delta.{bucket_ms}", venue=venue)
-
-    def get_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX"
-    ) -> list[DepthDeltaPoint] | object:
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue, bucket_ms)
-        stats = self._stats["depth_delta"]
-        hit = self._mem_hit(self._mem_depth_delta, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        value = self._read_model_list_cache(
-            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
-            DepthDeltaPoint,
-            payload_key="points",
-            kind="depth_delta",
-        )
-        if value is _CACHE_MISS:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_depth_delta, key, value, stats)  # type: ignore[arg-type]
-        return value  # type: ignore[return-value]
-
-    def store_depth_delta(
-        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthDeltaPoint], *, venue: Venue = "KRX"
-    ) -> None:
-        stats = self._stats["depth_delta"]
-        stats.record_store()
-        self._mem_put(self._mem_depth_delta, (code, date, source, venue, bucket_ms), points, stats)
-        self._write_model_list_cache(
-            self._depth_delta_path(code, date, source, bucket_ms, venue=venue),
-            points,
-            payload_key="points",
-            kind="depth_delta",
-        )
-
-    # ── wall_surge (호가벽 급증) ────────────────────────────────────────────────
-
-    def _wall_surge_path(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> Path:
-        return self._model_path(code, date, source, "wall_surge", venue=venue)
-
-    def get_wall_surge(
-        self, code: str, date: str, source: str, *, venue: Venue = "KRX"
-    ) -> list[WallSurgeEvent] | object:
-        self._sync_generation(code, date, source, venue=venue)
-        key = (code, date, source, venue)
-        stats = self._stats["wall_surge"]
-        hit = self._mem_hit(self._mem_wall_surge, key)
-        if hit is not None:
-            stats.record_hit()
-            return hit
-        value = self._read_model_list_cache(
-            self._wall_surge_path(code, date, source, venue=venue),
-            WallSurgeEvent,
-            payload_key="events",
-            kind="wall_surge",
-        )
-        if value is _CACHE_MISS:
-            stats.record_miss()
-            return _CACHE_MISS
-        stats.record_disk_hit()
-        self._mem_put(self._mem_wall_surge, key, value, stats)  # type: ignore[arg-type]
-        return value  # type: ignore[return-value]
-
-    def store_wall_surge(
-        self, code: str, date: str, source: str, events: list[WallSurgeEvent], *, venue: Venue = "KRX"
-    ) -> None:
-        stats = self._stats["wall_surge"]
-        stats.record_store()
-        self._mem_put(self._mem_wall_surge, (code, date, source, venue), events, stats)
-        self._write_model_list_cache(
-            self._wall_surge_path(code, date, source, venue=venue),
-            events,
-            payload_key="events",
-            kind="wall_surge",
-        )
-
     # ── volume_distribution (체결 분포) ──────────────────────────────────────────
 
     def _vdist_path(
@@ -990,10 +873,11 @@ class PastIndicatorsCache:
         캐시값이라 미스와 구분된다.
 
         종전엔 depth 계열 3종(`depth`·`depth_delta`·`wall_surge`)이 이 헬퍼와 **동형인
-        본문을 각자 인라인으로** 들고 있었다 — `get_depth_delta` 와 `get_wall_surge` 는
-        각 35줄 중 26줄이 문자 단위로 같았고, 나머지 9줄도 전부 토큰 치환이었다. 이
-        헬퍼가 그때 이미 있었는데 두 메서드가 파일에서 **헬퍼보다 앞에 정의**돼 있어
-        재사용되지 않았다. 지금은 넷 다 이 경로를 쓴다."""
+        본문을 각자 인라인으로** 들고 있었다 — 각 35줄 중 26줄이 문자 단위로 같았고,
+        나머지 9줄도 전부 토큰 치환이었다. 이 헬퍼가 그때 이미 있었는데 그 메서드들이
+        파일에서 **헬퍼보다 앞에 정의**돼 있어 재사용되지 않았다. 그 셋 중 둘은 이후
+        지표째 제거됐고(`depth_delta` 2026-08-25 · `wall_surge` 2026-08-26), 남은
+        `depth` 와 나머지 kind 가 이 경로를 쓴다."""
         if not path.exists():
             return _CACHE_MISS
         try:

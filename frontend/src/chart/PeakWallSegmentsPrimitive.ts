@@ -14,6 +14,7 @@ import type {
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { measureTextCached } from './util/textWidthCache';
 import { resolveTokensThemed } from '../util/tokens';
+import { ARROW_HEIGHT_PX, drawPeakWallArrow } from './peakWallArrowShape';
 
 // 라벨 칩 표면·테두리 — canvas 는 var(--…) 를 못 받아 지연 해석. 하드코딩 다크
 // 반투명이던 것을 테마 표면(불투명)+테두리로: Ledger 라이트에서도 방향색 텍스트가
@@ -51,6 +52,59 @@ export interface PeakWallSegment {
   lineWidth: number;
   /** 오늘(라이브) 세그먼트 여부(스타일 구분용). */
   live?: boolean;
+  /** 수평선을 그리는가. **생략 = 그린다**(구 호출부 호환).
+   *  계열별 「수평선 표시」 토글이 여기로 흘러든다. */
+  horizontalLine?: boolean;
+  /** 수평선을 **벽이 걸린 시점부터 오른쪽으로만** 긋는가. **생략 = 좌우 전 구간**.
+   *  계열별 「우측으로만 확장」 토글. 끝점(`time1`)은 이 값과 무관하게 같다 —
+   *  달라지는 것은 시작점뿐이라, 벽이 서기 전 구간에 선이 지나가지 않는다.
+   *
+   *  ⚠ 이것이 `time0` 을 바꾸지 않고 **플래그로 오는 이유**: `time0` 은 좌표이면서
+   *  동시에 「그날」의 식별자다(`dayPriceKey` · `mergePeakWallRankSegments` 의
+   *  `time0|price` 중복 키). peakTime 으로 갈아끼우면 같은 날 같은 가격의 두 계열이
+   *  `t_ms` 차이로 다른 키가 되어 중복 제거가 풀리고, 레전드 ①②가 같은 벽을 두 번
+   *  가리킨다 — 타입이 못 잡는 회귀다. */
+  horizontalLineRightOnly?: boolean;
+  /** 발생 시점 화살표를 찍는가. **생략 = 찍는다**.
+   *  계열별 「발생 시점 화살표」 토글. 라벨 회피 간격도 이 값을 따라간다 — 화살표가
+   *  없는데 비켜 서면 라벨이 빈 공간을 피해 떠 있는 **유령 회피**가 된다. */
+  timeMarker?: boolean;
+}
+
+/** 세그먼트의 두 표면 플래그를 "생략=켜짐" 규약으로 읽는다. 세 소비처(draw · 도킹 라벨 ·
+ *  고저 라벨 회피)가 같은 해석을 쓰도록 한 곳에 둔다. */
+export function segmentDrawsHorizontalLine(segment: Pick<PeakWallSegment, 'horizontalLine'>): boolean {
+  return segment.horizontalLine !== false;
+}
+export function segmentDrawsTimeMarker(segment: Pick<PeakWallSegment, 'timeMarker'>): boolean {
+  return segment.timeMarker !== false;
+}
+/** 수평선이 「우측으로만」인가 — 위 둘과 달리 **생략 = 꺼짐**이다(기존 동작이 좌우 전
+ *  구간이므로, 구 호출부와 저장이 없는 사용자가 종전 그림을 그대로 받는다). */
+export function segmentExtendsRightOnly(
+  segment: Pick<PeakWallSegment, 'horizontalLineRightOnly'>,
+): boolean {
+  return segment.horizontalLineRightOnly === true;
+}
+
+/** 수평선의 **시작 x** — 「우측으로만 확장」이면 벽이 걸린 지점, 아니면 그날 시작.
+ *  끝 x 는 어느 쪽이든 `x1` 이라 여기 인자로 오지 않는다.
+ *
+ *  draw 에 인라인으로 두지 않고 뽑은 이유는 `peakXFromCoordinate` 와 같다 — draw 는
+ *  canvas·chart api 없이 못 돌려서, 인라인이면 이 분기가 테스트 밖으로 나간다.
+ *  좌표계는 호출자가 정한다(bitmap 이면 셋 다 bitmap).
+ *
+ *  클램프는 보험이다: 보간 폴백은 이미 `[x0, x1]` 안이지만 `timeToCoordinate` 가 값을
+ *  준 경우엔 캔들 스냅 오차로 구간 밖을 가리킬 수 있고, 그러면 선이 그날 구간 밖으로
+ *  새거나 (x1 을 넘으면) 길이가 음수가 된다. */
+export function peakWallLineStartX(
+  segment: Pick<PeakWallSegment, 'horizontalLineRightOnly'>,
+  peakX: number,
+  x0: number,
+  x1: number,
+): number {
+  if (!segmentExtendsRightOnly(segment)) return x0;
+  return clamp(peakX, Math.min(x0, x1), Math.max(x0, x1));
 }
 
 /** 최대벽 라벨의 측면 — 매도는 선 위, 매수는 선 아래에 붙어 같은 분봉에서 서로 비켜간다. */
@@ -63,9 +117,11 @@ export interface PeakWallDockedLabel {
   /** 그날 세그먼트 양 끝 — 칩을 그날 구간 안에 가두는 경계(이웃 날로 새는 것 방지). */
   time0: Time;
   time1: Time;
-  /** peak 발생 시점(봉 버킷에 스냅됨) — 라벨 앵커. 점(dot)과 같은 x. */
+  /** peak 발생 시점(봉 버킷에 스냅됨) — 라벨 앵커. 발생 시점 화살표와 같은 x. */
   peakTime: Time;
   side: PeakWallLabelSide;
+  /** 이 벽이 발생 시점 화살표를 찍는가 — 칩이 그만큼 비켜설지를 정한다(생략=찍는다). */
+  timeMarker?: boolean;
 }
 
 type VisibleTimeRange = IRange<Time> | null;
@@ -134,6 +190,7 @@ export function livePeakWallDockedLabelsFromSegments(
       time1: segment.time1,
       peakTime: segment.peakTime,
       side,
+      timeMarker: segmentDrawsTimeMarker(segment),
     }));
 }
 
@@ -182,7 +239,13 @@ export function inlinePeakWallSegmentsForDocking(
   ));
 }
 
-export const PEAK_DOT_RADIUS_PX = 3.5;
+/** 벽 발생 시점 마커가 선에서 차지하는 두께 — 라벨이 이만큼 비켜난다.
+ *
+ * 2026-08-26 이전엔 반지름 3.5px 의 **점**이었고 이 값이 그 반지름이었다. 지금은 순위
+ * 화살표와 같은 화살표라, 끝이 선에 닿고 몸통이 라벨 쪽(매도=위 · 매수=아래)으로
+ * `ARROW_HEIGHT_PX` 만큼 뻗는다. 라벨이 그 몸통을 덮으면 "언제 걸린 벽인지" 가 가려지므로
+ * 회피량도 같이 커져야 한다. */
+export const PEAK_MARKER_CLEARANCE_PX = ARROW_HEIGHT_PX;
 export const LABEL_GAP_PX = 3;
 export const LABEL_FONT_PX = 11;
 export const LABEL_ROW_GAP_PX = 5;
@@ -243,6 +306,10 @@ export type PeakWallChipGeometryInput = {
   textWidth: number;
   side: PeakWallLabelSide;
   paneWidth: number;
+  /** 이 벽이 발생 시점 화살표를 찍는가. **생략 = 찍는다**(구 호출부 호환).
+   *  끄면 칩이 비켜설 이유가 사라지므로 선 간격이 GAP 만 남는다 — 안 그러면 라벨이
+   *  아무것도 없는 자리를 피해 떠 있는 **유령 회피**가 된다. */
+  timeMarker?: boolean;
   /** px 상수 → 대상 좌표계 배율. bitmap space 는 hr/vr, media space 는 1(기본). */
   horizontalScale?: number;
   verticalScale?: number;
@@ -278,6 +345,7 @@ export function peakWallChipGeometry({
   textWidth,
   side,
   paneWidth,
+  timeMarker = true,
   horizontalScale = 1,
   verticalScale = 1,
 }: PeakWallChipGeometryInput): PeakWallChipGeometry | null {
@@ -286,9 +354,10 @@ export function peakWallChipGeometry({
   const yPad = LABEL_BOX_Y_PAD_PX * verticalScale;
   const edgePad = LABEL_EDGE_PAD_PX * horizontalScale;
   const fontHeight = LABEL_FONT_PX * verticalScale;
-  // 점(dot) 지름만큼 더 띄운다 — 라벨이 선 끝이 아니라 점 바로 위/아래에 붙으므로,
-  // GAP 만으로는 칩이 점을 덮어 "언제 걸린 벽인지" 를 가린다.
-  const lineClearance = (LABEL_GAP_PX + PEAK_DOT_RADIUS_PX) * verticalScale;
+  // 발생 시점 마커(화살표)가 차지하는 만큼 더 띄운다 — 라벨이 선 끝이 아니라 그 마커 바로
+  // 위/아래에 붙으므로, GAP 만으로는 칩이 마커를 덮어 "언제 걸린 벽인지" 를 가린다.
+  // 화살표는 매도=선 위 · 매수=선 아래로 뻗고 라벨도 같은 쪽이라, 한 값으로 양쪽이 맞는다.
+  const lineClearance = (LABEL_GAP_PX + (timeMarker ? PEAK_MARKER_CLEARANCE_PX : 0)) * verticalScale;
   const chipWidth = textWidth + xPad * 2;
   const half = chipWidth / 2;
 
@@ -417,6 +486,7 @@ class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
     const timeScale = chart.timeScale();
     const segments = this._source.segmentsData();
     if (segments.length === 0) return;
+    const side = this._source.labelSide();
     target.useBitmapCoordinateSpace((scope) => {
       const ctx = scope.context;
       const hr = scope.horizontalPixelRatio;
@@ -431,17 +501,12 @@ class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
         const px0 = x0 * hr;
         const px1 = x1 * hr;
         const py = y * vr;
-        // 수평 세그먼트.
-        ctx.beginPath();
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = Math.max(1, s.lineWidth) * vr;
-        ctx.moveTo(px0, py);
-        ctx.lineTo(px1, py);
-        ctx.stroke();
-        // peak 발생 시점 점(그 날 언제 최대벽이었는지). timeToCoordinate(peakTime)가 정확하지만,
-        // peak 시각이 로드된 캔들 범위 밖이면 null을 내 점이 누락된다(일부만 보이던 버그). 그럴 때는
+        // peak 발생 시점 마커(그 날 언제 최대벽이었는지). timeToCoordinate(peakTime)가 정확하지만,
+        // peak 시각이 로드된 캔들 범위 밖이면 null을 내 마커가 누락된다(일부만 보이던 버그). 그럴 때는
         // 세그먼트 끝점(x0~x1) 사이를 peakTime의 [time0,time1] 내 위치로 선형 보간해 폴백 — 선이
-        // 그려지는 한 점도 항상 그려진다(보간은 세션 내 가상시각이 x와 단조라 근사 정확).
+        // 그려지는 한 마커도 항상 그려진다(보간은 세션 내 가상시각이 x와 단조라 근사 정확).
+        //
+        // 선보다 **먼저** 잰다 — 「우측으로만 확장」의 시작점이 이 x 이기 때문이다.
         const rawPeakX = timeScale.timeToCoordinate(s.peakTime);
         const pxPeak = peakXFromCoordinate(
           rawPeakX === null ? null : rawPeakX * hr,
@@ -451,10 +516,30 @@ class PeakWallSegmentsRenderer implements IPrimitivePaneRenderer {
           px0,
           px1,
         );
-        ctx.beginPath();
-        ctx.arc(pxPeak, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
-        ctx.fillStyle = s.color;
-        ctx.fill();
+        // 수평 세그먼트 — 계열별 「수평선 표시」 토글을 세그먼트가 실어 온다.
+        // 「우측으로만 확장」은 시작점만 벽이 걸린 x 로 옮긴다(끝점은 그대로 그날 끝).
+        if (segmentDrawsHorizontalLine(s)) {
+          const lineX0 = peakWallLineStartX(s, pxPeak, px0, px1);
+          ctx.beginPath();
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = Math.max(1, s.lineWidth) * vr;
+          ctx.moveTo(lineX0, py);
+          ctx.lineTo(px1, py);
+          ctx.stroke();
+        }
+        // 순위 화살표와 **같은 도형**(`peakWallArrowShape`). 끝이 벽 가격 선에 닿고 몸통은
+        // 라벨과 같은 쪽으로 뻗는다 — 매도는 위에서 아래를, 매수는 아래에서 위를 가리킨다.
+        //
+        // 수평선과 **독립 토글**이다: 선만·화살표만·둘 다·둘 다 끄고 라벨만 — 네 조합이
+        // 전부 유효하다(화살표는 벽 가격 y 에 앵커하므로 선 없이도 위치를 말한다).
+        if (segmentDrawsTimeMarker(s)) drawPeakWallArrow(ctx, {
+          cx: pxPeak,
+          tipY: py,
+          dir: side === 'ask' ? -1 : 1,
+          color: s.color,
+          horizontalPixelRatio: hr,
+          verticalPixelRatio: vr,
+        });
         // 라벨은 선/점 렌더 후 한 번에 배치해 가까운 가격대의 텍스트 겹침을 피한다.
         if (s.label) {
           ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
@@ -512,9 +597,18 @@ export class PeakWallSegmentsPrimitive implements ISeriesPrimitive<Time> {
   private _series: ISeriesApi<SeriesType> | null = null;
   private _requestUpdate?: () => void;
   private readonly _paneView: PeakWallSegmentsPaneView;
+  private readonly _side: PeakWallLabelSide;
 
-  constructor() {
+  /** `side` 는 **발생 시점 화살표의 방향**을 정한다(매도=아래를 가리킴 · 매수=위).
+   *  세그먼트마다가 아니라 인스턴스마다인 이유: 이 primitive 는 `LivePeakWallSegments`
+   *  가 방향별로 마운트하므로 한 인스턴스의 세그먼트는 전부 같은 방향이다. */
+  constructor(side: PeakWallLabelSide = 'ask') {
+    this._side = side;
     this._paneView = new PeakWallSegmentsPaneView(this);
+  }
+
+  labelSide(): PeakWallLabelSide {
+    return this._side;
   }
 
   attached(param: SeriesAttachedParameter<Time>): void {

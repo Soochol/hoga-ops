@@ -46,6 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
+from hoga.live.api import AfterHoursBookResponse
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.lifecycle import LiveStatus
 
@@ -100,6 +101,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     ),
     "RangeBundle": frozenset(
         {
+            "earliest_captured_date",
             "code",
             "from_date",
             "to_date",
@@ -116,8 +118,6 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
             "ask_peaks",
             "bid_peaks",
             "depth_heatmap",
-            "depth_delta",
-            "wall_surge",
             "broker_late_entries",
             "price_level_hits",
             "trade_volume_pocs",
@@ -188,14 +188,6 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(m.SignalAlertSource)),
         "frontend/src/api/signalAlerts.ts",
     ),
-    # 호가벽 급증. BE 는 named alias(필드 인라인 Literal 이면 아래 등록 누락 감사가
-    # 원리적으로 못 본다), FE 는 같은 이름의 union + 라벨 표를 types.ts 에 둔다.
-    # 값이 갈리면 새 kind/outcome 이 라벨 없이 영문 원문으로 화면에 뜬다(#1183 재발).
-    "WallSurgeKind": (frozenset(get_args(m.WallSurgeKind)), "frontend/src/api/types.ts"),
-    "WallSurgeOutcome": (
-        frozenset(get_args(m.WallSurgeOutcome)),
-        "frontend/src/api/types.ts",
-    ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
     # 스크리너 갱신 skip 사유. **오래 `str` 이라 이 층 밖에 있었다** — BE 에 named
@@ -243,6 +235,17 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     # ⚠ FE 에 `Timeframe`(types.ts)이라는 **다른 타입**이 따로 있다 — 분봉 6개 전용
     # (`TIMEFRAME_TO_MS` 의 키)이라 여기 짝이 아니다. 이름 규칙으로 자동 매칭했다면
     # 그쪽을 짚어 상시 빨간 테스트가 됐을 것이고, 그게 자동 발견을 안 하는 이유다.
+    # **양쪽 다 필드 인라인이라 감사가 못 보는 쌍** — 손 등록 부류다. BE 는
+    # `AfterHoursBookResponse.source` 의 인라인 `Literal`, FE 는 같은 이유로 named
+    # alias 를 만들어 꺼냈다.
+    #
+    # 값이 갈리면 무증상이다: 백엔드가 `'stored'` 를 보내는데 프론트 union 이
+    # `'kiwoom'` 뿐이면 타입 에러 없이 그냥 통과하고, "저장본이라 더 이상 안 변한다"
+    # 는 신호를 프론트가 못 읽어 **닫힌 창에 5초 폴링을 계속 건다**.
+    "LiveAfterHoursSource": (
+        frozenset(get_args(AfterHoursBookResponse.model_fields["source"].annotation)),
+        "frontend/src/api/liveAfterHoursBook.ts",
+    ),
     "LiveTimeframe": (
         frozenset(get_args(m.StudyViewReference.model_fields["timeframe"].annotation)),
         "frontend/src/state/livePage.ts",

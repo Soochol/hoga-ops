@@ -37,7 +37,7 @@ describe('depthHeatmapAlpha', () => {
         bidsMax: [{ price: 9, qty: 700 }],
       },
     ];
-    expect(visibleMaxQty(pts, 0, 200, true)).toBe(900);   // max 소스
-    expect(visibleMaxQty(pts, 0, 200, false)).toBe(100);  // 종가 소스
+    expect(visibleMaxQty(pts, 0, 200, 'peakSnapshot')).toBe(900);   // max 소스
+    expect(visibleMaxQty(pts, 0, 200, 'close')).toBe(100);  // 종가 소스
   });
 });

@@ -748,6 +748,11 @@ export type PeakBase = {
   all_max_price?: number | null;
   all_max_qty?: number | null;
   all_max_t_ms?: number | null;
+  /** 미도달 벽(당일 극값이 지배하지 못한 벽) rank-1 — **cont 단일 계열**이라 close/max
+   *  구분이 없다(백엔드 AskPeakDualRow 주석). None = 구 캐시·legacy payload. */
+  unreached_price?: number | null;
+  unreached_qty?: number | null;
+  unreached_t_ms?: number | null;
 };
 
 /** hoga/api/models.py::AskPeak 미러. 후보 배열은 매도벽 표시용 ask-only 확장. */
@@ -761,6 +766,8 @@ export type AskPeak = PeakBase & {
   traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  /** 미도달 벽 top-3 — all_peaks 와 달리 /api/range 에서 벗기지 않는다(최대 3개). */
+  unreached_peaks?: AskPeakCandidate[];
 };
 
 /** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
@@ -772,6 +779,8 @@ export type BidPeak = PeakBase & {
   traded_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  /** ask 쪽 주석 참조 — 동일 규약 미러. */
+  unreached_peaks?: AskPeakCandidate[];
 };
 
 export type TradeVolumePocWire = {
@@ -790,58 +799,11 @@ export type DepthHeatmapPointWire = {
   bids: [number, number][];
   asks_max?: [number, number][];
   bids_max?: [number, number][];
-};
-
-/** 한 분봉 버킷의 단별 잔량 증감(백엔드 DepthDeltaPoint). asks/bids =
- *  [price, in_qty, out_qty] (in ≥ 0, out ≤ 0, 증감 0 가격 미포함).
- *  ask_tick/bid_tick = 셀 높이용 호가단위(관측 불가 0). */
-export type DepthDeltaPointWire = {
-  t_ms: number;
-  asks: [number, number, number][];
-  bids: [number, number, number][];
-  ask_tick: number;
-  bid_tick: number;
-};
-
-/** 호가벽 급증 이벤트(백엔드 WallSurgeEvent).
- *
- *  `kind` 는 baseline 을 어디서 구했는지이자 곧 **시점 신뢰도**다 — `pierce`(반대측
- *  자리였다 = 0 확정) · `grow`(창 안 관측 대비)는 초 단위로 정확하고, `reappear`(창 밖,
- *  당일 마지막 관측 대비)는 크기만 정확하다. `blind_ms` 가 그 불확실성의 폭이며
- *  reappear 일 때만 채워진다.
- *
- *  `outcome` 이 null 이면 **결말 미정** — 데이터 끝에서 추적 창이 덜 찬 사건이다.
- *  "아직 모른다" 와 "버텼다(held)" 는 다른 사실이라 렌더가 미정색으로 가른다. */
-export type WallSurgeKind = 'pierce' | 'grow' | 'reappear';
-export type WallSurgeOutcome = 'consumed' | 'broken' | 'pulled' | 'held';
-
-export type WallSurgeEventWire = {
-  t_ms: number;
-  side: 'ask' | 'bid';
-  price: number;
-  qty: number;
-  jump: number;
-  total: number;
-  kind: WallSurgeKind;
-  blind_ms?: number | null;
-  outcome?: WallSurgeOutcome | null;
-  filled_qty: number;
-  duration_ms?: number | null;
-};
-
-/** 화면 라벨. wire 는 영문이고 한글은 여기서만 붙인다 — 백엔드가 값을 늘리면
- *  계약 테스트 2층이 이 union 과 대조해 실패시킨다(#1183 의 재발 방지). */
-export const WALL_SURGE_KIND_LABEL: Record<WallSurgeKind, string> = {
-  pierce: '스프레드 관통',
-  grow: '레벨 증량',
-  reappear: '재등장',
-};
-
-export const WALL_SURGE_OUTCOME_LABEL: Record<WallSurgeOutcome, string> = {
-  consumed: '체결소화',
-  broken: '가격돌파',
-  pulled: '취소',
-  held: '잔존',
+  /** 가격대마다 따로 잰 최댓값 — `asks_max`(총잔량 최대 **순간의 사진**)와 축이 다르다.
+   *  길이가 10 고정이 아니고(그 버킷에 등장한 distinct 가격 수), 세로로 읽으면 실제로
+   *  동시에 존재한 적 없는 호가창이다. 대신 각 셀이 「당일 최대벽」과 같은 값이다. */
+  asks_price_max?: [number, number][];
+  bids_price_max?: [number, number][];
 };
 
 export type RangeBundle = {
@@ -858,6 +820,14 @@ export type RangeBundle = {
   program_trade?: ProgramTradeSeries;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
+  /** 이 (code, source, venue) 의 **가장 오래된 캡처 거래일**(YYYYMMDD) — 없으면 null.
+   *
+   *  디스크 모드(hogaplay 우회) 분봉 좌팬의 **바닥**이다. 벤더 모드에는 250일 벽이
+   *  있지만 디스크 모드의 끝은 벽이 아니라 캡처 유무이고, 프론트는 그걸 알 방법이
+   *  없었다 — 그래서 캡처 시작 이전으로 무한히 팬해 **빈 화면 + 「과거 불러오는 중」이
+   *  계속** 뜨는 상태가 됐다(2026-08-26 신고: 028050 은 26-01-06 부터인데 창이
+   *  25-11-17 까지 갔다). 구백엔드는 부재 → optional. */
+  earliest_captured_date?: string | null;
   /** ADR-0020 invariant outcomes surfaced by hoga/api/models.py::RangeBundle. */
   excluded_dates?: RangeExcludedDate[];
   data_warnings?: RangeDateWarning[];
@@ -882,7 +852,5 @@ export type RangeBundle = {
   /** 버킷별 10호가 잔량 스냅샷(호가 잔량 히트맵). 각 포인트는 t_ms 버킷 하나의
    *  매도/매수 [price, qty] 최대 10단계. 멀티데이 병합은 t_ms 단위 latest-wins. */
   depth_heatmap?: DepthHeatmapPointWire[];
-  depth_delta?: DepthDeltaPointWire[];
-  wall_surge?: WallSurgeEventWire[];
   broker_late_entries: BrokerLateEntryEvent[];
 };

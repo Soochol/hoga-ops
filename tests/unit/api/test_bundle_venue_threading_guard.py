@@ -56,6 +56,10 @@ GUARDED = (
     _HOGA / "live" / "kiwoom_daily_candles.py",
     _HOGA / "live" / "kiwoom_minute_candles.py",
     _HOGA / "live" / "kiwoom_multi_quote.py",
+    # peak 캐시 워밍(배치). venue 로 파케이 경로와 캐시 경로를 **둘 다** 정하므로,
+    # 누락하면 NXT/UN 을 KRX 값으로 데우는 것이 아니라 그 두 venue 가 영영 콜드로
+    # 남는다 — 조용한 성능 결함이라 더 늦게 발견된다.
+    _HOGA / "api" / "peak_prewarm.py",
 )
 
 

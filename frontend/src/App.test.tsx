@@ -270,15 +270,17 @@ describe('App 테마 — 브라우저 탭 전역', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('obsidian');
   });
 
-  it('auto 는 탭마다 자기 경로로 풀린다 (공유되는 것은 선호값이지 결과 테마가 아니다)', () => {
+  it('공유되는 값이 라우트와 무관하게 그대로 적용된다', () => {
+    // `auto` 가 있던 시절 이 테스트는 "탭마다 자기 경로로 푼다" 였다(같은 이벤트를
+    // 받은 /live 탭은 obsidian, /inventory 탭은 ledger). 제거 후에는 **어느 탭이든
+    // 같은 결과**가 계약이다 — 선호가 곧 테마이기 때문이다.
     useThemePrefsStore.setState({ themePreference: 'ledger' });
     wrap(<div>unused</div>, '/live');
 
-    localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'auto' }));
+    localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: 'toss-dark' }));
     fireEvent(window, new StorageEvent('storage', { key: 'ui.themePreference.v1' }));
 
-    // 이 탭은 /live 라 obsidian. 같은 이벤트를 받은 /inventory 탭은 ledger 로 푼다.
-    expect(document.documentElement.getAttribute('data-theme')).toBe('obsidian');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('toss-dark');
   });
 
   it('언마운트하면 구독을 놓는다', () => {

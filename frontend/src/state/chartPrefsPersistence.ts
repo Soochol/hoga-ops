@@ -8,7 +8,6 @@ import {
   resolveIndicatorModalPrefs,
   type ChartLineWidth,
   type ChartViewPrefs,
-  type DayBoundaryLineWidth,
   type IndicatorModalByTimeframe,
   type IndicatorModalPrefKey,
 } from './chartPrefs';
@@ -20,14 +19,11 @@ import { attachPersistence } from './persistentSubscriber';
 export const CHART_PREFS_KEY = 'hoga.chart.prefs.v1';
 const WRITE_DEBOUNCE_MS = 250;
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-const DAY_BOUNDARY_WIDTHS = new Set([1, 2, 3, 4]);
-
-function isDayBoundaryLineWidth(v: unknown): v is DayBoundaryLineWidth {
-  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
-}
+/** `MAStylePicker` 가 제공하는 네 단계 — 모든 선 스타일이 공유한다. */
+const CHART_LINE_WIDTHS = new Set([1, 2, 3, 4]);
 
 function isChartLineWidth(v: unknown): v is ChartLineWidth {
-  return typeof v === 'number' && DAY_BOUNDARY_WIDTHS.has(v);
+  return typeof v === 'number' && CHART_LINE_WIDTHS.has(v);
 }
 
 /** 레지스트리 규칙으로 한 키의 값을 검증한다 — 무효면 undefined. */
@@ -63,12 +59,6 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
     const v = validatePrefValue(p.key, obj[p.key]);
     if (v !== undefined) (out as Record<string, unknown>)[p.key] = v;
   }
-  if (typeof obj.dayBoundaryColor === 'string' && HEX_COLOR_RE.test(obj.dayBoundaryColor)) {
-    out.dayBoundaryColor = obj.dayBoundaryColor.toUpperCase();
-  }
-  if (isDayBoundaryLineWidth(obj.dayBoundaryLineWidth)) {
-    out.dayBoundaryLineWidth = obj.dayBoundaryLineWidth;
-  }
   if (typeof obj.tradeHighlightColor === 'string' && HEX_COLOR_RE.test(obj.tradeHighlightColor)) {
     out.tradeHighlightColor = obj.tradeHighlightColor.toUpperCase();
   }
@@ -85,6 +75,67 @@ export function mergePrefs(raw: unknown): ChartViewPrefs {
   return out;
 }
 
+/**
+ * 구 **방향 공용** 최대벽 키 → 계열 셋으로 펼치는 표(2026-08-25).
+ *
+ * 라벨·레전드 셀·화살표·MA 필터 둘(+기간)은 방향당 하나였다가 계열마다 갈렸다. 저장은
+ * 기본값과의 sparse diff 라, 이 표가 없으면 **그 일곱을 손댔던 사용자만** 조용히 기본값으로
+ * 돌아간다(안 건드린 사용자는 애초에 저장된 값이 없어 아무 일도 안 일어난다). 되돌아가는
+ * 값이 「라벨 끔」·「MA 필터 끔」 같은 것이라 증상이 "왜 갑자기 라벨이 다시 뜨지" 로 온다.
+ *
+ * 펼친 값은 **세 계열 모두 같다** — 종전에 화면이 실제로 그렇게 동작했으므로 그것이
+ * 외양 무변화다.
+ *
+ * 언제 지워도 되는가: 이 키들이 저장 블롭에서 사라진 뒤. 한 번이라도 저장이 일어나면
+ * (`INDICATOR_MODAL_PREF_KEYS` 기준으로만 쓰므로) 구 키는 자연 소멸한다 — 즉 이 표는
+ * "아직 한 번도 설정을 안 만진 채 이 버전을 처음 여는 사용자" 를 위한 것이고, 그 창이
+ * 닫혔다고 판단되면 통째로 지우면 된다.
+ */
+const LEGACY_PEAK_WALL_FANOUT: Readonly<Record<string, readonly IndicatorModalPrefKey[]>> = {
+  askPeakLabelEnabled: [
+    'askPeakTradedLabelEnabled', 'askPeakUnreachedLabelEnabled', 'askPeakAllWallLabelEnabled',
+  ],
+  askPeakLegendCellEnabled: [
+    'askPeakTradedLegendCellEnabled', 'askPeakUnreachedLegendCellEnabled', 'askPeakAllWallLegendCellEnabled',
+  ],
+  askPeakRankArrowEnabled: [
+    'askPeakTradedRankArrowEnabled', 'askPeakUnreachedRankArrowEnabled', 'askPeakAllWallRankArrowEnabled',
+  ],
+  askPeakAboveMaEnabled: [
+    'askPeakTradedAboveMaEnabled', 'askPeakUnreachedAboveMaEnabled', 'askPeakAllWallAboveMaEnabled',
+  ],
+  askPeakAboveMaPeriod: [
+    'askPeakTradedAboveMaPeriod', 'askPeakUnreachedAboveMaPeriod', 'askPeakAllWallAboveMaPeriod',
+  ],
+  askPeakAboveDailyMaEnabled: [
+    'askPeakTradedAboveDailyMaEnabled', 'askPeakUnreachedAboveDailyMaEnabled', 'askPeakAllWallAboveDailyMaEnabled',
+  ],
+  askPeakAboveDailyMaPeriod: [
+    'askPeakTradedAboveDailyMaPeriod', 'askPeakUnreachedAboveDailyMaPeriod', 'askPeakAllWallAboveDailyMaPeriod',
+  ],
+  bidPeakLabelEnabled: [
+    'bidPeakTradedLabelEnabled', 'bidPeakUnreachedLabelEnabled', 'bidPeakAllWallLabelEnabled',
+  ],
+  bidPeakLegendCellEnabled: [
+    'bidPeakTradedLegendCellEnabled', 'bidPeakUnreachedLegendCellEnabled', 'bidPeakAllWallLegendCellEnabled',
+  ],
+  bidPeakRankArrowEnabled: [
+    'bidPeakTradedRankArrowEnabled', 'bidPeakUnreachedRankArrowEnabled', 'bidPeakAllWallRankArrowEnabled',
+  ],
+  bidPeakBelowMaEnabled: [
+    'bidPeakTradedBelowMaEnabled', 'bidPeakUnreachedBelowMaEnabled', 'bidPeakAllWallBelowMaEnabled',
+  ],
+  bidPeakBelowMaPeriod: [
+    'bidPeakTradedBelowMaPeriod', 'bidPeakUnreachedBelowMaPeriod', 'bidPeakAllWallBelowMaPeriod',
+  ],
+  bidPeakBelowDailyMaEnabled: [
+    'bidPeakTradedBelowDailyMaEnabled', 'bidPeakUnreachedBelowDailyMaEnabled', 'bidPeakAllWallBelowDailyMaEnabled',
+  ],
+  bidPeakBelowDailyMaPeriod: [
+    'bidPeakTradedBelowDailyMaPeriod', 'bidPeakUnreachedBelowDailyMaPeriod', 'bidPeakAllWallBelowDailyMaPeriod',
+  ],
+};
+
 /** 한 버킷 partial 을 검증하고 기본값과 diff 한다(sparse 정의 — v2 모델과 동일). */
 function sanitizeIndicatorModalBucket(raw: unknown): Partial<Record<IndicatorModalPrefKey, boolean | number>> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -94,6 +145,16 @@ function sanitizeIndicatorModalBucket(raw: unknown): Partial<Record<IndicatorMod
     if (!(key in partial)) continue;
     const v = validatePrefValue(key, partial[key]);
     if (v !== undefined && v !== DEFAULT_PREFS[key]) out[key] = v;
+  }
+  // 구 방향 공용 키를 계열 셋으로 펼친다. 새 키가 이미 저장돼 있으면 **그쪽이 이긴다** —
+  // 위 루프가 넣은 값을 덮으면 새 설정이 구 값으로 되돌아간다.
+  for (const [legacyKey, targets] of Object.entries(LEGACY_PEAK_WALL_FANOUT)) {
+    if (!(legacyKey in partial)) continue;
+    for (const key of targets) {
+      if (key in partial) continue;
+      const v = validatePrefValue(key, partial[legacyKey]);
+      if (v !== undefined && v !== DEFAULT_PREFS[key]) out[key] = v;
+    }
   }
   return out;
 }

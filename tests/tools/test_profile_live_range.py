@@ -48,7 +48,6 @@ def _manifest_payload(
             "program_trade_enabled": False,
             "trade_volume_poc_enabled": False,
             "depth_heatmap_enabled": False,
-            "depth_delta_enabled": False,
         },
     }
 
@@ -162,7 +161,6 @@ def test_profile_range_case_reports_timings_and_restores_bundle_functions(
             ask_peaks=[],
             bid_peaks=[],
             depth_heatmap=[],
-            depth_delta=[],
         )
 
     monkeypatch.setattr(bundle, "build_range_bundle", build_range_bundle)
@@ -186,7 +184,6 @@ def test_profile_range_case_reports_timings_and_restores_bundle_functions(
         "ask_peaks": 0,
         "bid_peaks": 0,
         "depth_heatmap": 0,
-        "depth_delta": 0,
     }
     function = result["functions"]["build_program_trade_series"]
     assert function["total_ms"] >= 0
@@ -262,8 +259,8 @@ def test_manifest_rejects_unknown_and_missing_required_fields() -> None:
         RangeRequestManifest.model_validate(unknown)
 
     missing = _manifest_payload()
-    del missing["request"]["depth_delta_enabled"]
-    with pytest.raises(ValidationError, match="depth_delta_enabled"):
+    del missing["request"]["depth_heatmap_enabled"]
+    with pytest.raises(ValidationError, match="depth_heatmap_enabled"):
         RangeRequestManifest.model_validate(missing)
 
 
@@ -387,10 +384,6 @@ def test_expected_profile_functions_volume_manifest_requires_distribution() -> N
         (
             {"depth_heatmap_enabled": True},
             frozenset({"build_depth_heatmap_slice"}),
-        ),
-        (
-            {"depth_delta_enabled": True},
-            frozenset({"build_depth_delta_slice"}),
         ),
     ],
 )

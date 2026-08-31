@@ -158,6 +158,9 @@ def _engine_with_meta_for_dates(dates):
         "regular_session_open_ms": 90_000_000,
         "regular_session_close_ms": 153_000_000,
     }
+    # 새 wire 필드(디스크 좌팬 바닥)는 pydantic 이 str|None 을 요구한다 —
+    # MagicMock 기본 반환이 그대로 들어가면 ValidationError 다.
+    eng.earliest_stock_date.return_value = None
     eng.indicators_cache = None
     return eng
 
@@ -701,7 +704,11 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
+    from hoga.api.models import (
+        DayVolumeDistribution,
+        ProgramTradeSeries,
+        VolumeDistributionBin,
+    )
     from hoga.tables.candles import ApiCandle
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
@@ -730,6 +737,19 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
         ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
         poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
+        # cutoff sidecar 의 소비처는 `volume_distributions` 하나뿐이다
+        # (`useVolumeDistributionCutoffProfile.ts`). 프로그램매매는 형제들과 달리
+        # `include_optional_sidecar_slices` 를 안 타서 **이 가드가 빠져 있었고**,
+        # 커서를 한 칸 옮길 때마다 오늘분 원해상도 ~845점이 다시 만들어졌다.
+        # ⚠ 빈 **모델**을 돌려준다(None 이 아니라). None 이면 가드가 없을 때 호출부가
+        # `RangeBundle` 검증에서 먼저 터져, 실패가 "가드가 빠졌다" 가 아니라 pydantic
+        # ValidationError 로 나온다 — 원인을 말하지 않는 red 다.
+        program_builder = stack.enter_context(
+            patch.object(
+                bundle_mod, "build_program_trade_series",
+                return_value=ProgramTradeSeries(),
+            )
+        )
 
         rb = build_range_bundle(
             mock_engine,
@@ -752,6 +772,7 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
     ask_bid_builder.assert_not_called()
     broker_builder.assert_not_called()
     poc_builder.assert_not_called()
+    program_builder.assert_not_called()
 
 
 def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
@@ -1510,13 +1531,15 @@ def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -
     assert bundle.depth_heatmap == []
 
 
-def test_build_range_bundle_strips_all_peak_rankings() -> None:
-    """range 응답의 ask/bid_peaks는 all_peaks/all_max_peaks 전체 랭킹을 싣지 않는다.
+def test_build_range_bundle_keeps_capped_all_peak_rankings() -> None:
+    """range 응답이 all_peaks/all_max_peaks 를 **그대로 싣는다**(2026-08-25).
 
-    두 배열은 하루당 수천 후보로 sidecar 페이로드의 99%인데 range 소비처가 읽지
-    않는다(전체 랭킹은 라이브 ask_peak_today 전용). traded_* 랭킹과
-    all_* 스칼라는 와이어 계약 그대로 남아야 한다. 캐시된 과거일 entry(빌더를
-    거치지 않는 경로)도 조립 시점 스트립으로 커버되는 계약의 회귀 가드."""
+    종전엔 벗겼다 — 배열이 하루당 수천 후보라 sidecar 페이로드의 99%였고 소비처가
+    없었기 때문이다. 이제 소스에서 top-3 로 캡하므로(snapshots `_side_row`) 크기
+    문제가 사라졌고, 프론트의 「전체 최대벽 표시 개수」가 그 3개를 읽는다.
+
+    **막는 방향**: 스트립이 되살아나 표시 개수 2·3 이 조용히 rank-1 로 떨어지는 것.
+    못 보는 것: 캡 자체(소스 계약이라 `test_peak_sweep_oracle` 이 본다)."""
     import contextlib
     from unittest.mock import patch
 
@@ -1547,13 +1570,12 @@ def test_build_range_bundle_strips_all_peak_rankings() -> None:
         )
 
     for peak in (rb.ask_peaks[0], rb.bid_peaks[0]):
-        assert peak.all_peaks == []
-        assert peak.all_max_peaks == []
+        assert [c.model_dump() for c in peak.all_peaks] == [candidate] * 4
+        assert [c.model_dump() for c in peak.all_max_peaks] == [candidate] * 4
         assert [c.model_dump() for c in peak.traded_peaks] == [candidate]
         assert (peak.all_price, peak.all_qty, peak.all_t_ms) == (70_300, 6000, 2)
-    # 원본 객체는 변형하지 않는다(캐시 공유 객체 오염 방지).
-    assert len(ask.all_peaks) == 4
-    assert len(bid.all_max_peaks) == 4
+    # 픽스처가 4개인 것은 의도다 — 이 자리는 **통과 여부**를 재고, 3개 캡은 소스
+    # 계약이라 오라클이 잰다. 여기서 캡을 재면 두 곳이 같은 것을 다르게 말한다.
 
 
 def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
@@ -1723,6 +1745,69 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     assert cache.has_ask_peak("005930", "20260610", "hogaplay", 180_000)
 
 
+def test_coarse_bucket_peaks_pin_1m_canon(tmp_path) -> None:
+    """굵은 봉 peak 은 **1분 정본**을 낸다 — 캐시 상태가 값을 바꾸지 않는다.
+
+    `all_max_peaks`·`traded_record_peaks` 는 봉 의존인데(`_peak_bucket_dedup` 이
+    `bucket_id` 로 접는다 — `test_bucket_dependent_fields_are_pinned_to_1m_canon`)
+    파생 경로가 재파생하지 못해 1분 값을 나른다. 그것을 **정본으로 확정**한 것이
+    `_peak_with_rep_outputs` 의 계약이고, 이 테스트가 그 계약을 조립 지점에서 건다.
+
+    **막는 방향**: 굵은 봉이 직접-굵은봉 계산으로 돌아가 **캐시 유무에 따라 값이
+    갈리는 것**. 2026-08-28 실측으로 실데이터 3일 중 2일에서 확인된 결함이고,
+    `ask_peak`/`bid_peak` 캐시 v12 범프가 그 규약 이전에 쌓인 항목을 걷어낸다.
+
+    **못 보는 것**: 오늘자. 오늘은 아직 이 파생 경로를 타지 않는다
+    (`_peak_slices_from_1m_cache` 가 `date == today_kst` 에 None 을 돌려준다).
+    """
+    from hoga.api.bundle import build_ask_bid_peak_slices
+    from hoga.api.past_indicators_cache import PastIndicatorsCache
+    from hoga.tables.snapshots import query_day_ask_bid_peak_dual
+    from tests.test_tables_snapshots import _peak_reagg_fixture
+
+    # 봉을 바꾸면 `all_max_peaks` 가 실제로 갈리는 픽스처(그 파일이 근거를 적는다).
+    _peak_reagg_fixture(tmp_path)
+    cache = PastIndicatorsCache(tmp_path / "cachedir")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
+    eng.conn = duckdb.connect()
+    kw = {
+        "code": "005930", "date": "20260610", "source": "hogaplay",
+        "today_kst": "20260613", "cache": cache,
+        "session_open_ms": 90_000_000, "session_close_ms": 153_000_000,
+    }
+
+    base_ask, base_bid = build_ask_bid_peak_slices(eng, bucket_ms=60_000, **kw)
+    cold_ask, cold_bid = build_ask_bid_peak_slices(eng, bucket_ms=300_000, **kw)
+    warm_ask, warm_bid = build_ask_bid_peak_slices(eng, bucket_ms=300_000, **kw)
+
+    # 직접-굵은봉 조회 = 정본이 **아닌** 쪽. 이것과 갈라져야 파생을 탔다는 증거가 된다.
+    direct_ask, direct_bid = query_day_ask_bid_peak_dual(
+        eng.conn, path=tmp_path / "snapshots.parquet",
+        trades_path=tmp_path / "trades.parquet", bucket_ms=300_000,
+        session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+
+    def _pq(peaks) -> list[tuple[int, int]]:
+        """와이어 모델과 행 dataclass 를 같은 축으로 — 타입이 달라 직접 비교가 안 된다."""
+        return [(p.price, p.qty) for p in peaks]
+
+    for side, base, cold, warm, direct in (
+        ("ask", base_ask, cold_ask, warm_ask, direct_ask),
+        ("bid", base_bid, cold_bid, warm_bid, direct_bid),
+    ):
+        assert base is not None and cold is not None and warm is not None, side
+        assert direct is not None, side
+        for field in ("all_max_peaks", "traded_record_peaks"):
+            assert getattr(cold, field) == getattr(base, field), f"{side} {field} 1분 정본"
+            assert getattr(warm, field) == getattr(cold, field), f"{side} {field} 콜드↔웜"
+        # 파생 경로를 실제로 탔는가 — 안 탔다면 직접-굵은봉 값이 나오고, 그건 이
+        # 픽스처에서 1분 값과 다르다(그 차이가 없으면 위 단언이 우연히 통과한다).
+        assert _pq(cold.all_max_peaks) != _pq(direct.all_max_peaks), (
+            f"{side}: 파생 경로를 안 타고 직접-굵은봉 값이 나왔다"
+        )
+
+
 def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
     """build_ask_peak_slice가 close 변종과 틱-max 변종(max_*)을 모두 배선한다."""
     from unittest.mock import MagicMock
@@ -1848,15 +1933,12 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
-    assert [c.model_dump() for c in p.all_peaks[:8]] == [
+    # **top-3 캡**(2026-08-25) — 종전엔 전량이라 `[:8]` 로 잘라 봤다. 이제 소스가
+    # 3개만 만든다(프론트 「표시 개수」 상한과 같은 수).
+    assert [c.model_dump() for c in p.all_peaks] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
         {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
-        {"price": 27000, "qty": 7000, "t_ms": 1781049660000},
-        {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
-        {"price": 25000, "qty": 3000, "t_ms": 1781049720000},
-        {"price": 25000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 29000, "qty": 500, "t_ms": 1781049660000},
     ]
 
 
@@ -2070,15 +2152,12 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
-    assert [c.model_dump() for c in p.all_peaks[:8]] == [
+    # **top-3 캡**(2026-08-25) — 종전엔 전량이라 `[:8]` 로 잘라 봤다. 이제 소스가
+    # 3개만 만든다(프론트 「표시 개수」 상한과 같은 수).
+    assert [c.model_dump() for c in p.all_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
-        {"price": 69800, "qty": 7000, "t_ms": 1781049660000},
-        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
-        {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
-        {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 69600, "qty": 500, "t_ms": 1781049660000},
     ]
 
 
@@ -2501,10 +2580,10 @@ def test_build_range_bundle_breathes_once_per_date():
             mode="candles",
         )
 
-    # **일자당 정확히 9회** = 루프 상단 1 + 빌더 블록 앞 8 (quote_ratio · peaks ·
-    # poc · broker_late · vdist · heatmap · delta · wall_surge). 지점 하나를 지우면
+    # **일자당 정확히 7회** = 루프 상단 1 + 빌더 블록 앞 6 (quote_ratio · peaks ·
+    # poc · broker_late · vdist · heatmap). 지점 하나를 지우면
     # 여기서 떨어진다 — 오늘 재계산(과거 36ms vs 오늘 1,379ms, 그중 peaks 577ms)이
     # 한 덩어리로 돌아가는 회귀다. **빌더를 추가하면 그 앞에 지점을 넣고 이 수를
     # 올릴 것** — mergeRangeBundles 가 필드를 전수 나열하는 것과 같은 규율이다.
-    assert breathe.call_count == 9 * len(dates)
+    assert breathe.call_count == 7 * len(dates)
 

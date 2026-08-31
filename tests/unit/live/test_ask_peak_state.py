@@ -3,6 +3,7 @@ import random
 from hoga.live.ask_peak_state import (
     _PENDING_MINUTE_SLACK,
     _TOUCH_WINDOW_MS,
+    _TRADED_RECORD_CAP,
     TodayAskPeakState,
     TodayBidPeakState,
 )
@@ -36,10 +37,17 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_qty": None,
         "traded_t_ms": None,
         "traded_peaks": [],
+        "traded_record_peaks": [],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
         "all_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        # 체결 0건 — 극값이 없으니 모든 벽이 미도달이다.
+        "unreached_price": 10_100,
+        "unreached_qty": 500,
+        "unreached_t_ms": at(10, 1_000),
+        "unreached_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "day_extreme": None,
     }
 
     state.ingest_trade(price=10_100, side=1, t_ms=at(10, 2_000))
@@ -50,10 +58,17 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_qty": 500,
         "traded_t_ms": at(10, 1_000),
         "traded_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
         "all_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        # 체결 극값(10_100)이 벽 가격에 도달 — 미도달에서 소급 제거된다.
+        "unreached_price": None,
+        "unreached_qty": None,
+        "unreached_t_ms": None,
+        "unreached_peaks": [],
+        "day_extreme": 10_100,
     }
 
 
@@ -274,3 +289,208 @@ def test_rank_one_matches_full_sort_first_element() -> None:
             assert _rank_one(peaks) == _ranked_peaks(peaks)[0]
 
     assert _rank_one([]) is None
+
+
+# ── 미도달(unreached) 계열 ────────────────────────────────────────────────────
+
+
+def test_unreached_eviction_revives_lower_ranked_wall():
+    """극값 전진이 1위를 소급 제거하면 **하위 벽이 되살아나야 한다** — top-3 offer
+    (`_offer_all`)로는 원리적으로 안 되는 성질이라 가격별 딕셔너리가 존재하는 이유다."""
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10), asks=[
+        {"price": 10_100, "qty": 900},   # 미도달 1위
+        {"price": 10_300, "qty": 300},   # 미도달 2위
+    ])
+
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_100, 900)
+
+    # 체결이 10_200 까지 도달 — 10_100 벽은 소급 제거, 10_300 이 1위로 부활.
+    state.ingest_trade(price=10_200, side=1, t_ms=at(11))
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_300, 300)
+    assert snap["day_extreme"] == 10_200
+    assert snap["unreached_peaks"] == [{"price": 10_300, "qty": 300, "t_ms": at(10)}]
+
+
+def test_unreached_skips_prices_already_dominated_at_insert():
+    """삽입 시점에 이미 극값 이하인 가격은 처음부터 담지 않는다 — 극값이 단조라
+    하루 스코프 정의(최종 극값 기준)와 일치한다."""
+    state = TodayAskPeakState()
+    state.ingest_trade(price=10_200, side=1, t_ms=at(10))
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[
+        {"price": 10_150, "qty": 900},   # 이미 도달된 가격 — 미도달 아님
+        {"price": 10_250, "qty": 100},
+    ])
+
+    snap = state.snapshot()
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (10_250, 100)
+
+
+def test_unreached_bid_symmetry_uses_day_low():
+    state = TodayBidPeakState()
+    state.ingest_orderbook(t_ms=at(10), bids=[
+        {"price": 9_900, "qty": 700},
+        {"price": 9_700, "qty": 200},
+    ])
+    state.ingest_trade(price=9_800, side=-1, t_ms=at(11))
+
+    snap = state.snapshot()
+    # 저가 9_800 이 9_900 을 지배(<=) — 9_700 만 미도달로 남는다.
+    assert (snap["unreached_price"], snap["unreached_qty"]) == (9_700, 200)
+    assert snap["day_extreme"] == 9_800
+
+
+def test_merge_from_absorbs_unreached_and_extreme_idempotently():
+    """재생본 흡수: 극값은 더 지배적인 쪽, 딕셔너리는 larger 병합 후 걷어냄 — 같은
+    재생본을 두 번 흡수해도 고정점이다(merge_from 의 멱등 규약)."""
+    live = TodayAskPeakState()
+    live.ingest_orderbook(t_ms=at(20), asks=[{"price": 10_400, "qty": 50}])
+
+    replay = TodayAskPeakState()
+    replay.ingest_orderbook(t_ms=at(5), asks=[
+        {"price": 10_300, "qty": 800},
+        {"price": 10_400, "qty": 400},
+    ])
+    replay.ingest_trade(price=10_350, side=1, t_ms=at(6))  # 10_300 은 재생 안에서 도달
+
+    live.merge_from(replay)
+    first = live.snapshot()
+    # 재생 극값(10_350)이 흡수돼 10_300 은 없고, 10_400 은 larger(400) 로 병합.
+    assert (first["unreached_price"], first["unreached_qty"]) == (10_400, 400)
+    assert first["day_extreme"] == 10_350
+
+    live.merge_from(replay)
+    assert live.snapshot() == first
+
+
+def _touch_wall(state, *, minute: int, price: int, qty: int, side: int = 1) -> None:
+    """분 `minute` 안에서 벽 하나를 세우고 같은 분 체결로 터치시킨다.
+
+    벽 시각은 `at(minute, 1_000)`, 체결은 `at(minute, 2_000)` — 기록 시퀀스의 정렬 키가
+    **벽 시각**이라는 것이 아래 테스트들의 판정축이므로 둘을 다른 값으로 둔다.
+    """
+    state.ingest_orderbook(t_ms=at(minute, 1_000), asks=[{"price": price, "qty": qty}])
+    state.ingest_trade(price=price, side=side, t_ms=at(minute, 2_000))
+
+
+def test_record_sequence_keeps_morning_records_that_top_three_drops():
+    """기록 시퀀스가 `traded_peaks` 와 **다른 축**임을 값으로 고정한다.
+
+    벽이 장중에 커지는 날(여기선 단조 증가)에 최종 크기순 top-3 은 오후 셋만 남긴다.
+    최대벽 강도 pane 의 계단은 "그 시점까지의 최대" 라 오전 기록이 있어야 하고,
+    그것이 이 계열이 따로 존재하는 이유다.
+    """
+    state = TodayAskPeakState()
+    for i, qty in enumerate([100, 200, 300, 400, 500]):
+        _touch_wall(state, minute=10 + i, price=10_000 + i * 10, qty=qty)
+
+    snap = state.snapshot()
+    assert [p["qty"] for p in snap["traded_peaks"]] == [500, 400, 300]
+    assert [p["qty"] for p in snap["traded_record_peaks"]] == [100, 200, 300, 400, 500]
+    assert [p["t_ms"] for p in snap["traded_record_peaks"]] == [
+        at(10 + i, 1_000) for i in range(5)
+    ]
+
+
+def test_record_sequence_orders_by_wall_time_not_touch_order():
+    """도착 순서 ≠ 시각 순서 — 나중에 닫힌 **앞선** 벽도 기록으로 남는다.
+
+    같은 분에서 큰 벽이 즉시 터치되고(그 분 극값이 이미 지배), 앞선 작은 벽은 나중
+    체결이 닫는다. 도착 순서로 running max 를 접으면 앞선 벽이 통째로 사라진다.
+    """
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[{"price": 10_100, "qty": 100}])
+    state.ingest_trade(price=10_000, side=1, t_ms=at(10, 2_000))   # 10_100 엔 못 닿는다
+    # 그 분 극값(10_000)이 이미 지배하는 가격 → 이 벽은 **즉시** 닫힌다.
+    state.ingest_orderbook(t_ms=at(10, 3_000), asks=[{"price": 10_000, "qty": 300}])
+    state.ingest_trade(price=10_100, side=1, t_ms=at(10, 4_000))   # 이제 앞선 벽이 닫힌다
+
+    assert [
+        (p["t_ms"], p["qty"]) for p in state.snapshot()["traded_record_peaks"]
+    ] == [(at(10, 1_000), 100), (at(10, 3_000), 300)]
+
+
+def test_late_arriving_earlier_wall_invalidates_the_records_after_it():
+    """뒤늦게 닫힌 **앞선 큰 벽**은 뒤 기록을 소급 무효화한다(순증가 불변식 복구)."""
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[{"price": 10_100, "qty": 300}])
+    state.ingest_trade(price=10_000, side=1, t_ms=at(10, 2_000))
+    state.ingest_orderbook(t_ms=at(10, 3_000), asks=[{"price": 10_000, "qty": 100}])
+    state.ingest_trade(price=10_100, side=1, t_ms=at(10, 4_000))
+
+    # 300 이 먼저 섰으므로 뒤의 100 은 "그 시점까지의 최대" 가 아니다.
+    assert [
+        (p["t_ms"], p["qty"]) for p in state.snapshot()["traded_record_peaks"]
+    ] == [(at(10, 1_000), 300)]
+
+
+def test_equal_quantity_is_not_a_record_first_arrival_wins():
+    """동률은 기록이 아니다 — `_peak_record_sequence`·`foldAskPeak` 의 strict `>` 규약."""
+    state = TodayAskPeakState()
+    _touch_wall(state, minute=10, price=10_000, qty=400)
+    _touch_wall(state, minute=11, price=10_050, qty=400)
+
+    assert [
+        (p["t_ms"], p["qty"]) for p in state.snapshot()["traded_record_peaks"]
+    ] == [(at(10, 1_000), 400)]
+
+
+def test_record_sequence_is_capped_from_the_tail():
+    """상한은 과거일과 같은 128, 자르는 쪽은 **뒤**다(앞을 자르면 오전이 다시 빈다)."""
+    state = TodayAskPeakState()
+    for i in range(_TRADED_RECORD_CAP + 5):
+        _touch_wall(state, minute=10 + i, price=10_000 + i, qty=100 + i)
+
+    records = state.snapshot()["traded_record_peaks"]
+    assert len(records) == _TRADED_RECORD_CAP
+    assert records[0]["qty"] == 100                    # 오전이 남는다
+    assert records[-1]["qty"] == 100 + _TRADED_RECORD_CAP - 1
+
+
+def test_merge_from_absorbs_record_sequence_idempotently():
+    """재생본의 기록 시퀀스는 **따로** 흡수된다 — `closed_traded`(top-3)엔 오전이 없다.
+
+    장중 재기동이 이 경로다: 라이브 상태는 재기동 이후만 보므로 오전 기록이 통째로
+    비고, 그 구멍을 재생본이 메운다.
+    """
+    replay = TodayAskPeakState()
+    for i, qty in enumerate([100, 200, 300, 400, 500]):
+        _touch_wall(replay, minute=10 + i, price=10_000 + i * 10, qty=qty)
+
+    live = TodayAskPeakState()
+    _touch_wall(live, minute=30, price=10_500, qty=600)
+
+    live.merge_from(replay)
+    first = [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_record_peaks"]]
+    assert first == [
+        *((at(10 + i, 1_000), 100 * (i + 1)) for i in range(5)),
+        (at(30, 1_000), 600),
+    ]
+
+    live.merge_from(replay)   # 멱등 — 같은 재생본을 두 번 흡수해도 고정점
+    assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_record_peaks"]] == first
+
+
+def test_bid_record_sequence_uses_the_same_maintenance():
+    """매수도 같은 기반 클래스를 쓴다 — 방향은 터치 판정에만 있다."""
+    state = TodayBidPeakState()
+    for i, qty in enumerate([100, 200, 300, 400]):
+        price = 10_000 - i * 10
+        state.ingest_orderbook(t_ms=at(10 + i, 1_000), bids=[{"price": price, "qty": qty}])
+        state.ingest_trade(price=price, side=1, t_ms=at(10 + i, 2_000))
+
+    assert [p["qty"] for p in state.snapshot()["traded_record_peaks"]] == [100, 200, 300, 400]
+
+def test_constants_mirror_the_past_day_path():
+    """오늘과 과거일이 **같은 규칙**으로 계산되는 것이 ADR-0156 의 요구인데, 두 상수 모두
+    주석으로만 묶여 있었다 — 값으로 묶는다.
+
+    막는 방향: 한쪽만 바뀌는 것. 못 보는 것: 두 값을 **같이** 바꾸는 변경(그건 의도된
+    변경이므로 여기서 막을 일이 아니다)과, 미러라고 주석에 적히지 않은 다른 상수들.
+    """
+    from hoga.tables import snapshots
+
+    assert _TOUCH_WINDOW_MS == snapshots.ONE_MINUTE_MS
+    assert _TRADED_RECORD_CAP == snapshots._PEAK_RECORD_CAP

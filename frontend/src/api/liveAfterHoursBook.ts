@@ -47,6 +47,20 @@ export interface LiveAfterHoursFill {
   qty: number;
 }
 
+/** 이 응답이 어디서 왔는가 — **두 값이 다른 계약이다**.
+ *
+ *   'kiwoom'  16:00–18:00 벤더 실시간. 계속 변하므로 폴링이 의미 있다.
+ *   'stored'  창 밖에서 백엔드가 내주는 그날 마지막 저장본(`after_hours_store`).
+ *             **더 이상 변하지 않는다** — 폴링을 걸지 말고, 화면은 "지금 호가" 가
+ *             아니라 "마지막 호가" 라고 말해야 한다. `exp_*` 와 `fills` 는 비어 있다
+ *             (저장하지 않는다 — 체결이 끝난 뒤의 "예상" 은 의미가 없다).
+ *
+ * ⚠ **named alias 인 것이 요점이다.** 필드 인라인 union 으로 두면 wire 계약 대조
+ * (`test_rest_wire_schema_contract` 2층)의 TS 파서가 이 쌍을 원리적으로 못 본다 —
+ * `MissingDateReason` 이 같은 이유로 alias 가 됐다. 백엔드가 값을 늘렸는데 여기가
+ * 그대로면 타입은 멀쩡하고 화면만 조용히 틀린다. */
+export type LiveAfterHoursSource = 'kiwoom' | 'stored';
+
 export interface LiveAfterHoursBookResponse {
   code: string;
   active: boolean;
@@ -86,7 +100,7 @@ export interface LiveAfterHoursBookResponse {
   /** 합성 체결(최신 먼저) — 성격과 한계는 `LiveAfterHoursFill`. */
   fills: LiveAfterHoursFill[];
   fetched_at_ms: number;
-  source: 'kiwoom';
+  source: LiveAfterHoursSource;
 }
 
 /** 시간외 단일가 창(16:00–18:00 KST, 주말 제외)인가 — 백엔드
@@ -111,10 +125,25 @@ export function isAfterHoursSinglePriceWindow(nowMs: number = Date.now()): boole
  *  그대로 벤더 유량이 되지는 않는다. */
 const REFETCH_MS = 5_000;
 
-export function useAfterHoursBook(code: string | null) {
-  const enabled = !!code && isAfterHoursSinglePriceWindow();
+/**
+ * @param opts.includeStored 창 **밖**에서도 조회할지. 그때 라우트는 벤더를 치지 않고
+ *   그날 마지막 저장본(`source: 'stored'`)을 준다 — 18:00 이후 그 호가를 볼 수 있는
+ *   유일한 경로다. 기본값 `false` 인 것이 중요하다: 모든 창이 종일 이걸 물으면
+ *   저장본이 없는 종목에까지 무의미한 왕복이 생긴다. 세션 토글이 시간외를 가리키는
+ *   창만 켠다(`bookSessionMode` 갈래 A).
+ */
+export function useAfterHoursBook(
+  code: string | null,
+  opts: { includeStored?: boolean } = {},
+) {
+  const inWindow = isAfterHoursSinglePriceWindow();
+  const enabled = !!code && (inWindow || opts.includeStored === true);
   return useQuery({
-    queryKey: ['live', 'after-hours-book', code] as const,
+    // **창 안/밖이 키에 들어간다.** 같은 키를 쓰면 18:00 을 넘긴 뒤에도 창 안에서
+    // 받아 둔 응답이 캐시에 남아 그대로 그려지고(폴링은 멎었으므로 갱신되지 않는다),
+    // 화면은 저장본이 아닌 것을 저장본 라벨 없이 계속 보인다. 키를 가르면 경계를
+    // 넘는 순간 한 번 다시 묻는다.
+    queryKey: ['live', 'after-hours-book', code, inWindow ? 'live' : 'stored'] as const,
     enabled,
     // 창 안에서만 돈다. 창을 벗어나면 `enabled` 가 false 가 되지만 React Query 는
     // 이미 잡힌 인터벌을 즉시 끊지 않으므로, 주기 함수에서도 한 번 더 판정한다.

@@ -16,43 +16,68 @@
  * reads the pref is still responsible for honoring the parent toggle too (the
  * sub-pref alone is not load-bearing). Nesting is one level — a gated toggle
  * must not itself be a parent.
+ *
+ * `group` (설정 모달 카테고리의 최상위 토글은 **필수**): ⚙️ 설정 모달의 소그룹
+ * (`CHART_TOGGLE_GROUPS`). 소그룹 매핑을 UI 쪽에 두면 토글 추가 시 두 곳을 고쳐야
+ * 하고 하나를 빠뜨리면 행이 조용히 사라진다 — 그래서 레지스트리가 소유한다
+ * (2026-08-26 설정 패널 리디자인, 프로토타입 C 채택). `SettingsSections` 는 그룹
+ * 순회로만 렌더하므로 group 없는 최상위 chart/trade-window 토글은 **렌더되지
+ * 않는다**; `SettingsSections.test.tsx` 의 레지스트리 가드가 그 누락을 빨갛게
+ * 만든다. `enabledBy` 로 게이트된 하위 토글은 부모를 따라가므로 group 을 갖지
+ * 않고, indicator-modal 카테고리는 소그룹이 없다.
+ *
+ * **이 배열의 chart 카테고리 구간은 등록 순서 = 화면 순서다** (`IndicatorPrefRows`
+ * 의 기존 계약). 같은 group 의 엔트리를 이웃하게 유지할 것.
  */
+import {
+  PEAK_WALL_FAMILY_NUMERICS,
+  PEAK_WALL_FAMILY_TOGGLES,
+} from './peakWallFamilyPrefs';
+
 export const CHART_TOGGLES = [
-  {
-    key: 'auctionWindowMask',
-    label: '동시호가 구간 지표 숨김',
-    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
-    default: true,
-  },
-  {
-    key: 'dayBoundaryEnabled',
-    label: '날짜 구분선',
-    description: '분봉 차트에서 거래일이 바뀌는 지점에 세로 점선을 표시합니다.',
-    default: true,
-  },
-  {
-    key: 'horizontalGridLinesEnabled',
-    label: '가로 구분선',
-    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
-    default: true,
-  },
-  {
-    key: 'verticalGridLinesEnabled',
-    label: '세로 구분선',
-    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
-    default: true,
-  },
+  // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
   {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
     description: '캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
     default: false,
+    group: 'candle',
   },
   {
     key: 'candleAlwaysOnTop',
     label: '캔들이 항상 위',
     description: '캔들 pane에서 이동평균선 등 같은 pane의 보조 지표보다 캔들을 위에 그립니다.',
     default: false,
+    group: 'candle',
+  },
+  {
+    key: 'auctionWindowMask',
+    label: '동시호가 구간 지표 숨김',
+    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
+    default: true,
+    group: 'candle',
+  },
+  {
+    key: 'candleTooltipEnabled',
+    label: '캔들 정보 툴팁',
+    description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
+    default: false,
+    group: 'candle',
+  },
+  // ── 차트 › 격자 · 구분선 ───────────────────────────────────────────
+  {
+    key: 'horizontalGridLinesEnabled',
+    label: '가로 구분선',
+    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
+    default: true,
+    group: 'grid',
+  },
+  {
+    key: 'verticalGridLinesEnabled',
+    label: '세로 구분선',
+    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
+    default: true,
+    group: 'grid',
   },
   {
     key: 'ratioOutlierFilterEnabled',
@@ -78,12 +103,7 @@ export const CHART_TOGGLES = [
     default: false,
     category: 'indicator-modal',
   },
-  {
-    key: 'candleTooltipEnabled',
-    label: '캔들 정보 툴팁',
-    description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
-    default: false,
-  },
+  // ── 차트 › 창 간 동기화 ────────────────────────────────────────────
   {
     key: 'cursorSyncCrossSymbol',
     label: '크로스헤어 동기화 — 다른 종목까지',
@@ -95,6 +115,7 @@ export const CHART_TOGGLES = [
       + '표시하고(지수 창 포함), 끄면 같은 종목을 보는 창끼리만 표시합니다. '
       + '그 날이 상대 창에 없으면 가장자리에 방향과 날짜만 표시합니다.',
     default: true,
+    group: 'sync',
   },
   {
     key: 'rangeSyncEnabled',
@@ -106,13 +127,16 @@ export const CHART_TOGGLES = [
       + '휠로 움직일 때만 따라가며 새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 '
       + '창끼리만 동작하고 종목 범위는 위 설정을 따릅니다.',
     default: true,
+    group: 'sync',
   },
+  // ── 차트 › 가격 표시 ───────────────────────────────────────────────
   {
     key: 'highLowLabelsEnabled',
     label: '고저 극값 라벨',
     description:
       '현재 보이는 차트 범위의 최고가·최저가 봉에 현재가의 극값 대비율(가격·%·시각) 라벨을 표시합니다. (고가=빨강, 저가=파랑)',
     default: true,
+    group: 'price',
   },
   {
     key: 'highLowHighLineEnabled',
@@ -151,19 +175,12 @@ export const CHART_TOGGLES = [
     label: 'VI/상하한가 선',
     description: '가격이 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 가격선으로 표시합니다.',
     default: true,
+    group: 'price',
   },
   {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
     description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'wallSurgeLabelEnabled',
-    label: '급증 마커 잔량 라벨',
-    description:
-      '화면에 보이는 마커 중 증가량 상위 몇 건에 잔량 라벨을 상시 표시합니다. 하루 수십 건이라 전건 라벨은 서로 겹칩니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -205,91 +222,11 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
-    key: 'askPeakLabelEnabled',
-    label: '최대벽 라벨 표시',
-    description: '당일 매도 최대벽 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'askPeakRankArrowEnabled',
-    label: '상위벽 순위 화살표',
-    description:
-      '레전드 상위 3개 매도벽이 걸린 분봉의 고가 위에 ↓ 화살표와 순위를 찍습니다. 수평선은 벽 가격에 그려지므로 어느 봉이었는지는 이 화살표로 읽습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'askPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매도 최대벽을 계산합니다.',
-    default: false,
-    category: 'indicator-modal',
-  },
-  {
-    // 방향을 키 이름에 박아 둔다 — 매도는 위, 매수는 아래로 **비대칭**이라
-    // `askPeakMaFilterEnabled` 같은 중립 이름이면 코드에서 방향을 다시 찾아야 한다.
-    key: 'askPeakAboveMaEnabled',
-    label: '이동평균선 위 벽만',
-    description:
-      '벽이 걸린 분봉의 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    // 형제: `askPeakAboveMaEnabled`(현재 보고 있는 분봉의 MA). 둘은 **독립 필터**라 둘 다
-    // 켜면 교집합이다 — 분봉 MA 위 **그리고** 일봉 MA 위인 벽만 남는다.
-    key: 'askPeakAboveDailyMaEnabled',
-    label: '일봉 이동평균선 위 벽만',
-    description:
-      '벽이 걸린 거래일의 일봉 이동평균선보다 높은 가격의 매도 최대벽만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
     key: 'bidPeakIntraMax',
     label: '분봉 내 최댓값 기준',
     description:
       '분봉 종가 호가창 대신 분봉 내 순간 최대 매수벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
     default: false,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakLabelEnabled',
-    label: '최대벽 라벨 표시',
-    description: '당일 매수 최대벽 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakRankArrowEnabled',
-    label: '상위벽 순위 화살표',
-    description: '레전드 상위 3개 매수벽이 걸린 분봉의 저가 아래에 ↑ 화살표와 순위를 찍습니다. 매도의 거울입니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakVisibleTimeCutoff',
-    label: '보이는 최신 봉 기준',
-    description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매수 최대벽을 계산합니다.',
-    default: false,
-    category: 'indicator-modal',
-  },
-  {
-    // 매도의 거울: 저항은 평균 위, 지지는 평균 아래에 선다는 읽기의 대칭.
-    key: 'bidPeakBelowMaEnabled',
-    label: '이동평균선 아래 벽만',
-    description:
-      '벽이 걸린 분봉의 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
-    default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'bidPeakBelowDailyMaEnabled',
-    label: '일봉 이동평균선 아래 벽만',
-    description:
-      '벽이 걸린 거래일의 일봉 이동평균선보다 낮은 가격의 매수 최대벽만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
-    default: true,
     category: 'indicator-modal',
   },
   {
@@ -299,6 +236,25 @@ export const CHART_TOGGLES = [
       '분봉 종가 호가창 대신 그 분봉 내 총잔량이 가장 컸던 순간의 10호가를 히트맵 소스로 사용합니다. 강도 정규화도 같은 최댓값 소스를 기준으로 맞춥니다.',
     default: false,
     category: 'indicator-modal',
+  },
+  {
+    // 부모(`depthHeatmapIntraMax`)와 **축이 다르다**: 부모는 "언제" 를 하나 고르고
+    // (그 분에서 **총잔량**이 최고였던 순간), 이 토글은 "무엇의" 최댓값을 각자 잰다.
+    // 그래서 부모만 켠 상태에서 개별 가격대의 값은 **그 가격대의 최댓값이 아니다** —
+    // 총잔량 기준으로 고른 사진에 우연히 찍힌 값이고, 종가보다 작을 수도 있다
+    // (005930 20260825 14:35 260,000원: max 179,217 < close 179,435 실측).
+    //
+    // 하위 토글인 이유: 부모가 close↔분봉 내 최댓값을 가르고 이 토글은 **그 안에서**
+    // 방식을 고른다. 형제 boolean 두 개면 "부모 OFF + 자식 ON" 이라는 무의미한 상태가
+    // 생기는데, `enabledBy` 게이트는 그 조합을 화면에서 원리적으로 없앤다.
+    // (3-way select 가 뜻에는 더 맞지만 chartPrefs 는 토글·숫자 두 종류뿐이다.)
+    key: 'depthHeatmapPerPriceMax',
+    label: '가격대마다 따로 최댓값',
+    description:
+      '각 가격대가 그 분봉에서 가장 컸던 잔량을 씁니다. 「당일 최대벽」과 같은 기준이라 두 값이 일치합니다. 다만 한 세로줄은 여러 순간의 값을 모은 것이라 실제로 동시에 존재한 호가창은 아닙니다. 강도 정규화도 같은 소스를 따릅니다.',
+    default: false,
+    category: 'indicator-modal',
+    enabledBy: 'depthHeatmapIntraMax',
   },
   {
     // 가독성 옵션: 10호가를 전부 칠하면 캔들이 색 벽에 묻힌다. 각 분봉에서 실제로
@@ -318,7 +274,14 @@ export const CHART_TOGGLES = [
       '체결가 × 체결량이 기준 금액 이상인 체결의 체결량 칸을 배경색으로 강조합니다.',
     default: true,
     category: 'trade-window',
+    group: 'trade',
   },
+  // ── 당일 최대벽 계열별 축 ──────────────────────────────────────────
+  // 라벨·화살표·레전드 셀·MA 필터 둘은 **계열마다** 따로 산다(체결된 벽 · 미도달 벽 ·
+  // 전체 최대벽). 42개 엔트리가 여기 본문에 있으면 나머지 항목이 그 사이에 파묻혀서
+  // 별 파일로 뺐다 — `as const` tuple 은 spread 로도 타입이 보존되므로 키 타입 ·
+  // 기본값 · 저장 검증 · 행 렌더의 파생은 하나도 달라지지 않는다.
+  ...PEAK_WALL_FAMILY_TOGGLES,
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];
@@ -353,6 +316,31 @@ export function gatedByOf(
   t: (typeof CHART_TOGGLES)[number],
 ): ChartToggleKey | undefined {
   return 'enabledBy' in t ? t.enabledBy : undefined;
+}
+
+/** ⚙️ 설정 모달의 소그룹 — **순서가 곧 화면 순서**다(2026-08-26 설정 패널 리디자인,
+ *  프로토타입 C 채택). `SettingsSections` 가 이 목록을 순회하며 각 그룹의 최상위
+ *  토글(`groupOf`)을 모아 소제목 아래 렌더한다. 그룹 추가 = 여기 한 줄 + 토글의
+ *  `group` 필드. 카테고리(섹션)와 직교한다 — chart 섹션이 4개, trade-window 섹션이
+ *  1개를 쓴다. */
+export const CHART_TOGGLE_GROUPS = [
+  { id: 'candle', label: '캔들 · 지표' },
+  { id: 'grid', label: '격자 · 구분선' },
+  { id: 'sync', label: '창 간 동기화' },
+  { id: 'price', label: '가격 표시' },
+  { id: 'trade', label: '체결 강조' },
+] as const;
+
+export type ChartToggleGroupId = (typeof CHART_TOGGLE_GROUPS)[number]['id'];
+
+/** Resolve a CHART_TOGGLES entry's settings-modal subgroup, or undefined for
+ *  entries that don't render as top-level settings rows (indicator-modal
+ *  category, and `enabledBy`-gated children that follow their parent). Same
+ *  `in` narrowing trick as `categoryOf`. */
+export function groupOf(
+  t: (typeof CHART_TOGGLES)[number],
+): ChartToggleGroupId | undefined {
+  return 'group' in t ? t.group : undefined;
 }
 
 /**
@@ -409,18 +397,6 @@ export const CHART_NUMERIC_PREFS = [
     enabledBy: 'ratioOutlierFilterEnabled',
   },
   {
-    key: 'wallSurgeLabelCount',
-    label: '급증 마커 라벨 개수',
-    description:
-      '증가량 상위 몇 건까지 잔량 라벨을 상시 표시할지. 나머지는 마커만 찍고 호버로 봅니다 — ' +
-      '하루 수십 건이라 전건 라벨은 서로 겹칩니다. 기준은 **화면에 보이는 범위**라, ' +
-      '확대·축소하면 그 안에서 다시 상위 N 건을 고릅니다.',
-    default: 4,
-    min: 0,
-    max: 10,
-    enabledBy: 'wallSurgeLabelEnabled',
-  },
-  {
     key: 'surgeApproachPct',
     label: '급증 근접 문턱 — 직전 고가 대비(%)',
     description: '총잔량이 당일 직전 고가의 이 비율(%)까지 다시 차오르면 급증 마커를 1회 표시합니다. 기본 95%. 낮출수록 더 일찍·자주 잡습니다.',
@@ -464,53 +440,34 @@ export const CHART_NUMERIC_PREFS = [
     kind: 'time',
   },
   {
-    // 범위는 이동평균선 지표의 슬롯 기간(MA_PERIOD_MIN/MAX = 2/400)과 맞춘다. 그 상수를
-    // import 하지 않는 것은 의존 방향 때문 — chartPrefs 는 live 지표 저장소를 모른다.
-    // 기본 20 은 사용자가 지목한 값이자 기본 MA 슬롯(5·20·60·120)에 있는 기간.
-    key: 'askPeakAboveMaPeriod',
-    label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'askPeakAboveMaEnabled',
-  },
-  {
-    // 일봉 MA 는 거래일 계단 함수라(ADR-0073) 기간 단위가 **거래일**이다.
-    key: 'askPeakAboveDailyMaPeriod',
-    label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'askPeakAboveDailyMaEnabled',
-  },
-  {
-    key: 'bidPeakBelowDailyMaPeriod',
-    label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'bidPeakBelowDailyMaEnabled',
-  },
-  {
-    key: 'bidPeakBelowMaPeriod',
-    label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
-    default: 20,
-    min: 2,
-    max: 400,
-    enabledBy: 'bidPeakBelowMaEnabled',
-  },
-  {
     // ⚠ 이름이 오해를 부른다: `AllPrice` 는 **체결된 벽**의 개수다. ADR-0084 시절
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `askPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
     // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
+    // ⚠ 형제 키 둘이 더 있다: `askPeakAllWallRankLimit`(전체 최대벽) ·
+    //    `askPeakUnreachedRankLimit`(미도달 벽). 셋을 grep 으로 혼동하지 말 것 —
+    //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'askPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakAllWallRankLimit',
+    label: '전체 최대벽 표시 개수',
+    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakUnreachedRankLimit',
+    label: '미도달 벽 표시 개수',
+    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -521,9 +478,30 @@ export const CHART_NUMERIC_PREFS = [
     // 「모든 가격 기준 벽」이라는 뜻이었고, 사라진 형제 `bidPeakAllPriceColor` 는
     // 반대로 **미체결** 선의 색이었다(ADR-0156 에서 함께 제거). 저장된 키라 개명하지
     // 않는다 — 개명하면 사용자 설정이 조용히 기본값으로 돌아간다.
+    // ⚠ 형제 키 둘이 더 있다: `bidPeakAllWallRankLimit`(전체 최대벽) ·
+    //    `bidPeakUnreachedRankLimit`(미도달 벽). 셋을 grep 으로 혼동하지 말 것 —
+    //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'bidPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
     description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakAllWallRankLimit',
+    label: '전체 최대벽 표시 개수',
+    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakUnreachedRankLimit',
+    label: '미도달 벽 표시 개수',
+    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -552,13 +530,12 @@ export const CHART_NUMERIC_PREFS = [
     enabledBy: 'tradeHighlightEnabled',
     category: 'trade-window',
   },
+  // 계열별 MA 기간 — 각 계열의 필터 토글이 `enabledBy` 로 게이트한다(위 spread 의 짝).
+  ...PEAK_WALL_FAMILY_NUMERICS,
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];
 
-export const DAY_BOUNDARY_COLOR_DEFAULT = '#64748B';
-export const DAY_BOUNDARY_LINE_WIDTH_DEFAULT: 1 | 2 | 3 | 4 = 1;
-export type DayBoundaryLineWidth = 1 | 2 | 3 | 4;
 /** 선 두께 — `MAStylePicker` 가 제공하는 네 단계. */
 export type ChartLineWidth = 1 | 2 | 3 | 4;
 
@@ -650,8 +627,6 @@ export type ChartViewPrefs =
   & { [K in ChartLineStyleKey as `${K}Color`]: string }
   & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth }
   & {
-    dayBoundaryColor: string;
-    dayBoundaryLineWidth: DayBoundaryLineWidth;
     tradeHighlightColor: string;
     // VI/상하한가 선 스타일 — 원래 지표 버킷(창×봉)에 있었는데, 정작 자기
     // 토글(`viLimitPriceDotsEnabled`)은 여기 전역이라 한 기능이 두 저장소로
@@ -681,8 +656,6 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
   ...LINE_STYLE_DEFAULTS,
-  dayBoundaryColor: DAY_BOUNDARY_COLOR_DEFAULT,
-  dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
   tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
   viLimitPriceLineColor: VI_LIMIT_PRICE_LINE_DEFAULT_COLOR,
   viLimitPriceLineWidth: VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH,
@@ -791,7 +764,6 @@ type ChartPrefsStore = ChartViewPrefs & {
   /** 지정한 (스코프 × 봉)의 indicator-modal 버킷만 비운다(드로어 "현재 봉 초기화").
    *  창 스코프에서는 **엔트리를 남기고** 그 봉 버킷만 비운다(livePage 와 같은 규약). */
   resetIndicatorModalBucketScoped: (scope: IndicatorScope, tf: LiveTimeframe) => void;
-  setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
   setTradeHighlightColor: (color: string) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
   /** `CHART_LINE_STYLES` 한 엔트리의 색·두께를 patch 한다. 색 `''` 는 "고르지 않음"
@@ -881,12 +853,6 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
 
     setPrefScoped: (scope, tf, key, value) => writePrefScoped(scope, tf, key, value),
 
-
-    setDayBoundaryStyle: (patch) =>
-      set((s) => ({
-        dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
-        dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
-      })),
 
     setTradeHighlightColor: (color) => set({ tradeHighlightColor: color }),
 

@@ -5,11 +5,12 @@ import {
   layoutPeakWallLabels,
   peakWallChipGeometry,
   peakXFromCoordinate,
+  peakWallLineStartX,
   LABEL_BOX_X_PAD_PX,
   LABEL_BOX_Y_PAD_PX,
   LABEL_FONT_PX,
   LABEL_GAP_PX,
-  PEAK_DOT_RADIUS_PX,
+  PEAK_MARKER_CLEARANCE_PX,
   inlinePeakWallSegmentsForDocking,
   livePeakWallDockedLabelsFromSegments,
   peakLabelBudgetForBarSpacing,
@@ -145,7 +146,7 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out).toEqual([
-      { price: 24500, label: '24,500, 16.6k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask' },
+      { price: 24500, label: '24,500, 16.6k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask', timeMarker: true },
     ]);
   });
 
@@ -251,7 +252,7 @@ describe('live peak-wall docked label helpers', () => {
     ], 'ask');
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#ec4899', time0: 1, time1: 2, peakTime: 1.5, side: 'ask' },
+      { price: 23500, label: '23,500, 17.2k', color: '#ec4899', time0: 1, time1: 2, peakTime: 1.5, side: 'ask', timeMarker: true },
     ]);
   });
 
@@ -263,7 +264,7 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask' },
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask', timeMarker: true },
     ]);
   });
 
@@ -285,7 +286,7 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask' },
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time0: 100, time1: 200, peakTime: 1.5, side: 'ask', timeMarker: true },
     ]);
   });
 
@@ -396,9 +397,26 @@ describe('peakWallChipGeometry', () => {
     const bid = peakWallChipGeometry({ ...base, side: 'bid' })!;
     expect(ask.bottom).toBeLessThan(base.lineY);
     expect(bid.top).toBeGreaterThan(base.lineY);
-    // 점(dot)을 덮지 않도록 GAP 에 더해 dot 반지름만큼 더 띄운다.
-    expect(base.lineY - ask.bottom).toBeCloseTo(LABEL_GAP_PX + PEAK_DOT_RADIUS_PX, 6);
-    expect(bid.top - base.lineY).toBeCloseTo(LABEL_GAP_PX + PEAK_DOT_RADIUS_PX, 6);
+    // 발생 시점 화살표를 덮지 않도록 GAP 에 더해 화살표 길이만큼 더 띄운다. 화살표는
+    // 매도=선 위 · 매수=선 아래로 뻗고 라벨도 같은 쪽이라 양쪽이 같은 값이다.
+    expect(base.lineY - ask.bottom).toBeCloseTo(LABEL_GAP_PX + PEAK_MARKER_CLEARANCE_PX, 6);
+    expect(bid.top - base.lineY).toBeCloseTo(LABEL_GAP_PX + PEAK_MARKER_CLEARANCE_PX, 6);
+  });
+
+  it('발생 시점 화살표를 끄면 회피 간격이 GAP 만 남는다 — 유령 회피 방지', () => {
+    // 화살표가 차지하던 자리를 계속 피하면 라벨이 **빈 공간을 피해** 떠 있게 된다.
+    // 두 방향 모두 재는 이유: clearance 는 한 값이지만 부호가 side 로 갈려서, 한쪽만
+    // 재면 부호를 잘못 태운 회귀를 못 본다.
+    const askOn = peakWallChipGeometry({ ...base, side: 'ask' })!;
+    const askOff = peakWallChipGeometry({ ...base, side: 'ask', timeMarker: false })!;
+    const bidOn = peakWallChipGeometry({ ...base, side: 'bid' })!;
+    const bidOff = peakWallChipGeometry({ ...base, side: 'bid', timeMarker: false })!;
+
+    expect(base.lineY - askOff.bottom).toBeCloseTo(LABEL_GAP_PX, 6);
+    expect(bidOff.top - base.lineY).toBeCloseTo(LABEL_GAP_PX, 6);
+    // 켠 쪽보다 선에 **가까워야** 한다 — 화살표 길이만큼 차이가 난다.
+    expect(askOff.bottom - askOn.bottom).toBeCloseTo(PEAK_MARKER_CLEARANCE_PX, 6);
+    expect(bidOn.top - bidOff.top).toBeCloseTo(PEAK_MARKER_CLEARANCE_PX, 6);
   });
 
   it('칩이 그날 구간을 넘지 않게 가둔다 — 이웃 날 위로 새지 않는다', () => {
@@ -467,5 +485,34 @@ describe('peakWallChipGeometry', () => {
   it('좌표가 유한하지 않으면 null — 그 프레임은 라벨을 건너뛴다', () => {
     expect(peakWallChipGeometry({ ...base, side: 'ask', peakX: Number.NaN })).toBeNull();
     expect(peakWallChipGeometry({ ...base, side: 'ask', lineY: Number.POSITIVE_INFINITY })).toBeNull();
+  });
+});
+
+describe('peakWallLineStartX', () => {
+  // 좌우 확장(기존)과 우측만(신규)의 **유일한 차이**가 이 시작 x 다. 끝 x 는 어느
+  // 쪽이든 x1 이라 여기 나오지 않는다 — 「그날 마감(오늘은 라이브 엣지)까지」가 두
+  // 모드의 공통 계약이다.
+  const DAY = { x0: 100, x1: 900 } as const;
+
+  it('공장값(생략)은 그날 시작에서 긋는다 — 저장이 없는 사용자는 종전 그림을 받는다', () => {
+    expect(peakWallLineStartX({}, 500, DAY.x0, DAY.x1)).toBe(100);
+    expect(peakWallLineStartX({ horizontalLineRightOnly: false }, 500, DAY.x0, DAY.x1)).toBe(100);
+  });
+
+  it('우측으로만 확장이면 벽이 걸린 x 에서 긋는다', () => {
+    expect(peakWallLineStartX({ horizontalLineRightOnly: true }, 500, DAY.x0, DAY.x1)).toBe(500);
+  });
+
+  // 클램프 red-check. `timeToCoordinate` 가 캔들 스냅 오차로 그날 구간 밖을 가리키면
+  // 클램프 없이는 선이 이웃 날로 새거나(왼쪽) 길이가 음수가 된다(오른쪽).
+  it('벽 x 가 그날 구간 밖이면 구간 안으로 잘린다', () => {
+    const on = { horizontalLineRightOnly: true };
+    expect(peakWallLineStartX(on, 40, DAY.x0, DAY.x1)).toBe(100);
+    expect(peakWallLineStartX(on, 1200, DAY.x0, DAY.x1)).toBe(900);
+  });
+
+  it('x0 > x1 로 뒤집혀 와도 두 끝 사이로 잘린다', () => {
+    // 좌표는 시간 순서를 보장하지 않는다(호출자가 bitmap 배율을 곱해 넘긴다).
+    expect(peakWallLineStartX({ horizontalLineRightOnly: true }, 40, 900, 100)).toBe(100);
   });
 });

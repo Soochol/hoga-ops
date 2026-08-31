@@ -77,6 +77,8 @@ function resetIndicatorState(): void {
     // 창 id 가 테스트 간 고정('w1')이라 여기까지 비워야 격리가 된다(ADR-0152).
     indicatorsByWindow: {},
     indicatorTimeframe: '1m',
+    // 삭제 undo 슬롯도 비운다 — 안 그러면 직전 테스트의 토스트가 다음 테스트로 샌다.
+    indicatorUndoToast: null,
     paneOrder: normalizePaneOrder([]),
     paneStretch: {},
     historicalFromDate: null,
@@ -103,10 +105,10 @@ beforeEach(() => {
 describe('useIndicatorActions — Provider 밖(전역 ambient 봉)', () => {
   it('ambient 봉 버킷에 쓰고 최상위 투영도 갱신한다', () => {
     const { result } = renderHook(() => useIndicatorActions());
-    result.current.setMovingAverageEnabled(false);
+    result.current.setAllMovingAveragesEnabled(false);
     // Provider 밖은 창이 없으므로 페이지 세트로 간다(ADR-0152 의 폴백).
-    expect(pageBucket('minute')?.movingAverageEnabled).toBe(false);
-    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(pageBucket('minute')?.movingAverages?.some((m) => m.enabled)).toBe(false);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
     expect(useLivePageStore.getState().indicatorsByWindow).toEqual({});
   });
 });
@@ -293,5 +295,90 @@ describe('useWindowViewGuard', () => {
     });
     const { result } = renderHook(() => useWindowViewGuard());
     expect(result.current()).toEqual({ code: 'index:KOSPI', timeframe: 'D' });
+  });
+});
+
+/**
+ * 칩 ✕ 의 삭제 + 실행취소 — **캡처 시점**이 이 그룹의 요점이다.
+ *
+ * 복원 대상(창×봉 버킷)을 되돌리는 순간에 다시 물으면, 토스트가 떠 있는 동안
+ * 사용자가 봉을 바꾸거나 다른 창을 포커스한 경우 **엉뚱한 버킷이 되살아난다**.
+ * 그래서 payload 가 삭제 시점의 스코프·봉을 싣는다.
+ */
+describe('removeMovingAverageWithUndo — 삭제 시점 캡처', () => {
+  it('창 버킷에서 지우고, 실행취소가 그 버킷을 되돌린다', () => {
+    const { result } = renderHook(() => useIndicatorActions(), {
+      wrapper: provider(windowValue('w1')),
+    });
+    const before = resolveIndicatorSettings(
+      useLivePageStore.getState().indicatorsByWindow['live:w1'] ?? {},
+      '5m',
+    ).movingAverages;
+    const target = before[1];
+
+    result.current.removeMovingAverageWithUndo(target.id);
+    expect(bucket('minute')?.movingAverages?.map((m) => m.id)).not.toContain(target.id);
+    expect(useLivePageStore.getState().indicatorUndoToast?.label).toContain(String(target.period));
+
+    useLivePageStore.getState().restoreIndicatorUndoToast();
+    expect(bucket('minute')?.movingAverages?.map((m) => m.id)).toEqual(before.map((m) => m.id));
+    expect(useLivePageStore.getState().indicatorUndoToast).toBeNull();
+  });
+
+  it('토스트 중 봉이 바뀌어도 복원은 **삭제 당시 버킷**으로 간다', () => {
+    seedWorkspace([chartWindow('w1', '5m')]);
+    const { result } = renderHook(() => useIndicatorActions(), {
+      wrapper: provider(windowValue('w1')),
+    });
+    const target = resolveIndicatorSettings(
+      useLivePageStore.getState().indicatorsByWindow['live:w1'] ?? {},
+      '5m',
+    ).movingAverages[0];
+    result.current.removeMovingAverageWithUndo(target.id);
+
+    // 사용자가 토스트를 보는 사이 창의 봉을 D 로 바꾼다.
+    seedWorkspace([chartWindow('w1', 'D')]);
+    useLivePageStore.getState().restoreIndicatorUndoToast();
+
+    // 되돌아온 곳은 분봉 버킷이어야 한다 — D 버킷은 손대지 않은 채로 남는다.
+    expect(bucket('minute')?.movingAverages?.map((m) => m.id)).toContain(target.id);
+    expect(bucket('D')?.movingAverages).toBeUndefined();
+  });
+
+  it('창 A 의 삭제는 창 B 버킷을 건드리지 않는다', () => {
+    seedWorkspace([chartWindow('w1'), chartWindow('w2')]);
+    const editor = renderHook(() => useIndicatorActions(), {
+      wrapper: provider(windowValue('w1')),
+    });
+    const target = resolveIndicatorSettings(
+      useLivePageStore.getState().indicatorsByWindow['live:w1'] ?? {},
+      '5m',
+    ).movingAverages[0];
+    editor.result.current.removeMovingAverageWithUndo(target.id);
+
+    expect(bucket('minute', 'w1')?.movingAverages?.map((m) => m.id)).not.toContain(target.id);
+    expect(bucket('minute', 'w2')?.movingAverages).toBeUndefined();
+  });
+
+  it('모르는 id 는 삭제도 토스트도 하지 않는다', () => {
+    const { result } = renderHook(() => useIndicatorActions(), {
+      wrapper: provider(windowValue('w1')),
+    });
+    result.current.removeMovingAverageWithUndo('nope');
+    expect(bucket('minute')?.movingAverages).toBeUndefined();
+    expect(useLivePageStore.getState().indicatorUndoToast).toBeNull();
+  });
+
+  it('마지막 슬롯까지 지울 수 있고, 실행취소가 되살린다', () => {
+    const { result } = renderHook(() => useIndicatorActions(), {
+      wrapper: provider(windowValue('w1')),
+    });
+    const ids = FACTORY_INDICATOR_SETTINGS.movingAverages.map((m) => m.id);
+    for (const id of ids) result.current.removeMovingAverageWithUndo(id);
+    expect(bucket('minute')?.movingAverages).toEqual([]);
+
+    // 마지막 삭제분만 되돌아온다(토스트는 1건 — 직전 스냅샷).
+    useLivePageStore.getState().restoreIndicatorUndoToast();
+    expect(bucket('minute')?.movingAverages?.map((m) => m.id)).toEqual([ids[ids.length - 1]]);
   });
 });

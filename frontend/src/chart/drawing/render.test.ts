@@ -11,12 +11,13 @@ import {
   renderHlinePriceBadge,
   renderTrendlineDraft,
   formatMeasureLabel,
+  lockBadgeAnchor,
   type ProjectCtx,
   dashPattern,
 } from './render';
 import { realMsToCanvasX, realMsToCanvasXClamped } from './chartCoordinates';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import type { Hline, Measure, Pencil, Text, Trendline, Vline } from './types';
+import type { Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -31,6 +32,8 @@ function makeCanvasSpy() {
     stroke: vi.fn(),
     fill: vi.fn(),
     fillRect: vi.fn(),
+    strokeRect: vi.fn(),
+    arc: vi.fn(),
     fillText: vi.fn(),
     rect: vi.fn(),
     roundRect: vi.fn(),
@@ -50,6 +53,8 @@ function makeCanvasSpy() {
   } as unknown as CanvasRenderingContext2D & {
     fillText: ReturnType<typeof vi.fn>;
     fillRect: ReturnType<typeof vi.fn>;
+    stroke: ReturnType<typeof vi.fn>;
+    arc: ReturnType<typeof vi.fn>;
     setLineDash: ReturnType<typeof vi.fn>;
     bezierCurveTo: ReturnType<typeof vi.fn>;
   };
@@ -513,5 +518,123 @@ describe('renderPencil — 서브-봉 오프셋', () => {
     const c = makeCanvasSpy();
     renderDrawing(c, { ...makeProjectCtxWithProjection(), barPx: 20 }, stroke([0.5]), false);
     expect(xs(c)).toEqual([20, 20, 30]);
+  });
+});
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('선택 핸들 — 잠긴 도형에는 그리지 않는다', () => {
+  const trendline: Trendline = {
+    id: 't1', kind: 'trendline',
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+  const rect: Rect = {
+    id: 'r1', kind: 'rect',
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle', fillOpacity: 0.1,
+  };
+
+  /** 핸들은 6×6 정사각 fillRect 다(`drawHandle`). 다른 fillRect(배지 배경 등)와
+   *  치수로 구분한다. */
+  function countHandles(c: ReturnType<typeof makeCanvasSpy>): number {
+    return c.fillRect.mock.calls.filter((args) => args[2] === 6 && args[3] === 6).length;
+  }
+
+  it('선택된 트렌드라인은 끝점 핸들 2개를 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), trendline, true);
+    expect(countHandles(c)).toBe(2);
+  });
+
+  it('잠긴 트렌드라인은 선택돼도 핸들을 안 그린다 — 잡을 수 없으니 광고하지 않는다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...trendline, locked: true }, true);
+    expect(countHandles(c)).toBe(0);
+  });
+
+  it('선택된 사각형은 모서리 핸들 4개를 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), rect, true);
+    expect(countHandles(c)).toBe(4);
+  });
+
+  it('잠긴 사각형은 선택돼도 모서리 핸들을 안 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...rect, locked: true }, true);
+    expect(countHandles(c)).toBe(0);
+  });
+
+  // 헤일로(선택 강조)는 남아야 한다 — 사용자가 무엇을 골랐는지 보이지 않으면
+  // 자물쇠 버튼이 어느 도형의 것인지 알 수 없다. 헤일로는 globalAlpha 0.3 으로
+  // 한 번 더 stroke 하는 것이라, 잠긴 쪽 stroke 횟수가 비선택보다 많아야 한다.
+  it('잠겨도 선택 헤일로는 남는다', () => {
+    const lockedSelected = makeCanvasSpy();
+    renderDrawing(lockedSelected, makeProjectCtxWithProjection(), { ...trendline, locked: true }, true);
+    const unselected = makeCanvasSpy();
+    renderDrawing(unselected, makeProjectCtxWithProjection(), { ...trendline, locked: true }, false);
+
+    expect(lockedSelected.stroke.mock.calls.length).toBeGreaterThan(
+      unselected.stroke.mock.calls.length,
+    );
+  });
+});
+
+// ── 잠금 배지 (ADR-0164 후속) ──────────────────────────────────────────────
+describe('잠금 배지', () => {
+  const hline: Hline = {
+    id: 'h1', kind: 'hline', price: 100,
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+  const trendline: Trendline = {
+    id: 't1', kind: 'trendline',
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  /** 배지 shackle 은 유일한 `arc` 호출이다 — 다른 렌더 경로는 arc 를 안 쓴다. */
+  const badges = (c: ReturnType<typeof makeCanvasSpy>) => c.arc.mock.calls.length;
+
+  it('잠기지 않은 도형에는 배지를 안 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), hline, false);
+    expect(badges(c)).toBe(0);
+  });
+
+  it('잠긴 도형에는 배지를 그린다 — 선택하지 않아도 알아볼 수 있어야 한다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...hline, locked: true }, false);
+    expect(badges(c)).toBe(1);
+  });
+
+  it('선택 여부와 무관하게 그린다', () => {
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtxWithProjection(), { ...hline, locked: true }, true);
+    expect(badges(c)).toBe(1);
+  });
+
+  // hline 은 화면 전폭이라 의미 있는 X 가 없다 — 항상 화면에 있는 왼쪽 가장자리에
+  // 고정한다. priceToY 가 300-price 이므로 price 100 → y 200.
+  it('hline 배지는 왼쪽 가장자리, 선의 y 위에 붙는다', () => {
+    const a = lockBadgeAnchor(makeProjectCtxWithProjection(), hline);
+    expect(a).toEqual({ x: 9, y: 200 - 9 });
+  });
+
+  // 사용자가 어느 방향으로 그렸든 배지는 도형의 **위쪽**에 붙어야 한다.
+  it('트렌드라인 배지는 그린 방향과 무관하게 위쪽 끝점에 붙는다', () => {
+    const ctx = makeProjectCtxWithProjection();
+    const forward = lockBadgeAnchor(ctx, trendline);
+    const reversed = lockBadgeAnchor(ctx, { ...trendline, a: trendline.b, b: trendline.a });
+    expect(forward).toEqual(reversed);
+  });
+
+  it('투영이 안 되면 앵커가 null 이고 배지도 안 그려진다', () => {
+    // makeProjectCtx 의 realMsToX 는 항상 null, priceToY 는 200.
+    const c = makeCanvasSpy();
+    renderDrawing(c, makeProjectCtx(), { ...trendline, locked: true }, false);
+    expect(lockBadgeAnchor(makeProjectCtx(), trendline)).toBeNull();
+    expect(badges(c)).toBe(0);
   });
 });

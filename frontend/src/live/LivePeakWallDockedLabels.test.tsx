@@ -22,20 +22,62 @@ function seg(price: number, qty: number, peakSec: number): PeakWallSegment {
 }
 
 function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
+  const segments = over.segments ?? [seg(100, 100, 60), seg(105, 300, 120)];
   return {
-    segments: [seg(100, 100, 60), seg(105, 300, 120)],
+    segments,
+    legendRankSegments: segments,
+    arrowRankSegments: segments,
     stepSegments: [],
     drawn: true,
     labels: true,
     arrows: true,
+    legendCells: true,
     color: '#base',
     lineWidth: 2,
+    allWallSegments: [],
+    allWallDrawn: false,
+    allWallLabels: false,
+    allWallColor: '#all',
+    allWallLineWidth: 1,
+    unreachedSegments: [],
+    allWallStepSegments: [],
+    unreachedStepSegments: [],
+    unreachedDrawn: false,
+    unreachedLabels: false,
+    unreachedColor: '#unreached',
+    unreachedLineWidth: 2,
+    tradedHorizontalLine: true,
+    tradedTimeMarker: true,
+    allWallHorizontalLine: true,
+    allWallTimeMarker: true,
+    unreachedHorizontalLine: true,
+    unreachedTimeMarker: true,
+    tradedShownCount: 0,
+    tradedHiddenByFilterCount: 0,
+    allWallShownCount: 0,
+    allWallHiddenByFilterCount: 0,
+    unreachedShownCount: 0,
+    unreachedHiddenByFilterCount: 0,
     ...over,
   };
 }
 
 const EMPTY: PeakWallRenderState = {
-  segments: [], stepSegments: [], drawn: false, labels: false, arrows: false, color: '#x', lineWidth: 1,
+  segments: [], legendRankSegments: [], arrowRankSegments: [], stepSegments: [], drawn: false, labels: false, arrows: false, legendCells: true, color: '#x', lineWidth: 1,
+  allWallSegments: [], allWallDrawn: false, allWallLabels: false, allWallColor: '#x', allWallLineWidth: 1,
+  unreachedSegments: [], allWallStepSegments: [], unreachedStepSegments: [], unreachedDrawn: false, unreachedLabels: false, unreachedColor: '#x', unreachedLineWidth: 1,
+    tradedHorizontalLine: true,
+    tradedTimeMarker: true,
+    allWallHorizontalLine: true,
+    allWallTimeMarker: true,
+    unreachedHorizontalLine: true,
+    unreachedTimeMarker: true,
+    tradedShownCount: 0,
+    tradedHiddenByFilterCount: 0,
+    allWallShownCount: 0,
+    allWallHiddenByFilterCount: 0,
+    unreachedShownCount: 0,
+    unreachedHiddenByFilterCount: 0,
 };
 
 function renderLabels(askWall: PeakWallRenderState, bidWall: PeakWallRenderState) {

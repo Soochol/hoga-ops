@@ -37,6 +37,7 @@ import {
   type Rect,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
+  isLocked,
 } from './types';
 import { translateDrawing, clampDPriceForDrawing, clampDBarForDrawing } from './translate';
 import { constrainAngle } from './snap';
@@ -204,6 +205,17 @@ export type ToolCtx = {
   canvasYToPrice(py: number, paneId: PaneId): number | null;
   /** Hit-test all drawings (reverse / topmost-first). */
   hitTestAt(px: number, py: number): Drawing | null;
+  /**
+   * Same, but over `unlockedOnly(drawings)` — the topmost drawing the overlay
+   * can actually act on.
+   *
+   * This is the SAME question the pointer-events gate asks, and select mode has
+   * to ask it too or the two disagree: the gate opens because an unlocked shape
+   * is here, then `hitTestAt` hands the tool a locked shape lying on top of it,
+   * and the result is a click that neither grabs the live shape nor pans the
+   * chart. See ADR-0164.
+   */
+  hitTestUnlockedAt(px: number, py: number): Drawing | null;
 
   /** PaneId of the pane the cursor is currently in. */
   paneIdAtY(py: number): PaneId;
@@ -333,9 +345,14 @@ export const selectTool: DrawingToolSpec = {
   cursor: 'default',
   shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
-    const selected = ctx.selectedId
+    const rawSelected = ctx.selectedId
       ? ctx.drawings.find((d) => d.id === ctx.selectedId)
       : null;
+    // 잠긴 도형은 핸들 경로에서 아예 빠진다 — 아래 두 블록은 `selected` 가
+    // null 이면 통째로 건너뛴다. 스토어가 어차피 update 를 거부하므로 이건
+    // 정확성이 아니라 감촉이다: 게이트가 없으면 dragRef 가 서서 포인터를
+    // 캡처하고, 사용자는 잡아서 끌고 있는데 도형만 안 따라오는 상태를 본다.
+    const selected = isLocked(rawSelected) ? null : rawSelected;
     // Trendline and measure share the 2-endpoint (a/b) handle-drag path.
     if (selected && (selected.kind === 'trendline' || selected.kind === 'measure')) {
       const xa = ctx.realMsToCanvasX(selected.a.realMs);
@@ -381,7 +398,16 @@ export const selectTool: DrawingToolSpec = {
         return;
       }
     }
-    const hit = ctx.hitTestAt(ctx.px, ctx.py);
+    // **잠긴 것을 건너뛰고** 고른다. 게이트가 이 오버레이에 포인터를 준 이유가
+    // "여기 잠기지 않은 도형이 있다" 이므로, 도구도 같은 것을 집어야 한다.
+    // 전체 목록으로 고르면 위에 얹힌 잠긴 도형이 최상단으로 이겨서, 아래 살아
+    // 있는 도형을 **잡지도 못하고 차트 팬도 안 되는** 죽은 클릭이 된다(ADR-0164).
+    //
+    // 잠긴 도형의 선택은 여기가 아니라 window mousedown 리스너의 몫이다
+    // (`resolveSelectModeMouseDown`) — 그쪽은 게이트가 'none' 일 때, 즉 이
+    // 오버레이가 클릭을 아예 못 받을 때 작동한다. 둘의 담당 구역이 게이트를
+    // 경계로 정확히 나뉘고 겹치지 않는다.
+    const hit = ctx.hitTestUnlockedAt(ctx.px, ctx.py);
     ctx.setSelected(hit?.id ?? null);
     // vline body drag is horizontal-only and resolved off the time axis alone,
     // so it doesn't touch (and doesn't require) any pane's price scale.
@@ -910,7 +936,10 @@ export const eraserTool: DrawingToolSpec = {
   shortcut: { alt: true, key: 'e' },
   onPointerDown(ctx) {
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
-    if (hit) ctx.remove(hit.id);
+    // 잠긴 것은 지우개가 **통과한다** — 지우개는 연속 삭제가 정상 흐름이라
+    // (그래서 auto-revert 에서도 빠져 있다) 잠긴 도형 위를 지나가는 일이 잦다.
+    // 스토어가 어차피 거부하므로 여기 게이트는 의도의 표명이다.
+    if (hit && !isLocked(hit)) ctx.remove(hit.id);
   },
 };
 

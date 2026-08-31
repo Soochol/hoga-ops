@@ -5,7 +5,9 @@ import {
   maxRenderableSpan,
   minuteRestoreGeometry,
   minuteRightOffsetBars,
+  pickSwapAnchor,
   sourceSwapReseatRange,
+  viewportHasReprojectableAnchor,
 } from './minuteViewportPolicy';
 
 describe('minuteRightOffsetBars', () => {
@@ -207,5 +209,66 @@ describe('sourceSwapReseatRange', () => {
     });
     expect(r.from).toBe(0);
     expect(r.to).toBe(LATEST + 1 + 40);
+  });
+});
+
+describe('pickSwapAnchor — 강제 이동은 사용자의 앵커를 잃게 하지 않는다', () => {
+  const base = { hasForced: true, freshAtLiveEdge: false, freshIdx: 100, landedIdx: 100, spanBars: 300 };
+
+  it('보관된 앵커가 없으면 fresh — 평시 스왑은 종전 동작 그대로다', () => {
+    expect(pickSwapAnchor({ ...base, hasForced: false })).toBe('fresh');
+  });
+
+  it('착지점에서 안 움직였으면 forced — 왕복이 원위치로 돌아오는 경로', () => {
+    expect(pickSwapAnchor({ ...base, freshIdx: 120, landedIdx: 100 })).toBe('forced');
+  });
+
+  it('허용 반경은 화면 폭 — 딱 span 이내면 아직 「안 움직임」이다', () => {
+    expect(pickSwapAnchor({ ...base, freshIdx: 400, landedIdx: 100, spanBars: 300 })).toBe('forced');
+    expect(pickSwapAnchor({ ...base, freshIdx: 401, landedIdx: 100, spanBars: 300 })).toBe('fresh');
+  });
+
+  it('한 화면 넘게 움직였으면 fresh — 새 의도가 복원을 이긴다', () => {
+    expect(pickSwapAnchor({ ...base, freshIdx: 900, landedIdx: 100 })).toBe('fresh');
+  });
+
+  it('라이브 엣지는 명시적 의도라 휴리스틱보다 먼저다 — 거리와 무관하게 fresh', () => {
+    expect(pickSwapAnchor({ ...base, freshAtLiveEdge: true, freshIdx: 100, landedIdx: 100 })).toBe('fresh');
+  });
+
+  it('재투영 실패(null)는 검증 불가 → 보수적으로 fresh (잘못된 복원 > 복원 없음)', () => {
+    expect(pickSwapAnchor({ ...base, freshIdx: null })).toBe('fresh');
+    expect(pickSwapAnchor({ ...base, landedIdx: null })).toBe('fresh');
+  });
+});
+
+
+describe('viewportHasReprojectableAnchor — 재투영 자격', () => {
+  it('정상 좌팬(화면 대부분이 데이터)은 재투영을 받는다', () => {
+    expect(viewportHasReprojectableAnchor(-100, 300)).toBe(true);
+  });
+
+  it('⚠ 화면이 거의 전부 whitespace 면 재투영을 받지 않는다 (2026-08-26 사용자 로그)', () => {
+    // 실측 스냅샷: 화면 [-2226, 1] — 2227 바 중 데이터가 1 바.
+    expect(viewportHasReprojectableAnchor(-2226, 1)).toBe(false);
+  });
+
+  it('화면이 통째로 데이터 왼쪽 밖이어도 false (음수 폭으로 게이트를 통과하지 않는다)', () => {
+    expect(viewportHasReprojectableAnchor(-500, -100)).toBe(false);
+  });
+
+  it('경계 — 데이터가 정확히 10% 면 아직 false, 그보다 많으면 true', () => {
+    // span 1000, 데이터 100 → 비율 0.10 (경계는 "이하"라 false)
+    expect(viewportHasReprojectableAnchor(-900, 100)).toBe(false);
+    expect(viewportHasReprojectableAnchor(-899, 101)).toBe(true);
+  });
+
+  it('폭이 0 이하인 퇴화 입력은 재투영하지 않는다', () => {
+    expect(viewportHasReprojectableAnchor(50, 50)).toBe(false);
+    expect(viewportHasReprojectableAnchor(50, 10)).toBe(false);
+  });
+
+  it('라이브 엣지(오른쪽 여백이 있는 정상 화면)는 재투영을 받는다', () => {
+    expect(viewportHasReprojectableAnchor(200, 500)).toBe(true);
   });
 });

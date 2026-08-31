@@ -20,9 +20,37 @@ const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
 export const PAST_CANDLES_MAX_DAYS = 250;
 
 /** 250일 클램프 하한 날짜(YYYYMMDD KST). 분봉 fetch는 이 날짜보다 과거로 못 간다.
- * 250일 윈도가 오늘을 포함하므로 오늘 − 249. */
+ * 250일 윈도가 오늘을 포함하므로 오늘 − 249.
+ *
+ * ⚠ **인자는 「오늘」이 아니라 창의 기준일이다.** 백엔드 제약은 `to − from + 1 > 250`
+ * 즉 **span 캡**이라(`hoga/live/api.py` `_PAST_MAX_DAYS`), 창의 우단이 과거로 가면
+ * 이 벽도 같이 간다. 프론트가 늘 `to = 오늘` 을 보내던 시절에 절대 하한처럼 보였을
+ * 뿐이다. 기간 점프(`useMinuteJumpTarget`)가 그 우단을 옮기는 첫 소비자다.
+ *
+ * 그래서 이 함수만으로는 **하한이 부족하다** — span 캡 아래에 벤더 실보유가 따로
+ * 있다(`vendorMinuteRetentionFloorDate`). 둘의 늦은 쪽이 진짜 하한이다. */
 export function earliestAllowedMinuteDate(todayKstYyyymmdd: string): string {
   return subtractDaysKst(todayKstYyyymmdd, PAST_CANDLES_MAX_DAYS - 1);
+}
+
+/** 키움 분봉 **실보유** 깊이(캘린더일). 실측(2026-08-21): 382일 전은 봉이 오고
+ * 400일 전은 빈 배열이 온다 — 그 사이 어디가 진짜 경계인지는 모르므로 **살아 있는
+ * 것이 확인된 값**을 쓴다(넘겨 잡으면 갈 수 있다고 말해 놓고 빈 화면을 준다).
+ *
+ * `PAST_CANDLES_MAX_DAYS`(250)와 **다른 종류의 벽**이다: 저쪽은 한 요청의 span 캡이라
+ * 창의 우단을 옮기면 따라 움직이고, 이쪽은 벤더가 **실제 달력 기준**으로 들고 있는
+ * 깊이라 창을 어디에 두든 움직이지 않는다. 우단이 고정(`to = 오늘`)이던 동안에는
+ * 250이 항상 더 늦어서 이 벽이 드러날 자리가 없었다. */
+export const MINUTE_VENDOR_RETENTION_DAYS = 382;
+
+/** 벤더 분봉이 실제로 살아 있는 가장 이른 날(YYYYMMDD KST).
+ *
+ * ⚠ **인자는 실제 오늘이어야 한다** — 창의 기준일이 아니다. 벤더 보유는 달력의
+ * 사실이라 창을 과거에 앉힌다고 깊어지지 않는다. 이 리포의 「얼림 레버는 `today`
+ * 한 줄」 규율에서 의도적으로 빠지는 유일한 값이고, 그래서 호출부가 기준일이 아니라
+ * `todayKstYyyymmdd()` 를 직접 넘긴다. */
+export function vendorMinuteRetentionFloorDate(realTodayKstYyyymmdd: string): string {
+  return subtractDaysKst(realTodayKstYyyymmdd, MINUTE_VENDOR_RETENTION_DAYS - 1);
 }
 
 /** Today's YYYYMMDD in KST. */
@@ -526,3 +554,34 @@ export function planFillStep(
     steps: 1, // 날짜 수렴이 종료 조건 — 묶으면 목표를 지나쳐 과다 요청(#582)
   };
 }
+
+/**
+ * 복원 대기(pendingRestore)의 이번 커밋 처분 — 앉는가 · 기다리는가 · 포기하는가.
+ *
+ * 배경(#1614 실측): 소스 스왑 왕복에서 `pickSwapAnchor` 가 복원을 골라도, 토글 사이에
+ * 창 축소가 끼면 앵커가 서빙 창 밖이라 착석이 다시 클램프된다 — **pick 이 이겨도
+ * 창이 지면 진다.** 그래서 복원 의도가 확인된 스왑은 창을 앵커까지 다시 넓히고
+ * (`historicalRange.extend`), 워크백이 도착할 때까지 대기를 들고 있다가 이 함수의
+ * 판정으로 앉는다.
+ *
+ * `seat` 의 판정이 **캔들이 아니라 창(from-date)** 인 이유: 앵커 날짜가 마침 캡처
+ * 구멍이면 그 시각의 캔들은 영영 안 오지만, 창이 앵커를 덮으면 워크백은 끝난 것이다
+ * — 그때 앉으면 재착석의 최근접 클램프가 구멍 옆 봉에 앉힌다(사라진 캔들보다 낫다,
+ * 재착석과 같은 판단). 캔들 도착을 기다리면 그 경우 영원히 `wait` 다.
+ *
+ * `cancel_floor`: 바닥(벤더 250일 벽 · 디스크 최초 캡처일 #1606)보다 과거의 앵커는
+ * 어떤 워크백도 못 덮는다 — 대기를 세우는 것 자체가 거짓 약속이라 즉시 포기한다.
+ */
+export function planRestoreSeat(args: {
+  /** 복원 목표(YYYYMMDD) — 강제 클램프가 삼킨 앵커의 날짜. */
+  anchorYmd: string;
+  /** 좌측 바닥(YYYYMMDD). null = 바닥 미상(가능성을 닫지 않는다). */
+  floorYmd: string | null;
+  /** 현재 요청 창의 from. null = 창 없음(전체 이력 초기 상태) — 덮인 것으로 본다. */
+  historicalFromDate: string | null;
+}): 'seat' | 'wait' | 'cancel_floor' {
+  if (args.floorYmd !== null && args.anchorYmd < args.floorYmd) return 'cancel_floor';
+  if (args.historicalFromDate === null) return 'seat';
+  return args.historicalFromDate <= args.anchorYmd ? 'seat' : 'wait';
+}
+

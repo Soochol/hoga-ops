@@ -17,6 +17,9 @@ export type AvoidWallLabel = {
   peakTime: Time;
   side: PeakWallLabelSide;
   label: string;
+  /** 그 벽이 발생 시점 화살표를 찍는가(생략=찍는다). 칩이 선에서 얼마나 비켜서는지가
+   *  이 값에 달려 있어, 회피 rect 도 같은 값을 봐야 실제 칩과 어긋나지 않는다. */
+  timeMarker?: boolean;
 };
 
 /** 회피 대상 rect — 캔들 pane 로컬 px 좌표. */
@@ -129,6 +132,7 @@ export function wallLabelAvoidRect(
   label: string,
   side: PeakWallLabelSide,
   paneWidth: number,
+  timeMarker: boolean = true,
 ): AvoidRect | null {
   const geometry = peakWallChipGeometry({
     peakX,
@@ -138,6 +142,7 @@ export function wallLabelAvoidRect(
     textWidth: label.length * WALL_LABEL_CHAR_WIDTH_PX,
     side,
     paneWidth,
+    timeMarker,
   });
   if (geometry === null) return null;
   return {

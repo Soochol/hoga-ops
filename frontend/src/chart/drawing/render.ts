@@ -14,7 +14,7 @@ import type {
   PaneId,
   LineStyle,
 } from './types';
-import { subBarOffsetPx } from './types';
+import { subBarOffsetPx, isLocked } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
 import { catmullRomSpans } from './smooth';
@@ -358,7 +358,7 @@ function renderRectShape(
   drawHaloThenMain(c, r, selected, () => {
     c.strokeRect(box.x, box.y, box.w, box.h);
   });
-  if (selected) {
+  if (showHandles(r, selected)) {
     drawHandle(c, r.color, box.x, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y);
     drawHandle(c, r.color, box.x + box.w, box.y + box.h);
@@ -453,7 +453,7 @@ function renderMeasureShape(
   c.setLineDash([4, 3]);
   c.strokeRect(box.x, box.y, box.w, box.h);
   c.restore();
-  if (selected) {
+  if (showHandles(m, selected)) {
     // Handles at the two diagonal endpoints (a, b) — the drag anchors.
     const xa = ctx.realMsToX(m.a.realMs);
     const ya = ctx.priceToY(m.a.price);
@@ -565,7 +565,7 @@ function renderTrendline(
     c.lineTo(x2, yb);
     c.stroke();
   });
-  if (selected) {
+  if (showHandles(t, selected)) {
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
@@ -638,6 +638,17 @@ export function renderTrendlineDraft(
   });
   c.restore();
   renderTrendlineDeltaGuide(c, ctx, d, xa, xa, xb, ya);
+}
+
+/**
+ * Endpoint/corner handles are drawn only for a selected drawing that can
+ * actually be dragged by them. A LOCKED drawing keeps its selection halo — the
+ * user must be able to see what they picked, and picking is the only route to
+ * the unlock button — but loses the handles, which exist solely to advertise
+ * "grab me here" and would be a lie (ADR-0164).
+ */
+function showHandles(d: Drawing, selected: boolean): boolean {
+  return selected && !isLocked(d);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {
@@ -749,12 +760,101 @@ export function renderGhostPreview(
   c.restore();
 }
 
+/** Inset of the lock badge from the shape, in canvas px. */
+const LOCK_BADGE_GAP = 9;
+
+/**
+ * Where a locked drawing's padlock sits, in canvas px, or null when the shape
+ * cannot be projected right now (off-axis, price scale not ready).
+ *
+ * One anchor per kind, chosen to sit just off the shape rather than on it, so
+ * the badge never buries the geometry the user drew. Deliberately NOT
+ * `refCoords` (duplicate.ts): that one answers "which vertex do I offset a
+ * clone from" and returns nulls for hline's time and vline's price — here both
+ * axes must resolve to a pixel, and hline/vline get an edge-anchored position
+ * instead.
+ */
+export function lockBadgeAnchor(ctx: ProjectCtx, d: Drawing): { x: number; y: number } | null {
+  const at = (realMs: number, price: number) => {
+    const x = ctx.realMsToXClamped(realMs) ?? ctx.realMsToX(realMs);
+    const y = ctx.priceToY(price);
+    return x == null || y == null ? null : { x: x - LOCK_BADGE_GAP, y: y - LOCK_BADGE_GAP };
+  };
+  switch (d.kind) {
+    case 'hline': {
+      // Spans the full width, so there is no meaningful X — pin it to the left
+      // edge, the one place guaranteed to be on screen.
+      const y = ctx.priceToY(d.price);
+      return y == null ? null : { x: LOCK_BADGE_GAP, y: y - LOCK_BADGE_GAP };
+    }
+    case 'vline': {
+      // Mirror image of hline: X is the line, Y is pinned to the top.
+      const x = ctx.realMsToX(d.realMs);
+      return x == null ? null : { x: x + LOCK_BADGE_GAP, y: LOCK_BADGE_GAP };
+    }
+    case 'trendline':
+    case 'measure':
+      // Whichever endpoint is visually higher — the badge reads as belonging to
+      // the shape's top, regardless of which way the user drew it.
+      return d.a.price >= d.b.price ? at(d.a.realMs, d.a.price) : at(d.b.realMs, d.b.price);
+    case 'rect':
+      // Top-left of the NORMALIZED box: corners may be stored in either order.
+      return at(Math.min(d.a.realMs, d.b.realMs), Math.max(d.a.price, d.b.price));
+    case 'text':
+      return at(d.at.realMs, d.at.price);
+    case 'pencil': {
+      const first = d.points[0];
+      return first == null ? null : at(first.realMs, first.price);
+    }
+  }
+}
+
+/**
+ * A small padlock, drawn as vectors rather than a 🔒 glyph: emoji rasterize
+ * differently across platforms and ignore `fillStyle`, so a glyph could neither
+ * take the drawing's own colour nor keep a predictable size on a DPR-scaled
+ * canvas.
+ */
+function drawLockBadge(c: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  c.save();
+  c.globalAlpha = 0.85;
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.lineWidth = 1.2;
+  c.setLineDash([]);
+  // Shackle — a half-circle rising out of the body.
+  c.beginPath();
+  c.arc(x, y - 2.2, 2.1, Math.PI, 0);
+  c.stroke();
+  // Body.
+  c.beginPath();
+  c.rect(x - 3.2, y - 2.2, 6.4, 5);
+  c.fill();
+  c.restore();
+}
+
 export function renderDrawing(
   c: CanvasRenderingContext2D,
   ctx: ProjectCtx,
   d: Drawing,
   selected: boolean,
   opts: { vlineTimeBadge?: boolean } = {},
+) {
+  renderDrawingBody(c, ctx, d, selected, opts);
+  // Drawn last so it is never overpainted by the shape it labels. A locked
+  // drawing is otherwise identifiable only by selecting it (ADR-0164).
+  if (isLocked(d)) {
+    const a = lockBadgeAnchor(ctx, d);
+    if (a) drawLockBadge(c, a.x, a.y, d.color);
+  }
+}
+
+function renderDrawingBody(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  d: Drawing,
+  selected: boolean,
+  opts: { vlineTimeBadge?: boolean },
 ) {
   switch (d.kind) {
     case 'hline':

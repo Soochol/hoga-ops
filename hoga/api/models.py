@@ -226,6 +226,13 @@ class AskPeak(BaseModel):
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달 벽(당일 고가 위) — cont 단일 계열 rank-1 스칼라 + top-3. top-3 은 최대
+    # 3개라 all_peaks 처럼 벗기지 않는다(_without_all_peak_rankings 대상 아님).
+    # None/[] = 구 캐시·legacy payload(그날은 프론트가 선을 건너뛴다).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_t_ms: int | None = None
+    unreached_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class BidPeak(BaseModel):
@@ -258,6 +265,11 @@ class BidPeak(BaseModel):
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달 벽(당일 저가 아래) — AskPeak 의 같은 필드 주석 참조(대칭 미러).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_t_ms: int | None = None
+    unreached_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class QuoteRatioPoint(BaseModel):
@@ -886,6 +898,13 @@ class DepthHeatmapPoint(BaseModel):
     ``asks_max``/``bids_max``는 분봉 내 총잔량 최대 스냅샷의 분포(캔들 고가
     직관) — 토글로 ``asks``/``bids``와 교체해 렌더한다. 형식은 동일한
     ``[price, qty]`` 10단계.
+
+    ``asks_price_max``/``bids_price_max``는 **가격대마다 따로** 잰 최댓값이다.
+    앞의 두 계열과 달리 **한 순간의 호가창이 아니다** — 가격마다 자기 최고점이
+    서로 다른 순간에서 오므로, 이 배열을 세로로 읽으면 실제로 동시에 존재한 적
+    없는 호가창이 된다. 그 대가로 각 셀은 「당일 최대벽」이 재는 값과 정확히
+    같아진다(그 지표도 가격당 최댓값이다). 정렬 규약은 동일하고 **길이는 10 고정이
+    아니다**(그 버킷에 등장한 distinct 가격 수).
     """
 
     t_ms: int
@@ -893,24 +912,8 @@ class DepthHeatmapPoint(BaseModel):
     bids: list[list[int]] = Field(default_factory=list)
     asks_max: list[list[int]] = Field(default_factory=list)
     bids_max: list[list[int]] = Field(default_factory=list)
-
-
-class DepthDeltaPoint(BaseModel):
-    """한 분봉 버킷의 단별 잔량 증감 (연속 스냅샷 diff 의 버킷 합).
-
-    ``t_ms``는 버킷 시작 unix ms. ``asks``/``bids``는 ``[price, in_qty, out_qty]``
-    (in ≥ 0 유입 합, out ≤ 0 유출 합, 증감 0 가격은 미포함). ``ask_tick``/``bid_tick``
-    은 셀 높이용 호가단위(관측 불가 시 0) — 증감 레벨은 변한 가격만 남은 희소
-    집합이라 프론트가 역산할 수 없어 서버가 사다리에서 구해 싣는다.
-
-    캡처 주기(~10s) 제약으로 유입/유출 gross 는 하한선, net 은 정확(텔레스코핑).
-    """
-
-    t_ms: int
-    asks: list[list[int]] = Field(default_factory=list)
-    bids: list[list[int]] = Field(default_factory=list)
-    ask_tick: int = 0
-    bid_tick: int = 0
+    asks_price_max: list[list[int]] = Field(default_factory=list)
+    bids_price_max: list[list[int]] = Field(default_factory=list)
 
 
 class VolumeDistributionBin(BaseModel):
@@ -928,45 +931,6 @@ class DayVolumeDistribution(BaseModel):
     session_close_ms: int
     last_trade_ms: int | None = None
     bins: list[VolumeDistributionBin]
-
-
-# ── 호가벽 급증 (Wall Surge) ────────────────────────────────────────────────
-# 설계: docs/superpowers/specs/2026-08-14-sell-wall-surge-indicator-design.md
-#
-# ⚠ 두 Literal 은 **named alias 여야 한다**. 필드 인라인 Literal 은 계약 테스트 2층의
-# 등록 누락 감사가 보지 못해, BE 가 값을 늘려도 프론트 union 이 조용히 뒤처진다(#1183).
-# wire 값은 영문이고 한글 라벨은 프론트 라벨 표가 가진다.
-WallSurgeKind = Literal["pierce", "grow", "reappear"]
-WallSurgeOutcome = Literal["consumed", "broken", "pulled", "held"]
-
-
-class WallSurgeEvent(BaseModel):
-    """한 호가 레벨에 물량이 급증한 사건 하나.
-
-    ``kind`` 는 baseline 을 어디서 구했는지이자 곧 **시점 신뢰도**다 —
-    ``pierce``(반대측 자리였다 = 0 확정) · ``grow``(창 안 관측 대비)는 초 단위로
-    정확하고, ``reappear``(창 밖, 당일 마지막 관측 대비)는 **크기만** 정확하다.
-    ``blind_ms`` 가 그 불확실성의 폭(시야 밖 체류시간)이고 reappear 일 때만 채워진다.
-
-    ``outcome`` 이 **null 이면 결말 미정** — 데이터 끝에서 추적 창이 덜 찬 사건이다.
-    "아직 모른다" 와 "버텼다(held)" 는 다른 사실이라 프론트가 미정색으로 가른다.
-    ⚠ 이 null 은 정당한 값이므로 ``response_model_exclude_none`` 으로 지우면 안 된다.
-
-    ``t_ms`` 는 unix ms(ApiCandle.ts_ms 와 같은 축), ``price`` 는 벽이 선 가격,
-    ``jump`` 는 baseline 대비 증가량, ``total`` 은 그 시점 해당 측 총잔량.
-    """
-
-    t_ms: int
-    side: Literal["ask", "bid"]
-    price: int
-    qty: int
-    jump: int
-    total: int
-    kind: WallSurgeKind
-    blind_ms: int | None = None
-    outcome: WallSurgeOutcome | None = None
-    filled_qty: int = 0
-    duration_ms: int | None = None
 
 
 class RangeBundle(BaseModel):
@@ -994,6 +958,15 @@ class RangeBundle(BaseModel):
     fill_strength: FillStrength
     volume_profile_range: VolumeProfile
     volume_profile_by_day: list[VolumeProfile]
+    #: 이 (code, source, venue) 의 **가장 오래된 캡처 거래일**(YYYYMMDD). 캡처가 없으면 None.
+    #:
+    #: 디스크 모드(hogaplay 우회) 분봉의 **좌측 팬 바닥**이다. 벤더 모드에는 250일 벽이
+    #: 있지만 디스크 모드의 끝은 벽이 아니라 캡처 유무이고, 프론트는 그걸 알 방법이
+    #: 없었다 — 그래서 사용자가 캡처 시작 이전으로 무한히 팬해 **빈 화면 + 「과거
+    #: 불러오는 중」이 계속** 뜨는 상태가 됐다(2026-08-26 신고). 프론트가 이 값을
+    #: `minuteScrollbackFloorDate` 에 물리면 `planFillStep` 의 정지 조건과 벽 도달
+    #: 안내가 우회 모드에서도 살아난다.
+    earliest_captured_date: str | None = None
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
     # 읽을 데이터가 없어 빠진 거래일 + 사유(#1133). 기본 []라 기존 클라 무영향.
@@ -1005,8 +978,6 @@ class RangeBundle(BaseModel):
     bid_peaks: list[BidPeak] = Field(default_factory=list)
     # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
     depth_heatmap: list[DepthHeatmapPoint] = Field(default_factory=list)
-    depth_delta: list[DepthDeltaPoint] = Field(default_factory=list)
-    wall_surge: list[WallSurgeEvent] = Field(default_factory=list)
     broker_late_entries: list[BrokerLateEntryEvent] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)

@@ -26,7 +26,6 @@ from hoga.tables.snapshots import (
     _classify_wall_frame,
     _peak_touched_distinct,
     query_at,
-    query_bucketed_depth_delta,
     query_day_ask_bid_peak_dual,
     query_day_ask_bid_peak_dual_with_rep,
     query_day_ask_peak,
@@ -35,7 +34,6 @@ from hoga.tables.snapshots import (
     query_day_bid_peak_dual,
     query_first_ts,
     query_time_bounds,
-    reaggregate_depth_delta,
     reaggregate_peak_rep,
     validate,
     write_parquet,
@@ -707,6 +705,76 @@ def test_query_bucketed_depth_heatmap_max_total_snapshot(tmp_path: Path) -> None
     # 가격도 대표 스냅샷의 것: _ob는 ask_p=range(1,11), bid_p=range(10,0,-1).
     assert r.ask_prices_max == tuple(range(1, 11))
     assert r.bid_prices_max == tuple(range(10, 0, -1))
+
+
+def test_query_bucketed_depth_heatmap_per_price_max_differs_from_total_argmax(
+    tmp_path: Path,
+) -> None:
+    """``*_pmax``(가격대마다 따로 최댓값)가 ``*_max``(총잔량 argmax 스냅샷)와 **갈리는지**.
+
+    두 계열이 갈리려면 **어떤 가격의 최고 시점이 총잔량 최고 시점과 달라야** 한다.
+    레벨 잔량을 균일하게 두면(기존 max 테스트가 그렇다) 두 값이 우연히 같아져서
+    이 테스트가 아무것도 증명하지 못하므로, 최우선 호가만 다른 시점에 최고가 되게 짠다.
+
+    실측을 축소한 것이다 — 005930 20260825 14:35 258,500원: 자기 최고 순간 93,543
+    vs 총잔량 최고 순간 61,057(그 사이 10초). 사용자가 「당일 최대벽」과 히트맵을
+    대조하다 발견한 20% 격차의 정체가 이 차이였다.
+    """
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    obs = [
+        # t1: 최우선 호가가 자기 최고(900). 총잔량 = 900 + 9*10 + 10*10 = 1090.
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(900,) + (10,) * 9, bid_q=(10,) * 10),
+        # t2: 총잔량 최고(500*20 = 10000) — 그러나 최우선 호가는 500 뿐이다.
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(500,) * 10, bid_q=(500,) * 10),
+        # t3: 종가(마지막).
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(300,) * 10, bid_q=(300,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    assert len(rows) == 1
+    r = rows[0]
+
+    # 총잔량 argmax 는 t2 의 사진 통째 — 최우선 호가가 900 이었던 순간을 **놓친다**.
+    assert r.ask_qtys_max[0] == 500
+    # 가격대별은 그 순간을 잡는다. 나머지 레벨은 t2 가 최고(500).
+    assert r.ask_qtys_pmax == (900,) + (500,) * 9
+    assert r.bid_qtys_pmax == (500,) * 10
+
+    # 정렬 규약 — ask 가격 오름차순 · bid 내림차순(`DepthHeatmapPoint` 가 프론트에
+    # 약속한 순서). `_ob` 는 ask_p=range(1,11), bid_p=range(10,0,-1).
+    assert r.ask_prices_pmax == tuple(range(1, 11))
+    assert r.bid_prices_pmax == tuple(range(10, 0, -1))
+
+
+def test_query_bucketed_depth_heatmap_per_price_max_drops_zero_qty_levels(
+    tmp_path: Path,
+) -> None:
+    """가격대별 최댓값에서 잔량 0 레벨은 **셀을 만들지 않는다**.
+
+    ``*_max`` 쪽은 "그 사진에 그렇게 찍혔다" 라 0 도 사실이지만, 가격대별에서 0 은
+    "그 버킷에 후보가 없었다" 는 뜻이라 셀을 그리면 거짓이 된다. 프론트 누적기
+    (`foldPriceMax`)도 같은 규약이다."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    # 레벨 4..10 > 0 이어야 deep book 으로 인정되므로 0 은 레벨 2 에만 둔다.
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(100, 0) + (100,) * 8, bid_q=(100,) * 10),
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(200, 0) + (200,) * 8, bid_q=(200,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    r = rows[0]
+    # ask_p=2 는 두 틱 모두 0 이라 빠진다 → 9개.
+    assert len(r.ask_prices_pmax) == 9
+    assert 2 not in r.ask_prices_pmax
+    assert all(q > 0 for q in r.ask_qtys_pmax)
+    # `*_max` 는 그대로 10칸(0 포함) — 두 계열의 규약이 다르다는 것이 요점이다.
+    assert len(r.ask_qtys_max) == 10
 
 
 def test_query_bucketed_depth_heatmap_excludes_intraday_vi_in_mixed_bucket(tmp_path: Path) -> None:
@@ -1621,10 +1689,17 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
     이 동치가 봉별 재계산을 없앨 수 있는 유일한 근거다(ratio/fill 의
     `test_indicator_reaggregate` 와 같은 역할).
 
-    **막는 방향**: 축약이 직접 조회와 어긋나는 쪽. `all_peaks`/`all_max_peaks`
-    는 비교하지 않는다 — 과거일에는 의도적으로 만들지 않기로 한 필드다
-    (`_peak_with_rep_outputs` docstring). **못 보는 것**: 봉 무관 절반(`*_max*`)
-    이 정말 봉과 무관한지는 아래 별도 테스트가 본다.
+    **막는 방향**: 축약이 직접 조회와 어긋나는 쪽 — `reaggregate_peak_rep` 이
+    만드는 **모든** 출력 키에 대해. 키 집합 자체도 함께 고정한다: 키가 늘면
+    비교 없이 지나가는 필드가 생기고, 그것이 정확히 아래 "못 보는 것" 이 실제
+    드리프트로 번진 경로였다(2026-08-28).
+
+    **못 보는 것**: 이 함수가 **만들지 않는** 필드. 두 부류이고 사유가 다르다 —
+    ① 진짜 봉 무관(`*_max*` 스칼라·`traded_max_peaks`·`traded_record_max_peaks`·
+    `unreached_*`)은 `test_peak_max_fields_are_bucket_independent` 가 본다.
+    ② **봉 의존인데 1분을 정본으로 고정한 것**(`all_max_peaks`·
+    `traded_record_peaks`)은 `test_bucket_dependent_fields_are_pinned_to_1m_canon`
+    이 본다. ②를 "봉 무관" 으로 착각한 주석이 이 테스트의 구멍과 짝이었다.
     """
     snapshots, trades = _peak_reagg_fixture(tmp_path)
     con = _con_for(snapshots)
@@ -1642,6 +1717,11 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
             [r for r in rep_rows if r.side == side], side=side, bucket_ms=bucket_ms,
         )
         assert direct is not None and reduced is not None, side
+        # 키 집합 고정 — 늘어난 키는 아래 단언을 못 받으므로 여기서 걸린다.
+        assert set(reduced) == {
+            "side", "all_close", "traded_close", "traded_peaks", "all_peaks",
+        }, f"{side} reduced keys"
+        assert reduced["side"] == side
         assert reduced["all_close"] == (
             direct.all_price, direct.all_qty, direct.all_intra_ms,
         ), f"{side} all_close"
@@ -1649,6 +1729,59 @@ def test_reaggregate_peak_rep_matches_direct_query(tmp_path: Path, bucket_ms: in
             (direct.price, direct.qty, direct.intra_ms) if direct.price is not None else None
         ), f"{side} traded_close"
         assert reduced["traded_peaks"] == direct.traded_peaks, f"{side} traded_peaks"
+        assert reduced["all_peaks"] == direct.all_peaks, f"{side} all_peaks"
+
+
+@pytest.mark.parametrize("bucket_ms", [180_000, 300_000, 600_000])
+def test_bucket_dependent_fields_are_pinned_to_1m_canon(
+    tmp_path: Path, bucket_ms: int,
+) -> None:
+    """`all_max_peaks`·`traded_record_peaks` 는 **봉 의존인데 1분이 정본이다**.
+
+    두 사실을 한 자리에서 건다:
+
+    1. **봉 의존이다** — 굵은 봉으로 직접 조회하면 1분과 값이 다르다.
+       `all_max_peaks` 는 `_peak_bucket_dedup` 이 `subset=["price", "bucket_id"]`
+       로 접기 때문이고(이름이 `*_max*` 라 봉 무관으로 오해받았다),
+       `traded_record_peaks` 는 rep 프레임 산물이기 때문이다.
+    2. **그래도 1분 값이 나간다** — `reaggregate_peak_rep` 이 이 둘을 만들지
+       않으므로 `_peak_with_rep_outputs` 가 base(1분)를 그대로 나른다. 재파생하려면
+       cont 행이 필요한데 캐시에는 rep 행만 있어 원리적으로 불가능하다.
+
+    **막는 방향**: 누군가 이 둘을 "봉 무관" 으로 되돌려 적거나
+    `test_peak_max_fields_are_bucket_independent` 에 끼워 넣는 것. 그러면 1번
+    단언이 빨개진다. **못 보는 것**: 1분 정본이 굵은 봉 정본보다 *더 옳은가* —
+    그것은 값 판단이라 테스트가 아니라 `_peak_with_rep_outputs` docstring 이 논증한다.
+    """
+    snapshots, trades = _peak_reagg_fixture(tmp_path)
+    con = _con_for(snapshots)
+    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
+
+    base_ask, base_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+    coarse_ask, coarse_bid = query_day_ask_bid_peak_dual(
+        con, path=snapshots, trades_path=trades, bucket_ms=bucket_ms, **kw,
+    )
+    _, _, rep_rows = query_day_ask_bid_peak_dual_with_rep(
+        con, path=snapshots, trades_path=trades, bucket_ms=60_000, **kw,
+    )
+
+    for side, base, coarse in (
+        ("ask", base_ask, coarse_ask), ("bid", base_bid, coarse_bid),
+    ):
+        assert base is not None and coarse is not None, side
+        for field in ("all_max_peaks", "traded_record_peaks"):
+            assert getattr(base, field) != getattr(coarse, field), (
+                f"{side} {field} @{bucket_ms}: 봉 의존이어야 한다 — 같다면 이 필드가 "
+                f"정말 봉 무관이 되었거나 픽스처가 그 차이를 잃은 것이다"
+            )
+        # 2번: 축약이 이 둘을 만들지 않으므로 파생 결과에 base 값이 남는다.
+        reduced = reaggregate_peak_rep(
+            [r for r in rep_rows if r.side == side], side=side, bucket_ms=bucket_ms,
+        )
+        assert reduced is not None
+        assert "all_max_peaks" not in reduced and "traded_record_peaks" not in reduced, side
 
 
 def test_peak_max_fields_are_bucket_independent(tmp_path: Path) -> None:
@@ -2664,187 +2797,6 @@ def test_query_day_ask_bid_peak_dual_perf_guardrail(tmp_path: Path) -> None:
     assert elapsed < 5.0, f"peak dual query took {elapsed:.1f}s"
 
 
-# === query_bucketed_depth_delta =============================================
-
-
-def _ob_at(
-    *, ts_ms: int, seq: int,
-    ask: tuple[tuple[int, int], ...], bid: tuple[tuple[int, int], ...],
-) -> Orderbook:
-    """가격까지 제어하는 Orderbook 빌더 — 증감 diff 테스트는 가격 교집합이 본질이라
-    _ob(가격 고정)로는 못 쓴다. ask/bid = ((price, qty), ...) 10단 미만이면 0 패딩.
-    기본 10단 전부 qty>0 로 채우면 deep book(유효 술어 통과)이 된다."""
-    def _pad(t: tuple[tuple[int, int], ...]) -> tuple[tuple[int, int], ...]:
-        return (tuple(t) + ((0, 0),) * 10)[:10]
-
-    a, b = _pad(ask), _pad(bid)
-    return Orderbook(
-        ts_ms=ts_ms, seq=seq,
-        ask_p=tuple(p for p, _ in a), ask_q=tuple(q for _, q in a), ask_d=(0,) * 10,
-        bid_p=tuple(p for p, _ in b), bid_q=tuple(q for _, q in b), bid_d=(0,) * 10,
-        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
-    )
-
-
-def _ladder(base: int, step: int, qty: int, n: int = 10) -> tuple[tuple[int, int], ...]:
-    return tuple((base + i * step, qty) for i in range(n))
-
-
-def test_depth_delta_same_price_diff_aggregates_in_out(tmp_path: Path) -> None:
-    """같은 버킷 내 연속 스냅샷의 공통 가격 diff 가 유입(in)/유출(out)로 나뉘어
-    합산되고, tick 은 사다리 간격에서 나온다."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    ask0 = _ladder(1000, 10, 100)
-    bid0 = _ladder(990, -10, 100)
-    # 두 번째 스냅샷: 매도 1000 이 +50, 매수 990 이 -30.
-    ask1 = ((1000, 150),) + ask0[1:]
-    bid1 = ((990, 70),) + bid0[1:]
-    obs = [
-        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=bid0),
-        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=bid1),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
-    assert len(rows) == 1
-    r = rows[0]
-    assert r.bucket_intra_ms == 32_400_000
-    assert r.ask == ((1000, 50, 0),)
-    assert r.bid == ((990, 0, -30),)
-    assert r.ask_tick == 10 and r.bid_tick == 10
-
-
-def test_depth_delta_price_intersection_excludes_window_shift(tmp_path: Path) -> None:
-    """사다리가 한 단 미끄러지면(관측창 이동) 교집합에 없는 가격은 증감이 아니다 —
-    창에 새로 들어온 최상단/빠져나간 최하단 가격에서 유령 유입/유출이 없어야 한다."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    ask0 = _ladder(1000, 10, 100)          # 1000..1090
-    ask1 = _ladder(1010, 10, 100)          # 1010..1100 — 창이 위로 한 단
-    obs = [
-        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
-        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=_ladder(990, -10, 100)),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
-    # 교집합(1010..1090)의 qty 는 전부 100→100 무변화, 창 밖(1000·1100)은 배제 → 빈 결과.
-    assert rows == []
-
-
-def test_depth_delta_gap_over_threshold_breaks_chain(tmp_path: Path) -> None:
-    """인접 유효 스냅샷의 간격이 max_gap_ms 를 넘으면 diff 하지 않는다(체인 차단) —
-    캡처 공백·VI 건너뛰기·venue 스왑 경계의 관측창 대이동 아티팩트 방지."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    ask0 = _ladder(1000, 10, 100)
-    ask1 = ((1000, 900),) + ask0[1:]
-    obs = [
-        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
-        # 10분 뒤 — 60s 기본 임계 초과.
-        _ob_at(ts_ms=91_000_100, seq=2, ask=ask1, bid=_ladder(990, -10, 100)),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    assert query_bucketed_depth_delta(con, path=out, bucket_ms=60_000) == []
-    # 임계를 넉넉히 주면 같은 데이터가 diff 된다(대조군).
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000, max_gap_ms=3_600_000)
-    assert len(rows) == 1 and rows[0].ask == ((1000, 800, 0),)
-
-
-def test_depth_delta_sides_do_not_cross(tmp_path: Path) -> None:
-    """현재가 이동으로 같은 가격이 매도단→매수단으로 넘어가면 무관한 주문이다 —
-    side 를 넘는 diff 가 없어야 한다."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    obs = [
-        # 1000 이 매도 최우선.
-        _ob_at(ts_ms=90_000_100, seq=1, ask=_ladder(1000, 10, 500), bid=_ladder(990, -10, 100)),
-        # 한 틱 상승 — 1000 이 이제 매수 최우선. 매도 사다리는 1010부터.
-        _ob_at(ts_ms=90_010_100, seq=2, ask=_ladder(1010, 10, 500), bid=_ladder(1000, -10, 300)),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
-    # ask 교집합(1010..1090): 500→500 무변화. bid 교집합(990..900): 100→300 유입만.
-    assert len(rows) == 1
-    r = rows[0]
-    assert r.ask == ()
-    assert all(in_q == 200 and out_q == 0 for _, in_q, out_q in r.bid)
-    # 1000(ask→bid 로 넘어간 가격)은 bid 결과에 없어야 한다 — prev bid 에 없던 가격.
-    assert 1000 not in {p for p, _, _ in r.bid}
-
-
-def test_depth_delta_auction_rows_excluded_by_shared_predicate(tmp_path: Path) -> None:
-    """세션 경계를 넘기면 공용 술어(ADR-0062 v3)가 3호가 붕괴책을 배제하고, 그
-    스냅샷을 가로지르는 diff 도 (간격 임계 안이라면) 유효쌍끼리만 남는다."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    deep0 = _ob_at(ts_ms=90_000_100, seq=1, ask=_ladder(1000, 10, 100), bid=_ladder(990, -10, 100))
-    # VI: 3호가 붕괴(레벨 4~10 = 0) — 술어가 배제.
-    shallow = _ob_at(
-        ts_ms=90_010_100, seq=2,
-        ask=tuple((1000 + i * 10, 999) for i in range(3)),
-        bid=tuple((990 - i * 10, 999) for i in range(3)),
-    )
-    deep1 = _ob_at(ts_ms=90_020_100, seq=3, ask=((1000, 400),) + _ladder(1000, 10, 100)[1:], bid=_ladder(990, -10, 100))
-    out = tmp_path / "snapshots.parquet"
-    write_parquet([deep0, shallow, deep1], out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(
-        con, path=out, bucket_ms=60_000,
-        session_open_ms=90_000_000, session_close_ms=153_000_000,
-    )
-    # shallow 가 WHERE 로 빠지고 deep0↔deep1 이 인접 유효쌍(간격 20s < 60s)으로 diff.
-    assert len(rows) == 1
-    assert rows[0].ask == ((1000, 300, 0),)
-
-
-def test_depth_delta_bucket_attribution_is_cur_side(tmp_path: Path) -> None:
-    """버킷 경계에 걸친 쌍(prev 는 이전 분, cur 는 이번 분)의 증감은 cur 버킷에
-    귀속된다 — 변화가 관측된 시각."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    ask0 = _ladder(1000, 10, 100)
-    obs = [
-        _ob_at(ts_ms=90_059_900, seq=1, ask=ask0, bid=_ladder(990, -10, 100)),
-        _ob_at(ts_ms=90_100_200, seq=2, ask=((1000, 130),) + ask0[1:], bid=_ladder(990, -10, 100)),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
-    assert len(rows) == 1
-    assert rows[0].bucket_intra_ms == 32_460_000  # 09:01 버킷(cur)
-    assert rows[0].ask == ((1000, 30, 0),)
-
-
-def test_depth_delta_tick_uses_median_gap_across_band_boundary(tmp_path: Path) -> None:
-    """호가단위 경계를 걸친 사다리(50원 1칸 + 100원 다수)에서 tick 은 최솟값이 아니라
-    중앙값 — 넓은 쪽 셀이 절반 높이가 되는 줄무늬를 막는다(프론트 ladderTick 동치)."""
-    from hoga.tables.snapshots import query_bucketed_depth_delta
-
-    prices = (49_900, 49_950, 50_000, 50_100, 50_200, 50_300, 50_400, 50_500, 50_600, 50_700)
-    ask0 = tuple((p, 100) for p in prices)
-    ask1 = ((49_900, 160),) + ask0[1:]
-    obs = [
-        _ob_at(ts_ms=90_000_100, seq=1, ask=ask0, bid=_ladder(49_850, -50, 100)),
-        _ob_at(ts_ms=90_010_100, seq=2, ask=ask1, bid=_ladder(49_850, -50, 100)),
-    ]
-    out = tmp_path / "snapshots.parquet"
-    write_parquet(obs, out)
-    con = duckdb.connect()
-    rows = query_bucketed_depth_delta(con, path=out, bucket_ms=60_000)
-    assert len(rows) == 1
-    assert rows[0].ask_tick == 100  # 다수 간격(100)이 이긴다
-    assert rows[0].bid_tick == 50
-
-
 # ---------------------------------------------------------------------------
 # query_daily_depth_peaks: 여러 파일을 쿼리 1회로 — 단건판과 동치
 # ---------------------------------------------------------------------------
@@ -2971,48 +2923,6 @@ def test_query_daily_depth_peaks_without_close_bound_relaxes_like_single(
 def test_query_daily_depth_peaks_empty_input(tmp_path: Path) -> None:
     del tmp_path
     assert _peaks_batch(duckdb.connect(), [], session_close_ms=153_000_000) == {}
-
-
-@pytest.mark.parametrize("bucket_ms", [180_000, 300_000, 600_000])
-def test_reaggregate_depth_delta_matches_direct_query(tmp_path: Path, bucket_ms: int) -> None:
-    """1분 잔량 증감을 접은 결과 == 그 봉으로 직접 조회한 결과.
-
-    **막는 방향**: 접기가 직접 조회와 어긋나는 쪽. 특히 `ask_tick`/`bid_tick` —
-    중앙값은 결합적이지 않아 값끼리 못 합치고, 사다리 가격 **집합의 합집합**에서
-    다시 구해야 한다. 합만 맞추고 tick 을 대충 고르면 여기서 걸린다.
-    """
-    # ⚠ 사다리 간격을 분마다 **다르게** 둔다. 간격이 일정하면 어떤 (틀린) 구현도
-    # 같은 tick 을 내서 가드가 아무것도 증명하지 못한다 — 첫 판이 실제로 그랬다
-    # (tick 을 "1분 tick 중 최댓값" 으로 바꿔도 통과). 여기서는 짝수 분이 100,
-    # 홀수 분이 50 이라 합집합의 중앙값(50)이 어느 1분 tick 과도 다르다.
-    snapshots = tmp_path / "snapshots.parquet"
-    obs = []
-    for m in range(8):
-        step = 100 if m % 2 == 0 else 50
-        base = 25_000 + (m % 3) * step   # 창을 미끄러뜨려 공통 가격과 신규 가격을 섞는다
-        obs.append(
-            replace(
-                _ob_ap(
-                    90_000_000 + m * 100_000,
-                    [300 + m * 7, 200, 10, 40, 5, 6, 7, 8, 9, 1],
-                    ask_p=[base + i * step for i in range(10)],
-                ),
-                bid_p=tuple(base - 50 - i * step for i in range(10)),
-                bid_q=(250 + m * 5, 80, 70, 60, 50, 40, 30, 20, 10, 1),
-            )
-        )
-    write_parquet(obs, snapshots)
-    con = _con_for(snapshots)
-    kw = {"session_open_ms": 90_000_000, "session_close_ms": 153_000_000}
-
-    direct = query_bucketed_depth_delta(con, path=snapshots, bucket_ms=bucket_ms, **kw)
-    prices_1m: dict[tuple[int, str], list[int]] = {}
-    base_1m = query_bucketed_depth_delta(
-        con, path=snapshots, bucket_ms=60_000, out_ladder_prices=prices_1m, **kw,
-    )
-    derived = reaggregate_depth_delta(base_1m, prices_1m, bucket_ms=bucket_ms)
-
-    assert derived == direct
 
 
 def test_krx_tick_boundaries_and_sql_python_agree(tmp_path: Path) -> None:

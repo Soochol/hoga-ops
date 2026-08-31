@@ -9,6 +9,7 @@ import {
 } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
+import { useThemeChangeRerender } from '../state/themePrefs';
 import {
   chartCrosshairOptions,
   CHART_LAYOUT_OPTIONS,
@@ -44,8 +45,7 @@ import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
-import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../chart/timeframeJump';
-import { useTimeframeJump, type MinuteJumpState } from './useTimeframeJump';
+import { canPublishTimeframeJump } from '../chart/timeframeJump';
 import type { Candle, RangeSegment } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
@@ -73,10 +73,9 @@ import {
 } from './workspace/windowView';
 import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
-import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
-import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
+import { type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS, realMsToYyyymmdd } from './liveDateTime';
-import { initialVisibleMinuteBarsFor, liveVenueSessionBoundsMs } from './liveVenuePolicy';
+import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
@@ -98,35 +97,33 @@ import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
-import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
-import { buildPeakWallStepPoints, type PeakWallStepPoint } from '../chart/peakWallSteps';
-import { usePeakWallStepsRegistry } from './indicators/peakWallStepsRegistry';
+import {
+  buildPeakWallStepPoints,
+  buildUnreachedStepPoints,
+  type PeakWallStepPoint,
+} from '../chart/peakWallSteps';
+import {
+  PEAK_WALL_STEP_SLOTS,
+  usePeakWallStepsRegistry,
+  type PeakWallStepKey,
+} from './indicators/peakWallStepsRegistry';
+import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
-import { usePeakDailyMaFilter } from './peakWallDailyMaFilter';
-import { LiveWallSurgeMarkers } from './LiveWallSurgeMarkers';
+import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
 
-/** 번들에 wall_surge 가 없을 때 넘길 **안정 참조** — 인라인 `[]` 는 매 렌더 새 배열이라
- *  memo 를 매번 깨뜨린다. */
-// 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
-// (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
-const EMPTY_WALL_SURGE: readonly never[] = [];
 import {
-  deriveDayAskPeaksIncrementalAsOf,
 } from './useDayAskPeaks';
 import {
-  deriveDayBidPeaksIncrementalAsOf,
 } from './useDayBidPeaks';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
-import { nextVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import DepthHeatmapOverlay from './DepthHeatmapOverlay';
-import DepthDeltaOverlay from './DepthDeltaOverlay';
-import type { DepthDeltaPoint } from './depthDelta';
 import { depthHeatmapFromWire } from './depthHeatmapWire';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -217,7 +214,6 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 const EMPTY_SYNC_CANDLES: readonly Candle[] = [];
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
-const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
@@ -318,6 +314,7 @@ interface Props {
   ratioBundle?: RangeBundle | null;
   /** 벤더 250일 벽에 닿았다 — **벤더 모드 전용**. 디스크 모드엔 그 벽이 없다. */
   clampEngaged: boolean;
+  captureFloorEngaged: boolean;
   /** 이 번들의 캔들 소스 축(`useLiveBundle.candleSourceKey`). 값이 갈린 커밋에서
    *  `useViewportBackfill` 이 뷰포트를 다시 앉힌다 — 미지정이면 재착석이 꺼진다
    *  (소스 축이 없는 호출자·테스트는 종전 동작 그대로). */
@@ -357,16 +354,8 @@ interface Props {
   restoreViewport?: TabViewport | null;
   /** LivePage의 useDayAskPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayAskPeaks?: readonly AskPeak[];
-  /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
-  /** Raw backend today ask-peak payload, used only for cutoff-aware live recomputation. */
-  todayAskPeakInput?: LiveTodayAskPeak | null;
   /** LivePage의 useDayBidPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayBidPeaks?: readonly BidPeak[];
-  /** Backend today all-price bid peak — optional so existing tests/callers omit it safely. */
-  /** Raw backend today bid-peak payload, used only for cutoff-aware live recomputation. */
-  todayBidPeakInput?: LiveTodayBidPeak | null;
-  /** Raw live snapshots, used only for cutoff-aware today/live peak recomputation. */
-  liveObSnapshots?: ReadonlyArray<ObSnapshot>;
   liveTradeSnapshots?: ReadonlyArray<TradeSnapshot>;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
@@ -374,10 +363,6 @@ interface Props {
   tradeVolumePocs?: readonly TradeVolumePoc[];
   /** 분봉 호가 잔량 히트맵 원본 wire — LiveChartRoot 내부에서 변환. */
   depthHeatmap?: readonly DepthHeatmapPointWire[];
-  /** 오늘의 단별 잔량 증감 버킷. 과거일 소스가 없는 오늘 전용 지표라 wire 를 거치지 않고
-   *  도메인 그대로 받는다(`useLiveBundle().depthDeltaToday`). /study 등 SSE 가 없는
-   *  호출부는 넘기지 않으면 되고, 그러면 마운트 게이트가 pointCount 0 으로 자연히 닫힌다. */
-  depthDeltaToday?: readonly DepthDeltaPoint[];
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
@@ -455,8 +440,6 @@ interface Props {
   };
   dailyMovingAverageOverride?: {
     configs: readonly LiveMAConfig[];
-    masterEnabled: boolean;
-    hidden: boolean;
   };
   tradeVolumePocOverride?: {
     enabled?: boolean;
@@ -487,12 +470,6 @@ interface Props {
    * 캘린더 봉 창은 축이 이미 날짜를 찍으므로 이 경로를 태우지 않는다.
    */
   onViewedDateChange?: (view: { date: string | null; returnToLive: () => void }) => void;
-  /** 이 분봉 창에 걸린 점프의 상태 — 헤더 칩이 그린다. 걸린 것이 없으면 null. */
-  onMinuteJumpChange?: (jump: {
-    state: MinuteJumpState | null;
-    clear: () => void;
-    retry: () => void;
-  }) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
   onCandleBasisHover?: (date: string | null) => void;
@@ -508,17 +485,6 @@ export function shouldShowTradeVolumePocOverlay(
 }
 
 export function shouldShowDepthHeatmapOverlay(
-  timeframe: LiveTimeframe,
-  enabled: boolean,
-  pointCount: number,
-): boolean {
-  return isMinuteTimeframe(timeframe) && enabled && pointCount > 0;
-}
-
-/** 증감 오버레이 마운트 게이트. 히트맵과 같은 3조건이지만 소스가 오늘(SSE) 전용이라
- *  과거일만 보는 뷰포트에서는 pointCount 0 으로 자연히 닫힌다. `hidden` 은 여기 넣지
- *  않는다 — 숨김은 그리기만 끄고 마운트/레전드는 유지하는 것이 규약이다. */
-export function shouldShowDepthDeltaOverlay(
   timeframe: LiveTimeframe,
   enabled: boolean,
   pointCount: number,
@@ -542,6 +508,7 @@ export function LiveChartRoot({
   onRetryCandles,
   ratioBundle,
   clampEngaged,
+  captureFloorEngaged,
   candleSourceKey,
   minuteScrollbackFloorDate = null,
   isPastCandlesLoading,
@@ -554,15 +521,11 @@ export function LiveChartRoot({
   pastDataWarnings,
   restoreViewport = null,
   dayAskPeaks = EMPTY_ASK_PEAKS,
-  todayAskPeakInput = null,
   dayBidPeaks = EMPTY_BID_PEAKS,
-  todayBidPeakInput = null,
-  liveObSnapshots = EMPTY_OB_SNAPSHOTS,
   liveTradeSnapshots = EMPTY_TRADE_SNAPSHOTS,
   todayKst = '',
   tradeVolumePocs = [],
   depthHeatmap = [],
-  depthDeltaToday = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   dailyMaWindowFloorDate = null,
@@ -578,7 +541,6 @@ export function LiveChartRoot({
   onJumpSourceReady,
   onJumpDestinationChange,
   onViewedDateChange,
-  onMinuteJumpChange,
   onCursorActiveChange,
   onCandleBasisHover,
   onCandleBasisClick,
@@ -654,6 +616,22 @@ export function LiveChartRoot({
   // 번들은 캔들이 없으면 통째로 null 이라, 정작 "왜 비었나" 를 물어야 할 상황에서
   // 사유가 함께 사라진다(자격증명 미설정·벤더 장애). prop 은 그 그릇 밖에 있다.
   const missingDates = hogaMissingDates ?? paneHogaBundle?.missing_dates;
+  /**
+   * 캔들이 **실제로 그려진** 거래일 — `no_upstream_data` 문구의 판별식(2026-08-26).
+   *
+   * `buildChartBundle` 이 세그먼트를 `kisCandles` 에서 직접 파생하므로("divider ⟺
+   * candle for that day") 이 집합이 곧 화면에 캔들이 있는 날짜다. 키움 보충분은
+   * 그 배열에 병합돼 들어오고, 벤더 모드는 전 구간이 벤더 캔들이라 **두 모드가 한
+   * 축으로** 덮인다 — `gapFill.filledDates` 를 배관하면 벤더 모드가 남는다.
+   *
+   * ⚠ **오늘은 뺀다.** 오늘 세그먼트는 캔들이 없어도 라이브 신호만으로 생기므로
+   * (`buildChartBundle` 의 "today segment") 그대로 쓰면 캔들 없는 오늘을 "있다" 로
+   * 센다. `todayKst` 가 빈 문자열이면(프롭 미지정) 날짜와 절대 같지 않아 무해하다.
+   */
+  const datesWithCandles = useMemo(
+    () => new Set((cb?.segments ?? []).map((seg) => seg.date).filter((d) => d !== todayKst)),
+    [cb?.segments, todayKst],
+  );
   const hogaMissingText = useMemo(
     () =>
       deriveHogaMissingNotice({
@@ -661,8 +639,9 @@ export function LiveChartRoot({
         venue,
         hasAnyHogaPoints: (paneHogaBundle?.quote_ratio.points.length ?? 0) > 0,
         includeNotCaptured: savedRangeFrozen,
+        datesWithCandles,
       }),
-    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen],
+    [missingDates, paneHogaBundle?.quote_ratio.points.length, venue, savedRangeFrozen, datesWithCandles],
   );
   // 캔들이 없으면 **캔들 결손만** 말한다. 차트 자체가 없는데 "호가 기록 없음" 부터
   // 읽히면 무엇을 고쳐야 할지 알 수 없고, 실제로 고칠 수 있는 쪽은 캔들이다
@@ -672,11 +651,18 @@ export function LiveChartRoot({
   // "알 권리" 이고, 완결성 자동 교체를 폐지했기에 특히 필요하다(모듈 주석).
   const sourceBadge = useMemo(() => deriveSourceBadge(cb?.segments), [cb?.segments]);
   // Load identity for the per-view chart remount and the reveal cover. The
-  // theme segment forces a full chart rebuild if the theme ever changes while
-  // this stays mounted — module-resolved series colors and axis-lifetime
-  // projection caches are otherwise frozen at their first resolution. In the
-  // shipped UX a theme swap already coincides with an unmount (route change /
-  // settings modal), so this is a forward-safety net, not the primary path.
+  // theme segment forces a full chart rebuild when the theme changes while this
+  // stays mounted — module-resolved series colors and axis-lifetime projection
+  // caches are otherwise frozen at their first resolution. **This is the
+  // primary path, not a safety net**: 설정 모달은 차트를 언마운트하지 않으므로
+  // (모달이 열린 채 배경에 차트가 살아 있다) 테마 전환은 여기서만 반영된다.
+  //
+  // 두 줄이 한 쌍이다. `currentThemeKey()` 는 DOM 을 읽을 뿐이라 그 자체로는
+  // 리렌더를 못 만든다 — 리렌더를 만드는 것은 아래 구독이고, DOM 이 이미 새 값인
+  // 것은 `subscribeThemeToDom()` 이 보장한다(themePrefs.ts). 구독을 빼면 차트는
+  // **다음 우발적 리렌더까지 옛 팔레트로 남는다** — 사용자가 본 "스크롤해야
+  // 바뀐다" 가 정확히 그것이었다.
+  useThemeChangeRerender();
   const themeSeg = currentThemeKey();
   const viewKey = viewIdentity
     ? `${code ?? ''}|${timeframe}|${viewIdentity}|${themeSeg}`
@@ -1092,14 +1078,10 @@ export function LiveChartRoot({
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
-  // ── 기간 점프 ───────────────────────────────────────────────────────────
-  // 동기화 토글(`rangeSyncEnabled`)에 묶지 **않는다**. 저것은 "따라다닐 것인가" 를
-  // 정하는 스위치이고 점프는 사용자가 누를 때만 한 번 움직이는 명령이라, 끌 이유가
-  // 애초에 없다(안 누르면 아무 일도 일어나지 않는다). 종목 축만 크로스헤어와
-  // 공유한다 — 세 동기화가 이미 그 토글을 함께 쓴다.
-  //
-  // ⚠ **백필 호출보다 위에 있어야 한다** — `backfillFromDate` 를 그쪽에 넘긴다.
-  const jumpCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  // ── 기간 점프 **발행** ──────────────────────────────────────────────────
+  // 소비 쪽(어느 구간을 받나 · 칩)은 여기 없다 — 창의 데이터 우단을 정하는 일이라
+  // `ChartWindow` 가 `useMinuteJumpTarget` 으로 소유한다. 이 파일에 남은 것은 발행
+  // 창이 **목적지를 읽는 통로**뿐이다(차트 좌표와 캔들 배열이 여기에만 있다).
   /**
    * 목적지 = **이 창에서 보이는 가장 오른쪽 캔들**. 규칙은 이것 하나다
    * (2026-08-22 사용자 결정).
@@ -1198,27 +1180,7 @@ export function LiveChartRoot({
     };
   }, [chart, timeframe, onViewedDateChange, returnToLive]);
 
-  const minuteJump = useTimeframeJump({
-    chart,
-    axis,
-    containerRef,
-    candles: cb?.candles ?? EMPTY_CANDLES,
-    enabled: isTimeframeJumpTarget(timeframe),
-    minuteScrollbackFloorDate,
-    myWindowId: winCtxWindowId,
-    myTimeframe: timeframe,
-    myGroup: winCtxGroup,
-    myCode: code,
-    allowCrossSymbol: jumpCrossSymbol,
-  });
-  const { state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump } = minuteJump;
-  useEffect(() => {
-    onMinuteJumpChange?.({
-      state: minuteJumpState, clear: clearMinuteJump, retry: retryMinuteJump,
-    });
-  }, [minuteJumpState, clearMinuteJump, retryMinuteJump, onMinuteJumpChange]);
-
-  useViewportBackfill({
+  const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,
     bundle: cb,
@@ -1233,10 +1195,16 @@ export function LiveChartRoot({
     settledFromDate,
     savedRangeFromDate,
     minuteScrollbackFloorDate,
-    // 게이트를 통과한 값이다 — 원시 슬롯을 물리면 받지도 않은 점프를 위해 과거를
-    // 긁는 창이 생긴다(그 prop 주석의 그 사고).
-    jumpFromDate: minuteJump.backfillFromDate,
   });
+  // 강제 클램프 착지 안내의 표시 수명. `seq` 가 deps 라 같은 경계로 다시 착지해도
+  // 타이머가 재시작한다. 8초: 읽을 시간은 주되 차트 위 상주물이 되지 않게.
+  const [swapNoticeVisible, setSwapNoticeVisible] = useState(false);
+  useEffect(() => {
+    if (!sourceSwapClampNotice) { setSwapNoticeVisible(false); return undefined; }
+    setSwapNoticeVisible(true);
+    const t = setTimeout(() => setSwapNoticeVisible(false), 8000);
+    return () => clearTimeout(t);
+  }, [sourceSwapClampNotice]);
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
   const getLiveRightOffsetBars = useCallback((visibleBars: number, plotWidth: number) => (
@@ -1831,8 +1799,6 @@ export function LiveChartRoot({
 
   // 창-스코프 절단 — 필드별 구독으로 전역 폴백의 재렌더 입도 보존.
   const prefMovingAverages = useWindowIndicator((s) => s.movingAverages);
-  const prefMovingAverageEnabled = useWindowIndicator((s) => s.movingAverageEnabled);
-  const prefMovingAverageHidden = useWindowIndicator((s) => s.movingAverageHidden);
   const prefVolumeEnabled = useWindowIndicator((s) => s.volumeEnabled);
   const prefQuoteTotalsEnabled = useWindowIndicator((s) => s.quoteTotalsEnabled);
   const prefRatioEnabled = useWindowIndicator((s) => s.ratioEnabled);
@@ -1844,8 +1810,6 @@ export function LiveChartRoot({
   const indicatorPrefs = useMemo(
     () => ({
       movingAverages: prefMovingAverages,
-      movingAverageEnabled: prefMovingAverageEnabled,
-      movingAverageHidden: prefMovingAverageHidden,
       volumeEnabled: prefVolumeEnabled,
       quoteTotalsEnabled: prefQuoteTotalsEnabled,
       ratioEnabled: prefRatioEnabled,
@@ -1855,7 +1819,7 @@ export function LiveChartRoot({
       institutionNetEnabled: prefInstitutionNetEnabled,
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
-    [prefMovingAverages, prefMovingAverageEnabled, prefMovingAverageHidden,
+    [prefMovingAverages,
       prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
       prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
@@ -1875,8 +1839,6 @@ export function LiveChartRoot({
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → 그룹(멤버 PaneId들) 매핑에 쓰는 최신 그룹 목록.
   const paneGroupsRef = useRef<readonly PaneSpecGroup[]>([]);
-  const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
-  const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   // 회피 rect 도 선·도킹 라벨과 같은 MA 필터를 타야 한다 — 안 그러면 필터로 사라진
   // 라벨을 피해 고저 극값 라벨이 pane 안쪽으로 밀리는 유령 회피가 남는다.
   // 일봉 MA 필터는 **여기 한 곳에서만** 만든다 — 데이터 fetch 가 걸린 훅이라 소비처(선 2 ·
@@ -1890,133 +1852,32 @@ export function LiveChartRoot({
     kisEnabled: dailyCandleKisEnabled,
     displayFloorDate: dailyMaWindowFloorDate,
   };
-  const askPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'ask' });
-  const bidPeakDailyMaFilter = usePeakDailyMaFilter({ ...peakDailyMaInput, side: 'bid' });
+  // 방향당 한 번 — 계열 셋의 필터를 함께 돌려준다(일봉 fetch 는 여전히 방향당 하나).
+  const askPeakDailyMaFilters = usePeakDailyMaFilters({ ...peakDailyMaInput, side: 'ask' });
+  const bidPeakDailyMaFilters = usePeakDailyMaFilters({ ...peakDailyMaInput, side: 'bid' });
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
-  const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
-
-  // 「보이는 최신 봉 기준」이 **한쪽이라도 켜져 있을 때만** 구독한다. 이 값은 그 pref 가
-  // 꺼져 있으면 아래에서 통째로 버려지는데(`askVisibleTimeCutoffForRender`), 종전엔 그래도
-  // 팬 프레임마다 setState 를 해서 이 컴포넌트(훅 수백 개)를 통째로 재렌더했다. 두 pref 의
-  // 기본값이 **둘 다 false** 라 대다수 사용자가 아무 이득 없이 그 비용을 내고 있었다.
-  const visibleTimeCutoffNeeded = askPeakVisibleTimeCutoff || bidPeakVisibleTimeCutoff;
-  useEffect(() => {
-    if (!visibleTimeCutoffNeeded || !chart || !cb || !isMinuteTimeframe(timeframe)) {
-      // 이미 null 이면 setState 자체를 건너뛴다 — 안 그러면 pref 가 꺼진 상태에서
-      // deps 가 바뀔 때마다(캔들 갱신 등) 무의미한 재렌더가 한 번씩 난다.
-      setVisibleTimeCutoff((prev) => (prev === null ? prev : null));
-      return undefined;
-    }
-    const timeScale = chart.timeScale();
-    // **같은 봉이면 이전 참조를 유지한다** — `nextVisibleTimeCutoff` 가 그 비교를 갖는다.
-    // 팬 한 번의 프레임 대부분이 그 경우고(왼쪽으로 밀거나 봉 하나 안에서 줌하면 오른쪽
-    // 끝 봉은 그대로), React 가 `Object.is` 로 그 갱신을 버려 재렌더가 사라진다.
-    const update = () => {
-      setVisibleTimeCutoff((prev) => nextVisibleTimeCutoff(
-        prev,
-        cb.candles,
-        timeScale.getVisibleRange(),
-        axis,
-        TIMEFRAME_TO_MS[timeframe],
-      ));
-    };
-    update();
-    timeScale.subscribeVisibleTimeRangeChange(update);
-    return () => {
-      safeUnsubscribe(() => timeScale.unsubscribeVisibleTimeRangeChange(update));
-    };
-  }, [chart, cb, cb?.candles, axis, timeframe, visibleTimeCutoffNeeded]);
-
-  const askVisibleTimeCutoffForRender = askPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
-  const bidVisibleTimeCutoffForRender = bidPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
-  // Historical/cache-backed days only expose preclassified families, so the
-  // cutoff-aware recompute is limited to today's live path where raw OB/trade
-  // snapshots still exist. Past days keep the compatibility cutoff filter.
-  const canRecomputeAskCutoff = !!askVisibleTimeCutoffForRender
-    && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayAskPeakInput !== null);
-  const canRecomputeBidCutoff = !!bidVisibleTimeCutoffForRender
-    && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayBidPeakInput !== null);
   // 현재가 라인용 fresh 체결가 — live.trade 를 number|null 로 환원해 memo'd
   // LiveCurrentPriceLine 에 프리미티브로 전달(재구독·per-tick churn 없음). LiveChartRoot
   // 는 SSE 틱마다 재렌더되므로 Date.now() 기반 재평가 주기가 충분하다. index 뷰는
   // liveTradeSnapshots 가 빈 배열이라 null → deriveCurrentPriceLine 이 캔들 종가로 폴백.
   const liveTradePrice = freshLiveTradePrice(liveTradeSnapshots, venue, Date.now());
-  const historicalAskSeeds = useMemo(
-    () => dayAskPeaks.filter((peak) => peak.date !== todayKst),
-    [dayAskPeaks, todayKst],
-  );
-  const historicalBidSeeds = useMemo(
-    () => dayBidPeaks.filter((peak) => peak.date !== todayKst),
-    [dayBidPeaks, todayKst],
-  );
   // cutoff(as-of) 증분 소스 — 4계열(ask/bid × dayPeaks/todayAll) 각자 누적 상태를 갖는다
   // (todayAll 은 빈 trade 로 update 하므로 dayPeaks 와 공유 불가 — 공유 시 리셋 스래싱).
   // 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례). cutoff pref 를 껐다 켜도 append-only
   // prefix-guard 가 누락분을 자가 회수하고, 종목 전환(버퍼 리셋)은 참조 불일치로 전체
   // 재소비한다. batch 는 매 틱 ob/trade 를 재스캔했으나 증분은 델타만 소비한다(ADR-0106).
-  // cutoff 재계산판 최대벽의 유효-스냅샷 하한 — useLiveChartData 의 peakSessionOpenMs 와
-  // 같은 정의(선택 venue 의 개장). 두 경로가 갈리면 같은 벽이 cutoff 유무에 따라 다르게
-  // 걸러진다.
-  const peakSessionOpenMs = useMemo(
-    () => liveVenueSessionBoundsMs(todayKst, venue).open_ms,
-    [todayKst, venue],
-  );
   const askDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (askDayPeakSourceRef.current === null) askDayPeakSourceRef.current = new IncrementalPeakWallSource('ask');
   const bidDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (bidDayPeakSourceRef.current === null) bidDayPeakSourceRef.current = new IncrementalPeakWallSource('bid');
-  const renderDayAskPeaks = useMemo(
-    () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayAskPeaksIncrementalAsOf(
-        askDayPeakSourceRef.current!,
-        liveObSnapshots,
-        liveTradeSnapshots,
-        historicalAskSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayAskPeakInput,
-        askVisibleTimeCutoffForRender!.tMs,
-      )
-      : [...dayAskPeaks],
-    [
-      canRecomputeAskCutoff,
-      dayAskPeaks,
-      historicalAskSeeds,
-      liveObSnapshots,
-      liveTradeSnapshots,
-      timeframe,
-      askVisibleTimeCutoffForRender?.tMs,
-      todayAskPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-    ],
-  );
-  const renderDayBidPeaks = useMemo(
-    () => canRecomputeBidCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayBidPeaksIncrementalAsOf(
-        bidDayPeakSourceRef.current!,
-        liveObSnapshots,
-        liveTradeSnapshots,
-        historicalBidSeeds,
-        todayKst,
-        peakSessionOpenMs,
-        todayBidPeakInput,
-        bidVisibleTimeCutoffForRender!.tMs,
-      )
-      : [...dayBidPeaks],
-    [
-      canRecomputeBidCutoff,
-      dayBidPeaks,
-      historicalBidSeeds,
-      liveObSnapshots,
-      liveTradeSnapshots,
-      timeframe,
-      bidVisibleTimeCutoffForRender?.tMs,
-      todayBidPeakInput,
-      todayKst,
-      peakSessionOpenMs,
-    ],
-  );
+  // 최대벽 렌더 입력 — 시간 컷오프 제거(2026-08-25) 후 `dayPeaks` 를 그대로 쓴다.
+  // 배열 사본을 유지하는 이유: 소비처(usePeakWallRender)가 readonly 를 기대하고,
+  // 참조 안정성은 `useLiveChartData` 의 memo 가 이미 보장한다.
+  const renderDayAskPeaks = dayAskPeaks;
+  // 최대벽 렌더 입력 — 시간 컷오프 제거(2026-08-25) 후 `dayPeaks` 를 그대로 쓴다.
+  // 배열 사본을 유지하는 이유: 소비처(usePeakWallRender)가 readonly 를 기대하고,
+  // 참조 안정성은 `useLiveChartData` 의 memo 가 이미 보장한다.
+  const renderDayBidPeaks = dayBidPeaks;
   const activePaneToggles = useMemo(
     // 최상위 지표 필드는 store 가 현재 봉으로 resolve 해 둔 투영이라(PR-A #699)
     // timeframe 병합 없이 국지 override 만 얹는다.
@@ -2244,8 +2105,7 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    visibleTimeCutoff: askVisibleTimeCutoffForRender,
-    dailyMaFilter: askPeakDailyMaFilter,
+    dailyMaFilters: askPeakDailyMaFilters,
     needStepSegments: prefPeakWallPaneEnabled,
   });
   const bidWall = usePeakWallRender({
@@ -2256,36 +2116,66 @@ export function LiveChartRoot({
     axis,
     todayKst,
     applicable: peakWallApplicable,
-    visibleTimeCutoff: bidVisibleTimeCutoffForRender,
-    dailyMaFilter: bidPeakDailyMaFilter,
+    dailyMaFilters: bidPeakDailyMaFilters,
     needStepSegments: prefPeakWallPaneEnabled,
   });
   // ── 최대벽 강도 pane 계단 (구현 계획 §2) ──────────────────────────────
   // pane 프로젝터는 번들·축을 못 받는 pass-through 라, 계단을 **여기서** 접어
   // 레지스트리로 내려보낸다. pane 이 꺼져 있으면 계산하지 않는다(빈 배열 공유 참조).
   // 세그먼트 대신 완성된 점을 넣는 이유는 peakWallStepsRegistry 주석 참조.
-  const askPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && askWall.stepSegments.length > 0
-      ? buildPeakWallStepPoints(askWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, askWall.color)
-      : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, askWall.stepSegments, askWall.color, cb?.candles, axis],
-  );
-  const bidPeakWallSteps = useMemo<readonly PeakWallStepPoint[]>(
-    () => (prefPeakWallPaneEnabled && bidWall.stepSegments.length > 0
-      ? buildPeakWallStepPoints(bidWall.stepSegments, cb?.candles ?? EMPTY_CANDLES, axis, bidWall.color)
-      : EMPTY_PEAK_WALL_STEPS),
-    [prefPeakWallPaneEnabled, bidWall.stepSegments, bidWall.color, cb?.candles, axis],
-  );
+  // 강도 pane 계단 — **캔들 pane 의 세 선과 1:1**(2026-08-25). 어느 계열이 나오는지는
+  // 그 계열의 선 토글을 따라가고(pane 전용 키 없음), 체결된 벽은 토글이 없어 pane 이
+  // 켜지면 항상 나온다 = 종전 동작 보존.
+  //
+  // ⚠ 미도달만 **다른 빌더**를 쓴다. 그 계열은 극값 전진이 구성원을 빼앗아 단조가
+  // 아니므로 running max 를 태우면 이미 깨진 벽이 계단에 영원히 남는다
+  // (`buildUnreachedStepPoints` docstring).
+  const peakWallStepPoints = useMemo(() => {
+    const candlesForSteps = cb?.candles ?? EMPTY_CANDLES;
+    const monotone = (segs: readonly PeakWallSegment[], color: string) => (
+      prefPeakWallPaneEnabled && segs.length > 0
+        ? buildPeakWallStepPoints(segs, candlesForSteps, axis, color)
+        : EMPTY_PEAK_WALL_STEPS
+    );
+    const unreached = (
+      segs: readonly PeakWallSegment[], color: string, side: 'ask' | 'bid',
+    ) => (
+      prefPeakWallPaneEnabled && segs.length > 0
+        ? buildUnreachedStepPoints(segs, candlesForSteps, axis, color, side)
+        : EMPTY_PEAK_WALL_STEPS
+    );
+    return {
+      'ask-traded': monotone(askWall.stepSegments, askWall.color),
+      'ask-all': monotone(askWall.allWallStepSegments, askWall.allWallColor),
+      'ask-unreached': unreached(askWall.unreachedStepSegments, askWall.unreachedColor, 'ask'),
+      'bid-traded': monotone(bidWall.stepSegments, bidWall.color),
+      'bid-all': monotone(bidWall.allWallStepSegments, bidWall.allWallColor),
+      'bid-unreached': unreached(bidWall.unreachedStepSegments, bidWall.unreachedColor, 'bid'),
+    } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
+  }, [prefPeakWallPaneEnabled, cb?.candles, axis, askWall, bidWall]);
+
   useEffect(() => {
     const reg = usePeakWallStepsRegistry.getState();
-    reg.register(legendScope, 'ask', { points: askPeakWallSteps });
-    reg.register(legendScope, 'bid', { points: bidPeakWallSteps });
+    for (const slot of PEAK_WALL_STEP_SLOTS) {
+      reg.register(legendScope, slot.key, { points: peakWallStepPoints[slot.key] });
+    }
     return () => {
       const cleanup = usePeakWallStepsRegistry.getState();
-      cleanup.unregister(legendScope, 'ask');
-      cleanup.unregister(legendScope, 'bid');
+      for (const slot of PEAK_WALL_STEP_SLOTS) cleanup.unregister(legendScope, slot.key);
     };
-  }, [legendScope, askPeakWallSteps, bidPeakWallSteps]);
+  }, [legendScope, peakWallStepPoints]);
+
+  // ── 최대벽 개수 발행 (설정 패널의 깔때기·리드아웃) ────────────────────────
+  // deps 계약(원시값 12개)이 이 기능의 성능 위험 전부라, 그 계약을 테스트가 잡을 수
+  // 있도록 훅으로 빼 뒀다 — `usePeakWallCountsPublisher` 머리말 참조.
+  usePeakWallCountsPublisher(legendScope, peakWallApplicable, {
+    'ask-traded': { shown: askWall.tradedShownCount, hiddenByFilter: askWall.tradedHiddenByFilterCount },
+    'ask-all': { shown: askWall.allWallShownCount, hiddenByFilter: askWall.allWallHiddenByFilterCount },
+    'ask-unreached': { shown: askWall.unreachedShownCount, hiddenByFilter: askWall.unreachedHiddenByFilterCount },
+    'bid-traded': { shown: bidWall.tradedShownCount, hiddenByFilter: bidWall.tradedHiddenByFilterCount },
+    'bid-all': { shown: bidWall.allWallShownCount, hiddenByFilter: bidWall.allWallHiddenByFilterCount },
+    'bid-unreached': { shown: bidWall.unreachedShownCount, hiddenByFilter: bidWall.unreachedHiddenByFilterCount },
+  });
 
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
@@ -2303,8 +2193,20 @@ export function LiveChartRoot({
       ...(askWall.labels
         ? askWall.segments.map((segment) => ({ ...segment, side: 'ask' as const }))
         : []),
+      ...(askWall.allWallLabels
+        ? askWall.allWallSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
+        : []),
+      ...(askWall.unreachedLabels
+        ? askWall.unreachedSegments.map((segment) => ({ ...segment, side: 'ask' as const }))
+        : []),
       ...(bidWall.labels
         ? bidWall.segments.map((segment) => ({ ...segment, side: 'bid' as const }))
+        : []),
+      ...(bidWall.allWallLabels
+        ? bidWall.allWallSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
+        : []),
+      ...(bidWall.unreachedLabels
+        ? bidWall.unreachedSegments.map((segment) => ({ ...segment, side: 'bid' as const }))
         : []),
     ];
     // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + **(측면, 그날, 가격)**
@@ -2324,23 +2226,43 @@ export function LiveChartRoot({
       peakTime: s.peakTime,
       side: s.side,
       label: s.label,
+      // 회피 간격은 발생 시점 화살표 유무를 따라간다 — 세그먼트가 그 값을 싣고 온다
+      // (`usePeakWallRender` 의 withPeakWallSurfaces). 빠뜨리면 화살표를 꺼도 라벨이
+      // 빈 자리를 피해 떠 있는 유령 회피가 남는다.
+      timeMarker: s.timeMarker !== false,
     }));
-  }, [askWall.labels, askWall.segments, bidWall.labels, bidWall.segments]);
+  }, [
+    askWall.labels,
+    askWall.segments,
+    askWall.allWallLabels,
+    askWall.allWallSegments,
+    askWall.unreachedLabels,
+    askWall.unreachedSegments,
+    bidWall.labels,
+    bidWall.segments,
+    bidWall.allWallLabels,
+    bidWall.allWallSegments,
+    bidWall.unreachedLabels,
+    bidWall.unreachedSegments,
+  ]);
 
   // 순위 화살표 회피 입력 — 라벨과 달리 **중복 제거를 하지 않는다**. 화살표는 그날·가격이
   // 아니라 **순위**로 잘리므로, 상위 3개는 primitive 가 draw 프레임의 보이는 범위로 고른다.
+  // 입력은 **`arrowRankSegments`** — 화살표 참여가 켜진 계열만 담은 집합이다. 레전드
+  // 집합(`legendRankSegments`)은 계열 구성이 다를 수 있으므로 여기 쓰면 화면에 없는
+  // 화살표를 피하게 된다. 오버레이의 화살표와 **같은 집합**이어야 한다.
   const highLowAvoidRankArrows = useMemo(() => [
     ...(askWall.arrows
-      ? peakWallRankArrowsFromSegments(askWall.segments, 'ask', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(askWall.arrowRankSegments, 'ask', peakWallCandleExtremes)
       : []),
     ...(bidWall.arrows
-      ? peakWallRankArrowsFromSegments(bidWall.segments, 'bid', peakWallCandleExtremes)
+      ? peakWallRankArrowsFromSegments(bidWall.arrowRankSegments, 'bid', peakWallCandleExtremes)
       : []),
   ], [
     askWall.arrows,
-    askWall.segments,
+    askWall.arrowRankSegments,
     bidWall.arrows,
-    bidWall.segments,
+    bidWall.arrowRankSegments,
     peakWallCandleExtremes,
   ]);
 
@@ -2412,39 +2334,26 @@ export function LiveChartRoot({
         ? virtualTime
         : (typeof pointX === 'number' ? chart.timeScale().coordinateToTime(pointX) : null);
       const lastMs = lastCandleMsRef.current;
-      // No usable time while still inside the chart surface means the pointer
-      // is over a blank band. Two kinds, distinguished by X:
-      //  - Right-offset whitespace (X right of the last candle): lwc reports no
-      //    time past the last bar (param.time undefined, coordinateToTime null),
-      //    so this branch — not the numeric one below — is the live path there.
-      //    It is temporally "now/future" → drop spot mode, return the sidebar to
-      //    latest (WS), same clear path as mouse-leave.
-      //  - Internal blank band (X on/left of the last candle): keep the sidebar
-      //    pinned to the latest concrete candle.
+      // 차트 면 **안**인데 쓸 수 있는 시각이 없다 = 포인터가 빈 띠 위다.
+      // **좌우를 가리지 않고 커서를 비운다** — 가리키고 있는 봉이 없기 때문이다.
+      //
+      // 종전에는 X 로 둘을 갈랐다: 마지막 캔들 **오른쪽**이면 비우고, **왼쪽**(과거
+      // 구간의 빈 띠)이면 사이드바를 마지막 캔들에 고정했다. 그 고정이 사이드바만
+      // 건드린 것이 아니라는 것이 2026-08-26 사용자 보고의 정체다 —
+      // `publishCursorMs` 는 세 채널(커서 상태·사이드바·**크로스헤어 동기화**)을
+      // 함께 태우므로, 빈 띠 호버가 `setSyncCursor(마지막 캔들)` 까지 발행했다.
+      // 그 값을 옆 창의 `CursorSyncCrosshair` 가 소비해 **그 창들의 크로스헤어가
+      // 마지막 캔들로 점프**했다(자기 창은 origin 게이트로 배제되므로 남의 창에서만
+      // 보인다 — 창을 하나만 띄우면 재현되지 않는 이유).
+      //
+      // 사용자 결정(2026-08-26)으로 사이드바 고정도 함께 뺐다: 오른쪽 빈 공간과
+      // 같은 규칙으로 통일한다. 그래서 좌우 판별(`timeToCoordinate` 비교)이 통째로
+      // 불필요해졌고, 세 갈래가 이 하나로 합쳐졌다.
+      //
+      // ⚠ 포인터가 차트 **밖**으로 나간 경우는 여기 오지 않는다 — 그쪽은 `point`
+      // 자체가 없어 구독 핸들러가 `clearCursorForLeave` 지연 경로로 보낸다.
       if (typeof t !== 'number' || axis.segments.length === 0) {
-        if (
-          lastMs !== null
-          && typeof pointX === 'number'
-          && axis.segments.length > 0
-        ) {
-          const lastCoord = chart.timeScale().timeToCoordinate(
-            realMsToVirtualSeconds(axis, lastMs) as Time,
-          );
-          if (lastCoord !== null && pointX > lastCoord) {
-            publishBasisHover(null);
-            publishCursorActive(false);
-            store.clearCursor();
-            clearSidebarCursor();
-            publishedCursorMsRef.current = null;
-            return;
-          }
-        }
-        if (lastMs !== null) {
-          publishBasisHover(kstDateFromMs(lastMs));
-          publishCursorActive(true);
-          publishCursorMs(lastMs);
-          return;
-        }
+        publishBasisHover(null);
         publishCursorActive(false);
         store.clearCursor();
         clearSidebarCursor();
@@ -2668,19 +2577,13 @@ export function LiveChartRoot({
     tradeVolumePocs.length,
   );
   const depthHeatmapPoints = useMemo(() => depthHeatmapFromWire(depthHeatmap), [depthHeatmap]);
+  // enabled 만 여기서 구독한다 — hidden/색/불투명도는 오버레이 내부에서 읽어야
+  // 그 변경이 LiveChartRoot 전체를 재렌더하지 않는다(리프 격리).
   const depthHeatmapEnabledStore = useWindowIndicator((s) => s.depthHeatmapEnabled);
   const showDepthHeatmapOverlay = shouldShowDepthHeatmapOverlay(
     timeframe,
     depthHeatmapEnabledStore,
     depthHeatmapPoints.length,
-  );
-  // enabled 만 여기서 구독한다 — hidden/색/불투명도는 오버레이 내부에서 읽어야
-  // 그 변경이 LiveChartRoot 전체를 재렌더하지 않는다(리프 격리).
-  const depthDeltaEnabledStore = useWindowIndicator((s) => s.depthDeltaEnabled);
-  const showDepthDeltaOverlay = shouldShowDepthDeltaOverlay(
-    timeframe,
-    depthDeltaEnabledStore,
-    depthDeltaToday.length,
   );
 
   return (
@@ -2704,7 +2607,7 @@ export function LiveChartRoot({
         stacked={foldedPaneCount > 0}
         // 뒷문장이 사유마다 갈린다 — 기본값은 호가 pane 전용이라 업스트림 결손엔 틀린다.
         ariaLabel={showHogaMissing
-          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates)}`
+          ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates, datesWithCandles)}`
           : undefined}
       />
       {/* 캔들이 아예 없을 때 — 빈 중앙을 쓴다(가릴 것이 없다). 행동 버튼이 있어야 해서
@@ -2766,14 +2669,6 @@ export function LiveChartRoot({
             <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} axis={axis} />
           )}
           {isMinuteTimeframe(timeframe) && (
-            <LiveWallSurgeMarkers
-              paneSeries={paneSeries}
-              events={cb.wall_surge ?? EMPTY_WALL_SURGE}
-              candles={cb.candles}
-              axis={axis}
-            />
-          )}
-          {isMinuteTimeframe(timeframe) && (
             <LivePeakWallSegments
               paneSeries={paneSeries}
               side="ask"
@@ -2816,14 +2711,6 @@ export function LiveChartRoot({
               points={depthHeatmapPoints}
             />
           )}
-          {showDepthDeltaOverlay && (
-            <DepthDeltaOverlay
-              chart={chart}
-              paneSeries={paneSeries}
-              axis={axis}
-              points={depthDeltaToday}
-            />
-          )}
           <DrawingOverlay
             chart={chart}
             axis={axis}
@@ -2845,7 +2732,6 @@ export function LiveChartRoot({
             paneToggles={activePaneToggles}
             visibleGroups={visiblePaneGroups}
             dataEpoch={cb}
-            hasDepthDelta={depthDeltaToday.length > 0}
             candles={cb?.candles}
             axis={axis}
             code={code}
@@ -2871,7 +2757,7 @@ export function LiveChartRoot({
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
           {isMinuteTimeframe(timeframe) && (
-            <DayBoundaryOverlay chart={chart} boundaries={dayBoundaryTicks} />
+            <DayBoundaryOverlay paneSeries={paneSeries} boundaries={dayBoundaryTicks} />
           )}
           {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧
               화면 전체라 표시할 것이 없고, 좌표계도 다르다(캘린더 축 = 하루 1포인트).
@@ -2999,7 +2885,7 @@ export function LiveChartRoot({
 
           ⚠ **바깥 게이트에 안쪽 칩의 조건이 전부 들어 있어야 한다.** 안쪽에만 칩을
           추가하면 컨테이너가 안 떠서 조용히 사라진다(2026-08-22 실측으로 밟았다). */}
-      {(clampEngaged || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
+      {(clampEngaged || captureFloorEngaged || (swapNoticeVisible && sourceSwapClampNotice !== null) || (cb !== null && cb.candles.length > 0 && warnSummary.count > 0)) && (
         <div
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
@@ -3026,6 +2912,22 @@ export function LiveChartRoot({
           {clampEngaged && (
             <div data-testid="clamp-engaged-chip" style={chipStyle}>
               최대 {PAST_CANDLES_MAX_DAYS}일까지 표시됩니다
+            </div>
+          )}
+          {/* 디스크 모드의 바닥은 정책 벽이 아니라 **이 종목을 언제부터 받았는가**다.
+              문구를 가르는 이유: 벽은 기다리면 안 풀리지만 캡처 시작은 사실의 진술이라
+              사용자가 할 수 있는 일이 다르다(더 과거는 애초에 없다). */}
+          {captureFloorEngaged && (
+            <div data-testid="capture-floor-chip" style={chipStyle}>
+              저장된 가장 오래된 구간입니다
+            </div>
+          )}
+          {/* 소스 스왑 강제 착지 — 보던 구간이 새 소스에 없어 옮겨졌음을 말한다.
+              「복귀합니다」 약속은 넣지 않는다: 복원은 창 생존에 조건부라(#1579 계열
+              축소가 사이에 끼면 실패), 약속은 복원이 실측으로 안정된 뒤에 넣는다. */}
+          {swapNoticeVisible && sourceSwapClampNotice !== null && (
+            <div data-testid="source-swap-clamp-chip" style={chipStyle}>
+              {`${sourceSwapClampNotice.boundaryYmd.slice(4, 6)}/${sourceSwapClampNotice.boundaryYmd.slice(6, 8)} 이전은 이 소스에 없어 가장 가까운 위치로 이동했습니다`}
             </div>
           )}
         </div>

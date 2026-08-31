@@ -61,8 +61,8 @@ const BUNDLE_RESULT = {
   bundle: MERGED_BUNDLE as RangeBundle | null,
   chartBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
   hogaBundle: SIDECAR_ONLY_BUNDLE as RangeBundle | null,
-  depthDeltaToday: [],
   clampEngaged: false,
+  captureFloorEngaged: false,
   isLoading: false,
   error: null,
   isPastCandlesLoading: false,
@@ -79,7 +79,10 @@ const useLiveBundleSpy = vi.fn(() => BUNDLE_RESULT);
 vi.mock('./useLiveBundle', () => ({
   useLiveBundle: (...args: unknown[]) => (useLiveBundleSpy as (...a: unknown[]) => unknown)(...args),
 }));
-vi.mock('../api/liveSeries', () => ({ useLiveSeries: () => liveFixture }));
+const liveSeriesSpy = vi.fn((_code: string, _venue: string) => liveFixture);
+vi.mock('../api/liveSeries', () => ({
+  useLiveSeries: (...args: unknown[]) => (liveSeriesSpy as (...a: unknown[]) => unknown)(...args),
+}));
 vi.mock('./useDayAskPeaks', () => ({
   useDayAskPeaks: () => [],
   useTodayAllPriceAskPeak: () => null,
@@ -203,5 +206,83 @@ describe('useLiveChartData — dailyMaWindowFloorDate', () => {
     const { result } = renderForStock({ historicalFromDate: '20240101' });
     const passed = revealGateSpy.mock.calls.at(-1)?.[0];
     expect(passed?.displayFloorDate).toBe(result.current.dailyMaWindowFloorDate);
+  });
+});
+
+/**
+ * 기간 점프의 **기준일** — 창의 데이터 우단.
+ *
+ * 이 훅이 그 값의 유일한 소비 지점이다: `today` 한 줄이 `minutePastTo`·세션 경계·
+ * 라이브 엣지 판정·피크 래칫의 당일 병합을 전부 정하므로, 하류에 플래그를 뿌리지
+ * 않는다. 그래서 **여기서만** 지킬 수 있는 계약이 셋이다 — 무엇이 `today` 가 되는가,
+ * SSE 를 끊는가, 시작일을 고정하지 **않는가**.
+ */
+describe('useLiveChartData — asOfDate (기간 점프 기준일)', () => {
+  beforeEach(() => {
+    useLiveBundleSpy.mockReset();
+    useLiveBundleSpy.mockReturnValue(BUNDLE_RESULT);
+    liveSeriesSpy.mockClear();
+  });
+
+  /** `useLiveBundle(code, timeframe, today, live, options)` — 세 번째가 그 창의 "오늘". */
+  // 스파이가 인자 없는 시그니처로 선언돼 있어(`vi.fn(() => …)`) `mock.calls` 의 원소
+  // 타입이 빈 튜플이다 — 인자를 읽으려면 여기서 넓힌다.
+  const callArgs = () => useLiveBundleSpy.mock.calls.at(-1) as unknown as unknown[] | undefined;
+  const todayArg = () => callArgs()?.[2];
+  const optionsArg = () => callArgs()?.[4] as Record<string, unknown>;
+
+  it('기준일이 그 창의 "오늘" 이 된다', () => {
+    renderForStock({ asOfDate: '20260601' });
+    expect(todayArg()).toBe('20260601');
+  });
+
+  it('없으면 종전대로 진짜 오늘이다', () => {
+    renderForStock();
+    expect(todayArg()).not.toBe('20260601');
+  });
+
+  // 저장뷰는 구간을 지정한 더 구체적인 요청이고, 둘 다 서면 우단을 두 값이 다툰다.
+  it('얼림과 겹치면 얼림이 이긴다', () => {
+    renderForStock({
+      asOfDate: '20260601',
+      savedRangeFreeze: { fromDate: '20240301', toDate: '20240305' },
+    });
+    expect(todayArg()).toBe('20240305');
+  });
+
+  // 캘린더 봉은 점프를 **발행**하는 쪽이라 받지 않는다.
+  it('캘린더 봉에서는 서지 않는다', () => {
+    renderForStock({ asOfDate: '20260601', timeframe: 'D' });
+    expect(todayArg()).not.toBe('20260601');
+  });
+
+  /**
+   * 안 끊으면 오늘 체결이 과거 축의 오른쪽 끝에 얹혀, 목적지와 오늘 사이가 통째로
+   * 빈 채 축만 오늘까지 늘어난다 — 점프가 없애려던 그 구간이 whitespace 로 되살아난다.
+   */
+  it('SSE 구독을 끊는다 — 빈 코드로 부른다', () => {
+    renderForStock({ asOfDate: '20260601' });
+    expect(liveSeriesSpy.mock.calls.at(-1)?.[0]).toBe('');
+  });
+
+  it('기준일이 없으면 종전대로 구독한다(회귀 가드)', () => {
+    renderForStock();
+    expect(liveSeriesSpy.mock.calls.at(-1)?.[0]).toBe('005930');
+  });
+
+  /**
+   * **시작일은 고정하지 않는다** — 이것이 저장뷰 얼림과 갈리는 지점이다. 고정하면
+   * 좌측 팬 백필이 멈춰(`canTriggerBackfill` · `frozenRangeFrom`) "과거는 계속
+   * 가져올 수 있어야 한다" 는 요구가 깨진다.
+   */
+  it('시작일을 고정하지 않는다 — 좌측 팬이 산다', () => {
+    renderForStock({ asOfDate: '20260601' });
+    expect(optionsArg().frozenRangeFrom).toBeNull();
+  });
+
+  // 소스 축은 건드리지 않는다 — 점프는 "어느 구간" 이고 hogaplay 는 "어느 소스" 다.
+  it('디스크 소스를 강제하지 않는다', () => {
+    renderForStock({ asOfDate: '20260601' });
+    expect(optionsArg().hogaplaySourceEnabled).toBe(false);
   });
 });

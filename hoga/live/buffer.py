@@ -137,6 +137,14 @@ class LiveBuffer:
         # 그래서 사이드카다. venue 당 1건이라 축출 대상이 아니고(전체 상한 =
         # 종목수 × venue수 × 1), 소비도 "필터 결과가 비었을 때의 폴백" 한 곳뿐이다.
         self._last_ob: dict[tuple[str, str], dict] = {}
+        #: `_last_ob` 가 바뀔 때마다 오르는 버전. 디스크 flush 가 **바뀐 것만 쓰도록**
+        #: 하는 근거다(`last_ob_snapshot`).
+        #:
+        #: **불리언 dirty 가 아닌 이유**: 불리언이면 읽는 쪽이 clear 해야 하는데, 그
+        #: flush 가 실패하면 표식이 이미 지워져 그 값은 영영 저장되지 않는다 — 장
+        #: 마감 직전 마지막 flush 가 실패하는 경우가 정확히 그 시나리오다. 버전이면
+        #: 소비자가 "마지막으로 성공한 버전" 을 들고 비교하므로 실패가 자연히 재시도된다.
+        self._last_ob_version = 0
         # SSE push: per-code set of subscriber queues.
         self._subscribers: dict[str, set[asyncio.Queue[dict]]] = {}
         self._total_entries = 0
@@ -191,6 +199,7 @@ class LiveBuffer:
                     # 태그 부재는 **KRX 승격** — 프론트 판정(`liveVenueAcceptsFrame`)
                     # 과 같은 규율이어야 폴백이 필터와 같은 프레임을 가리킨다.
                     self._last_ob[(code, entry.get("venue") or "KRX")] = entry
+                    self._last_ob_version += 1
                 self._total_entries += len(d) - before
                 self._published_total += 1
                 entries.append(entry)
@@ -282,6 +291,38 @@ class LiveBuffer:
             # 프로세스 수명 내내 남는다(작지만 무한 증가하는 누수).
             for key in [k for k in self._last_ob if k[0] not in keep]:
                 del self._last_ob[key]
+
+    async def last_ob_snapshot(self) -> tuple[dict[tuple[str, str], dict], int]:
+        """전체 `_last_ob` 사본 + 현재 버전 — 디스크 flush 용.
+
+        버전을 함께 주는 것이 요점이다: 소비자가 직전에 성공적으로 쓴 버전과 비교해
+        **바뀐 게 없으면 쓰지 않는다.** 그래서 장이 끝나 프레임이 멎으면 쓰기가 저절로
+        0 이 된다 — "지금이 마감이니 저장하자" 는 시계 판정이 어디에도 없다.
+
+        `get_last_ob`(단건)와 달리 계열이 아니라 **전 종목·venue 한 장씩**이다.
+        """
+        async with self._lock:
+            return {k: dict(v) for k, v in self._last_ob.items()}, self._last_ob_version
+
+    async def restore_last_ob(self, entries: dict[tuple[str, str], dict]) -> int:
+        """디스크에서 읽은 마지막 호가를 주입한다 — 기동·refresh 직후 1회.
+
+        **살아 있는 값을 덮지 않는다.** 이미 그 키에 WS 프레임이 들어와 있으면 그쪽이
+        항상 최신이므로 건너뛴다. 복원이 WS 수신보다 늦게 끝나는 순서에서도 안전하다.
+
+        버전을 **올리지 않는다**: 복원은 디스크에 이미 있는 것을 메모리로 옮긴 것뿐이라
+        되쓸 이유가 없다. 올리면 기동 직후 매번 같은 내용을 한 번 더 쓴다.
+
+        반환은 실제로 주입된 건수(관측·테스트용).
+        """
+        restored = 0
+        async with self._lock:
+            for key, entry in entries.items():
+                if key in self._last_ob:
+                    continue
+                self._last_ob[key] = dict(entry)
+                restored += 1
+        return restored
 
     async def get_last_ob(self, code: str, venue: str) -> dict | None:
         """이 venue 의 **마지막 호가 프레임**(축출 무관). 없으면 None.

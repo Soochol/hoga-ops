@@ -18,11 +18,11 @@ import {
   type DrawingsSource,
 } from './DrawingsPrimitive';
 import type { Drawing, PaneId, Point } from './drawing/types';
-import { INITIAL_STYLE, isDrawingKind } from './drawing/types';
+import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
-import { hitTestDrawings } from './drawing/hitTest';
+import { hitTestDrawings, unlockedOnly } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
@@ -50,10 +50,37 @@ import {
 } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 
+/** What the window-level mousedown listener should do in select mode. */
+export type SelectModeMouseDown = 'deselect' | 'select-locked' | 'none';
+
 /**
- * Pure predicate for the empty-click deselect flow. Returns true iff the
- * click landed inside the overlay's bounding rect AND did not hit any
- * Drawing AND did not originate from the Drawing Property Panel.
+ * Pure decision for the window-level mousedown listener in select mode.
+ *
+ * Two jobs, one predicate, because they are decided by the same three facts
+ * (where the click landed, what it hit, whether it came from the panel):
+ *
+ *  - `'deselect'` — the empty-click rule (ADR-0030): a click inside the
+ *    overlay's rect that hit no Drawing clears the selection.
+ *  - `'select-locked'` — the click hit a locked Drawing AND nothing unlocked.
+ *    The overlay does not receive that click at all (the pointer-events gate
+ *    deliberately leaves it `'none'` there so the chart can pan), so
+ *    `selectTool` never runs and this listener is the only thing that can
+ *    select it. Without this branch a locked drawing could never be selected,
+ *    and therefore never unlocked — the panel's lock button is the only unlock
+ *    route (ADR-0164).
+ *  - `'none'` — everything else, including any click where an UNLOCKED Drawing
+ *    is under the cursor: there the overlay is `'auto'` and
+ *    `selectTool.onPointerDown` owns the selection.
+ *
+ * `unlockedHit` is what splits the last two, and it is the SAME value the
+ * pointer-events gate keys on — that is the point. Deciding from `hit` alone
+ * breaks when a locked drawing overlaps an unlocked one: `hit` is the locked
+ * one (topmost wins), so this listener would fire `'select-locked'` on a click
+ * the overlay is already handling. `pointerdown` precedes `mousedown`, so the
+ * overlay's selection of the live shape would land first and then be
+ * overwritten here — the user grabs one shape and watches another get
+ * selected. Both sides keying on the gate's own question keeps their territory
+ * split exactly at the gate, with no overlap.
  *
  * The property-panel guard is load-bearing: the panel renders over the
  * chart (its pixels fall inside the overlay's rect by construction), and
@@ -64,24 +91,39 @@ import { safeUnsubscribe } from './util/safeUnsubscribe';
  * button worked anyway because it captures `id` in a closure that
  * survives selectedId going null, masking the bug. See ADR-0030 (the
  * deselect rule) and ADR-0032 (the panel that demands this exception).
+ *
+ * The inside-rect test is also what keeps this multi-window safe: the listener
+ * is on `window`, so every chart window's copy sees every click. Only the one
+ * whose rect contains the click acts, so a click in window A can never write a
+ * selection into window B's scope (the misattribution ADR-0119 C2c-2b exists
+ * to prevent).
  */
-function shouldDeselectOnClick(
+function resolveSelectModeMouseDown(
   click: { x: number; y: number },
   rect: { width: number; height: number },
-  hasHit: boolean,
+  hit: Drawing | null,
+  unlockedHit: Drawing | null,
   isOnPropertyPanel: boolean,
-): boolean {
-  if (isOnPropertyPanel) return false;
+): SelectModeMouseDown {
+  if (isOnPropertyPanel) return 'none';
   const inside =
     click.x >= 0 &&
     click.y >= 0 &&
     click.x <= rect.width &&
     click.y <= rect.height;
-  return inside && !hasHit;
+  if (!inside) return 'none';
+  // 잠기지 않은 것이 하나라도 커서 아래 있으면 게이트가 'auto' 이고, 그 클릭의
+  // 주인은 오버레이다. 여기서 손대면 두 번 쓴다.
+  if (unlockedHit != null) return 'none';
+  if (hit == null) return 'deselect';
+  // 여기 도달했다면 hit 은 잠긴 것이다(잠기지 않았다면 unlockedHit 에 잡혔다).
+  // 그래도 명시적으로 확인한다 — 두 히트 테스트가 언젠가 임계값이 갈리면 이
+  // 함의가 조용히 깨지는데, 그때 엉뚱한 도형을 선택하느니 아무것도 안 하는 게 낫다.
+  return isLocked(hit) ? 'select-locked' : 'none';
 }
 
 /** Test-only export of internals. Do not import in production code. */
-export const __test__ = { shouldDeselectOnClick };
+export const __test__ = { resolveSelectModeMouseDown };
 
 type Props = {
   chart: IChartApi;
@@ -359,9 +401,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = useDrawingsStore.getState().selectedByScope.get(keyScope) ?? null;
-        if (id) {
-          useDrawingsStore.getState().remove(keyScope, id);
+        const store = useDrawingsStore.getState();
+        const id = store.selectedByScope.get(keyScope) ?? null;
+        // 잠긴 도형이면 preventDefault 도 하지 않는다 — 키를 삼키지 않고 흘려
+        // 보내는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
+        const target = id == null ? null : store.byScope.get(keyScope)?.find((d) => d.id === id);
+        if (id && !isLocked(target)) {
+          store.remove(keyScope, id);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
@@ -423,7 +469,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
-  const hitTestAt = (px: number, py: number): Drawing | null =>
+  const hitTestIn = (list: readonly Drawing[], px: number, py: number): Drawing | null =>
     // Hidden drawings are non-interactive — no hover gating, no selection.
     defaults.hiddenAll
       ? null
@@ -439,10 +485,27 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             // would be grabbable off its drawn position (see subBarOffsetPx).
             barPx: barPitchPx(chart) ?? undefined,
           },
-          drawings,
+          list,
           px,
           py,
         );
+
+  const hitTestAt = (px: number, py: number): Drawing | null => hitTestIn(drawings, px, py);
+
+  /**
+   * Hit test that ignores locked drawings. This is the question the
+   * pointer-events gate actually asks — "is there something here the overlay
+   * needs to handle?" — and a locked shape is not: it cannot be dragged, so
+   * the overlay claiming the pointer over it would only stop the chart from
+   * panning (ADR-0164's rough edge).
+   *
+   * Filtering the LIST rather than checking the winner is what makes an
+   * unlocked drawing under a locked one still grabbable — `hitTestDrawings`
+   * returns the topmost match, so testing the winner for `locked` would let a
+   * locked shape on top mask a live one beneath it.
+   */
+  const hitTestUnlockedAt = (px: number, py: number): Drawing | null =>
+    hitTestIn(unlockedOnly(drawings), px, py);
 
   // ── text editing ───────────────────────────────────────────────────────
   // Commit the in-flight text edit. Idempotent: reads textEditRef and nulls it,
@@ -598,6 +661,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       canvasYToPrice,
       barPx: () => barPitchPx(chart),
       hitTestAt,
+      hitTestUnlockedAt,
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
@@ -804,7 +868,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const hit = hitTestAt(px, py);
-    if (hit && hit.kind === 'text') {
+    // 잠긴 라벨은 편집기를 열지 않는다. 열어 두고 커밋만 스토어가 거부하면
+    // 사용자는 글자를 고쳐 넣고 Enter 를 친 뒤에야 안 먹혔다는 걸 안다.
+    if (hit && hit.kind === 'text' && !isLocked(hit)) {
       setTextEdit({ id: hit.id, at: hit.at, paneId: hit.paneId, initial: hit.text, fontSize: hit.fontSize, px, py });
       setTextValue(hit.text);
       e.preventDefault();
@@ -876,9 +942,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       // 선택 모드는 히트 판정을 **컨테이너 전체**로 유지한다 — hline 히트는 y 거리만
       // 보므로(hitTest 의 `distanceToHline`) 가격축에 그려진 가격 배지 위에서도 잡히고,
       // 그게 배지를 클릭해 선을 고르는 경로다. 여기서 플롯으로 좁히면 그 경로가 죽는다.
+      //
+      // **잠긴 도형은 세지 않는다**(hitTestUnlockedAt). 게이트가 묻는 것은 "오버레이가
+      // 처리할 게 여기 있는가" 인데 잠긴 도형은 끌 수 없으므로 답이 '아니오'다. 예전엔
+      // 잠긴 도형 위에서도 'auto' 라 오버레이가 포인터를 삼켰고, 그래서 드래그가
+      // **아무 일도 안 했다 — 차트 팬까지 죽었다**(ADR-0164 의 거친 모서리). 'none' 이면
+      // lightweight-charts 가 그대로 받아 평소처럼 팬한다. 잠긴 도형의 **선택**은
+      // 오버레이가 아니라 window mousedown 리스너가 맡는다(resolveSelectModeMouseDown).
+      //
+      // 곁가지로 커서 문제도 함께 풀린다: 'none' 이면 잠긴 도형 위 커서가 lwc 의
+      // 크로스헤어가 되어 "여기선 차트가 반응한다" 를 스스로 말한다.
       const hit =
         px >= 0 && py >= 0 && px <= rect.width && py <= rect.height
-          ? hitTestAt(px, py)
+          ? hitTestUnlockedAt(px, py)
           : null;
       container.style.pointerEvents = hit ? 'auto' : 'none';
     };
@@ -961,33 +1037,48 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool, drawings, paneSeries, axis, chart]);
 
-  // ── empty-click deselect ───────────────────────────────────────────────
-  // When something is selected and the user clicks empty chart space,
-  // clear the selection. Runs in parallel with chart pan/zoom — never
-  // calls preventDefault or stopPropagation. Mounted only while there's
-  // something to deselect, so the global listener is short-lived.
-  // See ADR-0030 (companion decision).
+  // ── window mousedown: empty-click deselect + locked-drawing select ─────
+  // Runs in parallel with chart pan/zoom — never calls preventDefault or
+  // stopPropagation. See ADR-0030 (the deselect rule) and ADR-0164 (why the
+  // locked-select branch has to live here rather than in `selectTool`).
+  //
+  // The mount condition used to be `selectedId != null` ("only while there's
+  // something to deselect"). It has to be `drawings.length > 0` now: selecting
+  // a LOCKED drawing starts from nothing-selected, and that click reaches the
+  // overlay through no other path. Still short-lived in the case that matters —
+  // a chart with no drawings mounts no listener at all.
   useEffect(() => {
-    if (activeTool !== 'select' || selectedId == null) return;
+    if (activeTool !== 'select' || drawings.length === 0) return;
     const container = containerRef.current;
     if (!container) return;
     const onWindowMouseDown = (e: MouseEvent) => {
-      if (dragRef.current) return;
+      if (dragRef.current || scope == null) return;
       const isOnPropertyPanel =
         e.target instanceof Node &&
         !!document.querySelector('[data-drawing-property-panel]')?.contains(e.target);
       const rect = container.getBoundingClientRect();
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      const hasHit = !!hitTestAt(click.x, click.y);
-      if (shouldDeselectOnClick(click, rect, hasHit, isOnPropertyPanel) && scope != null) {
-        useDrawingsStore.getState().setSelected(scope, null);
+      const hit = hitTestAt(click.x, click.y);
+      const unlockedHit = hitTestUnlockedAt(click.x, click.y);
+      switch (resolveSelectModeMouseDown(click, rect, hit, unlockedHit, isOnPropertyPanel)) {
+        case 'deselect':
+          useDrawingsStore.getState().setSelected(scope, null);
+          break;
+        case 'select-locked':
+          // 선택은 mousedown 에서 일어난다(해제와 같은 시점). 잠긴 도형을 눌러
+          // 팬을 시작하면 팬 도중에 속성 패널이 뜨는데, 그게 곧 "잡았고, 잠겨
+          // 있고, 풀려면 여기" 라는 일관된 이야기라 그대로 둔다.
+          useDrawingsStore.getState().setSelected(scope, hit!.id);
+          break;
+        case 'none':
+          break;
       }
     };
     window.addEventListener('mousedown', onWindowMouseDown);
     return () => window.removeEventListener('mousedown', onWindowMouseDown);
     // hitTestAt closes over drawings / paneSeries / axis — re-bind on change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTool, selectedId, drawings, paneSeries, axis]);
+  }, [activeTool, drawings, paneSeries, axis, scope]);
 
   // Focus + select the text input whenever an edit opens.
   useEffect(() => {

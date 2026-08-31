@@ -8,10 +8,9 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 from __future__ import annotations
 
 import os
-import statistics
 from bisect import bisect_right
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -896,6 +895,15 @@ class AskPeakDualRow:
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
     traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달 벽 — 당일 연속거래 체결 극값이 **가격으로 지배하지 못한**(ask: price >
+    #: 당일 고가, bid: price < 당일 저가) 유효 이벤트의 rank-1/top-3. **cont(틱-max)
+    #: 단일 계열**이다: 판정이 (price, 당일 극값) 비교라 봉과 무관하고, rep/cont 를
+    #: 가르면 캐시 재집계(reaggregate_peak_rep)가 day extreme 을 날라야 한다. 체결이
+    #: 0건인 날은 전부 미도달이다.
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_intra_ms: int | None = None
+    unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -948,6 +956,11 @@ class BidPeakDualRow:
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
     traded_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달 벽 — AskPeakDualRow 의 같은 필드 주석 참조(대칭 규약, bid 는 당일 저가 기준).
+    unreached_price: int | None = None
+    unreached_qty: int | None = None
+    unreached_intra_ms: int | None = None
+    unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -1378,6 +1391,18 @@ class DepthHeatmapRow:
 
     ``*_max`` 필드(분봉 내 최댓값): 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던
     스냅샷의 40컬럼(캔들 고가처럼 "분봉 내 최댓값 기준" 토글용). 대표(종가)와 독립.
+
+    ``*_pmax`` 필드(가격대마다 따로 최댓값): **가격대별로 각자** 그 버킷에서 가장
+    컸던 잔량. ``*_max`` 와 **축이 다르다** — 저쪽은 총잔량으로 순간 하나를 골라
+    그 사진을 통째로 쓰고, 이쪽은 가격마다 자기 최고점을 따로 잰다. 그래서 한 행이
+    실제로 동시에 존재한 호가창이 아니고, 개수도 10 고정이 아니다(그 버킷에 등장한
+    distinct 가격 수 — 실측 평균 10.6, p90 11~19, 최대 30).
+
+    이 계열이 필요한 이유: 「당일 최대벽」이 재는 값이 바로 이것이라(가격당 rank-1
+    이 곧 그 가격의 최댓값) ``*_max`` 와 대조하면 같은 벽이 다른 수량으로 보였다.
+    실측(005930 20260825 14:35 258,500원): 자기 최고 순간 93,543 vs 총잔량 최고
+    순간 61,057. ``*_max`` 가 종가보다 **작아지는** 경우까지 있다(같은 날 260,000원
+    max 179,217 < close 179,435) — 총잔량 argmax 가 그 가격대에는 최고가 아니라서다.
     """
 
     bucket_intra_ms: int
@@ -1389,6 +1414,12 @@ class DepthHeatmapRow:
     ask_qtys_max: tuple[int, ...]
     bid_prices_max: tuple[int, ...]
     bid_qtys_max: tuple[int, ...]
+    #: 가변 길이. 기본값이 있는 이유는 순전히 기존 호출부(테스트 픽스처) 호환이다 —
+    #: 실제 쿼리는 언제나 넷을 다 채운다.
+    ask_prices_pmax: tuple[int, ...] = ()
+    ask_qtys_pmax: tuple[int, ...] = ()
+    bid_prices_pmax: tuple[int, ...] = ()
+    bid_qtys_pmax: tuple[int, ...] = ()
 
 
 def query_bucketed_depth_heatmap(
@@ -1414,6 +1445,15 @@ def query_bucketed_depth_heatmap(
     ``*_max`` 필드는 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던 스냅샷의 40컬럼
     (캔들 고가처럼 "분봉 내 최댓값 기준"). 사전 필터로 유효 행만 남으므로 정렬 키는
     ``total`` 단독이다(종전 struct_pack(is_pre, total)의 is_pre 우선 정렬은 이제 불필요).
+
+    ``*_pmax`` 필드는 **가격대마다 따로** 잰 최댓값이다(축 차이는 DepthHeatmapRow
+    docstring). 20레벨 unpivot → ``GROUP BY (bucket, side, price)`` → 버킷당 리스트
+    한 벌. **같은 ``keyed`` CTE 를 재사용하므로 파케이 스캔은 늘지 않는다** — 늘어나는
+    것은 해시 집계 하나이고, 입력이 이미 세션 내 유효 행으로 좁혀져 있다.
+
+    정렬은 SQL 이 한다(ask 가격 오름차순 · bid 내림차순) — ``DepthHeatmapPoint``
+    모델이 프론트에 약속한 순서이고, 파이썬에서 다시 정렬하면 그 약속이 두 곳에
+    적히게 된다.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     last_continuous_ms = (
@@ -1442,6 +1482,15 @@ def query_bucketed_depth_heatmap(
         f"ask_p{i}, ask_q{i}, bid_p{i}, bid_q{i}"
         for i in range(1, ORDERBOOK_LEVELS + 1)
     )
+    # 20레벨 unpivot — `keyed` 를 재사용하므로 파케이 스캔은 여전히 한 번이다.
+    # qty 0 레벨은 여기서 뺀다: `*_max` 쪽은 "그 사진에 그렇게 찍혔다" 라 0 도 사실이지만
+    # 가격대별 최댓값에서 0 은 **후보가 없었다는 뜻**이라 셀을 만들면 거짓이 된다.
+    pmax_level_selects = " UNION ALL ".join(
+        f"SELECT bucket, '{side}' AS side, {p}{i} AS price, {q}{i} AS qty "
+        f"FROM keyed WHERE {p}{i} > 0 AND {q}{i} > 0"
+        for side, p, q in (("ask", "ask_p", "ask_q"), ("bid", "bid_p", "bid_q"))
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
 
     rows = con.execute(
         f"""
@@ -1452,13 +1501,34 @@ def query_bucketed_depth_heatmap(
                  {passthrough_cols}
           FROM read_parquet(?)
           WHERE {where_pred}
+        ),
+        reps AS (
+          SELECT bucket,
+                 arg_max(struct_pack({struct_body}), rep_key) AS rep,
+                 arg_max(struct_pack({struct_body}), total) AS rep_max
+          FROM keyed
+          GROUP BY bucket
+        ),
+        levels AS ({pmax_level_selects}),
+        per_price AS (
+          SELECT bucket, side, price, max(qty) AS qty
+          FROM levels
+          GROUP BY bucket, side, price
+        ),
+        per_bucket AS (
+          SELECT bucket,
+                 list(struct_pack(price := price, qty := qty) ORDER BY price ASC)
+                   FILTER (WHERE side = 'ask') AS ask_pmax,
+                 list(struct_pack(price := price, qty := qty) ORDER BY price DESC)
+                   FILTER (WHERE side = 'bid') AS bid_pmax
+          FROM per_price
+          GROUP BY bucket
         )
-        SELECT bucket * {bucket_ms} AS bucket_intra_ms,
-               arg_max(struct_pack({struct_body}), rep_key) AS rep,
-               arg_max(struct_pack({struct_body}), total) AS rep_max
-        FROM keyed
-        GROUP BY bucket
-        ORDER BY bucket
+        SELECT r.bucket * {bucket_ms} AS bucket_intra_ms,
+               r.rep, r.rep_max, b.ask_pmax, b.bid_pmax
+        FROM reps r
+        LEFT JOIN per_bucket b ON b.bucket = r.bucket
+        ORDER BY r.bucket
         """,
         [str(path)],
     ).fetchall()
@@ -1466,6 +1536,8 @@ def query_bucketed_depth_heatmap(
     for r in rows:
         rep = r[1]
         rep_max = r[2]
+        ask_pmax = r[3] or ()
+        bid_pmax = r[4] or ()
         out.append(
             DepthHeatmapRow(
                 bucket_intra_ms=int(r[0]),
@@ -1477,186 +1549,13 @@ def query_bucketed_depth_heatmap(
                 ask_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_ASK_Q_KEYS),
                 bid_prices_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_P_KEYS),
                 bid_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_Q_KEYS),
+                ask_prices_pmax=tuple(int(lv["price"]) for lv in ask_pmax),
+                ask_qtys_pmax=tuple(int(lv["qty"]) for lv in ask_pmax),
+                bid_prices_pmax=tuple(int(lv["price"]) for lv in bid_pmax),
+                bid_qtys_pmax=tuple(int(lv["qty"]) for lv in bid_pmax),
             )
         )
     return out
-
-
-@dataclass(frozen=True)
-class DepthDeltaBucket:
-    """한 분봉 버킷의 단별 잔량 증감 + 그 버킷에서 관측된 호가단위.
-
-    ``ask``/``bid``는 (price, in_qty, out_qty) — in ≥ 0(유입 합), out ≤ 0(유출 합).
-    증감 0 가격은 담지 않는다. ``*_tick``은 셀 높이용 호가단위(관측 불가 시 0) —
-    프론트 DepthDeltaPoint.askTick/bidTick 계약과 동일.
-    """
-
-    bucket_intra_ms: int
-    ask: tuple[tuple[int, int, int], ...]
-    bid: tuple[tuple[int, int, int], ...]
-    ask_tick: int
-    bid_tick: int
-
-
-# 증감 diff 체인의 시간 상한. 연속된 두 유효 스냅샷의 간격이 이보다 크면 diff 하지
-# 않는다(체인 차단). 캡처 주기 실측 중앙값 ~10s 의 6배 — (a) 장중 VI/동시호가로
-# WHERE 가 걸러낸 구간을 건너뛰는 diff(관측창 대이동 아티팩트), (b) UN 캡처의
-# KRX→NXT venue 스왑 경계(15:20 마감동시호가 ~ 15:30+, 항상 수분 갭), (c) 캡처
-# 중단 구간(실측 최대 67분)을 전부 하나의 규칙으로 차단한다. 프론트 라이브 빌더의
-# "ineligible/venue 전환 시 prev=null" 리셋과 의미상 동일한 역할(스냅샷에 venue
-# 컬럼이 없어 시간 갭이 유일한 프록시다).
-DEPTH_DELTA_MAX_GAP_MS = 60_000
-
-
-def query_bucketed_depth_delta(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    bucket_ms: int,
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    max_gap_ms: int = DEPTH_DELTA_MAX_GAP_MS,
-    out_ladder_prices: dict[tuple[int, str], list[int]] | None = None,
-) -> list[DepthDeltaBucket]:
-    """연속 스냅샷 diff → 버킷별 가격별 유입/유출 합 (단별 잔량 증감 지표의 과거 소스).
-
-    프론트 라이브 빌더(bucketDepthDelta)와 같은 규칙의 서버판:
-      * **매도는 매도끼리, 매수는 매수끼리** diff — side 를 합치면 현재가 이동 시
-        같은 가격이 매도단→매수단으로 넘어간 것(무관한 주문)을 연속으로 오인한다.
-      * **두 스냅샷 공통 가격만** diff (INNER JOIN ON price) — 10단 관측창이 현재가를
-        따라 미끄러질 때 창에 드나드는 가격의 잔량은 주문 변화가 아니라 관측창 이동
-        아티팩트다. price=0(빈 슬롯)도 자연 배제.
-      * **체인 차단**: 유효 스냅샷(공용 술어 ``_book_indicator_eligible_sql``, ADR-0062
-        v3)만 diff 하고, 인접 유효 쌍의 간격이 ``max_gap_ms`` 를 넘으면 제외
-        (``DEPTH_DELTA_MAX_GAP_MS`` 주석 참조).
-
-    ⚠️ 저장된 ``ask_d*``/``bid_d*`` 컬럼을 쓰지 않는 이유: kiwoom_live 프로모션이
-    전부 0 으로 채우는 hogaplay 시절 스키마 잔재이고(promote.py `_ZERO_LEVELS`),
-    소스가 채우더라도 "송신 스냅샷의 직전 1스텝"이라 절사된 push 사이의 전환을
-    누적하지 않는다 — 합산해도 실제 변화가 안 나온다(2026-07-20 0D FID 실채록,
-    docs/research/2026-07-20-kiwoom-0d-delta-fid-semantics.md). 잔량 절대값의 연속
-    diff 는 텔레스코핑으로 net 이 정확하다.
-
-    캡처 주기(~10s)로 인해 유입/유출 gross 는 **하한선**이다 — 10초 안에 생겼다
-    사라진 벽은 보이지 않는다. net 은 표본 간격과 무관하게 정확하다.
-
-    ``*_tick`` 은 버킷 내 유효 스냅샷들의 사다리 가격 합집합에서 인접 간격의
-    중앙값 — 호가단위 경계를 걸친 사다리에서 최솟값을 쓰면 넓은 쪽 셀이 절반
-    높이가 되는 것을 피한다(프론트 ladderTick 과 같은 선택).
-    """
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    last_continuous_ms = (
-        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
-        if session_close_ms is not None
-        else None
-    )
-    if last_continuous_ms is None:
-        where_pred = "TRUE"
-    else:
-        where_pred = _book_indicator_eligible_sql(
-            intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
-        )
-
-    level_cols = ", ".join(
-        f"ask_p{i}, ask_q{i}, bid_p{i}, bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1)
-    )
-    pair_cols = ", ".join(
-        f"cur.{c} AS c_{c}, prev.{c} AS p_{c}"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-        for c in (f"ask_p{i}", f"ask_q{i}", f"bid_p{i}", f"bid_q{i}")
-    )
-    cur_arms = " UNION ALL ".join(
-        f"SELECT n, bucket, '{side}' AS side, c_{side}_p{i} AS price, c_{side}_q{i} AS qty FROM pairs"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-        for side in ("ask", "bid")
-    )
-    prev_arms = " UNION ALL ".join(
-        f"SELECT n, '{side}' AS side, p_{side}_p{i} AS price, p_{side}_q{i} AS qty FROM pairs"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-        for side in ("ask", "bid")
-    )
-    eligible_cte = f"""
-        eligible AS (
-          SELECT ({intra_ms_expr}) AS t,
-                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
-                 {level_cols}
-          FROM read_parquet(?)
-          WHERE {where_pred}
-        )
-    """
-
-    delta_rows = con.execute(
-        f"""
-        WITH {eligible_cte},
-        pairs AS (
-          SELECT cur.n AS n, (cur.t // {bucket_ms}) AS bucket, {pair_cols}
-          FROM eligible cur JOIN eligible prev ON prev.n = cur.n - 1
-          WHERE cur.t - prev.t <= {max_gap_ms}
-        ),
-        cur_lv AS ({cur_arms}),
-        prev_lv AS ({prev_arms}),
-        joined AS (
-          SELECT c.bucket, c.side, c.price, (c.qty - p.qty) AS d
-          FROM cur_lv c
-          JOIN prev_lv p ON p.n = c.n AND p.side = c.side AND p.price = c.price
-          WHERE c.price > 0 AND (c.qty - p.qty) != 0
-        )
-        SELECT bucket * {bucket_ms} AS bucket_intra_ms, side, price,
-               sum(CASE WHEN d > 0 THEN d ELSE 0 END) AS in_qty,
-               sum(CASE WHEN d < 0 THEN d ELSE 0 END) AS out_qty
-        FROM joined
-        GROUP BY 1, 2, 3
-        ORDER BY 1, 2, 3
-        """,
-        [str(path)],
-    ).fetchall()
-    if not delta_rows:
-        return []
-
-    # 버킷×side 별 호가단위 — 유효 스냅샷 전체(diff 쌍 아님)의 사다리 합집합 기준.
-    tick_arms = " UNION ALL ".join(
-        f"SELECT (t // {bucket_ms}) AS bucket, '{side}' AS side, {side}_p{i} AS price FROM eligible"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-        for side in ("ask", "bid")
-    )
-    # 중앙값을 SQL 이 아니라 파이썬에서 낸다 — 가격 **집합**을 손에 쥐어야 굵은 봉을
-    # 합집합으로 파생할 수 있기 때문이다(`reaggregate_depth_delta`). 값은 그대로다:
-    # DuckDB 의 `CAST(double AS BIGINT)` 는 banker's rounding 이고 파이썬 `round()`
-    # 도 같다(실측: 15.5→16, 16.5→16, 7.5→8, 6.5→6).
-    price_rows = con.execute(
-        f"""
-        WITH {eligible_cte},
-        lv AS ({tick_arms})
-        SELECT DISTINCT bucket * {bucket_ms} AS bucket_intra_ms, side, price
-        FROM lv WHERE price > 0
-        ORDER BY 1, 2, 3
-        """,
-        [str(path)],
-    ).fetchall()
-    prices: dict[tuple[int, str], list[int]] = {}
-    for b, side, price in price_rows:
-        prices.setdefault((int(b), str(side)), []).append(int(price))
-    ticks: dict[tuple[int, str], int] = {
-        key: t for key, ps in prices.items() if (t := tick_from_ladder_prices(ps))
-    }
-
-    if out_ladder_prices is not None:
-        out_ladder_prices.update(prices)
-
-    grouped: OrderedDict[int, dict[str, list[tuple[int, int, int]]]] = OrderedDict()
-    for b, side, price, in_q, out_q in delta_rows:
-        entry = grouped.setdefault(int(b), {"ask": [], "bid": []})
-        entry[str(side)].append((int(price), int(in_q), int(out_q)))
-    return [
-        DepthDeltaBucket(
-            bucket_intra_ms=b,
-            ask=tuple(sides["ask"]),
-            bid=tuple(sides["bid"]),
-            ask_tick=ticks.get((b, "ask"), 0),
-            bid_tick=ticks.get((b, "bid"), 0),
-        )
-        for b, sides in grouped.items()
-    ]
 
 
 def query_bucket_representative(
@@ -1706,70 +1605,6 @@ def query_bucket_representative(
     if best_pos is None:
         return None
     return _row_to_api_snapshot(_row_at(index, best_pos))
-
-
-def reaggregate_depth_delta(
-    buckets_1m: Sequence[DepthDeltaBucket],
-    ladder_prices_1m: Mapping[tuple[int, str], Sequence[int]],
-    *,
-    bucket_ms: int,
-) -> list[DepthDeltaBucket]:
-    """1분 잔량 증감 → `bucket_ms`. 직접 조회와 동치다.
-
-    ## 두 필드가 서로 다른 방식으로 접힌다
-
-    - **유입/유출 합**은 그냥 더한다. 직접 쿼리가 `GROUP BY bucket, side, price` 의
-      `SUM` 이라 부분합의 합이 전체합이다(`reaggregate_fill` 과 같은 꼴). 스냅샷
-      diff 는 버킷과 무관하게 같은 쌍에서 나오고 `max_gap_ms` 체인 차단도 버킷과
-      독립이므로, 1분 분할의 합집합이 곧 굵은 버킷의 재료다.
-    - **호가단위(tick)는 못 더한다.** 중앙값은 결합적이지 않다. 그래서 값이 아니라
-      **가격 집합**을 받아 합집합을 낸 뒤 다시 중앙값을 구한다 —
-      `tick_from_ladder_prices` 가 SQL 판과 같은 함수다.
-
-    `ladder_prices_1m` 은 `(bucket_intra_ms, side) → 가격들`. 증감이 0 이라 delta
-    행이 없는 분도 사다리는 있으므로 **`buckets_1m` 보다 키가 많을 수 있다** —
-    tick 은 그 분들까지 합쳐야 직접 조회와 같아진다.
-
-    출력 순서는 직접 쿼리의 `ORDER BY bucket, side, price` 를 따른다.
-    """
-    if bucket_ms % ONE_MINUTE_MS != 0:
-        raise ValueError(f"bucket_ms must be a multiple of {ONE_MINUTE_MS}: {bucket_ms}")
-
-    def target(intra: int) -> int:
-        return (intra // bucket_ms) * bucket_ms
-
-    sums: OrderedDict[int, dict[str, dict[int, list[int]]]] = OrderedDict()
-    for b in buckets_1m:
-        tb = target(b.bucket_intra_ms)
-        entry = sums.setdefault(tb, {"ask": {}, "bid": {}})
-        for side, rows in (("ask", b.ask), ("bid", b.bid)):
-            acc = entry[side]
-            for price, in_q, out_q in rows:
-                cur = acc.setdefault(price, [0, 0])
-                cur[0] += in_q
-                cur[1] += out_q
-    merged_prices: dict[tuple[int, str], set[int]] = {}
-    for (intra, side), ps in ladder_prices_1m.items():
-        merged_prices.setdefault((target(intra), side), set()).update(ps)
-    out: list[DepthDeltaBucket] = []
-    for tb in sorted(sums):
-        entry = sums[tb]
-        out.append(
-            DepthDeltaBucket(
-                bucket_intra_ms=tb,
-                # 증감이 상쇄돼 0 이 된 가격은 직접 쿼리도 내보내지 않는다
-                # (`HAVING` 상당) — 여기서도 뺀다.
-                ask=tuple(
-                    (p, v[0], v[1]) for p, v in sorted(entry["ask"].items()) if v[0] or v[1]
-                ),
-                bid=tuple(
-                    (p, v[0], v[1]) for p, v in sorted(entry["bid"].items()) if v[0] or v[1]
-                ),
-                ask_tick=tick_from_ladder_prices(sorted(merged_prices.get((tb, "ask"), ()))),
-                bid_tick=tick_from_ladder_prices(sorted(merged_prices.get((tb, "bid"), ()))),
-            )
-        )
-    return out
 
 
 def query_bucket_representatives(
@@ -2135,24 +1970,6 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
     return (row["price"], row["qty"], row["intra_ms"])
 
 
-def tick_from_ladder_prices(prices: Sequence[int]) -> int:
-    """정렬된 사다리 가격 집합 → 호가단위(인접 gap 의 중앙값). 못 구하면 0.
-
-    `query_bucketed_depth_delta` 의 SQL 판과 **값이 같아야 한다** — 굵은 봉을
-    가격 집합의 **합집합**으로 파생하려면(중앙값은 결합적이지 않으므로 집합이
-    있어야 한다) 양쪽이 같은 함수를 써야 한다.
-
-    반올림은 `round()` 다: DuckDB 의 `CAST(double AS BIGINT)` 가 banker's rounding
-    이고 파이썬도 같다(실측 15.5→16 · 16.5→16 · 7.5→8 · 6.5→6). `int()` 로 바꾸면
-    짝수 경계에서 1 씩 어긋난다.
-    """
-    uniq = sorted(set(prices))
-    gaps = [b - a for a, b in zip(uniq, uniq[1:], strict=False) if b - a > 0]
-    if not gaps:
-        return 0
-    return int(round(statistics.median(gaps)))
-
-
 @dataclass(frozen=True)
 class PeakRepRow:
     """분류된 **1분 버킷 rep** 스냅샷의 한 호가단계.
@@ -2252,7 +2069,35 @@ def reaggregate_peak_rep(
         "all_close": all_close,
         "traded_close": _peak_scalar(rep_traded),
         "traded_peaks": _peak_candidates(rep_traded, 3),
+        # 굵은 봉의 all top-3 — **여기서 안 만들면 per-day 불일치가 생긴다**:
+        # 1분 캐시로 파생된 날만 rank-1 이고 직접 계산된 날은 top-3 가 된다.
+        # rep 프레임이 이미 손에 있어 비용은 무시 수준이다(rows 는 메모리 안).
+        "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), 3),
     }
+
+
+def _unreached_wall_frame(
+    events: pl.DataFrame, touches: pl.DataFrame, *, side: str,
+) -> pl.DataFrame:
+    """미도달 벽 필터 — 당일 연속거래 체결 극값이 **가격으로 지배하지 못한** 이벤트만.
+
+    ask 는 ``price > 당일 고가``, bid 는 ``price < 당일 저가``. 극값은 그날 체결
+    전체(``touches``)의 max/min 이라 봉과 무관한 스칼라 하나다 — 동일분 터치
+    (ADR-0156)와 달리 판정이 하루 스코프이고, 그래서 값이 소급 재분류된다(장중
+    고가 갱신 시 벽이 이 계열에서 **빠진다**). 체결이 0건인 날은 전부 미도달이다.
+    """
+    if events.height == 0 or touches.height == 0:
+        return events
+    if side == "ask":
+        return events.filter(pl.col("price") > touches["price"].max())
+    return events.filter(pl.col("price") < touches["price"].min())
+
+
+def _peak_price_distinct(classified: pl.DataFrame) -> pl.DataFrame:
+    """가격당 rank-1 — `_peak_touched_distinct` 의 터치 필터 없는 판(미도달 top-3 용)."""
+    return _peak_rank_sort(classified).unique(
+        subset=["price"], keep="first", maintain_order=True,
+    )
 
 
 def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
@@ -2320,6 +2165,9 @@ def query_day_ask_bid_peak_dual_with_rep(
         rep_traded = _peak_touched_distinct(rep)
         cont_traded = _peak_touched_distinct(cont)
 
+        # 미도달 계열 — cont(틱-max) 단일 계열(사유는 AskPeakDualRow 필드 주석).
+        unreached_frame = _unreached_wall_frame(cont, touches, side=side)
+
         return {
             "all_close": all_close,
             "all_max": all_max,
@@ -2330,8 +2178,13 @@ def query_day_ask_bid_peak_dual_with_rep(
             # 기록 갱신 시퀀스 — dedup 전 원본 프레임에서(사유는 헬퍼 docstring).
             "traded_record_peaks": _peak_record_sequence(rep),
             "traded_record_max_peaks": _peak_record_sequence(cont),
-            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
-            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
+            # **top-3 캡**(2026-08-25). 종전엔 전량(하루 avg ~1.3k/1.6k)을 만들어
+            # 캐시에 쓰고 `/api/range` 가 다시 벗겼다 — 소비처가 0 이었다.
+            # 3 인 이유: 프론트 「표시 개수」 상한이 3 이다(`toPeakRankLimit`).
+            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), 3),
+            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), 3),
+            "unreached": _peak_scalar(unreached_frame),
+            "unreached_peaks": _peak_candidates(_peak_price_distinct(unreached_frame), 3),
         }
 
     ask = _side_row("ask")
@@ -2339,7 +2192,7 @@ def query_day_ask_bid_peak_dual_with_rep(
 
     ask_row: AskPeakDualRow | None = None
     if ask is not None:
-        tc, tm = ask["traded_close"], ask["traded_max"]
+        tc, tm, ur = ask["traded_close"], ask["traded_max"], ask["unreached"]
         ask_row = AskPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2349,11 +2202,14 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=ask["unreached_peaks"],
         )
 
     bid_row: BidPeakDualRow | None = None
     if bid is not None:
-        tc, tm = bid["traded_close"], bid["traded_max"]
+        tc, tm, ur = bid["traded_close"], bid["traded_max"], bid["unreached"]
         bid_row = BidPeakDualRow(
             price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
             max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
@@ -2363,6 +2219,9 @@ def query_day_ask_bid_peak_dual_with_rep(
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
+            unreached_price=ur[0] if ur else None, unreached_qty=ur[1] if ur else None,
+            unreached_intra_ms=ur[2] if ur else None,
+            unreached_peaks=bid["unreached_peaks"],
         )
     return ask_row, bid_row, rep_rows_out
 
@@ -2382,318 +2241,3 @@ def query_day_ask_bid_peak_dual(
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     return ask_row, bid_row
-
-
-
-# ── 호가벽 급증 (Wall Surge) ────────────────────────────────────────────────
-# 설계: docs/superpowers/specs/2026-08-14-sell-wall-surge-indicator-design.md
-#
-# depth_delta 와 재료는 같지만 **규칙이 정반대인 지점이 하나** 있다. depth_delta 는
-# 두 스냅샷의 공통 가격만 INNER JOIN 해 관측창 이동 아티팩트를 통째로 배제한다.
-# wall_surge 는 바로 그 배제 대상을 **셋으로 가른다** — 반대측 자리였다가 넘어온 것은
-# 잔량 0 이 확정이라 진짜 신규 유입(신호), 창 밖 상단에서 들어온 것은 직전 값을 몰라
-# 판정 불가, 당일 본 적 있는 가격이 돌아온 것은 그 마지막 관측을 baseline 으로 쓴다.
-#
-# 임계는 **당일 러닝** — 그 시점까지 관측된 값만 쓰므로 실시간에서도 같은 값이 나온다.
-# 하루 전체 통계를 쓰면 오전 판정에 오후 데이터가 섞여(look-ahead) 복기에서만 맞는
-# 지표가 된다.
-WALL_SURGE_WINDOW_MS = 10_000  # baseline 을 구하는 창 (hogaplay: 중앙값 407ms 간격)
-# ⚠ **소스마다 창이 달라야 한다.** kiwoom_live 는 저장 간격이 10초라 10초 창에 표본이
-# 중앙값 2개뿐이고, MIN_SAMPLES(3)를 넘는 시점이 실측 1% 에 그쳐 **이벤트가 통째로
-# 0건**이 된다(20260814 028050: 1,721 스냅샷 중 20개). 창을 스냅샷 간격에 맞춰 넓힌다.
-WALL_SURGE_WINDOW_MS_SPARSE = 60_000
-WALL_SURGE_MIN_SAMPLES = 3  # 창 안 스냅샷이 이보다 적으면 판정하지 않는다(캡처 갭 직후)
-WALL_SURGE_QTY_FLOOR_RATIO = 0.1  # 최소 증가량 = 당일 러닝 평균 총잔량 × 이 비율
-WALL_SURGE_MIN_SHARE = 0.15  # 그 시점 해당 측 총잔량 대비 최소 비중
-WALL_SURGE_WARMUP_MS = 30 * 60_000  # session_open 이후 이만큼은 통계만 쌓는다
-WALL_SURGE_DEBOUNCE_MS = 120_000  # 같은 가격 재발동 억제 + 결말 추적 창
-WALL_SURGE_GONE_RATIO = 0.2  # 벽이 소멸했다고 볼 잔량 비율
-WALL_SURGE_CONSUMED_RATIO = 0.5  # 체결로 소화됐다고 볼 비율
-
-# ⚠ 위 상수가 사용자 조절식이 되면 **캐시 키에 포함하거나 캐시 버전을 올려야 한다**.
-# 지금은 모듈 상수라 캐시 키가 (code,date,source,venue) 로 충분하다.
-
-
-@dataclass(frozen=True)
-class WallSurgeRow:
-    """호가벽 급증 이벤트 하나.
-
-    ``kind`` 는 baseline 을 어디서 구했는지 — ``pierce``(반대측 자리였다 = 0 확정) ·
-    ``grow``(창 안 관측 대비) · ``reappear``(창 밖, 당일 마지막 관측 대비). 앞의 둘은
-    시점이 초 단위로 정확하고 reappear 는 **크기만** 정확하다(``blind_ms`` 가 그 폭).
-
-    ``outcome`` 이 None 이면 결말 미정 — 데이터 끝에서 추적 창이 덜 찬 이벤트다.
-    """
-
-    intra_ms: int
-    side: str  # 'ask' | 'bid'
-    price: int
-    qty: int
-    jump: int
-    total: int
-    kind: str  # 'pierce' | 'grow' | 'reappear'
-    blind_ms: int | None  # reappear 일 때 시야 밖 체류시간
-    outcome: str | None  # 'consumed' | 'broken' | 'pulled' | 'held' | None(미정)
-    filled_qty: int
-    duration_ms: int | None
-
-
-_WALL_SIDE_SQL: dict[str, dict[str, str]] = {
-    # 매수벽은 부등호만 뒤집는 것이 아니다 — bid_p1 이 최고가라 가격 정렬이 반대이고,
-    # 관통 방향·시야 범위·벽을 소화하는 체결 부호까지 네 축이 함께 뒤집힌다.
-    "ask": {
-        "best": "ask_p1", "total": f"({_ASK_Q_SUM})", "opp": "bid_p1",
-        "best_agg": "max", "pierce_op": ">", "escape_op": ">=", "fill_side": "1",
-    },
-    "bid": {
-        "best": "bid_p1", "total": f"({_BID_Q_SUM})", "opp": "ask_p1",
-        "best_agg": "min", "pierce_op": "<", "escape_op": "<=", "fill_side": "-1",
-    },
-}
-
-
-def _wall_surge_candidates(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    side: str,
-    where_pred: str,
-    intra_ms_expr: str,
-    window_ms: int,
-    warmup_sql: str | None,
-) -> list[tuple[int, int, int, int, int, str, int | None]]:
-    """발동 후보를 (t, price, qty, jump, total, kind, blind_ms) 로 뽑는다 (디바운스 전)."""
-    s = _WALL_SIDE_SQL[side]
-    level_arms = " UNION ALL ".join(
-        f"SELECT n, {side}_p{i} AS px, {side}_q{i} AS qty FROM eligible WHERE {side}_p{i} > 0"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-    )
-    level_cols = ", ".join(f"{side}_p{i}, {side}_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
-    warmup_pred = "" if warmup_sql is None else f"AND s.t >= {warmup_sql}"
-    rows = con.execute(
-        f"""
-        WITH eligible AS (
-          SELECT ({intra_ms_expr}) AS t,
-                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
-                 {s['best']} AS best, {s['total']} AS tot, {level_cols}
-          FROM read_parquet(?)
-          WHERE {where_pred}
-        ),
-        snap AS (
-          SELECT n, t, best, tot,
-                 avg(tot) OVER (ORDER BY t ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS tot_run,
-                 {s['best_agg']}(best) OVER w AS w_best,
-                 count(*) OVER w AS w_n
-          FROM eligible
-          WINDOW w AS (ORDER BY t RANGE BETWEEN {window_ms} PRECEDING AND CURRENT ROW)
-        ),
-        lvl AS (
-          SELECT e.n, s0.t, u.px, u.qty
-          FROM ({level_arms}) u JOIN eligible e ON e.n = u.n JOIN snap s0 ON s0.n = u.n
-        ),
-        cur AS (
-          SELECT l.t, l.px, l.qty, s.tot, s.tot_run, s.w_best, s.w_n,
-                 min(l.qty) OVER wl AS w_min,
-                 count(*) OVER wl AS w_cnt,
-                 lag(l.qty) OVER (PARTITION BY l.px ORDER BY l.t) AS prev_q,
-                 lag(l.t) OVER (PARTITION BY l.px ORDER BY l.t) AS prev_t
-          FROM lvl l JOIN snap s ON s.n = l.n
-          WINDOW wl AS (PARTITION BY l.px ORDER BY l.t
-                        RANGE BETWEEN {window_ms} PRECEDING AND CURRENT ROW)
-        ),
-        based AS (
-          SELECT *,
-            CASE WHEN w_best {s['pierce_op']} px THEN 0
-                 WHEN w_cnt > 1 THEN w_min
-                 WHEN prev_q IS NOT NULL THEN prev_q
-                 END AS base,
-            CASE WHEN w_best {s['pierce_op']} px THEN 'pierce'
-                 WHEN w_cnt > 1 THEN 'grow'
-                 WHEN prev_q IS NOT NULL THEN 'reappear'
-                 END AS kind
-          FROM cur
-        )
-        SELECT t, px, qty, qty - base AS jump, tot, kind,
-               CASE WHEN kind = 'reappear' THEN t - prev_t END AS blind_ms
-        FROM based s
-        WHERE base IS NOT NULL AND w_n >= {WALL_SURGE_MIN_SAMPLES} {warmup_pred}
-          AND qty - base >= {WALL_SURGE_QTY_FLOOR_RATIO} * tot_run
-          AND qty - base >= {WALL_SURGE_MIN_SHARE} * tot
-        ORDER BY t, px
-        """,
-        [str(path)],
-    ).fetchall()
-    return [(int(r[0]), int(r[1]), int(r[2]), int(r[3]), int(r[4]), str(r[5]), r[6]) for r in rows]
-
-
-def _wall_surge_outcomes(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    trades_path: Path | None,
-    side: str,
-    where_pred: str,
-    intra_ms_expr: str,
-    events: list[tuple[int, int, int, int, int, str, int | None]],
-    data_end_ms: int,
-) -> list[tuple[str | None, int, int | None]]:
-    """이벤트별 (outcome, filled_qty, duration_ms) 를 **한 번의 쿼리로** 판정한다.
-
-    이벤트가 하루 수백 건일 수 있어 건당 서브쿼리는 그만큼 왕복이 된다. VALUES CTE 로
-    한 번에 조인한다. 추적 창이 데이터 끝을 넘는 이벤트는 결말 **미정**(None)이다 —
-    "아직 안 끝났다" 와 "버텼다" 는 다른 사실이고, 프론트가 미정색으로 가른다.
-    """
-    if not events:
-        return []
-    s = _WALL_SIDE_SQL[side]
-    level_arms = " UNION ALL ".join(
-        f"SELECT n, {side}_p{i} AS px, {side}_q{i} AS qty FROM eligible WHERE {side}_p{i} > 0"
-        for i in range(1, ORDERBOOK_LEVELS + 1)
-    )
-    level_cols = ", ".join(f"{side}_p{i}, {side}_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
-    ev_values = ", ".join(
-        f"({i}, {e[0]}, {e[1]}, {e[2]})" for i, e in enumerate(events)
-    )
-    win = WALL_SURGE_DEBOUNCE_MS
-    trades_cte = (
-        f"""fil AS (
-              SELECT ev.i AS i, sum(tr.qty) AS filled
-              FROM ev JOIN (
-                SELECT ({intra_ms_expr}) AS t, price, qty, side FROM read_parquet(?)
-              ) tr ON tr.price = ev.price AND tr.side = {s['fill_side']}
-                  AND tr.t >= ev.t AND tr.t <= ev.t + {win}
-              GROUP BY 1
-            )"""
-        if trades_path is not None
-        else "fil AS (SELECT 0 AS i, 0 AS filled WHERE FALSE)"
-    )
-    params: list[str] = [str(path)]
-    if trades_path is not None:
-        params.append(str(trades_path))
-    rows = con.execute(
-        f"""
-        WITH eligible AS (
-          SELECT ({intra_ms_expr}) AS t,
-                 row_number() OVER (ORDER BY ({intra_ms_expr}), seq) AS n,
-                 {s['opp']} AS opp, {level_cols}
-          FROM read_parquet(?)
-          WHERE {where_pred}
-        ),
-        lvl AS (
-          SELECT e.t, u.px, u.qty FROM ({level_arms}) u JOIN eligible e ON e.n = u.n
-        ),
-        ev(i, t, price, qty) AS (VALUES {ev_values}),
-        gone AS (
-          SELECT ev.i AS i, min(l.t) AS gone_t
-          FROM ev JOIN lvl l ON l.px = ev.price AND l.t > ev.t AND l.t <= ev.t + {win}
-                            AND l.qty <= ev.qty * {WALL_SURGE_GONE_RATIO}
-          GROUP BY 1
-        ),
-        esc AS (
-          SELECT ev.i AS i, min(e.t) AS esc_t
-          FROM ev JOIN eligible e ON e.t > ev.t AND e.t <= ev.t + {win}
-                                 AND e.opp {s['escape_op']} ev.price
-          GROUP BY 1
-        ),
-        {trades_cte}
-        SELECT ev.i, gone.gone_t, esc.esc_t, coalesce(fil.filled, 0) AS filled, ev.qty
-        FROM ev LEFT JOIN gone ON gone.i = ev.i
-                LEFT JOIN esc ON esc.i = ev.i
-                LEFT JOIN fil ON fil.i = ev.i
-        ORDER BY ev.i
-        """,
-        params,
-    ).fetchall()
-
-    out: list[tuple[str | None, int, int | None]] = []
-    for (i, gone_t, esc_t, filled, qty) in rows:
-        ev_t = events[int(i)][0]
-        ends = [x for x in (gone_t, esc_t) if x is not None]
-        filled_i = int(filled or 0)
-        if not ends:
-            # 추적 창이 데이터 끝을 넘으면 "버텼다" 가 아니라 **아직 모른다**.
-            undecided = ev_t + win > data_end_ms
-            out.append((None if undecided else "held", filled_i, None))
-            continue
-        duration = int(min(ends)) - ev_t
-        if filled_i >= qty * WALL_SURGE_CONSUMED_RATIO:
-            out.append(("consumed", filled_i, duration))
-        elif esc_t is not None and (gone_t is None or esc_t <= gone_t):
-            out.append(("broken", filled_i, duration))
-        else:
-            out.append(("pulled", filled_i, duration))
-    return out
-
-
-def query_wall_surge(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    trades_path: Path | None = None,
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    window_ms: int = WALL_SURGE_WINDOW_MS,
-) -> list[WallSurgeRow]:
-    """호가벽 급증 이벤트 (매도·매수 양측).
-
-    baseline 을 최근 ``window_ms`` 창에서 구해 셋으로 가른다 — 반대측 자리였으면 0 확정
-    (``pierce``), 창 안 관측이 있으면 그 최소값(``grow``), 창 밖이지만 당일 본 적이 있으면
-    마지막 관측(``reappear``). 당일 한 번도 못 본 가격은 판정하지 않는다.
-
-    임계는 **당일 러닝** — 장 시작부터 그 시각까지의 평균 총잔량 대비다. 하루 전체
-    통계를 쓰면 오전 판정에 오후가 섞여 실시간에서 재현 불가능한 값이 된다.
-
-    ⚠ 워밍업은 ``session_open + WALL_SURGE_WARMUP_MS`` 다. 벽시계 09:30 을 박으면
-    반나절장·지연개장에서 어긋난다(``_book_indicator_eligible_sql`` docstring 의
-    "시각을 다시 함수 안에 넣지 말 것" 과 같은 이유).
-    """
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    where_pred = _book_indicator_eligible_sql(
-        intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
-    )
-    # ⚠ session_open_ms 는 **native HHMMSSmmm** 이다(_book_indicator_eligible_sql 이 안에서
-    # 변환한다). native 는 비선형이라 여기에 선형 ms 를 더하면 09:00+30분이 09:18 이 된다 —
-    # 선형 축으로 옮긴 뒤 더한다.
-    warmup_sql = (
-        None
-        if session_open_ms is None
-        else f"({hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))} + {WALL_SURGE_WARMUP_MS})"
-    )
-    data_end = con.execute(
-        f"SELECT max({intra_ms_expr}) FROM read_parquet(?) WHERE {where_pred}", [str(path)]
-    ).fetchone()
-    if data_end is None or data_end[0] is None:
-        return []
-    data_end_ms = int(data_end[0])
-
-    out: list[WallSurgeRow] = []
-    for side in ("ask", "bid"):
-        cands = _wall_surge_candidates(
-            con, path=path, side=side, where_pred=where_pred,
-            intra_ms_expr=intra_ms_expr, window_ms=window_ms, warmup_sql=warmup_sql,
-        )
-        # 같은 가격 연속 발동은 첫 건만 — 벽이 조금씩 커지면 매 스냅샷이 후보가 되는데
-        # 그건 한 사건이지 여러 사건이 아니다.
-        seen: dict[int, int] = {}
-        events: list[tuple[int, int, int, int, int, str, int | None]] = []
-        for c in cands:
-            t, px = c[0], c[1]
-            if px in seen and t - seen[px] < WALL_SURGE_DEBOUNCE_MS:
-                seen[px] = t
-                continue
-            seen[px] = t
-            events.append(c)
-        outcomes = _wall_surge_outcomes(
-            con, path=path, trades_path=trades_path, side=side, where_pred=where_pred,
-            intra_ms_expr=intra_ms_expr, events=events, data_end_ms=data_end_ms,
-        )
-        for c, (outcome, filled, duration) in zip(events, outcomes, strict=True):
-            out.append(
-                WallSurgeRow(
-                    intra_ms=c[0], side=side, price=c[1], qty=c[2], jump=c[3], total=c[4],
-                    kind=c[5], blind_ms=None if c[6] is None else int(c[6]),
-                    outcome=outcome, filled_qty=filled, duration_ms=duration,
-                )
-            )
-    out.sort(key=lambda r: (r.intra_ms, r.side, r.price))
-    return out

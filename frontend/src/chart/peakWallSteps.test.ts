@@ -3,7 +3,7 @@ import type { Time } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 import type { PeakWallSegment } from './PeakWallSegmentsPrimitive';
-import { buildPeakWallStepPoints, type PeakWallStepPoint } from './peakWallSteps';
+import { buildPeakWallStepPoints, buildUnreachedStepPoints, type PeakWallStepPoint } from './peakWallSteps';
 import { LINE_HIDDEN_COLOR } from './util/auctionHide';
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -136,5 +136,77 @@ describe('buildPeakWallStepPoints', () => {
     const out = buildPeakWallStepPoints(day1Walls, candles.slice(0, 6), axis, '#3485FA');
     const last = out[out.length - 1];
     expect('value' in last && last.value).toBe(Math.max(...day1Walls.map((w) => w.qty)));
+  });
+});
+
+/**
+ * **미도달 계단은 단조가 아니다** — 이 파일에서 재는 유일한 축.
+ *
+ * 막는 방향: 미도달 계열에 running max 빌더(`buildPeakWallStepPoints`)를 쓰는 것.
+ * 그 빌더는 이미 깨진 벽을 계단 높이로 영원히 남기므로 **틀린 선**이 된다.
+ * 아래 첫 테스트가 그 대조를 값으로 못박는다(같은 입력에 두 빌더를 태운다).
+ *
+ * 못 보는 것: top-3 밖의 4위 벽 — wire 가 나르지 않는다(빌더 docstring 의 근사).
+ */
+describe('buildUnreachedStepPoints', () => {
+  // 고가가 장중에 오르는 하루: 09:00~09:02 는 105, 09:03 부터 **1,200 까지** 오른다.
+  // 매도 미도달 판정은 `price > 누적 고가` 라 1,100 벽은 09:03 에 도달당한다.
+  const risingDay: Candle[] = [0, 1, 2, 3, 4, 5].map((i) => ({
+    ts_ms: DAY1_OPEN + i * MIN,
+    open: 100, high: i >= 3 ? 1_200 : 105, low: 90, close: 105, vol_a: 1, vol_b: 1,
+  } as Candle));
+
+  function priced(peakRealMs: number, qty: number, price: number): PeakWallSegment {
+    return { ...wall(peakRealMs, qty), price };
+  }
+
+  it('고가가 벽을 넘으면 계단이 내려간다 — running max 빌더는 못 하는 일', () => {
+    const segments = [
+      priced(DAY1_OPEN, 9_000, 1_100),        // 09:03 에 고가 1,200 이 지배 → 이탈
+      priced(DAY1_OPEN, 3_000, 5_000),        // 계속 미도달(5,000 > 1,200)
+    ];
+    const unreached = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
+    const values = valuesOf(unreached);
+
+    // 09:00~09:02 는 9,000(둘 다 미도달), 09:03 부터 3,000 으로 **하락**.
+    expect(values).toEqual([9_000, 9_000, 9_000, 3_000, 3_000, 3_000]);
+
+    // 대조: 같은 입력을 running max 빌더에 태우면 9,000 이 끝까지 남는다 —
+    // 이 테스트가 잡는 것이 정확히 그 차이다.
+    const monotone = valuesOf(buildPeakWallStepPoints(segments, risingDay, axis, '#1E3A8A'));
+    expect(monotone).toEqual([9_000, 9_000, 9_000, 9_000, 9_000, 9_000]);
+  });
+
+  it('후보가 전부 도달당하면 0 을 그리지 않고 선을 끊는다', () => {
+    const segments = [priced(DAY1_OPEN, 9_000, 1_100)];
+    const points = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
+
+    // 09:00~09:02 세 점만 남고 그 뒤는 점이 없다 — 0 이 아니라 **부재**.
+    expect(valuesOf(points)).toEqual([9_000, 9_000, 9_000]);
+    // 마지막 점의 outgoing 이 끊겨 선이 이어지지 않는다(거래일 경계와 같은 기법).
+    expect(points[points.length - 1]).toMatchObject(LINE_HIDDEN_COLOR);
+  });
+
+  it('매수는 저가 기준으로 대칭이다', () => {
+    const fallingDay: Candle[] = [0, 1, 2, 3, 4, 5].map((i) => ({
+      ts_ms: DAY1_OPEN + i * MIN,
+      open: 100, high: 110, low: i >= 3 ? 500 : 900, close: 105, vol_a: 1, vol_b: 1,
+    } as Candle));
+    const segments = [
+      priced(DAY1_OPEN, 9_000, 800),   // 저가 500 이 09:03 에 지배(800 > 500) → 이탈
+      priced(DAY1_OPEN, 3_000, 100),   // 계속 미도달(100 < 500)
+    ];
+    const values = valuesOf(
+      buildUnreachedStepPoints(segments, fallingDay, axis, '#7F1D1D', 'bid'),
+    );
+    expect(values).toEqual([9_000, 9_000, 9_000, 3_000, 3_000, 3_000]);
+  });
+
+  it('벽이 선 시각 이전 봉에는 점을 내지 않는다', () => {
+    const segments = [priced(DAY1_OPEN + 2 * MIN, 9_000, 5_000)];
+    const points = buildUnreachedStepPoints(segments, risingDay, axis, '#1E3A8A', 'ask');
+    expect(points.map((p) => Number(p.time))).toEqual(
+      [2, 3, 4, 5].map((i) => vsecOf(DAY1_OPEN + i * MIN)),
+    );
   });
 });

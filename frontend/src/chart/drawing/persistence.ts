@@ -126,6 +126,12 @@ export function normalizeItems(raw: unknown): Drawing[] {
       void _ignored;
       const lineStyle = (item as { lineStyle?: LineStyle }).lineStyle ?? 'solid';
       const normalized = { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
+      // Lock is strictly `true` or absent. A truthy-but-not-true value from a
+      // hand-edited export ('yes', 1) would otherwise reach `isLocked`'s `=== true`
+      // as unlocked while reading as locked to a human — deleted rather than set
+      // to false for the same reason as `subX`: absence is the schema's own way
+      // of saying "this drawing predates the field".
+      if (normalized.locked !== true) delete normalized.locked;
       if (normalized.kind === 'pencil') {
         const subX = normalizeSubX(normalized.subX);
         // Deleted rather than set to undefined: a present-but-undefined key

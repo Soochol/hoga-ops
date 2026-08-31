@@ -17,28 +17,55 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import DrawingOverlay, { __test__ } from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
+import type { Drawing } from './drawing/types';
 
-const { shouldDeselectOnClick } = __test__;
+const { resolveSelectModeMouseDown } = __test__;
 
-describe('shouldDeselectOnClick', () => {
+/** 히트 스텁 — 술어가 보는 것은 `locked` 뿐이라 나머지 필드는 형식만 맞춘다. */
+function hitDrawing(locked: boolean): Drawing {
+  return {
+    id: 'h1', kind: 'hline', price: 100, color: '#14B8A6',
+    width: 2, lineStyle: 'solid', paneId: 'candle',
+    ...(locked ? { locked: true } : {}),
+  };
+}
+
+describe('resolveSelectModeMouseDown', () => {
   const rect = { width: 800, height: 400 };
+  const inside = { x: 100, y: 50 };
+  const live = hitDrawing(false);
+  const locked = hitDrawing(true);
 
-  it('returns true when the click is inside the overlay and misses every drawing', () => {
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, false, false)).toBe(true);
+  it('빈 곳 클릭은 선택을 해제한다 (ADR-0030)', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, null, null, false)).toBe('deselect');
   });
 
-  it('returns false when the click is inside the overlay but hits a drawing', () => {
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, false)).toBe(false);
+  // 잠기지 않은 도형 위에서는 오버레이가 'auto' 라 selectTool 이 선택을 맡는다.
+  it('잠기지 않은 도형을 맞히면 아무것도 하지 않는다 — selectTool 의 몫', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, live, live, false)).toBe('none');
   });
 
-  it('returns false when the click is outside the overlay bounds', () => {
-    // Outside on the right edge.
-    expect(shouldDeselectOnClick({ x: 900, y: 50 }, rect, false, false)).toBe(false);
-    // Outside on the bottom edge.
-    expect(shouldDeselectOnClick({ x: 100, y: 500 }, rect, false, false)).toBe(false);
-    // Negative — pointer is left/above the overlay.
-    expect(shouldDeselectOnClick({ x: -1, y: 50 }, rect, false, false)).toBe(false);
-    expect(shouldDeselectOnClick({ x: 100, y: -1 }, rect, false, false)).toBe(false);
+  // 게이트가 잠긴 도형 위에서 'none' 이라 오버레이는 이 클릭을 **아예 못 본다**.
+  // 이 분기가 없으면 잠긴 도형은 영영 선택되지 않고, 따라서 영영 못 푼다.
+  it('잠긴 것만 있으면 선택한다 — 오버레이가 그 클릭을 못 받기 때문', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, locked, null, false)).toBe('select-locked');
+  });
+
+  // ⚠ 겹침 케이스. hit 은 최상단인 잠긴 것이지만 아래에 살아 있는 것이 있으므로
+  // 게이트는 'auto' 이고 클릭의 주인은 오버레이다. 여기서 select-locked 를 내면
+  // pointerdown(오버레이) → mousedown(여기) 순서라 **오버레이의 선택을 덮어써서**,
+  // 사용자는 한 도형을 잡았는데 다른 도형이 선택되는 것을 보게 된다.
+  it('잠긴 것이 위에 겹쳐 있어도 아래가 살아 있으면 손대지 않는다', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, locked, live, false)).toBe('none');
+  });
+
+  // 리스너가 window 에 붙어 창마다 모든 클릭을 본다. rect 밖을 걸러 내는 것이
+  // 곧 "남의 창 클릭으로 내 scope 를 쓰지 않는다"는 보장이다(ADR-0119 C2c-2b).
+  it('오버레이 rect 밖 클릭은 어느 분기도 타지 않는다', () => {
+    for (const p of [{ x: 900, y: 50 }, { x: 100, y: 500 }, { x: -1, y: 50 }, { x: 100, y: -1 }]) {
+      expect(resolveSelectModeMouseDown(p, rect, null, null, false)).toBe('none');
+      expect(resolveSelectModeMouseDown(p, rect, locked, null, false)).toBe('none');
+    }
   });
 
   // ADR-0032 — Drawing Property Panel guard. The panel renders over the
@@ -47,18 +74,13 @@ describe('shouldDeselectOnClick', () => {
   // user's edit (color / thickness / lineStyle) registers. The delete
   // button worked anyway because it captured `id` in a closure before
   // selectedId went null — masking the bug. This test pins the guard.
-  it('returns false when the click originates on the Drawing Property Panel, even if otherwise eligible', () => {
-    // Inside the overlay, misses every drawing — would normally deselect.
-    // The panel guard wins.
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, false, true)).toBe(false);
+  it('속성 패널에서 시작한 클릭은 해제하지 않는다', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, null, null, true)).toBe('none');
   });
 
-  it('the panel guard does not override a click that already hits a drawing', () => {
-    // No state change required either way — the click hits a drawing, so
-    // empty-click semantics never apply. Asserting both panel-true and
-    // panel-false return the same answer keeps the rule orthogonal.
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, true)).toBe(false);
-    expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, false)).toBe(false);
+  // 패널 위에서 자물쇠를 누르는 순간이 정확히 이 경우다.
+  it('패널 가드는 잠긴 도형 히트보다 우선한다', () => {
+    expect(resolveSelectModeMouseDown(inside, rect, locked, null, true)).toBe('none');
   });
 });
 
@@ -135,7 +157,7 @@ describe('DrawingOverlay Alt+C — 모두 지우기', () => {
 
     altC();
 
-    expect(s().clearConfirm).toEqual({ scope: SCOPE, count: 1 });
+    expect(s().clearConfirm).toEqual({ scope: SCOPE, count: 1, lockedCount: 0 });
     expect(s().drawingsFor(SCOPE)).toHaveLength(1);
   });
 
@@ -950,5 +972,78 @@ describe('DrawingOverlay 크로스헤어 되살리기 — 오버레이가 삼킨
     await flushFrame();
 
     expect(events).toHaveLength(0);
+  });
+});
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('DrawingOverlay Delete — 잠금 게이트', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+
+  beforeEach(() => {
+    localStorage.clear();
+    s().__resetForTests();
+  });
+
+  function renderOverlay() {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        scope={SCOPE}
+        paneSeries={new Map()}
+      />,
+    );
+  }
+
+  const hline = { id: 'h1', kind: 'hline', price: 100, paneId: 'candle' } as never;
+
+  function seed(locked: boolean) {
+    s().importDrawings(SCOPE, [hline]);
+    const id = s().drawingsFor(SCOPE)[0].id; // importDrawings 는 id 를 재발급한다
+    if (locked) s().update(SCOPE, id, { locked: true });
+    s().setSelected(SCOPE, id);
+    return id;
+  }
+
+  it('잠기지 않은 선택 도형은 Delete 로 지워진다', () => {
+    seed(false);
+    renderOverlay();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(s().drawingsFor(SCOPE)).toHaveLength(0);
+  });
+
+  // ⚠ 이 테스트는 **여기 게이트를 지목하지 못한다** — 실측(red-check)으로 확인:
+  // 오버레이의 isLocked 검사를 지워도 통과한다. 스토어의 remove 가 이미 막기
+  // 때문이다(ADR-0164, 정확성의 단일 관문). 그래도 남긴다: 사용자가 실제로 겪는
+  // 결과이고 두 게이트가 함께 사라지는 회귀를 잡는다. 오버레이 게이트만
+  // 지목하는 것은 아래 preventDefault 테스트다.
+  it('잠긴 선택 도형은 Delete 로 지워지지 않는다', () => {
+    seed(true);
+    renderOverlay();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(s().drawingsFor(SCOPE)).toHaveLength(1);
+  });
+
+  // 키를 삼키지 않는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
+  // 오버레이 게이트가 **유일한 기여자**인 유일한 단언이라 red-check 도 여기서 난다.
+  it('잠긴 도형에서는 키 이벤트를 삼키지 않는다', () => {
+    seed(true);
+    renderOverlay();
+
+    const notPrevented = fireEvent.keyDown(window, { key: 'Delete' });
+
+    expect(notPrevented).toBe(true); // preventDefault 가 안 불렸다
   });
 });

@@ -124,6 +124,24 @@ export interface UseLiveChartDataArgs {
    * 요청이 저장뷰다.
    */
   hogaplaySource?: boolean;
+  /**
+   * 이 창의 **데이터 창 우단**(YYYYMMDD KST). `null`/미지정 = 평소의 라이브 창.
+   *
+   * 「분봉으로」 기간 점프가 세운다(`useMinuteJumpTarget`). 위 `savedRangeFreeze` 와
+   * **같은 레버를 절반만** 쓴다:
+   *
+   * | | 우단(`today`) | 시작일 | 소스 | 좌측 팬 |
+   * |---|---|---|---|---|
+   * | `savedRangeFreeze` | 저장 끝일 | **고정** | **디스크 강제** | 멈춤 |
+   * | `asOfDate` (점프) | 목적지 | 자유 | 창의 현재 설정 | **산다** |
+   *
+   * 시작일을 고정하지 않는 것이 이 모드의 존재 이유다 — 점프는 "그 날을 열어라" 이지
+   * "그 구간만 봐라" 가 아니다. 그래서 좌측 팬 백필이 종전대로 왼쪽 청크를 이어붙인다.
+   *
+   * 얼림과 겹치면 **얼림이 이긴다**: 저장뷰는 구간을 지정한 더 구체적인 요청이고,
+   * 그 창은 애초에 점프를 받지 않는다(`ChartWindow` 가 게이트한다).
+   */
+  asOfDate?: string | null;
 }
 
 export function useLiveChartData(args: UseLiveChartDataArgs) {
@@ -133,12 +151,19 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   // 그려지고, 얼리면 `/study` 처럼 맥락 창을 따로 넓혀야 해서(`studyDailyContextWindow`)
   // 오히려 화면이 저장 구간만큼으로 좁아진다.
   const freeze = isMinuteTimeframe(timeframe) ? (args.savedRangeFreeze ?? null) : null;
-  // **얼림의 전부가 이 한 줄이다** — 인자 도크스트링 참조.
-  const today = freeze?.toDate ?? todayKstYyyymmdd();
+  // 점프의 기준일도 분봉에서만 선다 — 캘린더 봉은 점프를 받지 않는다(발행 쪽이다).
+  const asOf = isMinuteTimeframe(timeframe) ? (args.asOfDate ?? null) : null;
+  // **얼림의 전부가 이 한 줄이다** — 인자 도크스트링 참조. 기준일도 같은 레버를 쓰되
+  // 얼림이 우선한다(저장뷰가 더 구체적인 요청이다).
+  const today = freeze?.toDate ?? asOf ?? todayKstYyyymmdd();
   // 얼린 창은 라이브 스트림을 아예 구독하지 않는다. `useLiveSeries` 는 빈 코드에서
   // 초기 fetch(`enabled: !!code`)와 WS 구독(`if (!code) return`)을 둘 다 끊고 버퍼를
   // 안 보이게 하므로(`bufferVisible`), 하류 피크·매물대의 당일 병합이 전부 no-op 이 된다.
-  const live = useLiveSeries(freeze ? '' : (activeCode ?? ''), venue);
+  //
+  // **기준일이 선 창도 같이 끊는다.** 안 끊으면 오늘 체결이 과거 축의 오른쪽 끝에
+  // 얹혀, 목적지와 오늘 사이가 통째로 빈 채로 축만 오늘까지 늘어난다 — 점프가
+  // 없애려던 그 구간이 whitespace 로 되살아난다.
+  const live = useLiveSeries(freeze || asOf ? '' : (activeCode ?? ''), venue);
   const {
     bundle,
     chartBundle,
@@ -146,8 +171,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     hogaMissingDates,
     candleEmpty,
     refetchCandles,
-    depthDeltaToday,
     clampEngaged,
+    captureFloorEngaged,
     candleSourceKey,
     minuteScrollbackFloorDate,
     isPastCandlesLoading,
@@ -367,6 +392,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeLabel,
     capabilities,
     clampEngaged,
+    captureFloorEngaged,
     /** 캔들 소스 축 — 소스가 갈린 커밋에서 뷰포트를 다시 앉히는 데만 쓴다.
      *  지수 창은 디스크 경로가 없어 항상 `'vendor'` 다(그 축이 지수엔 존재하지 않는다). */
     candleSourceKey: activeIndexId ? ('vendor' as const) : candleSourceKey,
@@ -385,11 +411,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     dayBidPeaks,
     tradeVolumePocs,
     liveSaveBundle,
-    // 지수(index) 워크에어리어는 호가장이 없어 증감 소스도 없다 — 종목일 때만 흘린다.
-    depthDeltaToday: activeIndexId ? [] : depthDeltaToday,
     /** 번들 지표에 적용된 날짜별 수정계수 — `/api/range` 를 따로 호출하는 데이터 창이
      *  같은 척도를 쓰게 하는 통로(`scaleRangeBundlePrices`). 지수는 호가 지표 자체가
-     *  없으므로 `undefined`(`depthDeltaToday` 와 같은 규율). */
+     *  없으므로 `undefined` — 지수 워크에어리어는 호가 유래 필드를 흘리지 않는다는
+     *  공통 규율이다(`workareaHogaMissingDates` 도 같다). */
     adjustFactors: activeIndexId ? undefined : adjustFactors,
     /** 디스크 창(얼린 저장뷰 · 창별 hogaplay 소스)의 키움 보충 결과.
      *  **로딩 게이트에는 넣지 않는다** — 보충은 디스크
@@ -402,7 +427,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     workareaChartBundle,
     workareaHogaBundle,
     /** 호가 결손 사유 — 번들과 **따로** 흘린다(#1133). 지수 워크에어리어는 호가장이
-     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`depthDeltaToday` 와 같은 규율). */
+     *  없어 결손이라는 개념 자체가 없으므로 빈 배열이다(`adjustFactors` 와 같은 규율). */
     workareaHogaMissingDates: activeIndexId ? [] : hogaMissingDates,
     /** 캔들 빈 상태 — 지수 워크에어리어는 캔들 파이프라인이 달라(indexBundle) 이
      *  판별의 대상이 아니다. `workareaHogaMissingDates` 와 같은 규율. */

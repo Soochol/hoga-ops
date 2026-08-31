@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections.abc import Collection, Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -37,7 +39,6 @@ from hoga.api.models import (
     BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
-    DepthDeltaPoint,
     DepthHeatmapPoint,
     ExcludedDate,
     FillStrength,
@@ -52,7 +53,6 @@ from hoga.api.models import (
     TradeVolumePoc,
     VolumeDistributionBin,
     VolumeProfile,
-    WallSurgeEvent,
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
@@ -414,19 +414,34 @@ def build_quote_ratio_slice(
             )
             cache.store_ratio(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_ratio(rows_1m, bucket_ms)
-    else:
-        is_today = today_kst is not None and date == today_kst
-        ttl_key = ("ratio", code, date, source, venue, bucket_ms, session_open_ms, session_close_ms)
-        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
-        if hit:
-            rows = cached
-        else:
-            rows = snapshots_tbl.query_bucketed_ratio(
-                engine.conn, path=path_obj, bucket_ms=bucket_ms,
+    elif (
+        today_kst is not None and date == today_kst
+        and bucket_ms % _ONE_MINUTE_MS == 0
+    ):
+        # 오늘도 **1분으로 한 번만** 스캔하고 굵은 봉은 재집계한다 — 위 과거일 분기가
+        # 이미 하는 일이고, 차이는 저장소뿐이다(디스크 캐시 → 프로세스 TTL; ADR-0043 의
+        # 금지는 영속 캐시 한정이다). `reaggregate_ratio == 직접 조회` 등가성은
+        # `test_indicator_reaggregate` 가 이미 증명하므로 새 계약이 아니다.
+        #
+        # 키에 `bucket_ms` 가 **없다**: 스캔이 1분 고정이라 봉이 키일 이유가 없고,
+        # 있으면 봉 전환마다 미스가 난다. 실측(2026-08-29, hogaplay 85k행): 종전엔
+        # 1분 27.8ms → 5분 28.0ms → 15분 32.8ms 로 봉마다 풀 스캔이었고, 과거일은
+        # 같은 데이터에서 0.4ms/0.2ms 였다. 픽스 전 peak 과 같은 결함이다.
+        ttl_key = ("ratio_1m", code, date, source, venue, session_open_ms, session_close_ms)
+        hit, rows_1m = TODAY_TTL.lookup(ttl_key)
+        if not hit:
+            rows_1m = snapshots_tbl.query_bucketed_ratio(
+                engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
                 session_open_ms=session_open_ms, session_close_ms=session_close_ms,
             )
-            if is_today:
-                TODAY_TTL.put(ttl_key, rows)
+            TODAY_TTL.put(ttl_key, rows_1m)
+        rows = reaggregate_ratio(rows_1m, bucket_ms)
+    else:
+        # 여기 남는 것: 분 미만 봉(재집계할 1분 행이 없다) · 캐시 없는 과거일(테스트).
+        rows = snapshots_tbl.query_bucketed_ratio(
+            engine.conn, path=path_obj, bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
@@ -642,25 +657,40 @@ def build_fill_strength_slice(
                 return FillStrength(bucket_ms=bucket_ms, points=[])
             cache.store_fill(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_fill(rows_1m, bucket_ms)
-    else:
-        is_today = today_kst is not None and date == today_kst
-        ttl_key = ("fill", code, date, source, venue, bucket_ms)
-        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
-        if hit:
-            rows = cached
-        else:
-            direct = _query_fill_rows(engine, code_dir, bucket_ms)
-            if direct is None:
-                # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
+    elif (
+        today_kst is not None and date == today_kst
+        and bucket_ms % _ONE_MINUTE_MS == 0
+    ):
+        # 오늘도 **1분으로 한 번만** 스캔하고 굵은 봉은 재집계한다 — 위 과거일 분기와
+        # 같은 구조이고 저장소만 다르다(디스크 → 프로세스 TTL). fill 은 순수 SUM
+        # GROUP BY 라 재집계가 정확하다(이 함수 상단 주석 + `reaggregate_fill`).
+        #
+        # 키에 `bucket_ms` 가 **없다**: 스캔이 1분 고정이라 봉이 키일 이유가 없고,
+        # 있으면 봉 전환마다 미스가 난다. 실측(2026-08-29): 종전 1분 18.0ms → 5분
+        # 16.0ms → 15분 15.7ms 로 봉마다 재스캔이었고, 과거일은 0.2ms/0.1ms 였다.
+        ttl_key = ("fill_1m", code, date, source, venue)
+        hit, rows_1m = TODAY_TTL.lookup(ttl_key)
+        if not hit:
+            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS)
+            if rows_1m is None:
+                # ADR-0043: fills·trades 둘 다 없음 = 유효한 "체결 없음".
+                # **None 은 캐시하지 않는다** — 시가 직후 파일이 늦게 생길 수 있고
+                # stale None 이 최대 TTL 만큼 그것을 가린다(기존 테스트가 잠근다).
                 return FillStrength(bucket_ms=bucket_ms, points=[])
-            rows = direct
-            if is_today:
-                # ADR-0090: _query_fill_rows가 fills.parquet 우선·trades 폴백이라, trades
-                # 유래 결과를 캐시한 뒤 fills.parquet이 같은 15s 창 안에 늦게 도착하면 이후
-                # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
-                # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL이
-                # 이미 수용한 15s staleness 예산 안이라 허용한다.
-                TODAY_TTL.put(ttl_key, rows)
+            # ADR-0090: `_query_fill_rows` 가 fills.parquet 우선·trades 폴백이라, trades
+            # 유래 결과를 캐시한 뒤 fills.parquet 이 같은 15s 창 안에 늦게 도착하면 이후
+            # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
+            # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL 이
+            # 이미 수용한 15s staleness 예산 안이라 허용한다.
+            TODAY_TTL.put(ttl_key, rows_1m)
+        rows = reaggregate_fill(rows_1m, bucket_ms)
+    else:
+        # 여기 남는 것: 분 미만 봉(재집계할 1분 행이 없다) · 캐시 없는 과거일(테스트).
+        direct = _query_fill_rows(engine, code_dir, bucket_ms)
+        if direct is None:
+            # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
+            return FillStrength(bucket_ms=bucket_ms, points=[])
+        rows = direct
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
@@ -694,8 +724,13 @@ def build_ask_peak_slice(
     과거일(today_kst != date)은 불변이라 cache로 1회 계산 후 재사용(범위 내 N일 재스캔 회피).
 
     ``bucket_ms``로 총잔량 지표와 동일한 버킷 대표 위에서 집계(틱 max 아님). 세션 경계
-    (``session_open_ms``/``session_close_ms``, native HHMMSSmmm)로 동시호가 배제 —
-    캐시 키에 ``bucket_ms``가 포함되므로 분봉 전환 시 재계산된다."""
+    (``session_open_ms``/``session_close_ms``, native HHMMSSmmm)로 동시호가 배제.
+
+    ⚠ **이 함수는 `trades.parquet` 이 없는 스톡데이트 전용 폴백이다**(호출부:
+    `build_ask_bid_peak_slices`). 캐시 키에 ``bucket_ms``가 포함되므로 그 경로에서는
+    분봉 전환이 재계산이다 — **주 경로는 더 이상 그렇지 않다**. 오늘·과거일 모두 1분
+    으로 한 번 스캔하고 굵은 봉은 rep 재집계로 파생한다(`_today_peak_slices` ·
+    `_peak_slices_from_1m_cache`). 이 문장을 "peak 은 봉마다 재계산된다" 로 읽지 말 것."""
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_ask_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
@@ -748,6 +783,9 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        unreached_price=row.unreached_price, unreached_qty=row.unreached_qty,
+        unreached_t_ms=_unix_or_none(date, row.unreached_intra_ms),
+        unreached_peaks=[_ask_candidate(date, c) for c in row.unreached_peaks],
     )
 
 
@@ -767,6 +805,9 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
         all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        unreached_price=row.unreached_price, unreached_qty=row.unreached_qty,
+        unreached_t_ms=_unix_or_none(date, row.unreached_intra_ms),
+        unreached_peaks=[_ask_candidate(date, c) for c in row.unreached_peaks],
     )
 
 
@@ -887,32 +928,50 @@ _PeakT = TypeVar("_PeakT", AskPeak, BidPeak)
 
 
 def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
-    """`all_peaks`/`all_max_peaks` 전체 랭킹 배열을 range 응답에서 뺀다.
+    """(2026-08-25 이후) **더 이상 벗기지 않는다** — 그대로 통과시킨다.
 
-    이 두 배열은 하루당 수천 후보(실측 avg ~1.3k/1.6k)로 sidecar 페이로드의 99%를
-    차지하는데, range 소비처(/live·/study seed 경로)는 어느 필드도 읽지 않는다 —
-    전체 랭킹은 라이브 `ask_peak_today`(별도 상태) 전용이다. 빌더/캐시는 그대로
-    두고(단위 계약·기존 디스크 캐시 유지) 응답 조립 시점에만 벗긴다. `all_*`
-    스칼라(rank-1)는 바이트 기여가 무시 수준이라 와이어 계약 그대로 남긴다."""
-    if not peak.all_peaks and not peak.all_max_peaks:
-        return peak
-    return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
+    이 함수가 있던 이유는 배열 크기였다: `all_peaks`/`all_max_peaks` 가 하루당 수천
+    후보(실측 avg ~1.3k/1.6k)라 sidecar 페이로드의 99%였고, 당시 range 소비처는 그
+    필드를 읽지 않았다. 이제 **소스에서 top-3 로 캡**하므로(snapshots `_side_row`)
+    배열이 최대 3개이고, 프론트의 「전체 최대벽 표시 개수」가 그 3개를 읽는다.
+
+    이름과 호출부를 남겨 두는 이유: 벗기던 자리가 어디였는지가 곧 "여기서 크기가
+    문제였다" 는 기록이고, 다시 커지면 되돌릴 자리도 여기다. 지금은 항등이다."""
+    return peak
 
 
 def _peak_with_rep_outputs(
     base: _PeakT, *, date: str, reduced: dict[str, Any] | None,
 ) -> _PeakT | None:
-    """1분 peak(`base`)의 **봉 무관 절반**에 `reduced`(봉 의존 절반)를 덮어쓴다.
+    """1분 peak(`base`) 위에 `reduced`(굵은 봉 rep 재집계)를 덮어쓴다.
 
-    봉 무관/의존의 경계는 `snapshots.reaggregate_peak_rep` docstring 참조. 여기서
-    덮는 필드가 곧 "rep 파생" 목록이고, 손대지 않는 `*_max*` 가 "cont 파생" 이다.
-    `traded_record_*`(기록 갱신 시퀀스)도 **덮지 않는다** — "그 시점까지의 최대" 는
-    봉 굵기와 무관한 사실이라 1분 캐시 값이 모든 봉에서 그대로 옳다.
+    덮는 필드는 `snapshots.reaggregate_peak_rep` 이 만들어 주는 것 전부다. 나머지는
+    base(1분) 값을 그대로 나른다 — 그 이유가 필드마다 **두 가지로 갈리므로** 아래를
+    구분해서 읽을 것. 하나로 뭉뚱그린 옛 설명("손대지 않는 것 = 봉 무관")은 틀렸다.
 
-    `all_peaks`/`all_max_peaks` 는 **비운다.** `/api/range` 가 어차피
-    `_without_all_peak_rankings` 로 벗겨 내보내고 소비자는 오늘 경로 하나뿐이라
-    (`useDayBidPeaks`), 과거일 전체 랭킹은 만들 이유가 없다 — 하루 1.5MB × 2 side
-    의 직렬화·디스크 쓰기가 이 결정으로 사라진다. 되살리려면 재계산해야 한다.
+    **(1) 진짜 봉 무관 — 어느 봉으로 계산해도 같은 값**
+    `max_*` · `all_max_*` 스칼라, `traded_max_peaks`, `traded_record_max_peaks` 는
+    cont(틱-max) 프레임 산물이고 cont 는 유효 스냅샷 **전체**를 보므로 봉과 무관하다.
+    `unreached_*` 도 판정이 (price, 당일 체결 극값) 비교라 봉과 무관하다.
+    `test_peak_max_fields_are_bucket_independent` 가 이 성질을 건다.
+
+    **(2) 봉 의존이지만 1분 값을 정본으로 고정 — 재파생이 불가능하거나 부적절해서**
+    `all_max_peaks` 는 이름과 달리 **봉 의존이다**: 생산자 `_peak_bucket_dedup` 이
+    `subset=["price", "bucket_id"]` 로 접으므로 봉이 굵어지면 같은 가격의 여러 후보가
+    하나로 합쳐져 top-3 구성이 달라진다(실측 2026-08-28, 실데이터 3일 중 2일 · 픽스처
+    전 봉에서 재현). 그런데 재파생하려면 cont 행이 필요한데 **캐시에는 rep 행만 있다**
+    (`store_peak_rep`) — 원리적으로 못 덮는다. 그래서 1분 값이 정본이다.
+    `traded_record_peaks`(기록 갱신 시퀀스)도 rep 프레임 산물이라 봉 의존이지만, 1분
+    시퀀스가 더 촘촘해 "그 시점까지의 최대" 로서 더 옳으므로 역시 1분이 정본이다.
+
+    (2)의 정본 선언이 이 함수의 계약이다. **정본이 하나여야 하는 이유**: 굵은 봉
+    요청은 캐시 유무에 따라 이 파생 경로 또는 직접-굵은봉 조회로 갈리는데, 정본이
+    없으면 같은 (종목, 날짜, 봉)이 캐시 상태에 따라 다른 값을 낸다. `ask_peak`/
+    `bid_peak` 캐시 버전 12 범프가 그 규약 이전에 쌓인 항목을 걷어낸다.
+
+    `all_peaks` 는 (2)와 달리 rep 에서 만들 수 있으므로 `reduced` 가 봉에 맞게 다시
+    만들어 준다(2026-08-25). 여기서 비우면 파생된 날만 rank-1 이고 직접 계산된 날은
+    top-3 가 되어 per-day 불일치가 생긴다.
     """
     if reduced is None:
         return None
@@ -925,8 +984,37 @@ def _peak_with_rep_outputs(
         "qty": traded[1] if traded else None,
         "t_ms": ms_from_midnight_to_unix_ms(date, traded[2]) if traded else None,
         "traded_peaks": [_ask_candidate(date, c) for c in reduced["traded_peaks"]],
-        "all_peaks": [], "all_max_peaks": [],
+        "all_peaks": [_ask_candidate(date, c) for c in reduced["all_peaks"]],
     })
+
+
+def _derive_coarse_from_rep(
+    base_ask: AskPeak | None,
+    base_bid: BidPeak | None,
+    rep_rows: list[snapshots_tbl.PeakRepRow],
+    *,
+    date: str,
+    bucket_ms: int,
+) -> tuple[AskPeak | None, BidPeak | None]:
+    """1분 base + 1분 rep 행 → 굵은 봉 출력. 과거일·오늘이 **같은 코드**를 쓴다.
+
+    저장소만 다르다(과거일=디스크 `PastIndicatorsCache`, 오늘=프로세스 `TODAY_TTL`).
+    파생 규칙 자체는 하나여야 두 지평의 값이 갈리지 않는다.
+    """
+    return (
+        None if base_ask is None else _peak_with_rep_outputs(
+            base_ask, date=date,
+            reduced=snapshots_tbl.reaggregate_peak_rep(
+                [r for r in rep_rows if r.side == "ask"], side="ask", bucket_ms=bucket_ms,
+            ),
+        ),
+        None if base_bid is None else _peak_with_rep_outputs(
+            base_bid, date=date,
+            reduced=snapshots_tbl.reaggregate_peak_rep(
+                [r for r in rep_rows if r.side == "bid"], side="bid", bucket_ms=bucket_ms,
+            ),
+        ),
+    )
 
 
 def _peak_slices_from_1m_cache(
@@ -987,25 +1075,84 @@ def _peak_slices_from_1m_cache(
         cache.store_ask_peak(code, date, source, one, base_ask, venue=venue)
         cache.store_bid_peak(code, date, source, one, base_bid, venue=venue)
         cache.store_peak_rep(code, date, source, rep_rows, venue=venue)
-    ask = (
-        None if base_ask is None
-        else _peak_with_rep_outputs(
-            base_ask, date=date,
-            reduced=snapshots_tbl.reaggregate_peak_rep(
-                [r for r in rep_rows if r.side == "ask"], side="ask", bucket_ms=bucket_ms,
+    return _derive_coarse_from_rep(
+        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms,
+    )
+
+
+def _today_peak_slices(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str,
+    venue: Venue,
+    session_open_ms: int | None,
+    session_close_ms: int | None,
+    path_obj: Path,
+    trades_path: Path,
+) -> tuple[AskPeak | None, BidPeak | None] | None:
+    """오늘자 peak — **항상 1분으로 스캔**하고 굵은 봉은 rep 에서 파생한다.
+
+    과거일(`_peak_slices_from_1m_cache`)과 같은 구조이고 **저장소만 다르다**:
+    오늘 parquet 은 5분마다 통째로 overwrite 되므로 디스크에 박제할 수 없고
+    (ADR-0043), 프로세스 short-TTL 메모(ADR-0090)가 그 자리를 대신한다.
+
+    ## 무엇이 달라지나
+
+    종전에는 **요청받은 봉으로 스캔하고 rep 행을 버렸다**. TTL 키에 `bucket_ms` 가
+    있었으므로 1분→5분→15분 전환이 봉마다 풀 스캔이었다(사용자 설정 기준 0.66s ×
+    전환 횟수, 2026-08-28 실측). 비용이 버킷 수가 아니라 원본 스캔에 있으므로
+    (봉을 60배 굵혀도 0.33s 로 그대로) 그 재스캔은 전액 낭비였다.
+
+    이제 스캔이 봉에 의존하지 않으므로 **TTL 키에서 `bucket_ms` 를 뺀다**. 봉 전환은
+    같은 엔트리를 재사용해 파생만 다시 한다(~5ms).
+
+    ## ⚠ 셋을 한 엔트리에 원자적으로 담는다
+
+    `(ask_row, bid_row, rep_rows)` 를 별도 TTL 엔트리로 두면 만료가 어긋나
+    **cont 절반은 A 세대 스캔, rep 절반은 B 세대 스캔**이 섞인다 — 오늘 parquet 이
+    5분마다 갈리기 때문이다. 한 키·한 값이 그 레이스를 원천 차단한다.
+
+    ## 1분 배수가 아닌 봉
+
+    `reaggregate_peak_rep` 이 배수를 요구하므로 그때는 `None` 을 돌려주고 호출부가
+    원경로(직접 계산)로 떨어진다. 프론트의 `TIMEFRAME_TO_MS` 는 전부 60,000 배수라
+    실제로는 도달하지 않지만, API 는 임의 값을 받을 수 있다.
+    """
+    one = snapshots_tbl.ONE_MINUTE_MS
+    if bucket_ms != one and bucket_ms % one != 0:
+        return None
+
+    # 키에 `bucket_ms` 가 **없다** — 스캔이 1분 고정이므로 봉은 키가 될 이유가 없고,
+    # 있으면 봉 전환마다 미스가 난다(이 변경의 직접 동기). 세션 경계는 계산에
+    # 들어가므로 그대로 둔다.
+    key = ("peak_dual_today_1m", code, date, source, venue, session_open_ms, session_close_ms)
+    hit, cached = TODAY_TTL.lookup(key)
+    if hit:
+        ask_row, bid_row, rep_rows = cached
+    else:
+        ask_row, bid_row, rep_rows = SLICE_COALESCER.run(
+            key,
+            lambda: snapshots_tbl.query_day_ask_bid_peak_dual_with_rep(
+                engine.conn,
+                path=path_obj,
+                trades_path=trades_path,
+                bucket_ms=one,
+                session_open_ms=session_open_ms,
+                session_close_ms=session_close_ms,
             ),
         )
+        TODAY_TTL.put(key, (ask_row, bid_row, rep_rows))
+
+    base_ask = _ask_peak_from_dual_row(date, ask_row) if ask_row is not None else None
+    base_bid = _bid_peak_from_dual_row(date, bid_row) if bid_row is not None else None
+    if bucket_ms == one:
+        return base_ask, base_bid
+    return _derive_coarse_from_rep(
+        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms,
     )
-    bid = (
-        None if base_bid is None
-        else _peak_with_rep_outputs(
-            base_bid, date=date,
-            reduced=snapshots_tbl.reaggregate_peak_rep(
-                [r for r in rep_rows if r.side == "bid"], side="bid", bucket_ms=bucket_ms,
-            ),
-        )
-    )
-    return ask, bid
 
 
 def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
@@ -1087,6 +1234,19 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
     )
     if derived is not None:
         return derived
+
+    # 오늘자도 같은 구조로 파생한다 — 저장소만 TODAY_TTL 이다(근거는 그 함수
+    # docstring). 오늘은 `ask_cached`/`bid_cached` 가 정의상 False 이므로 그대로
+    # 돌려주면 된다. 1분 배수가 아닌 봉만 None 이 와서 아래 원경로로 떨어진다.
+    if today_kst is not None and date == today_kst:
+        today_derived = _today_peak_slices(
+            engine,
+            code=code, date=date, bucket_ms=bucket_ms, source=source, venue=venue,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            path_obj=path_obj, trades_path=trades_path,
+        )
+        if today_derived is not None:
+            return today_derived
 
     # Concurrent identical dual-peak computes are collapsed by single-flight
     # (SLICE_COALESCER), same as every other per-day slice. The 2-slot
@@ -1241,10 +1401,29 @@ def build_depth_heatmap_slice(
     형제 지표(호가비·체결강도·매도벽·POC)와 동일하게 완료된 과거일은
     PastIndicatorsCache로 1회 계산 후 재사용한다(ADR-0043/0090 게이트를
     ``_indicator_cacheable``로 자가-해석). ratio/fill 과 달리 1m 저장+재집계가
-    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다 — 대표 선택이
-    조건부 argmax라 1m 행에서 coarse 대표를 정확히 복원할 수 없기 때문
-    (past_indicators_cache._mem_depth 주석 참조). 오늘은 프로모션 진행 중이라
-    항상 재계산.
+    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
+
+    ⚠ **그 이유로 적혀 있던 근거는 이미 무효다(2026-08-29 확인).** 종전 설명은
+    "대표 선택이 조건부 argmax라 1m 행에서 coarse 대표를 복원할 수 없다" 였는데,
+    ADR-0062 v3 가 유효 스냅샷을 WHERE 로 사전 필터하면서 **대표는 그냥 버킷의
+    마지막 행**(``rep_key = intra_ms``)이 됐다 — `query_bucketed_depth_heatmap`
+    docstring 이 "종전 is_pre CASE + last-in-bucket 폴백 방출을 대체" 라고 적는다.
+    즉 `rep` 는 ratio 의 last-in-window 와 동형이라 재집계가 가능하다.
+
+    그런데도 안 하는 **현재의** 이유는 둘이고, 근거의 성격이 다르다:
+    ① `rep_max`(총잔량 최대 스냅샷)를 파생하려면 정렬 키인 ``total`` 이 필요한데
+       그 값이 `DepthHeatmapPoint` 에 없다 — `peak_rep` 같은 보조 kind 가 필요하다.
+    ② peak 이 겪은 "정본" 문제(`_peak_with_rep_outputs` 참조)가 `arg_max` 동률에서
+       재발할 수 있어 등가성 테스트 + `KIND_VERSIONS["depth"]` 범프가 전제다.
+
+    착수 판단용 실측(2026-08-29, 005930 hogaplay 20일): 봉별 콜드 계산이 1분
+    **3.39s** · 5분 1.51s · 15분 1.14s 다 — peak 과 달리 **비용이 버킷 수에
+    비례**하므로 "1분에서 파생" 이 자동으로 이득은 아니다. 다만 워크스페이스 기본
+    봉이 `1m` 이라(`frontend/src/state/liveDefaultLayout.ts`) 1분 계산은 대개 어차피
+    발생하고, **1분 캐시가 있을 때만 파생**하는 기회주의적 형태면 손해 시나리오가
+    사라진다. 봉 3종을 도는 사용자 기준 6.04s → 3.4s.
+
+    오늘은 프로모션 진행 중이라 항상 재계산.
 
     ``session_open_ms``는 개장 동시호가 배제의 하한(ADR-0062 v3) — 쿼리의 공용 술어
     ``_book_indicator_eligible_sql``로 전달된다. 호가비·매도벽과 동일 규칙.
@@ -1292,245 +1471,18 @@ def build_depth_heatmap_slice(
                 bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys, strict=True)],
                 asks_max=[[p, q] for p, q in zip(r.ask_prices_max, r.ask_qtys_max, strict=True)],
                 bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max, strict=True)],
+                asks_price_max=[
+                    [p, q] for p, q in zip(r.ask_prices_pmax, r.ask_qtys_pmax, strict=True)
+                ],
+                bids_price_max=[
+                    [p, q] for p, q in zip(r.bid_prices_pmax, r.bid_qtys_pmax, strict=True)
+                ],
             )
         )
     if cacheable:
         cache.store_depth(code, date, source, bucket_ms, out, venue=venue)  # type: ignore[union-attr]
     elif is_today:
         TODAY_TTL.put(depth_key, out)
-    return out
-
-
-def build_depth_delta_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    bucket_ms: int,
-    source: str = "hogaplay",
-    venue: Venue = "KRX",
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
-    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
-) -> list[DepthDeltaPoint]:
-    """연속 스냅샷 diff 의 버킷 합(단별 잔량 증감)을 DepthDeltaPoint 리스트로.
-
-    build_depth_heatmap_slice 와 완전 대칭 — 같은 캐시 게이트(완료 과거일 =
-    PastIndicatorsCache, 오늘 = short-TTL + coalescer), 같은 세션 경계 전달, 같은
-    unix 변환. diff 규칙(공통 가격 교집합·side 분리·체인 차단)은
-    query_bucketed_depth_delta 참조. 오늘자는 프로모션이 진행 중이라 페이지를 연
-    시점 이전 구간을 이 슬라이스가 채우고, 이후는 프론트 라이브 diff 가 잇는다.
-    """
-    cache = _resolve_cache(engine, cache)
-    today_kst = _resolve_today_kst(today_kst)
-    try:
-        path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
-    except (FileNotFoundError, StockDateNotFound):
-        return []
-    if not path_obj.exists():
-        return []
-    cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
-    if cacheable:
-        cached = cache.get_depth_delta(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
-        if cached is not CACHE_MISS:
-            return cached  # type: ignore[return-value]
-    one = snapshots_tbl.ONE_MINUTE_MS
-    if cacheable and bucket_ms != one and bucket_ms % one == 0:
-        # 굵은 봉은 **파케이를 읽지 않는다** — 1분 결과와 1분 사다리 가격 집합에서
-        # 파생한다. 유입/유출은 합, tick 은 가격 집합의 합집합에서 다시 중앙값
-        # (`snapshots.reaggregate_depth_delta`). 1분 산출이 없으면 여기서 한 번만
-        # 만든다(스캔 1회).
-        assert cache is not None
-        midnight = ms_from_midnight_to_unix_ms(date, 0)
-        base_pts = cache.get_depth_delta(code, date, source, one, venue=venue)
-        ladder = cache.get_depth_delta_prices(code, date, source, venue=venue)
-        if base_pts is CACHE_MISS or ladder is CACHE_MISS:
-            def _compute_1m() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
-                # out 파라미터를 **반환값에 실어** coalescer 와 안전하게 쓴다 —
-                # 바깥 dict 를 닫아 쓰면 다른 스레드의 비행이 이기는 순간 빈 채로 남는다.
-                prices: dict[tuple[int, str], list[int]] = {}
-                rows = snapshots_tbl.query_bucketed_depth_delta(
-                    engine.conn, path=path_obj, bucket_ms=one,
-                    session_open_ms=session_open_ms, session_close_ms=session_close_ms,
-                    out_ladder_prices=prices,
-                )
-                return rows, prices
-
-            rows_1m, prices_1m = SLICE_COALESCER.run(
-                ("depth_delta_1m", code, date, source, venue), _compute_1m,
-            )
-            base_pts = [
-                DepthDeltaPoint(
-                    t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                    asks=[[p, i, o] for p, i, o in r.ask],
-                    bids=[[p, i, o] for p, i, o in r.bid],
-                    ask_tick=r.ask_tick, bid_tick=r.bid_tick,
-                )
-                for r in rows_1m
-            ]
-            cache.store_depth_delta(code, date, source, one, base_pts, venue=venue)
-            ladder = [
-                [intra, 0 if side == "ask" else 1, *ps]
-                for (intra, side), ps in sorted(prices_1m.items())
-            ]
-            cache.store_depth_delta_prices(code, date, source, ladder, venue=venue)
-        # 캐시는 wire 모델(unix `t_ms`)을 담고 축약 함수는 자정 기준 `bucket_intra_ms`
-        # 를 먹는다 — KST 는 서머타임이 없어 오프셋이 상수라 뺄셈으로 오간다.
-        buckets_1m = [
-            snapshots_tbl.DepthDeltaBucket(
-                bucket_intra_ms=p.t_ms - midnight,
-                ask=tuple((a[0], a[1], a[2]) for a in p.asks),
-                bid=tuple((b[0], b[1], b[2]) for b in p.bids),
-                ask_tick=p.ask_tick, bid_tick=p.bid_tick,
-            )
-            for p in cast("list[DepthDeltaPoint]", base_pts)
-        ]
-        ladder_map = {
-            (r[0], "ask" if r[1] == 0 else "bid"): r[2:]
-            for r in cast("list[list[int]]", ladder)
-        }
-        merged = snapshots_tbl.reaggregate_depth_delta(buckets_1m, ladder_map, bucket_ms=bucket_ms)
-        return [
-            DepthDeltaPoint(
-                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                asks=[[p, i, o] for p, i, o in r.ask],
-                bids=[[p, i, o] for p, i, o in r.bid],
-                ask_tick=r.ask_tick, bid_tick=r.bid_tick,
-            )
-            for r in merged
-        ]
-
-    is_today = today_kst is not None and date == today_kst
-    delta_key = ("depth_delta", code, date, source, venue, bucket_ms)
-    if is_today:
-        hit, cached = TODAY_TTL.lookup(delta_key)
-        if hit:
-            return cached
-    def _compute_delta() -> tuple[list[snapshots_tbl.DepthDeltaBucket], dict[tuple[int, str], list[int]]]:
-        prices: dict[tuple[int, str], list[int]] = {}
-        got = snapshots_tbl.query_bucketed_depth_delta(
-            engine.conn,
-            path=path_obj,
-            bucket_ms=bucket_ms,
-            session_open_ms=session_open_ms,
-            session_close_ms=session_close_ms,
-            out_ladder_prices=prices,
-        )
-        return got, prices
-
-    rows, ladder_1m = SLICE_COALESCER.run(delta_key, _compute_delta)
-    # 1분으로 계산한 김에 가격 집합도 저장한다 — 없으면 **이 종목의 첫 굵은 봉
-    # 요청이 같은 스캔을 한 번 더** 한다(실측 4.2s 뒤 4.1s).
-    if cacheable and bucket_ms == one:
-        cache.store_depth_delta_prices(  # type: ignore[union-attr]
-            code, date, source,
-            [[intra, 0 if side == "ask" else 1, *ps] for (intra, side), ps in sorted(ladder_1m.items())],
-            venue=venue,
-        )
-    out: list[DepthDeltaPoint] = []
-    for r in rows:
-        out.append(
-            DepthDeltaPoint(
-                t_ms=ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms),
-                asks=[[p, i, o] for p, i, o in r.ask],
-                bids=[[p, i, o] for p, i, o in r.bid],
-                ask_tick=r.ask_tick,
-                bid_tick=r.bid_tick,
-            )
-        )
-    if cacheable:
-        cache.store_depth_delta(code, date, source, bucket_ms, out, venue=venue)  # type: ignore[union-attr]
-    elif is_today:
-        TODAY_TTL.put(delta_key, out)
-    return out
-
-
-def build_wall_surge_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    source: str = "hogaplay",
-    venue: Venue = "KRX",
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
-    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
-) -> list[WallSurgeEvent]:
-    """호가벽 급증 이벤트를 WallSurgeEvent 리스트로.
-
-    build_depth_delta_slice 와 같은 캐시 게이트(완료 과거일 = PastIndicatorsCache,
-    오늘 = short-TTL + coalescer)를 쓰되 **bucket_ms 축이 없다** — 이벤트는 봉과 무관한
-    시점 사실이라 캐시 키가 (code, date, source, venue) 로 충분하고, 봉이 바뀌어도
-    재계산이 필요 없다.
-
-    체결 데이터(trades.parquet)는 결말 판정에만 쓴다. 없으면 소화/취소를 가를 수 없어
-    체결량 0 으로 판정되므로, 파일이 없으면 넘기지 않는다.
-    """
-    cache = _resolve_cache(engine, cache)
-    today_kst = _resolve_today_kst(today_kst)
-    try:
-        parquet_dir = engine.parquet_dir(date, code, source, venue=venue)
-    except (FileNotFoundError, StockDateNotFound):
-        return []
-    path_obj = parquet_dir / "snapshots.parquet"
-    if not path_obj.exists():
-        return []
-    trades_obj = parquet_dir / "trades.parquet"
-    trades_path = trades_obj if trades_obj.exists() else None
-
-    # bucket_ms 가 없는 지표라 게이트에는 대표값을 넘긴다(캐시 키에는 들어가지 않는다).
-    cacheable = _indicator_cacheable(cache, today_kst, date, _ONE_MINUTE_MS)
-    if cacheable:
-        cached = cache.get_wall_surge(code, date, source, venue=venue)  # type: ignore[union-attr]
-        if cached is not CACHE_MISS:
-            return cached  # type: ignore[return-value]
-    is_today = today_kst is not None and date == today_kst
-    key = ("wall_surge", code, date, source, venue)
-    if is_today:
-        hit, cached = TODAY_TTL.lookup(key)
-        if hit:
-            return cached
-    # 창은 **소스의 스냅샷 간격에 맞춘다** — hogaplay 는 중앙값 407ms 라 10초면 표본이
-    # 넉넉하지만, kiwoom_live 는 저장 간격이 10초라 같은 창에서 표본 부족으로 전량
-    # 탈락한다(실측 1%). 소스를 여기서 아는 김에 함께 정한다.
-    window_ms = (
-        snapshots_tbl.WALL_SURGE_WINDOW_MS
-        if source == "hogaplay"
-        else snapshots_tbl.WALL_SURGE_WINDOW_MS_SPARSE
-    )
-    rows = SLICE_COALESCER.run(
-        key,
-        lambda: snapshots_tbl.query_wall_surge(
-            engine.conn,
-            path=path_obj,
-            trades_path=trades_path,
-            session_open_ms=session_open_ms,
-            session_close_ms=session_close_ms,
-            window_ms=window_ms,
-        ),
-    )
-    out = [
-        WallSurgeEvent(
-            t_ms=ms_from_midnight_to_unix_ms(date, r.intra_ms),
-            side=r.side,  # type: ignore[arg-type]
-            price=r.price,
-            qty=r.qty,
-            jump=r.jump,
-            total=r.total,
-            kind=r.kind,  # type: ignore[arg-type]
-            blind_ms=r.blind_ms,
-            outcome=r.outcome,  # type: ignore[arg-type]
-            filled_qty=r.filled_qty,
-            duration_ms=r.duration_ms,
-        )
-        for r in rows
-    ]
-    if cacheable:
-        cache.store_wall_surge(code, date, source, out, venue=venue)  # type: ignore[union-attr]
-    elif is_today:
-        TODAY_TTL.put(key, out)
     return out
 
 
@@ -1679,6 +1631,7 @@ def _empty_range_bundle(
     *,
     excluded: list[ExcludedDate],
     missing: list[MissingDate] | None = None,
+    earliest_captured: str | None = None,
 ) -> RangeBundle:
     """Empty RangeBundle for the no-captured-data and all-INVALID branches
     (spec 2026-05-27 §4.3). Mirrors the success-path shape with empty series
@@ -1693,6 +1646,9 @@ def _empty_range_bundle(
         from_date=from_date,
         to_date=to_date,
         bucket_ms=bucket_ms,
+        # ⚠ **이 분기에서 특히 중요하다.** 캡처 시작 이전으로 조회하면 여기로 떨어지는데
+        # (위 도크스트링), 그 응답이 곧 "바닥을 지났다" 를 프론트에 알릴 유일한 자리다.
+        earliest_captured_date=earliest_captured,
         segments=[],
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
@@ -1919,6 +1875,156 @@ def _gil_breathe(last_yield_at: float) -> float:
     return time.monotonic()
 
 
+# 일자 루프 **앞**에서 과거일 peak 캐시를 채우는 유계 병렬 prefetch.
+#
+# ## 왜 peak 만 병렬인가 — 두 실측은 분모가 다르다
+#
+#   * **peak 계산 단독**: 12 동시가 13.2s → 7.1s(`slice_coalescer` 주석), 12일
+#     4-way 가 4.58s → 2.14s(2026-08-28 실측). polars/DuckDB 라 GIL 을 놓는다.
+#   * **일자 루프 전체**: 6스레드에서 wall **7.1배 팽창**(routes.py 상단 실측).
+#     본문이 96.7% 순수 파이썬이고, 팽창의 절반은 GIL 이 아니라 **GC**
+#     stop-the-world 다.
+#
+# 둘 다 옳다. 그래서 병렬은 peak 에만 걸고 **루프는 순차로 남긴다** — 그 결과
+# `_gil_breathe` 처방(#998)·누적 리스트 13개의 순서·`excluded`/`warnings_list` 의
+# 미정렬 계약·per-date perf 로그 델타가 **전부 무변경**이다. routes.py 가 미착수로
+# 적어 둔 방향(ADR-0085 v3.2, 모드 기반 분리)과 같은 쪽이다.
+#
+# ## 왜 ThreadPoolExecutor 인가
+#
+# 리포의 기존 유계 패턴은 전부 `anyio.CapacityLimiter` / `asyncio.Semaphore` 인데,
+# 여기는 `to_thread` **안쪽의 동기 컨텍스트**라 async 프리미티브를 쓸 수 없다.
+# anyio 기본 풀(40토큰 공용)에 중첩하는 것은 routes.py 가 경고하는 **동기 라우트
+# 기아**를 정면으로 밟는다(`/api/live/status` 폴링 등이 같은 풀을 쓴다). 전용
+# 풀을 요청 수명만큼만 열고 닫는다.
+#
+# ⚠ **레인 상한과 곱해진다.** routes.py 의 sweep 표는 요청당 컴퓨트 스레드 1개를
+# 전제로 측정됐으므로, 실효 스레드는 `상한 × 여기 워커 수`가 된다. 기본값을 3 으로
+# 낮게 둔 이유이고, 이 값을 올리려면 그 sweep 을 다시 돌려야 한다.
+#
+# ## 그 재측정을 돌렸다 (2026-08-29) — 상한은 그대로, 그러나 **이득은 부하에 달렸다**
+#
+# 혼합 부하(콜드 sidecar 20일 4종목 + hoga 하루 12개 = 16 동시), 교대 대조 2라운드
+# median. 매 실행 전 지표 캐시를 지워 콜드를 재현했다:
+#
+#     변형                  wall   heavy중앙  light중앙  전체평균
+#     lane1 / prefetch3    15.88s    15.60s     2.40s     5.17s
+#     lane2 / prefetch3    15.91s    15.62s     2.47s     5.24s   ← 현행
+#     lane4 / prefetch3    16.13s    15.59s     2.50s     5.34s
+#     lane2 / prefetch1    18.49s    17.65s     2.02s     5.33s   ← prefetch 대조군
+#
+# **레인 상한은 바꿀 근거가 없다**: 1/2/4 의 차이가 wall 1.6% · heavy 0.2% 로, 라운드
+# 간 드리프트(0.6~1.4s)보다 작다. 현행 2를 유지한다.
+#
+# **prefetch 는 고부하에서 재분배에 가깝다**: heavy 를 11.5% 줄이는 대신 light 를 22%
+# 늦추고 전체 평균은 5.33 → 5.24 로 거의 같다. 단독 요청에서 잰 1.39~1.40배와 다른
+# 그림이고, 이유는 자명하다 — 동시 요청이 이미 CPU 를 채우면 요청 **내부** 병렬이
+# 가져올 여유가 없다. routes.py v3 이 "상한은 이득이 아니라 재분배였다" 고 판정한 것과
+# 같은 모양이다.
+#
+# 그래도 3 을 유지하는 근거: ① 순 합계는 여전히 heavy 쪽으로 기운다(heavy 4개 × -2.0s
+# 대 light 12개 × +0.46s), ② 위 부하는 **콜드 4종목 동시**라 실사용보다 극단적이다
+# (`/live` 는 한 종목을 연다), ③ 단독·저부하에서는 이득이 명확하다(1.4배).
+# **이 값을 올리는 것은 위 표가 지지하지 않는다** — light 열이 더 나빠질 뿐이다.
+_PEAK_PREFETCH_WORKERS_ENV = "HOGA_RANGE_PEAK_PREFETCH_WORKERS"
+_DEFAULT_PEAK_PREFETCH_WORKERS = 3
+#: 콜드 날짜가 이 수 미만이면 건너뛴다 — 풀을 띄우는 비용이 이득을 넘는다.
+_MIN_PREFETCH_TARGETS = 2
+
+
+def _peak_prefetch_workers() -> int:
+    raw = os.environ.get(_PEAK_PREFETCH_WORKERS_ENV)
+    if raw is None:
+        return _DEFAULT_PEAK_PREFETCH_WORKERS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_PEAK_PREFETCH_WORKERS
+
+
+def _prefetch_peak_caches(
+    engine: QueryEngine,
+    *,
+    code: str,
+    dates: Iterable[str],
+    source_pref: str,
+    venue: Venue,
+    bucket_ms: int,
+    cache: PastIndicatorsCache | None,
+    today_kst: str | None,
+) -> int:
+    """일자 루프 전에 과거일 peak 캐시를 채운다. 실제로 계산한 날짜 수를 돌려준다.
+
+    루프 본문은 **한 줄도 바뀌지 않는다** — 도달했을 때 이미 캐시 히트이기 때문이다.
+    호출도 `build_ask_bid_peak_slices` 를 요청 파라미터 그대로 쓰므로 기존
+    `SLICE_COALESCER` 키를 그대로 타고(굵은 봉이면 `peak_dual_1m`, 1분이면
+    `peak_dual`), 동시 요청과 자연히 합쳐진다. 키를 새로 만들면 같은 스캔이 두 번
+    돈다.
+
+    콜드 판정에 **1분 캐시**를 쓰는 것이 요점이다 — 그것이 있으면 어떤 봉이든
+    파생으로 ~5ms 라 prefetch 할 이유가 없다(실측 2026-08-28: 콜드 304ms ↔ 파생
+    3.3ms).
+
+    오늘자는 대상이 아니다(ADR-0043 — 디스크 캐시가 없다). 소스·세션 경계는 루프와
+    **같은 함수**로 정한다; 갈라지면 여기서 만든 캐시를 루프가 다른 키로 찾아
+    **낭비가 되지만 값이 틀리지는 않는다**(실패 모드가 성능이지 정합성이 아니다).
+    """
+    if cache is None or today_kst is None:
+        return 0
+    one = snapshots_tbl.ONE_MINUTE_MS
+    targets: list[tuple[str, str, int | None, int | None]] = []
+    for d in dates:
+        if d >= today_kst:
+            continue
+        try:
+            resolution = resolve_source_result(engine, d, code, source_pref, venue)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
+        if resolution.path is None:
+            continue
+        source = resolution.source
+        if (
+            cache.has_ask_peak(code, d, source, one, venue=venue)
+            and cache.has_bid_peak(code, d, source, one, venue=venue)
+        ):
+            continue
+        try:
+            meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
+            norm_meta, _ = normalize_session_bounds(meta)
+            open_ms, close_ms = indicator_session_bounds(norm_meta)
+        except (FileNotFoundError, ValueError, OSError, KeyError):
+            # 메타를 못 읽거나 경계 키가 없는 날 — 루프가 같은 판정을 다시 하고
+            # excluded/missing 으로 표면화한다. prefetch 는 조용히 빠진다.
+            continue
+        targets.append((d, source, open_ms, close_ms))
+
+    if len(targets) < _MIN_PREFETCH_TARGETS:
+        return 0
+
+    def _one(target: tuple[str, str, int | None, int | None]) -> None:
+        d, source, open_ms, close_ms = target
+        try:
+            build_ask_bid_peak_slices(
+                engine, code=code, date=d, bucket_ms=bucket_ms,
+                source=source, venue=venue,
+                session_open_ms=open_ms, session_close_ms=close_ms,
+                cache=cache, today_kst=today_kst,
+            )
+        except Exception:
+            # prefetch 실패는 **사용자에게 보이지 않는다** — 루프가 같은 날짜를 정상
+            # 경로로 계산한다. 여기서 올리면 캐시 워밍이 요청을 죽인다. 그래도
+            # warning 인 이유: 반복되면 병렬 이득이 통째로 사라지는데 증상이 "조금
+            # 느리다" 뿐이라, 로그가 유일한 단서다.
+            log.exception(
+                "peak prefetch failed for %s/%s; the day loop will recompute", code, d,
+            )
+
+    workers = min(_peak_prefetch_workers(), len(targets))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="peak-prefetch") as ex:
+        list(ex.map(_one, targets))
+    return len(targets)
+
+
 def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
@@ -1945,8 +2051,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
     depth_heatmap_enabled: bool = True,
-    depth_delta_enabled: bool = True,
-    wall_surge_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1986,9 +2090,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
     include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
-    include_depth_delta = include_optional_sidecar_slices and depth_delta_enabled
-    include_wall_surge = include_optional_sidecar_slices and wall_surge_enabled
-    include_program_trade = program_trade_enabled and sidecar_only
+    # ⚠ `not cutoff_sidecar` 가 **load-bearing** 이다. cutoff sidecar 는 매물대 커서
+    # 스크럽이 부르는 요청이고 소비처가 `volume_distributions` **하나뿐**인데
+    # (`useVolumeDistributionCutoffProfile.ts`), 이 가드가 없으면 커서를 한 칸 옮길
+    # 때마다 프로그램매매 계열을 통째로 다시 만들어 실어 보낸다. 오늘분은 봉으로 접지도
+    # 않아서(아래 `build_program_trade_series`) 원해상도 ~845점이 매번 나간다.
+    # 형제 슬라이스들은 `include_optional_sidecar_slices` 로, `broker_late_entries` 는
+    # 자기 자리에서 같은 가드를 이미 걸고 있었다 — 여기만 빠져 있었다.
+    include_program_trade = program_trade_enabled and sidecar_only and not cutoff_sidecar
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
@@ -2042,12 +2151,26 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
-    depth_delta: list[DepthDeltaPoint] = []
-    wall_surge: list[WallSurgeEvent] = []
     included_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
+
+    # 콜드 범위의 peak 을 루프 **앞에서** 유계 병렬로 채운다. 루프는 순차 그대로이고
+    # (근거는 `_prefetch_peak_caches` 위 주석) 도달했을 때 캐시 히트라 본문 무변경이다.
+    # 전부 warm 이면 즉시 0 을 돌려주므로 웜 경로에 비용이 없다.
+    if include_ask_peaks or include_bid_peaks:
+        _prefetch_peak_caches(
+            engine,
+            code=code, dates=dates, source_pref=source_pref, venue=venue,
+            bucket_ms=bucket_ms,
+            # `_RESOLVE` 로 자가-해석시켜 빌더와 **같은** 캐시/오늘 판정을 쓴다.
+            # 이 호출이 `engine.indicators_cache` 의 락 없는 lazy init 을 루프 전에
+            # 한 번 touch 하는 역할도 겸한다(queries.py — 병렬 첫 접근이 인스턴스를
+            # 두 개 만들 수 있다).
+            cache=_resolve_cache(engine, _RESOLVE),
+            today_kst=_resolve_today_kst(_RESOLVE),
+        )
 
     gil_breathe_at = time.monotonic()
     for d in dates:
@@ -2335,33 +2458,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     session_close_ms=ind_close_ms,
                 )
             )
-        gil_breathe_at = _gil_breathe(gil_breathe_at)
-        if include_depth_delta:
-            depth_delta.extend(
-                build_depth_delta_slice(
-                    engine,
-                    code=code,
-                    date=d,
-                    bucket_ms=bucket_ms,
-                    source=source,
-                    venue=venue,
-                    session_open_ms=ind_open_ms,
-                    session_close_ms=ind_close_ms,
-                )
-            )
-        gil_breathe_at = _gil_breathe(gil_breathe_at)
-        if include_wall_surge:
-            wall_surge.extend(
-                build_wall_surge_slice(
-                    engine,
-                    code=code,
-                    date=d,
-                    source=source,
-                    venue=venue,
-                    session_open_ms=ind_open_ms,
-                    session_close_ms=ind_close_ms,
-                )
-            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -2389,6 +2485,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # DataWarning UX without 404 round-trips.
         return _empty_range_bundle(
             code, from_date, to_date, bucket_ms, excluded=excluded, missing=missing,
+            earliest_captured=engine.earliest_stock_date(
+                code=code, source_pref=source_pref, venue=cast("Venue", venue),
+            ),
         )
 
     return RangeBundle(
@@ -2396,6 +2495,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         from_date=from_date,
         to_date=to_date,
         bucket_ms=bucket_ms,
+        # 디스크 모드 좌측 팬의 바닥. 프론트가 `minuteScrollbackFloorDate` 에 물린다 —
+        # 없으면 캡처 시작 이전으로 무한히 팬해 빈 화면이 된다(모델 필드 주석 참조).
+        earliest_captured_date=engine.earliest_stock_date(
+            code=code, source_pref=source_pref, venue=cast("Venue", venue),
+        ),
         segments=segments,
         candles=candles,
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
@@ -2412,8 +2516,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         depth_heatmap=depth_heatmap,
-        depth_delta=depth_delta,
-        wall_surge=wall_surge,
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(

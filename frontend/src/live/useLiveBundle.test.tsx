@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -157,9 +158,12 @@ const rangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDel
 // 디스크 캔들(`mode=candles`) 전용 상태. `rangeMock` 과 **분리해 둔다** — 공유하면
 // "지표는 멎었는데 캔들 청크 워크백만 돈다" 를 세울 수 없어, `extending` 배선을
 // 되돌려도 hoga/sidecar 쪽이 대신 hold 를 걸어 테스트가 초록으로 남는다.
-const candlesRangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
+const candlesRangeMock: {
+  isPlaceholderData: boolean; isFetching: boolean; isHistoricalDeltaFetching: boolean;
+  data: unknown;
+} = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false, data: null };
 const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
-  data: null,
+  data: candlesRangeMock.data,
   isLoading: false,
   error: null,
   isPlaceholderData: candlesRangeMock.isPlaceholderData,
@@ -297,10 +301,7 @@ describe('planLiveRangeRequest', () => {
       bidPeakEnabled: true,
       tradeVolumePocEnabled: true,
       depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
-      wallSurgeEnabled: true,
       brokerLateEntryEnabled: true,
-      brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
@@ -315,12 +316,12 @@ describe('planLiveRangeRequest', () => {
         askPeaksEnabled: false,
         bidPeaksEnabled: true,
         brokerLateEntriesEnabled: true,
-        brokerLateEntryStartHHMM: 945,
+        // 기준 시각은 **항상 최소값**으로 보낸다 — 사용자의 임계는 클라이언트 필터라
+        // 쿼리 키에서 빠졌다(그래서 시각을 바꿔도 재조회가 없다).
+        brokerLateEntryStartHHMM: TRADING_TIME_MIN_HHMM,
         programTradeEnabled: true,
         tradeVolumePocEnabled: true,
         depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
-        wallSurgeEnabled: true,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -346,10 +347,7 @@ describe('planLiveRangeRequest', () => {
     bidPeakEnabled: false,
     tradeVolumePocEnabled: false,
     depthHeatmapEnabled: false,
-    depthDeltaEnabled: false,
-    wallSurgeEnabled: false,
     brokerLateEntryEnabled: false,
-    brokerLateEntryStartHHMM: 900,
     programTradeEnabled: false,
     volumeDistributionEnabled: false,
     volumeDistributionRangeCount: 12,
@@ -368,6 +366,65 @@ describe('planLiveRangeRequest', () => {
     expect(planLiveRangeRequest({ ...WALL_ARGS, frozenRangeFrom: '20240827' }).from).toBe('20240827');
   });
 
+  /**
+   * ── 기간 점프: 우단이 과거로 가면 벽도 따라간다 ──────────────────────────
+   *
+   * 백엔드 제약은 `to − from + 1 > 250` 즉 **span 캡**이라(`_PAST_MAX_DAYS`), 창의
+   * 우단이 과거로 가면 이 벽도 같이 간다. 프론트가 늘 `to = 오늘` 을 보내던 시절에
+   * 절대 하한처럼 보였을 뿐이다.
+   *
+   * `realTodayKst` 를 함께 주는 이유는 아래 실보유 케이스가 설명한다.
+   */
+  const JUMPED_ARGS = {
+    ...WALL_ARGS,
+    // 창의 기준일 = 점프 목적지. 실제 오늘은 여전히 20260822 다.
+    todayKstYyyymmdd: '20260601',
+    realTodayKst: '20260822',
+    // 시작일은 `WALL_ARGS` 의 값(20240827)을 그대로 쓴다 — 벽은 **하한**이라 요청
+    // 창이 그보다 얕으면 드러나지 않는다.
+  };
+
+  it('기준일이 과거면 250일 벽이 그 기준으로 재정렬된다', () => {
+    // 오늘 기준이면 20251216 이 벽이지만, 우단이 20260601 이면 3개월 더 깊어진다.
+    expect(planLiveRangeRequest(JUMPED_ARGS).from).toBe('20250925');
+    expect(planLiveRangeRequest(JUMPED_ARGS).to).toBe('20260601');
+  });
+
+  /**
+   * span 캡 아래에 **벤더 실보유**(실측 382일)가 따로 있다. 우단이 고정이던 동안에는
+   * span 캡이 항상 더 늦어서 이 벽이 드러날 자리가 없었다 — 점프가 우단을 옮기면서
+   * span 캡이 과거로 물러나므로, 겹치지 않으면 **갈 수 없는 날을 갈 수 있다고 말하게
+   * 된다**(요청은 200 으로 통과하고 빈 배열이 온다).
+   *
+   * 그래서 이 값의 앵커는 창의 기준일이 아니라 **실제 오늘**이다.
+   */
+  it('실보유 하한이 span 캡보다 늦으면 그쪽이 이긴다', () => {
+    const deep = { ...JUMPED_ARGS, todayKstYyyymmdd: '20251001' };
+    // span 캡만 보면 20250125 지만, 실보유는 20250806 부터다.
+    expect(planLiveRangeRequest(deep).from).toBe('20250806');
+  });
+
+  it('실보유 앵커는 **실제 오늘**이다 — 기준일을 따라가지 않는다', () => {
+    const deep = { ...JUMPED_ARGS, todayKstYyyymmdd: '20251001' };
+    // 실제 오늘이 한 달 뒤면 실보유 하한도 한 달 뒤로 밀린다(같은 기준일인데도).
+    expect(planLiveRangeRequest({ ...deep, realTodayKst: '20260922' }).from).toBe('20250906');
+  });
+
+  /**
+   * 좌팬 이력이 남은 창으로 과거를 점프하면 `from > to` 가 되어 `enableMinute` 가
+   * 꺼지고 **창이 통째로 빈다**. 점프 훅이 시작일을 리셋하지만 그것은 effect 라 한
+   * 커밋 늦으므로, 원리적 차단은 이 계산부에 있어야 한다.
+   */
+  it('시작일이 기준일보다 나중이면 무시한다 — from > to 로 창이 죽지 않는다', () => {
+    const plan = planLiveRangeRequest({
+      ...JUMPED_ARGS,
+      historicalFromDate: '20260815', // 기준일(20260601)보다 나중
+    });
+    expect(plan.code).toBe('005930');
+    expect(plan.from! <= plan.to!).toBe(true);
+    expect(plan.from).not.toBe('20260815');
+  });
+
   it('disables /api/range for calendar timeframes and gates disabled optional slices', () => {
     expect(planLiveRangeRequest({
       code: '005930',
@@ -378,10 +435,7 @@ describe('planLiveRangeRequest', () => {
       bidPeakEnabled: true,
       tradeVolumePocEnabled: false,
       depthHeatmapEnabled: true,
-      depthDeltaEnabled: false,
-      wallSurgeEnabled: true,
       brokerLateEntryEnabled: false,
-      brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
       volumeDistributionEnabled: false,
       volumeDistributionRangeCount: 12,
@@ -400,11 +454,9 @@ describe('planLiveRangeRequest', () => {
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
-        depthDeltaEnabled: false,
-        // 캘린더 봉에서는 args 가 true 여도 enableMinute 게이트가 끈다 — 설정 패널이
+          // 캘린더 봉에서는 args 가 true 여도 enableMinute 게이트가 끈다 — 설정 패널이
         // 약속한 "분봉 차트에서만 표시됩니다" 와 요청 축을 맞춘다.
-        wallSurgeEnabled: false,
-        volumeDistributionBins: null,
+            volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
       },
@@ -439,10 +491,7 @@ describe('planLiveRangeRequest — 저장뷰 얼림', () => {
     bidPeakEnabled: true,
     tradeVolumePocEnabled: true,
     depthHeatmapEnabled: true,
-    depthDeltaEnabled: false,
-    wallSurgeEnabled: true,
     brokerLateEntryEnabled: true,
-    brokerLateEntryStartHHMM: 945,
     programTradeEnabled: true,
     volumeDistributionEnabled: true,
     volumeDistributionRangeCount: 12,
@@ -743,6 +792,9 @@ describe('mergeDepthHeatmapToday', () => {
       bids: [[69_900, 200]],
       asks_max: [[70_200, 350]],
       bids_max: [[69_900, 250]],
+      // 도메인 point 가 가격대별 계열을 안 실으면 빈 배열로 나간다(optional 계약).
+      asks_price_max: [],
+      bids_price_max: [],
     });
   });
 
@@ -764,6 +816,8 @@ describe('mergeDepthHeatmapToday', () => {
       bids: [[70_000, 888]],
       asks_max: [[70_100, 999]],
       bids_max: [[70_000, 888]],
+      asks_price_max: [],
+      bids_price_max: [],
     });
   });
 
@@ -774,7 +828,9 @@ describe('mergeDepthHeatmapToday', () => {
       mergeDepthHeatmapToday(undefined, [
         { tMs: 300, asks: [], bids: [], asksMax: [], bidsMax: [] },
       ]),
-    ).toEqual([{ t_ms: 300, asks: [], bids: [], asks_max: [], bids_max: [] }]);
+    ).toEqual([
+      { t_ms: 300, asks: [], bids: [], asks_max: [], bids_max: [], asks_price_max: [], bids_price_max: [] },
+    ]);
   });
 });
 
@@ -855,10 +911,7 @@ describe('useLiveBundle', () => {
       askPeakEnabled: false,
       bidPeakEnabled: false,
       programTradeEnabled: true,
-      brokerLateEntryEnabled: false,
-      // sidecar 레인을 여는 플래그라 기준선에 못 박는다 — 안 그러면 이 지표를 켜는
-      // 테스트가 뒤 테스트로 새어 "전부 off" 전제를 조용히 무너뜨린다.
-      wallSurgeEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
     });
     useRestBypassModeStore.setState({
       lastFailureAtMs: null,
@@ -1075,9 +1128,9 @@ describe('useLiveBundle', () => {
   // 0-센티넬이 됐다. 10호가 창과 pane 레전드에는 값이 찍히는데 **라인만** 사라져서
   // "데이터가 안 온다"로 오진하기 쉬웠다.
   //
-  // `bucketDepthDelta` 주석은 이미 "통합(UN) 차트에서는 세션이 20:00 까지라 NXT
-  // 시간대가 그대로 살아난다"고 약속하고 있었다 — 약속을 지키는 건 술어가 아니라
-  // **호출부의 인자**다. 그래서 단언 대상은 빌더 출력이지 술어가 아니다.
+  // 호가 버킷터 주석은 이미 "통합(UN) 차트에서는 세션이 20:00 까지라 NXT 시간대가
+  // 그대로 살아난다"고 약속하고 있었다 — 약속을 지키는 건 술어가 아니라 **호출부의
+  // 인자**다. 그래서 단언 대상은 빌더 출력이지 술어가 아니다.
   const nxtSessionSnapshots = () => {
     const open0900 = 1779840000000;                   // 20260527 09:00 KST
     return {
@@ -1293,7 +1346,7 @@ describe('useLiveBundle', () => {
       programTradeEnabled: false,
       askPeakEnabled: false,
       bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
     });
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
@@ -1306,60 +1359,6 @@ describe('useLiveBundle', () => {
     }));
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     expect(result.current.isSidecarLoading).toBe(false);
-  });
-
-  // #1325 후속 결함 B. 호가벽 급증은 sidecar 레인에만 실려 오는데(백엔드
-  // `include_optional_sidecar_slices`) `sidecarEnabled` 술어에서 빠져 있었다 —
-  // 이 지표만 켠 사용자는 `mode=hoga` 만 나가 마커가 영영 안 떴다. 막는 방향은
-  // "이 지표 단독으로도 레인이 열리는가" 이고, 다른 지표가 같이 켜진 경우는
-  // 원래 통과하던 경로라 이 테스트가 못 본다.
-  it('opens the sidecar lane when 호가벽 급증 is the only indicator on', () => {
-    useLivePageStore.setState({
-      tradeVolumePocEnabled: false,
-      volumeDistributionEnabled: false,
-      programTradeEnabled: false,
-      askPeakEnabled: false,
-      bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
-      depthHeatmapEnabled: false,
-      depthDeltaEnabled: false,
-      wallSurgeEnabled: true,
-    });
-    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
-    // 1번째 인자는 `sidecarEnabled ? rangePlan.code : null` — code 면 레인이 열린 것이다.
-    expect(useRangeSidecarDeltaSpy.mock.calls.map((c) => c[0])).toContain('005930');
-  });
-
-  // #1325 후속 결함 A(근본). 번들은 sidecar 슬라이스를 **명시 복사**하는데 wall_surge 만
-  // 빠져 있어, 레인이 열려 응답에 실려 와도 렌더러에는 항상 빈 배열이 갔다. 선례는
-  // #1310(프로그램 순매수). 값 자체는 `scaleRangeBundlePrices` 까지 와 있었다.
-  it('merges wall_surge from the sidecar response into the chart bundle', () => {
-    // 2026-08-14 028050 실측 사건(#1316 발단)을 그대로 쓴다.
-    const event = {
-      t_ms: 1_779_852_660_000,
-      side: 'ask' as const,
-      price: 49_200,
-      qty: 14_935,
-      jump: 10_000,
-      total: 30_882,
-      kind: 'grow' as const,
-      outcome: 'held' as const,
-      filled_qty: 0,
-    };
-    useRangeSidecarDeltaSpy.mockImplementation(() => ({
-      data: { ...fallbackRangeBundle(71_000), wall_surge: [event] },
-      isLoading: false,
-      isPending: false,
-      error: null,
-      isPlaceholderData: false,
-      isFetching: false,
-      isHistoricalDeltaFetching: false,
-    }));
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
-    // price 는 뺀다 — `scaleWallSurge` 가 원주가→수정주가로 바꾸는 유일한 필드라
-    // 계수가 1 이 아닌 픽스처에서 이 단언만 무관하게 깨진다.
-    expect(result.current.bundle!.wall_surge?.map(({ price: _p, ...rest }) => rest))
-      .toEqual([(({ price: _p, ...rest }) => rest)(event)]);
   });
 
   // 장면1 — 거래량분포 게이트 편입: 거래량분포는 캔들 priceRange 가 나와야 사이드카
@@ -1499,7 +1498,7 @@ describe('useLiveBundle', () => {
     useLivePageStore.setState({
       askPeakEnabled: false,
       bidPeakEnabled: false,
-      brokerLateEntryEnabled: false,
+      brokerLateEntries: [{ id: 'ble-1', enabled: false, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }],
       programTradeEnabled: false,
       tradeVolumePocEnabled: false,
       volumeDistributionEnabled: false,
@@ -1788,7 +1787,7 @@ describe('useLiveBundle', () => {
   });
 
   it('merges sidecar broker late entries into the hoga pane bundle', () => {
-    useLivePageStore.setState({ brokerLateEntryEnabled: true });
+    useLivePageStore.setState({ brokerLateEntries: [{ id: 'ble-1', enabled: true, startHHMM: 930, sideMode: 'both' as const, buyColor: '#ef4444', sellColor: '#3b82f6' }] });
     const sidecarBundle = {
       code: '005930',
       from_date: '20260520',
@@ -2464,6 +2463,38 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     });
   });
 
+  /**
+   * ── 캔들 축(`candleSourceKey`)에 **기준일**이 들어간다 ──────────────────────
+   *
+   * 이 키가 갈리면 `useViewportBackfill` 의 재착석이 발화해 화면을 **새 데이터 크기로**
+   * 다시 앉힌다. 기간 점프는 창의 캔들을 통째로 다른 구간의 것으로 갈아치우므로 그
+   * 재착석이 필요하다.
+   *
+   * **없으면 무슨 일이 나는가**(2026-08-27 실측, 10분봉): 점프가 차트를 remount 시키면
+   * 초기 배치가 **옛 번들(라이브 2094봉)** 로 1회 소진돼 span 542 로 굳는다. 그 뒤
+   * 목적지 데이터 234봉이 도착하면 화면이 데이터의 2배가 되고, lwc 가 좌팬을 클램프해
+   * **드래그가 벽에 막힌다** — 팬이 막히니 좌팬 백필(3b)을 유발할 방법도 없는 데드락이다.
+   * 사용자 신고 「왼쪽으로 스크롤해서 데이터 가져오는 게 동작 안 함」이 이것이었다.
+   */
+  it('캔들 축에 기준일이 들어간다 — 점프가 재착석을 깨우는 통로다', () => {
+    const a = renderHook(() => useLiveBundle('005930', '1m', '20260619', liveFixture), { wrapper });
+    const b = renderHook(() => useLiveBundle('005930', '1m', '20260827', liveFixture), { wrapper });
+    expect(a.result.current.candleSourceKey).not.toBe(b.result.current.candleSourceKey);
+  });
+
+  // 소스 축은 그대로 살아 있어야 한다 — 기준일을 더하면서 덮어쓰면 hogaplay 토글의
+  // 재착석(#1614/#1615 사가)이 조용히 죽는다.
+  it('소스 축도 여전히 키를 가른다 (회귀 가드)', () => {
+    const vendor = renderHook(
+      () => useLiveBundle('005930', '1m', '20260827', liveFixture), { wrapper },
+    );
+    const disk = renderHook(
+      () => useLiveBundle('005930', '1m', '20260827', liveFixture, { hogaplaySourceEnabled: true }),
+      { wrapper },
+    );
+    expect(vendor.result.current.candleSourceKey).not.toBe(disk.result.current.candleSourceKey);
+  });
+
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
     renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
@@ -2703,7 +2734,18 @@ describe('useLiveBundle extension atomization gate', () => {
 	    expect(result.current.chartBundle!.candles).toHaveLength(2);
 	  });
 
-	  it('HOLDS the last-settled chartBundle while sidecar delta is still fetching', () => {
+	  it('사이드카만 워크백 중이면 캔들을 붙잡지 않는다 — 빈 화면을 만들던 홀드였다', () => {
+	    // **2026-08-25 계약 변경.** 종전에는 sidecar 도 캔들을 홀드했다. 그 홀드가 캔들까지
+	    // 붙잡은 것이 사용자가 본 "스크롤해도 빈 화면" 의 실체였다(당시 실측 010140 5m
+	    // 7일 타일: candles 0.22~0.40s · hoga 0.21~0.96s · **sidecar 4.5~6.3s**).
+	    //
+	    // ⚠ 그 5초의 ~90%였던 `depth_delta` 는 이후 **제거됐다**(ADR-0161) — 위 수치는
+	    // 지금의 값이 아니다. 그래도 이 계약은 유지한다: 근거가 "sidecar 가 느리다" 가
+	    // 아니라 **"캔들의 프리펜드 원자성에 sidecar 가 필요하지 않다"** 이기 때문이다.
+	    //
+	    // 원자성 계약은 안 깨진다 — sidecar 가 늦게 실리는 커밋은 **캔들 모양(firstMs·
+	    // lastMs·count)이 불변**이라 리포지셔너의 `isUnionRemap` 행(useViewportBackfill
+	    // 2d, #1580)이 정확히 그 자리를 맡는다. 캔들·호가의 프리펜드 원자화는 그대로다.
 	    useLivePageStore.setState({ historicalFromDate: '20260420' });
 	    const sidecarState = {
 	      isPlaceholderData: false,
@@ -2732,8 +2774,34 @@ describe('useLiveBundle extension atomization gate', () => {
 	    ];
 	    rerender({ live: liveWithOb(1779840120000) });
 
-	    expect(result.current.chartBundle).toBe(settled);
-	    expect(result.current.chartBundle!.candles).toHaveLength(1);
+	    expect(result.current.chartBundle).not.toBe(settled); // 캔들이 먼저 앉는다
+	    expect(result.current.chartBundle!.candles).toHaveLength(2);
+	  });
+
+	  it('사이드카가 아직 돌면 `isExtending` 은 유지된다 — 진행 신호까지 놓으면 스텝이 앞질러 간다', () => {
+	    // 홀드에서만 뺐고 **진행 신호에서는 빼지 않았다.** 셋이 여기 달려 있다:
+	    //   ① 3a settle-loop 의 하강 엣지 — 먼저 내리면 sidecar 가 나는 중에 다음 스텝이
+	    //      dispatch 되고 그 re-key 가 진행 중인 요청을 버린다(지표가 영영 안 앉는다).
+	    //   ② 진행 칩(`past-backfill-progress-chip`)이 이 값을 읽는다 — 빼면 sidecar
+	    //      워크백 동안 칩이 꺼진 채 지표만 조용히 채워져 "지표가 안 나온다" 로 읽힌다.
+	    //   ③ 3e 클램프 탈출구(useViewportBackfill)의 백프레셔가 그 위에 선다.
+	    useLivePageStore.setState({ historicalFromDate: '20260420' });
+	    const sidecarState = {
+	      isPlaceholderData: true,
+	      isFetching: true,
+	      isHistoricalDeltaFetching: true,
+	    };
+	    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      ...sidecarState,
+	    }));
+	    const { result } = renderHook(
+	      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+	      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+	    );
+	    expect(result.current.isExtending).toBe(true);
 	  });
 
 	  it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
@@ -3053,6 +3121,22 @@ describe('useLiveBundle isExtending', () => {
  * **못 보는 것**: 백필이 이 값을 실제로 쓰는지(그건 `useViewportBackfill` 의 계약이다).
  */
 describe('minuteScrollbackFloorDate · clampEngaged', () => {
+  /** 디스크 캔들 응답을 **이 테스트 안에서만** 세운다.
+   *
+   *  ⚠ 모듈 상단 `candlesRangeMock` 만 바꾸면 안 된다 — 다른 헬퍼가
+   *  `mockImplementation` 으로 spy 를 `data: null` 고정 구현으로 복원해 두고, 그게
+   *  이후 테스트에 남는다(테스트 격리 누수). 여기서 직접 구현을 세워야 판정에 닿는다. */
+  function withDiskBundle(bundle: unknown): void {
+    useRangeCandlesDeltaSpy.mockImplementation(() => ({
+      data: bundle,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+      isHistoricalDeltaFetching: false,
+    }));
+  }
+
   it('벤더 분봉은 250일 벽을 하한으로 준다', () => {
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
@@ -3061,12 +3145,46 @@ describe('minuteScrollbackFloorDate · clampEngaged', () => {
     expect(result.current.minuteScrollbackFloorDate).toBe('20250920');
   });
 
-  it('디스크 모드는 하한이 없다(null) — 벽은 벤더 span 캡이라 이 경로엔 없다', () => {
+  it('디스크 모드는 응답이 하한을 말해 주기 전까진 null — 모르는 것을 바닥이라 하지 않는다', () => {
+    // 구백엔드(필드 부재)이거나 아직 첫 응답 전. 여기서 임의의 날짜를 바닥으로 세우면
+    // 있는 데이터를 못 보게 막는다 — 모를 때는 종전대로 열어 둔다.
+    withDiskBundle(null);
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
       { wrapper: createWrapper({ rest_bypass_enabled: true }) },
     );
     expect(result.current.minuteScrollbackFloorDate).toBeNull();
+  });
+
+  it('디스크 모드의 하한은 **캡처 시작**이다 — 응답의 earliest_captured_date', () => {
+    // 이 한 줄이 없어서 사용자가 캡처 시작 이전으로 무한히 팬했고, 그 구간엔 데이터가
+    // 영원히 없어 빈 화면 + 「과거 불러오는 중」이 계속 떴다(2026-08-26, 028050).
+    // 이 값이 서면 `planFillStep` 의 정지 조건과 3b/3e 게이트가 그대로 살아난다.
+    withDiskBundle({ earliest_captured_date: '20260106' });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(result.current.minuteScrollbackFloorDate).toBe('20260106');
+  });
+
+  it('captureFloorEngaged 는 창이 캡처 시작에 닿았을 때만 선다', () => {
+    withDiskBundle({ earliest_captured_date: '20260106' });
+    useLivePageStore.setState({ historicalFromDate: '20260301' }); // 아직 안쪽
+    const inside = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(inside.result.current.captureFloorEngaged).toBe(false);
+
+    useLivePageStore.setState({ historicalFromDate: '20260106' }); // 바닥
+    const atFloor = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ rest_bypass_enabled: true }) },
+    );
+    expect(atFloor.result.current.captureFloorEngaged).toBe(true);
+    // 벤더 전용 칩은 이 경로에서 서면 안 된다 — 문구가 「최대 250일」이라 거짓말이 된다.
+    expect(atFloor.result.current.clampEngaged).toBe(false);
   });
 
   it('캘린더 봉은 애초에 하한이 없다', () => {

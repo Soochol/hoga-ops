@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay, shouldShowDepthDeltaOverlay } from './LiveChartRoot';
+import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -59,7 +59,14 @@ vi.mock('lightweight-charts', async () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
-        setVisibleLogicalRange: vi.fn(),
+        // ⚠ `scrollPosition` 은 **빼면 안 된다**(2026-08-26). 재착석 경로가 관측용으로
+        // 이걸 부르는데(`useViewportBackfill` 의 `spBefore`), 그 호출이 실패를 삼키는
+        // `try/catch` 안이라 메서드가 없으면 **TypeError 가 아니라 "재착석 미발화"** 로
+        // 나타난다 — 이 파일의 재착석 테스트 11개가 그렇게 한꺼번에 죽었고 실패 서명은
+        // 원인과 무관해 보이는 `expected 1 to be greater than 1` 이었다. lwc 5.2.0
+        // `ITimeScaleApi` 에 실재하는 메서드다(프로덕션은 무해했다).
+        scrollPosition: vi.fn(() => 0),
+        setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
         setVisibleRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
@@ -139,6 +146,7 @@ describe('LiveChartRoot', () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -169,6 +177,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -199,6 +208,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -229,6 +239,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -260,6 +271,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -279,6 +291,7 @@ describe('LiveChartRoot', () => {
         bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'source_missing' }] }}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -298,6 +311,7 @@ describe('LiveChartRoot', () => {
         hogaMissingDates={[{ date: '20260527', reason: 'source_missing' }]}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -333,6 +347,7 @@ describe('LiveChartRoot', () => {
         savedRangeFrozen
         venue="KRX"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -349,6 +364,7 @@ describe('LiveChartRoot', () => {
         hogaMissingDates={[{ date: '20260527', reason: 'not_captured' }]}
         venue="KRX"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -364,6 +380,7 @@ describe('LiveChartRoot', () => {
         bundle={{ ...DEFAULT_BUNDLE, missing_dates: [{ date: '20260527', reason: 'venue_unsupported' }] }}
         venue="UN"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -384,6 +401,7 @@ describe('LiveChartRoot', () => {
         candleEmpty={{ text: '벤더 연결이 설정되지 않아 캔들을 받지 못했다', action: 'settings', actionLabel: '설정 열기' }}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -402,6 +420,7 @@ describe('LiveChartRoot', () => {
         candleEmpty={null}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -418,11 +437,71 @@ describe('LiveChartRoot', () => {
         bundle={DEFAULT_BUNDLE}
         venue="NXT"
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
     );
     expect(screen.queryByTestId('hoga-missing-notice')).toBeNull();
+  });
+
+  /**
+   * `no_upstream_data` 의 문구를 가르는 판별식을 **이 컴포넌트가 실제로 공급하는가**
+   * (2026-08-26).
+   *
+   * ── 막는 방향 ─────────────────────────────────────────────────────────
+   * `hogaMissingNotice.test.ts` 가 다 잡는 것처럼 보이지만 **배선은 원리적으로 못 본다** —
+   * 여기서 `datesWithCandles` 를 안 넘기면 순수 함수는 기본값(빈 집합)으로 종전 동작을
+   * 내고 그 파일은 전부 초록인 채 수정 전체가 불활성이 된다. 이 두 케이스가 그 자리다.
+   *
+   * ── 왜 두 개인가 ──────────────────────────────────────────────────────
+   * 두 케이스는 **날짜 하나만** 다르다(세그먼트에 있나 없나). 그래서 출력이 갈리면
+   * 그 차이를 만든 것은 판별식뿐이다. 하나만 두면 "우연히 그 문구" 를 배제 못 한다.
+   *
+   * ── 못 보는 것 ────────────────────────────────────────────────────────
+   * 보충분이 `bundle.segments` 에 실리는가 — 그 조립은 `useLiveBundle` 소유다
+   * (`buildChartBundle` 이 세그먼트를 캔들 배열에서 파생한다).
+   */
+  it('캔들이 있는 업스트림 결손일은 「업스트림 데이터 없음」이라고 하지 않는다', () => {
+    // 20260527 은 DEFAULT_BUNDLE 의 세그먼트에 있다 = 그날 캔들이 그려져 있다.
+    // 키움 보충·벤더 REST 가 되받아 온 날이 이 모양이고, 그날 없는 것은 호가뿐이다.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260527', reason: 'no_upstream_data' }]}
+        venue="KRX"
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const notice = screen.getByTestId('hoga-missing-notice');
+    expect(notice).toHaveTextContent('호가 기록 없음');
+    // 뒷문장도 같이 돌아야 한다 — 안 그러면 모순이 스크린리더에만 남는다.
+    expect(notice.getAttribute('aria-label')).toContain('캔들만 표시됩니다');
+  });
+
+  it('캔들이 없는 업스트림 결손일은 종전대로 날짜를 지목한다 — 대조군', () => {
+    // 20260526 은 세그먼트에 없다 = 차트에 빈칸으로 남은 날이다.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        hogaMissingDates={[{ date: '20260526', reason: 'no_upstream_data' }]}
+        venue="KRX"
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const notice = screen.getByTestId('hoga-missing-notice');
+    expect(notice).toHaveTextContent('05/26 업스트림 데이터 없음');
+    expect(notice.getAttribute('aria-label')).toContain('캔들과 호가가 모두 없어');
   });
 
   it('prevents the browser image context menu inside the chart area', () => {
@@ -432,6 +511,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -463,17 +543,6 @@ describe('LiveChartRoot', () => {
     expect(shouldShowDepthHeatmapOverlay('M', true, 5)).toBe(false);
   });
 
-  it('depthDelta 게이트: 분봉 + enabled + 데이터 있을 때만', () => {
-    expect(shouldShowDepthDeltaOverlay('1m', true, 5)).toBe(true);
-    expect(shouldShowDepthDeltaOverlay('30m', true, 5)).toBe(true);
-    expect(shouldShowDepthDeltaOverlay('1m', false, 5)).toBe(false);
-    // 오늘 소스가 없는 뷰(과거일 전용·/study)는 pointCount 0 으로 자연히 닫힌다.
-    expect(shouldShowDepthDeltaOverlay('1m', true, 0)).toBe(false);
-    expect(shouldShowDepthDeltaOverlay('D', true, 5)).toBe(false);
-    expect(shouldShowDepthDeltaOverlay('W', true, 5)).toBe(false);
-    expect(shouldShowDepthDeltaOverlay('M', true, 5)).toBe(false);
-  });
-
   it('creates moving-average overlays before candles when candles are always on top', async () => {
     useChartPrefsStore.getState().setToggle('candleAlwaysOnTop', true);
     const addSeries = vi.fn((_type: unknown, _options?: unknown, _paneIndex?: number) => ({
@@ -500,6 +569,7 @@ describe('LiveChartRoot', () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -541,6 +611,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -581,6 +652,7 @@ describe('LiveChartRoot', () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -618,6 +690,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={basisBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
       />,
@@ -666,6 +739,7 @@ describe('LiveChartRoot', () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -703,6 +777,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={basisBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisClick={onCandleBasisClick}
       />,
@@ -733,6 +808,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
       />,
@@ -745,6 +821,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -752,147 +829,6 @@ describe('LiveChartRoot', () => {
     expect(onCandleBasisHover).toHaveBeenLastCalledWith(null);
   });
 
-  it('passes rightmost visible candle cutoff to peak wall overlays when cutoff toggles are enabled', async () => {
-    const previousAskPeakEnabled = useLivePageStore.getState().askPeakEnabled;
-    const previousBidPeakEnabled = useLivePageStore.getState().bidPeakEnabled;
-    const attachedPeakWallPrimitives: Array<{ segmentsForTest: () => Array<{ price: number }> }> = [];
-    const ts = {
-      subscribeVisibleTimeRangeChange: vi.fn(),
-      unsubscribeVisibleTimeRangeChange: vi.fn(),
-      subscribeVisibleLogicalRangeChange: vi.fn(),
-      unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      applyOptions: vi.fn(),
-      fitContent: vi.fn(),
-      scrollToRealTime: vi.fn(),
-      scrollToPosition: vi.fn(),
-      setVisibleLogicalRange: vi.fn(),
-      getVisibleLogicalRange: vi.fn(() => null),
-      getVisibleRange: vi.fn(() => ({
-        from: TODAY_OPEN_MS / 1000,
-        to: (TODAY_OPEN_MS + 120_000) / 1000,
-      })),
-      options: vi.fn(() => ({ barSpacing: 12 })),
-      setVisibleRange: vi.fn(),
-      timeToCoordinate: vi.fn(() => null),
-      coordinateToTime: vi.fn(() => null),
-      coordinateToLogical: vi.fn(() => null),
-      timeToIndex: vi.fn(() => 0),
-      width: vi.fn(() => 800),
-      height: vi.fn(() => 28),
-    };
-    const makeSeries = (chart: {
-      timeScale: () => typeof ts;
-    }) => {
-      const series = {
-        setData: vi.fn(),
-        update: vi.fn(),
-        removeSeries: vi.fn(),
-        applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
-        priceToCoordinate: vi.fn((price: number) => price),
-        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
-        removePriceLine: vi.fn(),
-        attachPrimitive: vi.fn((primitive: {
-          attached?: (param: unknown) => void;
-          segmentsData?: () => Array<{ price: number }>;
-        }) => {
-          primitive.attached?.({ chart, series, requestUpdate: vi.fn() });
-          attachedPeakWallPrimitives.push({
-            segmentsForTest: () => primitive.segmentsData?.() ?? [],
-          });
-        }),
-        detachPrimitive: vi.fn((primitive: { detached?: () => void }) => {
-          primitive.detached?.();
-        }),
-        setMarkers: vi.fn(),
-      };
-      return series;
-    };
-    const chart = {
-      addSeries: vi.fn(),
-      removeSeries: vi.fn(),
-      timeScale: vi.fn(() => ts),
-      panes: vi.fn(() => []),
-      remove: vi.fn(),
-      resize: vi.fn(),
-      applyOptions: vi.fn(),
-      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
-      subscribeCrosshairMove: vi.fn(),
-      unsubscribeCrosshairMove: vi.fn(),
-      subscribeClick: vi.fn(),
-      unsubscribeClick: vi.fn(),
-      chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
-    };
-    chart.addSeries.mockImplementation(() => makeSeries(chart));
-    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
-
-    useChartPrefsStore.getState().setToggle('askPeakVisibleTimeCutoff', true);
-    useChartPrefsStore.getState().setToggle('bidPeakVisibleTimeCutoff', true);
-    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
-
-    const candles = [
-      { ts_ms: TODAY_OPEN_MS, open: 100, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
-      { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
-      { ts_ms: TODAY_OPEN_MS + 120_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
-    ];
-    const bundle: RangeBundle = {
-      ...TODAY_ONLY_BUNDLE,
-      from_date: '20260527',
-      to_date: '20260527',
-      candles,
-      ask_peaks: [{
-        date: '20260527',
-        price: 100,
-        qty: 100,
-        t_ms: TODAY_OPEN_MS + 60_000,
-        max_price: 100,
-        max_qty: 100,
-        max_t_ms: TODAY_OPEN_MS + 60_000,
-        traded_peaks: [
-          { price: 100, qty: 100, t_ms: TODAY_OPEN_MS + 60_000 },
-          { price: 101, qty: 900, t_ms: TODAY_OPEN_MS + 180_000 },
-        ],
-      }],
-    };
-
-    try {
-      render(
-        <LiveChartRoot
-          code="005930"
-          timeframe="1m"
-          bundle={bundle}
-          chartBundle={bundle}
-          clampEngaged={false}
-          isPastCandlesLoading={false}
-          todayKst="20260527"
-          dayAskPeaks={bundle.ask_peaks}
-          dayBidPeaks={[{
-            date: '20260527',
-            price: 99,
-            qty: 90,
-            t_ms: TODAY_OPEN_MS + 60_000,
-            max_price: 99,
-            max_qty: 90,
-            max_t_ms: TODAY_OPEN_MS + 60_000,
-          }]}
-        />,
-        { wrapper },
-      );
-
-      await waitFor(() => expect(attachedPeakWallPrimitives.length).toBeGreaterThanOrEqual(2));
-      const renderedPrices = attachedPeakWallPrimitives.flatMap((primitive) =>
-        primitive.segmentsForTest().map((segment) => segment.price));
-      expect(renderedPrices).toContain(100);
-      expect(renderedPrices).toContain(99);
-      expect(renderedPrices).not.toContain(101);
-      expect(renderedPrices).not.toContain(98);
-    } finally {
-      useLivePageStore.setState({
-        askPeakEnabled: previousAskPeakEnabled,
-        bidPeakEnabled: previousBidPeakEnabled,
-      });
-    }
-  });
 
   // ─────────────────────────────────────────────────────────────────────────
   // Initial-view application across (code, timeframe) and candle-count growth.
@@ -963,6 +899,7 @@ describe('LiveChartRoot', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleLogicalRange: vi.fn((): { from: number; to: number } | null => null),
       getVisibleRange: vi.fn((): { from: number; to: number } | null => null),
@@ -1005,6 +942,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(14)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1019,6 +957,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(250)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1033,6 +972,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(80)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1054,6 +994,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(464)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1084,6 +1025,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1098,6 +1040,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1119,6 +1062,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeBundleWithCandles(60)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1143,6 +1087,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1169,6 +1114,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1199,6 +1145,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1228,6 +1175,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1257,6 +1205,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
       />,
@@ -1318,6 +1267,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={first}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1331,6 +1281,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={next}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1350,6 +1301,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1362,6 +1314,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(105)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1389,6 +1342,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1416,6 +1370,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1441,6 +1396,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1471,6 +1427,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1521,6 +1478,7 @@ describe('LiveChartRoot', () => {
           timeframe="1m"
           bundle={makeBundleWithCandles(100)}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
         />,
         { wrapper },
@@ -1555,6 +1513,7 @@ describe('LiveChartRoot', () => {
         timeframe: '1m' as const,
         bundle: makeBundleWithCandles(100),
         clampEngaged: false,
+        captureFloorEngaged: false,
         isPastCandlesLoading: false,
       };
       const { rerender } = render(<LiveChartRoot {...props} />, { wrapper });
@@ -1593,6 +1552,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1617,6 +1577,7 @@ describe('LiveChartRoot', () => {
         timeframe="D"
         bundle={makeDailyCalendarBundle(30)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1641,6 +1602,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1662,6 +1624,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1684,6 +1647,7 @@ describe('LiveChartRoot', () => {
         timeframe="10m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1706,6 +1670,7 @@ describe('LiveChartRoot', () => {
         venue="UN"
         bundle={makeBundleWithCandles(900)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1732,6 +1697,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1747,6 +1713,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(400)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -1784,6 +1751,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1807,6 +1775,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1824,6 +1793,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1840,6 +1810,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -1858,6 +1829,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1876,6 +1848,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={null}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1894,6 +1867,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={null}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -1918,6 +1892,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -1936,6 +1911,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -1955,6 +1931,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -1968,6 +1945,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
       />,
@@ -1988,6 +1966,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -2012,6 +1991,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -2026,6 +2006,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={false}
@@ -2052,6 +2033,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -2085,6 +2067,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -2105,6 +2088,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
         isSidecarLoading={true}
@@ -2123,6 +2107,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -2137,6 +2122,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(0)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={false}
       />,
@@ -2155,6 +2141,7 @@ describe('LiveChartRoot', () => {
         timeframe="1m"
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         isHogaLoading={true}
       />,
@@ -2176,7 +2163,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('호출 한도');
@@ -2186,7 +2174,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={true} />,
       { wrapper },
     );
     expect(screen.getByTestId('past-candles-loading-note').textContent).toContain('분봉 불러오는 중');
@@ -2196,7 +2185,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(0)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(screen.queryByTestId('past-candles-loading-note')).toBeNull();
@@ -2206,7 +2196,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('partial-load-chip').textContent).toContain('일부 과거구간');
@@ -2222,7 +2213,8 @@ describe('LiveChartRoot', () => {
     ];
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={warnings} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={warnings} />,
       { wrapper },
     );
     const chip = screen.getByTestId('partial-load-chip');
@@ -2235,7 +2227,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={false} isPastCandlesLoading={false} pastDataWarnings={[]} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={[]} />,
       { wrapper },
     );
     expect(screen.queryByTestId('partial-load-chip')).toBeNull();
@@ -2245,7 +2238,8 @@ describe('LiveChartRoot', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
-        clampEngaged={true} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
+        clampEngaged={true}
+        captureFloorEngaged={false} isPastCandlesLoading={false} pastDataWarnings={RL_WARNINGS} />,
       { wrapper },
     );
     expect(screen.getByTestId('partial-load-chip')).toBeTruthy();
@@ -2338,6 +2332,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2365,6 +2360,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2393,6 +2389,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2426,6 +2423,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={emptyBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={true}
       />,
       { wrapper },
@@ -2456,6 +2454,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2480,6 +2479,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2510,6 +2510,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2544,6 +2545,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="1m"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2578,6 +2580,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="D"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2608,6 +2611,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
         timeframe="D"
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -2706,6 +2710,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
       getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
@@ -2760,7 +2765,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforePan = ts.setVisibleLogicalRange.mock.calls.length; // initial-view call(s)
@@ -2782,7 +2788,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     // Expected shift: refIdx = timeToIndex(VR_TO_SEC) = VR_TO_SEC (mock);
@@ -2818,7 +2825,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     act(() => {
@@ -2829,7 +2837,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
   });
@@ -2849,7 +2858,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: false }} />,
       { wrapper },
     );
@@ -2878,7 +2888,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000, barSpan: 50, atLiveEdge: true }} />,
       { wrapper },
     );
@@ -2895,7 +2906,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
           barSpan: 80,
@@ -2919,7 +2931,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 200 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
           barSpan: 80,
@@ -2948,7 +2961,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(initialCandles)}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={restoreViewport} />,
       { wrapper },
     );
@@ -2957,7 +2971,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle([...initialCandles, TODAY_OPEN_MS + 101 * 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={restoreViewport} />,
     );
 
@@ -2974,7 +2989,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 120 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: true, userAdjusted: true }} />,
       { wrapper },
     );
@@ -2997,7 +3013,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 120 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
           barSpan: 80,
@@ -3021,7 +3038,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
           barSpan: 8,
@@ -3046,7 +3064,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 463 * 60_000,
           barSpan: 1255,
@@ -3070,7 +3089,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{
           rightEdgeMs: TODAY_OPEN_MS + 120 * 60_000,
           barSpan: 160,
@@ -3095,7 +3115,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
@@ -3108,7 +3129,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="D"
         bundle={todayBundle(Array.from({ length: 464 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
@@ -3125,7 +3147,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
@@ -3140,7 +3163,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="3m"
         bundle={todayBundle(Array.from({ length: 400 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 3 * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3162,7 +3186,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
-        clampEngaged={false} isPastCandlesLoading={false}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false}
         restoreViewport={{ rightEdgeMs: TODAY_OPEN_MS, barSpan: 120, atLiveEdge: false }} />,
       { wrapper },
     );
@@ -3182,7 +3207,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     // 트리거: 빈공간 3000바 (1m 스텝당 1,950봉) → 예산 ceil(3000/1950)=2.
@@ -3210,7 +3236,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     act(() => {
@@ -3247,13 +3274,15 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
-        clampEngaged={false} isPastCandlesLoading={true} isExtending={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={true} isExtending={true} />,
       { wrapper },
     );
     act(() => {
       rerender(
         <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
-          clampEngaged={false} isPastCandlesLoading={true} isExtending={false} />,
+          clampEngaged={false}
+          captureFloorEngaged={false} isPastCandlesLoading={true} isExtending={false} />,
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
@@ -3268,13 +3297,15 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
       { wrapper },
     );
     act(() => {
       rerender(
         <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+          clampEngaged={false}
+          captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
     expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // 불변
@@ -3291,7 +3322,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     // 트리거: 빈공간 60바 (D 스텝당 50봉) → 예산 2, 스텝 1.
@@ -3317,7 +3349,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
     const { rerender } = render(props(false), { wrapper });
     act(() => {
@@ -3341,7 +3374,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforeSse = ts.setVisibleLogicalRange.mock.calls.length; // initial-view only
@@ -3349,7 +3383,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 120_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // Restore must NOT fire (historicalFromDate null) — no new setVisibleLogicalRange.
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSse);
@@ -3363,7 +3398,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // Pan left → captures the reference bar + sets historicalFromDate.
@@ -3377,7 +3413,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // newEarliest >= prevEarliest → restore short-circuits, no shift.
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeHoliday);
@@ -3399,7 +3436,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1); // initial window
@@ -3415,13 +3453,17 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
-    // The initial-view effect did NOT re-fire (still no scrollToPosition);
-    // the repositioner added exactly one setVisibleLogicalRange (1 → 2).
-    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+    // The initial-view effect did NOT re-fire — setVisibleLogicalRange stays at
+    // exactly 2 (initial window + the repositioner's one reposition). The
+    // repositioner's set now carries ONE durability sync (scrollToPosition,
+    // 2026-08-25 내구화 계약) — a re-fired initial view would have added a third
+    // setVisibleLogicalRange, which the count above rules out.
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(2);
+    expect(ts.scrollToPosition).toHaveBeenCalledTimes(1);
   });
 
   // Staleness-freedom regression (/diagnose 2026-06-05, the saga's crown jewel).
@@ -3444,7 +3486,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3465,7 +3508,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const shiftB = expectedPrependShift(B_VR_TO);
@@ -3521,6 +3565,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: vrFromSec, to: vrToSec })),
       getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
@@ -3585,7 +3630,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
@@ -3594,7 +3640,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforeSwap);
 
@@ -3602,7 +3649,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const latest = todayIdx(DISK_TS[2]);
@@ -3610,6 +3658,42 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // span 이 3봉으로 접힌다 — 이 클램프가 없으면 화면 왼쪽이 통째로 빈다.
     expect(target.from).toBe(latest + 1 - DISK_TS.length);
     expect(target.to).toBeGreaterThan(latest);
+  });
+
+  it('재착석은 내구적이어야 한다 — range set 뒤 scrollToPosition 으로 내부 오프셋 동기화', () => {
+    // 2026-08-25 사용자 실측(047040 5m 장중): 재착석이 정상 위치에 앉혔는데
+    // **다음 데이터 커밋에서 lwc 가 토글 전 내부 scrollPosition(span 3123)을 도로
+    // 재적용**해 재착석을 덮었고, 그 덮인 화면을 후속 재투영이 충실히 고정해
+    // [-2040,1083] 허공으로 갔다. setVisibleLogicalRange 는 lwc 내부 오프셋을
+    // 갱신하지 않는다(오전 실측: set 직후 scrollPosition() 이 여전히 3534) —
+    // scrollToPosition 만이 setData 재앵커가 참조하는 상태를 바꾼다.
+    const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(VENDOR_TS)}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={todayBundle(DISK_TS)}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
+    const latest = todayIdx(DISK_TS[2]);
+    // lwc 의 scrollPosition 단위 = 오른쪽 끝 논리 인덱스 - 마지막 봉 인덱스.
+    expect(ts.scrollToPosition).toHaveBeenLastCalledWith(target.to - latest, false);
   });
 
   it('panned: 소스가 갈리면 보던 시각을 앵커로 재투영한다(라이브 엣지 배치가 아니다)', () => {
@@ -3621,14 +3705,16 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     const target = ts.setVisibleLogicalRange.mock.calls.at(-1)?.[0] as { from: number; to: number };
@@ -3656,7 +3742,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
 
@@ -3664,13 +3751,15 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // 새 봉에서 캔들이 한 번 더 커밋된다(prevIdentity 를 세운다).
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="vendor"
         bundle={todayBundle(VENDOR_TS.slice(0, 4))}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const beforeSwap = ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3678,7 +3767,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="5m" candleSourceKey="disk"
         bundle={todayBundle(DISK_TS)}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(beforeSwap);
@@ -3701,7 +3791,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={todayBundle([TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
@@ -3711,7 +3802,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={twoSegBundle([YESTERDAY_OPEN_MS + 60_000, TODAY_OPEN_MS + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(ts.setVisibleLogicalRange.mock.calls.length).toBe(beforePrepend);
@@ -3757,6 +3849,13 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const applyPending = () => {
       if (pending) { shift = pending.shift; pivot = pending.pivot; pending = null; }
     };
+    // **드래그 대역** — 0 이 아니면 `getVisibleLogicalRange` 가 호출될 때마다 화면이
+    // 그만큼 왼쪽으로 흐른다. 사용자가 끌고 있는 상태를 흉내낸다: 레이아웃 단계의
+    // 스냅샷과 passive 단계의 리포지셔너가 **다른 위치**를 보게 되는 것이 요점이다
+    // (실제 React 에서 그 둘 사이에 프레임이 뜬다). 정적 대역으로는 이 축이 구조적으로
+    // 관측 불가라, 이 필드가 없으면 아래 회귀 테스트가 항상 초록이다.
+    let dragPerCall = 0;
+    let dragged = 0;
     const ts = {
       subscribeVisibleTimeRangeChange: vi.fn(),
       unsubscribeVisibleTimeRangeChange: vi.fn(),
@@ -3766,9 +3865,14 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
-      getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
+      getVisibleLogicalRange: vi.fn(() => {
+        const r = { from: LR_FROM - dragged, to: LR_TO - dragged };
+        dragged += dragPerCall;
+        return r;
+      }),
       timeToIndex: vi.fn((t: unknown): number => {
         const v = Math.round(t as number);
         return v > pivot ? v + shift : v;
@@ -3799,7 +3903,13 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
-    return { ts, chart, queueInsert: (p: { shift: number; pivot: number }) => { pending = p; } };
+    return {
+      ts,
+      chart,
+      queueInsert: (p: { shift: number; pivot: number }) => { pending = p; },
+      /** 사용자가 끌고 있는 상태로 전환 — 이후 뷰 조회마다 화면이 `bars` 만큼 흐른다. */
+      startDrag: (bars: number) => { dragPerCall = bars; },
+    };
   }
 
   const bundleOf = (tsList: number[]): RangeBundle => ({
@@ -3819,14 +3929,16 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
@@ -3836,7 +3948,8 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -3844,6 +3957,14 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       from: LR_FROM + INSERT_SHIFT,
       to: LR_TO + INSERT_SHIFT,
     });
+    // 내구성: 재투영도 lwc 내부 오프셋을 함께 동기화해야 다음 setData 재앵커가
+    // 이 고정을 되돌리지 못한다(2026-08-25 실측 — 재착석 항목의 근거와 동일).
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const lastIdx = Math.round(realMsToVirtualSeconds(axis, LAST)) + INSERT_SHIFT;
+    expect(h.ts.scrollToPosition).toHaveBeenLastCalledWith((LR_TO + INSERT_SHIFT) - lastIdx, false);
   });
 
   it('SSE 성장(마지막 봉이 늘어나는 것)에는 손대지 않는다', () => {
@@ -3853,13 +3974,15 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     const before = h.ts.setVisibleLogicalRange.mock.calls.length;
 
@@ -3867,10 +3990,160 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+
+  it('유니온 재매핑(지표 포인트 churn)이면 재투영한다 — 캔들 모양이 안 변해도', () => {
+    // 2026-08-25 사용자 실측(034020 5m 장중 토글): 창 축소·홀드·재착석이 전부 정상
+    // 발동했는데도 최종 화면이 데이터 밖에 좌초했다. 남은 구멍은 **지표 포인트만
+    // 들어왔다 빠지는 커밋** — 공유 timeScale 의 union 인덱스는 전부 밀리는데 캔들
+    // 모양(firstMs·lastMs·count)은 불변이라 기존 판별식 네 행이 모두 눈멀었다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 지표 포인트 삽입: 모든 time 의 union 인덱스가 +INSERT_SHIFT — 캔들 배열은 동일.
+    h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 });
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
+    expect(h.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({
+      from: LR_FROM + INSERT_SHIFT,
+      to: LR_TO + INSERT_SHIFT,
+    });
+  });
+
+  it('유니온이 안 움직인 순수 ref churn 은 손대지 않는다 — shift 0 은 스킵', () => {
+    // 위 행이 열리면 캔들 불변 커밋(SSE 시세 틱 등)마다 재투영 경로가 돈다 —
+    // 리매핑이 없으면 shift=0 이라 EPSILON 스킵으로 끝나야 중복 repaint 가 없다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 리매핑 없음 — 같은 캔들의 새 번들 ref 만.
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+  });
+
+  it('드래그 중 축이 안 움직인 커밋은 화면을 되돌리지 않는다 — 사용자 입력이 이긴다', () => {
+    // 2026-08-25 사용자 보고: 드래그로 스크롤하면 차트가 좌우로 흔들린다.
+    //
+    // 기전: 스냅샷은 **레이아웃** 단계, 리포지셔너는 **passive** 단계라 그 사이에
+    // 프레임이 뜬다. 드래그 중이면 사용자는 이미 그만큼 움직인 뒤다. 축이 전혀 안
+    // 움직인 커밋(shift 0)에서도 목표가 "스냅샷 위치"로 잡히고, 현재 위치와 다르니
+    // EPSILON 게이트를 통과해 **되돌리기가 실행**됐다 — 장중 SSE 틱마다 반복되어
+    // 진동으로 보인다. SSE 틱은 마지막 봉 값만 갱신해 캔들 모양이 불변이므로
+    // `isUnionRemap` 행에 걸려 이 경로를 매 틱 탄다.
+    //
+    // EPSILON 비교는 「lwc 가 알아서 제자리를 지켰다」와 「사용자가 그 사이 움직였다」를
+    // 구별하지 못한다. 구별하는 값은 **shift** 다: 0 이면 축이 안 움직였다는 뜻이고,
+    // 스냅샷과 현재의 차이는 전부 사용자가 만든 것이라 보존해야 한다.
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    // 사용자가 끌기 시작한다 — 뷰 조회마다 화면이 흐르므로 스냅샷(레이아웃)과
+    // 리포지셔너(passive)가 서로 다른 위치를 본다.
+    h.startDrag(5);
+    // SSE 틱: 캔들 배열은 모양이 같고 축도 안 움직인다(리매핑 큐 없음).
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
+    // 내부 오프셋도 건드리면 안 된다 — 되돌림이 다음 커밋까지 살아남는다(#1581).
+    expect(h.ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('드래그 중이어도 축이 **실제로** 밀렸으면 재투영한다 — 게이트가 넓어지기만 한 게 아니다', () => {
+    const h = makeHarness();
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+    const before = h.ts.setVisibleLogicalRange.mock.calls.length;
+
+    h.startDrag(5);
+    h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 }); // 지표 포인트 삽입 = 진짜 재매핑
+    rerender(
+      <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
+        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
+    );
+
+    expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
   });
 });
 
@@ -3923,6 +4196,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => ({ from: VR_FROM_SEC, to: VR_TO_SEC })),
       getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
@@ -3974,14 +4248,16 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     // 한 커밋 더 — prevShape 를 세운다(첫 커밋은 비교 대상이 없다).
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     // contraction 은 좌측 팬이 선행된 상태에서만 발동한다 — hfd 를 실제 시나리오처럼
     // 세워, 프리펜드 게이트의 두 번째 조건(newEarliest >= prevEarliest)을 트림 판별식이
@@ -3996,7 +4272,8 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBeGreaterThan(before);
@@ -4013,13 +4290,15 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
       { wrapper },
     );
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([FIRST, MIDDLE, LAST])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
     act(() => {
       useLivePageStore.setState({ historicalFromDate: '20260501' });
@@ -4036,7 +4315,8 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
         bundle={bundleOf([MIDDLE, LAST + 60_000])}
-        clampEngaged={false} isPastCandlesLoading={false} />,
+        clampEngaged={false}
+        captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
 
     expect(h.ts.setVisibleLogicalRange.mock.calls.length).toBe(before);
@@ -4071,6 +4351,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4094,6 +4375,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="D"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4117,6 +4399,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           timeframe="1m"
           bundle={DEFAULT_BUNDLE}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
           onCursorActiveChange={onCursorActiveChange}
         />,
@@ -4187,6 +4470,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
             timeframe={timeframe}
             bundle={DEFAULT_BUNDLE}
             clampEngaged={false}
+            captureFloorEngaged={false}
             isPastCandlesLoading={false}
           />,
           { wrapper },
@@ -4234,6 +4518,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           timeframe="1m"
           bundle={TODAY_ONLY_BUNDLE}
           clampEngaged={false}
+          captureFloorEngaged={false}
           isPastCandlesLoading={false}
         />,
         { wrapper },
@@ -4277,6 +4562,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4318,6 +4604,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4368,6 +4655,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4386,10 +4674,13 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
     const lastCandleMs = TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms;
 
-    // Internal blank band (X on/left of the last candle at x=200) → still pins.
+    // 마지막 캔들 **왼쪽**의 빈 띠도 비운다(2026-08-26 계약 변경 — 위 형제 테스트의
+    // 주석 참조). 종전엔 여기서 마지막 캔들에 고정했고, 그것이 옆 창 크로스헤어를
+    // 끌어갔다. `lastCandleMs` 는 아래 fixture 전제 가드로만 남긴다.
+    expect(lastCandleMs).toBeGreaterThan(0);
     act(() => fire({ point: { x: 150 } }));
     await flush();
-    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
 
     // Right-offset whitespace (X right of the last candle) → cursor cleared.
     act(() => fire({ point: { x: 640 } }));
@@ -4405,6 +4696,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4436,6 +4728,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4485,6 +4778,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
           })),
         }}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4533,6 +4827,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCandleBasisHover={onCandleBasisHover}
         onCursorActiveChange={onCursorActiveChange}
@@ -4567,13 +4862,18 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(onCursorActiveChange).toHaveBeenCalledTimes(1);
   });
 
-  it('crosshair inside chart whitespace with no resolvable time pins spot indicators to the latest candle', async () => {
+  it('crosshair inside chart whitespace with no resolvable time CLEARS the cursor (좌우 동일 규칙)', async () => {
+    // 2026-08-26 계약 변경. 종전엔 마지막 캔들 **왼쪽**의 빈 띠에서 사이드바를 마지막
+    // 캔들에 고정했는데, 그 고정이 `publishCursorMs` 를 타면서 **크로스헤어 동기화
+    // 채널까지** 발행해 **옆 창들의 크로스헤어를 마지막 캔들로 끌어갔다**(사용자 보고).
+    // 좌우를 같은 규칙으로 통일한다 — 빈 띠엔 가리킬 봉이 없다.
     render(
       <LiveChartRoot
         code="005930"
         timeframe="1m"
         bundle={TODAY_ONLY_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4592,9 +4892,8 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     await flush();
 
     expect(ts.coordinateToTime).toHaveBeenCalledWith(240);
-    expect(useLiveCursorStore.getState().cursorMs).toBe(
-      TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms,
-    );
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 
   it('clears cursor when timeframe switches from minute to calendar', () => {
@@ -4604,6 +4903,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4615,6 +4915,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         timeframe="D"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -4636,7 +4937,8 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     fitContent: vi.fn(),
     scrollToRealTime: vi.fn(),
     scrollToPosition: vi.fn(),
-    setVisibleLogicalRange: vi.fn(),
+    scrollPosition: vi.fn(() => 0),
+    setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null),
     getVisibleRange: vi.fn(() => null),
     setVisibleRange: vi.fn(),
     timeToCoordinate: vi.fn(() => null),
@@ -4690,6 +4992,7 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
         timeframe={timeframe}
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4753,6 +5056,7 @@ describe('LiveChartRoot x-axis tickMarkFormatter', () => {
         timeframe={timeframe}
         bundle={TWO_SEGMENT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4860,7 +5164,8 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
           fitContent: vi.fn(),
           scrollToRealTime: vi.fn(),
           scrollToPosition: vi.fn(),
-          setVisibleLogicalRange: vi.fn(),
+          scrollPosition: vi.fn(() => 0),
+          setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null),
           getVisibleRange: vi.fn(() => null),
           setVisibleRange: vi.fn(),
           timeToCoordinate: vi.fn(() => null),
@@ -4886,6 +5191,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         timeframe="1m"
         bundle={ONE_DAY_MINUTE_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -4897,6 +5203,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         timeframe="D"
         bundle={dailyBundle()}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -4925,7 +5232,10 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
   });
 
   function chartProps(code: string, timeframe: '1m' | 'D', bundle: RangeBundle) {
-    return { code, timeframe, bundle, clampEngaged: false, isPastCandlesLoading: false } as const;
+    return {
+      code, timeframe, bundle,
+      clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false,
+    } as const;
   }
 
   it('recreates the lwc chart on a timeframe switch and disposes the old one', () => {
@@ -4981,6 +5291,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleRange: vi.fn(() => null),
         getVisibleLogicalRange: vi.fn(() => null),
@@ -5054,6 +5365,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5070,6 +5382,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5096,6 +5409,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5118,6 +5432,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5153,6 +5468,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleRange: vi.fn(() => null),
       setVisibleRange: vi.fn(),
@@ -5192,6 +5508,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5264,6 +5581,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
       fitContent: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollToPosition: vi.fn(),
+      scrollPosition: vi.fn(() => 0),
       setVisibleLogicalRange: vi.fn(),
       getVisibleLogicalRange: vi.fn(() => null),
       getVisibleRange: vi.fn(() => null),
@@ -5306,6 +5624,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5325,6 +5644,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={{ ...DEFAULT_BUNDLE }}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -5345,6 +5665,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5387,6 +5708,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5413,6 +5735,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
         timeframe="1m"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -5474,7 +5797,10 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
     (chart as Record<string, unknown>).unsubscribeCrosshairMove = vi.fn();
     vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
     render(
-      <LiveChartRoot code="005930" timeframe="1m" bundle={bundle} clampEngaged={false} isPastCandlesLoading={false} />,
+      <LiveChartRoot
+        code="005930" timeframe="1m" bundle={bundle}
+        clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false}
+      />,
       { wrapper },
     );
     const axis = createVirtualAxis(

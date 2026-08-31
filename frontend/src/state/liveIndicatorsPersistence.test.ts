@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLiveIndicatorPrefs, DEFAULT_DAILY_MAS, type PersistedIndicators } from './liveIndicatorsPersistence';
+import {
+  mergeLiveIndicatorPrefs,
+  DEFAULT_BROKER_LATE_ENTRIES,
+  DEFAULT_DAILY_MAS,
+  type PersistedIndicators,
+} from './liveIndicatorsPersistence';
 import { DEFAULT_LIVE_MAS } from './livePage';
 
 describe('mergeLiveIndicatorPrefs', () => {
@@ -10,19 +15,40 @@ describe('mergeLiveIndicatorPrefs', () => {
       foreignNetEnabled: false,
       institutionNetEnabled: false,
       volumeEnabled: true,
-      wallSurgeEnabled: false,
       movingAverageHidden: false,
       peakWallPaneEnabled: false,
+      // pane 슬롯 6칸 — 체결된 벽만 true 라, pane 을 켜면 공장 상태에서 종전과
+      // 같은 화면이 나온다(종전 규칙 "캔들 선 토글을 따라간다" 의 공장값이 양 방향 T/F/F).
+      askPeakTradedPaneEnabled: true,
+      askPeakUnreachedPaneEnabled: false,
+      askPeakAllWallPaneEnabled: false,
+      bidPeakTradedPaneEnabled: true,
+      bidPeakUnreachedPaneEnabled: false,
+      bidPeakAllWallPaneEnabled: false,
       askPeakEnabled: false,
       askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
+      askPeakTradedLineEnabled: true,
+      askPeakAllWallLineEnabled: false,
+      askPeakAllWallColor: '#93C5FD',
+      askPeakAllWallLineWidth: 1,
+      askPeakUnreachedLineEnabled: false,
+      askPeakUnreachedColor: '#1E3A8A',
+      askPeakUnreachedLineWidth: 2,
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
       bidPeakHidden: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
+      bidPeakTradedLineEnabled: true,
+      bidPeakAllWallLineEnabled: false,
+      bidPeakAllWallColor: '#FCA5A5',
+      bidPeakAllWallLineWidth: 1,
+      bidPeakUnreachedLineEnabled: false,
+      bidPeakUnreachedColor: '#7F1D1D',
+      bidPeakUnreachedLineWidth: 2,
       tradeVolumePocEnabled: true,
       tradeVolumePocHidden: false,
       tradeVolumePocBandPct: 0.005,
@@ -33,11 +59,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       depthHeatmapBidColor: '#F04452',
       depthHeatmapAskColor: '#3485FA',
       depthHeatmapMaxOpacity: 0.7,
-      depthDeltaEnabled: false,
-      depthDeltaHidden: false,
-      depthDeltaInColor: '#0D9488',
-      depthDeltaOutColor: '#C026D3',
-      depthDeltaMaxOpacity: 0.55,
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 10,
@@ -65,6 +86,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       ratioLevelStyle: 'dashed',
       fillStrengthEnabled: true,
       programTradeEnabled: true,
+      // 인스턴스 배열(Phase 3) — flat 6필드는 레거시 입력으로만 남는다.
+      brokerLateEntries: DEFAULT_BROKER_LATE_ENTRIES.map((e) => ({ ...e })),
       brokerLateEntryEnabled: false,
       brokerLateEntryHidden: false,
       brokerLateEntryStartHHMM: 930,
@@ -115,6 +138,21 @@ describe('mergeLiveIndicatorPrefs', () => {
       mergeLiveIndicatorPrefs({ movingAverages: [{}, { id: 1 }] } as unknown as PersistedIndicators)
         .movingAverages,
     ).toEqual(DEFAULT_LIVE_MAS.map((m) => ({ ...m })));
+  });
+
+  // 빈 배열과 손상은 **다른 뜻**이다. `[]` 는 레전드 칩 ✕ 로 슬롯을 전부 지운 유효
+  // 상태이므로 그대로 보존해야 한다 — 여기서 공장값을 되살리면 삭제가 로드마다
+  // 취소되고 증상은 "지웠는데 새로고침하면 돌아온다" 로 나타난다. 반대로 "원소는
+  // 있는데 전부 무효" 는 위 케이스처럼 손상이라 공장값으로 복구한다.
+  it('preserves an explicitly empty slot array (user deleted every instance)', () => {
+    expect(
+      mergeLiveIndicatorPrefs({ movingAverages: [] } as unknown as PersistedIndicators)
+        .movingAverages,
+    ).toEqual([]);
+    expect(
+      mergeLiveIndicatorPrefs({ dailyMovingAverages: [] } as unknown as PersistedIndicators)
+        .dailyMovingAverages,
+    ).toEqual([]);
   });
 
   it('keeps a single valid entry when others are invalid', () => {
@@ -195,6 +233,8 @@ describe('mergeLiveIndicatorPrefs', () => {
 
   it('normalizes broker late-entry defaults and invalid persisted values', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toMatchObject({
+      // 인스턴스 배열(Phase 3) — flat 6필드는 레거시 입력으로만 남는다.
+      brokerLateEntries: DEFAULT_BROKER_LATE_ENTRIES.map((e) => ({ ...e })),
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 930,
       brokerLateEntrySideMode: 'both',
@@ -359,30 +399,17 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(merged.depthHeatmapAskColor).toBe('#123abc');
     expect(merged.depthHeatmapMaxOpacity).toBeCloseTo(0.5, 5);
   });
-  it('depthDelta 기본값을 채운다', () => {
-    const merged = mergeLiveIndicatorPrefs({});
-    expect(merged.depthDeltaEnabled).toBe(false);
-    expect(merged.depthDeltaHidden).toBe(false);
-    expect(merged.depthDeltaInColor).toBe('#0D9488');
-    expect(merged.depthDeltaOutColor).toBe('#C026D3');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.55, 5);
-  });
-  it('depthDelta 잘못된 색/불투명도는 기본값으로 폴백', () => {
+  // 제거된 지표(단별 잔량 증감, 2026-08-25)의 키는 **이미 저장된 브라우저**에 남아
+  // 있다. 정규화가 화이트리스트 방식이라 조용히 버려지는데, 그 성질이 깨지면 옛 키가
+  // 되살아나 저장 payload 를 오염시키므로 여기서 못 박는다.
+  it('제거된 지표의 옛 키는 조용히 버린다', () => {
     const merged = mergeLiveIndicatorPrefs({
-      depthDeltaInColor: '#f44', depthDeltaOutColor: 'nope', depthDeltaMaxOpacity: 0.1,
+      depthDeltaEnabled: true, depthDeltaInColor: '#123abc', depthDeltaMaxOpacity: 0.35,
     } as never);
-    // 3자리 hex 는 HEX_COLOR(6자리)가 거부한다 — UI 가 만들 수 있는 색은 전부 6자리여야 한다.
-    expect(merged.depthDeltaInColor).toBe('#0D9488');
-    expect(merged.depthDeltaOutColor).toBe('#C026D3');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.55, 5);
-  });
-  it('depthDelta 유효한 값은 보존한다', () => {
-    const merged = mergeLiveIndicatorPrefs({
-      depthDeltaEnabled: true, depthDeltaOutColor: '#123abc', depthDeltaMaxOpacity: 0.35,
-    } as never);
-    expect(merged.depthDeltaEnabled).toBe(true);
-    expect(merged.depthDeltaOutColor).toBe('#123abc');
-    expect(merged.depthDeltaMaxOpacity).toBeCloseTo(0.35, 5);
+    expect('depthDeltaEnabled' in merged).toBe(false);
+    expect('depthDeltaInColor' in merged).toBe(false);
+    // 나머지 정규화는 정상 동작한다 — 알 수 없는 키가 폴백 전체를 흔들지 않는다.
+    expect(merged.depthHeatmapEnabled).toBe(false);
   });
   it('연속체결 매물대 분포 기본값/범위/색상 정규화', () => {
     const defaults = mergeLiveIndicatorPrefs(undefined);
@@ -472,6 +499,66 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(m.askPeakEnabled).toBe(true);
     expect(m.askPeakColor).toBe('#EF4444');
     expect(m.askPeakLineWidth).toBe(3);
+  });
+  it('전체 최대벽 하위 선: 레거시 기본 off/#93C5FD·#FCA5A5/1', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.askPeakAllWallLineEnabled).toBe(false);
+    expect(m.askPeakAllWallColor).toBe('#93C5FD');
+    expect(m.askPeakAllWallLineWidth).toBe(1);
+    expect(m.bidPeakAllWallLineEnabled).toBe(false);
+    expect(m.bidPeakAllWallColor).toBe('#FCA5A5');
+    expect(m.bidPeakAllWallLineWidth).toBe(1);
+  });
+  it('전체 최대벽 하위 선: 유효값 보존(기본값과 다른 값으로)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      askPeakAllWallLineEnabled: true,
+      askPeakAllWallColor: '#7E22CE',
+      askPeakAllWallLineWidth: 3,
+      bidPeakAllWallLineEnabled: true,
+      bidPeakAllWallColor: '#0F766E',
+      bidPeakAllWallLineWidth: 4,
+    });
+    expect(m.askPeakAllWallLineEnabled).toBe(true);
+    expect(m.askPeakAllWallColor).toBe('#7E22CE');
+    expect(m.askPeakAllWallLineWidth).toBe(3);
+    expect(m.bidPeakAllWallLineEnabled).toBe(true);
+    expect(m.bidPeakAllWallColor).toBe('#0F766E');
+    expect(m.bidPeakAllWallLineWidth).toBe(4);
+  });
+  it('전체 최대벽 하위 선: 이상값은 기본값 폴백', () => {
+    const m = mergeLiveIndicatorPrefs({
+      askPeakAllWallLineEnabled: 'yes',
+      askPeakAllWallColor: 'skyblue',
+      askPeakAllWallLineWidth: 9,
+    });
+    expect(m.askPeakAllWallLineEnabled).toBe(false);
+    expect(m.askPeakAllWallColor).toBe('#93C5FD');
+    expect(m.askPeakAllWallLineWidth).toBe(1);
+  });
+  it('미도달 벽 하위 선: 유효값 보존(기본값과 다른 값) + 이상값 폴백', () => {
+    const kept = mergeLiveIndicatorPrefs({
+      askPeakUnreachedLineEnabled: true,
+      askPeakUnreachedColor: '#0F766E',
+      askPeakUnreachedLineWidth: 4,
+      bidPeakUnreachedLineEnabled: true,
+      bidPeakUnreachedColor: '#B45309',
+      bidPeakUnreachedLineWidth: 3,
+    });
+    expect(kept.askPeakUnreachedLineEnabled).toBe(true);
+    expect(kept.askPeakUnreachedColor).toBe('#0F766E');
+    expect(kept.askPeakUnreachedLineWidth).toBe(4);
+    expect(kept.bidPeakUnreachedLineEnabled).toBe(true);
+    expect(kept.bidPeakUnreachedColor).toBe('#B45309');
+    expect(kept.bidPeakUnreachedLineWidth).toBe(3);
+
+    const fallback = mergeLiveIndicatorPrefs({
+      askPeakUnreachedLineEnabled: 'yes',
+      askPeakUnreachedColor: 'navy',
+      askPeakUnreachedLineWidth: 0,
+    });
+    expect(fallback.askPeakUnreachedLineEnabled).toBe(false);
+    expect(fallback.askPeakUnreachedColor).toBe('#1E3A8A');
+    expect(fallback.askPeakUnreachedLineWidth).toBe(2);
   });
   it('VI/상하한가 선 스타일 기본값은 #EAB308/3', () => {
     const m = mergeLiveIndicatorPrefs(undefined);

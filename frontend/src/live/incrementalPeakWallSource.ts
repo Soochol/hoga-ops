@@ -1,6 +1,11 @@
 import type { AskPeakCandidate } from '../api/types';
 import { isIndicatorEligibleBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import { touchWindowOf, type PeakWallClassification } from './peakWallEventClassifier';
+import {
+  combineDayExtreme,
+  isWallUnreached,
+  touchWindowOf,
+  type PeakWallClassification,
+} from './peakWallEventClassifier';
 
 const EMIT_LIMIT = 3;
 
@@ -80,7 +85,7 @@ function pushTopK(top: AskPeakCandidate[], candidate: AskPeakCandidate): void {
  *  **정확성은 언제나 폴백이 보증한다.** t_ms 중복처럼 축출 판정이 모호해지는
  *  입력에서는 sticky 플래그가 서서 ②로 떨어진다. 증분은 오직 "같은 결과를 덜 계산해서"
  *  얻는 수단이고, 그 등식을 `incrementalPeakWallEviction.test.ts` 가 매 스텝 오라클과
- *  대조해 못박는다(ask/bid × 일반/cutoff, 고정 시드).
+ *  대조해 못박는다(ask/bid, 고정 시드).
  *
  *  분류(classify)는 매 호출 누적 이벤트 전체에 대한 단일 숫자 패스다: touched 판정은
  *  **분 단위 체결가 극값 맵** 조회(배치 touchExtremeByWindow/isWallTouched와 동일 수식,
@@ -116,9 +121,9 @@ export class IncrementalPeakWallSource {
    * 축출당 상각 O(1).
    *
    * ⚠ **`eventIndexByKey` 를 읽는 곳은 전부 `index >= this.head` 를 같이 봐야 한다.**
-   * 세 곳이다: `consumeOb`(없는 것으로 취급해 새로 push), `classify`·`classifyAsOf` 의
-   * extras dedup(죽은 이벤트와 qty 가 같다고 extras 를 건너뛰면 배치와 갈린다 — 배치는
-   * 그 이벤트가 창에서 사라졌으므로 extras 를 **고려**한다).
+   * 두 곳이다: `consumeOb`(없는 것으로 취급해 새로 push), `classify` 의 extras dedup
+   * (죽은 이벤트와 qty 가 같다고 extras 를 건너뛰면 배치와 갈린다 — 배치는 그 이벤트가
+   * 창에서 사라졌으므로 extras 를 **고려**한다).
    */
   private head = 0;
   /**
@@ -159,6 +164,16 @@ export class IncrementalPeakWallSource {
   /** 분 → 그 분 체결가의 극값. 삽입은 O(1) 갱신, 축출은 **닿은 분만** 재계산. */
   private extremeByWindow = new Map<number, number>();
   /**
+   * 이 소스가 본 체결의 **당일 극값**(ask=max, bid=min) — 미도달 판정의 내부 절반.
+   *
+   * 창 축출에서 **지우지 않는다** — 하루 스코프의 단조 스칼라라, 창을 벗어난 체결이
+   * 세운 극값도 유효하다. 소스가 훅 수명 내내 살아 증분 소비하므로 접속 이후 구간을
+   * 연속으로 덮고, 접속 이전 구간은 호출부가 백엔드 `day_extreme` 을 인자로 합친다.
+   * reset(전량 재소비·venue 전환)은 지운다 — 그 뒤 창 내 체결로만 다시 서고, 백엔드
+   * 인자가 바닥을 받친다.
+   */
+  private tradeExtreme: number | null = null;
+  /**
    * 같은 `price:t_ms` 키가 **서로 다른 ob 스냅샷**에서 나왔다 = t_ms 중복.
    * 위 `eventSeq` 주석의 모호함이 실제로 발생했다는 뜻이라 축출을 폴백시킨다.
    *
@@ -189,24 +204,12 @@ export class IncrementalPeakWallSource {
     trade: ReadonlyArray<TradeSnapshot>,
     sessionOpenMs: number,
     extras: readonly AskPeakCandidate[] = [],
+    /** 백엔드 스냅샷의 당일 체결 극값 — 내부 극값과 합쳐 미도달 판정에 쓴다
+     *  (접속 이전 구간·reset 이후의 바닥). */
+    backendDayExtreme: number | null = null,
   ): PeakWallClassification {
     this.accumulate(ob, trade, sessionOpenMs);
-    return this.classify(extras);
-  }
-
-  /** update 의 as-of-cutoff 판. 누적(ob/trade 소비)은 cutoff 무관하게 동일하고, 분류만
-   *  t_ms <= cutoffMs 로 제한한다 — 배치 deriveDay*Peaks(cutoff)와 동일하게 cutoff 이하
-   *  ob/trade 로 벽·터치를 재평가한다(터치 관계도 cutoff 기준). ob/trade 재스캔 없이
-   *  누적 구조만 필터링하므로 틱당 비용이 히스토리 재빌드에서 분리된다. */
-  updateAsOf(
-    ob: ReadonlyArray<ObSnapshot>,
-    trade: ReadonlyArray<TradeSnapshot>,
-    extras: readonly AskPeakCandidate[],
-    cutoffMs: number,
-    sessionOpenMs: number,
-  ): PeakWallClassification {
-    this.accumulate(ob, trade, sessionOpenMs);
-    return this.classifyAsOf(extras, cutoffMs);
+    return this.classify(extras, backendDayExtreme);
   }
 
   private accumulate(
@@ -306,6 +309,7 @@ export class IncrementalPeakWallSource {
     this.touchPrices = [];
     this.touchesByWindow = new Map();
     this.extremeByWindow = new Map();
+    this.tradeExtreme = null;
     this.tMsCollisionSeen = false;
     // `fallbacks`/`lastFallbackReason` 은 **지우지 않는다** — reset 은 누적 상태를 버리는
     // 것이지 "이 창에서 폴백이 몇 번 있었나" 라는 사실을 지우는 게 아니다.
@@ -437,6 +441,9 @@ export class IncrementalPeakWallSource {
         if (!isFiniteNumber(tMs) || tMs <= 0) continue;
         this.touchTimes.push(tMs);
         this.touchPrices.push(item.price);
+        this.tradeExtreme = combineDayExtreme(
+          this.tradeExtreme, item.price, this.side,
+        );
         // 삽입은 극값의 **닫힌 연산**이라 O(1) 이다 — 새 값과 기존 극값의 max/min.
         // (삭제만 재계산이 필요하고, 그건 evictTrades 가 닿은 분에만 한다.)
         const window = touchWindowOf(tMs);
@@ -464,12 +471,22 @@ export class IncrementalPeakWallSource {
     return this.side === 'ask' ? extreme >= event.price : extreme <= event.price;
   }
 
-  private classify(extras: readonly AskPeakCandidate[]): PeakWallClassification {
+  private classify(
+    extras: readonly AskPeakCandidate[],
+    backendDayExtreme: number | null,
+  ): PeakWallClassification {
     const touched: AskPeakCandidate[] = [];
     const all: AskPeakCandidate[] = [];
+    const unreached: AskPeakCandidate[] = [];
+    const dayExtreme = combineDayExtreme(this.tradeExtreme, backendDayExtreme, this.side);
     const consider = (candidate: AskPeakCandidate) => {
       pushTopK(all, candidate);
       if (this.isTouched(candidate)) pushTopK(touched, candidate);
+      // 백엔드 unreached 시드도 extras 로 이 판정을 다시 받는다 — 서버 스냅샷 이후
+      // 극값이 전진했으면 여기서 걸러진다(소급 재분류의 클라이언트 절반).
+      if (isWallUnreached(candidate.price, dayExtreme, this.side)) {
+        pushTopK(unreached, candidate);
+      }
     };
     for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
     // extras(백엔드 피크 후보·seed)는 호출마다 달라질 수 있어 누적하지 않고 매번
@@ -483,7 +500,7 @@ export class IncrementalPeakWallSource {
       if (this.isCoveredByLiveEvent(extra)) continue;
       consider(extra);
     }
-    return { touched, all };
+    return { touched, all, unreached };
   }
 
   /**
@@ -500,50 +517,4 @@ export class IncrementalPeakWallSource {
     return this.events[index].qty === extra.qty;
   }
 
-  /** classify 의 as-of-cutoff 판. 이벤트·extras·터치를 t_ms <= cutoffMs 로 제한한다.
-   *  cutoff 는 팬으로 이동하므로 캐시하지 않고 호출마다 O(n) 으로 분 극값 맵을 다시
-   *  만든다. 배치 mergedAskFamilies 의 cutoff 분기와 동일: cutoff 이하 터치로만 벽의
-   *  touched 여부를 재평가한다(경계 분은 부분만 반영된다 — 그게 "그 시각까지 본 것"
-   *  이라는 cutoff 의 의미다). no-cutoff classify 의 dedup·top-3 규칙을 그대로 상속. */
-  private classifyAsOf(
-    extras: readonly AskPeakCandidate[],
-    cutoffMs: number,
-  ): PeakWallClassification {
-    const isAsk = this.side === 'ask';
-    const extremeByWindow = new Map<number, number>();
-    for (let i = 0; i < this.touchTimes.length; i += 1) {
-      const tMs = this.touchTimes[i];
-      if (tMs > cutoffMs) continue;
-      const window = touchWindowOf(tMs);
-      const current = extremeByWindow.get(window);
-      const price = this.touchPrices[i];
-      extremeByWindow.set(
-        window,
-        current === undefined ? price : (isAsk ? Math.max(current, price) : Math.min(current, price)),
-      );
-    }
-    const isTouchedC = (event: AskPeakCandidate): boolean => {
-      const extreme = extremeByWindow.get(touchWindowOf(event.t_ms));
-      if (extreme === undefined) return false;
-      return isAsk ? extreme >= event.price : extreme <= event.price;
-    };
-    const touched: AskPeakCandidate[] = [];
-    const all: AskPeakCandidate[] = [];
-    const consider = (candidate: AskPeakCandidate) => {
-      if (candidate.t_ms > cutoffMs) return;
-      pushTopK(all, candidate);
-      if (isTouchedC(candidate)) pushTopK(touched, candidate);
-    };
-    for (let i = this.head; i < this.events.length; i += 1) consider(this.events[i]);
-    const seenExtras = new Set<string>();
-    for (const extra of extras) {
-      if (extra.t_ms > cutoffMs) continue;
-      const uniqKey = `${extra.price}:${extra.qty}:${extra.t_ms}`;
-      if (seenExtras.has(uniqKey)) continue;
-      seenExtras.add(uniqKey);
-      if (this.isCoveredByLiveEvent(extra)) continue;
-      consider(extra);
-    }
-    return { touched, all };
-  }
 }

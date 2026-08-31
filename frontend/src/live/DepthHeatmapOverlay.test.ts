@@ -67,11 +67,38 @@ describe('buildDepthHeatmapCells', () => {
       0,
       2000,
       { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 },
-      { intraMax: true },
+      { source: 'peakSnapshot' },
     );
     expect(cells.length).toBe(2);
     // visibleMax=900(max소스), qty=900 → full α
     expect(cells.every((c) => c.fillColor.endsWith(', 1)'))).toBe(true);
+  });
+
+  it("source='perPriceMax'는 가격대별 최댓값을 소스로 — 같은 봉에서 peakSnapshot 과 다른 셀", () => {
+    // 세 소스가 **서로 다른 값**을 갖는 point. 같은 값이면 어느 소스를 골랐는지
+    // 셀만 보고는 알 수 없어 테스트가 통과해도 아무것도 증명하지 못한다.
+    const pt: DepthHeatmapPoint = {
+      tMs: 1000,
+      asks: [{ price: 10, qty: 100 }],
+      bids: [{ price: 9, qty: 100 }],
+      asksMax: [{ price: 10, qty: 610 }],
+      bidsMax: [{ price: 9, qty: 610 }],
+      // 가격대별은 더 크고, **가격 개수도 다르다**(10 고정이 아니라는 계약).
+      asksPriceMax: [{ price: 10, qty: 935 }, { price: 11, qty: 200 }],
+      bidsPriceMax: [{ price: 9, qty: 935 }],
+    };
+    const style = { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 };
+    const peak = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { source: 'peakSnapshot' });
+    const perPrice = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { source: 'perPriceMax' });
+    expect(peak.map((c) => c.price).sort((a, b) => a - b)).toEqual([9, 10]);
+    // 가격대별 소스에만 있는 11 호가가 셀로 나온다.
+    expect(perPrice.map((c) => c.price).sort((a, b) => a - b)).toEqual([9, 10, 11]);
+    // 정규화 천장도 같은 소스를 따른다(935) → 935 짜리 셀이 full α.
+    const best = perPrice.find((c) => c.price === 10)!;
+    expect(best.fillColor.endsWith(', 1)')).toBe(true);
+    // peakSnapshot 천장은 610 이라 그쪽 셀도 full α — 즉 α 만으로는 구별되지 않고,
+    // **가격 집합**이 두 소스를 가른다(위 단언이 실질적인 판별식이다).
+    expect(peak.find((c) => c.price === 10)!.fillColor.endsWith(', 1)')).toBe(true);
   });
 
   it('halfTick=최소 양수 가격 gap/2 (불규칙 gap, point별 캐시)', () => {
@@ -171,7 +198,7 @@ describe('buildDepthHeatmapCells', () => {
       asksMax: [{ price: 1030, qty: 600 }, { price: 1040, qty: 500 }],
       bidsMax: [{ price: 990, qty: 400 }],
     };
-    const cells = buildDepthHeatmapCells([pt], axis, 0, 2000, STYLE, { intraMax: true, topPerSide: 1 });
+    const cells = buildDepthHeatmapCells([pt], axis, 0, 2000, STYLE, { source: 'peakSnapshot', topPerSide: 1 });
     // close 소스(1010·1000)가 아니라 max 소스(1030·990)에서 골라야 한다.
     expect(cells.map((c) => c.price).sort((a, b) => a - b)).toEqual([990, 1030]);
   });
@@ -197,8 +224,8 @@ describe('buildDepthHeatmapCells', () => {
       bidsMax: [{ price: 1000, qty: 100 }],
     };
     const style = { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 };
-    const closeCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { intraMax: false });
-    const maxCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { intraMax: true });
+    const closeCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { source: 'close' });
+    const maxCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, { source: 'peakSnapshot' });
     expect(closeCells.every((c) => c.halfTick === 5)).toBe(true);
     expect(maxCells.every((c) => c.halfTick === 20)).toBe(true);
   });

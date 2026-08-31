@@ -3,7 +3,7 @@
 슬라이스 하나가 화면에 닿으려면 서로를 모르는 명시 열거 목록을 전부 지나가야 한다 —
 요청 술어 · 캐시 키 · placeholder 호환 · 델타 병합 · 번들 조립 · 백엔드 게이트 ·
 과거일 캐시. 어느 하나가 빠져도 타입은 통과하고 증상은 한참 뒤에 온다. 호가벽
-급증(``wall_surge``)이 그래서 PR 세 건(#1321 → #1325 → #1333)에 걸쳐 들어왔다.
+급증이 그래서 PR 세 건(#1321 → #1325 → #1333)에 걸쳐 들어왔다(그 지표는 2026-08-26 제거).
 
 ``frontend/src/api/rangeSlices.ts`` 가 그 축들을 손으로 선언하고, 이 파일이 선언과
 코드를 대조한다. ADR-0004 가 기각한 codegen 이 **아니다** — 손 미러를 유지한 채
@@ -66,13 +66,17 @@ _CANDLE_PATH_IDENTIFIERS = (
 _ROUTES = _REPO_ROOT / "hoga/api/routes.py"
 
 # ``RangeBundle`` 의 스칼라 필드 — 슬라이스가 아니다(ADR-0013 의 범위 식별자).
-_SCALAR_FIELDS = frozenset({"code", "from_date", "to_date", "bucket_ms"})
+# 시계열 슬라이스가 아닌 스칼라 메타. `earliest_captured_date` 는 디스크 모드 좌팬의
+# **바닥**(그 (code,source,venue) 의 가장 오래된 캡처일)이라 슬라이스 레지스트리의
+# 대상이 아니다 — 배열도 캐시 kind 도 없다.
+_SCALAR_FIELDS = frozenset({
+    "code", "from_date", "to_date", "bucket_ms", "earliest_captured_date",
+})
 
 # 슬라이스에 대응하지 않는 캐시 kind 와 그 사유. 늘리려면 사유를 함께 적는다.
 _NON_SLICE_CACHE_KINDS: dict[str, str] = {
     "continuous_before": "volume_distributions 계산의 보조값이라 wire 필드가 없다",
     "peak_rep": "ask_peak/bid_peak 를 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
-    "depth_delta_prices": "depth_delta 의 tick 을 봉별 스캔 없이 파생하는 1분 원료라 wire 필드가 없다",
 }
 
 
@@ -222,7 +226,7 @@ def test_placeholder_compatibility_matches_the_index_list() -> None:
 
     이 축이 어긋나면 옵션을 바꿔도 placeholder 가 유지돼 **옛 데이터가 화면에 남는다**.
     그런데 기존 테스트들은 새 인덱스를 양쪽 키에서 같은 값으로 고정하므로 누락이
-    무증상이다 — 실제로 venue·depth_delta 가 그렇게 빠져 있었다(#1340).
+    무증상이다 — 실제로 venue 와 단별 잔량 증감 토글이 그렇게 빠져 있었다(#1340).
     """
     text = _strip_ts_comments(_RANGE_REQUEST.read_text(encoding="utf-8"))
     block = _balanced_block(text, "PLACEHOLDER_COMPATIBLE_KEY_INDICES", "= [")

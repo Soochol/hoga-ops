@@ -21,10 +21,7 @@ const base: RatioPaneContext = {
   auctionWindowMask: false,
   outlierFilterEnabled: false,
   outlierThreshold: 100,
-  brokerLateEntryEnabled: false,
-  brokerLateEntrySideMode: 'both',
-  brokerLateEntryBuyColor: '#ef4444',
-  brokerLateEntrySellColor: '#3b82f6',
+  brokerLateEntries: [],
 };
 
 describe('호가비 Intra-Bar Max 스위치', () => {

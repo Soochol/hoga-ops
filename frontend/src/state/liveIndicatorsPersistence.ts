@@ -48,9 +48,16 @@ export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
 ]) as readonly LiveMAConfig[];
 
 /** 일봉 이동평균선 기본 슬롯 — period 20 단일. 색 #EAB308(--ma-7, yellow)은
- *  현재봉 기본 슬롯(EC4899/F97316/22C55E/F8FAFC)과 구분된다(MA_PALETTE와 일치). */
+ *  현재봉 기본 슬롯(EC4899/F97316/22C55E/F8FAFC)과 구분된다(MA_PALETTE와 일치).
+ *
+ *  ⚠ 슬롯이 `enabled: false` 인 것은 오타가 아니라 **opt-in 의 표현**이다. 종전에는
+ *  마스터 토글(`dailyMovingAverageEnabled`, 기본 false)이 opt-in 을 담당하고 슬롯은
+ *  true 였다. 마스터가 슬롯으로 접히면서(ADR — 레전드 칩 = 인스턴스) 유효 게이트가
+ *  `slot.enabled` 하나뿐이므로, 여기를 true 로 두면 공장 상태에서 일봉 MA 가 갑자기
+ *  그려진다. 현재봉 MA(`DEFAULT_LIVE_MAS`)가 true 인 것과 갈리는 이유가 이것이다 —
+ *  그쪽 마스터는 기본 true 였다. */
 export const DEFAULT_DAILY_MAS: readonly LiveMAConfig[] = Object.freeze([
-  { id: 'dma-1', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+  { id: 'dma-1', enabled: false, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
 ]) as readonly LiveMAConfig[];
 
 const VALID_LINE_WIDTHS = new Set([1, 2, 3, 4]);
@@ -59,6 +66,18 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 export const ASK_PEAK_DEFAULT_COLOR = '#1D4ED8';
 export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
+// 전체 최대벽(터치 무관) 선 — 체결된 벽과 같은 색상군의 연한 단계(MAStylePicker 그리드
+// 4행)로 방향 의미(매도=파랑/매수=빨강)를 유지하면서 보조선임을 드러낸다. 두께 1 은
+// 체결된 벽(2)보다 얇게 — 겹칠 때 체결된 벽이 이긴다.
+export const ASK_PEAK_ALL_WALL_DEFAULT_COLOR = '#93C5FD';
+export const BID_PEAK_ALL_WALL_DEFAULT_COLOR = '#FCA5A5';
+export const PEAK_ALL_WALL_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
+// 미도달 벽(당일 극값이 지배하지 못한 벽) 선 — 같은 색상군의 **가장 진한 단계**
+// (MAStylePicker 그리드 1행). 명도 사다리: 연한=전체(터치 무관), 중간=체결된 벽,
+// 진한=미도달(아직 안 깨진 벽) — 무게 의미와 맞춘다.
+export const ASK_PEAK_UNREACHED_DEFAULT_COLOR = '#1E3A8A';
+export const BID_PEAK_UNREACHED_DEFAULT_COLOR = '#7F1D1D';
+export const PEAK_UNREACHED_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
 export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
@@ -69,26 +88,53 @@ export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
 export const DEPTH_HEATMAP_DEFAULT_BID_COLOR = '#F04452';
 export const DEPTH_HEATMAP_DEFAULT_ASK_COLOR = '#3485FA';
 export const DEPTH_HEATMAP_DEFAULT_MAX_OPACITY = 0.7;
-// 단별 잔량 증감 **차트 오버레이 전용** 색. 히트맵의 빨강·파랑과 다른 색조를 쓰는 이유는
-// **레이어 겹침**이다 — 같은 셀 위에 잔량 증감과 호가 히트맵이 동시에 켜질 수 있어 색이
-// 충돌하면 판독이 불가능해진다. teal/fuchsia 는 양 테마(#121216 / #FDFCF8) 모두에서 읽히는
-// 중간 명도다. 기본 불투명도는 히트맵(0.7)보다 낮게 잡아 두 레이어가 겹칠 때 아래층이 완전히
-// 묻히지 않게 한다.
-//
-// ⚠️ 호가창 증감 뱃지(BookPanel)는 2026-07-21부터 이 상수를 쓰지 않는다 —
-// 겹치는 레이어가 없어 KRX 컨벤션(증가 빨강 / 감소 파랑, priceDirClass)이 더 직관적이다.
-// 두 표면의 색이 다른 것은 의도된 분기다(DESIGN.md 2026-07-21 changelog).
-export const DEPTH_DELTA_DEFAULT_IN_COLOR = '#0D9488';
-export const DEPTH_DELTA_DEFAULT_OUT_COLOR = '#C026D3';
-export const DEPTH_DELTA_DEFAULT_MAX_OPACITY = 0.55;
 const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
 export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
 export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
 export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
 export type BrokerLateEntrySideMode = 'both' | 'buy' | 'sell';
+
+/**
+ * 신규 거래원 등장 **인스턴스 하나**. MA 슬롯(`LiveMAConfig`)과 같은 규약이다 —
+ * 배열 index 가 아니라 **안정 id** 로 식별해, 중간 삭제가 다른 인스턴스의 레전드
+ * 칩·마커 identity 를 흔들지 않게 한다.
+ *
+ * 이 지표가 첫 배열 승격 대상인 이유: 기준 시각을 달리한 두 세트(예: 09:30 빨강 +
+ * 14:00 보라)가 실사용 시나리오이고, 설정이 전부 이 blob 안에 있어 chartPrefs 와의
+ * 2-store 분기가 없다.
+ */
+export type BrokerLateEntryConfig = {
+  id: string;
+  /** 인스턴스의 가시성 — MA 슬롯과 같이 **이 하나가 유효 게이트**다. */
+  enabled: boolean;
+  /** 기준 시각(HHMM). 클라이언트 필터라 바꿔도 재조회가 없다(#1595). */
+  startHHMM: number;
+  sideMode: BrokerLateEntrySideMode;
+  buyColor: string;
+  sellColor: string;
+};
+
+/** 인스턴스 상한 — MA 와 같은 값을 쓴다(같은 이유: 손상 blob 의 무한 증식 방어이자
+ *  레전드 한 줄에 들어가는 현실적 개수). */
+export const BROKER_LATE_ENTRY_SLOT_LIMIT = 8;
 export const BROKER_LATE_ENTRY_DEFAULT_START_HHMM = 930;
 export const BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR = '#ef4444';
 export const BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR = '#3b82f6';
+
+/** 공장 인스턴스 — **`enabled: false`**(opt-in). 종전에는 마스터 토글
+ *  (`brokerLateEntryEnabled`, 기본 false)이 opt-in 을 담당했는데 그게 슬롯으로
+ *  접히면서 유효 게이트가 `enabled` 하나뿐이 됐다(MA 의 `DEFAULT_DAILY_MAS` 와 같은
+ *  사연). true 로 두면 공장 상태에서 마커가 갑자기 그려진다. */
+export const DEFAULT_BROKER_LATE_ENTRIES: readonly BrokerLateEntryConfig[] = Object.freeze([
+  {
+    id: 'ble-1',
+    enabled: false,
+    startHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
+    sideMode: 'both' as const,
+    buyColor: BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR,
+    sellColor: BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR,
+  },
+]) as readonly BrokerLateEntryConfig[];
 
 // 총잔량/호가비 현재값 수평선(price line) — opt-in. 색 기본은 각 pane 라인색과
 // 같게 두되 모양을 dashed로 해 실선 데이터 라인과 시각적으로 구분한다(현재가 라인과 동일 컨벤션).
@@ -103,6 +149,18 @@ export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
+  /**
+   * @deprecated **레거시 입력 전용** — v2 설정(`IndicatorSettings`)에는 없다.
+   *
+   * 마스터 토글 4형제(`movingAverage{Enabled,Hidden}` ·
+   * `dailyMovingAverage{Enabled,Hidden}`)는 슬롯의 `enabled` 로 접혔다. 레전드 칩이
+   * 인스턴스 단위 조작 표면이 되면서 "타입 마스터 × 타입 눈 × 슬롯 enabled" 삼중
+   * 상태가 하나로 줄었기 때문이다(`collapseMaMasterFlags`).
+   *
+   * 이 필드들이 타입에 남아 있는 이유는 **읽어야 하기 때문**이다: v1 blob 파싱과
+   * v2 버킷 collapse 의 입력. 새 코드가 이 값을 화면 게이트로 쓰면 안 된다 —
+   * 유효 게이트는 `slot.enabled` 하나뿐이다.
+   */
   movingAverageEnabled: boolean;
   /** ADR-0055: foreign-investor net-buy bar pane. Opt-in (default false). */
   foreignNetEnabled: boolean;
@@ -110,10 +168,30 @@ export type PersistedIndicators = {
   institutionNetEnabled: boolean;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
   volumeEnabled: boolean;
-  /** Pane Legend: MA lines temporarily hidden (눈), config preserved. Default FALSE. */
+  /** @deprecated 레거시 입력 전용 — `movingAverageEnabled` 주석 참조. */
   movingAverageHidden: boolean;
   /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
   peakWallPaneEnabled: boolean;
+  /** 강도 pane 에 「매도 · 체결된 벽」 계단을 낼 것인가. **기본 true** — 공장 상태에서
+   *  pane 을 켜면 종전과 똑같이 체결된 벽만 나온다.
+   *
+   *  ⚠ **pane 슬롯과 1:1 인 여섯 키**다(`PEAK_WALL_STEP_SLOTS` = 방향 2 × 계열 3).
+   *  pane 자체는 하나이고 매도·매수가 그 하나를 공유하지만, **무엇을 그 안에 넣을지는
+   *  칸마다 고를 수 있어야** 한다 — 매도 셋만 보거나, 양방향의 체결된 벽만 겹쳐 보는
+   *  것이 실제 읽기 방식이다.
+   *
+   *  캔들 오버레이의 계열 선 토글(`{side}Peak{Family}LineEnabled`)과는 **독립**이다.
+   *  두 표면이 답하는 질문이 다르기 때문이다 — 캔들은 「그날 어디에 벽이 있었나」,
+   *  pane 은 「그 벽이 언제 얼마나 자랐나」. */
+  askPeakTradedPaneEnabled: boolean;
+  /** 강도 pane 에 「매도 · 미도달 벽」 계단을. opt-in(기본 false) — 공장 계열 선 토글과 같은 값. */
+  askPeakUnreachedPaneEnabled: boolean;
+  /** 강도 pane 에 「매도 · 전체 최대벽」 계단을. opt-in(기본 false). */
+  askPeakAllWallPaneEnabled: boolean;
+  /** 매수판 — 매도와 같은 규약(체결만 기본 true). */
+  bidPeakTradedPaneEnabled: boolean;
+  bidPeakUnreachedPaneEnabled: boolean;
+  bidPeakAllWallPaneEnabled: boolean;
   /** 당일 매도 최대벽 토글. opt-in(기본 false). */
   askPeakEnabled: boolean;
   /** 매도 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
@@ -122,6 +200,23 @@ export type PersistedIndicators = {
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
   askPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 매도 「체결된 벽」 선 — 세 계열 중 하나로서의 토글. **기본 true** 라
+   *  기존 스토어·공장값의 동작이 그대로다(종전엔 마스터가 곧 이 선이었다).
+   *  끄면 전체·미도달만 남는다. */
+  askPeakTradedLineEnabled: boolean;
+  /** 매도 「전체 최대벽(터치 무관)」 선 — 최대벽의 하위 토글. opt-in(기본 false).
+   *  ⚠ `askPeakAllPriceRankLimit`(체결된 벽 표시 개수, chartPrefs)와 무관하다. */
+  askPeakAllWallLineEnabled: boolean;
+  /** 매도 전체 최대벽 선 색(hex). 기본 #93C5FD(연파랑). */
+  askPeakAllWallColor: string;
+  /** 매도 전체 최대벽 선 두께. 기본 1. */
+  askPeakAllWallLineWidth: 1 | 2 | 3 | 4;
+  /** 매도 「미도달 벽(당일 고가 위)」 선 — 최대벽의 하위 토글. opt-in(기본 false). */
+  askPeakUnreachedLineEnabled: boolean;
+  /** 매도 미도달 벽 선 색(hex). 기본 #1E3A8A(진남). */
+  askPeakUnreachedColor: string;
+  /** 매도 미도달 벽 선 두께. 기본 2. */
+  askPeakUnreachedLineWidth: 1 | 2 | 3 | 4;
   /** VI/상하한가 가격선 색(hex). 기본 #EAB308(노랑). */
   viLimitPriceLineColor: string;
   /** VI/상하한가 가격선 두께. 기본 3. */
@@ -134,6 +229,22 @@ export type PersistedIndicators = {
   bidPeakColor: string;
   /** 매수 최대벽 선 두께. 기본 2. */
   bidPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 매수 「체결된 벽」 선 — 세 계열 중 하나로서의 토글. **기본 true** 라
+   *  기존 스토어·공장값의 동작이 그대로다(종전엔 마스터가 곧 이 선이었다).
+   *  끄면 전체·미도달만 남는다. */
+  bidPeakTradedLineEnabled: boolean;
+  /** 매수 「전체 최대벽(터치 무관)」 선 — ask 쪽 미러. opt-in(기본 false). */
+  bidPeakAllWallLineEnabled: boolean;
+  /** 매수 전체 최대벽 선 색(hex). 기본 #FCA5A5(연빨강). */
+  bidPeakAllWallColor: string;
+  /** 매수 전체 최대벽 선 두께. 기본 1. */
+  bidPeakAllWallLineWidth: 1 | 2 | 3 | 4;
+  /** 매수 「미도달 벽(당일 저가 아래)」 선 — ask 쪽 미러. opt-in(기본 false). */
+  bidPeakUnreachedLineEnabled: boolean;
+  /** 매수 미도달 벽 선 색(hex). 기본 #7F1D1D(진적). */
+  bidPeakUnreachedColor: string;
+  /** 매수 미도달 벽 선 두께. 기본 2. */
+  bidPeakUnreachedLineWidth: 1 | 2 | 3 | 4;
   /** 당일 최대 매물대(체결량 POC) 밴드 on/off. Default TRUE. */
   tradeVolumePocEnabled: boolean;
   /** 최대 매물대 눈(숨김). 기본 false. */
@@ -154,18 +265,6 @@ export type PersistedIndicators = {
   depthHeatmapAskColor: string;
   /** 호가 잔량 히트맵 최대 불투명도(0.2~1). 기본 0.7. */
   depthHeatmapMaxOpacity: number;
-  /** 호가벽 급증 마커 on/off. Default FALSE — 하루 수십 건이라 켜는 것이 선택이다. */
-  wallSurgeEnabled: boolean;
-  /** 단별 잔량 증감 on/off. Default FALSE. */
-  depthDeltaEnabled: boolean;
-  /** 증감 눈(숨김). 기본 false. */
-  depthDeltaHidden: boolean;
-  /** 잔량 유입(증가) 색(hex). 기본 #0D9488(teal). */
-  depthDeltaInColor: string;
-  /** 잔량 유출(감소) 색(hex). 기본 #C026D3(fuchsia). */
-  depthDeltaOutColor: string;
-  /** 단별 잔량 증감 최대 불투명도(0.2~1). 기본 0.55. */
-  depthDeltaMaxOpacity: number;
   /** 연속체결 매물대 분포 on/off. Default TRUE. */
   volumeDistributionEnabled: boolean;
   /** 연속체결 매물대 분포 hover cutoff mode. Default FALSE. */
@@ -221,23 +320,37 @@ export type PersistedIndicators = {
   fillStrengthEnabled: boolean;
   /** 프로그램 순매수 pane on/off. Default TRUE. */
   programTradeEnabled: boolean;
-  /** 신규 거래원 등장 마커 on/off. opt-in(기본 false). */
+  /**
+   * 신규 거래원 등장 **인스턴스 배열**. 같은 지표를 기준 시각만 달리해 여러 개
+   * 띄울 수 있다(Phase 3 의 첫 대상 — 타입 도크스트링 참조).
+   *
+   * MA 와 같은 sparse 규약: 빈 배열은 "전부 지웠다" 는 **유효 상태**이고, 손상만
+   * 공장값으로 복구한다(`normalizeSlotArray`).
+   */
+  brokerLateEntries: BrokerLateEntryConfig[];
+  /**
+   * @deprecated **레거시 입력 전용** — v2 설정에는 없다(`collapseBrokerLateEntry`).
+   *
+   * flat 6필드가 인스턴스 배열로 접혔다. MA 마스터 4형제와 같은 사연이고, 같은
+   * 이유로 타입에는 남는다: v1 blob 파싱과 v2 버킷 collapse 의 **입력**이기 때문.
+   * 새 코드가 이 값을 화면 게이트로 쓰면 안 된다.
+   */
   brokerLateEntryEnabled: boolean;
-  /** 거래원 등장 마커 눈(숨김). 기본 false. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryHidden: boolean;
-  /** 신규 거래원 등장 기준 시각(HHMM). 기본 930. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryStartHHMM: number;
-  /** 신규 거래원 등장 표시 방향. 기본 both. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
-  /** 신규 거래원 등장 매수 마커 색상(hex). 기본 #ef4444. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntryBuyColor: string;
-  /** 신규 거래원 등장 매도 마커 색상(hex). 기본 #3b82f6. */
+  /** @deprecated 레거시 입력 전용 — `brokerLateEntryEnabled` 주석 참조. */
   brokerLateEntrySellColor: string;
   /** 일봉 이동평균선 슬롯(현재봉 movingAverages와 별개, ADR-0073). */
   dailyMovingAverages: LiveMAConfig[];
-  /** 일봉 MA 마스터 토글. opt-in(기본 false). */
+  /** @deprecated 레거시 입력 전용 — `movingAverageEnabled` 주석 참조. */
   dailyMovingAverageEnabled: boolean;
-  /** 일봉 MA 눈(숨김), config 보존. 기본 false. */
+  /** @deprecated 레거시 입력 전용 — `movingAverageEnabled` 주석 참조. */
   dailyMovingAverageHidden: boolean;
   /** Shared live/study pane on/off overrides by timeframe profile. Empty = legacy flat fields are fallback. */
   panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
@@ -262,6 +375,48 @@ function isValidEntry(m: unknown): m is LiveMAConfig {
     && typeof e.color === 'string' && HEX_COLOR.test(e.color)
     && typeof e.lineWidth === 'number' && VALID_LINE_WIDTHS.has(e.lineWidth)
     && typeof e.source === 'string' && VALID_SOURCES.has(e.source)
+  );
+}
+
+/**
+ * 저장된 MA 슬롯 배열의 정규화 — **빈 배열과 손상을 다르게 대우한다**.
+ *
+ * `[]` 는 "사용자가 슬롯을 전부 지웠다" 는 **유효 상태**다. 레전드 칩 ✕ 로 하나씩
+ * 지우면 도달하므로, 여기서 공장값을 되살리면 삭제가 다음 로드마다 취소되고 증상은
+ * "지웠는데 새로고침하면 돌아온다" 로 한참 뒤에 나타난다.
+ *
+ * 반대로 **원소는 있는데 전부 무효**이거나 애초에 배열이 아니면 손상된 blob 이므로
+ * 공장값으로 복구한다. 두 경우를 구별하지 않으면 손상이 조용히 "지표 실종" 으로
+ * 위장한다 — 그래서 판별식은 `kept.length` 가 아니라 **`raw.length`** 다.
+ */
+function normalizeSlotArray<T>(
+  raw: unknown,
+  factory: readonly T[],
+  isValid: (v: unknown) => v is T,
+  limit: number,
+): T[] {
+  if (!Array.isArray(raw)) return factory.map((m) => ({ ...m }));
+  if (raw.length === 0) return [];
+  const kept = raw.filter(isValid).slice(0, limit);
+  return kept.length > 0 ? kept : factory.map((m) => ({ ...m }));
+}
+
+function normalizeMaSlots(raw: unknown, factory: readonly LiveMAConfig[]): LiveMAConfig[] {
+  return normalizeSlotArray(raw, factory, isValidEntry, MA_SLOT_LIMIT);
+}
+
+/** 거래원 등장 인스턴스 하나의 검증기 — MA 의 `isValidEntry` 와 같은 역할. */
+function isValidBrokerLateEntry(v: unknown): v is BrokerLateEntryConfig {
+  if (!v || typeof v !== 'object') return false;
+  const e = v as Record<string, unknown>;
+  return (
+    typeof e.id === 'string' && e.id.length > 0
+    && typeof e.enabled === 'boolean'
+    // 기준 시각은 정규장 창 안이어야 한다 — 밖이면 마커가 통째로 비거나 전부 뜬다.
+    && typeof e.startHHMM === 'number' && normalizeHHMM(e.startHHMM) === e.startHHMM
+    && (e.sideMode === 'both' || e.sideMode === 'buy' || e.sideMode === 'sell')
+    && typeof e.buyColor === 'string' && HEX_COLOR.test(e.buyColor)
+    && typeof e.sellColor === 'string' && HEX_COLOR.test(e.sellColor)
   );
 }
 
@@ -301,13 +456,17 @@ function normalizeBrokerLateEntrySideMode(value: unknown): BrokerLateEntrySideMo
 }
 
 /** Merge persisted state with defaults. If the input is structurally
- *  unrecoverable (missing/non-object/non-array MAs) return defaults.
- *  If a subset of entries is valid, keep those; if none are valid,
- *  fall back to defaults. Cap to MA_SLOT_LIMIT to prevent unbounded
- *  growth from a corrupted store. `movingAverageEnabled` defaults to
- *  true unless the persisted value is the literal boolean false (any
- *  other shape — missing, null, "true" string — falls back to true so
- *  legacy stores written before this field existed keep showing MAs). */
+ *  unrecoverable (missing/non-object) return defaults.
+ *
+ *  MA 슬롯 배열의 정책은 `normalizeMaSlots` 가 소유한다 — **빈 배열은 유효 상태(0개)**
+ *  이고 "전부 무효" 만 공장값으로 복구한다. 이 파일의 종전 정책("if none are valid,
+ *  fall back to defaults")은 그 둘을 합쳐 놨었고, 그래서 사용자가 지운 슬롯이 로드마다
+ *  되살아났다. Cap to MA_SLOT_LIMIT to prevent unbounded growth from a corrupted store.
+ *
+ *  `movingAverageEnabled` defaults to true unless the persisted value is the literal
+ *  boolean false (any other shape — missing, null, "true" string — falls back to true so
+ *  legacy stores written before this field existed keep showing MAs). 이 마스터 4필드는
+ *  **읽기 전용 레거시**다(타입 주석 참조) — v1 blob 파싱과 v2 collapse 의 입력으로만 산다. */
 export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
@@ -320,12 +479,53 @@ export function mergeLiveIndicatorPrefs(
   // 최대벽 강도 pane — opt-in (default false). 오버레이(askPeak/bidPeak)와 별개 토글:
   // pane 은 오버레이의 표현이지만 화면 부동산을 차지하므로 켜는 결정은 따로 받는다.
   const pwPaneEnabled = obj?.peakWallPaneEnabled === true;
+  // pane 슬롯 6칸 — 체결된 벽만 기본 true 라, 공장 상태에서 pane 을 켜면 종전과 같은
+  // 화면이 나온다(종전 규칙은 "캔들 선 토글을 따라간다" 였고 그 공장값이 양 방향 T/F/F).
+  //
+  // ⚠ **레거시 시드**: 같은 날(2026-08-26) 잠깐 살았던 **방향 공용 3키**를 값이 있을
+  // 때만 양 방향의 씨앗으로 쓴다. 반나절짜리 키라 마이그레이션이 과해 보이지만, 그새
+  // 만진 사용자의 선택을 조용히 되돌리는 것이 더 나쁘다. 새 키가 하나라도 저장돼
+  // 있으면 그쪽이 이긴다(구키는 그때 이미 안 쓰이고 있었다는 뜻).
+  const legacyPaneFamily = (key: 'peakWallPaneTradedEnabled' | 'peakWallPaneUnreachedEnabled' | 'peakWallPaneAllWallEnabled') =>
+    (typeof obj?.[key] === 'boolean' ? obj[key] as boolean : undefined);
+  const paneSlot = (
+    fresh: unknown,
+    legacy: boolean | undefined,
+    fallback: boolean,
+  ): boolean => (typeof fresh === 'boolean' ? fresh : legacy ?? fallback);
+  const legacyTraded = legacyPaneFamily('peakWallPaneTradedEnabled');
+  const legacyUnreached = legacyPaneFamily('peakWallPaneUnreachedEnabled');
+  const legacyAllWall = legacyPaneFamily('peakWallPaneAllWallEnabled');
+  const apTradedPane = paneSlot(obj?.askPeakTradedPaneEnabled, legacyTraded, true);
+  const apUnreachedPane = paneSlot(obj?.askPeakUnreachedPaneEnabled, legacyUnreached, false);
+  const apAllWallPane = paneSlot(obj?.askPeakAllWallPaneEnabled, legacyAllWall, false);
+  const bpTradedPane = paneSlot(obj?.bidPeakTradedPaneEnabled, legacyTraded, true);
+  const bpUnreachedPane = paneSlot(obj?.bidPeakUnreachedPaneEnabled, legacyUnreached, false);
+  const bpAllWallPane = paneSlot(obj?.bidPeakAllWallPaneEnabled, legacyAllWall, false);
   const apEnabled = obj?.askPeakEnabled === true;
   const apHidden = obj?.askPeakHidden === true;
   const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
     ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
   const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
     ? (obj!.askPeakLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_DEFAULT_WIDTH;
+  // 전체 최대벽(터치 무관) 하위 선 — opt-in, 색·두께는 검증 후 기본값 폴백.
+  const apAllWallEnabled = obj?.askPeakAllWallLineEnabled === true;
+  const apAllWallColor = normalizeHexColor(obj?.askPeakAllWallColor, ASK_PEAK_ALL_WALL_DEFAULT_COLOR);
+  const apAllWallWidth = normalizeLineWidth(obj?.askPeakAllWallLineWidth, PEAK_ALL_WALL_DEFAULT_WIDTH);
+  const bpAllWallEnabled = obj?.bidPeakAllWallLineEnabled === true;
+  const bpAllWallColor = normalizeHexColor(obj?.bidPeakAllWallColor, BID_PEAK_ALL_WALL_DEFAULT_COLOR);
+  const bpAllWallWidth = normalizeLineWidth(obj?.bidPeakAllWallLineWidth, PEAK_ALL_WALL_DEFAULT_WIDTH);
+  // 체결된 벽 선 — **opt-out** 이다(`volumeEnabled` 규약: false 리터럴만 OFF).
+  // opt-in 으로 두면 기존 스토어에 키가 없어 로드마다 체결된 벽이 사라진다.
+  const apTradedLine = obj?.askPeakTradedLineEnabled !== false;
+  const bpTradedLine = obj?.bidPeakTradedLineEnabled !== false;
+  // 미도달 벽 하위 선 — 전체 최대벽과 같은 규약(opt-in + 검증 폴백).
+  const apUnreachedEnabled = obj?.askPeakUnreachedLineEnabled === true;
+  const apUnreachedColor = normalizeHexColor(obj?.askPeakUnreachedColor, ASK_PEAK_UNREACHED_DEFAULT_COLOR);
+  const apUnreachedWidth = normalizeLineWidth(obj?.askPeakUnreachedLineWidth, PEAK_UNREACHED_DEFAULT_WIDTH);
+  const bpUnreachedEnabled = obj?.bidPeakUnreachedLineEnabled === true;
+  const bpUnreachedColor = normalizeHexColor(obj?.bidPeakUnreachedColor, BID_PEAK_UNREACHED_DEFAULT_COLOR);
+  const bpUnreachedWidth = normalizeLineWidth(obj?.bidPeakUnreachedLineWidth, PEAK_UNREACHED_DEFAULT_WIDTH);
   const viLimitPriceLineColor = typeof obj?.viLimitPriceLineColor === 'string'
     && HEX_COLOR.test(obj.viLimitPriceLineColor as string)
     ? (obj.viLimitPriceLineColor as string) : VI_LIMIT_PRICE_LINE_DEFAULT_COLOR;
@@ -370,18 +570,6 @@ export function mergeLiveIndicatorPrefs(
     && dhOpacityRaw <= 1
     ? dhOpacityRaw
     : DEPTH_HEATMAP_DEFAULT_MAX_OPACITY;
-  const wallSurgeEnabled = obj?.wallSurgeEnabled === true;
-  const depthDeltaEnabled = obj?.depthDeltaEnabled === true;
-  const depthDeltaHidden = obj?.depthDeltaHidden === true;
-  const ddInColor = normalizeHexColor(obj?.depthDeltaInColor, DEPTH_DELTA_DEFAULT_IN_COLOR);
-  const ddOutColor = normalizeHexColor(obj?.depthDeltaOutColor, DEPTH_DELTA_DEFAULT_OUT_COLOR);
-  const ddOpacityRaw = obj?.depthDeltaMaxOpacity;
-  const ddMaxOpacity = typeof ddOpacityRaw === 'number'
-    && Number.isFinite(ddOpacityRaw)
-    && ddOpacityRaw >= 0.2
-    && ddOpacityRaw <= 1
-    ? ddOpacityRaw
-    : DEPTH_DELTA_DEFAULT_MAX_OPACITY;
   const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
   const volumeDistributionHoverCutoffEnabled = obj?.volumeDistributionHoverCutoffEnabled === true;
   const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
@@ -398,6 +586,12 @@ export function mergeLiveIndicatorPrefs(
     obj?.brokerLateEntryBuyColor,
     BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR,
   );
+  const brokerLateEntries = normalizeSlotArray(
+    obj?.brokerLateEntries,
+    DEFAULT_BROKER_LATE_ENTRIES,
+    isValidBrokerLateEntry,
+    BROKER_LATE_ENTRY_SLOT_LIMIT,
+  );
   const brokerLateEntrySellColor = normalizeHexColor(
     obj?.brokerLateEntrySellColor,
     BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR,
@@ -405,11 +599,7 @@ export function mergeLiveIndicatorPrefs(
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
-  const dRaw = obj?.dailyMovingAverages;
-  const dKept = Array.isArray(dRaw)
-    ? (dRaw.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[])
-    : [];
-  const dMas = dKept.length > 0 ? dKept : DEFAULT_DAILY_MAS.map((m) => ({ ...m }));
+  const dMas = normalizeMaSlots(obj?.dailyMovingAverages, DEFAULT_DAILY_MAS);
   // 총잔량/호가비 현재값 수평선 — opt-in. 색/두께/모양은 저장값 검증 후 기본값 폴백.
   const quoteTotalsLevelLineEnabled = obj?.quoteTotalsLevelLineEnabled === true;
   const qtBidLevelColor = normalizeHexColor(obj?.quoteTotalsBidLevelColor, QUOTE_TOTALS_BID_LEVEL_DEFAULT_COLOR);
@@ -445,16 +635,36 @@ export function mergeLiveIndicatorPrefs(
     volumeEnabled: vol,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,
+    askPeakTradedPaneEnabled: apTradedPane,
+    askPeakUnreachedPaneEnabled: apUnreachedPane,
+    askPeakAllWallPaneEnabled: apAllWallPane,
+    bidPeakTradedPaneEnabled: bpTradedPane,
+    bidPeakUnreachedPaneEnabled: bpUnreachedPane,
+    bidPeakAllWallPaneEnabled: bpAllWallPane,
     askPeakEnabled: apEnabled,
     askPeakHidden: apHidden,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
+    askPeakTradedLineEnabled: apTradedLine,
+    askPeakAllWallLineEnabled: apAllWallEnabled,
+    askPeakAllWallColor: apAllWallColor,
+    askPeakAllWallLineWidth: apAllWallWidth,
+    askPeakUnreachedLineEnabled: apUnreachedEnabled,
+    askPeakUnreachedColor: apUnreachedColor,
+    askPeakUnreachedLineWidth: apUnreachedWidth,
     viLimitPriceLineColor,
     viLimitPriceLineWidth,
     bidPeakEnabled: bpEnabled,
     bidPeakHidden: bpHidden,
     bidPeakColor: bpColor,
     bidPeakLineWidth: bpWidth,
+    bidPeakTradedLineEnabled: bpTradedLine,
+    bidPeakAllWallLineEnabled: bpAllWallEnabled,
+    bidPeakAllWallColor: bpAllWallColor,
+    bidPeakAllWallLineWidth: bpAllWallWidth,
+    bidPeakUnreachedLineEnabled: bpUnreachedEnabled,
+    bidPeakUnreachedColor: bpUnreachedColor,
+    bidPeakUnreachedLineWidth: bpUnreachedWidth,
     tradeVolumePocEnabled: tradeVolumePoc,
     tradeVolumePocHidden: tvpHidden,
     tradeVolumePocBandPct: tvpBandPct,
@@ -465,12 +675,6 @@ export function mergeLiveIndicatorPrefs(
     depthHeatmapBidColor: dhBidColor,
     depthHeatmapAskColor: dhAskColor,
     depthHeatmapMaxOpacity: dhMaxOpacity,
-    wallSurgeEnabled,
-    depthDeltaEnabled,
-    depthDeltaHidden,
-    depthDeltaInColor: ddInColor,
-    depthDeltaOutColor: ddOutColor,
-    depthDeltaMaxOpacity: ddMaxOpacity,
     volumeDistributionEnabled,
     volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount,
@@ -498,6 +702,7 @@ export function mergeLiveIndicatorPrefs(
     ratioLevelStyle,
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
+    brokerLateEntries,
     brokerLateEntryEnabled,
     brokerLateEntryHidden,
     brokerLateEntryStartHHMM,
@@ -529,9 +734,6 @@ export function mergeLiveIndicatorPrefs(
   const fill = o.fillStrengthEnabled === false ? false : true;
   const programTrade = o.programTradeEnabled === false ? false : true;
   const tradeVolumePoc = o.tradeVolumePocEnabled === false ? false : true;
-  const arr = o.movingAverages;
-  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
-  const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
-  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
+  const mas = normalizeMaSlots(o.movingAverages, DEFAULT_LIVE_MAS);
+  return build(mas, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
 }

@@ -1,11 +1,16 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { IChartApi, Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { RangeBundle } from '../api/types';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
-import { minuteRightOffsetBars, sourceSwapReseatRange } from './minuteViewportPolicy';
+import {
+  minuteRightOffsetBars,
+  pickSwapAnchor,
+  sourceSwapReseatRange,
+  viewportHasReprojectableAnchor,
+} from './minuteViewportPolicy';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
@@ -17,9 +22,25 @@ import {
   fillBudgetSteps,
   dispatchStepsFor,
   realMsToYyyymmdd,
+  planRestoreSeat,
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+
+/** 스왑 직전 뷰포트 스냅샷 — 캡처 규칙은 훅 안 layout effect(효과 1) 주석 참조. */
+interface PreSwapSnap {
+  fromLogical: number;
+  toLogical: number;
+  refMs: number;
+  refIdx: number;
+  /** 스냅샷 시점에 라이브 엣지에 있었나 — 소스 스왑 재착석의 분기 축.
+   *  판정식은 `viewportFromRanges` 와 같다(오른쪽 끝이 마지막 봉의 1초 이내). */
+  atLiveEdge: boolean;
+  /** 마지막 봉 뒤의 오른쪽 여백(논리 바). 재착석이 **그대로 재사용**한다 —
+   *  정책값으로 다시 계산하면 캔들이 옆으로 밀린다(`sourceSwapReseatRange` 의
+   *  `savedRightPaddingBars` 도크스트링에 실측). 못 재면 `null`. */
+  rightPaddingBars: number | null;
+}
 
 /** viewport 좌단 가시 바의 KST 날짜(YYYYMMDD). getVisibleRange().from(virtual sec)를
  * axis.toReal로 실시간 ms 변환 — coverage-gap 판정용. 측정 불가 시 null. */
@@ -37,6 +58,28 @@ function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | nul
  * 캡되고, coverage_gap은 날짜 수렴이 주 종료 조건이라 이 값이 백스톱 예산이
  * 된다. 분봉 250일 클램프·D/W/M 데이터 고갈이 보통 먼저 멈춘다. */
 const MAX_FILL_STEPS = 60;
+
+/** 화면에서 데이터가 이 비율 이하만 덮으면 **사실상 빈 화면**으로 본다(3e 판정).
+ *
+ * `logical.from < 0` 만으로는 안 된다 — 정상 좌팬도 매 이벤트에서 음수를 보고하고,
+ * 그건 3b 가 이미 처리한다. 3e 가 노리는 것은 **화면이 통째로 whitespace 인데
+ * 아무도 안 채우고 있는** 상태다(실측 클램프: span 402 중 데이터 1바 = 0.25%).
+ * 0.1 은 그 둘 사이를 넉넉히 가르는 값이고, 위로 틀리면 3e 가 덜 발화할 뿐이라
+ * 안전 방향이다(3b 가 여전히 정상 경로를 쥔다). */
+const EMPTY_VIEWPORT_DATA_RATIO = 0.1;
+
+/** 3e 가 한 클램프 구간에서 자동으로 이어붙일 수 있는 스텝 수 상한.
+ *
+ * ⚠ **디스크 모드(hogaplay ON)에는 좌측 바닥이 없다** — `minuteScrollbackFloorDate`
+ * 가 `restBypassEnabled` 에서 `null` 이라 `planFillStep` 의 `earliestAllowedDate`
+ * stop 이 절대 안 걸리고, `extendHistoricalRange` 도 단조 감소 가드만 있지 하한을
+ * 모른다. 즉 **종료를 보장하는 것은 이 상수뿐이다.**
+ *
+ * 3 인 근거: 예산 추정(`fillBudgetSteps`)이 빗나가는 정상 사례는 1~2 스텝이면
+ * 흡수된다. 그보다 길게 이어져야 하는 구간은 데이터가 원래 없는 곳이므로, 자동으로
+ * 계속 파고드는 것보다 **멈추고 사용자 조작을 기다리는 편**이 낫다(그 조작이 곧
+ * 뷰포트 이벤트라 3b 가 정상적으로 이어받는다). */
+const MAX_CLAMP_RECOVERY_STEPS = 3;
 
 /** coverage_gap 트리거 판정(3b lazy-fetch·3c 초기표시 공유). viewport 좌단 가시
  * 날짜가 활성 range 지표 커버리지(coverageFrom)보다 과거면 range 창을 그 좌단까지
@@ -148,19 +191,6 @@ export interface ViewportBackfillArgs {
    * (2026-08-23 페이지 삭제로 이 경로의 소비자는 없다).
    */
   minuteScrollbackFloorDate?: string | null;
-  /**
-   * 이 창에 걸린 **기간 점프**의 목적지(YYYYMMDD). null = 점프 없음.
-   *
-   * 저장뷰와 **정확히 같은 문제**라 3d 가 둘을 함께 받는다: 순간 이동이라 팬
-   * 이벤트가 없어 3b 가 발화하지 않고, 단발 `extend` 는 한 청크에서 멎는다. 둘 중
-   * 더 과거를 목표로 삼아 한 번에 워크백한다 — 저장뷰를 연 채로 점프하면 두 구간이
-   * 모두 필요하고, 목표를 하나만 두면 나머지가 영영 안 채워진다.
-   *
-   * ⚠ **게이트를 통과한 값이어야 한다.** 스토어의 원시 점프 슬롯을 그대로 물리면
-   * 창번호·종목이 달라 **받지도 않은** 점프를 위해 과거를 긁는 창이 생긴다
-   * (`useTimeframeJump.backfillFromDate` 가 그 게이트를 통과한 결과다).
-   */
-  jumpFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -216,32 +246,51 @@ export function useViewportBackfill({
   settledFromDate = null,
   savedRangeFromDate = null,
   minuteScrollbackFloorDate = null,
-  jumpFromDate = null,
-}: ViewportBackfillArgs): void {
+}: ViewportBackfillArgs): {
+  /** 강제 클램프 착지 안내 — 새 소스에 없는 구간에서 스왑해 가장 가까운 위치로
+   *  옮겨졌을 때 한 번 선다. `seq` 는 같은 경계로 반복 착지해도 칩이 다시 뜨게 한다. */
+  sourceSwapClampNotice: { boundaryYmd: string; seq: number } | null;
+} {
   // 창-스코프 절단(ADR-0119 C2c-2a): from-date 읽기/확장은 창 런타임(Provider
   // 안) 또는 전역 스토어(밖)로 — getState 병행 경로의 창별 대응물.
   const historicalRange = useHistoricalRangeActions();
+  const [sourceSwapClampNotice, setSourceSwapClampNotice] =
+    useState<{ boundaryYmd: string; seq: number } | null>(null);
   // 디바운스 발화 시점의 fresh 뷰 가드 — 호출 시점 getState(스토어 직독).
   const viewGuard = useWindowViewGuard();
 
   // Pre-swap snapshot: the view as of the CURRENT commit's layout phase, with
   // the right edge resolved to real ms through the axis the chart was actually
   // drawn with (prevAxisRef). prevEarliestTsMsRef detects a genuine prepend.
-  const preSwapRef = useRef<
-    {
-      fromLogical: number;
-      toLogical: number;
-      refMs: number;
-      refIdx: number;
-      /** 스냅샷 시점에 라이브 엣지에 있었나 — 소스 스왑 재착석의 분기 축.
-       *  판정식은 `viewportFromRanges` 와 같다(오른쪽 끝이 마지막 봉의 1초 이내). */
-      atLiveEdge: boolean;
-      /** 마지막 봉 뒤의 오른쪽 여백(논리 바). 재착석이 **그대로 재사용**한다 —
-       *  정책값으로 다시 계산하면 캔들이 옆으로 밀린다(`sourceSwapReseatRange` 의
-       *  `savedRightPaddingBars` 도크스트링에 실측). 못 재면 `null`. */
-      rightPaddingBars: number | null;
-    } | null
-  >(null);
+  const preSwapRef = useRef<PreSwapSnap | null>(null);
+  /**
+   * 강제 클램프가 삼킨 앵커 — **강제 이동은 사용자의 앵커를 잃게 하지 않는다.**
+   *
+   * 재착석이 anchorOut(스왑 전 위치가 새 소스 데이터 밖)으로 클램프 착지하면, 그
+   * 순간의 스냅샷(사용자가 실제로 보던 곳)을 여기 보관한다. 다음 스왑에서
+   * `pickSwapAnchor` 가 "사용자가 착지점에서 안 움직였다" 고 판정하면 fresh 대신
+   * 이것으로 앉는다 — 디스크→벤더→디스크 왕복이 원위치로 돌아오는 경로다.
+   *
+   * 수명: 스왑 소비 시 무조건 비우고, 재착석이 다시 anchorOut 이면 **선택된 스냅샷**을
+   * 재보관한다(복원 시도가 창 축소로 실패해도 앵커가 자기 유지된다). (code, timeframe)
+   * 리셋 효과에서도 비운다. persist 없음 — stale 위치 복원 함정(#1579)의 전례.
+   */
+  const forcedSwapRef = useRef<{ snap: PreSwapSnap; landedRefMs: number } | null>(null);
+  /**
+   * 복원 대기 — pick 이 복원을 골랐는데 **창 축소가 앵커를 창 밖으로 밀어낸** 경우.
+   *
+   * #1614 실측이 이 상태의 존재 이유다: `choice: forced` 직후 착석이 다시 anchorOut
+   * (토글 사이 수 초에 contraction 이 창을 57일로 접음). 복원 의도는 이미 확인됐으므로
+   * 창을 앵커까지 다시 넓히는 것은 투기가 아니다 — 여기 대기를 세우고, 워크백이 창을
+   * 덮으면(`planRestoreSeat`) 앉는다. 대기 중에는 3b 의 축소를 멈춘다(안 멈추면
+   * 확장↔축소 진동 — `planViewportContraction` 의 히스테리시스는 증분 ≤2스텝 전용이라
+   * 복원용 깊은 확장을 원리적으로 못 지킨다).
+   *
+   * 해제 경로 다섯: 착석 성공 · 바닥 밖(cancel_floor) · 사용자가 착지점에서 화면 폭
+   * 이상 이동 · 새 소스 스왑(1b 래치) · (code, timeframe) 리셋.
+   */
+  const pendingRestoreRef = useRef<{ snap: PreSwapSnap; landedRefMs: number; anchorYmd: string } | null>(null);
+  const swapNoticeSeqRef = useRef(0);
   const prevAxisRef = useRef<VirtualAxis | null>(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
   /** 직전 커밋 번들의 마지막 캔들 ms — **차트에 실제로 그려진** 데이터의 라이브 엣지다.
@@ -255,6 +304,10 @@ export function useViewportBackfill({
   /** 직전 커밋 캔들 배열의 모양 — **중간 삽입**(디스크 구멍의 키움 보충)을 가른다.
    *  프리펜드는 `firstMs` 가, SSE 성장은 `lastMs` 가 움직이므로 셋을 다 봐야 구분된다. */
   const prevCandleShapeRef = useRef<{ count: number; firstMs: number; lastMs: number } | null>(null);
+  /** 직전 재투영이 **앉히려던** scrollPosition. 다음 커밋의 실제 값과 비교해
+   *  「보정은 옳게 앉았는데 그 뒤 커밋이 덮었나」(#1581 계열)를 가른다 — set 직후
+   *  읽기는 한 프레임 늦어 그 자리에서는 판정할 수 없다(`spA` 가 항상 옛값인 이유). */
+  const lastSeatedSpRef = useRef<number | null>(null);
   // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
@@ -278,6 +331,12 @@ export function useViewportBackfill({
    *  판정하지 않기 위한 키. **쌍이어야 한다**: 한쪽만 키로 두면 다른 쪽이 바뀌어도
    *  마킹이 걸린 채라 그 요청이 조용히 무시된다. */
   const targetFilledForRef = useRef<string | null>(null);
+  /** 3e 가 이번 클램프 구간에서 이어붙인 스텝 수. 화면이 다시 채워지면 0 으로 돌아간다
+   *  — 그 복귀가 곧 "이 구간은 끝났다" 는 신호다. */
+  const clampRecoveryStepsRef = useRef(0);
+  /** 3e 가 마지막으로 확장을 건 시점의 `historicalFromDate`. 창이 그대로면(단조 감소
+   *  가드에 막혔거나 바닥) 같은 커밋을 반복해도 다시 밀지 않는다. */
+  const clampLastFromRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -338,6 +397,9 @@ export function useViewportBackfill({
     fillCoverageTargetRef.current = null;
     initialCoverageCheckedRef.current = false;
     latestLogicalFromRef.current = null;
+    forcedSwapRef.current = null;
+    pendingRestoreRef.current = null;
+    setSourceSwapClampNotice(null);
   }, [code, timeframe]);
 
   // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
@@ -413,7 +475,25 @@ export function useViewportBackfill({
   // 깊은 창 기준으로 나갈 수 있다 — 워크백이 타일 단위 직렬이라 낭비 상한이 타일
   // 하나이고, 다음 커밋부터 축소된 창으로 계획이 다시 선다.
   useEffect(() => {
-    if (candleSourceKey === undefined) return;
+    if (candleSourceKey === undefined) {
+      // 이 조기 반환이 서면 **1b 전체가 무력**이다 — 래치도 창 축소도 안 돌고,
+      // 그래서 2a 재착석이 애초에 존재하지 않게 된다. 소비자가 이 prop 을 안 넘기면
+      // 조용히 그렇게 되므로(optional prop) 그 사실을 말하게 한다.
+      livePerfLog('viewport_source_key', { code, timeframe, reason: 'prop_undefined' });
+      return;
+    }
+    // **래치 자체의 관측** — 2a 의 반려 로그는 이 래치가 선 뒤에만 찍히므로, 래치가
+    // 애초에 안 서면 재착석 계열 전체가 완전 침묵이다. 그 침묵이 "재착석이 실패했다"
+    // 로 오독되면 엉뚱한 곳을 고치게 된다. 키가 실제로 갈렸는지를 값으로 남긴다.
+    if (prevSourceKeyRef.current !== candleSourceKey) {
+      livePerfLog('viewport_source_key', {
+        code,
+        timeframe,
+        prev: prevSourceKeyRef.current,
+        next: candleSourceKey,
+        latched: prevSourceKeyRef.current !== null,
+      });
+    }
     if (prevSourceKeyRef.current !== null && prevSourceKeyRef.current !== candleSourceKey) {
       swapPendingRef.current = true;
       if (chart && axis.segments.length > 0 && canTriggerBackfill()) {
@@ -445,7 +525,10 @@ export function useViewportBackfill({
     const ts = chart.timeScale();
     const candles = bundle.candles;
     /** 소스 스왑 재착석 — 적용했으면 true(호출자가 리포지셔너를 건너뛴다). */
-    function reseatAfterSourceSwap(snap: NonNullable<typeof preSwapRef.current>): boolean {
+    function reseatAfterSourceSwap(
+      snap: NonNullable<typeof preSwapRef.current>,
+      opts?: { restoreIntent?: boolean },
+    ): boolean {
       const totalBars = candles.length;
       try {
         const latestIdx = ts.timeToIndex(
@@ -472,7 +555,72 @@ export function useViewportBackfill({
           ),
           savedRightPaddingBars: snap.rightPaddingBars,
         });
+        const anchorOutside = snap.refMs < candles[0].ts_ms;
+        const spBefore = ts.scrollPosition();
         ts.setVisibleLogicalRange(target);
+        // **내구화** — range set 만으로는 lwc 내부 scrollPosition(마지막 봉 기준
+        // 오른쪽 오프셋)이 갱신되지 않아, 다음 setData 재앵커가 직전 오프셋으로
+        // 화면을 되돌린다(2026-08-25 실측: 재착석 223ms 뒤 lwc 가 토글 전 span 을
+        // 재적용했고, 그 덮인 화면을 후속 재투영이 고정해 [-2040,1083] 허공으로
+        // 갔다. set 직후 scrollPosition() 이 여전히 옛값 3534 였던 오전 실측이
+        // 같은 근거다). scrollToPosition 이 그 내부 상태를 바꾸는 유일한 경로다 —
+        // 단위는 (오른쪽 끝 논리 인덱스 − 마지막 봉 인덱스).
+        ts.scrollToPosition(target.to - latestIdx, false);
+        // **관측** — 이 표면은 여섯 번 다시 고쳐졌고(#1576~#1581 · #1583), 매번
+        // "발화했는데 되돌려졌나 / 애초에 발화를 안 했나" 를 브라우저에서 가르지
+        // 못한 것이 재작업의 원인이었다. `spBefore`→`spAfter` 가 그 둘을 가른다:
+        // 값이 안 바뀌었으면 set 이 안 먹은 것이고, 바뀐 뒤 나중에 되돌아왔으면
+        // 후속 setData 재앵커다(#1581 의 실패 서명).
+        //
+        // `anchorOut` 은 **다른 갈래**를 연다 — 스왑 전 위치가 새 소스의 데이터
+        // 범위 밖이면(디스크→벤더는 250일 벽이 있어 흔하다) 재착석의 목표 자체가
+        // 없고, lwc 가 가장 가까운 봉으로 클램프해 화면이 **크게 점프한다.**
+        //
+        // ⚠ `timeToIndex(x, true)` 로는 이 판정을 못 한다 — 그 함수가 이미 클램프된
+        // 인덱스를 돌려주므로 결과는 항상 유한하고, 종전 판정(`!isFinite(rawAnchor)`)
+        // 은 **언제나 false** 였다. 2026-08-26 실측: 팬 위치 −23,880바에서 토글 OFF 하니
+        // `target from=0 · total=12757`(벤더 250일치)로 클램프됐는데 그때도
+        // `anchorOut=false` 였다. 원본 시각을 **첫 봉과 직접 비교**해야 한다.
+        livePerfLog('viewport_reseat', {
+          code,
+          timeframe,
+          kind: 'source_swap',
+          d: `from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} anchorOut=${anchorOutside} total=${totalBars} snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} latest=${Math.round(latestIdx)}`,
+        });
+        if (anchorOutside && !snap.atLiveEdge) {
+          // **강제 착지** — 사용자의 앵커를 보관하고, 옮겨졌음을 화면이 말하게 한다.
+          // 보관하는 것은 `snap`(지금 앉히려던 앵커)이다: 복원 시도가 창 축소 등으로
+          // 다시 여기 떨어져도 **원래 앵커가 자기 유지**된다.
+          const landedBar = candles[Math.min(totalBars - 1, Math.max(0, Math.round(target.to) - 1))];
+          forcedSwapRef.current = { snap, landedRefMs: landedBar.ts_ms };
+          swapNoticeSeqRef.current += 1;
+          setSourceSwapClampNotice({
+            boundaryYmd: realMsToYyyymmdd(candles[0].ts_ms),
+            seq: swapNoticeSeqRef.current,
+          });
+          // **복원 의도가 확인된 착지라면**(pick 이 forced 를 골랐다) 여기서 멈추지
+          // 않는다 — 창 축소가 앵커를 밀어낸 것이니 창을 앵커까지 다시 넓히고 대기를
+          // 세운다(#1614 의 「pick 이 이겨도 창이 지면 진다」 그 자리). 확장은 사용자
+          // 의도(토글-백 + 안 움직임) 확인 뒤라 투기가 아니다. 바닥 밖이면 세우지
+          // 않는다 — 어떤 워크백도 못 덮는 대기는 거짓 약속이다.
+          if (opts?.restoreIntent) {
+            const anchorYmd = realMsToYyyymmdd(snap.refMs);
+            const floorYmd = minuteScrollbackFloorDate;
+            if (floorYmd === null || anchorYmd >= floorYmd) {
+              pendingRestoreRef.current = { snap, landedRefMs: landedBar.ts_ms, anchorYmd };
+              historicalRange.extend(anchorYmd);
+              livePerfLog('viewport_restore', {
+                code, timeframe, phase: 'armed',
+                d: `anchor=${anchorYmd} floor=${floorYmd ?? 'null'}`,
+              });
+            } else {
+              livePerfLog('viewport_restore', {
+                code, timeframe, phase: 'cancel_floor',
+                d: `anchor=${anchorYmd} floor=${floorYmd ?? 'null'}`,
+              });
+            }
+          }
+        }
         return true;
       } catch (e) {
         // 차트가 effect 사이에 사라진 경우. 조용한 no-op 이 "아직 안 고쳐졌다" 로
@@ -511,7 +659,106 @@ export function useViewportBackfill({
       && canTriggerBackfill()
     ) {
       swapPendingRef.current = false;
-      if (snap && reseatAfterSourceSwap(snap)) return;
+      // **앵커 선택** — 직전 스왑이 강제 클램프였고 사용자가 착지점에서 안 움직였다면
+      // fresh(= 클램프 착지) 대신 보관된 원래 앵커로 앉는다(왕복 복원). 판별과 근거는
+      // `pickSwapAnchor` 커널 도크스트링. 보관분은 여기서 무조건 비운다 — 재착석이
+      // 다시 anchorOut 이면 스스로 재보관하므로(위 강제 착지 절) 실패에도 자기 유지된다.
+      // 새 스왑은 이전 복원 대기를 무효화한다 — 이 스왑의 pick 이 다시 판단한다.
+      pendingRestoreRef.current = null;
+      const forced = forcedSwapRef.current;
+      forcedSwapRef.current = null;
+      let chosenSnap = snap;
+      let restoreIntent = false;
+      if (snap && forced && chart) {
+        let freshIdx: number | null = null;
+        let landedIdx: number | null = null;
+        try {
+          const tsPick = chart.timeScale();
+          const f = tsPick.timeToIndex(realMsToVirtualSeconds(axis, snap.refMs) as Time, true);
+          const l = tsPick.timeToIndex(realMsToVirtualSeconds(axis, forced.landedRefMs) as Time, true);
+          if (typeof f === 'number' && Number.isFinite(f)) freshIdx = f;
+          if (typeof l === 'number' && Number.isFinite(l)) landedIdx = l;
+        } catch { /* 검증 불가 → fresh (커널이 보수 방향을 쥔다) */ }
+        const choice = pickSwapAnchor({
+          hasForced: true,
+          freshAtLiveEdge: snap.atLiveEdge,
+          freshIdx,
+          landedIdx,
+          spanBars: snap.toLogical - snap.fromLogical,
+        });
+        if (choice === 'forced') { chosenSnap = forced.snap; restoreIntent = true; }
+        livePerfLog('viewport_reseat_pick', {
+          code, timeframe, choice,
+          d: `freshIdx=${freshIdx === null ? 'null' : Math.round(freshIdx)} landedIdx=${landedIdx === null ? 'null' : Math.round(landedIdx)} span=${Math.round(snap.toLogical - snap.fromLogical)} liveEdge=${snap.atLiveEdge}`,
+        });
+      }
+      if (chosenSnap && reseatAfterSourceSwap(chosenSnap, { restoreIntent })) return;
+      // 스냅샷이 없거나 재착석이 스스로 포기한 경우. 여기까지 왔다는 것은 래치는
+      // 옳게 섰는데 **실행이 안 됐다**는 뜻이라, 아래 반려 로그와 사유가 다르다.
+      livePerfLog('viewport_reseat_skip', {
+        code, timeframe, kind: 'source_swap', reason: snap ? 'reseat_returned_false' : 'no_snapshot',
+      });
+    } else if (swapPendingRef.current && isMinute) {
+      // **반려 사유를 말한다.** 2a 는 게이트 넷을 모두 통과해야 발화하는데, 종전에는
+      // 어디서 떨어졌는지 알 길이 없어 "안 고쳐졌다" 와 "발화 조건이 아니었다" 가
+      // 구별되지 않았다 — #1597 에서 배운 규율(반려 경로가 로그 이전이면 완전 침묵)을
+      // 이 표면에 적용한다. 래치가 선 커밋에서만 찍으므로 상시 소음이 아니다.
+      livePerfLog('viewport_reseat_skip', {
+        code,
+        timeframe,
+        kind: 'source_swap',
+        reason: prevIdentity === null
+          ? 'no_prev_identity'
+          : identity === prevIdentity
+            ? 'identity_unchanged'
+            : 'initial_view_pending',
+      });
+    }
+
+    // 2a'. **복원 대기의 처분** — 스왑이 아닌 커밋마다, 세워 둔 복원이 앉을 수 있는지
+    // 본다. 판정 셋은 `planRestoreSeat` 커널(창이 앵커를 덮으면 seat — 캔들 도착이
+    // 아니라 **창 기준**인 이유는 그 도크스트링). 여기 오기 전에 사용자 이동을 먼저
+    // 가른다: 착지점에서 화면 폭 이상 멀어졌으면 사용자가 개입한 것이라 대기를 버린다
+    // — 복원이 드래그를 되돌리면 안 된다(2b/2d 의 「사용자 입력이 이긴다」와 같은 규율).
+    const pendingRestore = pendingRestoreRef.current;
+    if (pendingRestore && isMinute && snap && canTriggerBackfill()) {
+      let moved = false;
+      try {
+        const tsr = chart.timeScale();
+        const f = tsr.timeToIndex(realMsToVirtualSeconds(axis, snap.refMs) as Time, true);
+        const l = tsr.timeToIndex(
+          realMsToVirtualSeconds(axis, pendingRestore.landedRefMs) as Time, true,
+        );
+        if (
+          typeof f === 'number' && Number.isFinite(f)
+          && typeof l === 'number' && Number.isFinite(l)
+        ) {
+          moved = Math.abs(f - l) > snap.toLogical - snap.fromLogical;
+        }
+      } catch { /* 판정 불가 → 안 움직인 것으로 두고 창 판정으로 진행 */ }
+      if (moved) {
+        pendingRestoreRef.current = null;
+        livePerfLog('viewport_restore', { code, timeframe, phase: 'cancel_moved' });
+      } else {
+        const plan = planRestoreSeat({
+          anchorYmd: pendingRestore.anchorYmd,
+          floorYmd: minuteScrollbackFloorDate,
+          historicalFromDate: historicalRange.snapshot().historicalFromDate,
+        });
+        if (plan === 'cancel_floor') {
+          pendingRestoreRef.current = null;
+          livePerfLog('viewport_restore', { code, timeframe, phase: 'cancel_floor' });
+        } else if (plan === 'seat') {
+          // 처분은 **터미널**이다 — 착석이 앵커 옆 구멍 클램프로 끝나도 대기를 다시
+          // 세우지 않는다(restoreIntent 미전달). 재시도 루프가 이 표면의 적이다.
+          pendingRestoreRef.current = null;
+          const seated = reseatAfterSourceSwap(pendingRestore.snap);
+          livePerfLog('viewport_restore', {
+            code, timeframe, phase: seated ? 'seated' : 'seat_failed',
+          });
+          if (seated) return;
+        }
+      }
     }
 
     if (prevEarliest === null || newEarliest === null) return;
@@ -522,11 +769,12 @@ export function useViewportBackfill({
     // 2026-08-24 사용자 보고가 이것이었다(010140 06-15~08-24 구간의 디스크 구멍 16일:
     // 06-15~07-02 연속 13일 + 07-17 + 08-17). 보충일마다 반복되므로 누적된다.
     //
-    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 넷이 개수만 보면 구별되지 않는다:
-    //   프리펜드   firstMs 과거로 · lastMs 불변 · count 증가  → 아래 경로가 처리
-    //   중간 삽입  firstMs 불변  · lastMs 불변 · count 증가  → 여기
-    //   SSE 성장   firstMs 불변  · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
-    //   좌측 트림  firstMs 미래로 · lastMs 불변 · count 감소  → isLeftTrim(아래)
+    // 프리펜드 게이트와 **다른 판별식**이 필요하다. 다섯이 개수만 보면 구별되지 않는다:
+    //   프리펜드     firstMs 과거로 · lastMs 불변 · count 증가  → 아래 경로가 처리
+    //   중간 삽입    firstMs 불변  · lastMs 불변 · count 증가  → 여기
+    //   SSE 성장     firstMs 불변  · lastMs 변함 · count 증가  → 손대지 않는다(lwc 가 우측 핀)
+    //   좌측 트림    firstMs 미래로 · lastMs 불변 · count 감소  → isLeftTrim(아래)
+    //   유니온 재매핑 firstMs·lastMs·count 전부 불변            → isUnionRemap(아래)
     //
     // `historicalFromDate` 게이트를 우회하는 것이 안전한 이유: 중간 삽입은 **좌단을
     // 건드리지 않아** 3b 의 좌측-팬 판정을 새로 만들지 않는다. #1566 에서 겪은 백필
@@ -569,6 +817,28 @@ export function useViewportBackfill({
       && shape.lastMs === prevShape.lastMs
       && shape.count < prevShape.count;
 
+    // 2d. **유니온 재매핑** — 캔들은 그대로인데 공유 timeScale 의 다른 기여자(호가·
+    // 사이드카 지표 포인트)가 들어오거나 빠져 **union 인덱스만 통째로 밀리는** 커밋.
+    // 소스 토글 직후가 그 진원이다: 웜 병합본이 잠깐 서빙됐다 창 트림으로 되잘리며
+    // 지표 포인트 수천 개가 출렁이는데, 캔들 모양(firstMs·lastMs·count)은 불변이라
+    // 위 네 행이 모두 눈멀었다 — 2026-08-25 사용자 실측(034020 5m 장중): 창 축소·
+    // 스왑 홀드·재착석이 전부 정상 발동하고도 최종 뷰포트가 데이터 밖에 좌초했다.
+    //
+    // 판별식이 성긴 것("전부 불변")이 안전한 이유는 **재투영이 자기 게이트를 갖기
+    // 때문**이다: 아래 경로는 shift = newIdx - refIdx 를 재고 EPSILON 안이면 아무
+    // 것도 하지 않는다. 즉 이 행이 여는 것은 "매 캔들-불변 커밋마다 timeToIndex 로
+    // 이동량을 재 본다"까지이고, 실제 set 은 유니온이 정말 밀렸을 때만 나간다
+    // (SSE 시세 틱은 lastMs 가 움직여 애초에 이 행이 아니고, 지표-불변 ref churn 은
+    // shift 0 으로 스킵된다 — 둘 다 테스트가 못박는다).
+    //
+    // 게이트 우회가 안전한 근거는 중간 삽입(2b)과 같다: 같은 봉을 고정하는 재투영은
+    // 좌단을 데이터 최좌단에 다시 붙이는 방향이 아니라 #1566 되먹임을 만들지 않는다.
+    const isUnionRemap =
+      prevShape !== null
+      && shape.firstMs === prevShape.firstMs
+      && shape.lastMs === prevShape.lastMs
+      && shape.count === prevShape.count;
+
     // ⚠ **이 게이트를 분봉에서 풀지 말 것 — 2026-08-24 에 풀었다가 되돌렸다.**
     //
     // 동기는 타당했다: `historicalFromDate` 는 "좌측 팬을 한 적이 있다" 는 뜻인데
@@ -581,11 +851,60 @@ export function useViewportBackfill({
     // 붙으므로 그 판정이 매번 참이 되고, 디스크 모드엔 250일 벽이 없어 멈출 것이
     // 없다. 즉 "보정" 이 "요청" 을 낳는 되먹임이다 — 프리펜드가 사용자 팬에서 오는
     // 종전 경로에는 이 되먹임이 없다(팬이 이미 그 요청의 원인이므로).
-    if (!isMidInsert && !isLeftTrim) {
-      if (historicalRange.snapshot().historicalFromDate === null) return;
-      if (newEarliest >= prevEarliest) return;
+    // **이 커밋이 어떤 변이였나를 값으로 남긴다** (2026-08-26 계측).
+    //
+    // 판별식 표(2b/2c/2d + 프리펜드)는 firstMs·lastMs·count 세 축의 **조합**으로
+    // 서는데, 표에 없는 조합이 오면 조용히 기본 프리펜드 경로로 떨어진다. 실측된
+    // 예가 「프리펜드 + 우측 SSE 성장 동시」(firstMs 과거로 **그리고** lastMs 변함)로,
+    // 이때 sp 이동량(438)이 shift(391)와 어긋났다. 세 델타를 직접 찍어 두면 그
+    // 조합이 로그에서 바로 읽힌다 — 지금까지는 shift 하나로 역산해야 했다.
+    const dFirst = prevShape ? shape.firstMs - prevShape.firstMs : null;
+    const dLast = prevShape ? shape.lastMs - prevShape.lastMs : null;
+    const dCount = prevShape ? shape.count - prevShape.count : null;
+    const mutation = `dFirst=${dFirst} dLast=${dLast} dCount=${dCount}`;
+    /** 반려도 로그한다 — 반려 경로가 침묵이면 「보정이 틀렸다」와 「보정이 아예 안
+     *  돌았다」가 구별되지 않는다(2a 가 #1597 에서 배운 것과 같은 규율). */
+    //
+    // ⚠ **사유도 `d` 안에 넣는다.** 브라우저 console 은 객체 payload 를 앞쪽 **4 필드**
+    // 까지만 보여 준다(2026-08-26 실측: `code/timeframe/kind/reason` 이 차지하자
+    // `d` 가 통째로 사라졌다). 값이 안 읽히는 계측은 계측이 아니다.
+    const skip = (reason: string, extra = '') => {
+      livePerfLog('viewport_reseat_skip', {
+        code,
+        timeframe,
+        kind: 'prepend_family',
+        d: `reason=${reason} ${mutation}${extra}`,
+      });
+    };
+    if (!isMidInsert && !isLeftTrim && !isUnionRemap) {
+      if (historicalRange.snapshot().historicalFromDate === null) {
+        skip('no_historical_from');
+        return;
+      }
+      if (newEarliest >= prevEarliest) {
+        skip('not_leftward');
+        return;
+      }
     }
-    if (!snap) return;
+    if (!snap) {
+      skip('no_snapshot');
+      return;
+    }
+    // **고정할 봉이 화면에 없으면 고정하지 않는다.** 좌팬으로 데이터 왼쪽 밖까지
+    // 나간 화면은 거의 전부 whitespace 라, 이 재투영의 계약("사용자가 보던 봉을
+    // 고정")이 성립할 대상 자체가 없다. 그때 재투영이 실제로 하는 일은 **좌팬이
+    // 불러온 데이터를 건너뛰고 화면을 미래로 되돌리는 것**이다 — 판정 근거와 사용자
+    // 로그는 `viewportHasReprojectableAnchor` 도크스트링에 있다.
+    //
+    // 건너뛰면 lwc 의 setData 재앵커가 남아 프리펜드된 봉이 왼쪽 whitespace 를 채우고,
+    // 화면이 데이터를 되찾으면 비율이 문턱을 넘어 재투영이 저절로 다시 켜진다.
+    if (!viewportHasReprojectableAnchor(snap.fromLogical, snap.toLogical)) {
+      skip(
+        'viewport_mostly_whitespace',
+        ` snapFrom=${Math.round(snap.fromLogical)} snapTo=${Math.round(snap.toLogical)} refIdx=${Math.round(snap.refIdx)}`,
+      );
+      return;
+    }
     try {
       // Reproject the snapshot's right-edge bar through the rebuilt axis. Its
       // union index moved by exactly the number of points inserted ahead of it;
@@ -594,8 +913,35 @@ export function useViewportBackfill({
       // toReal→toVirtual round-trip can land a hair off a bar boundary.
       const refVirtual = Math.round(axis.toVirtual(snap.refMs) / 1000);
       const newIdx = ts.timeToIndex(refVirtual as Time, true);
-      if (newIdx === null) return;
+      if (newIdx === null) {
+        skip('no_new_index');
+        return;
+      }
       const shift = newIdx - snap.refIdx;
+      // 앵커가 **실제 봉 위**였나. `timeToIndex(x, true)` 는 findNearest 라 빈 자리도
+      // 유한한 인덱스를 돌려주므로, 그 값만으로는 「봉을 짚었다」와 「가장 가까운 봉으로
+      // 접혔다」가 구별되지 않는다 — 2a 가 `anchorOut` 을 원본 시각 비교로 재는 것과
+      // 같은 이유다(그 도크스트링의 ⚠ 절). false 인자가 그 구별을 준다.
+      const anchorOnBar = ts.timeToIndex(refVirtual as Time, false) !== null;
+      // **축이 안 움직였으면 보정할 것이 없다 — 사용자 입력이 이긴다.**
+      //
+      // shift 는 "기준 봉의 union 인덱스가 이 커밋에서 얼마나 밀렸나" 다. 0 이면
+      // 좌표계가 그대로라는 뜻이고, 그때 스냅샷과 현재 위치의 차이는 **전부 사용자가
+      // 만든 것**이다(드래그·휠). 그걸 스냅샷으로 되돌리면 입력을 취소하게 된다.
+      //
+      // 아래 EPSILON 게이트로는 못 거른다 — 그 비교는 「lwc 가 알아서 제자리를 지켰다」와
+      // 「사용자가 그 사이 움직였다」를 **구별하지 못한다**(둘 다 target 과 cur 이 다를
+      // 뿐이다). 스냅샷은 레이아웃 단계, 이 effect 는 passive 단계라 그 사이에 프레임이
+      // 뜨고, 드래그 중이면 사용자는 이미 움직인 뒤다.
+      //
+      // 2026-08-25 사용자 보고가 이것이었다: 드래그로 스크롤하면 차트가 좌우로 흔들린다.
+      // SSE 틱은 마지막 봉 값만 갱신해 캔들 모양이 불변이라 `isUnionRemap` 행에 걸려
+      // 이 경로를 **매 틱** 타는데(그전엔 진짜 프리펜드에서만 탔다), 그때마다 드래그를
+      // 스냅샷 위치로 되돌려 진동이 됐다.
+      if (shift === 0) {
+        skip('shift_zero', ` refIdx=${Math.round(snap.refIdx)} newIdx=${Math.round(newIdx)} onBar=${anchorOnBar}`);
+        return;
+      }
       const target = { from: snap.fromLogical + shift, to: snap.toLogical + shift };
       // Live-edge case (①): lwc preserved the view on its own — re-setting the
       // same range would only risk a redundant repaint. Skip within tolerance.
@@ -605,9 +951,54 @@ export function useViewportBackfill({
         Math.abs(cur.from - target.from) < REPOSITION_EPSILON &&
         Math.abs(cur.to - target.to) < REPOSITION_EPSILON
       ) {
+        skip('already_seated', ` shift=${Math.round(shift)}`);
         return;
       }
+      const spBefore = ts.scrollPosition();
+      // **직전 보정이 앉힌 자리가 이 커밋까지 살아남았나.** 살아남았으면 spBefore 는
+      // 그 값이고, 그 사이 setData 재앵커가 덮었으면 다르다 — 그 차이가 #1581 계열의
+      // 직접 증거다. 지금까지는 `spA` 로 재려 했는데 set 직후 읽기가 한 프레임 늦어
+      // 항상 옛값이었고, 그래서 「덮였다」가 한 번도 값으로 잡히지 않았다.
+      const seatDrift = lastSeatedSpRef.current === null
+        ? null
+        : Math.round(spBefore - lastSeatedSpRef.current);
       ts.setVisibleLogicalRange(target);
+      // **내구화** — range set 은 lwc 내부 scrollPosition(마지막 봉 기준 오른쪽
+      // 오프셋)을 갱신하지 않아, 다음 setData 재앵커가 직전 오프셋으로 화면을
+      // 되돌린다(근거·실측은 `reseatAfterSourceSwap` 의 같은 주석). 재투영이 앉힌
+      // 자리를 내부 상태에도 새겨 고정이 커밋을 넘어 살아남게 한다.
+      const lastIdx = ts.timeToIndex(
+        realMsToVirtualSeconds(axis, candles[candles.length - 1].ts_ms) as Time,
+        true,
+      );
+      if (typeof lastIdx === 'number' && Number.isFinite(lastIdx)) {
+        ts.scrollToPosition(target.to - lastIdx, false);
+        lastSeatedSpRef.current = target.to - lastIdx;
+      } else {
+        lastSeatedSpRef.current = null;
+      }
+      // 어느 행이 이 재투영을 열었는지까지 남긴다 — 판별식 표(2b/2c/2d + 프리펜드)의
+      // 어느 줄이 실제로 작동했는지는 지금까지 추측이었고, 그 추측이 이 표면의
+      // 재작업을 낳았다. `shift` 가 곧 "축이 얼마나 밀렸나" 이므로 값이 이상하면
+      // 그 자체가 진단이다.
+      livePerfLog('viewport_reseat', {
+        code,
+        timeframe,
+        kind: isMidInsert ? 'mid_insert' : isLeftTrim ? 'left_trim' : isUnionRemap ? 'union_remap' : 'prepend',
+        // ⚠ **한 문자열로 싣는다.** 브라우저 console 이 객체 payload 를 앞쪽 몇 필드에서
+        // 잘라 버려(2026-08-26 실측: `from` 다음이 통째로 사라졌다) 정작 진단에 쓰는
+        // 값들이 안 보였다. 이 표면의 관측은 "읽히는 형태" 까지가 요구사항이다.
+        // ⚠ **한 문자열로 싣는다.** 브라우저 console 이 객체 payload 를 앞쪽 몇
+        // 필드에서 잘라(2026-08-26 실측) 정작 진단에 쓰는 값이 안 보였다.
+        //
+        // 읽는 법(2026-08-26 계측 추가분):
+        //  - `seatDrift`  직전 보정이 앉힌 자리가 이 커밋까지 살아남았나. 0 이 아니면
+        //                 그 사이 setData 재앵커가 덮은 것이다(#1581 계열).
+        //  - `dFirst/dLast/dCount`  이 커밋의 변이. **dFirst≠0 이면서 dLast≠0** 이면
+        //                 판별식 표에 없는 조합(프리펜드+우측 성장 동시)이다.
+        //  - `onBar`      앵커가 실제 봉 위였나. false 면 shift 가 클램프값끼리의 차다.
+        d: `shift=${Math.round(shift)} from=${Math.round(target.from)} to=${Math.round(target.to)} spB=${Math.round(spBefore)} spA=${Math.round(ts.scrollPosition())} seatDrift=${seatDrift} refIdx=${Math.round(snap.refIdx)} newIdx=${Math.round(newIdx)} onBar=${anchorOnBar} ${mutation}`,
+      });
     } catch (e) {
       // Reachable in practice only when the chart tears down between effect
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
@@ -782,7 +1173,15 @@ export function useViewportBackfill({
           //
           // 확장 판정 **뒤**에 두는 것이 요점이다 — 앞에 두면 같은 이벤트에서 자르고
           // 곧바로 늘리는 왕복이 가능해진다.
-          const leftDate = readViewportLeftDate(chart, axis);
+          // **복원 대기 중에는 축소를 멈춘다.** 복원 확장(깊은 창)과 이 축소가 만나면
+          // 확장↔축소 진동이다 — `planViewportContraction` 의 히스테리시스(트리거
+          // 3스텝)는 증분 확장 ≤2스텝을 전제한 3-상수 불변식이라, 복원용 ~8스텝
+          // 확장을 원리적으로 못 지킨다(#1614 실측 「pick 이 이겨도 창이 지면 진다」의
+          // 창이 지는 경로가 정확히 이 축소다). 대기는 다섯 경로로 반드시 풀리므로
+          // (armed 주석) 이 정지는 유계다.
+          const leftDate = pendingRestoreRef.current === null
+            ? readViewportLeftDate(chart, axis)
+            : null;
           const contractTo = leftDate
             ? planViewportContraction(cur, leftDate, timeframe)
             : null;
@@ -925,10 +1324,10 @@ export function useViewportBackfill({
   // 워크백을 넘긴다**. `coverage_gap` kind 를 그대로 쓰는 이유는 종료 조건이 정확히
   // 같기 때문이다 — 요청 창이 목표 날짜에 닿으면 `planFillStep` 이 stop 한다.
   //
-  // 소스가 둘인 것은 **같은 실패를 공유하기 때문**이다. 저장뷰 적용도 점프도 팬을
-  // 만들지 않아 3b 가 침묵하고, 단발 `extend` 로는 한 청크에서 멎는다. 목표는 둘 중
-  // **더 과거**다 — 저장뷰를 연 채로 점프하면 두 구간이 모두 필요하고, 목표를 하나만
-  // 두면 나머지가 영영 안 채워진다.
+  // ⚠ **기간 점프는 더 이상 이 경로를 타지 않는다.** 종전엔 점프도 「팬 없는 순간
+  // 이동」이라 같은 소스였는데, 지금은 창의 **우단**을 목적지로 옮겨(`asOfDate`)
+  // 첫 요청이 곧바로 그 구간으로 나간다 — 워크백할 거리가 애초에 없다. 저장뷰는
+  // 시작일을 고정하는 다른 축이라 이 경로가 그대로 필요하다.
   //
   // ⚠ **단발 `extend` 로는 안 된다.** 그건 `historicalFromDate` 를 한 번 세팅할 뿐이라
   // 백엔드가 한 청크만 주고 끝나고, `fillKind` 가 null 이라 3a 가 이어받지 못한다.
@@ -936,10 +1335,8 @@ export function useViewportBackfill({
   //
   // 요청이 바뀌면 다시 판정한다(키가 두 날짜의 쌍) — 1회 마킹인 3c 와 다른 점이고,
   // 다른 저장뷰를 열거나 다른 날로 점프하면 그 구간까지 다시 채워야 하므로 그래야 한다.
-  const spotTargetFromDate = [savedRangeFromDate, jumpFromDate]
-    .filter((d): d is string => d !== null)
-    .reduce<string | null>((acc, d) => (acc === null || d < acc ? d : acc), null);
-  const spotTargetKey = `${savedRangeFromDate ?? ''}|${jumpFromDate ?? ''}`;
+  const spotTargetFromDate = savedRangeFromDate;
+  const spotTargetKey = savedRangeFromDate ?? '';
   useEffect(() => {
     if (spotTargetFromDate === null) {
       targetFilledForRef.current = null;
@@ -987,8 +1384,7 @@ export function useViewportBackfill({
     livePerfLog('viewport_backfill_extend', {
       code,
       timeframe,
-      // 어느 순간 이동이 이 fill 을 세웠는가 — 둘이 겹치면 목표가 더 과거인 쪽이다.
-      trigger: spotTargetFromDate === jumpFromDate ? 'timeframe_jump' : 'saved_range',
+      trigger: 'saved_range',
       from: cur,
       nextFrom: plan.nextFrom,
       coverageTarget: target,
@@ -997,5 +1393,86 @@ export function useViewportBackfill({
       candleCount: bundle.candles.length,
     });
     historicalRange.extend(plan.nextFrom);
-  }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, jumpFromDate, rangeWindowFromDate, code, historicalRange]);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, rangeWindowFromDate, code, historicalRange]);
+
+  // 3e 의 래치는 **(code, timeframe) 스코프**다. 종목이나 봉이 갈리면 다른 축의
+  // 날짜가 우연히 같아 "이미 밀었다" 로 오인될 수 있어, 경계에서 명시적으로 지운다.
+  useEffect(() => {
+    clampRecoveryStepsRef.current = 0;
+    clampLastFromRef.current = null;
+  }, [code, timeframe]);
+
+  // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.
+  //
+  // 3b 의 유일한 입력은 `subscribeVisibleLogicalRangeChange` 다. 그런데 데이터 좌단까지
+  // 팬하면 lwc 는 화면 폭만큼의 whitespace 만 허용하고 **클램프**한다 — 논리 범위가 더
+  // 변하지 않으니 이벤트가 끊기고, 그 하나에 매달린 3b 도 함께 죽는다. 화면은
+  // whitespace 100% 로 멈춘 채 남는다. 2026-08-25 실측(010140 5m hogaplay ON, 백엔드
+  // 지연 4.5s): 드래그 7회 + 60초 대기에 `viewport_backfill_*` 로그 **0줄**, 우측으로
+  // 한 화면 되돌렸다 오면 즉시 부활 — **잠김이 아니라 이벤트 고갈**이다(잠김이라면
+  // 왕복해도 안 살아난다. 그 서명은 `project-minute-backfill-warm-cache-lock`).
+  //
+  // 3c·3d 와 같은 계열이고 트리거 소스만 다르다: 저쪽은 "저장 뷰포트가 지표 커버리지
+  // 밖", "화면이 팬 없이 옮겨졌다", 이쪽은 "이벤트가 끊긴 채 화면이 비었다".
+  //
+  // **왜 그 상태가 생기나**: `planFillStep` 의 실질 종료 조건은 `stepCount >= budget`
+  // 이고, 그 예산은 트리거 순간의 whitespace 로 **추정**한다(`fillBudgetSteps`).
+  // 확장한 구간이 캡처 구멍이면 캔들이 안 늘어 추정이 빗나가고, whitespace 가 남은 채
+  // fill 이 끝난다. 원래는 다음 뷰포트 이벤트가 새 예산을 발급하는데 클램프면 그
+  // 이벤트가 영영 안 온다 — 그 발급을 여기서 대신한다.
+  //
+  // ⚠ 이것은 **탈출구지 속도 개선이 아니다.** 워크백 자체가 느려서 생기는 동결
+  // (타일당 수 초 × 스텝당 10타일)은 이 효과와 무관한 별건이다.
+  useEffect(() => {
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    const lr = chart.timeScale().getVisibleLogicalRange();
+    if (!lr) return;
+    const span = lr.to - lr.from;
+    if (span <= 0) return;
+    // 화면이 다시 채워졌으면 이 클램프 구간은 끝났다 — 래치를 되돌린다. 이 복귀가
+    // 곧 성공 신호라, 다음 구간은 온전한 상한을 새로 받는다.
+    if (lr.to - Math.max(lr.from, 0) > span * EMPTY_VIEWPORT_DATA_RATIO) {
+      clampRecoveryStepsRef.current = 0;
+      clampLastFromRef.current = null;
+      return;
+    }
+    // 좌측 클램프만 다룬다. `from >= 0` 인데 데이터가 비는 것은 우측 whitespace 쪽
+    // 이야기라 확장으로 풀 문제가 아니다.
+    if (lr.from >= 0) return;
+    if (!canTriggerBackfill()) return;
+    if (axis.segments.length === 0) return;
+    // 3b 와 같은 백프레셔 — 진행 중인 fill 의 동결된 예산을 덮어쓰지 않는다.
+    if (isExtendingRef.current || fillKindRef.current !== null) return;
+    if (clampRecoveryStepsRef.current >= MAX_CLAMP_RECOVERY_STEPS) return;
+    const cur = historicalRange.snapshot().historicalFromDate;
+    // 창이 그대로면 직전 확장이 아무 데도 못 갔다는 뜻이다(단조 감소 가드 또는 바닥).
+    // 같은 자리에서 커밋마다 다시 미는 것을 여기서 끊는다.
+    if (clampLastFromRef.current === cur) return;
+    const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
+    const steps = dispatchStepsFor(timeframe, budget);
+    const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+    clampRecoveryStepsRef.current += 1;
+    clampLastFromRef.current = cur;
+    // 나머지 워크백은 3a 가 이어받는다 — kind 가 `left_pan` 이어야 종료 조건도 같다.
+    fillKindRef.current = 'left_pan';
+    fillBudgetRef.current = budget;
+    fillCoverageTargetRef.current = null;
+    fillStepCountRef.current = steps;
+    livePerfLog('viewport_backfill_extend', {
+      code,
+      timeframe,
+      trigger: 'clamp_recovery',
+      logicalFrom: lr.from,
+      from: cur,
+      nextFrom,
+      steps,
+      stepCount: fillStepCountRef.current,
+      budget,
+      clampStep: clampRecoveryStepsRef.current,
+      candleCount: bundle.candles.length,
+    });
+    historicalRange.extend(nextFrom);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, code, historicalRange]);
+
+  return { sourceSwapClampNotice };
 }

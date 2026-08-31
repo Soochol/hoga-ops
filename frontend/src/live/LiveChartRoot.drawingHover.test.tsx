@@ -43,6 +43,7 @@ vi.mock('lightweight-charts', async () => {
         fitContent: vi.fn(),
         scrollToRealTime: vi.fn(),
         scrollToPosition: vi.fn(),
+        scrollPosition: vi.fn(() => 0),
         setVisibleLogicalRange: vi.fn(),
         getVisibleLogicalRange: vi.fn(() => null),
         getVisibleRange: vi.fn(() => null),
@@ -120,6 +121,7 @@ describe('LiveChartRoot drawing hover passthrough', () => {
         timeframe="1m"
         bundle={bundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
         onCursorActiveChange={onCursorActiveChange}
       />,

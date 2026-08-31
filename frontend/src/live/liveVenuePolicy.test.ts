@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   effectiveLiveVenue,
+  sameDeltaChain,
   initialVisibleMinuteBarsFor,
   isLiveVenueSessionNow,
   liveVenueAcceptsFrame,
   liveVenueDisplayLabel,
-  liveVenueKeepsHogaKrx,
   liveVenueRefetchInterval,
   liveVenueSessionBoundsMs,
   liveVenueSessionWindowLabel,
@@ -29,8 +29,6 @@ describe('liveVenuePolicy', () => {
       close_ms: MON_OPEN_MS + 11 * HOUR,
     });
     expect(initialVisibleMinuteBarsFor('1m', 'UN')).toBe(300);
-    expect(liveVenueKeepsHogaKrx('UN')).toBe(true);
-    expect(liveVenueKeepsHogaKrx('KRX')).toBe(false);
   });
 
   it('derives the session-window label from the same branch as the bounds', () => {
@@ -124,4 +122,12 @@ describe('liveVenuePolicy', () => {
     });
   });
 
+});
+
+describe('sameDeltaChain', () => {
+  it('allows same-venue pairs and blocks cross-venue pairs', () => {
+    expect(sameDeltaChain({ venue: 'KRX' }, { venue: 'KRX' })).toBe(true);
+    expect(sameDeltaChain({}, {})).toBe(true); // 구백엔드(무태그) = 같은 장으로 해석
+    expect(sameDeltaChain({ venue: 'KRX' }, { venue: 'NXT' })).toBe(false);
+  });
 });

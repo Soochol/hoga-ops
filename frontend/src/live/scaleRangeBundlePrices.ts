@@ -3,7 +3,7 @@
  * ## 왜 필요한가
  *
  * `/api/live/past-candles` 의 봉은 **수정주가**다(오늘 기준 계수를 곱한 값). 반면
- * `/api/range` 가 싣는 지표 — 호가 잔량 히트맵·잔량 증감·최대벽·거래량 POC·매물대 —
+ * `/api/range` 가 싣는 지표 — 호가 잔량 히트맵·최대벽·거래량 POC·매물대 —
  * 와 `/api/orderbook` 의 커서 스팟 10호가는 디스크에 캡처된 **원주가**다. 앞의 것들은
  * lightweight-charts 의 **같은 price scale** 에 그려지고(`DepthHeatmapPrimitive` 가 캔들
  * 시리즈의 `priceToCoordinate` 를 쓴다), 호가창은 같은 순간 같은 레벨을 **옆 창에 숫자로**
@@ -45,8 +45,6 @@ import type {
   BidPeak,
   Candle,
   DayVolumeDistribution,
-  DepthDeltaPointWire,
-  WallSurgeEventWire,
   DepthHeatmapPointWire,
   PriceLevelHit,
   RangeBundle,
@@ -75,7 +73,7 @@ function scalePrice(price: number, factor: number): number {
  *  #1229 실측: 분봉은 `upd=1`/`upd=0` 의 거래량이 같다).
  *
  *  이 자리가 이 파일에서 가장 놓치기 쉬운 곳이다: 가격이 **이름 없이 위치로만** 있어서
- *  `price` 로 grep 해도 안 걸린다. `depth_heatmap`/`depth_delta` 둘 다 이 형태다. */
+ *  `price` 로 grep 해도 안 걸린다. `depth_heatmap` 이 그 형태다. */
 function scaleLevels<T extends readonly [number, ...number[]]>(levels: T[], factor: number): T[] {
   return levels.map(
     (level) => [scalePrice(level[0], factor), ...level.slice(1)] as unknown as T,
@@ -141,6 +139,8 @@ function scalePeak<T extends AskPeak | BidPeak>(peak: T, factor: number): T {
     traded_record_max_peaks: rank(peak.traded_record_max_peaks),
     all_peaks: rank(peak.all_peaks),
     all_max_peaks: rank(peak.all_max_peaks),
+    unreached_price: scaleNullable(peak.unreached_price, factor),
+    unreached_peaks: rank(peak.unreached_peaks),
   };
 }
 
@@ -167,30 +167,15 @@ function scaleHeatmapPoint(
     bids: scaleLevels(point.bids, factor),
     asks_max: point.asks_max ? scaleLevels(point.asks_max, factor) : point.asks_max,
     bids_max: point.bids_max ? scaleLevels(point.bids_max, factor) : point.bids_max,
+    // 새 계열도 **가격**이라 같이 환산해야 한다 — 빠뜨리면 액면분할 종목에서 이 모드만
+    // 원가격으로 남아 캔들과 어긋난다(다른 두 계열은 멀쩡해서 더 늦게 발견된다).
+    asks_price_max: point.asks_price_max
+      ? scaleLevels(point.asks_price_max, factor)
+      : point.asks_price_max,
+    bids_price_max: point.bids_price_max
+      ? scaleLevels(point.bids_price_max, factor)
+      : point.bids_price_max,
   };
-}
-
-function scaleDeltaPoint(point: DepthDeltaPointWire, factor: number): DepthDeltaPointWire {
-  return {
-    ...point,
-    asks: scaleLevels(point.asks, factor),
-    bids: scaleLevels(point.bids, factor),
-    // `ask_tick`/`bid_tick` 도 **가격공간 값**이다(호가 단위). 이름에 `price` 가 없어
-    // 필드 목록을 눈으로 훑으면 빠뜨리기 딱 좋은 자리 — 안 곱하면 잔량 증감 셀 높이만
-    // 옛 척도로 남아 가격축과 어긋난다.
-    ask_tick: scalePrice(point.ask_tick, factor),
-    bid_tick: scalePrice(point.bid_tick, factor),
-  };
-}
-
-/** 호가벽 급증 마커. 환산 대상은 `price` **하나뿐**이다 — 잔량·증가량·체결량은
- *  수량(주식 수)이고 총잔량도 마찬가지라 척도와 무관하다(QuoteRatioPoint 와 같은 판단).
- *
- *  마커는 캔들과 **같은 가격축에 앉으므로** 이 곱셈이 빠지면 마커만 원주가 높이에
- *  찍혀 캔들과 어긋난다. 히트맵/증감과 달리 개수가 하루 수십 건이라 포인트 캐시는
- *  타지 않는다(참조 불변식이 걸린 배열도 아니다). */
-function scaleWallSurge(ev: WallSurgeEventWire, factor: number): WallSurgeEventWire {
-  return { ...ev, price: scalePrice(ev.price, factor) };
 }
 
 /** 포인트 단위 환산 캐시 — **참조 안정성이 계약이다**.
@@ -287,15 +272,11 @@ export function scaleRangeBundlePrices(
     trade_volume_pocs: bundle.trade_volume_pocs
       ? byDate(bundle.trade_volume_pocs, scalePoc)
       : bundle.trade_volume_pocs,
-    // 이 둘만 포인트 캐시를 탄다 — 하루 380개 × 날짜 수로 개수가 압도적이고, 위
-    // `_scaledPointCache` 주석의 참조 불변식이 걸린 배열도 이 둘뿐이다.
+    // 이것만 포인트 캐시를 탄다 — 하루 380개 × 날짜 수로 개수가 압도적이고, 위
+    // `_scaledPointCache` 주석의 참조 불변식이 걸린 배열도 이것뿐이다.
     depth_heatmap: bundle.depth_heatmap
       ? byTMs(bundle.depth_heatmap, (p, f) => scaleCached(p, f, scaleHeatmapPoint))
       : bundle.depth_heatmap,
-    depth_delta: bundle.depth_delta
-      ? byTMs(bundle.depth_delta, (p, f) => scaleCached(p, f, scaleDeltaPoint))
-      : bundle.depth_delta,
-    wall_surge: bundle.wall_surge ? byTMs(bundle.wall_surge, scaleWallSurge) : bundle.wall_surge,
   };
 }
 

@@ -12,6 +12,7 @@ import type {
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { rankVisiblePeakSegments } from '../live/peakWallVisibleRanking';
 import { xCoordinateOrNearest, type PeakWallLabelSide } from './PeakWallSegmentsPrimitive';
+import { ARROW_HALF_WIDTH_PX, ARROW_HEIGHT_PX, drawPeakWallArrow } from './peakWallArrowShape';
 
 /**
  * 당일 최대벽 **순위 화살표** — 보이는 영역 잔량 상위 N 개의 벽이 걸린 분봉을 캔들
@@ -21,9 +22,10 @@ import { xCoordinateOrNearest, type PeakWallLabelSide } from './PeakWallSegments
  * "그게 어느 분봉이었나" 가 눈에 안 들어온다. 이 마커만 앵커가 **캔들 극값**이라,
  * 레전드의 ①②③ 과 차트의 봉이 1:1 로 이어진다.
  *
- * ⚠ **`WallSurgeMarkersPrimitive` 의 ▼/▲ 와 같은 pane 에 공존한다.** 그쪽은 속 찬
- * 삼각형이 「호가벽 급증」을 뜻하므로, 여기서는 **축(shaft)이 있는 화살표 + 순위 숫자**
- * 로 형태를 가른다. 숫자가 결정적 구분자다 — 급증 마커에는 숫자가 없다.
+ * 형태가 **축(shaft) 있는 화살표 + 순위 숫자**인 것은 유래가 있다: 2026-08-26 까지
+ * 같은 pane 에 「호가벽 급증」의 속 찬 삼각형(▼/▲)이 공존해, 숫자를 결정적 구분자로
+ * 삼아 둘을 갈랐다. 그 지표는 제거됐지만(ADR-0162) 순위 숫자는 그대로 둔다 — 레전드
+ * ①②③ 과의 1:1 대응이 이 마커의 존재 이유이기 때문이다.
  *
  * ⚠ lwc 기본 `createSeriesMarkers` 를 쓰지 않는 이유는 `SurgeMarkersPrimitive` 주석과
  * 같다(공유 timeScale 의 logical index 를 되먹여 시리즈 길이가 다르면 통째로 밀린다).
@@ -45,12 +47,17 @@ export interface PeakWallRankArrow {
   color: string;
 }
 
-/** 캔들 극값과 화살표 끝 사이. */
+/** 캔들 극값과 화살표 끝 사이. 이 마커만 앵커에서 띄운다 — 세그먼트 쪽 화살표는 끝이
+ *  벽 가격 선에 **닿아야** "이 시각에 벽이 섰다" 가 읽힌다. */
 export const ARROW_GAP_PX = 4;
-export const ARROW_HEIGHT_PX = 11;
-export const ARROW_HEAD_HEIGHT_PX = 5;
-export const ARROW_HALF_WIDTH_PX = 3.5;
-export const ARROW_SHAFT_WIDTH_PX = 1.5;
+// 도형 상수는 `peakWallArrowShape` 가 소유한다(세그먼트 마커와 공유). 여기서 다시 내보내는
+// 것은 기존 소비처(이 파일의 테스트)를 위한 호환 통로일 뿐 — 값을 바꾸려면 그쪽을 고친다.
+export {
+  ARROW_HEIGHT_PX,
+  ARROW_HEAD_HEIGHT_PX,
+  ARROW_HALF_WIDTH_PX,
+  ARROW_SHAFT_WIDTH_PX,
+} from './peakWallArrowShape';
 /** 화살표 꼬리와 순위 숫자 사이. */
 export const RANK_GAP_PX = 2;
 export const RANK_FONT_PX = 10;
@@ -88,7 +95,13 @@ class PeakWallRankArrowsRenderer implements IPrimitivePaneRenderer {
     const timeScale = chart.timeScale();
     // 선정은 **draw 시점**이다 — 팬·줌마다 draw 가 다시 도니 별도 구독 없이 따라오고,
     // 레전드 provider 가 같은 순간의 범위를 읽으므로 둘이 다른 프레임의 상위 N 을
-    // 보일 수 없다(`WallSurgeMarkersPrimitive` 가 문서화한 같은 처방).
+    // 보일 수 없다.
+    //
+    // ⚠ 그 "상위 N" 은 **화면에 든 것 중** 상위 N 이다(원래 이 설명은 함께 있던
+    // 「호가벽 급증」마커가 들고 있었고, 그 지표가 제거되면서 여기로 옮겼다).
+    // 로드된 전 기간에서 고르면 설정한 개수와 눈에 보이는 개수가 어긋난다 —
+    // 5거래일을 로드하고 하루만 보면 상위 4건이 다른 날에 몰려 화면엔 한 개도
+    // 안 뜬다(실측). 제한하는 이유가 **화면 위 충돌**이므로 기준도 화면이어야 한다.
     const visibleRange = timeScale.getVisibleRange() as IRange<Time> | null;
     const ranked = rankVisiblePeakSegments(arrows, visibleRange, this._source.rankLimit());
     if (ranked.length === 0) return;
@@ -98,10 +111,6 @@ class PeakWallRankArrowsRenderer implements IPrimitivePaneRenderer {
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
       const gap = ARROW_GAP_PX * vr;
-      const height = ARROW_HEIGHT_PX * vr;
-      const headHeight = ARROW_HEAD_HEIGHT_PX * vr;
-      const halfW = ARROW_HALF_WIDTH_PX * hr;
-      const shaftW = Math.max(1, ARROW_SHAFT_WIDTH_PX * hr);
       const rankGap = RANK_GAP_PX * vr;
       const fontPx = RANK_FONT_PX * vr;
 
@@ -118,25 +127,15 @@ class PeakWallRankArrowsRenderer implements IPrimitivePaneRenderer {
         if (cx < 0 || cx > scope.bitmapSize.width) return;
         // 매도는 위로, 매수는 아래로. dir 하나로 두 방향을 같은 식에 태운다.
         const dir = a.side === 'ask' ? -1 : 1;
-        const tipY = anchorY + dir * gap;
-        const tailY = tipY + dir * height;
-        const headBaseY = tipY + dir * headHeight;
-
-        ctx.fillStyle = a.color;
-        ctx.strokeStyle = a.color;
-        // 축(shaft) — 급증 마커의 속 찬 삼각형과 형태를 가르는 부분.
-        ctx.lineWidth = shaftW;
-        ctx.beginPath();
-        ctx.moveTo(cx, tailY);
-        ctx.lineTo(cx, headBaseY);
-        ctx.stroke();
-        // 머리(head).
-        ctx.beginPath();
-        ctx.moveTo(cx, tipY);
-        ctx.lineTo(cx - halfW, headBaseY);
-        ctx.lineTo(cx + halfW, headBaseY);
-        ctx.closePath();
-        ctx.fill();
+        // 도형은 세그먼트 마커와 **같은 한 벌**을 쓴다(`peakWallArrowShape`).
+        const tailY = drawPeakWallArrow(ctx, {
+          cx,
+          tipY: anchorY + dir * gap,
+          dir,
+          color: a.color,
+          horizontalPixelRatio: hr,
+          verticalPixelRatio: vr,
+        });
         // 순위 숫자 — 레전드의 1/2/3 과 **같은 랭커**에서 나오므로 항상 일치한다.
         // baseline 은 텍스트 아랫변이라 매도는 꼬리 위, 매수는 꼬리 아래 한 줄.
         ctx.textBaseline = a.side === 'ask' ? 'bottom' : 'top';

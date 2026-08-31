@@ -89,3 +89,21 @@ describe('cloneWithOffset', () => {
     }
   });
 });
+
+// ── 잠금 (ADR-0164) ────────────────────────────────────────────────────────
+describe('cloneWithOffset — 잠금', () => {
+  it('복제본은 잠기지 않은 채 태어난다', () => {
+    // `{ ...d }` 를 그대로 두면 사본이 잠긴 채 원본 14px 아래에 생기고,
+    // 옮길 수도 지울 수도 없다 — 복제는 쓸 수 있는 도형을 달라는 요청이다.
+    const locked: Drawing = { id: 'h', kind: 'hline', price: 100, ...style, locked: true };
+    const clone = cloneWithOffset(locked, 0, 10);
+
+    expect(clone.locked).toBeUndefined();
+    expect(clone.id).not.toBe('h');
+  });
+
+  it('잠기지 않은 원본은 그대로 잠기지 않은 사본을 낳는다', () => {
+    const plain: Drawing = { id: 'h', kind: 'hline', price: 100, ...style };
+    expect(cloneWithOffset(plain, 0, 10).locked).toBeUndefined();
+  });
+});

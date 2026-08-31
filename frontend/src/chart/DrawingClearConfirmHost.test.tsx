@@ -59,6 +59,41 @@ describe('DrawingClearConfirmHost', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  // ── 잠금 (ADR-0164) ────────────────────────────────────────────────────
+  it('잠긴 것이 있으면 남는 개수를 함께 알린다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().add(A, mkHline('h3', 300));
+    s().update(A, 'h3', { locked: true });
+    s().requestClearAll(A);
+    render(<DrawingClearConfirmHost />);
+
+    // count 는 이미 잠긴 것을 뺀 수라, 이 문장이 없으면 "3개 그렸는데 2개라고
+    // 하네" 가 설명 없는 불일치로 읽힌다.
+    expect(screen.getByRole('dialog')).toHaveTextContent('그림 2개가 모두 삭제됩니다');
+    expect(screen.getByRole('dialog')).toHaveTextContent('잠긴 1개는 유지됩니다');
+  });
+
+  it('잠긴 것이 없으면 그 문장을 쓰지 않는다', () => {
+    s().add(A, mkHline('h1', 100));
+    s().requestClearAll(A);
+    render(<DrawingClearConfirmHost />);
+
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('유지됩니다');
+  });
+
+  it('확인을 누르면 잠긴 것만 남는다', async () => {
+    s().add(A, mkHline('h1', 100));
+    s().add(A, mkHline('h2', 200));
+    s().update(A, 'h2', { locked: true });
+    s().requestClearAll(A);
+    render(<DrawingClearConfirmHost />);
+
+    await userEvent.click(screen.getByRole('button', { name: '모두 지우기' }));
+
+    expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h2']);
+  });
+
   // ModalShell 의 Escape·백드롭 계약이 이 호스트에도 걸려 있는지 — 취소와 같은
   // 경로여야 한다(파괴적 액션이 실수로 확정되면 안 된다).
   it('Escape 로 닫아도 취소로 동작한다', async () => {

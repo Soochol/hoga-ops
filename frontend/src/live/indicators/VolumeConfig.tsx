@@ -7,12 +7,6 @@ import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 export default function VolumeConfig() {
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        거래량 <span aria-hidden="true" className="text-fg-dim text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        해당 봉 동안 체결된 거래량을 막대로 표시합니다.
-      </p>
       <SignColorLegend up="상승봉" down="하락봉" />
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows toggleKeys={['volumeFillStrengthCumulative']} />

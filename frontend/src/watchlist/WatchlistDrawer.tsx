@@ -385,7 +385,14 @@ function SortableGroup({ folderId, children }: {
     <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`}
       style={{
         transform: CSS.Transform.toString(transform), transition,
-        ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 1 } : {}),
+        // zIndex 는 **이웃 그룹의 sticky 헤더보다 위**여야 한다. 비드래그 그룹 div 는
+        // `position: static / z-index: auto` 라 스태킹 컨텍스트를 만들지 않고, 그 헤더의
+        // `z-10`(메뉴 열림 시 `z-20`)이 루트 스태킹에 그대로 올라온다. 예전 값 `1` 은
+        // 거기 깔려서, 끌던 블록이 지나가는 그룹 헤더 **밑으로** 미끄러졌다(실측:
+        // 드래그 블록 z-index 1 vs 이웃 헤더 computed z-index 10). 30 은 헤더의 두 값
+        // 위이자 헤더 내부 메뉴(`z-30`, 헤더가 만든 스태킹 컨텍스트 안이라 지역값)와
+        // 겹치지 않는 루트 레벨 값이다.
+        ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 30 } : {}),
       }}>
       {children({ listeners, attributes, setActivatorNodeRef })}
     </div>
@@ -425,6 +432,29 @@ function GroupDropZone({ folderId, children }: {
       {children}
     </div>
   );
+}
+
+/**
+ * 그룹 드래그 중 전 그룹을 접어 렌더할 때(`folderDragActive`) 드롭 타깃 rect 를 다시
+ * 재게 한다. `<DndContext>` **안에서만** 의미가 있다.
+ *
+ * dnd-kit 은 드래그 시작 시 droppable rect 를 한 번 재고, 그 뒤에는 등록된 컨테이너
+ * 집합이 바뀔 때 다시 잰다. 접기는 종목 행(=droppable)을 언마운트하므로 **대개는** 그
+ * 재측정이 저절로 걸린다 — 하지만 그건 라이브러리 내부 메모 무효화에 기댄 암묵적
+ * 보장이고, "모든 그룹이 이미 접혀 있던" 경우엔 언마운트할 행이 없어 걸리지도 않는다.
+ * 접힘 **전** rect 로 충돌을 재면 겨냥과 착지가 갈리므로 여기서 한 번 더 명시 요청한다.
+ *
+ * 전역 `MeasuringStrategy.Always` 를 쓰지 않은 이유: 그 설정은 드래그 중이 아닐 때도
+ * 1초마다 전 droppable 을 다시 재서, 패널이 열려 있는 내내 수십 번의 강제 레이아웃을
+ * 낸다. 여기 필요한 것은 "접히는 그 순간 한 번"뿐이다.
+ */
+function RemeasureOnCollapse({ active }: { active: boolean }) {
+  const { measureDroppableContainers } = useDndContext();
+  useLayoutEffect(() => {
+    if (!active) return;
+    measureDroppableContainers([]);   // 빈 배열 = 전부 다시 재기
+  }, [active, measureDroppableContainers]);
+  return null;
 }
 
 /** 패널 종목 행 — dnd transform/ref는 행에 두고, listeners는 종목명 왼쪽 핸들에만 둔다.
@@ -542,7 +572,8 @@ type DragGhost =
       price: number | null; pct: number | null;
       expectedPrice: number | null; expectedPct: number | null;
     }
-  | { kind: 'memo'; text: string };
+  | { kind: 'memo'; text: string }
+  | { kind: 'folder'; label: string; count: number };
 
 const GHOST_NOOP = () => {};
 
@@ -554,10 +585,37 @@ const GHOST_NOOP = () => {};
  * 끌고 가는 동안 손에 아무것도 없었다 — 목적지(창 하이라이트) 피드백만 있고 커서 쪽
  * 피드백이 비어 있었다.
  *
- * 폴더(그룹) 드래그는 고스트를 만들지 않는다. 이동이 패널 안에서만 일어나고 그룹 블록
- * 전체 클론은 크기만 크지 정보가 없다 — 기존 transform 방식이 이미 적절하다.
+ * **폴더(그룹) 드래그도 고스트를 만든다 — 안 만들면 빈 카드가 뜬다.** 예전 주석은
+ * "그룹 블록 transform 이 이미 적절하다"며 폴더에 `null` 을 줬는데, 실측이 그 전제를
+ * 뒤집었다(2026-08-27, 사용자 dev 서버 :5173).
+ *
+ * 1. **손에는 빈 판때기가 들린다.** 이 오버레이 껍데기(`RailDragOverlay`)는 드래그
+ *    종류와 무관하게 항상 마운트돼 있고, dnd-kit 은 래퍼 크기를 액티브 노드 rect 로
+ *    잡는다. children 이 `null` 이어도 래퍼는 살아 있으므로 `bg-bg-card`+`shadow-overlay`
+ *    를 두른 **280×129 빈 사각형**(innerHTML 길이 0)이 커서를 따라왔다.
+ * 2. **원본 블록은 손을 안 따라오고 착지 예정지로 순간이동한다.** dnd-kit sortable 은
+ *    `useDragOverlay = Boolean(dragOverlay.rect !== null)` 로 오버레이 유무를 판단하고,
+ *    `shouldDisplaceDragSource = !useDragOverlay && isDragging` 이다. 오버레이가 (빈
+ *    채로라도) 마운트돼 있으니 액티브 아이템은 **포인터 transform 이 아니라 정렬 전략
+ *    transform** 을 받는다 — 포인터를 330px 옮겼는데 블록은 733px 점프했다.
+ *
+ * 그래서 폴더 고스트는 **블록 클론이 아니라 헤더 한 줄짜리 칩**이다. 클론이 아닌 이유는
+ * 크기가 아니라 정보다: 22종목 그룹의 클론은 패널 높이의 93%(실측 579/622px)를 가리면서
+ * 정작 "무엇을 잡았나"는 이름 한 줄로 충분하다. 칩으로 좁히려면 래퍼의 rect 도 같이
+ * 좁혀야 하므로 `fitContent` 를 켠다(그 prop 주석 참조).
  */
 function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
+  if (ghost.kind === 'folder') {
+    // 타이포·간격은 GroupHeader 와 같은 값 — 손에 든 것이 "방금 잡은 그 헤더"로 읽혀야
+    // 한다. `<li>` 인 이유는 래퍼가 `wrapperElement="ul"` 이기 때문(행 고스트와 동일).
+    return (
+      <li data-testid="watchlist-drag-ghost"
+        className="flex items-baseline gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim">
+        <span className="truncate">{ghost.label}</span>
+        <span className="flex-none text-xs font-normal text-fg-dim">{ghost.count}</span>
+      </li>
+    );
+  }
   if (ghost.kind === 'memo') {
     return (
       <MemoRow
@@ -595,8 +653,10 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
  * headers carry a hover ⋯ menu (이름 변경/순서/삭제), and the row context menu
  * does quick-remove + 그룹으로 이동. Entry add/multi-delete live in the edit
  * modal; quick within-group reorder (drag a row), cross-folder move (drag a row
- * onto another group — v5) and folder reorder (drag a group via its ⠿ handle)
- * happen in-panel via dnd-kit (ADR-0066). Collapse state persists via localStorage.
+ * onto another group — v5) and folder reorder (drag a group by its header — the
+ * whole header is the activator, there is no ⠿ icon) happen in-panel via dnd-kit
+ * (ADR-0066). While a group drag is in flight every group renders header-only.
+ * Collapse state persists via localStorage.
  */
 export function WatchlistDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -899,8 +959,30 @@ export function WatchlistDrawer() {
   // 드래그 좌표는 프레임당 한 번만 발행한다(P3) — 우측 레일 세 드로어 공용 훅.
   const { publishDragPoint, cancelDragPointFlush } = useDragPointPublisher();
 
-  // 커서를 따라오는 고스트의 스냅샷(P1). null = 고스트 없음(폴더 드래그 포함).
+  // 커서를 따라오는 고스트의 스냅샷(P1). null = 드래그 중이 아니거나 종류를 못 읽은 경우.
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
+  /**
+   * 그룹(폴더) 드래그가 진행 중인가 — 진행 중이면 **모든 그룹을 헤더만 남기고 접어**
+   * 렌더한다(아래 `isCollapsed`).
+   *
+   * **왜**: 그룹 블록은 높이가 제각각이다(실측 129·154·179·204·579px, 패널 뷰포트는
+   * 622px). `verticalListSortingStrategy` + `closestCenter` 는 **균일 높이 리스트**를
+   * 전제로 중심점 거리를 재므로, 129px 그룹을 579px 그룹 위로 보내려면 중심이 만날
+   * 때까지 ~500px 을 끄는 동안 화면에 아무 변화가 없다가 한 번에 733px 이 점프한다.
+   * 전부 접으면 모든 항목이 헤더 높이 하나로 균일해지고(29px × N), 5개 그룹이 145px 에
+   * 들어와 스크롤·오토스크롤 없이 **재배치 결과 전체가 한눈에** 보인다. dnd-kit 공식
+   * sortable-tree 예제가 같은 이유로 드래그 중 하위를 접는다.
+   *
+   * **저장된 접힘 상태(`collapsed`)는 건드리지 않는다** — 렌더 시점 오버라이드다.
+   * 드래그가 끝나면 사용자가 펼쳐 두었던 그룹이 그대로 돌아온다.
+   *
+   * **비용(알고 넣는 것)**: 드래그 시작 순간 리스트가 접히면서, 아래쪽 그룹을 잡았을
+   * 경우 커서가 짧아진 리스트 **바깥**에 남는다. 고스트 칩은 커서에 붙어 있고 충돌
+   * 판정도 그 칩 기준이라(=보이는 것이 겨냥되는 것) 조작은 성립하지만, 시작 시점의
+   * 점프는 남는다. 접힘에 트랜지션을 걸지 않는 이유도 같다 — 행을 언마운트해야
+   * 드롭 타깃 rect 가 새로 측정되므로, 높이 애니메이션은 측정과 경합만 한다.
+   */
+  const folderDragActive = dragGhost?.kind === 'folder';
   // 직전 드롭이 차트 위였는가 — true 면 낙하 애니메이션을 끈다(onDragEnd 주석 참조).
   // 취소(onDragCancel)는 false 로 남겨 둔다: 취소는 원위치로 돌아가는 게 맞다.
   const [ghostDroppedOnChart, setGhostDroppedOnChart] = useState(false);
@@ -932,7 +1014,16 @@ export function WatchlistDrawer() {
       setDragGhost({ kind: 'memo', text });
       return;
     }
-    setDragGhost(null);   // 폴더는 그룹 블록 transform 이 이미 적절하다
+    // 폴더 — 그룹 헤더 한 줄짜리 칩을 손에 쥐어 준다. `null` 을 주면 오버레이 껍데기가
+    // 빈 채로 마운트돼 그룹 크기의 빈 카드가 뜬다(WatchlistDragGhost 주석의 실측 참조).
+    if (d?.type === 'folder') {
+      const g = renderGroups.find((x) => x.folder?.id === String(ev.active.id));
+      if (g) {
+        setDragGhost({ kind: 'folder', label: g.label, count: g.count });
+        return;
+      }
+    }
+    setDragGhost(null);
   };
   const onDragMove = (ev: DragMoveEvent) => {
     // 메모 행은 차트 드롭 대상이 아니다 — 'entry' 타입만 오버레이를 띄운다.
@@ -1073,11 +1164,15 @@ export function WatchlistDrawer() {
         )}
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
           onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
+          <RemeasureOnCollapse active={folderDragActive} />
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
             {renderGroups.map((g, gi) => {
               const { key, label, folder, rows, rowDragEnabled } = g;
               if (g.count === 0 && folder === null) return null; // 빈 미분류는 숨김
-              const isCollapsed = collapsed.has(key);
+              // 그룹 드래그 중에는 전 그룹을 헤더만 남긴다(folderDragActive 주석 참조).
+              // 미분류도 포함한다 — 폴더 sortable 대상은 아니지만, 중간에 긴 블록이
+              // 하나라도 남으면 "균일 높이 리스트" 라는 전제가 그대로 깨진다.
+              const isCollapsed = collapsed.has(key) || folderDragActive;
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   <SortableContext items={g.sortableIds} strategy={verticalListSortingStrategy}>
@@ -1150,7 +1245,7 @@ export function WatchlistDrawer() {
             })}
           </SortableContext>
           {/* 커서를 따라오는 고스트(P1) — 포털·낙하 애니메이션 결정은 공용 껍데기가 갖는다. */}
-          <RailDragOverlay droppedOnChart={ghostDroppedOnChart}>
+          <RailDragOverlay droppedOnChart={ghostDroppedOnChart} fitContentHeight={folderDragActive}>
             {dragGhost && <WatchlistDragGhost ghost={dragGhost} />}
           </RailDragOverlay>
         </DndContext>

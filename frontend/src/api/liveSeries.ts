@@ -20,9 +20,28 @@ export type LiveTodayPeakBase = {
   traded_qty: number | null;
   traded_t_ms: number | null;
   traded_peaks?: AskPeakCandidate[];
+  /** 터치된 벽의 **기록 갱신 시퀀스**(시간순 prefix maxima) — 최대벽 강도 pane 계단의
+   *  입력. `traded_peaks`(최종 크기순 top-3)와 **축이 다르다**: 벽은 장중에 커지는
+   *  경향이라 top-3 이 오후에 몰리면 오전 기록이 전부 잘린다.
+   *
+   *  ⚠ **rep/cont 를 가르지 않는 단일 배열이다** — 라이브 상태엔 버킷 대표라는 개념이
+   *  없어 두 축이 같은 값이다(백엔드 `snapshot()` 주석). 프론트는 이 하나를
+   *  `traded_record_peaks`·`traded_record_max_peaks` 양쪽에 배선한다. 구백엔드 부재
+   *  → optional. */
+  traded_record_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;
+  /** 미도달 벽 — 당일 체결 극값(ask=고가/bid=저가)이 가격으로 지배하지 못한 벽의
+   *  rank-1/top-3. 극값이 전진하면 벽이 이 계열에서 **빠진다**(소급 재분류) — 값이
+   *  줄어드는 방향의 갱신은 클라이언트가 `day_extreme` ∪ 버퍼 체결 극값으로 재필터해
+   *  따라간다. 구백엔드 부재 → optional. */
+  unreached_price?: number | null;
+  unreached_qty?: number | null;
+  unreached_t_ms?: number | null;
+  unreached_peaks?: AskPeakCandidate[];
+  /** 서버가 그 시점까지 본 당일 체결 극값 — 미도달 재필터의 기준. null = 체결 0건. */
+  day_extreme?: number | null;
 };
 
 export type LiveTodayAskPeak = LiveTodayPeakBase & {

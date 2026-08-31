@@ -4,7 +4,8 @@ import {
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
-  type BrokerLateEntrySideMode,
+  BROKER_LATE_ENTRY_SLOT_LIMIT,
+  type BrokerLateEntryConfig,
   type LiveMAConfig,
 } from './liveIndicatorsPersistence';
 import type { IndicatorSettings } from './indicatorSettingsV2';
@@ -65,6 +66,65 @@ function normalizeBrokerLateEntryStartHHMM(value: number): number {
 
 type Patch = Partial<IndicatorSettings> | null;
 
+/**
+ * 강도 pane 슬롯 6칸(방향 × 계열)의 키.
+ *
+ * pane 의 존재가 이 여섯의 **OR** 이므로(`setPeakWallPaneSlotEnabled`), 한 칸을 움직일
+ * 때마다 나머지 다섯을 읽어야 한다 — 좌표(방향 × 계열) 표와 평평한 목록을 함께 두는
+ * 이유가 그것이다. 문자열로 조립하지 않는다: 오타가 타입을 통과하고, 「그 상태가
+ * 어디서 읽히는가」를 grep 으로 못 찾게 된다.
+ */
+type PeakWallPaneSlotKey =
+  | 'askPeakTradedPaneEnabled' | 'askPeakUnreachedPaneEnabled' | 'askPeakAllWallPaneEnabled'
+  | 'bidPeakTradedPaneEnabled' | 'bidPeakUnreachedPaneEnabled' | 'bidPeakAllWallPaneEnabled';
+
+const PEAK_WALL_PANE_SLOT_KEY: Record<
+  'ask' | 'bid',
+  Record<'Traded' | 'Unreached' | 'AllWall', PeakWallPaneSlotKey>
+> = {
+  ask: {
+    Traded: 'askPeakTradedPaneEnabled',
+    Unreached: 'askPeakUnreachedPaneEnabled',
+    AllWall: 'askPeakAllWallPaneEnabled',
+  },
+  bid: {
+    Traded: 'bidPeakTradedPaneEnabled',
+    Unreached: 'bidPeakUnreachedPaneEnabled',
+    AllWall: 'bidPeakAllWallPaneEnabled',
+  },
+};
+
+const PEAK_WALL_PANE_SLOT_KEYS: readonly PeakWallPaneSlotKey[] = [
+  'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
+  'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
+];
+
+/** 한 칸만 담은 패치. 계산된 키(`{ [key]: value }`)를 쓰면 TS 가 `{ [k: string]: boolean }`
+ *  으로 넓혀 `Partial<IndicatorSettings>` 에 붙지 않으므로 여섯을 명시로 편다. */
+function paneSlotPatch(key: PeakWallPaneSlotKey, value: boolean): Partial<IndicatorSettings> {
+  switch (key) {
+    case 'askPeakTradedPaneEnabled': return { askPeakTradedPaneEnabled: value };
+    case 'askPeakUnreachedPaneEnabled': return { askPeakUnreachedPaneEnabled: value };
+    case 'askPeakAllWallPaneEnabled': return { askPeakAllWallPaneEnabled: value };
+    case 'bidPeakTradedPaneEnabled': return { bidPeakTradedPaneEnabled: value };
+    case 'bidPeakUnreachedPaneEnabled': return { bidPeakUnreachedPaneEnabled: value };
+    case 'bidPeakAllWallPaneEnabled': return { bidPeakAllWallPaneEnabled: value };
+  }
+}
+
+/** 이 칸만 켜고 나머지 다섯을 끈 패치 — **닫혀 있던 pane 을 여는 클릭**이 쓴다.
+ *  왜 저장값을 살리지 않는지는 `setPeakWallPaneSlotEnabled` 의 주석에 있다. */
+function onlyPaneSlot(key: PeakWallPaneSlotKey): Partial<IndicatorSettings> {
+  return {
+    askPeakTradedPaneEnabled: key === 'askPeakTradedPaneEnabled',
+    askPeakUnreachedPaneEnabled: key === 'askPeakUnreachedPaneEnabled',
+    askPeakAllWallPaneEnabled: key === 'askPeakAllWallPaneEnabled',
+    bidPeakTradedPaneEnabled: key === 'bidPeakTradedPaneEnabled',
+    bidPeakUnreachedPaneEnabled: key === 'bidPeakUnreachedPaneEnabled',
+    bidPeakAllWallPaneEnabled: key === 'bidPeakAllWallPaneEnabled',
+  };
+}
+
 function patchMaSlot(
   current: readonly LiveMAConfig[],
   id: string,
@@ -102,11 +162,158 @@ function addMaSlot(
   return [...current, next];
 }
 
+/** 슬롯 하나 삭제. **마지막 하나도 지울 수 있다** — 레전드 칩 ✕ 가 인스턴스 단위
+ *  삭제이므로 "0개" 는 도달 가능한 유효 상태다(코어서의 `normalizeMaSlots` 가 빈
+ *  배열을 보존한다). 종전의 min-1 가드는 마스터 토글이 가시성을 쥐고 있어 슬롯이
+ *  0개면 되살릴 UI 가 없던 시절의 방어였다. null 은 **모르는 id** 일 때만. */
 function removeMaSlot(current: readonly LiveMAConfig[], id: string): LiveMAConfig[] | null {
-  if (current.length <= 1) return null;
   const nextArr = current.filter((m) => m.id !== id);
   if (nextArr.length === current.length) return null; // unknown id
   return nextArr;
+}
+
+/**
+ * 값 series 없이 캔들/호가비 pane 위에 그려지는 오버레이 지표 — 레전드에서는
+ * "flag 행" 으로 나온다. 이 목록이 **정본**이고 `legendRows` 의 `LegendFlagId` 가
+ * 여기서 파생된다(레전드는 표현, 설정 스키마는 이 계층).
+ */
+export const FLAG_INDICATOR_TYPES = [
+  'ask-peak',
+  'bid-peak',
+  'trade-volume-poc',
+  'depth-heatmap',
+  'broker-late-entry',
+] as const;
+
+export type FlagIndicatorType = (typeof FLAG_INDICATOR_TYPES)[number];
+
+/** flag 지표의 사용자 표시명 — 레전드 라벨·undo 문구·설정 패널이 공유한다. */
+export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
+  'ask-peak': '당일 매도 최대벽',
+  'bid-peak': '당일 매수 최대벽',
+  'trade-volume-poc': '당일 최대 매물대',
+  'depth-heatmap': '호가 잔량 히트맵',
+  'broker-late-entry': '신규 거래원 등장',
+};
+
+/**
+ * 각 flag 지표가 **소유한 설정 필드 전부** — 삭제(=공장값 리셋)의 대상 집합.
+ *
+ * 손으로 적는다. 접두사 매칭 같은 자동 발견을 쓰지 않는 이유는 이 리포가 이미
+ * 판정한 것과 같다: 이름 규칙 매칭은 **오탐과 누락이 둘 다 조용하다**. 대신
+ * `indicatorOps.flagFields.test.ts` 가 "flag 접두를 가진 `IndicatorSettings` 키는
+ * 정확히 한 목록에 속한다" 를 강제한다 — 새 필드가 늘면 그 가드가 빨개진다.
+ * 이 가드는 실제로 **네 번** 잡았다: #1582 의 `askPeakAllWall*` 3필드, #1588 의
+ * `*Unreached*` 6필드, 설정 재구성의 `*PeakTradedLineEnabled` 2필드, 그리고 강도 pane
+ * 슬롯의 `*Pane Enabled` 6필드(앞 셋은 전부 병행 PR 이라 텍스트 충돌 없이 머지됐다). 손 목록의 위험이
+ * 이론이 아니라는 증거이고, 동시에 가드가 그 위험을 실제로 덮는다는 증거다.
+ */
+export const FLAG_INDICATOR_FIELDS: Record<
+  FlagIndicatorType,
+  readonly (keyof IndicatorSettings)[]
+> = {
+  'ask-peak': [
+    'askPeakEnabled', 'askPeakHidden', 'askPeakColor', 'askPeakLineWidth',
+    'askPeakTradedLineEnabled',
+    'askPeakAllWallLineEnabled', 'askPeakAllWallColor', 'askPeakAllWallLineWidth',
+    'askPeakUnreachedLineEnabled', 'askPeakUnreachedColor', 'askPeakUnreachedLineWidth',
+    // 강도 pane 슬롯 — 이 지표가 사라지면 pane 구성도 함께 공장값으로 돌아간다.
+    'askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled',
+  ],
+  'bid-peak': [
+    'bidPeakEnabled', 'bidPeakHidden', 'bidPeakColor', 'bidPeakLineWidth',
+    'bidPeakTradedLineEnabled',
+    'bidPeakAllWallLineEnabled', 'bidPeakAllWallColor', 'bidPeakAllWallLineWidth',
+    'bidPeakUnreachedLineEnabled', 'bidPeakUnreachedColor', 'bidPeakUnreachedLineWidth',
+    'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
+  ],
+  'trade-volume-poc': [
+    'tradeVolumePocEnabled', 'tradeVolumePocHidden', 'tradeVolumePocBandPct',
+    'tradeVolumePocColor', 'tradeVolumePocOpacity',
+  ],
+  'depth-heatmap': [
+    'depthHeatmapEnabled', 'depthHeatmapHidden', 'depthHeatmapBidColor',
+    'depthHeatmapAskColor', 'depthHeatmapMaxOpacity',
+  ],
+  // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
+  'broker-late-entry': ['brokerLateEntries'],
+};
+
+/**
+ * flag 지표 삭제의 patch 쌍 — `apply` 는 공장값으로 되돌리고, `undo` 는 현재값이다.
+ *
+ * MA 는 배열에서 원소를 빼는 것이 삭제지만, flat 싱글턴 타입은 뺄 배열이 없다.
+ * 그래서 삭제 = **그 지표가 소유한 필드를 전부 공장값으로**다. 공장값과 같아진
+ * 필드는 sparse 버킷의 정의상 다음 로드에서 자연 소멸하므로("diff 제거"),
+ * 결과적으로 "이 지표에 대해 사용자가 손댄 적 없는 상태" 가 된다.
+ *
+ * 배열 승격(Phase 3) 전까지 flat 타입의 인스턴스는 언제나 하나이므로, 삭제가
+ * 곧 "그 하나를 지우는 것" 이다.
+ */
+export function flagRemovalPatches(
+  cur: IndicatorSettings,
+  type: FlagIndicatorType,
+  factory: IndicatorSettings,
+): { label: string; apply: Partial<IndicatorSettings>; undo: Partial<IndicatorSettings> } {
+  const apply: Record<string, unknown> = {};
+  const undo: Record<string, unknown> = {};
+  for (const field of FLAG_INDICATOR_FIELDS[type]) {
+    apply[field] = factory[field];
+    undo[field] = cur[field];
+  }
+  return {
+    label: `${FLAG_INDICATOR_LABEL[type]} 삭제됨`,
+    apply: apply as Partial<IndicatorSettings>,
+    undo: undo as Partial<IndicatorSettings>,
+  };
+}
+
+/** MA 계열 두 슬라이스의 사용자 표시명 — 레전드 라벨과 undo 문구가 공유한다. */
+export const MA_SLICE_LABEL = {
+  movingAverages: '이동평균선',
+  dailyMovingAverages: '일봉 이동평균선',
+} as const;
+
+export type MaSliceKey = keyof typeof MA_SLICE_LABEL;
+
+/**
+ * 슬롯 삭제의 undo 스냅샷 — **삭제를 수행하지 않는다**(호출자가 op 로 한다).
+ *
+ * 되돌릴 값이 배열 **전체**인 것이 요점이다. 지운 원소만 다시 끼우면 순서를
+ * 복원할 수 없고, 토스트가 떠 있는 동안 다른 슬롯이 편집됐을 때 어느 쪽을
+ * 이겨야 하는지도 애매해진다. 전체 스냅샷은 "그 시점으로 되돌린다" 는 한 가지
+ * 뜻만 갖는다(드로잉 `clearToast` 와 같은 규율).
+ *
+ * 모르는 id 면 null — 호출자는 삭제도 토스트도 하지 않는다.
+ */
+export function maRemovalUndo(
+  cur: IndicatorSettings,
+  key: MaSliceKey,
+  id: string,
+): { label: string; patch: Partial<IndicatorSettings> } | null {
+  const slots = cur[key];
+  const slot = slots.find((m) => m.id === id);
+  if (!slot) return null;
+  return {
+    label: `${MA_SLICE_LABEL[key]} ${slot.period} 삭제됨`,
+    patch: { [key]: slots } as Partial<IndicatorSettings>,
+  };
+}
+
+/** 거래원 등장 인스턴스 삭제의 undo 스냅샷 — MA 의 `maRemovalUndo` 와 같은 규약
+ *  (배열 **전체**를 되돌린다: 원소만 다시 끼우면 순서를 복원할 수 없다). */
+export function brokerLateEntryRemovalUndo(
+  cur: IndicatorSettings,
+  id: string,
+): { label: string; patch: Partial<IndicatorSettings> } | null {
+  const target = cur.brokerLateEntries.find((e) => e.id === id);
+  if (!target) return null;
+  const hh = String(Math.floor(target.startHHMM / 100)).padStart(2, '0');
+  const mm = String(target.startHHMM % 100).padStart(2, '0');
+  return {
+    label: `신규 거래원 ${hh}:${mm} 삭제됨`,
+    patch: { brokerLateEntries: cur.brokerLateEntries },
+  };
 }
 
 export const INDICATOR_OPS = {
@@ -122,10 +329,13 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.movingAverages, id);
     return next ? { movingAverages: next } : null;
   },
-  setMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ movingAverageEnabled: enabled }),
-  setMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ movingAverageHidden: hidden }),
+  /** 타입 전체 일괄 표시/숨김 — 마스터 토글의 후계다. 마스터가 슬롯의 `enabled` 로
+   *  접히면서(ADR) "타입을 끈다" 는 곧 "전 슬롯을 끈다" 가 됐다. 슬롯이 0개면 켤
+   *  대상이 없으므로 no-op(null) — 빈 배열에 쓰면 diff 만 늘고 화면은 그대로다. */
+  setAllMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.movingAverages.length === 0
+      ? null
+      : { movingAverages: cur.movingAverages.map((m) => ({ ...m, enabled })) }),
 
   setDailyMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.dailyMovingAverages, id, patch);
@@ -139,18 +349,58 @@ export const INDICATOR_OPS = {
     const next = removeMaSlot(cur.dailyMovingAverages, id);
     return next ? { dailyMovingAverages: next } : null;
   },
-  // MA 마스터 규칙: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
-  setDailyMovingAverageEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
-      : { dailyMovingAverageEnabled: false }),
-  setDailyMovingAverageHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ dailyMovingAverageHidden: hidden }),
+  /** 일봉 판 — `setAllMovingAveragesEnabled` 와 같은 규약. */
+  setAllDailyMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.dailyMovingAverages.length === 0
+      ? null
+      : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled })) }),
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),
-  setPeakWallPaneEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ peakWallPaneEnabled: enabled }),
+  /**
+   * 강도 pane 의 슬롯 6칸(방향 × 계열) — 캔들 선 토글과 독립이다
+   * (`liveIndicatorsPersistence` 의 `askPeakTradedPaneEnabled` 주석). 키를 문자열로
+   * 조립하지 않는 이유는 이 파일의 나머지와 같다 — 오타가 타입을 통과한다.
+   *
+   * ## pane 의 존재 = 여섯 칸의 OR (2026-08-27, 사용자 결정)
+   *
+   * 마스터(`peakWallPaneEnabled`)는 더 이상 사람이 직접 미는 스위치가 아니다.
+   * 설정 패널 ⑤ 의 토글을 없애고 **이 op 이 마스터를 관리한다** — 칸이 하나라도
+   * 켜지면 pane 이 있고, 여섯이 다 꺼지면 없다. 종전엔 켜기만 마스터를 열었고
+   * 끄기는 건드리지 않아, 「칸은 다 껐는데 빈 pane 이 남는」 상태가 있었다.
+   *
+   * **판정은 여섯 전부다 — 화면에 보이는 셋이 아니다.** pane 은 매도·매수가 공유하는
+   * 하나라, 매수 칸이 켜져 있는 동안 매도 셋을 다 꺼도 pane 은 남아야 한다(그 안에
+   * 매수 계단이 있다). 그 사실은 ⑤ 의 요약 줄이 화면에서 말한다.
+   *
+   * ## 닫혀 있던 pane 을 여는 클릭은 **그 칸 하나만** 넣는다
+   *
+   * 공장값이 양방향 체결된 벽 슬롯을 켜 둔 채라(`liveIndicatorsPersistence`), 단순히
+   * 마스터만 열면 「미도달 벽 하나를 켰는데 계단이 셋 뜨는」 일이 생긴다 — 저장돼
+   * 있던 두 칸이 함께 되살아나기 때문이다. 켜기와 끄기가 대칭이려면(끄면 그것만,
+   * 켜면 그것만) 여는 순간에 나머지 다섯을 함께 닫아야 한다.
+   *
+   * 그 대가로 **접혀 있던 저장값은 다음 arm 에서 버려진다**. 설정 패널의 요약 줄이
+   * 「되켜면 무엇이 돌아오는지」를 말하지 않고 **지금 들어 있는 것만** 말하는 이유다.
+   *
+   * 한 패치에 담는 이유는 `setAskPeakEnabled` 가 `askPeakHidden: false` 를 함께 쓰는
+   * 것과 같다 — undo 한 항목, 프리셋 경로에서도 결합 유지.
+   */
+  setPeakWallPaneSlotEnabled: (
+    cur: IndicatorSettings,
+    side: 'ask' | 'bid',
+    family: 'Traded' | 'Unreached' | 'AllWall',
+    enabled: boolean,
+  ): Patch => {
+    const key = PEAK_WALL_PANE_SLOT_KEY[side][family];
+    if (!enabled) {
+      // 마지막 칸이면 pane 이 사라진다 — 나머지 다섯을 읽어 판정한다.
+      const othersOn = PEAK_WALL_PANE_SLOT_KEYS.some((k) => k !== key && cur[k]);
+      return { ...paneSlotPatch(key, false), peakWallPaneEnabled: othersOn };
+    }
+    if (!cur.peakWallPaneEnabled) return { ...onlyPaneSlot(key), peakWallPaneEnabled: true };
+    return { ...paneSlotPatch(key, true), peakWallPaneEnabled: true };
+  },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),
   setInstitutionNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
@@ -164,6 +414,20 @@ export const INDICATOR_OPS = {
     askPeakColor: patch.color ?? cur.askPeakColor,
     askPeakLineWidth: patch.lineWidth ?? cur.askPeakLineWidth,
   }),
+  setAskPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakTradedLineEnabled: enabled }),
+  setAskPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakAllWallLineEnabled: enabled }),
+  setAskPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    askPeakAllWallColor: patch.color ?? cur.askPeakAllWallColor,
+    askPeakAllWallLineWidth: patch.lineWidth ?? cur.askPeakAllWallLineWidth,
+  }),
+  setAskPeakUnreachedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ askPeakUnreachedLineEnabled: enabled }),
+  setAskPeakUnreachedStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    askPeakUnreachedColor: patch.color ?? cur.askPeakUnreachedColor,
+    askPeakUnreachedLineWidth: patch.lineWidth ?? cur.askPeakUnreachedLineWidth,
+  }),
   setViLimitPriceLineStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     viLimitPriceLineColor: patch.color ?? cur.viLimitPriceLineColor,
     viLimitPriceLineWidth: patch.lineWidth ?? cur.viLimitPriceLineWidth,
@@ -176,6 +440,20 @@ export const INDICATOR_OPS = {
   setBidPeakStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
     bidPeakColor: patch.color ?? cur.bidPeakColor,
     bidPeakLineWidth: patch.lineWidth ?? cur.bidPeakLineWidth,
+  }),
+  setBidPeakTradedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakTradedLineEnabled: enabled }),
+  setBidPeakAllWallLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakAllWallLineEnabled: enabled }),
+  setBidPeakAllWallStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    bidPeakAllWallColor: patch.color ?? cur.bidPeakAllWallColor,
+    bidPeakAllWallLineWidth: patch.lineWidth ?? cur.bidPeakAllWallLineWidth,
+  }),
+  setBidPeakUnreachedLineEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    ({ bidPeakUnreachedLineEnabled: enabled }),
+  setBidPeakUnreachedStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
+    bidPeakUnreachedColor: patch.color ?? cur.bidPeakUnreachedColor,
+    bidPeakUnreachedLineWidth: patch.lineWidth ?? cur.bidPeakUnreachedLineWidth,
   }),
 
   setTradeVolumePocEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
@@ -209,24 +487,6 @@ export const INDICATOR_OPS = {
       : clamp(patch.maxOpacity, 0.2, 1),
   }),
 
-  setWallSurgeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    ({ wallSurgeEnabled: enabled }),
-
-  setDepthDeltaEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { depthDeltaEnabled: true, depthDeltaHidden: false }
-      : { depthDeltaEnabled: false }),
-  setDepthDeltaHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ depthDeltaHidden: hidden }),
-  setDepthDeltaStyle: (cur: IndicatorSettings, patch: { inColor?: string; outColor?: string; maxOpacity?: number }): Patch => ({
-    depthDeltaInColor: patch.inColor ?? cur.depthDeltaInColor,
-    depthDeltaOutColor: patch.outColor ?? cur.depthDeltaOutColor,
-    // 코어서(0.2~1)와 슬라이더 min/max 와 **같은 범위**여야 한다 — tradeVolumePoc 의
-    // 0~1 을 복사해 오면 op 가 코어서가 거부하는 값을 만들어 저장 시 되돌아간다.
-    depthDeltaMaxOpacity: patch.maxOpacity === undefined
-      ? cur.depthDeltaMaxOpacity
-      : clamp(patch.maxOpacity, 0.2, 1),
-  }),
 
   setVolumeDistributionEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeDistributionEnabled: enabled }),
@@ -283,26 +543,72 @@ export const INDICATOR_OPS = {
   setProgramTradeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ programTradeEnabled: enabled }),
 
-  setBrokerLateEntryEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
-    (enabled
-      ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
-      : { brokerLateEntryEnabled: false }),
-  setBrokerLateEntryHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>
-    ({ brokerLateEntryHidden: hidden }),
-  setBrokerLateEntryStartHHMM: (_cur: IndicatorSettings, value: number): Patch => {
-    if (!Number.isFinite(value)) {
-      return { brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM };
+  /** 인스턴스 전체 일괄 표시/숨김 — 패널의 추가·삭제가 쓰는 존재 토글이다.
+   *  MA 의 `setAllMovingAveragesEnabled` 와 같은 규약(0개면 no-op). */
+  setAllBrokerLateEntriesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
+    (cur.brokerLateEntries.length === 0
+      ? null
+      : { brokerLateEntries: cur.brokerLateEntries.map((e) => ({ ...e, enabled })) }),
+
+  /** 인스턴스 하나를 patch — 모르는 id 는 no-op. 기준 시각은 여기서 클램프한다. */
+  setBrokerLateEntry: (
+    cur: IndicatorSettings,
+    id: string,
+    patch: Partial<Omit<BrokerLateEntryConfig, 'id'>>,
+  ): Patch => {
+    const idx = cur.brokerLateEntries.findIndex((e) => e.id === id);
+    if (idx === -1) return null;
+    const next = { ...cur.brokerLateEntries[idx], ...patch };
+    if (patch.startHHMM !== undefined) {
+      next.startHHMM = Number.isFinite(patch.startHHMM)
+        ? normalizeBrokerLateEntryStartHHMM(patch.startHHMM)
+        : BROKER_LATE_ENTRY_DEFAULT_START_HHMM;
     }
-    return { brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) };
+    if (patch.sideMode !== undefined
+      && patch.sideMode !== 'both' && patch.sideMode !== 'buy' && patch.sideMode !== 'sell') {
+      return null;
+    }
+    const arr = cur.brokerLateEntries.slice();
+    arr[idx] = next;
+    return { brokerLateEntries: arr };
   },
-  setBrokerLateEntrySideMode: (_cur: IndicatorSettings, mode: BrokerLateEntrySideMode): Patch => {
-    if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return null;
-    return { brokerLateEntrySideMode: mode };
+
+  /** 인스턴스 추가 — 기본값으로 생기되 **기준 시각만 어긋나게** 준다. 같은 시각의
+   *  두 인스턴스는 같은 마커를 겹쳐 그려 아무 정보도 더하지 않으므로, 추가의 의도
+   *  ("다른 시각대를 같이 본다")를 기본값이 미리 반영한다. 색은 MA 팔레트에서
+   *  안 쓴 것을 골라 두 세트가 화면에서 구별된다. */
+  addBrokerLateEntry: (cur: IndicatorSettings): Patch => {
+    if (cur.brokerLateEntries.length >= BROKER_LATE_ENTRY_SLOT_LIMIT) return null;
+    const last = cur.brokerLateEntries[cur.brokerLateEntries.length - 1];
+    const used = new Set(cur.brokerLateEntries.map((e) => e.id));
+    let id = 'ble-1';
+    for (let i = 1; i <= BROKER_LATE_ENTRY_SLOT_LIMIT * 2; i++) {
+      if (!used.has(`ble-${i}`)) { id = `ble-${i}`; break; }
+    }
+    const usedColors = new Set(cur.brokerLateEntries.flatMap((e) => [
+      e.buyColor.toLowerCase(), e.sellColor.toLowerCase(),
+    ]));
+    const freeColor = MA_PALETTE.find((c) => !usedColors.has(c.toLowerCase()))
+      ?? MA_PALETTE[cur.brokerLateEntries.length % MA_PALETTE.length];
+    return {
+      brokerLateEntries: [...cur.brokerLateEntries, {
+        id,
+        enabled: true,
+        startHHMM: normalizeBrokerLateEntryStartHHMM(
+          (last?.startHHMM ?? BROKER_LATE_ENTRY_DEFAULT_START_HHMM) + 100,
+        ),
+        sideMode: last?.sideMode ?? 'both',
+        buyColor: freeColor,
+        sellColor: freeColor,
+      }],
+    };
   },
-  setBrokerLateEntryStyle: (cur: IndicatorSettings, patch: { buyColor?: string; sellColor?: string }): Patch => ({
-    brokerLateEntryBuyColor: patch.buyColor ?? cur.brokerLateEntryBuyColor,
-    brokerLateEntrySellColor: patch.sellColor ?? cur.brokerLateEntrySellColor,
-  }),
+
+  /** 인스턴스 삭제 — MA 와 같이 **마지막 하나도 지울 수 있다**(0개가 유효 상태). */
+  removeBrokerLateEntry: (cur: IndicatorSettings, id: string): Patch => {
+    const next = cur.brokerLateEntries.filter((e) => e.id !== id);
+    return next.length === cur.brokerLateEntries.length ? null : { brokerLateEntries: next };
+  },
 } as const;
 
 export type IndicatorOps = typeof INDICATOR_OPS;

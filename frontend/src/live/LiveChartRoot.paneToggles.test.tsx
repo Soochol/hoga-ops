@@ -100,7 +100,7 @@ vi.mock('lightweight-charts', async () => {
         subscribeVisibleTimeRangeChange: vi.fn(), unsubscribeVisibleTimeRangeChange: vi.fn(),
         subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
         applyOptions: vi.fn(), fitContent: vi.fn(), scrollToRealTime: vi.fn(), scrollToPosition: vi.fn(),
-        setVisibleLogicalRange: vi.fn(), getVisibleRange: vi.fn(() => null), setVisibleRange: vi.fn(),
+        setVisibleLogicalRange: vi.fn(), getVisibleLogicalRange: vi.fn(() => null), getVisibleRange: vi.fn(() => null), setVisibleRange: vi.fn(),
         width: vi.fn(() => 900), timeToIndex: vi.fn(() => null),
         timeToCoordinate: vi.fn(() => null),
       };
@@ -172,6 +172,7 @@ function renderAt(timeframe: '1m' | 'D' | 'W' | 'M', props: Partial<ComponentPro
       timeframe={timeframe}
       bundle={DEFAULT_BUNDLE}
       clampEngaged={false}
+      captureFloorEngaged={false}
       isPastCandlesLoading={false}
       {...props}
     />,
@@ -450,6 +451,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         bundle={afterTick}
         chartBundle={chartBundle}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -527,6 +529,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         viewIdentity="view-a"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
       { wrapper },
@@ -540,6 +543,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         viewIdentity="view-b"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
+        captureFloorEngaged={false}
         isPastCandlesLoading={false}
       />,
     );
@@ -618,19 +622,5 @@ describe('LiveChartRoot — 보이는 최신 봉 컷오프 구독 게이트', ()
     expect(subscribeCalls()).toBe(0);
   });
 
-  it('매도 pref 를 켜면 구독한다', () => {
-    act(() => {
-      useChartPrefsStore.setState({ askPeakVisibleTimeCutoff: true });
-    });
-    renderAt('1m');
-    expect(subscribeCalls()).toBeGreaterThan(0);
-  });
 
-  it('매수 pref 만 켜도 구독한다', () => {
-    act(() => {
-      useChartPrefsStore.setState({ bidPeakVisibleTimeCutoff: true });
-    });
-    renderAt('1m');
-    expect(subscribeCalls()).toBeGreaterThan(0);
-  });
 });

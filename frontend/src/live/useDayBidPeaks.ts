@@ -2,7 +2,6 @@ import { useMemo, useRef } from 'react';
 import type { AskPeakCandidate, BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
-import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   classifyBidWallEvents,
   rankPeakCandidates,
@@ -11,6 +10,13 @@ import {
   type PeakWallClassification,
 } from './peakWallEventClassifier';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
+import {
+  buildPeakRecordSeries,
+  todaySeedRow,
+  withSessionRecords,
+  PeakRecordAccumulator,
+  type PeakRecordSeries,
+} from './peakWallRecordSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -19,6 +25,8 @@ type PeakFamilies = {
   traded: AskPeakCandidate[];
   /** 터치 무관 전체 벽 — 「보이는 영역 최대벽」의 원천. */
   all: AskPeakCandidate[];
+  /** 미도달 벽(당일 저가 기준) — ask 쪽 PeakFamilies 주석 참조(백엔드 별도 병합 없음). */
+  unreached: AskPeakCandidate[];
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -56,7 +64,7 @@ function toCandidate(
 
 function candidateFromPrefix(
   peak: LiveTodayBidPeak | null,
-  prefix: 'traded' | 'all',
+  prefix: 'traded' | 'all' | 'unreached',
 ): AskPeakCandidate | null {
   if (!peak) return null;
   return toCandidate(
@@ -73,9 +81,13 @@ function backendPeakFamilies(todayBidPeak: LiveTodayBidPeak | null): PeakFamilie
   const all = todayBidPeak?.all_peaks?.length
     ? todayBidPeak.all_peaks
     : [candidateFromPrefix(todayBidPeak, 'all')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
+  const unreached = todayBidPeak?.unreached_peaks?.length
+    ? todayBidPeak.unreached_peaks
+    : [candidateFromPrefix(todayBidPeak, 'unreached')].filter((candidate): candidate is AskPeakCandidate => candidate !== null);
   return {
     traded: rankPeakCandidates(traded),
     all: rankPeakCandidates(all),
+    unreached: rankPeakCandidates(unreached),
   };
 }
 
@@ -91,16 +103,52 @@ function bidPeakFromCandidate(date: string, candidate: AskPeakCandidate): BidPea
   };
 }
 
+/** 오늘 행 push — ask 쪽 pushTodayAskPeak 미러(사유는 그쪽 주석 참조). */
+function pushTodayBidPeak(
+  out: BidPeak[],
+  todayKst: string,
+  families: PeakFamilies,
+  records: PeakRecordSeries,
+): BidPeak[] {
+  const traded = families.traded[0];
+  if (traded) {
+    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families, records));
+  } else if (families.all.length > 0) {
+    out.push(attachFamilies({
+      date: todayKst,
+      price: null,
+      qty: null,
+      t_ms: null,
+      max_price: null,
+      max_qty: null,
+      max_t_ms: null,
+    }, families, records));
+  }
+  return out;
+}
+
 function attachFamilies(
   peak: BidPeak,
   families: PeakFamilies,
+  /** **필수 인자다** — 기본값을 주면 새 호출부가 조용히 기록 없이 태어난다
+   *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
+   *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
+  records: PeakRecordSeries,
 ): BidPeak {
   return {
     ...peak,
     traded_peaks: families.traded,
     traded_max_peaks: families.traded,
+    // 기록 갱신 시퀀스 — ask 쪽 attachFamilies 와 **같은 배선**이다. 종전엔 이 두 줄이
+    // 매수에만 통째로 없었고(매도는 top-3 을 실었다), 결과가 같아 드리프트가 안 보였다.
+    traded_record_peaks: records.close,
+    traded_record_max_peaks: records.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
+    unreached_price: families.unreached[0]?.price ?? null,
+    unreached_qty: families.unreached[0]?.qty ?? null,
+    unreached_t_ms: families.unreached[0]?.t_ms ?? null,
+    unreached_peaks: families.unreached,
   };
 }
 
@@ -112,7 +160,8 @@ function bidFamiliesFromClassified(
 ): PeakFamilies {
   const traded = mergeRankedCandidates(classified.touched, backend.traded);
   const all = mergeRankedCandidates(classified.all, backend.all, traded);
-  return { traded, all };
+  // unreached 는 백엔드를 병합하지 않는다 — PeakFamilies 필드 주석 참조(재필터가 요점).
+  return { traded, all, unreached: rankPeakCandidates(classified.unreached) };
 }
 
 function mergedBidFamilies(
@@ -120,48 +169,19 @@ function mergedBidFamilies(
   trade: ReadonlyArray<TradeSnapshot>,
   todayBidPeak: LiveTodayBidPeak | null,
   sessionOpenMs: number,
-  visibleTimeCutoff: VisibleTimeCutoff | null = null,
 ): PeakFamilies {
   const backend = backendPeakFamilies(todayBidPeak);
-  const filteredOb = visibleTimeCutoff
-    ? ob.filter((snapshot) => snapshot.t_ms <= visibleTimeCutoff.tMs)
-    : ob;
-  const filteredTrade = visibleTimeCutoff
-    ? trade
-      .map((snapshot) => {
-        const trades = snapshot.trades.filter((item) => {
-          const tMs = isFiniteNumber(item.t_ms) ? item.t_ms : snapshot.t_ms;
-          return isFiniteNumber(tMs) && tMs <= visibleTimeCutoff.tMs;
-        });
-        return trades.length > 0 ? { ...snapshot, trades } : null;
-      })
-      .filter((snapshot): snapshot is TradeSnapshot => snapshot !== null)
-    : trade;
-  const filterCandidates = (candidates: readonly AskPeakCandidate[]) =>
-    visibleTimeCutoff
-      ? candidates.filter((candidate) => candidate.t_ms <= visibleTimeCutoff.tMs)
-      : candidates;
-  const touchTicks = toTouchTicksFromTrades(filteredTrade);
+  const touchTicks = toTouchTicksFromTrades(trade);
   const sourceEvents = uniqueCandidates([
-    ...toWallEventsFromOrderbooks(filteredOb, 'bid', sessionOpenMs),
-    ...filterCandidates(backend.all),
-    ...filterCandidates(backend.traded),
+    ...toWallEventsFromOrderbooks(ob, 'bid', sessionOpenMs),
+    ...backend.all,
+    ...backend.traded,
+    ...backend.unreached,
   ]);
-  const classified = classifyBidWallEvents(sourceEvents, touchTicks);
-  if (visibleTimeCutoff) {
-    return {
-      traded: rankPeakCandidates(classified.touched),
-      all: rankPeakCandidates(classified.all),
-    };
-  }
+  const classified = classifyBidWallEvents(
+    sourceEvents, touchTicks, todayBidPeak?.day_extreme ?? null,
+  );
   return bidFamiliesFromClassified(classified, backend);
-}
-export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
-  const families = backendPeakFamilies(todayBidPeak);
-  const date = todayBidPeak?.date;
-  const traded = families.traded[0];
-  if (!date || !traded) return null;
-  return attachFamilies(bidPeakFromCandidate(date, traded), families);
 }
 
 export function deriveDayBidPeaks(
@@ -173,16 +193,13 @@ export function deriveDayBidPeaks(
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
-  visibleTimeCutoff: VisibleTimeCutoff | null = null,
 ): BidPeak[] {
   void code;
   void todayCandles;
-  const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs, visibleTimeCutoff);
+  const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function deriveDayBidPeaksIncremental(
@@ -198,44 +215,12 @@ export function deriveDayBidPeaksIncremental(
   const classified = source.update(ob, trade, sessionOpenMs, [
     ...backend.all,
     ...backend.traded,
-  ]);
+    ...backend.unreached,
+  ], todayBidPeak?.day_extreme ?? null);
   const families = bidFamiliesFromClassified(classified, backend);
+  const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
-}
-/** mergedBidFamilies 의 cutoff 분기와 동일(증분 경로 전용). */
-function bidFamiliesFromClassifiedCutoff(classified: PeakWallClassification): PeakFamilies {
-  return {
-    traded: rankPeakCandidates(classified.touched),
-    all: rankPeakCandidates(classified.all),
-  };
-}
-
-/** deriveDayBidPeaks(cutoff) 의 증분판. */
-export function deriveDayBidPeaksIncrementalAsOf(
-  source: IncrementalPeakWallSource,
-  ob: ReadonlyArray<ObSnapshot>,
-  trade: ReadonlyArray<TradeSnapshot>,
-  seeds: readonly BidPeak[],
-  todayKst: string,
-  sessionOpenMs: number,
-  todayBidPeak: LiveTodayBidPeak | null,
-  cutoffMs: number,
-): BidPeak[] {
-  const backend = backendPeakFamilies(todayBidPeak);
-  const classified = source.updateAsOf(ob, trade, [
-    ...backend.all,
-    ...backend.traded,
-  ], cutoffMs, sessionOpenMs);
-  const families = bidFamiliesFromClassifiedCutoff(classified);
-  const out = seeds.filter((peak) => peak.date !== todayKst);
-  const traded = families.traded[0];
-  if (!traded) return out;
-  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
-  return out;
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
 }
 
 export function useDayBidPeaks(
@@ -248,12 +233,20 @@ export function useDayBidPeaks(
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
-  void code;
   void todayCandles;
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
   if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
+  // 접속 이후 기록 누적 — **derive 밖**이다(사유는 `PeakRecordAccumulator` 주석: derive 는
+  // 배치판과 값이 같아야 하는데 배치는 축출된 기록을 원리적으로 못 가진다).
+  const recordsRef = useRef<PeakRecordAccumulator | null>(null);
+  if (recordsRef.current === null) recordsRef.current = new PeakRecordAccumulator();
   return useMemo(
-    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
-    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak],
+    () => withSessionRecords(
+      deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak),
+      recordsRef.current!,
+      todayKst,
+      `${code}|${todayKst}|${sessionOpenMs}`,
+    ),
+    [ob, trade, seeds, todayKst, sessionOpenMs, todayBidPeak, code],
   );
 }

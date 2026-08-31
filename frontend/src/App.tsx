@@ -17,6 +17,7 @@ import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
+import IndicatorRemoveUndoToastHost from './live/IndicatorRemoveUndoToastHost';
 import PinnedActivationToastHost from './live/PinnedActivationToastHost';
 import DrawingClearConfirmHost from './chart/DrawingClearConfirmHost';
 import { ShortcutHelpHost } from './ui/ShortcutHelpModal';
@@ -27,7 +28,7 @@ import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from './live/workspacePanel';
 import { registerSettingsModalOpener } from './live/settingsModalControls';
-import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
+import { subscribeThemeToDom } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
 
 /*
@@ -112,13 +113,20 @@ export default function App() {
   // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
   useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
 
-  // Keep <html data-theme> in sync with the preference + current route. The
-  // index.html bootstrap sets the first-paint value; this owns every change
-  // after (preference toggle in Settings, or an auto-mode route switch).
-  const themePreference = useThemePrefsStore((s) => s.themePreference);
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', effectiveTheme(themePreference, pathname));
-  }, [themePreference, pathname]);
+  // `<html data-theme>` 의 유일한 writer 를 등록한다. 이펙트가 **아니라** 스토어
+  // 구독인 이유는 순서다: React 는 이펙트를 자식부터 실행하므로, 여기서 썼다면
+  // 차트(자식)의 생성 이펙트가 이미 옛 CSS 변수를 읽어 캔버스를 그린 뒤가 된다.
+  // 구독 리스너는 `set()` 안에서 동기로 돌아 그 커밋보다 앞선다(증상은 "테마가
+  // 안 바뀐다" 가 아니라 "스크롤해야 바뀐다" 였다 — themePrefs.ts 에 실측이 있다).
+  //
+  // 첫 페인트 값은 index.html 의 인라인 부트스트랩이 쓰고, 이 등록이 마운트 시
+  // 현재 스토어 값으로 한 번 더 확정한다(부트스트랩이 예외로 떨어졌을 때의 교정 —
+  // 근거는 themePrefs.ts).
+  //
+  // (2026-08-30 까지는 writer 가 둘이었다. `auto` 가 라우트별로 테마를 갈랐고 그
+  //  전환은 스토어를 안 건드려 구독이 볼 수 없었기 때문이다. `auto` 제거와 함께
+  //  그 두 번째 writer 도 사라졌다.)
+  useEffect(subscribeThemeToDom, []);
 
   return (
     <div
@@ -158,6 +166,9 @@ export default function App() {
         <SupervisedTaskFailureToastHost />
         <DiskHeadroomToastHost />
         <DrawingClearToastHost />
+        {/* 레전드 칩 ✕(지표 인스턴스 삭제)의 실행취소 — 그림 지우기 토스트와 같은
+            부류라 나란히 둔다. 둘 다 "확인 없이 지우고 되돌릴 기회를 준다". */}
+        <IndicatorRemoveUndoToastHost />
         {/* 전 창 고정으로 클릭 종목 교체가 막힌 사건 — 전 라우트에 마운트한다.
             클릭 진입점(useJumpToLive)이 /heatmap·/screener 등 /live 밖에도 있어서,
             /live 안에 두면 정작 막힌 그 클릭에서는 호스트가 아직 없다. */}

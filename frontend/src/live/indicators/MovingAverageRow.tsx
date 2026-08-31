@@ -10,9 +10,35 @@ type Props = {
   canRemove: boolean;
   onChange: (patch: Partial<LiveMAConfig>) => void;
   onRemove: () => void;
+  /** 좌측 라벨 override. 기본은 목록 안의 순번(`기간1`)이고, 인스턴스 하나만 편집하는
+   *  팝오버는 순번이 의미가 없어 `길이` 같은 이름을 넘긴다.
+   *
+   *  aria-label 도 이 값을 따른다 — 설정 패널과 팝오버가 동시에 열려 있을 때 라벨이
+   *  같으면 `getByRole('spinbutton', { name })` 이 둘을 잡아 테스트가 모호해진다. */
+  periodLabel?: string;
 };
 
-export default function MovingAverageRow({ index, config, canRemove, onChange, onRemove }: Props) {
+/** 인스턴스 행의 열 트랙 — 라벨 / 색·선 / 기준가 / 기간 / 삭제.
+ *
+ *  **그리드는 행이 계속 소유한다.** 부모로 끌어올려 열 헤더와 한 그리드로 합치고
+ *  싶겠지만, 이 행은 목록 밖에서도 단독으로 산다(`MaInstancePopover` 가 인스턴스
+ *  하나만 편집할 때 그렇고, 그 팝오버의 폭 상수도 이 트랙의 최소폭에서 나왔다).
+ *  합치는 순간 그 소비처가 트랙 없는 행을 그린다.
+ *
+ *  대신 **헤더가 같은 문자열을 import** 해서 열을 맞춘다 — 복사하면 갈린다.
+ *
+ *  ⚠ **스와치 열이 `auto` 면 안 된다.** 헤더와 행은 서로 다른 grid 이고, `auto` 는
+ *  각자의 콘텐츠로 풀린다 — 헤더는 「색 · 선」 글자 폭(≈22px), 행은 `MAStylePicker`
+ *  트리거 폭(59px)이 되어 **열이 37px 어긋났다**(2026-08-26 실측). 트리거는 내부가
+ *  전부 고정 px(dot 10 + 선 26 + caret + padding)라 폭이 결정적이므로 고정 트랙으로
+ *  못 박는다. 트리거가 커지면 셀 밖으로 삐져나와 **눈에 띈다** — 조용히 어긋나는
+ *  것보다 낫다. */
+export const MA_ROW_GRID = 'grid grid-cols-[56px_60px_1fr_72px_24px] items-center gap-2';
+
+export default function MovingAverageRow({
+  index, config, canRemove, onChange, onRemove, periodLabel,
+}: Props) {
+  const label = periodLabel ?? `기간${index + 1}`;
   const [draft, setDraft] = useState<string>(String(config.period));
   useEffect(() => { setDraft(String(config.period)); }, [config.period]);
 
@@ -33,8 +59,8 @@ export default function MovingAverageRow({ index, config, canRemove, onChange, o
     // The per-slot enable toggle was removed in favour of the master
     // category checkbox in IndicatorPanel — see useLivePageStore.movingAverageEnabled.
     // Slot visibility is now controlled by add/remove, not per-slot toggle.
-    <div className="grid grid-cols-[56px_auto_1fr_72px_24px] items-center gap-2 py-1.5">
-      <div className="text-sm text-fg tabular-nums">{`기간${index + 1}`}</div>
+    <div className={`${MA_ROW_GRID} py-1.5`}>
+      <div className="text-sm text-fg tabular-nums">{label}</div>
       <div className="flex items-center">
         <MAStylePicker
           color={config.color}
@@ -53,7 +79,7 @@ export default function MovingAverageRow({ index, config, canRemove, onChange, o
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
-        aria-label={`기간${index + 1} 길이`}
+        aria-label={`${label} 길이`}
         className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums"
       />
       {canRemove ? (
