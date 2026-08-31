@@ -4,13 +4,13 @@
 //   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
 //   - docs/adr/0028-drawing-pane-binding.md
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useIsFocusedWindow } from '../live/workspace/windowView';
-import { useDrawingsStore } from '../state/drawings';
+import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { textFont, measureTextWidth, type GhostPreview } from './drawing/render';
 import {
   DrawingsPrimitive,
@@ -22,13 +22,17 @@ import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
-import { hitTestDrawings, unlockedOnly } from './drawing/hitTest';
+import {
+  drawingsInRect, hitTestDrawings, marqueeRect, unlockedOnly,
+  type HitCoord, type MarqueeRect,
+} from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
   type DragMode,
   type PencilDraft,
   type RectDraft,
+  type MarqueeDraft,
   type MeasureDraft,
   type ToolCtx,
   type TrendlineDraft,
@@ -104,8 +108,16 @@ function resolveSelectModeMouseDown(
   hit: Drawing | null,
   unlockedHit: Drawing | null,
   isOnPropertyPanel: boolean,
+  shiftKey: boolean,
 ): SelectModeMouseDown {
   if (isOnPropertyPanel) return 'none';
+  // Shift 가 눌린 클릭은 **선택을 더하는 제스처**이고, 그 처리자는 오버레이다
+  // (토글 또는 마퀴 시작). 이 리스너는 window 에 붙어 있어 게이트와 무관하게
+  // 모든 mousedown 을 보므로, 여기서 걸러 내지 않으면 마퀴를 시작하려고 빈 곳을
+  // 누르는 순간 'deselect' 가 나가 **애써 모은 집합이 통째로 사라진다**. 도형을
+  // 빗맞힌 Shift+클릭도 마찬가지다. 다중 선택에서 가장 아픈 종류의 실수라,
+  // 판정 자체를 modifier 로 끊는다.
+  if (shiftKey) return 'none';
   const inside =
     click.x >= 0 &&
     click.y >= 0 &&
@@ -181,13 +193,27 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // scope 를 읽는다 — 봉 전환 직후 stale scope 로 다른 슬롯을 변이하면 안 된다.
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const selectedId = useDrawingsStore((s) => (scope ? s.selectedByScope.get(scope) ?? null : null));
+  const selectedIds = useDrawingsStore((s) =>
+    scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
+  );
+  // 핸들(끝점·모서리)은 **단일 선택일 때만** 뜬다 — 다중에서 핸들을 그리면 같은
+  // 픽셀에서 "한 도형 크기 조절"과 "다섯 개 이동"이 경합한다. 그 게이트를 조건이
+  // 아니라 값의 정의로 박아 둔다(ToolCtx.selectedId 주석).
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
+  // 렌더가 프레임마다 멤버십을 묻는다(도형 × 팬 수). 스냅샷 getter 안에서 만들면
+  // lwc 의 draw 마다 새 Set 이 생기므로 선택 배열이 바뀔 때만 파생한다.
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const defaults = useDrawingsStore((s) => s.defaults);
 
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
   const rectDraft = useRef<RectDraft | null>(null);
   const measureDraft = useRef<MeasureDraft | null>(null);
+  const marqueeDraft = useRef<MarqueeDraft | null>(null);
+  /** Shift 가 눌려 있는가 — pointer-events 게이트가 마퀴 통로를 열지 결정한다.
+   *  mousemove 와 keydown/keyup 양쪽에서 갱신된다(어느 한쪽만으로는 "누른 채
+   *  멈춤" 또는 "포커스 밖에서 누름" 중 하나를 놓친다). */
+  const shiftHeldRef = useRef(false);
   const dragRef = useRef<DragMode | null>(null);
   // One primitive per mounted pane — the actual renderers. See DrawingsPrimitive.ts.
   const primitivesRef = useRef<Map<PaneId, DrawingsPrimitive>>(new Map());
@@ -219,6 +245,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
   const [textValue, setTextValue] = useState('');
   const textInputRef = useRef<HTMLInputElement>(null);
+  const marqueeBoxRef = useRef<HTMLDivElement>(null);
   // `textEdit` is also mirrored to a ref so the pointer/keyboard closures (which
   // don't re-bind every render) can read the current editing state.
   const textEditRef = useRef<TextEdit | null>(null);
@@ -252,6 +279,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   /** Ask every mounted primitive to repaint — for draft/ghost mutations, which
    *  happen on refs and are therefore invisible to React. */
   const requestRedraw = useCallback(() => {
+    syncMarqueeBox();
     for (const prim of primitivesRef.current.values()) prim.requestUpdate();
   }, []);
 
@@ -300,7 +328,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
   snapshotRef.current = () => ({
     drawings,
-    selectedId,
+    selectedIds: selectedIdSet,
+    handlesId: selectedId,
     hiddenAll: defaults.hiddenAll,
     axis,
     timeBadgePaneId,
@@ -327,7 +356,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   useEffect(() => {
     const source: DrawingsSource = () => snapshotRef.current();
     for (const prim of primitivesRef.current.values()) prim.setSource(source);
-  }, [paneSeries, drawings, selectedId, defaults, axis, bucketMs, lastRealMs]);
+  }, [paneSeries, drawings, selectedIdSet, defaults, axis, bucketMs, lastRealMs]);
 
   // Drop the ghost when switching away from the 1-click line tools.
   useEffect(() => {
@@ -357,7 +386,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         trendlineDraft.current ||
         pencilDraft.current ||
         rectDraft.current ||
-        measureDraft.current
+        measureDraft.current ||
+        marqueeDraft.current
       )
         return;
 
@@ -402,12 +432,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const store = useDrawingsStore.getState();
-        const id = store.selectedByScope.get(keyScope) ?? null;
-        // 잠긴 도형이면 preventDefault 도 하지 않는다 — 키를 삼키지 않고 흘려
-        // 보내는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
-        const target = id == null ? null : store.byScope.get(keyScope)?.find((d) => d.id === id);
-        if (id && !isLocked(target)) {
-          store.remove(keyScope, id);
+        const ids = store.selectedByScope.get(keyScope) ?? EMPTY_SELECTION;
+        const items = store.byScope.get(keyScope) ?? [];
+        // 잠긴 도형만 골라 눌렀다면 preventDefault 도 하지 않는다 — 키를 삼키지
+        // 않고 흘려 보내는 편이 "이 창은 이 키에 관심 없다" 는 정직한 신호다.
+        // 집합에 잠긴 것이 섞여 있으면 나머지는 지우고 그것만 남는다.
+        const deletable = ids.filter((id) => !isLocked(items.find((d) => d.id === id)));
+        if (deletable.length > 0) {
+          store.removeMany(keyScope, deletable);
           e.preventDefault();
         }
       } else if (e.key === 'Escape') {
@@ -420,6 +452,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         pencilDraft.current = null;
         rectDraft.current = null;
         measureDraft.current = null;
+        marqueeDraft.current = null;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -469,26 +502,25 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
+  /** The projector bag both the point hit-test and the marquee feed on. Shared
+   *  deliberately: if the two ever projected differently, a shape could be
+   *  clickable where the marquee can't see it (or the reverse), and nothing on
+   *  screen would explain the discrepancy. */
+  const hitCoords = (): HitCoord => ({
+    realMsToCanvasX,
+    realMsToCanvasXClamped,
+    priceToCanvasY,
+    paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
+    canvasWidth: containerRef.current?.clientWidth ?? 0,
+    measureTextWidth,
+    // MUST be the same pitch the renderer used, or a pencil stroke
+    // would be grabbable off its drawn position (see subBarOffsetPx).
+    barPx: barPitchPx(chart) ?? undefined,
+  });
+
   const hitTestIn = (list: readonly Drawing[], px: number, py: number): Drawing | null =>
     // Hidden drawings are non-interactive — no hover gating, no selection.
-    defaults.hiddenAll
-      ? null
-      : hitTestDrawings(
-          {
-            realMsToCanvasX,
-            realMsToCanvasXClamped,
-            priceToCanvasY,
-            paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
-            canvasWidth: containerRef.current?.clientWidth ?? 0,
-            measureTextWidth,
-            // MUST be the same pitch the renderer used, or a pencil stroke
-            // would be grabbable off its drawn position (see subBarOffsetPx).
-            barPx: barPitchPx(chart) ?? undefined,
-          },
-          list,
-          px,
-          py,
-        );
+    defaults.hiddenAll ? null : hitTestDrawings(hitCoords(), list, px, py);
 
   const hitTestAt = (px: number, py: number): Drawing | null => hitTestIn(drawings, px, py);
 
@@ -668,6 +700,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       dragBars,
       drawings,
       selectedId,
+      selectedIds,
+      // 잠긴 것을 **먼저 걸러낸 뒤** 판정한다 — hitTest 와 같은 합성 순서
+      // (ADR-0164). 잠긴 도형이 집합에 들어오면 그룹 이동이 그것만 못 옮기고
+      // 조용히 빠지는, 설명할 수 없는 상태가 된다. 숨김 레이어에서는 아무것도
+      // 고르지 않는다 — hitTestIn 의 hiddenAll 가드와 같은 이유.
+      drawingsInRect: (r: MarqueeRect) =>
+        defaults.hiddenAll ? [] : drawingsInRect(hitCoords(), unlockedOnly(drawings), r),
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
       // never read this (they don't create shapes), so INITIAL_STYLE is a safe
       // filler there.
@@ -676,6 +715,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       pencilDraft,
       rectDraft,
       measureDraft,
+      marqueeDraft,
       dragRef,
       beginTextEdit,
       requestRedraw,
@@ -683,6 +723,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       update: (id, patch) => { if (scope != null) useDrawingsStore.getState().update(scope, id, patch); },
       remove: (id) => { if (scope != null) useDrawingsStore.getState().remove(scope, id); },
       setSelected: (id) => { if (scope != null) useDrawingsStore.getState().setSelected(scope, id); },
+      toggleSelected: (id) => { if (scope != null) useDrawingsStore.getState().toggleSelected(scope, id); },
+      addToSelection: (ids) => { if (scope != null) useDrawingsStore.getState().addToSelection(scope, ids); },
+      updateMany: (patches) => { if (scope != null) useDrawingsStore.getState().updateMany(scope, patches); },
       revertToSelectMode,
     };
   };
@@ -929,6 +972,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
     const applyGate = (clientX: number, clientY: number) => {
       lastProbeAt = performance.now();
+      // 마퀴가 진행 중이면 게이트를 얼린다. 드래그 도중 Shift 를 놓는 순간
+      // pointer-events 가 'none' 으로 뒤집히면 진행 중인 제스처가 브라우저에서
+      // 통째로 사라진다 — 사용자는 사각형이 화면에 남은 채 아무 반응이 없는
+      // 상태를 본다. (dragRef 는 onHover 가 이미 막지만 여기도 지켜 준다.)
+      if (marqueeDraft.current || dragRef.current) return;
       const rect = container.getBoundingClientRect();
       const px = clientX - rect.left;
       const py = clientY - rect.top;
@@ -950,6 +998,18 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       // lightweight-charts 가 그대로 받아 평소처럼 팬한다. 잠긴 도형의 **선택**은
       // 오버레이가 아니라 window mousedown 리스너가 맡는다(resolveSelectModeMouseDown).
       //
+      // Shift 를 누르고 있으면 **빈 곳에서도** 오버레이가 포인터를 받는다 —
+      // 마퀴(Shift+드래그)를 시작할 통로다. 이것이 없으면 빈 곳의 pointerdown 은
+      // 게이트 밖이라 오버레이에 아예 닿지 않고, 차트가 팬된다.
+      //
+      // 대가는 **Shift+드래그로 차트를 팬하는 경로**다. lwc 는 modifier 를 구분
+      // 하지 않으므로 그 조합만 팬을 잃는다(맨 드래그는 그대로다). 마퀴가 반드시
+      // 빈 곳에서 시작하는 제스처인 이상 둘 중 하나는 양보해야 하고, 잃는 쪽이
+      // 대체 경로가 있는 쪽이어야 한다.
+      if (shiftHeldRef.current) {
+        container.style.pointerEvents = 'auto';
+        return;
+      }
       // 곁가지로 커서 문제도 함께 풀린다: 'none' 이면 잠긴 도형 위 커서가 lwc 의
       // 크로스헤어가 되어 "여기선 차트가 반응한다" 를 스스로 말한다.
       const hit =
@@ -979,7 +1039,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     let hoverRaf: number | null = null;
     let pendingEvent: MouseEvent | null = null;
     const onHover = (e: MouseEvent) => {
-      if (dragRef.current) return;
+      if (dragRef.current || marqueeDraft.current) return;
+      // 마우스 이벤트가 modifier 의 가장 신뢰할 만한 소스다 — 키 리스너는 창이
+      // 포커스를 잃은 채 눌린 Shift 를 놓친다.
+      shiftHeldRef.current = e.shiftKey;
       // 차트를 팬/줌 하는 중에는 게이트 판정을 건너뛴다. dragRef 는 오버레이
       // 자신의 도형 드래그일 때만 세팅되므로, 차트 팬은 lightweight-charts 가
       // 처리하는 동안 이 가드에 걸리지 않는다 — 즉 팬 내내 프레임마다 hitTest 가
@@ -1019,10 +1082,25 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       }, PAN_SETTLE_MS);
     };
 
+    // Shift 를 누른 채 커서를 멈춰 두면 mousemove 가 오지 않는다. 그 정지 상태
+    // 에서도 게이트가 열려야 "Shift 누르고 드래그" 가 첫 시도에 먹는다(누르고
+    // 흔들어야 먹는 것은 고장으로 읽힌다). 놓을 때 닫는 것도 같은 이유다.
+    const onShiftKey = (e: KeyboardEvent) => {
+      const held = e.shiftKey;
+      if (held === shiftHeldRef.current) return;
+      shiftHeldRef.current = held;
+      const at = lastMouseRef.current;
+      if (at) applyGate(at.clientX, at.clientY);
+    };
+
     window.addEventListener('mousemove', onHover);
+    window.addEventListener('keydown', onShiftKey);
+    window.addEventListener('keyup', onShiftKey);
     ts.subscribeVisibleLogicalRangeChange(onViewportMove);
     return () => {
       window.removeEventListener('mousemove', onHover);
+      window.removeEventListener('keydown', onShiftKey);
+      window.removeEventListener('keyup', onShiftKey);
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(onViewportMove));
       if (settleTimer !== null) {
         clearTimeout(settleTimer);
@@ -1060,7 +1138,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       const click = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const hit = hitTestAt(click.x, click.y);
       const unlockedHit = hitTestUnlockedAt(click.x, click.y);
-      switch (resolveSelectModeMouseDown(click, rect, hit, unlockedHit, isOnPropertyPanel)) {
+      switch (
+        resolveSelectModeMouseDown(click, rect, hit, unlockedHit, isOnPropertyPanel, e.shiftKey)
+      ) {
         case 'deselect':
           useDrawingsStore.getState().setSelected(scope, null);
           break;
@@ -1112,8 +1192,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   duplicateSelectedRef.current = () => {
     const store = useDrawingsStore.getState();
     if (scope == null) return;
-    const id = store.selectedByScope.get(scope) ?? null;
-    if (id == null) return;
+    // 복제는 **단일 선택 전용**이다. 다중 복제 자체는 어렵지 않지만 `add` 를 N번
+    // 부르면 되돌리기가 N단계로 쪼개진다 — 일괄 추가(addMany)까지 세우는 것은
+    // 이번 범위 밖이라, 집합을 골라 둔 상태에서는 조용히 아무 일도 하지 않는다
+    // (엉뚱하게 하나만 복제하는 것보다 낫다).
+    const ids = store.selectedByScope.get(scope) ?? EMPTY_SELECTION;
+    if (ids.length !== 1) return;
+    const id = ids[0];
     const d = store.byScope.get(scope)?.find((x) => x.id === id);
     if (d == null) return;
     const OFFSET_PX = 14;
@@ -1167,6 +1252,38 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
    * while the candles slid out from under it. Writing `transform` directly
    * skips React and costs no layout.
    */
+  /**
+   * Paint the in-flight 마퀴 by writing styles straight onto its <div>.
+   *
+   * Why DOM and not the pane primitives, when everything else moved to the
+   * canvas: a primitive's canvas is **pane-local** (`ProjectCtx.priceToY`
+   * returns pane-local Y), while the marquee is a screen rectangle in the
+   * OVERLAY's coordinate frame — the very frame `drawingsInRect` hit-tests in.
+   * Drawing it on the pane canvases would mean subtracting each pane's top
+   * offset and stitching the box across canvases, and any drift between those
+   * two frames would show up as "the box selected something it didn't cover".
+   * The usual argument for the canvas (a DOM overlay lags the candles by a
+   * frame during a pan) does not apply: the marquee is anchored to the cursor,
+   * not to data, and the chart does not pan while it is up.
+   *
+   * Written imperatively for the same reason the text editor is: `marqueeDraft`
+   * is a ref that mutates at pointer cadence, so React never sees it.
+   */
+  const syncMarqueeBox = () => {
+    const el = marqueeBoxRef.current;
+    if (!el) return;
+    const m = marqueeDraft.current;
+    if (!m) {
+      el.style.display = 'none';
+      return;
+    }
+    const r = marqueeRect(m.ax, m.ay, m.bx, m.by);
+    el.style.display = 'block';
+    el.style.transform = `translate(${r.x1}px, ${r.y1}px)`;
+    el.style.width = `${r.x2 - r.x1}px`;
+    el.style.height = `${r.y2 - r.y1}px`;
+  };
+
   const syncTextEditorPosition = () => {
     const el = textInputRef.current;
     const edit = textEditRef.current;
@@ -1188,6 +1305,15 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
+      {/* 마퀴(Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
+          드래그마다 마운트/언마운트하면 첫 프레임이 React 렌더를 기다린다. */}
+      <div
+        ref={marqueeBoxRef}
+        data-drawing-marquee
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 z-30 border border-dashed border-accent bg-accent/10"
+        style={{ display: 'none' }}
+      />
 
       {textEdit && textEditPos && (
         <input

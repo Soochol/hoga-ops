@@ -28,7 +28,7 @@ describe('useDrawingsStore — Code partitioning', () => {
     const s = useDrawingsStore.getState();
     expect(s.activeScope).toBeNull();
     expect(s.activeTool).toBe('select');
-    expect(s.selectedFor(A)).toBeNull();
+    expect(s.selectedFor(A)).toEqual([]);
     expect(s.drawingsFor(A)).toEqual([]);
   });
 
@@ -49,11 +49,11 @@ describe('useDrawingsStore — Code partitioning', () => {
     useDrawingsStore.getState().setActiveScope(A);
     useDrawingsStore.getState().add(A, mkHline('h1', 100));
     useDrawingsStore.getState().setSelected(A, 'h1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['h1']);
     // 종목별이라 다른 종목으로 전환해도 A 의 선택은 유지된다(창별 독립 선택).
     useDrawingsStore.getState().setActiveScope(B);
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('h1');
-    expect(useDrawingsStore.getState().selectedFor(B)).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['h1']);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual([]);
   });
 });
 
@@ -124,8 +124,8 @@ describe('useDrawingsStore — timeframe slot partitioning', () => {
     s().add(A, mkHline('m1', 100));
     s().add(A_DAILY, mkHline('d1', 200));
     s().setSelected(A, 'm1');
-    expect(s().selectedFor(A)).toBe('m1');
-    expect(s().selectedFor(A_DAILY)).toBeNull();
+    expect(s().selectedFor(A)).toEqual(['m1']);
+    expect(s().selectedFor(A_DAILY)).toEqual([]);
   });
 
   it('each slot persists under its own key', () => {
@@ -147,12 +147,12 @@ describe('useDrawingsStore — mutations', () => {
     useDrawingsStore.getState().add(B, mkHline('b1', 2));
     useDrawingsStore.getState().setSelected(A, 'a1');
     useDrawingsStore.getState().setSelected(B, 'b1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBe('a1');
-    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual(['a1']);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual(['b1']);
     // A 의 드로잉 제거 → A 선택만 해제, B 유지.
     useDrawingsStore.getState().remove(A, 'a1');
-    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
-    expect(useDrawingsStore.getState().selectedFor(B)).toBe('b1');
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual([]);
+    expect(useDrawingsStore.getState().selectedFor(B)).toEqual(['b1']);
   });
 
   it('mutations target the explicit code regardless of activeScope (멀티창, C2c-2b)', () => {
@@ -182,7 +182,7 @@ describe('useDrawingsStore — mutations', () => {
     useDrawingsStore.getState().setSelected(A, 'h1');
     useDrawingsStore.getState().remove(A, 'h1');
     expect(useDrawingsStore.getState().drawingsFor(A)).toHaveLength(0);
-    expect(useDrawingsStore.getState().selectedFor(A)).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor(A)).toEqual([]);
   });
 
   it('clearAll empties the active Code list only', () => {
@@ -296,7 +296,7 @@ describe('useDrawingsStore — undo/redo (ADR-0107)', () => {
     s().add(A, mkHline('h1', 100));
     s().setSelected(A, 'h1');
     s().undo(A); // h1 removed by undo → selection must clear
-    expect(s().selectedFor(A)).toBeNull();
+    expect(s().selectedFor(A)).toEqual([]);
   });
 
   it('undo/redo persist to localStorage', () => {
@@ -721,7 +721,7 @@ describe('useDrawingsStore — 잠금', () => {
     s().setSelected(A, 'h2');
     s().clearAll(A);
 
-    expect(s().selectedFor(A)).toBe('h2');
+    expect(s().selectedFor(A)).toEqual(['h2']);
   });
 
   it('지워진 도형이 선택돼 있었다면 선택은 해제된다', () => {
@@ -731,7 +731,7 @@ describe('useDrawingsStore — 잠금', () => {
     s().setSelected(A, 'h1');
     s().clearAll(A);
 
-    expect(s().selectedFor(A)).toBeNull();
+    expect(s().selectedFor(A)).toEqual([]);
   });
 
   // undo/redo/restore/import 는 배열 통째 교체라 잠금을 보지 않는다 — 항목별

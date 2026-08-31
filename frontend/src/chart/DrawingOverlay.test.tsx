@@ -37,18 +37,18 @@ describe('resolveSelectModeMouseDown', () => {
   const locked = hitDrawing(true);
 
   it('빈 곳 클릭은 선택을 해제한다 (ADR-0030)', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, null, null, false)).toBe('deselect');
+    expect(resolveSelectModeMouseDown(inside, rect, null, null, false, false)).toBe('deselect');
   });
 
   // 잠기지 않은 도형 위에서는 오버레이가 'auto' 라 selectTool 이 선택을 맡는다.
   it('잠기지 않은 도형을 맞히면 아무것도 하지 않는다 — selectTool 의 몫', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, live, live, false)).toBe('none');
+    expect(resolveSelectModeMouseDown(inside, rect, live, live, false, false)).toBe('none');
   });
 
   // 게이트가 잠긴 도형 위에서 'none' 이라 오버레이는 이 클릭을 **아예 못 본다**.
   // 이 분기가 없으면 잠긴 도형은 영영 선택되지 않고, 따라서 영영 못 푼다.
   it('잠긴 것만 있으면 선택한다 — 오버레이가 그 클릭을 못 받기 때문', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, locked, null, false)).toBe('select-locked');
+    expect(resolveSelectModeMouseDown(inside, rect, locked, null, false, false)).toBe('select-locked');
   });
 
   // ⚠ 겹침 케이스. hit 은 최상단인 잠긴 것이지만 아래에 살아 있는 것이 있으므로
@@ -56,15 +56,15 @@ describe('resolveSelectModeMouseDown', () => {
   // pointerdown(오버레이) → mousedown(여기) 순서라 **오버레이의 선택을 덮어써서**,
   // 사용자는 한 도형을 잡았는데 다른 도형이 선택되는 것을 보게 된다.
   it('잠긴 것이 위에 겹쳐 있어도 아래가 살아 있으면 손대지 않는다', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, locked, live, false)).toBe('none');
+    expect(resolveSelectModeMouseDown(inside, rect, locked, live, false, false)).toBe('none');
   });
 
   // 리스너가 window 에 붙어 창마다 모든 클릭을 본다. rect 밖을 걸러 내는 것이
   // 곧 "남의 창 클릭으로 내 scope 를 쓰지 않는다"는 보장이다(ADR-0119 C2c-2b).
   it('오버레이 rect 밖 클릭은 어느 분기도 타지 않는다', () => {
     for (const p of [{ x: 900, y: 50 }, { x: 100, y: 500 }, { x: -1, y: 50 }, { x: 100, y: -1 }]) {
-      expect(resolveSelectModeMouseDown(p, rect, null, null, false)).toBe('none');
-      expect(resolveSelectModeMouseDown(p, rect, locked, null, false)).toBe('none');
+      expect(resolveSelectModeMouseDown(p, rect, null, null, false, false)).toBe('none');
+      expect(resolveSelectModeMouseDown(p, rect, locked, null, false, false)).toBe('none');
     }
   });
 
@@ -75,12 +75,12 @@ describe('resolveSelectModeMouseDown', () => {
   // button worked anyway because it captured `id` in a closure before
   // selectedId went null — masking the bug. This test pins the guard.
   it('속성 패널에서 시작한 클릭은 해제하지 않는다', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, null, null, true)).toBe('none');
+    expect(resolveSelectModeMouseDown(inside, rect, null, null, true, false)).toBe('none');
   });
 
   // 패널 위에서 자물쇠를 누르는 순간이 정확히 이 경우다.
   it('패널 가드는 잠긴 도형 히트보다 우선한다', () => {
-    expect(resolveSelectModeMouseDown(inside, rect, locked, null, true)).toBe('none');
+    expect(resolveSelectModeMouseDown(inside, rect, locked, null, true, false)).toBe('none');
   });
 });
 
@@ -650,7 +650,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       fireEvent.keyDown(window, { key: 'Escape' });
 
       expect(s().activeTool).toBe('select');
-      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().selectedByScope.get(SCOPE) ?? []).toEqual([]);
     });
 
     it('우클릭 한 번도 같은 상태로 착지한다 — 두 경로가 갈리지 않는다', () => {
@@ -680,7 +680,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
       const s = () => useDrawingsStore.getState();
       seedSelected('select');
       const { rerender } = mountOverlay();
-      expect(s().selectedByScope.get(SCOPE) ?? null).toBe('h1');
+      expect(s().selectedByScope.get(SCOPE) ?? []).toEqual(['h1']);
 
       s().setActiveTool('pencil');
       rerender(<DrawingOverlay
@@ -690,7 +690,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
         paneSeries={new Map()}
       />);
 
-      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().selectedByScope.get(SCOPE) ?? []).toEqual([]);
       expect(s().activeTool).toBe('pencil'); // 도구는 살아 있다
     });
 
@@ -701,7 +701,7 @@ describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
 
       fireEvent.keyDown(window, { key: 'Escape' });
 
-      expect(s().selectedByScope.get(SCOPE) ?? null).toBeNull();
+      expect(s().selectedByScope.get(SCOPE) ?? []).toEqual([]);
       expect(s().activeTool).toBe('select');
     });
   });

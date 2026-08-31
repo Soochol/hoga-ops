@@ -58,7 +58,12 @@ import type {
 /** Everything the renderer needs for one frame. */
 export type DrawingsSnapshot = {
   drawings: readonly Drawing[];
-  selectedId: string | null;
+  /** 선택 멤버십. 오버레이가 선택 배열에서 파생해 넘긴다 — 이 getter 는 lwc 의
+   *  draw 마다(팬 × 팬 수) 불리므로 여기서 Set 을 만들면 안 된다. */
+  selectedIds: ReadonlySet<string>;
+  /** 끝점·모서리 핸들을 그릴 도형. **단일 선택일 때만** non-null — 다중에서
+   *  핸들이 뜨면 핸들 드래그와 그룹 이동이 같은 픽셀에서 경합한다. */
+  handlesId: string | null;
   /** Hidden layer — draw nothing (drafts included; no gesture runs while hidden). */
   hiddenAll: boolean;
   axis: VirtualAxis;
@@ -160,15 +165,16 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
       // draw order the single-canvas overlay had.
       for (const d of snap.drawings) {
         if (d.kind === 'vline' || d.paneId !== paneId) continue;
-        renderDrawing(c, ctx, d, d.id === snap.selectedId);
+        renderDrawing(c, ctx, d, snap.selectedIds.has(d.id), { handles: d.id === snap.handlesId });
       }
       for (const d of snap.drawings) {
         // A vline spans every pane, so every pane's primitive draws it —
         // including panes it did not originate on. That also preserves the old
         // behaviour where a vline survives its origin pane being toggled off.
         if (d.kind !== 'vline') continue;
-        renderDrawing(c, ctx, d, d.id === snap.selectedId, {
+        renderDrawing(c, ctx, d, snap.selectedIds.has(d.id), {
           vlineTimeBadge: snap.timeBadgePaneId == null || snap.timeBadgePaneId === paneId,
+          handles: d.id === snap.handlesId,
         });
       }
 
@@ -254,7 +260,7 @@ class DrawingsPriceAxisRenderer implements IPrimitivePaneRenderer {
         lastRealMs: snap.lastRealMs,
       };
       for (const h of hlines) {
-        renderHlinePriceBadge(c, ctx, h, h.id === snap.selectedId);
+        renderHlinePriceBadge(c, ctx, h, snap.selectedIds.has(h.id));
       }
     });
   }

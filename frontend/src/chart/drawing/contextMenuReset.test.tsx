@@ -43,7 +43,7 @@ describe('useDrawingToolContextMenuReset', () => {
     fireEvent.contextMenu(document.body);
 
     expect(s().activeTool).toBe('select');
-    expect(s().selectedFor('005930|minute')).toBeNull();
+    expect(s().selectedFor('005930|minute')).toEqual([]);
   });
 
   it('여러 창(scope)의 선택을 모두 푼다 — 전역 리스너엔 scope 가 없다', () => {
@@ -58,8 +58,8 @@ describe('useDrawingToolContextMenuReset', () => {
 
     fireEvent.contextMenu(document.body);
 
-    expect(s().selectedFor('005930|minute')).toBeNull();
-    expect(s().selectedFor('000660|D')).toBeNull();
+    expect(s().selectedFor('005930|minute')).toEqual([]);
+    expect(s().selectedFor('000660|D')).toEqual([]);
   });
 
   it('select 모드에선 리스너가 없어 우클릭을 가로채지 않는다', () => {

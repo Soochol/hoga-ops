@@ -5,7 +5,7 @@
 // delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
 
 import { useCallback, useState, useRef } from 'react';
-import { useDrawingsStore } from '../state/drawings';
+import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
   COLOR_PALETTE,
@@ -43,13 +43,72 @@ type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | n
 /** Top-center dock offset from the chart's top edge (candle pane top). */
 const TOP_DOCK_Y = 8;
 
+/**
+ * 다중 선택 툴바 — 개수와, 집합 전체에 뜻이 통하는 동작 둘만 남긴다.
+ *
+ * 스타일 컨트롤이 없는 이유는 자리 부족이 아니라 **의미의 부재**다: 선택에
+ * 추세선과 텍스트가 섞이면 "두께" 는 한쪽에만 있고, 값이 서로 다르면 무엇을
+ * 보여 줄지부터 새로 정해야 한다(혼합 값 표시). 색·두께 일괄 편집은 그 설계를
+ * 마친 뒤 이 툴바에 덧붙일 수 있다 — 지금은 없는 편이 정직하다.
+ *
+ * 잠금이 **거는 방향만** 있는 것도 의도다. 다중 선택은 잠기지 않은 것만 모으므로
+ * (hitTestUnlockedAt · drawingsInRect 모두 unlockedOnly 위에서 돈다) 이 집합에
+ * 잠긴 도형은 원리적으로 없다. 그래서 "해제" 는 집합에 대상이 없고, 잠근 뒤에는
+ * 선택을 비운다 — 잠긴 것을 선택에 남겨 두면 헤일로는 있는데 끌리지 않는,
+ * 설명 없는 상태가 된다.
+ */
+function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly string[] }) {
+  return (
+    <div
+      data-drawing-property-panel
+      data-testid="drawing-multi-selection-panel"
+      className="absolute z-30 inline-flex items-center gap-1.5 bg-bg-card border border-border rounded-lg p-1 pl-2.5 shadow-lg"
+      style={{ top: TOP_DOCK_Y, left: '50%', transform: 'translateX(-50%)' }}
+    >
+      <span data-testid="drawing-multi-count" className="text-xs text-fg-dim tabular-nums">
+        {ids.length}개 선택
+      </span>
+      <div className="w-px h-4 bg-border" />
+      <button
+        type="button"
+        data-testid="drawing-multi-lock"
+        aria-label="선택 잠금"
+        title="선택한 도형을 잠급니다 — 이동·수정·삭제를 막습니다"
+        onClick={() => {
+          const store = useDrawingsStore.getState();
+          store.updateMany(scope, ids.map((id) => ({ id, patch: { locked: true } as Partial<Drawing> })));
+          store.setSelected(scope, null);
+        }}
+        className="h-7 w-7 inline-flex items-center justify-center rounded text-fg-dim hover:bg-bg-input-hover"
+      >
+        🔒
+      </button>
+      <button
+        type="button"
+        data-testid="drawing-multi-delete"
+        aria-label="선택 삭제"
+        title="선택한 도형을 모두 삭제합니다 (Delete)"
+        onClick={() => useDrawingsStore.getState().removeMany(scope, ids)}
+        className="h-7 w-7 inline-flex items-center justify-center rounded text-[#F43F5E] hover:bg-bg-input-hover"
+      >
+        🗑
+      </button>
+    </div>
+  );
+}
+
 export default function DrawingPropertyPanel({ scope }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
-  const selectedId = useDrawingsStore((s) => (scope ? s.selectedByScope.get(scope) ?? null : null));
+  const selectedIds = useDrawingsStore((s) =>
+    scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
+  );
+  // 스타일 편집기는 **단일 선택 전용**이다. 두 개 이상이면 아래 슬림 툴바로
+  // 갈라진다 — 종류가 섞인 집합에서는 편집할 공통 속성이 애초에 정의되지 않는다
+  // (텍스트의 글자 크기, 사각형의 채움 불투명도는 서로에게 없는 필드다).
   const drawing = useDrawingsStore((s) => {
     if (scope == null) return null;
-    const sel = s.selectedByScope.get(scope) ?? null;
-    return sel == null ? null : s.byScope.get(scope)?.find((d) => d.id === sel) ?? null;
+    const sel = s.selectedByScope.get(scope) ?? EMPTY_SELECTION;
+    return sel.length === 1 ? s.byScope.get(scope)?.find((d) => d.id === sel[0]) ?? null : null;
   });
 
   const hiddenAll = useDrawingsStore((s) => s.defaults.hiddenAll);
@@ -66,9 +125,14 @@ export default function DrawingPropertyPanel({ scope }: Props) {
 
   // Visibility gate. The hiddenAll clause keeps the editor off a hidden layer —
   // there's no shape on screen to point at.
-  if (activeTool !== 'select' || selectedId == null || drawing == null || hiddenAll || scope == null) return null;
+  if (activeTool !== 'select' || selectedIds.length === 0 || hiddenAll || scope == null) return null;
 
-  const id = selectedId;
+  if (selectedIds.length > 1) {
+    return <MultiSelectionToolbar scope={scope} ids={selectedIds} />;
+  }
+  if (drawing == null) return null;
+
+  const id = selectedIds[0];
   // 잠기면 자물쇠만 살아 있다. 이건 정확성이 아니라 감촉이다 — 스토어가 어차피
   // 거부하므로(ADR-0164), 여기 disabled 는 "눌리는데 아무 일도 안 나는 버튼"이
   // 고장으로 읽히는 것을 막는 몫이다.

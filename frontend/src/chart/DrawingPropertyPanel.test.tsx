@@ -166,7 +166,7 @@ describe('DrawingPropertyPanel — delete', () => {
     const { container } = render(<DrawingPropertyPanel scope="005930|minute" />);
     fireEvent.click(screen.getByTestId('drawing-delete'));
     expect(useDrawingsStore.getState().byScope.get('005930|minute')).toEqual([]);
-    expect(useDrawingsStore.getState().selectedFor('005930|minute')).toBeNull();
+    expect(useDrawingsStore.getState().selectedFor('005930|minute')).toEqual([]);
     expect(container.querySelector('[data-drawing-property-panel]')).toBeNull();
   });
 });
