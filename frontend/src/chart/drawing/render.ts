@@ -761,10 +761,16 @@ export function renderGhostPreview(
   c.restore();
 }
 
-/** How far an alignment guide overshoots the two boxes it connects, in canvas
- *  px. Without the overshoot the line terminates exactly on the shapes' edges
- *  and reads as part of the rectangles rather than as a measurement. */
-const GUIDE_OVERSHOOT = 6;
+/**
+ * How far an alignment guide overshoots the two boxes it connects, in canvas px.
+ *
+ * This is the guide's ONLY visible signal, which is why it is generous. A guide
+ * sits by definition ON the aligned edge, so the stretch between the two shapes
+ * is hidden under their own strokes — measured in the browser, the 6 px first
+ * tried left barely a tick past the corner handles. The overshoot is the part
+ * that reads.
+ */
+const GUIDE_OVERSHOOT = 14;
 
 /**
  * Alignment guide lines for an in-flight drag — the visual half of shape
@@ -789,7 +795,10 @@ export function renderAlignGuides(
   c.strokeStyle = color;
   c.globalAlpha = 0.85;
   c.lineWidth = 1;
-  c.setLineDash([4, 3]);
+  // Coarser than any shape's dash (`dashPattern` maxes at 3x/2x the stroke
+  // width): the guide wears the dragged shape's colour, so the dash rhythm is
+  // what separates it from the outline it is lying on top of.
+  c.setLineDash([7, 5]);
   for (const g of mine) {
     if (g.axis === 'x') {
       const x = ctx.realMsToX(g.at);

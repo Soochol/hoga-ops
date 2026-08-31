@@ -650,10 +650,11 @@ describe('renderAlignGuides', () => {
       [{ axis: 'x', paneId: 'candle', at: 120_000, from: 100, to: 250 }],
       '#14B8A6',
     );
-    // from/to are prices → y 200 and y 50; the line runs 6px past each end.
-    expect(c.moveTo).toHaveBeenCalledWith(120, 44);
-    expect(c.lineTo).toHaveBeenCalledWith(120, 206);
-    expect(c.setLineDash).toHaveBeenCalledWith([4, 3]);
+    // from/to are prices → y 200 and y 50; the line runs GUIDE_OVERSHOOT past
+    // each end (50 − 14 = 36, 200 + 14 = 214).
+    expect(c.moveTo).toHaveBeenCalledWith(120, 36);
+    expect(c.lineTo).toHaveBeenCalledWith(120, 214);
+    expect(c.setLineDash).toHaveBeenCalledWith([7, 5]);
   });
 
   it('draws a horizontal line at the aligned price', () => {
@@ -664,8 +665,8 @@ describe('renderAlignGuides', () => {
       [{ axis: 'y', paneId: 'candle', at: 100, from: 50_000, to: 120_000 }],
       '#14B8A6',
     );
-    expect(c.moveTo).toHaveBeenCalledWith(44, 200);
-    expect(c.lineTo).toHaveBeenCalledWith(126, 200);
+    expect(c.moveTo).toHaveBeenCalledWith(36, 200);
+    expect(c.lineTo).toHaveBeenCalledWith(134, 200);
   });
 
   it('wears the dragged shape colour rather than a hardcoded accent', () => {
