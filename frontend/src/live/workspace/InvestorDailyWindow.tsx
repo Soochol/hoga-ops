@@ -28,6 +28,13 @@
  * 따르면 1,589,169주가 "15,892억" 으로 그려진다(100배 오독). 칩의 눌림 상태만
  * 스토어를 따르고 숫자는 데이터를 따른다.
  *
+ * **그 올바름이 「아무 일도 안 일어남」처럼 보인다** — 그래서 전환 중임을 표시한다.
+ * 축을 처음 바꿀 때는 벤더 콜드 walk-back 이라 실측 4~9초가 걸리는데(2회차부터는
+ * 캐시 53ms), 그동안 옛 값이 제 단위로 얌전히 서 있으면 사용자에겐 버튼이 죽은
+ * 것과 구별되지 않는다(2026-08-31 사용자 보고). 판별식은 `isFetching` 이 아니라
+ * **요청한 축 ≠ 데이터가 말하는 단위** 다 — 60초 폴링 같은 배경 재요청은 표를
+ * 흐리게 만들 이유가 없고, 이 식은 그 둘을 정확히 가른다.
+ *
  * 단위 스토어는 **잠정투자자 카드와 공유한다**(`live.investorEstimateUnit.v1`).
  * 두 창이 나란히 뜬 채 단위가 서로 다르면 비교 자체가 불가능해진다 — 그 스토어가
  * 존재하는 이유가 그것이고, 표시 단위도 주/억으로 같다(`formatAmount` 가 백만원을
@@ -70,8 +77,10 @@ import { subtractDaysKst, todayKstYyyymmdd } from '../liveDateTime';
  */
 const REQUEST_CALENDAR_DAYS = 130;
 
+/** 상위 주체 컬럼 수 = 기관 세부가 시작하는 인덱스. 그룹 라벨이 사라진 뒤로는
+ *  **구분선의 위치**가 이 상수의 유일한 용도다 — 경계를 말하는 것이 선뿐이라
+ *  값이 틀리면 선이 엉뚱한 컬럼 앞에 선다. */
 const TOP_COLUMN_COUNT = INVESTOR_COLUMNS.filter((c) => c.group === 'top').length;
-const ORGN_COLUMN_COUNT = INVESTOR_COLUMNS.length - TOP_COLUMN_COUNT;
 
 type Props = {
   code: string;
@@ -96,12 +105,18 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   // **데이터가 자기 단위를 말한다.** 없으면(옛 백엔드) 수량으로 읽는다 — 그게
   // 이 라우트가 축 파라미터를 갖기 전의 유일한 축이었다.
   const dataUnit: InvestorNetUnit = query.data?.unit ?? 'qty_shares';
+  const requestedUnit: InvestorNetUnit = unit === 'amount' ? 'amt_mwon' : 'qty_shares';
+  // 표가 아직 **옛 축**을 그리고 있다. 데이터가 아예 없을 때(첫 로딩)는 빈 상태가
+  // 이미 말하므로 여기서는 세지 않는다.
+  const axisPending = query.data !== undefined && dataUnit !== requestedUnit;
   const table = useMemo(
     () => buildInvestorDailyTable(points ?? [], span),
     [points, span],
   );
 
-  const stateText = getStateText(query, table.rows.length);
+  const stateText = axisPending
+    ? `${INVESTOR_ESTIMATE_UNIT_LABELS[unit]} 조회 중`
+    : getStateText(query, table.rows.length);
 
   return (
     <div className="flex h-full flex-col bg-bg-card">
@@ -125,30 +140,22 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full border-collapse font-data text-xs tabular-nums">
+          {/* 전환 중에는 표를 흐리게 둔다 — 지우지 않는 것이 요점이다. 축을 오갈
+              때마다 표가 사라지면 비교가 끊기고, 그대로 두면 안 바뀐 것처럼 보인다. */}
+          <table
+            data-axis-pending={axisPending || undefined}
+            className={`w-full border-collapse font-data text-xs tabular-nums transition-opacity ${
+              axisPending ? 'opacity-40' : ''
+            }`}
+          >
+            {/* 헤더는 **한 줄이다.** 종전엔 위에 그룹 라벨 줄(「상위 주체 · 합 0」·
+                「기관 세부 · 합 = 기관계」)이 하나 더 있었는데 2026-08-31 사용자
+                결정으로 걷어냈다 — 항등식은 코드와 테스트가 지키는 성질이지 표가
+                매 순간 되뇔 것이 아니고, 12컬럼 표에서 그 줄은 세로 공간만 먹었다.
+                그룹 경계는 라벨 없이 **구분선**(아래 `border-l`)이 계속 말한다. */}
             <thead className="sticky top-0 z-20 text-fg-dim">
               <tr>
                 <HeadCell sticky className="text-left">날짜</HeadCell>
-                {/* 그룹 라벨은 **왼쪽 정렬이다 — 가운데 정렬이면 안 보인다.**
-                    기관 세부는 8컬럼(493px)을 덮는데 창은 그보다 좁아서, 가운데에
-                    놓으면 라벨이 늘 스크롤 밖에 선다(실측: 중심 600px vs 가시폭
-                    551px). 왼쪽에 두면 구분선 바로 뒤라 그룹이 시작하는 곳에서
-                    읽힌다. 이건 단위 테스트가 원리적으로 못 보는 부류다. */}
-                <th
-                  colSpan={TOP_COLUMN_COUNT}
-                  className="border-b border-border bg-bg-card px-1.5 py-1 text-left text-2xs font-medium text-fg-dimmer"
-                >
-                  상위 주체 · 합 0
-                </th>
-                <th
-                  colSpan={ORGN_COLUMN_COUNT}
-                  className="border-b border-l border-border bg-bg-card px-1.5 py-1 text-left text-2xs font-medium text-fg-dimmer"
-                >
-                  기관 세부 · 합 = 기관계
-                </th>
-              </tr>
-              <tr>
-                <HeadCell sticky className="text-left" />
                 {INVESTOR_COLUMNS.map((column, index) => (
                   <HeadCell
                     key={column.key}

@@ -7,7 +7,8 @@ import { useLivePastCandles, type LivePastCandlesResponse } from '../api/livePas
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import { useRangeCandlesDelta, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
+import { useRange, useRangeCandlesDelta, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
+import type { RangeRequestOptions } from '../api/range';
 import { scaleRangeBundlePrices } from './scaleRangeBundlePrices';
 import {
   type LiveTimeframe,
@@ -68,6 +69,17 @@ import { useMinuteGapFill, type MinuteGapFillResult } from './useMinuteGapFill';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
 const EMPTY_CANDLES: Candle[] = [];
+
+/**
+ * 일·주·월 프로그램 폴백 요청의 `bucket_ms` 축 — 1분 고정.
+ *
+ * 이 값은 **차트 격자가 아니다.** `/api/range` 에서 `bucket_ms` 가 프로그램 시리즈에
+ * 하는 일은 **과거일 접기** 하나인데(`build_program_trade_series`), 이 요청은 오늘
+ * 하루만 담고 오늘분은 백엔드가 접지 않는다. 즉 어떤 값을 줘도 프로그램 점은 원해상도
+ * 로 오고, 1분은 "가장 잘게 = 접힘 없음" 을 뜻하는 관습적 표기다. 엔드포인트가
+ * `bucket_ms` 를 필수로 받으므로 무언가는 줘야 한다.
+ */
+const PROGRAM_ONLY_SIDECAR_TIMEFRAME = '1m' as const;
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -1000,6 +1012,78 @@ export function useLiveBundle(
     sidecarEnabled ? rangePlan.todayKst : null,
     sidecarRangeOptions,
   );
+
+  /**
+   * 일·주·월에서 **프로그램 데이터 창만을 위한** 오늘분 사이드카 폴백.
+   *
+   * 위 `rangePlan` 은 통째로 분봉 전용이다(`planLiveRangeRequest` 의 `enableMinute`)
+   * — 캘린더 봉에서는 `rangePlan.code` 가 null 이 되어 `sidecarEnabled` 가 꺼지고,
+   * `/api/range?mode=sidecar` 요청이 **한 건도 나가지 않는다**. 그 자체는 옳다:
+   * 호가 유래 pane 셋(호가비·체결강도·프로그램)은 D/W/M 에 pane 이 없다
+   * (`paneSpecsForTimeframe` 의 `hogaAllowed`).
+   *
+   * 그런데 **프로그램 데이터 창은 pane 이 아니다.** 차트 타임프레임과 무관하게
+   * 언제나 "오늘 하루의 누적 순매수" 를 그리고(카드가 `anchorT` 날짜로 잘라 쓴다),
+   * 데이터도 분봉과 무관한 자체 사이드카(30초 간격 `kis-program-trade/`)다. 그런데
+   * 위 게이트에 함께 걸려 본체가 빈 채로 남고, `effProgramTradeEnabled` 는 창 수요라
+   * 여전히 참이라 아래 병합이 **WS 링버퍼 꼬리(15분)만** 이어 붙였다. 2026-08-31
+   * 실측(005930, /browse): 분봉이면 곡선이 폭 전체(x 0.1→100)를 채우는데 일봉으로
+   * 바꾸면 오른쪽 3%(x 97.0→100)만 남았고 `/api/range?mode=sidecar` 는 0건이었다.
+   *
+   * 증상이 데이터 결손으로 안 보이는 것이 이 결함의 고약한 점이다 — 상단 금액·수량·
+   * 시각은 꼬리 최신 점이라 **정확하고 실시간 갱신도 된다**. x 축도 09:00 부터로
+   * 보이는데, 카드의 `tFirst` 가 종가 오버레이를 길이 조건 없이 훑기 때문이다
+   * (일봉이면 오늘 캔들 1개의 `t_ms` = 09:00). 회색 가격선만 조용히 사라진다.
+   *
+   * **오늘 하루만 · 프로그램만** 요청한다. 캘린더 봉의 조회 구간은 수년일 수 있는데
+   * 카드가 읽는 것은 `anchorT` 하루뿐이고(D/W/M 에서는 커서가 `minute-cursor` 스코프를
+   * 못 만들어 언제나 오늘이다), 형제 슬라이스는 pane 이 없어 소비처가 아예 없다.
+   * `bucket_ms` 는 격자 원점이 아니라 **과거일 접기**에만 쓰이고 오늘분은 백엔드가
+   * 접지 않으므로(`build_program_trade_series`), 1분 고정이 원해상도를 뜻한다.
+   *
+   * 델타 훅이 아니라 `useRange` 인 이유: 단일 날짜라 확장할 구간이 없다. `todayKst`
+   * 를 넘겨 5분 리페치(`TODAY_RANGE_REFETCH_MS`)만 켠다.
+   *
+   * **소비처 없이 도는 일은 없다.** 게이트의 `effProgramTradeEnabled` 는 캘린더 봉에서
+   * 사실상 데이터 창 수요 하나로 접힌다 — 지표 설정이 타임프레임별 버킷이고
+   * `byTimeframe.D/W/M` 은 시드가 없어 공장값(`programTradeEnabled: false`)이기
+   * 때문이다(분봉 버킷만 v1 이관으로 true 를 물려받았다). 즉 D/W/M 에서 이 쿼리를
+   * 켜는 것은 `sidecarDemands.programTrade` 뿐이고, 그건 **프로그램 창이 있는 그룹의
+   * 링크 발행 차트**에만 들어간다. 2026-08-31 실측(/browse · fetch 인터셉터): 창이
+   * 있으면 종목 전환마다 이 요청이 잡히고(005930·000660), 창을 닫으면 같은 탐침에
+   * 종목을 또 바꿔도 `/api/range` 가 **0건**이다.
+   */
+  const programOnlySidecarEnabled = !!(code && !isMinute && effProgramTradeEnabled);
+  const programOnlySidecarOptions = useMemo<RangeRequestOptions>(
+    () => ({
+      mode: 'sidecar' as const,
+      programTradeEnabled: true,
+      // 형제 슬라이스는 **명시적으로 끈다** — 백엔드 기본이 전부 `True` 라
+      // 빠뜨리면 소비처가 없는 계산을 매 5분 리페치마다 시킨다.
+      askPeaksEnabled: false,
+      bidPeaksEnabled: false,
+      brokerLateEntriesEnabled: false,
+      tradeVolumePocEnabled: false,
+      depthHeatmapEnabled: false,
+      brokerLateEntryStartHHMM: null,
+      volumeDistributionBins: null,
+      tradeVolumePocBins: null,
+      volumeDistributionPriceRange: null,
+    }),
+    [],
+  );
+  const programOnlySidecar = useRange(
+    programOnlySidecarEnabled ? code : null,
+    programOnlySidecarEnabled ? todayKstYyyymmdd : null,
+    programOnlySidecarEnabled ? todayKstYyyymmdd : null,
+    programOnlySidecarEnabled ? PROGRAM_ONLY_SIDECAR_TIMEFRAME : null,
+    undefined,
+    programOnlySidecarEnabled ? todayKstYyyymmdd : null,
+    programOnlySidecarOptions,
+  );
+  // 쿼리 응답 객체는 fetch 마다 한 번만 새로 생기므로 이 파생도 참조가 안정적이다
+  // (아래 번들 memo 의 의존성 배열이 이 값을 그대로 쓴다).
+  const programOnlySidecarProgramTrade = programOnlySidecar.data?.program_trade ?? null;
   // 호가 유래 지표를 **캔들과 같은 척도**로 옮긴다. `/api/range` 는 디스크 캡처라
   // 원주가이고 위 벤더 봉은 수정주가인데, 둘이 같은 price scale 에 그려지므로 계수 ≠ 1
   // 인 구간이 통째로 어긋난다(009830 2026-06-12: 캔들 34,662~36,596 vs 히트맵
@@ -1123,6 +1207,18 @@ export function useLiveBundle(
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }
+    // 일·주·월 폴백 — 위 블록이 통째로 건너뛰어지는 자리를 오늘분으로 채운다
+    // (근거는 `programOnlySidecarEnabled` 도크스트링). 쿼리가 분봉에서 꺼져 있어
+    // 두 경로가 겹치지 않는다.
+    //
+    // **`filterProgramTradeForCandles` 를 걸지 않는다.** 그 필터는 캔들이 없는 날짜의
+    // 점이 차트 pane 의 VirtualAxis 밖으로 투영되는 것을 막는 장치인데, D/W/M 에는
+    // 프로그램 pane 자체가 없다(`paneSpecsForTimeframe`). 유일한 소비처인 데이터 창은
+    // 자기가 `anchorT` 날짜로 다시 자르므로, 여기서 캔들에 의존시키면 오늘 캔들이
+    // 아직 안 온 순간에 **방금 고친 증상이 그대로 재현**되기만 한다.
+    if (programOnlySidecarProgramTrade) {
+      built.program_trade = programOnlySidecarProgramTrade;
+    }
     if (effProgramTradeEnabled) {
       built.program_trade = mergeProgramTradeSeriesWithLiveTail(
         built.program_trade,
@@ -1169,6 +1265,7 @@ export function useLiveBundle(
     investorPoints,
     sessionBoundsForDate,
     effProgramTradeEnabled,
+    programOnlySidecarProgramTrade,
   ]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
