@@ -377,22 +377,46 @@ def test_quote_phase_boundary_at_0900_kst():
 
 
 def test_quote_phase_clock_boundaries_closed():
-    """스펙 2026-06-08 ⑧: 평일 08:50–16:00만 폴링 가치 구간. KRX 동시호가
-    08:50 시작(사용자 정정 — 구 08:30 아님). 2026-06-08은 월요일."""
+    """평일 08:00–16:00만 폴링 가치 구간. 하한이 **08:00**인 이유는 `_quote_phase`
+    docstring 참조(사용자 결정 2026-09-01 — 08:50이면 08:00–08:50에 어제 종가가
+    라벨 없이 오늘처럼 서빙된다). 2026-06-08은 월요일."""
     mk = lambda h, m: datetime(2026, 6, 8, h, m, tzinfo=_KST)  # noqa: E731
-    assert _quote_phase(mk(8, 49)) == "closed"
+    assert _quote_phase(mk(7, 59)) == "closed"
+    assert _quote_phase(mk(8, 0)) == "pre_open"
+    # 구 경계(08:50)가 되살아나면 여기가 빨개진다 — 그 시각은 이제 pre_open의
+    # **한가운데**지 시작점이 아니다.
+    assert _quote_phase(mk(8, 49)) == "pre_open"
     assert _quote_phase(mk(8, 50)) == "pre_open"
     assert _quote_phase(mk(9, 0)) == "open"
     assert _quote_phase(mk(15, 59)) == "open"
     assert _quote_phase(mk(16, 0)) == "closed"
-    # 토요일(2026-06-13) 장중 시각도 closed
+    # 토요일(2026-06-13)은 08:00을 넘겨도 closed — 주말은 weekday 체크가 먼저 잡는다.
     assert _quote_phase(datetime(2026, 6, 13, 10, 0, tzinfo=_KST)) == "closed"
+    assert _quote_phase(datetime(2026, 6, 13, 8, 30, tzinfo=_KST)) == "closed"
+
+
+def test_quote_phase_pre_open_hides_yesterday_close_from_0800():
+    """08:00–08:50 이 **어제 종가를 감추는 구간**이라는 계약.
+
+    사용자 신고(2026-09-01 08:11)의 회귀 가드다: 그 시각이 `closed` 이면 라우트가
+    '마지막 시세 유지'로 어제 종가를 `stale=False` 로 서빙하고, 관심종목 등락률이
+    어제 값으로 보인다. `pre_open` 이어야 `_to_live_quote` 의 `pre` 가 등락률·OHLC·
+    요약 7칸을 지운다.
+    """
+    mk = lambda h, m: datetime(2026, 9, 1, h, m, tzinfo=_KST)  # noqa: E731 — 화요일
+    for hh, mm in ((8, 0), (8, 11), (8, 30), (8, 49)):
+        assert _quote_phase(mk(hh, mm)) == "pre_open", f"{hh:02d}:{mm:02d}"
 
 
 def test_quote_phase_extended_venues_treat_nxt_preopen_as_open():
     assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "NXT") == "open"
     assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "UN") == "open"
-    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "KRX") == "closed"
+    # KRX 도 08:00 부터 열려 있지만 **국면이 다르다** — NXT 는 그 시각이 실제
+    # 프리마켓(`open`)이고, KRX 는 아직 장전(`pre_open`, 등락률 숨김)이다.
+    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "KRX") == "pre_open"
+    # 08:00 이전은 세 venue 정책 모두 closed.
+    assert _quote_phase(datetime(2026, 7, 1, 7, 59, tzinfo=_KST), "NXT") == "closed"
+    assert _quote_phase(datetime(2026, 7, 1, 7, 59, tzinfo=_KST), "KRX") == "closed"
 
 
 def test_quotes_route_threads_explicit_nxt_venue(monkeypatch, tmp_path):

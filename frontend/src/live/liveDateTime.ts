@@ -10,7 +10,7 @@
  */
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS } from '../api/types';
-import { unixMsToKSTDate } from '../util/time';
+import { unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
 
 const TRADING_MINUTES_PER_DAY = 390;        // KRX 09:00–15:30 = 6.5 h
 const TRADING_DAYS_PER_CALENDAR_DAYS = 5 / 7;
@@ -164,6 +164,49 @@ export function isKrxRegularSessionNow(nowMs: number = Date.now()): boolean {
   const wd = kstWeekday(today);
   if (wd === 0 || wd === 6) return false; // 주말
   return nowMs >= regularSessionOpenMs(today) && nowMs <= regularSessionCloseMs(today);
+}
+
+/** 전일 사다리의 만료 시각(HHMM) — **다음 거래일 08:00**.
+ *
+ *  왜 자정이 아닌가: 00:00–08:00 에 전일 마감 상태를 보는 것은 정당한 사용이고, 그
+ *  시각엔 새로 올 호가가 없어 지워 봐야 빈 화면만 남는다. 08:00 은 NXT 프리마켓
+ *  개시라 **이 리포가 이미 쓰는 경계**이며(`nxtPhaseLabel`, 백엔드 `_quote_phase`
+ *  의 NXT 하한 `time(8, 0)`), 그때부터 오늘 프레임이 들어오기 시작하므로 전일 값이
+ *  자리를 비켜 줄 근거가 생긴다. */
+const PREVIOUS_DAY_BOOK_EXPIRY_HHMM = 800;
+
+/**
+ * 이 사다리 프레임을 지금 그리면 **어제 것을 오늘처럼 보여주게 되는가**.
+ *
+ * 백엔드 `LiveBuffer._last_ob` 는 날짜를 넘겨 살아남는다 — 그건 되돌릴 결정이 아니라
+ * 의도다(`last_ob_store` docstring: "재시작이 동작을 바꾸지 않는다"). 이 술어는 그
+ * 위에 **표시 정책만** 얹는다: 저장은 그대로 두고 화면에서만 내린다. 그래서 새 탭과
+ * 밤새 켜 둔 탭이 같은 화면이 된다 — 후자는 프레임을 클라이언트 ref 가 붙들고 있어
+ * (`useLiveSeries` 의 `lastSeenObRef`) 백엔드를 고쳐도 원리적으로 닿지 않는다.
+ *
+ * ## 막는 방향
+ *
+ * 전일 이전 프레임을 **다음 거래일 08:00 이후에** 숨긴다. 그 전(자정–08:00)에는
+ * 통과시킨다.
+ *
+ * ## 못 보는 것 — 평일 공휴일
+ *
+ * 거래일 달력이 프론트에 없어 **주말만** 뺀다. 백엔드 `_quote_phase` 가 같은 근사를
+ * 같은 이유로 쓴다("캘린더 게이트는 동기 KIS HTTP 재도입이라 배제"). 공휴일 08:00
+ * 에는 전일 사다리가 사라지고 그날 채울 프레임도 없어 화면이 빈다. 그게 거슬리면
+ * 고칠 곳은 이 술어가 아니라 거래일 시드를 프론트로 내리는 일이다.
+ *
+ * ## 주말을 통과시키는 이유
+ *
+ * 만료는 "다음 **달력일** 08:00" 이 아니라 "다음 **거래일** 08:00" 이다. 토요일
+ * 08:00 에 금요일 사다리를 지우면 주말 내내 빈 화면인데, 그 이틀은 새 프레임이
+ * 원리적으로 없으므로 리셋이 아니라 그냥 소실이다.
+ */
+export function previousDayObExpired(frameMs: number, nowMs: number = Date.now()): boolean {
+  const today = realMsToYyyymmdd(nowMs);
+  if (realMsToYyyymmdd(frameMs) === today) return false;
+  if (isKstWeekend(today)) return false;
+  return unixMsToKSTHhmm(nowMs) >= PREVIOUS_DAY_BOOK_EXPIRY_HHMM;
 }
 
 /** Convert a candle count to a calendar-day window large enough to fetch

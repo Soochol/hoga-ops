@@ -995,9 +995,29 @@ class _InvestorEstimateObservedAtStore:
 def _quote_phase(now: datetime, venue_policy: LiveVenuePolicy = "KRX") -> Literal["pre_open", "open", "closed"]:
     """/quotes 오버레이의 폴링·표시 게이트(스펙 2026-06-08 ⑧).
 
-    closed: 주말 또는 평일 08:50 이전·16:00 이후 — 프론트가 폴링을 600s로
+    closed: 주말 또는 평일 08:00 이전·16:00 이후 — 프론트가 폴링을 600s로
     줄이고 백엔드는 마지막 시세 캐시로 응답한다('마지막 시세 유지' 결정).
-    pre_open: 08:50–09:00 동시호가(KRX 08:50 시작) — 등락률 숨김(기존 계약).
+    pre_open: 08:00–09:00 장전 — 등락률·당일 OHLC·요약 7칸을 숨긴다
+    (`_to_live_quote` 의 `pre`, `QuoteChangeResolver` 의 `hidden_pre_open`).
+
+    ## 하한이 08:50 이 아니라 08:00 인 이유 (사용자 결정 2026-09-01)
+
+    08:50 이던 동안 다음날 아침 08:00–08:50 의 관심종목 등락률은 **어제 종가 기준**
+    이었다 — closed 서빙이 곧 '마지막 시세 유지'이기 때문이다. 값 자체는 맞지만
+    `stale` 도 아니고 라벨도 없어 오늘 장이 열린 것처럼 읽힌다(사용자 신고 2026-09-01
+    08:11 실측: 005930 이 260,000 · +1.17% · `stale=false` 로 서빙됐다). 08:00 은 NXT
+    프리마켓 개시라 **바로 위 분기가 이미 쓰는 경계**이고, 그때부터 오늘 값이 들어오기
+    시작하므로 어제 값이 자리를 비켜 줄 근거가 생긴다.
+
+    비용은 08:00–08:50 폴링이 600s → 10s 로 조밀해지는 것 하나다(키움 거버너 관할).
+    그 구간 KRX 에는 `0D` 예상체결이 없어 등락률 칸이 **실제로 빈다** — 어제 값을
+    내리는 것이 요구였으므로 의도된 결과다. NXT 상장 종목은 08:00 부터 프리마켓
+    체결이 들어와 곧 채워진다.
+
+    사다리(10호가)는 이 함수의 관할이 아니다 — `LiveBuffer._last_ob` 는 날짜를 넘겨
+    사는 것이 의도이고(`last_ob_store` docstring), 만료는 프론트 표시 게이트가
+    같은 08:00 으로 건다(`previousDayObExpired`).
+
     시계 기반 — 평일 공휴일의 드문 낭비는 수용(캘린더 게이트는 동기 KIS HTTP
     재도입이라 배제). session_gate.market_phase(16:00-aware 3-way 세션
     phase)와 계약이 달라 이름을 분리한다."""
@@ -1008,7 +1028,7 @@ def _quote_phase(now: datetime, venue_policy: LiveVenuePolicy = "KRX") -> Litera
         if t < time(8, 0) or t >= time(20, 0):
             return "closed"
         return "open"
-    if t < time(8, 50) or t >= time(16, 0):
+    if t < time(8, 0) or t >= time(16, 0):
         return "closed"
     return "pre_open" if t < time(9, 0) else "open"
 
