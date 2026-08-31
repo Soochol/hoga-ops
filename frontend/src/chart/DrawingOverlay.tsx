@@ -20,6 +20,8 @@ import {
 import type { Drawing, PaneId, Point } from './drawing/types';
 import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
+import type { AlignGuide } from './drawing/alignSnap';
+import { resetGestureRefs, type GestureRefs } from './drawing/gestureReset';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import type { TimeShift } from './drawing/translate';
 import {
@@ -221,6 +223,22 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // magnet snapping already resolved, so each pane's primitive can project it.
   // Null when not hovering with those tools.
   const ghostRef = useRef<GhostPreview | null>(null);
+  /** Alignment guides for the in-flight drag. A ref, not state: it changes on
+   *  every pointermove and a setState per sample would re-render the whole
+   *  overlay at pointer cadence. */
+  const alignGuidesRef = useRef<{ guides: readonly AlignGuide[]; color: string } | null>(null);
+  /** Everything one gesture owns, bundled so all three exits (Escape,
+   *  right-click, pointercancel) clear the SAME list. Stable identity: the
+   *  keydown effect below has `[]` deps and captures this once. */
+  const gestureRefs = useRef<GestureRefs>({
+    trendlineDraft,
+    pencilDraft,
+    rectDraft,
+    measureDraft,
+    marqueeDraft,
+    dragRef,
+    alignGuides: alignGuidesRef,
+  }).current;
   // Last known cursor position in CLIENT coords, tracked unconditionally. The
   // pointer-events gate needs it to settle the moment select mode is entered —
   // without a remembered position it can only wait for the next mousemove, and
@@ -348,6 +366,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       pencil: defaults.styleByKind.pencil,
     },
     ghost: ghostRef.current,
+    alignGuides: alignGuidesRef.current,
     onFrame: textEdit ? syncTextEditorPosition : undefined,
   });
 
@@ -448,11 +467,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // 되돌리는지 외워야 하므로, 예측 가능성을 택했다. 두 경로가 같은 스토어
         // 액션을 부르는 것이 곧 "결과가 항상 같다" 는 보장이다.
         useDrawingsStore.getState().exitDrawingMode();
-        trendlineDraft.current = null;
-        pencilDraft.current = null;
-        rectDraft.current = null;
-        measureDraft.current = null;
-        marqueeDraft.current = null;
+        // `keepDrag`: a live drag still holds a captured pointer, and
+        // `onPointerUp` reads `dragRef` to decide whether to release it. 마퀴도
+        // 같은 이유로 남는다(그쪽도 캡처를 쥔다) — 다만 이 effect 는 진행 중인
+        // 마퀴에서 조기 반환하므로 여기 도달하지 않는다.
+        const { guidesCleared } = resetGestureRefs(gestureRefs, { keepDrag: true });
+        if (guidesCleared) requestRedraw();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -646,6 +666,36 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     return { kind: 'vline', style, cursorPx: px, cursorPaneId, price: cursorPrice, realMs, snapped };
   };
 
+  /**
+   * Publish (or clear) the drag's alignment guides.
+   *
+   * The COLOR is resolved here rather than inside the tool: a tool knows the
+   * geometry that snapped but not which drawing the user is holding, and the
+   * guide has to wear that drawing's color (see `renderAlignGuides`). During a
+   * creation drag there is no such drawing yet, so the rect tool's own sticky
+   * color stands in — which is exactly the color the draft is being drawn in.
+   *
+   * The clear path early-returns when nothing was showing, so the common case
+   * (a drag that never snaps) costs no redraws at all.
+   */
+  const setAlignGuides = (guides: readonly AlignGuide[]) => {
+    if (guides.length === 0) {
+      if (alignGuidesRef.current !== null) {
+        alignGuidesRef.current = null;
+        requestRedraw();
+      }
+      return;
+    }
+    const drag = dragRef.current;
+    const draggingId = drag != null && 'id' in drag ? drag.id : undefined;
+    const dragging = draggingId ? drawings.find((d) => d.id === draggingId) : undefined;
+    alignGuidesRef.current = {
+      guides,
+      color: dragging?.color ?? defaults.styleByKind.rect.color,
+    };
+    requestRedraw();
+  };
+
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
@@ -686,6 +736,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           // Never captured, or released already — nothing to undo.
         }
       },
+      // Shape alignment rides the SAME magnet toggle and the same Ctrl/Meta
+      // override as candle snapping — the user already calls this "자석" and
+      // splitting it into a second switch would make the toggle mean half of
+      // what it says. Unlike the candle magnet it does not require loaded
+      // candles: its references are other rectangles.
+      alignSnapEnabled: defaults.magnet && !(e.ctrlKey || e.metaKey),
+      setAlignGuides,
       pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
       realMsToCanvasX,
       canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
@@ -882,20 +939,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // pointer lost) and contextmenu. Keep this in sync with the draft refs the
   // tools own — a new draft-bearing tool must reset here too.
   const resetGesture = () => {
-    trendlineDraft.current = null;
-    pencilDraft.current = null;
-    rectDraft.current = null;
-    measureDraft.current = null;
-    // ⚠ 마퀴를 빠뜨리면 **select 모드가 통째로 잠긴다**. 남은 draft 는 게이트를
-    // 얼리고(applyGate·onHover 가 진행 중인 제스처를 보호하려고 조기 반환한다),
-    // 그 얼어붙은 값은 'auto' 라 빈 곳의 차트 팬이 죽는다. 키보드 effect 도 같은
-    // 조건으로 조기 반환하므로 Escape 로도 못 푼다 — 리마운트 전까지 회복 불가다.
-    marqueeDraft.current = null;
-    dragRef.current = null;
+    const { guidesCleared, marqueeCleared } = resetGestureRefs(gestureRefs);
+    // 마퀴 상자는 DOM 이라 ref 를 비우는 것만으로는 화면에서 사라지지 않는다 —
+    // `requestRedraw` 가 `syncMarqueeBox` 를 함께 돌린다.
+    if (guidesCleared || marqueeCleared) requestRedraw();
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
-    requestRedraw(); // 마퀴 상자를 지운다(ref 만 비우면 DOM 에 그대로 남는다)
     try {
       (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -905,7 +955,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     resetGesture();
-    requestRedraw();
     // Escape 와 같은 출구를 쓴다 — 종전엔 `setActiveTool('select')` 만 해서 선택이
     // 남았고, 하필 속성 패널은 select 모드에서만 뜨므로 **우클릭한 순간 툴바가 새로
     // 튀어나왔다**. 사용자에겐 "안 풀렸다" 로 읽혀 한 번 더 누르게 만들었다(그 두

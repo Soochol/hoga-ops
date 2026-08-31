@@ -73,6 +73,10 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     measureDraft: { current: null },
     marqueeDraft: { current: null },
     dragRef: { current: null },
+    // Off by default so every pre-existing assertion measures the unsnapped
+    // geometry it was written against; the alignment tests opt in explicitly.
+    alignSnapEnabled: false,
+    setAlignGuides: vi.fn(),
     beginTextEdit: vi.fn(),
     requestRedraw: vi.fn(),
     add: vi.fn(),
@@ -756,8 +760,9 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     selectTool.onPointerDown!(ctx);
     expect(ctx.setSelected).toHaveBeenCalledWith('h1');
     expect(ctx.dragRef.current?.kind).toBe('body');
-    expect((ctx.dragRef.current as { lastRealMs: number | null }).lastRealMs).toBeNull();
-    expect((ctx.dragRef.current as { lastPrice: number }).lastPrice).toBe(100);
+    const started = ctx.dragRef.current as { startBar: number | null; startPrice: number };
+    expect(started.startBar).toBeNull();
+    expect(started.startPrice).toBe(100);
     expect(ctx.capturePointer).toHaveBeenCalledOnce();
   });
 
@@ -765,7 +770,7 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     const target = hline(100);
     const ctx = makeCtx({
       drawings: [target],
-      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: 1_700_000_000_000, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'h1', origin: target, startBar: 1_700_000_000_000, startPrice: 100, lastBar: 1_700_000_000_000, pointerId: 1, paneId: 'candle' } },
       pixelToData: vi.fn(() => null),       // pointer now over the empty band
       canvasYToPrice: vi.fn(() => 105),     // cursor Y maps to price 105
       clampYToPane: vi.fn((_id, py) => py),
@@ -773,18 +778,22 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     });
     selectTool.onPointerMove!(ctx);
     expect(ctx.update).toHaveBeenCalledWith('h1', { price: 105 });
-    // Horizontal stays frozen while X is unresolvable: lastRealMs is preserved,
-    // lastPrice advances to the cursor price.
-    const drag = ctx.dragRef.current as { lastRealMs: number | null; lastPrice: number };
-    expect(drag.lastRealMs).toBe(1_700_000_000_000);
-    expect(drag.lastPrice).toBe(105);
+    // Horizontal stays frozen while X is unresolvable (lastBar keeps its last
+    // resolvable value), and the ANCHORS never move — under absolute
+    // anchoring they are set once at grab time and read every frame.
+    const drag = ctx.dragRef.current as {
+      lastBar: number | null; startBar: number | null; startPrice: number;
+    };
+    expect(drag.lastBar).toBe(1_700_000_000_000);
+    expect(drag.startBar).toBe(1_700_000_000_000);
+    expect(drag.startPrice).toBe(100);
   });
 
   it('moves an hline by price even when the drag started in the empty band (lastRealMs null)', () => {
     const target = hline(100);
     const ctx = makeCtx({
       drawings: [target],
-      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: null, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'h1', origin: target, startBar: null, startPrice: 100, lastBar: null, pointerId: 1, paneId: 'candle' } },
       pixelToData: vi.fn(() => null),
       canvasYToPrice: vi.fn(() => 90),
       clampYToPane: vi.fn((_id, py) => py),
@@ -798,7 +807,7 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     const target = hline(100);
     const ctx = makeCtx({
       drawings: [target],
-      dragRef: { current: { kind: 'body', id: 'h1', lastRealMs: 1_700_000_000_000, lastPrice: 100, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'h1', origin: target, startBar: 1_700_000_000_000, startPrice: 100, lastBar: 1_700_000_000_000, pointerId: 1, paneId: 'candle' } },
       // pixelToData resolves over data (realMs + price); canvasYToPrice agrees on price.
       pixelToData: vi.fn(() => ({ realMs: 1_700_000_060_000, price: 110 })),
       canvasYToPrice: vi.fn(() => 110),
@@ -807,8 +816,8 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     });
     selectTool.onPointerMove!(ctx);
     expect(ctx.update).toHaveBeenCalledWith('h1', { price: 110 });
-    const drag = ctx.dragRef.current as { lastRealMs: number | null };
-    expect(drag.lastRealMs).toBe(1_700_000_060_000); // advances when X resolves
+    const drag = ctx.dragRef.current as { lastBar: number | null };
+    expect(drag.lastBar).toBe(1_700_000_060_000); // advances when X resolves
   });
 
   it('moves a trendline endpoint by price in the empty band, preserving its realMs', () => {
@@ -868,7 +877,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
       // Cursor jumped from late session A into session B (crossed the day
       // boundary): 2 bars into B, i.e. +201_000 VIRTUAL ms from 900_000 (the
       // compressed 1s gap rides along in the delta).
-      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 900_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'r1', origin: target, startBar: dragBars.toBar(900_000), startPrice: 110, lastBar: dragBars.toBar(900_000), pointerId: 1, paneId: 'candle' } },
       pixelToData: vi.fn(() => ({ realMs: 10_100_000, price: 110 })),
       canvasYToPrice: vi.fn(() => 110),
       priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
@@ -893,28 +902,33 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
     expect(patch.b.price).toBe(120);
   });
 
-  it('dragging back restores the original corners exactly (no drift)', () => {
-    // Start from the post-gap-crossing state and move the cursor back to the
-    // original grab position: the virtual deltas telescope to zero.
-    const target: Drawing = {
-      ...rect(),
-      a: { realMs: 10_000_000, price: 100 },
-      b: { realMs: 10_100_000, price: 120 },
-    } as Drawing;
+  it('dragging out and back restores the original corners exactly (no drift)', () => {
+    // A real round trip, driven as two moves off ONE grab: out across the day
+    // boundary, then back to the grab position. Under absolute anchoring both
+    // frames are measured from the same snapshot, so the return is exact by
+    // construction rather than by two deltas cancelling.
+    const target = rect();
     const update = vi.fn();
+    const cursor = { realMs: 10_100_000, price: 110 };
     const ctx = makeCtx({
       drawings: [target],
       dragBars,
       update,
-      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_100_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
-      pixelToData: vi.fn(() => ({ realMs: 900_000, price: 110 })),
-      canvasYToPrice: vi.fn(() => 110),
+      dragRef: { current: { kind: 'body', id: 'r1', origin: target, startBar: dragBars.toBar(900_000), startPrice: 110, lastBar: dragBars.toBar(900_000), pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => cursor),
+      canvasYToPrice: vi.fn(() => cursor.price),
       priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
     });
     selectTool.onPointerMove!(ctx);
-    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
-    expect(patch.a.realMs).toBe(800_000);
-    expect(patch.b.realMs).toBe(900_000);
+    const out = update.mock.calls[0][1] as { a: Point; b: Point };
+    expect(out.a.realMs).toBe(10_000_000);
+    expect(out.b.realMs).toBe(10_100_000);
+
+    cursor.realMs = 900_000;
+    selectTool.onPointerMove!(ctx);
+    const back = update.mock.calls[1][1] as { a: Point; b: Point };
+    expect(back.a.realMs).toBe(800_000);
+    expect(back.b.realMs).toBe(900_000);
   });
 
   it('caps a leftward overshoot at the axis origin without compressing the shape', () => {
@@ -924,7 +938,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
       drawings: [target],
       dragBars,
       update,
-      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 900_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'r1', origin: target, startBar: dragBars.toBar(900_000), startPrice: 110, lastBar: dragBars.toBar(900_000), pointerId: 1, paneId: 'candle' } },
       // Cursor swung far left — raw Δvirtual would be -900_000, past the origin.
       pixelToData: vi.fn(() => ({ realMs: 0, price: 110 })),
       canvasYToPrice: vi.fn(() => 110),
@@ -949,7 +963,7 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
       drawings: [target],
       dragBars,
       update,
-      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_100_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      dragRef: { current: { kind: 'body', id: 'r1', origin: target, startBar: dragBars.toBar(10_100_000), startPrice: 110, lastBar: dragBars.toBar(10_100_000), pointerId: 1, paneId: 'candle' } },
       // Pure vertical move: Δvirtual = 0, but the round-trip still snaps the
       // stranded corner forward onto session B's open.
       pixelToData: vi.fn(() => ({ realMs: 10_100_000, price: 111 })),
@@ -1341,5 +1355,302 @@ describe('selectTool — 다중 선택', () => {
     });
     selectTool.onPointerDown!(ctx);
     expect(ctx.dragRef.current?.kind).toBe('body-multi');
+  });
+});
+
+// ── shape-to-shape alignment snapping ──────────────────────────────────────
+//
+// Coordinate stubs are LINEAR here (1 000 ms = 1 px, 1 price = 1 px) rather
+// than the constant-returning defaults, because these assertions are about
+// pixel distances: with a constant converter every candidate sits 0 px away
+// and the threshold would never be exercised.
+describe('selectTool — alignment snapping (rect body drag)', () => {
+  const linear = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    priceToCanvasY: (p: number) => 1_000 - p,
+  };
+
+  /** Neighbour: x px 100..200, y px 500..400. */
+  const neighbour = (over: Partial<Drawing> = {}): Drawing =>
+    ({
+      id: 'n1', kind: 'rect',
+      a: { realMs: 100_000, price: 500 },
+      b: { realMs: 200_000, price: 600 },
+      fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+      ...over,
+    }) as Drawing;
+
+  /** Dragged shape. Width (220 000) deliberately differs from the neighbour's
+   *  so exactly ONE anchor pair lands inside the threshold — equal widths make
+   *  min↔min and max↔max tie, and the tie-break would decide the test. */
+  const moving = (): Drawing => ({
+    id: 'm1', kind: 'rect',
+    a: { realMs: 300_000, price: 300 },
+    b: { realMs: 520_000, price: 400 },
+    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  /** A drag context whose cursor the caller can move between pointermoves.
+   *  Spies arrive through `over`, the same way every other test in this file
+   *  passes them — a dedicated parameter typed off `vi.fn`'s return loses the
+   *  contextual typing that makes a bare `vi.fn()` fit a ToolCtx slot. */
+  function dragCtx(
+    opts: {
+      origin: Drawing;
+      others: Drawing[];
+      cursorBar: { v: number };
+      alignSnapEnabled?: boolean;
+    },
+    over: Partial<ToolCtx> = {},
+  ) {
+    return makeCtx({
+      drawings: [opts.origin, ...opts.others],
+      ...linear,
+      alignSnapEnabled: opts.alignSnapEnabled ?? true,
+      dragRef: {
+        current: {
+          kind: 'body', id: opts.origin.id, origin: opts.origin,
+          startBar: 0, startPrice: 350, lastBar: 0, pointerId: 1, paneId: 'candle',
+        },
+      },
+      pixelToData: vi.fn(() => ({ realMs: opts.cursorBar.v, price: 350 })),
+      canvasYToPrice: vi.fn(() => 350),
+      priceBoundsForPane: vi.fn(() => ({ top: 10_000, bottom: 0 })),
+      ...over,
+    });
+  }
+
+  it('pulls the dragged rect flush onto a neighbour edge', () => {
+    // Cursor moves -195 000 bars: the left edge lands at 105 000 (px 105),
+    // 5 px from the neighbour's left (px 100) — inside the 8 px threshold.
+    const update = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 } },
+      { update },
+    );
+    selectTool.onPointerMove!(ctx);
+    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
+    expect(patch.a.realMs).toBe(100_000);          // snapped, not 105 000
+    expect(patch.b.realMs).toBe(320_000);          // width preserved
+    expect(patch.a.price).toBe(300);               // Y untouched — axes independent
+    expect(patch.b.price).toBe(400);
+  });
+
+  it('does not snap when the magnet is off', () => {
+    const update = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 }, alignSnapEnabled: false },
+      { update },
+    );
+    selectTool.onPointerMove!(ctx);
+    const patch = update.mock.calls[0][1] as { a: Point };
+    expect(patch.a.realMs).toBe(105_000);
+  });
+
+  it('NEVER lets the snap correction reach the drag anchor', () => {
+    // The invariant absolute anchoring exists for. Frame 1 snaps (-5 000 of
+    // pull); frame 2 returns the cursor to the grab point. If that pull had
+    // been folded into startBar, the shape would come back 5 000 short.
+    const update = vi.fn();
+    const cursorBar = { v: -195_000 };
+    const ctx = dragCtx({ origin: moving(), others: [neighbour()], cursorBar }, { update });
+    selectTool.onPointerMove!(ctx);
+    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(100_000);
+
+    cursorBar.v = 0;
+    selectTool.onPointerMove!(ctx);
+    const back = update.mock.calls[1][1] as { a: Point; b: Point };
+    expect(back.a.realMs).toBe(300_000);
+    expect(back.b.realMs).toBe(520_000);
+    const drag = ctx.dragRef.current as { startBar: number | null; startPrice: number };
+    expect(drag.startBar).toBe(0);
+    expect(drag.startPrice).toBe(350);
+  });
+
+  it('aligns to a LOCKED neighbour — a lock forbids editing, not measuring', () => {
+    const update = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour({ locked: true })], cursorBar: { v: -195_000 } },
+      { update },
+    );
+    selectTool.onPointerMove!(ctx);
+    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(100_000);
+  });
+
+  it('ignores a rect on another pane (its price domain is a different unit)', () => {
+    const update = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour({ paneId: 'volume' })], cursorBar: { v: -195_000 } },
+      { update },
+    );
+    selectTool.onPointerMove!(ctx);
+    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(105_000);
+  });
+
+  it('ignores itself — a shape cannot align to where it used to be', () => {
+    const update = vi.fn();
+    const origin = moving();
+    // The store still holds the pre-drag geometry, so without the self-exclude
+    // the shape would snap back onto its own starting edge.
+    const ctx = dragCtx({ origin, others: [], cursorBar: { v: -1_000 } }, { update });
+    selectTool.onPointerMove!(ctx);
+    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(299_000);
+  });
+
+  it('leaves non-rect shapes alone (only rectangles carry edges to align)', () => {
+    const hline: Drawing = {
+      id: 'h9', kind: 'hline', price: 350,
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+    };
+    const update = vi.fn();
+    const ctx = dragCtx({ origin: hline, others: [neighbour()], cursorBar: { v: -195_000 } }, { update });
+    selectTool.onPointerMove!(ctx);
+    expect(update).toHaveBeenCalledWith('h9', { price: 350 });
+  });
+
+  it('publishes a guide while snapped and clears it on pointer-up', () => {
+    const setAlignGuides = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 } },
+      { setAlignGuides },
+    );
+    selectTool.onPointerMove!(ctx);
+    expect(setAlignGuides).toHaveBeenCalledWith([
+      // Vertical line at the aligned time, spanning both boxes' prices.
+      { axis: 'x', paneId: 'candle', at: 100_000, from: 300, to: 600 },
+    ]);
+    selectTool.onPointerUp!(ctx);
+    expect(setAlignGuides).toHaveBeenLastCalledWith([]);
+  });
+
+  it('publishes an empty guide list on a move that snaps nothing', () => {
+    // Otherwise a guide drawn on an earlier frame would stay painted.
+    const setAlignGuides = vi.fn();
+    const ctx = dragCtx(
+      { origin: moving(), others: [neighbour()], cursorBar: { v: 0 } },
+      { setAlignGuides },
+    );
+    selectTool.onPointerMove!(ctx);
+    expect(setAlignGuides).toHaveBeenCalledWith([]);
+  });
+});
+
+describe('selectTool — alignment snapping (rect corner resize)', () => {
+  const linear = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    priceToCanvasY: (p: number) => 1_000 - p,
+  };
+  const resized: Drawing = {
+    id: 'r9', kind: 'rect',
+    a: { realMs: 100_000, price: 300 },
+    b: { realMs: 200_000, price: 400 },
+    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  };
+  const neighbour: Drawing = {
+    id: 'n9', kind: 'rect',
+    a: { realMs: 300_000, price: 500 },
+    b: { realMs: 400_000, price: 600 },
+    fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  function handleCtx(over: Partial<ToolCtx> = {}) {
+    return makeCtx({
+      drawings: [resized, neighbour],
+      ...linear,
+      alignSnapEnabled: true,
+      dragRef: {
+        current: {
+          kind: 'rect-handle', id: 'r9', msKey: 'b', priceKey: 'b',
+          pointerId: 1, paneId: 'candle',
+        },
+      },
+      // Corner cursor 5 px shy of the neighbour's left edge and 5 px shy of
+      // its top — both inside the threshold, on both axes.
+      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
+      canvasYToPrice: vi.fn(() => 505),
+      ...over,
+    });
+  }
+
+  it('snaps the moving corner to a neighbour on both axes', () => {
+    const update = vi.fn();
+    const ctx = handleCtx({ update });
+    selectTool.onPointerMove!(ctx);
+    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 300_000, price: 500 } });
+  });
+
+  it('holds X still where the time axis cannot resolve it', () => {
+    // In the empty band the caller keeps the corner's stored realMs; a magnet
+    // that moved X anyway would read as the shape jumping on its own.
+    //
+    // The neighbour is placed 5 px from the corner's STORED x (200 000 → px
+    // 200) rather than the default one 100 px away: the gate can only be
+    // measured where a snap would otherwise fire. With the far neighbour this
+    // test passed with the gate deleted.
+    const near: Drawing = {
+      ...neighbour,
+      a: { realMs: 205_000, price: 500 },
+      b: { realMs: 305_000, price: 600 },
+    } as Drawing;
+    const update = vi.fn();
+    const ctx = handleCtx({
+      update,
+      drawings: [resized, near],
+      pixelToData: vi.fn(() => null),
+    });
+    selectTool.onPointerMove!(ctx);
+    // Y still snaps (505 → 500); X stays on the stored 200 000.
+    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 200_000, price: 500 } });
+  });
+
+  it('does not snap when the magnet is off', () => {
+    const update = vi.fn();
+    const ctx = handleCtx({ update, alignSnapEnabled: false });
+    selectTool.onPointerMove!(ctx);
+    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 295_000, price: 505 } });
+  });
+});
+
+describe('rectTool — alignment snapping while drawing', () => {
+  const linear = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    priceToCanvasY: (p: number) => 1_000 - p,
+  };
+  const neighbour: Drawing = {
+    id: 'n8', kind: 'rect',
+    a: { realMs: 300_000, price: 500 },
+    b: { realMs: 400_000, price: 600 },
+    fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  it('aligns the first corner on pointer-down', () => {
+    const ctx = makeCtx({
+      drawings: [neighbour],
+      ...linear,
+      alignSnapEnabled: true,
+      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
+    });
+    rectTool.onPointerDown!(ctx);
+    expect(ctx.rectDraft.current?.a).toEqual({ realMs: 300_000, price: 500 });
+  });
+
+  it('commits the SNAPPED corner, matching what the preview showed', () => {
+    const add = vi.fn();
+    const ctx = makeCtx({
+      drawings: [neighbour],
+      ...linear,
+      alignSnapEnabled: true,
+      add,
+      rectDraft: {
+        current: { a: { realMs: 100_000, price: 300 }, pointerId: 1, paneId: 'candle' },
+      },
+      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
+    });
+    rectTool.onPointerUp!(ctx);
+    expect(add).toHaveBeenCalledOnce();
+    const created = add.mock.calls[0][0] as { a: Point; b: Point };
+    expect(created.b).toEqual({ realMs: 300_000, price: 500 });
+    // …and the guides go with the gesture.
+    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
   });
 });

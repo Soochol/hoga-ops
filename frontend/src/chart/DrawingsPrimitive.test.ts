@@ -87,6 +87,7 @@ function snapshot(over: Partial<DrawingsSnapshot> = {}): DrawingsSnapshot {
     drafts: { trendline: null, rect: null, measure: null, pencil: null },
     draftStyles: { trendline: STYLE, rect: STYLE, pencil: STYLE },
     ghost: null,
+    alignGuides: null,
     ...over,
   };
 }
