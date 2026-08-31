@@ -499,7 +499,15 @@ function indexToPaneId(paneSeries: PaneSeriesMap): Map<number, PaneId> {
 
 /**
  * Real Unix-ms → canvas X. Time axis is shared across panes.
- * Returns null when `realMs` falls outside every Virtual Axis segment.
+ *
+ * With a `FutureBand` this resolves EVERY realMs the axis can place at all —
+ * on-axis, in the empty band, off the bar grid, and (last resort) off-axis in
+ * an inter-session gap, which snaps to the nearer session boundary. Null then
+ * means only "no mounted axis / the time scale can't resolve anything".
+ *
+ * Without one it is the plain lookup and returns null for anything off-axis;
+ * `realMsToCanvasXClamped` is the explicit opt-in to snapping. That split is
+ * load-bearing — see the gap paragraph below.
  */
 export function realMsToCanvasX(
   chart: IChartApi,
@@ -509,18 +517,21 @@ export function realMsToCanvasX(
 ): number | null {
   const inAxis = coreRealMsToCanvasX(chart, axis, realMs);
   if (inAxis != null) return inAxis;
-  // Empty band right of the last candle: extrapolate so future-anchored
-  // drawings still render.
-  if (future && future.bucketMs > 0 && realMs > future.lastRealMs) {
-    return extrapolateFutureX(chart, axis, realMs, future);
-  }
-  // On-axis but off the bar grid (a persisted boundary-crossing drag residue,
-  // ±INTER_SEGMENT_GAP_MS per crossed session boundary): timeToCoordinate only
-  // resolves exact bar times, so retry on the nearest bar. Without this the
-  // `?? 0 / ?? width` render fallback pins the vertex to the canvas edge and
-  // the drawing appears stretched. The drag path snaps new values (see
-  // dragTimeDomain.toReal); this covers drawings saved before that snap.
-  if (future && future.bucketMs > 0 && axis.contains(realMs)) {
+  // No bucket pitch → no grid to reason about; callers own this case.
+  if (!future || future.bucketMs <= 0) return null;
+  if (realMs > future.lastRealMs) {
+    // Empty band right of the last candle: extrapolate so future-anchored
+    // drawings still render. Falls through to the gap snap below when the last
+    // candle itself can't be projected (then there is no band to measure from).
+    const bandX = extrapolateFutureX(chart, axis, realMs, future);
+    if (bandX != null) return bandX;
+  } else if (axis.contains(realMs)) {
+    // On-axis but off the bar grid (a persisted boundary-crossing drag residue,
+    // ±INTER_SEGMENT_GAP_MS per crossed session boundary): timeToCoordinate only
+    // resolves exact bar times, so retry on the nearest bar. Without this the
+    // `?? 0 / ?? width` render fallback pins the vertex to the canvas edge and
+    // the drawing appears stretched. The drag path snaps new values (see
+    // dragTimeDomain.toReal); this covers drawings saved before that snap.
     const snapped = nearestBarGridRealMs(axis, realMs, future.bucketMs);
     if (snapped !== realMs) {
       const snappedX = coreRealMsToCanvasX(chart, axis, snapped);
@@ -530,10 +541,38 @@ export function realMsToCanvasX(
     // there (an empty bucket — no trade in that window). The retry above cannot
     // help, because it snaps to the very rung the vertex already occupies, so
     // `snapped === realMs` and it doesn't even fire. See `nearestLoadedBarX`.
-    return nearestLoadedBarX(chart, axis, realMs);
+    const nearestBarX = nearestLoadedBarX(chart, axis, realMs);
+    if (nearestBarX != null) return nearestBarX;
   }
-  // No bucket pitch → no grid to reason about; callers own this case.
-  return null;
+  // OFF-AXIS AND NOT PAST THE LAST CANDLE — an inter-session gap (overnight,
+  // weekend) or before the axis starts. Both branches above declined it, and
+  // returning null here is what produced the reported bug: `rectXSpan` reads a
+  // null right edge as `?? rightEdge` and draws the rectangle ALL THE WAY to the
+  // canvas edge. Reproduced on /live 2026-08-31.
+  //
+  // A drawing lands here without ever being dragged into a gap: anchor it in the
+  // empty band after the close (`lastRealMs + N × bucketMs`, a perfectly legal
+  // place to draw), then open the chart on the NEXT trading day. The new
+  // session's candles push `lastRealMs` past that anchor, so it stops being
+  // "future" — and it was never inside a session — and both branches miss it.
+  // That day-boundary delay is why the report read as intermittent.
+  //
+  // Snapping is what the axis already means: the gap is COMPRESSED on screen, so
+  // its two neighbouring boundaries are adjacent pixels. `nearestOnAxisRealMs`
+  // is the same helper `realMsToCanvasXClamped` uses for a lone text anchor.
+  //
+  // Gated on `future` so the plain lookup keeps returning null off-axis: text
+  // buys this snap explicitly through `realMsToCanvasXClamped`, and that
+  // contract has its own test. `future` marks the callers that reason about the
+  // bar grid (rect / trendline / measure / pencil — render, hit-test, and the
+  // corner handles all funnel through here), which are exactly the shapes the
+  // edge fallback mis-draws.
+  //
+  // What this does NOT do: it never asks how the gap value got stored. A vertex
+  // in a gap is still off-grid data; this only stops it from being rendered as a
+  // full-width box.
+  const nearest = nearestOnAxisRealMs(axis, realMs);
+  return nearest == null ? null : coreRealMsToCanvasX(chart, axis, nearest);
 }
 
 /**
