@@ -51,10 +51,10 @@ function bundleWithCandles(code = '005930'): RangeBundle {
 
 /** 3b lazy-fetch 핸들러를 캡처하는 timeScale mock. 모든 effect(1 스냅샷, 2 재배치,
  * 3a settle-loop, 3b trigger)가 호출하는 API를 no-op 으로 채운다. */
-function chartWithCapturedHandler() {
+function chartWithCapturedHandler(logicalRange: { from: number; to: number } = { from: -5, to: 100 }) {
   let logicalHandler: ((range: unknown) => void) | null = null;
   const ts = {
-    getVisibleLogicalRange: vi.fn(() => ({ from: -5, to: 100 })),
+    getVisibleLogicalRange: vi.fn(() => logicalRange),
     getVisibleRange: vi.fn(() => ({ from: 1, to: 2 })),
     timeToIndex: vi.fn(() => 0),
     setVisibleLogicalRange: vi.fn(),
@@ -182,6 +182,153 @@ describe('useViewportBackfill — backpressure gate (3b)', () => {
     vi.advanceTimersByTime(150);
 
     expect(extendSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useViewportBackfill — 좌측 바닥 도달 (3b/3e 가 fill 을 세우지 않는다)', () => {
+  // 바닥 아래에서는 `historicalFromDate` 를 낮춰도 요청이 클램프돼 **fetch 가 없다**.
+  // fetch 가 없으면 3a 의 두 settle 신호가 둘 다 죽어 `endFill()` 에 닿지 못하고
+  // `fillKind` 가 영구 non-null 이 된다 → 이후 모든 좌팬이 백프레셔에 **무로그** 반려.
+  // 2026-08-30 실측(005930 60분봉 벤더): `clamp_recovery` extend 뒤 `stop` 이 영영
+  // 오지 않았고, `logicalFrom=-783` 좌팬에도 로그 0줄이었다.
+  //
+  // **판별식은 "두 번째 팬이 되는가" 다.** 첫 팬이 반려되는 것만 보면 「바닥이라 안 함」
+  // 과 「잠겨서 안 함」이 구별되지 않는다 — 바닥을 치운 뒤 다시 팬해서 살아 있음을 본다.
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  it('3b: 바닥에 닿은 창에는 세우지 않고, 바닥이 풀리면 곧바로 다시 팬된다', () => {
+    const cap = chartWithCapturedHandler();
+    // axis·bundle·콜백을 렌더 밖으로 올려 3b 가 **재구독하지 않게** 한다 — 그래야
+    // 핸들러가 바닥을 클로저가 아니라 미러(ref)로 읽는지까지 함께 재진다.
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    const canTrigger = () => true;
+    const { rerender } = renderHook(
+      ({ floor }: { floor: string | null }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis,
+          bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: canTrigger,
+          minuteScrollbackFloorDate: floor,
+        }),
+      // 창(20260601)이 바닥과 같다 = 더 내려가도 서빙 창이 안 바뀐다.
+      { initialProps: { floor: '20260601' as string | null } },
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).not.toHaveBeenCalled();
+
+    // 바닥이 사라진다(예: 디스크 소스로 전환 — 벤더 250일 벽이 없다).
+    // fill 이 잠겨 있었다면 여기서도 침묵한다.
+    rerender({ floor: null });
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('3b: 바닥보다 위면 종전대로 세운다 — 마지막 한 스텝이 바닥을 넘어가는 것은 막지 않는다', () => {
+    // 창이 바닥보다 **위**면 그 확장은 요청을 실제로 바꾼다(cur → 바닥). 그 스텝은
+    // 정상 fetch·settle 로 끝나고 3a 의 `planFillStep` 이 stop 을 낸다. 여기서 막으면
+    // 마지막 구간을 못 받는다.
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        minuteScrollbackFloorDate: '20260501', // 창(20260601)보다 과거 = 아직 여유 있음
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('3b: 바닥 미상(null)이면 아무것도 막지 않는다 — D/W/M·응답 전 디스크 모드', () => {
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        // minuteScrollbackFloorDate 미지정 = null
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('3e: 빈 화면 클램프 복구도 바닥에서는 세우지 않는다(실측에서 잠김을 만든 경로)', () => {
+    // 빈 화면 판정은 바닥에서도 참이라 3e 가 계속 깨어난다 — 그 확장이 no-op 이므로
+    // 첫 발화가 곧바로 fillKind 를 물고 앉았다.
+    // 화면 폭의 10% 이하만 데이터: span 101, 덮인 폭 1.
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        minuteScrollbackFloorDate: '20260601', // 창과 같다 = 바닥
+      }),
+    );
+
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('3e: 바닥이 아니면 종전대로 클램프 복구가 발화한다', () => {
+    const cap = chartWithCapturedHandler({ from: -100, to: 1 });
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        minuteScrollbackFloorDate: '20260501',
+      }),
+    );
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -488,6 +488,47 @@ export function fillBudgetSteps(whitespaceBars: number, tf: LiveTimeframe): numb
   return Math.max(1, Math.ceil(whitespaceBars / stepCandlesEstimate(tf)));
 }
 
+/**
+ * 요청 창을 더 과거로 밀면 **서빙되는 창이 실제로 바뀌는가**.
+ *
+ * `false` 면 `historicalFromDate` 를 아무리 낮춰도 요청은 바닥에서 클램프되므로
+ * (`useLiveBundle` 의 `minutePastFrom = laterDate(seedFrom, earliestAllowedMinute)`)
+ * **쿼리 키가 그대로다 = fetch 가 없다**.
+ *
+ * ## 왜 별도 술어인가 — 이것이 없으면 fill 이 영구히 안 끝난다
+ *
+ * `planFillStep` 의 종료 조건이던 이 판정을 **fill 을 세우는 쪽(3b·3e)도** 물어야 한다.
+ * 진행 루프(3a)의 두 settle 신호는 **둘 다 데이터가 움직여야** 성립하는데
+ * (`isExtending` 하강 엣지 · 응답 echo == 요청 from), 위처럼 fetch 가 없으면 둘 다
+ * 죽는다 → 3a 가 `planFillStep` **앞에서** return → `endFill()` 미도달 →
+ * `fillKind` 가 영구 non-null → 3b·3e 의 백프레셔가 이후 **모든** 좌팬을 **로그도
+ * 없이** 반려한다. 2026-08-30 실측(005930 60분봉 벤더, `historicalFromDate` 가 벤더
+ * 하한 20251224 아래인 20250616): `clamp_recovery` 가 extend 를 쐈으나 짝이 되는
+ * `viewport_backfill_stop` 이 영영 오지 않았고, 이후 `logicalFrom=-783` 인 좌팬에도
+ * 로그가 0줄이었다. 우측으로 한 화면 되돌렸다 오는 #1597 의 탈출 기동도 안 통한다
+ * (그건 이벤트 고갈용이고 이건 잠김이다).
+ *
+ * ## 이 가드가 닫는 방향과 **못 보는 것**
+ *
+ * 닫는 방향은 하나다 — **바닥이 알려져 있고 창이 이미 그 바닥에 닿았을 때** fill 을
+ * 세우지 않는다. 그러므로:
+ *  - `earliestAllowedDate === null`(하한 미상: D/W/M · 응답 전 디스크 모드)이면
+ *    **아무것도 막지 않는다.** 모르는 것을 바닥이라고 말하지 않는 기존 규율 그대로다.
+ *  - `historicalFromDate === null`(창 없음)이면 첫 확장은 언제나 창을 만들므로 통과.
+ *  - **다른 no-op 원인은 못 본다.** 지금 알려진 것은 이 하나뿐이고
+ *    (`nextHistoricalFrom` 은 항상 base 보다 strict 과거라 스토어 단조 가드에
+ *    걸리지 않는다), 새 no-op 경로가 생기면 같은 잠김이 재발한다 — 그때는 이
+ *    술어를 늘리는 것이 답이다.
+ */
+export function canAdvanceHistoricalWindow(
+  historicalFromDate: string | null,
+  earliestAllowedDate: string | null,
+): boolean {
+  if (earliestAllowedDate === null) return true;
+  if (historicalFromDate === null) return true;
+  return historicalFromDate > earliestAllowedDate;
+}
+
 export interface FillStepArgs {
   /** 트리거가 정한 fill 종류. left_pan=캔들+지표 동반 확장(axis-base),
    * coverage_gap=range 창만 확장(window-base). */
@@ -533,7 +574,9 @@ export function planFillStep(
     coverageTargetDate = null, rangeWindowFromDate = null,
   } = args;
   if (stepCount >= budget) return { action: 'stop' };
-  if (earliestAllowedDate !== null && historicalFromDate !== null && historicalFromDate <= earliestAllowedDate) {
+  // 바닥 도달 = 종료. 트리거(3b·3e)도 **fill 을 세우기 전에** 같은 술어를 묻는다 —
+  // 정의가 갈리면 "여기선 세우고 저기선 멈춘다" 가 되어 그 틈이 곧 영구 잠김이다.
+  if (!canAdvanceHistoricalWindow(historicalFromDate, earliestAllowedDate)) {
     return { action: 'stop' };
   }
   if (kind === 'left_pan') {
