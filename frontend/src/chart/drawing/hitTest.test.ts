@@ -189,6 +189,61 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(c, [r], 3, 50)).toBe(r); // left edge still resolves
   });
 
+  // ── 우측 확장 ────────────────────────────────────────────────────────────
+  //
+  // 렌더 쪽 짝은 render.test.ts 의 "사각형 우측 확장 — 렌더" 다. 두 파일이 같은
+  // `rectXSpan` 을 서로 다른 입구에서 재는 것이 요점이다 — 한쪽만 확장을 알면
+  // 사각형이 그려진 자리에서 안 잡히거나, 안 보이는 곳에서 잡힌다.
+  it('확장된 사각형은 오른쪽 밴드 안에서도 잡힌다', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+      extendRight: true,
+    };
+    const c: HitCoord = { ...coord, canvasWidth: 800, plotWidth: 800 };
+    expect(hitTestDrawings(c, [r], 400, 50)).toBe(r); // 그린 폭 밖, 확장 밴드 안
+    expect(hitTestDrawings(c, [r], 799, 50)).toBe(r); // 확장 끝
+    expect(hitTestDrawings(c, [r], 400, 150)).toBeNull(); // 세로는 확장 안 된다
+  });
+
+  it('확장이 꺼진 같은 사각형은 그 밴드에서 안 잡힌다 — 판정이 플래그에 달렸음을 고정', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+    };
+    const c: HitCoord = { ...coord, canvasWidth: 800, plotWidth: 800 };
+    expect(hitTestDrawings(c, [r], 400, 50)).toBeNull();
+  });
+
+  it('확장 폭은 컨테이너가 아니라 **플롯** 폭을 쓴다 — 가격축 거터는 사각형 밖이다', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+      extendRight: true,
+    };
+    // 컨테이너(inset-0)는 거터까지 덮어 860, 렌더가 도는 플롯은 800.
+    const c: HitCoord = { ...coord, canvasWidth: 860, plotWidth: 800 };
+    expect(hitTestDrawings(c, [r], 799, 50)).toBe(r);
+    // 거터 위(820)에서 잡히면 그 자리의 축 드래그가 죽는다.
+    expect(hitTestDrawings(c, [r], 820, 50)).toBeNull();
+  });
+
+  it('마퀴도 확장된 폭을 본다 — 화면에 보이는 띠를 둘러쌌으면 잡혀야 한다', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+      extendRight: true,
+    };
+    const c: HitCoord = { ...coord, canvasWidth: 800, plotWidth: 800 };
+    const band = marqueeRect(300, 40, 500, 60); // 그린 폭 밖, 확장 밴드 안
+    expect(drawingsInRect(c, [r], band)).toEqual([r]);
+    expect(drawingsInRect(c, [{ ...r, extendRight: undefined }], band)).toEqual([]);
+  });
+
   it('hits a text label within its measured bounding box', () => {
     const t: Drawing = {
       id: 't1', kind: 'text', at: { realMs: 100, price: 100 },

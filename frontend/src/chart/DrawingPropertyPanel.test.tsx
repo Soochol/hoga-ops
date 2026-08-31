@@ -488,3 +488,99 @@ describe('DrawingPropertyPanel — 스타일 일괄 편집', () => {
     expect((get('h2') as { width: number }).width).toBe(1);
   });
 });
+
+// ── 우측 확장 ──────────────────────────────────────────────────────────────
+//
+// 두 버튼의 성격 차이가 여기서 굳는다: 토글은 도형의 플래그를 뒤집고(눌린 상태를
+// 갖는다), 액션은 좌표를 한 번 옮긴다(상태가 없다).
+describe('DrawingPropertyPanel — 우측 확장', () => {
+  const SCOPE = '005930|minute';
+  const RECT: Drawing = {
+    id: 'r1', kind: 'rect',
+    a: { realMs: 100_000, price: 1000 },
+    b: { realMs: 200_000, price: 1500 },
+    fillOpacity: 0.1, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  function mount(drawing: Drawing = RECT, resolve?: () => number | null) {
+    useDrawingsStore.getState().add(SCOPE, drawing);
+    useDrawingsStore.getState().setSelected(SCOPE, drawing.id);
+    return render(<DrawingPropertyPanel scope={SCOPE} resolveVisibleRightRealMs={resolve} />);
+  }
+  const rectOf = (): Drawing => useDrawingsStore.getState().byScope.get(SCOPE)![0];
+
+  it('사각형에만 뜬다 — 수평선에는 없다', () => {
+    mount(HLINE);
+    expect(screen.queryByTestId('drawing-extend-right')).toBeNull();
+    expect(screen.queryByTestId('drawing-extend-to-view')).toBeNull();
+  });
+
+  it('토글이 extendRight 를 켜고 끈다', () => {
+    mount();
+    fireEvent.click(screen.getByTestId('drawing-extend-right'));
+    const on = rectOf();
+    expect(on.kind === 'rect' && on.extendRight).toBe(true);
+    fireEvent.click(screen.getByTestId('drawing-extend-right'));
+    const off = rectOf();
+    expect(off.kind === 'rect' && off.extendRight).toBe(false);
+  });
+
+  it('토글은 눌린 상태를 aria-pressed 로 말한다', () => {
+    mount({ ...RECT, extendRight: true });
+    expect(screen.getByTestId('drawing-extend-right').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('"보이는 영역까지" 는 오른쪽 코너의 realMs 만 옮긴다 — price 와 왼쪽 코너는 그대로', () => {
+    mount(RECT, () => 900_000);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    const r = rectOf();
+    expect(r.kind === 'rect' && r.b).toEqual({ realMs: 900_000, price: 1500 });
+    expect(r.kind === 'rect' && r.a).toEqual(RECT.kind === 'rect' ? RECT.a : null);
+  });
+
+  it('화면 끝이 상자 안이면 **줄인다** — 계약은 "보이는 영역까지" 이지 "늘리기" 가 아니다', () => {
+    mount(RECT, () => 150_000);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    const r = rectOf();
+    expect(r.kind === 'rect' && r.b.realMs).toBe(150_000);
+  });
+
+  it('코너를 가로질러 끈 사각형에서는 a 쪽이 오른쪽이므로 a 가 움직인다', () => {
+    const crossed: Drawing = {
+      ...RECT,
+      a: { realMs: 200_000, price: 1000 },
+      b: { realMs: 100_000, price: 1500 },
+    };
+    mount(crossed, () => 900_000);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    const r = rectOf();
+    expect(r.kind === 'rect' && r.a).toEqual({ realMs: 900_000, price: 1000 });
+    expect(r.kind === 'rect' && r.b.realMs).toBe(100_000);
+  });
+
+  it('이미 그 자리면 아무것도 하지 않는다 — 되돌리기에 빈 단계를 쌓지 않는다', () => {
+    mount(RECT, () => 200_000);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    expect(rectOf()).toBe(useDrawingsStore.getState().byScope.get(SCOPE)![0]);
+    const r = rectOf();
+    expect(r.kind === 'rect' && r.b.realMs).toBe(200_000);
+  });
+
+  it('무한 확장 중이면 "보이는 영역까지" 는 비활성 — 눌러도 화면이 안 변하므로', () => {
+    mount({ ...RECT, extendRight: true }, () => 900_000);
+    const btn = screen.getByTestId('drawing-extend-to-view') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('호스트가 화면 끝을 못 주면 비활성 — 먹통 버튼을 두지 않는다', () => {
+    mount(RECT);
+    expect((screen.getByTestId('drawing-extend-to-view') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('잠기면 둘 다 비활성이고 스토어도 거부한다', () => {
+    mount({ ...RECT, locked: true }, () => 900_000);
+    const toggle = screen.getByTestId('drawing-extend-right') as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    expect((screen.getByTestId('drawing-extend-to-view') as HTMLButtonElement).disabled).toBe(true);
+  });
+});

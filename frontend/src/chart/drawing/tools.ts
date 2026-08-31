@@ -38,6 +38,7 @@ import {
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
   isLocked,
+  isExtendedRight,
 } from './types';
 import {
   translateDrawing, clampDPriceForDrawing, clampDBarForDrawing, planGroupTranslate,
@@ -448,7 +449,14 @@ function hitRectCorner(
     { x: xb, y: yb, msKey: 'b', priceKey: 'b' },
     { x: xa, y: yb, msKey: 'a', priceKey: 'b' },
   ];
+  // 우측 확장 중이면 **오른쪽 두 코너를 후보에서 뺀다** — 그 변은 뷰포트 가장자리에
+  // 고정이라 끌 대상이 아니고, 렌더도 그 핸들을 그리지 않는다(renderRectShape).
+  // 어느 쪽이 오른쪽인지는 저장 순서(a/b)가 아니라 **투영된 픽셀**로 정한다: 코너를
+  // 가로질러 끌면 a 가 b 의 오른쪽에 놓이므로, 저장 키로 판정하면 확장 후 엉뚱한
+  // 두 핸들이 사라진다.
+  const suppressedMsKey: 'a' | 'b' | null = isExtendedRight(r) ? (xb >= xa ? 'b' : 'a') : null;
   for (const c of corners) {
+    if (c.msKey === suppressedMsKey) continue;
     if (Math.hypot(ctx.px - c.x, ctx.py - c.y) <= HIT_THRESHOLD.rectHandle) {
       return { msKey: c.msKey, priceKey: c.priceKey };
     }

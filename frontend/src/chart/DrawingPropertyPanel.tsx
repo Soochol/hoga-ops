@@ -14,6 +14,7 @@ import {
   RECT_FILL_OPACITIES,
   TEXT_FONT_SIZES,
   isLocked,
+  isExtendedRight,
   type DrawingKind,
   type LineStyle,
   type Drawing,
@@ -28,6 +29,15 @@ type Props = {
   /** 이 패널이 붙은 차트의 (종목, 봉 슬롯) scope — 선택 드로잉 조회·변이의
    *  귀속 대상(C2c-2b). */
   scope: string | null;
+  /**
+   * 지금 화면 오른쪽 끝의 시각(real Unix-ms), 또는 null.
+   *
+   * 사각형의 "보이는 영역까지 우측 확장" 버튼이 쓰는 단 하나의 차트 정보다. 이
+   * 패널은 `IChartApi` 를 받지 않는다 — DOM 툴바가 차트 API 를 쥐면 좌표 규칙이
+   * 두 곳으로 갈라지므로, 차트를 아는 호스트(LiveChartRoot)가 값 하나만 내려 준다.
+   * 없으면 그 버튼은 비활성이고 나머지 컨트롤은 그대로 동작한다.
+   */
+  resolveVisibleRightRealMs?: () => number | null;
 };
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -432,7 +442,7 @@ function MultiSelectionToolbar({ scope, ids }: { scope: string; ids: readonly st
   );
 }
 
-export default function DrawingPropertyPanel({ scope }: Props) {
+export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
     scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
@@ -501,6 +511,34 @@ export default function DrawingPropertyPanel({ scope }: Props) {
   const pickFontSize = (fontSize: number) => {
     useDrawingsStore.getState().update(scope, id, { fontSize } as Partial<Drawing>);
     setOpenPopover(null);
+  };
+
+  const extendedRight = isExtendedRight(drawing);
+  // 무한 확장 중에는 "보이는 영역까지" 가 **화면상 아무것도 바꾸지 않는다** — 오른쪽
+  // 변이 이미 화면 끝이다. 좌표는 조용히 바뀌므로 버튼은 "먹통" 으로 읽힌다. 그래서
+  // 비활성으로 두고 title 이 이유를 말한다. 확장을 좌표로 굳히고 싶으면 토글을 끄고
+  // 누르면 된다 — 두 컨트롤의 순서가 그대로 그 절차다.
+  const extendToViewDisabled = locked || extendedRight || resolveVisibleRightRealMs == null;
+
+  /**
+   * 오른쪽 코너를 **지금 화면 오른쪽 끝**으로. 늘리기도 줄이기도 한다("보이는
+   * 영역까지" 가 곧 계약이다) — 되돌리기가 한 단계이므로 잘못 눌러도 비용이 없다.
+   *
+   * 어느 코너가 오른쪽인지는 저장 순서(a/b)가 아니라 `realMs` 비교로 정한다. 핸들을
+   * 가로질러 끌면 `a` 가 `b` 의 오른쪽에 놓이므로, `b` 를 고정으로 삼으면 그 사각형은
+   * 왼쪽 변이 끌려가 뒤집힌다. **price 는 보존한다** — 이 버튼은 가로 폭만 다룬다.
+   */
+  const extendToView = () => {
+    if (drawing.kind !== 'rect') return;
+    const rightMs = resolveVisibleRightRealMs?.() ?? null;
+    if (rightMs == null) return;
+    const farKey = drawing.b.realMs >= drawing.a.realMs ? 'b' : 'a';
+    const far = drawing[farKey];
+    // 이미 그 자리면 아무것도 하지 않는다 — 되돌리기 스택에 빈 단계를 쌓지 않기 위해.
+    if (far.realMs === rightMs) return;
+    useDrawingsStore
+      .getState()
+      .update(scope, id, { [farKey]: { realMs: rightMs, price: far.price } } as Partial<Drawing>);
   };
 
   // Text labels have no stroke width or line style; they carry a font size
@@ -601,6 +639,53 @@ export default function DrawingPropertyPanel({ scope }: Props) {
               onPick={pickFillOpacity}
             />
           )}
+
+          {/* 우측 확장 두 개. **성격이 다르다** — 왼쪽은 도형에 붙는 지속 속성이고
+              오른쪽은 좌표를 한 번 옮기는 액션이다. 그래서 하나는 눌린 상태를 갖고
+              (aria-pressed) 하나는 안 갖는다. 글리프도 그 차이를 말한다: `→` 는
+              끝이 열려 "계속 간다", `⇥` 는 막대에 닿아 "여기서 멈춘다". */}
+          <button
+            type="button"
+            data-testid="drawing-extend-right"
+            aria-label="우측 무한 확장"
+            aria-pressed={extendedRight}
+            disabled={locked}
+            title={
+              extendedRight
+                ? '우측 무한 확장 해제 — 그린 폭으로 돌아갑니다'
+                : '우측 무한 확장 — 오른쪽 변이 팬·줌과 무관하게 항상 화면 끝에 붙습니다'
+            }
+            onClick={() =>
+              useDrawingsStore
+                .getState()
+                .update(scope, id, { extendRight: !extendedRight } as Partial<Drawing>)
+            }
+            className={
+              'h-7 w-7 inline-flex items-center justify-center rounded text-sm leading-none' +
+              (locked ? controlDisabled : extendedRight ? ' bg-tint-selection text-accent' : controlDisabled)
+            }
+          >
+            →
+          </button>
+
+          <button
+            type="button"
+            data-testid="drawing-extend-to-view"
+            aria-label="보이는 영역까지 우측 확장"
+            disabled={extendToViewDisabled}
+            title={
+              extendedRight
+                ? '우측 무한 확장이 켜져 있어 이미 화면 끝까지 닿아 있습니다'
+                : '보이는 영역까지 우측 확장 — 오른쪽 변을 지금 화면 끝에 맞춥니다 (Ctrl+Z 로 되돌리기)'
+            }
+            onClick={extendToView}
+            className={
+              'h-7 w-7 inline-flex items-center justify-center rounded text-sm leading-none' +
+              (extendToViewDisabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
+            }
+          >
+            ⇥
+          </button>
         </>
       )}
 

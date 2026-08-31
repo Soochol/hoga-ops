@@ -1535,6 +1535,73 @@ describe('selectTool — alignment snapping (rect body drag)', () => {
   });
 });
 
+describe('selectTool — 우측 확장 사각형의 오른쪽 코너 핸들', () => {
+  // realMsToCanvasX = ms/1000, priceToCanvasY = 1000-price
+  // → a(100_000, 300) = (100, 700), b(200_000, 400) = (200, 600).
+  const linear = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    priceToCanvasY: (p: number) => 1_000 - p,
+  };
+  const rect: Drawing = {
+    id: 'r1', kind: 'rect',
+    a: { realMs: 100_000, price: 300 },
+    b: { realMs: 200_000, price: 400 },
+    fillOpacity: 0.1, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
+
+  /** 오른쪽 위 코너(200, 600) 위에서의 pointerDown. */
+  function downOnRightCorner(target: Drawing) {
+    const ctx = makeCtx({
+      ...linear,
+      drawings: [target],
+      selectedId: target.id,
+      px: 200,
+      py: 600,
+    });
+    selectTool.onPointerDown!(ctx);
+    return ctx;
+  }
+
+  it('평소엔 오른쪽 코너에서 rect-handle 드래그가 시작된다', () => {
+    const ctx = downOnRightCorner(rect);
+    expect(ctx.dragRef.current).toMatchObject({ kind: 'rect-handle', msKey: 'b', priceKey: 'b' });
+  });
+
+  it('확장 중이면 오른쪽 코너를 잡지 않는다 — 렌더가 그 핸들을 안 그리기 때문', () => {
+    const ctx = downOnRightCorner({ ...rect, extendRight: true });
+    expect(ctx.dragRef.current).not.toMatchObject({ kind: 'rect-handle' });
+  });
+
+  it('확장 중에도 **왼쪽** 코너는 그대로 잡힌다 — 왼쪽 변은 여전히 사용자 것이다', () => {
+    const ctx = makeCtx({
+      ...linear,
+      drawings: [{ ...rect, extendRight: true }],
+      selectedId: rect.id,
+      px: 100,
+      py: 700, // a 코너
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current).toMatchObject({ kind: 'rect-handle', msKey: 'a', priceKey: 'a' });
+  });
+
+  it('코너를 가로질러 끈 사각형(a 가 b 의 오른쪽)에서도 **오른쪽** 두 개가 빠진다', () => {
+    // a.x = 200, b.x = 100 — 저장 키로 판정하면 여기서 엉뚱한 쪽이 사라진다.
+    const crossed: Drawing = {
+      ...rect,
+      a: { realMs: 200_000, price: 300 },
+      b: { realMs: 100_000, price: 400 },
+      extendRight: true,
+    };
+    const right = makeCtx({ ...linear, drawings: [crossed], selectedId: crossed.id, px: 200, py: 700 });
+    selectTool.onPointerDown!(right);
+    expect(right.dragRef.current).not.toMatchObject({ kind: 'rect-handle' });
+
+    const left = makeCtx({ ...linear, drawings: [crossed], selectedId: crossed.id, px: 100, py: 600 });
+    selectTool.onPointerDown!(left);
+    expect(left.dragRef.current).toMatchObject({ kind: 'rect-handle', msKey: 'b' });
+  });
+});
+
 describe('selectTool — alignment snapping (rect corner resize)', () => {
   const linear = {
     realMsToCanvasX: (ms: number) => ms / 1_000,
