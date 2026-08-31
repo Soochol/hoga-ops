@@ -18,8 +18,19 @@
 검산: 952,097백만원 ÷ 3,923,675주 = 242,650원/주 — 당일 범위(238,000~249,500)
 안이다. `1` 을 쓰면 **금액을 수량 자리에 넣는다.**
 
-**② `unit_tp` 는 무의미하다.** 필수 파라미터인데 `1` 과 `1000` 의 응답이 완전히
-같다. 값을 채워 보내되 의미를 부여하지 말 것.
+**② `unit_tp` 는 TR 마다 다르다 — `ka10059` 에서는 실제로 스케일을 바꾼다.**
+이 주석의 초판은 "무의미하다(`1` 과 `1000` 의 응답이 완전히 같다)" 고 단정했다.
+`ka10064` 에는 맞을지 몰라도 **`ka10059` 에서는 틀리다** (2026-08-31 실측,
+005930 · 20260828):
+
+    unit_tp="1"     ind_invsr  1,589,169   ← **주**
+    unit_tp="1000"  ind_invsr      1,589   ← **천주**
+    (`acc_trde_qty` 는 둘 다 15,106,746 — 투자자 컬럼만 스케일된다)
+
+프로덕션은 아래 `UNIT_TP_SHARES = "1"` 을 넘겨 **주 단위로 무사**하다. 위험한 건
+값이 아니라 옛 이름(`UNIT_TP_IGNORED`)과 옛 주석이었다 — "무의미" 를 믿고 `1000`
+으로 정리하면 종목별 투자자 값이 전부 1000배 작아지고, 부호와 자릿수가 그럴듯해서
+타입도 테스트도 깨지지 않는다. **`ka10064` 는 이 파라미터를 아예 보내지 않는다.**
 
 **③ 외국인 정의가 갈린다 — 이게 가장 조용히 틀린다.**
 
@@ -44,6 +55,7 @@ from hoga.live.investor import (
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
     InvestorNetPoint,
+    InvestorSubjectBreakdown,
     InvestorTrendEstimateRow,
 )
 from hoga.live.kiwoom_errors import KiwoomApiError
@@ -63,8 +75,9 @@ AMT_QTY_QUANTITY = "2"
 KA10051_AMT_EOK = "0"
 # **금액**축(백만원). 1 이 금액이다 — 직관과 반대라 상수로 못 박는다.
 AMT_QTY_AMOUNT = "1"
-# 필수지만 응답에 영향이 없다(함정 ②). 벤더가 요구하므로 채워 보낼 뿐이다.
-UNIT_TP_IGNORED = "1"
+# `ka10059` 투자자 컬럼의 **수량 단위**를 주(株)로 고정한다. `1000` 이면 천주로
+# 스케일된다 — 무의미한 값이 아니다(함정 ②의 정정).
+UNIT_TP_SHARES = "1"
 
 # `ka10064` 축 → 그 축이 채우는 행 필드 3개. 단위가 이름에 박혀 있어야 축이 뒤바뀐
 # 배선이 리뷰에서 눈에 띈다(함정 ① 이 조용히 통과한 경로가 정확히 여기였다).
@@ -73,6 +86,22 @@ _ESTIMATE_AXES: dict[str, tuple[str, str, str]] = {
     AMT_QTY_AMOUNT: ("foreign_amt_mwon", "institution_amt_mwon", "sum_amt_mwon"),
 }
 _ESTIMATE_FIELDS = tuple(field for keys in _ESTIMATE_AXES.values() for field in keys)
+#: `ka10059` 기관 세부 → `InvestorSubjectBreakdown` 필드. 순서는 화면 표기 순서다.
+#:
+#: **합이 `orgn`(기관계)와 정확히 같다** — 005930 100행(20260403~20260828) 실측
+#: 위반 0건. 표본이 1종목뿐이라 이 항등식은 주석이 아니라 `fetch_investor_net` 의
+#: 행별 검사로 지킨다.
+_ORGN_PARTS: tuple[tuple[str, str], ...] = (
+    ("fnnc_invt", "fin_invest"),
+    ("insrnc", "insurance"),
+    ("invtrt", "trust"),
+    ("etc_fnnc", "other_fin"),
+    ("bank", "bank"),
+    ("penfnd_etc", "pension"),
+    ("samo_fund", "private_fund"),
+    ("natn", "nation"),
+)
+
 _TRDE_TP_ALL = "0"
 _STEX_ALL = "3"
 _DATE_LEN = 8
@@ -154,7 +183,7 @@ async def fetch_investor_net(
         {
             "stk_cd": code, "dt": to_yyyymmdd,
             "amt_qty_tp": AMT_QTY_QUANTITY, "trde_tp": _TRDE_TP_ALL,
-            "unit_tp": UNIT_TP_IGNORED,
+            "unit_tp": UNIT_TP_SHARES,
         },
         max_pages=_MAX_PAGES,
         stop=_covered,
@@ -175,10 +204,31 @@ async def fetch_investor_net(
         if date_s in seen or not (from_yyyymmdd <= date_s <= to_yyyymmdd):
             continue
         seen.add(date_s)
+        institution = _signed(row.get("orgn"))
+        parts = {field: _signed(row.get(key)) for key, field in _ORGN_PARTS}
+        # 항등식 경계 방어. 실측 표본이 1종목뿐이라(#1041 계열 주석) 나머지 종목은
+        # 런타임이 본다 — 어긋나도 **행을 버리지 않는다**: 상위 3주체는 벤더가 직접
+        # 준 값이라 여전히 옳고, 버리면 멀쩡한 날이 화면에서 사라진다. 대신 경고를
+        # 실어 "세부의 합이 기관계와 다르다" 를 화면이 말할 수 있게 한다.
+        parts_sum = sum(parts.values())
+        if parts_sum != institution:
+            violations.append(InvestorNetInvariantViolation(
+                date_yyyymmdd=date_s, reason="malformed_row",
+                detail=(
+                    f"orgn_mismatch: 기관계 {institution} ≠ 세부 8종 합 {parts_sum} "
+                    f"(차 {institution - parts_sum})"
+                ),
+            ))
         points.append(InvestorNetPoint(
             t_ms=daily_anchor_ms(date_s),
             foreign_net=foreign_net(row, base="frgnr_invsr", native="natfor"),
-            institution_net=_signed(row.get("orgn")),
+            institution_net=institution,
+            breakdown=InvestorSubjectBreakdown(
+                individual=_signed(row.get("ind_invsr")),
+                native_foreign=_signed(row.get("natfor")),
+                other_corp=_signed(row.get("etc_corp")),
+                **parts,
+            ),
         ))
     if truncated:
         # 조용한 절단 금지 — reason 집합이 닫혀 있어 malformed_row 로 싣되

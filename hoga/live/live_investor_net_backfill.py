@@ -106,8 +106,14 @@ class LiveInvestorNetBackfill:
 
 
 def _investor_point_to_dict(p) -> dict:
+    """종목 경로 직렬화. **지수 경로에는 같은 이름의 사본이 따로 있다**
+    (`live_index_investor_net.py`) — 그쪽은 주체 분해가 없어 이 키를 싣지 않는다.
+    합치지 않는 이유가 그 비대칭이다.
+    """
     return {
         "t_ms": p.t_ms,
         "foreign_net": p.foreign_net,
         "institution_net": p.institution_net,
+        # 캐시에 그대로 들어가는 dict 다 — 모델 객체를 넣으면 JSON 직렬화가 깨진다.
+        "breakdown": p.breakdown.model_dump() if p.breakdown is not None else None,
     }

@@ -2143,6 +2143,10 @@ def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path, monkeypatch)
             "t_ms": 1_718_574_400_000,
             "foreign_net": -3519,
             "institution_net": 17184,
+            # 지수 경로에는 주체 분해가 **없다** — `ka10051` 은 그 세분을 주지 않는다.
+            # null 은 "이 경로엔 개념 자체가 없다" 는 뜻이고, 종목 경로의 0(그 주체가
+            # 그날 순매수 0)과 다른 계약이라 `exclude_none` 으로 지우지 않는다.
+            "breakdown": None,
         }
     ]
     assert fake.calls == [("KOSDAQ", "20260619", "20260619")]

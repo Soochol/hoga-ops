@@ -212,13 +212,6 @@ def _candle_date_yyyymmdd(c) -> str:
     return datetime.fromtimestamp(c.t_ms / 1000, tz=_KST).strftime("%Y%m%d")
 
 
-def _investor_point_to_dict(p) -> dict:
-    return {
-        "t_ms": p.t_ms, "foreign_net": p.foreign_net,
-        "institution_net": p.institution_net,
-    }
-
-
 def _validate_past_request(
     code: str, from_: str, to: str,
     *, max_days: int | None = _PAST_MAX_DAYS,
@@ -1756,6 +1749,27 @@ class ScreenerDailyCandlesResponse(BaseModel):
     data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
+class LiveInvestorSubjectBreakdown(BaseModel):
+    """`InvestorSubjectBreakdown` 의 wire 미러 — 종목 경로(`ka10059`) 전용 11주체.
+
+    ⚠ `response_model` 은 선언 안 된 키를 **조용히 버린다**. 도메인 모델에 주체를
+    추가하면 여기도 같은 PR 에서 늘려야 하고, 안 그러면 에러 없이 화면에서만
+    사라진다(CLAUDE.md "API wire 계약").
+    """
+
+    individual: int
+    native_foreign: int
+    other_corp: int
+    fin_invest: int
+    insurance: int
+    trust: int
+    other_fin: int
+    bank: int
+    pension: int
+    private_fund: int
+    nation: int
+
+
 class LiveInvestorNetPoint(BaseModel):
     """단위는 **응답의 `unit` 이 정한다**(#1119) — 종목 경로 qty_shares(주),
     지수 경로 amt_eok(억원). 같은 모양인데 물리량이 다르다."""
@@ -1763,6 +1777,10 @@ class LiveInvestorNetPoint(BaseModel):
     t_ms: int
     foreign_net: float
     institution_net: float
+    #: 주체 분해. **종목 경로만** 채운다 — 지수/시장 경로(`ka10051`)는 분해 자체가
+    #: 없어 `null` 이다. `null`(경로에 없음)과 0(그날 순매수 0)은 다른 뜻이라
+    #: `response_model_exclude_none` 을 걸지 않는다.
+    breakdown: LiveInvestorSubjectBreakdown | None = None
 
 
 class LivePastInvestorNetResponse(BaseModel):

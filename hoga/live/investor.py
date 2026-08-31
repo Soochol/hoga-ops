@@ -18,6 +18,44 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class InvestorSubjectBreakdown(BaseModel):
+    """`ka10059` 종목 경로의 주체 분해 — 13주체 중 `InvestorNetPoint` 가 이미 들고
+    있는 둘(외국인·기관계)을 뺀 나머지 11개.
+
+    ⚠ **단위는 부모 `InvestorNetPoint` 를 따른다**(응답의 `unit` 필드). 이 모델은
+    종목 경로에서만 채워지므로 실제로는 늘 수량(주)이다 — 지수/시장 경로
+    (`ka10051`)는 주체 분해를 주지 않아 `None` 이다. **부재와 0 은 다른 뜻이다**:
+    `None` = 그 경로엔 분해가 없다, `0` = 그 주체가 그날 순매수 0.
+
+    ## 실측 항등식 둘 (005930 · 20260403~20260828 · 100행 · 위반 0건)
+
+        orgn = fnnc_invt + insrnc + invtrt + etc_fnnc + bank + penfnd_etc
+               + samo_fund + natn
+        ind_invsr + frgnr_invsr + orgn + etc_corp + natfor = 0
+
+    첫 항등식이 화면을 정한다 — 기관 세부를 접었다 펴도 합이 어긋나지 않으므로
+    "잔차/기타" 컬럼이 필요 없다. 다만 증거는 **1종목 표본**이라 화면 가정으로
+    두지 않고 `kiwoom_investor.fetch_investor_net` 이 행마다 검사한다.
+
+    `native_foreign` 은 부모의 `foreign_net` 에 **이미 합산돼 있다**(KIS 정의,
+    `kiwoom_investor.foreign_net` 참조). 여기 따로 싣는 것은 표시용 세부이지 더할
+    값이 아니다 — 상위 5주체 합계를 낼 때 다시 더하면 이중 계상이다.
+    """
+
+    individual: int       # ind_invsr   개인
+    native_foreign: int   # natfor      내외국인 — foreign_net 에 이미 포함
+    other_corp: int       # etc_corp    기타법인
+    # ── 기관 세부 8종. 합 == InvestorNetPoint.institution_net ──────────────
+    fin_invest: int       # fnnc_invt   금융투자
+    insurance: int        # insrnc      보험
+    trust: int            # invtrt      투신
+    other_fin: int        # etc_fnnc    기타금융
+    bank: int             # bank        은행
+    pension: int          # penfnd_etc  연기금등
+    private_fund: int     # samo_fund   사모펀드
+    nation: int           # natn        국가
+
+
 class InvestorNetPoint(BaseModel):
     """One trading day's foreign/institution net-buy for a code or an index.
 
@@ -35,6 +73,8 @@ class InvestorNetPoint(BaseModel):
     t_ms: int             # epoch ms (UTC) — 09:00 KST anchor
     foreign_net: int      # 외국인 순매수 — 단위는 응답의 unit 필드가 정한다
     institution_net: int  # 기관계 순매수 — 상동
+    #: 주체 분해. 종목 경로(`ka10059`)만 채운다 — 지수/시장 경로는 `None`.
+    breakdown: InvestorSubjectBreakdown | None = None
 
 
 class InvestorTrendEstimateRow(BaseModel):
