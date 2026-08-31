@@ -8,8 +8,10 @@ import { WORKSPACE_STORAGE_KEY } from './workspace';
  *  1. 핀 창은 **그룹 종목 교체를 지나간다**(핀이 boolean 이 아니라 종목 사본인 이유).
  *  2. 클릭 목적지(`activationTarget`)가 핀 창을 건너뛴다 — 세 결과를 구분한다.
  *  3. 드롭(`setWindowSymbol`)만 핀 창에 쓸 수 있다.
- *  4. 핀은 **영속되지만 프리셋·딥링크 탭에는 실리지 않고**, 프리셋 적용은 id 가
- *     살아남는 창의 핀을 **나가는 상태에서 이월**한다(payload 는 여전히 안 읽는다).
+ *  4. 핀은 **영속되지만 프리셋·딥링크 탭에는 종목이 실리지 않고**, 프리셋 적용은
+ *     id 가 살아남는 창의 핀을 **나가는 상태에서 이월**한다(payload 의 핀 종목은
+ *     여전히 안 읽는다). 핀 **여부**의 프리셋 왕복(ADR-0165 `wasPinned`)은
+ *     `layoutPresetSnapshot.test.ts` 가 못박는다.
  *
  * 스토어는 모듈 초기화 시점에 하이드레이션하므로(readStorage), 저장값·URL 을 바꾸려면
  * 먼저 세우고 모듈을 다시 import 한다(tabScope 테스트와 같은 규율).
