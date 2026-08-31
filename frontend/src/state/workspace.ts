@@ -172,8 +172,11 @@ export interface WorkspaceWindow {
    * 된 이상 소비처가 각자 `groupSymbols[win.group]` 를 직독하면 핀 창만 조용히
    * 옛 종목을 그린다(구독 코드 집합이 그 사고의 최단 경로다 — `liveOpenCodesKey`).
    *
-   * **프리셋에는 담기지 않는다**(`snapshotWorkspace`·`normalizeWorkspaceSnapshot`) —
-   * `groupSymbols` 를 뺀 것과 같은 이유로, 프리셋은 배치를 담고 종목을 담지 않는다.
+   * **프리셋에는 담기지 않되, 적용은 이월한다.** payload 는 핀을 싣지도 읽지도
+   * 않는다(`snapshotWorkspace`·`normalizeWorkspaceSnapshot`) — `groupSymbols` 를 뺀
+   * 것과 같은 이유로, 프리셋은 배치를 담고 종목을 담지 않는다. 대신 적용
+   * (`applyWorkspaceSnapshot`)이 id 가 살아남는 창의 핀을 나가는 상태에서 이월한다 —
+   * groupSymbols 보존과 같은 규칙("프리셋은 보던 종목을 바꾸지 않는다")의 창 쪽 절반.
    */
   pinned?: GroupSymbol;
 }
@@ -282,7 +285,8 @@ type Store = Persisted & {
    *
    * **`groupSymbols` 는 payload 에서 읽지 않는다** — 어떤 경로로 들어와도(프리셋 적용·
    * 기본 배치 초기화·손상 payload 폴백) 지금 보고 있는 종목이 그대로 남는다. 종목을
-   * 바꾸는 문은 `setGroupSymbol` 하나뿐이다.
+   * 바꾸는 문은 `setGroupSymbol` 하나뿐이다. 창 핀도 같은 규칙이다: payload 의 핀은
+   * 버리고, id 가 살아남는 창은 나가는 상태의 핀을 이월한다(구현부 주석 참조).
    *
    * 못 보는 것: 프리셋 창이 지금 종목이 없는 그룹을 쓰면 그 창은 빈 상태로 열린다
    * (공장 기본 워크스페이스와 같은 상태 — 검색으로 종목을 넣으면 채워진다).
@@ -994,11 +998,26 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   applyWorkspaceSnapshot: (snapshot) => {
     const before = get().windows;
     set((state) => {
+      const normalized = normalizeWorkspaceSnapshot(snapshot);
+      // 핀 이월 — 출처는 payload 가 아니라 **나가는 상태**다(payload 의 핀은
+      // normalizeWorkspaceSnapshot 이 이미 버렸다). id 가 살아남는 창만 유지하므로
+      // 이월이 새 핀을 만들 수는 없고, id 가 사라진 창의 핀은 닫힌 창의 핀과 같은
+      // 결말이다. 아래 groupSymbols 보존과 같은 규칙의 창 쪽 절반 — 이게 없으면
+      // 핀 창만 그룹으로 복귀해, 배치를 바꾸려던 프리셋이 보던 종목을 갈아치운다.
+      const pins = new Map(state.windows.filter((w) => w.pinned).map((w) => [w.id, w.pinned!]));
+      const windows = pins.size === 0
+        ? normalized.windows
+        : normalized.windows.map((w) => {
+            const pin = pins.get(w.id);
+            return pin ? { ...w, pinned: pin } : w;
+          });
       // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
-      const next = { ...normalizeWorkspaceSnapshot(snapshot), groupSymbols: state.groupSymbols };
+      const next = { windows, zOrder: normalized.zOrder, groupSymbols: state.groupSymbols };
       persistFromState(next);
       // 창이 통째로 갈리며 id 도 프리셋 것으로 바뀐다 → 창에 매인 비영속 런타임은
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
+      // 핀 이월 창도 예외가 아니다 — 이월의 본질은 표시 종목 연속성이지 런타임
+      // 연속성이 아니고, payload 가 timeframe 을 바꿀 수 있어 fresh-view 가 안전하다.
       return { ...next, chartRuntime: {} };
     });
     // 같은 이유로 창별 지표 스코프도 고아가 된다. 새로 등장한 창의 시드는 그 창이

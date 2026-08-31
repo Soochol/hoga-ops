@@ -8,7 +8,8 @@ import { WORKSPACE_STORAGE_KEY } from './workspace';
  *  1. 핀 창은 **그룹 종목 교체를 지나간다**(핀이 boolean 이 아니라 종목 사본인 이유).
  *  2. 클릭 목적지(`activationTarget`)가 핀 창을 건너뛴다 — 세 결과를 구분한다.
  *  3. 드롭(`setWindowSymbol`)만 핀 창에 쓸 수 있다.
- *  4. 핀은 **영속되지만 프리셋·딥링크 탭에는 실리지 않는다**.
+ *  4. 핀은 **영속되지만 프리셋·딥링크 탭에는 실리지 않고**, 프리셋 적용은 id 가
+ *     살아남는 창의 핀을 **나가는 상태에서 이월**한다(payload 는 여전히 안 읽는다).
  *
  * 스토어는 모듈 초기화 시점에 하이드레이션하므로(readStorage), 저장값·URL 을 바꾸려면
  * 먼저 세우고 모듈을 다시 import 한다(tabScope 테스트와 같은 규율).
@@ -304,6 +305,55 @@ describe('영속·프리셋·딥링크', () => {
     seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: SAMSUNG });
 
     const { useWorkspaceStore } = await loadStore('');
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(SAMSUNG);
+  });
+});
+
+describe('프리셋 적용은 핀을 이월한다 — payload 가 아니라 나가는 상태에서', () => {
+  const presetWindow = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    kind: 'chart',
+    group: 1,
+    rect: { x: 0, y: 0, w: 0.5, h: 0.5 },
+    chart: { timeframe: '1m' },
+    ...extra,
+  });
+
+  it('id 가 살아남는 창은 핀을 유지한다 — 프리셋이 보던 종목을 바꾸지 않는다', async () => {
+    // 그룹 종목(HYNIX)과 핀 종목(SAMSUNG)을 다르게 — 이월이 없으면 이 창은 그룹으로
+    // 복귀해 화면이 HYNIX 로 바뀐다(계약이 지키려던 바로 그 손해).
+    seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: HYNIX });
+    const { useWorkspaceStore } = await loadStore();
+
+    useWorkspaceStore.getState().applyWorkspaceSnapshot({
+      windows: [presetWindow('w1')],
+      zOrder: ['w1'],
+    });
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(SAMSUNG);
+  });
+
+  it('id 가 사라지면 핀도 창과 함께 사라진다 — 닫힌 창의 핀과 같은 결말', async () => {
+    seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: HYNIX });
+    const { useWorkspaceStore } = await loadStore();
+
+    useWorkspaceStore.getState().applyWorkspaceSnapshot({
+      windows: [presetWindow('preset-1')],
+      zOrder: ['preset-1'],
+    });
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+  });
+
+  it('payload 의 핀보다 현재 핀이 이긴다 — 이월과 payload 차단은 독립이다', async () => {
+    seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: HYNIX });
+    const { useWorkspaceStore } = await loadStore();
+
+    useWorkspaceStore.getState().applyWorkspaceSnapshot({
+      windows: [presetWindow('w1', { pinned: KAKAO })],
+      zOrder: ['w1'],
+    });
 
     expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(SAMSUNG);
   });
