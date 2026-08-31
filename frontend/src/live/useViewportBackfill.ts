@@ -365,6 +365,14 @@ export function useViewportBackfill({
    *  중복 제거가 아니라 **두 번째 정지 판정**이 되어, 바닥이 풀린 뒤의 탈출까지 막는다
    *  (#1662 가 "판정이 두 벌이면 그 틈이 다시 잠김이 된다" 로 경고한 바로 그 모양). */
   const clampFloorSaidForRef = useRef<string | null>(null);
+  /** 3b **coverage 분기**의 바닥 반려를 이미 말한 `창|바닥` 쌍. #1680 과 같은 이유,
+   *  같은 모양이다 — 다만 이쪽이 더 급하다: 3b 는 **뷰포트 이벤트마다** 깨어나므로
+   *  실제 드래그(~60 event/s)에서는 3e 의 커밋 박자(~200ms)보다 훨씬 빽빽하다.
+   *
+   *  ⚠ 이 래치는 **로그만** 끊는다(#1680 의 규율 그대로). 반려 자체는 매 이벤트에서
+   *  다시 판정되고, 창이나 바닥이 움직이면 새 사실이므로 다시 말한다. 갭이 닫히거나
+   *  바닥을 벗어나면 그 구간이 끝난 것이라 아래에서 `null` 로 되돌린다. */
+  const covFloorSaidForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -1236,10 +1244,46 @@ export function useViewportBackfill({
           chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
           minuteFloorRef.current,
         );
-        if (!covPlan) {
+        // **바닥에 앉은 창에는 coverage fill 도 세우지 않는다** — 3b left_pan·3c·3e 와
+        // 같은 술어다. 벤더 모드의 range 창은 캔들과 **같은 값으로 클램프되므로**
+        // (`planLiveRangeRequest` 의 `minutePastFrom`; 디스크 모드만 `seedFrom` 그대로)
+        // 바닥 아래 요청은 쿼리 키를 바꾸지 못한다 = fetch 0 → 3a 의 두 settle 신호가
+        // 둘 다 죽는다.
+        //
+        // ⚠ **여기서 조기 반환하면 안 된다.** 아래 축소 분기는 잠기거나 과하게 넓어진
+        // 창에서 **스스로 빠져나오는 유일한 길**이고, 확장·축소가 이 한 이벤트 핸들러를
+        // 공유한다. 그래서 반려는 "확장을 세우지 않는다" 까지만 하고 **축소로
+        // 떨어뜨린다** — 바닥에 앉은 창이야말로 되감을 여지가 가장 큰 상태다.
+        //
+        // 종전 주석은 "바닥에서는 커버리지도 함께 바닥에 서 있어 갭 조건이 성립하지
+        // 않는다" 며 이 술어를 생략했는데, 2026-08-31 실측이 그 전제를 뒤집었다 —
+        // 창이 바닥(20251225)에 앉은 채 갭이 서서 `extend {coverage_gap, from: 20251225,
+        // next: 20251225}` 라는 **no-op dispatch** 가 나갔다(그때는 지표가 바닥까지
+        // 따라온 덕에 캐시 settle 이 살아 400ms 뒤 stop 이 왔지만, 그 구제는 타이밍이지
+        // 계약이 아니다 — 3c 에서는 같은 모양이 실제로 잠겼다).
+        let blockedByFloor = false;
+        if (covPlan !== null && !canAdvanceHistoricalWindow(cur, minuteFloorRef.current)) {
+          blockedByFloor = true;
+          // 반려는 말한다(#1597). 다만 **에피소드당 한 줄**이다 — 3b 는 이벤트마다
+          // 깨어나므로 무조건 찍으면 정지 상태가 드래그 내내 활동처럼 보인다(#1680).
+          const said = `${cur}|${minuteFloorRef.current}`;
+          if (covFloorSaidForRef.current !== said) {
+            covFloorSaidForRef.current = said;
+            livePerfLog('viewport_backfill_floor', {
+              code,
+              timeframe,
+              d: `trigger=coverage_gap from=${cur} floor=${minuteFloorRef.current} coverageTarget=${covPlan.coverageTarget}`,
+            });
+          }
+        } else {
+          // 갭이 닫혔거나 바닥을 벗어났다 = 구간 종료. 다음 구간은 새 에피소드다.
+          covFloorSaidForRef.current = null;
+        }
+        if (!covPlan || blockedByFloor) {
           // **확장이 필요 없는 순간이 곧 축소를 볼 자리다.** 여기 도달했다는 것은
-          // 뷰포트 좌단이 커버리지 오른쪽이라는 뜻이므로, 창이 과하게 넓으면 앞으로
-          // 당긴다(`planViewportContraction` 이 히스테리시스를 쥔다).
+          // 뷰포트 좌단이 커버리지 오른쪽(갭 없음)이거나 **창이 바닥에 앉아 더 못 간다**
+          // 는 뜻이므로, 창이 과하게 넓으면 앞으로 당긴다(`planViewportContraction` 이
+          // 히스테리시스를 쥔다).
           //
           // 확장 판정 **뒤**에 두는 것이 요점이다 — 앞에 두면 같은 이벤트에서 자르고
           // 곧바로 늘리는 왕복이 가능해진다.
@@ -1503,6 +1547,7 @@ export function useViewportBackfill({
     clampRecoveryStepsRef.current = 0;
     clampLastFromRef.current = null;
     clampFloorSaidForRef.current = null;
+    covFloorSaidForRef.current = null;
   }, [code, timeframe]);
 
   // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.

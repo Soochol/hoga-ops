@@ -876,6 +876,120 @@ describe('useViewportBackfill — coverage-gap trigger (3b, A안)', () => {
     expect(extendSpy).not.toHaveBeenCalled();
   });
 
+  // ── 바닥에 앉은 창의 coverage 분기 ────────────────────────────────────────────
+  // 종전 주석은 "바닥에서는 커버리지도 함께 바닥에 서 있어 갭 조건이 성립하지 않는다"
+  // 며 이 분기에 술어를 생략했다. 2026-08-31 실측이 그 전제를 뒤집었다 — 창이 바닥
+  // (20251225)에 앉은 채 갭이 서서 `extend {coverage_gap, from: 20251225,
+  // next: 20251225}` 라는 no-op dispatch 가 나갔다.
+  function coverageFloorLogs(): string[] {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_floor')
+      .map(([, payload]) => String((payload as { d?: unknown }).d ?? ''))
+      .filter((d) => d.includes('trigger=coverage_gap'));
+  }
+
+  function renderCoverageAtFloor(floor: string | null) {
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭 있음
+        rangeWindowFromDate: '20260601',
+        minuteScrollbackFloorDate: floor,
+      }),
+    );
+    return cap;
+  }
+
+  it('바닥에 앉은 창에는 coverage fill 도 세우지 않는다 — 반려를 말한다', () => {
+    vi.mocked(livePerfLog).mockClear();
+    const cap = renderCoverageAtFloor('20260601'); // 창(20260601)과 같다 = 바닥
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+    expect(coverageFloorLogs()).toHaveLength(1);
+  });
+
+  it('⚠ 반려해도 **축소는 살아 있다** — 조기 반환이면 여기서 스스로 빠져나올 길이 닫힌다', () => {
+    // 이 표면의 급소. 확장·축소가 같은 이벤트 핸들러를 공유하므로, 바닥 반려를
+    // `return` 으로 처리하면 잠긴 창을 되감는 유일한 경로까지 함께 죽는다.
+    // 바닥에 앉은 창이야말로 되감을 여지가 가장 큰 상태다.
+    const contractSpy = vi
+      .spyOn(useLivePageStore.getState(), 'contractHistoricalRange')
+      .mockImplementation(() => {});
+    try {
+      const cap = renderCoverageAtFloor('20260601');
+      cap.fire({ from: 5, to: 100 });
+      vi.advanceTimersByTime(150);
+
+      // 창(20260601)이 뷰포트 좌단(20260709)보다 3스텝 넘게 과거 → 히스테리시스 발동.
+      // 리테인 1스텝 = 20260709 의 5거래일 전 = 20260702.
+      expect(contractSpy).toHaveBeenCalledWith('20260702');
+    } finally {
+      contractSpy.mockRestore();
+    }
+  });
+
+  it('반려는 **에피소드당 한 줄** — 3b 는 이벤트마다 깨어난다(#1680 과 같은 규율)', () => {
+    vi.mocked(livePerfLog).mockClear();
+    // 축소를 no-op 으로 묶어 **창을 고정**한다 — 안 그러면 첫 이벤트의 축소가 창을
+    // 바닥 밖으로 빼내 두 번째 이벤트부터는 반려 자체가 사라진다(그 탈출은 아래
+    // 별도 테스트가 잰다). 여기서 재려는 것은 "같은 `창|바닥` 에서 몇 줄인가" 다.
+    const contractSpy = vi
+      .spyOn(useLivePageStore.getState(), 'contractHistoricalRange')
+      .mockImplementation(() => {});
+    try {
+      const cap = renderCoverageAtFloor('20260601');
+      // 실제 드래그는 초당 수십 이벤트다. 창도 바닥도 그대로면 새 사실이 없다.
+      for (let i = 0; i < 8; i += 1) {
+        cap.fire({ from: 5 + i, to: 100 + i });
+        vi.advanceTimersByTime(150);
+      }
+
+      expect(coverageFloorLogs()).toHaveLength(1);
+      expect(extendSpy).not.toHaveBeenCalled();
+    } finally {
+      contractSpy.mockRestore();
+    }
+  });
+
+  it('반려 → 축소 → 정상 확장으로 **스스로 빠져나온다** (막다른 길이 아니다)', () => {
+    // 위 두 테스트를 잇는 종단 단언. 이것이 초록이어야 "바닥 반려" 가 정지가 아니라
+    // **경유지**임이 증명된다 — 축소가 창을 바닥 밖으로 빼내면 같은 핸들러가 다음
+    // 이벤트에서 종전대로 확장한다. (이 동작은 축소를 스텁하지 않은 실제 스토어로
+    // 잰다 — 첫 발견이 「스텁 없는 반복 이벤트 테스트」의 실패였다.)
+    vi.mocked(livePerfLog).mockClear();
+    const cap = renderCoverageAtFloor('20260601');
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(coverageFloorLogs()).toHaveLength(1);
+    expect(extendSpy).not.toHaveBeenCalled();
+    // 축소가 창을 뷰포트 기준으로 당겼다 = 더 이상 바닥이 아니다.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260702');
+
+    cap.fire({ from: 6, to: 101 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('바닥이 아니면 종전대로 확장한다 — 게이트가 정상 경로를 먹지 않는다', () => {
+    const cap = renderCoverageAtFloor('20260501'); // 창(20260601)보다 과거 = 여유 있음
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('respects backpressure: no coverage step while a step is already in flight', () => {
     const cap = renderCoverage({
       indicatorCoverageFromDate: '20260715',
