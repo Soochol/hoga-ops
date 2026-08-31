@@ -378,7 +378,7 @@ describe('backfillSymbolNames', () => {
       windows: [chart('w1', 1)],
       zOrder: ['w1'],
       groupSymbols,
-      chartRuntime: { w1: { historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null } },
+      chartRuntime: { w1: { historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null } },
     });
   }
 
@@ -417,7 +417,7 @@ describe('backfillSymbolNames', () => {
   it('chartRuntime 을 리셋하지 않는다', () => {
     seed({ 1: { code: '000660', name: '000660' } });
     useWorkspaceStore.getState().backfillSymbolNames(RESOLVE);
-    expect(useWorkspaceStore.getState().chartRuntime.w1).toEqual({ historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null });
+    expect(useWorkspaceStore.getState().chartRuntime.w1).toEqual({ historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null });
   });
 
   it('보강 결과를 영속화한다 — 다음 새로고침에 오염된 값이 되살아나지 않는다', () => {

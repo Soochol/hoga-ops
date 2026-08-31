@@ -78,6 +78,29 @@ describe('setChartTimeframe', () => {
     const rt = useWorkspaceStore.getState().chartRuntime.c1;
     expect(rt.historicalFromDate).toBeNull();
     expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
+    // 날짜만으로는 복원이 안전하지 않다 — 그 값을 만든 봉이 함께 남아야 한다.
+    expect(rt.lastMinuteHistoricalTimeframe).toBe('1m');
+  });
+
+  it('기억은 그 창을 만든 봉을 도장으로 남긴다(60m 에서 떠나면 60m)', () => {
+    useWorkspaceStore.getState().setChartTimeframe('c1', '60m');
+    useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20240506');
+    useWorkspaceStore.getState().setChartTimeframe('c1', '1m');
+    const rt = useWorkspaceStore.getState().chartRuntime.c1;
+    // 값은 남지만 도장이 '60m' 이라 1m 복원은 이것을 쓰지 않는다(LiveChartRoot 게이트).
+    expect(rt.lastMinuteHistoricalFromDate).toBe('20240506');
+    expect(rt.lastMinuteHistoricalTimeframe).toBe('60m');
+  });
+
+  it('팬 없이 스쳐 간 분봉은 도장을 덮지 않는다 — 날짜와 봉은 한 쌍으로만 움직인다', () => {
+    // 1m 을 깊게 팬 → 60m 을 팬 없이 거쳐 감 → 1m 복귀. 60m 구간에서 도장만
+    // 무조건 갱신되면 1m 이 만든 날짜에 '60m' 이 찍혀 1m 복원이 조용히 죽는다.
+    useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260701');
+    useWorkspaceStore.getState().setChartTimeframe('c1', '60m'); // 기억 = (20260701, 1m)
+    useWorkspaceStore.getState().setChartTimeframe('c1', '1m');  // 60m 에서 팬 0회
+    const rt = useWorkspaceStore.getState().chartRuntime.c1;
+    expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
+    expect(rt.lastMinuteHistoricalTimeframe).toBe('1m');
   });
 
   it('복원 대기(hFD=null·기억≠null) 상태에서 분봉→분봉 전환해도 기억이 살아남는다', () => {
@@ -86,6 +109,7 @@ describe('setChartTimeframe', () => {
     useWorkspaceStore.getState().setChartTimeframe('c1', '3m'); // 복원 대기 상태
     const rt = useWorkspaceStore.getState().chartRuntime.c1;
     expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
+    expect(rt.lastMinuteHistoricalTimeframe).toBe('1m');
   });
 
   it('비분봉→비분봉(D→W) 사이를 건너뛰어도 기억이 유지된다', () => {
@@ -97,6 +121,7 @@ describe('setChartTimeframe', () => {
     const rt = useWorkspaceStore.getState().chartRuntime.c1;
     expect(rt.historicalFromDate).toBeNull();
     expect(rt.lastMinuteHistoricalFromDate).toBe('20260701');
+    expect(rt.lastMinuteHistoricalTimeframe).toBe('1m');
   });
 });
 
