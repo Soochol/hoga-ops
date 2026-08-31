@@ -321,7 +321,7 @@ describe('fillDayOhlcFromQuote', () => {
     const ws = { ...empty, dayOpen: 250_000, dayHigh: 251_000, dayLow: 249_000 };
     const s = fillDayOhlcFromQuote(ws, { open: 1, high: 2, low: 3 });
     expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([250_000, 251_000, 249_000]);
-    // 아무것도 안 메웠으면 **같은 객체**여야 한다 — 소비처 useMemo 의 헛 리렌더 방지.
+    // 폴백이 발화하지 않았음을 **참조 동일성으로** 관측한다(입력을 그대로 돌려주는 계약).
     expect(s).toBe(ws);
   });
 

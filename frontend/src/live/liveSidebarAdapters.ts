@@ -285,9 +285,12 @@ export function fillDayOhlcFromQuote(
   const dayOpen = summary.dayOpen ?? positive(quote.open);
   const dayHigh = summary.dayHigh ?? positive(quote.high);
   const dayLow = summary.dayLow ?? positive(quote.low);
-  // 아무것도 안 메웠으면 **같은 객체를 돌려준다** — 소비처 useMemo 가 이 값을 그대로
-  // 내보내므로, 매번 새 객체면 장중 내내 요약 패널이 헛 리렌더한다. 판정식이 아래
-  // 리터럴과 같은 세 값을 쓰므로 둘이 어긋날 수 없다.
+  // 아무것도 안 메웠으면 **입력을 그대로 돌려준다.** 리렌더 절감이 목적이 아니다 —
+  // 그 판단은 호출부 useMemo 가 이미 하고, 버퍼가 차 있으면 `latestTradeSummary` 가
+  // 어차피 매 호출 새 객체를 만든다. 목적은 **"폴백이 발화하지 않았다" 를 참조 동일성
+  // 으로 관측 가능하게** 두는 것이고, 빈 버퍼의 `EMPTY_TRADE_SUMMARY` 싱글턴이 이
+  // 함수를 지나도 싱글턴으로 남는다는 성질이 거기서 따라온다. 판정식이 아래 리터럴과
+  // 같은 세 값을 쓰므로 둘이 어긋날 수 없다.
   if (dayOpen === summary.dayOpen && dayHigh === summary.dayHigh && dayLow === summary.dayLow) {
     return summary;
   }
