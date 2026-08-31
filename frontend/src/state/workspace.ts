@@ -79,7 +79,7 @@ function isDeepLinkTab(): boolean {
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
-export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'sector-ranking'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -647,6 +647,16 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // -1,925,000 = 73px 를 요구한다. 임계 아래로 내리면 `table-fixed` 라 폭이 재분배되지
   // 않고 **세 컬럼이 조용히 잘린다** — 스크롤바도 생기지 않으므로 눈으로만 잡힌다.
   investor: { w: 340, h: 230 },
+  // investor-daily = 헤더 27 + 기간칩 줄 24 + 그룹헤더 22 + 컬럼헤더 22 +
+  // 행 24×20 + 누적행 25 ≈ 600 → 420 으로 자른다(20일이 기본이라 스크롤이 정상이고,
+  // 창을 키우면 더 보인다). 폭 560 은 **다 보이는 폭이 아니다** — 값 컬럼이 12개라
+  // 어떤 창 폭에도 안 들어간다. 그래서 이 창만 `table-fixed` 가 아니라 가로 스크롤을
+  // 쓴다(고정 배치였다면 컬럼이 스크롤바도 없이 조용히 잘린다 — investor 주석의 사고).
+  // 560 은 REF_CANVAS 기준값이라 실제 렌더 폭은 캔버스에 비례한다. 실측(2026-08-31,
+  // /browse): 1600 뷰포트 → 창 553px, 날짜 + 상위 4주체 + 금융투자·보험까지 보인다.
+  // 1280 뷰포트 → 창 437px, 날짜 + 상위 4주체 + 금융투자. **좁은 쪽에서도 상위
+  // 4주체가 다 보이는 것**이 이 값을 고른 기준이고, 기관 세부는 흘려 보낸다.
+  'investor-daily': { w: 560, h: 420 },
   'sector-ranking': { w: 360, h: 320 },
 };
 

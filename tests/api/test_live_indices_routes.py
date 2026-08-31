@@ -367,7 +367,9 @@ def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch)
     body = res.json()
     assert body["index_id"] == "KOSPI"
     assert body["points"] == [
-        {"t_ms": 1, "foreign_net": -3519, "institution_net": 17184},
+        # 지수 경로엔 주체 분해가 없다(`ka10051` 이 그 세분을 안 준다) — null 이
+        # "이 경로엔 개념 자체가 없다" 를 말한다. 종목 경로의 0 과 다른 계약이다.
+        {"t_ms": 1, "foreign_net": -3519, "institution_net": 17184, "breakdown": None},
     ]
 
 
