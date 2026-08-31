@@ -23,7 +23,7 @@ import {
   type DrawingToolSpec,
   type ToolCtx,
 } from './tools';
-import type { Drawing, Point } from './types';
+import type { Drawing, Point, Rect } from './types';
 import { createVirtualAxis } from '../../util/virtualAxis';
 import { dragBarDomain } from './chartCoordinates';
 
@@ -1254,11 +1254,14 @@ describe('selectTool — 다중 선택', () => {
     const target = hline('h1', 100);
     const ctx = makeCtx({
       hitTestAt: vi.fn(() => target),
+      drawings: [target, hline('h2', 200)],
       selectedIds: ['h1', 'h2'],
     });
     selectTool.onPointerDown!(ctx);
     expect(ctx.dragRef.current?.kind).toBe('body-multi');
-    expect((ctx.dragRef.current as { ids: readonly string[] }).ids).toEqual(['h1', 'h2']);
+    // 그룹도 단일 드래그처럼 그랩 시점 스냅샷을 든다 — `ids` 가 아니라 도형 자체.
+    const grabbed = ctx.dragRef.current as { origins: readonly Drawing[] };
+    expect(grabbed.origins.map((d) => d.id)).toEqual(['h1', 'h2']);
     expect(ctx.setSelected).not.toHaveBeenCalled();
   });
 
@@ -1277,19 +1280,25 @@ describe('selectTool — 다중 선택', () => {
     expect(ctx.dragRef.current?.kind).toBe('body');
   });
 
-  const multiDrag = (over: Partial<ToolCtx> = {}) =>
-    makeCtx({
-      drawings: [hline('h1', 100), hline('h2', 200)],
+  // `origins` 는 그랩 시점 스냅샷이므로 override 된 `drawings` 를 그대로 따라간다.
+  // 둘을 따로 두면 스냅샷이 스토어와 다른 세상을 가리켜 테스트가 실제 경로를
+  // 재지 못한다.
+  const multiDrag = (over: Partial<ToolCtx> = {}) => {
+    const drawings = over.drawings ?? [hline('h1', 100), hline('h2', 200)];
+    return makeCtx({
+      drawings,
       dragRef: {
         current: {
-          kind: 'body-multi', ids: ['h1', 'h2'],
-          lastRealMs: 1_700_000_000_000, lastPy: 200,
+          kind: 'body-multi',
+          origins: drawings,
+          startBar: 1_700_000_000_000, lastBar: 1_700_000_000_000,
           startPx: 100, startPy: 200, pressedId: 'h1', moved: false,
           pointerId: 1, paneId: 'candle',
         },
       },
       ...over,
     });
+  };
 
   // slop: 손 떨림 1~2px 이 이동(과 되돌리기 단계)을 쓰면, 그 뒤의 "클릭으로
   // 접기"가 이미 일어난 변이를 설명해야 한다. 넘기 전엔 아무 패치도 내지 않는다.
@@ -1651,6 +1660,185 @@ describe('rectTool — alignment snapping while drawing', () => {
     const created = add.mock.calls[0][0] as { a: Point; b: Point };
     expect(created.b).toEqual({ realMs: 300_000, price: 500 });
     // …and the guides go with the gesture.
+    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
+  });
+});
+
+// ── 그룹 정렬 스냅 (다중 선택 body 드래그) ─────────────────────────────────
+//
+// 좌표 스텁은 여기서도 선형이다(1 000ms = 1px, 1price = 1px). 그룹은 수직
+// 델타를 PIXEL 로 나르므로 두 축의 단위가 실제로 다르고, 그 변환이 맞는지를
+// 재는 것이 이 블록의 절반이다.
+describe('selectTool — 그룹 정렬 스냅', () => {
+  const linear = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    priceToCanvasY: (p: number) => 1_000 - p,
+    canvasYToPrice: (y: number) => 1_000 - y,
+  };
+
+  const box = (
+    id: string, x1: number, y1: number, x2: number, y2: number,
+    over: Partial<Rect> = {},
+  ): Drawing => ({
+    id, kind: 'rect',
+    a: { realMs: x1, price: y1 }, b: { realMs: x2, price: y2 },
+    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+    ...over,
+  }) as Drawing;
+
+  /** 이웃: x px 100~200, y px 500~400. */
+  const neighbour = () => box('n1', 100_000, 500, 200_000, 600);
+  /** 그룹 두 장. 합쳐서 bbox x 300 000~520 000, y price 300~400. */
+  const m1 = () => box('m1', 300_000, 300, 400_000, 350);
+  const m2 = () => box('m2', 450_000, 360, 520_000, 400);
+
+  function groupCtx(opts: {
+    members: Drawing[];
+    others?: Drawing[];
+    cursor: { px: number; py: number };
+    alignSnapEnabled?: boolean;
+  }, over: Partial<ToolCtx> = {}) {
+    const members = opts.members;
+    const ctx = makeCtx({
+      drawings: [...members, ...(opts.others ?? [])],
+      ...linear,
+      alignSnapEnabled: opts.alignSnapEnabled ?? true,
+      // 앵커는 원점(bar 0 · py 0). 커서 위치가 곧 총 델타가 된다.
+      canvasXToRealMs: vi.fn(() => opts.cursor.px * 1_000),
+      priceBoundsForPane: vi.fn(() => ({ top: 10_000, bottom: -10_000 })),
+      dragRef: {
+        current: {
+          kind: 'body-multi', origins: members,
+          startBar: 0, lastBar: 0,
+          startPx: 0, startPy: 0, pressedId: members[0].id, moved: true,
+          pointerId: 1, paneId: 'candle',
+        },
+      },
+      ...over,
+    });
+    // px/py 는 **살아 있는 참조**여야 한다. 값으로 굳히면 왕복 테스트에서 커서를
+    // 되돌려도 ctx 는 첫 위치에 머물러, 앵커 오염이 없는데도 있는 것처럼 보인다
+    // (실제로 처음에 그렇게 틀렸다 — X 는 함수 스텁이라 따라가고 Y 만 멈췄다).
+    if (!('px' in over)) Object.defineProperty(ctx, 'px', { get: () => opts.cursor.px });
+    if (!('py' in over)) Object.defineProperty(ctx, 'py', { get: () => opts.cursor.py });
+    return ctx;
+  }
+
+  /** updateMany 로 나간 패치를 id → patch 로. */
+  const patches = (ctx: ToolCtx) => {
+    const calls = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls;
+    return new Map(
+      (calls[0][0] as { id: string; patch: Partial<Rect> }[]).map((e) => [e.id, e.patch]),
+    );
+  };
+
+  it('그룹의 바운딩 박스가 이웃 모서리에 붙는다 — 멤버는 대형을 유지한 채', () => {
+    // 커서 -195 000 바 · -95px: bbox 왼쪽이 이웃 왼쪽에서 5px, 위가 이웃
+    // 아래에서 5px. 두 축 모두 임계 안이라 함께 붙는다.
+    const ctx = groupCtx({
+      members: [m1(), m2()], others: [neighbour()],
+      cursor: { px: -195_000 / 1_000, py: -95 },
+    });
+    selectTool.onPointerMove!(ctx);
+    const p = patches(ctx);
+    // X: 왼쪽 변이 이웃의 왼쪽과 같은 값. Y: 그룹 아래가 이웃 위와 맞닿는다.
+    expect(p.get('m1')!.a).toEqual({ realMs: 100_000, price: 400 });
+    expect(p.get('m1')!.b).toEqual({ realMs: 200_000, price: 450 });
+    // 대형 유지: m2 는 m1 과 같은 델타만큼 움직였다.
+    expect(p.get('m2')!.a).toEqual({ realMs: 250_000, price: 460 });
+    expect(p.get('m2')!.b).toEqual({ realMs: 320_000, price: 500 });
+  });
+
+  it('자석이 꺼져 있으면 붙지 않는다', () => {
+    const ctx = groupCtx({
+      members: [m1(), m2()], others: [neighbour()],
+      cursor: { px: -195_000 / 1_000, py: -95 }, alignSnapEnabled: false,
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 105_000, price: 395 });
+  });
+
+  it('그룹은 자기 멤버에게 붙지 않는다', () => {
+    // 5 000바(=5px)만 끈다. 멤버가 후보에 남아 있으면 m1 의 원래 왼쪽 변이
+    // 정확히 5px 거리라 그리로 되붙어 제자리처럼 보인다.
+    const ctx = groupCtx({
+      members: [m1(), m2()], others: [], cursor: { px: -5, py: 0 },
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 295_000, price: 300 });
+  });
+
+  it('페인이 섞인 그룹은 붙지 않는다 — 가격을 견줄 공통 축이 없다', () => {
+    const ctx = groupCtx({
+      members: [m1(), box('m2', 450_000, 360, 520_000, 400, { paneId: 'volume' })],
+      others: [neighbour()],
+      cursor: { px: -195_000 / 1_000, py: -95 },
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 105_000, price: 395 });
+  });
+
+  it('사각형이 없는 그룹은 붙지 않는다 — 정렬은 모서리 위에 정의된다', () => {
+    const line: Drawing = {
+      id: 'l1', kind: 'hline', price: 300,
+      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+    };
+    const ctx = groupCtx({
+      members: [line], others: [neighbour()], cursor: { px: -195_000 / 1_000, py: -95 },
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(patches(ctx).get('l1')).toEqual({ price: 395 });
+  });
+
+  it('클램프에 잘릴 스냅은 채택하지 않는다 — 가이드가 거짓말을 하느니', () => {
+    // 경계를 **상한**으로 잡는다. 하한으로 조이면 원본 가격이 이미 범위 밖이 되어
+    // `clampDPriceForDrawing` 이 곧바로 0 을 돌려주고(드래그 freeze), 스냅이
+    // 잘리는 상황 자체가 만들어지지 않는다 — 처음에 그렇게 틀렸다.
+    //
+    // 498 은 스냅 전(m2 의 위쪽이 495 까지)은 통과시키고 스냅 후(500)는 자르는
+    // 자리다. 잘린 채 붙이면 가이드만 "맞닿았다"고 말하게 된다.
+    const ctx = groupCtx(
+      { members: [m1(), m2()], others: [neighbour()],
+        cursor: { px: -195_000 / 1_000, py: -95 } },
+      { priceBoundsForPane: vi.fn(() => ({ top: 498, bottom: -10_000 })) },
+    );
+    selectTool.onPointerMove!(ctx);
+    // 축은 전부-아니면-전무라 X 스냅도 함께 빠진다.
+    const a = patches(ctx).get('m1')!.a as Point;
+    expect(a.realMs).toBe(105_000);
+    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
+  });
+
+  it('스냅 보정이 그룹 앵커로 새지 않는다 — 왕복하면 원위치', () => {
+    const cursor = { px: -195_000 / 1_000, py: -95 };
+    const ctx = groupCtx({ members: [m1(), m2()], others: [neighbour()], cursor });
+    selectTool.onPointerMove!(ctx);
+    const first = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[0][0] as
+      { id: string; patch: Partial<Rect> }[];
+    expect(first.find((e) => e.id === 'm1')!.patch.a).toEqual({ realMs: 100_000, price: 400 });
+
+    // 커서를 그랩 지점으로 되돌린다. 앵커가 오염됐다면 여기서 어긋난다.
+    cursor.px = 0; cursor.py = 0;
+    selectTool.onPointerMove!(ctx);
+    const back = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[1][0] as
+      { id: string; patch: Partial<Rect> }[];
+    expect(back.find((e) => e.id === 'm1')!.patch.a).toEqual({ realMs: 300_000, price: 300 });
+    expect(back.find((e) => e.id === 'm2')!.patch.b).toEqual({ realMs: 520_000, price: 400 });
+    const drag = ctx.dragRef.current as { startBar: number | null; startPy: number };
+    expect(drag.startBar).toBe(0);
+    expect(drag.startPy).toBe(0);
+  });
+
+  it('붙는 동안 가이드를 내고, 붙지 않는 프레임엔 빈 배열을 낸다', () => {
+    const cursor = { px: -195_000 / 1_000, py: -95 };
+    const ctx = groupCtx({ members: [m1(), m2()], others: [neighbour()], cursor });
+    selectTool.onPointerMove!(ctx);
+    const guides = (ctx.setAlignGuides as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(guides).toHaveLength(2);
+    expect(guides.map((g: { axis: string }) => g.axis).sort()).toEqual(['x', 'y']);
+
+    cursor.px = 0; cursor.py = 0;
+    selectTool.onPointerMove!(ctx);
     expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
   });
 });
