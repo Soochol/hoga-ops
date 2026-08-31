@@ -17,6 +17,7 @@ import type {
 import { subBarOffsetPx, isLocked } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
+import type { AlignGuide } from './alignSnap';
 import { catmullRomSpans } from './smooth';
 
 /**
@@ -757,6 +758,72 @@ export function renderGhostPreview(
   c.beginPath();
   c.arc(isHline ? ghost.cursorPx : x, y, 3.5, 0, Math.PI * 2);
   c.fill();
+  c.restore();
+}
+
+/**
+ * How far an alignment guide overshoots the two boxes it connects, in canvas px.
+ *
+ * This is the guide's ONLY visible signal, which is why it is generous. A guide
+ * sits by definition ON the aligned edge, so the stretch between the two shapes
+ * is hidden under their own strokes — measured in the browser, the 6 px first
+ * tried left barely a tick past the corner handles. The overshoot is the part
+ * that reads.
+ */
+const GUIDE_OVERSHOOT = 14;
+
+/**
+ * Alignment guide lines for an in-flight drag — the visual half of shape
+ * snapping. Drawn in the DRAGGED shape's own color rather than `--accent`:
+ * canvas cannot read CSS custom properties (see `textFont`), and the ghost's
+ * snap dot already set the precedent that magnet feedback wears the user's
+ * annotation color.
+ *
+ * Silent about anything it cannot project. A guide is transient feedback; a
+ * fallback position for one would be a line pointing at the wrong place, which
+ * is worse than no line at all.
+ */
+export function renderAlignGuides(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  guides: readonly AlignGuide[],
+  color: string,
+) {
+  const mine = guides.filter((g) => g.paneId === ctx.paneId);
+  if (mine.length === 0) return;
+  c.save();
+  c.strokeStyle = color;
+  c.globalAlpha = 0.85;
+  c.lineWidth = 1;
+  // Coarser than any shape's dash (`dashPattern` maxes at 3x/2x the stroke
+  // width): the guide wears the dragged shape's colour, so the dash rhythm is
+  // what separates it from the outline it is lying on top of.
+  c.setLineDash([7, 5]);
+  for (const g of mine) {
+    if (g.axis === 'x') {
+      const x = ctx.realMsToX(g.at);
+      const y1 = ctx.priceToY(g.from);
+      const y2 = ctx.priceToY(g.to);
+      if (x == null || y1 == null || y2 == null) continue;
+      const lo = Math.min(y1, y2) - GUIDE_OVERSHOOT;
+      const hi = Math.max(y1, y2) + GUIDE_OVERSHOOT;
+      c.beginPath();
+      c.moveTo(x, lo);
+      c.lineTo(x, hi);
+      c.stroke();
+    } else {
+      const y = ctx.priceToY(g.at);
+      const x1 = ctx.realMsToX(g.from);
+      const x2 = ctx.realMsToX(g.to);
+      if (y == null || x1 == null || x2 == null) continue;
+      const lo = Math.min(x1, x2) - GUIDE_OVERSHOOT;
+      const hi = Math.max(x1, x2) + GUIDE_OVERSHOOT;
+      c.beginPath();
+      c.moveTo(lo, y);
+      c.lineTo(hi, y);
+      c.stroke();
+    }
+  }
   c.restore();
 }
 
