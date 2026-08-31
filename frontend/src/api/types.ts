@@ -707,7 +707,39 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 /** 값의 단위는 **응답의 unit 필드가 정한다** (#1119) — 종목 경로는 qty_shares(주),
  * 지수 경로는 amt_eok(억원). 같은 모양이라 타입은 하나지만 물리량이 다르다. */
-export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
+export type InvestorNetPoint = {
+  t_ms: number;
+  foreign_net: number;
+  institution_net: number;
+  /** 주체 분해 — **종목 경로만** 채운다(`ka10059`). 지수/시장 경로(`ka10051`)는
+   *  분해 자체가 없어 `null` 이다. `null`(경로에 없음)과 0(그날 순매수 0)은 다른
+   *  뜻이라 백엔드가 `exclude_none` 을 걸지 않는다. 옛 응답을 든 웜 캐시에서는
+   *  키가 아예 없을 수 있어 옵셔널이다(프로세스 재기동이 유일한 무효화, ADR-0048). */
+  breakdown?: InvestorSubjectBreakdown | null;
+};
+
+/** `hoga/live/investor.py::InvestorSubjectBreakdown` 손 미러(ADR-0004).
+ *
+ *  단위는 부모 `InvestorNetPoint` 를 따른다 — 종목 경로뿐이라 실제로는 늘 주(株).
+ *
+ *  ⚠ `native_foreign` 은 부모의 `foreign_net` 에 **이미 합산돼 있다**(KIS 정의).
+ *  표시용 세부이지 상위 합계에 다시 더할 값이 아니다.
+ *
+ *  기관 세부 8종(`fin_invest`~`nation`)의 합은 `institution_net` 과 정확히 같다 —
+ *  백엔드가 행마다 검사하고 어긋나면 data_warnings 로 알린다. */
+export type InvestorSubjectBreakdown = {
+  individual: number;
+  native_foreign: number;
+  other_corp: number;
+  fin_invest: number;
+  insurance: number;
+  trust: number;
+  other_fin: number;
+  bank: number;
+  pension: number;
+  private_fund: number;
+  nation: number;
+};
 export type InvestorNetUnit = 'qty_shares' | 'amt_eok';
 
 export type ProgramTradePoint = {

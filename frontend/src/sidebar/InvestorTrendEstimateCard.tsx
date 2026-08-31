@@ -228,7 +228,9 @@ function formatSlotFallback(slot: string): string {
   return normalized;
 }
 
-function qtyClass(value: number | null): string {
+/** 부호색 SSOT — 일별 투자자 창(`InvestorDailyWindow`)도 이 함수를 쓴다.
+ *  같은 화면에 나란히 뜨는 두 표가 같은 부호를 다른 색으로 그리면 안 된다. */
+export function qtyClass(value: number | null): string {
   if (value === null || value === 0) return 'text-fg-dimmer';
   return value > 0 ? 'text-price-up' : 'text-price-down';
 }
