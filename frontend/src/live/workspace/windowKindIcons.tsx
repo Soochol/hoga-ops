@@ -70,6 +70,13 @@ export const WINDOW_KIND_ICON: Record<IconWindowKind, ReactNode> = {
       <path d="M20.5 19v-1.5a3.5 3.5 0 0 0-2.5-3.35" />
     </>,
   ),
+  'investor-daily': svg(
+    <>
+      <rect x="3" y="4.5" width="18" height="15" rx="2" />
+      <path d="M3 9h18M8 4.5v15" />
+      <path d="M11.5 12.5h6M11.5 16h3.5" />
+    </>,
+  ),
   vdist: svg(<path d="M4 5h9M4 9.7h15M4 14.3h6M4 19h11" />),
   'sector-ranking': svg(
     <>

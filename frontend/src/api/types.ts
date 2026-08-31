@@ -707,8 +707,46 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 /** 값의 단위는 **응답의 unit 필드가 정한다** (#1119) — 종목 경로는 qty_shares(주),
  * 지수 경로는 amt_eok(억원). 같은 모양이라 타입은 하나지만 물리량이 다르다. */
-export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
-export type InvestorNetUnit = 'qty_shares' | 'amt_eok';
+export type InvestorNetPoint = {
+  t_ms: number;
+  foreign_net: number;
+  institution_net: number;
+  /** 주체 분해 — **종목 경로만** 채운다(`ka10059`). 지수/시장 경로(`ka10051`)는
+   *  분해 자체가 없어 `null` 이다. `null`(경로에 없음)과 0(그날 순매수 0)은 다른
+   *  뜻이라 백엔드가 `exclude_none` 을 걸지 않는다. **옵셔널인 이유는 버전 스큐**다 —
+   *  이 필드를 싣기 전의 백엔드를 타면 키가 아예 없다(워크트리 프론트가 사용자
+   *  dev 서버를 프록시로 타는 구성이 그렇다). */
+  breakdown?: InvestorSubjectBreakdown | null;
+};
+
+/** `hoga/live/investor.py::InvestorSubjectBreakdown` 손 미러(ADR-0004).
+ *
+ *  단위는 부모 `InvestorNetPoint` 를 따른다 — 종목 경로뿐이라 실제로는 늘 주(株).
+ *
+ *  ⚠ `native_foreign` 은 부모의 `foreign_net` 에 **이미 합산돼 있다**(KIS 정의).
+ *  표시용 세부이지 상위 합계에 다시 더할 값이 아니다.
+ *
+ *  기관 세부 8종(`fin_invest`~`nation`)의 합은 `institution_net` 과 정확히 같다 —
+ *  백엔드가 행마다 검사하고 어긋나면 data_warnings 로 알린다. */
+export type InvestorSubjectBreakdown = {
+  individual: number;
+  native_foreign: number;
+  other_corp: number;
+  fin_invest: number;
+  insurance: number;
+  trust: number;
+  other_fin: number;
+  bank: number;
+  pension: number;
+  private_fund: number;
+  nation: number;
+};
+/** `hoga/live/investor.py::InvestorNetUnit` 손 미러(ADR-0004 · WIRE_ENUM_MIRRORS).
+ *
+ *  `qty_shares` 주 · `amt_mwon` 백만원(종목 금액 축) · `amt_eok` 억원(지수 경로).
+ *  **표시는 응답의 이 값으로 고른다** — 저장된 토글로 고르면 축을 바꾼 직후
+ *  옛 축의 값을 새 단위로 그린다(#1119 부류, 100배 오독). */
+export type InvestorNetUnit = 'qty_shares' | 'amt_mwon' | 'amt_eok';
 
 export type ProgramTradePoint = {
   t: number;

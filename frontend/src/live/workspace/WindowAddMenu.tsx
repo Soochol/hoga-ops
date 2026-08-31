@@ -41,7 +41,10 @@ const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'trade', desc: '실시간 체결 틱 흐름' },
   { kind: 'broker', desc: '증권사별 매수·매도 상위' },
   { kind: 'program', desc: '프로그램 매매 순매수' },
-  { kind: 'investor', desc: '기관·외국인·개인 수급' },
+  // 'investor'(ka10064 장중 추정)는 **개인을 주지 않는다** — 설명이 오래도록
+  // 개인을 약속했지만 카드에 그 행이 없었다. 약속은 아래 'investor-daily' 가 지킨다.
+  { kind: 'investor', desc: '장중 외국인·기관 추정(차수별)' },
+  { kind: 'investor-daily', desc: '일별 확정 · 개인·외국인·기관 세부 8종' },
   { kind: 'vdist', desc: '가격대별 체결 분포' },
   { kind: 'sector-ranking', desc: '지수 구성 섹터 등락 순위', indexOnly: true },
 ];

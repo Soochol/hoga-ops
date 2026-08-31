@@ -48,6 +48,7 @@ from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
 from hoga.live.api import AfterHoursBookResponse
 from hoga.live.error_policy import LiveErrorKind
+from hoga.live.investor import InvestorNetUnit
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -209,6 +210,15 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     # 결손 사유. FE 는 종전에 `RangeMissingDate.reason` 의 **필드 인라인 union** 이라
     # 파서가 원리적으로 못 봤다 — 그래서 같은 이름의 named alias 로 꺼내며 등록했다.
     # 값이 갈리면 새 사유가 배너 문구 분기에 없어 조용히 "손상" 으로 오분류된다.
+    # 투자자 순매수의 물리량. **경로마다 다르고 축마다 다르다** — 종목 수량 축은 주,
+    # 종목 금액 축은 백만원, 지수 경로는 억원. 프론트가 이 값으로 포맷터를 고르므로
+    # 값이 갈리면 **자릿수가 100배 틀린 화면**이 나오고 타입은 아무 말도 안 한다.
+    # BE 가 라우트마다 인라인 Literal 을 적었으면 이 감사가 원리적으로 못 본다 —
+    # 그래서 도메인에 named alias 를 두고 두 응답 모델이 그것을 쓴다.
+    "InvestorNetUnit": (
+        frozenset(get_args(InvestorNetUnit)),
+        "frontend/src/api/types.ts",
+    ),
     "MissingDateReason": (
         frozenset(get_args(m.MissingDateReason)),
         "frontend/src/api/types.ts",
