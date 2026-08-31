@@ -248,6 +248,9 @@ export type ActiveViewProjection = {
   /** 탭이 들고 온 분봉 창 기억. 생략(undefined) 시 레거시 derive 폴백
    *  (분봉이면 historicalFromDate, 아니면 null). */
   lastMinuteHistoricalFromDate?: string | null;
+  /** 그 기억을 만든 분봉. 날짜와 **한 쌍**이라 따로 넘기지 않는다 — 생략하면
+   *  날짜와 같은 derive 폴백을 탄다(분봉이면 `timeframe`, 아니면 null). */
+  lastMinuteHistoricalTimeframe?: MinuteTimeframe | null;
 };
 
 /**
@@ -327,6 +330,11 @@ type Store = Persisted & IndicatorSettings & {
    *  `Persisted` 5필드로 좁히므로 이 값은 `live.page.v1` 에 실리지 않는다(그전에는
    *  실리되 `readStorage` 화이트리스트가 무시해 재수화만 안 됐다). */
   lastMinuteHistoricalFromDate: string | null;
+  /** 위 기억을 **만든 분봉**. 창의 깊이는 봉에 상대적이라(60m 좌팬 한 번 = 300거래일,
+   *  1m 은 5거래일) 날짜만 들고 봉을 건너 복원하면 그 봉이 정상 사용으로는 절대
+   *  도달하지 못하는 창이 된다 — `SavedRangeFocus` 가 `savedTimeframe`/`savedBarSpan`
+   *  을 짝으로 드는 것과 같은 이유다. 복원 규칙은 `LiveChartRoot` 1-샷 자리에 있다. */
+  lastMinuteHistoricalTimeframe: MinuteTimeframe | null;
   /** `/live` 에서 열린 저장뷰의 기간 슬롯. **단일** — 다른 저장뷰를 열면 교체된다. */
   savedRangeFocus: SavedRangeFocus | null;
   focusSavedRange: (focus: SavedRangeFocus) => void;
@@ -701,6 +709,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       set({ indicatorUndoToast: null });
     },
     lastMinuteHistoricalFromDate: null,
+    lastMinuteHistoricalTimeframe: null,
     savedRangeFocus: null,
 
     // 지표 도메인 변이 setter 55종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
@@ -918,7 +927,10 @@ export const useLivePageStore = create<Store>((set, get) => {
      */
     clearSavedRange: () => set({ savedRangeFocus: null }),
 
-    projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate }) => {
+    projectActiveView: ({
+      instrument, code, timeframe, historicalFromDate,
+      lastMinuteHistoricalFromDate, lastMinuteHistoricalTimeframe,
+    }) => {
       // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
       // (belt-and-suspenders; callers already pass validated timeframes).
       const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
@@ -939,6 +951,16 @@ export const useLivePageStore = create<Store>((set, get) => {
         lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
           ? lastMinuteHistoricalFromDate
           : (isMinuteTimeframe(tf) ? historicalFromDate : null),
+        // 봉 도장은 날짜와 **같은 출처**에서 온다 — 갈라지면 짝이 깨져 복원이 남의
+        // 봉 창을 물려받는다(이 필드가 생긴 이유). 도장 없이 날짜만 준 호출은 그
+        // 날짜의 봉을 알 수 없으므로 `null`(=모름) 이고, 복원은 그때 건너뛴다 —
+        // 모르는 것을 "맞다" 로 읽지 않는 쪽이 안전한 기본값이다. derive 폴백은
+        // 날짜가 `historicalFromDate` 에서 오므로 도장도 그 값을 만든 `tf` 다.
+        lastMinuteHistoricalTimeframe: lastMinuteHistoricalTimeframe !== undefined
+          ? lastMinuteHistoricalTimeframe
+          : (lastMinuteHistoricalFromDate !== undefined
+            ? null
+            : (isMinuteTimeframe(tf) && historicalFromDate !== null ? tf : null)),
       };
       // /live 의 ambient 지표 봉은 candleTimeframe 을 따른다 — 같은 원자적 쓰기로 투영.
       set({ ...next, ...projectIndicatorsFor(tf) });
@@ -952,6 +974,7 @@ export const useLivePageStore = create<Store>((set, get) => {
         activeCode: code,
         historicalFromDate: null,
         lastMinuteHistoricalFromDate: null,
+        lastMinuteHistoricalTimeframe: null,
       });
       persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
     },
@@ -970,7 +993,11 @@ export const useLivePageStore = create<Store>((set, get) => {
     },
 
     resetHistoricalRange: () => {
-      set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null });
+      set({
+        historicalFromDate: null,
+        lastMinuteHistoricalFromDate: null,
+        lastMinuteHistoricalTimeframe: null,
+      });
       persist({ ...get(), historicalFromDate: null });
     },
 

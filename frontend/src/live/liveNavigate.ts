@@ -61,6 +61,7 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
     timeframe: page.candleTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
+    lastMinuteHistoricalTimeframe: null,
   });
 }
 
@@ -138,5 +139,6 @@ export function mirrorActiveGroupToLivePage(
     timeframe: focusedTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
+    lastMinuteHistoricalTimeframe: null,
   });
 }

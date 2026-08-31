@@ -64,7 +64,7 @@ describe('capturePresetPayload (창·배치만 — 종목 없음)', () => {
 describe('applyPresetPayload (창·배치 교체 — 종목은 유지)', () => {
   it('창·배치를 복원하고 chartRuntime 을 리셋하되, 보고 있는 종목은 그대로 둔다', () => {
     // 런타임에 잔여를 심어 리셋 확인.
-    useWorkspaceStore.setState({ chartRuntime: { a: { historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null } } });
+    useWorkspaceStore.setState({ chartRuntime: { a: { historicalFromDate: '20260101', lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null } } });
     applyPresetPayload({
       windows: [chart('x', 1, '5m'), book('y', 1)],
       zOrder: ['x', 'y'],
