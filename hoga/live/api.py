@@ -738,6 +738,18 @@ class LiveQuote(BaseModel):
     open: int | None = None
     high: int | None = None
     low: int | None = None
+    #: 당일 누적 요약 4종 — 10호가 요약 패널이 WS `0B` 결손 시 폴백으로 읽는다.
+    #: 마감 후 표시 링버퍼가 비면 `0B` 가 통째로 사라져 그 칸들이 대시가 되는데,
+    #: 같은 값이 이 응답의 원천(`ka10095`)에 이미 실려 온다.
+    #:
+    #: 단위·의미는 **WS 와 같은 축으로 맞춰 뒀다**(파서가 벤더 단위를 흡수한다):
+    #: `trade_value` 는 **원**(벤더는 백만원), `vs_prev_volume_pct` 는 오늘 누적 ÷
+    #: 전일 전량 × 100 의 **비율**(증감률 아님). 전부 `| None` — 벤더 미제공·장전
+    #: 무자격 폴백에서 비는 것이 정상이고, 그 경로가 dev·e2e 의 **정상 경로**다.
+    volume: int | None = None
+    trade_value: int | None = None
+    vs_prev_volume_pct: float | None = None
+    fill_strength_pct: float | None = None
     baseline_price: int | None = None
     baseline_date: str | None = None
     change_pct_source: str | None = None
@@ -1073,6 +1085,12 @@ class LiveQuoteFetcher:
             open=(None if pre else q.open),
             high=(None if pre else q.high),
             low=(None if pre else q.low),
+            # 넷 다 **당일 체결에서 파생된 값**이라 OHLC 와 같은 부류다 — 장전에는
+            # 같이 지운다. 안 지우면 첫 체결 전에 어제 값이 오늘 요약 자리에 앉는다.
+            volume=(None if pre else q.volume),
+            trade_value=(None if pre else q.trade_value),
+            vs_prev_volume_pct=(None if pre else q.vs_prev_volume_pct),
+            fill_strength_pct=(None if pre else q.fill_strength_pct),
             baseline_price=resolved.baseline_price,
             baseline_date=resolved.baseline_date,
             change_pct_source=resolved.change_pct_source,

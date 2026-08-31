@@ -23,6 +23,16 @@ export interface LiveQuote {
   open?: number | null;
   high?: number | null;
   low?: number | null;
+  /** 당일 누적 요약 4종 — 10호가 요약 패널이 마감 후 WS `0B` 결손을 이걸로 메운다
+   *  (`fillTradeSummaryFromQuote`). OHLC 와 같은 이유로 optional 이다.
+   *
+   *  단위·의미는 **WS 와 같은 축**이다(백엔드 파서가 벤더 단위를 흡수한다):
+   *  `trade_value` 는 **원**(벤더 `trde_prica` 는 백만원), `vs_prev_volume_pct` 는
+   *  오늘 누적 ÷ 전일 전량 × 100 의 **비율**이지 증감률이 아니다. */
+  volume?: number | null;
+  trade_value?: number | null;
+  vs_prev_volume_pct?: number | null;
+  fill_strength_pct?: number | null;
   /** 검증 기준가. corporate action 방어용 adjusted daily baseline. */
   baseline_price?: number | null;
   /** 검증 기준가 날짜(YYYY-MM-DD). */

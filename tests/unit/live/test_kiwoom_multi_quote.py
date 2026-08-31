@@ -6,6 +6,9 @@
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -228,3 +231,69 @@ async def test_empty_codes_issues_no_call() -> None:
 
     assert await fetch_multi_price(None, [], fetch_chunk_fn=_runner) == []  # type: ignore[arg-type]
     assert not called
+
+
+# ── 당일 누적 요약 4종 (#1682 2단계) ───────────────────────────────────────────
+#
+# 10호가 요약 패널이 마감 후 `0B` 결손을 이 값들로 메운다. **단위와 의미가 조용히
+# 틀릴 수 있는 자리**라 실캡처 픽스처로 못박는다 — 필드 이름만으로 추론하면
+# `pred_trde_qty_pre` 를 증감률로 읽어 100%p 틀린다.
+
+_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures" / "kiwoom_after_hours" / "ka10095_006360_1628.json"
+)
+
+
+def _fixture_row() -> dict:
+    """실캡처 ka10095 한 행 (006360 GS건설, 2026-08-19 16:28 = 장 마감 후)."""
+    return json.loads(_FIXTURE.read_text())["atn_stk_infr"][0]
+
+
+def test_trade_value_is_normalized_from_mwon_to_won() -> None:
+    # 벤더 `trde_prica` = 98,036 **백만원**. 파서가 원으로 흡수한다(WS FID 14 규율).
+    assert parse_row(_fixture_row()).trade_value == 98_036_000_000
+
+
+def test_trade_value_unit_is_proved_by_vwap_falling_inside_the_day_range() -> None:
+    # 단위 증명을 테스트 안에 남긴다: 거래대금 ÷ 거래량 = VWAP 이므로 그날 저가와
+    # 고가 사이에 **반드시** 떨어진다. 천원 가정이면 34.5원, 원 가정이면 0.03원이라
+    # 이 부등식이 즉시 깨진다 — 즉 이 한 줄이 백만원 축을 유일하게 고정한다.
+    q = parse_row(_fixture_row())
+    assert q.trade_value is not None and q.volume
+    vwap = q.trade_value / q.volume
+    assert q.low is not None and q.high is not None
+    assert q.low <= vwap <= q.high
+
+
+def test_vs_prev_volume_is_a_ratio_not_a_delta() -> None:
+    # 벤더가 보낸 값은 `+162.95`. 그날 거래량 2,837,598 / 전일(08-18) 1,741,402 =
+    # 162.949% 라 **비율**이고, 증감률이었다면 62.95 여야 한다. 전일 거래량은 일봉
+    # 코퍼스 실측이고, 같은 행의 `base_pric` 34,150 이 08-18 종가와 일치해 "전일" 의
+    # 정의까지 함께 못박힌다. WS FID 30 과 같은 축이다.
+    assert parse_row(_fixture_row()).vs_prev_volume_pct == pytest.approx(162.95)
+    measured_ratio = 2_837_598 / 1_741_402 * 100  # 그날 거래량 / 전일 거래량
+    assert measured_ratio == pytest.approx(162.95, abs=0.01)
+
+
+def test_fill_strength_is_carried_through() -> None:
+    assert parse_row(_fixture_row()).fill_strength_pct == pytest.approx(123.72)
+
+
+def test_ratio_sign_is_direction_only_and_zero_folds_to_none() -> None:
+    # WS `_ratio` 미러 — 같은 값이 두 경로로 오므로 규약이 갈리면 장중과 마감 후에
+    # 다른 숫자가 뜬다. 0 은 "미수신" 으로 접는다.
+    row = {**ROW, "cntr_str": "-88.10", "pred_trde_qty_pre": "0.00"}
+    q = parse_row(row)
+    assert q.fill_strength_pct == pytest.approx(88.10)
+    assert q.vs_prev_volume_pct is None
+
+
+def test_missing_summary_fields_stay_none() -> None:
+    # 구 응답·부분 payload 에서도 파서가 죽지 않는다(ROW 에는 넷 다 없다).
+    q = parse_row(ROW)
+    assert (q.trade_value, q.vs_prev_volume_pct, q.fill_strength_pct) == (None, None, None)
+
+
+def test_zero_trade_value_folds_to_none_like_the_ws_path() -> None:
+    assert parse_row({**ROW, "trde_prica": "0"}).trade_value is None

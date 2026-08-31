@@ -113,7 +113,11 @@ vi.mock('./BookPanel', () => ({
     vi: unknown;
     stale?: boolean;
     snapshot: { ts_ms: number } | null | undefined;
-    summary: { dayOpen: number | null; dayHigh: number | null; dayLow: number | null };
+    summary: {
+      dayOpen: number | null; dayHigh: number | null; dayLow: number | null;
+      cumVolume: number | null; cumValue: number | null;
+      vsPrevVolumePct: number | null; fillStrengthPct: number | null;
+    };
     afterHoursTotals?: { ask: number; bid: number } | null;
     sessionControl?: { kind: string; afterHoursLabel?: string; regularLabel?: string };
     sessionMode?: string;
@@ -135,6 +139,12 @@ vi.mock('./BookPanel', () => ({
           함께 못박아 "둘만 메워졌다" 도 실패로 잡힌다. */}
       <div>
         ohlc:{String(summary.dayOpen)}/{String(summary.dayHigh)}/{String(summary.dayLow)}
+      </div>
+      {/* 누적 요약 4종의 관측점. `ohlc:` 를 넓히지 않고 **새 노드**로 둔다 — 1단계
+          단언들이 그 문자열을 정확 매칭하므로 합치면 전부 깨진다. */}
+      <div>
+        acc:{String(summary.cumVolume)}/{String(summary.cumValue)}/
+        {String(summary.vsPrevVolumePct)}/{String(summary.fillStrengthPct)}
       </div>
       <div>
         session:{sessionControl?.kind ?? 'none'}/{sessionMode ?? 'regular'}
@@ -1170,6 +1180,11 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
   const Q_OPEN = 458500;
   const Q_HIGH = 462500;
   const Q_LOW = 424500;
+  /** 누적 4종 — 거래대금은 **원**(백엔드가 벤더 백만원을 흡수한 뒤의 축). */
+  const Q_VOL = 1_234_567;
+  const Q_VALUE = 98_036_000_000;
+  const Q_VS_PREV = 162.95;
+  const Q_FILL = 123.72;
 
   function setQuote(overrides: Partial<LiveQuote> = {}) {
     const quote: LiveQuote = {
@@ -1180,6 +1195,10 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
       open: Q_OPEN,
       high: Q_HIGH,
       low: Q_LOW,
+      volume: Q_VOL,
+      trade_value: Q_VALUE,
+      vs_prev_volume_pct: Q_VS_PREV,
+      fill_strength_pct: Q_FILL,
       baseline_price: 461500,
       ...overrides,
     };
@@ -1207,6 +1226,13 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
     expect(screen.getByText(`ohlc:${Q_OPEN}/${Q_HIGH}/${Q_LOW}`)).toBeInTheDocument();
   });
 
+  it('0B 버퍼가 비어도 거래량·거래대금·어제보다·체결강도를 그린다', () => {
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(
+      screen.getByText(`acc:${Q_VOL}/${Q_VALUE}/${Q_VS_PREV}/${Q_FILL}`),
+    ).toBeInTheDocument();
+  });
+
   it('0B 가 값을 들고 있으면 그쪽이 이긴다 — 폴백은 결손일 때만', () => {
     // 장중 규약: 실시간 체결이 흐르는 동안 10분 폴링 시세가 그것을 덮으면 안 된다.
     liveSeriesBuffers.trade = [
@@ -1222,6 +1248,14 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
     expect(screen.getByText(`ohlc:${Q_OPEN}/470000/${Q_LOW}`)).toBeInTheDocument();
   });
 
+  it('누적 4종도 0B 가 이긴다 — 폴백은 결손일 때만', () => {
+    liveSeriesBuffers.trade = [
+      { t_ms: 1, cum_volume: 500, cum_value: 700, vs_prev_volume_pct: 80, fill_strength_pct: 90 },
+    ];
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('acc:500/700/80/90')).toBeInTheDocument();
+  });
+
   it('스팟 커서에서는 폴백도 하지 않는다 — quote 는 "지금" 값이다', () => {
     // 요약을 비우는 규약의 요점은 **시점 일치**다. 사다리가 과거인데 시·고·저만
     // 현재면, 폴백이 그 규약을 뒷문으로 되돌린다.
@@ -1231,11 +1265,13 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
     });
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('ohlc:null/null/null')).toBeInTheDocument();
+    expect(screen.getByText('acc:null/null/null/null')).toBeInTheDocument();
   });
 
   it('시세가 아직 없으면 종전대로 대시 — 폴백이 0 을 지어내지 않는다', () => {
     vi.mocked(useQuoteByCode).mockReturnValue(new Map());
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('ohlc:null/null/null')).toBeInTheDocument();
+    expect(screen.getByText('acc:null/null/null/null')).toBeInTheDocument();
   });
 });

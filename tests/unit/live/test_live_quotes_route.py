@@ -94,8 +94,12 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert body["phase"] == "open"
+    # **전 키를 통째로 못박는다** — 여기가 `response_model` 을 실제로 지나는 층이라,
+    # 모델이 조용히 필드를 버리면(FastAPI 는 500 을 내지 않는다) 이 단언만 알아챈다.
     assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2,
                                  "change_won": 750, "open": None, "high": None, "low": None,
+                                 "volume": None, "trade_value": None,
+                                 "vs_prev_volume_pct": None, "fill_strength_pct": None,
                                  "baseline_price": None, "baseline_date": None,
                                  "change_pct_source": "kis", "warnings": [],
                                  "stale": False, "stale_reason": None}
@@ -710,3 +714,45 @@ def test_quotes_skips_prime_when_no_valid_codes(monkeypatch, tmp_path):
     c = TestClient(_app(QUOTES, tmp_path))
     assert c.get("/api/live/quotes", params={"codes": "bogus"}).status_code == 200
     assert "codes" not in seen
+
+
+# ── 당일 누적 요약 4종이 wire 를 통과하는가 (#1682 2단계) ──────────────────────
+#
+# 10호가 요약 패널이 마감 후 `0B` 결손을 이 값들로 메운다. 라우트 **함수를 직접**
+# 부르는 테스트는 `response_model` 단계를 건너뛰므로 이 층이 따로 필요하다 —
+# 모델에 필드를 빠뜨리면 FastAPI 가 에러 없이 스트립하고 증상은 한참 뒤에 온다.
+
+_SUMMARY_QUOTE = Quote(
+    "005930", 72400, 1.2, 750,
+    open=71000, high=72900, low=70800, volume=27_393_575,
+    trade_value=98_036_000_000, vs_prev_volume_pct=162.95, fill_strength_pct=123.72,
+)
+
+
+def test_quotes_wire_carries_the_day_summary_fields(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    c = TestClient(_app([_SUMMARY_QUOTE], tmp_path))
+    q = c.get("/api/live/quotes", params={"codes": "005930"}).json()["quotes"][0]
+    assert (q["volume"], q["trade_value"]) == (27_393_575, 98_036_000_000)
+    assert (q["vs_prev_volume_pct"], q["fill_strength_pct"]) == (162.95, 123.72)
+
+
+def test_quotes_pre_open_blanks_the_day_summary_like_ohlc(monkeypatch, tmp_path):
+    # 넷 다 **당일 체결 파생**이라 OHLC 와 같은 부류다. 안 지우면 첫 체결 전에 어제
+    # 값이 오늘 요약 자리에 앉는다 — 그 자리를 라벨이 설명하지 않으므로 조용히 틀린다.
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "pre_open")
+    c = TestClient(_app([_SUMMARY_QUOTE], tmp_path))
+    q = c.get("/api/live/quotes", params={"codes": "005930"}).json()["quotes"][0]
+    assert [q["open"], q["high"], q["low"]] == [None, None, None]
+    assert [q["volume"], q["trade_value"]] == [None, None]
+    assert [q["vs_prev_volume_pct"], q["fill_strength_pct"]] == [None, None]
+
+
+def test_quotes_without_summary_fields_still_serve(monkeypatch, tmp_path):
+    # 무자격 폴백·부분 payload 는 dev·e2e 의 **정상 경로**다(ADR-0134). 넷이 전부
+    # 비어도 200 이어야 한다 — 아니면 그 환경들이 통째로 500 이 된다.
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    c = TestClient(_app([Quote("005930", 72400, 1.2, 750)], tmp_path))
+    r = c.get("/api/live/quotes", params={"codes": "005930"})
+    assert r.status_code == 200
+    assert r.json()["quotes"][0]["fill_strength_pct"] is None
