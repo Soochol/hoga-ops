@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
+import { activationTarget, useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
 import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useLiveLayoutStore } from '../../state/liveLayout';
@@ -141,6 +141,124 @@ describe('applyPresetPayload (창·배치 교체 — 종목은 유지)', () => {
     const persisted = JSON.parse(localStorage.getItem('live.workspace.v1') ?? '{}');
     expect(persisted.zOrder).toEqual(['p']);
     expect(persisted.groupSymbols['1'].code).toBe('005930'); // payload 의 카카오가 아니다
+  });
+});
+
+/**
+ * 프리셋이 핀 **여부**를 나른다 (ADR-0165).
+ *
+ * **막는 방향**: 핀을 켜고 저장한 프리셋을 나중에(핀을 푼 뒤·다른 기기에서) 불러도
+ * 핀이 돌아오지 않는 것.
+ *
+ * **못 보는 것**: 저장 시점의 핀 **종목**. payload 는 boolean 플래그(`wasPinned`)만
+ * 싣고, 적용이 그 창의 **적용 시점 표시 종목**으로 물질화한다 — 종목을 실으면
+ * v3 `groupSymbols` 철회를 부른 손해(프리셋이 보던 종목을 갈아치움)가 재발한다.
+ *
+ * **등록 의존**: `applyPresetPayload` 가 스냅샷 적용 **뒤에** `pinWindows` 를 부르는
+ * 것(창이 존재해야 물질화할 수 있다). 플래그는 켜기 전용이다 — 끄기까지 복원하면
+ * 표시 종목이 바뀌어 상위 계약("프리셋은 보던 종목을 안 바꾼다")을 깬다.
+ */
+const KAKAO = { code: '035720', name: '카카오' };
+
+describe('프리셋 핀 왕복 (ADR-0165) — 여부만 싣고, 종목은 적용 시점에 물질화', () => {
+  it('캡처가 핀 창에 wasPinned: true 를 싣는다 — 종목은 싣지 않는다', () => {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('a', 1), pinned: { ...SAMSUNG } }, book('b', 1)],
+    });
+
+    const windows = capturePresetPayload().windows as Record<string, unknown>[];
+
+    expect(windows[0].wasPinned).toBe(true);
+    expect(windows[0].pinned).toBeUndefined();
+    expect(windows[1].wasPinned).toBeUndefined();
+  });
+
+  it('**핀 저장 → 해제 → 재적용에서 핀이 다시 켜진다** — 이 기능의 본체', () => {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('a', 1), pinned: { ...SAMSUNG } }],
+      zOrder: ['a'],
+    });
+    const preset = capturePresetPayload();
+    useWorkspaceStore.getState().toggleWindowPin('a');
+    expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+
+    applyPresetPayload(preset, 'p');
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(SAMSUNG);
+    // persist 까지 — 복원된 핀이 새로고침을 넘는다.
+    const persisted = JSON.parse(localStorage.getItem('live.workspace.v1') ?? '{}');
+    expect(persisted.windows[0].pinned).toEqual(SAMSUNG);
+  });
+
+  it('물질화 종목은 적용 시점의 표시 종목이다 — 저장 시점 종목이 아니다', () => {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('a', 1), pinned: { ...SAMSUNG } }],
+      zOrder: ['a'],
+    });
+    const preset = capturePresetPayload();
+    // 핀을 풀고 다른 종목으로 넘어간 상태에서 불러온다.
+    useWorkspaceStore.getState().toggleWindowPin('a');
+    useWorkspaceStore.getState().setGroupSymbol(1, { ...KAKAO });
+
+    applyPresetPayload(preset, 'p');
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(KAKAO);
+  });
+
+  it('종목 없는 그룹의 창은 핀이 켜지지 않는다 — 빈 핀은 표현 불가 상태다', () => {
+    applyPresetPayload({
+      windows: [{ ...chart('x', 2), wasPinned: true }],
+      zOrder: ['x'],
+      groupSymbols: {},
+    }, null);
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+  });
+
+  it('현재 핀(이월)이 물질화보다 이긴다 — 붙잡은 종목이 유지된다', () => {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('a', 1), pinned: { ...KAKAO } }],
+      zOrder: ['a'],
+    });
+
+    applyPresetPayload({
+      windows: [{ ...chart('a', 1), wasPinned: true }],
+      zOrder: ['a'],
+      groupSymbols: {},
+    }, null);
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(KAKAO);
+  });
+
+  it('플래그 없는 프리셋은 기존 핀을 풀지 않는다 — 켜기 전용 비대칭(의도)', () => {
+    useWorkspaceStore.setState({
+      windows: [{ ...chart('a', 1), pinned: { ...KAKAO } }],
+      zOrder: ['a'],
+    });
+
+    applyPresetPayload({ windows: [chart('a', 1)], zOrder: ['a'], groupSymbols: {} }, null);
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toEqual(KAKAO);
+  });
+
+  it('레거시 payload 의 pinned 심볼 객체는 핀을 켜지 않는다 — 방어선 불변', () => {
+    applyPresetPayload({
+      windows: [{ ...chart('x', 1), pinned: { ...KAKAO } }],
+      zOrder: ['x'],
+      groupSymbols: {},
+    }, null);
+
+    expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+  });
+
+  it('전 창 핀 프리셋을 불러오면 클릭이 blocked 로 판정된다 — 기존 토스트 복구 경로', () => {
+    applyPresetPayload({
+      windows: [{ ...chart('x', 1), wasPinned: true }],
+      zOrder: ['x'],
+      groupSymbols: {},
+    }, null);
+
+    expect(activationTarget(useWorkspaceStore.getState()).kind).toBe('blocked');
   });
 });
 
