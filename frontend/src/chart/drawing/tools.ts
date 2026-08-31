@@ -414,8 +414,9 @@ export type ToolCtx = {
   addToSelection(ids: readonly string[]): void;
   /** Batch patch — one undo step for the whole group (see the store action). */
   updateMany(patches: ReadonlyArray<{ id: string; patch: Partial<Drawing> }>): void;
-  /** Every UNLOCKED drawing intersecting a pixel rectangle (marquee commit).
-   *  The overlay binds `drawingsInRect` over `unlockedOnly(drawings)`. */
+  /** Every drawing intersecting a pixel rectangle (marquee commit) — **잠긴 것
+   *  포함**. 마퀴는 지목이지 편집이 아니고, 잠긴 것을 담을 수 있어야 일괄 잠금
+   *  해제가 성립한다. 편집 관문은 스토어에 그대로다(ADR-0164). */
   drawingsInRect(rect: MarqueeRect): Drawing[];
   /** Legacy post-commit hook kept in the context for compatibility with older
    *  tests/callers. Current drawing tools keep their active tool after commit
@@ -715,7 +716,19 @@ export const selectTool: DrawingToolSpec = {
     // 옮기는 경로가 없는 것도 의도다: 그러면 토글과 이동이 같은 픽셀에서
     // 경합하고, 사용자는 "고르려다 옮겨 버린" 상태를 되돌려야 한다.
     if (ctx.shiftKey) {
-      const shiftHit = ctx.hitTestUnlockedAt(ctx.px, ctx.py);
+      // **잠긴 것도 고른다**(`hitTestAt`). 선택은 편집이 아니라 지목이고, 잠긴
+      // 도형을 여럿 지목할 수 있어야 **한꺼번에 풀 수 있다** — 그전에는 하나씩
+      // 골라 패널의 자물쇠를 누르는 길밖에 없었다. 잠금이 계속 막는 것은 이동·
+      // 수정·삭제이며 그 관문은 스토어에 그대로 있다(ADR-0164).
+      //
+      // 게이트는 손댈 필요가 없다: Shift 가 눌린 동안 오버레이는 커서 밑이 무엇이든
+      // 'auto' 다(마퀴를 시작할 통로). 그래서 잠긴 도형 위 Shift+클릭은 이미 여기
+      // 도달하고 있었고, 걸러 내던 것은 이 히트 테스트 하나였다.
+      //
+      // Shift 없는 클릭 경로는 그대로다 — 게이트가 잠긴 도형 위에서 'none' 이라
+      // window 리스너의 'select-locked' 가 단일 선택을 맡는다. 따라서 그룹 드래그는
+      // 잠긴 멤버에서 **시작될 수 없다**. 그것이 잠금의 뜻이다.
+      const shiftHit = ctx.hitTestAt(ctx.px, ctx.py);
       if (shiftHit) {
         ctx.toggleSelected(shiftHit.id);
         return;

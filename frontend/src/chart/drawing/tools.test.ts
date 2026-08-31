@@ -1909,3 +1909,36 @@ describe('selectTool — 그룹 정렬 스냅', () => {
     expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
   });
 });
+
+// ─── selectTool — 잠긴 도형의 다중 선택 ────────────────────────────────────
+//
+// 잠긴 것을 고를 수 있어야 **한꺼번에 풀 수 있다**. 선택은 지목이지 편집이 아니다.
+describe('selectTool — 잠긴 도형도 고른다', () => {
+  const locked = (id: string): Drawing => ({
+    id, kind: 'hline', price: 100, color: '#14B8A6', width: 1.5,
+    lineStyle: 'solid', paneId: 'candle', locked: true,
+  });
+
+  it('Shift+클릭은 잠긴 도형도 토글한다', () => {
+    const target = locked('lk1');
+    // makeCtx 의 파생 hitTestUnlockedAt 이 정확히 이 분기를 가른다: hitTestAt 은
+    // 잠긴 것을 주고, hitTestUnlockedAt 은 null 을 준다. 옛 코드였다면 후자를
+    // 읽어 마퀴가 시작됐을 것이다.
+    const ctx = makeCtx({ shiftKey: true, hitTestAt: vi.fn(() => target) });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.toggleSelected).toHaveBeenCalledWith('lk1');
+    expect(ctx.marqueeDraft.current).toBeNull();
+  });
+
+  // Shift 없는 경로는 그대로다 — 게이트가 잠긴 도형 위에서 'none' 이라 오버레이가
+  // 클릭을 받지 못하고, window 리스너의 'select-locked' 가 단일 선택을 맡는다.
+  // 따라서 그룹 드래그는 잠긴 멤버에서 **시작될 수 없다.** 그게 잠금의 뜻이다.
+  it('맨 클릭은 잠긴 도형을 잡지 않는다 — 그룹 드래그가 거기서 시작되지 않는다', () => {
+    const ctx = makeCtx({
+      hitTestAt: vi.fn(() => locked('lk1')),
+      selectedIds: ['lk1', 'h2'],
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current).toBeNull();
+  });
+});

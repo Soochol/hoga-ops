@@ -289,9 +289,17 @@ function boxOf(
  * returns — across panes, which is the behavior we want (a selection may span
  * panes; the drag path converts Δprice per member pane).
  *
- * Callers pass `unlockedOnly(drawings)` — filter, THEN test, the same ordering
- * rule ADR-0164 fixes for hit-testing. A locked shape must not join a set the
- * group-drag would then try (and fail) to move.
+ * Lock is not filtered here, and the caller does not filter either: a marquee
+ * POINTS AT shapes, and pointing is not editing. Locked shapes have to be
+ * selectable in bulk or there is no way to release a group of them at once —
+ * before that, the only route was one shape at a time through the property
+ * panel. Move / edit / delete stay blocked in the store (ADR-0164), so the
+ * reach grows without the guarantee weakening.
+ *
+ * The point hit-test still has an unlocked-only composition (`unlockedOnly` +
+ * `hitTestDrawings`), because that one answers a different question — "will the
+ * overlay swallow this pointer, or should the chart pan?" — and a locked shape
+ * cannot be dragged.
  */
 export function drawingsInRect(
   coord: HitCoord,

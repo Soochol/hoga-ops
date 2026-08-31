@@ -431,12 +431,18 @@ describe('drawingsInRect', () => {
     expect(ids([hline(150, 'h1'), vline(150, 'v1'), hline(160, 'h2')])).toEqual(['h1', 'v1', 'h2']);
   });
 
-  // 잠금은 이 커널이 아니라 **호출자**가 거른다(ADR-0164 의 합성 순서: 걸러낸 뒤
-  // 판정). 여기서 잠긴 것을 걸렀다면 그 규칙이 두 군데로 흩어진다.
-  it('잠금은 보지 않는다 — unlockedOnly 와 합성해서 쓴다', () => {
+  // 마퀴는 **잠긴 것도 담는다** — 지목과 편집은 다른 일이고, 잠긴 것을 여럿 담을
+  // 수 있어야 한꺼번에 풀 수 있다. 이동·수정·삭제는 스토어가 계속 막는다(ADR-0164).
+  it('잠긴 도형도 담는다 — 일괄 잠금 해제가 지나는 길', () => {
     const locked = { ...hline(150, 'lk'), locked: true } as Drawing;
     expect(ids([locked])).toEqual(['lk']);
-    expect(drawingsInRect(coord, unlockedOnly([locked]), box)).toEqual([]);
+  });
+
+  // 반면 **점 히트 테스트**는 여전히 잠긴 것을 걸러 쓴다. 묻는 것이 다르기 때문이다
+  // — "오버레이가 이 포인터를 삼킬 것인가, 차트가 팬할 것인가".
+  it('점 히트 테스트의 unlockedOnly 합성은 그대로다', () => {
+    const locked = { ...hline(150, 'lk'), locked: true } as Drawing;
+    expect(unlockedOnly([locked])).toEqual([]);
   });
 });
 

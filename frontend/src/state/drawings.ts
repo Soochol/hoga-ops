@@ -262,7 +262,7 @@ type Actions = {
   /** 잠긴 드로잉은 거부한다 — `update` 와 같은 관문. */
   remove(scope: string, id: DrawingId): void;
   /**
-   * 여러 드로잉을 **한 번의 되돌리기 단계로** 패치한다(다중 선택 이동).
+   * 여러 드로잉을 **한 번의 되돌리기 단계로** 패치한다(다중 선택 이동·스타일·잠금).
    *
    * `update` 를 N번 부르는 것과 세 가지가 다르고, 그 셋이 이 액션의 존재 이유다:
    *  - 이력이 **한 단계**다. 5개를 끌고 Ctrl+Z 를 5번 누르는 일이 없다.
@@ -272,7 +272,9 @@ type Actions = {
    *    실해는 없지만, 배치가 그 경로를 N번 도는 것 자체가 낭비다.
    *
    * 잠긴 항목은 조용히 건너뛴다(ADR-0164) — 잠긴 것 하나 때문에 나머지 이동을
-   * 통째로 거부하면 "왜 아무것도 안 움직이지" 가 된다.
+   * 통째로 거부하면 "왜 아무것도 안 움직이지" 가 된다. **단, 키가 `locked` 뿐인
+   * 패치는 잠긴 항목에도 적용된다** — 단건 `update` 와 같은 예외이고, 일괄 잠금
+   * 해제가 지나는 길이다.
    */
   updateMany(scope: string, patches: ReadonlyArray<{ id: DrawingId; patch: Partial<Drawing> }>): void;
   /** 여러 드로잉을 **한 번의 되돌리기 단계로** 지운다. 잠긴 것은 남는다. */
@@ -534,19 +536,28 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
     updateMany(scope, patches) {
       const current = get().byScope.get(scope) ?? [];
       // 잠긴 것은 여기서 빠진다 — update 와 같은 관문이되, 거부가 배치 전체가
-      // 아니라 항목 단위다. (잠금 해제 통로는 단건 update 하나로 충분하므로
-      // isUnlockOnlyPatch 예외는 이쪽에 없다.)
+      // 아니라 항목 단위다.
+      //
+      // **유일한 예외도 update 와 같다: 키가 `locked` 뿐인 패치.** 그게 일괄 잠금
+      // 해제의 통로다. 다중 선택이 잠긴 도형을 담을 수 있게 된 이상 단건 update
+      // 만으로는 부족하다 — 열 개를 풀려고 열 번 고르고 열 번 누르는 것이 애초에
+      // 이 기능이 없애려는 수고다.
       const byId = new Map(patches.map((p) => [p.id, p.patch]));
-      const applicable = current.filter((d) => byId.has(d.id) && !isLocked(d));
+      const applicable = current.filter(
+        (d) => byId.has(d.id) && (!isLocked(d) || isUnlockOnlyPatch(byId.get(d.id)!)),
+      );
       if (applicable.length === 0) return;
       // 병합 키: 실제로 적용될 id 들의 정렬 시그니처. 잠긴 것을 뺀 뒤에 만드는
       // 이유는 그것이 곧 "이 배치가 무엇을 건드리는가" 이기 때문이다.
       const signature = applicable.map((d) => d.id).sort().join(',');
       recordHistory(scope, current, 'updateMany', signature);
-      const next = current.map((d) => {
-        const patch = byId.get(d.id);
-        return patch != null && !isLocked(d) ? ({ ...d, ...patch } as Drawing) : d;
-      });
+      // 무엇을 적용할지는 `applicable` 이 이미 정했다. 여기서 조건을 다시 쓰면
+      // 두 곳이 갈릴 수 있다 — 실제로 갈렸다(필터에 잠금 해제 예외를 넣고 이쪽을
+      // 빠뜨려서, 일괄 해제가 이력만 남기고 아무것도 바꾸지 않았다).
+      const applicableIds = new Set(applicable.map((d) => d.id));
+      const next = current.map((d) =>
+        applicableIds.has(d.id) ? ({ ...d, ...byId.get(d.id) } as Drawing) : d,
+      );
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
       set({ byScope });
