@@ -577,6 +577,65 @@ describe('useViewportBackfill — 스텝 착지점을 바닥 위로 자른다 (#
     const deepFloor = dispatchedWith('20200101'); // 스텝이 절대 못 닿는 바닥
     expect(deepFloor).toBe(noFloor);
   });
+
+  // ── 3c 는 클램프만으로 부족하다 — 게이트도 물어야 한다 ────────────────────────
+  // 클램프는 착지점을 바닥에 앉히는데, 창이 **이미 바닥**이면 그 착지점이 창과 같아진다
+  // → `extendHistoricalRange` 의 단조 감소 가드가 dispatch 를 통째로 삼킨다(no-op).
+  // 그런데 3c 는 그 전에 이미 `fillKind` 를 세운 뒤다 → 쿼리 키 불변 = fetch 0 →
+  // 하강 엣지 없음. 남는 탈출구는 3a 의 캐시 settle 뿐인데, **3c 가 발화하는 조건 자체가
+  // 지표 커버리지가 뒤처졌다는 것**이라 `settledFromDate`(= 뒤처진 지표 날짜)가 `cur`
+  // (= 바닥)과 갈린다 → 그 신호도 죽는다. 즉 3c 는 클램프 뒤에도 잠길 수 있다.
+  function floorLogsFor(trigger: string): string[] {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_floor')
+      .map(([, payload]) => String((payload as { d?: unknown }).d ?? ''))
+      .filter((d) => d.includes(`trigger=${trigger}`));
+  }
+
+  function renderInitialCoverage(floor: string | null, chart: ReturnType<typeof chartWithCapturedHandler>) {
+    return renderHook(() =>
+      useViewportBackfill({
+        chart: chart.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '60m',
+        isExtending: false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭
+        rangeWindowFromDate: '20260601',
+        minuteScrollbackFloorDate: floor,
+      }),
+    );
+  }
+
+  it('3c: 바닥에 앉은 창에는 fill 을 세우지 않는다 — 반려를 말한다', () => {
+    vi.mocked(livePerfLog).mockClear();
+    // 창(스토어 20260601)과 바닥이 같다 = 이미 바닥.
+    renderInitialCoverage('20260601', chartWithCapturedHandler());
+
+    expect(extendSpy).not.toHaveBeenCalled();
+    expect(floorLogsFor('initial_coverage')).toHaveLength(1);
+  });
+
+  it('3c: 그 반려가 **잠금이 아니다** — 다음 좌팬이 여전히 판정에 도달한다', () => {
+    // 2단계 red-check(이 표면의 규율): 첫 단언만으로는 "바닥이라 안 함"과 "잠겨서 안 함"
+    // 이 구별되지 않는다. 3b 의 백프레셔 게이트는 로그 **앞**이라, fill 이 서 있으면
+    // 이후 좌팬은 한 줄도 남기지 못한다. 반려 뒤에도 로그가 나오는 것이 곧 미잠금이다.
+    vi.mocked(livePerfLog).mockClear();
+    const cap = chartWithCapturedHandler();
+    renderInitialCoverage('20260601', cap);
+    expect(floorLogsFor('left_pan')).toHaveLength(0);
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(floorLogsFor('left_pan')).toHaveLength(1);
+  });
+
+  it('3c: 바닥이 아니면 종전대로 발화한다 — 게이트가 정상 경로를 먹지 않는다', () => {
+    renderInitialCoverage('20260501', chartWithCapturedHandler());
+    expect(extendSpy).toHaveBeenCalledWith('20260501');
+  });
 });
 
 describe('useViewportBackfill — 소스 토글 창 축소 (1b)', () => {
