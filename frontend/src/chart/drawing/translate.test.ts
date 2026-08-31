@@ -593,3 +593,80 @@ describe('hasAxis / eligibleFor', () => {
     expect(eligibleFor([hline, vline, rect, lockedRect], 'y').map((d) => d.id)).toEqual(['h', 'r']);
   });
 });
+
+/** 텍스트는 앵커가 아니라 **그려지는 상자**로 정렬된다. 앵커로 재면 '세로 가운데'
+ *  에서 글자의 위가 중심선에 놓여 반 글자 높이만큼 어긋나 보인다. */
+describe('planAlign — 텍스트 상자', () => {
+  const style = { color: '#14B8A6', width: 1.5, lineStyle: 'solid' as const };
+  const coords = {
+    realMsToCanvasX: (ms: number) => ms / 1_000,
+    canvasXToRealMs: (px: number) => px * 1_000,
+    priceToCanvasY: (price: number) => 400 - price,
+    canvasYToPrice: (py: number) => 400 - py,
+    priceBoundsForPane: () => ({ top: 10_000, bottom: -10_000 }),
+    toBar: (ms: number) => ms,
+    toReal: (b: number) => b,
+    originBar: -Infinity,
+    // render.ts 의 headless fallback 과 같은 식 — 'ab' @20px = 24px.
+    measureTextWidth: (t: string, sizePx: number) => t.length * sizePx * 0.6,
+  };
+
+  const text = (id: string, realMs: number, price: number, over = {}): Text =>
+    ({
+      id, kind: 'text', at: { realMs, price }, text: 'ab', fontSize: 20,
+      ...style, paneId: 'candle', ...over,
+    }) as Text;
+  const rect = (id: string, a: [number, number], b: [number, number]): Rect =>
+    ({
+      id, kind: 'rect',
+      a: { realMs: a[0], price: a[1] }, b: { realMs: b[0], price: b[1] },
+      fillOpacity: 0.1, ...style, paneId: 'candle',
+    }) as Rect;
+  const patchOf = (plan: { id: string; patch: Partial<Drawing> }[], id: string) =>
+    plan.find((p) => p.id === id)?.patch as { at?: { realMs: number; price: number } } | undefined;
+
+  // 산술을 그대로 적는다. rect 가격 100..200 → y 200..300(중심 250).
+  // text 앵커 가격 300 → y 100, 상자 100..120(중심 110). 외곽 100..300 → 중심 200.
+  // 그러니 text 중심이 90px 내려가야 하고, 앵커 가격은 300 − 90 = 210 이 된다.
+  // **앵커로 쟀다면 200** 이 나온다 — 딱 fontSize/2 만큼 어긋난 값이다.
+  it('세로 가운데 — 글상자의 중심이 맞는다(앵커가 아니라)', () => {
+    const plan = planAlign([rect('r', [0, 100], [10_000, 200]), text('t', 0, 300)], 'vcenter', coords);
+    expect(patchOf(plan, 't')!.at!.price).toBe(210);
+  });
+
+  it('아래 정렬 — 글상자의 아래변이 맞는다', () => {
+    // rect 아래변 y 300(가격 100). text 상자 아래변은 앵커 y + 20.
+    // 앵커 y 가 280 → 가격 120 이어야 한다.
+    const plan = planAlign([rect('r', [0, 100], [10_000, 200]), text('t', 0, 300)], 'bottom', coords);
+    expect(patchOf(plan, 't')!.at!.price).toBe(120);
+  });
+
+  it('우측 정렬 — 글상자의 오른쪽 끝이 맞는다', () => {
+    // rect 오른쪽 x 50(=50 000ms)이 외곽. text 상자는 앵커 x + 24px 이므로 앵커가
+    // 26 000ms(=26px)로 가야 오른쪽 끝이 50 에 닿는다.
+    // **앵커로 쟀다면 50 000** — 딱 글자 폭만큼 오른쪽으로 밀려난 값이다.
+    const plan = planAlign([rect('r', [0, 100], [50_000, 200]), text('t', 0, 300)], 'right', coords);
+    expect(patchOf(plan, 't')!.at!.realMs).toBe(26_000);
+  });
+
+  // 측정기가 없으면 x 는 앵커 한 점으로 접힌다(스텁 호환 — HitCoord 와 같은 관례).
+  it('폭 측정기가 없으면 x 는 앵커 기준으로 떨어진다', () => {
+    const { measureTextWidth: _drop, ...noWidth } = coords;
+    void _drop;
+    const plan = planAlign([rect('r', [0, 100], [50_000, 200]), text('t', 0, 300)], 'right', noWidth);
+    expect(patchOf(plan, 't')!.at!.realMs).toBe(50_000);
+  });
+
+  it('세로 분배도 글상자 중심을 쓴다', () => {
+    // y: hi rect(가격 300..320) 중심 90, text(앵커 200 → 상자 200..220) 중심 210,
+    // lo rect(가격 0..20) 중심 390. 목표 가운데 = (90+390)/2 = 240.
+    const plan = planDistribute(
+      [rect('hi', [0, 300], [1_000, 320]), text('t', 0, 200), rect('lo', [0, 0], [1_000, 20])],
+      'vertical',
+      coords,
+    );
+    expect(plan.map((p) => p.id)).toEqual(['t']);
+    // 중심 210 → 240 이므로 30px 아래 = 앵커 가격 200 − 30 = 170.
+    expect(patchOf(plan, 't')!.at!.price).toBe(170);
+  });
+});

@@ -140,6 +140,7 @@ import {
   priceBoundsForPane, dragBarDomain,
 } from '../chart/drawing/chartCoordinates';
 import type { AlignCoords } from '../chart/drawing/translate';
+import { measureTextWidth } from '../chart/drawing/render';
 import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
@@ -824,6 +825,8 @@ export function LiveChartRoot({
       priceToCanvasY: (price, paneId) => priceToCanvasY(chart, paneSeries, paneId, price),
       canvasYToPrice: (py, paneId) => canvasYToPrice(chart, paneSeries, paneId, py),
       priceBoundsForPane: (paneId) => priceBoundsForPane(chart, paneSeries, paneId),
+      // 렌더와 같은 글꼴로 재야 정렬이 눈에 보이는 상자에 맞는다.
+      measureTextWidth,
       toBar: bars.toBar,
       toReal: bars.toReal,
       originBar: bars.originBar,
