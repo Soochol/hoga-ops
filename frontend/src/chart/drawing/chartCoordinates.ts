@@ -51,8 +51,25 @@ export type FutureBand = { lastRealMs: number; bucketMs: number };
 
 /**
  * Screen-uniform coordinate for horizontal DRAG translation: the BAR ORDINAL.
- * One unit is one on-screen column — 0 is the first session's first bar, +1 is
- * always the bar immediately to its right, including across a day boundary.
+ * One unit is one on-screen column — 0 is the leftmost bar, +1 is always the
+ * bar immediately to its right, including across a day boundary.
+ *
+ * THE COLUMNS ARE THE LOADED BARS, and the domain can only honour that claim
+ * when it is HANDED them (`candles`). Without them it falls back to a ladder
+ * derived from the session length — `floor(sessionLen / bucketMs) + 1` rungs
+ * per session — which is the count of bar SLOTS, not of bars the chart drew.
+ * Those differ by every slot that saw no trade: measured on /live 005930 1m,
+ * **381 candles against 391 rungs in every completed session** — a 10-column
+ * error per session, because the closing auction (15:21–15:29) prints nothing
+ * and 15:20 → 15:30 is one column on screen but ten rungs on the ladder.
+ *
+ * That gap was silent until a vertex CROSSED a session boundary: every vertex
+ * shifts by the same Δordinal, so one that crossed spent ladder rungs the
+ * screen doesn't have and landed 10 columns off its siblings. A trendline
+ * straddling Friday/Monday, dragged right into Monday, came out 38 columns
+ * wide instead of 38 (measured: 38 → 48 on /live, magnet on and off alike).
+ * Handing in `candles` removes the discrepancy at the source: one unit becomes
+ * one lightweight-charts logical index, exactly.
  *
  * WHY NOT REAL MS: body-drag used to shift vertices by Δ-real-ms, but the
  * screen's X axis is the gap-compressed VirtualAxis. The moment the cursor
@@ -83,10 +100,10 @@ export type FutureBand = { lastRealMs: number; bucketMs: number };
  * the render-side extrapolation: one bar per `bucketMs` of real time.
  */
 export type DragBarDomain = {
-  /** realMs → bar ordinal. Off-axis inputs behave exactly like
-   *  `axis.toVirtual`: a gap snaps FORWARD to the next open (so grabbing a
-   *  drawing stranded there by the old real-ms drags heals it), and the empty
-   *  band right of the last candle extends at one bar per `bucketMs`. */
+  /** realMs → bar ordinal. A gap (or any time with no bar of its own) snaps
+   *  FORWARD to the next column — so grabbing a drawing stranded there by the
+   *  old real-ms drags heals it — and the empty band right of the last candle
+   *  extends at one column per `bucketMs`. */
   toBar(realMs: number): number;
   /** Bar ordinal → realMs, rounded onto the bar grid. Inverse of `toBar` for
    *  every on-grid input; for an off-grid one it snaps to the nearest bar,
@@ -95,15 +112,112 @@ export type DragBarDomain = {
   /** Ordinal of the axis origin (first session's first bar) — the left bound
    *  for the shape-preserving horizontal drag cap. */
   originBar: number;
-  /** True when one unit really is one on-screen column. False only on an
-   *  intraday axis whose bar pitch is unknown (no candles loaded), where the
-   *  domain degrades to the old virtual-ms units. Consumers that read a delta
-   *  as a BAR COUNT must gate on this; drag consumers need not, because they
-   *  measure and apply the delta in the same domain either way. */
+  /** True when one unit is a column rather than a slice of virtual ms. False
+   *  only on an intraday axis with neither loaded bars nor a known bar pitch,
+   *  where the domain degrades to the old virtual-ms units. Consumers that read
+   *  a delta as a BAR COUNT must gate on this; drag consumers need not, because
+   *  they measure and apply the delta in the same domain either way.
+   *
+   *  ⚠ True does NOT by itself mean the count is exact — the session-length
+   *  ladder is bar-sized and still over-counts by the empty slots (see above).
+   *  Exactness comes from passing `candles`. */
   barSized: boolean;
 };
 
-export function dragBarDomain(axis: VirtualAxis, future?: FutureBand): DragBarDomain {
+/** First index of `times` whose value is >= `realMs`, or `times.length` when
+ *  every value is smaller. Plain lower bound — the FORWARD snap the domain
+ *  documents for a time that owns no column of its own. */
+function lowerBoundIndex(times: readonly number[], realMs: number): number {
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < realMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * The bars lightweight-charts actually plotted, as a sorted realMs array —
+ * i.e. its logical indices, one per on-screen column.
+ *
+ * `axis.contains` is exactly the projector's own drop predicate: `candle.ts`
+ * skips a candle whose `classifyAndProject().contained` is false, and that is
+ * `isRegularSession`, which `contains` delegates to. So filtering here
+ * reproduces the series index-for-index rather than approximating it. Verified
+ * on /live 005930 1m — lwc's `timeToIndex` for each session's first and last
+ * candle was the cumulative loaded count exactly (0..380 / 381..761 / … over
+ * six sessions), and `LiveChartRoot`'s viewport math already reads
+ * `cb.candles.length` as the logical count.
+ *
+ * O(candles) per construction — ~2 000 iterations of a 6-segment binary search
+ * on /live, negligible beside the render that asks for it, and the loop is the
+ * price of not assuming the contained bars form one contiguous run.
+ *
+ * Null when nothing survives, so the caller falls back to the ladder.
+ */
+function loadedColumnTimes(
+  axis: VirtualAxis,
+  candles: readonly { ts_ms: number }[],
+): number[] | null {
+  const times: number[] = [];
+  for (const c of candles) {
+    if (axis.contains(c.ts_ms)) times.push(c.ts_ms);
+  }
+  return times.length > 0 ? times : null;
+}
+
+/** The exact domain: ordinals ARE indices into the plotted bars. */
+function columnDomain(times: readonly number[], bucketMs: number): DragBarDomain {
+  const lastBar = times.length - 1;
+  const lastTs = times[lastBar];
+  return {
+    toBar(realMs: number): number {
+      if (realMs > lastTs) {
+        // Empty band right of the last candle — one column per `bucketMs`, the
+        // same pitch `extrapolateFutureX` projects at. Unlike the ladder this
+        // needs no `axis.contains` guard: past the last bar there is no column
+        // whether or not the session is still open, so the extension is the
+        // only answer and the two branches meet with no seam.
+        return bucketMs > 0 ? lastBar + (realMs - lastTs) / bucketMs : lastBar;
+      }
+      // FORWARD, never nearest: a nearest-index snap would pull a vertex
+      // stranded in an overnight gap BACK across the boundary onto the previous
+      // close, which is the opposite of the documented heal. Live drags never
+      // reach this off-grid — `coordinateToTime` only yields exact bar times —
+      // so this branch exists for persisted residue.
+      return lowerBoundIndex(times, realMs);
+    },
+    toReal(bar: number): number {
+      if (bar > lastBar) {
+        return bucketMs > 0 ? lastTs + Math.round(bar - lastBar) * bucketMs : lastTs;
+      }
+      return times[Math.min(Math.max(Math.round(bar), 0), lastBar)];
+    },
+    originBar: 0,
+    barSized: true,
+  };
+}
+
+export function dragBarDomain(
+  axis: VirtualAxis,
+  future?: FutureBand,
+  candles?: readonly { ts_ms: number }[],
+): DragBarDomain {
+  // Exact path: count the bars the chart drew. The band pitch still comes from
+  // the FutureBand; without one the domain simply cannot extend past the last
+  // column (and `pixelToData` cannot resolve a time out there either, so no
+  // drag reaches it).
+  if (candles != null && candles.length > 0) {
+    const times = loadedColumnTimes(axis, candles);
+    if (times != null) return columnDomain(times, future?.bucketMs ?? 0);
+  }
+  // Approximate path — the session-length LADDER. Kept for the states that have
+  // no bars to count (nothing loaded yet, a caller that cannot reach them). It
+  // over-counts every session by its empty slots, so a boundary-crossing shift
+  // is off by that much; see the DragBarDomain doc. Do not "simplify" the exact
+  // path away into this one.
   const segments = axis.segments;
   const calendar = axis.mode === 'calendar';
   const bucketMs = future?.bucketMs ?? 0;

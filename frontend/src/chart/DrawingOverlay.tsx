@@ -307,6 +307,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     future: futureBand,
     bucketMs,
     lastRealMs,
+    candles,
     drafts: {
       trendline: trendlineDraft.current,
       rect: rectDraft.current,
@@ -463,8 +464,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const priceBoundsForPane = (paneId: PaneId) =>
     projPriceBoundsForPane(chart, paneSeries, paneId);
 
-  // Screen-uniform bar-ordinal domain for body-drag translation (see DragBarDomain).
-  const dragBars = dragBarDomain(axis, futureBand);
+  // Screen-uniform bar-ordinal domain for body-drag translation (see
+  // DragBarDomain). `candles` is what makes one ordinal exactly one on-screen
+  // column: without it the domain counts session SLOTS, and a vertex crossing a
+  // day boundary spends slots the screen has no columns for — the shape
+  // stretched by the empty-slot count per boundary crossed (measured 38 → 48).
+  const dragBars = dragBarDomain(axis, futureBand, candles);
 
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
