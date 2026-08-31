@@ -43,6 +43,10 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     revertToSelectMode: vi.fn(),
     releasePointer: vi.fn(),
     pixelToData: vi.fn(() => defaultPoint),
+    // Same point by default: with no magnet there is nothing to un-snap, so the
+    // collapse-recovery path is a no-op for every pre-existing assertion. The
+    // rect band tests override it to make the two differ.
+    pixelToDataUnsnapped: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
     canvasXToRealMs: vi.fn(() => defaultPoint.realMs),
     priceToCanvasY: vi.fn(() => 200),
@@ -240,7 +244,60 @@ describe('rectTool — drag commits a 2-corner box', () => {
     // Same price → degenerate.
     const flat: Point = { realMs: 2_000, price: 100 };
     let call = 0;
-    const ctx = makeCtx({ pixelToData: vi.fn(() => (call++ === 0 ? a : flat)) });
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => (call++ === 0 ? a : flat)),
+      // Magnet OFF: the unsnapped point IS the snapped one, so the collapse is
+      // the cursor's own doing (a truly flat drag) and stays rejected. Spelled
+      // out because the recovery path below keys on these two differing.
+      pixelToDataUnsnapped: vi.fn(() => flat),
+    });
+    rectTool.onPointerDown!(ctx);
+    rectTool.onPointerUp!(ctx);
+    expect(ctx.add).not.toHaveBeenCalled();
+  });
+
+  // ── 자석이 도형을 붕괴시키는 경우 — 빈 밴드의 도지 봉 ──────────────────────
+  //
+  // 빈 밴드에서는 `nearestCandleIndex` 가 **항상 마지막 캔들**을 준다(다른 후보가
+  // 없다). 그 캔들이 도지(O=H=L=C — 장 마감 후 종가 단일가 봉이 대표적)면 가격 하나가
+  // `SNAP_PX` 16px 양쪽, 즉 **세로 32px 전체**를 삼킨다. 그 안에서 시작해 그 안에서
+  // 끝낸 드래그는 두 모서리가 같은 price 로 스냅돼 `||` 제로 면적 거부에 걸리고,
+  // 사용자에게는 **아무 일도 일어나지 않는다**. /live 실측 재현(2026-08-31):
+  // 자석 ON · 밴드 (500,80)→(580,100) 은 안 그려지고, 같은 폭이라도 축 안이거나
+  // 끝점이 스냅 반경 밖이면 그려졌다.
+  //
+  // 자석은 정렬을 도우려는 장치이지 도형을 없애려는 장치가 아니다. `alignSnapBox` 의
+  // acceptX/acceptY 가 이미 같은 판단을 한다("보정이 캡에 잘릴 바에는 보정하지 않는다").
+  it('빈 밴드에서 자석이 두 모서리를 같은 가격에 붙여도 사각형을 만든다', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const snappedFlat: Point = { realMs: 2_000, price: 100 }; // 도지 봉으로 붕괴
+    const cursor: Point = { realMs: 2_000, price: 180 }; // 스냅 이전 커서
+    let call = 0;
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => (call++ === 0 ? a : snappedFlat)),
+      pixelToDataUnsnapped: vi.fn(() => cursor),
+    });
+    rectTool.onPointerDown!(ctx);
+    rectTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      | Drawing
+      | undefined;
+    expect(added?.kind).toBe('rect');
+    if (added?.kind === 'rect') {
+      // 붕괴한 축(price)만 커서 값으로 되살린다.
+      expect(added.b.price).toBe(180);
+      // 멀쩡한 축(realMs)의 스냅은 그대로 둔다 — 사용자가 의도한 정렬이다.
+      expect(added.b.realMs).toBe(2_000);
+    }
+  });
+
+  it('되살려도 여전히 붕괴하면(제자리 클릭) 거부를 유지한다', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    let call = 0;
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => (call++ === 0 ? a : { ...a })),
+      pixelToDataUnsnapped: vi.fn(() => ({ ...a })),
+    });
     rectTool.onPointerDown!(ctx);
     rectTool.onPointerUp!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
