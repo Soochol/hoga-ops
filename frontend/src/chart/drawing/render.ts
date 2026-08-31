@@ -58,6 +58,10 @@ export type ProjectCtx = {
   /** Newest candle's realMs — with bucketMs, lets drawings anchored in the
    *  empty band right of the last candle render via extrapolation. */
   lastRealMs?: number;
+  /** The loaded bars, for the measure readout's column count. Absent → the
+   *  count falls back to the session-length ladder, which over-counts a
+   *  boundary crossing by that session's empty slots. See DragBarDomain. */
+  candles?: readonly { ts_ms: number }[];
   /** Effective bar width in canvas px (`barPitchPx`). Scales a pencil point's
    *  sub-bar offset back into pixels. Absent → offsets read as 0, i.e. the
    *  bar-anchored geometry this renderer had before `Pencil.subX`. */
@@ -415,18 +419,24 @@ function measureDirColor(a: number, b: number): string {
  *  deliberately wall-clock (a measure spanning a weekend really covers 3 days),
  *  but the BAR COUNT must be gap-aware: dividing the real-ms span by bucketMs
  *  counted inter-session gaps as bars (an overnight on the 1m timeframe
- *  inflated the count by ~1,050봉). The drag domain counts on-screen columns
- *  directly, so a day boundary contributes exactly the one bar it occupies —
- *  the earlier virtual-ms arithmetic scored it as INTER_SEGMENT_GAP_MS, i.e.
- *  1/60th of a bar on 1m, and rounded it away (one bar undercounted per
- *  boundary). The domain also linearizes the empty right band so a measure
- *  with a future-anchored endpoint counts its extrapolated bars. Exported for
- *  tests. */
+ *  inflated the count by ~1,050봉). The drag domain counts columns, so a day
+ *  boundary contributes exactly the one bar it occupies — the earlier
+ *  virtual-ms arithmetic scored it as INTER_SEGMENT_GAP_MS, i.e. 1/60th of a
+ *  bar on 1m, and rounded it away (one bar undercounted per boundary). The
+ *  domain also linearizes the empty right band so a measure with a
+ *  future-anchored endpoint counts its extrapolated bars.
+ *
+ *  `ctx.candles` is what makes those columns the bars actually DRAWN. Without
+ *  it the domain counts session slots instead and a crossing is inflated by the
+ *  slots that saw no trade — 391 instead of 381 per completed KRX 1m session.
+ *  The measure count and the body drag read the same domain on purpose: a
+ *  readout that disagreed with how far the shape moves is worse than either.
+ *  Exported for tests. */
 export function formatMeasureLabel(m: Measure, ctx: ProjectCtx): string {
   const delta = formatDeltaLabel(m.a.price, m.b.price, m.paneId);
   const dur = formatDuration(m.b.realMs - m.a.realMs);
   const parts = [delta, dur];
-  const dom = dragBarDomain(ctx.axis, futureBand(ctx));
+  const dom = dragBarDomain(ctx.axis, futureBand(ctx), ctx.candles);
   // Gated on barSized: without a known bar pitch the domain falls back to
   // virtual ms, whose units are not columns — a count read off it would lie.
   if (dom.barSized) {

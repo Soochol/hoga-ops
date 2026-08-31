@@ -72,6 +72,11 @@ export type DrawingsSnapshot = {
   future?: FutureBand;
   bucketMs?: number;
   lastRealMs?: number;
+  /** The loaded bars, for the measure readout's column count. Carried as data
+   *  (like `axis` / `bucketMs`) rather than as a prebuilt domain so the renderer
+   *  keeps deriving its own — one definition of "one column", shared with the
+   *  drag. See DragBarDomain. */
+  candles?: readonly { ts_ms: number }[];
   /** In-flight creation gestures. Live on refs in the overlay, so they change
    *  without a React render — hence the pull-based source below. */
   drafts: {
@@ -165,6 +170,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         axis: snap.axis,
         bucketMs: snap.bucketMs,
         lastRealMs: snap.lastRealMs,
+        candles: snap.candles,
         // Read once per frame, not once per point: `logicalToCoordinate` is a
         // model call, and a pencil stroke can carry thousands of vertices.
         barPx: barPitchPx(chart) ?? undefined,

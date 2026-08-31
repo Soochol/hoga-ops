@@ -314,6 +314,118 @@ describe('dragBarDomain — intraday', () => {
   });
 });
 
+describe('dragBarDomain — columns are the LOADED bars, not the session slots', () => {
+  // Session A trades to 750 000 and then prints nothing until its 1 000 000
+  // close — the fixture's stand-in for KRX's closing auction (15:21–15:29 has
+  // no trade, so 15:20 → 15:30 is ONE column on screen). 21 slots, 17 bars:
+  // the ladder is 4 columns wider than the screen for this session.
+  const BUCKET = 50_000;
+  const axis = createVirtualAxis([
+    { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+    { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
+  ]);
+  const sessionA = [
+    ...Array.from({ length: 16 }, (_, i) => ({ ts_ms: i * BUCKET })), // 0 … 750 000
+    { ts_ms: 1_000_000 }, // the close, four empty slots later
+  ];
+  const sessionB = Array.from({ length: 9 }, (_, i) => ({ ts_ms: 10_000_000 + i * BUCKET }));
+  // Sits in the overnight gap, so `axis.contains` is false and the candle
+  // projector drops it — it must NOT earn a column either.
+  const orphan = { ts_ms: 5_000_000 };
+  const candles = [...sessionA, orphan, ...sessionB];
+  const future: FutureBand = { lastRealMs: 10_400_000, bucketMs: BUCKET };
+
+  const exact = dragBarDomain(axis, future, candles);
+  const ladder = dragBarDomain(axis, future); // the no-candles fallback
+
+  // A: columns 0..16 (0…750 000, then 1 000 000). B: columns 17..25.
+  const A_CLOSE = 1_000_000;
+  const B_OPEN = 10_000_000;
+
+  it('indexes the bars the chart actually drew (and drops the uncontained one)', () => {
+    expect(exact.toBar(0)).toBe(0);
+    expect(exact.toBar(750_000)).toBe(15);
+    expect(exact.toBar(A_CLOSE)).toBe(16); // NOT 20 — the four empty slots earn nothing
+    expect(exact.toBar(B_OPEN)).toBe(17); // the orphan at 5 000 000 took no column
+    expect(exact.toBar(10_400_000)).toBe(25);
+    expect(exact.barSized).toBe(true);
+    expect(exact.originBar).toBe(0);
+  });
+
+  it("A's close and B's open are still adjacent", () => {
+    expect(exact.toBar(B_OPEN) - exact.toBar(A_CLOSE)).toBe(1);
+  });
+
+  it('round-trips every drawn bar exactly', () => {
+    for (const ms of [0, 750_000, A_CLOSE, B_OPEN, 10_400_000]) {
+      expect(exact.toReal(exact.toBar(ms))).toBe(ms);
+    }
+  });
+
+  it('preserves the span of a boundary-straddling shape dragged across it', () => {
+    // THE bug the user reported, as an invariant. `a` is in session A and
+    // crosses into B on the way; `b` starts in B and ends in the empty band.
+    // Both must move the same number of COLUMNS, so the span survives.
+    const a = 750_000; // A, column 15
+    const b = 10_100_000; // B, column 19
+    const shift = (ms: number) => exact.toReal(exact.toBar(ms) + 8);
+    expect(exact.toBar(b) - exact.toBar(a)).toBe(4);
+    expect(exact.toBar(shift(b)) - exact.toBar(shift(a))).toBe(4);
+  });
+
+  it('and the ladder fallback still stretches it — the behaviour this replaces', () => {
+    // Same drag, shifted in the ladder's units but MEASURED in real columns:
+    // `a` crosses the boundary and spends four slots the screen has no columns
+    // for, so the shape comes out twice as wide. Reproduced on /live as 38 → 48
+    // columns (magnet on and off alike). Pinned here so the contrast between
+    // the two paths stays visible if anyone re-simplifies them into one.
+    const a = 750_000;
+    const b = 10_100_000;
+    const shift = (ms: number) => ladder.toReal(ladder.toBar(ms) + 8);
+    expect(exact.toBar(b) - exact.toBar(a)).toBe(4);
+    expect(exact.toBar(shift(b)) - exact.toBar(shift(a))).toBe(8);
+  });
+
+  it('heals a vertex sitting on an empty slot forward onto a real bar', () => {
+    // 900 000 is a slot with no candle: `timeToCoordinate` cannot resolve it,
+    // so the render fallback used to pin the vertex to a canvas edge. A
+    // zero-shift grab now snaps it onto the next DRAWN bar. The ladder, which
+    // knows only slots, hands it straight back.
+    expect(exact.toReal(exact.toBar(900_000))).toBe(A_CLOSE);
+    expect(ladder.toReal(ladder.toBar(900_000))).toBe(900_000);
+  });
+
+  it('heals a gap-stranded realMs forward to the next drawn bar', () => {
+    expect(exact.toReal(exact.toBar(5_000_000))).toBe(B_OPEN);
+  });
+
+  it('is seamless into the empty band and extends one column per bucket', () => {
+    // One bucket past the last candle but still inside B's session — the two
+    // branches must agree or the drag would jump at the last bar.
+    expect(exact.toReal(exact.toBar(10_450_000))).toBe(10_450_000);
+    // And past the session close, where the axis no longer contains the time.
+    const bandMs = 11_100_000;
+    expect(axis.contains(bandMs)).toBe(false);
+    expect(exact.toReal(exact.toBar(bandMs))).toBe(bandMs);
+    expect(exact.toReal(exact.toBar(bandMs) + 1)).toBe(bandMs + BUCKET);
+  });
+
+  it('gives the measure readout the on-screen bar count', () => {
+    // `formatMeasureLabel` reads exactly this delta. A measure spanning the
+    // boundary counted 8봉 off the ladder where the screen shows 4.
+    const count = (dom: typeof exact, a: number, b: number) =>
+      Math.round(Math.abs(dom.toBar(b) - dom.toBar(a)));
+    expect(count(exact, 750_000, 10_100_000)).toBe(4);
+    expect(count(ladder, 750_000, 10_100_000)).toBe(8);
+  });
+
+  it('falls back to the ladder when no bar survives the axis filter', () => {
+    // All-uncontained candles must not build a degenerate empty domain.
+    const orphansOnly = dragBarDomain(axis, future, [{ ts_ms: 5_000_000 }]);
+    expect(orphansOnly.toBar(B_OPEN)).toBe(ladder.toBar(B_OPEN));
+  });
+});
+
 describe('realMsToCanvasX — off-grid on-axis fallback (boundary-residue render)', () => {
   // Same two-session intraday axis as the dragBarDomain suite, but with a
   // STRICT timeToCoordinate that — like real lightweight-charts — resolves
