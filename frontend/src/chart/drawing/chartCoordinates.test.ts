@@ -145,7 +145,36 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
   it('plain realMsToCanvasX returns null in the inter-session gap (the vanish)', () => {
     // 50000 sits in the gap between seg A close and seg B open → off every
     // segment, not past the last candle → null → the text would disappear.
+    // NOTE: no FutureBand here — that absence is what keeps this null. With one
+    // the value snaps instead; see the gap test below.
     expect(realMsToCanvasX(gapChart, gapAxis, 50_000)).toBeNull();
+  });
+
+  // ── 갭 realMs + FutureBand — 사각형 전폭 확장의 근원 ──────────────────────
+  //
+  // 빈 밴드(마지막 캔들 오른쪽)에 그린 도형은 **날짜가 바뀌면 갭으로 떨어진다**:
+  // 어제 저장된 "마지막 캔들 + N봉"이 오늘의 `lastRealMs` 아래로 내려가는데, 그
+  // 시각은 정규장 밖이라 `axis.contains` 도 false 다. 밴드 분기(`> lastRealMs`)와
+  // 격자 분기(`contains`)를 **둘 다** 놓치면 null 이고, `rectXSpan` 의
+  // `xb ?? rightEdge` 가 그 null 을 캔버스 오른쪽 끝으로 읽어 사각형을 화면
+  // 전폭으로 늘린다 — /live 실측 재현(2026-08-31).
+  //
+  // 왜 `future` 유무로 갈리나: text 는 좌표가 없으면 사라지므로 자기 전용
+  // `realMsToCanvasXClamped` 로 스냅을 **명시적으로** 산다(위 테스트가 그 계약).
+  // 다점 도형은 그 클램프를 안 사고 가장자리 폴백에 기대는데, 갭에서는 그
+  // 폴백이 틀린 답을 낸다. `future` 는 "이 호출자는 봉 격자를 아는 도형 경로"
+  // 라는 표시라, 거기에만 스냅을 붙이면 text 계약을 건드리지 않는다.
+  it('snaps a gap realMs to the nearest session boundary when a FutureBand is given', () => {
+    const future = { lastRealMs: 101_000, bucketMs: BUCKET };
+    // 50000 → segA.close(1000)까지 49000 < segB.open(100000)까지 50000
+    // → segA.close=1000 → virtual 1000 → x = 1000/1000*10 = 10.
+    expect(realMsToCanvasX(gapChart, gapAxis, 50_000, future)).toBe(10);
+  });
+
+  it('snaps a gap realMs to the NEXT session open when that is nearer (FutureBand)', () => {
+    const future = { lastRealMs: 101_000, bucketMs: BUCKET };
+    // 99000 → segB.open 이 더 가깝다 → virtual 2000 → x = 20.
+    expect(realMsToCanvasX(gapChart, gapAxis, 99_000, future)).toBe(20);
   });
 
   it('clamps a gap realMs to the nearer session boundary and projects it', () => {
