@@ -132,6 +132,12 @@ export function normalizeItems(raw: unknown): Drawing[] {
       // to false for the same reason as `subX`: absence is the schema's own way
       // of saying "this drawing predates the field".
       if (normalized.locked !== true) delete normalized.locked;
+      // 우측 확장도 **정확히 `true` 아니면 부재**다 — `locked` 와 같은 이유이고 같은
+      // 처리다. 손으로 고친 export 의 `'yes'` / `1` 은 `isExtendedRight` 의 `=== true`
+      // 에 걸려 꺼진 것으로 읽히는데, 사람 눈엔 켜진 것으로 읽혀 두 판정이 갈린다.
+      if (normalized.kind === 'rect' && normalized.extendRight !== true) {
+        delete normalized.extendRight;
+      }
       if (normalized.kind === 'pencil') {
         const subX = normalizeSubX(normalized.subX);
         // Deleted rather than set to undefined: a present-but-undefined key

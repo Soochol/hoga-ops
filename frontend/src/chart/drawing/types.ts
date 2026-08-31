@@ -116,6 +116,24 @@ export interface Rect extends DrawingBase {
   /** Fill alpha 0..1. 0 = outline only. Not a sticky default (excluded from the
    *  DrawingDefaults propagation whitelist), so it never leaks to other kinds. */
   fillOpacity: number;
+  /**
+   * Extend the right edge to the canvas edge, forever — the box keeps reaching
+   * the right of the plot however far you pan or zoom. `a`/`b` are UNTOUCHED;
+   * only projection (render + hit-test, via `rectXSpan`) reads this. That is
+   * what makes it reversible: turning it off restores the drawn corners.
+   *
+   * Optional, and ABSENT means off — same schema contract as `locked`, and for
+   * the same reason: every rect persisted before this field existed stays
+   * valid, so `Wrapper.v` needed no bump (bumping it discards every user's
+   * drawings wholesale).
+   *
+   * NOT part of `DrawingStyle`. Extension is per-shape geometry, not a tool
+   * preference — sticking it in the per-kind defaults would make every newly
+   * drawn rectangle born extended. It IS carried by duplicate (unlike `locked`,
+   * which is deliberately dropped): the copy of an extended box is an extended
+   * box, because extension is part of the shape the user is copying.
+   */
+  extendRight?: boolean;
 }
 
 export interface Measure extends DrawingBase {
@@ -197,7 +215,57 @@ export function subBarOffsetPx(p: Pencil, i: number, barPx: number | undefined):
   return typeof sub === 'number' && Number.isFinite(sub) ? sub * barPx : 0;
 }
 
+/**
+ * The rect/measure box's HORIZONTAL pixel span — the one calculation render and
+ * hit-test MUST agree on.
+ *
+ * It lives here, next to `subBarOffsetPx`, for the reason spelled out there:
+ * `hitTest.ts` is deliberately dependency-light (it imports only this module),
+ * so anything both it and the renderer need has to sit at this level. Before
+ * this function the same arithmetic was written out FOUR times (render's
+ * `projectRect`, hit-test's `boxOf` / `rectBorderHit` / `rectInteriorHit`) —
+ * four chances for the drawn box and the grabbable box to drift apart, which
+ * shows up as a rectangle that cannot be clicked where it is visibly drawn.
+ *
+ * Two behaviours are folded in:
+ *  - **Off-axis fallback.** A corner off the virtual axis (scrolled past, or in
+ *    an inter-session gap) projects to null; it falls back to the near canvas
+ *    edge so a half-visible rect still draws and still hit-tests. Only when
+ *    BOTH corners are off does this return null.
+ *  - **`extendRight`.** The right edge is pushed to `rightEdge`. `Math.max`,
+ *    not assignment: a box already reaching past the visible edge must not be
+ *    pulled BACK to it — extension only ever extends.
+ *
+ * `rightEdge` is the caller's canvas width, and the two callers must pass the
+ * SAME number. See `HitCoord.plotWidth`.
+ */
+export function rectXSpan(
+  xa: number | null,
+  xb: number | null,
+  rightEdge: number,
+  extendRight: boolean,
+): { x1: number; x2: number } | null {
+  if (xa == null && xb == null) return null;
+  const a = xa ?? 0;
+  const b = xb ?? rightEdge;
+  const x2 = Math.max(a, b);
+  return { x1: Math.min(a, b), x2: extendRight ? Math.max(x2, rightEdge) : x2 };
+}
+
 export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil;
+
+/**
+ * True iff `d` is a rectangle whose right edge is pinned to the canvas edge.
+ * Absent `extendRight` — and every non-rect kind — reads as false.
+ *
+ * Spelled out once, like `isLocked`, because FOUR call sites have to agree on
+ * it (render's body + its handle suppression, hit-test, and the corner-handle
+ * hit in `tools.ts`). A disagreement between any two of them produces the same
+ * class of bug: a box drawn in one place and grabbable in another.
+ */
+export function isExtendedRight(d: Drawing | null | undefined): boolean {
+  return d?.kind === 'rect' && d.extendRight === true;
+}
 
 /** True iff `d` is locked. Absent `locked` reads as unlocked — the one place
  *  that decision is spelled out, so no caller has to remember it. */

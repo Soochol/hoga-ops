@@ -14,7 +14,7 @@ import type {
   PaneId,
   LineStyle,
 } from './types';
-import { subBarOffsetPx, isLocked } from './types';
+import { subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
 import type { AlignGuide } from './alignSnap';
@@ -321,28 +321,29 @@ export function renderVline(
   if (timeBadge) drawTimeBadge(c, ctx.width, bottom, x, v.realMs, v.color, selected);
 }
 
-/** Normalize two projected corners into a top-left origin + size, falling back
- *  to the canvas edge when a corner is off the virtual axis (mirrors the
- *  trendline off-axis fallback so a half-visible rect still draws). Returns
- *  null when neither corner resolves horizontally or the price scale is unset. */
+/** Normalize two projected corners into a top-left origin + size. The
+ *  horizontal span — off-axis fallback AND `extendRight` — comes from
+ *  `rectXSpan`, which hit-test shares so the drawn box and the grabbable box
+ *  cannot drift apart. Returns null when neither corner resolves horizontally
+ *  or the price scale is unset.
+ *
+ *  `extendRight` defaults to false: `measure` has no such field and must never
+ *  grow one (it reports a span between two points the user placed — an edge
+ *  pinned to the viewport would make its Δtime readout a lie). */
 function projectRect(
   ctx: ProjectCtx,
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
+  extendRight = false,
 ): { x: number; y: number; w: number; h: number } | null {
-  const xaRaw = ctx.realMsToX(a.realMs);
-  const xbRaw = ctx.realMsToX(b.realMs);
   const ya = ctx.priceToY(a.price);
   const yb = ctx.priceToY(b.price);
   if (ya == null || yb == null) return null;
-  if (xaRaw == null && xbRaw == null) return null;
-  const xa = xaRaw ?? 0;
-  const xb = xbRaw ?? ctx.width;
-  const x1 = Math.min(xa, xb);
-  const x2 = Math.max(xa, xb);
+  const span = rectXSpan(ctx.realMsToX(a.realMs), ctx.realMsToX(b.realMs), ctx.width, extendRight);
+  if (span == null) return null;
   const y1 = Math.min(ya, yb);
   const y2 = Math.max(ya, yb);
-  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  return { x: span.x1, y: y1, w: span.x2 - span.x1, h: y2 - y1 };
 }
 
 function renderRectShape(
@@ -353,7 +354,7 @@ function renderRectShape(
   /** 핸들을 그릴지 — 다중 선택에서는 false (renderDrawingBody 참조). */
   handles: boolean,
 ) {
-  const box = projectRect(ctx, r.a, r.b);
+  const box = projectRect(ctx, r.a, r.b, isExtendedRight(r));
   if (box == null) return;
   if (r.fillOpacity > 0) {
     c.save();
@@ -367,9 +368,15 @@ function renderRectShape(
   });
   if (showHandles(r, handles)) {
     drawHandle(c, r.color, box.x, box.y);
-    drawHandle(c, r.color, box.x + box.w, box.y);
-    drawHandle(c, r.color, box.x + box.w, box.y + box.h);
     drawHandle(c, r.color, box.x, box.y + box.h);
+    // 확장 중이면 **오른쪽 두 핸들을 그리지 않는다** — 그 변은 뷰포트 가장자리에
+    // 고정돼 있어서 끌 대상이 아니다. `tools.ts` 의 `hitRectCorner` 가 같은 판정으로
+    // 히트에서도 뺀다. 둘 중 하나만 하면 "안 보이는데 잡히는"(또는 그 반대) 핸들이
+    // 남는다 — 폭을 다시 정하려면 확장을 끄면 된다.
+    if (!isExtendedRight(r)) {
+      drawHandle(c, r.color, box.x + box.w, box.y);
+      drawHandle(c, r.color, box.x + box.w, box.y + box.h);
+    }
   }
 }
 

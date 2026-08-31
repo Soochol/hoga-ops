@@ -537,6 +537,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     priceToCanvasY,
     paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
     canvasWidth: containerRef.current?.clientWidth ?? 0,
+    // 확장된 사각형의 오른쪽 변이 **그려진 자리**에서 끝나도록. 컨테이너는 `inset-0`
+    // 이라 가격축 거터까지 덮지만 렌더는 플롯 위에서 돈다 — 그 차이만큼 넓게 잡으면
+    // 거터 위 클릭이 사각형에 먹혀 축 드래그가 죽는다(게이트 주석의 그 회귀).
+    // Optional-called: `width()` is long-standing lwc API, but the test stubs in
+    // this repo supply only the timeScale methods each case exercises. Missing →
+    // `rightEdgeOf` falls back to `canvasWidth`, which is exactly the arithmetic
+    // that shipped before extendRight existed.
+    plotWidth: chart.timeScale().width?.(),
     measureTextWidth,
     // MUST be the same pitch the renderer used, or a pencil stroke
     // would be grabbable off its drawn position (see subBarOffsetPx).

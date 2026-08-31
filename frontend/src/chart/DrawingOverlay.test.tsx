@@ -616,6 +616,77 @@ describe('DrawingOverlay hover probe — 팬/줌 스로틀', () => {
     expect(overlay.style.pointerEvents).toBe('auto');
   });
 
+  /**
+   * 우측 확장 사각형의 **오른쪽 변이 어디서 끝나는가** — 게이트를 통해 통합으로 잰다.
+   *
+   * 유닛 쪽(hitTest.test.ts)은 `plotWidth` 를 손으로 주입하지만, 그 값이 실제로
+   * 주입되는지는 여기서만 드러난다. 컨테이너는 `inset-0` 이라 가격축 거터까지
+   * 덮으므로(560.6), 확장이 컨테이너 폭을 쓰면 거터 위에서도 사각형이 잡혀 그 자리의
+   * 축 드래그가 죽는다. 플롯은 498 이다.
+   */
+  function mountWithExtendedRect() {
+    const timeScale = {
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      width: () => 498,
+      height: () => 28,
+      coordinateToTime: (x: number) => x,
+      timeToCoordinate: (t: number) => t,
+      coordinateToLogical: (x: number) => x,
+      logicalToCoordinate: (l: number) => l,
+    };
+    const fakePane = { paneIndex: () => 0, getHeight: () => 400 };
+    const fakeSeries = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => fakePane,
+    };
+    const chart = {
+      timeScale: () => timeScale,
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const s = useDrawingsStore.getState();
+    s.setActiveScope('005930|minute');
+    s.setActiveTool('select');
+    // 그린 폭은 x 0..100, 세로 0..200. 확장 후 오른쪽 변은 플롯 끝(498)이어야 한다.
+    s.add('005930|minute', {
+      id: 'r1', kind: 'rect',
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 200 },
+      fillOpacity: 0.1, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle',
+      extendRight: true,
+    });
+    const view = render(
+      <DrawingOverlay
+        chart={chart as never}
+        scope="005930|minute"
+        axis={{
+          segments: [{ date: '20260101', sessionOpenMs: 0, sessionCloseMs: 10_000_000, virtualStart: 0 }],
+          contains: () => true,
+          toVirtual: (v: number) => v,
+          toReal: (v: number) => v,
+        } as never}
+        paneSeries={new Map([['candle', fakeSeries]]) as never}
+      />,
+    );
+    const overlay = view.container.querySelector('[data-drawing-overlay]') as HTMLElement;
+    overlay.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 560.6, height: 555.1, right: 560.6, bottom: 555.1, x: 0, y: 0 }) as DOMRect;
+    return { ...view, overlay };
+  }
+
+  it('확장된 사각형은 플롯 끝까지 잡히고, 가격축 거터는 lwc 에 넘긴다', () => {
+    const { overlay } = mountWithExtendedRect();
+
+    hoverAt(400, 100); // 그린 폭 밖 · 확장 밴드 안
+    expect(overlay.style.pointerEvents).toBe('auto');
+
+    hoverAt(530, 100); // 가격축 거터 — 확장이 컨테이너 폭을 쓰면 여기서 'auto' 가 된다
+    expect(overlay.style.pointerEvents).toBe('none');
+
+    hoverAt(400, 300); // 세로는 확장되지 않는다
+    expect(overlay.style.pointerEvents).toBe('none');
+  });
+
   it('언마운트 시 뷰포트 구독을 해제한다', () => {
     const { unmount, timeScale, handlers } = mountWithHline();
     // 정확히 1개 — 스로틀용 구독뿐이다. 렌더는 pane primitive 가 lwc 프레임 안에서

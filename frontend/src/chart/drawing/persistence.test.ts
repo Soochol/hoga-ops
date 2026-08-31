@@ -328,3 +328,31 @@ describe('normalizeItems — locked', () => {
     expect('locked' in normalizeItems([{ ...base, locked: false }])[0]).toBe(false);
   });
 });
+
+// ── 우측 확장 ──────────────────────────────────────────────────────────────
+describe('normalizeItems — extendRight', () => {
+  const rect = {
+    id: 'r1', kind: 'rect' as const,
+    a: { realMs: 100_000, price: 100 },
+    b: { realMs: 200_000, price: 150 },
+    fillOpacity: 0.1, color: '#14B8A6',
+    width: 2, lineStyle: 'solid' as const, paneId: 'candle' as const,
+  };
+
+  it('extendRight: true 는 살아남는다 — 스키마 버전 범프 없이 실린다', () => {
+    const out = normalizeItems([{ ...rect, extendRight: true }])[0];
+    expect(out.kind === 'rect' && out.extendRight).toBe(true);
+  });
+
+  it('필드가 없던 예전 사각형은 필드 없이 남는다 (부재 = 확장 없음)', () => {
+    expect('extendRight' in normalizeItems([rect])[0]).toBe(false);
+  });
+
+  // `locked` 와 같은 이유다: `isExtendedRight` 의 `=== true` 가 꺼짐으로 읽는데
+  // 사람 눈엔 켜진 것으로 보이는 값을 남기지 않는다.
+  it('true 가 아닌 값은 전부 버린다', () => {
+    for (const bad of [1, 'yes', {}, false]) {
+      expect('extendRight' in normalizeItems([{ ...rect, extendRight: bad }])[0]).toBe(false);
+    }
+  });
+});

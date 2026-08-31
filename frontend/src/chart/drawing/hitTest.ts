@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/hitTest.ts
 
 import type { Drawing, PaneId } from './types';
-import { HIT_THRESHOLD, subBarOffsetPx, isLocked } from './types';
+import { HIT_THRESHOLD, subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 
 /**
  * The subset the pointer-events gate hit-tests against: everything that is not
@@ -73,6 +73,20 @@ export interface HitCoord {
    *  existing test stubs that only exercise hline/trendline/pencil still
    *  type-check. */
   canvasWidth?: number;
+  /**
+   * PLOT width in CSS px — `timeScale().width()`, i.e. the canvas the renderer
+   * actually draws on, EXCLUDING the price-axis gutter.
+   *
+   * It exists because the two widths differ and the difference is visible.
+   * Render runs under a pane primitive whose `ctx.width` is the plot area;
+   * hit-test runs off the DOM overlay container, which is `inset-0` and so
+   * spans the gutter too (~50-70px wider). Feeding the container width into
+   * `rectXSpan` would put an extended rect's right edge past where it is drawn
+   * — the box would swallow clicks over the price axis and kill axis dragging
+   * there. Falls back to `canvasWidth` for stubs that don't supply it, which is
+   * exactly the pre-existing arithmetic.
+   */
+  plotWidth?: number;
   /** Pixel width of `text` at `sizePx`, using the same font as render — needed
    *  for the text-label bounding box. Optional for the same back-compat reason. */
   measureTextWidth?: (text: string, sizePx: number) => number;
@@ -127,8 +141,8 @@ export function hitTestDrawings(
       // chart is still pannable by starting the drag OUTSIDE the box. (Previously
       // border-only, which made a filled box feel unmovable — the reported bug.)
       if (
-        rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId) ||
-        rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)
+        rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId, isExtendedRight(d)) ||
+        rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId, isExtendedRight(d))
       ) {
         return d;
       }
@@ -231,23 +245,33 @@ function segmentIntersectsBox(p0: Pixel, p1: Pixel, r: MarqueeRect): boolean {
   return true;
 }
 
-/** The rect/measure box in pixels, with the SAME off-axis fallback the border
- *  and interior hit tests use (a corner off the virtual axis falls back to the
- *  canvas edge, mirroring render). Null when the price scale can't resolve. */
+/** The right edge `rectXSpan` measures against — the PLOT width, matching what
+ *  the renderer drew on. See `HitCoord.plotWidth`. */
+function rightEdgeOf(coord: HitCoord): number {
+  return coord.plotWidth ?? coord.canvasWidth ?? 0;
+}
+
+/** The rect/measure box in pixels, via the same `rectXSpan` the renderer uses
+ *  (off-axis fallback + `extendRight`). Null when the price scale can't
+ *  resolve, or when neither corner resolves horizontally. */
 function boxOf(
   coord: HitCoord,
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
   paneId: PaneId,
+  extendRight = false,
 ): MarqueeRect | null {
-  const xaRaw = coord.realMsToCanvasX(a.realMs);
-  const xbRaw = coord.realMsToCanvasX(b.realMs);
   const ya = coord.priceToCanvasY(a.price, paneId);
   const yb = coord.priceToCanvasY(b.price, paneId);
   if (ya == null || yb == null) return null;
-  if (xaRaw == null && xbRaw == null) return null;
-  const width = coord.canvasWidth ?? 0;
-  return marqueeRect(xaRaw ?? 0, ya, xbRaw ?? width, yb);
+  const span = rectXSpan(
+    coord.realMsToCanvasX(a.realMs),
+    coord.realMsToCanvasX(b.realMs),
+    rightEdgeOf(coord),
+    extendRight,
+  );
+  if (span == null) return null;
+  return marqueeRect(span.x1, ya, span.x2, yb);
 }
 
 /**
@@ -301,7 +325,8 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
       return segmentIntersectsBox({ x: xa, y: ya }, { x: xb, y: yb }, rect);
     }
     case 'rect': {
-      const box = boxOf(coord, d.a, d.b, d.paneId);
+      // 마퀴도 **확장된 폭**을 본다 — 사용자가 둘러싼 것은 화면에 보이는 띠다.
+      const box = boxOf(coord, d.a, d.b, d.paneId, isExtendedRight(d));
       return box != null && boxesOverlap(box, rect);
     }
     case 'text': {
@@ -336,29 +361,20 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
 }
 
 /** True when pixel `p` is within rectBorder px of any of the rect's four edges.
- *  Corners that fall off the virtual axis fall back to canvas bounds (0/…),
- *  mirroring the render-time fallback so a rect straddling the visible edge
- *  stays selectable instead of vanishing from hit-testing. */
+ *  The box comes from `boxOf`, so the off-axis fallback and `extendRight` match
+ *  render exactly — a rect straddling the visible edge stays selectable instead
+ *  of vanishing from hit-testing. */
 function rectBorderHit(
   p: Pixel,
   coord: HitCoord,
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
   paneId: PaneId,
+  extendRight = false,
 ): boolean {
-  const xaRaw = coord.realMsToCanvasX(a.realMs);
-  const xbRaw = coord.realMsToCanvasX(b.realMs);
-  const ya = coord.priceToCanvasY(a.price, paneId);
-  const yb = coord.priceToCanvasY(b.price, paneId);
-  if (ya == null || yb == null) return false;
-  if (xaRaw == null && xbRaw == null) return false;
-  const width = coord.canvasWidth ?? 0;
-  const xa = xaRaw ?? 0;
-  const xb = xbRaw ?? width;
-  const x1 = Math.min(xa, xb);
-  const x2 = Math.max(xa, xb);
-  const y1 = Math.min(ya, yb);
-  const y2 = Math.max(ya, yb);
+  const box = boxOf(coord, a, b, paneId, extendRight);
+  if (box == null) return false;
+  const { x1, x2, y1, y2 } = box;
   const tl = { x: x1, y: y1 };
   const tr = { x: x2, y: y1 };
   const br = { x: x2, y: y2 };
@@ -376,28 +392,18 @@ function rectBorderHit(
 }
 
 /** True when pixel `p` is inside the rect's (min/max-normalized) box. Same
- *  projection + off-axis fallback as rectBorderHit, so a selected rect can be
- *  grabbed anywhere in its fill to move it. */
+ *  `boxOf` as rectBorderHit, so a selected rect can be grabbed anywhere in its
+ *  fill to move it — including the extended band, which is part of the shape
+ *  the user sees. */
 function rectInteriorHit(
   p: Pixel,
   coord: HitCoord,
   a: { realMs: number; price: number },
   b: { realMs: number; price: number },
   paneId: PaneId,
+  extendRight = false,
 ): boolean {
-  const xaRaw = coord.realMsToCanvasX(a.realMs);
-  const xbRaw = coord.realMsToCanvasX(b.realMs);
-  const ya = coord.priceToCanvasY(a.price, paneId);
-  const yb = coord.priceToCanvasY(b.price, paneId);
-  if (ya == null || yb == null) return false;
-  if (xaRaw == null && xbRaw == null) return false;
-  const width = coord.canvasWidth ?? 0;
-  const xa = xaRaw ?? 0;
-  const xb = xbRaw ?? width;
-  return (
-    p.x >= Math.min(xa, xb) &&
-    p.x <= Math.max(xa, xb) &&
-    p.y >= Math.min(ya, yb) &&
-    p.y <= Math.max(ya, yb)
-  );
+  const box = boxOf(coord, a, b, paneId, extendRight);
+  if (box == null) return false;
+  return p.x >= box.x1 && p.x <= box.x2 && p.y >= box.y1 && p.y <= box.y2;
 }

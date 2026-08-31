@@ -135,6 +135,7 @@ import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import { useDrawingHost } from '../chart/useDrawingHost';
+import { canvasXToRealMs } from '../chart/drawing/chartCoordinates';
 import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
@@ -732,6 +733,32 @@ export function LiveChartRoot({
   // D/W/M 은 각자 슬롯을 갖는다 — 같은 종목이라도 분봉에 그린 도형이 일봉에
   // 나타나지 않는다. code 가 없으면(종목 미선택) scope 도 없다.
   const drawingScope = useMemo(() => drawingScopeFor(code, timeframe), [code, timeframe]);
+
+  /**
+   * 지금 **화면 오른쪽 끝**의 시각(real Unix-ms), 또는 null.
+   *
+   * 사각형의 "보이는 영역까지 우측 확장" 이 필요로 하는 단 하나의 값이다. 속성
+   * 패널은 차트 API 를 갖지 않고(순수 DOM UI 다) 가질 이유도 없으므로, 차트를 아는
+   * 이 파일이 클로저 하나로 내려 준다.
+   *
+   * `width - 1` 은 플롯의 **마지막 픽셀**이다 — `width` 자체는 한 칸 밖이라
+   * `coordinateToTime` 이 다른 답을 낼 수 있다. `canvasXToRealMs` 를 타므로 마지막 봉
+   * 오른쪽의 빈 밴드까지 외삽된다: 즉 미래 구간으로도 늘어난다(그게 이 기능의 주
+   * 용도다). 축이 비었거나 차트가 아직 안 붙었으면 null 이고, 패널은 그때 버튼을
+   * 비활성으로 둔다 — 눌러도 아무 일 없는 버튼보다 낫다.
+   */
+  const resolveVisibleRightRealMs = useCallback((): number | null => {
+    if (chart == null) return null;
+    const width = chart.timeScale().width();
+    if (!(width > 1)) return null;
+    const candles = cb?.candles;
+    const bucketMs = drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined);
+    const future =
+      candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
+        ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
+        : undefined;
+    return canvasXToRealMs(chart, axis, width - 1, future);
+  }, [chart, axis, cb, timeframe]);
 
   // Drawing-host concerns (paneSeries registry, activeScope binding,
   // panel-anchor computation) live in their own hook so this file stays
@@ -2752,7 +2779,10 @@ export function LiveChartRoot({
           {isMinuteTimeframe(timeframe) && liveBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={liveBundle} axis={axis} paneSeries={paneSeries} />
           )}
-          <DrawingPropertyPanel scope={drawingScope} />
+          <DrawingPropertyPanel
+            scope={drawingScope}
+            resolveVisibleRightRealMs={resolveVisibleRightRealMs}
+          />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
