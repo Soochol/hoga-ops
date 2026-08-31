@@ -32,7 +32,7 @@
  */
 import { useContext, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useLivePageStore, type LiveTimeframe } from '../../state/livePage';
+import { useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../../state/livePage';
 import {
   FACTORY_INDICATOR_SETTINGS,
   INDICATOR_SETTING_KEYS,
@@ -571,7 +571,13 @@ export interface HistoricalRangeActions {
   /** 창을 앞으로 당긴다(축소). 근거는 스토어 액션 주석 참조. */
   contract: (date: string) => void;
   reset: () => void;
-  snapshot: () => { historicalFromDate: string | null; lastMinuteHistoricalFromDate: string | null };
+  snapshot: () => {
+    historicalFromDate: string | null;
+    /** 분봉 창 기억 — **`lastMinuteHistoricalTimeframe` 과 짝으로만 읽는다**(창 깊이는
+     *  봉에 상대적이다). 도장이 null 이면 "어느 봉이 만든 값인지 모름" 이다. */
+    lastMinuteHistoricalFromDate: string | null;
+    lastMinuteHistoricalTimeframe: MinuteTimeframe | null;
+  };
 }
 
 export function useHistoricalRangeActions(): HistoricalRangeActions {
@@ -585,7 +591,7 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
         contract: (date: string) => ws().contractChartHistoricalRange(windowId, date),
         reset: () => ws().resetChartHistoricalRange(windowId),
         snapshot: () => ws().chartRuntime[windowId]
-          ?? { historicalFromDate: null, lastMinuteHistoricalFromDate: null },
+          ?? { historicalFromDate: null, lastMinuteHistoricalFromDate: null, lastMinuteHistoricalTimeframe: null },
       };
     }
     const ps = () => useLivePageStore.getState();
@@ -596,6 +602,7 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
       snapshot: () => ({
         historicalFromDate: ps().historicalFromDate,
         lastMinuteHistoricalFromDate: ps().lastMinuteHistoricalFromDate,
+        lastMinuteHistoricalTimeframe: ps().lastMinuteHistoricalTimeframe,
       }),
     };
   }, [windowId]);

@@ -115,7 +115,10 @@ describe('LiveChartRoot', () => {
     useChartPrefsStore.getState().resetToDefaults();
     // 분봉 커버리지 복원(1-샷)의 재료 — 남으면 뒤 테스트의 분봉 초기 배치가
     // extendHistoricalRange를 dispatch해 상태가 샌다.
-    useLivePageStore.setState({ lastMinuteHistoricalFromDate: null });
+    useLivePageStore.setState({
+      lastMinuteHistoricalFromDate: null,
+      lastMinuteHistoricalTimeframe: null,
+    });
   });
 
   it('크로스헤어 구독 해제가 throw 해도 teardown 꼬리가 끝까지 돈다', () => {
@@ -1332,6 +1335,7 @@ describe('LiveChartRoot', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
       lastMinuteHistoricalFromDate: '20250712',
+      lastMinuteHistoricalTimeframe: '1m',
     });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -1352,6 +1356,69 @@ describe('LiveChartRoot', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBe('20250712');
   });
 
+  it('1m timeframe: 다른 분봉이 만든 창 기억은 복원하지 않는다 (봉 도장 불일치)', () => {
+    // 2026-08-31 실측 회귀: 60m 좌팬은 한 제스처에 300거래일을 내려가고 1m 은
+    // 5거래일이다. 60m 이 만든 `20240506` 을 1m 창에 그대로 넣으면 1m 이
+    // past-candles 청크를 5연속 받아 5~6만 봉을 통짜 적재하고 뷰포트가 라이브
+    // 엣지 밖으로 밀린다. 도장이 갈리면 복원하지 않고 그 봉의 공장 창으로 연다.
+    useLivePageStore.setState({
+      activeCode: '035420',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20240506',
+      lastMinuteHistoricalTimeframe: '60m',
+    });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="035420"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    // 초기 배치는 평소대로 일어난다 — 막는 것은 확장뿐이다.
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    // 기억 자체는 지우지 않는다 — 60m 으로 돌아가면 그 봉의 창은 그대로 복원된다.
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20240506');
+    expect(useLivePageStore.getState().lastMinuteHistoricalTimeframe).toBe('60m');
+  });
+
+  it('1m timeframe: 봉 도장이 없는(=모름) 기억은 복원하지 않는다', () => {
+    // 도장은 날짜와 같은 출처에서만 온다. 도장 없이 날짜만 있는 상태는 "어느 봉이
+    // 만든 값인지 모름" 이고, 모르는 것을 "맞다" 로 읽지 않는 쪽이 안전한 기본값이다.
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+      lastMinuteHistoricalTimeframe: null,
+    });
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
   it('1m timeframe: activeCode mismatch blocks the coverage restore (study-mount guard)', () => {
     // StudyPage 등 다른 마운트의 분봉 배치가 live store를 extend하지 못하도록,
     // 복원 dispatch는 activeCode === code 엄격 동등일 때만 발화한다.
@@ -1360,6 +1427,7 @@ describe('LiveChartRoot', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
       lastMinuteHistoricalFromDate: '20250712',
+      lastMinuteHistoricalTimeframe: '1m',
     });
     const { chart } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -1567,6 +1635,9 @@ describe('LiveChartRoot', () => {
       candleTimeframe: 'D',
       historicalFromDate: null,
       lastMinuteHistoricalFromDate: '20250712',
+      // 도장을 함께 심어야 이 단언이 "D 가 건너뛴다" 를 재는 것이 된다 — 도장이
+      // 없으면 봉 게이트가 먼저 걸려 이유가 갈린 채 초록이 뜬다.
+      lastMinuteHistoricalTimeframe: '1m',
     });
     const { chart } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
