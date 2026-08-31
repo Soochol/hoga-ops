@@ -346,6 +346,19 @@ describe('프리셋 적용은 핀을 이월한다 — payload 가 아니라 나�
     expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
   });
 
+  it('빈 payload(기본 배치 초기화)는 핀을 이월하지 않는다 — 초기화는 핀도 지운다', async () => {
+    // 공장 폴백 창의 id 는 newWindowId(randomUUID)라 저장된 id 와 충돌할 수 없어
+    // 이월 맵이 비켜간다 — 그 성질이 곧 "초기화 = 핀 소멸" 계약이므로 여기 못박는다.
+    seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: HYNIX });
+    const { useWorkspaceStore } = await loadStore();
+
+    useWorkspaceStore.getState().applyWorkspaceSnapshot({ windows: [], zOrder: [] });
+
+    const windows = useWorkspaceStore.getState().windows;
+    expect(windows.length).toBeGreaterThan(0);
+    expect(windows.every((w) => w.pinned === undefined)).toBe(true);
+  });
+
   it('payload 의 핀보다 현재 핀이 이긴다 — 이월과 payload 차단은 독립이다', async () => {
     seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: HYNIX });
     const { useWorkspaceStore } = await loadStore();
