@@ -187,7 +187,18 @@ const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isFetching: rangeMock.isFetching,
   isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
+// 일·주·월 프로그램 폴백(오늘분 단일 날짜)은 델타가 아니라 `useRange` 를 쓴다.
+// 스파이가 없으면 그 import 가 undefined 가 되어 훅이 통째로 죽으므로, 새 소비를
+// 추가할 때 이 팩토리도 같이 늘려야 한다.
+const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+  data: null,
+  isLoading: false,
+  error: null,
+  isPlaceholderData: false,
+  isFetching: false,
+}));
 vi.mock('../api/range', () => ({
+  useRange: (...args: unknown[]) => useRangeSpy(...args as []),
   useRangeCandlesDelta: (...args: unknown[]) => useRangeCandlesDeltaSpy(...args as []),
   useRangeHogaDelta: (...args: unknown[]) => useRangeHogaDeltaSpy(...args as []),
   useRangeSidecarDelta: (...args: unknown[]) => useRangeSidecarDeltaSpy(...args as []),
@@ -858,6 +869,14 @@ describe('useLiveBundle', () => {
     useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
+    useRangeSpy.mockClear();
+    useRangeSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+    }));
 	    useRangeCandlesDeltaSpy.mockImplementation(() => ({
 	      data: null,
 	      isLoading: false,
@@ -2090,6 +2109,87 @@ describe('useLiveBundle', () => {
     ];
     expect(result.current.chartBundle?.program_trade?.points).toEqual(expected);
     expect(result.current.bundle?.program_trade?.points).toEqual(expected);
+  });
+
+  /**
+   * 일·주·월 프로그램 폴백(2026-08-31). **막는 방향은 「본체 없이 꼬리만」이다** —
+   * 캘린더 봉에서 `planLiveRangeRequest` 가 사이드카 요청을 통째로 끄는 바람에
+   * `program_trade` 본체가 비고, 프로그램 데이터 창이 WS 링버퍼 15분만 그렸다.
+   *
+   * **이 가드가 못 보는 것**: 화면 폭·축 계산은 여기서 재지 않는다. 카드가 축을 어떻게
+   * 잡는지는 `ProgramTradeSummaryCard` 몫이고, 그 조합의 결함(가격 오버레이 1점이면
+   * 축만 09:00 로 당겨지고 곡선은 끝만 남는 것)은 브라우저에서만 보인다 — 실측은
+   * /browse red-green 으로 남겼다(일봉 83점·x 95.7~100 → 521점·x 0~100).
+   */
+  const PROGRAM_FALLBACK_POINT = {
+    t: 1_779_840_060_000,
+    net_qty: -1_000,
+    net_amount: -70_000_000,
+    delta_qty: null,
+    delta_amount: null,
+    gap_risk: false,
+  };
+
+  it('calendar timeframes fetch today-only program trade and merge it into the bundle', () => {
+    useRangeSpy.mockImplementation(() => rangeResult({
+      program_trade: { points: [PROGRAM_FALLBACK_POINT], source: 'kis_program_trade' as const },
+    }));
+
+    const out = renderUseLiveBundle({ timeframe: 'D' });
+
+    // 본체가 실린다 — 폴백이 없던 시절엔 여기가 `[]` 였다(라이브 꼬리도 비어 있는
+    // 픽스처라 빈 배열이 곧 "본체 결손" 이다).
+    expect(out.chartBundle?.program_trade?.points).toEqual([PROGRAM_FALLBACK_POINT]);
+    expect(out.bundle?.program_trade?.points).toEqual([PROGRAM_FALLBACK_POINT]);
+  });
+
+  it('scopes the calendar program fallback to today and turns sibling slices off', () => {
+    renderUseLiveBundle({ timeframe: 'D' });
+
+    const [code, from, to, timeframe, priceRange, todayKst, options] =
+      useRangeSpy.mock.calls[useRangeSpy.mock.calls.length - 1];
+    expect(code).toBe('005930');
+    // 캘린더 봉의 조회 구간은 수년일 수 있지만 카드가 읽는 것은 **오늘 하루**뿐이다.
+    expect([from, to]).toEqual(['20260527', '20260527']);
+    expect(timeframe).toBe('1m');
+    expect(priceRange).toBeUndefined();
+    // 5분 리페치(TODAY_RANGE_REFETCH_MS)를 켜는 인자.
+    expect(todayKst).toBe('20260527');
+    // 형제 슬라이스는 백엔드 기본이 전부 true 라 **명시적 false** 여야 한다 —
+    // 빠뜨리면 소비처 없는 계산을 5분마다 시킨다.
+    expect(options).toEqual({
+      mode: 'sidecar',
+      programTradeEnabled: true,
+      askPeaksEnabled: false,
+      bidPeaksEnabled: false,
+      brokerLateEntriesEnabled: false,
+      tradeVolumePocEnabled: false,
+      depthHeatmapEnabled: false,
+      brokerLateEntryStartHHMM: null,
+      volumeDistributionBins: null,
+      tradeVolumePocBins: null,
+      volumeDistributionPriceRange: null,
+    });
+  });
+
+  it('does not fire the program fallback on minute timeframes', () => {
+    // 분봉은 `rangePlan` 이 이미 프로그램을 싣는다 — 폴백까지 돌면 같은 데이터를
+    // 두 번 조회한다. `code=null` 이 `buildRangeBundleRequest` 의 `enabled` 를 끈다.
+    renderUseLiveBundle({ timeframe: '1m' });
+
+    expect(useRangeSpy.mock.calls[useRangeSpy.mock.calls.length - 1][0]).toBeNull();
+  });
+
+  it('does not fire the program fallback when program demand is off', () => {
+    useLivePageStore.setState({
+      programTradeEnabled: false,
+      tradeVolumePocEnabled: false,
+      volumeDistributionEnabled: false,
+    });
+
+    renderUseLiveBundle({ timeframe: 'D' });
+
+    expect(useRangeSpy.mock.calls[useRangeSpy.mock.calls.length - 1][0]).toBeNull();
   });
 
   it('does not inject live program points when program demand is disabled', () => {
