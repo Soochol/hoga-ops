@@ -15,6 +15,7 @@ import {
   MAX_BATCH_STEPS_PER_DISPATCH,
   planFillStep,
   canAdvanceHistoricalWindow,
+  clampFromToFloor,
   isKrxRegularSessionNow,
   initialCandleTargetFor,
   initialHistoricalDaysFor,
@@ -285,6 +286,52 @@ describe('canAdvanceHistoricalWindow — 확장이 서빙 창을 실제로 움�
     const above = { ...base, earliestAllowedDate: '20260501' };
     expect(canAdvanceHistoricalWindow(above.historicalFromDate, above.earliestAllowedDate)).toBe(true);
     expect(planFillStep(above).action).toBe('fetch');
+  });
+});
+
+describe('clampFromToFloor — 스텝의 착지점이 바닥을 지나치지 않는다', () => {
+  // `canAdvanceHistoricalWindow` 의 짝. 저쪽은 **창**을 보고 이쪽은 **착지점**을 본다.
+  // 창이 바닥 위여도 한 스텝이 바닥을 지나치면 서빙 창이 요청과 갈려(요청만 클램프)
+  // 3a 의 캐시 settle 이 원리적으로 성립하지 못한다 → `fillKind` 영구 잠금.
+  it.each([
+    // [다음 창, 바닥, 기대, 사유]
+    ['20250530', '20251225', '20251225', '바닥을 지나쳤다 — 바닥에 앉힌다'],
+    ['20251225', '20251225', '20251225', '정확히 바닥 — 그대로'],
+    ['20260126', '20251225', '20260126', '바닥 위 — 보폭을 건드리지 않는다'],
+    ['20250530', null, '20250530', '바닥 미상 — 자르지 않는다(D/W/M · 디스크 응답 전)'],
+  ] as const)('%s / floor=%s → %s (%s)', (next, floor, expected, _why) => {
+    expect(clampFromToFloor(next, floor)).toBe(expected);
+  });
+
+  it('planFillStep 의 nextFrom 도 바닥 위에 앉는다 — 60m 은 한 스텝이 벽보다 넓다', () => {
+    // 60m 스텝은 300거래일 ≈ 420캘린더일이라 250일 벽을 **정상적으로** 지나친다
+    // (`STEP_TRADING_DAYS` 주석의 "좌팬 한 번에 보유 상한까지"). 즉 이 클램프가 타는
+    // 것은 예외 경로가 아니라 넓은 분봉의 첫 스텝이다.
+    const plan = planFillStep({
+      kind: 'left_pan',
+      historicalFromDate: '20260601',
+      axisEarliestMs: Date.UTC(2026, 5, 1),
+      earliestAllowedDate: '20260501',
+      timeframe: '60m',
+      stepCount: 0,
+      budget: 5,
+    });
+    expect(plan).toEqual({ action: 'fetch', nextFrom: '20260501', steps: expect.any(Number) });
+  });
+
+  it('coverage_gap 스텝도 같은 클램프를 받는다 — 3c 에는 게이트가 없어 여기가 유일한 방어다', () => {
+    const plan = planFillStep({
+      kind: 'coverage_gap',
+      historicalFromDate: '20260601',
+      axisEarliestMs: Date.UTC(2026, 5, 1),
+      earliestAllowedDate: '20260501',
+      timeframe: '60m',
+      stepCount: 0,
+      budget: 60,
+      coverageTargetDate: '20250101',
+      rangeWindowFromDate: '20260601',
+    });
+    expect(plan).toEqual({ action: 'fetch', nextFrom: '20260501', steps: 1 });
   });
 });
 

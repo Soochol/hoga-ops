@@ -15,6 +15,7 @@ import { realMsToVirtualSeconds } from './viewportAnchor';
 import { useHistoricalRangeActions, useWindowViewGuard } from './workspace/windowView';
 import {
   canAdvanceHistoricalWindow,
+  clampFromToFloor,
   nextHistoricalFrom,
   nextCoverageFrom,
   planFillStep,
@@ -94,12 +95,19 @@ function planCoverageGapFill(
   historicalFromDate: string | null,
   coverageFrom: string | null,
   windowFrom: string | null,
+  earliestAllowedDate: string | null,
 ): { nextFrom: string; coverageTarget: string } | null {
   if (coverageFrom === null || windowFrom === null) return null;
   const leftDate = readViewportLeftDate(chart, axis);
   if (leftDate === null || leftDate >= coverageFrom) return null;
   return {
-    nextFrom: nextCoverageFrom(historicalFromDate, windowFrom, timeframe),
+    // 착지점을 바닥 위로 자른다 — 지나치면 서빙 창이 요청과 갈려 3a 가 영영 settle
+    // 하지 못한다(`clampFromToFloor`). 3c 의 첫 스텝이 실제로 그 자리였다: 60m 은
+    // 스텝 폭이 벽보다 넓어 **초기 표시 판정 한 번**으로 창이 벽 아래로 내려간다.
+    nextFrom: clampFromToFloor(
+      nextCoverageFrom(historicalFromDate, windowFrom, timeframe),
+      earliestAllowedDate,
+    ),
     coverageTarget: leftDate,
   };
 }
@@ -1212,10 +1220,16 @@ export function useViewportBackfill({
         // 첫 dispatch도 3a와 같은 배치 폭을 쓴다(ADR-0120) — 여기만 1스텝이면
         // 딥 팬의 첫 왕복이 나머지보다 좁아 계단이 생긴다.
         steps = dispatchStepsFor(timeframe, budget);
-        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+        // 스텝이 바닥을 지나치지 않게 자른다 — 게이트(위)가 보는 것은 **창**이고
+        // 잠김을 만드는 것은 **착지점**이다(`clampFromToFloor`).
+        nextFrom = clampFromToFloor(
+          nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps),
+          minuteFloorRef.current,
+        );
       } else {
         const covPlan = planCoverageGapFill(
           chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
+          minuteFloorRef.current,
         );
         if (!covPlan) {
           // **확장이 필요 없는 순간이 곧 축소를 볼 자리다.** 여기 도달했다는 것은
@@ -1348,6 +1362,7 @@ export function useViewportBackfill({
     const cur = historicalRange.snapshot().historicalFromDate;
     const covPlan = planCoverageGapFill(
       chart, axis, timeframe, cur, indicatorCoverageFromDate, rangeWindowFromDate,
+      minuteScrollbackFloorDate,
     );
     if (!covPlan) return; // 갭 없음 — 마킹된 채 종료(반복 판정 금지)
     fillKindRef.current = 'coverage_gap';
@@ -1525,7 +1540,10 @@ export function useViewportBackfill({
     }
     const budget = Math.min(fillBudgetSteps(-lr.from, timeframe), MAX_FILL_STEPS);
     const steps = dispatchStepsFor(timeframe, budget);
-    const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps);
+    const nextFrom = clampFromToFloor(
+      nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe, steps),
+      minuteFloorRef.current,
+    );
     clampRecoveryStepsRef.current += 1;
     clampLastFromRef.current = cur;
     // 나머지 워크백은 3a 가 이어받는다 — kind 가 `left_pan` 이어야 종료 조건도 같다.

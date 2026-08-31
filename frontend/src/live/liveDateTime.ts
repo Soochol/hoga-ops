@@ -515,10 +515,12 @@ export function fillBudgetSteps(whitespaceBars: number, tf: LiveTimeframe): numb
  *  - `earliestAllowedDate === null`(하한 미상: D/W/M · 응답 전 디스크 모드)이면
  *    **아무것도 막지 않는다.** 모르는 것을 바닥이라고 말하지 않는 기존 규율 그대로다.
  *  - `historicalFromDate === null`(창 없음)이면 첫 확장은 언제나 창을 만들므로 통과.
- *  - **다른 no-op 원인은 못 본다.** 지금 알려진 것은 이 하나뿐이고
- *    (`nextHistoricalFrom` 은 항상 base 보다 strict 과거라 스토어 단조 가드에
- *    걸리지 않는다), 새 no-op 경로가 생기면 같은 잠김이 재발한다 — 그때는 이
- *    술어를 늘리는 것이 답이다.
+ *  - **스텝의 착지점은 못 본다.** 이 술어의 인자는 창이지 다음 스텝이 아니라,
+ *    창이 바닥 **위**여도 한 스텝이 바닥을 지나치면 같은 no-op 이 된다. 2026-08-31
+ *    브라우저 실측이 그 구멍이었다 — 그쪽은 `clampFromToFloor` 가 짝으로 막는다.
+ *  - **그 밖의 no-op 원인은 여전히 못 본다.** `nextHistoricalFrom` 은 항상 base 보다
+ *    strict 과거라 스토어 단조 감소 가드에는 걸리지 않는다. 새 no-op 경로가 생기면
+ *    같은 잠김이 재발한다 — 그때는 술어를 늘리는 것이 답이다.
  */
 export function canAdvanceHistoricalWindow(
   historicalFromDate: string | null,
@@ -527,6 +529,44 @@ export function canAdvanceHistoricalWindow(
   if (earliestAllowedDate === null) return true;
   if (historicalFromDate === null) return true;
   return historicalFromDate > earliestAllowedDate;
+}
+
+/**
+ * 다음 요청 창(`nextFrom`)을 **바닥 위로 자른다**.
+ *
+ * `canAdvanceHistoricalWindow` 와 한 쌍이다 — 저쪽은 "이미 바닥이면 fill 을 세우지
+ * 않는다", 이쪽은 "세운 스텝이 바닥을 지나치지 않는다". 둘이 있어야 창이 바닥에
+ * **정확히 앉는다**. 지나치면 요청이 서빙 단계에서 클램프되고(`useLiveBundle` 의
+ * `minutePastFrom = laterDate(seedFrom, earliestAllowedMinute)`) 서빙 창이 요청 창과
+ * 갈려, 3a 의 캐시 settle 신호(`settledFromDate === cur`)가 **원리적으로 성립할 수
+ * 없게 된다**.
+ *
+ * ## 없으면 무엇이 깨지나 — 2026-08-31 브라우저 실측
+ *
+ * 한 스텝이 바닥을 지나치는 것은 예외가 아니라 **넓은 분봉의 정상**이다: 60m 스텝은
+ * 300거래일 ≈ 420캘린더일이라 250일 벽보다 넓다(`STEP_TRADING_DAYS` 주석의 "좌팬 한
+ * 번에 보유 상한까지" 가 그 사실이다). 그 첫 스텝은 쿼리 키를 바꾸므로 fetch 가 나고
+ * `isExtending` 하강 엣지로 settle 한다. 그런데 **같은 바닥 창이 이미 캐시에 있으면
+ * fetch 가 0 건**이다(react-query 히트) → 하강 엣지 없음 + 서빙(바닥) ≠ 요청(바닥
+ * 아래)이라 캐시 settle 도 없음 → 3a 가 `endFill()` 에 닿지 못한다 → `fillKind` 가
+ * 영구 non-null → 이후 좌팬도 **축소도** 전부 무로그 반려(둘의 진입점이 같다).
+ *
+ *     extend {trigger: clamp_recovery, from: 20260126, nextFrom: 20250530}  // floor 20251225
+ *     stop 없음 · past-candles 요청 0건 → 이후 좌팬 3회에 viewport_backfill_* 0줄
+ *
+ * `canAdvanceHistoricalWindow` 로는 이 자리를 못 막는다. 그 술어가 보는 것은 **창**
+ * (20260126, 바닥 위)이라 옳게 통과시키고, 잠김은 그 다음 줄의 **착지점**(20250530,
+ * 바닥 아래)에서 생긴다.
+ *
+ * `earliestAllowedDate === null`(D/W/M · 하한 미상)이면 아무것도 자르지 않는다 —
+ * 모르는 것을 바닥이라고 말하지 않는 이 리포의 규율 그대로다.
+ */
+export function clampFromToFloor(
+  nextFrom: string,
+  earliestAllowedDate: string | null,
+): string {
+  if (earliestAllowedDate === null) return nextFrom;
+  return nextFrom < earliestAllowedDate ? earliestAllowedDate : nextFrom;
 }
 
 export interface FillStepArgs {
@@ -583,7 +623,10 @@ export function planFillStep(
     const steps = dispatchStepsFor(timeframe, budget - stepCount);
     return {
       action: 'fetch',
-      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe, steps),
+      nextFrom: clampFromToFloor(
+        nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe, steps),
+        earliestAllowedDate,
+      ),
       steps,
     };
   }
@@ -593,7 +636,10 @@ export function planFillStep(
   if (windowFrom <= coverageTargetDate) return { action: 'stop' };
   return {
     action: 'fetch',
-    nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
+    nextFrom: clampFromToFloor(
+      nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
+      earliestAllowedDate,
+    ),
     steps: 1, // 날짜 수렴이 종료 조건 — 묶으면 목표를 지나쳐 과다 요청(#582)
   };
 }
