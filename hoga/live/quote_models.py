@@ -46,5 +46,14 @@ class Quote:
     low: int | None = None
     volume: int | None = None
     previous_close: int | None = None
+    # 당일 누적거래대금 — **원 단위로 정규화된 값**이다. 벤더(`trde_prica`)는 백만원
+    # 이고 파서가 흡수한다(WS FID 14 와 같은 규율 — `kiwoom_frames._parse_trade`).
+    trade_value: int | None = None
+    # 전일거래량 대비 **비율** %(오늘 누적 ÷ 전일 전량 × 100). 증감률이 아니다 —
+    # 실측 006360 2026-08-19: 2,837,598 / 1,741,402 = 162.949% 이고 벤더가 보낸 값이
+    # `+162.95` 였다(증감률이면 62.95). WS FID 30 과 같은 축이다.
+    vs_prev_volume_pct: float | None = None
+    # 체결강도 %(WS FID 228 과 같은 축).
+    fill_strength_pct: float | None = None
 
 

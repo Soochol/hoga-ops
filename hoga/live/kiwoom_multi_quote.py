@@ -86,6 +86,37 @@ def _signed_int(raw: object) -> int | None:
         return None
 
 
+def _mwon_to_won(raw: object) -> int | None:
+    """누적거래대금(백만원) → 원. 단위 근거는 호출부 주석.
+
+    **0 을 None 으로 접는다** — 같은 값이 WS FID 14 로도 오는데 그쪽이 그렇게 접기
+    때문이다(`kiwoom_frames._parse_trade` 의 `if cum_value_m > 0`). 한 값이 두 경로로
+    오면 규약도 한 벌이어야 장중과 마감 후가 같은 뜻을 낸다.
+
+    같은 파일의 `_abs_int`(거래량·OHLC)는 0 을 그대로 통과시킨다 — 이 폴백보다 오래된
+    동작이고 소비처가 이미 0 을 접고 있어(프론트 `positive`) 여기서 바꾸지 않는다.
+    """
+    mwon = _abs_int(raw)
+    return mwon * 1_000_000 if mwon else None
+
+
+def _abs_ratio(raw: object) -> float | None:
+    """비율 필드(%, 소수 2자리) → 크기. 부호는 증감방향이라 버린다.
+
+    WS `kiwoom_frames._ratio` 의 미러다 — 같은 값을 두 경로로 받으므로 규약이
+    갈리면 장중(WS)과 마감 후(REST)에 **다른 숫자**가 뜬다. `0.0` 을 None 으로
+    접는 것까지 같다("미수신" 과 "진짜 0" 을 소비자가 구분하지 않아도 되게).
+    """
+    text = str(raw or "").strip().replace("+", "").replace("-", "")
+    if not text:
+        return None
+    try:
+        v = abs(float(text))
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
 def strip_venue_suffix(code: str) -> str:
     """`'005930_NX'` → `'005930'`. 응답이 접미를 에코하므로 필요하다."""
     for suffix in ("_NX", "_AL"):
@@ -110,6 +141,14 @@ def parse_row(row: dict[str, Any]) -> Quote | None:
         low=_abs_int(row.get("low_pric")),
         volume=_abs_int(row.get("trde_qty")),
         previous_close=_abs_int(row.get("base_pric")),
+        # **단위 흡수는 파서의 일이다** — 소비자가 키움 단위를 몰라도 되게(WS FID 14
+        # 가 세운 규율, `kiwoom_frames._parse_trade`). `trde_prica` 는 백만원이다:
+        # 실측 006360 2026-08-19 에 98,036 × 1e6 ÷ 2,837,598주 = 34,549원 으로 그날
+        # 저가 32,100 ~ 고가 35,900 안에 떨어진다(천원·원 가정은 각각 34.5원·0.03원
+        # 이라 기각). 지수 TR 의 동명 필드와도 같은 축이다(`market_overview`).
+        trade_value=_mwon_to_won(row.get("trde_prica")),
+        vs_prev_volume_pct=_abs_ratio(row.get("pred_trde_qty_pre")),
+        fill_strength_pct=_abs_ratio(row.get("cntr_str")),
     )
 
 

@@ -239,6 +239,91 @@ export function latestTradeSummary(trade: readonly RawSnapshot[]): LiveTradeSumm
   return out;
 }
 
+/** 이 폴백이 읽는 `LiveQuote` 의 부분집합. 전체 타입을 끌어오지 않는 이유는 그쪽이
+ *  react-query 훅 모듈이고, 어댑터는 조회 수단을 몰라야 하기 때문이다.
+ *
+ *  키 이름이 wire 그대로인 것은 의도다 — 미러 대조가 눈으로 되게. */
+export type QuoteTradeSummary = {
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  volume?: number | null;
+  trade_value?: number | null;
+  vs_prev_volume_pct?: number | null;
+  fill_strength_pct?: number | null;
+};
+
+/**
+ * 요약 키 → 시세 오버레이 키. **한 표가 폴백 대상의 정본이다.**
+ *
+ * 채우기와 "아무것도 안 채웠나" 판정을 **같은 표에서** 뽑는다. 손으로 쓴 비교식과
+ * 병행하면 필드를 늘릴 때 한쪽만 늘어나 조기 반환이 새 필드를 삼키는데, 그건 가장
+ * 흔한 설정에서만 무효라 기존 테스트가 전부 통과한다 — 표 하나면 원리적으로 없다.
+ *
+ * `prevClose` 는 **일부러 뺐다**: 이 패널은 전일종가를 `baselinePrice` prop 으로 따로
+ * 받고(커서 날짜를 따라간다), 요약의 그 칸은 어떤 소비처도 읽지 않는다.
+ */
+const QUOTE_SUMMARY_FALLBACK: readonly (readonly [
+  keyof LiveTradeSummary,
+  keyof QuoteTradeSummary,
+])[] = [
+  ['dayOpen', 'open'],
+  ['dayHigh', 'high'],
+  ['dayLow', 'low'],
+  ['cumVolume', 'volume'],
+  ['cumValue', 'trade_value'],
+  ['vsPrevVolumePct', 'vs_prev_volume_pct'],
+  ['fillStrengthPct', 'fill_strength_pct'],
+];
+
+/**
+ * 당일 요약을 시세 오버레이로 메운다 — `latestTradeSummary` 의 **결손 보충**이다.
+ *
+ * 위 함수의 유일한 출처인 WS `0B` 는 15:30 에 끊기고, 표시 링버퍼는 보존이 15분이다.
+ * 그래서 마감 후 **새로 연 탭**에서는 요약이 전 칸 대시가 된다(이미 열려 있던 탭은
+ * 화석을 계속 그린다 — 프론트 축출은 들어온 프레임 기준이라 멎으면 함께 멎는다).
+ * 사다리는 `LiveBuffer._last_ob` 사이드카가 디스크까지 살려 두므로, 결과는 "사다리는
+ * 멀쩡한데 요약만 빈" 반쪽 화면이다(사용자 보고 2026-08-31).
+ *
+ * **새 조회를 만들지 않는다.** `/api/live/quotes`(키움 `ka10095`)는 이 창이 등락률
+ * 분모로 이미 폴링하고 있고, 같은 응답에 일곱 칸이 전부 실려 온다.
+ *
+ * 왜 **필드별** 폴백인가: `latestTradeSummary` 자체가 키별로 독립해 "가장 최근에
+ * 관측된 값" 을 잡는 규약이다. 그 규약을 이어받으면 **시각 판정이 필요 없다** —
+ * 장중엔 `0B` 가 값을 들고 있어 폴백이 저절로 no-op 이고, 마감 후엔 저절로 발화한다.
+ * 시계로 갈랐다면 경계마다 두 출처가 다투는 자리를 새로 만들었을 것이다.
+ *
+ * ⚠ `positive` 를 통과시키는 것이 필수다. 벤더 파서(`kiwoom_multi_quote._abs_int`)는
+ * `"0"` 을 **0 으로 통과시킨다** — 첫 체결 전 종목이 그렇게 온다. 그대로 실으면
+ * 요약이 대시 대신 "0" 을 그리고, 사다리 칩 판정(`offLadderChip`)까지 0 을 가격으로
+ * 다룬다. "미제공" 과 "진짜 0" 을 여기서 갈라 놔야 그 아래가 전부 종전 규약이다.
+ *
+ * ⚠ 장전(pre_open)은 백엔드가 이 일곱 필드를 통째로 `None` 으로 지운다
+ * (`_to_live_quote`) — 어제 값이 오늘 아침 화면에 새는 경로가 원천에서 막혀 있어
+ * 여기서 날짜를 다시 재지 않는다.
+ *
+ * 아무것도 안 메웠으면 **입력을 그대로 돌려준다.** 리렌더 절감이 목적이 아니다 —
+ * 그 판단은 호출부 useMemo 가 이미 하고, 버퍼가 차 있으면 `latestTradeSummary` 가
+ * 어차피 매 호출 새 객체를 만든다. 목적은 **"폴백이 발화하지 않았다" 를 참조 동일성
+ * 으로 관측 가능하게** 두는 것이고, 빈 버퍼의 `EMPTY_TRADE_SUMMARY` 싱글턴이 이
+ * 함수를 지나도 싱글턴으로 남는다는 성질이 거기서 따라온다.
+ */
+export function fillTradeSummaryFromQuote(
+  summary: LiveTradeSummary,
+  quote: QuoteTradeSummary | null | undefined,
+): LiveTradeSummary {
+  if (quote == null) return summary;
+  let out: LiveTradeSummary | null = null;
+  for (const [key, wire] of QUOTE_SUMMARY_FALLBACK) {
+    if (summary[key] !== null) continue;
+    const v = positive(quote[wire]);
+    if (v === null) continue;
+    out ??= { ...summary };
+    out[key] = v;
+  }
+  return out ?? summary;
+}
+
 /**
  * ADR-0044 amendment (2026-06-11) — derive the bucket-representative orderbook
  * snapshot for `cursorMs` from the in-memory SSE buffer (`live.ob`), CLIENT-SIDE.

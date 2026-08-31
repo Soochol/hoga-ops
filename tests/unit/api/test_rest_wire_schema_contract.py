@@ -46,7 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
-from hoga.live.api import AfterHoursBookResponse
+from hoga.live.api import AfterHoursBookResponse, LiveQuote
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit
 from hoga.live.lifecycle import LiveStatus
@@ -140,6 +140,56 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
             f"added={sorted(added)} removed={sorted(removed)}. Update the matching "
             "frontend/src/api/*.ts mirror type, then update EXPECTED_REST_WIRE_FIELDS "
             "in this file in the same commit."
+        )
+
+
+#: 1층의 **두 번째 표** — ``hoga.api.models`` 밖에 사는 wire model 용이다.
+#:
+#: 위 표는 이름을 ``models`` 에서 찾으므로 다른 모듈의 모델을 담을 수 없었고, 그래서
+#: ``hoga/live/api.py`` 의 wire model 은 1층이 통째로 못 보는 사각지대였다. 여기는
+#: **클래스를 직접 키로 쓴다** — 이름 해석이 없으니 두 모듈에 같은 이름이 생겨도
+#: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
+#: 직접 import 하는 것과 같은 방식).
+EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
+    #
+    # 미러에는 ``expected_price``·``expected_qty``·``expected_change_pct`` 가 더 있는데
+    # 백엔드엔 대응 필드가 없다 — WS ob 프레임에서 프론트가 채우는 표시 전용 값이라
+    # 이 스냅샷의 대상이 아니다(``RangeBundle.investorPoints`` 와 같은 사유).
+    LiveQuote: frozenset(
+        {
+            "code",
+            "price",
+            "change_pct",
+            "change_won",
+            "open",
+            "high",
+            "low",
+            "volume",
+            "trade_value",
+            "vs_prev_volume_pct",
+            "fill_strength_pct",
+            "baseline_price",
+            "baseline_date",
+            "change_pct_source",
+            "warnings",
+            "stale",
+            "stale_reason",
+        }
+    ),
+}
+
+
+def test_live_wire_models_match_frontend_mirror_snapshot() -> None:
+    for cls, expected in EXPECTED_LIVE_WIRE_FIELDS.items():
+        actual = frozenset(cls.model_fields.keys())
+        added = actual - expected
+        removed = expected - actual
+        assert actual == expected, (
+            f"{cls.__name__} live wire fields drifted from the frontend mirror "
+            f"snapshot. added={sorted(added)} removed={sorted(removed)}. Update the "
+            "matching frontend/src/api/*.ts mirror type, then update "
+            "EXPECTED_LIVE_WIRE_FIELDS in this file in the same commit."
         )
 
 

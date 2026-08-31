@@ -35,14 +35,16 @@ vi.mock('./SectorRankingWindow', () => ({
 // 다만 형성 중 봉 힌트는 **버퍼가 답해야** 성립하는 상태라(파케이 미승격 →
 // orderbookSnapshotAtCursor 폴백) 그 describe 만 `ob` 를 채운다. `vi.mock` factory 는
 // hoisting 되어 외부 변수를 직접 참조하면 초기화 전 접근이 되므로 `vi.hoisted` 로 뺀다.
-const liveSeriesBuffers = vi.hoisted(() => ({ ob: [] as unknown[], afterHours: [] as unknown[] }));
+const liveSeriesBuffers = vi.hoisted(
+  () => ({ ob: [] as unknown[], trade: [] as unknown[], afterHours: [] as unknown[] }),
+);
 vi.mock('../../api/liveSeries', () => ({
   useLiveSeries: () => ({
     initial: undefined,
     isLoading: false,
     error: null,
     ob: liveSeriesBuffers.ob,
-    trade: [],
+    trade: liveSeriesBuffers.trade,
     broker: [],
     program: [],
     // ⚠ 이 mock 은 `LiveSeriesData` 로 타입되지 않는다 — 키를 빠뜨려도 tsc 가 못 잡고,
@@ -99,6 +101,7 @@ vi.mock('./BookPanel', () => ({
     vi: viEvent,
     stale,
     snapshot,
+    summary,
     afterHoursTotals,
     sessionControl,
     sessionMode,
@@ -110,6 +113,11 @@ vi.mock('./BookPanel', () => ({
     vi: unknown;
     stale?: boolean;
     snapshot: { ts_ms: number } | null | undefined;
+    summary: {
+      dayOpen: number | null; dayHigh: number | null; dayLow: number | null;
+      cumVolume: number | null; cumValue: number | null;
+      vsPrevVolumePct: number | null; fillStrengthPct: number | null;
+    };
     afterHoursTotals?: { ask: number; bid: number } | null;
     sessionControl?: { kind: string; afterHoursLabel?: string; regularLabel?: string };
     sessionMode?: string;
@@ -126,6 +134,17 @@ vi.mock('./BookPanel', () => ({
       <div>
         snapshot:
         {snapshot === undefined ? 'undefined' : snapshot === null ? 'null' : String(snapshot.ts_ms)}
+      </div>
+      {/* 시·고·저 폴백의 관측점. 세 값을 **한 노드**에 합치는 이유: 단언 하나가 셋을
+          함께 못박아 "둘만 메워졌다" 도 실패로 잡힌다. */}
+      <div>
+        ohlc:{String(summary.dayOpen)}/{String(summary.dayHigh)}/{String(summary.dayLow)}
+      </div>
+      {/* 누적 요약 4종의 관측점. `ohlc:` 를 넓히지 않고 **새 노드**로 둔다 — 1단계
+          단언들이 그 문자열을 정확 매칭하므로 합치면 전부 깨진다. */}
+      <div>
+        acc:{String(summary.cumVolume)}/{String(summary.cumValue)}/
+        {String(summary.vsPrevVolumePct)}/{String(summary.fillStrengthPct)}
       </div>
       <div>
         session:{sessionControl?.kind ?? 'none'}/{sessionMode ?? 'regular'}
@@ -1152,5 +1171,107 @@ describe('DataWindow 시간외 저장본 (Phase B)', () => {
     afterHoursBookResult.data = { ...storedResponse(), source: 'kiwoom' as const };
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('ahLabel:시간외 단일가')).toBeInTheDocument();
+  });
+});
+
+describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤를 받친다', () => {
+  const symbol = { code: '005930', name: '삼성전자' };
+  /** 실측 폴백값(2026-08-31 214450 을 005930 자리로 옮긴 형태) — ka10095 의 당일 OHLC. */
+  const Q_OPEN = 458500;
+  const Q_HIGH = 462500;
+  const Q_LOW = 424500;
+  /** 누적 4종 — 거래대금은 **원**(백엔드가 벤더 백만원을 흡수한 뒤의 축). */
+  const Q_VOL = 1_234_567;
+  const Q_VALUE = 98_036_000_000;
+  const Q_VS_PREV = 162.95;
+  const Q_FILL = 123.72;
+
+  function setQuote(overrides: Partial<LiveQuote> = {}) {
+    const quote: LiveQuote = {
+      code: symbol.code,
+      price: 426000,
+      change_pct: -7.69,
+      change_won: -35500,
+      open: Q_OPEN,
+      high: Q_HIGH,
+      low: Q_LOW,
+      volume: Q_VOL,
+      trade_value: Q_VALUE,
+      vs_prev_volume_pct: Q_VS_PREV,
+      fill_strength_pct: Q_FILL,
+      baseline_price: 461500,
+      ...overrides,
+    };
+    vi.mocked(useQuoteByCode).mockReturnValue(new Map([[symbol.code, quote]]));
+  }
+
+  beforeEach(() => {
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    // 마감 후 상태 그 자체 — 백엔드 `/api/live/series` 가 `trades: []` 를 준다.
+    liveSeriesBuffers.trade = [];
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
+    vi.mocked(useLiveStockLimits).mockReturnValue({ data: undefined } as never);
+    vi.mocked(useLiveViStatus).mockReturnValue({ data: undefined } as never);
+    vi.mocked(useScreenerDailyCandles).mockReturnValue({ data: undefined } as never);
+    setQuote();
+  });
+
+  afterEach(() => {
+    liveSeriesBuffers.trade = [];
+  });
+
+  it('0B 버퍼가 비어도 시·고·저를 그린다 (사용자 보고 2026-08-31)', () => {
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`ohlc:${Q_OPEN}/${Q_HIGH}/${Q_LOW}`)).toBeInTheDocument();
+  });
+
+  it('0B 버퍼가 비어도 거래량·거래대금·어제보다·체결강도를 그린다', () => {
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(
+      screen.getByText(`acc:${Q_VOL}/${Q_VALUE}/${Q_VS_PREV}/${Q_FILL}`),
+    ).toBeInTheDocument();
+  });
+
+  it('0B 가 값을 들고 있으면 그쪽이 이긴다 — 폴백은 결손일 때만', () => {
+    // 장중 규약: 실시간 체결이 흐르는 동안 10분 폴링 시세가 그것을 덮으면 안 된다.
+    liveSeriesBuffers.trade = [
+      { t_ms: 1, day_open: 250_000, day_high: 251_000, day_low: 249_000 },
+    ];
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('ohlc:250000/251000/249000')).toBeInTheDocument();
+  });
+
+  it('필드별로 메운다 — 0B 에 고가만 있으면 시·저만 시세에서 온다', () => {
+    liveSeriesBuffers.trade = [{ t_ms: 1, day_high: 470_000 }];
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText(`ohlc:${Q_OPEN}/470000/${Q_LOW}`)).toBeInTheDocument();
+  });
+
+  it('누적 4종도 0B 가 이긴다 — 폴백은 결손일 때만', () => {
+    liveSeriesBuffers.trade = [
+      { t_ms: 1, cum_volume: 500, cum_value: 700, vs_prev_volume_pct: 80, fill_strength_pct: 90 },
+    ];
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('acc:500/700/80/90')).toBeInTheDocument();
+  });
+
+  it('스팟 커서에서는 폴백도 하지 않는다 — quote 는 "지금" 값이다', () => {
+    // 요약을 비우는 규약의 요점은 **시점 일치**다. 사다리가 과거인데 시·고·저만
+    // 현재면, 폴백이 그 규약을 뒷문으로 되돌린다.
+    publishGroupChartLink(chartLink({ todayKst: '20260720' }));
+    useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 6, 20, 2, 0), {
+      windowId: 'cw1', group: 1, code: symbol.code, timeframe: '1m',
+    });
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('ohlc:null/null/null')).toBeInTheDocument();
+    expect(screen.getByText('acc:null/null/null/null')).toBeInTheDocument();
+  });
+
+  it('시세가 아직 없으면 종전대로 대시 — 폴백이 0 을 지어내지 않는다', () => {
+    vi.mocked(useQuoteByCode).mockReturnValue(new Map());
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('ohlc:null/null/null')).toBeInTheDocument();
+    expect(screen.getByText('acc:null/null/null/null')).toBeInTheDocument();
   });
 });

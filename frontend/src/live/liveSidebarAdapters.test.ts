@@ -7,6 +7,8 @@ import {
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
   latestTradeSummary,
+  fillTradeSummaryFromQuote,
+  EMPTY_TRADE_SUMMARY,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -304,6 +306,82 @@ describe('latestTradeSummary', () => {
     expect(s.cumValue).toBeNull();
     expect(s.fillStrengthPct).toBeNull();
     expect(s.dayLow).toBe(240_000);
+  });
+});
+
+describe('fillTradeSummaryFromQuote', () => {
+  const empty = { ...EMPTY_TRADE_SUMMARY };
+  /** 실캡처 ka10095 (006360, 2026-08-19 16:28) — 단위·의미가 여기서 못박힌다. */
+  const QUOTE = {
+    open: 33_050, high: 35_900, low: 32_100,
+    volume: 2_837_598,
+    trade_value: 98_036_000_000,   // 벤더 98,036 백만원 → 백엔드가 원으로 정규화
+    vs_prev_volume_pct: 162.95,    // 오늘/어제 **비율** (증감률이면 62.95)
+    fill_strength_pct: 123.72,
+  };
+
+  it('0B 가 비면 일곱 칸을 전부 시세 오버레이로 메운다', () => {
+    const s = fillTradeSummaryFromQuote(empty, QUOTE);
+    expect(s).toEqual({
+      ...EMPTY_TRADE_SUMMARY,
+      dayOpen: 33_050, dayHigh: 35_900, dayLow: 32_100,
+      cumVolume: 2_837_598, cumValue: 98_036_000_000,
+      vsPrevVolumePct: 162.95, fillStrengthPct: 123.72,
+    });
+  });
+
+  it('거래대금은 원 단위로 받는다 — 패널이 억/조로 절사하는 축', () => {
+    // 백만원이 그대로 오면 화면이 980억 대신 "0원" 으로 뜬다(fmtAmountKo 는 1e8 로
+    // 나눈다). 단위 흡수는 백엔드 파서의 일이고, 이 단언이 그 계약의 프론트 쪽 끝이다.
+    const s = fillTradeSummaryFromQuote(empty, QUOTE);
+    expect(s.cumValue).toBe(98_036_000_000);
+    expect(Math.floor((s.cumValue ?? 0) / 100_000_000)).toBe(980);
+  });
+
+  it('0B 값이 있으면 그쪽이 이긴다 — 폴백은 결손일 때만', () => {
+    const ws = {
+      ...empty,
+      dayOpen: 250_000, dayHigh: 251_000, dayLow: 249_000,
+      cumVolume: 1, cumValue: 2, vsPrevVolumePct: 3, fillStrengthPct: 4,
+    };
+    const s = fillTradeSummaryFromQuote(ws, QUOTE);
+    expect(s).toBe(ws);
+  });
+
+  it('필드별로 독립이다 — 0B 에 고가·체결강도만 있으면 나머지 다섯만 메운다', () => {
+    const s = fillTradeSummaryFromQuote({ ...empty, dayHigh: 470_000, fillStrengthPct: 99 }, QUOTE);
+    expect([s.dayHigh, s.fillStrengthPct]).toEqual([470_000, 99]);
+    expect([s.dayOpen, s.dayLow, s.cumVolume, s.cumValue, s.vsPrevVolumePct]).toEqual([
+      33_050, 32_100, 2_837_598, 98_036_000_000, 162.95,
+    ]);
+  });
+
+  it('⚠ 시세의 0 을 값으로 싣지 않는다 — 벤더 파서가 "0" 을 통과시킨다', () => {
+    // `kiwoom_multi_quote._abs_int` 는 0 을 걸러 주지 않으므로 첫 체결 전 종목이
+    // 0 으로 온다. 그대로 실으면 대시 자리에 "0" 이 뜨고 사다리 칩 판정까지 0 을
+    // 가격으로 다룬다 — 여기가 "미제공" 과 "진짜 0" 을 가르는 유일한 지점이다.
+    const s = fillTradeSummaryFromQuote(empty, {
+      open: 0, high: 0, low: 0, volume: 0,
+      trade_value: 0, vs_prev_volume_pct: 0, fill_strength_pct: 0,
+    });
+    expect(s).toBe(empty);
+  });
+
+  it('시세가 없으면(undefined·null) 그대로 돌려준다', () => {
+    expect(fillTradeSummaryFromQuote(empty, undefined)).toBe(empty);
+    expect(fillTradeSummaryFromQuote(empty, null)).toBe(empty);
+  });
+
+  it('구 응답(요약 4종 없음)에서도 시·고·저는 메운다', () => {
+    // 미러가 전부 optional 인 이유 — 백엔드가 아직 안 실어 보내도 죽지 않는다.
+    const s = fillTradeSummaryFromQuote(empty, { open: 33_050, high: 35_900, low: 32_100 });
+    expect([s.dayOpen, s.dayHigh, s.dayLow]).toEqual([33_050, 35_900, 32_100]);
+    expect([s.cumVolume, s.cumValue, s.fillStrengthPct]).toEqual([null, null, null]);
+  });
+
+  it('prevClose 는 폴백 대상이 아니다 — 패널이 기준가를 따로 받는다', () => {
+    // 그 칸을 읽는 소비처가 없고, 등락률 분모는 커서 날짜를 따라가는 별도 경로다.
+    expect(fillTradeSummaryFromQuote(empty, QUOTE).prevClose).toBeNull();
   });
 });
 
