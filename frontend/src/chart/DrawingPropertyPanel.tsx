@@ -661,7 +661,10 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
                 .update(scope, id, { extendRight: !extendedRight } as Partial<Drawing>)
             }
             className={
-              'h-7 w-7 inline-flex items-center justify-center rounded text-sm leading-none' +
+              // 크기 토큰을 **안 건다** — 상속(자물쇠·휴지통과 같은 13px)이다. `text-sm`
+              // (11.5px)로 두면 획이 얇은 화살표가 옆의 이모지보다 눈에 띄게 작아
+              // 같은 줄에서 무게가 어긋난다(실측). 임의값 px 는 밀도 다이얼을 이탈한다.
+              'h-7 w-7 inline-flex items-center justify-center rounded leading-none' +
               (locked ? controlDisabled : extendedRight ? ' bg-tint-selection text-accent' : controlDisabled)
             }
           >
@@ -680,7 +683,7 @@ export default function DrawingPropertyPanel({ scope, resolveVisibleRightRealMs 
             }
             onClick={extendToView}
             className={
-              'h-7 w-7 inline-flex items-center justify-center rounded text-sm leading-none' +
+              'h-7 w-7 inline-flex items-center justify-center rounded leading-none' +
               (extendToViewDisabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
             }
           >
