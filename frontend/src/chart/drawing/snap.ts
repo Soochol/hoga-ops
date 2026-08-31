@@ -23,6 +23,35 @@ export type SnapCandle = {
  *  aim (10px felt like it wasn't working). */
 export const SNAP_PX = 16;
 
+/**
+ * True when `realMs` lies inside the loaded candles' time span — the only
+ * region where "the nearest candle" is a MEANINGFUL magnet target.
+ *
+ * Outside it, `nearestCandleIndex` degenerates: every X in the empty band right
+ * of the last candle resolves to that SAME last candle, so an unconditional
+ * time snap stops being a magnet and becomes a hard CLAMP. Measured on /live
+ * (005930, 1m, magnet on, last candle at x=467): a text placed at x=600 was
+ * stored on the last candle's timestamp, and a trendline dragged 80px
+ * horizontally came out with both endpoints on one realMs — a vertical line.
+ * Same root for the body drag: `curRealMs` never left the last candle, so
+ * `dBar` collapsed to 0 and the drawing froze the moment it entered the band.
+ *
+ * The band is a supported place to draw (see FutureBand in chartCoordinates),
+ * and the realMs it hands back is already on the extrapolated bar grid
+ * (`lastRealMs + N × bucketMs`, N a whole number of columns) — so passing it
+ * through unsnapped keeps the column alignment magnet exists to give, without
+ * the clamp.
+ *
+ * Only the TIME snap is gated. The price snap keeps running off the nearest
+ * candle's O/H/L/C because it already has a pixel threshold (`SNAP_PX`) to opt
+ * into by aim, and hovering in the band to place an hline on the last close is
+ * a real workflow.
+ */
+function withinCandleSpan(candles: readonly SnapCandle[], realMs: number): boolean {
+  if (candles.length === 0) return false;
+  return realMs >= candles[0].ts_ms && realMs <= candles[candles.length - 1].ts_ms;
+}
+
 /** Index of the candle whose ts_ms is nearest `realMs` (binary search on a
  *  time-sorted array). Returns -1 for an empty array. */
 export function nearestCandleIndex(candles: readonly SnapCandle[], realMs: number): number {
@@ -41,17 +70,23 @@ export function nearestCandleIndex(candles: readonly SnapCandle[], realMs: numbe
   return lo;
 }
 
-/** Snap a realMs to the nearest candle's timestamp. No-op on empty candles. */
+/** Snap a realMs to the nearest candle's timestamp. No-op on empty candles, and
+ *  outside the loaded span — where the "nearest" candle is an edge, not a
+ *  target (see `withinCandleSpan`). */
 export function snapRealMs(candles: readonly SnapCandle[], realMs: number): number {
+  if (!withinCandleSpan(candles, realMs)) return realMs;
   const i = nearestCandleIndex(candles, realMs);
   return i < 0 ? realMs : candles[i].ts_ms;
 }
 
 /**
  * Snap a raw (realMs, price) Point produced by pixelToData. Time snaps to the
- * nearest candle always; on the candle pane the price snaps to the nearest
- * O/H/L/C of that candle if a candidate is within `pxThreshold` pixels of the
- * raw price (measured via the injected `priceToY`). Other panes snap X only.
+ * nearest candle whenever the raw time is INSIDE the loaded span (see
+ * `withinCandleSpan` — in the empty band right of the last candle it passes
+ * through, so a drawing can actually be placed and dragged out there); on the
+ * candle pane the price snaps to the nearest O/H/L/C of that candle if a
+ * candidate is within `pxThreshold` pixels of the raw price (measured via the
+ * injected `priceToY`). Other panes snap X only.
  */
 export function snapPoint(
   raw: Point,
@@ -67,7 +102,7 @@ export function snapPoint(
   const i = nearestCandleIndex(candles, raw.realMs);
   if (i < 0) return raw;
   const candle = candles[i];
-  const snappedMs = candle.ts_ms;
+  const snappedMs = withinCandleSpan(candles, raw.realMs) ? candle.ts_ms : raw.realMs;
   if (paneId !== 'candle') return { realMs: snappedMs, price: raw.price };
   const rawY = priceToY(raw.price);
   if (rawY == null) return { realMs: snappedMs, price: raw.price };
