@@ -811,3 +811,131 @@ describe('DrawingPropertyPanel — 정렬·분배', () => {
     ).toEqual([0, 45_000, 90_000]);
   });
 });
+
+// ─── 다중 선택 — 사각형 우측 확장 ──────────────────────────────────────────
+//
+// 단일 패널의 두 버튼(`→` 무한 확장 토글 · `⇥` 보이는 영역까지)을 집합에도 준다.
+// 표시 규칙은 다른 사각형 전용 컨트롤과 같다 — **사각형이 하나라도 있으면 뜨고,
+// 적용은 사각형에만** 간다.
+describe('DrawingPropertyPanel — 다중 우측 확장', () => {
+  const SCOPE = '005930|minute';
+  const s = () => useDrawingsStore.getState();
+  const RIGHT_MS = 9_000_000;
+
+  const rect = (id: string, a: number, b: number, over: Record<string, unknown> = {}): Drawing =>
+    ({
+      id, kind: 'rect',
+      a: { realMs: a, price: 100 }, b: { realMs: b, price: 200 },
+      color: '#14B8A6', width: 2, lineStyle: 'solid', fillOpacity: 0.1, paneId: 'candle', ...over,
+    }) as Drawing;
+  const hline = (id: string): Drawing => ({ ...HLINE, id });
+
+  const seed = (items: Drawing[], withCoords = true) => {
+    s().__resetForTests();
+    s().setActiveScope(SCOPE);
+    items.forEach((d) => s().add(SCOPE, d));
+    s().addToSelection(SCOPE, items.map((d) => d.id));
+    render(
+      <DrawingPropertyPanel
+        scope={SCOPE}
+        resolveVisibleRightRealMs={withCoords ? () => RIGHT_MS : undefined}
+      />,
+    );
+    // ⚠ 단일 패널이 **같은 testid** 를 쓴다. 멤버가 하나면 다중 툴바가 아예 렌더되지
+    // 않는데 버튼은 그대로 잡혀서, 테스트가 조용히 단일 패널을 재게 된다(실제로 세
+    // 케이스가 그랬고 red-check 이 통과해 버렸다). 여기서 표면을 못박는다.
+    expect(screen.getByTestId('drawing-multi-selection-panel')).toBeTruthy();
+  };
+  const get = (id: string) => s().drawingsFor(SCOPE).find((d) => d.id === id)! as Drawing & {
+    a?: { realMs: number }; b?: { realMs: number }; extendRight?: boolean;
+  };
+
+  it('사각형이 없으면 버튼이 아예 없다', () => {
+    seed([hline('h1'), hline('h2')]);
+    expect(screen.queryByTestId('drawing-extend-right')).toBeNull();
+    expect(screen.queryByTestId('drawing-extend-to-view')).toBeNull();
+  });
+
+  it('사각형이 섞여 있으면 뜬다 — 다른 사각형 전용 컨트롤과 같은 규칙', () => {
+    seed([hline('h1'), rect('r1', 0, 1_000)]);
+    expect(screen.getByTestId('drawing-extend-right')).toBeTruthy();
+  });
+
+  it('무한 확장 토글은 사각형에만 간다 — hline 에 유령 필드를 남기지 않는다', () => {
+    seed([hline('h1'), rect('r1', 0, 1_000), rect('r2', 2_000, 3_000)]);
+    fireEvent.click(screen.getByTestId('drawing-extend-right'));
+    expect(get('r1').extendRight).toBe(true);
+    expect(get('r2').extendRight).toBe(true);
+    expect(get('h1')).not.toHaveProperty('extendRight');
+  });
+
+  it('전부 켜져 있으면 토글이 해제 방향이고, 한 번에 다 풀린다', () => {
+    seed([rect('r1', 0, 1_000, { extendRight: true }), rect('r2', 2_000, 3_000, { extendRight: true })]);
+    const btn = screen.getByTestId('drawing-extend-right');
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(btn);
+    expect(get('r1').extendRight).toBe(false);
+    expect(get('r2').extendRight).toBe(false);
+  });
+
+  it('일부만 켜져 있으면 "켜기" 방향이다 — 잠금 토글과 같은 규칙', () => {
+    seed([rect('r1', 0, 1_000, { extendRight: true }), rect('r2', 2_000, 3_000)]);
+    expect(screen.getByTestId('drawing-extend-right').getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByTestId('drawing-extend-right'));
+    expect(get('r2').extendRight).toBe(true);
+  });
+
+  it('토글은 되돌리기 한 단계다', () => {
+    seed([rect('r1', 0, 1_000), rect('r2', 2_000, 3_000)]);
+    fireEvent.click(screen.getByTestId('drawing-extend-right'));
+    act(() => {
+      s().undo(SCOPE);
+    });
+    expect(get('r1').extendRight).toBeUndefined();
+    expect(get('r2').extendRight).toBeUndefined();
+  });
+
+  it('보이는 영역까지 — 각 사각형의 오른쪽 변이 같은 끝에 맞는다', () => {
+    seed([rect('r1', 0, 1_000), rect('r2', 2_000, 3_000)]);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    expect(get('r1').b!.realMs).toBe(RIGHT_MS);
+    expect(get('r2').b!.realMs).toBe(RIGHT_MS);
+  });
+
+  // ⚠ 핸들을 가로질러 끌면 `a` 가 `b` 의 오른쪽에 놓인다. `b` 를 고정으로 삼으면
+  // 그 사각형은 왼쪽 변이 끌려가 뒤집힌다 — 단일 패널이 이미 겪은 함정이다.
+  it('뒤집힌 사각형은 진짜 오른쪽 코너가 늘어난다', () => {
+    seed([rect('crossed', 5_000, 1_000), rect('other', 0, 1_000)]); // crossed 는 a 가 오른쪽
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    expect(get('crossed').a!.realMs).toBe(RIGHT_MS);
+    expect(get('crossed').b!.realMs).toBe(1_000); // 왼쪽 변은 그대로
+  });
+
+  // `updateMany` 의 잠금 해제 예외는 키가 `locked` 뿐인 패치에만 열린다 — 좌표 패치는
+  // 그 예외를 타지 않으므로 잠긴 사각형은 폭을 지킨다.
+  it('잠긴 사각형은 폭이 그대로다', () => {
+    seed([rect('r1', 0, 1_000), rect('lk', 2_000, 3_000, { locked: true })]);
+    fireEvent.click(screen.getByTestId('drawing-extend-to-view'));
+    expect(get('r1').b!.realMs).toBe(RIGHT_MS);
+    expect(get('lk').b!.realMs).toBe(3_000);
+  });
+
+  it('전부 무한 확장 중이면 "보이는 영역까지" 가 비활성된다', () => {
+    seed([
+      rect('r1', 0, 1_000, { extendRight: true }),
+      rect('r2', 2_000, 3_000, { extendRight: true }),
+    ]);
+    expect(screen.getByTestId('drawing-extend-to-view')).toBeDisabled();
+  });
+
+  it('전부 잠겼으면 토글도 비활성된다', () => {
+    seed([rect('r1', 0, 1_000, { locked: true }), rect('r2', 2_000, 3_000, { locked: true })]);
+    expect(screen.getByTestId('drawing-extend-right')).toBeDisabled();
+  });
+
+  it('좌표를 못 얻으면 "보이는 영역까지" 가 비활성된다', () => {
+    seed([rect('r1', 0, 1_000), rect('r2', 2_000, 3_000)], false);
+    expect(screen.getByTestId('drawing-extend-to-view')).toBeDisabled();
+    expect(screen.getByTestId('drawing-extend-right')).not.toBeDisabled();
+  });
+});
