@@ -42,6 +42,7 @@ import {
 } from './types';
 import {
   translateDrawing, clampDPriceForDrawing, clampDBarForDrawing, planGroupTranslate,
+  type GroupTranslateCoords,
 } from './translate';
 import { marqueeRect, type MarqueeRect } from './hitTest';
 import { constrainAngle } from './snap';
@@ -50,6 +51,7 @@ import {
   anchorsOf,
   pointAnchors,
   type AlignGuide,
+  type Anchors,
   type RawAlignGuide,
   type SnapBox,
 } from './alignSnap';
@@ -198,20 +200,33 @@ export type DragMode =
   //
   // ⚠ 단건 `body` 와 달리 여기는 **프레임 간 누적**이다(lastRealMs/lastPy 를 매
   // 프레임 커서로 옮긴다). 그 방식이 성립하는 이유는 하나뿐이다 — **그룹 이동은
-  // 정렬 스냅을 쓰지 않는다.** `body` 가 절대 앵커링으로 옮겨 간 사유(스냅 보정이
-  // 누적기에 들어가면, 스냅이 풀린 뒤에도 도형이 그만큼 커서에서 영구히 어긋난다)
-  // 가 여기엔 아직 해당하지 않는다.
-  //
-  // 그러므로 **그룹 이동에 정렬 스냅을 붙이려면 먼저 절대 앵커링으로 옮겨야 한다.**
-  // 순서를 바꾸면 그 버그가 그대로 되살아난다.
+  // 이제 **단일 드래그와 같은 절대 앵커링**이고, 정렬 스냅도 함께 쓴다.
+  // 그 전환이 선행 조건이었다 — 스냅 보정이 누적기에 들어가면 스냅이 풀린 뒤에도
+  // 그룹이 그만큼 커서에서 영구히 어긋난다. 순서를 바꿨다면 그 버그가 그대로
+  // 되살아났을 것이다.
   | {
       kind: 'body-multi';
-      ids: readonly string[];
-      lastRealMs: number | null;
-      /** Vertical anchor in PIXELS, not price — the members may live on panes
-       *  with different price scales, so a price delta is not shareable. */
-      lastPy: number;
-      /** Press point, for the click-vs-drag slop test. */
+      /**
+       * The members as they were when the drag STARTED — the group's anchor,
+       * same role `origin` plays for a single body drag and for the same
+       * reason: alignment snapping adds a correction to the delta, and under
+       * frame-to-frame accumulation that correction feeds back into the anchor,
+       * so the group stays permanently offset from the cursor once it unsnaps.
+       *
+       * Holding the drawings themselves (not ids) also frees the move path from
+       * re-filtering `ctx.drawings` every frame, and pins the SET: a member
+       * deleted mid-drag simply stops receiving patches instead of silently
+       * changing what "the group" means.
+       */
+      origins: readonly Drawing[];
+      /** Cursor bar ordinal at grab time, or null when the grab began in the
+       *  empty right band. Adopted from the first resolvable sample. */
+      startBar: number | null;
+      /** Most recent resolvable cursor bar — freezes X in the empty band. */
+      lastBar: number | null;
+      /** Press point, for the click-vs-drag slop test AND the vertical anchor.
+       *  Vertical travels in PIXELS, not price: members may live on panes with
+       *  different price scales, so a price delta is not shareable. */
       startPx: number;
       startPy: number;
       /** Which member was pressed. On a click (slop never crossed) the set
@@ -485,11 +500,15 @@ function hitRectCorner(
  * Off-screen candidates need no filter — they fail the kernel's pixel
  * threshold on their own, and one that is merely unprojectable comes back as
  * a null pixel and is skipped there too.
+ *
+ * `exclude` is a SET, not one id, because a group drag has to remove every
+ * member: leave one in and the group aligns to its own moving part, which is
+ * the multi-selection version of a shape snapping to where it used to be.
  */
-function alignTargets(ctx: ToolCtx, paneId: PaneId, excludeId?: string): SnapBox[] {
+function alignTargets(ctx: ToolCtx, paneId: PaneId, exclude?: ReadonlySet<string>): SnapBox[] {
   const out: SnapBox[] = [];
   for (const d of ctx.drawings) {
-    if (d.kind !== 'rect' || d.paneId !== paneId || d.id === excludeId) continue;
+    if (d.kind !== 'rect' || d.paneId !== paneId || exclude?.has(d.id)) continue;
     out.push({
       id: d.id,
       x: anchorsOf(ctx.dragBars.toBar(d.a.realMs), ctx.dragBars.toBar(d.b.realMs)),
@@ -540,7 +559,7 @@ function snapPointToRects(
   opts: { excludeId?: string; snapX?: boolean } = {},
 ): { point: Point; guides: AlignGuide[] } {
   if (!ctx.alignSnapEnabled) return { point: p, guides: [] };
-  const targets = alignTargets(ctx, paneId, opts.excludeId);
+  const targets = alignTargets(ctx, paneId, opts.excludeId ? new Set([opts.excludeId]) : undefined);
   if (targets.length === 0) return { point: p, guides: [] };
   const bar = ctx.dragBars.toBar(p.realMs);
   const snapped = alignSnapBox({ x: pointAnchors(bar), y: pointAnchors(p.price) }, targets, {
@@ -557,6 +576,120 @@ function snapPointToRects(
     },
     guides: toPaneGuides(ctx, paneId, snapped.guides),
   };
+}
+
+/** Plan entries keyed by drawing id, for reading a planned position back. */
+type GroupPlan = ReturnType<typeof planGroupTranslate>;
+
+/**
+ * Bounding box of the group's RECTANGLES after a plan is applied, in the
+ * kernel's domains (bar ordinals for x, prices for y).
+ *
+ * Read from the PLAN's patches rather than recomputed from the originals plus
+ * a delta: the vertical delta enters `planGroupTranslate` as PIXELS and is
+ * converted per member against that member's own reference price, so the plan's
+ * output is the only place the resulting prices actually exist.
+ *
+ * Rectangles only — they are what alignment is defined on. A group may also
+ * hold lines and labels; they ride along on whatever the rectangles decide.
+ */
+function groupRectBox(
+  rects: readonly Rect[],
+  plan: GroupPlan,
+  toBar: (realMs: number) => number,
+): { x: Anchors; y: Anchors } | null {
+  const byId = new Map(plan.map((e) => [e.id, e.patch as Partial<Rect>]));
+  let xLo = Infinity, xHi = -Infinity, yLo = Infinity, yHi = -Infinity;
+  for (const r of rects) {
+    const patch = byId.get(r.id);
+    const a = patch?.a ?? r.a;
+    const b = patch?.b ?? r.b;
+    for (const bar of [toBar(a.realMs), toBar(b.realMs)]) {
+      xLo = Math.min(xLo, bar); xHi = Math.max(xHi, bar);
+    }
+    for (const price of [a.price, b.price]) {
+      yLo = Math.min(yLo, price); yHi = Math.max(yHi, price);
+    }
+  }
+  if (!Number.isFinite(xLo) || !Number.isFinite(yLo)) return null;
+  return { x: anchorsOf(xLo, xHi), y: anchorsOf(yLo, yHi) };
+}
+
+/** Agreement tolerance in canvas px when checking whether the clamps let a
+ *  group snap through intact. Sub-pixel, because the question is "did the plan
+ *  land where the magnet asked", not "is it close enough to look right". */
+const GROUP_SNAP_EPS_PX = 0.5;
+
+/**
+ * Alignment snapping for a GROUP body drag: the selection's rectangle bounding
+ * box grabs its neighbours' edges, and every member moves with it.
+ *
+ * Two passes, because the vertical delta is denominated in pixels and the
+ * clamps are computed for the whole set: the only way to know where the group
+ * WOULD land is to plan it. So pass 1 plans without the magnet, the box that
+ * produces is what gets matched against the neighbours, and pass 2 re-plans
+ * with the correction folded into the same raw deltas.
+ *
+ * Then the result is CHECKED before it is accepted. A group clamp can trim the
+ * correction (a member hitting its pane's edge caps the whole set), and a
+ * trimmed snap is the one outcome worse than none: the guide line claims the
+ * edges are flush while the group sits a few pixels off. If pass 2 did not land
+ * where the magnet asked, pass 1 stands and no guide is drawn.
+ *
+ * Snapping needs every rectangle on ONE pane. The candidate list is per-pane
+ * (prices are only comparable within a scale), so a selection straddling panes
+ * has no single place to take its references from — and unlike the single-shape
+ * path there is no obvious pane to prefer. Such a group drags unsnapped.
+ */
+function groupAlignSnap(
+  ctx: ToolCtx,
+  members: readonly Drawing[],
+  plan0: GroupPlan,
+  dBarRaw: number,
+  dyPxRaw: number,
+  coords: GroupTranslateCoords,
+): { plan: GroupPlan; guides: AlignGuide[] } {
+  const none = { plan: plan0, guides: [] as AlignGuide[] };
+  if (!ctx.alignSnapEnabled) return none;
+  const rects = members.filter((m): m is Rect => m.kind === 'rect');
+  if (rects.length === 0) return none;
+  const paneId = rects[0].paneId;
+  if (rects.some((r) => r.paneId !== paneId)) return none;
+
+  const box = groupRectBox(rects, plan0, coords.toBar);
+  if (box == null) return none;
+  // Every member leaves the candidate list, not just the rectangles: an id that
+  // stayed in would let the group align to a piece of itself.
+  const targets = alignTargets(ctx, paneId, new Set(members.map((m) => m.id)));
+  if (targets.length === 0) return none;
+
+  const xToPx = (bar: number) => ctx.realMsToCanvasX(coords.toReal(bar));
+  const yToPx = (price: number) => ctx.priceToCanvasY(price, paneId);
+  const snap = alignSnapBox(box, targets, { xToPx, yToPx });
+  if (snap.dx === 0 && snap.dy === 0) return none;
+
+  // The kernel speaks prices; the group plan takes pixels. Convert against the
+  // box's own top edge so the two agree on this pane's scale.
+  let dyPxSnap = 0;
+  if (snap.dy !== 0) {
+    const y0 = yToPx(box.y.min);
+    const y1 = yToPx(box.y.min + snap.dy);
+    if (y0 == null || y1 == null) return none;
+    dyPxSnap = y1 - y0;
+  }
+
+  const plan1 = planGroupTranslate(members, dBarRaw + snap.dx, dyPxRaw + dyPxSnap, coords);
+  const landed = groupRectBox(rects, plan1, coords.toBar);
+  if (landed == null) return none;
+  const agrees = (
+    got: number | null,
+    want: number | null,
+  ) => got != null && want != null && Math.abs(got - want) < GROUP_SNAP_EPS_PX;
+  const okX = snap.dx === 0 || agrees(xToPx(landed.x.min), xToPx(box.x.min + snap.dx));
+  const okY = snap.dy === 0 || agrees(yToPx(landed.y.min), yToPx(box.y.min + snap.dy));
+  if (!okX || !okY) return none;
+
+  return { plan: plan1, guides: toPaneGuides(ctx, paneId, snap.guides) };
 }
 
 // ─── select ────────────────────────────────────────────────────────────────
@@ -666,9 +799,17 @@ export const selectTool: DrawingToolSpec = {
     if (hit && ctx.selectedIds.length > 1 && ctx.selectedIds.includes(hit.id)) {
       ctx.dragRef.current = {
         kind: 'body-multi',
-        ids: ctx.selectedIds,
-        lastRealMs: ctx.canvasXToRealMs(ctx.px),
-        lastPy: ctx.py,
+        // Snapshot the members as grabbed. Locked ones are dropped HERE rather
+        // than every frame: the set the user grabbed is the set that moves.
+        origins: ctx.drawings.filter((d) => ctx.selectedIds.includes(d.id) && !isLocked(d)),
+        startBar: (() => {
+          const ms = ctx.canvasXToRealMs(ctx.px);
+          return ms == null ? null : ctx.dragBars.toBar(ms);
+        })(),
+        lastBar: (() => {
+          const ms = ctx.canvasXToRealMs(ctx.px);
+          return ms == null ? null : ctx.dragBars.toBar(ms);
+        })(),
         startPx: ctx.px,
         startPy: ctx.py,
         pressedId: hit.id,
@@ -730,34 +871,50 @@ export const selectTool: DrawingToolSpec = {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
     if (drag.kind === 'body-multi') {
-      // 클릭/드래그 판정: slop 을 넘기 전엔 **아무 패치도 내지 않는다**. 앵커
-      // (lastPy/lastRealMs)도 그대로 두므로, 넘는 순간 눌린 지점부터의 이동량이
-      // 한 번에 반영된다 — 커서가 실제로 간 거리와 일치한다.
+      // 클릭/드래그 판정: slop 을 넘기 전엔 **아무 패치도 내지 않는다**. 절대
+      // 앵커링에서는 이 성질이 공짜다 — 앵커(startBar/startPy)가 애초에 움직이지
+      // 않으므로, 넘는 순간 눌린 지점부터의 이동량이 한 번에 반영된다.
       if (!drag.moved) {
         if (Math.hypot(ctx.px - drag.startPx, ctx.py - drag.startPy) < MULTI_DRAG_SLOP_PX) return;
         drag.moved = true;
       }
-      // 잠긴 것은 여기서 이미 빠진다. 스토어도 거부하지만, 계획 단계에서 빼야
-      // 그룹 클램프가 "움직일 수 없는 도형" 때문에 전체를 얼리지 않는다.
-      const members = ctx.drawings.filter((d) => drag.ids.includes(d.id) && !isLocked(d));
+      // 멤버는 그랩 시점 스냅샷이다 — 드래그 중에 집합이 바뀌지 않는다.
+      //
+      // 잠금은 **두 번** 거른다. onPointerDown 이 스냅샷을 만들 때 한 번(그래야
+      // 그룹 클램프가 "움직일 수 없는 도형" 때문에 전체를 얼리지 않는다), 그리고
+      // 여기서 한 번 — 스냅샷을 든 사이에 다른 창이 일괄 잠금을 걸 수 있고,
+      // 스토어가 어차피 거부할 패치를 내보내지 않는 편이 정직하다.
+      const members = drag.origins.filter((d) => !isLocked(d));
       if (members.length === 0) return;
       const curRealMs = ctx.canvasXToRealMs(ctx.px);
-      const dBar =
-        curRealMs != null && drag.lastRealMs != null
-          ? ctx.dragBars.toBar(curRealMs) - ctx.dragBars.toBar(drag.lastRealMs)
-          : 0;
-      ctx.updateMany(
-        planGroupTranslate(members, dBar, ctx.py - drag.lastPy, {
-          priceToCanvasY: ctx.priceToCanvasY,
-          canvasYToPrice: ctx.canvasYToPrice,
-          priceBoundsForPane: ctx.priceBoundsForPane,
-          toBar: ctx.dragBars.toBar,
-          toReal: ctx.dragBars.toReal,
-          originBar: ctx.dragBars.originBar,
-        }),
+      // 빈 밴드에서 시작한 그랩은 첫 해석 샘플을 원점으로 삼는다(단일 body 와 동일).
+      if (drag.startBar == null && curRealMs != null) {
+        drag.startBar = ctx.dragBars.toBar(curRealMs);
+      }
+      if (curRealMs != null) drag.lastBar = ctx.dragBars.toBar(curRealMs);
+      const dBarRaw =
+        drag.lastBar != null && drag.startBar != null ? drag.lastBar - drag.startBar : 0;
+      const dyPxRaw = ctx.py - drag.startPy;
+      const coords: GroupTranslateCoords = {
+        priceToCanvasY: ctx.priceToCanvasY,
+        canvasYToPrice: ctx.canvasYToPrice,
+        priceBoundsForPane: ctx.priceBoundsForPane,
+        toBar: ctx.dragBars.toBar,
+        toReal: ctx.dragBars.toReal,
+        originBar: ctx.dragBars.originBar,
+      };
+      // 스냅 보정은 plan 에만 들어가고 startBar/startPy 는 건드리지 않는다 —
+      // 단일 드래그와 같은 불변식이다.
+      const planned = groupAlignSnap(
+        ctx,
+        members,
+        planGroupTranslate(members, dBarRaw, dyPxRaw, coords),
+        dBarRaw,
+        dyPxRaw,
+        coords,
       );
-      if (curRealMs != null) drag.lastRealMs = curRealMs;
-      drag.lastPy = ctx.py;
+      ctx.setAlignGuides(planned.guides);
+      ctx.updateMany(planned.plan);
       return;
     }
     // vline body drag: horizontal only, no price scale involved. The delta is
@@ -878,7 +1035,7 @@ export const selectTool: DrawingToolSpec = {
       // the anchor would survive the unsnap as a permanent cursor offset.
       let guides: AlignGuide[] = [];
       if (origin.kind === 'rect' && ctx.alignSnapEnabled) {
-        const targets = alignTargets(ctx, drag.paneId, origin.id);
+        const targets = alignTargets(ctx, drag.paneId, new Set([origin.id]));
         const snapped = alignSnapBox(
           {
             x: anchorsOf(
