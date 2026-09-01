@@ -87,6 +87,13 @@ function StudyBookmarkRedirect() {
   return <Navigate to={{ pathname: '/live', search: useLocation().search }} replace />;
 }
 
+// 갱신 루프 덫 — DEV 에서만. 동적 import 라 프로덕션 번들에는 들어가지 않는다
+// (`import.meta.env.DEV` 가 상수 false 로 접히며 분기째 제거된다). 감시는 스토어
+// `subscribe` 뿐이라 동작을 바꾸지 않는다 — 근거는 `updateLoopWatch.ts` 머리말.
+if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+  void import('./state/updateLoopWatch').then((m) => m.installUpdateLoopWatch());
+}
+
 createRoot(document.getElementById('root')!).render(
   <AppErrorBoundary>
     <QueryClientProvider client={qc}>

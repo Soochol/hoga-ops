@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { noteStoreWrite } from '../../state/updateLoopSignal';
 
 /**
  * 창 → 타이틀바 경고 발행 채널 (종목 식별을 창 헤더/레전드→타이틀바로 이관).
@@ -74,6 +75,9 @@ const byWindow = new Map<string, WindowWarnings>();
 const listeners = new Set<() => void>();
 
 function notify(): void {
+  // zustand 가 아니라 손수 만든 소스라 `updateLoopWatch` 의 구독이 안 닿는다 —
+  // 덫에 직접 알린다(무장 전엔 no-op).
+  noteStoreWrite('windowWarnings');
   listeners.forEach((l) => l());
 }
 

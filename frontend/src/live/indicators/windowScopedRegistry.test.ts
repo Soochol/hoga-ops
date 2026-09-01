@@ -55,6 +55,29 @@ describe('createWindowScopedRegistry', () => {
     expect(b.size).toBe(0);
   });
 
+  it('같은 값의 재등록은 스토어를 쓰지 않는다 — 구독 알림이 SyncLane 이라 계수가 오른다', () => {
+    const reg = createWindowScopedRegistry<string, string>();
+    reg.getState().register('w1', 'ma-1', 'A');
+    const before = reg.getState().byScope;
+    let notified = 0;
+    const off = reg.subscribe(() => { notified += 1; });
+
+    reg.getState().register('w1', 'ma-1', 'A');
+
+    off();
+    // 참조가 그대로여야 소비자의 `scopeEntries` 도 같은 Map 을 받아 재렌더가 없다.
+    expect(reg.getState().byScope).toBe(before);
+    expect(notified).toBe(0);
+  });
+
+  it('값이 바뀌면 당연히 쓴다 — 위 가드가 갱신을 삼키지 않는다', () => {
+    const reg = createWindowScopedRegistry<string, string>();
+    reg.getState().register('w1', 'ma-1', 'A');
+    reg.getState().register('w1', 'ma-1', 'B');
+
+    expect(scopeEntries(reg.getState().byScope, 'w1').get('ma-1')).toBe('B');
+  });
+
   it('clearScope 는 그 창만 턴다', () => {
     const reg = createWindowScopedRegistry<string, string>();
     reg.getState().register('w1', 'ma-1', 'A');

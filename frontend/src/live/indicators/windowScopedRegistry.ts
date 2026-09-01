@@ -41,6 +41,14 @@ export function createWindowScopedRegistry<K, V>(): UseBoundStore<
 
     register: (scope, key, value) => {
       const outer = get().byScope;
+      // 같은 값의 재등록은 **쓰지 않는다** — `unregister`·`clearScope` 와 같은 규율이고,
+      // 여기만 빠져 있었다. 없으면 값이 그대로여도 새 Map 두 개가 나와 스토어가 바뀌고,
+      // `useSyncExternalStore` 알림은 **SyncLane** 이라(react-dom `forceStoreRerender`)
+      // 그 커밋마다 nested-update 계수가 올라간다 — "Maximum update depth exceeded" 로
+      // 죽는 경로의 연료다. 매 렌더 등록하는 호출자가 생겼을 때 조용히 폭주하지 않게
+      // 여기서 한 홉을 끊는다(값 자체가 매번 새 참조면 이 가드는 못 막는다 — 그건
+      // 호출자의 deps 계약이다).
+      if (outer.get(scope)?.get(key) === value) return;
       const inner = new Map(outer.get(scope) ?? []);
       inner.set(key, value);
       const next = new Map(outer);
