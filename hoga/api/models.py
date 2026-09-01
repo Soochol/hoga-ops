@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from pydantic import (
     AliasChoices,
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
@@ -1996,6 +1997,128 @@ class SavedScreener(ScreenerSaveWriteRequest):
     id: str
     created_at_ms: int
     updated_at_ms: int
+
+# ── 봉 패턴 검색 (ADR-0166) ────────────────────────────────────────────────────
+
+#: 검색 모드. `now` = 각 종목의 최신 L봉 한 창 · `history` = 전 기간 슬라이딩.
+#: **다른 기능이다** — now 는 여러 길이를 한 응답에 담고, history 는 길이 하나에
+#: 이후 수익률·베이스라인을 붙인다.
+PatternSearchMode = Literal["now", "history"]
+
+#: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
+#: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).
+PATTERN_MIN_BARS = 5
+PATTERN_MAX_BARS = 30
+#: `now` 가 한 요청에 담을 수 있는 길이 개수 — 프론트 봉수 스크럽의 전제(ADR-0166 결정 3).
+PATTERN_MAX_LENGTHS = 11
+
+
+class PatternSearchRequest(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    mode: PatternSearchMode = "now"
+    #: 비교할 봉수들. `history` 는 첫 값만 쓴다(길이당 비용이 커서 묶지 않는다).
+    lengths: list[int] = Field(default_factory=lambda: [7])
+    #: 쿼리 구간을 날짜로 지정(둘 다 주거나 둘 다 비운다). 비우면 **최신 L봉**이다.
+    from_: str | None = Field(None, alias="from", pattern=r"^\d{8}$")
+    to: str | None = Field(None, pattern=r"^\d{8}$")
+    top: int = Field(15, ge=1, le=100)
+    min_tv_eok: float = Field(10.0, ge=0)
+    exclude_etf: bool = True
+    #: `history` 전용 — 쿼리와 날짜가 겹치는 창을 뺀다. 안 빼면 동시대 매치가 상위를
+    #: 지배한다(ADR-0166 결정 2).
+    no_overlap: bool = True
+    #: 이후 수익률의 지평(거래일). `history` 에서만 의미가 있다.
+    forward_days: int = Field(20, ge=1, le=120)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("lengths")
+    @classmethod
+    def _valid_lengths(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("lengths must not be empty")
+        if len(v) > PATTERN_MAX_LENGTHS:
+            raise ValueError(f"at most {PATTERN_MAX_LENGTHS} lengths")
+        for n in v:
+            if not (PATTERN_MIN_BARS <= n <= PATTERN_MAX_BARS):
+                raise ValueError(f"length must be {PATTERN_MIN_BARS}..{PATTERN_MAX_BARS}")
+        if len(set(v)) != len(v):
+            raise ValueError("lengths must be unique")
+        return sorted(v)
+
+    @model_validator(mode="after")
+    def _valid_range(self):
+        if (self.from_ is None) != (self.to is None):
+            raise ValueError("from and to must be given together")
+        if self.from_ is not None and self.to is not None and self.from_ > self.to:
+            raise ValueError("from must be <= to")
+        return self
+
+
+class PatternDistribution(BaseModel):
+    """후보 점수 분포. **유사도 절대값을 단독으로 내지 않기 위한 동반 데이터**다
+    (ADR-0166 결정 7) — 1위 0.986 은 "98.6% 닮음" 이 아니라 "비교한 것 중 최고" 다."""
+
+    p50: float
+    p95: float
+    p99: float
+    #: `history` 에서만 유의미하다(후보창이 수백만이라 이 분위수가 매치의 대조군이 된다).
+    p99_99: float | None = None
+    #: 이 분포를 만든 표본 수 — now 는 종목 수, history 는 창 수다.
+    sample: int
+
+
+class PatternBaseline(BaseModel):
+    """전 후보창의 이후 수익률. 프론트가 **끌 수 없는 표시**로 만든다(ADR-0166 결정 7)."""
+
+    fwd_median_pct: float
+    fwd_win_rate_pct: float
+    sample: int
+
+
+class PatternMatchRow(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    name: str
+    from_date: str = Field(pattern=r"^\d{8}$")
+    to_date: str = Field(pattern=r"^\d{8}$")
+    corr: float
+    #: 매치 구간의 원가격 봉 — `[open, high, low, close]` 가 길이 L 만큼. 썸네일용이다.
+    bars: list[list[float]]
+    #: `history` 전용 — 매치 **뒤** `forward_days` 봉의 종가. 「그 다음에 뭐가 왔나」가
+    #: 이 기능의 핵심 질문이라 라인으로 이어 그린다. 계열 끝이면 짧거나 비어 있다.
+    tail: list[float] | None = None
+    #: `history` 전용 — `forward_days` 봉 뒤 수익률(%). 계열을 넘으면 null.
+    forward_pct: float | None = None
+
+
+class PatternQueryWindow(BaseModel):
+    length: int
+    from_date: str = Field(pattern=r"^\d{8}$")
+    to_date: str = Field(pattern=r"^\d{8}$")
+    bars: list[list[float]]
+
+
+class PatternLengthResult(BaseModel):
+    """길이 하나의 결과. `now` 는 이 원소가 요청한 길이 수만큼 온다."""
+
+    length: int
+    query: PatternQueryWindow
+    universe: int
+    dist: PatternDistribution
+    matches: list[PatternMatchRow]
+    #: `history` 에서만 값이 있다. `now` 는 이후 수익률이라는 개념 자체가 없다(최신
+    #: 창이라 「이후」가 미래다). **null 로 싣는다** — `response_model_exclude_none` 을
+    #: 걸면 `PatternMatchRow.forward_pct` 의 정당한 null 까지 지워진다(CLAUDE.md).
+    baseline: PatternBaseline | None = None
+    elapsed_ms: float
+
+
+class PatternSearchResponse(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    name: str
+    mode: PatternSearchMode
+    results: list[PatternLengthResult]
+
 
 class SavedScreenersFile(BaseModel):
     schema_version: int = 1
