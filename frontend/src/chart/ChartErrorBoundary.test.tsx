@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { useState } from 'react';
 import ChartErrorBoundary from './ChartErrorBoundary';
+import {
+  __disarmUpdateLoopSignalForTests,
+  armUpdateLoopSignal,
+  noteStoreWrite,
+} from '../state/updateLoopSignal';
 
 function Bomb({ shouldThrow }: { shouldThrow: boolean }) {
   if (shouldThrow) throw new Error('Value is null');
@@ -15,6 +20,7 @@ describe('ChartErrorBoundary', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
   afterEach(() => {
+    __disarmUpdateLoopSignalForTests();
     vi.restoreAllMocks();
   });
 
@@ -78,6 +84,35 @@ describe('ChartErrorBoundary', () => {
     fireEvent.click(screen.getByTestId('chart-error-copy'));
     expect(screen.getByText('차트 렌더링에 실패했습니다')).toBeTruthy();
     expect(screen.getByText('오류 복사')).toBeTruthy();
+  });
+
+  it('갱신 루프 덫이 잡은 것이 있으면 상자와 복사본에 함께 실린다', () => {
+    // 덫을 무장하고 폭주를 흉내 낸다 — 상자가 «던진 쪽»(컴포넌트 스택)과 «쓴 쪽»
+    // (스토어)을 한 화면에 놓는 것이 이 배선의 목적이다.
+    armUpdateLoopSignal();
+    for (let i = 0; i < 20; i += 1) noteStoreWrite('workspace');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(
+      <ChartErrorBoundary>
+        <Bomb shouldThrow />
+      </ChartErrorBoundary>,
+    );
+    expect(screen.getByTestId('chart-error-update-loop').textContent).toContain('workspace');
+    fireEvent.click(screen.getByTestId('chart-error-copy'));
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain('[update-loop] store=workspace');
+    expect(payload).toContain('Bomb');           // 컴포넌트 스택도 그대로 남는다
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('덫이 아무것도 안 잡았으면 그 줄은 아예 없다 — 빈 자리를 만들지 않는다', () => {
+    render(
+      <ChartErrorBoundary>
+        <Bomb shouldThrow />
+      </ChartErrorBoundary>,
+    );
+    expect(screen.queryByTestId('chart-error-update-loop')).toBeNull();
   });
 
   it('다시 시도가 에러 상태를 지우고 자식을 재마운트한다', () => {

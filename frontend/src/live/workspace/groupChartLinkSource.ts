@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { RangeBundle } from '../../api/types';
 import type { LiveTimeframe } from '../../state/livePage';
 import type { GroupId } from '../../state/workspace';
+import { noteStoreWrite } from '../../state/updateLoopSignal';
 
 /**
  * 그룹 차트 링크 발행 채널 (ADR-0119 PR-D, liveWindowStatusSource 패턴의 per-group 판).
@@ -50,6 +51,9 @@ const links = new Map<GroupId, GroupChartLink>();
 const listeners = new Set<() => void>();
 
 function emit(): void {
+  // 이 채널은 zustand 가 아니라 손수 만든 `useSyncExternalStore` 소스라
+  // `updateLoopWatch` 의 구독 배선이 닿지 않는다 — 덫에 직접 알린다(무장 전엔 no-op).
+  noteStoreWrite('groupChartLink');
   listeners.forEach((l) => l());
 }
 

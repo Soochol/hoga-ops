@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { formatUpdateLoopReport, readUpdateLoopReport } from '../state/updateLoopSignal';
 
 type Props = {
   children: ReactNode;
@@ -60,7 +61,16 @@ export default class ChartErrorBoundary extends Component<Props, State> {
    *  값은 따로 만든다. */
   private report(): string {
     const { error, componentStack } = this.state;
-    return [error?.message ?? '', componentStack ?? ''].join('\n').trim();
+    // 갱신 루프 덫의 신고를 **함께** 싣는다. 컴포넌트 스택은 루프의 «던진 쪽» 만
+    // 알려 주는데(실측: `LiveChartRoot`), 매 커밋 스토어를 쓰는 «쓴 쪽» 은 다른
+    // 컴포넌트일 수 있다 — 스토어 알림은 트리 경계를 넘기 때문이다. 두 조각이
+    // 한 번의 붙여넣기로 같이 와야 조사가 한 왕복에 끝난다.
+    const loop = readUpdateLoopReport();
+    return [
+      error?.message ?? '',
+      componentStack ?? '',
+      loop ? formatUpdateLoopReport(loop) : '',
+    ].join('\n').trim();
   }
 
   copy = (): void => {
@@ -77,6 +87,7 @@ export default class ChartErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
+      const loop = readUpdateLoopReport();
       const stack = this.state.componentStack;
       const head = stack === null
         ? null
@@ -88,6 +99,14 @@ export default class ChartErrorBoundary extends Component<Props, State> {
             <div className="text-xs font-data break-all bg-bg-subtle border rounded p-2">
               {this.state.error.message}
             </div>
+            {loop !== null && (
+              /* 덫이 뭔가 잡았으면 상자에서 바로 보인다 — 「오류 복사」에는 스택까지
+                 실린다. 없으면 이 줄도 없다(빈 자리를 만들지 않는다). */
+              <div data-testid="chart-error-update-loop" className="text-xs text-fg-dim">
+                갱신 루프 후보: <span className="font-data">{loop.store}</span> — 한 프레임에{' '}
+                {loop.writes}회 쓰기
+              </div>
+            )}
             {head !== null && head.length > 0 && (
               <details data-testid="chart-error-component-stack" className="text-left">
                 <summary className="cursor-pointer text-xs text-fg-dim">
