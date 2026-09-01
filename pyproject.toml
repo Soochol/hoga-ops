@@ -15,6 +15,9 @@ dependencies = [
     "rich>=13",
     "watchdog>=6.0.0",
     "polars>=1.41.0",
+    # 봉 패턴 검색의 상관 커널(ADR-0166). polars 로는 슬라이딩 4채널 상관을 표현할 수
+    # 없어 추가했다 — 이 리포의 유일한 numpy 소비처다.
+    "numpy>=1.26",
     "websockets>=16.0",
 ]
 

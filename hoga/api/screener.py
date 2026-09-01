@@ -15,10 +15,12 @@ import polars as pl
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hoga.api import screener_runner, screener_saves, screener_store
+from hoga.api import screener_pattern, screener_runner, screener_saves, screener_store
 from hoga.api.calendar import TradingDayUnavailableError, trading_days_in_range
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import (
+    PatternSearchRequest,
+    PatternSearchResponse,
     SavedScreener,
     SavedScreenersFile,
     ScanRequest,
@@ -404,6 +406,17 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         key = req.model_dump_json()
         return await _scan_coalescer.run(
             key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req))
+
+    @router.post("/pattern-search")
+    async def pattern_search(req: PatternSearchRequest) -> PatternSearchResponse:
+        """봉 패턴 검색(ADR-0166).
+
+        `to_thread` 는 필수다 — 콜드 캐시 1.5s + history 0.4s 를 이벤트 루프에서
+        돌리면 그동안 프로세스 전체가 멎는다(`screener-daily-candles` 와 같은 이유).
+        순수 함수라 스레드 실행이 안전하다(공유 상태는 읽기 전용 코퍼스 캐시뿐).
+        """
+        return await asyncio.to_thread(
+            screener_pattern.run_pattern_search, data_dir, req)
 
     @router.get("/status")
     def status() -> ScreenerStatusResponse:

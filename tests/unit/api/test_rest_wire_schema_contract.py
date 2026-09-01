@@ -67,6 +67,18 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     ),
     "WatchlistMemoView": frozenset({"id", "folder_id", "order", "text"}),
     "WatchlistResponse": frozenset({"entries", "folders", "memos", "next_run_at_ms"}),
+    # 봉 패턴 검색(ADR-0166). 응답이 **분포·베이스라인을 동반해야** 화면이 유사도
+    # 절대값을 단독으로 그리지 않는다 — 그 동반 필드가 조용히 빠지는 것을 여기서 막는다.
+    "PatternDistribution": frozenset({"p50", "p95", "p99", "p99_99", "sample"}),
+    "PatternBaseline": frozenset({"fwd_median_pct", "fwd_win_rate_pct", "sample"}),
+    "PatternMatchRow": frozenset(
+        {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct"}
+    ),
+    "PatternQueryWindow": frozenset({"length", "from_date", "to_date", "bars"}),
+    "PatternLengthResult": frozenset(
+        {"length", "query", "universe", "dist", "matches", "baseline", "elapsed_ms"}
+    ),
+    "PatternSearchResponse": frozenset({"code", "name", "mode", "results"}),
     "HeatmapEntry": frozenset({"code", "folder_id", "name", "order"}),
     "HeatmapResponse": frozenset(
         {"entries", "folders", "capture_markers", "next_run_at_ms"}
@@ -228,6 +240,10 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "PatternSearchMode": (
+        frozenset(get_args(m.PatternSearchMode)),
+        "frontend/src/api/screener.ts",
+    ),
     "CaptureReason": (
         frozenset(get_args(LiveStatus.model_fields["capture_reason"].annotation)),
         "frontend/src/api/liveStatus.ts",

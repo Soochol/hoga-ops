@@ -160,3 +160,92 @@ export function runScan(body: ScanRequest): Promise<ScreenerResponse> {
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
 export const triggerScreenerUpdate = () =>
   apiCall<ScreenerUpdateResponse>('/api/screener/update', { method: 'POST' });
+
+// --- 봉 패턴 검색 (ADR-0166) ---------------------------------------------
+// 손 미러 — 정본은 `hoga/api/models.py` 의 Pattern* 모델이다. 값·필드가 갈리면
+// ADR-0004 1·2층이 실패한다(`tests/unit/api/test_rest_wire_schema_contract.py`).
+
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternSearchMode`. */
+export type PatternSearchMode = 'now' | 'history';
+
+export interface PatternSearchRequest {
+  code: string;
+  mode: PatternSearchMode;
+  /** 비교할 봉수들. `history` 는 첫 값만 쓴다. */
+  lengths: number[];
+  /** 구간 지정(둘 다 주거나 둘 다 비운다). 비우면 최신 L봉. */
+  from?: string;
+  to?: string;
+  top?: number;
+  min_tv_eok?: number;
+  exclude_etf?: boolean;
+  no_overlap?: boolean;
+  forward_days?: number;
+}
+
+/** 후보 점수 분포. **유사도 절대값을 단독으로 그리지 않기 위한 동반 데이터**다 —
+ *  0.986 은 "98.6% 닮음" 이 아니라 "비교한 것 중 최고" 라, 화면은 이 분위수 위
+ *  어디인지로 읽혀야 한다(ADR-0166 결정 7). */
+export interface PatternDistribution {
+  p50: number;
+  p95: number;
+  p99: number;
+  /** `history` 에서만 값이 있다(후보창이 수백만이라 이 분위수가 대조군이 된다). */
+  p99_99: number | null;
+  sample: number;
+}
+
+/** 전 후보창의 이후 수익률. **끌 수 있는 표시로 만들지 말 것** — 매치 승률만 보이면
+ *  반드시 신호로 오독되는데, 실측상 둘의 차이는 쿼리마다 부호가 뒤집힌다. */
+export interface PatternBaseline {
+  fwd_median_pct: number;
+  fwd_win_rate_pct: number;
+  sample: number;
+}
+
+export interface PatternMatchRow {
+  code: string;
+  name: string;
+  from_date: string;
+  to_date: string;
+  corr: number;
+  /** `[open, high, low, close]` × length. 썸네일 캔들용 원가격. */
+  bars: number[][];
+  /** `history` 전용 — 매치 **뒤** `forward_days` 봉의 종가. 계열 끝이면 짧거나 빈다. */
+  tail: number[] | null;
+  /** `history` 전용 — 계열을 넘으면 null(「이후를 모른다」이지 0 이 아니다). */
+  forward_pct: number | null;
+}
+
+export interface PatternQueryWindow {
+  length: number;
+  from_date: string;
+  to_date: string;
+  bars: number[][];
+}
+
+export interface PatternLengthResult {
+  length: number;
+  query: PatternQueryWindow;
+  universe: number;
+  dist: PatternDistribution;
+  matches: PatternMatchRow[];
+  /** `now` 에서는 null — 최신 창이라 「이후」가 미래다. */
+  baseline: PatternBaseline | null;
+  elapsed_ms: number;
+}
+
+export interface PatternSearchResponse {
+  code: string;
+  name: string;
+  mode: PatternSearchMode;
+  results: PatternLengthResult[];
+}
+
+export function searchPattern(body: PatternSearchRequest): Promise<PatternSearchResponse> {
+  return apiCall<PatternSearchResponse>('/api/screener/pattern-search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
