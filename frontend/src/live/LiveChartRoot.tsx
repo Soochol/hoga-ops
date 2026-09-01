@@ -107,8 +107,7 @@ import {
   type PeakWallStepPoint,
 } from '../chart/peakWallSteps';
 import {
-  PEAK_WALL_STEP_SLOTS,
-  usePeakWallStepsRegistry,
+  usePeakWallStepsPublisher,
   type PeakWallStepKey,
 } from './indicators/peakWallStepsRegistry';
 import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
@@ -2232,16 +2231,11 @@ export function LiveChartRoot({
     } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
   }, [prefPeakWallPaneEnabled, cb?.candles, axis, askWall, bidWall]);
 
-  useEffect(() => {
-    const reg = usePeakWallStepsRegistry.getState();
-    for (const slot of PEAK_WALL_STEP_SLOTS) {
-      reg.register(legendScope, slot.key, { points: peakWallStepPoints[slot.key] });
-    }
-    return () => {
-      const cleanup = usePeakWallStepsRegistry.getState();
-      for (const slot of PEAK_WALL_STEP_SLOTS) cleanup.unregister(legendScope, slot.key);
-    };
-  }, [legendScope, peakWallStepPoints]);
+  // 발행은 훅이 쥔다 — **쓰기 조건**(점 배열이 그대로면 쓰지 않는다)이 이 기능의
+  // 위험 전부라, 그 조건을 테스트가 잡을 수 있는 자리에 둔다. 종전에 여기서 매 커밋
+  // `{ points }` 를 새로 만들어 등록하던 것이 "Maximum update depth exceeded" 의
+  // 연료였다(2026-09-01, 덫 실측 20 writes/frame) — 사유는 훅 머리말.
+  usePeakWallStepsPublisher(legendScope, peakWallStepPoints);
 
   // ── 최대벽 개수 발행 (설정 패널의 깔때기·리드아웃) ────────────────────────
   // deps 계약(원시값 12개)이 이 기능의 성능 위험 전부라, 그 계약을 테스트가 잡을 수

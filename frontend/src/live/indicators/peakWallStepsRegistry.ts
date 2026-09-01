@@ -1,4 +1,5 @@
-import { createWindowScopedRegistry } from './windowScopedRegistry';
+import { useEffect } from 'react';
+import { createWindowScopedRegistry, type RegistryScopeId } from './windowScopedRegistry';
 import type { PeakWallStepPoint } from '../../chart/peakWallSteps';
 
 export type PeakWallStepSide = 'ask' | 'bid';
@@ -66,3 +67,61 @@ export type PeakWallStepSlot = {
  */
 export const usePeakWallStepsRegistry =
   createWindowScopedRegistry<PeakWallStepKey, PeakWallStepSlot>();
+
+/** 여섯 칸의 계단 점 — 발행자가 한 번에 만들어 넘긴다. */
+export type PeakWallStepPointsInput = Readonly<Record<PeakWallStepKey, readonly PeakWallStepPoint[]>>;
+
+/**
+ * 차트 → 레지스트리 발행. `usePeakWallCountsPublisher` 와 같은 자리에 둔 이유도 같다 —
+ * **쓰기 조건을 테스트로 고정하기 위해서**다.
+ *
+ * ## 왜 조건이 필요한가 (2026-09-01 실측)
+ *
+ * `register()` 는 값을 묻지 않고 쓴다. 종전 발행은 `{ points }` **래퍼를 매번 새로**
+ * 만들었으므로 점 배열이 그대로여도 스토어가 바뀌었고, `useSyncExternalStore` 알림은
+ * **SyncLane** 이라(react-dom `forceStoreRerender`) 그 커밋마다 React 의 nested-update
+ * 계수가 올랐다. 50 연속이면 `checkForNestedUpdates` 가 던진다 — 그게 좌팬 중
+ * "Maximum update depth exceeded" 로 차트가 죽던 경로다. 갱신 루프 덫이 잡은 실측:
+ *
+ *     [update-loop] store=registry:peakWallSteps writes-in-one-frame=20
+ *     frame: registry:peakWallSteps×20 · liveCursor×1 · groupChartLink×1 ·
+ *            windowWarnings×1 · workspace×1
+ *
+ * 다른 스토어가 전부 1회일 때 이것만 20회다(= 이 이펙트가 한 프레임에 3~4번 돌며
+ * 여섯 칸을 매번 새로 썼다).
+ *
+ * ## 처방 — 점 배열이 그대로면 쓰지 않는다
+ *
+ * 비교 대상은 래퍼가 아니라 **`points` 배열의 참조**다. 최대벽 pane 이 꺼져 있으면
+ * 여섯 칸이 전부 같은 빈 배열 상수라 쓰기가 **0** 이 된다 — 그 상태가 폭주의 연료였다
+ * (내용이 없는데도 커밋마다 6회씩 썼다). 켜져 있을 때는 계단이 실제로 다시 만들어진
+ * 커밋에서만 쓴다.
+ *
+ * **`points` 객체 자체의 identity 로 판정하지 않는 이유**: 그건 상류 `useMemo` 의
+ * deps(축·캔들·벽)가 움직일 때마다 새로 나온다. 그 신호로는 "값이 바뀌었나" 를 답할 수
+ * 없고, 정확히 그 오해가 이 버그였다.
+ */
+export function usePeakWallStepsPublisher(
+  scope: RegistryScopeId,
+  points: PeakWallStepPointsInput,
+): void {
+  useEffect(() => {
+    for (const slot of PEAK_WALL_STEP_SLOTS) {
+      const next = points[slot.key];
+      // 매 칸마다 최신 스냅샷을 다시 읽는다 — 앞 칸의 `register` 가 이미 맵을 갈았다.
+      const reg = usePeakWallStepsRegistry.getState();
+      if (reg.byScope.get(scope)?.get(slot.key)?.points === next) continue;
+      reg.register(scope, slot.key, { points: next });
+    }
+  }, [scope, points]);
+
+  // 회수는 **창이 바뀌거나 언마운트될 때만**. 같은 이펙트의 cleanup 으로 두면 값이
+  // 바뀔 때마다 여섯 칸을 걷었다가 다시 심어 ① 쓰기가 두 배가 되고(실측 12회 —
+  // unregister 6 + register 6, 위 멱등 조건이 통째로 무력해진다) ② 그 사이 구독자가
+  // **빈 상태를 한 프레임 본다**. 두 번째가 특히 나쁘다: pane 이 매 갱신마다 잠깐
+  // 비워졌다 다시 그려진다.
+  useEffect(() => () => {
+    const cleanup = usePeakWallStepsRegistry.getState();
+    for (const slot of PEAK_WALL_STEP_SLOTS) cleanup.unregister(scope, slot.key);
+  }, [scope]);
+}
