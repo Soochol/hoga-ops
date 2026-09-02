@@ -32,10 +32,13 @@ const SAVE_RECENT = {
   id: 'r1', name: '삼성전자 · 최근 7봉', code: '005930', stock_name: '삼성전자',
   window: { kind: 'recent' as const, bars: 10, from_date: null, to_date: null },
   conditions: {
-    mode: 'history' as const, since: null, count: 100, sim_floor: 0.9,
-    min_tv_eok: 50, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
-    // ★ 공장값(off · 0)과 **다른** 값이어야 복원을 실제로 잰다.
-    ma_preset: 'mid' as const, flex_bars: 2,
+    // ★ 모든 값이 **공장값과 달라야** 복원을 실제로 잰다 — 같으면 복원 코드를 지워도
+    //   테스트가 통과한다. 공장값이 100개·50억·±2봉으로 바뀐 2026-09-02 에 실제로 겹쳤고,
+    //   `flex_bars` 는 **두 PR 이 합쳐지면서** 겹쳤다(한쪽이 2 를 픽스처로, 다른 쪽이
+    //   2 를 공장값으로 만들었다) — 각자는 초록이었다.
+    mode: 'history' as const, since: null, count: 40, sim_floor: 0.9,
+    min_tv_eok: 10, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
+    ma_preset: 'mid' as const, flex_bars: 0,
   },
   created_at_ms: 1, updated_at_ms: 1,
 };
@@ -198,22 +201,47 @@ beforeEach(() => {
 });
 
 describe('PatternDrawer', () => {
-  it('now 는 봉수 전 범위를 한 요청에 받는다 — 스크럽이 로컬 전환이 되는 전제', async () => {
-    renderDrawer();
-    await screen.findByText('길이7위');
-    expect(searchPattern).toHaveBeenCalledTimes(1);
-    expect(searchPattern.mock.calls[0][0].lengths.length).toBeGreaterThan(1);
-  });
+  /** 「길이 고정」으로 되돌린다 — 공장값이 ±2봉이라 스크럽 전제가 **기본 상태에서는
+   *  성립하지 않는다**(유연이 켜지면 길이 하나만 보내므로 봉수마다 재검색이다). */
+  async function fixLength(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: /길이 ±2봉/ }));
+    await user.click(await screen.findByRole('option', { name: '길이 고정' }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: /길이 고정/ })).toBeInTheDocument());
+  }
 
-  it('봉수를 바꿔도 다시 요청하지 않고 결과만 갈린다', async () => {
+  it('길이 고정이면 now 가 봉수 전 범위를 한 요청에 받는다 — 스크럽이 로컬 전환이 되는 전제', async () => {
     const user = userEvent.setup();
     renderDrawer();
     await screen.findByText('길이7위');
+    await fixLength(user);
+    expect(searchPattern.mock.calls.at(-1)![0].lengths.length).toBeGreaterThan(1);
+  });
+
+  it('길이 고정이면 봉수를 바꿔도 다시 요청하지 않고 결과만 갈린다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await fixLength(user);
+    const before = searchPattern.mock.calls.length;
     await user.click(screen.getByLabelText('봉수 늘리기'));
     expect(await screen.findByText('길이8위')).toBeInTheDocument();
     // ★ 이 단언이 이 기능의 UX 근거다 — 요청이 늘면 스테퍼는 스크럽이 아니라 폼이 된다.
-    expect(searchPattern).toHaveBeenCalledTimes(1);
+    expect(searchPattern).toHaveBeenCalledTimes(before);
     expect(screen.getByText('8봉')).toBeInTheDocument();
+  });
+
+  it('공장값(±2봉)에서는 봉수가 서버 왕복이다 — 유연과 스크럽은 곱할 수 없는 축이다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    expect(searchPattern.mock.calls[0][0].lengths).toEqual([7]);
+    const before = searchPattern.mock.calls.length;
+    await user.click(screen.getByLabelText('봉수 늘리기'));
+    // 유연은 길이 하나만 보내므로 응답이 기준 ±2 뿐이다 — 스크럽이 그 밖으로 나가면
+    // 재검색이 **나야 한다**. 안 나면 화면이 조용히 빈다(공장값이 ±2 라 늘 걸린다).
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.length).toBeGreaterThan(before));
+    expect(searchPattern.mock.calls.at(-1)![0].lengths).toEqual([8]);
   });
 
   it('봉수는 서버 한계에서 멈춘다', async () => {
@@ -534,8 +562,8 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     const user = userEvent.setup();
     await openHistory(user);
     const before = searchPattern.mock.calls.length;
-    await user.click(screen.getByRole('button', { name: /최근 3년/ }));
-    await user.click(screen.getByRole('option', { name: /최근 1년/ }));
+    await user.click(screen.getByRole('button', { name: /최근 1년/ }));
+    await user.click(screen.getByRole('option', { name: /최근 3년/ }));
     await vi.waitFor(() =>
       expect(searchPattern.mock.calls.length).toBeGreaterThan(before));
     expect(searchPattern.mock.calls.at(-1)![0].since).toMatch(/^\d{8}$/);
@@ -544,7 +572,7 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
   it('전체 기간을 고르면 since 를 보내지 않는다 — 서버가 필터를 아예 안 건다', async () => {
     const user = userEvent.setup();
     await openHistory(user);
-    await user.click(screen.getByRole('button', { name: /최근 3년/ }));
+    await user.click(screen.getByRole('button', { name: /최근 1년/ }));
     await user.click(screen.getByRole('option', { name: '전체 기간' }));
     await vi.waitFor(() =>
       expect(searchPattern.mock.calls.at(-1)![0].since).toBeUndefined());
@@ -622,7 +650,7 @@ describe('PatternDrawer — 저장', () => {
     await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
     const body = createPatternSave.mock.calls[0][0];
     expect(body.window).toEqual({ kind: 'recent', bars: 7, from_date: null, to_date: null });
-    expect(body.conditions.count).toBe(40);
+    expect(body.conditions.count).toBe(100);   // 공장값
     expect(Object.keys(body)).not.toContain('matches');
   });
 });
@@ -662,14 +690,14 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     //   통과한다(나머지 값이 우연히 기본과 달라 보이지 않는다) — red-check 으로 확인.
     //   저장이 `since: null`(전체 기간)이므로 기본값 3년이 덮여 사라져야 한다.
     expect(body.since).toBeUndefined();
-    expect(body.top).toBe(100);            // 저장된 결과 수
-    expect(body.min_tv_eok).toBe(50);      // 저장된 거래대금
+    expect(body.top).toBe(40);             // 저장된 결과 수(공장값 100 과 다르다)
+    expect(body.min_tv_eok).toBe(10);      // 저장된 거래대금(공장값 50 과 다르다)
     expect(body.exclude_etf).toBe(false);
     expect(body.per_code).toBe(3);
     expect(body.volume_weight).toBeGreaterThan(0);
     // 유사도를 바꾸는 조건 둘 — 빠지면 **다른 검색이 복원된다**(공장값 off · 0 과 다르게 저장했다).
     expect(body.ma_preset).toBe('mid');
-    expect(body.flex_bars).toBe(2);
+    expect(body.flex_bars).toBe(0);        // 저장된 유연 폭(공장값 ±2 와 다르다)
   });
 
   it('고정 구간 저장은 그 날짜로 되돌아간다', async () => {
@@ -850,7 +878,8 @@ describe('PatternDrawer — 이평 프리셋', () => {
     await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
     const body = createPatternSave.mock.calls.at(-1)![0];
     expect(body.conditions.ma_preset).toBe('short');
-    expect(body.conditions.flex_bars).toBe(0);
+    // 공장값이 ±2봉이므로 손대지 않으면 그대로 저장된다.
+    expect(body.conditions.flex_bars).toBe(2);
   });
 });
 

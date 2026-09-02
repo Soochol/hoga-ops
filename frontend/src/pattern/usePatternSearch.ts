@@ -54,11 +54,16 @@ export function patternKey(
 ) {
   // now 는 길이를 묶어 받으므로 **키에 길이가 없다** — 스테퍼가 캐시를 무효화하면
   // 묶어 받은 의미가 사라진다.
+  //
+  // ⚠ **길이 유연이 켜지면 그 전제가 깨진다.** 유연은 `lengths` 를 하나만 보내므로
+  //   (두 축을 곱할 수 없다 — ADR-0166 결정 10) 응답이 기준 ±N 범위뿐이고, 그 밖으로
+  //   스크럽하면 재검색 없이 **결과가 빈다**. 유연일 때는 길이가 축이다.
+  const scrubbed = mode === 'history' || (conditions?.flexBars ?? 0) > 0 ? length : 'all';
   return [
     'pattern-search',
     code,
     mode,
-    mode === 'history' ? length : 'all',
+    scrubbed,
     filters.minTvEok,
     filters.excludeEtf,
     filters.noOverlap,
