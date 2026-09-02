@@ -467,16 +467,27 @@ describe('WS 틱 등락률 오버레이', () => {
       expect(q?.change_pct_source).toBe('hidden_pre_open');
     });
 
-    it('expected 가 없는 ob 프레임이 오면 표본을 지운다 — 백엔드 게이트 닫힘 신호', async () => {
+    it('expected 없는 ob 가 섞여 와도 표본을 유지한다 — 부재는 종료 신호가 아니다', async () => {
+      // 회귀 가드(사용자 신고 2026-09-02). 종전 계약은 정반대였다: 부재를 "백엔드
+      // 게이트가 닫혔다"로 읽고 표본을 지웠다. 그 가정이 실측에 반증됐다 — 005930
+      // 종가 동시호가(15:20–15:24)에 venue 게이트를 통과한 KRX `0D` **108건 중
+      // 62건(57%)에 예상 필드가 없었다**. 벤더가 예상체결을 못 낸 순간에 0 을 보내고
+      // 백엔드가 그걸 걸러 키를 빼기 때문이고, 그건 정상 프레임이다.
+      //
+      // 지우면 절반 이상의 프레임이 표시를 꺼뜨려 화면에 아무것도 안 뜬다.
       mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
       const { result } = await renderOverlay(['005930']);
 
       pushOb('005930', { expected_price: 249000, expected_qty: 100 });
       expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
 
-      pushOb('005930'); // 정규장 첫 호가 — expected 필드 부재
+      pushOb('005930'); // 예상 필드 없는 프레임 — 동시호가 **중에도** 온다
 
-      expect(result.current.quoteByCode.get('005930')?.expected_price).toBeUndefined();
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(249000);
+
+      // 다음 표본이 오면 정상적으로 갱신된다(유지가 곧 동결은 아니다).
+      pushOb('005930', { expected_price: 250000, expected_qty: 120 });
+      expect(result.current.quoteByCode.get('005930')?.expected_price).toBe(250000);
     });
 
     it('체결이 도착하면 예상 표본을 폐기한다 — 단일가 크로스 신호', async () => {

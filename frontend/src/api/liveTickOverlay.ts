@@ -86,9 +86,13 @@ export interface LiveExpectedSample {
   seenAtMs: number;
 }
 
-/** 예상 표본의 신선도 상한. 종료는 보통 데이터 신호(체결 도착·필드 부재 ob)로
- *  오지만, 프레임 자체가 끊긴 종목(거래정지 등)은 이 TTL 이 유일한 청소 경로다.
- *  동시호가 중엔 ob 프레임이 초 단위로 계속 와 seenAtMs 가 갱신되므로 오탐 없음. */
+/** 예상 표본의 신선도 상한. 종료는 보통 **체결 도착**으로 오지만, 체결이 영영 안 오는
+ *  종목(거래정지 등)과 프레임 자체가 끊긴 종목은 이 TTL 이 유일한 청소 경로다.
+ *  동시호가 중엔 ob 프레임이 초 단위로 계속 와 seenAtMs 가 갱신되므로 오탐 없음.
+ *
+ *  ⚠ 종전 이 주석은 **"필드 부재 ob"** 도 종료 신호로 적었는데, 그 갈래는 2026-09-02
+ *  실측으로 제거됐다(`expectedSignal` docstring — 부재는 동시호가 중에도 57% 온다).
+ *  그래서 이 TTL 의 역할이 백스톱에서 **두 종료 신호 중 하나**로 무거워졌다. */
 export const EXPECTED_FILL_TTL_MS = 30_000;
 
 function positiveNumber(value: unknown): number | undefined {
@@ -141,16 +145,36 @@ function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTick
   };
 }
 
-/** ob 프레임의 예상체결 신호. 세 갈래:
+/** ob 프레임의 예상체결 신호. 두 갈래:
  *  - 표본: expected_price/qty 둘 다 >0 (백엔드 게이트를 통과해 실려 온 값)
- *  - 'clear': venue 게이트는 통과했으나 expected 필드 부재 — 백엔드 게이트가 닫혔다는
- *    뜻(동시호가 종료 후 첫 정규장 호가)이므로 남은 표본을 지운다.
- *  - null: venue 불일치·불량 프레임 — 판단 보류(다른 venue 의 호가로 지우지 않는다).
- *  t_ms 부재 시 배제는 tradeSample 과 동일 논리 — venue 판정 불가면 보수적으로 무시. */
+ *  - null: venue 불일치·불량 프레임·**예상 필드 부재** — 전부 판단 보류다.
+ *  t_ms 부재 시 배제는 tradeSample 과 동일 논리 — venue 판정 불가면 보수적으로 무시.
+ *
+ *  ## ⚠ 필드 부재는 종료 신호가 **아니다**(2026-09-02 실측)
+ *
+ *  종전에는 이 자리에서 `'clear'` 를 돌려 표본을 지웠다. 근거는 "필드 부재 = 백엔드
+ *  게이트가 닫혔다 = 동시호가 종료 후 첫 정규장 호가" 였는데, **그 가정이 틀렸다.**
+ *  벤더는 동시호가 **한복판에도** 예상체결이 계산되지 않는 순간에 0 을 보내고, 백엔드
+ *  게이트(`kiwoom_frames`: `exp_price > 0 and exp_qty > 0`)가 그걸 걸러 **키를 빼서**
+ *  보낸다. 그 정상 프레임이 표본을 지웠다.
+ *
+ *  실측(005930, 2026-09-02 15:20–15:24 종가 동시호가): venue 게이트를 통과한 KRX
+ *  `0D` **108건 중 62건(57%)에 예상 필드가 없었다**. 즉 절반 이상의 프레임이 표본을
+ *  지우고 있었고, 결과는 사용자가 신고한 "동시호가에 예상 등락률이 안 뜬다" 였다.
+ *
+ *  ## 종료는 다른 둘이 이미 닫는다
+ *
+ *  ① **체결 프레임 도착** — 단일가가 맺혔다는 뜻이라 아래 `tradeSample` 경로가
+ *     표본을 폐기한다(거래소 시각 비교까지 갖춘 정식 종료 신호).
+ *  ② **TTL 백스톱** — `EXPECTED_FILL_TTL_MS`. 체결이 영영 안 와도 창이 닫힌다.
+ *
+ *  `'clear'` 는 그 둘보다 빠르게 지우려던 최적화였는데, 대가가 "정상 동작을 절반 이상
+ *  꺼뜨린다" 였다. 개장 직후 체결 전에 호가만 오는 짧은 순간(밀리초~초)에 예상가가
+ *  남는 것이 남는 비용이고, ①이 곧바로 닫는다. */
 function expectedSignal(
   entry: LiveSnapshotEntry,
   venue: LiveVenueOption,
-): LiveExpectedSample | 'clear' | null {
+): LiveExpectedSample | null {
   if (entry.kind !== 'ob') return null;
   const tMs = (entry as { t_ms?: unknown }).t_ms;
   const tagVenue = (entry as { venue?: LiveFrameVenue }).venue;
@@ -158,7 +182,8 @@ function expectedSignal(
   const e = entry as { expected_price?: unknown; expected_qty?: unknown };
   const price = positiveNumber(e.expected_price);
   const qty = positiveNumber(e.expected_qty);
-  if (price === undefined || qty === undefined) return 'clear';
+  // 부재는 **보류**다 — 지우지 않는다(위 docstring 의 실측).
+  if (price === undefined || qty === undefined) return null;
   return { price, qty, tMs, seenAtMs: Date.now() };
 }
 
@@ -223,10 +248,6 @@ export function useLiveTickPrices(
         if (entry.kind === 'ob') {
           const signal = expectedSignal(entry, venueFor(code));
           if (signal === null) return;
-          if (signal === 'clear') {
-            if (expectedAccumRef.current.delete(code)) scheduleFlush();
-            return;
-          }
           // 값이 직전과 같아도 매번 set + flush 한다 — seenAtMs 갱신이 곧 "아직
           // 동시호가 진행 중" 신호라서다. 값 비교로 건너뛰면 예상가가 안 움직이는
           // 저유동 종목에서 seenAtMs 가 얼어 TTL 백스톱이 진행 중인 창을 오탐
