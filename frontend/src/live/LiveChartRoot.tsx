@@ -294,6 +294,8 @@ interface Props {
    * 값이 없으면 속성 패널의 그 버튼도 없다.
    */
   onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
+  /** 그 구간의 봉 수와 허용 범위 — 속성 패널이 버튼을 누르기 전에 되는지 말한다. */
+  patternBarCount?: (fromRealMs: number, toRealMs: number) => { bars: number; min: number; max: number };
   venue?: LiveVenueOption;
   /** Optional view-level identity for same-code/timeframe restores (for example `/study?view=...`). */
   viewIdentity?: string;
@@ -511,6 +513,7 @@ export function LiveChartRoot({
   code,
   timeframe,
   onSearchPattern,
+  patternBarCount,
   venue = 'KRX',
   viewIdentity,
   bundle,
@@ -2837,6 +2840,7 @@ export function LiveChartRoot({
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}
             resolveAlignCoords={resolveAlignCoords}
             onSearchPattern={onSearchPattern}
+            patternBarCount={patternBarCount}
           />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a

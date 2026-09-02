@@ -198,6 +198,37 @@ def test_now_skips_series_that_stopped(tmp_path):
     assert "000002" not in {c.codes[m.series] for m in now}
 
 
+def test_per_code_keeps_several_matches_per_series_with_exclusion(tmp_path):
+    """`per_code` 는 한 종목에서 그 패턴이 나온 자리를 여러 개 남긴다.
+
+    ⚠ 겹침 배제가 없으면 한 칸씩 밀린 같은 자리가 상위를 도배한다 — 이웃 창은 봉
+    하나만 달라 점수가 거의 같다. 그래서 두 매치의 간격이 창 길이의 절반을 넘어야 한다.
+    """
+    rng = np.random.default_rng(3)
+    noise = list(100 + np.cumsum(rng.normal(0, 1.5, 80)))
+    # 같은 패턴을 한 계열의 **두 자리**에 심는다(멀리 떨어뜨려 배제 구역과 무관하게).
+    for at in (10, 50):
+        noise[at : at + _LEN] = [v * 2.0 for v in _PATTERN]
+    rows = _series("000001", noise) + _series("000002", list(100 + np.cumsum(rng.normal(0, 1.5, 80))))
+    c = sp.load_corpus(_write(tmp_path, rows))
+    qi, off, q = _query(c, "000001")
+
+    def run(per_code):
+        hits, _, _ = sp.search_history(
+            c, query=q, length=_LEN, query_series=qi, query_offset=off,
+            min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False,
+            per_code=per_code)
+        return [(c.codes[m.series], m.offset) for m in hits]
+
+    one = run(1)
+    assert len([x for x in one if x[0] == "000001"]) == 1
+    many = run(3)
+    mine = sorted(off for code, off in many if code == "000001")
+    assert len(mine) >= 2                       # 두 자리를 모두 찾았다
+    # 겹침 배제 — 두 매치가 창 길이의 절반보다 가깝지 않다.
+    assert all(b - a > _LEN // 2 for a, b in zip(mine, mine[1:], strict=False))
+
+
 def test_no_overlap_drops_windows_sharing_dates_with_query(corpus):
     """동시대 매치를 빼는 스위치 — 안 빼면 같은 장세를 겪은 종목이 상위를 지배한다."""
     c = sp.load_corpus(corpus)
@@ -299,6 +330,23 @@ def test_from_to_wire_keys_are_accepted_and_define_the_length(client):
     # 날짜 구간이 길이를 정한다 — `lengths` 의 7 이 아니라 구간의 봉 수 9 다.
     assert result["length"] == 9
     assert (result["query"]["from_date"], result["query"]["to_date"]) == (frm, to)
+
+
+def test_dated_range_is_capped_because_lengths_validation_does_not_apply(client):
+    """**날짜 경로는 `lengths` 검증을 안 탄다** — 길이를 요청이 말하지 않기 때문이다.
+
+    그래서 `PATTERN_CEILING` 이 따로 지킨다. 없으면 드래그로 그은 200봉이 그대로 돌고,
+    실측에서 33봉 구간이 사용자 서버에서 24.7초를 썼다.
+    """
+    days = _dates(60)
+    over = days[sp.PATTERN_CEILING + 5].strftime("%Y%m%d")
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [7],
+                          "from": days[0].strftime("%Y%m%d"), "to": over,
+                          "min_tv_eok": 0, "exclude_etf": False})
+    # 요청 자체는 유효하다(lengths 는 7 이라 통과) — 막는 것은 구간의 **실제 길이**다.
+    assert r.status_code == 200
+    assert r.json()["results"] == []
 
 
 @pytest.mark.parametrize("payload", [

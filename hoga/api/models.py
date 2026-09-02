@@ -2008,6 +2008,9 @@ PatternSearchMode = Literal["now", "history"]
 #: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
 #: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).
 PATTERN_MIN_BARS = 5
+#: 상한은 응답 시간을 바운드한다. ⚠ 이 검증은 요청이 길이를 **말할 때만** 걸린다 —
+#: `from`/`to` 경로는 길이를 구간에서 뽑으므로 `screener_pattern.PATTERN_CEILING` 이
+#: 같은 값을 따로 지킨다. 둘을 함께 고칠 것.
 PATTERN_MAX_BARS = 30
 #: `now` 가 한 요청에 담을 수 있는 길이 개수 — 프론트 봉수 스크럽의 전제(ADR-0166 결정 3).
 PATTERN_MAX_LENGTHS = 11
@@ -2029,6 +2032,9 @@ class PatternSearchRequest(BaseModel):
     no_overlap: bool = True
     #: 이후 수익률의 지평(거래일). `history` 에서만 의미가 있다.
     forward_days: int = Field(20, ge=1, le=120)
+    #: `history` 전용 — 한 종목에서 남길 매치 수. 1 은 다양성, 늘리면 "그 패턴이 나온
+    #: 자리를 전부" 본다. 두 번째부터는 겹침 배제(창 길이의 절반)가 걸린다.
+    per_code: int = Field(1, ge=1, le=5)
 
     model_config = ConfigDict(populate_by_name=True)
 

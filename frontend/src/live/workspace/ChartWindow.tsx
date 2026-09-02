@@ -62,7 +62,12 @@ import {
   type CalendarTimeframe,
 } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
-import { patternSeedFromRange, usePatternQueryStore } from '../../pattern/patternQuery';
+import {
+  PATTERN_MAX_BARS,
+  PATTERN_MIN_BARS,
+  patternSeedFromRange,
+  usePatternQueryStore,
+} from '../../pattern/patternQuery';
 import { useRightRailStore } from '../../state/rightRail';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
@@ -71,6 +76,7 @@ import { countBarsInRange } from '../savedRangeAnchor';
 import type { Candle } from '../../api/types';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
+import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import {
   HogaplaySourceButton,
@@ -347,6 +353,20 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       useRightRailStore.getState().setActivePanel('pattern');
     };
   }, [symbol, view.timeframe, savedRangeCandles]);
+
+  /** 속성 패널이 「패턴 찾기」를 누르기 전에 되는지 말하기 위한 봉 수. 캔들을 아는
+   *  것이 이 층이라 여기서 센다(패널은 도형만 안다). */
+  const patternBarCount = useMemo(
+    () => (aMs: number, bMs: number) => {
+      const [lo, hi] = aMs <= bMs ? [aMs, bMs] : [bMs, aMs];
+      return {
+        bars: savedRangeCandles.filter((c) => c.ts_ms >= lo && c.ts_ms <= hi).length,
+        min: PATTERN_MIN_BARS,
+        max: PATTERN_MAX_BARS,
+      };
+    },
+    [savedRangeCandles],
+  );
 
   /**
    * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
@@ -868,6 +888,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             onClick={() => requestIndicatorDrawer(win.id)}
             showLabel={!headerFold.compactActions}
           />
+          {/* 봉 패턴은 일봉 개념이라 그 봉에서만 보인다 — 속성 패널의 「패턴 찾기」와
+              같은 판정이고, 게이트를 두 곳에 두지 않으려 `onSearchPattern` 의 존재로 잰다. */}
+          {onSearchPattern != null && (
+            <PatternAreaButton showLabel={!headerFold.compactActions} />
+          )}
           <LiveStudyViewSaveButton
             source={studySaveSource}
             showLabel={!headerFold.compactActions}
@@ -888,6 +913,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               code={d.workareaCode}
               timeframe={view.timeframe}
               onSearchPattern={onSearchPattern}
+              patternBarCount={patternBarCount}
               venue={venue}
               viewIdentity={viewIdentity}
               savedRangeBand={savedRangeBand}

@@ -181,6 +181,9 @@ export interface PatternSearchRequest {
   exclude_etf?: boolean;
   no_overlap?: boolean;
   forward_days?: number;
+  /** `history` 전용 — 한 종목에서 남길 매치 수(1~5). 1 은 다양성, 늘리면 "그 패턴이
+   *  나온 자리를 전부" 본다. 두 번째부터는 겹침 배제가 걸린다. */
+  per_code?: number;
 }
 
 /** 후보 점수 분포. **유사도 절대값을 단독으로 그리지 않기 위한 동반 데이터**다 —

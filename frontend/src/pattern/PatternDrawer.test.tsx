@@ -382,3 +382,55 @@ describe('PatternDrawer — 기준 종목 고정', () => {
     expect(body.code).toBe('000660');
   });
 });
+
+describe('PatternDrawer — 그은 구간은 과거 전체에서 찾는다', () => {
+  it('시드가 들어오면 history 모드로 검색한다', async () => {
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '005930', from: '20260401', to: '20260630',
+    });
+    renderDrawer();
+    await screen.findByText(/차트에서 그은 구간/);
+    // ★ 과거 어느 구간을 긋든 묻는 것은 "이 패턴이 과거 어디에서 또 나왔나" 다.
+    //   now 로 두면 그은 구간과 무관한 답(각 종목의 최신 봉)을 낸다.
+    const body = searchPattern.mock.calls.at(-1)![0];
+    expect(body.mode).toBe('history');
+    expect(body.no_overlap).toBe(true);
+    expect(await screen.findByRole('button', { name: '과거에 이 모양' }))
+      .toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('시드 뒤에도 탭 전환은 살아 있다 — 지금 닮은 종목도 유효한 질문이다', async () => {
+    const user = userEvent.setup();
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '005930', from: '20260401', to: '20260630',
+    });
+    renderDrawer();
+    await screen.findByText(/차트에서 그은 구간/);
+    await user.click(screen.getByRole('button', { name: '지금 닮은 종목' }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.at(-1)![0].mode).toBe('now'));
+  });
+});
+
+describe('PatternDrawer — 종목당 매치 수', () => {
+  it('과거 탭에서만 고를 수 있고 기본은 1자리다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    expect(screen.queryByRole('button', { name: '나온 자리 전부' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+    expect(searchPattern.mock.calls.at(-1)![0].per_code).toBe(1);
+  });
+
+  it('「나온 자리 전부」를 고르면 per_code 를 올려 다시 찾는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+    await user.click(screen.getByRole('button', { name: '나온 자리 전부' }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.at(-1)![0].per_code).toBeGreaterThan(1));
+  });
+});

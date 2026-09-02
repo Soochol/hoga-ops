@@ -38,6 +38,7 @@ export function patternKey(
   length: number,
   filters: PatternFilters,
   range?: { from: string; to: string } | null,
+  perCode = 1,
 ) {
   // now 는 길이를 묶어 받으므로 **키에 길이가 없다** — 스테퍼가 캐시를 무효화하면
   // 묶어 받은 의미가 사라진다.
@@ -51,6 +52,7 @@ export function patternKey(
     filters.noOverlap,
     // 차트에서 건네받은 구간은 **길이를 대신하는 축**이라 키에 들어간다.
     range ? `${range.from}-${range.to}` : null,
+    perCode,
   ] as const;
 }
 
@@ -60,6 +62,7 @@ export function usePatternSearch({
   length,
   filters,
   range = null,
+  perCode = 1,
   enabled = true,
 }: {
   code: string | null;
@@ -68,10 +71,12 @@ export function usePatternSearch({
   filters: PatternFilters;
   /** 차트에서 그은 구간. 주면 **그 구간이 곧 길이**이고 `lengths` 는 무시된다. */
   range?: { from: string; to: string } | null;
+  /** `history` 전용 — 한 종목에서 남길 매치 수. */
+  perCode?: number;
   enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: patternKey(code, mode, length, filters, range),
+    queryKey: patternKey(code, mode, length, filters, range, perCode),
     enabled: enabled && !!code,
     // 코퍼스는 하루 한 번 갱신된다 — 패널을 여닫을 때마다 다시 계산할 이유가 없다.
     staleTime: 5 * 60_000,
@@ -86,6 +91,7 @@ export function usePatternSearch({
         min_tv_eok: filters.minTvEok,
         exclude_etf: filters.excludeEtf,
         no_overlap: filters.noOverlap,
+        per_code: perCode,
       }),
   });
 }

@@ -40,9 +40,12 @@ _FLAT_SD = 1e-9
 _OHLC = ("open", "high", "low", "close")
 _CLOSE = 3
 
-#: 창의 하한 — 이보다 짧으면 상관계수가 우연으로 가득 찬다. `models.PATTERN_MIN_BARS`
-#: 와 같은 값이며, 이 상수는 **날짜 지정 경로**(길이를 요청이 정하지 않는다)를 지킨다.
+#: 창의 하한·상한 — **날짜 지정 경로**를 지킨다. `models` 의 `lengths` 검증은 요청이
+#: 길이를 **말할 때만** 걸리는데, `from`/`to` 경로는 길이를 그 구간에서 뽑으므로 그
+#: 검증을 통과한다. 즉 이 두 상수가 없으면 드래그로 그은 200봉이 그대로 돈다
+#: (실측: 33봉 구간이 상한을 우회해 사용자 서버에서 24.7초를 썼다).
 PATTERN_FLOOR = 5
+PATTERN_CEILING = 30
 
 
 @dataclass(frozen=True)
@@ -282,6 +285,28 @@ def search_now(
     return out, np.array(scores)
 
 
+def _top_in_series(corr: np.ndarray, series: int, length: int, per_code: int) -> list[PatternMatch]:
+    """한 종목에서 남길 매치들.
+
+    두 번째부터 **겹침 배제**(창 길이의 절반)를 건다 — 안 걸면 한 칸씩 밀린 같은 자리가
+    상위를 도배한다(이웃 창은 봉 하나만 달라 점수가 거의 같다).
+    """
+    if per_code <= 1:
+        best = int(np.argmax(corr))
+        return [PatternMatch(float(corr[best]), series, best)] if np.isfinite(corr[best]) else []
+    # 복사는 per_code>1 에서만 — 창 수가 수천이라 기본 경로에 얹지 않는다.
+    remaining = corr.copy()
+    zone = max(1, length // 2)
+    out: list[PatternMatch] = []
+    for _ in range(per_code):
+        best = int(np.argmax(remaining))
+        if not np.isfinite(remaining[best]):
+            break
+        out.append(PatternMatch(float(remaining[best]), series, best))
+        remaining[max(0, best - zone) : best + zone + 1] = -np.inf
+    return out
+
+
 def search_history(
     c: Corpus,
     *,
@@ -293,6 +318,8 @@ def search_history(
     exclude_etf: bool,
     min_after: int,
     no_overlap: bool,
+    want_baseline: bool = False,
+    per_code: int = 1,
 ) -> tuple[list[PatternMatch], np.ndarray, np.ndarray]:
     """전 종목 × 전 기간 슬라이딩. 종목당 최고점 **1개**만 남긴다(결과 다양성).
 
@@ -336,9 +363,7 @@ def search_history(
             all_scores.append(corr[idx])
             close = c.ch[_CLOSE, s:e]
             all_fwd.append(np.exp(close[idx + length - 1 + min_after] - close[idx + length - 1]) - 1)
-        best = int(np.argmax(corr))
-        if np.isfinite(corr[best]):
-            matches.append(PatternMatch(float(corr[best]), i, best))
+        matches.extend(_top_in_series(corr, i, length, per_code))
     matches.sort(key=lambda m: m.score, reverse=True)
     scores = np.concatenate(all_scores) if all_scores else np.zeros(0)
     fwd = np.concatenate(all_fwd) if all_fwd else np.zeros(0)
@@ -382,9 +407,10 @@ def _resolve_window(c: Corpus, i: int, length: int, frm: str | None, to: str | N
     days = c.dates[s : s + n].astype("datetime64[D]").astype(str)
     days = np.char.replace(days, "-", "")
     sel = np.flatnonzero((days >= frm) & (days <= to))
-    if len(sel) < PATTERN_FLOOR:
+    span = int(sel[-1] - sel[0] + 1) if len(sel) else 0
+    if len(sel) < PATTERN_FLOOR or span > PATTERN_CEILING:
         return None
-    return int(sel[0]), int(sel[-1] - sel[0] + 1)
+    return int(sel[0]), span
 
 
 def _ymd(c: Corpus, i: int, offset: int) -> str:
@@ -425,6 +451,7 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
                 c, query=query, length=length, query_series=qi, query_offset=offset,
                 min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
                 min_after=req.forward_days, no_overlap=req.no_overlap,
+                per_code=req.per_code,
             )
             if len(fwd_all):
                 baseline = PatternBaseline(
