@@ -198,6 +198,37 @@ def test_now_skips_series_that_stopped(tmp_path):
     assert "000002" not in {c.codes[m.series] for m in now}
 
 
+def test_per_code_keeps_several_matches_per_series_with_exclusion(tmp_path):
+    """`per_code` 는 한 종목에서 그 패턴이 나온 자리를 여러 개 남긴다.
+
+    ⚠ 겹침 배제가 없으면 한 칸씩 밀린 같은 자리가 상위를 도배한다 — 이웃 창은 봉
+    하나만 달라 점수가 거의 같다. 그래서 두 매치의 간격이 창 길이의 절반을 넘어야 한다.
+    """
+    rng = np.random.default_rng(3)
+    noise = list(100 + np.cumsum(rng.normal(0, 1.5, 80)))
+    # 같은 패턴을 한 계열의 **두 자리**에 심는다(멀리 떨어뜨려 배제 구역과 무관하게).
+    for at in (10, 50):
+        noise[at : at + _LEN] = [v * 2.0 for v in _PATTERN]
+    rows = _series("000001", noise) + _series("000002", list(100 + np.cumsum(rng.normal(0, 1.5, 80))))
+    c = sp.load_corpus(_write(tmp_path, rows))
+    qi, off, q = _query(c, "000001")
+
+    def run(per_code):
+        hits, _, _ = sp.search_history(
+            c, query=q, length=_LEN, query_series=qi, query_offset=off,
+            min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False,
+            per_code=per_code)
+        return [(c.codes[m.series], m.offset) for m in hits]
+
+    one = run(1)
+    assert len([x for x in one if x[0] == "000001"]) == 1
+    many = run(3)
+    mine = sorted(off for code, off in many if code == "000001")
+    assert len(mine) >= 2                       # 두 자리를 모두 찾았다
+    # 겹침 배제 — 두 매치가 창 길이의 절반보다 가깝지 않다.
+    assert all(b - a > _LEN // 2 for a, b in zip(mine, mine[1:], strict=False))
+
+
 def test_no_overlap_drops_windows_sharing_dates_with_query(corpus):
     """동시대 매치를 빼는 스위치 — 안 빼면 같은 장세를 겪은 종목이 상위를 지배한다."""
     c = sp.load_corpus(corpus)

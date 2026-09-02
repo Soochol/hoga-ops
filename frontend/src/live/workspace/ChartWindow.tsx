@@ -71,6 +71,7 @@ import { countBarsInRange } from '../savedRangeAnchor';
 import type { Candle } from '../../api/types';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
+import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import {
   HogaplaySourceButton,
@@ -868,6 +869,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             onClick={() => requestIndicatorDrawer(win.id)}
             showLabel={!headerFold.compactActions}
           />
+          {/* 봉 패턴은 일봉 개념이라 그 봉에서만 보인다 — 속성 패널의 「패턴 찾기」와
+              같은 판정이고, 게이트를 두 곳에 두지 않으려 `onSearchPattern` 의 존재로 잰다. */}
+          {onSearchPattern != null && (
+            <PatternAreaButton showLabel={!headerFold.compactActions} />
+          )}
           <LiveStudyViewSaveButton
             source={studySaveSource}
             showLabel={!headerFold.compactActions}

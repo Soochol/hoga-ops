@@ -2029,6 +2029,9 @@ class PatternSearchRequest(BaseModel):
     no_overlap: bool = True
     #: 이후 수익률의 지평(거래일). `history` 에서만 의미가 있다.
     forward_days: int = Field(20, ge=1, le=120)
+    #: `history` 전용 — 한 종목에서 남길 매치 수. 1 은 다양성, 늘리면 "그 패턴이 나온
+    #: 자리를 전부" 본다. 두 번째부터는 겹침 배제(창 길이의 절반)가 걸린다.
+    per_code: int = Field(1, ge=1, le=5)
 
     model_config = ConfigDict(populate_by_name=True)
 

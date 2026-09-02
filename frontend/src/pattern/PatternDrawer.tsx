@@ -192,6 +192,8 @@ export function PatternDrawer() {
   const [length, setLength] = useState(DEFAULT_LENGTH);
   // 차트가 건넨 구간(measure). **1회 소비**라 스테퍼를 만진 뒤 되돌아오지 않는다.
   const [seededRange, setSeededRange] = useState<{ from: string; to: string } | null>(null);
+  /** 한 종목에서 몇 자리를 볼지. 1 = 다양성 · 5 = "그 패턴이 나온 자리를 전부". */
+  const [perCode, setPerCode] = useState(1);
   const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
   const pendingSeed = usePatternQueryStore((s) => s.pending);
   const jump = useJumpToLive();
@@ -211,7 +213,10 @@ export function PatternDrawer() {
     // 차트에서 그은 구간은 **새 검색**이라 그 종목이 새 기준이다.
     setSubject({ code: seed.code, label: seed.label ?? seed.code });
     setSeededRange({ from: seed.from, to: seed.to });
-    setMode('now');
+    // ★ 과거 어느 구간을 긋든 묻는 것은 "이 패턴이 **과거 어디에서** 또 나왔나" 다.
+    //   `now`(각 종목의 최신 봉)로 두면 그은 구간과 무관한 답을 낸다.
+    //   탭은 살려 둔다 — "이 과거 패턴과 지금 같은 모양인 종목" 도 유효한 질문이다.
+    setMode('history');
   }, [pendingSeed, consumeSeed]);
 
   const { data, isPending, isError, error } = usePatternSearch({
@@ -220,6 +225,7 @@ export function PatternDrawer() {
     length,
     range: seededRange,
     filters: DEFAULT_FILTERS,
+    perCode,
   });
 
   const result = useMemo(
@@ -328,6 +334,31 @@ export function PatternDrawer() {
         </div>
         )}
       </div>
+
+      {mode === 'history' && (
+        <div className="flex items-center gap-sm px-md pt-sm">
+          <span className="text-2xs text-fg-dim">한 종목에서</span>
+          <SegmentedControl aria-label="종목당 매치 수">
+            {[
+              { v: 1, label: '가장 닮은 1자리' },
+              { v: 5, label: '나온 자리 전부' },
+            ].map((o) => {
+              const on = perCode === o.v;
+              return (
+                <button
+                  key={o.v}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPerCode(o.v)}
+                  className={`px-2 py-[3px] text-2xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </SegmentedControl>
+        </div>
+      )}
 
       <div className="px-md py-sm">
         <SegmentedControl aria-label="패턴 검색 범위" className="w-full">
