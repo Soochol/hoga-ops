@@ -10,7 +10,7 @@ import { mergeByHeadroom, sinceFor, visibleRows } from './patternConditions';
 
 const row = (corr: number, code = 'a') => ({
   code, name: code, from_date: '20240101', to_date: '20240107', corr,
-  bars: [[1, 1, 1, 1]], tail: null, forward_pct: null,
+  bars: [[1, 1, 1, 1]], tail: null, forward_pct: null, ma: null,
 });
 
 describe('mergeByHeadroom', () => {

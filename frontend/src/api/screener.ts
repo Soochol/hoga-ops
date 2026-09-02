@@ -168,6 +168,11 @@ export const triggerScreenerUpdate = () =>
 /** 손 미러 — 정본은 `hoga/api/models.py::PatternSearchMode`. */
 export type PatternSearchMode = 'now' | 'history';
 
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternMaPreset`.
+ *  이름이 「무엇을 찾는지」를 말한다: `short` 는 단기 배열 속의 캔들(5·20),
+ *  `mid` 는 중기 추세 속의 캔들(20·60). 자유 조합은 열지 않는다(ADR-0166 결정 11). */
+export type PatternMaPreset = 'off' | 'short' | 'mid';
+
 export interface PatternSearchRequest {
   code: string;
   mode: PatternSearchMode;
@@ -193,6 +198,8 @@ export interface PatternSearchRequest {
   /** 거래량 축의 비중(0~1). 0 이면 가격만. 유사도가
    *  `가격 상관 × (1-w) + 거래량 상관 × w` 가 되고 **w 는 화면의 스위치**다. */
   volume_weight?: number;
+  /** 이평선을 매칭 축에 넣을지. 생략하면 `off`. */
+  ma_preset?: PatternMaPreset;
 }
 
 /** 후보 점수 분포. **유사도 절대값을 단독으로 그리지 않기 위한 동반 데이터**다 —
@@ -227,6 +234,9 @@ export interface PatternMatchRow {
   tail: number[] | null;
   /** `history` 전용 — 계열을 넘으면 null(「이후를 모른다」이지 0 이 아니다). */
   forward_pct: number | null;
+  /** 이평 프리셋이 켜졌을 때만 — 기간별 **원가격** 이평값. 바깥 배열이
+   *  `PatternLengthResult.ma_periods` 와 같은 순서다. */
+  ma: number[][] | null;
 }
 
 export interface PatternQueryWindow {
@@ -234,11 +244,15 @@ export interface PatternQueryWindow {
   from_date: string;
   to_date: string;
   bars: number[][];
+  /** 매치 행과 같은 규칙 — `ma_periods` 순서의 원가격 이평값. */
+  ma: number[][] | null;
 }
 
 export interface PatternLengthResult {
   length: number;
   query: PatternQueryWindow;
+  /** 이 결과에 실린 이평 기간들. 비어 있으면 이평을 안 썼다. */
+  ma_periods: number[];
   universe: number;
   dist: PatternDistribution;
   matches: PatternMatchRow[];
@@ -289,6 +303,10 @@ export interface PatternSaveConditions {
   no_overlap: boolean;
   per_code: number;
   volume_weight: number;
+  /** 이평 프리셋 — 유사도 자체를 바꾸므로 빠지면 다른 검색이 복원된다. */
+  ma_preset: PatternMaPreset;
+  /** 길이 유연 폭(±봉). */
+  flex_bars: number;
 }
 
 export interface PatternSaveWriteRequest {

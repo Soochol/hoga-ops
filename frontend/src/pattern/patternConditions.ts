@@ -1,4 +1,4 @@
-import type { PatternMatchRow } from '../api/screener';
+import type { PatternMaPreset, PatternMatchRow } from '../api/screener';
 
 /**
  * 패턴 검색의 조건들 (ADR-0166).
@@ -37,6 +37,16 @@ export const RESULT_COUNTS = [20, 40, 100] as const;
 /** 길이 유연 폭 후보. `history` 는 길이당 ~0.6s 라 ±2 가 3초다 — 그 위는 열지 않는다. */
 export const FLEX_STEPS = [0, 1, 2] as const;
 
+/** 이평 프리셋 후보. **자유 조합을 열지 않는다** — 조합마다 답이 크게 갈리지만(5·20 대비
+ *  20·60 은 상위 20 중 3개만 겹친다) 그건 판별력이 아니라 **질문이 바뀌는 것**이고,
+ *  체크박스는 그 사실을 화면에서 말해 주지 못한다. 이름이 무엇을 찾는지 말하게 둔다.
+ *  값은 `hoga/api/models.py::PatternMaPreset` 의 손 미러다(ADR-0004). */
+export const MA_PRESETS = [
+  { key: 'off' as const, label: '이평 끄기', note: '캔들 모양만 본다' },
+  { key: 'short' as const, label: '단기 5·20', note: '5·20 이평을 낀 자리까지 맞춘다' },
+  { key: 'mid' as const, label: '중기 20·60', note: '중기 추세 위의 자리를 맞춘다' },
+];
+
 export type PatternConditions = {
   period: PeriodKey;
   count: number;
@@ -46,6 +56,9 @@ export type PatternConditions = {
   noOverlap: boolean;
   /** ±N봉. 0 이면 기준 길이 하나만 본다. */
   flexBars: number;
+  /** 이평선을 매칭 축에 넣을지. **서버 조건**이다 — 유사도 자체가 달라지므로 받아 둔
+   *  결과를 자르는 것으로는 흉내낼 수 없다. */
+  maPreset: PatternMaPreset;
 };
 
 /** 기본값 — 「다 보고 싶다」에 가깝게(2026-09-02 사용자 결정). */
@@ -57,6 +70,7 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
   excludeEtf: true,
   noOverlap: true,
   flexBars: 0,
+  maPreset: 'off',
 };
 
 /** 기간 → `since`(YYYYMMDD). 전체면 `undefined` — 서버가 그때 필터를 아예 안 건다. */
