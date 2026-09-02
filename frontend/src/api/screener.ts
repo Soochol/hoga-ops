@@ -303,10 +303,14 @@ export interface PatternSaveConditions {
   no_overlap: boolean;
   per_code: number;
   volume_weight: number;
-  /** 이평 프리셋 — 유사도 자체를 바꾸므로 빠지면 다른 검색이 복원된다. */
-  ma_preset: PatternMaPreset;
-  /** 길이 유연 폭(±봉). */
-  flex_bars: number;
+  /** 이평 프리셋 — 유사도 자체를 바꾸므로 빠지면 다른 검색이 복원된다.
+   *
+   *  ⚠ `null` 은 **「끄기」가 아니라 「그 축이 없던 시절의 저장」**이다. 화면은 그때
+   *  **공장값**을 쓴다 — 부재와 선택은 다른 계약이라(CLAUDE.md), 여기서 `'off'` 로
+   *  읽으면 이평 기능 이전의 저장이 전부 이평 꺼진 채로 되살아난다. */
+  ma_preset: PatternMaPreset | null;
+  /** 길이 유연 폭(±봉). `null` 의 뜻은 위 `ma_preset` 과 같다. */
+  flex_bars: number | null;
 }
 
 export interface PatternSaveWriteRequest {

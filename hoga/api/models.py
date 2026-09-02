@@ -2141,10 +2141,15 @@ class PatternSaveConditions(BaseModel):
     per_code: int = Field(5, ge=1, le=5)
     volume_weight: float = Field(0.0, ge=0, le=1)
     #: 이평 프리셋. 유사도 자체를 바꾸는 조건이라 빠지면 **다른 검색이 복원된다**.
-    ma_preset: PatternMaPreset = "off"
-    #: 길이 유연 폭(±봉). 앞선 PR 이 저장에서 빠뜨렸던 것을 여기서 채운다 — 매치의
-    #: 길이가 달라지므로 이것도 「그 조건이 아니다」를 만든다.
-    flex_bars: int = Field(0, ge=0, le=5)
+    #:
+    #: ⚠ **`None` 은 「끄기」가 아니라 「그 축이 없던 시절의 저장」이다.** 부재와 선택은
+    #: 다른 계약이라(CLAUDE.md), 기본값으로 `"off"` 를 채우면 두 의미가 뭉개진다 —
+    #: 실제로 이평 기능 이전의 저장을 불러오니 이평이 꺼진 채 복원됐다(2026-09-02).
+    #: 화면은 `None` 을 **공장값**으로 읽는다. 새 저장은 항상 값을 담으므로, 일부러 끈
+    #: 저장은 `"off"` 로 남아 그대로 복원된다.
+    ma_preset: PatternMaPreset | None = None
+    #: 길이 유연 폭(±봉). `None` 의 뜻은 위 `ma_preset` 과 같다.
+    flex_bars: int | None = Field(None, ge=0, le=5)
 
 
 class PatternSaveWriteRequest(BaseModel):
