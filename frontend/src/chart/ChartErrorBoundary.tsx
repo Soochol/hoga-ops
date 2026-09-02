@@ -1,5 +1,9 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { formatUpdateLoopReport, readUpdateLoopReport } from '../state/updateLoopSignal';
+import {
+  formatUpdateLoopReport,
+  readUpdateLoopReport,
+  readUpdateLoopReports,
+} from '../state/updateLoopSignal';
 
 type Props = {
   children: ReactNode;
@@ -65,11 +69,13 @@ export default class ChartErrorBoundary extends Component<Props, State> {
     // 알려 주는데(실측: `LiveChartRoot`), 매 커밋 스토어를 쓰는 «쓴 쪽» 은 다른
     // 컴포넌트일 수 있다 — 스토어 알림은 트리 경계를 넘기 때문이다. 두 조각이
     // 한 번의 붙여넣기로 같이 와야 조사가 한 왕복에 끝난다.
-    const loop = readUpdateLoopReport();
+    // 신고는 **전부** 싣는다 — 래치가 스토어별이라 루프에 두 스토어가 실렸으면 둘 다
+    // 잡힌다. 상자의 헤드라인은 첫 신고만 보여 주지만, 붙여넣기는 조사에 쓰이므로
+    // 나머지를 버리면 조사가 다시 한 왕복 늘어난다.
     return [
       error?.message ?? '',
       componentStack ?? '',
-      loop ? formatUpdateLoopReport(loop) : '',
+      ...readUpdateLoopReports().map(formatUpdateLoopReport),
     ].join('\n').trim();
   }
 
