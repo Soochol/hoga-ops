@@ -48,9 +48,11 @@ const SAVE_FIXED = {
 };
 
 const jump = vi.fn();
+// ★ 가변이다. 「새 탭이면 표식을 세우지 않는다」 는 이 술어가 참인 경로에서만 관찰된다.
+let newTab = false;
 vi.mock('../live/useJumpToLive', () => ({
   useJumpToLive: () => jump,
-  wantsNewTab: () => false,
+  wantsNewTab: () => newTab,
 }));
 
 const focusSavedRange = vi.fn();
@@ -148,6 +150,13 @@ function renderDrawer() {
 beforeEach(() => {
   searchPattern.mockReset();
   jump.mockReset();
+  newTab = false;
+  // ★ 진짜 `useJumpToLive` 는 `activateLiveCode` 로 activeCode 를 옮긴다. 그 한 걸음이
+  //   빠지면 「눌린 행에 표식」 이 **원리적으로 양성이 될 수 없다** — 선택 표식이
+  //   activeCode 게이트를 지나기 때문(목록 밖에서 종목이 바뀌면 표식이 거짓말이 된다).
+  jump.mockImplementation((code: string) => {
+    if (!newTab) live.activeCode = code;
+  });
   focusSavedRange.mockReset();
   setChartTimeframe.mockReset();
   extendChartHistoricalRange.mockReset();
@@ -659,5 +668,121 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     await openSaves(user);
     await user.click(await screen.findByRole('button', { name: /abcd 삭제/ }));
     expect(deletePatternSave).toHaveBeenCalledWith('f1');
+  });
+});
+
+describe('PatternDrawer — 눌린 행의 표식과 화살표 이동', () => {
+  /** 과거 매치 목록을 띄우고 1위 행을 돌려준다(픽스처 순서: SK하이닉스 · 한솔테크닉스
+   *  · 베뉴지 · 디오). `beforeEach` 가 이미 검색 모의를 세워 둔다. */
+  async function openedList(user: ReturnType<typeof userEvent.setup>) {
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: /과거에 이 모양/ }));
+    return await screen.findByRole('button', { name: /SK하이닉스/ });
+  }
+
+  it('행을 누르면 그 행에 표식이 선다', async () => {
+    const user = userEvent.setup();
+    const row = await openedList(user);
+    expect(row).not.toHaveAttribute('aria-current');
+    await user.click(row);
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).toHaveAttribute('aria-current', 'true');
+    // 표식은 배경 틴트만 — 좌측 accent 바를 다시 넣지 말 것(DESIGN.md 리스트 행 규칙).
+    expect(screen.getByRole('button', { name: /SK하이닉스/ }).style.background).toContain('tint-selection');
+  });
+
+  it('다른 행을 누르면 표식이 그리로 옮겨간다 — 한 번에 하나다', async () => {
+    const user = userEvent.setup();
+    await user.click(await openedList(user));
+    await user.click(screen.getByRole('button', { name: /한솔테크닉스/ }));
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: /한솔테크닉스/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('새 탭으로 여는 클릭은 표식을 세우지 않는다 — 이 창의 차트가 안 움직인다', async () => {
+    const user = userEvent.setup();
+    const row = await openedList(user);
+    newTab = true;
+    await user.click(row);
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).not.toHaveAttribute('aria-current');
+  });
+
+  it('새 결과가 오면 표식을 버린다 — 키가 여전히 맞아도', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    // `now` 모드. 기준을 바꾸면 새 검색이 돌지만 매치의 code·from_date·length 는
+    // **그대로일 수 있다**(전 종목이 같은 날의 최신 창이라서). 그러면 키가 여전히
+    // 맞고 차트도 그 종목에 있어 **activeCode 게이트마저 통과한다** — 눌러 본 적 없는
+    // 새 결과의 행에 표식이 남는다. 리셋이 유일한 방어다.
+    await user.click(await screen.findByRole('button', { name: /길이7위/ }));
+    expect(screen.getByRole('button', { name: /길이7위/ })).toHaveAttribute('aria-current', 'true');
+    await user.click(await screen.findByRole('button', { name: /기준을/ }));
+    expect(await screen.findByRole('button', { name: /길이7위/ })).not.toHaveAttribute('aria-current');
+  });
+
+  it('목록 밖에서 종목이 바뀌면 표식이 사라진다 — 차트가 이미 딴 데 있다', async () => {
+    const user = userEvent.setup();
+    const view = renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByRole('button', { name: /SK하이닉스/ }));
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).toHaveAttribute('aria-current', 'true');
+    // 헤더 검색·관심종목에서 종목을 바꾼 상황 — **결과 목록은 그대로다.**
+    // 진짜 스토어면 구독이 리렌더를 일으키지만 모의는 셀렉터 호출이라 직접 민다.
+    live.activeCode = '068270';
+    view.rerender(<Wrapper />);
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).not.toHaveAttribute('aria-current');
+  });
+
+  it('아래 화살표가 다음 행으로 종목을 옮긴다', async () => {
+    const user = userEvent.setup();
+    const row = await openedList(user);
+    await user.click(row);
+    jump.mockClear();
+    await user.keyboard('{ArrowDown}');
+    expect(jump).toHaveBeenCalledWith('004710', '한솔테크닉스', expect.anything());
+    expect(screen.getByRole('button', { name: /한솔테크닉스/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('마지막 행에서 아래 화살표는 멈춘다 — 순환하지 않는다', async () => {
+    const user = userEvent.setup();
+    await openedList(user);
+    await user.click(screen.getByRole('button', { name: /디오/ })); // 픽스처의 마지막 매치
+    jump.mockClear();
+    await user.keyboard('{ArrowDown}');
+    expect(jump).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /디오/ })).toHaveAttribute('aria-current', 'true');
+  });
+});
+
+describe('PatternDrawer — 헤더의 기준 구간도 이동 대상이다', () => {
+  it('누르면 기준 종목의 그 구간으로 일봉이 간다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByRole('button', { name: /길이7위/ });
+    jump.mockClear();
+    await user.click(screen.getByRole('button', { name: /구간으로 차트 이동/ }));
+    expect(jump).toHaveBeenCalledWith('005930', '삼성전자', expect.anything());
+    // 매치 행과 **같은 경로**를 탄다 — 일봉 전환 · 과거 범위 확장 · 밴드 착석.
+    expect(setChartTimeframe).toHaveBeenCalledWith('chart1', 'D');
+    expect(extendChartHistoricalRange).toHaveBeenCalled();
+    expect(focusSavedRange).toHaveBeenCalledWith(
+      expect.objectContaining({ fromDate: '20260824', toDate: '20260901', savedTimeframe: 'D' }),
+    );
+  });
+
+  it('과거 모드에서도 같은 구간을 가리킨다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByRole('button', { name: /SK하이닉스/ });
+    jump.mockClear();
+    await user.click(screen.getByRole('button', { name: /구간으로 차트 이동/ }));
+    // 기준은 매치가 아니라 **내가 그은 구간**이다 — SK하이닉스가 아니라 삼성전자로 간다.
+    expect(jump).toHaveBeenCalledWith('005930', '삼성전자', expect.anything());
+  });
+
+  it('검색 결과가 없으면 누를 수 없다 — 가리킬 구간이 아직 없다', async () => {
+    searchPattern.mockImplementation(() => new Promise(() => {}));
+    renderDrawer();
+    expect(await screen.findByRole('button', { name: /종목 없음|삼성전자/ })).toBeDisabled();
   });
 });
