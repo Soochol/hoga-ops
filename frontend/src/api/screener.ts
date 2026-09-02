@@ -184,6 +184,9 @@ export interface PatternSearchRequest {
   /** `history` 전용 — 한 종목에서 남길 매치 수(1~5). 1 은 다양성, 늘리면 "그 패턴이
    *  나온 자리를 전부" 본다. 두 번째부터는 겹침 배제가 걸린다. */
   per_code?: number;
+  /** `history` 전용 — 이 날짜(YYYYMMDD) 이후에 시작하는 창만. **기간만 서버로 온다** —
+   *  유사도 하한·결과 수는 프론트가 받아 둔 목록을 자른다. */
+  since?: string;
   /** 거래량 축의 비중(0~1). 0 이면 가격만. 유사도가
    *  `가격 상관 × (1-w) + 거래량 상관 × w` 가 되고 **w 는 화면의 스위치**다. */
   volume_weight?: number;

@@ -366,6 +366,7 @@ def search_history(
     per_code: int = 1,
     volume_query: np.ndarray | None = None,
     volume_weight: float = 0.0,
+    since: np.datetime64 | None = None,
 ) -> tuple[list[PatternMatch], np.ndarray, np.ndarray]:
     """전 종목 × 전 기간 슬라이딩. 종목당 최고점 **1개**만 남긴다(결과 다양성).
 
@@ -399,6 +400,10 @@ def search_history(
             corr[_roll_mean(c.tv[s:e], length) < min_tv_eok * _WON_PER_EOK] = -np.inf
         if min_after:
             corr[len(corr) - min_after :] = -np.inf     # 이후 구간이 없는 꼬리
+        if since is not None:
+            # 창의 **시작일** 기준. 기간은 후보 모집단을 바꾸는 유일한 조건이라
+            # 서버에 있다(유사도·개수는 프론트가 결과를 자른다).
+            corr[c.dates[s:e][: len(corr)] < since] = -np.inf
         if no_overlap:
             d = c.dates[s:e]
             corr[(d[: len(corr)] <= q_to) & (d[length - 1 :] >= q_from)] = -np.inf
@@ -505,6 +510,9 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
                 min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
                 min_after=req.forward_days, no_overlap=req.no_overlap,
                 per_code=req.per_code, volume_query=vq, volume_weight=vw,
+                since=(np.datetime64(
+                    f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D")
+                    if req.since else None),
             )
             if len(fwd_all):
                 baseline = PatternBaseline(

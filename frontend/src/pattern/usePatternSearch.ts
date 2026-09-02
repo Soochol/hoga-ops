@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { searchPattern, type PatternLengthResult, type PatternSearchMode } from '../api/screener';
+import { sinceFor, type PatternConditions } from './patternConditions';
 
 /**
  * 봉 패턴 검색 훅 (ADR-0166).
@@ -49,6 +50,7 @@ export function patternKey(
   range?: { from: string; to: string } | null,
   perCode = 1,
   volumeWeight = 0,
+  conditions?: PatternConditions,
 ) {
   // now 는 길이를 묶어 받으므로 **키에 길이가 없다** — 스테퍼가 캐시를 무효화하면
   // 묶어 받은 의미가 사라진다.
@@ -64,6 +66,13 @@ export function patternKey(
     range ? `${range.from}-${range.to}` : null,
     perCode,
     volumeWeight,
+    // ⚠ **서버로 가는 조건만** 키에 든다. 유사도 하한은 받아 둔 목록을 자르는 것이라
+    //   키에 넣으면 값을 바꿀 때마다 불필요한 재검색이 난다.
+    conditions ? sinceFor(conditions.period) ?? 'all' : null,
+    conditions?.minTvEok ?? null,
+    conditions?.excludeEtf ?? null,
+    conditions?.noOverlap ?? null,
+    conditions?.count ?? null,
   ] as const;
 }
 
@@ -75,6 +84,7 @@ export function usePatternSearch({
   range = null,
   perCode = 1,
   volumeWeight = 0,
+  conditions,
   enabled = true,
 }: {
   code: string | null;
@@ -87,10 +97,12 @@ export function usePatternSearch({
   perCode?: number;
   /** 거래량 축 비중(0~1). 0 이면 서버가 거래량 계산을 아예 돌지 않는다. */
   volumeWeight?: number;
+  /** 조건 묶음. **유사도 하한을 뺀 나머지**가 서버로 간다. */
+  conditions?: PatternConditions;
   enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: patternKey(code, mode, length, filters, range, perCode, volumeWeight),
+    queryKey: patternKey(code, mode, length, filters, range, perCode, volumeWeight, conditions),
     enabled: enabled && !!code,
     // 코퍼스는 하루 한 번 갱신된다 — 패널을 여닫을 때마다 다시 계산할 이유가 없다.
     staleTime: 5 * 60_000,
@@ -101,10 +113,11 @@ export function usePatternSearch({
         // 구간을 주면 서버가 길이를 그 구간에서 뽑는다 — `lengths` 는 검증만 통과하면 된다.
         lengths: range || mode === 'history' ? [length] : [...NOW_LENGTHS],
         ...(range ? { from: range.from, to: range.to } : {}),
-        top: 20,
-        min_tv_eok: filters.minTvEok,
-        exclude_etf: filters.excludeEtf,
-        no_overlap: filters.noOverlap,
+        top: conditions?.count ?? 20,
+        ...(conditions ? { since: sinceFor(conditions.period) } : {}),
+        min_tv_eok: conditions?.minTvEok ?? filters.minTvEok,
+        exclude_etf: conditions?.excludeEtf ?? filters.excludeEtf,
+        no_overlap: conditions?.noOverlap ?? filters.noOverlap,
         per_code: perCode,
         volume_weight: volumeWeight,
       }),

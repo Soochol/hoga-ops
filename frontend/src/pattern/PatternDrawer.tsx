@@ -9,6 +9,12 @@ import {
   subtractDaysKst,
 } from '../live/liveDateTime';
 import { usePatternQueryStore } from './patternQuery';
+import { PatternConditionChips } from './PatternConditionChips';
+import {
+  DEFAULT_CONDITIONS,
+  visibleRows,
+  type PatternConditions,
+} from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import type { PatternMatchRow, PatternSearchMode } from '../api/screener';
 import { CandleThumb } from './CandleThumb';
@@ -202,7 +208,10 @@ export function PatternDrawer() {
   // 차트가 건넨 구간(measure). **1회 소비**라 스테퍼를 만진 뒤 되돌아오지 않는다.
   const [seededRange, setSeededRange] = useState<{ from: string; to: string } | null>(null);
   /** 한 종목에서 몇 자리를 볼지. 1 = 다양성 · 5 = "그 패턴이 나온 자리를 전부". */
-  const [perCode, setPerCode] = useState(1);
+  const [perCode, setPerCode] = useState(5);
+  /** 기간·결과 수·유사도·거래대금·ETF. **기간만 서버로 간다** — 나머지는 받아 둔
+   *  목록을 자르므로 팝오버가 개수를 미리 셀 수 있다(`patternConditions` 주석). */
+  const [conditions, setConditions] = useState<PatternConditions>(DEFAULT_CONDITIONS);
   /** 거래량을 유사도에 섞을지. **숫자를 화면에 내지 않는다** — 계약은 "함께" 다. */
   const [withVolume, setWithVolume] = useState(false);
   const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
@@ -238,12 +247,18 @@ export function PatternDrawer() {
     filters: DEFAULT_FILTERS,
     perCode,
     volumeWeight: withVolume ? VOLUME_WEIGHT_ON : 0,
+    conditions,
   });
 
   const result = useMemo(
     // 구간을 건네받았으면 **그 구간이 곧 길이**라 서버가 결과를 하나만 준다.
     () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
     [data, length, seededRange],
+  );
+  /** 화면에 그릴 행 — 유사도 하한과 개수는 **여기서** 적용된다(서버가 아니라). */
+  const shown = useMemo(
+    () => (result ? visibleRows(result.matches, conditions) : []),
+    [result, conditions],
   );
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
 
@@ -437,16 +452,28 @@ export function PatternDrawer() {
         </RailState>
       ) : (
         <>
-          <div className="px-md pb-xs font-data text-2xs text-fg-dimmer">
+          <PatternConditionChips
+            conditions={conditions}
+            onChange={setConditions}
+            rows={result.matches}
+            p9999={result.dist.p99_99}
+          />
+          <div className="px-md pb-xs pt-sm font-data text-2xs text-fg-dimmer">
             {mode === 'now'
               ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
-              : `${result.dist.sample.toLocaleString()}개 구간 비교 · ${Math.round(result.elapsed_ms)}ms`}
+              : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
           </div>
           <RailDrawerBody>
-            {result.matches.length === 0 ? (
-              <RailState>조건에 맞는 매치가 없다.</RailState>
+            {shown.length === 0 ? (
+              <RailState>
+                {conditions.simFloor > 0
+                  ? `유사도 ${conditions.simFloor.toFixed(2)} 이상인 구간이 없다 — 하한을 낮추거나 기간을 넓혀 보라.`
+                  : conditions.period !== 'all'
+                    ? '이 기간에 닮은 구간이 없다 — 기간을 넓혀 보라.'
+                    : '조건에 맞는 매치가 없다.'}
+              </RailState>
             ) : (
-              result.matches.map((row) => (
+              shown.map((row) => (
                 <MatchRow
                   key={`${row.code}-${row.from_date}`}
                   row={row}

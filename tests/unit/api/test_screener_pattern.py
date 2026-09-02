@@ -285,6 +285,48 @@ def test_per_code_keeps_several_matches_per_series_with_exclusion(tmp_path):
     assert all(b - a > _LEN // 2 for a, b in zip(mine, mine[1:], strict=False))
 
 
+def test_since_narrows_the_candidate_pool_not_the_result_list(tmp_path):
+    """`since` 는 **후보 모집단**을 바꾼다 — 결과를 자르는 것이 아니다.
+
+    그 차이가 이 기능의 설계선이다: 기간을 좁히면 그 안에서 **다시 상위를 뽑으므로**,
+    좁힌 뒤에도 목록이 꽉 찬다(실측: 2025-09 이후로 제한해도 40행). 유사도 하한·결과
+    수는 반대로 이미 뽑은 결과를 자르며 **프론트가** 한다.
+    """
+    rng = np.random.default_rng(11)
+    noise = list(100 + np.cumsum(rng.normal(0, 1.5, 120)))
+    for at in (10, 60, 100):
+        noise[at : at + _LEN] = [v * 2.0 for v in _PATTERN]
+    c = sp.load_corpus(_write(tmp_path, _series("000001", noise)))
+    qi, off, q = _query(c)
+
+    def run(since):
+        hits, _, _ = sp.search_history(
+            c, query=q, length=_LEN, query_series=qi, query_offset=off,
+            min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False,
+            per_code=5, since=since)
+        return [c.date_at(m.series, m.offset) for m in hits]
+
+    everything = run(None)
+    assert min(everything) < dt.date(2024, 4, 1)
+    cut = dt.date(2024, 4, 1)
+    narrowed = run(np.datetime64(cut.isoformat(), "D"))
+    assert narrowed, "기간을 좁혔다고 결과가 사라지면 안 된다 — 그 안에서 다시 뽑는다"
+    assert all(d >= cut for d in narrowed)
+
+
+def test_since_that_excludes_everything_returns_empty_not_error(client):
+    """모든 창을 걸러내는 기간은 **빈 결과**다 — 500 이 아니다.
+
+    조건이 셋이면 사용자가 빈 조합을 만들 수 있고(짧은 기간 + 동시대 제외),
+    그때 화면은 안내를 띄워야지 에러를 띄우면 안 된다.
+    """
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "history", "lengths": [7],
+                          "since": "20991231", "min_tv_eok": 0, "exclude_etf": False})
+    assert r.status_code == 200
+    assert r.json()["results"] == []
+
+
 def test_no_overlap_drops_windows_sharing_dates_with_query(corpus):
     """동시대 매치를 빼는 스위치 — 안 빼면 같은 장세를 겪은 종목이 상위를 지배한다."""
     c = sp.load_corpus(corpus)
