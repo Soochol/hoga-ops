@@ -40,6 +40,10 @@ vi.mock('lightweight-charts', async () => {
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
+        // ⚠ `priceToCoordinate` 를 빼면 안 된다: `CursorSyncCrosshair` 가
+        // `setCrosshairPosition` 앞에 이걸 불러 "이 차트가 그릴 수 있는 상태인가" 를
+        // 잰다(lwc 가 그 자리에서 `ensureNotNull` 로 던지기 때문). 없으면 TypeError 다.
+        priceToCoordinate: vi.fn(() => 100),
         removeSeries: vi.fn(),
         applyOptions: vi.fn(),
         priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
