@@ -94,7 +94,7 @@ describe('updateLoopSignal', () => {
   });
 
   it('비-React 콜백의 키 분산 배치는 신고하지 않는다 — WS 승격 20종목', () => {
-    // 실측 위양성(#1688): `promotion_completed` 는 종목마다 오므로 한 배치에 20종목이면
+    // 실측 위양성(#1713): `promotion_completed` 는 종목마다 오므로 한 배치에 20종목이면
     // 서로 다른 키의 진짜 상태 변경 20건이다. 스택에 React 프레임이 없다는 것이
     // 「React 가 몰지 않았다 = 이 예외를 던질 수 없다」의 지문이다.
     armUpdateLoopSignal();
