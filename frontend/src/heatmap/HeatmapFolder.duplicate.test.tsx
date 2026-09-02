@@ -78,6 +78,36 @@ describe('HeatmapFolder — 카드 ＋종목의 중복 안내', () => {
     expect(screen.getByTestId('heatmap-row-000660').className).not.toContain('row-flash');
   });
 
+  it('같은 종목이 두 카드에 있어도 **그 카드의 행**만 가리킨다', async () => {
+    // `heatmap-row-<code>` 는 다중 소속이라 보드 전체에서 고유하지 않다 — 전역 조회는
+    // 엉뚱한 카드로 스크롤한다(관심종목에서 진단을 여러 라운드 태운 함정).
+    const scrolledIn: (string | undefined)[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledIn.push(this.closest('[id^="heatmap-folder-"]')?.id);
+    });
+    render(
+      <div>
+        <HeatmapFolder folder={{ id: 'f0', name: '다른카드', order: 0 }}
+          entries={[entry('005930', '삼성전자')]}
+          quoteByCode={new Map()} sortMode="manual" onPick={vi.fn()} />
+        <HeatmapFolder folder={{ id: 'f1', name: '반도체', order: 1 }}
+          entries={[entry('005930', '삼성전자')]}
+          quoteByCode={new Map()} sortMode="manual" onPick={vi.fn()} />
+      </div>,
+    );
+    // 두 번째 카드(f1)의 ＋종목을 연다.
+    fireEvent.click(screen.getAllByRole('button', { name: '종목 추가' })[1]);
+    // 팝오버가 자기 트리거를 화면에 넣는 스크롤은 이 테스트의 관심사가 아니다 —
+    // 남겨 두면 「어느 카드로 스크롤했나」가 두 출처의 합이 되어 판정이 흐려진다.
+    scrolledIn.length = 0;
+    fireEvent.click(screen.getByTestId('pick'));
+
+    await waitFor(() => expect(scrolledIn).toEqual(['heatmap-folder-f1']));
+    // 하이라이트도 그 카드 것만 — 상태가 카드 소유라 구조적으로 보장된다.
+    const rows = screen.getAllByTestId('heatmap-row-005930');
+    expect(rows.map((r) => r.className.includes('row-flash'))).toEqual([false, true]);
+  });
+
   it('없는 종목이면 평소대로 추가한다', async () => {
     renderCard([entry('000660', 'SK하이닉스')]);
     openAddAndPick();
