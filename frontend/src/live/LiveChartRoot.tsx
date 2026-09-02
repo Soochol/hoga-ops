@@ -287,6 +287,13 @@ function dailyLogicalRange(
 interface Props {
   code: string | null;
   timeframe: LiveTimeframe;
+  /**
+   * 「이 봉들로 패턴 찾기」 (ADR-0166) — `measure` 로 그은 두 끝의 real-ms 를 받는다.
+   * 이 컴포넌트는 **전달만** 한다: 종목·봉·스토어를 아는 층은 창(`ChartWindow`)이고,
+   * 여기서 스토어를 잡으면 차트 렌더러가 앱 상태에 묶인다.
+   * 값이 없으면 속성 패널의 그 버튼도 없다.
+   */
+  onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
   venue?: LiveVenueOption;
   /** Optional view-level identity for same-code/timeframe restores (for example `/study?view=...`). */
   viewIdentity?: string;
@@ -503,6 +510,7 @@ export function shouldShowDepthHeatmapOverlay(
 export function LiveChartRoot({
   code,
   timeframe,
+  onSearchPattern,
   venue = 'KRX',
   viewIdentity,
   bundle,
@@ -2828,6 +2836,7 @@ export function LiveChartRoot({
             scope={drawingScope}
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}
             resolveAlignCoords={resolveAlignCoords}
+            onSearchPattern={onSearchPattern}
           />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a

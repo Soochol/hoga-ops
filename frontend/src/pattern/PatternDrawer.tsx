@@ -1,8 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
 import { SegmentedControl } from '../ui/PageShell';
 import { useLivePageStore } from '../state/livePage';
-import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
+import { useJumpToLive, wantsNewTab, type JumpModifiers } from '../live/useJumpToLive';
+import { regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
+import { usePatternQueryStore } from './patternQuery';
+import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import type { PatternMatchRow, PatternSearchMode } from '../api/screener';
 import { CandleThumb } from './CandleThumb';
 import { SimilarityStrip } from './SimilarityStrip';
@@ -48,6 +51,58 @@ function formatDate(ymd: string): string {
 function formatRange(from: string, to: string): string {
   const tail = from.slice(0, 4) === to.slice(0, 4) ? formatDate(to).slice(5) : formatDate(to);
   return `${formatDate(from)} ~ ${tail}`;
+}
+
+/** 과거 매치를 **그 날의 구간**으로 여는 focus 값.
+ *
+ * 저장뷰가 쓰는 슬롯을 그대로 빌린다 — 일봉에서 그 슬롯은 밴드와 뷰포트만 세우고
+ * **창을 얼리지 않는다**(`savedRangeFreeze` 가 분봉 조건부다). 그래서 착지 후에도
+ * 좌우 팬이 살아 있고, `studyDailyViewport` 가 구간 뒤로 여유를 줘서 「그 다음에 뭐가
+ * 왔나」가 함께 보인다 — 이 기능의 핵심 질문이 그것이다.
+ *
+ * ⚠ **착지 창을 일봉으로 돌려놓아야 한다**(`openPatternMatch`). 저장뷰는 사용자가
+ * 분봉 구간을 저장했을 때만 분봉으로 얼지만, 패턴 매치는 **항상 일봉 구간**이라
+ * 분봉 창에 그대로 꽂으면 2018년 분봉을 요구하게 되고 그건 디스크에 없다 —
+ * 브라우저 확인에서 "저장 구간에 캔들이 없다" 로 화면이 통째로 비었다.
+ */
+function patternRangeFocus(row: PatternMatchRow) {
+  return {
+    // viewKey(`sv=`)에 섞이는 값이라 매치마다 달라야 착석이 다시 산다.
+    viewId: `pattern:${row.code}:${row.from_date}`,
+    code: row.code,
+    label: row.name || row.code,
+    fromMs: regularSessionOpenMs(row.from_date),
+    // 마지막 봉(09:00 ts)이 밴드 안에 들도록 **종가 쪽**까지 연다 —
+    // `studyDailyContext` 의 필터가 `ts_ms <= toMs` 라 경계가 열려 있어야 한다.
+    toMs: regularSessionCloseMs(row.to_date),
+    fromDate: row.from_date,
+    toDate: row.to_date,
+    savedTimeframe: 'D' as const,
+    // 일봉 경로는 `studyDailyViewport` 가 구간에서 유도하므로 **이 값을 쓰지 않는다**.
+    savedBarSpan: 0,
+  };
+}
+
+/**
+ * 매치가 착지하는 **차트 창** id.
+ *
+ * `activationTarget` 을 그대로 쓸 수 없다 — 그건 zOrder 역순의 첫 핀 아닌 창일 뿐
+ * **`kind` 를 보지 않는다**(종목 교체는 그룹 단위라 그걸로 충분하다). 브라우저
+ * 확인에서 그 창이 거래원 창이라 타임프레임 전환이 조용히 no-op 이 됐고, 화면은
+ * "저장 구간에 캔들이 없다" 로 비었다.
+ *
+ * 그래서 착지 창의 **그룹**을 구한 뒤 그 그룹에서 zOrder 상 가장 위인 차트 창을
+ * 고른다 — 그게 사용자가 보고 있는 창이다.
+ */
+function patternLandingChart(ws: ReturnType<typeof useWorkspaceStore.getState>): string | null {
+  const target = activationTarget(ws);
+  if (target.kind !== 'window') return null;
+  const group = target.window.group;
+  for (let i = ws.zOrder.length - 1; i >= 0; i -= 1) {
+    const win = ws.windows.find((w) => w.id === ws.zOrder[i]);
+    if (win?.kind === 'chart' && win.group === group) return win.id;
+  }
+  return null;
 }
 
 function formatPct(v: number | null): string {
@@ -120,25 +175,57 @@ export function PatternDrawer() {
   const activeInstrument = useLivePageStore((s) => s.activeInstrument);
   const [mode, setMode] = useState<PatternSearchMode>('now');
   const [length, setLength] = useState(DEFAULT_LENGTH);
+  // 차트가 건넨 구간(measure). **1회 소비**라 스테퍼를 만진 뒤 되돌아오지 않는다.
+  const [seededRange, setSeededRange] = useState<{ from: string; to: string } | null>(null);
+  const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
+  const pendingSeed = usePatternQueryStore((s) => s.pending);
   const jump = useJumpToLive();
+  const focusSavedRange = useLivePageStore((s) => s.focusSavedRange);
+
+  useEffect(() => {
+    if (!pendingSeed) return;
+    const seed = consumeSeed();
+    if (!seed) return;
+    setSeededRange({ from: seed.from, to: seed.to });
+    setMode('now');
+  }, [pendingSeed, consumeSeed]);
 
   const { data, isPending, isError, error } = usePatternSearch({
     code: activeCode,
     mode,
     length,
+    range: seededRange,
     filters: DEFAULT_FILTERS,
   });
 
-  const result = useMemo(() => resultForLength(data?.results, length), [data, length]);
+  const result = useMemo(
+    // 구간을 건네받았으면 **그 구간이 곧 길이**라 서버가 결과를 하나만 준다.
+    () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
+    [data, length, seededRange],
+  );
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
 
   const onOpen = useCallback(
     (row: PatternMatchRow, e: JumpModifiers) => {
-      // v1 은 종목 교체까지다 — 과거 매치의 **그 날로** 가는 이동은 별도 PR 이
-      // 필요하다(차트의 `asOfDate` 레버 + 구간 밴드를 저장뷰 freeze 에서 분리).
+      // 지금 매치는 종목만 바꾼다 — 그 종목의 '지금' 이 곧 매치 구간이다.
+      if (mode === 'now') {
+        jump(row.code, row.name || row.code, e);
+        return;
+      }
+      // 과거 매치는 종목 + **그 날의 구간**. 순서가 계약이다(`openSavedRangeInLive` 와
+      // 동일): 종목 교체가 "종목이 바뀌면 저장 구간 해제" 트리거를 품고 있어,
+      // focus 를 먼저 세우면 그 자리에서 지워진다.
+      const ws = useWorkspaceStore.getState();
+      const landing = patternLandingChart(ws);
       jump(row.code, row.name || row.code, e);
+      // 새 탭은 이 창을 건드리지 않으므로 구간 슬롯도 세우지 않는다.
+      if (wantsNewTab(e)) return;
+      // 착지 **차트 창**을 일봉으로. 패턴 구간은 일봉이라 분봉 창에 꽂으면 그 날의
+      // 분봉을 요구하게 되고, 오래된 날짜면 디스크에 없어 화면이 통째로 빈다.
+      if (landing) ws.setChartTimeframe(landing, 'D');
+      focusSavedRange(patternRangeFocus(row));
     },
-    [jump],
+    [jump, focusSavedRange, mode],
   );
 
   return (
@@ -157,6 +244,24 @@ export function PatternDrawer() {
 
         {result && <CandleThumb bars={result.query.bars} height={56} />}
 
+        {seededRange ? (
+          <div className="flex items-center gap-sm">
+            <span className="inline-flex items-center gap-1.5 rounded border border-accent bg-tint-selection px-2 py-[3px] text-2xs text-accent">
+              차트에서 그은 구간{result ? ` · ${result.length}봉` : ''}
+              <button
+                type="button"
+                aria-label="구간 해제"
+                onClick={() => setSeededRange(null)}
+                className="text-accent hover:opacity-70"
+              >
+                ✕
+              </button>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-2xs text-fg-dim">
+              길이는 그은 구간이 정한다
+            </span>
+          </div>
+        ) : (
         <div className="flex items-center gap-sm">
           <div className="flex items-center overflow-hidden rounded border border-border">
             <button
@@ -185,6 +290,7 @@ export function PatternDrawer() {
             {mode === 'now' ? '봉수를 바꾸면 즉시 다시 찾는다' : '과거 전체는 봉수마다 다시 계산한다'}
           </span>
         </div>
+        )}
       </div>
 
       <div className="px-md py-sm">
@@ -213,7 +319,11 @@ export function PatternDrawer() {
       ) : isPending ? (
         <RailState>찾는 중…</RailState>
       ) : !result ? (
-        <RailState>이 종목은 {length}봉을 채울 이력이 없다.</RailState>
+        <RailState>
+          {seededRange
+            ? '그은 구간에 해당하는 일봉이 없다.'
+            : `이 종목은 ${length}봉을 채울 이력이 없다.`}
+        </RailState>
       ) : (
         <>
           <div className="px-md pb-xs font-data text-2xs text-fg-dimmer">

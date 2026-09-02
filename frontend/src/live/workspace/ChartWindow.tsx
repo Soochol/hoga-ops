@@ -62,6 +62,9 @@ import {
   type CalendarTimeframe,
 } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
+import { patternSeedFromRange, usePatternQueryStore } from '../../pattern/patternQuery';
+import { useRightRailStore } from '../../state/rightRail';
+import { realMsToYyyymmdd } from '../liveDateTime';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
 import { savedRangeNotice } from '../savedRangeNotice';
 import { countBarsInRange } from '../savedRangeAnchor';
@@ -314,6 +317,36 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   // ── 저장뷰 기간: 밴드 · 착석 (백필은 useViewportBackfill 3d 소유) ─────────
   const savedRangeCandles = d.workareaChartBundle?.candles ?? EMPTY_CANDLES;
+
+  /**
+   * 「이 봉들로 패턴 찾기」 (ADR-0166) — `measure` 로 그은 구간을 패턴 패널로 건넨다.
+   *
+   * **일봉일 때만 만든다.** 값이 없으면 속성 패널의 버튼도 없으므로 게이트가 여기
+   * 한 곳이다(패널은 종목도 봉도 모른다). 봉 패턴은 일봉 개념이라 분봉 창에서
+   * 그은 구간은 이 기능의 입력이 아니다.
+   *
+   * 구간이 너무 짧으면 **아예 넘기지 않는다** — 서버는 5봉 미만을 빈 결과로
+   * 답하는데, 그 빈 화면은 "이력이 없다" 로 읽혀 원인을 숨긴다. 실패를 만들 수 있는
+   * 입력은 만들기 전에 막는다.
+   */
+  const onSearchPattern = useMemo(() => {
+    const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
+    if (!code || isMinuteTimeframe(view.timeframe)) return undefined;
+    return (aRealMs: number, bRealMs: number) => {
+      const seed = patternSeedFromRange({
+        code,
+        label: symbol?.name,
+        isMinuteTimeframe: isMinuteTimeframe(view.timeframe),
+        candleTsMs: savedRangeCandles.map((c) => c.ts_ms),
+        aRealMs,
+        bRealMs,
+        toYyyymmdd: realMsToYyyymmdd,
+      });
+      if (!seed) return;
+      usePatternQueryStore.getState().requestPatternSearch(seed);
+      useRightRailStore.getState().setActivePanel('pattern');
+    };
+  }, [symbol, view.timeframe, savedRangeCandles]);
 
   /**
    * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
@@ -854,6 +887,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             <LiveChartRoot
               code={d.workareaCode}
               timeframe={view.timeframe}
+              onSearchPattern={onSearchPattern}
               venue={venue}
               viewIdentity={viewIdentity}
               savedRangeBand={savedRangeBand}

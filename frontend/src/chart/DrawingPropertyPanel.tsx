@@ -43,6 +43,13 @@ type Props = {
    */
   resolveVisibleRightRealMs?: () => number | null;
   /**
+   * 「이 봉들로 패턴 찾기」 (ADR-0166). 두 끝의 real-ms 만 넘기고 **나머지는 호스트가
+   * 안다** — 이 패널은 종목도 봉도 모르고, 그래야 패턴 검색이 드로잉 계층으로
+   * 새지 않는다. 값이 없으면 버튼도 없다: 호스트가 **일봉일 때만** 내려 주므로
+   * 게이트가 여기 중복되지 않는다.
+   */
+  onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
+  /**
    * 정렬·분배가 쓸 좌표 뭉치. `resolveVisibleRightRealMs` 와 같은 이유로 함수다 —
    * 이 패널은 `IChartApi` 를 쥐지 않고, 차트를 아는 호스트가 만들어 내려 준다.
    * 없으면 정렬 버튼이 비활성이고 나머지는 그대로 동작한다.
@@ -405,6 +412,13 @@ function MultiSelectionToolbar({
   ids: readonly string[];
   resolveAlignCoords?: () => AlignCoords | null;
   resolveVisibleRightRealMs?: () => number | null;
+  /**
+   * 「이 봉들로 패턴 찾기」 (ADR-0166). 두 끝의 real-ms 만 넘기고 **나머지는 호스트가
+   * 안다** — 이 패널은 종목도 봉도 모르고, 그래야 패턴 검색이 드로잉 계층으로
+   * 새지 않는다. 값이 없으면 버튼도 없다: 호스트가 **일봉일 때만** 내려 주므로
+   * 게이트가 여기 중복되지 않는다.
+   */
+  onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
 }) {
   // 도형 배열은 **안정 참조**를 구독하고 멤버는 파생한다. 셀렉터 안에서 filter/map
   // 하면 매 렌더 새 배열이라 무한 리렌더가 된다(EMPTY_SELECTION 과 같은 함정).
@@ -723,7 +737,7 @@ function MultiSelectionToolbar({
 }
 
 export default function DrawingPropertyPanel({
-  scope, resolveVisibleRightRealMs, resolveAlignCoords,
+  scope, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern,
 }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
@@ -902,6 +916,19 @@ export default function DrawingPropertyPanel({
 
       {!isText && shownPopover === 'lineStyle' && (
         <LineStylePopover current={drawing.lineStyle} onPick={pickLineStyle} />
+      )}
+
+      {drawing.kind === 'measure' && onSearchPattern != null && (
+        <button
+          type="button"
+          data-testid="drawing-pattern-search"
+          title="이 봉들과 닮은 캔들 패턴을 가진 종목을 찾는다"
+          disabled={locked}
+          onClick={() => onSearchPattern(drawing.a.realMs, drawing.b.realMs)}
+          className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
+        >
+          패턴 찾기
+        </button>
       )}
 
       {drawing.kind === 'rect' && (
