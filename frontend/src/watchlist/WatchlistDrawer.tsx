@@ -126,7 +126,7 @@ const ADD_POPOVER_W = 280;
  * 히트맵 SymbolAddPopover 와 동일 셸/레이어링(메뉴와 별개 portal 레이어).
  */
 function WatchlistSymbolAddPopover({
-  anchorRef, point, folderId, resolveAt, onAdded, onDuplicate, onClose,
+  anchorRef, point, folderId, resolveAt, onAdded, onDuplicate, onMoveHere, onClose,
 }: {
   /** ⋯ 메뉴 경로 — 이 버튼의 우하단에 정렬한다. `point` 와 배타적이다. */
   anchorRef?: React.RefObject<HTMLElement | null>;
@@ -141,6 +141,9 @@ function WatchlistSymbolAddPopover({
    *  **팝오버는 안 닫는다**: 사용자가 다른 종목을 이어서 고르는 것이 자연스러운 흐름이고,
    *  닫으면 방금 본 안내 문구까지 함께 사라진다. */
   onDuplicate?: (code: string) => void;
+  /** 중복일 때의 대안 행동 — 「그 행을 여기로 이동」. 자리를 지정해 연 경로만 넘긴다
+   *  (⋯ 메뉴 경로는 앵커가 없어 "여기" 가 가리킬 곳이 없다). */
+  onMoveHere?: (code: string) => void;
   onClose: () => void;
 }) {
   const [anchor, setAnchor] = useState(
@@ -173,7 +176,7 @@ function WatchlistSymbolAddPopover({
       className="z-30 bg-bg-card border border-border-strong rounded p-2 shadow-lg">
       <WatchlistAddForm folderId={folderId} resolveAt={resolveAt}
         onAdded={() => (onAdded ? onAdded() : onClose())}
-        onDuplicate={onDuplicate} />
+        onDuplicate={onDuplicate} onMoveHere={onMoveHere} />
     </div>,
     document.body,
   );
@@ -751,12 +754,24 @@ export function WatchlistDrawer() {
   // 스크롤은 **다음 커밋**에서 한다 — 접힌 그룹을 펼친 그 렌더에서는 행이 아직 DOM 에 없다.
   // 조회를 그룹 컨테이너 안으로 한정하는 이유: v3 는 다중 소속이라 같은 코드의 행이
   // 여러 그룹에 있고, 전역 조회는 **엉뚱한 그룹의 행**으로 스크롤한다.
+  //
+  // `data` 까지 보는 이유: 「여기로 이동」이 그 행을 **다른 자리로 옮긴다**. 재정렬은
+  // 낙관 갱신이라 `moveExistingHere` 가 flash 를 다시 걸 때 캐시는 아직 옛 순서여서,
+  // `duplicateHit` 만 보면 **옮기기 전 자리로** 스크롤한다. 새 순서가 도착하면 다시
+  // 재야 한다. 대신 그 자리가 그대로면 다시 스크롤하지 않는다 — 폴링 리페치가
+  // 사용자의 시야를 낚아채면 안 된다(플래시 창이 2.5s 라 그 안에 착지할 수 있다).
+  const lastScrolledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (duplicateHit === null) return;
-    const scope = document.querySelector(`[data-testid="watchlist-group-${duplicateHit.folderId}"]`);
-    scope?.querySelector(`[data-testid="watchlist-row-${duplicateHit.code}"]`)
+    if (duplicateHit === null) { lastScrolledRef.current = null; return; }
+    const { folderId, code } = duplicateHit;
+    const order = data?.entries.find((e) => e.folder_id === folderId && e.code === code)?.order;
+    const key = `${folderId}:${code}:${order}`;
+    if (lastScrolledRef.current === key) return;
+    lastScrolledRef.current = key;
+    const scope = document.querySelector(`[data-testid="watchlist-group-${folderId}"]`);
+    scope?.querySelector(`[data-testid="watchlist-row-${code}"]`)
       ?.scrollIntoView?.({ block: 'center' });
-  }, [duplicateHit]);
+  }, [duplicateHit, data]);
 
   // 메모("빈칸") 행 — entries 와 같은 order 축(폴더 items 인덱스)이라 렌더 직전에 병합한다.
   // `?? []` 를 useMemo 로 감싸는 이유: 매 렌더 새 빈 배열이면 아래 파생 memo 가 전부
@@ -1003,6 +1018,47 @@ export function WatchlistDrawer() {
       ? data?.entries.find((e) => e.folder_id === folderId && e.code === anchor.code)?.order
       : data?.memos.find((m) => m.folder_id === folderId && m.id === anchor.id)?.order;
   }, [symbolInsert, data]);
+
+  /** 「그 행을 여기로 이동」 — 고른 종목이 이미 이 그룹에 있을 때의 대안 행동.
+   *
+   *  추가는 멱등 no-op 이라(`addMember` 주석) 아무리 눌러도 자리가 안 바뀐다. 같은
+   *  결과를 재정렬로 만든다 — 드래그 커밋과 **같은 서버 계약**(items 전체 순서)이다.
+   *
+   *  ⚠ **드래그의 splice 공식을 그대로 쓰면 방향이 뒤집힌다.** `splice(from,1)` 로 먼저
+   *  빼면 앵커 인덱스가 한 칸 당겨져서, 위에 있던 행을 옮길 때 앵커 **아래**로 들어간다
+   *  (`[A,B,C,D]` 에서 A 를 C 로 → `[B,C,A,D]`). 드래그는 "떨어뜨린 자리" 라 그게 맞지만
+   *  이 팝오버는 「위에」를 약속했으므로 오답이다. **뺀 뒤 앵커를 다시 찾는다** — 그러면
+   *  양방향이 맞고, 앵커가 사라진 경우의 폴백(맨 아래)도 같은 식에서 나온다. */
+  const moveExistingHere = useCallback((code: string) => {
+    if (!symbolInsert) return;
+    const { folderId, anchor } = symbolInsert;
+    // 드래그 재정렬과 같은 게이트 — 등락률 정렬에선 화면 순서가 저장 순서가 아니라
+    // 「여기」가 아무 데도 가리키지 않는다(그 모드에선 메뉴 항목 자체가 안 뜬다).
+    if (getFolderSortMode(folderId) !== 'default') return;
+    const rows = mergePanelRows(
+      (data?.entries ?? []).filter((e) => e.folder_id === folderId).sort((a, b) => a.order - b.order),
+      memosOfFolder(memos, folderId),
+    );
+    const target = rows.find((r) => r.kind === 'entry' && r.entry.code === code);
+    // 그 사이 빠졌다 = 중복 전제가 사라졌다. 폼이 다시 추가를 허용하므로 팝오버를 닫지
+    // 않고 그대로 둔다 — 여기서 닫으면 사용자가 방금 고른 종목까지 함께 사라진다.
+    if (!target) return;
+    // 앵커가 옮길 행 자신이면(그 행을 우클릭하고 같은 종목을 검색) 이미 그 자리다.
+    if (!(anchor.kind === 'entry' && anchor.code === code)) {
+      const without = rows.filter((r) => r !== target);
+      const at = without.findIndex((r) => (anchor.kind === 'entry'
+        ? r.kind === 'entry' && r.entry.code === anchor.code
+        : r.kind === 'memo' && r.memo.id === anchor.id));
+      without.splice(at >= 0 ? at : without.length, 0, target);
+      reorderItemsM.mutate({ folderId, orderedItems: toItemRefs(without) });
+      // 빈칸 경로는 **이동 뒤에** 그 빈칸을 지운다 = 교체. 추가 경로와 같은 순서다:
+      // 먼저 지우면 재정렬이 실패했을 때 자리도 내용도 사라진다. 앵커를 못 찾았으면
+      // (`at < 0`) 그 빈칸은 이미 없다 — 지우려 들면 404 다.
+      if (anchor.kind === 'memo' && at >= 0) removeMemoMutate(anchor.id);
+    }
+    flashDuplicate(folderId, code);
+    setSymbolInsert(null);
+  }, [symbolInsert, data, memos, getFolderSortMode, reorderItemsM, removeMemoMutate, flashDuplicate]);
 
   // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
@@ -1389,6 +1445,7 @@ export function WatchlistDrawer() {
           folderId={symbolInsert.folderId}
           resolveAt={resolveInsertAt}
           onDuplicate={(code) => flashDuplicate(symbolInsert.folderId, code)}
+          onMoveHere={moveExistingHere}
           // 빈칸 경로는 **추가 성공 후에** 그 빈칸을 지운다 = "교체". 순서가 중요하다:
           // 먼저 지우면 추가가 실패했을 때 자리도 내용도 사라진다(되돌릴 근거가 없다).
           // 반대 순서의 실패는 "종목은 들어갔고 빈칸이 남았다" 라 눈에 보이고 지울 수 있다.

@@ -179,6 +179,28 @@ describe('WatchlistAddForm — 자기 추가를 중복으로 세지 않는다', 
     expect(add).not.toHaveBeenCalled();
   });
 
+  it('「그 행을 여기로 이동」은 「여기」가 있는 호출부에서만 뜬다', async () => {
+    // 그룹 ⋯ 메뉴·편집 모달 pane 은 맨 아래에 붙이는 경로라 앵커가 없다 — 거기서
+    // 「여기」를 약속하면 그 말이 가리킬 곳이 없다.
+    const seeded = watchlist([{ code: '005930', name: '삼성전자' }]);
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue(seeded);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(WATCHLIST_KEY, seeded);
+    const user = userEvent.setup();
+    const { rerender } = render(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} />,
+      { wrapper: wrap(qc) });
+
+    await typeQuery(user);
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText(/이미 이 그룹에 있습니다/)).toBeTruthy();
+    expect(screen.queryByText('그 행을 여기로 이동')).toBeNull();
+
+    const onMoveHere = vi.fn();
+    rerender(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} onMoveHere={onMoveHere} />);
+    await user.click(screen.getByText('그 행을 여기로 이동'));
+    expect(onMoveHere).toHaveBeenCalledWith('005930');
+  });
+
   it('「아래에 표시했습니다」는 그 표시를 실제로 하는 호출부에서만 붙는다', async () => {
     // onDuplicate 미전달 = 가리킬 리스트가 없는 소비처. 그전엔 문구가 무조건 붙어
     // 없는 것을 가리켰다.

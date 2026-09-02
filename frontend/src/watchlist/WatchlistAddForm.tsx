@@ -6,7 +6,9 @@ import { Banner } from './Banner';
 
 /** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0070).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
-export function WatchlistAddForm({ folderId, resolveAt, onAdded, onDuplicate, layout = 'stacked' }: {
+export function WatchlistAddForm({
+  folderId, resolveAt, onAdded, onDuplicate, onMoveHere, layout = 'stacked',
+}: {
   folderId: string;
   /** 입력과 버튼의 배치. **호출부가 자기 폭을 알기 때문에 호출부가 정한다.**
    *
@@ -32,6 +34,16 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, onDuplicate, la
    *
    *  optional 이라 리스트가 없는 소비처(패널 그룹 ⋯ 팝오버)는 안 넘기면 그만이다. */
   onDuplicate?: (code: string) => void;
+  /** 중복일 때의 **대안 행동** — 「그 행을 여기로 이동」.
+   *
+   *  이미 있는 종목을 이 팝오버에 넣으려는 사용자의 실제 의도는 대개 "그걸 이 자리로
+   *  옮기고 싶다" 다. 추가는 멱등 no-op 이라(api/watchlist.ts 의 `addMember` 주석)
+   *  아무리 눌러도 자리가 바뀌지 않으므로, 같은 결과를 재정렬로 만들어 준다.
+   *
+   *  **「여기」가 있는 호출부만 넘긴다.** 자리를 지정해 연 팝오버(행·빈칸 우클릭)에만
+   *  앵커가 있고, 그룹 ⋯ 메뉴와 편집 모달 pane 은 맨 아래에 붙이는 경로라 "여기" 가
+   *  가리킬 곳이 없다 — 거기선 안내만 하고 끝난다. */
+  onMoveHere?: (code: string) => void;
 }) {
   const addM = useAddMember();
   const { data } = useWatchlist();
@@ -143,6 +155,18 @@ export function WatchlistAddForm({ folderId, resolveAt, onAdded, onDuplicate, la
       {picked && duplicate && (
         <Banner kind="error">
           {picked.name}은(는) 이미 이 그룹에 있습니다{onDuplicate && ' — 아래에 표시했습니다'}
+          {/* 안내 아래 **한 줄을 더 쓰는** 이유: 280px 팝오버에서 문장이 두 줄로 접히므로
+              옆에 두면 버튼이 눌리듯 좁아진다. 우측 정렬은 이 폼의 추가 버튼과 같은 관용구.
+              색은 배너에서 상속(`border-current`)해 별도 톤을 만들지 않는다 — 이건 이
+              안내의 후속 행동이지 독립한 액션이 아니다. */}
+          {onMoveHere && (
+            <div className="mt-1.5 flex justify-end">
+              <button type="button" onClick={() => onMoveHere(picked.code)}
+                className="px-2 py-0.5 rounded border border-current text-xs font-medium hover:bg-tint-error">
+                그 행을 여기로 이동
+              </button>
+            </div>
+          )}
         </Banner>
       )}
       {addM.error && <Banner kind="error">{(addM.error as Error).message}</Banner>}
