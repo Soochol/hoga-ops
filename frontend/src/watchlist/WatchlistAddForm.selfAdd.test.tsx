@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as api from '../api/watchlist';
@@ -111,9 +111,9 @@ describe('WatchlistAddForm — 자기 추가를 중복으로 세지 않는다', 
     expect(input.value).toBe('');                 // 폼이 비어 다음 종목을 받을 준비
   });
 
-  it('Enter 연타가 두 번 추가하지 않는다', async () => {
-    // 중복 판정을 얼린 대가로 그 가드가 이중 제출을 못 세운다 — `submitting` 이 그 자리를
-    // 대신 맡는지 잰다. 응답을 붙잡아 in-flight 창을 열어 두고 Enter 를 더 친다.
+  it('요청이 나가는 동안 추가 버튼이 비활성이라 Enter 연타가 통하지 않는다', async () => {
+    // 사용자가 실제로 만나는 보호막이다. 암묵적 폼 제출은 **기본 버튼이 disabled 면
+    // 아무 일도 하지 않으므로**(HTML 명세), 이 disabled 하나가 Enter 연타를 통째로 막는다.
     let release: () => void = () => {};
     const add = vi.spyOn(api, 'addMember').mockImplementation(
       () => new Promise((res) => { release = () => res({} as never); }));
@@ -121,7 +121,40 @@ describe('WatchlistAddForm — 자기 추가를 중복으로 세지 않는다', 
     render(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} />, { wrapper: wrap(newQc()) });
 
     await typeQuery(user);
-    await user.keyboard('{Enter}{Enter}{Enter}{Enter}');
+    await user.keyboard('{Enter}{Enter}');                    // 선택 → 제출
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /종목 추가/ })).toHaveProperty('disabled', true));
+
+    await user.keyboard('{Enter}{Enter}');
+    expect(add).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+  });
+
+  it('제출이 다시 들어와도 두 번 추가하지 않는다', async () => {
+    // 위 disabled 는 **화면의 보호막**이고, 이건 **폼 자체의 불변식**이다: onSubmit 이 어떤
+    // 경로로 다시 불리든 진행 중인 추가는 하나뿐이다. 종전엔 낙관 캐시가 만든 `duplicate`
+    // 가 그 자리를 겸했는데, 그 판정을 얼리면서 자리가 비어 `submitting` 이 넘겨받았다.
+    //
+    // **탐침이 가드에 닿게 하는 데 두 가지가 필요하다**(둘 중 하나만 빠져도 가드를 지운
+    // 채로 초록이다 — 둘 다 실측):
+    //  1. `fireEvent.submit` — 키보드·클릭 경로는 disabled 버튼에서 먼저 걸려 가드까지
+    //     오지 못한다.
+    //  2. 제출마다 `act(async)` — `onMutate` 가 `cancelQueries` 를 await 하므로 두 번째
+    //     `addMember` 는 한 마이크로태스크 뒤에 나간다. 동기로 세면 아직 0건이다.
+    let release: () => void = () => {};
+    const add = vi.spyOn(api, 'addMember').mockImplementation(
+      () => new Promise((res) => { release = () => res({} as never); }));
+    const user = userEvent.setup();
+    const { container } = render(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} />,
+      { wrapper: wrap(newQc()) });
+
+    await typeQuery(user);
+    await user.keyboard('{Enter}{Enter}');
+    await waitFor(() => expect(add).toHaveBeenCalledTimes(1));
+
+    const form = container.querySelector('form')!;
+    await act(async () => { fireEvent.submit(form); });
+    await act(async () => { fireEvent.submit(form); });
     expect(add).toHaveBeenCalledTimes(1);
     await act(async () => { release(); });
   });
