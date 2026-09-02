@@ -228,6 +228,31 @@ def _window(c: Corpus, i: int, offset: int, length: int) -> np.ndarray:
     return c.ch[:, s + offset : s + offset + length]
 
 
+def resample_query(query: np.ndarray, out_len: int) -> np.ndarray:
+    """쿼리를 **시간축으로** 늘리거나 줄인다 — 길이 유연 검색의 전부다.
+
+    「7봉 패턴이 10봉에 걸쳐 전개된 것」 은 앞 7봉만 잘라 보면 상관이 0.13 이지만
+    (실측) 길이를 맞춰 리샘플하면 0.98 이다. DTW 를 만들지 않는 이유가 이것이다 —
+    전수 46초 대신 기존 커널을 길이마다 한 번씩 돌리면 되고, 심은 신축 사본을
+    corr 1.0 으로 되찾는다.
+
+    ⚠ **균일 신축만** 잡는다. 국소 신축(앞은 빠르고 뒤는 느린)은 DTW 의 영역이고,
+    그 DTW 조차 신축 사본(1.03)과 그냥 닮은 것(1.16)을 잘 못 가른다(실측).
+    """
+    src = np.linspace(0, query.shape[1] - 1, out_len)
+    grid = np.arange(query.shape[1])
+    out = np.stack([np.interp(src, grid, query[k]) for k in range(query.shape[0])])
+    return (out - out.mean()) / out.std()
+
+
+def flex_lengths(base: int, flex: int) -> list[int]:
+    """유연 검색이 돌 길이들. 하한·상한 밖은 버린다(응답 시간을 바운드한다)."""
+    if flex <= 0:
+        return [base]
+    lo, hi = max(PATTERN_FLOOR, base - flex), min(PATTERN_CEILING, base + flex)
+    return list(range(lo, hi + 1))
+
+
 def _znorm(w: np.ndarray) -> np.ndarray | None:
     """창 **전체**를 한 스케일로 정규화. 채널별이 아니라는 것이 이 함수의 요점이다."""
     sd = w.std()
@@ -479,80 +504,114 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
         return PatternSearchResponse(code=req.code, name="", mode=req.mode, results=[])
     name = c.names.get(req.code, "")
     dated = req.from_ is not None
-    # 날짜 지정이면 길이가 구간에서 나오므로 반복이 1회다.
-    lengths = [req.lengths[0]] if (dated or req.mode == "history") else req.lengths
+    # 바깥 루프가 1회가 되는 경우 셋:
+    #  · 날짜 지정 — 길이가 구간에서 나온다.
+    #  · history — 길이당 ~0.6s 라 묶어 받지 않는다.
+    #  · **길이 유연** — `lengths`(각 길이의 최신 창)와 flex(한 쿼리의 리샘플)는 다른
+    #    축이라 곱하면 안 된다. 곱하면 11 × 5 = 55회가 돌고 기준 7봉 질의에서 15봉
+    #    매치가 상위에 오른다(실측). 유연이 켜지면 스크럽을 접고 고른 길이만 편다.
+    single = dated or req.mode == "history" or req.flex_bars > 0
+    lengths = [req.lengths[0]] if single else req.lengths
 
     results: list[PatternLengthResult] = []
     for want in lengths:
-        started = time.perf_counter()
         win = _resolve_window(c, qi, want, req.from_, req.to)
         if win is None:
             continue
-        offset, length = win
-        query = query_vector(c, qi, offset, length)
-        if query is None:
+        offset, base_length = win
+        base_query = query_vector(c, qi, offset, base_length)
+        if base_query is None:
             continue
-        # 거래량 축은 가격과 **별도 정규화**다(단위가 달라 한 스케일로 못 누른다).
-        # 쿼리 창의 거래량이 평탄하면 그 축이 없으므로 가중을 0 으로 접는다.
-        vq = _volume_query(c, qi, offset, length) if req.volume_weight > 0 else None
-        vw = req.volume_weight if vq is not None else 0.0
-        baseline = None
-        if req.mode == "now":
-            matches, scores = search_now(
-                c, query=query, length=length, skip=qi,
-                min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
-                volume_query=vq, volume_weight=vw,
-            )
-            fwd_all = np.zeros(0)
-        else:
-            matches, scores, fwd_all = search_history(
-                c, query=query, length=length, query_series=qi, query_offset=offset,
-                min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
-                min_after=req.forward_days, no_overlap=req.no_overlap,
-                per_code=req.per_code, volume_query=vq, volume_weight=vw,
-                since=(np.datetime64(
-                    f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D")
-                    if req.since else None),
-            )
-            if len(fwd_all):
-                baseline = PatternBaseline(
-                    fwd_median_pct=float(np.median(fwd_all) * 100),
-                    fwd_win_rate_pct=float((fwd_all > 0).mean() * 100),
-                    sample=int(len(fwd_all)),
-                )
-        if not len(scores):
-            continue
-        pcts = percentiles(scores, (50, 95, 99, 99.99) if req.mode == "history" else (50, 95, 99))
-        rows = [
-            PatternMatchRow(
-                code=c.codes[m.series],
-                name=c.names.get(c.codes[m.series], ""),
-                from_date=_ymd(c, m.series, m.offset),
-                to_date=_ymd(c, m.series, m.offset + length - 1),
-                corr=m.score,
-                bars=bars_at(c, m.series, m.offset, length),
-                tail=(closes_at(c, m.series, m.offset + length, req.forward_days)
-                      if req.mode == "history" else None),
-                forward_pct=(forward_return_pct(c, m.series, m.offset, length, req.forward_days)
-                             if req.mode == "history" else None),
-            )
-            for m in matches[: req.top]
-        ]
-        results.append(PatternLengthResult(
-            length=length,
-            query=PatternQueryWindow(
-                length=length,
-                from_date=_ymd(c, qi, offset),
-                to_date=_ymd(c, qi, offset + length - 1),
-                bars=bars_at(c, qi, offset, length),
-            ),
-            universe=len(matches),
-            dist=PatternDistribution(
-                p50=pcts["p50"], p95=pcts["p95"], p99=pcts["p99"],
-                p99_99=pcts.get("p99_99"), sample=int(len(scores)),
-            ),
-            matches=rows,
-            baseline=baseline,
-            elapsed_ms=(time.perf_counter() - started) * 1000,
-        ))
+        # 유연 검색은 **한 쿼리를 여러 길이로** 돌린다 — `lengths`(각 길이의 최신 창)와
+        # 다른 축이다. 쿼리 창은 그대로 두고 시간축만 늘렸다 줄인다.
+        for length in flex_lengths(base_length, req.flex_bars):
+            query = base_query if length == base_length else resample_query(base_query, length)
+            _append_one(c, req, results, qi=qi, offset=offset, length=length,
+                        base_length=base_length, query=query)
     return PatternSearchResponse(code=req.code, name=name, mode=req.mode, results=results)
+
+
+def _append_one(
+    c: Corpus,
+    req: PatternSearchRequest,
+    results: list[PatternLengthResult],
+    *,
+    qi: int,
+    offset: int,
+    length: int,
+    base_length: int,
+    query: np.ndarray,
+) -> None:
+    """길이 하나의 결과를 만들어 담는다. 유연 검색이 이 함수를 길이마다 부른다."""
+    started = time.perf_counter()
+    # 거래량 축은 가격과 **별도 정규화**다(단위가 달라 한 스케일로 못 누른다).
+    # 쿼리 창의 거래량이 평탄하면 그 축이 없으므로 가중을 0 으로 접는다.
+    # ⚠ 거래량 쿼리는 **기준 길이**로 잡는다 — 가격은 리샘플해도 거래량 축까지 늘리면
+    #   두 축의 시간 해상도가 갈린다(리샘플은 가격 모양의 신축을 뜻하지 거래량의
+    #   재분배가 아니다). 길이가 다르면 거래량 축을 접는다.
+    same_len = length == base_length
+    vq = _volume_query(c, qi, offset, length) if (req.volume_weight > 0 and same_len) else None
+    vw = req.volume_weight if vq is not None else 0.0
+    baseline = None
+    if req.mode == "now":
+        matches, scores = search_now(
+            c, query=query, length=length, skip=qi,
+            min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
+            volume_query=vq, volume_weight=vw,
+        )
+        fwd_all = np.zeros(0)
+    else:
+        matches, scores, fwd_all = search_history(
+            c, query=query, length=length, query_series=qi, query_offset=offset,
+            min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
+            min_after=req.forward_days, no_overlap=req.no_overlap,
+            per_code=req.per_code, volume_query=vq, volume_weight=vw,
+            since=(np.datetime64(
+                f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D")
+                if req.since else None),
+        )
+        if len(fwd_all):
+            baseline = PatternBaseline(
+                fwd_median_pct=float(np.median(fwd_all) * 100),
+                fwd_win_rate_pct=float((fwd_all > 0).mean() * 100),
+                sample=int(len(fwd_all)),
+            )
+    if not len(scores):
+        return
+    pcts = percentiles(scores, (50, 95, 99, 99.99) if req.mode == "history" else (50, 95, 99))
+    rows = [
+        PatternMatchRow(
+            code=c.codes[m.series],
+            name=c.names.get(c.codes[m.series], ""),
+            from_date=_ymd(c, m.series, m.offset),
+            to_date=_ymd(c, m.series, m.offset + length - 1),
+            corr=m.score,
+            bars=bars_at(c, m.series, m.offset, length),
+            tail=(closes_at(c, m.series, m.offset + length, req.forward_days)
+                  if req.mode == "history" else None),
+            forward_pct=(forward_return_pct(c, m.series, m.offset, length, req.forward_days)
+                         if req.mode == "history" else None),
+        )
+        for m in matches[: req.top]
+    ]
+    results.append(PatternLengthResult(
+        # 이 결과가 찾은 **매치의 길이**다. 유연 검색에서는 기준 길이와 다를 수 있고,
+        # 프론트가 그 값을 「10봉으로」 뱃지로 쓴다.
+        length=length,
+        # 쿼리 창은 **기준 길이 그대로**다 — 리샘플한 것은 비교에 쓰는 벡터이지
+        # 사용자가 그은 구간이 아니다.
+        query=PatternQueryWindow(
+            length=base_length,
+            from_date=_ymd(c, qi, offset),
+            to_date=_ymd(c, qi, offset + base_length - 1),
+            bars=bars_at(c, qi, offset, base_length),
+        ),
+        universe=len(matches),
+        dist=PatternDistribution(
+            p50=pcts["p50"], p95=pcts["p95"], p99=pcts["p99"],
+            p99_99=pcts.get("p99_99"), sample=int(len(scores)),
+        ),
+        matches=rows,
+        baseline=baseline,
+        elapsed_ms=(time.perf_counter() - started) * 1000,
+    ))

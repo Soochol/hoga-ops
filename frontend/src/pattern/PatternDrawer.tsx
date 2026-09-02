@@ -21,6 +21,7 @@ import type { PatternSave } from '../api/screener';
 import {
   DEFAULT_CONDITIONS,
   PERIODS,
+  mergeByHeadroom,
   sinceFor,
   visibleRows,
   type PatternConditions,
@@ -186,11 +187,14 @@ function MatchRow({
   mode,
   dist,
   onOpen,
+  lengthBadge = null,
 }: {
   row: PatternMatchRow;
   mode: PatternSearchMode;
   dist: { p50: number; p95: number; p99: number; p99_99: number | null };
   onOpen: (row: PatternMatchRow, e: JumpModifiers) => void;
+  /** 유연 검색에서 이 매치가 나온 길이. 기준과 다를 수 있어 화면이 말해 줘야 한다. */
+  lengthBadge?: number | null;
 }) {
   const forward = row.forward_pct;
   return (
@@ -203,6 +207,11 @@ function MatchRow({
         <span className="block truncate text-xs font-medium text-fg">{row.name || row.code}</span>
         <span className="block truncate font-data text-2xs text-fg-dimmer">
           {mode === 'history' ? formatRange(row.from_date, row.to_date) : row.code}
+          {lengthBadge != null && (
+            <span className="ml-1.5 rounded-full border border-border px-1 text-[9px] text-fg-dim">
+              {lengthBadge}봉으로
+            </span>
+          )}
         </span>
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} height={34} />
@@ -286,11 +295,23 @@ export function PatternDrawer() {
     () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
     [data, length, seededRange],
   );
-  /** 화면에 그릴 행 — 유사도 하한과 개수는 **여기서** 적용된다(서버가 아니라). */
-  const shown = useMemo(
-    () => (result ? visibleRows(result.matches, conditions) : []),
-    [result, conditions],
-  );
+  /**
+   * 화면에 그릴 행 — 유사도 하한과 개수는 **여기서** 적용된다(서버가 아니라).
+   *
+   * 길이 유연이면 길이별 결과가 여럿 오므로 **여유(corr − p99.99)로 정규화해** 합친다.
+   * 원점수로 섞으면 배경 분포가 높은 짧은 길이가 목록을 도배한다(실측).
+   */
+  const shown = useMemo(() => {
+    if (conditions.flexBars > 0 && data && data.results.length > 1) {
+      return mergeByHeadroom(data.results)
+        .filter((m) => m.row.corr >= conditions.simFloor)
+        .slice(0, conditions.count);
+    }
+    if (!result) return [];
+    return visibleRows(result.matches, conditions).map((row) => ({
+      row, length: result.length, headroom: row.corr - (result.dist.p99_99 ?? result.dist.p99),
+    }));
+  }, [data, result, conditions]);
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
 
   /**
@@ -321,6 +342,8 @@ export function PatternDrawer() {
       minTvEok: save.conditions.min_tv_eok,
       excludeEtf: save.conditions.exclude_etf,
       noOverlap: save.conditions.no_overlap,
+      // 저장 스키마에 유연 폭이 아직 없다 — 불러오면 기준 길이만 본다(안전한 기본).
+      flexBars: 0,
     });
     setShowSaves(false);
   }, []);
@@ -632,13 +655,16 @@ export function PatternDrawer() {
                     : '조건에 맞는 매치가 없다.'}
               </RailState>
             ) : (
-              shown.map((row) => (
+              shown.map(({ row, length: matchLen }) => (
                 <MatchRow
-                  key={`${row.code}-${row.from_date}`}
+                  key={`${row.code}-${row.from_date}-${matchLen}`}
                   row={row}
                   mode={mode}
                   dist={result.dist}
                   onOpen={onOpen}
+                  // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
+                  // 사용자가 그 이유를 알아야 한다.
+                  lengthBadge={conditions.flexBars > 0 ? matchLen : null}
                 />
               ))
             )}

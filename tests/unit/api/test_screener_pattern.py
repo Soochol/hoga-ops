@@ -285,6 +285,91 @@ def test_per_code_keeps_several_matches_per_series_with_exclusion(tmp_path):
     assert all(b - a > _LEN // 2 for a, b in zip(mine, mine[1:], strict=False))
 
 
+def test_flex_finds_the_same_shape_stretched_over_more_bars(tmp_path):
+    """**길이 유연 검색의 존재 이유.**
+
+    7봉 패턴을 10봉에 걸쳐 전개해 심는다. 7봉으로만 찾으면 그 자리는 앞 7봉만 보이므로
+    상관이 낮고, 쿼리를 10봉으로 리샘플하면 정확히 되찾는다. DTW 를 만들지 않는 근거다.
+
+    못 보는 것: **국소 신축**(앞은 빠르고 뒤는 느린)은 이 방식이 원리적으로 못 잡는다.
+    """
+    rng = np.random.default_rng(17)
+    noise = list(100 + np.cumsum(rng.normal(0, 1.5, 90)))
+    # 균일 신축 사본 — 7봉 패턴을 10칸에 펼친다.
+    src = np.linspace(0, _LEN - 1, 10)
+    stretched = np.interp(src, np.arange(_LEN), np.array(_PATTERN, dtype=float))
+    noise[30:40] = list(stretched)
+    rows = _series("000001", _PATTERN * 4) + _series("000002", noise)
+    c = sp.load_corpus(_write(tmp_path, rows))
+    qi, off, q = _query(c)
+
+    def top_of(length):
+        query = q if length == _LEN else sp.resample_query(q, length)
+        hits, _, _ = sp.search_history(
+            c, query=query, length=length, query_series=qi, query_offset=off,
+            min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False)
+        best = next((m for m in hits if c.codes[m.series] == "000002"), None)
+        return best
+
+    at_seven = top_of(_LEN)
+    at_ten = top_of(10)
+    assert at_ten is not None
+    assert at_ten.offset == 30
+    # 리샘플한 길이가 **더 잘** 맞아야 이 기능이 값을 한다.
+    assert at_ten.score > (at_seven.score if at_seven else 0)
+    # 완전한 1.0 은 아니다 — 픽스처가 **종가만** 신축하고 OHLC 는 그 종가에서 만들어져
+    # 몸통·꼬리 비율이 미세하게 어긋난다. 실데이터에서도 같은 이유로 1.0 은 안 나온다.
+    assert at_ten.score == pytest.approx(1.0, abs=1e-3)
+
+
+def test_resample_keeps_normalisation_and_shape(tmp_path):
+    """리샘플은 시간축만 바꾼다 — 채널 수와 정규화(평균 0·표준편차 1)는 그대로다."""
+    c = sp.load_corpus(_write(tmp_path, _series("000001", _PATTERN * 4)))
+    _, _, q = _query(c)
+    for out in (5, 7, 12):
+        r = sp.resample_query(q, out)
+        assert r.shape == (4, out)
+        assert r.mean() == pytest.approx(0.0, abs=1e-9)
+        assert r.std() == pytest.approx(1.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("base, flex, expected", [
+    (7, 0, [7]),
+    (7, 2, [5, 6, 7, 8, 9]),
+    (5, 2, [5, 6, 7]),          # 하한에서 잘린다
+    (29, 2, [27, 28, 29, 30]),  # 상한에서 잘린다
+])
+def test_flex_lengths_clamp_to_the_allowed_window(base, flex, expected):
+    """응답 시간을 바운드하는 상하한 안으로만 펼친다."""
+    assert sp.flex_lengths(base, flex) == expected
+
+
+def test_flex_does_not_multiply_with_the_length_scrubber(client):
+    """`lengths`(각 길이의 최신 창)와 flex(한 쿼리의 리샘플)는 **다른 축**이다.
+
+    곱하면 11 × 5 = 55회가 돌고, 기준 7봉 질의에서 15봉 매치가 상위에 오른다(실측).
+    유연이 켜지면 스크럽을 접고 **첫 길이만** 편다.
+    """
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [7, 8, 9, 10],
+                          "flex_bars": 1, "min_tv_eok": 0, "exclude_etf": False})
+    # 7 ± 1 뿐 — 8·9·10 의 최신 창은 돌지 않는다.
+    assert [x["length"] for x in r.json()["results"]] == [6, 7, 8]
+
+
+def test_flex_keeps_the_query_window_at_the_base_length(client):
+    """리샘플한 것은 **비교에 쓰는 벡터**이지 사용자가 그은 구간이 아니다.
+
+    응답의 `query` 는 기준 길이 그대로여야 화면의 「기준 봉」 이 흔들리지 않는다.
+    """
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [7], "flex_bars": 2,
+                          "min_tv_eok": 0, "exclude_etf": False})
+    results = r.json()["results"]
+    assert [x["length"] for x in results] == [5, 6, 7, 8, 9]
+    assert {x["query"]["length"] for x in results} == {7}
+
+
 def test_since_narrows_the_candidate_pool_not_the_result_list(tmp_path):
     """`since` 는 **후보 모집단**을 바꾼다 — 결과를 자르는 것이 아니다.
 

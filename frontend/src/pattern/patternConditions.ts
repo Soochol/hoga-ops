@@ -34,6 +34,9 @@ export const SIM_FLOORS = [0, 0.88, 0.9, 0.93, 0.95] as const;
 /** 결과 수 후보. 서버가 받아 오는 양이자 화면에 그리는 상한이다. */
 export const RESULT_COUNTS = [20, 40, 100] as const;
 
+/** 길이 유연 폭 후보. `history` 는 길이당 ~0.6s 라 ±2 가 3초다 — 그 위는 열지 않는다. */
+export const FLEX_STEPS = [0, 1, 2] as const;
+
 export type PatternConditions = {
   period: PeriodKey;
   count: number;
@@ -41,6 +44,8 @@ export type PatternConditions = {
   minTvEok: number;
   excludeEtf: boolean;
   noOverlap: boolean;
+  /** ±N봉. 0 이면 기준 길이 하나만 본다. */
+  flexBars: number;
 };
 
 /** 기본값 — 「다 보고 싶다」에 가깝게(2026-09-02 사용자 결정). */
@@ -51,6 +56,7 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
   minTvEok: 10,
   excludeEtf: true,
   noOverlap: true,
+  flexBars: 0,
 };
 
 /** 기간 → `since`(YYYYMMDD). 전체면 `undefined` — 서버가 그때 필터를 아예 안 건다. */
@@ -60,6 +66,27 @@ export function sinceFor(period: PeriodKey, today = new Date()): string | undefi
   const d = new Date(today);
   d.setFullYear(d.getFullYear() - spec.years);
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * 길이별 결과를 **하나의 목록으로** 합친다.
+ *
+ * ⚠ 원점수로 섞으면 **짧은 길이가 도배한다** — 배경 분포가 길이마다 다르기 때문이다
+ * (실측 p99.99: 7봉 0.870 → 14봉 0.832). 원점수 top20 이 {7봉 7 · 8봉 8}로 쏠렸고,
+ * **p99.99 대비 「여유」로 정규화**하니 {7:6 · 10:4 · 13:3 · 14:2 …}로 퍼졌다.
+ *
+ * 그래서 정렬 키가 `corr - p99.99` 다. 화면에 그리는 값은 여전히 `corr` 이고, 어느
+ * 길이에서 나온 매치인지는 행의 길이 뱃지가 말한다.
+ */
+export function mergeByHeadroom(
+  results: readonly { length: number; dist: { p99_99: number | null; p99: number }; matches: readonly PatternMatchRow[] }[],
+): { row: PatternMatchRow; length: number; headroom: number }[] {
+  const merged = results.flatMap((r) => {
+    const floor = r.dist.p99_99 ?? r.dist.p99;
+    return r.matches.map((row) => ({ row, length: r.length, headroom: row.corr - floor }));
+  });
+  merged.sort((a, b) => b.headroom - a.headroom);
+  return merged;
 }
 
 /** 유사도 하한을 적용한 행들. **결과 수는 여기서 자르지 않는다** — 팝오버가 "남는 수"
