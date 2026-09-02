@@ -202,6 +202,7 @@ function MatchRow({
   onOpen,
   selected = false,
   lengthBadge = null,
+  maPeriods = [],
 }: {
   row: PatternMatchRow;
   mode: PatternSearchMode;
@@ -211,6 +212,8 @@ function MatchRow({
   selected?: boolean;
   /** 유연 검색에서 이 매치가 나온 길이. 기준과 다를 수 있어 화면이 말해 줘야 한다. */
   lengthBadge?: number | null;
+  /** 이평 프리셋의 기간들. 썸네일이 그 선을 함께 그려야 왜 매치됐는지 보인다. */
+  maPeriods?: number[];
 }) {
   const forward = row.forward_pct;
   return (
@@ -245,7 +248,7 @@ function MatchRow({
           )}
         </span>
       </span>
-      <CandleThumb bars={row.bars} tail={row.tail} height={34} />
+      <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="flex flex-col items-end gap-[3px]">
         <span className="font-data text-xs font-semibold text-accent">{row.corr.toFixed(3)}</span>
         {mode === 'history' ? (
@@ -398,8 +401,8 @@ export function PatternDrawer() {
       minTvEok: save.conditions.min_tv_eok,
       excludeEtf: save.conditions.exclude_etf,
       noOverlap: save.conditions.no_overlap,
-      // 저장 스키마에 유연 폭이 아직 없다 — 불러오면 기준 길이만 본다(안전한 기본).
-      flexBars: 0,
+      flexBars: save.conditions.flex_bars,
+      maPreset: save.conditions.ma_preset,
     });
     setShowSaves(false);
   }, []);
@@ -537,6 +540,8 @@ export function PatternDrawer() {
                   no_overlap: conditions.noOverlap,
                   per_code: perCode,
                   volume_weight: withVolume ? VOLUME_WEIGHT_ON : 0,
+                  ma_preset: conditions.maPreset,
+                  flex_bars: conditions.flexBars,
                 },
               });
               setSaveDraft(null);
@@ -582,7 +587,14 @@ export function PatternDrawer() {
           </button>
         )}
 
-        {result && <CandleThumb bars={result.query.bars} height={56} />}
+        {result && (
+          <CandleThumb
+            bars={result.query.bars}
+            ma={result.query.ma}
+            maPeriods={result.ma_periods}
+            height={56}
+          />
+        )}
 
         {seededRange ? (
           <div className="flex items-center gap-sm">
@@ -750,6 +762,7 @@ export function PatternDrawer() {
                   // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
+                  maPeriods={result.ma_periods}
                 />
                 );
               })

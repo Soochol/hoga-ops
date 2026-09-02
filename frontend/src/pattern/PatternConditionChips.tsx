@@ -3,6 +3,7 @@ import type { PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
   FLEX_STEPS,
+  MA_PRESETS,
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
@@ -29,7 +30,7 @@ import {
  * 기간은 다르다. **후보 모집단**을 바꾸므로 서버를 다시 불러야 하고, 그래서 미리보기가
  * 없다(`patternConditions` 상단 주석).
  */
-type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | null;
+type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | null;
 
 const TV_STEPS = [0, 10, 50] as const;
 
@@ -71,6 +72,9 @@ export function PatternConditionChips({
       </Chip>
       <Chip active={conditions.flexBars > 0} onClick={() => toggle('flex')}>
         {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
+      </Chip>
+      <Chip active={conditions.maPreset !== 'off'} onClick={() => toggle('ma')}>
+        {MA_PRESETS.find((m) => m.key === conditions.maPreset)?.label ?? '이평 끄기'}
       </Chip>
       <Chip active onClick={() => toggle('tv')}>
         {conditions.minTvEok > 0 ? `${conditions.minTvEok}억+` : '거래대금 무관'}
@@ -132,6 +136,21 @@ export function PatternConditionChips({
               onClick={() => set({ flexBars: f })}
               label={f === 0 ? '길이 고정' : `±${f}봉까지`}
               hint={f === 0 ? undefined : `${2 * f + 1}배 계산`}
+            />
+          ))}
+        </Popover>
+      )}
+      {open === 'ma' && (
+        <Popover title="이평선도 맞출지 · 다시 검색한다">
+          {MA_PRESETS.map((m) => (
+            <Item
+              key={m.key}
+              selected={m.key === conditions.maPreset}
+              onClick={() => set({ maPreset: m.key })}
+              label={m.label}
+              // 프리셋마다 **찾는 것이 달라진다** — 판별력의 차이가 아니라서 이름과 한 줄
+              // 설명이 그 사실을 져야 한다(실측: 5·20 대비 20·60 은 상위 20 중 3개만 겹친다).
+              hint={m.note}
             />
           ))}
         </Popover>

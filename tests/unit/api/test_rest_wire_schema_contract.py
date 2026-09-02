@@ -72,11 +72,12 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternDistribution": frozenset({"p50", "p95", "p99", "p99_99", "sample"}),
     "PatternBaseline": frozenset({"fwd_median_pct", "fwd_win_rate_pct", "sample"}),
     "PatternMatchRow": frozenset(
-        {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct"}
+        {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct", "ma"}
     ),
-    "PatternQueryWindow": frozenset({"length", "from_date", "to_date", "bars"}),
+    "PatternQueryWindow": frozenset({"length", "from_date", "to_date", "bars", "ma"}),
     "PatternLengthResult": frozenset(
-        {"length", "query", "universe", "dist", "matches", "baseline", "elapsed_ms"}
+        {"length", "query", "ma_periods", "universe", "dist", "matches", "baseline",
+         "elapsed_ms"}
     ),
     "PatternSearchResponse": frozenset({"code", "name", "mode", "results"}),
     # 패턴 검색 저장. **불러오기가 조건을 통째로 복원**하므로 필드가 하나라도 조용히
@@ -84,7 +85,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternSaveWindow": frozenset({"kind", "bars", "from_date", "to_date"}),
     "PatternSaveConditions": frozenset(
         {"mode", "since", "count", "sim_floor", "min_tv_eok", "exclude_etf",
-         "no_overlap", "per_code", "volume_weight"}
+         "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars"}
     ),
     "PatternSave": frozenset(
         {"id", "name", "code", "stock_name", "window", "conditions",
@@ -255,6 +256,10 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     "PatternSearchMode": (
         frozenset(get_args(m.PatternSearchMode)),
+        "frontend/src/api/screener.ts",
+    ),
+    "PatternMaPreset": (
+        frozenset(get_args(m.PatternMaPreset)),
         "frontend/src/api/screener.ts",
     ),
     "PatternSaveKind": (

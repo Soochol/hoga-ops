@@ -74,6 +74,8 @@ export function patternKey(
     conditions?.noOverlap ?? null,
     conditions?.count ?? null,
     conditions?.flexBars ?? null,
+    // 이평은 **서버 조건**이다 — 유사도 자체가 달라지므로 키에 든다.
+    conditions?.maPreset ?? null,
   ] as const;
 }
 
@@ -125,6 +127,7 @@ export function usePatternSearch({
         exclude_etf: conditions?.excludeEtf ?? filters.excludeEtf,
         no_overlap: conditions?.noOverlap ?? filters.noOverlap,
         flex_bars: conditions?.flexBars ?? 0,
+        ma_preset: conditions?.maPreset ?? 'off',
         per_code: perCode,
         volume_weight: volumeWeight,
       }),

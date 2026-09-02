@@ -34,6 +34,8 @@ const SAVE_RECENT = {
   conditions: {
     mode: 'history' as const, since: null, count: 100, sim_floor: 0.9,
     min_tv_eok: 50, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
+    // ★ 공장값(off · 0)과 **다른** 값이어야 복원을 실제로 잰다.
+    ma_preset: 'mid' as const, flex_bars: 2,
   },
   created_at_ms: 1, updated_at_ms: 1,
 };
@@ -43,6 +45,7 @@ const SAVE_FIXED = {
   conditions: {
     mode: 'history' as const, since: '20230101', count: 20, sim_floor: 0,
     min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 5, volume_weight: 0,
+    ma_preset: 'short' as const, flex_bars: 1,
   },
   created_at_ms: 2, updated_at_ms: 2,
 };
@@ -92,7 +95,8 @@ const BARS = (n: number) => Array.from({ length: n }, (_, i) => [100 + i, 104 + 
 function lengthResult(length: number, topName: string, opts: { history?: boolean } = {}) {
   return {
     length,
-    query: { length, from_date: '20260824', to_date: '20260901', bars: BARS(length) },
+    query: { length, from_date: '20260824', to_date: '20260901', bars: BARS(length), ma: null },
+    ma_periods: [],
     universe: 800 + length,
     dist: { p50: 0.38, p95: 0.75, p99: 0.83, p99_99: opts.history ? 0.87 : null, sample: 801 },
     matches: [
@@ -101,18 +105,21 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         corr: 0.986, bars: BARS(length),
         tail: opts.history ? [101, 103, 99] : null,
         forward_pct: opts.history ? 7.4 : null,
+        ma: null,
       },
       {
         code: '004710', name: '한솔테크닉스', from_date: '20240529', to_date: '20240607',
         corr: 0.897, bars: BARS(length),
         tail: opts.history ? [98, 97, 95] : null,
         forward_pct: opts.history ? -17.5 : null,
+        ma: null,
       },
       {
         code: '019010', name: '베뉴지', from_date: '20210708', to_date: '20210716',
         corr: 0.83, bars: BARS(length),
         tail: opts.history ? [100, 100, 99] : null,
         forward_pct: opts.history ? -1 : null,
+        ma: null,
       },
       {
         code: '039840', name: '디오', from_date: '20001219', to_date: '20010103',
@@ -120,6 +127,7 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         tail: opts.history ? [] : null,
         // 계열 끝이라 이후가 없다 — 요약 표본에서 **빠져야** 한다(0 으로 세면 안 된다).
         forward_pct: null,
+        ma: null,
       },
     ],
     baseline: opts.history
@@ -648,6 +656,9 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     expect(body.exclude_etf).toBe(false);
     expect(body.per_code).toBe(3);
     expect(body.volume_weight).toBeGreaterThan(0);
+    // 유사도를 바꾸는 조건 둘 — 빠지면 **다른 검색이 복원된다**(공장값 off · 0 과 다르게 저장했다).
+    expect(body.ma_preset).toBe('mid');
+    expect(body.flex_bars).toBe(2);
   });
 
   it('고정 구간 저장은 그 날짜로 되돌아간다', async () => {
@@ -785,4 +796,50 @@ describe('PatternDrawer — 헤더의 기준 구간도 이동 대상이다', () 
     renderDrawer();
     expect(await screen.findByRole('button', { name: /종목 없음|삼성전자/ })).toBeDisabled();
   });
+});
+
+describe('PatternDrawer — 이평 프리셋', () => {
+  /** 칩 → 팝오버 → 항목. 칩 이름에는 「▾」가 붙어 있어 정확 매칭으로는 안 잡힌다. */
+  async function pickPreset(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+    await user.click(screen.getByRole('button', { name: /이평 (끄기|단기|중기)/ }));
+    // 팝오버 항목은 `role="option"` 이다(리스트박스 의미) — button 이 아니다.
+    await user.click(await screen.findByRole('option', { name: label }));
+  }
+
+  it('프리셋을 고르면 그 값이 검색 요청에 실린다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await pickPreset(user, /단기 5·20/);
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.at(-1)?.[0].ma_preset).toBe('short'),
+    );
+  });
+
+  it('이평은 서버 조건이다 — 결과를 자르는 것으로 흉내낼 수 없다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    const before = searchPattern.mock.calls.length;
+    await pickPreset(user, /중기 20·60/);
+    // 유사도 하한처럼 로컬에서 자르는 조건이면 재검색이 없다. 이건 다시 물어야 한다.
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it('저장은 이평 프리셋과 유연 폭을 함께 담는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await pickPreset(user, /단기 5·20/);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    const submits = screen.getAllByRole('button', { name: '저장' });
+    await user.click(submits[submits.length - 1]);
+    await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
+    const body = createPatternSave.mock.calls.at(-1)![0];
+    expect(body.conditions.ma_preset).toBe('short');
+    expect(body.conditions.flex_bars).toBe(0);
+  });
+
 });

@@ -2004,6 +2004,10 @@ class SavedScreener(ScreenerSaveWriteRequest):
 #: **다른 기능이다** — now 는 여러 길이를 한 응답에 담고, history 는 길이 하나에
 #: 이후 수익률·베이스라인을 붙인다.
 PatternSearchMode = Literal["now", "history"]
+#: 이평 프리셋. 이름이 「무엇을 찾는지」를 말한다 — `short` 는 단기 배열 속의 캔들,
+#: `mid` 는 중기 추세 속의 캔들이다. 값을 늘리면 `hoga/api/screener_pattern.py` 의
+#: `MA_PRESETS` 와 프론트 union 을 **같은 PR 에서** 고친다(ADR-0004).
+PatternMaPreset = Literal["off", "short", "mid"]
 
 #: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
 #: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).
@@ -2054,6 +2058,17 @@ class PatternSearchRequest(BaseModel):
     #: 유사도가 `가격 상관 × (1-w) + 거래량 상관 × w` 가 되며, **w 는 화면의 스위치**다
     #: (서버가 발명한 상수가 아니다 — ADR-0166 결정 9).
     volume_weight: float = Field(0.0, ge=0, le=1)
+    #: 이평선을 매칭 축에 넣을지. 「캔들이 5·20 이평을 끼고 있다」 같은 형세가 매치에
+    #: 전달된다 — 실측으로 그 배치가 상위 20 중 4.5개 → 12.8개로 늘고, 정배열/역배열은
+    #: **20/20** 으로 갈린다(캔들만 보면 6~14/20 = 우연 수준).
+    #:
+    #: 이평은 거래량과 달리 **가격과 같은 축**이라 공유 스케일에 그대로 섞인다
+    #: (별도 정규화하면 7봉 창의 MA20 은 거의 직선이라 위치가 사라진다).
+    #:
+    #: ⚠ **자유 조합을 열지 않는다.** 조합마다 답이 크게 갈리지만(5·20 대비 20·60 은
+    #: 상위 20 중 3개만 겹친다) 그건 판별력이 아니라 **질문이 바뀌는 것**이고,
+    #: 체크박스는 그 사실을 화면에서 말해 주지 못한다(ADR-0166 결정 11).
+    ma_preset: PatternMaPreset = "off"
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -2125,6 +2140,11 @@ class PatternSaveConditions(BaseModel):
     no_overlap: bool = True
     per_code: int = Field(5, ge=1, le=5)
     volume_weight: float = Field(0.0, ge=0, le=1)
+    #: 이평 프리셋. 유사도 자체를 바꾸는 조건이라 빠지면 **다른 검색이 복원된다**.
+    ma_preset: PatternMaPreset = "off"
+    #: 길이 유연 폭(±봉). 앞선 PR 이 저장에서 빠뜨렸던 것을 여기서 채운다 — 매치의
+    #: 길이가 달라지므로 이것도 「그 조건이 아니다」를 만든다.
+    flex_bars: int = Field(0, ge=0, le=5)
 
 
 class PatternSaveWriteRequest(BaseModel):
@@ -2190,6 +2210,10 @@ class PatternMatchRow(BaseModel):
     tail: list[float] | None = None
     #: `history` 전용 — `forward_days` 봉 뒤 수익률(%). 계열을 넘으면 null.
     forward_pct: float | None = None
+    #: 이평 프리셋이 켜졌을 때만 — 기간별 **원가격** 이평값. 바깥 리스트가
+    #: `PatternLengthResult.ma_periods` 와 **같은 순서**다. 썸네일이 이 선을 함께 그려야
+    #: 왜 매치됐는지 보인다(캔들만 보면 이평 관계는 화면에 없다).
+    ma: list[list[float]] | None = None
 
 
 class PatternQueryWindow(BaseModel):
@@ -2197,6 +2221,8 @@ class PatternQueryWindow(BaseModel):
     from_date: str = Field(pattern=r"^\d{8}$")
     to_date: str = Field(pattern=r"^\d{8}$")
     bars: list[list[float]]
+    #: 매치 행과 같은 규칙 — `ma_periods` 순서의 원가격 이평값.
+    ma: list[list[float]] | None = None
 
 
 class PatternLengthResult(BaseModel):
@@ -2204,6 +2230,9 @@ class PatternLengthResult(BaseModel):
 
     length: int
     query: PatternQueryWindow
+    #: 이 결과에 실린 이평 기간들. 빈 리스트면 이평을 안 썼다는 뜻이고, 값이 있으면
+    #: 매치·쿼리의 `ma` 바깥 리스트가 **이 순서**다.
+    ma_periods: list[int] = []
     universe: int
     dist: PatternDistribution
     matches: list[PatternMatchRow]

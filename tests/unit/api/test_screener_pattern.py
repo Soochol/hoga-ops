@@ -462,12 +462,12 @@ def test_route_response_passes_response_model_with_wire_keys(client):
     body = r.json()
     assert set(body) == {"code", "name", "mode", "results"}
     result = body["results"][0]
-    assert set(result) == {"length", "query", "universe", "dist", "matches",
-                           "baseline", "elapsed_ms"}
+    assert set(result) == {"length", "query", "ma_periods", "universe", "dist",
+                           "matches", "baseline", "elapsed_ms"}
     assert set(result["dist"]) == {"p50", "p95", "p99", "p99_99", "sample"}
     row = result["matches"][0]
     assert set(row) == {"code", "name", "from_date", "to_date", "corr", "bars",
-                        "tail", "forward_pct"}
+                        "tail", "forward_pct", "ma"}
     assert len(row["bars"][0]) == 4                    # [open, high, low, close]
 
 
@@ -571,3 +571,121 @@ def test_request_model_exposes_from_as_wire_alias():
         {"code": "000001", "lengths": [7], "from": "20240101", "to": "20240110"})
     assert req.from_ == "20240101"
     assert "from" in req.model_dump(by_alias=True)
+
+
+# ── 이평 채널 (ADR-0166 결정 11) ────────────────────────────────────────────
+
+def _ma_corpus(tmp_path):
+    """정배열 하나 · 역배열 하나 · 같은 캔들 모양을 양쪽에 심는다.
+
+    끝 7봉의 **종가 궤적이 셋 다 같다** — 그래서 캔들만 보는 검색은 셋을 가르지 못하고,
+    이평 채널만 「어느 추세 위에 얹혔는가」를 본다. 앞 구간의 기울기가 그 차이를 만든다.
+    """
+    n = 90
+    tail = [100, 108, 104, 112, 106, 115, 110]
+    up = list(np.linspace(60, 100, n - len(tail)))      # 오름세 뒤 → 5일선이 20일선 위
+    down = list(np.linspace(150, 100, n - len(tail)))   # 내림세 뒤 → 20일선이 5일선 위
+    rows: list[dict] = []
+    rows += _series("000001", up + tail)                 # 기준: 정배열
+    rows += _series("000002", up + tail)                 # 같은 배열 · 같은 캔들
+    rows += _series("000003", down + tail)               # **역배열** · 같은 캔들
+    return _write(tmp_path, rows)
+
+
+def _run(tmp_path, **kw):
+    req = PatternSearchRequest(code="000001", mode="now", lengths=[7],
+                               min_tv_eok=0, exclude_etf=False, top=10, **kw)
+    return sp.run_pattern_search(tmp_path, req).results[0]
+
+
+def test_ma_off_carries_no_periods_and_no_lines(tmp_path):
+    r = _run(_ma_corpus(tmp_path))
+    assert r.ma_periods == []
+    assert r.query.ma is None
+    assert all(m.ma is None for m in r.matches)
+
+
+def test_ma_preset_carries_one_line_per_period_in_declared_order(tmp_path):
+    r = _run(_ma_corpus(tmp_path), ma_preset="short")
+    assert r.ma_periods == [5, 20]
+    # 바깥 리스트가 `ma_periods` 순서이고 안쪽이 봉수만큼 — 프론트가 이 계약으로 그린다.
+    assert r.query.ma is not None
+    assert [len(line) for line in r.query.ma] == [7, 7]
+    assert [len(line) for line in r.matches[0].ma] == [7, 7]
+    # 5일선이 20일선보다 최근값에 가깝다 = 원가격으로 되돌아왔다는 뜻(로그값이 아니다).
+    assert all(v > 1 for line in r.query.ma for v in line)
+
+
+def test_ma_channel_separates_the_two_arrangements(tmp_path):
+    """같은 캔들이라도 **정배열과 역배열은 갈린다**.
+
+    캔들만 보면 둘 다 상위에 온다(종가 궤적이 같으니 당연하다). 이평을 넣으면 역배열이
+    아래로 밀린다 — 실측에서 상위 20 이 20/20 같은 순서로 나온 그 성질이다.
+    """
+    corpus = _ma_corpus(tmp_path)
+    plain = {m.code: m.corr for m in _run(corpus).matches}
+    # 같은 캔들이므로 캔들만 보는 검색은 둘을 거의 못 가른다.
+    assert abs(plain["000002"] - plain["000003"]) < 0.05
+
+    plain_gap = abs(plain["000002"] - plain["000003"])
+    with_ma = {m.code: m.corr for m in _run(corpus, ma_preset="short").matches}
+    ma_gap = with_ma["000002"] - with_ma["000003"]
+    # 순서만이 아니라 **격차의 자릿수**가 달라져야 한다 — 이평이 실제로 축이 된 것이다.
+    assert ma_gap > 0.1, f"역배열이 충분히 밀리지 않았다: {with_ma}"
+    assert ma_gap > plain_gap * 5, f"캔들만({plain_gap:.4f}) 대비 벌어지지 않았다({ma_gap:.4f})"
+
+
+def test_flat_series_is_not_revived_by_a_sloping_average(tmp_path):
+    """평탄 판정은 **가격 채널만** 본다.
+
+    이평을 섞어 재면 7봉 내내 멎은 종목이 「MA 가 기울어서」 표준편차를 얻어 되살아난다
+    (실측: 모집단 2,675 → 2,713). 정지 종목은 캔들이 없으므로 매치가 아니다.
+    """
+    n = 90
+    tail = [100, 108, 104, 112, 106, 115, 110]
+    rows = _series("000001", list(np.linspace(60, 100, n - len(tail))) + tail)
+    # 90봉을 오르다가 **마지막 7봉만** 한 가격에 멎었다 → MA5·MA20 은 여전히 기울어 있다.
+    stalled = _series("000002", list(np.linspace(60, 100, n)))
+    for row in stalled[-7:]:
+        row["open"] = row["high"] = row["low"] = row["close"] = 100.0
+    rows += stalled
+    # 멎지 않은 후보 하나 — 없으면 결과가 통째로 비어 「배제됐다」와 구별되지 않는다.
+    rows += _series("000003", list(np.linspace(60, 100, n - len(tail))) + tail)
+    corpus = _write(tmp_path, rows)
+    for preset in ("off", "short"):
+        codes = [m.code for m in _run(corpus, ma_preset=preset).matches]
+        assert codes, f"{preset}: 후보가 통째로 비었다 — 픽스처가 잘못됐다"
+        assert "000002" not in codes, f"{preset}: 멎은 계열이 매치로 올라왔다"
+
+
+def test_warmup_windows_are_dropped_from_the_candidate_pool(tmp_path):
+    """이평이 아직 없는 앞 구간은 0 으로 채워 둔 자리다 — **후보에서 빠져야** 한다.
+
+    ⚠ 「매치 상위에 안 온다」로는 이걸 못 잰다. 0 으로 채워진 창은 정규화 뒤 모양이
+    극단적이라 어차피 상위에 못 오고, 그래서 마스킹을 지워도 상위 목록이 그대로다
+    (실측으로 확인했다 — 처음 쓴 테스트가 그 함정에 걸렸다). 마스킹이 실제로 하는 일은
+    **후보창을 줄이는 것**이므로 그 개수를 센다.
+    """
+    n, length = 60, 7
+    rows = _series("000001", list(np.linspace(60, 100, n)))
+    rows += _series("000002", list(np.linspace(60, 100, n)))
+    c = sp.load_corpus(_write(tmp_path, rows))
+    qi = c.index_of("000001")
+
+    def pool(periods):
+        _, scores, _ = sp.search_history(
+            c, query=sp.query_vector(c, qi, n - length, length, periods),
+            length=length, query_series=qi, query_offset=n - length,
+            min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False,
+            ma_periods=periods,
+        )
+        return len(scores)
+
+    # MA20 의 워밍업은 19봉. 종목이 둘이므로 후보창이 정확히 38개 줄어든다.
+    assert pool(()) - pool((5, 20)) == 19 * 2
+
+
+def test_unknown_preset_falls_back_to_off_rather_than_erroring(tmp_path):
+    # 요청이 답을 못 바꾸게 한다 — 모르는 이름은 이평 없음이다.
+    assert sp.ma_periods_for("nope") == ()
+    assert sp.ma_periods_for("short") == (5, 20)

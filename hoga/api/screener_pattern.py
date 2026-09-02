@@ -44,6 +44,18 @@ _CLOSE = 3
 #: 길이를 **말할 때만** 걸리는데, `from`/`to` 경로는 길이를 그 구간에서 뽑으므로 그
 #: 검증을 통과한다. 즉 이 두 상수가 없으면 드래그로 그은 200봉이 그대로 돈다
 #: (실측: 33봉 구간이 상한을 우회해 사용자 서버에서 24.7초를 썼다).
+#: 이평 프리셋. **자유 조합을 열지 않는다** — 조합마다 답이 크게 갈리는데(5·20 대비
+#: 20·60 은 상위 20 중 3개만 겹친다) 그건 판별력 차이가 아니라 **질문이 바뀌는 것**이고,
+#: 체크박스는 그 사실을 화면에서 말해 주지 못한다. 이름이 무엇을 찾는지 말하게 둔다.
+#: 캐시 키도 3배로 바운드된다(자유 조합이면 2**4 = 16배).
+MA_PRESETS: dict[str, tuple[int, ...]] = {
+    "off": (),
+    "short": (5, 20),
+    "mid": (20, 60),
+}
+#: 코퍼스가 상주시킬 기간 — 프리셋들의 합집합. 기간당 ~68MB 다.
+MA_PERIODS: tuple[int, ...] = tuple(sorted({p for ps in MA_PRESETS.values() for p in ps}))
+
 PATTERN_FLOOR = 5
 PATTERN_CEILING = 30
 
@@ -74,6 +86,7 @@ class Corpus:
     ends: np.ndarray
     ch: np.ndarray             # (4, N) 로그 OHLC — 계열별 **공유 상수**로 중심화
     logv: np.ndarray           # (N,) 로그 거래량 — 계열별 중심화. 가격과 **다른 축**이다
+    ma: dict[int, np.ndarray]  # 기간 → (N,) 로그 SMA. 가격과 **같은 축**이라 공유 스케일에 든다
     centers: np.ndarray        # (S,) 그 계열에서 뺀 상수. 원가격 복원의 유일한 열쇠
     tv: np.ndarray             # (N,) 거래대금
     dates: np.ndarray          # (N,) datetime64[D]
@@ -128,12 +141,42 @@ def reset_cache() -> None:
         _cache.clear()
 
 
+def _build_ma(
+    ch: np.ndarray, starts: np.ndarray, ends: np.ndarray, centers: np.ndarray
+) -> dict[int, np.ndarray]:
+    """계열별 **산술** SMA(종가) → log → 같은 center 뺄셈.
+
+    정의를 `/live` 차트의 `computeSMA` 와 맞춘다 — 산술평균이지 로그의 평균(기하평균)이
+    아니다. 어긋나면 화면의 선과 검색이 **같은 이름으로 다른 것**을 가리킨다.
+
+    가격과 **같은 축**이라는 것이 거래량과의 차이다(ADR-0166 결정 9 는 별도 정규화 +
+    가중합이었다). 같은 상수로 중심화하므로 공유 스케일 z-정규화에 그대로 섞이고,
+    그래야 캔들과 이평선의 상대 위치가 정규화 뒤에도 기하로 남는다.
+
+    앞 `period-1` 봉은 값이 없다. NaN 을 상관에 흘리면 창 전체가 오염되므로 **0 으로
+    채우고**, 그 구간을 쓰는 창은 호출부가 `-inf` 로 마스킹한다.
+    """
+    out: dict[int, np.ndarray] = {}
+    for period in MA_PERIODS:
+        col = np.zeros(ch.shape[1])
+        for i in range(len(starts)):
+            s, e = int(starts[i]), int(ends[i])
+            if e - s < period:
+                continue
+            px = np.exp(ch[_CLOSE, s:e] + centers[i])
+            cs = np.concatenate([[0.0], np.cumsum(px)])
+            col[s + period - 1 : e] = np.log((cs[period:] - cs[:-period]) / period) - centers[i]
+        out[period] = col
+    return out
+
+
 def _empty_corpus(path: Path, mtime: int) -> Corpus:
     return Corpus(
         path=path, mtime_ns=mtime,
         codes=np.array([], dtype=object),
         starts=np.array([], dtype=np.int64), ends=np.array([], dtype=np.int64),
-        ch=np.zeros((4, 0)), logv=np.zeros(0), centers=np.zeros(0), tv=np.zeros(0),
+        ch=np.zeros((4, 0)), logv=np.zeros(0), ma={p: np.zeros(0) for p in MA_PERIODS},
+        centers=np.zeros(0), tv=np.zeros(0),
         dates=np.array([], dtype="datetime64[D]"),
         names={}, is_etf={}, last_date=np.datetime64("1970-01-01", "D"),
     )
@@ -190,6 +233,8 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
         # 거래량은 가격과 단위가 달라 **자기 평균**으로 따로 중심화한다.
         logv[starts[i] : ends[i]] -= logv[starts[i] : ends[i]].mean()
 
+    ma = _build_ma(ch, starts, ends, centers)
+
     names: dict[str, str] = {}
     is_etf: dict[str, bool] = {}
     stocks_path = data_dir / "screener" / "stocks.parquet"
@@ -200,7 +245,7 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
             is_etf = dict(zip(stocks["code"], stocks["is_etf"], strict=True))
     return Corpus(
         path=path, mtime_ns=mtime, codes=codes[starts], starts=starts, ends=ends,
-        ch=ch, logv=logv, centers=centers, tv=tv, dates=dates, names=names, is_etf=is_etf,
+        ch=ch, logv=logv, ma=ma, centers=centers, tv=tv, dates=dates, names=names, is_etf=is_etf,
         last_date=dates.max(),
     )
 
@@ -212,6 +257,20 @@ def bars_at(c: Corpus, i: int, offset: int, length: int) -> list[list[float]]:
     """
     w = np.exp(_window(c, i, offset, length) + c.centers[i])
     return [[float(v) for v in row] for row in w.T]
+
+
+def ma_at(
+    c: Corpus, i: int, offset: int, length: int, periods: tuple[int, ...]
+) -> list[list[float]] | None:
+    """썸네일용 **원가격** 이평값 — 기간마다 length 개, `periods` 순서.
+
+    캔들과 같은 자로 되돌린다(`exp(ma + center)`). 화면이 이 선을 함께 그려야 왜
+    매치됐는지 보인다 — 캔들만 그리면 이평 관계는 어디에도 없다.
+    """
+    if not periods:
+        return None
+    s = int(c.starts[i]) + offset
+    return [[float(v) for v in np.exp(c.ma[p][s : s + length] + c.centers[i])] for p in periods]
 
 
 def closes_at(c: Corpus, i: int, offset: int, length: int) -> list[float]:
@@ -253,6 +312,37 @@ def flex_lengths(base: int, flex: int) -> list[int]:
     return list(range(lo, hi + 1))
 
 
+def ma_periods_for(preset: str) -> tuple[int, ...]:
+    """프리셋 이름 → 기간들. 모르는 이름은 «끄기» 로 떨어뜨린다(요청이 답을 못 바꾼다)."""
+    return MA_PRESETS.get(preset, ())
+
+
+def _channels(c: Corpus, periods: tuple[int, ...]) -> list[np.ndarray]:
+    """가격 4채널 + 이평 채널들. 전 계열 연속 배열이라 창은 슬라이스로 뽑는다.
+
+    이평이 **여기 섞이는** 것이 이 기능의 전부다 — 채널별로 따로 정규화하면 7봉 창의
+    MA20 은 거의 직선이라 위치가 사라지고 기울기만 남는다.
+    """
+    return [c.ch[k] for k in range(4)] + [c.ma[p] for p in periods]
+
+
+def _stack_window(c: Corpus, i: int, offset: int, length: int, periods: tuple[int, ...]) -> np.ndarray:
+    s = int(c.starts[i]) + offset
+    return np.stack([ch[s : s + length] for ch in _channels(c, periods)])
+
+
+def _ma_warmup(periods: tuple[int, ...]) -> int:
+    """이평이 아직 없는 앞 구간의 길이. 그 자리에서 시작하는 창은 쓸 수 없다."""
+    return max(periods) - 1 if periods else 0
+
+
+def _price_flat(c: Corpus, i: int, offset: int, length: int) -> bool:
+    """**가격 채널만으로** 평탄 판정. 이평을 섞어 재면 안 된다 — 7봉 내내 멎은 종목이
+    「MA 가 기울어서」 되살아난다(실측: 모집단 2,675 → 2,713)."""
+    s = int(c.starts[i]) + offset
+    return bool(c.ch[:, s : s + length].std() <= _FLAT_SD)
+
+
 def _znorm(w: np.ndarray) -> np.ndarray | None:
     """창 **전체**를 한 스케일로 정규화. 채널별이 아니라는 것이 이 함수의 요점이다."""
     sd = w.std()
@@ -264,20 +354,26 @@ def _roll_mean(x: np.ndarray, length: int) -> np.ndarray:
     return (cs[length:] - cs[:-length]) / length
 
 
-def _win_sd(c: Corpus, i: int, length: int) -> np.ndarray:
-    """창의 4L 개 값 전체에 대한 표준편차. cumsum 차분이라 O(N)."""
+def _win_sd(c: Corpus, i: int, length: int, periods: tuple[int, ...] = ()) -> np.ndarray:
+    """창의 **모든 채널** 값 전체에 대한 표준편차. cumsum 차분이라 O(N).
+
+    이평 채널의 워밍업 구간은 0 으로 채워져 있어 여기 섞이지만, 그 자리에서 시작하는
+    창은 호출부가 `-inf` 로 지우므로 결과에 닿지 않는다.
+    """
     s, e = c.starts[i], c.ends[i]
     n = int(e - s) - length + 1
+    chans = _channels(c, periods)
     total = np.zeros(n)
     sq = np.zeros(n)
-    for k in range(4):
-        x = c.ch[k, s:e]
+    for ch in chans:
+        x = ch[s:e]
         c1 = np.concatenate([[0.0], np.cumsum(x)])
         c2 = np.concatenate([[0.0], np.cumsum(x * x)])
         total += c1[length:] - c1[:-length]
         sq += c2[length:] - c2[:-length]
-    mean = total / (4 * length)
-    return np.sqrt(np.maximum(sq / (4 * length) - mean * mean, 0.0))
+    cells = len(chans) * length
+    mean = total / cells
+    return np.sqrt(np.maximum(sq / cells - mean * mean, 0.0))
 
 
 def _volume_query(c: Corpus, i: int, offset: int, length: int) -> np.ndarray | None:
@@ -320,6 +416,7 @@ def search_now(
     exclude_etf: bool,
     volume_query: np.ndarray | None = None,
     volume_weight: float = 0.0,
+    ma_periods: tuple[int, ...] = (),
 ) -> tuple[list[PatternMatch], np.ndarray]:
     """각 종목의 **최신 L봉** 한 창만 비교. 종목당 내적 1회라 싸다.
 
@@ -328,18 +425,25 @@ def search_now(
     """
     out: list[PatternMatch] = []
     scores: list[float] = []
+    # 이평을 쓰면 최신 창이 워밍업 뒤에 있어야 한다 — 신규 상장주는 그 선이 없다.
+    need = length + _ma_warmup(ma_periods)
+    cells = (4 + len(ma_periods)) * length
     for i in range(len(c.codes)):
         e = int(c.ends[i])
-        if i == skip or c.series_len(i) < length or not _eligible(c, i, exclude_etf=exclude_etf):
+        if i == skip or c.series_len(i) < need or not _eligible(c, i, exclude_etf=exclude_etf):
             continue
         if c.dates[e - 1] != c.last_date:
             continue
         if min_tv_eok > 0 and c.tv[e - length : e].mean() < min_tv_eok * _WON_PER_EOK:
             continue
-        z = _znorm(c.ch[:, e - length : e])
+        offset = c.series_len(i) - length
+        # ★ 평탄 판정은 **가격만** 본다. 이평을 섞으면 멎은 종목이 되살아난다.
+        if _price_flat(c, i, offset, length):
+            continue
+        z = _znorm(_stack_window(c, i, offset, length, ma_periods))
         if z is None:
             continue
-        score = float((z * query).sum() / (4 * length))
+        score = float((z * query).sum() / cells)
         if volume_query is not None and volume_weight > 0:
             # 거래량은 가격과 **별도 정규화**다. 평탄한 창은 0 으로 둬 자연 강등시킨다
             # (거래량 축이 없는 자리를 만점으로 쳐 주지 않는다).
@@ -349,7 +453,7 @@ def search_now(
                   if vsd > _FLAT_SD else 0.0)
             score = score * (1 - volume_weight) + vs * volume_weight
         scores.append(score)
-        out.append(PatternMatch(score, i, c.series_len(i) - length))
+        out.append(PatternMatch(score, i, offset))
     out.sort(key=lambda m: m.score, reverse=True)
     return out, np.array(scores)
 
@@ -392,6 +496,7 @@ def search_history(
     volume_query: np.ndarray | None = None,
     volume_weight: float = 0.0,
     since: np.datetime64 | None = None,
+    ma_periods: tuple[int, ...] = (),
 ) -> tuple[list[PatternMatch], np.ndarray, np.ndarray]:
     """전 종목 × 전 기간 슬라이딩. 종목당 최고점 **1개**만 남긴다(결과 다양성).
 
@@ -409,17 +514,22 @@ def search_history(
         s, e = int(c.starts[i]), int(c.ends[i])
         if (e - s) < length + min_after:
             continue
-        sd = _win_sd(c, i, length)
+        sd = _win_sd(c, i, length, ma_periods)
+        chans = _channels(c, ma_periods)
         with np.errstate(divide="ignore", invalid="ignore"):
             # 커널: 채널별 correlate 합. `sliding_window_view @ q` 는 스트라이드 뷰를
             # BLAS 가 연속 버퍼로 복사해 L 에 비례해 느려진다(실측 3.5배).
             cross = np.zeros(len(sd))
-            for k in range(4):
-                cross += np.correlate(c.ch[k, s:e], query[k], mode="valid")
-            corr = cross / (4 * length * sd)
+            for k, ch in enumerate(chans):
+                cross += np.correlate(ch[s:e], query[k], mode="valid")
+            corr = cross / (len(chans) * length * sd)
         if volume_query is not None and volume_weight > 0:
             corr = corr * (1 - volume_weight) + _volume_corr(c, i, volume_query, length) * volume_weight
         corr[~np.isfinite(corr) | (sd <= _FLAT_SD)] = -np.inf
+        if ma_periods:
+            # 이평이 아직 없는 앞 구간. 0 으로 채워 둔 자리라 지우지 않으면 «이평이 바닥에
+            # 붙은 모양» 이 매치로 올라온다.
+            corr[: _ma_warmup(ma_periods)] = -np.inf
         if min_tv_eok > 0:
             # rolling *mean* 이라 O(N). rolling min 이면 3배 느려진다(실측).
             corr[_roll_mean(c.tv[s:e], length) < min_tv_eok * _WON_PER_EOK] = -np.inf
@@ -448,9 +558,17 @@ def search_history(
     return matches, scores, fwd
 
 
-def query_vector(c: Corpus, series: int, offset: int, length: int) -> np.ndarray | None:
-    """쿼리 창 → 공유 스케일 z-정규화된 (4, L) 벡터. 평탄하면 None."""
-    return _znorm(_window(c, series, offset, length))
+def query_vector(
+    c: Corpus, series: int, offset: int, length: int, periods: tuple[int, ...] = ()
+) -> np.ndarray | None:
+    """쿼리 창 → 공유 스케일 z-정규화된 (채널, L) 벡터. 평탄하면 None.
+
+    이평을 쓰는데 쿼리 자리에 워밍업이 안 찼으면(신규 상장 등) None 이다 — 없는 선을
+    0 으로 채운 채 검색하면 «이평이 바닥에 붙은 종목» 을 찾게 된다.
+    """
+    if periods and offset < _ma_warmup(periods):
+        return None
+    return _znorm(_stack_window(c, series, offset, length, periods))
 
 
 def forward_return_pct(c: Corpus, i: int, offset: int, length: int, horizon: int) -> float | None:
@@ -512,6 +630,7 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
     #    매치가 상위에 오른다(실측). 유연이 켜지면 스크럽을 접고 고른 길이만 편다.
     single = dated or req.mode == "history" or req.flex_bars > 0
     lengths = [req.lengths[0]] if single else req.lengths
+    periods = ma_periods_for(req.ma_preset)
 
     results: list[PatternLengthResult] = []
     for want in lengths:
@@ -519,7 +638,7 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
         if win is None:
             continue
         offset, base_length = win
-        base_query = query_vector(c, qi, offset, base_length)
+        base_query = query_vector(c, qi, offset, base_length, periods)
         if base_query is None:
             continue
         # 유연 검색은 **한 쿼리를 여러 길이로** 돌린다 — `lengths`(각 길이의 최신 창)와
@@ -527,7 +646,7 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
         for length in flex_lengths(base_length, req.flex_bars):
             query = base_query if length == base_length else resample_query(base_query, length)
             _append_one(c, req, results, qi=qi, offset=offset, length=length,
-                        base_length=base_length, query=query)
+                        base_length=base_length, query=query, periods=periods)
     return PatternSearchResponse(code=req.code, name=name, mode=req.mode, results=results)
 
 
@@ -541,6 +660,7 @@ def _append_one(
     length: int,
     base_length: int,
     query: np.ndarray,
+    periods: tuple[int, ...] = (),
 ) -> None:
     """길이 하나의 결과를 만들어 담는다. 유연 검색이 이 함수를 길이마다 부른다."""
     started = time.perf_counter()
@@ -557,7 +677,7 @@ def _append_one(
         matches, scores = search_now(
             c, query=query, length=length, skip=qi,
             min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
-            volume_query=vq, volume_weight=vw,
+            volume_query=vq, volume_weight=vw, ma_periods=periods,
         )
         fwd_all = np.zeros(0)
     else:
@@ -565,7 +685,7 @@ def _append_one(
             c, query=query, length=length, query_series=qi, query_offset=offset,
             min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
             min_after=req.forward_days, no_overlap=req.no_overlap,
-            per_code=req.per_code, volume_query=vq, volume_weight=vw,
+            per_code=req.per_code, volume_query=vq, volume_weight=vw, ma_periods=periods,
             since=(np.datetime64(
                 f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D")
                 if req.since else None),
@@ -591,6 +711,7 @@ def _append_one(
                   if req.mode == "history" else None),
             forward_pct=(forward_return_pct(c, m.series, m.offset, length, req.forward_days)
                          if req.mode == "history" else None),
+            ma=ma_at(c, m.series, m.offset, length, periods),
         )
         for m in matches[: req.top]
     ]
@@ -605,7 +726,9 @@ def _append_one(
             from_date=_ymd(c, qi, offset),
             to_date=_ymd(c, qi, offset + base_length - 1),
             bars=bars_at(c, qi, offset, base_length),
+            ma=ma_at(c, qi, offset, base_length, periods),
         ),
+        ma_periods=list(periods),
         universe=len(matches),
         dist=PatternDistribution(
             p50=pcts["p50"], p95=pcts["p95"], p99=pcts["p99"],
