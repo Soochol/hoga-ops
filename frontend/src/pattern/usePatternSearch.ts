@@ -73,6 +73,7 @@ export function patternKey(
     conditions?.excludeEtf ?? null,
     conditions?.noOverlap ?? null,
     conditions?.count ?? null,
+    conditions?.flexBars ?? null,
   ] as const;
 }
 
@@ -111,13 +112,19 @@ export function usePatternSearch({
         code: code as string,
         mode,
         // 구간을 주면 서버가 길이를 그 구간에서 뽑는다 — `lengths` 는 검증만 통과하면 된다.
-        lengths: range || mode === 'history' ? [length] : [...NOW_LENGTHS],
+        // 길이 유연은 **고른 봉수 하나**를 편다 — 봉수 스크럽(`NOW_LENGTHS`)과 곱하면
+        // 55회가 돌고 기준과 무관한 길이가 상위에 온다.
+        lengths:
+          range || mode === 'history' || (conditions?.flexBars ?? 0) > 0
+            ? [length]
+            : [...NOW_LENGTHS],
         ...(range ? { from: range.from, to: range.to } : {}),
         top: conditions?.count ?? 20,
         ...(conditions ? { since: sinceFor(conditions.period) } : {}),
         min_tv_eok: conditions?.minTvEok ?? filters.minTvEok,
         exclude_etf: conditions?.excludeEtf ?? filters.excludeEtf,
         no_overlap: conditions?.noOverlap ?? filters.noOverlap,
+        flex_bars: conditions?.flexBars ?? 0,
         per_code: perCode,
         volume_weight: volumeWeight,
       }),

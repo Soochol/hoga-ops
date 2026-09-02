@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
+  FLEX_STEPS,
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
@@ -28,7 +29,7 @@ import {
  * 기간은 다르다. **후보 모집단**을 바꾸므로 서버를 다시 불러야 하고, 그래서 미리보기가
  * 없다(`patternConditions` 상단 주석).
  */
-type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | null;
+type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | null;
 
 const TV_STEPS = [0, 10, 50] as const;
 
@@ -67,6 +68,9 @@ export function PatternConditionChips({
       </Chip>
       <Chip active={conditions.simFloor > 0} onClick={() => toggle('sim')}>
         {conditions.simFloor > 0 ? `유사도 ${conditions.simFloor.toFixed(2)}+` : '유사도 전체'}
+      </Chip>
+      <Chip active={conditions.flexBars > 0} onClick={() => toggle('flex')}>
+        {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
       </Chip>
       <Chip active onClick={() => toggle('tv')}>
         {conditions.minTvEok > 0 ? `${conditions.minTvEok}억+` : '거래대금 무관'}
@@ -117,6 +121,19 @@ export function PatternConditionChips({
               />
             );
           })}
+        </Popover>
+      )}
+      {open === 'flex' && (
+        <Popover title="같은 모양이 더 길게·짧게 전개된 것도 · 다시 검색한다">
+          {FLEX_STEPS.map((f) => (
+            <Item
+              key={f}
+              selected={f === conditions.flexBars}
+              onClick={() => set({ flexBars: f })}
+              label={f === 0 ? '길이 고정' : `±${f}봉까지`}
+              hint={f === 0 ? undefined : `${2 * f + 1}배 계산`}
+            />
+          ))}
         </Popover>
       )}
       {open === 'tv' && (
