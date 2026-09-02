@@ -120,8 +120,13 @@ export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, 
             setPicked(hit);
             if (hit && isDuplicate(hit.code)) onDuplicate(hit.code);
           }} />
+          {/* **위치를 약속하지 않는다.** 관심종목 팝오버는 커서 자리에 뜨므로 "아래에
+              표시했습니다" 를 지킬 수 있지만, 이 팝오버는 카드 헤더 바로 아래에 앵커돼
+              **가리킬 그 리스트를 자기가 덮는다**(실측: 팝오버 124–269, 그 행 145–164 —
+              완전히 가려진다). 지킬 수 없는 약속 대신 사실만 말하고, 하이라이트는
+              가려지지 않는 경우(행이 많은 카드)를 위한 덤으로 남긴다. */}
           {picked && duplicate && (
-            <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다 — 아래에 표시했습니다</Banner>
+            <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>
           )}
           <div className="flex justify-end gap-2">
             <button className="text-xs px-2 py-1 text-fg-dim" onClick={close}>닫기</button>

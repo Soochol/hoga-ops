@@ -107,13 +107,17 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
   }, []);
   // 하이라이트만으로는 부족하다 — 그 행이 화면 밖이면 아무것도 안 보인다. 보드는
   // CSS multicolumn 이라 카드가 칼럼 경계에 걸릴 수 있어 특히 그렇다.
+  //
+  // ⚠ **`'center'` 가 아니라 `'nearest'` 다.** 팝오버가 카드 상단을 덮으므로(FolderAddButton
+  // 주석의 실측) 가운데로 끌어오면 **보이던 행을 가려진 자리로 옮기는** 역효과가 난다.
+  // `'nearest'` 는 이미 보이는 행을 건드리지 않고 화면 밖일 때만 끌어온다.
   useEffect(() => {
     if (flashCode === null) return;
     // 카드 루트는 이미 고유 id 를 갖는다(`FolderDropZone` 의 `heatmap-folder-<id>`) —
     // ref 를 두 래퍼에 뚫는 대신 그걸 스코프로 쓴다. **전역 조회는 쓰지 않는다.**
     document.getElementById(`heatmap-folder-${folderId}`)
       ?.querySelector(`[data-testid="heatmap-row-${flashCode}"]`)
-      ?.scrollIntoView?.({ block: 'center' });
+      ?.scrollIntoView?.({ block: 'nearest' });
   }, [flashCode, folderId]);
   const isDuplicate = useCallback(
     (code: string) => entries.some((e) => e.code === code), [entries]);

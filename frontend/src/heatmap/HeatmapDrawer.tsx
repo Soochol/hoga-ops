@@ -410,8 +410,11 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate,
       style={{ position: 'fixed', left, top, width: POP_W }}
       className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
       <SymbolSearch value={picked} onChange={(hit) => { setPicked(hit); pointAtDuplicate(hit, target); }} />
+      {/* **위치를 약속하지 않는다** — 이 팝오버는 헤더/⋯ 버튼에 앵커돼 가리킬 리스트를
+          자기가 덮는다(실측: 팝오버 30–208, 그 행 162–187). 관심종목 팝오버는 커서 자리에
+          떠서 그 약속을 지킬 수 있었다 — 표면이 다르면 약속도 달라야 한다. */}
       {picked && duplicate && (
-        <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다 — 아래에 표시했습니다</Banner>
+        <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>
       )}
       {needsFolder && (folders.length > 0 ? (
         <label className="flex items-center gap-2 text-xs text-fg-dim">
@@ -605,13 +608,15 @@ export function HeatmapDrawer() {
     if (duplicateTimer.current !== null) window.clearTimeout(duplicateTimer.current);
   }, []);
   // 스크롤은 **다음 커밋**에서 한다 — 접힌 그룹을 펼친 그 렌더에는 행이 아직 DOM 에 없다.
+  // `'nearest'` 인 이유는 위 배너 주석과 같다: 팝오버가 리스트 위에 얹혀 있어 가운데로
+  // 끌어오면 보이던 행이 가려진 자리로 간다.
   // 조회를 그룹 컨테이너로 한정하는 이유: `heatmap-drawer-row-<code>` 는 다중 소속이라
   // 드로어 전체에서 고유하지 않다 — 전역 조회는 엉뚱한 그룹의 행으로 스크롤한다.
   useEffect(() => {
     if (duplicateHit === null) return;
     document.querySelector(`[data-testid="heatmap-drawer-group-${duplicateHit.folderId}"]`)
       ?.querySelector(`[data-testid="heatmap-drawer-row-${duplicateHit.code}"]`)
-      ?.scrollIntoView?.({ block: 'center' });
+      ?.scrollIntoView?.({ block: 'nearest' });
   }, [duplicateHit]);
   const isDuplicateIn = useCallback((code: string, folderId?: string) =>
     folderId !== undefined

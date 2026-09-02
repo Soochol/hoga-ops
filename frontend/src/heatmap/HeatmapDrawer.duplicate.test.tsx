@@ -89,7 +89,7 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
 
     expect(await screen.findByText(/이미 이 그룹에 있습니다/)).toBeTruthy();
     await waitFor(() => expect(flashed()).toEqual(['heatmap-drawer-row-005930']));
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
 
     const addBtn = screen.getByRole('button', { name: '추가' });
     expect(addBtn).toBeDisabled();

@@ -75,8 +75,9 @@ describe('HeatmapFolder — 카드 ＋종목의 중복 안내', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('heatmap-row-005930').className).toContain('row-flash'));
-    // 하이라이트만으로는 부족하다 — 화면 밖이면 아무것도 안 보인다(보드는 multicolumn).
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    // 화면 밖이면 아무것도 안 보인다. `'nearest'` — 팝오버가 카드 상단을 덮으므로
+    // 가운데로 끌어오면 보이던 행을 가려진 자리로 옮기게 된다(구현부 주석).
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
     // 다른 행은 건드리지 않는다.
     expect(screen.getByTestId('heatmap-row-000660').className).not.toContain('row-flash');
   });
