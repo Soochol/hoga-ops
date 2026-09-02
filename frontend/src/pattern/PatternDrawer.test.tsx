@@ -48,7 +48,7 @@ const SAVE_FIXED = {
   conditions: {
     mode: 'history' as const, since: '20230101', count: 20, sim_floor: 0,
     min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 5, volume_weight: 0,
-    ma_preset: 'short' as const, flex_bars: 1,
+    ma_preset: 'mid' as const, flex_bars: 1,
   },
   created_at_ms: 2, updated_at_ms: 2,
 };
@@ -839,8 +839,12 @@ describe('PatternDrawer — 헤더의 기준 구간도 이동 대상이다', () 
 
 describe('PatternDrawer — 이평 프리셋', () => {
   /** 칩 → 팝오버 → 항목. 칩 이름에는 「▾」가 붙어 있어 정확 매칭으로는 안 잡힌다. */
+  /** ⚠ **공장값이 「단기 5·20」이다** — 그걸 다시 고르면 아무것도 재지 못한다(값이 안
+   *  바뀌니 재검색도 없다). 프리셋 테스트는 공장값과 **다른** 항목을 골라야 한다. */
   async function pickPreset(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
-    await user.click(screen.getByRole('button', { name: /이평 (끄기|단기|중기)/ }));
+    // 칩 라벨은 **현재 프리셋의 이름**이라 「이평」으로 시작하지 않을 수 있다
+    // (공장값이 short 면 「단기 5·20▾」이다).
+    await user.click(screen.getByRole('button', { name: /(이평 끄기|단기 5·20|중기 20·60)/ }));
     // 팝오버 항목은 `role="option"` 이다(리스트박스 의미) — button 이 아니다.
     await user.click(await screen.findByRole('option', { name: label }));
   }
@@ -849,9 +853,9 @@ describe('PatternDrawer — 이평 프리셋', () => {
     const user = userEvent.setup();
     renderDrawer();
     await screen.findByText('길이7위');
-    await pickPreset(user, /단기 5·20/);
+    await pickPreset(user, /중기 20·60/);
     await vi.waitFor(() =>
-      expect(searchPattern.mock.calls.at(-1)?.[0].ma_preset).toBe('short'),
+      expect(searchPattern.mock.calls.at(-1)?.[0].ma_preset).toBe('mid'),
     );
   });
 
@@ -860,7 +864,7 @@ describe('PatternDrawer — 이평 프리셋', () => {
     renderDrawer();
     await screen.findByText('길이7위');
     const before = searchPattern.mock.calls.length;
-    await pickPreset(user, /중기 20·60/);
+    await pickPreset(user, /이평 끄기/);
     // 유사도 하한처럼 로컬에서 자르는 조건이면 재검색이 없다. 이건 다시 물어야 한다.
     await vi.waitFor(() =>
       expect(searchPattern.mock.calls.length).toBeGreaterThan(before),
@@ -871,13 +875,13 @@ describe('PatternDrawer — 이평 프리셋', () => {
     const user = userEvent.setup();
     renderDrawer();
     await screen.findByText('길이7위');
-    await pickPreset(user, /단기 5·20/);
+    await pickPreset(user, /중기 20·60/);
     await user.click(screen.getByRole('button', { name: '저장' }));
     const submits = screen.getAllByRole('button', { name: '저장' });
     await user.click(submits[submits.length - 1]);
     await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
     const body = createPatternSave.mock.calls.at(-1)![0];
-    expect(body.conditions.ma_preset).toBe('short');
+    expect(body.conditions.ma_preset).toBe('mid');
     // 공장값이 ±2봉이므로 손대지 않으면 그대로 저장된다.
     expect(body.conditions.flex_bars).toBe(2);
   });
