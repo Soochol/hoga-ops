@@ -117,6 +117,27 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
   useEffect(() => {
     const series = paneSeries.get('candle');
     if (!series || !target) return;
+    // ⚠ **못 그리는 차트에는 걸지 않는다 — 걸면 lwc 가 던진다.**
+    //
+    // `setCrosshairPosition` 은 내부(`setAndSaveSyntheticPosition`, lwc 5.2.0)에서 두
+    // 값을 `ensureNotNull` 로 깐다: pane 기본 가격축의 `firstValue` 와 `timeToIndex`.
+    // 둘 다 **정상 상태에서** null 이 되고, 그러면 `Error: Value is null` 이 이 이펙트
+    // 에서 올라와 `ChartErrorBoundary` 가 창을 통째로 폴백으로 바꾼다. 도달 경로 셋:
+    //   - pane 폭이 0 (레이아웃 전 · 접힌 창) → timeScale 이 `isEmpty`
+    //   - 이 차트의 시리즈에 아직 데이터가 없다(캔들 prop 은 섰는데 `setData` 전 —
+    //     자식 이펙트가 부모보다 **먼저** 도는 이 리포의 상시 순서다)
+    //   - 캔들 전체가 뷰포트 **왼쪽 밖**으로 밀렸다. `firstValue` 는 보이는 구간의
+    //     왼쪽 끝에서 **오른쪽으로** 봉을 찾으므로 그때만 null 이다(오른쪽 밖은 무해).
+    //
+    // 공개 API 로 그 셋을 **한 번에** 재는 것이 `priceToCoordinate` 다. 이 값이
+    // non-null 이면 시리즈 `firstValue` 가 있고, 그건 보이는 구간과 점 배열이 둘 다
+    // 서 있다는 뜻이라 위 셋이 모두 배제된다(② 는 점이 0개일 때만 null 이다).
+    // **전제 하나**: 캔들 시리즈가 pane 기본 가격축(`right`)에 있다 — ① 이 보는 것은
+    // 그 축이고 여기서 재는 것은 시리즈다. 캔들을 다른 축으로 옮기면 이 줄부터 다시 볼 것.
+    //
+    // 건너뛴 프레임은 **다음 커서 틱이 복구한다**(`target` 이 바뀌어 이펙트가 다시 돈다).
+    // 발행 창의 포인터가 멈춰 있으면 그동안 선이 없다 — 그 대가로 창이 살아 있다.
+    if (series.priceToCoordinate(target.close) === null) return;
     chart.setCrosshairPosition(
       target.close,
       (axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp,

@@ -41,7 +41,13 @@ function makeChart(coords: Map<number, number | null>) {
   return { timeScale: () => timeScale, setCrosshairPosition, clearCrosshairPosition };
 }
 
-const candleSeries = { __series: true };
+/**
+ * **차트가 그릴 수 있는 상태인가**를 재는 탐침 — 컴포넌트가 `setCrosshairPosition`
+ * 앞에 이걸 부른다. 실제 lwc 는 데이터·뷰포트가 서 있을 때만 좌표를 준다(그 셋의
+ * 판정은 컴포넌트 쪽 주석이 갖는다). 기본은 「그릴 수 있음」.
+ */
+const priceToCoordinate = vi.fn((_price: number): number | null => 260);
+const candleSeries = { __series: true, priceToCoordinate };
 const paneSeries = new Map([['candle', candleSeries]]) as never;
 
 /** 마지막으로 렌더한 차트 — 합성 표시(`syntheticCrosshair`)가 **인스턴스별**이라
@@ -91,6 +97,8 @@ describe('CursorSyncCrosshair', () => {
     useChartPrefsStore.getState().resetToDefaults();
     setCrosshairPosition.mockClear();
     clearCrosshairPosition.mockClear();
+    priceToCoordinate.mockClear();
+    priceToCoordinate.mockReturnValue(260);
   });
   afterEach(cleanup);
 
@@ -338,6 +346,31 @@ describe('CursorSyncCrosshair', () => {
       expect(setCrosshairPosition).not.toHaveBeenCalled();
       expect(hasSyntheticCrosshair(lastChart as never)).toBe(false);
     });
+  });
+
+  /**
+   * **못 그리는 차트에는 걸지 않는다** — 걸면 lwc 가 던지고 창이 통째로 죽는다.
+   *
+   * `setCrosshairPosition` 은 내부에서 pane 기본 가격축의 `firstValue` 를
+   * `ensureNotNull` 로 깐다(lwc 5.2.0). 그 값은 pane 폭이 0 이거나(레이아웃 전 ·
+   * 접힌 창), 시리즈에 데이터가 아직 없거나, 캔들 전체가 뷰포트 **왼쪽 밖**으로
+   * 밀렸을 때 null 이고, 그러면 `Error: Value is null` 이 이펙트에서 올라와
+   * `ChartErrorBoundary` 가 이 창을 폴백으로 바꾼다.
+   *
+   * **막는 방향**: 그 상태의 차트에 크로스헤어를 거는 것.
+   * **못 보는 것**: 진짜로 예외가 나는지는 재지 않는다 — 모의는 던지지 않으므로
+   * 여기서 재는 것은 «부르지 않는가» 뿐이다(가드를 지우면 부른다 → red).
+   * **등록 의존**: 탐침이 `priceToCoordinate` 라는 것. 컴포넌트가 다른 축으로
+   * 재기 시작하면 이 스펙은 조용히 통과한다.
+   */
+  it('차트가 좌표를 못 주면 크로스헤어를 걸지 않는다 — lwc 가 던지는 자리다', () => {
+    priceToCoordinate.mockReturnValue(null);
+    renderCrosshair();
+    publish();
+
+    expect(setCrosshairPosition).not.toHaveBeenCalled();
+    // 걸지 않았으니 합성 표시도 남기면 안 된다 — 남으면 이 창의 발행이 영영 막힌다.
+    expect(hasSyntheticCrosshair(lastChart as never)).toBe(false);
   });
 
   it('캔버스(z-index:1) 위에 올라가되 pane 박스로 잘린다 (#1238 ↔ #1272)', () => {
