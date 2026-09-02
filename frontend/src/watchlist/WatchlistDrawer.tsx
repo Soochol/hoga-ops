@@ -27,6 +27,7 @@ import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu, WatchlistMemoRowMenu } from './WatchlistRowMenu';
 import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 import { WatchlistAddForm } from './WatchlistAddForm';
+import { DUPLICATE_FLASH_MS } from './duplicateFlash';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { TrashIcon } from '../ui/TrashIcon';
@@ -124,7 +125,9 @@ const ADD_POPOVER_W = 280;
  * (히트맵 헤더 버튼과 달리 그룹 선택 셀렉트 없음). 바깥 클릭·Escape·추가 완료 시 onClose.
  * 히트맵 SymbolAddPopover 와 동일 셸/레이어링(메뉴와 별개 portal 레이어).
  */
-function WatchlistSymbolAddPopover({ anchorRef, point, folderId, resolveAt, onAdded, onClose }: {
+function WatchlistSymbolAddPopover({
+  anchorRef, point, folderId, resolveAt, onAdded, onDuplicate, onClose,
+}: {
   /** ⋯ 메뉴 경로 — 이 버튼의 우하단에 정렬한다. `point` 와 배타적이다. */
   anchorRef?: React.RefObject<HTMLElement | null>;
   /** 행 우클릭 경로 — 커서 좌표에 그대로 띄운다(컨텍스트 메뉴가 있던 자리). */
@@ -134,6 +137,10 @@ function WatchlistSymbolAddPopover({ anchorRef, point, folderId, resolveAt, onAd
   resolveAt?: () => number | undefined;
   /** 추가 성공 후. 미전달이면 닫기만 한다(⋯ 메뉴 경로의 기존 동작). */
   onAdded?: () => void;
+  /** 이미 이 그룹에 있는 종목을 골랐을 때 — 리스트에서 그 행을 가리킨다.
+   *  **팝오버는 안 닫는다**: 사용자가 다른 종목을 이어서 고르는 것이 자연스러운 흐름이고,
+   *  닫으면 방금 본 안내 문구까지 함께 사라진다. */
+  onDuplicate?: (code: string) => void;
   onClose: () => void;
 }) {
   const [anchor, setAnchor] = useState(
@@ -165,7 +172,8 @@ function WatchlistSymbolAddPopover({ anchorRef, point, folderId, resolveAt, onAd
       style={{ position: 'fixed', left, top, width: ADD_POPOVER_W }}
       className="z-30 bg-bg-card border border-border-strong rounded p-2 shadow-lg">
       <WatchlistAddForm folderId={folderId} resolveAt={resolveAt}
-        onAdded={() => (onAdded ? onAdded() : onClose())} />
+        onAdded={() => (onAdded ? onAdded() : onClose())}
+        onDuplicate={onDuplicate} />
     </div>,
     document.body,
   );
@@ -193,6 +201,9 @@ function GroupHeader(props: {
   onSort?: (mode: QuoteSortMode) => void;
   /** 실폴더 id — 있으면 ⋯ 메뉴에 "종목 추가"가 붙는다(미분류는 미전달). */
   folderId?: string;
+  /** ⋯ 메뉴의 "종목 추가" 팝오버가 중복을 만났을 때 — 드로어가 그 행을 가리킨다.
+   *  **안정 참조여야 한다**(드로어의 useCallback) — 이 헤더는 리스트마다 렌더된다. */
+  onDuplicateSymbol?: (folderId: string, code: string) => void;
   dragHandle?: GroupDragHandle;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -315,6 +326,7 @@ function GroupHeader(props: {
           )}
           {addOpen && props.folderId && (
             <WatchlistSymbolAddPopover anchorRef={menuRef} folderId={props.folderId}
+              onDuplicate={(code) => props.onDuplicateSymbol?.(props.folderId!, code)}
               onClose={() => setAddOpen(false)} />
           )}
         </div>
@@ -473,6 +485,9 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   active: boolean;
   status: DisplayStatus;
   collectionLabel?: string;
+  /** 「이미 이 그룹에 있습니다」가 가리킨 행. 공용 `.row-flash`(QuoteRow 의 flash) 를
+   *  그대로 쓴다 — 스크리너 신규 편입 플래시와 **같은 메커니즘**이다. */
+  flash?: boolean;
   onPick: (entry: WatchlistEntry, e?: JumpModifiers) => void;
   onOpenMenu: (e: React.MouseEvent, entry: WatchlistEntry) => void;
   onDelete: (entry: WatchlistEntry) => void;
@@ -500,6 +515,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       active={props.active}
       ariaLabel={[entry.name, entry.code, props.collectionLabel, '차트 열기'].filter(Boolean).join(' ')}
       testId={`watchlist-row-${entry.code}`}
+      flash={props.flash}
       onClick={handlePick}
       onContextMenu={handleContextMenu}
       onDelete={handleDelete}
@@ -705,6 +721,42 @@ export function WatchlistDrawer() {
     x: number; y: number; folderId: string;
     anchor: { kind: 'entry'; code: string } | { kind: 'memo'; id: string };
   } | null>(null);
+  // 추가 팝오버가 "이미 이 그룹에 있습니다" 를 띄울 때 **그 행을 가리킨다**(편집 모달
+  // 우측 pane 과 같은 계약 · 공용 `.row-flash`). 코드만으로는 부족하다 — 같은 종목이
+  // 여러 그룹에 있을 수 있어(v3 다중 소속) 대상 그룹의 행만 깜빡여야 한다.
+  const [duplicateHit, setDuplicateHit] =
+    useState<{ folderId: string; code: string } | null>(null);
+  const duplicateTimer = useRef<number | null>(null);
+  // 팝오버(AddForm)에 넘기므로 **참조가 안정적이어야** 한다 — 매 렌더 새 함수면 그쪽이
+  // 매번 리렌더된다(편집 모달 pane 과 같은 계약).
+  //
+  // 세 가지를 함께 해야 "가리켰다" 가 된다: ① 접힌 그룹이면 펼치고 ② 하이라이트하고
+  // ③ 그 자리로 스크롤한다. ① 이 없으면 접힌 그룹에서는 **아무 일도 일어나지 않고**,
+  // ③ 이 없으면 리스트가 길 때 화면 밖에서 깜빡인다(편집 모달에서 실측된 실패 —
+  // 사용자의 삼성화재가 40행 중 40번째였다).
+  const flashDuplicate = useCallback((folderId: string, code: string) => {
+    setCollapsed((s) => {
+      if (!s.has(folderId)) return s;   // 참조 유지 — 없는 키를 지워 리렌더·영속화를 깨우지 않는다
+      const n = new Set(s);
+      n.delete(folderId);
+      return n;
+    });
+    setDuplicateHit({ folderId, code });
+    if (duplicateTimer.current !== null) window.clearTimeout(duplicateTimer.current);
+    duplicateTimer.current = window.setTimeout(() => setDuplicateHit(null), DUPLICATE_FLASH_MS);
+  }, []);
+  useEffect(() => () => {
+    if (duplicateTimer.current !== null) window.clearTimeout(duplicateTimer.current);
+  }, []);
+  // 스크롤은 **다음 커밋**에서 한다 — 접힌 그룹을 펼친 그 렌더에서는 행이 아직 DOM 에 없다.
+  // 조회를 그룹 컨테이너 안으로 한정하는 이유: v3 는 다중 소속이라 같은 코드의 행이
+  // 여러 그룹에 있고, 전역 조회는 **엉뚱한 그룹의 행**으로 스크롤한다.
+  useEffect(() => {
+    if (duplicateHit === null) return;
+    const scope = document.querySelector(`[data-testid="watchlist-group-${duplicateHit.folderId}"]`);
+    scope?.querySelector(`[data-testid="watchlist-row-${duplicateHit.code}"]`)
+      ?.scrollIntoView?.({ block: 'center' });
+  }, [duplicateHit]);
 
   // 메모("빈칸") 행 — entries 와 같은 order 축(폴더 items 인덱스)이라 렌더 직전에 병합한다.
   // `?? []` 를 useMemo 로 감싸는 이유: 매 렌더 새 빈 배열이면 아래 파생 memo 가 전부
@@ -1208,6 +1260,10 @@ export function WatchlistDrawer() {
                           active={entry.code === activeCode}
                           status={collection?.displayStatus ?? 'realtime'}
                           collectionLabel={collection?.ariaLabel}
+                          // 코드만 비교하면 안 된다 — 다중 소속이라 같은 종목이 여러
+                          // 그룹에 있고, 가리켜야 할 것은 **추가하려던 그 그룹의 행**이다.
+                          flash={duplicateHit?.folderId === entry.folder_id
+                            && duplicateHit.code === entry.code}
                           onPick={handleRowPick}
                           onOpenMenu={handleRowMenu}
                           onDelete={handleRowDelete}
@@ -1231,6 +1287,7 @@ export function WatchlistDrawer() {
                   sortMode={g.sortMode}
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
+                  onDuplicateSymbol={flashDuplicate}
                   dragHandle={dragHandle} />
               );
               return folder ? (
@@ -1331,6 +1388,7 @@ export function WatchlistDrawer() {
           point={{ x: symbolInsert.x, y: symbolInsert.y }}
           folderId={symbolInsert.folderId}
           resolveAt={resolveInsertAt}
+          onDuplicate={(code) => flashDuplicate(symbolInsert.folderId, code)}
           // 빈칸 경로는 **추가 성공 후에** 그 빈칸을 지운다 = "교체". 순서가 중요하다:
           // 먼저 지우면 추가가 실패했을 때 자리도 내용도 사라진다(되돌릴 근거가 없다).
           // 반대 순서의 실패는 "종목은 들어갔고 빈칸이 남았다" 라 눈에 보이고 지울 수 있다.

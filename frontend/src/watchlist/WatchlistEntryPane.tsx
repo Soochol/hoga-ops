@@ -15,6 +15,7 @@ import { RefreshIcon } from '../ui/RefreshIcon';
 import { LastSuccessBadge } from './rowFormat';
 import { formatCaughtUpOneMessage, symbolLabel } from './banners';
 import { selectVisibleEntries, countOrphansIfRemovedFrom, type Selected } from './grouping';
+import { DUPLICATE_FLASH_MS } from './duplicateFlash';
 import type { WatchlistEntry } from '../api/watchlist';
 import { dropIndicatorClass, sortableDraggingStyle } from '../ui/sortableDragVisuals';
 
@@ -313,8 +314,6 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
     </div>
   );
 }
-
-const DUPLICATE_FLASH_MS = 2500;
 
 type RowProps = {
   entry: WatchlistEntry; checked: boolean; onToggle: () => void;
