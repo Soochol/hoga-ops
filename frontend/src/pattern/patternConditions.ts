@@ -1,4 +1,4 @@
-import type { PatternMaPreset, PatternMatchRow } from '../api/screener';
+import type { PatternExclusion, PatternMaPreset, PatternMatchRow } from '../api/screener';
 
 /**
  * 패턴 검색의 조건들 (ADR-0166).
@@ -54,10 +54,34 @@ export const MA_PRESETS = [
  *  유연 검색이면 같은 자리가 길이별로 여러 행이 되므로(실측 500행 중 96건), 길이까지
  *  맞춰 빼면 하나만 사라지고 다른 길이가 남아 「지웠는데 또 나온다」가 된다.
  *
+ *  `from_date` 가 없으면 **그 종목 전부**를 뜻하는 `code:*` 가 된다.
+ *
  *  ⚠ 렌더·저장·비교가 **이 함수 하나**를 쓴다. 두 곳에서 따로 만들면 어긋나도 아무
  *  신호가 없다(제외가 조용히 안 걸린다). */
-export function exclusionKey(row: { code: string; from_date: string }): string {
-  return `${row.code}:${row.from_date}`;
+export function exclusionKey(row: { code: string; from_date?: string | null }): string {
+  return `${row.code}:${row.from_date ?? '*'}`;
+}
+
+/** 이 행이 제외에 걸리는가 — **자리 키와 종목 키를 둘 다** 본다.
+ *
+ *  종목 전체 제외(`code:*`)는 그 종목의 모든 날짜를 덮으므로, 자리 키만 검사하면
+ *  「종목을 통째로 뺐는데 다른 날짜가 남는다」가 된다. */
+export function isExcludedRow(
+  row: { code: string; from_date: string },
+  excludedKeys: ReadonlySet<string>,
+): boolean {
+  return excludedKeys.has(`${row.code}:*`) || excludedKeys.has(exclusionKey(row));
+}
+
+/** 「이 종목 전부」를 제외 목록에 넣는다 — **그 종목의 자리 제외는 걷어낸다**.
+ *
+ *  남겨 두면 복원 목록에 같은 종목이 여러 줄로 쌓이고, 「전체」를 되돌려도 옛 자리가
+ *  계속 빠진 채로 남아 「되돌렸는데 안 돌아온다」가 된다. */
+export function withWholeCodeExcluded(
+  list: readonly PatternExclusion[],
+  entry: PatternExclusion,
+): PatternExclusion[] {
+  return [...list.filter((e) => e.code !== entry.code), { ...entry, from_date: null }];
 }
 
 export type PatternConditions = {
@@ -146,7 +170,7 @@ export function visibleRows(
 ): PatternMatchRow[] {
   const passing = passingFloor(rows, simFloor);
   const kept = excludedKeys?.size
-    ? passing.filter((r) => !excludedKeys.has(exclusionKey(r)))
+    ? passing.filter((r) => !isExcludedRow(r, excludedKeys))
     : passing;
   return kept.slice(0, count);
 }

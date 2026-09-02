@@ -319,7 +319,9 @@ export interface PatternSaveConditions {
  *  (실측 500행 중 96건), 길이까지 맞춰 빼면 다른 길이가 남아 「지웠는데 또 나온다」가 된다. */
 export interface PatternExclusion {
   code: string;
-  from_date: string;
+  /** 뺀 자리의 시작일. **`null` 이면 그 종목 전부**다 — 두 뜻을 한 필드에 둬야 복원
+   *  목록이 하나로 유지된다(둘로 나누면 「숨김 N」이 무엇의 N 인지 흐려진다). */
+  from_date: string | null;
   /** 복원 목록이 이름을 보여주려고 함께 담는다. */
   stock_name: string;
 }

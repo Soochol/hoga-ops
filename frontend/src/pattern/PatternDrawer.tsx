@@ -26,7 +26,9 @@ import {
   mergeByHeadroom,
   sinceFor,
   exclusionKey,
+  isExcludedRow,
   visibleRows,
+  withWholeCodeExcluded,
   type PatternConditions,
 } from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
@@ -430,8 +432,10 @@ export function PatternDrawer() {
   const shown = useMemo(() => {
     if (conditions.flexBars > 0 && data && data.results.length > 1) {
       // 병합 경로도 **자르기 전에** 제외를 건다(`visibleRows` 와 같은 순서).
+      // ⚠ `isExcludedRow` 를 써야 한다 — 자리 키만 보면 **종목 전체 제외가 안 걸린다**.
+      //   공장값이 ±2봉이라 이 경로가 기본이고, 그래서 브라우저에서 바로 드러났다.
       return mergeByHeadroom(data.results)
-        .filter((m) => m.row.corr >= conditions.simFloor && !excludedKeys.has(exclusionKey(m.row)))
+        .filter((m) => m.row.corr >= conditions.simFloor && !isExcludedRow(m.row, excludedKeys))
         .slice(0, conditions.count);
     }
     if (!result) return [];
@@ -884,7 +888,8 @@ export function PatternDrawer() {
               x={rowMenu.x}
               y={rowMenu.y}
               label={`${rowMenu.row.name || rowMenu.row.code} ${formatRange(rowMenu.row.from_date, rowMenu.row.to_date)}`}
-              onExclude={() => commitExcluded([
+              stockName={rowMenu.row.name || rowMenu.row.code}
+              onExcludeRange={() => commitExcluded([
                 ...excluded,
                 {
                   code: rowMenu.row.code,
@@ -892,6 +897,11 @@ export function PatternDrawer() {
                   stock_name: rowMenu.row.name || rowMenu.row.code,
                 },
               ])}
+              onExcludeCode={() => commitExcluded(withWholeCodeExcluded(excluded, {
+                code: rowMenu.row.code,
+                from_date: null,
+                stock_name: rowMenu.row.name || rowMenu.row.code,
+              }))}
               onClose={() => setRowMenu(null)}
             />
           )}
