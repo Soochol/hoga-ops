@@ -3,6 +3,7 @@ import {
   createPatternSave,
   deletePatternSave,
   listPatternSaves,
+  updatePatternSave,
   type PatternSave,
   type PatternSaveWriteRequest,
 } from '../api/screener';
@@ -23,6 +24,20 @@ export function useCreatePatternSave() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PatternSaveWriteRequest) => createPatternSave(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: PATTERN_SAVES_QUERY }),
+  });
+}
+
+/** 저장 갱신 — 제외 목록이 바뀔 때마다 부른다.
+ *
+ *  **낙관적 갱신을 하지 않는다.** 화면의 제외 목록은 드로어의 지역 상태가 이미 들고
+ *  있어 즉시 반영되고, 이 뮤테이션은 그것을 디스크에 남길 뿐이다 — 캐시를 미리
+ *  건드리면 두 출처가 생긴다. */
+export function useUpdatePatternSave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: PatternSaveWriteRequest }) =>
+      updatePatternSave(id, body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: PATTERN_SAVES_QUERY }),
   });
 }

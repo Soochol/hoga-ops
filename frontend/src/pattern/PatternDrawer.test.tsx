@@ -41,6 +41,8 @@ const SAVE_RECENT = {
     min_tv_eok: 10, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
     ma_preset: 'mid' as const, flex_bars: 0,
   },
+  // ★ 이 저장은 **제외를 하나 들고 있다** — 불러오기가 그것까지 가져오는지 잰다.
+  excluded: [{ code: '000660', from_date: '20180307', stock_name: 'SK하이닉스' }],
   created_at_ms: 1, updated_at_ms: 1,
 };
 const SAVE_FIXED = {
@@ -53,6 +55,7 @@ const SAVE_FIXED = {
     //   두 키가 아예 없으므로 불러오면 공장값을 따라야 한다.
     ma_preset: null, flex_bars: null,
   },
+  excluded: [],
   created_at_ms: 2, updated_at_ms: 2,
 };
 
@@ -65,6 +68,7 @@ const SAVE_MA_OFF = {
     min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 1, volume_weight: 0,
     ma_preset: 'off' as const, flex_bars: 0,
   },
+  excluded: [],
   created_at_ms: 3, updated_at_ms: 3,
 };
 
@@ -613,7 +617,9 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     // 「제한 없음」 항목이 말하는 수를 읽고, 고른 뒤 실제 행을 센다.
     const promised = screen.getByRole('option', { name: /제한 없음/ }).textContent!.match(/(\d+)개/);
     await user.click(screen.getByRole('option', { name: /제한 없음/ }));
-    const rows = document.querySelectorAll('[data-testid="pattern-drawer"] button.grid');
+    // ★ 행은 `role="button"` 인 div 다(안에 ⋯ 버튼이 있어 버튼 중첩을 못 한다).
+    //   태그가 아니라 **행 마커**로 센다.
+    const rows = document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]');
     // 미리보기가 거짓말하면 이 세션에서 겪은 "라벨 과장" 이 반복된다.
     expect(rows.length).toBe(Number(promised![1]));
   });
@@ -971,5 +977,56 @@ describe('PatternDrawer — 저장에 없던 조건은 공장값을 따른다', 
     const body = await pick(userEvent.setup(), 'o1');
     expect(body.ma_preset).toBe('off');
     expect(DEFAULT_CONDITIONS.maPreset).not.toBe('off');  // 공장값과 달라야 가드가 산다
+  });
+});
+
+describe('PatternDrawer — 결과에서 자리 빼기', () => {
+  async function openList(user: ReturnType<typeof userEvent.setup>) {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    return await screen.findByRole('button', { name: /SK하이닉스/ });
+  }
+
+  it('⋯ 버튼이 우클릭과 같은 메뉴를 연다 — 우클릭만 두면 터치·키보드에서 못 닿는다', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    expect(await screen.findByTestId('pattern-match-row-menu')).toBeInTheDocument();
+  });
+
+  it('빼면 그 자리가 목록에서 사라지고 다음 후보가 올라온다', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    const rows = () => [...document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]')];
+    const n = rows().length;
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    await user.click(await screen.findByRole('menuitem', { name: /이 결과에서 빼기/ }));
+    expect(screen.queryByRole('button', { name: /SK하이닉스/ })).not.toBeInTheDocument();
+    // ★ 자르기 **전에** 걸리므로 개수가 유지된다 — 픽스처가 4행뿐이라 하나 줄지만,
+    //   중요한 것은 「뺀 행만」 빠졌다는 것이다.
+    expect(rows().length).toBe(n - 1);
+  });
+
+  it('숨김 칩에서 되돌리면 다시 나온다', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    await user.click(await screen.findByRole('menuitem', { name: /이 결과에서 빼기/ }));
+    await user.click(await screen.findByRole('button', { name: /숨김 1/ }));
+    await user.click(await screen.findByRole('option', { name: /SK하이닉스/ }));
+    expect(await screen.findByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
+  });
+
+  it('저장을 불러오면 그 저장의 제외가 함께 온다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: /저장한 검색/ }));
+    await user.click(await screen.findByTestId('pattern-save-r1'));
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalledTimes(2));
+    // ★ `loadSave` 가 기준도 덮어쓴다 — 그걸 이펙트로 감시하면 **불러온 그 순간**
+    //   연결이 끊겨 제외가 사라진다(그렇게 짰다가 잡았다).
+    expect(await screen.findByRole('button', { name: /숨김 1/ })).toBeInTheDocument();
   });
 });
