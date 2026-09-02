@@ -65,6 +65,7 @@ import { SAVED_RANGE_VENUE, savedRangeAppliesTo } from '../../studyViews/savedRa
 import {
   PATTERN_MAX_BARS,
   PATTERN_MIN_BARS,
+  isPatternSearchableTimeframe,
   patternSeedFromRange,
   usePatternQueryStore,
 } from '../../pattern/patternQuery';
@@ -350,9 +351,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   /**
    * 「이 봉들로 패턴 찾기」 (ADR-0166) — `measure` 로 그은 구간을 패턴 패널로 건넨다.
    *
-   * **일봉일 때만 만든다.** 값이 없으면 속성 패널의 버튼도 없으므로 게이트가 여기
-   * 한 곳이다(패널은 종목도 봉도 모른다). 봉 패턴은 일봉 개념이라 분봉 창에서
-   * 그은 구간은 이 기능의 입력이 아니다.
+   * **일봉일 때만 만든다.** 값이 없으면 속성 패널의 버튼도 툴바의 「패턴 영역」도
+   * 없으므로 게이트가 여기 한 곳이다(패널은 종목도 봉도 모른다).
+   *
+   * ⚠ 판정은 `isPatternSearchableTimeframe` 가 가진다 — **「분봉이 아닌가」로 물으면
+   * 주봉·월봉이 통과해 조용히 틀린 답이 나간다**(그 함수의 주석에 실측이 있다).
    *
    * 구간이 너무 짧으면 **아예 넘기지 않는다** — 서버는 5봉 미만을 빈 결과로
    * 답하는데, 그 빈 화면은 "이력이 없다" 로 읽혀 원인을 숨긴다. 실패를 만들 수 있는
@@ -360,12 +363,12 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
    */
   const onSearchPattern = useMemo(() => {
     const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
-    if (!code || isMinuteTimeframe(view.timeframe)) return undefined;
+    if (!code || !isPatternSearchableTimeframe(view.timeframe)) return undefined;
     return (aRealMs: number, bRealMs: number) => {
       const seed = patternSeedFromRange({
         code,
         label: symbol?.name,
-        isMinuteTimeframe: isMinuteTimeframe(view.timeframe),
+        timeframe: view.timeframe,
         candleTsMs: savedRangeCandles.map((c) => c.ts_ms),
         aRealMs,
         bRealMs,
