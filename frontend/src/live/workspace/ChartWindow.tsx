@@ -295,6 +295,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 동기화 토글(`rangeSyncEnabled`)에는 묶지 **않는다**: 저것은 "따라다닐 것인가" 이고
   // 점프는 누를 때만 한 번 움직이는 명령이라 끌 이유가 애초에 없다.
   const jumpCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
+  // 점프의 **수명**을 재는 축 — 위 `myCode`(수신 자격)와 다른 질문이라 값도 따로 만든다.
+  // `view.code` 를 그대로 쓰지 않는 이유는 그것이 지수 창에서 `null` 이기 때문이다
+  // (그 계약은 `windowView.ts` 의 `liveWorkareaCode` 주석) — 그러면 KOSPI→KOSDAQ
+  // 교체가 이 축에 안 보인다. 훅의 `mySymbolKey` 도크스트링 참조.
+  const jumpSymbolKey = symbol ? `${symbol.kind}:${symbol.code}` : null;
   const minuteJumpTarget = useMinuteJumpTarget({
     enabled: savedRangeFreeze === null && isTimeframeJumpTarget(view.timeframe),
     myWindowId: win.id,
@@ -302,6 +307,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     myGroup: win.group,
     myCode: view.code,
     allowCrossSymbol: jumpCrossSymbol,
+    mySymbolKey: jumpSymbolKey,
     todayKst: todayKstYyyymmdd(),
   });
   const d = useLiveChartData({
