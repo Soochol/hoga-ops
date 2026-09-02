@@ -825,12 +825,17 @@ describe('resolveBookBaseline', () => {
 
 describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
   const symbol = { code: '005930', name: '삼성전자' };
-  /** 정규장 마지막 스냅샷의 시각 — 사다리 판별자로 쓴다. */
-  const REGULAR_TS = 1787_000_000_000;
-  /** 시간외 응답의 `fetched_at_ms` — `afterHoursBookToSnapshot` 이 이걸 ts_ms 로 옮긴다. */
-  const AFTER_HOURS_TS = 1787_000_999_000;
   /** 2026-08-27(목) 16:30 KST — 시간외 단일가 창 안. */
   const AT_1630_KST = Date.UTC(2026, 7, 27, 7, 30);
+  /** 정규장 마지막 스냅샷의 시각 — 사다리 판별자로 쓴다.
+   *
+   *  ⚠ **모킹 시각과 같은 날이어야 한다.** 종전엔 임의 상수(2026-08-18)라 `Date.now`
+   *  스파이(08-27)와 9일 어긋나 있었는데, 판별자로만 읽히던 동안에는 그 어긋남이
+   *  드러나지 않았다. `previousDayObExpired` 가 생기면서 전일 프레임은 08:00 이후
+   *  화면에서 내려가므로, 날짜를 안 맞추면 이 describe 전체가 "사다리 없음" 을 잰다. */
+  const REGULAR_TS = Date.UTC(2026, 7, 27, 6, 30);
+  /** 시간외 응답의 `fetched_at_ms` — `afterHoursBookToSnapshot` 이 이걸 ts_ms 로 옮긴다. */
+  const AFTER_HOURS_TS = REGULAR_TS + 999_000;
 
   function obAt(tMs: number) {
     const levels = (base: number) =>
@@ -872,7 +877,7 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
     useLiveCursorStore.getState().resetCursor();
     vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
     // 실시각이 아니라 이 값이 국면을 정한다 — fake timers 를 켜지 않는 이유는
-    // `useSessionClockTick` 의 setInterval 까지 테스트가 쥐게 되기 때문이다.
+    // `useMinuteClock` 의 setInterval 까지 테스트가 쥐게 되기 때문이다.
     vi.spyOn(Date, 'now').mockReturnValue(AT_1630_KST);
     liveSeriesBuffers.ob = [obAt(REGULAR_TS)];
     afterHoursBookResult.data = afterHoursResponse();
@@ -1013,14 +1018,18 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
         expect(screen.getByText('regLabel:정규장 15:30 · 잔량 시간외')).toBeInTheDocument();
       });
 
-      it('⚠ 어제 사다리 위에는 덮지 않는다 — 두 숫자가 다른 날을 가리킨다', () => {
-        // 장전 08:30–08:40 이 이 상태다. 0E 의 t_ms 가드는 "사다리가 멈췄나" 만 보므로
-        // 날짜 차이는 원리적으로 못 잡는다 — 그래서 날짜 가드가 따로 있다.
+      it('⚠ 어제 사다리는 **아예 그리지 않는다** — 08:00 만료(사용자 결정 2026-09-01)', () => {
+        // 종전 계약은 "어제 사다리 위에 오늘 0E 를 덮지 않는다" 였다. 지금은 더 위에서
+        // 닫힌다 — `previousDayObExpired` 가 전일 프레임을 LATEST 표시에서 내리므로
+        // **섞일 사다리 자체가 없다.** 두 숫자가 다른 날을 가리키지 않는다는 원래
+        // 계약은 그대로 지켜지고, 방식만 강해졌다.
         liveSeriesBuffers.ob = [obAt(YESTERDAY_1530)];
         renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
-        expect(screen.getByText(`snapshot:${YESTERDAY_1530}`)).toBeInTheDocument();
-        expect(screen.getByText('totals:null')).toBeInTheDocument();
-        // 덮지 않았으면 라벨도 말하지 않아야 한다 — 라벨과 화면은 같은 조건을 탄다.
+        expect(screen.getByText('snapshot:null')).toBeInTheDocument();
+        // 사다리가 없으면 0E 총잔량은 **살아야 한다** — 만료가 이 구간의 유일한 신호를
+        // 함께 죽이면 그건 리셋이 아니라 회귀다(`afterHoursTotals` 의 부재 통과 분기).
+        expect(screen.getByText('totals:set')).toBeInTheDocument();
+        // 라벨은 사다리 시각을 말하지 않는다 — 말할 사다리가 없다.
         expect(screen.getByText('regLabel:정규장')).toBeInTheDocument();
       });
 
@@ -1030,6 +1039,42 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
         fireEvent.click(screen.getByText('go-after-hours'));
         expect(screen.getByText('snapshot:null')).toBeInTheDocument();
         expect(screen.getByText('totals:set')).toBeInTheDocument();
+      });
+    });
+
+    describe('다음날 아침 — 전일 사다리는 08:00 에 내려간다(사용자 신고 2026-09-01)', () => {
+      /** 2026-08-28(금) 08:11 KST — 사용자가 "어제 정규장 마지막 모습이 보인다" 고
+       *  신고한 그 시각. 화면에 남아 있던 것은 `REGULAR_TS`(08-27 15:30)다. */
+      const NEXT_DAY_0811 = Date.UTC(2026, 7, 27, 23, 11);
+      /** 같은 아침 07:59 — 만료 **직전**. */
+      const NEXT_DAY_0759 = Date.UTC(2026, 7, 27, 22, 59);
+      /** 같은 아침 08:05 에 찍힌 **그날** 프레임(NXT 프리마켓은 08:00 에 시작한다). */
+      const TODAY_0805 = Date.UTC(2026, 7, 27, 23, 5);
+
+      beforeEach(() => {
+        // ka10087 창(16:00–18:00) 밖이다 — 아침엔 시간외 응답이 없다.
+        afterHoursBookResult.data = undefined;
+      });
+
+      it('08:11 에는 전일 사다리를 그리지 않는다 — 이 스펙이 신고 건의 회귀 가드다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0811);
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText('snapshot:null')).toBeInTheDocument();
+      });
+
+      it('07:59 에는 아직 그린다 — 그 시각엔 새로 올 호가가 없어 지우면 빈 화면만 남는다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0759);
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
+      });
+
+      it('같은 08:11 이라도 **그날** 프레임은 통과 — 만료 축은 날짜지 시각이 아니다', () => {
+        // 이 대칭이 없으면 게이트가 "아침엔 사다리를 안 그린다" 는 더 넓은 규칙으로
+        // 잘못 읽힌다. 막는 것은 어제 것 하나뿐이다.
+        liveSeriesBuffers.ob = [obAt(TODAY_0805)];
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0811);
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText(`snapshot:${TODAY_0805}`)).toBeInTheDocument();
       });
     });
   });

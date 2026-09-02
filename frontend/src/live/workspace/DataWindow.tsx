@@ -18,7 +18,7 @@
  * kind 별로 필요한 훅이 다르므로 하위 컴포넌트로 분기한다(한 컴포넌트에서 조건부
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel, { type BookTrade } from './BookPanel';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
@@ -33,6 +33,7 @@ import {
   resolveOrderbookCardSnapshot,
 } from '../../sidebar/cursorDetailResolver';
 import { useLiveSeries } from '../../api/liveSeries';
+import { useMinuteClock } from '../useMinuteClock';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
@@ -87,7 +88,7 @@ import {
   regularSessionBinningSegment,
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
-import { realMsToYyyymmdd, subtractDaysKst } from '../liveDateTime';
+import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst } from '../liveDateTime';
 import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
@@ -180,20 +181,6 @@ function LinkPendingCard({ kind, group }: { kind: WindowKind; group: GroupId }) 
   );
 }
 
-/** 세션 경계(`bookSessionEpoch` 가 바뀌는 순간)를 넘길 때 스스로 갱신되게 하는 최소 틱.
- *
- *  없어도 장중에는 맞는다 — WS·폴링이 리렌더를 계속 만들기 때문이다. 문제는 그
- *  유발원이 **사라지는 구간**이다: 18:00 에 시간외 폴링이 멎으면 그 뒤로는 리렌더가
- *  없어 '시간외 단일가' 라벨이 밤새 남는다. 얼어붙은 표시를 이 리포가 반복해서
- *  다뤄 온 실패 유형이라 1분 틱 하나로 닫는다(경계 오차 최대 60초). */
-function useSessionClockTick(): void {
-  const [, tick] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => {
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
-  }, []);
-}
-
 function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 아래로 넘기는 것은 **선택값**이다. WS 꼬리(useLiveSeries)도 파케이 스팟
   // (useLiveOrderbookAtCursor)도 각자 `useEffectiveVenue` 로 같은 해석을 하므로
@@ -224,7 +211,24 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 창에서 재필터하지 않는다. 호가·체결강도·체결 미니리스트가 같은 venue 를 본다.
   const venueOb = live.ob;
   const venueTrade = live.trade;
-  const latestSnapshot = useMemo(() => latestOrderbookSnapshot(venueOb), [venueOb]);
+  // 시계가 경계를 넘으면 스스로 갱신되게 한다. 두 가지를 함께 떠받친다: 18:00 이후엔
+  // 시간외 폴링이 멎어 '시간외 단일가' 라벨이 밤새 얼어붙고, 밤을 넘기면 아래
+  // `latestSnapshot` 의 전일 만료 판정이 갱신될 계기를 잃는다.
+  const nowMs = useMinuteClock();
+  // ⚠ **LATEST 사다리의 전일 만료는 여기서만 건다.** 후보 지점 둘을 각각의 이유로
+  // 물렸다:
+  //   - `useLiveSeries` 의 폴백 memo — 거기서 자르면 **밤새 켜 둔 탭이 안 고쳐진다.**
+  //     프론트 축출은 들어온 프레임이 몰아내는 방식이라(`liveSnapshotBuffer` 의
+  //     quiet-kind caveat) 프레임이 멎으면 어제 꼬리가 버퍼에 그대로 남고, 그 탭은
+  //     `filteredOb` 가 비지 않아 폴백 경로를 **아예 타지 않는다**.
+  //   - `venueOb` 통째 필터 — 과거 커서 호버가 깨진다. `bufferSnap` 이 같은 배열에서
+  //     어제 버킷의 호가를 찾는 정당한 경로다(ADR-0044 개정).
+  // 그래서 **LATEST 표시의 유일한 생산점**인 여기가 답이다 — 버퍼 잔존·latch·서버
+  // last_ob 세 출처가 이미 `venueOb` 로 합류한 뒤라 한 번에 덮이고, 스팟은 안 스친다.
+  const latestSnapshot = useMemo(() => {
+    const snap = latestOrderbookSnapshot(venueOb);
+    return snap !== null && previousDayObExpired(snap.ts_ms, nowMs) ? null : snap;
+  }, [venueOb, nowMs]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
   const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot);
@@ -255,9 +259,6 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const nxtEnabledOf = useNxtEnabledResolver();
   const nxtEnabled = nxtEnabledOf(code);
   const effectiveVenue = useEffectiveVenue(code, venue);
-  // 시계가 경계를 넘으면 스스로 갱신되게 한다. 18:00 이후엔 시간외 폴링이 멎어
-  // 리렌더 유발원이 사라지므로, 이게 없으면 '시간외 단일가' 라벨이 밤새 남는다.
-  useSessionClockTick();
   // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
   // 하기 위해서다(탭이 잠들었다 깨어나도 맞는다. `bookSessionMode` docstring).
   const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
@@ -355,12 +356,17 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     // 0E 두 숫자**이므로 정규장 사다리 위에 그것을 얹고, 출처가 갈렸다는 사실은
     // 라벨이 말한다(`regularTotalsAreAfterHours`).
     //
-    // 날짜 가드가 **여기에만** 붙는다: `last_ob` 는 날짜를 넘겨 복원되므로 장전
-    // 08:30–08:40 에는 화면의 사다리가 **어제** 것이다. 그 위에 오늘 0E 를 얹으면 두
-    // 숫자가 다른 날을 가리킨다. 시간외 모드(`showAfterHours`)에는 걸지 **않는다** —
-    // 그쪽은 사다리 없이 총잔량만 그리는 화면이라 섞일 것이 없고, 걸면 아침의 유일한
-    // 신호가 사라지는 회귀가 된다.
-    return snapshot != null && realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
+    // 날짜 가드가 **여기에만** 붙는다: `last_ob` 는 날짜를 넘겨 복원되므로 사다리가
+    // **어제** 것일 수 있다. 그 위에 오늘 0E 를 얹으면 두 숫자가 다른 날을 가리킨다.
+    // 시간외 모드(`showAfterHours`)에는 걸지 **않는다** — 그쪽은 사다리 없이 총잔량만
+    // 그리는 화면이라 섞일 것이 없고, 걸면 아침의 유일한 신호가 사라지는 회귀가 된다.
+    //
+    // ⚠ **사다리 부재(`null`)는 통과시킨다.** 08:00 만료가 전일 사다리를 내리면서
+    // 08:30–08:40 이 정확히 그 상태가 됐는데, 부재를 막으면 만료가 이 구간의 총잔량을
+    // 함께 죽인다 — 위 "아침의 유일한 신호" 와 같은 회귀를 만료가 뒷문으로 되살리는
+    // 꼴이다. 섞일 사다리가 없으면 섞일 위험도 없다.
+    if (snapshot == null) return totals;
+    return realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
   }, [
     isSpot, showAfterHours, activeSinglePrice, live.afterHours, afterHoursBook.data,
     latestSnapshot, snapshot, todayKst,
