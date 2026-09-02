@@ -185,10 +185,26 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 보는 게 아니라 같은 기간을 볼 뿐이다. 함께 풀면 저장뷰와 무관한 창까지 거래소가
   // 조용히 바뀐다.
   const savedRangeFocus = useLivePageStore((s) => s.savedRangeFocus);
-  const savedRange = savedRangeFocus;
   /** 이 창이 저장뷰 **그 종목**을 그리는가 — venue 고정과 칩의 「KRX」 표기의 축. */
   // freeze · venue 고정 · 기간 칩이 **한 술어**를 쓴다 — 갈라지면 반쪽 상태가 생긴다.
   const isSavedRangeSubject = savedRangeAppliesTo(savedRangeFocus, view.code, view.timeframe);
+  /**
+   * 이 창에 **실제로 적용되는** 기간 슬롯. 뷰포트·밴드·안내·차트 정체성이 모두 이것을
+   * 쓰므로, 게이트를 여기 한 번만 걸면 넷이 함께 움직인다.
+   *
+   * 게이트가 없던 시절의 두 구멍:
+   * * **다른 종목 창도 그 시각으로 점프했다** — `savedRangeViewport` 가 `toMs` 로
+   *   가는데 code 를 안 봤다. 도입 결정(2026-08-21 §2)은 「저장뷰 **종목을 그리는**
+   *   모든 창」이었으니 누락이다.
+   * * **분봉 창이 몇 년 전 구간에 갇혔다** — 봉 패턴 매치가 이 슬롯을 재사용하면서
+   *   생긴 것으로, 그 구간엔 분봉이 아예 없다(`dailyOnly`). freeze 만 풀고 뷰포트를
+   *   안 풀면 화면은 여전히 거기 머문다.
+   *
+   * 슬롯이 빠지면 `savedIdentity` 의 `sv=` 도 빠져 차트가 재생성되고 분봉 기본 초기
+   * 뷰(라이브 엣지)로 돌아간다 — 아래 주석의 「× 가 라이브 복귀를 겸한다」와 같은 길이다.
+   */
+  const savedRange = isSavedRangeSubject ? savedRangeFocus : null;
+
   // 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
   // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
   const venue = isSavedRangeSubject ? SAVED_RANGE_VENUE : resolvedVenue;
