@@ -419,8 +419,11 @@ export function PatternDrawer() {
       minTvEok: save.conditions.min_tv_eok,
       excludeEtf: save.conditions.exclude_etf,
       noOverlap: save.conditions.no_overlap,
-      flexBars: save.conditions.flex_bars,
-      maPreset: save.conditions.ma_preset,
+      // ★ 부재(`null`)는 **「그 축이 없던 시절의 저장」**이지 「끄기를 골랐다」가 아니다.
+      //   공장값을 쓰면 새로 생긴 조건이 옛 저장에도 자동으로 적용된다 — 일부러 끈
+      //   저장은 값이 담겨 있으므로 그대로 복원된다.
+      flexBars: save.conditions.flex_bars ?? DEFAULT_CONDITIONS.flexBars,
+      maPreset: save.conditions.ma_preset ?? DEFAULT_CONDITIONS.maPreset,
     });
     setShowSaves(false);
   }, []);

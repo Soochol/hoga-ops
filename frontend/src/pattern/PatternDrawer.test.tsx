@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { PatternSearchRequest, PatternSearchResponse } from '../api/screener';
+import { DEFAULT_CONDITIONS } from './patternConditions';
 
 /**
  * 패턴 드로어가 지키는 계약.
@@ -48,9 +49,23 @@ const SAVE_FIXED = {
   conditions: {
     mode: 'history' as const, since: '20230101', count: 20, sim_floor: 0,
     min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 5, volume_weight: 0,
-    ma_preset: 'mid' as const, flex_bars: 1,
+    // ★ **이평·유연 축이 없던 시절의 저장**이다(실제 사용자 파일이 그랬다).
+    //   두 키가 아예 없으므로 불러오면 공장값을 따라야 한다.
+    ma_preset: null, flex_bars: null,
   },
   created_at_ms: 2, updated_at_ms: 2,
+};
+
+/** 이평을 **일부러 끈** 저장. 부재(`null`)와 구별되는지가 이 픽스처의 존재 이유다. */
+const SAVE_MA_OFF = {
+  id: 'o1', name: '이평 끈 검색', code: '005930', stock_name: '삼성전자',
+  window: { kind: 'recent' as const, bars: 7, from_date: null, to_date: null },
+  conditions: {
+    mode: 'history' as const, since: null, count: 20, sim_floor: 0,
+    min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 1, volume_weight: 0,
+    ma_preset: 'off' as const, flex_bars: 0,
+  },
+  created_at_ms: 3, updated_at_ms: 3,
 };
 
 const jump = vi.fn();
@@ -187,7 +202,9 @@ beforeEach(() => {
   listPatternSaves.mockReset();
   createPatternSave.mockReset();
   deletePatternSave.mockReset();
-  listPatternSaves.mockResolvedValue({ schema_version: 1, saves: [SAVE_RECENT, SAVE_FIXED] });
+  listPatternSaves.mockResolvedValue({
+    schema_version: 1, saves: [SAVE_RECENT, SAVE_FIXED, SAVE_MA_OFF],
+  });
   createPatternSave.mockResolvedValue({ ...SAVE_RECENT, id: 'new' });
   deletePatternSave.mockResolvedValue(undefined);
   usePatternQueryStore.setState({ pending: null });
@@ -928,5 +945,31 @@ describe('PatternDrawer — 착지 창은 분봉 창을 갈아엎지 않는다',
     expect(focusSavedRange).toHaveBeenCalledWith(
       expect.objectContaining({ dailyOnly: true, savedTimeframe: 'D' }),
     );
+  });
+});
+
+describe('PatternDrawer — 저장에 없던 조건은 공장값을 따른다', () => {
+  /** 저장 목록을 열고 한 항목을 고른다. */
+  async function pick(user: ReturnType<typeof userEvent.setup>, id: string) {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: /저장한 검색/ }));
+    await user.click(await screen.findByTestId(`pattern-save-${id}`));
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalledTimes(2));
+    return searchPattern.mock.calls.at(-1)![0];
+  }
+
+  it('그 축이 없던 시절의 저장은 **공장값**으로 되살아난다', async () => {
+    // f1 은 이평·유연이 생기기 전 저장이라 두 키가 아예 없다. 「끄기를 골랐다」가
+    // 아니므로 새 기능이 자동으로 적용돼야 한다 — 사용자 신고 2026-09-02.
+    const body = await pick(userEvent.setup(), 'f1');
+    expect(body.ma_preset).toBe(DEFAULT_CONDITIONS.maPreset);
+    expect(body.flex_bars).toBe(DEFAULT_CONDITIONS.flexBars);
+  });
+
+  it('일부러 끈 저장은 꺼진 채로 복원된다 — 부재와 선택은 다르다', async () => {
+    const body = await pick(userEvent.setup(), 'o1');
+    expect(body.ma_preset).toBe('off');
+    expect(DEFAULT_CONDITIONS.maPreset).not.toBe('off');  // 공장값과 달라야 가드가 산다
   });
 });
