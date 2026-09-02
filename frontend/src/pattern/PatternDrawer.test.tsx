@@ -64,6 +64,8 @@ const focusSavedRange = vi.fn();
 const live = { activeCode: '005930', activeInstrument: { label: '삼성전자' }, focusSavedRange };
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: unknown) => unknown) => sel(live),
+  // 순수 술어라 모의할 이유가 없다 — 실제와 **같은 판정**을 준다(분 단위 봉은 전부 `<n>m`).
+  isMinuteTimeframe: (tf: string) => /^\d+m$/.test(tf),
 }));
 
 const setChartTimeframe = vi.fn();
@@ -74,11 +76,13 @@ const WS = {
   setChartTimeframe,
   extendChartHistoricalRange,
   zOrder: ['chart1', 'book1', 'broker1'],
+  // ★ `chart.timeframe` 이 있어야 한다 — 착지 창 선택이 **캘린더 봉인지**를 보기 때문이다.
+  //   분봉 창을 골라 일봉으로 갈아엎던 것이 사용자 신고였다(2026-09-02).
   windows: [
-    { id: 'chart1', kind: 'chart', group: 1 },
+    { id: 'chart1', kind: 'chart', group: 1, chart: { timeframe: 'D' } },
     { id: 'book1', kind: 'book', group: 1 },
     { id: 'broker1', kind: 'broker', group: 1 },
-  ],
+  ] as { id: string; kind: string; group: number; chart?: { timeframe: string } }[],
 };
 vi.mock('../state/workspace', () => ({
   useWorkspaceStore: { getState: () => WS },
@@ -170,6 +174,13 @@ beforeEach(() => {
   extendChartHistoricalRange.mockReset();
   live.activeCode = '005930';
   live.activeInstrument = { label: '삼성전자' };
+  // ★ 워크스페이스는 **모듈 지역 객체**라 테스트가 고치면 다음 테스트로 샌다.
+  WS.zOrder = ['chart1', 'book1', 'broker1'];
+  WS.windows = [
+    { id: 'chart1', kind: 'chart', group: 1, chart: { timeframe: 'D' } },
+    { id: 'book1', kind: 'book', group: 1 },
+    { id: 'broker1', kind: 'broker', group: 1 },
+  ];
   listPatternSaves.mockReset();
   createPatternSave.mockReset();
   deletePatternSave.mockReset();
@@ -841,5 +852,48 @@ describe('PatternDrawer — 이평 프리셋', () => {
     expect(body.conditions.ma_preset).toBe('short');
     expect(body.conditions.flex_bars).toBe(0);
   });
+});
 
+describe('PatternDrawer — 착지 창은 분봉 창을 갈아엎지 않는다', () => {
+  /** zOrder 최상위를 분봉 차트로 바꾼다 — 사용자가 분봉 창을 마지막에 만진 상태다. */
+  function withMinuteOnTop() {
+    WS.zOrder = ['chart1', 'chartMin'];
+    WS.windows = [
+      { id: 'chart1', kind: 'chart', group: 1, chart: { timeframe: 'D' } },
+      { id: 'chartMin', kind: 'chart', group: 1, chart: { timeframe: '1m' } },
+    ];
+  }
+
+  it('분봉 창이 위에 있어도 **일봉 창**으로 착지한다', async () => {
+    withMinuteOnTop();
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByRole('button', { name: /SK하이닉스/ }));
+    // 분봉 창을 골랐다면 그 창이 일봉으로 갈아엎혔을 것이다(사용자 신고 2026-09-02).
+    expect(setChartTimeframe).toHaveBeenCalledWith('chart1', 'D');
+    expect(setChartTimeframe).not.toHaveBeenCalledWith('chartMin', 'D');
+  });
+
+  it('캘린더 봉 창이 하나도 없으면 봉을 바꾸지 않는다 — 종목만 옮긴다', async () => {
+    WS.zOrder = ['chartMin'];
+    WS.windows = [{ id: 'chartMin', kind: 'chart', group: 1, chart: { timeframe: '5m' } }];
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByRole('button', { name: /SK하이닉스/ }));
+    expect(jump).toHaveBeenCalledWith('000660', 'SK하이닉스', expect.anything());
+    expect(setChartTimeframe).not.toHaveBeenCalled();
+    expect(extendChartHistoricalRange).not.toHaveBeenCalled();
+  });
+
+  it('패턴 구간은 **일봉 전용**으로 표시된다 — 분봉 창이 이 날짜로 얼면 화면이 빈다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByRole('button', { name: /SK하이닉스/ }));
+    expect(focusSavedRange).toHaveBeenCalledWith(
+      expect.objectContaining({ dailyOnly: true, savedTimeframe: 'D' }),
+    );
+  });
 });
