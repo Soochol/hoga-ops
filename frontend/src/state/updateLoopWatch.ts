@@ -22,7 +22,11 @@
  * 새 zustand 스토어를 만들면 여기 한 줄을 더한다. 빠뜨리면 **그 스토어가 범인일 때만**
  * 조용히 못 잡는다(덫이 틀린 답을 주지는 않는다 — 다른 스토어의 폭주는 그대로 잡힌다).
  * 손수 만든 발행 채널(`subscribe` 가 없는 것)은 자기 알림 함수에서 `noteStoreWrite` 를
- * 직접 부른다 — 지금은 `groupChartLinkSource` · `windowWarningsSource` 둘이다.
+ * 직접 부른다 — 지금은 `groupChartLinkSource` · `windowWarningsSource` 둘이다. 둘 다
+ * `ChartWindow` 의 이펙트(와 그 cleanup)에서만 발행하므로 스택에 react-dom 이 있고,
+ * `updateLoopSignal` 의 react-dom 게이트를 통과한다 — 새 채널을 만들 때는 **발행이
+ * React 밖(WS 콜백·rAF)에서 나면 게이트가 자른다**는 것을 알고 붙일 것(그 경우엔
+ * 애초에 「Maximum update depth exceeded」를 던지지도 않으므로 표적 밖이다).
  */
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useDailyMaSeriesRegistry } from '../live/indicators/dailyMaSeriesRegistry';

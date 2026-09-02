@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import ChartErrorBoundary from './ChartErrorBoundary';
 import {
   __disarmUpdateLoopSignalForTests,
@@ -90,7 +90,13 @@ describe('ChartErrorBoundary', () => {
     // 덫을 무장하고 폭주를 흉내 낸다 — 상자가 «던진 쪽»(컴포넌트 스택)과 «쓴 쪽»
     // (스토어)을 한 화면에 놓는 것이 이 배선의 목적이다.
     armUpdateLoopSignal();
-    for (let i = 0; i < 20; i += 1) noteStoreWrite('workspace');
+    // 덫은 스택이 React 의 렌더/커밋을 지나야 신고한다(`updateLoopSignal.ts` 의
+    // react-dom 게이트) — 그래서 폭주를 «진짜 커밋 안» 에서 흉내 낸다.
+    function Runaway() {
+      useLayoutEffect(() => { for (let i = 0; i < 20; i += 1) noteStoreWrite('workspace'); }, []);
+      return null;
+    }
+    render(<Runaway />);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(
