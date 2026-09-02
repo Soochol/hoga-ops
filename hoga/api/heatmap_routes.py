@@ -30,7 +30,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Path as PathParam, Query
 
-from hoga.api import symbols
+from hoga.api import compute_jobs, symbols
+from hoga.api.compute_pools import ComputePools, thread_pools
 from hoga.api.events import EventBus
 from hoga.api.heatmap import (
     FolderNotFoundError,
@@ -47,10 +48,7 @@ from hoga.api.heatmap import (
     reorder_entries,
     reorder_folders,
 )
-from hoga.api.heatmap_group_flow import (
-    HeatmapGroupFlowResponse,
-    build_group_flow,
-)
+from hoga.api.heatmap_group_flow import HeatmapGroupFlowResponse
 from hoga.api.models import (
     EntriesRemoveRequest,
     EntriesReorderRequest,
@@ -120,8 +118,11 @@ def _folder_views(folders: Iterable[WatchlistFolder]) -> list[HeatmapFolderView]
 
 
 def build_router(  # noqa: PLR0915
-    *, data_dir: Path, bus: EventBus | None = None,
+    *, data_dir: Path, bus: EventBus | None = None, compute: ComputePools | None = None,
 ) -> APIRouter:
+    # 그룹 흐름 계산(JSONL 꼬리 파싱, 순수 파이썬)이 도는 자리(ADR-0169). 안 넘기면
+    # 스레드 — 종전 `asyncio.to_thread` 와 같다.
+    pools: ComputePools = compute if compute is not None else thread_pools()
     router = APIRouter(
         prefix="/api/heatmap",
         tags=["heatmap"],
@@ -173,7 +174,9 @@ def build_router(  # noqa: PLR0915
             cached, at = _flow_cache.get(key), _flow_cache_at.get(key)
             if cached is not None and at is not None and now_ms - at <= _FLOW_BURST_COALESCE_MS:
                 return cached
-            resp = await asyncio.to_thread(build_group_flow, data_dir, basis, now_ms=now_ms, venue=venue)
+            resp = await compute_jobs.run_job(
+                pools.wide, compute_jobs.group_flow_job, str(data_dir), basis, now_ms, venue,
+            )
             _flow_cache[key] = resp
             _flow_cache_at[key] = now_ms
             return resp
