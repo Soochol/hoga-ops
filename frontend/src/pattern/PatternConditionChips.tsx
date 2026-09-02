@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
+  DEFAULT_CONDITIONS,
   FLEX_STEPS,
   MA_PRESETS,
   PERIODS,
@@ -64,7 +65,9 @@ export function PatternConditionChips({
       <Chip active={conditions.period !== 'all'} onClick={() => toggle('period')}>
         {periodLabel}
       </Chip>
-      <Chip active={conditions.count !== 40} onClick={() => toggle('count')}>
+      {/* 「기본과 다른가」를 뜻하는 칩이라 상수를 베끼지 않는다 — 공장값이 바뀌면
+          여기도 함께 움직여야 한다(2026-09-02 에 40 → 100 이 됐다). */}
+      <Chip active={conditions.count !== DEFAULT_CONDITIONS.count} onClick={() => toggle('count')}>
         {conditions.count}개
       </Chip>
       <Chip active={conditions.simFloor > 0} onClick={() => toggle('sim')}>

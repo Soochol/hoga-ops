@@ -63,15 +63,25 @@ export type PatternConditions = {
   maPreset: PatternMaPreset;
 };
 
-/** 기본값 — 「다 보고 싶다」에 가깝게(2026-09-02 사용자 결정). */
+/** 기본값 — 사용자가 실제로 쓰는 조합(2026-09-02 결정, 화면 캡처로 지정).
+ *
+ *  **「다 보고 싶다」에서 「쓸 만한 것만 넓게」로 옮겼다.** 기간을 1년으로 좁히는 대신
+ *  결과를 100개까지 받고 길이를 ±2봉으로 편다. 거래대금 50억은 그 100개가 실제로 볼
+ *  만한 종목이 되게 하는 값이다 — 10억이면 목록이 거래가 거의 없는 종목으로 채워진다.
+ *
+ *  ⚠ `flexBars: 2` 는 두 가지를 바꾼다. 서버가 **길이 5개를 돌리고**(`history` 실측
+ *  ~3초, `now` ~100ms), 봉수 스크럽이 **로컬 전환이 아니게 된다**(유연은 길이를 하나만
+ *  보내므로 — ADR-0166 결정 3 의 전제가 공장값에서 깨진다. `patternKey` 주석 참조). */
 export const DEFAULT_CONDITIONS: PatternConditions = {
-  period: '3y',
-  count: 40,
+  period: '1y',
+  count: 100,
   simFloor: 0,
-  minTvEok: 10,
+  minTvEok: 50,
   excludeEtf: true,
   noOverlap: true,
-  flexBars: 0,
+  flexBars: 2,
+  // 이평은 끈 채로 시작한다 — 켜면 「캔들 모양 검색」이 아니라 다른 질문이 되고,
+  // 그 선택은 사용자가 명시적으로 해야 한다(ADR-0166 결정 11).
   maPreset: 'off',
 };
 
