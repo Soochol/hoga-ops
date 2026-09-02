@@ -29,9 +29,11 @@ vi.mock('../live/useJumpToLive', () => ({
 }));
 
 const focusSavedRange = vi.fn();
+// ★ 가변이다. 기준 고정은 "activeCode 가 바뀌어도 목록이 그대로" 로만 관찰되므로
+//   고정 mock 이면 그 가드가 아무것도 증명하지 못한다.
+const live = { activeCode: '005930', activeInstrument: { label: '삼성전자' }, focusSavedRange };
 vi.mock('../state/livePage', () => ({
-  useLivePageStore: (sel: (s: unknown) => unknown) =>
-    sel({ activeCode: '005930', activeInstrument: { label: '삼성전자' }, focusSavedRange }),
+  useLivePageStore: (sel: (s: unknown) => unknown) => sel(live),
 }));
 
 const setChartTimeframe = vi.fn();
@@ -98,15 +100,22 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
   };
 }
 
-function renderDrawer() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+let client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+/** 리렌더가 **같은 QueryClient** 를 유지해야 "재검색이 없었다" 를 잴 수 있다. */
+function Wrapper() {
+  return (
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <PatternDrawer />
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderDrawer() {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<Wrapper />);
 }
 
 beforeEach(() => {
@@ -114,6 +123,8 @@ beforeEach(() => {
   jump.mockReset();
   focusSavedRange.mockReset();
   setChartTimeframe.mockReset();
+  live.activeCode = '005930';
+  live.activeInstrument = { label: '삼성전자' };
   usePatternQueryStore.setState({ pending: null });
   searchPattern.mockImplementation(async (body) =>
     body.mode === 'history'
@@ -312,5 +323,62 @@ describe('PatternDrawer — 과거 매치 클릭', () => {
     await user.click(await screen.findByText('길이7위'));
     expect(jump).toHaveBeenCalled();
     expect(focusSavedRange).not.toHaveBeenCalled();
+  });
+});
+
+describe('PatternDrawer — 기준 종목 고정', () => {
+  it('매치를 눌러 화면 종목이 바뀌어도 목록은 그대로다', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderDrawer();
+    await screen.findByText('길이7위');
+    expect(searchPattern).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByText('길이7위'));
+    // 클릭이 화면 종목을 바꿨다고 치자 — 실제 앱에서 jump 가 하는 일이다.
+    live.activeCode = '000660';
+    live.activeInstrument = { label: 'SK하이닉스' };
+    rerender(<Wrapper />);
+
+    // ★ 기준이 따라갔다면 새 검색이 나간다. 목록이 갈리면 매치를 하나씩 훑을 수 없다.
+    expect(searchPattern).toHaveBeenCalledTimes(1);
+    expect(searchPattern.mock.calls[0][0].code).toBe('005930');
+    expect(await screen.findByText('길이7위')).toBeInTheDocument();
+  });
+
+  it('기준과 화면이 갈리면 바꾸는 버튼이 나타난다', async () => {
+    const { rerender } = renderDrawer();
+    await screen.findByText('길이7위');
+    expect(screen.queryByRole('button', { name: /기준을/ })).not.toBeInTheDocument();
+
+    live.activeCode = '000660';
+    live.activeInstrument = { label: 'SK하이닉스' };
+    rerender(<Wrapper />);
+    // 버튼의 **존재 자체**가 "기준과 화면이 다르다" 는 표시를 겸한다.
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
+  });
+
+  it('그 버튼을 누르면 기준이 옮겨 가고 다시 검색한다', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderDrawer();
+    await screen.findByText('길이7위');
+    live.activeCode = '000660';
+    live.activeInstrument = { label: 'SK하이닉스' };
+    rerender(<Wrapper />);
+
+    await user.click(screen.getByRole('button', { name: /SK하이닉스/ }));
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalledTimes(2));
+    expect(searchPattern.mock.calls[1][0].code).toBe('000660');
+    expect(screen.queryByRole('button', { name: /기준을/ })).not.toBeInTheDocument();
+  });
+
+  it('차트에서 그은 구간은 기준도 그 종목으로 옮긴다 — 새 검색이다', async () => {
+    live.activeCode = '005930';
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '000660', label: 'SK하이닉스', from: '20260401', to: '20260630',
+    });
+    renderDrawer();
+    await screen.findByText(/차트에서 그은 구간/);
+    const body = searchPattern.mock.calls.at(-1)![0];
+    expect(body.code).toBe('000660');
   });
 });

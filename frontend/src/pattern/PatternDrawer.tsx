@@ -29,8 +29,21 @@ import {
  * 3. **베이스라인은 끌 수 없다.** 과거 탭 하단에 고정 — 매치 승률만 보이면 반드시
  *    신호로 오독되는데, 실측상 둘의 차이는 쿼리마다 부호가 뒤집힌다.
  *
- * 기준 종목은 `activeCode`(포커스 창이 그리는 종목)다. 창을 핀해 두면 결과 클릭이
- * 다른 창으로 가므로 기준 차트가 남는다 — `activationTarget` 이 이미 그 규칙이다.
+ * ## 기준 종목은 `activeCode` 를 **추적하지 않는다**
+ *
+ * 패널을 열 때 한 번 시드하고, 그 뒤로는 화면 종목이 어떻게 바뀌든 움직이지 않는다.
+ * 매치를 클릭하면 화면 종목이 바뀌는데 기준까지 따라가면 **목록이 통째로 갈려**
+ * 결과를 하나씩 훑어볼 수가 없다 — 브라우저 확인에서 실제로 그랬다.
+ *
+ * 「매치 클릭」과 「사용자가 검색으로 바꾼 종목」을 출처로 구별하려 하지 않는다.
+ * 그건 상태 전이가 이벤트 출처에 따라 갈리는 설계라 사용자 모델에 없다. 대신
+ * **추적 자체를 없애** 그 구별이 필요 없게 만든다. 기준이 바뀌는 길은 둘뿐이다:
+ *
+ * 1. 헤더의 「현재 종목으로」 — `activeCode` 와 기준이 다를 때만 보인다. **그 버튼의
+ *    존재가 곧 "기준과 화면이 다르다" 는 표시**를 겸한다.
+ * 2. 차트에서 그은 구간(measure) — 새 검색이므로 그 종목이 새 기준이다.
+ *
+ * 패널을 닫으면 언마운트되므로(App 의 조건부 렌더) 다음에 열 때 다시 시드된다.
  */
 
 const MODES: { key: PatternSearchMode; label: string }[] = [
@@ -173,6 +186,8 @@ function MatchRow({
 export function PatternDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
   const activeInstrument = useLivePageStore((s) => s.activeInstrument);
+  /** 검색의 기준. **열 때 한 번만** `activeCode` 에서 시드되고 이후 따라가지 않는다. */
+  const [subject, setSubject] = useState<{ code: string; label: string } | null>(null);
   const [mode, setMode] = useState<PatternSearchMode>('now');
   const [length, setLength] = useState(DEFAULT_LENGTH);
   // 차트가 건넨 구간(measure). **1회 소비**라 스테퍼를 만진 뒤 되돌아오지 않는다.
@@ -182,16 +197,25 @@ export function PatternDrawer() {
   const jump = useJumpToLive();
   const focusSavedRange = useLivePageStore((s) => s.focusSavedRange);
 
+  // 최초 시드 — 기준이 아직 없을 때만. 이 조건이 「열 때 한 번」을 만든다
+  // (패널은 닫으면 언마운트되므로 다음 열림에서 다시 시드된다).
+  useEffect(() => {
+    if (subject || !activeCode) return;
+    setSubject({ code: activeCode, label: activeInstrument?.label ?? activeCode });
+  }, [subject, activeCode, activeInstrument]);
+
   useEffect(() => {
     if (!pendingSeed) return;
     const seed = consumeSeed();
     if (!seed) return;
+    // 차트에서 그은 구간은 **새 검색**이라 그 종목이 새 기준이다.
+    setSubject({ code: seed.code, label: seed.label ?? seed.code });
     setSeededRange({ from: seed.from, to: seed.to });
     setMode('now');
   }, [pendingSeed, consumeSeed]);
 
   const { data, isPending, isError, error } = usePatternSearch({
-    code: activeCode,
+    code: subject?.code ?? null,
     mode,
     length,
     range: seededRange,
@@ -235,12 +259,24 @@ export function PatternDrawer() {
       <div className="flex flex-col gap-sm border-b border-border px-md pb-sm">
         <div className="flex items-baseline justify-between gap-sm">
           <span className="truncate text-sm font-semibold text-fg">
-            {data?.name || activeInstrument?.label || activeCode || '종목 없음'}
+            {data?.name || subject?.label || '종목 없음'}
           </span>
           <span className="shrink-0 font-data text-2xs text-fg-dimmer">
             {result ? formatRange(result.query.from_date, result.query.to_date) : ''}
           </span>
         </div>
+
+        {activeCode && subject && activeCode !== subject.code && (
+          <button
+            type="button"
+            onClick={() =>
+              setSubject({ code: activeCode, label: activeInstrument?.label ?? activeCode })
+            }
+            className="self-start rounded border border-border px-2 py-[3px] text-2xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+          >
+            기준을 «{activeInstrument?.label ?? activeCode}» 로 바꾸기
+          </button>
+        )}
 
         {result && <CandleThumb bars={result.query.bars} height={56} />}
 
@@ -312,7 +348,7 @@ export function PatternDrawer() {
         </SegmentedControl>
       </div>
 
-      {!activeCode ? (
+      {!subject ? (
         <RailState>차트에서 종목을 고르면 그 봉 패턴으로 찾는다.</RailState>
       ) : isError ? (
         <RailState tone="error">패턴 검색에 실패했다: {(error as Error)?.message ?? '알 수 없는 오류'}</RailState>
