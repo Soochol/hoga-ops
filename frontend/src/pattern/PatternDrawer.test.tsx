@@ -28,10 +28,31 @@ vi.mock('../live/useJumpToLive', () => ({
   wantsNewTab: () => false,
 }));
 
+const focusSavedRange = vi.fn();
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: unknown) => unknown) =>
-    sel({ activeCode: '005930', activeInstrument: { label: '삼성전자' } }),
+    sel({ activeCode: '005930', activeInstrument: { label: '삼성전자' }, focusSavedRange }),
 }));
+
+const setChartTimeframe = vi.fn();
+// 실제 워크스페이스의 모양을 그대로 흉내낸다 — **zOrder 마지막이 차트가 아닌** 창이고
+// (브라우저에서 실제로 그랬다) 그 위에 같은 그룹의 차트 창이 있다.
+const WS = {
+  setChartTimeframe,
+  zOrder: ['chart1', 'book1', 'broker1'],
+  windows: [
+    { id: 'chart1', kind: 'chart', group: 1 },
+    { id: 'book1', kind: 'book', group: 1 },
+    { id: 'broker1', kind: 'broker', group: 1 },
+  ],
+};
+vi.mock('../state/workspace', () => ({
+  useWorkspaceStore: { getState: () => WS },
+  // 종목 교체의 목적지는 kind 를 보지 않는다 — 그래서 거래원 창이 나온다.
+  activationTarget: () => ({ kind: 'window', window: { id: 'broker1', group: 1 } }),
+}));
+
+const { usePatternQueryStore } = await import('./patternQuery');
 
 const { PatternDrawer } = await import('./PatternDrawer');
 
@@ -91,6 +112,9 @@ function renderDrawer() {
 beforeEach(() => {
   searchPattern.mockReset();
   jump.mockReset();
+  focusSavedRange.mockReset();
+  setChartTimeframe.mockReset();
+  usePatternQueryStore.setState({ pending: null });
   searchPattern.mockImplementation(async (body) =>
     body.mode === 'history'
       ? { code: '005930', name: '삼성전자', mode: 'history',
@@ -206,5 +230,87 @@ describe('PatternDrawer — 빈 상태', () => {
     renderDrawer();
     const state = await screen.findByText(/패턴 검색에 실패했다/);
     expect(within(state).getByText(/boom/)).toBeInTheDocument();
+  });
+});
+
+describe('PatternDrawer — 차트에서 건네받은 구간', () => {
+  it('시드를 1회만 소비한다 — 스테퍼를 만져도 되돌아오지 않는다', async () => {
+    const user = userEvent.setup();
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '005930', from: '20260401', to: '20260630',
+    });
+    renderDrawer();
+    await screen.findByText(/차트에서 그은 구간/);
+    expect(usePatternQueryStore.getState().pending).toBeNull();
+    const body = searchPattern.mock.calls.at(-1)![0];
+    expect([body.from, body.to]).toEqual(['20260401', '20260630']);
+
+    // ✕ 로 풀면 봉수 스테퍼가 돌아오고, 시드가 그것을 다시 덮지 않는다.
+    await user.click(screen.getByLabelText('구간 해제'));
+    expect(await screen.findByText('7봉')).toBeInTheDocument();
+    expect(screen.queryByText(/차트에서 그은 구간/)).not.toBeInTheDocument();
+  });
+
+  it('구간이 없으면 from/to 를 보내지 않는다', async () => {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    const body = searchPattern.mock.calls[0][0];
+    expect(body.from).toBeUndefined();
+    expect(body.to).toBeUndefined();
+  });
+});
+
+describe('PatternDrawer — 과거 매치 클릭', () => {
+  it('종목을 바꾼 **뒤** 구간을 세운다 — 순서가 계약이다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByText('SK하이닉스'));
+
+    expect(jump).toHaveBeenCalledWith('000660', 'SK하이닉스', expect.anything());
+    expect(focusSavedRange).toHaveBeenCalledTimes(1);
+    // ★ 종목 교체가 "종목이 바뀌면 구간 해제" 트리거를 품고 있어, focus 가 먼저면
+    //   그 자리에서 지워진다. 호출 순서를 직접 잰다.
+    expect(jump.mock.invocationCallOrder[0]).toBeLessThan(
+      focusSavedRange.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('구간 슬롯은 저장뷰와 같은 모양이고 viewId 가 매치마다 다르다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByText('SK하이닉스'));
+
+    const focus = focusSavedRange.mock.calls[0][0];
+    expect(focus.viewId).toBe('pattern:000660:20180307');
+    expect(focus.code).toBe('000660');
+    expect(focus.savedTimeframe).toBe('D');
+    expect(focus.fromDate).toBe('20180307');
+    expect(focus.toDate).toBe('20180315');
+    // 마지막 봉(09:00 ts)이 밴드 안에 들어야 하므로 toMs 는 **종가 쪽**이다.
+    expect(focus.toMs).toBeGreaterThan(focus.fromMs);
+    expect(focus.toMs - Date.UTC(2018, 2, 15)).toBe(6.5 * 3600 * 1000);
+  });
+
+  it('착지 창을 일봉으로 돌린다 — 분봉 창에 꽂으면 그 날의 분봉이 없어 화면이 빈다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByText('SK하이닉스'));
+    // ★ 거래원 창(activationTarget 의 답)이 아니라 **차트 창**이어야 한다.
+    //   id 를 그대로 쓰면 `withChart` 가 조용히 no-op 이 되고 화면이 빈다.
+    expect(setChartTimeframe).toHaveBeenCalledWith('chart1', 'D');
+  });
+
+  it('지금 탭 클릭은 구간을 세우지 않는다 — 그 종목의 지금이 곧 매치다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByText('길이7위'));
+    expect(jump).toHaveBeenCalled();
+    expect(focusSavedRange).not.toHaveBeenCalled();
   });
 });
