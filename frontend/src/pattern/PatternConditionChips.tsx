@@ -5,6 +5,7 @@ import {
   DEFAULT_CONDITIONS,
   FLEX_STEPS,
   MA_PRESETS,
+  exclusionKey,
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
@@ -177,11 +178,15 @@ export function PatternConditionChips({
         <Popover title="이 검색에서 뺀 자리 · 눌러서 되돌린다">
           {excluded.map((e) => (
             <Item
-              key={`${e.code}:${e.from_date}`}
+              key={exclusionKey(e)}
               selected={false}
               onClick={() => onRestore(e)}
               label={e.stock_name || e.code}
-              hint={`${e.from_date.slice(0, 4)}-${e.from_date.slice(4, 6)}-${e.from_date.slice(6)}`}
+              // 「전체」가 자리와 **같은 자리에** 오는 것이 요점이다 — 목록이 하나라
+              // 「숨김 N」이 무엇의 N 인지 흐려지지 않는다.
+              hint={e.from_date
+                ? `${e.from_date.slice(0, 4)}-${e.from_date.slice(4, 6)}-${e.from_date.slice(6)}`
+                : '전체'}
             />
           ))}
           {excluded.length > 1 && (

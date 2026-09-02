@@ -1001,7 +1001,7 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     const rows = () => [...document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]')];
     const n = rows().length;
     await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
-    await user.click(await screen.findByRole('menuitem', { name: /이 결과에서 빼기/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
     expect(screen.queryByRole('button', { name: /SK하이닉스/ })).not.toBeInTheDocument();
     // ★ 자르기 **전에** 걸리므로 개수가 유지된다 — 픽스처가 4행뿐이라 하나 줄지만,
     //   중요한 것은 「뺀 행만」 빠졌다는 것이다.
@@ -1012,7 +1012,7 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     const user = userEvent.setup();
     await openList(user);
     await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
-    await user.click(await screen.findByRole('menuitem', { name: /이 결과에서 빼기/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
     await user.click(await screen.findByRole('button', { name: /숨김 1/ }));
     await user.click(await screen.findByRole('option', { name: /SK하이닉스/ }));
     expect(await screen.findByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
@@ -1028,5 +1028,68 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     // ★ `loadSave` 가 기준도 덮어쓴다 — 그걸 이펙트로 감시하면 **불러온 그 순간**
     //   연결이 끊겨 제외가 사라진다(그렇게 짰다가 잡았다).
     expect(await screen.findByRole('button', { name: /숨김 1/ })).toBeInTheDocument();
+  });
+});
+
+describe('PatternDrawer — 종목 통째로 빼기', () => {
+  async function openMenu(user: ReturnType<typeof userEvent.setup>, i = 0) {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByRole('button', { name: /SK하이닉스/ });
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[i]);
+  }
+
+  it('«종목» 전부 빼기는 그 종목의 **모든 자리**를 덮는다', async () => {
+    const user = userEvent.setup();
+    // 픽스처는 000660 이 한 자리뿐이라, 덮는 범위는 «전체» 키(`code:*`)로 확인한다.
+    await openMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: /SK하이닉스.*전부 빼기/ }));
+    expect(screen.queryByRole('button', { name: /SK하이닉스/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /숨김 1/ }));
+    // 목록이 **하나**다 — 자리 제외와 종목 제외가 같은 줄에 서고, 「전체」로 구별된다.
+    expect(await screen.findByRole('option', { name: /SK하이닉스.*전체/ })).toBeInTheDocument();
+  });
+
+});
+
+describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
+  /**
+   * 공장값이 ±2봉이라 **이 경로가 기본**인데, 서버 모의가 길이 하나만 주면 병합이 안 돌아
+   * 다른 테스트는 전부 단일 결과 경로를 잰다. 그래서 제외 필터를 한쪽에만 걸어도 초록이
+   * 나왔고, 브라우저에서야 「숨김 1인데 목록에 그대로」로 드러났다.
+   */
+  beforeEach(() => {
+    searchPattern.mockImplementation(async () => ({
+      code: '005930', name: '삼성전자', mode: 'history' as const,
+      results: [
+        lengthResult(6, 'SK하이닉스', { history: true }),
+        lengthResult(7, 'SK하이닉스', { history: true }),
+      ],
+    }));
+  });
+
+  it('종목 전체 제외가 병합된 목록의 **여러 자리를 한 번에** 덮는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    // 두 길이가 병합돼 같은 종목이 여러 행으로 선다 — 그게 이 경로의 특징이다.
+    const before = await screen.findAllByRole('button', { name: /SK하이닉스/ });
+    expect(before.length).toBeGreaterThan(1);
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    await user.click(await screen.findByRole('menuitem', { name: /전부 빼기/ }));
+    expect(screen.queryAllByRole('button', { name: /SK하이닉스/ })).toHaveLength(0);
+  });
+
+  it('자리만 빼면 같은 종목의 **다른 길이는 남는다** — 두 항목의 차이가 여기서 보인다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    const before = (await screen.findAllByRole('button', { name: /SK하이닉스/ })).length;
+    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
+    // 같은 (종목, 시작일)은 길이가 달라도 함께 빠진다 — 키에 길이가 없기 때문이다.
+    // 시작일이 다른 자리는 남는다.
+    expect(screen.queryAllByRole('button', { name: /SK하이닉스/ }).length).toBeLessThan(before);
   });
 });

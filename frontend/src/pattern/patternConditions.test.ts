@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeByHeadroom, sinceFor, visibleRows, PERIODS } from './patternConditions';
+import { mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow } from './patternConditions';
 
 /**
  * 조건이 어디서 걸리는지, 그리고 길이별 결과를 **어떻게 합치는지**.
@@ -67,5 +67,38 @@ describe('PERIODS — 1~5년을 모두 고를 수 있다', () => {
       if (p.years === null) continue;
       expect(p.label).toBe(`최근 ${p.years}년`);
     }
+  });
+});
+
+describe('withWholeCodeExcluded — 종목 전체를 빼면 그 종목의 자리는 걷어낸다', () => {
+  const e = (code: string, from_date: string | null) => ({ code, from_date, stock_name: code });
+
+  it('같은 종목의 자리 제외를 대체한다 — 복원 목록이 한 줄이다', () => {
+    const next = withWholeCodeExcluded(
+      [e('000660', '20180307'), e('005930', '20240101'), e('000660', '20200505')],
+      e('000660', null),
+    );
+    expect(next.filter((x) => x.code === '000660')).toEqual([e('000660', null)]);
+    // 다른 종목은 건드리지 않는다.
+    expect(next).toContainEqual(e('005930', '20240101'));
+  });
+
+  it('넘어온 entry 의 from_date 가 무엇이든 **전체**로 눌러 담는다', () => {
+    // 호출부가 실수로 행의 날짜를 그대로 넘겨도 「그 자리」가 되지 않는다.
+    expect(withWholeCodeExcluded([], e('000660', '20180307'))).toEqual([e('000660', null)]);
+  });
+});
+
+describe('isExcludedRow — 종목 키가 모든 날짜를 덮는다', () => {
+  const row = { code: '000660', from_date: '20180307' };
+
+  it('자리 키는 그 날짜만 막는다', () => {
+    expect(isExcludedRow(row, new Set(['000660:20180307']))).toBe(true);
+    expect(isExcludedRow(row, new Set(['000660:20200505']))).toBe(false);
+  });
+
+  it('종목 키는 날짜와 무관하게 막는다 — 이게 없으면 「통째로 뺐는데 남는다」가 된다', () => {
+    expect(isExcludedRow(row, new Set(['000660:*']))).toBe(true);
+    expect(isExcludedRow({ code: '005930', from_date: '20180307' }, new Set(['000660:*']))).toBe(false);
   });
 });
