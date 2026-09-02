@@ -232,8 +232,12 @@ def test_screener_broadcast_is_scoped_to_saves(tmp_path: Path):
     api_routes = [r for r in router.routes if isinstance(r, APIRoute)]
     assert api_routes, "라우터에 APIRoute 가 없다 — 단언이 공허하다"
 
-    saves = [r for r in api_routes if r.path.startswith("/api/screener/saves")]
-    others = [r for r in api_routes if not r.path.startswith("/api/screener/saves")]
+    # 저장 **계열**은 둘이다(조건검색 · 봉 패턴). 채널은 다르지만 둘 다 브로드캐스트를
+    # 가져야 하고, 그 밖은 가지면 안 된다 — 새 저장 계열을 더하면 여기 접두사도 함께
+    # 늘린다(안 늘리면 이 가드가 그 라우트를 «샌 것» 으로 잡는다).
+    save_prefixes = ("/api/screener/saves", "/api/screener/pattern-saves")
+    saves = [r for r in api_routes if r.path.startswith(save_prefixes)]
+    others = [r for r in api_routes if not r.path.startswith(save_prefixes)]
     # 개수를 고정하지 않는다 — 저장 라우트가 늘어도 이 가드는 계속 유효해야 한다.
     # "빠뜨린 것" 은 아래 두 단언이 잡는다: 메인 라우터에 `/saves…` 를 달면 그
     # 라우트는 여기 saves 목록에 들어오면서 플레인 클래스라 unwrapped 에 걸린다.

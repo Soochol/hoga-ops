@@ -2072,6 +2072,82 @@ class PatternSearchRequest(BaseModel):
         return self
 
 
+#: 저장된 검색의 **기준 종류**.
+#:
+#: 이 값이 불러오기의 갈림길이다 — `recent` 는 「최근 N봉」 이라 **불러올 때마다 오늘
+#: 기준으로 다시 계산**되고, `fixed` 는 그 날의 구간이라 **모양이 고정**된다.
+#: 사용자가 고르는 값이 아니라 **저장 시점에 하고 있던 것**이 그대로 담긴다.
+PatternSaveKind = Literal["recent", "fixed"]
+
+
+class PatternSaveWindow(BaseModel):
+    """기준 창. 종류에 따라 채워지는 필드가 다르다 — 둘 다 채우지 않는다."""
+
+    kind: PatternSaveKind
+    #: `recent` 전용 — 최신 몇 봉인가.
+    bars: int | None = Field(None, ge=PATTERN_MIN_BARS, le=PATTERN_MAX_BARS)
+    #: `fixed` 전용 — 그 날의 구간(YYYYMMDD).
+    from_date: str | None = Field(None, pattern=r"^\d{8}$")
+    to_date: str | None = Field(None, pattern=r"^\d{8}$")
+
+    @model_validator(mode="after")
+    def _shape_matches_kind(self):
+        if self.kind == "recent":
+            if self.bars is None:
+                raise ValueError("recent window needs bars")
+        elif self.from_date is None or self.to_date is None:
+            raise ValueError("fixed window needs from_date and to_date")
+        elif self.from_date > self.to_date:
+            raise ValueError("from_date must be <= to_date")
+        return self
+
+
+class PatternSaveConditions(BaseModel):
+    """화면의 조건 묶음 그대로. **결과는 담지 않는다** — 코퍼스가 매일 자라므로
+    「그때 나온 매치」 는 재현이 아니라 스냅샷이고, 저장되는 것은 질문이지 답이 아니다."""
+
+    mode: PatternSearchMode = "history"
+    #: 기간(YYYYMMDD). 없으면 전체.
+    since: str | None = Field(None, pattern=r"^\d{8}$")
+    count: int = Field(40, ge=1, le=100)
+    #: 유사도 하한 — 프론트가 받아 둔 목록을 자르는 값이라 검색 요청에는 안 실린다.
+    sim_floor: float = Field(0.0, ge=0, le=1)
+    min_tv_eok: float = Field(10.0, ge=0)
+    exclude_etf: bool = True
+    no_overlap: bool = True
+    per_code: int = Field(5, ge=1, le=5)
+    volume_weight: float = Field(0.0, ge=0, le=1)
+
+
+class PatternSaveWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    code: str = Field(pattern=CODE_PATTERN)
+    #: 저장 시점의 종목명 — 목록이 **종목별로 묶이고** 검색이 이름·종목을 함께 훑으므로
+    #: 그때마다 마스터를 조회하지 않게 함께 담는다.
+    stock_name: str = ""
+    window: PatternSaveWindow
+    conditions: PatternSaveConditions = Field(default_factory=PatternSaveConditions)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
+
+
+class PatternSave(PatternSaveWriteRequest):
+    id: str
+    created_at_ms: int
+    updated_at_ms: int
+
+
+class PatternSavesFile(BaseModel):
+    schema_version: int = 1
+    saves: list[PatternSave] = Field(default_factory=list)
+
+
 class PatternDistribution(BaseModel):
     """후보 점수 분포. **유사도 절대값을 단독으로 내지 않기 위한 동반 데이터**다
     (ADR-0166 결정 7) — 1위 0.986 은 "98.6% 닮음" 이 아니라 "비교한 것 중 최고" 다."""

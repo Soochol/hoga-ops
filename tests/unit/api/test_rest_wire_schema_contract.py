@@ -79,6 +79,19 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
         {"length", "query", "universe", "dist", "matches", "baseline", "elapsed_ms"}
     ),
     "PatternSearchResponse": frozenset({"code", "name", "mode", "results"}),
+    # 패턴 검색 저장. **불러오기가 조건을 통째로 복원**하므로 필드가 하나라도 조용히
+    # 빠지면 "저장했는데 그 조건이 아니다" 가 된다.
+    "PatternSaveWindow": frozenset({"kind", "bars", "from_date", "to_date"}),
+    "PatternSaveConditions": frozenset(
+        {"mode", "since", "count", "sim_floor", "min_tv_eok", "exclude_etf",
+         "no_overlap", "per_code", "volume_weight"}
+    ),
+    "PatternSave": frozenset(
+        {"id", "name", "code", "stock_name", "window", "conditions",
+         "created_at_ms", "updated_at_ms"}
+    ),
+    "PatternSavesFile": frozenset({"schema_version", "saves"}),
+
     "HeatmapEntry": frozenset({"code", "folder_id", "name", "order"}),
     "HeatmapResponse": frozenset(
         {"entries", "folders", "capture_markers", "next_run_at_ms"}
@@ -242,6 +255,10 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     "PatternSearchMode": (
         frozenset(get_args(m.PatternSearchMode)),
+        "frontend/src/api/screener.ts",
+    ),
+    "PatternSaveKind": (
+        frozenset(get_args(m.PatternSaveKind)),
         "frontend/src/api/screener.ts",
     ),
     "CaptureReason": (

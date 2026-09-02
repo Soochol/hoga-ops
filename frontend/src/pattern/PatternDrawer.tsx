@@ -10,8 +10,18 @@ import {
 } from '../live/liveDateTime';
 import { usePatternQueryStore } from './patternQuery';
 import { PatternConditionChips } from './PatternConditionChips';
+import { PatternSavesView } from './PatternSavesView';
+import {
+  suggestPatternSaveName,
+  useCreatePatternSave,
+  useDeletePatternSave,
+  usePatternSaves,
+} from './usePatternSaves';
+import type { PatternSave } from '../api/screener';
 import {
   DEFAULT_CONDITIONS,
+  PERIODS,
+  sinceFor,
   visibleRows,
   type PatternConditions,
 } from './patternConditions';
@@ -133,6 +143,21 @@ function patternLandingChart(ws: ReturnType<typeof useWorkspaceStore.getState>):
   return null;
 }
 
+/** 저장된 `since`(날짜) → 화면의 기간 키. 저장은 날짜가 정본이고 화면은 상대 기간이라,
+ *  되돌릴 때 **가장 가까운 키**를 고른다(정확히 일치하는 키가 없어도 화면이 서야 한다). */
+function periodKeyFor(since: string | null): PatternConditions['period'] {
+  if (!since) return 'all';
+  let best: PatternConditions['period'] = 'all';
+  let bestGap = Number.POSITIVE_INFINITY;
+  for (const p of PERIODS) {
+    const cand = sinceFor(p.key) ?? null;
+    if (cand === null) continue;
+    const gap = Math.abs(Number(cand) - Number(since));
+    if (gap < bestGap) { bestGap = gap; best = p.key; }
+  }
+  return best;
+}
+
 function formatPct(v: number | null): string {
   if (v == null) return '—';
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
@@ -212,6 +237,12 @@ export function PatternDrawer() {
   /** 기간·결과 수·유사도·거래대금·ETF. **기간만 서버로 간다** — 나머지는 받아 둔
    *  목록을 자르므로 팝오버가 개수를 미리 셀 수 있다(`patternConditions` 주석). */
   const [conditions, setConditions] = useState<PatternConditions>(DEFAULT_CONDITIONS);
+  /** 결과 화면 ↔ 저장 목록. 실측 125개 규모라 팝오버가 아니라 **화면 전환**이다. */
+  const [showSaves, setShowSaves] = useState(false);
+  const [saveDraft, setSaveDraft] = useState<string | null>(null);
+  const savesQuery = usePatternSaves();
+  const createSave = useCreatePatternSave();
+  const removeSave = useDeletePatternSave();
   /** 거래량을 유사도에 섞을지. **숫자를 화면에 내지 않는다** — 계약은 "함께" 다. */
   const [withVolume, setWithVolume] = useState(false);
   const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
@@ -262,6 +293,38 @@ export function PatternDrawer() {
   );
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
 
+  /**
+   * 저장 불러오기 — 드로어의 **세 번째 시드 경로**다(패널 열림 · measure 시드 다음).
+   *
+   * 기준을 덮어쓴다. PR #1692 의 "기준은 화면을 추적하지 않는다" 와 충돌하지 않는 이유는
+   * 이것이 **명시적 행위**라서다 — 추적이 아니라 사용자가 고른 교체다.
+   *
+   * 순서가 있다: 기준·구간을 먼저 세우고 조건을 마지막에 넣는다. 조건이 먼저 들어가면
+   * 그 사이 렌더에서 **옛 기준 + 새 조건**으로 한 번 조회가 나간다.
+   */
+  const loadSave = useCallback((save: PatternSave) => {
+    setSubject({ code: save.code, label: save.stock_name || save.code });
+    if (save.window.kind === 'fixed' && save.window.from_date && save.window.to_date) {
+      setSeededRange({ from: save.window.from_date, to: save.window.to_date });
+    } else {
+      setSeededRange(null);
+      if (save.window.bars) setLength(save.window.bars);
+    }
+    setMode(save.conditions.mode);
+    setWithVolume(save.conditions.volume_weight > 0);
+    setPerCode(save.conditions.per_code);
+    setConditions({
+      // `since` 는 날짜로 저장되지만 화면은 기간 키를 쓴다 — 가장 가까운 키로 되돌린다.
+      period: periodKeyFor(save.conditions.since),
+      count: save.conditions.count,
+      simFloor: save.conditions.sim_floor,
+      minTvEok: save.conditions.min_tv_eok,
+      excludeEtf: save.conditions.exclude_etf,
+      noOverlap: save.conditions.no_overlap,
+    });
+    setShowSaves(false);
+  }, []);
+
   const onOpen = useCallback(
     (row: PatternMatchRow, e: JumpModifiers) => {
       // 지금 매치는 종목만 바꾼다 — 그 종목의 '지금' 이 곧 매치 구간이다.
@@ -298,6 +361,15 @@ export function PatternDrawer() {
     <RailDrawer id="right-rail-pattern-panel" testId="pattern-drawer" ariaLabel="봉 패턴 검색">
       <RailDrawerHeader title="패턴" />
 
+      {showSaves ? (
+        <PatternSavesView
+          saves={savesQuery.data?.saves ?? []}
+          onPick={loadSave}
+          onDelete={(save) => removeSave.mutate(save.id)}
+          onBack={() => setShowSaves(false)}
+        />
+      ) : (
+      <>
       <div className="flex flex-col gap-sm border-b border-border px-md pb-sm">
         <div className="flex items-baseline justify-between gap-sm">
           <span className="truncate text-sm font-semibold text-fg">
@@ -307,6 +379,93 @@ export function PatternDrawer() {
             {result ? formatRange(result.query.from_date, result.query.to_date) : ''}
           </span>
         </div>
+
+        <div className="flex items-center gap-xs">
+          <button
+            type="button"
+            onClick={() =>
+              setSaveDraft(
+                suggestPatternSaveName({
+                  stockName: subject?.label ?? activeCode ?? '',
+                  window: seededRange
+                    ? { kind: 'fixed', from_date: seededRange.from, to_date: seededRange.to }
+                    : { kind: 'recent', bars: length },
+                  withVolume,
+                }),
+              )
+            }
+            disabled={!subject}
+            className="rounded border border-border px-2 py-[3px] text-2xs text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:opacity-40"
+          >
+            저장
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSaves(true)}
+            className="rounded border border-border px-2 py-[3px] text-2xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+          >
+            저장한 검색
+            <span className="ml-1 opacity-70">{savesQuery.data?.saves.length ?? 0}</span>
+          </button>
+        </div>
+
+        {saveDraft !== null && (
+          <form
+            className="flex flex-col gap-xs rounded border border-border-strong bg-bg-subtle p-sm"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!subject) return;
+              const name = saveDraft.trim();
+              if (!name) return;
+              createSave.mutate({
+                name,
+                code: subject.code,
+                stock_name: subject.label,
+                window: seededRange
+                  ? { kind: 'fixed', bars: null, from_date: seededRange.from, to_date: seededRange.to }
+                  : { kind: 'recent', bars: length, from_date: null, to_date: null },
+                conditions: {
+                  mode,
+                  since: sinceFor(conditions.period) ?? null,
+                  count: conditions.count,
+                  sim_floor: conditions.simFloor,
+                  min_tv_eok: conditions.minTvEok,
+                  exclude_etf: conditions.excludeEtf,
+                  no_overlap: conditions.noOverlap,
+                  per_code: perCode,
+                  volume_weight: withVolume ? VOLUME_WEIGHT_ON : 0,
+                },
+              });
+              setSaveDraft(null);
+            }}
+          >
+            <label className="text-2xs text-fg-dim" htmlFor="pattern-save-name">
+              이 검색의 이름
+            </label>
+            <input
+              id="pattern-save-name"
+              autoFocus
+              value={saveDraft}
+              onChange={(e) => setSaveDraft(e.target.value)}
+              className="rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg"
+            />
+            <div className="flex justify-end gap-xs">
+              <button
+                type="button"
+                onClick={() => setSaveDraft(null)}
+                className="rounded border border-border px-2 py-[3px] text-2xs text-fg-dim hover:bg-bg-input-hover"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                className="rounded border border-accent bg-tint-selection px-2 py-[3px] text-2xs text-accent"
+              >
+                저장
+              </button>
+            </div>
+          </form>
+        )}
 
         {activeCode && subject && activeCode !== subject.code && (
           <button
@@ -505,6 +664,8 @@ export function PatternDrawer() {
             </div>
           )}
         </>
+      )}
+      </>
       )}
     </RailDrawer>
   );
