@@ -10,6 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hoga.api import loop_lag
+from hoga.config import resolve_log_dir
+from hoga.gc_tuning import gc_thresholds
+from hoga.live.promote_executor import (
+    PromoteExecutor,
+    executor_kind_from_env,
+    install_default as install_default_promote_executor,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +39,19 @@ def today_promoter_interval_from_env(env: Mapping[str, str] | None = None) -> fl
     """Today Promotion interval in seconds."""
     source = os.environ if env is None else env
     return float(source.get("HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S", "300"))
+
+
+def _build_promote_executor(env: Mapping[str, str]) -> PromoteExecutor:
+    """today-promoter 실행기(ADR-0168). 종류는 `HOGA_LIVE_TODAY_PROMOTE_EXECUTOR`
+    (기본 `process`), 워커 GC 임계는 앱과 같은 값(`hoga.gc_tuning` — 부모의
+    `gc.get_threshold()` 를 읽지 않는다: lifespan 이 임계를 걸기 전에 불릴 수 있다),
+    워커 로그는 부모가 이미 만든 `hoga.log` 가 있을 때만 그 파일에 붙인다."""
+    log_path = resolve_log_dir() / "hoga.log"
+    return PromoteExecutor(
+        executor_kind_from_env(env),
+        worker_gc_thresholds=gc_thresholds(env),
+        worker_log_path=log_path if log_path.exists() else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -135,6 +155,8 @@ class AppStartupRuntime:
     deps: StartupRuntimeDeps
     kiwoom_watchdog_task: TaskOrNone = None
     sector_broadcast_task: TaskOrNone = None
+    #: today-promoter 의 워커 프로세스 풀(ADR-0168). 태스크를 멈춘 뒤 내린다.
+    today_promoter_executor: PromoteExecutor | None = None
 
     def supervised_task_health(self) -> list[dict[str, object]]:
         """Honest alive/dead snapshot of each lifespan-owned background task.
@@ -209,6 +231,12 @@ class AppStartupRuntime:
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""
         await self.deps.stop_today_promoter(self.today_promoter_task)
+        # 태스크가 멎은 **뒤에** 풀을 내린다 — 순서가 반대면 마지막 종목의 승격이
+        # BrokenProcessPool 로 끝나 종료 로그에 가짜 실패가 남는다.
+        if self.today_promoter_executor is not None:
+            self.today_promoter_executor.shutdown()
+            install_default_promote_executor(None)
+            self.today_promoter_executor = None
         await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
         await self.deps.stop_today_promoter(self.sector_broadcast_task)
         await self.deps.stop_live_stream()
@@ -299,10 +327,17 @@ async def start_app_runtime(
         from hoga.api import ownership  # noqa: PLC0415 — 지연 import(순환 절단)
 
         if today_promoter_enabled_from_env(deps.env) and ownership.acquire("ws", data_dir):
+            # 파싱·쓰기는 전용 워커 프로세스에서(ADR-0168). 풀은 첫 승격에서 게으르게
+            # 뜨므로 여기서 기동이 늦어지지 않는다. 같은 실행기를 모듈 기본으로 설치해
+            # 17:00 일배치(`promote_pending`, scheduler 배선)도 태운다.
+            executor = _build_promote_executor(deps.env)
+            install_default_promote_executor(executor)
+            runtime.today_promoter_executor = executor
             runtime.today_promoter_task = await deps.start_today_promoter(
                 data_dir=data_dir,
                 get_kiwoom_capture_codes=deps.get_kiwoom_capture_codes,
                 interval_s=today_promoter_interval_from_env(deps.env),
+                executor=executor,
             )
 
         # 마스터 최신화(네트워크)는 라이브 뒤에 그대로 둔다 — 디스크/시드 로드와 달리

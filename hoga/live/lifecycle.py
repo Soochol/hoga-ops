@@ -32,6 +32,7 @@ from hoga.util.timeenc import KST
 from . import kis_runtime
 from .buffer import LiveBuffer
 from .promote import promote_kiwoom_today
+from .promote_executor import PromoteExecutor
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import StorageRuntimeSnapshot, stop_storage_runtime, sync_storage_runtime
@@ -436,8 +437,13 @@ async def start_today_promoter(
     get_kiwoom_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
     on_promoted: Callable[[dict], object] | None = None,
+    executor: PromoteExecutor | None = None,
 ) -> asyncio.Task:
     """Start the ADR-0043 Today Promotion loop (키움 전담).
+
+    `executor` 는 파싱·쓰기를 돌릴 자리다(ADR-0168 — 운영은 전용 워커 프로세스).
+    None 이면 `promote_kiwoom_today` 를 종전 서명 그대로 부른다 — 이 루프의 계약
+    테스트들이 그 함수를 `(data_dir, *, code)` 로 대체하므로 인자를 늘리지 않는다.
 
     Polls `get_kiwoom_capture_codes()` each `interval_s` seconds and calls
     `promote_kiwoom_today(data_dir, code=...)` for each — live_kiwoom JSONL →
@@ -464,6 +470,11 @@ async def start_today_promoter(
                 "date": promoted_date,
             })
 
+    async def _promote(code: str) -> str | None:
+        if executor is None:
+            return await promote_kiwoom_today(data_dir, code=code)
+        return await promote_kiwoom_today(data_dir, code=code, executor=executor)
+
     async def loop() -> None:
         while True:
             try:
@@ -473,9 +484,7 @@ async def start_today_promoter(
                 )
                 for code in kiwoom_codes:
                     try:
-                        _publish_promotion(
-                            code, await promote_kiwoom_today(data_dir, code=code),
-                        )
+                        _publish_promotion(code, await _promote(code))
                     except Exception:
                         log.exception(
                             "live.today_promote.kiwoom_code_failed code=%s", code,

@@ -53,6 +53,11 @@ from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
+from hoga.gc_tuning import (  # 값과 근거 표는 아래 주석, 정의는 리프 모듈(ADR-0168)
+    GC_GEN0_THRESHOLD_DEFAULT,  # noqa: F401 — 하위호환 재수출(테스트가 이 모듈에서 import)
+    GC_UPPER_GEN_THRESHOLDS,
+    gc_gen0_threshold,
+)
 from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
@@ -223,25 +228,13 @@ class HealthResponse(BaseModel):
 # 그대로였다. 다만 이것은 **한 워크로드의 peak** 이지 장기 운영 RSS 가 아니다.
 # 이 ADR 계열이 애초에 OOM 사고에서 태어났으므로(ADR-0085), 운영 RSS 가 예전보다
 # 뚜렷이 높아지면 이 값을 먼저 의심할 것. `0` 을 넣으면 튜닝이 꺼진다.
-GC_GEN0_THRESHOLD_DEFAULT = 50_000
+#
+# 값 자체(`GC_GEN0_THRESHOLD_DEFAULT` 50_000 · `GC_UPPER_GEN_THRESHOLDS` (50, 50) ·
+# `gc_gen0_threshold()`)는 `hoga.gc_tuning` 리프 모듈에 있고 위 import 가 여기로
+# 재수출한다. 내린 이유: 프로모터 **워커 프로세스**(ADR-0168)가 같은 임계를 걸어야
+# 하는데, 그쪽에서 이 모듈을 import 하면 앱 전체가 자식 프로세스에 올라온다.
 # gen1/gen2 — 위 표를 잰 조합의 나머지 두 자리(기본은 10/10). gen0 이 덜 도는 만큼
 # 상위 세대 승격도 줄어 이 둘의 영향은 작다.
-GC_UPPER_GEN_THRESHOLDS = (50, 50)
-
-
-def gc_gen0_threshold() -> int:
-    """`HOGA_GC_GEN0_THRESHOLD` 해석. `0` = 튜닝 끔, 미설정 = 기본값.
-
-    파싱 실패는 기본값으로 떨어진다 — 오타 하나로 서버가 안 뜨는 것보다,
-    문서화된 기본으로 도는 편이 낫다(`slow_request_threshold_ms` 와 같은 규약).
-    """
-    raw = os.environ.get("HOGA_GC_GEN0_THRESHOLD", "")
-    if not raw:
-        return GC_GEN0_THRESHOLD_DEFAULT
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return GC_GEN0_THRESHOLD_DEFAULT
 
 
 def allowed_origins() -> tuple[str, ...]:
