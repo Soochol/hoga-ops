@@ -17,11 +17,13 @@ from pathlib import Path
 
 import anyio
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from starlette.requests import ClientDisconnect
 
 from hoga import perf_debug
+from hoga.api import compute_jobs
 from hoga.api.bundle import build_range_bundle
+from hoga.api.compute_pools import ComputePools, thread_pools
 from hoga.api.invariants import indicator_session_bounds
 from hoga.api.models import (
     BrokerSeriesResponse,
@@ -384,8 +386,81 @@ def _blocked_manifest_stock_date(
     )
 
 
-def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
+def compute_brokers_series(
+    engine: QueryEngine, *, code: str, date: str, source_pref: str, venue: str,
+) -> BrokerSeriesResponse:
+    """`/api/brokers/series` 본체 — 라우트에서 떼어 **모듈 최상위**에 둔 이유는 컴퓨트
+    워커 프로세스에서 돌리기 위해서다(ADR-0169, `compute_jobs.brokers_series_job`).
+
+    ADR-0044: hover spot path honors source_pref via resolve_source + ADR-0039
+    preference+fallback semantics. The resolved source is echoed back so
+    LiveStatusBar's chip can reflect fallback honestly.
+    """
+    sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
+    if sd_dir is None:
+        return BrokerSeriesResponse(date=date, brokers=[], source=source)
+    # 디렉터리가 있어도 파일은 없을 수 있다(0행 → 파일 없음, `_spot_table_path`).
+    # 장 초반 거래원 첫 스냅샷 전이 그 창이다 — 결함이 아니라 빈 사이드바다.
+    path = _spot_table_path(sd_dir, "brokers.parquet")
+    if path is None:
+        return BrokerSeriesResponse(date=date, brokers=[], source=source)
+    raw_entries = brokers_tbl.query_day_series_cached(engine.conn, path=path)
+    # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
+    # mirroring the /api/brokers and /api/candles handlers.
+    entries = [
+        e.model_copy(
+            update={
+                "points": [
+                    p.model_copy(
+                        update={"ts_ms": hhmmssms_to_unix_ms(date, p.ts_ms)}
+                    )
+                    for p in e.points
+                ],
+            }
+        )
+        for e in raw_entries
+    ]
+    return BrokerSeriesResponse(date=date, brokers=entries, source=source)
+
+
+async def _run_range_bundle(
+    pools: ComputePools,
+    engine: QueryEngine,
+    bundle_kwargs: dict[str, object],
+    *,
+    from_date: str,
+    to_date: str,
+) -> tuple[RangeBundle | None, bytes | None, dict[str, int]]:
+    """`/api/range` 의 계산 자리(ADR-0169). 반환은 (번들, 응답 바이트, perf 개수) —
+    둘 중 하나만 채워진다.
+
+    프로세스 풀이면 워커가 번들을 만들고 **JSON 까지 직렬화**해 바이트로 돌려준다 —
+    루프 스레드에 남는 일은 `Response` 에 싣는 것뿐이다(부모에서 pydantic 을 다시
+    직렬화하면 그 `dump_json` 이 루프를 세운다 — 2026-09-02 로그에 25건). 넓은 요청과
+    좁은 요청은 다른 풀이라 `/live` 의 하루짜리가 `/study` 의 다섯 달 뒤에 안 선다
+    (`_range_gate` 의 불변식과 같은 이유).
+
+    스레드 모드(테스트)는 종전 경로 그대로다 — `build_range_bundle` 을 **이 모듈 이름으로**
+    부르는 것이 기존 테스트들의 monkeypatch 이음새다.
+    """
+    if pools.kind == "thread":
+        bundle = await anyio.to_thread.run_sync(
+            functools.partial(build_range_bundle, engine, **bundle_kwargs),
+        )
+        return bundle, None, compute_jobs.range_bundle_stats(bundle)
+    pool = pools.wide if _is_wide_range(from_date, to_date) else pools.narrow
+    payload, stats = await compute_jobs.run_job(
+        pool, compute_jobs.range_bundle_job, str(engine.data_dir), bundle_kwargs,
+    )
+    return None, payload, stats
+
+
+def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
+    engine: QueryEngine, *, compute: ComputePools | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/api")
+    # 요청 경로 CPU 작업이 도는 자리(ADR-0169). 안 넘기면 스레드 두 벌 — 종전 동작.
+    pools: ComputePools = compute if compute is not None else thread_pools()
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
     def stock_dates() -> list[StockDateModel]:
@@ -606,41 +681,22 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         )
 
     @router.get("/brokers/series", response_model=BrokerSeriesResponse)
-    def brokers_series(
+    async def brokers_series(
         code: Code,
         date: StockDate,
         source_pref: str = Query(""),
         # venue 는 **필수**다(ADR-0140) — 기본값은 곧 "빠뜨리면 조용히 KRX" 다.
         venue: str = Query(...),
-    ) -> BrokerSeriesResponse:
-        # ADR-0044: hover spot path honors source_pref via resolve_source +
-        # ADR-0039 preference+fallback semantics. The resolved source is
-        # echoed back so LiveStatusBar's chip can reflect fallback honestly.
-        sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref, venue)
-        if sd_dir is None:
-            return BrokerSeriesResponse(date=date, brokers=[], source=source)
-        # 디렉터리가 있어도 파일은 없을 수 있다(0행 → 파일 없음, `_spot_table_path`).
-        # 장 초반 거래원 첫 스냅샷 전이 그 창이다 — 결함이 아니라 빈 사이드바다.
-        path = _spot_table_path(sd_dir, "brokers.parquet")
-        if path is None:
-            return BrokerSeriesResponse(date=date, brokers=[], source=source)
-        raw_entries = brokers_tbl.query_day_series_cached(engine.conn, path=path)
-        # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
-        # mirroring the /api/brokers and /api/candles handlers.
-        entries = [
-            e.model_copy(
-                update={
-                    "points": [
-                        p.model_copy(
-                            update={"ts_ms": hhmmssms_to_unix_ms(date, p.ts_ms)}
-                        )
-                        for p in e.points
-                    ],
-                }
-            )
-            for e in raw_entries
-        ]
-        return BrokerSeriesResponse(date=date, brokers=entries, source=source)
+    ) -> BrokerSeriesResponse | Response:
+        # 본체는 `compute_brokers_series`(모듈 최상위). 큰 날은 포인트마다 `model_copy`
+        # 를 도는 순수 파이썬이 10초를 넘겨(실측 10.3초) 동기 라우트 스레드에서 앱 전체를
+        # 세웠다 — 컴퓨트 워커(ADR-0169)에서 돌리고 워커가 직렬화한 JSON 을 그대로 싣는다.
+        # body 는 `BrokerSeriesResponse.model_dump_json` 이라 wire 계약은 모델 그대로다.
+        payload = await compute_jobs.run_job(
+            pools.wide, compute_jobs.brokers_series_job,
+            str(engine.data_dir), code, date, source_pref, venue,
+        )
+        return Response(content=payload, media_type="application/json")
 
     # 이 라우터(=이 앱 인스턴스)의 `/api/range` compute 상한. 모듈 전역이 아니라
     # 클로저에 두는 이유는 테스트 격리다 — 앱을 새로 만들면 상한도 새것이라, 어느
@@ -725,6 +781,9 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
         # 정확히 그 사고였다).
         mode: RangeMode = Query(...),
     ) -> RangeBundle:
+        # 반환 애노테이션은 모델 그대로 둔다 — wire 계약(ADR-0004)의 표면이고, 슬라이스
+        # 레지스트리 계약 테스트가 `-> RangeBundle:` 까지를 시그니처로 자른다. 프로세스
+        # 모드에선 워커가 그 모델을 직렬화한 바이트를 `Response` 로 그대로 싣는다.
         try:
             validate_bucket_ms(bucket_ms)
         except ValueError as e:
@@ -803,31 +862,30 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 )
                 raise HTTPException(HTTP_CLIENT_CLOSED_REQUEST, "client disconnected")
             t_compute = perf_debug.now()
+            bundle_kwargs: dict[str, object] = {
+                "code": code,
+                "from_date": from_date,
+                "to_date": to_date,
+                "bucket_ms": bucket_ms,
+                "source_pref": source_pref,
+                "venue": venue,
+                "broker_late_entries_enabled": broker_late_entries_enabled,
+                "broker_late_entry_start_hhmm": broker_late_entry_start_hhmm,
+                "volume_distribution_bins": volume_distribution_bins,
+                "volume_distribution_price_min": volume_distribution_price_min,
+                "volume_distribution_price_max": volume_distribution_price_max,
+                "volume_distribution_cutoff_ms": volume_distribution_cutoff_ms,
+                "trade_volume_poc_bins": trade_volume_poc_bins,
+                "ask_peaks_enabled": ask_peaks_enabled,
+                "bid_peaks_enabled": bid_peaks_enabled,
+                "program_trade_enabled": program_trade_enabled,
+                "trade_volume_poc_enabled": trade_volume_poc_enabled,
+                "depth_heatmap_enabled": depth_heatmap_enabled,
+                "mode": mode,
+            }
             try:
-                bundle = await anyio.to_thread.run_sync(
-                    functools.partial(
-                        build_range_bundle,
-                        engine,
-                        code=code,
-                        from_date=from_date,
-                        to_date=to_date,
-                        bucket_ms=bucket_ms,
-                        source_pref=source_pref,
-                        venue=venue,
-                        broker_late_entries_enabled=broker_late_entries_enabled,
-                        broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
-                        volume_distribution_bins=volume_distribution_bins,
-                        volume_distribution_price_min=volume_distribution_price_min,
-                        volume_distribution_price_max=volume_distribution_price_max,
-                        volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
-                        trade_volume_poc_bins=trade_volume_poc_bins,
-                        ask_peaks_enabled=ask_peaks_enabled,
-                        bid_peaks_enabled=bid_peaks_enabled,
-                        program_trade_enabled=program_trade_enabled,
-                        trade_volume_poc_enabled=trade_volume_poc_enabled,
-                        depth_heatmap_enabled=depth_heatmap_enabled,
-                        mode=mode,
-                    ),
+                bundle, payload, stats = await _run_range_bundle(
+                    pools, engine, bundle_kwargs, from_date=from_date, to_date=to_date,
                 )
             except Exception:
                 # NOT gated on perf_debug. The success log below is performance
@@ -861,16 +919,30 @@ def build_router(engine: QueryEngine) -> APIRouter:  # noqa: PLR0915 — ADR 이
                 bucket_ms,
                 mode,
                 source_pref,
-                len(bundle.segments),
-                len(bundle.candles),
-                len(bundle.quote_ratio.points),
-                len(bundle.fill_strength.points),
-                len(bundle.excluded_dates),
-                len(bundle.data_warnings),
+                stats["segments"],
+                stats["candles"],
+                stats["quote_ratio"],
+                stats["fill_strength"],
+                stats["excluded"],
+                stats["warnings"],
                 perf_debug.elapsed_ms(t0),
                 queue_wait_ms,
                 perf_debug.elapsed_ms(t_compute),
             )
-        return bundle
+        if payload is not None:
+            # 워커가 `RangeBundle.model_dump_json` 으로 만든 body — 반환 애노테이션과
+            # `response_model` 은 그대로라 wire 계약(ADR-0004)의 표면은 모델이다.
+            return Response(content=payload, media_type="application/json")  # type: ignore[return-value]
+        return _bundle_or_fail(bundle)
 
     return router
+
+
+def _bundle_or_fail(bundle: RangeBundle | None) -> RangeBundle:
+    """스레드 경로(`_run_range_bundle`)는 번들을 반드시 채운다 — None 이면 결함이다.
+    `api_range` 의 분기 수 상한(PLR0912) 때문에 함수로 뺐고, **`build_router` 뒤에** 둔
+    이유는 `test_range_slice_registry_contract` 가 파일에서 첫 `-> RangeBundle:` 까지를
+    `api_range` 시그니처로 자르기 때문이다 — 앞에 두면 그 절단이 빈 문자열이 된다."""
+    if bundle is None:
+        raise RuntimeError("api_range: thread path produced no bundle")
+    return bundle

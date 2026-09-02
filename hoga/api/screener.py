@@ -16,13 +16,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from hoga.api import (
+    compute_jobs,
     pattern_saves,
-    screener_pattern,
     screener_runner,
     screener_saves,
     screener_store,
 )
 from hoga.api.calendar import TradingDayUnavailableError, trading_days_in_range
+from hoga.api.compute_pools import ComputePools, thread_pools
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import (
     PatternSave,
@@ -445,9 +446,11 @@ def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
     return pat_saves
 
 
-def build_router(*, data_dir: Path, bus=None) -> APIRouter:
+def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
+    # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
+    pools: ComputePools = compute if compute is not None else thread_pools()
     router = APIRouter(prefix="/api/screener", tags=["screener"])
     sdir = data_dir / "screener"
 
@@ -466,8 +469,11 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         돌리면 그동안 프로세스 전체가 멎는다(`screener-daily-candles` 와 같은 이유).
         순수 함수라 스레드 실행이 안전하다(공유 상태는 읽기 전용 코퍼스 캐시뿐).
         """
-        return await asyncio.to_thread(
-            screener_pattern.run_pattern_search, data_dir, req)
+        # 컴퓨트 워커(ADR-0169) — 스레드로 내려도 GIL 은 이 프로세스에 남아(실측 95초 요청
+        # 동안 루프 굶주림) 프로세스 풀에서 돈다. 코퍼스 캐시는 워커마다 따로 데워진다.
+        return await compute_jobs.run_job(
+            pools.wide, compute_jobs.pattern_search_job, str(data_dir), req,
+        )
 
     @router.get("/status")
     def status() -> ScreenerStatusResponse:

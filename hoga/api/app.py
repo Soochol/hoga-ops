@@ -27,6 +27,7 @@ from hoga.api import (
 )
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
+from hoga.api.compute_pools import ComputePools, build_compute_pools, thread_pools
 from hoga.api.events import build_event_bus
 from hoga.api.frontend_static import mount_frontend
 from hoga.api.heatmap import seed_from_watchlist_if_absent
@@ -257,8 +258,14 @@ def allowed_origins() -> tuple[str, ...]:
     return ALLOWED_ORIGINS + extra
 
 
-def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
+def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
+    data_dir: Path, *, compute: ComputePools | None = None,
+) -> FastAPI:
     engine = QueryEngine(data_dir)
+    # 요청 경로 CPU 작업(range 번들·거래원 시계열·패턴 검색·그룹 흐름)이 도는 자리
+    # (ADR-0169). 안 넘기면 스레드 두 벌 — 테스트가 그 경로다. 운영(`default_app`)은
+    # env 로 만든 프로세스 풀을 넘긴다.
+    pools: ComputePools = compute if compute is not None else thread_pools()
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
 
@@ -352,6 +359,13 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             start_trading_calendar_refresher(data_dir),
             await _start_last_ob_persistence(data_dir),
         ])
+        # 컴퓨트 풀 예열(ADR-0169) — 첫 range 요청이 spawn+import(실측 ≈0.4초)를 내지
+        # 않게 워커 하나씩 미리 띄운다. `lifespan_tasks` 에 넣지 않는 이유: 그 목록은
+        # 감독 대상이라 one-shot 이 끝나면 `dead` 로 읽혀 deep health 가 503 이 된다.
+        # 참조만 붙들어 GC 를 막는다. 실패는 prewarm 이 삼키고 첫 요청이 대신 치른다.
+        _app.state.compute_prewarm = asyncio.create_task(
+            pools.prewarm(str(data_dir)), name="compute-prewarm",
+        )
 
         # GC gen0 임계 상향 — **기동이 끝난 뒤** 건다(상주 객체가 다 올라온 시점).
         gc_prev_threshold = gc.get_threshold()
@@ -367,6 +381,14 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
             # 새어 GC 동작에 의존하는 다른 테스트를 흔든다.
             gc.set_threshold(*gc_prev_threshold)
             await _cancel_tasks(*lifespan_tasks)
+            # 컴퓨트 워커 프로세스(ADR-0169). **예열 태스크를 먼저 취소한다** — 아직 spawn
+            # 을 기다리는 중에 풀을 내리면 그 future 가 BrokenProcessPool 로 끝나
+            # `run()` 이 풀을 버리며 경고를 남긴다(정상 종료·TestClient teardown 마다
+            # 가짜 경고). 취소는 CancelledError 라 prewarm 의 `except Exception` 을
+            # 지나쳐 조용히 끝난다. 그다음 동기 shutdown — 진행 중 작업은 기다리지
+            # 않는다(요청은 어차피 서버와 함께 끊긴다).
+            await _cancel_tasks(_app.state.compute_prewarm)
+            pools.shutdown()
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
@@ -490,7 +512,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
         HealthResponse.model_validate(body)
         return JSONResponse(body, status_code=503 if degraded else 200)
 
-    app.include_router(build_router(engine))
+    app.include_router(build_router(engine, compute=pools))
     app.include_router(build_ws_router(bus, live_get_buffer))
     app.include_router(
         build_captures_router(data_dir=data_dir, client_factory=client_factory)
@@ -503,8 +525,8 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     calendar_module.set_data_dir(data_dir)
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir, bus=bus))
-    app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus))
-    app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus, compute=pools))
+    app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_market_router(data_dir=data_dir))
@@ -537,6 +559,7 @@ def create_app(data_dir: Path) -> FastAPI:  # noqa: PLR0915 — ADR 이 지정�
     if frontend_dist:
         mount_frontend(app, Path(frontend_dist))
     app.state.engine = engine
+    app.state.compute = pools
     return app
 
 
@@ -607,4 +630,7 @@ def default_app() -> FastAPI:
     _ensure_file_logging()
     data_dir = resolve_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
-    return create_app(data_dir)
+    # 요청 경로 CPU 작업용 워커 프로세스 풀(ADR-0169). `create_app` 이 아니라 여기서
+    # 만드는 이유는 promoter 와 같다 — TestClient 는 앱을 수백 번 만들고, 그쪽은 스레드다.
+    compute = build_compute_pools(worker_log_path=resolve_log_dir() / "hoga.log")
+    return create_app(data_dir, compute=compute)
