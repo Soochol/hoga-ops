@@ -21,7 +21,9 @@ import type { PatternMaPreset, PatternMatchRow } from '../api/screener';
 export const PERIODS = [
   { key: 'all', label: '전체 기간', years: null },
   { key: '5y', label: '최근 5년', years: 5 },
+  { key: '4y', label: '최근 4년', years: 4 },
   { key: '3y', label: '최근 3년', years: 3 },
+  { key: '2y', label: '최근 2년', years: 2 },
   { key: '1y', label: '최근 1년', years: 1 },
 ] as const;
 

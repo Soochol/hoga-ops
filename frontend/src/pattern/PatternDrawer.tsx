@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
 import { SegmentedControl } from '../ui/PageShell';
-import { useLivePageStore } from '../state/livePage';
+import { useLivePageStore, isMinuteTimeframe } from '../state/livePage';
 import { useJumpToLive, wantsNewTab, type JumpModifiers } from '../live/useJumpToLive';
 import { moveToAdjacentQuoteRow } from '../rightrail/quoteRowNav';
 import {
@@ -122,6 +122,10 @@ function patternRangeFocus(row: RangeTarget) {
     fromDate: row.from_date,
     toDate: row.to_date,
     savedTimeframe: 'D' as const,
+    // 몇 년 전 구간이라 **분봉이 디스크에 없다** — 분봉 창이 이 날짜로 얼면 화면이
+    // 통째로 빈다(사용자 신고 2026-09-02). 저장뷰와 달리 「분봉 벽」이라는 표현이
+    // 애초에 존재하지 않는 구간이다.
+    dailyOnly: true,
     // 일봉 경로는 `studyDailyViewport` 가 구간에서 유도하므로 **이 값을 쓰지 않는다**.
     savedBarSpan: 0,
   };
@@ -138,13 +142,27 @@ function patternRangeFocus(row: RangeTarget) {
  * 그래서 착지 창의 **그룹**을 구한 뒤 그 그룹에서 zOrder 상 가장 위인 차트 창을
  * 고른다 — 그게 사용자가 보고 있는 창이다.
  */
+/** 매치 구간이 착지할 차트 창 — 같은 그룹에서 **이미 캘린더 봉(D·W·M)인** 창을 고른다.
+ *
+ *  `kind === 'chart'` 만 보면 zOrder 최상위가 분봉 창일 때 **그 창을 일봉으로 갈아엎는다**
+ *  (사용자 신고 2026-09-02: 일봉·분봉 두 창을 띄웠는데 매치를 누르니 둘 다 일봉이 됐다).
+ *  분봉 창은 사용자가 그 봉을 보려고 띄운 것이고, 패턴 구간은 거기서 볼 수 있는 것도
+ *  아니다(몇 년 전이라 분봉이 없다).
+ *
+ *  캘린더 봉 창이 하나도 없으면 `null` — **봉을 바꾸지 않고** 종목만 옮긴다. 분봉만
+ *  띄운 화면에서는 그게 할 수 있는 전부다.
+ */
 function patternLandingChart(ws: ReturnType<typeof useWorkspaceStore.getState>): string | null {
   const target = activationTarget(ws);
   if (target.kind !== 'window') return null;
   const group = target.window.group;
   for (let i = ws.zOrder.length - 1; i >= 0; i -= 1) {
     const win = ws.windows.find((w) => w.id === ws.zOrder[i]);
-    if (win?.kind === 'chart' && win.group === group) return win.id;
+    const tf = win?.chart?.timeframe;
+    // 봉이 아직 안 정해진 창(`chart` 가 비었다)은 캘린더 봉으로 칠 수 없다 — 건너뛴다.
+    if (win?.kind === 'chart' && win.group === group && tf && !isMinuteTimeframe(tf)) {
+      return win.id;
+    }
   }
   return null;
 }

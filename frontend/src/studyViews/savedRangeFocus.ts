@@ -10,7 +10,7 @@
  * 흔들린다.
  */
 import type { StudyViewListRow } from '../api/studyViews';
-import type { SavedRangeFocus } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
 import { STUDY_VENUE } from './studyVenuePolicy';
 
 /**
@@ -44,4 +44,23 @@ export function savedRangeFocusFromView(row: StudyViewListRow): SavedRangeFocus 
     savedTimeframe: row.timeframe,
     savedBarSpan: row.viewport.bar_span,
   };
+}
+
+/**
+ * 이 창이 기간 슬롯의 **대상인가** — freeze · venue 고정 · 기간 칩 셋이 이 하나를 쓴다.
+ *
+ * 세 표면이 한 술어를 공유하는 것이 계약이다. 갈라지면 「칩은 떠 있는데 얼지는 않은」
+ * 같은 반쪽 상태가 생기고, 그건 화면만 봐서는 원인을 못 찾는다.
+ *
+ * `dailyOnly` 는 **분봉에 그 구간이 존재하지 않는** 출처가 세운다(봉 패턴 매치 —
+ * 몇 년 전이라 분봉이 디스크에 없다). 저장뷰는 사용자가 직접 본 자리라 그 플래그가
+ * 없고, 「일봉 밴드와 분봉 벽은 같은 슬롯의 두 표현」이라는 기존 계약 그대로 돈다.
+ */
+export function savedRangeAppliesTo(
+  focus: SavedRangeFocus | null,
+  code: string | null | undefined,
+  timeframe: LiveTimeframe,
+): boolean {
+  if (focus === null || code !== focus.code) return false;
+  return !(focus.dailyOnly && isMinuteTimeframe(timeframe));
 }

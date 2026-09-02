@@ -234,6 +234,14 @@ export type SavedRangeFocus = {
   savedTimeframe: LiveTimeframe;
   /** 저장 당시 가시 봉 수. 봉이 일치할 때만 유효하다(봉 수는 봉 종류에 상대적이다). */
   savedBarSpan: number;
+  /** **이 구간은 일봉에만 있다** — 분봉 창은 이 슬롯을 무시한다.
+   *
+   *  저장뷰(`/study`)의 구간은 사용자가 직접 본 자리라 분봉도 디스크에 있고, 그래서
+   *  「일봉 밴드와 분봉 벽은 같은 슬롯의 두 표현」이라는 계약이 성립한다(아래
+   *  `clearSavedRange` 주석). **봉 패턴 매치는 다르다** — 몇 년 전 구간이라 분봉이
+   *  아예 없어서, 분봉 창이 그 날짜로 얼면 화면이 통째로 빈다. 그 계약이 성립하지
+   *  않는 출처가 이 플래그를 세운다. */
+  dailyOnly?: boolean;
 };
 
 /** The full active-view tuple the page renders. Written atomically by the active

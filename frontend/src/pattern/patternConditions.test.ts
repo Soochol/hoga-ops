@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeByHeadroom, sinceFor, visibleRows } from './patternConditions';
+import { mergeByHeadroom, sinceFor, visibleRows, PERIODS } from './patternConditions';
 
 /**
  * 조건이 어디서 걸리는지, 그리고 길이별 결과를 **어떻게 합치는지**.
@@ -56,5 +56,16 @@ describe('visibleRows', () => {
     const rows = [row(0.95, 'a'), row(0.85, 'b'), row(0.80, 'c')];
     expect(visibleRows(rows, { simFloor: 0.9, count: 10 }).map((r) => r.code)).toEqual(['a']);
     expect(visibleRows(rows, { simFloor: 0, count: 2 }).map((r) => r.code)).toEqual(['a', 'b']);
+  });
+});
+
+describe('PERIODS — 1~5년을 모두 고를 수 있다', () => {
+  it('1·2·3·4·5년과 전체가 후보다', () => {
+    expect(PERIODS.map((p) => p.key)).toEqual(['all', '5y', '4y', '3y', '2y', '1y']);
+    // 라벨과 연수가 어긋나면 화면이 거짓말한다 — 「최근 4년」을 골랐는데 3년이 가는 식.
+    for (const p of PERIODS) {
+      if (p.years === null) continue;
+      expect(p.label).toBe(`최근 ${p.years}년`);
+    }
   });
 });

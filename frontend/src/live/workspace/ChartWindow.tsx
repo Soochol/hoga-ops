@@ -61,7 +61,7 @@ import {
   isMinuteTimeframe,
   type CalendarTimeframe,
 } from '../../state/livePage';
-import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
+import { SAVED_RANGE_VENUE, savedRangeAppliesTo } from '../../studyViews/savedRangeFocus';
 import {
   PATTERN_MAX_BARS,
   PATTERN_MIN_BARS,
@@ -187,7 +187,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const savedRangeFocus = useLivePageStore((s) => s.savedRangeFocus);
   const savedRange = savedRangeFocus;
   /** 이 창이 저장뷰 **그 종목**을 그리는가 — venue 고정과 칩의 「KRX」 표기의 축. */
-  const isSavedRangeSubject = savedRangeFocus !== null && view.code === savedRangeFocus.code;
+  // freeze · venue 고정 · 기간 칩이 **한 술어**를 쓴다 — 갈라지면 반쪽 상태가 생긴다.
+  const isSavedRangeSubject = savedRangeAppliesTo(savedRangeFocus, view.code, view.timeframe);
   // 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
   // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
   const venue = isSavedRangeSubject ? SAVED_RANGE_VENUE : resolvedVenue;
