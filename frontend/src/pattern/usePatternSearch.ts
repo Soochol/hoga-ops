@@ -16,6 +16,15 @@ import { searchPattern, type PatternLengthResult, type PatternSearchMode } from 
  * 성립하지 않는다.
  */
 
+/**
+ * 「거래량 함께」의 비중.
+ *
+ * ⚠ **이 숫자를 화면에 노출하지 않는다.** 계약은 "거래량 함께" 이지 0.3 이 아니다 —
+ * 값을 조정해도 화면 약속이 깨지지 않아야 한다. 슬라이더로 열지 않는 이유도 같다
+ * (연속값은 쿼리 캐시 키를 폭발시킨다).
+ */
+export const VOLUME_WEIGHT_ON = 0.3;
+
 /** `now` 가 한 번에 받아 두는 봉수 범위 — 서버의 `PATTERN_MAX_LENGTHS`(11) 와 같은 폭. */
 export const NOW_LENGTHS = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 export const DEFAULT_LENGTH = 7;
@@ -39,6 +48,7 @@ export function patternKey(
   filters: PatternFilters,
   range?: { from: string; to: string } | null,
   perCode = 1,
+  volumeWeight = 0,
 ) {
   // now 는 길이를 묶어 받으므로 **키에 길이가 없다** — 스테퍼가 캐시를 무효화하면
   // 묶어 받은 의미가 사라진다.
@@ -53,6 +63,7 @@ export function patternKey(
     // 차트에서 건네받은 구간은 **길이를 대신하는 축**이라 키에 들어간다.
     range ? `${range.from}-${range.to}` : null,
     perCode,
+    volumeWeight,
   ] as const;
 }
 
@@ -63,6 +74,7 @@ export function usePatternSearch({
   filters,
   range = null,
   perCode = 1,
+  volumeWeight = 0,
   enabled = true,
 }: {
   code: string | null;
@@ -73,10 +85,12 @@ export function usePatternSearch({
   range?: { from: string; to: string } | null;
   /** `history` 전용 — 한 종목에서 남길 매치 수. */
   perCode?: number;
+  /** 거래량 축 비중(0~1). 0 이면 서버가 거래량 계산을 아예 돌지 않는다. */
+  volumeWeight?: number;
   enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: patternKey(code, mode, length, filters, range, perCode),
+    queryKey: patternKey(code, mode, length, filters, range, perCode, volumeWeight),
     enabled: enabled && !!code,
     // 코퍼스는 하루 한 번 갱신된다 — 패널을 여닫을 때마다 다시 계산할 이유가 없다.
     staleTime: 5 * 60_000,
@@ -92,6 +106,7 @@ export function usePatternSearch({
         exclude_etf: filters.excludeEtf,
         no_overlap: filters.noOverlap,
         per_code: perCode,
+        volume_weight: volumeWeight,
       }),
   });
 }

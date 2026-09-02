@@ -154,6 +154,62 @@ def test_normalization_is_shared_across_channels_not_per_channel(tmp_path):
     assert by_code["000002"] - by_code["000003"] > 0.02
 
 
+def test_volume_axis_splits_series_that_have_identical_candles(tmp_path):
+    """**거래량 축의 판별 픽스처.**
+
+    세 계열의 캔들이 **완전히 같고 거래량 궤적만 다르다**. `volume_weight=0` 이면
+    셋이 동점이고(가격만 보므로), 켜면 갈린다. 이 대칭이 깨지면 가중 합산의 부호나
+    스케일이 틀린 것이다.
+
+    못 보는 것: 거래량 축이 «좋은» 답을 내는지는 여기서 안 잰다 — 그건 취향이고,
+    이 테스트는 그 축이 **실제로 관여하는가**만 본다.
+    """
+    vols = {"000001": [1, 5, 1, 5, 1, 5, 1], "000002": [1, 5, 1, 5, 1, 5, 1],
+            "000003": [5, 1, 5, 1, 5, 1, 5]}
+    rows: list[dict] = []
+    for code, v in vols.items():
+        base = _series(code, _PATTERN * 4)
+        for k, row in enumerate(base):
+            row["volume"] = v[k % len(v)] * 10**8
+        rows += base
+    c = sp.load_corpus(_write(tmp_path, rows))
+    qi, off, q = _query(c)
+    vq = sp._volume_query(c, qi, off, _LEN)
+    assert vq is not None
+
+    def scores(weight):
+        res, _ = sp.search_now(c, query=q, length=_LEN, skip=qi, min_tv_eok=0,
+                               exclude_etf=False, volume_query=vq, volume_weight=weight)
+        return {c.codes[m.series]: m.score for m in res}
+
+    off_axis = scores(0.0)
+    assert off_axis["000002"] == pytest.approx(off_axis["000003"], abs=1e-9)
+    on_axis = scores(0.3)
+    # 같은 거래량 궤적이 앞선다.
+    assert on_axis["000002"] > on_axis["000003"]
+    # ★ **값을 직접 잰다.** 순서만 보면 `w` 와 `1-w` 를 뒤집어도 통과한다(반대 위상은
+    #   어느 가중에서도 여전히 뒤라서다). 000003 은 가격 +1 · 거래량 -1 이므로
+    #   0.7×1 + 0.3×(-1) = 0.4 여야 하고, 뒤집힌 구현이면 -0.4 가 나온다.
+    assert on_axis["000002"] == pytest.approx(1.0, abs=1e-6)
+    assert on_axis["000003"] == pytest.approx(0.4, abs=0.02)
+
+
+def test_volume_weight_keeps_self_match_at_one(corpus):
+    """자기 구간은 가격도 거래량도 일치하므로 **가중을 켜도 1.0** 이다.
+
+    이 단언이 가중 합산의 부호·스케일 실수를 잡는다(예: `w` 와 `1-w` 를 뒤집으면
+    1.0 이 안 나온다).
+    """
+    c = sp.load_corpus(corpus)
+    qi, off, q = _query(c)
+    vq = sp._volume_query(c, qi, off, _LEN)
+    hits, _, _ = sp.search_history(
+        c, query=q, length=_LEN, query_series=qi, query_offset=-1,
+        min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False,
+        volume_query=vq, volume_weight=0.3)
+    assert hits[0].score == pytest.approx(1.0, abs=1e-9)
+
+
 def test_flat_series_is_excluded(corpus):
     """정지·단일가 구간은 표준편차가 0 이라 상관계수가 정의되지 않는다."""
     c = sp.load_corpus(corpus)
