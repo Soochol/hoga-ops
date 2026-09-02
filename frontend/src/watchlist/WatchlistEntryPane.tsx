@@ -8,7 +8,7 @@ import { useDismissablePopover } from '../util/useDismissablePopover';
 import { CheckIcon } from '../ui/CheckIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { WatchlistAddForm } from './WatchlistAddForm';
-import { Banner } from './Banner';
+import { Banner } from '../ui/Banner';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { MoveIcon } from '../ui/MoveIcon';
 import { RefreshIcon } from '../ui/RefreshIcon';

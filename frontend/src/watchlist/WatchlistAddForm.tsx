@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { SymbolSearch } from '../capture/SymbolSearch';
 import type { SymbolHit } from '../api/types';
 import { useAddMember, useWatchlist } from './useWatchlist';
-import { Banner } from './Banner';
+import { Banner } from '../ui/Banner';
+import { useOptimisticDuplicateGate } from '../util/useOptimisticDuplicateGate';
 
 /** Shared add-form (v3): SymbolSearch + submit → 선택된 폴더의 멤버로 추가(ADR-0070).
  *  onAdded fires after a successful add (caller drives feedback/highlight). */
@@ -48,14 +49,6 @@ export function WatchlistAddForm({
   const addM = useAddMember();
   const { data } = useWatchlist();
   const [picked, setPicked] = useState<SymbolHit | null>(null);
-  // **이 폼이 띄운 추가 요청이 아직 날아가는 중인가.** 아래 중복 판정을 얼리는 데 쓴다.
-  //
-  // `addM.isPending` 으로 대신할 수 없다: mutation 이 resolve 되면 React Query 가 먼저
-  // pending 을 내리고, 그 뒤 `await` 다음 줄의 `setPicked(null)` 이 돈다 — 그 틈에 렌더가
-  // 한 번 끼면 "고른 종목은 남아 있고 pending 은 내려간" 상태가 되어 중복 배너가 한
-  // 프레임 번쩍인다. 이 플래그는 `setPicked(null)` **뒤에** 내려 두 갱신이 한 배치에서
-  // 커밋되게 만든다.
-  const [submitting, setSubmitting] = useState(false);
 
   // **폴더가 바뀌면 고른 종목을 버린다.** 이 폼은 폴더를 옮겨도 언마운트되지 않아서
   // (`folderId` prop 만 갈린다) 이전 그룹에서 고른 종목이 입력에 그대로 남아 있었다.
@@ -75,16 +68,11 @@ export function WatchlistAddForm({
   // (at 도 무시된다). 캐시에 이미 있는 데이터라 추가 요청은 없다.
   const isDuplicate = (hit: SymbolHit | null) =>
     hit !== null && (data?.entries ?? []).some((e) => e.folder_id === folderId && e.code === hit.code);
-  // **제출 중에는 중복 판정을 얼린다 — 안 그러면 폼이 자기 자신을 고발한다.**
-  //
-  // `useAddMember` 는 낙관적 mutation 이라 요청을 보내는 **그 순간** 캐시에 행을 넣는다.
-  // 위 `isDuplicate` 는 그 캐시에서 매 렌더 파생되므로, 응답을 기다리는 동안 판정이
-  // true 로 뒤집혀 "이미 이 그룹에 있습니다" 가 뜬다. 사용자가 본 것이 이것이다:
-  // 추가를 눌렀는데 행이 생기고 **동시에 중복 경고가 뜬다**(느린 네트워크일수록 길게).
-  //
-  // 실제 중복 추가는 일어난 적이 없다 — 아래 submit 가드와 서버의 멱등 no-op 이 둘 다
-  // 막는다. 거짓말을 한 것은 **경고뿐**이라, 고칠 곳도 경고의 발화 조건이다.
-  const duplicate = !submitting && isDuplicate(picked);
+  // 제출 중 판정 얼리기 + 이중 제출 차단은 **공용 훅**이 소유한다(히트맵의 두 추가
+  // 팝오버와 같은 규율 — 훅 docstring 에 이유가 있다). 여기 사정으로 규칙을 다시
+  // 적으면 세 곳이 조용히 갈린다.
+  const { duplicate, submitting, run } =
+    useOptimisticDuplicateGate(picked, (hit) => isDuplicate(hit));
 
   // **선택 시점에 한 번** 알린다 — derived 값을 effect 로 감시하면 폴링 리페치가 돌 때마다
   // 재발화해 하이라이트 타이머가 계속 되살아난다. 사용자의 행동(고름)이 곧 발화점이다.
@@ -95,23 +83,17 @@ export function WatchlistAddForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // `submitting` 도 함께 막는다 — 중복 판정을 얼린 대가로 그 가드가 이중 제출을 못
-    // 세우게 됐다. 두 번째 Enter 가 곧 제출인 표면이라(암묵적 폼 제출) 연타가 실경로다.
-    if (!picked || duplicate || submitting) return;
-    setSubmitting(true);
-    try {
+    if (!picked || duplicate) return;
+    // ⚠ **`setPicked(null)` 은 이 콜백 안에 있어야 한다.** `await run(...)` 뒤로 빼면
+    // 훅이 `submitting` 을 먼저 내리고 초기화가 그 뒤에 돌아, 그 틈의 렌더에서 중복
+    // 배너가 한 프레임 번쩍인다(훅 docstring 의 (2)).
+    await run(async () => {
       await addM.mutateAsync({
         folderId, code: picked.code, name: picked.name, at: resolveAt?.(),
       });
       onAdded({ code: picked.code, name: picked.name });
       setPicked(null);
-    } catch {
-      /* surfaces via addM.error */
-    } finally {
-      // **`setPicked(null)` 뒤여야 한다**(위 `submitting` 주석). 같은 동기 구간이라
-      // React 18 이 한 렌더로 묶는다 — 중간 상태가 화면에 나타나지 않는다.
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -139,8 +121,8 @@ export function WatchlistAddForm({
         </div>
         {/* 우측 정렬 — GroupNameModal·ConfirmModal 의 폼 액션 관용구와 같다. */}
         <div className={layout === 'inline' ? 'shrink-0' : 'flex justify-end'}>
-          {/* 제출 게이트의 진실은 `submitting` 하나다 — `addM.isPending` 은 이 폼보다
-              한 틱 먼저 내려가므로(위 주석) 여기서 섞으면 게이트가 조용히 갈린다. */}
+          {/* 제출 게이트의 진실은 훅의 `submitting` 하나다 — `addM.isPending` 은 이 폼보다
+              한 틱 먼저 내려가므로 여기서 섞으면 게이트가 조용히 갈린다. */}
           <button type="submit" disabled={submitting || picked === null || duplicate}
                   className="px-3 py-1.5 rounded bg-accent text-bg text-sm font-medium disabled:opacity-40">
             ＋ 종목 추가

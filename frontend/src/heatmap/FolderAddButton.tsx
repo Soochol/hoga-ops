@@ -4,6 +4,8 @@ import { SymbolSearch } from '../capture/SymbolSearch';
 import type { SymbolHit } from '../api/types';
 import { useAddToFolder } from './useAddToFolder';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
+import { useOptimisticDuplicateGate } from '../util/useOptimisticDuplicateGate';
+import { Banner } from '../ui/Banner';
 
 // w-64 = 16rem = 256px @ 16px root(2026-08-07 다이얼 1.0×; 그전 18px 에선 288px).
 // 우측 정렬용 **초기 추정폭**이라 다이얼과 함께 안 움직여도 무해하다 —
@@ -17,8 +19,15 @@ const POP_W = 320;
  *  모서리·multicol 패킹용)과 CSS multicolumn 단편화가 absolute 팝오버를 잘라먹던 버그를
  *  카드 경계 밖으로 탈출시켜 해소(특히 1~2종목짜리 짧은 폴더에서 아래·왼쪽이 잘렸다).
  *  위치는 useClampedFixedPosition(WatchlistRowMenu 와 공용)으로 뷰포트 안에 보정. */
-export function FolderAddButton({ folderId, autoOpen, onAutoOpened }: {
+export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, onAutoOpened }: {
   folderId: string;
+  /** 이 그룹에 그 코드가 이미 있는가. **그룹 블록이 자기 `entries` 로 판정해 내려 준다** —
+   *  이 버튼이 직접 `useHeatmap()` 을 부르면 카드마다 react-query 옵저버가 하나씩 늘고,
+   *  판정에 쓸 데이터는 이미 부모가 렌더에 쓰고 있다(하트 버튼의 `isMember` 선례). */
+  isDuplicate: (code: string) => boolean;
+  /** 이미 있는 종목을 고른 순간 — 그룹 블록이 그 행을 가리킨다. "이미 있습니다" 만으로는
+   *  사용자가 확인할 방법이 없다(관심종목에서 실측된 실패). */
+  onDuplicate: (code: string) => void;
   /** 새 그룹 직후 페이지가 켠다 — 마운트 시점에만 읽는다(아래 useState 초기값). */
   autoOpen?: boolean;
   /** 자동 열기를 소비했음을 알린다. 페이지가 표식을 태워, 검색 필터로 이 카드가
@@ -29,7 +38,12 @@ export function FolderAddButton({ folderId, autoOpen, onAutoOpened }: {
   // 아래 앵커 측정이 그 커밋에서야 일어나 스크롤/레이아웃과 순서가 엇갈린다.
   const [open, setOpen] = useState(!!autoOpen);
   const [picked, setPicked] = useState<SymbolHit | null>(null);
-  const { addToFolder, isPending } = useAddToFolder();
+  const { addToFolder } = useAddToFolder();
+  // 중복 판정을 **제출 중에는 얼린다** — `useAddToHeatmapFolder` 는 낙관적이라 요청을
+  // 보내는 순간 캐시에 행이 들어가고, 파생 판정은 그걸 보고 **자기 자신을 고발한다**
+  // (훅 docstring). 관심종목 추가 폼과 같은 규율을 같은 훅으로 쓴다.
+  const { duplicate, submitting, run } =
+    useOptimisticDuplicateGate(picked, (hit) => isDuplicate(hit.code));
   const btnRef = useRef<HTMLButtonElement>(null);
 
   // 버튼 rect → 팝오버 raw 앵커(버튼 우하단). 열릴 때 측정; 클램프가 오버플로를 보정.
@@ -81,16 +95,15 @@ export function FolderAddButton({ folderId, autoOpen, onAutoOpened }: {
   }, [open, close, popRef]);
 
   const submit = async () => {
-    if (!picked) return;
-    // fire-and-forget 핸들러라 실패를 삼켜 unhandled rejection 을 막고, 팝오버를 열어
-    // 둬 재시도/다른 종목 선택을 가능케 한다(GroupNameModal.submit·EntryPane.doMove 패턴).
-    // add 의 비-409 에러(404 unknown_code/네트워크)나 move 실패가 여기로 온다.
-    try {
+    if (!picked || duplicate) return;
+    // 실패하면 팝오버를 열어 둬 재시도/다른 종목 선택을 가능케 한다
+    // (GroupNameModal.submit·EntryPane.doMove 패턴). 실패를 삼키는 것은 이제 `run` 이
+    // 하므로 여기서 다시 try 하지 않는다 — 대신 **성공했을 때만** 닫아야 하니 닫기를
+    // 콜백 **안** 에 둔다(`run` 은 실패해도 정상 반환한다).
+    await run(async () => {
       await addToFolder(picked.code, folderId);
-    } catch {
-      return;
-    }
-    close();
+      close();
+    });
   };
 
   return (
@@ -101,11 +114,19 @@ export function FolderAddButton({ folderId, autoOpen, onAutoOpened }: {
         <div ref={popRef} role="dialog" aria-label="종목 추가"
           style={{ position: 'fixed', left, top, width: POP_W }}
           className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
-          <SymbolSearch value={picked} onChange={setPicked} />
+          {/* 고른 **그 순간** 알린다 — 파생값을 effect 로 감시하면 폴링 리페치마다
+              재발화해 하이라이트 타이머가 계속 되살아난다(관심종목과 같은 계약). */}
+          <SymbolSearch value={picked} onChange={(hit) => {
+            setPicked(hit);
+            if (hit && isDuplicate(hit.code)) onDuplicate(hit.code);
+          }} />
+          {picked && duplicate && (
+            <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다 — 아래에 표시했습니다</Banner>
+          )}
           <div className="flex justify-end gap-2">
             <button className="text-xs px-2 py-1 text-fg-dim" onClick={close}>닫기</button>
             <button className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
-              disabled={!picked || isPending} onClick={submit}>추가</button>
+              disabled={!picked || submitting || duplicate} onClick={submit}>추가</button>
           </div>
         </div>,
         document.body,

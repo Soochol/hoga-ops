@@ -21,7 +21,7 @@ import { ChevronIcon } from '../ui/ChevronIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder, swapFolderOrder, countOrphansIfFolderDeleted } from './grouping';
 import { Countdown } from './Countdown';
-import { Banner } from './Banner';
+import { Banner } from '../ui/Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
 import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu, WatchlistMemoRowMenu } from './WatchlistRowMenu';

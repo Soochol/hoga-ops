@@ -32,6 +32,11 @@ export interface HeatmapRowProps {
   /** 검색 매칭 행 하이라이트 — 그룹 전체를 보여주되 이 행만 강조(배경 틴트).
    *  QuoteRow active 선례와 동일(좌측 accent 바 없이 배경만). */
   matched?: boolean;
+  /** 「이미 이 그룹에 있습니다」가 가리킨 행 — 공용 `.row-flash`(global.css).
+   *  배경 틴트가 아니라 inset box-shadow 인 이유가 거기 적혀 있다: 이 행은 이미 hover
+   *  shadow 와 `matched` 틴트를 갖고 있어 **칠해진 행에서는 배경 flash 가 안 보인다**.
+   *  QuoteRow(관심종목·스크리너·히트맵 드로어)가 쓰는 것과 **같은 메커니즘**이다. */
+  flash?: boolean;
   /** 마지막 캡처 성공일 툴팁 문구(ADR-0142). 행에 **칼럼을 만들지 않는다** — 이 행은
    *  밀도가 1차 정책이라 271행 × 날짜 셀을 감당할 폭이 없다.
    *  (2026-08-25: 뒤처진 행의 종목명 --error 강조(captureLagging prop)는 사용자 요청으로
@@ -49,7 +54,7 @@ export interface HeatmapRowProps {
  *  행 높이는 캔들 글리프(16px)+py-px 콘텐츠 기반 최대 밀도 — 히트맵 보드는 밀도가
  *  1차라 공용 min-h-list-row(28px; 관심·순위·스크리너)를 의도적으로 쓰지 않는다. */
 export function HeatmapRow({
-  name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId,
+  name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId, flash,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
   captureTitle,
 }: HeatmapRowProps) {
@@ -135,7 +140,7 @@ export function HeatmapRow({
          오차 안이다(구제가 보장되지 않는다). columnWidth 를 키우는 길도 여전히 닫혀
          있다(위 7→6열 비용). 회귀 감시선: 2560×1440 에서 **7열 · 1.000화면**,
          2200×1200 에서 **7열 · 1.138화면** — 회수 전후 동일. */
-      className={`grid grid-cols-[minmax(4rem,1fr)_14px_3.5rem_2.9rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'}`}
+      className={`grid grid-cols-[minmax(4rem,1fr)_14px_3.5rem_2.9rem] gap-1.5 px-2 py-px items-center text-sm outline-none focus-visible:outline-none hover:shadow-[inset_0_0_0_1px_var(--border-strong)] focus-visible:shadow-[inset_0_0_0_1px_var(--accent)] ${draggable ? 'cursor-grab select-none touch-none active:cursor-grabbing' : 'cursor-pointer'} ${flash ? 'row-flash' : ''}`}
     >
       {/* 종목명은 text-fg-dim(중간 회색) + text-xs(행 text-sm 보다 한 단계 작게) — 현재가·
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}

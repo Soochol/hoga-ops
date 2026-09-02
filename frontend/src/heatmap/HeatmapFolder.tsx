@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -13,6 +13,7 @@ import type { JumpModifiers } from '../live/useJumpToLive';
 import { FolderAddButton } from './FolderAddButton';
 import { GroupFlowSparkline } from './GroupFlowSparkline';
 import { HeatmapGroupMenu } from './HeatmapGroupMenu';
+import { DUPLICATE_FLASH_MS } from '../watchlist/duplicateFlash';
 
 /** 행 우클릭 메뉴 열기 — (이벤트, 코드, 이름, 이 행이 속한 폴더 id). */
 export type RowMenuOpener = (
@@ -89,6 +90,33 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
     : 0;
   const [renaming, setRenaming] = useState<{ value: string; error: string | null } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // 「＋종목」 팝오버가 "이미 이 그룹에 있습니다" 를 띄울 때 **그 행을 가리킨다**.
+  // 상태를 그룹 블록이 갖는 이유가 곧 스코프다: 같은 종목이 여러 그룹에 등록될 수 있어
+  // (다중 소속) `heatmap-row-<code>` 는 **보드 전체에서 고유하지 않다** — 카드 밖으로
+  // 나가는 조회는 엉뚱한 카드의 행을 가리킨다(관심종목에서 진단을 여러 라운드 태운 함정).
+  const [flashCode, setFlashCode] = useState<string | null>(null);
+  const flashTimer = useRef<number | null>(null);
+  const flashDuplicate = useCallback((code: string) => {
+    setFlashCode(code);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashCode(null), DUPLICATE_FLASH_MS);
+  }, []);
+  useEffect(() => () => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+  }, []);
+  // 하이라이트만으로는 부족하다 — 그 행이 화면 밖이면 아무것도 안 보인다. 보드는
+  // CSS multicolumn 이라 카드가 칼럼 경계에 걸릴 수 있어 특히 그렇다.
+  useEffect(() => {
+    if (flashCode === null) return;
+    // 카드 루트는 이미 고유 id 를 갖는다(`FolderDropZone` 의 `heatmap-folder-<id>`) —
+    // ref 를 두 래퍼에 뚫는 대신 그걸 스코프로 쓴다. **전역 조회는 쓰지 않는다.**
+    document.getElementById(`heatmap-folder-${folderId}`)
+      ?.querySelector(`[data-testid="heatmap-row-${flashCode}"]`)
+      ?.scrollIntoView?.({ block: 'center' });
+  }, [flashCode, folderId]);
+  const isDuplicate = useCallback(
+    (code: string) => entries.some((e) => e.code === code), [entries]);
   const hasGroupMenu = !!onRenameFolder || !!onDeleteFolder;
 
   const ctxFor = onRowMenu
@@ -106,6 +134,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
       matched,
       ariaLabel: `${e.name} ${e.code} 차트 열기`,
       testId: `heatmap-row-${e.code}`,
+      flash: flashCode === e.code,
       onContextMenu: ctxFor?.(e.code, e.name),
       // 캡처 상태는 행에 자리를 만들지 않고 툴팁으로만 싣는다 — 히트맵 행은 밀도가
       // 1차 정책이라(HeatmapRow 주석) 271행 × 날짜 배지는 칼럼을 못 낸다. 그룹 헤더
@@ -201,7 +230,8 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}
-          <FolderAddButton folderId={folder.id} autoOpen={autoOpenAdd} onAutoOpened={onAutoOpenAdd} />
+          <FolderAddButton folderId={folder.id} isDuplicate={isDuplicate} onDuplicate={flashDuplicate}
+            autoOpen={autoOpenAdd} onAutoOpened={onAutoOpenAdd} />
         </span>
       </div>
       {body}
