@@ -17,10 +17,35 @@ import type { PatternSearchRequest, PatternSearchResponse } from '../api/screene
  */
 
 const searchPattern = vi.fn<(body: PatternSearchRequest) => Promise<PatternSearchResponse>>();
+const listPatternSaves = vi.fn();
+const createPatternSave = vi.fn();
+const deletePatternSave = vi.fn();
 vi.mock('../api/screener', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/screener')>()),
   searchPattern: (body: PatternSearchRequest) => searchPattern(body),
+  listPatternSaves: () => listPatternSaves(),
+  createPatternSave: (b: unknown) => createPatternSave(b),
+  deletePatternSave: (id: string) => deletePatternSave(id),
 }));
+
+const SAVE_RECENT = {
+  id: 'r1', name: '삼성전자 · 최근 7봉', code: '005930', stock_name: '삼성전자',
+  window: { kind: 'recent' as const, bars: 10, from_date: null, to_date: null },
+  conditions: {
+    mode: 'history' as const, since: null, count: 100, sim_floor: 0.9,
+    min_tv_eok: 50, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
+  },
+  created_at_ms: 1, updated_at_ms: 1,
+};
+const SAVE_FIXED = {
+  id: 'f1', name: 'abcd', code: '000660', stock_name: 'SK하이닉스',
+  window: { kind: 'fixed' as const, bars: null, from_date: '20180307', to_date: '20180315' },
+  conditions: {
+    mode: 'history' as const, since: '20230101', count: 20, sim_floor: 0,
+    min_tv_eok: 10, exclude_etf: true, no_overlap: true, per_code: 5, volume_weight: 0,
+  },
+  created_at_ms: 2, updated_at_ms: 2,
+};
 
 const jump = vi.fn();
 vi.mock('../live/useJumpToLive', () => ({
@@ -128,6 +153,12 @@ beforeEach(() => {
   extendChartHistoricalRange.mockReset();
   live.activeCode = '005930';
   live.activeInstrument = { label: '삼성전자' };
+  listPatternSaves.mockReset();
+  createPatternSave.mockReset();
+  deletePatternSave.mockReset();
+  listPatternSaves.mockResolvedValue({ schema_version: 1, saves: [SAVE_RECENT, SAVE_FIXED] });
+  createPatternSave.mockResolvedValue({ ...SAVE_RECENT, id: 'new' });
+  deletePatternSave.mockResolvedValue(undefined);
   usePatternQueryStore.setState({ pending: null });
   searchPattern.mockImplementation(async (body) =>
     body.mode === 'history'
@@ -528,5 +559,105 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     await user.click(screen.getByRole('button', { name: /유사도 전체/ }));
     await user.click(screen.getByRole('option', { name: /0.95 이상/ }));
     expect(await screen.findByText(/유사도 0.95 이상인 구간이 없다/)).toBeInTheDocument();
+  });
+});
+
+describe('PatternDrawer — 저장', () => {
+  it('이름이 기준의 종류를 따라 미리 채워진다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    // 스테퍼 상태 → 「최근 N봉」. 저장이 거의 원클릭이 되는 자리다.
+    expect(screen.getByLabelText('이 검색의 이름')).toHaveValue('삼성전자 · 최근 7봉');
+  });
+
+  it('그은 구간이면 날짜가 이름이 된다 — 두 종류가 이름만으로 갈린다', async () => {
+    const user = userEvent.setup();
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '005930', label: '삼성전자', from: '20260401', to: '20260630',
+    });
+    renderDrawer();
+    await screen.findByText(/차트에서 그은 구간/);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(screen.getByLabelText('이 검색의 이름')).toHaveValue('삼성전자 · 2026-04-01 ~ 06-30');
+  });
+
+  it('저장하면 화면의 조건이 통째로 담긴다 — 결과는 담기지 않는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    // 폼이 열리면 「저장」 이 둘이 된다(기준 줄 · 폼 제출) — 제출 버튼만 집는다.
+    const submits = screen.getAllByRole('button', { name: '저장' });
+    await user.click(submits[submits.length - 1]);
+    await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
+    const body = createPatternSave.mock.calls[0][0];
+    expect(body.window).toEqual({ kind: 'recent', bars: 7, from_date: null, to_date: null });
+    expect(body.conditions.count).toBe(40);
+    expect(Object.keys(body)).not.toContain('matches');
+  });
+});
+
+describe('PatternDrawer — 저장 목록과 불러오기', () => {
+  async function openSaves(user: ReturnType<typeof userEvent.setup>) {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: /저장한 검색/ }));
+  }
+
+  it('목록은 종목별로 묶이고 이름·종목으로 찾는다', async () => {
+    const user = userEvent.setup();
+    await openSaves(user);
+    // 그룹 헤더는 접기 토글이라 aria-expanded 를 갖는다 — 항목과 구별되는 축이다.
+    const groups = await screen.findAllByRole('button', { expanded: true });
+    expect(groups.map((g) => g.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('삼성전자'),
+                              expect.stringContaining('SK하이닉스')]));
+
+    // 이름이 「abcd」 여도 **종목으로** 찾을 수 있어야 한다(실측: 이름이 성의 없다).
+    await user.type(screen.getByLabelText('저장한 검색 찾기'), '하이닉스');
+    await vi.waitFor(() =>
+      expect(screen.getAllByRole('button', { expanded: true })).toHaveLength(1));
+    expect(screen.getByText('abcd')).toBeInTheDocument();
+    expect(screen.queryByText('삼성전자 · 최근 7봉')).not.toBeInTheDocument();
+  });
+
+  it('불러오면 기준과 조건이 함께 복원된다', async () => {
+    const user = userEvent.setup();
+    await openSaves(user);
+    await user.click(await screen.findByTestId('pattern-save-r1'));
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalledTimes(2));
+    const body = searchPattern.mock.calls.at(-1)![0];
+    expect(body.code).toBe('005930');
+    // ★ **기간도 복원된다.** 이 단언이 없으면 조건 복원을 통째로 지워도 테스트가
+    //   통과한다(나머지 값이 우연히 기본과 달라 보이지 않는다) — red-check 으로 확인.
+    //   저장이 `since: null`(전체 기간)이므로 기본값 3년이 덮여 사라져야 한다.
+    expect(body.since).toBeUndefined();
+    expect(body.top).toBe(100);            // 저장된 결과 수
+    expect(body.min_tv_eok).toBe(50);      // 저장된 거래대금
+    expect(body.exclude_etf).toBe(false);
+    expect(body.per_code).toBe(3);
+    expect(body.volume_weight).toBeGreaterThan(0);
+  });
+
+  it('고정 구간 저장은 그 날짜로 되돌아간다', async () => {
+    const user = userEvent.setup();
+    await openSaves(user);
+    await user.click(await screen.findByTestId('pattern-save-f1'));
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalledTimes(2));
+    const body = searchPattern.mock.calls.at(-1)![0];
+    expect([body.from, body.to]).toEqual(['20180307', '20180315']);
+    expect(body.code).toBe('000660');
+    // 저장은 날짜가 정본이고 화면은 **상대 기간**만 갖는다 — 그래서 날짜가 그대로
+    // 왕복하지 않고 가장 가까운 기간 키로 되돌아간다(설계이지 손실이 아니다).
+    expect(body.since).toMatch(/^\d{8}$/);
+  });
+
+  it('삭제는 목록에서 바로 한다', async () => {
+    const user = userEvent.setup();
+    await openSaves(user);
+    await user.click(await screen.findByRole('button', { name: /abcd 삭제/ }));
+    expect(deletePatternSave).toHaveBeenCalledWith('f1');
   });
 });

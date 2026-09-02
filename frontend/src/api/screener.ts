@@ -258,3 +258,66 @@ export function searchPattern(body: PatternSearchRequest): Promise<PatternSearch
     body: JSON.stringify(body),
   });
 }
+
+// --- 패턴 검색 저장 (ADR-0166) -------------------------------------------
+
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternSaveKind`.
+ *  **불러오기의 갈림길**이다: `recent` 는 불러올 때마다 오늘 기준으로 다시 찾고,
+ *  `fixed` 는 그 날의 구간으로 간다. */
+export type PatternSaveKind = 'recent' | 'fixed';
+
+export interface PatternSaveWindow {
+  kind: PatternSaveKind;
+  /** `recent` 전용. */
+  bars: number | null;
+  /** `fixed` 전용. */
+  from_date: string | null;
+  to_date: string | null;
+}
+
+export interface PatternSaveConditions {
+  mode: PatternSearchMode;
+  since: string | null;
+  count: number;
+  /** 유사도 하한 — 프론트가 받아 둔 목록을 자르는 값(검색 요청에는 안 실린다). */
+  sim_floor: number;
+  min_tv_eok: number;
+  exclude_etf: boolean;
+  no_overlap: boolean;
+  per_code: number;
+  volume_weight: number;
+}
+
+export interface PatternSaveWriteRequest {
+  name: string;
+  code: string;
+  /** 목록이 종목별로 묶이고 검색이 이름·종목을 함께 훑으므로 함께 담는다. */
+  stock_name: string;
+  window: PatternSaveWindow;
+  conditions: PatternSaveConditions;
+}
+
+export interface PatternSave extends PatternSaveWriteRequest {
+  id: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface PatternSavesFile {
+  schema_version: number;
+  saves: PatternSave[];
+}
+
+const PATTERN_SAVES = '/api/screener/pattern-saves';
+
+export const listPatternSaves = () => apiCall<PatternSavesFile>(PATTERN_SAVES);
+
+export const createPatternSave = (body: PatternSaveWriteRequest) =>
+  apiCall<PatternSave>(PATTERN_SAVES, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export const deletePatternSave = (id: string) =>
+  apiCall<void>(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });

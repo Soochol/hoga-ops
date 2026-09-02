@@ -15,10 +15,19 @@ import polars as pl
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hoga.api import screener_pattern, screener_runner, screener_saves, screener_store
+from hoga.api import (
+    pattern_saves,
+    screener_pattern,
+    screener_runner,
+    screener_saves,
+    screener_store,
+)
 from hoga.api.calendar import TradingDayUnavailableError, trading_days_in_range
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import (
+    PatternSave,
+    PatternSavesFile,
+    PatternSaveWriteRequest,
     PatternSearchRequest,
     PatternSearchResponse,
     SavedScreener,
@@ -394,6 +403,48 @@ class ScreenerUpdateResponse(BaseModel):
     reason: ScreenerUpdateSkipReason | None = None
 
 
+def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
+    """패턴 검색 저장 CRUD.
+
+    스크리너 저장과 **같은 형태**이나 파일(`pattern/saves.json`)과 브로드캐스트
+    채널이 다르다 — 같은 채널을 쓰면 한쪽 변경이 다른 쪽 목록을 무의미하게 갱신한다.
+    """
+    pat_saves = APIRouter(
+        route_class=mutation_broadcast_route_class(bus, "pattern_saves_changed"),
+    )
+
+    def _pattern_save_not_found(save_id: str) -> HTTPException:
+        return HTTPException(status_code=404, detail=f"pattern save not found: {save_id}")
+
+    @pat_saves.post("", status_code=201, response_model=PatternSave)
+    async def create_pattern_save(req: PatternSaveWriteRequest) -> PatternSave:
+        return await pattern_saves.create_save(
+            data_dir, req=req, id=uuid.uuid4().hex, now_ms=int(time.time() * 1000))
+
+    @pat_saves.get("", response_model=PatternSavesFile)
+    async def list_pattern_saves() -> PatternSavesFile:
+        # 파일 전체를 낸다 — `schema_version` 이 모델 기본값이라는 단일 출처에서 오고
+        # 하드코딩 리터럴과 갈릴 수 없다(스크리너 저장과 같은 이유).
+        return pattern_saves.load_saves(data_dir)
+
+    @pat_saves.put("/{save_id}", response_model=PatternSave)
+    async def update_pattern_save(save_id: str, req: PatternSaveWriteRequest) -> PatternSave:
+        try:
+            return await pattern_saves.update_save(
+                data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
+        except pattern_saves.PatternSaveNotFoundError as e:
+            raise _pattern_save_not_found(save_id) from e
+
+    @pat_saves.delete("/{save_id}", status_code=204)
+    async def delete_pattern_save(save_id: str) -> None:
+        try:
+            await pattern_saves.delete_save(data_dir, id=save_id)
+        except pattern_saves.PatternSaveNotFoundError as e:
+            raise _pattern_save_not_found(save_id) from e
+
+    return pat_saves
+
+
 def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
@@ -504,4 +555,7 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
             raise _save_not_found(save_id) from e
 
     router.include_router(saves, prefix="/saves")
+
+    router.include_router(
+        _build_pattern_saves_router(data_dir, bus), prefix="/pattern-saves")
     return router
