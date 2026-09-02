@@ -228,7 +228,9 @@ describe('PatternDrawer — 빈 상태', () => {
       results: [{ ...lengthResult(7, 'x'), matches: [] }],
     });
     renderDrawer();
-    expect(await screen.findByText('조건에 맞는 매치가 없다.')).toBeInTheDocument();
+    // 기본 조건이 「최근 3년」 이므로 빈 목록의 원인을 그 조건으로 지목한다 —
+    // 조건이 여럿이면 "없다" 만으로는 어느 손잡이를 돌릴지 알 수 없다.
+    expect(await screen.findByText(/이 기간에 닮은 구간이 없다/)).toBeInTheDocument();
   });
 
   it('그 봉수를 채울 이력이 없으면 그렇게 말한다', async () => {
@@ -431,24 +433,100 @@ describe('PatternDrawer — 그은 구간은 과거 전체에서 찾는다', () 
 });
 
 describe('PatternDrawer — 종목당 매치 수', () => {
-  it('과거 탭에서만 고를 수 있고 기본은 1자리다', async () => {
+  it('과거 탭에서만 고를 수 있고 **기본은 나온 자리 전부**다', async () => {
     const user = userEvent.setup();
     renderDrawer();
     await screen.findByText('길이7위');
     expect(screen.queryByRole('button', { name: '나온 자리 전부' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
     await screen.findByText('SK하이닉스');
-    expect(searchPattern.mock.calls.at(-1)![0].per_code).toBe(1);
+    // 「1자리」 가 기본이던 때 "중복이 하나도 없네" 를 겪었다(2026-09-02) — 기본을 뒤집었다.
+    expect(searchPattern.mock.calls.at(-1)![0].per_code).toBeGreaterThan(1);
   });
 
-  it('「나온 자리 전부」를 고르면 per_code 를 올려 다시 찾는다', async () => {
+  it('「가장 닮은 1자리」를 고르면 per_code 를 내려 다시 찾는다', async () => {
     const user = userEvent.setup();
     renderDrawer();
     await screen.findByText('길이7위');
     await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
     await screen.findByText('SK하이닉스');
-    await user.click(screen.getByRole('button', { name: '나온 자리 전부' }));
+    await user.click(screen.getByRole('button', { name: '가장 닮은 1자리' }));
     await vi.waitFor(() =>
-      expect(searchPattern.mock.calls.at(-1)![0].per_code).toBeGreaterThan(1));
+      expect(searchPattern.mock.calls.at(-1)![0].per_code).toBe(1));
+  });
+});
+
+describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
+  /**
+   * 이 describe 가 지키는 한 문장: **기간은 후보 모집단을 바꾸고, 유사도 하한과
+   * 결과 수는 이미 뽑은 결과를 자른다.**
+   *
+   * 두 단언의 **대칭**이 가드다 — 기간은 재호출을, 유사도는 재호출 없음을 단언한다.
+   * 한쪽만 두면 "전부 서버로" 나 "전부 로컬로" 로 흘러도 침묵한다.
+   */
+  async function openHistory(user: ReturnType<typeof userEvent.setup>) {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+  }
+
+  it('기간을 바꾸면 since 를 실어 **다시 검색한다**', async () => {
+    const user = userEvent.setup();
+    await openHistory(user);
+    const before = searchPattern.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: /최근 3년/ }));
+    await user.click(screen.getByRole('option', { name: /최근 1년/ }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.length).toBeGreaterThan(before));
+    expect(searchPattern.mock.calls.at(-1)![0].since).toMatch(/^\d{8}$/);
+  });
+
+  it('전체 기간을 고르면 since 를 보내지 않는다 — 서버가 필터를 아예 안 건다', async () => {
+    const user = userEvent.setup();
+    await openHistory(user);
+    await user.click(screen.getByRole('button', { name: /최근 3년/ }));
+    await user.click(screen.getByRole('option', { name: '전체 기간' }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.at(-1)![0].since).toBeUndefined());
+  });
+
+  it('유사도 하한을 바꿔도 **다시 검색하지 않는다** — 받아 둔 목록을 자른다', async () => {
+    const user = userEvent.setup();
+    await openHistory(user);
+    const before = searchPattern.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: /유사도 전체/ }));
+    await user.click(screen.getByRole('option', { name: /0.93 이상/ }));
+    // ★ 재호출이 나면 분리가 무너진 것이다.
+    expect(searchPattern.mock.calls.length).toBe(before);
+    expect(screen.getByRole('button', { name: /유사도 0.93/ })).toBeInTheDocument();
+  });
+
+  it('팝오버가 말한 개수와 실제로 그린 행 수가 같다', async () => {
+    const user = userEvent.setup();
+    await openHistory(user);
+    await user.click(screen.getByRole('button', { name: /유사도 전체/ }));
+    // 「제한 없음」 항목이 말하는 수를 읽고, 고른 뒤 실제 행을 센다.
+    const promised = screen.getByRole('option', { name: /제한 없음/ }).textContent!.match(/(\d+)개/);
+    await user.click(screen.getByRole('option', { name: /제한 없음/ }));
+    const rows = document.querySelectorAll('[data-testid="pattern-drawer"] button.grid');
+    // 미리보기가 거짓말하면 이 세션에서 겪은 "라벨 과장" 이 반복된다.
+    expect(rows.length).toBe(Number(promised![1]));
+  });
+
+  it('유사도 하한으로 목록이 비면 그 손잡이를 지목한다', async () => {
+    const user = userEvent.setup();
+    // 기본 픽스처는 0.986 이 있어 0.95 하한으로도 안 빈다 — **아무것도 못 넘는**
+    // 목록을 따로 세워야 이 문구가 나오는 조건이 만들어진다.
+    const low = lengthResult(7, 'SK하이닉스', { history: true });
+    searchPattern.mockResolvedValue({
+      code: '005930', name: '삼성전자', mode: 'history',
+      results: [{ ...low, matches: low.matches.map((m) => ({ ...m, corr: 0.9 })) }],
+    });
+    renderDrawer();
+    await screen.findByText('SK하이닉스');
+    await user.click(screen.getByRole('button', { name: /유사도 전체/ }));
+    await user.click(screen.getByRole('option', { name: /0.95 이상/ }));
+    expect(await screen.findByText(/유사도 0.95 이상인 구간이 없다/)).toBeInTheDocument();
   });
 });

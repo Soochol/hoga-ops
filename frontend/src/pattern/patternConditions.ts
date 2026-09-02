@@ -1,0 +1,77 @@
+import type { PatternMatchRow } from '../api/screener';
+
+/**
+ * 패턴 검색의 조건들 (ADR-0166).
+ *
+ * ## 어느 조건이 어디서 걸리는가 — 이 파일의 요점
+ *
+ * **기간은 후보 모집단을 바꾸고, 유사도 하한과 결과 수는 이미 뽑은 결과를 자른다.**
+ *
+ * 그래서 기간만 서버로 가고(재검색), 나머지 둘은 받아 둔 목록을 로컬에서 거른다.
+ * 이 구분이 흐려지면 「기간을 좁혔더니 결과가 5개뿐」 같은 오답이 나온다 — 그건
+ * 「그 기간 안에서 상위 40개」가 아니라 「전체 상위 40개 중 그 기간에 든 것」이라서다.
+ * 실측으로 확인했다: 2025-09 이후로 좁혀도 서버는 40행을 꽉 채운다.
+ *
+ * 로컬 조건이 팝오버에 **개수 미리보기**를 띄울 수 있는 것도 이 분리 덕이다 —
+ * 서버를 다시 부르지 않으므로 즉시 셀 수 있다.
+ */
+
+/** 기간 후보. `null` = 전체. 하한을 1년으로 두는 이유는 그보다 짧으면 후보창이 너무
+ *  적어(수천 종목 × 수십 봉) 매치 품질이 무너지기 때문이다. */
+export const PERIODS = [
+  { key: 'all', label: '전체 기간', years: null },
+  { key: '5y', label: '최근 5년', years: 5 },
+  { key: '3y', label: '최근 3년', years: 3 },
+  { key: '1y', label: '최근 1년', years: 1 },
+] as const;
+
+export type PeriodKey = (typeof PERIODS)[number]['key'];
+
+/** 유사도 하한 후보. 절대값이지만 팝오버가 **이 검색의 분포와 남는 개수**를 함께
+ *  보여주므로 종목마다 다른 뜻을 화면이 메운다. */
+export const SIM_FLOORS = [0, 0.88, 0.9, 0.93, 0.95] as const;
+
+/** 결과 수 후보. 서버가 받아 오는 양이자 화면에 그리는 상한이다. */
+export const RESULT_COUNTS = [20, 40, 100] as const;
+
+export type PatternConditions = {
+  period: PeriodKey;
+  count: number;
+  simFloor: number;
+  minTvEok: number;
+  excludeEtf: boolean;
+  noOverlap: boolean;
+};
+
+/** 기본값 — 「다 보고 싶다」에 가깝게(2026-09-02 사용자 결정). */
+export const DEFAULT_CONDITIONS: PatternConditions = {
+  period: '3y',
+  count: 40,
+  simFloor: 0,
+  minTvEok: 10,
+  excludeEtf: true,
+  noOverlap: true,
+};
+
+/** 기간 → `since`(YYYYMMDD). 전체면 `undefined` — 서버가 그때 필터를 아예 안 건다. */
+export function sinceFor(period: PeriodKey, today = new Date()): string | undefined {
+  const spec = PERIODS.find((p) => p.key === period);
+  if (!spec?.years) return undefined;
+  const d = new Date(today);
+  d.setFullYear(d.getFullYear() - spec.years);
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** 유사도 하한을 적용한 행들. **결과 수는 여기서 자르지 않는다** — 팝오버가 "남는 수"
+ *  를 셀 때와 목록을 그릴 때가 같은 함수를 써야 미리보기가 거짓말을 하지 않는다. */
+export function passingFloor(rows: readonly PatternMatchRow[], simFloor: number): PatternMatchRow[] {
+  return rows.filter((r) => r.corr >= simFloor);
+}
+
+/** 화면에 그릴 행 — 하한을 적용하고 개수로 자른다. */
+export function visibleRows(
+  rows: readonly PatternMatchRow[],
+  { simFloor, count }: { simFloor: number; count: number },
+): PatternMatchRow[] {
+  return passingFloor(rows, simFloor).slice(0, count);
+}
