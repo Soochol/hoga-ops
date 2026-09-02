@@ -3,6 +3,7 @@ import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/R
 import { SegmentedControl } from '../ui/PageShell';
 import { useLivePageStore } from '../state/livePage';
 import { useJumpToLive, wantsNewTab, type JumpModifiers } from '../live/useJumpToLive';
+import { moveToAdjacentQuoteRow } from '../rightrail/quoteRowNav';
 import {
   regularSessionCloseMs,
   regularSessionOpenMs,
@@ -104,7 +105,11 @@ function formatRange(from: string, to: string): string {
  * 분봉 창에 그대로 꽂으면 2018년 분봉을 요구하게 되고 그건 디스크에 없다 —
  * 브라우저 확인에서 "저장 구간에 캔들이 없다" 로 화면이 통째로 비었다.
  */
-function patternRangeFocus(row: PatternMatchRow) {
+/** 구간 이동의 대상. 매치 행과 **검색 기준 구간**이 같은 경로를 타므로 행 전체가 아니라
+ *  이동에 필요한 넷만 요구한다. */
+type RangeTarget = Pick<PatternMatchRow, 'code' | 'name' | 'from_date' | 'to_date'>;
+
+function patternRangeFocus(row: RangeTarget) {
   return {
     // viewKey(`sv=`)에 섞이는 값이라 매치마다 달라야 착석이 다시 산다.
     viewId: `pattern:${row.code}:${row.from_date}`,
@@ -182,17 +187,28 @@ function matchSummary(rows: PatternMatchRow[]): { median: number; winRate: numbe
   };
 }
 
+/** 행의 신원. **렌더 `key=` 와 선택 키를 한 함수에서** 뽑는다 — 두 곳에 따로 쓰면
+ *  어긋나도 아무 신호가 없다(선택이 조용히 안 걸린다).
+ *  종목 코드만으로는 모자란다: `per_code>1` 이면 같은 종목이 여러 자리로 나오고,
+ *  유연 검색이면 같은 자리가 길이별로 나올 수 있다. */
+function rowKey(row: PatternMatchRow, matchLen: number) {
+  return `${row.code}-${row.from_date}-${matchLen}`;
+}
+
 function MatchRow({
   row,
   mode,
   dist,
   onOpen,
+  selected = false,
   lengthBadge = null,
 }: {
   row: PatternMatchRow;
   mode: PatternSearchMode;
   dist: { p50: number; p95: number; p99: number; p99_99: number | null };
-  onOpen: (row: PatternMatchRow, e: JumpModifiers) => void;
+  onOpen: (e: JumpModifiers) => void;
+  /** 방금 눌러서 차트가 가 있는 행인가. 「어디를 보고 있는지」를 목록이 말한다. */
+  selected?: boolean;
   /** 유연 검색에서 이 매치가 나온 길이. 기준과 다를 수 있어 화면이 말해 줘야 한다. */
   lengthBadge?: number | null;
 }) {
@@ -200,8 +216,23 @@ function MatchRow({
   return (
     <button
       type="button"
-      onClick={(e) => onOpen(row, e)}
+      onClick={onOpen}
+      // ↑↓ 로 인접 행 이동 + 즉시 종목 전환. 규칙(스코프·경계에서 멈춤·click 재사용)은
+      // 관심종목/히트맵/스크리너/순위와 **한 함수**를 공유한다.
+      onKeyDown={(e) => {
+        if (moveToAdjacentQuoteRow(e.key, e.currentTarget)) e.preventDefault();
+      }}
+      data-quote-row=""
+      aria-current={selected ? 'true' : undefined}
       className="grid w-full grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left hover:bg-bg-input-hover"
+      style={{
+        // 선택 표식은 **배경 틴트만** — 좌측 accent 바를 다시 넣지 말 것(DESIGN.md 의
+        // 리스트 행 규칙, 2026-07-23 우측 레일 전체 통일). `QuoteRow` 가 기준이다.
+        // 클래스(`bg-tint-selection`)가 아니라 인라인인 이유도 거기와 같다: 클래스면
+        // `hover:bg-bg-input-hover` 가 이겨서 **눌린 행이 마우스를 올리는 순간 풀린 것처럼
+        // 보인다**.
+        background: selected ? 'var(--tint-selection)' : undefined,
+      }}
     >
       <span className="min-w-0">
         <span className="block truncate text-xs font-medium text-fg">{row.name || row.code}</span>
@@ -290,11 +321,36 @@ export function PatternDrawer() {
     conditions,
   });
 
+  /** 방금 눌러서 차트가 가 있는 행(`rowKey`). 목록이 「어디를 보고 있는지」를 말한다. */
+  const [openedKey, setOpenedKey] = useState<string | null>(null);
+
   const result = useMemo(
     // 구간을 건네받았으면 **그 구간이 곧 길이**라 서버가 결과를 하나만 준다.
     () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
     [data, length, seededRange],
   );
+  /** 헤더가 가리키는 「기준 종목 · 그 구간」. 검색이 돌아야 날짜가 정해지므로 `result`
+   *  에서 나온다 — 밴드를 그었든(고정 구간) 봉수로 골랐든(최신 창) 서버가 실제로 쓴
+   *  구간이 곧 이 값이다. */
+  const subjectRange = useMemo<RangeTarget | null>(
+    () =>
+      result && data
+        ? {
+            code: data.code,
+            name: data.name || data.code,
+            from_date: result.query.from_date,
+            to_date: result.query.to_date,
+          }
+        : null,
+    [result, data],
+  );
+
+  // 새 결과가 오면 선택을 버린다. **아래의 `activeCode` 게이트로는 안 덮이는 구멍이다**:
+  // `now` 모드 키의 `from_date` 는 전 종목이 같은 날이라, 주제 A 에서 누른 삼성전자의
+  // 키가 주제 B 의 결과에서 **누른 적 없는** 삼성전자 행에 그대로 맞고, 차트도 거기
+  // 있으니 게이트마저 통과한다.
+  useEffect(() => setOpenedKey(null), [result]);
+
   /**
    * 화면에 그릴 행 — 유사도 하한과 개수는 **여기서** 적용된다(서버가 아니라).
    *
@@ -348,19 +404,15 @@ export function PatternDrawer() {
     setShowSaves(false);
   }, []);
 
-  const onOpen = useCallback(
-    (row: PatternMatchRow, e: JumpModifiers) => {
-      // 지금 매치는 종목만 바꾼다 — 그 종목의 '지금' 이 곧 매치 구간이다.
-      if (mode === 'now') {
-        jump(row.code, row.name || row.code, e);
-        return;
-      }
-      // 과거 매치는 종목 + **그 날의 구간**. 순서가 계약이다(`openSavedRangeInLive` 와
-      // 동일): 종목 교체가 "종목이 바뀌면 저장 구간 해제" 트리거를 품고 있어,
-      // focus 를 먼저 세우면 그 자리에서 지워진다.
+  /** 종목 + **그 날의 구간**으로 차트를 옮긴다. 매치 행과 헤더의 기준 구간이 이 한
+   *  경로를 공유한다 — 아래 순서가 계약이라 두 벌로 두면 조용히 갈린다. */
+  const openRange = useCallback(
+    (target: RangeTarget, e: JumpModifiers) => {
+      // 순서가 계약이다(`openSavedRangeInLive` 와 동일): 종목 교체가 "종목이 바뀌면
+      // 저장 구간 해제" 트리거를 품고 있어, focus 를 먼저 세우면 그 자리에서 지워진다.
       const ws = useWorkspaceStore.getState();
       const landing = patternLandingChart(ws);
-      jump(row.code, row.name || row.code, e);
+      jump(target.code, target.name || target.code, e);
       // 새 탭은 이 창을 건드리지 않으므로 구간 슬롯도 세우지 않는다.
       if (wantsNewTab(e)) return;
       // 착지 **차트 창**을 일봉으로. 패턴 구간은 일봉이라 분봉 창에 꽂으면 그 날의
@@ -373,11 +425,26 @@ export function PatternDrawer() {
         //   실측: 2018년 매치를 눌러도 차트가 2025-09 에 머물렀다.
         //   일봉은 캔들 수가 늘면 초기 뷰포트를 **다시 적용**하므로(LiveChartRoot 의
         //   `lastAppliedCountRef` 주석) 범위만 늘리면 착지는 기존 기계가 한다.
-        ws.extendChartHistoricalRange(landing, subtractDaysKst(row.from_date, CONTEXT_DAYS));
+        ws.extendChartHistoricalRange(landing, subtractDaysKst(target.from_date, CONTEXT_DAYS));
       }
-      focusSavedRange(patternRangeFocus(row));
+      focusSavedRange(patternRangeFocus(target));
     },
-    [jump, focusSavedRange, mode],
+    [jump, focusSavedRange],
+  );
+
+  const onOpen = useCallback(
+    (row: PatternMatchRow, key: string, e: JumpModifiers) => {
+      // 새 탭은 **이 창의 차트를 옮기지 않는다** — 그러면 「여기를 보고 있다」도 거짓이라
+      // 표식을 세우지 않는다. `now` 분기가 아래에서 곧장 return 하므로 가드는 맨 위다.
+      if (!wantsNewTab(e)) setOpenedKey(key);
+      // 지금 매치는 종목만 바꾼다 — 그 종목의 '지금' 이 곧 매치 구간이다.
+      if (mode === 'now') {
+        jump(row.code, row.name || row.code, e);
+        return;
+      }
+      openRange(row, e);
+    },
+    [jump, openRange, mode],
   );
 
   return (
@@ -394,14 +461,27 @@ export function PatternDrawer() {
       ) : (
       <>
       <div className="flex flex-col gap-sm border-b border-border px-md pb-sm">
-        <div className="flex items-baseline justify-between gap-sm">
+        {/* 기준 자체가 이동 대상이다 — 매치를 몇 개 열어 본 뒤 «내가 그은 구간» 으로
+            돌아오려면 지금까지는 밴드를 다시 긋는 수밖에 없었다. 매치 행과 **같은
+            경로**(`openRange`)를 태우므로 착지 규칙이 갈리지 않는다. */}
+        <button
+          type="button"
+          onClick={(e) => subjectRange && openRange(subjectRange, e)}
+          disabled={!subjectRange}
+          aria-label={
+            subjectRange
+              ? `${subjectRange.name} ${formatRange(subjectRange.from_date, subjectRange.to_date)} 구간으로 차트 이동`
+              : undefined
+          }
+          className="-mx-1 flex items-baseline justify-between gap-sm rounded px-1 py-[2px] text-left hover:bg-bg-input-hover disabled:cursor-default disabled:hover:bg-transparent"
+        >
           <span className="truncate text-sm font-semibold text-fg">
             {data?.name || subject?.label || '종목 없음'}
           </span>
           <span className="shrink-0 font-data text-2xs text-fg-dimmer">
             {result ? formatRange(result.query.from_date, result.query.to_date) : ''}
           </span>
-        </div>
+        </button>
 
         <div className="flex items-center gap-xs">
           <button
@@ -645,7 +725,7 @@ export function PatternDrawer() {
               ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
               : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
           </div>
-          <RailDrawerBody>
+          <RailDrawerBody quoteNav>
             {shown.length === 0 ? (
               <RailState>
                 {conditions.simFloor > 0
@@ -655,18 +735,24 @@ export function PatternDrawer() {
                     : '조건에 맞는 매치가 없다.'}
               </RailState>
             ) : (
-              shown.map(({ row, length: matchLen }) => (
+              shown.map(({ row, length: matchLen }) => {
+                const key = rowKey(row, matchLen);
+                return (
                 <MatchRow
-                  key={`${row.code}-${row.from_date}-${matchLen}`}
+                  key={key}
                   row={row}
                   mode={mode}
                   dist={result.dist}
-                  onOpen={onOpen}
+                  // **저장값이 아니라 실효 조건을 그린다** — 사용자가 목록 밖에서(헤더 검색·
+                  // 관심종목) 종목을 바꾸면 차트는 이미 딴 데 있으므로 표식이 거짓말이 된다.
+                  selected={openedKey === key && row.code === activeCode}
+                  onOpen={(e) => onOpen(row, key, e)}
                   // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
                 />
-              ))
+                );
+              })
             )}
           </RailDrawerBody>
           {result.baseline && (

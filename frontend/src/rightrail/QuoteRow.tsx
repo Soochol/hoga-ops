@@ -4,6 +4,7 @@ import {
   dropIndicatorClass, sortableDraggingStyle, sortablePlaceholderStyle,
   type DropIndicator,
 } from '../ui/sortableDragVisuals';
+import { moveToAdjacentQuoteRow } from './quoteRowNav';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
@@ -119,20 +120,11 @@ export function QuoteRow({
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); }
-    // 화살표 위/아래: 인접 행으로 이동하며 즉시 선택(차트 전환). 스코프는 가장 가까운
-    // [data-quote-nav](드로어 스크롤 컨테이너) — 관심종목은 폴더별로 <ul>이 여러 개라
-    // 형제 이동만으론 그룹 경계를 못 넘기 때문. 없으면 부모(<ul>)로 폴백.
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    // 화살표 위/아래: 인접 행으로 이동하며 즉시 선택(차트 전환). 규칙은 패턴 매치 행과
+    // 공유한다 — 행 마커(`data-quote-row`)가 이미 공유라 **읽는 쪽이 두 벌이면 한쪽만
+    // 고쳐져 갈린다**.
+    if (moveToAdjacentQuoteRow(e.key, e.currentTarget)) {
       e.preventDefault(); // 컨테이너 스크롤 대신 행 이동
-      const li = e.currentTarget;
-      const scope = li.closest<HTMLElement>('[data-quote-nav]') ?? li.parentElement;
-      if (!scope) return;
-      const rows = Array.from(scope.querySelectorAll<HTMLElement>('[data-quote-row]'));
-      const next = rows.indexOf(li) + (e.key === 'ArrowDown' ? 1 : -1);
-      const target = rows[next];
-      if (!target) return; // 첫/마지막 행 경계에서 멈춤(순환 없음)
-      target.focus();
-      target.click(); // 행의 onClick(useJumpToLive) 재사용 → activeCode 전환
     }
   };
   return (
