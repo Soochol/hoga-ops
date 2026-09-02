@@ -23,6 +23,17 @@ function Harness({ onRun }: { onRun: (release: () => void) => void }) {
   return (
     <div>
       <button onClick={() => setPicked('005930')}>pick</button>
+      {/* 한 핸들러 안에서 두 번 — 리렌더가 끼지 않으므로 state 로 판정하면 둘 다 통과한다.
+          버튼 `disabled` 도 여기선 도움이 안 된다(이미 핸들러 안이다). */}
+      <button onClick={() => {
+        if (picked === null) return;
+        const fn = async () => {
+          setAdded((a) => [...a, picked]);
+          await new Promise<void>((res) => onRun(() => res()));
+          setPicked(null);
+        };
+        void run(fn); void run(fn);
+      }}>두 번 추가</button>
       <button
         disabled={picked === null || duplicate || submitting}
         onClick={() => {
@@ -79,10 +90,10 @@ describe('useOptimisticDuplicateGate', () => {
     let release: () => void = () => {};
     render(<Harness onRun={(r) => { started(); release = r; }} />);
     fireEvent.click(screen.getByText('pick'));
-    const btn = screen.getByText('추가');
-    fireEvent.click(btn);
-    fireEvent.click(btn);
-    fireEvent.click(btn);
+    // ⚠ 버튼을 연타하면 **리렌더가 끼어** state 판정으로도 막힌다(게다가 disabled 가
+    // 먼저 걸린다) — 그 경로로 재면 ref 를 state 로 바꿔도 초록이라 아무것도 증명하지
+    // 못한다(실측). 한 핸들러 안에서 두 번 부르는 것만이 이 가드에 닿는다.
+    fireEvent.click(screen.getByText('두 번 추가'));
     expect(started).toHaveBeenCalledTimes(1);
     await act(async () => { release(); });
   });

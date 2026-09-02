@@ -58,6 +58,9 @@ describe('HeatmapFolder — 카드 ＋종목의 중복 안내', () => {
     openAddAndPick();
 
     expect(await screen.findByText(/이미 이 그룹에 있습니다/)).toBeTruthy();
+    // 화면의 보호막은 `disabled` 다 — 이 컴포넌트의 제출 경로는 이 버튼 하나뿐이라
+    // 여기서 막히면 핸들러까지 가지 않는다(핸들러 안의 `duplicate` 가드는 그래서 순수
+    // 방어이고, 이 경로로는 재지지 않는다 — 지워도 초록이다, 실측).
     expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
     // 서버가 멱등이라 보내 봐야 아무 일도 안 일어난다 — 아예 보내지 않는 것이 계약이다.
     fireEvent.click(screen.getByRole('button', { name: '추가' }));
