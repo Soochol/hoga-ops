@@ -13,6 +13,7 @@ import {
   DEFAULT_FILTERS,
   DEFAULT_LENGTH,
   NOW_LENGTHS,
+  VOLUME_WEIGHT_ON,
   resultForLength,
   usePatternSearch,
 } from './usePatternSearch';
@@ -194,6 +195,8 @@ export function PatternDrawer() {
   const [seededRange, setSeededRange] = useState<{ from: string; to: string } | null>(null);
   /** 한 종목에서 몇 자리를 볼지. 1 = 다양성 · 5 = "그 패턴이 나온 자리를 전부". */
   const [perCode, setPerCode] = useState(1);
+  /** 거래량을 유사도에 섞을지. **숫자를 화면에 내지 않는다** — 계약은 "함께" 다. */
+  const [withVolume, setWithVolume] = useState(false);
   const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
   const pendingSeed = usePatternQueryStore((s) => s.pending);
   const jump = useJumpToLive();
@@ -226,6 +229,7 @@ export function PatternDrawer() {
     range: seededRange,
     filters: DEFAULT_FILTERS,
     perCode,
+    volumeWeight: withVolume ? VOLUME_WEIGHT_ON : 0,
   });
 
   const result = useMemo(
@@ -333,6 +337,29 @@ export function PatternDrawer() {
           </span>
         </div>
         )}
+      </div>
+
+      <div className="flex items-center gap-sm px-md pt-sm">
+        <span className="text-2xs text-fg-dim">무엇으로</span>
+        <SegmentedControl aria-label="비교 축">
+          {[
+            { on: false, label: '캔들 모양만' },
+            { on: true, label: '거래량 함께' },
+          ].map((o) => {
+            const sel = withVolume === o.on;
+            return (
+              <button
+                key={o.label}
+                type="button"
+                aria-pressed={sel}
+                onClick={() => setWithVolume(o.on)}
+                className={`px-2 py-[3px] text-2xs ${sel ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </SegmentedControl>
       </div>
 
       {mode === 'history' && (

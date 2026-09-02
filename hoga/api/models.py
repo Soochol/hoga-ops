@@ -2035,6 +2035,10 @@ class PatternSearchRequest(BaseModel):
     #: `history` 전용 — 한 종목에서 남길 매치 수. 1 은 다양성, 늘리면 "그 패턴이 나온
     #: 자리를 전부" 본다. 두 번째부터는 겹침 배제(창 길이의 절반)가 걸린다.
     per_code: int = Field(1, ge=1, le=5)
+    #: 거래량 축의 비중(0~1). 0 이면 가격만 — 그때 거래량 계산은 **아예 돌지 않는다**.
+    #: 유사도가 `가격 상관 × (1-w) + 거래량 상관 × w` 가 되며, **w 는 화면의 스위치**다
+    #: (서버가 발명한 상수가 아니다 — ADR-0166 결정 9).
+    volume_weight: float = Field(0.0, ge=0, le=1)
 
     model_config = ConfigDict(populate_by_name=True)
 

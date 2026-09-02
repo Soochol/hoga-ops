@@ -73,6 +73,7 @@ class Corpus:
     starts: np.ndarray
     ends: np.ndarray
     ch: np.ndarray             # (4, N) 로그 OHLC — 계열별 **공유 상수**로 중심화
+    logv: np.ndarray           # (N,) 로그 거래량 — 계열별 중심화. 가격과 **다른 축**이다
     centers: np.ndarray        # (S,) 그 계열에서 뺀 상수. 원가격 복원의 유일한 열쇠
     tv: np.ndarray             # (N,) 거래대금
     dates: np.ndarray          # (N,) datetime64[D]
@@ -132,7 +133,7 @@ def _empty_corpus(path: Path, mtime: int) -> Corpus:
         path=path, mtime_ns=mtime,
         codes=np.array([], dtype=object),
         starts=np.array([], dtype=np.int64), ends=np.array([], dtype=np.int64),
-        ch=np.zeros((4, 0)), centers=np.zeros(0), tv=np.zeros(0),
+        ch=np.zeros((4, 0)), logv=np.zeros(0), centers=np.zeros(0), tv=np.zeros(0),
         dates=np.array([], dtype="datetime64[D]"),
         names={}, is_etf={}, last_date=np.datetime64("1970-01-01", "D"),
     )
@@ -167,7 +168,12 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
     codes = df["code"].to_numpy()
     raw = np.stack([df[k].to_numpy().astype(np.float64) for k in _OHLC])
     ch = np.log(raw)
-    tv = raw.mean(axis=0) * df["volume"].to_numpy().astype(np.float64)
+    volume = df["volume"].to_numpy().astype(np.float64)
+    tv = raw.mean(axis=0) * volume
+    # ⚠ 거래량 축에 **거래대금을 재사용하지 않는다** — `log(tv) = log(price) + log(volume)`
+    #   이라 거래대금 상관은 가격 신호를 이중으로 센다. 캐시에 이미 있다는 이유로
+    #   그 오염을 받으면 "가격만" 과 "거래량 함께" 의 차이가 흐려진다(ADR-0166 결정 9).
+    logv = np.log(np.maximum(volume, 1.0))
     dates = df["date"].to_numpy().astype("datetime64[D]")
     bounds = np.flatnonzero(codes[1:] != codes[:-1]) + 1
     starts = np.concatenate([[0], bounds]).astype(np.int64)
@@ -181,6 +187,8 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
     for i in range(len(starts)):
         centers[i] = ch[_CLOSE, starts[i] : ends[i]].mean()
         ch[:, starts[i] : ends[i]] -= centers[i]
+        # 거래량은 가격과 단위가 달라 **자기 평균**으로 따로 중심화한다.
+        logv[starts[i] : ends[i]] -= logv[starts[i] : ends[i]].mean()
 
     names: dict[str, str] = {}
     is_etf: dict[str, bool] = {}
@@ -192,7 +200,7 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
             is_etf = dict(zip(stocks["code"], stocks["is_etf"], strict=True))
     return Corpus(
         path=path, mtime_ns=mtime, codes=codes[starts], starts=starts, ends=ends,
-        ch=ch, centers=centers, tv=tv, dates=dates, names=names, is_etf=is_etf,
+        ch=ch, logv=logv, centers=centers, tv=tv, dates=dates, names=names, is_etf=is_etf,
         last_date=dates.max(),
     )
 
@@ -247,6 +255,32 @@ def _win_sd(c: Corpus, i: int, length: int) -> np.ndarray:
     return np.sqrt(np.maximum(sq / (4 * length) - mean * mean, 0.0))
 
 
+def _volume_query(c: Corpus, i: int, offset: int, length: int) -> np.ndarray | None:
+    """쿼리 창의 z-정규화된 로그 거래량. 평탄하면 None(그 창은 거래량 축이 없다)."""
+    s = c.starts[i]
+    w = c.logv[s + offset : s + offset + length]
+    sd = w.std()
+    return (w - w.mean()) / sd if sd > _FLAT_SD else None
+
+
+def _volume_corr(c: Corpus, i: int, qv: np.ndarray, length: int) -> np.ndarray:
+    """슬라이딩 거래량 상관. 가격과 **별도 정규화**다 — 단위가 달라 한 스케일로 못 누른다.
+
+    평탄한 창(정지 후 재개 등)은 0 으로 둔다. 그러면 그 창의 총점이 가격 상관 × (1-w)
+    만 남아 **자연 강등**된다 — 거래량 축이 없는 자리를 만점으로 쳐 주지 않는다.
+    """
+    s, e = int(c.starts[i]), int(c.ends[i])
+    x = c.logv[s:e]
+    c1 = np.concatenate([[0.0], np.cumsum(x)])
+    c2 = np.concatenate([[0.0], np.cumsum(x * x)])
+    m = (c1[length:] - c1[:-length]) / length
+    sd = np.sqrt(np.maximum((c2[length:] - c2[:-length]) / length - m * m, 0.0))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = np.correlate(x, qv, mode="valid") / (length * sd)
+    out[~np.isfinite(out)] = 0.0
+    return out
+
+
 def _eligible(c: Corpus, i: int, *, exclude_etf: bool) -> bool:
     return not (exclude_etf and c.is_etf.get(c.codes[i], False))
 
@@ -259,6 +293,8 @@ def search_now(
     skip: int,
     min_tv_eok: float,
     exclude_etf: bool,
+    volume_query: np.ndarray | None = None,
+    volume_weight: float = 0.0,
 ) -> tuple[list[PatternMatch], np.ndarray]:
     """각 종목의 **최신 L봉** 한 창만 비교. 종목당 내적 1회라 싸다.
 
@@ -279,6 +315,14 @@ def search_now(
         if z is None:
             continue
         score = float((z * query).sum() / (4 * length))
+        if volume_query is not None and volume_weight > 0:
+            # 거래량은 가격과 **별도 정규화**다. 평탄한 창은 0 으로 둬 자연 강등시킨다
+            # (거래량 축이 없는 자리를 만점으로 쳐 주지 않는다).
+            vw = c.logv[e - length : e]
+            vsd = vw.std()
+            vs = (float(((vw - vw.mean()) / vsd * volume_query).sum() / length)
+                  if vsd > _FLAT_SD else 0.0)
+            score = score * (1 - volume_weight) + vs * volume_weight
         scores.append(score)
         out.append(PatternMatch(score, i, c.series_len(i) - length))
     out.sort(key=lambda m: m.score, reverse=True)
@@ -320,6 +364,8 @@ def search_history(
     no_overlap: bool,
     want_baseline: bool = False,
     per_code: int = 1,
+    volume_query: np.ndarray | None = None,
+    volume_weight: float = 0.0,
 ) -> tuple[list[PatternMatch], np.ndarray, np.ndarray]:
     """전 종목 × 전 기간 슬라이딩. 종목당 최고점 **1개**만 남긴다(결과 다양성).
 
@@ -345,6 +391,8 @@ def search_history(
             for k in range(4):
                 cross += np.correlate(c.ch[k, s:e], query[k], mode="valid")
             corr = cross / (4 * length * sd)
+        if volume_query is not None and volume_weight > 0:
+            corr = corr * (1 - volume_weight) + _volume_corr(c, i, volume_query, length) * volume_weight
         corr[~np.isfinite(corr) | (sd <= _FLAT_SD)] = -np.inf
         if min_tv_eok > 0:
             # rolling *mean* 이라 O(N). rolling min 이면 3배 느려진다(실측).
@@ -439,11 +487,16 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
         query = query_vector(c, qi, offset, length)
         if query is None:
             continue
+        # 거래량 축은 가격과 **별도 정규화**다(단위가 달라 한 스케일로 못 누른다).
+        # 쿼리 창의 거래량이 평탄하면 그 축이 없으므로 가중을 0 으로 접는다.
+        vq = _volume_query(c, qi, offset, length) if req.volume_weight > 0 else None
+        vw = req.volume_weight if vq is not None else 0.0
         baseline = None
         if req.mode == "now":
             matches, scores = search_now(
                 c, query=query, length=length, skip=qi,
                 min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
+                volume_query=vq, volume_weight=vw,
             )
             fwd_all = np.zeros(0)
         else:
@@ -451,7 +504,7 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
                 c, query=query, length=length, query_series=qi, query_offset=offset,
                 min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
                 min_after=req.forward_days, no_overlap=req.no_overlap,
-                per_code=req.per_code,
+                per_code=req.per_code, volume_query=vq, volume_weight=vw,
             )
             if len(fwd_all):
                 baseline = PatternBaseline(
