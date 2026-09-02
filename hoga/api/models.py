@@ -2152,6 +2152,25 @@ class PatternSaveConditions(BaseModel):
     flex_bars: int | None = Field(None, ge=0, le=5)
 
 
+class PatternExclusion(BaseModel):
+    """저장된 검색에서 **빼 둔 한 자리**. 종목이 아니라 「그 종목의 그 기간」이다.
+
+    길이는 키에 넣지 않는다. 유연 검색이면 같은 (종목, 시작일)이 길이별로 여러 행이 되고
+    (실측 500행 중 96건), 길이까지 맞춰 빼면 하나만 사라지고 다른 길이가 남아
+    **「지웠는데 또 나온다」**가 된다.
+
+    ⚠ 같은 종목의 **다른 날짜**는 그대로 남는다 — 상위 100 밖에 그런 자리가 15개 대기
+    중이라(실측), 하나를 빼면 그 종목이 다른 날짜로 올라올 수 있다. 사용자가 「그 종목의
+    그 기간」을 고른 결과이고(2026-09-02), 종목 통째로 빼는 것과는 다른 기능이다.
+    """
+
+    code: str = Field(pattern=CODE_PATTERN)
+    from_date: str = Field(pattern=r"^\d{8}$")
+    #: 복원 목록이 이름을 보여주려고 함께 담는다 — 저장이 `stock_name` 을 담는 것과 같은 이유
+    #: (그때마다 마스터를 조회하지 않는다).
+    stock_name: str = ""
+
+
 class PatternSaveWriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     code: str = Field(pattern=CODE_PATTERN)
@@ -2159,7 +2178,13 @@ class PatternSaveWriteRequest(BaseModel):
     #: 그때마다 마스터를 조회하지 않게 함께 담는다.
     stock_name: str = ""
     window: PatternSaveWindow
-    conditions: PatternSaveConditions = Field(default_factory=PatternSaveConditions)
+    conditions: PatternSaveConditions
+    #: 결과에서 빼 둔 자리들. **`conditions` 밖에 있는 것이 계약이다** — 조건은 「질문」이고
+    #: 이것은 「답의 편집」이라, 조건 복원(`loadSave`)이 이걸 조건으로 오해하면 안 된다.
+    #:
+    #: `| None` 이 아니라 `= []` 다. `ma_preset` 과 달리 **부재와 「비어 있음」이 같은 뜻**인
+    #: 유일한 경우다 — 「한 번도 안 뺐다」와 「뺀 게 없다」는 구별할 이유가 없다.
+    excluded: list[PatternExclusion] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod

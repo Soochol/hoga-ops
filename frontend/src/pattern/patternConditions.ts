@@ -49,6 +49,17 @@ export const MA_PRESETS = [
   { key: 'mid' as const, label: '중기 20·60', note: '중기 추세 위의 자리를 맞춘다' },
 ];
 
+/** 제외 키 — **「종목 + 시작일」**이고 길이는 들어가지 않는다.
+ *
+ *  유연 검색이면 같은 자리가 길이별로 여러 행이 되므로(실측 500행 중 96건), 길이까지
+ *  맞춰 빼면 하나만 사라지고 다른 길이가 남아 「지웠는데 또 나온다」가 된다.
+ *
+ *  ⚠ 렌더·저장·비교가 **이 함수 하나**를 쓴다. 두 곳에서 따로 만들면 어긋나도 아무
+ *  신호가 없다(제외가 조용히 안 걸린다). */
+export function exclusionKey(row: { code: string; from_date: string }): string {
+  return `${row.code}:${row.from_date}`;
+}
+
 export type PatternConditions = {
   period: PeriodKey;
   count: number;
@@ -123,10 +134,19 @@ export function passingFloor(rows: readonly PatternMatchRow[], simFloor: number)
   return rows.filter((r) => r.corr >= simFloor);
 }
 
-/** 화면에 그릴 행 — 하한을 적용하고 개수로 자른다. */
+/** 화면에 그릴 행 — 하한과 **제외**를 적용하고 개수로 자른다.
+ *
+ *  ★ 제외는 **자르기 전에** 건다. 뒤에 걸면 100개를 자른 뒤 빼서 95개가 되지만, 앞에서
+ *  걸면 다음 후보가 올라와 100개가 유지된다 — 「빼면 그만큼 다른 게 보인다」가 사용자가
+ *  기대하는 쪽이고, 서버 재검색 없이 그렇게 된다. */
 export function visibleRows(
   rows: readonly PatternMatchRow[],
   { simFloor, count }: { simFloor: number; count: number },
+  excludedKeys?: ReadonlySet<string>,
 ): PatternMatchRow[] {
-  return passingFloor(rows, simFloor).slice(0, count);
+  const passing = passingFloor(rows, simFloor);
+  const kept = excludedKeys?.size
+    ? passing.filter((r) => !excludedKeys.has(exclusionKey(r)))
+    : passing;
+  return kept.slice(0, count);
 }

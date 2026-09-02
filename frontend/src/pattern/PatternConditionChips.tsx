@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { PatternMatchRow } from '../api/screener';
+import type { PatternExclusion, PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
   DEFAULT_CONDITIONS,
@@ -31,7 +31,7 @@ import {
  * 기간은 다르다. **후보 모집단**을 바꾸므로 서버를 다시 불러야 하고, 그래서 미리보기가
  * 없다(`patternConditions` 상단 주석).
  */
-type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | null;
+type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | 'hidden' | null;
 
 const TV_STEPS = [0, 10, 50] as const;
 
@@ -40,6 +40,9 @@ export function PatternConditionChips({
   onChange,
   rows,
   p9999,
+  excluded,
+  onRestore,
+  onRestoreAll,
 }: {
   conditions: PatternConditions;
   onChange: (next: PatternConditions) => void;
@@ -47,6 +50,10 @@ export function PatternConditionChips({
   rows: readonly PatternMatchRow[];
   /** 이 검색의 분포 상단. 절대값 하한의 뜻을 메우는 눈금이다. */
   p9999: number | null;
+  /** 이 검색에서 뺀 자리들. **조건이 아니다** — 위 칩 주석 참조. */
+  excluded: readonly PatternExclusion[];
+  onRestore: (e: PatternExclusion) => void;
+  onRestoreAll: () => void;
 }) {
   const [open, setOpen] = useState<Popover>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -85,6 +92,14 @@ export function PatternConditionChips({
       <Chip active={conditions.excludeEtf} onClick={() => toggle('etf')}>
         {conditions.excludeEtf ? 'ETF 제외' : 'ETF 포함'}
       </Chip>
+      {/* 제외는 **조건이 아니다**(질문이 아니라 답의 편집이다). 그래도 같은 줄에 사는
+          이유는 「지금 목록에 무엇이 걸려 있나」를 한 곳에서 읽게 하려는 것이고,
+          `conditions` 에 넣지 않았으므로 조건 저장·복원 경로와는 섞이지 않는다. */}
+      {excluded.length > 0 && (
+        <Chip active onClick={() => toggle('hidden')}>
+          숨김 {excluded.length}
+        </Chip>
+      )}
 
       {open === 'period' && (
         <Popover title="그 패턴이 나온 시기 · 다시 검색한다">
@@ -156,6 +171,25 @@ export function PatternConditionChips({
               hint={m.note}
             />
           ))}
+        </Popover>
+      )}
+      {open === 'hidden' && (
+        <Popover title="이 검색에서 뺀 자리 · 눌러서 되돌린다">
+          {excluded.map((e) => (
+            <Item
+              key={`${e.code}:${e.from_date}`}
+              selected={false}
+              onClick={() => onRestore(e)}
+              label={e.stock_name || e.code}
+              hint={`${e.from_date.slice(0, 4)}-${e.from_date.slice(4, 6)}-${e.from_date.slice(6)}`}
+            />
+          ))}
+          {excluded.length > 1 && (
+            <>
+              <div role="separator" className="my-1 border-t border-border" />
+              <Item selected={false} onClick={onRestoreAll} label="전부 되돌리기" />
+            </>
+          )}
         </Popover>
       )}
       {open === 'tv' && (

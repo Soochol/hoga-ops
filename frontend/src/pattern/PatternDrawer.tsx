@@ -16,6 +16,7 @@ import {
   suggestPatternSaveName,
   useCreatePatternSave,
   useDeletePatternSave,
+  useUpdatePatternSave,
   usePatternSaves,
 } from './usePatternSaves';
 import type { PatternSave } from '../api/screener';
@@ -24,12 +25,14 @@ import {
   PERIODS,
   mergeByHeadroom,
   sinceFor,
+  exclusionKey,
   visibleRows,
   type PatternConditions,
 } from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
-import type { PatternMatchRow, PatternSearchMode } from '../api/screener';
+import type { PatternExclusion, PatternMatchRow, PatternSearchMode } from '../api/screener';
 import { CandleThumb } from './CandleThumb';
+import { PatternMatchRowMenu } from './PatternMatchRowMenu';
 import { SimilarityStrip } from './SimilarityStrip';
 import {
   DEFAULT_FILTERS,
@@ -218,6 +221,7 @@ function MatchRow({
   mode,
   dist,
   onOpen,
+  onMenu,
   selected = false,
   lengthBadge = null,
   maPeriods = [],
@@ -226,6 +230,9 @@ function MatchRow({
   mode: PatternSearchMode;
   dist: { p50: number; p95: number; p99: number; p99_99: number | null };
   onOpen: (e: JumpModifiers) => void;
+  /** 우클릭 · ⋯ 버튼이 함께 부른다. **우클릭만 두면 터치·키보드에서 닿지 않는다** —
+   *  `StudyViewRowMenu` 가 둘을 함께 두는 것과 같은 근거. */
+  onMenu: (x: number, y: number) => void;
   /** 방금 눌러서 차트가 가 있는 행인가. 「어디를 보고 있는지」를 목록이 말한다. */
   selected?: boolean;
   /** 유연 검색에서 이 매치가 나온 길이. 기준과 다를 수 있어 화면이 말해 줘야 한다. */
@@ -235,17 +242,23 @@ function MatchRow({
 }) {
   const forward = row.forward_pct;
   return (
-    <button
-      type="button"
+    // ⚠ `<button>` 이 아니라 `role="button"` 인 div 다 — 안에 ⋯ 버튼을 넣어야 하는데
+    //   버튼 중첩은 HTML 위반이다(`QuoteRow` 도 같은 이유로 li + role).
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       // ↑↓ 로 인접 행 이동 + 즉시 종목 전환. 규칙(스코프·경계에서 멈춤·click 재사용)은
       // 관심종목/히트맵/스크리너/순위와 **한 함수**를 공유한다.
       onKeyDown={(e) => {
-        if (moveToAdjacentQuoteRow(e.key, e.currentTarget)) e.preventDefault();
+        if (moveToAdjacentQuoteRow(e.key, e.currentTarget)) { e.preventDefault(); return; }
+        // div 는 Enter/Space 를 클릭으로 바꿔 주지 않는다 — 버튼을 포기한 대가다.
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(e); }
       }}
       data-quote-row=""
       aria-current={selected ? 'true' : undefined}
-      className="grid w-full grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left hover:bg-bg-input-hover"
+      className="group grid w-full cursor-pointer grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
       style={{
         // 선택 표식은 **배경 틴트만** — 좌측 accent 바를 다시 넣지 말 것(DESIGN.md 의
         // 리스트 행 규칙, 2026-07-23 우측 레일 전체 통일). `QuoteRow` 가 기준이다.
@@ -255,7 +268,8 @@ function MatchRow({
         background: selected ? 'var(--tint-selection)' : undefined,
       }}
     >
-      <span className="min-w-0">
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-fg">{row.name || row.code}</span>
         <span className="block truncate font-data text-2xs text-fg-dimmer">
           {mode === 'history' ? formatRange(row.from_date, row.to_date) : row.code}
@@ -265,6 +279,18 @@ function MatchRow({
             </span>
           )}
         </span>
+        </span>
+        {/* 우클릭과 **같은 메뉴**를 연다. 터치·키보드에서는 이쪽만 닿는다. */}
+        <button
+          type="button"
+          // ⚠ 이름에 **종목명을 넣지 않는다** — 행 자체의 접근 이름과 겹쳐
+          //   `getByRole('button', { name: /종목/ })` 가 둘을 잡는다. 날짜로 구별한다.
+          aria-label={`${formatRange(row.from_date, row.to_date)} 매치 메뉴`}
+          onClick={(e) => { e.stopPropagation(); onMenu(e.clientX, e.clientY); }}
+          className="shrink-0 rounded px-1 text-2xs text-fg-dimmer opacity-0 hover:bg-bg-input-hover hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          ⋯
+        </button>
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="flex flex-col items-end gap-[3px]">
@@ -280,7 +306,7 @@ function MatchRow({
           <SimilarityStrip value={row.corr} dist={dist} className="w-full" />
         )}
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -304,6 +330,22 @@ export function PatternDrawer() {
   const savesQuery = usePatternSaves();
   const createSave = useCreatePatternSave();
   const removeSave = useDeletePatternSave();
+  const updateSave = useUpdatePatternSave();
+  /**
+   * 지금 화면이 **어느 저장을 불러온 상태인가**. 제외는 저장에 남으므로 이 값이 없으면
+   * 뺄 곳이 없다(메뉴 항목이 비활성).
+   *
+   * 조건을 손으로 바꿔도 **지우지 않는다** — 제외는 (종목, 시작일) 쌍이라 조건과 무관하고,
+   * 봉수를 하나 만졌다고 기능이 꺼지면 답답하다. **기준 종목이 바뀔 때만** 지운다:
+   * 그건 다른 검색이라 그 저장의 제외를 이어받을 이유가 없다.
+   */
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  /** 화면의 제외 목록. 저장의 사본이고, 뮤테이션이 디스크에 남긴다. */
+  const [excluded, setExcluded] = useState<PatternExclusion[]>([]);
+  /** 열린 행 메뉴의 커서 좌표 + 대상. */
+  const [rowMenu, setRowMenu] = useState<
+    { x: number; y: number; row: PatternMatchRow } | null
+  >(null);
   /** 거래량을 유사도에 섞을지. **숫자를 화면에 내지 않는다** — 계약은 "함께" 다. */
   const [withVolume, setWithVolume] = useState(false);
   const consumeSeed = usePatternQueryStore((s) => s.consumePatternQuery);
@@ -322,7 +364,9 @@ export function PatternDrawer() {
     if (!pendingSeed) return;
     const seed = consumeSeed();
     if (!seed) return;
-    // 차트에서 그은 구간은 **새 검색**이라 그 종목이 새 기준이다.
+    // 차트에서 그은 구간은 **새 검색**이라 그 종목이 새 기준이고, 저장과의 연결도 끊긴다.
+    setLoadedSaveId(null);
+    setExcluded([]);
     setSubject({ code: seed.code, label: seed.label ?? seed.code });
     setSeededRange({ from: seed.from, to: seed.to });
     // ★ 과거 어느 구간을 긋든 묻는 것은 "이 패턴이 **과거 어디에서** 또 나왔나" 다.
@@ -378,17 +422,23 @@ export function PatternDrawer() {
    * 길이 유연이면 길이별 결과가 여럿 오므로 **여유(corr − p99.99)로 정규화해** 합친다.
    * 원점수로 섞으면 배경 분포가 높은 짧은 길이가 목록을 도배한다(실측).
    */
+  /** 제외 키 집합 — 렌더가 매 행마다 `Set.has` 한 번만 하도록. */
+  const excludedKeys = useMemo(
+    () => new Set(excluded.map((e) => exclusionKey(e))),
+    [excluded],
+  );
   const shown = useMemo(() => {
     if (conditions.flexBars > 0 && data && data.results.length > 1) {
+      // 병합 경로도 **자르기 전에** 제외를 건다(`visibleRows` 와 같은 순서).
       return mergeByHeadroom(data.results)
-        .filter((m) => m.row.corr >= conditions.simFloor)
+        .filter((m) => m.row.corr >= conditions.simFloor && !excludedKeys.has(exclusionKey(m.row)))
         .slice(0, conditions.count);
     }
     if (!result) return [];
-    return visibleRows(result.matches, conditions).map((row) => ({
+    return visibleRows(result.matches, conditions, excludedKeys).map((row) => ({
       row, length: result.length, headroom: row.corr - (result.dist.p99_99 ?? result.dist.p99),
     }));
-  }, [data, result, conditions]);
+  }, [data, result, conditions, excludedKeys]);
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
 
   /**
@@ -401,6 +451,9 @@ export function PatternDrawer() {
    * 그 사이 렌더에서 **옛 기준 + 새 조건**으로 한 번 조회가 나간다.
    */
   const loadSave = useCallback((save: PatternSave) => {
+    setLoadedSaveId(save.id);
+    setExcluded(save.excluded ?? []);
+
     setSubject({ code: save.code, label: save.stock_name || save.code });
     if (save.window.kind === 'fixed' && save.window.from_date && save.window.to_date) {
       setSeededRange({ from: save.window.from_date, to: save.window.to_date });
@@ -455,6 +508,33 @@ export function PatternDrawer() {
     },
     [jump, focusSavedRange],
   );
+
+  /** 저장과의 연결을 끊는다 — **다른 검색이 됐을 때**만 부른다.
+   *
+   *  ⚠ `subject` 변경을 이펙트로 감시하면 안 된다. `loadSave` 가 기준을 덮어쓰므로
+   *  **불러온 바로 그 순간** 이펙트가 돌아 방금 세운 연결을 지운다(실제로 그렇게 짰다가
+   *  잡았다). 그래서 「사용자가 기준을 바꾼」 경로에서만 명시적으로 부른다.
+   */
+  const detachSave = useCallback(() => {
+    setLoadedSaveId(null);
+    setExcluded([]);
+  }, []);
+
+  /** 저장의 현재 payload — 제외를 갱신할 때 통째로 다시 보낸다(`PUT` 이 전체 교체다). */
+  const savedById = useMemo(
+    () => new Map((savesQuery.data?.saves ?? []).map((sv) => [sv.id, sv])),
+    [savesQuery.data],
+  );
+
+  /** 제외 목록을 바꾸고 **디스크에도 남긴다**. 화면은 지역 상태가 즉시 반영한다. */
+  const commitExcluded = useCallback((next: PatternExclusion[]) => {
+    setExcluded(next);
+    const save = loadedSaveId ? savedById.get(loadedSaveId) : null;
+    if (!save) return;   // 저장을 안 불러온 검색이면 화면 안에서만 산다
+    const { id, created_at_ms, updated_at_ms, ...body } = save;
+    void created_at_ms; void updated_at_ms;
+    updateSave.mutate({ id, body: { ...body, excluded: next } });
+  }, [loadedSaveId, savedById, updateSave]);
 
   const onOpen = useCallback(
     (row: PatternMatchRow, key: string, e: JumpModifiers) => {
@@ -564,6 +644,9 @@ export function PatternDrawer() {
                   ma_preset: conditions.maPreset,
                   flex_bars: conditions.flexBars,
                 },
+                // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
+                // 그것까지가 「이 검색」이다.
+                excluded,
               });
               setSaveDraft(null);
             }}
@@ -599,9 +682,10 @@ export function PatternDrawer() {
         {activeCode && subject && activeCode !== subject.code && (
           <button
             type="button"
-            onClick={() =>
-              setSubject({ code: activeCode, label: activeInstrument?.label ?? activeCode })
-            }
+            onClick={() => {
+              detachSave();
+              setSubject({ code: activeCode, label: activeInstrument?.label ?? activeCode });
+            }}
             className="self-start rounded border border-border px-2 py-[3px] text-2xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
           >
             기준을 «{activeInstrument?.label ?? activeCode}» 로 바꾸기
@@ -752,6 +836,11 @@ export function PatternDrawer() {
             onChange={setConditions}
             rows={result.matches}
             p9999={result.dist.p99_99}
+            excluded={excluded}
+            onRestore={(e) => commitExcluded(
+              excluded.filter((x) => exclusionKey(x) !== exclusionKey(e)),
+            )}
+            onRestoreAll={() => commitExcluded([])}
           />
           <div className="px-md pb-xs pt-sm font-data text-2xs text-fg-dimmer">
             {mode === 'now'
@@ -780,6 +869,7 @@ export function PatternDrawer() {
                   // 관심종목) 종목을 바꾸면 차트는 이미 딴 데 있으므로 표식이 거짓말이 된다.
                   selected={openedKey === key && row.code === activeCode}
                   onOpen={(e) => onOpen(row, key, e)}
+                  onMenu={(x, y) => setRowMenu({ x, y, row })}
                   // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
@@ -789,6 +879,22 @@ export function PatternDrawer() {
               })
             )}
           </RailDrawerBody>
+          {rowMenu && (
+            <PatternMatchRowMenu
+              x={rowMenu.x}
+              y={rowMenu.y}
+              label={`${rowMenu.row.name || rowMenu.row.code} ${formatRange(rowMenu.row.from_date, rowMenu.row.to_date)}`}
+              onExclude={() => commitExcluded([
+                ...excluded,
+                {
+                  code: rowMenu.row.code,
+                  from_date: rowMenu.row.from_date,
+                  stock_name: rowMenu.row.name || rowMenu.row.code,
+                },
+              ])}
+              onClose={() => setRowMenu(null)}
+            />
+          )}
           {result.baseline && (
             <div className="flex flex-col gap-[2px] border-t border-border-strong px-md py-sm">
               <span className="text-2xs font-semibold uppercase text-fg-dim">이후 20일 · 항상 표시</span>

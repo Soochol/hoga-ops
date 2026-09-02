@@ -313,6 +313,17 @@ export interface PatternSaveConditions {
   flex_bars: number | null;
 }
 
+/** 저장된 검색에서 **빼 둔 한 자리** — 종목이 아니라 「그 종목의 그 기간」이다.
+ *
+ *  길이는 키에 없다. 유연 검색이면 같은 (종목, 시작일)이 길이별로 여러 행이 되므로
+ *  (실측 500행 중 96건), 길이까지 맞춰 빼면 다른 길이가 남아 「지웠는데 또 나온다」가 된다. */
+export interface PatternExclusion {
+  code: string;
+  from_date: string;
+  /** 복원 목록이 이름을 보여주려고 함께 담는다. */
+  stock_name: string;
+}
+
 export interface PatternSaveWriteRequest {
   name: string;
   code: string;
@@ -320,6 +331,9 @@ export interface PatternSaveWriteRequest {
   stock_name: string;
   window: PatternSaveWindow;
   conditions: PatternSaveConditions;
+  /** 결과에서 빼 둔 자리들. **`conditions` 밖인 것이 계약이다** — 조건은 「질문」이고
+   *  이것은 「답의 편집」이라, 조건 복원이 이걸 조건으로 오해하면 안 된다. */
+  excluded: PatternExclusion[];
 }
 
 export interface PatternSave extends PatternSaveWriteRequest {
@@ -340,6 +354,13 @@ export const listPatternSaves = () => apiCall<PatternSavesFile>(PATTERN_SAVES);
 export const createPatternSave = (body: PatternSaveWriteRequest) =>
   apiCall<PatternSave>(PATTERN_SAVES, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+export const updatePatternSave = (id: string, body: PatternSaveWriteRequest) =>
+  apiCall<PatternSave>(`${PATTERN_SAVES}/${id}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });

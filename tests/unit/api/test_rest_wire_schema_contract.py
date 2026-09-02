@@ -88,9 +88,10 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
          "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars"}
     ),
     "PatternSave": frozenset(
-        {"id", "name", "code", "stock_name", "window", "conditions",
+        {"id", "name", "code", "stock_name", "window", "conditions", "excluded",
          "created_at_ms", "updated_at_ms"}
     ),
+    "PatternExclusion": frozenset({"code", "from_date", "stock_name"}),
     "PatternSavesFile": frozenset({"schema_version", "saves"}),
 
     "HeatmapEntry": frozenset({"code", "folder_id", "name", "order"}),
