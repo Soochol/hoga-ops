@@ -3,7 +3,11 @@ import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/R
 import { SegmentedControl } from '../ui/PageShell';
 import { useLivePageStore } from '../state/livePage';
 import { useJumpToLive, wantsNewTab, type JumpModifiers } from '../live/useJumpToLive';
-import { regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
+import {
+  regularSessionCloseMs,
+  regularSessionOpenMs,
+  subtractDaysKst,
+} from '../live/liveDateTime';
 import { usePatternQueryStore } from './patternQuery';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import type { PatternMatchRow, PatternSearchMode } from '../api/screener';
@@ -51,6 +55,10 @@ const MODES: { key: PatternSearchMode; label: string }[] = [
   { key: 'now', label: '지금 닮은 종목' },
   { key: 'history', label: '과거에 이 모양' },
 ];
+
+/** 매치 구간 **앞쪽**으로 함께 불러올 달력일. `studyDailyViewport` 가 구간보다 넓게
+ *  보여주므로(맥락 배율) 시작일에 딱 맞추면 왼쪽이 잘린다. */
+const CONTEXT_DAYS = 200;
 
 const MIN_LENGTH = NOW_LENGTHS[0];
 const MAX_LENGTH = NOW_LENGTHS[NOW_LENGTHS.length - 1];
@@ -256,7 +264,16 @@ export function PatternDrawer() {
       if (wantsNewTab(e)) return;
       // 착지 **차트 창**을 일봉으로. 패턴 구간은 일봉이라 분봉 창에 꽂으면 그 날의
       // 분봉을 요구하게 되고, 오래된 날짜면 디스크에 없어 화면이 통째로 빈다.
-      if (landing) ws.setChartTimeframe(landing, 'D');
+      if (landing) {
+        ws.setChartTimeframe(landing, 'D');
+        // ★ 그 구간의 캔들을 **먼저 불러와야** 한다. `studyDailyViewport` 는 이미 로드된
+        //   캔들 안에서 구간을 찾고, 없으면 최신 봉으로 폴백한다 — 저장뷰는 사용자가
+        //   이미 본 구간이라 문제가 없었지만 패턴 매치는 **한 번도 안 본 과거**다.
+        //   실측: 2018년 매치를 눌러도 차트가 2025-09 에 머물렀다.
+        //   일봉은 캔들 수가 늘면 초기 뷰포트를 **다시 적용**하므로(LiveChartRoot 의
+        //   `lastAppliedCountRef` 주석) 범위만 늘리면 착지는 기존 기계가 한다.
+        ws.extendChartHistoricalRange(landing, subtractDaysKst(row.from_date, CONTEXT_DAYS));
+      }
       focusSavedRange(patternRangeFocus(row));
     },
     [jump, focusSavedRange, mode],

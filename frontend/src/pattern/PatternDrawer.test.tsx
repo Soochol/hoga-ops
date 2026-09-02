@@ -39,8 +39,10 @@ vi.mock('../state/livePage', () => ({
 const setChartTimeframe = vi.fn();
 // 실제 워크스페이스의 모양을 그대로 흉내낸다 — **zOrder 마지막이 차트가 아닌** 창이고
 // (브라우저에서 실제로 그랬다) 그 위에 같은 그룹의 차트 창이 있다.
+const extendChartHistoricalRange = vi.fn();
 const WS = {
   setChartTimeframe,
+  extendChartHistoricalRange,
   zOrder: ['chart1', 'book1', 'broker1'],
   windows: [
     { id: 'chart1', kind: 'chart', group: 1 },
@@ -123,6 +125,7 @@ beforeEach(() => {
   jump.mockReset();
   focusSavedRange.mockReset();
   setChartTimeframe.mockReset();
+  extendChartHistoricalRange.mockReset();
   live.activeCode = '005930';
   live.activeInstrument = { label: '삼성전자' };
   usePatternQueryStore.setState({ pending: null });
@@ -315,6 +318,21 @@ describe('PatternDrawer — 과거 매치 클릭', () => {
     // ★ 거래원 창(activationTarget 의 답)이 아니라 **차트 창**이어야 한다.
     //   id 를 그대로 쓰면 `withChart` 가 조용히 no-op 이 되고 화면이 빈다.
     expect(setChartTimeframe).toHaveBeenCalledWith('chart1', 'D');
+  });
+
+  it('매치 구간의 캔들을 **먼저 불러온다** — 없으면 최신 봉으로 폴백한다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
+    await user.click(await screen.findByText('SK하이닉스'));
+    // ★ `studyDailyViewport` 는 **이미 로드된** 캔들에서 구간을 찾는다. 2018년 매치를
+    //   눌러도 그 봉이 없으면 차트가 최근에 머문다(실측 2025-09).
+    expect(extendChartHistoricalRange).toHaveBeenCalledTimes(1);
+    const [id, from] = extendChartHistoricalRange.mock.calls[0];
+    expect(id).toBe('chart1');
+    // 매치 시작일(20180307)보다 **앞**이어야 한다 — 뷰포트가 구간보다 넓게 잡으므로.
+    expect(from < '20180307').toBe(true);
   });
 
   it('지금 탭 클릭은 구간을 세우지 않는다 — 그 종목의 지금이 곧 매치다', async () => {
