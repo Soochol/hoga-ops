@@ -1,5 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { patternSeedFromRange, usePatternQueryStore, PATTERN_MIN_BARS } from './patternQuery';
+import {
+  patternSeedFromRange,
+  usePatternQueryStore,
+  PATTERN_MAX_BARS,
+  PATTERN_MIN_BARS,
+} from './patternQuery';
 
 /**
  * 차트 → 패널 시드의 게이트와 1회 소비.
@@ -14,7 +19,7 @@ import { patternSeedFromRange, usePatternQueryStore, PATTERN_MIN_BARS } from './
 const YMD = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
 const DAY = 24 * 3600 * 1000;
 const D0 = Date.UTC(2026, 3, 1);
-const CANDLES = Array.from({ length: 10 }, (_, i) => D0 + i * DAY);
+const CANDLES = Array.from({ length: 60 }, (_, i) => D0 + i * DAY);
 
 function seed(over: Partial<Parameters<typeof patternSeedFromRange>[0]> = {}) {
   return patternSeedFromRange({
@@ -49,6 +54,13 @@ describe('patternSeedFromRange', () => {
     // 경계 위: 5봉 → 만든다. 경계 아래: 4봉 → null.
     expect(seed({ bRealMs: D0 + (PATTERN_MIN_BARS - 1) * DAY })).not.toBeNull();
     expect(seed({ bRealMs: D0 + (PATTERN_MIN_BARS - 2) * DAY })).toBeNull();
+  });
+
+  it(`${PATTERN_MAX_BARS}봉 상한에서 갈린다 — 드래그 경로는 서버의 lengths 검증을 안 탄다`, () => {
+    // ⚠ 이 상한이 없으면 길게 그은 구간이 그대로 돈다(실측: 33봉이 24.7초).
+    //   서버의 `lengths` 검증은 요청이 길이를 **말할 때만** 걸린다.
+    expect(seed({ bRealMs: D0 + (PATTERN_MAX_BARS - 1) * DAY })).not.toBeNull();
+    expect(seed({ bRealMs: D0 + PATTERN_MAX_BARS * DAY })).toBeNull();
   });
 
   it('봉 수는 달력 간격이 아니라 **실제 캔들**로 센다', () => {

@@ -1,6 +1,6 @@
 import { render, fireEvent, screen, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import DrawingPropertyPanel from './DrawingPropertyPanel';
+import DrawingPropertyPanel, { patternButtonState } from './DrawingPropertyPanel';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
 import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES } from './drawing/types';
@@ -13,6 +13,29 @@ const HLINE: Drawing = {
 beforeEach(() => {
   useDrawingsStore.getState().__resetForTests();
   useDrawingsStore.getState().setActiveScope('005930|minute');
+});
+
+describe('DrawingPropertyPanel — 패턴 찾기 버튼', () => {
+  /** 범위 밖 구간에서 **누르기 전에** 이유를 말한다.
+   *  없으면 "눌렀는데 아무 일도 안 나는 버튼" 이 된다(시드가 조용히 null 이 된다). */
+  it('봉 수가 범위 밖이면 비활성이고 이유를 말한다', () => {
+    expect(patternButtonState({ bars: 33, min: 5, max: 30 })).toEqual({
+      disabled: true,
+      title: '33봉 — 패턴 검색은 5~30봉이다',
+      suffix: ' · 33봉',
+    });
+    expect(patternButtonState({ bars: 4, min: 5, max: 30 }).disabled).toBe(true);
+  });
+
+  it('범위 안이면 활성이고 봉 수를 덧붙이지 않는다', () => {
+    const s = patternButtonState({ bars: 17, min: 5, max: 30 });
+    expect(s.disabled).toBe(false);
+    expect(s.suffix).toBe('');
+  });
+
+  it('호스트가 세어 주지 않으면(구형 호출부) 막지 않는다', () => {
+    expect(patternButtonState(undefined).disabled).toBe(false);
+  });
 });
 
 describe('DrawingPropertyPanel — visibility gate', () => {

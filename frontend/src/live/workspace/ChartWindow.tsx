@@ -62,7 +62,12 @@ import {
   type CalendarTimeframe,
 } from '../../state/livePage';
 import { SAVED_RANGE_VENUE } from '../../studyViews/savedRangeFocus';
-import { patternSeedFromRange, usePatternQueryStore } from '../../pattern/patternQuery';
+import {
+  PATTERN_MAX_BARS,
+  PATTERN_MIN_BARS,
+  patternSeedFromRange,
+  usePatternQueryStore,
+} from '../../pattern/patternQuery';
 import { useRightRailStore } from '../../state/rightRail';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/studyDailyContext';
@@ -348,6 +353,20 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       useRightRailStore.getState().setActivePanel('pattern');
     };
   }, [symbol, view.timeframe, savedRangeCandles]);
+
+  /** 속성 패널이 「패턴 찾기」를 누르기 전에 되는지 말하기 위한 봉 수. 캔들을 아는
+   *  것이 이 층이라 여기서 센다(패널은 도형만 안다). */
+  const patternBarCount = useMemo(
+    () => (aMs: number, bMs: number) => {
+      const [lo, hi] = aMs <= bMs ? [aMs, bMs] : [bMs, aMs];
+      return {
+        bars: savedRangeCandles.filter((c) => c.ts_ms >= lo && c.ts_ms <= hi).length,
+        min: PATTERN_MIN_BARS,
+        max: PATTERN_MAX_BARS,
+      };
+    },
+    [savedRangeCandles],
+  );
 
   /**
    * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
@@ -894,6 +913,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               code={d.workareaCode}
               timeframe={view.timeframe}
               onSearchPattern={onSearchPattern}
+              patternBarCount={patternBarCount}
               venue={venue}
               viewIdentity={viewIdentity}
               savedRangeBand={savedRangeBand}

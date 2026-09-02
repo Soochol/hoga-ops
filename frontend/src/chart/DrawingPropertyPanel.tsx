@@ -50,6 +50,12 @@ type Props = {
    */
   onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
   /**
+   * 그 구간의 **봉 수**와 허용 범위. 버튼을 누르기 전에 되는지 말하기 위한 것이다 —
+   * 없으면 범위 밖 구간이 "눌렀는데 아무 일도 안 나는 버튼" 이 된다.
+   * 이 패널은 캔들을 모르므로 호스트가 세어 준다.
+   */
+  patternBarCount?: (fromRealMs: number, toRealMs: number) => PatternSpan;
+  /**
    * 정렬·분배가 쓸 좌표 뭉치. `resolveVisibleRightRealMs` 와 같은 이유로 함수다 —
    * 이 패널은 `IChartApi` 를 쥐지 않고, 차트를 아는 호스트가 만들어 내려 준다.
    * 없으면 정렬 버튼이 비활성이고 나머지는 그대로 동작한다.
@@ -419,6 +425,12 @@ function MultiSelectionToolbar({
    * 게이트가 여기 중복되지 않는다.
    */
   onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
+  /**
+   * 그 구간의 **봉 수**와 허용 범위. 버튼을 누르기 전에 되는지 말하기 위한 것이다 —
+   * 없으면 범위 밖 구간이 "눌렀는데 아무 일도 안 나는 버튼" 이 된다.
+   * 이 패널은 캔들을 모르므로 호스트가 세어 준다.
+   */
+  patternBarCount?: (fromRealMs: number, toRealMs: number) => PatternSpan;
 }) {
   // 도형 배열은 **안정 참조**를 구독하고 멤버는 파생한다. 셀렉터 안에서 filter/map
   // 하면 매 렌더 새 배열이라 무한 리렌더가 된다(EMPTY_SELECTION 과 같은 함정).
@@ -736,8 +748,31 @@ function MultiSelectionToolbar({
   );
 }
 
+/** 구간의 봉 수를 아는 호스트가 준 값 — 없으면(구형 호출부) 막지 않는다. */
+export type PatternSpan = { bars: number; min: number; max: number };
+
+/**
+ * 「패턴 찾기」 버튼의 상태. **누르기 전에 되는지 말하기 위한** 순수 함수다 —
+ * 없으면 범위 밖 구간이 "눌렀는데 아무 일도 안 나는 버튼" 이 된다(시드가 조용히
+ * null 이 되고 화면은 그대로다).
+ */
+export function patternButtonState(span: PatternSpan | undefined): {
+  disabled: boolean;
+  title: string;
+  suffix: string;
+} {
+  const out = span != null && (span.bars < span.min || span.bars > span.max);
+  return {
+    disabled: out,
+    title: out
+      ? `${span!.bars}봉 — 패턴 검색은 ${span!.min}~${span!.max}봉이다`
+      : '이 봉들과 닮은 캔들 패턴을 가진 종목을 찾는다',
+    suffix: out ? ` · ${span!.bars}봉` : '',
+  };
+}
+
 export default function DrawingPropertyPanel({
-  scope, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern,
+  scope, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount,
 }: Props) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
@@ -918,18 +953,24 @@ export default function DrawingPropertyPanel({
         <LineStylePopover current={drawing.lineStyle} onPick={pickLineStyle} />
       )}
 
-      {drawing.kind === 'measure' && onSearchPattern != null && (
-        <button
-          type="button"
-          data-testid="drawing-pattern-search"
-          title="이 봉들과 닮은 캔들 패턴을 가진 종목을 찾는다"
-          disabled={locked}
-          onClick={() => onSearchPattern(drawing.a.realMs, drawing.b.realMs)}
-          className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
-        >
-          패턴 찾기
-        </button>
-      )}
+      {drawing.kind === 'measure' && onSearchPattern != null && (() => {
+        const state = patternButtonState(patternBarCount?.(drawing.a.realMs, drawing.b.realMs));
+        return (
+          <button
+            type="button"
+            data-testid="drawing-pattern-search"
+            title={state.title}
+            disabled={locked || state.disabled}
+            onClick={() => onSearchPattern(drawing.a.realMs, drawing.b.realMs)}
+            className={
+              'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs'
+              + (locked || state.disabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
+            }
+          >
+            패턴 찾기{state.suffix}
+          </button>
+        );
+      })()}
 
       {drawing.kind === 'rect' && (
         <>

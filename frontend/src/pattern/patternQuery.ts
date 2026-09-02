@@ -32,6 +32,10 @@ export type PatternQuerySeed = {
 
 /** 최소 봉수 — 서버 `PATTERN_MIN_BARS` 의 짝. 이보다 짧으면 요청을 만들지 않는다. */
 export const PATTERN_MIN_BARS = 5;
+/** 최대 봉수 — 서버 `PATTERN_CEILING` 의 짝. 길수록 응답이 길어지고, 드래그 경로는
+ *  요청이 길이를 말하지 않아 서버의 `lengths` 검증이 걸리지 않는다(실측: 33봉이
+ *  상한을 우회해 24.7초). 여기서 먼저 막아 사용자가 기다리지 않게 한다. */
+export const PATTERN_MAX_BARS = 30;
 
 /**
  * `measure` 두 끝 → 시드. **못 만들 이유가 있으면 `null`** 이고, 호출부는 그때
@@ -40,8 +44,8 @@ export const PATTERN_MIN_BARS = 5;
  * 막는 것 셋:
  * * 종목이 없거나 지수 창 — 코퍼스에 계열이 없다.
  * * 분봉 — 봉 패턴은 일봉 개념이다.
- * * 5봉 미만 — 서버가 빈 결과로 답하는데 그 빈 화면은 "이력이 없다" 로 읽혀
- *   원인을 숨긴다. 실패를 만들 수 있는 입력은 만들기 전에 막는다.
+ * * 5봉 미만 / 30봉 초과 — 서버가 빈 결과로 답하는데 그 빈 화면은 "이력이 없다" 로
+ *   읽혀 원인을 숨긴다. 실패를 만들 수 있는 입력은 만들기 전에 막는다.
  */
 export function patternSeedFromRange(args: {
   code: string | null;
@@ -56,7 +60,7 @@ export function patternSeedFromRange(args: {
   if (!code || isMinuteTimeframe) return null;
   const [lo, hi] = aRealMs <= bRealMs ? [aRealMs, bRealMs] : [bRealMs, aRealMs];
   const bars = candleTsMs.filter((ts) => ts >= lo && ts <= hi).length;
-  if (bars < PATTERN_MIN_BARS) return null;
+  if (bars < PATTERN_MIN_BARS || bars > PATTERN_MAX_BARS) return null;
   return { code, label: args.label, from: toYyyymmdd(lo), to: toYyyymmdd(hi) };
 }
 

@@ -1,6 +1,7 @@
 import { useDrawingsStore } from '../../state/drawings';
 import { useRightRailStore } from '../../state/rightRail';
 import { PatternIcon } from '../../ui/PatternIcon';
+import { PATTERN_MAX_BARS, PATTERN_MIN_BARS } from '../../pattern/patternQuery';
 
 /**
  * 「패턴 영역」 — 일봉에서 기간을 드래그해 봉 패턴을 찾는 진입로 (ADR-0166).
@@ -25,7 +26,7 @@ export function PatternAreaButton({ showLabel = true }: { showLabel?: boolean })
     <button
       type="button"
       aria-label="패턴 영역 — 기간을 드래그해 봉 패턴 찾기"
-      title="기간을 드래그하면 그 봉들과 닮은 패턴을 과거 전체에서 찾는다"
+      title={`기간을 드래그하면 그 봉들과 닮은 패턴을 과거 전체에서 찾는다 (${PATTERN_MIN_BARS}~${PATTERN_MAX_BARS}봉)`}
       aria-pressed={active}
       onClick={() => {
         useDrawingsStore.getState().setActiveTool('measure');

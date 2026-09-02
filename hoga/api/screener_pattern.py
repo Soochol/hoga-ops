@@ -40,9 +40,12 @@ _FLAT_SD = 1e-9
 _OHLC = ("open", "high", "low", "close")
 _CLOSE = 3
 
-#: 창의 하한 — 이보다 짧으면 상관계수가 우연으로 가득 찬다. `models.PATTERN_MIN_BARS`
-#: 와 같은 값이며, 이 상수는 **날짜 지정 경로**(길이를 요청이 정하지 않는다)를 지킨다.
+#: 창의 하한·상한 — **날짜 지정 경로**를 지킨다. `models` 의 `lengths` 검증은 요청이
+#: 길이를 **말할 때만** 걸리는데, `from`/`to` 경로는 길이를 그 구간에서 뽑으므로 그
+#: 검증을 통과한다. 즉 이 두 상수가 없으면 드래그로 그은 200봉이 그대로 돈다
+#: (실측: 33봉 구간이 상한을 우회해 사용자 서버에서 24.7초를 썼다).
 PATTERN_FLOOR = 5
+PATTERN_CEILING = 30
 
 
 @dataclass(frozen=True)
@@ -404,9 +407,10 @@ def _resolve_window(c: Corpus, i: int, length: int, frm: str | None, to: str | N
     days = c.dates[s : s + n].astype("datetime64[D]").astype(str)
     days = np.char.replace(days, "-", "")
     sel = np.flatnonzero((days >= frm) & (days <= to))
-    if len(sel) < PATTERN_FLOOR:
+    span = int(sel[-1] - sel[0] + 1) if len(sel) else 0
+    if len(sel) < PATTERN_FLOOR or span > PATTERN_CEILING:
         return None
-    return int(sel[0]), int(sel[-1] - sel[0] + 1)
+    return int(sel[0]), span
 
 
 def _ymd(c: Corpus, i: int, offset: int) -> str:

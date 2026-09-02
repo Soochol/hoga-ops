@@ -332,6 +332,23 @@ def test_from_to_wire_keys_are_accepted_and_define_the_length(client):
     assert (result["query"]["from_date"], result["query"]["to_date"]) == (frm, to)
 
 
+def test_dated_range_is_capped_because_lengths_validation_does_not_apply(client):
+    """**날짜 경로는 `lengths` 검증을 안 탄다** — 길이를 요청이 말하지 않기 때문이다.
+
+    그래서 `PATTERN_CEILING` 이 따로 지킨다. 없으면 드래그로 그은 200봉이 그대로 돌고,
+    실측에서 33봉 구간이 사용자 서버에서 24.7초를 썼다.
+    """
+    days = _dates(60)
+    over = days[sp.PATTERN_CEILING + 5].strftime("%Y%m%d")
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [7],
+                          "from": days[0].strftime("%Y%m%d"), "to": over,
+                          "min_tv_eok": 0, "exclude_etf": False})
+    # 요청 자체는 유효하다(lengths 는 7 이라 통과) — 막는 것은 구간의 **실제 길이**다.
+    assert r.status_code == 200
+    assert r.json()["results"] == []
+
+
 @pytest.mark.parametrize("payload", [
     {"lengths": []},
     {"lengths": [4]},                         # PATTERN_MIN_BARS 미만
