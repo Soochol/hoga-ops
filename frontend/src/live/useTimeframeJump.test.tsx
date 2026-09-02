@@ -31,21 +31,36 @@ function Consumer(props: {
   myGroup?: number | null;
   myTimeframe?: '1m' | 'D';
   enabled?: boolean;
+  myCode?: string | null;
+  /** ⚠ 종목 수명 스펙은 **`true`(공장값)로** 재야 한다 — 아래 그 describe 참조. */
+  allowCrossSymbol?: boolean;
+  mySymbolKey?: string | null;
 }) {
+  const code = props.myCode === undefined ? '064350' : props.myCode;
   latest = useMinuteJumpTarget({
     enabled: props.enabled ?? true,
     myWindowId: 'minute-window',
     myTimeframe: props.myTimeframe ?? '1m',
     myGroup: props.myGroup === undefined ? 1 : props.myGroup,
-    myCode: '064350',
-    allowCrossSymbol: false,
+    myCode: code,
+    allowCrossSymbol: props.allowCrossSymbol ?? false,
+    // 지정이 없으면 코드에서 만든다 — 기존 스펙들이 이 인자를 몰라도 되게.
+    mySymbolKey: props.mySymbolKey === undefined
+      ? (code === null ? null : `stock:${code}`)
+      : props.mySymbolKey,
     todayKst: TODAY,
   });
   return null;
 }
 
+/**
+ * 반환값은 **같은 창을 다시 그리는** 함수다 — 종목 교체를 재려면 이것이어야 한다.
+ * `render` 를 한 번 더 부르면 두 번째 트리가 생기고, 그 창은 baseline seq 를 새로
+ * 잡아(이미 있는 발행을 무시) 축이 통째로 흐려진다.
+ */
 function mount(props: Parameters<typeof Consumer>[0] = {}) {
-  render(<Consumer {...props} />);
+  const { rerender } = render(<Consumer {...props} />);
+  return (next: Parameters<typeof Consumer>[0]) => rerender(<Consumer {...next} />);
 }
 
 /** 발행 창이 보내는 것과 같은 모양 — 칸의 시작·포함 상한. */
@@ -170,6 +185,66 @@ describe('해제 — × 는 이 창만 푼다', () => {
     act(() => latest.clear());
     publish('20260810', '20260814');
     expect(latest.asOfDate).toBe('20260814');
+  });
+});
+
+describe('수명 — 종목이 갈리면 이 창의 점프가 풀린다', () => {
+  // ⚠ **`allowCrossSymbol: true` 로 잰다**(공장값). `false` 면 기존 게이트
+  // (`resolveTimeframeJump` 의 「발행자 vs 나」 조건)가 **공범**이라 수명 코드를 통째로
+  // 지워도 이 스펙들이 초록으로 통과한다 — red 는 대상 코드가 유일한 기여자일 때만 뜬다.
+  const CROSS = { allowCrossSymbol: true } as const;
+
+  it('종목이 갈리면 기준일과 조각이 함께 내려간다', () => {
+    const rerender = mount({ ...CROSS, myCode: '064350' });
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBe('20260821');
+    rerender({ ...CROSS, myCode: '005930' });
+    expect(latest.asOfDate).toBeNull();
+    expect(latest.viewSeg).toBeNull();
+    expect(latest.date).toBeNull();
+  });
+
+  // 비교만 하면 값이 다시 같아져 칩이 되살아난다. 해제는 **못 박는** 것이다.
+  it('원래 종목으로 돌아와도 되살아나지 않는다 (A→B→A)', () => {
+    const rerender = mount({ ...CROSS, myCode: '064350' });
+    publish('20260817', '20260821');
+    rerender({ ...CROSS, myCode: '005930' });
+    rerender({ ...CROSS, myCode: '064350' });
+    expect(latest.asOfDate).toBeNull();
+  });
+
+  // 종목이 그대로면 재렌더만으로 풀려서는 안 된다 — SSE 틱마다 재렌더가 온다.
+  it('같은 종목이면 재렌더에 살아남는다', () => {
+    const rerender = mount({ ...CROSS, myCode: '064350' });
+    publish('20260817', '20260821');
+    rerender({ ...CROSS, myCode: '064350' });
+    rerender({ ...CROSS, myCode: '064350' });
+    expect(latest.asOfDate).toBe('20260821');
+  });
+
+  it('푼 뒤 새 점프는 다시 받는다 — × 와 같은 계약', () => {
+    const rerender = mount({ ...CROSS, myCode: '064350' });
+    publish('20260817', '20260821');
+    rerender({ ...CROSS, myCode: '005930' });
+    publish('20260810', '20260814', { ...DAILY_ORIGIN, code: '005930' });
+    expect(latest.asOfDate).toBe('20260814');
+  });
+
+  // 슬롯은 그룹 공용이라 지우면 다른 분봉 창의 칩까지 사라진다(× 와 같은 규율).
+  it('슬롯은 지우지 않는다', () => {
+    const rerender = mount({ ...CROSS, myCode: '064350' });
+    publish('20260817', '20260821');
+    rerender({ ...CROSS, myCode: '005930' });
+    expect(useLiveCursorStore.getState().jumpRequest).not.toBeNull();
+  });
+
+  // 지수 창은 `myCode` 가 설계상 `null` 이라 그 축으로는 교체가 안 보인다.
+  it('지수 창도 본다 — KOSPI→KOSDAQ (myCode 는 둘 다 null)', () => {
+    const rerender = mount({ ...CROSS, myCode: null, mySymbolKey: 'index:KOSPI' });
+    publish('20260817', '20260821');
+    expect(latest.asOfDate).toBe('20260821');
+    rerender({ ...CROSS, myCode: null, mySymbolKey: 'index:KOSDAQ' });
+    expect(latest.asOfDate).toBeNull();
   });
 });
 

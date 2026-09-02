@@ -22,6 +22,11 @@
  * (`aborted`)과 ↻. 래치와 중단은 "백필을 기다리는 동안 사용자가 팬하면 뒤늦게
  * 끌려간다" 를 막던 장치인데, 기다림 자체가 한 왕복으로 줄어 그 창이 닫혔다.
  *
+ * ── 수명: 이 창이 종목을 바꾸면 풀린다 ──────────────────────────────────
+ * 점프는 「그 종목의 그 날」을 여는 명령이라, 창이 그리는 종목이 갈리면 명령의 절반이
+ * 사라진다. 그래서 × 와 같은 자리에서 자동으로 풀린다 — 근거와 함정(게이트가 답하는
+ * 질문이 다르다 · 렌더 단계 · A→B→A)은 `useMinuteJumpTarget` 안의 그 절에 있다.
+ *
  * ── 좌측 팬은 그대로 산다 ────────────────────────────────────────────────
  * 우단만 고정하고 `from` 은 자유다. 그래서 `planPastCandlesDelta` 의
  * `canReusePrevious` 경로(`requestTo = previous.from − 1`)가 종전과 똑같이 왼쪽
@@ -143,13 +148,32 @@ export function useMinuteJumpTarget(params: {
   myCode: string | null;
   allowCrossSymbol: boolean;
   /**
+   * 이 창이 지금 그리는 종목의 **정체성 키**(예: `stock:005930` · `index:KOSPI`).
+   * 값이 갈리면 이 창의 점프를 푼다 — 아래 「종목이 갈리면」 절.
+   *
+   * `myCode` 와 **따로 받는다**. 두 값이 답하는 질문이 다르기 때문이다(그 절 참조)
+   * 이고, 모양도 다르다 — `myCode` 는 지수 창에서 `null` 이라
+   * (`WindowViewValue.code` 의 계약) 그것으로 재면 KOSPI→KOSDAQ 교체가 이 축에
+   * 아예 안 보인다. `kind` 를 접두로 붙이는 것은 `'005930'` 인 지수와 주식이
+   * 생기더라도 두 창이 섞이지 않게 하기 위해서다.
+   *
+   * **`null` 도 값이다** — 여기로 갈리면 점프가 풀린다. 이 값은
+   * `windowSymbolOf`(`win.pinned ?? groupSymbols[win.group] ?? null`)의 순수 파생이라
+   * 일시적 `null` 이 끼는 경로가 없고, 실제로 `null` 이 되는 둘(핀 해제 + 그룹 종목
+   * 없음 · 미배정 그룹으로 이동)은 스토어가 이미 fresh-view 로 다루는 **진짜 변경**이다.
+   * 그래서 `null` 을 예외로 빼면 오히려 그 둘에서만 점프가 살아남는다.
+   */
+  mySymbolKey: string | null;
+  /**
    * 실제 오늘(KST). 목적지 상한을 여기로 클램프한다 — 주·월 칸의 상한은 **달력상의
    * 칸 끝**이라 미래일 수 있고(8월 칸 → 08-31), 미래를 우단으로 보내면 백엔드가
    * 422(`DATE_IN_FUTURE`)를 낸다.
    */
   todayKst: string;
 }): MinuteJumpTarget {
-  const { enabled, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, todayKst } = params;
+  const {
+    enabled, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, mySymbolKey, todayKst,
+  } = params;
   const jumpRequest = useLiveCursorStore((s) => s.jumpRequest);
   const historicalRange = useHistoricalRangeActions();
 
@@ -163,9 +187,12 @@ export function useMinuteJumpTarget(params: {
 
   // 사용자가 × 로 푼 명령. 슬롯을 지우지 않는 이유: 슬롯은 그룹 공용이라 지우면
   // **다른 분봉 창의 칩까지** 사라진다. 해제는 창의 로컬 사실이다.
+  // (해제는 문이 둘이다 — 종목 변경으로 푸는 쪽은 아래 `symbolDismissedSeqRef`.)
   const [dismissedSeq, setDismissedSeq] = useState<number | null>(null);
 
-  const live = useMemo(() => {
+  // 이 창이 **따를 자격이 있는** 명령. 종목 축은 아직 보지 않는다 — 그 판정은
+  // 자격이 아니라 유효기간이라 아래에서 따로 한다.
+  const candidate = useMemo(() => {
     if (!enabled) return null;
     const resolved = resolveTimeframeJump({
       publication: jumpRequest, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
@@ -177,6 +204,50 @@ export function useMinuteJumpTarget(params: {
   }, [
     enabled, jumpRequest, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol, dismissedSeq,
   ]);
+
+  // ── 종목이 갈리면 이 창의 점프를 푼다 ──────────────────────────────────────
+  //
+  // 위 게이트(`resolveTimeframeJump`)의 종목 조건은 **다른 질문에 답한다** — 「발행자와
+  // 내 종목이 같은가」(수신 **자격**)이지 「받은 뒤 내가 바뀌었는가」(**유효기간**)가
+  // 아니다. 흔한 경우에 두 답이 우연히 같아서 오래 구별되지 않았는데, 그 게이트는
+  // `cursorSyncCrossSymbol`(⚙️ 차트, **공장 켬**)이 통째로 끈다. 그래서 기본 설정에서는
+  // 종목을 바꿔도 기준일이 그대로 남았다 — 새 종목의 분봉 창이 옛 날짜에 고정된 채 뜨고,
+  // `asOfDate` 가 서 있으면 `useLiveChartData` 가 라이브 구독을 `useLiveSeries('')` 로
+  // 끊으므로 **실시간이 조용히 죽는다**. 칩이 남는 것은 그 상태의 표시일 뿐이다.
+  //
+  // 워크스페이스의 「종목 교체 = fresh-view」 리셋(`setGroupSymbol`)이 이걸 못 잡는 이유는
+  // 그것이 `ChartWindowRuntime` 만 비우기 때문이다 — 점프는 전역 커서 슬롯과 이 훅의
+  // 로컬 상태에 살아서 그 컨테이너 **밖**이다. 그 계약을 이 훅 쪽으로 가져온다.
+  //
+  // ⚠ **렌더 단계에서 판정한다.** effect 로 미루면 `asOfDate` 가 한 커밋 늦게 내려가
+  // 새 종목이 옛 기준일로 한 번 페치했다 버린다(요청 낭비 + 화면 깜빡임) — 이 훅이
+  // `useLiveChartData` **위에서** 불리는 것과 정확히 같은 이유다. `baselineSeqRef` 가
+  // 이미 쓰는 idiom 이고, 종목 변경은 그 자체가 재렌더라 상태로 승격할 필요도 없다.
+  //
+  // ⚠ **비교가 아니라 «해제»다.** 앵커와 지금 종목을 매 렌더 비교만 하면 A→B→**A** 로
+  // 돌아왔을 때 값이 다시 같아져 칩이 되살아난다. 갈린 순간 그 seq 를 푼 것으로 못
+  // 박는다 — × 와 같은 성질(창의 로컬 사실)이라 **슬롯은 건드리지 않는다**.
+
+  /** 지금 따르는 명령과 **그것을 받았을 때의 종목**. 이 짝이 곧 유효기간의 기준선이다. */
+  const jumpAnchorRef = useRef<{ seq: number; symbolKey: string | null } | null>(null);
+  /** 종목이 갈려 푼 명령. `dismissedSeq`(×)와 층은 같고 트리거만 다르다. */
+  const symbolDismissedSeqRef = useRef<number | null>(null);
+
+  if (candidate === null) {
+    jumpAnchorRef.current = null;
+  } else if (candidate.seq !== symbolDismissedSeqRef.current) {
+    const anchor = jumpAnchorRef.current;
+    if (anchor === null || anchor.seq !== candidate.seq) {
+      jumpAnchorRef.current = { seq: candidate.seq, symbolKey: mySymbolKey };
+    } else if (anchor.symbolKey !== mySymbolKey) {
+      symbolDismissedSeqRef.current = candidate.seq;
+      jumpAnchorRef.current = null;
+    }
+  }
+
+  const live = candidate !== null && candidate.seq !== symbolDismissedSeqRef.current
+    ? candidate
+    : null;
 
   // 칸의 **포함 상한**을 오늘로 클램프한 것이 목적지다. 칸 시작(`fromMs`)은 쓰지
   // 않는다 — 종전엔 그것이 백필 목표였지만, 이제 창이 우단에서 왼쪽으로 자라므로
