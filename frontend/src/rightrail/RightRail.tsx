@@ -3,6 +3,7 @@ import { HeartIcon } from '../ui/HeartIcon';
 import { HeatmapIcon } from '../ui/HeatmapIcon';
 import { FunnelIcon } from '../ui/FunnelIcon';
 import { RankingIcon } from '../ui/RankingIcon';
+import { PatternIcon } from '../ui/PatternIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
 import { BellIcon } from '../ui/BellIcon';
 import { RailButton } from '../ui/RailShell';
@@ -10,8 +11,8 @@ import { RailButton } from '../ui/RailShell';
 /**
  * Global Right Rail (ADR-0052) — fixed thin right-edge chrome on every route.
  * The rail itself does not collapse. It holds 관심 (Watchlist), 히트맵 (Heatmap),
- * 스크리너 (Screener), and 저장뷰 (Saved Views); each toggles its own panel (mutually
- * exclusive — one panel slot). The chevron collapses the open panel and re-opens the last one.
+ * 스크리너 (Screener), 순위 (Ranking), 패턴 (봉 패턴 검색 — ADR-0166), 저장뷰
+ * (Saved Views), 알림; each toggles its own panel (mutually exclusive — one panel slot). The chevron collapses the open panel and re-opens the last one.
  */
 export default function RightRail() {
   const activePanel = useRightRailStore((s) => s.activePanel);
@@ -29,7 +30,7 @@ export default function RightRail() {
         type="button"
         onClick={toggleCollapse}
         aria-expanded={open}
-        aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-ranking-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
+        aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-ranking-panel right-rail-pattern-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
         aria-label={open ? '우측 패널 닫기' : '우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
@@ -67,6 +68,14 @@ export default function RightRail() {
         active={activePanel === 'ranking'}
         onClick={() => togglePanel('ranking')}
         icon={<RankingIcon filled={activePanel === 'ranking'} className="w-[1.125em] h-[1.125em]" />}
+      />
+      <RailItem
+        label="패턴"
+        ariaLabel="봉 패턴 패널 토글"
+        controls="right-rail-pattern-panel"
+        active={activePanel === 'pattern'}
+        onClick={() => togglePanel('pattern')}
+        icon={<PatternIcon filled={activePanel === 'pattern'} className="w-[1.125em] h-[1.125em]" />}
       />
       <RailItem
         label="저장뷰"

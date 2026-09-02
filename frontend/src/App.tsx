@@ -57,6 +57,9 @@ const ScreenerDrawer = lazy(() =>
 const RankingDrawer = lazy(() =>
   import('./rightrail/RankingDrawer').then((m) => ({ default: m.RankingDrawer })),
 );
+const PatternDrawer = lazy(() =>
+  import('./pattern/PatternDrawer').then((m) => ({ default: m.PatternDrawer })),
+);
 const StudyViewsDrawer = lazy(() =>
   import('./studyViews/StudyViewsDrawer').then((m) => ({ default: m.StudyViewsDrawer })),
 );
@@ -219,6 +222,9 @@ export default function App() {
       )}
       {activePanel === 'ranking' && (
         <Suspense fallback={null}><RankingDrawer /></Suspense>
+      )}
+      {activePanel === 'pattern' && (
+        <Suspense fallback={null}><PatternDrawer /></Suspense>
       )}
       {activePanel === 'savedViews' && (
         <Suspense fallback={null}><StudyViewsDrawer /></Suspense>
