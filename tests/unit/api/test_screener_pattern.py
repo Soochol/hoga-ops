@@ -460,7 +460,14 @@ def test_route_response_passes_response_model_with_wire_keys(client):
                           "min_tv_eok": 0, "exclude_etf": False})
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"code", "name", "mode", "timeframe", "results"}
+    assert set(body) == {"code", "name", "mode", "timeframe", "results",
+                         "empty_reason", "coverage_from", "coverage_to"}
+    # 결과가 있으면 이유는 null 이지만 **키는 남는다** — 부재와 null 이 다른 계약이라
+    # 이 라우트에 `response_model_exclude_none` 을 걸면 안 된다(CLAUDE.md).
+    assert body["empty_reason"] is None
+    # 커버리지는 결과 유무와 무관하게 실린다. 값이 있어야 화면이 「그럼 어디를 그으면
+    # 되나」에 답할 수 있다 — 여기서 조용히 스트립되면 그 문장이 통째로 사라진다.
+    assert body["coverage_from"] and body["coverage_to"]
     result = body["results"][0]
     assert set(result) == {"length", "query", "ma_periods", "universe", "dist",
                            "matches", "baseline", "partial_last_bucket_days", "elapsed_ms"}
@@ -1230,3 +1237,108 @@ def test_since_keeps_the_bucket_it_falls_inside(tmp_path):
     # 000002 의 창 둘만 후보이고, 그중 1월 시작 창은 since 로 정당하게 잘린다.
     # **키로 비교하면 2월 시작 창까지 빠져 0 이 된다** — 그 한 칸이 이 가드다.
     assert len(scores) == 1, f"2월 버킷이 빠졌다 (후보창 {len(scores)})"
+
+
+# ── 빈 응답의 «이유» (조사 2026-09-04) ────────────────────────────────────────────
+#
+# 이 절이 닫는 방향: 서버가 빈 결과를 낼 때 **왜** 비었는지를 응답이 말하는가.
+#
+# 왜 필요했나: 빈 응답 하나에 실패 경로 **넷**이 뭉쳐 있었고, 프론트는 그것을
+# 「그은 구간에 해당하는 일봉이 없다」 한 문장으로 번역했다. 그중 기간으로 풀리는 것은
+# `no_candidates` 하나뿐인데 화면은 어느 것인지 말할 수 없었다 — 사용자는 조건을
+# 아무리 바꿔도 같은 문장을 봤다.
+#
+# 못 보는 것: 이 테스트들은 **이유의 값**을 재지 그 이유가 화면에 어떤 문장으로
+# 나오는지는 재지 않는다. 그쪽은 `frontend/src/pattern/PatternDrawer.test.tsx` 다.
+
+
+def _reason(tmp_path, **kw):
+    """빈 응답 하나를 돌려준다 — `results` 와 `empty_reason` 을 함께 단언하기 위해.
+
+    기본값은 **전부 덮어쓸 수 있다**. 이 절의 테스트들이 저마다 다른 축 하나(코드·구간·
+    필터·모드)만 움직여 이유를 가르므로, 고정 인자로 박으면 그 축이 막힌다.
+    """
+    req = PatternSearchRequest(**{"code": "000001", "mode": "now", "lengths": [7],
+                                  "min_tv_eok": 0, "exclude_etf": False, "top": 10, **kw})
+    return sp.run_pattern_search(tmp_path, req)
+
+
+def test_missing_code_says_so_and_carries_no_coverage(corpus):
+    """코퍼스에 계열이 없다 — **커버리지의 부재가 곧 그 정보**다."""
+    res = _reason(corpus, code="999999")
+    assert res.results == []
+    assert res.empty_reason == "code_missing"
+    assert res.coverage_from is None and res.coverage_to is None
+
+
+def test_range_outside_coverage_says_window_and_names_the_searchable_span(corpus):
+    """**이 PR 의 요점.** 차트에는 캔들이 보이는데 코퍼스가 그 시기를 안 담는 경우.
+
+    `coverage_*` 가 「그럼 어디를 그으면 되나」에 답한다 — 그게 없으면 사용자는 기간·
+    모드·봉수를 바꿔 가며 같은 빈 화면을 반복해서 본다(실측: 두산·CJ대한통운은 차트에
+    2019년 봉이 보이는데 코퍼스는 2024-01-02 부터다).
+    """
+    res = _reason(corpus, **{"from": "20190107"}, to="20190114")
+    assert res.results == []
+    assert res.empty_reason == "window"
+    # 커버리지가 실려야 하고, **그은 구간이 그 밖**이어야 이 필드가 값을 한다.
+    assert res.coverage_from is not None and res.coverage_to is not None
+    assert res.coverage_from > "20190114", "그은 구간이 커버리지 안이면 이 가드는 헛돈다"
+
+
+def test_flat_series_says_flat_not_window(corpus):
+    """단일가 계열 — 창은 잡히는데 비교할 모양이 없다(`query_vector` → None).
+
+    `window` 로 뭉뚱그리면 화면이 커버리지 문장을 띄우는데, 커버리지는 멀쩡하므로
+    사용자가 「구간 안인데 왜?」에 갇힌다.
+    """
+    res = _reason(corpus, code="000003")
+    assert res.results == []
+    assert res.empty_reason == "flat"
+    assert res.coverage_from is not None
+
+
+def test_no_candidates_when_filters_leave_nothing(corpus):
+    """후보가 전멸 — **넷 중 유일하게 기간·조건으로 풀리는 이유**다."""
+    res = _reason(corpus, mode="history", lengths=[7], min_tv_eok=10**6)
+    assert res.results == []
+    assert res.empty_reason == "no_candidates"
+
+
+def test_successful_search_has_no_reason_but_still_reports_coverage(corpus):
+    """이유는 빈 응답에만 붙는다. 커버리지는 **결과 유무와 무관하게** 늘 붙는다."""
+    res = _reason(corpus)
+    assert res.results, "픽스처가 결과를 못 내면 이 가드는 아무것도 재지 못한다"
+    assert res.empty_reason is None
+    assert res.coverage_from is not None and res.coverage_to is not None
+
+
+def test_multi_length_scrub_reports_the_furthest_failure_not_the_first(tmp_path):
+    """⚠ **먼저 만난 이유를 채택하면 안 된다.**
+
+    `now` 는 여러 봉수를 한 응답에 담으므로 길이마다 다른 이유로 죽을 수 있다. 먼저
+    만난 것을 고르면 사용자가 손댈 수 없는 축을 보고하게 된다 — `no_candidates` 는
+    기간·거래대금을 풀면 되살아나지만 `flat` 은 어떤 조건으로도 안 풀린다.
+
+    ⚠ **픽스처가 두 규칙을 실제로 가르는지가 이 가드의 전부다.** 여기까지 오는 데
+    가짜 초록을 두 번 지났다:
+    * 8봉 단일가 계열 — 짧은 길이가 «먼저»이자 «가장 멀리» 간다(`_resolve_window` 가
+      `n >= length` 라 window 실패는 늘 긴 쪽=뒤쪽이다). 두 규칙의 답이 같다.
+    * 마지막 5봉의 **종가만** 같게 둔 계열 — `_series` 는 봉 하나 안에서 O/H/L/C 가
+      다르므로 창 표준편차가 0 이 아니다. `flat` 이 아예 안 난다.
+
+    가르는 입력은 마지막 5봉이 **O=H=L=C** 인 계열이다: 5봉 창은 표준편차 0 이라
+    `flat`, 6봉 이상은 창이 서서 검색까지 갔다가 `no_candidates` 로 죽는다.
+    """
+    closes = list(100 + np.cumsum(np.random.default_rng(3).normal(0, 1.5, 55)))
+    rows = _series("000001", closes)
+    # ★ 단일가 꼬리 — `_flat` 은 자기 날짜를 처음부터 만들어서 이어 붙일 수 없다.
+    rows += [{"code": "000001", "date": d, "open": 120.0, "high": 120.0,
+              "low": 120.0, "close": 120.0, "volume": 10**9} for d in _dates(60)[55:]]
+    rows += _series("000002", closes[::-1] + [99.0] * 5)
+    # 거래대금 하한이 후보를 전멸시킨다 — 6봉 이상이 `no_candidates` 로 죽는 경로다.
+    res = sp.run_pattern_search(_write(tmp_path, rows), PatternSearchRequest(
+        code="000001", mode="now", lengths=[5, 6, 7, 10], min_tv_eok=10**6,
+        exclude_etf=False, top=10))
+    assert res.results == []
+    assert res.empty_reason == "no_candidates", "첫 길이(flat)를 채택하면 여기서 갈린다"

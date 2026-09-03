@@ -23,6 +23,7 @@ import polars as pl
 from hoga.api.models import (
     PatternBaseline,
     PatternDistribution,
+    PatternEmptyReason,
     PatternLengthResult,
     PatternMatchRow,
     PatternQueryWindow,
@@ -80,6 +81,10 @@ MA_PERIODS: tuple[int, ...] = tuple(sorted({p for ps in MA_PRESETS.values() for 
 
 PATTERN_FLOOR = 5
 PATTERN_CEILING = 30
+
+#: 빈 이유의 우선순위 — 클수록 파이프라인을 **멀리 통과**했다는 뜻이다.
+#: 여러 길이를 도는 경로에서 어느 실패를 보고할지 이 순서가 정한다(`run_pattern_search`).
+_EMPTY_RANK: dict[str, int] = {"code_missing": 0, "window": 1, "flat": 2, "no_candidates": 3}
 
 #: 코퍼스의 봉 단위. `"W"` 는 일봉 parquet 에서 **파생**한다 — 종목 주봉을 주는 벤더
 #: 경로가 없다(키움 W/M TR 은 지수 전용).
@@ -816,8 +821,10 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
     c = load_corpus(data_dir, req.timeframe)
     qi = c.index_of(req.code)
     if qi is None:
+        # 커버리지도 없다 — **그 부재가 곧 「코퍼스에 계열이 없다」는 정보**다.
         return PatternSearchResponse(code=req.code, name="", mode=req.mode,
-                                     timeframe=req.timeframe, results=[])
+                                     timeframe=req.timeframe, results=[],
+                                     empty_reason="code_missing")
     name = c.names.get(req.code, "")
     dated = req.from_ is not None
     # 바깥 루프가 1회가 되는 경우 셋:
@@ -831,22 +838,45 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
     periods = ma_periods_for(req.ma_preset)
 
     results: list[PatternLengthResult] = []
+    reason: PatternEmptyReason | None = None
+
+    def note(kind: PatternEmptyReason) -> None:
+        """빈 이유를 모은다 — **파이프라인을 가장 멀리 통과한 것**이 이긴다.
+
+        ⚠ 먼저 만난 것을 채택하면 안 된다. `now` 는 5~15봉을 한 번에 도는데, 계열이
+        짧으면 15봉은 `window` 로 죽고 5봉은 그 뒤 단계에서 죽는다 — 먼저 만난 것을
+        고르면 「구간이 짧다」고 보고하고 화면이 엉뚱한 커버리지 문장을 띄운다.
+        멀리 간 쪽이 사용자가 실제로 손댈 수 있는 축이다.
+        """
+        nonlocal reason
+        if reason is None or _EMPTY_RANK[kind] > _EMPTY_RANK[reason]:
+            reason = kind
+
     for want in lengths:
         win = _resolve_window(c, qi, want, req.from_, req.to)
         if win is None:
+            note("window")
             continue
         offset, base_length = win
         base_query = query_vector(c, qi, offset, base_length, periods)
         if base_query is None:
+            note("flat")
             continue
         # 유연 검색은 **한 쿼리를 여러 길이로** 돌린다 — `lengths`(각 길이의 최신 창)와
         # 다른 축이다. 쿼리 창은 그대로 두고 시간축만 늘렸다 줄인다.
         for length in flex_lengths(base_length, req.flex_bars):
             query = base_query if length == base_length else resample_query(base_query, length)
-            _append_one(c, req, results, qi=qi, offset=offset, length=length,
-                        base_length=base_length, query=query, periods=periods)
-    return PatternSearchResponse(code=req.code, name=name, mode=req.mode,
-                                 timeframe=req.timeframe, results=results)
+            miss = _append_one(c, req, results, qi=qi, offset=offset, length=length,
+                               base_length=base_length, query=query, periods=periods)
+            if miss is not None:
+                note(miss)
+    return PatternSearchResponse(
+        code=req.code, name=name, mode=req.mode, timeframe=req.timeframe, results=results,
+        # 결과가 하나라도 있으면 이유가 없다 — 일부 길이가 죽은 것은 실패가 아니다.
+        empty_reason=None if results else reason,
+        coverage_from=c.first_day_at(qi, 0).strftime("%Y%m%d"),
+        coverage_to=c.last_day_at(qi, c.series_len(qi) - 1).strftime("%Y%m%d"),
+    )
 
 
 def _append_one(
@@ -860,8 +890,13 @@ def _append_one(
     base_length: int,
     query: np.ndarray,
     periods: tuple[int, ...] = (),
-) -> None:
-    """길이 하나의 결과를 만들어 담는다. 유연 검색이 이 함수를 길이마다 부른다."""
+) -> PatternEmptyReason | None:
+    """길이 하나의 결과를 만들어 담는다. 유연 검색이 이 함수를 길이마다 부른다.
+
+    담았으면 `None`, 담지 못했으면 **그 이유**를 돌려준다 — 호출부가 빈 응답의 이유를
+    모으기 위해서다. 이 함수가 조용히 return 하던 시절 그 실패는 호출부에서 「길이가
+    안 맞았다」와 구별되지 않았다.
+    """
     started = time.perf_counter()
     # 거래량 축은 가격과 **별도 정규화**다(단위가 달라 한 스케일로 못 누른다).
     # 쿼리 창의 거래량이 평탄하면 그 축이 없으므로 가중을 0 으로 접는다.
@@ -896,7 +931,9 @@ def _append_one(
                 sample=int(len(fwd_all)),
             )
     if not len(scores):
-        return
+        # 후보 창이 하나도 안 남았다 — 기간·거래대금·forward 필터가 전부 걸렀다.
+        # **넷 중 유일하게 조건으로 풀리는 이유**라 화면이 그렇게 말할 수 있어야 한다.
+        return "no_candidates"
     pcts = percentiles(scores, (50, 95, 99, 99.99) if req.mode == "history" else (50, 95, 99))
     rows = [
         PatternMatchRow(
@@ -942,3 +979,4 @@ def _append_one(
         partial_last_bucket_days=partial,
         elapsed_ms=(time.perf_counter() - started) * 1000,
     ))
+    return None
