@@ -149,7 +149,6 @@ describe('ScreenerDrawer', () => {
     useScreenerPanelStore.setState({
       selectedSavedId: null,
       lastScan: null,
-      updateState: { status: 'idle' },
       sortMode: 'default',
       monitoringActive: false,
       monitorPeriodMs: null,
@@ -599,7 +598,6 @@ describe('ScreenerDrawer', () => {
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
       sortMode: 'default',
-      updateState: { status: 'idle' },
       lastScan: makeScan({ savedUpdatedAtMs: 10 }),
     });
 
@@ -669,19 +667,6 @@ describe('ScreenerDrawer', () => {
     expect(screen.queryByText('180,000')).not.toBeInTheDocument();               // corpus price 노출 안 함 → '—'
     const row000660 = screen.getByTestId('screener-row-000660');
     expect(within(row000660).getByText('—')).toBeInTheDocument();
-  });
-
-  it('job 실패가 두 채널(feedback + updateState)에 세팅돼도 갱신 실패 라벨은 한 번만', async () => {
-    // useScreenerUpdateSync 가 job-finished-error 에서 setFeedback + setUpdateError 를
-    // 둘 다 호출한다. 드로어는 error 를 단일 채널로만 렌더해야 한다(중복 라벨 버그).
-    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    useScreenerUpdateFeedback.getState().setFeedback({
-      message: '갱신 실패', tone: 'error', atMs: Date.now(), source: 'update',
-    });
-    useScreenerPanelStore.getState().setUpdateError('갱신 실패', Date.now());
-    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    expect(screen.getAllByText(/갱신 실패/)).toHaveLength(1);
   });
 
   // ── 갱신 중에는 「지난 실행의 결과」를 보여 주지 않는다 ──────────────────────

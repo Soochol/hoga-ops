@@ -102,10 +102,7 @@ export function useScreenerUpdateSync(): void {
             : prev);
       } else if (e.type === 'screener_update_finished') {
         useScreenerUpdateFeedback.getState().setFeedback(finishedMessage(e));
-        const panel = useScreenerPanelStore.getState();
-        if (e.updated > 0) panel.markLastScanDataStale();
-        if (e.reason === 'error') panel.setUpdateError('갱신 실패', Date.now());
-        else panel.setUpdateSuccess(Date.now());
+        if (e.updated > 0) useScreenerPanelStore.getState().markLastScanDataStale();
         qc.invalidateQueries({ queryKey: ['screener-status'] });
       } else if (e.type === 'disconnected') {
         // WS 드롭 중 완료된 갱신이 진행바를 박제하지 않도록 서버 진실 재조회.
