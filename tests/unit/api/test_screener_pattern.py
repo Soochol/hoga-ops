@@ -689,3 +689,102 @@ def test_unknown_preset_falls_back_to_off_rather_than_erroring(tmp_path):
     # 요청이 답을 못 바꾸게 한다 — 모르는 이름은 이평 없음이다.
     assert sp.ma_periods_for("nope") == ()
     assert sp.ma_periods_for("short") == (5, 20)
+
+
+# ── 정지 구간과 수치 붕괴 ────────────────────────────────────────────────────
+#
+# `test_flat_series_is_excluded` 는 **`search_now` 만** 잰다. now 는 표준편차를
+# `.std()`(2-pass)로 재므로 정지 창의 값이 참값 그대로 0 이고, 그래서 그 가드는
+# 통과했다 — **결함이 있던 경로는 `search_history`** 다. 거기서는 `_win_sd` 가
+# cumsum 차분이라 계열이 길수록 파국적 상쇄가 커지고, 참값이 1e-16 인 창이 1e-8~1e-6
+# 대의 표준편차로 되살아난다. 그 작은 수로 나눈 상관계수는 **1 을 넘었다**(실코퍼스
+# 실측 1.250 — 참값 0.652).
+
+
+def _long_series_with_flat_tail(tmp_path, n_pre: int = 500, n_flat: int = 120):
+    """앞쪽 변동 구간 + 뒤쪽 **완전 정지** 구간.
+
+    ⚠ **길이가 이 픽스처의 전부다.** 짧은 계열(50봉)에서는 cumsum 누적이 작아 오차가
+    정확히 0 이라 결함이 재현되지 않는다 — 500봉이면 5e-08 이 된다(실측). 이 값을
+    줄이면 아래 가드가 아무것도 증명하지 못한다.
+    """
+    rng = np.random.default_rng(3)
+    px = [float(max(v, 10.0)) for v in 100 + np.cumsum(rng.normal(0, 1.5, n_pre))]
+    rows = _series("000009", px)
+    rows += _flat("000009", n_flat, price=50.0, start=_dates(n_pre + n_flat)[n_pre])
+    # 쿼리가 될 무관한 계열 — 자기 자신만 있으면 검색할 대상이 없다.
+    rows += _series("000001", _PATTERN * 20)
+    return _write(tmp_path, rows)
+
+
+def _history(c, code="000001", **kw):
+    """(매치, **전 후보창 점수**). 뒤의 것이 「그 창이 후보에 들었는가」를 말해 준다."""
+    qi, off, q = _query(c, code)
+    matches, scores, _ = sp.search_history(
+        c, query=q, length=_LEN, query_series=qi, query_offset=off,
+        min_tv_eok=0, exclude_etf=False, min_after=0, no_overlap=False, **kw)
+    return matches, scores
+
+
+def test_flat_sd_sits_above_the_cumsum_error_floor(tmp_path):
+    """`_FLAT_SD` 는 `_win_sd` 자신의 오차보다 **위**에 있어야 한다.
+
+    이 가드가 닫는 방향: 상수가 오차 아래로 내려가는 것. 그러면 참값이 0 인 창이
+    「표준편차가 있는 창」으로 통과하고, 그 작은 수로 나눈 상관계수가 1 을 넘는다
+    (실코퍼스 실측 1.250 — 참값 0.652).
+
+    못 보는 것: 실코퍼스의 오차 상한(2.4e-06)은 여기서 안 잰다 — 이 픽스처는 짧아
+    5e-08 대다. 그 값은 상수의 주석이 근거를 든다.
+    """
+    c = sp.load_corpus(_long_series_with_flat_tail(tmp_path))
+    i = c.index_of("000009")
+    assert i is not None
+    s, lo, hi = int(c.starts[i]), 500, 500 + 120 - _LEN
+    # 참값은 부동소수 바닥이지 정확한 0 이 아니다 — 창의 값들은 전부 같다.
+    assert float(c.ch[:, s + lo : s + lo + _LEN].std()) < 1e-15
+    err = float(sp._win_sd(c, i, _LEN)[lo:hi].max())
+    assert err > 1e-9, "픽스처가 짧아져 상쇄가 사라졌다 — n_pre 를 늘릴 것"
+    assert err < sp._FLAT_SD, f"정지 창의 오차 {err:.2e} 가 _FLAT_SD 를 통과한다"
+
+
+def test_flat_windows_leave_the_candidate_pool(tmp_path, monkeypatch):
+    """정지 구간의 창은 **후보에서 빠진다**.
+
+    순위로 재지 않는 이유: 정지 창은 쿼리와의 내적이 0 근처라 상관계수가 낮고, 그래서
+    상위 목록에 애초에 안 온다 — 「결과에 없다」는 단언은 상수를 되돌려도 통과한다.
+    후보창 **수**가 그 배제를 직접 말해 준다.
+    """
+    c = sp.load_corpus(_long_series_with_flat_tail(tmp_path))
+    i = c.index_of("000009")
+    assert i is not None
+    # 옛 값을 통과하는 정지 창의 수 — 픽스처를 바꿔도 이 식이 따라온다.
+    # (전부는 아니다. 오차가 정확히 0 인 창은 어느 임계값에서도 배제된다.)
+    flat = sp._win_sd(c, i, _LEN)[500 : 500 + 120 - _LEN]
+    leak = int((flat > 1e-9).sum())
+    assert leak > 50, "픽스처가 결함을 재현하지 못한다 — n_pre 를 늘릴 것"
+
+    _, kept = _history(c)
+    monkeypatch.setattr(sp, "_FLAT_SD", 1e-9)          # 옛 값 — 자기 오차 아래
+    _, leaked = _history(c)
+    assert len(leaked) - len(kept) == leak
+
+
+def test_history_drops_windows_whose_correlation_exceeds_the_ceiling(corpus, monkeypatch):
+    """상한을 넘는 상관계수는 버린다 — 수학적으로 1 을 넘을 수 없기 때문이다.
+
+    ⚠ **1 을 넘는 값을 합성으로 만들 수 없어** 상한을 낮춰 그 배제가 실제로 걸리는지
+    잰다. 실코퍼스에서 그 값이 나오는 조건(참 sd 2.0e-07 을 cumsum 이 절반으로 계산)은
+    부동소수 오차의 미묘한 자리에 있어 픽스처로 재현되지 않는다(시도했고, 합성 창은
+    비가 0.985~1.000 이거나 정확히 0 이었다).
+
+    그래서 이 가드가 증명하는 것은 **메커니즘이 걸린다**는 것이지 상한값이 옳다는
+    것이 아니다. 값의 근거는 `_CORR_CEILING` 의 주석에 있다.
+    """
+    c = sp.load_corpus(corpus)
+    before, _ = _history(c)
+    assert before, "픽스처에 매치가 없으면 이 가드는 아무것도 재지 못한다"
+    assert max(m.score for m in before) > 0.5
+
+    monkeypatch.setattr(sp, "_CORR_CEILING", 0.5)
+    after, _ = _history(c)
+    assert all(m.score <= 0.5 for m in after)
