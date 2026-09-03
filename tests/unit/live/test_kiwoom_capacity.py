@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -18,6 +19,7 @@ from hoga.live.kiwoom_capacity import (
     DEFAULT_TR_RATE_PER_SEC,
     KiwoomCapacityOverloaded,
     KiwoomCapacityScheduler,
+    _TokenBucket,
 )
 from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
@@ -738,3 +740,34 @@ async def test_shrinking_pool_drops_auth_isolation() -> None:
     s.set_clients([_AuthFailingClient(0)])
     assert s.snapshot()["auth_blocked_accounts"] == []
     await s.aclose()
+
+
+# === 발사 게이트(_TokenBucket) — 동시 acquire ================================
+
+
+async def test_concurrent_acquires_each_reserve_their_own_slot() -> None:
+    """동시 `acquire()` 는 **각자 다른 슬롯**을 예약해야 한다.
+
+    예약을 `await` **뒤**에 쓰면 대기자 전원이 같은 `_next_at` 을 읽고 같은 시각에
+    깨어 한꺼번에 발사한다 — 게이트가 평균만 지키고 **순간 버스트를 못 막는다**.
+    실측(2026-09-03): 워커 4개에서 슬라이딩 1초에 **7건**이 나가 키움 유량 5건을
+    넘었고, `ka10081` 이 `1700` 을 돌려주며 스크리너 갱신이 통째로 죽었다.
+
+    **벽시계를 재지 않는다.** 한 틱(`sleep(0)`) 뒤의 `available_at()` 이 곧 "지금까지
+    예약된 슬롯의 끝"이다 — N 개가 각자 예약했으면 N×interval 만큼 밀려 있고, 버그판은
+    첫 하나만 써서 1×interval 에 머문다. 잠든 시간이 아니라 **예약 장부**를 읽는다.
+    """
+    rate, n = 4.0, 5
+    bucket = _TokenBucket(rate)
+    t0 = time.monotonic()
+    tasks = [asyncio.create_task(bucket.acquire()) for _ in range(n)]
+    await asyncio.sleep(0)          # 모든 코루틴이 첫 await 까지 진행한다
+    reserved = bucket.available_at() - t0
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    assert reserved == pytest.approx(n / rate, abs=0.15), (
+        f"동시 {n}건이 각자 슬롯을 잡아야 한다 — 예약 끝 {reserved:.3f}s, "
+        f"기대 {n / rate:.3f}s (버그판은 {1 / rate:.3f}s 에 머문다)"
+    )
