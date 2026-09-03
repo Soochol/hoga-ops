@@ -348,9 +348,10 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
           .otherwise(pl.lit("<1.5×")).alias("ratio_bucket"),
         pl.when(pl.col("ix_ret5_pre") > 0).then(pl.lit("지수 5일 상승")).otherwise(pl.lit("지수 5일 하락"))
           .alias("ix_mom5"),
-        pl.when(pl.col("ix_ret1") > 0).then(pl.lit("지수 양봉")).otherwise(pl.lit("지수 음봉")).alias("ix_candle"),
+        # 양봉/음봉은 **시가 대비 종가**(몸통)다 — 전일 대비(ret_d)로 가르면 갭 상승 뒤 밀린 날이 양봉으로 잡힌다.
+        pl.when(pl.col("ix_body") > 0).then(pl.lit("지수 양봉")).otherwise(pl.lit("지수 음봉")).alias("ix_candle"),
         pl.when(pl.col("ix_above_ma20")).then(pl.lit("지수>MA20")).otherwise(pl.lit("지수<MA20")).alias("ix_trend"),
-        pl.when(pl.col("ret_d") > 0).then(pl.lit("당일 양봉")).otherwise(pl.lit("당일 음봉")).alias("d_candle"),
+        pl.when(pl.col("body_d") > 0).then(pl.lit("당일 양봉")).otherwise(pl.lit("당일 음봉")).alias("d_candle"),
         pl.when(pl.col("ma_bull_align")).then(pl.lit("정배열")).otherwise(pl.lit("비정배열")).alias("ma_state"),
         pl.when(pl.col("above_ma20") & pl.col("above_ma60")).then(pl.lit("MA20·60 위"))
           .when(pl.col("above_ma20")).then(pl.lit("MA20 위·MA60 아래"))
@@ -405,7 +406,7 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
     metric_cols = tuple(f"fwd{h}" for h in HORIZONS) + tuple(f"xs{h}" for h in HORIZONS) + (
         "fwd5_o", "fwd10_o", "gap_next", "mfe10", "mae10",
         "support_low_held", "support_close_held", "resist_broken",
-        "ret_d", "ret5_pre", "ret20_pre", "vol_ratio20", "pct_of_hi52", "body_d", "ix_ret1",
+        "ret_d", "ret5_pre", "ret20_pre", "vol_ratio20", "pct_of_hi52", "body_d", "ix_ret1", "ix_body",
     )
     summary = {
         "params": vars(args) | {"data_dir": str(args.data_dir), "index_json_dir": str(args.index_json_dir),
