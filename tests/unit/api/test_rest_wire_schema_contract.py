@@ -85,7 +85,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternSaveWindow": frozenset({"kind", "bars", "from_date", "to_date"}),
     "PatternSaveConditions": frozenset(
         {"mode", "since", "count", "sim_floor", "min_tv_eok", "exclude_etf",
-         "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars"}
+         "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars",
+         "timeframe"}
     ),
     "PatternSave": frozenset(
         {"id", "name", "code", "stock_name", "window", "conditions", "excluded",

@@ -363,7 +363,7 @@ describe('PatternDrawer — 차트에서 건네받은 구간', () => {
   it('시드를 1회만 소비한다 — 스테퍼를 만져도 되돌아오지 않는다', async () => {
     const user = userEvent.setup();
     usePatternQueryStore.getState().requestPatternSearch({
-      code: '005930', from: '20260401', to: '20260630',
+      code: '005930', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
@@ -504,7 +504,7 @@ describe('PatternDrawer — 기준 종목 고정', () => {
   it('차트에서 그은 구간은 기준도 그 종목으로 옮긴다 — 새 검색이다', async () => {
     live.activeCode = '005930';
     usePatternQueryStore.getState().requestPatternSearch({
-      code: '000660', label: 'SK하이닉스', from: '20260401', to: '20260630',
+      code: '000660', label: 'SK하이닉스', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
@@ -516,7 +516,7 @@ describe('PatternDrawer — 기준 종목 고정', () => {
 describe('PatternDrawer — 그은 구간은 과거 전체에서 찾는다', () => {
   it('시드가 들어오면 history 모드로 검색한다', async () => {
     usePatternQueryStore.getState().requestPatternSearch({
-      code: '005930', from: '20260401', to: '20260630',
+      code: '005930', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
@@ -532,7 +532,7 @@ describe('PatternDrawer — 그은 구간은 과거 전체에서 찾는다', () 
   it('시드 뒤에도 탭 전환은 살아 있다 — 지금 닮은 종목도 유효한 질문이다', async () => {
     const user = userEvent.setup();
     usePatternQueryStore.getState().requestPatternSearch({
-      code: '005930', from: '20260401', to: '20260630',
+      code: '005930', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
@@ -656,7 +656,7 @@ describe('PatternDrawer — 저장', () => {
   it('그은 구간이면 날짜가 이름이 된다 — 두 종류가 이름만으로 갈린다', async () => {
     const user = userEvent.setup();
     usePatternQueryStore.getState().requestPatternSearch({
-      code: '005930', label: '삼성전자', from: '20260401', to: '20260630',
+      code: '005930', label: '삼성전자', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);

@@ -10,6 +10,7 @@ import {
   subtractDaysKst,
 } from '../live/liveDateTime';
 import { isPatternSearchableTimeframe, usePatternQueryStore } from './patternQuery';
+import type { PatternTimeframe } from '../api/screener';
 import { PatternConditionChips } from './PatternConditionChips';
 import { PatternSavesView } from './PatternSavesView';
 import {
@@ -509,6 +510,8 @@ export function PatternDrawer() {
       //   저장은 값이 담겨 있으므로 그대로 복원된다.
       flexBars: save.conditions.flex_bars ?? DEFAULT_CONDITIONS.flexBars,
       maPreset: save.conditions.ma_preset ?? DEFAULT_CONDITIONS.maPreset,
+      // 부재는 **「주봉이 없던 시절의 저장」**이라 일봉이다 — 같은 규칙.
+      timeframe: save.conditions.timeframe ?? DEFAULT_CONDITIONS.timeframe,
     });
     setShowSaves(false);
   }, []);
@@ -675,6 +678,7 @@ export function PatternDrawer() {
                   volume_weight: withVolume ? VOLUME_WEIGHT_ON : 0,
                   ma_preset: conditions.maPreset,
                   flex_bars: conditions.flexBars,
+                  timeframe: conditions.timeframe,
                 },
                 // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
                 // 그것까지가 「이 검색」이다.

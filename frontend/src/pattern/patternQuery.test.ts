@@ -97,7 +97,7 @@ describe('usePatternQueryStore', () => {
 
   it('소비하면 비운다 — 리렌더가 구간을 되돌리면 안 된다', () => {
     const s = usePatternQueryStore.getState();
-    s.requestPatternSearch({ code: '005930', from: '20260401', to: '20260407' });
+    s.requestPatternSearch({ code: '005930', from: '20260401', to: '20260407', timeframe: 'D' });
     expect(usePatternQueryStore.getState().consumePatternQuery()).toMatchObject({ code: '005930' });
     expect(usePatternQueryStore.getState().pending).toBeNull();
     expect(usePatternQueryStore.getState().consumePatternQuery()).toBeNull();
@@ -105,8 +105,8 @@ describe('usePatternQueryStore', () => {
 
   it('나중 요청이 앞선 요청을 대체한다', () => {
     const s = usePatternQueryStore.getState();
-    s.requestPatternSearch({ code: '005930', from: '20260401', to: '20260407' });
-    s.requestPatternSearch({ code: '000660', from: '20260501', to: '20260507' });
+    s.requestPatternSearch({ code: '005930', from: '20260401', to: '20260407', timeframe: 'D' });
+    s.requestPatternSearch({ code: '000660', from: '20260501', to: '20260507', timeframe: 'D' });
     expect(usePatternQueryStore.getState().consumePatternQuery()).toMatchObject({ code: '000660' });
   });
 });

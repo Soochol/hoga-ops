@@ -2164,6 +2164,9 @@ class PatternSaveConditions(BaseModel):
     #: 화면은 `None` 을 **공장값**으로 읽는다. 새 저장은 항상 값을 담으므로, 일부러 끈
     #: 저장은 `"off"` 로 남아 그대로 복원된다.
     ma_preset: PatternMaPreset | None = None
+    #: 봉 단위. **`None` 은 「주봉이 없던 시절의 저장」**이고 화면은 그것을 공장값(일봉)
+    #: 으로 읽는다 — `ma_preset` 과 같은 규칙이다. 새 저장은 항상 값을 담는다.
+    timeframe: PatternTimeframe | None = None
     #: 길이 유연 폭(±봉). `None` 의 뜻은 위 `ma_preset` 과 같다.
     flex_bars: int | None = Field(None, ge=0, le=5)
 
