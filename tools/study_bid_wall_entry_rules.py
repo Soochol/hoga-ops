@@ -15,6 +15,11 @@
   D0next_open 급증일 다음 날 시가(가장 현실적인 최초 진입)
   D_end       에피소드 마지막 날 종가 — ⚠ 그날이 마지막인지는 다음 날 종가에야 안다(사후 정의)
   D_end+1     첫 비우위일 종가(에피소드 종료를 알 수 있는 첫 시점, 벽 유지 여부 무관)
+  flipAsk     D_end 뒤 처음 매도 우위(ask_peak > bid_peak)가 된 날 종가 — 사용자 규칙 A
+  dipReclaimLow   그 매도 우위 전환 뒤 저가가 close(D_end) 아래로 내려갔다가 다시 close(D_end) 위로 마감한
+                  첫날 종가(같은 날 장중 깸+회복 포함) — 사용자 규칙 B(장중 저가 기준)
+  dipReclaimClose 위와 같되 「깸」을 종가 < close(D_end) 로 판정하고 그 뒤 첫 종가 > close(D_end) 인 날
+                  — 규칙 B(종가 기준)
   hold1/2/3   D_end 뒤 k 일 연속 저가 ≥ W 를 확인한 날 종가(벽 유지 확인 후 진입)
   reclaim   첫 close > close(D_end) (되돌림 캔들, 깸 여부 무관)
   reclaimC  위와 같되 그 전까지 low ≥ W (벽 안 건드린 되돌림)
@@ -55,8 +60,8 @@ from hoga.duck import connect_bounded
 
 HORIZONS = (5, 10, 20)
 K = 10                                   # D_end 뒤 되돌림/돌파를 찾는 창
-RULES = ("D0close", "D0next_open", "D_end", "D_end+1", "hold1", "hold2", "hold3", "reclaim", "reclaimC",
-         "breakD0hi")
+RULES = ("D0close", "D0next_open", "D_end", "D_end+1", "flipAsk", "dipReclaimLow", "dipReclaimClose",
+         "hold1", "hold2", "hold3", "reclaim", "reclaimC", "breakD0hi")
 FEATURES = ("leader_bucket", "ix_trend", "ix_mom5", "hi52_pos", "ma_state", "ma_pos", "d_candle", "ratio_bucket",
             "market", "peak_tod_bucket", "vol_bucket", "retd_bucket", "rs_bucket", "len_bucket", "d0_bucket",
             "wall_bucket", "sdb_bucket", "ix_candle", "ma120_bucket")
@@ -86,8 +91,10 @@ LEN_HI = 4
 
 # ── 진입 시점 ────────────────────────────────────────────────────────────────
 
-def entry_indices(s: Series, i0: int, i_end: int, wall: float) -> dict[str, int | None]:
-    """규칙별 진입 행 인덱스(없으면 None)."""
+def entry_indices(
+    s: Series, i0: int, i_end: int, wall: float, depth: dict[str, tuple[int, int, int]] | None = None,
+) -> dict[str, int | None]:
+    """규칙별 진입 행 인덱스(없으면 None). ``depth`` = 그 종목의 date → (bid_peak, ask_peak, eligible)."""
     n = len(s)
     out: dict[str, int | None] = {"D0close": i0, "D0next_open": i0 + 1 if i0 + 1 < n else None, "D_end": i_end,
                                   "D_end+1": i_end + 1 if i_end + 1 < n else None}
@@ -108,6 +115,25 @@ def entry_indices(s: Series, i0: int, i_end: int, wall: float) -> dict[str, int 
         if brk is None and s.u_close[j] > hi0:
             brk = j
     out["reclaim"], out["reclaimC"], out["breakD0hi"] = rec, rec_c, brk
+    # 사용자 규칙 A/B: 매도 우위 전환일 → close(D_end) 아래로 깸 → 다시 그 위로 마감
+    end = min(n, i_end + 1 + K)
+    flip = None
+    for j in range(i_end + 1, end):
+        r = (depth or {}).get(s.d8[j])
+        if r is not None and r[1] > r[0]:
+            flip = j
+            break
+    out["flipAsk"] = flip
+    ref = float(s.u_close[i_end])
+    dip_low = dip_close = None
+    if flip is not None:
+        t_low = next((j for j in range(flip, end) if s.u_low[j] < ref), None)
+        if t_low is not None:
+            dip_low = next((j for j in range(t_low, end) if s.u_close[j] > ref), None)
+        t_close = next((j for j in range(flip, end) if s.u_close[j] < ref), None)
+        if t_close is not None:
+            dip_close = next((j for j in range(t_close + 1, end) if s.u_close[j] > ref), None)
+    out["dipReclaimLow"], out["dipReclaimClose"] = dip_low, dip_close
     return out
 
 
@@ -265,7 +291,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — 스터디 스크립트의 단�
     for r in ep.iter_rows(named=True):
         s = series[r["code"]]
         i0, i_end = s.idx[r["d0"]], s.idx[r["d_end"]]
-        ent = entry_indices(s, i0, i_end, float(r["wall_price"]))
+        ent = entry_indices(s, i0, i_end, float(r["wall_price"]), by_code.get(r["code"]))
         for rule, i in ent.items():
             rec = {"code": r["code"], "d0": r["d0"], "rule": rule, "entry_idx": i,
                    "entry_date": s.d8[i] if i is not None else None}
