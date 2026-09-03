@@ -51,21 +51,24 @@ describe('patternSeedFromRange', () => {
   });
 
   /**
-   * 이 가드가 닫는 방향: **코퍼스가 없는 창에서 요청이 나가는 것**.
+   * 이 가드가 닫는 방향: **그은 창의 봉 단위가 시드에 실리지 않는 것**.
    *
-   * 주봉은 코퍼스가 생겼으므로(#1719·#1721) 이제 통과하고 **그 사실을 시드가 나른다** —
-   * `timeframe` 이 없으면 서버가 날짜 구간을 일봉으로 다시 세어 다른 질문에 답한다
-   * (#1715 가 고친 결함이 그것이다). 월봉은 아직 코퍼스가 없어 막힌다.
+   * 안 실리면 서버가 날짜 구간을 일봉으로 다시 세어 다른 질문에 답한다(#1715 가 고친
+   * 결함이 그것이다). 캘린더 봉 셋은 모두 코퍼스를 가지므로 전부 통과하고, 분봉만
+   * 막힌다 — 게이트는 **허용 집합**이라 코퍼스 없는 값이 자동으로 새지 않는다.
    *
    * 못 보는 것: 서버가 그 구간을 어떻게 세는지는 여기서 안 잰다(백엔드의 몫이고,
    * 여기서는 시드가 올바른 단위를 나르는 것만 잰다).
    */
-  it('주봉은 그 단위를 시드에 실어 통과한다 — 월봉은 코퍼스가 없어 막힌다', () => {
+  it('캘린더 봉은 그 단위를 시드에 실어 통과한다', () => {
     const overWeekly = { candleTsMs: WEEKLY, aRealMs: WEEKLY[0], bRealMs: WEEKLY[4] };
     // 봉 수 방어만으로는 단위를 구별하지 못한다 — 주봉 5개도 «5봉» 이다.
     expect(WEEKLY.filter((ts) => ts >= WEEKLY[0] && ts <= WEEKLY[4])).toHaveLength(5);
-    expect(seed({ timeframe: 'W', ...overWeekly })).toMatchObject({ timeframe: 'W' });
-    expect(seed({ timeframe: 'M', ...overWeekly })).toBeNull();
+    for (const tf of ['D', 'W', 'M'] as const) {
+      expect(seed({ timeframe: tf, ...overWeekly })).toMatchObject({ timeframe: tf });
+    }
+    // 분봉은 코퍼스가 없다 — 봉 패턴은 캘린더 봉 개념이다.
+    expect(seed({ timeframe: '5m', ...overWeekly })).toBeNull();
   });
 
   it('종목이 없으면(지수 창) 만들지 않는다', () => {
