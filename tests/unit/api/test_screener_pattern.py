@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from hoga.api import screener_pattern as sp
-from hoga.api.screener_pattern import bars_at
 from hoga.api.models import PatternSearchRequest
 from hoga.api.screener import build_router
 
@@ -875,7 +874,7 @@ def test_weekly_ohlc_takes_first_max_min_last_of_the_week(tmp_path):
 
 
 def bars_of(c, i, offset):
-    o, h, low, cl = bars_at(c, i, offset, 1)[0]
+    o, h, low, cl = sp.bars_at(c, i, offset, 1)[0]
     return {"open": o, "high": h, "low": low, "close": cl}
 
 
@@ -926,3 +925,76 @@ def test_cache_keeps_both_timeframes_of_the_same_snapshot(tmp_path):
     assert daily is sp.load_corpus(d, "D"), "주봉을 만들면서 일봉 캐시를 버렸다"
     assert weekly is sp.load_corpus(d, "W")
     assert daily is not weekly
+
+
+def _week_days(n_weeks: int, *, holiday_week: int | None = None, start=dt.date(2026, 6, 1)):
+    """`n_weeks` 주의 거래일. `holiday_week` 번째 주는 **월요일이 휴일**이라 화요일에 연다."""
+    assert start.weekday() == 0, "월요일에서 시작해야 주 경계가 자명하다"
+    out: list[dt.date] = []
+    for w in range(n_weeks):
+        first = 1 if w == holiday_week else 0
+        out += [start + dt.timedelta(days=w * 7 + k) for k in range(first, 5)]
+    return out
+
+
+def test_response_dates_are_trading_days_not_the_bucket_key(tmp_path, monkeypatch):
+    """⚠ 응답의 `from_date`/`to_date` 는 **그 버킷의 거래일**이지 키가 아니다.
+
+    이 가드가 닫는 방향: 키(월요일)를 그대로 실어 보내는 것. 그 날이 휴일이면 차트에
+    캔들이 없어 **착지 밴드가 아무 데도 걸리지 않는다** — 화면에는 「밴드가 안 보인다」로
+    나타나 원인이 응답 날짜라는 것을 숨긴다(주봉의 7.6%).
+
+    라우트를 관통해서 잰다. `_ymd_from` 을 직접 부르면 그 함수가 **응답 조립에 실제로
+    쓰이는지**는 증명하지 못한다.
+    """
+    days = _week_days(9, holiday_week=3)
+    rows = _daily_rows("000001", days, [100 + (k * 7) % 23 for k in range(len(days))])
+    rows += _daily_rows("000002", days, [100 + (k * 5) % 19 for k in range(len(days))])
+    weekly = sp.load_corpus(_write(tmp_path, rows), "W")
+    i = weekly.index_of("000001")
+    assert i is not None
+    holiday_key = dt.date(2026, 6, 22)                      # 4번째 주의 월요일
+    assert weekly.date_at(i, 3) == holiday_key
+    assert weekly.first_day_at(i, 3) == holiday_key + dt.timedelta(days=1)
+
+    monkeypatch.setattr(sp, "load_corpus", lambda _d, tf="D": weekly)
+    res = sp.run_pattern_search(tmp_path, PatternSearchRequest(
+        code="000001", mode="now", lengths=[5], top=5, min_tv_eok=0, exclude_etf=False))
+    assert res.results, "픽스처가 결과를 못 내면 이 가드는 아무것도 재지 못한다"
+    q = res.results[0].query
+    # 최근 5주 창의 시작은 5번째 전 주(=휴일 주 다음다음)이므로 여기서는 키=첫 거래일이다.
+    # 휴일 주가 창에 들어가는 것은 `to_date` 쪽이 아니라 아래 직접 단언으로 잰다.
+    assert q.from_date == weekly.first_day_at(i, weekly.series_len(i) - 5).strftime("%Y%m%d")
+    assert q.to_date == weekly.last_day_at(i, weekly.series_len(i) - 1).strftime("%Y%m%d")
+    # ★ 휴일 주를 **직접** 잰다 — 키(월)와 첫 거래일(화)이 갈리는 유일한 자리다.
+    assert sp._ymd_from(weekly, i, 3) == "20260623"
+    assert sp._ymd_to(weekly, i, 3) == "20260626"
+    assert weekly.date_at(i, 3).strftime("%Y%m%d") == "20260622"    # 키는 다르다
+
+
+def test_request_dates_select_buckets_by_trading_day_range(tmp_path):
+    """⚠ 들어오는 날짜도 **거래일 범위로** 버킷을 고른다 — (b)의 나머지 절반이다.
+
+    프론트가 보내는 날짜는 화면 봉의 타임스탬프 = 그 버킷의 **첫 거래일**이다
+    (`aggregateCalendar` 가 Gap 회피 때문에 그렇게 잡는다). 월요일이 휴일이면 그 값이
+    서버 키(월)보다 **뒤**라서, 키로 비교하면 사용자가 그은 첫 주가 통째로 빠진다.
+
+    red-check: `_resolve_window` 를 `c.dates` 비교로 되돌리면 offset 이 한 주 밀린다.
+
+    못 보는 것: 프론트가 정말 그 값을 보내는지는 여기서 안 잰다(그쪽 계약이다).
+    """
+    days = _week_days(9, holiday_week=3)
+    c = sp.load_corpus(
+        _write(tmp_path, _daily_rows("000001", days,
+                                     [100 + (k * 7) % 23 for k in range(len(days))])), "W")
+    i = c.index_of("000001")
+    assert i is not None
+    holiday_first = dt.date(2026, 6, 23)                    # 휴일 주의 첫 거래일(화)
+    assert c.first_day_at(i, 3) == holiday_first
+    assert c.date_at(i, 3) == dt.date(2026, 6, 22)          # 키는 월요일
+
+    # 그 주부터 5주를 그은 셈 — 프론트는 **첫 거래일**을 실어 보낸다.
+    win = sp._resolve_window(c, i, 5, "20260623", c.last_day_at(i, 7).strftime("%Y%m%d"))
+    assert win is not None
+    offset, span = win
+    assert (offset, span) == (3, 5), "휴일 주가 빠져 창이 밀렸다"
