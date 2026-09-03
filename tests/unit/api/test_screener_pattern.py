@@ -1060,6 +1060,17 @@ def test_unknown_timeframe_is_rejected_by_the_request_model(tmp_path, monkeypatc
     assert r.status_code == 422
 
 
+def _partial_tail_client(tmp_path):
+    """마지막 주가 **3일**뿐인 코퍼스 — 수요일에 검색한 셈이다."""
+    days = _week_days(10)[:-2]
+    rows = _daily_rows("000001", days, [100 + (i * 7) % 23 for i in range(len(days))])
+    rows += _daily_rows("000002", days, [100 + (i * 5) % 19 for i in range(len(days))])
+    d = _write(tmp_path, rows)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=d))
+    return TestClient(app), sp.load_corpus(d, "W")
+
+
 def test_partial_last_bucket_is_reported_so_the_screen_can_say_it(tmp_path, monkeypatch):
     """미완성 마지막 봉을 **담되 말한다**.
 
@@ -1068,14 +1079,7 @@ def test_partial_last_bucket_is_reported_so_the_screen_can_say_it(tmp_path, monk
 
     못 보는 것: 화면이 그 값을 실제로 라벨로 쓰는지는 여기서 안 잰다(프론트의 몫).
     """
-    # 마지막 주를 3일만 둔다 — 수요일에 검색한 셈이다.
-    days = _week_days(10)[:-2]
-    rows = _daily_rows("000001", days, [100 + (i * 7) % 23 for i in range(len(days))])
-    rows += _daily_rows("000002", days, [100 + (i * 5) % 19 for i in range(len(days))])
-    d = _write(tmp_path, rows)
-    app = FastAPI()
-    app.include_router(build_router(data_dir=d))
-    client = TestClient(app)
+    client, _ = _partial_tail_client(tmp_path)
 
     def ask(tf: str):
         return client.post("/api/screener/pattern-search",
@@ -1088,13 +1092,24 @@ def test_partial_last_bucket_is_reported_so_the_screen_can_say_it(tmp_path, monk
     assert ask("D")["partial_last_bucket_days"] is None
 
 
-def test_history_does_not_claim_a_partial_bucket(tmp_path, monkeypatch):
-    """`history` 의 창은 과거라 전부 완성이다 — 그 모드에서 이 값을 실으면 거짓이다."""
-    client, _ = _weekly_client(tmp_path, monkeypatch)
-    r = client.post("/api/screener/pattern-search",
-                    json={"code": "000001", "mode": "history", "lengths": [5], "top": 3,
-                          "min_tv_eok": 0, "exclude_etf": False, "timeframe": "W",
-                          "forward_days": 1, "no_overlap": False})
-    assert r.status_code == 200
-    for res in r.json()["results"]:
+def test_history_does_not_claim_a_partial_bucket(tmp_path):
+    """`history` 의 창은 과거라 전부 완성이다 — 그 모드에서 이 값을 실으면 거짓이다.
+
+    ⚠ **픽스처의 마지막 주가 미완성이어야** 이 가드가 산다. 완성 주로 만들면 `now` 도
+    null 이라 모드 구별이 애초에 드러나지 않는다(처음 그렇게 썼다가 red-check 에서
+    잡혔다 — 모드 게이트를 지워도 통과했다).
+    """
+    client, weekly = _partial_tail_client(tmp_path)
+    i = weekly.index_of("000001")
+    assert i is not None
+    assert int(weekly.bucket_days[int(weekly.ends[i]) - 1]) == 3, "마지막 주가 완성이면 무의미"
+
+    def ask(mode: str, **extra):
+        return client.post("/api/screener/pattern-search",
+                           json={"code": "000001", "mode": mode, "lengths": [5], "top": 3,
+                                 "min_tv_eok": 0, "exclude_etf": False, "timeframe": "W",
+                                 **extra}).json()["results"]
+
+    assert ask("now")[0]["partial_last_bucket_days"] == 3          # 대조군
+    for res in ask("history", forward_days=1, no_overlap=False):
         assert res["partial_last_bucket_days"] is None
