@@ -882,6 +882,11 @@ export function PatternDrawer() {
             {mode === 'now'
               ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
               : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
+            {/* 마지막 봉이 **미완성**이면 그 사실을 적는다 — 경고가 아니라 사실이다.
+                화면이 그 봉을 그리므로 검색도 담지만, 모든 매치의 마지막 봉이 같은
+                방식으로 왜곡된 채 비교된다(실측: 포함/제외로 top20 이 10~16/20 만 겹친다). */}
+            {result.partial_last_bucket_days != null
+              && ` · 마지막 봉 ${result.partial_last_bucket_days}일치`}
           </div>
           <RailDrawerBody quoteNav>
             {shown.length === 0 ? (

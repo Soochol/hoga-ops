@@ -9,6 +9,8 @@ import {
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
+  TIMEFRAMES,
+  maLabel,
   passingFloor,
   type PatternConditions,
   type PeriodKey,
@@ -32,7 +34,8 @@ import {
  * 기간은 다르다. **후보 모집단**을 바꾸므로 서버를 다시 불러야 하고, 그래서 미리보기가
  * 없다(`patternConditions` 상단 주석).
  */
-type Popover = 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | 'hidden' | null;
+type Popover =
+  | 'timeframe' | 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | 'hidden' | null;
 
 const TV_STEPS = [0, 10, 50] as const;
 
@@ -70,6 +73,12 @@ export function PatternConditionChips({
 
   return (
     <div ref={rootRef} className="relative flex flex-wrap gap-1 border-b border-border px-md py-sm">
+      {/* 봉 단위가 **맨 앞**이다 — 다른 조건들이 「그 코퍼스 안에서」 걸리므로 읽는
+          순서도 그래야 한다. 공장값(일봉)이어도 늘 활성으로 그린다: 이 값을 모르면
+          「5·20 이평」이 5일인지 5주인지 화면 어디에서도 알 수 없다. */}
+      <Chip active onClick={() => toggle('timeframe')}>
+        {TIMEFRAMES.find((f) => f.key === conditions.timeframe)?.label ?? '일봉'}
+      </Chip>
       <Chip active={conditions.period !== 'all'} onClick={() => toggle('period')}>
         {periodLabel}
       </Chip>
@@ -85,7 +94,7 @@ export function PatternConditionChips({
         {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
       </Chip>
       <Chip active={conditions.maPreset !== 'off'} onClick={() => toggle('ma')}>
-        {MA_PRESETS.find((m) => m.key === conditions.maPreset)?.label ?? '이평 끄기'}
+        {maLabel(conditions.maPreset, conditions.timeframe)}
       </Chip>
       <Chip active onClick={() => toggle('tv')}>
         {conditions.minTvEok > 0 ? `${conditions.minTvEok}억+` : '거래대금 무관'}
@@ -159,6 +168,21 @@ export function PatternConditionChips({
           ))}
         </Popover>
       )}
+      {open === 'timeframe' && (
+        <Popover title="봉 단위 · 다시 검색한다">
+          {TIMEFRAMES.map((f) => (
+            <Item
+              key={f.key}
+              selected={f.key === conditions.timeframe}
+              // ⚠ 공장 조건을 함께 갈아 끼우지 **않는다** — 사용자가 고른 기간이
+              //   조용히 사라진다. 시드 경로만 timeframe 별 공장값을 쓴다.
+              onClick={() => set({ timeframe: f.key })}
+              label={f.label}
+              hint={f.note}
+            />
+          ))}
+        </Popover>
+      )}
       {open === 'ma' && (
         <Popover title="이평선도 맞출지 · 다시 검색한다">
           {MA_PRESETS.map((m) => (
@@ -166,7 +190,7 @@ export function PatternConditionChips({
               key={m.key}
               selected={m.key === conditions.maPreset}
               onClick={() => set({ maPreset: m.key })}
-              label={m.label}
+              label={maLabel(m.key, conditions.timeframe)}
               // 프리셋마다 **찾는 것이 달라진다** — 판별력의 차이가 아니라서 이름과 한 줄
               // 설명이 그 사실을 져야 한다(실측: 5·20 대비 20·60 은 상위 20 중 3개만 겹친다).
               hint={m.note}

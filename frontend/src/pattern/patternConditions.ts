@@ -72,8 +72,11 @@ export const MA_PRESETS = [
 /** 이평 라벨의 **단위**. 프리셋 키는 wire 값이라 못 바꾸지만, 「5·20」이 무엇의 5·20
  *  인지는 timeframe 이 정한다 — 주봉에서는 5주·20주다. 차트도 봉 단위로 그리므로
  *  (`paneSpecsForTimeframe('D') === ('W')`) 매칭과 화면이 어긋나지는 않는다. */
-export function maUnitLabel(timeframe: PatternTimeframe): string {
-  return timeframe === 'W' ? '주' : '일';
+export function maLabel(preset: PatternMaPreset, timeframe: PatternTimeframe): string {
+  const base = MA_PRESETS.find((m) => m.key === preset)?.label ?? '이평 끄기';
+  // 끄기에는 단위가 없다 — 「이평 끄기(주)」는 무의미하다.
+  if (preset === 'off') return base;
+  return timeframe === 'W' ? `${base}주` : base;
 }
 
 /** 제외 키 — **「종목 + 시작일」**이고 길이는 들어가지 않는다.
