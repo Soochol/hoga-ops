@@ -315,9 +315,12 @@ def add_parser_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--min-have-days", type=int, default=9)
     ap.add_argument("--min-eligible", type=int, default=1000)
     ap.add_argument("--cooldown", type=int, default=10)
+    ap.add_argument("--ma20", choices=("below", "none"), default="below",
+                    help="peak 유효 조건(사용자 정의): below = 그날 종가 < 일봉 SMA20 인 (code, D) 만 — 이벤트·기준군 "
+                         "모두에 적용 / none = 조건 없음")
 
 
-def build_dataset(args: argparse.Namespace) -> Dataset:
+def build_dataset(args: argparse.Namespace) -> Dataset:  # noqa: PLR0915 — 가드 깔때기의 단일 조립점
     stocks = load_stocks(args.data_dir)
     daily = load_daily(args.data_dir, since=dt.date(2024, 6, 1))
     corpus = sorted(daily["date"].unique().dt.strftime("%Y%m%d").to_list())
@@ -356,6 +359,11 @@ def build_dataset(args: argparse.Namespace) -> Dataset:
 
     table = table.join(feats.drop("date"), left_on=["code", "date"], right_on=["code", "d8"], how="left")
     table = table.join(ix, left_on=["market", "date"], right_on=["market", "d8"], how="left")
+    # 사용자 정의: peak 는 일봉 MA20 아래에 있을 때만 유효. 이벤트·기준군을 가르기 **전에** 판정 가능
+    # 표 전체에 건다 — MA20 위의 peak 는 이벤트가 아닐 뿐 아니라 비교 대상(같은 국면의 평범한 날)도 아니다.
+    if args.ma20 == "below":
+        table = table.filter(~pl.col("above_ma20").fill_null(True))
+    guards["after_ma20_filter"] = table.height
     table = table.with_columns(
         (pl.col("rs_pct") >= RS_TOP_PCT).alias("leader_rs"),
         pl.col("code").is_in(sorted(leaders_user)).alias("leader_user"),
@@ -491,10 +499,20 @@ def main() -> None:
         t2 = t2.join(stocks, on="code", how="left").filter(~pl.col("is_etf").fill_null(False))
         t2 = t2.join(feats.drop("date"), left_on=["code", "date"], right_on=["code", "d8"], how="left")
         t2 = t2.join(ix, left_on=["market", "date"], right_on=["market", "d8"], how="left")
+        if args.ma20 == "below":
+            t2 = t2.filter(~pl.col("above_ma20").fill_null(True))
         t2 = t2.with_columns(*[(pl.col(f"fwd{h}") - pl.col(f"ix_fwd{h}")).alias(f"xs{h}") for h in HORIZONS])
         e = dedup_cooldown(t2.filter(pl.col("ratio") >= args.ratio), corpus, args.cooldown)
         b = t2.filter(pl.col("ratio") < args.ratio)
         sens[f"lookback={lb}"] = {"n": e.height, **{c: describe(e, b, c, rng) for c in ("fwd5", "fwd10", "xs10")}}
+    # MA20 조건을 뒤집은 사양 — 이벤트·기준군을 함께 다시 만든다(같은 국면끼리 비교해야 한다)
+    other = "none" if args.ma20 == "below" else "below"
+    ds_o = build_dataset(argparse.Namespace(**{**vars(args), "ma20": other}))
+    sens[f"ma20={other}"] = {
+        "n": ds_o.events.height, "n_base": ds_o.base.height,
+        **{c: describe(ds_o.events, ds_o.base, c, rng)
+           for c in ("fwd5", "fwd10", "fwd20", "xs10", "mae10", "support_low_held", "resist_broken")},
+    }
     summary["sensitivity"] = sens
 
     (args.out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str),

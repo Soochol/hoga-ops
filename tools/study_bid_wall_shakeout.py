@@ -393,8 +393,7 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
     add_parser_args(ap)
     ap.add_argument("--ext-cap", type=int, default=5, help="D0 뒤로 연장하는 최대 거래일 수")
     ap.add_argument("--k", type=int, default=10, help="D_end 뒤 깸/되돌림을 찾는 창(거래일)")
-    ap.add_argument("--ma20", choices=("below", "none"), default="below",
-                    help="peak 유효 조건: below = 이벤트일 종가 < 일봉 MA20 (사용자 정의) / none = 조건 없음")
+    # --ma20 은 study 1 의 add_parser_args 가 준다 — 데이터셋(이벤트·기준군) 단계에서 이미 걸린다.
     args = ap.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(SEED)
@@ -528,10 +527,13 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
         e2, _, _g2 = build_episodes(ds, series, walls, args, **kw)
         sens[name] = _sens_entry(e2)
     sens["require_d0_dominant"] = _sens_entry(ep.filter(pl.col("d0_dominant")))
-    # MA20 조건을 뒤집은 사양 — 대조군도 함께 뒤집는다(비교 대상이 같은 국면이어야 한다)
+    # MA20 조건을 뒤집은 사양 — 데이터셋(이벤트·기준군)을 그 조건으로 다시 만든다(같은 국면끼리 비교)
     other = "none" if args.ma20 == "below" else "below"
-    e_other, _, _ = build_episodes(ds, series, walls, args, cap=args.ext_cap, events=ma20_filter(ds.events, other))
-    c_other, _ = build_control(ma20_filter(ds.base, other), series, k=args.k)
+    args_o = argparse.Namespace(**{**vars(args), "ma20": other})
+    ds_o = build_dataset(args_o)
+    series_o = load_series(args.data_dir, set(ds_o.events["code"].to_list()) | set(ds_o.base["code"].to_list()))
+    e_other, _, _ = build_episodes(ds_o, series_o, walls, args_o, cap=args.ext_cap)
+    c_other, _ = build_control(ds_o.base, series_o, k=args.k)
     t_o = e_other.filter(pl.col("cls") == CLASS_TRICK)
     r_o = e_other.filter(pl.col("cls") == CLASS_RECLAIM)
     ct_o = c_other.filter(pl.col("cls_low") == CLASS_TRICK)
