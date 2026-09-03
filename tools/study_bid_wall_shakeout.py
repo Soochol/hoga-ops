@@ -82,6 +82,7 @@ class Series:
         self.low = df["low"].to_numpy()
         self.u_close = df["u_close"].to_numpy()
         self.u_low = df["u_low"].to_numpy()
+        self.u_high = df["u_high"].to_numpy()
 
     def __len__(self) -> int:
         return len(self.d8)
@@ -91,7 +92,8 @@ def load_series(data_dir: Path, codes: set[str]) -> dict[str, Series]:
     codes_l = sorted(codes)
     adj = load_daily(data_dir, since=dt.date(2024, 6, 1), adjusted=True).filter(pl.col("code").is_in(codes_l))
     un = load_daily(data_dir, since=dt.date(2024, 6, 1), adjusted=False).filter(pl.col("code").is_in(codes_l))
-    un = un.select("code", "date", pl.col("close").alias("u_close"), pl.col("low").alias("u_low"))
+    un = un.select("code", "date", pl.col("close").alias("u_close"), pl.col("low").alias("u_low"),
+                   pl.col("high").alias("u_high"))
     df = adj.join(un, on=["code", "date"], how="inner").sort(["code", "date"])
     df = df.with_columns(pl.col("date").dt.strftime("%Y%m%d").alias("d8"))
     out = {}
@@ -234,9 +236,25 @@ def _qs(values: pl.Series, qs: tuple[float, ...]) -> list[float] | None:
 
 # ── 조립 ─────────────────────────────────────────────────────────────────────
 
+def ma20_filter(frame: pl.DataFrame, mode: str) -> pl.DataFrame:
+    """사용자 정의: peak 는 일봉 20이평선 **아래**에 있을 때만 유효 — 이벤트일 종가 < MA20.
+    ``mode`` = ``below``(기본) / ``none``. 대조군에도 같은 조건을 건다(비교 대상이 같은 국면이어야 한다)."""
+    if mode == "none":
+        return frame
+    if mode != "below":
+        raise ValueError(f"unknown ma20 mode: {mode}")
+    return frame.filter(~pl.col("above_ma20").fill_null(True))
+
+
 def build_episodes(  # noqa: PLR0915 — 스터디의 단일 조립점
     ds: Dataset, series: dict[str, Series], walls: dict, args, *, cap: int, wall_key: str = "price",
+    same_day_counts: bool = False, reclaim_ref: str = "close", events: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, dict[str, list], dict[str, int]]:
+    """``same_day_counts``: D_end 당일 저가가 W 아래면 그것도 「깸」으로 센다(장중 흔들기를 트릭에
+    포함하는 사양). ``reclaim_ref``: 되돌림 기준 — ``close`` = close(D_end), ``high`` = high(D_end).
+    ``events``: 기본은 ``ds.events`` 에 ``args.ma20`` 필터를 건 것."""
+    if events is None:
+        events = ma20_filter(ds.events, args.ma20)
     corpus = ds.corpus
     idx = {d: i for i, d in enumerate(corpus)}
     by_code = depth_by_code(ds)
@@ -248,7 +266,7 @@ def build_episodes(  # noqa: PLR0915 — 스터디의 단일 조립점
     guards: Counter = Counter()
     last_c_idx: dict[str, int] = {}
     carry = ("name", "market", "leader_bucket", "ix_trend", "hi52_pos", "ma_pos", "d_candle", "ratio", "rs_pct")
-    for ev in ds.events.sort(["code", "date"]).iter_rows(named=True):
+    for ev in events.sort(["code", "date"]).iter_rows(named=True):
         code, d0 = ev["code"], ev["date"]
         guards["episodes_in"] += 1
         s = series.get(code)
@@ -282,7 +300,11 @@ def build_episodes(  # noqa: PLR0915 — 스터디의 단일 조립점
         wall = float(w[wall_key])
         d0_dom = by_code[code][d0][0] > by_code[code][d0][1]
         ref_close, low_end = float(s.u_close[i_end]), float(s.u_low[i_end])
-        cls, brk, touch, rec, avail = classify(s.u_low, s.u_close, i_end, level=wall, ref_close=ref_close, k=args.k)
+        ref_px = float(s.u_high[i_end]) if reclaim_ref == "high" else ref_close
+        cls, brk, touch, rec, avail = classify(s.u_low, s.u_close, i_end, level=wall, ref_close=ref_px, k=args.k)
+        if same_day_counts and low_end < wall:
+            brk = i_end                       # 가장 이른 깸은 D_end 당일 장중
+            cls = CLASS_TRICK if rec is not None else CLASS_BREAK
         cls_low, brk_low, _, rec_low, _ = classify(
             s.low, s.close, i_end, level=float(s.low[i_end]), ref_close=float(s.close[i_end]), k=args.k,
         )
@@ -322,10 +344,10 @@ def depth_by_code(ds: Dataset) -> dict[str, dict[str, tuple[int, int, int]]]:
     return by_code
 
 
-def build_control(ds: Dataset, series: dict[str, Series], *, k: int) -> tuple[pl.DataFrame, list]:
+def build_control(base: pl.DataFrame, series: dict[str, Series], *, k: int) -> tuple[pl.DataFrame, list]:
     """기준군 날 D' 에 저가 기준 패턴을 적용 — 매수벽 없는 「눌림→되돌림」의 기저율."""
     rows, paths = [], []
-    for code, d in ds.base.select("code", "date").iter_rows():
+    for code, d in base.select("code", "date").iter_rows():
         s = series.get(code)
         if s is None or d not in s.idx:
             continue
@@ -371,6 +393,8 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
     add_parser_args(ap)
     ap.add_argument("--ext-cap", type=int, default=5, help="D0 뒤로 연장하는 최대 거래일 수")
     ap.add_argument("--k", type=int, default=10, help="D_end 뒤 깸/되돌림을 찾는 창(거래일)")
+    ap.add_argument("--ma20", choices=("below", "none"), default="below",
+                    help="peak 유효 조건: below = 이벤트일 종가 < 일봉 MA20 (사용자 정의) / none = 조건 없음")
     args = ap.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(SEED)
@@ -400,9 +424,12 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
         (args.out_dir / "walls.json").write_text(json.dumps(walls, ensure_ascii=False), encoding="utf-8")
     print("== walls:", len(need), "needed,", sum(1 for c, d in need if walls.get(f"{c}:{d}")), "available")
 
-    # 2) 본 사양
+    # 2) 본 사양 — 이벤트·대조군 모두 args.ma20 조건
+    base_f = ma20_filter(ds.base, args.ma20)
+    print("== ma20 filter:", args.ma20, "| events", ma20_filter(ds.events, args.ma20).height, "/", ds.events.height,
+          "| base", base_f.height, "/", ds.base.height)
     ep, paths, guards = build_episodes(ds, series, walls, args, cap=args.ext_cap)
-    ctrl, ctrl_paths = build_control(ds, series, k=args.k)
+    ctrl, ctrl_paths = build_control(base_f, series, k=args.k)
     print("== guards:", guards)
     print("== ep_len:", sorted(Counter(ep["ep_len"].to_list()).items()))
     print("== d0_dominant:", int(ep["d0_dominant"].sum()), "/", ep.height)
@@ -410,7 +437,7 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
     print("== cls (low):", dict(Counter(ep["cls_low"].to_list())))
     print("== ctrl cls (low):", dict(Counter(ctrl["cls_low"].to_list())))
 
-    base_uncond = ds.base.select("code", *OUT_COLS)   # study 1 의 무조건부 기준군(D 기준 forward)
+    base_uncond = base_f.select("code", *OUT_COLS)   # study 1 의 무조건부 기준군(D 기준 forward), 같은 MA20 조건
     ctrl_trick = ctrl.filter(pl.col("cls_low") == CLASS_TRICK)
     ctrl_reclaim = ctrl.filter(pl.col("cls_low") == CLASS_RECLAIM)
     ctrl_map = {CLASS_TRICK: ctrl_trick, CLASS_RECLAIM: ctrl_reclaim}
@@ -467,20 +494,53 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
             summary["trick_conditional"][by][str(key)] = {
                 "n": e.height, **{c: describe(e, ctrl_trick, c, rng) for c in ("fwd5", "fwd10", "fwd20", "mae10")},
             }
+    # D_end 당일 장중 깸(low(D_end) < W) × 분류 교차표 — 사용자가 차트에서 보는 「깨고 올라옴」은 당일
+    # 장중 흔들기일 수 있고, 본 사양은 D_end 뒤의 깸만 세므로 그 사례가 「되돌림만」에 들어간다.
+    summary["same_day_break_crosstab"] = {}
+    for flag in (True, False):
+        for cls in OUTCOME_CLASSES:
+            e = ep.filter((pl.col("same_day_break") == flag) & (pl.col("cls") == cls))
+            entry: dict = {"n": e.height}
+            if e.height:
+                entry.update({c: describe(e, ctrl_map[cls], c, rng) for c in ("fwd5", "fwd10", "fwd20", "mae10")})
+                hv = e["hold_wall"].drop_nulls().cast(pl.Float64)
+                entry["hold_wall"] = {"n": hv.len(), "rate": float(hv.mean())} if hv.len() else None  # type: ignore[arg-type]
+            summary["same_day_break_crosstab"][f"same_day_break={flag}|{cls}"] = entry
+
     # 민감도
-    sens: dict = {}
-    variants: tuple[tuple[str, int, str], ...] = (
-        ("ext_cap=3", 3, "price"), ("ext_cap=0(D0만)", 0, "price"), ("W=max_price", args.ext_cap, "max_price"),
-    )
-    for name, cap, wall_key in variants:
-        e2, _, _g2 = build_episodes(ds, series, walls, args, cap=cap, wall_key=wall_key)
+    def _sens_entry(e2: pl.DataFrame) -> dict:
         t2 = e2.filter(pl.col("cls") == CLASS_TRICK)
-        sens[name] = {"episodes": e2.height, "class_counts_W": dict(Counter(e2["cls"].to_list())),
-                      "trick": {c: describe(t2, ctrl_trick, c, rng) for c in ("fwd5", "fwd10", "fwd20")}}
-    e3 = ep.filter(pl.col("d0_dominant"))
-    t3 = e3.filter(pl.col("cls") == CLASS_TRICK)
-    sens["require_d0_dominant"] = {"episodes": e3.height, "class_counts_W": dict(Counter(e3["cls"].to_list())),
-                                   "trick": {c: describe(t3, ctrl_trick, c, rng) for c in ("fwd5", "fwd10", "fwd20")}}
+        r2 = e2.filter(pl.col("cls") == CLASS_RECLAIM)
+        return {"episodes": e2.height, "class_counts_W": dict(Counter(e2["cls"].to_list())),
+                "trick": {c: describe(t2, ctrl_trick, c, rng) for c in ("fwd5", "fwd10", "fwd20")},
+                "reclaim": {c: describe(r2, ctrl_reclaim, c, rng) for c in ("fwd5", "fwd10", "fwd20")}}
+
+    sens: dict = {}
+    variants: tuple[tuple[str, dict], ...] = (
+        ("ext_cap=3", {"cap": 3}),
+        ("ext_cap=0(D0만)", {"cap": 0}),
+        ("W=max_price", {"cap": args.ext_cap, "wall_key": "max_price"}),
+        ("당일 장중 깸 포함", {"cap": args.ext_cap, "same_day_counts": True}),
+        ("되돌림=close>high(D_end)", {"cap": args.ext_cap, "reclaim_ref": "high"}),
+        ("당일 장중 깸 포함+되돌림=high", {"cap": args.ext_cap, "same_day_counts": True, "reclaim_ref": "high"}),
+    )
+    for name, kw in variants:
+        e2, _, _g2 = build_episodes(ds, series, walls, args, **kw)
+        sens[name] = _sens_entry(e2)
+    sens["require_d0_dominant"] = _sens_entry(ep.filter(pl.col("d0_dominant")))
+    # MA20 조건을 뒤집은 사양 — 대조군도 함께 뒤집는다(비교 대상이 같은 국면이어야 한다)
+    other = "none" if args.ma20 == "below" else "below"
+    e_other, _, _ = build_episodes(ds, series, walls, args, cap=args.ext_cap, events=ma20_filter(ds.events, other))
+    c_other, _ = build_control(ma20_filter(ds.base, other), series, k=args.k)
+    t_o = e_other.filter(pl.col("cls") == CLASS_TRICK)
+    r_o = e_other.filter(pl.col("cls") == CLASS_RECLAIM)
+    ct_o = c_other.filter(pl.col("cls_low") == CLASS_TRICK)
+    cr_o = c_other.filter(pl.col("cls_low") == CLASS_RECLAIM)
+    sens[f"ma20={other}"] = {
+        "episodes": e_other.height, "class_counts_W": dict(Counter(e_other["cls"].to_list())),
+        "trick": {c: describe(t_o, ct_o, c, rng) for c in ("fwd5", "fwd10", "fwd20")},
+        "reclaim": {c: describe(r_o, cr_o, c, rng) for c in ("fwd5", "fwd10", "fwd20")},
+    }
     summary["sensitivity"] = sens
     # 예시
     ex_cols = ("code", "name", "d0", "d_end", "ep_len", "wall_price", "close_end", "dist_pct", "break_day",
