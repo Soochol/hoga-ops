@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from hoga.api import screener_pattern as sp
+from hoga.api.screener_pattern import bars_at
 from hoga.api.models import PatternSearchRequest
 from hoga.api.screener import build_router
 
@@ -788,3 +789,140 @@ def test_history_drops_windows_whose_correlation_exceeds_the_ceiling(corpus, mon
     monkeypatch.setattr(sp, "_CORR_CEILING", 0.5)
     after, _ = _history(c)
     assert all(m.score <= 0.5 for m in after)
+
+
+# ── 주봉 파생 ────────────────────────────────────────────────────────────────
+#
+# 종목 주봉을 주는 벤더 경로가 **없어서**(키움 W/M TR 은 지수 전용) 일봉 parquet 에서
+# 파생한다. 그래서 이 절이 닫는 방향은 하나다: **파생 규칙이 화면과 같은가.**
+# 프론트는 `calendarBucketKey`(`aggregateCandles.ts`)로 주를 나누므로 그 규칙이 갈리면
+# ADR-0166 이 내세운 「화면의 봉과 검색 대상이 같은 데이터」가 조용히 거짓이 된다.
+#
+# 못 보는 것: 프론트가 실제로 그 함수를 부르는지는 여기서 안 잰다(그쪽 테스트의 몫).
+# 여기서는 **백엔드가 같은 답을 내는가**만 값으로 잰다.
+
+_MON = dt.date(2026, 8, 10)   # 월요일
+#: 실제 달력 — 2026-08-17(월)은 **휴일**이라 그 주는 화요일에 시작한다. 주봉의 7.6%가
+#: 이 모양이고, 키(월)와 첫 거래일(화)이 갈리는 유일한 자리다.
+_WEEK_DAYS = [
+    dt.date(2026, 8, 10), dt.date(2026, 8, 11), dt.date(2026, 8, 12),
+    dt.date(2026, 8, 13), dt.date(2026, 8, 14),                        # 1주: 월~금 5일
+    dt.date(2026, 8, 18), dt.date(2026, 8, 19), dt.date(2026, 8, 20),
+    dt.date(2026, 8, 21),                                              # 2주: 화~금 4일 ★
+    dt.date(2026, 8, 24), dt.date(2026, 8, 25), dt.date(2026, 8, 26),
+    dt.date(2026, 8, 27), dt.date(2026, 8, 28),                        # 3주: 월~금 5일
+]
+
+
+def _daily_rows(code: str, days, closes, volume=10**8):
+    """날짜를 **직접** 준다 — `_series` 의 `_dates` 는 주말만 건너뛰어 휴일을 못 만든다."""
+    return [
+        {"code": code, "date": d, "open": c * 0.99, "high": c * 1.02,
+         "low": c * 0.97, "close": float(c), "volume": volume}
+        for d, c in zip(days, closes, strict=True)
+    ]
+
+
+def _weekly(tmp_path, rows):
+    return sp.load_corpus(_write(tmp_path, rows), "W")
+
+
+def test_weekly_bucket_key_is_the_monday_of_that_week(tmp_path):
+    """버킷 키는 **그 주의 월요일**이다 — 프론트 `calendarBucketKey` 와 같은 규칙.
+
+    red-check: 오프셋을 `weekday` 로 두면(월요일이 0 이 아니라 1 이 되면) 키가 일요일로
+    밀려 이 단언이 깨진다.
+    """
+    c = _weekly(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114)))
+    i = c.index_of("000001")
+    assert i is not None
+    assert c.series_len(i) == 3          # 3주
+    keys = [c.date_at(i, k) for k in range(3)]
+    assert keys == [dt.date(2026, 8, 10), dt.date(2026, 8, 17), dt.date(2026, 8, 24)]
+    assert all(k.weekday() == 0 for k in keys), "키가 월요일이 아니다"
+
+
+def test_weekly_key_differs_from_the_first_trading_day_when_monday_is_a_holiday(tmp_path):
+    """⚠ **키 ≠ 첫 거래일** — 이 비대칭이 주봉의 7.6%이고 두 방향으로 샌다.
+
+    나가는 쪽: 응답이 키(휴일 월요일)를 실으면 차트에 그 날 캔들이 없어 착지 밴드가
+    아무 데도 안 걸린다. 들어오는 쪽: 프론트가 보내는 날짜는 첫 거래일이라 키로
+    비교하면 그 버킷이 통째로 빠진다.
+    """
+    c = _weekly(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114)))
+    i = c.index_of("000001")
+    assert i is not None
+    assert c.date_at(i, 1) == dt.date(2026, 8, 17)        # 키 = 월요일(휴일)
+    assert c.first_day_at(i, 1) == dt.date(2026, 8, 18)   # 첫 거래일 = 화요일
+    assert c.last_day_at(i, 1) == dt.date(2026, 8, 21)
+    assert int(c.bucket_days[int(c.starts[i]) + 1]) == 4  # 그 주는 4거래일
+    # 휴일이 없는 주는 셋이 같다.
+    assert c.date_at(i, 0) == c.first_day_at(i, 0) == dt.date(2026, 8, 10)
+
+
+def test_weekly_ohlc_takes_first_max_min_last_of_the_week(tmp_path):
+    """OHLC 집계 규칙. 정합성은 구성상 보장되므로 **값**을 직접 잰다."""
+    closes = [100, 130, 90, 120, 110,  200, 210, 190, 205,  300, 310, 290, 305, 301]
+    assert len(closes) == len(_WEEK_DAYS)
+    c = _weekly(tmp_path, _daily_rows("000001", _WEEK_DAYS, closes))
+    i = c.index_of("000001")
+    assert i is not None
+    first_week = bars_of(c, i, 0)
+    assert first_week["open"] == pytest.approx(100 * 0.99)   # 첫 봉의 시가
+    assert first_week["high"] == pytest.approx(130 * 1.02)   # 주간 최고
+    assert first_week["low"] == pytest.approx(90 * 0.97)     # 주간 최저
+    assert first_week["close"] == pytest.approx(110)         # 마지막 봉의 종가
+
+
+def bars_of(c, i, offset):
+    o, h, low, cl = bars_at(c, i, offset, 1)[0]
+    return {"open": o, "high": h, "low": low, "close": cl}
+
+
+def test_weekly_turnover_is_the_daily_mean_not_the_sum(tmp_path):
+    """⚠ 거래대금은 **일평균**이다 — 합으로 두면 「50억 이상」이 주봉에서 실질 일 10억이 된다.
+
+    red-check: `pl.col("tv").sum()` 으로 바꾸면 5일 버킷이 5배가 되어 이 단언이 깨진다.
+    """
+    # 종가 100 · 거래량 10^8 이면 일 거래대금은 (0.99+1.02+0.97+1)/4 × 100 × 10^8.
+    c = _weekly(tmp_path, _daily_rows("000001", _WEEK_DAYS, [100] * len(_WEEK_DAYS)))
+    i = c.index_of("000001")
+    assert i is not None
+    s = int(c.starts[i])
+    daily_tv = (0.99 + 1.02 + 0.97 + 1.0) / 4 * 100 * 10**8
+    for k, days in enumerate((5, 4, 5)):
+        assert c.tv[s + k] == pytest.approx(daily_tv), \
+            f"{k}번째 주({days}일)의 거래대금이 일평균이 아니다"
+
+
+def test_daily_corpus_is_unchanged_by_the_timeframe_axis(tmp_path):
+    """일봉은 버킷이 곧 그 날 — 세 날짜가 같고 `bucket_days` 는 1 이다."""
+    c = sp.load_corpus(_write(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114))), "D")
+    i = c.index_of("000001")
+    assert i is not None
+    assert c.series_len(i) == len(_WEEK_DAYS)
+    assert c.date_at(i, 1) == c.first_day_at(i, 1) == c.last_day_at(i, 1)
+    assert set(np.unique(c.bucket_days)) == {1}
+    # 상주를 아끼려고 **같은 객체**를 가리킨다(8.9M봉에서 143MB 차이다).
+    assert c.first_days is c.dates and c.last_days is c.dates
+
+
+def test_unknown_timeframe_falls_back_to_daily(tmp_path):
+    """모르는 값은 `"D"` 로 떨어진다 — 요청이 답을 못 바꾼다(`ma_periods_for` 와 같은 규칙)."""
+    d = _write(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114)))
+    assert sp.load_corpus(d, "M").timeframe == "D"
+    assert sp.load_corpus(d, "1m").timeframe == "D"
+
+
+def test_cache_keeps_both_timeframes_of_the_same_snapshot(tmp_path):
+    """같은 스냅샷의 일봉·주봉은 **함께 상주**한다.
+
+    이 가드가 닫는 방향: timeframe 을 번갈아 쓸 때마다 재빌드가 나는 것(일봉 1.9s —
+    사용자가 느끼는 지연이다). 옛 정책(`_cache.clear()`)이면 두 번째 호출이 첫 코퍼스를
+    버려 객체 동일성이 깨진다.
+    """
+    d = _write(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114)))
+    daily, weekly = sp.load_corpus(d, "D"), sp.load_corpus(d, "W")
+    assert daily is sp.load_corpus(d, "D"), "주봉을 만들면서 일봉 캐시를 버렸다"
+    assert weekly is sp.load_corpus(d, "W")
+    assert daily is not weekly

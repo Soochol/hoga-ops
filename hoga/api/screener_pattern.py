@@ -80,6 +80,13 @@ MA_PERIODS: tuple[int, ...] = tuple(sorted({p for ps in MA_PRESETS.values() for 
 PATTERN_FLOOR = 5
 PATTERN_CEILING = 30
 
+#: 코퍼스의 봉 단위. `"W"` 는 일봉 parquet 에서 **파생**한다 — 종목 주봉을 주는 벤더
+#: 경로가 없다(키움 W/M TR 은 지수 전용).
+#:
+#: ⚠ 버킷 규칙은 프론트 `calendarBucketKey`(`aggregateCandles.ts`)와 **같아야** 한다.
+#: ADR-0166 이 내세운 「화면의 봉과 검색 대상이 같은 데이터」가 그것으로만 유지된다.
+PATTERN_TIMEFRAMES = ("D", "W")
+
 
 @dataclass(frozen=True)
 class PatternMatch:
@@ -109,11 +116,23 @@ class Corpus:
     logv: np.ndarray           # (N,) 로그 거래량 — 계열별 중심화. 가격과 **다른 축**이다
     ma: dict[int, np.ndarray]  # 기간 → (N,) 로그 SMA. 가격과 **같은 축**이라 공유 스케일에 든다
     centers: np.ndarray        # (S,) 그 계열에서 뺀 상수. 원가격 복원의 유일한 열쇠
-    tv: np.ndarray             # (N,) 거래대금
-    dates: np.ndarray          # (N,) datetime64[D]
+    tv: np.ndarray             # (N,) 거래대금 — 주봉은 **일평균**이다(임계값의 뜻 보존)
+    dates: np.ndarray          # (N,) datetime64[D] — **버킷 키**(주봉은 그 주의 월요일)
+    #: (N,) 그 버킷의 **첫·마지막 거래일**. 일봉은 셋이 모두 같은 객체다.
+    #:
+    #: ⚠ 날짜 변환은 **양방향**이라 배열이 셋이어야 한다. 들어오는 요청은 첫 거래일을
+    #: 싣고 오는데(프론트 `aggregateCalendar` 의 `t_ms` 가 그렇다) 서버 키는 월요일이라,
+    #: 월요일이 휴일이면 둘이 갈린다(주봉의 7.6%). **나가는 응답은 그 반대**다: 키를
+    #: 그대로 실으면 차트에 그 날 캔들이 없어 착지 밴드가 아무 데도 걸리지 않는다.
+    first_days: np.ndarray
+    last_days: np.ndarray
+    #: (N,) 그 버킷이 담은 거래일 수. 마지막 버킷은 주 중이면 **미완성**이고(수요일이면
+    #: 3일), 화면이 그 봉을 그리므로 코퍼스도 담되 그 사실을 말할 수 있어야 한다.
+    bucket_days: np.ndarray
     names: dict[str, str]
     is_etf: dict[str, bool]
     last_date: np.datetime64
+    timeframe: str = "D"
 
     def index_of(self, code: str) -> int | None:
         hit = np.flatnonzero(self.codes == code)
@@ -123,26 +142,45 @@ class Corpus:
         return int(self.ends[i] - self.starts[i])
 
     def date_at(self, i: int, offset: int) -> date:
+        """**버킷 키**. `no_overlap`·`since` 처럼 내부 비교에 쓰는 값이다."""
         return self.dates[self.starts[i] + offset].astype("datetime64[D]").astype(date)
 
+    def first_day_at(self, i: int, offset: int) -> date:
+        """그 버킷의 **첫 거래일** — 응답의 `from_date` 다(차트에 캔들이 있는 날)."""
+        return self.first_days[self.starts[i] + offset].astype("datetime64[D]").astype(date)
 
-#: (경로, mtime) → 코퍼스. **항상 최대 1개**를 유지한다(아래 `clear()`) — 한 항목이
-#: ~360MB 라 갱신 뒤 옛 스냅샷을 붙들면 그대로 두 배가 된다. 키에 경로를 넣는 것은
-#: `hoga.duck` 의 인스턴스 캐시와 같은 이유다(테스트가 tmp_path 로 자연 격리된다).
-_cache: dict[tuple[Path, int], Corpus] = {}
+    def last_day_at(self, i: int, offset: int) -> date:
+        """그 버킷의 **마지막 거래일** — 응답의 `to_date` 다."""
+        return self.last_days[self.starts[i] + offset].astype("datetime64[D]").astype(date)
+
+
+#: (경로, mtime, timeframe) → 코퍼스. 키에 경로를 넣는 것은 `hoga.duck` 의 인스턴스
+#: 캐시와 같은 이유다(테스트가 tmp_path 로 자연 격리된다).
+#:
+#: **같은 mtime 의 timeframe 들은 함께 상주한다.** 예전에는 항상 1개만 두고 새로 만들 때
+#: `clear()` 했는데, timeframe 이 둘이 되면 그 정책이 **번갈아 쓸 때마다 재빌드**를 낸다
+#: (일봉 1.8s — 사용자가 느끼는 지연이다). 주봉은 +176MB 라 워커 3개에도 +528MB 이고,
+#: 그 교환은 지연 쪽이 비싸다. 옛 mtime 은 여전히 즉시 버린다 — 갱신 뒤 옛 스냅샷을
+#: 붙들면 상주가 그대로 두 배가 된다.
+_cache: dict[tuple[Path, int, str], Corpus] = {}
 _cache_lock = threading.Lock()
 
 
-def load_corpus(data_dir: Path) -> Corpus:
+def load_corpus(data_dir: Path, timeframe: str = "D") -> Corpus:
     """프로세스 캐시. `daily_adjusted.parquet` 의 mtime 이 바뀌면 다시 만든다.
 
     무효화가 필요한 이유: `screener_store.derive_adjusted` 가 갱신 때 파일 **전체를
     재작성**한다. lock 은 콜드 스타트 동시 진입이 같은 1.5초짜리 로드를 N번 하는 것을
     막는다(정확성이 아니라 낭비의 문제라 double-checked 로 충분하다).
+
+    `timeframe` 이 `"W"` 면 그 일봉 파일에서 **파생**한다(실측 빌드 1.6s). 모르는 값은
+    `"D"` 로 떨어뜨린다 — 요청이 답을 못 바꾼다(`ma_periods_for` 와 같은 규칙).
     """
+    if timeframe not in PATTERN_TIMEFRAMES:
+        timeframe = "D"
     path = data_dir / "screener" / "daily_adjusted.parquet"
     mtime = path.stat().st_mtime_ns if path.exists() else -1
-    key = (path, mtime)
+    key = (path, mtime, timeframe)
     hit = _cache.get(key)
     if hit is not None:
         return hit
@@ -150,8 +188,10 @@ def load_corpus(data_dir: Path) -> Corpus:
         hit = _cache.get(key)
         if hit is not None:
             return hit
-        corpus = _build_corpus(path, data_dir, mtime)
-        _cache.clear()
+        corpus = _build_corpus(path, data_dir, mtime, timeframe)
+        # 옛 mtime 만 버린다 — 같은 스냅샷의 다른 timeframe 은 살려 둔다.
+        for stale in [k for k in _cache if k[0] == path and k[1] != mtime]:
+            del _cache[stale]
         _cache[key] = corpus
         return corpus
 
@@ -191,15 +231,18 @@ def _build_ma(
     return out
 
 
-def _empty_corpus(path: Path, mtime: int) -> Corpus:
+def _empty_corpus(path: Path, mtime: int, timeframe: str = "D") -> Corpus:
+    empty_dates = np.array([], dtype="datetime64[D]")
     return Corpus(
         path=path, mtime_ns=mtime,
         codes=np.array([], dtype=object),
         starts=np.array([], dtype=np.int64), ends=np.array([], dtype=np.int64),
         ch=np.zeros((4, 0)), logv=np.zeros(0), ma={p: np.zeros(0) for p in MA_PERIODS},
         centers=np.zeros(0), tv=np.zeros(0),
-        dates=np.array([], dtype="datetime64[D]"),
+        dates=empty_dates, first_days=empty_dates, last_days=empty_dates,
+        bucket_days=np.zeros(0, dtype=np.int8),
         names={}, is_etf={}, last_date=np.datetime64("1970-01-01", "D"),
+        timeframe=timeframe,
     )
 
 
@@ -223,22 +266,79 @@ def _sanitized(path: Path) -> pl.DataFrame:
     )
 
 
-def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
+def _bucket_key(timeframe: str) -> pl.Expr:
+    """그 날이 속한 버킷의 키. **프론트 `calendarBucketKey` 와 같은 규칙이어야 한다.**
+
+    주 = 그 주의 **월요일** 날짜. `dt.truncate("1w")` 에 맡기지 않고 `date − (weekday−1)`
+    로 명시하는 이유는 그 함수의 주 시작 요일이 폴라스 버전의 약속이지 우리 계약이
+    아니기 때문이다 — 여기서 갈리면 화면과 검색이 **다른 봉**을 가리킨다.
+
+    polars `dt.weekday()` 는 월=1 … 일=7 이다.
+    """
+    if timeframe == "W":
+        return pl.col("date") - pl.duration(days=pl.col("date").dt.weekday() - 1)
+    return pl.col("date")
+
+
+def _aggregate(df: pl.DataFrame, timeframe: str) -> pl.DataFrame:
+    """일봉 프레임 → 그 timeframe 의 봉. 일봉이면 거래대금 컬럼만 얹는다.
+
+    ⚠ **정제가 먼저다**(`_sanitized`) — 순서가 바뀌면 버려야 할 행이 그 주의 고가·저가를
+    오염시킨다. 집계 뒤의 OHLC 정합성은 구성상 보장된다(first/max/min/last).
+
+    ⚠ **거래대금은 «일평균»이다.** 합으로 두면 「50억 이상」이 주봉에서 실질 일 10억이
+    된다(2026년 실측 중앙값 일봉 4.8억 vs 주봉 합 23.0억 = 4.8배). 임계값이 timeframe
+    마다 다른 뜻을 갖지 않게 평균으로 둔다.
+    """
+    tv = ((pl.col("open") + pl.col("high") + pl.col("low") + pl.col("close")) / 4
+          * pl.col("volume"))
+    if timeframe == "D":
+        # first/last/bucket_days 컬럼을 만들지 않는다 — 일봉은 셋이 전부 `date` 와 같은
+        # 값이라 `_build_corpus` 가 **같은 배열을 재사용**한다(8.9M봉에서 143MB 차이다).
+        return df.with_columns(tv.alias("tv"))
+    return (
+        df.with_columns(tv.alias("tv"), _bucket_key(timeframe).alias("_bkey"))
+        .group_by(["code", "_bkey"], maintain_order=True)
+        .agg(
+            pl.col("open").first(),
+            pl.col("high").max(),
+            pl.col("low").min(),
+            pl.col("close").last(),
+            pl.col("volume").sum(),
+            pl.col("tv").mean(),                      # ★ 합이 아니라 평균
+            pl.col("date").first().alias("first_day"),
+            pl.col("date").last().alias("last_day"),
+            pl.len().cast(pl.UInt32).alias("bucket_days"),
+        )
+        .rename({"_bkey": "date"})
+        .sort(["code", "date"])
+    )
+
+
+def _build_corpus(path: Path, data_dir: Path, mtime: int, timeframe: str = "D") -> Corpus:
     if not path.exists():
-        return _empty_corpus(path, mtime)
-    df = _sanitized(path)
+        return _empty_corpus(path, mtime, timeframe)
+    df = _aggregate(_sanitized(path), timeframe)
     if df.height == 0:
-        return _empty_corpus(path, mtime)
+        return _empty_corpus(path, mtime, timeframe)
     codes = df["code"].to_numpy()
     raw = np.stack([df[k].to_numpy().astype(np.float64) for k in _OHLC])
     ch = np.log(raw)
     volume = df["volume"].to_numpy().astype(np.float64)
-    tv = raw.mean(axis=0) * volume
+    tv = df["tv"].to_numpy().astype(np.float64)
     # ⚠ 거래량 축에 **거래대금을 재사용하지 않는다** — `log(tv) = log(price) + log(volume)`
     #   이라 거래대금 상관은 가격 신호를 이중으로 센다. 캐시에 이미 있다는 이유로
     #   그 오염을 받으면 "가격만" 과 "거래량 함께" 의 차이가 흐려진다(ADR-0166 결정 9).
     logv = np.log(np.maximum(volume, 1.0))
     dates = df["date"].to_numpy().astype("datetime64[D]")
+    if timeframe == "D":
+        # ★ 같은 **객체**를 가리킨다 — 일봉은 버킷이 곧 그 날이라 사본을 만들 이유가 없다.
+        first_days = last_days = dates
+        bucket_days = np.ones(len(dates), dtype=np.int8)
+    else:
+        first_days = df["first_day"].to_numpy().astype("datetime64[D]")
+        last_days = df["last_day"].to_numpy().astype("datetime64[D]")
+        bucket_days = df["bucket_days"].to_numpy().astype(np.int8)
     bounds = np.flatnonzero(codes[1:] != codes[:-1]) + 1
     starts = np.concatenate([[0], bounds]).astype(np.int64)
     ends = np.concatenate([bounds, [len(codes)]]).astype(np.int64)
@@ -266,8 +366,9 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int) -> Corpus:
             is_etf = dict(zip(stocks["code"], stocks["is_etf"], strict=True))
     return Corpus(
         path=path, mtime_ns=mtime, codes=codes[starts], starts=starts, ends=ends,
-        ch=ch, logv=logv, ma=ma, centers=centers, tv=tv, dates=dates, names=names, is_etf=is_etf,
-        last_date=dates.max(),
+        ch=ch, logv=logv, ma=ma, centers=centers, tv=tv, dates=dates,
+        first_days=first_days, last_days=last_days, bucket_days=bucket_days,
+        names=names, is_etf=is_etf, last_date=dates.max(), timeframe=timeframe,
     )
 
 
@@ -625,17 +726,36 @@ def _resolve_window(c: Corpus, i: int, length: int, frm: str | None, to: str | N
     if frm is None or to is None:
         return (n - length, length) if n >= length else None
     s = c.starts[i]
-    days = c.dates[s : s + n].astype("datetime64[D]").astype(str)
-    days = np.char.replace(days, "-", "")
-    sel = np.flatnonzero((days >= frm) & (days <= to))
+
+    def ymd(arr: np.ndarray) -> np.ndarray:
+        return np.char.replace(arr[s : s + n].astype("datetime64[D]").astype(str), "-", "")
+
+    # ★ **버킷 키가 아니라 그 버킷의 거래일 범위와 겹치는가**를 묻는다.
+    #   프론트가 보내는 날짜는 화면 봉의 타임스탬프 = 그 버킷의 **첫 거래일**인데
+    #   (`aggregateCalendar` 가 Gap 회피 때문에 그렇게 잡는다), 서버의 키는 월요일이다.
+    #   월요일이 휴일이면 둘이 갈리고(주봉의 7.6%, 최근 2026-08-17) 키로 비교하면 그
+    #   버킷이 통째로 빠진다. 겹침 판정은 그 비대칭을 **정규화 없이** 흡수한다.
+    #   일봉은 first=last=key 라 기존과 같은 식이다.
+    sel = np.flatnonzero((ymd(c.last_days) >= frm) & (ymd(c.first_days) <= to))
     span = int(sel[-1] - sel[0] + 1) if len(sel) else 0
     if len(sel) < PATTERN_FLOOR or span > PATTERN_CEILING:
         return None
     return int(sel[0]), span
 
 
-def _ymd(c: Corpus, i: int, offset: int) -> str:
-    return c.date_at(i, offset).strftime("%Y%m%d")
+def _ymd_from(c: Corpus, i: int, offset: int) -> str:
+    """구간 **시작** — 그 버킷의 첫 거래일.
+
+    ⚠ 버킷 키(주봉이면 월요일)를 그대로 실으면 안 된다. 그 날이 휴일이면 차트에 캔들이
+    없어 **착지 밴드가 아무 데도 걸리지 않는다**(주봉의 7.6%). 일봉은 셋이 같은 값이라
+    이 구분이 보이지 않는다.
+    """
+    return c.first_day_at(i, offset).strftime("%Y%m%d")
+
+
+def _ymd_to(c: Corpus, i: int, offset: int) -> str:
+    """구간 **끝** — 그 버킷의 마지막 거래일."""
+    return c.last_day_at(i, offset).strftime("%Y%m%d")
 
 
 def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSearchResponse:
@@ -728,8 +848,8 @@ def _append_one(
         PatternMatchRow(
             code=c.codes[m.series],
             name=c.names.get(c.codes[m.series], ""),
-            from_date=_ymd(c, m.series, m.offset),
-            to_date=_ymd(c, m.series, m.offset + length - 1),
+            from_date=_ymd_from(c, m.series, m.offset),
+            to_date=_ymd_to(c, m.series, m.offset + length - 1),
             corr=m.score,
             bars=bars_at(c, m.series, m.offset, length),
             tail=(closes_at(c, m.series, m.offset + length, req.forward_days)
@@ -748,8 +868,8 @@ def _append_one(
         # 사용자가 그은 구간이 아니다.
         query=PatternQueryWindow(
             length=base_length,
-            from_date=_ymd(c, qi, offset),
-            to_date=_ymd(c, qi, offset + base_length - 1),
+            from_date=_ymd_from(c, qi, offset),
+            to_date=_ymd_to(c, qi, offset + base_length - 1),
             bars=bars_at(c, qi, offset, base_length),
             ma=ma_at(c, qi, offset, base_length, periods),
         ),
