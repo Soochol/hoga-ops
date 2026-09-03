@@ -10,7 +10,7 @@ export function useScreenerUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => triggerScreenerUpdate(),
-    onMutate: () => useScreenerUpdateFeedback.getState().clear(),
+    onMutate: () => useScreenerUpdateFeedback.getState().clearUpdateResult(),
     onSuccess: (res) => {
       if (res.running) {
         queryClient.setQueryData<ScreenerStatus>(['screener-status'], (prev) =>
@@ -22,6 +22,7 @@ export function useScreenerUpdate() {
           message: SKIP_REASON_MESSAGES[res.reason],
           tone: res.reason === 'no_gap' ? 'info' : 'warn',
           atMs: Date.now(),
+          source: 'update',
         });
       }
     },

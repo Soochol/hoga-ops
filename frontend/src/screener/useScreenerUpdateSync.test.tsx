@@ -164,3 +164,36 @@ describe('useScreenerUpdate (mutation)', () => {
     ).toMatchObject({ done: 0, total: 3561 }));
   });
 });
+
+describe('새 실행이 시작되면 지난 결과를 버린다', () => {
+  // 렌더 게이트(`visibleUpdateFeedback`)와 **다른 실패 경로**를 막는다. 게이트는
+  // "실행 중이면 감춘다" 이므로 `finished` 를 놓쳐 `updating` 이 풀린 뒤에는 낡은 값이
+  // 다시 드러난다 — 그래서 값 자체도 새 실행의 첫 진행에서 버려야 한다.
+  it('진행 이벤트가 오면 지난 갱신 결과를 버린다 — 서버가 시작한 실행도 덮인다', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData<ScreenerStatus>(['screener-status'], OK_STATUS);
+    useScreenerUpdateFeedback.getState().setFeedback({
+      message: '갱신 실패', tone: 'error', atMs: Date.now(), source: 'update',
+    });
+    renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
+
+    fireEvent_({ type: 'screener_update_progress', done: 0, total: 4335 } as PushEvent);
+
+    await waitFor(() => expect(useScreenerUpdateFeedback.getState().feedback).toBeNull());
+  });
+
+  it('모니터링 알림은 진행 이벤트로 버려지지 않는다', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData<ScreenerStatus>(['screener-status'], OK_STATUS);
+    const monitor = {
+      message: '조회가 반복 실패해 실시간 모니터링을 종료했습니다.',
+      tone: 'error' as const, atMs: Date.now(), source: 'monitor' as const,
+    };
+    useScreenerUpdateFeedback.getState().setFeedback(monitor);
+    renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
+
+    fireEvent_({ type: 'screener_update_progress', done: 0, total: 4335 } as PushEvent);
+
+    expect(useScreenerUpdateFeedback.getState().feedback).toEqual(monitor);
+  });
+});
