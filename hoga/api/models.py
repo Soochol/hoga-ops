@@ -2017,7 +2017,7 @@ PatternMaPreset = Literal["off", "short", "mid"]
 #:
 #: ⚠ 값을 늘리면 프론트 union 도 **같은 PR 에서** 고친다(ADR-0004). 그 대조는
 #: `WIRE_ENUM_MIRRORS` 에 등록돼 있다.
-PatternTimeframe = Literal["D", "W"]
+PatternTimeframe = Literal["D", "W", "M"]
 
 #: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
 #: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).

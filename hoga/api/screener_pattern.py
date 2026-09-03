@@ -10,6 +10,7 @@ OHLC 네 채널을 **창 공유 스케일**로 z-정규화하고 그 벡터들�
 """
 from __future__ import annotations
 
+import calendar
 import threading
 import time
 from dataclasses import dataclass
@@ -85,14 +86,42 @@ PATTERN_CEILING = 30
 #:
 #: ⚠ 버킷 규칙은 프론트 `calendarBucketKey`(`aggregateCandles.ts`)와 **같아야** 한다.
 #: ADR-0166 이 내세운 「화면의 봉과 검색 대상이 같은 데이터」가 그것으로만 유지된다.
-PATTERN_TIMEFRAMES = ("D", "W")
+PATTERN_TIMEFRAMES = ("D", "W", "M")
 
-#: 「완성된 주」의 거래일 수. 이보다 적으면 그 주는 아직 진행 중이거나 휴일이 낀
-#: 것이고, 화면이 「이번 주 N일치」를 말할 근거가 된다.
-#:
-#: ⚠ 휴일이 낀 완성 주(4일)도 여기 걸린다 — **의도한 것이다.** 그 주의 봉도 5일치
-#: 주와는 다른 것을 담고 있고, 「모르는 채로 비교하는 것」보다 말해 주는 편이 낫다.
+#: 「완성된 주」의 거래일 수. 주봉에서만 쓴다 — 아래 `_partial_days` 참조.
 _FULL_WEEK_DAYS = 5
+
+
+def _month_end(key: date) -> date:
+    """그 달의 말일. 월봉의 「아직 안 끝났는가」 판정에 쓴다.
+
+    윤년·월 넘김을 표준 라이브러리에 맡긴다 — 손으로 세면 2월과 12월이 각각 다른
+    방식으로 틀린다.
+    """
+    return key.replace(day=calendar.monthrange(key.year, key.month)[1])
+
+
+def _partial_days(c: Corpus, tail: int) -> int | None:
+    """마지막 봉이 **다른 봉과 다르게 담겼으면** 그 거래일 수, 아니면 None.
+
+    ⚠ **질문이 timeframe 마다 다르다.** 하나로 통일하려다 한쪽을 망가뜨리기 쉽다:
+
+    * **주봉** — 5일이 규범이라 「며칠짜리인가」가 곧 답이다. 휴일 낀 완성 주(4일)도
+      걸리는데 **의도한 것이다**: 그 봉 역시 5일치와 다른 것을 담고 있어 말할 가치가
+      있다. 달력(일요일)으로 물으면 **금요일 마감 뒤에도 늘 미완성**이 된다 — 거래일은
+      금요일이 마지막이라 달력 끝에 절대 닿지 못한다.
+    * **월봉** — 18~23일로 규범이 없어 일수로는 답이 안 나온다. 대신 「이번 달이 아직
+      안 끝났는가」를 **달력으로** 묻는다. 월말에는 거래일이 말일 근처까지 있어 그
+      비교가 성립한다.
+    """
+    if c.timeframe == "W":
+        days = int(c.bucket_days[tail])
+        return days if days < _FULL_WEEK_DAYS else None
+    if c.timeframe == "M":
+        key = c.dates[tail].astype("datetime64[D]").astype(date)
+        last_seen = c.last_trading_day.astype("datetime64[D]").astype(date)
+        return int(c.bucket_days[tail]) if last_seen < _month_end(key) else None
+    return None
 
 
 @dataclass(frozen=True)
@@ -138,7 +167,14 @@ class Corpus:
     bucket_days: np.ndarray
     names: dict[str, str]
     is_etf: dict[str, bool]
+    #: 코퍼스 전체의 마지막 **버킷 키**. 생존 판정(`search_now`)이 이 값과 비교한다 —
+    #: 거기서는 「그 종목이 마지막 버킷에 있는가」를 묻는 것이라 키가 맞다.
     last_date: np.datetime64
+    #: 코퍼스 전체의 마지막 **거래일**. 「오늘」의 근사이고 달력 비교에 쓴다.
+    #:
+    #: ⚠ `last_date` 로 대신할 수 없다 — 월봉에서 그 값은 **그 달의 1일**(키)이라
+    #: 말일과 비교하면 완성된 달도 늘 「진행 중」이 된다.
+    last_trading_day: np.datetime64
     timeframe: str = "D"
 
     def index_of(self, code: str) -> int | None:
@@ -249,7 +285,7 @@ def _empty_corpus(path: Path, mtime: int, timeframe: str = "D") -> Corpus:
         dates=empty_dates, first_days=empty_dates, last_days=empty_dates,
         bucket_days=np.zeros(0, dtype=np.int8),
         names={}, is_etf={}, last_date=np.datetime64("1970-01-01", "D"),
-        timeframe=timeframe,
+        last_trading_day=np.datetime64("1970-01-01", "D"), timeframe=timeframe,
     )
 
 
@@ -284,6 +320,9 @@ def _bucket_key(timeframe: str) -> pl.Expr:
     """
     if timeframe == "W":
         return pl.col("date") - pl.duration(days=pl.col("date").dt.weekday() - 1)
+    if timeframe == "M":
+        # 달력 월은 시작일 모호성이 없다 — 주와 달리 `truncate` 에 맡겨도 계약이 갈리지 않는다.
+        return pl.col("date").dt.truncate("1mo")
     return pl.col("date")
 
 
@@ -375,7 +414,8 @@ def _build_corpus(path: Path, data_dir: Path, mtime: int, timeframe: str = "D") 
         path=path, mtime_ns=mtime, codes=codes[starts], starts=starts, ends=ends,
         ch=ch, logv=logv, ma=ma, centers=centers, tv=tv, dates=dates,
         first_days=first_days, last_days=last_days, bucket_days=bucket_days,
-        names=names, is_etf=is_etf, last_date=dates.max(), timeframe=timeframe,
+        names=names, is_etf=is_etf, last_date=dates.max(),
+        last_trading_day=last_days.max(), timeframe=timeframe,
     )
 
 
@@ -669,9 +709,14 @@ def search_history(
         if min_after:
             corr[len(corr) - min_after :] = -np.inf     # 이후 구간이 없는 꼬리
         if since is not None:
-            # 창의 **시작일** 기준. 기간은 후보 모집단을 바꾸는 유일한 조건이라
+            # 창의 **시작 버킷** 기준. 기간은 후보 모집단을 바꾸는 유일한 조건이라
             # 서버에 있다(유사도·개수는 프론트가 결과를 자른다).
-            corr[c.dates[s:e][: len(corr)] < since] = -np.inf
+            #
+            # ⚠ 버킷 **키**가 아니라 그 버킷의 **마지막 거래일**과 비교한다. 키로 재면
+            #   경계 버킷이 통째로 빠진다 — 프론트가 보내는 `since` 는 「오늘 − N년」이라
+            #   버킷 중간일 확률이 높고(주봉 6/7 · 월봉 ~29/30), 그 주/달이 부분적으로
+            #   범위 안인데도 제외됐다. 일봉은 last=key 라 기존과 같은 식이다.
+            corr[c.last_days[s:e][: len(corr)] < since] = -np.inf
         if no_overlap:
             d = c.dates[s:e]
             corr[(d[: len(corr)] <= q_to) & (d[length - 1 :] >= q_from)] = -np.inf
@@ -871,11 +916,8 @@ def _append_one(
     ]
     # 마지막 봉이 미완성인가 — 주봉에서 수요일이면 3일치다. `now` 만 그 봉을 본다
     # (history 의 창은 과거라 전부 완성이다). 일봉은 `bucket_days` 가 항상 1 이라 null.
-    partial = None
-    if req.mode == "now" and c.timeframe != "D" and len(c.bucket_days):
-        tail = int(c.bucket_days[int(c.ends[qi]) - 1])
-        if tail < _FULL_WEEK_DAYS:
-            partial = tail
+    partial = (_partial_days(c, int(c.ends[qi]) - 1)
+               if req.mode == "now" and len(c.bucket_days) else None)
     results.append(PatternLengthResult(
         # 이 결과가 찾은 **매치의 길이**다. 유연 검색에서는 기준 길이와 다를 수 있고,
         # 프론트가 그 값을 「10봉으로」 뱃지로 쓴다.
