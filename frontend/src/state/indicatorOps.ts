@@ -99,6 +99,45 @@ const PEAK_WALL_PANE_SLOT_KEYS: readonly PeakWallPaneSlotKey[] = [
   'bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled',
 ];
 
+const PEAK_WALL_PANE_SLOT_KEYS_BY_SIDE: Record<'ask' | 'bid', readonly PeakWallPaneSlotKey[]> = {
+  ask: ['askPeakTradedPaneEnabled', 'askPeakUnreachedPaneEnabled', 'askPeakAllWallPaneEnabled'],
+  bid: ['bidPeakTradedPaneEnabled', 'bidPeakUnreachedPaneEnabled', 'bidPeakAllWallPaneEnabled'],
+};
+
+/**
+ * 강도 pane 에 **그릴 것이 있는가** — pane 마운트의 실효 조건.
+ *
+ * ## 이 술어가 생긴 이유
+ *
+ * pane 의 마운트 게이트는 오랫동안 `peakWallPaneEnabled` **하나만** 봤다
+ * (`paneSpecsForTimeframe`). 그런데 그 안에 그려지는 계단은 `usePeakWallRender` 에서
+ * `{side}PeakEnabled` 와 슬롯 키로 **한 번 더** 게이트된다. 두 게이트가 서로 다른
+ * 질문에 답하고 있었던 것이고, 그래서 최대벽 지표를 끄면 계단만 사라지고
+ * **빈 pane 이 남았다**(사용자 신고, 2026-09-03).
+ *
+ * 처방은 마스터를 쓰기 시점에 동기화하는 것이 **아니다**. 그러면 「왜 닫혔는지」를
+ * 잊어버려서 되켤 때 돌아올 수 없다 — 지표를 되켜면 pane 도 함께 돌아와야 한다는 것이
+ * 사용자 요구였다(2026-09-03). 그래서 마스터는 **사용자의 opt-in 의사**로 그대로 두고,
+ * 마운트 게이트가 렌더 게이트와 **같은 곱**을 보게 한다. 파생이지 변이가 아니다.
+ *
+ * ## 방향과 슬롯을 함께 본다
+ *
+ * 매도·매수가 pane 하나를 공유하므로 판정은 방향별 곱의 OR 이다. 「방향의 OR × 슬롯의
+ * OR」로 접으면 **매도 슬롯만 켠 채 매도를 끄고 매수를 켠** 조합에서 빈 pane 이 남는다.
+ *
+ * ## `hidden` 은 보지 않는다
+ *
+ * 렌더 게이트(`usePeakWallRender`)가 `enabled` 만 읽기 때문이다 — 오버레이를 눈으로
+ * 숨겨도 계단은 그려진다. 여기서 `hidden` 을 곱하면 두 게이트가 다시 갈린다.
+ */
+export function peakWallPaneHasContent(cur: IndicatorSettings): boolean {
+  if (!cur.peakWallPaneEnabled) return false;
+  return (['ask', 'bid'] as const).some((side) => (
+    (side === 'ask' ? cur.askPeakEnabled : cur.bidPeakEnabled)
+    && PEAK_WALL_PANE_SLOT_KEYS_BY_SIDE[side].some((k) => cur[k])
+  ));
+}
+
 /** 한 칸만 담은 패치. 계산된 키(`{ [key]: value }`)를 쓰면 TS 가 `{ [k: string]: boolean }`
  *  으로 넓혀 `Partial<IndicatorSettings>` 에 붙지 않으므로 여섯을 명시로 편다. */
 function paneSlotPatch(key: PeakWallPaneSlotKey, value: boolean): Partial<IndicatorSettings> {
@@ -383,6 +422,19 @@ export const INDICATOR_OPS = {
    * 그 대가로 **접혀 있던 저장값은 다음 arm 에서 버려진다**. 설정 패널의 요약 줄이
    * 「되켜면 무엇이 돌아오는지」를 말하지 않고 **지금 들어 있는 것만** 말하는 이유다.
    *
+   * ⚠ **「닫힘」이 두 종류가 됐다**(2026-09-03). 위 문단은 **마스터가 닫힌** 경우다.
+   * 방향이 꺼져서 pane 이 안 보이는 것은 다른 닫힘이고, 그때 슬롯은 **그대로 보존
+   * 된다** — 방향을 되켜면 pane 이 저장돼 있던 칸과 함께 돌아온다. 그게 사용자가
+   * 요구한 대칭이고(`peakWallPaneHasContent`), 그래서 여는 분기의 판정을 「내용이
+   * 있는가」로 넓히지 **않았다**. 넓히면 방향-닫힘도 다섯 칸을 버리게 된다.
+   *
+   * ## 켜는 클릭은 **그 방향도 켠다**
+   *
+   * 이 스위치의 이름은 「pane 에 추가」이므로 켰는데 아무 일도 안 일어나면 안 된다.
+   * 그런데 계단은 `{side}PeakEnabled` 로도 게이트되므로(`usePeakWallRender`), 방향이
+   * 꺼진 채로는 슬롯과 마스터를 다 열어도 화면이 그대로다. 마스터를 함께 여는 것과
+   * 같은 근거로 방향도 함께 연다 — 캔들 오버레이 선이 함께 나타나는 것이 대가다.
+   *
    * 한 패치에 담는 이유는 `setAskPeakEnabled` 가 `askPeakHidden: false` 를 함께 쓰는
    * 것과 같다 — undo 한 항목, 프리셋 경로에서도 결합 유지.
    */
@@ -398,8 +450,15 @@ export const INDICATOR_OPS = {
       const othersOn = PEAK_WALL_PANE_SLOT_KEYS.some((k) => k !== key && cur[k]);
       return { ...paneSlotPatch(key, false), peakWallPaneEnabled: othersOn };
     }
-    if (!cur.peakWallPaneEnabled) return { ...onlyPaneSlot(key), peakWallPaneEnabled: true };
-    return { ...paneSlotPatch(key, true), peakWallPaneEnabled: true };
+    // 방향도 함께 연다(위 주석). `Hidden: false` 를 같이 쓰는 것은
+    // `setAskPeakEnabled` 의 켜는 분기와 같은 결합 — 눈이 감긴 채 되살아나지 않게.
+    const sideOn = side === 'ask'
+      ? { askPeakEnabled: true, askPeakHidden: false }
+      : { bidPeakEnabled: true, bidPeakHidden: false };
+    if (!cur.peakWallPaneEnabled) {
+      return { ...onlyPaneSlot(key), ...sideOn, peakWallPaneEnabled: true };
+    }
+    return { ...paneSlotPatch(key, true), ...sideOn, peakWallPaneEnabled: true };
   },
   setForeignNetEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ foreignNetEnabled: enabled }),

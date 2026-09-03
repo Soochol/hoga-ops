@@ -348,11 +348,57 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(mounted[0]).toBe('candle');
   });
 
+  /** 마스터만으로는 부족하다 — 방향과 슬롯까지 서야 계단이 있다
+   *  (`peakWallPaneHasContent`). 공장값은 체결된 벽 슬롯이 켜져 있고 방향은 꺼져 있다. */
   it('peakWallPaneEnabled=true → peak-wall pane 이 quote-totals 뒤에 마운트 (opt-in)', () => {
     // 기본(미지정)은 위 「기본 6 pane」 테스트가 부재를 이미 잠근다 — 여기선 켠 경로만.
-    useLivePageStore.setState({ peakWallPaneEnabled: true });
+    useLivePageStore.setState({ peakWallPaneEnabled: true, askPeakEnabled: true });
     renderAt('1m');
     expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'peak-wall', 'ratio', 'fill-strength', 'program-trade']);
+  });
+
+  /**
+   * **되켜면 pane 도 돌아온다** — 사용자 요구(2026-09-03)를 마운트 집합으로 잠근다.
+   *
+   * 이 테스트만이 곱을 end-to-end 로 지난다: 지표 필드 → `peakWallPaneHasContent`
+   * → `resolvePaneToggles` → 게이트 → 실제 마운트 집합. 술어 단위 가드
+   * (`indicatorOps.peakWallPaneLifetime.test.ts`)는 첫 칸까지만 본다.
+   *
+   * **막는 방향** 둘: (1) 지표를 껐는데 빈 pane 이 남는 것 — 원래 신고. (2) 되켰는데
+   * 안 돌아오는 것 — 마스터를 쓰기 시점에 닫는 판(한 번 만들었다가 되돌린)이 이쪽으로
+   * 실패한다. 두 번째 단언이 없으면 그 판도 통과한다.
+   */
+  it('최대벽을 끄면 peak-wall pane 이 사라지고, 되켜면 돌아온다', () => {
+    useLivePageStore.setState({
+      peakWallPaneEnabled: true, askPeakEnabled: true, bidPeakEnabled: true,
+    });
+    const view = renderAt('1m');
+    expect(mounted).toContain('peak-wall');
+
+    const rerender = () => view.rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+
+    mounted.length = 0;
+    act(() => {
+      useLivePageStore.setState({ askPeakEnabled: false, bidPeakEnabled: false });
+    });
+    rerender();
+    expect(mounted).not.toContain('peak-wall');
+
+    mounted.length = 0;
+    act(() => {
+      useLivePageStore.setState({ askPeakEnabled: true });
+    });
+    rerender();
+    expect(mounted).toContain('peak-wall');
   });
 
   it('calendar(D) → 호가 토글 무관, candle·volume만', () => {

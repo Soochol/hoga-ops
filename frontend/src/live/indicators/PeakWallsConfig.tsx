@@ -368,8 +368,14 @@ function FamilyRow({ side, family, name, active, onPick }: {
  *
  * 이 접힘은 **렌더 경로의 실효 조건과 같은 식**이다 — `LiveChartRoot` 가
  * `needStepSegments: peakWallPaneEnabled` 로 계단 계산을 게이트하고 `usePeakWallRender`
- * 가 그 안에서 슬롯 키를 본다. 즉 화면이 새 규칙을 발명하는 것이 아니라, 이미 참이던
- * 곱을 그리기 시작한 것이다.
+ * 가 그 안에서 **방향(`{side}PeakEnabled`)과 슬롯 키**를 본다. 즉 화면이 새 규칙을
+ * 발명하는 것이 아니라, 이미 참이던 곱을 그리기 시작한 것이다.
+ *
+ * 그래서 곱은 **세 항**이다(2026-09-03에 방향이 들어왔다). 방향을 빼면 지표를 끈 뒤에도
+ * 이 스위치가 켜진 채로 남아 「켜져 있는데 pane 이 없다」가 다시 생긴다 — 그 방향의
+ * 계단은 pane 이 살아 있어도(반대 방향 덕에) 그려지지 않기 때문이다.
+ * 클릭이 언제나 **추가**로 해석되는 것도 그대로다: `setPeakWallPaneSlotEnabled` 의
+ * 결합이 마스터와 **방향**을 함께 연다.
  *
  * ## 접힌 저장값은 되살아나지 않는다 (2026-08-27)
  *
@@ -392,7 +398,8 @@ function PaneSlotSwitch({ side, family, name }: {
   const key = PANE_SLOT_KEY[side][family];
   const slotOn = useWindowIndicator((s) => s[key]);
   const paneOn = useWindowIndicator((s) => s.peakWallPaneEnabled);
-  const inPane = paneOn && slotOn;
+  const sideOn = useWindowIndicator((s) => (side === 'ask' ? s.askPeakEnabled : s.bidPeakEnabled));
+  const inPane = paneOn && slotOn && sideOn;
   const setSlot = useIndicatorActions().setPeakWallPaneSlotEnabled;
   return (
     <span className="flex justify-center">
@@ -678,12 +685,18 @@ function PaneStage() {
  * **저장돼 있지만 꺼진 칸은 세지 않는다.** 닫혀 있던 pane 을 여는 클릭이 나머지 다섯을
  * 함께 닫으므로(`setPeakWallPaneSlotEnabled`), 그 값들은 되살아나지 않는다 — 여기서
  * 「되켜면 돌아올 것」을 약속하면 거짓말이 된다.
+ *
+ * **방향이 꺼진 계열도 세지 않는다.** 그 계단은 pane 이 살아 있어도 그려지지 않는다
+ * (`peakWallPaneHasContent`). 이 줄이 답해야 하는 질문은 「지금 pane 에 무엇이 있나」
+ * 이므로 저장값이 아니라 실효값을 센다 — ② 의 스위치와 같은 곱이다.
  */
 function PaneSlotSummary() {
   const ind = useWindowIndicator((s) => s);
-  const on = !ind.peakWallPaneEnabled ? [] : SIDES.flatMap((side) => PEAK_WALL_FAMILIES
-    .filter((family) => ind[PANE_SLOT_KEY[side.id][family.id]])
-    .map((family) => `${side.label} ${family.name}`));
+  const sideOn = (side: Side): boolean => (side === 'ask' ? ind.askPeakEnabled : ind.bidPeakEnabled);
+  const on = !ind.peakWallPaneEnabled ? [] : SIDES.filter((side) => sideOn(side.id))
+    .flatMap((side) => PEAK_WALL_FAMILIES
+      .filter((family) => ind[PANE_SLOT_KEY[side.id][family.id]])
+      .map((family) => `${side.label} ${family.name}`));
 
   return (
     <p

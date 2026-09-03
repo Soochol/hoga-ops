@@ -6,6 +6,7 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
+import { peakWallPaneHasContent } from '../../state/indicatorOps';
 import {
   WORKSPACE_PANEL_WIDTH_CLASS,
   WORKSPACE_PANEL_HEIGHT_CLASS,
@@ -722,6 +723,45 @@ describe('IndicatorPanel', () => {
     togglePresence('당일 최대벽');
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
+  });
+
+  /**
+   * ✕ 로 최대벽을 지우면 **강도 pane 도 함께 사라지고, 되추가하면 돌아온다**.
+   *
+   * pane 의 마운트 조건은 마스터가 아니라 「그릴 것이 있는가」다
+   * (`peakWallPaneHasContent`) — 마스터는 사용자의 opt-in 의사로 **보존된다**.
+   * 그래서 여기서 단언하는 것은 「마스터가 닫혔다」가 아니라 **마스터는 그대로인데
+   * 내용이 비었다**이다. 마스터를 쓰기 시점에 닫는 판(한 번 만들었다가 되돌린)은
+   * 되추가 단언에서 실패한다 — 되살릴 opt-in 이 남아 있지 않기 때문이다.
+   *
+   * 이 경로를 따로 재는 이유: `setPresenceFor` 가 `setAskPeakEnabled(false)` 다음
+   * `setBidPeakEnabled(false)` 를 부르는 **순차 두 번 쓰기**라, 한쪽만 반영돼도
+   * 내용은 남는다(반대 방향이 살아 있으면 pane 도 살아야 하므로 그게 옳다).
+   *
+   * **못 보는 것**: pane 이 실제로 언마운트되는가 —
+   * `LiveChartRoot.paneToggles.test.tsx` 가 마운트 집합으로 잠근다.
+   */
+  it('당일 최대벽 삭제는 강도 pane 을 비우고, 되추가하면 돌아온다', () => {
+    useLivePageStore.setState({
+      askPeakEnabled: true,
+      bidPeakEnabled: true,
+      peakWallPaneEnabled: true,
+      askPeakTradedPaneEnabled: true,
+      bidPeakTradedPaneEnabled: true,
+    });
+    renderPanel();
+    expect(peakWallPaneHasContent(useLivePageStore.getState())).toBe(true);
+
+    togglePresence('당일 최대벽');
+    const after = useLivePageStore.getState();
+    expect(after.askPeakEnabled).toBe(false);
+    expect(after.bidPeakEnabled).toBe(false);
+    expect(peakWallPaneHasContent(after)).toBe(false);
+    // 마스터는 살아 있다 — 그게 되추가 때 pane 이 돌아오는 근거다.
+    expect(after.peakWallPaneEnabled).toBe(true);
+
+    addIndicator('당일 최대벽');
+    expect(peakWallPaneHasContent(useLivePageStore.getState())).toBe(true);
   });
 
   it('체크박스 클릭은 상세 pane을 전환하지 않는다', () => {

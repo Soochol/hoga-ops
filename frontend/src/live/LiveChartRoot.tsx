@@ -33,6 +33,7 @@ import { CandleEmptyState } from './CandleEmptyState';
 import { deriveSourceBadge } from './sourceBadge';
 import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptyState';
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
+import { peakWallPaneHasContent } from '../state/indicatorOps';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   NO_DAY_BOUNDARY_TICKS,
@@ -1894,6 +1895,11 @@ export function LiveChartRoot({
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
   const prefPeakWallPaneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  // 강도 pane 은 마스터만으로 마운트하지 않는다 — 「그릴 것이 있는가」와 곱한다
+  // (`peakWallPaneHasContent`: 왜 마스터를 쓰기 시점에 닫지 않는지 포함).
+  // 필드 8개를 각각 구독하지 않고 술어를 selector 로 쓴다 — 불리언 하나로 접혀
+  // 나오므로 그 8개 중 무엇이 바뀌든 결과가 같으면 재렌더가 없다.
+  const prefPeakWallPaneHasContent = useWindowIndicator(peakWallPaneHasContent);
   const prefInstitutionNetEnabled = useWindowIndicator((s) => s.institutionNetEnabled);
   const indicatorPrefs = useMemo(
     () => ({
@@ -1971,6 +1977,7 @@ export function LiveChartRoot({
     // timeframe 병합 없이 국지 override 만 얹는다.
     () => resolvePaneToggles({
       indicators: indicatorPrefs,
+      peakWallPaneHasContent: prefPeakWallPaneHasContent,
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
@@ -1994,6 +2001,7 @@ export function LiveChartRoot({
     [
       forceHogaPanes,
       indicatorPrefs,
+      prefPeakWallPaneHasContent,
       paneTogglesOverride?.hogaPanes,
       paneTogglesOverride?.volumeEnabled,
       paneTogglesOverride?.quoteTotalsEnabled,

@@ -22,7 +22,12 @@ export type PaneToggles = {
   forceHogaPanes?: boolean;
   /** 최대벽 강도 pane (기존 「당일 최대벽」의 시간축 표현). **opt-in** — `=== true`
    *  일 때만 마운트한다: 위의 "생략 시 ON" 관례는 항상-켜져-있다가 togglable 이 된
-   *  pane 들의 하위호환이고, 새 pane 이 그걸 따르면 배포 순간 모든 화면에 나타난다. */
+   *  pane 들의 하위호환이고, 새 pane 이 그걸 따르면 배포 순간 모든 화면에 나타난다.
+   *
+   *  ⚠ 이 필드는 저장된 마스터가 아니라 **실효값**이다 — 마스터 × 「그릴 것이 있는가」
+   *  (`peakWallPaneHasContent`)를 `resolvePaneToggles` 가 접어 넘긴다. 그래서 최대벽
+   *  지표를 끄면 pane 이 사라지고, 되켜면 마스터가 그대로라 **함께 돌아온다**. 여기서
+   *  마스터만 읽으면 계단 없는 빈 pane 이 남는다(2026-09-03 신고). */
   peakWallPaneEnabled?: boolean;
 };
 
