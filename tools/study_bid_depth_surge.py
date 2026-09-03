@@ -39,6 +39,7 @@ HORIZONS = (1, 3, 5, 10, 20)
 FWD_WINDOW = 10           # 지지/저항·MFE/MAE 판정 창(거래일)
 RESIST_LOOKBACK = 20      # 저항 = 직전 20거래일 고가
 MA_PERIODS = (5, 20, 60, 120)
+MA120_SLOPE_DAYS = (5, 20, 60)  # MA120 기울기 창(거래일). 20 이 기본 판정, 5·60 은 민감도
 RS_PERIOD = 120           # 주도주 = 120거래일 수익률 상위
 RS_TOP_PCT = 0.80         # 상위 20 %
 ADV_FLOOR_KRW = 5e9       # 주도주 유니버스 유동성 하한(20일 평균 거래대금 50억)
@@ -140,6 +141,10 @@ def price_features(daily: pl.DataFrame) -> pl.DataFrame:
     ]
     exprs += [pl.col("close").rolling_mean(p).over(g).alias(f"ma{p}") for p in MA_PERIODS]
     df = daily.with_columns(exprs)
+    # MA120 기울기 — k 거래일 전 MA120 대비. 사용자 정의 「120이평 기울기 우상향」 의 조작화(기본 k=20).
+    df = df.with_columns(
+        *[(pl.col("ma120") / pl.col("ma120").shift(k).over(g) - 1).alias(f"ma120_slope{k}") for k in MA120_SLOPE_DAYS],
+    )
     df = df.with_columns(
         (pl.col("fwd_max_high") / pl.col("close") - 1).alias("mfe10"),
         (pl.col("fwd_min_low") / pl.col("close") - 1).alias("mae10"),
@@ -318,6 +323,9 @@ def add_parser_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--ma20", choices=("below", "none"), default="below",
                     help="peak 유효 조건(사용자 정의): below = 그날 종가 < 일봉 SMA20 인 (code, D) 만 — 이벤트·기준군 "
                          "모두에 적용 / none = 조건 없음")
+    ap.add_argument("--ma120", choices=("up", "none"), default="none",
+                    help="추가 조건(사용자 정의): up = 일봉 MA120 이 20거래일 전보다 높은 (code, D) 만 — 이벤트·기준군 "
+                         "모두에 적용 / none = 조건 없음(기본)")
 
 
 def build_dataset(args: argparse.Namespace) -> Dataset:  # noqa: PLR0915 — 가드 깔때기의 단일 조립점
@@ -364,6 +372,9 @@ def build_dataset(args: argparse.Namespace) -> Dataset:  # noqa: PLR0915 — 가
     if args.ma20 == "below":
         table = table.filter(~pl.col("above_ma20").fill_null(True))
     guards["after_ma20_filter"] = table.height
+    if getattr(args, "ma120", "none") == "up":
+        table = table.filter(pl.col("ma120_slope20") > 0)
+    guards["after_ma120_filter"] = table.height
     table = table.with_columns(
         (pl.col("rs_pct") >= RS_TOP_PCT).alias("leader_rs"),
         pl.col("code").is_in(sorted(leaders_user)).alias("leader_user"),
@@ -429,7 +440,7 @@ def build_dataset(args: argparse.Namespace) -> Dataset:  # noqa: PLR0915 — 가
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립점
     ap = argparse.ArgumentParser()
     add_parser_args(ap)
     args = ap.parse_args()
@@ -501,6 +512,8 @@ def main() -> None:
         t2 = t2.join(ix, left_on=["market", "date"], right_on=["market", "d8"], how="left")
         if args.ma20 == "below":
             t2 = t2.filter(~pl.col("above_ma20").fill_null(True))
+        if getattr(args, "ma120", "none") == "up":
+            t2 = t2.filter(pl.col("ma120_slope20") > 0)
         t2 = t2.with_columns(*[(pl.col(f"fwd{h}") - pl.col(f"ix_fwd{h}")).alias(f"xs{h}") for h in HORIZONS])
         e = dedup_cooldown(t2.filter(pl.col("ratio") >= args.ratio), corpus, args.cooldown)
         b = t2.filter(pl.col("ratio") < args.ratio)

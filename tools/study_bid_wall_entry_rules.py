@@ -59,7 +59,7 @@ RULES = ("D0close", "D0next_open", "D_end", "D_end+1", "hold1", "hold2", "hold3"
          "breakD0hi")
 FEATURES = ("leader_bucket", "ix_trend", "ix_mom5", "hi52_pos", "ma_state", "ma_pos", "d_candle", "ratio_bucket",
             "market", "peak_tod_bucket", "vol_bucket", "retd_bucket", "rs_bucket", "len_bucket", "d0_bucket",
-            "wall_bucket", "sdb_bucket", "ix_candle")
+            "wall_bucket", "sdb_bucket", "ix_candle", "ma120_bucket")
 N_PERM = 300
 #: 1·2부에서 이미 나온 조건 — 탐색 밖에서 그대로 평가한다(선택 편향이 없는 쪽).
 PREREG = (
@@ -67,6 +67,16 @@ PREREG = (
     "leader_bucket=비주도주 & len_bucket=에피소드1일", "leader_bucket=비주도주 & sdb_bucket=당일벽유지",
     "leader_bucket=비주도주 & ix_trend=지수>MA20", "ix_trend=지수>MA20 & sdb_bucket=당일벽유지",
     "leader_bucket=주도주(RS상위20%)", "ix_trend=지수<MA20",
+    # 사용자 추가 규칙(2026-09-03): 일봉 MA120 기울기 우상향(20거래일 전 대비). 기존 규칙에 얹었을 때를 본다.
+    "ma120_bucket=MA120상승", "ma120_bucket=MA120하락",
+    "ma120_bucket=MA120상승 & leader_bucket=비주도주",
+    "ma120_bucket=MA120상승 & leader_bucket=비주도주 & len_bucket=에피소드1일",
+    "ma120_bucket=MA120하락 & leader_bucket=비주도주 & len_bucket=에피소드1일",
+    "ma120_bucket=MA120상승 & leader_bucket=비주도주 & sdb_bucket=당일벽유지",
+    "ma120_bucket=MA120상승 & leader_bucket=주도주(RS상위20%)",
+    "ma120_5=MA120상승(5일)", "ma120_60=MA120상승(60일)",
+    "ma120_5=MA120상승(5일) & leader_bucket=비주도주 & len_bucket=에피소드1일",
+    "ma120_60=MA120상승(60일) & leader_bucket=비주도주 & len_bucket=에피소드1일",
 )
 VOL_HI, VOL_MID = 3.0, 1.5
 RETD_DEEP = -0.03
@@ -111,6 +121,18 @@ def fwd_from(s: Series, i: int, *, at_open: bool = False) -> dict[str, float | N
 
 
 # ── 탐색 ─────────────────────────────────────────────────────────────────────
+
+def single_masks(df: pl.DataFrame, features: tuple[str, ...]) -> dict[str, np.ndarray]:
+    """feature=value 단일 조건 → 마스크. 사전 지정 조건의 임의 개수 AND 조립에 쓴다."""
+    out: dict[str, np.ndarray] = {}
+    for f in features:
+        if f not in df.columns:
+            continue
+        col = df[f].to_numpy()
+        for v in sorted({x for x in col.tolist() if x is not None}, key=str):
+            out[f"{f}={v}"] = col == v
+    return out
+
 
 def candidate_masks(df: pl.DataFrame, features: tuple[str, ...]) -> list[tuple[str, np.ndarray]]:
     """단일 조건과 서로 다른 피처의 2개 조합 → (이름, 불리언 마스크)."""
@@ -211,7 +233,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — 스터디 스크립트의 단�
 
     ep, _, guards = build_episodes(ds, series, walls, args, cap=args.ext_cap)
     feat_cols = ["code", "date", "ix_mom5", "ma_state", "ratio_bucket", "peak_tod_bucket", "vol_ratio20", "ret_d",
-                 "ix_candle"]
+                 "ix_candle", "ma120_slope5", "ma120_slope20", "ma120_slope60"]
     ep = ep.join(ds.events.select(feat_cols), left_on=["code", "d0"], right_on=["code", "date"], how="left")
     ep = ep.with_columns(
         pl.when(pl.col("vol_ratio20") >= VOL_HI).then(pl.lit("거래량≥3×"))
@@ -230,6 +252,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — 스터디 스크립트의 단�
         pl.when(pl.col("dist_pct") < 0).then(pl.lit("벽이 종가 위")).otherwise(pl.lit("벽이 종가 아래"))
           .alias("wall_bucket"),
         pl.when(pl.col("same_day_break")).then(pl.lit("당일장중깸")).otherwise(pl.lit("당일벽유지")).alias("sdb_bucket"),
+        pl.when(pl.col("ma120_slope20") > 0).then(pl.lit("MA120상승")).otherwise(pl.lit("MA120하락"))
+          .alias("ma120_bucket"),
+        pl.when(pl.col("ma120_slope5") > 0).then(pl.lit("MA120상승(5일)")).otherwise(pl.lit("MA120하락(5일)"))
+          .alias("ma120_5"),
+        pl.when(pl.col("ma120_slope60") > 0).then(pl.lit("MA120상승(60일)")).otherwise(pl.lit("MA120하락(60일)"))
+          .alias("ma120_60"),
     )
 
     # 규칙별 진입·결과
@@ -247,7 +275,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — 스터디 스크립트의 단�
                 rec.update({f"fwd{h}": None for h in HORIZONS} | {"mae10": None})
             rows.append(rec)
     outcomes = pl.DataFrame(rows)
-    feats = ep.select("code", "d0", *[f for f in FEATURES if f in ep.columns])
+    feats = ep.select("code", "d0", *[f for f in FEATURES if f in ep.columns], "ma120_5", "ma120_60")
     full = outcomes.join(feats, on=["code", "d0"], how="left")
 
     summary: dict = {"params": {k: str(v) for k, v in vars(args).items()}, "guards": guards, "episodes": ep.height,
@@ -269,9 +297,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915 — 스터디 스크립트의 단�
         res.sort(key=lambda d: (d["win10"], d["mean10"]), reverse=True)
         big_n = args.min_n * 2
         res_big = [d for d in res if d["n"] >= big_n]
-        mask_map = dict(masks)
-        prereg = evaluate(y10, y5, y20, mae, [(k, mask_map[k]) for k in PREREG if k in mask_map], min_n=1,
-                          months=months)
+        singles = single_masks(f, FEATURES + ("ma120_5", "ma120_60"))
+        pre_masks = []
+        for name in PREREG:
+            parts = [x.strip() for x in name.split("&")]
+            if all(x in singles for x in parts):
+                m = np.ones(f.height, dtype=bool)
+                for x in parts:
+                    m &= singles[x]
+                pre_masks.append((name, m))
+        prereg = evaluate(y10, y5, y20, mae, pre_masks, min_n=1, months=months)
         summary["search"][rule] = {"n_candidates": len(res), "top": res[:15],
                                    "top_by_mean": sorted(res, key=lambda d: d["mean10"], reverse=True)[:8],
                                    "top_big_n": res_big[:8], "prereg": prereg}
