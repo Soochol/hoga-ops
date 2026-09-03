@@ -111,3 +111,21 @@ def test_conditions_carry_the_whole_question_not_the_answer():
     fields = set(req.conditions.model_fields)
     assert {"mode", "since", "count", "sim_floor", "per_code", "volume_weight"} <= fields
     assert not fields & {"matches", "results", "rows"}
+
+
+def test_absent_timeframe_means_daily_not_a_missing_axis():
+    """봉 단위의 **부재는 「주봉이 없던 시절의 저장」**이지 「고르지 않았다」가 아니다.
+
+    `ma_preset` 과 같은 규칙이다(#1711) — 화면이 `None` 을 공장값(일봉)으로 읽는다.
+    이 계약이 깨지면 주봉 이전의 저장이 전부 **불러올 수 없는 상태**가 된다.
+
+    못 보는 것: 화면이 실제로 공장값으로 읽는지는 프론트의 몫이다. 여기서는 모델이
+    부재를 **허용하고 값을 지어내지 않는** 것만 잰다.
+    """
+    without = {k: v for k, v in FIXED["conditions"].items() if k != "timeframe"}
+    req = PatternSaveWriteRequest.model_validate({**FIXED, "conditions": without})
+    assert req.conditions.timeframe is None, "부재를 기본값으로 채우면 두 의미가 뭉개진다"
+
+    weekly = PatternSaveWriteRequest.model_validate(
+        {**FIXED, "conditions": {**without, "timeframe": "W"}})
+    assert weekly.conditions.timeframe == "W"

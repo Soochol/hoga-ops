@@ -9,7 +9,8 @@ import {
   regularSessionOpenMs,
   subtractDaysKst,
 } from '../live/liveDateTime';
-import { usePatternQueryStore } from './patternQuery';
+import { isPatternSearchableTimeframe, usePatternQueryStore } from './patternQuery';
+import type { PatternTimeframe } from '../api/screener';
 import { PatternConditionChips } from './PatternConditionChips';
 import { PatternSavesView } from './PatternSavesView';
 import {
@@ -30,6 +31,7 @@ import {
   visibleRows,
   withWholeCodeExcluded,
   type PatternConditions,
+  defaultConditionsFor,
 } from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import type { PatternExclusion, PatternMatchRow, PatternSearchMode } from '../api/screener';
@@ -114,7 +116,7 @@ function formatRange(from: string, to: string): string {
  *  이동에 필요한 넷만 요구한다. */
 type RangeTarget = Pick<PatternMatchRow, 'code' | 'name' | 'from_date' | 'to_date'>;
 
-function patternRangeFocus(row: RangeTarget) {
+function patternRangeFocus(row: RangeTarget, timeframe: PatternTimeframe) {
   return {
     // viewKey(`sv=`)에 섞이는 값이라 매치마다 달라야 착석이 다시 산다.
     viewId: `pattern:${row.code}:${row.from_date}`,
@@ -126,10 +128,14 @@ function patternRangeFocus(row: RangeTarget) {
     toMs: regularSessionCloseMs(row.to_date),
     fromDate: row.from_date,
     toDate: row.to_date,
-    savedTimeframe: 'D' as const,
+    savedTimeframe: timeframe,
     // 몇 년 전 구간이라 **분봉이 디스크에 없다** — 분봉 창이 이 날짜로 얼면 화면이
     // 통째로 빈다(사용자 신고 2026-09-02). 저장뷰와 달리 「분봉 벽」이라는 표현이
     // 애초에 존재하지 않는 구간이다.
+    //
+    // ⚠ 이름은 `dailyOnly` 지만 게이트는 **「분봉 제외」**다
+    // (`savedRangeFocus.ts`: `!(dailyOnly && isMinuteTimeframe(tf))`). 주봉 매치도
+    // 분봉엔 없으므로 그 뜻 그대로 맞다 — 넓힐 필요가 없다.
     dailyOnly: true,
     // 일봉 경로는 `studyDailyViewport` 가 구간에서 유도하므로 **이 값을 쓰지 않는다**.
     savedBarSpan: 0,
@@ -157,6 +163,21 @@ function patternRangeFocus(row: RangeTarget) {
  *  캘린더 봉 창이 하나도 없으면 `null` — **봉을 바꾸지 않고** 종목만 옮긴다. 분봉만
  *  띄운 화면에서는 그게 할 수 있는 전부다.
  */
+/** 지금 화면이 보고 있는 **캘린더 봉**. 패널을 열 때 검색의 봉 단위를 여기서 시드한다 —
+ *  주봉 차트를 보다 열면 주봉 검색이 자연스럽다.
+ *
+ *  ⚠ 시드일 뿐 **추적이 아니다.** 화면 차트를 계속 따라가면 매치를 눌러 차트가 바뀔
+ *  때마다 결과가 다시 계산돼 두 번째 매치를 볼 수 없다(기준 종목이 불변인 것과 같은
+ *  이유). 시드 후에는 칩으로만 바뀐다. */
+function chartTimeframeSeed(
+  ws: ReturnType<typeof useWorkspaceStore.getState>,
+): PatternTimeframe | null {
+  const id = patternLandingChart(ws);
+  const tf = ws.windows.find((w) => w.id === id)?.chart?.timeframe;
+  return tf && isPatternSearchableTimeframe(tf) ? tf : null;
+}
+
+
 function patternLandingChart(ws: ReturnType<typeof useWorkspaceStore.getState>): string | null {
   const target = activationTarget(ws);
   if (target.kind !== 'window') return null;
@@ -360,6 +381,10 @@ export function PatternDrawer() {
   useEffect(() => {
     if (subject || !activeCode) return;
     setSubject({ code: activeCode, label: activeInstrument?.label ?? activeCode });
+    // 봉 단위도 **같은 순간에** 시드한다 — 기준 종목과 한 묶음이다. 공장 조건이
+    // timeframe 을 따라가므로(주봉은 기간이 3년) 조건 전체를 갈아 끼운다.
+    const tf = chartTimeframeSeed(useWorkspaceStore.getState());
+    if (tf && tf !== DEFAULT_CONDITIONS.timeframe) setConditions(defaultConditionsFor(tf));
   }, [subject, activeCode, activeInstrument]);
 
   useEffect(() => {
@@ -371,6 +396,10 @@ export function PatternDrawer() {
     setExcluded([]);
     setSubject({ code: seed.code, label: seed.label ?? seed.code });
     setSeededRange({ from: seed.from, to: seed.to });
+    // 그은 창의 봉 단위가 곧 그 구간의 단위다 — 주봉 5개를 일봉으로 세면 20봉대가
+    // 되어 다른 질문에 답한다(#1715).
+    setConditions((prev) =>
+      prev.timeframe === seed.timeframe ? prev : defaultConditionsFor(seed.timeframe));
     // ★ 과거 어느 구간을 긋든 묻는 것은 "이 패턴이 **과거 어디에서** 또 나왔나" 다.
     //   `now`(각 종목의 최신 봉)로 두면 그은 구간과 무관한 답을 낸다.
     //   탭은 살려 둔다 — "이 과거 패턴과 지금 같은 모양인 종목" 도 유효한 질문이다.
@@ -481,6 +510,8 @@ export function PatternDrawer() {
       //   저장은 값이 담겨 있으므로 그대로 복원된다.
       flexBars: save.conditions.flex_bars ?? DEFAULT_CONDITIONS.flexBars,
       maPreset: save.conditions.ma_preset ?? DEFAULT_CONDITIONS.maPreset,
+      // 부재는 **「주봉이 없던 시절의 저장」**이라 일봉이다 — 같은 규칙.
+      timeframe: save.conditions.timeframe ?? DEFAULT_CONDITIONS.timeframe,
     });
     setShowSaves(false);
   }, []);
@@ -488,7 +519,7 @@ export function PatternDrawer() {
   /** 종목 + **그 날의 구간**으로 차트를 옮긴다. 매치 행과 헤더의 기준 구간이 이 한
    *  경로를 공유한다 — 아래 순서가 계약이라 두 벌로 두면 조용히 갈린다. */
   const openRange = useCallback(
-    (target: RangeTarget, e: JumpModifiers) => {
+    (target: RangeTarget, e: JumpModifiers, timeframe: PatternTimeframe) => {
       // 순서가 계약이다(`openSavedRangeInLive` 와 동일): 종목 교체가 "종목이 바뀌면
       // 저장 구간 해제" 트리거를 품고 있어, focus 를 먼저 세우면 그 자리에서 지워진다.
       const ws = useWorkspaceStore.getState();
@@ -499,7 +530,7 @@ export function PatternDrawer() {
       // 착지 **차트 창**을 일봉으로. 패턴 구간은 일봉이라 분봉 창에 꽂으면 그 날의
       // 분봉을 요구하게 되고, 오래된 날짜면 디스크에 없어 화면이 통째로 빈다.
       if (landing) {
-        ws.setChartTimeframe(landing, 'D');
+        ws.setChartTimeframe(landing, timeframe);
         // ★ 그 구간의 캔들을 **먼저 불러와야** 한다. `studyDailyViewport` 는 이미 로드된
         //   캔들 안에서 구간을 찾고, 없으면 최신 봉으로 폴백한다 — 저장뷰는 사용자가
         //   이미 본 구간이라 문제가 없었지만 패턴 매치는 **한 번도 안 본 과거**다.
@@ -508,7 +539,7 @@ export function PatternDrawer() {
         //   `lastAppliedCountRef` 주석) 범위만 늘리면 착지는 기존 기계가 한다.
         ws.extendChartHistoricalRange(landing, subtractDaysKst(target.from_date, CONTEXT_DAYS));
       }
-      focusSavedRange(patternRangeFocus(target));
+      focusSavedRange(patternRangeFocus(target, timeframe));
     },
     [jump, focusSavedRange],
   );
@@ -550,7 +581,7 @@ export function PatternDrawer() {
         jump(row.code, row.name || row.code, e);
         return;
       }
-      openRange(row, e);
+      openRange(row, e, data?.timeframe ?? 'D');
     },
     [jump, openRange, mode],
   );
@@ -574,7 +605,7 @@ export function PatternDrawer() {
             경로**(`openRange`)를 태우므로 착지 규칙이 갈리지 않는다. */}
         <button
           type="button"
-          onClick={(e) => subjectRange && openRange(subjectRange, e)}
+          onClick={(e) => subjectRange && openRange(subjectRange, e, data?.timeframe ?? 'D')}
           disabled={!subjectRange}
           aria-label={
             subjectRange
@@ -647,6 +678,7 @@ export function PatternDrawer() {
                   volume_weight: withVolume ? VOLUME_WEIGHT_ON : 0,
                   ma_preset: conditions.maPreset,
                   flex_bars: conditions.flexBars,
+                  timeframe: conditions.timeframe,
                 },
                 // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
                 // 그것까지가 「이 검색」이다.
@@ -850,6 +882,11 @@ export function PatternDrawer() {
             {mode === 'now'
               ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
               : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
+            {/* 마지막 봉이 **미완성**이면 그 사실을 적는다 — 경고가 아니라 사실이다.
+                화면이 그 봉을 그리므로 검색도 담지만, 모든 매치의 마지막 봉이 같은
+                방식으로 왜곡된 채 비교된다(실측: 포함/제외로 top20 이 10~16/20 만 겹친다). */}
+            {result.partial_last_bucket_days != null
+              && ` · 마지막 봉 ${result.partial_last_bucket_days}일치`}
           </div>
           <RailDrawerBody quoteNav>
             {shown.length === 0 ? (

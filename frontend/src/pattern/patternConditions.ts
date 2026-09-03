@@ -1,4 +1,6 @@
-import type { PatternExclusion, PatternMaPreset, PatternMatchRow } from '../api/screener';
+import type {
+  PatternExclusion, PatternMaPreset, PatternMatchRow, PatternTimeframe,
+} from '../api/screener';
 
 /**
  * 패턴 검색의 조건들 (ADR-0166).
@@ -39,6 +41,24 @@ export const RESULT_COUNTS = [20, 40, 100] as const;
 /** 길이 유연 폭 후보. `history` 는 길이당 ~0.6s 라 ±2 가 3초다 — 그 위는 열지 않는다. */
 export const FLEX_STEPS = [0, 1, 2] as const;
 
+/** 봉 단위 후보. 값은 `hoga/api/models.py::PatternTimeframe` 의 손 미러다(ADR-0004).
+ *
+ *  **서버 조건**이다 — 코퍼스 자체가 갈리므로 받아 둔 결과를 자르는 것으로 흉내낼 수
+ *  없다(`maPreset` 과 같은 부류). 그래서 로컬 조건이 아니라 여기 있다. */
+export const TIMEFRAMES = [
+  { key: 'D' as const, label: '일봉', note: '하루 한 봉' },
+  { key: 'W' as const, label: '주봉', note: '한 주 한 봉 — 더 긴 흐름을 본다' },
+];
+
+/** 수익률 지평(봉). **서버 `forward_days` 의 짝인데 코드는 「봉」을 센다** — 이름이
+ *  「일」이라 일봉에서만 우연히 맞았다. 주봉에서 20 을 그대로 보내면 20주(≈5개월)가
+ *  되어 후보가 그만큼 잘리고 수익률도 5개월 뒤가 된다.
+ *
+ *  주봉 8봉 ≈ 2개월로 일봉 20일(≈1개월)과 같은 결의 「이후」다. */
+export function forwardBarsFor(timeframe: PatternTimeframe): number {
+  return timeframe === 'W' ? 8 : 20;
+}
+
 /** 이평 프리셋 후보. **자유 조합을 열지 않는다** — 조합마다 답이 크게 갈리지만(5·20 대비
  *  20·60 은 상위 20 중 3개만 겹친다) 그건 판별력이 아니라 **질문이 바뀌는 것**이고,
  *  체크박스는 그 사실을 화면에서 말해 주지 못한다. 이름이 무엇을 찾는지 말하게 둔다.
@@ -48,6 +68,16 @@ export const MA_PRESETS = [
   { key: 'short' as const, label: '단기 5·20', note: '5·20 이평을 낀 자리까지 맞춘다' },
   { key: 'mid' as const, label: '중기 20·60', note: '중기 추세 위의 자리를 맞춘다' },
 ];
+
+/** 이평 라벨의 **단위**. 프리셋 키는 wire 값이라 못 바꾸지만, 「5·20」이 무엇의 5·20
+ *  인지는 timeframe 이 정한다 — 주봉에서는 5주·20주다. 차트도 봉 단위로 그리므로
+ *  (`paneSpecsForTimeframe('D') === ('W')`) 매칭과 화면이 어긋나지는 않는다. */
+export function maLabel(preset: PatternMaPreset, timeframe: PatternTimeframe): string {
+  const base = MA_PRESETS.find((m) => m.key === preset)?.label ?? '이평 끄기';
+  // 끄기에는 단위가 없다 — 「이평 끄기(주)」는 무의미하다.
+  if (preset === 'off') return base;
+  return timeframe === 'W' ? `${base}주` : base;
+}
 
 /** 제외 키 — **「종목 + 시작일」**이고 길이는 들어가지 않는다.
  *
@@ -96,6 +126,13 @@ export type PatternConditions = {
   /** 이평선을 매칭 축에 넣을지. **서버 조건**이다 — 유사도 자체가 달라지므로 받아 둔
    *  결과를 자르는 것으로는 흉내낼 수 없다. */
   maPreset: PatternMaPreset;
+  /** 봉 단위. **서버 조건**이고 코퍼스 자체가 갈린다.
+   *
+   *  공장값은 일봉이지만 **패널을 열 때 차트에서 시드**된다(기준 종목과 같은 규칙) —
+   *  주봉 차트를 보다 열면 주봉 검색이 자연스럽다. 시드 후에는 칩으로만 바뀐다:
+   *  화면 차트를 계속 따라가면 매치를 눌러 차트가 바뀔 때마다 결과가 다시 계산돼
+   *  두 번째 매치를 볼 수 없다(기준 종목이 불변인 것과 같은 이유). */
+  timeframe: PatternTimeframe;
 };
 
 /** 기본값 — 사용자가 실제로 쓰는 조합(2026-09-02 결정, 화면 캡처로 지정).
@@ -120,7 +157,20 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
   // 형세까지 맞추는 것이 이 도구의 기본 질문이 됐다 — 끄면 정배열/역배열이 우연 수준으로
   // 섞인다(실측 6~14/20 vs 20/20, ADR-0166 결정 11).
   maPreset: 'short',
+  timeframe: 'D',
 };
+
+/** 그 timeframe 의 공장 조건. **시드 시점에만** 쓴다 — 칩으로 timeframe 을 바꿀 때
+ *  적용하면 사용자가 고른 기간이 조용히 사라진다.
+ *
+ *  주봉이 3년인 이유는 후보창이 얇기 때문이다: 공장 기간 1년이면 일봉 121,920 vs
+ *  주봉 **32,662** 라 분포 스트립의 p99.99 가 표본 3.3개 위에 선다(일봉은 12.2개).
+ *  3년이면 141,478 / 14.1개다. */
+export function defaultConditionsFor(timeframe: PatternTimeframe): PatternConditions {
+  return timeframe === 'W'
+    ? { ...DEFAULT_CONDITIONS, timeframe, period: '3y' }
+    : { ...DEFAULT_CONDITIONS, timeframe };
+}
 
 /** 기간 → `since`(YYYYMMDD). 전체면 `undefined` — 서버가 그때 필터를 아예 안 건다. */
 export function sinceFor(period: PeriodKey, today = new Date()): string | undefined {

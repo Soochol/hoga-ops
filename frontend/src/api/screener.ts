@@ -331,6 +331,9 @@ export interface PatternSaveConditions {
   ma_preset: PatternMaPreset | null;
   /** 길이 유연 폭(±봉). `null` 의 뜻은 위 `ma_preset` 과 같다. */
   flex_bars: number | null;
+  /** 봉 단위. `null` 의 뜻은 위 `ma_preset` 과 같다 — **「주봉이 없던 시절의 저장」**
+   *  이고 화면은 공장값(일봉)으로 읽는다. */
+  timeframe: PatternTimeframe | null;
 }
 
 /** 저장된 검색에서 **빼 둔 한 자리** — 종목이 아니라 「그 종목의 그 기간」이다.
