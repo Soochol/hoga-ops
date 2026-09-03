@@ -173,6 +173,12 @@ export type PatternSearchMode = 'now' | 'history';
  *  `mid` 는 중기 추세 속의 캔들(20·60). 자유 조합은 열지 않는다(ADR-0166 결정 11). */
 export type PatternMaPreset = 'off' | 'short' | 'mid';
 
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternTimeframe`.
+ *
+ *  `'W'` 코퍼스는 일봉에서 **파생**한다(종목 주봉을 주는 벤더 경로가 없다).
+ *  ⚠ **부재는 `'D'`** 다 — 저장된 검색에 이 값이 없으면 일봉으로 읽어야 기존 저장이 산다. */
+export type PatternTimeframe = 'D' | 'W';
+
 export interface PatternSearchRequest {
   code: string;
   mode: PatternSearchMode;
@@ -195,6 +201,11 @@ export interface PatternSearchRequest {
   /** `history` 전용 — 이 날짜(YYYYMMDD) 이후에 시작하는 창만. **기간만 서버로 온다** —
    *  유사도 하한·결과 수는 프론트가 받아 둔 목록을 자른다. */
   since?: string;
+  /** 봉 단위. 코퍼스가 이 값으로 갈린다(주봉은 일봉에서 파생).
+   *
+   *  ⚠ **길이·기간·수익률 지평은 전부 「봉」을 센다** — 같은 `forward_days: 20` 이
+   *  일봉에서 20일, 주봉에서 **20주**다. */
+  timeframe?: PatternTimeframe;
   /** 거래량 축의 비중(0~1). 0 이면 가격만. 유사도가
    *  `가격 상관 × (1-w) + 거래량 상관 × w` 가 되고 **w 는 화면의 스위치**다. */
   volume_weight?: number;
@@ -258,6 +269,12 @@ export interface PatternLengthResult {
   matches: PatternMatchRow[];
   /** `now` 에서는 null — 최신 창이라 「이후」가 미래다. */
   baseline: PatternBaseline | null;
+  /** 마지막 봉이 **미완성**이면 그 봉이 담은 거래일 수, 아니면 null.
+   *
+   *  주봉에서 수요일이면 마지막 봉은 3일치다. 화면이 그 봉을 그리므로 검색도 담지만
+   *  **모든 매치의 마지막 봉이 같은 방식으로 왜곡**되므로 화면이 그 사실을 말해야 한다
+   *  (실측: 포함/제외로 `now` top20 이 10~16/20 만 겹친다). `now` · 주봉에서만 값이 있다. */
+  partial_last_bucket_days: number | null;
   elapsed_ms: number;
 }
 
@@ -265,6 +282,9 @@ export interface PatternSearchResponse {
   code: string;
   name: string;
   mode: PatternSearchMode;
+  /** 이 결과의 봉 단위. 요청이 말한 값이지만 응답도 싣는다 — 결과 행을 눌렀을 때
+   *  착지할 창의 timeframe 이고, 저장에도 그대로 담긴다. */
+  timeframe: PatternTimeframe;
   results: PatternLengthResult[];
 }
 

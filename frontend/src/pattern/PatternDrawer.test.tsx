@@ -159,6 +159,8 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
     baseline: opts.history
       ? { fwd_median_pct: -1.7, fwd_win_rate_pct: 43.9, sample: 3_132_838 }
       : null,
+    // 일봉 목업이라 null 이다 — 주봉의 미완성 마지막 봉에서만 값이 있다.
+    partial_last_bucket_days: null,
     elapsed_ms: opts.history ? 421 : 14,
   };
 }
@@ -214,9 +216,9 @@ beforeEach(() => {
   usePatternQueryStore.setState({ pending: null });
   searchPattern.mockImplementation(async (body) =>
     body.mode === 'history'
-      ? { code: '005930', name: '삼성전자', mode: 'history',
+      ? { code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
           results: [lengthResult(body.lengths[0], 'SK하이닉스', { history: true })] }
-      : { code: '005930', name: '삼성전자', mode: 'now',
+      : { code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
           results: body.lengths.map((n) => lengthResult(n, `길이${n}위`)) },
   );
 });
@@ -332,7 +334,7 @@ describe('PatternDrawer', () => {
 describe('PatternDrawer — 빈 상태', () => {
   it('매치가 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'now',
+      code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
       results: [{ ...lengthResult(7, 'x'), matches: [] }],
     });
     renderDrawer();
@@ -343,7 +345,7 @@ describe('PatternDrawer — 빈 상태', () => {
 
   it('그 봉수를 채울 이력이 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'now', results: [],
+      code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D', results: [],
     });
     renderDrawer();
     expect(await screen.findByText(/7봉을 채울 이력이 없다/)).toBeInTheDocument();
@@ -630,7 +632,7 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     // 목록을 따로 세워야 이 문구가 나오는 조건이 만들어진다.
     const low = lengthResult(7, 'SK하이닉스', { history: true });
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'history',
+      code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
       results: [{ ...low, matches: low.matches.map((m) => ({ ...m, corr: 0.9 })) }],
     });
     renderDrawer();
@@ -1061,7 +1063,7 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
    */
   beforeEach(() => {
     searchPattern.mockImplementation(async () => ({
-      code: '005930', name: '삼성전자', mode: 'history' as const,
+      code: '005930', name: '삼성전자', mode: 'history' as const, timeframe: 'D' as const,
       results: [
         lengthResult(6, 'SK하이닉스', { history: true }),
         lengthResult(7, 'SK하이닉스', { history: true }),

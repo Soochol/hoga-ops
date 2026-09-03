@@ -87,6 +87,13 @@ PATTERN_CEILING = 30
 #: ADR-0166 이 내세운 「화면의 봉과 검색 대상이 같은 데이터」가 그것으로만 유지된다.
 PATTERN_TIMEFRAMES = ("D", "W")
 
+#: 「완성된 주」의 거래일 수. 이보다 적으면 그 주는 아직 진행 중이거나 휴일이 낀
+#: 것이고, 화면이 「이번 주 N일치」를 말할 근거가 된다.
+#:
+#: ⚠ 휴일이 낀 완성 주(4일)도 여기 걸린다 — **의도한 것이다.** 그 주의 봉도 5일치
+#: 주와는 다른 것을 담고 있고, 「모르는 채로 비교하는 것」보다 말해 주는 편이 낫다.
+_FULL_WEEK_DAYS = 5
+
 
 @dataclass(frozen=True)
 class PatternMatch:
@@ -761,10 +768,11 @@ def _ymd_to(c: Corpus, i: int, offset: int) -> str:
 def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSearchResponse:
     """라우트가 부르는 유일한 진입점. **`asyncio.to_thread` 에서 돌 것** —
     콜드 캐시 1.5s + history 검색 0.4s 를 이벤트 루프에서 돌리면 프로세스가 멈춘다."""
-    c = load_corpus(data_dir)
+    c = load_corpus(data_dir, req.timeframe)
     qi = c.index_of(req.code)
     if qi is None:
-        return PatternSearchResponse(code=req.code, name="", mode=req.mode, results=[])
+        return PatternSearchResponse(code=req.code, name="", mode=req.mode,
+                                     timeframe=req.timeframe, results=[])
     name = c.names.get(req.code, "")
     dated = req.from_ is not None
     # 바깥 루프가 1회가 되는 경우 셋:
@@ -792,7 +800,8 @@ def run_pattern_search(data_dir: Path, req: PatternSearchRequest) -> PatternSear
             query = base_query if length == base_length else resample_query(base_query, length)
             _append_one(c, req, results, qi=qi, offset=offset, length=length,
                         base_length=base_length, query=query, periods=periods)
-    return PatternSearchResponse(code=req.code, name=name, mode=req.mode, results=results)
+    return PatternSearchResponse(code=req.code, name=name, mode=req.mode,
+                                 timeframe=req.timeframe, results=results)
 
 
 def _append_one(
@@ -860,6 +869,13 @@ def _append_one(
         )
         for m in matches[: req.top]
     ]
+    # 마지막 봉이 미완성인가 — 주봉에서 수요일이면 3일치다. `now` 만 그 봉을 본다
+    # (history 의 창은 과거라 전부 완성이다). 일봉은 `bucket_days` 가 항상 1 이라 null.
+    partial = None
+    if req.mode == "now" and c.timeframe != "D" and len(c.bucket_days):
+        tail = int(c.bucket_days[int(c.ends[qi]) - 1])
+        if tail < _FULL_WEEK_DAYS:
+            partial = tail
     results.append(PatternLengthResult(
         # 이 결과가 찾은 **매치의 길이**다. 유연 검색에서는 기준 길이와 다를 수 있고,
         # 프론트가 그 값을 「10봉으로」 뱃지로 쓴다.
@@ -881,5 +897,6 @@ def _append_one(
         ),
         matches=rows,
         baseline=baseline,
+        partial_last_bucket_days=partial,
         elapsed_ms=(time.perf_counter() - started) * 1000,
     ))
