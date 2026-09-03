@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { searchPattern, type PatternLengthResult, type PatternSearchMode } from '../api/screener';
-import { sinceFor, type PatternConditions } from './patternConditions';
+import { forwardBarsFor, sinceFor, type PatternConditions } from './patternConditions';
 
 /**
  * 봉 패턴 검색 훅 (ADR-0166).
@@ -81,6 +81,9 @@ export function patternKey(
     conditions?.flexBars ?? null,
     // 이평은 **서버 조건**이다 — 유사도 자체가 달라지므로 키에 든다.
     conditions?.maPreset ?? null,
+    // 봉 단위는 **코퍼스 자체**를 가른다 — 키에 없으면 일봉 결과가 주봉 자리에 그대로
+    // 남는다(캐시가 같은 키로 읽히므로 재검색이 아예 안 난다).
+    conditions?.timeframe ?? null,
   ] as const;
 }
 
@@ -109,6 +112,7 @@ export function usePatternSearch({
   conditions?: PatternConditions;
   enabled?: boolean;
 }) {
+  const tf = conditions?.timeframe ?? 'D';
   return useQuery({
     queryKey: patternKey(code, mode, length, filters, range, perCode, volumeWeight, conditions),
     enabled: enabled && !!code,
@@ -133,6 +137,11 @@ export function usePatternSearch({
         no_overlap: conditions?.noOverlap ?? filters.noOverlap,
         flex_bars: conditions?.flexBars ?? 0,
         ma_preset: conditions?.maPreset ?? 'off',
+        timeframe: tf,
+        // ⚠ 서버 필드명은 「일」이지만 코드는 **봉**을 센다 — 주봉에서 20 을 그대로
+        //   보내면 20주(≈5개월)가 되어 후보가 그만큼 잘리고 수익률도 5개월 뒤가 된다.
+        //   보내지 않으면 서버 공장값 20 이 걸리므로 **항상 명시**한다.
+        forward_days: forwardBarsFor(tf),
         per_code: perCode,
         volume_weight: volumeWeight,
       }),

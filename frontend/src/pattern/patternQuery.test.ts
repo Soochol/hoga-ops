@@ -37,7 +37,9 @@ function seed(over: Partial<Parameters<typeof patternSeedFromRange>[0]> = {}) {
 
 describe('patternSeedFromRange', () => {
   it('일봉 · 충분한 봉이면 구간을 만든다', () => {
-    expect(seed()).toEqual({ code: '005930', label: undefined, from: '20260401', to: '20260407' });
+    expect(seed()).toEqual({
+      code: '005930', label: undefined, from: '20260401', to: '20260407', timeframe: 'D',
+    });
   });
 
   it('드래그 방향이 반대여도 같은 구간이다', () => {
@@ -49,22 +51,20 @@ describe('patternSeedFromRange', () => {
   });
 
   /**
-   * 이 가드가 닫는 방향: **일봉이 아닌 창에서 요청이 나가는 것**.
+   * 이 가드가 닫는 방향: **코퍼스가 없는 창에서 요청이 나가는 것**.
    *
-   * 게이트를 「분봉이 아닌가」로 되돌리면 아래 입력이 통과한다 — 봉 수 검증은 화면의
-   * 집계 봉(주 5개)을 세어 5~30 을 만족하지만, 서버로 가는 것은 **날짜뿐**이라
-   * `_resolve_window` 가 그 29일 구간을 **일봉 ~20봉**으로 다시 센다. 그러면 화면에는
-   * 「그럴듯한 결과」가 뜨고 사용자는 틀린 질문의 답을 옳은 답으로 읽는다(실측:
-   * 삼성전자 주봉 5개 → 일봉 20봉 검색, 1위 갤럭시아머니트리 0.738).
+   * 주봉은 코퍼스가 생겼으므로(#1719·#1721) 이제 통과하고 **그 사실을 시드가 나른다** —
+   * `timeframe` 이 없으면 서버가 날짜 구간을 일봉으로 다시 세어 다른 질문에 답한다
+   * (#1715 가 고친 결함이 그것이다). 월봉은 아직 코퍼스가 없어 막힌다.
    *
    * 못 보는 것: 서버가 그 구간을 어떻게 세는지는 여기서 안 잰다(백엔드의 몫이고,
-   * 여기서는 그 입력이 애초에 나가지 않는 것만 잰다).
+   * 여기서는 시드가 올바른 단위를 나르는 것만 잰다).
    */
-  it('주봉·월봉에서는 만들지 않는다 — 봉 수는 통과하지만 서버가 일봉으로 다시 센다', () => {
+  it('주봉은 그 단위를 시드에 실어 통과한다 — 월봉은 코퍼스가 없어 막힌다', () => {
     const overWeekly = { candleTsMs: WEEKLY, aRealMs: WEEKLY[0], bRealMs: WEEKLY[4] };
-    // 봉 수 방어는 이 입력을 못 막는다 — 주봉 5개는 «5봉» 이다.
+    // 봉 수 방어만으로는 단위를 구별하지 못한다 — 주봉 5개도 «5봉» 이다.
     expect(WEEKLY.filter((ts) => ts >= WEEKLY[0] && ts <= WEEKLY[4])).toHaveLength(5);
-    expect(seed({ timeframe: 'W', ...overWeekly })).toBeNull();
+    expect(seed({ timeframe: 'W', ...overWeekly })).toMatchObject({ timeframe: 'W' });
     expect(seed({ timeframe: 'M', ...overWeekly })).toBeNull();
   });
 

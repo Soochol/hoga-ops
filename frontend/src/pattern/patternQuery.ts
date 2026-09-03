@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import type { PatternTimeframe } from '../api/screener';
 import type { LiveTimeframe } from '../state/livePage';
 
 /**
@@ -30,10 +31,14 @@ export type PatternQuerySeed = {
   /** YYYYMMDD. 백엔드가 이 구간의 봉 수를 **길이로** 삼는다(`lengths` 무시). */
   from: string;
   to: string;
+  /** 그은 창의 봉 단위. **이 값이 없으면 구간이 어느 코퍼스의 것인지 알 수 없다** —
+   *  주봉 5개를 그은 날짜 범위를 일봉으로 세면 20봉대가 되어 다른 질문에 답한다
+   *  (#1715 가 고친 결함이 정확히 그것이다). */
+  timeframe: PatternTimeframe;
 };
 
 /**
- * 패턴 검색이 성립하는 timeframe. **일봉뿐이다.**
+ * 패턴 검색이 성립하는 timeframe — **서버 코퍼스가 있는 것뿐이다**(일봉·주봉).
  *
  * ⚠ 「분봉이 아닌가」로 물으면 안 된다. 두 질문은 일·주·월이 전부이던 시절 답이 같았고,
  * 지금도 타입·테스트를 통과하지만 주봉·월봉에서 **조용히 틀린 답**을 낸다: 봉 수 검증은
@@ -42,11 +47,12 @@ export type PatternQuerySeed = {
  * 「일봉 ~20봉 패턴」에 답하고 화면에는 **그럴듯한 결과가 뜬다**. 주봉 10개·월봉은
  * 상한(30봉)을 넘겨 빈 결과가 되는데 그 빈 화면은 "이력이 없다" 로 읽힌다.
  *
- * 그래서 게이트는 「일봉인가」를 직접 묻는다. 주봉·월봉 지원은 서버에 timeframe 축이
- * 생겨야 성립한다(ADR-0166 의 v1 비목표).
+ * 그래서 게이트는 **허용 집합을 직접** 쓴다. 여집합(`!isMinute`)으로 물으면 새 멤버가
+ * 자동으로 통과하고 회귀 테스트가 원리적으로 없다 — 주봉이 코퍼스를 갖기 전까지 정확히
+ * 그 상태였다. 월봉은 아직 코퍼스가 없다.
  */
-export function isPatternSearchableTimeframe(tf: LiveTimeframe): boolean {
-  return tf === 'D';
+export function isPatternSearchableTimeframe(tf: LiveTimeframe): tf is PatternTimeframe {
+  return tf === 'D' || tf === 'W';
 }
 
 /** 최소 봉수 — 서버 `PATTERN_MIN_BARS` 의 짝. 이보다 짧으면 요청을 만들지 않는다. */
@@ -62,7 +68,7 @@ export const PATTERN_MAX_BARS = 30;
  *
  * 막는 것 셋:
  * * 종목이 없거나 지수 창 — 코퍼스에 계열이 없다.
- * * 일봉이 아닌 창 — 서버 코퍼스가 일봉이다(`isPatternSearchableTimeframe` 참조).
+ * * 코퍼스가 없는 창(분봉·월봉) — `isPatternSearchableTimeframe` 이 허용 집합을 쥔다.
  * * 5봉 미만 / 30봉 초과 — 서버가 빈 결과로 답하는데 그 빈 화면은 "이력이 없다" 로
  *   읽혀 원인을 숨긴다. 실패를 만들 수 있는 입력은 만들기 전에 막는다.
  *
@@ -83,7 +89,7 @@ export function patternSeedFromRange(args: {
   const [lo, hi] = aRealMs <= bRealMs ? [aRealMs, bRealMs] : [bRealMs, aRealMs];
   const bars = candleTsMs.filter((ts) => ts >= lo && ts <= hi).length;
   if (bars < PATTERN_MIN_BARS || bars > PATTERN_MAX_BARS) return null;
-  return { code, label: args.label, from: toYyyymmdd(lo), to: toYyyymmdd(hi) };
+  return { code, label: args.label, from: toYyyymmdd(lo), to: toYyyymmdd(hi), timeframe };
 }
 
 type Store = {
