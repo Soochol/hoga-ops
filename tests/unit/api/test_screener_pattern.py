@@ -460,10 +460,10 @@ def test_route_response_passes_response_model_with_wire_keys(client):
                           "min_tv_eok": 0, "exclude_etf": False})
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"code", "name", "mode", "results"}
+    assert set(body) == {"code", "name", "mode", "timeframe", "results"}
     result = body["results"][0]
     assert set(result) == {"length", "query", "ma_periods", "universe", "dist",
-                           "matches", "baseline", "elapsed_ms"}
+                           "matches", "baseline", "partial_last_bucket_days", "elapsed_ms"}
     assert set(result["dist"]) == {"p50", "p95", "p99", "p99_99", "sample"}
     row = result["matches"][0]
     assert set(row) == {"code", "name", "from_date", "to_date", "corr", "bars",
@@ -998,3 +998,118 @@ def test_request_dates_select_buckets_by_trading_day_range(tmp_path):
     assert win is not None
     offset, span = win
     assert (offset, span) == (3, 5), "휴일 주가 빠져 창이 밀렸다"
+
+
+# ── timeframe wire ──────────────────────────────────────────────────────────
+
+
+def _weekly_client(tmp_path, monkeypatch, *, n_weeks=12, holiday_week=3):
+    """주봉 코퍼스를 물린 TestClient. 라우트를 **관통해서** 재기 위한 것이다."""
+    days = _week_days(n_weeks, holiday_week=holiday_week)
+    rows: list[dict] = []
+    for k, code in enumerate(("000001", "000002", "000003")):
+        rows += _daily_rows(code, days, [100 + (i * (7 + k)) % 23 for i in range(len(days))])
+    d = _write(tmp_path, rows)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=d))
+    return TestClient(app), sp.load_corpus(d, "W")
+
+
+def test_timeframe_selects_the_weekly_corpus_through_the_route(tmp_path, monkeypatch):
+    """요청의 `timeframe` 이 코퍼스를 고른다 — 그리고 응답이 그 값을 되싣는다.
+
+    이 가드가 닫는 방향: 라우트가 `req.timeframe` 을 **무시하고** 늘 일봉을 읽는 것.
+    그러면 화면은 주봉을 그리는데 결과는 일봉 패턴이 되어, #1715 가 고친 것과 **같은
+    유형의 조용한 오답**이 wire 를 통해 돌아온다.
+    """
+    client, weekly = _weekly_client(tmp_path, monkeypatch)
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [5], "top": 3,
+                          "min_tv_eok": 0, "exclude_etf": False, "timeframe": "W"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["timeframe"] == "W"
+    q = body["results"][0]["query"]
+    # 주봉 5개는 **날짜로 5주**를 덮는다 — 일봉 코퍼스였다면 5거래일(한 주)이다.
+    frm = dt.date.fromisoformat(f"{q['from_date'][:4]}-{q['from_date'][4:6]}-{q['from_date'][6:]}")
+    too = dt.date.fromisoformat(f"{q['to_date'][:4]}-{q['to_date'][4:6]}-{q['to_date'][6:]}")
+    assert (too - frm).days >= 25, f"{frm}~{too} 는 5주가 아니다 — 일봉 코퍼스를 읽었다"
+    assert q["from_date"] == weekly.first_day_at(
+        weekly.index_of("000001"), weekly.series_len(weekly.index_of("000001")) - 5
+    ).strftime("%Y%m%d")
+
+
+def test_timeframe_defaults_to_daily_when_absent(tmp_path, monkeypatch):
+    """**부재는 `"D"`** 다 — 기존 저장·기존 클라이언트가 그대로 산다."""
+    client, _ = _weekly_client(tmp_path, monkeypatch)
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [5], "top": 3,
+                          "min_tv_eok": 0, "exclude_etf": False})
+    assert r.json()["timeframe"] == "D"
+
+
+def test_unknown_timeframe_is_rejected_by_the_request_model(tmp_path, monkeypatch):
+    """모르는 값은 **422** 다 — 코퍼스 로더의 폴백에 기대지 않는다.
+
+    로더도 모르는 값을 `"D"` 로 떨어뜨리지만(방어), 요청 단계에서 거절하는 편이
+    「주봉을 달라고 했는데 일봉이 왔다」를 만들지 않는다.
+    """
+    client, _ = _weekly_client(tmp_path, monkeypatch)
+    r = client.post("/api/screener/pattern-search",
+                    json={"code": "000001", "mode": "now", "lengths": [5], "timeframe": "M"})
+    assert r.status_code == 422
+
+
+def _partial_tail_client(tmp_path):
+    """마지막 주가 **3일**뿐인 코퍼스 — 수요일에 검색한 셈이다."""
+    days = _week_days(10)[:-2]
+    rows = _daily_rows("000001", days, [100 + (i * 7) % 23 for i in range(len(days))])
+    rows += _daily_rows("000002", days, [100 + (i * 5) % 19 for i in range(len(days))])
+    d = _write(tmp_path, rows)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=d))
+    return TestClient(app), sp.load_corpus(d, "W")
+
+
+def test_partial_last_bucket_is_reported_so_the_screen_can_say_it(tmp_path, monkeypatch):
+    """미완성 마지막 봉을 **담되 말한다**.
+
+    빼면 `now` 가 사용자가 보고 있지 않은 질문에 답하고(화면은 그 봉을 그린다), 말하지
+    않으면 모든 매치의 마지막 봉이 같은 방식으로 왜곡된 채 비교된다.
+
+    못 보는 것: 화면이 그 값을 실제로 라벨로 쓰는지는 여기서 안 잰다(프론트의 몫).
+    """
+    client, _ = _partial_tail_client(tmp_path)
+
+    def ask(tf: str):
+        return client.post("/api/screener/pattern-search",
+                           json={"code": "000001", "mode": "now", "lengths": [5], "top": 3,
+                                 "min_tv_eok": 0, "exclude_etf": False,
+                                 "timeframe": tf}).json()["results"][0]
+
+    assert ask("W")["partial_last_bucket_days"] == 3
+    # 일봉은 버킷이 곧 그 날이라 «미완성» 이라는 개념이 없다.
+    assert ask("D")["partial_last_bucket_days"] is None
+
+
+def test_history_does_not_claim_a_partial_bucket(tmp_path):
+    """`history` 의 창은 과거라 전부 완성이다 — 그 모드에서 이 값을 실으면 거짓이다.
+
+    ⚠ **픽스처의 마지막 주가 미완성이어야** 이 가드가 산다. 완성 주로 만들면 `now` 도
+    null 이라 모드 구별이 애초에 드러나지 않는다(처음 그렇게 썼다가 red-check 에서
+    잡혔다 — 모드 게이트를 지워도 통과했다).
+    """
+    client, weekly = _partial_tail_client(tmp_path)
+    i = weekly.index_of("000001")
+    assert i is not None
+    assert int(weekly.bucket_days[int(weekly.ends[i]) - 1]) == 3, "마지막 주가 완성이면 무의미"
+
+    def ask(mode: str, **extra):
+        return client.post("/api/screener/pattern-search",
+                           json={"code": "000001", "mode": mode, "lengths": [5], "top": 3,
+                                 "min_tv_eok": 0, "exclude_etf": False, "timeframe": "W",
+                                 **extra}).json()["results"]
+
+    assert ask("now")[0]["partial_last_bucket_days"] == 3          # 대조군
+    for res in ask("history", forward_days=1, no_overlap=False):
+        assert res["partial_last_bucket_days"] is None

@@ -2009,6 +2009,16 @@ PatternSearchMode = Literal["now", "history"]
 #: `MA_PRESETS` 와 프론트 union 을 **같은 PR 에서** 고친다(ADR-0004).
 PatternMaPreset = Literal["off", "short", "mid"]
 
+#: 봉 패턴 검색의 **봉 단위**. `"W"` 코퍼스는 일봉에서 파생한다 — 종목 주봉을 주는
+#: 벤더 경로가 없다(키움 W/M TR 은 지수 전용).
+#:
+#: ⚠ **부재는 `"D"` 다.** 저장된 검색에 이 값이 없으면 일봉으로 읽어야 기존 저장이
+#: 산다(#1711 의 「부재는 공장값을 따른다」와 같은 규칙).
+#:
+#: ⚠ 값을 늘리면 프론트 union 도 **같은 PR 에서** 고친다(ADR-0004). 그 대조는
+#: `WIRE_ENUM_MIRRORS` 에 등록돼 있다.
+PatternTimeframe = Literal["D", "W"]
+
 #: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
 #: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).
 PATTERN_MIN_BARS = 5
@@ -2069,6 +2079,12 @@ class PatternSearchRequest(BaseModel):
     #: 상위 20 중 3개만 겹친다) 그건 판별력이 아니라 **질문이 바뀌는 것**이고,
     #: 체크박스는 그 사실을 화면에서 말해 주지 못한다(ADR-0166 결정 11).
     ma_preset: PatternMaPreset = "off"
+    #: 봉 단위. 코퍼스가 이 값으로 갈린다(주봉은 일봉에서 파생).
+    #:
+    #: ⚠ **길이·기간·수익률 지평은 전부 «봉» 을 센다.** 그래서 같은 `forward_days=20`
+    #: 이 일봉에서 20일, 주봉에서 **20주**다. 필드 이름이 「일」이라 오해하기 쉬운데
+    #: 코드는 `min_after` 로 봉을 세고, 라벨과 timeframe 별 공장값은 프론트가 갖는다.
+    timeframe: PatternTimeframe = "D"
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -2275,6 +2291,15 @@ class PatternLengthResult(BaseModel):
     #: 창이라 「이후」가 미래다). **null 로 싣는다** — `response_model_exclude_none` 을
     #: 걸면 `PatternMatchRow.forward_pct` 의 정당한 null 까지 지워진다(CLAUDE.md).
     baseline: PatternBaseline | None = None
+    #: 이 결과의 **마지막 봉이 미완성**이면 그 봉이 담은 거래일 수, 아니면 null.
+    #:
+    #: 주봉에서 수요일이면 마지막 봉은 3일치다. 화면이 그 봉을 그리므로 코퍼스도 담지만
+    #: (빼면 `now` 가 사용자가 보고 있지 않은 질문에 답한다), **모든 매치의 마지막 봉이
+    #: 같은 방식으로 왜곡**되므로 화면이 그 사실을 말할 수 있어야 한다. 실측상 포함/제외로
+    #: `now` top20 이 10~16/20 만 겹친다.
+    #:
+    #: `now` 에서만 값이 있다 — `history` 의 창은 과거라 전부 완성이다. 일봉은 항상 null.
+    partial_last_bucket_days: int | None = None
     elapsed_ms: float
 
 
@@ -2282,6 +2307,9 @@ class PatternSearchResponse(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
     name: str
     mode: PatternSearchMode
+    #: 이 결과가 어느 봉 단위인가. 요청이 말한 값이지만 **응답도 싣는다** — 결과 행을
+    #: 눌렀을 때 착지할 창의 timeframe 이고, 저장에도 그대로 담긴다.
+    timeframe: PatternTimeframe = "D"
     results: list[PatternLengthResult]
 
 
