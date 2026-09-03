@@ -78,6 +78,7 @@ class Series:
         self.d8 = df["d8"].to_list()
         self.idx = {d: i for i, d in enumerate(self.d8)}
         self.close = df["close"].to_numpy()
+        self.open = df["open"].to_numpy()
         self.high = df["high"].to_numpy()
         self.low = df["low"].to_numpy()
         self.u_close = df["u_close"].to_numpy()
