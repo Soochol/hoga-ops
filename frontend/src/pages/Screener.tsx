@@ -4,7 +4,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
-import { useScreenerUpdateFeedback } from '../screener/useScreenerUpdateSync';
+import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { ResultTable } from '../screener/ResultTable';
@@ -140,6 +140,10 @@ export function Screener() {
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
   // 서버-소유 job 진행 여부 — 다른 탭/드로어/스케줄러가 시작한 갱신도 잡는다.
   const serverUpdating = status?.updating != null;
+  // 버튼 라벨·비활성·결과 라벨 게이트가 **하나의 식**을 본다. 갈라 두면 버튼은
+  // 「갱신 중…」인데 옆에 지난 실행의 「갱신 실패」가 붙는다(2026-09-03 신고).
+  const isUpdating = update.isPending || serverUpdating;
+  const visibleFeedback = visibleUpdateFeedback(updateFeedback, isUpdating);
 
   const saves = savesData?.saves ?? [];
   const anchorSave = editor.anchorId != null
@@ -324,16 +328,16 @@ export function Screener() {
             </ToolbarButton>
             {!notSeeded && (
               <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
-                disabled={update.isPending || serverUpdating}>
-                {update.isPending || serverUpdating ? '갱신 중…' : '갱신'}
+                disabled={isUpdating}>
+                {isUpdating ? '갱신 중…' : '갱신'}
               </ToolbarButton>
             )}
-            {update.isError && (
+            {update.isError && !isUpdating && (
               <span role="alert" className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
             )}
-            {updateFeedback && (
-              <span role="status" className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[updateFeedback.tone] }}>
-                {updateFeedback.message}
+            {visibleFeedback && (
+              <span role="status" className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[visibleFeedback.tone] }}>
+                {visibleFeedback.message}
               </span>
             )}
           </ControlBar>

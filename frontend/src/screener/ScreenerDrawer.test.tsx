@@ -675,11 +675,67 @@ describe('ScreenerDrawer', () => {
     // useScreenerUpdateSync 가 job-finished-error 에서 setFeedback + setUpdateError 를
     // 둘 다 호출한다. 드로어는 error 를 단일 채널로만 렌더해야 한다(중복 라벨 버그).
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    useScreenerUpdateFeedback.getState().setFeedback({ message: '갱신 실패', tone: 'error', atMs: Date.now() });
+    useScreenerUpdateFeedback.getState().setFeedback({
+      message: '갱신 실패', tone: 'error', atMs: Date.now(), source: 'update',
+    });
     useScreenerPanelStore.getState().setUpdateError('갱신 실패', Date.now());
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     expect(screen.getAllByText(/갱신 실패/)).toHaveLength(1);
+  });
+
+  // ── 갱신 중에는 「지난 실행의 결과」를 보여 주지 않는다 ──────────────────────
+  //
+  // 실측 신고(2026-09-03): 진행 표시가 "갱신 중 874/4,335" 인데 그 옆에 직전 실행의
+  // "갱신 실패" 가 그대로 붙어 있었다. 피드백 스토어는 `onMutate` 에서만 비워지는데
+  // 그건 **이 탭에서 버튼을 누른 경우만** 탄다 — 스케줄러가 서버에서 시작했거나 다른
+  // 창이 시작한 실행은 그 경로를 지나지 않는다.
+
+  function statusUpdating(done: number, total: number) {
+    vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({
+      status: 'ok', last_raw_date: '20260901', days_behind: 1,
+      updating: { done, total, started_ms: Date.now() },
+    });
+  }
+
+  it('갱신이 도는 동안에는 지난 실행의 결과 라벨을 감춘다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    statusUpdating(874, 4335);
+    useScreenerUpdateFeedback.getState().setFeedback({
+      message: '갱신 실패', tone: 'error', atMs: Date.now(), source: 'update',
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText(/갱신 중/)).toBeInTheDocument());
+    expect(screen.queryByText(/갱신 실패/)).not.toBeInTheDocument();
+  });
+
+  it('모니터링 알림은 갱신 중에도 남는다 — 갱신 결과가 아니다', async () => {
+    // 게이트를 출처로 좁히지 않으면 이 알림까지 삼킨다. 조회 반복 실패를 사용자에게
+    // 알리는 **유일한 표면**이라(`useScreenerMonitor` 의 onAutoStop) 삼키면 안 된다.
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    statusUpdating(874, 4335);
+    useScreenerUpdateFeedback.getState().setFeedback({
+      message: '조회가 반복 실패해 실시간 모니터링을 종료했습니다.',
+      tone: 'error', atMs: Date.now(), source: 'monitor',
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText(/갱신 중/)).toBeInTheDocument());
+    expect(screen.getByText(/모니터링을 종료했습니다/)).toBeInTheDocument();
+  });
+
+  it('갱신이 끝나면 결과 라벨이 다시 보인다 — 감추는 것이지 지우는 것이 아니다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({
+      status: 'ok', last_raw_date: '20260902', days_behind: 0,
+    });
+    useScreenerUpdateFeedback.getState().setFeedback({
+      message: '1거래일 추가됨', tone: 'info', atMs: Date.now(), source: 'update',
+    });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText(/1거래일 추가됨/)).toBeInTheDocument());
   });
 
   it('a member row is pre-checked in the right-click group menu (v3)', async () => {

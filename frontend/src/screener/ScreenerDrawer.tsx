@@ -17,7 +17,7 @@ import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
-import { useScreenerUpdateFeedback } from './useScreenerUpdateSync';
+import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { StalenessChip } from './StalenessChip';
 import { intradayDegradationText } from './intradayDegradation';
@@ -324,7 +324,9 @@ export function ScreenerDrawer() {
     scanOnce,
     onAutoStop: (message) => {
       setMonitoringActive(false);
-      useScreenerUpdateFeedback.getState().setFeedback({ tone: 'error', message, atMs: Date.now() });
+      useScreenerUpdateFeedback.getState().setFeedback({
+        tone: 'error', message, atMs: Date.now(), source: 'monitor',
+      });
     },
   });
 
@@ -341,6 +343,9 @@ export function ScreenerDrawer() {
   // 스케줄러 몫이고(드로어의 수동 갱신 버튼은 2026-07-12 제거), 드로어는 진행
   // 칩·피드백 표시만 담당한다.
   const serverUpdating = status?.updating != null;
+  // 진행 표시(`ScreenerUpdateProgress`)와 **같은 식**을 쓴다 — 다른 식으로 쓰면
+  // 둘이 어긋나 「갱신 중」과 「지난 실행 결과」가 같이 뜬다.
+  const visibleFeedback = visibleUpdateFeedback(updateFeedback, serverUpdating);
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
@@ -486,12 +491,12 @@ export function ScreenerDrawer() {
             <ScreenerUpdateProgress updating={status?.updating} />
           </div>
         )}
-        {updateFeedback && (
+        {visibleFeedback && (
           <RailState
-            tone={updateFeedback.tone === 'info' ? undefined : updateFeedback.tone}
+            tone={visibleFeedback.tone === 'info' ? undefined : visibleFeedback.tone}
             className="p-0"
           >
-            {updateFeedback.message}
+            {visibleFeedback.message}
           </RailState>
         )}
         {notSeeded && (
