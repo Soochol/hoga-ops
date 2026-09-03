@@ -11,6 +11,7 @@ import {
   SIM_FLOORS,
   TIMEFRAMES,
   maLabel,
+  periodIsThinFor,
   passingFloor,
   type PatternConditions,
   type PeriodKey,
@@ -119,6 +120,12 @@ export function PatternConditionChips({
               selected={p.key === conditions.period}
               onClick={() => set({ period: p.key as PeriodKey })}
               label={p.label}
+              // 봉이 길수록 같은 기간의 후보창이 얇아진다 — 월봉 1년은 **0** 이다(실측).
+              // 고르지 못하게 막지 않는다: 사용자가 아는 채로 좁히는 것은 유효한 선택이고,
+              // 숨기면 「왜 월봉엔 1년이 없나」가 새 질문이 된다.
+              hint={periodIsThinFor(conditions.timeframe, p.years)
+                ? '이 봉에서는 사례가 매우 적다'
+                : undefined}
             />
           ))}
         </Popover>

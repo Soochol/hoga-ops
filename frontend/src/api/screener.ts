@@ -177,7 +177,7 @@ export type PatternMaPreset = 'off' | 'short' | 'mid';
  *
  *  `'W'` 코퍼스는 일봉에서 **파생**한다(종목 주봉을 주는 벤더 경로가 없다).
  *  ⚠ **부재는 `'D'`** 다 — 저장된 검색에 이 값이 없으면 일봉으로 읽어야 기존 저장이 산다. */
-export type PatternTimeframe = 'D' | 'W';
+export type PatternTimeframe = 'D' | 'W' | 'M';
 
 export interface PatternSearchRequest {
   code: string;

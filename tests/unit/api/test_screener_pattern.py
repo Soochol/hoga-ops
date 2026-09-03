@@ -909,8 +909,10 @@ def test_daily_corpus_is_unchanged_by_the_timeframe_axis(tmp_path):
 def test_unknown_timeframe_falls_back_to_daily(tmp_path):
     """모르는 값은 `"D"` 로 떨어진다 — 요청이 답을 못 바꾼다(`ma_periods_for` 와 같은 규칙)."""
     d = _write(tmp_path, _daily_rows("000001", _WEEK_DAYS, range(100, 114)))
-    assert sp.load_corpus(d, "M").timeframe == "D"
     assert sp.load_corpus(d, "1m").timeframe == "D"
+    assert sp.load_corpus(d, "").timeframe == "D"
+    # 코퍼스가 있는 값은 그대로 산다 — 폴백이 유효한 요청까지 삼키면 안 된다.
+    assert sp.load_corpus(d, "M").timeframe == "M"
 
 
 def test_cache_keeps_both_timeframes_of_the_same_snapshot(tmp_path):
@@ -1056,7 +1058,7 @@ def test_unknown_timeframe_is_rejected_by_the_request_model(tmp_path, monkeypatc
     """
     client, _ = _weekly_client(tmp_path, monkeypatch)
     r = client.post("/api/screener/pattern-search",
-                    json={"code": "000001", "mode": "now", "lengths": [5], "timeframe": "M"})
+                    json={"code": "000001", "mode": "now", "lengths": [5], "timeframe": "1m"})
     assert r.status_code == 422
 
 
@@ -1113,3 +1115,118 @@ def test_history_does_not_claim_a_partial_bucket(tmp_path):
     assert ask("now")[0]["partial_last_bucket_days"] == 3          # 대조군
     for res in ask("history", forward_days=1, no_overlap=False):
         assert res["partial_last_bucket_days"] is None
+
+
+# ── 월봉 ─────────────────────────────────────────────────────────────────────
+
+_MONTH_DAYS = [
+    *[dt.date(2026, 1, d) for d in (5, 6, 7, 8, 9, 12, 13, 14, 15, 16)],
+    *[dt.date(2026, 2, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13)],
+    *[dt.date(2026, 3, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13)],
+]
+
+
+def test_monthly_bucket_key_is_the_first_of_that_month(tmp_path):
+    """달력 월 — 주와 달리 시작일 모호성이 없다."""
+    c = sp.load_corpus(
+        _write(tmp_path, _daily_rows("000001", _MONTH_DAYS,
+                                     range(100, 100 + len(_MONTH_DAYS)))), "M")
+    i = c.index_of("000001")
+    assert i is not None
+    assert c.series_len(i) == 3
+    assert [c.date_at(i, k) for k in range(3)] == [
+        dt.date(2026, 1, 1), dt.date(2026, 2, 1), dt.date(2026, 3, 1)]
+    # 키는 달의 1일이지만 응답이 싣는 것은 **거래일**이다.
+    assert c.first_day_at(i, 0) == dt.date(2026, 1, 5)
+    assert c.last_day_at(i, 0) == dt.date(2026, 1, 16)
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        (dt.date(2026, 2, 1), dt.date(2026, 2, 28)),     # 평년 2월
+        (dt.date(2024, 2, 1), dt.date(2024, 2, 29)),     # 윤년
+        (dt.date(2026, 12, 1), dt.date(2026, 12, 31)),   # 연말 — 월 넘김
+        (dt.date(2026, 4, 1), dt.date(2026, 4, 30)),     # 30일 달
+    ],
+)
+def test_month_end_handles_leap_years_and_year_rollover(key, expected):
+    assert sp._month_end(key) == expected
+
+
+def _partial_client(tmp_path, days, codes=("000001", "000002")):
+    rows: list[dict] = []
+    for k, code in enumerate(codes):
+        rows += _daily_rows(code, days, [100 + (i * (7 + k)) % 23 for i in range(len(days))])
+    d = _write(tmp_path, rows)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=d))
+    return TestClient(app)
+
+
+def _ask_partial(client, timeframe: str, length: int = 5):
+    body = client.post("/api/screener/pattern-search", json={
+        "code": "000001", "mode": "now", "lengths": [length], "top": 3,
+        "min_tv_eok": 0, "exclude_etf": False, "timeframe": timeframe}).json()
+    assert "results" in body, f"라우트가 거절했다: {body}"
+    return body["results"][0]["partial_last_bucket_days"]
+
+
+def test_partial_asks_a_different_question_per_timeframe(tmp_path):
+    """⚠ **미완성 판정의 질문이 봉마다 다르다** — 통일하려다 한쪽을 망가뜨리기 쉽다.
+
+    * 주봉은 「며칠짜리인가」다(5일이 규범). 달력(일요일)으로 물으면 거래일이 금요일까지뿐이라
+      **완성 주도 늘 미완성**이 된다.
+    * 월봉은 18~23일로 규범이 없어 일수로 답이 안 나온다 — 「이번 달이 안 끝났는가」다.
+
+    red-check: `_partial_days` 의 두 분기를 서로 바꾸면 양쪽 단언이 함께 깨진다.
+    """
+    # 주봉 — 마지막 주가 3일뿐이다(수요일에 검색한 셈).
+    weekly_days = _week_days(8)[:-2]
+    assert _ask_partial(_partial_client(tmp_path / "w", weekly_days), "W") == 3
+    # ★ **대조군** — 5일을 채운 주가 마지막이면 완성이다. 달력으로 물었다면 거래일이
+    #   금요일까지뿐이라 일요일에 못 닿아 **이것도 미완성**이 된다. 이 단언이 없으면
+    #   두 판정이 같은 답을 내는 입력만 재는 셈이라 red-check 이 죽는다.
+    assert _ask_partial(_partial_client(tmp_path / "full", _week_days(8)), "W") is None
+    # 같은 코퍼스의 일봉은 「미완성」이라는 개념 자체가 없다.
+    assert _ask_partial(_partial_client(tmp_path / "w2", weekly_days), "D") is None
+
+
+def test_monthly_partial_is_about_the_calendar_not_the_day_count(tmp_path):
+    """월봉은 **그 달이 끝났는가**로 묻는다 — 거래일이 10일뿐이어도 말일까지면 완성이다."""
+    # 각 달 10거래일씩 6달. 마지막 달은 말일(3/31) 직전까지.
+    months = [
+        *[dt.date(2025, mo, d) for mo in (10, 11, 12) for d in (5, 6, 7, 8, 9, 12, 13, 14, 15, 16)],
+        *[dt.date(2026, mo, d) for mo in (1, 2) for d in (5, 6, 7, 8, 9, 12, 13, 14, 15, 16)],
+    ]
+    # ① 마지막 달의 마지막 거래일이 **말일 전** → 아직 열려 있다.
+    open_month = [*months, *[dt.date(2026, 3, d) for d in (2, 3, 4, 5, 6)]]
+    assert _ask_partial(_partial_client(tmp_path / "open", open_month), "M") == 5
+    # ② 말일까지 있으면 **완성**이다 — 거래일이 6일뿐이어도 그렇다.
+    closed = [*months, *[dt.date(2026, 3, d) for d in (2, 3, 4, 5, 6, 31)]]
+    assert _ask_partial(_partial_client(tmp_path / "closed", closed), "M") is None
+
+
+def test_since_keeps_the_bucket_it_falls_inside(tmp_path):
+    """⚠ `since` 가 버킷 **중간**이면 그 버킷은 살아야 한다.
+
+    프론트가 보내는 값은 「오늘 − N년」이라 버킷 중간일 확률이 높다(주봉 6/7 ·
+    월봉 ~29/30). 키로 비교하면 그 주/달이 **통째로** 빠진다 — 경계 하나라 눈에 잘
+    띄지 않고, 그래서 주봉을 넣을 때 함께 들어온 결함이다.
+
+    red-check: 비교 대상을 `c.dates`(키)로 되돌리면 2월 버킷이 사라진다.
+    """
+    c = sp.load_corpus(
+        _write(tmp_path, _daily_rows("000001", _MONTH_DAYS,
+                                     range(100, 100 + len(_MONTH_DAYS)))
+               + _daily_rows("000002", _MONTH_DAYS,
+                             range(200, 200 + len(_MONTH_DAYS)))), "M")
+    qi, off, q = _query(c, "000001", 2)
+    mid_february = np.datetime64("2026-02-06", "D")   # 2월 버킷(2/2~2/13) 한가운데
+    _, scores, _ = sp.search_history(
+        c, query=q, length=2, query_series=qi, query_offset=off, min_tv_eok=0,
+        exclude_etf=False, min_after=0, no_overlap=False, since=mid_february)
+    # 창은 둘뿐이다: [1월,2월] 과 [2월,3월]. 쿼리 자신(000001)은 겹침으로 빠지므로
+    # 000002 의 창 둘만 후보이고, 그중 1월 시작 창은 since 로 정당하게 잘린다.
+    # **키로 비교하면 2월 시작 창까지 빠져 0 이 된다** — 그 한 칸이 이 가드다.
+    assert len(scores) == 1, f"2월 버킷이 빠졌다 (후보창 {len(scores)})"

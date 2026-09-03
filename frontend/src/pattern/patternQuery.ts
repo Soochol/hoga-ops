@@ -48,11 +48,11 @@ export type PatternQuerySeed = {
  * 상한(30봉)을 넘겨 빈 결과가 되는데 그 빈 화면은 "이력이 없다" 로 읽힌다.
  *
  * 그래서 게이트는 **허용 집합을 직접** 쓴다. 여집합(`!isMinute`)으로 물으면 새 멤버가
- * 자동으로 통과하고 회귀 테스트가 원리적으로 없다 — 주봉이 코퍼스를 갖기 전까지 정확히
- * 그 상태였다. 월봉은 아직 코퍼스가 없다.
+ * 자동으로 통과하고 회귀 테스트가 원리적으로 없다 — 주봉·월봉이 코퍼스를 갖기 전까지
+ * 정확히 그 상태였다. 지금은 캘린더 봉 셋이 모두 코퍼스를 갖는다.
  */
 export function isPatternSearchableTimeframe(tf: LiveTimeframe): tf is PatternTimeframe {
-  return tf === 'D' || tf === 'W';
+  return tf === 'D' || tf === 'W' || tf === 'M';
 }
 
 /** 최소 봉수 — 서버 `PATTERN_MIN_BARS` 의 짝. 이보다 짧으면 요청을 만들지 않는다. */
@@ -68,7 +68,7 @@ export const PATTERN_MAX_BARS = 30;
  *
  * 막는 것 셋:
  * * 종목이 없거나 지수 창 — 코퍼스에 계열이 없다.
- * * 코퍼스가 없는 창(분봉·월봉) — `isPatternSearchableTimeframe` 이 허용 집합을 쥔다.
+ * * 코퍼스가 없는 창(분봉) — `isPatternSearchableTimeframe` 이 허용 집합을 쥔다.
  * * 5봉 미만 / 30봉 초과 — 서버가 빈 결과로 답하는데 그 빈 화면은 "이력이 없다" 로
  *   읽혀 원인을 숨긴다. 실패를 만들 수 있는 입력은 만들기 전에 막는다.
  *

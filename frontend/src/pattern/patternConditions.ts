@@ -48,14 +48,20 @@ export const FLEX_STEPS = [0, 1, 2] as const;
 export const TIMEFRAMES = [
   { key: 'D' as const, label: '일봉', note: '하루 한 봉' },
   { key: 'W' as const, label: '주봉', note: '한 주 한 봉 — 더 긴 흐름을 본다' },
+  { key: 'M' as const, label: '월봉', note: '한 달 한 봉 — 사례가 적어 기간을 넓게 둔다' },
 ];
 
 /** 수익률 지평(봉). **서버 `forward_days` 의 짝인데 코드는 「봉」을 센다** — 이름이
  *  「일」이라 일봉에서만 우연히 맞았다. 주봉에서 20 을 그대로 보내면 20주(≈5개월)가
  *  되어 후보가 그만큼 잘리고 수익률도 5개월 뒤가 된다.
  *
- *  주봉 8봉 ≈ 2개월로 일봉 20일(≈1개월)과 같은 결의 「이후」다. */
+ *  일봉 20일 ≈ 1개월 · 주봉 8봉 ≈ 2개월 · 월봉 3봉 = 3개월. 봉이 길수록 「이후」도
+ *  길게 잡는다 — 월봉에서 1개월은 **한 봉**이라 이후라 할 것이 없다.
+ *
+ *  월봉 3봉은 후보를 거의 자르지 않는다(실측: min_after 1봉 69,020 → 6봉 69,014).
+ *  ⚠ 주봉 8봉은 **실측이 아니라 판단**이다. */
 export function forwardBarsFor(timeframe: PatternTimeframe): number {
+  if (timeframe === 'M') return 3;
   return timeframe === 'W' ? 8 : 20;
 }
 
@@ -76,7 +82,8 @@ export function maLabel(preset: PatternMaPreset, timeframe: PatternTimeframe): s
   const base = MA_PRESETS.find((m) => m.key === preset)?.label ?? '이평 끄기';
   // 끄기에는 단위가 없다 — 「이평 끄기(주)」는 무의미하다.
   if (preset === 'off') return base;
-  return timeframe === 'W' ? `${base}주` : base;
+  if (timeframe === 'W') return `${base}주`;
+  return timeframe === 'M' ? `${base}개월` : base;
 }
 
 /** 제외 키 — **「종목 + 시작일」**이고 길이는 들어가지 않는다.
@@ -167,9 +174,22 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
  *  주봉 **32,662** 라 분포 스트립의 p99.99 가 표본 3.3개 위에 선다(일봉은 12.2개).
  *  3년이면 141,478 / 14.1개다. */
 export function defaultConditionsFor(timeframe: PatternTimeframe): PatternConditions {
-  return timeframe === 'W'
-    ? { ...DEFAULT_CONDITIONS, timeframe, period: '3y' }
-    : { ...DEFAULT_CONDITIONS, timeframe };
+  if (timeframe === 'W') return { ...DEFAULT_CONDITIONS, timeframe, period: '3y' };
+  // 월봉은 **전체 기간**이다. 실측 후보창: 1년 **0** · 3년 12,625 · 5년 23,926 ·
+  // 전체 69,018. 전체조차 일봉 1년(121,920)보다 얇아 좁힐 여지가 없다.
+  if (timeframe === 'M') return { ...DEFAULT_CONDITIONS, timeframe, period: 'all' };
+  return { ...DEFAULT_CONDITIONS, timeframe };
+}
+
+/** 그 기간을 골랐을 때 후보가 너무 얇아지는가 — 팝오버가 미리 말해 줄 근거.
+ *
+ *  숫자는 실측이다(삼성전자 · 거래대금 50억 · forward 3봉 기준 후보창):
+ *  월봉 1년 **0** · 3년 12,625 · 5년 23,926 / 주봉 1년 25,142.
+ *  일봉 1년이 121,920 이므로 그 아래가 「얇다」의 기준선이다. */
+export function periodIsThinFor(timeframe: PatternTimeframe, years: number | null): boolean {
+  if (years === null) return false;
+  if (timeframe === 'M') return years < 5;
+  return timeframe === 'W' && years < 3;
 }
 
 /** 기간 → `since`(YYYYMMDD). 전체면 `undefined` — 서버가 그때 필터를 아예 안 건다. */

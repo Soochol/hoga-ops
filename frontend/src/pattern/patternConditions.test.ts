@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow } from './patternConditions';
+import {
+  mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow,
+  DEFAULT_CONDITIONS, defaultConditionsFor, forwardBarsFor, maLabel, periodIsThinFor,
+} from './patternConditions';
 
 /**
  * 조건이 어디서 걸리는지, 그리고 길이별 결과를 **어떻게 합치는지**.
@@ -100,5 +103,39 @@ describe('isExcludedRow — 종목 키가 모든 날짜를 덮는다', () => {
   it('종목 키는 날짜와 무관하게 막는다 — 이게 없으면 「통째로 뺐는데 남는다」가 된다', () => {
     expect(isExcludedRow(row, new Set(['000660:*']))).toBe(true);
     expect(isExcludedRow({ code: '005930', from_date: '20180307' }, new Set(['000660:*']))).toBe(false);
+  });
+});
+
+describe('봉 단위별 공장값·라벨', () => {
+  /** 월봉 기간을 좁히면 후보가 사라진다 — 실측: 1년 **0** · 3년 12,625 · 5년 23,926 ·
+   *  전체 69,018(일봉 1년이 121,920 이므로 그 아래가 「얇다」의 기준선이다). */
+  it('월봉 공장 기간은 전체다 — 좁힐 여지가 없다', () => {
+    expect(defaultConditionsFor('M').period).toBe('all');
+    expect(defaultConditionsFor('W').period).toBe('3y');
+    expect(defaultConditionsFor('D').period).toBe(DEFAULT_CONDITIONS.period);
+  });
+
+  it('수익률 지평은 봉을 센다 — 봉이 길수록 「이후」도 길다', () => {
+    // 일봉 20일 ≈ 1개월 · 주봉 8봉 ≈ 2개월 · 월봉 3봉 = 3개월.
+    expect(forwardBarsFor('D')).toBe(20);
+    expect(forwardBarsFor('W')).toBe(8);
+    expect(forwardBarsFor('M')).toBe(3);
+  });
+
+  it('이평 라벨이 단위를 진다 — 5·20 이 무엇의 5·20 인지', () => {
+    expect(maLabel('short', 'D')).toBe('단기 5·20');
+    expect(maLabel('short', 'W')).toBe('단기 5·20주');
+    expect(maLabel('short', 'M')).toBe('단기 5·20개월');
+    // 끄기에는 단위가 없다 — 「이평 끄기(주)」는 무의미하다.
+    expect(maLabel('off', 'M')).toBe('이평 끄기');
+  });
+
+  it('얇은 기간은 봉마다 다르다 — 전체 기간은 어느 봉에서도 얇지 않다', () => {
+    expect(periodIsThinFor('M', 1)).toBe(true);
+    expect(periodIsThinFor('M', 5)).toBe(false);
+    expect(periodIsThinFor('W', 1)).toBe(true);
+    expect(periodIsThinFor('W', 3)).toBe(false);
+    expect(periodIsThinFor('D', 1)).toBe(false);
+    expect(periodIsThinFor('M', null)).toBe(false);
   });
 });
