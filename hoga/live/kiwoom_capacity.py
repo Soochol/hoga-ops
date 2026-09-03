@@ -53,6 +53,14 @@ _HEADROOM = 0.8
 
 _PRIORITY_ORDER: dict[Priority, int] = {"user_visible": 0, "background": 10}
 
+#: 유량 초과를 만난 (앱키, TR) 버킷을 뒤로 미는 시간.
+#:
+#: **인증 격리와 달리 이건 실제로 잠을 잔다** — 격리는 `_pick_account` 의 정렬에만
+#: 쓰이지만(`_available_at`), 유량 페널티는 버킷에 얹혀 `acquire()` 가 그만큼 대기한다.
+#: 그래서 계정이 하나뿐이면 되큐된 재시도가 이 시간을 온전히 기다린다 — 의도된 동작이고
+#: (`1700` 은 "잠시 뒤 재시도"다), 계정 풀이 있으면 failover 라 대기가 없다.
+_RATE_LIMIT_PENALTY_SECONDS = 1.0
+
 # 인증 실패한 계정을 후보에서 미뤄 두는 시간.
 # **토큰 재발급 쿨다운(`kiwoom_token_provider._REISSUE_COOLDOWN_MS` = 60s)과 맞춘다.**
 # 더 짧으면 격리가 풀린 계정이 아직 쿨다운에 걸려 재발급에 실패하고, 실패→격리→해제→
@@ -86,6 +94,9 @@ class _Request:
     auth_retried: bool = field(compare=False, default=False)
     """인증 실패 재시도도 **요청당 1회**. 재발급이 쿨다운에 걸렸거나 자격증명 자체가
     틀렸으면 두 번째도 같은 자리에서 실패한다 — 무제한이면 그대로 무한 루프다."""
+    rate_limit_retried: bool = field(compare=False, default=False)
+    """유량 초과 재시도도 **요청당 1회**. 전 계정이 막혀 있으면 두 번째도 같은 자리에서
+    실패한다 — 무제한이면 그대로 무한 루프다. 남은 실패는 호출자가 받는다."""
     requeued: bool = field(compare=False, default=False)
     """이번 순회가 이 요청을 큐로 되돌렸나. `_cleanup` 이 inflight 항목을 **떨어뜨리지
     않도록** 하는 표식이다 — 떨어뜨리면 같은 key 의 새 요청이 조인할 future 를 잃고
@@ -404,6 +415,8 @@ class KiwoomCapacityScheduler:
                 self._penalize_if_rate_limited(account, req.api_id, exc)
                 if await self._recover_if_auth_failure(account, req, exc):
                     continue
+                if self._requeue_if_rate_limited(req, exc):
+                    continue
                 if not req.future.done():
                     req.future.set_exception(exc)
             else:
@@ -424,11 +437,72 @@ class KiwoomCapacityScheduler:
             if exc.quota and exc.quota > 0:
                 self._tr_rates[api_id] = float(exc.quota)
                 self._buckets.pop((account_id, api_id), None)
-            self._bucket(account_id, api_id).penalize(1.0)
+            self._bucket(account_id, api_id).penalize(_RATE_LIMIT_PENALTY_SECONDS)
             log.warning(
                 "kiwoom capacity: %s rate-limited on account %d (quota=%s)",
                 api_id, account_id, exc.quota,
             )
+
+    def _requeue_if_rate_limited(self, req: _Request, exc: BaseException) -> bool:
+        """유량 초과면 **요청을 1회 되큐한다**. 되큐했으면 True — 호출자는 future 를
+        건드리지 않고 다음 순회로 넘어간다.
+
+        `KiwoomRateLimitError` 의 계약은 "지금은 막혔다, 잠시 뒤 재시도 — 영구 거절이
+        아니다" 다. 그런데 거버너는 인증 실패만 되큐하고 유량 실패는 호출자에게 그대로
+        올렸다. 한도를 **발견한** 그 요청 하나가 희생되는 구조라, fail-fast 로 모으는
+        호출자는 배치 전체를 잃었다(2026-09-03 스크리너 갱신 — #1720 이 배치 쪽을,
+        여기가 거버너 쪽을 맡는다).
+
+        **호출 순서가 계약이다.** `_penalize_if_rate_limited` 가 **먼저** 그 (앱키, TR)
+        버킷을 뒤로 밀어 두므로, 되큐된 요청은 `_pick_account` 의 `min` 에서 자연히
+        **다른 앱키로 failover** 된다. 순서가 뒤집히면 되큐가 `continue` 로 빠져나가
+        **페널티가 아예 안 걸리고**, 재시도가 성공하면 영영 안 걸린다 — 한도를 만나고도
+        버킷이 그대로라 같은 누수가 계속된다.
+
+        ⚠ 이 순서는 **계정 선택으로 재면 안 된다.** 뒤집어도 failover 가 우연히
+        일어난다(실측) — `_FAST` 페이싱만으로도 방금 쓴 계정이 후순위가 될 수 있다.
+        가드는 계정이 아니라 **버킷 장부**(`_available_at`)를 본다.
+
+        재시도가 **거버너 위**에 있는 것은 인증과 같은 이유다 — 클라이언트 안에서 몰래
+        한 번 더 쏘면 그 콜이 TR 버킷을 안 거쳐 페이싱에서 보이지 않는다(ADR-0137).
+
+        1회인 이유도 인증과 같다: 전 계정이 막혀 있으면 두 번째도 같은 자리에서
+        실패하고, 무제한이면 그대로 무한 루프다. 남은 실패는 호출자가 받는다
+        (`screener_store.run_update` 가 그 위에서 한 패스를 더 준다).
+
+        **`background` 에만 적용한다 — 인증 되큐와 갈라지는 지점이다.**
+
+        ⚠ 이 게이트를 "사람이 안 기다리는 요청만" 으로 읽으면 **틀린다.** `priority` 는
+        큐 선후일 뿐이고, background 호출자에는 라우트 핸들러가 여럿 있다
+        (`_get_quotes` · `_get_tab_metrics` · `_get_index_quotes` 등). 게이트의 실제
+        내용은 **"호출자가 이미 유량 중단을 스스로 결정했는가"** 다.
+
+        user_visible 쪽에는 walk 기반 백필이 있고 그들이 **자체 유량 중단 + 쿨다운**을
+        갖는다(`live_candle_backfill._rate_limited_now` · 10초 쿨다운 ·
+        `rate_limit_upstream` 경고). 유량을 만나면 미시작 콜을 전부 접고 사용자에게
+        알리는 설계다 — 거기서 거버너가 몰래 한 번 더 쏘면 그 결정과 싸우고 사용자만
+        더 기다린다(`test_past_candles_rate_limit_*` 가 그 계약을 봉인한다).
+
+        중단 기계가 없는 나머지에는 되큐가 이득이다: 페널티가 막힌 앱키를 뒤로 밀어
+        둔 덕에 재시도가 **살아 있는 앱키로 failover** 하거나, 전부 포화면 1초쯤 뒤에
+        어차피 날 실패가 날 뿐이다. 인증 되큐가 양쪽에 다 걸리는 것은 계정이 *죽은*
+        것이라 옮기면 거의 확실히 성공해서고, 유량은 자원이 *포화*된 것이라 그만큼
+        확실하지 않다 — 그래서 여기만 좁힌다.
+        """
+        from hoga.live.kiwoom_errors import (  # noqa: PLC0415 — 순환 절단
+            KiwoomRateLimitError,
+        )
+
+        if not isinstance(exc, KiwoomRateLimitError):
+            return False
+        if req.priority != "background":
+            return False
+        if req.rate_limit_retried or req.future.done():
+            return False
+        req.rate_limit_retried = True
+        req.requeued = True
+        self._queue.put_nowait(req)
+        return True
 
     async def _recover_if_auth_failure(
         self, account_id: int, req: _Request, exc: BaseException

@@ -15,6 +15,7 @@ import time
 
 import pytest
 
+from hoga.live import kiwoom_capacity
 from hoga.live.kiwoom_capacity import (
     DEFAULT_TR_RATE_PER_SEC,
     KiwoomCapacityOverloaded,
@@ -273,8 +274,14 @@ async def test_buckets_are_per_tr_not_global() -> None:
     await s.aclose()
 
 
-async def test_rate_limit_error_retunes_bucket_from_vendor_quota() -> None:
-    """벤더가 `유량=5` 를 알려주므로 버킷을 그 값으로 자가 교정한다."""
+async def test_rate_limit_error_retunes_bucket_from_vendor_quota(monkeypatch) -> None:
+    """벤더가 `유량=5` 를 알려주므로 버킷을 그 값으로 자가 교정한다.
+
+    페널티를 0 으로 내리는 이유는 **이 테스트가 재는 것이 교정이지 대기가 아니어서**다.
+    계정이 하나라 유량 되큐가 같은 (막힌) 버킷으로 돌아가 실제로 잠을 잔다 — 그대로
+    두면 이 파일이 벽시계에 1초 묶인다(파일 헤더 계약 위반).
+    """
+    monkeypatch.setattr(kiwoom_capacity, "_RATE_LIMIT_PENALTY_SECONDS", 0.0)
     s = _sched(workers=1, rate_per_sec=_FAST)
 
     async def boom(_client=None) -> None:
@@ -771,3 +778,97 @@ async def test_concurrent_acquires_each_reserve_their_own_slot() -> None:
         f"동시 {n}건이 각자 슬롯을 잡아야 한다 — 예약 끝 {reserved:.3f}s, "
         f"기대 {n / rate:.3f}s (버그판은 {1 / rate:.3f}s 에 머문다)"
     )
+
+
+# === 유량 초과: 페널티 + 1회 되큐 (2026-09-03) ================================
+#
+# `KiwoomRateLimitError` 의 계약은 "지금은 막혔다, 잠시 뒤 재시도 — 영구 거절이 아니다"
+# 인데, 거버너는 인증 실패만 되큐하고 유량 실패는 **호출자에게 그대로 올렸다**. 그래서
+# 한도를 발견한 그 요청 하나가 희생됐고, 스크리너 갱신처럼 fail-fast 로 모으는 호출자는
+# 배치 전체를 잃었다(2026-09-03 · #1720 에서 배치 쪽을 먼저 고쳤다).
+#
+# 되큐가 **거버너 위**에 있어야 하는 이유는 인증과 같다 — 클라이언트 안에서 몰래 한 번
+# 더 쏘면 그 콜이 TR 버킷을 안 거쳐 페이싱에서 보이지 않는다(ADR-0137). 여기서 되큐하면
+# 재시도도 대기표를 뽑고, **페널티가 이미 걸린 뒤라 다른 앱키로 자동 failover** 된다.
+
+
+def _rate_limit_error(msg: str = "허용된 요청 개수를 초과하였습니다[1700]"):
+    """`유량=N` 이 없는 메시지 — `quota` 가 None 이라 버킷 재조정이 끼어들지 않는다."""
+    return KiwoomRateLimitError(msg, api_id="ka10081")
+
+
+async def test_rate_limit_requeues_and_completes_on_another_account() -> None:
+    """유량에 막힌 요청은 **살아 있는 앱키로 완주**해야 한다.
+
+    페널티가 되큐 **앞**에 걸리므로 `_pick_account` 가 막힌 계정을 후순위로 밀고,
+    별도 상태 기계 없이 failover 가 공짜로 된다(인증 실패와 같은 구조).
+    """
+    s = _sched(workers=1)
+    s.set_clients([_FakeClient(0), _FakeClient(1)])
+    seen: list[int] = []
+
+    async def fn(client) -> str:
+        seen.append(client.account_id)
+        if client.account_id == 0:
+            raise _rate_limit_error()
+        return "v"
+
+    assert await s.submit(
+        key="k", api_id="ka10081", priority="background", call=fn) == "v"
+    assert seen == [0, 1], "막힌 계정에서 한 번, 살아 있는 계정에서 한 번"
+    # **페널티가 되큐보다 먼저**라는 순서가 여기서 갈린다. 계정 선택(`seen`)으로는
+    # 못 잰다 — `_FAST` 페이싱만으로도 방금 쓴 계정이 후순위가 될 수 있어 순서를
+    # 뒤집어도 우연히 [0, 1] 이 나온다(실측). 버킷 장부는 우연이 없다: 되큐가 먼저면
+    # 첫 실패에 페널티가 **아예 안 걸리고**, 재시도는 성공했으니 영영 안 걸린다.
+    assert s._available_at(0, "ka10081") > time.monotonic() + 0.5, (
+        "유량에 막힌 (앱키, TR) 은 되큐 **전에** 페널티를 받아야 한다"
+    )
+    assert s._inflight == {}, "되큐 경로가 inflight 를 흘리면 안 된다"
+    await s.aclose()
+
+
+async def test_rate_limit_retry_is_single_shot() -> None:
+    """전 계정이 막혀 있으면 두 번째도 같은 자리에서 실패한다 — 무제한이면 무한 루프다."""
+    s = _sched(workers=1)
+    s.set_clients([_FakeClient(0), _FakeClient(1)])
+    calls = 0
+
+    async def fn(_client) -> None:
+        nonlocal calls
+        calls += 1
+        raise _rate_limit_error()
+
+    with pytest.raises(KiwoomRateLimitError):
+        await s.submit(key="k", api_id="ka10081", priority="background", call=fn)
+    assert calls == 2, "최초 1 + 재시도 1 — 그 이상이면 루프다"
+    assert s._inflight == {}
+    await s.aclose()
+
+
+
+async def test_rate_limit_does_not_requeue_user_visible() -> None:
+    """user_visible 은 유량에 막히면 **즉시 실패한다** — 되큐하지 않는다.
+
+    ⚠ 이유는 "사람이 기다려서"가 아니다. `priority` 는 큐 선후일 뿐이고 background
+    에도 라우트 핸들러가 여럿 있다. 진짜 이유는 **user_visible 쪽 walk 백필이 자체
+    유량 중단·쿨다운을 갖기 때문**이다(`live_candle_backfill._rate_limited_now`) —
+    유량을 만나면 미시작 콜을 전부 접고 `rate_limit_upstream` 을 화면에 알리는데,
+    거버너가 거기서 한 번 더 쏘면 그 결정과 싸운다.
+
+    `test_past_candles_rate_limit_*` 3건이 통합 층에서 같은 계약을 잡지만, 여기 단위
+    가드가 없으면 그 3건을 보고 "먼 곳이 깨졌다"고 오진하기 쉽다.
+    """
+    s = _sched(workers=1)
+    s.set_clients([_FakeClient(0), _FakeClient(1)])
+    calls = 0
+
+    async def fn(_client) -> None:
+        nonlocal calls
+        calls += 1
+        raise _rate_limit_error()
+
+    with pytest.raises(KiwoomRateLimitError):
+        await s.submit(key="k", api_id="ka10081", priority="user_visible", call=fn)
+    assert calls == 1, "user_visible 은 재시도 없이 곧장 호출자에게 올라가야 한다"
+    assert s._inflight == {}
+    await s.aclose()
