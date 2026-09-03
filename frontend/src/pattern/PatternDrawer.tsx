@@ -107,7 +107,7 @@ function emptyReasonText(args: {
   coverage: string | null;
 }): string {
   const { reason, seeded, length, unit, coverage } = args;
-  const span = coverage ? ` 검색 가능한 구간은 ${coverage} 다.` : '';
+  const span = coverage ? ` 검색 가능한 구간은 ${coverage} 이다.` : '';
   switch (reason) {
     case 'code_missing':
       return '이 종목은 패턴 코퍼스에 없다 — 조건을 바꿔도 찾을 수 없다.';
@@ -472,11 +472,21 @@ export function PatternDrawer() {
   /** 방금 눌러서 차트가 가 있는 행(`rowKey`). 목록이 「어디를 보고 있는지」를 말한다. */
   const [openedKey, setOpenedKey] = useState<string | null>(null);
 
-  const result = useMemo(
+  const result = useMemo(() => {
     // 구간을 건네받았으면 **그 구간이 곧 길이**라 서버가 결과를 하나만 준다.
-    () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
-    [data, length, seededRange],
-  );
+    if (seededRange) return data?.results[0] ?? null;
+    const exact = resultForLength(data?.results, length);
+    if (exact || conditions.flexBars === 0) return exact;
+    // ★ 길이 유연이면 **기준 길이가 빠질 수 있다** — 그 길이에서만 후보가 0 이었던
+    //   경우다(실측 2026-09-04: 두산 월봉 ±2봉이 5·6·8·9 만 돌려줬다). 이웃 길이의
+    //   매치는 살아 있고 `shown` 이 이미 그것을 합쳐 두는데, 여기서 null 을 내면
+    //   렌더가 「이력이 없다」로 닫혀 **있는 결과를 통째로 감춘다**. 공장값이 ±2봉이라
+    //   이게 기본 경로다.
+    //   집계 표시(창·분포·베이스라인)는 아무 길이나 써도 된다 — 유연 결과들은 같은
+    //   쿼리 창에서 나왔으므로 `query` 가 동일하다(`_append_one` 이 `base_length` 로
+    //   싣는다).
+    return data?.results[0] ?? null;
+  }, [data, length, seededRange, conditions.flexBars]);
   /** 헤더가 가리키는 「기준 종목 · 그 구간」. 검색이 돌아야 날짜가 정해지므로 `result`
    *  에서 나온다 — 밴드를 그었든(고정 구간) 봉수로 골랐든(최신 창) 서버가 실제로 쓴
    *  구간이 곧 이 값이다. */

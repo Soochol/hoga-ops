@@ -421,6 +421,26 @@ describe('PatternDrawer — 빈 상태', () => {
     expect(state).toHaveTextContent('2024-01-02 ~ 2026-09-03');
   });
 
+  /**
+   * ★ 길이 유연에서 **기준 길이만 빠진** 응답 — 있는 결과를 감추면 안 된다.
+   *
+   * 서버는 길이별로 독립해서 답하므로 기준 7봉만 후보가 0 일 수 있다(실측 2026-09-04:
+   * 두산 월봉 ±2봉이 5·6·8·9 만 돌려줬다). `resultForLength` 가 그때 null 을 내는데,
+   * 렌더가 그 null 로 「이력이 없다」를 그리면 **이웃 길이의 매치가 통째로 사라진다**.
+   * 공장값이 ±2봉이라 이게 기본 경로다.
+   */
+  it('길이 유연에서 기준 봉수만 빠져도 이웃 길이의 매치를 그린다', async () => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
+      // 기준 7봉이 **없다** — 5·9 만 왔다.
+      results: [lengthResult(5, '이웃5', { history: true }),
+                lengthResult(9, '이웃9', { history: true })],
+    });
+    renderDrawer();
+    expect(await screen.findByText('이웃5')).toBeInTheDocument();
+    expect(screen.queryByText(/이력이 없다/)).not.toBeInTheDocument();
+  });
+
   it('검색이 실패하면 조용히 비우지 않고 알린다', async () => {
     searchPattern.mockRejectedValue(new Error('boom'));
     renderDrawer();
