@@ -43,17 +43,10 @@ export interface PanelScan {
   dataStale: boolean;
 }
 
-export type PanelUpdateState =
-  | { status: 'idle' }
-  | { status: 'pending'; startedAtMs: number }
-  | { status: 'success'; startedAtMs: number | null; finishedAtMs: number }
-  | { status: 'error'; startedAtMs: number | null; finishedAtMs: number; message: string };
-
 type Persisted = {
   selectedSavedId: string | null;
   lastScan: PanelScan | null;
   sortMode: ScreenerResultSortMode;
-  updateState: PanelUpdateState;
   // 드로어 실시간 모니터링 on/off. 영속 → 새로고침·재접속 후 자동 재개(장중 켜두는
   // 사용 패턴).
   monitoringActive: boolean;
@@ -62,7 +55,6 @@ type Persisted = {
 };
 
 type Store = Persisted & {
-  updateState: PanelUpdateState;
   lastScan: PanelScan | null;
   setSelectedSavedId: (id: string | null) => void;
   setSortMode: (mode: ScreenerResultSortMode) => void;
@@ -72,16 +64,12 @@ type Store = Persisted & {
   clearExpiredScan: (nowMs?: number) => void;
   setMonitoringActive: (active: boolean) => void;
   setMonitorPeriodMs: (periodMs: number | null) => void;
-  setUpdatePending: (startedAtMs: number) => void;
-  setUpdateSuccess: (finishedAtMs: number) => void;
-  setUpdateError: (message: string, finishedAtMs: number) => void;
 };
 
 const DEFAULTS: Persisted = {
   selectedSavedId: null,
   lastScan: null,
   sortMode: 'default',
-  updateState: { status: 'idle' },
   monitoringActive: false,
   monitorPeriodMs: null,
 };
@@ -98,7 +86,6 @@ function persistFromState(state: Store): void {
     selectedSavedId: state.selectedSavedId,
     lastScan: state.lastScan,
     sortMode: state.sortMode,
-    updateState: persistableUpdateState(state.updateState),
     monitoringActive: state.monitoringActive,
     monitorPeriodMs: state.monitorPeriodMs,
   });
@@ -168,45 +155,6 @@ export function isPanelScanFresh(scan: PanelScan, nowMs = Date.now()): boolean {
   return ageMs >= 0 && ageMs <= SCREENER_PANEL_SCAN_TTL_MS;
 }
 
-function isTerminalUpdateFresh(finishedAtMs: number, nowMs = Date.now()): boolean {
-  const ageMs = nowMs - finishedAtMs;
-  return ageMs >= 0 && ageMs <= SCREENER_PANEL_SCAN_TTL_MS;
-}
-
-function isNumberOrNullField(value: unknown): value is number | null {
-  return value === null || (typeof value === 'number' && Number.isFinite(value));
-}
-
-function persistableUpdateState(state: PanelUpdateState): PanelUpdateState {
-  return state.status === 'success' || state.status === 'error' ? state : { status: 'idle' };
-}
-
-function isPanelUpdateState(value: unknown, nowMs = Date.now()): value is PanelUpdateState {
-  if (typeof value !== 'object' || value === null) return false;
-  const raw = value as Record<string, unknown>;
-  if (raw.status === 'idle') return true;
-  if (raw.status === 'pending') return false;
-  if (raw.status === 'success') {
-    return (
-      isNumberOrNullField(raw.startedAtMs)
-      && typeof raw.finishedAtMs === 'number'
-      && Number.isFinite(raw.finishedAtMs)
-      && isTerminalUpdateFresh(raw.finishedAtMs, nowMs)
-    );
-  }
-  if (raw.status === 'error') {
-    return (
-      isNumberOrNullField(raw.startedAtMs)
-      && typeof raw.finishedAtMs === 'number'
-      && Number.isFinite(raw.finishedAtMs)
-      && typeof raw.message === 'string'
-      && raw.message.length > 0
-      && isTerminalUpdateFresh(raw.finishedAtMs, nowMs)
-    );
-  }
-  return false;
-}
-
 // 검증 + 정규화를 한 번에: 유효하면 완전한 PanelScan, 아니면 null. 구버전 스키마(단일
 // 뷰 시절 saved* 필수, scanKey/depthValues 없음)는 누락 필드를 null 로 채워 마이그레이션
 // 한다(키는 screenerPanel.v1 유지 — 필드를 넓히기만 해 하위호환).
@@ -258,7 +206,6 @@ function readStorage(nowMs = Date.now()): Partial<Persisted> {
   const lastScan = coercePanelScan(parsed.lastScan, nowMs);
   if (lastScan) out.lastScan = lastScan;
   if (isSortMode(parsed.sortMode)) out.sortMode = parsed.sortMode;
-  if (isPanelUpdateState(parsed.updateState, nowMs)) out.updateState = parsed.updateState;
   if (typeof parsed.monitoringActive === 'boolean') out.monitoringActive = parsed.monitoringActive;
   const period = parsed.monitorPeriodMs;
   if (period === null) out.monitorPeriodMs = null;
@@ -316,36 +263,6 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
 
   setMonitorPeriodMs: (periodMs) => {
     set({ monitorPeriodMs: periodMs });
-    persistFromState(get());
-  },
-
-  setUpdatePending: (startedAtMs) => {
-    set({ updateState: { status: 'pending', startedAtMs } });
-    persistFromState(get());
-  },
-
-  setUpdateSuccess: (finishedAtMs) => {
-    const prev = get().updateState;
-    set({
-      updateState: {
-        status: 'success',
-        startedAtMs: prev.status === 'pending' ? prev.startedAtMs : null,
-        finishedAtMs,
-      },
-    });
-    persistFromState(get());
-  },
-
-  setUpdateError: (message, finishedAtMs) => {
-    const prev = get().updateState;
-    set({
-      updateState: {
-        status: 'error',
-        startedAtMs: prev.status === 'pending' ? prev.startedAtMs : null,
-        finishedAtMs,
-        message,
-      },
-    });
     persistFromState(get());
   },
 }));

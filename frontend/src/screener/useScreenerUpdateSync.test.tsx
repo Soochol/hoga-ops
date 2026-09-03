@@ -54,7 +54,7 @@ beforeEach(() => {
   useScreenerUpdateFeedback.setState({ feedback: null });
   useScreenerPanelStore.setState({
     selectedSavedId: null, lastScan: null,
-    updateState: { status: 'idle' }, sortMode: 'default',
+    sortMode: 'default',
   });
 });
 
@@ -70,7 +70,7 @@ describe('useScreenerUpdateSync', () => {
     expect(status?.updating).toMatchObject({ done: 120, total: 3561 });
   });
 
-  it('finished(updated>0) → 피드백 + dataStale + updateState success + invalidate', async () => {
+  it('finished(updated>0) → 피드백 + dataStale + invalidate', async () => {
     const qc = new QueryClient();
     qc.setQueryData(['screener-status'], OK_STATUS);
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
@@ -83,11 +83,10 @@ describe('useScreenerUpdateSync', () => {
       message: '3거래일 추가됨', tone: 'info',
     });
     expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
-    expect(useScreenerPanelStore.getState().updateState.status).toBe('success');
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['screener-status'] }));
   });
 
-  it('finished(reason=error) → error 피드백 + updateState error + dataStale 미마킹', () => {
+  it('finished(reason=error) → error 피드백 + dataStale 미마킹', () => {
     const qc = new QueryClient();
     useScreenerPanelStore.setState({ lastScan: { ...SCAN } });
     renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
@@ -97,7 +96,6 @@ describe('useScreenerUpdateSync', () => {
     expect(useScreenerUpdateFeedback.getState().feedback).toMatchObject({
       message: '갱신 실패', tone: 'error',
     });
-    expect(useScreenerPanelStore.getState().updateState.status).toBe('error');
     expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
   });
 
@@ -112,7 +110,6 @@ describe('useScreenerUpdateSync', () => {
       message: '추가된 확정분 없음', tone: 'info',
     });
     expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
-    expect(useScreenerPanelStore.getState().updateState.status).toBe('success');
   });
 
   it('disconnected → screener-status invalidate(오프라인 중 완료 복구)', () => {

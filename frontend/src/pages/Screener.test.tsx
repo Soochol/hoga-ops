@@ -81,7 +81,6 @@ beforeEach(() => {
     selectedSavedId: null,
     lastScan: null,
     sortMode: 'default',
-    updateState: { status: 'idle' },
   });
 });
 

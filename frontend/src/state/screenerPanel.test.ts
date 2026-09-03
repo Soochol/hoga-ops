@@ -40,7 +40,6 @@ describe('screenerPanel store', () => {
       selectedSavedId: null,
       lastScan: null,
       sortMode: 'default',
-      updateState: { status: 'idle' },
       monitoringActive: false,
       monitorPeriodMs: null,
     });
@@ -81,7 +80,6 @@ describe('screenerPanel store', () => {
     expect(fresh.getState().selectedSavedId).toBe('s1');
     expect(fresh.getState().lastScan).toEqual(SCAN);
     expect(fresh.getState().sortMode).toEqual({ field: 'price', direction: 'asc' });
-    expect(fresh.getState().updateState).toEqual({ status: 'idle' });
   });
 
   it('drops expired saved scans during hydration but keeps selectedSavedId', async () => {
@@ -214,40 +212,6 @@ describe('screenerPanel store', () => {
     vi.setSystemTime(NOW);
     const { useScreenerPanelStore: rejected } = await import('./screenerPanel');
     expect(rejected.getState().monitorPeriodMs).toBeNull();
-  });
-
-  it('persists terminal update status across short reloads without restoring pending', async () => {
-    useScreenerPanelStore.getState().setSelectedSavedId('s1');
-    useScreenerPanelStore.getState().setUpdatePending(NOW);
-    useScreenerPanelStore.getState().setUpdateError('boom', NOW + 5);
-
-    expect(useScreenerPanelStore.getState().updateState).toEqual({
-      status: 'error',
-      startedAtMs: NOW,
-      finishedAtMs: NOW + 5,
-      message: 'boom',
-    });
-    expect(JSON.parse(localStorage.getItem('screenerPanel.v1')!).updateState).toMatchObject({
-      status: 'error',
-      message: 'boom',
-    });
-
-    vi.resetModules();
-    vi.setSystemTime(NOW + 6);
-    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
-    expect(fresh.getState().updateState).toMatchObject({
-      status: 'error',
-      message: 'boom',
-    });
-
-    localStorage.setItem('screenerPanel.v1', JSON.stringify({
-      selectedSavedId: 's1',
-      updateState: { status: 'pending', startedAtMs: NOW },
-    }));
-    vi.resetModules();
-    vi.setSystemTime(NOW + 10);
-    const { useScreenerPanelStore: pendingFresh } = await import('./screenerPanel');
-    expect(pendingFresh.getState().updateState).toEqual({ status: 'idle' });
   });
 
   it('classifies scan freshness by ttl', () => {
