@@ -32,9 +32,12 @@ import {
   withWholeCodeExcluded,
   type PatternConditions,
   defaultConditionsFor,
+  TIMEFRAMES,
 } from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
-import type { PatternExclusion, PatternMatchRow, PatternSearchMode } from '../api/screener';
+import type {
+  PatternEmptyReason, PatternExclusion, PatternMatchRow, PatternSearchMode,
+} from '../api/screener';
 import { CandleThumb } from './CandleThumb';
 import { PatternMatchRowMenu } from './PatternMatchRowMenu';
 import { SimilarityStrip } from './SimilarityStrip';
@@ -81,9 +84,58 @@ const MODES: { key: PatternSearchMode; label: string }[] = [
   { key: 'history', label: '과거에 이 모양' },
 ];
 
+/** 빈 결과의 원인 → 화면 문장.
+ *
+ * 서버가 빈 응답을 내는 경로는 **넷**인데(`PatternEmptyReason`) 예전에는 그 넷이
+ * 「그은 구간에 해당하는 일봉이 없다」 한 문장으로 뭉쳤다. 그중 조건으로 풀리는 것은
+ * `no_candidates` 하나뿐이라, 사용자는 나머지 셋에서 기간·모드·봉수를 바꿔 가며
+ * 같은 문장을 반복해 봤다(조사 2026-09-04).
+ *
+ * ⚠ **`reason` 만으로 갈리지 않는다.** `window` 는 구간을 그었느냐에 따라 뜻이 다르다 —
+ * 그었으면 「그 구간이 코퍼스 밖」이고, 안 그었으면 「계열이 그 봉수를 못 채운다」다.
+ * 그래서 키가 `(reason, 구간 유무)` 다.
+ *
+ * ⚠ `window` 문장의 핵심은 **커버리지**다. 차트가 읽는 벤더 일봉과 코퍼스의 종목별
+ * 커버리지가 달라서(실측: 두산은 차트에 2019년 봉이 보이는데 코퍼스는 2024-01-02 부터),
+ * 「캔들이 보이는데 왜」에 답할 수 있는 것이 이 구간뿐이다.
+ */
+function emptyReasonText(args: {
+  reason: PatternEmptyReason | null;
+  seeded: boolean;
+  length: number;
+  unit: string;
+  coverage: string | null;
+}): string {
+  const { reason, seeded, length, unit, coverage } = args;
+  const span = coverage ? ` 검색 가능한 구간은 ${coverage} 이다.` : '';
+  switch (reason) {
+    case 'code_missing':
+      return '이 종목은 패턴 코퍼스에 없다 — 조건을 바꿔도 찾을 수 없다.';
+    case 'flat':
+      return seeded
+        ? '그은 구간이 평탄하거나(단일가) 이평 워밍업이 모자라 비교할 모양이 없다.'
+        : `최근 ${length}봉이 평탄하거나 이평 워밍업이 모자라 비교할 모양이 없다.`;
+    case 'no_candidates':
+      return '이 조건에서 비교할 후보 구간이 하나도 없다 — 기간을 넓히거나 거래대금 하한을 낮춰 보라.';
+    case 'window':
+      return seeded
+        ? `그은 구간으로는 이 종목의 ${unit}을 5~30개 만들 수 없다.${span}`
+        : `이 종목은 ${length}봉을 채울 이력이 없다.${span}`;
+    default:
+      // 서버가 이유를 안 실은 응답(옛 배포). 예전 문장을 그대로 쓴다.
+      return seeded
+        ? '그은 구간에 해당하는 봉이 없다.'
+        : `이 종목은 ${length}봉을 채울 이력이 없다.`;
+  }
+}
+
 /** 매치 구간 **앞쪽**으로 함께 불러올 달력일. `studyDailyViewport` 가 구간보다 넓게
  *  보여주므로(맥락 배율) 시작일에 딱 맞추면 왼쪽이 잘린다. */
 const CONTEXT_DAYS = 200;
+
+/** 빈 결과에서 칩에 넘기는 빈 배열 — **모듈 상수**여야 한다. 렌더마다 새 배열을
+ *  만들면 칩의 미리보기 계산이 매번 다시 돈다. */
+const NO_ROWS: PatternMatchRow[] = [];
 
 const MIN_LENGTH = NOW_LENGTHS[0];
 const MAX_LENGTH = NOW_LENGTHS[NOW_LENGTHS.length - 1];
@@ -420,11 +472,21 @@ export function PatternDrawer() {
   /** 방금 눌러서 차트가 가 있는 행(`rowKey`). 목록이 「어디를 보고 있는지」를 말한다. */
   const [openedKey, setOpenedKey] = useState<string | null>(null);
 
-  const result = useMemo(
+  const result = useMemo(() => {
     // 구간을 건네받았으면 **그 구간이 곧 길이**라 서버가 결과를 하나만 준다.
-    () => (seededRange ? (data?.results[0] ?? null) : resultForLength(data?.results, length)),
-    [data, length, seededRange],
-  );
+    if (seededRange) return data?.results[0] ?? null;
+    const exact = resultForLength(data?.results, length);
+    if (exact || conditions.flexBars === 0) return exact;
+    // ★ 길이 유연이면 **기준 길이가 빠질 수 있다** — 그 길이에서만 후보가 0 이었던
+    //   경우다(실측 2026-09-04: 두산 월봉 ±2봉이 5·6·8·9 만 돌려줬다). 이웃 길이의
+    //   매치는 살아 있고 `shown` 이 이미 그것을 합쳐 두는데, 여기서 null 을 내면
+    //   렌더가 「이력이 없다」로 닫혀 **있는 결과를 통째로 감춘다**. 공장값이 ±2봉이라
+    //   이게 기본 경로다.
+    //   집계 표시(창·분포·베이스라인)는 아무 길이나 써도 된다 — 유연 결과들은 같은
+    //   쿼리 창에서 나왔으므로 `query` 가 동일하다(`_append_one` 이 `base_length` 로
+    //   싣는다).
+    return data?.results[0] ?? null;
+  }, [data, length, seededRange, conditions.flexBars]);
   /** 헤더가 가리키는 「기준 종목 · 그 구간」. 검색이 돌아야 날짜가 정해지므로 `result`
    *  에서 나온다 — 밴드를 그었든(고정 구간) 봉수로 골랐든(최신 창) 서버가 실제로 쓴
    *  구간이 곧 이 값이다. */
@@ -857,27 +919,43 @@ export function PatternDrawer() {
         <RailState>차트에서 종목을 고르면 그 봉 패턴으로 찾는다.</RailState>
       ) : isError ? (
         <RailState tone="error">패턴 검색에 실패했다: {(error as Error)?.message ?? '알 수 없는 오류'}</RailState>
-      ) : isPending ? (
-        <RailState>찾는 중…</RailState>
-      ) : !result ? (
-        <RailState>
-          {seededRange
-            ? '그은 구간에 해당하는 일봉이 없다.'
-            : `이 종목은 ${length}봉을 채울 이력이 없다.`}
-        </RailState>
       ) : (
         <>
+          {/* ★ 조건 칩은 **결과 바깥**에 산다.
+              예전에는 결과 분기 안에 있어서, 검색이 비면 기간·봉단위·이평 칩이 통째로
+              언마운트됐다 — 조건을 되돌려야 하는 바로 그 순간에 되돌릴 수단이 사라지는
+              구조였다(조사 2026-09-04). 빈 결과의 넷 중 `no_candidates` 는 기간을
+              넓히면 풀리는데, 그 기간 칩이 없었다.
+              `isPending` 에도 그린다 — 조건을 바꿀 때마다 새 쿼리가 뜨므로, 여기서
+              감추면 칩이 매번 깜빡이고 팝오버가 닫힌다. */}
           <PatternConditionChips
             conditions={conditions}
             onChange={setConditions}
-            rows={result.matches}
-            p9999={result.dist.p99_99}
+            rows={result?.matches ?? NO_ROWS}
+            p9999={result?.dist.p99_99 ?? null}
             excluded={excluded}
             onRestore={(e) => commitExcluded(
               excluded.filter((x) => exclusionKey(x) !== exclusionKey(e)),
             )}
             onRestoreAll={() => commitExcluded([])}
           />
+          {isPending ? (
+            <RailState>찾는 중…</RailState>
+          ) : !result ? (
+            <RailState>
+              {emptyReasonText({
+                reason: data?.empty_reason ?? null,
+                seeded: seededRange != null,
+                length,
+                unit: TIMEFRAMES.find((f) => f.key === (data?.timeframe ?? conditions.timeframe))
+                  ?.label ?? '일봉',
+                coverage: data?.coverage_from && data?.coverage_to
+                  ? formatRange(data.coverage_from, data.coverage_to)
+                  : null,
+              })}
+            </RailState>
+          ) : (
+        <>
           <div className="px-md pb-xs pt-sm font-data text-2xs text-fg-dimmer">
             {mode === 'now'
               ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
@@ -961,6 +1039,8 @@ export function PatternDrawer() {
                 </span>
               </span>
             </div>
+          )}
+        </>
           )}
         </>
       )}

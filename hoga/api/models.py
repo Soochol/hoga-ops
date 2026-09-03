@@ -2019,6 +2019,26 @@ PatternMaPreset = Literal["off", "short", "mid"]
 #: `WIRE_ENUM_MIRRORS` 에 등록돼 있다.
 PatternTimeframe = Literal["D", "W", "M"]
 
+#: 결과가 **왜 비었는가**. `results` 가 빈 응답에만 실린다.
+#:
+#: 이 값이 없던 시절 프론트는 빈 응답 하나를 「그은 구간에 해당하는 일봉이 없다」로
+#: 번역했는데, 서버가 그 문장으로 답하는 경로는 **넷**이라 서로 다른 실패가 한 문장에
+#: 뭉쳤다(조사 2026-09-04). 특히 `window` 는 「차트엔 캔들이 보이는데 코퍼스는 그
+#: 종목의 그 시기를 안 담는다」인데, 그 사실을 화면이 말할 방법이 아예 없었다 —
+#: 사용자는 기간·모드·봉수를 아무리 바꿔도 같은 문장을 봤다.
+#:
+#: * `code_missing` — 코퍼스에 그 종목 계열이 없다. **드로어의 어떤 조작도 못 고친다.**
+#: * `window` — 요청한 구간/길이에 코퍼스 봉이 모자라거나(5 미만) 너무 많다(30 초과).
+#:   `coverage_from`/`coverage_to` 가 그 종목의 검색 가능 구간을 말한다.
+#: * `flat` — 쿼리 창이 평탄하거나 이평 워밍업이 안 찼다(`query_vector` → None).
+#:   둘은 서버에서 구별되지 않으므로 문구도 구별하지 않는다.
+#: * `no_candidates` — 비교할 후보 창이 하나도 안 남았다(기간·거래대금·forward 필터).
+#:   **기간을 넓히면 풀린다** — 넷 중 유일하게 조건으로 구제되는 값이다.
+#:
+#: ⚠ 값을 늘리면 프론트 union 도 **같은 PR 에서** 고친다(ADR-0004). 그 대조는
+#: `WIRE_ENUM_MIRRORS` 에 등록돼 있다.
+PatternEmptyReason = Literal["code_missing", "window", "flat", "no_candidates"]
+
 #: 봉 패턴 창의 길이 한계. 하한 5 는 사용자 요구("캔들 5~10개")의 최소이고, 상한 30 은
 #: 응답 시간을 바운드한다(history 는 길이당 ~0.4s).
 PATTERN_MIN_BARS = 5
@@ -2314,6 +2334,22 @@ class PatternSearchResponse(BaseModel):
     #: 눌렀을 때 착지할 창의 timeframe 이고, 저장에도 그대로 담긴다.
     timeframe: PatternTimeframe = "D"
     results: list[PatternLengthResult]
+    #: `results` 가 비었을 때 **왜** 비었는가. 결과가 있으면 `None` 이다.
+    #:
+    #: ⚠ `None` 과 부재를 구별할 필요가 없어 보이지만, 이 라우트에
+    #: `response_model_exclude_none` 을 걸면 안 된다 — 아래 커버리지의 `None` 이
+    #: 「그 종목이 코퍼스에 없다」는 **정보**이고, 지우면 「모른다」와 구별되지 않는다.
+    empty_reason: PatternEmptyReason | None = None
+    #: 이 종목이 코퍼스에서 **검색 가능한 구간**(YYYYMMDD). 종목이 코퍼스에 있으면
+    #: 결과 유무와 무관하게 늘 싣는다.
+    #:
+    #: 이게 이 응답에서 가장 값진 필드다: 차트가 읽는 벤더 일봉과 코퍼스의 종목별
+    #: 커버리지가 **다르다**(실측 2026-09-04 — 두산·CJ대한통운은 차트에 2019년 봉이
+    #: 보이는데 코퍼스는 2024-01-02 부터다. ETF 제외 2,794종목 중 2019년 이전 구간은
+    #: 48.2%가 이 상태). 화면이 그 경계를 말하지 못하면 사용자는 원인을 짚을 수 없다.
+    #: 코퍼스가 야간 갱신이라 **오늘 봉이 없는** 경우도 같은 문장이 설명한다.
+    coverage_from: str | None = Field(None, pattern=r"^\d{8}$")
+    coverage_to: str | None = Field(None, pattern=r"^\d{8}$")
 
 
 class SavedScreenersFile(BaseModel):

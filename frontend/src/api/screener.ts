@@ -179,6 +179,21 @@ export type PatternMaPreset = 'off' | 'short' | 'mid';
  *  ⚠ **부재는 `'D'`** 다 — 저장된 검색에 이 값이 없으면 일봉으로 읽어야 기존 저장이 산다. */
 export type PatternTimeframe = 'D' | 'W' | 'M';
 
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternEmptyReason`.
+ *
+ *  결과가 **왜 비었는가**. `results` 가 빈 응답에만 실린다.
+ *
+ *  이 값이 없던 시절 화면은 빈 응답 하나를 「그은 구간에 해당하는 일봉이 없다」로
+ *  번역했는데, 서버가 그 문장으로 답하는 경로는 **넷**이라 서로 다른 실패가 한 문장에
+ *  뭉쳤다(조사 2026-09-04). 넷 중 조건으로 풀리는 것은 `no_candidates` 하나뿐이다.
+ *
+ *  * `code_missing` — 코퍼스에 그 종목이 없다. **패널의 어떤 조작도 못 고친다.**
+ *  * `window` — 그 구간/길이에 코퍼스 봉이 모자라거나 너무 많다.
+ *    `coverage_from`/`coverage_to` 가 「그럼 어디를 그으면 되나」에 답한다.
+ *  * `flat` — 창이 평탄하거나 이평 워밍업이 안 찼다(서버에서 둘은 구별되지 않는다).
+ *  * `no_candidates` — 비교할 후보 창이 안 남았다. **기간을 넓히면 풀린다.** */
+export type PatternEmptyReason = 'code_missing' | 'window' | 'flat' | 'no_candidates';
+
 export interface PatternSearchRequest {
   code: string;
   mode: PatternSearchMode;
@@ -286,6 +301,14 @@ export interface PatternSearchResponse {
    *  착지할 창의 timeframe 이고, 저장에도 그대로 담긴다. */
   timeframe: PatternTimeframe;
   results: PatternLengthResult[];
+  /** `results` 가 비었을 때 **왜** 비었는가. 결과가 있으면 `null`. */
+  empty_reason: PatternEmptyReason | null;
+  /** 이 종목이 코퍼스에서 **검색 가능한 구간**(YYYYMMDD). 결과 유무와 무관하게 실린다.
+   *
+   *  ⚠ 차트가 읽는 벤더 일봉과 코퍼스의 **종목별 커버리지가 다르다** — 차트에 캔들이
+   *  보인다는 것이 「검색된다」의 근거가 못 된다. `null` 이면 그 종목이 코퍼스에 없다. */
+  coverage_from: string | null;
+  coverage_to: string | null;
 }
 
 export function searchPattern(body: PatternSearchRequest): Promise<PatternSearchResponse> {

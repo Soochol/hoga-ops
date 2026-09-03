@@ -79,7 +79,10 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
         {"length", "query", "ma_periods", "universe", "dist", "matches", "baseline",
          "partial_last_bucket_days", "elapsed_ms"}
     ),
-    "PatternSearchResponse": frozenset({"code", "name", "mode", "timeframe", "results"}),
+    "PatternSearchResponse": frozenset(
+        {"code", "name", "mode", "timeframe", "results",
+         "empty_reason", "coverage_from", "coverage_to"}
+    ),
     # 패턴 검색 저장. **불러오기가 조건을 통째로 복원**하므로 필드가 하나라도 조용히
     # 빠지면 "저장했는데 그 조건이 아니다" 가 된다.
     "PatternSaveWindow": frozenset({"kind", "bars", "from_date", "to_date"}),
@@ -266,6 +269,12 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     "PatternSaveKind": (
         frozenset(get_args(m.PatternSaveKind)),
+        "frontend/src/api/screener.ts",
+    ),
+    # 빈 결과의 **이유**. 값이 갈리면 프론트가 그 원인만 라벨을 못 찾아 **빈 화면에
+    # 아무 설명도 못 띄운다** — 이 필드가 생기기 전의 상태로 조용히 되돌아간다.
+    "PatternEmptyReason": (
+        frozenset(get_args(m.PatternEmptyReason)),
         "frontend/src/api/screener.ts",
     ),
     # 봉 단위. **부재가 `"D"`** 라 값이 갈리면 저장·착지가 조용히 일봉으로 떨어진다.

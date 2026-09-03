@@ -216,12 +216,21 @@ beforeEach(() => {
   usePatternQueryStore.setState({ pending: null });
   searchPattern.mockImplementation(async (body) =>
     body.mode === 'history'
-      ? { code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
+      ? { ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
           results: [lengthResult(body.lengths[0], 'SK하이닉스', { history: true })] }
-      : { code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      : { ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
           results: body.lengths.map((n) => lengthResult(n, `길이${n}위`)) },
   );
 });
+
+/** 응답의 **비-결과 필드** 기본값. `empty_reason`/`coverage_*` 는 wire 필수라
+ *  픽스처마다 적으면 새 필드가 늘 때 흩어진다 — 한 곳에서 채우고 필요한 테스트만
+ *  덮어쓴다. 커버리지 값은 「그은 구간이 그 안」이 되도록 넓게 잡는다. */
+const RESP_BASE = {
+  empty_reason: null,
+  coverage_from: '19990104',
+  coverage_to: '20260903',
+} satisfies Partial<PatternSearchResponse>;
 
 describe('PatternDrawer', () => {
   /** 「길이 고정」으로 되돌린다 — 공장값이 ±2봉이라 스크럽 전제가 **기본 상태에서는
@@ -334,7 +343,7 @@ describe('PatternDrawer', () => {
 describe('PatternDrawer — 빈 상태', () => {
   it('매치가 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
       results: [{ ...lengthResult(7, 'x'), matches: [] }],
     });
     renderDrawer();
@@ -345,10 +354,91 @@ describe('PatternDrawer — 빈 상태', () => {
 
   it('그 봉수를 채울 이력이 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D', results: [],
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      results: [], empty_reason: 'window',
     });
     renderDrawer();
     expect(await screen.findByText(/7봉을 채울 이력이 없다/)).toBeInTheDocument();
+  });
+
+  /**
+   * 빈 결과의 **원인별 문구** — 서버 `empty_reason` 의 값 넷을 전수로 건다.
+   *
+   * 왜 전수인가: 넷이 한 문장으로 뭉쳐 있던 것이 이 PR 이 고친 결함이다. 한둘만
+   * 걸어 두면 새 값이 늘 때 다시 뭉치는 방향으로 조용히 돌아간다.
+   */
+  it.each([
+    ['code_missing', /패턴 코퍼스에 없다/],
+    ['flat', /평탄하거나 이평 워밍업이 모자라/],
+    ['no_candidates', /후보 구간이 하나도 없다/],
+  ] as const)('빈 이유 %s 를 그 원인으로 말한다', async (reason, re) => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      results: [], empty_reason: reason,
+    });
+    renderDrawer();
+    expect(await screen.findByText(re)).toBeInTheDocument();
+  });
+
+  /**
+   * ★ **이 PR 의 핵심 단언.**
+   *
+   * 조건 칩이 결과 분기 **안쪽**에 있던 시절, 검색이 비면 기간 칩이 통째로 사라졌다 —
+   * 조건을 되돌려야 하는 바로 그 순간에 되돌릴 수단이 없어지는 구조였다. 문구만
+   * 검사하는 테스트는 이 회귀를 **원리적으로 못 본다**(문구는 그대로 나오니까).
+   */
+  it('결과가 비어도 조건 칩은 남는다 — 기간을 되돌릴 수단이 사라지면 안 된다', async () => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      results: [], empty_reason: 'no_candidates',
+    });
+    renderDrawer();
+    await screen.findByText(/후보 구간이 하나도 없다/);
+    // 기간·봉단위·이평 — 빈 결과를 되살릴 수 있는 **서버 조건** 셋이 다 있어야 한다.
+    expect(screen.getByText('최근 1년')).toBeInTheDocument();
+    expect(screen.getByText('일봉')).toBeInTheDocument();
+    expect(screen.getByText('단기 5·20')).toBeInTheDocument();   // 공장값이 켜짐이다
+  });
+
+  /**
+   * `window` 는 **구간을 그었느냐에 따라 뜻이 다르다** — 그래서 문구 키가
+   * `(reason, 구간 유무)` 다. 그은 경우엔 커버리지가 「그럼 어디를 그으면 되나」에
+   * 답해야 한다: 차트가 읽는 벤더 일봉과 코퍼스의 종목별 커버리지가 달라서
+   * (실측: 두산은 차트에 2019년 봉이 보이는데 코퍼스는 2024-01-02 부터),
+   * 그 구간만이 「캔들이 보이는데 왜」에 답할 수 있다.
+   */
+  it('그은 구간이 코퍼스 밖이면 검색 가능한 구간을 알려 준다', async () => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '000150', name: '두산', mode: 'history', timeframe: 'D',
+      results: [], empty_reason: 'window',
+      coverage_from: '20240102', coverage_to: '20260903',
+    });
+    usePatternQueryStore.getState().requestPatternSearch({
+      code: '000150', from: '20190107', to: '20190114', timeframe: 'D',
+    });
+    renderDrawer();
+    const state = await screen.findByText(/검색 가능한 구간은/);
+    expect(state).toHaveTextContent('2024-01-02 ~ 2026-09-03');
+  });
+
+  /**
+   * ★ 길이 유연에서 **기준 길이만 빠진** 응답 — 있는 결과를 감추면 안 된다.
+   *
+   * 서버는 길이별로 독립해서 답하므로 기준 7봉만 후보가 0 일 수 있다(실측 2026-09-04:
+   * 두산 월봉 ±2봉이 5·6·8·9 만 돌려줬다). `resultForLength` 가 그때 null 을 내는데,
+   * 렌더가 그 null 로 「이력이 없다」를 그리면 **이웃 길이의 매치가 통째로 사라진다**.
+   * 공장값이 ±2봉이라 이게 기본 경로다.
+   */
+  it('길이 유연에서 기준 봉수만 빠져도 이웃 길이의 매치를 그린다', async () => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
+      // 기준 7봉이 **없다** — 5·9 만 왔다.
+      results: [lengthResult(5, '이웃5', { history: true }),
+                lengthResult(9, '이웃9', { history: true })],
+    });
+    renderDrawer();
+    expect(await screen.findByText('이웃5')).toBeInTheDocument();
+    expect(screen.queryByText(/이력이 없다/)).not.toBeInTheDocument();
   });
 
   it('검색이 실패하면 조용히 비우지 않고 알린다', async () => {
@@ -632,7 +722,7 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     // 목록을 따로 세워야 이 문구가 나오는 조건이 만들어진다.
     const low = lengthResult(7, 'SK하이닉스', { history: true });
     searchPattern.mockResolvedValue({
-      code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
       results: [{ ...low, matches: low.matches.map((m) => ({ ...m, corr: 0.9 })) }],
     });
     renderDrawer();
@@ -1063,7 +1153,8 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
    */
   beforeEach(() => {
     searchPattern.mockImplementation(async () => ({
-      code: '005930', name: '삼성전자', mode: 'history' as const, timeframe: 'D' as const,
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const,
+      timeframe: 'D' as const,
       results: [
         lengthResult(6, 'SK하이닉스', { history: true }),
         lengthResult(7, 'SK하이닉스', { history: true }),
@@ -1108,7 +1199,7 @@ describe('봉 단위', () => {
       code: '005930', label: '삼성전자', from: '20260401', to: '20260630', timeframe: 'W',
     });
     renderDrawer();
-    await screen.findByText(/SK하이닉스|길이/);
+    await screen.findByText(/SK하이닉스|길이\d+위/);
     expect(searchPattern).toHaveBeenCalledWith(
       expect.objectContaining({ timeframe: 'W' }),
     );
@@ -1119,7 +1210,7 @@ describe('봉 단위', () => {
       code: '005930', from: '20260401', to: '20260630', timeframe: 'D',
     });
     renderDrawer();
-    await screen.findByText(/SK하이닉스|길이/);
+    await screen.findByText(/SK하이닉스|길이\d+위/);
     expect(searchPattern).toHaveBeenCalledWith(
       expect.objectContaining({ timeframe: 'D' }),
     );
@@ -1132,7 +1223,7 @@ describe('봉 단위', () => {
       code: '005930', from: '20260401', to: '20260630', timeframe: 'W',
     });
     renderDrawer();
-    await screen.findByText(/SK하이닉스|길이/);
+    await screen.findByText(/SK하이닉스|길이\d+위/);
     expect(searchPattern).toHaveBeenCalledWith(
       expect.objectContaining({ timeframe: 'W', forward_days: 8 }),
     );
