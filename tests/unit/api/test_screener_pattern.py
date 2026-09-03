@@ -1184,6 +1184,10 @@ def test_partial_asks_a_different_question_per_timeframe(tmp_path):
     # 주봉 — 마지막 주가 3일뿐이다(수요일에 검색한 셈).
     weekly_days = _week_days(8)[:-2]
     assert _ask_partial(_partial_client(tmp_path / "w", weekly_days), "W") == 3
+    # ★ **대조군** — 5일을 채운 주가 마지막이면 완성이다. 달력으로 물었다면 거래일이
+    #   금요일까지뿐이라 일요일에 못 닿아 **이것도 미완성**이 된다. 이 단언이 없으면
+    #   두 판정이 같은 답을 내는 입력만 재는 셈이라 red-check 이 죽는다.
+    assert _ask_partial(_partial_client(tmp_path / "full", _week_days(8)), "W") is None
     # 같은 코퍼스의 일봉은 「미완성」이라는 개념 자체가 없다.
     assert _ask_partial(_partial_client(tmp_path / "w2", weekly_days), "D") is None
 
