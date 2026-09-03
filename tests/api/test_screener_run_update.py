@@ -133,3 +133,78 @@ async def test_run_update_leaves_dropped_day_as_gap_for_retry(tmp_path):
     assert n == 0, "부실한 날은 추가된 거래일로 세지 않는다"
     # last_raw_date 가 6/17 에 머물러야 다음 갱신이 6/18 을 갭으로 다시 잡는다.
     assert screener_store.last_raw_date(sd / "daily_unadjusted.parquet") == "20260617"
+
+
+# ── 종목 fetch 실패 — 배치 전멸 금지 + 부분 커밋 금지 ─────────────────────────
+#
+# 2026-09-03 사고: `ka10081` 이 종목 하나에 `1700`(유량 초과)을 돌려줬는데
+# `asyncio.gather` 에 `return_exceptions` 가 없어 **4,330 종목 배치가 통째로** 죽었다.
+# 게다가 gather 는 형제를 취소하지 않아 "실패" 후에도 고아 fetch 가 3분간 계속 돌며
+# 같은 유량을 갉아먹었다.
+#
+# 고치는 방향이 둘로 갈린다는 점이 중요하다. 실패를 **그냥 skip** 하면 배치는 살지만
+# 그날이 부분 저장되고, `last_raw_date` 가 그 날짜를 넘어가 빠진 종목이 **영구 구멍**이
+# 된다(`drop_unconfirmed_days` 가 봉인한 "한 번 저장되면 영원히 안 고쳐진다"와 같은
+# 실패 모드). 그래서 계약은 **1회 재시도 + 그래도 실패면 날짜 통째로 보류**다.
+
+def _seed_one_day(tmp_path):
+    """5/13 한 줄이 이미 있는 코퍼스."""
+    sd = tmp_path / "screener"; sd.mkdir()
+    pl.DataFrame({"code": ["000001"], "date": ["2026-05-13"], "open": [1.0], "high": [1.0],
+        "low": [1.0], "close": [1.0], "volume": [1]}).with_columns(
+        pl.col("date").str.to_date()).write_parquet(sd / "daily_unadjusted.parquet")
+    return sd
+
+
+def _bar(code: str) -> DailyBar:
+    return DailyBar(code=code, date=dt.date(2026, 5, 14),
+                    open=2.0, high=2.0, low=2.0, close=2.0, volume=2)
+
+
+@pytest.mark.asyncio
+async def test_run_update_retries_a_failed_code_and_commits_every_row(tmp_path):
+    """종목 하나가 한 번 실패해도 배치가 죽지 않고 **재시도로 온전히** 커밋된다."""
+    sd = _seed_one_day(tmp_path)
+    attempts: dict[str, int] = {}
+
+    async def flaky(code, frm, to) -> list[DailyBar]:
+        attempts[code] = attempts.get(code, 0) + 1
+        if code == "000002" and attempts[code] == 1:
+            raise RuntimeError("유량 초과[1700]")
+        return [_bar(code)]
+
+    n = await screener_store.run_update(
+        sd, codes=["000001", "000002"], fetch_one=flaky,
+        trading_days=["20260514"], now_ms=100)
+
+    assert n == 1
+    assert attempts["000002"] == 2, "실패한 종목은 1회 재시도해야 한다"
+    assert attempts["000001"] == 1, "성공한 종목을 다시 부르면 유량 낭비다"
+    saved = pl.read_parquet(sd / "daily_unadjusted.parquet")
+    got = set(saved.filter(pl.col("date") == dt.date(2026, 5, 14))["code"].to_list())
+    assert got == {"000001", "000002"}, f"재시도분까지 저장돼야 한다 — got {got}"
+
+
+@pytest.mark.asyncio
+async def test_run_update_refuses_partial_commit_when_a_code_keeps_failing(tmp_path):
+    """끝까지 실패하는 종목이 있으면 **그날을 통째로 보류**한다(부분 커밋 금지).
+
+    저장하지 않으면 `last_raw_date` 가 그 날짜를 넘지 않으므로 갭으로 남아 다음 갱신이
+    자동 재시도한다 — `drop_unconfirmed_days` 와 같은 계약이다.
+    """
+    sd = _seed_one_day(tmp_path)
+    before = pl.read_parquet(sd / "daily_unadjusted.parquet")
+
+    async def one_always_fails(code, frm, to) -> list[DailyBar]:
+        if code == "000002":
+            raise RuntimeError("유량 초과[1700]")
+        return [_bar(code)]
+
+    with pytest.raises(RuntimeError, match="fetch 실패"):
+        await screener_store.run_update(
+            sd, codes=["000001", "000002"], fetch_one=one_always_fails,
+            trading_days=["20260514"], now_ms=100)
+
+    after = pl.read_parquet(sd / "daily_unadjusted.parquet")
+    assert after.equals(before), "부분 커밋 금지 — 파케이가 그대로여야 한다"
+    assert not (sd / "status.json").exists(), "status 도 전진하면 안 된다"

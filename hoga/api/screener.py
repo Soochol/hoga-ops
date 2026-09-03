@@ -261,7 +261,9 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
                 return await fetch_one(c, f, t)
             finally:
                 if _progress is not None:
-                    _progress.done += 1
+                    # `run_update` 의 재시도 패스가 같은 종목을 다시 세므로 total 에서
+                    # 멈춘다 — 안 그러면 진행바가 100% 를 넘어 보인다.
+                    _progress.done = min(_progress.done + 1, total)
                     now_mono = time.monotonic()
                     if bus is not None and (
                             now_mono - last_pub >= _PROGRESS_MIN_INTERVAL_S

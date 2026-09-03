@@ -322,19 +322,79 @@ def drop_unconfirmed_days(rows: list[DailyBar]) -> tuple[list[DailyBar], list[dt
     return kept, dropped
 
 
+#: 끝까지 실패한 종목이 있을 때 **그날을 보류**하기 전에 주는 재시도 패스 수.
+#:
+#: 1회인 이유: 유량 초과(`1700`)는 거버너가 버킷에 페널티를 물린 **직후** 대개 풀린다.
+#: 더 돌려 봐야 진짜로 고착된 실패에 벤더를 계속 때리기만 하고, 보류는 갭으로 남아
+#: 다음 갱신이 어차피 재시도한다.
+_FETCH_RETRY_PASSES = 1
+
+
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
                      trading_days: list[str], now_ms: int) -> int:
     """gap 거래일 행을 await fetch_one 으로 모아 append→derive→status. 실제로 추가된
     거래일 수(append 된 행의 distinct date) 반환 — 상류가 갭 일부만 반환해도 요청
     거래일 수(len(trading_days))로 과대보고하지 않는다. fetch 는 세마포어로 제한한
-    동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡)."""
+    동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡).
+
+    **종목 하나의 실패가 배치를 죽이지 않는다 — 그러나 부분 커밋도 하지 않는다.**
+
+    2026-09-03 사고: `ka10081` 이 종목 하나에 `1700`(유량 초과)을 돌려줬는데 `gather`
+    에 `return_exceptions` 가 없어 4,330 종목 배치가 통째로 죽었다. 게다가 gather 는
+    형제를 **취소하지 않으므로** "실패" 뒤에도 고아 fetch 가 3분간 계속 돌며 같은 유량을
+    갉아먹었다(로그 실측: 실패 시각 이후에도 경고가 계속 찍혔다).
+
+    고치는 방향이 둘로 갈리는데 **순진한 종목별 skip 은 답이 아니다.** 실패를 건너뛰고
+    저장하면 `last_raw_date` 가 그 날짜를 넘어가 빠진 종목이 **영구 구멍**이 된다 —
+    :func:`drop_unconfirmed_days` 가 봉인한 "한 번 저장되면 영원히 안 고쳐진다"와 정확히
+    같은 실패 모드이고, 빠진 것은 행이 **없는** 것이라 거래량 가드도 못 본다.
+
+    그래서 계약은 **1회 재시도 + 그래도 실패면 그 날짜를 통째로 보류**다. 보류는
+    갭으로 남으므로 다음 갱신이 자동 재시도한다 — `drop_unconfirmed_days` 와 같은 계약.
+    """
     sem = asyncio.Semaphore(fetch_concurrency_from_env())
 
     async def _one(code: str) -> list[DailyBar]:
         async with sem:
             return await fetch_one(code, trading_days[0], trading_days[-1])
 
-    fetched = await asyncio.gather(*(_one(c) for c in codes))
+    async def _pass(targets: list[str],
+                    into: list[list[DailyBar]]) -> list[tuple[str, Exception]]:
+        """`targets` 를 **끝까지** 돌리고 성공분은 `into` 에, 실패분만 반환.
+
+        `return_exceptions=True` 가 요점이다 — 없으면 첫 실패가 즉시 올라오는데 형제
+        태스크는 취소되지도 않은 채 계속 돌아 고아가 된다.
+        """
+        results = await asyncio.gather(
+            *(_one(c) for c in targets), return_exceptions=True)
+        failed: list[tuple[str, Exception]] = []
+        for code, res in zip(targets, results, strict=True):
+            if isinstance(res, Exception):
+                failed.append((code, res))
+            elif isinstance(res, BaseException):
+                raise res          # CancelledError 등 흐름 제어는 삼키지 않는다
+            else:
+                into.append(res)
+        return failed
+
+    fetched: list[list[DailyBar]] = []
+    failed = await _pass(codes, fetched)
+    for _ in range(_FETCH_RETRY_PASSES):
+        if not failed:
+            break
+        log.warning(
+            "screener.update.fetch_retry codes=%d/%d 예=%s (%s) — 재시도한다",
+            len(failed), len(codes), [c for c, _ in failed[:5]], failed[0][1])
+        failed = await _pass([c for c, _ in failed], fetched)
+    if failed:
+        log.error(
+            "screener.update.fetch_failed codes=%d/%d 예=%s (%s) — 부분 저장하면 그 종목이 "
+            "영구 구멍이 되므로 이 날짜를 통째로 보류한다(다음 갱신이 재시도).",
+            len(failed), len(codes), [c for c, _ in failed[:5]], failed[0][1])
+        raise RuntimeError(
+            f"{len(failed)}/{len(codes)} 종목 fetch 실패 — 부분 커밋을 피해 보류"
+        ) from failed[0][1]
+
     rows: list[DailyBar] = [b for batch in fetched for b in batch]
     # 저장 **전에** 응답을 검증한다 — 요청 범위를 좁히는 것만으로는 상류가 실어 보내는
     # 미확정 봉을 못 막는다(`drop_unconfirmed_days` 의 2026-06-18 사고 참조).
