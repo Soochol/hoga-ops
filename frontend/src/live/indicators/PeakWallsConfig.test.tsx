@@ -263,6 +263,46 @@ describe('PeakWallsConfig — 파이프라인의 스코프 문법', () => {
   });
 
   /**
+   * **방향이 꺼진 계열은 pane 에 없다** — 그 계단은 pane 이 살아 있어도(반대 방향
+   * 덕에) 그려지지 않는다(`peakWallPaneHasContent`). 스위치의 뜻이 「지금 pane 에
+   * 그려지고 있는가」이므로 곱은 **마스터 × 슬롯 × 방향** 세 항이다.
+   *
+   * **막는 방향**: 방향 항이 빠져 지표를 끈 뒤에도 스위치가 켜진 채로 남는 것 —
+   * 2026-08-27 에 닫은 「켜져 있는데 pane 이 없는 스위치」가 그대로 재발한다.
+   */
+  it('방향이 꺼지면 그 계열의 pane 스위치와 요약에서 빠진다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: true, askPeakEnabled: false });
+    render(<PeakWallsConfig />);
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled').getAttribute('aria-checked'))
+      .toBe('false');
+    const summary = screen.getByTestId('peak-wall-pane-summary').textContent ?? '';
+    expect(summary).not.toContain('매도 체결된 벽');
+    // 살아 있는 반대 방향은 그대로 센다 — pane 은 둘이 공유하는 하나다.
+    expect(summary).toContain('매수 체결된 벽');
+  });
+
+  /**
+   * 그 상태에서 누르면 **방향도 함께 열린다**. 스위치 이름이 「pane 에 추가」이므로
+   * 켰는데 아무 일도 안 일어나는 상태가 있으면 안 된다 — 계단이 방향으로도
+   * 게이트되기 때문이다(`setPeakWallPaneSlotEnabled`).
+   *
+   * **막는 방향**: 결합이 빠져 스위치가 죽는 것(누르면 aria-checked 만 켜지고
+   * 화면은 그대로).
+   */
+  it('방향이 꺼진 계열의 pane 스위치를 누르면 방향도 함께 켜진다', () => {
+    useLivePageStore.setState({ peakWallPaneEnabled: true, askPeakEnabled: false });
+    render(<PeakWallsConfig />);
+    fireEvent.click(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled'));
+
+    const after = useLivePageStore.getState();
+    expect(after.askPeakEnabled).toBe(true);
+    expect(after.askPeakHidden).toBe(false);
+    expect(after.askPeakTradedPaneEnabled).toBe(true);
+    expect(screen.getByTestId('settings-toggle-askPeakTradedPaneEnabled').getAttribute('aria-checked'))
+      .toBe('true');
+  });
+
+  /**
    * **닫혀 있던 pane 을 여는 클릭은 그 칸 하나만 넣는다.**
    *
    * 공장값이 양방향 체결된 벽 슬롯을 켜 둔 채라, 마스터만 열면 「미도달 벽 하나를 켰는데

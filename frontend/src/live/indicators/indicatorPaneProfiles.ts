@@ -96,9 +96,21 @@ export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPa
   };
 }
 
-/** resolve 된 pane 토글에 차트 국지 override 를 얹어 PaneToggles 를 만든다. */
+/**
+ * resolve 된 pane 토글에 차트 국지 override 를 얹어 PaneToggles 를 만든다.
+ *
+ * ⚠ `peakWallPaneEnabled` 만 **저장값 그대로가 아니다**. 그 pane 의 마운트 조건은
+ * 마스터가 아니라 「그릴 것이 있는가」이고(`peakWallPaneHasContent`), 그 곱을 여기서
+ * 접어 넘긴다 — 게이트(`paneSpecsForTimeframe`)는 계속 불리언 하나만 읽는다.
+ *
+ * 곱을 게이트가 아니라 여기서 접는 이유: 게이트의 계약은 「토글 in → pane out」이고,
+ * 거기에 지표 필드 8개를 밀어 넣으면 `PaneToggles` 가 지표 스토어의 부분 사본이 된다.
+ * 판정 자체는 `peakWallPaneHasContent` 가 단독으로 소유하고, 호출자는 그 결과만 준다.
+ */
 export function resolvePaneToggles(input: {
   indicators: PanePrefsIndicatorSource;
+  /** `peakWallPaneHasContent(지표설정)` 의 결과 — 마스터와 **곱해진다**. */
+  peakWallPaneHasContent: boolean;
   forceHogaPanes?: boolean;
   hogaPanes?: boolean;
   override?: Partial<PaneToggles>;
@@ -112,7 +124,7 @@ export function resolvePaneToggles(input: {
     ratioEnabled: prefs.ratioEnabled,
     fillStrengthEnabled: prefs.fillStrengthEnabled,
     programTradeEnabled: prefs.programTradeEnabled,
-    peakWallPaneEnabled: prefs.peakWallPaneEnabled,
+    peakWallPaneEnabled: prefs.peakWallPaneEnabled && input.peakWallPaneHasContent,
     hogaPanes: input.hogaPanes,
     forceHogaPanes: input.forceHogaPanes,
     ...input.override,
