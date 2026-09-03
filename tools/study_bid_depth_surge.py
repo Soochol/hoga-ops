@@ -17,6 +17,9 @@
 ``--index-json-dir`` 에는 ``index_KOSPI.json`` / ``index_KOSDAQ.json`` 이 있어야 한다 —
 사용자 dev 서버의 ``GET /api/live/index-candles?index_id=KOSPI&timeframe=D&from=..&to=..``
 응답을 그대로 저장한 것이다(워크트리 백엔드는 무자격이라 지수 일봉을 못 받는다).
+
+:func:`build_dataset` 은 이벤트·기준군 추출까지를 담당하고, 후속 스터디
+(`tools/study_bid_wall_shakeout.py`)가 같은 이벤트 집합 위에서 돌 수 있도록 분리돼 있다.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ import argparse
 import datetime as dt
 import json
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -59,8 +63,9 @@ def load_stocks(data_dir: Path) -> pl.DataFrame:
     return pl.read_parquet(data_dir / "screener" / "stocks.parquet").select("code", "name", "market", "is_etf")
 
 
-def load_daily(data_dir: Path, *, since: dt.date) -> pl.DataFrame:
-    df = pl.read_parquet(data_dir / "screener" / "daily_adjusted.parquet")
+def load_daily(data_dir: Path, *, since: dt.date, adjusted: bool = True) -> pl.DataFrame:
+    name = "daily_adjusted.parquet" if adjusted else "daily_unadjusted.parquet"
+    df = pl.read_parquet(data_dir / "screener" / name)
     df = df.filter(
         (pl.col("date") >= since) & pl.col("code").str.contains(r"^[0-9]{6}$"),
     )
@@ -280,10 +285,26 @@ def conditional(ev: pl.DataFrame, bl: pl.DataFrame, by: str, cols: tuple[str, ..
     return res
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────────
+# ── 데이터셋 조립 ─────────────────────────────────────────────────────────────
 
-def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립점
-    ap = argparse.ArgumentParser()
+@dataclass
+class Dataset:
+    """이벤트·기준군과 그것을 만든 재료. 후속 스터디가 같은 집합 위에서 돌기 위한 묶음."""
+    stocks: pl.DataFrame
+    corpus: list[str]
+    feats: pl.DataFrame           # 일봉 피처(d8 = YYYYMMDD 문자열 열 포함)
+    dd: pl.DataFrame              # depth_daily (fallback 적용)
+    ix: pl.DataFrame              # 지수 피처(market, d8)
+    table: pl.DataFrame           # 판정 가능한 (code, D) 전체(가드 통과분)
+    events: pl.DataFrame          # 쿨다운 후 이벤트
+    events_fallback: pl.DataFrame
+    base: pl.DataFrame            # 기준군
+    base_same_stock: pl.DataFrame
+    leaders_user: set[str]
+    guards: dict[str, int]
+
+
+def add_parser_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--data-dir", type=Path, required=True)
     ap.add_argument("--index-json-dir", type=Path, required=True)
     ap.add_argument("--out-dir", type=Path, required=True)
@@ -294,10 +315,9 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
     ap.add_argument("--min-have-days", type=int, default=9)
     ap.add_argument("--min-eligible", type=int, default=1000)
     ap.add_argument("--cooldown", type=int, default=10)
-    args = ap.parse_args()
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(SEED)
 
+
+def build_dataset(args: argparse.Namespace) -> Dataset:
     stocks = load_stocks(args.data_dir)
     daily = load_daily(args.data_dir, since=dt.date(2024, 6, 1))
     corpus = sorted(daily["date"].unique().dt.strftime("%Y%m%d").to_list())
@@ -392,6 +412,26 @@ def main() -> None:  # noqa: PLR0915 — 스터디 스크립트의 단일 조립
           .when(pl.col("peak_tod") < "14:00").then(pl.lit("12:00–14:00"))
           .otherwise(pl.lit("14:00–15:30")).alias("peak_tod_bucket"),
     )
+    return Dataset(
+        stocks=stocks, corpus=corpus, feats=feats, dd=dd, ix=ix, table=table, events=events,
+        events_fallback=events_fallback, base=base, base_same_stock=base_same_stock,
+        leaders_user=leaders_user, guards=guards,
+    )
+
+
+# ── 메인 ─────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    add_parser_args(ap)
+    args = ap.parse_args()
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(SEED)
+
+    ds = build_dataset(args)
+    events, base, base_same_stock, events_fallback = ds.events, ds.base, ds.base_same_stock, ds.events_fallback
+    table, corpus, dd, stocks, feats, ix, guards = ds.table, ds.corpus, ds.dd, ds.stocks, ds.feats, ds.ix, ds.guards
+    leaders_user = ds.leaders_user
 
     print("== guards")
     for k, v in guards.items():
