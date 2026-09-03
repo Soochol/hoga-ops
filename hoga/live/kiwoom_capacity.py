@@ -100,12 +100,24 @@ class _TokenBucket:
         self._next_at = 0.0
 
     async def acquire(self) -> None:
+        """다음 슬롯을 **예약한 뒤** 그 시각까지 잔다.
+
+        예약이 `await` **앞**에 있는 것이 요점이다. 뒤에 두면 동시 대기자 전원이 같은
+        `_next_at` 을 읽고 같은 시각에 깨어 **한꺼번에** 발사한다 — 게이트가 평균만
+        지키고 순간 버스트를 전혀 막지 못한다. 실측(2026-09-03): 워커 4개에서 슬라이딩
+        1초에 **7건**이 나가 키움 유량 5건을 넘었고, `ka10081` 이 `1700` 을 돌려주며
+        스크리너 갱신이 통째로 죽었다.
+
+        **`_HEADROOM` 은 이 문제의 지렛대가 아니다.** 헤드룸은 간격을 넓혀 평균을
+        낮출 뿐이고, 여기서 새던 것은 평균이 아니라 **동시 통과**다.
+
+        읽기~쓰기 사이에 `await` 가 없어 원자적이다(단일 이벤트 루프 전제).
+        """
         now = time.monotonic()
-        wait = self._next_at - now
-        if wait > 0:
-            await asyncio.sleep(wait)
-            now = time.monotonic()
-        self._next_at = max(now, self._next_at) + self._interval
+        slot = max(now, self._next_at)
+        self._next_at = slot + self._interval   # 예약을 **먼저** 확정한다
+        if slot > now:
+            await asyncio.sleep(slot - now)
 
     def available_at(self) -> float:
         """다음 발사가 가능한 시각(monotonic). 계정 선택의 정렬 키다 — 429 로
