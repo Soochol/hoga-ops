@@ -33,6 +33,7 @@ import {
   type PatternConditions,
   defaultConditionsFor,
   TIMEFRAMES,
+  structRemaining,
 } from './patternConditions';
 import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import type {
@@ -324,6 +325,7 @@ function MatchRow({
   selected = false,
   lengthBadge = null,
   maPeriods = [],
+  structTotal = null,
 }: {
   row: PatternMatchRow;
   mode: PatternSearchMode;
@@ -344,8 +346,15 @@ function MatchRow({
   lengthBadge?: number | null;
   /** 이평 프리셋의 기간들. 썸네일이 그 선을 함께 그려야 왜 매치됐는지 보인다. */
   maPeriods?: number[];
+  /** 구조 게이트의 관계 총수 — 행의 `struct_match` 의 분모. 게이트를 켠 응답에만 있다. */
+  structTotal?: number | null;
 }) {
   const forward = row.forward_pct;
+  // 배지는 **데이터가 있을 때만** — 서버가 서명을 계산한 응답(게이트 켬)에만 값이 실린다.
+  // 캐시 키에 단계가 들어 있어 「칩은 껐는데 옛 응답의 배지」는 생기지 않는다.
+  const structBadge = row.struct_match != null && structTotal != null
+    ? `${row.struct_match}/${structTotal}`
+    : null;
   return (
     // ⚠ `<button>` 이 아니라 `role="button"` 인 div 다. 원래 근거는 「안에 ⋯ 버튼이 있어
     //   버튼 중첩을 못 한다」였고 그 버튼은 사라졌지만, 형태는 `QuoteRow`(li + role)와
@@ -401,8 +410,18 @@ function MatchRow({
         <span className="block truncate font-data text-2xs text-fg-dimmer">
           {mode === 'history' ? formatRange(row.from_date, row.to_date) : row.code}
           {lengthBadge != null && (
-            <span className="ml-1.5 rounded-full border border-border px-1 text-[9px] text-fg-dim">
+            <span className="ml-1.5 rounded-full border border-border px-1 text-badge text-fg-dim">
               {lengthBadge}봉으로
+            </span>
+          )}
+          {/* 「20/20」 — 몇 개 관계가 맞았나. 허용을 열면 19/20 같은 부분 일치가 섞이는데,
+              그 행이 왜 여기 있는지를 숫자가 말한다(어느 관계가 틀렸는지는 다음 단계). */}
+          {structBadge != null && (
+            <span
+              className="ml-1.5 rounded-full border border-border px-1 text-badge text-fg-dim"
+              data-testid="pattern-struct-badge"
+            >
+              {structBadge}
             </span>
           )}
         </span>
@@ -575,6 +594,19 @@ export function PatternDrawer() {
     }));
   }, [data, result, conditions, excludedKeys]);
   const summary = useMemo(() => (result ? matchSummary(result.matches) : null), [result]);
+  /** 게이트를 켠 응답에서 「이 단계를 통과한 후보창 수」. 서버 히스토그램(게이트 전
+   *  모집단)의 꼬리 합이라 재검색 없이 나온다. 꺼져 있거나 옛 응답이면 null. */
+  const structPassing = useMemo(
+    () => (result && conditions.structTolerance !== null
+      ? structRemaining(result.struct_hist, result.struct_total, conditions.structTolerance)
+      : null),
+    [result, conditions.structTolerance],
+  );
+  /** 길이 → 관계 총수. 유연 병합은 길이별 블록의 행이 섞이므로 분모도 길이별이다. */
+  const structTotalByLength = useMemo(
+    () => new Map((data?.results ?? []).map((r) => [r.length, r.struct_total] as const)),
+    [data],
+  );
 
   /**
    * 저장 불러오기 — 드로어의 **세 번째 시드 경로**다(패널 열림 · measure 시드 다음).
@@ -1011,9 +1043,17 @@ export function PatternDrawer() {
           ) : (
         <>
           <div className="px-md pb-xs pt-sm font-data text-2xs text-fg-dimmer">
+            {/* 게이트가 켜졌으면 분모는 **구조 일치 수**다 — `dist.sample` 은 게이트 전
+                모집단이라(길이 유연 병합의 전제) 그대로 쓰면 「71만 중 20개」가 되어
+                게이트가 한 일이 화면에서 사라진다. `now` 는 `universe` 가 이미 통과한
+                종목 수라 모집단을 앞에 둔다. */}
             {mode === 'now'
-              ? `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
-              : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
+              ? structPassing != null
+                ? `${result.dist.sample.toLocaleString()}종목 중 구조 일치 ${result.universe.toLocaleString()}종목 · ${Math.round(result.elapsed_ms)}ms`
+                : `${result.universe.toLocaleString()}종목 비교 · ${Math.round(result.elapsed_ms)}ms`
+              : structPassing != null
+                ? `구조 일치 ${structPassing.toLocaleString()}개 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`
+                : `${result.dist.sample.toLocaleString()}개 구간 중 ${shown.length}개 · ${Math.round(result.elapsed_ms)}ms`}
             {/* 마지막 봉이 **미완성**이면 그 사실을 적는다 — 경고가 아니라 사실이다.
                 화면이 그 봉을 그리므로 검색도 담지만, 모든 매치의 마지막 봉이 같은
                 방식으로 왜곡된 채 비교된다(실측: 포함/제외로 top20 이 10~16/20 만 겹친다). */}
@@ -1054,6 +1094,7 @@ export function PatternDrawer() {
                   // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
+                  structTotal={structTotalByLength.get(matchLen) ?? null}
                   maPeriods={result.ma_periods}
                 />
                 );

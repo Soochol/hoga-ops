@@ -1059,6 +1059,74 @@ describe('PatternDrawer — 구조 게이트', () => {
     await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
     expect(createPatternSave.mock.calls.at(-1)![0].conditions.struct_tolerance).toBe(1);
   });
+
+  /** 게이트를 켠 응답 — 서버가 서명을 계산했다는 뜻으로 행마다 `struct_match`, 블록에
+   *  총수·히스토그램이 실린다. 1위는 완전 일치, 나머지는 관계 하나가 빠진 부분 일치. */
+  function gated(length: number, name: string, opts: { history?: boolean } = {}) {
+    const base = lengthResult(length, name, opts);
+    const total = 1 + 5 * (length - 1);
+    const hist = new Array<number>(total + 1).fill(0);
+    hist[total] = 92;
+    hist[total - 1] = 500;
+    return {
+      ...base,
+      universe: 92,
+      struct_total: total,
+      struct_hist: hist,
+      matches: base.matches.map((m, i) => ({ ...m, struct_match: i === 0 ? total : total - 1 })),
+    };
+  }
+
+  it('행마다 「맞춘 관계/총수」 배지가 붙는다 — 허용을 열면 부분 일치가 섞이므로 숫자가 이유를 말한다', async () => {
+    const user = userEvent.setup();
+    searchPattern.mockImplementation(async (body) => ({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const, timeframe: 'D' as const,
+      results: [body.struct_tolerance == null
+        ? lengthResult(body.lengths[0], 'SK하이닉스', { history: true })
+        : gated(body.lengths[0], 'SK하이닉스', { history: true })],
+    }));
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+    // 끈 응답에는 배지가 없다 — 서버가 서명을 계산하지 않았다.
+    expect(screen.queryByTestId('pattern-struct-badge')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /구조 1개 차이까지/ }));
+    const badges = await screen.findAllByTestId('pattern-struct-badge');
+    expect(badges.map((b) => b.textContent)).toEqual(['31/31', '30/31', '30/31', '30/31']);
+  });
+
+  it('history 헤더의 분모가 구조 일치 수로 바뀐다 — dist.sample 은 게이트 전 모집단이라 그대로면 게이트가 한 일이 화면에서 사라진다', async () => {
+    const user = userEvent.setup();
+    searchPattern.mockImplementation(async (body) => ({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const, timeframe: 'D' as const,
+      results: [body.struct_tolerance == null
+        ? lengthResult(body.lengths[0], 'SK하이닉스', { history: true })
+        : gated(body.lengths[0], 'SK하이닉스', { history: true })],
+    }));
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    expect(await screen.findByText(/801개 구간 중 4개/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /구조 1개 차이까지/ }));
+    // 92(완전) + 500(하나 차이) = 592 — 히스토그램 꼬리 합이 분모다.
+    expect(await screen.findByText(/구조 일치 592개 중 4개/)).toBeInTheDocument();
+  });
+
+  it('now 헤더는 모집단 종목 수 뒤에 구조 일치 종목 수를 적는다 — universe 가 이미 통과한 수다', async () => {
+    const user = userEvent.setup();
+    searchPattern.mockImplementation(async (body) => ({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now' as const, timeframe: 'D' as const,
+      results: body.lengths.map((n) => (body.struct_tolerance == null
+        ? lengthResult(n, `길이${n}위`)
+        : gated(n, `길이${n}위`))),
+    }));
+    renderDrawer();
+    expect(await screen.findByText(/807종목 비교/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /같은 구조/ }));
+    expect(await screen.findByText(/801종목 중 구조 일치 92종목/)).toBeInTheDocument();
+  });
 });
 
 describe('PatternDrawer — 착지 창은 분봉 창을 갈아엎지 않는다', () => {
