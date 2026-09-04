@@ -192,6 +192,173 @@ describe('useViewportBackfill — backpressure gate (3b)', () => {
   });
 });
 
+// ── 3b **진입 배압** 반려의 말하는 횟수 ──────────────────────────────────────
+// 이 게이트는 #1739 까지 완전 침묵이었다. 그 침묵이 잠김을 오래 숨겼다 — 좌팬이
+// 죽었을 때 「바닥이라 안 온다」(`viewport_backfill_floor`) · 「고장나서 안 온다」 ·
+// 「정상적으로 fill 이 진행 중이라 반려」 셋이 로그로 구별되지 않았다. 이 리포는
+// 백필 계열을 **로그 유무·박자**로 가르므로 그 공백이 비쌌다(#1739 커밋 메시지가
+// "그 자리에는 livePerfLog 가 없어 화면에도 로그에도 흔적이 0" 이라 적은 자리).
+//
+// ⚠ 그렇다고 무조건 찍으면 안 된다: 3b 는 **뷰포트 이벤트마다** 깨어난다(실드래그
+// ~60 event/s). 매번 찍으면 반려가 초당 수십 줄이 되어 **정지 상태가 활동처럼
+// 보인다** — #1680 이 3e 에서 다룬, 이 표면에서 가장 비싼 오독이다.
+describe('useViewportBackfill — 진입 배압 반려는 에피소드당 한 줄 (3b)', () => {
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+    // 이력이 describe 를 건너 새는 것을 막는다 — 근거는 위 3b describe 의 주석.
+    extendSpy.mockClear();
+    vi.mocked(livePerfLog).mockClear();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  function busyLogs(): Array<Record<string, unknown>> {
+    return vi.mocked(livePerfLog).mock.calls
+      .filter(([event]) => event === 'viewport_backfill_busy')
+      .map(([, payload]) => payload);
+  }
+
+  it('스텝 진행 중(isExtending)의 연타 팬은 한 줄로 끝난다', () => {
+    const cap = chartWithCapturedHandler();
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    const canTrigger = () => true;
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis,
+        bundle,
+        timeframe: '1m',
+        isExtending: true, // 스텝 진행 중 = 진입 게이트가 반려한다
+        code: '005930',
+        canTriggerBackfill: canTrigger,
+      }),
+    );
+
+    for (let i = 0; i < 10; i += 1) {
+      cap.fire({ from: -5 - i, to: 100 });
+      vi.advanceTimersByTime(500);
+    }
+    vi.runOnlyPendingTimers();
+
+    expect(extendSpy).not.toHaveBeenCalled();
+    expect(busyLogs()).toHaveLength(1);
+    expect(busyLogs()[0]).toMatchObject({ fillKind: null, isExtending: true, from: '20260601' });
+  });
+
+  it('활성 fill(fillKind) 이 잠긴 좌팬도 말한다 — 이것이 #1739 가 숨어 있던 축이다', () => {
+    // extend 가 모킹돼 창이 움직이지 않으므로 3a 의 두 settle 신호가 다 죽는다 =
+    // `fillKind` 가 물린 채 남는다. 실사용에서 잠김이 만들어지는 모양 그대로다.
+    const cap = chartWithCapturedHandler();
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    const canTrigger = () => true;
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis,
+        bundle,
+        timeframe: '1m',
+        isExtending: false, // 첫 팬은 게이트를 통과한다
+        code: '005930',
+        canTriggerBackfill: canTrigger,
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1); // fillKind='left_pan' 이 섰다
+    expect(busyLogs()).toHaveLength(0); // 통과한 이벤트는 말하지 않는다
+
+    // 이제부터 모든 좌팬이 배압에 반려된다 — 종전에는 여기가 완전 침묵이었다.
+    for (let i = 0; i < 5; i += 1) {
+      cap.fire({ from: -400 - i, to: 100 });
+      vi.advanceTimersByTime(200);
+    }
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    expect(busyLogs()).toHaveLength(1);
+    expect(busyLogs()[0]).toMatchObject({ fillKind: 'left_pan', from: '20260601' });
+  });
+
+  it('창이 움직이면 다시 말한다 — 침묵은 그 `fillKind|창` 쌍에만 매인다', () => {
+    // 건강한 워크백은 스텝마다 창이 앞으로 간다. 그때 새 줄이 나오는 것이 곧
+    // 「진행 중」과 「잠김」의 판별식이다: 창이 얼어붙은 채 한 줄이면 잠김이다.
+    const cap = chartWithCapturedHandler();
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    const canTrigger = () => true;
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis,
+        bundle,
+        timeframe: '1m',
+        isExtending: true,
+        code: '005930',
+        canTriggerBackfill: canTrigger,
+      }),
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    expect(busyLogs()).toHaveLength(1);
+
+    // 진행 중인 fill 이 한 스텝 나아갔다(스토어는 imperative 스냅샷으로 읽히므로
+    // 리렌더 없이도 게이트가 새 값을 본다).
+    useLivePageStore.setState({ historicalFromDate: '20260501' });
+    cap.fire({ from: -300, to: 100 });
+
+    expect(busyLogs()).toHaveLength(2);
+    expect(busyLogs()[1]).toMatchObject({ from: '20260501' });
+  });
+
+  it('반려 래치는 배압이 풀린 뒤의 팬을 막지 않는다 (정지 판정이 아니다)', () => {
+    // 래치를 반려 판정 **바깥**에 두면 로그 중복 제거가 아니라 **두 번째 정지 판정**이
+    // 되어, 배압이 풀려도 좌팬이 영영 안 선다 — #1662·#1680 이 경고한 그 모양이다.
+    const cap = chartWithCapturedHandler();
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    const canTrigger = () => true;
+    const { rerender } = renderHook(
+      ({ ext }: { ext: boolean }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis,
+          bundle,
+          timeframe: '1m',
+          isExtending: ext,
+          code: '005930',
+          canTriggerBackfill: canTrigger,
+        }),
+      { initialProps: { ext: true } },
+    );
+
+    cap.fire({ from: -300, to: 100 });
+    expect(busyLogs()).toHaveLength(1);
+    expect(extendSpy).not.toHaveBeenCalled();
+
+    rerender({ ext: false }); // 스텝이 끝났다 = 배압 해제
+    cap.fire({ from: -300, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useViewportBackfill — 좌측 바닥 도달 (3b/3e 가 fill 을 세우지 않는다)', () => {
   // 바닥 아래에서는 `historicalFromDate` 를 낮춰도 요청이 클램프돼 **fetch 가 없다**.
   // fetch 가 없으면 3a 의 두 settle 신호가 둘 다 죽어 `endFill()` 에 닿지 못하고
