@@ -9,8 +9,10 @@
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -171,13 +173,12 @@ def _boom(_: str) -> None:
     raise ValueError("worker exploded")
 
 
-async def test_unexpected_worker_exception_becomes_runtime_error_with_traceback(process_pool) -> None:
+async def test_faithfully_crossing_exception_is_not_flattened() -> None:
+    """원형 그대로 건널 수 있는 예외는 껍데기로 바꾸지 않는다 — 호출자가 타입으로
+    분기하기 때문이다(캡처 파이프라인의 관대 재시도·디스크 만수 판정)."""
     guarded = compute_jobs._picklable_errors(_boom)
-    # 가드는 모듈 최상위 함수에 데코레이터로 붙어야 pickle 되므로 여기선 스레드로 계약만 본다.
-    with pytest.raises(RuntimeError) as info:
+    with pytest.raises(ValueError, match="worker exploded"):
         await compute_jobs.run_job(ComputeExecutor("thread"), guarded, "x")
-    assert "ValueError('worker exploded')" in str(info.value)
-    assert "worker traceback" in str(info.value)
 
 
 # ── 라우트 배선 ─────────────────────────────────────────────────────────────────
@@ -299,3 +300,109 @@ def test_create_app_installs_and_clears_the_default_pools(tmp_path: Path) -> Non
     with TestClient(app):
         assert compute_pools.default_pools() is app.state.compute
     assert compute_pools.default_pools() is None
+
+
+# ── 예외가 프로세스 경계를 원형으로 건너는가 (ADR-0169 후속: 캡처 파싱 이관) ──────
+#
+# 캡처 파이프라인은 파싱 예외의 **타입으로 분기한다**: 검증 실패 두 종은 관대 모드로
+# 재시도하고, 디스크 만수(OSError + errno)는 「머신 탓」이라 fail_streak 를 태우지
+# 않는다. 껍데기로 납작해지면 두 분기가 모두 죽고, 후자는 디스크를 비운 뒤에도 그날
+# 시도된 모든 (code,date) 가 영구 차단되는 사고가 된다.
+
+@compute_jobs._picklable_errors
+def _raise_enospc(_: str) -> None:
+    raise OSError(errno.ENOSPC, "No space left on device")
+
+
+@compute_jobs._picklable_errors
+def _raise_trade_validation(msg: str) -> None:
+    from hoga.tables.trades import TradeValidationError
+
+    raise TradeValidationError(msg)
+
+
+class _Unpicklable(Exception):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sock = threading.Lock()  # pickle 불가 — 껍데기 경로로 가야 한다
+
+
+@compute_jobs._picklable_errors
+def _raise_unpicklable(_: str) -> None:
+    raise _Unpicklable
+
+
+async def test_os_error_keeps_its_type_and_errno_across_the_process_boundary(
+    process_pool,
+) -> None:
+    """`isinstance(exc, OSError)` 와 `exc.errno` 로 갈리는 판정이 워커 너머에서도 산다."""
+    with pytest.raises(OSError) as info:  # 아래에서 errno 로 좁힌다
+        await compute_jobs.run_job(process_pool, _raise_enospc, "x")
+    assert info.value.errno == errno.ENOSPC
+    from hoga.api.captures import _is_local_disk_failure
+
+    assert _is_local_disk_failure(info.value) is True, "디스크 만수 분류가 죽었다"
+
+
+async def test_validation_error_keeps_its_type_across_the_process_boundary(
+    process_pool,
+) -> None:
+    """관대 모드 재시도는 이 타입으로 갈린다 — 납작해지면 캡처가 실패로 뜬다."""
+    from hoga.tables.trades import TradeValidationError
+
+    with pytest.raises(TradeValidationError, match="cum_vol decreased"):
+        await compute_jobs.run_job(
+            process_pool, _raise_trade_validation, "cum_vol decreased at ts_ms=1")
+
+
+async def test_unpicklable_exception_still_becomes_a_flat_runtime_error() -> None:
+    """건널 수 없는 예외는 껍데기로 — 부모의 unpickle 실패는 **풀이 깨진 것**으로
+    처리돼 뒤따르는 작업을 전부 죽인다."""
+    with pytest.raises(RuntimeError) as info:
+        await compute_jobs.run_job(ComputeExecutor("thread"), _raise_unpicklable, "x")
+    assert "_Unpicklable" in str(info.value)
+    assert "worker traceback" in str(info.value)
+
+
+# ── 캡처 파싱 작업의 시임 ───────────────────────────────────────────────────────
+
+async def test_capture_parse_job_goes_through_the_captures_seam(monkeypatch) -> None:
+    """작업 함수는 `captures.parse_stock_date` 를 통해 부른다 — `hoga.parser` 에서 직접
+    끌어오면 캡처 테스트들의 monkeypatch 를 지나쳐 진짜 파서가 조용히 돈다."""
+    from hoga.api import captures
+
+    seen: list[dict] = []
+    monkeypatch.setattr(captures, "parse_stock_date", lambda **kw: seen.append(kw))
+    await compute_jobs.run_default_wide_job(
+        compute_jobs.capture_parse_job, "/tmp/x", "005930", "20260601", False,
+    )
+    await compute_jobs.run_default_wide_job(
+        compute_jobs.capture_parse_job, "/tmp/x", "005930", "20260601", True,
+    )
+    assert [kw["lenient"] for kw in seen] == [False, True]
+    assert seen[0]["code"] == "005930" and seen[0]["date"] == "20260601"
+    assert str(seen[0]["data_dir"]) == "/tmp/x"
+
+
+def test_captures_keeps_the_parse_seam_attribute() -> None:
+    """`captures.parse_stock_date` 는 하중을 받는다 — 린터가 「미사용 import」로 지우면
+    프로세스 모드에서 모든 캡처가 AttributeError 로 실패한다."""
+    from hoga.api import captures
+    from hoga.parser import parse_stock_date
+
+    assert captures.parse_stock_date is parse_stock_date
+
+
+async def test_capture_parse_job_reaches_the_real_parser_inside_a_worker(
+    tmp_path: Path, process_pool,
+) -> None:
+    """워커가 `hoga.api.captures` 를 import 하고 진짜 파서까지 닿는지 — 원본이 없는
+    (code,date) 라 파서가 실패하는데, 그 실패가 **원형 그대로** 부모에 닿는 것까지가
+    한 묶음의 증명이다(워커에서 import 가 깨졌다면 다른 예외가 온다)."""
+    with pytest.raises(OSError) as info:  # FileNotFoundError ⊂ OSError
+        await compute_jobs.run_job(
+            process_pool, compute_jobs.capture_parse_job,
+            str(tmp_path), "005930", "20260601", False,
+        )
+    assert isinstance(info.value, FileNotFoundError)
+    assert "20260601" in str(info.value) or "005930" in str(info.value)

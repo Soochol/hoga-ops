@@ -26,6 +26,7 @@ import datetime as dt
 import functools
 import logging
 import os
+import pickle
 import threading
 import traceback
 from collections.abc import Callable
@@ -70,8 +71,36 @@ class ComputeJobError(Exception):
         self.tb_text = tb_text
 
 
+def _crosses_faithfully(exc: BaseException) -> bool:
+    """이 예외가 프로세스 경계를 **원형 그대로** 건널 수 있는가.
+
+    건널 수 있으면 껍데기로 바꾸지 않고 그대로 던진다 — **호출자가 타입으로 분기하기
+    때문이다.** 캡처 파이프라인이 그 예다: 파싱이 `TradeValidationError` 를 내면 관대
+    모드로 재시도하고, `OSError`(ENOSPC/EDQUOT/EROFS)면 «머신 탓» 으로 분류해
+    fail_streak 를 태우지 않는다(`captures._is_local_disk_failure`). 납작하게 만들면
+    디스크가 찼던 날의 모든 (code,date) 가 영구 차단되고, 그건 그 주석이 고쳤다고
+    적어 둔 바로 그 사고다.
+
+    판정은 **실제 왕복**이다 — 타입 목록을 손으로 유지하면 새 타입이 조용히 빠진다.
+    `args` 까지 비교하는 이유는 `OSError` 의 `errno` 가 거기 실려 오기 때문이고,
+    타입만 같고 인자가 비면 분기는 살아도 값이 죽는다(Starlette `HTTPException` 이
+    한때 그랬다).
+    """
+    try:
+        # 방금 이 프로세스가 만든 값만 다시 읽는다(외부 입력 없음).
+        restored = pickle.loads(pickle.dumps(exc))
+    except Exception:  # noqa: BLE001 — 못 건너면 껍데기로 보낸다(판정이 곧 목적)
+        return False
+    return type(restored) is type(exc) and restored.args == exc.args
+
+
 def _picklable_errors(fn: Callable[..., T]) -> Callable[..., T]:
-    """작업 함수의 예외를 전부 picklable 로 바꾼다(위 두 클래스 docstring)."""
+    """작업 함수의 예외가 부모에 **의미를 유지한 채** 닿게 한다.
+
+    원형으로 건널 수 있으면 그대로, 아니면 picklable 껍데기로 바꾼다(위 두 클래스
+    docstring). 껍데기가 필요한 이유는 부모의 unpickle 실패가 단순한 오류가 아니라
+    **풀이 깨진 것**으로 처리돼 뒤따르는 모든 작업을 죽이기 때문이다.
+    """
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -79,11 +108,15 @@ def _picklable_errors(fn: Callable[..., T]) -> Callable[..., T]:
             return fn(*args, **kwargs)
         except (ComputeHTTPError, ComputeJobError):
             raise
-        except Exception as e:  # noqa: BLE001 — 전 예외를 picklable 껍데기로 바꿔 **다시 던진다**(삼키지 않는다)
+        except Exception as e:  # 전부 **다시 던진다** — 삼키지 않는다
             from fastapi import HTTPException  # noqa: PLC0415 — 워커 import 를 가볍게
 
             if isinstance(e, HTTPException):
+                # 라우트 경로는 status/detail 로 **매핑**하는 것이 계약이라, 왕복
+                # 가능 여부와 무관하게 껍데기를 유지한다(부모가 HTTPException 재구성).
                 raise ComputeHTTPError(e.status_code, e.detail) from None
+            if _crosses_faithfully(e):
+                raise
             raise ComputeJobError(repr(e), traceback.format_exc()) from None
 
     return wrapper
@@ -199,6 +232,29 @@ def stock_dates_job(data_dir: str, fail_streaks: dict[str, int]) -> bytes:
 
 
 @_picklable_errors
+def capture_parse_job(data_dir: str, code: str, date: str, lenient: bool) -> None:
+    """캡처 원본(TSV) → parquet 파싱 한 건.
+
+    앱 스레드 풀에 남아 있던 **가장 큰** CPU 다. 실측(2026-09-04, 실제 원본):
+    56MB 1.13초/1.72 CPU초 · 144MB 2.13초/3.86 CPU초 · 171MB 2.41초/4.94 CPU초.
+    같은 날 1,153건이 파싱됐고 장중에도 25초에 한 번꼴이라 장중 누적 CPU 가 약 30분
+    이었다 — `depth_daily` 스윕(약 2분)의 15배다.
+
+    **`captures.parse_stock_date` 를 부르는 것이 요점이다.** `hoga.parser` 에서 직접
+    끌어오면 캡처 테스트들이 세워 둔 monkeypatch 시임(`captures.parse_stock_date`)을
+    지나쳐 버린다(스레드 모드에서 조용히 진짜 파서가 돈다).
+
+    예외는 **원형 그대로** 부모에 닿아야 한다 — 호출자가 타입으로 분기한다
+    (`_crosses_faithfully` docstring 참조).
+    """
+    from hoga.api import captures  # noqa: PLC0415 — 순환 절단(지연) · 시임 유지
+
+    captures.parse_stock_date(
+        code=code, date=date, data_dir=Path(data_dir), lenient=lenient,
+    )
+
+
+@_picklable_errors
 def depth_daily_sweep_job(data_dir: str, code: str, date: str) -> dict[str, int]:
     """캡처 파싱 직후의 `depth_daily` 증분 스윕.
 
@@ -254,11 +310,12 @@ async def run_default_wide_job(fn: Callable[..., T], /, *args: object) -> T:
     라우터 클로저 밖에서 도는 코드(캡처 파이프라인)가 쓴다 — 거기엔 풀을 받을 인자
     자리가 없다. `promote_executor.run_promote_job` 과 같은 모양이다.
     """
-    import asyncio  # noqa: PLC0415 — 워커 import 를 가볍게
-
     from hoga.api import compute_pools  # noqa: PLC0415 — 순환 절단(지연)
+    from hoga.compute_executor import ComputeExecutor  # noqa: PLC0415 — 순환 절단(지연)
 
     pools = compute_pools.default_pools()
-    if pools is None:
-        return await asyncio.to_thread(fn, *args)
-    return await run_job(pools.wide, fn, *args)
+    # 폴백도 `run_job` 을 지나게 한다 — `asyncio.to_thread` 로 곧장 부르면 껍데기 예외
+    # (`ComputeJobError`)가 **되돌려지지 않은 채** 호출자에게 샌다. 실행 자리가 달라도
+    # 예외의 모양은 같아야 한다.
+    executor = pools.wide if pools is not None else ComputeExecutor("thread")
+    return await run_job(executor, fn, *args)
