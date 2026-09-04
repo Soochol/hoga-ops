@@ -42,6 +42,7 @@ const SAVE_RECENT = {
     ma_preset: 'mid' as const, flex_bars: 0,
     // 구조 게이트도 공장값(끄기 = null)과 달라야 복원을 잰다.
     struct_tolerance: 1,
+    struct_anchor: 'first2' as const,   // 공장값 running 과 다르다
   },
   // ★ 이 저장은 **제외를 하나 들고 있다** — 불러오기가 그것까지 가져오는지 잰다.
   excluded: [{ code: '000660', from_date: '20180307', stock_name: 'SK하이닉스' }],
@@ -835,6 +836,7 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     expect(body.ma_preset).toBe('mid');
     expect(body.flex_bars).toBe(0);        // 저장된 유연 폭(공장값 ±2 와 다르다)
     expect(body.struct_tolerance).toBe(1); // 저장된 구조 단계(공장값 끄기와 다르다)
+    expect(body.struct_anchor).toBe('first2'); // 저장된 기준선(공장값 running 과 다르다)
   });
 
   it('고정 구간 저장은 그 날짜로 되돌아간다', async () => {
@@ -1049,6 +1051,26 @@ describe('PatternDrawer — 구조 게이트', () => {
     expect(searchPattern.mock.calls.at(-1)?.[0].struct_tolerance).toBe(0);
   });
 
+  it('기준선은 게이트를 켠 뒤에만 고를 수 있고, 고르면 서버 조건으로 재검색한다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    // 게이트가 꺼져 있으면 팝오버에 기준선 항목이 없다 — 그 상태에선 아무 뜻이 없다.
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    expect(screen.queryByRole('option', { name: /첫 두 봉 고정/ })).toBeNull();
+    await user.click(await screen.findByRole('option', { name: /같은 구조/ }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.at(-1)?.[0].struct_tolerance).toBe(0));
+    const before = searchPattern.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: /같은 구조/ }));
+    await user.click(await screen.findByRole('option', { name: /첫 두 봉 고정/ }));
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.length).toBeGreaterThan(before));
+    expect(searchPattern.mock.calls.at(-1)?.[0].struct_anchor).toBe('first2');
+    // 칩이 그 사실을 인다 — 팝오버를 열지 않아도 무엇을 기준으로 맞춘 목록인지 보인다.
+    expect(screen.getByRole('button', { name: /같은 구조 · 첫 두 봉 고정/ })).toBeInTheDocument();
+  });
+
   it('저장은 구조 단계를 담는다', async () => {
     const user = userEvent.setup();
     renderDrawer();
@@ -1058,7 +1080,9 @@ describe('PatternDrawer — 구조 게이트', () => {
     const submits = screen.getAllByRole('button', { name: '저장' });
     await user.click(submits[submits.length - 1]);
     await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
-    expect(createPatternSave.mock.calls.at(-1)![0].conditions.struct_tolerance).toBe(1);
+    const saved = createPatternSave.mock.calls.at(-1)![0].conditions;
+    expect(saved.struct_tolerance).toBe(1);
+    expect(saved.struct_anchor).toBe(DEFAULT_CONDITIONS.structAnchor);
   });
 
   /** 게이트를 켠 응답 — 서버가 서명을 계산했다는 뜻으로 행마다 `struct_match`, 블록에
@@ -1241,6 +1265,7 @@ describe('PatternDrawer — 저장에 없던 조건은 공장값을 따른다', 
     expect(body.flex_bars).toBe(DEFAULT_CONDITIONS.flexBars);
     // 구조 게이트가 없던 시절의 저장 — 공장값(끄기)이라 null 로 실린다.
     expect(body.struct_tolerance).toBeNull();
+    expect(body.struct_anchor).toBe(DEFAULT_CONDITIONS.structAnchor);
   });
 
   it('일부러 끈 저장은 꺼진 채로 복원된다 — 부재와 선택은 다르다', async () => {

@@ -336,3 +336,73 @@ def test_route_carries_miss_indices_that_resolve_against_the_relation_list(clien
         assert len(row["struct_miss"]) == on["struct_total"] - row["struct_match"]
         for i in row["struct_miss"]:
             assert on["struct_relations"][i]        # 인덱스가 문구를 가리킨다
+
+
+# ── 기준선 방식 (PR 4) ────────────────────────────────────────────────────────
+
+def test_fixed_anchor_holds_the_first_two_bars_line_while_running_climbs():
+    """**두 기준의 차이가 드러나는 자리.** `_STRUCT` 는 3봉 고가(109)가 2봉(108)보다
+    높아, running 은 4봉의 기준이 109 로 올라가고 first2 는 108 에 머문다.
+
+    자리 수는 두 기준이 **같다**(1+5(L−1)) — 그래야 `relation_phrases` 의 인덱스가
+    기준과 무관해진다.
+    """
+    win = _win(_STRUCT)
+    run = st.query_signature(win)
+    fix = st.query_signature(win, "first2")
+    assert len(run) == len(fix) == st.relation_count(_L)
+    # 4봉 고가(110)는 두 기준 모두 넘는다 — 갈리는 것은 «무엇을 넘었나» 다.
+    # 3봉 저가(102)는 running 기준 min(lo0,lo1)=99 위, first2 도 99 위로 같다.
+    # 실제로 갈리는 자리를 값으로 찾는다(픽스처가 바뀌면 여기서 드러난다).
+    differing = [i for i in range(len(run)) if run[i] != fix[i]]
+    assert differing, "두 기준이 같은 답을 내면 이 축이 아무 일도 안 한다"
+
+
+def test_fixed_anchor_reproduces_the_hand_rule_level(tmp_path):
+    """고정 기준의 존재 이유 — 「첫 두 봉이 만든 선을 뒤 봉들이 시험한다」.
+
+    3봉이 2봉 고가를 넘어 running 기준을 끌어올린 창을 심는다. 그 창은 4봉이 **옛 선
+    위·새 선 아래**라, 손 규칙(고정선)으로는 통과하지 못하고 running 으로는 통과한다.
+    """
+    # 4봉 고가 108.5 — 첫 두 봉 최고(108)는 넘지만 3봉 고가(109)는 못 넘는다.
+    tricky = list(_STRUCT)
+    tricky[3] = (105, 108.5, 103, 106)
+    sig_fix = st.query_signature(_win(_STRUCT), "first2")
+    sig_run = st.query_signature(_win(_STRUCT))
+    m_fix = int(st.window_matches(_win(tricky), sig_fix, _L, None, "first2")[0])
+    m_run = int(st.window_matches(_win(tricky), sig_run, _L)[0])
+    # running 은 「4봉 고가 > 전고(109)」를 요구하는데 108.5 라 못 맞춘다.
+    assert m_run < st.signature_total(sig_run)
+    # 고정 기준은 「4봉 고가 > 첫2봉 최고(108)」라 108.5 가 맞춘다.
+    assert m_fix == st.signature_total(sig_fix)
+
+
+def test_phrases_name_the_anchor_so_the_meaning_does_not_drift():
+    """⚠ 인덱스는 맞는데 **뜻이 어긋나는** 것을 막는다 — 고정 기준인데 「전고」라고 적으면
+    사용자는 「직전 봉까지의 최고」로 읽는다."""
+    win = _win(_STRUCT)
+    run = st.relation_phrases(st.query_signature(win), _L)
+    fix = st.relation_phrases(st.query_signature(win, "first2"), _L, "first2")
+    assert len(run) == len(fix)
+    assert any("전고" in p for p in run)
+    assert not any("전고" in p for p in fix)
+    assert any("첫2봉 최고" in p for p in fix)
+    # 색 관계는 기준과 무관하므로 두 목록에서 같다 — 인덱스 정렬의 증거이기도 하다.
+    assert run[0] == fix[0] == "1봉 양봉"
+
+
+def test_route_carries_the_anchor_through_to_relations(client):
+    body = {"code": "000001", "mode": "history", "from": "20240129", "to": "20240202",
+            "min_tv_eok": 0, "exclude_etf": False, "no_overlap": False, "forward_days": 1,
+            "struct_tolerance": 3}
+    run = client.post("/api/screener/pattern-search", json=body).json()["results"][0]
+    fix = client.post("/api/screener/pattern-search",
+                      json={**body, "struct_anchor": "first2"}).json()["results"][0]
+    assert any("전고" in p for p in run["struct_relations"])
+    assert any("첫2봉 최고" in p for p in fix["struct_relations"])
+    assert len(run["struct_relations"]) == len(fix["struct_relations"])
+
+
+def test_request_rejects_unknown_anchor():
+    with pytest.raises(ValueError):
+        PatternSearchRequest(code="000001", struct_anchor="first3")

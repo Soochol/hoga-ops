@@ -9,6 +9,7 @@ import {
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
+  STRUCT_ANCHORS,
   STRUCT_STEPS,
   structLabel,
   structRemaining,
@@ -106,6 +107,10 @@ export function PatternConditionChips({
           100 중 같은 구조 8개). 서버 조건이다 — 모집단을 거른다. */}
       <Chip active={conditions.structTolerance !== null} onClick={() => toggle('struct')}>
         {structLabel(conditions.structTolerance)}
+        {/* 기준선이 공장값과 다르면 칩이 그 사실을 인다 — 팝오버를 열지 않아도
+            「무엇을 기준으로 맞춘 목록인가」가 보여야 한다. */}
+        {conditions.structTolerance !== null && conditions.structAnchor !== 'running'
+          && ` · ${STRUCT_ANCHORS.find((a) => a.key === conditions.structAnchor)?.label}`}
       </Chip>
       <Chip active={conditions.flexBars > 0} onClick={() => toggle('flex')}>
         {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
@@ -198,6 +203,24 @@ export function PatternConditionChips({
               />
             );
           })}
+          {/* 기준선은 **같은 축의 하위 모드**라 칩을 새로 만들지 않는다 — 게이트가 꺼져
+              있으면 아무 뜻이 없으므로 켜졌을 때만 그린다. */}
+          {conditions.structTolerance !== null && (
+            <>
+              <div role="separator" className="my-1 border-t border-border" />
+              {STRUCT_ANCHORS.map((a) => (
+                <Item
+                  key={a.key}
+                  selected={a.key === conditions.structAnchor}
+                  onClick={() => set({ structAnchor: a.key })}
+                  label={a.label}
+                  // 어느 쪽이 선택적인지가 **쿼리마다 뒤집힌다**(실측 12 vs 440창) —
+                  // 판별력이 아니라 질문이 바뀌는 것이라 설명이 그 사실을 진다.
+                  hint={a.note}
+                />
+              ))}
+            </>
+          )}
         </Popover>
       )}
       {open === 'flex' && (

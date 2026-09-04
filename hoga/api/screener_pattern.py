@@ -1020,7 +1020,7 @@ def _append_one(
         partial_last_bucket_days=partial,
         struct_total=gate.total if gate is not None else None,
         struct_hist=gate.hist.tolist() if gate is not None else None,
-        struct_relations=(relation_phrases(gate.sig, length)
+        struct_relations=(relation_phrases(gate.sig, length, gate.anchor)
                           if gate is not None and gate.sig is not None else None),
         elapsed_ms=(time.perf_counter() - started) * 1000,
     ))
@@ -1042,17 +1042,17 @@ def _struct_gate(
         return None
     price = _stack_window(c, qi, offset, base_length, ())
     win = price if length == base_length else resample_query(price, length)
-    sig = query_signature(win)
+    sig = query_signature(win, req.struct_anchor)
     total = signature_total(sig)
     if req.mode == "now":
         # 종목마다 최신 창 하나 — 그 시작들만 계산한다(전 창을 돌면 11길이 × 백만 창).
         # 계열이 창보다 짧은 종목은 인덱스가 앞 계열로 새지만 search_now 가 먼저 건너뛴다.
         starts = np.maximum(c.ends - length, 0)
-        matches = window_matches(c.ch, sig, length, starts)
+        matches = window_matches(c.ch, sig, length, starts, req.struct_anchor)
     else:
-        matches = window_matches(c.ch, sig, length)
+        matches = window_matches(c.ch, sig, length, None, req.struct_anchor)
     return StructGate(matches=matches, need=max(0, total - req.struct_tolerance),
-                      total=total, sig=sig)
+                      total=total, sig=sig, anchor=req.struct_anchor)
 
 
 def _struct_match_of(gate: StructGate | None, c: Corpus, m: PatternMatch, mode: str) -> int | None:
@@ -1066,4 +1066,4 @@ def _struct_miss_of(gate: StructGate | None, c: Corpus, m: PatternMatch, length:
     """행마다 못 맞춘 관계 인덱스 — 상위 `top` 행에서만 창을 다시 읽으므로 싸다."""
     if gate is None or gate.sig is None:
         return None
-    return mismatches(gate.sig, _stack_window(c, m.series, m.offset, length, ()))
+    return mismatches(gate.sig, _stack_window(c, m.series, m.offset, length, ()), gate.anchor)

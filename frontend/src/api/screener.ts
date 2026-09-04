@@ -173,6 +173,13 @@ export type PatternSearchMode = 'now' | 'history';
  *  `mid` 는 중기 추세 속의 캔들(20·60). 자유 조합은 열지 않는다(ADR-0166 결정 11). */
 export type PatternMaPreset = 'off' | 'short' | 'mid';
 
+/** 손 미러 — 정본은 `hoga/api/models.py::PatternStructAnchor`.
+ *
+ *  구조 게이트의 **기준선**을 어디서 잡는가. `running` 은 봉마다 올라가는 「직전까지
+ *  최고/최저」, `first2` 는 **첫 두 봉의 최고/최저로 고정**이다. 어느 쪽이 선택적인지가
+ *  쿼리마다 뒤집혀서(실측 12 vs 440창) 하나로 고르지 않는다. */
+export type PatternStructAnchor = 'running' | 'first2';
+
 /** 손 미러 — 정본은 `hoga/api/models.py::PatternTimeframe`.
  *
  *  `'W'` 코퍼스는 일봉에서 **파생**한다(종목 주봉을 주는 벤더 경로가 없다).
@@ -231,6 +238,8 @@ export interface PatternSearchRequest {
    *  아니다 — 통과한 창의 순서는 상관이고 `dist`·`baseline` 은 통과 **전** 모집단이다
    *  (ADR-0166 결정 12). */
   struct_tolerance?: number | null;
+  /** 구조 게이트의 기준선 방식. `struct_tolerance` 가 없으면 아무 뜻이 없다. */
+  struct_anchor?: PatternStructAnchor;
 }
 
 /** 후보 점수 분포. **유사도 절대값을 단독으로 그리지 않기 위한 동반 데이터**다 —
@@ -383,6 +392,8 @@ export interface PatternSaveConditions {
    *  겸한다** — 공장값이 끄기라 오늘은 같은 결과다. ⚠ 공장값을 켜는 쪽으로 바꾸면
    *  `ma_preset` 사고가 재현되니 그때는 부재와 끄기를 분리해야 한다. */
   struct_tolerance: number | null;
+  /** 기준선 방식. `null` 은 **「그 축이 없던 시절의 저장」**이라 화면이 공장값으로 읽는다. */
+  struct_anchor: PatternStructAnchor | null;
 }
 
 /** 저장된 검색에서 **빼 둔 한 자리** — 종목이 아니라 「그 종목의 그 기간」이다.

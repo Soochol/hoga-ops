@@ -680,6 +680,8 @@ export function PatternDrawer() {
       timeframe: save.conditions.timeframe ?? DEFAULT_CONDITIONS.timeframe,
       // 구조 게이트의 부재는 공장값(끄기)과 같은 결과다 — 공장값을 켜는 날 분리할 것.
       structTolerance: save.conditions.struct_tolerance ?? DEFAULT_CONDITIONS.structTolerance,
+      // 부재는 「그 축이 없던 시절의 저장」 — 공장값을 따른다.
+      structAnchor: save.conditions.struct_anchor ?? DEFAULT_CONDITIONS.structAnchor,
     });
     setShowSaves(false);
   }, []);
@@ -857,6 +859,7 @@ export function PatternDrawer() {
                   flex_bars: conditions.flexBars,
                   timeframe: conditions.timeframe,
                   struct_tolerance: conditions.structTolerance,
+                  struct_anchor: conditions.structAnchor,
                 },
                 // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
                 // 그것까지가 「이 검색」이다.
