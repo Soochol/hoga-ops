@@ -1033,10 +1033,40 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
+  /**
+   * 창의 **히스토리 창만** 비운다 — 런타임 항목을 통째로 지우지 않는다.
+   *
+   * 유일한 호출자가 기간 점프(`useTimeframeJump`)이고, 그 계약은 창의 **우단만**
+   * 옮기고 소스·깊이 설정은 창의 현재 값 그대로 두는 것이다(`useLiveChartData` 의
+   * `asOfDate` 도크스트링 표: 「소스 = 창의 현재 설정」). 그런데 `hogaplaySource` 가
+   * 같은 런타임 항목에 살아서(그 필드 도크스트링이 "같은 자리에 사는 것이 요점"
+   * 이라고 적는다) `delete` 로 지우면 **점프 한 번이 그 창의 「저장 데이터」 버튼을
+   * 조용히 끈다** — 캔들 소스가 디스크→벤더로 갈리고 좌측 팬의 바닥도
+   * `earliest_captured_date` 에서 250일 벽으로 바뀐다. 2026-09-04 에 「분봉으로」
+   * 조사에서 드러났다. (소스 축이 갈리므로 `useViewportBackfill` 1b 의 소스 스왑
+   * 재착석까지 덩달아 도는 것으로 **읽히지만 그쪽은 실측하지 않았다** — 위 두 결과가
+   * 스토어 테스트로 확인된 것이고, 1b 는 추론이다.)
+   *
+   * 전역 대응물(`livePage.resetHistoricalRange`)은 처음부터 세 필드만 비웠다 —
+   * 창으로 절단하면서 갈린 것을 되돌린다. **통째 제거가 옳은 자리는 따로 있다**:
+   * 창 닫힘·그룹 이동·종목 교체는 창의 정체성이 바뀌는 것이라 `clearedChartRuntime`
+   * 을 그대로 쓴다.
+   */
   resetChartHistoricalRange: (id) => {
     set((state) => {
-      if (!(id in state.chartRuntime)) return {};
-      return { chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
+      const rt = state.chartRuntime[id];
+      if (rt === undefined) return {};
+      return {
+        chartRuntime: {
+          ...state.chartRuntime,
+          [id]: {
+            ...rt,
+            historicalFromDate: null,
+            lastMinuteHistoricalFromDate: null,
+            lastMinuteHistoricalTimeframe: null,
+          },
+        },
+      };
     });
   },
 
