@@ -89,14 +89,32 @@ class PastDailyCandlesCache:
 
     @staticmethod
     def _row_date_bounds(bars: list[dict]) -> tuple[date, date] | None:
-        dates: list[date] = []
+        """행들이 덮는 날짜 구간 — **t_ms 의 최소·최대만 날짜로 바꾼다**.
+
+        이전에는 봉마다 `datetime.fromtimestamp(..., tz=KST)` 를 불러 tz-aware
+        datetime 을 만들고 버렸다. 배치가 수천 봉이면 그 수만큼이고, 결과로 쓰는 것은
+        양 끝 두 개뿐이다. 2026-09-02 정지 스택에서 이 함수가 3위였다(85건, 이벤트
+        루프 위).
+
+        `t_ms → 날짜` 는 단조 변환이라 정수로 고른 최소·최대가 날짜의 최소·최대와
+        같다 — 값은 그대로이고 변환 횟수만 N → 2 가 된다.
+        """
+        lo: int | None = None
+        hi: int | None = None
         for bar in bars:
             ts = bar.get("t_ms")
-            if isinstance(ts, int):
-                dates.append(datetime.fromtimestamp(ts / 1000, tz=KST).date())
-        if not dates:
+            if not isinstance(ts, int):
+                continue
+            if lo is None or ts < lo:
+                lo = ts
+            if hi is None or ts > hi:
+                hi = ts
+        if lo is None or hi is None:
             return None
-        return min(dates), max(dates)
+        return (
+            datetime.fromtimestamp(lo / 1000, tz=KST).date(),
+            datetime.fromtimestamp(hi / 1000, tz=KST).date(),
+        )
 
     @classmethod
     def _normalize_batch(

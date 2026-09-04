@@ -27,7 +27,12 @@ from hoga.api import (
 )
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
-from hoga.api.compute_pools import ComputePools, build_compute_pools, thread_pools
+from hoga.api.compute_pools import (
+    ComputePools,
+    build_compute_pools,
+    install_default as install_default_compute_pools,
+    thread_pools,
+)
 from hoga.api.events import build_event_bus
 from hoga.api.frontend_static import mount_frontend
 from hoga.api.heatmap import seed_from_watchlist_if_absent
@@ -266,6 +271,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     # (ADR-0169). 안 넘기면 스레드 두 벌 — 테스트가 그 경로다. 운영(`default_app`)은
     # env 로 만든 프로세스 풀을 넘긴다.
     pools: ComputePools = compute if compute is not None else thread_pools()
+    # 라우터 클로저 밖에서 도는 코드(캡처 파이프라인의 `depth_daily` 스윕)가 쓰는 모듈
+    # 기본 풀. lifespan 종료가 지운다 — 남겨 두면 다음 앱 인스턴스가 이미 내려간 풀을
+    # 붙잡는다(TestClient 는 한 프로세스에서 앱을 수백 번 만든다).
+    install_default_compute_pools(pools)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
 
@@ -388,6 +397,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 지나쳐 조용히 끝난다. 그다음 동기 shutdown — 진행 중 작업은 기다리지
             # 않는다(요청은 어차피 서버와 함께 끊긴다).
             await _cancel_tasks(_app.state.compute_prewarm)
+            install_default_compute_pools(None)
             pools.shutdown()
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로

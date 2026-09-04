@@ -386,6 +386,52 @@ def _blocked_manifest_stock_date(
     )
 
 
+def compute_stock_dates(
+    engine: QueryEngine, fail_streaks: dict[str, int],
+) -> list[StockDateModel]:
+    """`/api/stock-dates` 본체 — 라우트에서 떼어 **모듈 최상위**에 둔 이유는 컴퓨트
+    워커 프로세스에서 돌리기 위해서다(ADR-0169, `compute_jobs.stock_dates_job`).
+
+    ADR-0042: annotate each row with its fail_streak / blocked status.
+    `fail_streaks` 는 캡처 파이프라인의 인프로세스 dict 스냅샷이다(호출자가 뜬다) —
+    `model_copy` 로 새 인스턴스를 만들어 QueryEngine 의 mtime 캐시에 든 StockDate 는
+    `fail_streak=0` 인 채로 둔다.
+    """
+    from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+        ATTEMPT_CAP,
+        streak_key,
+    )
+    rows = engine.list_stock_dates()
+    if not fail_streaks:
+        return rows
+    seen = {(row.code, row.date) for row in rows}
+    annotated: list[StockDateModel] = []
+    for row in rows:
+        streak = fail_streaks.get(streak_key(row.code, row.date), 0)
+        if streak == 0:
+            annotated.append(row)
+        else:
+            annotated.append(row.model_copy(update={
+                "fail_streak": streak,
+                "blocked": streak >= ATTEMPT_CAP,
+            }))
+    for key, streak in fail_streaks.items():
+        if streak < ATTEMPT_CAP:
+            continue
+        try:
+            code, date = key.split("|", 1)
+        except ValueError:
+            continue
+        if (code, date) in seen:
+            continue
+        blocked_row = _blocked_manifest_stock_date(
+            code=code, date=date, fail_streak=streak
+        )
+        if blocked_row is not None:
+            annotated.append(blocked_row)
+    return annotated
+
+
 def compute_brokers_series(
     engine: QueryEngine, *, code: str, date: str, source_pref: str, venue: str,
 ) -> BrokerSeriesResponse:
@@ -463,45 +509,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     pools: ComputePools = compute if compute is not None else thread_pools()
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
-    def stock_dates() -> list[StockDateModel]:
-        # ADR-0042: annotate each row with its fail_streak / blocked status.
-        # Read the in-memory _fail_streaks dict once (no I/O); model_copy
-        # produces a non-cached instance so QueryEngine's mtime-cached
-        # StockDate objects keep fail_streak=0 internally.
+    async def stock_dates() -> list[StockDateModel]:
+        # 본체는 `compute_stock_dates`(모듈 최상위) — 컴퓨트 워커에서 돈다(ADR-0169).
+        # 파케이 트리 순회 + 캐시 미스분 DuckDB 읽기라 콜드에서 40초를 넘겼고
+        # (2026-09-04 실측 41.3초) 그동안 동기 라우트 스레드가 앱 전체를 세웠다.
+        # `_fail_streaks` 는 인프로세스 상태라 **부모가 스냅샷을 떠서** 넘긴다.
         from hoga.api import captures  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-        from hoga.api.fail_streak import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-            ATTEMPT_CAP,
-            streak_key,
+
+        payload = await compute_jobs.run_job(
+            pools.wide, compute_jobs.stock_dates_job,
+            str(engine.data_dir), dict(captures._fail_streaks),
         )
-        rows = engine.list_stock_dates()
-        if not captures._fail_streaks:
-            return rows
-        seen = {(row.code, row.date) for row in rows}
-        annotated: list[StockDateModel] = []
-        for row in rows:
-            streak = captures._fail_streaks.get(streak_key(row.code, row.date), 0)
-            if streak == 0:
-                annotated.append(row)
-            else:
-                annotated.append(row.model_copy(update={
-                    "fail_streak": streak,
-                    "blocked": streak >= ATTEMPT_CAP,
-                }))
-        for key, streak in captures._fail_streaks.items():
-            if streak < ATTEMPT_CAP:
-                continue
-            try:
-                code, date = key.split("|", 1)
-            except ValueError:
-                continue
-            if (code, date) in seen:
-                continue
-            blocked_row = _blocked_manifest_stock_date(
-                code=code, date=date, fail_streak=streak
-            )
-            if blocked_row is not None:
-                annotated.append(blocked_row)
-        return annotated
+        return Response(content=payload, media_type="application/json")  # type: ignore[return-value]
 
     @router.get("/meta", response_model=Meta)
     def meta(code: Code, date: StockDate) -> Meta:

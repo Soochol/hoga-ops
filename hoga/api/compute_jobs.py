@@ -172,6 +172,50 @@ def pattern_search_job(data_dir: str, req: PatternSearchRequest) -> PatternSearc
     return screener_pattern.run_pattern_search(Path(data_dir), req)
 
 
+#: `list[StockDate]` 직렬화기. `TypeAdapter` 생성이 싸지 않아 워커마다 한 번만 만든다.
+_stock_dates_adapter: Any = None
+
+
+@_picklable_errors
+def stock_dates_job(data_dir: str, fail_streaks: dict[str, int]) -> bytes:
+    """`/api/stock-dates` 본체(응답 JSON 바이트).
+
+    비싼 부분은 `QueryEngine.list_stock_dates` 의 파케이 트리 순회 + 캐시 미스분
+    DuckDB 읽기다. 콜드 캐시에서 40초를 넘겨(2026-09-04 실측 41.3초) 동기 라우트
+    스레드가 앱 전체를 세웠다. `_fail_streaks` 는 캡처 파이프라인의 **인프로세스**
+    상태라 부모가 스냅샷을 떠서 넘긴다 — 자식은 그 dict 를 못 본다(ADR-0168 의
+    `nxt_enabled` 와 같은 규율).
+    """
+    global _stock_dates_adapter  # noqa: PLW0603 — 워커 프로세스 지역 메모이제이션
+    from pydantic import TypeAdapter  # noqa: PLC0415 — 워커 import 를 가볍게
+
+    from hoga.api.models import StockDate as StockDateModel  # noqa: PLC0415
+    from hoga.api.routes import compute_stock_dates  # noqa: PLC0415 — 순환 절단(지연)
+
+    rows = compute_stock_dates(_engine_for(data_dir), fail_streaks)
+    if _stock_dates_adapter is None:
+        _stock_dates_adapter = TypeAdapter(list[StockDateModel])
+    return _stock_dates_adapter.dump_json(rows, by_alias=True)
+
+
+@_picklable_errors
+def depth_daily_sweep_job(data_dir: str, code: str, date: str) -> dict[str, int]:
+    """캡처 파싱 직후의 `depth_daily` 증분 스윕.
+
+    (code, date) 한 쌍만 다시 계산하지만 매번 depth_daily 파케이 전체를 읽고 쓴다 —
+    2026-09-04 실측: 이 작업이 앱 스레드 풀에서 **9.05초** CPU 를 태우는 동안 이벤트
+    루프는 0.1초만 얻어 앱 전체가 8.9초 멎었다(GIL convoy). 순수 파일 작업이라 워커
+    프로세스로 그대로 넘어간다.
+    """
+    from hoga.api import depth_daily  # noqa: PLC0415 — 순환 절단(지연)
+
+    res = depth_daily.sweep(Path(data_dir), codes={code}, dates={date})
+    return {
+        "scanned": res.scanned, "computed": res.computed, "skipped": res.skipped,
+        "no_data": res.no_data, "total_rows": res.total_rows,
+    }
+
+
 @_picklable_errors
 def group_flow_job(
     data_dir: str, basis: dt.date, now_ms: int, venue: str,
@@ -202,3 +246,19 @@ async def run_job(executor: ComputeExecutor, fn: Callable[..., T], /, *args: obj
         raise RuntimeError(
             f"compute worker failed: {e.exc_repr}\n--- worker traceback ---\n{e.tb_text}"
         ) from None
+
+
+async def run_default_wide_job(fn: Callable[..., T], /, *args: object) -> T:
+    """설치된 기본 풀의 wide 레인에서 돌린다. 없으면 `asyncio.to_thread`(종전 동작).
+
+    라우터 클로저 밖에서 도는 코드(캡처 파이프라인)가 쓴다 — 거기엔 풀을 받을 인자
+    자리가 없다. `promote_executor.run_promote_job` 과 같은 모양이다.
+    """
+    import asyncio  # noqa: PLC0415 — 워커 import 를 가볍게
+
+    from hoga.api import compute_pools  # noqa: PLC0415 — 순환 절단(지연)
+
+    pools = compute_pools.default_pools()
+    if pools is None:
+        return await asyncio.to_thread(fn, *args)
+    return await run_job(pools.wide, fn, *args)

@@ -223,3 +223,79 @@ def test_brokers_series_route_returns_model_json(seed_brokers) -> None:
     body = r.json()
     assert body["date"] == "20260601" and body["source"] == "kiwoom_live"
     assert len(body["brokers"]) >= 1 and body["brokers"][0]["points"]
+
+
+# ── 남은 인프로세스 CPU 이관 (ADR-0169 후속) ────────────────────────────────────
+
+async def test_stock_dates_job_carries_in_process_fail_streaks_across_the_boundary(
+    tmp_path: Path, process_pool,
+) -> None:
+    """`_fail_streaks` 는 캡처 파이프라인의 **인프로세스** dict 다. 자식은 그것을 못 보므로
+    부모가 스냅샷을 떠서 넘겨야 한다 — 넘어갔다면 차단 행이 응답에 실린다.
+
+    파일이 하나도 없는 (code,date) 로 잡는 것이 요점이다: 디스크에서 나올 수 없는 행이
+    결과에 있다면 그 근거는 넘긴 dict 뿐이다.
+    """
+    from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
+    from hoga.api.routes import compute_stock_dates
+
+    streaks = {streak_key("000660", "20260602"): ATTEMPT_CAP + 1}
+    expected = compute_stock_dates(QueryEngine(tmp_path), streaks)
+    assert [(r.code, r.date, r.blocked) for r in expected] == [("000660", "20260602", True)]
+
+    payload = await compute_jobs.run_job(
+        process_pool, compute_jobs.stock_dates_job, str(tmp_path), streaks,
+    )
+    got = json.loads(payload)
+    assert [(r["code"], r["date"], r["blocked"]) for r in got] == [("000660", "20260602", True)]
+    assert got == json.loads(
+        __import__("pydantic").TypeAdapter(list[type(expected[0])]).dump_json(expected, by_alias=True)
+    )
+
+
+async def test_stock_dates_job_empty_when_no_streaks_and_no_data(tmp_path: Path) -> None:
+    payload = await compute_jobs.run_job(
+        ComputeExecutor("thread"), compute_jobs.stock_dates_job, str(tmp_path), {},
+    )
+    assert json.loads(payload) == []
+
+
+async def test_depth_daily_sweep_job_runs_in_a_worker(tmp_path: Path, process_pool) -> None:
+    """캡처 파싱 훅이 부르던 스윕 — 앱 스레드 풀에서 9초 CPU 를 태우던 자리(GIL convoy)."""
+    (tmp_path / "parquet").mkdir()
+    res = await compute_jobs.run_job(
+        process_pool, compute_jobs.depth_daily_sweep_job, str(tmp_path), CODE, DATE,
+    )
+    assert set(res) == {"scanned", "computed", "skipped", "no_data", "total_rows"}
+    assert res["scanned"] == 0  # 대상 파케이가 없으니 훑을 것도 없다
+
+
+async def test_run_default_wide_job_uses_installed_pools_then_falls_back(tmp_path: Path) -> None:
+    """풀이 설치돼 있으면 wide 레인, 없으면 종전대로 스레드."""
+    class _Recording:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def run(self, fn, /, *args):
+            self.calls += 1
+            return fn(*args)
+
+    wide, narrow = _Recording(), _Recording()
+    compute_pools.install_default(compute_pools.ComputePools(wide=wide, narrow=narrow))  # type: ignore[arg-type]
+    try:
+        assert await compute_jobs.run_default_wide_job(_worker_pid) == os.getpid()
+        assert (wide.calls, narrow.calls) == (1, 0)
+    finally:
+        compute_pools.install_default(None)
+    assert await compute_jobs.run_default_wide_job(_worker_pid) == os.getpid()
+    assert wide.calls == 1  # 설치 해제 후에는 풀을 안 탄다
+
+
+def test_create_app_installs_and_clears_the_default_pools(tmp_path: Path) -> None:
+    """lifespan 종료가 기본 풀을 지운다 — 안 지우면 다음 앱 인스턴스가 내려간 풀을 붙잡는다."""
+    assert compute_pools.default_pools() is None
+    app = create_app(tmp_path)
+    assert compute_pools.default_pools() is app.state.compute
+    with TestClient(app):
+        assert compute_pools.default_pools() is app.state.compute
+    assert compute_pools.default_pools() is None

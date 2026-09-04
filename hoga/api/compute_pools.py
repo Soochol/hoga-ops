@@ -84,6 +84,30 @@ class ComputePools:
         self.narrow.shutdown()
 
 
+# ── 모듈 기본 풀 ────────────────────────────────────────────────────────────────
+#
+# 라우터 클로저 밖에서 도는 코드(캡처 파이프라인의 `depth_daily` 증분 스윕 등)는 풀을
+# 인자로 받을 자리가 없다. 기동 시 설치된 기본 풀을 쓰고, 설치된 것이 없으면(테스트·
+# 부분 조립) 호출자가 종전대로 스레드로 떨어진다. `promote_executor.install_default`
+# 와 같은 패턴이다.
+
+class _DefaultSlot:
+    """`global` 재대입 대신 속성 갱신(PLW0603)."""
+
+    pools: ComputePools | None = None
+
+
+_slot = _DefaultSlot()
+
+
+def install_default(pools: ComputePools | None) -> None:
+    _slot.pools = pools
+
+
+def default_pools() -> ComputePools | None:
+    return _slot.pools
+
+
 def thread_pools() -> ComputePools:
     """스레드 모드 두 벌 — `create_app` 이 실행기를 안 받았을 때(테스트)의 기본."""
     return ComputePools(
