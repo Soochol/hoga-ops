@@ -356,6 +356,21 @@ describe('PatternDrawer — 빈 상태', () => {
     expect(await screen.findByText(/이 기간에 닮은 구간이 없다/)).toBeInTheDocument();
   });
 
+  it('구조 게이트가 켜진 채 서버가 빈 목록을 주면 그 칩을 지목한다', async () => {
+    // 게이트는 후보를 수십만에서 ~100 으로 줄이는 가장 센 조건이다 — 기간을 넓히라고
+    // 하면 사용자는 엉뚱한 손잡이를 돌린다.
+    const user = userEvent.setup();
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      results: [{ ...lengthResult(7, 'x'), matches: [] }],
+    });
+    renderDrawer();
+    await screen.findByText(/이 기간에 닮은 구간이 없다/);
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /같은 구조/ }));
+    expect(await screen.findByText(/이 구조와 맞는 구간이 없다/)).toBeInTheDocument();
+  });
+
   it('그 봉수를 채울 이력이 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
       ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
@@ -398,10 +413,11 @@ describe('PatternDrawer — 빈 상태', () => {
     });
     renderDrawer();
     await screen.findByText(/후보 구간이 하나도 없다/);
-    // 기간·봉단위·이평 — 빈 결과를 되살릴 수 있는 **서버 조건** 셋이 다 있어야 한다.
+    // 기간·봉단위·이평·구조 — 빈 결과를 되살릴 수 있는 **서버 조건** 넷이 다 있어야 한다.
     expect(screen.getByText('최근 1년')).toBeInTheDocument();
     expect(screen.getByText('일봉')).toBeInTheDocument();
     expect(screen.getByText('단기 5·20')).toBeInTheDocument();   // 공장값이 켜짐이다
+    expect(screen.getByText('구조 무관')).toBeInTheDocument();
   });
 
   /**

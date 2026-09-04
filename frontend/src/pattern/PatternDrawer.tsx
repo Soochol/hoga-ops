@@ -1023,11 +1023,18 @@ export function PatternDrawer() {
           <RailDrawerBody quoteNav>
             {shown.length === 0 ? (
               <RailState>
-                {conditions.simFloor > 0
-                  ? `유사도 ${conditions.simFloor.toFixed(2)} 이상인 구간이 없다 — 하한을 낮추거나 기간을 넓혀 보라.`
-                  : conditions.period !== 'all'
-                    ? '이 기간에 닮은 구간이 없다 — 기간을 넓혀 보라.'
-                    : '조건에 맞는 매치가 없다.'}
+                {/* 구조 게이트는 후보를 수십만에서 ~100 으로 줄이는 가장 센 조건이라(실측 92),
+                    켜진 채 **서버가** 빈 목록을 줬으면 그 칩을 먼저 지목한다. 게이트는 분포를
+                    안 건드리므로 `no_candidates` 로는 오지 않고 매치만 빈 채로 온다. 서버가
+                    행을 줬는데 로컬 하한이 잘랐다면 그건 유사도의 몫이다. */}
+                {conditions.structTolerance !== null
+                  && data?.results.every((r) => r.matches.length === 0)
+                  ? '이 구조와 맞는 구간이 없다 — 「구조」 단계를 넓히거나 끄라.'
+                  : conditions.simFloor > 0
+                    ? `유사도 ${conditions.simFloor.toFixed(2)} 이상인 구간이 없다 — 하한을 낮추거나 기간을 넓혀 보라.`
+                    : conditions.period !== 'all'
+                      ? '이 기간에 닮은 구간이 없다 — 기간을 넓혀 보라.'
+                      : '조건에 맞는 매치가 없다.'}
               </RailState>
             ) : (
               shown.map(({ row, length: matchLen }) => {
