@@ -22,12 +22,18 @@ from pydantic import BaseModel
 from hoga.api import (
     calendar as calendar_module,
     captures as _captures_module,
+    gc_probe,
     screener as _screener_module,
     symbols as _symbols_module,
 )
 from hoga.api.calendar import build_router as build_calendar_router
 from hoga.api.captures import build_router as build_captures_router, cancel_all_on_shutdown, set_bus as set_captures_bus
-from hoga.api.compute_pools import ComputePools, build_compute_pools, thread_pools
+from hoga.api.compute_pools import (
+    ComputePools,
+    build_compute_pools,
+    install_default as install_default_compute_pools,
+    thread_pools,
+)
 from hoga.api.events import build_event_bus
 from hoga.api.frontend_static import mount_frontend
 from hoga.api.heatmap import seed_from_watchlist_if_absent
@@ -83,6 +89,27 @@ from hoga.live.lifecycle import (
     stop_today_promoter,
 )
 from hoga.live.migrate import migrate_to_v2_layout
+
+
+def _gc_health_section(gc_objects: bool) -> dict:
+    """deep health 의 `gc` 절. 상시 층은 카운터, `gc_objects=1` 이면 객체 조사가 더 붙는다.
+
+    조사는 **두 겹의 게이트**를 지나야 돈다: env 옵트인(`HOGA_GC_INTROSPECT_ENABLED`)과
+    이 쿼리 파라미터. 하나만으로는 부족한 이유가 서로 다르다 — env 는 "이 인스턴스에서
+    허용하는가"(운영 워치독이 도는 prod 에서는 꺼 둔다), 파라미터는 "지금 이 호출이
+    의도한 것인가"(같은 인스턴스라도 감독자 폴링은 조사를 원하지 않는다). 거부는 이유를
+    실어 돌려준다 — 조용히 빈 값을 주면 부른 쪽이 "객체가 0개" 로 읽는다.
+    """
+    section = gc_probe.stats_snapshot()
+    if not gc_objects:
+        return section
+    if not gc_probe.introspect_enabled():
+        section["objects"] = {
+            "skipped": f"{gc_probe.ENV_INTROSPECT_ENABLED}=true 가 아니라 건너뜀",
+        }
+        return section
+    section["objects"] = gc_probe.introspect_objects()
+    return section
 
 
 async def _cancel_tasks(*tasks: asyncio.Task) -> None:
@@ -200,6 +227,10 @@ class HealthResponse(BaseModel):
     queue: dict | None = None
     disk: dict | None = None
     supervised_tasks: list[dict] | None = None
+    #: GC 정지 계측(ADR-0169 후속, `hoga.api.gc_probe`). `queue`·`disk` 와 같은 관측
+    #: 전용 필드다 — 값이 나빠도 503 을 내지 않는다. 상시 층은 카운터 읽기라 값싸고,
+    #: `?gc_objects=1` 을 준 경우에만 **앱을 수 초 멈추는** 객체 조사 결과가 더 붙는다.
+    gc: dict | None = None
 
 
 # GC gen0 임계 기본값. CPython 기본은 700 이다.
@@ -266,6 +297,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     # (ADR-0169). 안 넘기면 스레드 두 벌 — 테스트가 그 경로다. 운영(`default_app`)은
     # env 로 만든 프로세스 풀을 넘긴다.
     pools: ComputePools = compute if compute is not None else thread_pools()
+    # 라우터 클로저 밖에서 도는 코드(캡처 파이프라인의 `depth_daily` 스윕)가 쓰는 모듈
+    # 기본 풀. lifespan 종료가 지운다 — 남겨 두면 다음 앱 인스턴스가 이미 내려간 풀을
+    # 붙잡는다(TestClient 는 한 프로세스에서 앱을 수백 번 만든다).
+    install_default_compute_pools(pools)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
 
@@ -372,6 +407,9 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         gc_gen0 = gc_gen0_threshold()
         if gc_gen0 > 0:
             gc.set_threshold(gc_gen0, *GC_UPPER_GEN_THRESHOLDS)
+        # 임계를 **거는 곳에서 재기도 한다**. 이 값이 정지 시간을 좌우하는데 지금까지
+        # 그 결과를 보는 눈이 없었다 — 2026-09-04 에 GC 정지를 손으로 재야 했다.
+        gc_probe.install(warn_ms=gc_probe.pause_warn_ms_from_env())
         try:
             yield
         finally:
@@ -380,6 +418,9 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 앱을 수백 번 만든다 — 복원이 없으면 이 전역 설정이 그 프로세스 전체로
             # 새어 GC 동작에 의존하는 다른 테스트를 흔든다.
             gc.set_threshold(*gc_prev_threshold)
+            # 콜백도 임계와 같은 이유로 뗀다 — TestClient 가 앱을 수백 번 만들면
+            # 콜백이 그만큼 쌓여 수집마다 전부 불린다.
+            gc_probe.uninstall()
             await _cancel_tasks(*lifespan_tasks)
             # 컴퓨트 워커 프로세스(ADR-0169). **예열 태스크를 먼저 취소한다** — 아직 spawn
             # 을 기다리는 중에 풀을 내리면 그 future 가 BrokenProcessPool 로 끝나
@@ -388,6 +429,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 지나쳐 조용히 끝난다. 그다음 동기 shutdown — 진행 중 작업은 기다리지
             # 않는다(요청은 어차피 서버와 함께 끊긴다).
             await _cancel_tasks(_app.state.compute_prewarm)
+            install_default_compute_pools(None)
             pools.shutdown()
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
@@ -462,7 +504,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     #
     # 부작용 없음(메모리 상태 읽기)이므로 감독자가 짧은 주기로 물어도 안전하다.
     @app.get("/health")
-    def _health(deep: bool = False) -> JSONResponse:
+    def _health(deep: bool = False, gc_objects: bool = False) -> JSONResponse:
         # version·commit 은 얕은 쪽에도 싣는다(#998) — dev/prod 2대 운영에서 "이
         # 포트에 뜬 게 어느 코드인가" 는 liveness 만큼 자주 묻는 질문이다.
         # 업그레이드 성공 판정은 commit 으로 한다: VERSION 은 손으로 올리는 값이라
@@ -508,6 +550,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
                 "low": head.is_low,
             },
             "supervised_tasks": tasks,
+            "gc": _gc_health_section(gc_objects),
         }
         HealthResponse.model_validate(body)
         return JSONResponse(body, status_code=503 if degraded else 200)
