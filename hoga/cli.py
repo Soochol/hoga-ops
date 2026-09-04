@@ -204,6 +204,12 @@ def screener_backfill(
         run_backfill,
     )
 
+    # ⚠ **`.env` 를 여기서 읽는다.** `load_env()` 는 오랫동안 `serve` 에서만 불렸다 —
+    # 그래서 이 명령은 자격증명이 설정돼 있어도 **늘 무자격으로 돌아** 「자격증명 없음」
+    # 으로 죽었다(실측 2026-09-04). 죽는 방식이 loud fail 이라 조용한 실패는 아니었지만,
+    # 메시지가 「설정하라」고 말하는데 **이미 설정돼 있는** 상태라 원인을 짚을 수 없다.
+    # `resolve_data_dir()` 보다 먼저 불러야 한다 — 그쪽도 env 를 본다.
+    load_env()
     t0 = time.time()
     try:
         rep = asyncio.run(run_backfill(resolve_data_dir(), factors_only=factors_only))
@@ -245,6 +251,11 @@ def screener_history_backfill(
     from hoga.api.screener_history_backfill import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         run_history_backfill,
     )
+
+    # ⚠ 위 `screener-backfill` 과 같은 이유로 여기서 `.env` 를 읽는다. dry-run 은
+    # 자격증명이 필요 없지만 `--yes` 는 필요하고, 안 읽으면 그 경로가 **원리적으로**
+    # 동작할 수 없다.
+    load_env()
 
     today = dt.date.today()
     gap_from = today.replace(year=today.year - years)
