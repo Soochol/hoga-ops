@@ -34,6 +34,7 @@ from hoga.api.screener_history_backfill import (
     oldest_factors,
     plan_targets,
     read_probe,
+    run_history_backfill,
     unadjust,
 )
 from hoga.api.screener_store import derive_adjusted
@@ -302,3 +303,64 @@ async def test_probe_is_persisted_so_the_next_run_is_cheaper(tmp_path: Path) -> 
 
     await history_backfill(tmp_path, fetch_adjusted_daily=_empty, dry_run=False, **kw)
     assert calls == ["005930"], "두 번째 런이 같은 헛 호출을 반복했다"
+
+
+# ── 프로덕션 진입점 `run_history_backfill` ────────────────────────────────────────
+#
+# 이 함수가 생기기 전까지 위 기계를 부르는 곳은 **이 테스트 파일뿐이었다**. 그래서
+# 코퍼스의 앞쪽 결손이 1년 가까이 남아 있었다 — 도구가 없어서가 아니라 **부를 데가
+# 없어서**다. 아래 둘은 그 진입점이 지켜야 할 성질이다.
+
+
+@pytest.mark.anyio
+async def test_production_dry_run_needs_no_credentials(tmp_path: Path, monkeypatch) -> None:
+    """⚠ **dry-run 은 자격증명 경로를 아예 건드리지 않는다.**
+
+    계획은 달력과 코퍼스만으로 나오는데, 진입점이 클라이언트를 **먼저** 만들면
+    「무엇이 얼마나 비었나」라는 결정 정보가 자격증명 뒤로 숨는다. 이 리포는 dev·
+    워크트리를 무자격으로 두는 것이 관례라(ADR-0134) 그러면 계획조차 못 본다.
+
+    가드 방식: `kiwoom_rest_runtime` 을 **터지는 것으로 바꿔 둔다**. 진입점이 그것을
+    부르면 실패한다 — 「자격증명이 없어도 되더라」를 우연히 통과하는 것이 아니라
+    **경로를 안 탄다는 것 자체**를 잰다.
+    """
+    from hoga.live import kiwoom_rest_runtime
+
+    def _boom(*_a, **_k):
+        raise AssertionError("dry-run 이 자격증명 경로를 탔다")
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", _boom)
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", _boom)
+
+    sdir = tmp_path / "screener"
+    _write_corpus(sdir, factor=1.0)
+
+    report = await run_history_backfill(
+        tmp_path, gap_from=GAP_FROM, window_to=WINDOW_TO,
+        corpus_start_after=dt.date(2025, 1, 1), dry_run=True,
+    )
+
+    assert report.dry_run is True
+    assert report.written_rows == 0
+    assert report.plans, "계획이 비면 이 가드는 아무것도 재지 못한다"
+
+
+@pytest.mark.anyio
+async def test_production_run_fails_loudly_without_credentials(tmp_path: Path, monkeypatch) -> None:
+    """실행 경로는 **조용히 skip 하지 않는다**(`run_backfill` 과 같은 규율).
+
+    조용히 넘기면 「돌렸는데 아무것도 안 채워졌다」가 성공처럼 보인다 — 결손은 다음
+    실행에서도 그대로인데 리포트는 0행을 정상으로 보고한다.
+    """
+    from hoga.live import kiwoom_rest_runtime
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
+
+    sdir = tmp_path / "screener"
+    _write_corpus(sdir, factor=1.0)
+
+    with pytest.raises(RuntimeError, match="자격증명"):
+        await run_history_backfill(
+            tmp_path, gap_from=GAP_FROM, window_to=WINDOW_TO,
+            corpus_start_after=dt.date(2025, 1, 1), dry_run=False,
+        )

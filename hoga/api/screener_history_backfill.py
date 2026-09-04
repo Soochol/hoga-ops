@@ -444,3 +444,93 @@ async def history_backfill(
         write_probe(sdir, probe)
         report.probed = dict(probe)
     return report
+
+
+async def run_history_backfill(
+    data_dir: Path,
+    *,
+    gap_from: dt.date,
+    window_to: dt.date | None = None,
+    dry_run: bool = True,
+    codes: list[str] | None = None,
+    corpus_start_after: dt.date | None = None,
+) -> BackfillReport:
+    """프로덕션 진입점 — 키움 `ka10081` 로 fetch 를 묶어 :func:`history_backfill` 실행.
+
+    이 함수가 생기기 전까지 이 모듈을 부르는 곳은 **테스트뿐이었다**. 기계는 다 있는데
+    부를 데가 없어서, 코퍼스의 앞쪽 결손이 1년 가까이 그대로 남아 있었다.
+
+    ## ⚠ dry-run 은 **자격증명을 요구하지 않는다**
+
+    계획은 거래일 달력과 코퍼스만으로 나오고 :func:`history_backfill` 이 dry-run 에서
+    벤더를 아예 안 부르므로, 여기서 클라이언트를 **먼저** 만들면 그 성질이 사라진다 —
+    「무엇이 얼마나 비었나」라는 결정 정보가 자격증명 뒤로 숨는다. 이 리포는 dev·
+    워크트리를 무자격으로 두는 것이 관례라(ADR-0134) 그러면 계획조차 못 본다.
+    그래서 클라이언트 조립은 **쓰기 경로에서만** 한다.
+
+    `adjust=True` 인 이유는 이 모듈이 **수정주가를 받아 역-수정해서** 원주가에 쓰기
+    때문이다(모듈 도크스트링). 기준일은 `run_backfill` 과 같은 규약으로 **오늘 하나**다 —
+    종목별 최신일로 잡으면 상장폐지·장기 정지 종목에서 그 뒤의 분할이 빠진다.
+    """
+    sdir = data_dir / "screener"
+    window_to = window_to or dt.date.today()
+    if dry_run:
+        async def _unused(code: str, frm: str, to: str) -> list[VendorBar]:
+            # 여기 도달하면 dry-run 의 계약이 깨진 것이다 — 조용히 넘기지 않는다.
+            raise AssertionError("dry-run 이 벤더를 호출했다")
+
+        return await history_backfill(
+            sdir, fetch_adjusted_daily=_unused, gap_from=gap_from, window_to=window_to,
+            data_dir=data_dir, codes=codes, corpus_start_after=corpus_start_after,
+            dry_run=True,
+        )
+
+    from datetime import datetime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+
+    from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+        kiwoom_access,
+        kiwoom_daily_candles,
+        kiwoom_rest_runtime,
+    )
+    from hoga.util.timeenc import KST  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+
+    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+    if client is None:
+        # `run_backfill` 과 같은 규율 — 백필은 조용히 skip 하지 않고 loud fail 한다.
+        raise RuntimeError("키움 자격증명 없음(KIWOOM_APP_KEY/SECRET) — 백필 불가")
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+    as_of_s = datetime.now(KST).strftime("%Y%m%d")
+
+    async def fetch_adjusted_daily(code: str, frm: str, to: str) -> list[VendorBar]:
+        def _run_page(fetch_fn, page_idx: int):
+            # 페이지 1장 = 거버너 submit 1건. **walk 전체를 감싸면 페이지 축이 통째로
+            # 페이싱 밖으로 샌다**(ADR-0137) — 종목 × 페이지가 곧 콜 수다.
+            return kiwoom_access.run_with_capacity(
+                scheduler,
+                key=("screener-history-backfill", code, frm, to, page_idx),
+                api_id=kiwoom_daily_candles.API_ID,
+                # 차트와 **같은 TR 버킷**을 쓴다 — 사용자 조작에 양보해야 장중에도
+                # 화면이 느려지지 않는다.
+                priority="background",
+                client=client,
+                fetch_fn=fetch_fn,
+            )
+
+        res = await kiwoom_daily_candles.fetch_daily_candles(
+            client, code, frm, to,
+            adjust=True, adjusted_as_of=as_of_s, run_page=_run_page,
+        )
+        return [
+            VendorBar(
+                date=datetime.fromtimestamp(c.t_ms / 1000, tz=KST).date(),
+                open=float(c.open), high=float(c.high),
+                low=float(c.low), close=float(c.close), volume=c.volume,
+            )
+            for c in res.candles
+        ]
+
+    return await history_backfill(
+        sdir, fetch_adjusted_daily=fetch_adjusted_daily,
+        gap_from=gap_from, window_to=window_to, data_dir=data_dir,
+        codes=codes, corpus_start_after=corpus_start_after, dry_run=False,
+    )
