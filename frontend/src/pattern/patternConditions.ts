@@ -41,6 +41,34 @@ export const RESULT_COUNTS = [20, 40, 100] as const;
 /** 길이 유연 폭 후보. `history` 는 길이당 ~0.6s 라 ±2 가 3초다 — 그 위는 열지 않는다. */
 export const FLEX_STEPS = [0, 1, 2] as const;
 
+/** 구조 게이트 단계 — 쿼리 창의 «봉별 색·전고·전저 관계» 부호열과 몇 개까지 달라도
+ *  되는가. `null` = 끄기. **서버 조건**이다(모집단을 거른다) — 상관 상위 100개 안에서
+ *  거르면 그 안에 같은 구조가 8개뿐이라(실측) 로컬로는 흉내낼 수 없다.
+ *
+ *  3 위는 열지 않는다: 5봉·20관계 실측 0→92 · 1→1,113 · 2→6,191 · 3→20,965 창이라
+ *  그 위는 사실상 끄기다. 값은 `hoga/api/models.py::PATTERN_STRUCT_MAX_TOLERANCE` 안이다. */
+export const STRUCT_STEPS = [null, 0, 1, 2, 3] as const;
+
+export function structLabel(tolerance: number | null): string {
+  if (tolerance === null) return '구조 무관';
+  return tolerance === 0 ? '같은 구조' : `구조 ${tolerance}개 차이까지`;
+}
+
+/** 그 단계를 고르면 남는 후보창 수 — 서버가 준 히스토그램(게이트 **전** 모집단)의
+ *  꼬리 합. 히스토그램이 없으면(게이트를 끈 채 검색했다) `null` — 서버가 그때는 서명을
+ *  계산하지 않으므로 미리 셀 수 없다. */
+export function structRemaining(
+  hist: readonly number[] | null | undefined,
+  total: number | null | undefined,
+  tolerance: number,
+): number | null {
+  if (!hist || total == null) return null;
+  const need = Math.max(0, total - tolerance);
+  let n = 0;
+  for (let k = need; k < hist.length; k += 1) n += hist[k];
+  return n;
+}
+
 /** 봉 단위 후보. 값은 `hoga/api/models.py::PatternTimeframe` 의 손 미러다(ADR-0004).
  *
  *  **서버 조건**이다 — 코퍼스 자체가 갈리므로 받아 둔 결과를 자르는 것으로 흉내낼 수
@@ -133,6 +161,8 @@ export type PatternConditions = {
   /** 이평선을 매칭 축에 넣을지. **서버 조건**이다 — 유사도 자체가 달라지므로 받아 둔
    *  결과를 자르는 것으로는 흉내낼 수 없다. */
   maPreset: PatternMaPreset;
+  /** 구조 게이트 허용 불일치. `null` = 끄기. **서버 조건**(모집단을 거른다). */
+  structTolerance: number | null;
   /** 봉 단위. **서버 조건**이고 코퍼스 자체가 갈린다.
    *
    *  공장값은 일봉이지만 **패널을 열 때 차트에서 시드**된다(기준 종목과 같은 규칙) —
@@ -164,6 +194,9 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
   // 형세까지 맞추는 것이 이 도구의 기본 질문이 됐다 — 끄면 정배열/역배열이 우연 수준으로
   // 섞인다(실측 6~14/20 vs 20/20, ADR-0166 결정 11).
   maPreset: 'short',
+  // 구조 게이트는 **끈 채로** 시작한다 — 켜면 후보가 수십만에서 ~100 으로 준다(실측 92).
+  // 그은 구간의 «관계» 를 고집하고 싶을 때 켜는 옵트인 축이다.
+  structTolerance: null,
   timeframe: 'D',
 };
 

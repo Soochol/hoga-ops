@@ -614,6 +614,8 @@ export function PatternDrawer() {
       maPreset: save.conditions.ma_preset ?? DEFAULT_CONDITIONS.maPreset,
       // 부재는 **「주봉이 없던 시절의 저장」**이라 일봉이다 — 같은 규칙.
       timeframe: save.conditions.timeframe ?? DEFAULT_CONDITIONS.timeframe,
+      // 구조 게이트의 부재는 공장값(끄기)과 같은 결과다 — 공장값을 켜는 날 분리할 것.
+      structTolerance: save.conditions.struct_tolerance ?? DEFAULT_CONDITIONS.structTolerance,
     });
     setShowSaves(false);
   }, []);
@@ -790,6 +792,7 @@ export function PatternDrawer() {
                   ma_preset: conditions.maPreset,
                   flex_bars: conditions.flexBars,
                   timeframe: conditions.timeframe,
+                  struct_tolerance: conditions.structTolerance,
                 },
                 // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
                 // 그것까지가 「이 검색」이다.
@@ -982,6 +985,8 @@ export function PatternDrawer() {
             onChange={setConditions}
             rows={result?.matches ?? NO_ROWS}
             p9999={result?.dist.p99_99 ?? null}
+            structHist={result?.struct_hist ?? null}
+            structTotal={result?.struct_total ?? null}
             excluded={excluded}
             onRestore={(e) => commitExcluded(
               excluded.filter((x) => exclusionKey(x) !== exclusionKey(e)),

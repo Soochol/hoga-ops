@@ -2048,6 +2048,9 @@ PATTERN_MIN_BARS = 5
 PATTERN_MAX_BARS = 30
 #: `now` 가 한 요청에 담을 수 있는 길이 개수 — 프론트 봉수 스크럽의 전제(ADR-0166 결정 3).
 PATTERN_MAX_LENGTHS = 11
+#: 구조 게이트의 허용 불일치 상한. 화면은 0~3 만 열고, 그 위는 「사실상 끄기」라 열지
+#: 않는다(실측 5봉·20관계: 0→92 · 1→1,113 · 2→6,191 · 3→20,965 창).
+PATTERN_STRUCT_MAX_TOLERANCE = 10
 
 
 class PatternSearchRequest(BaseModel):
@@ -2099,6 +2102,13 @@ class PatternSearchRequest(BaseModel):
     #: 상위 20 중 3개만 겹친다) 그건 판별력이 아니라 **질문이 바뀌는 것**이고,
     #: 체크박스는 그 사실을 화면에서 말해 주지 못한다(ADR-0166 결정 11).
     ma_preset: PatternMaPreset = "off"
+    #: 구조 게이트 — 쿼리 창의 «봉별 색·전고·전저 관계» 부호열과 **몇 개까지 달라도**
+    #: 후보로 남길지. `None` 이면 끈다(서명 계산 자체를 안 한다).
+    #:
+    #: 게이트이지 점수가 아니다 — 통과한 창의 순서는 여전히 상관이고, `dist`·`baseline` 은
+    #: 통과 **전** 모집단이다(ADR-0166 결정 12). 상관이 원리적으로 못 보는 국소 부등식
+    #: (「고가는 전고를 넘었는데 종가는 못 넘었다」)을 이 축이 본다.
+    struct_tolerance: int | None = Field(None, ge=0, le=PATTERN_STRUCT_MAX_TOLERANCE)
     #: 봉 단위. 코퍼스가 이 값으로 갈린다(주봉은 일봉에서 파생).
     #:
     #: ⚠ **길이·기간·수익률 지평은 전부 «봉» 을 센다.** 그래서 같은 `forward_days=20`
@@ -2189,6 +2199,13 @@ class PatternSaveConditions(BaseModel):
     timeframe: PatternTimeframe | None = None
     #: 길이 유연 폭(±봉). `None` 의 뜻은 위 `ma_preset` 과 같다.
     flex_bars: int | None = Field(None, ge=0, le=5)
+    #: 구조 게이트 허용 불일치. **`None` 이 「끄기」와 「그 축이 없던 시절의 저장」을 겸한다**
+    #: — 공장값이 끄기라 오늘은 두 뜻이 같은 결과다.
+    #:
+    #: ⚠ 공장값을 켜는 쪽으로 바꾸면 그 순간 `ma_preset` 사고가 재현된다(옛 저장이 전부
+    #: 켜진 채 되살아나거나, 일부러 끈 저장이 켜진다). 그때는 부재와 끄기를 **분리해서**
+    #: 표현해야 한다 — 이 필드의 `None` 을 그대로 두고 공장값만 바꾸지 말 것.
+    struct_tolerance: int | None = Field(None, ge=0, le=PATTERN_STRUCT_MAX_TOLERANCE)
 
 
 class PatternExclusion(BaseModel):
@@ -2288,6 +2305,9 @@ class PatternMatchRow(BaseModel):
     #: `PatternLengthResult.ma_periods` 와 **같은 순서**다. 썸네일이 이 선을 함께 그려야
     #: 왜 매치됐는지 보인다(캔들만 보면 이평 관계는 화면에 없다).
     ma: list[list[float]] | None = None
+    #: 구조 게이트가 켜졌을 때만 — 이 창이 쿼리 부호열과 맞춘 관계 수. 분모는
+    #: `PatternLengthResult.struct_total`. 꺼져 있으면 null(계산 자체를 안 한다).
+    struct_match: int | None = None
 
 
 class PatternQueryWindow(BaseModel):
@@ -2323,6 +2343,13 @@ class PatternLengthResult(BaseModel):
     #:
     #: `now` 에서만 값이 있다 — `history` 의 창은 과거라 전부 완성이다. 일봉은 항상 null.
     partial_last_bucket_days: int | None = None
+    #: 구조 게이트가 켜졌을 때만 — 판정에 들어간 관계 수(쿼리에서 부호가 0 인 관계는
+    #: 뺀 뒤의 값이라 길이만으로 정해지지 않는다). 꺼져 있으면 null.
+    struct_total: int | None = None
+    #: 구조 게이트가 켜졌을 때만 — 인덱스 k 에 「k 개 맞춘 후보창 수」. 게이트를 걸기 **전**
+    #: 모집단(다른 필터는 다 지난 창들)이라, 팝오버가 「이 단계를 고르면 몇 개 남나」를
+    #: 재검색 없이 센다. 길이 `struct_total + 1`.
+    struct_hist: list[int] | None = None
     elapsed_ms: float
 
 
