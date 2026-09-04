@@ -48,6 +48,40 @@ def relation_count(length: int) -> int:
     return 1 + 5 * (length - 1)
 
 
+#: 관계 종류별 「쿼리가 기대하는 것」 문구. 부호가 + 일 때 / − 일 때.
+_PHRASE = {
+    "색": ("양봉", "음봉"),
+    "고가 vs 전고": ("고가 > 전고", "고가 < 전고"),
+    "종가 vs 전고": ("종가 > 전고", "종가 < 전고"),
+    "저가 vs 전저": ("저가 > 전저", "저가 < 전저"),
+    "종가 vs 전저": ("종가 > 전저", "종가 < 전저"),
+}
+
+
+def relation_phrases(sig: np.ndarray, length: int) -> list[str]:
+    """관계마다 **쿼리가 기대하는 것**을 한국어로 — 「5봉 저가 > 전저」. `query_signature`
+    와 같은 인덱스라 행의 불일치 인덱스가 이 목록을 가리킨다. 부호 0(판정 제외)은
+    「=」 로 적어 자리를 지킨다 — 불일치 목록에는 원리적으로 안 나온다.
+    """
+    kinds = ["색"] + [r for _ in range(1, length) for r in _PER_BAR]
+    out = []
+    for i, (kind, s_) in enumerate(zip(kinds, sig, strict=True)):
+        bar = 1 if i == 0 else 2 + (i - 1) // 5
+        if s_ == 0:
+            out.append(f"{bar}봉 {kind.replace(' vs ', ' = ')}")
+        else:
+            out.append(f"{bar}봉 {_PHRASE[kind][0 if s_ > 0 else 1]}")
+    return out
+
+
+def mismatches(sig: np.ndarray, window: np.ndarray) -> list[int]:
+    """한 후보 창에서 **쿼리 부호와 다른** 판정 관계의 인덱스. 총수 − 길이 = 그 창의
+    `struct_match` 다(동률은 어느 부호와도 안 맞으므로 불일치로 센다 — `window_matches`
+    와 같은 규칙)."""
+    wsig = query_signature(window)
+    return [int(i) for i in np.flatnonzero(sig) if wsig[i] != sig[i]]
+
+
 def _relations(o, h, lo, cl, length: int):
     """관계 값들을 **같은 순서**로 낸다. 인자는 봉 오프셋 d 로 인덱싱되는 시퀀스 —
     쿼리 하나면 스칼라 열, 후보 전체면 창 수 길이의 벡터 열이다.
@@ -122,6 +156,8 @@ class StructGate:
     matches: np.ndarray
     need: int
     total: int
+    #: 쿼리 부호열 — 행의 불일치 인덱스(`mismatches`)와 기대 문구가 여기서 나온다.
+    sig: np.ndarray | None = None
     hist: np.ndarray = field(default=None)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

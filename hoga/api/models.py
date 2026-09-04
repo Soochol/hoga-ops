@@ -2308,6 +2308,10 @@ class PatternMatchRow(BaseModel):
     #: 구조 게이트가 켜졌을 때만 — 이 창이 쿼리 부호열과 맞춘 관계 수. 분모는
     #: `PatternLengthResult.struct_total`. 꺼져 있으면 null(계산 자체를 안 한다).
     struct_match: int | None = None
+    #: 구조 게이트가 켜졌을 때만 — 이 창이 **못 맞춘** 관계들의 인덱스
+    #: (`PatternLengthResult.struct_relations` 의 인덱스). 완전 일치면 빈 목록. 허용을
+    #: 열어 부분 일치가 섞일 때 「이 행이 왜 여기 있나」를 이름으로 답하는 데이터다.
+    struct_miss: list[int] | None = None
 
 
 class PatternQueryWindow(BaseModel):
@@ -2350,6 +2354,10 @@ class PatternLengthResult(BaseModel):
     #: 모집단(다른 필터는 다 지난 창들)이라, 팝오버가 「이 단계를 고르면 몇 개 남나」를
     #: 재검색 없이 센다. 길이 `struct_total + 1`.
     struct_hist: list[int] | None = None
+    #: 구조 게이트가 켜졌을 때만 — 관계마다 **쿼리가 기대하는 것**(「5봉 저가 > 전저」).
+    #: 행의 `struct_miss` 가 이 목록의 인덱스다. 판정에서 뺀 관계(부호 0)도 자리를 지켜
+    #: 길이가 `1 + 5(L−1)` 이다 — `struct_total` 과 다를 수 있다.
+    struct_relations: list[str] | None = None
     elapsed_ms: float
 
 

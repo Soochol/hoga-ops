@@ -326,6 +326,7 @@ function MatchRow({
   lengthBadge = null,
   maPeriods = [],
   structTotal = null,
+  structRelations = null,
 }: {
   row: PatternMatchRow;
   mode: PatternSearchMode;
@@ -348,6 +349,8 @@ function MatchRow({
   maPeriods?: number[];
   /** 구조 게이트의 관계 총수 — 행의 `struct_match` 의 분모. 게이트를 켠 응답에만 있다. */
   structTotal?: number | null;
+  /** 관계마다 「쿼리가 기대하는 것」. 행의 `struct_miss` 가 이 배열의 인덱스다. */
+  structRelations?: readonly string[] | null;
 }) {
   const forward = row.forward_pct;
   // 배지는 **데이터가 있을 때만** — 서버가 서명을 계산한 응답(게이트 켬)에만 값이 실린다.
@@ -355,6 +358,20 @@ function MatchRow({
   const structBadge = row.struct_match != null && structTotal != null
     ? `${row.struct_match}/${structTotal}`
     : null;
+  // 못 맞춘 관계를 **쿼리가 기대한 말**로 적는다 — 「4봉 양봉」은 "쿼리는 양봉인데 이
+  // 창은 아니다" 는 뜻이다. 배지의 숫자가 「몇 개 다른가」면 이 줄은 「무엇이 다른가」다.
+  // 완전 일치면 빈 배열이라 아무것도 그리지 않는다(칭찬할 자리가 아니다).
+  //
+  // ⚠ 둘까지만 적는다. 허용 3 이면 셋이 될 수 있는데, 행 높이가 늘면 목록을 훑는
+  //   동작이 깨진다 — 나머지는 개수로 접는다.
+  const missNames = (row.struct_miss ?? [])
+    .map((i) => structRelations?.[i])
+    .filter((v): v is string => v != null);
+  const missText = missNames.length === 0
+    ? null
+    : missNames.length <= 2
+      ? missNames.join(' · ')
+      : `${missNames.slice(0, 2).join(' · ')} 외 ${missNames.length - 2}`;
   return (
     // ⚠ `<button>` 이 아니라 `role="button"` 인 div 다. 원래 근거는 「안에 ⋯ 버튼이 있어
     //   버튼 중첩을 못 한다」였고 그 버튼은 사라졌지만, 형태는 `QuoteRow`(li + role)와
@@ -425,6 +442,15 @@ function MatchRow({
             </span>
           )}
         </span>
+        {missText != null && (
+          <span
+            className="block truncate text-badge text-fg-dimmer"
+            data-testid="pattern-struct-miss"
+            title={missNames.join(' · ')}
+          >
+            {missText}
+          </span>
+        )}
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="flex flex-col items-end gap-[3px]">
@@ -605,6 +631,12 @@ export function PatternDrawer() {
   /** 길이 → 관계 총수. 유연 병합은 길이별 블록의 행이 섞이므로 분모도 길이별이다. */
   const structTotalByLength = useMemo(
     () => new Map((data?.results ?? []).map((r) => [r.length, r.struct_total] as const)),
+    [data],
+  );
+  /** 길이 → 관계 문구들. 유연 병합은 길이별 블록이 섞이므로 문구도 길이별이다 —
+   *  길이가 다르면 관계 개수가 달라 **인덱스가 통째로 어긋난다**. */
+  const structRelationsByLength = useMemo(
+    () => new Map((data?.results ?? []).map((r) => [r.length, r.struct_relations] as const)),
     [data],
   );
 
@@ -1095,6 +1127,7 @@ export function PatternDrawer() {
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
                   structTotal={structTotalByLength.get(matchLen) ?? null}
+                  structRelations={structRelationsByLength.get(matchLen) ?? null}
                   maPeriods={result.ma_periods}
                 />
                 );

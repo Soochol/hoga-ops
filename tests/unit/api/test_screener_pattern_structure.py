@@ -280,3 +280,59 @@ def test_saved_tolerance_is_absent_by_default_and_round_trips_when_given():
     assert PatternSaveWriteRequest.model_validate(base).conditions.struct_tolerance is None
     given = {**base, "conditions": {"mode": "history", "struct_tolerance": 1}}
     assert PatternSaveWriteRequest.model_validate(given).conditions.struct_tolerance == 1
+
+
+# ── 불일치 인덱스와 기대 문구 (PR 3) ───────────────────────────────────────────
+
+def test_relation_phrases_say_what_the_query_expects_in_order():
+    """문구는 **쿼리가 기대하는 것**이다 — 「4봉 양봉」은 "쿼리는 양봉인데 이 창은 아니다".
+    `query_signature` 와 같은 인덱스라 행의 불일치 인덱스가 이 목록을 가리킨다."""
+    bars = [(10, 12, 9, 11), (11, 13, 10, 10.5), (10.5, 14, 10.2, 13.5)]
+    sig = st.query_signature(_win(bars))
+    names = st.relation_phrases(sig, 3)
+    assert len(names) == st.relation_count(3)
+    assert names[0] == "1봉 양봉"
+    assert names[1] == "2봉 음봉"
+    assert names[2] == "2봉 고가 > 전고"
+    assert names[3] == "2봉 종가 < 전고"
+    assert names[6] == "3봉 양봉"
+
+
+def test_relation_phrases_keep_a_slot_for_ties_so_indices_stay_aligned():
+    """판정에서 뺀 관계(부호 0)도 자리를 지킨다 — 빼면 행의 인덱스가 통째로 밀린다."""
+    bars = [(10, 12, 9, 11), (11, 13, 10, 10.5), (10.5, 13, 10.2, 12.5)]
+    sig = st.query_signature(_win(bars))
+    names = st.relation_phrases(sig, 3)
+    assert len(names) == st.relation_count(3) > st.signature_total(sig)
+    assert names[7] == "3봉 고가 = 전고"
+
+
+def test_mismatches_lists_exactly_the_relations_that_differ():
+    """불일치 수 + `window_matches` 의 일치 수 = 판정 관계 총수."""
+    sig = st.query_signature(_win(_STRUCT))
+    total = st.signature_total(sig)
+    flipped = list(_STRUCT)
+    flipped[1] = (104, 108, 103, 105)          # 2봉을 양봉으로
+    miss = st.mismatches(sig, _win(flipped))
+    assert len(miss) == 1
+    assert st.relation_phrases(sig, _L)[miss[0]] == "2봉 음봉"
+    assert int(st.window_matches(_win(flipped), sig, _L)[0]) == total - len(miss)
+    assert st.mismatches(sig, _win(_STRUCT)) == []
+
+
+def test_route_carries_miss_indices_that_resolve_against_the_relation_list(client):
+    """라우트가 두 필드를 함께 낸다 — 인덱스만 있으면 화면이 이름을 못 붙이고, 문구만
+    있으면 어느 것이 틀렸는지 모른다."""
+    body = {"code": "000001", "mode": "history", "from": "20240129", "to": "20240202",
+            "min_tv_eok": 0, "exclude_etf": False, "no_overlap": False, "forward_days": 1}
+    off = client.post("/api/screener/pattern-search", json=body).json()["results"][0]
+    assert off["struct_relations"] is None
+    assert off["matches"][0]["struct_miss"] is None
+
+    on = client.post("/api/screener/pattern-search",
+                     json={**body, "struct_tolerance": 3}).json()["results"][0]
+    assert len(on["struct_relations"]) == 1 + 5 * (_L - 1)
+    for row in on["matches"]:
+        assert len(row["struct_miss"]) == on["struct_total"] - row["struct_match"]
+        for i in row["struct_miss"]:
+            assert on["struct_relations"][i]        # 인덱스가 문구를 가리킨다
