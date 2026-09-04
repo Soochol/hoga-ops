@@ -79,7 +79,15 @@ from hoga.collector.orchestrator import (
 from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
 from hoga.collector.timing_writer import write_timing_report
 from hoga.config import CookieMissingError
-from hoga.parser import parse_stock_date
+
+# ⚠ 하중을 받는 import. `parse_stock_date` 는 이 모듈에서 **직접 불리지 않는다** —
+# 파싱은 컴퓨트 워커(`compute_jobs.capture_parse_job`)에서 돌고, 그 작업 함수가
+# **이 이름을 통해** 부른다. 이유는 테스트 시임이다: 캡처 파이프라인 테스트들이
+# `monkeypatch.setattr(captures, "parse_stock_date", …)` 로 파서를 갈아 끼운다.
+# 지우면 스레드 모드에서 그 시임을 지나쳐 **진짜 파서가 조용히 돌고**, 프로세스
+# 모드에서는 AttributeError 로 모든 캡처가 실패한다.
+# `tests/unit/api/test_compute_pools.py` 가 이 결합을 고정한다.
+from hoga.parser import parse_stock_date  # noqa: F401 — 위 참조
 from hoga.tables.snapshots import SnapshotValidationError
 from hoga.tables.trades import TradeValidationError
 from hoga.util.git_sha import get_git_sha
@@ -931,20 +939,26 @@ async def _run_capture_inner(
     # warnings (phase stays 'done'). Other parser failures (file I/O, schema
     # drift, unknown event types) still propagate to the worker loop's
     # exception handler and flip phase to 'failed' as before.
+    # 파싱은 컴퓨트 워커 프로세스에서 돈다(ADR-0169). 종전에는 `run_in_executor(None, …)`
+    # 즉 앱의 스레드 풀이었고, 실측(2026-09-04, 실제 원본) 한 건이 1.1~2.4초 wall ·
+    # 1.7~4.9 CPU초다. 같은 날 1,153건이 파싱됐고 장중에도 25초에 한 번꼴이라 이것이
+    # 앱 안에 남아 있던 **가장 큰** CPU 였다(장중 누적 약 30분).
+    #
+    # **아래 예외 분기는 그대로 산다.** 작업 함수의 예외는 원형 그대로 프로세스 경계를
+    # 건너므로(`compute_jobs._crosses_faithfully`) 이 두 타입도, 디스크 만수(OSError +
+    # errno)를 «머신 탓» 으로 가르는 `_is_local_disk_failure` 도 종전과 같이 판정된다.
+    from hoga.api import compute_jobs  # noqa: PLC0415 — import cycle 회피
+
     try:
         with collector.phase("parse"):
-            await loop.run_in_executor(
-                None,
-                lambda: parse_stock_date(
-                    code=state.code, date=state.date, data_dir=data_dir, lenient=False,
-                ),
+            await compute_jobs.run_default_wide_job(
+                compute_jobs.capture_parse_job,
+                str(data_dir), state.code, state.date, False,
             )
     except (TradeValidationError, SnapshotValidationError) as exc:
-        await loop.run_in_executor(
-            None,
-            lambda: parse_stock_date(
-                code=state.code, date=state.date, data_dir=data_dir, lenient=True,
-            ),
+        await compute_jobs.run_default_wide_job(
+            compute_jobs.capture_parse_job,
+            str(data_dir), state.code, state.date, True,
         )
         state.warnings = [_validation_error_to_warning(exc)]
 
