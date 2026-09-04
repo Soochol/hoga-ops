@@ -305,8 +305,11 @@ function MatchRow({
   mode: PatternSearchMode;
   dist: { p50: number; p95: number; p99: number; p99_99: number | null };
   onOpen: (e: JumpModifiers) => void;
-  /** 우클릭 · ⋯ 버튼이 함께 부른다. **우클릭만 두면 터치·키보드에서 닿지 않는다** —
-   *  `StudyViewRowMenu` 가 둘을 함께 두는 것과 같은 근거. */
+  /** 우클릭이 부른다. 행 호버 ⋯ 버튼이 같은 메뉴를 여는 두 번째 진입점이었으나
+   *  **사용자 요청으로 걷어냈다**(2026-09-04). 포커스된 행에서 ContextMenu 키·Shift+F10 은
+   *  브라우저가 `contextmenu` 를 직접 쏘므로 키보드는 남고, **터치에서는 닿지 않는다** —
+   *  long-press 를 `contextmenu` 로 바꿔 주는 브라우저에서만 산다. 되살릴 거면 `⋯` 를
+   *  다시 넣기 전에 이 문단부터 읽을 것. */
   onMenu: (x: number, y: number) => void;
   /** 방금 눌러서 차트가 가 있는 행인가. 「어디를 보고 있는지」를 목록이 말한다. */
   selected?: boolean;
@@ -317,8 +320,10 @@ function MatchRow({
 }) {
   const forward = row.forward_pct;
   return (
-    // ⚠ `<button>` 이 아니라 `role="button"` 인 div 다 — 안에 ⋯ 버튼을 넣어야 하는데
-    //   버튼 중첩은 HTML 위반이다(`QuoteRow` 도 같은 이유로 li + role).
+    // ⚠ `<button>` 이 아니라 `role="button"` 인 div 다. 원래 근거는 「안에 ⋯ 버튼이 있어
+    //   버튼 중첩을 못 한다」였고 그 버튼은 사라졌지만, 형태는 `QuoteRow`(li + role)와
+    //   맞춰 둔다 — `data-quote-row` 마커와 `moveToAdjacentQuoteRow` 를 공유하는 행이라
+    //   태그만 이 리스트에서 달라질 이유가 없다.
     <div
       role="button"
       tabIndex={0}
@@ -333,7 +338,7 @@ function MatchRow({
       }}
       data-quote-row=""
       aria-current={selected ? 'true' : undefined}
-      className="group grid w-full cursor-pointer grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
+      className="grid w-full cursor-pointer grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
       style={{
         // 선택 표식은 **배경 틴트만** — 좌측 accent 바를 다시 넣지 말 것(DESIGN.md 의
         // 리스트 행 규칙, 2026-07-23 우측 레일 전체 통일). `QuoteRow` 가 기준이다.
@@ -343,8 +348,7 @@ function MatchRow({
         background: selected ? 'var(--tint-selection)' : undefined,
       }}
     >
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 flex-1">
+      <span className="block min-w-0">
         <span className="block truncate text-xs font-medium text-fg">{row.name || row.code}</span>
         <span className="block truncate font-data text-2xs text-fg-dimmer">
           {mode === 'history' ? formatRange(row.from_date, row.to_date) : row.code}
@@ -354,18 +358,6 @@ function MatchRow({
             </span>
           )}
         </span>
-        </span>
-        {/* 우클릭과 **같은 메뉴**를 연다. 터치·키보드에서는 이쪽만 닿는다. */}
-        <button
-          type="button"
-          // ⚠ 이름에 **종목명을 넣지 않는다** — 행 자체의 접근 이름과 겹쳐
-          //   `getByRole('button', { name: /종목/ })` 가 둘을 잡는다. 날짜로 구별한다.
-          aria-label={`${formatRange(row.from_date, row.to_date)} 매치 메뉴`}
-          onClick={(e) => { e.stopPropagation(); onMenu(e.clientX, e.clientY); }}
-          className="shrink-0 rounded px-1 text-2xs text-fg-dimmer opacity-0 hover:bg-bg-input-hover hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          ⋯
-        </button>
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="flex flex-col items-end gap-[3px]">

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -709,7 +709,7 @@ describe('PatternDrawer — 조건 칩: 서버와 로컬의 분리', () => {
     // 「제한 없음」 항목이 말하는 수를 읽고, 고른 뒤 실제 행을 센다.
     const promised = screen.getByRole('option', { name: /제한 없음/ }).textContent!.match(/(\d+)개/);
     await user.click(screen.getByRole('option', { name: /제한 없음/ }));
-    // ★ 행은 `role="button"` 인 div 다(안에 ⋯ 버튼이 있어 버튼 중첩을 못 한다).
+    // ★ 행은 `role="button"` 인 div 다(`QuoteRow` 와 같은 형태).
     //   태그가 아니라 **행 마커**로 센다.
     const rows = document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]');
     // 미리보기가 거짓말하면 이 세션에서 겪은 "라벨 과장" 이 반복된다.
@@ -1072,6 +1072,16 @@ describe('PatternDrawer — 저장에 없던 조건은 공장값을 따른다', 
   });
 });
 
+/**
+ * 행 메뉴를 연다. **우클릭이 유일한 진입점**이다 — 같은 메뉴를 열던 행 호버 ⋯ 버튼은
+ * 2026-09-04 에 제거됐다. 좌표를 싣는 이유는 `onContextMenu` 가 `clientX/Y` 를 읽어
+ * 메뉴를 앉히기 때문이다(`user.pointer('[MouseRight]')` 는 0,0 으로 온다).
+ */
+function openRowMenu(i = 0) {
+  const rows = document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]');
+  fireEvent.contextMenu(rows[i], { clientX: 10, clientY: 10 });
+}
+
 describe('PatternDrawer — 결과에서 자리 빼기', () => {
   async function openList(user: ReturnType<typeof userEvent.setup>) {
     renderDrawer();
@@ -1080,11 +1090,20 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     return await screen.findByRole('button', { name: /SK하이닉스/ });
   }
 
-  it('⋯ 버튼이 우클릭과 같은 메뉴를 연다 — 우클릭만 두면 터치·키보드에서 못 닿는다', async () => {
+  // ⋯ 버튼이 사라진 뒤 **메뉴로 가는 길이 이것 하나**다. 이 테스트가 빨개지면 제외
+  // 기능 전체가 화면에서 닿지 않는 상태이므로, 행의 `onContextMenu` 를 먼저 본다.
+  it('행 우클릭이 메뉴를 연다 — ⋯ 버튼을 뺀 뒤 유일한 진입점이다', async () => {
     const user = userEvent.setup();
     await openList(user);
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    openRowMenu();
     expect(await screen.findByTestId('pattern-match-row-menu')).toBeInTheDocument();
+  });
+
+  // ⋯ 를 되살리면 이 단언이 빨개진다 — 그때 위 주석·docstring 도 함께 고칠 것.
+  it('행에 ⋯ 버튼이 없다', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    expect(screen.queryAllByRole('button', { name: /매치 메뉴/ })).toHaveLength(0);
   });
 
   it('빼면 그 자리가 목록에서 사라지고 다음 후보가 올라온다', async () => {
@@ -1092,7 +1111,7 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     await openList(user);
     const rows = () => [...document.querySelectorAll('[data-testid="pattern-drawer"] [data-quote-row]')];
     const n = rows().length;
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    openRowMenu();
     await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
     expect(screen.queryByRole('button', { name: /SK하이닉스/ })).not.toBeInTheDocument();
     // ★ 자르기 **전에** 걸리므로 개수가 유지된다 — 픽스처가 4행뿐이라 하나 줄지만,
@@ -1103,7 +1122,7 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
   it('숨김 칩에서 되돌리면 다시 나온다', async () => {
     const user = userEvent.setup();
     await openList(user);
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    openRowMenu();
     await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
     await user.click(await screen.findByRole('button', { name: /숨김 1/ }));
     await user.click(await screen.findByRole('option', { name: /SK하이닉스/ }));
@@ -1129,7 +1148,7 @@ describe('PatternDrawer — 종목 통째로 빼기', () => {
     await screen.findByText('길이7위');
     await user.click(screen.getByRole('button', { name: '과거에 이 모양' }));
     await screen.findByRole('button', { name: /SK하이닉스/ });
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[i]);
+    openRowMenu(i);
   }
 
   it('«종목» 전부 빼기는 그 종목의 **모든 자리**를 덮는다', async () => {
@@ -1169,7 +1188,7 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
     // 두 길이가 병합돼 같은 종목이 여러 행으로 선다 — 그게 이 경로의 특징이다.
     const before = await screen.findAllByRole('button', { name: /SK하이닉스/ });
     expect(before.length).toBeGreaterThan(1);
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    openRowMenu();
     await user.click(await screen.findByRole('menuitem', { name: /전부 빼기/ }));
     expect(screen.queryAllByRole('button', { name: /SK하이닉스/ })).toHaveLength(0);
   });
@@ -1179,7 +1198,7 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
     renderDrawer();
     await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
     const before = (await screen.findAllByRole('button', { name: /SK하이닉스/ })).length;
-    await user.click(screen.getAllByRole('button', { name: /매치 메뉴/ })[0]);
+    openRowMenu();
     await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
     // 같은 (종목, 시작일)은 길이가 달라도 함께 빠진다 — 키에 길이가 없기 때문이다.
     // 시작일이 다른 자리는 남는다.
