@@ -25,6 +25,7 @@ from datetime import datetime
 
 import httpx
 
+from hoga.live import kiwoom_http
 from hoga.util.timeenc import KST
 
 from .kiwoom_token_provider import KiwoomTokenProvider
@@ -108,7 +109,13 @@ class KiwoomStockInfoFetcher:
         _transport: httpx.BaseTransport | None = None,
     ):
         self._provider = token_provider
-        self._client = httpx.Client(base_url=base_url, transport=_transport, timeout=10.0)
+        self._client = httpx.Client(
+            base_url=base_url,
+            # 주입이 이긴다(테스트 MockTransport). 기본은 연결 재사용 + 연결 단계
+            # 재시도 — 근거·함정은 `kiwoom_http` 도크스트링.
+            transport=_transport or kiwoom_http.sync_transport(),
+            timeout=10.0,
+        )
         # code → (kst_date "YYYYMMDD", limits, fetched_at_ms)
         self._cache: dict[str, tuple[str, StockLimits, int]] = {}
         self._flight = SingleFlight()
