@@ -225,15 +225,30 @@ import time  # noqa: E402
 
 
 async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: FetchRaw,
-                            now_ms: int | None = None) -> dict:
+                            now_ms: int | None = None, factors_only: bool = False) -> dict:
     """Plan-2 1회 백필 오케스트레이션(주입된 fetch — 테스트/프로덕션 공용).
 
     ① reconcile_raw(원주가 검증+결측 보충) ② factor_backfill(factors.parquet)
     ③ 기존 daily_adjusted 사본 보관 ④ derive_adjusted(이제 factors 적용→ 벤더 정확 수정주가)
     ⑤ build_impact_report. 반환: {reconcile, factors_added, impact}.
+
+    ## `factors_only` — **장중에 돌릴 수 있는 유일한 형태**
+
+    ①을 건너뛴다. reconcile 은 최근 14일의 불일치를 벤더 값으로 **덮어쓰는데**,
+    장중에는 그 「최근」에 **진행 중인 오늘 봉**이 들어 있다. 미확정 봉이 한 번
+    확정본으로 굳으면 갱신기가 그 날짜를 갭으로 보지 않아 **영원히 안 고쳐진다** —
+    `screener_store.drop_unconfirmed_days` 가 적은 2026-06-18 사고가 그것이다
+    (3,541종목이 장전 스냅샷으로 굳어 두 달간 남았다).
+
+    ②④는 안전하다: 계수 생성은 raw 를 읽기만 하고, `derive_adjusted` 는 raw+factors
+    에서 **결정적으로** 재생성하는 것이라 언제 돌려도 같은 답이다.
+
+    그래서 「계수가 없는 종목에 계수를 주고 싶다」는 목적에는 이 형태가 정확히 맞는다 —
+    reconcile 은 그 목적에 필요하지 않은데 위험만 가져온다.
     """
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-    rec = await reconcile_raw(sdir, fetch_raw=fetch_raw, overwrite_recent_days=14)
+    rec = None if factors_only else await reconcile_raw(
+        sdir, fetch_raw=fetch_raw, overwrite_recent_days=14)
     added = await factor_backfill(sdir, fetch_adj=fetch_adj)
 
     # write-once baseline: 재실행 시 벤더-보정본이 휴리스틱 baseline 을 덮어쓰면
@@ -253,7 +268,7 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
     return {"reconcile": rec, "factors_added": added, "impact": impact}
 
 
-async def run_backfill(data_dir: Path) -> dict:
+async def run_backfill(data_dir: Path, *, factors_only: bool = False) -> dict:
     """프로덕션 진입: 키움 클라이언트로 fetch_adj/fetch_raw 를 묶어 run_backfill_with 실행."""
     from datetime import datetime  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
@@ -320,4 +335,5 @@ async def run_backfill(data_dir: Path) -> dict:
                          float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
                 for c in res.candles]
 
-    return await run_backfill_with(sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw)
+    return await run_backfill_with(
+        sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw, factors_only=factors_only)

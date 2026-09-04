@@ -110,7 +110,10 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         })
         return await fetch_fn(client)
 
-    async def fake_run_backfill_with(sdir, *, fetch_adj, fetch_raw, now_ms=None):
+    # `factors_only` 를 **받기만 하고 쓰지 않는다** — 이 테스트가 재는 것은 어댑터까지
+    # 가는 배선이지 그 플래그의 동작이 아니다(그건 아래 전용 테스트가 잰다).
+    async def fake_run_backfill_with(sdir, *, fetch_adj, fetch_raw, now_ms=None,
+                                     factors_only=False):
         adj = await fetch_adj("005930", "20260601", "20260601")
         raw = await fetch_raw("005930", "20260601", "20260601")
         return {"adj": adj, "raw": raw, "sdir": sdir}
@@ -158,3 +161,52 @@ async def test_run_backfill_fails_loudly_without_kiwoom_credentials(tmp_path, mo
     monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: None)
     with pytest.raises(RuntimeError, match="자격증명"):
         await screener_backfill_mod.run_backfill(tmp_path)
+
+
+# ── `--factors-only` — 장중에 돌릴 수 있는 형태 ────────────────────────────────────
+
+
+def test_factors_only_skips_reconcile_and_never_touches_raw(tmp_path: Path):
+    """⚠ **`factors_only` 는 reconcile 경로를 아예 안 탄다.**
+
+    reconcile 은 최근 14일의 불일치를 벤더 값으로 **덮어쓴다**. 장중에는 그 「최근」에
+    진행 중인 **오늘 봉**이 들어 있고, 미확정 봉이 확정본으로 굳으면 갱신기가 그
+    날짜를 갭으로 안 봐서 **영원히 안 고쳐진다**(2026-06-18 사고 — 3,541종목이
+    장전 스냅샷으로 굳어 두 달간 남았다).
+
+    가드 방식: `fetch_raw` 를 **터지는 것으로** 준다. 「호출 수가 0이더라」를 우연히
+    통과하는 것이 아니라 **경로를 안 탄다는 것 자체**를 잰다. 원주가 파일이 바이트
+    단위로 그대로인지도 함께 본다 — reconcile 의 유일한 부작용이 그 파일이라서다.
+    """
+    sdir = tmp_path / "screener"
+    sdir.mkdir(parents=True)
+    un = pl.DataFrame([
+        {"code": "035720", "date": dt.date(2021, 4, 5), "open": 502000.0, "high": 502000.0,
+         "low": 502000.0, "close": 502000.0, "volume": 100},
+        {"code": "035720", "date": dt.date(2021, 4, 15), "open": 120500.0, "high": 120500.0,
+         "low": 120500.0, "close": 120500.0, "volume": 100},
+    ], schema=_S)
+    un.write_parquet(sdir / "daily_unadjusted.parquet")
+    un.write_parquet(sdir / "daily_adjusted.parquet")
+    raw_before = (sdir / "daily_unadjusted.parquet").read_bytes()
+
+    async def fetch_adj(_code, _frm, _to):
+        return [(dt.date(2021, 4, 5), 100759.0), (dt.date(2021, 4, 15), 120500.0)]
+
+    async def fetch_raw(_code, _frm, _to):
+        raise AssertionError("factors_only 가 reconcile(원주가 조회)을 탔다")
+
+    report = asyncio.run(run_backfill_with(
+        sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw, factors_only=True))
+
+    # reconcile 은 **안 돈 것**이지 0건이 아니다 — 그 구별이 리포트에 남아야 호출부가
+    # 「대조했는데 전부 일치」와 섞어 적지 않는다.
+    assert report["reconcile"] is None
+    assert (sdir / "daily_unadjusted.parquet").read_bytes() == raw_before
+    # 그러면서 **목적은 달성한다** — 계수가 생기고 수정주가가 다시 파생된다.
+    assert report["factors_added"] > 0
+    assert read_factors(sdir / "factors.parquet") is not None
+    adj = pl.read_parquet(sdir / "daily_adjusted.parquet").filter(
+        (pl.col("code") == "035720") & (pl.col("date") == dt.date(2021, 4, 5)))
+    assert adj.height == 1
+    assert adj["close"][0] == pytest.approx(100759.0, rel=1e-6)

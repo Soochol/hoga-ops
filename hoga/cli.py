@@ -181,10 +181,21 @@ def screener_seed() -> None:
 
 
 @app.command(name="screener-backfill")
-def screener_backfill() -> None:
-    """Plan-2 1회 백필: KIS 수정주가로 factors.parquet 구축 + 원주가 reconcile + 수정주가 재파생.
+def screener_backfill(
+    factors_only: bool = typer.Option(
+        False, "--factors-only", help="reconcile 을 건너뛴다 — 장중에 돌릴 수 있는 형태"),
+) -> None:
+    """Plan-2 1회 백필: 키움 수정주가로 factors.parquet 구축 + 원주가 reconcile + 수정주가 재파생.
 
-    ~2-4h, resumable(중단 후 재실행하면 완료 종목 skip). KIS_APP_KEY/SECRET 필요.
+    ~2-4h, resumable(중단 후 재실행하면 완료 종목 skip). KIWOOM_APP_KEY/SECRET 필요.
+
+    ⚠ **기본형은 장 마감 후에만 돌릴 것.** reconcile 이 최근 14일을 벤더 값으로
+    덮어쓰는데, 장중에는 그 「최근」에 **진행 중인 오늘 봉**이 들어 있다. 미확정 봉이
+    확정본으로 굳으면 갱신기가 그 날짜를 갭으로 안 봐서 **영원히 안 고쳐진다**
+    (2026-06-18 사고 — 3,541종목이 장전 스냅샷으로 굳어 두 달간 남았다).
+
+    `--factors-only` 는 그 단계를 건너뛴다. 「계수 없는 종목에 계수를 준다」는 목적에는
+    reconcile 이 필요하지 않으므로, 장중에도 안전하게 그 목적만 달성할 수 있다.
     """
     import asyncio  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
@@ -195,14 +206,18 @@ def screener_backfill() -> None:
 
     t0 = time.time()
     try:
-        rep = asyncio.run(run_backfill(resolve_data_dir()))
+        rep = asyncio.run(run_backfill(resolve_data_dir(), factors_only=factors_only))
     except Exception as e:
         console.print(f"[red]screener-backfill failed: {e}[/red]")
         raise typer.Exit(code=1) from e
+    rec = rep["reconcile"]
+    # `--factors-only` 면 reconcile 이 **안 돈 것**이지 0건이 아니다 — 숫자로 적으면
+    # 「대조했는데 전부 일치」와 구별되지 않는다.
+    rec_s = ("reconcile(건너뜀)" if rec is None else
+             f"reconcile(match={rec.value_matches}, mismatch={rec.value_mismatches}, "
+             f"filled={rec.filled_rows})")
     print(f"backfill done in {time.time() - t0:.0f}s: "
-          f"factors_added={rep['factors_added']}, "
-          f"reconcile(match={rep['reconcile'].value_matches}, "
-          f"mismatch={rep['reconcile'].value_mismatches}, filled={rep['reconcile'].filled_rows}), "
+          f"factors_added={rep['factors_added']}, {rec_s}, "
           f"impact(changed_codes={rep['impact']['changed_codes']})")
 
 
