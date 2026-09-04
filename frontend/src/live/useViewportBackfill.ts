@@ -373,6 +373,34 @@ export function useViewportBackfill({
    *  다시 판정되고, 창이나 바닥이 움직이면 새 사실이므로 다시 말한다. 갭이 닫히거나
    *  바닥을 벗어나면 그 구간이 끝난 것이라 아래에서 `null` 로 되돌린다. */
   const covFloorSaidForRef = useRef<string | null>(null);
+  /** 3b **진입 배압** 반려를 이미 말한 `fillKind|창` 쌍. 위 두 래치와 같은 계열이고,
+   *  같은 규율을 따른다 — **로그 중복만** 끊는다.
+   *
+   *  이 게이트(`isExtending || fillKind !== null`)는 #1739 까지 완전 침묵이었다. floor
+   *  반려와 발화 시점 skip 에는 로그가 있는데 여기만 없어서, `fillKind` 가 잠기면
+   *  「바닥이라 안 온다」·「고장나서 안 온다」·「정상적으로 fill 이 진행 중이라 반려」
+   *  셋이 구별되지 않았다(#1739 가 고친 잠김이 오래 안 보인 이유가 정확히 이 공백이다).
+   *
+   *  ⚠ **키가 쌍인 것이 요점이다.** 창만 키로 두면 건강한 워크백에서도 스텝마다 창이
+   *  움직여 줄이 늘 뿐이지만, `fillKind` 만 키로 두면 **잠김과 진행이 똑같이 한 줄**이
+   *  되어 판별식이 사라진다. 쌍이면 박자가 답한다 — 창이 앞으로 가며 줄이 늘면 진행,
+   *  **창이 얼어붙은 채 한 줄이면 잠김**이다.
+   *
+   *  ⚠ 3b 는 **뷰포트 이벤트마다** 깨어난다(실드래그 ~60 event/s). 3e(커밋 박자
+   *  ~200ms)보다 훨씬 빽빽해 무조건 찍으면 **정지 상태가 활동처럼 보인다** — #1680 이
+   *  다룬 이 표면의 가장 비싼 오독이다.
+   *
+   *  ⚠ **자리가 둘 다 틀리기 쉽고, 틀리는 방향이 서로 반대다.** 아래 두 오배치를
+   *  실제로 만들어 재 봤고(테스트가 각각 잡는다):
+   *   - 래치를 **술어 바깥**에 두면(「이미 말했으면 곧장 return」) 중복 제거가 아니라
+   *     **두 번째 정지 판정**이 된다 — 배압이 풀린 뒤의 팬까지 삼켜 `extend` 가 영영
+   *     안 선다(#1662·#1680 이 경고한 모양).
+   *   - 반대로 `return` 을 래치 **안쪽**에 넣으면 배압 자체가 샌다: 말하지 않은
+   *     이벤트가 아래로 흘러 통과 경로의 `busySaidForRef = null` 을 지나므로 래치가
+   *     매 이벤트 풀리고, 반려는 발화 시점 재확인으로 밀린다.
+   *  그래서 **반려(`return`)는 래치 밖, 술어 안**이다. 게이트를 통과한 순간 `null` 로
+   *  되돌리는 것이 곧 "이 에피소드는 끝났다" 이고, 그래야 다음 에피소드가 다시 말한다. */
+  const busySaidForRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -1228,7 +1256,30 @@ export function useViewportBackfill({
       // 다음 뷰포트 이벤트가 남은 빈공간을 새 예산으로 배치 처리한다.
       // Re-checked inside the debounce timer too, since the 150ms wait can
       // straddle a fill start.
-      if (isExtendingRef.current || fillKindRef.current !== null) return;
+      //
+      // **반려는 말한다**(#1597 의 규율) — 침묵이면 이 자리의 반려가 floor 반려·정상
+      // 진행과 구별되지 않는다. 다만 **에피소드당 한 줄**이다: 3b 는 뷰포트 이벤트마다
+      // 깨어나므로(~60 event/s) 무조건 찍으면 정지가 활동처럼 보인다(#1680).
+      // ⚠ 래치는 **로그만** 끊는다 — 반려(`return`)는 그 바깥이라 매 이벤트에서 다시
+      // 판정된다. 근거는 `busySaidForRef` 도크스트링.
+      if (isExtendingRef.current || fillKindRef.current !== null) {
+        const busyFrom = historicalRange.snapshot().historicalFromDate;
+        const said = `${fillKindRef.current ?? 'none'}|${busyFrom}`;
+        if (busySaidForRef.current !== said) {
+          busySaidForRef.current = said;
+          livePerfLog('viewport_backfill_busy', {
+            code,
+            timeframe,
+            fillKind: fillKindRef.current,
+            isExtending: isExtendingRef.current,
+            from: busyFrom,
+            logicalFrom: typeof reportedFrom === 'number' ? Math.round(reportedFrom) : null,
+          });
+        }
+        return;
+      }
+      // 게이트가 열렸다 = 이 배압 구간은 끝났다. 다음 구간은 새 에피소드다.
+      busySaidForRef.current = null;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
       // 두 트리거 경로:
@@ -1589,13 +1640,15 @@ export function useViewportBackfill({
     historicalRange.extend(plan.nextFrom);
   }, [chart, bundle, axis, timeframe, canTriggerBackfill, spotTargetFromDate, spotTargetKey, rangeWindowFromDate, code, historicalRange]);
 
-  // 3e 의 래치는 **(code, timeframe) 스코프**다. 종목이나 봉이 갈리면 다른 축의
-  // 날짜가 우연히 같아 "이미 밀었다" 로 오인될 수 있어, 경계에서 명시적으로 지운다.
+  // 3e 의 래치와 **말하기 래치들**은 **(code, timeframe) 스코프**다. 종목이나 봉이
+  // 갈리면 다른 축의 날짜가 우연히 같아 "이미 밀었다"·"이미 말했다" 로 오인될 수 있어
+  // (`fillKind|창` 쌍도 문자열이라 교차 종목에서 충돌한다), 경계에서 명시적으로 지운다.
   useEffect(() => {
     clampRecoveryStepsRef.current = 0;
     clampLastFromRef.current = null;
     clampFloorSaidForRef.current = null;
     covFloorSaidForRef.current = null;
+    busySaidForRef.current = null;
   }, [code, timeframe]);
 
   // 3e. **빈 화면 클램프 탈출구** — 뷰포트 이벤트가 고갈된 자리를 커밋으로 메운다.
