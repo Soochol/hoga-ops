@@ -206,6 +206,63 @@ def screener_backfill() -> None:
           f"impact(changed_codes={rep['impact']['changed_codes']})")
 
 
+@app.command(name="screener-history-backfill")
+def screener_history_backfill(
+    years: int = typer.Option(5, "--years", help="오늘로부터 몇 년 전까지를 채울지"),
+    yes: bool = typer.Option(False, "--yes", help="실제로 받아 쓴다(기본은 dry-run)"),
+    codes: str = typer.Option("", "--codes", help="쉼표 구분 종목코드(미지정=전 종목)"),
+) -> None:
+    """일봉 코퍼스의 **앞쪽 결손**을 벤더 이력으로 채운다.
+
+    코퍼스는 CSV 시드 + 일일 증분으로만 자라서 종목마다 시작일이 다르다 — 차트에는
+    2019년 캔들이 보이는데 패턴 검색은 「없다」고 하는 원인이 이것이다.
+
+    **기본은 dry-run 이고, dry-run 은 자격증명도 벤더 호출도 필요 없다** — 계획은
+    거래일 달력과 코퍼스만으로 나온다. 먼저 돌려서 대상 수를 보고 `--yes` 로 실행할 것.
+
+    ⚠ 차트와 **같은 TR 버킷**(`ka10081`)을 쓴다. `background` 우선순위라 사용자 조작에
+    양보하지만, 장중에 돌리면 그만큼 늘어진다 — **장 마감 후 실행이 자연스럽다**.
+    """
+    import asyncio  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+    import datetime as dt  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
+    import time  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
+
+    from hoga.api.screener_history_backfill import (  # noqa: PLC0415 — 지연 import(순환/heavy)
+        run_history_backfill,
+    )
+
+    today = dt.date.today()
+    gap_from = today.replace(year=today.year - years)
+    want = [c.strip() for c in codes.split(",") if c.strip()] or None
+    t0 = time.time()
+    try:
+        rep = asyncio.run(run_history_backfill(
+            resolve_data_dir(), gap_from=gap_from, dry_run=not yes, codes=want,
+            # 종목 지정이 없으면 **그 날짜 이후에 시작하는 종목만** 후보다 —
+            # 전 종목을 도는 것과 결과는 같지만 계획 단계가 훨씬 싸다.
+            corpus_start_after=None if want else gap_from,
+        ))
+    except Exception as e:
+        console.print(f"[red]screener-history-backfill failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+
+    todo = [p for p in rep.plans if p.skipped_reason is None]
+    cells = rep.missing_cells
+    label = "dry-run" if rep.dry_run else "done"
+    console.print(
+        f"[green]{label}[/green] {time.time() - t0:.0f}s · "
+        f"대상 {len(todo):,}/{len(rep.plans):,}종목 · "
+        f"결손 앞쪽 {cells['leading']:,} + 내부 {cells['interior']:,}칸 · "
+        f"스킵 {rep.skipped} · 기록 {rep.written_rows:,}행"
+    )
+    if rep.leading_is_upper_bound:
+        # 프로브가 모르는 종목이 섞이면 앞쪽 결손에 **「상장 전」**이 들어 있을 수 있다.
+        console.print(
+            "[yellow]주의[/yellow] 앞쪽 결손은 **상한**이다 — 프로브가 아직 모르는 "
+            "종목이 있어 「상장 전」이 섞여 있을 수 있다. 한 번 실행하면 정확해진다."
+        )
+
+
 @app.command(name="depth-daily-sweep")
 def depth_daily_sweep(
     dry_run: bool = typer.Option(False, "--dry-run", help="스캔 대상만 세고 쓰지 않음"),
