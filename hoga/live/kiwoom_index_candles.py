@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from hoga.live import kiwoom_http
 from hoga.live.candle_fetch_result import (
     DailyInvariantViolation,
     IndexCandleFetchResult,
@@ -268,7 +269,12 @@ class KiwoomIndexCandlesFetcher:
         sleep: Any = time.sleep,
     ) -> None:
         self._provider = token_provider
-        self._client = client or httpx.Client(base_url=_BASE_REAL, timeout=20.0)
+        self._client = client or httpx.Client(
+            base_url=_BASE_REAL,
+            timeout=20.0,
+            # 연결 재사용 + 연결 단계 재시도 — 근거는 `kiwoom_http` 도크스트링.
+            transport=kiwoom_http.sync_transport(),
+        )
         self._page_pacing_s = page_pacing_s
         self._max_pages = max_pages
         self._sleep = sleep

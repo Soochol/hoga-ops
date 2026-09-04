@@ -26,12 +26,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import httpx
 
+from hoga.live import kiwoom_http
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
@@ -41,6 +43,8 @@ from hoga.live.kiwoom_errors import (
     KiwoomTerminalAuthError,
     KiwoomTransportError,
 )
+
+log = logging.getLogger(__name__)
 
 BASE_REAL = "https://api.kiwoom.com"
 
@@ -227,7 +231,15 @@ class KiwoomRestClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._provider = token_provider
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout, transport=transport)
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            timeout=timeout,
+            # 주입이 이긴다 — 테스트가 넣는 MockTransport 를 덮으면 안 된다.
+            # 기본 transport 는 연결 재사용(keepalive)과 연결 단계 재시도를 함께
+            # 쥔다. 왜 그 둘이 한 몸이어야 하는지, 그리고 `limits` 를 Client 가
+            # 아니라 transport 에 주는 이유는 `kiwoom_http` 모듈 도크스트링.
+            transport=transport or kiwoom_http.async_transport(),
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -259,6 +271,17 @@ class KiwoomRestClient:
         try:
             resp = await self._client.post(spec.path, json=body, headers=headers)
         except httpx.TransportError as exc:
+            # `kiwoom_http` 의 keepalive 만료를 튜닝하는 **유일한 신호**다.
+            # 여기까지 왔다는 것은 transport 의 연결 재시도로도 못 살렸다는 뜻이라,
+            # 이 줄이 늘기 시작하면 그 빈도가 서버 idle timeout 의 하한을 말한다.
+            # 0 건이면 만료를 늘려도 안전하다.
+            log.warning(
+                "kiwoom.rest.transport_error api_id=%s kind=%s keepalive_s=%.1f msg=%s",
+                api_id,
+                type(exc).__name__,
+                kiwoom_http.keepalive_s(),
+                str(exc)[:200],
+            )
             raise KiwoomTransportError(exc) from exc
 
         try:
