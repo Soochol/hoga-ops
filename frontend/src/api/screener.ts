@@ -271,6 +271,9 @@ export interface PatternMatchRow {
   /** 구조 게이트가 켜졌을 때만 — 이 창이 쿼리 부호열과 맞춘 관계 수. 분모는
    *  `PatternLengthResult.struct_total`. 꺼져 있으면 null. */
   struct_match: number | null;
+  /** 구조 게이트가 켜졌을 때만 — 이 창이 **못 맞춘** 관계들의 인덱스
+   *  (`PatternLengthResult.struct_relations` 의 인덱스). 완전 일치면 빈 배열. */
+  struct_miss: number[] | null;
 }
 
 export interface PatternQueryWindow {
@@ -305,6 +308,10 @@ export interface PatternLengthResult {
    *  **전** 모집단이라 팝오버가 「이 단계를 고르면 몇 개 남나」를 재검색 없이 센다.
    *  길이 `struct_total + 1`. */
   struct_hist: number[] | null;
+  /** 구조 게이트가 켜졌을 때만 — 관계마다 **쿼리가 기대하는 것**(「5봉 저가 > 전저」).
+   *  행의 `struct_miss` 가 이 배열의 인덱스다. 판정에서 뺀 관계도 자리를 지켜 길이가
+   *  `1 + 5(L−1)` 이라 `struct_total` 과 다를 수 있다. */
+  struct_relations: string[] | null;
   elapsed_ms: number;
 }
 

@@ -32,7 +32,9 @@ from hoga.api.models import (
 )
 from hoga.api.screener_pattern_structure import (
     StructGate,
+    mismatches,
     query_signature,
+    relation_phrases,
     signature_total,
     window_matches,
 )
@@ -986,6 +988,7 @@ def _append_one(
                          if req.mode == "history" else None),
             ma=ma_at(c, m.series, m.offset, length, periods),
             struct_match=_struct_match_of(gate, c, m, req.mode),
+            struct_miss=_struct_miss_of(gate, c, m, length),
         )
         for m in matches[: req.top]
     ]
@@ -1017,6 +1020,8 @@ def _append_one(
         partial_last_bucket_days=partial,
         struct_total=gate.total if gate is not None else None,
         struct_hist=gate.hist.tolist() if gate is not None else None,
+        struct_relations=(relation_phrases(gate.sig, length)
+                          if gate is not None and gate.sig is not None else None),
         elapsed_ms=(time.perf_counter() - started) * 1000,
     ))
     return None
@@ -1046,7 +1051,8 @@ def _struct_gate(
         matches = window_matches(c.ch, sig, length, starts)
     else:
         matches = window_matches(c.ch, sig, length)
-    return StructGate(matches=matches, need=max(0, total - req.struct_tolerance), total=total)
+    return StructGate(matches=matches, need=max(0, total - req.struct_tolerance),
+                      total=total, sig=sig)
 
 
 def _struct_match_of(gate: StructGate | None, c: Corpus, m: PatternMatch, mode: str) -> int | None:
@@ -1054,3 +1060,10 @@ def _struct_match_of(gate: StructGate | None, c: Corpus, m: PatternMatch, mode: 
         return None
     idx = m.series if mode == "now" else int(c.starts[m.series]) + m.offset
     return int(gate.matches[idx])
+
+
+def _struct_miss_of(gate: StructGate | None, c: Corpus, m: PatternMatch, length: int) -> list[int] | None:
+    """행마다 못 맞춘 관계 인덱스 — 상위 `top` 행에서만 창을 다시 읽으므로 싸다."""
+    if gate is None or gate.sig is None:
+        return None
+    return mismatches(gate.sig, _stack_window(c, m.series, m.offset, length, ()))

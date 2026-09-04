@@ -133,21 +133,21 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         corr: 0.986, bars: BARS(length),
         tail: opts.history ? [101, 103, 99] : null,
         forward_pct: opts.history ? 7.4 : null,
-        ma: null, struct_match: null,
+        ma: null, struct_match: null, struct_miss: null,
       },
       {
         code: '004710', name: '한솔테크닉스', from_date: '20240529', to_date: '20240607',
         corr: 0.897, bars: BARS(length),
         tail: opts.history ? [98, 97, 95] : null,
         forward_pct: opts.history ? -17.5 : null,
-        ma: null, struct_match: null,
+        ma: null, struct_match: null, struct_miss: null,
       },
       {
         code: '019010', name: '베뉴지', from_date: '20210708', to_date: '20210716',
         corr: 0.83, bars: BARS(length),
         tail: opts.history ? [100, 100, 99] : null,
         forward_pct: opts.history ? -1 : null,
-        ma: null, struct_match: null,
+        ma: null, struct_match: null, struct_miss: null,
       },
       {
         code: '039840', name: '디오', from_date: '20001219', to_date: '20010103',
@@ -155,7 +155,7 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         tail: opts.history ? [] : null,
         // 계열 끝이라 이후가 없다 — 요약 표본에서 **빠져야** 한다(0 으로 세면 안 된다).
         forward_pct: null,
-        ma: null, struct_match: null,
+        ma: null, struct_match: null, struct_miss: null,
       },
     ],
     baseline: opts.history
@@ -165,6 +165,7 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
     partial_last_bucket_days: null,
     struct_total: null,
     struct_hist: null,
+    struct_relations: null,
     elapsed_ms: opts.history ? 421 : 14,
   };
 }
@@ -1068,12 +1069,20 @@ describe('PatternDrawer — 구조 게이트', () => {
     const hist = new Array<number>(total + 1).fill(0);
     hist[total] = 92;
     hist[total - 1] = 500;
+    // 문구는 판정에서 뺀 관계도 자리를 지켜 길이가 1+5(L−1) — total 과 다를 수 있다.
+    const relations = Array.from({ length: total }, (_, i) => `관계${i}`);
     return {
       ...base,
       universe: 92,
       struct_total: total,
       struct_hist: hist,
-      matches: base.matches.map((m, i) => ({ ...m, struct_match: i === 0 ? total : total - 1 })),
+      struct_relations: relations,
+      matches: base.matches.map((m, i) => ({
+        ...m,
+        struct_match: i === 0 ? total : total - 1,
+        // 1위는 완전 일치(빈 배열), 나머지는 관계 하나가 어긋난다.
+        struct_miss: i === 0 ? [] : [i],
+      })),
     };
   }
 
@@ -1094,6 +1103,46 @@ describe('PatternDrawer — 구조 게이트', () => {
     await user.click(await screen.findByRole('option', { name: /구조 1개 차이까지/ }));
     const badges = await screen.findAllByTestId('pattern-struct-badge');
     expect(badges.map((b) => b.textContent)).toEqual(['31/31', '30/31', '30/31', '30/31']);
+  });
+
+  it('부분 일치 행은 **못 맞춘 관계를 이름으로** 적는다 — 완전 일치 행에는 그 줄이 없다', async () => {
+    const user = userEvent.setup();
+    searchPattern.mockImplementation(async (body) => ({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const, timeframe: 'D' as const,
+      results: [body.struct_tolerance == null
+        ? lengthResult(body.lengths[0], 'SK하이닉스', { history: true })
+        : gated(body.lengths[0], 'SK하이닉스', { history: true })],
+    }));
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /구조 1개 차이까지/ }));
+    const rows = await screen.findAllByTestId('pattern-struct-miss');
+    // 4행 중 1위만 완전 일치 → 줄이 셋이고, 각 행의 불일치 인덱스가 문구로 풀린다.
+    expect(rows.map((r) => r.textContent)).toEqual(['관계1', '관계2', '관계3']);
+  });
+
+  it('불일치가 셋 이상이면 둘까지만 적고 나머지는 개수로 접는다 — 행 높이가 늘면 목록을 훑을 수 없다', async () => {
+    const user = userEvent.setup();
+    searchPattern.mockImplementation(async (body) => {
+      if (body.struct_tolerance == null) {
+        return { ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const,
+          timeframe: 'D' as const,
+          results: [lengthResult(body.lengths[0], 'SK하이닉스', { history: true })] };
+      }
+      const blk = gated(body.lengths[0], 'SK하이닉스', { history: true });
+      return { ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history' as const,
+        timeframe: 'D' as const,
+        results: [{ ...blk, matches: blk.matches.map((m, i) => (
+          i === 1 ? { ...m, struct_miss: [1, 2, 3, 4] } : m)) }] };
+    });
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    await screen.findByText('SK하이닉스');
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /구조 1개 차이까지/ }));
+    expect(await screen.findByText('관계1 · 관계2 외 2')).toBeInTheDocument();
   });
 
   it('history 헤더의 분모가 구조 일치 수로 바뀐다 — dist.sample 은 게이트 전 모집단이라 그대로면 게이트가 한 일이 화면에서 사라진다', async () => {
