@@ -80,6 +80,13 @@ describe('useViewportBackfill — backpressure gate (3b)', () => {
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -206,6 +213,13 @@ describe('useViewportBackfill — 좌측 바닥 도달 (3b/3e 가 fill 을 세�
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -453,6 +467,13 @@ describe('useViewportBackfill — 스텝 착지점을 바닥 위로 자른다 (#
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -715,6 +736,13 @@ describe('useViewportBackfill — settle-loop continuity (3a) is unaffected by t
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -811,6 +839,13 @@ describe('useViewportBackfill — coverage-gap trigger (3b, A안)', () => {
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -1021,6 +1056,13 @@ describe('useViewportBackfill — initial-display coverage trigger (3c, PR-3)', 
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -1036,10 +1078,14 @@ describe('useViewportBackfill — initial-display coverage trigger (3c, PR-3)', 
     canTrigger?: boolean;
   };
   function renderInitial(initialProps: Props) {
+    // 차트 참조는 **렌더를 건너 안정적이다** — 프로덕션의 `LiveChartRoot` 에서 chart 는
+    // state(`chartEntry`)에 담긴 인스턴스라 viewKey remount 때만 갈린다. 렌더마다 새로
+    // 만들면 뷰 경계가 매 커밋 서는 것으로 읽혀 fill 수명 계약이 테스트에서만 달라진다.
+    const { chart } = chartWithCapturedHandler();
     return renderHook(
       (p: Props) =>
         useViewportBackfill({
-          chart: chartWithCapturedHandler().chart,
+          chart,
           axis: axisWithOneSession(),
           bundle: p.bundle === undefined ? bundleWithCandles() : p.bundle,
           timeframe: '1m',
@@ -1123,6 +1169,13 @@ describe('useViewportBackfill — 저장뷰 구간 백필 (3d)', () => {
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -1133,10 +1186,14 @@ describe('useViewportBackfill — 저장뷰 구간 백필 (3d)', () => {
 
   type Props = { savedRangeFromDate?: string | null; isExtending?: boolean; rangeWindowFromDate?: string | null };
   function renderSaved(initialProps: Props) {
+    // 차트 참조는 **렌더를 건너 안정적이다** — 프로덕션의 `LiveChartRoot` 에서 chart 는
+    // state(`chartEntry`)에 담긴 인스턴스라 viewKey remount 때만 갈린다. 렌더마다 새로
+    // 만들면 뷰 경계가 매 커밋 서는 것으로 읽혀 fill 수명 계약이 테스트에서만 달라진다.
+    const { chart } = chartWithCapturedHandler();
     return renderHook(
       (p: Props) =>
         useViewportBackfill({
-          chart: chartWithCapturedHandler().chart,
+          chart,
           axis: axisWithOneSession(),
           bundle: bundleWithCandles(),
           timeframe: '1m',
@@ -1440,6 +1497,13 @@ describe('useViewportBackfill — 빈 화면 클램프 탈출 (3e)', () => {
     extendSpy = vi
       .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
       .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
   });
 
   afterEach(() => {
@@ -1638,5 +1702,123 @@ describe('useViewportBackfill — 재투영 자격 배선 (2, 프리펜드 계�
   it('데이터가 화면을 덮고 있으면 그 사유로 반려하지 않는다 — 정상 좌팬은 종전대로다', () => {
     renderPrepend(-5, 100);
     expect(skipReasons().some((d) => d.includes('viewport_mostly_whitespace'))).toBe(false);
+  });
+});
+
+describe('useViewportBackfill — 기간 점프 뒤의 좌측 팬 (fill 상태 기계의 수명)', () => {
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+    // ⚠ **호출 이력을 명시적으로 비운다.** `afterEach` 의 `mockRestore()` 로는 부족하다:
+    // 테스트가 `setState` 를 부르면 zustand 가 상태 객체를 새로 만들고, 복원은 **옛
+    // 객체**에 원본 함수를 되돌려 놓는다. 살아 있는 객체에는 mock 이 남아 다음
+    // `vi.spyOn` 이 **같은 스파이를 재사용**하므로 이전 describe 의 호출이 그대로
+    // 딸려 온다(실측: 새 describe 첫 줄에서 `[["20260518"]]`). 절대 개수를 재는
+    // 단언이 그 잔재를 자기 것으로 셈해 조용히 틀린다.
+    extendSpy.mockClear();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  it('점프가 진행 중이던 fill 의 하강 엣지를 삼켜도 이후 좌팬이 산다', () => {
+    // 「분봉으로」 실사용 신고의 박제(2026-09-04). 점프는 (code, timeframe) 을
+    // **아무것도 바꾸지 않으면서** 창을 리셋하고 차트를 remount 한다. 그 조합이
+    // fill 상태 기계를 푸는 유일한 신호를 통째로 삼킨다:
+    //   ① `historicalRange.reset()` → `historicalFromDate=null` → `isExtending`
+    //      이 그 자리에서 false 로 떨어진다(useLiveBundle 의 `extending` 이
+    //      `historicalFromDate != null` 게이트를 쓴다) = 진행 중이던 fill 의 하강 엣지.
+    //   ② 같은 커밋에 차트가 remount 되어 `lastAppliedCountRef` 가 null 이 되고
+    //      창도 null 이라 `canTriggerBackfill()` 이 **false** 다.
+    //   ③ 3a 는 `prevExtendingRef` 를 먼저 갱신한 뒤 그 게이트에서 반환하므로
+    //      엣지를 **소비만 하고 버린다** → `fillKind` 가 영구 non-null.
+    // 그 뒤로는 3b 의 배압 게이트(로그도 없는 자리)가 모든 좌팬을 반려한다 —
+    // 사용자에게는 "초기 캔들만 보이고 과거 스크롤이 아무 일도 안 하는" 상태다.
+    const before = chartWithCapturedHandler();
+    const after = chartWithCapturedHandler();
+    const { rerender } = renderHook(
+      ({ chart, ext, canTrigger }: { chart: never; ext: boolean; canTrigger: boolean }) =>
+        useViewportBackfill({
+          chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '1m',
+          isExtending: ext,
+          code: '005930',
+          canTriggerBackfill: () => canTrigger,
+        }),
+      { initialProps: { chart: before.chart, ext: false, canTrigger: true } },
+    );
+
+    // 1. 좌팬 → fill 무장 + 1스텝 dispatch.
+    before.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+
+    // 2. 그 스텝이 아직 나는 중.
+    rerender({ chart: before.chart, ext: true, canTrigger: true });
+
+    // 3. 「분봉으로」 — 창 리셋 + 차트 remount. 이 커밋의 게이트는 닫혀 있다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    rerender({ chart: after.chart, ext: false, canTrigger: false });
+
+    // 4. 새 차트의 초기 뷰포트가 적용되어 게이트가 다시 열린다.
+    rerender({ chart: after.chart, ext: false, canTrigger: true });
+
+    // 5. 새 차트에서 좌팬 — 여기서 데이터를 가져와야 한다.
+    after.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('하강 엣지가 **차트 없는 커밋**에 와도(remount 중간) 잠기지 않는다', () => {
+    // 위 테스트의 짝 — 같은 잠김의 **다른 순서**다. remount 는 `chart` 가 한 커밋
+    // 동안 null 인 구간을 지나고(`chartEntry.key !== viewKey`), 창 리셋이 그 커밋에
+    // 떨어지면 하강 엣지는 3a 의 **첫 줄**(`if (!chart) return`)에서 버려진다.
+    // 위 경로는 `canTriggerBackfill()` 이, 이 경로는 `chart` 가 엣지를 삼키므로,
+    // 둘 중 하나만 막는 수정은 나머지 순서에서 그대로 재발한다.
+    const before = chartWithCapturedHandler();
+    const after = chartWithCapturedHandler();
+    const { rerender } = renderHook(
+      ({ chart, ext, canTrigger }: { chart: never; ext: boolean; canTrigger: boolean }) =>
+        useViewportBackfill({
+          chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: '1m',
+          isExtending: ext,
+          code: '005930',
+          canTriggerBackfill: () => canTrigger,
+        }),
+      { initialProps: { chart: before.chart, ext: false, canTrigger: true } },
+    );
+
+    before.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    rerender({ chart: before.chart, ext: true, canTrigger: true });
+
+    // remount 중간 커밋 — 차트가 아직 없다. 창 리셋의 하강 엣지가 여기 떨어진다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    rerender({ chart: null as never, ext: false, canTrigger: true });
+
+    // 새 차트가 게시되고 초기 뷰포트도 적용됐다.
+    rerender({ chart: after.chart, ext: false, canTrigger: true });
+
+    after.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(2);
   });
 });

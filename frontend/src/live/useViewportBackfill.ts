@@ -443,6 +443,54 @@ export function useViewportBackfill({
     setSourceSwapClampNotice(null);
   }, [code, timeframe]);
 
+  /**
+   * **fill 상태 기계는 차트 인스턴스에 매인다** — 뷰가 갈리면 진행 중이던 fill 을 끝낸다.
+   *
+   * 위 리셋의 축은 `(code, timeframe)` 인데, 그 둘을 **하나도 바꾸지 않으면서** 뷰를
+   * 갈아치우는 경로가 있다 — 「분봉으로」 기간 점프(`useMinuteJumpTarget` 이 `viewSeg`
+   * 를 `viewIdentity` 에 섞어 `LiveChartRoot` 의 차트를 remount 시킨다). 저장뷰 적용과
+   * 테마 전환도 같은 자리를 지난다. 그 어긋남이 잠김을 만든다:
+   *
+   *  ① 점프는 `historicalRange.reset()` 으로 창을 비운다 → `isExtending` 이 **그 자리에서**
+   *     false 로 떨어진다(`useLiveBundle` 의 `extending` 이 `historicalFromDate != null`
+   *     게이트를 쓴다). 진행 중이던 fill 에게는 이것이 하강 엣지다.
+   *  ② 같은 커밋에 차트가 remount 되어 `lastAppliedCountRef` 가 null 이 되고 창도 null 이라
+   *     `canTriggerBackfill()` 이 **false** 다(그 술어의 두 항이 동시에 죽는 유일한 자리).
+   *  ③ 3a 는 `prevExtendingRef` 를 **먼저** 갱신한 뒤 그 게이트에서 반환하므로 엣지를
+   *     소비만 하고 버린다. 남은 탈출구인 캐시 settle 은 `cur !== null` 을 요구하는데
+   *     창이 방금 비었다 → 성립 불가. `fillKind` 가 영구 non-null 로 잠긴다.
+   *
+   * 그 뒤로는 3b 의 배압 게이트가 **모든** 좌팬을 반려한다. 그 자리에는 `livePerfLog` 가
+   * 없어(floor·skip 과 달리) 화면에도 로그에도 아무 흔적이 없다 — 사용자에게는 "분봉으로
+   * 누르면 초기 캔들만 보이고 과거 스크롤이 아무 일도 안 하는" 상태다(2026-09-04 신고).
+   * 「간헐적」인 이유는 조건이 **점프 순간 fill 이 날고 있었는가** 하나뿐이기 때문이다.
+   *
+   * ⚠ 위 ①②③ 은 **코드 추적**이고, 그것을 값으로 확인한 것은 아래 훅 테스트 둘이다
+   * (게이트가 삼키는 순서 · `chart` 가 null 인 커밋에 엣지가 오는 순서). 브라우저
+   * 재현은 하지 않았다 — 조건이 "점프 순간 fill 이 날고 있을 것" 이라 수동으로는
+   * 맞추기 어렵다. 순서를 하나만 막으면 나머지에서 그대로 재발하므로 **둘 다** 잰다.
+   *
+   * ⚠ **리셋 방향이 안전한 쪽인 것이 이 수정의 근거다.** `fillKind=null` 은 "활성 fill
+   * 없음" 이라 다음 좌팬이 새 예산으로 다시 서는 것 말고는 아무것도 잃지 않는다. 반대로
+   * 잠긴 채 두면 그 창은 되돌릴 방법이 없다 — #1597 의 탈출 기동(우측으로 한 화면
+   * 되돌렸다 오기)도 3b 를 거치고 3e 자신도 같은 `fillKind` 게이트 뒤에 있어서다.
+   * (**코드 추적이지 브라우저 실측이 아니다** — 확진은 아래 훅 테스트 두 개가 한다.)
+   *
+   * ⚠ **여기서 리셋하는 것은 fill 기계뿐이다.** 스왑 스냅샷 계열(`preSwapRef` ·
+   * `prevAxisRef` · `prevCandle*`)은 건드리지 않는다 — 그쪽의 축은 **캔들 정체성**이지
+   * 차트 인스턴스가 아니고, 1b 래치(`prevSourceKeyRef`)를 지우면 안 되는 이유와 같은
+   * 계열의 함정이다. `initialCoverageCheckedRef`(3c 의 1회 래치)도 그대로 둔다: 그것은
+   * 잠김이 아니라 **중복 판정 금지** 장치라 되살리면 점프마다 여분의 확장이 나간다.
+   */
+  useEffect(() => {
+    fillKindRef.current = null;
+    fillBudgetRef.current = 0;
+    fillCoverageTargetRef.current = null;
+    fillStepCountRef.current = 0;
+    lastAdvancedFromRef.current = null;
+    prevExtendingRef.current = false;
+  }, [chart]);
+
   // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
   // commit — after the user's last input, before RangeSeriesPane's passive
   // setData mutates the chart. getVisibleRange() therefore returns virtual

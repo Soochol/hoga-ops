@@ -139,8 +139,25 @@ describe('창별 런타임(historicalFromDate)', () => {
     expect(useWorkspaceStore.getState().chartRuntime.b1).toBeUndefined();
   });
 
-  it('resetChartHistoricalRange 는 런타임 항목을 제거한다', () => {
+  it('resetChartHistoricalRange 는 **히스토리 창만** 비운다 — 소스 토글은 남는다', () => {
+    // 유일한 호출자가 기간 점프(`useTimeframeJump`)인데, 점프의 계약은 우단만
+    // 옮기고 **소스는 창의 현재 설정 그대로** 두는 것이다(`useLiveChartData` 의
+    // `asOfDate` 도크스트링 표). 런타임 항목을 통째로 지우면 같은 자리에 사는
+    // `hogaplaySource` 가 함께 증발해, 점프 한 번이 그 창의 「저장 데이터」 버튼을
+    // 조용히 끈다 — 캔들 소스가 디스크→벤더로 갈리고 좌측 팬의 바닥도
+    // `earliest_captured_date` 에서 250일 벽으로 바뀐다.
+    // 전역 대응물(`livePage.resetHistoricalRange`)이 이미 세 필드만 비운다.
     useWorkspaceStore.getState().extendChartHistoricalRange('c1', '20260701');
+    useWorkspaceStore.getState().setChartHogaplaySource('c1', true);
+    useWorkspaceStore.getState().resetChartHistoricalRange('c1');
+    const rt = useWorkspaceStore.getState().chartRuntime.c1;
+    expect(rt?.historicalFromDate).toBeNull();
+    expect(rt?.lastMinuteHistoricalFromDate).toBeNull();
+    expect(rt?.lastMinuteHistoricalTimeframe).toBeNull();
+    expect(rt?.hogaplaySource).toBe(true);
+  });
+
+  it('런타임 항목이 없으면 reset 은 no-op — 빈 항목을 만들지 않는다', () => {
     useWorkspaceStore.getState().resetChartHistoricalRange('c1');
     expect(useWorkspaceStore.getState().chartRuntime.c1).toBeUndefined();
   });
