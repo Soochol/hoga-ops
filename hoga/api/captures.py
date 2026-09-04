@@ -969,12 +969,14 @@ async def _run_capture_inner(
     # 사용자가 수집 직후 재조회하면 곧바로 비교 대상에 포함된다(수집→재조회 흐름).
     # 실패가 캡처 완료(phase=done)를 되돌리면 안 되므로 삼켜서 로깅만 한다.
     try:
-        from hoga.api import depth_daily  # noqa: PLC0415 — import cycle 회피
-        await loop.run_in_executor(
-            None,
-            lambda: depth_daily.sweep(
-                data_dir, codes={state.code}, dates={state.date},
-            ),
+        # 컴퓨트 워커 프로세스에서 돌린다(ADR-0169). 종전에는 `run_in_executor(None, …)`
+        # 즉 **앱의 스레드 풀**이었고, 2026-09-04 실측에서 이 스윕이 9.05초 CPU 를
+        # 태우는 동안 이벤트 루프는 0.1초만 얻어 앱 전체가 8.9초 멎었다(GIL convoy).
+        # 풀이 설치되지 않은 기동(테스트·부분 조립)에서는 종전대로 스레드다.
+        from hoga.api import compute_jobs  # noqa: PLC0415 — import cycle 회피
+
+        await compute_jobs.run_default_wide_job(
+            compute_jobs.depth_daily_sweep_job, str(data_dir), state.code, state.date,
         )
     except Exception:
         logging.getLogger(__name__).exception(

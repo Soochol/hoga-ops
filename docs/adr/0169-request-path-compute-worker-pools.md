@@ -72,12 +72,30 @@ unpickle 이 실패하면 풀 관리 스레드는 **풀이 깨진 것**으로 �
 
 ### 6. 옮기지 않은 것과 그 이유
 
-- `/api/orderbook` · `/api/candles` · `/api/meta` · `/api/gaps` · `/api/stock-dates` 등 나머지
-  동기 라우트: DuckDB 가 GIL 을 놓는 짧은 질의다. 커서 호버마다 부르는 스팟 경로에
-  프로세스 왕복(수 ms)을 얹을 이유가 없다.
+- `/api/orderbook` · `/api/candles` · `/api/meta` · `/api/gaps` 등 나머지 동기 라우트:
+  DuckDB 가 GIL 을 놓는 짧은 질의다. 커서 호버마다 부르는 스팟 경로에 프로세스
+  왕복(수 ms)을 얹을 이유가 없다.
 - `/api/live/past-candles` · `past-daily-candles`: CPU 가 아니라 벤더 REST 대기가 본체이고,
   용량 스케줄러·클라이언트가 인프로세스 싱글턴이라 옮길 수 없다. 이쪽의 300ms 급
   정지(`_row_date_bounds`)는 별건이다.
+
+**정정(2026-09-04 실측).** 위 첫 항목에 `/api/stock-dates` 를 넣은 것은 틀렸다 — "짧은
+질의" 라는 분류가 이 라우트에만 맞지 않았다. 파케이 트리 전체 순회 + 캐시 미스분 DuckDB
+읽기라 **콜드 캐시에서 41.3초**가 나왔고(같은 날 26.2초 1건 더), 그동안 동기 라우트
+스레드가 GIL 을 쥐어 앱 전체가 멎었다. 그래서 이 라우트는 wide 레인으로 옮겼다
+(`compute_jobs.stock_dates_job`). 인프로세스 상태인 `captures._fail_streaks` 는 부모가
+스냅샷을 떠서 인자로 넘긴다 — ADR-0168 의 `nxt_enabled` 와 같은 규율이다.
+
+**같은 날 추가로 옮긴 것: 캡처 파싱 훅의 `depth_daily` 증분 스윕.** 라우트가 아니라
+`captures.py` 가 `loop.run_in_executor(None, …)` 로 앱 스레드 풀에 내리던 백그라운드
+작업이라 이 ADR 의 원래 목록에 없었다. 정지 순간 스레드별 CPU 측정에서 이 스윕이
+**9.05초** 를 태우는 동안 이벤트 루프가 0.1초만 얻어 앱이 8.9초 멎는 것을 잡았다(전형적
+convoy). 풀을 인자로 받을 자리가 없어 모듈 기본 풀(`compute_pools.install_default`)을
+쓴다 — `promote_executor` 와 같은 패턴이고, 설치된 것이 없으면 종전대로 스레드다.
+
+**규칙의 교훈**: 「무엇이 CPU 인가」를 코드 모양(동기 라우트냐 백그라운드 작업이냐)으로
+분류하면 틀린다. 판정은 정지 순간의 **스레드별 CPU 측정**이다 — 루프 스레드가 태우면
+GC·온루프 작업, 다른 스레드가 태우면 convoy 다.
 
 ## Consequences
 

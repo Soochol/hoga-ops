@@ -147,3 +147,40 @@ def test_negative_cache_ttl_expiry_returns_miss() -> None:
                return_value=time.monotonic() + 11.0):
         state, _ = cache.get_today("005930")
     assert state == "miss"
+
+
+def test_row_date_bounds_spans_unsorted_multi_day_batch() -> None:
+    """경계는 정렬 여부와 무관하게 (최소일, 최대일) 이다 — 정수 min/max 로 바꿔도 같다."""
+    days = [date(2026, 6, 1), date(2026, 6, 3), date(2026, 6, 2)]
+    bars = [_bar_for(d) for d in days]
+    assert PastDailyCandlesCache._row_date_bounds(bars) == (date(2026, 6, 1), date(2026, 6, 3))
+
+
+def test_row_date_bounds_ignores_rows_without_int_t_ms() -> None:
+    bars = [{"t_ms": None}, _bar_for(date(2026, 6, 2)), {"close": 1}, {"t_ms": "x"}]
+    assert PastDailyCandlesCache._row_date_bounds(bars) == (date(2026, 6, 2), date(2026, 6, 2))
+    assert PastDailyCandlesCache._row_date_bounds([{"t_ms": None}]) is None
+
+
+def test_row_date_bounds_converts_only_the_two_extremes(monkeypatch) -> None:
+    """봉마다 datetime 을 만들지 않는다 — 배치가 커도 변환은 2회다.
+
+    벽시계 대신 **호출 횟수**로 잰다(이 리포의 성능 단언 규율). 이 단언이 없으면 봉당
+    변환으로 되돌아가도 결과가 같아 테스트가 조용히 통과한다 — 2026-09-02 정지 스택
+    3위(85건)가 바로 그 봉당 변환이었다.
+    """
+    import hoga.live.past_daily_candles_cache as mod
+
+    real = datetime.fromtimestamp
+    calls: list[float] = []
+
+    class _CountingDatetime:
+        @staticmethod
+        def fromtimestamp(ts, tz=None):  # 원본 서명 미러
+            calls.append(ts)
+            return real(ts, tz)
+
+    monkeypatch.setattr(mod, "datetime", _CountingDatetime)
+    bars = [_bar_for(date(2026, 6, 1 + (i % 5))) for i in range(200)]
+    assert PastDailyCandlesCache._row_date_bounds(bars) == (date(2026, 6, 1), date(2026, 6, 5))
+    assert len(calls) == 2, f"봉당 변환으로 되돌아갔다: {len(calls)}회"
