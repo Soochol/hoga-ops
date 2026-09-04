@@ -1129,6 +1129,61 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     expect(await screen.findByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
   });
 
+  /**
+   * 키보드로 빼기 — 목록을 훑으며 걸러내는 길이다(우클릭 메뉴는 손이 마우스에 있을 때).
+   *
+   * ★ 행이 사라지는 것만 재면 부족하다. **숨김 칩까지** 재는 이유는 그것이
+   * 「그냥 화면에서 감췄다」와 「제외 목록에 넣었다」를 가르는 유일한 단언이라서다 —
+   * 칩은 `commitExcluded` 를 지나야 뜨고, 저장에 남는 것도 그 경로다.
+   */
+  it('포커스된 행에서 Delete 가 그 자리를 뺀다', async () => {
+    const user = userEvent.setup();
+    const row = await openList(user);
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Delete' });
+    expect(screen.queryByRole('button', { name: /SK하이닉스/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /숨김 1/ })).toBeInTheDocument();
+  });
+
+  it('Delete 는 인접 행으로 포커스를 넘긴다 — 연달아 뺄 수 있다', async () => {
+    const user = userEvent.setup();
+    const row = await openList(user);
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Delete' });
+    // 뺀 행이 언마운트돼도 포커스가 `<body>` 로 떨어지지 않는다 — 다음 Delete·↑↓ 가
+    // 곧바로 이어진다. 안 넘기면 한 번 뺄 때마다 마우스로 다시 짚어야 한다.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /한솔테크닉스/ }));
+  });
+
+  it('Backspace 는 빼지 않는다 — 레일 리스트 전체와 같은 키 계약이다', async () => {
+    const user = userEvent.setup();
+    const row = await openList(user);
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Backspace' });
+    expect(screen.getByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /숨김/ })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ 이 단언이 없으면 **차트의 도형이 조용히 함께 지워진다.** `DrawingOverlay` 가
+   * window 에 keydown 을 걸고 게이트가 「입력 필드 아님 + 포커스된 차트 창 + 선택된
+   * 도형」뿐이라, 도형을 고른 채 이 행을 빼면 그 도형도 사라진다. `preventDefault()`
+   * 로는 못 막는다 — 그건 기본 동작만 막고 전파는 계속된다.
+   */
+  it('Delete 를 window 로 흘려보내지 않는다 — 차트 그리기가 함께 지워진다', async () => {
+    const user = userEvent.setup();
+    const row = await openList(user);
+    const onWindowKey = vi.fn();
+    window.addEventListener('keydown', onWindowKey);
+    try {
+      row.focus();
+      fireEvent.keyDown(row, { key: 'Delete' });
+      expect(onWindowKey).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', onWindowKey);
+    }
+  });
+
   it('저장을 불러오면 그 저장의 제외가 함께 온다', async () => {
     const user = userEvent.setup();
     renderDrawer();
@@ -1191,6 +1246,29 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
     openRowMenu();
     await user.click(await screen.findByRole('menuitem', { name: /전부 빼기/ }));
     expect(screen.queryAllByRole('button', { name: /SK하이닉스/ })).toHaveLength(0);
+  });
+
+  /**
+   * 포커스 승계가 **그냥 옆 행이면 안 되는 이유**가 여기서만 보인다.
+   *
+   * 제외 키에 길이가 없으므로 같은 (종목, 시작일)은 길이별 행이 **함께** 사라지는데,
+   * 병합 정렬이 headroom 순이라 그 둘은 점수가 같아 **나란히 선다**. 옆 행을 잡으면
+   * 그 행도 같이 죽어 포커스가 `<body>` 로 떨어진다 — 공장값이 ±2봉이라 이게 기본
+   * 경로이고, 단일 결과 픽스처로는 원리적으로 안 잡힌다.
+   */
+  it('같은 자리의 다른 길이가 옆에 서 있어도 포커스가 살아남는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(await screen.findByRole('button', { name: '과거에 이 모양' }));
+    const rows = await screen.findAllByRole('button', { name: /SK하이닉스/ });
+    expect(rows.length).toBeGreaterThan(1); // 전제: 같은 자리가 여러 행으로 선다
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: 'Delete' });
+    expect(screen.queryAllByRole('button', { name: /SK하이닉스/ })).toHaveLength(0);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(
+      screen.getAllByRole('button', { name: /한솔테크닉스/ })[0],
+    );
   });
 
   it('자리만 빼면 같은 종목의 **다른 길이는 남는다** — 두 항목의 차이가 여기서 보인다', async () => {

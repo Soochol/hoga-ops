@@ -291,12 +291,36 @@ function rowKey(row: PatternMatchRow, matchLen: number) {
   return `${row.code}-${row.from_date}-${matchLen}`;
 }
 
+/** Delete 로 이 행을 빼기 **직전**에 포커스를 넘길 행을 고른다.
+ *
+ *  옮겨 두지 않으면 행이 언마운트되며 포커스가 `<body>` 로 떨어져, 연달아 지우거나
+ *  ↑↓ 로 이어 가는 흐름이 한 번에 끊긴다. `QuoteRow` 의 Delete 가 같은 이유로 형제에
+ *  포커스를 넘긴다 — 여기가 그 계약의 두 번째 소비자다.
+ *
+ *  ⚠ **형제를 그냥 잡으면 안 되는 것이 이 목록의 차이다.** 제외 키는 (종목, 시작일)이라
+ *  길이를 담지 않으므로(`exclusionKey`), 길이 유연 병합에서는 같은 자리가 길이별로 여러
+ *  행으로 서 있다가 **함께** 사라진다. 공장값이 ±2봉이라 그 경로가 기본이고, 병합 정렬이
+ *  headroom(=corr − 배경) 순이라 같은 자리의 다른 길이는 점수가 비슷해 **나란히 서기
+ *  쉽다**. 옆 행을 잡으면 그 행도 같이 죽어 결국 `<body>` 다. 그래서 **자기와 다른 자리**
+ *  의 첫 행을 아래에서, 없으면 위에서 찾는다.
+ */
+function focusRowSurvivingExclusion(el: HTMLElement) {
+  const scope = el.closest<HTMLElement>('[data-quote-nav]') ?? el.parentElement;
+  if (!scope) return;
+  const rows = Array.from(scope.querySelectorAll<HTMLElement>('[data-quote-row]'));
+  const i = rows.indexOf(el);
+  const survives = (r: HTMLElement) => r.dataset.exclusionKey !== el.dataset.exclusionKey;
+  // slice() 가 새 배열을 주므로 reverse() 가 DOM 순서를 건드리지 않는다.
+  (rows.slice(i + 1).find(survives) ?? rows.slice(0, i).reverse().find(survives))?.focus();
+}
+
 function MatchRow({
   row,
   mode,
   dist,
   onOpen,
   onMenu,
+  onExcludeRange,
   selected = false,
   lengthBadge = null,
   maPeriods = [],
@@ -311,6 +335,9 @@ function MatchRow({
    *  long-press 를 `contextmenu` 로 바꿔 주는 브라우저에서만 산다. 되살릴 거면 `⋯` 를
    *  다시 넣기 전에 이 문단부터 읽을 것. */
   onMenu: (x: number, y: number) => void;
+  /** Delete 키가 부른다 — 메뉴 첫 항목과 **같은 이름·같은 함수**다. 진입점이 둘인데
+   *  payload 를 두 벌 쓰면 어긋나도 아무 신호가 없다. */
+  onExcludeRange: () => void;
   /** 방금 눌러서 차트가 가 있는 행인가. 「어디를 보고 있는지」를 목록이 말한다. */
   selected?: boolean;
   /** 유연 검색에서 이 매치가 나온 길이. 기준과 다를 수 있어 화면이 말해 줘야 한다. */
@@ -333,10 +360,31 @@ function MatchRow({
       // 관심종목/히트맵/스크리너/순위와 **한 함수**를 공유한다.
       onKeyDown={(e) => {
         if (moveToAdjacentQuoteRow(e.key, e.currentTarget)) { e.preventDefault(); return; }
+        // Delete = 「이 자리만 빼기」. 우클릭 메뉴 없이 목록을 훑으며 걸러내는 길이다.
+        //
+        // **Backspace 는 받지 않는다** — 레일 리스트 전체가 그렇다(`QuoteRow`). 거기서는
+        // 되돌릴 수단이 없다는 것이 근거였고 여기는 숨김 칩이 있지만, 리스트마다 키
+        // 계약을 가르면 「어디서 무엇이 지워지는가」를 외워야 한다. 계약을 맞춘다.
+        if (e.key === 'Delete') {
+          e.preventDefault();
+          // ⚠ **전역까지 흘려보내면 안 된다.** `DrawingOverlay` 가 window 에서 Delete 를
+          //   듣는데 게이트가 「입력 필드 아님 + 포커스된 차트 창 + 선택된 도형」뿐이라,
+          //   도형을 고른 채 이 행을 빼면 **그 도형도 함께 지워진다**. `preventDefault()`
+          //   는 전파를 막지 않으므로 여기서 명시적으로 끊는다 — "이 키는 행이 가져갔다".
+          e.stopPropagation();
+          // 언마운트 전에 포커스를 넘겨 둔다(헬퍼 주석: 그냥 옆 행이면 안 되는 이유).
+          focusRowSurvivingExclusion(e.currentTarget);
+          onExcludeRange();
+          return;
+        }
         // div 는 Enter/Space 를 클릭으로 바꿔 주지 않는다 — 버튼을 포기한 대가다.
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(e); }
       }}
       data-quote-row=""
+      // 포커스 승계가 「같은 자리의 다른 길이」를 건너뛰는 근거. 행이 지워지는 단위가
+      // 곧 이 키다 — 렌더 `key=`(길이 포함)와 **다른 값**이라 둘을 섞으면 안 된다.
+      data-exclusion-key={exclusionKey(row)}
+      aria-keyshortcuts="Delete"
       aria-current={selected ? 'true' : undefined}
       className="grid w-full cursor-pointer grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
       style={{
@@ -624,6 +672,15 @@ export function PatternDrawer() {
     void created_at_ms; void updated_at_ms;
     updateSave.mutate({ id, body: { ...body, excluded: next } });
   }, [loadedSaveId, savedById, updateSave]);
+
+  /** 「이 자리만 빼기」 — **진입점이 둘**이다(행 Delete · 우클릭 메뉴). 제외 payload 를
+   *  두 벌 쓰면 한쪽만 고쳐져도 아무 신호가 없으므로 여기 하나로 모은다. */
+  const excludeRange = useCallback((row: PatternMatchRow) => {
+    commitExcluded([
+      ...excluded,
+      { code: row.code, from_date: row.from_date, stock_name: row.name || row.code },
+    ]);
+  }, [commitExcluded, excluded]);
 
   const onOpen = useCallback(
     (row: PatternMatchRow, key: string, e: JumpModifiers) => {
@@ -981,6 +1038,7 @@ export function PatternDrawer() {
                   selected={openedKey === key && row.code === activeCode}
                   onOpen={(e) => onOpen(row, key, e)}
                   onMenu={(x, y) => setRowMenu({ x, y, row })}
+                  onExcludeRange={() => excludeRange(row)}
                   // 유연 검색에서만 붙는다 — 7봉을 그었는데 10봉 매치가 나오면
                   // 사용자가 그 이유를 알아야 한다.
                   lengthBadge={conditions.flexBars > 0 ? matchLen : null}
@@ -996,14 +1054,7 @@ export function PatternDrawer() {
               y={rowMenu.y}
               label={`${rowMenu.row.name || rowMenu.row.code} ${formatRange(rowMenu.row.from_date, rowMenu.row.to_date)}`}
               stockName={rowMenu.row.name || rowMenu.row.code}
-              onExcludeRange={() => commitExcluded([
-                ...excluded,
-                {
-                  code: rowMenu.row.code,
-                  from_date: rowMenu.row.from_date,
-                  stock_name: rowMenu.row.name || rowMenu.row.code,
-                },
-              ])}
+              onExcludeRange={() => excludeRange(rowMenu.row)}
               onExcludeCode={() => commitExcluded(withWholeCodeExcluded(excluded, {
                 code: rowMenu.row.code,
                 from_date: null,
