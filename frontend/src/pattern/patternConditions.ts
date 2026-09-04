@@ -1,5 +1,6 @@
 import type {
-  PatternExclusion, PatternMaPreset, PatternMatchRow, PatternTimeframe,
+  PatternExclusion, PatternMaPreset, PatternMatchRow, PatternStructAnchor,
+  PatternTimeframe,
 } from '../api/screener';
 
 /**
@@ -53,6 +54,17 @@ export function structLabel(tolerance: number | null): string {
   if (tolerance === null) return '구조 무관';
   return tolerance === 0 ? '같은 구조' : `구조 ${tolerance}개 차이까지`;
 }
+
+/** 기준선 방식 후보 — **서버 조건**이다(부호열 자체가 달라진다).
+ *
+ *  하나로 고르지 않는 이유는 어느 쪽이 선택적인지가 **쿼리마다 뒤집히기** 때문이다
+ *  (실측: 삼천당제약 5봉 97 vs 108창인데 삼성전자 7봉은 12 vs **440**창). 판별력의
+ *  차이가 아니라 **질문이 바뀌는 것**이라 이름이 그 사실을 진다(ADR-0166 결정 11 과
+ *  같은 규칙). 값은 `hoga/api/models.py::PatternStructAnchor` 의 손 미러다. */
+export const STRUCT_ANCHORS = [
+  { key: 'running' as const, label: '직전까지 최고', note: '봉마다 기준이 올라간다' },
+  { key: 'first2' as const, label: '첫 두 봉 고정', note: '첫 두 봉이 만든 선을 뒤 봉들이 시험한다' },
+];
 
 /** 그 단계를 고르면 남는 후보창 수 — 서버가 준 히스토그램(게이트 **전** 모집단)의
  *  꼬리 합. 히스토그램이 없으면(게이트를 끈 채 검색했다) `null` — 서버가 그때는 서명을
@@ -163,6 +175,8 @@ export type PatternConditions = {
   maPreset: PatternMaPreset;
   /** 구조 게이트 허용 불일치. `null` = 끄기. **서버 조건**(모집단을 거른다). */
   structTolerance: number | null;
+  /** 구조 게이트의 기준선 방식. **서버 조건**(부호열 자체가 달라진다). */
+  structAnchor: PatternStructAnchor;
   /** 봉 단위. **서버 조건**이고 코퍼스 자체가 갈린다.
    *
    *  공장값은 일봉이지만 **패널을 열 때 차트에서 시드**된다(기준 종목과 같은 규칙) —
@@ -197,6 +211,9 @@ export const DEFAULT_CONDITIONS: PatternConditions = {
   // 구조 게이트는 **끈 채로** 시작한다 — 켜면 후보가 수십만에서 ~100 으로 준다(실측 92).
   // 그은 구간의 «관계» 를 고집하고 싶을 때 켜는 옵트인 축이다.
   structTolerance: null,
+  // 기준선은 **기존 동작(이동)** 이 공장값이다 — 「첫 두 봉 고정」은 첫 두 봉이 특별하다는
+  // 가정을 넣는 것이라 사용자가 그 질문일 때 고른다.
+  structAnchor: 'running',
   timeframe: 'D',
 };
 

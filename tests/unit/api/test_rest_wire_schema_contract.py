@@ -91,7 +91,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternSaveConditions": frozenset(
         {"mode", "since", "count", "sim_floor", "min_tv_eok", "exclude_etf",
          "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars",
-         "timeframe", "struct_tolerance"}
+         "timeframe", "struct_tolerance", "struct_anchor"}
     ),
     "PatternSave": frozenset(
         {"id", "name", "code", "stock_name", "window", "conditions", "excluded",
@@ -297,6 +297,10 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
+    "PatternStructAnchor": (
+        frozenset(get_args(m.PatternStructAnchor)),
+        "frontend/src/api/screener.ts",
+    ),
     # 스크리너 갱신 skip 사유. **오래 `str` 이라 이 층 밖에 있었다** — BE 에 named
     # alias 가 없으면 `get_args` 로 읽을 수 없어 등록 자체가 불가능하고, 그래서 등록
     # 누락 감사도 이 쌍을 못 봤다(`RangeMode` 와 같은 구멍). 달력 실패를 둘로 쪼개면서

@@ -84,6 +84,8 @@ export function patternKey(
     // 구조 게이트도 서버 조건이다(모집단을 거른다). 키에 없으면 게이트를 바꿔도 옛
     // 결과가 그대로 읽힌다.
     conditions?.structTolerance ?? null,
+    // 기준선 방식도 서버 조건 — 부호열 자체가 달라진다.
+    conditions?.structAnchor ?? null,
     // 봉 단위는 **코퍼스 자체**를 가른다 — 키에 없으면 일봉 결과가 주봉 자리에 그대로
     // 남는다(캐시가 같은 키로 읽히므로 재검색이 아예 안 난다).
     conditions?.timeframe ?? null,
@@ -141,6 +143,7 @@ export function usePatternSearch({
         flex_bars: conditions?.flexBars ?? 0,
         ma_preset: conditions?.maPreset ?? 'off',
         struct_tolerance: conditions?.structTolerance ?? null,
+        struct_anchor: conditions?.structAnchor ?? 'running',
         timeframe: tf,
         // ⚠ 서버 필드명은 「일」이지만 코드는 **봉**을 센다 — 주봉에서 20 을 그대로
         //   보내면 20주(≈5개월)가 되어 후보가 그만큼 잘리고 수익률도 5개월 뒤가 된다.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow,
   DEFAULT_CONDITIONS, defaultConditionsFor, forwardBarsFor, maLabel, periodIsThinFor,
-  STRUCT_STEPS, structLabel, structRemaining,
+  STRUCT_ANCHORS, STRUCT_STEPS, structLabel, structRemaining,
 } from './patternConditions';
 
 /**
@@ -165,5 +165,16 @@ describe('구조 게이트 — 단계·라벨·남는 개수', () => {
   it('히스토그램이 없으면 null — 게이트를 끈 채 검색하면 서버가 서명을 안 센다', () => {
     expect(structRemaining(null, 3, 0)).toBeNull();
     expect(structRemaining([1], null, 0)).toBeNull();
+  });
+});
+
+describe('기준선 방식 — 하나로 고르지 않는다', () => {
+  it('이동·고정 둘이고 공장값은 기존 동작(이동)이다', () => {
+    expect(STRUCT_ANCHORS.map((a) => a.key)).toEqual(['running', 'first2']);
+    expect(DEFAULT_CONDITIONS.structAnchor).toBe('running');
+  });
+
+  it('둘 다 설명을 진다 — 판별력이 아니라 **질문이 바뀌는** 축이라서', () => {
+    for (const a of STRUCT_ANCHORS) expect(a.note).toBeTruthy();
   });
 });

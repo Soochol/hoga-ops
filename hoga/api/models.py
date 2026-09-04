@@ -2009,6 +2009,16 @@ PatternSearchMode = Literal["now", "history"]
 #: `MA_PRESETS` 와 프론트 union 을 **같은 PR 에서** 고친다(ADR-0004).
 PatternMaPreset = Literal["off", "short", "mid"]
 
+#: 구조 게이트의 **기준선**을 어디서 잡는가 (ADR-0166 결정 13).
+#:
+#: * `running` — 봉마다 올라가는 「직전까지 최고/최저」.
+#: * `first2` — **첫 두 봉의 최고/최저로 고정**. 「첫 두 봉이 만든 선을 뒤 봉들이
+#:   시험한다」가 질문일 때 정확하다.
+#:
+#: 하나를 고르지 않는 이유는 **어느 쪽이 선택적인지가 쿼리마다 뒤집히기** 때문이다
+#: (실측: 삼천당제약 5봉 97 vs 108창인데 삼성전자 7봉은 12 vs **440**창).
+PatternStructAnchor = Literal["running", "first2"]
+
 #: 봉 패턴 검색의 **봉 단위**. `"W"` 코퍼스는 일봉에서 파생한다 — 종목 주봉을 주는
 #: 벤더 경로가 없다(키움 W/M TR 은 지수 전용).
 #:
@@ -2109,6 +2119,8 @@ class PatternSearchRequest(BaseModel):
     #: 통과 **전** 모집단이다(ADR-0166 결정 12). 상관이 원리적으로 못 보는 국소 부등식
     #: (「고가는 전고를 넘었는데 종가는 못 넘었다」)을 이 축이 본다.
     struct_tolerance: int | None = Field(None, ge=0, le=PATTERN_STRUCT_MAX_TOLERANCE)
+    #: 구조 게이트의 기준선 방식. `struct_tolerance` 가 `None` 이면 아무 뜻이 없다.
+    struct_anchor: PatternStructAnchor = "running"
     #: 봉 단위. 코퍼스가 이 값으로 갈린다(주봉은 일봉에서 파생).
     #:
     #: ⚠ **길이·기간·수익률 지평은 전부 «봉» 을 센다.** 그래서 같은 `forward_days=20`
@@ -2206,6 +2218,9 @@ class PatternSaveConditions(BaseModel):
     #: 켜진 채 되살아나거나, 일부러 끈 저장이 켜진다). 그때는 부재와 끄기를 **분리해서**
     #: 표현해야 한다 — 이 필드의 `None` 을 그대로 두고 공장값만 바꾸지 말 것.
     struct_tolerance: int | None = Field(None, ge=0, le=PATTERN_STRUCT_MAX_TOLERANCE)
+    #: 기준선 방식. `None` 은 **「그 축이 없던 시절의 저장」**이고 화면이 공장값으로 읽는다
+    #: (`ma_preset` 과 같은 규칙 — 공장값이 `running` 이라 오늘은 부재와 결과가 같다).
+    struct_anchor: PatternStructAnchor | None = None
 
 
 class PatternExclusion(BaseModel):
