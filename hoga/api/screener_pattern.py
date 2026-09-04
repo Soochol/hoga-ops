@@ -30,6 +30,12 @@ from hoga.api.models import (
     PatternSearchRequest,
     PatternSearchResponse,
 )
+from hoga.api.screener_pattern_structure import (
+    StructGate,
+    query_signature,
+    signature_total,
+    window_matches,
+)
 
 # 거래대금 = 평균가(OHLC/4) × 거래량. `screener_scan._TV` 와 **같은 식**이다
 # (코퍼스에 거래대금 컬럼이 없어 양쪽이 각자 산출한다 — 드리프트하면 필터가 갈린다).
@@ -591,8 +597,12 @@ def search_now(
     volume_query: np.ndarray | None = None,
     volume_weight: float = 0.0,
     ma_periods: tuple[int, ...] = (),
+    struct: StructGate | None = None,
 ) -> tuple[list[PatternMatch], np.ndarray]:
     """각 종목의 **최신 L봉** 한 창만 비교. 종목당 내적 1회라 싸다.
+
+    `struct` 는 종목 인덱스로 읽는 게이트다. **분포(`scores`)는 게이트 전 모집단**이고
+    게이트는 매치 목록만 자른다(ADR-0166 결정 12).
 
     계열이 멈춘 종목(상장폐지·장기정지)은 '지금' 이 없으므로 뺀다 — 판정은 그 계열의
     마지막 날짜가 코퍼스 전체의 마지막 날짜인가다.
@@ -627,9 +637,28 @@ def search_now(
                   if vsd > _FLAT_SD else 0.0)
             score = score * (1 - volume_weight) + vs * volume_weight
         scores.append(score)
+        if struct is not None:
+            m = int(struct.matches[i])
+            struct.hist[m] += 1
+            if m < struct.need:
+                continue
         out.append(PatternMatch(score, i, offset))
     out.sort(key=lambda m: m.score, reverse=True)
     return out, np.array(scores)
+
+
+def _gate_series(
+    struct: StructGate | None, corr: np.ndarray, start: int, finite: np.ndarray,
+) -> None:
+    """한 종목의 창들에 구조 게이트를 건다 — 히스토그램은 **걸기 전** 후보창으로 센다.
+    게이트가 없으면 아무것도 안 한다(분기를 여기 두어 `search_history` 의 분기 수를
+    지킨다)."""
+    if struct is None:
+        return
+    m = struct.matches[start : start + len(corr)]
+    if finite.any():
+        struct.count(m[finite])
+    corr[~struct.passes(m)] = -np.inf
 
 
 def _top_in_series(corr: np.ndarray, series: int, length: int, per_code: int) -> list[PatternMatch]:
@@ -671,11 +700,16 @@ def search_history(
     volume_weight: float = 0.0,
     since: np.datetime64 | None = None,
     ma_periods: tuple[int, ...] = (),
+    struct: StructGate | None = None,
 ) -> tuple[list[PatternMatch], np.ndarray, np.ndarray]:
     """전 종목 × 전 기간 슬라이딩. 종목당 최고점 **1개**만 남긴다(결과 다양성).
 
     반환은 (매치, 전 후보창 점수, 그 창들의 `min_after` 봉 뒤 수익률). 뒤의 둘이
     베이스라인이고, ADR-0166 결정 7 이 그것을 **응답에서 뺄 수 없게** 한다.
+
+    `struct` 는 전역 창 인덱스로 읽는 게이트다. **분포·베이스라인은 게이트 전 모집단**
+    으로 모으고 게이트는 그 뒤에 건다 — 92개 안에서 p99.99 를 재면 최댓값이 되어 길이
+    유연 병합(`corr − p99.99`)이 잡음이 된다(ADR-0166 결정 12).
     """
     q_from = c.dates[c.starts[query_series] + query_offset]
     q_to = c.dates[c.starts[query_series] + query_offset + length - 1]
@@ -734,6 +768,7 @@ def search_history(
             all_scores.append(corr[idx])
             close = c.ch[_CLOSE, s:e]
             all_fwd.append(np.exp(close[idx + length - 1 + min_after] - close[idx + length - 1]) - 1)
+        _gate_series(struct, corr, s, finite)
         matches.extend(_top_in_series(corr, i, length, per_code))
     matches.sort(key=lambda m: m.score, reverse=True)
     scores = np.concatenate(all_scores) if all_scores else np.zeros(0)
@@ -906,12 +941,13 @@ def _append_one(
     same_len = length == base_length
     vq = _volume_query(c, qi, offset, length) if (req.volume_weight > 0 and same_len) else None
     vw = req.volume_weight if vq is not None else 0.0
+    gate = _struct_gate(c, req, qi=qi, offset=offset, length=length, base_length=base_length)
     baseline = None
     if req.mode == "now":
         matches, scores = search_now(
             c, query=query, length=length, skip=qi,
             min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
-            volume_query=vq, volume_weight=vw, ma_periods=periods,
+            volume_query=vq, volume_weight=vw, ma_periods=periods, struct=gate,
         )
         fwd_all = np.zeros(0)
     else:
@@ -920,6 +956,7 @@ def _append_one(
             min_tv_eok=req.min_tv_eok, exclude_etf=req.exclude_etf,
             min_after=req.forward_days, no_overlap=req.no_overlap,
             per_code=req.per_code, volume_query=vq, volume_weight=vw, ma_periods=periods,
+            struct=gate,
             since=(np.datetime64(
                 f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D")
                 if req.since else None),
@@ -948,6 +985,7 @@ def _append_one(
             forward_pct=(forward_return_pct(c, m.series, m.offset, length, req.forward_days)
                          if req.mode == "history" else None),
             ma=ma_at(c, m.series, m.offset, length, periods),
+            struct_match=_struct_match_of(gate, c, m, req.mode),
         )
         for m in matches[: req.top]
     ]
@@ -977,6 +1015,42 @@ def _append_one(
         matches=rows,
         baseline=baseline,
         partial_last_bucket_days=partial,
+        struct_total=gate.total if gate is not None else None,
+        struct_hist=gate.hist.tolist() if gate is not None else None,
         elapsed_ms=(time.perf_counter() - started) * 1000,
     ))
     return None
+
+
+def _struct_gate(
+    c: Corpus, req: PatternSearchRequest, *, qi: int, offset: int, length: int, base_length: int,
+) -> StructGate | None:
+    """구조 게이트 — 쿼리 창(**가격 4채널만**, 이평 제외)의 부호열로 후보를 거른다.
+
+    길이 유연이면 **리샘플한 쿼리**에서 부호를 뽑는다. 선형 보간은 점별 부등식을 보존하므로
+    (h ≥ c 인 두 점 사이의 보간값도 h ≥ c) 보간된 봉도 정합한 캔들이고, 그 부호열은
+    「같은 모양이 더 길게 전개된 것」의 서명이다. 기준 길이만 걸면 이웃 길이 블록이 거르지
+    않은 채 병합 목록을 채운다 — 공장값이 ±2 라 그게 기본 경로다. 거래량 축이 다른
+    길이에서 접히는 것과 다른 결정인 이유: 거래량은 봉별 부호 의미가 없다.
+    """
+    if req.struct_tolerance is None:
+        return None
+    price = _stack_window(c, qi, offset, base_length, ())
+    win = price if length == base_length else resample_query(price, length)
+    sig = query_signature(win)
+    total = signature_total(sig)
+    if req.mode == "now":
+        # 종목마다 최신 창 하나 — 그 시작들만 계산한다(전 창을 돌면 11길이 × 백만 창).
+        # 계열이 창보다 짧은 종목은 인덱스가 앞 계열로 새지만 search_now 가 먼저 건너뛴다.
+        starts = np.maximum(c.ends - length, 0)
+        matches = window_matches(c.ch, sig, length, starts)
+    else:
+        matches = window_matches(c.ch, sig, length)
+    return StructGate(matches=matches, need=max(0, total - req.struct_tolerance), total=total)
+
+
+def _struct_match_of(gate: StructGate | None, c: Corpus, m: PatternMatch, mode: str) -> int | None:
+    if gate is None:
+        return None
+    idx = m.series if mode == "now" else int(c.starts[m.series]) + m.offset
+    return int(gate.matches[idx])

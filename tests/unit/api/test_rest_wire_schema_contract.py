@@ -72,12 +72,13 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternDistribution": frozenset({"p50", "p95", "p99", "p99_99", "sample"}),
     "PatternBaseline": frozenset({"fwd_median_pct", "fwd_win_rate_pct", "sample"}),
     "PatternMatchRow": frozenset(
-        {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct", "ma"}
+        {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct", "ma",
+         "struct_match"}
     ),
     "PatternQueryWindow": frozenset({"length", "from_date", "to_date", "bars", "ma"}),
     "PatternLengthResult": frozenset(
         {"length", "query", "ma_periods", "universe", "dist", "matches", "baseline",
-         "partial_last_bucket_days", "elapsed_ms"}
+         "partial_last_bucket_days", "struct_total", "struct_hist", "elapsed_ms"}
     ),
     "PatternSearchResponse": frozenset(
         {"code", "name", "mode", "timeframe", "results",
@@ -89,7 +90,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternSaveConditions": frozenset(
         {"mode", "since", "count", "sim_floor", "min_tv_eok", "exclude_etf",
          "no_overlap", "per_code", "volume_weight", "ma_preset", "flex_bars",
-         "timeframe"}
+         "timeframe", "struct_tolerance"}
     ),
     "PatternSave": frozenset(
         {"id", "name", "code", "stock_name", "window", "conditions", "excluded",

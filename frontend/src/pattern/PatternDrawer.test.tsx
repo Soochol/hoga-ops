@@ -40,6 +40,8 @@ const SAVE_RECENT = {
     mode: 'history' as const, since: null, count: 40, sim_floor: 0.9,
     min_tv_eok: 10, exclude_etf: false, no_overlap: false, per_code: 3, volume_weight: 0.3,
     ma_preset: 'mid' as const, flex_bars: 0,
+    // 구조 게이트도 공장값(끄기 = null)과 달라야 복원을 잰다.
+    struct_tolerance: 1,
   },
   // ★ 이 저장은 **제외를 하나 들고 있다** — 불러오기가 그것까지 가져오는지 잰다.
   excluded: [{ code: '000660', from_date: '20180307', stock_name: 'SK하이닉스' }],
@@ -131,21 +133,21 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         corr: 0.986, bars: BARS(length),
         tail: opts.history ? [101, 103, 99] : null,
         forward_pct: opts.history ? 7.4 : null,
-        ma: null,
+        ma: null, struct_match: null,
       },
       {
         code: '004710', name: '한솔테크닉스', from_date: '20240529', to_date: '20240607',
         corr: 0.897, bars: BARS(length),
         tail: opts.history ? [98, 97, 95] : null,
         forward_pct: opts.history ? -17.5 : null,
-        ma: null,
+        ma: null, struct_match: null,
       },
       {
         code: '019010', name: '베뉴지', from_date: '20210708', to_date: '20210716',
         corr: 0.83, bars: BARS(length),
         tail: opts.history ? [100, 100, 99] : null,
         forward_pct: opts.history ? -1 : null,
-        ma: null,
+        ma: null, struct_match: null,
       },
       {
         code: '039840', name: '디오', from_date: '20001219', to_date: '20010103',
@@ -153,7 +155,7 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
         tail: opts.history ? [] : null,
         // 계열 끝이라 이후가 없다 — 요약 표본에서 **빠져야** 한다(0 으로 세면 안 된다).
         forward_pct: null,
-        ma: null,
+        ma: null, struct_match: null,
       },
     ],
     baseline: opts.history
@@ -161,6 +163,8 @@ function lengthResult(length: number, topName: string, opts: { history?: boolean
       : null,
     // 일봉 목업이라 null 이다 — 주봉의 미완성 마지막 봉에서만 값이 있다.
     partial_last_bucket_days: null,
+    struct_total: null,
+    struct_hist: null,
     elapsed_ms: opts.history ? 421 : 14,
   };
 }
@@ -352,6 +356,21 @@ describe('PatternDrawer — 빈 상태', () => {
     expect(await screen.findByText(/이 기간에 닮은 구간이 없다/)).toBeInTheDocument();
   });
 
+  it('구조 게이트가 켜진 채 서버가 빈 목록을 주면 그 칩을 지목한다', async () => {
+    // 게이트는 후보를 수십만에서 ~100 으로 줄이는 가장 센 조건이다 — 기간을 넓히라고
+    // 하면 사용자는 엉뚱한 손잡이를 돌린다.
+    const user = userEvent.setup();
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
+      results: [{ ...lengthResult(7, 'x'), matches: [] }],
+    });
+    renderDrawer();
+    await screen.findByText(/이 기간에 닮은 구간이 없다/);
+    await user.click(screen.getByRole('button', { name: /구조 무관/ }));
+    await user.click(await screen.findByRole('option', { name: /같은 구조/ }));
+    expect(await screen.findByText(/이 구조와 맞는 구간이 없다/)).toBeInTheDocument();
+  });
+
   it('그 봉수를 채울 이력이 없으면 그렇게 말한다', async () => {
     searchPattern.mockResolvedValue({
       ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'now', timeframe: 'D',
@@ -394,10 +413,11 @@ describe('PatternDrawer — 빈 상태', () => {
     });
     renderDrawer();
     await screen.findByText(/후보 구간이 하나도 없다/);
-    // 기간·봉단위·이평 — 빈 결과를 되살릴 수 있는 **서버 조건** 셋이 다 있어야 한다.
+    // 기간·봉단위·이평·구조 — 빈 결과를 되살릴 수 있는 **서버 조건** 넷이 다 있어야 한다.
     expect(screen.getByText('최근 1년')).toBeInTheDocument();
     expect(screen.getByText('일봉')).toBeInTheDocument();
     expect(screen.getByText('단기 5·20')).toBeInTheDocument();   // 공장값이 켜짐이다
+    expect(screen.getByText('구조 무관')).toBeInTheDocument();
   });
 
   /**
@@ -813,6 +833,7 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     // 유사도를 바꾸는 조건 둘 — 빠지면 **다른 검색이 복원된다**(공장값 off · 0 과 다르게 저장했다).
     expect(body.ma_preset).toBe('mid');
     expect(body.flex_bars).toBe(0);        // 저장된 유연 폭(공장값 ±2 와 다르다)
+    expect(body.struct_tolerance).toBe(1); // 저장된 구조 단계(공장값 끄기와 다르다)
   });
 
   it('고정 구간 저장은 그 날짜로 되돌아간다', async () => {
@@ -1002,6 +1023,44 @@ describe('PatternDrawer — 이평 프리셋', () => {
   });
 });
 
+describe('PatternDrawer — 구조 게이트', () => {
+  /** 칩 → 팝오버 → 항목. 칩 라벨은 **현재 단계의 이름**이라 「구조」로만 잡을 수 없다. */
+  async function pickStruct(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+    await user.click(screen.getByRole('button', { name: /(구조 무관|같은 구조|구조 \d개 차이까지)/ }));
+    await user.click(await screen.findByRole('option', { name: label }));
+  }
+
+  it('끈 채로는 요청에 null 로 실린다 — 서버가 서명 계산을 아예 안 한다', async () => {
+    renderDrawer();
+    await screen.findByText('길이7위');
+    expect(searchPattern.mock.calls.at(-1)?.[0].struct_tolerance).toBeNull();
+  });
+
+  it('단계를 고르면 서버 조건으로 실리고 **다시 검색한다** — 모집단을 거르는 조건이라 로컬로는 흉내낼 수 없다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    const before = searchPattern.mock.calls.length;
+    await pickStruct(user, /같은 구조/);
+    await vi.waitFor(() =>
+      expect(searchPattern.mock.calls.length).toBeGreaterThan(before),
+    );
+    expect(searchPattern.mock.calls.at(-1)?.[0].struct_tolerance).toBe(0);
+  });
+
+  it('저장은 구조 단계를 담는다', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('길이7위');
+    await pickStruct(user, /구조 1개 차이까지/);
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    const submits = screen.getAllByRole('button', { name: '저장' });
+    await user.click(submits[submits.length - 1]);
+    await vi.waitFor(() => expect(createPatternSave).toHaveBeenCalled());
+    expect(createPatternSave.mock.calls.at(-1)![0].conditions.struct_tolerance).toBe(1);
+  });
+});
+
 describe('PatternDrawer — 착지 창은 분봉 창을 갈아엎지 않는다', () => {
   /** zOrder 최상위를 분봉 차트로 바꾼다 — 사용자가 분봉 창을 마지막에 만진 상태다. */
   function withMinuteOnTop() {
@@ -1063,6 +1122,8 @@ describe('PatternDrawer — 저장에 없던 조건은 공장값을 따른다', 
     const body = await pick(userEvent.setup(), 'f1');
     expect(body.ma_preset).toBe(DEFAULT_CONDITIONS.maPreset);
     expect(body.flex_bars).toBe(DEFAULT_CONDITIONS.flexBars);
+    // 구조 게이트가 없던 시절의 저장 — 공장값(끄기)이라 null 로 실린다.
+    expect(body.struct_tolerance).toBeNull();
   });
 
   it('일부러 끈 저장은 꺼진 채로 복원된다 — 부재와 선택은 다르다', async () => {

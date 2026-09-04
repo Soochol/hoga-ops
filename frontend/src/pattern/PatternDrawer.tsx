@@ -614,6 +614,8 @@ export function PatternDrawer() {
       maPreset: save.conditions.ma_preset ?? DEFAULT_CONDITIONS.maPreset,
       // 부재는 **「주봉이 없던 시절의 저장」**이라 일봉이다 — 같은 규칙.
       timeframe: save.conditions.timeframe ?? DEFAULT_CONDITIONS.timeframe,
+      // 구조 게이트의 부재는 공장값(끄기)과 같은 결과다 — 공장값을 켜는 날 분리할 것.
+      structTolerance: save.conditions.struct_tolerance ?? DEFAULT_CONDITIONS.structTolerance,
     });
     setShowSaves(false);
   }, []);
@@ -790,6 +792,7 @@ export function PatternDrawer() {
                   ma_preset: conditions.maPreset,
                   flex_bars: conditions.flexBars,
                   timeframe: conditions.timeframe,
+                  struct_tolerance: conditions.structTolerance,
                 },
                 // 새 저장은 화면의 제외를 그대로 가져간다 — 저장 전에 뺀 것이 있으면
                 // 그것까지가 「이 검색」이다.
@@ -982,6 +985,8 @@ export function PatternDrawer() {
             onChange={setConditions}
             rows={result?.matches ?? NO_ROWS}
             p9999={result?.dist.p99_99 ?? null}
+            structHist={result?.struct_hist ?? null}
+            structTotal={result?.struct_total ?? null}
             excluded={excluded}
             onRestore={(e) => commitExcluded(
               excluded.filter((x) => exclusionKey(x) !== exclusionKey(e)),
@@ -1018,11 +1023,18 @@ export function PatternDrawer() {
           <RailDrawerBody quoteNav>
             {shown.length === 0 ? (
               <RailState>
-                {conditions.simFloor > 0
-                  ? `유사도 ${conditions.simFloor.toFixed(2)} 이상인 구간이 없다 — 하한을 낮추거나 기간을 넓혀 보라.`
-                  : conditions.period !== 'all'
-                    ? '이 기간에 닮은 구간이 없다 — 기간을 넓혀 보라.'
-                    : '조건에 맞는 매치가 없다.'}
+                {/* 구조 게이트는 후보를 수십만에서 ~100 으로 줄이는 가장 센 조건이라(실측 92),
+                    켜진 채 **서버가** 빈 목록을 줬으면 그 칩을 먼저 지목한다. 게이트는 분포를
+                    안 건드리므로 `no_candidates` 로는 오지 않고 매치만 빈 채로 온다. 서버가
+                    행을 줬는데 로컬 하한이 잘랐다면 그건 유사도의 몫이다. */}
+                {conditions.structTolerance !== null
+                  && data?.results.every((r) => r.matches.length === 0)
+                  ? '이 구조와 맞는 구간이 없다 — 「구조」 단계를 넓히거나 끄라.'
+                  : conditions.simFloor > 0
+                    ? `유사도 ${conditions.simFloor.toFixed(2)} 이상인 구간이 없다 — 하한을 낮추거나 기간을 넓혀 보라.`
+                    : conditions.period !== 'all'
+                      ? '이 기간에 닮은 구간이 없다 — 기간을 넓혀 보라.'
+                      : '조건에 맞는 매치가 없다.'}
               </RailState>
             ) : (
               shown.map(({ row, length: matchLen }) => {

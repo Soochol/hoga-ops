@@ -470,11 +470,12 @@ def test_route_response_passes_response_model_with_wire_keys(client):
     assert body["coverage_from"] and body["coverage_to"]
     result = body["results"][0]
     assert set(result) == {"length", "query", "ma_periods", "universe", "dist",
-                           "matches", "baseline", "partial_last_bucket_days", "elapsed_ms"}
+                           "matches", "baseline", "partial_last_bucket_days",
+                           "struct_total", "struct_hist", "elapsed_ms"}
     assert set(result["dist"]) == {"p50", "p95", "p99", "p99_99", "sample"}
     row = result["matches"][0]
     assert set(row) == {"code", "name", "from_date", "to_date", "corr", "bars",
-                        "tail", "forward_pct", "ma"}
+                        "tail", "forward_pct", "ma", "struct_match"}
     assert len(row["bars"][0]) == 4                    # [open, high, low, close]
 
 

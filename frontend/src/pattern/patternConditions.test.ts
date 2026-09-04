@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow,
   DEFAULT_CONDITIONS, defaultConditionsFor, forwardBarsFor, maLabel, periodIsThinFor,
+  STRUCT_STEPS, structLabel, structRemaining,
 } from './patternConditions';
 
 /**
@@ -13,7 +14,7 @@ import {
 
 const row = (corr: number, code = 'a') => ({
   code, name: code, from_date: '20240101', to_date: '20240107', corr,
-  bars: [[1, 1, 1, 1]], tail: null, forward_pct: null, ma: null,
+  bars: [[1, 1, 1, 1]], tail: null, forward_pct: null, ma: null, struct_match: null,
 });
 
 describe('mergeByHeadroom', () => {
@@ -137,5 +138,32 @@ describe('봉 단위별 공장값·라벨', () => {
     expect(periodIsThinFor('W', 3)).toBe(false);
     expect(periodIsThinFor('D', 1)).toBe(false);
     expect(periodIsThinFor('M', null)).toBe(false);
+  });
+});
+
+describe('구조 게이트 — 단계·라벨·남는 개수', () => {
+  it('단계는 끄기(null)로 시작해 0~3 이다 — 3 위는 사실상 끄기라 열지 않는다', () => {
+    expect(STRUCT_STEPS[0]).toBeNull();
+    expect(STRUCT_STEPS.slice(1)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('라벨이 뜻을 말한다', () => {
+    expect(structLabel(null)).toBe('구조 무관');
+    expect(structLabel(0)).toBe('같은 구조');
+    expect(structLabel(2)).toBe('구조 2개 차이까지');
+  });
+
+  it('남는 개수는 히스토그램의 꼬리 합이다 — 게이트 **전** 모집단을 센다', () => {
+    // 관계 3개 · 0개 맞춘 창 5 · 1개 2 · 2개 1 · 3개 4
+    const hist = [5, 2, 1, 4];
+    expect(structRemaining(hist, 3, 0)).toBe(4);
+    expect(structRemaining(hist, 3, 1)).toBe(5);
+    expect(structRemaining(hist, 3, 2)).toBe(7);
+    expect(structRemaining(hist, 3, 9)).toBe(12);   // 총수를 넘는 허용은 전부
+  });
+
+  it('히스토그램이 없으면 null — 게이트를 끈 채 검색하면 서버가 서명을 안 센다', () => {
+    expect(structRemaining(null, 3, 0)).toBeNull();
+    expect(structRemaining([1], null, 0)).toBeNull();
   });
 });

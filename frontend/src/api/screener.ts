@@ -226,6 +226,11 @@ export interface PatternSearchRequest {
   volume_weight?: number;
   /** 이평선을 매칭 축에 넣을지. 생략하면 `off`. */
   ma_preset?: PatternMaPreset;
+  /** 구조 게이트 — 쿼리 창의 «봉별 색·전고·전저 관계» 부호열과 **몇 개까지 달라도**
+   *  후보로 남길지. `null`/생략이면 끈다(서명 계산 자체를 안 한다). 게이트이지 점수가
+   *  아니다 — 통과한 창의 순서는 상관이고 `dist`·`baseline` 은 통과 **전** 모집단이다
+   *  (ADR-0166 결정 12). */
+  struct_tolerance?: number | null;
 }
 
 /** 후보 점수 분포. **유사도 절대값을 단독으로 그리지 않기 위한 동반 데이터**다 —
@@ -263,6 +268,9 @@ export interface PatternMatchRow {
   /** 이평 프리셋이 켜졌을 때만 — 기간별 **원가격** 이평값. 바깥 배열이
    *  `PatternLengthResult.ma_periods` 와 같은 순서다. */
   ma: number[][] | null;
+  /** 구조 게이트가 켜졌을 때만 — 이 창이 쿼리 부호열과 맞춘 관계 수. 분모는
+   *  `PatternLengthResult.struct_total`. 꺼져 있으면 null. */
+  struct_match: number | null;
 }
 
 export interface PatternQueryWindow {
@@ -290,6 +298,13 @@ export interface PatternLengthResult {
    *  **모든 매치의 마지막 봉이 같은 방식으로 왜곡**되므로 화면이 그 사실을 말해야 한다
    *  (실측: 포함/제외로 `now` top20 이 10~16/20 만 겹친다). `now` · 주봉에서만 값이 있다. */
   partial_last_bucket_days: number | null;
+  /** 구조 게이트가 켜졌을 때만 — 판정에 들어간 관계 수(쿼리에서 부호가 0 인 관계는 뺀
+   *  값이라 길이만으로 정해지지 않는다). 꺼져 있으면 null. */
+  struct_total: number | null;
+  /** 구조 게이트가 켜졌을 때만 — 인덱스 k 에 「k 개 맞춘 후보창 수」. 게이트를 걸기
+   *  **전** 모집단이라 팝오버가 「이 단계를 고르면 몇 개 남나」를 재검색 없이 센다.
+   *  길이 `struct_total + 1`. */
+  struct_hist: number[] | null;
   elapsed_ms: number;
 }
 
@@ -357,6 +372,10 @@ export interface PatternSaveConditions {
   /** 봉 단위. `null` 의 뜻은 위 `ma_preset` 과 같다 — **「주봉이 없던 시절의 저장」**
    *  이고 화면은 공장값(일봉)으로 읽는다. */
   timeframe: PatternTimeframe | null;
+  /** 구조 게이트 허용 불일치. **`null` 이 「끄기」와 「그 축이 없던 시절의 저장」을
+   *  겸한다** — 공장값이 끄기라 오늘은 같은 결과다. ⚠ 공장값을 켜는 쪽으로 바꾸면
+   *  `ma_preset` 사고가 재현되니 그때는 부재와 끄기를 분리해야 한다. */
+  struct_tolerance: number | null;
 }
 
 /** 저장된 검색에서 **빼 둔 한 자리** — 종목이 아니라 「그 종목의 그 기간」이다.

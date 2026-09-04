@@ -9,6 +9,9 @@ import {
   PERIODS,
   RESULT_COUNTS,
   SIM_FLOORS,
+  STRUCT_STEPS,
+  structLabel,
+  structRemaining,
   TIMEFRAMES,
   maLabel,
   periodIsThinFor,
@@ -36,7 +39,8 @@ import {
  * 없다(`patternConditions` 상단 주석).
  */
 type Popover =
-  | 'timeframe' | 'period' | 'count' | 'sim' | 'tv' | 'etf' | 'flex' | 'ma' | 'hidden' | null;
+  | 'timeframe' | 'period' | 'count' | 'sim' | 'struct' | 'tv' | 'etf' | 'flex' | 'ma'
+  | 'hidden' | null;
 
 const TV_STEPS = [0, 10, 50] as const;
 
@@ -45,6 +49,8 @@ export function PatternConditionChips({
   onChange,
   rows,
   p9999,
+  structHist,
+  structTotal,
   excluded,
   onRestore,
   onRestoreAll,
@@ -55,6 +61,10 @@ export function PatternConditionChips({
   rows: readonly PatternMatchRow[];
   /** 이 검색의 분포 상단. 절대값 하한의 뜻을 메우는 눈금이다. */
   p9999: number | null;
+  /** 구조 게이트 히스토그램 — 게이트를 **켠 채** 검색했을 때만 있다. 끈 채면 서버가
+   *  서명을 계산하지 않으므로 단계별 개수를 미리 셀 수 없다. */
+  structHist: readonly number[] | null;
+  structTotal: number | null;
   /** 이 검색에서 뺀 자리들. **조건이 아니다** — 위 칩 주석 참조. */
   excluded: readonly PatternExclusion[];
   onRestore: (e: PatternExclusion) => void;
@@ -90,6 +100,12 @@ export function PatternConditionChips({
       </Chip>
       <Chip active={conditions.simFloor > 0} onClick={() => toggle('sim')}>
         {conditions.simFloor > 0 ? `유사도 ${conditions.simFloor.toFixed(2)}+` : '유사도 전체'}
+      </Chip>
+      {/* 구조 게이트 — 「높낮이를 안 본다」의 답이다. 상관은 창 전체의 평균이라 「고가는
+          전고를 넘었는데 종가는 못 넘었다」 같은 국소 관계를 못 본다(실측: 상관 상위
+          100 중 같은 구조 8개). 서버 조건이다 — 모집단을 거른다. */}
+      <Chip active={conditions.structTolerance !== null} onClick={() => toggle('struct')}>
+        {structLabel(conditions.structTolerance)}
       </Chip>
       <Chip active={conditions.flexBars > 0} onClick={() => toggle('flex')}>
         {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
@@ -156,6 +172,28 @@ export function PatternConditionChips({
                 onClick={() => set({ simFloor: f })}
                 label={f > 0 ? `${f.toFixed(2)} 이상` : '제한 없음'}
                 hint={n > 0 ? `${n}개` : '없음'}
+                muted={n === 0}
+              />
+            );
+          })}
+        </Popover>
+      )}
+      {open === 'struct' && (
+        <Popover
+          title={`봉별 색·전고·전저 관계를 맞춘다 · 다시 검색한다${
+            structHist ? '' : ' · 켠 뒤에는 단계별 개수가 보인다'
+          }`}
+        >
+          {STRUCT_STEPS.map((t) => {
+            const n = t === null ? null : structRemaining(structHist, structTotal, t);
+            return (
+              <Item
+                key={String(t)}
+                selected={t === conditions.structTolerance}
+                onClick={() => set({ structTolerance: t })}
+                label={structLabel(t)}
+                // 개수는 게이트 **전** 모집단의 꼬리 합이라 「이 단계를 고르면 몇 개 남나」다.
+                hint={t === null ? '상관만 본다' : n === null ? undefined : `${n.toLocaleString()}개 창`}
                 muted={n === 0}
               />
             );
