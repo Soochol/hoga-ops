@@ -2,7 +2,8 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 
 /**
- * 매치 행 메뉴 — 우클릭(커서 앵커)과 행 호버 ⋯ 버튼(버튼 앵커)이 공유한다.
+ * 매치 행 메뉴 — 우클릭(커서 앵커)이 연다. 행 호버 ⋯ 버튼도 같은 메뉴를 열었으나
+ * 사용자 요청으로 제거했다(2026-09-04) — 진입점은 우클릭 하나다.
  *
  * **항목이 하나뿐인 것이 설계다.** 「차트로 이동」·「새 탭」은 이미 클릭·⌘클릭이 하고
  * 있으므로 메뉴로 중복 노출하지 않는다(`StudyViewRowMenu` 가 「새 탭에서 열기」를 뺀
