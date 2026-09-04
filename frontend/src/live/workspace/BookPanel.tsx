@@ -121,30 +121,6 @@ const BAR_INSET = 3;
 /** 요약 패널 행 수 = 상한가 1 + 매도 10. 매수 바 정렬의 근거라 상수로 못박는다. */
 const SUMMARY_ROWS = 11;
 
-/**
- * 매도1·매수1의 중간값 — `중` 행(ADR-0140 §7.1).
- *
- * **분기가 없다.** 한 수식이 세 경우를 다 덮는다:
- *  - 정상(매도1 > 매수1) → 둘 사이 값
- *  - lock(매도1 = 매수1) → 그 가격 자체
- *  - 역전(매도1 < 매수1) → 여전히 둘 사이 값
- *
- * 마지막 둘은 단일 거래소에선 불가능하지만 통합(UN) venue 에서는 정상 상태다 —
- * 서로 다른 거래소의 주문은 자동으로 만나지 않는다(전체 시간의 17%, 종목에 따라 80%).
- *
- * 호가 단위 밖 값이 나올 수 있다(1,319,000/1,320,000 → 1,319,500). **주문 가능한
- * 호가가 아니라는 표시가 `중` 뱃지**이고, 이는 키움 앱이 이미 쓰는 규약이다.
- */
-export function bookMidPrice(
-  ask: readonly { price: number }[],
-  bid: readonly { price: number }[],
-): number | null {
-  const bestAsk = ask[0]?.price ?? 0;
-  const bestBid = bid[0]?.price ?? 0;
-  if (bestAsk <= 0 || bestBid <= 0) return null;
-  return (bestAsk + bestBid) / 2;
-}
-
 export default function BookPanel({
   snapshot,
   baselinePrice,
@@ -233,17 +209,12 @@ export default function BookPanel({
 
   const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
   const bids = snapshot.bid;
-  // 중간값은 **한 번만** 계산한다 — 표시값·시고저 칩·현재가 박스 셋이 같은 수를
-  // 봐야 한다. 호출을 나누면 세 판정이 서로 다른 스냅샷을 볼 여지가 생긴다.
-  const midPrice = bookMidPrice(snapshot.ask, snapshot.bid);
-  // 지금 **화면에 가격이 그려진** 자리 전부 — 사다리 20행 + `중` 행. 요약표 칩이
-  // 뜰지 말지의 유일한 판정 근거다(`offLadderChip`). 여기서 `중` 을 빼면 중간값이
-  // 당일 고가일 때 사다리와 요약표에 칩이 동시에 뜬다.
+  // 지금 **화면에 가격이 그려진** 자리 전부 = 사다리 20행. 요약표 칩이 뜰지 말지의
+  // 유일한 판정 근거다(`offLadderChip`) — 사다리에 있는 값은 그 행이 이미 라벨한다.
   const onScreenPrices = new Set<number>([
     ...snapshot.ask.map((l) => l.price),
     ...snapshot.bid.map((l) => l.price),
   ]);
-  if (midPrice !== null) onScreenPrices.add(midPrice);
   const maxQty = Math.max(
     1,
     ...snapshot.ask.map((l) => l.qty),
@@ -286,8 +257,6 @@ export default function BookPanel({
                 dimClass={staleDim}
               />
             ))}
-            {/* `중` 행의 좌측 빈칸(3열 공통 y). 22행 정렬 계약의 일부다. */}
-            <div data-book-divider="" className="border-t border-border" style={{ height: ROW_H }} />
             {/* 매도↔매수 경계선(3열 공통 y). 좌측은 체결강도 행 상단이 그 y라
                 여기에 얹는다 — 중앙 PriceCell·우측 QtyBar 의 topDivider 와 같은
                 `border` 톤이라야 한 줄로 이어져 보인다(2026-07-22 구분선 최소화
@@ -308,10 +277,10 @@ export default function BookPanel({
                   : `${summary.fillStrengthPct.toFixed(2)}%`}
               </span>
             </div>
-            {/* 9행 = 3열 바닥 정렬: 좌측(여백1+매도10+중1+체결강도1+체결9) = 중앙(여백1+
-                매도10+중1+매수10) = 우측(요약11+중1+매수10) = **22행**. 11행이던 시절
-                좌측만 2행 삐져나와 하단이 어긋났다. `중` 행(ADR-0140 §7.1)이 들어오며
-                21→22 가 됐다 — **중앙에만 넣으면 좌우가 1행씩 짧아져 하단이 어긋난다.** */}
+            {/* 9행 = 3열 바닥 정렬: 좌측(여백1+매도10+체결강도1+체결9) = 중앙(여백1+
+                매도10+매수10) = 우측(요약11+매수10) = **21행**. 11행이던 시절 좌측만
+                2행 삐져나와 하단이 어긋났다. `중` 행이 21→22 로 밀었던 것을 ADR-0170
+                이 되돌렸다 — **한 열에서만 행을 더하거나 빼면 하단이 어긋난다.** */}
             {trades.slice(0, 9).map((t, i) => (
               <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
                 <span
@@ -332,7 +301,7 @@ export default function BookPanel({
 
           {/* 중앙: 가격축 — 세로 프레임(border-x) 없음. 열 분리는 좌우 잔량 바의
               방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안).
-              열 전체가 스냅샷 파생(가격·중간가)이라 열 자체에 딤을 건다. */}
+              열 전체가 스냅샷 파생(가격)이라 열 자체에 딤을 건다. */}
           <div className={`flex flex-col ${staleDim}`}>
             <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
@@ -344,12 +313,6 @@ export default function BookPanel({
                 marker={dayMarker(l.price, summary)}
               />
             ))}
-            <MidPriceRow
-              price={midPrice}
-              baselinePrice={baselinePrice}
-              marker={dayMarker(midPrice, summary)}
-              boxed={lastPrice !== null && midPrice === lastPrice}
-            />
             {bids.map((l, i) => (
               <PriceCell
                 key={`pb-${i}`}
@@ -418,8 +381,6 @@ export default function BookPanel({
                   라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
               <SummaryRow label="250일" value={fmtHighLow(limits)} />
             </div>
-            {/* `중` 행의 우측 빈칸(3열 공통 y). 22행 정렬 계약의 일부다. */}
-            <div data-book-divider="" className="border-t border-border" style={{ height: ROW_H }} />
             {bids.map((l, i) => (
               <QtyBar
                 key={`b-${i}`}
@@ -507,7 +468,7 @@ const DAY_MARKERS = [
   { label: '시', bg: 'bg-fg-dim', of: (s: LiveTradeSummary) => s.dayOpen },
 ] as const;
 
-/** 뱃지 한 알의 공통 형태. 사다리 칩·`중` 뱃지·요약표 칩이 전부 이걸 쓴다. */
+/** 뱃지 한 알의 공통 형태. 사다리 칩과 요약표 칩이 둘 다 이걸 쓴다. */
 const BADGE_CLS =
   'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
 
@@ -534,12 +495,12 @@ const BADGE_CLS =
  * 고=저(하루 종일 한 가격에만 체결 — 상한가 직행 등)면 `고` 가 남는다. 둘이 같은
  * 값이라 어느 쪽을 골라도 가격은 같고, 표 순서가 그 선택을 이미 못박고 있다.
  *
- * `null`(사다리 한쪽이 비어 중간값이 없는 행)을 **여기서** 흡수한다 — 호출부마다
- * 가드를 두면 `중` 행만 조건이 갈려 다시 어긋난다. 소수 중간값(`.5`)은 정수
- * 시/고/저와 `===` 가 성립하지 않아 **분기 없이** 걸러진다(저가주에선 상시다).
+ * `price <= 0` 가드는 남긴다 — 시간외 5단은 10칸으로 zero-pad 되어 들어오므로
+ * (`liveAfterHoursBook.EMPTY_LEVEL`, 2026-08-14 사용자 결정) 빈 행이 실제로
+ * `price === 0` 으로 온다. 그 행에 칩이 붙지 않게 하는 것이 이 가드다.
  */
-function dayMarker(price: number | null, summary: LiveTradeSummary): PriceMarker | null {
-  if (price === null || price <= 0) return null;
+function dayMarker(price: number, summary: LiveTradeSummary): PriceMarker | null {
+  if (price <= 0) return null;
   const hit = DAY_MARKERS.find((m) => {
     const v = m.of(summary);
     return v !== null && price === v;
@@ -564,8 +525,9 @@ function dayMarker(price: number | null, summary: LiveTradeSummary): PriceMarker
  * 뜬다 — 그 행은 `고`(또는 `저`)로 라벨되고 `시작` 행은 값만 남는다. 의도한
  * 동작이다: 같은 가격을 두 번 라벨하지 않는 것이 우선순위 규칙의 요점이다.
  *
- * ⚠ `onScreen` 에 **중간값을 포함**한다 — `중` 행도 가격을 그리는 자리이므로,
- * 빠뜨리면 사다리에 칩이 있는데 요약표에도 뜨는 이중 표시가 된다.
+ * ⚠ `onScreen` 은 **화면에 가격을 그리는 자리 전부**여야 한다 — 빠뜨린 자리가
+ * 있으면 사다리에 칩이 있는데 요약표에도 뜨는 이중 표시가 된다. ADR-0170 이 `중`
+ * 행을 지운 뒤로는 사다리 20행이 그 전부다.
  */
 function offLadderChip(
   label: '시' | '고' | '저',
@@ -579,103 +541,24 @@ function offLadderChip(
 }
 
 /**
- * 가격 숫자 왼쪽에 얹는 뱃지 띠 — **시/고/저 칩과 `중` 뱃지가 같은 슬롯을 쓴다.**
- *
- * 둘을 각각 `absolute right-full` 로 두면 같은 자리에 겹친다. 그래서 한 flex 행으로
- * 합치고 `중` 을 **숫자에 가장 가깝게**(오른쪽 끝) 둔다 — 칩이 없을 때 `중` 의 x 가
- * 종전과 정확히 같고, 칩은 왼쪽으로 자란다(`PriceCell` 이 이미 쓰던 방향).
+ * 가격 숫자 왼쪽에 얹는 시/고/저 칩 띠.
  *
  * ⚠ 띠 전체가 `absolute` 라 **레이아웃 폭을 차지하지 않는다. 이것이 계약이다** —
- * flex 아이템이면 뱃지 유무에 따라 가격 숫자가 밀려 호가 행끼리 x 가 어긋난다
- * (실측 정수 mid +10.5px). 기준 요소(가격 span)가 `relative` 여야 성립한다.
+ * flex 아이템이면 칩 유무에 따라 가격 숫자가 밀려 호가 행끼리 x 가 어긋난다
+ * (실측 +10.5px). 기준 요소(가격 span)가 `relative` 여야 성립한다.
  *
- * 두 행이 이 마크업을 각자 복제하던 것을 합친 것이다 — 갈라져 있으면 한쪽만
- * 손봤을 때 같은 자리의 뱃지가 조용히 다른 모양이 된다.
+ * 칩은 숫자에서 왼쪽으로 자란다(`right-full`). 종전엔 이 띠를 `중` 행의 뱃지와
+ * 공유했고 — 각각 `absolute` 면 같은 자리에 겹치므로 한 flex 행으로 합친 것이
+ * 이 컴포넌트의 유래다 — ADR-0170 이 그 행을 지우면서 소비처가 `PriceCell` 하나만
+ * 남았다. **그래도 인라인으로 되돌리지 말 것**: 위 `absolute` 계약이 마크업에서
+ * 사라지는 순간 다음 편집이 조용히 정렬을 깬다.
  */
-function PriceBadges({ marker, mid = false }: { marker: PriceMarker | null; mid?: boolean }) {
-  if (marker === null && !mid) return null;
+function PriceBadges({ marker }: { marker: PriceMarker | null }) {
+  if (marker === null) return null;
   return (
     <span data-price-badges="" className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
-      {marker && <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`}>{marker.label}</span>}
-      {mid && <span className={`flex ${BADGE_CLS} bg-bg-subtle text-fg-dim`}>중</span>}
+      <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`}>{marker.label}</span>
     </span>
-  );
-}
-
-/**
- * `중` 행 — 매도10과 매수10 사이 한 행(ADR-0140 §7.1). 값은 `bookMidPrice`.
- *
- * `중` 뱃지가 **"주문 가능한 호가가 아니다"** 를 뜻한다 — 중간값은 호가 단위 밖일 수
- * 있다(호가단위 1,000원인데 1,319,500). 키움 앱이 쓰는 규약을 그대로 따른다.
- *
- * 교차(매수1 ≥ 매도1)에도 **경고·색·문구를 넣지 않는다.** 교차는 데이터 오류가 아니라
- * 서로 다른 거래소의 주문이 자동으로 만나지 않는다는 구조 그 자체이고, 상시 교차하는
- * 종목에선 경고가 늘 켜져 **없는 문제를 찾게 만든다**(ADR-0140 §7.1).
- *
- * 상단 `border-t` 는 매도 블록과의 분리선(3열 공통 y) — 좌우 빈칸도 같은 선을 갖는다.
- * 하단 분리는 첫 매수 행의 `topDivider` 가 이미 담당한다.
- *
- * ⚠ `중` 뱃지는 **`PriceCell` 의 시/고/저 칩과 같은 슬롯**을 가격 span 안에서
- * 공유한다(`PriceBadges`) — 뱃지가 flex 아이템이면 폭을 차지해 가격 숫자가
- * 다른 호가 행보다 오른쪽으로 밀린다(실측 정수 mid +10.5px). 소수 mid 는 `.5` 가
- * 늘린 폭이 중앙정렬에서 되밀어 +4.9px 로 **작게 보였을 뿐** 같은 결함이었다.
- * 뺀 뒤에는 flex 내용물이 PriceCell 과 동일(가격 + gap + 7ch 등락률)해 **정수 mid 는
- * x 가 정확히 일치**한다. 소수 mid 만 `.5` 폭의 절반(≈5px)만큼 왼쪽에 남는데, 이걸
- * 없애려면 모든 호가 행에 소수 자리를 예약해야 해서 가격축 전체가 움직인다 —
- * 한 행의 5px 잔차보다 비싸다.
- */
-function MidPriceRow({
-  price,
-  baselinePrice,
-  marker = null,
-  boxed = false,
-}: {
-  price: number | null;
-  baselinePrice: number | null;
-  /** 당일 시/고/저 칩(최대 하나) — **`PriceCell` 과 같은 규약**이다. 이 배선이 빠져 있으면
-   *  중간값이 사다리 20행 어디에도 없는 가격일 때(넓은 스프레드·교차) 화면에
-   *  가격은 보이는데 라벨만 사라진다 — 그 행이 그 가격을 그리는 유일한 자리다.
-   *  ADR-0140 §7.1 이 이 행을 추가할 때 칩·박스 배선이 따라오지 않았다. */
-  marker?: PriceMarker | null;
-  /** 현재가가 중간값과 같을 때의 박스 — 역시 `PriceCell` 과 같은 규약. */
-  boxed?: boolean;
-}) {
-  const color = price !== null ? dirClass(price, baselinePrice) : 'text-fg-dim';
-  const pct =
-    price !== null && baselinePrice !== null && baselinePrice > 0
-      ? ((price - baselinePrice) / baselinePrice) * 100
-      : null;
-  // 경계선(border-t)과 현재가 박스(border)를 **다른 요소**에 그린다 — 한 요소면
-  // 둘 다 4변 border-color 를 걸어 박스 윗변만 색이 갈린다. `PriceCell` 이
-  // `topDivider` 에서 이미 겪고 래퍼로 푼 문제이고, 래퍼(1px) + 셀(ROW_H−1) = ROW_H
-  // 라 22행 정렬 계약은 그대로다. 식별자(testid·divider·mid-price)는 **래퍼에**
-  // 남긴다 — 기존 단언들이 이 행을 지목하는 앵커다.
-  return (
-    <div
-      data-testid="book-mid-row"
-      data-book-divider=""
-      data-mid-price={price ?? ''}
-      className="border-t border-border"
-    >
-      <div
-        className={`flex items-baseline justify-center gap-1.5 px-2 ${
-          boxed ? 'rounded-md border border-fg-dim' : ''
-        }`}
-        style={{ height: ROW_H - 1 }}
-      >
-        <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
-          <PriceBadges marker={marker} mid />
-          {price !== null ? price.toLocaleString('ko-KR') : '−'}
-        </span>
-        {/* 폭 계약은 PriceCell 과 동일(7ch) — 등락률 유무로 가격 x 가 흔들리지 않는다. */}
-        <span
-          className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
-          style={{ minWidth: '7ch' }}
-        >
-          {pct !== null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : ''}
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -733,7 +616,7 @@ function PriceCell({
   if (!topDivider) return cell;
   // 경계선을 셀 **바깥** 래퍼에 그린다 — 현재가가 매수 1호가인 흔한 경우 boxed 의
   // 전체 테두리와 같은 요소를 다투게 되어 박스 윗변만 색이 갈린다. 래퍼(1px) +
-  // 셀(ROW_H-1) = ROW_H 라 21행 정렬 계약은 유지된다.
+  // 셀(ROW_H-1) = ROW_H 라 3열 21행 정렬 계약은 유지된다.
   return <div data-book-divider="" className="border-t border-border">{cell}</div>;
 }
 
@@ -751,11 +634,12 @@ function QtyBar({
   side: 'ask' | 'bid';
   badge: OrderbookDeltaBadge | null;
   /** stale 딤 유틸리티. **래퍼가 아니라 셀에 직접 얹는다** — 잔량 바를 묶는
-   *  래퍼를 하나 두면 3열 22행 정렬 계약을 세는 자리(BookPanel.test.tsx 의
+   *  래퍼를 하나 두면 3열 21행 정렬 계약을 세는 자리(BookPanel.test.tsx 의
    *  자식 수 단언)가 깨진다. 구조를 안 바꾸는 것이 이 prop 의 존재 이유다. */
   dimClass?: string;
   /** 매수 1호가 바에만 true — 매도/매수 경계선(3열 공통 y). 여기선 boxed 같은
-   *  경쟁 테두리가 없어 셀에 직접 border-t 를 얹는다(border-box 라 22px 유지). */
+   *  경쟁 테두리가 없어 셀에 직접 border-t 를 얹는다(border-box 라 22px 유지).
+   *  ADR-0170 이 `중` 행을 지운 뒤로 이 선이 그 경계의 **유일한** 표시다. */
   topDivider?: boolean;
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;

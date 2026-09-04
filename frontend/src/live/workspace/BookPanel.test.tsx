@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import BookPanel, { bookMidPrice } from './BookPanel';
+import BookPanel from './BookPanel';
 import { EMPTY_TRADE_SUMMARY } from '../liveSidebarAdapters';
 import type { OrderbookSnapshot } from '../../api/types';
 
@@ -64,214 +64,116 @@ describe('BookPanel', () => {
     expect(summary!.children).toHaveLength(11);
   });
 
-  it('3열 공통 경계선을 두 줄 × 3열 = 6개 그린다 — 한 줄씩 이어져야 한다', () => {
-    // 두 줄이다: ① 매도↔`중` ② `중`↔매수. 각 줄이 좌·중앙·우 셋을 모두 가져야
-    // 끊기지 않는다. 요약 divider 도 같은 border 토큰을 쓰게 되어(2026-07-22
-    // 구분선 최소화 C안: strong→border 완화) 클래스 선택자로는 경계선만 못 세므로
-    // 전용 마커(data-book-divider)로 센다. 톤 일관은 클래스 검증으로 함께 못박는다.
+  it('3열 공통 경계선을 한 줄 × 3열 = 3개 그린다 — 한 줄로 이어져야 한다', () => {
+    // 매도↔매수 경계 한 줄이고, 그 줄이 좌·중앙·우 셋을 모두 가져야 끊기지 않는다.
+    // `중` 행이 있던 시절엔 두 줄 × 3열 = 6개였다(ADR-0170 이 그 행을 지웠다).
+    // 요약 divider 도 같은 border 토큰을 쓰게 되어(2026-07-22 구분선 최소화 C안:
+    // strong→border 완화) 클래스 선택자로는 경계선만 못 세므로 전용 마커
+    // (data-book-divider)로 센다. 톤 일관은 클래스 검증으로 함께 못박는다.
     const { container } = renderPanel();
     const grid = container.querySelector('.grid')!;
     const dividers = grid.querySelectorAll('[data-book-divider]');
-    expect(dividers).toHaveLength(6);
+    expect(dividers).toHaveLength(3);
     dividers.forEach((el) => {
       expect(el).toHaveClass('border-t');
       expect(el).toHaveClass('border-border');
     });
   });
 
-  describe('`중` 행 (ADR-0140 §7.1)', () => {
-    it('매도10과 매수10 사이에 중간값을 그린다', () => {
-      // 매도1 251,500 · 매수1 251,000 → 중간값 251,250. 기준가 255,000 대비 −1.47%.
-      renderPanel();
-      const mid = screen.getByTestId('book-mid-row');
-      expect(mid).toHaveTextContent('중');
-      expect(mid).toHaveTextContent('251,250');
-      expect(mid).toHaveTextContent('-1.47%');
+  describe('시/고/저 칩 — 한 가격에 라벨은 하나 (고 > 저 > 시)', () => {
+    // 사용자 결정 2026-08-24: 칩 두 개가 쌓이면 그 행만 폭이 튄다. 겹침은 드물지
+    // 않다(시가=저가 = 갭하락 후 상승).
+    //
+    // ⚠ 이 describe 는 원래 `중` 행 위에서 돌았다 — 갭 안쪽 가격이라 사다리에
+    // 중복되지 않는 것이 그때의 픽스처 이점이었다. ADR-0170 이 그 행을 지우면서
+    // **사다리 행(매도1)으로 재앵커**했다. 재는 정책은 그대로다 — 이 커버리지가
+    // `중` 행과 함께 사라지면 우선순위 규칙은 테스트 0 이 된다.
+    const ON_LADDER = 251_500; // 매도1. 사다리에 있으므로 요약표 칩은 뜨지 않는다.
+
+    /** 칩이 **사다리 행**에 붙었는지 — 뱃지 띠의 기준 요소(가격 span)로 판정한다.
+     *  전역 `getByText('고')` 만으로는 요약표 칩(`offLadderChip`)과 구별되지 않는다. */
+    function expectChipOnLadder(label: string, price: string) {
+      const strip = screen.getByText(label).parentElement!;
+      expect(strip).toHaveAttribute('data-price-badges');
+      expect(strip.parentElement).toHaveTextContent(price);
+    }
+
+    it('시가=저가로 겹치면 `저` 하나만', () => {
+      renderPanel({ summary: { ...SUMMARY, dayOpen: ON_LADDER, dayLow: ON_LADDER } });
+      expectChipOnLadder('저', '251,500');
+      expect(screen.queryByText('시')).toBeNull();
     });
 
-    it('한 수식이 정상·lock·역전을 분기 없이 덮는다', () => {
-      // 통합(UN) venue 에서 lock·역전은 오류가 아니라 정상 상태다 — 서로 다른
-      // 거래소의 주문은 자동으로 만나지 않는다.
-      const L = (price: number) => [{ price, qty: 1 }];
-      expect(bookMidPrice(L(1_320_000), L(1_318_000))).toBe(1_319_000); // 정상
-      expect(bookMidPrice(L(1_685_000), L(1_685_000))).toBe(1_685_000); // lock
-      expect(bookMidPrice(L(1_319_000), L(1_320_000))).toBe(1_319_500); // 역전
+    it('시가=고가로 겹치면 `고` 하나만', () => {
+      renderPanel({ summary: { ...SUMMARY, dayOpen: ON_LADDER, dayHigh: ON_LADDER } });
+      expectChipOnLadder('고', '251,500');
+      expect(screen.queryByText('시')).toBeNull();
     });
 
-    it('호가 단위 밖 값을 그대로 낸다 — `중` 뱃지가 주문 불가 표시다', () => {
-      // 호가단위 1,000원인데 중간값은 500원 자리다. 키움 앱도 그대로 띄운다.
-      const L = (price: number) => [{ price, qty: 1 }];
-      expect(bookMidPrice(L(1_686_000), L(1_685_000))).toBe(1_685_500);
+    it('고가=저가(하루 한 가격)면 `고` 가 남는다 — 표 순서가 그 선택이다', () => {
+      // 상한가 직행처럼 하루 종일 한 가격에만 체결된 날. 두 값이 같아 어느 쪽을
+      // 골라도 가격은 같고, `DAY_MARKERS` 순서가 결정을 이미 못박고 있다.
+      renderPanel({ summary: { ...SUMMARY, dayHigh: ON_LADDER, dayLow: ON_LADDER } });
+      expectChipOnLadder('고', '251,500');
+      expect(screen.queryByText('저')).toBeNull();
     });
 
-    it('소수 중간값을 표시 경로까지 그대로 낸다 — 저가주에선 상시다', () => {
-      // 실측 2026-08-06 KRX 스냅샷 80,199 건 중 4.88% 가 .5 이고, 종목별로는
-      // 100130 99.0% · 018880 93.5% · 003530 82.7% 로 **저가주에선 거의 매 틱**이다
-      // (호가단위가 1원·5원이라 1틱 스프레드의 합이 홀수). 위 테스트들은 함수만
-      // 보는데, 조용히 틀려지는 자리는 `toLocaleString` 이 소수를 자르는 표시 경로다.
-      const L = (price: number) => [{ price, qty: 1 }];
-      expect(bookMidPrice(L(4_475), L(4_470))).toBe(4_472.5); // 5원 단위(003530 실측)
-      expect(bookMidPrice(L(1_000), L(999))).toBe(999.5); // 2,000원 미만 = 1원 단위
+    it('겹치지 않으면 각 가격이 자기 칩을 그대로 갖는다', () => {
+      // 우선순위가 **겹칠 때만** 작동한다는 대조군 — 없으면 위 셋은 "칩이 하나만
+      // 뜬다" 를 증명할 뿐 "겹칠 때만 줄인다" 는 증명하지 못한다.
+      renderPanel({
+        summary: { ...SUMMARY, dayHigh: ON_LADDER, dayLow: 246_500, dayOpen: 252_000 },
+      });
+      expectChipOnLadder('고', '251,500');
+      expect(screen.getByText('저')).toBeInTheDocument();
+      expect(screen.getByText('시')).toBeInTheDocument();
+    });
+
+    it('빈 행(시간외 zero-pad)에는 칩이 붙지 않는다 — `price <= 0` 가드', () => {
+      // 시간외 5단은 10칸으로 zero-pad 되어(`liveAfterHoursBook.EMPTY_LEVEL`)
+      // `price === 0` 인 행이 실제로 온다. 요약값도 0 이면 `0 === 0` 이 성립해
+      // 가드가 없으면 빈 행 전부에 칩이 붙는다.
       const s = snap();
       renderPanel({
-        snapshot: { ...s, ask: [{ price: 4_475, qty: 1 }], bid: [{ price: 4_470, qty: 1 }] },
-        baselinePrice: 4_330,
+        snapshot: { ...s, bid: s.bid.map((l, i) => (i < 5 ? l : { price: 0, qty: 0 })) },
+        summary: { ...SUMMARY, dayOpen: 0, dayHigh: 0, dayLow: 0 },
       });
-      const mid = screen.getByTestId('book-mid-row');
-      expect(mid).toHaveTextContent('4,472.5');
-      expect(mid).toHaveTextContent('+3.29%'); // 등락률도 소수 기준으로 계산된다
+      expect(screen.queryByText('고')).toBeNull();
+      expect(screen.queryByText('저')).toBeNull();
+      expect(screen.queryByText('시')).toBeNull();
     });
+  });
 
-    it('`중` 뱃지는 레이아웃 밖에 얹는다 — 가격 x 가 호가 행과 어긋나지 않게', () => {
-      // 뱃지가 flex 아이템이면 폭(≈15px)+gap 만큼 가격 숫자가 오른쪽으로 밀린다
-      // (실측 정수 mid +10.5px). `PriceCell` 의 시/고/저 칩과 같은 규약 — 칩 유무가
-      // 가격 위치를 바꾸지 않는다. jsdom 은 레이아웃을 계산하지 않으므로 여기서
-      // 지킬 수 있는 건 **구조**뿐이다(픽셀 확인은 실브라우저 몫).
-      //
-      // ⚠ 단언 앵커가 뱃지 자신 → **뱃지 띠**(`PriceBadges`)로 옮겼다. 시/고/저 칩이
-      // 같은 슬롯을 쓰게 되면서 둘을 한 flex 행으로 합쳤기 때문이다(각각 absolute 면
-      // 겹친다). 계약은 그대로다 — 띠가 레이아웃 밖이고 기준이 가격 span 이다.
-      renderPanel();
-      const badge = screen.getByText('중');
-      const strip = badge.parentElement!;
-      expect(strip).toHaveAttribute('data-price-badges');
-      expect(strip).toHaveClass('absolute');
-      // 기준 요소(= 가격 span)가 relative 여야 right-full 이 가격 왼쪽에 붙는다.
-      expect(strip.parentElement).toHaveClass('relative');
-      expect(strip.parentElement).toHaveTextContent('251,250');
+  it('3열이 모두 21행이다 — 하단 바닥 정렬 계약', () => {
+    // 한 열에서만 행을 더하거나 빼면 하단이 어긋난다(조용한 시각 결함). `중` 행이
+    // 21→22 로 밀었던 것을 ADR-0170 이 되돌렸다.
+    const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
+    const { container } = renderPanel({ trades });
+    const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
+    expect(left.children).toHaveLength(21); // 여백1 + 매도10 + 체결강도1 + 체결9
+    expect(center.children).toHaveLength(21); // 여백1 + 매도10 + 매수10
+    // 우측은 요약 11행이 래퍼 하나에 들어 있어 자식 수 = 1 + 매수바10 = 11.
+    expect(right.children).toHaveLength(11);
+    expect((right.children[0] as HTMLElement).style.height).toBe('242px'); // 11 × 22
+  });
+
+  it('교차해도 경고·색·문구를 넣지 않는다 (ADR-0140 §7.1) — 값만 바뀐다', () => {
+    // 교차(매수1 ≥ 매도1)는 데이터 오류가 아니라 서로 다른 거래소의 주문이 자동으로
+    // 만나지 않는다는 구조 그 자체다. 상시 교차하는 종목(000270, 80%)에선 경고가 늘
+    // 켜져 **없는 문제를 찾게 만든다.** 겹치는 가격이 양쪽에 보이는 것으로 충분하다.
+    //
+    // ⚠ 이 정책은 원래 `중` 행 위에서만 단언됐다(ADR-0170 이 그 행을 지웠다).
+    // 정책 자체는 사다리에 살아 있으므로 앵커를 패널 전체로 옮긴다.
+    const s = snap();
+    const { container } = renderPanel({
+      snapshot: { ...s, ask: [{ price: 250_500, qty: 1 }, ...s.ask.slice(1)] },
+      trades: [], // 체결 리스트도 가격을 그리므로 사다리만 세도록 비운다
     });
-
-    describe('시/고/저 칩 — 중간값도 사다리 행과 같은 규약', () => {
-      // 회귀: `중` 행은 ADR-0140 §7.1 로 **나중에 추가**된 행인데 `priceMarkers`
-      // 배선이 따라오지 않아, 중간값이 당일 시/고/저와 같아도 칩이 없었다.
-      //
-      // ⚠ 픽스처는 **갭 안쪽 가격**이어야 한다. lock(매도1 = 매수1)은 반례가 아니다
-      // — 그 가격은 매도1·매수1 `PriceCell` 로도 그려져 칩이 오히려 두 번 보인다.
-      // 여기서는 매도1 251,500 / 매수1 250,500 → 중간값 251,000 이 유효 호가지만
-      // 양쪽 사다리 어디에도 없다(= 이 행이 그 가격을 그리는 유일한 자리).
-      function gapSnap(): OrderbookSnapshot {
-        const s = snap();
-        return { ...s, bid: [{ price: 250_500, qty: 200 }, ...s.bid.slice(1)] };
-      }
-      const midRow = () => screen.getByTestId('book-mid-row');
-
-      it('중간값이 당일 고가면 `고` 칩이 붙는다', () => {
-        renderPanel({ snapshot: gapSnap(), summary: { ...SUMMARY, dayHigh: 251_000 } });
-        expect(midRow()).toHaveTextContent('251,000');
-        expect(within(midRow()).getByText('고')).toBeInTheDocument();
-      });
-
-      it('시가=저가로 겹치면 `저` 하나만 — 고 > 저 > 시 우선순위', () => {
-        // 사용자 결정 2026-08-24: 한 가격에 라벨은 하나. 칩 두 개가 쌓이면 그 행만
-        // 폭이 튄다. 겹침은 드물지 않다(시가=저가 = 갭하락 후 상승).
-        renderPanel({
-          snapshot: gapSnap(),
-          summary: { ...SUMMARY, dayOpen: 251_000, dayLow: 251_000 },
-        });
-        expect(within(midRow()).getByText('저')).toBeInTheDocument();
-        expect(within(midRow()).queryByText('시')).toBeNull();
-      });
-
-      it('시가=고가로 겹치면 `고` 하나만', () => {
-        renderPanel({
-          snapshot: gapSnap(),
-          summary: { ...SUMMARY, dayOpen: 251_000, dayHigh: 251_000 },
-        });
-        expect(within(midRow()).getByText('고')).toBeInTheDocument();
-        expect(within(midRow()).queryByText('시')).toBeNull();
-      });
-
-      it('고가=저가(하루 한 가격)면 `고` 가 남는다 — 표 순서가 그 선택이다', () => {
-        // 상한가 직행처럼 하루 종일 한 가격에만 체결된 날. 두 값이 같아 어느 쪽을
-        // 골라도 가격은 같고, `DAY_MARKERS` 순서가 결정을 이미 못박고 있다.
-        renderPanel({
-          snapshot: gapSnap(),
-          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 251_000 },
-        });
-        expect(within(midRow()).getByText('고')).toBeInTheDocument();
-        expect(within(midRow()).queryByText('저')).toBeNull();
-      });
-
-      it('겹치지 않으면 각 가격이 자기 칩을 그대로 갖는다', () => {
-        // 우선순위가 **겹칠 때만** 작동한다는 대조군 — 없으면 위 셋은 "칩이 하나만
-        // 뜬다" 를 증명할 뿐 "겹칠 때만 줄인다" 는 증명하지 못한다.
-        renderPanel({
-          snapshot: gapSnap(),
-          summary: { ...SUMMARY, dayHigh: 251_000, dayLow: 246_000, dayOpen: 251_500 },
-        });
-        expect(within(midRow()).getByText('고')).toBeInTheDocument();
-        expect(screen.getByText('저')).toBeInTheDocument();
-        expect(screen.getByText('시')).toBeInTheDocument();
-      });
-
-      it('`중` 은 칩이 붙어도 숫자에 가장 가깝다 — 칩 유무가 `중` x 를 안 바꾼다', () => {
-        renderPanel({ snapshot: gapSnap(), summary: { ...SUMMARY, dayHigh: 251_000 } });
-        const strip = within(midRow()).getByText('중').parentElement!;
-        // 띠는 right-full 이라 **오른쪽 끝이 숫자에 붙는다** → 마지막 자식이 `중`.
-        expect(strip.lastElementChild).toHaveTextContent('중');
-        expect(strip.firstElementChild).toHaveTextContent('고');
-      });
-
-      it('소수 중간값은 분기 없이 걸러진다 — 정수 시/고/저와 === 가 성립하지 않는다', () => {
-        // 저가주에선 `.5` 가 상시다(실측 4.88%). 별도 가드 없이 엄격 비교가 막는다.
-        const s = snap();
-        const odd = { ...s, bid: [{ price: 250_999, qty: 200 }, ...s.bid.slice(1)] };
-        renderPanel({ snapshot: odd, summary: { ...SUMMARY, dayHigh: 251_249 } });
-        expect(midRow()).toHaveTextContent('251,249.5');
-        expect(within(midRow()).queryByText('고')).toBeNull();
-      });
-
-      it('사다리 한쪽이 비어 중간값이 없으면 칩도 없다', () => {
-        const s = snap();
-        renderPanel({ snapshot: { ...s, bid: [] }, summary: { ...SUMMARY, dayHigh: 251_500 } });
-        expect(midRow()).toHaveTextContent('−');
-        expect(within(midRow()).queryByText('고')).toBeNull();
-      });
-    });
-
-    it('현재가가 중간값과 같으면 박스가 붙는다 — 칩과 같은 누락이었다', () => {
-      // 형제 결함: `boxed` 도 `MidPriceRow` 에 배선돼 있지 않았다.
-      const s = snap();
-      const gap = { ...s, bid: [{ price: 250_500, qty: 200 }, ...s.bid.slice(1)] };
-      const { container } = renderPanel({ snapshot: gap, lastPrice: 251_000 });
-      const boxed = screen.getByTestId('book-mid-row').querySelector('.border-fg-dim');
-      expect(boxed).not.toBeNull();
-      // 구분선과 박스는 **다른 요소**다 — 한 요소면 박스 윗변만 색이 갈린다.
-      expect(boxed!.classList.contains('border-border')).toBe(false);
-      // 래퍼(1px) + 셀(21px) = 22px — 22행 정렬 계약 불변.
-      expect(container.querySelector('.grid')!.children[1].children).toHaveLength(22);
-    });
-
-    it('사다리 한쪽이 비면 대시로 남긴다 — 행은 유지(정렬 계약)', () => {
-      const s = snap();
-      const { container } = renderPanel({ snapshot: { ...s, bid: [] } });
-      expect(bookMidPrice(s.ask, [])).toBeNull();
-      expect(screen.getByTestId('book-mid-row')).toHaveTextContent('−');
-      // 행이 사라지면 좌우와 어긋난다.
-      expect(container.querySelectorAll('[data-testid="book-mid-row"]')).toHaveLength(1);
-    });
-
-    it('교차해도 경고·색을 넣지 않는다 — 값만 바뀐다', () => {
-      // 상시 교차하는 종목(80%)에선 경고가 늘 켜져 없는 문제를 찾게 만든다.
-      const s = snap();
-      const crossed = { ...s, ask: [{ price: 250_500, qty: 1 }, ...s.ask], bid: s.bid };
-      renderPanel({ snapshot: crossed });
-      const mid = screen.getByTestId('book-mid-row');
-      expect(mid).toHaveTextContent('250,750'); // (250,500 + 251,000) / 2
-      expect(mid.textContent).not.toMatch(/교차|경고|⚠/);
-    });
-
-    it('3열이 모두 22행이다 — 하단 바닥 정렬 계약', () => {
-      // 중앙에만 `중` 행을 넣으면 좌우가 1행씩 짧아져 하단이 어긋난다(조용한 시각 결함).
-      const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
-      const { container } = renderPanel({ trades });
-      const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-      expect(left.children).toHaveLength(22); // 여백1 + 매도10 + 중1 + 체결강도1 + 체결9
-      expect(center.children).toHaveLength(22); // 여백1 + 매도10 + 중1 + 매수10
-      // 우측은 요약 11행이 래퍼 하나에 들어 있어 자식 수 = 1 + 중1 + 매수바10 = 12.
-      expect(right.children).toHaveLength(12);
-      expect((right.children[0] as HTMLElement).style.height).toBe('242px'); // 11 × 22
-    });
+    // 매도1(250,500) < 매수1(251,000). 겹치는 가격이 **양쪽에 보이는 것**으로 충분하다
+    // — 250,500 은 이제 매도1이자 매수2라 사다리에 정확히 두 번 그려진다.
+    expect(screen.getAllByText('250,500')).toHaveLength(2);
+    expect(screen.getByText('251,000')).toBeInTheDocument();
+    expect(container.querySelector('.grid')!.textContent).not.toMatch(/교차|경고|⚠/);
   });
 
   it('경계선이 현재가 박스(boxed)와 같은 요소를 다투지 않는다', () => {
@@ -398,11 +300,14 @@ describe('BookPanel', () => {
       expect(screen.getAllByText('고')).toHaveLength(1);
     });
 
-    it('중간값이 고가여도 요약표엔 안 뜬다 — `중` 행도 가격을 그리는 자리다', () => {
-      // 이 판정에서 `중` 을 빼면 사다리와 요약표에 칩이 **동시에** 뜬다.
-      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } }); // = 중간값
-      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
-      expect(within(screen.getByTestId('book-mid-row')).getByText('고')).toBeInTheDocument();
+    it('스프레드 안쪽 가격은 요약표 칩으로 뜬다 — 사다리에 그릴 행이 없다', () => {
+      // 251,250 은 매도1(251,500)과 매수1(251,000) 사이라 사다리 20행 어디에도 없다.
+      // `중` 행이 있던 시절엔 그 행이 이 가격을 그려 칩도 거기 붙었다 — ADR-0170 이
+      // 그 행을 지우면서 `offLadderChip` 이 받는다. **손실이 아니라 이동이다.**
+      renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } });
+      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+      // 대조군: 배타 규칙(칩은 사다리 아니면 요약표, 한쪽에만)이 유지되는가.
+      expect(screen.getAllByText('고')).toHaveLength(1);
     });
 
     it('값이 없으면 칩도 없다 — 대시 행에 색딱지가 붙지 않는다', () => {
@@ -421,7 +326,7 @@ describe('BookPanel', () => {
     });
   });
 
-  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 22행 = 중앙 22행)', () => {
+  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 21행 = 중앙 21행)', () => {
     const trades = Array.from({ length: 12 }, (_, i) => ({
       price: 251_500, qty: 1_000 + i, side: 1 as const,
     }));
@@ -537,9 +442,6 @@ describe('BookPanel', () => {
     );
 
     expect(screen.getByText('정규장 호가 없음 (시간외 잔량만 수신 중)')).toBeInTheDocument();
-    // `중` 행은 사다리 본문에만 있다 — 존재하지 않는 testid 를 0 으로 세는 단언은
-    // 아무것도 증명하지 못하므로, 실제로 렌더되는 요소로 부재를 판정한다.
-    expect(screen.queryByTestId('book-mid-row')).toBeNull();
   });
 
   it('빈 상태를 구분해 그린다', () => {
@@ -671,20 +573,20 @@ describe('BookPanel stale 딤', () => {
     expect(dimOf(strength)).not.toContain('opacity-50');
   });
 
-  it('딤은 22행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
+  it('딤은 21행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
     // 잔량 바를 래퍼로 묶으면 자식 수가 바뀐다. 딤은 **셀에 직접** 얹어야 한다.
     const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
     const { container } = renderPanel({ trades, stale: true });
     const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-    expect(left.children).toHaveLength(22);
-    expect(center.children).toHaveLength(22);
-    expect(right.children).toHaveLength(12);
+    expect(left.children).toHaveLength(21);
+    expect(center.children).toHaveLength(21);
+    expect(right.children).toHaveLength(11);
   });
 
   it('시간외 총잔량은 스팟 경로가 아니라 흐리지 않는다', () => {
     // ⚠ `container.querySelector('.border-t.border-border')` 로 잡으면 **좌측 열의
-    // `중` 행 divider** 가 먼저 걸린다 — 그 요소는 애초에 딤 대상이 아니라 스트립
-    // 상태와 무관하게 통과하는 vacuous 가드가 된다. testid 로 지목할 것.
+    // 체결강도 행**(매도↔매수 경계선)이 먼저 걸린다 — 그 요소는 애초에 딤 대상이
+    // 아니라 스트립 상태와 무관하게 통과하는 vacuous 가드가 된다. testid 로 지목할 것.
     renderPanel({ stale: true, afterHoursTotals: { ask: 10, bid: 20 } });
     expect(dimOf(screen.getByTestId('book-total-strip'))).not.toContain('opacity-50');
   });
