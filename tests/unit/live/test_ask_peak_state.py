@@ -40,6 +40,7 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_record_peaks": [],
         "traded_bar_peaks": [],
         "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "unreached_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -63,6 +64,10 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "traded_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        # ⚠ **두 미도달 계열이 여기서 갈린다.** 위 `unreached_*`(하루 판)은 체결이
+        # 10_100 에 닿았으므로 비었는데, 봉별은 **그 벽이 선 시점엔 미도달이었다**는
+        # 사실을 유지한다(소급 재분류 없음 — `_offer_unreached_bar_max`).
+        "unreached_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -538,6 +543,78 @@ def test_merge_from_absorbs_all_bar_max_idempotently():
 
     live.merge_from(replay)   # 멱등
     assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["all_bar_peaks"]] == first
+
+
+def test_unreached_bar_max_does_not_retroactively_drop():
+    """봉별 미도달은 **소급 재분류가 없다** — 이 계열이 존재하는 이유 그 자체다.
+
+    하루 판(`unreached_by_price`)은 극값이 전진하면 벽을 걷어낸다. 봉별에서 그 성질은
+    「과거 봉의 값이 장중에 사라지는」 화면이 되므로, 이쪽은 삽입 시점 판정을 박제한다.
+
+    ⚠ 두 계열이 갈리는 것이 **의도**다. 같은 이름을 쓰지만 답하는 질문이 다르다 —
+    하루 판은 「지금도 미도달인가」, 봉별은 「그 봉 시점에 미도달이었나」.
+    """
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[{"price": 10_300, "qty": 400}])
+    state.ingest_orderbook(t_ms=at(11, 1_000), asks=[{"price": 10_500, "qty": 900}])
+
+    # 고가가 10_300 을 넘어선다 — 하루 판에서 그 벽이 빠진다.
+    state.ingest_trade(price=10_350, side=1, t_ms=at(12, 1_000))
+
+    snap = state.snapshot()
+    assert [p["price"] for p in snap["unreached_peaks"]] == [10_500]
+    # 봉별은 두 분 모두 남는다 — 10_300 은 그 분 시점에 미도달이었다.
+    assert [(p["t_ms"], p["price"]) for p in snap["unreached_bar_peaks"]] == [
+        (at(10, 1_000), 10_300),
+        (at(11, 1_000), 10_500),
+    ]
+
+
+def test_unreached_bar_max_skips_walls_already_dominated_when_observed():
+    """반대 방향 — 관측 시점에 **이미** 극값 아래인 벽은 애초에 안 담긴다."""
+    state = TodayAskPeakState()
+    state.ingest_trade(price=10_400, side=1, t_ms=at(10, 500))
+    # 극값(10_400) 이하라 이 벽은 관측 순간부터 미도달이 아니다.
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[{"price": 10_200, "qty": 900}])
+    state.ingest_orderbook(t_ms=at(11, 1_000), asks=[{"price": 10_600, "qty": 300}])
+
+    snap = state.snapshot()
+    assert [(p["t_ms"], p["price"]) for p in snap["unreached_bar_peaks"]] == [
+        (at(11, 1_000), 10_600),
+    ]
+
+
+def test_merge_from_absorbs_unreached_bar_max_without_refiltering():
+    """재생본의 봉별 미도달은 **재판정 없이** 흡수된다.
+
+    흡수 시점의 극값으로 다시 걸면 소급 재분류가 되살아나 이 계열의 정의가 깨진다 —
+    라이브 쪽이 이미 고가를 올려 둔 상태에서 오전 재생본이 도착하는 것이 정확히 그
+    상황이다(장중 재기동).
+
+    ⚠ 판정은 **감소 시퀀스**다(같은 파일의 다른 merge 테스트와 같은 이유).
+    """
+    replay = TodayAskPeakState()
+    for i, qty in enumerate([500, 400, 300, 200, 100]):
+        replay.ingest_orderbook(
+            t_ms=at(10 + i, 1_000), asks=[{"price": 10_000 + i * 10, "qty": qty}],
+        )
+
+    live = TodayAskPeakState()
+    # 라이브는 이미 고가 11_000 — 재생본의 벽들은 전부 이 아래다.
+    live.ingest_trade(price=11_000, side=1, t_ms=at(30, 500))
+    live.ingest_orderbook(t_ms=at(30, 1_000), asks=[{"price": 11_500, "qty": 600}])
+
+    live.merge_from(replay)
+    bars = [(p["t_ms"], p["qty"]) for p in live.snapshot()["unreached_bar_peaks"]]
+    assert bars == [
+        *((at(10 + i, 1_000), 500 - 100 * i) for i in range(5)),
+        (at(30, 1_000), 600),
+    ]
+    # 하루 판은 재판정을 받는다 — 재생본 벽은 전부 고가 아래라 빠진다.
+    assert [p["price"] for p in live.snapshot()["unreached_peaks"]] == [11_500]
+
+    live.merge_from(replay)   # 멱등
+    assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["unreached_bar_peaks"]] == bars
 
 
 def test_all_bar_max_counts_untouched_walls_too():

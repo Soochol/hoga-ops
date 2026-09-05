@@ -48,6 +48,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     stepSegments: SEGMENTS,
     barCandidates: [],
     allWallBarCandidates: [],
+    unreachedBarCandidates: [],
     drawn: true,
     labels: true,
     arrows: true,

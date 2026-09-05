@@ -81,6 +81,12 @@ class _TodaySidePeakState:
     #: 터치가 있었던 분만). 정규장 분 수로 유계라 상주 비용은 여전히 작지만,
     #: 페이로드에서는 그 차이가 그대로 나타나 게이트를 따로 둔다.
     all_bar_max: dict[int, Peak] = field(default_factory=dict)
+    #: 분 → 그 분의 **최대 미도달 벽** — 삽입 시점 판정을 그대로 박제한다.
+    #: ⚠ `unreached_by_price` 와 달리 **극값 전진에도 걷어내지 않는다**. 그것이 이
+    #: 계열의 요점이다: 봉별 표현에서 소급 재분류는 "과거 봉의 값이 장중에 사라지는"
+    #: 화면이 된다. 그래서 이 딕셔너리의 뜻은 「지금도 미도달」이 아니라 **「그 분
+    #: 시점에 미도달이던 벽」**이고, 과거일 `_unreached_bar_frame` 과 같은 축이다.
+    unreached_bar_max: dict[int, Peak] = field(default_factory=dict)
     #: 당일 연속 체결가의 극값(ask=max, bid=min) — 미도달 판정의 기준. None = 체결 0건.
     day_extreme: int | None = None
     #: 미도달 벽 — 극값이 지배하지 못한 가격의 최대 잔량. **가격별 딕셔너리가 불가피한
@@ -176,6 +182,12 @@ class _TodaySidePeakState:
             if self.day_extreme is None or not self._is_touched_by_price(self.day_extreme, price):
                 self.unreached_by_price[price] = _larger_peak(
                     self.unreached_by_price.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
+                )
+                # 같은 판정을 분별로 박제한다 — 위 딕셔너리는 극값 전진에 걷히지만
+                # 이쪽은 남는다(필드 주석). 판정식을 공유하는 것이 요점이라 같은
+                # 분기 안에 둔다: 따로 적으면 두 축이 조용히 갈린다.
+                self._offer_unreached_bar_max(
+                    Peak(price=price, qty=qty, t_ms=t_ms, seq=None),
                 )
             if extreme is not None and self._is_touched_by_price(extreme, price):
                 self._record_closed_peak(peak)
@@ -273,6 +285,9 @@ class _TodaySidePeakState:
             "all_bar_peaks": [
                 _peak_payload(p) for _, p in sorted(self.all_bar_max.items())
             ],
+            "unreached_bar_peaks": [
+                _peak_payload(p) for _, p in sorted(self.unreached_bar_max.items())
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -332,6 +347,17 @@ class _TodaySidePeakState:
         current = self.all_bar_max.get(minute)
         if current is None or peak.qty > current.qty:
             self.all_bar_max[minute] = peak
+
+    def _offer_unreached_bar_max(self, peak: Peak) -> None:
+        """분별 최대에 **그 시점 미도달** 벽 하나를 제시한다 — O(1), 멱등.
+
+        호출부가 이미 "삽입 시점에 극값이 못 닿았다" 를 판정했다(그 분기 안에서만
+        불린다). 여기서 다시 판정하지 않는 것이 두 축이 갈리지 않는 조건이다.
+        """
+        minute = _minute_of(peak.t_ms)
+        current = self.unreached_bar_max.get(minute)
+        if current is None or peak.qty > current.qty:
+            self.unreached_bar_max[minute] = peak
 
     def _offer_record(self, peak: Peak) -> None:
         """기록 갱신 시퀀스에 터치된 벽 하나를 제시한다 — **도착 순서에 무관**하고 멱등.
@@ -403,6 +429,11 @@ class _TodaySidePeakState:
         # 분이 거기 없다. 빠뜨리면 재기동 후 이 계열이 세 봉만 남는다(같은 함정).
         for peak in other.all_bar_max.values():
             self._offer_all_bar_max(peak)
+        # 미도달의 분별 최대도 마찬가지다. ⚠ 여기서는 **재판정하지 않는다** —
+        # 재생본이 자기 시점 판정을 이미 마쳤고, 흡수 시점의 극값으로 다시 걸면
+        # 소급 재분류가 되살아나 이 계열의 정의가 깨진다.
+        for peak in other.unreached_bar_max.values():
+            self._offer_unreached_bar_max(peak)
         # 미도달 — 극값을 먼저 합치고(둘 중 더 지배적인 쪽), 딕셔너리를 larger 로 합친 뒤
         # 합쳐진 극값으로 걷어낸다. 순서가 멱등성을 만든다: 같은 재생본을 두 번 흡수해도
         # 극값·딕셔너리 모두 고정점이다.

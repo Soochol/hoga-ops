@@ -215,6 +215,17 @@ describe('peakWallBarFamilyActive', () => {
     expect(peakWallBarFamilyActive(barMode, 'AllWall')).toBe(false);
   });
 
+  it('세 계열이 각자 자기 슬롯을 본다', () => {
+    const unreachedOnly = {
+      ...barMode,
+      askPeakTradedPaneEnabled: false,
+      askPeakUnreachedPaneEnabled: true,
+    };
+    expect(peakWallBarFamilyActive(unreachedOnly, 'Unreached')).toBe(true);
+    expect(peakWallBarFamilyActive(unreachedOnly, 'Traded')).toBe(false);
+    expect(peakWallBarFamilyActive(unreachedOnly, 'AllWall')).toBe(false);
+  });
+
   it('전체 슬롯을 켜면 그쪽도 참이 된다', () => {
     const both = { ...barMode, askPeakAllWallPaneEnabled: true };
     expect(peakWallBarFamilyActive(both, 'Traded')).toBe(true);

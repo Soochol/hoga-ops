@@ -48,7 +48,7 @@ export const EMPTY_PEAK_BAR_SERIES: PeakBarSeries = { close: [], max: [] };
 
 /** 어느 계열의 분별 최대인가 — 체결(터치된 벽) / 전체(터치 무관). 두 계열이 같은
  *  조립·같은 접기를 쓰고 **읽는 필드만** 다르다. */
-export type PeakBarFamily = 'traded' | 'all';
+export type PeakBarFamily = 'traded' | 'all' | 'unreached';
 
 /** `/api/range` seed 가 나르는 두 축. 과거일과 같은 계산이라 rep/cont 가 따로 있다. */
 type BarSeed = {
@@ -56,12 +56,15 @@ type BarSeed = {
   traded_bar_max_peaks?: AskPeakCandidate[];
   all_bar_peaks?: AskPeakCandidate[];
   all_bar_max_peaks?: AskPeakCandidate[];
+  /** 미도달은 **cont 단일 계열**이라 축이 하나다(하루 판 `unreached_peaks` 와 같다). */
+  unreached_bar_peaks?: AskPeakCandidate[];
 };
 
 /** 라이브 스냅샷이 나르는 한 축(축 구분 없음 — `liveSeries.ts` 필드 주석). */
 type BarLive = {
   traded_bar_peaks?: AskPeakCandidate[];
   all_bar_peaks?: AskPeakCandidate[];
+  unreached_bar_peaks?: AskPeakCandidate[];
 };
 
 const ONE_MINUTE_MS = 60_000;
@@ -97,10 +100,17 @@ export function buildPeakBarSeries(
   live: BarLive | null,
   family: PeakBarFamily = 'traded',
 ): PeakBarSeries {
-  const isAll = family === 'all';
-  const liveBars = isAll ? live?.all_bar_peaks : live?.traded_bar_peaks;
-  const seedClose = isAll ? seed?.all_bar_peaks : seed?.traded_bar_peaks;
-  const seedMax = isAll ? seed?.all_bar_max_peaks : seed?.traded_bar_max_peaks;
+  // 미도달은 축이 하나라 seed 의 **같은 배열**을 양쪽에 싣는다 — 하루 판이
+  // `unreached_peaks` 하나인 것과 같은 규약이고, `intraMax` 토글이 무효가 된다.
+  const seedClose = family === 'all' ? seed?.all_bar_peaks
+    : family === 'unreached' ? seed?.unreached_bar_peaks
+      : seed?.traded_bar_peaks;
+  const seedMax = family === 'all' ? seed?.all_bar_max_peaks
+    : family === 'unreached' ? seed?.unreached_bar_peaks
+      : seed?.traded_bar_max_peaks;
+  const liveBars = family === 'all' ? live?.all_bar_peaks
+    : family === 'unreached' ? live?.unreached_bar_peaks
+      : live?.traded_bar_peaks;
   return {
     close: mergeBarCandidates(seedClose, liveBars),
     max: mergeBarCandidates(seedMax, liveBars),

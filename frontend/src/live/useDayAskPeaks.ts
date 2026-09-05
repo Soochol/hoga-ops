@@ -117,7 +117,7 @@ function pushTodayAskPeak(
   todayKst: string,
   families: PeakFamilies,
   records: PeakRecordSeries,
-  bars: { traded: PeakBarSeries; all: PeakBarSeries },
+  bars: { traded: PeakBarSeries; all: PeakBarSeries; unreached: PeakBarSeries },
 ): AskPeak[] {
   const traded = families.traded[0];
   if (traded) {
@@ -143,7 +143,7 @@ function attachFamilies(
    *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
    *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
   records: PeakRecordSeries,
-  bars: { traded: PeakBarSeries; all: PeakBarSeries },
+  bars: { traded: PeakBarSeries; all: PeakBarSeries; unreached: PeakBarSeries },
 ): AskPeak {
   return {
     ...peak,
@@ -163,6 +163,8 @@ function attachFamilies(
     // 한 pane 의 같은 모드를 공유하므로 한쪽만 배선하면 그 칸만 조용히 빈다.
     all_bar_peaks: bars.all.close,
     all_bar_max_peaks: bars.all.max,
+    // 미도달은 축이 하나라 close 만 쓴다(양쪽에 같은 배열이 들어 있다).
+    unreached_bar_peaks: bars.unreached.close,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -223,6 +225,7 @@ export function deriveDayAskPeaks(
   return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), {
     traded: buildPeakBarSeries(seed, todayAskPeak, 'traded'),
     all: buildPeakBarSeries(seed, todayAskPeak, 'all'),
+    unreached: buildPeakBarSeries(seed, todayAskPeak, 'unreached'),
   });
 }
 
@@ -249,6 +252,7 @@ export function deriveDayAskPeaksIncremental(
   return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), {
     traded: buildPeakBarSeries(seed, todayAskPeak, 'traded'),
     all: buildPeakBarSeries(seed, todayAskPeak, 'all'),
+    unreached: buildPeakBarSeries(seed, todayAskPeak, 'unreached'),
   });
 }
 export function useDayAskPeaks(

@@ -814,6 +814,11 @@ export type AskPeak = PeakBase & {
    *  (`all_bar_peaks_enabled`). 구백엔드 부재 → optional. */
   all_bar_peaks?: AskPeakCandidate[];
   all_bar_max_peaks?: AskPeakCandidate[];
+  /** 미도달의 봉별 최대 — ⚠ **`unreached_peaks` 와 판정 시점이 다르다**: 저쪽은 하루
+   *  스코프(지금도 미도달)이고 이쪽은 그 벽이 선 분까지의 극값 기준(그 봉 시점에
+   *  미도달이던 벽)이다. 봉별에서 소급 재분류를 없애려면 이 축이어야 한다.
+   *  cont 단일 계열이라 필드가 **하나**다(rep/cont 분리 없음). */
+  unreached_bar_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** 미도달 벽 top-3 — all_peaks 와 달리 /api/range 에서 벗기지 않는다(최대 3개). */
@@ -835,6 +840,11 @@ export type BidPeak = PeakBase & {
    *  (`all_bar_peaks_enabled`). 구백엔드 부재 → optional. */
   all_bar_peaks?: AskPeakCandidate[];
   all_bar_max_peaks?: AskPeakCandidate[];
+  /** 미도달의 봉별 최대 — ⚠ **`unreached_peaks` 와 판정 시점이 다르다**: 저쪽은 하루
+   *  스코프(지금도 미도달)이고 이쪽은 그 벽이 선 분까지의 극값 기준(그 봉 시점에
+   *  미도달이던 벽)이다. 봉별에서 소급 재분류를 없애려면 이 축이어야 한다.
+   *  cont 단일 계열이라 필드가 **하나**다(rep/cont 분리 없음). */
+  unreached_bar_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** ask 쪽 주석 참조 — 동일 규약 미러. */

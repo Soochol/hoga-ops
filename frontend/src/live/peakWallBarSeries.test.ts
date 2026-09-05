@@ -106,3 +106,25 @@ describe('buildPeakBarSeries — 계열 선택', () => {
       .toEqual([]);
   });
 });
+
+describe("buildPeakBarSeries — family='unreached'", () => {
+  it('단일 축이라 seed 의 같은 배열을 양쪽에 싣는다', () => {
+    const series = buildPeakBarSeries(
+      { unreached_bar_peaks: [c(300, 400, 1)] },
+      { unreached_bar_peaks: [c(301, 600, 2)] },
+      'unreached',
+    );
+    // 하루 판(`unreached_peaks`)이 cont 단일인 것과 같은 규약 — intraMax 가 무효다.
+    expect(series.close).toEqual([c(300, 400, 1), c(301, 600, 2)]);
+    expect(series.max).toEqual(series.close);
+  });
+
+  it('다른 계열 필드를 읽지 않는다', () => {
+    const series = buildPeakBarSeries(
+      { traded_bar_peaks: [c(100, 50, 1)], all_bar_peaks: [c(200, 700, 1)] },
+      null,
+      'unreached',
+    );
+    expect(series.close).toEqual([]);
+  });
+});

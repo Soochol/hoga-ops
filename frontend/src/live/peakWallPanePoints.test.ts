@@ -4,6 +4,7 @@ import { createVirtualAxis } from '../util/virtualAxis';
 import type { AskPeakCandidate, Candle } from '../api/types';
 import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import { buildBarModePanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
+import { buildPeakWallStepPoints, buildUnreachedStepPoints } from '../chart/peakWallSteps';
 
 const MIN = 60_000;
 const OPEN = Date.UTC(2026, 7, 20, 0, 0); // KST 09:00
@@ -14,11 +15,11 @@ const candles: Candle[] = [0, 1, 2].map((i) => (
   { ts_ms: OPEN + i * MIN, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 1 } as Candle
 ));
 
-function seg(realMs: number, qty: number): PeakWallSegment {
+function seg(realMs: number, qty: number, price = 1000): PeakWallSegment {
   const vsec = axis.toVirtual(realMs) / 1000;
   return {
     time0: vsec as Time, time1: vsec as Time, peakTime: vsec as Time,
-    price: 1000, qty, label: '', color: '#3485FA', lineWidth: 2, live: false,
+    price, qty, label: '', color: '#3485FA', lineWidth: 2, live: false,
   } as PeakWallSegment;
 }
 const cand = (realMs: number, qty: number): AskPeakCandidate => (
@@ -27,6 +28,7 @@ const cand = (realMs: number, qty: number): AskPeakCandidate => (
 
 const base = {
   paneEnabled: true,
+  stepBuilder: buildPeakWallStepPoints,
   candles,
   axis,
   color: '#3485FA',
@@ -84,6 +86,25 @@ describe('buildBarModePanePoints', () => {
         ...base, paneEnabled: false, mode, barCandidates, stepSegments,
       })).toBe(EMPTY_PEAK_WALL_STEPS);
     }
+  });
+
+  it('계단 빌더는 **주입된 것**을 쓴다 — 미도달은 비단조 판이어야 한다', () => {
+    // 캔들 고가가 110 이라 가격 105 벽은 이미 도달된 상태다.
+    // running max 는 그래도 값을 내고, 미도달 빌더는 **아무것도 내지 않는다**.
+    const reached = [seg(OPEN + 1 * MIN, 5_000, 105)];
+    const asRunningMax = buildBarModePanePoints({
+      ...base, mode: 'step', barCandidates: [], stepSegments: reached,
+    });
+    const asUnreached = buildBarModePanePoints({
+      ...base,
+      mode: 'step',
+      barCandidates: [],
+      stepSegments: reached,
+      stepBuilder: (segs, c, a, color) => buildUnreachedStepPoints(segs, c, a, color, 'ask'),
+    });
+    expect(asRunningMax.length).toBeGreaterThan(0);
+    // 주입이 무시되면(항상 running max) 이 줄이 실패한다.
+    expect(asUnreached).toEqual([]);
   });
 
   it('빈 결과는 **공유 참조**다 — 발행 훅의 멱등 조건이 여기 기댄다', () => {

@@ -4,17 +4,19 @@
 // 통째로 지워도 프론트 전 스위트가 초록이었다(실측 2026-09-05, red-check). pane 이
 // 답하는 질문을 바꾸는 자리라 가드가 없으면 안 되므로 순수 함수로 뺀다.
 //
-// **체결·전체 두 계열이 여기를 지난다.** 미도달만 오지 않는다 — 그 계열은 판정이 하루
-// 스코프라 소급 재분류되어, 봉별로 그리면 과거 봉의 값이 장중에 나타났다 사라진다.
-// (전체 계열은 2026-09-05 에 뒤늦게 합류했다: 처음엔 "가장 크게 **체결된**" 이라는 문구
-// 때문에 제외했는데, 사용자가 같은 날 확장을 요청했다 — ADR-0171 amendment.)
+// **세 계열이 모두 여기를 지난다**(2026-09-05, 두 번의 확장으로 그렇게 됐다 —
+// ADR-0171 의 두 amendment). 계열마다 다른 것은 **계단 모드의 빌더**뿐이라 그것을
+// 인자로 받는다: 체결·전체는 running max(`buildPeakWallStepPoints`), 미도달은
+// 비단조 판(`buildUnreachedStepPoints`)이다. 봉별 모드 경로는 셋이 동일하다.
+//
+// ⚠ 미도달의 **봉별 입력은 캔들 선과 판정 시점이 다르다**(그 봉 시점 기준 · 소급 없음).
+// 그 차이는 wire 계층이 소유하고 여기서는 배열을 받아 그리기만 한다.
 
 import type { AskPeakCandidate, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import {
   buildPeakWallBarPoints,
-  buildPeakWallStepPoints,
   type PeakWallStepPoint,
 } from '../chart/peakWallSteps';
 import type { PeakWallPaneMode } from '../state/liveIndicatorsPersistence';
@@ -31,19 +33,33 @@ export const EMPTY_PEAK_WALL_STEPS: readonly PeakWallStepPoint[] = [];
  * 바꿨는데 같은 그림이 나와 "안 먹었다" 로 읽히고, 실제로 그 상태는 "이 창은 봉별
  * 데이터를 안 받았다"(옵트인 미요청·구백엔드·과거 캐시)라 빈 pane 이 정직하다.
  */
+/** 계단 모드의 빌더 — 계열마다 다르다(호출자가 고른다). 미도달은 side 를 클로저로
+ *  감싸 이 모양에 맞춘다. */
+export type PeakWallStepBuilder = (
+  segments: readonly PeakWallSegment[],
+  candles: readonly Candle[],
+  axis: VirtualAxis,
+  color: string,
+) => readonly PeakWallStepPoint[];
+
 export function buildBarModePanePoints(args: {
   mode: PeakWallPaneMode;
   /** pane 마스터 — 꺼져 있으면 어느 모드든 계산하지 않는다. */
   paneEnabled: boolean;
-  /** 봉별 모드 입력(필터 우회 — `usePeakWallRender.barCandidates`). */
+  /** 봉별 모드 입력(필터 우회 — `usePeakWallRender` 의 `*BarCandidates`). */
   barCandidates: readonly AskPeakCandidate[];
   /** 누적 모드 입력(필터를 통과한 세그먼트). */
   stepSegments: readonly PeakWallSegment[];
+  /** 누적 모드 빌더 — **계열마다 다르다**. 미도달에 running max 를 태우면 이미 깨진
+   *  벽이 계단에 영원히 남는다(`buildUnreachedStepPoints` docstring). */
+  stepBuilder: PeakWallStepBuilder;
   candles: readonly Candle[];
   axis: VirtualAxis;
   color: string;
 }): readonly PeakWallStepPoint[] {
-  const { mode, paneEnabled, barCandidates, stepSegments, candles, axis, color } = args;
+  const {
+    mode, paneEnabled, barCandidates, stepSegments, stepBuilder, candles, axis, color,
+  } = args;
   if (!paneEnabled) return EMPTY_PEAK_WALL_STEPS;
   if (mode === 'bar') {
     return barCandidates.length > 0
@@ -51,6 +67,6 @@ export function buildBarModePanePoints(args: {
       : EMPTY_PEAK_WALL_STEPS;
   }
   return stepSegments.length > 0
-    ? buildPeakWallStepPoints(stepSegments, candles, axis, color)
+    ? stepBuilder(stepSegments, candles, axis, color)
     : EMPTY_PEAK_WALL_STEPS;
 }

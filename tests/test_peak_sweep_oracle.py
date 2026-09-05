@@ -227,6 +227,35 @@ def _peak_scalar(rows: list[_WallEvent]) -> tuple[int, int, int] | None:
     return (e.price, e.qty, e.intra_ms)
 
 
+def _unreached_bar_rows(
+    classified: list[tuple[_WallEvent, bool]],
+    touches: list[_Touch],
+    *,
+    side: str,
+) -> list[_WallEvent]:
+    """봉별 미도달의 **독립 구현** — 그 벽이 선 분까지 누적된 극값으로 판정.
+
+    하루 판(`_unreached_rows`)과 **판정 시점만** 다르다: 저기는 그날 극값 하나이고
+    여기는 "그 분까지" 다. 프로덕션은 polars `join_asof(backward)` 로 하는데, 여기서는
+    구조를 공유하지 않게 **분마다 전수 스캔**으로 적는다(O(분 × 벽) — fuzz 크기에선
+    무해하고, 같은 버그를 두 번 쓸 가능성이 그만큼 낮아진다).
+    """
+    rows = [e for e, _t in classified]
+    if not touches:
+        return rows
+    minute_of = lambda ms: ms // 60_000  # noqa: E731 - 오라클 지역 헬퍼
+    out: list[_WallEvent] = []
+    for e in rows:
+        prior = [t.price for t in touches if minute_of(t.intra_ms) <= minute_of(e.intra_ms)]
+        if not prior:
+            out.append(e)   # 그 분 이전에 체결 0건 → 미도달
+            continue
+        extreme = max(prior) if side == "ask" else min(prior)
+        if (e.price > extreme) if side == "ask" else (e.price < extreme):
+            out.append(e)
+    return out
+
+
 def _unreached_rows(
     classified: list[tuple[_WallEvent, bool]],
     touches: list[_Touch],
@@ -302,6 +331,10 @@ def oracle_query_day_ask_bid_peak_dual(
             "traded_bar_max_peaks": _bar_max_sequence(cont_classified),
             "all_bar_peaks": _bar_max_sequence(rep_classified, touched_only=False),
             "all_bar_max_peaks": _bar_max_sequence(cont_classified, touched_only=False),
+            "unreached_bar_peaks": _bar_max_sequence(
+                [(e, True) for e in _unreached_bar_rows(cont_classified, touches, side=side)],
+                touched_only=False,
+            ),
             "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), 3),
             "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), 3),
             "unreached": _peak_scalar(unreached),
@@ -324,6 +357,7 @@ def oracle_query_day_ask_bid_peak_dual(
             traded_bar_max_peaks=ask["traded_bar_max_peaks"],
             all_bar_peaks=ask["all_bar_peaks"],
             all_bar_max_peaks=ask["all_bar_max_peaks"],
+            unreached_bar_peaks=ask["unreached_bar_peaks"],
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
@@ -345,6 +379,7 @@ def oracle_query_day_ask_bid_peak_dual(
             traded_bar_max_peaks=bid["traded_bar_max_peaks"],
             all_bar_peaks=bid["all_bar_peaks"],
             all_bar_max_peaks=bid["all_bar_max_peaks"],
+            unreached_bar_peaks=bid["unreached_bar_peaks"],
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],

@@ -33,6 +33,9 @@ export type LiveTodayPeakBase = {
   traded_bar_peaks?: AskPeakCandidate[];
   /** 전체 계열의 분별 최대(터치 무관) — 위와 같은 축 규약(단일 배열). */
   all_bar_peaks?: AskPeakCandidate[];
+  /** 미도달의 분별 최대 — **그 분 시점 판정**(소급 없음). 하루 판(`unreached_peaks`)과
+   *  값이 갈리는 것이 정상이다. */
+  unreached_bar_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

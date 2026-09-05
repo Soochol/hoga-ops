@@ -141,6 +141,7 @@ function scalePeak<T extends AskPeak | BidPeak>(peak: T, factor: number): T {
     traded_bar_max_peaks: rank(peak.traded_bar_max_peaks),
     all_bar_peaks: rank(peak.all_bar_peaks),
     all_bar_max_peaks: rank(peak.all_bar_max_peaks),
+    unreached_bar_peaks: rank(peak.unreached_bar_peaks),
     all_peaks: rank(peak.all_peaks),
     all_max_peaks: rank(peak.all_max_peaks),
     unreached_price: scaleNullable(peak.unreached_price, factor),

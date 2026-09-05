@@ -19,6 +19,8 @@ export type RangeRequestOptions = {
   barPeaksEnabled?: boolean | null;
   /** 전체 계열의 봉별 배열 — 체결 계열과 **따로** 옵트인한다(배열이 더 크다). */
   allBarPeaksEnabled?: boolean | null;
+  /** 미도달의 봉별 배열 — 계열별 옵트인의 셋째. */
+  unreachedBarPeaksEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -72,7 +74,9 @@ export type RangeQueryKey = readonly [
   // barPeaksEnabled — **키에 들어가야 한다**: 옵트인이라 끈 창의 응답은 그 배열이
   // 비어 있고, 키가 같으면 켠 창이 그 빈 캐시를 그대로 읽어 pane 이 빈다.
   boolean | null,
-  // allBarPeaksEnabled — 같은 이유. 두 게이트가 독립이므로 키에도 둘 다 들어간다.
+  // allBarPeaksEnabled — 같은 이유. 게이트가 독립이므로 키에도 전부 들어간다.
+  boolean | null,
+  // unreachedBarPeaksEnabled — 셋째.
   boolean | null,
 ];
 
@@ -126,6 +130,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
   const barPeaksEnabled = options.barPeaksEnabled ?? null;
   const allBarPeaksEnabled = options.allBarPeaksEnabled ?? null;
+  const unreachedBarPeaksEnabled = options.unreachedBarPeaksEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -162,6 +167,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     input.venue,  // 위 타입 주석 참조 — 이 뒤는 덧붙이기 전용
     barPeaksEnabled,
     allBarPeaksEnabled,
+    unreachedBarPeaksEnabled,
   ];
 
   const params = new URLSearchParams();
@@ -179,6 +185,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
   addBoolParam(params, 'bar_peaks_enabled', barPeaksEnabled);
   addBoolParam(params, 'all_bar_peaks_enabled', allBarPeaksEnabled);
+  addBoolParam(params, 'unreached_bar_peaks_enabled', unreachedBarPeaksEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);
