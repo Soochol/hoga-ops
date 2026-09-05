@@ -10,7 +10,7 @@
 
 **패턴 요청 수와 작업 대기**
 
-[usePatternSearch.ts](../../frontend/src/pattern/usePatternSearch.ts)는 새 네트워크 요청 전 150ms 동안 입력 변경을 모으고, React Query의 AbortSignal을 fetch까지 전달한다. 캐시에서 바로 제공하는 결과에는 이 대기가 없다. now와 history 모두 최신 봉수만 요청하며 대기 중 패널을 닫으면 HTTP를 보내지 않는다.
+[usePatternSearch.ts](../../frontend/src/pattern/usePatternSearch.ts)는 새 네트워크 요청 전 150ms 동안 입력 변경을 모으고, React Query의 AbortSignal을 fetch까지 전달한다. 캐시에서 바로 제공하는 결과에는 이 대기가 없다. 봉수·조건을 연타하면 마지막 입력에 해당하는 요청만 보내며, 대기 중 패널을 닫으면 HTTP를 보내지 않는다.
 
 [ReadRequestCoalescer](../../hoga/api/request_coalescer.py)는 패턴 라우트의 동일 요청을 하나의 계산으로 합친다. HTTP 연결 종료를 기다리며, 마지막 호출자가 떠나면 공유 작업을 취소한다. 한 호출자의 종료가 다른 호출자의 검색까지 취소하지 않도록 참조 수를 센다.
 
