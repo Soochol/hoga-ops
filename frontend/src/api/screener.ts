@@ -342,11 +342,12 @@ export interface PatternSearchResponse {
   coverage_to: string | null;
 }
 
-export function searchPattern(body: PatternSearchRequest): Promise<PatternSearchResponse> {
+export function searchPattern(body: PatternSearchRequest, signal?: AbortSignal): Promise<PatternSearchResponse> {
   return apiCall<PatternSearchResponse>('/api/screener/pattern-search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
 }
 

@@ -30,6 +30,25 @@ export const VOLUME_WEIGHT_ON = 0.3;
 export const NOW_LENGTHS = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 export const DEFAULT_LENGTH = 7;
 
+// 봉수·조건 연타는 마지막 선택만 전송한다. Query의 신호를 여기서부터 소비해야
+// 키가 바뀌거나 패널이 닫힐 때 대기 중인 타이머도 HTTP 요청도 함께 취소된다.
+export const PATTERN_SEARCH_SETTLE_MS = 150;
+
+function settleSearch(signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, PATTERN_SEARCH_SETTLE_MS);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
 export type PatternFilters = {
   minTvEok: number;
   excludeEtf: boolean;
@@ -123,8 +142,9 @@ export function usePatternSearch({
     enabled: enabled && !!code,
     // 코퍼스는 하루 한 번 갱신된다 — 패널을 여닫을 때마다 다시 계산할 이유가 없다.
     staleTime: 5 * 60_000,
-    queryFn: () =>
-      searchPattern({
+    queryFn: async ({ signal }) => {
+      await settleSearch(signal);
+      return searchPattern({
         code: code as string,
         mode,
         // 구간을 주면 서버가 길이를 그 구간에서 뽑는다 — `lengths` 는 검증만 통과하면 된다.
@@ -151,7 +171,8 @@ export function usePatternSearch({
         forward_days: forwardBarsFor(tf),
         per_code: perCode,
         volume_weight: volumeWeight,
-      }),
+      }, signal);
+    },
   });
 }
 

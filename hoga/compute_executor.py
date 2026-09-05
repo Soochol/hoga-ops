@@ -184,6 +184,9 @@ class ComputeExecutor:
         self._worker_env = dict(worker_env) if worker_env else None
         self._pool: ProcessPoolExecutor | None = None
         self._lock = threading.Lock()
+        # 프로세스의 내부 큐에 미리 넣으면 Future가 실행 전에도 RUNNING이 되어
+        # 취소할 수 없다. 워커 자리만큼만 제출하고 나머지는 취소 가능한 await로 둔다.
+        self._slots = asyncio.Semaphore(self.max_workers)
         #: 깨진 풀을 버리고 새로 만든 횟수 — 워커가 반복해서 죽으면 이 값이 자란다.
         self.respawns = 0
 
@@ -203,20 +206,41 @@ class ComputeExecutor:
         함수**여야 하고 인자·반환값·예외가 pickle 돼야 한다(클로저 불가)."""
         if self.kind == "thread":
             return await asyncio.to_thread(fn, *args)
-        pool = self._ensure_pool()
-        loop = asyncio.get_running_loop()
+        await self._slots.acquire()
+        pool = None
         try:
-            return await loop.run_in_executor(pool, fn, *args)
+            pool = self._ensure_pool()
+            loop = asyncio.get_running_loop()
+            future = loop.run_in_executor(pool, fn, *args)
         except BrokenProcessPool:
+            self._slots.release()
+            self._discard_pool(pool)
+            raise
+        except BaseException:
+            self._slots.release()
+            raise
+        # 호출자가 떠나도 실행 중인 작업의 자리는 실제 완료 때 반환한다. 먼저
+        # 반납하면 취소된 CPU 작업 위에 새 작업을 계속 쌓게 된다.
+        future.add_done_callback(lambda done: self._release_slot(done, pool))
+        return await asyncio.shield(future)
+
+    def _release_slot(self, future: asyncio.Future, pool: ProcessPoolExecutor) -> None:
+        # 이탈한 호출자의 작업이 풀을 깨뜨린 경우도 회수한다. 새 대기자를 깨우기
+        # 전에 죽은 풀을 버리고, 옛 작업이 교체된 새 풀을 버리지 않게 신원을 확인한다.
+        error = None if future.cancelled() else future.exception()
+        if isinstance(error, BrokenProcessPool):
             _log.warning(
                 "compute.executor.broken name=%s — 워커 프로세스가 죽었다. 이 풀을 버리고 "
-                "다음 호출에서 새로 만든다.", self.name, exc_info=True,
+                "다음 호출에서 새로 만든다.", self.name,
+                exc_info=(type(error), error, error.__traceback__),
             )
-            self._discard_pool()
-            raise
+            self._discard_pool(pool)
+        self._slots.release()
 
-    def _discard_pool(self) -> None:
+    def _discard_pool(self, expected: ProcessPoolExecutor | None = None) -> None:
         with self._lock:
+            if expected is not None and self._pool is not expected:
+                return
             pool, self._pool = self._pool, None
         if pool is not None:
             pool.shutdown(wait=False, cancel_futures=True)

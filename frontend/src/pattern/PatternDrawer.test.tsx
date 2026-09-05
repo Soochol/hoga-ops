@@ -244,7 +244,7 @@ describe('PatternDrawer', () => {
   async function fixLength(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByRole('button', { name: /길이 ±2봉/ }));
     await user.click(await screen.findByRole('option', { name: '길이 고정' }));
-    await vi.waitFor(() => expect(screen.getByRole('button', { name: /길이 고정/ })).toBeInTheDocument());
+    await vi.waitFor(() => expect(searchPattern.mock.calls.at(-1)?.[0].lengths.length).toBeGreaterThan(1));
   }
 
   it('길이 고정이면 now 가 봉수 전 범위를 한 요청에 받는다 — 스크럽이 로컬 전환이 되는 전제', async () => {
@@ -479,6 +479,7 @@ describe('PatternDrawer — 차트에서 건네받은 구간', () => {
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalled());
     expect(usePatternQueryStore.getState().pending).toBeNull();
     const body = searchPattern.mock.calls.at(-1)![0];
     expect([body.from, body.to]).toEqual(['20260401', '20260630']);
@@ -620,6 +621,7 @@ describe('PatternDrawer — 기준 종목 고정', () => {
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalled());
     const body = searchPattern.mock.calls.at(-1)![0];
     expect(body.code).toBe('000660');
   });
@@ -632,6 +634,7 @@ describe('PatternDrawer — 그은 구간은 과거 전체에서 찾는다', () 
     });
     renderDrawer();
     await screen.findByText(/차트에서 그은 구간/);
+    await vi.waitFor(() => expect(searchPattern).toHaveBeenCalled());
     // ★ 과거 어느 구간을 긋든 묻는 것은 "이 패턴이 과거 어디에서 또 나왔나" 다.
     //   now 로 두면 그은 구간과 무관한 답(각 종목의 최신 봉)을 낸다.
     const body = searchPattern.mock.calls.at(-1)![0];
