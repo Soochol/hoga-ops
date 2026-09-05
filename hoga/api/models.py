@@ -237,6 +237,11 @@ class AskPeak(BaseModel):
     # 있어 체결 계열보다 크다. 그래서 게이트가 따로다(`all_bar_peaks_enabled`).
     all_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달의 봉별 최대 — ⚠ **판정 시점이 `unreached_peaks` 와 다르다**: 저쪽은 하루
+    # 스코프(지금도 미도달인 벽)이고 이쪽은 그 벽이 선 분까지의 극값 기준(그 봉 시점에
+    # 미도달이던 벽)이다. 봉별 표현에서 소급 재분류를 없애려면 이 축이어야 한다
+    # (`snapshots._unreached_bar_frame`). cont 단일 계열이라 필드가 **하나**다.
+    unreached_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 고가 위) — cont 단일 계열 rank-1 스칼라 + top-3. top-3 은 최대
@@ -288,6 +293,11 @@ class BidPeak(BaseModel):
     # 있어 체결 계열보다 크다. 그래서 게이트가 따로다(`all_bar_peaks_enabled`).
     all_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 미도달의 봉별 최대 — ⚠ **판정 시점이 `unreached_peaks` 와 다르다**: 저쪽은 하루
+    # 스코프(지금도 미도달인 벽)이고 이쪽은 그 벽이 선 분까지의 극값 기준(그 봉 시점에
+    # 미도달이던 벽)이다. 봉별 표현에서 소급 재분류를 없애려면 이 축이어야 한다
+    # (`snapshots._unreached_bar_frame`). cont 단일 계열이라 필드가 **하나**다.
+    unreached_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 저가 아래) — AskPeak 의 같은 필드 주석 참조(대칭 미러).

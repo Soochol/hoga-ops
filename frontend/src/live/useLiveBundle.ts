@@ -510,6 +510,7 @@ export type LiveRangeRequestPlan = {
     depthHeatmapEnabled: boolean;
     barPeaksEnabled: boolean;
     allBarPeaksEnabled: boolean;
+    unreachedBarPeaksEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -529,6 +530,8 @@ export function planLiveRangeRequest(args: {
   peakWallBarMode: boolean;
   /** 전체 계열도 봉별인가 — **따로** 게이트한다(그 배열이 더 크다). */
   peakWallAllBarMode: boolean;
+  /** 미도달도 봉별인가 — 계열별 게이트 축을 맞춘다. */
+  peakWallUnreachedBarMode: boolean;
   brokerLateEntryEnabled: boolean;
   programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
@@ -595,6 +598,7 @@ export function planLiveRangeRequest(args: {
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
       barPeaksEnabled: enableMinute && args.peakWallBarMode,
       allBarPeaksEnabled: enableMinute && args.peakWallAllBarMode,
+      unreachedBarPeaksEnabled: enableMinute && args.peakWallUnreachedBarMode,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -635,6 +639,9 @@ export function useLiveBundle(
   // `depthHeatmapEnabled` 가 소비처 게이트와 요청을 같은 조건으로 묶는 것과 같은 축.
   const peakWallBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'Traded'));
   const peakWallAllBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'AllWall'));
+  const peakWallUnreachedBarMode = useWindowIndicator(
+    (s) => peakWallBarFamilyActive(s, 'Unreached'),
+  );
   // 인스턴스가 하나라도 켜져 있으면 조회한다 — 임계는 클라이언트 필터라 요청은
   // 인스턴스 수와 무관하게 **하나**다(#1595).
   const brokerLateEntryEnabled = brokerLateEntries.some((e) => e.enabled);
@@ -964,6 +971,7 @@ export function useLiveBundle(
     depthHeatmapEnabled,
     peakWallBarMode,
     peakWallAllBarMode,
+    peakWallUnreachedBarMode,
     brokerLateEntryEnabled,
     programTradeEnabled: effProgramTradeEnabled,
     volumeDistributionEnabled: effVolumeDistributionEnabled,
@@ -1083,6 +1091,7 @@ export function useLiveBundle(
       depthHeatmapEnabled: false,
       barPeaksEnabled: false,
       allBarPeaksEnabled: false,
+      unreachedBarPeaksEnabled: false,
       brokerLateEntryStartHHMM: null,
       volumeDistributionBins: null,
       tradeVolumePocBins: null,

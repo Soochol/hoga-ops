@@ -41,6 +41,7 @@ export type PeakWallInput = PeakBase & {
   traded_bar_max_peaks?: AskPeakCandidate[];
   all_bar_peaks?: AskPeakCandidate[];
   all_bar_max_peaks?: AskPeakCandidate[];
+  unreached_bar_peaks?: AskPeakCandidate[];
 };
 
 function allCandidate(

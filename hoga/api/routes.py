@@ -803,6 +803,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 분만이지만 이쪽은 **호가가 있던 모든 분**이라 배열이 더 크고, 봉별 모드를
         # 켰다고 해서 전체 슬롯까지 켠 것은 아니다.
         all_bar_peaks_enabled: bool = Query(False),
+        # 미도달의 봉별 배열 — 역시 따로 옵트인한다. 이 계열은 희소하지만(그 봉
+        # 시점에 미도달이던 벽이 있는 봉만), 게이트 축을 계열별로 맞춰 둔다.
+        unreached_bar_peaks_enabled: bool = Query(False),
         # 값 목록은 `RangeMode`(models.py)가 유일 출처다 — 여기 정규식을 손으로 다시
         # 적으면 그 사본이 곧 드리프트 지점이 된다(퇴역한 `full` 이 프론트에 남은 것이
         # 정확히 그 사고였다).
@@ -910,6 +913,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "depth_heatmap_enabled": depth_heatmap_enabled,
                 "bar_peaks_enabled": bar_peaks_enabled,
                 "all_bar_peaks_enabled": all_bar_peaks_enabled,
+                "unreached_bar_peaks_enabled": unreached_bar_peaks_enabled,
                 "mode": mode,
             }
             try:

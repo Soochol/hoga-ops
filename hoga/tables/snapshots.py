@@ -915,6 +915,10 @@ class AskPeakDualRow:
     #: 있어 체결 계열보다 크다 — 페이로드 게이트가 따로다(`all_bar_peaks_enabled`).
     all_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_bar_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달의 봉별 최대 — **판정 시점이 위 `unreached_*`(하루 스코프)와 다르다**:
+    #: 그 벽이 선 분까지의 극값으로 판정해 소급 재분류가 없다(`_unreached_bar_frame`).
+    #: cont 단일 계열이라 축이 하나다.
+    unreached_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -983,6 +987,10 @@ class BidPeakDualRow:
     #: 있어 체결 계열보다 크다 — 페이로드 게이트가 따로다(`all_bar_peaks_enabled`).
     all_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_bar_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 미도달의 봉별 최대 — **판정 시점이 위 `unreached_*`(하루 스코프)와 다르다**:
+    #: 그 벽이 선 분까지의 극값으로 판정해 소급 재분류가 없다(`_unreached_bar_frame`).
+    #: cont 단일 계열이라 축이 하나다.
+    unreached_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -2160,6 +2168,48 @@ def _unreached_wall_frame(
     return events.filter(pl.col("price") < touches["price"].min())
 
 
+def _unreached_bar_frame(
+    events: pl.DataFrame, touches: pl.DataFrame, *, side: str,
+) -> pl.DataFrame:
+    """봉별 미도달 — **그 벽이 선 분까지의** 극값이 지배하지 못한 이벤트만.
+
+    `_unreached_wall_frame`(하루 스코프)과 **판정 시점이 다르다**. 저쪽은 그날 체결
+    전체의 극값 하나로 걸러서 값이 **소급 재분류**된다(장중 고가가 갱신되면 이미
+    그려진 벽이 계열에서 빠진다). 봉별 표현에서 그 성질은 "과거 봉의 값이 장중에
+    사라지는" 화면이 되므로 쓸 수 없다.
+
+    그래서 이 판을 둔다: 각 벽을 **그 분까지 누적된 극값**과 비교한다. 한 번 미도달로
+    판정된 봉은 나중에 고가가 올라가도 값이 변하지 않는다 — 봉별 모드가 요구하는
+    "봉마다 독립" 이 성립한다.
+
+    ⚠ **두 계열은 같은 이름을 쓰지만 다른 질문에 답한다.** 캔들 오버레이의 미도달 선은
+    「지금도 미도달인 벽」이고, 이쪽은 「그 봉 시점에 미도달이던 벽」이다. 화면 문구와
+    ADR-0171 이 그 차이를 적는다.
+
+    분 해상도인 것은 터치 판정(ADR-0156)과 같은 축이다 — `touches` 가 `minute_id` 만
+    나르므로 그보다 잘게 볼 근거도 없다.
+    """
+    if events.height == 0 or touches.height == 0:
+        # 체결이 0건이면 그날 전부 미도달이다(하루 판과 같은 규약).
+        return events
+    per_min = (
+        touches.group_by("minute_id")
+        .agg((pl.col("price").max() if side == "ask" else pl.col("price").min()).alias("ext"))
+        .sort("minute_id")
+    )
+    cum = pl.col("ext").cum_max() if side == "ask" else pl.col("ext").cum_min()
+    per_min = per_min.with_columns(cum.alias("ext"))
+    # backward asof — **체결이 없던 분**은 직전 분까지의 극값을 쓴다. left join 이면
+    # 그런 분이 null 이 되어 "아직 체결 0건" 과 구별되지 않는다.
+    joined = events.sort("minute_id").join_asof(per_min, on="minute_id", strategy="backward")
+    dominated = (
+        (pl.col("price") <= pl.col("ext")) if side == "ask"
+        else (pl.col("price") >= pl.col("ext"))
+    )
+    # ext 가 null = 그 분 이전에 체결이 한 건도 없다 → 미도달.
+    return joined.filter(pl.col("ext").is_null() | ~dominated).drop("ext")
+
+
 def _peak_price_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     """가격당 rank-1 — `_peak_touched_distinct` 의 터치 필터 없는 판(미도달 top-3 용)."""
     return _peak_rank_sort(classified).unique(
@@ -2252,6 +2302,11 @@ def query_day_ask_bid_peak_dual_with_rep(
             # 전체 계열의 봉별 — 같은 접기, 터치를 묻지 않는다.
             "all_bar_peaks": _peak_bar_max_sequence(rep, touched_only=False),
             "all_bar_max_peaks": _peak_bar_max_sequence(cont, touched_only=False),
+            # 미도달의 봉별 — **cont 단일 계열**이다(하루 판과 같은 이유: 판정이
+            # (price, 극값) 비교라 rep/cont 를 가를 근거가 없다).
+            "unreached_bar_peaks": _peak_bar_max_sequence(
+                _unreached_bar_frame(cont, touches, side=side), touched_only=False,
+            ),
             # **top-3 캡**(2026-08-25). 종전엔 전량(하루 avg ~1.3k/1.6k)을 만들어
             # 캐시에 쓰고 `/api/range` 가 다시 벗겼다 — 소비처가 0 이었다.
             # 3 인 이유: 프론트 「표시 개수」 상한이 3 이다(`toPeakRankLimit`).
@@ -2277,6 +2332,7 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_bar_max_peaks=ask["traded_bar_max_peaks"],
             all_bar_peaks=ask["all_bar_peaks"],
             all_bar_max_peaks=ask["all_bar_max_peaks"],
+            unreached_bar_peaks=ask["unreached_bar_peaks"],
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
@@ -2298,6 +2354,7 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_bar_max_peaks=bid["traded_bar_max_peaks"],
             all_bar_peaks=bid["all_bar_peaks"],
             all_bar_max_peaks=bid["all_bar_max_peaks"],
+            unreached_bar_peaks=bid["unreached_bar_peaks"],
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],

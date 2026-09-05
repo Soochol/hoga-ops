@@ -150,7 +150,7 @@ export function peakWallPaneHasContent(cur: IndicatorSettings): boolean {
  * 모드가 `step` 이면 어느 계열도 요청하지 않는다 — 계단은 이 배열을 안 쓴다.
  */
 export function peakWallBarFamilyActive(
-  cur: IndicatorSettings, family: 'Traded' | 'AllWall',
+  cur: IndicatorSettings, family: 'Traded' | 'Unreached' | 'AllWall',
 ): boolean {
   if (cur.peakWallPaneMode !== 'bar' || !cur.peakWallPaneEnabled) return false;
   return (['ask', 'bid'] as const).some((side) => (

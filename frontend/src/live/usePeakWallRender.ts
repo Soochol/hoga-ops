@@ -109,6 +109,10 @@ export type PeakWallRenderState = {
   /** 「전체 최대벽」 계열의 봉별 모드 입력 — 위와 같은 규약(필터 파이프라인 밖).
    *  게이트는 `{side}PeakAllWallPaneEnabled` × 모드다. */
   allWallBarCandidates: readonly AskPeakCandidate[];
+  /** 「미도달」 계열의 봉별 모드 입력. ⚠ **캔들 선의 미도달과 판정 시점이 다르다** —
+   *  이쪽은 "그 봉 시점에 미도달이던 벽" 이라 소급 재분류가 없다(wire 필드 주석).
+   *  cont 단일 계열이라 `intraMax` 가 축을 가르지 않는다. */
+  unreachedBarCandidates: readonly AskPeakCandidate[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
    *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
    *  받는다**(`askPeakAllWallRankLimit`) — 2026-08-25 부터 백엔드가 과거일에도
@@ -512,6 +516,13 @@ export function usePeakWallRender({
       : EMPTY_BAR_CANDIDATES
   ), [needStepSegments, applicable, enabled, paneAllWallEnabled, paneBarMode, intraMax, peaks]);
 
+  // 미도달의 봉별 입력 — 단일 축이라 intraMax 를 보지 않는다.
+  const unreachedBarCandidates = useMemo(() => (
+    needStepSegments && applicable && enabled && paneUnreachedEnabled && paneBarMode
+      ? peaks.flatMap((p) => p.unreached_bar_peaks ?? [])
+      : EMPTY_BAR_CANDIDATES
+  ), [needStepSegments, applicable, enabled, paneUnreachedEnabled, paneBarMode, peaks]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -630,6 +641,7 @@ export function usePeakWallRender({
     stepSegments: stepBuilt,
     barCandidates,
     allWallBarCandidates,
+    unreachedBarCandidates,
     allWallSegments: surfacedAllWallSegments,
     legendRankSegments,
     arrowRankSegments,

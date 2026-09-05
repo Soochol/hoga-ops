@@ -737,3 +737,53 @@ describe('usePeakWallRender — 전체 계열 봉별 후보', () => {
       .toEqual([{ price: 121, qty: 1_200, t_ms: MIN }]);
   });
 });
+
+/**
+ * 미도달의 봉별 후보 — 세 번째 계열.
+ *
+ * ⚠ **단일 축**이라 `intraMax` 가 이 계열의 후보를 가르지 않는다(하루 판과 같은 규약).
+ */
+describe('usePeakWallRender — 미도달 봉별 후보', () => {
+  const WITH_UNREACHED: AskPeak = {
+    ...PEAK,
+    traded_bar_peaks: [{ price: 110, qty: 500, t_ms: MIN }],
+    unreached_bar_peaks: [{ price: 130, qty: 300, t_ms: MIN }],
+  };
+
+  beforeEach(() => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
+      useLivePageStore.setState({
+        askPeakEnabled: true,
+        askPeakHidden: false,
+        askPeakTradedPaneEnabled: true,
+        askPeakUnreachedPaneEnabled: true,
+        peakWallPaneEnabled: true,
+        peakWallPaneMode: 'bar',
+      });
+    });
+  });
+
+  it('미도달 슬롯이 켜지면 그 계열 후보를 모은다', () => {
+    expect(render(true, [WITH_UNREACHED], true).current.unreachedBarCandidates)
+      .toEqual([{ price: 130, qty: 300, t_ms: MIN }]);
+  });
+
+  it('그 슬롯만 끄면 다른 계열은 남는다', () => {
+    act(() => { useLivePageStore.setState({ askPeakUnreachedPaneEnabled: false }); });
+    const r = render(true, [WITH_UNREACHED], true);
+    expect(r.current.unreachedBarCandidates).toEqual([]);
+    expect(r.current.barCandidates).toEqual([{ price: 110, qty: 500, t_ms: MIN }]);
+  });
+
+  it('intraMax 는 이 계열의 후보를 바꾸지 않는다 — 단일 축이다', () => {
+    const off = render(true, [WITH_UNREACHED], true).current.unreachedBarCandidates;
+    act(() => { useChartPrefsStore.setState({ ...DEFAULT_PREFS, askPeakIntraMax: true }); });
+    expect(render(true, [WITH_UNREACHED], true).current.unreachedBarCandidates).toEqual(off);
+  });
+
+  it('step 모드면 비어 있다', () => {
+    act(() => { useLivePageStore.setState({ peakWallPaneMode: 'step' }); });
+    expect(render(true, [WITH_UNREACHED], true).current.unreachedBarCandidates).toEqual([]);
+  });
+});
