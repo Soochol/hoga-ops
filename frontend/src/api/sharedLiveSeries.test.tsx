@@ -73,9 +73,34 @@ it('late REST hydration keeps pending live ticks and the existing history of oth
   sock.message({ ch: 'live', code: CODE, data: frame(300, 3) });
   // 2번째 창의 REST가 더 늦게 도착한다. 아직 150ms flush 전인 tick도 남아야 한다.
   hydrateLiveSeries(CODE, DATE, 'KRX', body({ snapshots: [frame(200, 2), frame(300, 0), frame(400, 4)] }));
-  expect(readLiveSeries(CODE, DATE, 'KRX').ob.map((f) => [f.t_ms, f.qty])).toEqual([[100, 1], [200, 2], [300, 3], [400, 4]]);
+  expect(readLiveSeries(CODE, DATE, 'KRX').ob.map((f) => [f.t_ms, f.qty])).toEqual([[100, 1], [200, 2], [300, 0], [300, 3], [400, 4]]);
   await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
-  expect(readLiveSeries(CODE, DATE, 'KRX').ob).toHaveLength(4);
+  expect(readLiveSeries(CODE, DATE, 'KRX').ob).toHaveLength(5);
+});
+
+it.each([
+  ['ob', 'snapshots', 'ob'], ['trade', 'trades', 'trade'], ['broker', 'brokers', 'broker'],
+  ['program', 'programs', 'program'], ['ah', 'after_hours', 'afterHours'], ['expected', 'expected', 'expected'],
+] as const)('%s hydration preserves distinct same-time events and their multiplicity', async (kind, field, output) => {
+  vi.useFakeTimers();
+  subscribe();
+  const sock = await socket();
+  const frame = (qty: number) => ({ t_ms: 100, kind, venue: 'KRX', values: [{ price: 50_000, qty }] });
+  for (const qty of [2, 3, 3]) sock.message({ ch: 'live', code: CODE, data: frame(qty) });
+  const snapshots = [1, 2, 2, 3].map((qty) => ({
+    // REST JSON key order can differ, including inside a nested payload.
+    values: [{ qty, price: 50_000 }], venue: 'KRX', kind, t_ms: 100,
+  }));
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ [field]: snapshots }));
+  const qtys = () => readLiveSeries(CODE, DATE, 'KRX')[output].map((f) =>
+    (f.values as Array<{ qty: number }>)[0].qty);
+  expect(qtys()).toEqual([1, 2, 2, 3, 3]);
+  expect(readLiveSeries(CODE, DATE, 'NXT')[output]).toHaveLength(0);
+  // A later REST fetch of the same records must not multiply already merged events.
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ [field]: structuredClone(snapshots) }));
+  expect(qtys()).toEqual([1, 2, 2, 3, 3]);
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(qtys()).toEqual([1, 2, 2, 3, 3]);
 });
 
 it('venue projections remain stable on unrelated ticks and preserve the last KRX book on eviction', async () => {

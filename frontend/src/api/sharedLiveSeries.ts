@@ -26,15 +26,36 @@ function sameFrames(a: readonly RawSnapshot[], b: readonly RawSnapshot[]): boole
   return a.length === b.length && a.every((frame, i) => frame === b[i]);
 }
 
-/** REST와 WS의 겹침에서 이미 수신한 (kind, venue, 시각) 그룹을 보존한다.
- * 같은 밀리초의 서로 다른 WS 프레임은 모두 남긴다. 새 창의 REST가 기존 창의
- * 15분 이력이나 아직 flush하지 않은 꼬리를 덮어쓰지 않게 하는 합집합이다.
+function frameKey(frame: RawSnapshot): string {
+  // 두 전송 경로의 JSON 객체 키 순서는 달라도 같은 프레임이다. 배열 순서는 유지한다.
+  return JSON.stringify(frame, (_key, value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+    }
+    return value;
+  });
+}
+
+/** 시각은 이벤트 ID가 아니다(키움 HHMMSS는 같은 초에 여러 체결/호가를 보낸다).
+ * 같은 payload가 반복된 개수만큼만 REST/WS 겹침을 제거한다. 서로 다른 프레임과
+ * 동일한 체결의 반복은 보존하고, 같은 시각에서는 현재 WS 상태가 마지막에 온다.
  */
 function mergeInitial(current: readonly RawSnapshot[], initial: readonly RawSnapshot[]): RawSnapshot[] {
-  const key = (f: RawSnapshot) => `${f.t_ms}:${f.venue ?? 'KRX'}`;
-  const liveKeys = new Set(current.map(key));
-  const missing = initial.filter((f) => !liveKeys.has(key(f)));
-  return [...current, ...missing].sort((a, b) => a.t_ms - b.t_ms);
+  if (!current.length) return [...initial];
+  if (!initial.length) return [...current];
+  const counts = new Map<string, number>();
+  for (const frame of current) {
+    const key = frameKey(frame);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const missing = initial.filter((frame) => {
+    const key = frameKey(frame);
+    const count = counts.get(key) ?? 0;
+    if (!count) return true;
+    counts.set(key, count - 1);
+    return false;
+  });
+  return [...missing, ...current].sort((a, b) => a.t_ms - b.t_ms);
 }
 
 type View = { raw: Raw; filtered: Raw; frames: Frames; lastOb?: ObSnapshot };
