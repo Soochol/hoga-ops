@@ -16,7 +16,8 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
-import { useWindowView, useWindowIndicators } from './workspace/windowView';
+import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
+import { peakWallPaneHasContent } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
   classifyRestWarning,
@@ -507,6 +508,7 @@ export type LiveRangeRequestPlan = {
     programTradeEnabled: boolean;
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
+    barPeaksEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -522,6 +524,8 @@ export function planLiveRangeRequest(args: {
   bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
+  /** 최대벽 pane 이 **봉별 모드**인가 — 그때만 `traded_bar_*` 를 요청한다(옵트인). */
+  peakWallBarMode: boolean;
   brokerLateEntryEnabled: boolean;
   programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
@@ -586,6 +590,7 @@ export function planLiveRangeRequest(args: {
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
+      barPeaksEnabled: enableMinute && args.peakWallBarMode,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -621,6 +626,12 @@ export function useLiveBundle(
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
   } = useWindowIndicators();
+  // 최대벽 봉별 배열은 **옵트인**이라 실제로 그릴 창만 요청한다 — 모드가 `bar` 인
+  // 것만으로는 부족하다(pane 이 닫혀 있으면 그릴 대상이 없는데 페이로드만 커진다).
+  // `depthHeatmapEnabled` 가 소비처 게이트와 요청을 같은 조건으로 묶는 것과 같은 축.
+  const peakWallBarMode = useWindowIndicator(
+    (s) => s.peakWallPaneMode === 'bar' && peakWallPaneHasContent(s),
+  );
   // 인스턴스가 하나라도 켜져 있으면 조회한다 — 임계는 클라이언트 필터라 요청은
   // 인스턴스 수와 무관하게 **하나**다(#1595).
   const brokerLateEntryEnabled = brokerLateEntries.some((e) => e.enabled);
@@ -948,6 +959,7 @@ export function useLiveBundle(
     bidPeakEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
+    peakWallBarMode,
     brokerLateEntryEnabled,
     programTradeEnabled: effProgramTradeEnabled,
     volumeDistributionEnabled: effVolumeDistributionEnabled,
@@ -1065,6 +1077,7 @@ export function useLiveBundle(
       brokerLateEntriesEnabled: false,
       tradeVolumePocEnabled: false,
       depthHeatmapEnabled: false,
+      barPeaksEnabled: false,
       brokerLateEntryStartHHMM: null,
       volumeDistributionBins: null,
       tradeVolumePocBins: null,

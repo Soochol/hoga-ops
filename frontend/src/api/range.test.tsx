@@ -147,6 +147,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       'KRX',
+      null,
     ]);
   });
 
@@ -166,8 +167,9 @@ describe('buildRangeBundleRequest', () => {
         + '&source_pref=kiwoom_live&mode=hoga&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('hoga');
-    // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
-    expect(request.queryKey.at(-2)).toBe(null);
+    // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
+    expect(request.queryKey.at(-3)).toBe(null);
   });
 
   it('adds mode=sidecar for overlay sidecar requests', () => {
@@ -186,8 +188,9 @@ describe('buildRangeBundleRequest', () => {
         + '&bucket_ms=60000&source_pref=kiwoom_live&mode=sidecar&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('sidecar');
-    // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
-    expect(request.queryKey.at(-2)).toBe(null);
+    // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
+    expect(request.queryKey.at(-3)).toBe(null);
   });
 
   it('threads sidecar indicator gates into the URL params and query key', () => {
@@ -205,6 +208,7 @@ describe('buildRangeBundleRequest', () => {
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
+        barPeaksEnabled: true,
       },
     });
 
@@ -213,8 +217,13 @@ describe('buildRangeBundleRequest', () => {
     expect(request.url).toContain('&program_trade_enabled=false');
     expect(request.url).toContain('&trade_volume_poc_enabled=false');
     expect(request.url).toContain('&depth_heatmap_enabled=false');
-    // venue 가 키의 맨 끝이라 다섯 게이트는 그 앞 구간이다(ADR-0140).
-    expect(request.queryKey.slice(-6, -1)).toEqual([false, false, false, false, false]);
+    // 옵트인이라 **켠 값이 실제로 나가는지**를 재는 것이 이 줄의 요점이다 — 안 나가면
+    // 봉별 모드가 조용히 빈 배열을 받는다.
+    expect(request.url).toContain('&bar_peaks_enabled=true');
+    // ⚠ 키 뒤쪽은 덧붙이기 전용이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
+    // [다섯 게이트, venue, barPeaksEnabled] 다.
+    expect(request.queryKey.slice(-7, -2)).toEqual([false, false, false, false, false]);
+    expect(request.queryKey.at(-1)).toBe(true);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -234,8 +243,9 @@ describe('buildRangeBundleRequest', () => {
         + '&bucket_ms=180000&source_pref=kiwoom_live&mode=candles&venue=KRX',
     );
     expect(request.queryKey[14]).toBe('candles');
-    // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
-    expect(request.queryKey.at(-2)).toBe(null);
+    // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
+    expect(request.queryKey.at(-3)).toBe(null);
   });
 
   it('includes volumeDistributionCutoffMs in the range query key', () => {
@@ -306,6 +316,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       'KRX',
+      null,
     ]);
   });
 
@@ -325,8 +336,9 @@ describe('buildRangeBundleRequest', () => {
         + '&bucket_ms=60000&source_pref=kiwoom_live&venue=KRX',
     );
     expect(request.queryKey[14]).toBe(null);
-    // venue 가 키의 맨 끝이라 옵션 게이트는 뒤에서 둘째다(ADR-0140).
-    expect(request.queryKey.at(-2)).toBe(null);
+    // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
+    expect(request.queryKey.at(-3)).toBe(null);
   });
 });
 
@@ -1035,6 +1047,7 @@ describe('rangeBundleQueryOptions', () => {
       null,
       null,
       'KRX',
+      null,
     ]);
 
     const signal = new AbortController().signal;
@@ -1948,6 +1961,7 @@ describe('rangePlaceholderData', () => {
     null,
     null,
     'KRX',
+    null,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -1974,6 +1988,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
@@ -2003,6 +2018,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2032,6 +2048,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
@@ -2056,6 +2073,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, previousKey)).toBeUndefined();
@@ -2088,6 +2106,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'NXT', // ← baseKey 는 'KRX'
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2122,6 +2141,7 @@ describe('rangePlaceholderData', () => {
       null,
       true, // ← baseKey 는 null
       'KRX',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();

@@ -34,6 +34,11 @@ export type PeakWallInput = PeakBase & {
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   unreached_peaks?: AskPeakCandidate[];
+  /** 봉별 최대 체결 벽 — **이 파일의 세그먼트 빌더는 읽지 않는다.** 봉별 모드가 필터
+   *  파이프라인을 우회하기 때문이고(`buildPeakWallBarPoints` docstring), 여기 있는
+   *  것은 `usePeakWallRender` 가 같은 `peaks` 배열에서 꺼내 쓰기 때문이다. */
+  traded_bar_peaks?: AskPeakCandidate[];
+  traded_bar_max_peaks?: AskPeakCandidate[];
 };
 
 function allCandidate(

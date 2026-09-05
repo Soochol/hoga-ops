@@ -904,6 +904,13 @@ class AskPeakDualRow:
     unreached_qty: int | None = None
     unreached_intra_ms: int | None = None
     unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순,
+    #: `_peak_bar_max_sequence`). 최대벽 강도 pane 의 **봉별 모드** 입력이고,
+    #: `traded_record_*`(누적 계단)와 같은 데이터의 다른 축이다. ⚠ 이쪽은 **봉
+    #: 의존**이라 rep/cont 둘 다 1분 해상도가 정본이다 — 굵은 봉은 창 안 1분 값들의
+    #: max 로 파생한다(`reaggregate_peak_rep`).
+    traded_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    traded_bar_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -961,6 +968,13 @@ class BidPeakDualRow:
     unreached_qty: int | None = None
     unreached_intra_ms: int | None = None
     unreached_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순,
+    #: `_peak_bar_max_sequence`). 최대벽 강도 pane 의 **봉별 모드** 입력이고,
+    #: `traded_record_*`(누적 계단)와 같은 데이터의 다른 축이다. ⚠ 이쪽은 **봉
+    #: 의존**이라 rep/cont 둘 다 1분 해상도가 정본이다 — 굵은 봉은 창 안 1분 값들의
+    #: max 로 파생한다(`reaggregate_peak_rep`).
+    traded_bar_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    traded_bar_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(
@@ -1955,6 +1969,37 @@ def _peak_record_sequence(df: pl.DataFrame) -> tuple[AskPeakCandidateRow, ...]:
     )
 
 
+def _peak_bar_max_sequence(df: pl.DataFrame) -> tuple[AskPeakCandidateRow, ...]:
+    """터치된 이벤트 프레임 → **봉별 최대**(bucket_id 당 1개, 시간순).
+
+    "그 봉에서 가장 크게 체결된 벽" 계열 — 최대벽 강도 pane 의 **봉별 모드** 입력.
+    `_peak_record_sequence`(그 시점까지의 running max)와 **축이 다르다**: 기록
+    시퀀스는 단조라 한 번 오르면 유지되지만 이쪽은 봉마다 독립이라 오르내린다.
+    두 계열이 그 pane 의 두 표현 모드에 1:1 대응한다(누적 계단 / 봉별).
+
+    - dedup 키는 `bucket_id` **하나**다(가격이 아니다). 같은 봉의 여러 가격 중 가장
+      큰 것 하나가 그 봉의 값이고, 같은 가격이 여러 봉에서 각각 최대여도 봉마다
+      자기 값을 갖는다 — `_peak_touched_distinct`(가격당 rank-1)를 입력으로 쓰면
+      두 번째 봉이 통째로 사라진다.
+    - **cap 이 없다.** 봉별 계열은 잘린 구간이 "체결된 벽이 없던 봉"과 구별되지
+      않으므로 앞뒤 어느 쪽을 잘라도 거짓말이 된다 — 기록 시퀀스가 꼬리를 잘라도
+      `traded_peaks` 가 보정하는 것과 사정이 다르다. 페이로드는 대신 라우트 게이트가
+      관리한다(`bar_peaks_enabled`).
+    - 반환은 **시간순**이다(랭킹순이 아니다). 소비처가 시간축에 그린다.
+    """
+    touched = df.filter(pl.col("touched")) if "touched" in df.columns else df
+    if touched.height == 0:
+        return ()
+    # qty DESC 정렬 후 bucket_id 당 first = 그 봉의 최대. 그다음 시간순으로 되돌린다.
+    best = _peak_rank_sort(touched).unique(
+        subset=["bucket_id"], keep="first", maintain_order=True,
+    ).sort("intra_ms")
+    return tuple(
+        AskPeakCandidateRow(price=p_, qty=q, intra_ms=i)
+        for p_, q, i in zip(best["price"], best["qty"], best["intra_ms"], strict=True)
+    )
+
+
 def _peak_bucket_dedup(df: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
     return _peak_rank_sort(df).unique(
@@ -2178,6 +2223,10 @@ def query_day_ask_bid_peak_dual_with_rep(
             # 기록 갱신 시퀀스 — dedup 전 원본 프레임에서(사유는 헬퍼 docstring).
             "traded_record_peaks": _peak_record_sequence(rep),
             "traded_record_max_peaks": _peak_record_sequence(cont),
+            # 봉별 최대 — 같은 프레임의 다른 접기(bucket_id 당 1개). dedup 전 원본에서
+            # 뽑는 것은 기록 시퀀스와 같은 이유다(가격당 rank-1 을 태우면 봉이 사라진다).
+            "traded_bar_peaks": _peak_bar_max_sequence(rep),
+            "traded_bar_max_peaks": _peak_bar_max_sequence(cont),
             # **top-3 캡**(2026-08-25). 종전엔 전량(하루 avg ~1.3k/1.6k)을 만들어
             # 캐시에 쓰고 `/api/range` 가 다시 벗겼다 — 소비처가 0 이었다.
             # 3 인 이유: 프론트 「표시 개수」 상한이 3 이다(`toPeakRankLimit`).
@@ -2199,6 +2248,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
             traded_record_peaks=ask["traded_record_peaks"],
             traded_record_max_peaks=ask["traded_record_max_peaks"],
+            traded_bar_peaks=ask["traded_bar_peaks"],
+            traded_bar_max_peaks=ask["traded_bar_max_peaks"],
             all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
             all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
             all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
@@ -2216,6 +2267,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
             traded_record_peaks=bid["traded_record_peaks"],
             traded_record_max_peaks=bid["traded_record_max_peaks"],
+            traded_bar_peaks=bid["traded_bar_peaks"],
+            traded_bar_max_peaks=bid["traded_bar_max_peaks"],
             all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
             all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
             all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],

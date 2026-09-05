@@ -17,6 +17,7 @@ import {
   PeakRecordAccumulator,
   type PeakRecordSeries,
 } from './peakWallRecordSeries';
+import { buildPeakBarSeries, type PeakBarSeries } from './peakWallBarSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -109,10 +110,11 @@ function pushTodayBidPeak(
   todayKst: string,
   families: PeakFamilies,
   records: PeakRecordSeries,
+  bars: PeakBarSeries,
 ): BidPeak[] {
   const traded = families.traded[0];
   if (traded) {
-    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families, records));
+    out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families, records, bars));
   } else if (families.all.length > 0) {
     out.push(attachFamilies({
       date: todayKst,
@@ -122,7 +124,7 @@ function pushTodayBidPeak(
       max_price: null,
       max_qty: null,
       max_t_ms: null,
-    }, families, records));
+    }, families, records, bars));
   }
   return out;
 }
@@ -134,6 +136,7 @@ function attachFamilies(
    *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
    *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
   records: PeakRecordSeries,
+  bars: PeakBarSeries,
 ): BidPeak {
   return {
     ...peak,
@@ -143,6 +146,10 @@ function attachFamilies(
     // 매수에만 통째로 없었고(매도는 top-3 을 실었다), 결과가 같아 드리프트가 안 보였다.
     traded_record_peaks: records.close,
     traded_record_max_peaks: records.max,
+    // 분별 최대 — 같은 두 출처(`buildPeakBarSeries`)에서 왔고, 비면 봉별 모드가
+    // 그리지 않는다(top-3 폴백이 **없다** — 그 모듈 docstring 참조).
+    traded_bar_peaks: bars.close,
+    traded_bar_max_peaks: bars.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -199,7 +206,7 @@ export function deriveDayBidPeaks(
   const families = mergedBidFamilies(ob, trade, todayBidPeak, sessionOpenMs);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak), buildPeakBarSeries(seed, todayBidPeak));
 }
 
 export function deriveDayBidPeaksIncremental(
@@ -220,7 +227,7 @@ export function deriveDayBidPeaksIncremental(
   const families = bidFamiliesFromClassified(classified, backend);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak));
+  return pushTodayBidPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayBidPeak), buildPeakBarSeries(seed, todayBidPeak));
 }
 
 export function useDayBidPeaks(

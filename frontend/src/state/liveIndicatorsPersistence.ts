@@ -94,6 +94,16 @@ export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
 export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
 export type BrokerLateEntrySideMode = 'both' | 'buy' | 'sell';
 
+/** 최대벽 강도 pane 의 **표현 모드** — 같은 벽들을 두 축으로 읽는다.
+ *
+ *  - `step`(공장값) — 「그 시점까지 체결된 벽 중 최대」의 누적 계단. 단조라 한 번
+ *    오르면 유지된다. 사용자 보고 2회로 만들어진 계열이라 기본값을 유지한다.
+ *  - `bar` — 「매 봉에서 가장 크게 체결된 벽」. 봉마다 독립이라 오르내린다.
+ *
+ *  ⚠ **모드는 pane 전체가 하나**다(방향·계열별이 아니다). 두 축을 한 pane 에 섞으면
+ *  같은 y 값이 줄마다 다른 뜻이 된다. */
+export type PeakWallPaneMode = 'step' | 'bar';
+
 /**
  * 신규 거래원 등장 **인스턴스 하나**. MA 슬롯(`LiveMAConfig`)과 같은 규약이다 —
  * 배열 index 가 아니라 **안정 id** 로 식별해, 중간 삭제가 다른 인스턴스의 레전드
@@ -172,6 +182,16 @@ export type PersistedIndicators = {
   movingAverageHidden: boolean;
   /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
   peakWallPaneEnabled: boolean;
+  /** 그 pane 의 표현 모드(`PeakWallPaneMode`). 공장값 `step` — 종전 동작 그대로다.
+   *
+   *  ⚠ `bar` 는 **체결 계열에만** 적용된다. 「전체 최대벽」은 이 모드의 질문("가장
+   *  크게 체결된")이 성립하지 않고, 「미도달」은 판정이 하루 스코프라 소급 재분류되어
+   *  과거 봉의 값이 장중에 나타났다 사라진다 — 두 계열은 모드와 무관하게 계단이다.
+   *
+   *  ⚠ `bar` 는 **MA 필터를 우회한다**(분봉·일봉 둘 다). 두 필터의 목적이 "현재가
+   *  근처의 벽을 걷어내는 것" 인데 체결된 벽은 정의상 그 봉의 가격이 닿은 벽이라,
+   *  걸면 이 모드가 답하는 질문 자체가 대부분 지워진다. 사용자 결정(2026-09-05). */
+  peakWallPaneMode: PeakWallPaneMode;
   /** 강도 pane 에 「매도 · 체결된 벽」 계단을 낼 것인가. **기본 true** — 공장 상태에서
    *  pane 을 켜면 종전과 똑같이 체결된 벽만 나온다.
    *
@@ -451,6 +471,11 @@ function normalizeHHMM(value: unknown): number {
   return n;
 }
 
+function normalizePeakWallPaneMode(value: unknown): PeakWallPaneMode {
+  return value === 'bar' ? 'bar' : 'step';
+}
+
+
 function normalizeBrokerLateEntrySideMode(value: unknown): BrokerLateEntrySideMode {
   return value === 'buy' || value === 'sell' || value === 'both' ? value : 'both';
 }
@@ -479,6 +504,7 @@ export function mergeLiveIndicatorPrefs(
   // 최대벽 강도 pane — opt-in (default false). 오버레이(askPeak/bidPeak)와 별개 토글:
   // pane 은 오버레이의 표현이지만 화면 부동산을 차지하므로 켜는 결정은 따로 받는다.
   const pwPaneEnabled = obj?.peakWallPaneEnabled === true;
+  const pwPaneMode = normalizePeakWallPaneMode(obj?.peakWallPaneMode);
   // pane 슬롯 6칸 — 체결된 벽만 기본 true 라, 공장 상태에서 pane 을 켜면 종전과 같은
   // 화면이 나온다(종전 규칙은 "캔들 선 토글을 따라간다" 였고 그 공장값이 양 방향 T/F/F).
   //
@@ -635,6 +661,7 @@ export function mergeLiveIndicatorPrefs(
     volumeEnabled: vol,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,
+    peakWallPaneMode: pwPaneMode,
     askPeakTradedPaneEnabled: apTradedPane,
     askPeakUnreachedPaneEnabled: apUnreachedPane,
     askPeakAllWallPaneEnabled: apAllWallPane,

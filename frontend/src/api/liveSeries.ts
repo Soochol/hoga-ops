@@ -29,6 +29,11 @@ export type LiveTodayPeakBase = {
    *  `traded_record_peaks`·`traded_record_max_peaks` 양쪽에 배선한다. 구백엔드 부재
    *  → optional. */
   traded_record_peaks?: AskPeakCandidate[];
+  /** 분별 최대 체결 벽 — 최대벽 강도 pane 의 **봉별 모드** 입력(백엔드
+   *  `traded_bar_max`). 위 기록 시퀀스와 **같은 축 규약**이라 여기서도 단일 배열이고,
+   *  프론트가 `traded_bar_peaks`·`traded_bar_max_peaks` 양쪽에 배선한다.
+   *  구백엔드 부재 → optional. */
+  traded_bar_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

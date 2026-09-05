@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Time } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
-import type { Candle } from '../api/types';
+import type { AskPeakCandidate, Candle } from '../api/types';
 import type { PeakWallSegment } from './PeakWallSegmentsPrimitive';
-import { buildPeakWallStepPoints, buildUnreachedStepPoints, type PeakWallStepPoint } from './peakWallSteps';
+import {
+  buildPeakWallBarPoints,
+  buildPeakWallStepPoints,
+  buildUnreachedStepPoints,
+  type PeakWallStepPoint,
+} from './peakWallSteps';
 import { LINE_HIDDEN_COLOR } from './util/auctionHide';
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -208,5 +213,91 @@ describe('buildUnreachedStepPoints', () => {
     expect(points.map((p) => Number(p.time))).toEqual(
       [2, 3, 4, 5].map((i) => vsecOf(DAY1_OPEN + i * MIN)),
     );
+  });
+});
+
+// ── 봉별 모드 ──────────────────────────────────────────────────────────────
+//
+// 누적 계단과 **같은 벽들을 다른 축으로** 읽는다. 아래 첫 테스트가 그 갈림을 직접
+// 재는 것이고, 나머지는 접기·구멍·날 경계 규칙이다.
+
+/** wire 후보 — 봉별 빌더가 읽는 것은 t_ms(실시각)·qty 뿐이다. */
+function barCandidate(realMs: number, qty: number): AskPeakCandidate {
+  return { price: 1000, qty, t_ms: realMs };
+}
+
+describe('buildPeakWallBarPoints', () => {
+  it('누적 계단과 갈린다 — 작아진 벽에서 값이 내려온다', () => {
+    // 같은 입력: 09:01 에 5,000 → 09:03 에 1,000(더 작다).
+    const at1 = DAY1_OPEN + 1 * MIN;
+    const at3 = DAY1_OPEN + 3 * MIN;
+    const day1 = candles.slice(0, 6);
+
+    const bars = buildPeakWallBarPoints(
+      [barCandidate(at1, 5_000), barCandidate(at3, 1_000)], day1, axis, '#3485FA',
+    );
+    const steps = buildPeakWallStepPoints(
+      [wall(at1, 5_000), wall(at3, 1_000)], day1, axis, '#3485FA',
+    );
+
+    // 봉별: 그 봉의 값 그대로 — 09:03 에 **내려온다**.
+    expect(bars.map((p) => p.value)).toEqual([0, 5_000, 0, 1_000, 0, 0]);
+    // 누적: running max 라 5,000 을 유지한다. 두 축이 답하는 질문이 다르다는 것이
+    // 이 대조의 요점이고, 갈리지 않으면 봉별 모드가 존재할 이유가 없다.
+    expect(steps.map((p) => p.value)).toEqual([5_000, 5_000, 5_000, 5_000, 5_000]);
+  });
+
+  it('한 봉 안의 여러 후보는 최대로 접힌다', () => {
+    // 3분봉 축: 09:00 봉이 09:00~09:02 의 1분 후보 셋을 삼킨다.
+    const day1 = [candle(DAY1_OPEN), candle(DAY1_OPEN + 3 * MIN)];
+    const points = buildPeakWallBarPoints(
+      [
+        barCandidate(DAY1_OPEN, 1_000),
+        barCandidate(DAY1_OPEN + 1 * MIN, 7_000),
+        barCandidate(DAY1_OPEN + 2 * MIN, 3_000),
+        barCandidate(DAY1_OPEN + 4 * MIN, 2_000),
+      ],
+      day1, axis, '#3485FA',
+    );
+    // max 가 결합적이라 1분 값들의 max 가 그 봉을 직접 계산한 값과 같다 —
+    // 백엔드가 봉별로 접지 않고 1분으로 싣는 근거가 이것이다.
+    expect(points.map((p) => p.value)).toEqual([7_000, 2_000]);
+  });
+
+  it('체결된 벽이 없는 봉은 0 이고 점을 건너뛰지 않는다', () => {
+    const day1 = candles.slice(0, 6);
+    const points = buildPeakWallBarPoints(
+      [barCandidate(DAY1_OPEN + 4 * MIN, 800)], day1, axis, '#3485FA',
+    );
+    // 점을 빼면 lwc 가 앞뒤를 이어 그려(whitespace 무시) 없던 벽이 그 구간에 걸친
+    // 것처럼 보인다 — 0 이 정직하다.
+    expect(points).toHaveLength(6);
+    expect(points.map((p) => p.value)).toEqual([0, 0, 0, 0, 800, 0]);
+  });
+
+  it('거래일 경계에서 연결선을 끊는다', () => {
+    const points = buildPeakWallBarPoints(
+      [barCandidate(DAY1_OPEN + 1 * MIN, 5_000), barCandidate(DAY2_OPEN + 1 * MIN, 3_000)],
+      candles, axis, '#3485FA',
+    );
+    const day2First = points.find((p) => Number(p.time) === vsecOf(DAY2_OPEN));
+    // 새 날 첫 점은 투명 — 날 사이를 잇는 선분이 값 변화로 읽히면 안 된다.
+    expect(day2First).toMatchObject(LINE_HIDDEN_COLOR);
+    expect(points.map((p) => p.value)).toEqual([0, 5_000, 0, 0, 0, 0, 0, 3_000, 0, 0, 0, 0]);
+  });
+
+  it('축 밖 후보는 버린다', () => {
+    const day1 = candles.slice(0, 6);
+    const points = buildPeakWallBarPoints(
+      [barCandidate(DAY1_OPEN - 10 * MIN, 9_999), barCandidate(DAY1_OPEN + 2 * MIN, 400)],
+      day1, axis, '#3485FA',
+    );
+    // 세션 밖 시각은 `toVirtual` 이 경계로 클램프하므로, 거르지 않으면 09:00 봉이
+    // 그 값을 삼킨다(누적 빌더가 캔들에 대해 같은 가드를 두는 이유).
+    expect(points.map((p) => p.value)).toEqual([0, 0, 400, 0, 0, 0]);
+  });
+
+  it('후보가 없으면 빈 배열 — 계단으로 떨어지지 않는다', () => {
+    expect(buildPeakWallBarPoints([], candles, axis, '#3485FA')).toEqual([]);
   });
 });

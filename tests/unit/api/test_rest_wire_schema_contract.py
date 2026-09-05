@@ -55,6 +55,71 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "WatchlistFolderView": frozenset({"id", "name", "order"}),
+    # 최대벽(ADR-0076/0084/0156) — 프론트 미러는 `frontend/src/api/types.ts` 의
+    # `AskPeak`/`BidPeak` 이고 **두 타입이 같은 필드 집합**이다(백엔드도 동일). 그래서
+    # 한쪽만 늘리는 실수가 이 표에서 곧바로 드러난다.
+    #
+    # ⚠ 이 모델은 **2026-09-05 까지 이 표에 없었다** — `traded_bar_*` 를 추가하며
+    # 등록했다. 그전까지 최대벽 wire 는 1층이 통째로 못 보는 사각지대였고, 실제로
+    # `traded_record_*`·`unreached_*` 두 계열이 가드 없이 들어왔다.
+    "AskPeak": frozenset(
+        {
+            "all_max_peaks",
+            "all_max_price",
+            "all_max_qty",
+            "all_max_t_ms",
+            "all_peaks",
+            "all_price",
+            "all_qty",
+            "all_t_ms",
+            "date",
+            "max_price",
+            "max_qty",
+            "max_t_ms",
+            "price",
+            "qty",
+            "t_ms",
+            "traded_bar_max_peaks",
+            "traded_bar_peaks",
+            "traded_max_peaks",
+            "traded_peaks",
+            "traded_record_max_peaks",
+            "traded_record_peaks",
+            "unreached_peaks",
+            "unreached_price",
+            "unreached_qty",
+            "unreached_t_ms",
+        }
+    ),
+    "BidPeak": frozenset(
+        {
+            "all_max_peaks",
+            "all_max_price",
+            "all_max_qty",
+            "all_max_t_ms",
+            "all_peaks",
+            "all_price",
+            "all_qty",
+            "all_t_ms",
+            "date",
+            "max_price",
+            "max_qty",
+            "max_t_ms",
+            "price",
+            "qty",
+            "t_ms",
+            "traded_bar_max_peaks",
+            "traded_bar_peaks",
+            "traded_max_peaks",
+            "traded_peaks",
+            "traded_record_max_peaks",
+            "traded_record_peaks",
+            "unreached_peaks",
+            "unreached_price",
+            "unreached_qty",
+            "unreached_t_ms",
+        }
+    ),
     "WatchlistEntryView": frozenset(
         {
             "code",

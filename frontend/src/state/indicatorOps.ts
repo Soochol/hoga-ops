@@ -9,6 +9,7 @@ import {
   type LiveMAConfig,
 } from './liveIndicatorsPersistence';
 import type { IndicatorSettings } from './indicatorSettingsV2';
+import type { PeakWallPaneMode } from './liveIndicatorsPersistence';
 
 /**
  * 지표 설정의 도메인 변이 — 순수 함수 모음 (ADR-0119 C2c-2a).
@@ -438,6 +439,18 @@ export const INDICATOR_OPS = {
    * 한 패치에 담는 이유는 `setAskPeakEnabled` 가 `askPeakHidden: false` 를 함께 쓰는
    * 것과 같다 — undo 한 항목, 프리셋 경로에서도 결합 유지.
    */
+  /**
+   * 강도 pane 의 표현 모드 — `step`(누적 계단) ↔ `bar`(봉별 최대 체결 벽).
+   *
+   * **슬롯을 건드리지 않는다.** 모드는 "같은 벽들을 어느 축으로 읽는가" 이지 "무엇을
+   * 넣는가" 가 아니고, 두 축이 pane 하나를 공유하는 것이 `PeakWallPaneMode` 의 전제다.
+   * 모드를 바꿨다고 칸이 열리거나 닫히면 되돌릴 때 원래 조합이 사라진다.
+   *
+   * pane 이 닫혀 있어도 기록한다 — 여는 클릭이 저장된 모드를 그대로 쓴다.
+   */
+  setPeakWallPaneMode: (cur: IndicatorSettings, mode: PeakWallPaneMode): Patch =>
+    (cur.peakWallPaneMode === mode ? null : { peakWallPaneMode: mode }),
+
   setPeakWallPaneSlotEnabled: (
     cur: IndicatorSettings,
     side: 'ask' | 'bid',

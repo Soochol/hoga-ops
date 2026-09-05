@@ -13,6 +13,10 @@ export type RangeRequestOptions = {
   programTradeEnabled?: boolean | null;
   tradeVolumePocEnabled?: boolean | null;
   depthHeatmapEnabled?: boolean | null;
+  /** 봉별 최대 체결 벽 배열(`traded_bar_*`) — **옵트인**. 최대벽 pane 의 봉별
+   *  모드를 켠 창만 true 를 보낸다: 하루당 최대 정규장 분 수 × 2축 × 2방향이라
+   *  페이로드가 자릿수로 커진다(백엔드 `bar_peaks_enabled` 주석). */
+  barPeaksEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -59,10 +63,13 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
-  // venue 는 **맨 끝**이다 — 중간에 넣으면 기존 인덱스가 전부 밀려, 키를 인덱스로
-  // 읽는 소비자(RANGE_QUERY_KEY_*_INDEX)와 계약 테스트가 위치만으로 깨진다.
-  // 키 안의 순서는 캐시 식별에 의미가 없다.
+  // venue 이후는 **덧붙이기 전용**이다 — 중간에 넣으면 기존 인덱스가 전부 밀려, 키를
+  // 인덱스로 읽는 소비자(RANGE_QUERY_KEY_*_INDEX)와 계약 테스트가 위치만으로 깨진다.
+  // 키 안의 순서는 캐시 식별에 의미가 없으므로 새 항목은 이 뒤에 붙인다.
   LiveVenueOption,
+  // barPeaksEnabled — **키에 들어가야 한다**: 옵트인이라 끈 창의 응답은 그 배열이
+  // 비어 있고, 키가 같으면 켠 창이 그 빈 캐시를 그대로 읽어 pane 이 빈다.
+  boolean | null,
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -113,6 +120,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const programTradeEnabled = options.programTradeEnabled ?? null;
   const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
   const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
+  const barPeaksEnabled = options.barPeaksEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -146,7 +154,8 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     programTradeEnabled,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    input.venue,  // 맨 끝(위 타입 주석 참조)
+    input.venue,  // 위 타입 주석 참조 — 이 뒤는 덧붙이기 전용
+    barPeaksEnabled,
   ];
 
   const params = new URLSearchParams();
@@ -162,6 +171,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
   addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
   addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
+  addBoolParam(params, 'bar_peaks_enabled', barPeaksEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);
