@@ -64,6 +64,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     # `traded_record_*`·`unreached_*` 두 계열이 가드 없이 들어왔다.
     "AskPeak": frozenset(
         {
+            "all_bar_max_peaks",
+            "all_bar_peaks",
             "all_max_peaks",
             "all_max_price",
             "all_max_qty",
@@ -93,6 +95,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     ),
     "BidPeak": frozenset(
         {
+            "all_bar_max_peaks",
+            "all_bar_peaks",
             "all_max_peaks",
             "all_max_price",
             "all_max_qty",

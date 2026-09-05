@@ -125,8 +125,10 @@ KIND_VERSIONS: dict[str, int] = {
     #     pane 의 **봉별 모드** 입력. 구 캐시엔 이 필드가 없고 pydantic 이 **빈 리스트로
     #     조용히 채우므로**(`depth` 8 범프와 같은 함정) 범프하지 않으면 그 모드를 켠
     #     사용자에게 pane 이 통째로 비어 보인다 — 에러가 아니라 무증상이다.
-    "ask_peak": 13,
-    "bid_peak": 13,
+    # 14: all_bar_peaks/all_bar_max_peaks(전체 계열의 봉별 최대) 추가 — 13 과 같은
+    #     사유다(구 캐시엔 필드가 없고 pydantic 이 빈 리스트로 조용히 채운다).
+    "ask_peak": 14,
+    "bid_peak": 14,
     "poc": 7,
     # 8: asks_price_max/bids_price_max(가격대마다 따로 잰 최댓값) 추가. 구 캐시엔 그
     #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새

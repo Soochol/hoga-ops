@@ -675,3 +675,65 @@ describe('usePeakWallRender — 봉별 모드 후보', () => {
     expect(render(true, [PEAK], true).current.barCandidates).toEqual([]);
   });
 });
+
+/**
+ * 전체 계열의 봉별 후보 — 체결 계열과 **다른 슬롯**을 게이트로 쓴다.
+ *
+ * **막는 방향**: 두 계열이 같은 게이트를 공유하는 것(그러면 체결 슬롯만 켠 창이 전체
+ * 배열까지 계산·요청한다 — 그 배열이 더 크다는 것이 게이트를 가른 이유다).
+ */
+describe('usePeakWallRender — 전체 계열 봉별 후보', () => {
+  const BOTH: AskPeak = {
+    ...PEAK,
+    traded_bar_peaks: [{ price: 110, qty: 500, t_ms: MIN }],
+    traded_bar_max_peaks: [{ price: 111, qty: 900, t_ms: MIN }],
+    all_bar_peaks: [{ price: 120, qty: 700, t_ms: MIN }],
+    all_bar_max_peaks: [{ price: 121, qty: 1_200, t_ms: MIN }],
+  };
+
+  beforeEach(() => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
+      useLivePageStore.setState({
+        askPeakEnabled: true,
+        askPeakHidden: false,
+        askPeakTradedPaneEnabled: true,
+        askPeakAllWallPaneEnabled: true,
+        peakWallPaneEnabled: true,
+        peakWallPaneMode: 'bar',
+      });
+    });
+  });
+
+  it('전체 슬롯이 켜지면 그 계열 후보를 모은다', () => {
+    const r = render(true, [BOTH], true);
+    expect(r.current.allWallBarCandidates).toEqual([{ price: 120, qty: 700, t_ms: MIN }]);
+  });
+
+  it('두 계열이 각자 자기 슬롯을 본다 — 전체만 끄면 체결은 남는다', () => {
+    act(() => { useLivePageStore.setState({ askPeakAllWallPaneEnabled: false }); });
+    const r = render(true, [BOTH], true);
+    expect(r.current.allWallBarCandidates).toEqual([]);
+    expect(r.current.barCandidates).toEqual([{ price: 110, qty: 500, t_ms: MIN }]);
+  });
+
+  it('체결만 끄면 전체는 남는다', () => {
+    act(() => { useLivePageStore.setState({ askPeakTradedPaneEnabled: false }); });
+    const r = render(true, [BOTH], true);
+    expect(r.current.barCandidates).toEqual([]);
+    expect(r.current.allWallBarCandidates).toEqual([{ price: 120, qty: 700, t_ms: MIN }]);
+  });
+
+  it('step 모드면 둘 다 비어 있다', () => {
+    act(() => { useLivePageStore.setState({ peakWallPaneMode: 'step' }); });
+    const r = render(true, [BOTH], true);
+    expect(r.current.barCandidates).toEqual([]);
+    expect(r.current.allWallBarCandidates).toEqual([]);
+  });
+
+  it('intraMax 가 전체 계열에서도 cont 축을 고른다', () => {
+    act(() => { useChartPrefsStore.setState({ ...DEFAULT_PREFS, askPeakIntraMax: true }); });
+    expect(render(true, [BOTH], true).current.allWallBarCandidates)
+      .toEqual([{ price: 121, qty: 1_200, t_ms: MIN }]);
+  });
+});

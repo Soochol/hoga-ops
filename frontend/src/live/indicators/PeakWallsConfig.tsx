@@ -726,10 +726,11 @@ function PaneModeRow() {
       <p className="py-1.5 text-2xs leading-relaxed text-fg-dim">
         {mode === 'bar' ? (
           <>
-            매 봉에서 <b className="font-semibold text-fg">가장 크게 체결된 벽</b> 의 잔량을
-            그립니다. 체결된 벽이 없는 봉은 0 입니다.{' '}
-            <b className="font-semibold text-fg">체결 계열에만</b> 적용되고(전체·미도달은
-            누적 그대로), 이 모드는{' '}
+            매 봉에서 <b className="font-semibold text-fg">가장 큰 벽</b> 의 잔량을
+            그립니다 — 체결 계열은 그 봉에서 체결된 것 중, 전체 계열은 체결 여부를 묻지
+            않고. 해당하는 벽이 없는 봉은 0 입니다.{' '}
+            <b className="font-semibold text-fg">미도달은 누적 그대로</b>이고(판정이 하루
+            단위라 봉별로 그리면 과거 봉의 값이 장중에 바뀝니다), 이 모드는{' '}
             <b className="font-semibold text-fg">이동평균선 필터를 거치지 않습니다</b>.
           </>
         ) : (

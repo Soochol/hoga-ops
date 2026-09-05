@@ -29,6 +29,7 @@ def _build_range_bundle_stub(
     trade_volume_poc_enabled=True,
     depth_heatmap_enabled=True,
     bar_peaks_enabled=False,
+    all_bar_peaks_enabled=False,
     mode="sidecar",
 ):
     """Return a minimal valid RangeBundle for happy-path tests."""
@@ -400,6 +401,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         trade_volume_poc_enabled=True,
         depth_heatmap_enabled=True,
         bar_peaks_enabled=False,
+        all_bar_peaks_enabled=False,
             mode="sidecar",
     ):
         captured.append(source_pref)
@@ -459,6 +461,7 @@ def test_api_range_source_pref_defaults_to_empty(app_client: TestClient) -> None
         trade_volume_poc_enabled=True,
         depth_heatmap_enabled=True,
         bar_peaks_enabled=False,
+        all_bar_peaks_enabled=False,
             mode="sidecar",
     ):
         captured.append(source_pref)

@@ -779,6 +779,8 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
         traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         traded_bar_peaks=[_ask_candidate(date, c) for c in row.traded_bar_peaks],
         traded_bar_max_peaks=[_ask_candidate(date, c) for c in row.traded_bar_max_peaks],
+        all_bar_peaks=[_ask_candidate(date, c) for c in row.all_bar_peaks],
+        all_bar_max_peaks=[_ask_candidate(date, c) for c in row.all_bar_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -803,6 +805,8 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         traded_record_max_peaks=[_ask_candidate(date, c) for c in row.traded_record_max_peaks],
         traded_bar_peaks=[_ask_candidate(date, c) for c in row.traded_bar_peaks],
         traded_bar_max_peaks=[_ask_candidate(date, c) for c in row.traded_bar_max_peaks],
+        all_bar_peaks=[_ask_candidate(date, c) for c in row.all_bar_peaks],
+        all_bar_max_peaks=[_ask_candidate(date, c) for c in row.all_bar_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
         all_max_peaks=[_ask_candidate(date, c) for c in row.all_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
@@ -944,7 +948,9 @@ def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
     return peak
 
 
-def _peak_for_range_payload(peak: _PeakT, *, bar_peaks: bool) -> _PeakT:
+def _peak_for_range_payload(
+    peak: _PeakT, *, bar_peaks: bool, all_bar_peaks: bool,
+) -> _PeakT:
     """`/api/range` sidecar 로 나갈 peak — 옵트인 배열을 벗긴다.
 
     `traded_bar_*`(봉별 최대)는 하루당 최대 정규장 분 수만큼이라, 두 축 × 두 방향이면
@@ -956,9 +962,16 @@ def _peak_for_range_payload(peak: _PeakT, *, bar_peaks: bool) -> _PeakT:
     달라지면 같은 (종목, 날짜, 봉) 항목이 켠 창·끈 창에 따라 갈린다.
     """
     peak = _without_all_peak_rankings(peak)
-    if bar_peaks:
-        return peak
-    return peak.model_copy(update={"traded_bar_peaks": [], "traded_bar_max_peaks": []})
+    stripped: dict[str, list[Any]] = {}
+    if not bar_peaks:
+        stripped["traded_bar_peaks"] = []
+        stripped["traded_bar_max_peaks"] = []
+    if not all_bar_peaks:
+        # 전체 계열은 **호가가 있던 모든 봉**에 값이 있어 체결 계열보다 크다 — 두
+        # 게이트를 하나로 묶으면 체결 슬롯만 켠 창이 이 배열까지 받는다.
+        stripped["all_bar_peaks"] = []
+        stripped["all_bar_max_peaks"] = []
+    return peak.model_copy(update=stripped) if stripped else peak
 
 
 def _peak_with_rep_outputs(
@@ -984,7 +997,7 @@ def _peak_with_rep_outputs(
     (`store_peak_rep`) — 원리적으로 못 덮는다. 그래서 1분 값이 정본이다.
     `traded_record_peaks`(기록 갱신 시퀀스)도 rep 프레임 산물이라 봉 의존이지만, 1분
     시퀀스가 더 촘촘해 "그 시점까지의 최대" 로서 더 옳으므로 역시 1분이 정본이다.
-    `traded_bar_*`(봉별 최대)는 **의도적으로** 1분 정본이다 — 소비처가 캔들 봉에
+    `traded_bar_*`·`all_bar_*`(봉별 최대)는 **의도적으로** 1분 정본이다 — 소비처가 캔들 봉에
     접어서 쓰고(max 는 결합적이라 1분 → N분 파생이 정확하다), 여기서 미리 접으면
     같은 배열을 봉마다 다시 만들면서 정보만 잃는다.
 
@@ -2076,6 +2089,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     trade_volume_poc_enabled: bool = True,
     depth_heatmap_enabled: bool = True,
     bar_peaks_enabled: bool = False,
+    all_bar_peaks_enabled: bool = False,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -2464,9 +2478,13 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if profile is not None:
                 volume_distributions.append(profile)
         if ap_d is not None:
-            ask_peaks.append(_peak_for_range_payload(ap_d, bar_peaks=bar_peaks_enabled))
+            ask_peaks.append(_peak_for_range_payload(
+                ap_d, bar_peaks=bar_peaks_enabled, all_bar_peaks=all_bar_peaks_enabled,
+            ))
         if bp_d is not None:
-            bid_peaks.append(_peak_for_range_payload(bp_d, bar_peaks=bar_peaks_enabled))
+            bid_peaks.append(_peak_for_range_payload(
+                bp_d, bar_peaks=bar_peaks_enabled, all_bar_peaks=all_bar_peaks_enabled,
+            ))
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
         gil_breathe_at = _gil_breathe(gil_breathe_at)

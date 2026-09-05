@@ -1,12 +1,13 @@
-// 최대벽 강도 pane 의 **체결 계열 점 선택** — 표현 모드 분기(순수).
+// 최대벽 강도 pane 의 **모드별 점 선택** — 표현 모드 분기(순수).
 //
 // `LiveChartRoot` 안의 인라인 분기였는데 **테스트가 원리적으로 닿지 않았다**: 그 분기를
 // 통째로 지워도 프론트 전 스위트가 초록이었다(실측 2026-09-05, red-check). pane 이
 // 답하는 질문을 바꾸는 자리라 가드가 없으면 안 되므로 순수 함수로 뺀다.
 //
-// 다른 두 계열(전체·미도달)은 여기 오지 않는다 — 모드와 무관하게 늘 계단이다. 사유는
-// `PeakWallPaneMode` 주석(전체는 "가장 크게 **체결된**" 이 성립하지 않고, 미도달은
-// 하루 스코프 소급 재분류라 과거 봉의 값이 장중에 나타났다 사라진다).
+// **체결·전체 두 계열이 여기를 지난다.** 미도달만 오지 않는다 — 그 계열은 판정이 하루
+// 스코프라 소급 재분류되어, 봉별로 그리면 과거 봉의 값이 장중에 나타났다 사라진다.
+// (전체 계열은 2026-09-05 에 뒤늦게 합류했다: 처음엔 "가장 크게 **체결된**" 이라는 문구
+// 때문에 제외했는데, 사용자가 같은 날 확장을 요청했다 — ADR-0171 amendment.)
 
 import type { AskPeakCandidate, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -24,13 +25,13 @@ import type { PeakWallPaneMode } from '../state/liveIndicatorsPersistence';
 export const EMPTY_PEAK_WALL_STEPS: readonly PeakWallStepPoint[] = [];
 
 /**
- * 체결 계열의 pane 점 — 모드에 따라 누적 계단 또는 봉별.
+ * 한 계열의 pane 점 — 모드에 따라 누적 계단 또는 봉별.
  *
  * ⚠ `bar` 모드에서 후보가 없으면 **계단으로 떨어지지 않는다**. 폴백하면 모드를
  * 바꿨는데 같은 그림이 나와 "안 먹었다" 로 읽히고, 실제로 그 상태는 "이 창은 봉별
  * 데이터를 안 받았다"(옵트인 미요청·구백엔드·과거 캐시)라 빈 pane 이 정직하다.
  */
-export function buildTradedPanePoints(args: {
+export function buildBarModePanePoints(args: {
   mode: PeakWallPaneMode;
   /** pane 마스터 — 꺼져 있으면 어느 모드든 계산하지 않는다. */
   paneEnabled: boolean;

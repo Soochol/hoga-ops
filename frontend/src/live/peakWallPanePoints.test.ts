@@ -3,7 +3,7 @@ import type { Time } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { AskPeakCandidate, Candle } from '../api/types';
 import type { PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
-import { buildTradedPanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
+import { buildBarModePanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
 
 const MIN = 60_000;
 const OPEN = Date.UTC(2026, 7, 20, 0, 0); // KST 09:00
@@ -43,12 +43,12 @@ const base = {
  * **못 보는 것**: 점 값 자체(`peakWallSteps.test.ts`) · 어느 계열이 이 함수에 오는가
  * (`LiveChartRoot` 의 배선 — 전체·미도달은 오지 않는다).
  */
-describe('buildTradedPanePoints', () => {
+describe('buildBarModePanePoints', () => {
   const barCandidates = [cand(OPEN + 1 * MIN, 5_000)];
   const stepSegments = [seg(OPEN + 1 * MIN, 5_000)];
 
   it('step 모드는 세그먼트로 누적 계단을 만든다', () => {
-    const points = buildTradedPanePoints({
+    const points = buildBarModePanePoints({
       ...base, mode: 'step', barCandidates, stepSegments,
     });
     // 첫 벽 이전 봉엔 점이 없다(누적 빌더 규약) — 봉별과 개수부터 다르다.
@@ -56,7 +56,7 @@ describe('buildTradedPanePoints', () => {
   });
 
   it('bar 모드는 후보로 봉별 점을 만든다 — 빈 봉이 0 으로 남는다', () => {
-    const points = buildTradedPanePoints({
+    const points = buildBarModePanePoints({
       ...base, mode: 'bar', barCandidates, stepSegments,
     });
     expect(points.map((p) => p.value)).toEqual([0, 5_000, 0]);
@@ -65,14 +65,14 @@ describe('buildTradedPanePoints', () => {
   it('bar 모드에서 후보가 없으면 **계단으로 떨어지지 않는다**', () => {
     // 세그먼트는 있다 — 폴백이 있으면 여기서 계단이 나온다. 모드를 바꿨는데 같은
     // 그림이 나오면 "안 먹었다" 로 읽히므로 빈 pane 이 정직하다.
-    const points = buildTradedPanePoints({
+    const points = buildBarModePanePoints({
       ...base, mode: 'bar', barCandidates: [], stepSegments,
     });
     expect(points).toBe(EMPTY_PEAK_WALL_STEPS);
   });
 
   it('step 모드에서 세그먼트가 없으면 봉별 후보를 쓰지 않는다', () => {
-    const points = buildTradedPanePoints({
+    const points = buildBarModePanePoints({
       ...base, mode: 'step', barCandidates, stepSegments: [],
     });
     expect(points).toBe(EMPTY_PEAK_WALL_STEPS);
@@ -80,15 +80,15 @@ describe('buildTradedPanePoints', () => {
 
   it('pane 이 꺼져 있으면 어느 모드든 계산하지 않는다', () => {
     for (const mode of ['step', 'bar'] as const) {
-      expect(buildTradedPanePoints({
+      expect(buildBarModePanePoints({
         ...base, paneEnabled: false, mode, barCandidates, stepSegments,
       })).toBe(EMPTY_PEAK_WALL_STEPS);
     }
   });
 
   it('빈 결과는 **공유 참조**다 — 발행 훅의 멱등 조건이 여기 기댄다', () => {
-    const a = buildTradedPanePoints({ ...base, mode: 'bar', barCandidates: [], stepSegments: [] });
-    const b = buildTradedPanePoints({ ...base, mode: 'step', barCandidates: [], stepSegments: [] });
+    const a = buildBarModePanePoints({ ...base, mode: 'bar', barCandidates: [], stepSegments: [] });
+    const b = buildBarModePanePoints({ ...base, mode: 'step', barCandidates: [], stepSegments: [] });
     expect(a).toBe(b);
   });
 });

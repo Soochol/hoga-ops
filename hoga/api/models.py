@@ -233,6 +233,10 @@ class AskPeak(BaseModel):
     # (`_peak_slices_from_1m_cache`) 이 규약이 캐시 유무와 무관하게 성립한다.
     traded_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 전체 계열(터치 무관)의 봉별 최대 — 같은 규약이되 **호가가 있던 모든 봉**에 값이
+    # 있어 체결 계열보다 크다. 그래서 게이트가 따로다(`all_bar_peaks_enabled`).
+    all_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    all_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 고가 위) — cont 단일 계열 rank-1 스칼라 + top-3. top-3 은 최대
@@ -280,6 +284,10 @@ class BidPeak(BaseModel):
     # (`_peak_slices_from_1m_cache`) 이 규약이 캐시 유무와 무관하게 성립한다.
     traded_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 전체 계열(터치 무관)의 봉별 최대 — 같은 규약이되 **호가가 있던 모든 봉**에 값이
+    # 있어 체결 계열보다 크다. 그래서 게이트가 따로다(`all_bar_peaks_enabled`).
+    all_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    all_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 저가 아래) — AskPeak 의 같은 필드 주석 참조(대칭 미러).

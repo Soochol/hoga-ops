@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { INDICATOR_OPS, peakWallPaneHasContent } from './indicatorOps';
+import { INDICATOR_OPS, peakWallPaneHasContent, peakWallBarFamilyActive } from './indicatorOps';
 import { FACTORY_INDICATOR_SETTINGS } from './indicatorSettingsV2';
 
 /**
@@ -188,5 +188,56 @@ describe('표현 모드는 슬롯을 건드리지 않는다', () => {
     expect(back.askPeakUnreachedPaneEnabled).toBe(true);
     expect(back.askPeakTradedPaneEnabled).toBe(false);
     expect(back.peakWallPaneMode).toBe('step');
+  });
+});
+
+/**
+ * 봉별 배열의 **계열별 옵트인** — `peakWallBarFamilyActive`.
+ *
+ * 두 계열의 wire 배열은 크기가 크게 다르다(체결은 터치가 있었던 봉만, 전체는 호가가
+ * 있던 모든 봉). 게이트를 하나로 묶으면 체결 슬롯만 켠 창이 전체 배열까지 받는다.
+ *
+ * **막는 방향**: 두 계열이 같은 게이트를 공유하는 것 · `step` 모드에서 요청하는 것.
+ * **못 보는 것**: 그 값이 실제 요청 URL 에 실리는가(`range.test.tsx` 가 잰다).
+ */
+describe('peakWallBarFamilyActive', () => {
+  const barMode = {
+    ...FACTORY_INDICATOR_SETTINGS,
+    peakWallPaneEnabled: true,
+    peakWallPaneMode: 'bar' as const,
+    askPeakEnabled: true,
+    askPeakTradedPaneEnabled: true,
+    askPeakAllWallPaneEnabled: false,
+  };
+
+  it('켠 계열만 참이다', () => {
+    expect(peakWallBarFamilyActive(barMode, 'Traded')).toBe(true);
+    expect(peakWallBarFamilyActive(barMode, 'AllWall')).toBe(false);
+  });
+
+  it('전체 슬롯을 켜면 그쪽도 참이 된다', () => {
+    const both = { ...barMode, askPeakAllWallPaneEnabled: true };
+    expect(peakWallBarFamilyActive(both, 'Traded')).toBe(true);
+    expect(peakWallBarFamilyActive(both, 'AllWall')).toBe(true);
+  });
+
+  it('step 모드면 어느 계열도 요청하지 않는다', () => {
+    const step = { ...barMode, peakWallPaneMode: 'step' as const };
+    expect(peakWallBarFamilyActive(step, 'Traded')).toBe(false);
+    expect(peakWallBarFamilyActive(step, 'AllWall')).toBe(false);
+  });
+
+  it('방향이 꺼져 있으면 그 방향의 슬롯은 세지 않는다', () => {
+    const askOff = { ...barMode, askPeakEnabled: false };
+    expect(peakWallBarFamilyActive(askOff, 'Traded')).toBe(false);
+    // 반대 방향이 켜져 있으면 그쪽으로 참이 된다 — pane 은 방향 공용이다.
+    expect(peakWallBarFamilyActive(
+      { ...askOff, bidPeakEnabled: true, bidPeakTradedPaneEnabled: true }, 'Traded',
+    )).toBe(true);
+  });
+
+  it('pane 마스터가 꺼지면 거짓이다', () => {
+    expect(peakWallBarFamilyActive({ ...barMode, peakWallPaneEnabled: false }, 'Traded'))
+      .toBe(false);
   });
 });

@@ -75,3 +75,34 @@ describe('buildPeakBarSeries', () => {
     expect(series.close).toEqual([c(102, 300, 2)]);
   });
 });
+
+describe('buildPeakBarSeries — 계열 선택', () => {
+  const seed = {
+    traded_bar_peaks: [c(100, 50, 1)],
+    traded_bar_max_peaks: [c(100, 60, 1)],
+    all_bar_peaks: [c(200, 700, 1)],
+    all_bar_max_peaks: [c(200, 800, 1)],
+  };
+  const live = {
+    traded_bar_peaks: [c(101, 90, 2)],
+    all_bar_peaks: [c(201, 900, 2)],
+  };
+
+  it("family='all' 은 전체 계열 필드를 읽는다", () => {
+    const series = buildPeakBarSeries(seed, live, 'all');
+    expect(series.close).toEqual([c(200, 700, 1), c(201, 900, 2)]);
+    expect(series.max).toEqual([c(200, 800, 1), c(201, 900, 2)]);
+  });
+
+  it('기본값은 체결 계열이다 — 두 계열이 섞이지 않는다', () => {
+    const series = buildPeakBarSeries(seed, live);
+    expect(series.close).toEqual([c(100, 50, 1), c(101, 90, 2)]);
+    // 전체 계열 값(700·900)이 새어 들어오면 안 된다.
+    expect(series.close.some((x) => x.qty >= 700)).toBe(false);
+  });
+
+  it('한 계열만 있는 payload 에서 다른 계열은 빈다', () => {
+    expect(buildPeakBarSeries({ traded_bar_peaks: [c(100, 50, 1)] }, null, 'all').close)
+      .toEqual([]);
+  });
+});

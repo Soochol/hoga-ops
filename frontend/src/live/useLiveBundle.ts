@@ -17,7 +17,7 @@ import {
   fetchBucketMsFor,
 } from '../state/livePage';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
-import { peakWallPaneHasContent } from '../state/indicatorOps';
+import { peakWallBarFamilyActive } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
   classifyRestWarning,
@@ -509,6 +509,7 @@ export type LiveRangeRequestPlan = {
     tradeVolumePocEnabled: boolean;
     depthHeatmapEnabled: boolean;
     barPeaksEnabled: boolean;
+    allBarPeaksEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -526,6 +527,8 @@ export function planLiveRangeRequest(args: {
   depthHeatmapEnabled: boolean;
   /** 최대벽 pane 이 **봉별 모드**인가 — 그때만 `traded_bar_*` 를 요청한다(옵트인). */
   peakWallBarMode: boolean;
+  /** 전체 계열도 봉별인가 — **따로** 게이트한다(그 배열이 더 크다). */
+  peakWallAllBarMode: boolean;
   brokerLateEntryEnabled: boolean;
   programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
@@ -591,6 +594,7 @@ export function planLiveRangeRequest(args: {
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
       barPeaksEnabled: enableMinute && args.peakWallBarMode,
+      allBarPeaksEnabled: enableMinute && args.peakWallAllBarMode,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -629,9 +633,8 @@ export function useLiveBundle(
   // 최대벽 봉별 배열은 **옵트인**이라 실제로 그릴 창만 요청한다 — 모드가 `bar` 인
   // 것만으로는 부족하다(pane 이 닫혀 있으면 그릴 대상이 없는데 페이로드만 커진다).
   // `depthHeatmapEnabled` 가 소비처 게이트와 요청을 같은 조건으로 묶는 것과 같은 축.
-  const peakWallBarMode = useWindowIndicator(
-    (s) => s.peakWallPaneMode === 'bar' && peakWallPaneHasContent(s),
-  );
+  const peakWallBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'Traded'));
+  const peakWallAllBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'AllWall'));
   // 인스턴스가 하나라도 켜져 있으면 조회한다 — 임계는 클라이언트 필터라 요청은
   // 인스턴스 수와 무관하게 **하나**다(#1595).
   const brokerLateEntryEnabled = brokerLateEntries.some((e) => e.enabled);
@@ -960,6 +963,7 @@ export function useLiveBundle(
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
     peakWallBarMode,
+    peakWallAllBarMode,
     brokerLateEntryEnabled,
     programTradeEnabled: effProgramTradeEnabled,
     volumeDistributionEnabled: effVolumeDistributionEnabled,
@@ -1078,6 +1082,7 @@ export function useLiveBundle(
       tradeVolumePocEnabled: false,
       depthHeatmapEnabled: false,
       barPeaksEnabled: false,
+      allBarPeaksEnabled: false,
       brokerLateEntryStartHHMM: null,
       volumeDistributionBins: null,
       tradeVolumePocBins: null,

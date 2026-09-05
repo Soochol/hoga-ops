@@ -39,6 +39,8 @@ export type PeakWallInput = PeakBase & {
    *  것은 `usePeakWallRender` 가 같은 `peaks` 배열에서 꺼내 쓰기 때문이다. */
   traded_bar_peaks?: AskPeakCandidate[];
   traded_bar_max_peaks?: AskPeakCandidate[];
+  all_bar_peaks?: AskPeakCandidate[];
+  all_bar_max_peaks?: AskPeakCandidate[];
 };
 
 function allCandidate(

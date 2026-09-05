@@ -19,7 +19,14 @@
 // 어떤 분의 최대 벽은 그날 top-3 에 못 드는 것이 오히려 보통이다. top-3 을 아무리
 // 모아도 지나간 분의 값을 복원할 수 없으므로 누적기를 두지 않는다.
 //
-// 결과로 남는 한계: 이 계열의 최근 구간은 **`/api/range` 폴링(5분) + 프로모션(5분)
+// ## 두 계열이 같은 조립을 쓴다
+//
+// 체결(터치된 벽)과 전체(터치 무관)는 **읽는 필드만** 다르고 접기·병합 규칙이 같다.
+// 그래서 `family` 인자 하나로 가른다 — 복제하면 한쪽만 고치는 수정이 가능해진다.
+// ⚠ 크기는 다르다: 전체 계열은 **호가가 있던 모든 분**에 값이 있어 옵트인 파라미터가
+// 따로다(`all_bar_peaks_enabled`).
+//
+// 결과로 남는 한계: 두 계열의 최근 구간은 **`/api/range` 폴링(5분) + 프로모션(5분)
 // 만큼 늦게** 채워진다(라이브 스냅샷은 마운트 1회라 그 뒤를 못 본다). 봉별 모드가
 // 답하는 질문이 "어느 봉에 큰 벽이 체결됐나" 라 과거 구간을 읽는 용도이고, 최근
 // 10분이 늦게 차는 것은 그 용도에서 감당 가능하다고 판단했다(2026-09-05).
@@ -39,15 +46,22 @@ export type PeakBarSeries = {
 /** 비었을 때의 **공유** 인스턴스 — 매번 새 객체를 만들면 소비처 memo 가 흔들린다. */
 export const EMPTY_PEAK_BAR_SERIES: PeakBarSeries = { close: [], max: [] };
 
+/** 어느 계열의 분별 최대인가 — 체결(터치된 벽) / 전체(터치 무관). 두 계열이 같은
+ *  조립·같은 접기를 쓰고 **읽는 필드만** 다르다. */
+export type PeakBarFamily = 'traded' | 'all';
+
 /** `/api/range` seed 가 나르는 두 축. 과거일과 같은 계산이라 rep/cont 가 따로 있다. */
 type BarSeed = {
   traded_bar_peaks?: AskPeakCandidate[];
   traded_bar_max_peaks?: AskPeakCandidate[];
+  all_bar_peaks?: AskPeakCandidate[];
+  all_bar_max_peaks?: AskPeakCandidate[];
 };
 
 /** 라이브 스냅샷이 나르는 한 축(축 구분 없음 — `liveSeries.ts` 필드 주석). */
 type BarLive = {
   traded_bar_peaks?: AskPeakCandidate[];
+  all_bar_peaks?: AskPeakCandidate[];
 };
 
 const ONE_MINUTE_MS = 60_000;
@@ -81,10 +95,14 @@ function mergeBarCandidates(
 export function buildPeakBarSeries(
   seed: BarSeed | null,
   live: BarLive | null,
+  family: PeakBarFamily = 'traded',
 ): PeakBarSeries {
-  const liveBars = live?.traded_bar_peaks;
+  const isAll = family === 'all';
+  const liveBars = isAll ? live?.all_bar_peaks : live?.traded_bar_peaks;
+  const seedClose = isAll ? seed?.all_bar_peaks : seed?.traded_bar_peaks;
+  const seedMax = isAll ? seed?.all_bar_max_peaks : seed?.traded_bar_max_peaks;
   return {
-    close: mergeBarCandidates(seed?.traded_bar_peaks, liveBars),
-    max: mergeBarCandidates(seed?.traded_bar_max_peaks, liveBars),
+    close: mergeBarCandidates(seedClose, liveBars),
+    max: mergeBarCandidates(seedMax, liveBars),
   };
 }

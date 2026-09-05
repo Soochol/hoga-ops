@@ -39,6 +39,7 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_peaks": [],
         "traded_record_peaks": [],
         "traded_bar_peaks": [],
+        "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -61,6 +62,7 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "traded_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -505,6 +507,53 @@ def test_merge_from_absorbs_bar_max_idempotently():
 
     live.merge_from(replay)   # 멱등 — 분당 max 는 고정점이다
     assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_bar_peaks"]] == first
+
+
+def test_merge_from_absorbs_all_bar_max_idempotently():
+    """전체 계열의 분별 최대도 따로 흡수된다 — `all_top` 은 top-3 라 나머지 분이 없다.
+
+    체결 계열과 **같은 함정**이고(직전 PR 에서 그 판을 고쳤다), 판정도 같은 이유로
+    **감소 시퀀스**다: 증가면 `all_top` 이 큰 것부터 채워져 우연히 통과할 여지가 생긴다.
+
+    ⚠ 이 계열은 체결이 **한 건도 없어도** 값이 있다 — 호가만 있으면 된다. 그래서
+    픽스처가 `ingest_trade` 를 부르지 않는다.
+    """
+    replay = TodayAskPeakState()
+    for i, qty in enumerate([500, 400, 300, 200, 100]):
+        replay.ingest_orderbook(
+            t_ms=at(10 + i, 1_000), asks=[{"price": 10_000 + i * 10, "qty": qty}],
+        )
+
+    live = TodayAskPeakState()
+    live.ingest_orderbook(t_ms=at(30, 1_000), asks=[{"price": 10_500, "qty": 600}])
+
+    live.merge_from(replay)
+    first = [(p["t_ms"], p["qty"]) for p in live.snapshot()["all_bar_peaks"]]
+    assert first == [
+        *((at(10 + i, 1_000), 500 - 100 * i) for i in range(5)),
+        (at(30, 1_000), 600),
+    ]
+    # 체결이 0건이므로 체결 계열은 비어 있다 — 두 계열이 서로 다른 것을 센다는 확인.
+    assert live.snapshot()["traded_bar_peaks"] == []
+
+    live.merge_from(replay)   # 멱등
+    assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["all_bar_peaks"]] == first
+
+
+def test_all_bar_max_counts_untouched_walls_too():
+    """전체 계열은 터치를 묻지 않는다 — 같은 분에서 체결 계열과 값이 갈릴 수 있다."""
+    state = TodayAskPeakState()
+    # 큰 벽은 위(10_500), 체결은 아래(10_100)까지만 — 큰 벽은 미터치다.
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[
+        {"price": 10_100, "qty": 200},
+        {"price": 10_500, "qty": 900},
+    ])
+    state.ingest_trade(price=10_100, side=1, t_ms=at(10, 2_000))
+
+    snap = state.snapshot()
+    assert [(p["price"], p["qty"]) for p in snap["all_bar_peaks"]] == [(10_500, 900)]
+    # 체결 계열은 터치된 것(10_100)만 본다.
+    assert [(p["price"], p["qty"]) for p in snap["traded_bar_peaks"]] == [(10_100, 200)]
 
 
 def test_bar_max_keeps_the_larger_wall_of_the_same_minute():
