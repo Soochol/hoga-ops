@@ -536,13 +536,16 @@ def _roll_mean(x: np.ndarray, length: int) -> np.ndarray:
     return (cs[length:] - cs[:-length]) / length
 
 
-def _win_sd(c: Corpus, i: int, length: int, periods: tuple[int, ...] = ()) -> np.ndarray:
+def _win_sd(
+    c: Corpus, i: int, length: int, periods: tuple[int, ...] = (), *, offset: int = 0,
+) -> np.ndarray:
     """창의 **모든 채널** 값 전체에 대한 표준편차. cumsum 차분이라 O(N).
 
     이평 채널의 워밍업 구간은 0 으로 채워져 있어 여기 섞이지만, 그 자리에서 시작하는
     창은 호출부가 `-inf` 로 지우므로 결과에 닿지 않는다.
     """
     s, e = c.starts[i], c.ends[i]
+    s += offset
     n = int(e - s) - length + 1
     chans = _channels(c, periods)
     total = np.zeros(n)
@@ -566,13 +569,16 @@ def _volume_query(c: Corpus, i: int, offset: int, length: int) -> np.ndarray | N
     return (w - w.mean()) / sd if sd > _FLAT_SD else None
 
 
-def _volume_corr(c: Corpus, i: int, qv: np.ndarray, length: int) -> np.ndarray:
+def _volume_corr(
+    c: Corpus, i: int, qv: np.ndarray, length: int, *, offset: int = 0,
+) -> np.ndarray:
     """슬라이딩 거래량 상관. 가격과 **별도 정규화**다 — 단위가 달라 한 스케일로 못 누른다.
 
     평탄한 창(정지 후 재개 등)은 0 으로 둔다. 그러면 그 창의 총점이 가격 상관 × (1-w)
     만 남아 **자연 강등**된다 — 거래량 축이 없는 자리를 만점으로 쳐 주지 않는다.
     """
     s, e = int(c.starts[i]), int(c.ends[i])
+    s += offset
     x = c.logv[s:e]
     c1 = np.concatenate([[0.0], np.cumsum(x)])
     c2 = np.concatenate([[0.0], np.cumsum(x * x)])
@@ -663,7 +669,9 @@ def _gate_series(
     corr[~struct.passes(m)] = -np.inf
 
 
-def _top_in_series(corr: np.ndarray, series: int, length: int, per_code: int) -> list[PatternMatch]:
+def _top_in_series(
+    corr: np.ndarray, series: int, length: int, per_code: int, *, offset: int = 0,
+) -> list[PatternMatch]:
     """한 종목에서 남길 매치들.
 
     두 번째부터 **겹침 배제**(창 길이의 절반)를 건다 — 안 걸면 한 칸씩 밀린 같은 자리가
@@ -671,7 +679,7 @@ def _top_in_series(corr: np.ndarray, series: int, length: int, per_code: int) ->
     """
     if per_code <= 1:
         best = int(np.argmax(corr))
-        return [PatternMatch(float(corr[best]), series, best)] if np.isfinite(corr[best]) else []
+        return [PatternMatch(float(corr[best]), series, best + offset)] if np.isfinite(corr[best]) else []
     # 복사는 per_code>1 에서만 — 창 수가 수천이라 기본 경로에 얹지 않는다.
     remaining = corr.copy()
     zone = max(1, length // 2)
@@ -680,9 +688,21 @@ def _top_in_series(corr: np.ndarray, series: int, length: int, per_code: int) ->
         best = int(np.argmax(remaining))
         if not np.isfinite(remaining[best]):
             break
-        out.append(PatternMatch(float(remaining[best]), series, best))
+        out.append(PatternMatch(float(remaining[best]), series, best + offset))
         remaining[max(0, best - zone) : best + zone + 1] = -np.inf
     return out
+
+
+def _history_start(c: Corpus, i: int, since: np.datetime64 | None) -> int:
+    """기간 밖 시작점을 계산 전에 제거한다. 주·월봉은 버킷 마지막 거래일 기준.
+
+    MA는 전체 코퍼스에서 이미 계산되어 있으므로 앞부분을 다시 읽을 필요가 없다.
+    반환값은 전역 위치이고, 매치/워밍업은 호출자가 원래 계열 offset으로 해석한다.
+    """
+    start, end = int(c.starts[i]), int(c.ends[i])
+    if since is None:
+        return start
+    return start + int(np.searchsorted(c.last_days[start:end], since, side="left"))
 
 
 def search_history(
@@ -721,10 +741,11 @@ def search_history(
     for i in range(len(c.codes)):
         if not _eligible(c, i, exclude_etf=exclude_etf):
             continue
-        s, e = int(c.starts[i]), int(c.ends[i])
+        s, e = _history_start(c, i, since), int(c.ends[i])
+        offset = s - int(c.starts[i])
         if (e - s) < length + min_after:
             continue
-        sd = _win_sd(c, i, length, ma_periods)
+        sd = _win_sd(c, i, length, ma_periods, offset=offset)
         chans = _channels(c, ma_periods)
         with np.errstate(divide="ignore", invalid="ignore"):
             # 커널: 채널별 correlate 합. `sliding_window_view @ q` 는 스트라이드 뷰를
@@ -734,7 +755,9 @@ def search_history(
                 cross += np.correlate(ch[s:e], query[k], mode="valid")
             corr = cross / (len(chans) * length * sd)
         if volume_query is not None and volume_weight > 0:
-            corr = corr * (1 - volume_weight) + _volume_corr(c, i, volume_query, length) * volume_weight
+            corr = corr * (1 - volume_weight) + _volume_corr(
+                c, i, volume_query, length, offset=offset,
+            ) * volume_weight
         # ★ `corr > 1` 은 **수치가 무너졌다는 신호**다(상관계수는 1 을 넘을 수 없다).
         #   `_FLAT_SD` 가 그 원인을 대부분 막지만, 그 상수는 오늘 코퍼스에서 잰 오차
         #   상한에 기대므로 계열이 길어지면 다시 부족해질 수 있다. 이 줄은 임계값을
@@ -743,7 +766,7 @@ def search_history(
         if ma_periods:
             # 이평이 아직 없는 앞 구간. 0 으로 채워 둔 자리라 지우지 않으면 «이평이 바닥에
             # 붙은 모양» 이 매치로 올라온다.
-            corr[: _ma_warmup(ma_periods)] = -np.inf
+            corr[: max(0, _ma_warmup(ma_periods) - offset)] = -np.inf
         if min_tv_eok > 0:
             # rolling *mean* 이라 O(N). rolling min 이면 3배 느려진다(실측).
             corr[_roll_mean(c.tv[s:e], length) < min_tv_eok * _WON_PER_EOK] = -np.inf
@@ -762,8 +785,9 @@ def search_history(
             d = c.dates[s:e]
             corr[(d[: len(corr)] <= q_to) & (d[length - 1 :] >= q_from)] = -np.inf
         if i == query_series:                            # 쿼리 자신과 겹치는 창
-            lo = max(0, query_offset - length + 1)
-            corr[lo : min(len(corr), query_offset + length)] = -np.inf
+            lo = max(0, query_offset - length + 1 - offset)
+            hi = max(0, min(len(corr), query_offset + length - offset))
+            corr[lo:hi] = -np.inf
         finite = np.isfinite(corr)
         if finite.any():
             idx = np.flatnonzero(finite)
@@ -771,7 +795,7 @@ def search_history(
             close = c.ch[_CLOSE, s:e]
             all_fwd.append(np.exp(close[idx + length - 1 + min_after] - close[idx + length - 1]) - 1)
         _gate_series(struct, corr, s, finite)
-        matches.extend(_top_in_series(corr, i, length, per_code))
+        matches.extend(_top_in_series(corr, i, length, per_code, offset=offset))
     matches.sort(key=lambda m: m.score, reverse=True)
     scores = np.concatenate(all_scores) if all_scores else np.zeros(0)
     fwd = np.concatenate(all_fwd) if all_fwd else np.zeros(0)
@@ -1050,7 +1074,19 @@ def _struct_gate(
         starts = np.maximum(c.ends - length, 0)
         matches = window_matches(c.ch, sig, length, starts, req.struct_anchor)
     else:
-        matches = window_matches(c.ch, sig, length, None, req.struct_anchor)
+        # 전역 인덱스 계약은 유지하되, 기간 밖 창은 관계 계산도 건너뛴다.
+        # 종목별 연속 뷰로 계산해 starts 고급 인덱싱의 L×N 복사를 피한다.
+        since = np.datetime64(f"{req.since[:4]}-{req.since[4:6]}-{req.since[6:]}", "D") if req.since else None
+        if since is None:
+            matches = window_matches(c.ch, sig, length, None, req.struct_anchor)
+        else:
+            matches = np.zeros(c.ch.shape[1], dtype=np.int16)
+            for i, end in enumerate(c.ends):
+                start = _history_start(c, i, since)
+                if end - start >= length:
+                    matches[start : end - length + 1] = window_matches(
+                        c.ch[:, start:end], sig, length, None, req.struct_anchor,
+                    )
     return StructGate(matches=matches, need=max(0, total - req.struct_tolerance),
                       total=total, sig=sig, anchor=req.struct_anchor)
 

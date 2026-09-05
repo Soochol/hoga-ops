@@ -41,7 +41,7 @@ export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program' | 'ah' | 'expec
 
 const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
 
-interface RawSnapshot {
+export interface RawSnapshot {
   t_ms: number;
   kind: string;
   [k: string]: unknown;

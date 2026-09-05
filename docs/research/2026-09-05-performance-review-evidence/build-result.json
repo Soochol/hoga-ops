@@ -1,0 +1,27 @@
+{
+  "entry_static_graph_bytes": {
+    "js": 1372848,
+    "css": 97493
+  },
+  "total_js_css_bytes": 1470341,
+  "files": {
+    "assets/charts-wRDszZfU.js": 170794,
+    "assets/dnd-2FxojD6j.js": 46822,
+    "assets/index-DXxe8mLh.css": 97493,
+    "assets/index-DorQIGOD.js": 99250,
+    "assets/live-workspace-CbfNOByR.js": 818122,
+    "assets/query-iIfVE6ek.js": 55035,
+    "assets/react-CvBZlOBd.js": 139931,
+    "assets/rolldown-runtime-QTnfLwEv.js": 694,
+    "assets/router-DTezKSGT.js": 42200
+  },
+  "excludes": [
+    "dynamic-only chunks",
+    "source maps",
+    "font files",
+    "HTTP payloads"
+  ],
+  "node": "v24.13.1",
+  "python": "3.14.4",
+  "cpu_count": 32
+}

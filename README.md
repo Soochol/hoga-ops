@@ -4,6 +4,8 @@ Personal local-first tool to capture, store, and replay Korean stock orderbook +
 
 See [`CONTEXT.md`](./CONTEXT.md) for the glossary, [`DESIGN.md`](./DESIGN.md) for frontend UI rules, [`CHANGELOG.md`](./CHANGELOG.md) for release history, [`docs/adr/`](./docs/adr/) for architecture decisions, and [`docs/superpowers/specs/`](./docs/superpowers/specs/) / [`docs/superpowers/plans/`](./docs/superpowers/plans/) for design specs and implementation plans.
 
+성능 변경의 측정 조건·결과·재현 방법은 [2026-09-05 성능 개선 기록](./docs/research/2026-09-05-performance-improvements.md)에 정리했다.
+
 ## Access model — read this before exposing the server
 
 **This API has no authentication.** That is a deliberate, recorded decision

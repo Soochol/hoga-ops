@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TypeVar
 
 import polars as pl
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from hoga.api import (
@@ -39,6 +39,7 @@ from hoga.api.models import (
     ScreenerUpdateSkipReason,
 )
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
+from hoga.api.request_coalescer import ReadRequestCoalescer
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_rest_runtime
@@ -454,6 +455,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
     pools: ComputePools = compute if compute is not None else thread_pools()
     router = APIRouter(prefix="/api/screener", tags=["screener"])
+    pattern_requests = ReadRequestCoalescer[PatternSearchResponse]()
     sdir = data_dir / "screener"
 
     @router.post("/scan")
@@ -464,17 +466,14 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
             key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req))
 
     @router.post("/pattern-search")
-    async def pattern_search(req: PatternSearchRequest) -> PatternSearchResponse:
-        """봉 패턴 검색(ADR-0166).
-
-        `to_thread` 는 필수다 — 콜드 캐시 1.5s + history 0.4s 를 이벤트 루프에서
-        돌리면 그동안 프로세스 전체가 멎는다(`screener-daily-candles` 와 같은 이유).
-        순수 함수라 스레드 실행이 안전하다(공유 상태는 읽기 전용 코퍼스 캐시뿐).
-        """
-        # 컴퓨트 워커(ADR-0169) — 스레드로 내려도 GIL 은 이 프로세스에 남아(실측 95초 요청
-        # 동안 루프 굶주림) 프로세스 풀에서 돈다. 코퍼스 캐시는 워커마다 따로 데워진다.
-        return await compute_jobs.run_job(
-            pools.wide, compute_jobs.pattern_search_job, str(data_dir), req,
+    async def pattern_search(req: PatternSearchRequest, request: Request) -> PatternSearchResponse:
+        """동일 검색은 공유하고 모든 클라이언트가 떠난 대기 검색은 제출 전에 버린다."""
+        return await pattern_requests.run(
+            req.model_dump_json(),
+            lambda: compute_jobs.run_job(
+                pools.wide, compute_jobs.pattern_search_job, str(data_dir), req,
+            ),
+            request,
         )
 
     @router.get("/status")
