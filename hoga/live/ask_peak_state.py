@@ -68,6 +68,13 @@ class _TodaySidePeakState:
     #: 전부 잘린다(과거일 경로가 같은 이유로 `_peak_record_sequence` 를 따로 둔다).
     #: 유지는 `_offer_record` 가 증분으로 — 틱 경로 위라 정렬을 두지 않는다.
     traded_record: list[Peak] = field(default_factory=list)
+    #: 분 → 그 분의 **최대 체결 벽** — 최대벽 강도 pane 의 봉별 모드 입력.
+    #: `traded_record`(누적 prefix maxima)와 같은 벽들을 다른 축으로 접은 것이다:
+    #: 저쪽은 단조라 한 번 오르면 유지되고, 이쪽은 분마다 독립이라 오르내린다.
+    #: 상한을 두지 않는 이유는 `snapshots._peak_bar_max_sequence` docstring 과 같다
+    #: (잘린 구간이 "체결 벽이 없던 분" 과 구별되지 않는다). 크기는 정규장 분 수로
+    #: 유계이고(체결된 벽이 있는 분만), 틱 경로 비용은 벽당 O(1) 비교다.
+    traded_bar_max: dict[int, Peak] = field(default_factory=dict)
     #: 당일 연속 체결가의 극값(ask=max, bid=min) — 미도달 판정의 기준. None = 체결 0건.
     day_extreme: int | None = None
     #: 미도달 벽 — 극값이 지배하지 못한 가격의 최대 잔량. **가격별 딕셔너리가 불가피한
@@ -251,6 +258,11 @@ class _TodaySidePeakState:
             # `traded_max_peaks` 에 이미 같은 배열을 싣는다. 그래서 필드도 하나만 내고
             # 프론트가 양쪽 축에 같은 배열을 배선한다(`attachFamilies`).
             "traded_record_peaks": [_peak_payload(p) for p in self.traded_record],
+            # 분별 최대 — 위 기록 시퀀스와 **같은 축 규약**이다(rep/cont 를 가르지
+            # 않는다). 시간순으로 낸다: 소비처가 시간축에 그린다.
+            "traded_bar_peaks": [
+                _peak_payload(p) for _, p in sorted(self.traded_bar_max.items())
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -282,6 +294,22 @@ class _TodaySidePeakState:
     def _record_closed_peak(self, peak: Peak) -> None:
         self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
         self._offer_record(peak)
+        self._offer_bar_max(peak)
+
+    def _offer_bar_max(self, peak: Peak) -> None:
+        """분별 최대에 터치된 벽 하나를 제시한다 — O(1), 도착 순서 무관.
+
+        분 키는 **벽이 선 시각**(`peak.t_ms`)이지 터치가 확정된 시각이 아니다 —
+        `_offer_record` 가 도착 순서를 못 믿는 것과 같은 이유이고(같은 분 안에서
+        나중에 선 벽이 먼저 터치될 수 있다), 여기서는 키가 시각에서 직접 나오므로
+        순서에 영향받지 않는다.
+
+        동률은 **먼저 온 것을 유지**한다(strict `>`) — `_larger_peak` 규약 미러.
+        """
+        minute = _minute_of(peak.t_ms)
+        current = self.traded_bar_max.get(minute)
+        if current is None or peak.qty > current.qty:
+            self.traded_bar_max[minute] = peak
 
     def _offer_record(self, peak: Peak) -> None:
         """기록 갱신 시퀀스에 터치된 벽 하나를 제시한다 — **도착 순서에 무관**하고 멱등.

@@ -17,6 +17,7 @@ import {
   PeakRecordAccumulator,
   type PeakRecordSeries,
 } from './peakWallRecordSeries';
+import { buildPeakBarSeries, type PeakBarSeries } from './peakWallBarSeries';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -116,10 +117,11 @@ function pushTodayAskPeak(
   todayKst: string,
   families: PeakFamilies,
   records: PeakRecordSeries,
+  bars: PeakBarSeries,
 ): AskPeak[] {
   const traded = families.traded[0];
   if (traded) {
-    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families, records));
+    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families, records, bars));
   } else if (families.all.length > 0) {
     out.push(attachFamilies({
       date: todayKst,
@@ -129,7 +131,7 @@ function pushTodayAskPeak(
       max_price: null,
       max_qty: null,
       max_t_ms: null,
-    }, families, records));
+    }, families, records, bars));
   }
   return out;
 }
@@ -141,6 +143,7 @@ function attachFamilies(
    *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
    *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
   records: PeakRecordSeries,
+  bars: PeakBarSeries,
 ): AskPeak {
   return {
     ...peak,
@@ -152,6 +155,10 @@ function attachFamilies(
     // 가 top-3 으로 떨어지므로 구백엔드에서도 종전 동작이 유지된다.
     traded_record_peaks: records.close,
     traded_record_max_peaks: records.max,
+    // 분별 최대 — 같은 두 출처(`buildPeakBarSeries`)에서 왔고, 비면 봉별 모드가
+    // 그리지 않는다(top-3 폴백이 **없다** — 그 모듈 docstring 참조).
+    traded_bar_peaks: bars.close,
+    traded_bar_max_peaks: bars.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -209,7 +216,7 @@ export function deriveDayAskPeaks(
   const families = mergedAskFamilies(ob, trade, todayAskPeak, sessionOpenMs);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak));
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), buildPeakBarSeries(seed, todayAskPeak));
 }
 
 /** deriveDayAskPeaks의 증분판(no-cutoff 전용). source가 ob/trade 스캔을 누적으로
@@ -232,7 +239,7 @@ export function deriveDayAskPeaksIncremental(
   const families = askFamiliesFromClassified(classified, backend);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak));
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), buildPeakBarSeries(seed, todayAskPeak));
 }
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,

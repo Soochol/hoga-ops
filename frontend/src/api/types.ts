@@ -802,6 +802,13 @@ export type AskPeak = PeakBase & {
    *  구백엔드 부재 → optional. */
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  /** 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순, 상한 없음).
+   *  최대벽 강도 pane 의 **봉별 모드** 입력이고 traded_record_*(누적 계단)와 같은
+   *  데이터의 다른 축이다. ⚠ **항상 1분 해상도**로 온다 — 굵은 봉은 프론트가 캔들 봉에
+   *  접는다(`buildPeakWallBarPoints`). ⚠ **옵트인**이라 `bar_peaks_enabled=true` 로
+   *  요청한 창에만 실린다(페이로드가 자릿수로 커진다). 구백엔드 부재 → optional. */
+  traded_bar_peaks?: AskPeakCandidate[];
+  traded_bar_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** 미도달 벽 top-3 — all_peaks 와 달리 /api/range 에서 벗기지 않는다(최대 3개). */
@@ -815,6 +822,9 @@ export type BidPeak = PeakBase & {
   /** ask 쪽 주석 참조 — 동일 규약 미러. */
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  /** ask 쪽 주석 참조 — 동일 규약 미러. */
+  traded_bar_peaks?: AskPeakCandidate[];
+  traded_bar_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** ask 쪽 주석 참조 — 동일 규약 미러. */

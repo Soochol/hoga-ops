@@ -13,6 +13,7 @@ import {
 import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
+import type { PeakWallPaneMode } from '../../state/liveIndicatorsPersistence';
 import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
 import EyeGlyph from '../EyeGlyph';
 import MAStylePicker from './MAStylePicker';
@@ -670,7 +671,72 @@ function PaneStage() {
         매도·매수가 그 pane 을 공유합니다.
       </p>
       <PaneSlotSummary />
+      <PaneModeRow />
     </Stage>
+  );
+}
+
+const PANE_MODE_OPTIONS: ReadonlyArray<{ id: PeakWallPaneMode; label: string }> = [
+  { id: 'step', label: '누적' },
+  { id: 'bar', label: '봉별' },
+];
+
+/**
+ * 표현 모드 — 같은 벽들을 **어느 축으로 읽는가**.
+ *
+ * 「누적」은 그 시점까지 체결된 벽 중 최대(단조 계단), 「봉별」은 매 봉에서 가장 크게
+ * 체결된 벽(오르내림). 두 축이 답하는 질문이 달라 한쪽으로 대체하지 않고 병존시킨다
+ * (사용자 결정, 2026-09-05 — 누적 계열은 그 자체가 사용자 보고 2회로 만들어졌다).
+ *
+ * 아래 문구가 **봉별에서만** 나오는 이유: 누적은 종전 동작이라 설명할 예외가 없고,
+ * 봉별에는 화면만 봐서는 알 수 없는 두 예외가 있다(체결 계열만 · MA 필터 우회).
+ * 그 두 가지를 모르면 "매도 전체는 왜 그대로지" · "필터를 켰는데 왜 다 보이지" 가 된다.
+ */
+function PaneModeRow() {
+  const mode = useWindowIndicator((s) => s.peakWallPaneMode);
+  const setMode = useIndicatorActions().setPeakWallPaneMode;
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 py-1">
+        <span className="text-sm text-fg">표현</span>
+        <span
+          role="group"
+          aria-label="최대벽 강도 pane 표현 모드"
+          className="inline-flex shrink-0 overflow-hidden rounded-md bg-bg-subtle p-px"
+        >
+          {PANE_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              data-testid={`peak-wall-pane-mode-${option.id}`}
+              aria-pressed={mode === option.id}
+              onClick={() => setMode(option.id)}
+              className={`rounded-sm px-2 py-0.5 text-2xs transition-colors ${
+                mode === option.id
+                  ? 'bg-tint-selection font-semibold text-accent'
+                  : 'text-fg-dim hover:text-fg'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </span>
+      </div>
+      <p className="py-1.5 text-2xs leading-relaxed text-fg-dim">
+        {mode === 'bar' ? (
+          <>
+            매 봉에서 <b className="font-semibold text-fg">가장 크게 체결된 벽</b> 의 잔량을
+            그립니다. 체결된 벽이 없는 봉은 0 입니다.{' '}
+            <b className="font-semibold text-fg">체결 계열에만</b> 적용되고(전체·미도달은
+            누적 그대로), 이 모드는{' '}
+            <b className="font-semibold text-fg">이동평균선 필터를 거치지 않습니다</b>.
+          </>
+        ) : (
+          <>그 시점까지 체결된 벽 중 최대를 누적 계단으로 그립니다 — 한 번 오른 높이는 그날 안에서 내려가지 않습니다.</>
+        )}
+      </p>
+    </>
   );
 }
 

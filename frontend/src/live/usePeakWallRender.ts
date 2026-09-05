@@ -22,7 +22,7 @@
 // 이 리포가 red-check 으로 두 번 확인한 규칙이다.
 
 import { useMemo } from 'react';
-import type { Candle, RangeSegment } from '../api/types';
+import type { AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallLabelSide, PeakWallSegment } from '../chart/PeakWallSegmentsPrimitive';
 import { useActivePrefs } from '../state/chartPrefs';
@@ -97,6 +97,15 @@ export type PeakWallRenderState = {
    *  토글이 생기면서 "pane 은 켜졌고 이 계열만 꺼진" 상태가 존재하므로 그 의존이
    *  깨진다. 세 계단이 전부 자기 게이트로 비운다. */
   stepSegments: readonly PeakWallSegment[];
+  /** 최대벽 강도 pane 의 **봉별 모드** 입력 — 세그먼트가 아니라 **wire 후보 배열**이다.
+   *
+   *  ⚠ 이 계열만 `buildPeakWallOverlaySegments` 를 **통과하지 않는다**: 봉별 모드는
+   *  MA 필터를 우회하기로 결정됐고(사용자, 2026-09-05), 세그먼트는 그 필터를 이미
+   *  지난 산물이라 여기서 쓸 수 없다. 사유는 `buildPeakWallBarPoints` docstring.
+   *
+   *  게이트는 계단과 같다(pane 마스터 × 방향 × 슬롯) + **모드가 `bar` 일 것**.
+   *  꺼지면 빈 배열이라 소비처가 다시 게이트할 필요가 없다. */
+  barCandidates: readonly AskPeakCandidate[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
    *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
    *  받는다**(`askPeakAllWallRankLimit`) — 2026-08-25 부터 백엔드가 과거일에도
@@ -182,6 +191,7 @@ type Args = {
 
 /** 빈 상태는 **공유 상수**여야 memo 결과가 참조로 안정된다(빈 배열 리터럴은 매번 새 참조). */
 const EMPTY_SEGMENTS: readonly PeakWallSegment[] = [];
+const EMPTY_BAR_CANDIDATES: readonly AskPeakCandidate[] = [];
 /** 게이트가 닫힌 계열의 공유 결과 — 매 렌더 새 객체를 만들면 아래 memo 가 헛돈다. */
 const EMPTY_RESULT: PeakWallOverlayResult = {
   segments: EMPTY_SEGMENTS as PeakWallSegment[],
@@ -241,6 +251,8 @@ export function usePeakWallRender({
   const paneAllWallEnabled = useWindowIndicator(
     (s) => (isAsk ? s.askPeakAllWallPaneEnabled : s.bidPeakAllWallPaneEnabled),
   );
+  // 표현 모드는 **pane 전체가 하나**다(방향·계열별이 아니다 — `PeakWallPaneMode` 주석).
+  const paneBarMode = useWindowIndicator((s) => s.peakWallPaneMode === 'bar');
   const intraMax = useActivePrefs((s) => (isAsk ? s.askPeakIntraMax : s.bidPeakIntraMax));
   const allPriceRankLimit = useActivePrefs(
     (s) => (isAsk ? s.askPeakAllPriceRankLimit : s.bidPeakAllPriceRankLimit),
@@ -482,6 +494,14 @@ export function usePeakWallRender({
     axis, candles, unreachedDailyMaFilter, enabled, intraMax, unreachedMaFilter, peaks, segments, todayKst,
   ]);
 
+  // 봉별 모드 입력 — 필터 파이프라인을 **타지 않고** wire 후보를 그대로 모은다.
+  // 날짜 구분이 필요 없다: `t_ms` 가 절대시각이고 빌더가 캔들 축으로 접는다.
+  const barCandidates = useMemo(() => (
+    needStepSegments && applicable && enabled && paneTradedEnabled && paneBarMode
+      ? peaks.flatMap((p) => (intraMax ? p.traded_bar_max_peaks : p.traded_bar_peaks) ?? [])
+      : EMPTY_BAR_CANDIDATES
+  ), [needStepSegments, applicable, enabled, paneTradedEnabled, paneBarMode, intraMax, peaks]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -598,6 +618,7 @@ export function usePeakWallRender({
     color,
     lineWidth,
     stepSegments: stepBuilt,
+    barCandidates,
     allWallSegments: surfacedAllWallSegments,
     legendRankSegments,
     arrowRankSegments,
