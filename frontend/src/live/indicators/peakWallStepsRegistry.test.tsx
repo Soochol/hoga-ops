@@ -8,9 +8,13 @@ import {
   usePeakWallStepsRegistry,
   type PeakWallStepPointsInput,
 } from './peakWallStepsRegistry';
+import { EMPTY_PEAK_WALL_STEPS } from '../peakWallPanePoints';
 
-/** pane 이 꺼진 상태의 공유 빈 배열 — `LiveChartRoot` 의 `EMPTY_PEAK_WALL_STEPS` 미러. */
-const EMPTY: readonly PeakWallStepPoint[] = [];
+// pane 이 꺼진 상태의 공유 빈 배열 — **미러가 아니라 진짜를 쓴다**. 이 테스트의 판정이
+// 참조 동일성("점 배열이 그대로면 쓰지 않는다")이라, 사본을 두면 그 사본이 프로덕션
+// 상수와 갈리는 순간 테스트가 조용히 다른 것을 재게 된다(종전 주석은 그 상수가
+// `LiveChartRoot` 에 있다고 적혀 있었는데, 실제로는 `peakWallPanePoints` 로 옮겨졌다).
+const EMPTY = EMPTY_PEAK_WALL_STEPS;
 
 function inputOf(over: Partial<PeakWallStepPointsInput> = {}): PeakWallStepPointsInput {
   const base = Object.fromEntries(

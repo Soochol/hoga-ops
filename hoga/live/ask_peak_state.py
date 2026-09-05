@@ -371,6 +371,12 @@ class _TodaySidePeakState:
         # 무관·멱등이라 그대로 제시하면 된다.
         for peak in other.traded_record:
             self._offer_record(peak)
+        # 분별 최대도 **따로** 흡수한다 — 같은 사정이다. `closed_traded` 를 흘려보내면
+        # `_record_closed_peak` 가 분별에도 제시하지만 그건 **top-3 의 세 분뿐**이고,
+        # 재생본의 나머지 분은 여기에만 있다. 빠뜨리면 장중 재기동 후 이 계열이 세 봉만
+        # 남아 **조용히 과소평가**된다(이 클래스 docstring 이 경고하는 그 실패 모양).
+        for peak in other.traded_bar_max.values():
+            self._offer_bar_max(peak)
         # 미도달 — 극값을 먼저 합치고(둘 중 더 지배적인 쪽), 딕셔너리를 larger 로 합친 뒤
         # 합쳐진 극값으로 걷어낸다. 순서가 멱등성을 만든다: 같은 재생본을 두 번 흡수해도
         # 극값·딕셔너리 모두 고정점이다.
