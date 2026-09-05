@@ -606,3 +606,72 @@ describe('usePeakWallRender', () => {
     });
   });
 });
+
+/**
+ * 봉별 모드 입력(`barCandidates`) — 게이트와 축 선택.
+ *
+ * 이 배열은 **필터 파이프라인을 타지 않는다**(봉별 모드가 MA 필터를 우회한다는
+ * 사용자 결정, 2026-09-05). 그래서 세그먼트 쪽 테스트가 이 계열을 대신 재 주지
+ * 못하고, 게이트를 여기서 직접 걸어야 한다.
+ *
+ * **막는 방향**: 모드가 `step` 인데 후보를 모으는 것(페이로드·계산 낭비이자, 소비처가
+ * 게이트를 잊으면 계단 자리에 봉별 값이 나온다) · 슬롯/방향이 꺼졌는데 모으는 것.
+ * **못 보는 것**: 그 후보로 그린 그림(`buildPeakWallBarPoints` 테스트가 잰다).
+ */
+describe('usePeakWallRender — 봉별 모드 후보', () => {
+  const BAR_PEAK: AskPeak = {
+    ...PEAK,
+    traded_bar_peaks: [{ price: 110, qty: 500, t_ms: MIN }],
+    traded_bar_max_peaks: [{ price: 111, qty: 900, t_ms: MIN }],
+  };
+
+  beforeEach(() => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS });
+      useLivePageStore.setState({
+        askPeakEnabled: true,
+        askPeakHidden: false,
+        askPeakTradedPaneEnabled: true,
+        peakWallPaneEnabled: true,
+        peakWallPaneMode: 'bar',
+      });
+    });
+  });
+
+  it('bar 모드에서 wire 후보를 그대로 모은다', () => {
+    const r = render(true, [BAR_PEAK], true);
+    expect(r.current.barCandidates).toEqual([{ price: 110, qty: 500, t_ms: MIN }]);
+  });
+
+  it('step 모드면 비어 있다', () => {
+    act(() => { useLivePageStore.setState({ peakWallPaneMode: 'step' }); });
+    expect(render(true, [BAR_PEAK], true).current.barCandidates).toEqual([]);
+  });
+
+  it('pane 슬롯이 꺼지면 비어 있다', () => {
+    act(() => { useLivePageStore.setState({ askPeakTradedPaneEnabled: false }); });
+    expect(render(true, [BAR_PEAK], true).current.barCandidates).toEqual([]);
+  });
+
+  it('방향이 꺼지면 비어 있다', () => {
+    act(() => { useLivePageStore.setState({ askPeakEnabled: false }); });
+    expect(render(true, [BAR_PEAK], true).current.barCandidates).toEqual([]);
+  });
+
+  it('pane 마스터가 꺼지면(needStepSegments=false) 비어 있다', () => {
+    expect(render(true, [BAR_PEAK], false).current.barCandidates).toEqual([]);
+  });
+
+  it('intraMax 가 cont 축 배열을 고른다', () => {
+    act(() => {
+      useChartPrefsStore.setState({ ...DEFAULT_PREFS, askPeakIntraMax: true });
+    });
+    // 축 선택은 계단과 **같은 노브**를 탄다 — 갈리면 두 모드가 다른 벽을 말하게 된다.
+    expect(render(true, [BAR_PEAK], true).current.barCandidates)
+      .toEqual([{ price: 111, qty: 900, t_ms: MIN }]);
+  });
+
+  it('구백엔드(필드 부재)에서는 빈 배열 — 계단으로 떨어지지 않는다', () => {
+    expect(render(true, [PEAK], true).current.barCandidates).toEqual([]);
+  });
+});

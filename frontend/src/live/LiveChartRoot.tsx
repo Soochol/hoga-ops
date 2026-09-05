@@ -47,7 +47,7 @@ import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSy
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
 import { canPublishTimeframeJump } from '../chart/timeframeJump';
-import type { Candle, RangeSegment } from '../api/types';
+import type { AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
@@ -102,6 +102,7 @@ import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
+import { buildTradedPanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
 import {
   buildPeakWallStepPoints,
   buildUnreachedStepPoints,
@@ -225,7 +226,6 @@ const EMPTY_CANDLE_MS: readonly number[] = [];
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
 const EMPTY_CANDLES: readonly Candle[] = [];
 // 최대벽 계단의 빈 상태 — 공유 참조여야 pane ctx 가 흔들리지 않는다.
-const EMPTY_PEAK_WALL_STEPS: readonly PeakWallStepPoint[] = [];
 // 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
 // (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_RANGE_SEGMENTS: readonly RangeSegment[] = [];
@@ -1895,6 +1895,7 @@ export function LiveChartRoot({
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
   const prefPeakWallPaneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
+  const prefPeakWallPaneMode = useWindowIndicator((s) => s.peakWallPaneMode);
   // 강도 pane 은 마스터만으로 마운트하지 않는다 — 「그릴 것이 있는가」와 곱한다
   // (`peakWallPaneHasContent`: 왜 마스터를 쓰기 시점에 닫지 않는지 포함).
   // 필드 8개를 각각 구독하지 않고 술어를 selector 로 쓴다 — 불리언 하나로 접혀
@@ -2233,6 +2234,22 @@ export function LiveChartRoot({
         ? buildPeakWallStepPoints(segs, candlesForSteps, axis, color)
         : EMPTY_PEAK_WALL_STEPS
     );
+    // 체결 계열만 모드를 탄다(전체·미도달은 늘 계단) — 사유와 폴백 없음 규칙은
+    // `buildTradedPanePoints` 가 소유한다. 여기서 인라인으로 두면 테스트가 닿지
+    // 않는다는 것이 red-check 으로 확인됐다(그 모듈 머리말).
+    const traded = (
+      barCands: readonly AskPeakCandidate[],
+      segs: readonly PeakWallSegment[],
+      color: string,
+    ) => buildTradedPanePoints({
+      mode: prefPeakWallPaneMode,
+      paneEnabled: prefPeakWallPaneEnabled,
+      barCandidates: barCands,
+      stepSegments: segs,
+      candles: candlesForSteps,
+      axis,
+      color,
+    });
     const unreached = (
       segs: readonly PeakWallSegment[], color: string, side: 'ask' | 'bid',
     ) => (
@@ -2241,14 +2258,14 @@ export function LiveChartRoot({
         : EMPTY_PEAK_WALL_STEPS
     );
     return {
-      'ask-traded': monotone(askWall.stepSegments, askWall.color),
+      'ask-traded': traded(askWall.barCandidates, askWall.stepSegments, askWall.color),
       'ask-all': monotone(askWall.allWallStepSegments, askWall.allWallColor),
       'ask-unreached': unreached(askWall.unreachedStepSegments, askWall.unreachedColor, 'ask'),
-      'bid-traded': monotone(bidWall.stepSegments, bidWall.color),
+      'bid-traded': traded(bidWall.barCandidates, bidWall.stepSegments, bidWall.color),
       'bid-all': monotone(bidWall.allWallStepSegments, bidWall.allWallColor),
       'bid-unreached': unreached(bidWall.unreachedStepSegments, bidWall.unreachedColor, 'bid'),
     } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
-  }, [prefPeakWallPaneEnabled, cb?.candles, axis, askWall, bidWall]);
+  }, [prefPeakWallPaneEnabled, prefPeakWallPaneMode, cb?.candles, axis, askWall, bidWall]);
 
   // 발행은 훅이 쥔다 — **쓰기 조건**(점 배열이 그대로면 쓰지 않는다)이 이 기능의
   // 위험 전부라, 그 조건을 테스트가 잡을 수 있는 자리에 둔다. 종전에 여기서 매 커밋

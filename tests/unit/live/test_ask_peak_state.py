@@ -38,6 +38,7 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_t_ms": None,
         "traded_peaks": [],
         "traded_record_peaks": [],
+        "traded_bar_peaks": [],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -59,6 +60,7 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_t_ms": at(10, 1_000),
         "traded_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+        "traded_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_price": 10_100,
         "all_qty": 500,
         "all_t_ms": at(10, 1_000),
@@ -471,6 +473,49 @@ def test_merge_from_absorbs_record_sequence_idempotently():
 
     live.merge_from(replay)   # 멱등 — 같은 재생본을 두 번 흡수해도 고정점
     assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_record_peaks"]] == first
+
+
+def test_merge_from_absorbs_bar_max_idempotently():
+    """재생본의 **분별 최대**도 따로 흡수된다 — `closed_traded`(top-3)엔 세 분뿐이다.
+
+    장중 재기동이 이 경로다. 빠뜨리면 봉별 모드가 재기동 후 **세 봉만 남아 조용히
+    과소평가**된다(클래스 docstring 이 경고하는 그 실패 모양의 새 사례).
+
+    ⚠ 판정을 **감소 시퀀스**로 세운다. 증가 시퀀스면 기록 계열(prefix maxima)이 모든
+    분을 담아, `_record_closed_peak` 를 타고 흘러드는 것만으로 우연히 통과한다 —
+    그러면 이 테스트가 아무것도 증명하지 못한다. 감소면 기록은 첫 벽 하나로 접히고
+    top-3 는 앞 세 분뿐이라, 뒤 두 분(200·100)은 `traded_bar_max` 를 따로 흡수해야만
+    살아남는다.
+    """
+    replay = TodayAskPeakState()
+    for i, qty in enumerate([500, 400, 300, 200, 100]):
+        _touch_wall(replay, minute=10 + i, price=10_000 + i * 10, qty=qty)
+
+    live = TodayAskPeakState()
+    _touch_wall(live, minute=30, price=10_500, qty=600)
+
+    live.merge_from(replay)
+    first = [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_bar_peaks"]]
+    assert first == [
+        *((at(10 + i, 1_000), 500 - 100 * i) for i in range(5)),
+        (at(30, 1_000), 600),
+    ]
+    # 같은 재생본의 기록 계열은 하나로 접힌다 — 두 계열의 축이 다르다는 확인.
+    assert [p["qty"] for p in live.snapshot()["traded_record_peaks"]] == [500, 600]
+
+    live.merge_from(replay)   # 멱등 — 분당 max 는 고정점이다
+    assert [(p["t_ms"], p["qty"]) for p in live.snapshot()["traded_bar_peaks"]] == first
+
+
+def test_bar_max_keeps_the_larger_wall_of_the_same_minute():
+    """한 분에 벽 둘이 터치되면 **큰 쪽**이 그 분의 값이다(동률은 먼저 온 것)."""
+    state = TodayAskPeakState()
+    state.ingest_orderbook(t_ms=at(10, 1_000), asks=[{"price": 10_000, "qty": 300}])
+    state.ingest_orderbook(t_ms=at(10, 3_000), asks=[{"price": 10_100, "qty": 900}])
+    state.ingest_trade(price=10_200, side=1, t_ms=at(10, 5_000))
+
+    bars = state.snapshot()["traded_bar_peaks"]
+    assert [(p["price"], p["qty"]) for p in bars] == [(10_100, 900)]
 
 
 def test_bid_record_sequence_uses_the_same_maintenance():

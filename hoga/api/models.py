@@ -225,6 +225,14 @@ class AskPeak(BaseModel):
     # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
     traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순).
+    # 최대벽 강도 pane 의 **봉별 모드** 입력이고 `traded_record_*`(누적 계단)와 같은
+    # 데이터의 다른 축이다. 상한 없음(잘린 구간이 "체결 벽 없는 봉"과 구별되지 않는다).
+    # ⚠ **항상 1분 해상도**로 실린다 — 굵은 봉은 프론트가 캔들 봉에 접는다(max 는
+    # 결합적이라 정확하다). 백엔드가 굵은 봉을 직접 계산하는 경로가 없으므로
+    # (`_peak_slices_from_1m_cache`) 이 규약이 캐시 유무와 무관하게 성립한다.
+    traded_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 고가 위) — cont 단일 계열 rank-1 스칼라 + top-3. top-3 은 최대
@@ -264,6 +272,14 @@ class BidPeak(BaseModel):
     # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
     traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순).
+    # 최대벽 강도 pane 의 **봉별 모드** 입력이고 `traded_record_*`(누적 계단)와 같은
+    # 데이터의 다른 축이다. 상한 없음(잘린 구간이 "체결 벽 없는 봉"과 구별되지 않는다).
+    # ⚠ **항상 1분 해상도**로 실린다 — 굵은 봉은 프론트가 캔들 봉에 접는다(max 는
+    # 결합적이라 정확하다). 백엔드가 굵은 봉을 직접 계산하는 경로가 없으므로
+    # (`_peak_slices_from_1m_cache`) 이 규약이 캐시 유무와 무관하게 성립한다.
+    traded_bar_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_bar_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 미도달 벽(당일 저가 아래) — AskPeak 의 같은 필드 주석 참조(대칭 미러).

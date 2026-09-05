@@ -147,3 +147,46 @@ describe('pane 슬롯을 켜면 그 방향도 열린다', () => {
     expect('bidPeakEnabled' in (patch ?? {})).toBe(false);
   });
 });
+
+/**
+ * 표현 모드는 **슬롯 수명과 무관한 축**이다.
+ *
+ * 모드는 "같은 벽들을 어느 축으로 읽는가" 이고 슬롯은 "무엇을 넣는가" 다. 두 축이
+ * 섞이면 모드를 바꿨다가 되돌릴 때 원래 칸 조합이 사라진다 — 이 파일의 다른 규칙들이
+ * 「여는 클릭이 나머지 다섯을 닫는다」는 파괴적 결합을 갖고 있어서, 모드에도 같은
+ * 결합이 있다고 착각하기 쉬운 자리다.
+ *
+ * **막는 방향**: 모드 op 이 슬롯·마스터·방향을 건드리는 것.
+ * **못 보는 것**: 화면이 그 모드로 실제로 그리는가(빌더 테스트가 잰다).
+ */
+describe('표현 모드는 슬롯을 건드리지 않는다', () => {
+  it('모드만 바꾼다 — 칸·마스터·방향이 그대로다', () => {
+    const patch = INDICATOR_OPS.setPeakWallPaneMode(FACTORY_INDICATOR_SETTINGS, 'bar');
+    expect(patch).toEqual({ peakWallPaneMode: 'bar' });
+  });
+
+  it('pane 이 닫혀 있어도 기록한다 — 여는 클릭이 저장된 모드를 쓴다', () => {
+    const closed = { ...FACTORY_INDICATOR_SETTINGS, peakWallPaneEnabled: false };
+    const next = { ...closed, ...INDICATOR_OPS.setPeakWallPaneMode(closed, 'bar') };
+    expect(next.peakWallPaneMode).toBe('bar');
+    expect(peakWallPaneHasContent(next)).toBe(false);
+  });
+
+  it('같은 모드를 다시 고르면 패치가 없다', () => {
+    expect(INDICATOR_OPS.setPeakWallPaneMode(FACTORY_INDICATOR_SETTINGS, 'step')).toBe(null);
+  });
+
+  it('모드를 왕복해도 칸 조합이 살아남는다', () => {
+    // 미도달만 켜 둔 상태 — 모드 왕복이 이 조합을 지우면 안 된다.
+    const custom = {
+      ...FACTORY_INDICATOR_SETTINGS,
+      askPeakTradedPaneEnabled: false,
+      askPeakUnreachedPaneEnabled: true,
+    };
+    const toBar = { ...custom, ...INDICATOR_OPS.setPeakWallPaneMode(custom, 'bar') };
+    const back = { ...toBar, ...INDICATOR_OPS.setPeakWallPaneMode(toBar, 'step') };
+    expect(back.askPeakUnreachedPaneEnabled).toBe(true);
+    expect(back.askPeakTradedPaneEnabled).toBe(false);
+    expect(back.peakWallPaneMode).toBe('step');
+  });
+});

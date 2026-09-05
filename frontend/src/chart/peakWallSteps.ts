@@ -11,7 +11,7 @@
 // (docs/research/2026-08-24-peak-wall-pane-implementation-plan.md §0).
 
 import type { LineData, Time } from 'lightweight-charts';
-import type { Candle } from '../api/types';
+import type { AskPeakCandidate, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { PeakWallSegment } from './PeakWallSegmentsPrimitive';
 import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from './util/auctionHide';
@@ -107,6 +107,104 @@ export function buildPeakWallStepPoints(
   }
   return out;
 }
+
+/**
+ * 최대벽 강도 pane 의 **봉별 모드** 계단 — 누적이 아니라 **봉마다 독립**이다.
+ *
+ *   점(봉) = max{ 벽ᵢ.qty : 벽ᵢ 가 그 봉 안에서 체결됐다 }   (없으면 0)
+ *
+ * `buildPeakWallStepPoints`(누적 running max)와 같은 벽들을 다른 축으로 읽는다.
+ * 저쪽은 "그 시점까지 가장 컸던 벽" 이라 단조이고, 이쪽은 "그 봉에서 가장 크게
+ * 체결된 벽" 이라 오르내린다. 사용자 요청(2026-09-05)의 계열이 이것이다.
+ *
+ * ## 입력이 세그먼트가 아니라 **원 후보 배열**인 이유
+ *
+ * 이 모드는 **MA 필터를 우회한다**(사용자 결정). 두 MA 필터의 목적은 "현재가 근처의
+ * 벽을 걷어내는 것" 인데, 체결된 벽은 정의상 그 봉의 가격이 닿은 벽이라 정확히 그
+ * 대역에 산다 — 걸면 추세장에서 대부분의 봉이 비어 이 모드가 답하는 질문 자체가
+ * 지워진다. 세그먼트(`buildPeakWallOverlaySegments` 산물)는 필터를 이미 통과한
+ * 것이므로 여기서 쓸 수 없고, 그래서 wire 후보(`traded_bar_peaks`)를 직접 받는다.
+ *
+ * ## 1분 후보 → N분 봉 접기
+ *
+ * 후보는 **항상 1분 해상도**로 온다(백엔드가 봉별로 접지 않는다 — `AskPeak` 필드
+ * 주석). 굵은 봉은 여기서 접는데, max 가 결합적이라 "1분 값들의 max" 가 그 봉을
+ * 직접 계산한 값과 같다. 캔들 배열이 곧 봉 경계라 축 변환도 한 번뿐이다.
+ *
+ * ## 값이 없는 봉은 **0** 이다(점을 빼지 않는다)
+ *
+ * "그 봉에서 체결된 벽이 없었다" 가 이 계열에서는 **참인 관측**이라 0 이 정직하다.
+ * 미도달 계단이 빈 구간에 0 을 그리지 않는 것과 반대인데, 저기서는 0 이 "미도달 벽이
+ * 0주" 라는 **틀린 문장**이 되기 때문이다(같은 파일의 그 docstring 참조). 점을 빼면
+ * lwc 가 앞뒤를 이어 그려(whitespace 무시) 없던 벽이 그 구간에 걸친 것처럼 보인다.
+ */
+export function buildPeakWallBarPoints(
+  candidates: readonly AskPeakCandidate[],
+  candles: readonly Candle[],
+  axis: VirtualAxis,
+  color: string,
+): PeakWallStepPoint[] {
+  if (candidates.length === 0 || candles.length === 0 || axis.segments.length === 0) return [];
+
+  // 후보를 가상초로 — 축 밖(미로드 구간)은 근거가 없으므로 버린다.
+  const events = candidates
+    .map((c) => {
+      if (!Number.isFinite(c.t_ms) || !axis.contains(c.t_ms)) return null;
+      const virtualMs = axis.toVirtual(c.t_ms);
+      return { vsec: virtualMs / 1000, qty: c.qty, dayIdx: axis.findByVirtual(virtualMs) };
+    })
+    .filter((e): e is { vsec: number; qty: number; dayIdx: number } =>
+      e !== null && Number.isFinite(e.qty) && e.dayIdx >= 0)
+    .sort((a, b) => a.vsec - b.vsec);
+  if (events.length === 0) return [];
+
+  // 캔들도 같은 필터를 통과한 것만 — 세션 밖 캔들은 `toVirtual` 이 경계로 **클램프**해
+  // 서로 다른 캔들이 같은 가상초를 얻는다(누적 빌더의 그 사고와 같은 원인).
+  const bars: { vsec: number; dayIdx: number }[] = [];
+  for (const c of candles) {
+    if (!axis.contains(c.ts_ms)) continue;
+    const virtualMs = axis.toVirtual(c.ts_ms);
+    const dayIdx = axis.findByVirtual(virtualMs);
+    if (dayIdx < 0) continue;
+    const vsec = virtualMs / 1000;
+    // 같은 시각 점을 두 번 내지 않는다(lwc 는 위반 시 차트를 죽인다).
+    if (bars.length > 0 && vsec <= bars[bars.length - 1].vsec) continue;
+    bars.push({ vsec, dayIdx });
+  }
+  if (bars.length === 0) return [];
+
+  const out: PeakWallStepPoint[] = [];
+  let evIdx = 0;
+  let currentDay = -2;
+  let pendingDayBreak = false;
+  for (let i = 0; i < bars.length; i += 1) {
+    const bar = bars[i];
+    // 이 봉의 구간은 [bar.vsec, 다음 봉 vsec) — 마지막 봉은 상한이 없다.
+    const nextVsec = i + 1 < bars.length ? bars[i + 1].vsec : Number.POSITIVE_INFINITY;
+    let best = 0;
+    while (evIdx < events.length && events[evIdx].vsec < nextVsec) {
+      const ev = events[evIdx];
+      // 봉보다 이른 후보(앞 봉이 전부 소진된 뒤 남은 것)는 이 봉의 값이 아니다.
+      if (ev.vsec >= bar.vsec && ev.dayIdx === bar.dayIdx && ev.qty > best) best = ev.qty;
+      evIdx += 1;
+    }
+    if (bar.dayIdx !== currentDay) {
+      currentDay = bar.dayIdx;
+      pendingDayBreak = out.length > 0;
+    }
+    if (pendingDayBreak) {
+      // 거래일 사이를 잇는 선분을 지운다 — 누적 계단과 같은 기법이고 같은 이유다
+      // (연결선이 남으면 날 경계의 값 변화가 하나의 움직임으로 읽힌다).
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      out.push({ time: bar.vsec as Time, value: best, ...LINE_HIDDEN_COLOR });
+      pendingDayBreak = false;
+      continue;
+    }
+    out.push({ time: bar.vsec as Time, value: best, color });
+  }
+  return out;
+}
+
 
 /**
  * 미도달 벽 전용 계단 — **누적 최대가 아니다**.

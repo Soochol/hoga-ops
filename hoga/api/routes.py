@@ -795,6 +795,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         program_trade_enabled: bool = Query(True),
         trade_volume_poc_enabled: bool = Query(True),
         depth_heatmap_enabled: bool = Query(True),
+        # 봉별 최대 체결 벽 배열 — **옵트인**. 하루당 최대 정규장 분 수(391)
+        # × 2축 × 2방향이라 켜면 sidecar 페이로드가 자릿수로 커진다(`all_peaks`
+        # 를 벗겨야 했던 그 규모). 최대벽 pane 의 봉별 모드를 켠 창만 요청한다.
+        bar_peaks_enabled: bool = Query(False),
         # 값 목록은 `RangeMode`(models.py)가 유일 출처다 — 여기 정규식을 손으로 다시
         # 적으면 그 사본이 곧 드리프트 지점이 된다(퇴역한 `full` 이 프론트에 남은 것이
         # 정확히 그 사고였다).
@@ -900,6 +904,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "program_trade_enabled": program_trade_enabled,
                 "trade_volume_poc_enabled": trade_volume_poc_enabled,
                 "depth_heatmap_enabled": depth_heatmap_enabled,
+                "bar_peaks_enabled": bar_peaks_enabled,
                 "mode": mode,
             }
             try:
