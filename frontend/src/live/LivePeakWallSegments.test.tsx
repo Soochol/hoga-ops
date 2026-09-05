@@ -47,6 +47,7 @@ function wall(over: Partial<PeakWallRenderState> = {}): PeakWallRenderState {
     arrowRankSegments: segments,
     stepSegments: SEGMENTS,
     barCandidates: [],
+    allWallBarCandidates: [],
     drawn: true,
     labels: true,
     arrows: true,

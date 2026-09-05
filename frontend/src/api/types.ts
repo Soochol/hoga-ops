@@ -809,6 +809,11 @@ export type AskPeak = PeakBase & {
    *  요청한 창에만 실린다(페이로드가 자릿수로 커진다). 구백엔드 부재 → optional. */
   traded_bar_peaks?: AskPeakCandidate[];
   traded_bar_max_peaks?: AskPeakCandidate[];
+  /** 전체 계열(터치 무관)의 봉별 최대 — 같은 규약이되 **호가가 있던 모든 봉**에 값이
+   *  있어 체결 계열보다 크다. 그래서 옵트인 파라미터가 **따로**다
+   *  (`all_bar_peaks_enabled`). 구백엔드 부재 → optional. */
+  all_bar_peaks?: AskPeakCandidate[];
+  all_bar_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** 미도달 벽 top-3 — all_peaks 와 달리 /api/range 에서 벗기지 않는다(최대 3개). */
@@ -825,6 +830,11 @@ export type BidPeak = PeakBase & {
   /** ask 쪽 주석 참조 — 동일 규약 미러. */
   traded_bar_peaks?: AskPeakCandidate[];
   traded_bar_max_peaks?: AskPeakCandidate[];
+  /** 전체 계열(터치 무관)의 봉별 최대 — 같은 규약이되 **호가가 있던 모든 봉**에 값이
+   *  있어 체결 계열보다 크다. 그래서 옵트인 파라미터가 **따로**다
+   *  (`all_bar_peaks_enabled`). 구백엔드 부재 → optional. */
+  all_bar_peaks?: AskPeakCandidate[];
+  all_bar_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   /** ask 쪽 주석 참조 — 동일 규약 미러. */

@@ -139,6 +139,26 @@ export function peakWallPaneHasContent(cur: IndicatorSettings): boolean {
   ));
 }
 
+/**
+ * 봉별 모드에서 **이 계열의 배열을 실제로 요청해야 하는가**.
+ *
+ * `peakWallPaneHasContent`(pane 이 뜨는가)보다 좁다 — 계열까지 본다. 두 계열의 wire
+ * 배열이 **크기가 크게 다르기 때문**이다: 체결 계열은 터치가 있었던 봉만이지만 전체
+ * 계열은 **호가가 있던 모든 봉**에 값이 있다. 게이트를 하나로 묶으면 체결 슬롯만 켠
+ * 창이 전체 배열까지 받는다(`/api/range` 의 `all_bar_peaks_enabled` 가 이 값을 탄다).
+ *
+ * 모드가 `step` 이면 어느 계열도 요청하지 않는다 — 계단은 이 배열을 안 쓴다.
+ */
+export function peakWallBarFamilyActive(
+  cur: IndicatorSettings, family: 'Traded' | 'AllWall',
+): boolean {
+  if (cur.peakWallPaneMode !== 'bar' || !cur.peakWallPaneEnabled) return false;
+  return (['ask', 'bid'] as const).some((side) => (
+    (side === 'ask' ? cur.askPeakEnabled : cur.bidPeakEnabled)
+    && cur[PEAK_WALL_PANE_SLOT_KEY[side][family]]
+  ));
+}
+
 /** 한 칸만 담은 패치. 계산된 키(`{ [key]: value }`)를 쓰면 TS 가 `{ [k: string]: boolean }`
  *  으로 넓혀 `Partial<IndicatorSettings>` 에 붙지 않으므로 여섯을 명시로 편다. */
 function paneSlotPatch(key: PeakWallPaneSlotKey, value: boolean): Partial<IndicatorSettings> {

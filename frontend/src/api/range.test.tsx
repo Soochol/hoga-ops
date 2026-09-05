@@ -148,6 +148,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       'KRX',
       null,
+      null,
     ]);
   });
 
@@ -168,8 +169,8 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe('hoga');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
-    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
-    expect(request.queryKey.at(-3)).toBe(null);
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled, allBarPeaksEnabled] 다.
+    expect(request.queryKey.at(-4)).toBe(null);
   });
 
   it('adds mode=sidecar for overlay sidecar requests', () => {
@@ -189,8 +190,8 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe('sidecar');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
-    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
-    expect(request.queryKey.at(-3)).toBe(null);
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled, allBarPeaksEnabled] 다.
+    expect(request.queryKey.at(-4)).toBe(null);
   });
 
   it('threads sidecar indicator gates into the URL params and query key', () => {
@@ -209,6 +210,8 @@ describe('buildRangeBundleRequest', () => {
         tradeVolumePocEnabled: false,
         depthHeatmapEnabled: false,
         barPeaksEnabled: true,
+        // 전체 계열은 **끈 채로** — 두 게이트가 독립임을 URL 로 못박는다.
+        allBarPeaksEnabled: false,
       },
     });
 
@@ -220,10 +223,13 @@ describe('buildRangeBundleRequest', () => {
     // 옵트인이라 **켠 값이 실제로 나가는지**를 재는 것이 이 줄의 요점이다 — 안 나가면
     // 봉별 모드가 조용히 빈 배열을 받는다.
     expect(request.url).toContain('&bar_peaks_enabled=true');
+    // 하나로 묶여 있으면 이 줄이 실패한다 — 체결 슬롯만 켠 창이 전체 배열까지 받는다.
+    expect(request.url).toContain('&all_bar_peaks_enabled=false');
     // ⚠ 키 뒤쪽은 덧붙이기 전용이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [다섯 게이트, venue, barPeaksEnabled] 다.
-    expect(request.queryKey.slice(-7, -2)).toEqual([false, false, false, false, false]);
-    expect(request.queryKey.at(-1)).toBe(true);
+    expect(request.queryKey.slice(-8, -3)).toEqual([false, false, false, false, false]);
+    // 꼬리 = [venue, barPeaksEnabled, allBarPeaksEnabled] (덧붙이기 전용).
+    expect(request.queryKey.slice(-2)).toEqual([true, false]);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -244,8 +250,8 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe('candles');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
-    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
-    expect(request.queryKey.at(-3)).toBe(null);
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled, allBarPeaksEnabled] 다.
+    expect(request.queryKey.at(-4)).toBe(null);
   });
 
   it('includes volumeDistributionCutoffMs in the range query key', () => {
@@ -317,6 +323,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       'KRX',
       null,
+      null,
     ]);
   });
 
@@ -337,8 +344,8 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe(null);
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
-    // [… depthHeatmapEnabled, venue, barPeaksEnabled] 이므로 옵션 게이트는 뒤에서 셋째다.
-    expect(request.queryKey.at(-3)).toBe(null);
+    // [… depthHeatmapEnabled, venue, barPeaksEnabled, allBarPeaksEnabled] 다.
+    expect(request.queryKey.at(-4)).toBe(null);
   });
 });
 
@@ -1047,6 +1054,7 @@ describe('rangeBundleQueryOptions', () => {
       null,
       null,
       'KRX',
+      null,
       null,
     ]);
 
@@ -1962,6 +1970,7 @@ describe('rangePlaceholderData', () => {
     null,
     'KRX',
     null,
+    null,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -1988,6 +1997,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
       null,
     ];
 
@@ -2019,6 +2029,7 @@ describe('rangePlaceholderData', () => {
       null,
       'KRX',
       null,
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2049,6 +2060,7 @@ describe('rangePlaceholderData', () => {
       null,
       'KRX',
       null,
+      null,
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
@@ -2073,6 +2085,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'KRX',
+      null,
       null,
     ];
 
@@ -2106,6 +2119,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       'NXT', // ← baseKey 는 'KRX'
+      null,
       null,
     ];
 
@@ -2141,6 +2155,7 @@ describe('rangePlaceholderData', () => {
       null,
       true, // ← baseKey 는 null
       'KRX',
+      null,
       null,
     ];
 

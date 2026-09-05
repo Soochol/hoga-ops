@@ -106,6 +106,9 @@ export type PeakWallRenderState = {
    *  게이트는 계단과 같다(pane 마스터 × 방향 × 슬롯) + **모드가 `bar` 일 것**.
    *  꺼지면 빈 배열이라 소비처가 다시 게이트할 필요가 없다. */
   barCandidates: readonly AskPeakCandidate[];
+  /** 「전체 최대벽」 계열의 봉별 모드 입력 — 위와 같은 규약(필터 파이프라인 밖).
+   *  게이트는 `{side}PeakAllWallPaneEnabled` × 모드다. */
+  allWallBarCandidates: readonly AskPeakCandidate[];
   /** 「전체 최대벽(터치 무관)」 하위 선 — `all_*` 패밀리를 carrier 로 옮겨
    *  (toAllWallPeakInputs) 같은 파이프라인으로 지은 세그먼트. **표시 개수 노브를
    *  받는다**(`askPeakAllWallRankLimit`) — 2026-08-25 부터 백엔드가 과거일에도
@@ -502,6 +505,13 @@ export function usePeakWallRender({
       : EMPTY_BAR_CANDIDATES
   ), [needStepSegments, applicable, enabled, paneTradedEnabled, paneBarMode, intraMax, peaks]);
 
+  // 전체 계열의 봉별 입력 — 같은 규약, 게이트만 그 계열 슬롯이다.
+  const allWallBarCandidates = useMemo(() => (
+    needStepSegments && applicable && enabled && paneAllWallEnabled && paneBarMode
+      ? peaks.flatMap((p) => (intraMax ? p.all_bar_max_peaks : p.all_bar_peaks) ?? [])
+      : EMPTY_BAR_CANDIDATES
+  ), [needStepSegments, applicable, enabled, paneAllWallEnabled, paneBarMode, intraMax, peaks]);
+
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
@@ -619,6 +629,7 @@ export function usePeakWallRender({
     lineWidth,
     stepSegments: stepBuilt,
     barCandidates,
+    allWallBarCandidates,
     allWallSegments: surfacedAllWallSegments,
     legendRankSegments,
     arrowRankSegments,

@@ -102,9 +102,8 @@ import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
-import { buildTradedPanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
+import { buildBarModePanePoints, EMPTY_PEAK_WALL_STEPS } from './peakWallPanePoints';
 import {
-  buildPeakWallStepPoints,
   buildUnreachedStepPoints,
   type PeakWallStepPoint,
 } from '../chart/peakWallSteps';
@@ -2229,19 +2228,14 @@ export function LiveChartRoot({
   // (`buildUnreachedStepPoints` docstring).
   const peakWallStepPoints = useMemo(() => {
     const candlesForSteps = cb?.candles ?? EMPTY_CANDLES;
-    const monotone = (segs: readonly PeakWallSegment[], color: string) => (
-      prefPeakWallPaneEnabled && segs.length > 0
-        ? buildPeakWallStepPoints(segs, candlesForSteps, axis, color)
-        : EMPTY_PEAK_WALL_STEPS
-    );
-    // 체결 계열만 모드를 탄다(전체·미도달은 늘 계단) — 사유와 폴백 없음 규칙은
-    // `buildTradedPanePoints` 가 소유한다. 여기서 인라인으로 두면 테스트가 닿지
+    // 체결·전체 두 계열이 모드를 탄다(미도달만 늘 계단) — 사유와 폴백 없음 규칙은
+    // `buildBarModePanePoints` 가 소유한다. 여기서 인라인으로 두면 테스트가 닿지
     // 않는다는 것이 red-check 으로 확인됐다(그 모듈 머리말).
-    const traded = (
+    const byMode = (
       barCands: readonly AskPeakCandidate[],
       segs: readonly PeakWallSegment[],
       color: string,
-    ) => buildTradedPanePoints({
+    ) => buildBarModePanePoints({
       mode: prefPeakWallPaneMode,
       paneEnabled: prefPeakWallPaneEnabled,
       barCandidates: barCands,
@@ -2258,11 +2252,15 @@ export function LiveChartRoot({
         : EMPTY_PEAK_WALL_STEPS
     );
     return {
-      'ask-traded': traded(askWall.barCandidates, askWall.stepSegments, askWall.color),
-      'ask-all': monotone(askWall.allWallStepSegments, askWall.allWallColor),
+      'ask-traded': byMode(askWall.barCandidates, askWall.stepSegments, askWall.color),
+      'ask-all': byMode(
+        askWall.allWallBarCandidates, askWall.allWallStepSegments, askWall.allWallColor,
+      ),
       'ask-unreached': unreached(askWall.unreachedStepSegments, askWall.unreachedColor, 'ask'),
-      'bid-traded': traded(bidWall.barCandidates, bidWall.stepSegments, bidWall.color),
-      'bid-all': monotone(bidWall.allWallStepSegments, bidWall.allWallColor),
+      'bid-traded': byMode(bidWall.barCandidates, bidWall.stepSegments, bidWall.color),
+      'bid-all': byMode(
+        bidWall.allWallBarCandidates, bidWall.allWallStepSegments, bidWall.allWallColor,
+      ),
       'bid-unreached': unreached(bidWall.unreachedStepSegments, bidWall.unreachedColor, 'bid'),
     } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
   }, [prefPeakWallPaneEnabled, prefPeakWallPaneMode, cb?.candles, axis, askWall, bidWall]);

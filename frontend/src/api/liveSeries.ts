@@ -31,6 +31,8 @@ export type LiveTodayPeakBase = {
    *  프론트가 `traded_bar_peaks`·`traded_bar_max_peaks` 양쪽에 배선한다.
    *  구백엔드 부재 → optional. */
   traded_bar_peaks?: AskPeakCandidate[];
+  /** 전체 계열의 분별 최대(터치 무관) — 위와 같은 축 규약(단일 배열). */
+  all_bar_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

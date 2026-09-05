@@ -75,6 +75,12 @@ class _TodaySidePeakState:
     #: (잘린 구간이 "체결 벽이 없던 분" 과 구별되지 않는다). 크기는 정규장 분 수로
     #: 유계이고(체결된 벽이 있는 분만), 틱 경로 비용은 벽당 O(1) 비교다.
     traded_bar_max: dict[int, Peak] = field(default_factory=dict)
+    #: 분 → 그 분의 **최대 벽**(터치 무관) — 봉별 모드의 전체 계열 입력.
+    #: 위 `traded_bar_max` 와 같은 접기이고 **필터만 다르다**(터치를 묻지 않는다).
+    #: ⚠ 크기가 다르다: 이쪽은 **호가가 있던 모든 분**에 항목이 생긴다(체결 계열은
+    #: 터치가 있었던 분만). 정규장 분 수로 유계라 상주 비용은 여전히 작지만,
+    #: 페이로드에서는 그 차이가 그대로 나타나 게이트를 따로 둔다.
+    all_bar_max: dict[int, Peak] = field(default_factory=dict)
     #: 당일 연속 체결가의 극값(ask=max, bid=min) — 미도달 판정의 기준. None = 체결 0건.
     day_extreme: int | None = None
     #: 미도달 벽 — 극값이 지배하지 못한 가격의 최대 잔량. **가격별 딕셔너리가 불가피한
@@ -163,6 +169,7 @@ class _TodaySidePeakState:
 
             peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
             self._offer_all(peak)
+            self._offer_all_bar_max(peak)
             # 미도달 — 당일 극값이 아직 지배하지 못한 가격만 담는다. 극값은 단조라
             # "삽입 시점에 이하였던 가격"은 최종에도 이하이므로 처음부터 안 담는 것이
             # 하루 스코프 정의와 일치하고, 나중에 도달하면 ingest_trade 가 걷어낸다.
@@ -263,6 +270,9 @@ class _TodaySidePeakState:
             "traded_bar_peaks": [
                 _peak_payload(p) for _, p in sorted(self.traded_bar_max.items())
             ],
+            "all_bar_peaks": [
+                _peak_payload(p) for _, p in sorted(self.all_bar_max.items())
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -310,6 +320,18 @@ class _TodaySidePeakState:
         current = self.traded_bar_max.get(minute)
         if current is None or peak.qty > current.qty:
             self.traded_bar_max[minute] = peak
+
+    def _offer_all_bar_max(self, peak: Peak) -> None:
+        """분별 최대에 벽 하나를 제시한다 — **터치를 묻지 않는** 판. O(1), 멱등.
+
+        `_offer_bar_max` 와 규약이 같고(분 키는 벽이 선 시각, 동률은 먼저 온 것 유지)
+        **호출 지점만 다르다**: 저쪽은 터치가 확정된 자리(`_record_closed_peak`),
+        이쪽은 호가 레벨을 보는 자리다. 그래서 이 계열은 체결이 0건인 분에도 값이 있다.
+        """
+        minute = _minute_of(peak.t_ms)
+        current = self.all_bar_max.get(minute)
+        if current is None or peak.qty > current.qty:
+            self.all_bar_max[minute] = peak
 
     def _offer_record(self, peak: Peak) -> None:
         """기록 갱신 시퀀스에 터치된 벽 하나를 제시한다 — **도착 순서에 무관**하고 멱등.
@@ -377,6 +399,10 @@ class _TodaySidePeakState:
         # 남아 **조용히 과소평가**된다(이 클래스 docstring 이 경고하는 그 실패 모양).
         for peak in other.traded_bar_max.values():
             self._offer_bar_max(peak)
+        # 전체 계열의 분별 최대도 마찬가지다 — `all_top` 은 top-3 라 재생본의 나머지
+        # 분이 거기 없다. 빠뜨리면 재기동 후 이 계열이 세 봉만 남는다(같은 함정).
+        for peak in other.all_bar_max.values():
+            self._offer_all_bar_max(peak)
         # 미도달 — 극값을 먼저 합치고(둘 중 더 지배적인 쪽), 딕셔너리를 larger 로 합친 뒤
         # 합쳐진 극값으로 걷어낸다. 순서가 멱등성을 만든다: 같은 재생본을 두 번 흡수해도
         # 극값·딕셔너리 모두 고정점이다.

@@ -117,7 +117,7 @@ function pushTodayAskPeak(
   todayKst: string,
   families: PeakFamilies,
   records: PeakRecordSeries,
-  bars: PeakBarSeries,
+  bars: { traded: PeakBarSeries; all: PeakBarSeries },
 ): AskPeak[] {
   const traded = families.traded[0];
   if (traded) {
@@ -143,7 +143,7 @@ function attachFamilies(
    *  (`buildPeakWallOverlaySegments` 의 maFilter 가 같은 이유로 필수다).
    *  기록을 안 쓰는 자리는 `EMPTY_PEAK_RECORD_SERIES` 를 명시한다. */
   records: PeakRecordSeries,
-  bars: PeakBarSeries,
+  bars: { traded: PeakBarSeries; all: PeakBarSeries },
 ): AskPeak {
   return {
     ...peak,
@@ -157,8 +157,12 @@ function attachFamilies(
     traded_record_max_peaks: records.max,
     // 분별 최대 — 같은 두 출처(`buildPeakBarSeries`)에서 왔고, 비면 봉별 모드가
     // 그리지 않는다(top-3 폴백이 **없다** — 그 모듈 docstring 참조).
-    traded_bar_peaks: bars.close,
-    traded_bar_max_peaks: bars.max,
+    traded_bar_peaks: bars.traded.close,
+    traded_bar_max_peaks: bars.traded.max,
+    // 전체 계열도 같은 조립에서 온다(`buildPeakBarSeries` 의 family 인자) — 두 계열이
+    // 한 pane 의 같은 모드를 공유하므로 한쪽만 배선하면 그 칸만 조용히 빈다.
+    all_bar_peaks: bars.all.close,
+    all_bar_max_peaks: bars.all.max,
     all_peaks: families.all,
     all_max_peaks: families.all,
     unreached_price: families.unreached[0]?.price ?? null,
@@ -216,7 +220,10 @@ export function deriveDayAskPeaks(
   const families = mergedAskFamilies(ob, trade, todayAskPeak, sessionOpenMs);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), buildPeakBarSeries(seed, todayAskPeak));
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), {
+    traded: buildPeakBarSeries(seed, todayAskPeak, 'traded'),
+    all: buildPeakBarSeries(seed, todayAskPeak, 'all'),
+  });
 }
 
 /** deriveDayAskPeaks의 증분판(no-cutoff 전용). source가 ob/trade 스캔을 누적으로
@@ -239,7 +246,10 @@ export function deriveDayAskPeaksIncremental(
   const families = askFamiliesFromClassified(classified, backend);
   const seed = todaySeedRow(seeds, todayKst);
   const out = seeds.filter((peak) => peak.date !== todayKst);
-  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), buildPeakBarSeries(seed, todayAskPeak));
+  return pushTodayAskPeak(out, todayKst, families, buildPeakRecordSeries(seed, todayAskPeak), {
+    traded: buildPeakBarSeries(seed, todayAskPeak, 'traded'),
+    all: buildPeakBarSeries(seed, todayAskPeak, 'all'),
+  });
 }
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
