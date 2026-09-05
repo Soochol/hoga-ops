@@ -1,0 +1,324 @@
+{
+  "baseline_commit": "fd3cbe3c7f8ecf582cf61dd583c109a60bb29059",
+  "python": "3.14.4",
+  "numpy": "2.5.2",
+  "polars": "1.41.0",
+  "symbols": 100,
+  "bars_per_symbol": 10000,
+  "selected_tail_bars": 252,
+  "seed": 20260905,
+  "boundary": "run_pattern_search including model construction",
+  "cold_definition": "empty application corpus cache; OS file cache retained",
+  "excludes": [
+    "process spawn",
+    "worker queue",
+    "HTTP",
+    "browser"
+  ],
+  "cases": [
+    {
+      "request": {
+        "code": "000001",
+        "mode": "history",
+        "lengths": [
+          15
+        ],
+        "from": null,
+        "to": null,
+        "top": 100,
+        "min_tv_eok": 50.0,
+        "exclude_etf": true,
+        "no_overlap": true,
+        "forward_days": 20,
+        "per_code": 1,
+        "since": "20250918",
+        "flex_bars": 2,
+        "volume_weight": 0.0,
+        "ma_preset": "short",
+        "struct_tolerance": null,
+        "struct_anchor": "running",
+        "timeframe": "D"
+      },
+      "responses_equal_except_elapsed_ms": true,
+      "float_tolerance": {
+        "absolute": 1e-08,
+        "relative": 1e-08
+      },
+      "result_lengths": [
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "median_ms": {
+        "cold": {
+          "before": {
+            "wall_ms": 577.4421630048892,
+            "cpu_ms": 730.4769449999994
+          },
+          "after": {
+            "wall_ms": 183.25898199691437,
+            "cpu_ms": 332.29133499999983
+          }
+        },
+        "warm": {
+          "before": {
+            "wall_ms": 484.4388869969407,
+            "cpu_ms": 489.50181699999985
+          },
+          "after": {
+            "wall_ms": 72.25916998868342,
+            "cpu_ms": 72.25900499999938
+          }
+        }
+      },
+      "trials": {
+        "cold": {
+          "before": [
+            {
+              "wall_ms": 802.8979589871597,
+              "cpu_ms": 977.1710489999998
+            },
+            {
+              "wall_ms": 572.9194339946844,
+              "cpu_ms": 723.5587099999998
+            },
+            {
+              "wall_ms": 577.4421630048892,
+              "cpu_ms": 730.4769449999994
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 183.25898199691437,
+              "cpu_ms": 334.8335580000006
+            },
+            {
+              "wall_ms": 185.5778350000037,
+              "cpu_ms": 332.29133499999983
+            },
+            {
+              "wall_ms": 170.66619200340938,
+              "cpu_ms": 322.94523400000054
+            }
+          ]
+        },
+        "warm": {
+          "before": [
+            {
+              "wall_ms": 484.4388869969407,
+              "cpu_ms": 489.50181699999985
+            },
+            {
+              "wall_ms": 490.2982310013613,
+              "cpu_ms": 490.7922950000003
+            },
+            {
+              "wall_ms": 482.76981701201294,
+              "cpu_ms": 482.6262750000012
+            },
+            {
+              "wall_ms": 475.2016300044488,
+              "cpu_ms": 475.19376800000043
+            },
+            {
+              "wall_ms": 507.960507995449,
+              "cpu_ms": 507.95748
+            },
+            {
+              "wall_ms": 494.2544439982157,
+              "cpu_ms": 494.22597500000086
+            },
+            {
+              "wall_ms": 481.92953699617647,
+              "cpu_ms": 481.8829210000004
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 63.965466993977316,
+              "cpu_ms": 64.47112300000057
+            },
+            {
+              "wall_ms": 64.38080800580792,
+              "cpu_ms": 64.38112499999971
+            },
+            {
+              "wall_ms": 72.25916998868342,
+              "cpu_ms": 72.25900499999938
+            },
+            {
+              "wall_ms": 70.2523649961222,
+              "cpu_ms": 70.24449800000099
+            },
+            {
+              "wall_ms": 74.11398900148924,
+              "cpu_ms": 74.1137529999989
+            },
+            {
+              "wall_ms": 76.50063998880796,
+              "cpu_ms": 76.50141000000055
+            },
+            {
+              "wall_ms": 87.95045998704154,
+              "cpu_ms": 87.85113999999972
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "code": "000001",
+        "mode": "history",
+        "lengths": [
+          15
+        ],
+        "from": null,
+        "to": null,
+        "top": 100,
+        "min_tv_eok": 50.0,
+        "exclude_etf": true,
+        "no_overlap": true,
+        "forward_days": 20,
+        "per_code": 1,
+        "since": "20250918",
+        "flex_bars": 2,
+        "volume_weight": 0.0,
+        "ma_preset": "short",
+        "struct_tolerance": 2,
+        "struct_anchor": "running",
+        "timeframe": "D"
+      },
+      "responses_equal_except_elapsed_ms": true,
+      "float_tolerance": {
+        "absolute": 1e-08,
+        "relative": 1e-08
+      },
+      "result_lengths": [
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "median_ms": {
+        "cold": {
+          "before": {
+            "wall_ms": 934.8333879897837,
+            "cpu_ms": 1089.991155
+          },
+          "after": {
+            "wall_ms": 223.35442299663555,
+            "cpu_ms": 367.7208150000002
+          }
+        },
+        "warm": {
+          "before": {
+            "wall_ms": 832.6693379931385,
+            "cpu_ms": 832.3721990000017
+          },
+          "after": {
+            "wall_ms": 121.14320399996359,
+            "cpu_ms": 121.12986800000058
+          }
+        }
+      },
+      "trials": {
+        "cold": {
+          "before": [
+            {
+              "wall_ms": 934.8333879897837,
+              "cpu_ms": 1079.953091
+            },
+            {
+              "wall_ms": 1009.3838890024927,
+              "cpu_ms": 1172.0041269999992
+            },
+            {
+              "wall_ms": 934.1800289985258,
+              "cpu_ms": 1089.991155
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 217.0165999996243,
+              "cpu_ms": 367.7208150000002
+            },
+            {
+              "wall_ms": 251.10186399251688,
+              "cpu_ms": 403.87577899999985
+            },
+            {
+              "wall_ms": 223.35442299663555,
+              "cpu_ms": 365.9606400000008
+            }
+          ]
+        },
+        "warm": {
+          "before": [
+            {
+              "wall_ms": 872.9900330072269,
+              "cpu_ms": 877.5923360000029
+            },
+            {
+              "wall_ms": 832.6693379931385,
+              "cpu_ms": 832.3721990000017
+            },
+            {
+              "wall_ms": 906.3930330012226,
+              "cpu_ms": 905.5445249999998
+            },
+            {
+              "wall_ms": 855.5077839992009,
+              "cpu_ms": 855.4669310000022
+            },
+            {
+              "wall_ms": 816.6887039988069,
+              "cpu_ms": 816.6128379999975
+            },
+            {
+              "wall_ms": 818.6813330103178,
+              "cpu_ms": 818.6401500000002
+            },
+            {
+              "wall_ms": 807.651673007058,
+              "cpu_ms": 807.6418079999996
+            }
+          ],
+          "after": [
+            {
+              "wall_ms": 127.56422399252187,
+              "cpu_ms": 127.55449500000182
+            },
+            {
+              "wall_ms": 116.07818599441089,
+              "cpu_ms": 116.07954900000195
+            },
+            {
+              "wall_ms": 154.43035701173358,
+              "cpu_ms": 153.00230900000145
+            },
+            {
+              "wall_ms": 124.197320008534,
+              "cpu_ms": 124.18334399999864
+            },
+            {
+              "wall_ms": 121.14320399996359,
+              "cpu_ms": 121.12986800000058
+            },
+            {
+              "wall_ms": 120.6158730055904,
+              "cpu_ms": 120.6174880000006
+            },
+            {
+              "wall_ms": 114.69659699650947,
+              "cpu_ms": 114.69784799999871
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

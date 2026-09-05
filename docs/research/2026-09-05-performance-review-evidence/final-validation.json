@@ -1,0 +1,35 @@
+{
+  "frontend": {
+    "command": "cd frontend && npx vitest run",
+    "summary": [
+      "Test Files  530 passed (530)",
+      "Tests  7070 passed (7070)"
+    ]
+  },
+  "backend": {
+    "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+    "summary": [
+      "=== 4766 passed, 2 skipped, 13 deselected, 19 warnings in 178.48s (0:02:58) ===="
+    ]
+  },
+  "e2e": {
+    "command": "cd frontend && npx playwright test",
+    "summary": [
+      "36 passed (1.4m)"
+    ]
+  },
+  "checks": [
+    "npm run typecheck",
+    "ESLint on changed TS/TSX",
+    "uv run --extra dev ruff check .",
+    "git diff --check",
+    "Vite production build via E2E webServer"
+  ],
+  "application_commit": "ba89490c1",
+  "integrated_main": "6f3290e22",
+  "notes": [
+    "Local validation; repository intentionally has no CI workflows.",
+    "Hydration regression: 7 failed before fix; 11 focused tests passed after fix.",
+    "Python tests use 3.12.13; synthetic before/after benchmark uses 3.14.4."
+  ]
+}
