@@ -673,6 +673,9 @@ export function usePeakWallRender({
     unreachedShownCount: unreachedResult.segments.length,
     unreachedHiddenByFilterCount: unreachedResult.candidateCount - unreachedResult.filteredCount,
   }), [
+    barCandidates,
+    allWallBarCandidates,
+    unreachedBarCandidates,
     tradedResult,
     allWallResult,
     unreachedResult,

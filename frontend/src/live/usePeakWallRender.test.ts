@@ -92,6 +92,18 @@ describe('usePeakWallRender', () => {
     expect(r.current.stepSegments).toEqual([]);
     expect(r.current.allWallStepSegments).toEqual([]);
     expect(r.current.unreachedStepSegments).toEqual([]);
+    // 같은 훅을 유지한 채 토글해야 반환 memo 의 오래된 후보를 잡을 수 있다.
+    // 토글 후 새로 mount 하면 의존성 누락을 숨긴다.
+    for (const [toggle, points] of [
+      ['askPeakTradedPaneEnabled', 'barCandidates'],
+      ['askPeakAllWallPaneEnabled', 'allWallBarCandidates'],
+      ['askPeakUnreachedPaneEnabled', 'unreachedBarCandidates'],
+    ] as const) {
+      act(() => useLivePageStore.setState({ [toggle]: false }));
+      expect(r.current[points]).toEqual([]);
+      act(() => useLivePageStore.setState({ [toggle]: true }));
+      expect(r.current[points]).toEqual([candidate]);
+    }
     act(() => useLivePageStore.setState({ peakWallPaneMode: 'step' }));
     expect(r.current.stepSegments.length).toBeGreaterThan(0);
     expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
