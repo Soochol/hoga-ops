@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
+import { mergeProgramTradeSeriesWithLiveTail } from '../../live/programTradeLiveTail';
+import { filterProgramTradeForCandles } from '../../live/buildLiveBundle';
 import {
   PROGRAM_TRADE_SPEC,
   projectProgramTradeNetAmount,
@@ -339,5 +341,66 @@ describe('makeCachedProgramTradeProjector == 풀 투영', () => {
   it('program_trade 가 비면 호가점이 있어도 빈 배열', () => {
     const b = { ...mk(), program_trade: { points: [] } } as RangeBundle;
     expect(makeCachedProgramTradeProjector()(b, twoDayAxis)).toEqual([]);
+  });
+
+  it('날짜 필터·실시간 병합 후에도 과거 축 투영을 반복하지 않는다', () => {
+    const cached = makeCachedProgramTradeProjector();
+    const first = mk([3]);
+    const candles = [OPEN, NEXT_OPEN].map(ts_ms => ({ ts_ms, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 1 }));
+    const persisted = filterProgramTradeForCandles(first.program_trade, candles);
+    const spy = vi.fn((t: number) => twoDayAxis.classifyAndProject(t));
+    const measuredAxis = { ...twoDayAxis, classifyAndProject: spy };
+    cached({ ...first, program_trade: mergeProgramTradeSeriesWithLiveTail(persisted, []) }, measuredAxis);
+    try {
+      for (const amount of [100, -200, 300]) {
+        // 캔들 가격만 바뀌어도 같은 날짜의 프로그램 원소는 재사용되어야 한다.
+        const filtered = filterProgramTradeForCandles(first.program_trade, candles.map(c => ({ ...c, close: amount })));
+        expect(filtered.points).toBe(persisted.points);
+        const next = { ...first, program_trade: mergeProgramTradeSeriesWithLiveTail(filtered, [
+          { t_ms: NEXT_OPEN + 3 * 60_000 + 1000, net_amount: amount },
+        ]) };
+        spy.mockClear();
+        const actual = cached(next, measuredAxis);
+        expect(spy).toHaveBeenCalled();
+        expect(spy.mock.calls.every(([t]) => t >= NEXT_OPEN)).toBe(true);
+        expect(actual).toEqual(projectProgramTradeNetAmount(next, twoDayAxis));
+        expect(actual.at(-1)?.value).toBe(amount);
+      }
+    } finally { spy.mockRestore(); }
+  });
+
+  it('과거 중간 프로그램 값과 호가 결손 표시의 정정은 캐시를 무효화한다', () => {
+    const cached = makeCachedProgramTradeProjector();
+    const first = mk();
+    const original = cached(first, twoDayAxis);
+    const corrected = { ...first, program_trade: { ...first.program_trade,
+      points: first.program_trade!.points.map((p, i) => i === 1 ? { ...p, net_amount: -999 } : p),
+    } };
+    const changed = cached(corrected, twoDayAxis);
+    expect(changed).toEqual(projectProgramTradeNetAmount(corrected, twoDayAxis));
+    expect(changed).not.toEqual(original);
+    const gap = { ...corrected, quote_ratio: { ...corrected.quote_ratio,
+      points: corrected.quote_ratio.points.map((p, i) => i === 1 ? quotePoint(p.t, true) : p),
+    } };
+    const gapData = cached(gap, twoDayAxis);
+    expect(gapData).toEqual(projectProgramTradeNetAmount(gap, twoDayAxis));
+    expect(gapData).not.toEqual(changed);
+    expect(cached(first, twoDayAxis)).toEqual(original);
+  });
+
+  it('같은 axis에서 종목·봉·세그먼트·이력 범위가 바뀌어도 풀 투영과 같다', () => {
+    const cached = makeCachedProgramTradeProjector();
+    const first = mk();
+    cached(first, twoDayAxis);
+    const variants = [
+      { ...first, code: '000660' },
+      { ...first, bucket_ms: 120_000 },
+      { ...first, segments: first.segments.map(s => ({ ...s })) },
+      { ...first, program_trade: { ...first.program_trade, points: first.program_trade!.points.slice(1) } },
+      { ...first, quote_ratio: { ...first.quote_ratio, points: first.quote_ratio.points.slice(1) } },
+      { ...first, program_trade: { points: [...first.program_trade!.points].reverse() } },
+      first,
+    ];
+    for (const next of variants) expect(cached(next, twoDayAxis)).toEqual(projectProgramTradeNetAmount(next, twoDayAxis));
   });
 });

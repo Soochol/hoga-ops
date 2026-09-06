@@ -19,33 +19,49 @@ function livePoint(snapshot: Record<string, unknown>): ProgramTradePoint | null 
   };
 }
 
+// API 필터 결과는 불변 배열이다. 저장 이력의 중복 제거·정렬은 배열이 바뀔 때만 한다.
+const historyCache = new WeakMap<ProgramTradePoint[], {
+  points: ProgramTradePoint[];
+  seamMs: number;
+}>();
+const EMPTY_POINTS: ProgramTradePoint[] = [];
+
+function normalizedHistory(points: ProgramTradePoint[]) {
+  const cached = historyCache.get(points);
+  if (cached) return cached;
+  let seamMs = -Infinity;
+  const byTime = new Map<number, ProgramTradePoint>();
+  for (const point of points) {
+    if (point.t > seamMs) seamMs = point.t;
+    byTime.set(point.t, point);
+  }
+  const result = { points: [...byTime.values()].sort((a, b) => a.t - b.t), seamMs };
+  historyCache.set(points, result);
+  return result;
+}
+
 /**
  * Join durable program-trade history to the display-only WebSocket tail.
  *
  * The persisted global max timestamp is the seam. Points at or before it stay
- * owned by /api/range; only later live snapshots are appended. A Map makes
- * duplicate live timestamps last-wins, matching the sidecar store's overwrite
- * behavior, and the final sort tolerates retrograde WebSocket delivery.
+ * owned by /api/range; only later live snapshots are appended. Normalize the
+ * immutable history once, then deduplicate/sort only the live tail. Both keep
+ * last-wins timestamps and tolerate retrograde delivery.
  */
 export function mergeProgramTradeSeriesWithLiveTail(
   persisted: ProgramTradeSeries | null | undefined,
   liveSnapshots: readonly Record<string, unknown>[],
 ): ProgramTradeSeries {
-  const persistedPoints = persisted?.points ?? [];
-  let seamMs = -Infinity;
-  for (const point of persistedPoints) {
-    if (point.t > seamMs) seamMs = point.t;
-  }
-
+  const history = normalizedHistory(persisted?.points ?? EMPTY_POINTS);
   const byTime = new Map<number, ProgramTradePoint>();
-  for (const point of persistedPoints) byTime.set(point.t, point);
   for (const snapshot of liveSnapshots) {
     const point = livePoint(snapshot);
-    if (point !== null && point.t > seamMs) byTime.set(point.t, point);
+    if (point !== null && point.t > history.seamMs) byTime.set(point.t, point);
   }
 
   return {
     source: persisted?.source ?? 'kis_program_trade',
-    points: [...byTime.values()].sort((a, b) => a.t - b.t),
+    points: byTime.size === 0 ? history.points
+      : history.points.concat([...byTime.values()].sort((a, b) => a.t - b.t)),
   };
 }

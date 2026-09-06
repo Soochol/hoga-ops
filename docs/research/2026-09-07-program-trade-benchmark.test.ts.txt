@@ -1,0 +1,41 @@
+import {expect,it} from 'vitest';
+import {writeFileSync} from 'node:fs';
+import {makeCachedProgramTradeProjector} from './programTrade';
+import {makeCachedProgramTradeProjector as beforeProjector} from './programTrade.audit-before';
+import {mergeProgramTradeSeriesWithLiveTail} from '../../live/programTradeLiveTail';
+import {mergeProgramTradeSeriesWithLiveTail as beforeMerge} from '../../live/programTradeLiveTail.audit-before';
+import {filterProgramTradeForCandles} from '../../live/buildLiveBundle';
+import {realMsToYyyymmdd} from '../../live/liveDateTime';
+import {createVirtualAxis} from '../../util/virtualAxis';
+import type {Candle,ProgramTradeSeries,RangeBundle} from '../../api/types';
+function beforeFilter(series:ProgramTradeSeries,candles:readonly Candle[]) {
+ const dates=new Set(candles.map(c=>realMsToYyyymmdd(c.ts_ms)));
+ return {...series,points:series.points.filter(p=>dates.has(realMsToYyyymmdd(p.t)))};
+}
+function median(fn:()=>unknown){fn();fn();const xs=[];for(let i=0;i<11;i++){const t=performance.now();fn();xs.push(performance.now()-t);}return +xs.sort((a,b)=>a-b)[5].toFixed(3);}
+it('program merge + projection comparison with immutable live tail updates',()=>{
+ const rows=[];
+ for(const days of [5,30,90]){
+  const base=Date.UTC(2026,4,1),day=86400000;
+  const segments=Array.from({length:days},(_,d)=>({date:realMsToYyyymmdd(base+d*day),session_open_ms:base+d*day,session_close_ms:base+d*day+390*60000,source:'hogaplay' as const}));
+  const candles=segments.flatMap(s=>Array.from({length:390},(_,i)=>({ts_ms:s.session_open_ms+i*60000,open:100,high:102,low:99,close:101,vol_a:1,vol_b:1})));
+  const axis=createVirtualAxis(segments.map(s=>({date:s.date,sessionOpenMs:s.session_open_ms,sessionCloseMs:s.session_close_ms})));
+  const persisted:ProgramTradeSeries={source:'kis_program_trade',points:candles.map((c,i)=>({t:c.ts_ms,net_amount:i,net_qty:i,gap_risk:false}))};
+  const quotes=candles.map(c=>({t:c.ts_ms,bid_total:100,ask_total:110,bid_max:100,ask_max:110,imb_max_bid:100,imb_max_ask:110,band_pct:0,tick:0}));
+  const bundle={code:'005930',bucket_ms:60000,segments,candles,quote_ratio:{bucket_ms:60000,points:quotes},program_trade:persisted} as RangeBundle;
+  const oldProject=beforeProjector(),newProject=makeCachedProgramTradeProjector();
+  const t=segments.at(-1)!.session_open_ms+370*60000+1000;
+  // 저장 이음매 뒤·마감 동시호가 전의 live 1점. 오늘 저장분은 370분 직전까지만 둔다.
+  persisted.points=persisted.points.filter(p=>p.t<t-1000);
+  let tick=0;
+  const old=()=>oldProject({...bundle,program_trade:beforeMerge(persisted,[{t_ms:t,net_amount:++tick}])},axis);
+  const next=()=>newProject({...bundle,program_trade:mergeProgramTradeSeriesWithLiveTail(persisted,[{t_ms:t,net_amount:++tick}])},axis);
+  const oldPipeline=()=>oldProject({...bundle,program_trade:beforeMerge(beforeFilter(persisted,candles),[{t_ms:t,net_amount:++tick}])},axis);
+  const newPipeline=()=>newProject({...bundle,program_trade:mergeProgramTradeSeriesWithLiveTail(filterProgramTradeForCandles(persisted,candles),[{t_ms:t,net_amount:++tick}])},axis);
+  const live=[{t_ms:t,net_amount:123}];
+  expect(newProject({...bundle,program_trade:mergeProgramTradeSeriesWithLiveTail(filterProgramTradeForCandles(persisted,candles),live)},axis)).toEqual(oldProject({...bundle,program_trade:beforeMerge(beforeFilter(persisted,candles),live)},axis));
+  expect(newProject({...bundle,program_trade:mergeProgramTradeSeriesWithLiveTail(persisted,live)},axis).at(-1)?.value).toBe(123);
+  rows.push({days,points:candles.length,before_merge_project_ms:median(old),after_merge_project_ms:median(next),before_with_date_filter_ms:median(oldPipeline),after_with_date_filter_ms:median(newPipeline)});
+ }
+ writeFileSync('/tmp/program-trade-performance.json',JSON.stringify(rows,null,2));
+},60000);
