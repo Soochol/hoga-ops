@@ -1,0 +1,296 @@
+[
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "fill_1m",
+    "raw_ms": 44.782,
+    "hot_ms": 0.643,
+    "bytes": 18727,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "broker_0930",
+    "raw_ms": 6.329,
+    "hot_ms": 0.026,
+    "bytes": 98,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "distribution",
+    "raw_ms": 67.648,
+    "hot_ms": 0.082,
+    "bytes": 1020,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "distribution_auto_range",
+    "raw_ms": 61.182,
+    "hot_ms": 0.475,
+    "bytes": 1020,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "distribution_cutoff",
+    "raw_ms": 49.619,
+    "hot_ms": 50.08,
+    "bytes": 989,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "poc",
+    "raw_ms": 67.286,
+    "hot_ms": 0.028,
+    "bytes": 134,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "continuous_boundary",
+    "raw_ms": 46.393,
+    "hot_ms": 0.01,
+    "bytes": 9,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "heatmap_1m",
+    "raw_ms": 71.158,
+    "hot_ms": 0.027,
+    "bytes": 428789,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "heatmap_5m",
+    "raw_ms": 55.41,
+    "hot_ms": 0.028,
+    "bytes": 119075,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "heatmap_15m",
+    "raw_ms": 61.749,
+    "hot_ms": 0.029,
+    "bytes": 55789,
+    "empty": false
+  },
+  {
+    "date": "20260623",
+    "code": "000660",
+    "indicator": "program",
+    "hot_ms": 0.029,
+    "points": 0,
+    "bytes": 42
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "fill_1m",
+    "raw_ms": 12.926,
+    "hot_ms": 0.431,
+    "bytes": 20150,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "broker_0930",
+    "raw_ms": 6.133,
+    "hot_ms": 0.028,
+    "bytes": 478,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "distribution",
+    "raw_ms": 19.56,
+    "hot_ms": 0.041,
+    "bytes": 990,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "distribution_auto_range",
+    "raw_ms": 19.876,
+    "hot_ms": 0.409,
+    "bytes": 990,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "distribution_cutoff",
+    "raw_ms": 18.41,
+    "hot_ms": 17.896,
+    "bytes": 954,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "poc",
+    "raw_ms": 20.723,
+    "hot_ms": 0.027,
+    "bytes": 132,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "continuous_boundary",
+    "raw_ms": 31.693,
+    "hot_ms": 0.009,
+    "bytes": 9,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "heatmap_1m",
+    "raw_ms": 95.88,
+    "hot_ms": 0.027,
+    "bytes": 390882,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "heatmap_5m",
+    "raw_ms": 68.468,
+    "hot_ms": 0.029,
+    "bytes": 80468,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "heatmap_15m",
+    "raw_ms": 71.58,
+    "hot_ms": 0.034,
+    "bytes": 28000,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "indicator": "program",
+    "hot_ms": 1.346,
+    "points": 368,
+    "bytes": 44749
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "fill_1m",
+    "raw_ms": 2.441,
+    "hot_ms": 0.412,
+    "bytes": 16282,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "broker_0930",
+    "raw_ms": 4.065,
+    "hot_ms": 0.029,
+    "bytes": 191,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "distribution",
+    "raw_ms": 2.561,
+    "hot_ms": 0.03,
+    "bytes": 916,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "distribution_auto_range",
+    "raw_ms": 3.365,
+    "hot_ms": 0.515,
+    "bytes": 916,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "distribution_cutoff",
+    "raw_ms": 2.538,
+    "hot_ms": 3.145,
+    "bytes": 904,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "poc",
+    "raw_ms": 2.225,
+    "hot_ms": 0.029,
+    "bytes": 126,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "continuous_boundary",
+    "raw_ms": 5.289,
+    "hot_ms": 0.01,
+    "bytes": 9,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "heatmap_1m",
+    "raw_ms": 38.171,
+    "hot_ms": 0.029,
+    "bytes": 302471,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "heatmap_5m",
+    "raw_ms": 20.673,
+    "hot_ms": 0.029,
+    "bytes": 68641,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "heatmap_15m",
+    "raw_ms": 19.765,
+    "hot_ms": 0.028,
+    "bytes": 27532,
+    "empty": false
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "indicator": "program",
+    "hot_ms": 1.151,
+    "points": 344,
+    "bytes": 37132
+  }
+]

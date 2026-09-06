@@ -1,0 +1,35 @@
+[
+  {
+    "code": "000660",
+    "date": "20260623",
+    "heatmap_old_ms": 77.622,
+    "heatmap_exists_ms": 68.701,
+    "exact_equal": true,
+    "broker_0900_ms": 5.246,
+    "broker_events": 21
+  },
+  {
+    "code": "005930",
+    "date": "20260904",
+    "heatmap_old_ms": 83.281,
+    "heatmap_exists_ms": 78.538,
+    "exact_equal": true,
+    "broker_0900_ms": 6.402,
+    "broker_events": 24
+  },
+  {
+    "code": "287840",
+    "date": "20260904",
+    "heatmap_old_ms": 41.844,
+    "heatmap_exists_ms": 39.894,
+    "exact_equal": true,
+    "broker_0900_ms": 4.014,
+    "broker_events": 23
+  },
+  {
+    "name": "fill_reaggregate_390_rows",
+    "old_ms": 0.141,
+    "identity_ms": 0.0,
+    "exact_equal": true
+  }
+]

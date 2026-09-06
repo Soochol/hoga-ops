@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.41.0] - 2026-09-07
+
+### Changed
+- 최대 매물대(POC)는 서버 값이나 오늘 체결값이 없는 날짜만 캔들 대체값을 계산한다. 정렬된 이력은 날짜별 이진 탐색으로 잘라 반복 전체 탐색을 줄이고, 역순 입력의 기존 순서도 보존한다.
+- 히트맵은 연속호가 존재 확인에 마지막 시각 전체 집계를 생략하고, 체결강도 1분 조회는 이미 계산된 1분 결과를 바로 재사용한다.
+
 ## [0.12.40.0] - 2026-09-07
 
 ### Changed

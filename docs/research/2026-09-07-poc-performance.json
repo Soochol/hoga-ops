@@ -1,0 +1,23 @@
+[
+  {
+    "days": 5,
+    "points": 1950,
+    "before_ms": 0.499,
+    "after_ms": 0.391,
+    "all_seeded_ms": 0.001
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "before_ms": 3.157,
+    "after_ms": 1.448,
+    "all_seeded_ms": 0
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "before_ms": 5.692,
+    "after_ms": 3.08,
+    "all_seeded_ms": 0
+  }
+]

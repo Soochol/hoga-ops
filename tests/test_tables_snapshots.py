@@ -378,6 +378,33 @@ def test_ratio_does_not_scan_for_last_continuous_time(
     assert (shallow.bid_total, shallow.ask_total) == expected
 
 
+@pytest.mark.parametrize("deep_time", [85_900_000, 90_000_000, 153_100_000, None])
+def test_heatmap_uses_existence_without_last_time_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, deep_time: int | None,
+) -> None:
+    obs = [_ob(ts_ms=90_100_000, seq=2, ask_q=(7,), bid_q=(9,))]
+    if deep_time is not None:
+        obs.append(_ob(ts_ms=deep_time, seq=1, ask_q=(1,) * 10, bid_q=(2,) * 10))
+    path = tmp_path / "snapshots.parquet"
+    write_parquet(obs, path)
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("heatmap only needs existence, not the last continuous timestamp")
+
+    monkeypatch.setattr(snapshots, "_last_continuous_intra_ms", unexpected_scan)
+    with duckdb.connect() as con:
+        rows = snapshots.query_bucketed_depth_heatmap(
+            con, path=path, bucket_ms=60_000,
+            session_open_ms=90_000_000, session_close_ms=153_000_000,
+        )
+    shallow = [r for r in rows if r.bucket_intra_ms == (9 * 60 + 1) * 60_000]
+    if deep_time in (85_900_000, 90_000_000):
+        assert shallow == []
+    else:
+        assert shallow[0].ask_qtys[0] == 7
+        assert shallow[0].bid_qtys[0] == 9
+
+
 def test_query_bucketed_ratio_takes_last_snapshot_in_bucket(tmp_path: Path) -> None:
     """Within one bucket, the LAST snapshot (max ts_ms) wins — mirrors the
     ROW_NUMBER() OVER (... ORDER BY ts_ms DESC) rn=1 selection."""

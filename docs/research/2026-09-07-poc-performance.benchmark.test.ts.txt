@@ -1,0 +1,18 @@
+import { expect, it } from 'vitest';
+import { writeFileSync } from 'node:fs';
+import { computeCandleVolumePocs as old } from './tradeVolumePoc.before';
+import { computeCandleVolumePocs as next } from './tradeVolumePoc';
+const measure=(f:()=>unknown)=>{f();f();const xs=[];for(let i=0;i<11;i++){const t=performance.now();f();xs.push(performance.now()-t);}return +xs.sort((a,b)=>a-b)[5].toFixed(3);};
+it('compares full and skipped candle fallbacks to original output',()=>{
+ const results=[];const base=Date.UTC(2026,4,1);
+ for(const days of [5,30,90]) {
+  const segments=Array.from({length:days},(_,d)=>({date:new Date(base+d*86400000).toISOString().slice(0,10).replaceAll('-',''),session_open_ms:base+d*86400000,session_close_ms:base+d*86400000+390*60000,source:'kiwoom_live'}));
+  const candles=segments.flatMap(s=>Array.from({length:390},(_,i)=>({ts_ms:s.session_open_ms+i*60000,open:100,high:130,low:90,close:100+i%30,vol_a:i%10,vol_b:2})));
+  for(const rangeCount of [undefined,1,10,100]) {
+   expect(next(candles,segments,{rangeCount})).toEqual(old(candles,segments,{rangeCount}));
+   expect(next([...candles].reverse(),[...segments].reverse(),{rangeCount})).toEqual(old([...candles].reverse(),[...segments].reverse(),{rangeCount}));
+  }
+  results.push({days,points:candles.length,before_ms:measure(()=>old(candles,segments,{rangeCount:100})),after_ms:measure(()=>next(candles,segments,{rangeCount:100})),all_seeded_ms:measure(()=>next(candles,[],{rangeCount:100}))});
+ }
+ writeFileSync('/tmp/poc-performance.json',JSON.stringify(results,null,2));
+},60000);

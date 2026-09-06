@@ -74,7 +74,7 @@ describe('useTradeVolumePocs', () => {
       '20260625',
       '005930',
       [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
-      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' }],
+      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' as const }],
     ));
 
     expect(result.current).toHaveLength(1);
@@ -101,7 +101,7 @@ describe('useTradeVolumePocs', () => {
       '20260625',
       '005930',
       [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
-      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' }],
+      [{ date: '20260625', session_open_ms: atKst(9, 0), session_close_ms: atKst(15, 30), source: 'kiwoom_live' as const }],
       [
         book(atKst(14, 59), true),
         book(atKst(15, 5), false),
@@ -117,4 +117,32 @@ describe('useTradeVolumePocs', () => {
       t_ms: atKst(14, 59),
     });
   });
+});
+
+it('does not read candle prices for dates already covered by a seed', () => {
+  useLivePageStore.setState({ volumeDistributionRangeCount: 10 });
+  const seeds: TradeVolumePocWire[] = [{ date: '20260624', center_price: 100, low_price: 90, high_price: 110, qty: 20, t_ms: 1, band_pct: 0.005 }];
+  const candles = [{ ts_ms: atKst(9, 1) - 86400000, open: 100, get high(): number { throw new Error('unused fallback computed'); }, low: 90, close: 100, vol_a: 10, vol_b: 0 }];
+  const segments = [{ date: '20260624', session_open_ms: atKst(9, 0) - 86400000, session_close_ms: atKst(15, 30) - 86400000, source: 'kiwoom_live' as const }];
+  const { result, rerender } = renderHook(({ seeds }) => useTradeVolumePocs([], seeds, '20260625', '005930', candles, segments), { initialProps: { seeds } });
+  expect(result.current[0].qty).toBe(20);
+  rerender({ seeds: [{ ...seeds[0], qty: 30 }] });
+  expect(result.current[0].qty).toBe(30);
+});
+
+it('retains an unseeded past fallback through a live trade update, then replaces it with a seed', () => {
+  useLivePageStore.setState({ volumeDistributionRangeCount: 10 });
+  const candles = [{ ts_ms: atKst(9, 1) - 86400000, open: 100, high: 110, low: 90, close: 100, vol_a: 10, vol_b: 0 }];
+  const segments = [{ date: '20260624', session_open_ms: atKst(9, 0) - 86400000, session_close_ms: atKst(15, 30) - 86400000, source: 'kiwoom_live' as const }];
+  const seeds: TradeVolumePocWire[] = [];
+  const trades = [{ t_ms: atKst(9, 2), trades: [{ t_ms: atKst(9, 2), price: 110, qty: 40, side: 1 }] }];
+  const { result, rerender } = renderHook(({ trades, seeds }) => useTradeVolumePocs(trades, seeds, '20260625', '005930', candles, segments), { initialProps: { trades, seeds } });
+  const past = result.current.find(p => p.date === '20260624');
+  expect(past?.qty).toBe(10);
+  rerender({ trades: [...trades], seeds });
+  expect(result.current.find(p => p.date === '20260624')).toBe(past);
+  rerender({ trades, seeds: [{ date: '20260624', center_price: 100, low_price: 90, high_price: 110, qty: 99, t_ms: 1, band_pct: 0.005 }] });
+  expect(result.current.find(p => p.date === '20260624')?.qty).toBe(99);
+  rerender({ trades, seeds });
+  expect(result.current.find(p => p.date === '20260624')?.qty).toBe(10);
 });

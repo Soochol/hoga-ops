@@ -1,0 +1,31 @@
+import json,time,statistics
+from unittest.mock import patch
+from hoga.config import resolve_data_dir
+from hoga.api.queries import QueryEngine
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.api import bundle as b
+from hoga.tables import snapshots
+
+def measure(fn):
+    out=fn();times=[]
+    for _ in range(7):
+        t=time.perf_counter();value=fn();times.append((time.perf_counter()-t)*1000);assert out==value
+    return round(statistics.median(times),3),out
+engine=QueryEngine(resolve_data_dir());results=[]
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+ p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta)
+ args=dict(code=code,date=date,source='hogaplay',venue='KRX',today_kst='20260907',bucket_ms=60000,session_open_ms=op,session_close_ms=cl,cache=None)
+ fn=lambda:b.build_depth_heatmap_slice(engine,**args)
+ old,a=measure(fn)
+ def exists_adapter(con,*,path,session_close_ms):
+    return 0 if snapshots._has_continuous_book_before_close(con,path=path,session_close_ms=session_close_ms) else None
+ with patch.object(snapshots,'_last_continuous_intra_ms',exists_adapter):new,z=measure(fn)
+ assert a==z
+ broker_ms,broker=measure(lambda:b.build_broker_late_entries_slice(engine,code=code,date=date,source='hogaplay',venue='KRX',today_kst='20260907',start_hhmm=900,cache=None))
+ results.append(dict(code=code,date=date,heatmap_old_ms=old,heatmap_exists_ms=new,exact_equal=True,broker_0900_ms=broker_ms,broker_events=len(broker)))
+from hoga.api.indicator_reaggregate import reaggregate_fill
+from hoga.tables.fills import FillStrengthRow
+rows=[FillStrengthRow(bucket_intra_ms=(9*60+i)*60000,buy_qty=i,sell_qty=i*2) for i in range(390)]
+old,a=measure(lambda:reaggregate_fill(rows,60000));new,z=measure(lambda:rows);assert a==z
+results.append(dict(name='fill_reaggregate_390_rows',old_ms=old,identity_ms=new,exact_equal=True))
+open('/tmp/indicators-candidates-results.json','w').write(json.dumps(results,indent=2));print(json.dumps(results,indent=2));engine.close()

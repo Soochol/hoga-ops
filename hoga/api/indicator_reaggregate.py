@@ -111,6 +111,9 @@ def reaggregate_fill(rows_1m: list[FillStrengthRow], bucket_ms: int) -> list[Fil
     direct ``query_fill_strength`` is itself a SUM GROUP BY, so this is exact.
     ``rows_1m`` ascending by ``bucket_intra_ms``; output ascending.
     """
+    # Cached rows already have the requested resolution; callers treat them as immutable.
+    if bucket_ms == ONE_MINUTE_MS:
+        return rows_1m
     buy: dict[int, int] = {}
     sell: dict[int, int] = {}
     order: list[int] = []
