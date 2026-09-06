@@ -460,7 +460,7 @@ export function usePeakWallRender({
   // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
   // top-3(과거일은 rank-1 스칼라)이다 — 빌더 docstring 이 그 근사를 적는다.
   const allWallStepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && paneAllWallEnabled
+    needStepSegments && !paneBarMode && applicable && enabled && paneAllWallEnabled
       ? buildPeakWallOverlaySegments({
         peaks: toAllWallPeakInputs(peaks),
         segments,
@@ -476,12 +476,12 @@ export function usePeakWallRender({
       })
       : EMPTY_SEGMENTS
   ), [
-    needStepSegments, paneAllWallEnabled, allWallColor, allWallLineWidth, applicable,
+    needStepSegments, paneBarMode, paneAllWallEnabled, allWallColor, allWallLineWidth, applicable,
     axis, candles, allWallDailyMaFilter, enabled, intraMax, allWallMaFilter, peaks, segments, todayKst,
   ]);
 
   const unreachedStepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && paneUnreachedEnabled
+    needStepSegments && !paneBarMode && applicable && enabled && paneUnreachedEnabled
       ? buildPeakWallOverlaySegments({
         peaks: toUnreachedWallPeakInputs(peaks),
         segments,
@@ -497,7 +497,7 @@ export function usePeakWallRender({
       })
       : EMPTY_SEGMENTS
   ), [
-    needStepSegments, paneUnreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
+    needStepSegments, paneBarMode, paneUnreachedEnabled, unreachedColor, unreachedLineWidth, applicable,
     axis, candles, unreachedDailyMaFilter, enabled, intraMax, unreachedMaFilter, peaks, segments, todayKst,
   ]);
 
@@ -523,10 +523,11 @@ export function usePeakWallRender({
       : EMPTY_BAR_CANDIDATES
   ), [needStepSegments, applicable, enabled, paneUnreachedEnabled, paneBarMode, peaks]);
 
+  // 봉별 모드에서는 세 계열의 계단 입력을 만들지 않는다. 모드 전환은 memo 를 무효화한다.
   // 계단 입력 — 표시 개수와 분리한 **stepHistory 모드**(기록 갱신 시퀀스 ∪ top-3,
   // 랭크 슬라이스 없음). 표시 개수 3 과도 다른 결과라 참조 공유 지름길은 없다.
   const stepBuilt = useMemo(() => (
-    needStepSegments && applicable && enabled && paneTradedEnabled
+    needStepSegments && !paneBarMode && applicable && enabled && paneTradedEnabled
       ? buildPeakWallOverlaySegments({
         peaks,
         segments,
@@ -543,6 +544,7 @@ export function usePeakWallRender({
       : EMPTY_SEGMENTS
   ), [
     needStepSegments,
+    paneBarMode,
     paneTradedEnabled,
     allPriceRankLimit,
     applicable,
