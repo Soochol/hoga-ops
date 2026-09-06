@@ -393,3 +393,17 @@ describe('computeCandleVolumePocs', () => {
     });
   });
 });
+
+it('keeps per-day quantity, tie order and exclusive close for sorted or reversed candle input', () => {
+  const make = (ts_ms: number, close: number, vol_a: number) => ({ ts_ms, open: 100, high: 120, low: 90, close, vol_a, vol_b: 0 });
+  const day = 86400000;
+  const candles = [make(atKst(9, 1), 100, 10), make(atKst(9, 2), 110, 20), make(atKst(10, 0), 100, 99999), make(atKst(9, 1) + day, 100, 33)];
+  const segments = [0, 1].map(d => ({ date: `2026062${4 + d}`, session_open_ms: atKst(9, 0) + d * day, session_close_ms: atKst(10, 0) + d * day, source: 'kiwoom_live' as const }));
+  for (const input of [candles, [...candles].reverse()]) {
+    const result = computeCandleVolumePocs(input, segments, { rangeCount: 3 });
+    expect(result.map(p => [p.date, p.centerPrice, p.qty, p.t_ms])).toEqual([
+      ['20260624', 115, 20, atKst(9, 2)], ['20260625', 105, 33, atKst(9, 1) + day],
+    ]);
+    expect(computeCandleVolumePocs(input, segments).map(p => [p.centerPrice, p.qty])).toEqual([[110, 20], [100, 33]]);
+  }
+});

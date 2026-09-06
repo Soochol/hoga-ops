@@ -1,0 +1,48 @@
+import json,time,tempfile,statistics
+from pathlib import Path
+from hoga.config import resolve_data_dir
+from hoga.api.queries import QueryEngine
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.api.past_indicators_cache import PastIndicatorsCache
+from hoga.api import bundle as b
+from hoga.tables import candles
+from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+def measure(fn,n=5):
+    obj=fn();times=[]
+    for _ in range(n):
+        t=time.perf_counter();v=fn();times.append((time.perf_counter()-t)*1000)
+        assert v==obj
+    return round(statistics.median(times),3),obj
+
+def size(obj):
+    if isinstance(obj,list):obj=[x.model_dump() if hasattr(x,'model_dump') else x for x in obj]
+    elif hasattr(obj,'model_dump'):obj=obj.model_dump()
+    return len(json.dumps(obj,separators=(',',':')).encode())
+
+engine=QueryEngine(resolve_data_dir());out=[]
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+    p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta)
+    price_range=candles.query_price_range(engine.conn,path=p/'candles.parquet')
+    base=dict(code=code,date=date,source='hogaplay',venue='KRX',today_kst='20260907')
+    cont=b._first_trailing_single_price_book_hhmmssms(engine,**base,session_close_ms=cl,cache=None)
+    funcs={
+      'fill_1m':lambda cache:b.build_fill_strength_slice(engine,**base,bucket_ms=60000,cache=cache),
+      'broker_0930':lambda cache:b.build_broker_late_entries_slice(engine,**base,start_hhmm=930,cache=cache),
+      'distribution':lambda cache:b.build_volume_distribution_slice(engine,**base,session_open_ms=op,session_close_ms=cl,range_count=15,price_min=price_range[0],price_max=price_range[1],continuous_before_ms=cont,cache=cache),
+      'distribution_auto_range':lambda cache:b.build_volume_distribution_slice(engine,**base,session_open_ms=op,session_close_ms=cl,range_count=15,continuous_before_ms=cont,cache=cache),
+      'distribution_cutoff':lambda cache:b.build_volume_distribution_slice(engine,**base,session_open_ms=op,session_close_ms=cl,range_count=15,price_min=price_range[0],price_max=price_range[1],continuous_before_ms=cont,cutoff_ms=hhmmssms_to_unix_ms(date,120000000),cache=cache),
+      'poc':lambda cache:b.build_trade_volume_poc_slice(engine,**base,session_open_ms=op,session_close_ms=cl,range_count=15,price_range=price_range,continuous_before_ms=cont,cache=cache),
+      'continuous_boundary':lambda cache:b._first_trailing_single_price_book_hhmmssms(engine,**base,session_close_ms=cl,cache=cache),
+    }
+    for bucket in [60000,300000,900000]:
+        funcs['heatmap_'+str(bucket//60000)+'m']=lambda cache,bucket=bucket:b.build_depth_heatmap_slice(engine,**base,session_open_ms=op,session_close_ms=cl,bucket_ms=bucket,cache=cache)
+    with tempfile.TemporaryDirectory(prefix='indicator-audit-') as tmp:
+      cache=PastIndicatorsCache(Path(tmp))
+      for name,fn in funcs.items():
+        raw,obj=measure(lambda:fn(None));hot,cached=measure(lambda:fn(cache));assert obj==cached
+        out.append(dict(date=date,code=code,indicator=name,raw_ms=raw,hot_ms=hot,bytes=size(obj),empty=obj is None or obj==[]))
+    program_ms,program=measure(lambda:b.build_program_trade_series(engine,code=code,dates=[date],venue='KRX',bucket_ms=60000,session_open_by_date={date:hhmmssms_to_unix_ms(date,op)},today_kst='20260907'))
+    out.append(dict(date=date,code=code,indicator='program',hot_ms=program_ms,points=len(program.points),bytes=size(program)))
+    print(date,code,'done',flush=True)
+Path('/tmp/indicators-backend-results.json').write_text(json.dumps(out,indent=2));print(json.dumps(out,indent=2));engine.close()

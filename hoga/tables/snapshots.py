@@ -1504,12 +1504,10 @@ def query_bucketed_depth_heatmap(
     적히게 된다.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    last_continuous_ms = (
-        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
-        if session_close_ms is not None
-        else None
+    has_continuous_book = session_close_ms is not None and _has_continuous_book_before_close(
+        con, path=path, session_close_ms=session_close_ms,
     )
-    if last_continuous_ms is None:
+    if not has_continuous_book:
         # 세션 바운드 없음 OR 세션 내 deep book 전무(퇴화 fixture) — 사전 필터 없이
         # last-in-bucket 폴백(호가비와 동일). 실데이터 미발화.
         where_pred = "TRUE"

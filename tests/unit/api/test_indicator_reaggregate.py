@@ -108,7 +108,9 @@ def test_reaggregate_identity_at_one_minute() -> None:
     rows = [_qr(0, 10, 20), _qr(60_000, 11, 21)]
     assert reaggregate_ratio(rows, 60_000) == rows
     frows = [_fs(0, 10, 1), _fs(60_000, 20, 2)]
-    assert reaggregate_fill(frows, 60_000) == frows
+    assert reaggregate_fill(frows, 60_000) is frows
+    empty = []
+    assert reaggregate_fill(empty, 60_000) is empty
 
 
 def test_reaggregate_ratio_propagates_max_as_window_max(tmp_path: Path) -> None:

@@ -1,0 +1,58 @@
+import { it, expect } from 'vitest';
+import { writeFileSync } from 'node:fs';
+import { createVirtualAxis } from '../../util/virtualAxis';
+import { computeSMA, selectSource } from './movingAverage';
+import { computeDailyMaByDate } from './dailyMovingAverage';
+import { buildDepthHeatmapCells } from '../../live/DepthHeatmapOverlay';
+import { computeCandleVolumePocs } from '../../live/tradeVolumePoc';
+import { makeCachedProgramTradeProjector } from './programTrade';
+import { mergeProgramTradeSeriesWithLiveTail } from '../../live/programTradeLiveTail';
+import { projectVolumeCached } from './volume';
+import { RATIO_SPEC } from './ratio';
+import { FILL_STRENGTH_SPEC } from './fillStrength';
+import { makeCachedBrokerLateEntryProjector } from './brokerLateEntryMarkers';
+import { projectInvestorNet } from './investorNet';
+import { unixMsToKSTDate } from '../../util/time';
+function median(fn:()=>unknown) { fn(); fn(); const xs=[]; for(let i=0;i<9;i++){const start=performance.now();fn();xs.push(performance.now()-start);}return +xs.sort((a,b)=>a-b)[4].toFixed(3); }
+it('indicator audit: real functions, synthetic 1m histories, no chart rendering',()=>{
+ const results:any[]=[];
+ for(const days of [5,30,90]) {
+  const base=Date.UTC(2026,4,1), day=86400000;
+  const segments=Array.from({length:days},(_,d)=>({date:unixMsToKSTDate(base+d*day),session_open_ms:base+d*day,session_close_ms:base+d*day+390*60000,source:'hogaplay'}));
+  const axis=createVirtualAxis(segments.map(s=>({date:s.date,sessionOpenMs:s.session_open_ms,sessionCloseMs:s.session_close_ms})));
+  const candles=segments.flatMap(s=>Array.from({length:390},(_,m)=>({ts_ms:s.session_open_ms+m*60000,open:10000,high:10100,low:9900,close:10000+(m%40)*2,vol_a:100+m,vol_b:200+m})));
+  const bundle:any={code:'005930',segments,bucket_ms:60000,candles,quote_ratio:{bucket_ms:60000,points:candles.map(c=>({t:c.ts_ms,ask_total:50000,bid_total:51000}))},fill_strength:{bucket_ms:60000,points:candles.map(c=>({t:c.ts_ms,buy_qty:c.vol_a,sell_qty:c.vol_b}))},program_trade:{source:'kis_program_trade',points:candles.map((c,i)=>({t:c.ts_ms,net_amount:1000000*(i%50),net_qty:i,delta_qty:null,delta_amount:null,gap_risk:false}))},investorPoints:segments.map(s=>({t_ms:s.session_open_ms,foreign_net:100,institution_net:-100}))};
+  const record=(name:string,fn:()=>unknown)=>results.push({days,points:candles.length,name,ms:median(fn)});
+  const periods=[5,10,20,60,120,240];
+  record('ma_6_full_effect_except_setData',()=>{ const cs=candles.filter(c=>axis.contains(c.ts_ms));return periods.map(p=>{const sma=computeSMA(cs.map(c=>selectSource(c,'close')),p);return cs.map((c,i)=>{const time=axis.toVirtual(c.ts_ms)/1000;return sma[i]===null?{time}:{time,value:sma[i]};});}); });
+  const daily=Array.from({length:days+300},(_,d)=>({t_ms:base+(d-300)*day,open:10000,high:10100,low:9900,close:10050,volume:1000}));
+  record('daily_ma_6_full_effect_except_setData',()=>{const cs=candles.filter(c=>axis.contains(c.ts_ms));return periods.map(p=>{const values=computeDailyMaByDate(daily,p,'close',segments.at(-1)!.date,10060);return cs.map(c=>{const date=axis.segments[axis.findByReal(c.ts_ms)]?.date,v=values.get(date);const time=axis.toVirtual(c.ts_ms)/1000;return v==null?{time}:{time,value:v};});});});
+  record('poc_candle_fallback_all_dates',()=>computeCandleVolumePocs(candles,segments as any,{bandPct:.005,rangeCount:15}));
+  expect(computeCandleVolumePocs(candles,segments as any,{rangeCount:15})).toHaveLength(days);
+  const levels=(ask:boolean)=>Array.from({length:10},(_,i)=>({price:10000+(ask?1:-1)*(i+1)*10,qty:100+i*19}));
+  const heat=candles.map(c=>({tMs:c.ts_ms,asks:levels(true),bids:levels(false),asksMax:[],bidsMax:[]}));
+  const style={bidColor:'#F04452',askColor:'#3485FA',maxOpacity:1};
+  record('heatmap_initial_all_cells',()=>buildDepthHeatmapCells(heat,axis,-Infinity,Infinity,style));
+  const from=heat.at(-300)!.tMs,to=heat.at(-1)!.tMs;
+  record('heatmap_visible_300',()=>buildDepthHeatmapCells(heat,axis,from,to,style));
+  const slice=()=>{let lo=0,hi=heat.length;while(lo<hi){const mid=(lo+hi)>>>1;if(heat[mid].tMs<from)lo=mid+1;else hi=mid;}return heat.slice(lo);};
+  expect(buildDepthHeatmapCells(slice(),axis,from,to,style)).toEqual(buildDepthHeatmapCells(heat,axis,from,to,style));
+  record('heatmap_visible_300_binary_slice_candidate',()=>buildDepthHeatmapCells(slice(),axis,from,to,style));
+  const cached=makeCachedProgramTradeProjector(); cached(bundle,axis);
+  record('program_same_array_cache_hit',()=>cached(bundle,axis));
+  let seq=0;
+  const newBundle=()=>({...bundle,program_trade:mergeProgramTradeSeriesWithLiveTail(bundle.program_trade,[{t_ms:candles.at(-1)!.ts_ms+1000,net_amount:++seq,net_qty:100}])});
+  record('program_merge_and_new_array_projection',()=>cached(newBundle(),axis));
+  record('program_merge_only',()=>newBundle());
+  record('volume_cache_hit',()=>projectVolumeCached(bundle,axis));
+  const ratioCtx={auctionWindowMask:true,outlierFilterEnabled:true,outlierThreshold:100,brokerLateEntries:[]};
+  record('ratio_cache_hit',()=>RATIO_SPEC.series[0].data(bundle,axis,ratioCtx));
+  bundle.broker_late_entries=segments.flatMap(s=>Array.from({length:24},(_,i)=>({t_ms:s.session_open_ms+(10+i)*60000,broker:'키움증권',side:i%2?'buy':'sell'})));
+  const brokerCached=makeCachedBrokerLateEntryProjector(), brokerCtx={auctionWindowMask:true,outlierFilterEnabled:true,outlierThreshold:100,sideMode:'both' as const,buyColor:'#F04452',sellColor:'#3485FA',startHHMM:900};
+  record('broker_24_events_per_day_cache_hit',()=>brokerCached(bundle,axis,brokerCtx));
+  record('fill_3_series_cache_hit',()=>FILL_STRENGTH_SPEC.series.map(s=>s.data(bundle,axis,{cumulativeEnabled:true,auctionWindowMask:true})));
+  record('foreign_daily_projection',()=>projectInvestorNet(bundle,axis,'foreign'));
+  record('institution_daily_projection',()=>projectInvestorNet(bundle,axis,'institution'));
+ }
+ writeFileSync('/tmp/indicators-frontend-results.json',JSON.stringify(results,null,2));
+},120000);

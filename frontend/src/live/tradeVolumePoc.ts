@@ -1,5 +1,6 @@
 import type { TradeSnapshot } from './bucketHogaSeries';
 import type { Candle, RangeSegment } from '../api/types';
+import { createSessionCandleLookup } from './sessionCandles';
 import { kstMinuteOfDay } from '../util/tradingDay';
 
 const REGULAR_OPEN_MIN = 9 * 60;
@@ -338,10 +339,10 @@ export function computeCandleVolumePocs(
   const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
   const rangeCount = options.rangeCount;
   const out: TradeVolumePoc[] = [];
+  if (segments.length === 0) return out;
+  const sessionCandles = createSessionCandleLookup(candles);
   for (const segment of segments) {
-    const segmentCandles = candles.filter(
-      (candle) => candle.ts_ms >= segment.session_open_ms && candle.ts_ms < segment.session_close_ms,
-    );
+    const segmentCandles = sessionCandles(segment);
     if (typeof rangeCount === 'number' && Number.isInteger(rangeCount) && rangeCount > 0) {
       const range = priceRangeFromCandles(segmentCandles);
       if (range === null) continue;
@@ -363,8 +364,7 @@ export function computeCandleVolumePocs(
 
     const byPrice = new Map<number, PriceBucket>();
     let order = 0;
-    for (const candle of candles) {
-      if (candle.ts_ms < segment.session_open_ms || candle.ts_ms >= segment.session_close_ms) continue;
+    for (const candle of segmentCandles) {
       if (!isRegularContinuousTrade(candle.ts_ms)) continue;
       const price = Math.round(candle.close);
       const qty = Math.max(0, Math.round((candle.vol_a ?? 0) + (candle.vol_b ?? 0)));

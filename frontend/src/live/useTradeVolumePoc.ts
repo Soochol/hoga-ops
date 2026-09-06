@@ -50,25 +50,17 @@ export function useTradeVolumePocs(
   // 당일 distribution POC 증분 누적기 — 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례).
   const todayPocRef = useRef<IncrementalTradeVolumePoc | null>(null);
   if (todayPocRef.current === null) todayPocRef.current = new IncrementalTradeVolumePoc();
-  const candleFallbacks = useMemo(
-    () => computeCandleVolumePocs(
-      candles,
-      segments,
-      { bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT, rangeCount },
-    ),
-    [candles, segments, rangeCount],
+  const seedsByDate = useMemo(() => seedByDate(seeds), [seeds]);
+  const todaySegment = useMemo(
+    () => segments.find(segment => segment.date === todayKst), [segments, todayKst],
   );
-  return useMemo(() => {
-    const seedsByDate = seedByDate(seeds);
-    const out = Array.from(seedsByDate.values()).filter((p) => p.date !== todayKst).map(tradeVolumePocFromWire);
-    const seenDates = new Set(out.map((p) => p.date));
-    const todaySegment = segments.find((segment) => segment.date === todayKst);
+  const todayCandles = useMemo(() => todaySegment
+    ? candles.filter(c => c.ts_ms >= todaySegment.session_open_ms && c.ts_ms < todaySegment.session_close_ms)
+    : [], [candles, todaySegment]);
+  const todayLive = useMemo(() => {
     const todayContinuousBeforeMs = todaySegment
       ? firstTrailingSinglePriceBookMs(orderbooks, todaySegment.session_close_ms)
       : null;
-    const todayCandles = todaySegment
-      ? candles.filter((candle) => candle.ts_ms >= todaySegment.session_open_ms && candle.ts_ms < todaySegment.session_close_ms)
-      : [];
     // distribution 분기(candles+segment+유효 rangeCount)만 증분 누적기로 라우팅한다.
     // computeTradeVolumePoc 의 그 분기와 동일 조건 — 나머지(무효 rangeCount·todaySegment
     // 부재)는 byPrice map 폴백이라 원래 호출을 그대로 둔다(behavior parity).
@@ -76,9 +68,8 @@ export function useTradeVolumePocs(
       && Number.isInteger(rangeCount) && (rangeCount as number) > 0
       ? priceRangeFromCandles(todayCandles)
       : null;
-    let todayLive: TradeVolumePoc | null;
     if (todaySegment && distributionRange) {
-      todayLive = todayPocRef.current!.update(trades, {
+      return todayPocRef.current!.update(trades, {
         date: todayKst,
         bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT,
         rangeMin: distributionRange.min,
@@ -90,14 +81,25 @@ export function useTradeVolumePocs(
       });
     } else if (todaySegment && Number.isInteger(rangeCount) && (rangeCount as number) > 0) {
       // 유효 rangeCount 지만 range 가 null(당일 캔들 없음) → distribution 은 null.
-      todayLive = null;
+      return null;
     } else {
-      todayLive = computeTradeVolumePoc(trades, {
+      return computeTradeVolumePoc(trades, {
         date: todayKst,
         bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT,
         continuousBeforeMs: todayContinuousBeforeMs,
       });
     }
+  }, [trades, todayKst, code, todaySegment, todayCandles, rangeCount, orderbooks]);
+  const hasTodayLive = todayLive !== null;
+  const fallbackSegments = useMemo(() => segments.filter(segment =>
+    !seedsByDate.has(segment.date) && !(segment.date === todayKst && hasTodayLive)),
+  [segments, seedsByDate, todayKst, hasTodayLive]);
+  const candleFallbacks = useMemo(() => computeCandleVolumePocs(candles, fallbackSegments,
+    { bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT, rangeCount }),
+  [candles, fallbackSegments, rangeCount]);
+  return useMemo(() => {
+    const out = Array.from(seedsByDate.values()).filter(p => p.date !== todayKst).map(tradeVolumePocFromWire);
+    const seenDates = new Set(out.map(p => p.date));
     const todaySeed = seedsByDate.get(todayKst);
     if (todayLive) out.push(todayLive);
     else if (todaySeed) out.push(tradeVolumePocFromWire(todaySeed));
@@ -108,5 +110,5 @@ export function useTradeVolumePocs(
       seenDates.add(poc.date);
     }
     return out;
-  }, [trades, seeds, todayKst, code, candles, segments, rangeCount, candleFallbacks, orderbooks]);
+  }, [seedsByDate, todayKst, todayLive, candleFallbacks]);
 }

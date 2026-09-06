@@ -1,0 +1,272 @@
+[
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "ma_6_full_effect_except_setData",
+    "ms": 0.533
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "daily_ma_6_full_effect_except_setData",
+    "ms": 0.884
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "poc_candle_fallback_all_dates",
+    "ms": 0.304
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "heatmap_initial_all_cells",
+    "ms": 3.326
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "heatmap_visible_300",
+    "ms": 0.425
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "heatmap_visible_300_binary_slice_candidate",
+    "ms": 0.422
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "program_same_array_cache_hit",
+    "ms": 0.126
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "program_merge_and_new_array_projection",
+    "ms": 0.603
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "program_merge_only",
+    "ms": 0.106
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "volume_cache_hit",
+    "ms": 0.032
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "ratio_cache_hit",
+    "ms": 0.069
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "broker_24_events_per_day_cache_hit",
+    "ms": 0.059
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "fill_3_series_cache_hit",
+    "ms": 0.077
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "foreign_daily_projection",
+    "ms": 0.003
+  },
+  {
+    "days": 5,
+    "points": 1950,
+    "name": "institution_daily_projection",
+    "ms": 0.002
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "ma_6_full_effect_except_setData",
+    "ms": 3.974
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "daily_ma_6_full_effect_except_setData",
+    "ms": 5.327
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "poc_candle_fallback_all_dates",
+    "ms": 2.842
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "heatmap_initial_all_cells",
+    "ms": 52.687
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "heatmap_visible_300",
+    "ms": 0.638
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "heatmap_visible_300_binary_slice_candidate",
+    "ms": 0.492
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "program_same_array_cache_hit",
+    "ms": 0.218
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "program_merge_and_new_array_projection",
+    "ms": 3.945
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "program_merge_only",
+    "ms": 0.675
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "volume_cache_hit",
+    "ms": 0.037
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "ratio_cache_hit",
+    "ms": 0.065
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "broker_24_events_per_day_cache_hit",
+    "ms": 0.047
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "fill_3_series_cache_hit",
+    "ms": 0.098
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "foreign_daily_projection",
+    "ms": 0.006
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "name": "institution_daily_projection",
+    "ms": 0.006
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "ma_6_full_effect_except_setData",
+    "ms": 14.062
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "daily_ma_6_full_effect_except_setData",
+    "ms": 18.241
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "poc_candle_fallback_all_dates",
+    "ms": 5.656
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "heatmap_initial_all_cells",
+    "ms": 161.689
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "heatmap_visible_300",
+    "ms": 0.761
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "heatmap_visible_300_binary_slice_candidate",
+    "ms": 0.429
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "program_same_array_cache_hit",
+    "ms": 0.471
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "program_merge_and_new_array_projection",
+    "ms": 14.396
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "program_merge_only",
+    "ms": 2.53
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "volume_cache_hit",
+    "ms": 0.1
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "ratio_cache_hit",
+    "ms": 0.121
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "broker_24_events_per_day_cache_hit",
+    "ms": 0.056
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "fill_3_series_cache_hit",
+    "ms": 0.259
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "foreign_daily_projection",
+    "ms": 0.015
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "name": "institution_daily_projection",
+    "ms": 0.015
+  }
+]
