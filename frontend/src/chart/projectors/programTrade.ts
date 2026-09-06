@@ -229,9 +229,10 @@ export function projectProgramTradeNetAmount(
  *  - `byBucket` 도 같은 이유로 분할 가능하고, 같은 버킷 내 "뒤가 이긴다" 는 청크 안에서
  *    배열 순서가 보존되므로 유지된다.
  *
- * 캐시 키 = (axis, code, program_trade 배열 식별자, segments 식별자, bucket_ms, todayOpen,
- * 과거 호가점 개수, 과거 마지막 t). `program_trade`·`segments` 는 chartBundle 에서 와
- * SSE 틱에 안정이다(그래서 식별자 비교가 성립한다).
+ * 실시간 병합은 새 program_trade 배열을 만든다. 전체 배열 식별자 대신 과거 원소
+ * 참조를 비교해 꼬리 변경에서는 과거를 재사용한다. 과거 프로그램/호가 원소가
+ * 교체되면 중간 정정·결손 마스킹 변경도 재투영한다. 입력 원소는 불변이며,
+ * 참조 비교와 최종 concat은 O(N), 버킷 계산·축 투영은 캐시 적중 시 당일만 수행한다.
  */
 export function makeCachedProgramTradeProjector(): (
   bundle: RangeBundle,
@@ -239,7 +240,8 @@ export function makeCachedProgramTradeProjector(): (
 ) => LineData<Time>[] {
   const cache = new WeakMap<VirtualAxis, {
     code: string;
-    programPoints: readonly ProgramTradePoint[];
+    pastProgram: readonly ProgramTradePoint[];
+    pastQuotePoints: readonly QuoteRatioPoint[];
     segments: RangeBundle['segments'];
     bucketMs: number;
     todayOpen: number;
@@ -264,10 +266,21 @@ export function makeCachedProgramTradeProjector(): (
     const pastQuoteLastT = pastQuoteLen > 0 ? quotePoints[pastQuoteLen - 1].t : 0;
 
     let entry = cache.get(axis);
+    let samePastProgram = entry !== undefined;
+    let pastProgramCount = 0;
+    const todayProgram: ProgramTradePoint[] = [];
+    // 입력 순서를 보존한다. 같은 버킷의 last-wins는 원시/저장뷰 입력에서도 동일해야 한다.
+    for (const point of programPoints) {
+      if (point.t < todayOpen) {
+        if (entry?.pastProgram[pastProgramCount] !== point) samePastProgram = false;
+        pastProgramCount += 1;
+      } else todayProgram.push(point);
+    }
     if (
       !entry
       || entry.code !== bundle.code
-      || entry.programPoints !== programPoints
+      || !samePastProgram || entry.pastProgram.length !== pastProgramCount
+      || !sameQuotePrefix(entry.pastQuotePoints, quotePoints, splitIdx)
       || entry.segments !== segs
       || entry.bucketMs !== bucketMs
       || entry.todayOpen !== todayOpen
@@ -275,20 +288,20 @@ export function makeCachedProgramTradeProjector(): (
       || entry.pastQuoteLastT !== pastQuoteLastT
     ) {
       const pastProgram = programPoints.filter((p) => p.t < todayOpen);
+      const pastQuotePoints = quotePoints.slice(0, splitIdx);
       const pastChunk = projectProgramChunk(
-        quotePoints.slice(0, splitIdx),
+        pastQuotePoints,
         programByBucket(pastProgram, metas, bucketMs, axis),
         metas, bucketMs, axis, null,
       );
       entry = {
-        code: bundle.code, programPoints, segments: segs, bucketMs, todayOpen,
+        code: bundle.code, pastProgram, pastQuotePoints, segments: segs, bucketMs, todayOpen,
         pastQuoteLen, pastQuoteLastT,
         pastData: pastChunk.out, pastLastDate: pastChunk.lastDate,
       };
       cache.set(axis, entry);
     }
 
-    const todayProgram = programPoints.filter((p) => p.t >= todayOpen);
     const today = projectProgramChunk(
       quotePoints.slice(splitIdx),
       programByBucket(todayProgram, metas, bucketMs, axis),
@@ -300,6 +313,16 @@ export function makeCachedProgramTradeProjector(): (
     }
     return entry.pastData.concat(today.out);
   };
+}
+
+function sameQuotePrefix(
+  previous: readonly QuoteRatioPoint[],
+  points: readonly QuoteRatioPoint[],
+  length: number,
+): boolean {
+  if (previous.length !== length) return false;
+  for (let i = 0; i < length; i += 1) if (previous[i] !== points[i]) return false;
+  return true;
 }
 
 function regularSessionBoundsForDate(yyyymmdd: string): { open: number; close: number } | null {

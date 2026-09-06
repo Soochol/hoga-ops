@@ -28,6 +28,7 @@ import {
 } from './liveDateTime';
 import { quoteImbalance } from '../util/imbalance';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
+import { tradingDayOf } from '../util/tradingDay';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -105,16 +106,27 @@ interface PastHogaSeries {
   pastMaxFsT: number;
 }
 
+// 각 불변 저장 배열당 마지막 날짜 집합만 유지한다. 캔들의 가격/수량 변경은
+// 프로그램 필터에 영향을 주지 않지만, 중간 거래일 추가·삭제는 반드시 다시 계산한다.
+const programDateFilterCache = new WeakMap<ProgramTradeSeries['points'], {
+  datesKey: string;
+  points: ProgramTradeSeries['points'];
+}>();
+
 export function filterProgramTradeForCandles(
   series: ProgramTradeSeries | undefined,
   candles: readonly Candle[],
 ): ProgramTradeSeries {
   if (!series || series.points.length === 0 || candles.length === 0) return { points: [] };
-  const candleDates = new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
-  return {
-    ...series,
-    points: series.points.filter((p) => candleDates.has(realMsToYyyymmdd(p.t))),
-  };
+  const candleDates = new Set<number>();
+  for (const candle of candles) candleDates.add(tradingDayOf(candle.ts_ms));
+  const datesKey = [...candleDates].sort((a, b) => a - b).join(',');
+  let cached = programDateFilterCache.get(series.points);
+  if (!cached || cached.datesKey !== datesKey) {
+    cached = { datesKey, points: series.points.filter((p) => candleDates.has(tradingDayOf(p.t))) };
+    programDateFilterCache.set(series.points, cached);
+  }
+  return { ...series, points: cached.points };
 }
 
 function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionCloseMs: number): PastHogaSeries {

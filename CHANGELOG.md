@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.39.0] - 2026-09-07
+
+### Changed
+- 프로그램 순매수의 실시간 갱신에서 과거 날짜 필터·정렬·차트 투영을 재사용하고 실시간 꼬리만 다시 처리한다. 과거 값이나 호가 결손 표시가 수정되면 캐시를 갱신하며, 중복 시각·역순 수신·저장 데이터와 실시간 데이터의 연결 규칙을 유지한다.
+
 ## [0.12.38.0] - 2026-09-07
 
 ### Changed

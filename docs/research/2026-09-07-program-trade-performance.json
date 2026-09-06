@@ -1,0 +1,26 @@
+[
+  {
+    "days": 5,
+    "points": 1950,
+    "before_merge_project_ms": 0.541,
+    "after_merge_project_ms": 0.179,
+    "before_with_date_filter_ms": 1.245,
+    "after_with_date_filter_ms": 0.195
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "before_merge_project_ms": 3.737,
+    "after_merge_project_ms": 0.246,
+    "before_with_date_filter_ms": 7.123,
+    "after_with_date_filter_ms": 0.377
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "before_merge_project_ms": 14.182,
+    "after_merge_project_ms": 0.654,
+    "before_with_date_filter_ms": 23.913,
+    "after_with_date_filter_ms": 0.981
+  }
+]
