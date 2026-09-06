@@ -1,0 +1,32 @@
+import importlib.util,sys,json,time,statistics
+from pathlib import Path
+from hoga.api.queries import QueryEngine
+from hoga.config import resolve_data_dir
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.tables import candles,trades
+from hoga.tables.trade_binning import TradeBinningCache
+from hoga.api import bundle as b
+spec=importlib.util.spec_from_file_location('old_trades','/tmp/indicator-trades-before.py');old=importlib.util.module_from_spec(spec);sys.modules[spec.name]=old;spec.loader.exec_module(old)
+engine=QueryEngine(resolve_data_dir());results=[]
+def timed(f):
+ t=time.perf_counter();v=f();return round((time.perf_counter()-t)*1000,3),v
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+ p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta);lo,hi=candles.query_price_range(engine.conn,path=p/'candles.parquet')
+ cont=b._first_trailing_single_price_book_hhmmssms(engine,code=code,date=date,source='hogaplay',venue='KRX',session_close_ms=cl,cache=None,today_kst='20260907')
+ kw=dict(path=p/'trades.parquet',price_lo=lo,price_hi=hi,bins=15,session_open_ms=op,session_close_ms=cl,continuous_before_ms=cont)
+ cache=TradeBinningCache();con=engine.conn
+ oldpair=lambda:(old.query_continuous_trade_volume_distribution(con,**kw),old.query_trade_volume_poc(con,**kw))
+ def newpair():
+  cache=TradeBinningCache()
+  return (trades.query_continuous_trade_volume_distribution(con,**kw,binning_cache=cache),trades.query_trade_volume_poc(con,**kw,binning_cache=cache))
+ oldpair(); newpair()
+ before=statistics.median(timed(oldpair)[0] for _ in range(5)); after=statistics.median(timed(newpair)[0] for _ in range(5)); pair=oldpair(); actual=newpair()
+ assert pair[0].__dict__==actual[0].__dict__ and pair[1].__dict__==actual[1].__dict__
+ cutoffs=[32_400_000+i*600_000+delta for i in range(36) for delta in [0,1,537]]
+ t_old=[];t_new=[]
+ for cut in cutoffs:
+  dt,expected=timed(lambda:old.query_continuous_trade_volume_distribution(con,**kw,upper_bound_ms=cut+1));t_old.append(dt)
+  dt,result=timed(lambda:trades.query_continuous_trade_volume_distribution(con,**kw,upper_bound_ms=cut+1,binning_cache=cache));t_new.append(dt)
+  assert expected.__dict__==result.__dict__,(date,code,cut,expected,result)
+ results.append(dict(date=date,code=code,full_pair_before_ms=before,full_pair_after_ms=after,cutoff_count=len(cutoffs),cutoff_before_total_ms=round(sum(t_old),3),cutoff_after_total_ms=round(sum(t_new),3),index_first_ms=t_new[0],cutoff_hot_median_ms=statistics.median(t_new[1:]),index_bytes=cache.nbytes,exact_equal=True))
+Path('/tmp/indicator-followups-bench.json').write_text(json.dumps(results,indent=2));print(json.dumps(results,indent=2));engine.close()

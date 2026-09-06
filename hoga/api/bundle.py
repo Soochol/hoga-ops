@@ -518,8 +518,9 @@ def build_volume_distribution_slice(
     None(무데이터일)도 유효 캐시값. session_open/close_ms·last_trade_ms는 meta/데이터
     파생이라 (code,date) 불변 → 키 불포함(POC 선례와 동일).
 
-    v2 아이디어: 1m 버킷별 bin 델타 아티팩트 + prefix-sum으로 임의 cutoff 응답을
-    합성하면 cutoff variant도 캐시 가능(현재 미구현)."""
+    완료일 cutoff는 QueryEngine의 bounded 메모리 인덱스로 정확한 timestamp별
+    prefix를 공유한다. 디스크에 cutoff별 결과를 쓰지 않으며, 오늘/명시적 우회는
+    원시 조회를 유지한다. 최초 생성 비용과 메모리 상한은 trade_binning 모듈 참조."""
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
     code_dir = engine.parquet_dir(date, code, source, venue=venue)
@@ -592,6 +593,9 @@ def build_volume_distribution_slice(
             session_close_ms=session_close_ms,
             **dist_kwargs,
             continuous_before_ms=continuous_before_ms,
+            **({"binning_cache": engine.trade_binning_cache}
+               if isinstance(engine, QueryEngine) and cache is not None
+               and today_kst is not None and date < today_kst else {}),
         ),
     )
     result = DayVolumeDistribution(
@@ -1392,6 +1396,9 @@ def build_trade_volume_poc_slice(
             session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
             continuous_before_ms=continuous_before_ms,
+            **({"binning_cache": engine.trade_binning_cache}
+               if isinstance(engine, QueryEngine) and cache is not None
+               and today_kst is not None and date < today_kst else {}),
         ),
     )
     if row is None:

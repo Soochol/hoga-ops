@@ -21,6 +21,7 @@ from hoga.collector.orchestrator import now_kst
 from hoga.duck import connect_bounded
 from hoga.live.venue import Venue
 from hoga.tables import snapshots
+from hoga.tables.trade_binning import TradeBinningCache
 from hoga.util.timeenc import hhmmssms_to_unix_ms
 
 
@@ -224,6 +225,7 @@ class QueryEngine:
         temp_directory: Path | None = None,
     ) -> None:
         self.data_dir = data_dir
+        self.trade_binning_cache = TradeBinningCache()
         self._conn = connect_bounded(temp_directory=temp_directory)
         # Per-call mtime-validated cache for list_stock_dates. See
         # _CachedStockDate docstring; keyed by (date, code).

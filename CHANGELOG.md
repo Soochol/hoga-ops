@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.42.0] - 2026-09-07
+
+### Changed
+- 매물대 분포와 POC의 과거 원시 체결 집계를 공유해 첫 조회의 중복 스캔을 줄인다. 호버 시점 누적 매물대는 정확한 시각별 누적 인덱스를 재사용하며 밀리초 경계·최초/마지막 체결 시각을 유지한다. 메모리 상한과 원본 파일 변경 무효화를 적용하고, 오늘 및 캐시 우회 조회는 기존 직접 계산을 유지한다.
+
 ## [0.12.41.0] - 2026-09-07
 
 ### Changed
