@@ -62,6 +62,15 @@ def test_reaggregate_ratio_takes_last_in_window() -> None:
     assert out == [_qr(0, 12, 22, imb_max_bid=10, imb_max_ask=20)]
 
 
+def test_reaggregate_ratio_one_minute_reuses_canonical_rows() -> None:
+    # 1분 정본은 이미 집계됐다. 일반 행·한쪽 잔량·동시호가 센티넬을 그대로
+    # 반환해야 캐시 적중마다 딕셔너리와 행을 다시 만들지 않는다.
+    rows = [_qr(0, 10, 20), _qr(60_000, 0, 9), _qr(120_000, 0, 0)]
+    assert reaggregate_ratio(rows, 60_000) is rows
+    empty: list[QuoteRatioRow] = []
+    assert reaggregate_ratio(empty, 60_000) is empty
+
+
 def test_reaggregate_ratio_skips_trailing_auction_zeros() -> None:
     # minute 2 is a fully-auction (0,0) sentinel → the 3m rep is the last
     # NON-(0,0) minute (minute 1), exactly as the direct Nm query would pick the
