@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.40.0] - 2026-09-07
+
+### Changed
+- 일반·일봉 이동평균선은 미변경 과거 봉의 계산과 좌표를 재사용한다. 일반 이동평균의 실시간 마지막 봉 변경은 차트 마지막 점만 갱신하며, 과거 수정·구간 확장·일봉 MA의 당일 값 변경은 필요한 전체 데이터를 다시 반영한다. 기존 계산 순서와 값은 유지한다.
+
 ## [0.12.39.0] - 2026-09-07
 
 ### Changed
