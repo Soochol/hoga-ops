@@ -560,6 +560,26 @@ def _last_continuous_intra_ms(
     return int(row[0])
 
 
+def _has_continuous_book_before_close(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_close_ms: int,
+) -> bool:
+    """총잔량의 퇴화 fallback 판정. 마지막 시각 대신 첫 유효 행에서 멈춘다.
+
+    기존 `_last_continuous_intra_ms is not None`과 같은 술어다. 개장 하한은
+    여기 넣지 않는다 — 실제 집계의 유효 행 선택과 fallback 활성화는 별개다.
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    return con.execute(
+        f"SELECT 1 FROM read_parquet(?) "
+        f"WHERE {_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {close_intra_sql} LIMIT 1",
+        [str(path)],
+    ).fetchone() is not None
+
+
 def query_first_trailing_single_price_book_intra_ms(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -1081,12 +1101,10 @@ def query_bucketed_ratio(
     Returns rows in ascending ``bucket_intra_ms`` order. Empty parquet → [].
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    last_continuous_ms = (
-        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
-        if session_close_ms is not None
-        else None
+    has_continuous_book = session_close_ms is not None and _has_continuous_book_before_close(
+        con, path=path, session_close_ms=session_close_ms,
     )
-    if last_continuous_ms is None:
+    if not has_continuous_book:
         # 세션 바운드 없음 OR 세션 내 deep book 전무(퇴화 fixture/깨진 캡처) — 시리즈를
         # 통째로 비우지 않고 last-in-bucket 폴백을 유지한다(ADR-0062). 실데이터는 항상
         # 세션 바운드 + deep book이라 이 분기는 집계 단위 테스트/퇴화 데이터에서만 발화한다.
