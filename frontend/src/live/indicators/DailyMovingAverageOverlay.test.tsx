@@ -13,7 +13,7 @@ function makeChartMock() {
   const seriesById = new Map<string, ReturnType<typeof makeSeriesMock>>();
   let seriesCounter = 0;
   function makeSeriesMock() {
-    return { applyOptions: vi.fn(), setData: vi.fn(), _internalId: ++seriesCounter };
+    return { applyOptions: vi.fn(), setData: vi.fn(), update: vi.fn(), _internalId: ++seriesCounter };
   }
   const addSeries = vi.fn((...args: unknown[]) => {
     void args;
@@ -249,5 +249,15 @@ describe('DailyMovingAverageOverlay', () => {
     const added = m.addSeries.mock.calls.length;
     unmount();
     expect(m.removeSeries).toHaveBeenCalledTimes(added);
+  });
+  it('refreshes every candle of today when the live daily MA changes', () => {
+    const m = makeChartMock();
+    const view = renderOverlay(m, { todayKst: '20260612' });
+    const series = m.addSeries.mock.results[0].value;
+    const changed = [...candles.slice(0, -1), { ...candles.at(-1)!, close: 2 }];
+    view.rerender(<DailyMovingAverageOverlay chart={m.chart as never} bundle={{ candles: changed } as never} axis={axis} code="005930" timeframe="1m" todayKst="20260612" />);
+    expect(series.setData).toHaveBeenCalledTimes(2);
+    expect(series.setData.mock.lastCall?.[0]).toEqual(candles.map(c => ({ time: c.ts_ms / 1000, value: 2 })));
+    expect(series.update).not.toHaveBeenCalled();
   });
 });

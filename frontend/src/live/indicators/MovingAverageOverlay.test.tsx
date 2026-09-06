@@ -14,7 +14,7 @@ function makeChartMock() {
   function makeSeriesMock() {
     return {
       applyOptions: vi.fn(),
-      setData: vi.fn(),
+      setData: vi.fn(), update: vi.fn(),
       _internalId: ++seriesCounter,
     };
   }
@@ -241,5 +241,17 @@ describe('MovingAverageOverlay', () => {
     const addedCount = m.addSeries.mock.calls.length;
     unmount();
     expect(m.removeSeries).toHaveBeenCalledTimes(addedCount);
+  });
+  it('updates only the live tail but resets the series for a historical prepend', () => {
+    useLivePageStore.setState({ movingAverages: [{ id: 'a', enabled: true, period: 2, source: 'close', color: '#fff', lineWidth: 1 }] });
+    const m = makeChartMock();
+    const view = render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const series = m.addSeries.mock.results[0].value;
+    const changed = [...candles.slice(0, -1), { ...candles.at(-1)!, close: 6 }];
+    view.rerender(<MovingAverageOverlay chart={m.chart as never} bundle={{ candles: changed } as never} axis={axis} />);
+    expect(series.update).toHaveBeenLastCalledWith({ time: 5, value: 5 });
+    expect(series.setData).toHaveBeenCalledTimes(1);
+    view.rerender(<MovingAverageOverlay chart={m.chart as never} bundle={{ candles: [{ ...candles[0], ts_ms: 0 }, ...changed] } as never} axis={axis} />);
+    expect(series.setData).toHaveBeenCalledTimes(2);
   });
 });

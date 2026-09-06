@@ -3997,6 +3997,13 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
   const MIDDLE = TODAY_OPEN_MS + 300_000;
   const LAST = TODAY_OPEN_MS + 900_000;
 
+  // 동일 데이터 재전송은 모든 시리즈가 skip할 수 있다. shape(first/last/count)는
+  // 유지하면서 실제 데이터 반영을 발생시켜 위 mock의 지표 union 삽입을 적용한다.
+  function sameShapeCorrection(): RangeBundle {
+    const bundle = bundleOf([FIRST, MIDDLE, LAST]);
+    return { ...bundle, candles: bundle.candles.map((c, i) => i === 1 ? { ...c, close: 101 } : c) };
+  }
+
   it('중간 삽입이면 재투영한다 — 팬을 한 적 없어도(좌단을 안 건드리므로 안전)', () => {
     const h = makeHarness();
     vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
@@ -4099,7 +4106,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 });
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
-        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        bundle={sameShapeCorrection()}
         clampEngaged={false}
         captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );
@@ -4213,7 +4220,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     h.queueInsert({ shift: INSERT_SHIFT, pivot: 0 }); // 지표 포인트 삽입 = 진짜 재매핑
     rerender(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
-        bundle={bundleOf([FIRST, MIDDLE, LAST])}
+        bundle={sameShapeCorrection()}
         clampEngaged={false}
         captureFloorEngaged={false} isPastCandlesLoading={false} />,
     );

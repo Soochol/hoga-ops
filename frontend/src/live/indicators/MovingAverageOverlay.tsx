@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef } from 'react';
-import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useChartPrefsStore } from '../../state/chartPrefs';
-import { computeSMA, selectSource } from '../../chart/projectors/movingAverage';
+import { createMovingAverageProjection } from '../../chart/projectors/maProjection';
+import { syncSeriesData, type SeriesDataSink } from '../../chart/seriesDataDiff';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
 import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
@@ -31,6 +32,9 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useWindowIndicator((s) => s.movingAverages);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
+  const projectRef = useRef<ReturnType<typeof createMovingAverageProjection> | null>(null);
+  if (projectRef.current === null) projectRef.current = createMovingAverageProjection();
+  const pushedRef = useRef(new WeakMap<LineApi, ReturnType<typeof syncSeriesData>>());
   // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
   const scope = useWindowScopeId();
 
@@ -90,7 +94,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   // Push projected SMA into each series.
   useEffect(() => {
     const map = seriesByIdRef.current;
-    const inSession = bundle.candles.filter((c) => axis.contains(c.ts_ms));
+    const projected = projectRef.current!(bundle.candles, axis, configs);
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
@@ -101,17 +105,11 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       const drawn = cfg.enabled;
       s.applyOptions({ visible: drawn });
       if (!drawn) {
-        s.setData([]);
+        pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
         continue;
       }
-      const values = inSession.map((c) => selectSource(c, cfg.source));
-      const sma = computeSMA(values, cfg.period);
-      const data = inSession.map((c, j) => {
-        const time = (axis.toVirtual(c.ts_ms) / 1000) as Time;
-        const v = sma[j];
-        return v === null ? { time } : { time, value: v };
-      });
-      s.setData(data as never);
+      const data = projected.get(cfg.id) ?? [];
+      pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
     }
     // `chart` is a dep because the series-creation effect above re-creates
     // every MA series when the chart instance changes (/live remounts the

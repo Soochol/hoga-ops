@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
-import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import type { LiveVenueOption } from '../../state/liveVenue';
-import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
+import { createDailyMovingAverageProjection } from '../../chart/projectors/maProjection';
+import { syncSeriesData, type SeriesDataSink } from '../../chart/seriesDataDiff';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 import { isIndexWorkareaCode } from '../liveInstrument';
@@ -52,6 +53,9 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   const configs = override?.configs ?? storeConfigs;
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
+  const projectRef = useRef<ReturnType<typeof createDailyMovingAverageProjection> | null>(null);
+  if (projectRef.current === null) projectRef.current = createDailyMovingAverageProjection();
+  const pushedRef = useRef(new WeakMap<LineApi, ReturnType<typeof syncSeriesData>>());
 
   // 지수 제외: 일봉 소스가 `/api/live/past-daily-candles`(6자리 종목 전용)라 지수
   // 코드로는 애초에 시리즈가 그려지지 않는다. 즉 기능 제거가 아니라 헛요청 제거다
@@ -137,25 +141,18 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   // Project daily MA onto each in-session candle (day-anchored step).
   useEffect(() => {
     const map = seriesByIdRef.current;
-    const inSession = bundle.candles.filter((c) => axis.contains(c.ts_ms));
+    const projected = projectRef.current!(bundle.candles, axis, enabled ? configs : [], daily, todayKst, todayLiveClose);
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
       const drawn = enabled && cfg.enabled;
       s.applyOptions({ visible: drawn });
       if (!drawn) {
-        s.setData([]);
+        pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
         continue;
       }
-      const maByDate = computeDailyMaByDate(daily, cfg.period, cfg.source, todayKst, todayLiveClose);
-      const data = inSession.map((c) => {
-        const segIdx = axis.findByReal(c.ts_ms);
-        const date = axis.segments[segIdx]?.date;
-        const v = date != null ? maByDate.get(date) : undefined;
-        const time = (axis.toVirtual(c.ts_ms) / 1000) as Time;
-        return v == null ? { time } : { time, value: v };
-      });
-      s.setData(data as never);
+      const data = projected.get(cfg.id) ?? [];
+      pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
     }
     // `chart` dep: /live remounts the chart per (code, timeframe); fresh series
     // start empty and must be re-pushed in the same commit (MovingAverageOverlay 동일).

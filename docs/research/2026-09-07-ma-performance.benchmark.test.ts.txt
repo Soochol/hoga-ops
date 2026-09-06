@@ -1,0 +1,26 @@
+import { it, expect } from 'vitest';
+import { writeFileSync } from 'node:fs';
+import { createMovingAverageProjection, createDailyMovingAverageProjection } from './maProjection';
+import { computeSMA, selectSource } from './movingAverage';
+import { computeDailyMaByDate } from './dailyMovingAverage';
+import { createVirtualAxis } from '../../util/virtualAxis';
+import { unixMsToKSTDate } from '../../util/time';
+function measure(f:()=>unknown) { f();f();const xs=[];for(let i=0;i<11;i++){const t=performance.now();f();xs.push(performance.now()-t);}return +xs.sort((a,b)=>a-b)[5].toFixed(3); }
+it('MA before/after data-generation benchmark',()=>{
+ const results=[];const base=Date.UTC(2026,4,1),DAY=86400000;
+ for(const days of [5,30,90]) {
+  const axis=createVirtualAxis(Array.from({length:days},(_,d)=>({date:unixMsToKSTDate(base+d*DAY),sessionOpenMs:base+d*DAY,sessionCloseMs:base+d*DAY+390*60000})));
+  const candles=Array.from({length:days},(_,d)=>Array.from({length:390},(_,i)=>({ts_ms:base+d*DAY+i*60000,open:100,high:110,low:90,close:100+i%30,vol_a:1,vol_b:1}))).flat();
+  const configs=[5,10,20,60,120,240].map((period,i)=>({id:String(i),enabled:true,period,source:'close' as const}));
+  const daily=Array.from({length:days+300},(_,d)=>({t_ms:base+(d-300)*DAY,open:100,high:110,low:90,close:100+d%30,volume:1}));
+  const today=axis.segments.at(-1)!.date;
+  const normal=createMovingAverageProjection(),dayProject=createDailyMovingAverageProjection();
+  let tick=0;const next=()=>[...candles.slice(0,-1),{...candles.at(-1)!,close:100+(tick++%30)}];
+  const oldNormal=(cs=next())=>{const inside=cs.filter(c=>axis.contains(c.ts_ms));return configs.map(cfg=>{const values=computeSMA(inside.map(c=>selectSource(c,cfg.source)),cfg.period);return inside.map((c,i)=>values[i]===null?{time:axis.toVirtual(c.ts_ms)/1000}:{time:axis.toVirtual(c.ts_ms)/1000,value:values[i]});});};
+  const oldDaily=(cs=next())=>{const inside=cs.filter(c=>axis.contains(c.ts_ms));return configs.map(cfg=>{const values=computeDailyMaByDate(daily,cfg.period,cfg.source,today,cs.at(-1)!.close);return inside.map(c=>{const date=axis.segments[axis.findByReal(c.ts_ms)]?.date;const value=values.get(date);const time=axis.toVirtual(c.ts_ms)/1000;return value==null?{time}:{time,value};});});};
+  expect([...normal(candles,axis,configs).values()]).toEqual(oldNormal(candles));
+  expect([...dayProject(candles,axis,configs,daily,today,candles.at(-1)!.close).values()]).toEqual(oldDaily(candles));
+  results.push({days,points:candles.length,normal_before_ms:measure(()=>oldNormal()),normal_after_ms:measure(()=>normal(next(),axis,configs)),daily_before_ms:measure(()=>oldDaily()),daily_after_ms:measure(()=>{const cs=next();return dayProject(cs,axis,configs,daily,today,cs.at(-1)!.close);})});
+ }
+ writeFileSync('/tmp/ma-performance.json',JSON.stringify(results,null,2));
+},60000);

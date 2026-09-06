@@ -1,0 +1,26 @@
+[
+  {
+    "days": 5,
+    "points": 1950,
+    "normal_before_ms": 0.896,
+    "normal_after_ms": 0.136,
+    "daily_before_ms": 0.888,
+    "daily_after_ms": 0.608
+  },
+  {
+    "days": 30,
+    "points": 11700,
+    "normal_before_ms": 4.866,
+    "normal_after_ms": 0.715,
+    "daily_before_ms": 5.252,
+    "daily_after_ms": 1.71
+  },
+  {
+    "days": 90,
+    "points": 35100,
+    "normal_before_ms": 18.227,
+    "normal_after_ms": 2.377,
+    "daily_before_ms": 17.658,
+    "daily_after_ms": 5.796
+  }
+]
