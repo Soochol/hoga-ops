@@ -1492,6 +1492,8 @@ describe('useViewportBackfill — warm-cache settle signal (3a)', () => {
 
     // 웜 히트: 그 창이 즉시 서빙된다 — isExtending 은 내내 false.
     rerender({ settled: step1, ext: false });
+    expect(extendSpy).toHaveBeenCalledTimes(1); // 캐시 연속 진행은 다음 태스크로 넘긴다.
+    vi.advanceTimersToNextTimer();
 
     expect(extendSpy).toHaveBeenCalledTimes(2);
   });
@@ -1521,6 +1523,7 @@ describe('useViewportBackfill — warm-cache settle signal (3a)', () => {
     const step1 = extendSpy.mock.calls[0][0] as string;
 
     rerender({ settled: step1, ext: false }); // 스텝 2 (예산 소진)
+    vi.advanceTimersToNextTimer();
     expect(extendSpy).toHaveBeenCalledTimes(2);
     const step2 = extendSpy.mock.calls[1][0] as string;
 

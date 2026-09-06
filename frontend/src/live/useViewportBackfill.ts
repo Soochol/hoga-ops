@@ -1166,7 +1166,6 @@ export function useViewportBackfill({
       endFill();
       return;
     }
-    lastAdvancedFromRef.current = cur;
     const plan = planFillStep({
       kind: fillKindRef.current,
       historicalFromDate: cur,
@@ -1190,23 +1189,48 @@ export function useViewportBackfill({
       endFill();
       return;
     }
-    fillStepCountRef.current += plan.steps;
-    livePerfLog('viewport_backfill_extend', {
-      code,
-      timeframe,
-      trigger: 'settle_loop',
-      kind: fillKindRef.current,
-      from: cur,
-      nextFrom: plan.nextFrom,
-      steps: plan.steps,
-      stepCount: fillStepCountRef.current,
-      budget: fillBudgetRef.current,
-      candleCount: candleCountRef.current,
-    });
-    historicalRange.extend(plan.nextFrom);
+    const stepCount = fillStepCountRef.current;
+    const coverageTarget = fillCoverageTargetRef.current;
+    const advance = () => {
+      // A new target can replace the fill later in this same commit (3d).
+      // Recheck before spending its budget or writing an obsolete request.
+      if (fillKindRef.current === null
+        || fillStepCountRef.current !== stepCount
+        || fillCoverageTargetRef.current !== coverageTarget
+        || historicalRange.snapshot().historicalFromDate !== cur
+        || isExtendingRef.current
+        || !canTriggerBackfill()) return;
+      lastAdvancedFromRef.current = cur;
+      fillStepCountRef.current += plan.steps;
+      livePerfLog('viewport_backfill_extend', {
+        code,
+        timeframe,
+        trigger: 'settle_loop',
+        settledBy: settledByFetch ? 'fetch' : 'cache',
+        kind: fillKindRef.current,
+        from: cur,
+        nextFrom: plan.nextFrom,
+        steps: plan.steps,
+        stepCount: fillStepCountRef.current,
+        budget: fillBudgetRef.current,
+        candleCount: candleCountRef.current,
+      });
+      historicalRange.extend(plan.nextFrom);
+    };
+    // A real fetch already yields between steps. Consecutive cache hits do not:
+    // the 60-step fill can exceed React's nested update limit before it stops.
+    // Yield cached continuations, retaining their completion signal and budget
+    // until dispatch so dependency churn can safely cancel and re-arm them.
+    if (settledByFetch) {
+      advance();
+      return;
+    }
+    const timer = setTimeout(advance, 0);
+    return () => clearTimeout(timer);
     // settledFromDate는 원시 문자열이라 deps에 값으로 들어간다 — 주기 refetch는 같은
     // from을 되싣으므로 effect가 재실행되지 않는다(candleCountRef식 ref 미러 불요).
-  }, [chart, axis, timeframe, isExtending, canTriggerBackfill, historicalRange, settledFromDate]);
+  }, [chart, axis, timeframe, isExtending, canTriggerBackfill, historicalRange, settledFromDate,
+    code, candleSourceKey, savedRangeFromDate, minuteScrollbackFloorDate]);
 
   // 3b. Lazy fetch trigger — extend historicalFromDate when user scrolls past
   // the leftmost loaded candle.
