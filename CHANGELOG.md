@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.36.0] - 2026-09-07
+
+### Changed
+- 총잔량·호가비의 과거 원본 계산에서 불필요한 전체 스캔을 줄이고, 1분 조회는 이미 계산된 캐시를 바로 사용해 응답 준비를 단축한다. 기존 계산값과 동시호가 제외 규칙은 유지한다.
+
 ## [0.12.35.0] - 2026-09-07
 
 ### Changed

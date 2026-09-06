@@ -64,6 +64,10 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     ``band_pct``(사다리 폭)·``tick``(호가단위)은 **대표 행을 따라간다** — 총잔량과 같은 스냅샷의 폭이
     아니면 정규화가 성립하지 않기 때문이다. max/평균이 아니라 동반값이라는 뜻이다.
     """
+    if bucket_ms == ONE_MINUTE_MS:
+        # 정본은 이미 1분이다. 과거 캐시와 오늘 TTL 양쪽에서 재집계·행 복사를
+        # 생략한다. QuoteRatioRow는 frozen이며 호출자는 이 배열을 읽기만 한다.
+        return rows_1m
     # 값 튜플은 (bid_total, ask_total, band_pct) — **폭은 총잔량과 같은 행에서**
     # 와야 정규화가 성립한다(snapshots.QuoteRatioRow 참조). 그래서 따로 집계하지
     # 않고 대표 행을 고를 때 함께 실려 온다.

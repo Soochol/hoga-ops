@@ -350,6 +350,34 @@ def test_query_bucketed_ratio_sums_all_ten_levels(tmp_path: Path) -> None:
     assert rows[0].bid_total == 20   # 5*4
 
 
+@pytest.mark.parametrize("deep_time", [85_900_000, 90_000_000, 153_100_000, None])
+def test_ratio_does_not_scan_for_last_continuous_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, deep_time: int | None,
+) -> None:
+    # 경계 이전 deep book의 '존재'만 필요하다. 실제 마지막 시각이 필요한
+    # 다른 지표용 MAX 스캔을 총잔량에 다시 도입하지 않는다.
+    obs = [_ob(ts_ms=90_100_000, seq=2, ask_q=(7,), bid_q=(9,))]
+    if deep_time is not None:
+        obs.append(_ob(ts_ms=deep_time, seq=1, ask_q=(1,) * 10, bid_q=(2,) * 10))
+    path = tmp_path / "snapshots.parquet"
+    write_parquet(obs, path)
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("총잔량은 마지막 유효 시각의 전체 MAX 스캔이 필요하지 않다")
+
+    monkeypatch.setattr(snapshots, "_last_continuous_intra_ms", unexpected_scan)
+    with duckdb.connect() as con:
+        rows = snapshots.query_bucketed_ratio(
+            con, path=path, bucket_ms=60_000,
+            session_open_ms=90_000_000, session_close_ms=153_000_000,
+        )
+    shallow = next(r for r in rows if r.bucket_intra_ms == (9 * 60 + 1) * 60_000)
+    # 기존 존재 판정에는 open 하한이 없다. 개장 전 deep만 있어도 구조 배제를
+    # 활성화하며, 마감 후 deep만 있거나 deep이 없으면 퇴화 fallback을 유지한다.
+    expected = (0, 0) if deep_time in (85_900_000, 90_000_000) else (9, 7)
+    assert (shallow.bid_total, shallow.ask_total) == expected
+
+
 def test_query_bucketed_ratio_takes_last_snapshot_in_bucket(tmp_path: Path) -> None:
     """Within one bucket, the LAST snapshot (max ts_ms) wins — mirrors the
     ROW_NUMBER() OVER (... ORDER BY ts_ms DESC) rn=1 selection."""
