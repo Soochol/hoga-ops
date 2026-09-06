@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.37.0] - 2026-09-07
+
+### Fixed
+- 캐시된 과거 구간을 연속으로 불러올 때 차트가 `Maximum update depth exceeded` 오류로 중단되는 문제를 수정했다. 화면이나 조회 조건이 바뀌면 대기 중인 확장을 취소하고 현재 상태로 다시 판정한다.
+
 ## [0.12.35.0] - 2026-09-07
 
 ### Changed
