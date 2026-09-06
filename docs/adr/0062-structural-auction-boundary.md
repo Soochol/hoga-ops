@@ -201,6 +201,11 @@ v2 시점에도 지표별로 배제 범위가 어긋나 있었다: 히트맵은 
 단 "세션 내 deep book 전무"(퇴화/깨진 캡처) 감지를 위한 `_last_continuous_intra_ms` None
 체크는 유지 — 이 경우만 `TRUE` 폴백(last-in-bucket, 시리즈를 통째로 비우지 않음).
 
+2026-09-07: 총잔량·호가비의 `query_bucketed_ratio`는 같은 판정을
+`_has_continuous_book_before_close`의 존재 확인(`SELECT 1 ... LIMIT 1`)으로 바꿨다.
+판정에는 기존처럼 개장 하한을 넣지 않으며, 실제 집계의 세션 경계·퇴화 폴백은 유지한다.
+측정과 검증은 [총잔량 알고리즘 분석](../research/2026-09-07-quote-totals-algorithm-analysis.md)에 기록했다.
+
 ### 히트맵: (0,0) 센티넬이 아니라 **버킷 드롭**
 
 히트맵은 v2까지 완전-동시호가 버킷을 last-in-bucket raw로 방출했으나, v3에서 **매도벽과
