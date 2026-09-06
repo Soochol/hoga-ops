@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.35.0] - 2026-09-07
+
+### Changed
+- 과거 최대벽 캐시를 관심종목부터 미리 계산해 처음 조회할 때의 대기를 줄인다. 각 그룹 안에서는 최신 날짜부터 처리한다.
+- 최대벽 계산에서 최대 잔량 후보만 정렬해 실데이터 하루치 계산 시간을 8~15% 줄였다. 기존 순위와 결과값은 유지한다.
+- 최대벽 봉별 모드에서 사용하지 않는 계단 계산을 생략한다.
+
 ## [0.12.34.0] - 2026-09-05
 
 ### Changed
