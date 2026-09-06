@@ -52,6 +52,7 @@ describe('usePeakWallRender', () => {
     act(() => {
       useChartPrefsStore.setState({ ...DEFAULT_PREFS });
       useLivePageStore.setState({
+        peakWallPaneMode: 'step',
         askPeakEnabled: true,
         askPeakHidden: false,
         // 전역 스토어는 테스트 간 살아남는다 — 하위 토글을 켜는 테스트가 앞서면
@@ -68,6 +69,46 @@ describe('usePeakWallRender', () => {
         bidPeakAllWallPaneEnabled: false,
       });
     });
+  });
+
+  it('봉별 모드는 계단 계산을 생략하고 모드 전환 시 다시 채운다', () => {
+    act(() => useLivePageStore.setState({
+      peakWallPaneMode: 'bar',
+      askPeakAllWallPaneEnabled: true,
+      askPeakUnreachedPaneEnabled: true,
+    }));
+    const candidate = { price: 120, qty: 700, t_ms: MIN };
+    const peak: AskPeak = {
+      ...PEAK,
+      all_peaks: [candidate], unreached_peaks: [candidate],
+      traded_bar_peaks: [candidate], all_bar_peaks: [candidate],
+      unreached_bar_peaks: [candidate],
+    };
+    const r = render(true, [peak], true);
+    expect(r.current.segments.length).toBeGreaterThan(0);
+    expect(r.current.barCandidates).toEqual([candidate]);
+    expect(r.current.allWallBarCandidates).toEqual([candidate]);
+    expect(r.current.unreachedBarCandidates).toEqual([candidate]);
+    expect(r.current.stepSegments).toEqual([]);
+    expect(r.current.allWallStepSegments).toEqual([]);
+    expect(r.current.unreachedStepSegments).toEqual([]);
+    // 같은 훅을 유지한 채 토글해야 반환 memo 의 오래된 후보를 잡을 수 있다.
+    // 토글 후 새로 mount 하면 의존성 누락을 숨긴다.
+    for (const [toggle, points] of [
+      ['askPeakTradedPaneEnabled', 'barCandidates'],
+      ['askPeakAllWallPaneEnabled', 'allWallBarCandidates'],
+      ['askPeakUnreachedPaneEnabled', 'unreachedBarCandidates'],
+    ] as const) {
+      act(() => useLivePageStore.setState({ [toggle]: false }));
+      expect(r.current[points]).toEqual([]);
+      act(() => useLivePageStore.setState({ [toggle]: true }));
+      expect(r.current[points]).toEqual([candidate]);
+    }
+    act(() => useLivePageStore.setState({ peakWallPaneMode: 'step' }));
+    expect(r.current.stepSegments.length).toBeGreaterThan(0);
+    expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
+    expect(r.current.unreachedStepSegments.length).toBeGreaterThan(0);
+    expect(r.current.barCandidates).toEqual([]);
   });
 
   /**

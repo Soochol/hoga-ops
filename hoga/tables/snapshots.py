@@ -2020,7 +2020,9 @@ def _peak_bar_max_sequence(
     )
     if rows.height == 0:
         return ()
-    # qty DESC 정렬 후 bucket_id 당 first = 그 봉의 최대. 그다음 시간순으로 되돌린다.
+    # 봉별 최대 잔량만 선형 집계로 추린 뒤 동률 후보만 순위를 정한다.
+    # 원본 전량을 정렬할 필요가 없다. 동률에서 시각·순번·가격 규칙은 그대로다.
+    rows = rows.filter(pl.col("qty") == pl.col("qty").max().over("bucket_id"))
     best = _peak_rank_sort(rows).unique(
         subset=["bucket_id"], keep="first", maintain_order=True,
     ).sort("intra_ms")
@@ -2041,7 +2043,9 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
     """Rank-1 (price, qty, intra_ms) or None — mirrors an ``... LIMIT 1`` CTE."""
     if df.height == 0:
         return None
-    row = _peak_rank_sort(df).row(0, named=True)
+    # rank-1 선택은 전량 정렬이 필요 없다. 동률은 기존 네 정렬키로 결정한다.
+    maxima = df.filter(pl.col("qty") == pl.col("qty").max())
+    row = _peak_rank_sort(maxima).row(0, named=True)
     return (row["price"], row["qty"], row["intra_ms"])
 
 
