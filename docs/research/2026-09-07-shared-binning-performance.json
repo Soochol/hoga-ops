@@ -1,0 +1,41 @@
+[
+  {
+    "date": "20260623",
+    "code": "000660",
+    "full_pair_before_ms": 111.752,
+    "full_pair_after_ms": 60.474,
+    "cutoff_count": 108,
+    "cutoff_before_total_ms": 4728.378,
+    "cutoff_after_total_ms": 139.393,
+    "index_first_ms": 121.622,
+    "cutoff_hot_median_ms": 0.163,
+    "index_bytes": 6307136,
+    "exact_equal": true
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "full_pair_before_ms": 36.332,
+    "full_pair_after_ms": 18.11,
+    "cutoff_count": 108,
+    "cutoff_before_total_ms": 1686.676,
+    "cutoff_after_total_ms": 55.585,
+    "index_first_ms": 41.048,
+    "cutoff_hot_median_ms": 0.137,
+    "index_bytes": 2170384,
+    "exact_equal": true
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "full_pair_before_ms": 3.399,
+    "full_pair_after_ms": 1.549,
+    "cutoff_count": 108,
+    "cutoff_before_total_ms": 196.292,
+    "cutoff_after_total_ms": 10.247,
+    "index_first_ms": 3.729,
+    "cutoff_hot_median_ms": 0.053,
+    "index_bytes": 35876,
+    "exact_equal": true
+  }
+]

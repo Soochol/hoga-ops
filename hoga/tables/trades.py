@@ -19,6 +19,7 @@ import duckdb
 import polars as pl
 import pyarrow as pa
 
+from hoga.tables.trade_binning import BinningSpec, TradeBinningCache, query_statistics
 from hoga.util.atomic_write import atomic_write_parquet_table
 from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
@@ -428,6 +429,7 @@ def query_trade_volume_poc(
     session_open_ms: int,
     session_close_ms: int,
     continuous_before_ms: int | None = None,
+    binning_cache: TradeBinningCache | None = None,
 ) -> TradeVolumePocRow | None:
     """Return the strongest regular-session distribution bin for a day.
 
@@ -436,48 +438,21 @@ def query_trade_volume_poc(
     ms-from-midnight. side=0 is excluded so auction/single-price prints do not
     dominate the bin.
     """
-    bin_width = (price_hi - price_lo) / bins
-    if bin_width <= 0:
-        bin_width = 1
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
-    session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
-    upper_bound_intra_ms = (
-        _session_bound_to_intra_ms(continuous_before_ms)
-        if continuous_before_ms is not None
-        else session_close_intra_ms
+    upper = _session_bound_to_intra_ms(
+        continuous_before_ms if continuous_before_ms is not None else session_close_ms,
     )
-    rows = con.execute(
-        f"""
-        WITH regular AS (
-          SELECT price,
-                 qty,
-                 {intra_ms_expr} AS intra_ms
-          FROM read_parquet(?)
-          WHERE side IN (1, -1)
-            AND price > 0
-            AND qty > 0
-        )
-        SELECT GREATEST(0, LEAST(?, FLOOR((price - ?) / ?)::BIGINT)) AS bin_idx,
-               SUM(qty) AS qty,
-               MIN(intra_ms) AS first_intra_ms
-        FROM regular
-        WHERE intra_ms >= ? AND intra_ms < ?
-          AND price BETWEEN ? AND ?
-        GROUP BY 1
-        ORDER BY bin_idx ASC
-        """,
-        [
-            str(path),
-            bins - 1,
-            price_lo,
-            bin_width,
-            session_open_intra_ms,
-            upper_bound_intra_ms,
-            price_lo,
-            price_hi,
-        ],
-    ).fetchall()
+    spec = BinningSpec(price_lo, price_hi, bins, _session_bound_to_intra_ms(session_open_ms), upper)
+    statistics = (binning_cache.read(con, path, spec) if binning_cache is not None
+                  else query_statistics(con, path, spec))
+    # Distribution retains the raw top-edge bin; POC combines it with the last
+    # bin before ranking and keeps the earliest timestamp across both.
+    merged: dict[int, tuple[int, int]] = {}
+    for raw_idx, qty, first, _last in statistics:
+        idx = max(0, min(bins - 1, raw_idx))
+        old_qty, old_first = merged.get(idx, (0, first))
+        merged[idx] = (old_qty + qty, min(old_first, first))
+    rows = [(idx, *values) for idx, values in sorted(merged.items())]
+    bin_width = spec.width
     if not rows:
         return None
 
@@ -546,6 +521,7 @@ def query_continuous_trade_volume_distribution(
     session_close_ms: int,
     upper_bound_ms: int | None = None,
     continuous_before_ms: int | None = None,
+    binning_cache: TradeBinningCache | None = None,
 ) -> VolumeProfileBinning:
     """Bin continuous-trading qty into a caller-supplied candle price range.
 
@@ -553,55 +529,20 @@ def query_continuous_trade_volume_distribution(
     Cross rows (side=0) and bounds rows to the Stock-Date session after
     decoding HHMMSSmmm into linear ms-from-midnight.
     """
-    bin_width = (price_hi - price_lo) / bins
-    if bin_width <= 0:
-        bin_width = 1
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
-    session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
-    structural_upper_intra_ms = (
-        _session_bound_to_intra_ms(continuous_before_ms)
-        if continuous_before_ms is not None
-        else None
-    )
-    effective_upper_intra_ms = min(
-        bound
-        for bound in (session_close_intra_ms, upper_bound_ms, structural_upper_intra_ms)
-        if bound is not None
-    )
-    rows = con.execute(
-        f"""
-        WITH continuous AS (
-          SELECT price,
-                 qty,
-                 {intra_ms_expr} AS intra_ms
-          FROM read_parquet(?)
-          WHERE side IN (1, -1)
-            AND price > 0
-            AND qty > 0
-        ),
-        filtered AS (
-          SELECT price, qty, intra_ms
-          FROM continuous
-          WHERE intra_ms >= ?
-            AND intra_ms < ?
-            AND price BETWEEN {price_lo} AND {price_hi}
-        ),
-        stats AS (
-          SELECT MAX(intra_ms) AS max_intra_ms FROM filtered
+    lower = _session_bound_to_intra_ms(session_open_ms)
+    upper = min(_session_bound_to_intra_ms(session_close_ms),
+                _session_bound_to_intra_ms(continuous_before_ms) if continuous_before_ms is not None
+                else _session_bound_to_intra_ms(session_close_ms))
+    spec = BinningSpec(price_lo, price_hi, bins, lower, upper)
+    if binning_cache is not None:
+        rows = binning_cache.read(con, path, spec, cutoff=upper_bound_ms)
+    else:
+        direct = BinningSpec(
+            price_lo, price_hi, bins, lower, min(upper, upper_bound_ms) if upper_bound_ms is not None else upper,
         )
-        SELECT FLOOR((price - {price_lo}) / {bin_width})::BIGINT AS bin_idx,
-               SUM(qty) AS qty,
-               stats.max_intra_ms
-        FROM filtered, stats
-        GROUP BY 1, 3 ORDER BY 1
-        """,
-        [str(path), session_open_intra_ms, effective_upper_intra_ms],
-    ).fetchall()
+        rows = query_statistics(con, path, direct)
     return VolumeProfileBinning(
-        price_min=price_lo,
-        price_max=price_hi,
-        bin_width=float(bin_width),
-        bins=[(int(idx), int(qty)) for idx, qty, _max_intra_ms in rows],
-        max_intra_ms=int(rows[0][2]) if rows and rows[0][2] is not None else None,
+        price_min=price_lo, price_max=price_hi, bin_width=spec.width,
+        bins=[(idx, qty) for idx, qty, _first, _last in rows],
+        max_intra_ms=max((last for _idx, _qty, _first, last in rows), default=None),
     )
