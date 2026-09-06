@@ -5,6 +5,22 @@ import type { DepthHeatmapPoint } from './depthHeatmapWire';
 const axis = { toVirtual: (ms: number) => ms } as never; // identity axis
 
 describe('buildDepthHeatmapCells', () => {
+  it('긴 이력에서도 화면 안 점만 읽어 셀을 생성한다', () => {
+    let reads = 0;
+    const history = new Proxy(Array.from({ length: 35_100 }, (_, tMs): DepthHeatmapPoint => ({
+      tMs, asks: [{ price: 1010, qty: 900 }], bids: [], asksMax: [], bidsMax: [],
+    })), {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    const cells = buildDepthHeatmapCells(history, axis, 20_000, 20_009, {
+      bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1,
+    });
+    expect(cells).toHaveLength(10);
+    expect(reads).toBeLessThan(100);
+  });
   const points: DepthHeatmapPoint[] = [
     { tMs: 60000, asks: [{ price: 1010, qty: 900 }], bids: [{ price: 1000, qty: 300 }], asksMax: [], bidsMax: [] },
   ];
