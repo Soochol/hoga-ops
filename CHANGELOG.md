@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.38.0] - 2026-09-07
+
+### Changed
+- 호가 잔량 히트맵은 화면 범위가 정해진 뒤 보이는 봉만 계산해, 긴 과거 이력에서 첫 표시 때의 불필요한 셀 생성을 제거했다. 숨김 상태에서는 셀 계산을 생략하고, 팬·줌 시 이진 탐색으로 필요한 구간만 처리한다. 기존 색상 강도·호가 소스·레전드 값은 유지한다.
+
 ## [0.12.37.0] - 2026-09-07
 
 ### Fixed

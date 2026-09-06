@@ -12,7 +12,7 @@ import {
   type DepthHeatmapPoint,
   type DepthHeatmapSource,
 } from './depthHeatmapWire';
-import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
+import { levelAlpha, sliceDepthHeatmapRange, visibleMaxQty } from './depthHeatmapAlpha';
 import {
   registerFlagLegendValues,
   unregisterFlagLegendValues,
@@ -121,6 +121,8 @@ export function buildDepthHeatmapCells(
   style: StyleOpts,
   source: SourceOpts = {},
 ): DepthHeatmapCell[] {
+  // wire/live 결합 결과는 tMs 오름차순. 화면 밖 이력은 정규화·셀 생성에서 순회하지 않는다.
+  const visiblePoints = sliceDepthHeatmapRange(points, fromMs, toMs);
   const sourceKind = source.source ?? 'close';
   const topPerSide = source.topPerSide ?? null;
   // 정규화 천장은 셀 소스와 반드시 같아야 한다 → 같은 소스를 그대로 전달.
@@ -128,13 +130,12 @@ export function buildDepthHeatmapCells(
   // **topPerSide 는 여기에 넘기지 않는다.** 전 레벨의 최댓값은 곧 사이드별 최댓값들의
   // 최댓값이라 상위 N 만 남겨도 천장은 구성상 같고, 필터된 사다리로 재정규화하면
   // 오히려 강도의 의미("보이는 범위의 최대 잔량 대비")가 조용히 바뀐다.
-  const vmax = visibleMaxQty(points, fromMs, toMs, sourceKind);
+  const vmax = visibleMaxQty(visiblePoints, fromMs, toMs, sourceKind);
   if (vmax <= 0) return [];
   const askRgb = parseHex(style.askColor);
   const bidRgb = parseHex(style.bidColor);
   const out: DepthHeatmapCell[] = [];
-  for (const pt of points) {
-    if (pt.tMs < fromMs || pt.tMs > toMs) continue;
+  for (const pt of visiblePoints) {
     // 소스 선택 → 그 안에서 상위 N 자르기 순. 두 옵션이 조합된다.
     const asks = topLevelsByQty(depthLevelsOf(pt, 'ask', sourceKind), topPerSide);
     const bids = topLevelsByQty(depthLevelsOf(pt, 'bid', sourceKind), topPerSide);
@@ -188,7 +189,13 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   // 레전드 값 provider 의 창 스코프(멀티창).
   const windowId = useWindowScopeId();
   // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowLabelsPrimitive 선례).
-  const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
+  const [viewport, setViewport] = useState<{
+    chart: IChartApi;
+    axis: VirtualAxis;
+    range: { from: number; to: number } | null;
+  } | null>(null);
+  // 새 차트/시간축에는 이전 가시범위를 적용하지 않는다. 구독이 새 범위를 읽을 때까지 대기.
+  const visibleRange = viewport?.chart === chart && viewport.axis === axis ? viewport.range : null;
 
   // 프리미티브 부착: deps=[series]만 (bundle 파생값 금지 — 식별자 churn 함정).
   useEffect(() => {
@@ -216,7 +223,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         raf = 0;
-        setVisibleRange(readVisibleRange(ts));
+        setViewport({ chart, axis, range: readVisibleRange(ts) });
       });
     };
     schedule(); // 초기 1회
@@ -225,13 +232,14 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       if (raf) cancelAnimationFrame(raf);
       safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(schedule));
     };
-  }, [chart]);
+  }, [chart, axis]);
 
   const cells = useMemo(() => {
+    if (!enabled || hidden || !visibleRange) return [];
     // 가상초 {from,to} → 실 Unix-ms 로 역변환(axis.toReal 은 가상 ms 를 받는다).
-    // 초기(range 미확정) 프레임은 전 범위 폴백 후, 첫 구독 콜백에서 화면 범위로 좁힌다.
-    const fromMs = visibleRange ? axis.toReal(visibleRange.from * 1000) : -Infinity;
-    const toMs = visibleRange ? axis.toReal(visibleRange.to * 1000) : Infinity;
+    // 초기에는 범위를 읽기 전까지 기다린다 — 전 이력 셀을 만들었다 버리지 않는다.
+    const fromMs = axis.toReal(visibleRange.from * 1000);
+    const toMs = axis.toReal(visibleRange.to * 1000);
     return buildDepthHeatmapCells(
       points,
       axis,
@@ -241,7 +249,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       { source: sourceKind, topPerSide: topLevelsOnly ? topLevelCount : null },
     );
   }, [
-    points, axis, visibleRange, bidColor, askColor, maxOpacity,
+    enabled, hidden, points, axis, visibleRange, bidColor, askColor, maxOpacity,
     sourceKind, topLevelsOnly, topLevelCount,
   ]);
 

@@ -1,8 +1,36 @@
 import { describe, it, expect } from 'vitest';
-import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
+import { levelAlpha, sliceDepthHeatmapRange, visibleMaxQty } from './depthHeatmapAlpha';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
 
 describe('depthHeatmapAlpha', () => {
+  const pointAt = (tMs: number): DepthHeatmapPoint => ({ tMs, asks: [], bids: [], asksMax: [], bidsMax: [] });
+
+  it('가시 구간의 양끝과 중복 시각을 모두 포함하고 원소 참조를 보존한다', () => {
+    const points = [100, 200, 200, 300, 400].map(pointAt);
+    const visible = sliceDepthHeatmapRange(points, 200, 300);
+    expect(visible).toEqual(points.slice(1, 4));
+    expect(visible[0]).toBe(points[1]);
+    expect(sliceDepthHeatmapRange(points, -Infinity, Infinity)).toBe(points);
+    expect(sliceDepthHeatmapRange(points, 301, 399)).toEqual([]);
+    expect(sliceDepthHeatmapRange(points, 500, 600)).toEqual([]);
+    expect(sliceDepthHeatmapRange(points, 0, 99)).toEqual([]);
+    expect(sliceDepthHeatmapRange(points, 300, 200)).toEqual([]);
+    expect(sliceDepthHeatmapRange([], 0, 100)).toEqual([]);
+  });
+
+  it('긴 이력의 좁은 구간은 전체 점을 읽지 않는다', () => {
+    let reads = 0;
+    const points = new Proxy(Array.from({ length: 35_100 }, (_, i) => pointAt(i)), {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(sliceDepthHeatmapRange(points, 20_000, 20_009).map((p) => p.tMs))
+      .toEqual(Array.from({ length: 10 }, (_, i) => 20_000 + i));
+    // 두 번의 이진 탐색 + 보이는 10개 복사. O(N) filter 회귀를 시간 측정 없이 잡는다.
+    expect(reads).toBeLessThan(100);
+  });
   it('qty=visibleMax면 α=maxOpacity, qty=0이면 α=0', () => {
     expect(levelAlpha(1000, 1000, 0.7)).toBeCloseTo(0.7, 5);
     expect(levelAlpha(0, 1000, 0.7)).toBe(0);
