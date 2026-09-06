@@ -109,8 +109,9 @@ def _iter_stock_dates(
     sources: tuple[str, ...],
     venue: Venue,
     today: str,
+    priority_codes: set[str] | None = None,
 ) -> Iterator[tuple[str, str, str]]:
-    """대상 `(code, date, source)` — **최신 날짜부터**.
+    """대상 `(code, date, source)` — 관심종목 우선, 각 그룹은 최신 날짜부터.
 
     순서가 곧 정책이다: `prewarm` 은 상한(`limit`)에 걸리면 중단하므로, 오름차순이면
     첫 실행이 몇 달 전 날짜만 채우고 정작 사용자가 오늘 열어 볼 어제가 콜드로 남는다.
@@ -122,26 +123,33 @@ def _iter_stock_dates(
     parquet_root = data_dir / "parquet"
     if not parquet_root.exists():
         return
-    for date_dir in sorted(parquet_root.iterdir(), reverse=True):
-        if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name):
-            continue
-        date = date_dir.name
-        # past-only. 오늘 이후는 TODAY_TTL 의 몫이고, 여기서 쓰면 곧 stale 이 되는
-        # 값을 디스크에 박제하게 된다(오늘 parquet 은 5분마다 통째로 overwrite).
-        if date >= today:
-            continue
-        if dates is not None and date not in dates:
-            continue
-        for code_dir in sorted(date_dir.iterdir()):
-            if not code_dir.is_dir():
+    priority_codes = priority_codes or set()
+    # 두 그룹을 각각 최신순으로 순회한다. 전량 파일 목록을 먼저 만들지 않아
+    # 첫 계산을 지연시키지 않고, limit 에 도달하면 나머지 스캔도 생략한다.
+    date_dirs = sorted(parquet_root.iterdir(), reverse=True)
+    for preferred in ((True, False) if priority_codes else (False,)):
+        for date_dir in date_dirs:
+            if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name):
                 continue
-            code = code_dir.name
-            if codes is not None and code not in codes:
+            date = date_dir.name
+            # past-only. 오늘 이후는 TODAY_TTL 의 몫이고, 여기서 쓰면 곧 stale 이 되는
+            # 값을 디스크에 박제하게 된다(오늘 parquet 은 5분마다 통째로 overwrite).
+            if date >= today:
                 continue
-            for source in sources:
-                src_dir = resolve_source_dir(code_dir, source, venue)
-                if (src_dir / "snapshots.parquet").exists():
-                    yield code, date, source
+            if dates is not None and date not in dates:
+                continue
+            for code_dir in sorted(date_dir.iterdir()):
+                if not code_dir.is_dir():
+                    continue
+                code = code_dir.name
+                if (code in priority_codes) != preferred:
+                    continue
+                if codes is not None and code not in codes:
+                    continue
+                for source in sources:
+                    src_dir = resolve_source_dir(code_dir, source, venue)
+                    if (src_dir / "snapshots.parquet").exists():
+                        yield code, date, source
 
 
 def prewarm(
@@ -161,11 +169,16 @@ def prewarm(
     않으므로, 캐시가 다 찬 뒤의 실행은 상한에 닿지 않고 전량을 훑는다.
     ``limit=None`` 또는 0 이면 무제한.
 
+    관심종목을 먼저 채우고 남은 예산으로 나머지를 채운다. 각 그룹 안은 최신순이며,
+    ``codes``/``dates`` 는 우선순위와 무관하게 조회 범위를 제한한다.
+
     ``dry_run`` 은 계산 없이 대상만 센다(디스크 stat 만).
     """
     from hoga.api.bundle import _today_kst_yyyymmdd, build_ask_bid_peak_slices  # noqa: PLC0415 — import cycle 회피
+    from hoga.api.watchlist import load_watchlist  # noqa: PLC0415 — 배치 진입 시 한 번 읽는다
 
     t0 = time.monotonic()
+    priority_codes = {entry.code for entry in load_watchlist(data_dir)}
     own_engine = engine is None
     engine = engine if engine is not None else QueryEngine(data_dir)
     # 지연 초기화가 락 없는 getattr/setattr 라(queries.py) 루프 밖에서 한 번 잡는다.
@@ -179,6 +192,7 @@ def prewarm(
     try:
         for code, date, source in _iter_stock_dates(
             data_dir, codes=codes, dates=dates, sources=sources, venue=venue, today=today,
+            priority_codes=priority_codes,
         ):
             scanned += 1
             # 두 kind 를 **함께** 본다 — 파생 경로가 `have_ask and have_bid` 를

@@ -150,3 +150,27 @@ def test_prewarm_counts_unreadable_meta_as_failed_and_continues(tmp_path: Path) 
     assert res.scanned == 2
     assert res.warmed == 1
     assert res.failed == 1
+
+
+def test_prewarm_prioritizes_watchlist_before_newer_unwatched_dates(tmp_path: Path) -> None:
+    """A cache version bump must not spend the daily budget on unrelated codes."""
+    from types import SimpleNamespace
+
+    _write_stock_date(tmp_path, date="20260610", code="005930")
+    _write_stock_date(tmp_path, date="20260611", code="005930")
+    _write_stock_date(tmp_path, date="20260612", code="000660")
+    with patch("hoga.api.watchlist.load_watchlist", return_value=[SimpleNamespace(code="005930")]):
+        first = _prewarm(tmp_path, limit=1)
+    assert first.warmed == 1 and first.truncated
+    engine = QueryEngine(tmp_path)
+    try:
+        cache = engine.indicators_cache
+        assert cache.has_ask_peak("005930", "20260611", "hogaplay", snapshots_tbl.ONE_MINUTE_MS)
+        assert not cache.has_ask_peak("000660", "20260612", "hogaplay", snapshots_tbl.ONE_MINUTE_MS)
+        # After watched dates are warm, the same budget reaches the remainder.
+        with patch("hoga.api.watchlist.load_watchlist", return_value=[SimpleNamespace(code="005930")]):
+            second = _prewarm(tmp_path, limit=2, engine=engine)
+        assert (second.warmed, second.skipped, second.truncated) == (2, 1, False)
+        assert cache.has_ask_peak("000660", "20260612", "hogaplay", snapshots_tbl.ONE_MINUTE_MS)
+    finally:
+        engine.close()
