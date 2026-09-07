@@ -138,3 +138,68 @@ def test_cache_hit_avoids_requery(tmp_path: Path, monkeypatch) -> None:
         engine.close()
     assert first == second
     assert calls["n"] == 1, "2회째는 캐시 히트라 테이블 쿼리를 재실행하면 안 된다"
+
+
+def test_coarse_uses_existing_minute_cache_and_matches_direct(tmp_path: Path, monkeypatch) -> None:
+    engine = _engine(tmp_path)
+    kwargs = dict(code=CODE, date=DATE, source="kiwoom_live", session_close_ms=CLOSE_MS)
+    try:
+        expected = {
+            bucket: build_depth_heatmap_slice(engine, **kwargs, bucket_ms=bucket, cache=None)
+            for bucket in [180_000, 300_000, 420_000, 900_000]
+        }
+        build_depth_heatmap_slice(engine, **kwargs, bucket_ms=60_000)
+
+        def no_scan(*args, **kwargs):
+            raise AssertionError("coarse heatmap must reuse the available minute cache")
+
+        monkeypatch.setattr(bundle_mod.snapshots_tbl, "query_bucketed_depth_heatmap", no_scan)
+        for bucket, points in expected.items():
+            assert build_depth_heatmap_slice(engine, **kwargs, bucket_ms=bucket) == points
+    finally:
+        engine.close()
+
+
+def test_coarse_without_minute_cache_does_not_force_an_expensive_minute_query(tmp_path: Path, monkeypatch) -> None:
+    engine = _engine(tmp_path)
+    calls = []
+    original = bundle_mod.snapshots_tbl.query_bucketed_depth_heatmap
+
+    def count(*args, **kwargs):
+        calls.append(kwargs["bucket_ms"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(bundle_mod.snapshots_tbl, "query_bucketed_depth_heatmap", count)
+    try:
+        build_depth_heatmap_slice(
+            engine, code=CODE, date=DATE, source="kiwoom_live", session_close_ms=CLOSE_MS, bucket_ms=300_000
+        )
+    finally:
+        engine.close()
+    assert calls == [300_000]
+    assert not _cache_file(tmp_path, 60_000).exists()
+
+
+def test_old_ambiguous_tie_cache_cannot_seed_coarse_derivation(tmp_path: Path, monkeypatch) -> None:
+    engine = _engine(tmp_path)
+    kwargs = dict(code=CODE, date=DATE, source="kiwoom_live", session_close_ms=CLOSE_MS)
+    build_depth_heatmap_slice(engine, **kwargs, bucket_ms=60_000)
+    engine.close()
+    path = _cache_file(tmp_path)
+    body = json.loads(path.read_text())
+    body["version"] = 8
+    path.write_text(json.dumps(body))
+    engine = QueryEngine(tmp_path)
+    calls = []
+    original = bundle_mod.snapshots_tbl.query_bucketed_depth_heatmap
+
+    def count(*args, **kwargs):
+        calls.append(kwargs["bucket_ms"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(bundle_mod.snapshots_tbl, "query_bucketed_depth_heatmap", count)
+    try:
+        build_depth_heatmap_slice(engine, **kwargs, bucket_ms=300_000)
+    finally:
+        engine.close()
+    assert calls == [300_000]  # old 1m must be rejected, never silently reused

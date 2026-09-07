@@ -1,0 +1,23 @@
+[
+  {
+    "date": "20260623",
+    "code": "000660",
+    "no_base_median_ms": 71.072,
+    "disk_base_median_ms": 31.992,
+    "exact_equal": true
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "no_base_median_ms": 76.47,
+    "disk_base_median_ms": 29.493,
+    "exact_equal": true
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "no_base_median_ms": 35.763,
+    "disk_base_median_ms": 29.743,
+    "exact_equal": true
+  }
+]

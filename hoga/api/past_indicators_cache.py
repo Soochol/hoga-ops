@@ -136,7 +136,8 @@ KIND_VERSIONS: dict[str, int] = {
     #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새
     #    모드를 켠 사용자에게 히트맵이 통째로 비어 보인다(에러가 아니라 무증상이다).
     #    depth 재계산은 peak 과 달리 싸다 — 범프 비용이 낮은 쪽이다.
-    "depth": 8,
+    # 9: deterministic representative ties permit exact 1m → coarse derivation.
+    "depth": 9,
     "vdist": 7,
     "broker_late": 6,
     "continuous_before": 7,
@@ -196,16 +197,8 @@ class PastIndicatorsCache:
         self._mem_trade_volume_poc: OrderedDict[
             tuple[str, str, str, str, int, int, int], TradeVolumePoc | None
         ] = OrderedDict()
-        # depth_heatmap 은 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
-        # ⚠ **이유로 적혀 있던 근거는 무효다(2026-08-29 확인).** 종전 설명은 "대표
-        # 선택이 is_pre 조건부 argmax라 1m 행에서 복원 불가" 였는데, ADR-0062 v3 가
-        # 유효 스냅샷을 WHERE 사전 필터로 거르면서 **대표는 버킷의 마지막 행**이 됐다
-        # (`query_bucketed_depth_heatmap` docstring: "종전 is_pre CASE + last-in-bucket
-        # 폴백 방출을 대체"). 즉 `rep` 는 재집계 가능하다.
-        # 현재의 진짜 블로커는 `rep_max` 다 — 정렬 키 `total` 이 `DepthHeatmapPoint`
-        # 에 없어 보조 kind 가 필요하고, `arg_max` 동률에서 peak 이 겪은 정본 문제가
-        # 재발할 수 있다. 판단에 필요한 실측은 `bundle.build_depth_heatmap_slice`
-        # docstring 에 있다.
+        # 요청 봉별 결과를 저장한다. 1분 캐시가 이미 있으면 coarse를 파생한다.
+        # v9는 총잔량 동률을 40레벨 tuple로 정규화해 직접/파생 값을 일치시킨다.
         self._mem_depth: OrderedDict[
             tuple[str, str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
