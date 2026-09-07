@@ -36,6 +36,7 @@ import {
   realMsToCanvasX,
   realMsToCanvasXClamped,
   type FutureBand,
+  healedRealMs,
 } from './drawing/chartCoordinates';
 import {
   renderDrawing,
@@ -170,6 +171,8 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         axis: snap.axis,
         bucketMs: snap.bucketMs,
         lastRealMs: snap.lastRealMs,
+        future: snap.future,
+        healRealMs: (ms) => healedRealMs(snap.axis, ms, snap.future),
         candles: snap.candles,
         // Read once per frame, not once per point: `logicalToCoordinate` is a
         // model call, and a pencil stroke can carry thousands of vertices.

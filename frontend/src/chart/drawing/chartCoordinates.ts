@@ -47,7 +47,19 @@ export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
  * logical-index extrapolation so a trendline/vline/text can be placed in the
  * whitespace and still round-trips consistently. See the empty-band methods.
  */
-export type FutureBand = { lastRealMs: number; bucketMs: number };
+export type FutureBand = {
+  lastRealMs: number;
+  bucketMs: number;
+  /**
+   * The last candle's session is over — its remaining slots (15:20–15:30 for
+   * a stock whose final print came at 15:19) will never become columns, so the
+   * band counts from the session's LAST RUNG, not from the candle. Set by
+   * `futureBandFor` (a later segment exists, or the close is in the past);
+   * absent means "still trading" and the band continues the candle's own
+   * slots. See `baseColumn`.
+   */
+  lastSessionComplete?: boolean;
+};
 
 /**
  * `candles` with any OFF-AXIS TAIL removed — the bars the chart can actually
@@ -90,13 +102,24 @@ export function onAxisCandles<T extends { ts_ms: number }>(
  * shared the off-axis-tail failure above.
  */
 export function futureBandFor(
-  axis: Pick<VirtualAxis, 'contains'>,
+  axis: VirtualAxis,
   candles: readonly { ts_ms: number }[] | undefined,
   bucketMs: number | undefined,
+  nowMs: number = Date.now(),
 ): FutureBand | undefined {
   const onAxis = onAxisCandles(axis, candles);
   if (onAxis == null || onAxis.length === 0 || bucketMs == null || !(bucketMs > 0)) return undefined;
-  return { lastRealMs: onAxis[onAxis.length - 1].ts_ms, bucketMs };
+  const lastRealMs = onAxis[onAxis.length - 1].ts_ms;
+  // The wall clock enters the geometry HERE and nowhere else: the pure helpers
+  // read the verdict off the band. A later segment settles it structurally;
+  // otherwise the session is over once its close has passed.
+  const idx = axis.findByReal(lastRealMs);
+  const seg = idx >= 0 ? axis.segments[idx] : undefined;
+  const lastSessionComplete =
+    seg != null && (idx < axis.segments.length - 1 || seg.sessionCloseMs < nowMs);
+  // A fresh object every call (it reads the clock). Consumers key their effects
+  // on `lastRealMs` / `bucketMs`, not on this reference — keep it that way.
+  return { lastRealMs, bucketMs, lastSessionComplete };
 }
 
 /**
@@ -219,9 +242,14 @@ function loadedColumnTimes(
 }
 
 /** The exact domain: ordinals ARE indices into the plotted bars. */
-function columnDomain(axis: VirtualAxis, times: readonly number[], bucketMs: number): DragBarDomain {
+function columnDomain(axis: VirtualAxis, times: readonly number[], future: FutureBand | undefined): DragBarDomain {
   const lastBar = times.length - 1;
   const lastTs = times[lastBar];
+  const bucketMs = future?.bucketMs ?? 0;
+  const ladder = bucketMs > 0 ? sessionLadder(axis, bucketMs) : null;
+  // The band counts from the last LOADED column, which is the band anchor
+  // whenever both come from the same candles (they do on /live).
+  const base = ladder == null ? 0 : baseColumn(ladder, axis, lastTs, future?.lastSessionComplete);
   return {
     toBar(realMs: number): number {
       if (realMs > lastTs) {
@@ -233,7 +261,13 @@ function columnDomain(axis: VirtualAxis, times: readonly number[], bucketMs: num
         // the extension is the only answer and the two branches meet with no
         // seam.
         if (bucketMs <= 0) return lastBar;
-        return lastBar + (ladderBarsBetween(axis, bucketMs, lastTs, realMs) ?? (realMs - lastTs) / bucketMs);
+        if (ladder == null) return lastBar + (realMs - lastTs) / bucketMs;
+        // Never left of the last column: a value in a FINISHED session's
+        // trailing slots (an old "15:19 + 3" stored when 15:19 was the last
+        // print) is on-axis behind `base`, and the render pins it to the last
+        // bar's column (`nearestLoadedBarX`); a zero-shift grab must read the
+        // same column, not jump left by the slot count.
+        return Math.max(lastBar, lastBar + (ladder.columnOf(realMs) - base));
       }
       // FORWARD, never nearest: a nearest-index snap would pull a vertex
       // stranded in an overnight gap BACK across the boundary onto the previous
@@ -246,7 +280,8 @@ function columnDomain(axis: VirtualAxis, times: readonly number[], bucketMs: num
       if (bar > lastBar) {
         if (bucketMs <= 0) return lastTs;
         const ahead = Math.round(bar - lastBar);
-        return ladderRealMsAfter(axis, bucketMs, lastTs, ahead) ?? lastTs + ahead * bucketMs;
+        if (ladder == null) return lastTs + ahead * bucketMs;
+        return ladder.realAtColumn(base + ahead);
       }
       return times[Math.min(Math.max(Math.round(bar), 0), lastBar)];
     },
@@ -266,41 +301,21 @@ export function dragBarDomain(
   // drag reaches it).
   if (candles != null && candles.length > 0) {
     const times = loadedColumnTimes(axis, candles);
-    if (times != null) return columnDomain(axis, times, future?.bucketMs ?? 0);
+    if (times != null) return columnDomain(axis, times, future);
   }
   // Approximate path — the session-length LADDER. Kept for the states that have
   // no bars to count (nothing loaded yet, a caller that cannot reach them). It
   // over-counts every session by its empty slots, so a boundary-crossing shift
   // is off by that much; see the DragBarDomain doc. Do not "simplify" the exact
   // path away into this one.
-  const bucketMs = future?.bucketMs ?? 0;
-  const ladder = sessionLadder(axis, bucketMs);
+  const ladder = sessionLadder(axis, future?.bucketMs ?? 0);
   if (ladder == null) return virtualMsDomain(axis);
-  const hasFuture = future != null && bucketMs > 0;
-  const lastCandleBar = hasFuture ? ladder.onAxisBar(future.lastRealMs) : 0;
-
+  // Both directions are the column model itself: a gap time reads as columns
+  // past the previous close, the band past the final rung extends the same way.
+  // Mirrors realMsToCanvasX / extrapolateFutureX so drag and render agree.
   return {
-    toBar(realMs: number): number {
-      // Off-axis but past the last candle → the empty right band. Mirrors
-      // realMsToCanvasX / extrapolateFutureX so drag and render agree.
-      if (hasFuture && realMs > future.lastRealMs && !axis.contains(realMs)) {
-        return lastCandleBar + (realMs - future.lastRealMs) / bucketMs;
-      }
-      return ladder.onAxisBar(realMs);
-    },
-    toReal(bar: number): number {
-      // Past the last candle: the band extension is real-ms off the last
-      // candle ONLY beyond the final rung (no session out there) and on calendar
-      // axes. Up to the final rung the ladder itself answers — inside the last
-      // candle's session that is the same grid (no seam), and in a later
-      // session (the 08:00 today-segment before its first trade) it is THAT
-      // session's grid, so the vertex stays put when the bars arrive. See
-      // `ladderRealMsAfter`.
-      if (hasFuture && bar > lastCandleBar && (ladder.calendar || bar > ladder.lastBar)) {
-        return future.lastRealMs + Math.round(bar - lastCandleBar) * bucketMs;
-      }
-      return ladder.rungReal(bar);
-    },
+    toBar: (realMs) => ladder.columnOf(realMs),
+    toReal: (bar) => ladder.realAtColumn(bar),
     originBar: 0,
     barSized: true,
   };
@@ -314,25 +329,84 @@ export function dragBarDomain(
  * `timeToCoordinate` can resolve, and the only thing the band extrapolation
  * can count on before the bars exist. Cached per (axis, bucketMs): the render
  * asks per vertex per frame, and the axis is immutable.
+ *
+ * THE COLUMN MODEL (`columnOf` / `realAtColumn`). A stored realMs means a
+ * COLUMN, and the two read the same ledger in both directions:
+ *
+ *   - on-axis → that rung's ordinal (slots inside a session count as-is);
+ *   - in the gap after session i, or past the axis → `segEnd(i) + (realMs −
+ *     close_i) / bucketMs`: **a gap time is "N columns past the previous
+ *     close"**. That is exactly what the band extension had been STORING
+ *     (`close + N × bucketMs`) — this is the reader catching up with the
+ *     writer, not a new meaning;
+ *   - `realAtColumn` past the final rung extends the same way (gap time), so a
+ *     weekend band click stores `close + N × bucketMs`, and on Monday the
+ *     ledger reads it back as Monday's N-th rung. That is what keeps a shape
+ *     drawn over the weekend from flattening onto Friday's close column when
+ *     the bars arrive — and it holds across a Monday holiday, because the N-th
+ *     column past Friday's close IS whichever session actually came next.
+ *
+ * Calendar axes count the gap in TRADING DAYS: with a one-day pitch (D) the
+ * columns past a session are the weekdays after its date (a weekend day reads
+ * as the Monday that follows it), and the band steps by weekdays; W/M keep the
+ * nominal 7d/30d pitch, rounded to whole columns so a week whose first day
+ * moved (holiday) still reads as one column. Holidays are unknown here, so a
+ * D label may be a day off — the COLUMN is still right, and that is what the
+ * user saw.
  */
 type SessionLadder = {
   readonly calendar: boolean;
-  /** Ordinal past the final rung of the final session. */
+  /** Ordinal of the final rung of the final session. */
   readonly lastBar: number;
+  /** Ordinal of the final rung of segment `idx`. */
+  segEndBar(idx: number): number;
   /** On-axis realMs → (fractional) rung ordinal, delegating gap/clamp policy to
    *  `axis.toVirtual` and converting its (non-uniform) virtual ms into
    *  (uniform) columns. */
   onAxisBar(realMs: number): number;
-  /** Rounded ordinal → realMs on the owning session's grid, clamped to
-   *  [0, lastBar]. */
-  rungReal(bar: number): number;
-  /** Fractional ordinal → realMs, continuing the owning session's grid past
-   *  its final rung — so the result can fall off-axis (into the gap) when the
-   *  fraction straddles a boundary. Callers check `axis.contains`. */
-  fractionalReal(bar: number): number;
+  /** Any realMs → column (see THE COLUMN MODEL above). Pre-axis → 0. */
+  columnOf(realMs: number): number;
+  /** Column → realMs: the nearest rung inside the ladder, or the gap-time
+   *  extension past the final rung (whole columns either way). */
+  realAtColumn(bar: number): number;
 };
 
 const ladderCache = new WeakMap<VirtualAxis, Map<number, SessionLadder>>();
+
+const DAY_MS = 86_400_000;
+const KST_OFFSET_MS = 9 * 3600 * 1000;
+/** KST calendar-day index of a real ms (KST has no DST, so whole days are
+ *  exactly `DAY_MS` apart). */
+const kstDayIndex = (realMs: number) => Math.floor((realMs + KST_OFFSET_MS) / DAY_MS);
+/** 0 = Sunday … 6 = Saturday for a KST day index (day 0 = 1970-01-01, a Thursday). */
+const weekdayOfDayIndex = (day: number) => (((day + 4) % 7) + 7) % 7;
+const isWeekendDay = (day: number) => {
+  const w = weekdayOfDayIndex(day);
+  return w === 0 || w === 6;
+};
+/** Weekdays in the half-open day range (`fromDay`, `toDay`]; 0 when `toDay ≤ fromDay`. */
+function weekdaysAfter(fromDay: number, toDay: number): number {
+  if (toDay <= fromDay) return 0;
+  let count = 0;
+  let day = fromDay + 1;
+  // Whole weeks contribute five each; walk the remainder.
+  const whole = Math.floor((toDay - fromDay) / 7);
+  count += whole * 5;
+  day += whole * 7;
+  for (; day <= toDay; day++) if (!isWeekendDay(day)) count++;
+  return count;
+}
+/** The real ms `n` weekdays after `fromMs`, same time of day. */
+function addWeekdays(fromMs: number, n: number): number {
+  let day = kstDayIndex(fromMs);
+  let ms = fromMs;
+  for (let left = n; left > 0; ) {
+    day++;
+    ms += DAY_MS;
+    if (!isWeekendDay(day)) left--;
+  }
+  return ms;
+}
 
 function sessionLadder(axis: VirtualAxis, bucketMs: number): SessionLadder | null {
   const segments = axis.segments;
@@ -340,10 +414,13 @@ function sessionLadder(axis: VirtualAxis, bucketMs: number): SessionLadder | nul
   // Calendar axes are one bar per segment by construction, so they can be
   // counted without knowing a bucket; intraday needs the pitch.
   if (segments.length === 0 || (!calendar && bucketMs <= 0)) return null;
-  const key = calendar ? 0 : bucketMs;
+  const key = bucketMs; // `dayUnit` hangs off the bucket, so it keys the cache too
   let byBucket = ladderCache.get(axis);
   const cached = byBucket?.get(key);
   if (cached) return cached;
+
+  // A one-day (or unknown) pitch on a calendar axis: columns are trading days.
+  const dayUnit = calendar && !(bucketMs > DAY_MS);
 
   // First ordinal of each segment. A session owns the bar ladder
   // `open + k·bucketMs` capped at its close.
@@ -354,6 +431,8 @@ function sessionLadder(axis: VirtualAxis, bucketMs: number): SessionLadder | nul
     total += calendar ? 1 : Math.floor((seg.sessionCloseMs - seg.sessionOpenMs) / bucketMs) + 1;
   }
   const lastBar = total - 1;
+  const segEndBar = (idx: number): number =>
+    idx + 1 < barStarts.length ? barStarts[idx + 1] - 1 : lastBar;
 
   /** Segment owning an integer ordinal (binary search over `barStarts`). */
   const segmentOfBar = (bar: number): number => {
@@ -367,33 +446,63 @@ function sessionLadder(axis: VirtualAxis, bucketMs: number): SessionLadder | nul
     return lo;
   };
 
+  const onAxisBar = (realMs: number): number => {
+    const v = axis.toVirtual(realMs);
+    if (calendar) return (v - segments[0].virtualStart) / INTER_SEGMENT_GAP_MS;
+    const idx = axis.findByVirtual(v);
+    if (idx < 0) return 0;
+    return barStarts[idx] + (v - segments[idx].virtualStart) / bucketMs;
+  };
+
+  /** Columns a gap time lies past segment `idx`'s close. */
+  const gapColumns = (idx: number, realMs: number): number => {
+    const seg = segments[idx];
+    if (!calendar) return (realMs - seg.sessionCloseMs) / bucketMs;
+    if (dayUnit) {
+      const from = kstDayIndex(seg.sessionOpenMs);
+      const to = kstDayIndex(realMs);
+      // A weekend day reads as the Monday after it — the next column.
+      return weekdaysAfter(from, to) + (to > from && isWeekendDay(to) ? 1 : 0);
+    }
+    return Math.round((realMs - seg.sessionCloseMs) / bucketMs);
+  };
+
+  const rungReal = (bar: number): number => {
+    const b = Math.min(Math.round(bar), lastBar);
+    if (b <= 0) return segments[0].sessionOpenMs;
+    const idx = segmentOfBar(b);
+    const seg = segments[idx];
+    if (calendar) return seg.sessionOpenMs;
+    // No close cap needed: a segment owns exactly floor(len / bucketMs) + 1
+    // ordinals, so the largest in-segment offset is floor(len / bucketMs) ×
+    // bucketMs ≤ len — the result cannot overshoot its own session close.
+    return seg.sessionOpenMs + (b - barStarts[idx]) * bucketMs;
+  };
+
   const ladder: SessionLadder = {
     calendar,
     lastBar,
-    onAxisBar(realMs) {
-      const v = axis.toVirtual(realMs);
-      if (calendar) return (v - segments[0].virtualStart) / INTER_SEGMENT_GAP_MS;
-      const idx = axis.findByVirtual(v);
+    segEndBar,
+    onAxisBar,
+    columnOf(realMs) {
+      const idx = axis.findByReal(realMs);
       if (idx < 0) return 0;
-      return barStarts[idx] + (v - segments[idx].virtualStart) / bucketMs;
+      if (realMs <= segments[idx].sessionCloseMs) return onAxisBar(realMs);
+      return segEndBar(idx) + gapColumns(idx, realMs);
     },
-    rungReal(bar) {
-      const b = Math.min(Math.round(bar), lastBar);
-      if (b <= 0) return segments[0].sessionOpenMs;
-      const idx = segmentOfBar(b);
-      const seg = segments[idx];
-      if (calendar) return seg.sessionOpenMs;
-      // No close cap needed: a segment owns exactly floor(len / bucketMs) + 1
-      // ordinals, so the largest in-segment offset is floor(len / bucketMs) ×
-      // bucketMs ≤ len — the result cannot overshoot its own session close.
-      return seg.sessionOpenMs + (b - barStarts[idx]) * bucketMs;
-    },
-    fractionalReal(bar) {
-      if (bar <= 0) return segments[0].sessionOpenMs;
-      const idx = segmentOfBar(Math.min(Math.floor(bar), lastBar));
-      const seg = segments[idx];
-      if (calendar) return seg.sessionOpenMs;
-      return seg.sessionOpenMs + (bar - barStarts[idx]) * bucketMs;
+    realAtColumn(bar) {
+      if (bar > lastBar) {
+        // Past the final rung: the gap-time extension off the final close.
+        const last = segments[segments.length - 1];
+        const extra = Math.round(bar - lastBar);
+        if (dayUnit) return addWeekdays(last.sessionOpenMs, extra);
+        if (calendar) return last.sessionOpenMs + extra * bucketMs;
+        return last.sessionCloseMs + extra * bucketMs;
+      }
+      // Always a whole rung: in-data vertices are whole bars too (lwc's
+      // `coordinateToTime` rounds to the nearest index), and the drag domain
+      // relies on this rounding to heal off-grid residue on a zero-shift grab.
+      return rungReal(bar);
     },
   };
   if (byBucket == null) {
@@ -405,62 +514,39 @@ function sessionLadder(axis: VirtualAxis, bucketMs: number): SessionLadder | nul
 }
 
 /**
- * Columns from `fromRealMs` to `toRealMs` counted on the session ladder, or
- * null when the ladder cannot answer — calendar axis, or either end off-axis.
- *
- * WHY THE BAND COUNTS ON THE LADDER. The empty band right of the last candle
- * used to be measured in real ms off that candle: N columns = N × bucketMs
- * after it. Fine inside a session, but after the close it produced a vertex at
- * "Friday 16:20" — an overnight-gap time no session will ever own. The axis
- * usually already HAS the next session out there (the today-segment appears
- * at 08:00, before any trade), and lightweight-charts will lay Monday's bars
- * as the very next columns after Friday's close. So a vertex dropped 3 columns
- * right of the close must mean "Monday's 3rd rung": it then survives the
- * morning — once Monday's bars exist the same realMs projects straight, and
- * the drawing stays where it was drawn. The real-ms value collapsed instead:
- * no longer "future", never "on-axis", so `realMsToCanvasX`'s gap snap pinned
- * it to Friday's close column and the shape went flat. Pre-existing behaviour,
- * but invisible until the band became drawable after hours at all (#1759).
- *
- * The real-ms extension remains the fallback for the states the ladder cannot
- * serve: no later session on the axis (a weekend before the today-segment
- * exists), and calendar axes (D/W/M count one rung per session and their pitch
- * is nominal — 7d/30d — so "N columns" has no session grid to land on).
+ * The column the band counts FROM for the newest plotted candle `lastRealMs`.
+ * While its session is still trading that is the candle's own rung — the slots
+ * after it will fill with bars. Once the session is over (a later segment
+ * exists, or the band says so — see `FutureBand.lastSessionComplete`) the
+ * remaining slots will never be columns, so counting starts at the session's
+ * final rung: one column right of a 15:19 last print is the NEXT session's
+ * open, exactly as lightweight-charts will lay it out.
  */
-function ladderBarsBetween(
+function baseColumn(
+  ladder: SessionLadder,
   axis: VirtualAxis,
-  bucketMs: number,
-  fromRealMs: number,
-  toRealMs: number,
-): number | null {
-  if (axis.mode === 'calendar' || !axis.contains(fromRealMs) || !axis.contains(toRealMs)) return null;
-  const ladder = sessionLadder(axis, bucketMs);
-  if (ladder == null) return null;
-  return ladder.onAxisBar(toRealMs) - ladder.onAxisBar(fromRealMs);
+  lastRealMs: number,
+  lastSessionComplete: boolean | undefined,
+): number {
+  const idx = axis.findByReal(lastRealMs);
+  if (idx < 0) return 0;
+  const complete = lastSessionComplete === true || idx < axis.segments.length - 1;
+  return complete ? ladder.segEndBar(idx) : ladder.onAxisBar(lastRealMs);
 }
 
 /**
- * The realMs `bars` columns after `fromRealMs` on the session ladder (see
- * `ladderBarsBetween`), or null when the ladder runs out — past the final rung
- * of the final session, calendar axis, or `fromRealMs` off-axis. A fractional
- * `bars` keeps its sub-column offset inside a session; straddling a boundary
- * (where the fraction would land in the gap) it rounds onto the nearer rung.
+ * `realMs` read through the column model: an off-axis (gap / post-axis) value
+ * becomes the realMs of the rung its column now lands on, when the axis has a
+ * session there; anything else is returned unchanged. The render layer uses
+ * it for the vline time badge so a weekend-drawn line labels the Monday rung
+ * it actually sits on rather than "Fri 16:20".
  */
-function ladderRealMsAfter(
-  axis: VirtualAxis,
-  bucketMs: number,
-  fromRealMs: number,
-  bars: number,
-): number | null {
-  if (axis.mode === 'calendar' || !axis.contains(fromRealMs)) return null;
-  const ladder = sessionLadder(axis, bucketMs);
-  if (ladder == null) return null;
-  const target = ladder.onAxisBar(fromRealMs) + bars;
-  if (target > ladder.lastBar) return null;
-  const exact = ladder.fractionalReal(target);
-  if (axis.contains(exact)) return exact;
-  const rounded = ladder.rungReal(target);
-  return axis.contains(rounded) ? rounded : null;
+export function healedRealMs(axis: VirtualAxis, realMs: number, future?: FutureBand): number {
+  if (!future || future.bucketMs <= 0 || axis.contains(realMs)) return realMs;
+  const ladder = sessionLadder(axis, future.bucketMs);
+  if (ladder == null) return realMs;
+  const healed = ladder.realAtColumn(ladder.columnOf(realMs));
+  return axis.contains(healed) ? healed : realMs;
 }
 
 /** Degenerate domain for an intraday axis with no known bar pitch (no candles
@@ -580,11 +666,13 @@ function extrapolateFutureX(
   const nextX = ts.logicalToCoordinate((baseLogical + 1) as Logical);
   if (baseX == null || nextX == null) return null;
   const barPx = (nextX as number) - (baseX as number);
-  // Columns ahead: on the session ladder when the axis already has a session
-  // out there, else real ms off the last candle (see `ladderBarsBetween`).
+  // Columns ahead on the session ladder (see THE COLUMN MODEL on
+  // `SessionLadder`); a ladder-less axis cannot get here (no bar to anchor on).
+  const ladder = sessionLadder(axis, future.bucketMs);
   const barsAhead =
-    ladderBarsBetween(axis, future.bucketMs, future.lastRealMs, realMs) ??
-    (realMs - future.lastRealMs) / future.bucketMs;
+    ladder == null
+      ? (realMs - future.lastRealMs) / future.bucketMs
+      : ladder.columnOf(realMs) - baseColumn(ladder, axis, future.lastRealMs, future.lastSessionComplete);
   return (baseX as number) + barsAhead * barPx;
 }
 
@@ -641,12 +729,10 @@ function extrapolateFutureRealMs(
   if (lastLogical == null || logical == null) return null;
   if ((logical as number) <= (lastLogical as number)) return null; // right band only
   const barsAhead = (logical as number) - (lastLogical as number);
-  // The inverse of `extrapolateFutureX`: the ladder's rung when the axis has a
-  // session out there, else real ms off the last candle.
-  return (
-    ladderRealMsAfter(axis, future.bucketMs, future.lastRealMs, barsAhead) ??
-    future.lastRealMs + barsAhead * future.bucketMs
-  );
+  // The inverse of `extrapolateFutureX`: that column's realMs on the ledger.
+  const ladder = sessionLadder(axis, future.bucketMs);
+  if (ladder == null) return future.lastRealMs + barsAhead * future.bucketMs;
+  return ladder.realAtColumn(baseColumn(ladder, axis, future.lastRealMs, future.lastSessionComplete) + barsAhead);
 }
 
 /** A series' live pane index, or -1 if the chart/series is mid-teardown. */
@@ -700,13 +786,32 @@ export function realMsToCanvasX(
   if (inAxis != null) return inAxis;
   // No bucket pitch → no grid to reason about; callers own this case.
   if (!future || future.bucketMs <= 0) return null;
-  if (realMs > future.lastRealMs) {
-    // Empty band right of the last candle: extrapolate so future-anchored
-    // drawings still render. Falls through to the gap snap below when the last
-    // candle itself can't be projected (then there is no band to measure from).
+  const ladder = sessionLadder(axis, future.bucketMs);
+  const base = ladder == null ? null : baseColumn(ladder, axis, future.lastRealMs, future.lastSessionComplete);
+  const col = ladder == null ? null : ladder.columnOf(realMs);
+  if (col != null && base != null ? col > base : realMs > future.lastRealMs) {
+    // Empty band right of the last candle — a future rung of a session already
+    // on the axis, a gap time, or past the axis alike: the column model places
+    // them all (see `SessionLadder`). Extrapolate so future-anchored drawings
+    // still render. Falls through to the gap snap below when the last candle
+    // itself can't be projected (then there is no band to measure from).
     const bandX = extrapolateFutureX(chart, axis, realMs, future);
     if (bandX != null) return bandX;
-  } else if (axis.contains(realMs)) {
+  } else if (ladder != null && col != null && !axis.contains(realMs)) {
+    // HEAL. Off-axis but no longer ahead of the last candle: a gap time whose
+    // column the axis has since filled — "50 columns past Friday's close" drawn
+    // over the weekend, read on Monday once Monday's bars exist. Re-read it as
+    // that column's rung and project the rung (exact bar, or the on-axis
+    // fallbacks below). Without this the gap snap at the bottom pinned it to
+    // Friday's close column and the shape went flat.
+    const healed = ladder.realAtColumn(col);
+    if (axis.contains(healed)) {
+      const healedX = coreRealMsToCanvasX(chart, axis, healed);
+      if (healedX != null) return healedX;
+      realMs = healed;
+    }
+  }
+  if (axis.contains(realMs)) {
     // On-axis but off the bar grid (a persisted boundary-crossing drag residue,
     // ±INTER_SEGMENT_GAP_MS per crossed session boundary): timeToCoordinate only
     // resolves exact bar times, so retry on the nearest bar. Without this the

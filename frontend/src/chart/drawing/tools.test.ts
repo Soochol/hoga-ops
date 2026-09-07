@@ -1011,8 +1011,9 @@ describe('selectTool — body drag across a session gap (virtual-domain shift)',
   it('heals a corner stranded in the gap by an old real-ms drag on the next move', () => {
     const target: Drawing = {
       ...rect(),
-      // a was left inside the overnight gap by the pre-fix drag path.
-      a: { realMs: 5_000_000, price: 100 },
+      // a was left inside the overnight gap by the pre-fix drag path — one
+      // bucket past A's close, which the column model reads as B's open.
+      a: { realMs: 1_050_000, price: 100 },
       b: { realMs: 10_100_000, price: 120 },
     } as Drawing;
     const update = vi.fn();
