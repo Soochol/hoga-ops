@@ -1335,6 +1335,7 @@ describe('DrawingOverlay — 빈 밴드 앵커는 축이 담는 마지막 봉이
       toVirtual: (v: number) => v,
       toReal: (v: number) => v,
       findByReal: () => 0,
+      findByVirtual: () => 0,
     };
     // OHLC 는 커서 y(50~80) 에서 자석 반경(16px) 밖에 둔다 — 가격 스냅이 판정을
     // 흐리지 않게.

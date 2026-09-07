@@ -22,10 +22,15 @@ import {
 // spanning [0, LAST]. contains() true only within the session.
 const LAST_REAL = 1_000_000; // last candle realMs
 const BUCKET = 1_000; // 1s bars
+// One session only, so the band past LAST_REAL has no later session to count
+// on and extends in real ms (the ladder path is exercised by its own suite).
 const axis = {
+  mode: 'intraday',
+  segments: [{ date: '20260101', sessionOpenMs: 0, sessionCloseMs: LAST_REAL, virtualStart: 0 }],
   contains: (realMs: number) => realMs >= 0 && realMs <= LAST_REAL,
   toVirtual: (realMs: number) => realMs,
   toReal: (virtualMs: number) => virtualMs,
+  findByVirtual: () => 0,
 } as unknown as Parameters<typeof realMsToCanvasX>[1];
 
 // Fake chart: 100px per bar. Bar index = realMs / BUCKET. Data spans logical
@@ -679,5 +684,101 @@ describe('futureBandFor / onAxisCandles — off-axis tail', () => {
     const interior = [{ ts_ms: -BUCKET }, { ts_ms: LAST_REAL }];
     expect(onAxisCandles(axis, interior)).toBe(interior);
     expect(onAxisCandles(axis, undefined)).toBeUndefined();
+  });
+});
+
+// ── The band counts on the NEXT session's ladder when the axis has one ────
+//
+// After hours the band used to extend in real ms off the last candle, so a
+// vertex 3 columns right of Friday's close was stored as "Friday 16:20" — an
+// overnight-gap time. The next morning, once Monday's bars pushed
+// `lastRealMs` past it, that vertex was neither future nor on-axis and the
+// gap snap flattened the shape onto Friday's close column. The axis usually
+// already has Monday out there (the 08:00 today-segment), and lwc lays
+// Monday's bars as the very next columns — so 3 columns right must mean
+// Monday's 3rd rung, and the drawing must survive the morning.
+describe('empty band — counts on the next session when the axis already has it', () => {
+  // A = Friday [0, 1_000_000], B = Monday [10_000_000, 11_000_000]; 50s buckets.
+  // A owns rungs 0..20 (20 = its close = the last candle), B owns 21..40.
+  const BUCKET = 50_000;
+  const A_CLOSE = 1_000_000;
+  const B_OPEN = 10_000_000;
+  const twoDays = createVirtualAxis([
+    { date: '20260904', sessionOpenMs: 0, sessionCloseMs: A_CLOSE },
+    { date: '20260907', sessionOpenMs: B_OPEN, sessionCloseMs: 11_000_000 },
+  ]);
+  const A_BARS = A_CLOSE / BUCKET + 1; // 21
+  const LAST_X = (A_BARS - 1) * PX_PER_BAR; // Friday's close column
+  const future: FutureBand = { lastRealMs: A_CLOSE, bucketMs: BUCKET };
+
+  /** Strict chart: only the given VIRTUAL bar times resolve, ordinal = index. */
+  const chartWithBars = (barsV: readonly number[]) =>
+    ({
+      timeScale: () => ({
+        timeToCoordinate: (timeSec: number) => {
+          const i = barsV.indexOf(timeSec * 1000);
+          return i < 0 ? null : i * PX_PER_BAR;
+        },
+        coordinateToTime: (x: number) => {
+          const i = Math.round(x / PX_PER_BAR);
+          return i >= 0 && i < barsV.length && Math.abs(x - i * PX_PER_BAR) < 1 ? barsV[i] / 1000 : null;
+        },
+        coordinateToLogical: (x: number) => x / PX_PER_BAR,
+        logicalToCoordinate: stubLogicalToCoordinate,
+      }),
+    }) as unknown as IChartApi;
+  const rungsV = (segIdx: number, upToOffsetMs: number) => {
+    const seg = twoDays.segments[segIdx];
+    const out: number[] = [];
+    for (let off = 0; off <= upToOffsetMs; off += BUCKET) out.push(seg.virtualStart + off);
+    return out;
+  };
+  // Sunday night: Friday fully traded, Monday on the axis but without bars.
+  const sundayChart = chartWithBars(rungsV(0, A_CLOSE));
+
+  it("a click 3 columns right of Friday's close is Monday's 3rd rung, not Friday 16:20", () => {
+    expect(canvasXToRealMs(sundayChart, twoDays, LAST_X + 3 * PX_PER_BAR, future)).toBe(B_OPEN + 2 * BUCKET);
+    // The very next column is Monday's open.
+    expect(canvasXToRealMs(sundayChart, twoDays, LAST_X + PX_PER_BAR, future)).toBe(B_OPEN);
+  });
+
+  it('renders that vertex 3 columns right of the last candle (round trip)', () => {
+    expect(realMsToCanvasX(sundayChart, twoDays, B_OPEN + 2 * BUCKET, future)).toBe(LAST_X + 3 * PX_PER_BAR);
+    const x = LAST_X + 7 * PX_PER_BAR;
+    expect(realMsToCanvasX(sundayChart, twoDays, canvasXToRealMs(sundayChart, twoDays, x, future)!, future)).toBe(x);
+  });
+
+  it('a half column past the close rounds onto a rung instead of an off-axis time', () => {
+    expect(canvasXToRealMs(sundayChart, twoDays, LAST_X + 0.5 * PX_PER_BAR, future)).toBe(B_OPEN);
+  });
+
+  it('survives the morning: once Monday has bars the vertex stays where it was drawn', () => {
+    // Monday traded two bars (open, open+1); the drawing at Monday's 3rd rung
+    // is now ONE column right of the new last candle.
+    const mondayChart = chartWithBars([...rungsV(0, A_CLOSE), ...rungsV(1, BUCKET)]);
+    const mondayFuture: FutureBand = { lastRealMs: B_OPEN + BUCKET, bucketMs: BUCKET };
+    expect(realMsToCanvasX(mondayChart, twoDays, B_OPEN + 2 * BUCKET, mondayFuture)).toBe((A_BARS + 2) * PX_PER_BAR);
+    // The real-ms vertex the old extension stored for the same click is what
+    // collapses: neither future nor on-axis → gap-snapped onto Friday's close.
+    expect(realMsToCanvasX(mondayChart, twoDays, A_CLOSE + 3 * BUCKET, mondayFuture)).toBe(LAST_X);
+  });
+
+  it('falls back to the real-ms extension when no later session exists (weekend before 08:00)', () => {
+    const fridayOnly = createVirtualAxis([{ date: '20260904', sessionOpenMs: 0, sessionCloseMs: A_CLOSE }]);
+    expect(canvasXToRealMs(sundayChart, fridayOnly, LAST_X + 3 * PX_PER_BAR, future)).toBe(A_CLOSE + 3 * BUCKET);
+    expect(realMsToCanvasX(sundayChart, fridayOnly, A_CLOSE + 3 * BUCKET, future)).toBe(LAST_X + 3 * PX_PER_BAR);
+  });
+
+  it('dragBarDomain agrees on both paths — one column per rung across the boundary', () => {
+    const candles = Array.from({ length: A_BARS }, (_, i) => ({ ts_ms: i * BUCKET }));
+    const exact = dragBarDomain(twoDays, future, candles);
+    const ladder = dragBarDomain(twoDays, future);
+    for (const dom of [exact, ladder]) {
+      expect(dom.toReal(dom.toBar(A_CLOSE) + 3)).toBe(B_OPEN + 2 * BUCKET);
+      expect(dom.toBar(B_OPEN + 2 * BUCKET) - dom.toBar(A_CLOSE)).toBe(3);
+      // A drag that pushes a band vertex past Monday's final rung continues in
+      // real ms — the ladder simply ends there.
+      expect(dom.toReal(dom.toBar(A_CLOSE) + 25)).toBe(A_CLOSE + 25 * BUCKET);
+    }
   });
 });
