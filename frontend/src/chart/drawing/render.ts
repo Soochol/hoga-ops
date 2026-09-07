@@ -58,6 +58,12 @@ export type ProjectCtx = {
   /** Newest candle's realMs — with bucketMs, lets drawings anchored in the
    *  empty band right of the last candle render via extrapolation. */
   lastRealMs?: number;
+  /** The band itself, when the host built one (`futureBandFor`) — carries
+   *  `lastSessionComplete`, which `lastRealMs`/`bucketMs` alone cannot. */
+  future?: FutureBand;
+  /** A stored realMs read through the column model (`healedRealMs`) — for
+   *  labels, so a weekend-drawn vline names the Monday rung it sits on. */
+  healRealMs?: (realMs: number) => number;
   /** The loaded bars, for the measure readout's column count. Absent → the
    *  count falls back to the session-length ladder, which over-counts a
    *  boundary crossing by that session's empty slots. See DragBarDomain. */
@@ -96,6 +102,7 @@ const MEASURE_DOWN = '#3B82F6';
 const MEASURE_FLAT = '#9CA3AF';
 
 function futureBand(ctx: ProjectCtx): FutureBand | undefined {
+  if (ctx.future) return ctx.future;
   return ctx.lastRealMs != null && ctx.bucketMs != null && ctx.bucketMs > 0
     ? { lastRealMs: ctx.lastRealMs, bucketMs: ctx.bucketMs }
     : undefined;
@@ -318,7 +325,7 @@ export function renderVline(
     c.lineTo(x, bottom);
     c.stroke();
   });
-  if (timeBadge) drawTimeBadge(c, ctx.width, bottom, x, v.realMs, v.color, selected);
+  if (timeBadge) drawTimeBadge(c, ctx.width, bottom, x, ctx.healRealMs?.(v.realMs) ?? v.realMs, v.color, selected);
 }
 
 /** Normalize two projected corners into a top-left origin + size. The

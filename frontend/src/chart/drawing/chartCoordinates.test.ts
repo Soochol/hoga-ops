@@ -14,6 +14,7 @@ import {
   canvasXToRealMs,
   dragBarDomain,
   futureBandFor,
+  healedRealMs,
   onAxisCandles,
   type FutureBand,
 } from './chartCoordinates';
@@ -31,6 +32,7 @@ const axis = {
   toVirtual: (realMs: number) => realMs,
   toReal: (virtualMs: number) => virtualMs,
   findByVirtual: () => 0,
+  findByReal: (realMs: number) => (realMs < 0 ? -1 : 0),
 } as unknown as Parameters<typeof realMsToCanvasX>[1];
 
 // Fake chart: 100px per bar. Bar index = realMs / BUCKET. Data spans logical
@@ -137,6 +139,8 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
     // segment containing rm, or the prior segment when rm is in a gap; -1 pre-axis.
     findByReal: (rm: number) =>
       rm < segA.sessionOpenMs ? -1 : rm <= segB.sessionCloseMs && rm >= segB.sessionOpenMs ? 1 : 0,
+    findByVirtual: (vm: number) => (vm < segB.virtualStart ? 0 : 1),
+    mode: 'intraday',
   } as unknown as Parameters<typeof realMsToCanvasXClamped>[1];
 
   // Linear virtual-ms → x: x = virtualMs / BUCKET * PX_PER_BAR.
@@ -171,17 +175,24 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
   // 다점 도형은 그 클램프를 안 사고 가장자리 폴백에 기대는데, 갭에서는 그
   // 폴백이 틀린 답을 낸다. `future` 는 "이 호출자는 봉 격자를 아는 도형 경로"
   // 라는 표시라, 거기에만 스냅을 붙이면 text 계약을 건드리지 않는다.
-  it('snaps a gap realMs to the nearest session boundary when a FutureBand is given', () => {
+  // 열 모델(`SessionLadder` 의 THE COLUMN MODEL) 이후: 갭 realMs 는 **직전 마감
+  // 이후 열 수**다. 어제 밴드에 저장된 "마감 + N봉" 은 오늘 세션의 N 번째 rung 으로
+  // 읽히고, 그 rung 이 없으면(세션이 그보다 짧다) 같은 열이 마지막 마감 뒤로
+  // 이어진다 — 어느 쪽이든 null 이 아니라 **열이 보존된 X** 다. 경계로 눌러 붙이던
+  // 옛 스냅은 열을 버렸다(도형이 납작해졌다).
+  it('reads a gap realMs as columns past the previous close when a FutureBand is given', () => {
     const future = { lastRealMs: 101_000, bucketMs: BUCKET };
-    // 50000 → segA.close(1000)까지 49000 < segB.open(100000)까지 50000
-    // → segA.close=1000 → virtual 1000 → x = 1000/1000*10 = 10.
-    expect(realMsToCanvasX(gapChart, gapAxis, 50_000, future)).toBe(10);
+    // 2000 = segA.close + 1 bucket → one column past A's close = segB.open →
+    // virtual 2000 → x = 20.
+    expect(realMsToCanvasX(gapChart, gapAxis, 2_000, future)).toBe(20);
   });
 
-  it('snaps a gap realMs to the NEXT session open when that is nearer (FutureBand)', () => {
+  it('keeps the column when the gap count outruns the next session (FutureBand)', () => {
     const future = { lastRealMs: 101_000, bucketMs: BUCKET };
-    // 99000 → segB.open 이 더 가깝다 → virtual 2000 → x = 20.
-    expect(realMsToCanvasX(gapChart, gapAxis, 99_000, future)).toBe(20);
+    // 50000 = 49 columns past A's close. B has only two rungs (open, close), so
+    // that column lies 47 past B's close — and past B's last candle (the band):
+    // x = x(B.close)=30 + 47 × 10.
+    expect(realMsToCanvasX(gapChart, gapAxis, 50_000, future)).toBe(500);
   });
 
   it('clamps a gap realMs to the nearer session boundary and projects it', () => {
@@ -312,10 +323,17 @@ describe('dragBarDomain — intraday', () => {
     expect(dom.toReal(dom.toBar(10_099_000))).toBe(10_100_000);
   });
 
-  it('heals a gap-stranded realMs (legacy real-ms drag leftover) to the next open', () => {
-    // 5_000_000 sits in the overnight gap — the zero-shift round-trip snaps it
-    // forward onto session B's open instead of leaving it invisible.
-    expect(dom.toReal(dom.toBar(5_000_000))).toBe(10_000_000);
+  it('heals a gap-stranded realMs (legacy real-ms drag leftover) onto the next session', () => {
+    // A gap time reads as columns past the previous close (THE COLUMN MODEL):
+    // one bucket past A's close is B's open, and the zero-shift round-trip
+    // stores that rung instead of leaving the vertex invisible.
+    expect(dom.toReal(dom.toBar(1_050_000))).toBe(10_000_000);
+    // Deep in the gap the column is preserved rather than snapped to the open:
+    // 5_000_000 is 80 columns past A's close, which is past B's 20 rungs, so it
+    // re-stores as the same column counted from the final close.
+    const deep = 5_000_000;
+    expect(dom.toBar(deep)).toBe(20 + 80);
+    expect(dom.toBar(dom.toReal(dom.toBar(deep)))).toBe(dom.toBar(deep));
   });
 
   it('is seamless across the last-candle boundary (on-axis after the last bar)', () => {
@@ -431,8 +449,10 @@ describe('dragBarDomain — columns are the LOADED bars, not the session slots',
     expect(ladder.toReal(ladder.toBar(900_000))).toBe(900_000);
   });
 
-  it('heals a gap-stranded realMs forward to the next drawn bar', () => {
-    expect(exact.toReal(exact.toBar(5_000_000))).toBe(B_OPEN);
+  it('heals a gap-stranded realMs onto the next session (one column past the close)', () => {
+    expect(exact.toReal(exact.toBar(A_CLOSE + BUCKET))).toBe(B_OPEN);
+    // Deeper in the gap the COLUMN is what survives the round-trip.
+    expect(exact.toBar(exact.toReal(exact.toBar(5_000_000)))).toBe(exact.toBar(5_000_000));
   });
 
   it('is seamless into the empty band and extends one column per bucket', () => {
@@ -551,12 +571,17 @@ describe('dragBarDomain — calendar (D/W/M)', () => {
     expect(dom.toReal(dom.toBar(0) + 2)).toBe(200_000);
   });
 
-  it('extends past the last bar at one bucketMs per column', () => {
-    // One column past the last anchor → one bucket of real time ahead.
+  it('extends past the last bar by one TRADING DAY per column', () => {
+    // A one-day pitch counts columns in weekdays, not in bucket ms: one column
+    // past the last day is the next weekday's open (same time of day). The
+    // fixture's ms sit on 1970-01-01 KST, a Thursday, so +1 is Friday.
     const bar = dom.toBar(200_000) + 1;
-    expect(dom.toReal(bar)).toBe(250_000);
+    expect(dom.toReal(bar)).toBe(200_000 + 86_400_000);
     // And the forward map inverts it (round-trip through the band).
-    expect(dom.toBar(250_000)).toBe(bar);
+    expect(dom.toBar(200_000 + 86_400_000)).toBe(bar);
+    // +2 skips the weekend: Friday → Monday is three calendar days.
+    expect(dom.toReal(bar + 1)).toBe(200_000 + 4 * 86_400_000);
+    expect(dom.toBar(200_000 + 4 * 86_400_000)).toBe(bar + 1);
   });
 });
 
@@ -662,7 +687,8 @@ describe('futureBandFor / onAxisCandles — off-axis tail', () => {
 
   it('anchors on the newest candle the axis contains', () => {
     const future = futureBandFor(axis, candles, BUCKET);
-    expect(future).toEqual({ lastRealMs: LAST_REAL, bucketMs: BUCKET });
+    // The stub's lone session closed long ago (1970), so it reads as complete.
+    expect(future).toEqual({ lastRealMs: LAST_REAL, bucketMs: BUCKET, lastSessionComplete: true });
     // …and with that anchor the band resolves both ways again.
     expect(canvasXToRealMs(chart, axis, 10500, future)).toBe(LAST_REAL + 50 * BUCKET);
     expect(realMsToCanvasX(chart, axis, LAST_REAL + 50 * BUCKET, future)).toBe(10500);
@@ -758,9 +784,10 @@ describe('empty band — counts on the next session when the axis already has it
     const mondayChart = chartWithBars([...rungsV(0, A_CLOSE), ...rungsV(1, BUCKET)]);
     const mondayFuture: FutureBand = { lastRealMs: B_OPEN + BUCKET, bucketMs: BUCKET };
     expect(realMsToCanvasX(mondayChart, twoDays, B_OPEN + 2 * BUCKET, mondayFuture)).toBe((A_BARS + 2) * PX_PER_BAR);
-    // The real-ms vertex the old extension stored for the same click is what
-    // collapses: neither future nor on-axis → gap-snapped onto Friday's close.
-    expect(realMsToCanvasX(mondayChart, twoDays, A_CLOSE + 3 * BUCKET, mondayFuture)).toBe(LAST_X);
+    // The real-ms vertex the old extension stored for the same click reads as
+    // the same column now (3 past Friday's close = Monday's 3rd rung) — it no
+    // longer collapses onto Friday's close. See the column-model suite.
+    expect(realMsToCanvasX(mondayChart, twoDays, A_CLOSE + 3 * BUCKET, mondayFuture)).toBe((A_BARS + 2) * PX_PER_BAR);
   });
 
   it('falls back to the real-ms extension when no later session exists (weekend before 08:00)', () => {
@@ -776,9 +803,197 @@ describe('empty band — counts on the next session when the axis already has it
     for (const dom of [exact, ladder]) {
       expect(dom.toReal(dom.toBar(A_CLOSE) + 3)).toBe(B_OPEN + 2 * BUCKET);
       expect(dom.toBar(B_OPEN + 2 * BUCKET) - dom.toBar(A_CLOSE)).toBe(3);
-      // A drag that pushes a band vertex past Monday's final rung continues in
-      // real ms — the ladder simply ends there.
-      expect(dom.toReal(dom.toBar(A_CLOSE) + 25)).toBe(A_CLOSE + 25 * BUCKET);
+      // A drag that pushes a band vertex past Monday's final rung continues as
+      // a gap time off the FINAL close — the same column, re-anchored.
+      const far = dom.toBar(A_CLOSE) + 25;
+      // Monday owns 21 rungs (open … close), so 25 past Friday's close is 4
+      // past Monday's.
+      expect(dom.toReal(far)).toBe(11_000_000 + (25 - 21) * BUCKET);
+      expect(dom.toBar(dom.toReal(far))).toBe(far);
     }
+  });
+});
+
+// ── THE COLUMN MODEL: a stored realMs means a column ──────────────────────
+//
+// #1760 left three cases flat on the next morning; all three are one fact —
+// realMs meant both a time and a column, and the reader chose the time when
+// they disagreed. The user saw the column. So: a gap time reads as "N columns
+// past the previous close", the band past the final rung stores exactly that,
+// and a finished session's trailing slots are not columns.
+describe('column model — weekend, trailing slots, calendar', () => {
+  const BUCKET = 50_000;
+  const A_CLOSE = 1_000_000;
+  const B_OPEN = 10_000_000;
+  const fridayOnly = createVirtualAxis([{ date: '20260904', sessionOpenMs: 0, sessionCloseMs: A_CLOSE }]);
+  const withMonday = createVirtualAxis([
+    { date: '20260904', sessionOpenMs: 0, sessionCloseMs: A_CLOSE },
+    { date: '20260907', sessionOpenMs: B_OPEN, sessionCloseMs: 11_000_000 },
+  ]);
+  const A_BARS = A_CLOSE / BUCKET + 1; // rungs 0..20
+  const LAST_X = (A_BARS - 1) * PX_PER_BAR;
+
+  const chartWithBars = (axisFor: ReturnType<typeof createVirtualAxis>, upTo: { seg: number; off: number }[]) => {
+    const barsV: number[] = [];
+    for (const { seg, off } of upTo) {
+      const sg = axisFor.segments[seg];
+      for (let o = 0; o <= off; o += BUCKET) barsV.push(sg.virtualStart + o);
+    }
+    return {
+      timeScale: () => ({
+        timeToCoordinate: (timeSec: number) => {
+          const i = barsV.indexOf(timeSec * 1000);
+          return i < 0 ? null : i * PX_PER_BAR;
+        },
+        coordinateToTime: (x: number) => {
+          const i = Math.round(x / PX_PER_BAR);
+          return i >= 0 && i < barsV.length && Math.abs(x - i * PX_PER_BAR) < 1 ? barsV[i] / 1000 : null;
+        },
+        coordinateToLogical: (x: number) => x / PX_PER_BAR,
+        logicalToCoordinate: stubLogicalToCoordinate,
+      }),
+    } as unknown as IChartApi;
+  };
+
+  describe('① weekend: no next session yet, then Monday arrives', () => {
+    const sunday = chartWithBars(fridayOnly, [{ seg: 0, off: A_CLOSE }]);
+    const sundayBand: FutureBand = { lastRealMs: A_CLOSE, bucketMs: BUCKET, lastSessionComplete: true };
+
+    it('stores the band click as "N columns past the close" (a gap time)', () => {
+      expect(canvasXToRealMs(sunday, fridayOnly, LAST_X + 3 * PX_PER_BAR, sundayBand)).toBe(A_CLOSE + 3 * BUCKET);
+      expect(realMsToCanvasX(sunday, fridayOnly, A_CLOSE + 3 * BUCKET, sundayBand)).toBe(LAST_X + 3 * PX_PER_BAR);
+    });
+
+    it("reads it back on Monday as Monday's 3rd rung — the shape does not flatten", () => {
+      const stored = A_CLOSE + 3 * BUCKET;
+      // Monday on the axis, no Monday bars yet (08:00–09:00).
+      const preOpen = chartWithBars(withMonday, [{ seg: 0, off: A_CLOSE }]);
+      expect(realMsToCanvasX(preOpen, withMonday, stored, { lastRealMs: A_CLOSE, bucketMs: BUCKET })).toBe(LAST_X + 3 * PX_PER_BAR);
+      // Monday traded two bars: the vertex is one column right of the new last candle.
+      const twoBars = chartWithBars(withMonday, [{ seg: 0, off: A_CLOSE }, { seg: 1, off: BUCKET }]);
+      const band2: FutureBand = { lastRealMs: B_OPEN + BUCKET, bucketMs: BUCKET };
+      expect(realMsToCanvasX(twoBars, withMonday, stored, band2)).toBe((A_BARS + 2) * PX_PER_BAR);
+      // Monday traded past it: the vertex IS that bar's column now.
+      const fiveBars = chartWithBars(withMonday, [{ seg: 0, off: A_CLOSE }, { seg: 1, off: 4 * BUCKET }]);
+      const band5: FutureBand = { lastRealMs: B_OPEN + 4 * BUCKET, bucketMs: BUCKET };
+      expect(realMsToCanvasX(fiveBars, withMonday, stored, band5)).toBe((A_BARS + 2) * PX_PER_BAR);
+      // …and a drag reads the same column, so the first drag re-stores the rung.
+      const dom = dragBarDomain(withMonday, band5);
+      expect(dom.toBar(stored)).toBe(A_BARS + 2);
+      expect(dom.toReal(dom.toBar(stored))).toBe(B_OPEN + 2 * BUCKET);
+    });
+
+    it('a Monday holiday is fine: the columns land on whichever session came next', () => {
+      const withTuesday = createVirtualAxis([
+        { date: '20260904', sessionOpenMs: 0, sessionCloseMs: A_CLOSE },
+        { date: '20260908', sessionOpenMs: 20_000_000, sessionCloseMs: 21_000_000 },
+      ]);
+      const chart = chartWithBars(withTuesday, [{ seg: 0, off: A_CLOSE }, { seg: 1, off: 4 * BUCKET }]);
+      const band: FutureBand = { lastRealMs: 20_000_000 + 4 * BUCKET, bucketMs: BUCKET };
+      expect(realMsToCanvasX(chart, withTuesday, A_CLOSE + 3 * BUCKET, band)).toBe((A_BARS + 2) * PX_PER_BAR);
+    });
+
+    it('healedRealMs names the rung for labels; unchanged when nothing is there yet', () => {
+      expect(healedRealMs(withMonday, A_CLOSE + 3 * BUCKET, { lastRealMs: A_CLOSE, bucketMs: BUCKET })).toBe(B_OPEN + 2 * BUCKET);
+      expect(healedRealMs(fridayOnly, A_CLOSE + 3 * BUCKET, { lastRealMs: A_CLOSE, bucketMs: BUCKET })).toBe(A_CLOSE + 3 * BUCKET);
+    });
+  });
+
+  describe('② the last print is not the final rung (no closing-auction bar)', () => {
+    const LAST = A_CLOSE - 3 * BUCKET; // "15:19": three empty slots remain
+    const chart = chartWithBars(fridayOnly, [{ seg: 0, off: LAST }]);
+    const lastX = (LAST / BUCKET) * PX_PER_BAR;
+
+    it('while the session is still trading, the slots ahead are columns (they will fill)', () => {
+      const live: FutureBand = { lastRealMs: LAST, bucketMs: BUCKET };
+      expect(canvasXToRealMs(chart, fridayOnly, lastX + 2 * PX_PER_BAR, live)).toBe(LAST + 2 * BUCKET);
+    });
+
+    it('once the session is over, the first column right of the print is past the close', () => {
+      const done: FutureBand = { lastRealMs: LAST, bucketMs: BUCKET, lastSessionComplete: true };
+      expect(canvasXToRealMs(chart, fridayOnly, lastX + PX_PER_BAR, done)).toBe(A_CLOSE + BUCKET);
+      expect(realMsToCanvasX(chart, fridayOnly, A_CLOSE + BUCKET, done)).toBe(lastX + PX_PER_BAR);
+      // With Monday on the axis the same click is Monday's open.
+      const preOpen = chartWithBars(withMonday, [{ seg: 0, off: LAST }]);
+      expect(canvasXToRealMs(preOpen, withMonday, lastX + PX_PER_BAR, { lastRealMs: LAST, bucketMs: BUCKET })).toBe(B_OPEN);
+    });
+
+    it('an old trailing-slot value never reads LEFT of the last column (drag does not jump)', () => {
+      // Stored by the pre-column code as "15:19 + 3 slots" while 15:19 was the
+      // last print; the session finished without those slots ever filling.
+      // The render pins it to the last bar's column; a zero-shift grab must
+      // read that same column and re-store the last bar, not jump left.
+      const candles = Array.from({ length: LAST / BUCKET + 1 }, (_, i) => ({ ts_ms: i * BUCKET }));
+      const done: FutureBand = { lastRealMs: LAST, bucketMs: BUCKET, lastSessionComplete: true };
+      const exact = dragBarDomain(fridayOnly, done, candles);
+      const lastBar = candles.length - 1;
+      const stale = LAST + 2 * BUCKET; // on-axis, in the never-filled slots
+      expect(exact.toBar(stale)).toBe(lastBar);
+      expect(exact.toReal(exact.toBar(stale))).toBe(LAST);
+    });
+
+    it('futureBandFor decides completeness from the axis and the clock', () => {
+      const candles = [{ ts_ms: LAST - BUCKET }, { ts_ms: LAST }];
+      expect(futureBandFor(fridayOnly, candles, BUCKET, LAST + 1)?.lastSessionComplete).toBe(false);
+      expect(futureBandFor(fridayOnly, candles, BUCKET, A_CLOSE + 1)?.lastSessionComplete).toBe(true);
+      expect(futureBandFor(withMonday, candles, BUCKET, LAST + 1)?.lastSessionComplete).toBe(true);
+    });
+  });
+
+  describe('③ calendar (D): columns are trading days', () => {
+    // Real KST sessions: Thu 2026-09-03, Fri 2026-09-04 (09:00 KST = 00:00 UTC).
+    const day = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d, 0, 0, 0);
+    const SESSION = 6.5 * 3600 * 1000;
+    const THU = day(2026, 9, 3);
+    const FRI = day(2026, 9, 4);
+    const MON = day(2026, 9, 7);
+    const TUE = day(2026, 9, 8);
+    const WED = day(2026, 9, 9);
+    const DAY = 86_400_000;
+    const daily = createVirtualAxis(
+      [
+        { date: '20260903', sessionOpenMs: THU, sessionCloseMs: THU + SESSION },
+        { date: '20260904', sessionOpenMs: FRI, sessionCloseMs: FRI + SESSION },
+      ],
+      THU,
+      { mode: 'calendar' },
+    );
+    const band: FutureBand = { lastRealMs: FRI, bucketMs: DAY, lastSessionComplete: true };
+    const chart = {
+      timeScale: () => ({
+        timeToCoordinate: (timeSec: number) => {
+          const v = timeSec * 1000;
+          const i = daily.segments.findIndex((sg) => sg.virtualStart === v);
+          return i < 0 ? null : i * PX_PER_BAR;
+        },
+        coordinateToTime: () => null,
+        coordinateToLogical: (x: number) => x / PX_PER_BAR,
+        logicalToCoordinate: stubLogicalToCoordinate,
+      }),
+    } as unknown as IChartApi;
+
+    it('one column past Friday is Monday, two is Tuesday — the weekend is not a column', () => {
+      expect(canvasXToRealMs(chart, daily, 2 * PX_PER_BAR, band)).toBe(MON);
+      expect(canvasXToRealMs(chart, daily, 3 * PX_PER_BAR, band)).toBe(TUE);
+      expect(realMsToCanvasX(chart, daily, TUE, band)).toBe(3 * PX_PER_BAR);
+    });
+
+    it('a Monday holiday: the +2 vertex lands on the second session that actually came', () => {
+      const later = createVirtualAxis(
+        [
+          { date: '20260903', sessionOpenMs: THU, sessionCloseMs: THU + SESSION },
+          { date: '20260904', sessionOpenMs: FRI, sessionCloseMs: FRI + SESSION },
+          { date: '20260908', sessionOpenMs: TUE, sessionCloseMs: TUE + SESSION },
+          { date: '20260909', sessionOpenMs: WED, sessionCloseMs: WED + SESSION },
+        ],
+        THU,
+        { mode: 'calendar' },
+      );
+      // Stored on the weekend as "+2 = Tuesday"; Monday turned out to be a
+      // holiday, so column +2 is Wednesday — and that is where it reads.
+      const dom = dragBarDomain(later, { lastRealMs: WED, bucketMs: DAY });
+      expect(dom.toBar(TUE)).toBe(2); // Tuesday exists → its own column
+      expect(dom.toBar(MON)).toBe(2); // the "+1" stored as Monday → the session that followed Friday
+    });
   });
 });
