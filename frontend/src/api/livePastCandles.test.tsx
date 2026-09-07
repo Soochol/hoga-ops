@@ -84,6 +84,58 @@ describe('today-first cold bootstrap', () => {
       .toMatchObject({ requestFrom: '20260525', requestTo: '20260529' });
   });
 
+  it.each(['error', 'blocking'] as const)('keeps today visible and releases history progress after a historical %s, then recovers', async (outcome) => {
+    const today: LivePastCandlesResponse = {
+      ...RESPONSE, from: '20260601', to: '20260601',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 20 }],
+      fresh_dates: ['20260601'], adjust_factors: { '20260601': 1 },
+    };
+    const past: LivePastCandlesResponse = {
+      ...RESPONSE, from: '20260525', to: '20260531',
+      fresh_dates: ['20260529'], adjust_factors: { '20260529': 0.5 },
+    };
+    let rejectHistory!: (error: Error) => void;
+    let resolveHistory!: (response: LivePastCandlesResponse) => void;
+    const history = new Promise<LivePastCandlesResponse>((resolve, reject) => {
+      resolveHistory = resolve; rejectHistory = reject;
+    });
+    let historyCalls = 0;
+    vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      if (String(url).includes('from=20260601&to=20260601')) return Promise.resolve(today) as never;
+      historyCalls += 1;
+      return (historyCalls === 1 ? history : Promise.resolve(past)) as never;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, unmount } = renderHook(
+      () => useLivePastCandles('005930', '20260525', '20260601', 'KRX', '20260601', 60_000, true),
+      { wrapper: wrap(qc) },
+    );
+    try {
+      await waitFor(() => expect(historyCalls).toBe(1));
+      expect(result.current.isWalkingHistory).toBe(true);
+      await act(async () => {
+        if (outcome === 'error') rejectHistory(new Error('history unavailable'));
+        else resolveHistory({ ...past, candles: [], data_warnings: BLOCKED.data_warnings });
+      });
+      await waitFor(() => expect(result.current.isWalkingHistory).toBe(false));
+      expect(result.current.data?.candles).toEqual(today.candles);
+      expect(result.current.isLoading).toBe(false);
+      expect(qc.getQueryData<LivePastCandlesResponse>(
+        mergedPastCandlesKey('005930', '20260601', 'KRX', 60_000),
+      )?.from).toBe('20260601');
+
+      await act(async () => { await result.current.refetch(); });
+      await waitFor(() => expect(result.current.data?.from).toBe('20260525'));
+      expect(historyCalls).toBe(2);
+      expect(result.current.data?.candles).toEqual([...past.candles, ...today.candles]);
+      expect(result.current.data?.adjust_factors).toEqual({ '20260529': 0.5, '20260601': 1 });
+      expect(result.current.data?.data_warnings).toEqual([]);
+      expect(result.current.isWalkingHistory).toBe(false);
+    } finally {
+      unmount(); qc.clear();
+    }
+  });
+
   it.each(['KRX', 'NXT', 'UN'] as const)('shows today before delayed history, then merges factors and sessions (%s)', async (venue) => {
     const today: LivePastCandlesResponse = {
       ...RESPONSE, from: '20260601', to: '20260601', venue,

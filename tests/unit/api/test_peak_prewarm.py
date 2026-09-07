@@ -104,6 +104,49 @@ def test_prewarm_fills_missing_heatmap_even_when_peaks_are_warm(tmp_path: Path) 
     assert _prewarm(tmp_path).warmed == 0
 
 
+def test_depth_failure_keeps_peaks_continues_other_dates_and_retries(tmp_path: Path) -> None:
+    from hoga.api.bundle import build_depth_heatmap_slice
+    from hoga.api.past_indicators_cache import CACHE_MISS
+
+    _write_stock_date(tmp_path, date="20260612", code="005930")
+    _write_stock_date(tmp_path, date="20260611", code="000660")
+    attempted = []
+
+    def fail_first_depth(engine, **kwargs):
+        attempted.append(kwargs["code"])
+        if kwargs["code"] == "005930":
+            cache = engine.indicators_cache
+            assert cache.has_ask_peak("005930", "20260612", "hogaplay", 60_000)
+            assert cache.has_bid_peak("005930", "20260612", "hogaplay", 60_000)
+            raise RuntimeError("depth computation failed after peak persistence")
+        return build_depth_heatmap_slice(engine, **kwargs)
+
+    with patch("hoga.api.bundle.build_depth_heatmap_slice", side_effect=fail_first_depth):
+        first = _prewarm(tmp_path)
+    assert attempted == ["005930", "000660"]
+    assert (first.scanned, first.warmed, first.failed) == (2, 1, 1)
+
+    engine = QueryEngine(tmp_path)
+    try:
+        cache = engine.indicators_cache
+        assert cache.has_ask_peak("005930", "20260612", "hogaplay", 60_000)
+        assert cache.has_bid_peak("005930", "20260612", "hogaplay", 60_000)
+        assert cache.get_depth("005930", "20260612", "hogaplay", 60_000) is CACHE_MISS
+        continued_depth = cache.get_depth("000660", "20260611", "hogaplay", 60_000)
+        assert isinstance(continued_depth, list) and continued_depth
+    finally:
+        engine.close()
+
+    second = _prewarm(tmp_path)
+    assert (second.warmed, second.skipped, second.failed) == (1, 1, 0)
+    engine = QueryEngine(tmp_path)
+    try:
+        recovered_depth = engine.indicators_cache.get_depth("005930", "20260612", "hogaplay", 60_000)
+        assert isinstance(recovered_depth, list) and recovered_depth
+    finally:
+        engine.close()
+
+
 def test_prewarm_limit_truncates_and_takes_recent_dates_first(tmp_path: Path) -> None:
     """상한에 걸리면 **최신 날짜부터** 채운다.
 
