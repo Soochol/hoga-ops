@@ -86,3 +86,9 @@ CLI 도움말에서는 히트맵을 포함하지 않았던 과거 최대벽 단�
 수정 전 실패를 확인한 회귀 테스트로 대기 중 캔들 표시·갱신, 완료 시 해제, 주기 갱신을
 확인했고 관련 210개 테스트가 통과했다. 기본 7일 청크의 요청 키가 유지될 수 있어
 모든 경우에 HTTP 요청 취소가 발생한다고 단정하지 않는다.
+
+경합 수정 후 최종 코드(`710c142f5`)로 전체 Python **4,821 passed**
+(2 skipped, 13 deselected), Vitest **536 files / 7,174 passed**,
+TypeScript 타입 검사, Vite build, Playwright **36 passed**, Ruff 및 diff 검사를
+다시 통과했다. 수정한 진행 신호는 별도 리뷰에서 실제 viewport/planner 경로와 대조했다.
+병합 직전 main `be80c8448`에 추가 변경이 없음을 확인했다.
