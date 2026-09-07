@@ -325,6 +325,44 @@ npm run dev                   # serves http://localhost:5173
 A fresh worktree starts with empty `node_modules`; if `vite: not found` appears, run
 `npm install` once. Do not add `--host` unless you intentionally want LAN exposure.
 
+**워크트리의 `frontend/node_modules` 를 메인 체크아웃으로 심볼릭 링크하지 말 것** —
+디스크는 아끼지만 **두 vite 가 dep 사전번들 캐시를 공유해 남의 dev 서버를 조용히
+깬다**(2026-09-07, #1764). 나중에 뜬 서버가 자기 소스 트리 기준으로 `deps` 를 덮어써도
+먼저 뜬 서버는 **옛 판본의 `?v=` 를 쥔 채** 계속 돌고, vite 는 그 파일들을
+`immutable`(1년)로 내려보내므로 브라우저는 옛 바디를 영구히 쓴다 — 앱 셸은 A 판본
+React 로 돌고 **그때까지 캐시에 없던 dep 만** 새로 받아 B 판본 React 를 끌어온다.
+
+증상이 **한 라우트에만** 나타나서 앱 버그로 위장한다: `/screener` 와 `/capture` 가
+`Cannot read properties of null (reading 'useReducer')` 로 죽는다.
+`@tanstack/react-virtual` 이 `ResultTable`·`CaptureQueue` **에서만** 쓰여 `/live` 경로에서
+캐시된 적 없는 유일한 dep 이고, `useVirtualizerBase` 의 첫 훅이 하필
+`React.useReducer` 다. **새로고침으로는 안 낫는다**(`immutable` 이라 조건부 요청조차
+안 간다) — 그래서 에러 화면의 버튼 둘이 모두 죽은 버튼이 된다.
+
+판별식 셋:
+
+- **스택에서 「렌더러 청크」와 「훅을 부른 청크」의 파일명이 다르다** — 이게 확진이다
+  (`renderWithHooks (react-dom-D_dvfKPJ.js)` vs `useReducer (react-DUDs20kl.js)`).
+  React 도 콘솔에 `Invalid hook call … more than one copy of React in the same app` 를
+  남긴다.
+- **`node_modules/.vite/deps` 의 mtime 이 dev 서버 기동 시각보다 늦다** — vite 는 deps 를
+  **기동 시점에** 쓴다(요청 때가 아니다 — 실측). 늦으면 누가 뒤에서 덮어쓴 것이다.
+  `npm install` 여부는 `node_modules/.package-lock.json` mtime 으로 배제한다.
+- 범인 찾기: `git worktree list --porcelain` 으로 각 워크트리의
+  `frontend/node_modules` 가 **심볼릭 링크인지**와 `.vite/deps` mtime 을 찍는다. mtime 이
+  나노초까지 같으면 같은 디렉터리다(`stat -c %i` 로 inode 대조가 더 확실하다).
+
+⚠ **헤드리스 브라우저와 `127.0.0.1:5173` 은 멀쩡해서 "코드는 무죄" 로 끝내기 쉽다.**
+캐시가 비어서만이 아니라 **저장된 조회 결과가 없으면 `ResultTable` 이 아예 안 뜨기**
+때문이다(localStorage 는 오리진별). 무죄인 건 맞지만 원인은 브라우저가 아니라 서버 쪽
+판본 분열이다.
+
+처방은 `cd frontend && npx vite --force` 재기동 — 재번들이 모든 `?v=` 를 바꿔 브라우저의
+`immutable` 캐시까지 함께 뚫는다. #1764 이 `cacheDir` 을 `node_modules` 밖
+(`frontend/.vite-cache`)으로 빼서 이 축을 원리적으로 막았다. ⚠ **막지 못하는 축이 하나
+남았다** — 같은 체크아웃에서 vite 를 두 번 띄우면(5173 점유 시 5174 폴백) 여전히 같은
+`cacheDir` 을 공유한다.
+
 **프론트 버전 필드는 `0.0.0` 고정** — 리포 버전의 유일 진실은 루트 `VERSION` 파일이다
 (#1001 에서 `frontend/package.json` 의 버전 관리를 의도적으로 포기했다). 따라서
 `frontend/package-lock.json` 의 `version` 2곳(최상위 · `packages[""]`)도 **`0.0.0` 이어야
