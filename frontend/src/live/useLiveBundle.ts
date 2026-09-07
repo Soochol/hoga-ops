@@ -1369,8 +1369,10 @@ export function useLiveBundle(
   //   ③ 3e 클램프 탈출구(useViewportBackfill)의 백프레셔가 `fillKind` 위에 서는데,
   //      그 수명이 이 신호에 맞물린다 — 먼저 내리면 캔들이 막 앉은 중간 커밋에서
   //      3e 가 불필요한 확장을 쏜다.
-  const sidecarExtending = historicalFromDate != null
-    && isMinute && sidecarEnabled && pastSidecars.isHistoricalDeltaFetching;
+  // 초기 창도 보호한다. 캔들 과거 로딩이 먼저 끝나면 한쪽만 온 sidecar의
+  // 부분 커버리지를 viewport가 결손으로 읽어 불필요한 과거 확장을 시작할 수 있다.
+  // 오늘 주기 갱신은 delta hook이 false로 구분하므로 이 신호에 포함되지 않는다.
+  const sidecarExtending = isMinute && sidecarEnabled && pastSidecars.isHistoricalDeltaFetching;
   const chartHoldPending = historicalFromDate != null && (isMinute
     ? pastHoga.isHistoricalDeltaFetching ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||

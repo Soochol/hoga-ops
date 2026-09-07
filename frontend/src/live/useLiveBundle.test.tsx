@@ -3018,7 +3018,8 @@ describe('useLiveBundle isExtending', () => {
     livePastDailyCandlesSpy.mockClear();
     useRangeCandlesDeltaSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
-    useRangeSidecarDeltaSpy.mockClear();
+    useRangeSidecarDeltaSpy.mockReset();
+    useRangeSidecarDeltaSpy.mockImplementation(() => rangeResult());
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -3055,6 +3056,51 @@ describe('useLiveBundle isExtending', () => {
       { wrapper },
     );
     expect(result.current.isExtending).toBe(false);
+  });
+
+  it.each(['price', 'independent'] as const)('protects the initial pending %s sidecar without holding candles, and releases after settle', (pendingLane) => {
+    useLivePageStore.setState({
+      historicalFromDate: null, programTradeEnabled: true, volumeDistributionEnabled: true,
+    });
+    const previousImpl = useRangeSidecarDeltaSpy.getMockImplementation();
+    let pending = true;
+    let refreshing = false;
+    const complete = fallbackRangeBundle();
+    useRangeSidecarDeltaSpy.mockImplementation((...args: unknown[]) => {
+      const price = (args[6] as { volumeDistributionBins?: number | null }).volumeDistributionBins != null;
+      const active = price === (pendingLane === 'price');
+      return {
+        ...rangeResult(active && pending ? null : complete),
+        isPending: active && pending,
+        isFetching: active && (pending || refreshing),
+        isHistoricalDeltaFetching: active && pending,
+      };
+    });
+    const { result, rerender, unmount } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    try {
+      expect(result.current.isExtending).toBe(true);
+      expect(result.current.indicatorCoverageFromDate).toBe('20260527');
+      expect(result.current.chartBundle?.candles).toHaveLength(1);
+      expect(result.current.isPastCandlesLoading).toBe(false);
+      // 이미 받은 캔들은 지표 대기 중에도 갱신된다. 진행 신호와 chart hold는 별개다.
+      candlesMock.candles = [{ ...DEFAULT_CANDLE, close: DEFAULT_CANDLE.close + 100 }];
+      rerender();
+      expect(result.current.chartBundle?.candles[0].close).toBe(DEFAULT_CANDLE.close + 100);
+      pending = false;
+      rerender();
+      expect(result.current.isExtending).toBe(false);
+      expect(result.current.indicatorCoverageFromDate).toBe('20260520');
+      // 같은 창의 오늘 주기 갱신은 초기 백필을 막는 진행 신호가 아니다.
+      refreshing = true;
+      rerender();
+      expect(result.current.isExtending).toBe(false);
+    } finally {
+      unmount();
+      if (previousImpl) useRangeSidecarDeltaSpy.mockImplementation(previousImpl);
+    }
   });
 
   // 우회 ON 좌측 팬: 차트 캔들이 KIS가 아니라 디스크 쿼리(minuteDiskCandles, plain useRange
