@@ -99,7 +99,7 @@ uv run python -m scripts.probe_kiwoom_http_latency \
   --assert-under-ms 1000 --out /tmp/kiwoom-http-path-a.json
 ```
 
-- TCP/TLS·요청 송신·헤더·본문 단계, HTTP 전체, chunk 크기·최대 공백, 이벤트 루프 밀림을 기록한다.
+- TCP/TLS·요청 송신·헤더·본문 단계, HTTP 전체, 본문 크기·chunk 수·최대 공백, 이벤트 루프 밀림을 기록한다.
   없는 단계는 기록하지 않는다. 예를 들어 연결 재사용에서는 TCP/TLS가 없으며,
   계측 미지원 transport를 써도 가짜 0ms로 만들지 않는다.
 - auth/rate/read/전체 deadline 오류 또는 빈 행 결과가 나오면 즉시 중단한다.
