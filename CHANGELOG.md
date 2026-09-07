@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.46.0] - 2026-09-07
+
+### Added
+- 기존 토큰으로 분봉 HTTP 지연을 제한된 횟수만 측정하는 진단 명령을 추가했다. 연결·본문 수신·이벤트 루프 대기를 구분하고, 인증·전송·비정상 응답 오류를 안전하게 기록한다.
+- 분봉 개선 적용 후 실제 화면 검증과 HTTP 클라이언트 교차 측정 결과를 보존했다. 외부 수신 지연은 재현됐으며 정확한 원인 구간은 미확정이다.
+
 ## [0.12.45.0] - 2026-09-07
 
 ### Changed
