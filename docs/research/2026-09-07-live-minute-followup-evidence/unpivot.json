@@ -1,0 +1,158 @@
+[
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "005930",
+    "date": "20260904",
+    "kind": "peak",
+    "bucket": 60000,
+    "baseline_ms": 713.87,
+    "candidate_ms": 1052.68,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "005930",
+    "date": "20260904",
+    "kind": "peak",
+    "bucket": 300000,
+    "baseline_ms": 568.78,
+    "candidate_ms": 505.94,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "005930",
+    "date": "20260904",
+    "kind": "depth",
+    "bucket": 60000,
+    "baseline_ms": 80.79,
+    "candidate_ms": 81.01,
+    "equal": true,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "005930",
+    "date": "20260904",
+    "kind": "depth",
+    "bucket": 300000,
+    "baseline_ms": 66.86,
+    "candidate_ms": 59.15,
+    "equal": true,
+    "n": 3
+  },
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "000660",
+    "date": "20260623",
+    "kind": "peak",
+    "bucket": 60000,
+    "baseline_ms": 395.64,
+    "candidate_ms": 374.83,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "000660",
+    "date": "20260623",
+    "kind": "peak",
+    "bucket": 300000,
+    "baseline_ms": 362.06,
+    "candidate_ms": 345.14,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "000660",
+    "date": "20260623",
+    "kind": "depth",
+    "bucket": 60000,
+    "baseline_ms": 60.65,
+    "candidate_ms": 50.19,
+    "equal": true,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "000660",
+    "date": "20260623",
+    "kind": "depth",
+    "bucket": 300000,
+    "baseline_ms": 47.43,
+    "candidate_ms": 40.24,
+    "equal": true,
+    "n": 3
+  },
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "287840",
+    "date": "20260904",
+    "kind": "peak",
+    "bucket": 60000,
+    "baseline_ms": 111.49,
+    "candidate_ms": 98.07,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {
+      "ask_equal": true,
+      "bid_equal": true,
+      "rep_rows_equal_as_set": true
+    },
+    "code": "287840",
+    "date": "20260904",
+    "kind": "peak",
+    "bucket": 300000,
+    "baseline_ms": 108.67,
+    "candidate_ms": 90.0,
+    "equal": false,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "287840",
+    "date": "20260904",
+    "kind": "depth",
+    "bucket": 60000,
+    "baseline_ms": 35.67,
+    "candidate_ms": 33.41,
+    "equal": true,
+    "n": 3
+  },
+  {
+    "details": {},
+    "code": "287840",
+    "date": "20260904",
+    "kind": "depth",
+    "bucket": 300000,
+    "baseline_ms": 19.94,
+    "candidate_ms": 21.49,
+    "equal": true,
+    "n": 3
+  }
+]

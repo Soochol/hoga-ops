@@ -1,0 +1,370 @@
+[
+  {
+    "config": "candles",
+    "phase": "cold",
+    "ms": 120.97,
+    "serialize_ms": 0.78,
+    "bytes": 206029,
+    "counts": {
+      "candles": 1916,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 105.9,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "candles",
+    "phase": "warm",
+    "ms": 37.96,
+    "serialize_ms": 0.84,
+    "bytes": 206029,
+    "counts": {
+      "candles": 1916,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 26.41,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "hoga",
+    "phase": "cold",
+    "ms": 326.89,
+    "serialize_ms": 1.64,
+    "bytes": 449935,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_quote_ratio_slice": {
+        "ms": 233.78,
+        "calls": 5
+      },
+      "build_fill_strength_slice": {
+        "ms": 77.72,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "hoga",
+    "phase": "warm",
+    "ms": 13.12,
+    "serialize_ms": 1.38,
+    "bytes": 449935,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_quote_ratio_slice": {
+        "ms": 2.46,
+        "calls": 5
+      },
+      "build_fill_strength_slice": {
+        "ms": 1.42,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-peaks",
+    "phase": "cold",
+    "ms": 1538.79,
+    "serialize_ms": 0.6,
+    "bytes": 68221,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 5,
+      "bid_peaks": 5,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_ask_bid_peak_slices": {
+        "ms": 3911.24,
+        "calls": 10
+      },
+      "_prefetch_peak_caches": {
+        "ms": 1525.52,
+        "calls": 1
+      }
+    }
+  },
+  {
+    "config": "sidecar-peaks",
+    "phase": "warm",
+    "ms": 35.25,
+    "serialize_ms": 0.52,
+    "bytes": 68221,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 5,
+      "bid_peaks": 5,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "_prefetch_peak_caches": {
+        "ms": 0.65,
+        "calls": 1
+      },
+      "build_ask_bid_peak_slices": {
+        "ms": 0.17,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-depth",
+    "phase": "cold",
+    "ms": 716.11,
+    "serialize_ms": 8.2,
+    "bytes": 1958521,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 1905
+    },
+    "functions": {
+      "build_depth_heatmap_slice": {
+        "ms": 699.83,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-depth",
+    "phase": "warm",
+    "ms": 11.88,
+    "serialize_ms": 7.87,
+    "bytes": 1958521,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 1905
+    },
+    "functions": {
+      "build_depth_heatmap_slice": {
+        "ms": 0.21,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-poc",
+    "phase": "cold",
+    "ms": 349.74,
+    "serialize_ms": 0.08,
+    "bytes": 1859,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 41.3,
+        "calls": 5
+      },
+      "build_trade_volume_poc_slice": {
+        "ms": 112.58,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-poc",
+    "phase": "warm",
+    "ms": 29.31,
+    "serialize_ms": 0.06,
+    "bytes": 1859,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 15.09,
+        "calls": 5
+      },
+      "build_trade_volume_poc_slice": {
+        "ms": 0.23,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-volume",
+    "phase": "cold",
+    "ms": 308.8,
+    "serialize_ms": 0.1,
+    "bytes": 6116,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 12.72,
+        "calls": 5
+      },
+      "build_volume_distribution_slice": {
+        "ms": 113.0,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-volume",
+    "phase": "warm",
+    "ms": 18.15,
+    "serialize_ms": 0.08,
+    "bytes": 6116,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 0,
+      "bid_peaks": 0,
+      "depth_heatmap": 0
+    },
+    "functions": {
+      "build_candles_slice": {
+        "ms": 7.54,
+        "calls": 5
+      },
+      "build_volume_distribution_slice": {
+        "ms": 0.18,
+        "calls": 5
+      }
+    }
+  },
+  {
+    "config": "sidecar-all",
+    "phase": "cold",
+    "ms": 3054.51,
+    "serialize_ms": 12.68,
+    "bytes": 2235399,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 5,
+      "bid_peaks": 5,
+      "depth_heatmap": 1905
+    },
+    "functions": {
+      "build_ask_bid_peak_slices": {
+        "ms": 4108.06,
+        "calls": 10
+      },
+      "_prefetch_peak_caches": {
+        "ms": 1605.92,
+        "calls": 1
+      },
+      "build_candles_slice": {
+        "ms": 15.21,
+        "calls": 5
+      },
+      "build_trade_volume_poc_slice": {
+        "ms": 127.91,
+        "calls": 5
+      },
+      "build_broker_late_entries_slice": {
+        "ms": 48.77,
+        "calls": 5
+      },
+      "build_volume_distribution_slice": {
+        "ms": 135.52,
+        "calls": 5
+      },
+      "build_depth_heatmap_slice": {
+        "ms": 889.56,
+        "calls": 5
+      },
+      "build_program_trade_series": {
+        "ms": 12.98,
+        "calls": 1
+      }
+    }
+  },
+  {
+    "config": "sidecar-all",
+    "phase": "warm",
+    "ms": 42.85,
+    "serialize_ms": 12.06,
+    "bytes": 2235399,
+    "counts": {
+      "candles": 0,
+      "segments": 5,
+      "ask_peaks": 5,
+      "bid_peaks": 5,
+      "depth_heatmap": 1905
+    },
+    "functions": {
+      "_prefetch_peak_caches": {
+        "ms": 0.87,
+        "calls": 1
+      },
+      "build_candles_slice": {
+        "ms": 11.76,
+        "calls": 5
+      },
+      "build_ask_bid_peak_slices": {
+        "ms": 0.23,
+        "calls": 5
+      },
+      "build_trade_volume_poc_slice": {
+        "ms": 0.28,
+        "calls": 5
+      },
+      "build_broker_late_entries_slice": {
+        "ms": 0.24,
+        "calls": 5
+      },
+      "build_volume_distribution_slice": {
+        "ms": 0.19,
+        "calls": 5
+      },
+      "build_depth_heatmap_slice": {
+        "ms": 0.2,
+        "calls": 5
+      },
+      "build_program_trade_series": {
+        "ms": 11.63,
+        "calls": 1
+      }
+    }
+  }
+]

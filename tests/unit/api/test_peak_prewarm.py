@@ -79,6 +79,74 @@ def test_prewarm_excludes_today(tmp_path: Path) -> None:
     assert (res.scanned, res.warmed) == (0, 0)
 
 
+def test_prewarm_fills_missing_heatmap_even_when_peaks_are_warm(tmp_path: Path) -> None:
+    from hoga.api.bundle import build_ask_bid_peak_slices, build_depth_heatmap_slice
+
+    _write_stock_date(tmp_path, date="20260610", code="005930")
+    args = dict(code="005930", date="20260610", source="hogaplay", venue="KRX",
+                session_open_ms=_OPEN, session_close_ms=_CLOSE, today_kst=_TODAY)
+    engine = QueryEngine(tmp_path)
+    try:
+        build_ask_bid_peak_slices(engine, bucket_ms=60_000, **args)
+    finally:
+        engine.close()
+    assert _prewarm(tmp_path).warmed == 1, "최대벽 hit라도 빠진 히트맵을 준비해야 한다"
+    engine = QueryEngine(tmp_path)
+    try:
+        with patch.object(snapshots_tbl, "query_bucketed_depth_heatmap",
+                          wraps=snapshots_tbl.query_bucketed_depth_heatmap) as scan:
+            one = build_depth_heatmap_slice(engine, bucket_ms=60_000, **args)
+            coarse = build_depth_heatmap_slice(engine, bucket_ms=300_000, **args)
+        assert one and coarse
+        assert scan.call_count == 0, "1분 워밍 후 1분·5분 모두 원본 스캔이 없어야 한다"
+    finally:
+        engine.close()
+    assert _prewarm(tmp_path).warmed == 0
+
+
+def test_depth_failure_keeps_peaks_continues_other_dates_and_retries(tmp_path: Path) -> None:
+    from hoga.api.bundle import build_depth_heatmap_slice
+    from hoga.api.past_indicators_cache import CACHE_MISS
+
+    _write_stock_date(tmp_path, date="20260612", code="005930")
+    _write_stock_date(tmp_path, date="20260611", code="000660")
+    attempted = []
+
+    def fail_first_depth(engine, **kwargs):
+        attempted.append(kwargs["code"])
+        if kwargs["code"] == "005930":
+            cache = engine.indicators_cache
+            assert cache.has_ask_peak("005930", "20260612", "hogaplay", 60_000)
+            assert cache.has_bid_peak("005930", "20260612", "hogaplay", 60_000)
+            raise RuntimeError("depth computation failed after peak persistence")
+        return build_depth_heatmap_slice(engine, **kwargs)
+
+    with patch("hoga.api.bundle.build_depth_heatmap_slice", side_effect=fail_first_depth):
+        first = _prewarm(tmp_path)
+    assert attempted == ["005930", "000660"]
+    assert (first.scanned, first.warmed, first.failed) == (2, 1, 1)
+
+    engine = QueryEngine(tmp_path)
+    try:
+        cache = engine.indicators_cache
+        assert cache.has_ask_peak("005930", "20260612", "hogaplay", 60_000)
+        assert cache.has_bid_peak("005930", "20260612", "hogaplay", 60_000)
+        assert cache.get_depth("005930", "20260612", "hogaplay", 60_000) is CACHE_MISS
+        continued_depth = cache.get_depth("000660", "20260611", "hogaplay", 60_000)
+        assert isinstance(continued_depth, list) and continued_depth
+    finally:
+        engine.close()
+
+    second = _prewarm(tmp_path)
+    assert (second.warmed, second.skipped, second.failed) == (1, 1, 0)
+    engine = QueryEngine(tmp_path)
+    try:
+        recovered_depth = engine.indicators_cache.get_depth("005930", "20260612", "hogaplay", 60_000)
+        assert isinstance(recovered_depth, list) and recovered_depth
+    finally:
+        engine.close()
+
+
 def test_prewarm_limit_truncates_and_takes_recent_dates_first(tmp_path: Path) -> None:
     """상한에 걸리면 **최신 날짜부터** 채운다.
 

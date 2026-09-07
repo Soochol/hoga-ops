@@ -169,6 +169,34 @@ class _RecordingScheduler:
         return await call(None)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("venue", ["KRX", "NXT", "UN"])
+@pytest.mark.parametrize("cached", [False, True])
+async def test_today_bootstrap_skips_factors_but_history_still_rescales(tmp_path, kiwoom, venue, cached):
+    fake = kiwoom(_FakeWalk(splits={"20260601": 2.0}))
+    cache = PastCandlesCache(tmp_path)
+    if cached:
+        cache.store_today(venue, "005930", [_bar("20260601").model_dump()])
+    service = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+    )
+    today = dt.date(2026, 6, 1)
+    first = await service.collect_minute(
+        code="005930", frm=today, too=today, today_d=today, policy=venue,
+    )
+    assert fake.factor_calls == [], "오늘 봉 앞에서 수정계수 2콜을 기다리면 안 된다"
+    assert len(fake.day_calls) == (0 if cached else 1)
+    assert first.adjust_factors == {"20260601": 1.0}
+    assert first.candles == [_bar("20260601").model_dump()]
+    past = await service.collect_minute(
+        code="005930", frm=dt.date(2026, 5, 29), too=dt.date(2026, 5, 29),
+        today_d=today, policy=venue,
+    )
+    assert fake.factor_calls == [("005930", "20260601")]
+    assert past.adjust_factors == {"20260529": 0.5}
+    assert past.candles[0]["close"] == 52  # 기존 수정주가의 원 단위 반올림
+
+
 class _OverloadedScheduler:
     """거버너 과부하 페이크.
 

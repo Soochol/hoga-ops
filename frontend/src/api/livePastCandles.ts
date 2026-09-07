@@ -272,6 +272,7 @@ export function planPastCandlesDelta(
   previous?: LivePastCandlesResponse,
   todayKst: string | null = null,
   bucketMs: number = 60_000,
+  todayFirst: boolean = false,
 ): DeltaPlan {
   const enabled = !!(code && from && to && from <= to);
   const identity = responseIdentity(code, to, venue, bucketMs);
@@ -325,6 +326,15 @@ export function planPastCandlesDelta(
   );
   const chunkDays = pastChunkCalendarDays(bucketMs);
   if (!canReusePrevious) {
+    // 실제 오늘을 보는 /live의 cold 시작만 작은 seed로 연다. 오늘 봉은
+    // 수정계수/과거 walk 없이 반환되며, 다음 plan이 어제부터 원래 창을 채운다.
+    // 복원된 병합본·과거 점프·저장뷰에는 적용하지 않는다.
+    if (todayFirst && !sameIdentity && todayKst === to && from < to) {
+      return {
+        enabled: true, requestFrom: to, requestTo: to,
+        canReusePrevious: false, servePrevious: false, identity,
+      };
+    }
     const chunkFloor = addDays(to, -(chunkDays - 1));
     return {
       enabled: true,
@@ -383,11 +393,15 @@ export function useLivePastCandles(
   venue: LiveVenueOption = 'KRX',
   todayKst: string | null = null,
   bucketMs: number = 60_000,
+  todayFirst: boolean = false,
 ) {
   const queryClient = useQueryClient();
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
   const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
   const identity = responseIdentity(code, to, venue, bucketMs);
+  // 오늘 seed 실패가 과거의 정상 캐시까지 막지 않게 기존 head 요청으로 폴백한다.
+  const failedBootstrapRef = useRef<string | null>(null);
+  const bootstrapToday = todayFirst && failedBootstrapRef.current !== identity;
   // 탭 복귀(code 변경으로 mergedRef 소실) 시 canonical 병합본을 1-샷 복원한다.
   // 정확-키 조회라 O(1); gcTime(2h) 내면 청크 워크백 리플레이 없이 병합 히스토리를
   // 그대로 되살린다. mergedRef 가 아직 살아 있으면(같은 탭 내 리렌더) 그쪽이 우선.
@@ -398,8 +412,8 @@ export function useLivePastCandles(
   const previousFrom = previous?.from;
   const previousTo = previous?.to;
   const plan = useMemo(
-    () => planPastCandlesDelta(code, from, to, venue, previous, todayKst, bucketMs),
-    [code, from, to, venue, previous, previousFrom, previousTo, todayKst, bucketMs],
+    () => planPastCandlesDelta(code, from, to, venue, previous, todayKst, bucketMs, bootstrapToday),
+    [code, from, to, venue, previous, previousFrom, previousTo, todayKst, bucketMs, bootstrapToday],
   );
 
   const query = useQuery({
@@ -438,6 +452,15 @@ export function useLivePastCandles(
         && responseBucketMs(prev) === bucketMs ? prev : undefined
     ),
   });
+
+  const bootstrapFailed = bootstrapToday && !previous && from !== to
+    && plan.requestFrom === todayKst && plan.requestTo === todayKst
+    && (query.isError || (query.data != null && hasBlockingWarnings(query.data)));
+  useEffect(() => {
+    if (!bootstrapFailed) return;
+    failedBootstrapRef.current = identity;
+    bumpMergedVersion();
+  }, [bootstrapFailed, identity]);
 
   const data = useMemo(() => {
     if (plan.servePrevious && previous && !query.data) return previous;
@@ -489,6 +512,13 @@ export function useLivePastCandles(
     queryClient.setQueryData(mergedPastCandlesKey(code, to, venue, bucketMs), data);
   }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue, bucketMs]);
 
+  // 오늘 seed를 보여주는 동안 원래 요청 창은 아직 로딩 중이다. 이 신호가 없으면
+  // viewport의 자동 백필이 초기 과거 청크를 재키/취소할 수 있다. 중간 merge 프레임도
+  // 포함하되 오류·blocking 경고·offline은 해제해 재시도를 막지 않는다.
+  const isWalkingHistory = !!(todayFirst && plan.enabled && data && from && data.from > from
+    && !query.isError && query.fetchStatus !== 'paused'
+    && !(query.data && hasBlockingWarnings(query.data)));
+
   return {
     ...query,
     data,
@@ -498,6 +528,7 @@ export function useLivePastCandles(
     // '초기 로딩'으로 오독해 차트를 통째로 언마운트하는 것(/study 플래시,
     // 2026-07-08 실증)을 계약 차원에서 차단한다. 워크백 진행 신호가 필요한
     // 소비자는 isFetching / isPlaceholderData(둘 다 raw 유지)를 쓴다.
-    isLoading: query.isLoading && data == null,
+    isLoading: (query.isLoading && data == null) || (isWalkingHistory && data?.candles.length === 0),
+    isWalkingHistory,
   };
 }

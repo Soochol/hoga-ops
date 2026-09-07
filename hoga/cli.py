@@ -350,18 +350,19 @@ def peak_prewarm_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="대상만 세고 계산하지 않음"),
     code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
 ) -> None:
-    """과거일 **1분** 최대벽 캐시를 미리 채운다 — 콜드 sidecar 로드를 없앤다.
+    """과거일 **1분** 최대벽·히트맵 캐시를 미리 채운다.
 
     1분 한 번이 `ask_peak`·`bid_peak`·`peak_rep` 셋을 채우고 3m~240m 은 스캔 없이
-    파생되므로(실측 ~70배) 봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
+    파생된다. 히트맵도 1분 정본을 준비해 굵은 봉이 스캔 없이 파생되게 한다.
+    봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
     모듈 docstring.
 
     같은 함수를 일일 런(17:00)이 상한 2000 으로 부른다 — 이 명령은 그 상한 없이
     **즉시 전량**을 채우고 싶을 때 쓴다(캐시 버전 범프 직후 등). 멱등·증분이라
     중단 후 재실행이 안전하다. 관심종목을 먼저 채우고 각 그룹 안에서는 최신순이다.
 
-    ⚠ 전량은 오래 걸린다. 먼저 `--dry-run` 으로 대상 수를 보고 결정할 것 —
-    hogaplay 는 스톡데이트당 ~0.37s, kiwoom_live 는 ~0.07s 다(2026-08-28 실측).
+    ⚠ 전량은 오래 걸린다. 먼저 `--dry-run` 으로 대상 수를 보고 결정할 것.
+    소요 시간은 원본 크기와 최대벽·히트맵 캐시 유무에 따라 달라진다.
     """
     import time  # noqa: PLC0415 — CLI-local
 

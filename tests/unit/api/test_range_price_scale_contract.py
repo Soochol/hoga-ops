@@ -281,6 +281,7 @@ def test_price_fields_appear_in_the_frontend_scaler() -> None:
 #: 환산을 지나야 하고 그 사실을 여기 남긴다.
 RANGE_BUNDLE_CONSUMERS: dict[str, str] = {
     "live/useLiveBundle.ts": "주 경로 — 여기서 환산한다(scaledHogaData/scaledSidecarData)",
+    "live/useLiveSidecars.ts": "주 경로의 요청 분리 — 원주가 병합본을 useLiveBundle.scaledSidecarData에서 한 번 환산",
     "live/useVolumeDistributionCutoffProfile.ts":
         "매물대 호버 컷오프 — 자체 useRange. 요청은 역환산, 응답은 환산한다",
 }

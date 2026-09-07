@@ -1,0 +1,1176 @@
+[
+  {
+    "code": "005930",
+    "expiry": 90,
+    "phase": "cold",
+    "total_ms": 5718.09,
+    "calls": [
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "1",
+        "start_ms": 18.4,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 18.35
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 38.38
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 38.44
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 109.5
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 109.93
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 110.21
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 110.22
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 110.35
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 110.36
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 138.79
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 139.58
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 1624.19
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 1626.16
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 1626.25
+          }
+        ],
+        "rows": 600,
+        "ms": 1628.55,
+        "queue_and_pacing_ms": 0.1
+      },
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 1647.15,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.43
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 0.71
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 0.72
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 0.82
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 0.83
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 32.44
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 32.99
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 183.7
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 183.96
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 184.03
+          }
+        ],
+        "rows": 600,
+        "ms": 185.82,
+        "queue_and_pacing_ms": 0.09
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260904",
+        "upd": "0",
+        "start_ms": 1836.02,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.36
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 0.61
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 0.62
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 0.7
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 0.71
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 25.66
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 25.98
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 72.8
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 73.11
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 73.19
+          }
+        ],
+        "rows": 900,
+        "ms": 75.07,
+        "queue_and_pacing_ms": 0.11
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260902",
+        "upd": "0",
+        "start_ms": 3087.61,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1.52
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1.77
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1.77
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1.84
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1.85
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 20.74
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 21.12
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 56.4
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 56.66
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 56.71
+          }
+        ],
+        "rows": 900,
+        "ms": 59.39,
+        "queue_and_pacing_ms": 1169.11
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260831",
+        "upd": "0",
+        "start_ms": 4337.54,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1.77
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 2.07
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 2.07
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 2.18
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 2.19
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 23.5
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 23.81
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 72.65
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 72.88
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 72.94
+          }
+        ],
+        "rows": 900,
+        "ms": 75.55,
+        "queue_and_pacing_ms": 1185.62
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 5587.57,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1.82
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 2.14
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 2.15
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 2.27
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 2.27
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 37.73
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 38.08
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 136.94
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 137.25
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 137.32
+          }
+        ],
+        "rows": 900,
+        "ms": 139.24,
+        "queue_and_pacing_ms": 1165.36
+      }
+    ],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 1815.78
+      },
+      {
+        "stage": "_walk_pending",
+        "ms": 2586.17
+      },
+      {
+        "stage": "_fetch_past_today_once",
+        "ms": 141.89
+      }
+    ],
+    "candles": 2131,
+    "fresh": [
+      "20260831",
+      "20260901",
+      "20260902",
+      "20260903",
+      "20260904",
+      "20260907"
+    ],
+    "warning_reasons": []
+  },
+  {
+    "code": "005930",
+    "expiry": 90,
+    "phase": "warm",
+    "total_ms": 7.05,
+    "calls": [],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 0.01
+      }
+    ],
+    "candles": 2131,
+    "fresh": [],
+    "warning_reasons": []
+  },
+  {
+    "code": "005380",
+    "expiry": 90,
+    "phase": "cold",
+    "total_ms": 6440.0,
+    "calls": [
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "1",
+        "start_ms": 5744.36,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1.9
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 2.21
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 2.22
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 2.33
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 2.34
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 19.83
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 20.06
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 47.67
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 49.18
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 49.25
+          }
+        ],
+        "rows": 600,
+        "ms": 51.47,
+        "queue_and_pacing_ms": 0.09
+      },
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 6996.33,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.62
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1.01
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1.02
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1.2
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1.21
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 16.38
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 16.71
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 35.3
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 35.54
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 35.59
+          }
+        ],
+        "rows": 600,
+        "ms": 37.83,
+        "queue_and_pacing_ms": 1200.42
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260904",
+        "upd": "0",
+        "start_ms": 7035.9,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.37
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 0.61
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 0.61
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 0.71
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 0.71
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 20.28
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 20.57
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 44.95
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 45.27
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 45.35
+          }
+        ],
+        "rows": 900,
+        "ms": 47.86,
+        "queue_and_pacing_ms": 0.08
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260902",
+        "upd": "0",
+        "start_ms": 8286.59,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.35
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 0.52
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 0.52
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 0.58
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 0.58
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 18.62
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 18.85
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 42.27
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 42.91
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 42.97
+          }
+        ],
+        "rows": 900,
+        "ms": 44.48,
+        "queue_and_pacing_ms": 1196.6
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260831",
+        "upd": "0",
+        "start_ms": 9537.37,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 0.32
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1.8
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1.81
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1.89
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1.89
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 21.51
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 21.76
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 38.08
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 38.25
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 38.28
+          }
+        ],
+        "rows": 900,
+        "ms": 39.95,
+        "queue_and_pacing_ms": 1203.39
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 10787.6,
+        "events": [
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1.51
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1.77
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1.78
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1.84
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1.85
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 26.92
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 27.24
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 1383.86
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 1385.0
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 1385.06
+          }
+        ],
+        "rows": 900,
+        "ms": 1386.51,
+        "queue_and_pacing_ms": 1204.91
+      }
+    ],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 1291.34
+      },
+      {
+        "stage": "_walk_pending",
+        "ms": 2546.78
+      },
+      {
+        "stage": "_fetch_past_today_once",
+        "ms": 1389.81
+      }
+    ],
+    "candles": 2131,
+    "fresh": [
+      "20260831",
+      "20260901",
+      "20260902",
+      "20260903",
+      "20260904",
+      "20260907"
+    ],
+    "warning_reasons": []
+  },
+  {
+    "code": "005380",
+    "expiry": 90,
+    "phase": "warm",
+    "total_ms": 5.9,
+    "calls": [],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 0.01
+      }
+    ],
+    "candles": 2131,
+    "fresh": [],
+    "warning_reasons": []
+  },
+  {
+    "code": "005930",
+    "expiry": 0,
+    "phase": "cold",
+    "total_ms": 16539.17,
+    "calls": [
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "1",
+        "start_ms": 12194.66,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.64
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 26.95
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 26.98
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 47.41
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 47.68
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 47.81
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 47.81
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 47.87
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 47.87
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 72.68
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 72.9
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 3696.16
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 3697.25
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 3697.29
+          }
+        ],
+        "rows": 600,
+        "ms": 3698.42,
+        "queue_and_pacing_ms": 0.06
+      },
+      {
+        "api": "ka10081",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 15893.16,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.25
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 28.14
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 28.16
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 1094.71
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1095.12
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1095.37
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1095.37
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1095.48
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1095.49
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 1141.93
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 1142.26
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 7648.44
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 7649.77
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 7649.83
+          }
+        ],
+        "rows": 600,
+        "ms": 7651.55,
+        "queue_and_pacing_ms": 0.04
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260904",
+        "upd": "0",
+        "start_ms": 23546.18,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.59
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 27.59
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 27.62
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 1112.85
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1115.18
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1115.46
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1115.46
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1115.55
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1115.56
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 1220.65
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 1220.89
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 1724.55
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 1726.03
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 1726.1
+          }
+        ],
+        "rows": 900,
+        "ms": 1728.93,
+        "queue_and_pacing_ms": 0.05
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260902",
+        "upd": "0",
+        "start_ms": 25280.88,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.3
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 28.1
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 28.14
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 48.22
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 48.46
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 48.6
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 48.6
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 48.66
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 48.67
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 76.35
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 76.58
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 1334.71
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 1334.98
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 1335.04
+          }
+        ],
+        "rows": 900,
+        "ms": 1337.59,
+        "queue_and_pacing_ms": 0.05
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260831",
+        "upd": "0",
+        "start_ms": 26624.75,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.4
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 27.61
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 27.63
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 1097.25
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 1097.61
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 1097.84
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 1097.84
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 1097.94
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 1097.95
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 1125.19
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 1125.52
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 1362.52
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 1362.77
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 1362.82
+          }
+        ],
+        "rows": 900,
+        "ms": 1364.95,
+        "queue_and_pacing_ms": 0.06
+      },
+      {
+        "api": "ka10080",
+        "base_dt": "20260907",
+        "upd": "0",
+        "start_ms": 27997.18,
+        "events": [
+          {
+            "event": "connection.connect_tcp.started",
+            "ms": 0.36
+          },
+          {
+            "event": "connection.connect_tcp.complete",
+            "ms": 30.32
+          },
+          {
+            "event": "connection.start_tls.started",
+            "ms": 30.35
+          },
+          {
+            "event": "connection.start_tls.complete",
+            "ms": 275.73
+          },
+          {
+            "event": "http11.send_request_headers.started",
+            "ms": 276.0
+          },
+          {
+            "event": "http11.send_request_headers.complete",
+            "ms": 276.15
+          },
+          {
+            "event": "http11.send_request_body.started",
+            "ms": 276.15
+          },
+          {
+            "event": "http11.send_request_body.complete",
+            "ms": 276.21
+          },
+          {
+            "event": "http11.receive_response_headers.started",
+            "ms": 276.21
+          },
+          {
+            "event": "http11.receive_response_headers.complete",
+            "ms": 301.34
+          },
+          {
+            "event": "http11.receive_response_body.started",
+            "ms": 301.78
+          },
+          {
+            "event": "http11.receive_response_body.complete",
+            "ms": 721.94
+          },
+          {
+            "event": "http11.response_closed.started",
+            "ms": 722.19
+          },
+          {
+            "event": "http11.response_closed.complete",
+            "ms": 722.24
+          }
+        ],
+        "rows": 900,
+        "ms": 724.44,
+        "queue_and_pacing_ms": 0.05
+      }
+    ],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 11351.3
+      },
+      {
+        "stage": "_walk_pending",
+        "ms": 4450.96
+      },
+      {
+        "stage": "_fetch_past_today_once",
+        "ms": 728.22
+      }
+    ],
+    "candles": 2132,
+    "fresh": [
+      "20260831",
+      "20260901",
+      "20260902",
+      "20260903",
+      "20260904",
+      "20260907"
+    ],
+    "warning_reasons": []
+  },
+  {
+    "code": "005930",
+    "expiry": 0,
+    "phase": "warm",
+    "total_ms": 7.89,
+    "calls": [],
+    "stages": [
+      {
+        "stage": "_factors_or_failure",
+        "ms": 0.01
+      }
+    ],
+    "candles": 2132,
+    "fresh": [],
+    "warning_reasons": []
+  }
+]

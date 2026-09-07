@@ -1,0 +1,110 @@
+[
+  {
+    "venue": "KRX",
+    "from": "20260907",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 226
+  },
+  {
+    "venue": "KRX",
+    "from": "20260907",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 226
+  },
+  {
+    "venue": "KRX",
+    "from": "20260904",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 226
+  },
+  {
+    "venue": "KRX",
+    "from": "20260904",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 226
+  },
+  {
+    "venue": "UN",
+    "from": "20260907",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 251
+  },
+  {
+    "venue": "UN",
+    "from": "20260907",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 251
+  },
+  {
+    "venue": "UN",
+    "from": "20260904",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 251
+  },
+  {
+    "venue": "UN",
+    "from": "20260904",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 251
+  },
+  {
+    "venue": "NXT",
+    "from": "20260907",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 260
+  },
+  {
+    "venue": "NXT",
+    "from": "20260907",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 0,
+    "depth_points": 260
+  },
+  {
+    "venue": "NXT",
+    "from": "20260904",
+    "price_supplied": false,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 260
+  },
+  {
+    "venue": "NXT",
+    "from": "20260904",
+    "price_supplied": true,
+    "different_fields": [],
+    "segments": 1,
+    "missing": 1,
+    "depth_points": 260
+  }
+]
