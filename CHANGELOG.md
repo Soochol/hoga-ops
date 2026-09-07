@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.43.1] - 2026-09-07
+
+### Fixed
+- 키움 WS 수신 실패 시 남은 로그인·구독 응답 대기를 즉시 해제하고, 정리 중 같은 예외가 다시 발생해 소켓 닫기가 누락되던 문제를 수정했다.
+
+### Changed
+- 표시 구독의 저장 커버 판정에서 종목마다 전체 NXT 마스터 맵을 재생성하지 않고, 각 판정 루프가 하나의 맵을 재사용한다. 다음 호출에는 최신 마스터를 반영한다.
+
 ## [0.12.43.0] - 2026-09-07
 
 ### Changed

@@ -119,6 +119,53 @@ async def _cancel(task):
         await task
 
 
+async def test_receive_failure_always_closes_socket_and_rejects_pending_ack():
+    from unittest.mock import AsyncMock
+
+    ws = FakeServer()
+    ws.close = AsyncMock()
+    client = _client(ws)
+    task = asyncio.create_task(client._session_once())
+    for _ in range(30):
+        await asyncio.sleep(0)
+    assert client.connected
+    pending = asyncio.get_running_loop().create_future()
+    client._ack_waiters['REG'] = pending
+    ws.push(FakeClosed())
+    with pytest.raises(FakeClosed):
+        await task
+    # Retrieve even on failure to avoid an unobserved-future warning.
+    error = pending.exception() if pending.done() else None
+    ws.close.assert_awaited_once()
+    assert error is not None
+    assert not client._ack_waiters
+
+
+async def test_receive_failure_during_login_rejects_ack_without_waiting_for_timeout():
+    from unittest.mock import AsyncMock
+
+    ws = FakeServer()
+    ws.close = AsyncMock()
+
+    async def fail_on_send(_raw):
+        ws.push(FakeClosed())
+
+    ws.send = fail_on_send
+    client = _client(ws)
+    task = asyncio.create_task(client._session_once())
+    try:
+        # Scheduler turns, not elapsed-time assertions: failed recv must wake ACK.
+        for _ in range(30):
+            await asyncio.sleep(0)
+        assert task.done(), 'LOGIN is still waiting for its 10-second ACK timeout'
+        with pytest.raises(FakeClosed):
+            await task
+        ws.close.assert_awaited_once()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_login_register_and_real_dispatch():
     ticks = []
 
@@ -428,3 +475,22 @@ async def test_dispatch_yield_respects_the_interval():
     turns = await _count_loop_turns_during_dispatch(interval_s=float("inf"), rows=20)
     assert turns == 0, f"임계가 무한인데 {turns}회 양보했다 — 임계를 안 보고 있다"
 
+
+async def test_send_error_survives_concurrent_receive_failure():
+    from unittest.mock import AsyncMock
+
+    ws = FakeServer()
+    ws.close = AsyncMock()
+
+    async def fail_send(_raw):
+        ws.push(FakeClosed())
+        for _ in range(30):
+            await asyncio.sleep(0)
+        raise ValueError("send failure")
+
+    ws.send = fail_send
+    client = _client(ws)
+    with pytest.raises(ValueError, match="send failure"):
+        await client._session_once()
+    ws.close.assert_awaited_once()
+    assert not client._ack_waiters
