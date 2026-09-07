@@ -138,7 +138,7 @@ import type { PaneStretchMap } from '../chart/paneOrder';
 import { useDrawingHost } from '../chart/useDrawingHost';
 import {
   canvasXToRealMs, realMsToCanvasX, priceToCanvasY, canvasYToPrice,
-  priceBoundsForPane, dragBarDomain,
+  priceBoundsForPane, dragBarDomain, futureBandFor,
 } from '../chart/drawing/chartCoordinates';
 import type { AlignCoords } from '../chart/drawing/translate';
 import { measureTextWidth } from '../chart/drawing/render';
@@ -768,12 +768,7 @@ export function LiveChartRoot({
     if (chart == null) return null;
     const width = chart.timeScale().width();
     if (!(width > 1)) return null;
-    const candles = cb?.candles;
-    const bucketMs = drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined);
-    const future =
-      candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
-        ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
-        : undefined;
+    const future = futureBandFor(axis, cb?.candles, drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined));
     return canvasXToRealMs(chart, axis, width - 1, future);
   }, [chart, axis, cb, timeframe]);
 
@@ -823,12 +818,7 @@ export function LiveChartRoot({
    */
   const resolveAlignCoords = useCallback((): AlignCoords | null => {
     if (chart == null) return null;
-    const candles = cb?.candles;
-    const bucketMs = drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined);
-    const future =
-      candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
-        ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
-        : undefined;
+    const future = futureBandFor(axis, cb?.candles, drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined));
     const bars = dragBarDomain(axis, future);
     return {
       realMsToCanvasX: (ms) => realMsToCanvasX(chart, axis, ms, future),

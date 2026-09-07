@@ -13,6 +13,8 @@ import {
   realMsToCanvasXClamped,
   canvasXToRealMs,
   dragBarDomain,
+  futureBandFor,
+  onAxisCandles,
   type FutureBand,
 } from './chartCoordinates';
 
@@ -628,5 +630,54 @@ describe('realMsToCanvasX — empty rung (a bucket with no trade, so no candle)'
     expect(twoAhead).toBe((lastIdx + 2) * PX_PER_BAR);
     // 마지막 봉 자신보다 오른쪽이어야 한다(= 눌어붙지 않았다).
     expect(twoAhead as number).toBeGreaterThan(lastIdx * PX_PER_BAR);
+  });
+});
+
+// ── FutureBand anchored on the last PLOTTED candle ─────────────────────────
+//
+// Kiwoom's minute feed ends each day on a 15:35 bar the axis rejects (after the
+// 15:30 close). Taking `candles[length - 1]` as the band anchor made the whole
+// empty band dead from 15:35 until the next session's first bar — reproduced on
+// /live 2026-09-07 08:58 (005930 1m). The helper must anchor on the newest
+// candle the axis contains.
+describe('futureBandFor / onAxisCandles — off-axis tail', () => {
+  const OFF_AXIS = LAST_REAL + 5 * BUCKET; // "15:35": past the session close
+  const candles = [
+    { ts_ms: LAST_REAL - BUCKET },
+    { ts_ms: LAST_REAL },
+    { ts_ms: OFF_AXIS },
+  ];
+
+  it('the naive last element is the failure: the band cannot resolve at all', () => {
+    // Documents WHY the helper exists — with the off-axis bar as anchor both
+    // extrapolation helpers return null (the anchor itself has no X).
+    const naive: FutureBand = { lastRealMs: OFF_AXIS, bucketMs: BUCKET };
+    expect(canvasXToRealMs(chart, axis, 10500, naive)).toBeNull();
+  });
+
+  it('anchors on the newest candle the axis contains', () => {
+    const future = futureBandFor(axis, candles, BUCKET);
+    expect(future).toEqual({ lastRealMs: LAST_REAL, bucketMs: BUCKET });
+    // …and with that anchor the band resolves both ways again.
+    expect(canvasXToRealMs(chart, axis, 10500, future)).toBe(LAST_REAL + 50 * BUCKET);
+    expect(realMsToCanvasX(chart, axis, LAST_REAL + 50 * BUCKET, future)).toBe(10500);
+  });
+
+  it('returns undefined without a usable pitch or without any on-axis candle', () => {
+    expect(futureBandFor(axis, candles, 0)).toBeUndefined();
+    expect(futureBandFor(axis, candles, undefined)).toBeUndefined();
+    expect(futureBandFor(axis, [{ ts_ms: OFF_AXIS }], BUCKET)).toBeUndefined();
+    expect(futureBandFor(axis, [], BUCKET)).toBeUndefined();
+    expect(futureBandFor(axis, undefined, BUCKET)).toBeUndefined();
+  });
+
+  it('onAxisCandles trims only the tail and keeps the reference when nothing is trimmed', () => {
+    expect(onAxisCandles(axis, candles)).toEqual(candles.slice(0, 2));
+    const clean = candles.slice(0, 2);
+    expect(onAxisCandles(axis, clean)).toBe(clean);
+    // An interior off-axis bar (a past day's 15:35) is not the anchor; left alone.
+    const interior = [{ ts_ms: -BUCKET }, { ts_ms: LAST_REAL }];
+    expect(onAxisCandles(axis, interior)).toBe(interior);
+    expect(onAxisCandles(axis, undefined)).toBeUndefined();
   });
 });

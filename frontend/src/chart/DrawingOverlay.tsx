@@ -45,6 +45,8 @@ import {
   canvasYToPrice as projCanvasYToPrice,
   realMsToCanvasX as projRealMsToCanvasX,
   realMsToCanvasXClamped as projRealMsToCanvasXClamped,
+  onAxisCandles,
+  futureBandFor,
   canvasXToRealMs as projCanvasXToRealMs,
   paneIdToIndex,
   paneIdAtY as projPaneIdAtY,
@@ -180,8 +182,14 @@ const PAN_SETTLE_MS = 120;
  *  않는 바닥값. */
 const PAN_PROBE_FLOOR_MS = 250;
 
-export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles }: Props) {
+export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles: bundleCandles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The bars the chart actually plotted. The bundle's array can END on a bar the
+  // axis rejects (Kiwoom's daily 15:35 after-hours print), and everything below
+  // that reads "the last candle" — the empty-band anchor, magnet span, drag
+  // column count — must mean the last PLOTTED one, or the band goes dead from
+  // 15:35 until the next session's first bar. See `onAxisCandles`.
+  const candles = useMemo(() => onAxisCandles(axis, bundleCandles), [axis, bundleCandles]);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const drawings = useDrawingsStore((s) =>
@@ -276,10 +284,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // drawings be created/rendered in the whitespace right of the last candle.
   // Declared here (above the redraw effect, which reads lastRealMs) so it's in
   // scope for both the effect and the coordinate closures below.
-  const futureBand =
-    candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
-      ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
-      : undefined;
+  const futureBand = futureBandFor(axis, candles, bucketMs);
   const lastRealMs = futureBand?.lastRealMs;
 
   // Legacy post-commit hook. Current drawing tools keep their active tool and

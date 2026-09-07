@@ -1289,3 +1289,84 @@ describe('DrawingOverlay 키보드 — 다중 선택 편의', () => {
     expect(s().drawingsFor(SCOPE)).toHaveLength(3);
   });
 });
+
+// ── 빈 밴드 앵커는 「마지막 플롯된 봉」 ─────────────────────────────────────
+//
+// 키움 분봉은 매일 15:30 마감 뒤 15:35 봉을 하나 더 얹는다. 축은 그 봉을 거부해
+// 캔들 프로젝터는 버리지만 번들 배열은 그 봉으로 끝나므로, 오버레이가
+// `candles[length - 1]` 을 밴드 외삽 앵커로 삼으면 앵커 X 가 null 이 되어 15:35 부터
+// 다음 세션 첫 봉까지 밴드 전체에서 아무 도구도 안 그려졌다(/live 실측 2026-09-07
+// 08:58, 005930 1m). 오버레이는 축이 담는 마지막 봉을 앵커로 써야 한다.
+describe('DrawingOverlay — 빈 밴드 앵커는 축이 담는 마지막 봉이다', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  // 항등 투영: px ↔ realMs/1000, py ↔ price. 축은 [0, LAST_REAL] 만 담고, 시간축은
+  // 그 오른쪽(빈 밴드)에서 lwc 처럼 `coordinateToTime` null 을 준다.
+  const LAST_REAL = 100_000; // 마지막 플롯 봉 = x 100
+  const BUCKET = 1_000;
+  const OFF_AXIS = LAST_REAL + 5 * BUCKET; // 「15:35」 — 축 밖 꼬리 봉
+  const LAST_X = LAST_REAL / 1000;
+
+  function mountWithOffAxisTail() {
+    const fakePane = { paneIndex: () => 0, getHeight: () => 400 };
+    const fakeSeries = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => fakePane,
+    };
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: (x: number) => (x >= 0 && x <= LAST_X ? x : null),
+        timeToCoordinate: (t: number) => t,
+        coordinateToLogical: (x: number) => x,
+        logicalToCoordinate: (l: number) => l,
+        getVisibleLogicalRange: () => ({ from: 0, to: 200 }),
+      }),
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const axis = {
+      segments: [{ date: '20260904', sessionOpenMs: 0, sessionCloseMs: LAST_REAL, virtualStart: 0 }],
+      mode: 'intraday',
+      contains: (ms: number) => ms >= 0 && ms <= LAST_REAL,
+      toVirtual: (v: number) => v,
+      toReal: (v: number) => v,
+      findByReal: () => 0,
+    };
+    // OHLC 는 커서 y(50~80) 에서 자석 반경(16px) 밖에 둔다 — 가격 스냅이 판정을
+    // 흐리지 않게.
+    const bar = (ts_ms: number) => ({ ts_ms, open: 1000, high: 1000, low: 1000, close: 1000 });
+    const candles = [bar(LAST_REAL - BUCKET), bar(LAST_REAL), bar(OFF_AXIS)];
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        scope="005930|minute"
+        axis={axis as never}
+        paneSeries={new Map([['candle', fakeSeries]]) as never}
+        bucketMs={BUCKET}
+        candles={candles}
+      />,
+    );
+  }
+
+  it('꼬리 봉이 축 밖이어도 빈 밴드에서 추세선이 만들어진다', () => {
+    useDrawingsStore.getState().setActiveTool('trendline');
+    const { container } = mountWithOffAxisTail();
+    const overlay = container.querySelector('[data-drawing-overlay]') as HTMLElement;
+
+    // x 150·180 은 마지막 플롯 봉(x 100)의 오른쪽 빈 밴드 — coordinateToTime null.
+    fireEvent.pointerDown(overlay, { pointerId: 1, clientX: 150, clientY: 50, button: 0, buttons: 1 });
+    fireEvent.pointerMove(overlay, { pointerId: 1, clientX: 180, clientY: 80, buttons: 1 });
+    fireEvent.pointerUp(overlay, { pointerId: 1, clientX: 180, clientY: 80, button: 0 });
+
+    const items = useDrawingsStore.getState().byScope.get('005930|minute') ?? [];
+    expect(items.map((d) => d.kind)).toEqual(['trendline']);
+    const line = items[0] as Extract<Drawing, { kind: 'trendline' }>;
+    // 앵커가 마지막 **플롯** 봉이라 x 150 = 50봉 앞 = LAST_REAL + 50 × BUCKET.
+    expect(line.a.realMs).toBe(LAST_REAL + 50 * BUCKET);
+    expect(line.b.realMs).toBe(LAST_REAL + 80 * BUCKET);
+  });
+});
