@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.47.0] - 2026-09-07
+
+### Changed
+- 모든 보조지표 pane의 왼쪽 이름에서 드래그 이동·병합·분리와 클릭 메뉴를 사용할 수 있다. 우측의 중복 이름과 이동 아이콘을 제거하고, 위·아래 이동은 이름 메뉴로 통합했다.
+
+### Fixed
+- 높이가 낮은 병합 pane에서도 이름 위 스크롤이나 키보드로 모든 보조지표의 이동·분리 메뉴에 접근할 수 있다.
+
 ## [0.12.46.0] - 2026-09-07
 
 ### Added
