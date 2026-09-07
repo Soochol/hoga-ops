@@ -414,6 +414,188 @@ def _rows(from_yyyymmdd: str, to_yyyymmdd: str) -> list[dict]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("policy", ["KRX", "NXT", "UN"])
+async def test_cold_daily_reuses_today_from_fresh_adjusted_history(
+    tmp_path, kiwoom, policy,
+) -> None:
+    kis = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+        walkback=batched_daily_walkback,
+    )
+    args = dict(
+        code="066570", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 1, 5), policy=policy,
+        from_label="20240101", to_label="20240105",
+    )
+    first = await backfill.collect_daily(**args)
+    warm = await backfill.collect_daily(**args)
+
+    assert len(kis.calls) == 1, "the history response already contains today's candle"
+    assert kis.calls[0][4:] == (True, "20240105")
+    assert first["candles"] == warm["candles"] == _rows("20240101", "20240105")
+    assert first["fresh_batches"] == ["20240101__20240104"]
+    assert warm["fresh_batches"] == []
+    assert cache.get_today(policy, "066570") == ("hit", _rows("20240105", "20240105")[0])
+    assert cache.get_today(policy, "005930") == ("miss", None)
+    other_venue = "NXT" if policy == "KRX" else "KRX"
+    assert cache.get_today(other_venue, "066570") == ("miss", None)
+    assert all(row["t_ms"] < _rows("20240105", "20240105")[0]["t_ms"]
+               for _, _, rows, _ in cache.list_batches(policy, "066570") for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_historical_only_daily_request_does_not_seed_today(tmp_path, kiwoom) -> None:
+    kis = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+        walkback=batched_daily_walkback,
+    )
+    out = await backfill.collect_daily(
+        code="066570", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 4),
+        today_d=dt.date(2024, 1, 5), policy="KRX", from_label="20240101", to_label="20240104",
+    )
+    assert len(kis.calls) == 1
+    assert out["candles"] == _rows("20240101", "20240104")
+    assert cache.get_today("KRX", "066570") == ("miss", None)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_cold_daily_requests_make_one_wire_call(tmp_path, monkeypatch) -> None:
+    import json
+
+    import httpx
+
+    from hoga.live.kiwoom_capacity import KiwoomCapacityScheduler
+    from hoga.live.kiwoom_rest import KiwoomRestClient
+
+    class Token:
+        def get_token(self):
+            return "test-token"
+
+    calls = []
+    async def wire(request):
+        calls.append((request.headers["api-id"], json.loads(request.content)))
+        return httpx.Response(200, json={"return_code": 0, "stk_dt_pole_chart_qry": [
+            {"dt": day, "open_pric": "100", "high_pric": "110", "low_pric": "95",
+             "cur_prc": "105", "trde_qty": "10"}
+            for day in ["20240105", "20240104", "20240103", "20240102", "20240101"]
+        ]})
+
+    client = KiwoomRestClient(Token(), transport=httpx.MockTransport(wire))
+    scheduler = KiwoomCapacityScheduler()
+    scheduler.set_clients([client])
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_: client)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=PastDailyCandlesCache(), scheduler=scheduler,
+        walkback=batched_daily_walkback,
+    )
+    async def collect(frm):
+        return await backfill.collect_daily(
+            code="066570", frm=frm, too=dt.date(2024, 1, 5), today_d=dt.date(2024, 1, 5),
+            policy="KRX", from_label=frm.strftime("%Y%m%d"), to_label="20240105",
+        )
+    try:
+        first, second = await asyncio.gather(collect(dt.date(2024, 1, 1)), collect(dt.date(2024, 1, 3)))
+        assert calls == [("ka10081", {"stk_cd": "066570", "base_dt": "20240105", "upd_stkpc_tp": "1"})]
+        assert first["candles"] == _rows("20240101", "20240105")
+        assert second["candles"] == _rows("20240103", "20240105")
+        assert first["data_warnings"] == second["data_warnings"] == []
+    finally:
+        await scheduler.aclose()
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gap_result", ["missing", "invalid"])
+async def test_cold_daily_keeps_today_probe_when_history_cannot_seed_it(
+    tmp_path, kiwoom, gap_result,
+) -> None:
+    class IncompleteHistory(_FakeKis):
+        async def fetch_daily_candles(self, client, code, frm, too, **kwargs):
+            result = await super().fetch_daily_candles(client, code, frm, too, **kwargs)
+            if frm == "20240105":
+                return result
+            if gap_result == "missing":
+                return DailyCandleFetchResult(candles=result.candles[:-1], violations=[])
+            return DailyCandleFetchResult(candles=result.candles, violations=[
+                DailyInvariantViolation(date_yyyymmdd="20240105", reason="malformed_row", detail="bad row"),
+            ])
+
+    kis = kiwoom(IncompleteHistory())
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=PastDailyCandlesCache(), scheduler=_RecordingScheduler(),
+        walkback=batched_daily_walkback,
+    )
+    out = await backfill.collect_daily(
+        code="066570", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 1, 5), policy="KRX", from_label="20240101", to_label="20240105",
+    )
+    assert [(c[1], c[2]) for c in kis.calls] == [("20240101", "20240104"), ("20240105", "20240105")]
+    assert out["candles"] == _rows("20240101", "20240105")
+    assert bool(out["data_warnings"]) == (gap_result == "invalid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("elapsed", [20.0, 60.0])
+async def test_reused_today_expires_from_walk_start_not_walk_completion(
+    tmp_path, kiwoom, monkeypatch, elapsed,
+) -> None:
+    from hoga.live import live_daily_candle_backfill, past_daily_candles_cache
+
+    clock = [100.0]
+    monkeypatch.setattr(live_daily_candle_backfill, "monotonic", lambda: clock[0], raising=False)
+    monkeypatch.setattr(past_daily_candles_cache, "_monotonic", lambda: clock[0])
+
+    class SlowHistory(_FakeKis):
+        async def fetch_daily_candles(self, client, code, frm, too, **kwargs):
+            result = await super().fetch_daily_candles(client, code, frm, too, **kwargs)
+            if frm != "20240105":
+                clock[0] += elapsed
+            return result
+
+    kis = kiwoom(SlowHistory())
+    cache = PastDailyCandlesCache(today_ttl_seconds=60)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+        walkback=batched_daily_walkback,
+    )
+    args = dict(
+        code="066570", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 1, 5), policy="KRX", from_label="20240101", to_label="20240105",
+    )
+    await backfill.collect_daily(**args)
+    assert len(kis.calls) == (1 if elapsed < 60 else 2)
+    if elapsed < 60:
+        clock[0] = 160.0
+        assert cache.get_today("KRX", "066570") == ("miss", None)
+        await backfill.collect_daily(**args)
+        assert len(kis.calls) == 2
+        assert kis.calls[-1][1:3] == ("20240105", "20240105")
+
+
+@pytest.mark.asyncio
+async def test_daily_reuse_preserves_integrated_venue_fallback(tmp_path, kiwoom) -> None:
+    kis = kiwoom(_FallbackKis())
+    cache = PastDailyCandlesCache()
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+        walkback=batched_daily_walkback,
+    )
+    out = await backfill.collect_daily(
+        code="066570", frm=dt.date(2024, 1, 1), too=dt.date(2024, 1, 5),
+        today_d=dt.date(2024, 1, 5), policy="UN", from_label="20240101", to_label="20240105",
+    )
+    assert [c[3] for c in kis.calls] == ["UN", "KRX", "UN", "KRX"]
+    assert out["candles"][-1]["close"] == 205
+    assert any(w["reason"] == "daily_fallback_to_krx" for w in out["data_warnings"])
+    assert cache.get_today("UN", "066570")[0] == "hit"
+    assert cache.get_today("KRX", "066570") == ("miss", None)
+
+
+@pytest.mark.asyncio
 async def test_successive_leftward_requests_share_one_adjustment_basis(
     tmp_path, kiwoom
 ) -> None:

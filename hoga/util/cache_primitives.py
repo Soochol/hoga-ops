@@ -133,8 +133,9 @@ class TtlTriStateCache(Generic[K, V]):
             self._stats.record_hit()
         return "hit", value
 
-    def store(self, key: K, value: V | None) -> None:
-        self._d[key] = (self._clock(), value)
+    def store(self, key: K, value: V | None, *, fetched_at: float | None = None) -> None:
+        """Keep an earlier monotonic fetch time when publishing delayed results."""
+        self._d[key] = (self._clock() if fetched_at is None else fetched_at, value)
         self._d.move_to_end(key)
         if self._stats is not None:
             self._stats.record_store()

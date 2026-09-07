@@ -192,11 +192,11 @@ class PastDailyCandlesCache:
         # TtlTriStateCache records hit/miss/negative on _today_stats internally.
         return self._today_mem.get((venue, code))
 
-    def store_today(self, *args) -> None:
+    def store_today(self, *args, fetched_at: float | None = None) -> None:
         if len(args) == 2:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, bar = "KRX", args[0], args[1]
         elif len(args) == 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             venue, code, bar = args
         else:
             raise TypeError("expected (code, bar) or (venue, code, bar)")
-        self._today_mem.store((venue, code), bar)
+        self._today_mem.store((venue, code), bar, fetched_at=fetched_at)

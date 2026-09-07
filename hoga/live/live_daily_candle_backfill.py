@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Hashable
 from datetime import date, datetime, timedelta
+from time import monotonic
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
+from hoga.live.candle_models import daily_anchor_ms
 from hoga.live.data_warnings import (
     make_data_warning,
     violation_to_warning,
@@ -96,6 +98,7 @@ class LiveDailyCandleBackfill:
         self._basis_day = as_of_s
 
         async def fetch_batch(code_: str, from_s: str, to_s: str):
+            fetched_at = monotonic()
             result = await self._fetch_primary_batch(
                 venue=venue,
                 code=code_,
@@ -103,11 +106,15 @@ class LiveDailyCandleBackfill:
                 to_s=to_s,
                 as_of_s=as_of_s,
             )
+            reuse_today = not result.violations
             if venue != "KRX" and not result.violations and _needs_krx_daily_fill(
                 result.candles,
                 from_s,
                 to_s,
             ):
+                # Fallback is range-dependent; retain the separate today probe
+                # and its venue/violation policy when this batch needed it.
+                reuse_today = False
                 fallback = await self._fetch_krx_fallback_batch(
                     code=code_,
                     from_s=from_s,
@@ -129,6 +136,17 @@ class LiveDailyCandleBackfill:
                             _daily_fallback_to_krx_warning(venue, batch)
                         )
                         result = fallback
+            if reuse_today and to_s < as_of_s and too >= today_d and self._basis_day == as_of_s:
+                # The adjusted history walk already returns today's validated
+                # row. Publish it only to the expiring today slot, never the
+                # immutable past batch. Start TTL before the walk: a long walk
+                # must still trigger the orchestrator's fresh today probe.
+                today_ms = daily_anchor_ms(as_of_s)
+                today = next((c for c in result.candles if c.t_ms == today_ms), None)
+                if today is not None:
+                    self._cache.store_today(
+                        venue, code_, _candle_to_dict(today), fetched_at=fetched_at,
+                    )
             # 세 번째 칸이 **실제로 덮은 끝 날짜**다. 어댑터는 기준일에서 걸어
             # 내려오므로 요청한 `to_s` 보다 뒤까지 받는다(#1228) — 그걸 알려야
             # 오케스트레이터가 캐시 커버리지를 넓혀 다음 갭을 없앤다.

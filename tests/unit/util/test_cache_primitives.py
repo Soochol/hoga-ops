@@ -69,6 +69,17 @@ def test_ttl_expiry_is_inclusive_boundary():
     assert "k" not in c  # expired entry is dropped
 
 
+def test_ttl_delayed_publication_preserves_original_age():
+    box = [8.0]
+    cache: TtlTriStateCache[str, int] = TtlTriStateCache(10.0, 8, clock=_clock(box))
+    cache.store("old", 42, fetched_at=0.0)
+    cache.store("new", 43)
+    assert cache.get("old") == ("hit", 42)
+    box[0] = 10.0
+    assert cache.get("old") == ("miss", None)
+    assert cache.get("new") == ("hit", 43)
+
+
 def test_ttl_lru_eviction_counts():
     box = [1000.0]
     stats = CacheStats()
