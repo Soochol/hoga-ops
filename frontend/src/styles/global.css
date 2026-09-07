@@ -199,3 +199,16 @@ body {
 
 /* Firefox 폴백 — 폭/색만 제어 가능 */
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+/* Pane legend names are the shared drag handle and menu trigger. */
+.pane-legend-name {
+  background: none;
+  cursor: grab;
+}
+.pane-legend-name:hover,
+.pane-legend-name:focus-visible {
+  background: var(--bg-input-hover);
+}
+.pane-legend-name:active {
+  cursor: grabbing;
+}
