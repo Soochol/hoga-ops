@@ -50,6 +50,56 @@ export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
 export type FutureBand = { lastRealMs: number; bucketMs: number };
 
 /**
+ * `candles` with any OFF-AXIS TAIL removed — the bars the chart can actually
+ * place, ending on the newest one it plotted.
+ *
+ * Why the tail matters: Kiwoom's minute feed appends one bar per day at 15:35
+ * KST, AFTER the 15:30 regular close (after-hours prints, O=H=L=C; ADR-0120
+ * measured it, and it came back with the broker split of ADR-0136). The candle
+ * projector drops it — `classifyAndProject().contained` is false — but the
+ * bundle array still ends on it. Anyone taking `candles[length - 1]` as "the
+ * last candle" therefore picks a bar the axis cannot project. For the drawing
+ * layer that is fatal: `extrapolateFutureX` / `extrapolateFutureRealMs` anchor
+ * on `coreRealMsToCanvasX(lastRealMs)`, which is null off-axis, so from 15:35
+ * until the next session's first bar (evenings, weekends, pre-market) nothing
+ * could be created or resolved in the empty band right of the last candle —
+ * silently, every tool bails on a null `pixelToData`. Reproduced on /live
+ * 2026-09-07 08:58 (005930 1m: last ts 15:35, `axis.contains` false,
+ * 1910 candles vs 1905 plotted = five sessions × one 15:35 bar).
+ *
+ * Only the tail is trimmed. Interior off-axis bars (past days' 15:35) are not
+ * the anchor and cost nothing; and the input reference is returned untouched
+ * when nothing is trimmed, so memoised consumers keep their identity.
+ */
+export function onAxisCandles<T extends { ts_ms: number }>(
+  axis: Pick<VirtualAxis, 'contains'>,
+  candles: readonly T[] | undefined,
+): readonly T[] | undefined {
+  if (candles == null) return candles;
+  let end = candles.length;
+  while (end > 0 && !axis.contains(candles[end - 1].ts_ms)) end--;
+  return end === candles.length ? candles : candles.slice(0, end);
+}
+
+/**
+ * The FutureBand for `candles` at `bucketMs`: anchored on the newest candle
+ * the axis contains (see `onAxisCandles`), or undefined when there is no such
+ * candle or no usable pitch. THE one way to build a FutureBand from a bundle —
+ * the overlay, the rect "extend to visible edge" resolver and the align-coords
+ * resolver all used to hand-roll `candles[length - 1].ts_ms` and all three
+ * shared the off-axis-tail failure above.
+ */
+export function futureBandFor(
+  axis: Pick<VirtualAxis, 'contains'>,
+  candles: readonly { ts_ms: number }[] | undefined,
+  bucketMs: number | undefined,
+): FutureBand | undefined {
+  const onAxis = onAxisCandles(axis, candles);
+  if (onAxis == null || onAxis.length === 0 || bucketMs == null || !(bucketMs > 0)) return undefined;
+  return { lastRealMs: onAxis[onAxis.length - 1].ts_ms, bucketMs };
+}
+
+/**
  * Screen-uniform coordinate for horizontal DRAG translation: the BAR ORDINAL.
  * One unit is one on-screen column — 0 is the leftmost bar, +1 is always the
  * bar immediately to its right, including across a day boundary.
