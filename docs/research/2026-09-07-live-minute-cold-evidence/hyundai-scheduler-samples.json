@@ -1,0 +1,1123 @@
+[
+  {
+    "ms": 0,
+    "status_ms": 9,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 309,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 617,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 922,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 1227,
+    "status_ms": 6,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 1533,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 1838,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 2143,
+    "status_ms": 6,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 2449,
+    "status_ms": 25,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 2774,
+    "status_ms": 10,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 3085,
+    "status_ms": 11,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 3396,
+    "status_ms": 10,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3466,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 3706,
+    "status_ms": 13,
+    "queued": 0,
+    "inflight": 3,
+    "calls": {
+      "0": 3468,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 4019,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 3,
+    "calls": {
+      "0": 3468,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 4326,
+    "status_ms": 6,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3468,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 4633,
+    "status_ms": 9,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3469,
+      "1": 1311,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 140,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 4942,
+    "status_ms": 10,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3470,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 5252,
+    "status_ms": 11,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3470,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 5563,
+    "status_ms": 18,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3471,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 5880,
+    "status_ms": 14,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3471,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 6195,
+    "status_ms": 13,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3471,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 6508,
+    "status_ms": 33,
+    "queued": 0,
+    "inflight": 3,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 6841,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 3,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 7149,
+    "status_ms": 12,
+    "queued": 0,
+    "inflight": 3,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 7461,
+    "status_ms": 10,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 7771,
+    "status_ms": 16,
+    "queued": 0,
+    "inflight": 2,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 8087,
+    "status_ms": 17,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 8404,
+    "status_ms": 6,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 8711,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 9019,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 9324,
+    "status_ms": 4,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 9629,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3472,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 9933,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3473,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 10239,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3473,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 10546,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3473,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 10854,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3473,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 11159,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3473,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 11464,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 11769,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 12078,
+    "status_ms": 9,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 12386,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 12691,
+    "status_ms": 37,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 13028,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 13336,
+    "status_ms": 9,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 13645,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 13953,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 14260,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 14567,
+    "status_ms": 8,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 14876,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 15181,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 15489,
+    "status_ms": 12,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 15801,
+    "status_ms": 12,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 16112,
+    "status_ms": 9,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 16421,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 16729,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 17034,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 17338,
+    "status_ms": 5,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3474,
+      "1": 1312,
+      "2": 450,
+      "3": 328,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 17643,
+    "status_ms": 6,
+    "queued": 0,
+    "inflight": 1,
+    "calls": {
+      "0": 3477,
+      "1": 1313,
+      "2": 451,
+      "3": 329,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  },
+  {
+    "ms": 17949,
+    "status_ms": 7,
+    "queued": 0,
+    "inflight": 0,
+    "calls": {
+      "0": 3477,
+      "1": 1313,
+      "2": 451,
+      "3": 329,
+      "4": 178,
+      "5": 79
+    },
+    "minute": {
+      "fresh_past_fetches": 141,
+      "fresh_past_fetch_errors": 0,
+      "inflight": 0
+    }
+  }
+]

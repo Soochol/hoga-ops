@@ -1,0 +1,146 @@
+{
+  "requests": [
+    {
+      "mode": "candles",
+      "price": false,
+      "from": "20260907",
+      "to": "20260907",
+      "start": 12,
+      "delay": 180,
+      "done": 194,
+      "candles": 257
+    },
+    {
+      "mode": "hoga",
+      "price": false,
+      "from": "20260901",
+      "to": "20260907",
+      "start": 12,
+      "delay": 150,
+      "done": 169,
+      "candles": 0
+    },
+    {
+      "mode": "sidecar",
+      "price": false,
+      "from": "20260901",
+      "to": "20260907",
+      "start": 12,
+      "delay": 350,
+      "done": 390,
+      "candles": 0
+    },
+    {
+      "mode": "hoga",
+      "price": false,
+      "from": "20260831",
+      "to": "20260831",
+      "start": 175,
+      "delay": 150,
+      "done": 339,
+      "candles": 0
+    },
+    {
+      "mode": "sidecar",
+      "price": true,
+      "from": "20260901",
+      "to": "20260907",
+      "start": 226,
+      "delay": 200,
+      "done": 470,
+      "candles": 0
+    },
+    {
+      "mode": "candles",
+      "price": false,
+      "from": "20260831",
+      "to": "20260906",
+      "start": 263,
+      "delay": 4000,
+      "done": 4266,
+      "candles": 1910
+    },
+    {
+      "mode": "sidecar",
+      "price": false,
+      "from": "20260831",
+      "to": "20260831",
+      "start": 433,
+      "delay": 350,
+      "done": 860,
+      "candles": 0
+    },
+    {
+      "mode": "sidecar",
+      "price": true,
+      "from": "20260831",
+      "to": "20260831",
+      "start": 508,
+      "delay": 200,
+      "done": 770,
+      "candles": 0
+    }
+  ],
+  "samples": [
+    {
+      "ms": 31,
+      "candles": 0,
+      "cover": "1",
+      "range": null,
+      "lastIndex": null
+    },
+    {
+      "ms": 263,
+      "candles": 257,
+      "cover": "1",
+      "range": {
+        "from": 0,
+        "to": 345
+      },
+      "lastIndex": 256
+    },
+    {
+      "ms": 542,
+      "candles": 257,
+      "cover": "0",
+      "range": {
+        "from": 0,
+        "to": 345
+      },
+      "lastIndex": 256
+    },
+    {
+      "ms": 4421,
+      "candles": 2162,
+      "cover": "0",
+      "range": {
+        "from": 1955,
+        "to": 2300
+      },
+      "lastIndex": 2211
+    }
+  ],
+  "errors": [],
+  "todayDone": 194,
+  "historyDone": 4266,
+  "firstVisible": {
+    "ms": 542,
+    "candles": 257,
+    "cover": "0",
+    "range": {
+      "from": 0,
+      "to": 345
+    },
+    "lastIndex": 256
+  },
+  "final": {
+    "ms": 4421,
+    "candles": 2162,
+    "cover": "0",
+    "range": {
+      "from": 1955,
+      "to": 2300
+    },
+    "lastIndex": 2211
+  }
+}

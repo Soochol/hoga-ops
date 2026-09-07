@@ -1,0 +1,67 @@
+{
+  "code": "287840",
+  "timings": [
+    {
+      "url": "http://localhost:8000/api/live/series?code=287840&date=20260907&venue=KRX",
+      "start": 48,
+      "headers": 86,
+      "status": 200,
+      "done": 114,
+      "parse": 28
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-candles?code=287840&from=20260831&to=20260907&venue=KRX&bucket_ms=60000",
+      "start": 48,
+      "headers": 161,
+      "status": 200,
+      "done": 163,
+      "parse": 1,
+      "candles": 2004,
+      "fresh": [
+        "20260907"
+      ],
+      "cached": [
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260905",
+        "20260906"
+      ]
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-daily-candles?code=287840&from=20251116&to=20260907&venue=KRX",
+      "start": 48,
+      "headers": 236,
+      "status": 200,
+      "done": 251,
+      "parse": 15,
+      "candles": 198
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-candles?code=287840&from=20260907&to=20260907&venue=KRX&bucket_ms=60000",
+      "start": 235,
+      "headers": 250,
+      "status": 200,
+      "done": 292,
+      "parse": 42,
+      "candles": 189,
+      "fresh": [],
+      "cached": [
+        "20260907"
+      ]
+    }
+  ],
+  "longtasks": [],
+  "reveals": [
+    {
+      "ms": 67,
+      "opacity": "1"
+    },
+    {
+      "ms": 250,
+      "opacity": "0"
+    }
+  ]
+}

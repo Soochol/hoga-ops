@@ -1,0 +1,209 @@
+[
+  {
+    "venue": "KRX",
+    "today_cached": false,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      },
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "KRX",
+    "today_cached": false,
+    "variant": "today-only-factor-shortcut",
+    "calls": [
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  },
+  {
+    "venue": "KRX",
+    "today_cached": true,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "KRX",
+    "today_cached": true,
+    "variant": "today-only-factor-shortcut",
+    "calls": [],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  },
+  {
+    "venue": "NXT",
+    "today_cached": false,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      },
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "NXT",
+    "today_cached": false,
+    "variant": "today-only-factor-shortcut",
+    "calls": [
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  },
+  {
+    "venue": "NXT",
+    "today_cached": true,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "NXT",
+    "today_cached": true,
+    "variant": "today-only-factor-shortcut",
+    "calls": [],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  },
+  {
+    "venue": "UN",
+    "today_cached": false,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      },
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "UN",
+    "today_cached": false,
+    "variant": "today-only-factor-shortcut",
+    "calls": [
+      {
+        "api": "ka10080",
+        "today": true
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  },
+  {
+    "venue": "UN",
+    "today_cached": true,
+    "variant": "current",
+    "calls": [
+      {
+        "api": "ka10081",
+        "upd": "1"
+      },
+      {
+        "api": "ka10081",
+        "upd": "0"
+      }
+    ],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    }
+  },
+  {
+    "venue": "UN",
+    "today_cached": true,
+    "variant": "today-only-factor-shortcut",
+    "calls": [],
+    "candles": 1,
+    "adjust_factors": {
+      "20260907": 1.0
+    },
+    "entire_response_equal": true
+  }
+]

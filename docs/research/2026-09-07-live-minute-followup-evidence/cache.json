@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "peaks",
+    "phase": "cold",
+    "ms": 1967.38,
+    "equal": true
+  },
+  {
+    "kind": "peaks",
+    "phase": "disk-warm-new-engine",
+    "ms": 25.98,
+    "equal": true
+  },
+  {
+    "kind": "peaks",
+    "phase": "memory-warm",
+    "ms": 9.43,
+    "equal": true
+  },
+  {
+    "kind": "depth",
+    "phase": "cold",
+    "ms": 810.94,
+    "equal": true
+  },
+  {
+    "kind": "depth",
+    "phase": "disk-warm-new-engine",
+    "ms": 94.03,
+    "equal": true
+  },
+  {
+    "kind": "depth",
+    "phase": "memory-warm",
+    "ms": 37.28,
+    "equal": true
+  }
+]

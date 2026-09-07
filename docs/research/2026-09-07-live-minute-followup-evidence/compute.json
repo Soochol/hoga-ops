@@ -1,0 +1,224 @@
+[
+  {
+    "code": "005930",
+    "date": "20260904",
+    "kind": "peaks",
+    "phase": "cold",
+    "total_ms": 752.14,
+    "functions": {
+      "_read_peak_wall_frames": {
+        "ms": 374.02,
+        "calls": 1
+      },
+      "_classify_wall_frame": {
+        "ms": 73.81,
+        "calls": 2
+      },
+      "_peak_rep_rows": {
+        "ms": 13.53,
+        "calls": 2
+      },
+      "_peak_touched_distinct": {
+        "ms": 9.83,
+        "calls": 4
+      },
+      "_unreached_wall_frame": {
+        "ms": 4.66,
+        "calls": 2
+      },
+      "_peak_candidates": {
+        "ms": 4.34,
+        "calls": 10
+      },
+      "_peak_record_sequence": {
+        "ms": 32.7,
+        "calls": 4
+      },
+      "_peak_bar_max_sequence": {
+        "ms": 40.22,
+        "calls": 10
+      },
+      "_unreached_bar_frame": {
+        "ms": 40.42,
+        "calls": 2
+      }
+    }
+  },
+  {
+    "code": "005930",
+    "date": "20260904",
+    "kind": "peaks",
+    "phase": "warm",
+    "total_ms": 7.11,
+    "functions": {}
+  },
+  {
+    "code": "005930",
+    "date": "20260904",
+    "kind": "depth",
+    "phase": "cold",
+    "total_ms": 188.2,
+    "functions": {
+      "query_bucketed_depth_heatmap": {
+        "ms": 119.07,
+        "calls": 1
+      }
+    }
+  },
+  {
+    "code": "005930",
+    "date": "20260904",
+    "kind": "depth",
+    "phase": "warm",
+    "total_ms": 7.28,
+    "functions": {}
+  },
+  {
+    "code": "000660",
+    "date": "20260623",
+    "kind": "peaks",
+    "phase": "cold",
+    "total_ms": 489.99,
+    "functions": {
+      "_read_peak_wall_frames": {
+        "ms": 202.6,
+        "calls": 1
+      },
+      "_classify_wall_frame": {
+        "ms": 44.43,
+        "calls": 2
+      },
+      "_peak_rep_rows": {
+        "ms": 12.3,
+        "calls": 2
+      },
+      "_peak_touched_distinct": {
+        "ms": 25.82,
+        "calls": 4
+      },
+      "_unreached_wall_frame": {
+        "ms": 1.87,
+        "calls": 2
+      },
+      "_peak_candidates": {
+        "ms": 5.0,
+        "calls": 10
+      },
+      "_peak_record_sequence": {
+        "ms": 19.69,
+        "calls": 4
+      },
+      "_peak_bar_max_sequence": {
+        "ms": 36.61,
+        "calls": 10
+      },
+      "_unreached_bar_frame": {
+        "ms": 24.52,
+        "calls": 2
+      }
+    }
+  },
+  {
+    "code": "000660",
+    "date": "20260623",
+    "kind": "peaks",
+    "phase": "warm",
+    "total_ms": 9.37,
+    "functions": {}
+  },
+  {
+    "code": "000660",
+    "date": "20260623",
+    "kind": "depth",
+    "phase": "cold",
+    "total_ms": 204.14,
+    "functions": {
+      "query_bucketed_depth_heatmap": {
+        "ms": 91.35,
+        "calls": 1
+      }
+    }
+  },
+  {
+    "code": "000660",
+    "date": "20260623",
+    "kind": "depth",
+    "phase": "warm",
+    "total_ms": 7.92,
+    "functions": {}
+  },
+  {
+    "code": "287840",
+    "date": "20260904",
+    "kind": "peaks",
+    "phase": "cold",
+    "total_ms": 208.86,
+    "functions": {
+      "_read_peak_wall_frames": {
+        "ms": 49.09,
+        "calls": 1
+      },
+      "_classify_wall_frame": {
+        "ms": 10.6,
+        "calls": 2
+      },
+      "_peak_rep_rows": {
+        "ms": 9.82,
+        "calls": 2
+      },
+      "_peak_touched_distinct": {
+        "ms": 4.97,
+        "calls": 4
+      },
+      "_unreached_wall_frame": {
+        "ms": 3.6,
+        "calls": 2
+      },
+      "_peak_candidates": {
+        "ms": 4.99,
+        "calls": 10
+      },
+      "_peak_record_sequence": {
+        "ms": 5.85,
+        "calls": 4
+      },
+      "_peak_bar_max_sequence": {
+        "ms": 28.86,
+        "calls": 10
+      },
+      "_unreached_bar_frame": {
+        "ms": 7.34,
+        "calls": 2
+      }
+    }
+  },
+  {
+    "code": "287840",
+    "date": "20260904",
+    "kind": "peaks",
+    "phase": "warm",
+    "total_ms": 8.11,
+    "functions": {}
+  },
+  {
+    "code": "287840",
+    "date": "20260904",
+    "kind": "depth",
+    "phase": "cold",
+    "total_ms": 132.05,
+    "functions": {
+      "query_bucketed_depth_heatmap": {
+        "ms": 57.95,
+        "calls": 1
+      }
+    }
+  },
+  {
+    "code": "287840",
+    "date": "20260904",
+    "kind": "depth",
+    "phase": "warm",
+    "total_ms": 8.88,
+    "functions": {}
+  }
+]

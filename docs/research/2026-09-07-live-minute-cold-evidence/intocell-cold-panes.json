@@ -1,0 +1,103 @@
+{
+  "code": "287840",
+  "timings": [
+    {
+      "url": "http://localhost:8000/api/live/series?code=287840&date=20260907&venue=KRX",
+      "start": 26,
+      "headers": 136,
+      "status": 200,
+      "done": 138,
+      "parse": 2
+    },
+    {
+      "url": "http://localhost:8000/api/range?code=287840&from=20260901&to=20260907&bucket_ms=60000&source_pref=hogaplay&mode=hoga&venue=KRX",
+      "start": 26,
+      "headers": 248,
+      "status": 200,
+      "done": 250,
+      "parse": 2,
+      "candles": 0
+    },
+    {
+      "url": "http://localhost:8000/api/range?code=287840&from=20260831&to=20260831&bucket_ms=60000&source_pref=hogaplay&mode=hoga&venue=KRX",
+      "start": 252,
+      "headers": 419,
+      "status": 200,
+      "done": 420,
+      "parse": 1,
+      "candles": 0
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-daily-candles?code=287840&from=20251116&to=20260907&venue=KRX",
+      "start": 26,
+      "headers": 691,
+      "status": 200,
+      "done": 691,
+      "parse": 0,
+      "candles": 198
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-candles?code=287840&from=20260831&to=20260907&venue=KRX&bucket_ms=60000",
+      "start": 26,
+      "headers": 1426,
+      "status": 200,
+      "done": 1428,
+      "parse": 2,
+      "candles": 2002,
+      "fresh": [
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907"
+      ],
+      "cached": [
+        "20260905",
+        "20260906"
+      ]
+    },
+    {
+      "url": "http://localhost:8000/api/live/past-candles?code=287840&from=20260907&to=20260907&venue=KRX&bucket_ms=60000",
+      "start": 1468,
+      "headers": 1502,
+      "status": 200,
+      "done": 1559,
+      "parse": 57,
+      "candles": 187,
+      "fresh": [],
+      "cached": [
+        "20260907"
+      ]
+    },
+    {
+      "url": "http://localhost:8000/api/range?code=287840&from=20260901&to=20260907&bucket_ms=60000&ask_peaks_enabled=true&bid_peaks_enabled=true&broker_late_entries_enabled=false&program_trade_enabled=true&trade_volume_poc_enabled=true&depth_heatmap_enabled=true&bar_peaks_enabled=false&all_bar_peaks_enabled=false&unreached_bar_peaks_enabled=false&volume_distribution_bins=10&volume_distribution_price_min=17590&volume_distribution_price_max=18260&trade_volume_poc_bins=10&source_pref=hogaplay&mode=sidecar&venue=KRX",
+      "start": 1468,
+      "headers": 2780,
+      "status": 200,
+      "done": 2792,
+      "parse": 11,
+      "candles": 0
+    },
+    {
+      "url": "http://localhost:8000/api/range?code=287840&from=20260831&to=20260831&bucket_ms=60000&ask_peaks_enabled=true&bid_peaks_enabled=true&broker_late_entries_enabled=false&program_trade_enabled=true&trade_volume_poc_enabled=true&depth_heatmap_enabled=true&bar_peaks_enabled=false&all_bar_peaks_enabled=false&unreached_bar_peaks_enabled=false&volume_distribution_bins=10&volume_distribution_price_min=17590&volume_distribution_price_max=18260&trade_volume_poc_bins=10&source_pref=hogaplay&mode=sidecar&venue=KRX",
+      "start": 2822,
+      "headers": 3243,
+      "status": 200,
+      "done": 3245,
+      "parse": 2,
+      "candles": 0
+    }
+  ],
+  "longtasks": [],
+  "reveals": [
+    {
+      "ms": 35,
+      "opacity": "1"
+    },
+    {
+      "ms": 2180,
+      "opacity": "0"
+    }
+  ]
+}
