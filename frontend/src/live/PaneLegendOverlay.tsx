@@ -1256,7 +1256,10 @@ function PaneLegendOverlay({
               // 넘치는 행만 자기 pane 경계에서 끊긴다 — 레전드는 원래 캔들 위에
               // 겹쳐 그리는 물건이라 pane 안에서의 클리핑은 계약 위반이 아니다.
               maxHeight: `calc(${paneHeights[idx]}px - ${LEGEND_INSET})`,
-              overflow: 'hidden',
+              // 낮은 보조 pane 에서는 이름 위 휠·Tab 으로 아래 멤버에도 접근한다.
+              // pointerEvents:none 은 유지해 숫자 아래 크로스헤어를 막지 않는다.
+              overflowY: movable ? 'auto' : 'hidden',
+              overflowX: 'hidden',
               // OHLC 셀 드롭(global.css 컨테이너 쿼리)의 기준 폭. 이 래퍼는 좌우
               // inset 절대배치라 폭이 내용과 무관 — inline-size 컨테이너로 안전하다
               // (내용이 폭을 정하는 inline-flex 요소에 걸면 폭이 무너진다).

@@ -974,6 +974,22 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
   });
 
+  it('낮은 병합 pane 에서도 모든 이름을 스크롤해 조작할 수 있다', () => {
+    const groups = useLivePageStore.getState().paneGroups;
+    useLivePageStore.getState().setPaneGroups(
+      mergePaneIntoGroup(mergePaneIntoGroup(groups, 'ratio', 'volume'), 'fill-strength', 'volume'),
+    );
+    render(<PaneLegendOverlay chart={makeChart([100, 40, 100, 100])} timeframe="1m" paneToggles={toggles} />);
+    const rows = screen.getByTestId('pane-legend-rows-volume');
+    expect(rows.parentElement).toHaveStyle({ maxHeight: 'calc(40px - var(--space-xs))', overflowY: 'auto', overflowX: 'hidden' });
+    for (const name of ['거래량', '호가비', '체결강도']) {
+      expect(within(rows).getByRole('button', { name: `${name} pane 이동/병합` })).toBeInTheDocument();
+    }
+    openMenu('체결강도');
+    fireEvent.click(screen.getByTestId('pane-menu-split'));
+    expect(useLivePageStore.getState().paneGroups).toContainEqual(['fill-strength']);
+  });
+
   it('병합 멤버 이름의 아래로 이동은 그룹 전체를 함께 움직인다', () => {
     useLivePageStore.getState().setPaneGroups(
       mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume'),
