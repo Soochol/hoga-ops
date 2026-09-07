@@ -33,6 +33,34 @@ function e2eConfigJson(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  /**
+   * dep 사전번들 캐시를 `node_modules` **밖에** 둔다.
+   *
+   * 기본값은 `node_modules/.vite` 인데, 이 리포의 병행 세션 중에는 워크트리의
+   * `frontend/node_modules` 를 메인 체크아웃으로 **심볼릭 링크**하는 것이 있다
+   * (2026-09-07 에 `.codex/worktrees/3564` 가 그랬다 — `_metadata.json` inode 동일).
+   * 그러면 두 워크트리의 vite 가 **같은 `deps` 디렉터리를 공유**한다.
+   *
+   * 공유 자체보다 나쁜 것은 **깨지는 방식**이다. 나중에 뜬 서버가 자기 소스 트리
+   * 기준으로 재최적화해 디렉터리를 덮어써도, 먼저 뜬 서버는 **메모리에 옛 판본의
+   * `?v=` 해시를 쥔 채** 계속 돈다. vite 는 `.vite/deps/*` 를 `immutable`(1년)로
+   * 내려보내므로 `?v=` 가 그대로면 브라우저는 옛 바디를 영구히 쓴다 — 앱 셸은 A
+   * 판본 React 로 돌고, 그때까지 캐시에 없던 dep 만 새로 받아 **B 판본 React** 를
+   * 끌어온다. 실제 증상은 `/screener` 가 `Cannot read properties of null (reading
+   * 'useReducer')` 로 죽는 것이었다: `@tanstack/react-virtual` 은 `ResultTable`
+   * (스크리너)과 `CaptureQueue`(캡처)에서만 쓰여 `/live` 경로에서 캐시된 적이 없는
+   * 유일한 dep 이고, `useVirtualizerBase` 의 첫 훅이 하필 `React.useReducer` 다.
+   * 새로고침으로는 낫지 않는다(`immutable` 이라 조건부 요청조차 안 간다).
+   *
+   * `node_modules` 는 링크될 수 있어도 `frontend/` 자체는 워크트리마다 실재하므로,
+   * 캐시를 여기로 빼면 그 분열이 원리적으로 불가능해진다.
+   *
+   * ⚠ **막지 못하는 축이 하나 있다** — 같은 체크아웃에서 vite 를 두 번 띄우면
+   * (5173 이 잡혀 5174 로 폴백) 여전히 같은 `cacheDir` 을 공유한다. 판별식은
+   * 「`deps` 의 mtime 이 dev 서버 기동 시각보다 늦다」와 「스택에서 렌더러 청크와
+   * 훅을 부른 청크의 파일명이 다르다」이고, 복구는 `vite --force` 재기동이다.
+   */
+  cacheDir: '.vite-cache',
   plugins: [react(), e2eConfigJson()],
   build: {
     // 기본 500KB. `live-workspace` 는 eager 라우트(`/live`) 자신의 청크이고,

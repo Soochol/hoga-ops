@@ -31,3 +31,4 @@ vite.dogfood.config.ts
 *.njsproj
 *.sln
 *.sw?
+.vite-cache
