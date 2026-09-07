@@ -277,7 +277,7 @@ class KiwoomSessionManager:
             apply_venue(c, v) for c in conn.codes for v in subscription_venues(c, nxt_map)
         }
         for (code, v), entry in self._display.items():
-            if entry.owner == conn.account_id and not self._covered_by_storage(code, v):
+            if entry.owner == conn.account_id and not self._covered_by_storage(code, v, nxt_map=nxt_map):
                 desired.add(apply_venue(code, v))
         if desired != conn.client.expected_codes:
             await conn.client.update_codes(sorted(desired))
@@ -336,12 +336,13 @@ class KiwoomSessionManager:
         async with self._lock:
             rejected = False
             touched: set[int] = set()
+            nxt_map = _nxt_map()
             for v in venues:
                 key = (code, v)
                 entry = self._display.setdefault(key, _DisplayEntry())
                 entry.refs.add(ref)
                 entry.released_at = None  # 유예 취소
-                if self._covered_by_storage(code, v):
+                if self._covered_by_storage(code, v, nxt_map=nxt_map):
                     continue  # 이미 저장 구독 — 슬롯 불요
                 if entry.owner is not None and entry.owner in self._conns:
                     continue  # 이미 등록됨(다른 탭)
@@ -381,7 +382,9 @@ class KiwoomSessionManager:
                 if not entry.refs:
                     entry.released_at = now_ms  # 유예 시작(sweep이 유예 후 회수)
 
-    def _covered_by_storage(self, code: str, venue: str) -> bool:
+    def _covered_by_storage(
+        self, code: str, venue: str, *, nxt_map: dict[str, bool | None] | None,
+    ) -> bool:
         """(code,venue)가 이미 저장 구독에 커버되나 — 커버되면 표시 슬롯 불요(틱=저장 경로).
 
         **시각 무관이 됐다**(ADR-0140 §2). 예전 판은 `eff == target_ws_venue(now)` 였는데,
@@ -393,7 +396,7 @@ class KiwoomSessionManager:
         **시각 인자가 통째로 사라진 것**이 이 변경의 파급이다 — `_free_slots` ·
         `_pick_account` · `_reassign_display` · `_reconcile` 까지 연쇄로 시각과 무관해졌다.
         표시 장부에서 시각이 남은 곳은 유예 클록(`_sweep_display`) 하나뿐이다."""
-        return code in self._storage_members and venue in subscription_venues(code, _nxt_map())
+        return code in self._storage_members and venue in subscription_venues(code, nxt_map)
 
     def _storage_free(self, conn: _KiwoomConn) -> int:
         """저장분만 제외한 잔여 슬롯(표시 미차감) — _free_slots·status 용량 공용 SSOT.
@@ -411,9 +414,10 @@ class KiwoomSessionManager:
         conn = self._conns.get(account_id)
         if conn is None:
             return 0
+        nxt_map = _nxt_map()
         display_used = sum(
             1 for (c, v), e in self._display.items()
-            if e.owner == account_id and not self._covered_by_storage(c, v)
+            if e.owner == account_id and not self._covered_by_storage(c, v, nxt_map=nxt_map)
         )
         return max(0, self._storage_free(conn) - display_used)
 
@@ -431,10 +435,12 @@ class KiwoomSessionManager:
         """표시키의 저장 커버 전이(venue 스왑·저장셋 변화·연결 재빌드)를 재평가한다.
         커버되면 slot 반납, 미커버·미소유면 잔여 슬롯 최다 연결에 재배정(만석이면 다음
         패스 재시도). 참조 0(유예) 키는 sweep에 위임."""
+        # One master snapshot per pass, not a full rebuild per display key.
+        nxt_map = _nxt_map()
         for (code, venue), entry in list(self._display.items()):
             if not entry.refs:
                 continue  # 참조 0(유예) — sweep 위임
-            if self._covered_by_storage(code, venue):
+            if self._covered_by_storage(code, venue, nxt_map=nxt_map):
                 entry.owner = None  # 저장 커버 → 표시 슬롯 반납
                 continue
             if entry.owner is None or entry.owner not in self._conns:

@@ -232,6 +232,9 @@ class KiwoomWsClient:
         token = await self._token_fn()
         ws = await self._connect(self._url)
         recv_task = asyncio.create_task(self._recv_loop(ws))
+        # A dead receiver cannot deliver LOGIN/REG ACKs. Wake those senders now,
+        # rather than leaving them waiting until the unrelated ACK timeout.
+        recv_task.add_done_callback(self._receiver_done)
         try:
             async with self._sub_lock:
                 self._ws = ws
@@ -257,10 +260,16 @@ class KiwoomWsClient:
             self.connected = False
             self._ws = None
             recv_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await recv_task
+            # The receiver may already have failed. Re-awaiting it directly here
+            # re-raises and skips waiter cleanup / socket close, masking a primary
+            # LOGIN/REG failure too. Retrieve the result without re-raising it.
+            await asyncio.gather(recv_task, return_exceptions=True)
             self._reject_all_waiters(ConnectionError("session ended"))
             await self._safe_close(ws)
+
+    def _receiver_done(self, task: asyncio.Task) -> None:
+        if not task.cancelled():
+            self._reject_all_waiters(task.exception() or ConnectionError("receiver ended"))
 
     async def _recv_loop(self, ws: _WsLike) -> None:
         """유일한 recv 소유자 — REAL→on_tick·PING 에코·control ACK→Future 라우팅.
@@ -473,6 +482,12 @@ class KiwoomWsClient:
         finally:
             if self._ack_waiters.get(trnm) is fut:
                 del self._ack_waiters[trnm]
+            # recv can fail while send is suspended. Retrieve its waiter failure
+            # even if send itself raises first, preserving that primary error.
+            if not fut.done():
+                fut.cancel()
+            elif not fut.cancelled():
+                fut.exception()
 
     def _reject_all_waiters(self, exc: BaseException) -> None:
         for fut in list(self._ack_waiters.values()):

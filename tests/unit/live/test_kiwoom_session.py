@@ -20,6 +20,32 @@ def _ms(hour: int, minute: int) -> int:
     return int(datetime(2026, 5, 27, hour, minute, 0, tzinfo=KST).timestamp() * 1000)
 
 
+def test_display_reassignment_builds_master_once_and_refreshes_next_pass(monkeypatch):
+    from unittest.mock import Mock
+
+    from hoga.live import kiwoom_session as session
+
+    manager = object.__new__(KiwoomSessionManager)
+    manager._storage_members = {f"{i:06}" for i in range(315)}
+    manager._display = {
+        (code, venue): session._DisplayEntry(refs={"view"}, owner=1)
+        for code in manager._storage_members for venue in ("KRX", "NXT", "UN")
+    }
+    manager._conns = {1: object()}
+    master = Mock(return_value=dict.fromkeys(manager._storage_members, True))
+    monkeypatch.setattr(session, "_nxt_map", master)
+    manager._reassign_display()
+    assert master.call_count == 1
+    assert all(entry.owner is None for entry in manager._display.values())
+    # A new master must affect the very next pass; no permanent stale cache.
+    master.return_value = dict.fromkeys(manager._storage_members, False)
+    monkeypatch.setattr(manager, "_pick_account", lambda: 1)
+    manager._reassign_display()
+    assert master.call_count == 2
+    assert manager._display[("000000", "KRX")].owner is None
+    assert manager._display[("000000", "NXT")].owner == 1
+
+
 _KRX_MS = _ms(10, 0)       # 정규장 → target_ws_venue=KRX (wire=bare)
 _NXT_MS = _ms(15, 31)      # drain 마진 후 → NXT (wire=_NX)
 _WARMUP_MS = _ms(8, 55)    # 08:50–09:00 워밍 창 → KRX, in_krx_warmup_window=True
