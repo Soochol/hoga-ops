@@ -17,6 +17,7 @@ import {
   type LegendSeriesEntry,
 } from './indicators/paneLegendRegistry';
 import type { PaneId } from '../chart/drawing/types';
+import { CANONICAL_PANE_ORDER, PANE_DISPLAY_NAME } from '../chart/paneOrder';
 import type { PaneToggles } from './paneSpecsForTimeframe';
 import { formatKoreanWonEok } from '../util/koreanNumber';
 import {
@@ -656,10 +657,9 @@ describe('PaneLegendOverlay — flag 행 부활(전 종류 표시)', () => {
       { label: '매도', value: 888, color: () => '#3485FA' },
     ]);
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
-    // 숨기는 것은 **값 레전드 행**이다 — pane 이름 칩(드래그 핸들)은 별개 표면이라
-    // 남는다. 행 컨테이너 부재 + 값 부재로 단언한다.
-    expect(screen.queryByTestId('pane-legend-rows-ratio')).toBeNull();
-    expect(screen.queryByTestId('pane-legend-rows-fill-strength')).toBeNull();
+    // 숫자는 숨겨도 왼쪽 이름 핸들은 남는다.
+    expect(screen.getByTestId('pane-legend-rows-ratio')).toHaveTextContent('호가비');
+    expect(screen.getByTestId('pane-legend-rows-fill-strength')).toHaveTextContent('체결강도');
     expect(screen.queryByText('777')).toBeNull();
     expect(screen.queryByText('888')).toBeNull();
   });
@@ -862,7 +862,7 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
 
   // 값이 null 인 셀(토글 off / 콜드로드)은 빠지고, 남는 셀이 없으면 행 자체가 사라진다
   // — buildLegendRows 의 범용 규칙(legendRows.ts)이 여기서도 그대로 성립한다.
-  it('값 없는 셀은 빠지고, 전부 비면 행이 사라진다', () => {
+  it('값 없는 셀은 빠지고, 전부 비어도 이름 핸들은 남는다', () => {
     useLivePageStore.setState({ movingAverages: [] });
     registerLegend('volume', [
       { label: '거래량', value: 5000 },
@@ -875,8 +875,8 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     expect(screen.getByText('5,000')).toBeInTheDocument();
     expect(screen.queryByText('누적')).toBeNull();
-    // 행이 전부 비면 행 컨테이너째 사라진다(이름 칩은 별개 표면이라 남는다).
-    expect(screen.queryByTestId('pane-legend-rows-quote-totals')).toBeNull();
+    // 데이터가 없어도 이름을 잡아 pane 을 이동할 수 있다.
+    expect(screen.getByTestId('pane-legend-rows-quote-totals')).toHaveTextContent('총잔량');
   });
 
   it('✕ 는 해당 pane 지표를 현재 타임프레임에서 끈다', () => {
@@ -895,151 +895,117 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
   });
 });
 
-describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
-  const CANON: PaneId[] = [
-    'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
-    'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
-  ];
+describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
   const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
-  // 분봉 전체 pane(candle, volume, quote-totals, ratio, fill-strength, program-trade).
-  const sixPaneChart = () => makeChart([100, 100, 100, 100, 100, 100]);
-
   beforeEach(() => {
     resetStore();
-    useLivePageStore.setState({ candleTimeframe: '1m', volumeEnabled: true, paneOrder: [...CANON] });
+    const canonical = normalizePaneGroups(undefined);
+    useLivePageStore.setState({
+      candleTimeframe: '1m', volumeEnabled: true,
+      paneGroups: canonical, paneOrder: flattenPaneGroups(canonical),
+    });
   });
   afterEach(cleanup);
 
-  it('이동 버튼 aria-label 이 한글 pane 이름을 쓴다 (영문 paneId 아님)', () => {
-    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
-    // `spec.legendTitle` 은 셀 앞 제목 접두사라 대부분의 pane 에 일부러 없다 — 그걸
-    // 이름으로 쓰면 정의된 2개(총잔량·체결강도)만 한글이고 나머지는 `volume pane 위로
-    // 이동` 처럼 영문 paneId 로 샌다.
-    expect(screen.getByTestId('pane-move-up-volume')).toHaveAttribute(
-      'aria-label', '거래량 pane 위로 이동',
-    );
-    expect(screen.getByTestId('pane-move-down-ratio')).toHaveAttribute(
-      'aria-label', '호가비 pane 아래로 이동',
-    );
-    expect(screen.getByTestId('pane-move-up-program-trade')).toHaveAttribute(
-      'aria-label', '프로그램 순매수 pane 위로 이동',
-    );
-    // legendTitle 이 있는 pane 도 같은 출처를 쓴다(값이 우연히 같아도 경로는 하나).
-    expect(screen.getByTestId('pane-move-up-quote-totals')).toHaveAttribute(
-      'aria-label', '총잔량 pane 위로 이동',
-    );
+  function renderPanes(plotWidth = 500) {
+    return render(<PaneLegendOverlay
+      chart={makeChart([100, 100, 100, 100, 100], plotWidth)}
+      timeframe="1m" paneToggles={toggles}
+    />);
+  }
+  const openMenu = (name: string) => {
+    fireEvent.click(screen.getByRole('button', { name: `${name} pane 이동/병합` }));
+  };
+
+  it('모든 보조 pane 은 데이터 등록 전에도 이름으로 이동할 수 있다', () => {
+    render(<PaneLegendOverlay
+      chart={makeChart(CANONICAL_PANE_ORDER.map(() => 100))}
+      timeframe="D"
+      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true }}
+    />);
+    for (const pane of CANONICAL_PANE_ORDER.filter((id) => id !== 'candle')) {
+      openMenu(PANE_DISPLAY_NAME[pane]);
+      expect(screen.getByTestId('pane-menu-move-up')).toBeInTheDocument();
+      expect(screen.getByTestId('pane-menu-move-down')).toBeInTheDocument();
+    }
   });
 
-  it('renders ↑/↓ controls on non-candle panes and none on candle', () => {
-    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.queryByTestId('pane-move-up-candle')).toBeNull();
-    expect(screen.queryByTestId('pane-move-down-candle')).toBeNull();
-    expect(screen.getByTestId('pane-move-up-volume')).toBeInTheDocument();
-    expect(screen.getByTestId('pane-move-down-volume')).toBeInTheDocument();
-    expect(screen.getByTestId('pane-move-up-program-trade')).toBeInTheDocument();
+  it('왼쪽 값 행의 이름 하나가 핸들이고 우측 이름·아이콘은 없다', () => {
+    registerLegend('volume', [{ label: '거래량', value: 5000 }]);
+    registerLegend('quote-totals', [{ label: '매수', value: 14663 }, { label: '매도', value: 15369 }]);
+    renderPanes();
+    for (const [id, name] of [['volume', '거래량'], ['quote-totals', '총잔량']]) {
+      const rows = screen.getByTestId(`pane-legend-rows-${id}`);
+      expect(screen.getAllByText(name)).toHaveLength(1);
+      expect(within(rows).getByRole('button', { name: `${name} pane 이동/병합` })).toBeInTheDocument();
+      expect(rows.parentElement!.children).toHaveLength(1);
+      expect(screen.getByTestId(`pane-chip-${id}`).querySelector('svg')).toBeNull();
+    }
+    expect(screen.queryAllByTestId(/^pane-move-/)).toHaveLength(0);
+    expect(screen.queryByTestId('pane-chip-candle')).toBeNull();
+    expect(screen.getByText('14,663')).toBeInTheDocument();
+    expect(screen.getByText('15,369')).toBeInTheDocument();
   });
 
-  it('disables ↑ on the first non-candle pane and ↓ on the last pane', () => {
-    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
-    expect(screen.getByTestId('pane-move-up-volume')).toBeDisabled();
-    expect(screen.getByTestId('pane-move-down-program-trade')).toBeDisabled();
-    // 중간 pane(ratio)은 양쪽 다 활성.
-    expect(screen.getByTestId('pane-move-up-ratio')).not.toBeDisabled();
-    expect(screen.getByTestId('pane-move-down-ratio')).not.toBeDisabled();
+  it('값이 없는 pane 도 왼쪽 이름 클릭으로 메뉴를 연다', () => {
+    renderPanes();
+    expect(screen.getByTestId('pane-legend-rows-ratio')).toHaveTextContent('호가비');
+    openMenu('호가비');
+    expect(screen.getByTestId('pane-menu-move-up')).toHaveAttribute('aria-label', '호가비 pane 위로 이동');
+    expect(screen.getByTestId('pane-menu-move-down')).toBeEnabled();
   });
 
-  it('dispatches swapPaneOrder with the mounted up-neighbor on ↑ click', () => {
-    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
-    // ratio(idx3) ↑ → 마운트된 위 이웃 quote-totals(idx2)와 스왑.
-    fireEvent.click(screen.getByTestId('pane-move-up-ratio'));
+  it('첫 보조 pane 위로 이동과 마지막 마운트 pane 아래로 이동은 비활성', () => {
+    renderPanes();
+    openMenu('거래량');
+    expect(screen.getByTestId('pane-menu-move-up')).toBeDisabled();
+    openMenu('체결강도');
+    expect(screen.getByTestId('pane-menu-move-down')).toBeDisabled();
+    // program-trade 스펙은 있어도 chart.panes 에 아직 없으면 이동 대상이 아니다.
+  });
+
+  it('메뉴 위로 이동은 보이는 이웃 앞에 삽입하고 메뉴를 닫는다', () => {
+    renderPanes();
+    openMenu('호가비');
+    fireEvent.click(screen.getByTestId('pane-menu-move-up'));
     const order = useLivePageStore.getState().paneOrder;
     expect(order.indexOf('ratio')).toBeLessThan(order.indexOf('quote-totals'));
-  });
-
-  it('swaps mounted neighbors across a gated-absent pane (investor absent on minute)', () => {
-    // 분봉에서 investor 는 게이트로 부재 — 마운트된 program-trade(idx5) ↑ 는
-    // 마운트 이웃 fill-strength(idx4)와 스왑하고, 전체 순서에서 investor 슬롯은 불변.
-    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
-    fireEvent.click(screen.getByTestId('pane-move-up-program-trade'));
-    const order = useLivePageStore.getState().paneOrder;
-    expect(order.indexOf('program-trade')).toBeLessThan(order.indexOf('fill-strength'));
-    // investor 두 pane 은 여전히 순서 끝에 canonical 위치.
     expect(order.slice(-2)).toEqual(['investor-foreign', 'investor-institution']);
+    expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
   });
-});
 
-describe('PaneLegendOverlay — 이동 컨트롤 배치 (legend 와 같은 줄 · pane 우측)', () => {
-  const CANON: PaneId[] = [
-    'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
-    'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
-  ];
-  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
-  const PLOT_WIDTH = 500;
-
-  beforeEach(() => {
-    resetStore();
-    useLivePageStore.setState({ candleTimeframe: '1m', volumeEnabled: true, paneOrder: [...CANON] });
-  });
-  afterEach(cleanup);
-
-  /** ↑버튼 → 컨트롤 칩(span) → 클러스터(이름 칩 + 컨트롤) → pane 래퍼. */
-  const chipOf = (paneId: string) => screen.getByTestId(`pane-move-up-${paneId}`).parentElement!;
-  const clusterOf = (paneId: string) => chipOf(paneId).parentElement!;
-  const wrapperOf = (paneId: string) => clusterOf(paneId).parentElement!;
-
-  function renderPanes(plotWidth = PLOT_WIDTH) {
-    render(
-      <PaneLegendOverlay
-        chart={makeChart([100, 100, 100, 100, 100, 100], plotWidth)}
-        timeframe="1m"
-        paneToggles={toggles}
-      />,
+  it('병합 멤버 이름의 아래로 이동은 그룹 전체를 함께 움직인다', () => {
+    useLivePageStore.getState().setPaneGroups(
+      mergePaneIntoGroup(useLivePageStore.getState().paneGroups, 'ratio', 'volume'),
     );
-  }
+    renderPanes();
+    openMenu('호가비');
+    expect(screen.getByTestId('pane-menu-move-down')).toHaveTextContent('그룹 아래로 이동');
+    fireEvent.click(screen.getByTestId('pane-menu-move-down'));
+    const groups = useLivePageStore.getState().paneGroups;
+    const index = groups.findIndex((group) => group.includes('volume'));
+    expect(groups[index]).toEqual(['volume', 'ratio']);
+    expect(groups[index - 1]).toEqual(['quote-totals']);
+  });
 
-  it('컨트롤이 legend 행 스택과 같은 flex row 안의 형제로, 행 뒤에 온다', () => {
+  it('값·삭제는 이름 메뉴나 드래그를 시작하지 않는다', () => {
     registerLegend('volume', [{ label: '거래량', value: 5000 }]);
     renderPanes();
-    const wrapper = wrapperOf('volume');
-    // 'column' 이면 컨트롤이 legend 위 한 줄을 통째로 차지한다(변경 전 동작).
-    expect(wrapper.style.flexDirection).toBe('row');
-    const rows = screen.getByTestId('pane-legend-rows-volume');
-    expect(rows.parentElement).toBe(wrapper);
-    // DOM 순서 = 시각 순서 → 탭 순서도 레전드 → 컨트롤.
-    expect(rows.compareDocumentPosition(chipOf('volume')) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
-    // 긴 레전드가 컨트롤을 pane 밖으로 밀지 않게 하는 두 축. `min-width:auto`(flex 기본)
-    // 면 행 스택이 축소를 거부하고, flexShrink 가 0 이 아니면 버튼이 잘린다.
-    expect(rows.style.minWidth).toBe('0px');
-    expect(chipOf('volume').style.flexShrink).toBe('0');
+    fireEvent.pointerDown(screen.getByText('5,000'), { button: 0 });
+    fireEvent.pointerMove(screen.getByText('5,000'), { clientY: 200 });
+    fireEvent.pointerUp(screen.getByText('5,000'));
+    fireEvent.click(screen.getByRole('button', { name: '거래량 지표 끄기' }));
+    expect(useLivePageStore.getState().volumeEnabled).toBe(false);
+    expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
+    expect(screen.queryByTestId('pane-drag-ghost')).toBeNull();
   });
 
-  it('legend 행이 없는 pane 도 컨트롤은 우측에 남는다 (auto 마진, space-between 아님)', () => {
-    renderPanes();
-    // ratio 는 LEGEND_CELL_PANES 밖이라 행 스택 자체가 없다 — 자식이 클러스터 하나뿐이라
-    // justifyContent:'space-between' 였다면 그 하나가 **왼쪽**으로 붙었을 자리.
-    // auto 마진은 클러스터(이름 칩 + 컨트롤)가 갖는다.
-    expect(screen.queryByTestId('pane-legend-rows-ratio')).toBeNull();
-    expect(clusterOf('ratio').style.marginLeft).toBe('auto');
-    expect(clusterOf('volume').style.marginLeft).toBe('auto');
-  });
-
-  it('컨트롤 있는 pane 의 우측 인셋은 플롯 폭으로 클램프된다 (가격축 거터 회피)', () => {
-    renderPanes();
-    // 컨테이너는 거터까지 덮으므로 `right: var(--space-xs)` 면 버튼이 가격 라벨 위에 얹힌다.
-    expect(wrapperOf('volume').style.right).toBe(`calc(100% - ${PLOT_WIDTH}px + var(--space-xs))`);
-  });
-
-  it('캔들 pane 은 클램프하지 않는다 — OHLC 컨테이너 쿼리 기준 폭 보존', () => {
+  it('보조 pane 은 가격축을 피하고 캔들 컨테이너 폭은 유지한다', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     renderPanes();
-    const candleWrapper = screen.getByTestId('pane-legend-rows-candle').parentElement!;
-    expect(candleWrapper.style.right).toBe('var(--space-xs)');
-  });
-
-  it('플롯 폭을 못 읽으면(첫 프레임·teardown) 기존 인셋으로 폴백한다', () => {
-    renderPanes(0);
-    expect(wrapperOf('volume').style.right).toBe('var(--space-xs)');
+    expect(screen.getByTestId('pane-legend-rows-volume').parentElement!.style.right)
+      .toBe('calc(100% - 500px + var(--space-xs))');
+    expect(screen.getByTestId('pane-legend-rows-candle').parentElement!.style.right).toBe('var(--space-xs)');
   });
 });
 
@@ -1161,7 +1127,7 @@ describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () 
     expect(within(volumeChip).getByLabelText('오른쪽 축 눈금 소유')).toBeInTheDocument();
     expect(within(ratioChip).queryByLabelText('오른쪽 축 눈금 소유')).toBeNull();
     // 멤버 ✕ = legendToggleKey 로 그 지표 끄기(현재 타임프레임 버킷).
-    fireEvent.click(within(ratioChip).getByRole('button', { name: '호가비 지표 끄기' }));
+    fireEvent.click(within(ratioChip.parentElement!).getByRole('button', { name: '호가비 지표 끄기' }));
     expect(useLivePageStore.getState().ratioEnabled).toBe(false);
     // 분리 메뉴 — 그룹이 다시 싱글턴으로.
     clickChip('ratio');
@@ -1259,6 +1225,20 @@ describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () 
     fireEvent.pointerUp(btn, { clientX: 400, clientY: 210 });
     expect(groupOf('ratio')).toEqual(['quote-totals', 'ratio']);
     expect(screen.queryByTestId('pane-drop-merge')).toBeNull();
+  });
+
+  it('왼쪽 이름을 경계로 드래그하면 순서 이동하고 메뉴는 열리지 않는다', () => {
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    const btn = chipButton('ratio');
+    fireEvent.pointerDown(btn, { button: 0, clientX: 20, clientY: 250 });
+    fireEvent.pointerMove(btn, { clientX: 20, clientY: 180 });
+    expect(screen.getByTestId('pane-drop-boundary')).toBeInTheDocument();
+    fireEvent.pointerUp(btn, { clientX: 20, clientY: 180 });
+    fireEvent.click(btn, { detail: 1 });
+    const order = useLivePageStore.getState().paneOrder;
+    expect(order.indexOf('ratio')).toBeLessThan(order.indexOf('quote-totals'));
+    expect(groupOf('ratio')).toEqual(['ratio']);
+    expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
   });
 
   it('드래그: Esc 취소 후 pointerup 은 커밋하지 않는다', () => {

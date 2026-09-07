@@ -16,7 +16,7 @@
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
-import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
@@ -258,126 +258,6 @@ function HoverIcon({
   );
 }
 
-function ChevronGlyph({ dir }: { dir: 'up' | 'down' }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <path
-        d={dir === 'up' ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'}
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** pane 순서 이동 버튼 하나(↑ 또는 ↓). disabled 시 클릭 불가·저채도. HoverIcon 은
- *  disabled/testId 를 안 받으므로 별도 — iconBtnStyle 재사용. */
-function PaneMoveButton({
-  dir,
-  label,
-  testId,
-  disabled,
-  onClick,
-}: {
-  dir: 'up' | 'down';
-  label: string;
-  testId: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        ...iconBtnStyle,
-        // 크기 override 없음 — iconBtnStyle 의 18px 를 그대로 쓴다. legend 행과 같은
-        // 줄에 놓이므로 두 칩의 높이가 어긋나면 단차가 그대로 보이는데, 행 높이를
-        // 정하는 것은 텍스트(line-height 14.7px)가 아니라 **✕ 버튼(18px)**이다
-        // (실측: 행 22px = 18 + 상하 패딩 2×2, 컨트롤 칩도 같은 패딩). 그래서 여기서
-        // 크기를 줄이면(이전 16px) 반드시 어긋난다.
-        cursor: disabled ? 'default' : 'pointer',
-        color: disabled ? 'var(--fg-disabled, var(--fg-dimmer))' : 'var(--fg-dimmer)',
-        opacity: disabled ? 0.4 : 1,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.color = 'var(--fg-dim)';
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled) e.currentTarget.style.color = 'var(--fg-dimmer)';
-      }}
-    >
-      <ChevronGlyph dir={dir} />
-    </button>
-  );
-}
-
-/** 한 pane(그룹)의 ↑/↓ 순서 이동 컨트롤. candle(idx 0)은 렌더하지 않는다. 이동은
- *  **마운트된 이웃 그룹 곁으로의 인접 삽입**이라 게이트로 부재중인 pane 을 건너뛴다
- *  (ADR-0114 §3). 병합 pane 은 **그룹 전체**가 한 덩어리로 움직인다.
- *
- *  배치: legend 행과 **같은 줄의 pane 우측 끝**(2026-08-18). 우측 끝은 컨테이너가
- *  아니라 **플롯 우측**이다 — 래퍼의 `rightInset` 이 가격축 거터를 뺀다. */
-function PaneMoveControls({
-  paneId,
-  label,
-  idx,
-  mountedCount,
-  upNeighbor,
-  downNeighbor,
-  paneGroups,
-}: {
-  /** 그룹 대표(첫 멤버) — 이동 연산·testId 의 앵커. */
-  paneId: PaneId;
-  label: string;
-  idx: number;
-  mountedCount: number;
-  /** 바로 위/아래에 **마운트된** 이웃 그룹의 대표(게이트로 부재중인 pane 은 건너뛴 값). */
-  upNeighbor: PaneId | null;
-  downNeighbor: PaneId | null;
-  paneGroups: PaneGroups;
-}) {
-  const setPaneGroups = useIndicatorActions().setPaneGroups;
-  // idx 1 의 위 이웃은 candle(고정) → 위로 이동 불가. 마지막 마운트 pane → 아래 불가.
-  const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
-  const canDown = idx < mountedCount - 1 && downNeighbor !== null;
-  return (
-    <span
-      style={{
-        ...boxStyle,
-        gap: 'var(--space-2xs)',
-        pointerEvents: 'auto',
-        padding: 'var(--space-2xs)',
-        // 우측 정렬(marginLeft:auto)은 이제 감싸는 클러스터(칩 + 이동 버튼)가 갖는다.
-        // boxStyle 의 `maxWidth:100%`+`overflow:hidden` 과 결합하면 좁은 pane 에서
-        // 버튼이 잘린다. 잘려야 하는 쪽은 legend 행이고 컨트롤은 아니다.
-        flexShrink: 0,
-      }}
-    >
-      <PaneMoveButton
-        dir="up"
-        label={`${label} pane 위로 이동`}
-        testId={`pane-move-up-${paneId}`}
-        disabled={!canUp}
-        onClick={() => { if (canUp && upNeighbor) setPaneGroups(movePaneGroupBeside(paneGroups, paneId, upNeighbor, 'before')); }}
-      />
-      <PaneMoveButton
-        dir="down"
-        label={`${label} pane 아래로 이동`}
-        testId={`pane-move-down-${paneId}`}
-        disabled={!canDown}
-        onClick={() => { if (canDown && downNeighbor) setPaneGroups(movePaneGroupBeside(paneGroups, paneId, downNeighbor, 'after')); }}
-      />
-    </span>
-  );
-}
-
 /** 드래그 그립(⠿) — 칩이 잡을 수 있는 물건임을 말한다. */
 function GripGlyph() {
   return (
@@ -391,18 +271,18 @@ function GripGlyph() {
 }
 
 /**
- * pane 이름 칩 — 병합/분리 드래그의 핸들이자(⠿·grab 커서), 클릭하면 병합 메뉴가
+ * 왼쪽 pane 이름 — 이동/병합 드래그 핸들이자, 클릭하면 이동·병합 메뉴가
  * 열린다(드래그 임계값 `PANE_DRAG_THRESHOLD_PX` 미만의 pointerup = 클릭).
- * 병합 pane 의 멤버 칩에는 ✕(그 지표 끄기)가 붙고, 격리 스케일 그룹의 첫 칩에는
+ * 삭제는 레전드 행 끝에서 처리한다. 격리 스케일 그룹의 첫 이름에는
  * 「축」(오른쪽 축 소유), 'left' 모드의 둘째 칩에는 「좌축」 배지가 붙는다.
  */
 function PaneChip({
   paneId,
   label,
   axisBadge,
-  showRemove,
-  onRemove,
   dimmed,
+  expanded,
+  onClick,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -412,9 +292,9 @@ function PaneChip({
   label: string;
   /** 축 소유 배지 텍스트('축'·'좌축') — null 이면 배지 없음. */
   axisBadge: string | null;
-  showRemove: boolean;
-  onRemove: (() => void) | null;
   dimmed: boolean;
+  expanded: boolean;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
   onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
   onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
@@ -424,8 +304,8 @@ function PaneChip({
     <span
       data-testid={`pane-chip-${paneId}`}
       style={{
-        ...boxStyle,
-        gap: 'var(--space-2xs)',
+        display: 'inline-flex',
+        alignItems: 'center',
         pointerEvents: 'auto',
         flexShrink: 0,
         color: 'var(--fg-dim)',
@@ -438,7 +318,10 @@ function PaneChip({
       <button
         type="button"
         aria-label={`${label} pane 이동/병합`}
-        title={`끌어서 다른 pane 에 합치거나 경계로 이동 · 클릭하면 메뉴`}
+        title="드래그하여 이동·병합 · 클릭하여 메뉴 열기"
+        aria-expanded={expanded}
+        onClick={onClick}
+        className="pane-legend-name"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -446,17 +329,18 @@ function PaneChip({
         style={{
           ...iconBtnStyle,
           width: 'auto',
+          flexShrink: 0,
+          font: 'inherit',
+          borderRadius: 'var(--radius-sm)',
           gap: 'var(--space-2xs)',
           display: 'inline-flex',
           alignItems: 'center',
           color: 'inherit',
-          cursor: 'inherit',
+          cursor: undefined,
+          background: undefined,
           touchAction: 'none',
         }}
       >
-        <span aria-hidden="true" style={{ color: 'var(--fg-dimmer)', display: 'inline-flex' }}>
-          <GripGlyph />
-        </span>
         {label}
         {axisBadge !== null && (
           <span
@@ -478,11 +362,6 @@ function PaneChip({
           </span>
         )}
       </button>
-      {showRemove && onRemove && (
-        <HoverIcon label={`${label} 지표 끄기`} restColor="var(--fg-dimmer)" onClick={onRemove}>
-          <CloseGlyph />
-        </HoverIcon>
-      )}
     </span>
   );
 }
@@ -789,9 +668,11 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
 function CellsLegendRow({
   row,
   timeframe,
+  nameControl,
 }: {
   row: Extract<LegendRow, { kind: 'cells' }>;
   timeframe: LiveTimeframe;
+  nameControl?: React.ReactNode;
 }) {
   const setPanePrefForTimeframe = useIndicatorActions().setPanePrefForTimeframe;
   const toggleKey = row.toggleKey;
@@ -801,14 +682,16 @@ function CellsLegendRow({
   const offLabel = `${row.title ?? row.cells[0]?.label ?? ''} 지표 끄기`;
   return (
     <>
-      {row.title && <span style={{ color: 'var(--fg-dim)' }}>{row.title}</span>}
+      {nameControl ?? (row.title && <span style={{ color: 'var(--fg-dim)' }}>{row.title}</span>)}
       {row.cells.map((c) => (
         <span
           key={c.key}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
           {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
-          <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
+          {(!nameControl || c.label !== PANE_DISPLAY_NAME[row.paneId]) && (
+            <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
+          )}
           <span style={valueCellStyle}>{c.formatted}</span>
         </span>
       ))}
@@ -855,7 +738,16 @@ function PaneLegendOverlay({
     target: PaneDropTarget | null;
   };
   const [paneDrag, setPaneDrag] = useState<PaneDragState | null>(null);
+  const chipMenuRef = useRef<HTMLDivElement>(null);
   const [chipMenu, setChipMenu] = useState<{ pane: PaneId; x: number; y: number } | null>(null);
+  // Measure the open menu before paint so names at either edge remain usable.
+  useLayoutEffect(() => {
+    const menu = chipMenuRef.current;
+    const container = containerRef.current;
+    if (!chipMenu || !menu || !container) return;
+    menu.style.left = `${Math.max(0, Math.min(chipMenu.x, container.clientWidth - menu.offsetWidth))}px`;
+    menu.style.top = `${Math.max(0, Math.min(chipMenu.y + 6, container.clientHeight - menu.offsetHeight))}px`;
+  }, [chipMenu]);
   const dragOriginRef = useRef<{
     pane: PaneId; label: string; fromMerged: boolean; startX: number; startY: number;
   } | null>(null);
@@ -1313,11 +1205,11 @@ function PaneLegendOverlay({
       ref={containerRef}
       data-testid="pane-legend-overlay"
       // pointer-events:none keeps the crosshair alive under the legend; only
-      // the icon buttons re-enable hits (iconBtnStyle).
+      // names and icon buttons re-enable hits (iconBtnStyle).
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
     >
       {/* 마운트된 pane 그룹 순서로 순회 — 레전드 행이 없는 pane 도 래퍼를 받아
-          ↑/↓ 순서 컨트롤을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더.
+          왼쪽 이름 핸들을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더.
           병합 pane 은 멤버들의 행을 그룹 순서대로 이어 붙인다. */}
       {groups.map((group, idx) => {
         const paneId = group[0].name;
@@ -1325,14 +1217,24 @@ function PaneLegendOverlay({
         // Pane not mounted yet (first frame after a toggle/reorder) → skip;
         // self-heals next tick once chart.panes() includes it.
         if (idx >= paneTops.length) return null;
-        const paneRows = group.flatMap((member) => rowsByPane.get(member.name) ?? []);
-        const showMoveControls = idx > 0; // 캔들은 고정
-        if (paneRows.length === 0 && !showMoveControls) return null;
+        // 값이 없거나 값 레전드를 숨긴 pane 도 이름 핸들은 항상 제공한다.
+        // 빈 cells 행을 써 데이터가 도착해도 드래그 핸들의 DOM 을 유지한다.
+        const paneRows = group.flatMap<LegendRow>((member) => {
+          const memberRows = rowsByPane.get(member.name) ?? [];
+          return idx > 0 && !memberRows.some((row) => row.kind === 'cells')
+            ? [{
+              kind: 'cells', paneId: member.name, title: PANE_DISPLAY_NAME[member.name], cells: [],
+              toggleKey: group.length > 1 ? member.legendToggleKey : undefined,
+            }, ...memberRows]
+            : memberRows;
+        });
+        const movable = idx > 0; // 캔들은 고정
+        if (paneRows.length === 0 && !movable) return null;
         // 컨트롤이 있는 pane 만 플롯 우측으로 클램프한다. 캔들은 폭을 그대로 둬서
         // OHLC 셀 드롭 컨테이너 쿼리(global.css `.legend-ohlc-*`)의 임계값을 건드리지
         // 않는다 — 그 쿼리는 캔들 pane 에만 적용되므로 다른 pane 이 좁아지는 것은 무해.
         const rightInset =
-          showMoveControls && plotWidth > 0
+          movable && plotWidth > 0
             ? `calc(100% - ${leftAxisPx + plotWidth}px + ${LEGEND_INSET})`
             : LEGEND_INSET;
         return (
@@ -1344,11 +1246,6 @@ function PaneLegendOverlay({
               left: leftInset,
               right: rightInset,
               display: 'flex',
-              // row — 이동 컨트롤이 legend 행과 **같은 줄** 우측에 붙는다(2026-08-18).
-              // 세로 스택이면 컨트롤이 legend 위 한 줄을 통째로 차지했다. 별도 절대배치
-              // 대신 같은 flex 행에 두는 이유는 겹침 방지 — 절대배치였다면 좁은 pane 에서
-              // legend 칩이 컨트롤 밑으로 파고들어 우측 끝 ✕ 가 **에러 없이** 안 눌린다
-              // (둘 다 pointerEvents:auto 라 위에 있는 쪽이 이긴다).
               flexDirection: 'row',
               alignItems: 'flex-start',
               gap: 'var(--space-xs)',
@@ -1366,9 +1263,7 @@ function PaneLegendOverlay({
               containerType: 'inline-size',
             }}
           >
-            {/* 좌측 = 행 스택. 캔들 pane 은 MA·일봉MA·flag 가 여러 줄 쌓이므로 column
-                을 유지한다. `minWidth: 0` 이 필수 — flex 자식의 기본 `min-width:auto`
-                는 축소를 거부해서, 없으면 긴 레전드가 우측 컨트롤을 pane 밖으로 민다. */}
+            {/* 모든 pane 이름·값·삭제 버튼은 왼쪽 행 스택에 모은다. */}
             {paneRows.length > 0 && (
               <div
                 data-testid={`pane-legend-rows-${paneId}`}
@@ -1380,91 +1275,61 @@ function PaneLegendOverlay({
                   minWidth: 0,
                 }}
               >
-                {paneRows.map((row) => (
-                  <div
-                    // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
-                    // key 충돌 예방.
-                    key={row.kind === 'flag'
-                      ? `${row.paneId}:flag:${row.type}:${row.instanceId}`
-                      : `${row.paneId}:${row.kind}`}
-                    // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
-                    // 행이다(global.css `.legend-row-ma`).
-                    className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
-                    style={boxStyle}
-                  >
-                    {row.kind === 'ohlc' ? (
-                      <OhlcLegendRow row={row} />
-                    ) : row.kind === 'ma' ? (
-                      <MaLegendRow row={row} />
-                    ) : row.kind === 'daily-ma' ? (
-                      <DailyMaLegendRow row={row} />
-                    ) : row.kind === 'flag' ? (
-                      <FlagLegendRow row={row} />
-                    ) : (
-                      <CellsLegendRow row={row} timeframe={timeframe} />
-                    )}
-                  </div>
-                ))}
+                {paneRows.map((row) => {
+                  const member = group.find((s) => s.name === row.paneId)!;
+                  const nameControl = idx > 0 && row.kind === 'cells' ? (
+                    <PaneChip
+                      paneId={member.name}
+                      label={PANE_DISPLAY_NAME[member.name]}
+                      axisBadge={(() => {
+                        if (group.length <= 1) return null;
+                        const mode = resolveAxisMode(paneGroupIds(group), paneAxisMode);
+                        if (mode === 'shared') return null;
+                        if (member === group[0]) return '축';
+                        return mode === 'left' && member === group[1] ? '좌축' : null;
+                      })()}
+                      dimmed={paneDrag?.pane === member.name}
+                      expanded={chipMenu?.pane === member.name}
+                      onClick={(e) => {
+                        // Native keyboard/assistive activation has no pointerup.
+                        if (e.detail !== 0) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const point = containerPoint({ clientX: rect.left, clientY: rect.bottom });
+                        setChipMenu((m) => m?.pane === member.name ? null : { pane: member.name, ...point });
+                      }}
+                      onPointerDown={chipPointerDown(member.name, PANE_DISPLAY_NAME[member.name], group.length > 1)}
+                      onPointerMove={chipPointerMove}
+                      onPointerUp={chipPointerUp}
+                      onPointerCancel={chipPointerCancel}
+                    />
+                  ) : undefined;
+                  return (
+                    <div
+                      // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
+                      // key 충돌 예방.
+                      key={row.kind === 'flag'
+                        ? `${row.paneId}:flag:${row.type}:${row.instanceId}`
+                        : `${row.paneId}:${row.kind}`}
+                      // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
+                      // 행이다(global.css `.legend-row-ma`).
+                      className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
+                      style={boxStyle}
+                    >
+                      {row.kind === 'ohlc' ? (
+                        <OhlcLegendRow row={row} />
+                      ) : row.kind === 'ma' ? (
+                        <MaLegendRow row={row} />
+                      ) : row.kind === 'daily-ma' ? (
+                        <DailyMaLegendRow row={row} />
+                      ) : row.kind === 'flag' ? (
+                        <FlagLegendRow row={row} />
+                      ) : (
+                        <CellsLegendRow row={row} timeframe={timeframe} nameControl={nameControl} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            {/* 우측 = 칩(드래그 핸들) + 이동 컨트롤 클러스터. DOM 순서도 행 뒤로
-                옮긴다(탭 순서 = 시각 순서). 칩이 이 기능의 핵심 진입점이다 —
-                끌면 병합/이동, 클릭하면 메뉴(비드래그 폴백). */}
-            {showMoveControls && (
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 'var(--space-2xs)',
-                  // pane 우측 정렬 — 종전 PaneMoveControls 의 auto 마진을 클러스터가
-                  // 물려받는다(legend 행 없는 pane 에서 유일 자식이어도 우측 유지).
-                  marginLeft: 'auto',
-                  flexShrink: 0,
-                  pointerEvents: 'none',
-                }}
-              >
-                {group.map((member) => (
-                  <PaneChip
-                    key={member.name}
-                    paneId={member.name}
-                    label={PANE_DISPLAY_NAME[member.name]}
-                    axisBadge={(() => {
-                      if (group.length <= 1) return null;
-                      const mode = resolveAxisMode(paneGroupIds(group), paneAxisMode);
-                      if (mode === 'shared') return null; // 한 축 — 소유 표시가 무의미
-                      if (member === group[0]) return '축';
-                      if (mode === 'left' && member === group[1]) return '좌축';
-                      return null;
-                    })()}
-                    showRemove={group.length > 1}
-                    onRemove={member.legendToggleKey
-                      ? () => indicatorActions.setPanePrefForTimeframe(
-                        timeframe, member.legendToggleKey!, false,
-                      )
-                      : null}
-                    dimmed={paneDrag?.pane === member.name}
-                    onPointerDown={chipPointerDown(
-                      member.name, PANE_DISPLAY_NAME[member.name], group.length > 1,
-                    )}
-                    onPointerMove={chipPointerMove}
-                    onPointerUp={chipPointerUp}
-                    onPointerCancel={chipPointerCancel}
-                  />
-                ))}
-                <PaneMoveControls
-                  paneId={paneId}
-                  // 이름은 `PANE_DISPLAY_NAME` 에서 온다 — `spec.legendTitle` 은 셀 앞
-                  // 제목 접두사라 대부분의 pane 에 일부러 없고, 그걸 쓰면 aria-label 이
-                  // `volume pane 위로 이동` 처럼 영문 paneId 로 샜다. 병합 pane 은
-                  // 멤버 이름을 '+' 로 이어 그룹 전체가 움직임을 말한다.
-                  label={group.map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')}
-                  idx={idx}
-                  mountedCount={Math.min(groups.length, paneTops.length)}
-                  upNeighbor={idx - 1 >= 0 ? groups[idx - 1][0].name : null}
-                  downNeighbor={idx + 1 < groups.length ? groups[idx + 1][0].name : null}
-                  paneGroups={paneGroups}
-                />
-              </span>
             )}
           </div>
         );
@@ -1590,7 +1455,7 @@ function PaneLegendOverlay({
         const secondName = groups[gi].length > 1 ? PANE_DISPLAY_NAME[groups[gi][1].name] : null;
         // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
         const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
-        const downGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
+        const downGroup = gi + 1 < Math.min(groups.length, paneTops.length) ? groups[gi + 1] : null;
         const commit = (next: PaneGroups): void => {
           indicatorActions.setPaneGroups(next);
           setChipMenu(null);
@@ -1617,12 +1482,15 @@ function PaneLegendOverlay({
         };
         return (
           <div
+            ref={chipMenuRef}
             data-testid="pane-chip-menu"
             style={{
               position: 'absolute',
               left: chipMenu.x,
               top: chipMenu.y + 6,
-              transform: 'translateX(-100%)',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              overflow: 'auto',
               zIndex: 8,
               pointerEvents: 'auto',
               background: 'var(--bg-card)',
@@ -1634,6 +1502,29 @@ function PaneLegendOverlay({
               flexDirection: 'column',
             }}
           >
+            {(['up', 'down'] as const).map((direction) => {
+              const neighbor = direction === 'up' ? upGroup : downGroup;
+              const text = direction === 'up' ? '위로 이동' : '아래로 이동';
+              return (
+                <button
+                  key={direction}
+                  type="button"
+                  data-testid={`pane-menu-move-${direction}`}
+                  disabled={!neighbor}
+                  aria-label={`${groups[gi].map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')} pane ${text}`}
+                  style={{ ...itemStyle, opacity: neighbor ? 1 : 0.4, cursor: neighbor ? 'pointer' : 'default' }}
+                  onMouseEnter={hoverOn}
+                  onMouseLeave={hoverOff}
+                  onClick={() => {
+                    if (neighbor) commit(movePaneGroupBeside(
+                      paneGroups, chipMenu.pane, neighbor[0].name, direction === 'up' ? 'before' : 'after',
+                    ));
+                  }}
+                >
+                  {merged ? `그룹 ${text}` : text}
+                </button>
+              );
+            })}
             {/* y축 모드 — 현재 모드를 제외한 나머지 둘을 항목으로 노출한다.
                 공유 = 전원이 오른쪽 축 하나(오토스케일 합산 — 단위가 다르면 한쪽이
                 눌린다), 분리 = 멤버별 격리 스케일(기본), 왼쪽 축 = 둘째 멤버 눈금을
