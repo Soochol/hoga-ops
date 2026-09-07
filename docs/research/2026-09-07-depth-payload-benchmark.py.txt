@@ -1,0 +1,14 @@
+import gzip,json
+from pathlib import Path
+from hoga.api.queries import QueryEngine
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.api.bundle import build_depth_heatmap_slice
+from hoga.config import resolve_data_dir
+engine=QueryEngine(resolve_data_dir());out=[]
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+ p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta)
+ points=build_depth_heatmap_slice(engine,code=code,date=date,source='hogaplay',bucket_ms=60000,session_open_ms=op,session_close_ms=cl,cache=None,today_kst=None)
+ full=[x.model_dump() for x in points];selected=[{k:v for k,v in x.items() if k in ('t_ms','asks','bids')} for x in full]
+ size=lambda x:len(json.dumps(x,separators=(',',':')).encode());compressed=lambda x:len(gzip.compress(json.dumps(x,separators=(',',':')).encode()))
+ out.append(dict(date=date,code=code,full_bytes=size(full),close_only_bytes=size(selected),full_gzip_bytes=compressed(full),close_only_gzip_bytes=compressed(selected)))
+Path('/tmp/depth-payload.json').write_text(json.dumps(out,indent=2));print(json.dumps(out,indent=2));engine.close()

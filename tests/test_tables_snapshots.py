@@ -3054,3 +3054,19 @@ def test_peak_record_sequence_same_snapshot_levels_deterministic() -> None:
     })
     records = _peak_record_sequence(df)
     assert [(r.qty, r.intra_ms) for r in records] == [(800, 1000)]
+
+
+def test_heatmap_equal_totals_and_equal_times_have_stable_level_tiebreak(tmp_path: Path) -> None:
+    # Both totals are 200. Lexicographic level order picks ask_q1=20 even when
+    # input order is reversed; same-time close representatives use it too.
+    obs = [_ob(ts_ms=90_000_000, seq=1, ask_q=(10,) * 10, bid_q=(10,) * 10),
+           _ob(ts_ms=90_000_000, seq=2, ask_q=(20,) * 10, bid_q=(0,) * 10)]
+    path = tmp_path / 'snapshots.parquet'
+    outputs = []
+    with duckdb.connect() as con:
+        for ordered in [obs, list(reversed(obs))]:
+            write_parquet(ordered, path)
+            outputs.append(snapshots.query_bucketed_depth_heatmap(con, path=path, bucket_ms=60_000))
+    assert outputs[0] == outputs[1]
+    assert outputs[0][0].ask_qtys == (20,) * 10
+    assert outputs[0][0].ask_qtys_max == (20,) * 10

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from fastapi import HTTPException
 
 from hoga import perf_debug
+from hoga.api.depth_heatmap_reaggregate import reaggregate_depth_heatmap
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.eligibility import is_expired_upstream_stub
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
@@ -1446,32 +1447,11 @@ def build_depth_heatmap_slice(
     ms_from_midnight_to_unix_ms(date, intra)로 unix 변환 — 호가비/총잔량 빌더와
     동일 규약. 잔량 0 단계도 그대로 실어 보낸다(프론트가 스킵).
 
-    형제 지표(호가비·체결강도·매도벽·POC)와 동일하게 완료된 과거일은
-    PastIndicatorsCache로 1회 계산 후 재사용한다(ADR-0043/0090 게이트를
-    ``_indicator_cacheable``로 자가-해석). ratio/fill 과 달리 1m 저장+재집계가
-    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
-
-    ⚠ **그 이유로 적혀 있던 근거는 이미 무효다(2026-08-29 확인).** 종전 설명은
-    "대표 선택이 조건부 argmax라 1m 행에서 coarse 대표를 복원할 수 없다" 였는데,
-    ADR-0062 v3 가 유효 스냅샷을 WHERE 로 사전 필터하면서 **대표는 그냥 버킷의
-    마지막 행**(``rep_key = intra_ms``)이 됐다 — `query_bucketed_depth_heatmap`
-    docstring 이 "종전 is_pre CASE + last-in-bucket 폴백 방출을 대체" 라고 적는다.
-    즉 `rep` 는 ratio 의 last-in-window 와 동형이라 재집계가 가능하다.
-
-    그런데도 안 하는 **현재의** 이유는 둘이고, 근거의 성격이 다르다:
-    ① `rep_max`(총잔량 최대 스냅샷)를 파생하려면 정렬 키인 ``total`` 이 필요한데
-       그 값이 `DepthHeatmapPoint` 에 없다 — `peak_rep` 같은 보조 kind 가 필요하다.
-    ② peak 이 겪은 "정본" 문제(`_peak_with_rep_outputs` 참조)가 `arg_max` 동률에서
-       재발할 수 있어 등가성 테스트 + `KIND_VERSIONS["depth"]` 범프가 전제다.
-
-    착수 판단용 실측(2026-08-29, 005930 hogaplay 20일): 봉별 콜드 계산이 1분
-    **3.39s** · 5분 1.51s · 15분 1.14s 다 — peak 과 달리 **비용이 버킷 수에
-    비례**하므로 "1분에서 파생" 이 자동으로 이득은 아니다. 다만 워크스페이스 기본
-    봉이 `1m` 이라(`frontend/src/state/liveDefaultLayout.ts`) 1분 계산은 대개 어차피
-    발생하고, **1분 캐시가 있을 때만 파생**하는 기회주의적 형태면 손해 시나리오가
-    사라진다. 봉 3종을 도는 사용자 기준 6.04s → 3.4s.
-
-    오늘은 프로모션 진행 중이라 항상 재계산.
+    완료된 과거일은 요청 봉별 결과를 캐시한다. coarse 캐시가 없지만 유효한
+    1분 캐시가 이미 있으면 원시 스캔 없이 파생한다. 1분 캐시를 새로 만들지는
+    않는다 — 처음부터 큰 봉을 요청한 경우 1분 집계가 오히려 비싸기 때문이다.
+    총잔량은 캐시의 20레벨 합으로 복원하고 동률은 레벨 tuple로 정규화한다
+    (depth cache v9). 오늘은 기존 short-TTL 요청 봉별 계산을 유지한다.
 
     ``session_open_ms``는 개장 동시호가 배제의 하한(ADR-0062 v3) — 쿼리의 공용 술어
     ``_book_indicator_eligible_sql``로 전달된다. 호가비·매도벽과 동일 규칙.
@@ -1489,6 +1469,12 @@ def build_depth_heatmap_slice(
         cached = cache.get_depth(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    if cacheable and bucket_ms > _ONE_MINUTE_MS and bucket_ms % _ONE_MINUTE_MS == 0:
+        one_minute = cache.get_depth(code, date, source, _ONE_MINUTE_MS, venue=venue)
+        if one_minute is not CACHE_MISS:
+            out = reaggregate_depth_heatmap(one_minute, date=date, bucket_ms=bucket_ms)
+            cache.store_depth(code, date, source, bucket_ms, out, venue=venue)
+            return out
     # ADR-0090: 오늘자는 디스크 캐시 금지(프로모션 중)라 형제 지표(ratio/fill/peak)처럼
     # short-TTL 프로세스 캐시로 순차 반복(관심종목 전환 버스트)을 흡수한다. 항목이
     # ~1.5MB로 크지만 TODAY_TTL은 오늘 항목만 보유하고 put마다 만료분을 청소하므로

@@ -1,0 +1,23 @@
+import time,statistics,json
+from pathlib import Path
+from hoga.api.queries import QueryEngine
+from hoga.api.bundle import build_depth_heatmap_slice
+from hoga.api.depth_heatmap_reaggregate import reaggregate_depth_heatmap
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.config import resolve_data_dir
+engine=QueryEngine(resolve_data_dir());results=[]
+def median(f):
+ f();xs=[]
+ for _ in range(5):
+  t=time.perf_counter();f();xs.append((time.perf_counter()-t)*1000)
+ return round(statistics.median(xs),3)
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+ p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta)
+ kw=dict(code=code,date=date,source='hogaplay',session_open_ms=op,session_close_ms=cl,cache=None,today_kst=None)
+ points=build_depth_heatmap_slice(engine,**kw,bucket_ms=60000)
+ for bucket in [300000,420000,900000]:
+  direct=lambda:build_depth_heatmap_slice(engine,**kw,bucket_ms=bucket)
+  derive=lambda:reaggregate_depth_heatmap(points,date=date,bucket_ms=bucket)
+  assert direct()==derive()
+  results.append(dict(date=date,code=code,bucket_ms=bucket,direct_median_ms=median(direct),derive_median_ms=median(derive),exact_equal=True))
+Path('/tmp/depth-production-benchmark.json').write_text(json.dumps(results,indent=2));print(json.dumps(results,indent=2));engine.close()

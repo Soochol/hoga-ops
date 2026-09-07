@@ -1517,6 +1517,9 @@ def query_bucketed_depth_heatmap(
             intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
         )
 
+    # depth cache v9: ties have a canonical representative so 1m → coarse
+    # aggregation is independent of DuckDB hash/input order. For max total,
+    # the 40-field level tuple breaks ties and is recoverable from cached wire.
     level_cols = []
     for i in range(1, ORDERBOOK_LEVELS + 1):
         level_cols.append(f"ask_p{i} := ask_p{i}")
@@ -1550,8 +1553,10 @@ def query_bucketed_depth_heatmap(
         ),
         reps AS (
           SELECT bucket,
-                 arg_max(struct_pack({struct_body}), rep_key) AS rep,
-                 arg_max(struct_pack({struct_body}), total) AS rep_max
+                 arg_max(struct_pack({struct_body}),
+                         struct_pack(t := rep_key, levels := struct_pack({struct_body}))) AS rep,
+                 arg_max(struct_pack({struct_body}),
+                         struct_pack(total := total, levels := struct_pack({struct_body}))) AS rep_max
           FROM keyed
           GROUP BY bucket
         ),

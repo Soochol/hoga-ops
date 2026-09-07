@@ -18,5 +18,12 @@
 
 - [x] 공통 집계 및 bounded cache
 - [x] 정확한 cutoff 인덱스와 실데이터 측정
-- [ ] 히트맵 재집계 및 선택 응답 판단
-- [ ] 전체 검증·PR·머지
+- [x] 히트맵 재집계 및 선택 응답 판단
+- [x] 전체 검증·PR·머지
+
+## 실행 결과
+
+- 공통 bin 집계·정확한 cutoff 인덱스: PR #1757, v0.12.42.0. 108회 실데이터 스크럽은 4,728→139ms / 1,687→56ms / 196→10ms. 최초 인덱스 비용과 32MiB payload 상한은 [측정 보고서](../research/2026-09-07-shared-binning-performance.md)에 기록했다.
+- 히트맵 1분→coarse: v0.12.43.0. 직접/파생 전체 wire 동등성, 동률 정본, v8 캐시 거부를 검증했다. 디스크 읽기·저장 포함 5분 조회는 71→32ms / 76→29ms / 36→30ms. [측정 보고서](../research/2026-09-07-depth-reaggregate-performance.md) 참조.
+- 선택 응답은 바이트 절감은 확인했으나 실제 네트워크·토글 지연 비교가 없어 계획의 조건에 따라 세 소스 즉시 전환을 유지했다. 추가 UI/API 변경은 하지 않는다.
+- 최종 검증: Ruff, backend 4,798 passed / 2 skipped / 13 wallclock deselected, frontend typecheck·Vitest 7,138개·Vite build 통과. 프론트 코드 변경은 없었다.
