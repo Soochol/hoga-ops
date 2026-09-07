@@ -1,0 +1,26 @@
+[
+  {
+    "date": "20260623",
+    "code": "000660",
+    "full_bytes": 428789,
+    "close_only_bytes": 112148,
+    "full_gzip_bytes": 90564,
+    "close_only_gzip_bytes": 26754
+  },
+  {
+    "date": "20260904",
+    "code": "005930",
+    "full_bytes": 390882,
+    "close_only_bytes": 131344,
+    "full_gzip_bytes": 74135,
+    "close_only_gzip_bytes": 31568
+  },
+  {
+    "date": "20260904",
+    "code": "287840",
+    "full_bytes": 302471,
+    "close_only_bytes": 97946,
+    "full_gzip_bytes": 20181,
+    "close_only_gzip_bytes": 8683
+  }
+]

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.43.0] - 2026-09-07
+
+### Changed
+- 과거 히트맵의 1분 캐시가 이미 있으면 5·15분 등 큰 봉을 원시 호가 재조회 없이 계산한다. 캐시가 없으면 요청한 봉으로 바로 조회한다. 최대 총잔량이 같을 때 레벨 값으로 대표를 일관되게 선택해 직접 조회와 재집계가 같은 결과를 내며, 이 규칙 적용을 위해 히트맵 캐시 버전을 갱신한다.
+
 ## [0.12.42.0] - 2026-09-07
 
 ### Changed

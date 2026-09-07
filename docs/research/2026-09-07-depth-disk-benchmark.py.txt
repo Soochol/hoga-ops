@@ -1,0 +1,24 @@
+import tempfile,time,json,statistics
+from pathlib import Path
+from hoga.api.queries import QueryEngine
+from hoga.api.bundle import build_depth_heatmap_slice
+from hoga.api.past_indicators_cache import PastIndicatorsCache
+from hoga.api.invariants import normalize_session_bounds,indicator_session_bounds
+from hoga.config import resolve_data_dir
+engine=QueryEngine(resolve_data_dir());out=[]
+for date,code in [('20260623','000660'),('20260904','005930'),('20260904','287840')]:
+ p=engine.parquet_dir(date,code,'hogaplay',venue='KRX');meta,_=normalize_session_bounds(json.loads((p/'meta.json').read_text()));op,cl=indicator_session_bounds(meta)
+ kw=dict(code=code,date=date,source='hogaplay',session_open_ms=op,session_close_ms=cl,today_kst='20260907')
+ one=build_depth_heatmap_slice(engine,**kw,bucket_ms=60000,cache=None);measurements={}
+ for mode in ['no_base','disk_base']:
+  xs=[]
+  for _ in range(5):
+   with tempfile.TemporaryDirectory() as root:
+    if mode=='disk_base':PastIndicatorsCache(Path(root)).store_depth(code,date,'hogaplay',60000,one)
+    cache=PastIndicatorsCache(Path(root))
+    t=time.perf_counter();result=build_depth_heatmap_slice(engine,**kw,bucket_ms=300000,cache=cache);xs.append((time.perf_counter()-t)*1000)
+    if mode=='no_base':expected=result
+    else:assert result==expected
+  measurements[mode+'_median_ms']=round(statistics.median(xs),3)
+ out.append(dict(date=date,code=code,**measurements,exact_equal=True))
+Path('/tmp/depth-disk-benchmark.json').write_text(json.dumps(out,indent=2));print(json.dumps(out,indent=2));engine.close()
