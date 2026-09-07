@@ -1,0 +1,11 @@
+{
+  "link_type": "wireless",
+  "cumulative_host_counters": {
+    "rx_packets": 93099215,
+    "rx_errors": 0,
+    "rx_dropped": 0,
+    "tx_packets": 30702328,
+    "tx_errors": 0,
+    "tx_dropped": 66
+  }
+}

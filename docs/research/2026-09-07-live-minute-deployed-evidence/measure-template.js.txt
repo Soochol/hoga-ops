@@ -1,0 +1,43 @@
+return (async()=>{
+ const code=TARGET_CODE,name=TARGET_NAME;
+ const nav=await import('/src/live/liveNavigate.ts');
+ const original=window.fetch,requests=[],samples=[],errors=[],longtasks=[];
+ const started=performance.now(),ms=()=>Math.round(performance.now()-started);
+ const onError=e=>errors.push({ms:ms(),message:String(e.message||e.reason)});
+ window.addEventListener('error',onError);window.addEventListener('unhandledrejection',onError);
+ const observer=new PerformanceObserver(list=>{for(const e of list.getEntries())longtasks.push({ms:Math.round(e.startTime-started),duration:Math.round(e.duration)});});
+ observer.observe({type:'longtask'});
+ window.fetch=async function(input,init){
+  const url=new URL(String(input?.url||input),location.origin),p=url.searchParams;
+  if(p.get('code')!==code)return original.apply(this,arguments);
+  const row={path:url.pathname,from:p.get('from'),to:p.get('to'),mode:p.get('mode'),price:p.has('volume_distribution_bins'),start:ms()};requests.push(row);
+  try{
+   const response=await original.apply(this,arguments);row.headers=ms();row.status=response.status;
+   const json=response.json.bind(response);
+   response.json=async()=>{
+    const t=ms(),data=await json();row.done=ms();row.parse=row.done-t;
+    row.candles=data.candles?.length;row.cached=data.cached_dates;row.fresh=data.fresh_dates;
+    row.deferred=data.deferred_dates;row.warnings=data.data_warnings;
+    row.points=Object.fromEntries(['ask_peaks','bid_peaks','depth_heatmap','volume_distributions','trade_volume_pocs','broker_late_entries','program_trade','quote_ratio','fill_strength'].filter(k=>data[k]!=null).map(k=>[k,Array.isArray(data[k])?data[k].length:data[k].points?.length]));
+    return data;
+   };return response;
+  }catch(e){row.error=String(e);row.done=ms();throw e;}
+ };
+ const sample=()=>{
+  const c=window.__liveCharts?.get(window.__deployedProbeWindow);
+  const panes=c?.panes().map((p,i)=>({i,series:p.getSeries().map(s=>({type:s.seriesType(),count:s.data().filter(r=>r.close!=null||r.value!=null).length}))}))||[];
+  const candleSeries=c?.panes().flatMap(p=>p.getSeries()).find(s=>s.seriesType()==='Candlestick');
+  const candles=candleSeries?.data().filter(r=>r.close!=null)||[];
+  const cover=[...document.querySelectorAll('[data-testid="chart-reveal-cover"]')].map(e=>e.style.opacity).join(',');
+  const row={ms:ms(),candles:candles.length,cover,panes,range:c?.timeScale().getVisibleLogicalRange(),lastIndex:candles.length?c.timeScale().timeToIndex(candles.at(-1).time,false):null};
+  if(!samples.length||JSON.stringify({...row,ms:0})!==JSON.stringify({...samples.at(-1),ms:0}))samples.push(row);
+ };
+ const timer=setInterval(sample,75);
+ try{
+  nav.activateLiveCode(code,name);
+  await new Promise(r=>setTimeout(r,20000));sample();
+ }finally{
+  clearInterval(timer);window.fetch=original;observer.disconnect();window.removeEventListener('error',onError);window.removeEventListener('unhandledrejection',onError);
+ }
+ return JSON.stringify({code,name,measuredAt:new Date().toISOString(),requests,samples,longtasks,errors,firstVisible:samples.find(r=>r.candles>0&&r.cover==='0'),final:samples.at(-1)});
+})();

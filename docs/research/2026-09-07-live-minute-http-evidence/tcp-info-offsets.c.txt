@@ -1,0 +1,4 @@
+#include <stdio.h>
+#include <stddef.h>
+#include <linux/tcp.h>
+int main(){printf("{\"rtt_us\":%zu,\"total_retrans\":%zu,\"rcv_ooopack\":%zu,\"segs_in\":%zu}\n",offsetof(struct tcp_info,tcpi_rtt),offsetof(struct tcp_info,tcpi_total_retrans),offsetof(struct tcp_info,tcpi_rcv_ooopack),offsetof(struct tcp_info,tcpi_segs_in));}

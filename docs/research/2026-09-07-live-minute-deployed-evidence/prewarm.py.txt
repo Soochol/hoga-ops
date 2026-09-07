@@ -1,0 +1,39 @@
+import json,time
+from dataclasses import asdict
+from pathlib import Path
+from unittest.mock import patch
+from hoga.config import resolve_data_dir
+from hoga.api.queries import QueryEngine
+from hoga.api.peak_prewarm import prewarm,_session_bounds
+from hoga.api.bundle import build_depth_heatmap_slice
+from hoga.api.past_indicators_cache import CACHE_MISS
+from hoga.tables import snapshots as snapshots_tbl
+root=resolve_data_dir(); code='035420'; date='20260904'; sources=('hogaplay','kiwoom_live')
+args=dict(codes={code},dates={date},sources=sources,limit=2)
+e=QueryEngine(root);before=[]
+try:
+ c=e.indicators_cache
+ for source in sources: before.append(dict(source=source,ask=c.has_ask_peak(code,date,source,60000),bid=c.has_bid_peak(code,date,source,60000),depth=c.get_depth(code,date,source,60000) is not CACHE_MISS))
+finally:e.close()
+scans=[];original=snapshots_tbl.query_bucketed_depth_heatmap
+
+def measured(*a,**kw):
+ t=time.perf_counter()
+ try:return original(*a,**kw)
+ finally:scans.append(round((time.perf_counter()-t)*1000,3))
+with patch.object(snapshots_tbl,'query_bucketed_depth_heatmap',side_effect=measured): first=prewarm(root,**args)
+e=QueryEngine(root);reads=[]
+try:
+ with patch.object(snapshots_tbl,'query_bucketed_depth_heatmap',wraps=original) as query:
+  for source in sources:
+   bounds=_session_bounds(e,date,code,source,'KRX')
+   for bucket in [60000,300000]:
+    t=time.perf_counter()
+    rows=build_depth_heatmap_slice(e,code=code,date=date,source=source,venue='KRX',bucket_ms=bucket,session_open_ms=bounds[0],session_close_ms=bounds[1],today_kst='20260907')
+    reads.append(dict(source=source,bucket_ms=bucket,rows=len(rows),duration_ms=round((time.perf_counter()-t)*1000,3)))
+  warm_scans=query.call_count
+finally:e.close()
+repeat=prewarm(root,**args)
+result=dict(code=code,date=date,before=before,prewarm=asdict(first),raw_depth_scan_ms=scans,new_engine_reads=reads,warm_raw_scans=warm_scans,repeat=asdict(repeat))
+Path('/tmp/live-deployed-prewarm.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
+assert first.warmed==2 and first.failed==0 and warm_scans==0 and repeat.warmed==0 and repeat.skipped==2

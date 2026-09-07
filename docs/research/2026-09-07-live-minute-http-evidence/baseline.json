@@ -1,0 +1,2810 @@
+[
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 45.6,
+    "events": [
+      {
+        "event": "connection.connect_tcp.started",
+        "ms": 13.4
+      },
+      {
+        "event": "connection.connect_tcp.complete",
+        "ms": 355.96
+      },
+      {
+        "event": "connection.start_tls.started",
+        "ms": 356.01
+      },
+      {
+        "event": "connection.start_tls.complete",
+        "ms": 660.94
+      },
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 661.38
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 661.62
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 661.62
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 661.88
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 661.91
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 834.84
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 835.83
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 4121.35
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 4122.77
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 4122.82
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 160271,
+      "total_retrans": 0,
+      "rcv_ooopack": 0,
+      "segs_in": 17
+    },
+    "chunks": [
+      {
+        "ms": 0.06,
+        "bytes": 1006
+      },
+      {
+        "ms": 0.08,
+        "bytes": 1454
+      },
+      {
+        "ms": 0.16,
+        "bytes": 2926
+      },
+      {
+        "ms": 562.34,
+        "bytes": 7294
+      },
+      {
+        "ms": 562.47,
+        "bytes": 2920
+      },
+      {
+        "ms": 562.52,
+        "bytes": 5838
+      },
+      {
+        "ms": 562.58,
+        "bytes": 1454
+      },
+      {
+        "ms": 574.92,
+        "bytes": 2926
+      },
+      {
+        "ms": 574.96,
+        "bytes": 1460
+      },
+      {
+        "ms": 574.99,
+        "bytes": 1460
+      },
+      {
+        "ms": 575.01,
+        "bytes": 7272
+      },
+      {
+        "ms": 575.07,
+        "bytes": 1460
+      },
+      {
+        "ms": 632.22,
+        "bytes": 5860
+      },
+      {
+        "ms": 632.28,
+        "bytes": 1460
+      },
+      {
+        "ms": 632.3,
+        "bytes": 1460
+      },
+      {
+        "ms": 632.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 632.33,
+        "bytes": 1452
+      },
+      {
+        "ms": 632.35,
+        "bytes": 1412
+      },
+      {
+        "ms": 677.85,
+        "bytes": 16060
+      },
+      {
+        "ms": 719.04,
+        "bytes": 16384
+      },
+      {
+        "ms": 719.2,
+        "bytes": 1136
+      },
+      {
+        "ms": 719.59,
+        "bytes": 7300
+      },
+      {
+        "ms": 1334.99,
+        "bytes": 4412
+      },
+      {
+        "ms": 1335.07,
+        "bytes": 1460
+      },
+      {
+        "ms": 1335.09,
+        "bytes": 1452
+      },
+      {
+        "ms": 1335.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 1335.12,
+        "bytes": 1460
+      },
+      {
+        "ms": 1335.13,
+        "bytes": 1400
+      },
+      {
+        "ms": 1335.23,
+        "bytes": 2920
+      },
+      {
+        "ms": 1335.29,
+        "bytes": 1520
+      },
+      {
+        "ms": 1403.25,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.34,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.36,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.37,
+        "bytes": 1452
+      },
+      {
+        "ms": 1403.47,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.48,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.52,
+        "bytes": 1460
+      },
+      {
+        "ms": 1403.54,
+        "bytes": 1448
+      },
+      {
+        "ms": 2577.14,
+        "bytes": 12
+      },
+      {
+        "ms": 2577.21,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.23,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.25,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.27,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.29,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.32,
+        "bytes": 1452
+      },
+      {
+        "ms": 2577.34,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.35,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.36,
+        "bytes": 1460
+      },
+      {
+        "ms": 2577.38,
+        "bytes": 1379
+      },
+      {
+        "ms": 2577.48,
+        "bytes": 81
+      },
+      {
+        "ms": 2577.49,
+        "bytes": 1372
+      },
+      {
+        "ms": 2625.72,
+        "bytes": 88
+      },
+      {
+        "ms": 2625.77,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.79,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.81,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.82,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.82,
+        "bytes": 1452
+      },
+      {
+        "ms": 2625.83,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.84,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.84,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.85,
+        "bytes": 1460
+      },
+      {
+        "ms": 2625.86,
+        "bytes": 160
+      },
+      {
+        "ms": 2625.96,
+        "bytes": 1136
+      },
+      {
+        "ms": 3282.73,
+        "bytes": 164
+      },
+      {
+        "ms": 3282.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.82,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.84,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.85,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.87,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.88,
+        "bytes": 1452
+      },
+      {
+        "ms": 3282.9,
+        "bytes": 2920
+      },
+      {
+        "ms": 3282.91,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.93,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.94,
+        "bytes": 1460
+      },
+      {
+        "ms": 3282.96,
+        "bytes": 91
+      },
+      {
+        "ms": 3285.35,
+        "bytes": 1369
+      },
+      {
+        "ms": 3285.41,
+        "bytes": 1460
+      },
+      {
+        "ms": 3285.44,
+        "bytes": 1460
+      },
+      {
+        "ms": 3285.45,
+        "bytes": 507
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 160271,
+      "total_retrans": 0,
+      "rcv_ooopack": 41,
+      "segs_in": 177
+    },
+    "rows": 900,
+    "ms": 4124.84,
+    "queue_and_pacing_ms": 0.11
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 4170.64,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 0.38
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 0.57
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 0.57
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 0.63
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 0.64
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 597.84
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 598.37
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 9279.77
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 9280.91
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 9280.96
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 157491,
+      "total_retrans": 0,
+      "rcv_ooopack": 41,
+      "segs_in": 191
+    },
+    "chunks": [
+      {
+        "ms": 0.08,
+        "bytes": 14146
+      },
+      {
+        "ms": 24.19,
+        "bytes": 5832
+      },
+      {
+        "ms": 255.45,
+        "bytes": 7300
+      },
+      {
+        "ms": 448.46,
+        "bytes": 4380
+      },
+      {
+        "ms": 448.51,
+        "bytes": 1008
+      },
+      {
+        "ms": 1122.3,
+        "bytes": 8753
+      },
+      {
+        "ms": 1236.19,
+        "bytes": 11680
+      },
+      {
+        "ms": 3839.3,
+        "bytes": 13140
+      },
+      {
+        "ms": 6631.38,
+        "bytes": 14600
+      },
+      {
+        "ms": 8386.1,
+        "bytes": 14600
+      },
+      {
+        "ms": 8386.2,
+        "bytes": 1460
+      },
+      {
+        "ms": 8484.74,
+        "bytes": 16060
+      },
+      {
+        "ms": 8536.45,
+        "bytes": 16060
+      },
+      {
+        "ms": 8594.81,
+        "bytes": 16384
+      },
+      {
+        "ms": 8607.34,
+        "bytes": 4056
+      },
+      {
+        "ms": 8666.71,
+        "bytes": 14209
+      },
+      {
+        "ms": 8666.77,
+        "bytes": 2167
+      },
+      {
+        "ms": 8681.34,
+        "bytes": 10799
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 157491,
+      "total_retrans": 0,
+      "rcv_ooopack": 65,
+      "segs_in": 352
+    },
+    "rows": 900,
+    "ms": 9282.38,
+    "queue_and_pacing_ms": 0.07
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 13453.35,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 0.16
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 0.28
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 0.28
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 0.32
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 0.32
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 38.5
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 38.98
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 1382.35
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 1383.71
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 1383.8
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 122813,
+      "total_retrans": 0,
+      "rcv_ooopack": 65,
+      "segs_in": 369
+    },
+    "chunks": [
+      {
+        "ms": 0.09,
+        "bytes": 14146
+      },
+      {
+        "ms": 10.94,
+        "bytes": 7293
+      },
+      {
+        "ms": 11.85,
+        "bytes": 2920
+      },
+      {
+        "ms": 22.23,
+        "bytes": 5840
+      },
+      {
+        "ms": 36.23,
+        "bytes": 2920
+      },
+      {
+        "ms": 45.99,
+        "bytes": 8760
+      },
+      {
+        "ms": 58.46,
+        "bytes": 2920
+      },
+      {
+        "ms": 113.38,
+        "bytes": 8760
+      },
+      {
+        "ms": 139.32,
+        "bytes": 5840
+      },
+      {
+        "ms": 163.77,
+        "bytes": 1460
+      },
+      {
+        "ms": 200.98,
+        "bytes": 16384
+      },
+      {
+        "ms": 201.14,
+        "bytes": 1136
+      },
+      {
+        "ms": 214.22,
+        "bytes": 7300
+      },
+      {
+        "ms": 1247.66,
+        "bytes": 2887
+      },
+      {
+        "ms": 1247.74,
+        "bytes": 4405
+      },
+      {
+        "ms": 1285.09,
+        "bytes": 8727
+      },
+      {
+        "ms": 1285.15,
+        "bytes": 1485
+      },
+      {
+        "ms": 1290.92,
+        "bytes": 4380
+      },
+      {
+        "ms": 1303.67,
+        "bytes": 16384
+      },
+      {
+        "ms": 1309.53,
+        "bytes": 4056
+      },
+      {
+        "ms": 1310.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 1320.78,
+        "bytes": 15691
+      },
+      {
+        "ms": 1320.82,
+        "bytes": 685
+      },
+      {
+        "ms": 1335.74,
+        "bytes": 16384
+      },
+      {
+        "ms": 1343.33,
+        "bytes": 14411
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 122813,
+      "total_retrans": 0,
+      "rcv_ooopack": 86,
+      "segs_in": 518
+    },
+    "rows": 900,
+    "ms": 1385.98,
+    "queue_and_pacing_ms": 0.03
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 14839.61,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 0.22
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 0.37
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 0.37
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 0.42
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 0.42
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 22.8
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 23.23
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 113.45
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 113.73
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 113.79
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 95457,
+      "total_retrans": 0,
+      "rcv_ooopack": 86,
+      "segs_in": 523
+    },
+    "chunks": [
+      {
+        "ms": 0.09,
+        "bytes": 2466
+      },
+      {
+        "ms": 7.96,
+        "bytes": 16384
+      },
+      {
+        "ms": 15.9,
+        "bytes": 12816
+      },
+      {
+        "ms": 16.89,
+        "bytes": 2920
+      },
+      {
+        "ms": 16.99,
+        "bytes": 4380
+      },
+      {
+        "ms": 23.86,
+        "bytes": 10220
+      },
+      {
+        "ms": 23.9,
+        "bytes": 5840
+      },
+      {
+        "ms": 30.9,
+        "bytes": 5816
+      },
+      {
+        "ms": 30.94,
+        "bytes": 16
+      },
+      {
+        "ms": 31.35,
+        "bytes": 7300
+      },
+      {
+        "ms": 38.47,
+        "bytes": 8760
+      },
+      {
+        "ms": 38.56,
+        "bytes": 4380
+      },
+      {
+        "ms": 54.6,
+        "bytes": 13140
+      },
+      {
+        "ms": 61.44,
+        "bytes": 8720
+      },
+      {
+        "ms": 61.47,
+        "bytes": 7656
+      },
+      {
+        "ms": 61.53,
+        "bytes": 1104
+      },
+      {
+        "ms": 61.54,
+        "bytes": 1460
+      },
+      {
+        "ms": 61.55,
+        "bytes": 1452
+      },
+      {
+        "ms": 61.55,
+        "bytes": 19
+      },
+      {
+        "ms": 67.64,
+        "bytes": 1441
+      },
+      {
+        "ms": 67.68,
+        "bytes": 1460
+      },
+      {
+        "ms": 67.68,
+        "bytes": 1460
+      },
+      {
+        "ms": 67.69,
+        "bytes": 8760
+      },
+      {
+        "ms": 67.7,
+        "bytes": 2912
+      },
+      {
+        "ms": 67.71,
+        "bytes": 315
+      },
+      {
+        "ms": 70.83,
+        "bytes": 1145
+      },
+      {
+        "ms": 70.86,
+        "bytes": 1460
+      },
+      {
+        "ms": 70.86,
+        "bytes": 1460
+      },
+      {
+        "ms": 70.87,
+        "bytes": 1430
+      },
+      {
+        "ms": 70.9,
+        "bytes": 30
+      },
+      {
+        "ms": 70.91,
+        "bytes": 1423
+      },
+      {
+        "ms": 78.08,
+        "bytes": 37
+      },
+      {
+        "ms": 78.13,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.15,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.16,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.18,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.19,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.2,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.22,
+        "bytes": 1452
+      },
+      {
+        "ms": 78.23,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.24,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.25,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.26,
+        "bytes": 1460
+      },
+      {
+        "ms": 78.27,
+        "bytes": 211
+      },
+      {
+        "ms": 82.68,
+        "bytes": 1249
+      },
+      {
+        "ms": 82.72,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.74,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.75,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.77,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.79,
+        "bytes": 1452
+      },
+      {
+        "ms": 82.81,
+        "bytes": 2920
+      },
+      {
+        "ms": 82.82,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.83,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.85,
+        "bytes": 473
+      },
+      {
+        "ms": 90.11,
+        "bytes": 987
+      },
+      {
+        "ms": 90.14,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.16,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.18,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.19,
+        "bytes": 508
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 95457,
+      "total_retrans": 0,
+      "rcv_ooopack": 86,
+      "segs_in": 672
+    },
+    "rows": 900,
+    "ms": 116.19,
+    "queue_and_pacing_ms": 0.03
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 16091.43,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 0.35
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 0.58
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 0.58
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 0.64
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 0.64
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 27.59
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 27.98
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 341.95
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 342.25
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 342.3
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 76716,
+      "total_retrans": 0,
+      "rcv_ooopack": 86,
+      "segs_in": 683
+    },
+    "chunks": [
+      {
+        "ms": 0.07,
+        "bytes": 3926
+      },
+      {
+        "ms": 5.25,
+        "bytes": 16384
+      },
+      {
+        "ms": 5.48,
+        "bytes": 1136
+      },
+      {
+        "ms": 5.53,
+        "bytes": 1452
+      },
+      {
+        "ms": 5.56,
+        "bytes": 2920
+      },
+      {
+        "ms": 11.48,
+        "bytes": 2920
+      },
+      {
+        "ms": 89.91,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.0,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.03,
+        "bytes": 1452
+      },
+      {
+        "ms": 90.06,
+        "bytes": 1447
+      },
+      {
+        "ms": 90.19,
+        "bytes": 13
+      },
+      {
+        "ms": 90.26,
+        "bytes": 13134
+      },
+      {
+        "ms": 90.28,
+        "bytes": 1295
+      },
+      {
+        "ms": 90.31,
+        "bytes": 4374
+      },
+      {
+        "ms": 90.33,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.34,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.35,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.36,
+        "bytes": 1460
+      },
+      {
+        "ms": 90.37,
+        "bytes": 1440
+      },
+      {
+        "ms": 102.22,
+        "bytes": 8772
+      },
+      {
+        "ms": 102.24,
+        "bytes": 1460
+      },
+      {
+        "ms": 102.25,
+        "bytes": 1460
+      },
+      {
+        "ms": 102.26,
+        "bytes": 1460
+      },
+      {
+        "ms": 102.27,
+        "bytes": 1460
+      },
+      {
+        "ms": 102.29,
+        "bytes": 1460
+      },
+      {
+        "ms": 102.3,
+        "bytes": 270
+      },
+      {
+        "ms": 103.08,
+        "bytes": 1136
+      },
+      {
+        "ms": 115.28,
+        "bytes": 54
+      },
+      {
+        "ms": 115.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.33,
+        "bytes": 560
+      },
+      {
+        "ms": 115.34,
+        "bytes": 1454
+      },
+      {
+        "ms": 115.35,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.36,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.37,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.39,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.4,
+        "bytes": 789
+      },
+      {
+        "ms": 115.45,
+        "bytes": 671
+      },
+      {
+        "ms": 115.46,
+        "bytes": 1460
+      },
+      {
+        "ms": 115.47,
+        "bytes": 775
+      },
+      {
+        "ms": 141.06,
+        "bytes": 2145
+      },
+      {
+        "ms": 141.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.12,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.13,
+        "bytes": 1452
+      },
+      {
+        "ms": 141.14,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.15,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.16,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.17,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.18,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.19,
+        "bytes": 1460
+      },
+      {
+        "ms": 141.2,
+        "bytes": 1035
+      },
+      {
+        "ms": 141.26,
+        "bytes": 1136
+      },
+      {
+        "ms": 229.11,
+        "bytes": 16384
+      },
+      {
+        "ms": 229.23,
+        "bytes": 6976
+      },
+      {
+        "ms": 247.57,
+        "bytes": 1460
+      },
+      {
+        "ms": 271.63,
+        "bytes": 16384
+      },
+      {
+        "ms": 282.06,
+        "bytes": 1136
+      },
+      {
+        "ms": 296.25,
+        "bytes": 16384
+      },
+      {
+        "ms": 313.9,
+        "bytes": 7808
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 76716,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 828
+    },
+    "rows": 900,
+    "ms": 344.72,
+    "queue_and_pacing_ms": 1135.37
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 17341.54,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 1.28
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 1.47
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 1.47
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 1.55
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 1.55
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 26.33
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 26.73
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 141.34
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 141.73
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 141.82
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 62752,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 834
+    },
+    "chunks": [
+      {
+        "ms": 0.05,
+        "bytes": 1006
+      },
+      {
+        "ms": 0.08,
+        "bytes": 1454
+      },
+      {
+        "ms": 0.29,
+        "bytes": 2926
+      },
+      {
+        "ms": 0.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 0.32,
+        "bytes": 1440
+      },
+      {
+        "ms": 10.8,
+        "bytes": 20
+      },
+      {
+        "ms": 10.89,
+        "bytes": 1460
+      },
+      {
+        "ms": 10.92,
+        "bytes": 1460
+      },
+      {
+        "ms": 10.95,
+        "bytes": 1460
+      },
+      {
+        "ms": 10.97,
+        "bytes": 1460
+      },
+      {
+        "ms": 11.1,
+        "bytes": 1455
+      },
+      {
+        "ms": 13.78,
+        "bytes": 5
+      },
+      {
+        "ms": 13.81,
+        "bytes": 1452
+      },
+      {
+        "ms": 13.83,
+        "bytes": 1460
+      },
+      {
+        "ms": 13.84,
+        "bytes": 1460
+      },
+      {
+        "ms": 13.86,
+        "bytes": 1460
+      },
+      {
+        "ms": 13.87,
+        "bytes": 1428
+      },
+      {
+        "ms": 21.91,
+        "bytes": 32
+      },
+      {
+        "ms": 22.0,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.03,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.06,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.08,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.12,
+        "bytes": 1386
+      },
+      {
+        "ms": 22.24,
+        "bytes": 74
+      },
+      {
+        "ms": 22.27,
+        "bytes": 1379
+      },
+      {
+        "ms": 32.5,
+        "bytes": 73
+      },
+      {
+        "ms": 32.57,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.59,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.6,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.62,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.63,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.64,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.66,
+        "bytes": 1338
+      },
+      {
+        "ms": 32.93,
+        "bytes": 122
+      },
+      {
+        "ms": 40.03,
+        "bytes": 1460
+      },
+      {
+        "ms": 40.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 40.13,
+        "bytes": 1460
+      },
+      {
+        "ms": 40.15,
+        "bytes": 1452
+      },
+      {
+        "ms": 46.28,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.33,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.35,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.37,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.39,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.4,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.42,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.44,
+        "bytes": 1406
+      },
+      {
+        "ms": 46.53,
+        "bytes": 54
+      },
+      {
+        "ms": 46.55,
+        "bytes": 1399
+      },
+      {
+        "ms": 46.6,
+        "bytes": 61
+      },
+      {
+        "ms": 46.61,
+        "bytes": 1460
+      },
+      {
+        "ms": 46.63,
+        "bytes": 1385
+      },
+      {
+        "ms": 51.33,
+        "bytes": 75
+      },
+      {
+        "ms": 51.38,
+        "bytes": 1452
+      },
+      {
+        "ms": 51.4,
+        "bytes": 1460
+      },
+      {
+        "ms": 51.42,
+        "bytes": 1460
+      },
+      {
+        "ms": 51.43,
+        "bytes": 1365
+      },
+      {
+        "ms": 52.49,
+        "bytes": 95
+      },
+      {
+        "ms": 52.5,
+        "bytes": 1460
+      },
+      {
+        "ms": 52.51,
+        "bytes": 1460
+      },
+      {
+        "ms": 52.51,
+        "bytes": 1460
+      },
+      {
+        "ms": 52.52,
+        "bytes": 1337
+      },
+      {
+        "ms": 55.51,
+        "bytes": 123
+      },
+      {
+        "ms": 55.54,
+        "bytes": 1460
+      },
+      {
+        "ms": 55.56,
+        "bytes": 1460
+      },
+      {
+        "ms": 55.58,
+        "bytes": 1460
+      },
+      {
+        "ms": 55.6,
+        "bytes": 1309
+      },
+      {
+        "ms": 62.83,
+        "bytes": 143
+      },
+      {
+        "ms": 62.9,
+        "bytes": 1460
+      },
+      {
+        "ms": 62.92,
+        "bytes": 1460
+      },
+      {
+        "ms": 62.94,
+        "bytes": 1460
+      },
+      {
+        "ms": 62.96,
+        "bytes": 1460
+      },
+      {
+        "ms": 62.98,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.0,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.02,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.03,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.05,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.07,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.09,
+        "bytes": 672
+      },
+      {
+        "ms": 63.11,
+        "bytes": 561
+      },
+      {
+        "ms": 81.9,
+        "bytes": 893
+      },
+      {
+        "ms": 81.96,
+        "bytes": 1460
+      },
+      {
+        "ms": 81.98,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.0,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.01,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.02,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.04,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.05,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.06,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.07,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.08,
+        "bytes": 1460
+      },
+      {
+        "ms": 82.1,
+        "bytes": 814
+      },
+      {
+        "ms": 84.96,
+        "bytes": 638
+      },
+      {
+        "ms": 84.99,
+        "bytes": 1460
+      },
+      {
+        "ms": 85.0,
+        "bytes": 1460
+      },
+      {
+        "ms": 85.02,
+        "bytes": 1460
+      },
+      {
+        "ms": 85.03,
+        "bytes": 1460
+      },
+      {
+        "ms": 85.04,
+        "bytes": 1460
+      },
+      {
+        "ms": 85.05,
+        "bytes": 456
+      },
+      {
+        "ms": 96.61,
+        "bytes": 1004
+      },
+      {
+        "ms": 96.67,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.7,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.73,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.75,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.77,
+        "bytes": 1452
+      },
+      {
+        "ms": 96.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.82,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.83,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.85,
+        "bytes": 1460
+      },
+      {
+        "ms": 96.87,
+        "bytes": 711
+      },
+      {
+        "ms": 97.33,
+        "bytes": 749
+      },
+      {
+        "ms": 97.37,
+        "bytes": 1460
+      },
+      {
+        "ms": 97.4,
+        "bytes": 1460
+      },
+      {
+        "ms": 97.41,
+        "bytes": 1460
+      },
+      {
+        "ms": 97.43,
+        "bytes": 1460
+      },
+      {
+        "ms": 97.45,
+        "bytes": 1452
+      },
+      {
+        "ms": 97.47,
+        "bytes": 353
+      },
+      {
+        "ms": 105.72,
+        "bytes": 1107
+      },
+      {
+        "ms": 105.74,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.75,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.76,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.77,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.79,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.81,
+        "bytes": 1460
+      },
+      {
+        "ms": 105.82,
+        "bytes": 1452
+      },
+      {
+        "ms": 105.83,
+        "bytes": 608
+      },
+      {
+        "ms": 110.74,
+        "bytes": 852
+      },
+      {
+        "ms": 110.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 110.8,
+        "bytes": 1729
+      },
+      {
+        "ms": 114.54,
+        "bytes": 5571
+      },
+      {
+        "ms": 114.56,
+        "bytes": 1460
+      },
+      {
+        "ms": 114.57,
+        "bytes": 1294
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 62752,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 991
+    },
+    "rows": 900,
+    "ms": 144.54,
+    "queue_and_pacing_ms": 905.16
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 18591.54,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 1.26
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 1.44
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 1.44
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 1.49
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 1.49
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 27.2
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 27.62
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 91.26
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 91.54
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 91.59
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 50758,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 998
+    },
+    "chunks": [
+      {
+        "ms": 0.06,
+        "bytes": 1006
+      },
+      {
+        "ms": 0.09,
+        "bytes": 1454
+      },
+      {
+        "ms": 0.29,
+        "bytes": 2926
+      },
+      {
+        "ms": 0.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 0.33,
+        "bytes": 2899
+      },
+      {
+        "ms": 1.09,
+        "bytes": 4401
+      },
+      {
+        "ms": 8.74,
+        "bytes": 1460
+      },
+      {
+        "ms": 8.76,
+        "bytes": 1452
+      },
+      {
+        "ms": 8.77,
+        "bytes": 1460
+      },
+      {
+        "ms": 8.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 8.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 8.79,
+        "bytes": 1435
+      },
+      {
+        "ms": 17.1,
+        "bytes": 25
+      },
+      {
+        "ms": 17.12,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.13,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.13,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.14,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.15,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.15,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.16,
+        "bytes": 1452
+      },
+      {
+        "ms": 17.16,
+        "bytes": 1387
+      },
+      {
+        "ms": 18.09,
+        "bytes": 73
+      },
+      {
+        "ms": 18.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 18.13,
+        "bytes": 1460
+      },
+      {
+        "ms": 18.15,
+        "bytes": 2826
+      },
+      {
+        "ms": 18.19,
+        "bytes": 94
+      },
+      {
+        "ms": 18.2,
+        "bytes": 2920
+      },
+      {
+        "ms": 18.23,
+        "bytes": 1460
+      },
+      {
+        "ms": 18.23,
+        "bytes": 1460
+      },
+      {
+        "ms": 18.24,
+        "bytes": 1455
+      },
+      {
+        "ms": 20.71,
+        "bytes": 1457
+      },
+      {
+        "ms": 20.73,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.68,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.69,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.7,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.7,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.71,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.72,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.72,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.73,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.74,
+        "bytes": 1399
+      },
+      {
+        "ms": 26.3,
+        "bytes": 61
+      },
+      {
+        "ms": 26.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 26.31,
+        "bytes": 1452
+      },
+      {
+        "ms": 26.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 26.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 26.33,
+        "bytes": 1372
+      },
+      {
+        "ms": 30.27,
+        "bytes": 88
+      },
+      {
+        "ms": 30.29,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.3,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.3,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.32,
+        "bytes": 1460
+      },
+      {
+        "ms": 30.33,
+        "bytes": 1452
+      },
+      {
+        "ms": 30.33,
+        "bytes": 1317
+      },
+      {
+        "ms": 32.37,
+        "bytes": 143
+      },
+      {
+        "ms": 32.41,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.43,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.45,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.46,
+        "bytes": 1289
+      },
+      {
+        "ms": 34.67,
+        "bytes": 171
+      },
+      {
+        "ms": 34.69,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.71,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.73,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.74,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.75,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.76,
+        "bytes": 1452
+      },
+      {
+        "ms": 34.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.79,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.8,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.82,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.84,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.85,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.87,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.88,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.89,
+        "bytes": 1460
+      },
+      {
+        "ms": 39.9,
+        "bytes": 1413
+      },
+      {
+        "ms": 43.86,
+        "bytes": 47
+      },
+      {
+        "ms": 43.89,
+        "bytes": 1452
+      },
+      {
+        "ms": 43.91,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.92,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.94,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.95,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.96,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.97,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.98,
+        "bytes": 1460
+      },
+      {
+        "ms": 43.99,
+        "bytes": 1460
+      },
+      {
+        "ms": 44.0,
+        "bytes": 1351
+      },
+      {
+        "ms": 47.54,
+        "bytes": 109
+      },
+      {
+        "ms": 47.58,
+        "bytes": 1460
+      },
+      {
+        "ms": 47.6,
+        "bytes": 1452
+      },
+      {
+        "ms": 47.61,
+        "bytes": 1460
+      },
+      {
+        "ms": 47.62,
+        "bytes": 1460
+      },
+      {
+        "ms": 47.64,
+        "bytes": 1460
+      },
+      {
+        "ms": 47.65,
+        "bytes": 1460
+      },
+      {
+        "ms": 47.66,
+        "bytes": 1310
+      },
+      {
+        "ms": 49.05,
+        "bytes": 150
+      },
+      {
+        "ms": 49.07,
+        "bytes": 1460
+      },
+      {
+        "ms": 49.09,
+        "bytes": 2920
+      },
+      {
+        "ms": 49.1,
+        "bytes": 1460
+      },
+      {
+        "ms": 49.11,
+        "bytes": 1282
+      },
+      {
+        "ms": 57.74,
+        "bytes": 178
+      },
+      {
+        "ms": 57.78,
+        "bytes": 1460
+      },
+      {
+        "ms": 57.8,
+        "bytes": 1452
+      },
+      {
+        "ms": 57.81,
+        "bytes": 1460
+      },
+      {
+        "ms": 57.83,
+        "bytes": 11805
+      },
+      {
+        "ms": 57.89,
+        "bytes": 1136
+      },
+      {
+        "ms": 63.51,
+        "bytes": 6031
+      },
+      {
+        "ms": 63.55,
+        "bytes": 2920
+      },
+      {
+        "ms": 63.57,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.58,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.6,
+        "bytes": 1460
+      },
+      {
+        "ms": 63.61,
+        "bytes": 508
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 50758,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 1149
+    },
+    "rows": 900,
+    "ms": 94.28,
+    "queue_and_pacing_ms": 1105.11
+  },
+  {
+    "api": "ka10080",
+    "base_dt": "20260907",
+    "upd": "0",
+    "start_ms": 19841.53,
+    "events": [
+      {
+        "event": "http11.send_request_headers.started",
+        "ms": 1.35
+      },
+      {
+        "event": "http11.send_request_headers.complete",
+        "ms": 1.54
+      },
+      {
+        "event": "http11.send_request_body.started",
+        "ms": 1.54
+      },
+      {
+        "event": "http11.send_request_body.complete",
+        "ms": 1.6
+      },
+      {
+        "event": "http11.receive_response_headers.started",
+        "ms": 1.6
+      },
+      {
+        "event": "http11.receive_response_headers.complete",
+        "ms": 20.93
+      },
+      {
+        "event": "http11.receive_response_body.started",
+        "ms": 21.25
+      },
+      {
+        "event": "http11.receive_response_body.complete",
+        "ms": 56.27
+      },
+      {
+        "event": "http11.response_closed.started",
+        "ms": 57.91
+      },
+      {
+        "event": "http11.response_closed.complete",
+        "ms": 57.97
+      }
+    ],
+    "tcp_before": {
+      "rtt_us": 40282,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 1168
+    },
+    "chunks": [
+      {
+        "ms": 0.05,
+        "bytes": 5386
+      },
+      {
+        "ms": 0.16,
+        "bytes": 5840
+      },
+      {
+        "ms": 0.17,
+        "bytes": 1445
+      },
+      {
+        "ms": 0.19,
+        "bytes": 15
+      },
+      {
+        "ms": 0.2,
+        "bytes": 1460
+      },
+      {
+        "ms": 0.22,
+        "bytes": 2914
+      },
+      {
+        "ms": 0.9,
+        "bytes": 7300
+      },
+      {
+        "ms": 5.9,
+        "bytes": 4380
+      },
+      {
+        "ms": 6.14,
+        "bytes": 4380
+      },
+      {
+        "ms": 6.19,
+        "bytes": 2920
+      },
+      {
+        "ms": 8.15,
+        "bytes": 13140
+      },
+      {
+        "ms": 8.31,
+        "bytes": 5840
+      },
+      {
+        "ms": 12.63,
+        "bytes": 13140
+      },
+      {
+        "ms": 12.81,
+        "bytes": 7274
+      },
+      {
+        "ms": 12.85,
+        "bytes": 19
+      },
+      {
+        "ms": 14.63,
+        "bytes": 2901
+      },
+      {
+        "ms": 14.67,
+        "bytes": 1471
+      },
+      {
+        "ms": 17.63,
+        "bytes": 11661
+      },
+      {
+        "ms": 17.66,
+        "bytes": 11
+      },
+      {
+        "ms": 17.92,
+        "bytes": 4369
+      },
+      {
+        "ms": 17.94,
+        "bytes": 1460
+      },
+      {
+        "ms": 17.96,
+        "bytes": 1452
+      },
+      {
+        "ms": 17.97,
+        "bytes": 1458
+      },
+      {
+        "ms": 22.56,
+        "bytes": 2
+      },
+      {
+        "ms": 22.58,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.6,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.61,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.63,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.64,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.65,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.66,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.68,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.69,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.7,
+        "bytes": 1452
+      },
+      {
+        "ms": 22.72,
+        "bytes": 1460
+      },
+      {
+        "ms": 22.73,
+        "bytes": 246
+      },
+      {
+        "ms": 23.03,
+        "bytes": 1214
+      },
+      {
+        "ms": 23.05,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.06,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.08,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.09,
+        "bytes": 1460
+      },
+      {
+        "ms": 23.1,
+        "bytes": 1347
+      },
+      {
+        "ms": 26.05,
+        "bytes": 113
+      },
+      {
+        "ms": 26.07,
+        "bytes": 1340
+      },
+      {
+        "ms": 29.29,
+        "bytes": 120
+      },
+      {
+        "ms": 29.31,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.33,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.34,
+        "bytes": 1452
+      },
+      {
+        "ms": 29.36,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.37,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.38,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.39,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.4,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.42,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.43,
+        "bytes": 1278
+      },
+      {
+        "ms": 29.52,
+        "bytes": 182
+      },
+      {
+        "ms": 29.53,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.55,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.56,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.57,
+        "bytes": 1460
+      },
+      {
+        "ms": 29.59,
+        "bytes": 1452
+      },
+      {
+        "ms": 29.6,
+        "bytes": 1244
+      },
+      {
+        "ms": 32.67,
+        "bytes": 216
+      },
+      {
+        "ms": 32.68,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.7,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.71,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.73,
+        "bytes": 1460
+      },
+      {
+        "ms": 32.74,
+        "bytes": 10292
+      },
+      {
+        "ms": 34.92,
+        "bytes": 2840
+      },
+      {
+        "ms": 34.94,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.95,
+        "bytes": 1460
+      },
+      {
+        "ms": 34.97,
+        "bytes": 4888
+      }
+    ],
+    "tcp_after": {
+      "rtt_us": 40282,
+      "total_retrans": 0,
+      "rcv_ooopack": 130,
+      "segs_in": 1302
+    },
+    "rows": 900,
+    "ms": 61.07,
+    "queue_and_pacing_ms": 1155.37
+  }
+]
