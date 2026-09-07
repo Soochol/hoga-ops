@@ -1,4 +1,4 @@
-"""과거일 **1분** 최대벽 캐시를 미리 채운다 — 콜드 비용을 사용자 대기 밖으로.
+"""과거일 **1분** 최대벽·히트맵 캐시를 미리 채운다 — 콜드 비용을 사용자 대기 밖으로.
 
 ## 왜 1분만 채우는가
 
@@ -10,6 +10,11 @@ peak 은 sidecar 콜드 비용의 74%(2026-08-19 실측)인데, 그 비용은 **
 파일을 채우고, 3m~240m 은 `_peak_slices_from_1m_cache` 가 스캔 없이 파생한다. 봉별로
 도는 것은 순수 낭비다 — 그렇게 만든 굵은 봉 캐시는 파생 경로 도입 이후 사실상 생성이
 멈췄다(이 머신 실측 15,952건 중 2026-08-19 이후 1건).
+
+히트맵도 같은 루프에서 1분 캐시를 준비한다. 2026-09-07 실측에서 최대벽 다음의
+cold 병목(5일 811ms)이었고, 기존 1분→굵은 봉 파생 경로를 그대로 이용할 수 있다.
+최대벽만 warm인 날짜도 히트맵이 없으면 대상이다. 상한·관심종목 우선·past-only
+정책은 두 지표가 공유하므로 별도 스케줄러나 사용자 요청 중 사전 계산은 없다.
 
 ## 왜 상위 함수(`build_ask_bid_peak_slices`)를 부르는가
 
@@ -163,7 +168,7 @@ def prewarm(
     engine: QueryEngine | None = None,
     dry_run: bool = False,
 ) -> PrewarmResult:
-    """캡처된 과거일의 1분 peak 캐시를 채운다. 멱등이고 증분이다.
+    """캡처된 과거일의 1분 peak·depth 캐시를 채운다. 멱등이고 증분이다.
 
     ``limit`` 은 **계산 건수** 상한이다(스캔이 아니라) — 이미 warm 인 것은 세지
     않으므로, 캐시가 다 찬 뒤의 실행은 상한에 닿지 않고 전량을 훑는다.
@@ -172,9 +177,14 @@ def prewarm(
     관심종목을 먼저 채우고 남은 예산으로 나머지를 채운다. 각 그룹 안은 최신순이며,
     ``codes``/``dates`` 는 우선순위와 무관하게 조회 범위를 제한한다.
 
-    ``dry_run`` 은 계산 없이 대상만 센다(디스크 stat 만).
+    ``dry_run`` 은 원본 지표 계산 없이 기존 캐시를 검사해 대상만 센다.
     """
-    from hoga.api.bundle import _today_kst_yyyymmdd, build_ask_bid_peak_slices  # noqa: PLC0415 — import cycle 회피
+    from hoga.api.bundle import (  # noqa: PLC0415 — import cycle 회피
+        CACHE_MISS,
+        _today_kst_yyyymmdd,
+        build_ask_bid_peak_slices,
+        build_depth_heatmap_slice,
+    )
     from hoga.api.watchlist import load_watchlist  # noqa: PLC0415 — 배치 진입 시 한 번 읽는다
 
     t0 = time.monotonic()
@@ -200,6 +210,7 @@ def prewarm(
             if (
                 cache.has_ask_peak(code, date, source, ONE_MINUTE_MS, venue=venue)
                 and cache.has_bid_peak(code, date, source, ONE_MINUTE_MS, venue=venue)
+                and cache.get_depth(code, date, source, ONE_MINUTE_MS, venue=venue) is not CACHE_MISS
             ):
                 skipped += 1
                 continue
@@ -215,6 +226,13 @@ def prewarm(
                 continue
             try:
                 build_ask_bid_peak_slices(
+                    engine,
+                    code=code, date=date, bucket_ms=ONE_MINUTE_MS,
+                    source=source, venue=venue,
+                    session_open_ms=bounds[0], session_close_ms=bounds[1],
+                    cache=cache, today_kst=today,
+                )
+                build_depth_heatmap_slice(
                     engine,
                     code=code, date=date, bucket_ms=ONE_MINUTE_MS,
                     source=source, venue=venue,

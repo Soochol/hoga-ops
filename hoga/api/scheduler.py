@@ -373,7 +373,7 @@ async def run_trading_stage(data_dir: Path) -> bool:
     except Exception:
         log.exception("daily run: deriv-flow catch-up failed; continuing")
 
-    # 과거일 1분 최대벽 캐시 warm — 콜드 sidecar 의 74%가 peak 이고(2026-08-19 실측)
+    # 과거일 1분 최대벽·히트맵 캐시 warm — 두 지표의 cold 계산을 미리 준비한다.
     # 1분 한 번이 모든 봉을 커버한다(근거는 peak_prewarm 모듈 docstring).
     #
     # **맨 마지막에 두는 것이 의도적이다.** 이 단계는 상한(`DEFAULT_LIMIT`)까지 돌면
@@ -387,7 +387,7 @@ async def run_trading_stage(data_dir: Path) -> bool:
         res = await asyncio.to_thread(peak_prewarm.prewarm, data_dir)
         if res.warmed or res.failed:
             log.info(
-                "daily run: peak prewarm warmed=%d skipped=%d failed=%d truncated=%s",
+                "daily run: peak/heatmap prewarm warmed=%d skipped=%d failed=%d truncated=%s",
                 res.warmed, res.skipped, res.failed, res.truncated,
             )
     except Exception:

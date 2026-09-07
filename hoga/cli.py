@@ -350,10 +350,11 @@ def peak_prewarm_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="대상만 세고 계산하지 않음"),
     code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
 ) -> None:
-    """과거일 **1분** 최대벽 캐시를 미리 채운다 — 콜드 sidecar 로드를 없앤다.
+    """과거일 **1분** 최대벽·히트맵 캐시를 미리 채운다.
 
     1분 한 번이 `ask_peak`·`bid_peak`·`peak_rep` 셋을 채우고 3m~240m 은 스캔 없이
-    파생되므로(실측 ~70배) 봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
+    파생된다. 히트맵도 1분 정본을 준비해 굵은 봉이 스캔 없이 파생되게 한다.
+    봉별로 돌 필요가 없다. 근거는 `hoga.api.peak_prewarm`
     모듈 docstring.
 
     같은 함수를 일일 런(17:00)이 상한 2000 으로 부른다 — 이 명령은 그 상한 없이
