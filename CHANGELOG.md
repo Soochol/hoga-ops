@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.44.0] - 2026-09-07
+
+### Changed
+- 일봉 첫 조회에서 과거 응답에 포함된 정상 오늘 봉을 재사용해 중복 요청을 줄인다. 오늘 봉이 없거나 데이터 검증·거래소 대체 조회가 필요한 경우 기존 조회를 유지하며, 재사용으로 캐시 유효 시간이 늘어나지 않도록 한다.
+
 ## [0.12.43.1] - 2026-09-07
 
 ### Fixed
