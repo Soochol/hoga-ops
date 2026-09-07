@@ -1,0 +1,12 @@
+return (async()=>{
+ const {useWorkspaceStore}=await import('/src/state/workspace.ts');
+ const {useLivePageStore}=await import('/src/state/livePage.ts');
+ const {windowScopeKey}=await import('/src/live/workspace/windowViewContext.ts');
+ const win=useWorkspaceStore.getState().windows.find(w=>w.kind==='chart');
+ useWorkspaceStore.getState().setChartTimeframe(win.id,'1m');
+ useLivePageStore.getState().patchIndicatorsScoped({windowKey:windowScopeKey(win.id)},'1m',{
+ askPeakEnabled:true,bidPeakEnabled:true,depthHeatmapEnabled:true,programTradeEnabled:true,
+ volumeDistributionEnabled:true,tradeVolumePocEnabled:true,quoteTotalsEnabled:true,quoteRatioEnabled:true,fillStrengthEnabled:true});
+ window.__deployedProbeWindow=win.id;
+ return JSON.stringify({window:win.id,code:useLivePageStore.getState().activeCode,timeframe:'1m'});
+})();

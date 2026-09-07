@@ -1,0 +1,73 @@
+import asyncio,json,time,tempfile,datetime,contextvars
+from pathlib import Path
+from unittest.mock import patch
+import httpx
+from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_capacity import KiwoomCapacityScheduler
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+from hoga.live.past_candles_cache import PastCandlesCache
+from hoga.live import kiwoom_rest_runtime
+from hoga.api import calendar as trading_calendar
+ctx=contextvars.ContextVar('trace',default=None)
+rows=[]
+class FrozenToken:
+ def __init__(self):self.token=json.loads(Path('/home/dev/.local/share/hoga-ops/data/.local/kiwoom-token-5.json').read_text())['access_token']
+ def get_token(self):return self.token
+ # No credential loading, token issuance, invalidation, or token-file writes.
+class Transport(httpx.AsyncBaseTransport):
+ def __init__(self,expiry):self.inner=httpx.AsyncHTTPTransport(retries=1,limits=httpx.Limits(keepalive_expiry=expiry))
+ async def handle_async_request(self,request):
+  row=ctx.get();t=time.perf_counter();row['events']=[]
+  async def trace(name,info):row['events'].append({'event':name,'ms':round((time.perf_counter()-t)*1000,2)})
+  request.extensions['trace']=trace
+  return await self.inner.handle_async_request(request)
+ async def aclose(self):await self.inner.aclose()
+class Client(KiwoomRestClient):
+ async def call(self,api_id,body,**kw):
+  t=time.perf_counter();row={'api':api_id,'base_dt':body.get('base_dt'),'upd':body.get('upd_stkpc_tp'),'start_ms':round((t-origin)*1000,2)};rows.append(row);token=ctx.set(row)
+  try:
+   result=await super().call(api_id,body,**kw);row['rows']=len(result.rows);return result
+  except Exception as e:row['error']=type(e).__name__;raise
+  finally:row['ms']=round((time.perf_counter()-t)*1000,2);ctx.reset(token)
+class Scheduler(KiwoomCapacityScheduler):
+ async def submit(self,*,key,api_id,priority,call):
+  start=time.perf_counter()
+  async def timed(client):
+   enter=time.perf_counter();v=await call(client)
+   if rows:rows[-1]['queue_and_pacing_ms']=round((enter-start)*1000,2)
+   return v
+  return await super().submit(key=key,api_id=api_id,priority=priority,call=timed)
+
+import socket,struct
+origin=time.perf_counter()
+class ChunkStream(httpx.AsyncByteStream):
+ def __init__(self,inner,row,sock):self.inner=inner;self.row=row;self.sock=sock
+ async def __aiter__(self):
+  start=time.perf_counter();self.row['chunks']=[]
+  async for chunk in self.inner:
+   self.row['chunks'].append({'ms':round((time.perf_counter()-start)*1000,2),'bytes':len(chunk)});yield chunk
+  self.row['tcp_after']=tcp(self.sock)
+ async def aclose(self):await self.inner.aclose()
+def tcp(sock):
+ try:
+  info=sock.getsockopt(socket.IPPROTO_TCP,socket.TCP_INFO,256)
+  return {k:struct.unpack_from('I',info,pos)[0] for k,pos in {'rtt_us':68,'total_retrans':100,'rcv_ooopack':224,'segs_in':140}.items()}
+ except Exception as e:return {'error':type(e).__name__}
+class ChunkTransport(Transport):
+ async def handle_async_request(self,request):
+  response=await super().handle_async_request(request);row=ctx.get();stream=response.extensions.get('network_stream');sock=stream.get_extra_info('socket')
+  row['tcp_before']=tcp(sock);response.stream=ChunkStream(response.stream,row,sock);return response
+async def main():
+ client=Client(FrozenToken(),transport=ChunkTransport(90));scheduler=Scheduler(workers=1,rate_per_sec=1)
+ try:
+  for i in range(8):
+   await scheduler.submit(key=('probe',i),api_id='ka10080',priority='user_visible',call=lambda _:client.call('ka10080',{'stk_cd':'005930','base_dt':'20260907','tic_scope':'1','upd_stkpc_tp':'0'}))
+ finally:await scheduler.aclose();await client.aclose()
+try:asyncio.run(main())
+finally:
+ Path('/tmp/minute-http-current-baseline.json').write_text(json.dumps(rows,indent=2))
+ for r in rows:print(json.dumps({k:v for k,v in r.items() if k!='events'}),flush=True)
+
+slow = [r for r in rows if r.get('ms', 0) > 1000]
+print(json.dumps({'verdict': 'SLOW_REPRODUCED' if slow else 'NOT_REPRODUCED', 'samples': len(rows), 'over_1000ms': len(slow)}), flush=True)
+raise SystemExit(1 if slow else 0)

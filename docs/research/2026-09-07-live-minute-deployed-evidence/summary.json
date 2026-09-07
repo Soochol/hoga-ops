@@ -1,0 +1,42 @@
+[
+  {
+    "run": "hyundai",
+    "code": "005380",
+    "first_visible_ms": 901,
+    "history_response_ms": 2746,
+    "history_on_chart_ms": 2801,
+    "hoga_response_ms": 400,
+    "independent_response_ms": 662,
+    "price_response_ms": 949
+  },
+  {
+    "run": "hynix",
+    "code": "000660",
+    "first_visible_ms": 833,
+    "history_response_ms": 976,
+    "history_on_chart_ms": 1108,
+    "hoga_response_ms": 804,
+    "independent_response_ms": 1061,
+    "price_response_ms": 898
+  },
+  {
+    "run": "intocell",
+    "code": "287840",
+    "first_visible_ms": 751,
+    "history_response_ms": 2875,
+    "history_on_chart_ms": 2954,
+    "hoga_response_ms": 832,
+    "independent_response_ms": 1054,
+    "price_response_ms": 844
+  },
+  {
+    "run": "hyundai-warm",
+    "code": "005380",
+    "first_visible_ms": 583,
+    "history_response_ms": 510,
+    "history_on_chart_ms": 583,
+    "hoga_response_ms": null,
+    "independent_response_ms": null,
+    "price_response_ms": null
+  }
+]

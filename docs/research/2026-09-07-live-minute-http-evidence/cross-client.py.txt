@@ -1,0 +1,80 @@
+"""Bounded same-link HTTP/1.1 fresh-connection AB/BA comparison; secrets stay in memory/stdin."""
+import asyncio
+import datetime
+import json
+import time
+from pathlib import Path
+import httpx
+from scripts.probe_kiwoom_http_latency import read_token, run_probe
+
+OUT = Path('/tmp/minute-http-cross-client.json')
+BODY = {'stk_cd': '005930', 'base_dt': '20260907', 'tic_scope': '1', 'upd_stkpc_tp': '0'}
+MARKER = '\n__HOGA_CURL_METRICS__'
+results = {'started_at': datetime.datetime.now(datetime.UTC).isoformat(), 'connection': 'fresh per request',
+           'protocol': 'HTTP/1.1', 'order': ['httpx', 'curl', 'curl', 'httpx'] * 3, 'samples': []}
+
+def quoted(value):
+    assert '\r' not in value and '\n' not in value
+    return json.dumps(value)
+
+async def curl_sample(token):
+    # -q first disables ~/.curlrc; stdin keeps authorization out of argv and disk.
+    headers = {'Content-Type': 'application/json;charset=UTF-8', 'authorization': 'Bearer ' + token,
+               'api-id': 'ka10080', 'cont-yn': 'N', 'next-key': '',
+               'accept': '*/*', 'user-agent': 'python-httpx/' + httpx.__version__}
+    with httpx.Client() as defaults:
+        headers['accept-encoding'] = defaults.headers['accept-encoding']
+    config = '\n'.join('header = ' + quoted(k + ': ' + v) for k, v in headers.items())
+    config += '\ndata = ' + quoted(json.dumps(BODY, separators=(',', ':'))) + '\n'
+    proc = await asyncio.create_subprocess_exec(
+        'curl', '-q', '--config', '-', '--http1.1', '--compressed', '--noproxy', '*',
+        '--silent', '--show-error', '--max-time', '30', '--connect-timeout', '20', '--retry', '0',
+        '--url', 'https://api.kiwoom.com/api/dostk/chart', '--write-out', MARKER + '%{json}',
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(config.encode()), timeout=35)
+    except BaseException:
+        proc.kill()
+        await proc.wait()
+        raise
+    # Do not save stderr, raw body, or full curl metadata.
+    if proc.returncode:
+        return {'client': 'curl', 'error': 'CurlExit', 'exit_code': proc.returncode}
+    raw, metrics = stdout.rsplit(MARKER.encode(), 1)
+    data, timing = json.loads(raw), json.loads(metrics)
+    row = {'client': 'curl', 'status': timing['http_code'], 'rows': len(data.get('stk_min_pole_chart_qry', [])),
+           'return_code': data.get('return_code'), 'total_ms': timing['time_total'] * 1000,
+           'first_byte_ms': timing['time_starttransfer'] * 1000,
+           'after_first_byte_ms': (timing['time_total'] - timing['time_starttransfer']) * 1000,
+           'connect_ms': timing['time_connect'] * 1000,
+           'tls_complete_ms': timing['time_appconnect'] * 1000,
+           'bytes': timing['size_download'], 'new_connections': timing['num_connects'],
+           'http_version': timing['http_version']}
+    if row['status'] != 200 or row['return_code'] != 0 or not row['rows']:
+        row['error'] = 'VendorResponseError'
+    return row
+
+async def main():
+    token = read_token(Path('/home/dev/.local/share/hoga-ops/data/.local/kiwoom-token-5.json'))
+    for i, client in enumerate(results['order']):
+        if i:
+            await asyncio.sleep(1.25)
+        if client == 'httpx':
+            response = await run_probe(token, '005930', '20260907', samples=1, pace_s=1.25, threshold_ms=1000)
+            row = response['samples'][0]
+            row['client'] = client
+        else:
+            row = await curl_sample(token)
+        row['order'] = i + 1
+        results['samples'].append(row)
+        serialized = json.dumps(results, indent=2)
+        assert token not in serialized
+        OUT.write_text(serialized)
+        print(json.dumps({k: v for k, v in row.items() if k in ['order', 'client', 'total_ms', 'rows', 'error', 'after_first_byte_ms', 'stages_ms']}), flush=True)
+        if row.get('error'):
+            break
+    slow = sum(row.get('total_ms', 0) > 1000 for row in results['samples'])
+    print(json.dumps({'samples': len(results['samples']), 'over_1s': slow}), flush=True)
+
+asyncio.run(main())
