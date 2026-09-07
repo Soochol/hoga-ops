@@ -1481,7 +1481,7 @@ describe('useLiveBundle', () => {
         mode: 'sidecar',
         askPeaksEnabled: false,
         bidPeaksEnabled: false,
-        programTradeEnabled: true,
+        programTradeEnabled: false,
         tradeVolumePocEnabled: true,
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
@@ -1492,11 +1492,19 @@ describe('useLiveBundle', () => {
     );
   });
 
-  it('holds sidecar requests while minute candle price range is still loading', () => {
+  it('starts independent sidecars while only the price-dependent request waits for candles', () => {
     candlesMock.candles = [];
     candlesMock.isFetching = true;
 
     const { rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
+      '005930', '20260520', '20260527', '1m', undefined, '20260527',
+      expect.objectContaining({
+        programTradeEnabled: true, volumeDistributionBins: null,
+        volumeDistributionPriceRange: null, tradeVolumePocEnabled: false,
+      }),
+    );
 
     expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       null,
@@ -1629,7 +1637,7 @@ describe('useLiveBundle', () => {
     expect(candleCall?.[7]).toBeUndefined();
     // 벤더 분봉 쿼리는 우회 ON이면 code=null로 비활성.
     expect(livePastCandlesSpy).toHaveBeenLastCalledWith(
-      null, null, null, 'KRX', '20260527', 60_000,
+      null, null, null, 'KRX', '20260527', 60_000, false,
     );
     expect(result.chartBundle?.candles).toHaveLength(1);
   });
@@ -1882,12 +1890,39 @@ describe('useLiveBundle', () => {
       trade_volume_pocs: [],
       program_trade: { points: [] },
     };
-    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
+    useRangeSidecarDeltaSpy.mockImplementation((...args: unknown[]) =>
+      rangeResult((args[6] as { volumeDistributionBins?: number | null }).volumeDistributionBins
+        ? sidecarBundle : null),
+    );
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
     expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
     expect(result.current.chartBundle?.volume_distributions).toEqual([distribution]);
+  });
+
+  it('scales both split sidecar responses exactly once using candle factors', () => {
+    useLivePageStore.setState({ askPeakEnabled: true });
+    const current = livePastCandlesSpy.getMockImplementation()!;
+    livePastCandlesSpy.mockImplementation(() => {
+      const response = current();
+      return { ...response, data: { ...response.data, adjust_factors: { '20260527': 0.5 } } };
+    });
+    const base = fallbackRangeBundle();
+    useRangeSidecarDeltaSpy.mockImplementation((...args: unknown[]) => {
+      const price = (args[6] as { volumeDistributionBins?: number | null }).volumeDistributionBins != null;
+      return rangeResult({ ...base,
+        ask_peaks: price ? [] : [{ date: '20260527', price: 100, qty: 10, t_ms: DEFAULT_CANDLE.t_ms,
+          max_price: 100, max_qty: 10, max_t_ms: DEFAULT_CANDLE.t_ms }],
+        volume_distributions: price ? [{ date: '20260527', range_count: 1, price_min: 100, price_max: 200,
+          session_open_ms: DEFAULT_CANDLE.t_ms, session_close_ms: DEFAULT_CANDLE.t_ms + 60000,
+          bins: [{ price_low: 100, price_high: 200, qty: 10 }] }] : [],
+      });
+    });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.chartBundle?.ask_peaks[0].price).toBe(50);
+    expect(result.current.chartBundle?.volume_distributions[0].price_max).toBe(100);
+    expect(result.current.chartBundle?.volume_distributions[0].bins[0].qty).toBe(10);
   });
 
   it('merges sidecar depth heatmap into the chart and live bundles', () => {
@@ -2247,7 +2282,7 @@ describe('useLiveBundle', () => {
     // the today head chunk polls; past-only walk-back chunks freeze.
     // 6th = bucketMs — 표시 tf('1m')를 벤더 주기로 그대로 요청한다(#1008).
     expect(livePastCandlesSpy).toHaveBeenCalledWith(
-      '005930', '20250920', '20260527', 'KRX', '20260527', 60_000,
+      '005930', '20250920', '20260527', 'KRX', '20260527', 60_000, false,
     );
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today

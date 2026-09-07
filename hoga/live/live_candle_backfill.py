@@ -415,9 +415,16 @@ class LiveMinuteCandleBackfill:
         # 바뀐 종목은 여기서 옛 봉 캐시가 폐기되는데, 그보다 먼저 캐시를 읽으면
         # 그 응답 하나가 옛 척도와 새 척도를 섞어 나간다. 계수는 (종목, 기준일)
         # 캐시라 이 앞당김이 무는 비용은 종목당 하루 2콜이 전부다.
-        factors, factor_failure, factor_blocked = await self._factors_or_failure(
-            code, as_of=today_s,
-        )
+        if frm == too == today_d:
+            # 오늘 봉의 척도는 항상 1이다. 초기 화면/오늘 폴링에 과거 수정계수
+            # 2콜을 직렬로 붙이지 않는다. 이 항등표는 공유 _factors에 저장하지
+            # 않는다 — 뒤따르는 과거 요청은 실제 계수를 확보하고 옛 캐시를 정리한다.
+            factors = kiwoom_adjust_factors.AdjustFactors(as_of=today_s, dates=(today_s,), values=(1.0,))
+            factor_failure, factor_blocked = None, False
+        else:
+            factors, factor_failure, factor_blocked = await self._factors_or_failure(
+                code, as_of=today_s,
+            )
 
         for date_s in _date_iter(frm, too):
             if date_s >= today_s:

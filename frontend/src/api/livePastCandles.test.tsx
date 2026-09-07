@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   hasBlockingWarnings,
@@ -44,6 +44,85 @@ const BLOCKED: LivePastCandlesResponse = {
     date: '20260501', reason: 'capacity_overloaded', kind: 'deferred', msg: 'x', is_failure: true,
   }],
 };
+
+describe('today-first cold bootstrap', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it.each(['empty', 'blocking', 'error'] as const)('continues into history when the today seed is %s', async (outcome) => {
+    const today: LivePastCandlesResponse = {
+      ...RESPONSE, from: '20260601', to: '20260601', candles: [],
+      data_warnings: outcome === 'blocking' ? BLOCKED.data_warnings : [],
+    };
+    let finishHistory!: (v: LivePastCandlesResponse) => void;
+    const history = new Promise<LivePastCandlesResponse>((resolve) => { finishHistory = resolve; });
+    const calls = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (params.get('from') === '20260601') {
+        return (outcome === 'error' ? Promise.reject(new Error('today unavailable')) : Promise.resolve(today)) as never;
+      }
+      return history as never;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, unmount } = renderHook(
+      () => useLivePastCandles('005930', '20260525', '20260601', 'KRX', '20260601', 60_000, true),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(calls).toHaveBeenCalledTimes(2));
+    expect(String(calls.mock.calls[1][0])).toContain('from=20260525');
+    if (outcome === 'empty') expect(result.current.isLoading).toBe(true);
+    await act(async () => finishHistory({ ...RESPONSE, from: '20260525', to: '20260601' }));
+    await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
+    expect(result.current.isLoading).toBe(false);
+    unmount(); qc.clear();
+  });
+
+  it('keeps restored views and historical jumps on their existing request plan', () => {
+    const warm = { ...RESPONSE, from: '20260501', to: '20260601' };
+    expect(planPastCandlesDelta('005930', '20260525', '20260601', 'KRX', warm, '20260601', 60_000, true))
+      .toMatchObject({ requestFrom: '20260601', servePrevious: true });
+    expect(planPastCandlesDelta('005930', '20260525', '20260529', 'KRX', undefined, '20260601', 60_000, true))
+      .toMatchObject({ requestFrom: '20260525', requestTo: '20260529' });
+  });
+
+  it.each(['KRX', 'NXT', 'UN'] as const)('shows today before delayed history, then merges factors and sessions (%s)', async (venue) => {
+    const today: LivePastCandlesResponse = {
+      ...RESPONSE, from: '20260601', to: '20260601', venue,
+      fresh_dates: ['20260601'], adjust_factors: { '20260601': 1 },
+      candles: [{ ...RESPONSE.candles[0], t_ms: 20 }],
+      effective_sessions: [{ date: '20260601', venue, open_ms: 20, close_ms: 30 }],
+    };
+    const past: LivePastCandlesResponse = {
+      ...RESPONSE, from: '20260525', to: '20260531', venue,
+      fresh_dates: ['20260529'], adjust_factors: { '20260529': 0.5 },
+      effective_sessions: [{ date: '20260529', venue, open_ms: 1, close_ms: 10 }],
+    };
+    let finishHistory!: (v: LivePastCandlesResponse) => void;
+    const history = new Promise<LivePastCandlesResponse>((resolve) => { finishHistory = resolve; });
+    const calls = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      return (params.get('from') === '20260601' ? Promise.resolve(today) : history) as never;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, unmount } = renderHook(
+      () => useLivePastCandles('005930', '20260525', '20260601', venue, '20260601', 60_000, true),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(calls).toHaveBeenCalledTimes(2));
+    expect(String(calls.mock.calls[0][0])).toContain('from=20260601&to=20260601');
+    expect(String(calls.mock.calls[1][0])).toContain('from=20260525&to=20260531');
+    expect(result.current.data?.candles).toEqual(today.candles);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isWalkingHistory).toBe(true);
+    await act(async () => finishHistory(past));
+    await waitFor(() => expect(result.current.data?.from).toBe('20260525'));
+    expect(result.current.isWalkingHistory).toBe(false);
+    expect(result.current.data?.candles).toEqual([...past.candles, ...today.candles]);
+    expect(result.current.data?.adjust_factors).toEqual({ '20260529': 0.5, '20260601': 1 });
+    expect(result.current.data?.effective_sessions).toEqual([...past.effective_sessions!, ...today.effective_sessions!]);
+    unmount();
+    qc.clear();
+  });
+});
 
 describe('past-candles freshness gating (range.ts parity)', () => {
   it('freezes past-only chunks, keeps today head chunk stale-checked', () => {

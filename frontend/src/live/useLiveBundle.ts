@@ -7,7 +7,7 @@ import { useLivePastCandles, type LivePastCandlesResponse } from '../api/livePas
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import { useRange, useRangeCandlesDelta, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
+import { useRange, useRangeCandlesDelta, useRangeHogaDelta } from '../api/range';
 import type { RangeRequestOptions } from '../api/range';
 import { scaleRangeBundlePrices } from './scaleRangeBundlePrices';
 import {
@@ -66,6 +66,7 @@ import {
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
+import { useLiveSidecars } from './useLiveSidecars';
 import { useMinuteGapFill, type MinuteGapFillResult } from './useMinuteGapFill';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
@@ -741,6 +742,7 @@ export function useLiveBundle(
     // 120·240 만 예외로 30m 를 받는다 — 15:30 경계를 입력에 남겨야 클립이 성립한다
     // (`fetchBucketMsFor` 주석). 표시 버킷은 아래 `bucketMs` 가 따로 들고 있다.
     isMinute ? fetchBucketMsFor(timeframe) : 60_000,
+    minutePastTo === realTodayKstYyyymmdd() && !isKstWeekend(minutePastTo),
   );
 
   // 벤더 일봉 past-candles(키움 `ka10081`) — D/W/M, 우회 OFF에서만 (ADR-0048).
@@ -997,45 +999,8 @@ export function useLiveBundle(
     rangePlan.todayKst,
     hogaRangeOptions,
   );
-  const sidecarRangeOptions = useMemo(
-    () => ({
-      mode: 'sidecar' as const,
-      ...rangePlan.options,
-      // Vendor candles arrive on a separate fast path, but today's promoted
-      // trades can exist before a matching candles.parquet. The sidecar needs
-      // the vendor candle low/high grid to build the dense 10-bin distribution
-      // instead of making the sidebar fall back to the short live trade tail.
-      volumeDistributionPriceRange: rangePlan.options.volumeDistributionPriceRange,
-    }),
-    [rangePlan.options],
-  );
-  const sidecarEnabled = !!(
-    !sidecarWaitingForCandlePriceRange &&
-    rangePlan.code &&
-    (
-      rangePlan.options.askPeaksEnabled ||
-      rangePlan.options.bidPeaksEnabled ||
-      rangePlan.options.brokerLateEntriesEnabled ||
-      rangePlan.options.programTradeEnabled ||
-      rangePlan.options.tradeVolumePocEnabled ||
-      rangePlan.options.depthHeatmapEnabled ||
-      rangePlan.options.volumeDistributionBins != null
-    )
-  );
-  const pastSidecars = useRangeSidecarDelta(
-    sidecarEnabled ? rangePlan.code : null,
-    sidecarEnabled ? rangePlan.from : null,
-    sidecarEnabled ? rangePlan.to : null,
-    sidecarEnabled ? rangePlan.timeframe : null,
-    undefined,
-    // /live's minutePastTo is always today (line 83), so this enables the
-    // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
-    // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
-    // frozen. A periodic refetch keeps the same query key → no placeholderData
-    // swap → does not set isExtending, so today's right edge is untouched.
-    sidecarEnabled ? rangePlan.todayKst : null,
-    sidecarRangeOptions,
-  );
+  const pastSidecars = useLiveSidecars(rangePlan, sidecarWaitingForCandlePriceRange);
+  const sidecarEnabled = pastSidecars.enabled;
 
   /**
    * 일·주·월에서 **프로그램 데이터 창만을 위한** 오늘분 사이드카 폴백.
@@ -1131,9 +1096,14 @@ export function useLiveBundle(
     () => (pastHoga.data ? scaleRangeBundlePrices(pastHoga.data, adjustFactors) : null),
     [pastHoga.data, adjustFactors],
   );
+  // 요청은 병렬로 시작하지만 차트에는 캔들 축이 먼저 앉아야 한다.
+  // 오늘 seed 이후의 과거 지표는 해당 날짜의 캔들·세션 축이 추가될 때 표시된다.
+  const coldMinuteCandlesPending = isMinute && !restBypassEnabled
+    && pastCandlesQuery.isLoading && pastCandlesQuery.data == null;
   const scaledSidecarData = useMemo(
-    () => (pastSidecars.data ? scaleRangeBundlePrices(pastSidecars.data, adjustFactors) : null),
-    [pastSidecars.data, adjustFactors],
+    () => (pastSidecars.data && !coldMinuteCandlesPending
+      ? scaleRangeBundlePrices(pastSidecars.data, adjustFactors) : null),
+    [pastSidecars.data, adjustFactors, coldMinuteCandlesPending],
   );
   const effectiveSessionByDate = useMemo(
     () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
@@ -1415,7 +1385,7 @@ export function useLiveBundle(
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
   // 진행 신호 = 홀드 대상 + 사이드카. 소비자는 3a settle-loop · 진행 칩 · 3e 백프레셔.
-  const extending = chartHoldPending || sidecarExtending;
+  const extending = chartHoldPending || sidecarExtending || pastCandlesQuery.isWalkingHistory === true;
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
   // protects — the viewport shift is candle-index-based). The hoga overlay
   // follows via the spread below; its points don't drive the viewport, so
@@ -1464,7 +1434,7 @@ export function useLiveBundle(
   // 빈 배열로 홀드해 "캔들 먼저, 호가는 그 부분집합 삽입" 순서를 강제한다. reveal 커버가
   // 이미 캔들+호가 settle까지 차트를 가리므로 사용자 체감 변화는 없다.
   const holdHogaSeriesForColdCandles =
-    isMinute && !!code && pastCandlesQuery.isLoading && pastCandlesQuery.data == null;
+    !!code && coldMinuteCandlesPending;
   const emptyHogaSeries = useMemo<HogaSeries>(
     () => ({
       quote_ratio: { bucket_ms: bucketMs, points: [] },
@@ -1754,16 +1724,7 @@ export function useLiveBundle(
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
-    // 콜드 로드 동시 등장(장면1): 거래량분포는 캔들 priceRange 가 나와야 fetch 가
-    // 시작되는 구조적 체인(오늘 promoted trades 가 candles.parquet 보다 먼저 존재 가능)
-    // 이라, 그 "캔들 대기" 상태(sidecarWaitingForCandlePriceRange)도 loading 으로 셈해
-    // reveal 게이트가 지표 없이 캔들만 먼저 공개하지 않게 한다. isLoading(=isPending &&
-    // isFetching) 대신 isPending 을 쓰는 이유: sidecarEnabled 가 켜지는 커밋에서 아직
-    // fetch 미발화(isFetching=false)라 isLoading 이 1프레임 false 로 새는 레이스에 reveal
-    // rAF 가 선스케줄되는 것을 막기 위함. 캔들·사이드카 settle(성공·에러 모두 isPending
-    // false, sidecarEnabled 가 disabled 영구-pending 차단)로 반드시 해제된다.
-    isSidecarLoading: sidecarWaitingForCandlePriceRange
-      || (sidecarEnabled && pastSidecars.isPending && pastSidecars.data == null),
+    isSidecarLoading: pastSidecars.isLoading,
     pastDataWarnings,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
