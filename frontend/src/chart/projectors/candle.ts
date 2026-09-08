@@ -148,6 +148,11 @@ export const CANDLE_SPEC = {
         };
       },
       data: projectCandleCached,
+      afterAdd: (series) => {
+        series.priceScale().applyOptions({
+          scaleMargins: { top: 0.1, bottom: 0.1 },
+        });
+      },
     },
   ],
 } satisfies PaneSpec<CandlePaneContext>;
