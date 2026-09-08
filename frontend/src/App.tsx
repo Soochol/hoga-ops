@@ -16,6 +16,7 @@ import RestUnavailableToastHost from './live/RestUnavailableToastHost';
 import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
+import StudyViewDeleteToastHost from './studyViews/StudyViewDeleteToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import IndicatorRemoveUndoToastHost from './live/IndicatorRemoveUndoToastHost';
 import PinnedActivationToastHost from './live/PinnedActivationToastHost';
@@ -169,6 +170,7 @@ export default function App() {
         <SupervisedTaskFailureToastHost />
         <DiskHeadroomToastHost />
         <DrawingClearToastHost />
+        <StudyViewDeleteToastHost />
         {/* 레전드 칩 ✕(지표 인스턴스 삭제)의 실행취소 — 그림 지우기 토스트와 같은
             부류라 나란히 둔다. 둘 다 "확인 없이 지우고 되돌릴 기회를 준다". */}
         <IndicatorRemoveUndoToastHost />
