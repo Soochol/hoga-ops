@@ -130,6 +130,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
+          <br />그룹 {win.group}에서 종목 선택
         </span>
       </div>
     );

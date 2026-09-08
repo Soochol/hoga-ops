@@ -109,6 +109,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
       onHandleDown={onHandleDown}
       onFocus={onFocus}
       onClose={onClose}
+      closeLabel={`${title} ${KIND_LABEL[kind]} 창 닫기`}
       header={
         <>
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
@@ -157,7 +158,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 data-testid="window-pin-toggle"
                 aria-pressed={pinned}
                 disabled={!canPin}
-                className={`inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-sm ${
+                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${
                   pinned
                     ? 'bg-tint-selection text-accent hover:brightness-125'
                     : canPin

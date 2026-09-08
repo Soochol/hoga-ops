@@ -82,7 +82,7 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     const input = page.getByPlaceholder('그룹 이름 입력');
     await expect(input).toHaveValue('스윙');                       // 기존 이름 prefill
     await input.fill('단타');
-    await page.getByRole('button', { name: '변경' }).click();
+    await page.getByRole('button', { name: '변경', exact: true }).click();
 
     await expect.poll(() => getPatched()).toEqual({ id: 'f_a', name: '단타' });
     const group = page.locator('[data-testid="watchlist-group-f_a"]');

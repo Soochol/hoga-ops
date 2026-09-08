@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSymbolSearch } from './LiveSymbolSearch';
 import { useLivePageStore } from '../state/livePage';
+import { useWorkspaceStore, type WorkspaceWindow } from '../state/workspace';
 import type { SymbolHit } from '../api/types';
 
 const HIT: SymbolHit = {
@@ -172,4 +173,27 @@ describe('LiveSymbolSearch', () => {
     fireEvent.mouseDown(document.body);                       // click outside
     expect(screen.queryByText('삼성전자')).toBeNull();         // dropdown closed
   });
+});
+
+
+it('search destination follows the activation policy and excludes pinned windows', () => {
+  const previous = useWorkspaceStore.getState();
+  const windows: WorkspaceWindow[] = [
+    { id: 'a', kind: 'book', group: 2, rect: { x: 0, y: 0, w: 0.5, h: 1 } },
+    { id: 'b', kind: 'broker', group: 2, rect: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+    { id: 'pin', kind: 'book', group: 3, rect: { x: 0, y: 0, w: 0.5, h: 1 }, pinned: { code: '000660', name: 'SK하이닉스' } },
+  ];
+  useWorkspaceStore.setState({ windows, zOrder: ['a', 'b', 'pin'] });
+  try {
+    renderSearch();
+    openSearchPopover();
+    expect(screen.getByRole('status')).toHaveTextContent('그룹 2 · 연결된 2개 창에 적용 · 고정 창 제외');
+    act(() => useWorkspaceStore.setState({ windows: windows.map((win) => ({ ...win, pinned: { code: '000660', name: 'SK하이닉스' } })) }));
+    expect(screen.getByRole('status')).toHaveTextContent('모든 창이 고정되어 있습니다');
+    act(() => useWorkspaceStore.setState({ windows: [], zOrder: [] }));
+    expect(screen.getByRole('status')).toHaveTextContent('그룹 1에 적용');
+  } finally {
+    cleanup();
+    useWorkspaceStore.setState(previous);
+  }
 });
