@@ -21,6 +21,8 @@ import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibl
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
 import { peakXFromCoordinate, xCoordinateOrNearest } from './PeakWallSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
+import { lowerBoundCandle } from './projectors/candle';
+import { chooseClearExtremeLabel, extremeLabelRect, type ClearExtremeLabel } from './extremeLabelClearance';
 import {
   HIGHLOW_FONT_PX,
   HIGHLOW_FONT_WEIGHT,
@@ -32,7 +34,6 @@ import {
   LEVEL_LINE_OPACITY,
   PRIOR_LINE_DASH,
   labelBoxWidth,
-  placeExtremeLabel,
   wallLabelAvoidRect,
   type AvoidRect,
   type AvoidWallLabel,
@@ -44,8 +45,7 @@ import {
 // 설정 UI(LineStyleRow)와 **공유**한다 — 각자 리터럴을 들면 화면과 설정이 갈린다.
 const TOKEN_SPEC = {
   ...PRICE_DIRECTION_TOKEN_SPEC,
-  // 칩 표면 = 차트 layout 배경. 캔들과 겹치지 않는 여백에선 배경에 융화돼 방향색 텍스트만
-  // 뜨고, 캔들 위에선 불투명 배경이 텍스트 대비를 지킨다(외곽선·섀도 없음).
+  // Chip background blends with the chart; final clearance prevents it covering candles.
   bg: ['--bg-card', '#121216'],
 } as const;
 
@@ -85,6 +85,31 @@ export type HighLowLabelsSnapshot = {
 };
 
 export type HighLowLabelsSource = () => HighLowLabelsSnapshot | null;
+
+export type ExtremeLabelDetail = { rect: AvoidRect; text: string; color: string };
+const extremeTimeFormat = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
+/** Only project visible bars plus their boundary neighbours. Half a bar slot
+ * conservatively includes body, wick and partially clipped edge candles. */
+function visibleCandleRects(snap: HighLowLabelsSnapshot, ts: ITimeScaleApi<Time>, series: ISeriesApi<SeriesType>, range: { from: number; to: number }, width: number): AvoidRect[] {
+  const first = Math.max(0, lowerBoundCandle(snap.candles, snap.axis.toReal(range.from * 1000)) - 1);
+  const end = Math.min(snap.candles.length, lowerBoundCandle(snap.candles, snap.axis.toReal(range.to * 1000)) + 2);
+  const half = Math.max(1, (ts.options?.().barSpacing ?? 6) / 2);
+  const rects: AvoidRect[] = [];
+  for (let i = first; i < end; i++) {
+    const c = snap.candles[i];
+    if (!snap.axis.contains(c.ts_ms)) continue;
+    const x = ts.timeToCoordinate(snap.axis.toVirtual(c.ts_ms) / 1000 as Time);
+    if (x === null || x + half < 0 || x - half > width) continue;
+    const high = series.priceToCoordinate(c.high);
+    const low = series.priceToCoordinate(c.low);
+    if (high === null || low === null) continue;
+    rects.push({ left: x - half, right: x + half, top: Math.min(high, low), bottom: Math.max(high, low) });
+  }
+  return rects;
+}
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null. */
 function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number } | null {
@@ -233,12 +258,14 @@ function wallAvoidRects(
 
 class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: HighLowLabelsPrimitive;
+  private previous = new Map<ExtremeLabelPlace, { time: number; anchorX: number; label: ClearExtremeLabel }>();
 
   constructor(source: HighLowLabelsPrimitive) {
     this._source = source;
   }
 
   draw(target: CanvasRenderingTarget2D): void {
+    this._source.setDetails([]);
     const chart = this._source.chartApi();
     const series = this._source.seriesApi();
     const snap = this._source.snapshot();
@@ -247,7 +274,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
     const ts = chart.timeScale();
     const visibleRange = readVisibleRange(ts);
     const ex = computeVisibleExtremes(snap.candles, snap.axis, visibleRange);
-    if (ex === null) return;
+    if (ex === null || visibleRange === null) { this.previous.clear(); return; }
 
     // Media(CSS 픽셀) space — priceToCoordinate/timeToCoordinate 와 같은 단위라
     // 레이아웃 상수(px)를 배율 곱 없이 그대로 쓴다. 캔버스는 캔들 pane 자체이므로
@@ -259,6 +286,13 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       if (paneWidth <= 0 || paneHeight <= 0) return;
 
       const tokens = resolveTokensThemed(TOKEN_SPEC);
+      let candleRects: AvoidRect[];
+      try {
+        candleRects = visibleCandleRects(snap, ts, series, visibleRange, paneWidth);
+      } catch {
+        return; // disposed chart: no reliable geometry, so don't place a chip
+      }
+      const details: ExtremeLabelDetail[] = [];
       const avoidRects = [
         ...wallAvoidRects(chart, series, snap.avoidWallLabels, paneWidth),
         ...rankArrowAvoidRects(chart, series, snap.avoidRankArrows, snap.avoidRankArrowLimit),
@@ -324,9 +358,40 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         if (xc === null) continue;
 
-        const text = formatExtremeLabel(item.e.price, item.e.pct);
-        const boxWidth = labelBoxWidth(measureTextCached(ctx, text));
-        const label = placeExtremeLabel(item.place, xc, yc, boxWidth, paneWidth, paneHeight, avoidRects);
+        const fullText = formatExtremeLabel(item.e.price, item.e.pct);
+        const shortText = Math.round(item.e.price).toLocaleString('ko-KR');
+        const prev = this.previous.get(item.place);
+        const label = chooseClearExtremeLabel({
+          place: item.place, x: xc, y: yc, paneWidth, paneHeight,
+          full: { text: fullText, width: labelBoxWidth(measureTextCached(ctx, fullText)) },
+          short: { text: shortText, width: labelBoxWidth(measureTextCached(ctx, shortText)) },
+          candles: candleRects, obstacles: avoidRects,
+          previous: prev?.time === item.e.virtualSec
+            ? { ...prev.label, x: prev.label.x + xc - prev.anchorX } : undefined,
+        });
+        const detail = {
+          text: `${item.place === 'above' ? '최고가' : '최저가'} ${fullText} · ${extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
+          color: item.color,
+        };
+        if (label === null) {
+          this.previous.delete(item.place);
+          // No opaque chip when space is exhausted. A four-pixel tick just
+          // outside the extreme keeps the detail discoverable on hover.
+          const mx = Math.max(2, Math.min(paneWidth - 2, xc));
+          const my = Math.max(2, Math.min(paneHeight - 2, yc + (item.place === 'above' ? -3 : 3)));
+          ctx.strokeStyle = item.color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.moveTo(mx - 2, my); ctx.lineTo(mx + 2, my); ctx.stroke();
+          details.push({ ...detail, rect: { left: mx - 6, right: mx + 6, top: my - 6, bottom: my + 6 } });
+          continue;
+        }
+        this.previous.set(item.place, { time: item.e.virtualSec, anchorX: xc, label });
+        const text = label.text;
+        const boxWidth = label.width;
+        const labelRect = extremeLabelRect(label, boxWidth);
+        avoidRects.push(labelRect);
+        details.push({ ...detail, rect: labelRect });
 
         // 라벨 박스의 극값점 쪽 모서리 y(above=박스 bottom, below=박스 top). 극값 가격과의
         // 세로 구간을 리더선으로 잇는다. 극값이 가장자리 근처면 구간이 짧아 리더선 생략.
@@ -377,6 +442,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       }
 
       ctx.restore();
+      this._source.setDetails(details);
     });
   }
 }
@@ -407,10 +473,9 @@ class HighLowLabelsPaneView implements IPrimitivePaneView {
  * 칩을 캔들과 겹치지 않게 pane 상단(고가)·하단(저가) 가장자리에 고정하고, 극값 가격
  * 지점↔칩을 옅은 리더선(자리를 비켜 놓였으면 ㄱ자)으로 잇는다.
  *
- * **극값 지점의 점(dot)은 2026-08-23 에 뺐다** — 지름 9px 불투명 원이라 그 봉의 꼭짓점을
- * 정확히 덮었는데(줌아웃 실측 barSpacing 1.6px 기준 약 6봉, 기본 줌에서 1~2봉), 같은
- * 지점을 리더선 종점이 이미 가리키고 있었다. 그래서 이제 "어느 봉인가" 는 리더선의
- * 수직 구간 x 하나가 말한다 — 칩에서 시각을 뺀 것과 같은 방향의 결정이다.
+ * Full chip → price-only chip → four-pixel tick, depending on local clearance.
+ * Every chip's final rectangle avoids candle envelopes and annotation obstacles.
+ * Hover details retain price, gap and time even when the chip cannot fit.
  *
  * 설정에서 **극값 가격선**(고가·저가 각각 독립)을 켜면 그 가격에 pane 전폭 수평 점선을
  * 함께 긋는다 — 지지·저항 레벨로 읽는 용도라 극값 봉 이전 구간까지 잘리지 않고 이어진다.
@@ -422,6 +487,13 @@ class HighLowLabelsPaneView implements IPrimitivePaneView {
  * 구조적으로 0이 된다(그리기 도구 primitive 이관과 동일 처방).
  */
 export class HighLowLabelsPrimitive implements ISeriesPrimitive<Time> {
+  private details: readonly ExtremeLabelDetail[] = [];
+  setDetails(details: readonly ExtremeLabelDetail[]): void { this.details = details; }
+  detailAt(x: number, y: number): ExtremeLabelDetail | null {
+    const candidates = this.details.filter(({ rect: r }) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+    const distance = ({ rect: r }: ExtremeLabelDetail) => Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2);
+    return candidates.sort((a, b) => distance(a) - distance(b))[0] ?? null;
+  }
   private readonly _source: HighLowLabelsSource;
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
@@ -440,6 +512,7 @@ export class HighLowLabelsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   detached(): void {
+    this.details = [];
     this._chart = null;
     this._series = null;
     this._requestUpdate = undefined;
