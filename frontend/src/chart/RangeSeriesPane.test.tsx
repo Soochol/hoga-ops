@@ -38,6 +38,7 @@ function makeChart() {
   });
   const removeSeries = vi.fn();
   const chart = {
+    addCustomSeries(this: { addSeries: (...args: never[]) => unknown }, ...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
     addSeries,
     removeSeries,
   } as never;
@@ -422,6 +423,7 @@ function makePaneChart() {
    *  오름차순 append 뿐이라 항상 0 이어야 한다(0 이 아니면 중간에 빈 pane 이 생긴다). */
   const gapRequests: number[] = [];
   const chart = {
+    addCustomSeries(this: { addSeries: (...args: never[]) => unknown }, ...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
     addSeries: vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
       const series = {
         setData: vi.fn(), update: vi.fn(),
