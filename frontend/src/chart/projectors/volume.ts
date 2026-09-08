@@ -1,4 +1,5 @@
 import {
+  HistogramSeries,
   LineSeries,
   type HistogramData,
   type Time,
@@ -13,7 +14,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { cumulativeCachedData, cumulativePriceFormat } from './fillStrength';
 import type { PaneSpec } from '../RangeSeriesPane';
-import { CandleWidthVolume } from '../CandleWidthVolume';
 
 const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
@@ -126,7 +126,7 @@ export const VOLUME_SPEC = {
   useContext: useVolumeContext,
   series: [
     {
-      type: () => new CandleWidthVolume(),
+      type: HistogramSeries,
       // No swatch: bars are per-candle colored (up/down), so a single color
       // would mislead — matches the pre-existing volume legend (label only).
       legend: { label: '거래량' },

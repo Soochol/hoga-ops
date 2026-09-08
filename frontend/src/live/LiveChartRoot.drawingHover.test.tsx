@@ -21,7 +21,6 @@ vi.mock('lightweight-charts', async () => {
   return {
     ...mod,
     createChartEx: vi.fn(() => ({
-      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
