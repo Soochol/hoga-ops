@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { WireDataWarning } from '../api/dataWarnings';
@@ -3056,6 +3056,36 @@ describe('useLiveBundle isExtending', () => {
       { wrapper },
     );
     expect(result.current.isExtending).toBe(false);
+  });
+
+  it('marks the today-first seed for normal initial zoom, but not user scrollback', () => {
+    let minuteHistoryWalking = true;
+    const previousImpl = livePastCandlesSpy.getMockImplementation()!;
+    livePastCandlesSpy.mockImplementation(() => ({
+      ...previousImpl(),
+      isWalkingHistory: minuteHistoryWalking,
+    }));
+    const { result, rerender, unmount } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    try {
+      expect(result.current.isInitialMinuteHistoryPending).toBe(true);
+      expect(result.current.isPastCandlesLoading).toBe(false);
+      expect(result.current.chartBundle?.candles.length).toBeGreaterThan(0);
+
+      minuteHistoryWalking = false;
+      rerender();
+      expect(result.current.isInitialMinuteHistoryPending).toBe(false);
+
+      minuteHistoryWalking = true;
+      act(() => useLivePageStore.setState({ historicalFromDate: '20260514' }));
+      rerender();
+      expect(result.current.isInitialMinuteHistoryPending).toBe(false);
+    } finally {
+      unmount();
+      livePastCandlesSpy.mockImplementation(previousImpl);
+    }
   });
 
   it.each(['price', 'independent'] as const)('protects the initial pending %s sidecar without holding candles, and releases after settle', (pendingLane) => {

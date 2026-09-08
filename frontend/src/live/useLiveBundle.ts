@@ -369,6 +369,8 @@ export interface UseLiveBundleResult {
   /** 좌측 팬 하한(YYYYMMDD). `null` = 아직 막을 근거 없음. 도출은 아래 훅 본문 참조. */
   minuteScrollbackFloorDate: string | null;
   isPastCandlesLoading: boolean;
+  /** Keep normal minute zoom while the today-first seed gains its initial history. */
+  isInitialMinuteHistoryPending: boolean;
   /** 호가 지표 경로(/api/range mode=hoga)의 CURRENT (code, timeframe) 뷰 초기 fetch가
    * 아직 pending인가. LiveChartRoot의 reveal 커버가 isPastCandlesLoading과 함께 써서
    * 초기 로드/종목 전환/타임프레임 전환 시 캔들+호가 pane이 한 번의 reveal로 등장하게 한다.
@@ -1724,6 +1726,8 @@ export function useLiveBundle(
     candleSourceKey: `${restBypassEnabled ? 'disk' : 'vendor'}|${todayKstYyyymmdd}`,
     minuteScrollbackFloorDate,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isInitialMinuteHistoryPending: enableMinute && historicalFromDate === null
+      && pastCandlesQuery.isWalkingHistory === true,
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
     isSidecarLoading: pastSidecars.isLoading,

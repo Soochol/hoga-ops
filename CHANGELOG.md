@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.47.1] - 2026-09-08
+
+### Fixed
+- 관심종목에서 라이브 분봉을 열 때 오늘의 몇 개 봉에 맞춰 과도하게 확대되던 초기 화면을 수정했다. 과거 봉을 기다리는 동안에도 기존 300봉 기준 배율과 최신 봉 위치를 유지한다.
+
 ## [0.12.47.0] - 2026-09-07
 
 ### Changed
