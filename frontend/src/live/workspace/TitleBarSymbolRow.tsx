@@ -78,15 +78,15 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       data-testid="titlebar-symbol-row"
       className="inline-flex min-w-0 items-center gap-1.5 tabular-nums"
     >
-      {!isIndex && <CollectionDot status={collection.displayStatus} />}
-      <span className="truncate text-sm font-medium text-fg">{symbolLabel}</span>
+      {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
+      <span className="truncate text-sm font-medium text-fg" title={symbolLabel} tabIndex={0}>{name ?? code}</span>
       {currentPrice !== null && (
-        <span data-testid="titlebar-current-price" className="font-data text-sm font-semibold text-fg">
+        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="shrink-0 font-data text-sm font-semibold text-fg">
           {formatKoreanInt(currentPrice)}
         </span>
       )}
       {quote && (
-        <span data-testid="titlebar-change" className="font-data text-xs">
+        <span data-testid="titlebar-change" className="shrink-0 font-data text-xs">
           {/* 등락률(%)만 — 현재가가 옆에 있어 등락액 생략(레전드·상태바와 동일). */}
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>

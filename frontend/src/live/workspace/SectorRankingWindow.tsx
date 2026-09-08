@@ -12,23 +12,30 @@
  * 짧은 룩백·캐시)에서 최신 거래일을 도출해 항상 **latest** 모드로 랭킹을 조회한다
  * (마지막 봉 기준 = 비거래일에도 마지막 거래일로 우아하게 degrade, 구 의미론 재현).
  *
- * **종목 클릭**: `useJumpToLive` — 관심종목·스크리너와 같은 공통 진입점. 이미
- * `/live` 라 내부 navigate 는 no-op 이고, ctrl/⌘+클릭 새 탭 분기를 공짜로 얻는다
- * (활성 그룹 종목 교체 SSOT 는 그 안의 `activateLiveCode`, #711).
+ * **종목 클릭**: 지수 그룹을 보존하고 별도 그룹 차트를 열어 재사용한다.
+ * 빈 그룹이 없거나 ctrl/⌘+클릭이면 새 브라우저 탭을 사용한다.
  */
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { IndexSectorRankingPane } from '../IndexSectorRankingPane';
 import { useLiveIndexCandles } from '../../api/liveIndices';
 import { useIndexSectorRankings } from '../../api/indexSectorRankings';
-import { useJumpToLive } from '../useJumpToLive';
+import { wantsNewTab, type JumpModifiers } from '../useJumpToLive';
+import { openLiveInNewTab } from '../liveNavigate';
+import { stockInstrument } from '../liveInstrument';
+import type { GroupId } from '../../state/workspace';
+import { openSectorStock } from './sectorStockNavigation';
 import { realMsToYyyymmdd, subtractDaysKst, todayKstYyyymmdd } from '../liveDateTime';
 import type { LiveIndexId } from '../liveInstrument';
 
 /** 최신 거래일 도출용 일봉 룩백(달력 기준) — 최장 연휴+주말도 덮는 넉넉한 창. */
 const LATEST_LOOKBACK_DAYS = 15;
 
-export function SectorRankingWindow({ indexId }: { indexId: LiveIndexId }) {
-  const jump = useJumpToLive();
+export function SectorRankingWindow({ indexId, group }: { indexId: LiveIndexId; group: GroupId }) {
+  const resultId = useRef<string | null>(null);
+  const jump = (code: string, name: string, e?: JumpModifiers) => {
+    if (wantsNewTab(e)) { openLiveInNewTab(stockInstrument(code, name)); return; }
+    resultId.current = openSectorStock(code, name, group, resultId.current);
+  };
   const today = todayKstYyyymmdd();
   const from = subtractDaysKst(today, LATEST_LOOKBACK_DAYS);
   const candles = useLiveIndexCandles(indexId, 'D', from, today);
@@ -51,6 +58,7 @@ export function SectorRankingWindow({ indexId }: { indexId: LiveIndexId }) {
       error={ranking.error}
       onClearDatePin={() => {}} // latest 전용 — 고정 상태가 없어 no-op.
       onOpenStock={jump}
+      destinationHint="종목 → 별도 차트 (빈 그룹이 없으면 새 탭)"
     />
   );
 }

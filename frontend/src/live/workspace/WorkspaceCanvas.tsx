@@ -34,6 +34,8 @@ type LiveCanvasApi = WorkspaceCanvasApi<WorkspaceWindow>;
 interface LiveItemCtx {
   groupSymbols: Partial<Record<GroupId, GroupSymbol>>;
   paletteId: string | null;
+  maximizedId: string | null;
+  onToggleMaximize: (id: string) => void;
   onClose: (id: string) => void;
   onTogglePalette: (id: string) => void;
   onPickGroup: (id: string, group: GroupId) => void;
@@ -41,7 +43,25 @@ interface LiveItemCtx {
 }
 
 export function WorkspaceCanvas() {
-  const windows = useWorkspaceStore((s) => s.windows);
+  const savedWindows = useWorkspaceStore((s) => s.windows);
+  const maximizedId = useWorkspaceStore((s) => s.maximizedId);
+  const toggleMaximize = useWorkspaceStore((s) => s.toggleMaximize);
+  const setCanvasSize = useWorkspaceStore((s) => s.setCanvasSize);
+  // 표시만 확장한다. 저장 rect·프리셋·원래 차트 인스턴스는 유지한다.
+  const windows = useMemo(() => savedWindows.map((win) => win.id === maximizedId
+    ? { ...win, rect: { x: 0, y: 0, w: 1, h: 1 } } : win), [savedWindows, maximizedId]);
+  useEffect(() => {
+    if (!maximizedId) return;
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // 설정/보조지표 모달을 닫는 Escape가 뒤쪽 창까지 복원하지 않게 한다.
+      if (e.target instanceof Element && e.target.closest('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      toggleMaximize(maximizedId);
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [maximizedId, toggleMaximize]);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
   const closeWindow = useWorkspaceStore((s) => s.closeWindow);
@@ -234,17 +254,20 @@ export function WorkspaceCanvas() {
     () => ({
       groupSymbols,
       paletteId: palette,
+      maximizedId,
+      onToggleMaximize: toggleMaximize,
       onClose: closeWindow,
       onTogglePalette,
       onPickGroup,
       onTogglePin,
     }),
-    [groupSymbols, palette, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
+    [groupSymbols, palette, maximizedId, toggleMaximize, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
   );
 
   return (
     <WorkspaceCanvasCore<WorkspaceWindow, LiveItemCtx>
       windows={windows}
+      onCanvasSize={setCanvasSize}
       zOrder={zOrder}
       focusWindow={focusWindow}
       setWindowRects={setWindowRects}
@@ -275,6 +298,8 @@ function LiveWindowItem({
       zIndex={zIndex}
       focused={focused}
       lifting={lifting}
+      maximized={ctx.maximizedId === win.id}
+      onToggleMaximize={ctx.onToggleMaximize}
       paletteOpen={ctx.paletteId === win.id}
       onHandleDown={onHandleDown}
       onFocus={onFocus}
@@ -295,7 +320,7 @@ function LiveWindowItem({
  * 재렌더된다 — win 객체는 스토어 배열 원소라 드래그 중(로컬 프리뷰) 안정.
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
-  win, symbol, rect, zIndex, focused, lifting, paletteOpen,
+  win, symbol, rect, zIndex, focused, lifting, paletteOpen, maximized, onToggleMaximize,
   onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup, onTogglePin,
 }: {
   win: WorkspaceWindow;
@@ -305,6 +330,8 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   focused: boolean;
   lifting: boolean;
   paletteOpen: boolean;
+  maximized: boolean;
+  onToggleMaximize: (id: string) => void;
   onHandleDown: (e: React.PointerEvent, id: string, mode: Mode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
@@ -328,6 +355,8 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       symbolCode={symbol?.code ?? null}
       isIndex={symbol?.kind === 'index'}
       paletteOpen={paletteOpen}
+      maximized={maximized}
+      onToggleMaximize={onToggleMaximize}
       pinned={win.pinned != null}
       canPin={canPin}
       onHandleDown={onHandleDown}

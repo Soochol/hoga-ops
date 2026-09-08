@@ -68,6 +68,7 @@ export interface WindowFrameCoreProps {
    * 창은 불변). 드래그 리프트(shadow-modal)는 유지해 이동 피드백은 남긴다.
    */
   flat?: boolean;
+  resizable?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
@@ -75,7 +76,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, resizable = true, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -128,7 +129,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
 
-      {RESIZE_HANDLES.map((hd) => (
+      {resizable && RESIZE_HANDLES.map((hd) => (
         <div
           key={hd.mode}
           data-handle={hd.mode}

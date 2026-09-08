@@ -51,9 +51,9 @@ describe('TitleBarSymbolRow', () => {
     clearWindowWarnings('w1');
   });
 
-  it('renders 종목명(코드)', () => {
+  it('종목명을 보존하고 전체 코드는 툴팁으로 제공한다', () => {
     renderRow({ name: '삼성전자', code: '005930' });
-    expect(screen.getByTestId('titlebar-symbol-row').textContent).toContain('삼성전자(005930)');
+    expect(screen.getByText('삼성전자')).toHaveAttribute('title', '삼성전자(005930)');
   });
 
   it('falls back to bare code when name is null', () => {

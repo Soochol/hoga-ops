@@ -218,6 +218,10 @@ export type WorkspaceSnapshot = Omit<Persisted, 'groupSymbols'>;
 type Store = Persisted & {
   /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
   chartRuntime: Record<string, ChartWindowRuntime>;
+  canvasSize: Canvas | null;
+  setCanvasSize: (canvas: Canvas) => void;
+  maximizedId: string | null;
+  toggleMaximize: (id: string) => void;
   /**
    * 레거시 px rect 를 아직 비율로 못 바꾼 상태 — 런타임 전용(영속 안 함).
    * 캔버스가 자기 크기를 처음 실측할 때 `normalizeLegacyRects` 로 해소된다.
@@ -628,7 +632,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
-  broker: { w: 236, h: 280 },
+  broker: { w: 280, h: 310 },
   // trade = 헤더 27 + 컬럼헤더 22 + 행 23.25×12 ≈ 328 → 330. 체결은 장중 무한히
   // 흐르는 리스트라 "전부 보이는 높이"가 없다 — 시점 상한(12행)까지 보이고 나머지는
   // 스크롤(broker 와 같은 부류). 폭은 4열(시각·체결가·체결량·구분)이라 book 보다 넓다.
@@ -637,28 +641,12 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // program = 헤더 27 + 카드(py 16 + 타이틀행 ~17 + 금액/수량 그리드 ~51 +
   // 스파크라인 최소 56 + 보간 라벨 ~20) ≈ 187 → 200. 스파크라인이 flex-1 이라
   // 창을 키우면 그래프가 초과분을 흡수한다.
-  program: { w: 260, h: 200 },
-  // investor = 헤더 27 + thead(text-xs) 30 + KIS 가집계 최대 5차 32.25×5 ≈ 218 → 230.
-  // 카드 껍데기(테두리·자체 헤더·좌우 여백)를 걷어내 창 프레임이 그 역할을 하므로
-  // 표가 창을 그대로 쓴다 — 2026-07-30 이전의 310 은 그 껍데기까지 세던 값이다.
-  //
-  // 폭 340 은 **실측 임계 325 위**로 잡은 값이다(2026-08-04, /browse). 수량을 만
-  // 단위로 축약하던 시절엔 280 으로 충분했지만, 원수 표기로 바뀌면서 값 셀 하나가
-  // -1,925,000 = 73px 를 요구한다. 임계 아래로 내리면 `table-fixed` 라 폭이 재분배되지
-  // 않고 **세 컬럼이 조용히 잘린다** — 스크롤바도 생기지 않으므로 눈으로만 잡힌다.
-  investor: { w: 340, h: 230 },
-  // investor-daily = 헤더 27 + 기간칩 줄 24 + 컬럼헤더 22 + 행 24×20 + 누적행 25
-  // ≈ 578 → 420 으로 자른다(20일이 기본이라 스크롤이 정상이고, 창을 키우면 더
-  // 보인다). 그룹 라벨 줄(22px)은 2026-08-31 에 걷어냈다 — 높이는 그만큼만 줄고
-  // 420 은 그대로 둔다(어차피 스크롤 전제라 자르는 값이 바뀌지 않는다). 폭 560 은 **다 보이는 폭이 아니다** — 값 컬럼이 12개라
-  // 어떤 창 폭에도 안 들어간다. 그래서 이 창만 `table-fixed` 가 아니라 가로 스크롤을
-  // 쓴다(고정 배치였다면 컬럼이 스크롤바도 없이 조용히 잘린다 — investor 주석의 사고).
-  // 560 은 REF_CANVAS 기준값이라 실제 렌더 폭은 캔버스에 비례한다. 실측(2026-08-31,
-  // /browse): 1600 뷰포트 → 창 553px, 날짜 + 상위 4주체 + 금융투자·보험까지 보인다.
-  // 1280 뷰포트 → 창 437px, 날짜 + 상위 4주체 + 금융투자. **좁은 쪽에서도 상위
-  // 4주체가 다 보이는 것**이 이 값을 고른 기준이고, 기관 세부는 흘려 보낸다.
+  program: { w: 320, h: 240 },
+  // 원수 수량 3열 + 차수·관측 시각, 기준 시점/단위 줄과 최대 6차를 확보한다.
+  investor: { w: 400, h: 300 },
+  // 기본은 상위 4주체. 기관 세부는 펼쳐 가로 스크롤하고 날짜/누적을 고정한다.
   'investor-daily': { w: 560, h: 420 },
-  'sector-ranking': { w: 360, h: 320 },
+  'sector-ranking': { w: 560, h: 360 },
 };
 
 const hydrated = readStorage();
@@ -708,6 +696,14 @@ function clearedChartRuntime(
 export const useWorkspaceStore = create<Store>((set, get) => ({
   ...hydrated,
   chartRuntime: {},
+  canvasSize: null,
+  setCanvasSize: (canvas) => set({ canvasSize: canvas }),
+  maximizedId: null,
+  toggleMaximize: (id) => {
+    if (!get().windows.some((w) => w.id === id)) return;
+    get().focusWindow(id);
+    set((state) => ({ maximizedId: state.maximizedId === id ? null : id }));
+  },
 
   addWindow: (kind) => {
     const id = newWindowId();
@@ -716,10 +712,10 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     const indicatorSourceId = kind === 'chart' ? focusedChart(get())?.id ?? null : null;
     set((state) => {
       const group = activeGroupOf(state); // 새 창 = 활성 그룹 상속(#711)
-      // DEFAULT_SIZE 는 px 실측값(카드가 전부 보이는 높이) — 기준 캔버스로 나눠
-      // 비율로 옮긴다(ADR-0122). 실제 렌더 크기는 그때의 캔버스에 비례한다.
+      // DEFAULT_SIZE 는 콘텐츠 기준 px 크기다. 현재 캔버스로 나눠 비율로 저장한다. 이후 리사이즈는 기존 비율 계약을 따른다.
       const size = DEFAULT_SIZE[kind];
-      const frac = { w: size.w / REF_CANVAS.w, h: size.h / REF_CANVAS.h };
+      const canvas = state.canvasSize ?? REF_CANVAS;
+      const frac = { w: Math.min(1, size.w / canvas.w), h: Math.min(1, size.h / canvas.h) };
       // 캐스케이드 오프셋 — 새 창이 서로 겹쳐 나지 않도록 창 수에 비례해 밀어낸다.
       const offPx = 24 + ((state.windows.length * 28) % 200);
       const win: WorkspaceWindow = {
@@ -727,8 +723,8 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         kind,
         group,
         rect: {
-          x: Math.min(offPx / REF_CANVAS.w, 1 - frac.w),
-          y: Math.min(offPx / REF_CANVAS.h, 1 - frac.h),
+          x: Math.min(offPx / canvas.w, 1 - frac.w),
+          y: Math.min(offPx / canvas.h, 1 - frac.h),
           ...frac,
         },
       };
@@ -737,7 +733,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         const src = focusedChart(state);
         win.chart = src?.chart ? { ...src.chart } : { timeframe: '1m' };
       }
-      const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id] };
+      const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id], maximizedId: null };
       persistFromState({ ...state, ...next });
       return next;
     });
@@ -752,6 +748,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   closeWindow: (id) => {
     set((state) => {
       const next = {
+        maximizedId: state.maximizedId === id ? null : state.maximizedId,
         windows: state.windows.filter((w) => w.id !== id),
         zOrder: state.zOrder.filter((i) => i !== id),
         chartRuntime: clearedChartRuntime(state.chartRuntime, [id]),
@@ -770,7 +767,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       if (!state.windows.some((w) => w.id === id)) return {};
       const zOrder = [...state.zOrder.filter((i) => i !== id), id];
       persistFromState({ ...state, zOrder });
-      return { zOrder };
+      return { zOrder, maximizedId: null };
     });
   },
 
@@ -1108,7 +1105,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
       // 핀 이월 창도 예외가 아니다 — 이월의 본질은 표시 종목 연속성이지 런타임
       // 연속성이 아니고, payload 가 timeframe 을 바꿀 수 있어 fresh-view 가 안전하다.
-      return { ...next, chartRuntime: {} };
+      return { ...next, chartRuntime: {}, maximizedId: null };
     });
     // 같은 이유로 창별 지표 스코프도 고아가 된다. 새로 등장한 창의 시드는 그 창이
     // 마운트될 때 안전망(`useSeedWindowIndicatorScope`)이 페이지 세트로 채운다.

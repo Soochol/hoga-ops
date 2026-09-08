@@ -19,6 +19,12 @@
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
 import { useCallback, useMemo, useState } from 'react';
+import { requestIndicatorDrawer } from './indicatorDrawerControls';
+import { BrokerScrollArea } from './BrokerScrollArea';
+import { DataContext } from './DataContext';
+import { useWorkspaceStore } from '../../state/workspace';
+import { useConnectionLiveness } from '../../api/useConnectionLiveness';
+import { LIVE_STALE_MS } from '../../api/liveness';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel, { type BookTrade } from './BookPanel';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
@@ -100,7 +106,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   // (지수에서 유일하게 허용되는 kind). 주식·미지정 그룹에는 안내 카드.
   if (win.kind === 'sector-ranking') {
     if (symbol?.kind === 'index' && isLiveIndexId(symbol.code)) {
-      return <SectorRankingWindow indexId={symbol.code} />;
+      return <SectorRankingWindow indexId={symbol.code} group={win.group} />;
     }
     return (
       <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-xs text-fg-dim">
@@ -602,6 +608,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
+      <DataContext mode={isSpot ? (bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점') : '최신 호가'} time={snapshot?.ts_ms} />
       {showAvailableHint && (
         <div
           data-testid="orderbook-available-hint"
@@ -702,12 +709,15 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     inactiveCursorMs: latestTs,
   });
   return (
-    <div className="h-full overflow-auto bg-bg-card">
+    <div className="flex h-full flex-col bg-bg-card">
+      <DataContext mode={scope.kind === 'minute-cursor' ? '커서 시점' : '최신'} time={card.cursorMs} detail={`순매수(주) · ${card.series?.length ?? 0}개 거래원`} />
+      <BrokerScrollArea>
       <BrokerTrajectoryTable
         series={card.series}
         cursorMs={card.cursorMs}
         venue={effectiveVenue}
       />
+      </BrokerScrollArea>
     </div>
   );
 }
@@ -726,6 +736,7 @@ const TRADE_TICK_LIMIT = 200;
  * 경로를 먼저 만들어야 한다.
  */
 function TradeWindow({ code }: { code: string }) {
+  const connected = useConnectionLiveness(LIVE_STALE_MS);
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
   // live.trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계).
@@ -744,8 +755,11 @@ function TradeWindow({ code }: { code: string }) {
   return (
     // 배경을 10호가(BookPanel)와 동일한 --bg-card 로 — flat 창 프레임(--bg)이 비쳐
     // 체결창만 회색(Toss 라이트)으로 갈리던 것을 통일.
-    <div className="h-full overflow-auto bg-bg-card">
-      <TradeTickTable view={view} highlight={highlight} />
+    <div className="flex h-full flex-col bg-bg-card">
+      <DataContext mode="최신 체결" time={view.ticks[0]?.tMs} detail={`최근 ${TRADE_TICK_LIMIT}건 · 15분 버퍼`} />
+      <div className="min-h-0 flex-1 overflow-auto">
+        <TradeTickTable view={view} highlight={highlight} emptyText={connected ? '최근 수신 체결 없음 · 새 체결 수신 대기' : '실시간 연결 확인 중 · 체결 수신 대기'} />
+      </div>
     </div>
   );
 }
@@ -765,8 +779,9 @@ function InvestorDailyPane({ win, code }: { win: WorkspaceWindow; code: string }
 function InvestorWindow({ code }: { code: string }) {
   const query = useLiveInvestorTrendEstimate(code);
   return (
-    <div className="h-full overflow-auto bg-bg-card">
-      <InvestorTrendEstimateCard query={query} />
+    <div className="flex h-full flex-col bg-bg-card">
+      <DataContext mode="최신 잠정치" detail="차트 커서와 독립 · 차수별 관측 시각" />
+      <div className="min-h-0 flex-1 overflow-auto"><InvestorTrendEstimateCard query={query} /></div>
     </div>
   );
 }
@@ -900,7 +915,12 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
-    <div className="h-full overflow-auto bg-bg-card">
+    <div className="flex h-full flex-col bg-bg-card">
+      <DataContext mode={isSpot ? (vdistSettings.hoverCutoffEnabled ? '커서까지 누적' : '커서 날짜 전체') : '당일 누적'}
+        detail={`${activeDate ?? '날짜 없음'} · ${timeframe} · ${vdistSettings.rangeCount}구간`}>
+        <button type="button" className="text-accent hover:underline" title="연결 차트의 보조지표 설정 열기" onClick={() => { useWorkspaceStore.getState().focusWindow(link.windowId); requestIndicatorDrawer(link.windowId); }}>보조지표 설정</button>
+      </DataContext>
+      <div className="min-h-0 flex-1 overflow-auto">
       <VolumeDistributionCard
         profile={cutoffProfile}
         cursorMs={markerCursorMs}
@@ -909,6 +929,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         maxColor={vdistSettings.maxColor}
         axisStartMs={activeSegment?.session_open_ms}
       />
+      </div>
     </div>
   );
 }
@@ -938,7 +959,9 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   );
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
-    <div className="h-full overflow-auto bg-bg-card">
+    <div className="flex h-full flex-col bg-bg-card">
+      <DataContext mode={scope.kind === 'minute-cursor' ? '커서 시점' : '최신 · 당일 누적'} time={scope.cursorMs} />
+      <div className="min-h-0 flex-1 overflow-auto">
       <ProgramTradeSummaryCard
         series={series}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
@@ -947,6 +970,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         // 누적을 현재값처럼 보여주지 않고 빈 상태로 리셋한다.
         todayKst={link.todayKst}
       />
+      </div>
     </div>
   );
 }

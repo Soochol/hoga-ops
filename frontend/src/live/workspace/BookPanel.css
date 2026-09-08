@@ -1,0 +1,8 @@
+.book-panel { container-type: inline-size; }
+.book-panel-grid { min-width: var(--book-min-w); grid-template-columns: var(--book-cols); }
+.book-summary-expand { display: none; }
+@container (max-width: 454px) {
+  .book-panel[data-expanded-summary="false"] .book-panel-grid { min-width: 411px; grid-template-columns: minmax(132px, 1fr) 139px minmax(140px, 1fr); }
+  .book-panel[data-expanded-summary="false"] .book-summary-extra { display: none; }
+  .book-panel[data-expanded-summary="false"] .book-summary-expand { display: block; }
+}

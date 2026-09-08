@@ -48,7 +48,7 @@
  * 대신 컬럼마다 최소 폭을 주고 넘치면 가로로 흐르게 하며, 날짜 컬럼과 헤더는
  * sticky 로 붙잡는다.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import type { InvestorNetUnit } from '../../api/types';
@@ -89,6 +89,8 @@ type Props = {
 };
 
 export function InvestorDailyWindow({ code, cursorDate }: Props) {
+  const [showDetails, setShowDetails] = useState(false);
+  const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
   const span = useInvestorDailySpanStore((s) => s.span);
   const setSpan = useInvestorDailySpanStore((s) => s.setSpan);
   const unit = useInvestorEstimateUnitStore((s) => s.unit);
@@ -120,10 +122,11 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-2.5 py-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SpanChips span={span} onSelect={setSpan} />
           <UnitChip unit={unit} onToggle={toggleUnit} />
+          <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails((shown) => !shown)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
         </div>
         {/* 상태는 표가 거짓말을 하고 있을 때만 한 줄이 생긴다 — 항상 있는 크롬이면
             그게 라벨이 된다(잠정투자자 카드와 같은 방침).
@@ -134,6 +137,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         )}
       </div>
 
+      <div className="shrink-0 px-2.5 pb-1 text-2xs text-fg-dim">일별 순매수 · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
       {table.rows.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-3 py-4 text-center font-data text-xs text-fg-dim">
           {stateText ?? '일별 투자자 데이터 없음'}
@@ -156,7 +160,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             <thead className="sticky top-0 z-20 text-fg-dim">
               <tr>
                 <HeadCell sticky className="text-left">날짜</HeadCell>
-                {INVESTOR_COLUMNS.map((column, index) => (
+                {columns.map((column, index) => (
                   <HeadCell
                     key={column.key}
                     className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
@@ -177,7 +181,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     className={isCursor ? 'bg-tint-selection' : undefined}
                   >
                     <DateCell date={row.date} isToday={row.date === today} />
-                    {INVESTOR_COLUMNS.map((column, index) => (
+                    {columns.map((column, index) => (
                       <ValueCell
                         key={column.key}
                         value={row.values[column.key]}
@@ -204,7 +208,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     </span>
                   )}
                 </HeadCell>
-                {INVESTOR_COLUMNS.map((column, index) => (
+                {columns.map((column, index) => (
                   <ValueCell
                     key={column.key}
                     value={table.totals[column.key]}
@@ -354,7 +358,7 @@ function UnitChip({
           : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
       }`}
     >
-      {INVESTOR_ESTIMATE_UNIT_LABELS[unit]}
+      {isAmount ? '금액(억원)' : '수량(주)'}
     </button>
   );
 }

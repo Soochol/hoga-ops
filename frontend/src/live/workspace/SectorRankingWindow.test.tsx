@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
+import { useWorkspaceStore } from '../../state/workspace';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import type { LiveIndexCandlesResponse } from '../../api/liveIndices';
 import type { IndexSectorRankingResponse } from '../../api/indexSectorRankings';
@@ -29,7 +30,7 @@ vi.mock('../liveNavigate', () => ({
 function renderWindow() {
   return render(
     <MemoryRouter initialEntries={['/live']}>
-      <SectorRankingWindow indexId="KOSPI" />
+      <SectorRankingWindow indexId="KOSPI" group={1} />
     </MemoryRouter>,
   );
 }
@@ -66,6 +67,7 @@ const ranking: IndexSectorRankingResponse = {
 const TS_20260619 = Date.UTC(2026, 5, 19) - 9 * 60 * 60 * 1000;
 
 beforeEach(() => {
+  useWorkspaceStore.setState({ windows: [], zOrder: [], groupSymbols: { 1: { code: 'KOSPI', name: 'KOSPI', kind: 'index' } } });
   useLiveIndexCandles.mockReset();
   useIndexSectorRankings.mockReset();
   activateLiveCode.mockReset();
@@ -89,7 +91,7 @@ describe('SectorRankingWindow', () => {
     expect(useIndexSectorRankings).toHaveBeenCalledWith('20260619', true, expect.any(String));
     // 헤더는 latest 모드로 최신 거래일을 표시한다.
     expect(screen.getByText('2026/06/19 기준 · 최신')).toBeInTheDocument();
-    expect(screen.getByText('반도체')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1위 반도체/ })).toBeInTheDocument();
   });
 
   it('일봉이 아직 없으면 랭킹 조회를 비활성화하고 로딩으로 표시한다', () => {
@@ -102,7 +104,7 @@ describe('SectorRankingWindow', () => {
     expect(screen.getByText('섹터 랭킹을 불러오는 중입니다')).toBeInTheDocument();
   });
 
-  it('종목 클릭은 활성 그룹 종목을 교체한다(activateLiveCode)', async () => {
+  it('종목 클릭은 지수를 보존하고 별도 그룹 차트를 연다', async () => {
     const user = userEvent.setup();
     useLiveIndexCandles.mockReturnValue(candlesResult([{ t_ms: TS_20260619, open: 1, high: 1, low: 1, close: 1, volume: 0 }]));
     useIndexSectorRankings.mockReturnValue({ data: ranking, isLoading: false, error: null });
@@ -110,7 +112,11 @@ describe('SectorRankingWindow', () => {
     renderWindow();
     await user.click(screen.getByRole('button', { name: /삼성전자/ }));
 
-    expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+    expect(activateLiveCode).not.toHaveBeenCalled();
+    const ws = useWorkspaceStore.getState();
+    expect(ws.groupSymbols[1]?.code).toBe('KOSPI');
+    expect(ws.windows[0].kind).toBe('chart');
+    expect(ws.groupSymbols[ws.windows[0].group]?.code).toBe('005930');
   });
 
   it('ctrl+클릭은 새 탭으로 열고 활성 그룹 종목은 그대로 둔다', async () => {
