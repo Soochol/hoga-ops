@@ -1,4 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { colorContrast } from './colorContrast';
+import { useThemePrefsStore } from '../../state/themePrefs';
+import { resolveTokens } from '../../util/tokens';
 import { createPortal } from 'react-dom';
 import { LINE_STYLES, type LineStyle } from '../../chart/drawing/types';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
@@ -48,6 +51,13 @@ export default function MAStylePicker({
   color, lineWidth, onChange, label, extraColors, lineStyle, onLineStyleChange,
 }: Props) {
   const lbl = label ?? 'MA';
+  const theme = useThemePrefsStore((s) => s.themePreference);
+  const [lowContrast, setLowContrast] = useState(false);
+  useEffect(() => {
+    const { background } = resolveTokens({ background: ['--bg-card', '#ffffff'] });
+    const ratio = colorContrast(color, background);
+    setLowContrast(ratio !== null && ratio < 3);
+  }, [color, theme]);
   const showLineStyle = lineStyle != null && onLineStyleChange != null;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +84,7 @@ export default function MAStylePicker({
       <button
         type="button"
         aria-label={`${lbl} 스타일 선택`}
+        title={lowContrast ? '배경과 구분하기 어려운 색 · 팔레트에서 변경' : undefined}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'inline-flex',
@@ -94,6 +105,7 @@ export default function MAStylePicker({
             height: 10,
             borderRadius: '50%',
             backgroundColor: color,
+            boxShadow: 'inset 0 0 0 1px var(--border-strong)',
           }}
         />
         <span
@@ -123,6 +135,12 @@ export default function MAStylePicker({
             border: '1px solid var(--border-strong)',
           }}
         >
+          {lowContrast && (
+            <div className="mb-3 text-xs text-fg-dim">
+              배경과 구분하기 어려운 색입니다
+              <button type="button" className="ml-2 text-accent hover:underline" onClick={() => { onChange({ color: '#6B7280' }); setOpen(false); }}>회색 추천 적용</button>
+            </div>
+          )}
           <div
             style={{
               color: 'var(--fg-dim)',

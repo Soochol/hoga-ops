@@ -59,6 +59,7 @@ export interface WindowFrameCoreProps {
   header: React.ReactNode;
   /** × 버튼 표시 여부(기본 true) — 닫을 수 없는 창(예: /study 단일 차트)은 숨긴다. */
   closable?: boolean;
+  closeLabel?: string;
   /** 이동 드래그 중인 창 — 그림자를 한 단계 띄워(shadow-modal) "들어올림"을 표현. */
   lifting?: boolean;
   /**
@@ -74,7 +75,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, lifting = false, flat = false, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -112,7 +113,9 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           {header}
           {closable && (
             <button
-              className="ml-auto px-0.5 text-sm leading-none text-fg-dim hover:text-fg"
+              type="button"
+              aria-label={closeLabel}
+              className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-sm leading-none text-fg-dim hover:bg-tint-selection hover:text-fg"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
               title="창 닫기"

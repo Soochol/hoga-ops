@@ -209,3 +209,23 @@ describe('MAStylePicker', () => {
     expect(screen.getByRole('button', { name: '매도벽 스타일 선택' })).toBeTruthy();
   });
 });
+
+
+it('keeps an existing white color until the user accepts the contrast recommendation', () => {
+  const root = document.documentElement;
+  const before = root.style.getPropertyValue('--bg-card');
+  root.style.setProperty('--bg-card', '#fff');
+  const onChange = vi.fn();
+  const { unmount } = render(<MAStylePicker color="#F8FAFC" lineWidth={1} onChange={onChange} />);
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    expect(screen.getByText('배경과 구분하기 어려운 색입니다')).toBeVisible();
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '회색 추천 적용' }));
+    expect(onChange).toHaveBeenCalledWith({ color: '#6B7280' });
+  } finally {
+    unmount();
+    if (before) root.style.setProperty('--bg-card', before);
+    else root.style.removeProperty('--bg-card');
+  }
+});

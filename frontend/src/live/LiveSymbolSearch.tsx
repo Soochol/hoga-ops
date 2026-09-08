@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
+import { activationTarget, useWorkspaceStore } from '../state/workspace';
 import { onFocusLiveSearch } from './liveSearchFocus';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
@@ -39,6 +40,18 @@ function readRecentSearches(): RecentSearch[] {
 
 function writeRecentSearches(recent: RecentSearch[]) {
   localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recent.slice(0, RECENT_SEARCH_LIMIT)));
+}
+
+function SearchDestination() {
+  const description = useWorkspaceStore((state) => {
+    const target = activationTarget(state);
+    if (target.kind === 'blocked') return '모든 창이 고정되어 있습니다 · 고정을 해제한 뒤 선택하세요';
+    if (target.kind === 'empty') return '그룹 1에 적용 · 창을 추가하면 선택한 종목이 표시됩니다';
+    const group = target.window.group;
+    const count = state.windows.filter((win) => win.group === group && !win.pinned).length;
+    return `그룹 ${group} · 연결된 ${count}개 창에 적용 · 고정 창 제외`;
+  });
+  return <p className="mt-2 px-3 text-xs text-fg-dim" role="status">{description}</p>;
 }
 
 export function LiveSymbolSearch() {
@@ -157,6 +170,8 @@ export function LiveSymbolSearch() {
           {...inputProps}
         />
       </div>
+
+      <SearchDestination />
 
       {listVisible && (
         <div

@@ -1486,7 +1486,7 @@ export function WatchlistDrawer() {
           );
         })()}
         <div className="flex items-center justify-between gap-2 px-md py-sm text-xs text-fg-dim">
-          <span className="flex items-center gap-1">다음 수집{' '}
+          <span className="flex items-center gap-1">다음 수집까지{' '}
             {data && <span className="text-accent"><Countdown targetMs={data.next_run_at_ms} /></span>}</span>
           <button type="button"
             onClick={() => catchupAllM.mutate(undefined, {

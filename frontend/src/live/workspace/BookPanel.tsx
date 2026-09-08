@@ -15,6 +15,7 @@
  * `/study` 를 "같은 패널을 쓰는 다른 화면" 으로 언급하는데, 그건 **왜 그 처리가
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
+import { BookScrollArea } from './BookScrollArea';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
 import type { LiveViEvent } from '../../api/liveViStatus';
@@ -239,7 +240,7 @@ export default function BookPanel({
 
           두 값의 근거·실측표는 `bookPanelMetrics` 에 있다. **Tailwind 임의값으로
           되돌리지 말 것** — JIT 가 리터럴만 스캔해서 상수 보간이 조용히 죽는다. */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <BookScrollArea>
         <div
           className="grid"
           style={{ minWidth: BOOK_PANEL_MIN_W, gridTemplateColumns: BOOK_PANEL_GRID_COLS }}
@@ -394,7 +395,7 @@ export default function BookPanel({
             ))}
           </div>
         </div>
-      </div>
+      </BookScrollArea>
       {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
           커서 스팟 경로를 타지 않으므로 흐리지 않는다 — 사다리가 낡았다는 말이
           그 숫자에는 해당하지 않는다. */}
