@@ -37,6 +37,8 @@ export interface HeatmapBoardProps {
   flowByFolder?: Map<string, number[]>;
   /** 검색 쿼리 — 매칭 종목 행 하이라이트용(폴더로 통과). */
   query?: string;
+  matchesOnly?: boolean;
+  onCollectLagging?: (folderId: string, codes: string[]) => void;
   /** code → 마지막 캡처 성공일(YYYYMMDD, ADR-0142). 결손 기준일은 **보드 전체 마커의
    *  최댓값**이라 여기서 한 번 계산해 그룹으로 내린다 — 그룹마다 계산하면 기준이
    *  그룹별로 달라져 같은 종목이 그룹에 따라 다르게 보인다. */
@@ -78,12 +80,12 @@ const entryCollision: CollisionDetection = (args) => {
  *  그래서 드래그가 구조적으로 "그룹 내"에 갇혀 있었다. 그룹 간 이동/복제를 드래그로 하려면
  *  컨텍스트가 하나여야 한다. multicol 이 블록을 칼럼에 흩뿌려도 폴더 블록은 break-inside-avoid
  *  라 한 칼럼 안에 온전히 있고, dnd-kit 은 좌표로 충돌을 재므로 칼럼을 넘는 드래그도 동작한다. */
-export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, captureMarkers, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, matchesOnly, onCollectLagging, captureMarkers, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
   const sortQuotes = sortQuoteByCode ?? quoteByCode;
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   // 보드 전체 코드로 한 번 계산 — 기준일(마커 최댓값)이 그룹별로 갈리면 안 된다.
-  const { lagging } = useMemo(
+  const { latest, lagging } = useMemo(
     () => computeCaptureLag(captureMarkers, groups.flatMap((g) => g.entries.map((e) => e.code))),
     [captureMarkers, groups],
   );
@@ -143,6 +145,9 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
           onRowMenu={onRowMenu}
           flowSeries={flowByFolder ? (flowByFolder.get(g.folder.id) ?? []) : undefined}
           query={query}
+          matchesOnly={matchesOnly}
+          onCollectLagging={onCollectLagging}
+          captureBaseline={latest}
           dragEnabled={dragEnabled}
           sortEnabled={sortEnabled}
           copyIntent={copyIntent}

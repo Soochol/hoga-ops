@@ -14,7 +14,3 @@
   .market-indices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-pair, .market-ranks { grid-template-columns: minmax(0, 1fr); }
 }
-
-/* /market reflows below the workspace floor; only navigation keeps its readable width. */
-.market-shell nav { overflow-x: auto; scrollbar-width: none; }
-.market-shell nav > div { min-width: calc(var(--app-floor-min-w) - var(--rail-w)); }

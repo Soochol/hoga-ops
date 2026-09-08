@@ -6,8 +6,8 @@ import { toQuoteSortMode, type SortMode } from './heat';
  *  순환(nextSort), 아이콘(QuoteSortIcon)은 방향만, title/aria 는 현재 상태+다음 동작을 설명한다.
  *  라벨(종목/그룹)은 정렬 *키*(등락률)의 축을 알린다. 활성(desc/asc)=accent, 기본=dim.
  *  /heatmap 페이지와 우측 레일 드로어가 공유(단일 출처). */
-export function SortCycleButton({ label, mode, onCycle }: {
-  label: string; mode: SortMode; onCycle: () => void;
+export function SortCycleButton({ label, mode, onCycle, expanded = false }: {
+  expanded?: boolean; label: string; mode: SortMode; onCycle: () => void;
 }) {
   const qm = toQuoteSortMode(mode);
   return (
@@ -16,7 +16,7 @@ export function SortCycleButton({ label, mode, onCycle }: {
       className={`flex items-center gap-1 h-7 px-1 leading-none rounded hover:bg-bg-input-hover ${
         mode === 'manual' ? 'text-fg-dimmer' : 'text-accent'
       }`}>
-      <span className="text-xs">{label}{mode !== 'manual' ? ' 등락률' : ''}</span>
+      <span className="text-xs">{label}{expanded ? `: ${mode === 'manual' ? '수동' : mode === 'desc' ? '상승순' : '하락순'}` : mode !== 'manual' ? ' 등락률' : ''}</span>
       <QuoteSortIcon mode={qm} className="w-[1em] h-[1em]" />
     </button>
   );
