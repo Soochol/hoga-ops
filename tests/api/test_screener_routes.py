@@ -38,6 +38,7 @@ def test_scan_post_ok_shape(tmp_path):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok" and "warnings" in body
+    assert body["has_more"] is False
     assert body["rows"][0]["code"] == "000001"
     assert all(set(r) >= {"code", "name", "market", "price", "trade_value_won", "change_pct"} for r in body["rows"])
     assert all("matches" not in r and "new_high" not in r for r in body["rows"])

@@ -1,0 +1,28 @@
+[
+  {
+    "requested_limit": 1000,
+    "returned": 1000,
+    "ms": 343.2,
+    "response_fields": [
+      "depth_coverage",
+      "depth_values",
+      "intraday_failure",
+      "rows",
+      "status",
+      "warnings"
+    ]
+  },
+  {
+    "requested_limit": 2000,
+    "returned": 2000,
+    "ms": 320.2,
+    "response_fields": [
+      "depth_coverage",
+      "depth_values",
+      "intraday_failure",
+      "rows",
+      "status",
+      "warnings"
+    ]
+  }
+]

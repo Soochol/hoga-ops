@@ -1,0 +1,1 @@
+{"conditions": [{"type": "trade_value_period", "id": "lWA6igKh", "params": {"lookback": 250, "min_eok": 1000.0}}, {"type": "new_high", "id": "SsXve1XX", "params": {"lookback": 250, "period": 250}}], "universe": {"markets": ["KOSPI", "KOSDAQ"], "exclude_etf": true, "exclude_halted": true, "scopes": []}, "basis": "intraday"}

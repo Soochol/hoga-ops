@@ -284,7 +284,13 @@ function withLastGoodChangeFields(current: LiveQuote, previous: LiveQuote | unde
  *  오버레이를 {quoteByCode, phase, dataUpdatedAt} 한 인터페이스로 노출한다. Map 조립
  *  + null-가드 + 쿼리 메타(phase·신선도)를 한 곳에 모아, 셋 다 필요한 소비자(관심맵)가
  *  인라인으로 Map 을 다시 만들지 않게 한다. Map 만 필요하면 useQuoteByCode(thin view). */
-export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'KRX'): LiveQuoteOverlay {
+// tickCodes 는 WS 로 보완할 종목이다. 생략하면 codes 전체, []면 REST만 사용한다.
+// REST 대상·queryKey 는 codes 로 유지해 전체 결과 정렬과 캐시 공유를 보존한다.
+export function useLiveQuoteOverlay(
+  codes: string[],
+  venue: LiveVenueOption = 'KRX',
+  tickCodes: string[] = codes,
+): LiveQuoteOverlay {
   // 코드별 유효 venue 해석기. identity 가 안정적이라(useEffectiveVenue 참조) 아래
   // useMemo·useEffect deps 에 그대로 넣을 수 있다.
   const resolveVenue = useEffectiveVenueResolver(venue);
@@ -308,7 +314,7 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
   // 틱은 **파티션하지 않고** 해석기를 넘긴다 — 구독은 코드당 하나면 충분하고 게이트만
   // 코드별이면 되기 때문이다(useLiveTickPrices 주석).
   const { prices: tickPrices, expected: expectedFills } = useLiveTickPrices(
-    codes, venue, resolveVenue,
+    tickCodes, venue, resolveVenue,
   );
   const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
   // 구독 코드 집합의 안정 키. 스크리너·관심종목처럼 목록이 갈리는 소비자에서
@@ -369,6 +375,10 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
 /** codes 의 Live Quote 를 코드→quote 조회 Map 으로 묶는다 — useLiveQuoteOverlay 의
  *  thin view. Map 만 필요한 관심종목/스크리너 패널·라이브 상태바가 쓴다(시그니처·
  *  동작·메모 안정성 불변). 없는 코드는 .get → undefined. */
-export function useQuoteByCode(codes: string[], venue: LiveVenueOption = 'KRX'): Map<string, LiveQuote> {
-  return useLiveQuoteOverlay(codes, venue).quoteByCode;
+export function useQuoteByCode(
+  codes: string[],
+  venue: LiveVenueOption = 'KRX',
+  tickCodes: string[] = codes,
+): Map<string, LiveQuote> {
+  return useLiveQuoteOverlay(codes, venue, tickCodes).quoteByCode;
 }

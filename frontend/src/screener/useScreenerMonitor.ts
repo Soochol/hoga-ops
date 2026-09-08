@@ -10,6 +10,7 @@ export const MONITOR_PERIOD_FULL_MS = 30_000;
 /** 에러 백오프 상한 + 자동 종료 임계(연속 실패 횟수). */
 export const MONITOR_MAX_BACKOFF_MS = 300_000;
 export const MONITOR_FAIL_LIMIT = 5;
+const NO_TICK_CODES: string[] = [];
 
 export type MonitorPausedReason = 'closed' | null;
 
@@ -60,7 +61,9 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
   // 미상장 종목을 떼어내 `primary` 로만 요청한다 — 즉 코드 집합이 달라져 queryKey 가
   // 갈리고, 주장하던 "추가 요청 0" 이 조용히 거짓이 된다(스크리너 결과에 미상장이
   // 섞이는 건 흔하다: 심볼 마스터의 86%). 같은 훅을 타야 같은 키가 나온다.
-  const phase = useLiveQuoteOverlay(resultCodes, venue).phase;
+  // phase 확인에는 REST만 필요하다. 여기서 전체 WS를 구독하면 결과 행의
+  // '선택 종목 1개' 제한을 우회해 모니터링이 다시 수백 종목을 등록한다.
+  const phase = useLiveQuoteOverlay(resultCodes, venue, NO_TICK_CODES).phase;
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;

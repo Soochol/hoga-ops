@@ -192,6 +192,21 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
 });
 
+it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유지한다', async () => {
+  vi.mocked(runScan).mockResolvedValueOnce({
+    status: 'ok', warnings: ['intraday_quote_invalid'], has_more: true,
+    rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 1e11, change_pct: 5.8 }],
+  });
+  const { unmount } = await renderPageReady();
+  fireEvent.click(screen.getByText('조회'));
+  expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
+  expect(screen.getByText(/일부 종목 장중 미반영/)).toBeInTheDocument();
+  expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('결과 상위 1건');
+  unmount();
+  renderPage();
+  expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
+});
+
 it('uses shared action styling in the save dialog', async () => {
   // 저장본이 있으면 자동 로드로 anchor 가 생겨 저장이 dialog 없이 update 로 흐른다.
   vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [] });

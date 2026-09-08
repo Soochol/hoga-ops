@@ -21,6 +21,7 @@ import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl
 import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
 import { sortScreenerRows } from '../screener/sortResults';
 import { intradayDegradationText } from '../screener/intradayDegradation';
+import { resultLimitText } from '../screener/resultLimitText';
 import { suggestSaveName } from '../screener/suggestName';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
@@ -173,6 +174,7 @@ export function Screener() {
   // 강등 사유별 문구 — 유량 초과·자격증명 부재·파싱 오류의 처방이 각각 다르다(ADR-0137).
   const intradayDegradation =
     lastScan?.basis === 'intraday' ? intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure) : null;
+  const limitNotice = resultLimitText(rows.length, lastScan?.hasMore);
   const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   // 심볼 마스터 미로드 → ETF 판정이 stocks.parquet(수동 시드, 낡을 수 있음)으로 강등.
   const etfFilterStale = (lastScan?.warnings ?? []).includes('etf_filter_stale_master_unavailable');
@@ -191,6 +193,7 @@ export function Screener() {
         savedUpdatedAtMs: saved?.updated_at_ms ?? null,
         scanKey,
         rows: res.rows,
+        hasMore: res.has_more,
         scanStatus: res.status,
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
@@ -228,6 +231,7 @@ export function Screener() {
   // 우선순위 순 — 첫 번째가 배너, 나머지는 칩. 문구는 종전 배너 문구를 그대로 쓴다
   // (표시 계약: 문구를 바꾸면 e2e 셀렉터·사용자 학습이 함께 깨진다).
   const statusFlags: StatusFlag[] = [];
+  if (limitNotice) statusFlags.push({ key: 'limit', text: limitNotice });
   if (!hasConditions) {
     statusFlags.push({ key: 'no-conditions', text: '조건이 없습니다 · 저장된 조건검색을 선택하거나 조건을 추가하면 조회할 수 있습니다' });
   }
@@ -362,7 +366,7 @@ export function Screener() {
                 <span className="text-sm text-fg-dim">조회 중…</span>
               ) : lastScan ? (
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
-                  결과 <span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>건
+                  결과 {lastScan.hasMore && '상위 '}<span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>건
                   <span className="text-fg-dim">
                     {' '}· {lastScan.basis === 'intraday' ? '오늘 장중' : '전일 확정'}
                     {scannedAtLabel && ` · ${scannedAtLabel} 조회`}

@@ -1,0 +1,89 @@
+[
+  {
+    "case": "saved-eod",
+    "run": 1,
+    "ms": 1030.0,
+    "http": 200,
+    "rows": 533,
+    "bytes": 64095,
+    "warnings": []
+  },
+  {
+    "case": "saved-eod",
+    "run": 2,
+    "ms": 998.5,
+    "http": 200,
+    "rows": 533,
+    "bytes": 64095,
+    "warnings": []
+  },
+  {
+    "case": "saved-eod",
+    "run": 3,
+    "ms": 1032.8,
+    "http": 200,
+    "rows": 533,
+    "bytes": 64095,
+    "warnings": []
+  },
+  {
+    "case": "saved-intraday",
+    "run": 1,
+    "ms": 2566.6,
+    "http": 200,
+    "rows": 532,
+    "bytes": 63797,
+    "warnings": [
+      "intraday_quote_invalid"
+    ]
+  },
+  {
+    "case": "saved-intraday",
+    "run": 2,
+    "ms": 1278.6,
+    "http": 200,
+    "rows": 532,
+    "bytes": 63797,
+    "warnings": [
+      "intraday_quote_invalid"
+    ]
+  },
+  {
+    "case": "saved-intraday",
+    "run": 3,
+    "ms": 1298.8,
+    "http": 200,
+    "rows": 532,
+    "bytes": 63797,
+    "warnings": [
+      "intraday_quote_invalid"
+    ]
+  },
+  {
+    "case": "scoped-eod",
+    "run": 1,
+    "ms": 196.6,
+    "http": 200,
+    "rows": 227,
+    "bytes": 27540,
+    "warnings": []
+  },
+  {
+    "case": "scoped-eod",
+    "run": 2,
+    "ms": 195.2,
+    "http": 200,
+    "rows": 227,
+    "bytes": 27540,
+    "warnings": []
+  },
+  {
+    "case": "scoped-eod",
+    "run": 3,
+    "ms": 187.0,
+    "http": 200,
+    "rows": 227,
+    "bytes": 27540,
+    "warnings": []
+  }
+]

@@ -12,6 +12,8 @@ import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
 import * as watchlistApi from '../api/watchlist';
+import * as ws from '../api/ws';
+import { seedSymbolMaster } from '../live/seedSymbolMaster';
 
 type DndHandlers = {
   onDragStart: null | ((e: unknown) => void);
@@ -173,6 +175,29 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument();
   });
 
+  it.each(['/live', '/screener'])('%s에서는 보고 있는 차트의 선택 종목만 WS에 연결한다', async (path) => {
+    const released = vi.fn();
+    const subscribe = vi.spyOn(ws, 'subscribeLive').mockImplementation((code) => () => released(code));
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({ lastScan: makeScan(), selectedSavedId: SAVE.id });
+    useLivePageStore.setState({ activeCode: '005930' });
+    const queryClient = qc();
+    seedSymbolMaster(queryClient);
+    const { unmount } = render(<ScreenerDrawer />, { wrapper: wrap(queryClient, path) });
+    await screen.findByText('삼성전자');
+    if (path === '/live') {
+      expect(subscribe.mock.calls.map(([code]) => code)).toEqual(['005930']);
+      act(() => useLivePageStore.setState({ activeCode: '000660' }));
+      expect(released).toHaveBeenCalledWith('005930');
+      expect(subscribe.mock.calls.map(([code]) => code)).toEqual(['005930', '000660']);
+    } else {
+      expect(subscribe).not.toHaveBeenCalled();
+    }
+    unmount();
+    if (path === '/live') expect(released).toHaveBeenCalledWith('000660');
+    queryClient.clear();
+  });
+
   it('defaults selection to the first save and 시작 scans with its conditions', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
@@ -299,6 +324,52 @@ describe('ScreenerDrawer', () => {
 
     await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(false));
     expect(screen.queryByTestId('screener-monitor-status')).not.toBeInTheDocument();
+  });
+
+  it('같은 종목의 자동 재조회도 경고·상한·시각·거래대금을 갱신한다', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const queryClient = qc();
+    seedSymbolMaster(queryClient);
+    try {
+      vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+      const previous = makeScan({ scannedAtMs: Date.now() - 60_000, dataStale: true });
+      useScreenerPanelStore.setState({ selectedSavedId: SAVE.id, lastScan: previous });
+      const scan = vi.spyOn(screenerApi, 'runScan')
+        .mockResolvedValueOnce({
+          status: 'ok', rows: ROWS.map((r) => ({ ...r })),
+          warnings: ['intraday_quote_invalid'], has_more: true,
+          intraday_failure: { reason: 'api_error', kind: 'vendor_api', is_failure: true },
+        })
+        .mockResolvedValue({
+          status: 'ok', rows: ROWS.map((r) => ({ ...r, trade_value_won: r.trade_value_won * 2 })),
+          warnings: [], has_more: false, intraday_failure: null,
+        });
+      render(<ScreenerDrawer />, { wrapper: wrap(queryClient, '/live') });
+      await screen.findByText(SAVE.name);
+      act(() => useScreenerPanelStore.setState({ monitoringActive: true }));
+      expect(await screen.findByText(/거래대금 상위 2건만 표시/)).toBeInTheDocument();
+      const first = useScreenerPanelStore.getState().lastScan!;
+      expect(first.rows).toBe(previous.rows);
+      expect(first.scannedAtMs).toBeGreaterThan(previous.scannedAtMs);
+      expect(first.warnings).toEqual(['intraday_quote_invalid']);
+      expect(first.intradayFailure?.kind).toBe('vendor_api');
+      expect(first.dataStale).toBe(false);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_100); });
+      await waitFor(() => expect(scan).toHaveBeenCalledTimes(2));
+      const second = useScreenerPanelStore.getState().lastScan!;
+      expect(second.scannedAtMs).toBeGreaterThan(first.scannedAtMs);
+      expect(second.rows[0].trade_value_won).toBe(ROWS[0].trade_value_won * 2);
+      expect(second.warnings).toEqual([]);
+      expect(second.intradayFailure).toBeNull();
+      expect(second.hasMore).toBe(false);
+      expect(screen.queryByText(/거래대금 상위 2건만 표시/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/일부 종목 장중 미반영/)).not.toBeInTheDocument();
+    } finally {
+      cleanup();
+      queryClient.clear();
+      vi.useRealTimers();
+    }
   });
 
   it('shows that drawer scans use the intraday quote basis and surfaces EOD fallback', async () => {

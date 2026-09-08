@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router';
 import {
   DndContext,
   PointerSensor,
@@ -21,6 +22,7 @@ import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerU
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { StalenessChip } from './StalenessChip';
 import { intradayDegradationText } from './intradayDegradation';
+import { resultLimitText } from './resultLimitText';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -30,7 +32,7 @@ import { useEntryOrder } from './useEntryOrder';
 import { QuoteRowGroupMenu } from '../rightrail/QuoteRowGroupMenu';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, stackByEntryOrder, type ScreenerResultSortMode } from './sortResults';
-import type { ScanBasis, ScreenerRow } from '../api/screener';
+import type { ScanBasis } from '../api/screener';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -113,15 +115,6 @@ function SavedConditionSelect({
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
 const DRAWER_SCAN_BASIS: ScanBasis = 'intraday';
-
-/** 멤버십(코드 집합) 동일 여부. 실시간 모니터링의 동일 결과 skip 판정용 — 같으면
- *  결과 리스트 재렌더·localStorage 재직렬화를 건너뛴다(가격은 라이브 오버레이 몫이라
- *  멤버십만 바뀌지 않으면 리스트를 새로 그릴 이유가 없다). */
-function sameCodeSet(a: readonly ScreenerRow[], b: readonly ScreenerRow[]): boolean {
-  if (a.length !== b.length) return false;
-  const codes = new Set(a.map((r) => r.code));
-  return b.every((r) => codes.has(r.code));
-}
 
 function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
@@ -212,6 +205,7 @@ function ScreenerDragGhost({ ghost }: {
  */
 export function ScreenerDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
+  const { pathname } = useLocation();
   const openLive = useJumpToLive();
 
   // 결과 행 우클릭 → 관심 그룹 편집 메뉴(하트 버튼 대체). raw 커서 좌표만 담고
@@ -253,6 +247,7 @@ export function ScreenerDrawer() {
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
   // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
   const intradayDegradation = intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure);
+  const limitNotice = resultLimitText(lastScan?.rows.length ?? 0, lastScan?.hasMore);
   const lastScanStaleReason = (() => {
     if (!lastScan) return null;
     // 풀페이지 Screener 에서 임시 조건으로 조회한 결과 — 드로어의 저장본 선택과 신원이
@@ -265,9 +260,8 @@ export function ScreenerDrawer() {
   })();
 
   // 1회 조회 + 결과 처리. 수동 버튼과 실시간 모니터링 루프가 공유하는 단일 seam(두
-  // 경로의 결과 처리 드리프트 방지). 성공 시 true. 동일 멤버십(코드 집합)이고 총잔량
-  // 값이 없으면 setLastScan 을 건너뛰어 리렌더·localStorage 재직렬화를 막는다 — 단
-  // 총잔량 조건이 있으면(depthValues 존재) 값이 매 조회 변하므로 항상 갱신한다.
+  // 경로의 결과 처리 드리프트 방지). 메타는 항상 갱신하고, 같은 행의 참조를
+  // 재사용하는 일은 setLastScan의 구조적 공유가 맡는다.
   const scanOnce = async (): Promise<boolean> => {
     const sel = selected;
     if (!sel) return false;
@@ -275,11 +269,6 @@ export function ScreenerDrawer() {
       const res = await screener.mutateAsync({
         conditions: sel.conditions, universe: sel.universe, basis: DRAWER_SCAN_BASIS,
       });
-      const prev = useScreenerPanelStore.getState().lastScan;
-      const canSkip = prev != null && prev.savedId === sel.id
-        && res.depth_values == null && prev.depthValues == null
-        && sameCodeSet(prev.rows, res.rows);
-      if (canSkip) return true;
       setLastScan({
         savedId: sel.id,
         savedName: sel.name,
@@ -287,6 +276,7 @@ export function ScreenerDrawer() {
         // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
         scanKey: null,
         rows: res.rows,
+        hasMore: res.has_more,
         scanStatus: res.status,
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
@@ -350,7 +340,8 @@ export function ScreenerDrawer() {
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
   // scanRows 는 위에서 정의(모니터 phase 조회와 공유).
-  const liveRows = useScreenerRowsLive(scanRows);
+  // 다른 페이지에서는 activeCode 가 마지막 차트 선택을 보관할 뿐 화면에 보이지 않는다.
+  const liveRows = useScreenerRowsLive(scanRows, pathname === '/live' ? activeCode : null);
   // default 정렬 = 진입순 상단 스택(신규 편입이 위, 기존 위치 고정). 명시 정렬(가격·등락률
   // 등)이 걸리면 그게 우선이라 스택을 적용하지 않는다. 진입순은 조건(selectedSavedId)별로
   // 초기화 — 풀페이지 Screener 는 이 훅을 안 써 default 가 여전히 서버순이다(공용 계약 무손상).
@@ -505,7 +496,7 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
-              결과 {lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
+              결과 {lastScan.hasMore && '상위 '}{lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case" style={{ color: 'var(--warn)' }}>
                   · {lastScanStaleReason} — 시작으로 갱신
@@ -528,6 +519,7 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
+            {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
             {intradayDegradation && (
               <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
                 {intradayDegradation}

@@ -110,6 +110,8 @@ export interface DepthPeakValue {
 export interface ScreenerResponse {
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];
+  /** 구버전 서버는 미제공. false는 전체 결과, true는 limit에서 잘린 결과. */
+  has_more?: boolean;
   /** 상태 태그의 평평한 목록 — 장중·depth·ETF 가 한 평면이라 접두가 네임스페이스다. */
   warnings: string[];
   /** 장중 오버레이 실패의 **구조화된 사유**(ADR-0143). 접두 없이 `kind` 를 동반한다. */

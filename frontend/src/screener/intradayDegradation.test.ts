@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { intradayDegradationText } from './intradayDegradation';
 
 describe('intradayDegradationText', () => {
+  it.each(['intraday_quote_invalid', 'intraday_volume_unavailable'])('부분 검증 실패 %s를 숨기지 않는다', (warning) => {
+    const text = intradayDegradationText([warning]);
+    expect(text).toContain('일부 종목 장중 미반영');
+    expect(text).toContain('해당 종목은 전일 확정 데이터로 평가');
+    expect(text).not.toContain('장중 조회 불가');
+  });
+
+  it('시세·거래량 미반영 사유를 함께 표시한다', () => {
+    expect(intradayDegradationText(['intraday_quote_invalid', 'intraday_volume_unavailable']))
+      .toContain('시세 검증 실패·거래량 미확보');
+  });
   it('강등이 없으면 배너를 만들지 않는다', () => {
     expect(intradayDegradationText([])).toBeNull();
     expect(intradayDegradationText(undefined)).toBeNull();

@@ -30,10 +30,16 @@ export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
  * 를 직접 읽으므로, stale 을 빼면 등락률 정렬이 주기적으로 리셋된다 — stale 을 정렬키로
  * 유지하는 근거는 makeChangePctOf(quoteSort.ts) 주석 참조(단일 소유).
  */
-export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
+// 조회만으로 결과 전체를 WS 등록하지 않는다. 보고 있는 차트의 선택 종목이 결과에
+// 있을 때만 그 1개를 구독한다. 전체 페이지는 행 클릭 시 /live 로 이동하므로 기본 null.
+export function useScreenerRowsLive(rows: ScreenerRow[], selectedCode: string | null = null): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
+  const tickCodes = useMemo(
+    () => selectedCode && codes.includes(selectedCode) ? [selectedCode] : [],
+    [codes, selectedCode],
+  );
   const venue = useLiveVenueStore((s) => s.venue);
-  const quoteByCode = useQuoteByCode(codes, venue);
+  const quoteByCode = useQuoteByCode(codes, venue, tickCodes);
   return useMemo(
     () =>
       rows.map((r) => {

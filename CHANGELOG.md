@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.47.2] - 2026-09-08
+
+### Fixed
+- 스크리너 결과의 WS 구독을 현재 라이브 화면에서 선택한 한 종목으로 제한하고, 전체 결과의 REST 시세 갱신은 유지한다.
+- 가상 결과 행 높이를 실제 크기로 측정하고, 장중 시세 일부 미반영과 결과 상한 초과 여부를 안내한다.
+- 자동 재조회에서 종목 집합이 같아도 시각·경고·거래대금을 갱신하며, 값이 같은 행은 재사용한다.
+
 ## [0.12.47.1] - 2026-09-08
 
 ### Fixed
