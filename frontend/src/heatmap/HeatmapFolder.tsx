@@ -40,7 +40,6 @@ export interface HeatmapFolderProps {
   query?: string;
   matchesOnly?: boolean;
   onCollectLagging?: (folderId: string, codes: string[]) => void;
-  captureBaseline?: string | null;
   /** 행을 드래그 가능하게 한다(그룹 간 이동·복제). 보드가 DndContext 를 제공할 때만 true —
    *  단독 렌더(테스트 등)에서는 false 여서 dnd 훅이 컨텍스트 없이 도는 일이 없다. */
   dragEnabled?: boolean;
@@ -55,11 +54,11 @@ export interface HeatmapFolderProps {
   /** 그룹 삭제. 미전달이면 메뉴의 '그룹 삭제'가 빠진다. 파괴적이므로(멤버 종목 동반 삭제)
    *  confirm 은 호출측 책임. */
   onDeleteFolder?: (folderId: string, name: string) => void;
-  /** code → 마지막 캡처 성공일(YYYYMMDD). 헤더의 '미수집 N' 칩과 행 툴팁이 쓴다
+  /** code → 마지막 캡처 성공일(YYYYMMDD). 보충 수집 대상과 행 툴팁이 쓴다
    *  (ADR-0142). 미전달이면 캡처 표시가 통째로 빠진다 — 단독 렌더/테스트용. */
   captureMarkers?: Record<string, string>;
   /** 이 그룹에서 캡처가 뒤처진 코드(보드가 전체 마커로 한 번 계산해 내려준다) —
-   *  헤더 '미수집 N' 칩 집계 전용. 그룹마다 재계산하지 않는 이유: 기준일은 **보드
+   *  그룹 메뉴의 보충 수집 대상 판정 전용. 그룹마다 재계산하지 않는 이유: 기준일은 **보드
    *  전체 마커의 최댓값**이라 그룹 안에서만 보면 기준이 그룹마다 달라진다. */
   laggingCodes?: ReadonlySet<string>;
   /** 헤더의 '＋종목' 팝오버를 자동으로 연다(새 그룹 생성 직후 — 보드가 지정). */
@@ -80,7 +79,7 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, matchesOnly, onCollectLagging, captureBaseline, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, matchesOnly, onCollectLagging, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   // 정렬 키만 스로틀된 시세에서 읽는다 — 헤더 틴트(avg)와 행 표시값은 라이브 pctOf 유지.
   const sorted = sortEntries(entries, sortMode, makePctOf(sortQuoteByCode ?? quoteByCode));
@@ -125,7 +124,8 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
   }, [flashCode, folderId]);
   const isDuplicate = useCallback(
     (code: string) => entries.some((e) => e.code === code), [entries]);
-  const hasGroupMenu = !!onRenameFolder || !!onDeleteFolder;
+  const canCollectLagging = laggingInGroup > 0 && !!onCollectLagging;
+  const hasGroupMenu = !!onRenameFolder || !!onDeleteFolder || canCollectLagging;
 
   const ctxFor = onRowMenu
     ? (code: string, name: string) => (e: React.MouseEvent) => onRowMenu(e, code, name, folderId)
@@ -218,21 +218,6 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
           {flowSeries !== undefined && <GroupFlowSparkline series={flowSeries} />}
         </span>
         <span className="flex items-center gap-2 flex-none ml-auto">
-          {laggingInGroup > 0 && (
-            /* 캡처 결손 칩 — 결손이 있을 때만 존재한다(정상은 아무것도 그리지 않는다).
-               색은 --error 계열: DESIGN.md 색 규율에서 캡처 성공/실패는 상태 semantic 이고,
-               시세 색(적/청)과 절대 섞이면 안 되는 축이다. 그래서 등락률 칩 옆에 서도
-               의미가 뒤섞이지 않는다. */
-            <button type="button"
-              className="text-2xs font-data tabular-nums text-error rounded hover:bg-bg-input-hover"
-              data-testid={`heatmap-folder-lag-${folderId}`}
-              title={`저장 데이터 기준 ${captureBaseline ?? '최신 수집일'} · ${entries.filter((e) => laggingCodes?.has(e.code)).map((e) => e.name).join(', ')} · 눌러 보충 수집`}
-              onClick={() => onCollectLagging?.(folderId, entries.filter((e) => laggingCodes?.has(e.code)).map((e) => e.code))}
-              disabled={!onCollectLagging}
-            >
-              수집 지연 {laggingInGroup}
-            </button>
-          )}
           {avg !== null && (
             <span className="text-xs font-data tabular-nums text-fg-dim" title={`평균 등락률 · 시세 반영 ${entries.filter((e) => pctOf(e.code) != null).length}/${entries.length}종목 · 동일 가중 평균`}>
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
@@ -252,6 +237,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
             ? () => setRenaming({ value: folder.name, error: null })
             : undefined}
           onDelete={onDeleteFolder ? () => onDeleteFolder(folderId, folder.name) : undefined}
+          onCollect={canCollectLagging ? () => onCollectLagging?.(folderId, entries.filter((e) => laggingCodes?.has(e.code)).map((e) => e.code)) : undefined}
           onClose={() => setMenu(null)} />
       )}
     </FolderDropZone>

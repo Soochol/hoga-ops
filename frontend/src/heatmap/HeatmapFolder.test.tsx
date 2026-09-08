@@ -70,19 +70,14 @@ it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 �
 
 // --- 캡처 결손 표시 (ADR-0142) ---------------------------------------------
 
-it('뒤처진 종목이 있으면 헤더에 미수집 칩 — 행 종목명은 빨개지지 않는다', () => {
+it('뒤처진 종목이 있어도 헤더에 수집 지연 라벨을 표시하지 않는다', () => {
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={() => {}}
     captureMarkers={{ '005930': '20260806', '000660': '20260804' }}
     laggingCodes={new Set(['000660'])} />);
 
-  const chip = screen.getByTestId('heatmap-folder-lag-f1');
-  expect(chip).toHaveTextContent('수집 지연 1');
-  // 상태 semantic 색 — 시세 색(등락 적/청)과 섞이면 안 되는 축이다(DESIGN.md 색 규율).
-  expect(chip).toHaveClass('text-error');
-
-  // 2026-08-25: 뒤처진 행의 종목명 --error 강조는 사용자 요청으로 제거. 행 단위
-  // 정보는 툴팁(아래 테스트)이, 집계는 위 칩이 담당한다 — 이름은 항상 중립 dim.
+  expect(screen.queryByTestId('heatmap-folder-lag-f1')).not.toBeInTheDocument();
+  expect(screen.queryByText(/수집 지연/)).not.toBeInTheDocument();
   expect(screen.getByText('SK하이닉스')).toHaveClass('text-fg-dim');
   expect(screen.getByText('SK하이닉스')).not.toHaveClass('text-error');
 });
@@ -116,10 +111,11 @@ it('일치 종목만 표시해도 전체 그룹 평균과 수집 지연 범위�
   const collect = vi.fn();
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={() => {}} query="삼성" matchesOnly
-    captureBaseline="20260908" laggingCodes={new Set(['000660'])} onCollectLagging={collect} />);
+    laggingCodes={new Set(['000660'])} onCollectLagging={collect} />);
   expect(screen.queryByTestId('heatmap-row-000660')).not.toBeInTheDocument();
   expect(screen.getByText('+5.0%')).toHaveAttribute('title', expect.stringContaining('2/2종목'));
-  fireEvent.click(screen.getByTestId('heatmap-folder-lag-f1'));
+  fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '보충 수집' }));
   expect(collect).toHaveBeenCalledWith('f1', ['000660']);
 });
 
