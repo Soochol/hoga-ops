@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { insertStudyViewIds } from './studyViewOrder';
 import { persistJson, readJsonObject } from '../state/persist';
 import {
   filterStudyViewGroups,
@@ -13,13 +14,6 @@ import {
 const COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY = 'studyViews.collapsedGroups.v1';
 const STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY = 'studyViews.treeSortMode.v1';
 const STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY = 'studyViews.treeManualOrder.v1';
-
-function arrayMoveLocal<T>(items: T[], from: number, to: number): T[] {
-  const next = [...items];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-}
 
 function readStudyViewTreeSortMode(): StudyViewTreeSortMode {
   const saved = readJsonObject(STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY);
@@ -87,30 +81,35 @@ function persistCollapsedStudyViewGroups<T extends StudyViewTreeRow>(
   });
 }
 
-export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
+export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loaded = true) {
   const [query, setQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedStudyViewGroups());
   const [sortMode, setSortMode] = useState<StudyViewTreeSortMode>(() => readStudyViewTreeSortMode());
   const [manualOrder, setManualOrder] = useState<StudyViewTreeManualOrder>(() => readStudyViewTreeManualOrder());
+  const [orderMessage, setOrderMessage] = useState('');
+  const [undoOrder, setUndoOrder] = useState<{ before: StudyViewTreeManualOrder; after: StudyViewTreeManualOrder } | null>(null);
   const sourceGroups = useMemo(() => groupStudyViewsByCode(rows), [rows]);
   const allGroups = useMemo(() => groupStudyViewsByCode(rows, sortMode, manualOrder), [manualOrder, rows, sortMode]);
   const visibleGroups = useMemo(() => filterStudyViewGroups(allGroups, query), [allGroups, query]);
-  const visibleGroupsCollapsed = visibleGroups.length > 0 && visibleGroups.every((group) => collapsedGroups.has(group.key));
+  const searching = query.trim() !== '';
+  const visibleGroupsCollapsed = !searching && visibleGroups.length > 0 && visibleGroups.every((group) => collapsedGroups.has(group.key));
 
   useEffect(() => {
-    persistCollapsedStudyViewGroups(collapsedGroups, allGroups);
-  }, [collapsedGroups, allGroups]);
+    if (loaded) persistCollapsedStudyViewGroups(collapsedGroups, allGroups);
+  }, [collapsedGroups, allGroups, loaded]);
 
   useEffect(() => {
     persistJson(STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY, { sortMode });
   }, [sortMode]);
 
   useEffect(() => {
+    if (!loaded) return;
     const pruned = pruneManualOrder(manualOrder, sourceGroups);
     persistJson(STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY, pruned);
-  }, [manualOrder, sourceGroups]);
+  }, [manualOrder, sourceGroups, loaded]);
 
   const toggleGroup = (key: string) => {
+    if (searching) return;
     setCollapsedGroups((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
@@ -120,6 +119,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
   };
 
   const collapseVisibleGroups = () => {
+    if (searching) return;
     setCollapsedGroups((current) => {
       const next = new Set(current);
       for (const group of visibleGroups) next.add(group.key);
@@ -128,6 +128,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
   };
 
   const expandVisibleGroups = () => {
+    if (searching) return;
     setCollapsedGroups((current) => {
       const next = new Set(current);
       for (const group of visibleGroups) next.delete(group.key);
@@ -136,6 +137,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
   };
 
   const toggleVisibleGroups = () => {
+    if (searching) return;
     if (visibleGroupsCollapsed) {
       expandVisibleGroups();
       return;
@@ -143,34 +145,55 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
     collapseVisibleGroups();
   };
 
-  const reorderGroup = (activeKey: string, overKey: string) => {
-    if (activeKey === overKey) return;
-    setManualOrder((current) => {
-      const currentKeys = groupStudyViewsByCode(rows, 'default', current).map((group) => group.key);
-      const from = currentKeys.indexOf(activeKey);
-      const to = currentKeys.indexOf(overKey);
-      if (from < 0 || to < 0) return current;
-      return { ...current, groupKeys: arrayMoveLocal(currentKeys, from, to) };
-    });
+  const snapshot = (): StudyViewTreeManualOrder => {
+    const groups = groupStudyViewsByCode(rows, 'default', manualOrder);
+    return { groupKeys: groups.map((g) => g.key), rowIdsByGroup: Object.fromEntries(groups.map((g) => [g.key, g.rows.map((r) => r.id)])) };
   };
-
+  const writeOrder = (next: StudyViewTreeManualOrder) => {
+    try { localStorage.setItem(STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY, JSON.stringify(next)); }
+    catch { setOrderMessage('순서를 저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); return false; }
+    setManualOrder(next);
+    return true;
+  };
+  const commitOrder = (next: StudyViewTreeManualOrder) => {
+    const before = snapshot();
+    if (JSON.stringify(before) === JSON.stringify(next)) return;
+    if (!writeOrder(next)) return;
+    setUndoOrder({ before, after: next });
+    setOrderMessage('순서를 변경했습니다 · 이 브라우저에 저장');
+  };
+  const placeGroup = (activeKey: string, overKey: string, side: 'before' | 'after') => {
+    const next = snapshot();
+    const at = next.groupKeys.indexOf(overKey);
+    if (at < 0 || !next.groupKeys.includes(activeKey)) return;
+    next.groupKeys = insertStudyViewIds(next.groupKeys, [activeKey], at + (side === 'after' ? 1 : 0));
+    commitOrder(next);
+  };
+  const placeRows = (groupKey: string, ids: string[], overId: string, side: 'before' | 'after') => {
+    const next = snapshot();
+    const current = next.rowIdsByGroup[groupKey];
+    if (!current || !ids.every((id) => current.includes(id))) return;
+    const at = current.indexOf(overId);
+    if (at < 0) return;
+    next.rowIdsByGroup[groupKey] = insertStudyViewIds(current, ids, at + (side === 'after' ? 1 : 0));
+    commitOrder(next);
+  };
+  const undoReorder = () => {
+    if (!undoOrder) return;
+    if (JSON.stringify(readStudyViewTreeManualOrder()) !== JSON.stringify(undoOrder.after)) {
+      setOrderMessage('순서가 변경되어 되돌릴 수 없습니다. 최신 목록을 확인하세요.');
+      setUndoOrder(null);
+      return;
+    }
+    if (writeOrder(undoOrder.before)) { setUndoOrder(null); setOrderMessage('순서를 되돌렸습니다'); }
+  };
+  const reorderGroup = (activeKey: string, overKey: string) => {
+    const keys = snapshot().groupKeys;
+    placeGroup(activeKey, overKey, keys.indexOf(activeKey) < keys.indexOf(overKey) ? 'after' : 'before');
+  };
   const reorderRow = (groupKey: string, activeId: string, overId: string) => {
-    if (activeId === overId) return;
-    setManualOrder((current) => {
-      const group = groupStudyViewsByCode(rows, 'default', current).find((candidate) => candidate.key === groupKey);
-      if (!group) return current;
-      const currentIds = group.rows.map((row) => row.id);
-      const from = currentIds.indexOf(activeId);
-      const to = currentIds.indexOf(overId);
-      if (from < 0 || to < 0) return current;
-      return {
-        ...current,
-        rowIdsByGroup: {
-          ...current.rowIdsByGroup,
-          [groupKey]: arrayMoveLocal(currentIds, from, to),
-        },
-      };
-    });
+    const ids = snapshot().rowIdsByGroup[groupKey] ?? [];
+    placeRows(groupKey, [activeId], overId, ids.indexOf(activeId) < ids.indexOf(overId) ? 'after' : 'before');
   };
 
   return {
@@ -182,7 +205,10 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
     dragEnabled: sortMode === 'default' && query.trim() === '',
     visibleGroups,
     visibleGroupsCollapsed,
-    isCollapsed: (key: string) => collapsedGroups.has(key),
+    isCollapsed: (key: string) => !searching && collapsedGroups.has(key),
+    searching,
+    orderMessage, placeGroup, placeRows, undoReorder, canUndoOrder: !!undoOrder,
+    useManualSort: () => setSortMode('default'),
     toggleGroup,
     collapseVisibleGroups,
     expandVisibleGroups,

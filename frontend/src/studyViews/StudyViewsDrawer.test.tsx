@@ -2,10 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { useLivePageStore } from '../state/livePage';
 import { savedRangeFocusFromView } from './savedRangeFocus';
+import StudyViewDeleteToastHost from './StudyViewDeleteToastHost';
+import { useStudyViewDeletion } from './studyViewDeletion';
+const deleteApi = vi.hoisted(() => vi.fn());
+vi.mock('../api/studyViews', async (orig) => ({ ...await orig<typeof import('../api/studyViews')>(), deleteStudyView: deleteApi }));
 
 /** 행 클릭이 세우는 `/live` 저장뷰 기간 슬롯 — **"지금 열린 저장뷰" 의 유일한 출처**다
  *  (2026-08-23 `/study` 삭제 후. 그전엔 그 페이지의 그룹→저장뷰 맵이었다). */
@@ -136,7 +140,7 @@ function renderDrawer(path: string) {
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="*" element={<><StudyViewsDrawer /><Location /></>} />
+          <Route path="*" element={<><StudyViewsDrawer /><StudyViewDeleteToastHost /><Location /></>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -156,12 +160,22 @@ beforeEach(() => {
   updateMutate.mockReset();
   updateMetadataMutate.mockReset();
   removeMutate.mockReset();
+  deleteApi.mockReset().mockResolvedValue(undefined);
   dnd.onDragStart = null;
   dnd.onDragMove = null;
   dnd.onDragEnd = null;
   dnd.onDragCancel = null;
   mockedSaves = saves;
   useLivePageStore.getState().clearSavedRange();
+});
+
+afterEach(() => {
+  act(() => {
+  for (const batch of useStudyViewDeletion.getState().batches) useStudyViewDeletion.getState().undo(batch.id);
+  useStudyViewDeletion.setState({ batches: [] });
+  });
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });
 
 it('filters by name, code, and memo ignoring whitespace and case', () => {
@@ -321,13 +335,15 @@ it('searches saved-view fields and shows only matching child rows', async () => 
   expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
 });
 
-it('respects collapsed groups during search', async () => {
+it('expands collapsed matching groups temporarily during search', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '삼성');
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
 });
 
@@ -356,17 +372,13 @@ it('toggles all visible stock groups with one toolbar button', async () => {
   expect(screen.queryByRole('button', { name: '전체 펼치기' })).toBeNull();
 });
 
-it('bulk controls affect filtered visible groups without changing hidden groups', async () => {
+it('disables collapse controls during search without changing stored collapse state', async () => {
   renderDrawer('/inventory');
-
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), 'SK');
-  await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+  expect(screen.getByRole('button', { name: '전체 접기' })).toBeDisabled();
   await userEvent.clear(screen.getByLabelText('저장뷰 검색'));
-
   expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 펼치기' })).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 접기' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('moves the live save action out of the drawer', () => {
@@ -604,108 +616,96 @@ it('does not rename a saved view when the inline value is unchanged', async () =
   expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
-it('defers deletion behind an undo grace period from the row context menu', () => {
+it('defers context-menu deletion for five seconds and allows undo', async () => {
   vi.useFakeTimers();
-  try {
-    renderDrawer('/study?view=a');
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-
-    // 행은 즉시 사라지고 토스트가 뜨지만, 유예가 끝나기 전엔 DELETE 가 나가지 않는다.
-    expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
-    expect(screen.getByText('‘급등 이후’ 삭제됨')).toBeTruthy();
-    expect(removeMutate).not.toHaveBeenCalled();
-
-    act(() => { vi.advanceTimersByTime(5000); });
-
-    expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
-    expect(screen.queryByText('‘급등 이후’ 삭제됨')).toBeNull();
-  } finally {
-    vi.useRealTimers();
-  }
+  renderDrawer('/inventory');
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+  expect(screen.getByText('‘급등 이후’ 삭제 대기 · 5초 남음')).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(4999));
+  expect(deleteApi).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(5000));
+  expect(deleteApi).not.toHaveBeenCalled();
 });
 
-it('restores the row and skips the DELETE when undo is clicked within the grace period', () => {
+it('gives consecutive Delete requests separate undo windows and moves focus', async () => {
   vi.useFakeTimers();
-  try {
-    renderDrawer('/inventory');
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-    expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
-
-    expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
-    act(() => { vi.advanceTimersByTime(10_000); });
-    expect(removeMutate).not.toHaveBeenCalled();
-  } finally {
-    vi.useRealTimers();
-  }
+  renderDrawer('/inventory');
+  const first = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  first.focus();
+  fireEvent.keyDown(first, { key: 'Delete' });
+  const second = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  expect(document.activeElement).toBe(second);
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  fireEvent.keyDown(second, { key: 'Delete' });
+  expect(document.activeElement).toBe(screen.getByLabelText('저장뷰 검색'));
+  expect(screen.getAllByRole('button', { name: '실행 취소' })).toHaveLength(2);
+  await act(() => vi.advanceTimersByTimeAsync(3000));
+  expect(deleteApi).toHaveBeenCalledExactlyOnceWith('a');
+  fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+  await act(() => vi.advanceTimersByTimeAsync(3000));
+  expect(deleteApi).toHaveBeenCalledTimes(1);
 });
 
-it('flushes the previous pending delete when a second delete is requested', () => {
+it('does not flush pending deletion when the panel unmounts', async () => {
   vi.useFakeTimers();
-  try {
-    renderDrawer('/inventory');
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-    expect(removeMutate).not.toHaveBeenCalled();
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: '눌림 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-
-    // 두 번째 삭제 요청이 첫 번째를 그 자리에서 확정한다(단일 실행취소 슬롯).
-    expect(removeMutate).toHaveBeenCalledTimes(1);
-    expect(removeMutate).toHaveBeenCalledWith('a', expect.any(Object));
-
-    act(() => { vi.advanceTimersByTime(5000); });
-    expect(removeMutate).toHaveBeenCalledWith('b', expect.any(Object));
-  } finally {
-    vi.useRealTimers();
-  }
+  const view = renderDrawer('/inventory');
+  fireEvent.keyDown(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { key: 'Delete' });
+  view.unmount();
+  render(<StudyViewDeleteToastHost />);
+  await act(() => vi.advanceTimersByTimeAsync(4999));
+  expect(deleteApi).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(deleteApi).not.toHaveBeenCalled();
 });
 
-// 열려 있던 저장뷰를 지우면 **기간 슬롯이 풀린다**(그전엔 `/study` 에서 라우트를 떠났다).
-// 종목은 건드리지 않는 것이 계약이다 — 저장뷰 삭제가 보고 있던 종목까지 치우면 화면을
-// 통째로 갈아엎는 제스처가 된다.
-it('clears the saved-range slot after the delete grace period for the open saved view', () => {
+it('Delete removes the selected set but inputs, nested controls and Backspace are safe', async () => {
   vi.useFakeTimers();
-  try {
-    removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
-    openSavedView(saves[0]);
-    renderDrawer('/live?view=a');
-
-    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-    act(() => { vi.advanceTimersByTime(5000); });
-
-    expect(savedRange()).toBeNull();
-    expect(screen.getByTestId('loc').textContent).toBe('/live?view=a');
-  } finally {
-    vi.useRealTimers();
-  }
+  renderDrawer('/inventory');
+  const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  fireEvent.keyDown(row, { key: 'Backspace' });
+  fireEvent.keyDown(screen.getByLabelText('저장뷰 검색'), { key: 'Delete' });
+  fireEvent.keyDown(screen.getByLabelText('급등 이후 행 메뉴'), { key: 'Delete' });
+  expect(useStudyViewDeletion.getState().batches).toHaveLength(0);
+  fireEvent.click(screen.getByLabelText('여러 저장뷰 선택'));
+  fireEvent.click(screen.getByLabelText('급등 이후 선택'));
+  fireEvent.click(screen.getByLabelText('눌림 선택'));
+  fireEvent.keyDown(row, { key: 'Delete' });
+  expect(screen.getByText('저장뷰 2개 삭제 대기 · 5초 남음')).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /저장뷰 열기$/ })).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+  expect(screen.getAllByRole('button', { name: /저장뷰 열기$/ })).toHaveLength(2);
 });
 
-// 남의 뷰를 지웠을 뿐이니 화면이 흔들리면 안 된다.
-it('비활성 저장뷰를 지워도 활성 뷰와 라우트는 그대로다', () => {
+it('releases edit state when bulk-deleting a view whose rename failed', () => {
   vi.useFakeTimers();
-  try {
-    openSavedView(saves[1]);
-    removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
-    renderDrawer('/study?view=b');
+  updateMetadataMutate.mockImplementation((_body, opts) => opts.onError(new Error('offline')));
+  renderDrawer('/inventory');
+  fireEvent.click(screen.getByLabelText('여러 저장뷰 선택'));
+  fireEvent.click(screen.getByLabelText('급등 이후 선택'));
+  fireEvent.doubleClick(screen.getByText('급등 이후'));
+  const input = screen.getByLabelText('저장뷰 이름 수정');
+  fireEvent.change(input, { target: { value: '새 이름' } });
+  fireEvent.blur(input);
+  expect(screen.getByText('offline')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }));
+  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
+  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
+});
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-    act(() => { vi.advanceTimersByTime(5000); });
-
-    expect(savedRange()).toMatchObject({ viewId: 'b' });
-    expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
-  } finally {
-    vi.useRealTimers();
-  }
+it.each([['a', null], ['b', 'b']])('deleting a only clears the range when a is open (open: %s)', async (openId, expected) => {
+  vi.useFakeTimers();
+  openSavedView(saves.find((s) => s.id === openId)!);
+  renderDrawer('/live');
+  fireEvent.keyDown(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { key: 'Delete' });
+  await act(() => vi.advanceTimersByTimeAsync(5000));
+  expect(deleteApi).toHaveBeenCalledExactlyOnceWith('a');
+  expect(savedRange()?.viewId ?? null).toBe(expected);
+  expect(screen.getByTestId('loc').textContent).toBe('/live');
 });
 
 it('opens the full row menu from the hover ⋯ button without navigating', async () => {
@@ -813,7 +813,7 @@ it('dragging a stock group reorders groups', async () => {
 
   dnd.onDragEnd?.({
     active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
-    over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
+    over: { id: 'study-view-group:000660', data: { current: { type: 'group' } }, rect: { top: 100, height: 100 } },
     activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
     delta: { x: 0, y: 0 },
   });

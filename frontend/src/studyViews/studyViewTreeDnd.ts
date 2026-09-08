@@ -1,4 +1,4 @@
-import { closestCenter, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
+import { closestCenter, pointerWithin, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
 
 const GROUP_DND_PREFIX = 'study-view-group:';
 const ROW_DND_PREFIX = 'study-view-row:';
@@ -9,8 +9,16 @@ export type StudyViewTreeDragIntent =
 
 export const studyViewTreeCollision: CollisionDetection = (args) => {
   const type = args.active.data.current?.type;
-  const sameType = args.droppableContainers.filter((container) => container.data.current?.type === type);
-  return closestCenter({ ...args, droppableContainers: sameType });
+  const p = args.pointerCoordinates;
+  const bounds = document.querySelector('[data-testid="saved-views-scroll"]')?.getBoundingClientRect();
+  if (p && bounds && (p.x < bounds.left || p.x > bounds.right || p.y < bounds.top || p.y > bounds.bottom)) return [];
+  const sameType = args.droppableContainers.filter((container) => container.data.current?.type === type
+    && (type !== 'row' || container.data.current?.groupKey === args.active.data.current?.groupKey));
+  // Use actual visible bounds so scrolled headers cannot target an unrelated row.
+  const droppableRects = new Map(args.droppableRects);
+  for (const target of sameType) if (target.node.current) droppableRects.set(target.id, target.node.current.getBoundingClientRect());
+  return p ? pointerWithin({ ...args, droppableRects, droppableContainers: sameType }).slice(0, 1)
+    : closestCenter({ ...args, droppableContainers: sameType });
 };
 
 export function studyViewGroupDndId(key: string): string {
