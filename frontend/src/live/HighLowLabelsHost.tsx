@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -102,6 +103,7 @@ function HighLowLabelsHost({
   const snapshotRef = useRef<HighLowLabelsSnapshot | null>(null);
   const legendRectsRef = useRef<readonly AvoidRect[]>([]);
   const primRef = useRef<HighLowLabelsPrimitive | null>(null);
+  const [detail, setDetail] = useState<{ text: string; color: string; left: number; top: number } | null>(null);
 
   // 스냅샷은 커밋 후 갱신하고 repaint 를 요청한다. 팬/줌은 요청 없이도 lwc 가 그리므로
   // 여기 deps 는 순수 데이터/설정 변화만 커버하면 된다.
@@ -136,6 +138,40 @@ function HighLowLabelsHost({
       primRef.current = null;
     };
   }, [series, enabled]);
+
+  // Only the on-demand detail uses DOM. Chip/marker placement stays in the
+  // candle paint pass, so no React/rAF lag is introduced while panning.
+  useEffect(() => {
+    if (!series || !enabled) return;
+    const chartEl = chart.chartElement?.();
+    if (!(chartEl instanceof HTMLElement)) return;
+    const clear = () => setDetail(null);
+    const move = (event: PointerEvent) => {
+      const pane = series.getPane();
+      const el = pane.getHTMLElement();
+      if (!el) { clear(); return; }
+      const bounds = el.getBoundingClientRect();
+      const leftAxis = pane.priceScale('left').width();
+      const hit = primRef.current?.detailAt(event.clientX - bounds.left - leftAxis, event.clientY - bounds.top);
+      if (!hit) { clear(); return; }
+      setDetail({
+        text: hit.text, color: hit.color,
+        left: Math.max(8, Math.min(event.clientX + 12, window.innerWidth - 288)),
+        top: Math.max(8, Math.min(event.clientY + 16, window.innerHeight - 80)),
+      });
+    };
+    chartEl.addEventListener('pointermove', move);
+    chartEl.addEventListener('pointerleave', clear);
+    chartEl.addEventListener('pointerdown', clear);
+    chartEl.addEventListener('wheel', clear, { passive: true });
+    return () => {
+      clear();
+      chartEl.removeEventListener('pointermove', move);
+      chartEl.removeEventListener('pointerleave', clear);
+      chartEl.removeEventListener('pointerdown', clear);
+      chartEl.removeEventListener('wheel', clear);
+    };
+  }, [chart, series, enabled]);
 
   const remeasureLegend = useCallback(() => {
     if (!series) return;
@@ -179,7 +215,15 @@ function HighLowLabelsHost({
     };
   }, [chart, series, enabled, remeasureLegend]);
 
-  return null;
+  return enabled && series && detail ? createPortal(
+    <div role="tooltip" data-testid="extreme-label-detail" style={{
+      position: 'fixed', left: detail.left, top: detail.top, zIndex: 1000,
+      pointerEvents: 'none', maxWidth: 'min(280px, calc(100vw - 16px))',
+      padding: 'var(--space-2xs) var(--space-sm)', borderRadius: 'var(--radius-md)',
+      border: '1px solid var(--border)', background: 'var(--bg-card)',
+      color: detail.color, fontFamily: 'var(--font-data)', fontSize: 'var(--text-xs)',
+    }}>{detail.text}</div>, document.body,
+  ) : null;
 }
 
 // memo: 캔들 경로(cb·안정) props 라 SSE 호가 틱엔 재렌더되지 않음(PaneLegendOverlay 선례).

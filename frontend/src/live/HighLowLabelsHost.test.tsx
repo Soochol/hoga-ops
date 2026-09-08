@@ -6,7 +6,7 @@
 // 때문이다 — 사용자에겐 토글이 죽은 것과 구별되지 않는다.
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import HighLowLabelsHost from './HighLowLabelsHost';
 import type { HighLowLabelsPrimitive } from '../chart/HighLowLabelsPrimitive';
@@ -25,16 +25,16 @@ const bundle = {
   candles: [{ ts_ms: OPEN + 60_000, open: 100, close: 100, high: 110, low: 90, vol_a: 0, vol_b: 0 }],
 } as unknown as RangeBundle;
 
-function renderHost() {
+function renderHost(element: HTMLElement | null = null) {
   const attachPrimitive = vi.fn();
   const series = {
     attachPrimitive,
     detachPrimitive: vi.fn(),
-    getPane: () => ({ getHeight: () => 300 }),
+    getPane: () => ({ getHeight: () => 300, getHTMLElement: () => element, priceScale: () => ({ width: () => 10 }) }),
   } as unknown as ISeriesApi<SeriesType>;
   const paneSeries: PaneSeriesMap = new Map([['candle' as PaneId, series]]);
   // chartElement 가 Element 가 아니면 레전드 실측은 조용히 건너뛴다(teardown 경로와 동일).
-  const chart = { chartElement: () => null } as never;
+  const chart = { chartElement: () => element } as never;
 
   render(
     <HighLowLabelsHost
@@ -59,6 +59,17 @@ function onFlags(prim: HighLowLabelsPrimitive | undefined) {
 
 describe('HighLowLabelsHost — 수평선 배선', () => {
   afterEach(cleanup);
+  it('shows marker details in pane coordinates and clears them when panning', () => {
+    useChartPrefsStore.setState({ highLowLabelsEnabled: true });
+    const element = document.createElement('div');
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 50 } as DOMRect);
+    const { prim } = renderHost(element);
+    prim!.setDetails([{ rect: { left: 5, right: 25, top: 10, bottom: 25 }, text: '최고가 110원 (-9.09%) · 06.12 09:01', color: 'red' }]);
+    fireEvent(element, new MouseEvent('pointermove', { clientX: 120, clientY: 65 }));
+    expect(screen.getByRole('tooltip').textContent).toContain('09:01');
+    fireEvent.wheel(element);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
 
   it('고가만 켜면 snapshot.levelLines 가 { high: true, low: false }', () => {
     useChartPrefsStore.setState({

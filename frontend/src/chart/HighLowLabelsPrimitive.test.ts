@@ -149,6 +149,17 @@ function texts(c: ReturnType<typeof makeCanvasSpy>): { text: string; x: number; 
 }
 
 describe('HighLowLabelsPrimitive', () => {
+  it('uses a small hoverable mark instead of an opaque chip in a narrow pane', () => {
+    const stubs = makeAxisStubs({ timeToCoordinate: () => 20, priceToCoordinate: p => p === 38800 ? 15 : 85 });
+    const { prim } = attach(stubs, () => snapshot());
+    const c = makeCanvasSpy();
+    draw(prim, c, { w: 40, h: 100 });
+    expect(c.fillText).not.toHaveBeenCalled();
+    expect(prim.detailAt(20, 12)?.text).toContain('최고가 38,800원');
+    expect(prim.detailAt(20, 12)?.text).toContain('09:02');
+    prim.detached();
+    expect(prim.detailAt(20, 12)).toBeNull();
+  });
   it('draws the high and low extreme labels with price and 극값 대비율 (no timestamp)', () => {
     const stubs = makeAxisStubs();
     const { prim } = attach(stubs, () => snapshot());
@@ -224,12 +235,13 @@ describe('HighLowLabelsPrimitive', () => {
 
     draw(prim, c, { w: 760, h: 300 });
 
-    const horizontal = c.lineTo.mock.calls.filter(([, y]) => Number(y) === 22);
+    const highLabel = texts(c)[0];
+    const horizontal = c.lineTo.mock.calls.filter(([, y]) => Number(y) === highLabel.y + 8);
     expect(horizontal.length).toBeGreaterThan(0);
     // 수평 구간의 끝은 극값 봉의 x — 거기서 수직으로 극값 가격까지 내려간다.
     expect(c.lineTo).toHaveBeenCalledWith(horizontal[0][0], 60);
-    // 칩 자체는 레전드 우측 바깥으로 나가 있다.
-    expect(texts(c)[0].x).toBeGreaterThan(400);
+    // The local candle envelope also permits a closer slot below the legend.
+    expect(highLabel.x - 25 >= legend.right + 2 || highLabel.y - 8 >= legend.bottom + 2).toBe(true);
   });
 
   it('keeps the leader purely vertical when the label sits on the extreme bar', () => {
