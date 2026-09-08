@@ -61,7 +61,7 @@ describe('BookPanel', () => {
     const { container } = renderPanel();
     const summary = container.querySelector('div[style*="242px"]');
     expect(summary).not.toBeNull();
-    expect(summary!.children).toHaveLength(11);
+    expect(summary!.querySelectorAll('div[style*="22px"]')).toHaveLength(11);
   });
 
   it('3열 공통 경계선을 한 줄 × 3열 = 3개 그린다 — 한 줄로 이어져야 한다', () => {

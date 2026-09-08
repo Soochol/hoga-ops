@@ -15,6 +15,8 @@
  * `/study` 를 "같은 패널을 쓰는 다른 화면" 으로 언급하는데, 그건 **왜 그 처리가
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
+import { useState } from 'react';
+import './BookPanel.css';
 import { BookScrollArea } from './BookScrollArea';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
@@ -139,6 +141,7 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
+  const [expandedSummary, setExpandedSummary] = useState(false);
   // 스냅샷 파생 블록에만 얹는 딤. 값은 읽히되 확정이 아님을 말한다 — 전환은
   // DESIGN.md Motion 의 상태 전환 규격(150ms ease-in-out).
   const staleDim = `transition-opacity duration-150 ease-in-out${stale ? ' opacity-50' : ''}`;
@@ -223,7 +226,8 @@ export default function BookPanel({
   );
 
   return (
-    <div className="flex h-full flex-col bg-bg-card">
+    <div className="book-panel flex h-full flex-col bg-bg-card" data-expanded-summary={expandedSummary}>
+      {expandedSummary && <button type="button" className="shrink-0 px-2 py-1 text-right text-2xs text-accent" onClick={() => setExpandedSummary(false)}>상세 통계 접기</button>}
       {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0.
           `exp_price`/`exp_qty` 가 스냅샷 필드라 사다리와 같이 흐려진다. */}
       <ExpectedFillBanner
@@ -242,8 +246,8 @@ export default function BookPanel({
           되돌리지 말 것** — JIT 가 리터럴만 스캔해서 상수 보간이 조용히 죽는다. */}
       <BookScrollArea>
         <div
-          className="grid"
-          style={{ minWidth: BOOK_PANEL_MIN_W, gridTemplateColumns: BOOK_PANEL_GRID_COLS }}
+          className="book-panel-grid grid"
+          style={{ '--book-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-cols': BOOK_PANEL_GRID_COLS } as React.CSSProperties}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col">
@@ -360,27 +364,30 @@ export default function BookPanel({
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
               />
               <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
-              {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
-              <SummaryRow
-                label="상한가"
-                value={fmtOr(limits?.upper_limit ?? null)}
-                color={
-                  limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
-                }
-                divider
-              />
-              <SummaryRow
-                label="하한가"
-                value={fmtOr(limits?.lower_limit ?? null)}
-                color={
-                  limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
-                }
-              />
-              <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
-              <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
-              {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
-                  라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
-              <SummaryRow label="250일" value={fmtHighLow(limits)} />
+              <button type="button" className="book-summary-expand px-2 py-1 text-left text-2xs text-accent" onClick={() => setExpandedSummary(true)}>상세 통계 펼치기</button>
+              <div className="book-summary-extra">
+                {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
+                <SummaryRow
+                  label="상한가"
+                  value={fmtOr(limits?.upper_limit ?? null)}
+                  color={
+                    limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
+                  }
+                  divider
+                />
+                <SummaryRow
+                  label="하한가"
+                  value={fmtOr(limits?.lower_limit ?? null)}
+                  color={
+                    limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
+                  }
+                />
+                <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
+                <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
+                {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
+                    라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
+                <SummaryRow label="250일" value={fmtHighLow(limits)} />
+              </div>
             </div>
             {bids.map((l, i) => (
               <QtyBar

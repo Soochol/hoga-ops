@@ -33,6 +33,8 @@ export interface WindowFrameProps {
   /** 지수 종목 여부 — 타이틀바 종목 행에서 현재가/등락률/히트맵/수집점을 숨긴다. */
   isIndex?: boolean;
   paletteOpen: boolean;
+  maximized?: boolean;
+  onToggleMaximize?: (id: string) => void;
   /** 종목 고정 상태 — 켜져 있으면 이 창은 링크 그룹을 따르지 않고 자기 종목을 든다. */
   pinned?: boolean;
   /** 핀을 켤 수 있는가(= 고정할 종목이 있는가). 이미 켜져 있으면 항상 true(끄기). */
@@ -83,6 +85,8 @@ function WindowFrameImpl(props: WindowFrameProps) {
     symbolCode,
     isIndex = false,
     paletteOpen,
+    maximized = false,
+    onToggleMaximize,
     pinned = false,
     canPin = true,
     onHandleDown,
@@ -106,7 +110,8 @@ function WindowFrameImpl(props: WindowFrameProps) {
       // /study 통일(2026-07-23): 안착 그림자·카드 배경 스텝 제거 → 창이 필드에 평평.
       // 리프트(shadow-modal)는 유지해 이동 피드백은 남는다.
       flat
-      onHandleDown={onHandleDown}
+      onHandleDown={maximized ? () => {} : onHandleDown}
+      resizable={!maximized}
       onFocus={onFocus}
       onClose={onClose}
       closeLabel={`${title} ${KIND_LABEL[kind]} 창 닫기`}
@@ -126,33 +131,27 @@ function WindowFrameImpl(props: WindowFrameProps) {
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>
-              <span className="truncate text-sm font-medium text-fg">
-                {kind === 'chart' ? title : `${KIND_LABEL[kind]} · ${title}`}
+              <span className="flex min-w-0 items-center gap-1 text-sm font-medium text-fg" title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
+                {kind !== 'chart' && <span className="shrink-0">{KIND_LABEL[kind]} ·</span>}
+                <span className="truncate">{title}</span>
               </span>
-              {symbolCode && <span className="font-data text-2xs text-fg-dim">{symbolCode}</span>}
             </>
           )}
-          {/* 종목 고정 — 헤더 **오른쪽 끝**, 닫기(×) 왼쪽이다 (사용자 결정 2026-08-21).
-              그룹 뱃지 옆에서 옮겼다: 거기서는 제목이 시작하기 전에 컨트롤 둘이 먼저 나와
-              종목명이 밀렸고, 좁은 창일수록 손해가 컸다. 오른쪽은 창 수준 액션(닫기)의
-              자리라 "이 창에 거는 동작" 이라는 스코프와도 맞는다.
-
-              정렬은 **`flex-1` 스페이서**로 만든다. `ml-auto` 를 핀에 걸면 안 된다 —
-              코어의 × 도 `ml-auto` 라, flex 는 여유 공간을 **auto 마진들에 균등 분배**해
-              핀이 오른쪽 끝이 아니라 중간에 뜬다(실측 2026-08-21: × 와 179px 간격).
-              스페이서는 `flex: 1 1 0%` 라 여유를 **혼자** 먹고, 그러면 × 의 `ml-auto` 는
-              남은 공간이 0 이라 핀 바로 옆에 붙는다 → [⠿][뱃지][제목]⟶[핀][×].
-              코어(`WindowFrameCore`)는 건드리지 않는다.
-
-              basis 가 0 이라 헤더가 넘칠 때는 스페이서가 0 으로 접힌다 — 제목의
-              `truncate` 동작은 그대로다.
-
-              `title` 이 스코프를 **창**으로 못 박는다(그룹 뱃지에서 멀어졌지만 라벨은 유지 —
-              스코프를 문장으로 말하는 쪽이 위치보다 확실하다). 종목이 없어 켤 수 없는
-              창은 disabled — 흐린 것이 기능이다. */}
+          {/* 창 수준 액션은 오른쪽 끝에 모은다. flex-1 한 곳이 여유를 흡수해
+              최대화·고정·닫기 사이에 auto 마진이 나눠 들어가지 않게 한다. */}
+          {onToggleMaximize && <span aria-hidden className="flex-1" />}
+          {onToggleMaximize && (
+            <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+              aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
+              </svg>
+            </button>
+          )}
           {onTogglePin && (
             <>
-              <span aria-hidden data-testid="window-header-spacer" className="flex-1" />
+              <span aria-hidden data-testid="window-header-spacer" className={onToggleMaximize ? "hidden" : "flex-1"} />
               <button
                 type="button"
                 data-testid="window-pin-toggle"

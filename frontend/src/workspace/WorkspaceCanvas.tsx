@@ -103,6 +103,7 @@ export interface WorkspaceCanvasCoreProps<W extends WorkspaceWindowLike, C> {
   onApi?: (api: WorkspaceCanvasApi<W> | null) => void;
   /** 캔버스 위에 얹는 페이지 오버레이(자석 가이드와 같은 z-40 계층). */
   overlays?: React.ReactNode;
+  onCanvasSize?: (canvas: Canvas) => void;
 }
 
 export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
@@ -121,6 +122,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     emptyState,
     onApi,
     overlays,
+    onCanvasSize,
   } = props;
 
   const boxRef = useRef<HTMLDivElement>(null);
@@ -289,6 +291,10 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     ro.observe(el);
     return () => ro.disconnect();
   }, [setCanvasBoxIfChanged]);
+
+  useEffect(() => {
+    if (canvasBox.w > 0 && canvasBox.h > 0) onCanvasSize?.(canvasBox);
+  }, [canvasBox, onCanvasSize]);
 
   // 레거시 px 저장값 → 비율 1회 변환. 캔버스가 자기 크기를 처음 알게 된 이 시점이
   // 유일하게 올바른 기준이다 — 사용자가 지금 보고 있는 화면으로 나누므로 변환

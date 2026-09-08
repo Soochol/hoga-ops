@@ -182,9 +182,9 @@ describe('InvestorTrendEstimateCard', () => {
 
     const [, first, second] = screen.getAllByRole('row'); // [0] 은 헤더 행
     expect(within(first).getByText('09:30')).toBeInTheDocument();
-    expect(within(first).getByText('2')).toBeInTheDocument();
+    expect(within(first).getByText('2차 ·')).toBeInTheDocument();
     expect(within(second).getByText('09:20')).toBeInTheDocument();
-    expect(within(second).getByText('1')).toBeInTheDocument();
+    expect(within(second).getByText('1차 ·')).toBeInTheDocument();
   });
 
   // 2026-07-30 사용자 결정: 헤더는 창 본문(--bg-card)과 같은 배경 — 밴드 금지.

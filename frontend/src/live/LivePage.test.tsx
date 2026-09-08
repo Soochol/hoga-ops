@@ -395,7 +395,7 @@ describe('LivePage shell', () => {
     // 타이틀바(TitleBarSymbolRow)로 이관돼 거기서 코드가 노출된다.
     expect(screen.getByTestId('chart-window-header')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-live-toolbar')).toBeInTheDocument();
-    expect(screen.getByTestId('titlebar-symbol-row').textContent).toContain('000660');
+    expect(screen.getByTitle('SK하이닉스(000660)')).toBeInTheDocument();
     // 봉 컨트롤은 창 소유(#708) — 차트 창 상단에 렌더된다.
     expect(screen.getByRole('button', { name: '분봉 선택 열기: 1분' })).toBeInTheDocument();
   });
@@ -464,7 +464,7 @@ describe('LivePage shell', () => {
   it('reads activeCode from ?code= query param', () => {
     renderWithRouter('/live?code=000660');
     // 종목 식별은 창 타이틀바(TitleBarSymbolRow)가 노출한다.
-    expect(screen.getByTestId('titlebar-symbol-row').textContent).toContain('000660');
+    expect(screen.getByTitle('SK하이닉스(000660)')).toBeInTheDocument();
   });
 
   // 창 헤더가 `종목명(종목코드)` 가 아니라 `종목코드(종목코드)` 로 나오던 버그.
@@ -477,8 +477,7 @@ describe('LivePage shell', () => {
         code: '000660',
         name: 'SK하이닉스',
       }));
-      expect(screen.getByTestId('titlebar-symbol-row').textContent)
-        .toContain('SK하이닉스(000660)');
+      expect(screen.getByTitle('SK하이닉스(000660)')).toBeInTheDocument();
     });
 
     it('backfills the name when the master arrives after the one-shot seed', async () => {
@@ -496,8 +495,7 @@ describe('LivePage shell', () => {
       };
       view.rerender(liveTree('/live?code=000660', qc));
       await waitFor(() => expect(useWorkspaceStore.getState().groupSymbols[1]?.name).toBe('SK하이닉스'));
-      expect(screen.getByTestId('titlebar-symbol-row').textContent)
-        .toContain('SK하이닉스(000660)');
+      expect(screen.getByTitle('SK하이닉스(000660)')).toBeInTheDocument();
     });
 
     it('heals a poisoned name restored from a previous session', async () => {

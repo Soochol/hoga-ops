@@ -1,0 +1,9 @@
+.sector-ranking-pane { container-type: inline-size; }
+.sector-ranking-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.sector-ranking-back { display: none; }
+@container (max-width: 32rem) {
+  .sector-ranking-columns { grid-template-columns: minmax(0, 1fr); }
+  .sector-ranking-columns[data-detail="false"] .sector-ranking-stocks,
+  .sector-ranking-columns[data-detail="true"] .sector-ranking-sectors { display: none; }
+  .sector-ranking-back { display: block; }
+}

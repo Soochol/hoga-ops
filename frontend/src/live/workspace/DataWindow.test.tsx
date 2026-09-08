@@ -253,7 +253,7 @@ describe('DataWindow — 체결창 라우팅', () => {
   // 공통 게이트만. 위 mock 이 빈 버퍼를 고정하므로 빈 상태 문구로 마운트를 관측한다.
   it('주식 그룹이면 체결 테이블을 마운트한다', () => {
     renderWithQuery(<DataWindow win={dataWin('trade')} symbol={{ code: '005930', name: '삼성전자' }} />);
-    expect(screen.getByText('체결 데이터 없음')).toBeInTheDocument();
+    expect(screen.getByText(/체결 수신 대기/)).toBeInTheDocument();
   });
 
   it('지수 그룹이면 지원하지 않음 안내 (체결 데이터가 없는 심볼)', () => {

@@ -59,6 +59,7 @@ describe('InvestorDailyWindow', () => {
     mockPoints([point('20260803')]);
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
+    fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
     for (const label of [
       '개인', '외국인', '기관계', '기타법인',
       '금융투자', '보험', '투신', '기타금융', '은행', '연기금등', '사모펀드', '국가',
@@ -71,6 +72,7 @@ describe('InvestorDailyWindow', () => {
     mockPoints([point('20260803')]);
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
+    fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
     const row = screen.getByTestId('investor-daily-row-20260803');
     expect(within(row).getByText('+8,658,155')).toBeInTheDocument();  // 개인
     expect(within(row).getByText('-3,563,890')).toBeInTheDocument();  // 금융투자
@@ -218,4 +220,16 @@ describe('InvestorDailyWindow', () => {
 
     expect(screen.getByText('일별 투자자 데이터 없음')).toBeInTheDocument();
   });
+});
+
+ it('기본은 주요 주체만 표시하고 상세를 펼쳐도 조회 조건을 바꾸지 않는다', () => {
+  mockPoints([point('20260803')]);
+  render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  expect(screen.queryByRole('columnheader', { name: '금융투자' })).toBeNull();
+  const args = useLivePastInvestorNet.mock.calls.at(-1);
+  fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
+  expect(screen.getByRole('columnheader', { name: '금융투자' })).toBeInTheDocument();
+  expect(useLivePastInvestorNet.mock.calls.at(-1)).toEqual(args);
+  fireEvent.click(screen.getByRole('button', { name: '기관 상세 접기' }));
+  expect(screen.queryByRole('columnheader', { name: '금융투자' })).toBeNull();
 });

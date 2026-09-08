@@ -42,13 +42,15 @@ export interface TradeHighlightConfig {
 export default function TradeTickTable({
   view,
   highlight = null,
+  emptyText = '체결 데이터 없음',
 }: {
   view: TradeTickView;
+  emptyText?: string;
   /** null = 강조 비활성(설정 토글 OFF). */
   highlight?: TradeHighlightConfig | null;
 }) {
   if (view.ticks.length === 0) {
-    return <SidebarState>체결 데이터 없음</SidebarState>;
+    return <SidebarState>{emptyText}</SidebarState>;
   }
   return (
     <div className="font-data text-sm tabular-nums">

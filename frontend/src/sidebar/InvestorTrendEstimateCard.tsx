@@ -3,7 +3,6 @@ import type {
   LiveInvestorTrendEstimateRow,
 } from '../api/liveInvestorTrendEstimate';
 import {
-  INVESTOR_ESTIMATE_UNIT_LABELS,
   useInvestorEstimateUnitStore,
   type InvestorEstimateUnit,
 } from '../state/investorEstimateUnit';
@@ -49,7 +48,8 @@ export function InvestorTrendEstimateCard({ query }: Props) {
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums">
+      <div className="flex shrink-0 justify-end px-2 py-1"><UnitChip unit={unit} onToggle={toggleUnit} /></div>
+      <table className="w-full border-collapse font-data text-sm tabular-nums">
         {/* 헤더 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
             (2026-07-30 사용자 결정, 거래원 합계행 #961 과 동일 방침).
             sticky 는 창을 좁혀 스크롤이 생겼을 때 컬럼 이름을 붙잡아 두므로
@@ -58,18 +58,10 @@ export function InvestorTrendEstimateCard({ query }: Props) {
             thead/tr 배경이 sticky 헤더를 따라오지 않는다. */}
         <thead className="sticky top-0 z-10 text-xs text-fg-dim">
           <tr>
-            {/* 차수 컬럼과 값 셀 패딩은 원수 표기로 바뀌면서 좁혔다 — "6 14:36" 의
-                실측 잉크 폭이 50px 인데 4.6rem(83px)을 잡고 있었고, 그 여유가 그대로
-                값 컬럼의 잘림이 됐다. */}
-            <th className="w-[3.8rem] bg-bg-card py-1.5 pl-2.5 pr-1 text-left font-medium">차수</th>
+            <th className="whitespace-nowrap bg-bg-card py-1.5 pl-2.5 pr-1 text-left font-medium">차수</th>
             <th className="bg-bg-card px-1 py-1.5 text-right font-medium">외국인</th>
             <th className="bg-bg-card px-1 py-1.5 text-right font-medium">기관</th>
             <th className="bg-bg-card px-1 py-1.5 text-right font-medium">합산</th>
-            {/* 칩은 값 컬럼 밖의 제 칸에 선다 — 합산 셀 안에 끼우면 표가 넓어질 때
-                칩이 숫자를 따라 흘러가고, 좁아질 때 숫자를 밀어낸다. */}
-            <th className="w-[2.1rem] bg-bg-card py-1 pl-0.5 pr-2 text-right">
-              <UnitChip unit={unit} onToggle={toggleUnit} />
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -82,8 +74,8 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                 // 선택 행은 배경 틴트만 — 좌측 accent 바 금지(DESIGN.md list-row rule).
                 className={isLatest ? 'bg-tint-selection' : undefined}
               >
-                <td className="py-1.5 pl-2.5 pr-1 text-left text-fg-dim">
-                  {ordinal !== null && <span className="mr-1.5 text-fg-dimmer">{ordinal}</span>}
+                <td className="whitespace-nowrap py-1.5 pl-2.5 pr-1 text-left text-fg-dim">
+                  {ordinal !== null && <span>{ordinal}차 · </span>}
                   <span>{time}</span>
                 </td>
                 <ValueCell unit={unit} value={qty ? row.foreign_qty : row.foreign_amt_mwon} />
@@ -92,7 +84,6 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                   value={qty ? row.institution_qty : row.institution_amt_mwon}
                 />
                 <ValueCell unit={unit} value={qty ? row.sum_qty : row.sum_amt_mwon} />
-                <td />
               </tr>
             );
           })}
@@ -129,14 +120,7 @@ function ValueCell({
   );
 }
 
-/** 단위 칩 — 현재 단위를 **말하면서** 누르면 축을 바꾼다.
- *
- *  표시와 조작이 같은 픽셀을 쓰는 것이 요점이다. 별도 컨트롤 행을 만들면 6행짜리
- *  표에 크롬 한 줄이 붙지만, 단위 라벨은 어차피 있어야 하므로 비용이 0 이다.
- *  라벨이 없던 판이 금액을 만주로 그려도 아무도 눈치채지 못한 판이었다.
- *
- *  기본(수량)은 중립색이고 금액일 때만 accent 다 — 기본 상태에서 빛나는 컨트롤은
- *  시선만 먹고, 여러 창을 띄웠을 때 "얘만 금액" 이 한눈에 보이지도 않는다. */
+/** 두 투자자 창은 단위 상태를 공유한다. 전체 단위 이름을 표시해 토글의 뜻을 알린다. */
 function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: () => void }) {
   const isAmount = unit === 'amount';
   const description = isAmount ? '금액(억원) — 누르면 수량(주)' : '수량(주) — 누르면 금액(억원)';
@@ -153,7 +137,7 @@ function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: ()
           : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
       }`}
     >
-      {INVESTOR_ESTIMATE_UNIT_LABELS[unit]}
+      {isAmount ? '금액(억원)' : '수량(주)'}
     </button>
   );
 }

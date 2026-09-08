@@ -1,3 +1,4 @@
+import './IndexSectorRankingPane.css';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BasisMode } from './indexSectorRankingState';
@@ -15,6 +16,7 @@ import type {
 } from '../api/indexSectorRankings';
 
 interface Props {
+  destinationHint?: string;
   basisDate: string | null;
   basisMode: BasisMode;
   ranking: IndexSectorRankingResponse | undefined;
@@ -102,7 +104,7 @@ function SectorButton({
       onClick={() => onPin(sectorIdentityKey(sector.folder_id))}
       className="grid w-full items-center text-left"
       style={{
-        gridTemplateColumns: '32px minmax(0, 1fr) 72px',
+        gridTemplateColumns: '1.5rem minmax(0, 1fr) 4rem',
         gap: 'var(--space-sm)',
         minHeight: 32,
         padding: 'var(--space-xs) var(--space-sm)',
@@ -138,7 +140,7 @@ function StockButton({
       onClick={(e) => onOpenStock(stock.code, stock.name, e)}
       className="grid w-full items-center text-left"
       style={{
-        gridTemplateColumns: '32px minmax(0, 1fr) 72px',
+        gridTemplateColumns: '1.5rem minmax(0, 1fr) 4rem',
         gap: 'var(--space-sm)',
         minHeight: 30,
         padding: 'var(--space-xs) var(--space-sm)',
@@ -165,11 +167,15 @@ export function IndexSectorRankingPane({
   onClearDatePin,
   onOpenStock,
   variant = 'docked',
+  destinationHint,
 }: Props) {
   const [state, dispatch] = useReducer(
     reduceIndexSectorRankingState,
     initialIndexSectorRankingUiState,
   );
+  const [showStocks, setShowStocks] = useState(false);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const paneRef = useRef<HTMLElement>(null);
   const [height, setHeight] = useState(readStoredPaneHeight);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
 
@@ -219,7 +225,7 @@ export function IndexSectorRankingPane({
     body = <div className="p-md text-sm text-fg-dim">섹터 랭킹을 불러오는 중입니다</div>;
   } else if (error) {
     body = (
-      <div className="p-md text-sm" style={{ color: 'var(--danger)' }}>
+      <div className="p-md text-sm" style={{ color: 'var(--error)' }}>
         섹터 랭킹을 불러오지 못했습니다
       </div>
     );
@@ -230,10 +236,10 @@ export function IndexSectorRankingPane({
   } else {
     body = (
       <div
-        className="grid min-h-0 flex-1"
-        style={{ gridTemplateColumns: 'minmax(180px, 1fr) minmax(0, 2fr)' }}
+        className="sector-ranking-columns grid min-h-0 flex-1"
+        data-detail={showStocks}
       >
-        <div className="min-h-0 overflow-auto" style={{ borderRight: '1px solid var(--border)' }}>
+        <div className="sector-ranking-sectors min-h-0 overflow-auto" style={{ borderRight: '1px solid var(--border)' }}>
           {sectors.map((sector, index) => {
             return (
               <SectorButton
@@ -242,13 +248,26 @@ export function IndexSectorRankingPane({
                 rank={index + 1}
                 active={sectorIdentityKey(sector.folder_id) === activeSectorId}
                 onPreview={(sectorKey) => dispatch({ type: 'preview_sector', sectorKey })}
-                onPin={(sectorKey) => dispatch({ type: 'toggle_sector_pin', sectorKey })}
+                onPin={(sectorKey) => {
+                  // breakpoint는 CSS가 소유한다. 좁은 창에서만 상세로 이동하고
+                  // 포커스를 넘긴다(넓은 창의 hover-preview를 blur로 지우지 않는다).
+                  const narrow = backRef.current != null && getComputedStyle(backRef.current).display === 'block';
+                  if (!narrow || state.pinnedSectorKey !== sectorKey) dispatch({ type: 'toggle_sector_pin', sectorKey });
+                  setShowStocks(true);
+                  if (narrow) requestAnimationFrame(() => backRef.current?.focus());
+                }}
               />
             );
           })}
         </div>
 
-        <div className="min-h-0 overflow-auto">
+        <div className="sector-ranking-stocks min-h-0 overflow-auto">
+          <button ref={backRef} type="button" className="sector-ranking-back w-full px-2 py-1.5 text-left text-xs text-accent"
+            onClick={() => {
+              setShowStocks(false);
+              requestAnimationFrame(() => paneRef.current?.querySelector<HTMLButtonElement>('.sector-ranking-sectors [aria-pressed="true"]')?.focus());
+            }}>← 섹터 목록</button>
+          <div className="px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
           {(activeSector?.stocks ?? []).map((stock, index) => (
             <StockButton key={stock.code} stock={stock} rank={index + 1} onOpenStock={onOpenStock} />
           ))}
@@ -261,8 +280,9 @@ export function IndexSectorRankingPane({
 
   return (
     <section
+      ref={paneRef}
       data-testid="index-sector-ranking-pane"
-      className="flex min-h-0 flex-col"
+      className="sector-ranking-pane flex min-h-0 flex-col"
       style={{
         // fill: WindowFrame 이 크기를 소유 → 100% 채움. docked: 자체 높이 상태.
         height: fill ? '100%' : height,
@@ -345,6 +365,7 @@ export function IndexSectorRankingPane({
           </button>
         )}
       </div>
+      {destinationHint && <p className="shrink-0 px-2 py-1 text-2xs text-fg-dim" title="Ctrl/⌘+클릭: 새 브라우저 탭">{destinationHint}</p>}
       {body}
     </section>
   );
