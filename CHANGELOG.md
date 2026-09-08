@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.13.3.0] - 2026-09-08
+
+### Added
+- 관심종목·히트맵·스크리너·순위 우측 패널의 단일 종목을 히트맵 페이지 그룹에 끌어 놓아 추가할 수 있다. 원본 등록을 유지하며 같은 그룹의 중복 추가를 방지한다.
+- 드롭 대상 그룹 강조와 추가 결과·저장 실패 안내를 제공하며, 드래그 중 시세 정렬로 대상 그룹과 행이 움직이지 않도록 한다.
+
 ## [0.13.2.0] - 2026-09-08
 
 ### Added

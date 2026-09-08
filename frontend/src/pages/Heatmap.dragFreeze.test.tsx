@@ -72,6 +72,9 @@ vi.mock('../live/liveNavigate', () => ({
 
 import { Heatmap } from './Heatmap';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
+import { useEntryDragStore } from '../state/entryDrag';
+import { getHeatmap } from '../api/heatmap';
+import { useLiveQuoteOverlay } from '../api/liveQuotes';
 
 function renderPage() {
   const qc = new QueryClient();
@@ -103,4 +106,38 @@ it('G1: 행 드래그 active 동안 groupSort 변경에도 그룹 순서 동결,
   // drag-end(over=null → 내부 reorder는 early-return, onRowDragState(false)만) → 최신 desc 적용
   act(() => { h.onDragEnd!({ active: { id: '005930' }, over: null }); });
   expect(folderOrder()).toEqual(['heatmap-folder-f2', 'heatmap-folder-f1']); // desc 재정렬
+});
+
+it('패널 드래그 동안 시세가 바뀌어도 그룹·행 순서를 유지하고 종료 후 최신 순서를 적용한다', async () => {
+  vi.mocked(getHeatmap).mockResolvedValueOnce({
+    folders: [{ id: 'f1', name: '반도체', order: 0 }, { id: 'f2', name: '이차전지', order: 1 }],
+    entries: [
+      { code: '005930', name: '삼성전자', folder_id: 'f1', order: 0 },
+      { code: '373220', name: 'LG에너지', folder_id: 'f1', order: 1 },
+      { code: '373220', name: 'LG에너지', folder_id: 'f2', order: 0 },
+    ], capture_markers: {}, next_run_at_ms: 0,
+  });
+  useHeatmapPrefsStore.setState({ sortMode: 'desc', groupSort: 'desc' });
+  renderPage();
+  await screen.findByText('반도체');
+  const rowOrder = () => Array.from(document.querySelectorAll('#heatmap-folder-f1 [data-testid^="heatmap-row-"]'))
+    .map((el) => el.getAttribute('data-testid'));
+  expect(folderOrder()).toEqual(['heatmap-folder-f2', 'heatmap-folder-f1']);
+  expect(rowOrder()).toEqual(['heatmap-row-373220', 'heatmap-row-005930']);
+  act(() => useEntryDragStore.getState().startDrag('005930'));
+  vi.mocked(useLiveQuoteOverlay).mockReturnValue({
+    quoteByCode: new Map([
+      ['005930', { code: '005930', price: 77000, change_pct: 10, change_won: 7000 }],
+      ['373220', { code: '373220', price: 400000, change_pct: 5, change_won: 20000 }],
+    ]), phase: 'open', dataUpdatedAt: 1,
+  });
+  // 정렬 설정 변경으로 스로틀을 flush해 새 시세가 정렬 키에 도달하게 한다.
+  act(() => useHeatmapPrefsStore.getState().setGroupSort('asc'));
+  act(() => useHeatmapPrefsStore.getState().setGroupSort('desc'));
+  expect(folderOrder()).toEqual(['heatmap-folder-f2', 'heatmap-folder-f1']);
+  expect(rowOrder()).toEqual(['heatmap-row-373220', 'heatmap-row-005930']);
+  expect(screen.getByTestId('heatmap-row-005930')).toHaveTextContent('77,000');
+  act(() => useEntryDragStore.getState().endDrag());
+  expect(folderOrder()).toEqual(['heatmap-folder-f1', 'heatmap-folder-f2']);
+  expect(rowOrder()).toEqual(['heatmap-row-005930', 'heatmap-row-373220']);
 });

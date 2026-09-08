@@ -1,3 +1,4 @@
+import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
@@ -1240,7 +1241,12 @@ export function WatchlistDrawer() {
     // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
     // **같은 술어**라 둘이 갈릴 수 없다.
     setGhostDroppedOnChart(wasEntry && dragSources.current.length <= 1 && isPointOnChart(endPoint));
+    const d = ev.active.data.current;
+    const externalDrop = wasEntry && dragSources.current.length <= 1 && !!d?.code
+      && resolveDropOnHeatmap(endPoint, { code: String(d.code), name: String(d.name ?? d.code) });
+    if (externalDrop) setGhostDroppedOnChart(true);
     finishDrag();
+    if (externalDrop) return;
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
     // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
     // 메모는 이 분기를 타지 않는다 — 차트에 실을 종목이 없다.

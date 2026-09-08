@@ -1,3 +1,5 @@
+import { HeatmapPanelDropTarget } from '../heatmap/HeatmapPanelDropTarget';
+import { useEntryDragStore } from '../state/entryDrag';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
@@ -72,7 +74,9 @@ export function Heatmap() {
   }, [groups, groupSort, sortQuoteByCode]);
   const [isRowDragging, setIsRowDragging] = useState(false);
   // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 적용.
-  const orderedGroups = useFrozenWhileDragging(liveOrderedGroups, isRowDragging);
+  const panelDragging = useEntryDragStore((s) => s.draggingCode !== null);
+  const orderedGroups = useFrozenWhileDragging(liveOrderedGroups, isRowDragging || panelDragging);
+  const boardSortQuotes = useFrozenWhileDragging(sortQuoteByCode, panelDragging);
   // 검색 필터(그룹간 정렬과 그룹내 정렬 사이 — 드로어와 동일 파이프라인). 동결된 orderedGroups
   // 뒤에 적용해 G1 텔레포트 가드를 보존. 빈 쿼리면 filterGroups 가 입력 참조 그대로 반환.
   const [query, setQuery] = useState('');
@@ -242,15 +246,17 @@ export function Heatmap() {
         {/* 검색 중엔 재정렬 비활성(onReorder=undefined): 그룹 전체를 보여줘도 검색 중
             드래그 재정렬은 매칭 탐색 흐름을 방해하고, 그룹 간 정렬(orderedGroups)이
             검색 결과를 추종해 순서 기준이 흔들린다. query 는 매칭 행 하이라이트용. */}
-        <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
-          sortQuoteByCode={sortQuoteByCode}
-          sortMode={sortMode} onPick={onPick}
-          onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
-          onMove={onDragMove} onCopy={onDragCopy}
-          onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
-          onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query}
-          captureMarkers={data?.capture_markers}
-          autoAddFolderId={autoAddFolderId} onAutoAddOpened={clearAutoAdd} />
+        <HeatmapPanelDropTarget data={data}>
+          <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
+            sortQuoteByCode={boardSortQuotes}
+            sortMode={sortMode} onPick={onPick}
+            onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
+            onMove={onDragMove} onCopy={onDragCopy}
+            onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
+            onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query}
+            captureMarkers={data?.capture_markers}
+            autoAddFolderId={autoAddFolderId} onAutoAddOpened={clearAutoAdd} />
+        </HeatmapPanelDropTarget>
         {/* 제거는 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이 다른 그룹에도
             등록돼 있으면 그 등록은 건드리지 않는다. '그룹으로 이동' 항목은 넘기지 않는다:
             실폴더를 전부 나열하는 구조라 그룹이 수십 개면 메뉴가 화면을 덮었고, 이동은

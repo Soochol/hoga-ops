@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { resolveDropOnHeatmap } from '../state/heatmapDrop';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from '@dnd-kit/core';
 import { dropPoint, isPointOnChart, resolveDropOnChart, useEntryDragStore } from '../state/entryDrag';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
@@ -38,12 +39,23 @@ export function useChartDropDrag(
 
   /** 드래그 진행 중 여부 — 호출부가 데이터 동결(useFrozenWhileDragging)에 쓴다. */
   const [isDragging, setIsDragging] = useState(false);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!isDragging) return;
+    const track = (event: PointerEvent) => {
+      pointer.current = { x: event.clientX, y: event.clientY };
+      publishDragPoint(pointer.current);
+    };
+    document.addEventListener('pointermove', track, true);
+    return () => document.removeEventListener('pointermove', track, true);
+  }, [isDragging, publishDragPoint]);
   const [ghost, setGhost] = useState<ChartDropGhost | null>(null);
   /** 직전 드롭이 차트 위였는가(낙하 애니메이션 결정). 취소는 false 로 남긴다 —
    *  취소는 원위치로 돌아가는 게 맞다. */
   const [droppedOnChart, setDroppedOnChart] = useState(false);
 
   const finish = useCallback(() => {
+    pointer.current = null;
     cancelDragPointFlush();
     setIsDragging(false);
     setGhost(null);
@@ -54,6 +66,7 @@ export function useChartDropDrag(
     if (ev.active.data.current?.type !== entryType) return;
     const code = String((ev.active.data.current as { code?: string }).code ?? '');
     if (!code) return;
+    pointer.current = dropPoint({ activatorEvent: ev.activatorEvent, delta: { x: 0, y: 0 } });
     setIsDragging(true);
     setDroppedOnChart(false);   // 직전 드래그의 판정이 새 드래그로 새지 않게
     setGhost(snapshot);
@@ -62,24 +75,28 @@ export function useChartDropDrag(
 
   const onDragMove = useCallback((ev: DragMoveEvent) => {
     if (ev.active.data.current?.type !== entryType) return;
-    publishDragPoint(dropPoint(ev));   // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다
+    publishDragPoint(pointer.current ?? dropPoint(ev));
   }, [entryType, publishDragPoint]);
 
   const onDragCancel = useCallback(() => finish(), [finish]);
 
   const onDragEnd = useCallback((ev: DragEndEvent) => {
     const wasEntry = ev.active.data.current?.type === entryType;
-    const onChart = wasEntry && isPointOnChart(dropPoint(ev));
+    // dnd-kit delta includes scroll adjustment; viewport hit tests need the pointer.
+    const point = pointer.current ?? dropPoint(ev);
+    const onChart = wasEntry && isPointOnChart(point);
     // **지우기 전에** 확정한다 — finish() 안의 endEntryDrag() 가 store 의 overChart 를
     // 되돌리고 그 갱신은 dnd-kit 의 active→null 과 같은 커밋에 착지한다. 판정식은 아래
     // 드롭 분기와 같은 술어라 둘이 갈릴 수 없다.
-    setDroppedOnChart(onChart);
-    finish();
-    if (!onChart) return;
     const d = ev.active.data.current as { code?: string; name?: string } | undefined;
+    const onHeatmap = wasEntry && !!d?.code
+      && resolveDropOnHeatmap(point, { code: d.code, name: d.name });
+    setDroppedOnChart(onChart || onHeatmap);
+    finish();
+    if (onHeatmap || !onChart) return;
     if (!d?.code) return;
     // 창 위 드롭 = 그 창 그룹 종목 교체(정밀 드롭, #711), 창 밖 = 활성 그룹 교체.
-    if (resolveDropOnChart(dropPoint(ev), { code: d.code, name: d.name })) return;
+    if (resolveDropOnChart(point, { code: d.code, name: d.name })) return;
     onFallbackPick(d.code, d.name);
   }, [entryType, finish, onFallbackPick]);
 

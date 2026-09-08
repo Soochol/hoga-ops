@@ -59,7 +59,7 @@ export function RailDragOverlay({ droppedOnChart, fitContentHeight = false, chil
         listStyle: 'none', margin: 0, padding: 0,
         ...(fitContentHeight ? { height: 'auto' } : {}),
       }}
-      className="rounded overflow-hidden bg-bg-card shadow-overlay cursor-grabbing"
+      className="pointer-events-none rounded overflow-hidden bg-bg-card shadow-overlay cursor-grabbing"
     >
       {children}
     </DragOverlay>,
