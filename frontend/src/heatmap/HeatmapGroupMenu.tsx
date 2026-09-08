@@ -9,12 +9,13 @@ import { HeatmapContextMenu, type HeatmapMenuItem } from './HeatmapContextMenu';
  *
  * 그룹 삭제는 파괴적이다(멤버 종목도 함께 삭제, ADR-0112) — confirm 은 호출측이 띄운다.
  */
-export function HeatmapGroupMenu({ x, y, name, onRename, onDelete, onClose }: {
+export function HeatmapGroupMenu({ x, y, name, onRename, onDelete, onCollect, onClose }: {
   x: number;
   y: number;
   name: string;
   onRename?: () => void;
   onDelete?: () => void;
+  onCollect?: () => void;
   onClose: () => void;
 }) {
   const items: HeatmapMenuItem[] = [
@@ -24,6 +25,7 @@ export function HeatmapGroupMenu({ x, y, name, onRename, onDelete, onClose }: {
       icon: <PencilIcon />,
       onClick: onRename,
     }] : []),
+    ...(onCollect ? [{ key: 'collect', label: '보충 수집', icon: <span aria-hidden="true">⬇</span>, onClick: onCollect }] : []),
     ...(onDelete ? [{
       key: 'delete',
       label: '그룹 삭제',

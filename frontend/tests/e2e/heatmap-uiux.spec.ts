@@ -26,7 +26,9 @@ for (const width of [1440, 800, 600]) {
     await expect(main.getByTestId('heatmap-row-005930').first()).toBeFocused();
     await main.getByRole('button', { name: '다음 일치 종목' }).click();
     await expect(main.getByTestId('heatmap-row-005930').last()).toBeFocused();
-    await main.getByTestId('heatmap-folder-lag-a').click();
+    await expect(main.getByTestId('heatmap-folder-lag-a')).toHaveCount(0);
+    await main.getByRole('button', { name: '반도체-메모리와 긴 그룹 이름 그룹 메뉴' }).click();
+    await page.getByRole('menuitem', { name: '보충 수집' }).click();
     await expect(page.getByRole('dialog')).toContainText('20260908');
     await expect(page.getByRole('dialog')).toContainText('SK하이닉스');
     await page.getByRole('button', { name: '취소', exact: true }).click();

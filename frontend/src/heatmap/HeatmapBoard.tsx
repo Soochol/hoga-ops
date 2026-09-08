@@ -85,7 +85,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   // 보드 전체 코드로 한 번 계산 — 기준일(마커 최댓값)이 그룹별로 갈리면 안 된다.
-  const { latest, lagging } = useMemo(
+  const { lagging } = useMemo(
     () => computeCaptureLag(captureMarkers, groups.flatMap((g) => g.entries.map((e) => e.code))),
     [captureMarkers, groups],
   );
@@ -147,7 +147,6 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
           query={query}
           matchesOnly={matchesOnly}
           onCollectLagging={onCollectLagging}
-          captureBaseline={latest}
           dragEnabled={dragEnabled}
           sortEnabled={sortEnabled}
           copyIntent={copyIntent}
