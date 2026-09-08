@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { HeatmapResponse } from '../api/heatmap';
@@ -43,6 +43,7 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
 });
 
 const api = vi.hoisted(() => ({
+  transactHeatmapEntries: vi.fn(() => Promise.resolve()),
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
   addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
@@ -94,9 +95,16 @@ const entryDrag = (code: string, from: string, to: string, name = '에코프로'
 });
 // 같은 그룹 형제 행(entry) 위에 드롭(=그룹 내 재정렬). over 는 행 code + 그 행의 folderId.
 const entryReorder = (code: string, folderId: string, overCode: string) => ({
-  active: { id: code, data: { current: { type: 'entry', code, folderId } } },
-  over: { id: overCode, data: { current: { type: 'entry', code: overCode, folderId } } },
+  active: { id: `${folderId}:${code}`, data: { current: { type: 'entry', code, folderId } } },
+  over: { id: `${folderId}:${overCode}`, rect: { top: 0, height: 20 }, data: { current: { type: 'entry', code: overCode, folderId } } },
 });
+
+function completeDrag(ev: { active: { id: string; data: { current: { type: string } } }; over?: unknown; activatorEvent?: unknown; delta?: { x: number; y: number } }, ctrlKey = false) {
+  act(() => h.onDragStart!({ active: ev.active, activatorEvent: {
+    clientX: ev.delta?.x ?? 500, clientY: ev.delta?.y ?? 30, ctrlKey,
+  } }));
+  act(() => h.onDragEnd!(ev));
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -114,8 +122,11 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
   it('종목을 다른 그룹 드롭존에 드롭 → moveHeatmapEntries([code], from, to)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!(entryDrag('000001', 'f1', 'f2'));
-    await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], 'f1', 'f2'));
+    completeDrag(entryDrag('000001', 'f1', 'f2'));
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001'], after: [] },
+      { folder_id: 'f2', before: ['000003'], after: ['000003', '000001'] },
+    ] }));
   });
 
   // Ctrl+드래그 = 복제. 서버 커맨드는 일반 추가(addToHeatmapFolder) — 다중 그룹 등록이
@@ -124,9 +135,11 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
     const ev = entryDrag('000001', 'f1', 'f2');
-    h.onDragStart!({ active: ev.active, activatorEvent: { ctrlKey: true } });
-    h.onDragEnd!(ev);
-    await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('000001', 'f2'));
+    completeDrag(ev, true);
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001'], after: ['000001'] },
+      { folder_id: 'f2', before: ['000003'], after: ['000003', '000001'] },
+    ] }));
     expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
   });
 
@@ -135,15 +148,18 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     await screen.findByTestId('heatmap-drawer-row-000001');
     const ev = entryDrag('000001', 'f1', 'f2');
     h.onDragStart!({ active: ev.active, activatorEvent: { ctrlKey: false } });
-    h.onDragEnd!(ev);
-    await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], 'f1', 'f2'));
+    completeDrag(ev);
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001'], after: [] },
+      { folder_id: 'f2', before: ['000003'], after: ['000003', '000001'] },
+    ] }));
     expect(api.addToHeatmapFolder).not.toHaveBeenCalled();
   });
 
   it('같은 그룹에 드롭 → no-op (mutate 미호출)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!(entryDrag('000001', 'f1', 'f1'));
+    completeDrag(entryDrag('000001', 'f1', 'f1'));
     // 마이크로태스크 후에도 호출 없음
     await Promise.resolve();
     expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
@@ -162,9 +178,11 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     });
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!(entryReorder('000001', 'f1', '000002'));
+    completeDrag(entryReorder('000001', 'f1', '000002'));
     await waitFor(() =>
-      expect(api.reorderHeatmapEntries).toHaveBeenCalledWith('f1', ['000002', '000001']));
+      expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+        { folder_id: 'f1', before: ['000001', '000002'], after: ['000002', '000001'] },
+      ] }));
     expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
   });
 
@@ -181,7 +199,7 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     });
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!(entryReorder('000001', 'f1', '000002'));
+    completeDrag(entryReorder('000001', 'f1', '000002'));
     await Promise.resolve();
     expect(api.reorderHeatmapEntries).not.toHaveBeenCalled();
   });
@@ -189,7 +207,7 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
   it('그룹 헤더(folder) 드래그는 기존대로 reorderHeatmapFolders (행 이동과 분리)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!({
+    completeDrag({
       active: { id: 'f2', data: { current: { type: 'folder' } } },
       over: { id: 'f1', data: { current: { type: 'folder' } } },
     });

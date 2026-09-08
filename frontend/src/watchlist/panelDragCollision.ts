@@ -47,9 +47,9 @@ export const typeAwareCollision = withChartDropSuppression(lanes, (type) => type
 
 /** Pointer must actually be over the panel. Rows win over containing groups;
  * explicit headers win over sticky rows underneath them. */
-export const precisePanelCollision: CollisionDetection = (args) => {
+export const createPanelCollision = (scrollSelector: string): CollisionDetection => (args) => {
   const p = args.pointerCoordinates;
-  const panel = document.querySelector('[data-testid="watchlist-scroll"]')?.getBoundingClientRect();
+  const panel = document.querySelector(scrollSelector)?.getBoundingClientRect();
   if (p && panel && (p.x < panel.left || p.x > panel.right || p.y < panel.top || p.y > panel.bottom)) return [];
   const type = args.active.data.current?.type;
   if (type === 'folder' || !p) return typeAwareCollision(args);
@@ -73,3 +73,5 @@ export const precisePanelCollision: CollisionDetection = (args) => {
   const rows = hits.filter((h) => ROW_TYPES.has(String(info(h.id)?.type)));
   return (rows.length ? rows : hits).slice(0, 1);
 };
+
+export const precisePanelCollision = createPanelCollision('[data-testid="watchlist-scroll"]');

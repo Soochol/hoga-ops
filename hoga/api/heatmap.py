@@ -46,7 +46,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+from hoga.api.models import HeatmapDocument, HeatmapEntry, HeatmapFolderEntriesChange, WatchlistFolder
 from hoga.api.params import CODE_PATTERN
 from hoga.api.watchlist import _mint_folder_id  # shared pure helper (ADR-0068 G2)
 from hoga.util.atomic_write import atomic_write_json
@@ -492,3 +492,41 @@ async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
         doc = load_document(data_dir)
         keep = [e for e in doc.entries if e.code not in set(codes)]
         save_document(data_dir, doc.model_copy(update={"entries": keep}))
+
+
+async def transact_entries(data_dir: Path, *, changes: list[HeatmapFolderEntriesChange]) -> None:
+    """Atomically move/copy/reorder memberships and apply conflict-checked undo.
+
+    Touched folders retain the same union of codes. Copy and duplicate merging
+    change membership counts, never the captured symbol set.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        folders = {f.id for f in doc.folders}
+        touched = {c.folder_id for c in changes}
+        if len(touched) != len(changes):
+            raise HeatmapSetMismatchError("duplicate folders")
+        known = {e.code: e for e in doc.entries}
+        memberships = {(e.folder_id, e.code): e for e in doc.entries}
+        old_codes: set[str] = set()
+        new_codes: set[str] = set()
+        for change in changes:
+            if change.folder_id not in folders:
+                raise FolderNotFoundError(change.folder_id)
+            current = sorted((e for e in doc.entries if e.folder_id == change.folder_id), key=lambda e: e.order)
+            if change.before != [e.code for e in current]:
+                raise HeatmapSetMismatchError("folder changed since preview")
+            if len(change.after) != len(set(change.after)) or any(c not in known for c in change.after):
+                raise HeatmapSetMismatchError("duplicate or unknown codes")
+            old_codes.update(change.before)
+            new_codes.update(change.after)
+        if old_codes != new_codes:
+            raise HeatmapSetMismatchError("transaction must preserve all codes")
+        entries = [e for e in doc.entries if e.folder_id not in touched]
+        for change in changes:
+            entries.extend(
+                memberships.get((change.folder_id, code), known[code]).model_copy(
+                    update={"folder_id": change.folder_id, "order": order})
+                for order, code in enumerate(change.after)
+            )
+        save_document(data_dir, doc.model_copy(update={"entries": entries}))
