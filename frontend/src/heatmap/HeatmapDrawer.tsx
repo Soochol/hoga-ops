@@ -1,3 +1,4 @@
+import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
@@ -767,7 +768,11 @@ export function HeatmapDrawer() {
     const target = getDestination(ev);
     const point = pointRef.current ?? dropPoint(ev);
     const copy = isCopy();
+    const d = ev.active.data.current;
+    const externalDrop = !busy && d?.type === 'entry' && sourcesRef.current.length === 1
+      && resolveDropOnHeatmap(point, { code: String(d.code), name: String(d.name ?? d.code) });
     finishEntryDrag();
+    if (externalDrop) return;
     if (busy) return;
     if (ev.active.data.current?.type === 'entry') {
       if (isPointOnChart(point)) {

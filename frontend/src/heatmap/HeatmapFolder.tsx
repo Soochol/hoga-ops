@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { HeatmapPanelDropContext } from './HeatmapPanelDropContext';
+import { useContext, useCallback, useEffect, useRef, useState } from 'react';
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -312,8 +313,10 @@ function GroupNameInput({ state, onChange, onCommit, onCancel }: {
 function FolderDropZone({ folderId, enabled, copy, children }: {
   folderId: string; enabled: boolean; copy: boolean; children: React.ReactNode;
 }) {
-  const cls = 'break-inside-avoid border-l-2 border-border-strong mb-xs overflow-hidden';
-  if (!enabled) return <div id={`heatmap-folder-${folderId}`} className={cls}>{children}</div>;
+  const panelOver = useContext(HeatmapPanelDropContext) === folderId;
+  const cls = 'break-inside-avoid border-l-2 border-border-strong mb-xs overflow-hidden'
+    + (panelOver ? ' ring-1 ring-inset ring-success bg-tint-success' : '');
+  if (!enabled) return <div id={`heatmap-folder-${folderId}`} data-heatmap-drop-folder={folderId} className={cls}>{children}</div>;
   return <ActiveFolderDropZone folderId={folderId} copy={copy} cls={cls}>{children}</ActiveFolderDropZone>;
 }
 
@@ -329,7 +332,7 @@ function ActiveFolderDropZone({ folderId, copy, cls, children }: {
     ? ` ring-1 ring-inset ${copy ? 'ring-success bg-tint-success' : 'ring-accent bg-tint-selection'}`
     : '';
   return (
-    <div ref={setNodeRef} id={`heatmap-folder-${folderId}`}
+    <div ref={setNodeRef} id={`heatmap-folder-${folderId}`} data-heatmap-drop-folder={folderId}
       data-drop-intent={isOver ? (copy ? 'copy' : 'move') : undefined}
       className={cls + ring}>
       {children}
