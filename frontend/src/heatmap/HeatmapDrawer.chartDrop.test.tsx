@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { HeatmapResponse } from '../api/heatmap';
@@ -62,6 +62,7 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
 });
 
 const api = vi.hoisted(() => ({
+  transactHeatmapEntries: vi.fn(() => Promise.resolve()),
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
   addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
@@ -129,6 +130,13 @@ function dragTo(x: number, y: number) {
 /** 캔버스 등록 흉내 — x<100 이 "차트 위". 실제 등록자는 WorkspaceCanvas 다. */
 const CHART_HIT = (x: number) => x < 100;
 
+function completeDrag(ev: { active: { id: string; data: { current: { type: string } } }; over?: unknown; activatorEvent?: unknown; delta?: { x: number; y: number } }, ctrlKey = false) {
+  act(() => h.onDragStart!({ active: ev.active, activatorEvent: {
+    clientX: ev.delta?.x ?? 500, clientY: ev.delta?.y ?? 30, ctrlKey,
+  } }));
+  act(() => h.onDragEnd!(ev));
+}
+
 beforeEach(() => {
   localStorage.clear();
   Object.values(api).forEach((fn) => fn.mockClear());
@@ -157,7 +165,7 @@ describe('히트맵 드로어 → 차트 창 드롭', () => {
     const resolver = vi.fn(() => true);
     useEntryDragStore.getState().registerChartDropResolver(resolver);
 
-    h.onDragEnd!(dragTo(10, 10));
+    completeDrag(dragTo(10, 10));
 
     expect(resolver).toHaveBeenCalledWith({ x: 10, y: 10 }, { code: '000001', name: '에코프로' });
     await Promise.resolve();
@@ -170,7 +178,7 @@ describe('히트맵 드로어 → 차트 창 드롭', () => {
     useEntryDragStore.getState().registerChartTarget(CHART_HIT);
     useEntryDragStore.getState().registerChartDropResolver(() => false);
 
-    h.onDragEnd!(dragTo(10, 10));
+    completeDrag(dragTo(10, 10));
 
     expect(jump).toHaveBeenCalledWith('000001', '에코프로');
     expect(api.moveHeatmapEntries).not.toHaveBeenCalled();
@@ -181,9 +189,12 @@ describe('히트맵 드로어 → 차트 창 드롭', () => {
     useEntryDragStore.getState().registerChartTarget(CHART_HIT);
     useEntryDragStore.getState().registerChartDropResolver(vi.fn(() => true));
 
-    h.onDragEnd!(dragTo(500, 10));
+    completeDrag(dragTo(500, 10));
 
-    await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], 'f1', 'f2'));
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001'], after: [] },
+      { folder_id: 'f2', before: ['000003'], after: ['000003', '000001'] },
+    ] }));
     expect(jump).not.toHaveBeenCalled();
   });
 
@@ -191,9 +202,12 @@ describe('히트맵 드로어 → 차트 창 드롭', () => {
     // 등록 의존을 못박는다 — 캔버스가 없는 표면에서 이 배선은 완전히 무해해야 한다.
     await mounted();
 
-    h.onDragEnd!(dragTo(10, 10));
+    completeDrag(dragTo(10, 10));
 
-    await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], 'f1', 'f2'));
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001'], after: [] },
+      { folder_id: 'f2', before: ['000003'], after: ['000003', '000001'] },
+    ] }));
   });
 });
 
@@ -206,7 +220,7 @@ describe('드래그 수명주기 — 캔버스 어포던스', () => {
     h.onDragStart!({ ...dragTo(0, 0), activatorEvent: { ctrlKey: false, clientX: 0, clientY: 0 } });
     expect(useEntryDragStore.getState().draggingCode).toBe('000001');
 
-    h.onDragEnd!(dragTo(500, 10));
+    completeDrag(dragTo(500, 10));
     expect(useEntryDragStore.getState().draggingCode).toBeNull();
   });
 
@@ -233,7 +247,7 @@ describe('드래그 수명주기 — 캔버스 어포던스', () => {
   it('onDragMove 가 좌표를 발행한다 — 창별 드롭 어포던스의 입력', async () => {
     await mounted();
     useEntryDragStore.getState().registerChartTarget(CHART_HIT);
-    h.onDragStart!({ ...dragTo(0, 0), activatorEvent: { ctrlKey: false, clientX: 0, clientY: 0 } });
+    h.onDragStart!({ ...dragTo(0, 0), activatorEvent: { ctrlKey: false, clientX: 10, clientY: 20 } });
 
     h.onDragMove!(dragTo(10, 20));
 

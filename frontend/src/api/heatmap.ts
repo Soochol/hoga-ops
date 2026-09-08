@@ -96,3 +96,15 @@ export function removeHeatmapEntries(codes: string[]): Promise<void> {
     body: JSON.stringify({ codes }),
   });
 }
+
+export interface HeatmapFolderEntriesChange {
+  folder_id: string;
+  before: string[];
+  after: string[];
+}
+export interface HeatmapEntriesTransactionRequest { changes: HeatmapFolderEntriesChange[] }
+export function transactHeatmapEntries(request: HeatmapEntriesTransactionRequest): Promise<void> {
+  return apiAction('/api/heatmap/entries/transaction', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+}

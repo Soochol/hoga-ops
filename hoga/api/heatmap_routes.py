@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Path as PathParam, Query
+from fastapi import APIRouter, HTTPException, Path as PathParam, Query, Response
 
 from hoga.api import compute_jobs, symbols
 from hoga.api.compute_pools import ComputePools, thread_pools
@@ -47,6 +47,7 @@ from hoga.api.heatmap import (
     rename_folder,
     reorder_entries,
     reorder_folders,
+    transact_entries,
 )
 from hoga.api.heatmap_group_flow import HeatmapGroupFlowResponse
 from hoga.api.models import (
@@ -56,6 +57,7 @@ from hoga.api.models import (
     FolderRenameRequest,
     FolderReorderRequest,
     HeatmapEntriesMoveRequest,
+    HeatmapEntriesTransactionRequest,
     HeatmapEntry,
     HeatmapFolderView,
     HeatmapResponse,
@@ -143,6 +145,18 @@ def build_router(  # noqa: PLR0915
             capture_markers=doc.capture_markers,
             next_run_at_ms=next_run_at_ms(dt.datetime.now(tz=ZoneInfo("Asia/Seoul"))),
         )
+
+    @router.put("/entries/transaction", status_code=204)
+    async def transaction(req: HeatmapEntriesTransactionRequest) -> Response:
+        try:
+            await transact_entries(data_dir, changes=req.changes)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": "그룹이 삭제되었습니다. 목록을 새로 조회하세요."}) from e
+        except HeatmapSetMismatchError as e:
+            raise HTTPException(status_code=409, detail={
+                "code": "heatmap_changed", "message": "목록이 변경되었습니다. 최신 목록에서 다시 시도하세요."}) from e
+        return Response(status_code=204)
 
     @router.get("/group-flow", response_model=HeatmapGroupFlowResponse)
     async def get_heatmap_group_flow(

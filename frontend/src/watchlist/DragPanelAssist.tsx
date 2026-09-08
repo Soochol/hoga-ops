@@ -2,7 +2,8 @@ import { useEffect, useState, type MutableRefObject } from 'react';
 import { useDndContext } from '@dnd-kit/core';
 
 /** Temporary hover expansion and velocity-scaled scrolling. Never persists collapse state. */
-export function DragPanelAssist({ collapsed, onExpand, pointRef }: {
+export function DragPanelAssist({ collapsed, onExpand, pointRef, scrollSelector = '[data-testid="watchlist-scroll"]' }: {
+  scrollSelector?: string;
   collapsed: Set<string>; onExpand: (id: string) => void; pointRef: MutableRefObject<{ x: number; y: number } | null>;
 }) {
   const { active, over, measureDroppableContainers } = useDndContext();
@@ -17,7 +18,7 @@ export function DragPanelAssist({ collapsed, onExpand, pointRef }: {
   }, [activeId, activeType, target, collapsed, onExpand, measureDroppableContainers]);
   useEffect(() => {
     if (!activeId) return;
-    const el = document.querySelector<HTMLElement>('[data-testid="watchlist-scroll"]');
+    const el = document.querySelector<HTMLElement>(scrollSelector);
     if (!el) return;
     const trackPointer = (event: PointerEvent) => { pointRef.current = { x: event.clientX, y: event.clientY }; };
     document.addEventListener('pointermove', trackPointer, true);
@@ -44,7 +45,7 @@ export function DragPanelAssist({ collapsed, onExpand, pointRef }: {
       cancelAnimationFrame(raf);
       document.removeEventListener('pointermove', trackPointer, true);
     };
-  }, [activeId, pointRef]);
+  }, [activeId, pointRef, scrollSelector]);
   if (!active || !hint) return null;
   return <div role="status" className="pointer-events-none fixed z-50 bg-tint-selection py-1 text-center text-xs text-accent"
     style={{ top: hint.top, left: hint.left, width: hint.width, transform: hint.edge === 'down' ? 'translateY(-100%)' : undefined }}>

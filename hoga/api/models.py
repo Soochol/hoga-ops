@@ -1524,6 +1524,18 @@ class HeatmapEntry(BaseModel):
     order: int = Field(default=0, ge=0)
 
 
+class HeatmapFolderEntriesChange(BaseModel):
+    """Full ordered memberships guarded by the client's observed snapshot."""
+
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    before: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    after: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+
+
+class HeatmapEntriesTransactionRequest(BaseModel):
+    changes: list[HeatmapFolderEntriesChange] = Field(min_length=1, max_length=256)
+
+
 class HeatmapEntriesMoveRequest(BaseModel):
     """POST /api/heatmap/move body. The watchlist's shared EntriesMoveRequest
     allows folder_id=null; the heatmap has no null group (ADR-0112), so the
