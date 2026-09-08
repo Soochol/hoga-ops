@@ -58,7 +58,15 @@ export const precisePanelCollision: CollisionDetection = (args) => {
     if (type === 'memo') return ROW_TYPES.has(String(t)) && c.data.current?.folderId === args.active.data.current?.folderId;
     return ROW_TYPES.has(String(t)) || t === ENTRY_TARGET;
   });
-  const hits = pointerWithin({ ...args, droppableContainers: candidates });
+  // dnd-kit offsets cached rects by scroll distance, but sticky headers stay
+  // pinned. Read their actual position so a header drop cannot hit a row below.
+  const droppableRects = new Map(args.droppableRects);
+  for (const candidate of candidates) {
+    if (candidate.data.current?.header && candidate.node.current) {
+      droppableRects.set(candidate.id, candidate.node.current.getBoundingClientRect());
+    }
+  }
+  const hits = pointerWithin({ ...args, droppableRects, droppableContainers: candidates });
   const info = (id: typeof args.active.id) => candidates.find((c) => c.id === id)?.data.current;
   const headers = hits.filter((h) => info(h.id)?.header);
   if (headers.length) return headers.slice(0, 1);
