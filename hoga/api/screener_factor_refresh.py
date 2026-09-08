@@ -72,6 +72,7 @@ import polars as pl
 
 from hoga.api import screener_factors
 from hoga.api.screener_store import derive_adjusted
+from hoga.api.screener_write_lock import screener_write_lock
 
 log = logging.getLogger(__name__)
 
@@ -212,19 +213,29 @@ def _replace_and_write(
     세그먼트가 두 벌 쌓이고, `apply_factors` 의 backward asof 가 그중 뒤엣것을 집어
     조용히 틀린 척도를 먹인다. 저쪽은 `done` 게이트 덕에 그 경로에 못 닿았을 뿐이다.
     """
-    if fpath.exists():
-        snap = fpath.with_suffix(f".pre-refresh-{stamp}.parquet")
-        if not snap.exists():
-            shutil.copyfile(fpath, snap)
-    fresh = screener_factors.segments_to_frame(new_by_code)
-    kept = (
-        factors.filter(~pl.col("code").is_in(list(new_by_code)))
-        if factors is not None and factors.height
-        else fresh.head(0)
-    )
-    merged = pl.concat([kept.select(fresh.columns), fresh]) if kept.height else fresh
-    screener_factors.write_factors(merged, fpath)
-    return merged
+    with screener_write_lock(fpath.parent):
+        latest = screener_factors.read_factors(fpath)
+        if latest is not None:
+            # Preserve concurrently refreshed codes: their input snapshot has changed.
+            for code in list(new_by_code):
+                old = factors.filter(pl.col("code") == code) if factors is not None else latest.head(0)
+                current = latest.filter(pl.col("code") == code)
+                if not old.equals(current):
+                    raise RuntimeError("계수가 수집 중 변경되었습니다. 다시 실행해 주세요")
+            factors = latest
+        if fpath.exists():
+            snap = fpath.with_suffix(f".pre-refresh-{stamp}.parquet")
+            if not snap.exists():
+                shutil.copyfile(fpath, snap)
+        fresh = screener_factors.segments_to_frame(new_by_code)
+        kept = (
+            factors.filter(~pl.col("code").is_in(list(new_by_code)))
+            if factors is not None and factors.height
+            else fresh.head(0)
+        )
+        merged = pl.concat([kept.select(fresh.columns), fresh]) if kept.height else fresh
+        screener_factors.write_factors(merged, fpath)
+        return merged
 
 
 async def refresh_factors(
@@ -305,8 +316,8 @@ async def refresh_factors(
     if not new_by_code:
         return report
 
-    merged = _replace_and_write(
-        fpath, factors, new_by_code,
+    merged = await asyncio.to_thread(
+        _replace_and_write, fpath, factors, new_by_code,
         stamp=stamp or dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S"),
     )
     report.refreshed = sorted(new_by_code)
@@ -317,7 +328,13 @@ async def refresh_factors(
     still = find_unexplained_steps(unadjusted, merged, since=since)
     report.unresolved = sorted({s.code for s in still} & set(report.refreshed))
 
-    derive_adjusted(up, sdir / "daily_adjusted.parquet", factors_path=fpath)
+    def _derive() -> None:
+        # Hold the shared lock across both snapshot reads and publication so a
+        # history commit cannot be replaced by a derivation of an older corpus.
+        with screener_write_lock(sdir):
+            derive_adjusted(up, sdir / "daily_adjusted.parquet", factors_path=fpath)
+
+    await asyncio.to_thread(_derive)
     log.info(
         "factor refresh: %d 종목 갱신 · 보류 %d · 실패 %d · 미해소 %d (세그먼트 %d→%d)",
         len(report.refreshed), len(report.blocked), len(report.failed),

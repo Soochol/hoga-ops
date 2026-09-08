@@ -4,6 +4,26 @@ import type { WireDataWarning } from './dataWarnings';
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams { min_eok: number }
 export interface BreakoutParams { lookback: number; period: number }
+export interface HistoryVolumeParams {
+  mode: 'date_range'; start_date: string; end_date: string;
+  record_period: { unit: 'years' | 'trading_days'; value: number };
+}
+export interface HistoryMatch {
+  condition_id: string; date: string; volume: number; maximum: number;
+  window_start: string; window_end: string;
+}
+export interface HistoryCoverage {
+  total: number; complete: number;
+  incomplete: { code: string; condition_id: string; required_from: string;
+    required_to: string; missing_days: number; reason: string }[];
+}
+export type HistoryJobStatus = 'queued' | 'collecting' | 'deriving' | 'complete' | 'partial' | 'failed' | 'interrupted';
+export interface HistoryJob {
+  id: string; status: HistoryJobStatus; request: ScanRequest; codes: string[];
+  total: number; done: number; written_rows: number; errors: Record<string, string>;
+  current_code: string | null; started_at_ms: number; cancel_requested: boolean;
+  coverage: HistoryCoverage | null;
+}
 export interface PeriodParams { period: number }
 export interface TradeValuePeriodParams { lookback: number; min_eok: number }
 export type ChangePctOp = 'gte' | 'lte' | 'between';
@@ -33,7 +53,7 @@ export type ConditionLeaf =
   | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
   | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
-  | { id: string; type: 'new_high_vol'; params: BreakoutParams }
+  | { id: string; type: 'new_high_vol'; params: BreakoutParams | HistoryVolumeParams }
   | { id: string; type: 'high_off_peak'; params: HighOffPeakParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
@@ -66,6 +86,7 @@ export interface ScanRequest {
 }
 
 export interface ScreenerRow {
+  history_matches?: HistoryMatch[];
   code: string;
   name: string;
   market: 'KOSPI' | 'KOSDAQ';
@@ -110,6 +131,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  history_coverage?: HistoryCoverage | null;
   scanned_at_ms?: number | null;
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];

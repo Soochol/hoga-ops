@@ -42,6 +42,7 @@ export interface PanelScan {
    *  `warnings` 는 depth·ETF 태그와 한 평면이라 사유를 섞으면 이름이 충돌한다. */
   intradayFailure?: ScreenerResponse['intraday_failure'];
   // 총잔량 신고 조건이 있을 때만 채워진다 — 결과 테이블의 호가 신고 값 컬럼 복원용.
+  historyCoverage?: ScreenerResponse['history_coverage'];
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
   basis: ScanBasis;

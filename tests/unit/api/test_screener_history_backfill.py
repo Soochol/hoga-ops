@@ -364,3 +364,42 @@ async def test_production_run_fails_loudly_without_credentials(tmp_path: Path, m
             tmp_path, gap_from=GAP_FROM, window_to=WINDOW_TO,
             corpus_start_after=dt.date(2025, 1, 1), dry_run=False,
         )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('change_factors', [False, True])
+async def test_concurrent_history_publication_preserves_rows_and_rejects_stale_factors(tmp_path, change_factors):
+    from hoga.api.screener_store import _DAILY_PL_SCHEMA, append_rows
+    from hoga.api.screener_write_lock import screener_write_lock
+
+    _write_corpus(tmp_path, factor=5.0)
+
+    async def fetch(_code, _frm, _to):
+        # Interleave a verified writer after the CLI has captured its factor/coverage plan.
+        with screener_write_lock(tmp_path):
+            authoritative = pl.DataFrame([dict(code='005930', date=GAP_FROM, open=777., high=777.,
+                                               low=777., close=777., volume=777)], schema=_DAILY_PL_SCHEMA)
+            append_rows(tmp_path / 'daily_unadjusted.parquet', authoritative)
+            if change_factors:
+                # Leave oldest factor unchanged: compare the entire code's factor history.
+                pl.DataFrame(dict(code=['005930', '005930'], seg_start=[CORPUS_START, WINDOW_TO],
+                                  factor=[5., 1.])).write_parquet(tmp_path / 'factors.parquet')
+            derive_adjusted(tmp_path / 'daily_unadjusted.parquet', tmp_path / 'daily_adjusted.parquet',
+                            factors_path=tmp_path / 'factors.parquet')
+        return _vendor(1000., 1010.)
+
+    report = await history_backfill(tmp_path, fetch_adjusted_daily=fetch, gap_from=GAP_FROM,
+                                    window_to=WINDOW_TO, dry_run=False)
+    raw = pl.read_parquet(tmp_path / 'daily_unadjusted.parquet')
+    assert raw.filter(pl.col('date') == GAP_FROM)['close'].to_list() == [777.]
+    assert raw.filter(pl.col('date') == GAP_FROM)['volume'].to_list() == [777]
+    second_gap = raw.filter(pl.col('date') == GAP_FROM + dt.timedelta(days=1))
+    if change_factors:
+        assert report.written_rows == 0
+        assert report.skipped == {'factors_changed': 1}
+        assert second_gap.is_empty()
+    else:
+        assert report.written_rows == 1
+        assert second_gap['close'].to_list() == [202.]
+    adjusted = pl.read_parquet(tmp_path / 'daily_adjusted.parquet')
+    assert adjusted.filter(pl.col('date') == GAP_FROM)['close'].to_list() == [3885.]

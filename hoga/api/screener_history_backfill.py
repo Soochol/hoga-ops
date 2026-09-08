@@ -105,6 +105,7 @@ from hoga.api.screener_store import (
     derive_adjusted,
     write_status,
 )
+from hoga.api.screener_write_lock import screener_write_lock
 from hoga.util.atomic_write import atomic_write_json
 
 # `_DAILY_PL_SCHEMA` 를 **복제하지 않고 빌려 쓴다.** 원주가 parquet 에 쓰는 writer 가
@@ -259,7 +260,10 @@ def corpus_dates(unadjusted_path: Path) -> tuple[dict[str, dt.date], dict[str, s
 
 def oldest_factors(factors_path: Path) -> dict[str, float]:
     """종목별 **최古 세그먼트 계수** — extend-backward 가 갭에 적용할 바로 그 값."""
-    factors = screener_factors.read_factors(factors_path)
+    return _oldest_factors(screener_factors.read_factors(factors_path))
+
+
+def _oldest_factors(factors: pl.DataFrame | None) -> dict[str, float]:
     if factors is None or not factors.height:
         return {}
     oldest = (
@@ -341,6 +345,17 @@ def plan_targets(
     return plans
 
 
+def _changed_factor_codes(snapshot: pl.DataFrame | None, latest: pl.DataFrame | None,
+                          codes: set[str]) -> set[str]:
+    changed = set()
+    for code in codes:
+        before = snapshot.filter(pl.col("code") == code) if snapshot is not None else None
+        after = latest.filter(pl.col("code") == code) if latest is not None else None
+        if before is None or after is None or not before.sort("seg_start").equals(after.sort("seg_start")):
+            changed.add(code)
+    return changed
+
+
 async def history_backfill(
     sdir: Path,
     *,
@@ -364,7 +379,8 @@ async def history_backfill(
     """
     up = sdir / "daily_unadjusted.parquet"
     starts, present = corpus_dates(up)
-    factors = oldest_factors(sdir / "factors.parquet")
+    factor_snapshot = screener_factors.read_factors(sdir / "factors.parquet")
+    factors = _oldest_factors(factor_snapshot)
     # 달력은 **커버리지 안**만 쓴다 — 시드 범위 밖은 `None`(모름)이고, 모르는 날을
     # 결손으로 단정하면 주말·휴장일을 벤더에 물으러 간다(`trading_days` 도크스트링).
     end = trading_days.coverage_end(data_dir)
@@ -418,24 +434,36 @@ async def history_backfill(
 
     pending: list[dict] = []
 
-    def _commit(rows: list[dict]) -> None:
-        new = pl.DataFrame(rows, schema=_DAILY_PL_SCHEMA)
-        n, last, merged = append_rows(up, new)
-        ms = derive_adjusted(
-            up, sdir / "daily_adjusted.parquet",
-            factors_path=sdir / "factors.parquet", unadjusted_df=merged,
-        )
-        if now_ms is not None:
-            write_status(sdir / "status.json", last_raw_date=last,
-                         universe_size=n, derive_ms=ms, now_ms=now_ms)
+    def _commit(rows: list[dict]) -> int:
+        with screener_write_lock(sdir):
+            changed = _changed_factor_codes(
+                factor_snapshot, screener_factors.read_factors(sdir / "factors.parquet"),
+                {row["code"] for row in rows})
+            for plan in todo:
+                if plan.code in changed:
+                    plan.skipped_reason = "factors_changed"
+            new = pl.DataFrame(rows, schema=_DAILY_PL_SCHEMA).filter(~pl.col("code").is_in(changed))
+            # A concurrent verified collection owns any observations it already published.
+            keys = pl.read_parquet(up, columns=["code", "date"])
+            new = new.unique(subset=["code", "date"], keep="last").join(keys, on=["code", "date"], how="anti")
+            if new.is_empty():
+                return 0
+            n, last, merged = append_rows(up, new)
+            ms = derive_adjusted(
+                up, sdir / "daily_adjusted.parquet",
+                factors_path=sdir / "factors.parquet", unadjusted_df=merged,
+            )
+            if now_ms is not None:
+                write_status(sdir / "status.json", last_raw_date=last,
+                             universe_size=n, derive_ms=ms, now_ms=now_ms)
+            return new.height
 
     for i in range(0, len(todo), batch):
         results = await asyncio.gather(*(_one(p) for p in todo[i:i + batch]))
         for _plan, rows in results:
             pending.extend(rows)
         if pending and not dry_run:
-            await asyncio.to_thread(_commit, pending)
-            report.written_rows += len(pending)
+            report.written_rows += await asyncio.to_thread(_commit, pending)
             pending = []
     # 프로브는 **쓰기 성공 여부와 무관하게** 저장한다 — 배운 것은 사실이고, 다음 런의
     # 헛 호출을 줄이는 값이다. dry-run 은 애초에 여기 도달하지 않는다(조회를 안 한다).

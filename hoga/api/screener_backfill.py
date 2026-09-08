@@ -17,6 +17,7 @@ from pathlib import Path
 import polars as pl
 
 from hoga.api import screener_factors
+from hoga.api.screener_write_lock import screener_write_lock
 
 log = logging.getLogger(__name__)
 
@@ -84,17 +85,20 @@ async def factor_backfill(
             return code, []
 
     def _flush() -> None:
-        frame = screener_factors.segments_to_frame(new_by_code)
-        if existing is not None and existing.height:
-            frame = pl.concat([existing.select(frame.columns), frame])
-        screener_factors.write_factors(frame, fpath)
+        with screener_write_lock(sdir):
+            latest = screener_factors.read_factors(fpath)
+            frame = screener_factors.segments_to_frame(new_by_code)
+            if latest is not None and latest.height:
+                frame = frame.filter(~pl.col("code").is_in(latest["code"].unique().to_list()))
+                frame = pl.concat([latest.select(frame.columns), frame])
+            screener_factors.write_factors(frame, fpath)
 
     for i in range(0, len(todo), batch):
         results = await asyncio.gather(*(_one(c) for c in todo[i:i + batch]))
         for code, segs in results:
             if segs:
                 new_by_code[code] = segs
-        _flush()  # incremental atomic write (resumable)
+        await asyncio.to_thread(_flush)  # shared writer lock can wait for another commit
     return len(new_by_code)
 
 
@@ -184,7 +188,8 @@ async def reconcile_raw(
     if fill:
         new = pl.DataFrame([vars(b) for b in fill], schema=_DAILY_PL_SCHEMA)
         n_before = disk.height
-        _, _, merged = append_rows(up, new)
+        with screener_write_lock(sdir):
+            _, _, merged = append_rows(up, new)
         # filled_rows = net new rows (overwrites don't change height)
         filled = merged.height - n_before
 
@@ -257,12 +262,14 @@ async def run_backfill_with(sdir: Path, *, fetch_adj: FetchAdj, fetch_raw: Fetch
     if (sdir / "daily_adjusted.parquet").exists() and not old_path.exists():
         shutil.copyfile(sdir / "daily_adjusted.parquet", old_path)
 
-    derive_ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet",
-                                factors_path=sdir / "factors.parquet")
-    write_status(sdir / "status.json",
-                 last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
-                 universe_size=pl.read_parquet(sdir / "daily_unadjusted.parquet")["code"].n_unique(),
-                 derive_ms=derive_ms, now_ms=now_ms)
+    with screener_write_lock(sdir):
+        derive_ms = derive_adjusted(sdir / "daily_unadjusted.parquet", sdir / "daily_adjusted.parquet",
+                                    factors_path=sdir / "factors.parquet")
+        write_status(sdir / "status.json",
+                     last_raw_date=last_raw_date(sdir / "daily_unadjusted.parquet"),
+                     universe_size=pl.read_parquet(sdir / "daily_unadjusted.parquet")["code"].n_unique(),
+                     derive_ms=derive_ms, now_ms=now_ms)
+
 
     impact = build_impact_report(sdir, old_path=old_path) if old_path.exists() else {"changed_codes": 0}
     return {"reconcile": rec, "factors_added": added, "impact": impact}

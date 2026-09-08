@@ -455,6 +455,8 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
     pools: ComputePools = compute if compute is not None else thread_pools()
     router = APIRouter(prefix="/api/screener", tags=["screener"])
+    from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
+    router.include_router(history_router(data_dir))
     pattern_requests = ReadRequestCoalescer[PatternSearchResponse]()
     sdir = data_dir / "screener"
 

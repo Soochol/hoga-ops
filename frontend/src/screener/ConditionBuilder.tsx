@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useRef, useState, type ReactNode, type DragEvent } from 'react';
 import type { ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
@@ -21,7 +21,8 @@ export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
   ['등락률', ['change_pct']],
 ];
 
-export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange }: {
+export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, children }: {
+  children?: ReactNode;
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
   onConditionsChange: (c: ConditionLeaf[]) => void; onUniverseChange: (u: ScreenerUniverse) => void;
 }) {
@@ -112,6 +113,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
           onChange={(n) => replace(leaf.id, n)}
           onRemove={() => remove(leaf.id)} />
       ))}
+      {children}
     </div>
   );
 }

@@ -4,6 +4,7 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 
 from __future__ import annotations
 
+import datetime as dt
 import math
 from collections.abc import Iterable
 from datetime import datetime
@@ -24,6 +25,7 @@ from hoga.api.params import CODE_PATTERN
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
+from hoga.util.timeenc import KST
 
 
 class StockDateVenue(BaseModel):
@@ -1757,6 +1759,40 @@ class BreakoutParams(BaseModel):                       # 신고가/신고거래�
     lookback: int = Field(ge=1)                        # N: Lookback Window
     period: int = Field(ge=1)                          # M: Record Period
 
+_MAX_HISTORY_YEARS = 20
+
+
+class HistoryRecordPeriod(BaseModel):
+    model_config = {"extra": "forbid"}
+    unit: Literal["years", "trading_days"]
+    value: int = Field(ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def validate_years(self):
+        if self.unit == "years" and self.value > _MAX_HISTORY_YEARS:
+            raise ValueError("비교 기간은 20년 이내")
+        return self
+
+
+class HistoryVolumeParams(BaseModel):
+    model_config = {"extra": "forbid"}
+    mode: Literal["date_range"]
+    start_date: str
+    end_date: str
+    record_period: HistoryRecordPeriod
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        start, end = dt.date.fromisoformat(self.start_date), dt.date.fromisoformat(self.end_date)
+        if start.isoformat() != self.start_date or end.isoformat() != self.end_date:
+            raise ValueError("날짜는 YYYY-MM-DD 형식이어야 합니다")
+        if start > end or end > dt.datetime.now(KST).date():
+            raise ValueError("시작일 ≤ 종료일 ≤ 오늘이어야 합니다")
+        if start.year - (self.record_period.value if self.record_period.unit == "years" else 0) < 1:
+            raise ValueError("비교 기간이 날짜 범위를 벗어납니다")
+        return self
+
+
 class PeriodParams(BaseModel):                         # 당일 신고가/신고거래량 — 단일 윈도우
     period: int = Field(ge=1)
 
@@ -1854,7 +1890,16 @@ class NewHighLeaf(BaseModel):
 class NewHighVolLeaf(BaseModel):
     type: Literal["new_high_vol"] = "new_high_vol"
     id: str
-    params: BreakoutParams
+    params: HistoryVolumeParams | BreakoutParams
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_mode(cls, value):
+        if isinstance(value, dict):
+            params = value.get("params", {})
+            if isinstance(params, dict) and {"mode", "start_date", "end_date", "record_period"}.intersection(params):
+                HistoryVolumeParams.model_validate(params)
+        return value
 
 class NewHighTodayLeaf(BaseModel):
     type: Literal["new_high_today"] = "new_high_today"
@@ -1971,6 +2016,48 @@ class ScanRequest(BaseModel):
     limit: int = Field(1000, ge=1, le=2000)
     basis: ScanBasis = "eod"
 
+class HistoryMatch(BaseModel):
+    condition_id: str
+    date: str
+    volume: int
+    maximum: int
+    window_start: str
+    window_end: str
+
+
+class HistoryCoverageItem(BaseModel):
+    code: str
+    condition_id: str
+    required_from: str
+    required_to: str
+    missing_days: int
+    reason: str
+
+
+class HistoryCoverage(BaseModel):
+    total: int
+    complete: int
+    incomplete: list[HistoryCoverageItem] = Field(default_factory=list)
+
+
+HistoryJobStatus = Literal["queued", "collecting", "deriving", "complete", "partial", "failed", "interrupted"]
+
+
+class HistoryJob(BaseModel):
+    id: str
+    status: HistoryJobStatus
+    request: ScanRequest
+    codes: list[str]
+    total: int
+    done: int
+    written_rows: int
+    errors: dict[str, str]
+    current_code: str | None = None
+    started_at_ms: int
+    cancel_requested: bool = False
+    coverage: HistoryCoverage | None = None
+
+
 class ScreenerRow(BaseModel):                          # 평면형 — 조건 배지 없음
     code: str = Field(pattern=CODE_PATTERN)
     name: str
@@ -1980,6 +2067,7 @@ class ScreenerRow(BaseModel):                          # 평면형 — 조건 �
     change_pct: float | None
     # 조회 가격을 가져온 마지막 일봉 날짜. 기간 조건의 충족 발생일과는 다르다.
     price_date: str | None = None
+    history_matches: list[HistoryMatch] = Field(default_factory=list)
 
 class DepthCoverageCode(BaseModel):                    # 총잔량 조건 커버리지 한 종목
     code: str = Field(pattern=CODE_PATTERN)
@@ -2025,6 +2113,7 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_renewal_start_hhmm: int | None = None
 
 class ScreenerResponse(BaseModel):
+    history_coverage: HistoryCoverage | None = None
     status: Literal["ok", "not_seeded", "building"]
     rows: list[ScreenerRow]
     # limit+1건을 확인해 정확히 limit건인 결과와 잘린 결과를 구별한다.

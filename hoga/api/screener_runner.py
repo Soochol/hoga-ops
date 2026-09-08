@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hoga.api import (
     screener_depth,
+    screener_history_coverage,
     screener_intraday,
     screener_scan,
     screener_universe,
@@ -47,7 +48,8 @@ async def run_screener_scan(
     if req.universe.exclude_etf and etf_codes is None:
         warnings.append("etf_filter_stale_master_unavailable")
 
-    if req.basis == "intraday":
+    history = screener_history_coverage.history_leaves(req.conditions)
+    if req.basis == "intraday" and (not history or len(history) != len(req.conditions)):
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
                 "rest_bypassed_intraday_overlay_skipped",
@@ -98,6 +100,13 @@ async def run_screener_scan(
         {leaf_id: sorted(codes) for leaf_id, codes in depth_eval.passing.items()}
         if depth_eval is not None else None
     )
+    history_eval = None
+    if history:
+        codes = await asyncio.to_thread(
+            screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
+            scope=scope, etf_codes=etf_codes)
+        history_eval = await asyncio.to_thread(
+            screener_history_coverage.evaluate, data_dir, req.conditions, codes)
     rows = await asyncio.to_thread(
         screener_scan.run_scan,
         sdir / "daily_adjusted.parquet",
@@ -109,8 +118,13 @@ async def run_screener_scan(
         depth_pass=depth_pass,
         scope_codes=scope,
         etf_codes=etf_codes,
+        history_pass=history_eval.passing if history_eval else None,
     )
+    if history_eval:
+        for row in rows:
+            row.history_matches = history_eval.matches.get(row.code, [])
     return ScreenerResponse(
+        history_coverage=history_eval.coverage if history_eval else None,
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
         scanned_at_ms=int(time.time() * 1000),
         intraday_failure=intraday_failure,

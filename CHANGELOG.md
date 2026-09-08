@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.14.0.0] - 2026-09-09
+
+### Added
+- 스크리너에서 발생 날짜 범위와 비교 연수·거래일 수를 지정해 과거 신고거래량 종목을 찾고, 충족일과 거래량을 결과 및 CSV에서 확인할 수 있다.
+- 부족한 과거 일봉을 화면에서 수집·중단·재개하고 디스크에 저장해 재사용한다. 비교 이력이 부족한 종목과 수집 실패 사유를 표시한다.
+
+### Fixed
+- 과거 일봉 수집과 기존 갱신 작업이 동시에 저장할 때 원주가·보정 계수·수정주가가 서로 덮어쓰지 않도록 저장을 조정한다.
+
 ## [0.13.4.0] - 2026-09-08
 
 ### Fixed
