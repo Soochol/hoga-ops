@@ -66,6 +66,31 @@ describe('screenerPanel store', () => {
     expect(persisted.sortMode).toEqual({ field: 'change_pct', direction: 'desc' });
   });
 
+  it('새 조회 메타를 저장하면서 값이 같은 행은 재사용한다', () => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN);
+    const previous = useScreenerPanelStore.getState().lastScan!;
+    store.setLastScan({
+      ...SCAN, rows: SCAN.rows.map((r) => ({ ...r })), scannedAtMs: NOW + 1000,
+      hasMore: true, warnings: ['intraday_quote_invalid'],
+    });
+    const next = useScreenerPanelStore.getState().lastScan!;
+    expect(next.rows).toBe(previous.rows);
+    expect(next.scannedAtMs).toBe(NOW + 1000);
+    expect(next.warnings).toEqual(['intraday_quote_invalid']);
+    expect(JSON.parse(localStorage.getItem('screenerPanel.v1')!).lastScan.hasMore).toBe(true);
+
+    store.setLastScan({ ...next, rows: [{ ...next.rows[0], trade_value_won: 200_000_000_000 }] });
+    expect(useScreenerPanelStore.getState().lastScan!.rows[0].trade_value_won).toBe(200_000_000_000);
+  });
+
+  it('상한 여부를 새로고침 후에도 복원한다', async () => {
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ lastScan: { ...SCAN, hasMore: true } }));
+    vi.resetModules();
+    const restored = await import('./screenerPanel');
+    expect(restored.useScreenerPanelStore.getState().lastScan?.hasMore).toBe(true);
+  });
+
   it('hydrates a fresh saved scan and sort mode from storage', async () => {
     localStorage.setItem('screenerPanel.v1', JSON.stringify({
       selectedSavedId: 's1',

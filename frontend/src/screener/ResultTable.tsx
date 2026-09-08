@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import type { DepthPeakValue } from '../api/screener';
@@ -148,7 +148,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
-function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef }: {
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index }: {
   r: ScreenerRowLive;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
@@ -156,13 +156,14 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   depthSides?: DepthSides;
   style?: React.CSSProperties;
   measureRef?: (el: HTMLElement | null) => void;
+  index?: number;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name, e); }
   };
   return (
     <DataTableRow role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
-      rowRef={measureRef} style={style}
+      rowRef={measureRef} data-index={index} style={style}
       onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
       columns={COLS}
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
@@ -212,8 +213,11 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
   const shellRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const virtualize = rows.length > VIRTUALIZE_THRESHOLD;
+  const getItemKey = useCallback((index: number) => rows[index].code, [rows]);
   const virtualizer = useVirtualizer({
     count: rows.length,
+    enabled: virtualize,
+    getItemKey,
     getScrollElement: () => shellRef.current,
     estimateSize: () => ROW_ESTIMATE_PX,
     overscan: 8,
@@ -259,6 +263,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               depthValues={depthValues}
               depthSides={depthSides}
               measureRef={virtualizer.measureElement}
+              index={vi.index}
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%',
                 transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,

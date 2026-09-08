@@ -2001,6 +2001,8 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]
     rows: list[ScreenerRow]
+    # limit+1건을 확인해 정확히 limit건인 결과와 잘린 결과를 구별한다.
+    has_more: bool = False
     #: 상태 태그의 평평한 목록 — 장중 오버레이·depth·ETF 필터가 한 평면에 섞이므로
     #: 접두(`intraday_` 등)가 네임스페이스 역할을 한다.
     warnings: list[str] = Field(default_factory=list)

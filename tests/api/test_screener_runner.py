@@ -45,6 +45,33 @@ async def test_runner_not_seeded_returns_not_seeded(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("limit", "count", "has_more"), [(1, 1, True), (2, 2, False), (3, 2, False)])
+async def test_runner_distinguishes_truncated_results_from_exact_limit(tmp_path, limit, count, has_more):
+    _seed(tmp_path)
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path,
+        req=ScanRequest.model_validate({"limit": limit, "universe": {"exclude_etf": False}}),
+    )
+    assert len(res.rows) == count
+    assert res.has_more is has_more
+    assert res.model_dump()["has_more"] is has_more
+
+
+@pytest.mark.asyncio
+async def test_runner_empty_result_does_not_report_more(tmp_path):
+    _seed(tmp_path)
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path,
+        req=ScanRequest.model_validate({
+            "limit": 1, "universe": {"exclude_etf": False},
+            "conditions": [{"id": "price", "type": "price_range", "params": {"min": 9999}}],
+        }),
+    )
+    assert res.rows == []
+    assert res.has_more is False
+
+
+@pytest.mark.asyncio
 async def test_runner_eod_basis_does_not_build_intraday_overlay(tmp_path, monkeypatch):
     _seed(tmp_path)
 

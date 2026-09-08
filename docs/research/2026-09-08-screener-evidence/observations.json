@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-08",
+  "timezone": "Asia/Seoul",
+  "browser": {
+    "result_rows": 532,
+    "rendered_rows": 19,
+    "virtualized": true,
+    "measured_first_three_row_heights_px": [
+      25,
+      25,
+      25
+    ],
+    "first_three_data_index": [
+      null,
+      null,
+      null
+    ],
+    "warning": "Missing attribute name 'data-index={index}' on measured element.",
+    "slot_waiting_notice_count": 20
+  },
+  "sql_preparation": {
+    "ms": 1347.1,
+    "full_rows": 8959939,
+    "tail499_rows": 1806745,
+    "eligible_roster_codes": 2785
+  },
+  "corpus": {
+    "codes": 4330,
+    "min_date": "1999-01-04",
+    "max_date": "2026-09-07",
+    "file_mib": 132.3
+  }
+}

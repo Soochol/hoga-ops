@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { replaceEqualDeep } from '@tanstack/react-query';
 import type { DepthPeakValue, ScanBasis, ScreenerResponse, ScreenerRow } from '../api/screener';
 import type {
   ScreenerResultSortDirection,
@@ -31,6 +32,8 @@ export interface PanelScan {
   // 기반(savedId/savedUpdatedAtMs)이라 null 로 둔다.
   scanKey: string | null;
   rows: ScreenerRow[];
+  /** undefined는 상한 여부를 제공하지 않던 서버/저장 상태. */
+  hasMore?: boolean;
   scanStatus: ScreenerResponse['status'];
   warnings: string[];
   /** 장중 오버레이 실패의 구조화된 사유(ADR-0143). 상태 태그와 갈라 저장한다 —
@@ -186,6 +189,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     savedUpdatedAtMs,
     scanKey,
     rows: raw.rows as ScreenerRow[],
+    hasMore: typeof raw.hasMore === 'boolean' ? raw.hasMore : undefined,
     scanStatus: raw.scanStatus,
     // 구버전 저장본에는 없다(필드를 넓히기만 하는 마이그레이션 — 위 주석 참조).
     intradayFailure: raw.intradayFailure as PanelScan['intradayFailure'],
@@ -230,7 +234,9 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
   },
 
   setLastScan: (scan) => {
-    set({ lastScan: scan });
+    // 시각·경고는 매 조회 반영하고, 값이 같은 행/배열만 재사용한다. 종목 집합만
+    // 같다고 응답 전체를 버리면 실패 안내·거래대금·30분 TTL까지 과거에 머문다.
+    set({ lastScan: replaceEqualDeep(get().lastScan, scan) });
     persistFromState(get());
   },
 

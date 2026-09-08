@@ -104,14 +104,14 @@ async def run_screener_scan(
         sdir / "stocks.parquet",
         conditions=req.conditions,
         universe=req.universe,
-        limit=req.limit,
+        limit=req.limit + 1,
         intraday_rows=intraday_rows,
         depth_pass=depth_pass,
         scope_codes=scope,
         etf_codes=etf_codes,
     )
     return ScreenerResponse(
-        status="ok", rows=rows, warnings=warnings,
+        status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
         intraday_failure=intraday_failure,
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,

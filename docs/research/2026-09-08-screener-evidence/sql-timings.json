@@ -1,0 +1,86 @@
+[
+  {
+    "case": "full",
+    "run": 1,
+    "ms": 1296.4,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "full",
+    "run": 2,
+    "ms": 1257.8,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "full",
+    "run": 3,
+    "ms": 1589.8,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "early_universe",
+    "run": 1,
+    "ms": 1523.9,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "early_universe",
+    "run": 2,
+    "ms": 1232.2,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "early_universe",
+    "run": 3,
+    "ms": 1366.9,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499",
+    "run": 1,
+    "ms": 230.0,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499",
+    "run": 2,
+    "ms": 278.4,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499",
+    "run": 3,
+    "ms": 236.3,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499_early_universe",
+    "run": 1,
+    "ms": 216.7,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499_early_universe",
+    "run": 2,
+    "ms": 225.1,
+    "rows": 533,
+    "same_values_and_membership": true
+  },
+  {
+    "case": "tail499_early_universe",
+    "run": 3,
+    "ms": 213.4,
+    "rows": 533,
+    "same_values_and_membership": true
+  }
+]
