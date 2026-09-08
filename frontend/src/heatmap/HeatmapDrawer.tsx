@@ -1,3 +1,6 @@
+import { RailSelectionControl } from '../rightrail/RailSelectionControl';
+import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
+import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
@@ -203,10 +206,10 @@ function GroupHeader(props: {
       {props.dragHandle && <button type="button" aria-label={`${props.label} 그룹 이동`}
         ref={props.dragHandle?.setActivatorNodeRef} {...(props.dragHandle?.listeners ?? {})} disabled={props.busy}
         onClick={(e) => e.stopPropagation()}
-        className="cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40">⠿</button>}
+        className="grid h-5 w-4 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"><GripIcon /></button>}
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
-        onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
+        onClick={props.onToggle} className="h-6 w-6 grid place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
         <ChevronIcon collapsed={props.collapsed} />
       </button>
       <button type="button" onClick={props.onToggle}
@@ -229,8 +232,8 @@ function GroupHeader(props: {
           <button type="button" aria-label={`${props.label} 그룹 메뉴`}
             aria-haspopup="menu" aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className="px-1 leading-none text-fg-dimmer hover:text-fg">
-            ⋯
+            className="h-6 w-6 grid place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+            <MoreIcon />
           </button>
           {menuOpen && (
             <AnchoredMenu label={props.label}>
@@ -289,9 +292,9 @@ function RowTrailing({ name, onOpenMenu }: { name: string; onOpenMenu: (e: React
       aria-label={`${name} 행 메뉴`}
       aria-haspopup="menu"
       onClick={(e) => { e.stopPropagation(); onOpenMenu(e); }}
-      className="grid place-items-center px-1 leading-none text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+      className="grid h-5 w-5 place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
     >
-      ⋯
+      <MoreIcon />
     </button>
   );
 }
@@ -415,7 +418,7 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
     <>
       <button ref={btnRef} type="button" title="종목 추가" data-testid="heatmap-header-add"
         onClick={() => setOpen((v) => !v)}
-        className="text-xs text-fg-dim hover:text-accent">
+        className="h-7 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-accent">
         종목 추가
       </button>
       {open && (
@@ -434,12 +437,12 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
  * 닫으면 리셋 — 필터는 일시적 조회 보조이지 저장 설정이 아니다).
  *
  * 전체 접기는 **드로어 전용** 관심사다(/heatmap 페이지엔 접기 개념 자체가 없다). 페이지와
- * 공유되는 정렬 토글과 영속 축이 다르므로 ml-auto 로 우측에 떼어 배치해 한 줄 안에서도
- * 두 관심사가 섞여 보이지 않게 한다. 저장뷰 드로어는 같은 버튼을 테두리 박스
+ * 공유되는 정렬 토글과 영속 축이 다르므로 검색 오른쪽에 두고 정렬은 다음 줄에 둔다. 저장뷰 드로어는 같은 버튼을 테두리 박스
  * (RailToolbarIconButton)로 쓰지만, 여기 정렬 칩이 테두리 없는 고밀도 표기라 그 문법에
  * 맞춰 무테 아이콘 버튼으로 둔다(ui/SortCycleButton 이 히트맵을 예외로 둔 것과 같은 근거).
  */
-function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDisabled }: {
+function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDisabled, selection }: {
+  selection: React.ReactNode;
   query: string;
   onQuery: (v: string) => void;
   allCollapsed: boolean;
@@ -452,10 +455,8 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
   const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
   return (
     <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
-      <HeatmapSearchInput query={query} onQuery={onQuery} testId="heatmap-drawer-search" />
-      <div className="flex items-center gap-2">
-        <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
-        <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
+      <div className="flex items-center gap-1">
+        <HeatmapSearchInput className="min-w-0 flex-1" query={query} onQuery={onQuery} testId="heatmap-drawer-search" />
         <button
           type="button"
           data-testid="heatmap-drawer-toggle-all"
@@ -463,10 +464,16 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
           disabled={toggleAllDisabled}
           aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
           title={allCollapsed ? '전체 펼치기' : '전체 접기'}
-          className="ml-auto grid h-6 w-6 place-items-center rounded text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim"
+          className="shrink-0 grid h-7 w-7 place-items-center rounded text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim"
         >
           {allCollapsed ? <ExpandAllIcon className="h-4 w-4" /> : <CollapseAllIcon className="h-4 w-4" />}
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        {selection}
+        <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
+        <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
+
       </div>
     </div>
   );
@@ -813,13 +820,10 @@ export function HeatmapDrawer() {
         title="히트맵"
         actions={(
           <div className="flex items-center gap-2">
-            <button type="button" aria-label={selecting ? '선택 종료' : '여러 종목 선택'} aria-pressed={selecting} disabled={busy}
-              className="text-xs text-fg-dim hover:text-accent disabled:opacity-40"
-              onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? `선택 ${selected.size}` : '선택'}</button>
             <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
                     onClick={() => setAddGroupOpen(true)}
-                    className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
-              <PlusIcon />
+                    className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+              <PlusIcon /> 그룹
             </button>
             <HeaderAddButton folders={data?.folders ?? []}
               isDuplicate={isDuplicateIn}
@@ -828,9 +832,11 @@ export function HeatmapDrawer() {
         )}
       />
 
-      <DrawerToolbar query={query} onQuery={setQuery}
+      <DrawerToolbar selection={<RailSelectionControl active={selecting} count={selected.size} disabled={busy}
+        onToggle={() => { setSelecting(!selecting); setSelected(new Set()); }} />} query={query} onQuery={setQuery}
         allCollapsed={allCollapsed} onToggleAll={toggleAll} toggleAllDisabled={toggleAllDisabled} />
 
+      <RailDestination />
       <RailDrawerBody testId="heatmap-drawer-scroll" quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
@@ -877,7 +883,7 @@ export function HeatmapDrawer() {
                           const q = quoteByCode.get(entry.code);
                           return (
                             <QuoteRow
-                              name={entry.name}
+                              name={entry.name} code={entry.code}
                               price={q?.price ?? null}
                               pct={q?.change_pct ?? null}
                               changeWon={q?.change_won ?? null}
@@ -904,7 +910,7 @@ export function HeatmapDrawer() {
                                   onChange={() => toggleSelected(entrySortableId(entry.folder_id, entry.code))} />}
                                 <button type="button" aria-label={`${entry.name} 이동`} disabled={busy}
                                   ref={drag.setActivatorNodeRef} {...drag.listeners}
-                                  className="cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40">⠿</button>
+                                  className="grid h-5 w-4 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"><GripIcon /></button>
                               </span>}
                               dragging={drag.isDragging}
                               trailingAction={
@@ -955,7 +961,7 @@ export function HeatmapDrawer() {
         <span className="line-clamp-3 flex-1">{ghost
           ? destination ? `${data?.folders.find((f) => f.id === destination.folderId)?.name} · ${destination.where} ${copyIntent ? '복제' : '이동'}${!entrySortEnabled ? isSearching ? ' · 검색 중에는 맨 아래에 배치' : ' · 정렬 기준에 따라 배치' : ''}${destination.duplicates ? ` · 기존 ${destination.duplicates}종목${copyIntent ? '은 유지' : '과 합침'}` : ''}`
             : isEntryDragging ? dragHint : '그룹 핸들을 원하는 그룹 위치에 놓으세요'
-          : notice || transfer.message || '⠿ 이동 · Ctrl 복제 · Delete로 현재 그룹에서 제외'}</span>
+          : notice || transfer.message || '핸들로 이동 · Ctrl 복제 · Delete로 현재 그룹에서 제외'}</span>
         {!ghost && transfer.canUndo && <button type="button" className="shrink-0 text-accent" disabled={busy} onClick={() => { setNotice(''); void transfer.undo(); }}>되돌리기</button>}
       </div>
       {/* 행 ⋯ 메뉴는 '이 그룹에서 제거'만 — 그룹 이동은 행 드래그앤드롭으로 대체(folders/onMove

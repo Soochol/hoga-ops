@@ -61,17 +61,20 @@ export function RailDrawerBody({
   className = '',
   testId,
   quoteNav = false,
+  scrollRef,
   children,
 }: {
   className?: string;
   testId?: string;
   // 화살표 위/아래 종목 이동의 스코프 컨테이너로 표시(QuoteRow 가 이 마커를 탐색).
   quoteNav?: boolean;
+  scrollRef?: React.Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   return (
     <div
       data-testid={testId}
+      ref={scrollRef}
       data-quote-nav={quoteNav ? '' : undefined}
       className={`min-h-0 flex-1 overflow-auto ${className}`.trim()}
     >
@@ -81,7 +84,7 @@ export function RailDrawerBody({
 }
 
 export function RailToolbarIconButton({
-  active = false,
+  active,
   className = '',
   children,
   ...props
@@ -93,8 +96,8 @@ export function RailToolbarIconButton({
       type="button"
       aria-pressed={props['aria-pressed'] ?? active}
       {...props}
-      className={`grid h-7 w-7 place-items-center rounded border text-fg-dim transition-colors ${
-        active ? 'border-border-strong bg-bg-input text-fg' : 'border-border hover:bg-bg-input hover:text-fg'
+      className={`grid h-7 w-7 place-items-center rounded border text-fg-dim transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? 'border-border-strong bg-bg-input text-fg' : 'border-border enabled:hover:bg-bg-input enabled:hover:text-fg'
       } ${className}`.trim()}
     >
       {children}

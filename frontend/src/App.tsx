@@ -28,7 +28,7 @@ import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from './live/workspacePanel';
-import { registerSettingsModalOpener } from './live/settingsModalControls';
+import { registerSettingsModalOpener, type SettingsTarget } from './live/settingsModalControls';
 import { subscribeThemeToDom } from './state/themePrefs';
 import { useCrossTabSync } from './state/crossTabSync';
 
@@ -111,11 +111,12 @@ export default function App() {
     ? null
     : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTarget, setSettingsTarget] = useState<SettingsTarget>();
   // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트
   // TopNav ⚙ · `/live` 툴바 ⚙ · 차트 창 캔들 빈 상태 · 실시간 불가 배너 ·
   // 종목검색의 「설정에서 갱신」) 전부 `requestSettingsModal()` 로 모인다. 등록 지점을
   // 늘리지 말 것 — 그 채널은 슬롯이 하나고 스택이 없다(모듈 주석 참조).
-  useEffect(() => registerSettingsModalOpener(() => setSettingsOpen(true)), []);
+  useEffect(() => registerSettingsModalOpener((target) => { setSettingsTarget(target); setSettingsOpen(true); }), []);
 
   // `<html data-theme>` 의 유일한 writer 를 등록한다. 이펙트가 **아니라** 스토어
   // 구독인 이유는 순서다: React 는 이펙트를 자식부터 실행하므로, 여기서 썼다면
@@ -196,7 +197,7 @@ export default function App() {
               진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
               크롬은 `live/workspacePanel.ts` 상수 하나로 강제한다(하드코딩 금지). */}
           <Suspense fallback={null}>
-            <SettingsSections variant="live" onClose={() => setSettingsOpen(false)} />
+            <SettingsSections initialSection={settingsTarget} variant="live" onClose={() => setSettingsOpen(false)} />
           </Suspense>
         </ModalShell>
       )}
@@ -207,7 +208,7 @@ export default function App() {
         className="grid min-h-0 min-w-0 overflow-hidden"
         style={{ gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto' }}
       >
-        <TopNav onOpenSettings={() => setSettingsOpen(true)} />
+        <TopNav onOpenSettings={() => { setSettingsTarget(undefined); setSettingsOpen(true); }} />
         <main className="overflow-hidden min-w-0"><Outlet /></main>
         <MarketIndexBar />
       </div>

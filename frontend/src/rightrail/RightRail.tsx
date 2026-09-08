@@ -6,6 +6,7 @@ import { RankingIcon } from '../ui/RankingIcon';
 import { PatternIcon } from '../ui/PatternIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
 import { BellIcon } from '../ui/BellIcon';
+import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { RailButton } from '../ui/RailShell';
 
 /**
@@ -32,9 +33,10 @@ export default function RightRail() {
         aria-expanded={open}
         aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-ranking-panel right-rail-pattern-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
         aria-label={open ? '우측 패널 닫기' : '우측 패널 열기'}
+        title={open ? '우측 패널 닫기' : '마지막 우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
-        {open ? '»' : '«'}
+        <DoubleChevronIcon direction={open ? 'right' : 'left'} />
       </button>
 
       <RailItem

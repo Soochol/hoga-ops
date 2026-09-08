@@ -13,6 +13,12 @@ import {
 } from './RailShell';
 
 describe('RailShell primitives', () => {
+  it('does not announce an ordinary action as a toggle', () => {
+    render(<RailToolbarIconButton disabled aria-label="비우기">X</RailToolbarIconButton>);
+    expect(screen.getByRole('button', { name: '비우기' })).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('button', { name: '비우기' })).toBeDisabled();
+  });
+
   it('renders a token-backed drawer surface', () => {
     render(<RailDrawer id="panel" testId="panel">body</RailDrawer>);
     const drawer = screen.getByTestId('panel');

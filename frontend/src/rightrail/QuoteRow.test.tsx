@@ -16,6 +16,19 @@ function row(props: Partial<ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
+  it('shows the full name and code on hover and row focus, dismissing on Escape and scroll', () => {
+    row({ code: '005930' });
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('삼성전자 · 005930');
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    const target = screen.getByTestId('quote-row-005930');
+    fireEvent.focus(target);
+    expect(target).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+    fireEvent.keyDown(target, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('renders name, neutral price (no 원), and colored percent as separate columns', () => {
     row();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();

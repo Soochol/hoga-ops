@@ -1,3 +1,6 @@
+import { ClearSearchIcon } from '../ui/ClearSearchIcon';
+import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
+import { RailSelectionControl } from '../rightrail/RailSelectionControl';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStudyViewDeletion } from './studyViewDeletion';
@@ -79,15 +82,6 @@ export function formatStudyViewMeta(row: { timeframe: string; range: { from_date
   if (from_date === to_date) return `${row.timeframe} · ${shortDate(from_date, true)}`;
   const sameYear = from_date.slice(0, 4) === to_date.slice(0, 4);
   return `${row.timeframe} · ${shortDate(from_date, true)}~${shortDate(to_date, !sameYear)}`;
-}
-
-function ClearSearchIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  );
 }
 
 type TreeDragHandle = { listeners: DraggableSyntheticListeners; setActivatorNodeRef: (node: HTMLElement | null) => void };
@@ -414,7 +408,7 @@ export function StudyViewsDrawer() {
           {selecting && <input type="checkbox" aria-label={`${row.name} 선택`} checked={selected.has(row.id)} onChange={() => toggleSelected(row.id)} />}
           <button type="button" aria-label={`${row.name} 순서 이동`} disabled={!canDrag}
             ref={handle.setActivatorNodeRef} {...handle.listeners}
-            className="h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30">⠿</button>
+            className="grid place-items-center h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30"><GripIcon /></button>
         </span>
         {renameState?.id === row.id ? (
           <div className="min-w-0 flex-1 space-y-1">
@@ -502,9 +496,9 @@ export function StudyViewsDrawer() {
                 cancelPendingStudyViewNavigation();
                 setRowMenu({ row, left: e.clientX, top: e.clientY });
               }}
-              className="shrink-0 grid place-items-center px-1 leading-none text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+              className="shrink-0 grid h-6 w-6 place-items-center rounded text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
             >
-              ⋯
+              <MoreIcon />
             </button>
           </div>
         )}
@@ -516,21 +510,16 @@ export function StudyViewsDrawer() {
     <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장뷰">
       <RailDrawerHeader
         title="저장뷰"
-        actions={<div className="flex items-center gap-2 text-xs">
-          <button type="button" aria-label={selecting ? '선택 종료' : '여러 저장뷰 선택'} aria-pressed={selecting}
-            onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? `선택 ${selectedRows.length}` : '선택'}</button>
-          {selecting && <button type="button" disabled={!selectedRows.length} className="text-error disabled:opacity-40"
-            onClick={() => requestDeleteRows(selectedRows)}>선택 삭제</button>}
-        </div>}
       />
       <RailDrawerSection className="p-3">
           <div className="flex items-center gap-1">
             <div className="relative min-w-0 flex-1">
               <input
                 aria-label="저장뷰 검색"
-                placeholder="검색하세요"
+                placeholder="저장뷰·종목 검색"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
                 className="w-full bg-bg-input border rounded py-1 pl-2 pr-8 text-sm"
               />
               {query && (
@@ -545,26 +534,20 @@ export function StudyViewsDrawer() {
                 </button>
               )}
             </div>
-            {visibleGroups.length > 0 && (
-              <div className="flex shrink-0 gap-1">
-                <RailToolbarIconButton
-                  type="button"
-                  onClick={toggleVisibleGroups}
-                  disabled={searching}
-                  aria-label={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
-                  title={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
-                >
-                  {visibleGroupsCollapsed
-                    ? <ExpandAllIcon className="h-4 w-4" />
-                    : <CollapseAllIcon className="h-4 w-4" />}
-                </RailToolbarIconButton>
-                <SortCycleButton
-                  onClick={cycleSortMode}
-                  direction={sortAction.direction === 'default' ? 'none' : sortAction.direction}
-                  label={sortAction.label}
-                />
-              </div>
-            )}
+            <RailToolbarIconButton className="shrink-0" onClick={toggleVisibleGroups} disabled={searching || visibleGroups.length === 0}
+              aria-label={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
+              title={searching ? '검색 해제 후 전체 접기 사용' : visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}>
+              {visibleGroupsCollapsed ? <ExpandAllIcon className="h-4 w-4" /> : <CollapseAllIcon className="h-4 w-4" />}
+            </RailToolbarIconButton>
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <RailSelectionControl active={selecting} count={selectedRows.length}
+              onToggle={() => { setSelecting(!selecting); setSelected(new Set()); }} />
+            {selecting && <button type="button" disabled={!selectedRows.length} className="h-7 rounded px-2 text-xs text-error disabled:opacity-40"
+              onClick={() => requestDeleteRows(selectedRows)}>선택 삭제</button>}
+            <SortCycleButton onClick={cycleSortMode} direction={sortAction.direction === 'default' ? 'none' : sortAction.direction}
+              label={sortAction.label} visibleLabel="이름" />
+
           </div>
       </RailDrawerSection>
         {isLoading && <RailState>불러오는 중</RailState>}
@@ -599,7 +582,7 @@ export function StudyViewsDrawer() {
                         <div className="group sticky top-0 z-10 flex items-center bg-bg">
                           <button type="button" aria-label={`${group.label} 그룹 이동`} disabled={!canDrag}
                             ref={groupHandle.setActivatorNodeRef} {...groupHandle.listeners}
-                            className="ml-2 h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30">⠿</button>
+                            className="ml-2 grid place-items-center h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30"><GripIcon /></button>
                         <RailGroupHeader
                           type="button"
                           aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
@@ -644,7 +627,7 @@ export function StudyViewsDrawer() {
       <div role="status" aria-label="저장뷰 순서 안내" className="flex min-h-12 shrink-0 items-center gap-2 border-t border-border px-md py-1 text-xs text-fg-dim">
         <span className="line-clamp-3 flex-1">{ghost ? destination?.label ?? dragHint : !dragEnabled
           ? searching ? '검색 중에는 순서를 변경할 수 없습니다' : '이름 정렬 중에는 순서를 변경할 수 없습니다'
-          : orderMessage || '⠿ 순서 이동 · Delete 삭제 · 순서는 이 브라우저에 저장'}</span>
+          : orderMessage || '핸들로 순서 이동 · Delete 삭제 · 순서는 이 브라우저에 저장'}</span>
         {!ghost && canUndoOrder && <button type="button" className="shrink-0 text-accent" onClick={undoReorder}>순서 되돌리기</button>}
         {!ghost && !dragEnabled && !searching && <button type="button" className="shrink-0 text-accent" onClick={useManualSort}>수동 정렬</button>}
       </div>

@@ -1,3 +1,5 @@
+import { CONDITION_CATALOG } from './catalog';
+import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import {
@@ -77,7 +79,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
-      name={row.name}
+      name={row.name} code={row.code}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -321,11 +323,12 @@ export function ScreenerDrawer() {
     >
       {/* Header: label + freshness chip */}
       <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
+      <RailDestination />
 
       {/* Controls: dropdown + 조회 */}
       <RailDrawerSection className="flex flex-col gap-sm">
         {saves.length === 0 ? (
-          <RailState className="p-0">저장된 조건이 없습니다 — Screener 페이지에서 만드세요</RailState>
+          <RailState className="p-0">저장된 조건이 없습니다 — 스크리너 페이지에서 만드세요</RailState>
         ) : (
           <SavedConditionSelect
             saves={saves}
@@ -339,6 +342,12 @@ export function ScreenerDrawer() {
             }}
           />
         )}
+        {selected && <details className="text-xs text-fg-dim">
+          <summary className="cursor-pointer rounded py-1 hover:text-fg">적용 조건 {selected.conditions.length}개 · 모두 충족</summary>
+          <ul className="mt-1 space-y-1">
+            {selected.conditions.map((condition) => <li key={condition.id}>{CONDITION_CATALOG[condition.type].label} {CONDITION_CATALOG[condition.type].summarize(condition.params)}</li>)}
+          </ul>
+        </details>}
         {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지
             않는다 — 시작이 즉시 조회를 겸한다. 시작 = 새 검색이므로 이전 결과를 먼저
             버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
@@ -351,7 +360,7 @@ export function ScreenerDrawer() {
             aria-pressed={false}
             data-testid="screener-monitor-toggle"
           >
-            ▶ 시작
+            실시간 감시 시작
           </ToolbarButton>
         ) : (
           // 활성 = '켜짐'을 accent-tint 배경으로 표현하는 단일 패널. 상태·종료를 한
@@ -496,7 +505,9 @@ export function ScreenerDrawer() {
           // 없습니다"와 구분이 안 돼, 초기화가 '결과 0건'으로 오독된다.
           <RailState>조회 중…</RailState>
         ) : (
-          <RailState>조건을 선택하고 시작하세요</RailState>
+          <RailState>{selected
+            ? <>선택한 조건으로 실시간 감시를 시작하세요<span className="mt-2 block text-xs text-fg-dim">시작하면 바로 조회합니다 · 장중에는 자동 갱신하고 장 마감 후에는 다음 장까지 대기합니다</span></>
+            : '저장된 조건을 선택하세요'}</RailState>
         )}
       </RailDrawerBody>
 

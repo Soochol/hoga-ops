@@ -184,9 +184,14 @@ function Wrapper() {
   );
 }
 
-function renderDrawer() {
+function renderDrawer(expandConditions = true) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<Wrapper />);
+  const view = render(<Wrapper />);
+  if (expandConditions) {
+    const details = screen.queryByRole('button', { name: /상세 조건 .*개 적용/ });
+    if (details) fireEvent.click(details);
+  }
+  return view;
 }
 
 beforeEach(() => {
@@ -239,6 +244,20 @@ const RESP_BASE = {
 } satisfies Partial<PatternSearchResponse>;
 
 describe('PatternDrawer', () => {
+  it('keeps the result limit and applied summary visible with details folded, without changing conditions', async () => {
+    renderDrawer(false);
+    await screen.findByText('길이7위');
+    const toggle = screen.getByRole('button', { name: /상세 조건 .*개 적용/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '100개' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /유사도 전체/ })).toBeNull();
+    const calls = searchPattern.mock.calls.length;
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: /유사도 전체/ })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(searchPattern.mock.calls.length).toBe(calls);
+  });
+
   /** 「길이 고정」으로 되돌린다 — 공장값이 ±2봉이라 스크럽 전제가 **기본 상태에서는
    *  성립하지 않는다**(유연이 켜지면 길이 하나만 보내므로 봉수마다 재검색이다). */
   async function fixLength(user: ReturnType<typeof userEvent.setup>) {

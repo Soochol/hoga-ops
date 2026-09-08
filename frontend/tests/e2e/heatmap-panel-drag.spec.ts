@@ -106,7 +106,7 @@ test('그룹 헤더는 맨 아래, 빈 그룹에도 이동 가능', async ({ pag
 test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 소속을 복원한다', async ({ page }) => {
   const initial = { [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('005930')] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '여러 종목 선택' }).click();
+  await page.getByRole('button', { name: '다중 선택' }).click();
   await row(page, A, '005930').getByRole('checkbox').check();
   await row(page, A, '000660').getByRole('checkbox').check();
   await start(page, handle(page, A, '005930'));
@@ -210,7 +210,7 @@ test('가장자리에서 자동 스크롤하며 멀어지면 멈춘다', async (
 test('Ctrl 복제는 원본과 기존 목적지 위치를 유지하고 되돌릴 수 있다', async ({ page }) => {
   const initial = { [A]: ['005930', '000660'], [B]: ['035420', '005930', '051910'] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '여러 종목 선택' }).click();
+  await page.getByRole('button', { name: '다중 선택' }).click();
   await row(page, A, '005930').getByRole('checkbox').check();
   await row(page, A, '000660').getByRole('checkbox').check();
   await start(page, handle(page, A, '005930'));

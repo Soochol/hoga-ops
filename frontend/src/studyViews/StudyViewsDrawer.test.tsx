@@ -671,7 +671,7 @@ it('Delete removes the selected set but inputs, nested controls and Backspace ar
   fireEvent.keyDown(screen.getByLabelText('저장뷰 검색'), { key: 'Delete' });
   fireEvent.keyDown(screen.getByLabelText('급등 이후 행 메뉴'), { key: 'Delete' });
   expect(useStudyViewDeletion.getState().batches).toHaveLength(0);
-  fireEvent.click(screen.getByLabelText('여러 저장뷰 선택'));
+  fireEvent.click(screen.getByLabelText('다중 선택'));
   fireEvent.click(screen.getByLabelText('급등 이후 선택'));
   fireEvent.click(screen.getByLabelText('눌림 선택'));
   fireEvent.keyDown(row, { key: 'Delete' });
@@ -685,7 +685,7 @@ it('releases edit state when bulk-deleting a view whose rename failed', () => {
   vi.useFakeTimers();
   updateMetadataMutate.mockImplementation((_body, opts) => opts.onError(new Error('offline')));
   renderDrawer('/inventory');
-  fireEvent.click(screen.getByLabelText('여러 저장뷰 선택'));
+  fireEvent.click(screen.getByLabelText('다중 선택'));
   fireEvent.click(screen.getByLabelText('급등 이후 선택'));
   fireEvent.doubleClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정');

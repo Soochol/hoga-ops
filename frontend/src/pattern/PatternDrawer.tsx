@@ -1047,7 +1047,7 @@ export function PatternDrawer() {
               넓히면 풀리는데, 그 기간 칩이 없었다.
               `isPending` 에도 그린다 — 조건을 바꿀 때마다 새 쿼리가 뜨므로, 여기서
               감추면 칩이 매번 깜빡이고 팝오버가 닫힌다. */}
-          <PatternConditionChips
+          <PatternConditionChips collapsible
             conditions={conditions}
             onChange={setConditions}
             rows={result?.matches ?? NO_ROWS}

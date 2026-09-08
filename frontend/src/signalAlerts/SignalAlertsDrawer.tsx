@@ -1,9 +1,13 @@
+import { requestSettingsSection } from '../live/settingsModalControls';
+import { formatHhmm } from '../util/tradingTime';
+import { RailDestination } from '../rightrail/RailDestination';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   signalAlertRecentKey,
   useClearSignalAlertToday,
   useSignalAlertRecent,
+  useSignalAlertSettings,
   type SignalAlertRecentResponse,
 } from '../api/signalAlerts';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -53,6 +57,8 @@ function ratioEmphasisClass(pct: number): string {
 export default function SignalAlertsDrawer({ today = todayKst() }: { today?: string }) {
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useSignalAlertRecent(today);
+  const settings = useSignalAlertSettings();
+  const rule = settings.data?.sell_total_renewal;
   const clearToday = useClearSignalAlertToday(today);
   const markPanelSeen = useSignalAlertInboxStore((state) => state.markPanelSeen);
   const resetForClear = useSignalAlertInboxStore((state) => state.resetForClear);
@@ -95,7 +101,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         actions={(
           <RailToolbarIconButton
             aria-label="오늘 인박스 비우기"
-            title="오늘 인박스 비우기"
+            title={visibleAlerts.length === 0 ? "비울 알림 없음" : "오늘 인박스 비우기"}
             disabled={visibleAlerts.length === 0 || clearToday.isPending}
             onClick={() => setConfirmingClear((open) => !open)}
           >
@@ -106,6 +112,12 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         )}
       />
       <RailDrawerSection className="py-2 text-xs text-fg-dim">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span role="status">{settings.isError ? '알림 설정 확인 실패' : !rule ? '알림 설정 확인 중' : rule.enabled ? '알림 사용 중' : '알림 꺼짐'}</span>
+          <button type="button" onClick={() => requestSettingsSection('alerts')} className="h-7 rounded px-2 text-accent hover:bg-bg-input-hover">알림 설정</button>
+        </div>
+        {rule?.enabled && <p className="mb-2">{formatHhmm(rule.start_hhmm)} 기준 최대값 대비 {rule.threshold_pct}% 이상 갱신 시 알림</p>}
+
         오늘 {visibleAlerts.length.toLocaleString()}건
         {groups.length > 0 && ` · ${groups.length.toLocaleString()}종목`}
       </RailDrawerSection>
@@ -131,10 +143,11 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
           </div>
         </RailDrawerSection>
       )}
+      <RailDestination />
       <RailDrawerBody>
         {isLoading && <RailState>불러오는 중…</RailState>}
         {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다</RailState>}
-        {!isLoading && !isError && groups.length === 0 && <RailState>오늘 알림이 없습니다</RailState>}
+        {!isLoading && !isError && groups.length === 0 && <RailState>{rule?.enabled === false ? '알림이 꺼져 있습니다 · 알림 설정에서 켤 수 있습니다' : '오늘 알림이 없습니다'}</RailState>}
         {!isLoading && !isError && groups.length > 0 && (
           <ul className="divide-y divide-border">
             {groups.map((group) => (

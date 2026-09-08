@@ -1,3 +1,7 @@
+import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
+import { RailSelectionControl } from '../rightrail/RailSelectionControl';
+import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
+import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -253,10 +257,10 @@ function GroupHeader(props: {
       {props.dragHandle && <button type="button" aria-label={`${props.label} 그룹 이동`}
         ref={props.dragHandle?.setActivatorNodeRef} {...(props.dragHandle?.listeners ?? {})} disabled={props.busy}
         onClick={(e) => e.stopPropagation()}
-        className="cursor-grab touch-none px-1 text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100">⠿</button>}
+        className="grid h-6 w-5 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100"><GripIcon /></button>}
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
-        onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
+        onClick={props.onToggle} className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
         <ChevronIcon collapsed={props.collapsed} />
       </button>
       {/* 개수를 라벨 버튼 안에 — 우측 정렬 mono 개수가 가격 컬럼과 같은 x에 떨어져
@@ -276,7 +280,7 @@ function GroupHeader(props: {
           // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
           title={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
-          className={`px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded hover:bg-bg-input-hover hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <QuoteSortIcon mode={props.sortMode} />
           <span id={sortDescriptionId}
             style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
@@ -291,8 +295,8 @@ function GroupHeader(props: {
           <button type="button" aria-label={`${props.label} 그룹 메뉴`}
             aria-haspopup="menu" aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className="px-1 leading-none text-fg-dimmer hover:text-fg">
-            ⋯
+            className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+            <MoreIcon />
           </button>
           {menuOpen && (
             <AnchoredMenu label={props.label}>
@@ -380,9 +384,9 @@ function RowTrailing(props: {
         aria-label={`${props.name} 행 메뉴`}
         aria-haspopup="menu"
         onClick={(e) => { e.stopPropagation(); props.onOpenMenu(e); }}
-        className="col-start-1 row-start-1 grid place-items-center px-1 leading-none text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+        className="col-start-1 row-start-1 grid h-5 w-5 shrink-0 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
       >
-        ⋯
+        <MoreIcon />
       </button>
     </span>
   );
@@ -523,7 +527,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
     : undefined;
   return (
     <QuoteRow
-      name={entry.name}
+      name={entry.name} code={entry.code}
       price={props.price}
       pct={props.pct}
       changeWon={props.changeWon}
@@ -543,7 +547,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
           onClick={(e) => e.stopPropagation()} onChange={() => props.onToggleSelection?.(entrySortableId(entry.folder_id, entry.code))} />}
         <button type="button" ref={setActivatorNodeRef} {...listeners} disabled={props.dragEnabled === false}
           aria-label={`${entry.name} 이동`} onClick={(e) => e.stopPropagation()}
-          className="cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-20">⠿</button>
+          className="grid h-5 w-4 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-20"><GripIcon /></button>
       </span>}
       dragging={isDragging}
       draggingAppearance="placeholder"
@@ -709,6 +713,20 @@ export function WatchlistDrawer() {
   // 60초 refetch 가 드래그 도중 착지해 순서를 뒤흔드는 것도 같이 막힌다. 대가는 드래그
   // 하는 몇 초 동안 가격이 멈추는 것이고, 히트맵이 이미 같은 거래를 했다(같은 훅).
   const [isDragging, setIsDragging] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchText = query.trim().toLocaleLowerCase();
+  const searching = searchText.length > 0;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const unfilteredScroll = useRef(0);
+  const [searchCollapsed, setSearchCollapsed] = useState<Set<string>>(() => new Set());
+  const changeQuery = (next: string) => {
+    if (!searching && next.trim()) unfilteredScroll.current = scrollRef.current?.scrollTop ?? 0;
+    setSearchCollapsed(new Set());
+    setQuery(next);
+  };
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = searching ? 0 : unfilteredScroll.current;
+  }, [searchText, searching]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(() => new Set());
   const [expandedDuringDrag, setExpandedDuringDrag] = useState<Set<string>>(() => new Set());
@@ -928,6 +946,20 @@ export function WatchlistDrawer() {
       };
     }) : [];
   }, [data, quoteByCode, getFolderSortMode, memos]);
+  const filteredGroups = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    if (!q) return renderGroups;
+    return renderGroups.flatMap((g) => {
+      const groupMatch = g.label.toLocaleLowerCase().includes(q);
+      const rows = g.rows.filter((r) => groupMatch || (r.kind === 'entry'
+        && `${r.entry.name} ${r.entry.code}`.toLocaleLowerCase().includes(q)));
+      if (!groupMatch && rows.length === 0) return [];
+      return [{ ...g, rows, count: rows.filter((r) => r.kind === 'entry').length,
+        sortableIds: rows.map((r) => r.kind === 'entry' ? entrySortableId(r.entry.folder_id, r.entry.code) : memoSortableId(g.folder!.id, r.memo.id)) }];
+    });
+  }, [renderGroups, query]);
+  const shownCollapsed = searching ? searchCollapsed : collapsed;
+  const setShownCollapsed = searching ? setSearchCollapsed : setCollapsed;
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = useMemo(
     () => renderGroups.filter((g) => g.folder).map((g) => g.folder!.id),
@@ -937,13 +969,13 @@ export function WatchlistDrawer() {
   // 전체 접기/펼치기 — 대상은 **화면에 실제로 렌더되는 그룹**이다(아래 렌더에서 빈 미분류는
   // 숨기므로 제외). collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 inert 키(위 persist
   // 주석 참조 — 메모리 Set 은 다음 마운트까지 정리되지 않는다)에 걸려 거짓 양성이 난다.
-  const visibleGroupKeys = renderGroups
+  const visibleGroupKeys = filteredGroups
     .filter((g) => !(g.count === 0 && g.folder === null))
     .map((g) => g.key);
   const allCollapsed =
-    visibleGroupKeys.length > 0 && visibleGroupKeys.every((k) => collapsed.has(k));
+    visibleGroupKeys.length > 0 && visibleGroupKeys.every((k) => shownCollapsed.has(k));
   const toggleAll = () =>
-    setCollapsed((s) => {
+    setShownCollapsed((s) => {
       const n = new Set(s);
       for (const k of visibleGroupKeys) {
         if (allCollapsed) n.delete(k);
@@ -1318,41 +1350,48 @@ export function WatchlistDrawer() {
           // (히트맵 보드의 "+ 새 그룹" 과 표면 일치). 남은 편집은 항목 하나뿐이라
           // 메뉴를 없애고 "편집"이 관심 편집 모달을 바로 연다.
           <div className="flex items-center gap-2">
-            {/* 히트맵 드로어는 검색 툴바가 있어 거기에, 여기는 툴바가 없어 헤더에 둔다.
-                두 드로어 모두 "그룹 일괄 접기"라는 같은 문법·같은 aria 문구를 쓴다. */}
-            <button type="button" data-testid="watchlist-toggle-all"
-                    aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
-                    title={allCollapsed ? '전체 펼치기' : '전체 접기'}
-                    onClick={toggleAll}
-                    disabled={visibleGroupKeys.length === 0}
-                    className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim">
-              {allCollapsed ? <ExpandAllIcon className="h-3.5 w-3.5" /> : <CollapseAllIcon className="h-3.5 w-3.5" />}
-            </button>
             <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
                     onClick={() => setAddGroupOpen(true)}
-                    className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
-              <PlusIcon />
+                    className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+              <PlusIcon /> 그룹
             </button>
             <button type="button" aria-label="관심종목 편집"
                     onClick={() => setEditOpen(true)}
-                    className="text-xs text-fg-dim hover:text-accent">
+                    className="h-7 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-accent">
               편집
             </button>
           </div>
         )}
       />
 
-      <div className="flex flex-wrap items-center gap-2 px-md pb-2 text-xs">
-        <button type="button" aria-pressed={selectionMode} disabled={transfer.busy} onClick={() => { setSelectionMode(!selectionMode); setSelectedRows(new Set()); }}
-          className="text-accent">{selectionMode ? '선택 끝내기' : '여러 종목 선택'}</button>
-        {selectionMode && <span>선택 {data?.entries.filter((e) => selectedRows.has(entrySortableId(e.folder_id, e.code))).length ?? 0}건 · 핸들을 끌어 이동</span>}
+      <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
+        <div className="flex items-center gap-1">
+          <HeatmapSearchInput className="min-w-0 flex-1" query={query} onQuery={changeQuery} testId="watchlist-search" />
+            <button type="button" data-testid="watchlist-toggle-all"
+                    aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
+                    title={allCollapsed ? '전체 펼치기' : '전체 접기'}
+                    onClick={toggleAll}
+                    disabled={visibleGroupKeys.length === 0}
+                    className="grid h-7 w-7 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim">
+              {allCollapsed ? <ExpandAllIcon className="h-3.5 w-3.5" /> : <CollapseAllIcon className="h-3.5 w-3.5" />}
+            </button>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <RailSelectionControl active={selectionMode}
+            count={data?.entries.filter((e) => selectedRows.has(entrySortableId(e.folder_id, e.code))).length ?? 0}
+            disabled={transfer.busy} onToggle={() => { setSelectionMode(!selectionMode); setSelectedRows(new Set()); }} />
+
+        </div>
+        {searching && <p role="status" className="text-xs text-fg-dim">검색 결과 {filteredGroups.reduce((n, g) => n + g.count, 0)}개 · {filteredGroups.length}그룹</p>}
       </div>
       {transfer.message && <div role="status" className="flex flex-wrap items-center gap-2 border-y border-border px-md py-2 text-xs">
         <span>{transfer.message}</span>
         {transfer.canUndo && <button type="button" className="text-accent" onClick={() => void transfer.undo()}>되돌리기</button>}
         {!transfer.busy && <button type="button" aria-label="이동 안내 닫기" onClick={transfer.dismiss}>×</button>}
       </div>}
-      <RailDrawerBody testId="watchlist-scroll" quoteNav>
+      <RailDestination />
+      <RailDrawerBody testId="watchlist-scroll" scrollRef={scrollRef} quoteNav>
+        {searching && filteredGroups.length === 0 && <RailState>검색 결과가 없습니다 · 다른 종목명이나 그룹명을 입력하세요</RailState>}
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">관심종목을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
@@ -1363,13 +1402,14 @@ export function WatchlistDrawer() {
           <RemeasureOnCollapse active={folderDragActive || expandedDuringDrag.size > 0} />
           <DragPanelAssist collapsed={collapsed} onExpand={expandDuringDrag} pointRef={dragPointRef} />
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
-            {renderGroups.map((g, gi) => {
+            {filteredGroups.map((g) => {
+              const gi = renderGroups.findIndex((item) => item.key === g.key);
               const { key, label, folder, rows, rowDragEnabled } = g;
               if (g.count === 0 && folder === null) return null; // 빈 미분류는 숨김
               // 그룹 드래그 중에는 전 그룹을 헤더만 남긴다(folderDragActive 주석 참조).
               // 미분류도 포함한다 — 폴더 sortable 대상은 아니지만, 중간에 긴 블록이
               // 하나라도 남으면 "균일 높이 리스트" 라는 전제가 그대로 깨진다.
-              const isCollapsed = (collapsed.has(key) && !expandedDuringDrag.has(key)) || folderDragActive;
+              const isCollapsed = (shownCollapsed.has(key) && !expandedDuringDrag.has(key)) || folderDragActive;
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   <SortableContext items={g.sortableIds} strategy={verticalListSortingStrategy}>
@@ -1385,7 +1425,7 @@ export function WatchlistDrawer() {
                             onSave={handleMemoSave}
                             onDelete={handleMemoDelete}
                             onOpenMenu={handleMemoMenu}
-                            dragEnabled={rowDragEnabled && !transfer.busy}
+                            dragEnabled={rowDragEnabled && !transfer.busy && !searching}
                             indicator={destination?.rowId === memoSortableId(folder!.id, row.memo.id) ? destination.side : undefined}
                           />
                         );
@@ -1413,7 +1453,7 @@ export function WatchlistDrawer() {
                           onPick={handleRowPick}
                           onOpenMenu={handleRowMenu}
                           onDelete={handleRowDelete}
-                          dragEnabled={!transfer.busy}
+                          dragEnabled={!transfer.busy && !searching}
                           selected={selectedRows.has(rowId)}
                           onToggleSelection={selectionMode && entry.folder_id ? toggleSelectedRow : undefined}
                           indicator={destination?.rowId === rowId ? destination.side : undefined}
@@ -1425,23 +1465,23 @@ export function WatchlistDrawer() {
               );
               const renderHeader = (dragHandle?: GroupDragHandle) => (
                 <GroupHeader label={label} count={g.count} collapsed={isCollapsed}
-                  onToggle={() => toggle(key)}
+                  onToggle={() => searching ? setSearchCollapsed((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; }) : toggle(key)}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}
                   onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
                   onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
                   onAddMemo={folder ? () => addMemoAt(folder.id) : undefined}
-                  canMoveUp={gi > 0}
-                  canMoveDown={gi < folderCount - 1}
+                  canMoveUp={!searching && gi > 0}
+                  canMoveDown={!searching && gi < folderCount - 1}
                   sortMode={g.sortMode}
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
                   onDuplicateSymbol={flashDuplicate}
-                  dragHandle={dragHandle} busy={transfer.busy} />
+                  dragHandle={dragHandle} busy={transfer.busy || searching} />
               );
               return folder ? (
                 <GroupDropZone key={key} folderId={folder.id}>
-                  <SortableGroup folderId={folder.id} disabled={transfer.busy}>
+                  <SortableGroup folderId={folder.id} disabled={transfer.busy || searching}>
                     {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
                   </SortableGroup>
                 </GroupDropZone>
@@ -1462,7 +1502,7 @@ export function WatchlistDrawer() {
         <span className={dragGhost?.kind === 'entry' ? 'line-clamp-3 text-accent' : ''}>
           {dragGhost?.kind === 'entry'
             ? destination?.label ?? dragHint
-            : '⠿ 핸들로 이동 · Delete로 현재 그룹에서 제외'}
+            : searching ? '검색 중에는 순서를 변경할 수 없습니다' : '핸들로 이동 · Delete로 현재 그룹에서 제외'}
         </span>
       </div>
 

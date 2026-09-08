@@ -27,6 +27,7 @@ export function SortCycleButton({
   direction,
   label,
   description,
+  visibleLabel,
   variant = 'box',
   className = '',
   ...rest
@@ -34,17 +35,19 @@ export function SortCycleButton({
   direction: SortDirection;
   label: string;
   description?: string;
+  visibleLabel?: string;
   variant?: 'box' | 'inline';
 }) {
   const active = direction !== 'none';
   const descId = useId();
+  const size = visibleLabel ? 'flex h-7 w-auto items-center justify-center gap-1 px-2' : variant === 'inline' ? 'grid h-6 w-6 place-items-center' : 'grid h-7 w-7 place-items-center';
   const shape =
     variant === 'inline'
-      ? `px-1 leading-none ${active ? 'text-accent' : 'text-fg-dimmer hover:text-fg'}`
-      : `grid h-7 w-7 place-items-center rounded border ${
+      ? `${size} rounded enabled:hover:bg-bg-input-hover ${active ? 'text-accent' : 'text-fg-dimmer enabled:hover:text-fg'}`
+      : `${size} rounded border ${
           active
             ? 'border-accent bg-tint-selection text-accent'
-            : 'border-border bg-bg-input text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+            : 'border-border bg-bg-input text-fg-dim enabled:hover:bg-bg-input-hover enabled:hover:text-fg'
         }`;
   return (
     <button
@@ -56,6 +59,7 @@ export function SortCycleButton({
       {...rest}
       className={`transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${shape} ${className}`.trim()}
     >
+      {visibleLabel && <span className="text-xs">{visibleLabel}</span>}
       <SortDirectionIcon direction={direction} className="h-4 w-4" />
       {description && <span id={descId} style={SR_ONLY}>{description}</span>}
     </button>

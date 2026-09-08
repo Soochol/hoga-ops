@@ -1,3 +1,4 @@
+import { ChevronIcon } from '../ui/ChevronIcon';
 import { useRef, useState } from 'react';
 import type { PatternExclusion, PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -24,11 +25,9 @@ import {
 /**
  * 조건 칩 한 줄 — 기간 · 결과 수 · 유사도 · 거래대금 · ETF.
  *
- * ## 왜 접지 않는가
- *
- * ⚙ 뒤에 숨기면 "왜 20개만 나오지" 를 다시 겪는다 — 「나온 자리 전부」가 안 보여
- * "중복이 하나도 없네" 가 됐던 그 일이다(2026-09-02). 칩은 **현재 값을 늘 적어 두고**
- * 세로는 한 줄만 쓴다.
+ * 드로어는 봉 단위·기간·결과 상한을 상시 노출하고 나머지는 상세 조건으로 접는다.
+ * 접힌 상태에도 적용 개수와 요약을 남긴다(2026-09-08 사용자 승인).
+ * 결과 상한은 숨기지 않아 "왜 N개만 나오나"를 바로 읽을 수 있다.
  *
  * ## 팝오버가 개수를 미리 말한다
  *
@@ -47,6 +46,7 @@ const TV_STEPS = [0, 10, 50] as const;
 
 export function PatternConditionChips({
   conditions,
+  collapsible = false,
   onChange,
   rows,
   p9999,
@@ -57,6 +57,7 @@ export function PatternConditionChips({
   onRestoreAll,
 }: {
   conditions: PatternConditions;
+  collapsible?: boolean;
   onChange: (next: PatternConditions) => void;
   /** 서버가 준 목록(하한 적용 **전**) — 미리보기의 모집단. */
   rows: readonly PatternMatchRow[];
@@ -72,6 +73,16 @@ export function PatternConditionChips({
   onRestoreAll: () => void;
 }) {
   const [open, setOpen] = useState<Popover>(null);
+  const [expanded, setExpanded] = useState(false);
+  const applied = [
+    conditions.simFloor > 0 ? `유사도 ${conditions.simFloor.toFixed(2)}+` : null,
+    conditions.structTolerance !== null ? structLabel(conditions.structTolerance) : null,
+    conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : null,
+    conditions.maPreset !== 'off' ? maLabel(conditions.maPreset, conditions.timeframe) : null,
+    conditions.minTvEok > 0 ? `${conditions.minTvEok}억+` : null,
+    conditions.excludeEtf ? 'ETF 제외' : null,
+  ].filter((item): item is string => item !== null);
+
   const rootRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(open != null, rootRef, () => setOpen(null));
 
@@ -99,6 +110,16 @@ export function PatternConditionChips({
       <Chip active={conditions.count !== DEFAULT_CONDITIONS.count} onClick={() => toggle('count')}>
         {conditions.count}개
       </Chip>
+      {collapsible && <button type="button" aria-expanded={expanded} aria-controls="pattern-advanced-conditions"
+        onClick={() => { setExpanded(!expanded); setOpen(null); }}
+        className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+        상세 조건 {applied.length}개 적용 <ChevronIcon collapsed={!expanded} />
+      </button>}
+      {collapsible && !expanded && <p title={applied.join(' · ')} className="w-full text-xs text-fg-dim line-clamp-2">
+        {applied.length > 0 ? applied.join(' · ') : '상세 조건 제한 없음'}
+      </p>}
+      <div id={collapsible ? 'pattern-advanced-conditions' : undefined} hidden={collapsible && !expanded}
+        className={collapsible && !expanded ? '' : 'flex w-full flex-wrap gap-1'}>
       <Chip active={conditions.simFloor > 0} onClick={() => toggle('sim')}>
         {conditions.simFloor > 0 ? `유사도 ${conditions.simFloor.toFixed(2)}+` : '유사도 전체'}
       </Chip>
@@ -124,6 +145,7 @@ export function PatternConditionChips({
       <Chip active={conditions.excludeEtf} onClick={() => toggle('etf')}>
         {conditions.excludeEtf ? 'ETF 제외' : 'ETF 포함'}
       </Chip>
+      </div>
       {/* 제외는 **조건이 아니다**(질문이 아니라 답의 편집이다). 그래도 같은 줄에 사는
           이유는 「지금 목록에 무엇이 걸려 있나」를 한 곳에서 읽게 하려는 것이고,
           `conditions` 에 넣지 않았으므로 조건 저장·복원 경로와는 섞이지 않는다. */}
@@ -325,14 +347,14 @@ function Chip({
       type="button"
       onClick={onClick}
       className={
-        'inline-flex items-center gap-1 rounded-full border px-2 py-[2px] text-2xs '
+        'inline-flex min-h-6 items-center gap-1 rounded-full border px-2 py-[2px] text-2xs '
         + (active
           ? 'border-accent bg-tint-selection text-accent'
           : 'border-border text-fg-dim hover:bg-bg-input-hover hover:text-fg')
       }
     >
       {children}
-      <span className="text-[9px] opacity-55">▾</span>
+      <ChevronIcon collapsed={false} size={10} />
     </button>
   );
 }

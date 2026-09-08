@@ -1,3 +1,4 @@
+import { registerSettingsModalOpener } from '../live/settingsModalControls';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
@@ -30,6 +31,22 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 describe('SignalAlertsDrawer', () => {
+  it.each([true, false])('separates empty inbox from alert setting enabled=%s and opens alert settings', async (enabled) => {
+    vi.mocked(signalAlerts.useClearSignalAlertToday).mockReturnValue({ mutate: vi.fn(), isPending: false } as unknown as ReturnType<typeof signalAlerts.useClearSignalAlertToday>);
+    vi.mocked(apiCall).mockImplementation(async (path) => path === '/api/signal-alerts/settings'
+      ? { schema_version: 1, sell_total_renewal: { enabled, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true } }
+      : { date: '20260701', scope: 'inbox', cleared_through_seq: 0, alerts: [] });
+    const open = vi.fn();
+    const unregister = registerSettingsModalOpener(open);
+    renderWithProviders(<SignalAlertsDrawer today="20260701" />);
+    expect(await screen.findByText(enabled ? '알림 사용 중' : '알림 꺼짐')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '오늘 인박스 비우기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '오늘 인박스 비우기' })).toHaveAttribute('title', '비울 알림 없음');
+    fireEvent.click(screen.getByRole('button', { name: '알림 설정' }));
+    expect(open).toHaveBeenCalledWith('alerts');
+    unregister();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     useSignalAlertInboxStore.setState({ unreadCount: 3, lastSeenAtMs: 0 });

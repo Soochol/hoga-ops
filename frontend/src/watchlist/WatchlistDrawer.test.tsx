@@ -33,6 +33,34 @@ const ENTRIES = [
 const DATA = { folders: FOLDERS, entries: ENTRIES, memos: [], next_run_at_ms: 0 };
 
 describe('WatchlistDrawer', () => {
+  it('searches codes and groups while restoring original folds and scroll after Escape', async () => {
+    window.localStorage.setItem('watchlist.collapsed', JSON.stringify({ keys: ['f_0000000a'] }));
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/live') });
+    await screen.findByTestId('watchlist-row-000660');
+    expect(screen.queryByTestId('watchlist-row-005930')).toBeNull();
+    const scroll = screen.getByTestId('watchlist-scroll');
+    scroll.scrollTop = 125;
+    const input = screen.getByRole('textbox', { name: '종목·그룹 검색' });
+    fireEvent.change(input, { target: { value: '005930' } });
+    expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument();
+    expect(screen.queryByTestId('watchlist-row-000660')).toBeNull();
+    expect(screen.getByText('검색 결과 1개 · 1그룹')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '삼성전자 이동' })).toBeDisabled();
+    expect(scroll.scrollTop).toBe(0);
+    fireEvent.change(input, { target: { value: '스윙' } });
+    expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+    fireEvent.change(input, { target: { value: 'no-match' } });
+    expect(screen.getByText(/검색 결과가 없습니다/)).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByTestId('watchlist-row-005930')).toBeNull();
+    expect(screen.getByTestId('watchlist-row-000660')).toBeInTheDocument();
+    expect(scroll.scrollTop).toBe(125);
+    expect(JSON.parse(window.localStorage.getItem('watchlist.collapsed')!).keys).toEqual(['f_0000000a']);
+  });
+
   beforeEach(() => {
     cleanup();
     // 접기 토글이 watchlist.collapsed를 영속하므로 매 테스트 격리 필수 —
