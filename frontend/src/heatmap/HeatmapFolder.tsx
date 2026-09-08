@@ -38,6 +38,9 @@ export interface HeatmapFolderProps {
   /** 검색 쿼리 — 매칭 종목 행을 하이라이트한다(그룹 전체는 filterGroups 가 유지).
    *  빈 문자열/미전달이면 하이라이트 없음. */
   query?: string;
+  matchesOnly?: boolean;
+  onCollectLagging?: (folderId: string, codes: string[]) => void;
+  captureBaseline?: string | null;
   /** 행을 드래그 가능하게 한다(그룹 간 이동·복제). 보드가 DndContext 를 제공할 때만 true —
    *  단독 렌더(테스트 등)에서는 false 여서 dnd 훅이 컨텍스트 없이 도는 일이 없다. */
   dragEnabled?: boolean;
@@ -77,7 +80,7 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, matchesOnly, onCollectLagging, captureBaseline, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   // 정렬 키만 스로틀된 시세에서 읽는다 — 헤더 틴트(avg)와 행 표시값은 라이브 pctOf 유지.
   const sorted = sortEntries(entries, sortMode, makePctOf(sortQuoteByCode ?? quoteByCode));
@@ -128,7 +131,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
     ? (code: string, name: string) => (e: React.MouseEvent) => onRowMenu(e, code, name, folderId)
     : undefined;
 
-  const rows = sorted.map((e) => {
+  const rows = sorted.filter((e) => !matchesOnly || !query?.trim() || entryMatchesQuery(e, query)).map((e) => {
     const q = quoteByCode.get(e.code);
     const matched = query ? entryMatchesQuery(e, query) : false;
     const common = {
@@ -169,16 +172,14 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
       {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 폴더 본문은
           투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
           평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
-      {/* 헤더 우클릭 = 그룹 메뉴(이름 변경·삭제). ⋯ 버튼을 얹지 않는 이유는
-          HeatmapGroupMenu 주석 참조(헤더 밀도). 이름 편집 중엔 메뉴를 막는다. */}
-      <div className="flex justify-between items-center gap-2 px-2 py-1 min-h-list-group-header"
+      <div className="flex flex-wrap justify-between items-center gap-x-2 gap-y-1 px-2 py-1 min-h-list-group-header"
         style={{ background: heatHeaderBg(avg) }}
         onContextMenu={hasGroupMenu && !renaming
           ? (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }
           : undefined}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             그룹 당일 흐름 미니 그래프는 이름 옆(기준선 면적형, GroupFlowSparkline). */}
-        <span className="flex items-center gap-2 min-w-0">
+        <span className="flex items-center gap-2 min-w-0 flex-1 basis-40">
           {renaming && onRenameFolder ? (
             <GroupNameInput
               state={renaming}
@@ -206,7 +207,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
             <span
               className={`text-xs font-semibold truncate text-fg${onRenameFolder ? ' select-none' : ''}`}
               data-testid={`heatmap-folder-name-${folderId}`}
-              title={onRenameFolder ? '더블클릭하면 이름을 바꿉니다' : undefined}
+              title={`${folder.name}${onRenameFolder ? ' · 더블클릭하여 이름 변경' : ''}`}
               onDoubleClick={onRenameFolder
                 ? (e) => { e.preventDefault(); setRenaming({ value: folder.name, error: null }); }
                 : undefined}
@@ -216,27 +217,32 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
           )}
           {flowSeries !== undefined && <GroupFlowSparkline series={flowSeries} />}
         </span>
-        <span className="flex items-center gap-2 flex-none">
+        <span className="flex items-center gap-2 flex-none ml-auto">
           {laggingInGroup > 0 && (
             /* 캡처 결손 칩 — 결손이 있을 때만 존재한다(정상은 아무것도 그리지 않는다).
                색은 --error 계열: DESIGN.md 색 규율에서 캡처 성공/실패는 상태 semantic 이고,
                시세 색(적/청)과 절대 섞이면 안 되는 축이다. 그래서 등락률 칩 옆에 서도
                의미가 뒤섞이지 않는다. */
-            <span
-              className="text-2xs font-data tabular-nums text-error"
+            <button type="button"
+              className="text-2xs font-data tabular-nums text-error rounded hover:bg-bg-input-hover"
               data-testid={`heatmap-folder-lag-${folderId}`}
-              title={`이 그룹에서 ${laggingInGroup}종목이 최신 수집일보다 뒤처졌습니다`}
+              title={`저장 데이터 기준 ${captureBaseline ?? '최신 수집일'} · ${entries.filter((e) => laggingCodes?.has(e.code)).map((e) => e.name).join(', ')} · 눌러 보충 수집`}
+              onClick={() => onCollectLagging?.(folderId, entries.filter((e) => laggingCodes?.has(e.code)).map((e) => e.code))}
+              disabled={!onCollectLagging}
             >
-              미수집 {laggingInGroup}
-            </span>
+              수집 지연 {laggingInGroup}
+            </button>
           )}
           {avg !== null && (
-            <span className="text-xs font-data tabular-nums text-fg-dim">
+            <span className="text-xs font-data tabular-nums text-fg-dim" title={`평균 등락률 · 시세 반영 ${entries.filter((e) => pctOf(e.code) != null).length}/${entries.length}종목 · 동일 가중 평균`}>
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}
           <FolderAddButton folderId={folder.id} isDuplicate={isDuplicate} onDuplicate={flashDuplicate}
             autoOpen={autoOpenAdd} onAutoOpened={onAutoOpenAdd} />
+          {hasGroupMenu && <button type="button" aria-label={`${folder.name} 그룹 메뉴`} aria-haspopup="menu" aria-expanded={menu !== null}
+            className="h-7 w-7 rounded text-fg-dim hover:bg-bg-input-hover" disabled={!!renaming}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom }); }}>⋯</button>}
         </span>
       </div>
       {body}

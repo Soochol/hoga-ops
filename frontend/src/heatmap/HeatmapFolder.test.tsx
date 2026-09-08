@@ -77,7 +77,7 @@ it('뒤처진 종목이 있으면 헤더에 미수집 칩 — 행 종목명은 �
     laggingCodes={new Set(['000660'])} />);
 
   const chip = screen.getByTestId('heatmap-folder-lag-f1');
-  expect(chip).toHaveTextContent('미수집 1');
+  expect(chip).toHaveTextContent('수집 지연 1');
   // 상태 semantic 색 — 시세 색(등락 적/청)과 섞이면 안 되는 축이다(DESIGN.md 색 규율).
   expect(chip).toHaveClass('text-error');
 
@@ -109,4 +109,23 @@ it('행 툴팁이 마지막 수집일을 말한다', () => {
     laggingCodes={new Set(['000660'])} />);
   expect(screen.getByText('삼성전자')).toHaveAttribute('title', '마지막 수집 08/06');
   expect(screen.getByText('SK하이닉스')).toHaveAttribute('title', '수집 이력 없음');
+});
+
+
+it('일치 종목만 표시해도 전체 그룹 평균과 수집 지연 범위를 유지한다', () => {
+  const collect = vi.fn();
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}} query="삼성" matchesOnly
+    captureBaseline="20260908" laggingCodes={new Set(['000660'])} onCollectLagging={collect} />);
+  expect(screen.queryByTestId('heatmap-row-000660')).not.toBeInTheDocument();
+  expect(screen.getByText('+5.0%')).toHaveAttribute('title', expect.stringContaining('2/2종목'));
+  fireEvent.click(screen.getByTestId('heatmap-folder-lag-f1'));
+  expect(collect).toHaveBeenCalledWith('f1', ['000660']);
+});
+
+it('보이는 그룹 메뉴 버튼으로 이름 변경에 접근한다', () => {
+  render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
+    sortMode="manual" onPick={() => {}} onRenameFolder={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+  expect(screen.getByRole('menu')).toBeInTheDocument();
 });

@@ -74,6 +74,7 @@ function wrap(ui: ReactNode, initialEntry: string) {
             <Route path="/live" element={<div>live page</div>} />
             <Route path="/ad-hoc" element={<div>ad hoc page</div>} />
             <Route path="/heatmap" element={ui} />
+            <Route path="/market" element={ui} />
             <Route path="/inventory" element={ui} />
             <Route path="/screener" element={ui} />
             <Route path="/capture" element={ui} />
@@ -140,7 +141,7 @@ describe('App shell layout', () => {
   });
 
   it('holds a responsive floor instead of compressing below it (min-w, not 100vw)', () => {
-    const { container } = wrap(<div>Heatmap</div>, '/heatmap');
+    const { container } = wrap(<div>Live</div>, '/live');
     const shell = container.firstElementChild as HTMLElement;
 
     // 바닥은 토큰 1개(--app-floor-min-w)가 소유한다. 유효 폭이 바닥보다 좁아지면
@@ -154,6 +155,12 @@ describe('App shell layout', () => {
     // w-screen(100vw) 금지: 100vw 는 세로 스크롤바 폭을 포함해, 바닥 아래에서 셸이
     // 항상 뷰포트보다 넓어지고 가로 스크롤바가 세로 스크롤바를 부른다.
     expect(shell.className).not.toContain('w-screen');
+  });
+
+  it.each(['/market', '/heatmap'])('reflows %s below the workspace floor', (path) => {
+    const { container } = wrap(<div>Page</div>, path);
+    expect(container.firstElementChild).toHaveClass('responsive-board-shell', 'min-w-0');
+    expect(container.firstElementChild).not.toHaveClass('min-w-app-floor');
   });
 
   it('adds exactly one right panel column before the fixed rail when a panel is open', () => {

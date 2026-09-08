@@ -43,8 +43,9 @@ export function SingleCodeCollectDialog({ code, name, visibleRange, onClose }: {
 
 /** 히트맵/그룹/종목의 지난 N거래일 hogaplay 데이터를 수집하는 다이얼로그.
  *  적재 전 coverage-preview 로 보유/무데이터/수집 예정/예상 소요를 보여준다. */
-export function CollectDialog({ groups, title = '지난 N일 데이터 수집', visibleRange = null, onClose }: {
+export function CollectDialog({ groups, title = '지난 N일 데이터 수집', visibleRange = null, scopeDescription, onClose }: {
   groups: FolderScope[];
+  scopeDescription?: string;
   title?: string;
   /** /live 차트에 보이는 캔들 구간(양 끝 거래일). 있으면 '보이는 구간' 모드가 열린다. */
   visibleRange?: CollectVisibleRange | null;
@@ -56,6 +57,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
   // 두 모드는 서로 다른 계약(lookback_days vs start/end)이라 상태를 분리한다.
   const [mode, setMode] = useState<'lookback' | 'visible'>('lookback');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(groups.map((g) => g.id)));
+  const [groupQuery, setGroupQuery] = useState('');
   const [preview, setPreview] = useState<CoveragePreviewResponse | null>(null);
 
   const codes = useMemo(() => {
@@ -107,6 +109,8 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
   return (
     <ModalShell ariaLabel={title} title={title} width="w-[440px]" onClose={onClose}>
       <div className="flex flex-col gap-4 px-4 py-4">
+        {scopeDescription && <p className="text-xs text-fg-dim">{scopeDescription}</p>}
+        <fieldset disabled={previewM.isPending || collectM.isPending} className="contents">
         {/* 기간 프리셋 */}
         <div className="flex flex-col gap-2">
           <span className="text-2xs font-semibold uppercase text-fg-dim">기간</span>
@@ -155,9 +159,15 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
         {/* 대상 그룹(멀티선택) — 그룹이 여럿일 때만 */}
         {showFolders && (
           <div className="flex flex-col gap-2">
-            <span className="text-2xs font-semibold uppercase text-fg-dim">대상 그룹</span>
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-auto">
-              {groups.map((g) => (
+            <span className="text-2xs font-semibold uppercase text-fg-dim">대상 그룹 · {selected.size}/{groups.length}개 선택</span>
+            <p className="text-xs text-fg-dimmer">보드 검색과 별개로 선택합니다. 그룹 검색은 선택을 바꾸지 않습니다.</p>
+            <input aria-label="수집 대상 그룹 검색" placeholder="그룹 검색" value={groupQuery} onChange={(e) => setGroupQuery(e.target.value)} className="w-full rounded border border-border bg-bg-input px-2 py-1 text-sm" />
+            <div className="flex gap-2">
+              <ToolbarButton onClick={() => { setSelected(new Set(groups.map((g) => g.id))); resetPreview(); }}>전체 선택</ToolbarButton>
+              <ToolbarButton onClick={() => { setSelected(new Set()); resetPreview(); }}>전체 해제</ToolbarButton>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-auto">
+              {groups.filter((g) => g.name.toLocaleLowerCase().includes(groupQuery.trim().toLocaleLowerCase())).map((g) => (
                 <button key={g.id} type="button" aria-pressed={selected.has(g.id)} onClick={() => toggleFolder(g.id)}
                   className={`px-2 py-1 rounded-md text-xs ${selected.has(g.id) ? 'bg-tint-selection text-accent' : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
                   {g.name} <span className="text-fg-dimmer">{g.codes.length}</span>
@@ -175,6 +185,8 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
           )}
         </div>
 
+        <p className="text-2xs text-fg-dimmer">종목 수는 그룹 간 중복을 제외한 고유 종목 기준입니다.</p>
+        </fieldset>
         {/* 미리보기 결과 */}
         {preview && (
           <div className="rounded-md border border-border bg-bg-subtle px-3 py-2.5 text-sm">

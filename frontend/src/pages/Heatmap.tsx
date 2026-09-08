@@ -80,7 +80,19 @@ export function Heatmap() {
   // 검색 필터(그룹간 정렬과 그룹내 정렬 사이 — 드로어와 동일 파이프라인). 동결된 orderedGroups
   // 뒤에 적용해 G1 텔레포트 가드를 보존. 빈 쿼리면 filterGroups 가 입력 참조 그대로 반환.
   const [query, setQuery] = useState('');
-  const visibleGroups = useMemo(() => filterGroups(orderedGroups, query), [orderedGroups, query]);
+  const [matchesOnly, setMatchesOnly] = useState(false);
+  const visibleGroups = useMemo(() => filterGroups(orderedGroups, query).filter((g) =>
+    !matchesOnly || !query.trim() || g.entries.some((e) => entryMatchesQuery(e, query))), [orderedGroups, query, matchesOnly]);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const lastMatch = useRef<{ query: string; row: HTMLElement } | null>(null);
+  const nextMatch = () => {
+    const rows = Array.from(boardRef.current?.querySelectorAll<HTMLElement>('[data-matched]') ?? []);
+    const index = rows.indexOf(lastMatch.current?.query === query ? lastMatch.current.row : document.activeElement as HTMLElement);
+    const next = rows[(index + 1) % rows.length];
+    if (next) lastMatch.current = { query, row: next };
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
   const isSearching = query.trim() !== '';
   // "/" 로 검색창에 바로 포커스 — /live 의 LiveSymbolSearch 와 같은 관례. 공유
   // shouldIgnoreEvent 가드가 이미 입력 필드(다른 input 포함)에 포커스가 있으면
@@ -106,6 +118,7 @@ export function Heatmap() {
   const [autoAddFolderId, setAutoAddFolderId] = useState<string | null>(null);
   const clearAutoAdd = useCallback(() => setAutoAddFolderId(null), []);
   const [showCollect, setShowCollect] = useState(false);
+  const [lagScope, setLagScope] = useState<{ id: string; name: string; codes: string[] } | null>(null);
   // 단일 종목 수집 스코프(행 메뉴 '지난 N일 수집'). null 이면 전체/그룹 다이얼로그.
   const [collectOne, setCollectOne] = useState<{ code: string; name: string } | null>(null);
   const [menu, setMenu] = useState<RowMenu | null>(null);
@@ -189,17 +202,17 @@ export function Heatmap() {
         {/* 헤더·섹터 스트립 배경은 카드 본문과 동일한 --bg(회색 바닥색) — flat 통일
             (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
             구분선 없음(border-b 제거): 분리는 간격이 담당. */}
-        <header className="flex items-center gap-3 px-3 py-2 bg-bg flex-none">
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 bg-bg flex-none">
           {/* 페이지 제목 없음 — 활성 상단 nav 가 곧 페이지 라벨이다(DESIGN.md
               "No redundant page title"). 헤더는 상태(phase·갱신 시각)와 컨트롤만. */}
           {phase && <span className="text-xs font-data text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
           <span className="text-xs font-data text-fg-dim">
             {updated} 갱신 · {isSearching && matchCount > 0
-              ? `${visibleCount}종목 중 ${matchCount} 매칭`
-              : `${visibleCount}종목`}
+              ? `${matchesOnly ? matchCount : visibleCount}개 등록 중 ${matchCount} 매칭`
+              : `${visibleCount}개 등록 · ${new Set(visibleGroups.flatMap((g) => g.entries.map((e) => e.code))).size}개 고유 종목`}
           </span>
           <div className="flex-1" />
-          <ControlBar className="gap-sm">
+          <ControlBar className="gap-sm flex-wrap">
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
               ＋ 새 그룹
             </ToolbarButton>
@@ -210,10 +223,19 @@ export function Heatmap() {
             <HeatmapSearchInput query={query} onQuery={setQuery} inputRef={searchRef} testId="heatmap-search" className="w-44" />
             {/* 정렬 = 우측 레일 드로어와 공유하는 아이콘 순환 버튼(manual→desc→asc). 종목=그룹 내
                 순서, 그룹=폴더 순서(직교 축). 라벨이 정렬 키(등락률)의 축을 알린다. */}
-            <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
-            <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
+            <SortCycleButton expanded label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
+            <SortCycleButton expanded label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
           </ControlBar>
         </header>
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-1 text-2xs text-fg-dimmer">
+          <span>가격: 원 · 등락률: 전일 종가 대비 % · 캔들 색: 시가 대비 · 그룹 색: 평균 등락률</span>
+          {isSearching && <>
+            <ToolbarButton aria-pressed={!matchesOnly} onClick={() => setMatchesOnly(false)}>그룹 함께 보기</ToolbarButton>
+            <ToolbarButton aria-pressed={matchesOnly} onClick={() => setMatchesOnly(true)}>일치 종목만</ToolbarButton>
+            <ToolbarButton disabled={matchCount === 0} onMouseDown={(e) => e.preventDefault()} onClick={nextMatch}>다음 일치 종목</ToolbarButton>
+          </>}
+        </div>
+        {isSearching && visibleGroups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-fg-dim">검색 결과가 없습니다. 검색어를 바꾸거나 지워 주세요.</p>}
         {showClosedSparseNotice && (
           <div data-testid="heatmap-closed-notice" className="flex-none bg-bg px-3 pb-1 text-xs text-fg-dim">
             장마감 — 시세 없는 종목의 값(—)은 다음 장 시작 후 채워집니다
@@ -234,8 +256,11 @@ export function Heatmap() {
           />
         )}
         {showCollect && (
-          <CollectDialog groups={collectScopes} onClose={() => setShowCollect(false)} />
+          <CollectDialog scopeDescription="전체 히트맵의 모든 그룹이 기본 선택됩니다." groups={collectScopes} onClose={() => setShowCollect(false)} />
         )}
+        {lagScope && <CollectDialog groups={[lagScope]} title={`${lagScope.name} 수집 지연 보충`}
+          scopeDescription={`저장 데이터 기준 ${Object.values(data?.capture_markers ?? {}).sort().at(-1) ?? '—'}보다 뒤처진 ${lagScope.codes.length}종목: ${entries.filter((e) => e.folder_id === lagScope.id && lagScope.codes.includes(e.code)).map((e) => e.name).join(', ')}. 기간을 선택하고 커버리지를 확인하세요.`}
+          onClose={() => setLagScope(null)} />}
         {collectOne && (
           <SingleCodeCollectDialog
             code={collectOne.code}
@@ -246,6 +271,7 @@ export function Heatmap() {
         {/* 검색 중엔 재정렬 비활성(onReorder=undefined): 그룹 전체를 보여줘도 검색 중
             드래그 재정렬은 매칭 탐색 흐름을 방해하고, 그룹 간 정렬(orderedGroups)이
             검색 결과를 추종해 순서 기준이 흔들린다. query 는 매칭 행 하이라이트용. */}
+        <div ref={boardRef} className="flex flex-1 min-h-0 flex-col">
         <HeatmapPanelDropTarget data={data}>
           <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
             sortQuoteByCode={boardSortQuotes}
@@ -254,9 +280,12 @@ export function Heatmap() {
             onMove={onDragMove} onCopy={onDragCopy}
             onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder}
             onRowDragState={setIsRowDragging} flowByFolder={flowByFolder} query={query}
+            matchesOnly={matchesOnly}
+            onCollectLagging={(id, lagCodes) => setLagScope({ id, name: folders.find((f) => f.id === id)?.name ?? '그룹', codes: lagCodes })}
             captureMarkers={data?.capture_markers}
             autoAddFolderId={autoAddFolderId} onAutoAddOpened={clearAutoAdd} />
         </HeatmapPanelDropTarget>
+        </div>
         {/* 제거는 menu.folderId(우클릭한 행이 속한 그룹) 스코프 — 같은 종목이 다른 그룹에도
             등록돼 있으면 그 등록은 건드리지 않는다. '그룹으로 이동' 항목은 넘기지 않는다:
             실폴더를 전부 나열하는 구조라 그룹이 수십 개면 메뉴가 화면을 덮었고, 이동은

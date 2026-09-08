@@ -212,3 +212,7 @@ body {
 .pane-legend-name:active {
   cursor: grabbing;
 }
+
+/* Market and heatmap adapt to the viewport; navigation scrolls independently. */
+.responsive-board-shell nav { overflow-x: auto; scrollbar-width: none; }
+.responsive-board-shell nav > div { min-width: calc(var(--app-floor-min-w) - var(--rail-w)); }

@@ -161,7 +161,7 @@ it('그룹 정렬 순환 버튼: 클릭마다 store.groupSort 갱신(manual→de
 it('검색: 매칭 종목이 속한 그룹 전체 표시 + 매칭만 하이라이트', async () => {
   renderPage();
   await screen.findAllByText('반도체');
-  expect(screen.getByText(/2종목/)).toBeInTheDocument();
+  expect(screen.getByText(/2개 등록/)).toBeInTheDocument();
   fireEvent.change(screen.getByTestId('heatmap-search'), { target: { value: '삼성' } });
   // 그룹 전체 유지 — 비매칭(SK하이닉스)도 맥락으로 남는다(이전엔 숨겨졌다).
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
@@ -169,8 +169,8 @@ it('검색: 매칭 종목이 속한 그룹 전체 표시 + 매칭만 하이라�
   // 매칭 행만 하이라이트(data-matched).
   expect(screen.getByTestId('heatmap-row-005930')).toHaveAttribute('data-matched');
   expect(screen.getByTestId('heatmap-row-000660')).not.toHaveAttribute('data-matched');
-  // 헤더: 표시 2종목 중 1 매칭.
-  expect(screen.getByText(/2종목 중 1 매칭/)).toBeInTheDocument();
+  // 헤더: 표시 2개 등록 중 1 매칭.
+  expect(screen.getByText(/2개 등록 중 1 매칭/)).toBeInTheDocument();
 });
 
 it('"/" 키로 검색창에 포커스', async () => {
@@ -188,4 +188,17 @@ it('이미 입력 필드에 포커스가 있으면 "/" 는 리터럴(가드)', a
   // shouldIgnoreEvent 가드로 preventDefault 되지 않아야 "/" 가 타이핑된다.
   const evt = fireEvent.keyDown(input, { key: '/' });
   expect(evt).toBe(true); // not cancelled (preventDefault 미호출)
+});
+
+
+it('일치 종목 모드 전환과 다음 일치 종목 포커스', async () => {
+  renderPage();
+  await screen.findAllByText('반도체');
+  fireEvent.change(screen.getByTestId('heatmap-search'), { target: { value: '삼성' } });
+  fireEvent.click(screen.getByRole('button', { name: '일치 종목만' }));
+  expect(screen.queryByTestId('heatmap-row-000660')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '다음 일치 종목' }));
+  expect(screen.getByTestId('heatmap-row-005930')).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', { name: '그룹 함께 보기' }));
+  expect(screen.getByTestId('heatmap-row-000660')).toBeInTheDocument();
 });

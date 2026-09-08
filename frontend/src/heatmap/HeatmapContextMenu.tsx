@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
@@ -31,6 +32,15 @@ export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, 
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   useDismissablePopover(true, ref, onClose);
+  useEffect(() => {
+    const trigger = document.activeElement;
+    const menu = ref.current;
+    menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      if ((document.activeElement === document.body || menu?.contains(document.activeElement))
+        && trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, [ref]);
 
   return (
     <div
