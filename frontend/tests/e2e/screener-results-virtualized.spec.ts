@@ -9,6 +9,7 @@
 // 2. **가상화가 실제로 걸린다.** 유계가 아니면 가상화기가 "전부 보인다"고 판단해
 //    1,000행을 그대로 그린다(실측). 즉 ①이 ②의 전제다 — 둘을 함께 봐야 의미가 있다.
 import { test, expect, type Route } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 const N = 1000;
@@ -16,13 +17,20 @@ const SCAN = {
   rows: Array.from({ length: N }, (_, i) => ({
     code: String(100000 + i).padStart(6, '0'), name: `종목${i}`, market: 'KOSPI',
     price: 10000 + i, change_pct: (i % 20) - 10, trade_value_won: 1e10 + i,
+    price_date: '2026-09-07',
   })),
-  scanned_at_ms: 0, universe_size: 2000, basis: 'eod',
+  status: 'ok', warnings: [], universe_size: 2000, basis: 'eod',
 };
 
 test.use({ channel: 'chrome' });
 
-test('1,000행 결과가 유계 영역에서 내부 스크롤되고 DOM 은 창 크기만 그린다', async ({ page }) => {
+test('1,000행 가상 결과의 검색·선택·CSV와 조회 당시 값이 유지된다', async ({ page }, testInfo) => {
+  const measurementWarnings: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.text().includes("Missing attribute name 'data-index")) measurementWarnings.push(message.text());
+  });
   const json = (r: Route, b: unknown) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
   await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
@@ -53,12 +61,16 @@ test('1,000행 결과가 유계 영역에서 내부 스크롤되고 DOM 은 창 
 
   const metrics = await box.evaluate((el) => {
     const shell = el.closest('[class*="overflow-auto"]') as HTMLElement;
-    return { scrollH: shell.scrollHeight, clientH: shell.clientHeight };
+    return {
+      scrollH: shell.scrollHeight, clientH: shell.clientHeight, offset: (el as HTMLElement).offsetTop,
+      relativeTop: el.getBoundingClientRect().top - shell.getBoundingClientRect().top + shell.scrollTop - shell.clientTop,
+    };
   });
   // 유계 + 넘침 = 내부 스크롤이 산다. `min-h-0` 이 빠지면 clientH 가 콘텐츠 높이까지
   // 자라 둘이 같아지고(실측 28152/28152) 스크롤이 사라진다.
   expect(metrics.clientH).toBeLessThan(metrics.scrollH);
   expect(metrics.clientH).toBeLessThan(2000);
+  expect(metrics.offset).toBeCloseTo(metrics.relativeTop, 0);
 
   // 끝까지 스크롤하면 **마지막 행**이 실제로 나온다 — 잘림 회귀의 직접 가드.
   await box.evaluate((el) => {
@@ -66,4 +78,45 @@ test('1,000행 결과가 유계 영역에서 내부 스크롤되고 DOM 은 창 
     shell.scrollTop = shell.scrollHeight;
   });
   await expect(page.getByRole('button', { name: /종목999 100999 호가창 열기/ })).toBeVisible();
+  await page.getByRole('checkbox', { name: '종목999 100999 선택', exact: true }).check();
+  await expect(page).toHaveURL(/\/screener$/);
+  await page.getByRole('searchbox', { name: '결과 내 종목 검색' }).fill('종목0');
+  await expect(page.getByText(/숨김 1건 포함/)).toBeVisible();
+  await page.getByRole('checkbox', { name: '검색 결과 전체 선택' }).check();
+  await page.getByRole('button', { name: '조회 당시', exact: true }).click();
+  await expect(page.getByRole('button', { name: '종목0 100000 호가창 열기' })).toContainText('10,000 (-10.00%)');
+  await expect(page.getByText('2026-09-07', { exact: true })).toBeVisible();
+
+  const selectedDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '선택 CSV', exact: true }).click();
+  const selectedFile = await selectedDownload;
+  expect(selectedFile.suggestedFilename()).toMatch(/^screener-\d{14}\.csv$/);
+  const selectedPath = testInfo.outputPath('selected.csv');
+  await selectedFile.saveAs(selectedPath);
+  const selectedCsv = await readFile(selectedPath, 'utf8');
+  expect(selectedCsv).toContain('"\'100000"');
+  expect(selectedCsv).toContain('"\'100999"');
+  expect(selectedCsv.trim().split('\r\n')).toHaveLength(3);
+  expect(selectedCsv).toContain('""min_eok"":1');
+
+  // 전체 선택은 DOM의 수십 행이 아니라 필터를 통과한 1,000행에 적용된다.
+  await page.getByRole('searchbox').fill('');
+  await page.getByRole('checkbox', { name: '검색 결과 전체 선택' }).check();
+  const allDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '선택 CSV', exact: true }).click();
+  const allPath = testInfo.outputPath('all.csv');
+  await (await allDownload).saveAs(allPath);
+  expect((await readFile(allPath, 'utf8')).trim().split('\r\n')).toHaveLength(1001);
+  expect(await rows.count()).toBeLessThan(100);
+  expect(measurementWarnings).toEqual([]);
+
+  await page.screenshot({ path: testInfo.outputPath('results-wide.png') });
+  await page.setViewportSize({ width: 944, height: 624 });
+  await expect(page.getByRole('button', { name: '선택 CSV', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('results-compact.png') });
+  await page.reload();
+  await page.getByRole('button', { name: '조회 당시', exact: true }).click();
+  await expect(page.getByRole('button', { name: '종목0 100000 호가창 열기' })).toContainText('10,000 (-10.00%)');
+  await expect(page.getByRole('button', { name: '선택 CSV', exact: true })).toBeDisabled();
+  expect(pageErrors).toEqual([]);
 });

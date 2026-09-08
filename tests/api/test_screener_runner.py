@@ -72,6 +72,30 @@ async def test_runner_empty_result_does_not_report_more(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_runner_price_dates_distinguish_intraday_from_eod_fallback(tmp_path, monkeypatch):
+    _seed(tmp_path)
+
+    async def overlay(**kwargs):
+        return IntradayDailyOverlay(
+            rows=pl.DataFrame({
+                "code": ["000001"], "date": [dt.date(2026, 5, 15)],
+                "open": [150.0], "high": [150.0], "low": [150.0], "close": [150.0], "volume": [10],
+            }), fetched_at_ms=1, warnings=["intraday_quote_invalid"],
+        )
+
+    monkeypatch.setattr(screener_runner.screener_intraday, "build_intraday_overlay", overlay)
+    monkeypatch.setattr(screener_runner.time, "time", lambda: 1234.5)
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path, req=ScanRequest.model_validate({"basis": "intraday", "universe": {"exclude_etf": False}}),
+        now=dt.datetime(2026, 5, 15, 10),
+    )
+    assert {r.code: (r.price, r.price_date) for r in res.rows} == {
+        "000001": (150, "2026-05-15"), "000002": (100, "2026-05-14"),
+    }
+    assert res.scanned_at_ms == 1234500
+
+
+@pytest.mark.asyncio
 async def test_runner_eod_basis_does_not_build_intraday_overlay(tmp_path, monkeypatch):
     _seed(tmp_path)
 

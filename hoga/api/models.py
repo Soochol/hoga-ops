@@ -1954,6 +1954,8 @@ class ScreenerRow(BaseModel):                          # 평면형 — 조건 �
     price: int
     trade_value_won: int
     change_pct: float | None
+    # 조회 가격을 가져온 마지막 일봉 날짜. 기간 조건의 충족 발생일과는 다르다.
+    price_date: str | None = None
 
 class DepthCoverageCode(BaseModel):                    # 총잔량 조건 커버리지 한 종목
     code: str = Field(pattern=CODE_PATTERN)
@@ -2003,6 +2005,7 @@ class ScreenerResponse(BaseModel):
     rows: list[ScreenerRow]
     # limit+1건을 확인해 정확히 limit건인 결과와 잘린 결과를 구별한다.
     has_more: bool = False
+    scanned_at_ms: int | None = None
     #: 상태 태그의 평평한 목록 — 장중 오버레이·depth·ETF 필터가 한 평면에 섞이므로
     #: 접두(`intraday_` 등)가 네임스페이스 역할을 한다.
     warnings: list[str] = Field(default_factory=list)

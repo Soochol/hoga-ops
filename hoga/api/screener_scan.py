@@ -229,6 +229,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     where_sql = "WHERE " + " AND ".join(wheres)
 
     sel = ("base.code, stk.name, stk.market, base.close::BIGINT price, "
+           "strftime(base.date, '%Y-%m-%d') price_date, "
            f"({_TV})::BIGINT trade_value_won, "
            "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
            "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct")
@@ -242,6 +243,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         d = dict(zip(cols, r, strict=True))
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
+            price_date=d["price_date"],
             trade_value_won=int(d["trade_value_won"]),
             change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None))
     return out

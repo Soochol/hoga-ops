@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -205,6 +205,44 @@ it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유
   unmount();
   renderPage();
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
+});
+
+it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보존하고 다시 들어와 확인할 수 있다', async () => {
+  let finish!: (res: Awaited<ReturnType<typeof runScan>>) => void;
+  vi.mocked(runScan).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const { unmount } = await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(finish).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: '전일 확정' }));
+  fireEvent.click(screen.getByRole('button', { name: '조건 제거' }));
+  const serverTime = Date.now() - 1000;
+  await act(async () => finish({ status: 'ok', warnings: [], scanned_at_ms: serverTime,
+    rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 100, change_pct: 1,
+      trade_value_won: 1e9, price_date: '2026-09-07' }],
+  }));
+  const snapshot = useScreenerPanelStore.getState().lastScan!;
+  expect(JSON.parse(snapshot.requestJson!)).toMatchObject({ basis: 'intraday', conditions: [{ type: 'trade_value' }] });
+  expect(snapshot.scannedAtMs).toBe(serverTime);
+  expect(snapshot.savedName).toBe('기본조건');
+  unmount();
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: '조회 당시' }));
+  expect(screen.getByText('100 (+1.00%)')).toBeInTheDocument();
+  expect(screen.getByText('2026-09-07')).toBeInTheDocument();
+});
+
+it('시세 보기·정렬에서는 선택을 유지하고 새 조회 완료 후 선택을 초기화한다', async () => {
+  await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '삼성전자 005930 선택' }));
+  fireEvent.click(screen.getByRole('button', { name: '조회 당시' }));
+  fireEvent.click(screen.getByRole('button', { name: '코드 정렬' }));
+  expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).toBeChecked();
+  const before = useScreenerPanelStore.getState().lastScan;
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).not.toBe(before));
+  expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: '선택 CSV' })).toBeDisabled();
 });
 
 it('uses shared action styling in the save dialog', async () => {

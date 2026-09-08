@@ -55,8 +55,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ScreenerResponse": frozenset({
-        "status", "rows", "has_more", "warnings", "intraday_failure", "depth_coverage", "depth_values",
+        "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
     }),
+    "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date"}),
     "WatchlistFolderView": frozenset({"id", "name", "order"}),
     # 최대벽(ADR-0076/0084/0156) — 프론트 미러는 `frontend/src/api/types.ts` 의
     # `AskPeak`/`BidPeak` 이고 **두 타입이 같은 필드 집합**이다(백엔드도 동일). 그래서

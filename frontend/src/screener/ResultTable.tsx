@@ -20,6 +20,16 @@ interface Props {
   depthValues?: Record<string, DepthPeakValue> | null;
   /** 활성 총잔량 조건의 side. 배지가 통과를 좌우한 side만 표시하도록. */
   depthSides?: DepthSides;
+  quoteMode?: 'live' | 'snapshot';
+  selection?: ResultSelection;
+}
+
+interface ResultSelection {
+  codes: ReadonlySet<string>;
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggle: (code: string) => void;
+  onToggleAll: () => void;
 }
 
 /** 활성화된 총잔량 조건의 side(매도/매수). evaluate 는 code 마다 양쪽을 모두 채우므로,
@@ -96,6 +106,7 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
 }
 
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
+const SELECTABLE_COLS = 'grid-cols-[1.5rem_3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
 
 /** 이 줄 수를 넘으면 가상화한다. CaptureQueue 의 임계와 같은 값 — 그보다 작으면
  *  DOM 을 다 그려도 재렌더가 10ms 안쪽이고(실측 100행 8ms), 가상화는 스크롤 위치
@@ -148,7 +159,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
-function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index }: {
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, selection, quoteMode }: {
   r: ScreenerRowLive;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
@@ -157,16 +168,22 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   style?: React.CSSProperties;
   measureRef?: (el: HTMLElement | null) => void;
   index?: number;
+  selection?: ResultSelection;
+  quoteMode?: Props['quoteMode'];
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(r.code, r.name, e); }
   };
   return (
     <DataTableRow role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
       rowRef={measureRef} data-index={index} style={style}
       onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
-      columns={COLS}
+      columns={selection ? SELECTABLE_COLS : COLS}
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
+      {selection && <input type="checkbox" aria-label={`${r.name} ${r.code} 선택`}
+        checked={selection.codes.has(r.code)} onChange={() => selection.onToggle(r.code)}
+        onClick={(e) => e.stopPropagation()} style={{ accentColor: 'var(--accent)' }} />}
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
         <span className="truncate">{r.name}</span>
@@ -192,9 +209,12 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       ) : (
         <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
           {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
+          {quoteMode === 'snapshot' && <span className="block text-2xs text-fg-dim" title="조회 가격의 기준일 · 조건 충족 발생일과 다를 수 있습니다">
+            {r.price_date ?? '기준일 미기록'}
+          </span>}
         </span>
       )}
-      <span className="font-data tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
+      <span className="font-data tabular-nums text-right text-fg-dim" title="조회 당시 추정 거래대금 · 평균 OHLC × 거래량">{toEok(r.trade_value_won)}</span>
       <span className="flex items-center justify-end gap-2">
         <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
       </span>
@@ -202,7 +222,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, selection, quoteMode = 'live' }: Props) {
   // 훅은 표 전체에서 **한 번만** 부른다(useWatchlistMembership 계약: "ONCE per component,
   // not per row"). 행마다 부르던 시절엔 1,000행 = react-query 옵저버 1,000개였다.
   // 실측(재렌더): 500행 44 → 30 ms, 1,000행 65 → 59 ms.
@@ -221,6 +241,8 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
     getScrollElement: () => shellRef.current,
     estimateSize: () => ROW_ESTIMATE_PX,
     overscan: 8,
+    // 조회 기준일 표시·창 크기 변경이 RO 콜백 안에서 다시 레이아웃을 바꾸지 않게 한다.
+    useAnimationFrameWithResizeObserver: true,
     // 헤더가 스크롤 요소 안에 있으므로 행 영역의 시작 오프셋을 알려줘야 한다.
     scrollMargin: rowsRef.current?.offsetTop ?? 0,
   });
@@ -228,12 +250,20 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
   return (
     <DataTableShell
       scrollRef={shellRef}
-      minWidth="640px"
-      className={embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}
+      minWidth={selection ? '680px' : '640px'}
+      // rowsRef.offsetTop은 이 스크롤 셸 기준이어야 한다. relative가 없으면 페이지
+      // 상단 도구 높이까지 scrollMargin에 섞여 목록 끝의 가상 행이 렌더되지 않는다.
+      className={`relative ${embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}`}
     >
-      <DataTableHeader columns={COLS}>
+      <DataTableHeader columns={selection ? SELECTABLE_COLS : COLS}>
+        {selection && <input type="checkbox" aria-label="검색 결과 전체 선택"
+          checked={selection.allSelected} disabled={rows.length === 0}
+          ref={(el) => { if (el) el.indeterminate = selection.someSelected && !selection.allSelected; }}
+          onChange={selection.onToggleAll} style={{ accentColor: 'var(--accent)' }} />}
         {HEADERS.map((header) => (
-          <SortHeader key={header.field} {...header} sortMode={sortMode} onSortChange={onSortChange} />
+          <SortHeader key={header.field} {...header}
+            label={header.field === 'price' && quoteMode === 'snapshot' ? '조회가(등락률)' : header.label}
+            sortMode={sortMode} onSortChange={onSortChange} />
         ))}
         <span className="text-right text-xs font-semibold uppercase text-fg-dim">액션</span>
       </DataTableHeader>
@@ -264,6 +294,8 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               depthSides={depthSides}
               measureRef={virtualizer.measureElement}
               index={vi.index}
+              selection={selection}
+              quoteMode={quoteMode}
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%',
                 transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
@@ -275,6 +307,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
           {rows.map((r) => (
             <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
+              selection={selection} quoteMode={quoteMode}
               depthValues={depthValues} depthSides={depthSides} />
           ))}
         </div>

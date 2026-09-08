@@ -13,6 +13,7 @@ const SCAN: PanelScan = {
   savedName: '돌파',
   savedUpdatedAtMs: 10,
   scanKey: null,
+  requestJson: '{"conditions":[],"universe":{},"basis":"intraday"}',
   rows: [
     {
       code: '005930',
@@ -21,6 +22,7 @@ const SCAN: PanelScan = {
       price: 70000,
       trade_value_won: 100_000_000_000,
       change_pct: 2.1,
+      price_date: '2026-09-07',
     },
   ],
   scanStatus: 'ok',
@@ -161,7 +163,7 @@ describe('screenerPanel store', () => {
 
     const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
 
-    expect(fresh.getState().lastScan).toEqual(SCAN);
+    expect(fresh.getState().lastScan).toEqual({ ...SCAN, requestJson: undefined });
   });
 
   it('hydrates a page-style scan (null savedId, scanKey + depthValues)', async () => {

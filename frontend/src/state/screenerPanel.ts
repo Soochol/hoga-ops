@@ -31,6 +31,8 @@ export interface PanelScan {
   // 풀페이지 Screener 의 내용 기반 staleness 판정용(요청 바디 직렬화). 드로어는 신원
   // 기반(savedId/savedUpdatedAtMs)이라 null 로 둔다.
   scanKey: string | null;
+  /** 실행 때의 요청 원문. 편집 중인 조건/저장본을 CSV에 섞지 않는다. */
+  requestJson?: string;
   rows: ScreenerRow[];
   /** undefined는 상한 여부를 제공하지 않던 서버/저장 상태. */
   hasMore?: boolean;
@@ -125,6 +127,7 @@ function isScreenerRow(value: unknown): value is ScreenerRow {
     && Number.isFinite(raw.price)
     && typeof raw.trade_value_won === 'number'
     && Number.isFinite(raw.trade_value_won)
+    && (raw.price_date == null || (typeof raw.price_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.price_date)))
     && isNumberOrNull(raw.change_pct)
   );
 }
@@ -188,6 +191,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     savedName,
     savedUpdatedAtMs,
     scanKey,
+    requestJson: typeof raw.requestJson === 'string' ? raw.requestJson : undefined,
     rows: raw.rows as ScreenerRow[],
     hasMore: typeof raw.hasMore === 'boolean' ? raw.hasMore : undefined,
     scanStatus: raw.scanStatus,
