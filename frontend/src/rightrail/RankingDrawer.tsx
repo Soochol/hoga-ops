@@ -1,3 +1,4 @@
+import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
@@ -118,7 +119,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
-      name={row.name}
+      name={row.name} code={row.code}
       price={row.price}
       pct={row.change_pct}
       changeWon={null}
@@ -298,8 +299,10 @@ export function RankingDrawer() {
             onClick={() => setSortMode(nextRankingSortMode(sortMode))}
           />
         </div>
+        {sortMode !== 'default' && <p className="mt-1 text-xs text-accent">등락률 {rankingSortDirection(sortMode) === 'asc' ? '↑ 낮은 순' : '↓ 높은 순'}</p>}
       </RailDrawerSection>
 
+      <RailDestination />
       <RailDrawerBody testId="ranking-scroll" quoteNav>
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}

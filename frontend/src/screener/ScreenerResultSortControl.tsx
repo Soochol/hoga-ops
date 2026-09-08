@@ -33,7 +33,7 @@ function sortDescription(mode: ScreenerResultSortMode): string {
 
 export function ScreenerResultSortControl({ mode, onChange, disabled = false }: Props) {
   return (
-    <SortCycleButton
+    <SortCycleButton visibleLabel="등락률"
       direction={sortDirection(mode)}
       label="스크리너 결과 정렬"
       description={sortDescription(mode)}

@@ -230,7 +230,7 @@ function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
 // 차트 창이 봉의 유일한 소유자가 되면서 그 설정이 정할 것이 없어졌다 — 저장뷰는
 // 종목과 구간만 정한다. 근거와 버려진 trade-off 는 그 PR 에 있다.
 
-export default function SettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
+export default function SettingsSections({ variant = 'live', onClose, initialSection }: { variant?: 'live' | 'study'; onClose?: () => void; initialSection?: 'alerts' }) {
   // 체결창은 /live 워크스페이스 전용 데이터 창 — 복기뷰(study) 설정에는 숨긴다.
   // **컨텍스트로 갈리는 유일한 항목**이다.
   const registryIds = CATEGORY_ORDER.filter((c) => (variant === 'live' || c !== 'trade-window')
@@ -238,11 +238,14 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
   const navIds: NavId[] = [...registryIds, ...INFO_ORDER];
 
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState<NavId>(navIds[0]);
+  const [active, setActive] = useState<NavId>(initialSection ?? navIds[0]);
   const bodyRef = useRef<HTMLDivElement>(null);
   // 필터 중 TOC 클릭은 「필터 해제 → 점프」다. setState 직후엔 리마운트된 섹션
   // DOM 이 아직 없으므로 대상을 적어 두고 query 가 비워진 뒤의 effect 가 소비한다.
   const pendingJump = useRef<NavId | null>(null);
+  useEffect(() => {
+    if (initialSection) bodyRef.current?.querySelector(`[data-settings-section="${initialSection}"]`)?.scrollIntoView?.({ block: 'start' });
+  }, [initialSection]);
 
   const units = useMemo(buildFilterUnits, []);
   const trimmed = query.trim();

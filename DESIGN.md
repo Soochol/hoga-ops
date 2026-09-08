@@ -614,3 +614,13 @@ A fourth category limited to identifying which capture source produced the data.
 - **User-facing messages**: Korean natural-language sentences. No trailing periods. Actions are nominalized ("재발급" not "재발급하기").
 - **Status labels** (`LiveStateBanner` badges, 차트 창 타이틀바 칩): Korean single words ("장 외", "대기 중", "준비됨"). *(`LiveStatusBar` 는 폐지됐다 — 종목 식별·현재가·등락률·경고는 각 차트 창 타이틀바가, 캡처 헬스는 툴바가 소유한다. 2026-07-29 정정.)*
 - **Layout grid for `/live`**: see [Layout → App shell](#layout). (History: this line described a 4-row grid — header + status bar + toolbar + workarea — mirroring the since-deleted `/replay` PriceStrip pattern. Corrected 2026-07-29; the page has been a 3-row grid since `LiveStatusBar` 폐지.)
+
+### 2026-09-08 — 우측 패널 탐색·액션 정리 (사용자 승인)
+
+- 패널 폭 280px, 레일 48px, 종목 행 최소 높이와 숫자 열 정렬은 유지한다. 헤더 액션은 28px 높이, 행 메뉴는 기존 행 높이 안의 20px 영역을 쓴다. 레일은 아이콘과 상시 라벨을 유지한다.
+- 관심종목·히트맵·저장뷰는 검색 오른쪽에 전체 접기를 두고 그 아래에 다중 선택과 정렬을 배치한다. 선택 모드의 공통 문구는 `다중 선택` / `선택 완료` / `N개 선택`이다. 그룹 생성은 `+ 그룹`, 종목 추가는 `종목 추가`로 대상을 명시한다.
+- 관심종목 검색은 종목명·코드·그룹명을 필터링하며 접힌 그룹에서도 결과를 찾는다. 검색 중 접힘은 일시 상태로 분리하고, 해제하면 기존 접힘과 스크롤 위치를 복원한다. 필터 중 재정렬은 제한하고 이유를 표시한다. 같은 코드의 서로 다른 그룹 멤버십은 별도 행이다.
+- 종목 행은 호버·키보드 포커스에 전체 이름과 코드를 보여준다. 종목 클릭 패널의 `연결 대상`은 `activationTarget`으로 계산한 차트 연결 그룹과 고정되지 않은 창 개수를 표시한다. 관심종목 그룹과 별개다.
+- 패턴 드로어의 조건 상시 노출 설명은 이번 승인으로 변경한다. 봉 단위·기간·결과 상한은 계속 노출하고 나머지는 상세 조건으로 접는다. 접힌 상태에도 적용 개수와 요약을 보존하며 조건값·검색 의미는 바꾸지 않는다(ADR-0166의 검색 계약 유지).
+- 스크리너는 `실시간 감시 시작`과 선택 조건 요약, 장 마감 대기를 안내한다. 알림은 설정의 사용 여부와 오늘 수신 내역을 구분하고 같은 전역 설정 모달의 알림 섹션으로 연결한다. `사용 중`은 설정값이며 연결 정상 여부를 의미하지 않는다.
+- 일반 액션에는 `aria-pressed`를 붙이지 않는다. 비활성 버튼은 색을 낮추고 호버 강조를 막되 이유 툴팁은 유지한다. 접기·메뉴·드래그 표식은 공용 SVG를 쓴다.

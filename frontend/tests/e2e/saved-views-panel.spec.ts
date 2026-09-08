@@ -104,7 +104,7 @@ test('전용 그룹 핸들로 재정렬하며 행을 다른 종목이나 패널 
 
 test('다중 선택 묶음 순서를 유지하고 여러 종목 선택은 재정렬을 제한한다', async ({ page }) => {
   await setup(page, [saved('a'), saved('b'), saved('c'), saved('e'), saved('d', B)]);
-  await page.getByRole('button', { name: '여러 저장뷰 선택' }).click();
+  await page.getByRole('button', { name: '다중 선택' }).click();
   await page.getByRole('checkbox', { name: '복기 a 선택', exact: true }).check();
   await page.getByRole('checkbox', { name: '복기 c 선택', exact: true }).check();
   await start(page, handle(page, 'a'));
@@ -113,7 +113,8 @@ test('다중 선택 묶음 순서를 유지하고 여러 종목 선택은 재정
   await expect.poll(() => order(page)).toEqual(['b', 'e', 'a', 'c']);
   // A real press/release outlasts dnd-kit's trailing-click suppression after a drop.
   await page.getByRole('checkbox', { name: '복기 d 선택', exact: true }).click({ delay: 80 });
-  await expect(page.getByRole('button', { name: '선택 종료' })).toHaveText('선택 3');
+  await expect(page.getByRole('button', { name: '선택 완료' })).toBeVisible();
+  await expect(panel(page).getByRole('status').filter({ hasText: '3개 선택' })).toBeVisible();
   await start(page, handle(page, 'a'));
   await over(page, row(page, 'b'), .2);
   await expect(notice(page)).toContainText('같은 종목 안에서만');
@@ -155,7 +156,7 @@ test('연속 삭제는 각각 취소할 수 있고 Delete는 검색 입력과 �
 test('일괄 삭제 일부 실패를 안내하고 실패한 저장뷰만 재시도한다', async ({ page }) => {
   const state = await setup(page);
   state.failing.add('b');
-  await page.getByRole('button', { name: '여러 저장뷰 선택' }).click();
+  await page.getByRole('button', { name: '다중 선택' }).click();
   await page.getByRole('checkbox', { name: '복기 a 선택', exact: true }).check();
   await page.getByRole('checkbox', { name: '복기 b 선택', exact: true }).check();
   await page.getByRole('button', { name: '선택 삭제', exact: true }).click();

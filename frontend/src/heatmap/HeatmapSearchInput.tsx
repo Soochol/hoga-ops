@@ -1,3 +1,4 @@
+import { ClearSearchIcon } from '../ui/ClearSearchIcon';
 import type { Ref } from 'react';
 
 /** 검색 돋보기 아이콘 (SVG 통일). */
@@ -31,8 +32,8 @@ export function HeatmapSearchInput({ query, onQuery, testId, className, inputRef
       />
       {query && (
         <button type="button" aria-label="검색 지우기" onClick={() => onQuery('')}
-          className="absolute right-1.5 grid h-4 w-4 place-items-center rounded text-fg-dimmer hover:text-fg">
-          ✕
+          className="absolute right-0.5 grid h-6 w-6 place-items-center rounded text-fg-dimmer hover:text-fg">
+          <ClearSearchIcon className="h-3.5 w-3.5" />
         </button>
       )}
     </div>

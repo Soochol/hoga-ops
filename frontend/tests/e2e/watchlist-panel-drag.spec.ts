@@ -122,7 +122,7 @@ test('메모 앞뒤 위치를 선택하고 메모 내용을 유지한다', async
 test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 소속을 복원한다', async ({ page }) => {
   const initial = { [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('005930')] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '여러 종목 선택' }).click();
+  await page.getByRole('button', { name: '다중 선택' }).click();
   await row(page, A, '005930').getByRole('checkbox').check();
   await row(page, A, '000660').getByRole('checkbox').check();
   await start(page, handle(page, A, '005930'));

@@ -1,3 +1,4 @@
+import { useTextTooltip } from '../ui/useTextTooltip';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { priceDirClass } from '../ui/priceDir';
 import {
@@ -18,6 +19,7 @@ import { moveToAdjacentQuoteRow } from './quoteRowNav';
  *  group-focus-within 로 등장 처리를 할 수 있다. */
 export interface QuoteRowProps {
   name: string;
+  code?: string;
   price: number | null;
   pct: number | null;
   changeWon: number | null;
@@ -77,12 +79,13 @@ function formatPct(pct: number | null): string {
 }
 
 export function QuoteRow({
-  name, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
+  name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
   active, ariaLabel, testId, onClick, leading, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
+  const nameTip = useTextTooltip(code ? `${name} · ${code}` : name);
   void _changeWon;
   // 예상 표시 모드 — 셀 대체 규칙(가격·등락% 를 예상값으로)도 마커 자리(종목명 앞
   // '*')도 이제 HeatmapRow 와 같다. 이 행이 2026-08-14 에 먼저 '*' 로 갔고(이 행엔
@@ -106,6 +109,7 @@ export function QuoteRow({
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
     // 포커스됐을 때만 동작한다.
+    if (e.key === 'Escape') nameTip.hide();
     if (e.target !== e.currentTarget) return;
     // Delete 만 삭제 트리거 — Backspace 는 뒤로가기/문자삭제 머슬메모리와 충돌하는
     // 파괴적 오발동이라 제외(undo 없음).
@@ -142,6 +146,10 @@ export function QuoteRow({
       aria-keyshortcuts={onDelete ? 'Delete' : undefined}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      aria-describedby={nameTip.id}
+      onFocus={(e) => { if (e.target === e.currentTarget) nameTip.show(e.currentTarget); }}
+      onBlur={nameTip.hide}
+      onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
@@ -158,13 +166,14 @@ export function QuoteRow({
         ...(dropIndicator ? { position: 'relative' } : {}),
       }}
     >
+      {nameTip.tooltip}
       {leading}
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를
           무시해 긴 종목명이 가격 컬럼을 침범했다). 가격/% 는 flex-none 고정폭이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
-      <span className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">
+      <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">
         {/* 동시호가 예상 마커. truncate 는 위 부모(flex 아이템)에 걸려 있으므로 이
             inline span 은 자기 폭을 갖지 않고, 긴 종목명은 뒤쪽이 잘리며 마커는 항상
             남는다. 크기는 종목명 상속(text-xs) — 별표 글리프 자체가 이미 작아
