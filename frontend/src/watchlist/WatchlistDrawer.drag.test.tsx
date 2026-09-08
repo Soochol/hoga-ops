@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, within, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as watchlistApi from '../api/watchlist';
@@ -100,6 +100,14 @@ function wrap(qc: QueryClient) {
   );
 }
 
+// Supply a complete pointer lifecycle and measured target geometry. Real hit testing is E2E.
+function drop(event: { active: { id: string; data: { current: { type: string } } }; over?: unknown; activatorEvent?: unknown; delta?: unknown } | unknown) {
+  const e = event as { active: { data: { current: { type: string } } }; over?: Record<string, unknown>; activatorEvent?: unknown; delta?: unknown };
+  if (e.over && e.active.data.current.type === 'entry') act(() => { h.onDragStart!({ active: e.active }); });
+  act(() => { h.onDragEnd!({ activatorEvent: { clientX: 900, clientY: 300 }, delta: { x: 0, y: 0 }, ...e,
+    over: e.over ? { rect: { top: 250, height: 30 }, ...e.over } : null }); });
+}
+
 describe('WatchlistDrawer drag wiring', () => {
   beforeEach(() => {
     cleanup();
@@ -115,22 +123,24 @@ describe('WatchlistDrawer drag wiring', () => {
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
   });
 
-  it('wires entry drag to the whole stock row without rendering a row handle', async () => {
+  it('starts entry drag only from its dedicated handle', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     const row = screen.getByTestId('watchlist-row-005930');
-    expect(screen.queryByTestId('drag-handle-watchlist-row-005930')).not.toBeInTheDocument();
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(row);
-
+    const handle = within(row).getByRole('button', { name: '삼성전자 이동' });
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handle);
     fireEvent.pointerDown(row);
+    expect(h.onPointerDown).not.toHaveBeenCalled();
+    fireEvent.pointerDown(handle);
     expect(h.onPointerDown).toHaveBeenCalledOnce();
   });
 
-  it('makes every folder group header draggable (핸들 아이콘 없이 헤더 전체), not only the first', async () => {
+  it('separates every group handle from header controls', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('장기')).toBeInTheDocument());
@@ -140,23 +150,25 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(headers).toHaveLength(2);
 
     fireEvent.pointerDown(headers[0]);
-    fireEvent.pointerDown(headers[1]);
+    expect(h.onPointerDown).not.toHaveBeenCalled();
+    const handles = [screen.getByRole('button', { name: '스윙 그룹 이동' }), screen.getByRole('button', { name: '장기 그룹 이동' })];
+    handles.forEach((handle) => fireEvent.pointerDown(handle));
     expect(h.onPointerDown).toHaveBeenCalledTimes(2);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(headers[0]);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(headers[1]);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[0]);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[1]);
   });
 
   it('entry-drag onDragEnd → reorderItems(folderId, orderedItems)', async () => {
-    const spy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const spy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     // v3 composite sortable id: `${folderId}:${code}` (다중 소속 충돌 방지, ADR-0070).
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
       over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
     });
-    await waitFor(() => expect(spy).toHaveBeenCalledWith('f_0000000a', [{ kind: 'code', code: '000660' }, { kind: 'code', code: '005930' }]));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ changes: [{ folder_id: 'f_0000000a', before: [{ kind: 'code', code: '005930' }, { kind: 'code', code: '000660' }], after: [{ kind: 'code', code: '000660' }, { kind: 'code', code: '005930' }] }] }));
   });
 
   it('folder-drag onDragEnd → reorderFolders(orderedIds)', async () => {
@@ -164,7 +176,7 @@ describe('WatchlistDrawer drag wiring', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
       over: { id: 'f_0000000b', data: { current: { type: 'folder' } } },
     });
@@ -178,7 +190,7 @@ describe('WatchlistDrawer drag wiring', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     // f_0000000a 폴더를 f_0000000b 소속 행 위로 드롭 → over.folderId=f_0000000b로 정규화.
     // (DATA의 ENTRIES는 둘 다 f_0000000a이므로, over 이벤트의 folderId를 직접 지정한다.)
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
       over: { id: '999999', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
     });
@@ -191,13 +203,13 @@ describe('WatchlistDrawer drag wiring', () => {
     const hitTest = (clientX: number) => clientX < 800; // 드롭 지점 x=400 < 800 → 차트 위
     useEntryDragStore.getState().registerChartTarget(hitTest);
     try {
-      const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+      const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
       render(<WatchlistDrawer />, { wrapper: wrap(qc) });
       await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
       // 드롭 지점 = activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
       // id는 v3 복합(folderId:code); 차트-드롭 분기는 data.current.code를 쓴다.
-      h.onDragEnd!({
+      drop({
         active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
         over: null,
         activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
@@ -215,19 +227,19 @@ describe('WatchlistDrawer drag wiring', () => {
     const hitTest = (clientX: number) => clientX < 800; // 드롭 지점 x=900 → 차트 밖
     useEntryDragStore.getState().registerChartTarget(hitTest);
     try {
-      const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+      const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
       render(<WatchlistDrawer />, { wrapper: wrap(qc) });
       await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
       // 드롭 지점 = activator(900,300) + delta(0,0) = (900,300) → 술어 false → 재정렬 경로.
       // v3 복합 id로 over/active를 지정해야 parseEntrySortableId가 folderId/code를 푼다.
-      h.onDragEnd!({
+      drop({
         active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
         over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
         activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
         delta: { x: 0, y: 0 },
       });
-      await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith('f_0000000a', [{ kind: 'code', code: '000660' }, { kind: 'code', code: '005930' }]));
+      await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith({ changes: [{ folder_id: 'f_0000000a', before: [{ kind: 'code', code: '005930' }, { kind: 'code', code: '000660' }], after: [{ kind: 'code', code: '000660' }, { kind: 'code', code: '005930' }] }] }));
       expect(useLivePageStore.getState().activeCode).toBeNull();
     } finally {
       useEntryDragStore.getState().clearChartTarget(hitTest);
@@ -235,14 +247,14 @@ describe('WatchlistDrawer drag wiring', () => {
   });
 
   it('entry-drag in change-rate sort mode does not reorder', async () => {
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
       over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
       activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
@@ -256,12 +268,12 @@ describe('WatchlistDrawer drag wiring', () => {
 
   it('entry-drag still does not reorder when change-rate sort mode is restored from localStorage', async () => {
     window.localStorage.setItem('watchlist.sortMode.v1', JSON.stringify({ sortMode: 'change_pct_asc' }));
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000a:005930', data: { current: { type: 'entry', folderId: 'f_0000000a', code: '005930', name: '삼성전자' } } },
       over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
       activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
@@ -316,7 +328,7 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
 
     act(() => {
-      h.onDragEnd!({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+      drop({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
     });
     await waitFor(() =>
       expect(rowNames()).toEqual(['watchlist-row-000660', 'watchlist-row-005930']));
@@ -333,7 +345,7 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(screen.getByTestId('watchlist-drag-ghost')).toHaveTextContent('삼성전자');
 
     act(() => {
-      h.onDragEnd!({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+      drop({ ...DRAG_START, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
     });
     expect(screen.queryByTestId('watchlist-drag-ghost')).not.toBeInTheDocument();
   });
@@ -346,7 +358,7 @@ describe('WatchlistDrawer drag wiring', () => {
     const hitTest = (clientX: number) => clientX < 800; // x<800 = 차트 위
     useEntryDragStore.getState().registerChartTarget(hitTest);
     try {
-      vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+      vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
       render(<WatchlistDrawer />, { wrapper: wrap(qc) });
       await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -354,7 +366,7 @@ describe('WatchlistDrawer drag wiring', () => {
       // (1) 차트 위 드롭 — activator(900,300) + delta(-500,0) = (400,300) → 술어 true.
       act(() => { h.onDragStart!(DRAG_START); });
       act(() => {
-        h.onDragEnd!({
+        drop({
           ...DRAG_START, over: null,
           activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
           delta: { x: -500, y: 0 },
@@ -365,7 +377,7 @@ describe('WatchlistDrawer drag wiring', () => {
       // (2) 패널 안 재정렬 — 같은 좌표계에서 차트 밖(900,300) → 기본 애니메이션 유지.
       act(() => { h.onDragStart!(DRAG_START); });
       act(() => {
-        h.onDragEnd!({
+        drop({
           ...DRAG_START,
           over: { id: 'f_0000000a:000660', data: { current: { type: 'entry', folderId: 'f_0000000a' } } },
           activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
@@ -394,7 +406,7 @@ describe('WatchlistDrawer drag wiring', () => {
     h.onDragStart!({ active: { id, data: { current: { type: 'folder' } } } });
   });
   const endDrag = (active: unknown) => act(() => {
-    h.onDragEnd!({ active, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
+    drop({ active, over: null, activatorEvent: null, delta: { x: 0, y: 0 } });
   });
 
   it('puts the grabbed group name + count on the drag ghost, and clears it when the drag ends', async () => {
@@ -517,7 +529,7 @@ describe('WatchlistDrawer drag wiring', () => {
         { code: '051910', price: 560000, change_pct: -1.5, change_won: -2000 },
       ],
     });
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -525,14 +537,14 @@ describe('WatchlistDrawer drag wiring', () => {
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
 
-    h.onDragEnd!({
+    drop({
       active: { id: 'f_0000000b:035420', data: { current: { type: 'entry', folderId: 'f_0000000b', code: '035420', name: 'NAVER' } } },
       over: { id: 'f_0000000b:051910', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
       activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
       delta: { x: 0, y: 0 },
     });
 
-    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith('f_0000000b', [{ kind: 'code', code: '051910' }, { kind: 'code', code: '035420' }]));
+    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith({ changes: [{ folder_id: 'f_0000000b', before: [{ kind: 'code', code: '035420' }, { kind: 'code', code: '051910' }], after: [{ kind: 'code', code: '051910' }, { kind: 'code', code: '035420' }] }] }));
   });
   // --- 폴더 간 이동(v5) ---
   // 막는 방향: 패널에서 종목을 **다른 그룹으로 옮길 수 없던 것**. 그전엔 onDragEnd 가
@@ -546,25 +558,25 @@ describe('WatchlistDrawer drag wiring', () => {
     delta: { x: 0, y: 0 },
   });
 
-  it('entry-drag onto another group drop zone → addMember(to) + removeMember(from)', async () => {
+  it('entry drag onto another group sends one atomic transfer', async () => {
     const addSpy = vi.spyOn(watchlistApi, 'addMember').mockResolvedValue({
       code: '005930', name: '삼성전자', registered_at_kst_date: '20260101',
       last_success_date: null, folder_id: 'f_0000000b', order: 0,
     });
     const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    h.onDragEnd!(MOVE_EVENT({
+    drop(MOVE_EVENT({
       id: 'folder:f_0000000b',
       data: { current: { type: 'entry-target', folderId: 'f_0000000b' } },
     }));
 
-    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
-    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
-    expect(reorderSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith({ changes: expect.arrayContaining([expect.objectContaining({ folder_id: 'f_0000000a', after: [{ kind: 'code', code: '000660' }] }), expect.objectContaining({ folder_id: 'f_0000000b', after: expect.arrayContaining([{ kind: 'code', code: '005930' }]) })]) }));
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
   // 회귀: 다중 소속(ADR-0070)이라 대상 폴더의 행 위에 놓았을 때 **그 종목이 출발 폴더에도
@@ -584,19 +596,19 @@ describe('WatchlistDrawer drag wiring', () => {
       last_success_date: null, folder_id: 'f_0000000b', order: 1,
     });
     const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    h.onDragEnd!(MOVE_EVENT({
+    drop(MOVE_EVENT({
       id: 'f_0000000b:000660',
       data: { current: { type: 'entry', folderId: 'f_0000000b' } },
     }));
 
-    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
-    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
-    expect(reorderSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith({ changes: expect.arrayContaining([expect.objectContaining({ folder_id: 'f_0000000a', after: [{ kind: 'code', code: '000660' }] }), expect.objectContaining({ folder_id: 'f_0000000b', after: expect.arrayContaining([{ kind: 'code', code: '005930' }]) })]) }));
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
   it('미분류 행을 그룹으로 끌면 addMember 하나로 끝난다 (뺄 출처가 없다)', async () => {
@@ -613,14 +625,14 @@ describe('WatchlistDrawer drag wiring', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('카카오')).toBeInTheDocument());
 
-    h.onDragEnd!({
+    drop({
       active: { id: '__uncat__:035720', data: { current: { type: 'entry', folderId: null, code: '035720', name: '카카오' } } },
       over: { id: 'folder:f_0000000a', data: { current: { type: 'entry-target', folderId: 'f_0000000a' } } },
       activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
       delta: { x: 0, y: 0 },
     });
 
-    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000a', '035720', undefined));
+    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000a', '035720', 0));
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
@@ -632,7 +644,7 @@ describe('WatchlistDrawer drag wiring', () => {
       last_success_date: null, folder_id: 'f_0000000b', order: 0,
     });
     const removeSpy = vi.spyOn(watchlistApi, 'removeMember').mockResolvedValue();
-    const reorderSpy = vi.spyOn(watchlistApi, 'reorderItems').mockResolvedValue();
+    const reorderSpy = vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -640,13 +652,13 @@ describe('WatchlistDrawer drag wiring', () => {
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
 
-    h.onDragEnd!(MOVE_EVENT({
+    drop(MOVE_EVENT({
       id: 'folder:f_0000000b',
       data: { current: { type: 'entry-target', folderId: 'f_0000000b' } },
     }));
 
-    await waitFor(() => expect(addSpy).toHaveBeenCalledWith('f_0000000b', '005930', undefined));
-    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('f_0000000a', '005930'));
-    expect(reorderSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(reorderSpy).toHaveBeenCalledWith({ changes: expect.arrayContaining([expect.objectContaining({ folder_id: 'f_0000000a', after: [{ kind: 'code', code: '000660' }] }), expect.objectContaining({ folder_id: 'f_0000000b', after: expect.arrayContaining([{ kind: 'code', code: '005930' }]) })]) }));
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 });

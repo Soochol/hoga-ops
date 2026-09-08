@@ -203,3 +203,17 @@ export function catchupAll(): Promise<ManualCatchupAllResponse> {
     method: 'POST',
   });
 }
+
+export interface WatchlistFolderItemsChange {
+  folder_id: string;
+  before: WatchlistItemRef[];
+  after: WatchlistItemRef[];
+}
+export interface WatchlistItemsTransactionRequest {
+  changes: WatchlistFolderItemsChange[];
+}
+export function transactWatchlistItems(body: WatchlistItemsTransactionRequest): Promise<void> {
+  return apiAction('/api/watchlist/items/transaction', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+}

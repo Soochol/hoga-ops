@@ -1475,6 +1475,18 @@ class ItemsReorderRequest(BaseModel):
     ordered_items: list[WatchlistItemRef]
 
 
+class WatchlistFolderItemsChange(BaseModel):
+    """Compare-and-swap for one folder; memo text remains server-owned."""
+
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    before: list[WatchlistItemRef]
+    after: list[WatchlistItemRef]
+
+
+class WatchlistItemsTransactionRequest(BaseModel):
+    changes: list[WatchlistFolderItemsChange] = Field(min_length=1, max_length=256)
+
+
 class EntriesRemoveRequest(BaseModel):
     codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 

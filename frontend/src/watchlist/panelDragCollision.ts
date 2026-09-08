@@ -1,4 +1,4 @@
-import { closestCenter, type CollisionDetection } from '@dnd-kit/core';
+import { pointerWithin, closestCenter, type CollisionDetection } from '@dnd-kit/core';
 import { withChartDropSuppression } from '../state/chartDropCollision';
 
 /** 액티브 드래그와 같은 레인의 droppable만 closestCenter에 넘긴다 — 중첩
@@ -43,3 +43,33 @@ const lanes: CollisionDetection = (args) => {
 };
 
 export const typeAwareCollision = withChartDropSuppression(lanes, (type) => type === 'entry');
+
+
+/** Pointer must actually be over the panel. Rows win over containing groups;
+ * explicit headers win over sticky rows underneath them. */
+export const precisePanelCollision: CollisionDetection = (args) => {
+  const p = args.pointerCoordinates;
+  const panel = document.querySelector('[data-testid="watchlist-scroll"]')?.getBoundingClientRect();
+  if (p && panel && (p.x < panel.left || p.x > panel.right || p.y < panel.top || p.y > panel.bottom)) return [];
+  const type = args.active.data.current?.type;
+  if (type === 'folder' || !p) return typeAwareCollision(args);
+  const candidates = args.droppableContainers.filter((c) => {
+    const t = c.data.current?.type;
+    if (type === 'memo') return ROW_TYPES.has(String(t)) && c.data.current?.folderId === args.active.data.current?.folderId;
+    return ROW_TYPES.has(String(t)) || t === ENTRY_TARGET;
+  });
+  // dnd-kit offsets cached rects by scroll distance, but sticky headers stay
+  // pinned. Read their actual position so a header drop cannot hit a row below.
+  const droppableRects = new Map(args.droppableRects);
+  for (const candidate of candidates) {
+    if (candidate.data.current?.header && candidate.node.current) {
+      droppableRects.set(candidate.id, candidate.node.current.getBoundingClientRect());
+    }
+  }
+  const hits = pointerWithin({ ...args, droppableRects, droppableContainers: candidates });
+  const info = (id: typeof args.active.id) => candidates.find((c) => c.id === id)?.data.current;
+  const headers = hits.filter((h) => info(h.id)?.header);
+  if (headers.length) return headers.slice(0, 1);
+  const rows = hits.filter((h) => ROW_TYPES.has(String(info(h.id)?.type)));
+  return (rows.length ? rows : hits).slice(0, 1);
+};

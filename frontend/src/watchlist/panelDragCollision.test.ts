@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Active, DroppableContainer } from '@dnd-kit/core';
-import { typeAwareCollision } from './panelDragCollision';
+import { precisePanelCollision, typeAwareCollision } from './panelDragCollision';
 import { useEntryDragStore } from '../state/entryDrag';
 
 /**
@@ -21,7 +21,7 @@ const rectAt = (top: number, height: number) =>
 function container(
   id: string,
   type: string,
-  data: { folderId?: string | null } = {},
+  data: { folderId?: string | null; header?: boolean } = {},
   rect = RECT,
 ): DroppableContainer {
   return {
@@ -41,10 +41,11 @@ function callCollision(opts: {
   activeData?: { folderId?: string | null };
   containers?: DroppableContainer[];
   collisionRect?: typeof RECT;
+  precise?: boolean;
 }) {
   const droppableContainers =
     opts.containers ?? [container('f_a:000660', opts.overType ?? 'entry')];
-  return typeAwareCollision({
+  return (opts.precise ? precisePanelCollision : typeAwareCollision)({
     active: {
       id: 'f_a:005930',
       data: { current: { type: opts.activeType, ...(opts.activeData ?? {}) } },
@@ -89,6 +90,20 @@ describe('typeAwareCollision — 차트 위 억제', () => {
   it('폴더 레인은 행 레인과 섞이지 않는다 (기존 계약 유지)', () => {
     const hits = callCollision({ activeType: 'folder', pointer: { x: 900, y: 300 }, overType: 'entry' });
     expect(hits).toEqual([]);
+  });
+});
+
+describe('precisePanelCollision — sticky header after scrolling', () => {
+  it('uses the visible header instead of a row underneath its stale cached rect', () => {
+    const header = container('header:f_a', 'entry-target', { folderId: 'f_a', header: true }, rectAt(-180, 20));
+    const node = document.createElement('div');
+    node.getBoundingClientRect = () => new DOMRect(0, 0, 100, 20);
+    header.node.current = node;
+    const hits = callCollision({
+      precise: true, activeType: 'entry', pointer: { x: 50, y: 10 },
+      containers: [header, container('f_a:000660', 'entry', { folderId: 'f_a' }, RECT)],
+    });
+    expect(hits.map((h) => h.id)).toEqual(['header:f_a']);
   });
 });
 

@@ -24,6 +24,7 @@ from hoga.api.models import (
     WatchlistDocument,
     WatchlistEntry,
     WatchlistFolder,
+    WatchlistFolderItemsChange,
     WatchlistMemoItem,
 )
 from hoga.util.atomic_write import atomic_write_json
@@ -645,4 +646,41 @@ async def remove_memo(data_dir: Path, *, memo_id: str) -> None:
             new_folders.append(f.model_copy(update={"items": kept}))
         if not found:
             raise MemoNotFoundError(memo_id)
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
+
+
+async def transact_items(data_dir: Path, *, changes: list[WatchlistFolderItemsChange]) -> None:
+    """Move/reorder memberships atomically; inverse changes provide guarded undo.
+
+    Every touched folder must still match `before`. Code membership duplicates may
+    merge, but no code may disappear or be invented. Memos stay in their folder and
+    retain the current server text. Unrelated folders/entry metadata are untouched.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        folders = {f.id: f for f in doc.folders}
+        if len({c.folder_id for c in changes}) != len(changes):
+            raise WatchlistSetMismatchError("duplicate folders")
+        old_keys: set[tuple[str, str]] = set()
+        new_keys: set[tuple[str, str]] = set()
+        replacements: dict[str, WatchlistFolder] = {}
+        known = {_item_key(item): item for f in doc.folders for item in f.items}
+        for change in changes:
+            folder = folders.get(change.folder_id)
+            if folder is None:
+                raise FolderNotFoundError(change.folder_id)
+            before = [(i.kind, i.code if i.kind == "code" else i.id) for i in change.before]
+            after = [(i.kind, i.code if i.kind == "code" else i.id) for i in change.after]
+            if before != [_item_key(item) for item in folder.items]:
+                raise WatchlistSetMismatchError("folder changed since preview")
+            if len(after) != len(set(after)) or any(k not in known for k in after):
+                raise WatchlistSetMismatchError("duplicate or unknown items")
+            if {k for k in before if k[0] == "memo"} != {k for k in after if k[0] == "memo"}:
+                raise WatchlistSetMismatchError("memos must stay in their folder")
+            old_keys.update(before)
+            new_keys.update(after)
+            replacements[folder.id] = folder.model_copy(update={"items": [known[k] for k in after]})
+        if old_keys != new_keys:
+            raise WatchlistSetMismatchError("transaction must preserve all codes")
+        new_folders: list[WatchlistFolder] = [replacements.get(f.id, f) for f in doc.folders]
         save_document(data_dir, doc.model_copy(update={"folders": new_folders}))

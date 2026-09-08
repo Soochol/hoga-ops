@@ -1,240 +1,235 @@
-// 관심종목 패널 실 포인터 드래그 e2e — 행(그룹 내 재정렬) + 그룹(폴더 재정렬).
-// 단위/통합(jsdom)이 의도적으로 모킹으로 비껴가는 실제 dnd-kit PointerSensor(5px
-// activation) + closestCenter 층을 시스템 Chrome에서 구동한다. GET /api/watchlist mock은
-// STATEFUL — PUT이 갱신한 순서를 echo해 invalidate-refetch가 스냅백하지 않는다.
-
-import { test, expect } from '@playwright/test';
+/// <reference types="vite/client" />
+import { test, expect, type Page, type Locator } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
+import type { WatchlistFolderItemsChange, WatchlistItemRef } from '../../src/api/watchlist';
 
-test.use({ channel: 'chrome' });
+const A = 'f_0000000a', B = 'f_0000000b';
+const names: Record<string, string> = { '005930': '삼성전자', '000660': 'SK하이닉스', '035420': 'NAVER', '051910': 'LG화학' };
+const code = (code: string): WatchlistItemRef => ({ kind: 'code', code });
+const group = (page: Page, id: string) => page.getByTestId(`watchlist-group-${id}`);
+const row = (page: Page, id: string, symbol: string) => group(page, id).getByTestId(`watchlist-row-${symbol}`);
+const handle = (page: Page, id: string, symbol: string) => row(page, id, symbol).getByRole('button', { name: `${names[symbol] ?? symbol} 이동`, exact: true });
 
-// 호스트를 박지 않는다 — 'http://localhost:8080' 은 API 주소가 아니라
-// config.ts 의 DEFAULT_CONFIG **폴백**이었다. /config.json 이 정상 제공되면
-// 앱은 진짜 백엔드로 가고 이 모킹은 한 건도 안 걸린다(2026-07-30 실측).
-
-interface Entry {
-  code: string; name: string; registered_at_kst_date: string;
-  last_success_date: string | null; folder_id: string | null; order: number;
-}
-const NAMES: Record<string, string> = { '005930': '삼성전자', '000660': 'SK하이닉스' };
-
-const json = (route: import('@playwright/test').Route, body: unknown) =>
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-
-async function openPanel(page: import('@playwright/test').Page) {
+async function setup(page: Page, initial: Record<string, WatchlistItemRef[]> = {
+  [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('051910')],
+}) {
+  await installLiveMocks(page);
+  let folders = [A, B];
+  let items = structuredClone(initial);
+  const requests: WatchlistFolderItemsChange[][] = [];
+  let fail = false;
+  const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  await page.route(apiPrefix('live/quotes'), (r) => r.fulfill(json({ phase: 'open', quotes: [] })));
+  await page.route(apiExact('watchlist'), (r) => r.fulfill(json({
+    folders: folders.map((id, order) => ({ id, order, name: id === A ? '스윙' : '반도체' })),
+    entries: Object.entries(items).flatMap(([folder_id, refs]) => refs.flatMap((i, order) => i.kind === 'code' ? [{
+      code: i.code, name: names[i.code] ?? i.code, folder_id, order,
+      registered_at_kst_date: '20260908', last_success_date: null,
+    }] : [])),
+    memos: Object.entries(items).flatMap(([folder_id, refs]) => refs.flatMap((i, order) => i.kind === 'memo' ? [{
+      id: i.id, text: '관찰 메모', folder_id, order,
+    }] : [])), next_run_at_ms: 0,
+  })));
+  await page.route(apiExact('watchlist/items/transaction'), async (r) => {
+    const changes = r.request().postDataJSON().changes as WatchlistFolderItemsChange[];
+    requests.push(changes);
+    if (fail || changes.some((c) => JSON.stringify(items[c.folder_id]) !== JSON.stringify(c.before))) {
+      return r.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: { message: '목록이 변경되었습니다. 다시 시도하세요.' } }) });
+    }
+    items = { ...items, ...Object.fromEntries(changes.map((c) => [c.folder_id, c.after])) };
+    return r.fulfill({ status: 204, body: '' });
+  });
+  for (const id of [A, B]) await page.route(apiExact(`watchlist/folders/${id}/items/order`), async (r) => {
+    items[id] = r.request().postDataJSON().ordered_items;
+    return r.fulfill({ status: 204, body: '' });
+  });
+  await page.route(apiExact('watchlist/folders/order'), async (r) => {
+    folders = r.request().postDataJSON().ordered_ids;
+    return r.fulfill({ status: 204, body: '' });
+  });
   await page.goto('/live');
-  const editMenuBtn = page.getByRole('button', { name: '관심종목 편집' });
-  if (!(await editMenuBtn.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
-  }
-  await expect(editMenuBtn).toBeVisible();
+  if (!(await page.getByRole('button', { name: '관심종목 편집' }).isVisible())) await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
+  await expect(group(page, A)).toBeVisible();
+  return { requests, items: () => items, folders: () => folders, fail: () => { fail = true; },
+    change: (id: string, refs: WatchlistItemRef[]) => { items[id] = refs; } };
 }
+async function point(locator: Locator, fraction = 0.5) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Drag surface is missing');
+  return { x: box.x + box.width / 2, y: box.y + box.height * fraction };
+}
+async function start(page: Page, locator: Locator) {
+  await expect(page.getByTestId('watchlist-drag-ghost')).toHaveCount(0);
+  await locator.hover();
+  const p = await point(locator);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.move(p.x + 7, p.y, { steps: 3 });
+  await expect(page.getByTestId('watchlist-drag-ghost')).toBeVisible();
+}
+async function over(page: Page, locator: Locator, fraction = 0.5) {
+  const p = await point(locator, fraction);
+  await page.mouse.move(p.x, p.y, { steps: 12 });
+}
+async function move(page: Page, source: Locator, target: Locator, fraction = 0.5) {
+  await start(page, source);
+  await over(page, target, fraction);
+  await page.mouse.up();
+  await expect(page.getByTestId('watchlist-drag-ghost')).toHaveCount(0);
+}
+const codes = (refs: WatchlistItemRef[]) => refs.map((i) => i.kind === 'code' ? i.code : i.id);
 
-test.describe('Watchlist panel drag', () => {
-  test('그룹 내 행 드래그가 reorder를 PUT하고 낙관적으로 재배치된다', async ({ page }) => {
-    await installLiveMocks(page);
-    // 스윙(f_a)에 005930, 000660 — 그룹 내 2행.
-    let order = ['005930', '000660'];
-    // v4: 패널 dnd 는 `ordered_items`(코드+메모 한 리스트)를 보낸다 — 메모를 종목
-    // 사이로 끌 수 있어야 하기 때문이다. 편집 모달은 여전히 `ordered_codes`(메모는
-    // 제자리)를 쓰고, 그쪽은 watchlist-edit-reorder.spec.ts 가 잰다.
-    type ItemRef = { kind: 'code'; code: string } | { kind: 'memo'; id: string };
-    let lastPut: { ordered_items: ItemRef[] } | null = null;
-    const entries = (): Entry[] => [
-      ...order.map((code, i) => ({
-        code, name: NAMES[code], registered_at_kst_date: '20260527',
-        last_success_date: null, folder_id: 'f_a', order: i,
-      })),
-    ];
-    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(apiExact('watchlist/folders/f_a/items/order'), async (route) => {
-      lastPut = JSON.parse(route.request().postData() || '{}');
-      order = lastPut!.ordered_items
-        .filter((i): i is { kind: 'code'; code: string } => i.kind === 'code')
-        .map((i) => i.code);
-      return route.fulfill({ status: 204, body: '' });
-    });
-    await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries: entries(), memos: [], next_run_at_ms: 0 }));
+test('같은 그룹 재정렬과 되돌리기', async ({ page }) => {
+  const state = await setup(page);
+  await move(page, handle(page, A, '005930'), row(page, A, '000660'), 0.8);
+  await expect.poll(() => codes(state.items()[A])).toEqual(['000660', '005930']);
+  await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect.poll(() => codes(state.items()[A])).toEqual(['005930', '000660']);
+});
 
-    await openPanel(page);
-    const codesInDom = () =>
-      page.locator('[data-testid^="watchlist-row-"]').evaluateAll((els) =>
-        els.map((e) => e.getAttribute('data-testid')!.replace('watchlist-row-', '')));
-    await expect.poll(codesInDom).toEqual(['005930', '000660']);
+test('다른 그룹의 행 사이에 정확히 삽입하고 목적지를 안내한다', async ({ page }) => {
+  const state = await setup(page);
+  await start(page, handle(page, A, '005930'));
+  await over(page, row(page, B, '035420'), 0.8);
+  await expect(page.getByRole('status').filter({ hasText: '반도체 · NAVER 아래로 이동' })).toBeVisible();
+  await page.screenshot({ path: '/tmp/hoga-watchlist-drag-destination.png' });
+  await page.mouse.up();
+  await expect.poll(() => codes(state.items()[B])).toEqual(['035420', '005930', '051910']);
+  expect(codes(state.items()[A])).toEqual(['000660']);
+  expect(state.requests).toHaveLength(1);
+});
 
-    // 첫 행(005930)을 둘째 행(000660) 위로 — 행 전체가 드래그 표면(핸들 없음).
-    const from = await page.getByTestId('watchlist-row-005930').boundingBox();
-    const to = await page.getByTestId('watchlist-row-000660').boundingBox();
-    if (!from || !to) throw new Error('row has no bounding box');
-    const fx = from.x + from.width / 2;
-    const fy = from.y + from.height / 2;
-    const ty = to.y + to.height / 2;
-    await page.mouse.move(fx, fy);
-    await page.mouse.down();
-    await page.mouse.move(fx, fy + 8, { steps: 4 });   // 5px activation 통과
-    await page.mouse.move(fx, ty, { steps: 15 });
-    await page.mouse.move(fx, ty + 2, { steps: 2 });
-    await page.mouse.up();
+test('그룹 헤더는 맨 아래, 빈 그룹에도 이동 가능', async ({ page }) => {
+  const state = await setup(page, { [A]: [code('005930'), code('000660')], [B]: [] });
+  await move(page, handle(page, A, '005930'), group(page, B).getByTestId('watchlist-group-header'));
+  await expect.poll(() => codes(state.items()[B])).toEqual(['005930']);
+  await move(page, handle(page, A, '000660'), group(page, B).getByTestId('watchlist-group-header'));
+  await expect.poll(() => codes(state.items()[B])).toEqual(['005930', '000660']);
+});
 
-    await expect.poll(() => lastPut?.ordered_items ?? null).toEqual([
-      { kind: 'code', code: '000660' },
-      { kind: 'code', code: '005930' },
-    ]);
-    await expect.poll(codesInDom).toEqual(['000660', '005930']);
-  });
+test('메모 앞뒤 위치를 선택하고 메모 내용을 유지한다', async ({ page }) => {
+  const state = await setup(page, { [A]: [code('005930')], [B]: [code('035420'), { kind: 'memo', id: 'm_00000001' }, code('051910')] });
+  await start(page, handle(page, A, '005930'));
+  await over(page, page.getByTestId('watchlist-memo-m_00000001'), 0.2);
+  await expect(page.getByRole('status').filter({ hasText: '메모 위로 이동' })).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => codes(state.items()[B])).toEqual(['035420', '005930', 'm_00000001', '051910']);
+  await expect(page.getByTestId('watchlist-memo-m_00000001')).toContainText('관찰 메모');
+});
 
-  test('행을 드래그 없이 클릭하면 차트가 열리고 reorder를 PUT하지 않는다', async ({ page }) => {
-    // 행 전체가 드래그 표면(listeners on <li>)이라도, distance:5 임계 미만의 단순 클릭은
-    // 드래그로 변질되지 않고 onPick(차트 이동)으로 흘러야 한다 — 헤드라인 불변식.
-    await installLiveMocks(page);
-    let reorderCalled = false;
-    const entries: Entry[] = [
-      { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
-      { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 1 },
-    ];
-    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    // ⚠ 부정 단언이므로 **감시 대상이 정확해야** 한다 — 패널 dnd 는 v4 부터
-    // `items/order` 를 부른다. 옛 `watchlist/reorder` 를 감시하면 아무도 안 부르는
-    // 라우트를 지켜보는 셈이라 이 테스트가 조용히 위양성으로 통과한다.
-    await page.route(apiExact('watchlist/folders/f_a/items/order'), async (route) => {
-      reorderCalled = true;
-      return route.fulfill({ status: 204, body: '' });
-    });
-    await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: [{ id: 'f_a', name: '스윙', order: 0 }], entries, memos: [], next_run_at_ms: 0 }));
+test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 소속을 복원한다', async ({ page }) => {
+  const initial = { [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('005930')] };
+  const state = await setup(page, initial);
+  await page.getByRole('button', { name: '여러 종목 선택' }).click();
+  await row(page, A, '005930').getByRole('checkbox').check();
+  await row(page, A, '000660').getByRole('checkbox').check();
+  await start(page, handle(page, A, '005930'));
+  await expect(page.getByTestId('watchlist-drag-ghost')).toContainText('2종목');
+  await over(page, row(page, B, '035420'), 0.8);
+  await expect(page.getByRole('status').filter({ hasText: '기존 1종목과 합침' })).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => codes(state.items()[B])).toEqual(['035420', '005930', '000660']);
+  expect(state.items()[A]).toEqual([]);
+  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect.poll(state.items).toEqual(initial);
+  await expect(page.getByTestId('watchlist-drag-ghost')).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/hoga-watchlist-drag-selection.png' });
+});
 
-    await openPanel(page);
-    const row = page.getByTestId('watchlist-row-000660');
-    await expect(row).toBeVisible();
-    await row.click();                                   // 이동 없는 단순 클릭
+test('접힌 그룹에 머무르면 펼쳐지고 취소하면 원래 접힘 상태로 돌아간다', async ({ page }) => {
+  const state = await setup(page);
+  await page.getByRole('button', { name: '반도체 접기' }).click();
+  await start(page, handle(page, A, '005930'));
+  await over(page, group(page, B).getByTestId('watchlist-group-header'));
+  await expect(row(page, B, '035420')).toBeVisible({ timeout: 2500 });
+  await page.keyboard.press('Escape');
+  await expect(row(page, B, '035420')).toBeHidden();
+  expect(state.requests).toHaveLength(0);
+});
 
-    // 클릭 행이 활성(aria-current)으로 표시되고, reorder PUT은 발사되지 않는다.
-    await expect(row).toHaveAttribute('aria-current', 'true');
-    // 드래그로 오인됐다면 5px 임계를 넘지 않았으니 reorder는 어차피 안 떴겠지만,
-    // 클릭이 드래그 시작으로 먹혀 onPick이 죽는 회귀를 함께 잡는다.
-    await page.waitForTimeout(200);
-    expect(reorderCalled).toBe(false);
-  });
+test('정렬 중에도 그룹 간 이동하고 같은 그룹 수동 재정렬은 제한한다', async ({ page }) => {
+  const state = await setup(page);
+  await page.getByRole('button', { name: '스윙 정렬', exact: true }).click();
+  await move(page, handle(page, A, '005930'), row(page, A, '000660'), 0.8);
+  expect(state.requests).toHaveLength(0);
+  await page.getByRole('button', { name: '반도체 정렬', exact: true }).click();
+  await start(page, handle(page, A, '005930'));
+  await over(page, row(page, B, '035420'), 0.8);
+  await expect(page.getByRole('status').filter({ hasText: '정렬 기준에 따라 배치' })).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => codes(state.items()[B])).toContain('005930');
+});
 
-  test('빈 폴더 그룹으로 행을 끌면 그 폴더로 이동한다 (추가 후 출처 제거)', async ({ page }) => {
-    // 사용자가 보고한 시나리오 그 자체: **새로 만든(=비어 있는) 그룹**으로 종목을 끌기.
-    // 행이 하나도 없으니 "행 위에 놓는다"는 겨냥이 불가능하고, 그룹 블록 droppable
-    // (GroupDropZone)만이 유일한 히트 영역이다 — 실제 closestCenter 를 통과해야
-    // 의미가 있어 jsdom 이 아니라 여기서 잰다.
-    await installLiveMocks(page);
-    let ownerByCode: Record<string, string> = { '005930': 'f_a', '000660': 'f_a' };
-    const posted: string[] = [];
-    const deleted: string[] = [];
-    const entries = (): Entry[] => Object.entries(ownerByCode).map(([code, folderId], i) => ({
-      code, name: NAMES[code], registered_at_kst_date: '20260527',
-      last_success_date: null, folder_id: folderId, order: i,
-    }));
-    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(apiExact('watchlist/folders/f_b/members'), async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      posted.push(String(body.code));
-      ownerByCode = { ...ownerByCode, [String(body.code)]: 'f_b' };
-      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
-        code: body.code, name: NAMES[String(body.code)], registered_at_kst_date: '20260527',
-        last_success_date: null, folder_id: 'f_b', order: 0,
-      }) });
-    });
-    await page.route(apiExact('watchlist/folders/f_a/members/005930'), async (route) => {
-      deleted.push('f_a:005930');
-      return route.fulfill({ status: 204, body: '' });
-    });
-    await page.route(apiExact('watchlist'), (r) => json(r, {
-      folders: [{ id: 'f_a', name: '스윙', order: 0 }, { id: 'f_b', name: '새 그룹', order: 1 }],
-      entries: entries(), memos: [], next_run_at_ms: 0,
-    }));
+test('패널 바깥 드롭은 저장하지 않고 클릭은 차트를 연다', async ({ page }) => {
+  const state = await setup(page);
+  await start(page, handle(page, A, '005930'));
+  await page.mouse.move(20, 20, { steps: 10 });
+  await page.mouse.up();
+  expect(state.requests).toHaveLength(0);
+  await expect(page.getByTestId('watchlist-drag-ghost')).toHaveCount(0);
+  await row(page, A, '000660').click();
+  await expect(row(page, A, '000660')).toHaveAttribute('aria-current', 'true');
+  expect(state.requests).toHaveLength(0);
+});
 
-    await openPanel(page);
-    await expect(page.getByTestId('watchlist-row-005930')).toBeVisible();
-    // 빈 그룹이라 자기 헤더 높이만큼의 블록이다 — 그 중심을 겨냥한다.
-    const zone = await page.getByTestId('watchlist-dropzone-f_b').boundingBox();
-    const from = await page.getByTestId('watchlist-row-005930').boundingBox();
-    if (!from || !zone) throw new Error('no bounding box');
-    const fx = from.x + from.width / 2;
-    const fy = from.y + from.height / 2;
-    const ty = zone.y + zone.height / 2;
-    await page.mouse.move(fx, fy);
-    await page.mouse.down();
-    await page.mouse.move(fx, fy + 8, { steps: 4 });   // 5px activation 통과
-    await page.mouse.move(fx, ty, { steps: 15 });
-    await page.mouse.up();
+test('저장 실패를 안내하며 원래 소속을 유지한다', async ({ page }) => {
+  const state = await setup(page);
+  state.fail();
+  await move(page, handle(page, A, '005930'), row(page, B, '035420'));
+  await expect(page.getByRole('status').filter({ hasText: '이동을 완료하지 못했습니다' })).toBeVisible();
+  expect(codes(state.items()[A])).toContain('005930');
+  expect(codes(state.items()[B])).not.toContain('005930');
+});
 
-    // 이동 = 대상 폴더에 추가 후 출처 폴더에서 제거(v3 다중 소속, ADR-0070).
-    await expect.poll(() => posted).toEqual(['005930']);
-    await expect.poll(() => deleted).toEqual(['f_a:005930']);
-    // 화면에서도 새 그룹 아래로 옮겨 붙는다 — 그룹 블록이 그 행을 품는지로 잰다.
-    await expect(page.getByTestId('watchlist-group-f_b')
-      .getByTestId('watchlist-row-005930')).toBeVisible();
-  });
+test('이동 이후 다른 변경이 있으면 되돌리기가 덮어쓰지 않는다', async ({ page }) => {
+  const state = await setup(page);
+  await move(page, handle(page, A, '005930'), row(page, B, '035420'), 0.8);
+  await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
+  const changed = [code('051910'), code('005930'), code('035420')];
+  state.change(B, changed);
+  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '되돌리기를 완료하지 못했습니다' })).toBeVisible();
+  expect(state.items()[B]).toEqual(changed);
+});
 
-  test('그룹 헤더 드래그가 전 그룹을 접고, folders/order를 PUT하고 그룹을 재배치한다', async ({ page }) => {
-    await installLiveMocks(page);
-    let folderOrder = ['f_a', 'f_b'];
-    const FNAMES: Record<string, string> = { f_a: '스윙', f_b: '장기' };
-    let lastPut: { ordered_ids: string[] } | null = null;
-    const folders = () => folderOrder.map((id, i) => ({ id, name: FNAMES[id], order: i }));
-    const entries: Entry[] = [
-      { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
-      { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_b', order: 0 },
-    ];
-    await page.route(apiPrefix('live/quotes'), (r) => json(r, { phase: 'open', quotes: [] }));
-    await page.route(apiExact('watchlist/folders/order'), async (route) => {
-      lastPut = JSON.parse(route.request().postData() || '{}');
-      folderOrder = lastPut!.ordered_ids;
-      return route.fulfill({ status: 204, body: '' });
-    });
-    await page.route(apiExact('watchlist'), (r) =>
-      json(r, { folders: folders(), entries, memos: [], next_run_at_ms: 0 }));
+test('그룹 핸들로만 순서를 옮기고 드롭 후 목록이 돌아온다', async ({ page }) => {
+  const state = await setup(page);
+  await start(page, page.getByRole('button', { name: '스윙 그룹 이동', exact: true }));
+  await expect(row(page, A, '005930')).toBeHidden();
+  await over(page, group(page, B));
+  await page.mouse.up();
+  await expect.poll(state.folders).toEqual([B, A]);
+  await expect(row(page, A, '005930')).toBeVisible();
+});
 
-    await openPanel(page);
-    // **접두사 충돌 주의.** `watchlist-group-` 로 시작하는 testid 는 그룹 컨테이너 말고도
-    // `watchlist-group-header` · `-picker` · `-add-popover` 가 있어서, 그대로 세면
-    // ['f_a','header','f_b','header'] 가 나온다(실측). 폴더 id 만 남긴다.
-    const NON_GROUP = new Set(['header', 'picker', 'add-popover']);
-    const groupsInDom = () =>
-      page.locator('[data-testid^="watchlist-group-"]').evaluateAll((els) =>
-        els.map((e) => e.getAttribute('data-testid')!.replace('watchlist-group-', '')))
-        .then((ids) => ids.filter((id) => !NON_GROUP.has(id)));
-    await expect.poll(groupsInDom).toEqual(['f_a', 'f_b']);
+test('가장자리에서 자동 스크롤하며 멀어지면 멈춘다', async ({ page }) => {
+  await setup(page, { [A]: [code('005930'), ...Array.from({ length: 50 }, (_, i) => code(String(100000 + i)))], [B]: [] });
+  const panel = page.getByTestId('watchlist-scroll');
+  await start(page, handle(page, A, '005930'));
+  const rect = await panel.boundingBox();
+  if (!rect) throw new Error('Panel missing');
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height - 20, { steps: 12 });
+  await expect(page.getByRole('status').filter({ hasText: '아래로 스크롤' })).toBeVisible();
+  await expect.poll(() => panel.evaluate((e) => e.scrollTop)).toBeGreaterThan(60);
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await expect(page.getByRole('status').filter({ hasText: '아래로 스크롤' })).toBeHidden();
+  const stopped = await panel.evaluate((e) => e.scrollTop);
+  await page.waitForTimeout(150); // RAF settling guard: no movement away from either edge.
+  expect(await panel.evaluate((e) => e.scrollTop)).toBe(stopped);
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + 15);
+  await expect(page.getByRole('status').filter({ hasText: '위로 스크롤' })).toBeVisible();
+  await expect.poll(() => panel.evaluate((e) => e.scrollTop)).toBeLessThan(stopped);
+  await page.keyboard.press('Escape');
+});
 
-    // 스윙(f_a) 그룹을 장기(f_b) 그룹 위로 드래그.
-    // **별도 ⠿ 핸들 요소가 없다** — dnd-kit 리스너가 그룹 **헤더 전체**에 붙어 있어
-    // (`watchlist-group-header`, `setActivatorNodeRef` + `{...listeners}`) 헤더를 5px 이상
-    // 끌면 그룹 드래그가 시작된다. `group-drag-handle` 은 앱에 존재한 적 없는 testid 다.
-    const handle = await page.getByTestId('watchlist-group-f_a')
-      .getByTestId('watchlist-group-header').boundingBox();
-    if (!handle) throw new Error('handle has no bounding box');
-    const fx = handle.x + handle.width / 2;
-    const fy = handle.y + handle.height / 2;
-    await page.mouse.move(fx, fy);
-    await page.mouse.down();
-    await page.mouse.move(fx, fy + 8, { steps: 4 });   // 5px 임계 넘김 = 드래그 활성화
-
-    // 드래그가 붙은 **뒤에** 재는 것이 중요하다. 활성화되면 전 그룹이 헤더만 남게
-    // 접히면서 대상 그룹의 상자가 그 자리에서 줄어든다 — 시작 전 좌표로 겨냥하면
-    // 엉뚱한 곳을 노린다(블록이 클수록 더 크게 어긋난다).
-    await expect(page.getByTestId('watchlist-row-005930')).toBeHidden();
-    await expect(page.getByTestId('watchlist-row-000660')).toBeHidden();
-    // 손에는 그룹명 + 개수 칩이 들려 있다. 빈 오버레이 카드가 아니다.
-    await expect(page.getByTestId('watchlist-drag-ghost')).toContainText('스윙');
-
-    const target = await page.getByTestId('watchlist-group-f_b').boundingBox();
-    if (!target) throw new Error('target has no bounding box');
-    const ty = target.y + target.height / 2;
-    await page.mouse.move(fx, ty, { steps: 15 });
-    await page.mouse.move(fx, ty + 2, { steps: 2 });
-    await page.mouse.up();
-
-    // 드롭이 끝나면 행이 돌아온다 — 접힘은 드래그 동안의 렌더 오버라이드일 뿐이다.
-    await expect(page.getByTestId('watchlist-row-005930')).toBeVisible();
-
-    await expect.poll(() => lastPut?.ordered_ids ?? null).toEqual(['f_b', 'f_a']);
-    await expect.poll(groupsInDom).toEqual(['f_b', 'f_a']);
-  });
+test('메모와 종목이 섞인 그룹에서 양쪽 드래그가 유지된다', async ({ page }) => {
+  const state = await setup(page, { [A]: [code('005930'), { kind: 'memo', id: 'm_00000001' }, code('000660')], [B]: [] });
+  const memo = page.getByTestId('watchlist-memo-m_00000001');
+  await move(page, handle(page, A, '000660'), memo, 0.2);
+  await expect.poll(() => codes(state.items()[A])).toEqual(['005930', '000660', 'm_00000001']);
+  await move(page, memo, row(page, A, '005930'), 0.2);
+  await expect.poll(() => codes(state.items()[A])).toEqual(['m_00000001', '005930', '000660']);
+  await expect(memo).toContainText('관찰 메모');
 });

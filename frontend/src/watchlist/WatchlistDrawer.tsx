@@ -14,7 +14,7 @@ import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
   useReorderItems, useAddMemo, useUpdateMemo, useRemoveMemo,
-  useMoveMember, useAddMember,
+  useRemoveMember, useAddMember,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
@@ -40,7 +40,10 @@ import {
   type DragStartEvent, type DragMoveEvent, type DragEndEvent,
   type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
-import { typeAwareCollision } from './panelDragCollision';
+import { precisePanelCollision } from './panelDragCollision';
+import { DragPanelAssist } from './DragPanelAssist';
+import { folderItems, planTransfer, type TransferSource } from './transferItems';
+import { useWatchlistTransfer } from './useWatchlistTransfer';
 import { RailDragOverlay } from '../rightrail/RailDragOverlay';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -208,7 +211,12 @@ function GroupHeader(props: {
    *  **안정 참조여야 한다**(드로어의 useCallback) — 이 헤더는 리스트마다 렌더된다. */
   onDuplicateSymbol?: (folderId: string, code: string) => void;
   dragHandle?: GroupDragHandle;
+  busy?: boolean;
 }) {
+  const { setNodeRef: setHeaderDropRef } = useDroppable({
+    id: `header:${props.folderId ?? 'uncat'}`, disabled: !props.folderId,
+    data: { type: 'entry-target', folderId: props.folderId, header: true },
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   // "종목 추가" 팝오버 — 메뉴와 별개 레이어라 메뉴 언마운트에 딸려 사라지지 않는다(히트맵과 동일).
   const [addOpen, setAddOpen] = useState(false);
@@ -233,18 +241,18 @@ function GroupHeader(props: {
     // 헤더는 자기 그룹 범위에서만 고정된다. 메뉴가 열리면 z를 올려 다음 sticky
     // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
     //
-    // 별도 핸들 아이콘 없이 헤더 전체가 드래그 활성 영역(dragHandle 있을 때). dnd-kit
-    // PointerSensor(distance 5)가 클릭과 드래그를 구분하므로 chevron/정렬/⋯/라벨 클릭은
-    // 그대로 동작하고, 헤더를 5px 이상 끌면 그룹 드래그가 시작된다. attributes(role=button/
-    // tabindex)는 헤더 안 버튼들과 중첩 a11y 충돌을 피해 spread 하지 않는다(포인터 전용).
+    // 그룹 이동은 전용 핸들에만 연결해 접기·정렬·메뉴 클릭과 분리한다.
     <div
-      ref={props.dragHandle?.setActivatorNodeRef}
-      {...(props.dragHandle?.listeners ?? {})}
+      ref={setHeaderDropRef}
       data-testid="watchlist-group-header"
       data-draggable={props.dragHandle ? '' : undefined}
       className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover ${
-        props.dragHandle ? 'cursor-grab select-none touch-none' : ''
+        props.dragHandle ? 'select-none' : ''
       }`}>
+      {props.dragHandle && <button type="button" aria-label={`${props.label} 그룹 이동`}
+        ref={props.dragHandle?.setActivatorNodeRef} {...(props.dragHandle?.listeners ?? {})} disabled={props.busy}
+        onClick={(e) => e.stopPropagation()}
+        className="cursor-grab touch-none px-1 text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100">⠿</button>}
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
@@ -390,12 +398,13 @@ type GroupDragHandle = {
 /** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform은
  *  컨테이너 div에, listeners는 children render-prop으로 헤더 ⠿ 핸들에 전달한다 —
  *  핸들을 잡으면 그룹이 통째로 움직인다. data.type='folder'로 태깅. */
-function SortableGroup({ folderId, children }: {
+function SortableGroup({ folderId, children, disabled }: {
   folderId: string;
+  disabled?: boolean;
   children: (handle: GroupDragHandle) => React.ReactNode;
 }) {
   const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging } =
-    useSortable({ id: folderId, data: { type: 'folder' } });
+    useSortable({ id: folderId, disabled, data: { type: 'folder' } });
   return (
     <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`}
       style={{
@@ -421,8 +430,8 @@ function SortableGroup({ folderId, children }: {
  *
  *  data.folderId 를 실어 onDragEnd 가 id 디코딩 없이 대상 그룹을 읽는다(행 droppable 과
  *  같은 키라 분기가 하나로 합쳐진다). 헤더 그룹 드래그(type='folder')와 메모 드래그는
- *  typeAwareCollision 이 걸러 여기로 오지 않고, **출발 폴더 자신의 존도** 거기서
- *  빠진다(그룹 내 재정렬을 훔치지 않게 — panelDragCollision 주석 참조). */
+ *  precisePanelCollision이 메모·폴더 레인을 분리한다. 종목은 행과 헤더를 먼저
+ *  겨냥하므로 컨테이너가 행 사이 삽입 위치를 훔치지 않는다. */
 function GroupDropZone({ folderId, children }: {
   folderId: string;
   children: React.ReactNode;
@@ -438,7 +447,7 @@ function GroupDropZone({ folderId, children }: {
   const isOver = !!active && !!over
     && active.data.current?.type === 'entry'
     && over.data.current?.folderId === folderId
-    && active.data.current?.folderId !== folderId;
+    && (active.data.current?.folderId !== folderId || over.data.current?.header === true);
   return (
     <div ref={setNodeRef}
       data-testid={`watchlist-dropzone-${folderId}`}
@@ -495,6 +504,9 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   onOpenMenu: (e: React.MouseEvent, entry: WatchlistEntry) => void;
   onDelete: (entry: WatchlistEntry) => void;
   dragEnabled?: boolean;
+  selected?: boolean;
+  onToggleSelection?: (rowId: string) => void;
+  indicator?: 'before' | 'after';
 }) {
   const { entry, onPick, onOpenMenu, onDelete } = props;
   const handlePick = useCallback((e?: JumpModifiers) => onPick(entry, e), [onPick, entry]);
@@ -502,10 +514,11 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(e, entry), [onOpenMenu, entry]);
   const handleDelete = useCallback(() => onDelete(entry), [onDelete, entry]);
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging, activeIndex, overIndex, index } =
-    useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
-  const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
-    ? (activeIndex < overIndex ? 'after' : 'before')
+  const { setNodeRef, setActivatorNodeRef, listeners, isDragging, active, activeIndex, overIndex, index } =
+    useSortable({ id: entrySortableId(entry.folder_id, entry.code), disabled: props.dragEnabled === false,
+      data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
+  const memoIndicator = active?.data.current?.type === 'memo' && activeIndex !== -1 && overIndex === index && index !== activeIndex
+    ? activeIndex < overIndex ? 'after' : 'before'
     : undefined;
   return (
     <QuoteRow
@@ -523,15 +536,17 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       onContextMenu={handleContextMenu}
       onDelete={handleDelete}
       indented
-      sortableRef={props.dragEnabled === false ? undefined : setNodeRef}
-      sortableStyle={props.dragEnabled === false ? undefined : { transform: CSS.Transform.toString(transform), transition }}
-      dragListeners={props.dragEnabled === false ? undefined : listeners}
-      dragAttributes={props.dragEnabled === false ? undefined : attributes}
-      dragActivatorRef={props.dragEnabled === false ? undefined : setActivatorNodeRef}
-      dragging={props.dragEnabled === false ? false : isDragging}
-      // DragOverlay 고스트가 커서에 들려 있으므로 원본 행은 빈 자리로 비운다.
+      sortableRef={setNodeRef}
+      leading={<span className="flex shrink-0 items-center gap-1">
+        {props.onToggleSelection && <input type="checkbox" aria-label={`${entry.name} 이동 선택`} checked={props.selected}
+          onClick={(e) => e.stopPropagation()} onChange={() => props.onToggleSelection?.(entrySortableId(entry.folder_id, entry.code))} />}
+        <button type="button" ref={setActivatorNodeRef} {...listeners} disabled={props.dragEnabled === false}
+          aria-label={`${entry.name} 이동`} onClick={(e) => e.stopPropagation()}
+          className="cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-20">⠿</button>
+      </span>}
+      dragging={isDragging}
       draggingAppearance="placeholder"
-      dropIndicator={props.dragEnabled === false ? undefined : dropIndicator}
+      dropIndicator={props.indicator ?? memoIndicator}
       trailingAction={<RowTrailing status={props.status} name={entry.name} onOpenMenu={handleOpenMenu} />}
     />
   );
@@ -550,9 +565,10 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
   onDelete: (memoId: string) => void;
   onOpenMenu: (e: React.MouseEvent, folderId: string, memo: WatchlistMemo) => void;
   dragEnabled: boolean;
+  indicator?: 'before' | 'after';
 }) {
   const { memo: row, onSave, onDelete, onOpenMenu, folderId } = props;
-  const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging, activeIndex, overIndex, index } =
+  const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging, active, activeIndex, overIndex, index } =
     useSortable({ id: memoSortableId(props.folderId, props.memo.id), data: { type: 'memo', folderId: props.folderId, memoId: props.memo.id } });
   const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
     ? (activeIndex < overIndex ? 'after' : 'before')
@@ -573,12 +589,12 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
       onContextMenu={handleContextMenu}
       testId={`watchlist-memo-${props.memo.id}`}
       sortableRef={off ? undefined : setNodeRef}
-      sortableStyle={off ? undefined : { transform: CSS.Transform.toString(transform), transition }}
+      sortableStyle={off || active?.data.current?.type === 'entry' ? undefined : { transform: CSS.Transform.toString(transform), transition }}
       dragListeners={off ? undefined : listeners}
       dragActivatorRef={off ? undefined : setActivatorNodeRef}
       dragging={off ? false : isDragging}
       draggingAppearance="placeholder"
-      dropIndicator={off ? undefined : dropIndicator}
+      dropIndicator={props.indicator ?? (off ? undefined : dropIndicator)}
     />
   );
 });
@@ -587,7 +603,7 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
  *  않는다 — 데이터 동결과 같은 규율이고, 손에 든 것이 도중에 바뀌면 오히려 산만하다. */
 type DragGhost =
   | {
-      kind: 'entry'; name: string; status: DisplayStatus;
+      kind: 'entry'; name: string; status: DisplayStatus; bulk?: boolean;
       price: number | null; pct: number | null;
       expectedPrice: number | null; expectedPct: number | null;
     }
@@ -624,6 +640,9 @@ const GHOST_NOOP = () => {};
  * 좁혀야 하므로 `fitContent` 를 켠다(그 prop 주석 참조).
  */
 function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
+  if (ghost.kind === 'entry' && ghost.bulk) return (
+    <li data-testid="watchlist-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">⠿ {ghost.name}</li>
+  );
   if (ghost.kind === 'folder') {
     // 타이포·간격은 GroupHeader 와 같은 값 — 손에 든 것이 "방금 잡은 그 헤더"로 읽혀야
     // 한다. `<li>` 인 이유는 래퍼가 `wrapperElement="ul"` 이기 때문(행 고스트와 동일).
@@ -671,10 +690,9 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
  * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
  * headers carry a hover ⋯ menu (이름 변경/순서/삭제), and the row context menu
  * does quick-remove + 그룹으로 이동. Entry add/multi-delete live in the edit
- * modal; quick within-group reorder (drag a row), cross-folder move (drag a row
- * onto another group — v5) and folder reorder (drag a group by its header — the
- * whole header is the activator, there is no ⠿ icon) happen in-panel via dnd-kit
- * (ADR-0066). While a group drag is in flight every group renders header-only.
+ * modal; precise transfers, multi-selection and guarded undo also live in-panel.
+ * Entry and group dragging start only from dedicated handles (ADR-0066).
+ * While a group drag is in flight every group renders header-only.
  * Collapse state persists via localStorage.
  */
 export function WatchlistDrawer() {
@@ -690,9 +708,23 @@ export function WatchlistDrawer() {
   // 60초 refetch 가 드래그 도중 착지해 순서를 뒤흔드는 것도 같이 막힌다. 대가는 드래그
   // 하는 몇 초 동안 가격이 멈추는 것이고, 히트맵이 이미 같은 거래를 했다(같은 훅).
   const [isDragging, setIsDragging] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(() => new Set());
+  const [expandedDuringDrag, setExpandedDuringDrag] = useState<Set<string>>(() => new Set());
+  const expandDuringDrag = useCallback((id: string) => setExpandedDuringDrag((old) => old.has(id) ? old : new Set([...old, id])), []);
+  const toggleSelectedRow = useCallback((rowId: string) => setSelectedRows((old) => {
+    const next = new Set(old);
+    if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
+    return next;
+  }), []);
+  const dragSources = useRef<TransferSource[]>([]);
+  const [dragHint, setDragHint] = useState('그룹의 원하는 위치에 놓으세요 · 바깥에 놓으면 취소');
+  const dragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [destination, setDestination] = useState<{ folderId: string; at: number; rowId?: string; side?: 'before' | 'after'; label: string } | null>(null);
   const data = useFrozenWhileDragging(liveData, isDragging);
   const catchupAllM = useCatchupAll();
   const removeM = useRemoveFromWatchlist();
+  const removeMemberM = useRemoveMember();
   const createM = useCreateFolder();
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
@@ -972,11 +1004,9 @@ export function WatchlistDrawer() {
   };
 
   const reorderItemsM = useReorderItems();
-  // 폴더 간 이동(v5). 실폴더 → 실폴더는 moveMember(대상 추가 후 출처 제거), 미분류에서
-  // 끌어낸 것은 addMember 하나로 끝난다 — 멤버십이 생기면 그 entry 는 미분류 렌더에서
-  // 자동으로 빠진다(미분류는 폴더가 아니라 "어느 폴더에도 없음"의 표시다).
-  const moveMember = useMoveMember();
-  const addMemberM = useAddMember();
+  // 실폴더 간 이동·재정렬·되돌리기는 하나의 원자적 저장 계약을 쓴다.
+  const addMemberM = useAddMember(); // 구버전 응답의 미분류 호환 경로
+  const transfer = useWatchlistTransfer();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // --- 행에 넘길 안정 콜백(P2) ---
@@ -987,6 +1017,7 @@ export function WatchlistDrawer() {
   const onPickRef = useRef(onPick);
   useEffect(() => { onPickRef.current = onPick; });
   const removeMutate = removeM.mutate;
+  const removeMemberMutate = removeMemberM.mutate;
   const updateMemoMutate = updateMemoM.mutate;
   const removeMemoMutate = removeMemoM.mutate;
   const handleRowPick = useCallback((entry: WatchlistEntry, e?: JumpModifiers) => {
@@ -996,8 +1027,11 @@ export function WatchlistDrawer() {
     openMenu(e, entry.code, entry.name, entry.folder_id);
   }, [openMenu]);
   const handleRowDelete = useCallback((entry: WatchlistEntry) => {
-    removeMutate(entry.code);
-  }, [removeMutate]);
+    // Delete는 포커스된 그룹의 소속만 해제한다. 다중 소속 종목을 전체 삭제하지 않는다.
+    // 미분류는 해제할 그룹이 없으므로 기존 관심목록 제외 동작을 유지한다.
+    if (entry.folder_id !== null) removeMemberMutate({ folderId: entry.folder_id, code: entry.code });
+    else removeMutate(entry.code);
+  }, [removeMutate, removeMemberMutate]);
   const handleMemoSave = useCallback((memoId: string, text: string) => {
     updateMemoMutate({ memoId, text });
   }, [updateMemoMutate]);
@@ -1095,17 +1129,54 @@ export function WatchlistDrawer() {
   // 취소(onDragCancel)는 false 로 남겨 둔다: 취소는 원위치로 돌아가는 게 맞다.
   const [ghostDroppedOnChart, setGhostDroppedOnChart] = useState(false);
 
+  const getEntryDestination = (ev: DragMoveEvent | DragEndEvent) => {
+    if (!data || ev.active.data.current?.type !== 'entry' || !ev.over) return null;
+    const folderId = ev.over.data.current?.folderId as string | undefined;
+    const group = renderGroups.find((g) => g.folder?.id === folderId);
+    if (!folderId || !group) return null;
+    const sources = dragSources.current;
+    if (getFolderSortMode(folderId) !== 'default' && sources.every((s) => s.folderId === folderId)) return null;
+    const items = folderItems(data, folderId);
+    const manual = getFolderSortMode(folderId) === 'default';
+    const overType = ev.over.data.current?.type;
+    let at = items.length;
+    let rowId: string | undefined;
+    let side: 'before' | 'after' | undefined;
+    let where = manual ? '맨 아래로 이동' : '그룹으로 이동 · 정렬 기준에 따라 배치';
+    if (manual && (overType === 'entry' || overType === 'memo')) {
+      const parts = parseItemSortableId(String(ev.over.id));
+      const key = parts.kind === 'code' ? parts.code : parts.memoId;
+      const index = items.findIndex((i) => (i.kind === 'code' ? i.code : i.id) === key);
+      if (index < 0) return null;
+      const point = dragPointRef.current ?? dropPoint(ev);
+      side = point && point.y > ev.over.rect.top + ev.over.rect.height / 2 ? 'after' : 'before';
+      at = index + (side === 'after' ? 1 : 0);
+      rowId = String(ev.over.id);
+      const name = parts.kind === 'code' ? data.entries.find((e) => e.code === parts.code)?.name : '메모';
+      where = `${name ?? key} ${side === 'after' ? '아래' : '위'}로 이동`;
+    }
+    const codes = new Set(sources.filter((s) => s.folderId !== folderId).map((s) => s.code));
+    const duplicates = data.entries.filter((e) => e.folder_id === folderId && codes.has(e.code)).length;
+    return { folderId, at, rowId, side, label: `${group.label} · ${where}${duplicates ? ` · 기존 ${duplicates}종목과 합침` : ''}` };
+  };
   const onDragStart = (ev: DragStartEvent) => {
+    dragPointRef.current = dropPoint({ activatorEvent: ev.activatorEvent, delta: { x: 0, y: 0 } });
     setIsDragging(true);
+    setDragHint('그룹의 원하는 위치에 놓으세요 · 바깥에 놓으면 취소');
     setGhostDroppedOnChart(false);   // 직전 드래그의 판정이 새 드래그로 새지 않게
     const d = ev.active.data.current;
     if (d?.type === 'entry') {
-      startEntryDrag(String(ev.active.id));
+      const selected = selectedRows.has(String(ev.active.id));
+      dragSources.current = renderGroups.flatMap((g) => g.rows.flatMap((r) => r.kind === 'entry' && r.entry.folder_id
+        && (selected ? selectedRows.has(entrySortableId(r.entry.folder_id, r.entry.code)) : entrySortableId(r.entry.folder_id, r.entry.code) === String(ev.active.id))
+        ? [{ folderId: r.entry.folder_id, code: r.entry.code }] : []));
+      if (dragSources.current.length <= 1) startEntryDrag(String(ev.active.id));
       const code = String(d.code ?? '');
       const q = quoteByCode.get(code);
       setDragGhost({
         kind: 'entry',
-        name: String(d.name ?? code),
+        bulk: dragSources.current.length > 1,
+        name: dragSources.current.length > 1 ? `${new Set(dragSources.current.map((s) => s.code)).size}종목 이동` : String(d.name ?? code),
         status: collectionByRow.get(String(ev.active.id))?.displayStatus ?? 'realtime',
         price: q?.price ?? null,
         pct: q?.change_pct ?? null,
@@ -1136,12 +1207,24 @@ export function WatchlistDrawer() {
   const onDragMove = (ev: DragMoveEvent) => {
     // 메모 행은 차트 드롭 대상이 아니다 — 'entry' 타입만 오버레이를 띄운다.
     if (ev.active.data.current?.type !== 'entry') return;
-    publishDragPoint(dropPoint(ev)); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
+    const next = getEntryDestination(ev);
+    const point = dragPointRef.current ?? dropPoint(ev);
+    setDragHint(isPointOnChart(point)
+      ? dragSources.current.length > 1 ? '여러 종목은 그룹으로 이동하세요' : '차트에 놓으면 종목을 변경합니다'
+      : !next && ev.over?.data.current?.folderId && getFolderSortMode(String(ev.over.data.current.folderId)) !== 'default'
+        ? '등락률 정렬 중에는 다른 그룹으로 이동할 수 있습니다'
+        : '그룹의 원하는 위치에 놓으세요 · 바깥에 놓으면 취소');
+    setDestination((old) => JSON.stringify(old) === JSON.stringify(next) ? old : next);
+    if (dragSources.current.length > 1) return;
+    publishDragPoint(dragPointRef.current ?? dropPoint(ev)); // 창별 어포던스: 캔버스가 좌표로 호버 창을 계산한다.
   };
   const finishDrag = () => {
+    dragPointRef.current = null;
     cancelDragPointFlush();
     setIsDragging(false);
     setDragGhost(null);
+    setDestination(null);
+    setExpandedDuringDrag(new Set());
     endEntryDrag();
   };
   const onDragCancel = () => finishDrag();
@@ -1149,27 +1232,25 @@ export function WatchlistDrawer() {
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
     const wasEntry = activeType === 'entry';
+    const target = getEntryDestination(ev);
+    const endPoint = dragPointRef.current ?? dropPoint(ev);
     // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
     // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
     // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
     // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
     // **같은 술어**라 둘이 갈릴 수 없다.
-    setGhostDroppedOnChart(wasEntry && isPointOnChart(dropPoint(ev)));
-    // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
-    // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
-    // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
-    // "되돌아가는 비행"이 재생돼 성공이 실패로 읽힌다. 판정식은 아래 드롭 분기와
-    // **같은 술어**라 둘이 갈릴 수 없다.
+    setGhostDroppedOnChart(wasEntry && dragSources.current.length <= 1 && isPointOnChart(endPoint));
     finishDrag();
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
     // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
     // 메모는 이 분기를 타지 않는다 — 차트에 실을 종목이 없다.
-    if (wasEntry && isPointOnChart(dropPoint(ev))) {
+    if (wasEntry && isPointOnChart(endPoint)) {
+      if (dragSources.current.length > 1) return;
       const d = ev.active.data.current as { code?: string; name?: string } | undefined;
       const parsed = parseItemSortableId(String(ev.active.id));
       const code = d?.code ?? (parsed.kind === 'code' ? parsed.code : '');
       if (!code) return;
-      if (resolveDropOnChart(dropPoint(ev), { code, name: d?.name })) return;
+      if (resolveDropOnChart(endPoint, { code, name: d?.name })) return;
       onPick(code, d?.name);
       return;
     }
@@ -1188,30 +1269,21 @@ export function WatchlistDrawer() {
       if (fr.kind === 'reorder') reorderFoldersM.mutate(fr.orderedIds);
       return;
     }
-    // v4 composite id: `${folderId}:${code|memoId}` — 같은 코드가 N폴더면 N행이라
-    // 폴더 스코프로 파싱하고, 키 모양으로 종목/메모를 가른다.
-    const active = parseItemSortableId(String(ev.active.id));
-    // v5: 폴더 간 이동. over 는 대상 그룹의 드롭존('entry-target')이거나 대상 그룹의
-    // 행인데, **둘 다 data.folderId 를 실으므로** 한 술어로 읽는다(id 디코딩 불필요).
-    //
-    // 정렬 모드 게이트(아래)보다 **앞**에 둔다 — 그 게이트는 재정렬 전용이다. 정렬이
-    // 켜진 폴더로 끌어넣는 것은 순서와 무관하고, 히트맵도 non-manual 에서 이동만은
-    // 허용한다. 미분류로 **넣는** 방향은 없다: 마지막 멤버십을 빼면 서버가 entry 를
-    // prune 하므로 그건 이동이 아니라 삭제다(관심종목에서 빼려면 행 메뉴를 쓴다).
-    if (wasEntry && active.kind === 'code') {
-      const overFolderId = (ev.over.data.current?.folderId ?? null) as string | null;
-      if (overFolderId !== null && overFolderId !== active.folderId) {
-        const d = ev.active.data.current as { name?: string } | undefined;
-        const name = d?.name ?? '';
-        if (active.folderId === null) {
-          // 미분류에서 끌어냄 = 멤버십 **생성** 하나. remove 할 출처가 없다.
-          addMemberM.mutate({ folderId: overFolderId, code: active.code, name });
-        } else {
-          void moveMember({ code: active.code, from: active.folderId, to: overFolderId, name });
-        }
+    if (wasEntry) {
+      if (target && ev.active.data.current?.folderId === null) {
+        const d = ev.active.data.current;
+        addMemberM.mutate({ folderId: target.folderId, code: String(d.code), name: String(d.name ?? ''), at: target.at });
         return;
       }
+      if (target && data) {
+        const changes = planTransfer(data, dragSources.current, target.folderId, target.at, getFolderSortMode(target.folderId) !== 'default');
+        const count = new Set(dragSources.current.map((s) => s.code)).size;
+        const label = `${count > 1 ? `${count}종목` : String(ev.active.data.current?.name ?? '')} → ${target.label}`;
+        void transfer.run(changes, label).then((ok) => { if (ok) setSelectedRows(new Set()); });
+      }
+      return;
     }
+    const active = parseItemSortableId(String(ev.active.id));
     const over = parseItemSortableId(String(ev.over.id));
     const folderId = active.folderId;
     if (folderId === null) return;   // 미분류엔 메모가 없고 재정렬 대상도 아니다
@@ -1264,15 +1336,26 @@ export function WatchlistDrawer() {
         )}
       />
 
+      <div className="flex flex-wrap items-center gap-2 px-md pb-2 text-xs">
+        <button type="button" aria-pressed={selectionMode} disabled={transfer.busy} onClick={() => { setSelectionMode(!selectionMode); setSelectedRows(new Set()); }}
+          className="text-accent">{selectionMode ? '선택 끝내기' : '여러 종목 선택'}</button>
+        {selectionMode && <span>선택 {data?.entries.filter((e) => selectedRows.has(entrySortableId(e.folder_id, e.code))).length ?? 0}건 · 핸들을 끌어 이동</span>}
+      </div>
+      {transfer.message && <div role="status" className="flex flex-wrap items-center gap-2 border-y border-border px-md py-2 text-xs">
+        <span>{transfer.message}</span>
+        {transfer.canUndo && <button type="button" className="text-accent" onClick={() => void transfer.undo()}>되돌리기</button>}
+        {!transfer.busy && <button type="button" aria-label="이동 안내 닫기" onClick={transfer.dismiss}>×</button>}
+      </div>}
       <RailDrawerBody testId="watchlist-scroll" quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">관심종목을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <RailState>관심종목이 없습니다</RailState>
         )}
-        <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
-          onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-          <RemeasureOnCollapse active={folderDragActive} />
+        <DndContext sensors={sensors} collisionDetection={precisePanelCollision} autoScroll={false}
+          onDragStart={onDragStart} onDragMove={onDragMove} onDragOver={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
+          <RemeasureOnCollapse active={folderDragActive || expandedDuringDrag.size > 0} />
+          <DragPanelAssist collapsed={collapsed} onExpand={expandDuringDrag} pointRef={dragPointRef} />
           <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
             {renderGroups.map((g, gi) => {
               const { key, label, folder, rows, rowDragEnabled } = g;
@@ -1280,7 +1363,7 @@ export function WatchlistDrawer() {
               // 그룹 드래그 중에는 전 그룹을 헤더만 남긴다(folderDragActive 주석 참조).
               // 미분류도 포함한다 — 폴더 sortable 대상은 아니지만, 중간에 긴 블록이
               // 하나라도 남으면 "균일 높이 리스트" 라는 전제가 그대로 깨진다.
-              const isCollapsed = collapsed.has(key) || folderDragActive;
+              const isCollapsed = (collapsed.has(key) && !expandedDuringDrag.has(key)) || folderDragActive;
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   <SortableContext items={g.sortableIds} strategy={verticalListSortingStrategy}>
@@ -1296,7 +1379,8 @@ export function WatchlistDrawer() {
                             onSave={handleMemoSave}
                             onDelete={handleMemoDelete}
                             onOpenMenu={handleMemoMenu}
-                            dragEnabled={rowDragEnabled}
+                            dragEnabled={rowDragEnabled && !transfer.busy}
+                            indicator={destination?.rowId === memoSortableId(folder!.id, row.memo.id) ? destination.side : undefined}
                           />
                         );
                       }
@@ -1323,7 +1407,10 @@ export function WatchlistDrawer() {
                           onPick={handleRowPick}
                           onOpenMenu={handleRowMenu}
                           onDelete={handleRowDelete}
-                          dragEnabled={rowDragEnabled}
+                          dragEnabled={!transfer.busy}
+                          selected={selectedRows.has(rowId)}
+                          onToggleSelection={selectionMode && entry.folder_id ? toggleSelectedRow : undefined}
+                          indicator={destination?.rowId === rowId ? destination.side : undefined}
                         />
                       );
                     })}
@@ -1344,11 +1431,11 @@ export function WatchlistDrawer() {
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
                   onDuplicateSymbol={flashDuplicate}
-                  dragHandle={dragHandle} />
+                  dragHandle={dragHandle} busy={transfer.busy} />
               );
               return folder ? (
                 <GroupDropZone key={key} folderId={folder.id}>
-                  <SortableGroup folderId={folder.id}>
+                  <SortableGroup folderId={folder.id} disabled={transfer.busy}>
                     {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
                   </SortableGroup>
                 </GroupDropZone>
@@ -1363,6 +1450,15 @@ export function WatchlistDrawer() {
           </RailDragOverlay>
         </DndContext>
       </RailDrawerBody>
+      <div role="status" aria-live="polite" aria-atomic="true"
+        title={destination?.label}
+        className="flex h-12 shrink-0 items-center border-t border-border px-md text-xs text-fg-dim">
+        <span className={dragGhost?.kind === 'entry' ? 'line-clamp-3 text-accent' : ''}>
+          {dragGhost?.kind === 'entry'
+            ? destination?.label ?? dragHint
+            : '⠿ 핸들로 이동 · Delete로 현재 그룹에서 제외'}
+        </span>
+      </div>
 
       {/* 푸터: 전체수집 결과 배너 + 다음 수집 카운트다운 + 전체 수집 */}
       <RailDrawerSection className="border-b-0 border-t p-0">

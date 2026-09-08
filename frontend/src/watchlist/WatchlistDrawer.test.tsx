@@ -396,6 +396,29 @@ describe('WatchlistDrawer', () => {
     expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();
   });
 
+  it('Delete removes only the focused row membership and preserves the same code in another group', async () => {
+    let data = {
+      ...DATA,
+      folders: [...FOLDERS, { id: 'f_0000000b', name: '장기', order: 1 }],
+      entries: [ENTRIES[0], { ...ENTRIES[0], folder_id: 'f_0000000b' }],
+    };
+    vi.spyOn(watchlistApi, 'getWatchlist').mockImplementation(async () => data);
+    const globalRemove = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue();
+    const memberRemove = vi.spyOn(watchlistApi, 'removeMember').mockImplementation(async (folderId, code) => {
+      data = { ...data, entries: data.entries.filter((e) => !(e.folder_id === folderId && e.code === code)) };
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getAllByTestId('watchlist-row-005930')).toHaveLength(2));
+    const first = within(screen.getByTestId('watchlist-dropzone-f_0000000a')).getByTestId('watchlist-row-005930');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Delete' });
+    await waitFor(() => expect(memberRemove).toHaveBeenCalledExactlyOnceWith('f_0000000a', '005930'));
+    expect(globalRemove).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getAllByTestId('watchlist-row-005930')).toHaveLength(1));
+    expect(within(screen.getByTestId('watchlist-dropzone-f_0000000b')).getByTestId('watchlist-row-005930')).toBeInTheDocument();
+  });
+
   it('Delete key on a focused row removes the entry', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const removeSpy = vi.spyOn(watchlistApi, 'removeFromWatchlist').mockResolvedValue(undefined);
