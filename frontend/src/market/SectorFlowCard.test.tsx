@@ -124,9 +124,9 @@ describe('SectorFlowCard', () => {
 
     // 값이 여러 span 으로 쪼개져 있어 getByText 로는 못 잡는다 — 줄 전체를 읽는다.
     // 라벨은 즉시 뜨고 값은 breadth 쿼리가 온 뒤라 waitFor 가 필요하다.
-    const line = (await screen.findByText(/52주 신고 · 신저/)).parentElement!;
-    await waitFor(() => expect(line.textContent).toContain('코스피 31 · 14'));
-    expect(line.textContent).toContain('코스닥 12+ · 5');
+    const line = (await screen.findByText(/52주 신고·신저/)).parentElement!;
+    await waitFor(() => expect(line.textContent).toContain('코스피 신고가 31 / 신저가 14'));
+    expect(line.textContent).toContain('코스닥 신고가 12+ / 신저가 5');
   });
 
   it('표본이 없으면 왜 비었는지 말한다', async () => {

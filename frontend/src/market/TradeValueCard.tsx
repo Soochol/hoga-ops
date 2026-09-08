@@ -176,7 +176,7 @@ export function TradeValueCard() {
   const range = shown ? `${mmdd(shown[0].date)}–${mmdd(shown[shown.length - 1].date)}` : '일별';
   // 퍼센트의 분모가 토글을 따라가므로 **이 문구도 같이 따라간다**(`baselineEok`
   // docstring 의 ⚠). 한쪽만 움직이면 라벨이 값을 반증한다.
-  const hint = `${range} · ${span}일 평균 대비 · 끝점은 당일`;
+  const hint = `${range} · ${span}일 평균 대비 · 끝점 ${shown ? mmdd(shown.at(-1)!.date) : '—'}`;
 
   return (
     <MarketCard className="flex flex-col gap-2xs p-md">
@@ -191,7 +191,7 @@ export function TradeValueCard() {
           {tv.isLoading ? '거래대금 이력을 불러오는 중입니다.' : '거래대금 이력을 받지 못했습니다.'}
         </EmptyNote>
       ) : (
-        <div className="grid grid-cols-2 gap-md">
+        <div className="market-pair grid gap-md">
           {tiles.map(({ name, points, base }) =>
             points ? (
               <Tile

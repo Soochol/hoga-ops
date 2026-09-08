@@ -877,13 +877,13 @@ describe('IndexCards VKOSPI 단독 카드', () => {
     mockApi({ quotes: [futuresQuote()] });
     const { container, unmount } = renderCards();
     await screen.findByText('982.92');
-    expect(container.querySelector('.grid-cols-4')).toBeTruthy();
+    expect(container.querySelector('.market-indices-four')).toBeTruthy();
     unmount();
 
     mockApi({ quotes: [futuresQuote()] }, {}, VOLATILITY);
     const second = renderCards();
     await screen.findByText('VKOSPI');
-    expect(second.container.querySelector('.grid-cols-5')).toBeTruthy();
+    expect(second.container.querySelector('.market-indices-five')).toBeTruthy();
   });
 
   it('값이 없으면 —, 등락률만 그린다 (등락폭을 역산하지 않는다)', async () => {
@@ -902,6 +902,6 @@ describe('IndexCards VKOSPI 단독 카드', () => {
 
     await screen.findByText('982.92');
     expect(screen.queryByText('VKOSPI F')).toBeNull();
-    expect(container.querySelector('.grid-cols-4')).toBeTruthy();
+    expect(container.querySelector('.market-indices-four')).toBeTruthy();
   });
 });

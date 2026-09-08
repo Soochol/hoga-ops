@@ -20,6 +20,7 @@ export interface RankingRow {
   name: string;
   price: number | null;
   change_pct: number | null;
+  trade_value_won: number | null;
 }
 
 interface RankingsResponseWire {

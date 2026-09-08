@@ -2051,13 +2051,14 @@ def _stored_after_hours_response(code: str, data_dir: Path | None) -> AfterHours
 
 
 class RankingRowModel(BaseModel):
-    """순위 드로어 행 — 기준값 열 제거로 code/name/price/change_pct 만(순서=순위)."""
+    """공유 순위 행. 거래대금은 원 단위이며 없는 TR은 null."""
 
     rank: int
     code: str
     name: str
     price: int | None
     change_pct: float | None
+    trade_value_won: int | None = None
 
 
 class RankingsResponse(BaseModel):
@@ -3373,7 +3374,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             rows=[
                 RankingRowModel(
                     rank=i, code=r.code, name=r.name,
-                    price=r.price, change_pct=r.change_pct,
+                    price=r.price, change_pct=r.change_pct, trade_value_won=r.trade_value_won,
                 )
                 for i, r in enumerate(rows, start=1)
             ],

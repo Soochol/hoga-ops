@@ -145,7 +145,7 @@ export default function App() {
       // 여기 박아 둔 939/993px 은 두 번 stale 이 됐다). rem 토큰이라 밀도 다이얼을 따라간다.
       // w-screen(100vw) → h-full+min-w: 100vw 는 세로 스크롤바 폭을 포함해 바닥 아래에서
       // 셸이 항상 뷰포트보다 넓어진다. 이제 폭은 #root 를 따르고 바닥만 min-width 가 건다.
-      className="grid h-full min-h-app-floor min-w-app-floor overflow-hidden"
+      className={`grid h-full min-h-app-floor ${pathname === '/market' ? 'market-shell min-w-0' : 'min-w-app-floor'} overflow-hidden`}
       style={{
         // 열 기반 셸(2026-07-15): 우측 패널(드로어+고정 레일)이 화면 상단~하단 full-height
         // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.

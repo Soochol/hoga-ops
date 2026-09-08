@@ -12,6 +12,7 @@
  * 자금 카드가 빈 것은 **키가 없어서**다. 셋을 같은 빈 화면으로 보이면 진단이 흐려진다.
  */
 import { useEffect, useState } from 'react';
+import './market.css';
 import { SectorFlowCard } from './SectorFlowCard';
 import { InvestorCard } from './InvestorFlowCard';
 import { useLiveIndexCandles } from '../api/liveIndices';
@@ -44,6 +45,7 @@ import { persistJson, readJsonObject } from '../state/persist';
 import {
   CARD_HEADER_RULE,
   CardHeader,
+  DataStamp,
   EmptyNote,
   MarketCard,
   ModeSwitch,
@@ -60,7 +62,7 @@ import {
   SessionLinesChart,
   Sparkline,
 } from './marketBits';
-import { MARKET_LABELS, SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo } from './marketFormat';
+import { MARKET_LABELS, SERIES_COLORS, fmtSigned, stockSeriesDiffs, wonToJo, formatMarketDate, fundChange } from './marketFormat';
 import { TradeValueCard } from './TradeValueCard';
 
 // ── 지수 카드 ─────────────────────────────────────────────────────────────
@@ -241,16 +243,17 @@ export function IndexCards() {
   // 거래량 0·미결제 54계약이라 값이 정산가에 굳어 장중 내내 안 움직였다(2026-08-07).
   const volatility = sectors.data?.volatility ?? null;
   // Tailwind 는 런타임에 조합한 클래스명을 만들지 못한다 — 두 리터럴을 그대로 둔다.
-  const cols = volatility ? 'grid-cols-5' : 'grid-cols-4';
+  const cols = volatility ? 'market-indices-five' : 'market-indices-four';
 
   return (
-    <div className={`grid ${cols} gap-md`}>
+    <div className={`market-indices grid ${cols} gap-md`}>
       {rows.slice(0, 4).map((q) => {
         const future = futureByUnderlying.get(q.id);
         return (
           <IndexCard
             key={q.id}
             quote={q}
+            fetchedAt={modes[q.id] === 'futures' && future ? futures.dataUpdatedAt : quotes.dataUpdatedAt}
             sectors={sectors.data}
             future={future}
             snapshot={snapshot}
@@ -272,7 +275,7 @@ function VolatilityCard({ row }: { row: MarketVolatility }) {
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
       <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
-        <span className="text-xs font-semibold uppercase text-fg-dim">VKOSPI</span>
+        <span className="text-xs font-semibold uppercase text-fg-dim" title="KOSPI 200 옵션 가격에 반영된 향후 30일 예상 변동성. 상승은 변동성 확대를 뜻합니다."><span>VKOSPI</span> · 변동성</span>
       </div>
       <div className="flex flex-col">
         <span
@@ -298,6 +301,7 @@ function VolatilityCard({ row }: { row: MarketVolatility }) {
  *  리스트 안에서 훅을 부르면 순서 규칙을 깬다. */
 function IndexCard({
   quote,
+  fetchedAt,
   sectors,
   future,
   snapshot,
@@ -305,6 +309,7 @@ function IndexCard({
   mode,
   onModeChange,
 }: {
+  fetchedAt?: number;
   quote: ReturnType<typeof useMarketIndexQuotes>['data'] extends (infer T)[] | undefined ? T : never;
   sectors: ReturnType<typeof useMarketSectors>['data'];
   /** 대응 선물. 없으면 토글 자체를 그리지 않는다(코스피·코스닥 종합엔 선물이 없다). */
@@ -480,6 +485,7 @@ function IndexCard({
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
+      <DataStamp fetchedAt={fetchedAt} />
       {/* 카드 마지막 줄 — **모드가 바뀌어도 높이가 변하면 안 된다.**
           지수 상품(코스피200·코스닥150)은 등락종목수가 없어서(#1100) 현물 모드에 이
           줄이 통째로 비는데, 선물 모드에선 베이시스 한 줄이 생긴다. 그 차이만큼 카드가
@@ -506,11 +512,17 @@ function IndexCard({
 
 export function SectorCard() {
   const sectors = useMarketSectors();
+  const [sort, setSort] = useState<'default' | 'up' | 'down'>('default');
   const kospi = sectors.data?.markets['0']?.sectors ?? [];
   const kosdaq = sectors.data?.markets['1']?.sectors ?? [];
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
-      <CardHeader title="업종 온도" hint="KRX 업종지수 등락률" />
+      <CardHeader title="업종 온도" hint="KRX 업종지수 등락률" right={
+        <ModeSwitch value={sort} onChange={setSort} label="업종 등락 정렬" options={[
+          ['default', '기본순'], ['up', '상승순'], ['down', '하락순'],
+        ] as const} />
+      } />
+      <DataStamp fetchedAt={sectors.dataUpdatedAt} />
       {kospi.length === 0 && kosdaq.length === 0 ? (
         <EmptyNote>업종 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
@@ -518,13 +530,17 @@ export function SectorCard() {
           {[kospi, kosdaq].map((list, i) => (
             <div key={i} className="flex flex-col gap-2xs">
               <span className="text-xs font-semibold text-fg-dim">{i === 0 ? '코스피' : '코스닥'}</span>
-              {list.slice(0, 12).map((s) => (
+              {(sort === 'default' ? list : [...list].sort((a, b) => {
+                if (a.change_pct == null) return b.change_pct == null ? 0 : 1;
+                if (b.change_pct == null) return -1;
+                return sort === 'up' ? b.change_pct - a.change_pct : a.change_pct - b.change_pct;
+              })).slice(0, 12).map((s) => (
                 <div
                   key={s.code}
                   className="grid grid-cols-[1fr_auto] items-center gap-sm rounded-sm px-sm py-2xs"
                   style={{ background: heatBg(s.change_pct) }}
                 >
-                  <span className="truncate text-sm text-fg">{s.name}</span>
+                  <span className="min-w-0 truncate text-sm text-fg" title={s.name}>{s.name}</span>
                   <PctText pct={s.change_pct} className="w-[3.8rem] text-right text-sm" />
                 </div>
               ))}
@@ -559,6 +575,10 @@ export function ProgramCard() {
           />
         }
       />
+      <DataStamp fetchedAt={program.dataUpdatedAt}
+        date={axis === 'daily' ? Object.values(markets).flat().map((p) => p.t).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
+        status={axis === 'intraday' ? '시간별 누적' : '일별'} />
+      {axis === 'daily' && <p className="text-2xs text-fg-dim">막대: 일별 순매수 · 선: 기간 누적 (각각의 척도)</p>}
       {Object.keys(markets).length === 0 ? (
         <EmptyNote>프로그램 매매 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
@@ -575,6 +595,11 @@ export function ProgramCard() {
             isIntraday && t.length === 6
               ? Number(t.slice(0, 2)) * 3600 + Number(t.slice(2, 4)) * 60 + Number(t.slice(4))
               : i;
+          // Some responses include after-hours samples (observed up to 20:00).
+          // Extend both plot and labels together instead of clamping them to 15:30.
+          const seconds = asc.map((p, i) => secOf(p.t, i));
+          const startSec = Math.min(9 * 3600, ...seconds);
+          const endSec = Math.max(15.5 * 3600, ...seconds);
           return (
             <div key={label} className="flex flex-col gap-2xs">
               <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
@@ -594,6 +619,9 @@ export function ProgramCard() {
               ) : isIntraday ? (
                 <>
                   <SessionLinesChart
+                    names={['차익', '비차익']}
+                    sessionStartSec={startSec}
+                    sessionEndSec={endSec}
                     series={[
                       { color: SERIES_COLORS.arb,
                         points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
@@ -602,13 +630,16 @@ export function ProgramCard() {
                     ]}
                     height={56}
                   />
-                  <SessionAxisLabels />
+                  <SessionAxisLabels startSec={startSec} endSec={endSec} />
+                  <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
                 </>
               ) : (
                 <ComboNetChart
                   a={{ color: SERIES_COLORS.arb, values: asc.map((p) => p.arb_net_eok) }}
                   b={{ color: SERIES_COLORS.nonArb, values: asc.map((p) => p.non_arb_net_eok) }}
                   height={56}
+                  labels={asc.map((p) => formatMarketDate(p.t))}
+                  names={['차익', '비차익']}
                 />
               )}
             </div>
@@ -685,6 +716,10 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
           />
         </div>
       </div>
+      <DataStamp fetchedAt={streaks.dataUpdatedAt} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
+      <div className="grid grid-cols-[minmax(0,1fr)_3rem_5.5rem] gap-xs text-2xs text-fg-dim">
+        <span>종목</span><span className="text-right">연속일수</span><span className="text-right" title="연속 매매 기간에 누적된 순매수 또는 순매도 금액">기간 누적(억)</span>
+      </div>
       {rows.length === 0 ? (
         // 어느 조합이 빈 것인지 문구가 말한다 — 토글이 넷이라 더 그렇다.
         <EmptyNote>
@@ -698,7 +733,7 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
                 type="button"
                 onClick={(e) => jump(r.code, r.name, e)}
                 title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
-                className="grid w-full grid-cols-[1fr_2.6rem_3.8rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
+                className="grid w-full grid-cols-[minmax(0,1fr)_3rem_5.5rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
               >
                 <span className="truncate text-sm text-fg">{r.name}</span>
                 {/* 순매도 방향은 일수가 음수로 온다 — 부호는 백엔드가 보존하고
@@ -729,7 +764,7 @@ const FUND_SPANS = [
 ] as const;
 type FundSpan = (typeof FUND_SPANS)[number][0];
 
-function FundsCard() {
+export function FundsCard() {
   const [span, setSpan] = useState<FundSpan>('60');
   const funds = useMarketFunds();
   const data = funds.data;
@@ -754,31 +789,39 @@ function FundsCard() {
         <EmptyNote>자금 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
         <>
+          <p className="text-2xs text-fg-dim">선: 기간 첫 유효 잔고 대비 증감 · 조원</p>
           <CumLinesChart
             series={[
-              { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))) },
-              { color: SERIES_COLORS.credit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.credit_won))) },
-              { color: SERIES_COLORS.cma, values: stockSeriesDiffs(series.map((r) => wonToJo(r.cma_won))) },
+              { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))), observed: series.map((r) => r.deposit_won != null) },
+              { color: SERIES_COLORS.credit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.credit_won))), observed: series.map((r) => r.credit_won != null) },
+              { color: SERIES_COLORS.cma, values: stockSeriesDiffs(series.map((r) => wonToJo(r.cma_won))), observed: series.map((r) => r.cma_won != null) },
             ]}
             height={72}
+            labels={series.map((r) => formatMarketDate(r.date))}
+            names={['고객예탁금', '신용융자', 'CMA']}
+            unit="조원"
           />
           <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
             <span>{series[0] ? `${series[0].date.slice(4, 6)}/${series[0].date.slice(6)}` : ''}</span>
             <span>{last ? `${last.date.slice(4, 6)}/${last.date.slice(6)}` : ''}</span>
           </div>
           <div className="flex flex-col">
+            <div className="grid grid-cols-[minmax(0,1fr)_4rem_4rem] gap-sm text-right text-2xs text-fg-dim">
+              <span /><span>최신 잔고</span><span>기간 증감</span>
+            </div>
             {(
               [
-                ['고객예탁금', SERIES_COLORS.deposit, last?.deposit_won],
-                ['신용융자', SERIES_COLORS.credit, last?.credit_won],
-                ['CMA', SERIES_COLORS.cma, last?.cma_won],
+                ['고객예탁금', SERIES_COLORS.deposit, last?.deposit_won, fundChange(series.map((r) => r.deposit_won))],
+                ['신용융자', SERIES_COLORS.credit, last?.credit_won, fundChange(series.map((r) => r.credit_won))],
+                ['CMA', SERIES_COLORS.cma, last?.cma_won, fundChange(series.map((r) => r.cma_won))],
               ] as const
-            ).map(([label, color, won]) => (
-              <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-sm border-b border-grid py-2xs last:border-b-0">
+            ).map(([label, color, won, change]) => (
+              <div key={label} className="grid grid-cols-[minmax(0,1fr)_4rem_4rem] items-center gap-sm border-b border-grid py-2xs last:border-b-0">
                 <LegendItem color={color} label={label} />
-                <span className="font-data text-sm font-semibold text-fg tabular-nums">
+                <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
                   {won == null ? '—' : `${(won / 1e12).toFixed(1)}조`}
                 </span>
+                <span className={`text-right font-data text-sm tabular-nums ${change == null ? 'text-fg-dim' : priceDirClass(change)}`}>{change == null ? '—' : `${change > 0 ? '+' : ''}${(change / 1e12).toFixed(1)}조`}</span>
               </div>
             ))}
           </div>
@@ -804,7 +847,11 @@ export function RankCard({
   const rows = q.data?.rows ?? [];
   return (
     <MarketCard className="flex flex-col gap-xs p-md">
-      <h2 className={`text-sm font-semibold text-fg ${CARD_HEADER_RULE}`}>{title}</h2>
+      <CardHeader title={title} hint={`${q.data?.venue === 'UN' ? '통합' : q.data?.venue ?? '—'} · 코스피+코스닥 · ${q.data?.etfFilterUnavailable ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
+      <DataStamp fetchedAt={q.data?.fetchedAtMs} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
+      <div className="grid grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] gap-sm text-2xs text-fg-dim">
+        <span>#</span><span>종목</span><span className="text-right">{kind === 'value' ? '거래대금(억)' : '현재가(원)'}</span><span className="text-right">등락률</span>
+      </div>
       {rows.length === 0 ? (
         <EmptyNote>{q.data && !q.data.marketOpen ? '장 마감 — 순위는 장중에만 갱신됩니다.' : '순위를 받지 못했습니다.'}</EmptyNote>
       ) : (
@@ -815,12 +862,12 @@ export function RankCard({
                 type="button"
                 onClick={(e) => jump(r.code, r.name, e)}
                 title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
-                className="grid w-full grid-cols-[1.2rem_1fr_5.5rem_4.2rem] items-center gap-sm py-2xs text-left hover:bg-bg-input-hover"
+                className="grid w-full grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] items-center gap-sm py-2xs text-left hover:bg-bg-input-hover"
               >
                 <span className="font-data text-2xs text-fg-dim tabular-nums">{r.rank}</span>
                 <span className="truncate text-sm text-fg">{r.name}</span>
                 <span className="text-right font-data text-sm text-fg tabular-nums">
-                  {r.price === null ? '—' : r.price.toLocaleString('ko-KR')}
+                  {kind === 'value' ? (r.trade_value_won == null ? '—' : (r.trade_value_won / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 1 })) : r.price === null ? '—' : r.price.toLocaleString('ko-KR')}
                 </span>
                 <PctText pct={r.change_pct} className="text-right text-sm" />
               </button>
@@ -838,23 +885,23 @@ export function MarketPage() {
   // 3변형은 prototype/market-layout-variants-2026-08-05 브랜치 보존).
   // 업종 온도(세로로 긴 리스트)는 우측 열, 좌측은 수급 + 보조 2×2 로 높이를 맞춘다.
   return (
-    <PageContainer>
+    <PageContainer className="market-page">
       {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
           붙어 보였다. 카드 사이 `md`, 성격이 다른 좌우 열 사이만 `xl`
           (DESIGN.md 가 "Major section dividers" 로 정의한 그 값). */}
       <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
         <IndexCards />
-        <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
-          <div className="flex flex-col gap-md">
+        <div className="market-main grid gap-x-xl gap-y-md">
+          <div className="min-w-0 flex flex-col gap-md">
             <InvestorCard />
-            <div className="grid grid-cols-2 gap-md">
+            <div className="market-pair grid gap-md">
               <ProgramCard />
               <FundsCard />
               <ActorNetCard actor="외국인" />
               <ActorNetCard actor="기관" />
             </div>
           </div>
-          <div className="flex flex-col gap-md">
+          <div className="min-w-0 flex flex-col gap-md">
             <SectorCard />
             <SectorFlowCard />
           </div>
@@ -862,7 +909,7 @@ export function MarketPage() {
         {/* 좌우 그리드 **밖**이다 — 안에 넣으면 열 높이 균형(위 주석)이 깨진다.
             전폭이라 120일 라인에 가장 유리하기도 하다. */}
         <TradeValueCard />
-        <div className="grid grid-cols-3 gap-md">
+        <div className="market-ranks grid gap-md">
           <RankCard title="상승률 상위" kind="change" direction="up" />
           <RankCard title="하락률 상위" kind="change" direction="down" />
           <RankCard title="거래대금 상위" kind="value" direction="up" />

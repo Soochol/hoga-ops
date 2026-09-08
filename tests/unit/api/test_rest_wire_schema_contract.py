@@ -46,7 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.live import futures_runtime, market_overview
-from hoga.live.api import AfterHoursBookResponse, LiveQuote
+from hoga.live.api import AfterHoursBookResponse, LiveQuote, RankingRowModel
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit
 from hoga.live.lifecycle import LiveStatus
@@ -263,6 +263,7 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    RankingRowModel: frozenset({"rank", "code", "name", "price", "change_pct", "trade_value_won"}),
     # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
     #
     # 미러에는 ``expected_price``·``expected_qty``·``expected_change_pct`` 가 더 있는데

@@ -8,6 +8,7 @@ import {
 import type { RankingRow } from '../api/liveRankings';
 
 const row = (rank: number, code: string, change_pct: number | null): RankingRow => ({
+  trade_value_won: null,
   rank,
   code,
   name: code,
