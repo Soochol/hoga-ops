@@ -72,6 +72,8 @@ export interface ScreenerRow {
   price: number;
   trade_value_won: number;
   change_pct: number | null;
+  /** 조회 가격의 마지막 일봉 날짜(조건 충족 발생일과 구별). 구버전 서버는 미제공. */
+  price_date?: string | null;
 }
 
 export interface DepthCoverageCode {
@@ -108,6 +110,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  scanned_at_ms?: number | null;
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];
   /** 구버전 서버는 미제공. false는 전체 결과, true는 limit에서 잘린 결과. */

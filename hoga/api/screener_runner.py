@@ -112,6 +112,7 @@ async def run_screener_scan(
     )
     return ScreenerResponse(
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
+        scanned_at_ms=int(time.time() * 1000),
         intraday_failure=intraday_failure,
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,

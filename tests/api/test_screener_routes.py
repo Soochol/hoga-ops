@@ -40,6 +40,8 @@ def test_scan_post_ok_shape(tmp_path):
     assert body["status"] == "ok" and "warnings" in body
     assert body["has_more"] is False
     assert body["rows"][0]["code"] == "000001"
+    assert body["rows"][0]["price_date"] == "2026-05-14"
+    assert isinstance(body["scanned_at_ms"], int) and body["scanned_at_ms"] > 0
     assert all(set(r) >= {"code", "name", "market", "price", "trade_value_won", "change_pct"} for r in body["rows"])
     assert all("matches" not in r and "new_high" not in r for r in body["rows"])
 

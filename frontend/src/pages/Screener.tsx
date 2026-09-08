@@ -7,7 +7,7 @@ import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
-import { ResultTable } from '../screener/ResultTable';
+import { ScreenerResults } from '../screener/ScreenerResults';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useSavedScreeners } from '../screener/useSavedScreeners';
@@ -19,7 +19,6 @@ import { ModalShell } from '../ui/ModalShell';
 import { ControlBar, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
-import { sortScreenerRows } from '../screener/sortResults';
 import { intradayDegradationText } from '../screener/intradayDegradation';
 import { resultLimitText } from '../screener/resultLimitText';
 import { suggestSaveName } from '../screener/suggestName';
@@ -156,7 +155,6 @@ export function Screener() {
   // 하고, codes 가 비면(notSeeded/error/무결과) 훅이 폴링을 끈다.
   const rows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const liveRows = useScreenerRowsLive(rows);
-  const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
 
   const notSeeded = lastScan?.scanStatus === 'not_seeded' || status?.status === 'not_seeded';
   // 빈 빌더 조회 차단: 조건 0개로 조회하면 백엔드 JOIN 필터가 하나도 붙지 않아
@@ -181,30 +179,36 @@ export function Screener() {
   // 기준시각 돌파는 당일 전용 — eod 로 조회하면 0행이 된다. 이유를 안 보여주면
   // "조건에 맞는 종목이 없음"과 구분되지 않는다.
   const renewalNeedsIntraday = (lastScan?.warnings ?? []).includes('depth_renewal_requires_intraday');
-  const runScan = () => screener.mutate(scanBody, {
-    onSuccess: (res) => {
-      // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
-      // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
-      const anchored = !editor.dirty && editor.anchorId != null;
-      const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
-      setLastScan({
-        savedId: anchored ? editor.anchorId : null,
-        savedName: anchored ? editor.anchorName : null,
-        savedUpdatedAtMs: saved?.updated_at_ms ?? null,
-        scanKey,
-        rows: res.rows,
-        hasMore: res.has_more,
-        scanStatus: res.status,
-        intradayFailure: res.intraday_failure,
-        warnings: res.warnings,
-        depthValues: res.depth_values ?? null,
-        scannedAtMs: Date.now(),
-        basis,
-        dataStale: false,
-      });
-      setSortMode('default');
-    },
-  });
+  const runScan = () => {
+    const requestJson = JSON.stringify(scanBody);
+    const anchored = !editor.dirty && editor.anchorId != null;
+    const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
+    const savedId = anchored ? editor.anchorId : null;
+    const savedName = anchored ? editor.anchorName : null;
+    return screener.mutate(scanBody, {
+      onSuccess: (res) => {
+        // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
+        // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
+        setLastScan({
+          savedId,
+          savedName,
+          savedUpdatedAtMs: saved?.updated_at_ms ?? null,
+          scanKey,
+          requestJson,
+          rows: res.rows,
+          hasMore: res.has_more,
+          scanStatus: res.status,
+          intradayFailure: res.intraday_failure,
+          warnings: res.warnings,
+          depthValues: res.depth_values ?? null,
+          scannedAtMs: res.scanned_at_ms ?? Date.now(),
+          basis,
+          dataStale: false,
+        });
+        setSortMode('default');
+      },
+    });
+  };
   const submitNameDialog = (name: string) => {
     if (nameDialog === 'save-new') editor.saveCurrent(name);
     else if (nameDialog === 'save-as') editor.saveAsNew(name);
@@ -220,12 +224,6 @@ export function Screener() {
   const saveCurrent = () => {
     if (editor.anchorId) editor.saveCurrent();
     else setNameDialog('save-new');
-  };
-  const depthSides = {
-    ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
-    bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
-    askRenewal: editor.conditions.some((c) => c.type === 'ask_depth_renewal'),
-    bidRenewal: editor.conditions.some((c) => c.type === 'bid_depth_renewal'),
   };
 
   // 우선순위 순 — 첫 번째가 배너, 나머지는 칩. 문구는 종전 배너 문구를 그대로 쓴다
@@ -384,7 +382,7 @@ export function Screener() {
               </span>
             ))}
             <span className="min-w-0 flex-1" />
-            {basis === 'intraday' && (
+            {lastScan?.basis === 'intraday' && (
               <span
                 className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
                 title="조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다"
@@ -429,14 +427,13 @@ export function Screener() {
                 </EmptyState>
               ) : (
                 <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
-                  <ResultTable
-                    rows={sortedLiveRows}
+                  <ScreenerResults
+                    key={`${lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
+                    scan={lastScan}
+                    liveRows={liveRows}
                     onActivate={openLive}
                     sortMode={sortMode}
                     onSortChange={setSortMode}
-                    embedded
-                    depthValues={lastScan?.depthValues ?? undefined}
-                    depthSides={depthSides}
                   />
                 </div>
               )}

@@ -266,22 +266,25 @@ export function ScreenerDrawer() {
     const sel = selected;
     if (!sel) return false;
     try {
-      const res = await screener.mutateAsync({
+      const request = {
         conditions: sel.conditions, universe: sel.universe, basis: DRAWER_SCAN_BASIS,
-      });
+      };
+      const requestJson = JSON.stringify(request);
+      const res = await screener.mutateAsync(request);
       setLastScan({
         savedId: sel.id,
         savedName: sel.name,
         savedUpdatedAtMs: sel.updated_at_ms,
         // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
         scanKey: null,
+        requestJson,
         rows: res.rows,
         hasMore: res.has_more,
         scanStatus: res.status,
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         depthValues: res.depth_values ?? null,
-        scannedAtMs: Date.now(),
+        scannedAtMs: res.scanned_at_ms ?? Date.now(),
         basis: DRAWER_SCAN_BASIS,
         dataStale: false,
       });
