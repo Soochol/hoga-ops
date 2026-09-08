@@ -18,6 +18,8 @@ export interface ScreenerDraft {
   anchorId: string | null;
   anchorName: string | null;
   dirty: boolean;
+  /** 사용자가 명시적으로 만든 빈 초안도 재진입 시 저장본으로 덮지 않는다. */
+  isNewDraft?: boolean;
 }
 
 export const EMPTY_SCREENER_DRAFT: ScreenerDraft = {
@@ -46,6 +48,7 @@ export function readScreenerDraft(): ScreenerDraft {
     anchorId: typeof raw.anchorId === 'string' ? raw.anchorId : null,
     anchorName: typeof raw.anchorName === 'string' ? raw.anchorName : null,
     dirty: raw.dirty === true,
+    ...(raw.isNewDraft === true ? { isNewDraft: true } : {}),
   };
 }
 

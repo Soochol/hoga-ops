@@ -27,6 +27,7 @@ export interface SaveAnchor {
   anchorId: string | null;
   anchorName: string | null;
   dirty: boolean;
+  isNewDraft: boolean;
   loadSave: (s: SavedScreener) => void;
   newDraft: () => void;
   editConditions: (c: ConditionLeaf[]) => void;
@@ -64,15 +65,17 @@ export function useSaveAnchor(): SaveAnchor {
   const [anchorId, setAnchorId] = useState<string | null>(seed.anchorId);
   const [anchorName, setAnchorName] = useState<string | null>(seed.anchorName);
   const [dirty, setDirty] = useState(seed.dirty);
+  const [isNewDraft, setIsNewDraft] = useState(seed.isNewDraft === true);
   const editGen = useRef(0);
   const pendingSaveGen = useRef<number | null>(null);
 
   // 빌더 상태가 바뀔 때마다 영속(조건 편집은 keystroke 가 아닌 discrete op 라 write 빈도 낮음).
   useEffect(() => {
-    persistScreenerDraft({ conditions, universe, anchorId, anchorName, dirty });
-  }, [conditions, universe, anchorId, anchorName, dirty]);
+    persistScreenerDraft({ conditions, universe, anchorId, anchorName, dirty, ...(isNewDraft ? { isNewDraft: true } : {}) });
+  }, [conditions, universe, anchorId, anchorName, dirty, isNewDraft]);
 
   const loadSave = (s: SavedScreener) => {
+    setIsNewDraft(false);
     setConditions(s.conditions);
     setUniverse(s.universe);
     setAnchorId(s.id);
@@ -80,12 +83,13 @@ export function useSaveAnchor(): SaveAnchor {
     setDirty(false);
     persistAnchorId(s.id);
   };
-  const newDraft = () => { setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
+  const newDraft = () => { setIsNewDraft(true); setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
   const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
   const settleAnchor = (id: string | null, name?: string | null) => {
     setAnchorId(id);
+    setIsNewDraft(id === null);
     if (id !== null) persistAnchorId(id);
     if (id === null) setAnchorName(null);
     else if (name !== undefined) setAnchorName(name);
@@ -96,5 +100,5 @@ export function useSaveAnchor(): SaveAnchor {
     pendingSaveGen.current = null;
   };
 
-  return { conditions, universe, anchorId, anchorName, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
+  return { conditions, universe, anchorId, anchorName, dirty, isNewDraft, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
 }

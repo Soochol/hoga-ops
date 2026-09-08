@@ -8,6 +8,7 @@ import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/us
 import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { ScreenerResults } from '../screener/ScreenerResults';
+import { SavedConditionSelect } from '../screener/SavedConditionSelect';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useSavedScreeners } from '../screener/useSavedScreeners';
@@ -121,6 +122,7 @@ export function Screener() {
   const openLive = useJumpToLive();
   const editor = useSavedScreenerEditor();
   const [nameDialog, setNameDialog] = useState<NameDialogMode | null>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<{ save: SavedScreener | null; restore?: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<SavedScreener | null>(null);
 
   // 조회 결과·정렬은 screenerPanel 스토어(localStorage + 30분 TTL)에 산다 — 라우트
@@ -179,6 +181,11 @@ export function Screener() {
   // 기준시각 돌파는 당일 전용 — eod 로 조회하면 0행이 된다. 이유를 안 보여주면
   // "조건에 맞는 종목이 없음"과 구분되지 않는다.
   const renewalNeedsIntraday = (lastScan?.warnings ?? []).includes('depth_renewal_requires_intraday');
+  const switchEditor = (save: SavedScreener | null, restore = false) => {
+    if (editor.isSaving) return;
+    if (editor.dirty) { setPendingSwitch({ save, restore }); return; }
+    if (save) editor.load(save); else editor.newDraft();
+  };
   const runScan = () => {
     const requestJson = JSON.stringify(scanBody);
     const anchored = !editor.dirty && editor.anchorId != null;
@@ -258,35 +265,25 @@ export function Screener() {
           <div className="flex items-center gap-1.5">
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
             <button type="button" aria-label="새 조건검색" title="새 조건검색"
-              onClick={() => editor.newDraft()}
-              className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
+              disabled={editor.isSaving} onClick={() => switchEditor(null)}
+              className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50">＋ 새 조건</button>
           </div>
           <div className="flex items-center gap-1.5">
-            <select
-              aria-label="저장한 조건검색 선택"
-              value={editor.anchorId ?? ''}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) { editor.newDraft(); return; }
-                const s = saves.find((x) => x.id === id);
-                if (s) editor.load(s);
-              }}
-              className="min-w-0 flex-1 rounded-md border border-border bg-bg-input px-2 py-1.5 text-sm text-fg"
-            >
-              <option value="">새 조건검색</option>
-              {saves.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <SavedConditionSelect saves={saves} selectedId={editor.anchorId}
+              disabled={editor.isSaving} placeholder="새 조건 · 미저장"
+              onSelect={(id) => {
+                const save = saves.find((s) => s.id === id);
+                if (save) switchEditor(save);
+              }} />
             {editor.dirty && <span className="shrink-0 text-2xs text-fg-dim">수정됨</span>}
-            {anchorSave && (
+            {anchorSave && !editor.isSaving && (
               <SavedActionsMenu save={anchorSave}
                 onRename={() => setNameDialog('rename')}
                 onDuplicate={editor.duplicate}
                 onDelete={setConfirmDelete} />
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving} className="text-fg">
               {editor.isSaving ? '저장 중…' : '저장'}
             </ToolbarButton>
@@ -294,6 +291,12 @@ export function Screener() {
               다른 이름으로 저장
             </ToolbarButton>
           </div>
+          {anchorSave && editor.dirty && (
+            <ToolbarButton disabled={editor.isSaving} onClick={() => switchEditor(anchorSave, true)}>
+              저장본으로 되돌리기
+            </ToolbarButton>
+          )}
+          <p className="text-xs text-fg-dim">선택하면 조건을 불러옵니다 · 조회를 눌러 실행하세요</p>
           {editor.saveError && (
             <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>
           )}
@@ -448,6 +451,21 @@ export function Screener() {
           onSubmit={submitNameDialog}
           onClose={() => setNameDialog(null)}
         />
+      )}
+      {pendingSwitch && (
+        <ModalShell ariaLabel="미저장 변경 확인" title="저장하지 않은 변경이 있습니다" width="w-[360px]" onClose={() => setPendingSwitch(null)}>
+          <p className="px-4 py-4 text-sm text-fg">
+            {pendingSwitch.restore ? '편집한 내용을 버리고 저장본으로 되돌릴까요?'
+              : `편집한 내용을 버리고 ${pendingSwitch.save ? `“${pendingSwitch.save.name}” 조건으로 이동할까요?` : '새 조건을 만들까요?'}`}
+          </p>
+          <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+            <ToolbarButton onClick={() => setPendingSwitch(null)}>계속 편집</ToolbarButton>
+            <ToolbarButton onClick={() => {
+              if (pendingSwitch.save) editor.load(pendingSwitch.save); else editor.newDraft();
+              setPendingSwitch(null);
+            }}>{pendingSwitch.restore ? '변경 버리고 복원' : '변경 버리고 이동'}</ToolbarButton>
+          </div>
+        </ModalShell>
       )}
       {confirmDelete && (
         <ConfirmModal
