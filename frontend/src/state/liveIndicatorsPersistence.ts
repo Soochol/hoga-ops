@@ -37,18 +37,19 @@ export const MA_PERIOD_MIN = 2;
 export const MA_PERIOD_MAX = 400;
 export const MA_SLOT_LIMIT = 8;
 
-/** 색상 hex는 tokens.css의 --ma-N과 정확히 일치 (canvas는 CSS var를
- *  직접 받지 못함). --ma-2 (#3B82F6, blue)는 KRX --price-down (#2563EB,
+/** 기본색은 MA 팔레트에서 선택한다(canvas는 CSS var를 직접 받지 못함).
+ *  120선은 밝은/어두운 배경에서 식별 가능한 회색. 저장된 사용자 색은 보존한다.
+ *  --ma-2 (#3B82F6, blue)는 KRX --price-down (#2563EB,
  *  blue)과 색역이 가까워 기본 슬롯에서 의도적으로 스킵. spec §1 참조. */
 export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
   { id: 'ma-1', enabled: true, period: 5,   color: '#EC4899', lineWidth: 1, source: 'close' },
   { id: 'ma-2', enabled: true, period: 20,  color: '#F97316', lineWidth: 1, source: 'close' },
   { id: 'ma-3', enabled: true, period: 60,  color: '#22C55E', lineWidth: 1, source: 'close' },
-  { id: 'ma-4', enabled: true, period: 120, color: '#F8FAFC', lineWidth: 1, source: 'close' },
+  { id: 'ma-4', enabled: true, period: 120, color: '#6B7280', lineWidth: 1, source: 'close' },
 ]) as readonly LiveMAConfig[];
 
 /** 일봉 이동평균선 기본 슬롯 — period 20 단일. 색 #EAB308(--ma-7, yellow)은
- *  현재봉 기본 슬롯(EC4899/F97316/22C55E/F8FAFC)과 구분된다(MA_PALETTE와 일치).
+ *  현재봉 기본 슬롯(EC4899/F97316/22C55E/6B7280)과 구분된다(MA_PALETTE와 일치).
  *
  *  ⚠ 슬롯이 `enabled: false` 인 것은 오타가 아니라 **opt-in 의 표현**이다. 종전에는
  *  마스터 토글(`dailyMovingAverageEnabled`, 기본 false)이 opt-in 을 담당하고 슬롯은
