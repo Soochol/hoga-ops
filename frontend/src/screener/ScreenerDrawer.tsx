@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router';
 import {
   DndContext,
@@ -35,82 +34,7 @@ import { sortScreenerRows, stackByEntryOrder, type ScreenerResultSortMode } from
 import type { ScanBasis } from '../api/screener';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
-import { useDismissablePopover } from '../util/useDismissablePopover';
-import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
-
-/**
- * 저장한 조건검색 선택 드롭다운 — 네이티브 <select> 대신 디자인 시스템 정합 팝오버.
- * TimeframeControl 과 동일 관용구(포털 + useDismissablePopover + 클램프 위치).
- * 옵션은 열렸을 때만 렌더(role=option/listbox), 트리거는 현재 선택명을 보여준다.
- */
-function SavedConditionSelect({
-  saves,
-  selectedId,
-  onSelect,
-}: {
-  saves: readonly { id: string; name: string }[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  useDismissablePopover(open, wrapRef, () => setOpen(false));
-  const { ref: posRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
-    anchorRect?.left ?? 0,
-    anchorRect ? anchorRect.bottom + 4 : 0,
-  );
-  const selected = saves.find((s) => s.id === selectedId) ?? saves[0];
-
-  const menu = open && anchorRect ? (
-    <div
-      ref={posRef}
-      role="listbox"
-      aria-label="저장한 조건검색"
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{ position: 'fixed', left, top, width: anchorRect.width }}
-      className="z-50 max-h-64 overflow-auto rounded-lg border border-border bg-bg-card py-1 shadow-lg"
-    >
-      {saves.map((s) => (
-        <button
-          key={s.id}
-          type="button"
-          role="option"
-          aria-selected={s.id === selectedId}
-          onClick={() => { onSelect(s.id); setOpen(false); }}
-          className={`block w-full truncate px-3 py-1.5 text-left text-sm ${
-            s.id === selectedId ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-          }`}
-        >
-          {s.name}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <button
-        ref={btnRef}
-        type="button"
-        aria-label="저장한 조건검색 선택"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => {
-          setAnchorRect(btnRef.current?.getBoundingClientRect() ?? null);
-          setOpen((o) => !o);
-        }}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border bg-bg-input px-2 py-1.5 text-sm text-fg hover:bg-bg-input-hover"
-        style={{ borderColor: open ? 'var(--accent)' : 'var(--border)' }}
-      >
-        <span className="truncate">{selected?.name ?? '조건 선택'}</span>
-        <span aria-hidden className="shrink-0 text-fg-dim">⌄</span>
-      </button>
-      {menu && createPortal(menu, document.body)}
-    </div>
-  );
-}
+import { SavedConditionSelect } from './SavedConditionSelect';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };

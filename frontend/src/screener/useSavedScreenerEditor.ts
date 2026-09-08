@@ -43,7 +43,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   useEffect(() => {
     if (hydratedRef.current || !savesLoaded) return;
     hydratedRef.current = true;
-    if (anchor.anchorId !== null || anchor.dirty) return;
+    if (anchor.anchorId !== null || anchor.dirty || anchor.isNewDraft) return;
     const saves = savesData?.saves ?? [];
     if (saves.length === 0) return;
     const persistedId = readPersistedAnchorId();
@@ -99,7 +99,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   return {
     conditions: anchor.conditions, universe: anchor.universe,
     anchorId: anchor.anchorId, anchorName: anchor.anchorName, dirty: anchor.dirty,
-    isSaving: create.isPending || update.isPending,
+    isSaving: create.isPending || update.isPending || remove.isPending,
     saveError: (create.error ?? update.error) instanceof Error ? (create.error ?? update.error) as Error : null,
     editConditions: anchor.editConditions, editUniverse: anchor.editUniverse,
     load: anchor.loadSave, newDraft: anchor.newDraft,

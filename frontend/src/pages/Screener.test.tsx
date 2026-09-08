@@ -123,12 +123,10 @@ function sortButton() {
   return screen.getByRole('button', { name: '스크리너 결과 정렬' });
 }
 
-// 저장 목록은 2단 개편(2026-08-04)으로 select 가 됐다 — 행 클릭 대신 change 이벤트.
-// 옵션은 saves 쿼리 해소 후에 그려지므로 findByRole 로 기다린다.
+// 실제 선택기의 버튼 → 검색 목록 → 옵션 흐름을 사용한다.
 async function loadSave(name: string) {
-  const select = await screen.findByLabelText('저장한 조건검색 선택');
-  const option = await within(select).findByRole('option', { name }) as HTMLOptionElement;
-  fireEvent.change(select, { target: { value: option.value } });
+  fireEvent.click(await screen.findByRole('button', { name: '저장한 조건검색 선택' }));
+  fireEvent.click(await screen.findByRole('option', { name }));
 }
 
 it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
@@ -504,8 +502,8 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   renderPage();
   // 자동 로드(1회)가 끝나 앵커가 앉을 때까지 대기 — 이보다 먼저 새 조건검색을 누르면
   // 늦게 도착한 자동 로드가 초안을 덮어 앵커를 되살린다(테스트가 아닌 실제 타이밍 계약).
-  const select = await screen.findByLabelText('저장한 조건검색 선택') as HTMLSelectElement;
-  await waitFor(() => expect(select.value).toBe('new1'));
+  const select = await screen.findByRole('button', { name: '저장한 조건검색 선택' });
+  await waitFor(() => expect(select).toHaveTextContent('레이스'));
   fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));  // draft (앵커 해제)
   fireEvent.click(screen.getByRole('button', { name: '저장' }));         // 앵커 없음 → 이름 다이얼로그
   const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
@@ -619,4 +617,55 @@ it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오
   await screen.findByText('삼성전자');
   expect(screen.getByText('80,000 (+7.70%)')).toBeInTheDocument(); // 라이브 현재가+등락률
   expect(screen.queryByText('74,200')).not.toBeInTheDocument(); // 코퍼스 현재가는 덮여 사라짐
+});
+
+it('protects unsaved edits on saved-condition switch, new draft and restore', async () => {
+  const other: SavedScreener = { ...defaultSaves().saves[0], id: 'other', name: '다른조건' };
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [...defaultSaves().saves, other] });
+  await renderPageReady();
+  const input = screen.getByLabelText('최소 거래대금(억)');
+  fireEvent.change(input, { target: { value: '200' } });
+  fireEvent.blur(input);
+  await loadSave('다른조건');
+  expect(screen.getByRole('dialog', { name: '미저장 변경 확인' })).toBeVisible();
+  expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('기본조건');
+  fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
+  expect(input).toHaveValue(200);
+  fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
+  fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
+  expect(input).toHaveValue(200);
+  fireEvent.click(screen.getByRole('button', { name: '저장본으로 되돌리기' }));
+  fireEvent.click(screen.getByRole('button', { name: '변경 버리고 복원' }));
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(100);
+  expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '300' } });
+  fireEvent.blur(screen.getByLabelText('최소 거래대금(억)'));
+  await loadSave('다른조건');
+  fireEvent.click(screen.getByRole('button', { name: '변경 버리고 이동' }));
+  expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('다른조건');
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(100);
+});
+
+it('keeps an explicitly created empty draft across remounts', async () => {
+  const first = await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
+  first.unmount();
+  renderPage();
+  await waitFor(() => expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('새 조건 · 미저장'));
+  expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
+});
+
+it('prevents switching or restoring while a save is in flight', async () => {
+  let resolveSave!: (save: SavedScreener) => void;
+  vi.mocked(updateSave).mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+  await renderPageReady();
+  const input = screen.getByLabelText('최소 거래대금(억)');
+  fireEvent.change(input, { target: { value: '200' } });
+  fireEvent.blur(input);
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(screen.getByLabelText('저장한 조건검색 선택')).toBeDisabled());
+  expect(screen.getByRole('button', { name: '새 조건검색' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '저장본으로 되돌리기' })).toBeDisabled();
+  await act(async () => { resolveSave(defaultSaves().saves[0]); });
+  expect(screen.getByLabelText('저장한 조건검색 선택')).toBeEnabled();
 });
