@@ -967,6 +967,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               // **이 전달 자체를 재는 테스트는 없다.**
               dailyMaWindowFloorDate={d.dailyMaWindowFloorDate}
               isPastCandlesLoading={d.workareaLoading}
+              isInitialMinuteHistoryPending={!d.activeIndexId && d.isInitialMinuteHistoryPending}
               isHogaLoading={d.activeIndexId ? false : d.isHogaLoading}
               isSidecarLoading={d.activeIndexId ? false : (d.isSidecarLoading || d.isDailyMaLoading)}
               isExtending={d.activeIndexId ? d.indexExtending : d.isExtending}

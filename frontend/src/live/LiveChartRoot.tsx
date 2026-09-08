@@ -338,6 +338,8 @@ interface Props {
    *  판정은 모드를 아는 훅이 하고 여기서는 나르기만 한다(그 값의 도크스트링 참조). */
   minuteScrollbackFloorDate?: string | null;
   isPastCandlesLoading: boolean;
+  /** Today's seed is visible while the initial minute history is still arriving. */
+  isInitialMinuteHistoryPending?: boolean;
   /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
    *  옵셔널 + 기본 false라 도입 당시 다른 마운트·기존 테스트가 무변경으로 settled. */
@@ -529,6 +531,7 @@ export function LiveChartRoot({
   candleSourceKey,
   minuteScrollbackFloorDate = null,
   isPastCandlesLoading,
+  isInitialMinuteHistoryPending = false,
   isHogaLoading = false,
   isSidecarLoading = false,
   isExtending = false,
@@ -1628,9 +1631,14 @@ export function LiveChartRoot({
         rememberLatestCandleLogicalIndex(latestLogicalIndex);
         const latest = latestLogicalIndex ?? totalBars - 1;
         const target = initialVisibleMinuteBarsFor(timeframe, venue);
-        const visibleBars = Math.min(totalBars, target);
+        // A today-first seed is not the full history. Reserve the normal
+        // viewport to its left so the first few opening candles don't set a
+        // permanent zoom; the prepend path fills it without changing scale.
+        const visibleBars = isInitialMinuteHistoryPending ? target : Math.min(totalBars, target);
         const rightOffset = minuteRightOffsetBars(visibleBars, ts.width());
-        const from = Math.max(0, latest + 1 - visibleBars);
+        const from = isInitialMinuteHistoryPending
+          ? latest + 1 - visibleBars
+          : Math.max(0, latest + 1 - visibleBars);
         const to = latest + 1 + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
@@ -1695,7 +1703,7 @@ export function LiveChartRoot({
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isInitialMinuteHistoryPending, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
 
   useEffect(() => {
     const el = containerRef.current;

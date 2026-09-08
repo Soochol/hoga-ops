@@ -1663,6 +1663,38 @@ describe('LiveChartRoot', () => {
     expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
   });
 
+  it('1m timeframe: four opening candles keep the normal zoom while initial history loads', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930" timeframe="1m" bundle={makeBundleWithCandles(4)}
+        clampEngaged={false} captureFloorEngaged={false}
+        isPastCandlesLoading={false} isExtending
+        isInitialMinuteHistoryPending
+      />,
+      { wrapper },
+    );
+
+    // The missing history occupies the left side at the usual scale. Fitting
+    // the four seed candles here permanently zoomed in watchlist cold opens.
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: -296, to: 92 });
+
+    ts.setVisibleLogicalRange.mockClear();
+    rerender(
+      <LiveChartRoot
+        code="005930" timeframe="1m" bundle={makeBundleWithCandles(5)}
+        clampEngaged={false} captureFloorEngaged={false}
+        isPastCandlesLoading={false} isExtending
+        isInitialMinuteHistoryPending
+      />,
+    );
+    // Streaming ticks must not reset a viewport the user can already adjust.
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+  });
+
   it('1m timeframe: initial apply includes pixel-safe right whitespace', () => {
     // The live edge should look like W/M: latest candle visible with an empty
     // band to its right. The range owns that padding directly instead of
