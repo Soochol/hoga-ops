@@ -77,6 +77,40 @@ describe('useStudyViewTreeState', () => {
     write.mockRestore();
   });
 
+  it.each([
+    { groupKeys: ['000660', '005930'], rowIdsByGroup: { '005930': ['c', 'a'], '000660': ['b'] } },
+    { groupKeys: ['005930', '000660'], rowIdsByGroup: { '005930': ['a', 'c'], '000660': ['b'] } },
+  ])('does not overwrite an externally changed order when undoing: %j', (externalOrder) => {
+    const { result } = renderHook(() => useStudyViewTreeState(rows));
+    act(() => result.current.placeRows('005930', ['c'], 'a', 'before'));
+    localStorage.setItem('studyViews.treeManualOrder.v1', JSON.stringify(externalOrder));
+
+    act(() => result.current.undoReorder());
+
+    expect(JSON.parse(localStorage.getItem('studyViews.treeManualOrder.v1')!)).toEqual(externalOrder);
+    expect(result.current.orderMessage).toContain('순서가 변경되어 되돌릴 수 없습니다');
+    expect(result.current.canUndoOrder).toBe(false);
+  });
+
+  it('undoes a row move after reordering groups despite persisted object key order', () => {
+    const more = [...rows, { ...rows[1], id: 'd', name: '다음 눌림' }];
+    const { result } = renderHook(() => useStudyViewTreeState(more));
+    act(() => result.current.placeGroup('000660', '005930', 'before'));
+    act(() => result.current.placeRows('000660', ['d'], 'b', 'before'));
+    expect(result.current.visibleGroups[0].rows.map((row) => row.id)).toEqual(['d', 'b']);
+
+    act(() => result.current.undoReorder());
+
+    expect(result.current.visibleGroups.map((group) => group.key)).toEqual(['000660', '005930']);
+    expect(result.current.visibleGroups[0].rows.map((row) => row.id)).toEqual(['b', 'd']);
+    expect(JSON.parse(localStorage.getItem('studyViews.treeManualOrder.v1')!)).toEqual({
+      groupKeys: ['000660', '005930'],
+      rowIdsByGroup: { '005930': ['a', 'c'], '000660': ['b', 'd'] },
+    });
+    expect(result.current.orderMessage).toBe('순서를 되돌렸습니다');
+    expect(result.current.canUndoOrder).toBe(false);
+  });
+
   it('does not erase persisted order or collapse keys while the first query is loading', () => {
     const manual = { groupKeys: ['000660', '005930'], rowIdsByGroup: { '005930': ['c', 'a'] } };
     localStorage.setItem('studyViews.treeManualOrder.v1', JSON.stringify(manual));

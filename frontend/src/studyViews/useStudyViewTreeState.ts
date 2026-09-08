@@ -58,6 +58,17 @@ function pruneManualOrder<T extends StudyViewTreeRow>(
   };
 }
 
+function sameManualOrder(left: StudyViewTreeManualOrder, right: StudyViewTreeManualOrder): boolean {
+  const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
+  if (!sameIds(left.groupKeys, right.groupKeys)) return false;
+  const keys = Object.keys(left.rowIdsByGroup);
+  // Persistence may enumerate Code keys differently without changing any displayed order.
+  return keys.length === Object.keys(right.rowIdsByGroup).length && keys.every((key) => {
+    const rightRows = right.rowIdsByGroup[key];
+    return Array.isArray(rightRows) && sameIds(left.rowIdsByGroup[key], rightRows);
+  });
+}
+
 function nextSortMode(current: StudyViewTreeSortMode): StudyViewTreeSortMode {
   if (current === 'default') return 'name-asc';
   if (current === 'name-asc') return 'name-desc';
@@ -157,7 +168,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loa
   };
   const commitOrder = (next: StudyViewTreeManualOrder) => {
     const before = snapshot();
-    if (JSON.stringify(before) === JSON.stringify(next)) return;
+    if (sameManualOrder(before, next)) return;
     if (!writeOrder(next)) return;
     setUndoOrder({ before, after: next });
     setOrderMessage('순서를 변경했습니다 · 이 브라우저에 저장');
@@ -180,7 +191,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loa
   };
   const undoReorder = () => {
     if (!undoOrder) return;
-    if (JSON.stringify(readStudyViewTreeManualOrder()) !== JSON.stringify(undoOrder.after)) {
+    if (!sameManualOrder(readStudyViewTreeManualOrder(), undoOrder.after)) {
       setOrderMessage('순서가 변경되어 되돌릴 수 없습니다. 최신 목록을 확인하세요.');
       setUndoOrder(null);
       return;

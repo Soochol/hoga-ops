@@ -199,3 +199,22 @@ test('가장자리 자동 스크롤 중에도 목적지에 삽입하고 Escape�
     const ids = await order(page); return ids.indexOf('a') - ids.indexOf(targetId!);
   }).toBe(1);
 });
+
+test('연속 삭제 안내는 화면 안에서 스크롤하며 최신 요청을 바로 취소할 수 있다', async ({ page }) => {
+  await setup(page, [saved('a'), ...Array.from({ length: 15 }, (_, i) => saved(`q${i}`))]);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await row(page, 'a').getByRole('button', { name: '복기 a 저장뷰 열기', exact: true }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press('Delete');
+  const list = page.getByRole('region', { name: '저장뷰 삭제 알림 목록' });
+  await expect(list.getByRole('status')).toHaveCount(12);
+  const bounds = await list.boundingBox();
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height / 2);
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  const newest = list.getByRole('status').first();
+  await expect(newest).toContainText('복기 q10');
+  await newest.getByRole('button', { name: '실행 취소' }).click();
+  await expect(row(page, 'q10')).toBeVisible();
+  await expect(list.getByRole('status')).toHaveCount(11);
+});

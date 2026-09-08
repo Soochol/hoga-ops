@@ -697,6 +697,25 @@ it('releases edit state when bulk-deleting a view whose rename failed', () => {
   expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
 });
 
+it('releases failed edit state when deletion is retried from the global toast', async () => {
+  vi.useFakeTimers();
+  deleteApi.mockRejectedValueOnce(new Error('delete offline'));
+  updateMetadataMutate.mockImplementation((_body, opts) => opts.onError(new Error('rename offline')));
+  renderDrawer('/inventory');
+  fireEvent.keyDown(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { key: 'Delete' });
+  await act(() => vi.advanceTimersByTimeAsync(5000));
+  fireEvent.doubleClick(within(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).getByText('급등 이후'));
+  const input = screen.getByLabelText('저장뷰 이름 수정');
+  fireEvent.change(input, { target: { value: '새 이름' } });
+  fireEvent.blur(input);
+  expect(screen.getByText('rename offline')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '실패 항목 다시 시도' }));
+  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
+  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
+  await act(() => vi.advanceTimersByTimeAsync(5000));
+  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
+});
+
 it.each([['a', null], ['b', 'b']])('deleting a only clears the range when a is open (open: %s)', async (openId, expected) => {
   vi.useFakeTimers();
   openSavedView(saves.find((s) => s.id === openId)!);

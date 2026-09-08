@@ -156,6 +156,20 @@ export function StudyViewsDrawer() {
   } = useStudyViewTreeState(allSaves, data !== undefined);
   // Keep pending deletions in the order model so Undo also restores their exact position.
   const visibleGroups = treeGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hiddenIds.has(r.id)) })).filter((g) => g.rows.length > 0);
+  // Toast retries enter the shared queue without going through this drawer's
+  // delete handler. Release editing state at that external state transition.
+  useEffect(() => useStudyViewDeletion.subscribe((state) => {
+    const queued = new Set(state.batches.filter((batch) => batch.phase !== 'complete')
+      .flatMap((batch) => batch.rows.map((row) => row.id)));
+    if (renameState && queued.has(renameState.id)) {
+      renameCommittingRef.current = false;
+      setRenameState(null);
+    }
+    if (memoState && queued.has(memoState.id)) {
+      memoCommittingRef.current = false;
+      setMemoState(null);
+    }
+  }), [renameState, memoState]);
   const canDrag = dragEnabled && !renameState && !memoState;
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
   /**

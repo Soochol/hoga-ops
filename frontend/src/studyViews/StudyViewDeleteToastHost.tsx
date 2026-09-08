@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
 import { useStudyViewDeletion } from './studyViewDeletion';
 
@@ -27,5 +27,16 @@ function DeleteToast({ batch }: { batch: Batch }) {
 }
 export default function StudyViewDeleteToastHost() {
   const batches = useStudyViewDeletion((s) => s.batches);
-  return <>{batches.map((batch) => <DeleteToast key={batch.id} batch={batch} />)}</>;
+  const listRef = useRef<HTMLDivElement>(null);
+  const newestId = batches.at(-1)?.id;
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [newestId]);
+  if (!batches.length) return null;
+  // A held Delete key can enqueue many independent undo windows. Keep every
+  // action reachable without pushing later requests above the viewport.
+  return <div ref={listRef} role="region" aria-label="저장뷰 삭제 알림 목록"
+    className="pointer-events-auto flex max-h-[50vh] flex-col gap-2 overflow-y-auto">
+    {[...batches].reverse().map((batch) => <div key={batch.id} className="shrink-0"><DeleteToast batch={batch} /></div>)}
+  </div>;
 }
