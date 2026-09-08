@@ -4,8 +4,7 @@ import json
 import polars as pl
 import pytest
 
-from hoga.api import screener_factors, screener_history_coverage as coverage
-from hoga.api import screener_history_jobs as jobs
+from hoga.api import screener_factors, screener_history_coverage as coverage, screener_history_jobs as jobs
 from hoga.api.models import ScanRequest
 from hoga.api.screener_store import _DAILY_PL_SCHEMA
 

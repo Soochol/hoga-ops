@@ -207,15 +207,16 @@ async def flush_batch(data_dir, job, pending, fetch=fetch_pair):
     _save(data_dir, job)
 
 
+def recover_publication(data_dir: Path):
+    with screener_write_lock(data_dir / "screener"):
+        pass
+
+
 async def run_job(data_dir: Path, job, fetch=fetch_pair):
     req = ScanRequest.model_validate(job["request"])
     try:
-        def recover_publication():
-            with screener_write_lock(data_dir / "screener"):
-                pass
-
         # Complete already validated staged writes before planning any vendor work.
-        await asyncio.to_thread(recover_publication)
+        await asyncio.to_thread(recover_publication, data_dir)
         # A failed publication is retried from authoritative disk observations by the same
         # collection operation, not treated as proof that the missing interval is complete.
         report = await asyncio.to_thread(coverage.evaluate, data_dir, req.conditions, job["codes"])
