@@ -1,3 +1,4 @@
+import { HistoryCollection } from '../screener/HistoryCollection';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -207,7 +208,8 @@ export function Screener() {
           scanStatus: res.status,
           intradayFailure: res.intraday_failure,
           warnings: res.warnings,
-          depthValues: res.depth_values ?? null,
+          historyCoverage: res.history_coverage,
+        depthValues: res.depth_values ?? null,
           scannedAtMs: res.scanned_at_ms ?? Date.now(),
           basis,
           dataStale: false,
@@ -304,7 +306,9 @@ export function Screener() {
         </div>
         <div className="min-h-0 flex-1">
           <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
-            onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse} />
+            onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}>
+            <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />
+          </ConditionBuilder>
         </div>
       </PanelCard>
 

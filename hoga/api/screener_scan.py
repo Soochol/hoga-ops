@@ -9,6 +9,7 @@ from hoga.api import screener_depth, screener_universe
 from hoga.api.models import (
     BreakoutParams,
     ConditionLeaf,
+    HistoryVolumeParams,
     ScreenerRow,
     ScreenerUniverse,
 )
@@ -153,6 +154,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
+             history_pass: dict[str, list[str]] | None = None,
              scope_codes: set[str] | None = None,
              etf_codes: frozenset[str] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
@@ -204,6 +206,15 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     joins: list[str] = []
     params: list = []
     for i, leaf in enumerate(conditions):
+        if isinstance(leaf.params, HistoryVolumeParams):
+            if history_pass is None:
+                raise ValueError("날짜 범위 조건은 이력 평가가 필요합니다")
+            rel = f"history_src_{i}"
+            con.register(rel, pl.DataFrame({"code": pl.Series(
+                "code", history_pass.get(leaf.id, []), dtype=pl.Utf8)}))
+            ctes.append(f"cond_{i} AS (SELECT code FROM {rel})")
+            joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
+            continue
         if leaf.type in _DEPTH_TYPES:
             # 총잔량 신고: screener_depth 가 계산한 통과 코드셋을 relation 으로 등록해
             # 읽는다(빈 셋 → 0행 → JOIN 이 전체를 비운다). 같은 con 이라 등록 뷰 유지.

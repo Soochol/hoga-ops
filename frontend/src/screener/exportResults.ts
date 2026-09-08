@@ -23,7 +23,7 @@ export function resultsCsv(
     '종목코드', '종목명', '시장', '조회가격(원)', '조회등락률(%)', '조회가격 기준일',
     '거래대금(조회 당시 추정·원)', '현재가(마지막 수신·원)', '현재등락률(%)',
     '예상체결가(원)', '예상등락률(%)', '조회기준', '조회완료시각(KST)', '내보낸시각(KST)',
-    '조건검색명', '조회요청(JSON)', '조회경고', '상한초과', '데이터갱신후 재조회필요',
+    '조건검색명', '조회요청(JSON)', '조회경고', '상한초과', '데이터갱신후 재조회필요', '과거 거래량 조건 충족 기록',
   ];
   const records = codes.flatMap((code) => {
     const row = snapshots.get(code);
@@ -39,6 +39,7 @@ export function resultsCsv(
       scan.requestJson ?? scan.scanKey ?? '기록 없음',
       [...scan.warnings, ...(scan.intradayFailure ? [JSON.stringify(scan.intradayFailure)] : [])].join(' | '),
       scan.hasMore == null ? '미확인' : scan.hasMore ? '예' : '아니오', scan.dataStale ? '예' : '아니오',
+      (row.history_matches ?? []).map(m => `${m.condition_id}: ${m.date} ${m.volume}주 (${m.window_start}~${m.window_end})`).join(' / '),
     ]];
   });
   // UTF-8 BOM + CRLF: 한글 CSV를 Excel에서도 그대로 읽는다.

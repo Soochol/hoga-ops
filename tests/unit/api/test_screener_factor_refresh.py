@@ -281,3 +281,56 @@ def test_max_codes_truncation_leaves_the_rest_as_candidates(tmp_path) -> None:
 
     assert r.candidates == ["A"] and calls == ["A"]
     assert len(r.steps) == 2, "잘린 뒤에도 계단 전수는 리포트에 남는다"
+
+
+def test_refresh_publication_serializes_with_history_commit(tmp_path, monkeypatch) -> None:
+    """A refresh reading an old snapshot must publish before a waiting history writer."""
+    import fcntl
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from hoga.api import screener_factor_refresh as refresh
+    from hoga.api.screener_history_jobs import commit_verified
+
+    sdir = tmp_path / "screener"
+    _seed(sdir, _split_corpus(), _factors([("A", dt.date(2026, 1, 2), 1.0)]))
+    snapshot_read = threading.Event()
+    release_refresh = threading.Event()
+    lock_checked = threading.Event()
+    writer_blocked = []
+    derive = refresh.derive_adjusted
+
+    def paused_derive(up, out, **kwargs):
+        snapshot = pl.read_parquet(up)
+        snapshot_read.set()
+        assert release_refresh.wait(10)
+        return derive(up, out, unadjusted_df=snapshot, **kwargs)
+
+    def collect_history():
+        with (sdir / ".writer.lock").open("a") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                writer_blocked.append(True)
+            else:
+                writer_blocked.append(False)
+                fcntl.flock(handle, fcntl.LOCK_UN)
+        lock_checked.set()
+        raw = _daily([("B", dt.date(2017, 1, 2), 100.0)])
+        return commit_verified(tmp_path, [(raw, raw)])
+
+    monkeypatch.setattr(refresh, "derive_adjusted", paused_derive)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        refreshing = workers.submit(lambda: asyncio.run(refresh_factors(
+            sdir, fetch_adj=_vendor_adjusted_full, since=_SINCE, dry_run=False, stamp="T")))
+        try:
+            assert snapshot_read.wait(10)
+            collecting = workers.submit(collect_history)
+            assert lock_checked.wait(10)
+            assert writer_blocked == [True], "refresh publication did not hold the writer lock"
+        finally:
+            release_refresh.set()
+        assert refreshing.result(timeout=10).refreshed == ["A"]
+        assert collecting.result(timeout=10) == 1
+    adjusted = pl.read_parquet(sdir / "daily_adjusted.parquet")
+    assert adjusted.filter(pl.col("code") == "B")["date"].to_list() == [dt.date(2017, 1, 2)]

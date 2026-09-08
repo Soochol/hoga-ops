@@ -43,6 +43,12 @@ list tells the attacker's domain apart (ADR-0134).
 
 The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KIS 는 파생 전용 — ADR-0136). The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
 
+과거 최대거래량 검색은 `/screener` → **기간내 신고거래량 → 날짜 범위**에서 설정한다.
+예를 들어 발생일 `2019-01-01~2022-12-31`, 비교 기간 `2년`으로 조회한 뒤,
+이력이 부족하면 **과거 일봉 수집**을 누른다. 키움 REST로 받은 일봉을 서버 디스크에
+저장해 재사용하며, 조건이 그대로면 완료 후 자동 재조회한다. 검색 기준·부분 이력의
+의미·수집 API는 [구현 및 사용 기록](./docs/plans/2026-09-09-screener-historical-volume.md)에 정리했다.
+
 ## Quickstart
 
 ```sh

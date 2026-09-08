@@ -56,8 +56,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ScreenerResponse": frozenset({
         "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
+        "history_coverage",
     }),
-    "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date"}),
+    "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date",
+                               "history_matches"}),
+    "HistoryCoverage": frozenset({"total", "complete", "incomplete"}),
+    "HistoryCoverageItem": frozenset({"code", "condition_id", "required_from", "required_to", "missing_days",
+                                         "reason"}),
+    "HistoryMatch": frozenset({"condition_id", "date", "volume", "maximum", "window_start", "window_end"}),
+    "HistoryJob": frozenset({"id", "status", "request", "codes", "total", "done", "written_rows", "errors",
+                             "current_code", "started_at_ms", "cancel_requested", "coverage"}),
     "WatchlistFolderView": frozenset({"id", "name", "order"}),
     "HeatmapFolderEntriesChange": frozenset({"folder_id", "before", "after"}),
     "HeatmapEntriesTransactionRequest": frozenset({"changes"}),
@@ -376,6 +384,7 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         "frontend/src/api/signalAlerts.ts",
     ),
     # 손으로 고른 목록엔 없었다 — 아래 등록 누락 감사가 잡아서 들어왔다.
+    "HistoryJobStatus": (frozenset(get_args(m.HistoryJobStatus)), "frontend/src/api/screener.ts"),
     "ScanBasis": (frozenset(get_args(m.ScanBasis)), "frontend/src/api/screener.ts"),
     "PatternStructAnchor": (
         frozenset(get_args(m.PatternStructAnchor)),

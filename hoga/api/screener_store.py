@@ -70,9 +70,10 @@ def export_stocks_from_db(csv_path: Path, *, container: str = "tradingview-db",
                        stdout=f, check=True)
 
 
-import polars as pl  # noqa: E402 — appended after stdlib imports
+import polars as pl  # noqa: E402 — existing appended storage section
 
 from hoga.api import screener_factors  # noqa: E402 — 순환 없음(screener_factors는 hoga.util.atomic_write만 import)
+from hoga.api.screener_write_lock import screener_write_lock  # noqa: E402 — appended after stdlib imports
 
 
 @dataclass(frozen=True)
@@ -404,14 +405,15 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)
-        new = pl.DataFrame([vars(b) for b in rows], schema=_DAILY_PL_SCHEMA)
-        n, last, merged = append_rows(up, new)   # 통계 + merged df 는 메모리에서(재독 X)
-        ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
-                             factors_path=sdir / "factors.parquet",
-                             unadjusted_df=merged)  # 방금 기록한 merged 를 재사용(I/O 절감)
-        write_status(sdir / "status.json", last_raw_date=last,
-                     universe_size=n, derive_ms=ms, now_ms=now_ms)
-        return ms
+        with screener_write_lock(sdir):
+            new = pl.DataFrame([vars(b) for b in rows], schema=_DAILY_PL_SCHEMA)
+            n, last, merged = append_rows(up, new)   # 통계 + merged df 는 메모리에서(재독 X)
+            ms = derive_adjusted(up, sdir / "daily_adjusted.parquet",
+                                 factors_path=sdir / "factors.parquet",
+                                 unadjusted_df=merged)  # 방금 기록한 merged 를 재사용(I/O 절감)
+            write_status(sdir / "status.json", last_raw_date=last,
+                         universe_size=n, derive_ms=ms, now_ms=now_ms)
+            return ms
 
     await asyncio.to_thread(_commit)
     return len({b.date for b in rows})
