@@ -1,6 +1,8 @@
 import { memo, useEffect, useRef } from 'react';
 import {
   type IChartApi,
+  type ICustomSeriesPaneView,
+  type CustomSeriesPartialOptions,
   type ISeriesApi,
   type SeriesDataItemTypeMap,
   type SeriesDefinition,
@@ -40,7 +42,8 @@ export type SeriesLegendMeta = {
 
 /**
  * One series inside a `PaneSpec`. Each field is typed to the lightweight-charts
- * series vocabulary rather than `any`: `type` must be a real `SeriesDefinition`,
+ * series vocabulary rather than `any`: `type` is a built-in `SeriesDefinition`
+ * or a factory for a custom pane view (fresh per mounted series),
  * `options` real series options, and `data` must return real series data items
  * (`SeriesDataItemTypeMap` entries) — not arbitrary objects.
  *
@@ -56,7 +59,7 @@ export type SeriesLegendMeta = {
  * item fails TS2353 at the projector, where the literal is fresh.
  */
 export type SeriesSpec<Ctx = void> = {
-  type: SeriesDefinition<SeriesType>;
+  type: SeriesDefinition<SeriesType> | (() => ICustomSeriesPaneView);
   /**
    * Series creation options. A thunk (`() => options`) is resolved at
    * `addSeries` time, not module load — used by color-bearing specs so a chart
@@ -299,7 +302,9 @@ function RangeSeriesPaneInner<Ctx>({
         groupPaneIds,
         groupAxisMode,
       );
-      const series = chart.addSeries(s.type, options, paneIndex);
+      const series = typeof s.type === 'function'
+        ? chart.addCustomSeries(s.type(), options as CustomSeriesPartialOptions, paneIndex)
+        : chart.addSeries(s.type, options, paneIndex);
       s.afterAdd?.(series);
       seriesList[specIndex] = series;
     });

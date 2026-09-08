@@ -37,6 +37,7 @@ vi.mock('lightweight-charts', async () => {
   return {
     ...mod,
     createChartEx: vi.fn(() => ({
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
@@ -142,6 +143,7 @@ describe('LiveChartRoot', () => {
       setMarkers: vi.fn(),
     };
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => series),
       removeSeries: vi.fn(),
       timeScale: vi.fn(() => ({
@@ -565,6 +567,7 @@ describe('LiveChartRoot', () => {
       setMarkers: vi.fn(),
     }));
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries,
       removeSeries: vi.fn(),
       timeScale: vi.fn(() => ({
@@ -637,6 +640,7 @@ describe('LiveChartRoot', () => {
   it('publishes index sector basis hover dates from crosshair movement', async () => {
     let crosshairHandler: ((param: { time?: unknown; point?: { x: number } | null }) => void) | null = null;
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
@@ -724,6 +728,7 @@ describe('LiveChartRoot', () => {
   it('publishes index sector basis click dates and clears on chart whitespace click', () => {
     let clickHandler: ((param: { time?: unknown; point?: { x: number } | null }) => void) | null = null;
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(),
         update: vi.fn(),
@@ -918,6 +923,7 @@ describe('LiveChartRoot', () => {
       timeToIndex: vi.fn((): number | null => null),
     };
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
         applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
@@ -2788,6 +2794,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
   function buildStableCapturingMock(ts: Record<string, unknown>) {
     return {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
         applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
@@ -3688,6 +3695,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
 
   function buildMock(ts: Record<string, unknown>) {
     return {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
         applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
@@ -3990,6 +3998,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       timeToCoordinate: vi.fn(() => null),
     };
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         // 자식 pane 의 setData 가 매핑 전환 지점이다 — 프로덕션에서 lwc 인덱스가
         // 실제로 바뀌는 순간과 같다.
@@ -4324,6 +4333,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
       timeToCoordinate: vi.fn(() => null),
     };
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(() => applyPending()),
         update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
@@ -5061,6 +5071,7 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     height: vi.fn(() => 28),
   };
   return {
+    addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
     addSeries: vi.fn(() => ({
       setData: vi.fn(),
       update: vi.fn(),
@@ -5267,6 +5278,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         setMarkers: vi.fn(),
       });
       return {
+        addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
         addSeries: vi.fn(() => makeSeries()),
         removeSeries: vi.fn(),
         timeScale: vi.fn(() => ({
@@ -5416,6 +5428,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
         height: vi.fn(() => 28),
       };
       const chart = {
+        addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
         addSeries: vi.fn(() => ({
           setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
           priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
@@ -5597,6 +5610,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       timeToIndex: vi.fn(() => null),
     };
     const chart = {
+      addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
         applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
@@ -5673,6 +5687,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
   // 1m 기본 토글 = candle, volume, quote-totals, ratio, fill-strength,
   // program-trade 6개 pane.
   const makeChartWithPanes = (panes: ReturnType<typeof makePane>[]) => ({
+    addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
     addSeries: vi.fn(() => ({
       setData: vi.fn(),
       update: vi.fn(),
