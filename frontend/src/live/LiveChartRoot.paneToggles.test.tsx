@@ -105,7 +105,6 @@ vi.mock('lightweight-charts', async () => {
         timeToCoordinate: vi.fn(() => null),
       };
       const chart = {
-        addCustomSeries(...args: unknown[]) { return Reflect.apply(this.addSeries, this, args); },
         addSeries: vi.fn(() => ({
           setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
           // ⚠ `priceToCoordinate` 를 빼면 안 된다: `CursorSyncCrosshair` 가
