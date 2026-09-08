@@ -33,6 +33,7 @@ from hoga.api.models import (
     WatchlistDocument,
     WatchlistEntry,
     WatchlistFolderView,
+    WatchlistItemsTransactionRequest,
     WatchlistMemoView,
     WatchlistResponse,
 )
@@ -59,6 +60,7 @@ from hoga.api.watchlist import (
     reorder_entries,
     reorder_folders,
     reorder_items,
+    transact_items,
     update_memo,
 )
 from hoga.api.watchlist_projection import project_watchlist_response
@@ -278,6 +280,21 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             await refresh_live_stream(data_dir=data_dir)
         except Exception:  # best-effort, mutation already succeeded
             log.exception("watchlist.reorder: refresh_live_stream failed")
+
+    @router.put("/items/transaction", status_code=204)
+    async def transact_watchlist_items(req: WatchlistItemsTransactionRequest) -> None:
+        try:
+            await transact_items(data_dir, changes=req.changes)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={"code": "folder_not_found"}) from e
+        except WatchlistSetMismatchError as e:
+            raise HTTPException(status_code=409, detail={
+                "code": "watchlist_changed", "message": "목록이 변경되었습니다. 최신 목록에서 다시 시도하세요.",
+            }) from e
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:
+            log.exception("watchlist transaction: refresh_live_stream failed")
 
     @router.put("/folders/{folder_id}/items/order", status_code=204)
     async def reorder_watchlist_items(folder_id: str, req: ItemsReorderRequest) -> None:
