@@ -41,8 +41,8 @@ import {
   SessionAxisLabels,
   SessionLinesChart,
 } from './marketBits';
-import { CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
-import { SERIES_COLORS } from './marketFormat';
+import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { SERIES_COLORS, formatMarketDate } from './marketFormat';
 
 const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
 
@@ -84,7 +84,7 @@ const GROUPS: { key: string; keys: readonly string[]; fallback: Record<string, s
   { key: '999', keys: ['S001'], fallback: { S001: '주식선물' } },
 ];
 
-const SEG_BASE = 'whitespace-nowrap px-2 py-[2px] font-data text-xs tabular-nums';
+const SEG_BASE = 'min-h-[1.5rem] whitespace-nowrap px-2 py-2xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent font-data text-xs tabular-nums';
 const SEG_ON = 'bg-tint-selection text-accent';
 const SEG_OFF = 'text-fg-dim hover:bg-bg-input-hover';
 
@@ -105,11 +105,11 @@ function FlowPicker({
     <div
       role="group"
       aria-label="수급 대상"
-      className="inline-flex overflow-hidden rounded-lg bg-bg-subtle"
+      className="inline-flex flex-wrap items-center gap-y-2xs rounded-lg bg-bg-subtle"
     >
       {GROUPS.flatMap((g, gi) => [
         ...(gi > 0
-          ? [<span key={`d${gi}`} className="my-[3px] w-px shrink-0 bg-border" aria-hidden="true" />]
+          ? [<span key={`d${gi}`} className="mx-2xs h-4 w-px shrink-0 bg-border" aria-hidden="true" />]
           : []),
         ...g.keys.map((key) => {
           const on = key === value;
@@ -188,7 +188,12 @@ export function InvestorCard() {
           )
         }
       />
+      <DataStamp date={showDaily ? stock.data?.daily.at(-1)?.date : stockSel ? stock.data?.date : deriv.data?.date} />
+      <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
       <FlowPicker value={sel} onChange={setSel} products={products} />
+      {stockSel && !showDaily && !stock.isLoading && (stock.data?.markets[sel]?.length ?? 0) === 0 && (
+        <button type="button" className="self-center min-h-[1.5rem] rounded px-sm py-2xs text-xs text-accent hover:bg-bg-input-hover" onClick={() => setMode('daily')}>일별 수급 보기</button>
+      )}
       {stockSel ? (
         showDaily ? (
           <StockDaily data={stock.data} market={sel} />
@@ -302,7 +307,10 @@ function StockDaily({
           <LegendItem color={SERIES_COLORS.institution} label="기관" />
         </span>
       </div>
+      <p className="text-2xs text-fg-dim">막대: 일별 순매수 · 선: 기간 누적 (각각의 척도)</p>
       <ComboNetChart
+        labels={daily.map((d) => formatMarketDate(d.date))}
+        names={['외국인', '기관']}
         a={{ color: SERIES_COLORS.foreign, values: foreign }}
         b={{ color: SERIES_COLORS.institution, values: inst }}
       />

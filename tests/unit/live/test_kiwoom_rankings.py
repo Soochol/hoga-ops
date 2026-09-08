@@ -485,3 +485,26 @@ def test_snapshot_echoes_the_venue_it_used():
 
     snap = asyncio.run(_fetcher(handler).get("change", "all", "up", "UN"))
     assert snap.venue == "UN"
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("3,119,200", 3_119_200_000_000), ("0", 0), ("+123.45", 123_450_000),
+    ("", None), (None, None), ("NaN", None), ("Infinity", None), ("-1", None),
+])
+def test_value_ranking_money_is_normalized_without_inventing_missing_values(raw, expected):
+    body = {"trde_prica_upper": [{
+        "stk_cd": "005930", "stk_nm": "삼성전자", "cur_prc": "+71200",
+        "flu_rt": "+5.79", "trde_prica": raw,
+    }]}
+    assert parse_rankings("value", body)[0].trade_value_won == expected
+
+
+def test_rankings_route_preserves_trade_value_in_json(monkeypatch, tmp_path, _hermetic_kiwoom_env):
+    from hoga.live import api as live_api
+
+    fetcher = _fetcher(lambda request: httpx.Response(200, json=GOLDEN_VALUE))
+    monkeypatch.setattr(live_api, "kiwoom_rankings_fetcher_instance", fetcher)
+    response = _route_client(tmp_path).get("/api/live/rankings", params={"kind": "value"})
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["trade_value_won"] == 3_119_200_000_000
+    fetcher.close()

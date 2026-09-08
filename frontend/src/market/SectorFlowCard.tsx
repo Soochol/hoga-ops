@@ -25,7 +25,7 @@ import {
   type MarketName,
   type SectorFlowRow,
 } from '../api/market';
-import { CardHeader, EmptyNote, MarketCard, ModeSwitch, useCardPref } from './marketCardBits';
+import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch, useCardPref } from './marketCardBits';
 
 type Actor = 'foreign' | 'institution' | 'individual';
 /** 시장 라벨은 `api/market` 의 `MarketName` 하나로 모은다 — 같은 union 을 두 벌 두면
@@ -70,13 +70,14 @@ export function SectorFlowCard() {
         title="업종 수급"
         hint="당일 누적 · 억원"
         right={
-          <div className="flex gap-xs">
+          <div className="flex flex-wrap gap-sm">
             <ModeSwitch value={market} options={MARKETS} onChange={setMarket} label="시장" />
             <ModeSwitch value={actor} options={ACTORS} onChange={setActor} label="정렬 기준" />
           </div>
         }
       />
 
+      <DataStamp date={flow.data?.date} fetchedAt={flow.dataUpdatedAt} status="선택 주체 순매수 절대값순" />
       {all.length === 0 ? (
         // 왜 비었는지 말한다 — 장 시작 전이면 표본이 아직 없는 게 정상이다.
         <EmptyNote>
@@ -173,11 +174,11 @@ function BreadthLine({ breadth }: { breadth: ReturnType<typeof useMarketBreadth>
     const b = breadth?.markets?.[market];
     const fmt = (c: { count: number; truncated: boolean } | undefined) =>
       c == null ? '—' : `${c.count}${c.truncated ? '+' : ''}`;
-    return `${fmt(b?.new_high_52w)} · ${fmt(b?.new_low_52w)}`;
+    return `신고가 ${fmt(b?.new_high_52w)} / 신저가 ${fmt(b?.new_low_52w)}`;
   };
   return (
-    <div className="flex items-baseline justify-between border-t border-border pt-xs font-data text-2xs tabular-nums text-fg-dim">
-      <span>52주 신고 · 신저</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-xs border-t border-border pt-xs font-data text-2xs tabular-nums text-fg-dim">
+      <span>52주 신고·신저 종목 수</span>
       <span className="text-fg">
         코스피 {cell('KOSPI')} <span className="text-fg-dim">|</span> 코스닥 {cell('KOSDAQ')}
       </span>

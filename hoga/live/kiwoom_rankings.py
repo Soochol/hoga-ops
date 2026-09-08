@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -77,14 +78,14 @@ class KiwoomRankingsError(RuntimeError):
 
 @dataclass(frozen=True)
 class RankingRow:
-    """드로어 행이 소비하는 부분집합. 기준값(급증률·거래량·거래대금) 열은
-    사용자 결정으로 제거 — 순서가 곧 기준값이라 code/name/price/change_pct 만 쓴다."""
+    """공유 순위 행. 거래대금은 시장 종합에서 소비하며 드로어 열은 그대로 둔다."""
 
     rank: int
     code: str
     name: str
     price: int | None
     change_pct: float | None
+    trade_value_won: int | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,14 @@ def _signed_float(raw: object) -> float | None:
         return None
 
 
+def _trade_value_won(raw: object) -> int | None:
+    """ka10032 trde_prica (백만원) → 원. 결측·비유한·음수는 0으로 꾸미지 않는다."""
+    value = _signed_float(raw)
+    if value is None or not math.isfinite(value) or value < 0:
+        return None
+    return round(value * 1_000_000)
+
+
 def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
     """순위 TR 응답 body → RankingRow 튜플. 순위는 응답 순서(1-기반)."""
     spec = _KIND_SPEC[kind]
@@ -172,6 +181,7 @@ def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
                 name=name.strip() if isinstance(name, str) else "",
                 price=_abs_price(item.get("cur_prc")),
                 change_pct=_signed_float(item.get("flu_rt")),
+                trade_value_won=_trade_value_won(item.get("trde_prica")) if kind == "value" else None,
             )
         )
     return tuple(rows)

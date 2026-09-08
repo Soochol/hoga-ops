@@ -64,3 +64,20 @@ export function stockSeriesDiffs(values: (number | null)[]): (number | null)[] {
     return d;
   });
 }
+
+export function formatMarketDate(date: string): string {
+  return /^\d{8}$/.test(date) ? `${date.slice(4, 6)}/${date.slice(6, 8)}` : date;
+}
+
+const kstTime = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+export function formatMarketTime(ms: number): string {
+  return Number.isFinite(ms) && ms > 0 ? kstTime.format(ms) : '—';
+}
+
+export function fundChange(values: (number | null)[]): number | null {
+  const first = values.find((v) => v !== null);
+  const last = values.at(-1);
+  return first == null || last == null ? null : last - first;
+}

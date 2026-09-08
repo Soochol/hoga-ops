@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { PanelCard, SegmentedControl } from '../ui/PageShell';
+import { formatMarketDate, formatMarketTime } from './marketFormat';
 import { persistJson, readJsonObject } from '../state/persist';
 
 /**
@@ -57,7 +58,7 @@ export function ModeSwitch<T extends string>({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(key)}
-            className={`whitespace-nowrap px-2 py-[2px] font-data text-xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+            className={`min-h-[1.5rem] whitespace-nowrap px-2 py-2xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent font-data text-xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
           >
             {text}
           </button>
@@ -76,7 +77,7 @@ export function ModeSwitch<T extends string>({
  */
 export function MarketCard({ className = '', children }: { className?: string; children: React.ReactNode }) {
   return (
-    <PanelCard borderless flat className={className}>
+    <PanelCard borderless flat className={`min-w-0 ${className}`}>
       {children}
     </PanelCard>
   );
@@ -116,3 +117,14 @@ export function EmptyNote({ children }: { children: React.ReactNode }) {
   return <p className="py-sm text-center text-xs text-fg-dim">{children}</p>;
 }
 
+
+/** A fetch timestamp is not a trading date. Never infer the latter from the former. */
+export function DataStamp({ date, fetchedAt, status }: {
+  date?: string | null; fetchedAt?: number; status?: string;
+}) {
+  return <div className="flex flex-wrap gap-x-sm gap-y-2xs font-data text-2xs text-fg-dim tabular-nums">
+    <span>{date ? `${formatMarketDate(date)} 기준` : '기준일 미제공'}</span>
+    {status && <span>{status}</span>}
+    {!!fetchedAt && <span title="조회 시각은 데이터의 거래 기준일과 다를 수 있습니다.">{formatMarketTime(fetchedAt)} 조회</span>}
+  </div>;
+}

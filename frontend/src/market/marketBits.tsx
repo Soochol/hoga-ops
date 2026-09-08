@@ -7,6 +7,7 @@
  * **계열 색은 MA 팔레트를 쓴다.** 방향색(`--price-up`/`--price-down`)은 등락 전용이라
  * 다계열 라인에 쓰면 "외국인이 빨간 건 순매수라서인가 상승이라서인가" 가 모호해진다.
  */
+import { ChartProbe } from './ChartProbe';
 import { priceDirClass } from '../ui/priceDir';
 import { fmtPct, fmtSigned } from './marketFormat';
 
@@ -41,7 +42,7 @@ export function AdvanceDeclineBar({
   );
 }
 
-type Series = { color: string; values: (number | null)[] };
+type Series = { color: string; values: (number | null)[]; observed?: boolean[] };
 
 function finite(values: (number | null)[]): number[] {
   return values.filter((v): v is number => v !== null && Number.isFinite(v));
@@ -52,7 +53,13 @@ export function CumLinesChart({
   series,
   width = 300,
   height = 96,
+  labels,
+  names,
+  unit = '억원',
 }: {
+  labels?: string[];
+  names?: string[];
+  unit?: string;
   series: Series[];
   width?: number;
   height?: number;
@@ -72,6 +79,7 @@ export function CumLinesChart({
   const path = (s: number[]) =>
     s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
   return (
+    <div className="relative">
     <svg
       width="100%"
       height={height}
@@ -85,6 +93,10 @@ export function CumLinesChart({
         <path key={i} d={path(s)} fill="none" stroke={series[i].color} strokeWidth="1.5" strokeLinejoin="round" />
       ))}
     </svg>
+    {labels && <ChartProbe labels={labels} summaries={labels.map((_, i) =>
+      cums.map((values, j) => `${names?.[j] ?? `계열 ${j + 1}`} ${series[j].values[i] == null || series[j].observed?.[i] === false ? '—' : `${values[i]?.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}${unit}`}`).join(' · ')
+    )} />}
+    </div>
   );
 }
 
@@ -93,7 +105,11 @@ export function ComboNetChart({
   a,
   b,
   height = 96,
+  labels,
+  names = ['첫 계열', '둘째 계열'],
 }: {
+  labels?: string[];
+  names?: [string, string];
   a: Series;
   b: Series;
   height?: number;
@@ -134,6 +150,7 @@ export function ComboNetChart({
     );
   };
   return (
+    <div className="relative">
     <svg
       width="100%"
       height={height}
@@ -148,6 +165,10 @@ export function ComboNetChart({
       <path d={path(aCum)} fill="none" stroke={a.color} strokeWidth="1.5" strokeLinejoin="round" />
       <path d={path(bCum)} fill="none" stroke={b.color} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
+    {labels && <ChartProbe labels={labels} summaries={labels.map((_, i) =>
+      [a, b].map((series, j) => `${names[j]} 일별 ${fmtSigned(series.values[i])}억 / 누적 ${series.values[i] == null ? '—' : fmtSigned((j === 0 ? aCum : bCum)[i])}억`).join(' · ')
+    )} />}
+    </div>
   );
 }
 
@@ -162,18 +183,22 @@ export function ComboNetChart({
  * 값은 **이미 누적**이라고 가정하고 그대로 그린다(ka90005·수집 표본 모두 벤더 누적).
  * `vector-effect: non-scaling-stroke` 로 초광폭 스트레치에서 선 굵기를 지킨다. */
 /* ⚠ 창을 **서버가 주는 표면은 두 값을 반드시 넘긴다**(`session_start_sec` ·
-   `session_end_sec`). 기본값은 그 필드가 없는 표면(프로그램 매매 — 정규장 고정)만을
+   `session_end_sec`). 기본값은 정규장 표면만을
    위한 것이고, 넘기지 않으면 `px()` 의 클램프가 창 밖 표본을 양 끝에 겹쳐 쌓는다. */
 export function SessionLinesChart({
   series,
   sessionStartSec = 9 * 3600,
   sessionEndSec = 15.5 * 3600,
   height = 96,
+  names,
+  unit = '억원',
 }: {
   series: { color: string; points: { sec: number; v: number | null }[] }[];
   sessionStartSec?: number;
   sessionEndSec?: number;
   height?: number;
+  names?: string[];
+  unit?: string;
 }) {
   const width = 300;
   const span = sessionEndSec - sessionStartSec || 1;
@@ -196,6 +221,7 @@ export function SessionLinesChart({
     return d.trim();
   };
   return (
+    <div className="relative">
     <svg
       width="100%"
       height={height}
@@ -217,6 +243,13 @@ export function SessionLinesChart({
         />
       ))}
     </svg>
+    {names && <ChartProbe
+      labels={(series[0]?.points ?? []).map((p) => secOfDayLabel(p.sec))}
+      positions={(series[0]?.points ?? []).map((p) => (p.sec - sessionStartSec) / span)}
+      summaries={(series[0]?.points ?? []).map((_, i) => series.map((s, j) =>
+        `${names[j]} ${fmtSigned(s.points[i]?.v ?? null)}${unit}`).join(' · '))}
+    />}
+    </div>
   );
 }
 
