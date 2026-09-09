@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.2.0] - 2026-09-09
+
+### Changed
+- live `/` 종목 검색을 최대 640px의 세로 목록으로 정리하고 적용 그룹·창 수와 키보드 조작 안내를 표시한다. 검색 결과만 스크롤되어 입력창과 안내가 유지된다.
+
+### Fixed
+- 최근 검색 삭제가 종목 적용을 실행하지 않도록 분리하고, 방향키 선택·화면 내 스크롤·닫은 뒤 포커스 복원과 한글 조합 중 Enter 처리를 보완한다.
+- 검색창의 관심 그룹 메뉴를 앞에 표시하고 메뉴 내부 클릭으로 검색창이 닫히지 않도록 한다.
+
 ## [0.16.1.2] - 2026-09-09
 
 ### Changed
