@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
@@ -9,6 +9,7 @@ import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
 import type { SymbolHit } from '../api/types';
+import { ClearSearchIcon } from '../ui/ClearSearchIcon';
 import { useLiveIndices, type LiveIndexEntry } from '../api/liveIndices';
 import { indexInstrument, type LiveIndexId } from './liveInstrument';
 
@@ -39,7 +40,11 @@ function readRecentSearches(): RecentSearch[] {
 }
 
 function writeRecentSearches(recent: RecentSearch[]) {
-  localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recent.slice(0, RECENT_SEARCH_LIMIT)));
+  try {
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recent.slice(0, RECENT_SEARCH_LIMIT)));
+  } catch {
+    // The in-memory history remains usable when browser storage is unavailable.
+  }
 }
 
 function SearchDestination() {
@@ -49,13 +54,22 @@ function SearchDestination() {
     if (target.kind === 'empty') return '그룹 1에 적용 · 창을 추가하면 선택한 종목이 표시됩니다';
     const group = target.window.group;
     const count = state.windows.filter((win) => win.group === group && !win.pinned).length;
-    return `그룹 ${group} · 연결된 ${count}개 창에 적용 · 고정 창 제외`;
+    return `그룹 ${group} · 창 ${count}개`;
   });
-  return <p className="mt-2 px-3 text-xs text-fg-dim" role="status">{description}</p>;
+  return (
+    <div className="mt-3 px-3 text-sm" role="status">
+      <p className="text-fg"><span className="text-fg-dim">적용 대상: </span><strong className="font-semibold">{description}</strong></p>
+      <p className="mt-1 text-xs text-fg-dim">고정 창 제외</p>
+    </div>
+  );
 }
 
 export function LiveSymbolSearch() {
   const [query, setQuery] = useState('');
+  const searchId = useId();
+  const listId = `${searchId}-list`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const keyboardScroll = useRef(false);
   // 드롭다운 항목마다가 아니라 **여기서 한 번** — useWatchlistMembership 의 계약
   // ("ONCE per component, not per row")대로. 하트가 직접 부르던 시절엔 항목 수만큼
   // react-query 옵저버가 붙었다.
@@ -122,11 +136,18 @@ export function LiveSymbolSearch() {
     inputProps, getOptionProps, listProps,
   } = combo;
 
+  const removeRecent = (code: string) => {
+    const nextRecent = recentSearches.filter((recent) => recent.code !== code);
+    setRecentSearches(nextRecent);
+    writeRecentSearches(nextRecent);
+    inputRef.current?.focus();
+  };
+
   // Global "/" opens the centered search surface. The shared guard skips when
   // focus is already in an input, so "/" types literally there.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== '/' || shouldIgnoreEvent(e.target)) return;
+      if (e.key !== '/' || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || shouldIgnoreEvent(e.target)) return;
       e.preventDefault();
       setOpen(true);
     }
@@ -137,8 +158,25 @@ export function LiveSymbolSearch() {
   useEffect(() => onFocusLiveSearch(() => setOpen(true)), [setOpen]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [inputRef, open]);
+    if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement : triggerRef.current;
+    const surface = wrapperRef.current;
+    inputRef.current?.focus();
+    return () => {
+      // Outside clicks may already have focused another control. Leave it alone.
+      if (document.activeElement === document.body || surface?.contains(document.activeElement)) {
+        previous?.focus({ preventScroll: true });
+      }
+    };
+  }, [inputRef, wrapperRef, open]);
+
+  useEffect(() => {
+    if (open && keyboardScroll.current) {
+      document.getElementById(`${listId}-${highlightedIndex}`)?.scrollIntoView?.({ block: 'nearest' });
+    }
+    keyboardScroll.current = false;
+  }, [open, listId, highlightedIndex]);
 
   const showingRecent = open && q.length === 0 && recentItems.length > 0;
   const listVisible = query.trim().length >= 1 || showingRecent;
@@ -147,93 +185,91 @@ export function LiveSymbolSearch() {
       ref={wrapperRef}
       role="dialog"
       aria-label="종목 검색"
+      aria-describedby={`${searchId}-help`}
       style={{ boxShadow: 'var(--shadow-modal)' }}
-      className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-lg border border-border-strong bg-bg-card p-4 font-ui"
+      className="fixed left-1/2 top-[12vh] z-50 flex max-h-[80dvh] w-[min(640px,calc(100vw-32px))] -translate-x-1/2 flex-col rounded-lg border border-border-strong bg-bg-card p-4 font-ui"
+      onKeyDown={(e) => {
+        // Escape belongs to this surface, not the maximized chart behind it.
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          if (!e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) setOpen(false);
+        }
+      }}
     >
-      <div className="flex items-center gap-2.5 h-11 px-3 rounded-lg bg-bg-input">
+      <div className="mb-2 flex shrink-0 items-center justify-between px-3">
+        <label htmlFor={`${searchId}-input`} className="text-sm font-semibold text-fg">종목 검색</label>
+        <button type="button" aria-label="종목 검색 닫기" onClick={() => setOpen(false)}
+          className="flex h-8 w-8 items-center justify-center rounded text-fg-dim hover:bg-bg-input hover:text-fg">
+          <ClearSearchIcon className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 h-11 px-3 rounded-lg bg-bg-input focus-within:ring-1 focus-within:ring-accent">
         <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[18px] h-[18px] shrink-0">
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         <input
           ref={inputRef}
+          id={`${searchId}-input`}
           role="combobox"
           aria-expanded={listVisible}
-          aria-controls="live-symbol-search-list"
+          aria-controls={listVisible ? listId : undefined}
+          aria-activedescendant={listVisible && highlightedIndex >= 0 ? `${listId}-${highlightedIndex}` : undefined}
+          aria-autocomplete="list"
           type="text"
-          placeholder="검색어를 입력해주세요"
-          // focus-visible:outline-none 은 global.css 의 전역 포커스 링을 이 input 에서만
-          // 끈다(variant 가 붙어야 특이도로 이긴다 — 맨 outline-none 은 나중에 선언된
-          // 전역 :focus-visible 과 동점이라 진다). 팔레트는 열리는 순간 여기로 포커스가
-          // 가고 캐럿이 위치를 알려 주므로 링이 없어도 키보드 사용자가 길을 잃지 않는다.
-          className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none focus-visible:outline-none placeholder:text-fg-dimmer"
+          placeholder="종목명·코드·지수 검색"
+          className="min-w-0 flex-1 bg-transparent text-base text-fg outline-none focus-visible:outline-none placeholder:text-fg-dim"
           {...inputProps}
+          onKeyDown={(e) => {
+            keyboardScroll.current = !e.nativeEvent.isComposing && (e.key === 'ArrowDown' || e.key === 'ArrowUp');
+            inputProps.onKeyDown(e);
+          }}
         />
       </div>
 
-      <SearchDestination />
-
-      {listVisible && (
-        <div
-          id="live-symbol-search-list"
-          {...listProps}
-          className="mt-5 max-h-[50vh] overflow-y-auto"
-        >
+      <div className="shrink-0"><SearchDestination /></div>
+      {showingRecent && <p className="mt-4 mb-1 shrink-0 px-3 text-sm font-semibold text-fg">최근 검색</p>}
+      {listVisible ? (
+        <div id={listId} {...listProps} aria-label={showingRecent ? '최근 검색' : '검색 결과'}
+          className="mt-2 min-h-0 max-h-[50vh] overflow-y-auto overscroll-contain">
           {items.length === 0 ? (
-            <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다</div>
-          ) : showingRecent ? (
-            <>
-              <div className="mb-3 px-1 text-sm font-semibold text-fg">
-                최근 검색
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {items.map((item, i) => item.kind === 'stock' && (
-                  <button
-                    key={`recent:${item.hit.code}`}
-                    type="button"
-                    role="option"
-                    {...getOptionProps(i)}
-                    onClick={() => { selectItem(item); setOpen(false); }}
-                    style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'var(--bg-input)' }}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-fg"
-                  >
-                    <span className="truncate">{item.hit.name}</span>
-                    <span aria-hidden className="text-fg-dimmer">×</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            items.map((item, i) => (
-              <div
-                key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
-                role="option"
-                {...getOptionProps(i)}
-                onClick={() => { selectItem(item); setOpen(false); }}
+            <div className="py-4 px-3 text-sm text-fg-dim">검색 결과가 없습니다. 종목명 또는 코드를 확인하세요.</div>
+          ) : items.map((item, i) => {
+            const name = item.kind === 'stock' ? item.hit.name : item.index.label;
+            const code = item.kind === 'stock' ? item.hit.code : item.index.id;
+            return (
+              <div key={`${item.kind}:${code}`} role="presentation"
                 style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
-                className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center rounded-lg py-2 px-2.5 cursor-pointer"
-              >
-                {item.kind === 'stock' ? (
-                  <>
-                    <span className="text-sm text-fg">{item.hit.name}</span>
-                    <span className="text-sm font-data text-fg-dim tabular-nums">{item.hit.code}</span>
-                    <span className="border border-border-strong rounded px-1 text-badge font-semibold text-fg-dim">{item.hit.market}</span>
-                    <WatchlistHeartButton code={item.hit.code} name={item.hit.name}
-                      isMember={isMember(item.hit.code)} />
-                  </>
-                ) : (
-                  <>
-                    <span className="text-sm text-fg">{item.index.label}</span>
-                    <span className="text-sm font-data text-fg-dim tabular-nums">{item.index.id}</span>
-                    <span className="border border-border-strong rounded px-1 text-badge font-semibold text-fg-dim">지수</span>
-                    <span aria-hidden />
-                  </>
-                )}
+                className="flex items-center gap-2 rounded-lg px-3">
+                <button type="button" role="option" id={`${listId}-${i}`} tabIndex={-1}
+                  {...getOptionProps(i)}
+                  onClick={() => { selectItem(item); setOpen(false); }}
+                  className="min-w-0 flex-1 py-2.5 text-left text-base text-fg">
+                  <span className="block truncate font-medium" title={name}>{name}</span>
+                  <span className="mt-0.5 flex items-center gap-2 text-sm text-fg-dim">
+                    <span className="font-data tabular-nums">{code}</span>
+                    <span>{item.kind === 'stock' ? item.hit.market : '지수'}</span>
+                  </span>
+                </button>
+                {showingRecent && item.kind === 'stock' ? (
+                  <button type="button" aria-label={`${name} 최근 검색 삭제`}
+                    onClick={() => removeRecent(code)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-fg-dim hover:bg-bg-input hover:text-fg">
+                    <ClearSearchIcon className="h-4 w-4" />
+                  </button>
+                ) : item.kind === 'stock' ? (
+                  <WatchlistHeartButton code={code} name={name} isMember={isMember(code)} />
+                ) : null}
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
+      ) : (
+        <p className="px-3 py-5 text-sm text-fg-dim">종목명, 코드 또는 지수를 입력하세요.</p>
       )}
+      <p id={`${searchId}-help`} className="mt-3 flex shrink-0 flex-wrap gap-x-4 gap-y-1 px-3 text-xs text-fg-dim">
+        <span><kbd>↑↓</kbd> 이동</span><span><kbd>Enter</kbd> 적용</span><span><kbd>Esc</kbd> 닫기</span>
+      </p>
     </div>
   ) : null;
 
@@ -241,6 +277,7 @@ export function LiveSymbolSearch() {
     <div className="relative flex-1 min-w-0 max-w-[360px] font-ui [container-type:inline-size]">
       <button
         type="button"
+        ref={triggerRef}
         aria-label="종목 검색 열기"
         onClick={() => setOpen(true)}
         className={`flex items-center gap-2 h-7 w-full px-2.5 bg-bg-input border rounded-lg text-left overflow-hidden ${

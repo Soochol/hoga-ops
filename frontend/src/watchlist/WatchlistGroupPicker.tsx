@@ -21,7 +21,9 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
   onClose: () => void;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
-  useDismissablePopover(true, ref, onClose);
+  // Register the portal as a nested layer so its clicks do not dismiss a
+  // containing symbol search before the menu can handle them.
+  useDismissablePopover(true, ref, onClose, ref);
   const { data } = useWatchlist();
   const { folderIdsOf } = useWatchlistMembership();
   const addM = useAddMember();
@@ -56,7 +58,7 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
   return createPortal((
     <div ref={ref} role="menu" aria-label="내 관심 그룹"
       data-testid="watchlist-group-picker"
-      className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px]"
+      className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 min-w-[200px]"
       style={{ position: 'fixed', left, top }}>
       <div className="px-3 py-1 text-xs text-fg-dim">내 관심 그룹</div>
       {folders.map((f) => {
