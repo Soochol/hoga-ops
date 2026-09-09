@@ -56,6 +56,10 @@ The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KI
 기간의 일봉만 필요하다. 결과와 CSV에는 가장 최근 충족일과 추정 거래대금을 표시한다.
 기존 **최근 N일** 방식과 저장한 조건도 그대로 사용할 수 있다.
 
+검색 결과의 **발생 건**을 펼쳐 조건·발생일별로 제외할 수 있다. 같은 종목의 다른 날짜나
+다른 조건은 유지되며, **제외한 발생 건**에서 개별 복원할 수 있다. 제외 기록은 서버에 저장된다.
+동작 기준은 [발생 건별 제외 계획](./docs/plans/2026-09-09-screener-occurrence-exclusions.md)을 참고한다.
+
 ## Quickstart
 
 ```sh

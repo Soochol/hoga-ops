@@ -157,6 +157,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerUpdateFeedback.setState({ feedback: null });
     vi.restoreAllMocks();
+    vi.spyOn(screenerApi, 'listScreenerExclusions').mockResolvedValue({ schema_version: 1, exclusions: [] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], memos: [], next_run_at_ms: 0 });

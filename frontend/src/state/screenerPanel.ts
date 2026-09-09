@@ -45,6 +45,8 @@ export interface PanelScan {
   historyCoverage?: ScreenerResponse['history_coverage'];
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
+  /** 제외/복원 재조회 동안 결과 검색·선택·펼침 상태를 유지하는 조회 세션. */
+  interactionStartedAtMs?: number;
   basis: ScanBasis;
   dataStale: boolean;
 }
@@ -199,8 +201,10 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     // 구버전 저장본에는 없다(필드를 넓히기만 하는 마이그레이션 — 위 주석 참조).
     intradayFailure: raw.intradayFailure as PanelScan['intradayFailure'],
     warnings: raw.warnings as string[],
+    historyCoverage: raw.historyCoverage as PanelScan['historyCoverage'],
     depthValues,
     scannedAtMs: raw.scannedAtMs,
+    interactionStartedAtMs: typeof raw.interactionStartedAtMs === 'number' ? raw.interactionStartedAtMs : undefined,
     basis: raw.basis,
     dataStale: raw.dataStale,
   };

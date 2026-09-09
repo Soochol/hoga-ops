@@ -1,3 +1,6 @@
+import { Fragment } from 'react';
+import { useOccurrenceExclusions } from './useOccurrenceExclusions';
+import { OccurrenceDetails, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
 import { CONDITION_CATALOG } from './catalog';
 import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -141,6 +144,7 @@ export function ScreenerDrawer() {
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
+  const occurrenceController = useOccurrenceExclusions(lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
@@ -445,6 +449,8 @@ export function ScreenerDrawer() {
         )}
       </RailDrawerSection>
 
+      <RailDrawerSection><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>
+
       {/* Results */}
       <RailDrawerBody testId="screener-scroll" quoteNav>
         {screener.isError ? (
@@ -487,14 +493,16 @@ export function ScreenerDrawer() {
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
-                    <DraggableScreenerRow
-                      key={r.code}
+                    <Fragment key={r.code}><DraggableScreenerRow
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
                       onActivate={onActivateRow}
                       onOpenMenu={onOpenRowMenu}
                     />
+                    {!!r.occurrences?.length && <li className="px-md"><OccurrenceDetails code={r.code} name={r.name}
+                      occurrences={r.occurrences} controller={occurrenceController} /></li>}
+                    </Fragment>
                   ))}
                 </ul>
                 {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}

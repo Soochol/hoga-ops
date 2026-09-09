@@ -2085,7 +2085,35 @@ class HistoryJob(BaseModel):
     coverage: HistoryCoverage | None = None
 
 
-class ScreenerRow(BaseModel):                          # 평면형 — 조건 배지 없음
+class ScreenerOccurrence(BaseModel):
+    condition_id: str
+    condition_key: str
+    date: str
+
+
+class ScreenerExclusionWrite(BaseModel):
+    condition: ConditionLeaf
+    code: str = Field(pattern=CODE_PATTERN)
+    date: dt.date
+    stock_name: str = Field(max_length=200)
+
+
+class ScreenerExclusion(BaseModel):
+    id: str
+    condition_key: str
+    condition: ConditionLeaf
+    code: str = Field(pattern=CODE_PATTERN)
+    date: dt.date
+    stock_name: str
+    created_at_ms: int
+
+
+class ScreenerExclusionsFile(BaseModel):
+    schema_version: int = 1
+    exclusions: list[ScreenerExclusion] = Field(default_factory=list)
+
+
+class ScreenerRow(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
     name: str
     market: Literal["KOSPI", "KOSDAQ"]
@@ -2095,6 +2123,7 @@ class ScreenerRow(BaseModel):                          # 평면형 — 조건 �
     # 조회 가격을 가져온 마지막 일봉 날짜. 기간 조건의 충족 발생일과는 다르다.
     price_date: str | None = None
     history_matches: list[HistoryMatch | HistoryTradeValueMatch] = Field(default_factory=list)
+    occurrences: list[ScreenerOccurrence] = Field(default_factory=list)
 
 class DepthCoverageCode(BaseModel):                    # 총잔량 조건 커버리지 한 종목
     code: str = Field(pattern=CODE_PATTERN)

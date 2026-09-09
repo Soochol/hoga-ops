@@ -1,3 +1,4 @@
+import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useMemo, useState } from 'react';
 import type { PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
@@ -25,8 +26,9 @@ function depthSidesForScan(scan: PanelScan): DepthSides {
 }
 
 /** 부모는 새 조회마다 key를 바꾼다. 검색/선택은 한 조회에만 속하며 시세 갱신과는 독립. */
-export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate }: {
+export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate, occurrenceController }: {
   scan: PanelScan;
+  occurrenceController?: OccurrenceExclusions;
   liveRows: ScreenerRowLive[];
   sortMode: ScreenerResultSortMode;
   onSortChange: (mode: ScreenerResultSortMode) => void;
@@ -34,7 +36,9 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
 }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedCodes, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const selected = useMemo(() => new Set(scan.rows.filter(r => selectedCodes.has(r.code)).map(r => r.code)),
+    [scan.rows, selectedCodes]);
   const snapshotRows = useMemo(() => scan.rows.map((r) => ({ ...r, change_won: null })), [scan.rows]);
   const sorted = useMemo(() => sortScreenerRows(mode === 'live' ? liveRows : snapshotRows, sortMode),
     [mode, liveRows, snapshotRows, sortMode]);
@@ -64,6 +68,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           className="min-w-0 w-48 rounded-md border border-border bg-bg-input px-2 py-1 text-sm text-fg" />
         <span role="status" className="font-data text-xs text-fg-dim">
           표시 {filtered.length.toLocaleString('ko-KR')} / {scan.rows.length.toLocaleString('ko-KR')}건
+          {scan.rows.some(r => r.occurrences !== undefined) && ` · 발생 ${filtered.reduce((n, r) => n + (r.occurrences?.length ?? 0), 0)}건`}
           {' · '}선택 {selected.size}건{selected.size > shownSelected && ` (숨김 ${selected.size - shownSelected}건 포함)`}
         </span>
         <span className="flex-1" />
@@ -95,6 +100,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </EmptyState>
       ) : (
         <ResultTable rows={filtered} onActivate={onActivate} sortMode={sortMode} onSortChange={onSortChange}
+          occurrenceController={occurrenceController}
           embedded depthValues={scan.depthValues} depthSides={depthSides} quoteMode={mode}
           selection={{ codes: selected, allSelected, someSelected: shownSelected > 0, onToggle: toggle, onToggleAll: toggleAll }} />
       )}
