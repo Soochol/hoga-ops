@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.0.1] - 2026-09-09
+
+### Fixed
+- live에서 여러 창이 겹쳐도 경계를 구분할 수 있도록 모든 창에 1px 외곽선과 짧은 그림자를 표시한다. 활성 창은 테마 강조색으로 구분하며 창 크기와 리사이즈·스냅 동작은 유지한다.
+
 ## [0.16.0.0] - 2026-09-09
 
 ### Added

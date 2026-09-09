@@ -487,3 +487,15 @@
   --bar-ask: rgba(86, 163, 255, 0.28);   /* 56a3ff @ 28% */
   --bar-bid: rgba(245, 68, 90, 0.28);    /* f5445a @ 28% */
 }
+
+/* Live window chrome: aliases resolve against the current theme. */
+:root,
+[data-theme] {
+  --window-border: var(--border-strong);
+  --window-border-active: var(--accent);
+  --window-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+[data-theme='ledger'],
+[data-theme='toss-light'] {
+  --window-shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
+}
