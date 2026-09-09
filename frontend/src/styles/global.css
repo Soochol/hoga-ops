@@ -227,9 +227,6 @@ body {
   pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--window-border);
 }
-[data-outlined][data-active] > .window-outline {
-  box-shadow: inset 0 0 0 1px var(--window-border-active);
-}
 .window-shadow {
   box-shadow: var(--window-shadow);
 }

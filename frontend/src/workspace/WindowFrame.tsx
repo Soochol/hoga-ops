@@ -51,7 +51,7 @@ export interface WindowFrameCoreProps {
   id: string;
   rect: WindowRectPx;
   zIndex: number;
-  /** 최상단(포커스) 창 여부 — 헤더 틴트와 선택적 외곽선으로 표현한다.
+  /** 최상단(포커스) 창 여부 — 헤더 틴트로 표현한다. 외곽선은 포커스와 무관하게 중성색이다.
    *  헤더는 구분선 없는 톤 밴드(비포커스 --bg-subtle / 포커스 --tint-selection) —
    *  2026-07-22 구분선 최소화 C안: 창 내부 위계는 선이 아니라 명도가 담당한다. */
   focused: boolean;
@@ -99,7 +99,6 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           형제로 카드 밖에 남긴다(카드 overflow-hidden 에 안 잘리도록). */}
       <div
         data-outlined={outlined ? '' : undefined}
-        data-active={focused ? '' : undefined}
         className={`relative flex h-full flex-col overflow-hidden rounded-lg transition-shadow duration-150 ease-out ${
           flat ? 'bg-bg' : 'bg-bg-card'
         } ${lifting ? 'shadow-modal' : outlined ? 'window-shadow' : flat ? '' : 'shadow-panel'}`}

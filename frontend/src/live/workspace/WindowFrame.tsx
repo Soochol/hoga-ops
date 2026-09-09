@@ -23,7 +23,7 @@ export interface WindowFrameProps {
   group: GroupId;
   rect: WindowRectPx;
   zIndex: number;
-  /** 최상단(포커스) 창 여부 — 헤더 틴트와 외곽선으로 표현한다. */
+  /** 최상단(포커스) 창 여부 — 헤더 틴트로 표현한다. 외곽선은 모든 창에서 같은 중성색이다. */
   focused: boolean;
   /** 이동 드래그 중인 창 여부 — 코어 프레임의 리프트(그림자) 표현으로 전달. */
   lifting?: boolean;
