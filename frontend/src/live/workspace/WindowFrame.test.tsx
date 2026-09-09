@@ -92,13 +92,10 @@ describe('WindowFrame 포커스 표시', () => {
     expect(headerOf(container)).not.toHaveClass('bg-tint-selection');
   });
 
-  it('flat 창은 안착 그림자가 없고, 포커스도 그림자를 승격하지 않는다', () => {
-    // /study 통일(2026-07-23): live 창도 flat — 안착 shadow-panel 제거, 카드 배경은
-    // 필드(--bg)와 동일. 포커스는 그림자가 아니라 헤더 틴트로만 표현(리프트 시에만
-    // shadow-modal). 그림자는 간격(인셋) 도입 후 보이는 카드(첫 자식)에 얹힌다.
+  it('live 창은 필드 배경과 짧은 안착 그림자를 사용한다', () => {
     const card = renderFrame(false, true).container.querySelector('[data-win="w1"] > div');
 
-    expect(card).toHaveClass('bg-bg');
+    expect(card).toHaveClass('bg-bg', 'window-shadow');
     expect(card).not.toHaveClass('bg-bg-card');
     expect(card).not.toHaveClass('shadow-panel');
     expect(card).not.toHaveClass('shadow-modal');

@@ -51,7 +51,7 @@ export interface WindowFrameCoreProps {
   id: string;
   rect: WindowRectPx;
   zIndex: number;
-  /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다.
+  /** 최상단(포커스) 창 여부 — 헤더 틴트와 선택적 외곽선으로 표현한다.
    *  헤더는 구분선 없는 톤 밴드(비포커스 --bg-subtle / 포커스 --tint-selection) —
    *  2026-07-22 구분선 최소화 C안: 창 내부 위계는 선이 아니라 명도가 담당한다. */
   focused: boolean;
@@ -63,11 +63,12 @@ export interface WindowFrameCoreProps {
   /** 이동 드래그 중인 창 — 그림자를 한 단계 띄워(shadow-modal) "들어올림"을 표현. */
   lifting?: boolean;
   /**
-   * 평면(flat) 모드 — 안착 그림자(shadow-panel)를 없애고 카드 배경을 필드(--bg)와
-   * 같게 맞춰 "떠 있는 카드" 구분을 지운다. /study 통일용 opt-in(기본 false라 /live
-   * 창은 불변). 드래그 리프트(shadow-modal)는 유지해 이동 피드백은 남긴다.
+   * 평면(flat) 모드 — 카드 배경을 필드(--bg)와 맞춘다.
+   * outlined가 없으면 안착 그림자도 제거한다. 이동 중 리프트는 유지한다.
    */
   flat?: boolean;
+  /** 겹친 창의 경계를 표시하는 외곽선과 짧은 안착 그림자. */
+  outlined?: boolean;
   resizable?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
@@ -76,7 +77,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, resizable = true, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, outlined = false, resizable = true, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -97,11 +98,14 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           은 여기(콘텐츠 경계)에 둔다. 리사이즈 핸들은 바깥 rect 를 그대로 쓰므로
           형제로 카드 밖에 남긴다(카드 overflow-hidden 에 안 잘리도록). */}
       <div
-        className={`flex h-full flex-col overflow-hidden rounded-lg transition-shadow duration-150 ease-out ${
+        data-outlined={outlined ? '' : undefined}
+        data-active={focused ? '' : undefined}
+        className={`relative flex h-full flex-col overflow-hidden rounded-lg transition-shadow duration-150 ease-out ${
           flat ? 'bg-bg' : 'bg-bg-card'
-        } ${lifting ? 'shadow-modal' : flat ? '' : 'shadow-panel'}`}
+        } ${lifting ? 'shadow-modal' : outlined ? 'window-shadow' : flat ? '' : 'shadow-panel'}`}
         style={{ contain: 'layout paint' }}
       >
+        {outlined && <div aria-hidden="true" className="window-outline" />}
         <div
           data-handle="move"
           data-focused={focused ? '' : undefined}
@@ -126,7 +130,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-hidden${outlined ? ' isolate' : ''}`}>{children}</div>
       </div>
 
       {resizable && RESIZE_HANDLES.map((hd) => (

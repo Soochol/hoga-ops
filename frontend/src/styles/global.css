@@ -216,3 +216,20 @@ body {
 /* Market and heatmap adapt to the viewport; navigation scrolls independently. */
 .responsive-board-shell nav { overflow-x: auto; scrollbar-width: none; }
 .responsive-board-shell nav > div { min-width: calc(var(--app-floor-min-w) - var(--rail-w)); }
+
+/* Decoration stays inside the painted card and above its canvas/content.
+   It consumes no layout space and never intercepts resize or content input. */
+.window-outline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--window-border);
+}
+[data-outlined][data-active] > .window-outline {
+  box-shadow: inset 0 0 0 1px var(--window-border-active);
+}
+.window-shadow {
+  box-shadow: var(--window-shadow);
+}

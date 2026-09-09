@@ -23,7 +23,7 @@ export interface WindowFrameProps {
   group: GroupId;
   rect: WindowRectPx;
   zIndex: number;
-  /** 최상단(포커스) 창 여부 — 헤더 밴드 틴트로만 표현한다. */
+  /** 최상단(포커스) 창 여부 — 헤더 틴트와 외곽선으로 표현한다. */
   focused: boolean;
   /** 이동 드래그 중인 창 여부 — 코어 프레임의 리프트(그림자) 표현으로 전달. */
   lifting?: boolean;
@@ -107,9 +107,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
       zIndex={zIndex}
       focused={focused}
       lifting={lifting}
-      // /study 통일(2026-07-23): 안착 그림자·카드 배경 스텝 제거 → 창이 필드에 평평.
-      // 리프트(shadow-modal)는 유지해 이동 피드백은 남는다.
+      // 배경은 필드와 맞추고, 겹친 창의 경계는 외곽선과 짧은 그림자로 구분한다.
       flat
+      outlined
       onHandleDown={maximized ? () => {} : onHandleDown}
       resizable={!maximized}
       onFocus={onFocus}
