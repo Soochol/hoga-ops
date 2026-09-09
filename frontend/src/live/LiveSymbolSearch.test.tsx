@@ -256,7 +256,7 @@ describe('LiveSymbolSearch', () => {
 });
 
 
-it('search destination follows the activation policy and excludes pinned windows', () => {
+it('only shows an availability notice when all windows are pinned', () => {
   const previous = useWorkspaceStore.getState();
   const windows: WorkspaceWindow[] = [
     { id: 'a', kind: 'book', group: 2, rect: { x: 0, y: 0, w: 0.5, h: 1 } },
@@ -267,11 +267,11 @@ it('search destination follows the activation policy and excludes pinned windows
   try {
     renderSearch();
     openSearchPopover();
-    expect(screen.getByRole('status')).toHaveTextContent('적용 대상: 그룹 2 · 창 2개고정 창 제외');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => useWorkspaceStore.setState({ windows: windows.map((win) => ({ ...win, pinned: { code: '000660', name: 'SK하이닉스' } })) }));
     expect(screen.getByRole('status')).toHaveTextContent('모든 창이 고정되어 있습니다');
     act(() => useWorkspaceStore.setState({ windows: [], zOrder: [] }));
-    expect(screen.getByRole('status')).toHaveTextContent('그룹 1에 적용');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   } finally {
     cleanup();
     useWorkspaceStore.setState(previous);

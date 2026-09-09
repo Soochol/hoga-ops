@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.2.1] - 2026-09-10
+
+### Changed
+- live 종목 검색에서 적용 그룹·창 수와 고정 창 제외 안내를 제거한다. 모든 창이 고정되어 종목을 적용할 수 없을 때만 안내한다.
+
 ## [0.16.2.0] - 2026-09-09
 
 ### Changed
