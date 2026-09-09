@@ -36,7 +36,7 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
       incomplete: collected ? [] : [{ code: '005930', condition_id: 'tv', missing_days: 100,
         required_from: '2019-01-01', required_to: '2022-12-31', reason: 'missing_history' }] },
     rows: collected ? [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 70000,
-      change_pct: 0, trade_value_won: 100000000, history_matches: [{ condition_id: 'tv',
+      change_pct: 0, trade_value_won: 100000000, occurrences: [{ condition_id: 'tv', condition_key: 'history-tv', date: '2020-03-19' }], history_matches: [{ condition_id: 'tv',
         date: '2020-03-19', trade_value_won: 150000000000 }] }] : [],
   } }));
   await page.goto('/screener');
@@ -49,7 +49,8 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
   await page.getByRole('button', { name: '과거 일봉 수집', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: '일봉 수집 · 0/1종목' })).toBeVisible();
   allowCompletion = true;
-  await expect(page.getByText('충족 2020-03-19 · 1,500억')).toBeVisible();
+  await expect(page.getByText('2020-03-19', { exact: true })).toBeVisible();
+  await expect(page.getByText('1,500억', { exact: true })).toBeVisible();
   await expect(page.getByText('전체 기간 평가 가능 1종목', { exact: false })).toBeVisible();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();

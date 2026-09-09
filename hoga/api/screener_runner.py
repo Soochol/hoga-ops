@@ -149,6 +149,9 @@ def _occurrence_dates(depth_eval, history_eval):
 def _attach_history(rows, history_eval):
     for row in rows:
         active = {(m.condition_id, m.date) for m in row.occurrences}
+        evidence = {(m.condition_id, m.date): m for m in history_eval.all_matches.get(row.code, [])}
+        for occurrence in row.occurrences:
+            occurrence.history_match = evidence.get((occurrence.condition_id, occurrence.date))
         latest = {}
         for match in history_eval.all_matches.get(row.code, []):
             if (match.condition_id, match.date) in active:

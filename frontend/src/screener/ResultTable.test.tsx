@@ -87,7 +87,7 @@ describe('ResultTable', () => {
     ];
     render(withClient(<ResultTable rows={noQuote} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />));
     const row = screen.getByRole('button', { name: 'SK하이닉스 000660 호가창 열기' });
-    expect(within(row).getByText('—')).toBeInTheDocument();
+    expect(within(row).getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 

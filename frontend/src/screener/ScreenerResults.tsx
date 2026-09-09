@@ -1,3 +1,4 @@
+import { occurrenceRows, resultKey } from './occurrenceRows';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useMemo, useState } from 'react';
 import type { PanelScan } from '../state/screenerPanel';
@@ -37,15 +38,15 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
   const [selectedCodes, setSelected] = useState<ReadonlySet<string>>(() => new Set());
-  const selected = useMemo(() => new Set(scan.rows.filter(r => selectedCodes.has(r.code)).map(r => r.code)),
+  const selected = useMemo(() => new Set(occurrenceRows(scan.rows).filter(r => selectedCodes.has(resultKey(r))).map(resultKey)),
     [scan.rows, selectedCodes]);
   const snapshotRows = useMemo(() => scan.rows.map((r) => ({ ...r, change_won: null })), [scan.rows]);
-  const sorted = useMemo(() => sortScreenerRows(mode === 'live' ? liveRows : snapshotRows, sortMode),
+  const sorted = useMemo(() => sortScreenerRows(occurrenceRows(mode === 'live' ? liveRows : snapshotRows), sortMode),
     [mode, liveRows, snapshotRows, sortMode]);
   const normalizedQuery = query.trim().toLocaleLowerCase().replaceAll(/\s+/g, '');
   const filtered = useMemo(() => sorted.filter((r) =>
     `${r.code}${r.name}`.toLocaleLowerCase().replaceAll(/\s+/g, '').includes(normalizedQuery)), [sorted, normalizedQuery]);
-  const shownSelected = filtered.filter((r) => selected.has(r.code)).length;
+  const shownSelected = filtered.filter((r) => selected.has(resultKey(r))).length;
   const allSelected = filtered.length > 0 && shownSelected === filtered.length;
   const toggle = (code: string) => setSelected((old) => {
     const next = new Set(old);
@@ -55,7 +56,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
   const toggleAll = () => setSelected((old) => {
     const next = new Set(old);
     for (const row of filtered) {
-      if (allSelected) next.delete(row.code); else next.add(row.code);
+      if (allSelected) next.delete(resultKey(row)); else next.add(resultKey(row));
     }
     return next;
   });
@@ -67,8 +68,8 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           value={query} onChange={(e) => setQuery(e.target.value)}
           className="min-w-0 w-48 rounded-md border border-border bg-bg-input px-2 py-1 text-sm text-fg" />
         <span role="status" className="font-data text-xs text-fg-dim">
-          표시 {filtered.length.toLocaleString('ko-KR')} / {scan.rows.length.toLocaleString('ko-KR')}건
-          {scan.rows.some(r => r.occurrences !== undefined) && ` · 발생 ${filtered.reduce((n, r) => n + (r.occurrences?.length ?? 0), 0)}건`}
+          표시 {filtered.length.toLocaleString('ko-KR')} / {occurrenceRows(scan.rows).length.toLocaleString('ko-KR')}건
+          {` · ${new Set(filtered.map(r => r.code)).size}종목`}
           {' · '}선택 {selected.size}건{selected.size > shownSelected && ` (숨김 ${selected.size - shownSelected}건 포함)`}
         </span>
         <span className="flex-1" />
@@ -82,14 +83,15 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </SegmentedControl>
         <ToolbarButton type="button" disabled={selected.size === 0} onClick={() => setSelected(new Set())}>선택 해제</ToolbarButton>
         <ToolbarButton type="button" disabled={selected.size === 0}
-          onClick={() => downloadResultsCsv(scan, sorted.filter((r) => selected.has(r.code)).map((r) => r.code), liveRows)}>
+          onClick={() => downloadResultsCsv(scan, sorted.filter((r) => selected.has(resultKey(r))).map(resultKey), liveRows)}>
           선택 CSV
         </ToolbarButton>
         <ToolbarButton type="button" disabled={filtered.length === 0}
-          onClick={() => downloadResultsCsv(scan, filtered.map((r) => r.code), liveRows)}>검색 결과 CSV</ToolbarButton>
+          onClick={() => downloadResultsCsv(scan, filtered.map(resultKey), liveRows)}>검색 결과 CSV</ToolbarButton>
       </div>
       <p className="pb-sm text-xs text-fg-dim">
-        {mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 날짜는 조회 가격의 기준일'}
+        {mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 가격 아래 날짜는 조회 가격의 기준일'}
+        {' · '}발생일·당시 수치: 해당 조건 충족일 기준
         {' · '}거래대금: 조회 당시 추정치
         {' · '}CSV에는 조회 당시 값과 현재 시세를 함께 저장
       </p>

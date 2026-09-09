@@ -178,6 +178,8 @@ async def test_history_volume_runner_keeps_earlier_evidence(corpus, monkeypatch)
     row = next(row for row in result.rows if row.code == '005930')
     assert [o.date for o in row.occurrences] == ['2026-09-08', '2026-09-07']
     assert row.history_matches[0].date == '2026-09-08'
+    assert [o.history_match.date for o in row.occurrences] == ['2026-09-08', '2026-09-07']
+    assert all(o.history_match.volume == 2_000_000 for o in row.occurrences)
 
 
 def test_intraday_occurrence_uses_overlay_day_and_fallback_uses_corpus(corpus):

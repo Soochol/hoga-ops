@@ -199,7 +199,7 @@ it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
   expect(screen.getByText(/일부 종목 장중 미반영/)).toBeInTheDocument();
-  expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('결과 상위 1건');
+  expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('발생 1건 · 상위 1종목');
   unmount();
   renderPage();
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
@@ -368,14 +368,17 @@ it('sorts full-page screener results by clicking table headers', async () => {
 });
 
 it('keeps the full-page sort control disabled for empty scan results', async () => {
-  vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: [], rows: [] });
-
-  await renderPageReady();
-  fireEvent.click(screen.getByRole('button', { name: '조회' }));
-
-  await waitFor(() => expect(runScan).toHaveBeenCalled());
-  expect(screen.queryByRole('button', { name: /호가창 열기/ })).not.toBeInTheDocument();
-  expect(sortButton()).toBeDisabled();
+  // Exclusion hydration can refresh the same scan; keep both responses empty.
+  await vi.mocked(runScan).withImplementation(
+    async () => ({ status: 'ok', warnings: [], rows: [] }),
+    async () => {
+      await renderPageReady();
+      fireEvent.click(screen.getByRole('button', { name: '조회' }));
+      await waitFor(() => expect(runScan).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryAllByRole('button', { name: /호가창 열기/ })).toHaveLength(0));
+      expect(sortButton()).toBeDisabled();
+    },
+  );
 });
 
 it('surfaces a scan error instead of a silent dead-end', async () => {
@@ -575,7 +578,7 @@ it('조회 전에는 만료·0건과 구분되는 안내를, 조회 후에는 �
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
   const meta = screen.getByTestId('screener-result-meta');
-  expect(meta.textContent).toContain('결과 3건');
+  expect(meta.textContent).toContain('발생 3건 · 3종목');
   // 결과 도착이 스크린리더에도 공지된다 — 메타 줄은 라이브 리전(role=status) 안에 산다.
   expect(meta.closest('[role="status"]')).not.toBeNull();
   expect(screen.queryByText('아직 조회하지 않았습니다')).not.toBeInTheDocument();

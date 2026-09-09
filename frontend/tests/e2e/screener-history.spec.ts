@@ -50,7 +50,7 @@ for (const editWhileCollecting of [false, true]) {
         incomplete: collected ? [] : [{ code: '005930', condition_id: 'v', missing_days: 243,
           required_from: '2017-01-01', required_to: '2022-12-31', reason: 'missing_history' }] },
       rows: collected ? [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 70000,
-        change_pct: 0, trade_value_won: 100000000, history_matches: [{ condition_id: 'v',
+        change_pct: 0, trade_value_won: 100000000, occurrences: [{ condition_id: 'v', condition_key: 'history', date: '2020-03-19' }], history_matches: [{ condition_id: 'v',
           date: '2020-03-19', volume: 10000000, maximum: 10000000,
           window_start: '2018-03-20', window_end: '2020-03-19' }] }] : [],
       } });
@@ -72,11 +72,11 @@ for (const editWhileCollecting of [false, true]) {
     expect(activePolls).toBeGreaterThan(0);
     if (editWhileCollecting) {
       // The old job must leave the edited query pending until an explicit scan.
-      await expect(page.getByText('충족 2020-03-19', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('2020-03-19', { exact: true })).toHaveCount(0);
       expect(scans).toHaveLength(1);
       await page.getByRole('button', { name: '조회', exact: true }).click();
     }
-    await expect(page.getByText('충족 2020-03-19', { exact: false })).toBeVisible();
+    await expect(page.getByText('2020-03-19', { exact: true })).toBeVisible();
     expect(scans).toHaveLength(2);
     expect(scans[1].conditions[0].params).toMatchObject({
       end_date: editWhileCollecting ? '2021-12-31' : '2022-12-31',

@@ -20,7 +20,7 @@ it('CSV는 시점별 값을 분리하고 요청·기준·시각·경고와 한�
   expect(csv).toContain('"2026-09-08 10:00:00+09:00","2026-09-08 11:00:00+09:00"');
   expect(csv).toContain('"\'=DANGEROUS()"');
   expect(csv).toContain(scan.requestJson!.replaceAll('"', '""'));
-  expect(csv).toContain('"intraday_quote_invalid","예","예","v: 2020-03-19 1000주 (2018-03-20~2020-03-19)","tv: 2019-01-02 100000000원 (추정)","[]"\r\n');
+  expect(csv).toContain('"intraday_quote_invalid","예","예","v: 2020-03-19 1000주 (2018-03-20~2020-03-19)","tv: 2019-01-02 100000000원 (추정)","[]","",""\r\n');
   expect(csv).not.toContain('missing');
   const legacy = resultsCsv({ ...scan, requestJson: undefined, hasMore: undefined }, ['005930'], [], scan.scannedAtMs);
   expect(legacy).toContain('"기록 없음"');
