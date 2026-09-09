@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.1.0] - 2026-09-09
+
+### Changed
+- 스크리너 결과를 조건·종목·발생일마다 독립된 행으로 표시한다. 발생일 옆에서 개별 제외하며 선택·정렬·CSV도 발생 건 단위로 처리한다.
+- 발생 당시 수치를 현재 시세와 구분하고, AND 조건의 마지막 발생 건을 제외할 때 다른 행이 결과에서 빠지는 영향을 안내한다.
+
 ## [0.16.0.1] - 2026-09-09
 
 ### Fixed
