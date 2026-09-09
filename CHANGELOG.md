@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.1.2] - 2026-09-09
+
+### Changed
+- 스크리너 결과 표에서 종목코드·시장 열을 제거하고 표 너비를 줄인다.
+
 ## [0.16.1.1] - 2026-09-09
 
 ### Fixed
