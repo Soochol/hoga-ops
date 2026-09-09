@@ -43,6 +43,10 @@ list tells the attacker's domain apart (ADR-0134).
 
 The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KIS 는 파생 전용 — ADR-0136). The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
 
+`/live`에서 `/` 또는 헤더 검색 버튼으로 종목·지수를 찾는다. 방향키로 이동하고
+Enter로 표시된 그룹에 적용하며, Esc로 검색창을 닫는다. 최근 기록의 삭제 버튼은
+종목을 바꾸지 않는다. [검색 UX 결정과 검증](./docs/plans/2026-09-09-live-search-ux.md)을 참고한다.
+
 과거 최대거래량 검색은 `/screener` → **기간내 신고거래량 → 날짜 범위**에서 설정한다.
 예를 들어 발생일 `2019-01-01~2022-12-31`, 비교 기간 `2년`으로 조회한 뒤,
 이력이 부족하면 **과거 일봉 수집**을 누른다. 키움 REST로 받은 일봉을 서버 디스크에

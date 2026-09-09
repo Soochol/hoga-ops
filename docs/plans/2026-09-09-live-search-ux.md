@@ -65,7 +65,6 @@
 - 전체 Playwright 최종 실행: 99개 테스트 통과, 3분.
 - 검색 UX 6개 시나리오는 별도 2회 반복에서도 모두 통과했다. 네 테마의 480×640
   화면과 1280×720 결과 목록 스크롤 스크린샷을 직접 확인했다.
-- 검증 화면은 작업 아티팩트 디렉터리
-  `/home/dev/.codex/visualizations/2026/09/09/01a0862f-3154-7cc0-bead-0929f43527f4/`
-  의 `search-*.png`에 보관했다.
+- 검증 화면은 `frontend/tests/e2e/live-search-ux.spec.ts` 실행 시 각 테스트의
+  Playwright 출력 디렉터리에 `search-*.png`로 생성된다.
 - 초성 검색·개인화 정렬·지수 별칭은 후속 범위다.
