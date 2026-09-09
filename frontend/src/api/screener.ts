@@ -496,6 +496,7 @@ export const deletePatternSave = (id: string) =>
   apiCall<void>(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
 export interface ScreenerOccurrence {
+  history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;
   date: string;

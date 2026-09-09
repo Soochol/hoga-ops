@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import type { ScreenerOccurrence } from '../api/screener';
 import { CONDITION_CATALOG } from './catalog';
@@ -34,28 +35,32 @@ export function OccurrenceExclusionToolbar({ controller }: { controller: Occurre
   </div>;
 }
 
-export function OccurrenceDetails({ code, name, occurrences, controller }: {
-  code: string; name: string; occurrences: ScreenerOccurrence[]; controller: OccurrenceExclusions;
+
+export function OccurrenceAction({ code, name, occurrence, controller }: {
+  code: string; name: string; occurrence: ScreenerOccurrence; controller: OccurrenceExclusions;
 }) {
-  const [open, setOpen] = useState(false);
-  return <details onToggle={e => setOpen(e.currentTarget.open)} className="col-span-full cursor-default pb-sm text-xs" onClick={e => e.stopPropagation()}
-    onKeyDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
-    <summary className="cursor-pointer py-1 text-fg-dim hover:text-fg" aria-label={`${name} 발생 ${occurrences.length}건`}>
-      발생 {occurrences.length}건
-    </summary>
-    {open && <ul className="max-h-64 overflow-auto pl-sm">
-      {occurrences.map(item => {
-        const condition = controller.conditions.find(c => c.id === item.condition_id);
-        return <li key={`${item.condition_id}:${item.date}`} className="flex items-center gap-2 py-1">
-          <span className="font-data">{item.date}</span>
-          <span className="min-w-0 flex-1 text-fg-dim">{condition
-            ? `${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}`
-            : '조건 정보 없음 · 재조회 필요'}</span>
-          <ToolbarButton disabled={controller.busy || !controller.ready || !condition}
-            aria-label={`${name} ${item.date} ${condition ? CONDITION_CATALOG[condition.type].label : ''} 발생 건 제외`}
-            onClick={() => controller.exclude(code, name, item)}>이 발생 건 제외</ToolbarButton>
-        </li>;
-      })}
-    </ul>}
-  </details>;
+  const [confirm, setConfirm] = useState(false);
+  const condition = controller.conditions.find(c => c.id === occurrence.condition_id);
+  const label = condition ? CONDITION_CATALOG[condition.type].label : '';
+  const remove = () => { controller.exclude(code, name, occurrence); setConfirm(false); };
+  return <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+    <ToolbarButton disabled={controller.busy || !controller.ready || !condition}
+      aria-label={`${name} ${occurrence.date} ${label} 발생 건 제외`}
+      onClick={() => controller.affectedOtherRows(code, occurrence) > 0 ? setConfirm(true) : remove()}>제외</ToolbarButton>
+    {confirm && createPortal(<ModalShell title="제외 영향 확인" ariaLabel="제외 영향 확인" onClose={() => setConfirm(false)} width="w-[480px]">
+      <div className="p-md text-sm">
+        <p>{name} · {occurrence.date} · {label}</p>
+        <p className="py-sm">이 조건의 마지막 발생 건입니다. 제외하면 AND 조건을 충족하지 못해 이 종목의 다른 발생 {controller.affectedOtherRows(code, occurrence)}건도 결과에서 빠집니다. 다른 발생 건 자체는 제외 기록에 저장되지 않습니다.</p>
+        <div className="flex justify-end gap-sm"><ToolbarButton onClick={() => setConfirm(false)}>취소</ToolbarButton>
+          <ToolbarButton disabled={controller.busy} onClick={remove}>이 발생 건 제외</ToolbarButton></div>
+      </div>
+    </ModalShell>, document.body)}
+  </span>;
+}
+
+export function OccurrenceLabel({ occurrence, controller }: { occurrence: ScreenerOccurrence; controller: OccurrenceExclusions }) {
+  const condition = controller.conditions.find(c => c.id === occurrence.condition_id);
+  return <span className="text-xs text-fg-dim">{condition
+    ? `${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}`
+    : '조건 정보 없음 · 재조회 필요'}</span>;
 }

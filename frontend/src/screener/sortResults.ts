@@ -1,4 +1,4 @@
-export type ScreenerResultSortField = 'code' | 'name' | 'market' | 'price' | 'change_pct' | 'trade_value_won';
+export type ScreenerResultSortField = 'code' | 'name' | 'market' | 'price' | 'change_pct' | 'trade_value_won' | 'occurrence_date';
 export type ScreenerResultSortDirection = 'asc' | 'desc';
 export type ScreenerResultSortMode =
   | 'default'
@@ -6,6 +6,7 @@ export type ScreenerResultSortMode =
 
 type SortableScreenerRow = {
   code: string;
+  occurrence_date?: string;
   name?: string | null | undefined;
   market?: string | null | undefined;
   price?: number | null | undefined;
@@ -28,6 +29,7 @@ function normalizeText(value: unknown): string | null {
 }
 
 function valueForSort(row: SortableScreenerRow, field: ScreenerResultSortField): number | string | null {
+  if (field === 'occurrence_date') return normalizeText(row.occurrence_date);
   if (field === 'change_pct') return normalizeChangePct(row.change_pct);
   if (field === 'price') return normalizeNumber(row.price);
   if (field === 'trade_value_won') return normalizeNumber(row.trade_value_won);

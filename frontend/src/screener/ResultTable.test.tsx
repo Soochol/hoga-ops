@@ -38,13 +38,13 @@ describe('ResultTable', () => {
   });
 
   it('cycles the active header from ascending to descending to default', () => {
-    const onSortChange = renderTable({ field: 'code', direction: 'asc' });
+    const onSortChange = renderTable({ field: 'name', direction: 'asc' });
 
-    const codeHeader = screen.getByRole('button', { name: '코드 정렬' });
-    expect(within(codeHeader).getByText('▲')).toBeInTheDocument();
-    fireEvent.click(codeHeader);
+    const nameHeader = screen.getByRole('button', { name: '종목명 정렬' });
+    expect(within(nameHeader).getByText('▲')).toBeInTheDocument();
+    fireEvent.click(nameHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({ field: 'code', direction: 'desc' });
+    expect(onSortChange).toHaveBeenCalledWith({ field: 'name', direction: 'desc' });
   });
 
   it('does not make the action column sortable', () => {
@@ -87,7 +87,7 @@ describe('ResultTable', () => {
     ];
     render(withClient(<ResultTable rows={noQuote} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />));
     const row = screen.getByRole('button', { name: 'SK하이닉스 000660 호가창 열기' });
-    expect(within(row).getByText('—')).toBeInTheDocument();
+    expect(within(row).getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 

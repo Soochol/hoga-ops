@@ -399,9 +399,9 @@ describe('ScreenerDrawer', () => {
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('발생 2건 · 2종목 · 돌파+거래대금')).toBeInTheDocument());
     const scrollBody = screen.getByTestId('screener-scroll');
-    expect(within(scrollBody).queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
+    expect(within(scrollBody).queryByText('발생 2건 · 2종목 · 돌파+거래대금')).not.toBeInTheDocument();
     expect(within(scrollBody).queryByRole('button', { name: '스크리너 결과 정렬' })).not.toBeInTheDocument();
     expect(sortButton()).toBeInTheDocument();
   });
@@ -416,11 +416,11 @@ describe('ScreenerDrawer', () => {
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('발생 2건 · 2종목 · 돌파+거래대금')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('돌파+거래대금'));
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
-    expect(screen.queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
+    expect(screen.queryByText('발생 2건 · 2종목 · 돌파+거래대금')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '스크리너 결과 정렬' })).not.toBeInTheDocument();
   });
 
@@ -685,7 +685,7 @@ describe('ScreenerDrawer', () => {
     useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    await waitFor(() => expect(screen.getByText(/결과 /)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/발생 2건 · 2종목/)).toBeInTheDocument());
 
     act(() => useScreenerPanelStore.getState().markLastScanDataStale());
 

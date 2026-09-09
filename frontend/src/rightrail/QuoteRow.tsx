@@ -38,6 +38,7 @@ export interface QuoteRowProps {
   // 행 좌측 선행 슬롯(순위 패널의 순위번호). 미전달 시 기존 레이아웃 그대로.
   leading?: React.ReactNode;
   trailingAction?: React.ReactNode;
+  secondary?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
@@ -80,7 +81,7 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
-  active, ariaLabel, testId, onClick, leading, trailingAction,
+  active, ariaLabel, testId, onClick, leading, trailingAction, secondary,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, indented, flash, matched,
@@ -183,6 +184,7 @@ export function QuoteRow({
           <span className="text-fg-dim" data-testid={`${testId}-expected-marker`}>*</span>
         )}
         {name}
+        {secondary != null && <span className="block whitespace-normal text-2xs text-fg-dim">{secondary}</span>}
       </span>
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%

@@ -1,3 +1,4 @@
+import { occurrenceRows, resultKey } from './occurrenceRows';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor, cleanup } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
@@ -32,7 +33,7 @@ describe('cached/in-flight occurrence filtering', () => {
     expect(result.rows[0].history_matches).toEqual([]);
     expect(result.dataStale).toBe(true);
     expect(scan.rows[0].occurrences).toHaveLength(3);
-    const csv = resultsCsv(result, ['005930'], [], 1);
+    const csv = resultsCsv(result, occurrenceRows(result.rows).map(resultKey), [], 1);
     expect(csv).toContain('2026-09-08');
     expect(csv).not.toContain('100000000원 (추정)');
   });

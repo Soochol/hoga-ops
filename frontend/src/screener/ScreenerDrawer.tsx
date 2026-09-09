@@ -1,6 +1,7 @@
-import { Fragment } from 'react';
+import { occurrenceRows, resultKey, type OccurrenceRow } from './occurrenceRows';
+import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
-import { OccurrenceDetails, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
+import { OccurrenceAction, OccurrenceLabel, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
 import { CONDITION_CATALOG } from './catalog';
 import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -62,19 +63,21 @@ function screenerDraggableId(code: string): string {
  *  행이 리스트에 남는다). */
 const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row,
+  controller,
   active,
   flash,
   onActivate,
   onOpenMenu,
 }: {
-  row: ScreenerRowLive;
+  row: OccurrenceRow<ScreenerRowLive>;
+  controller: OccurrenceExclusions;
   active: boolean;
   flash: boolean;
   onActivate: (row: ScreenerRowLive, e?: JumpModifiers) => void;
   onOpenMenu: (row: ScreenerRowLive, e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
-    id: screenerDraggableId(row.code),
+    id: screenerDraggableId(resultKey(row)),
     data: { type: SCREENER_ENTRY_TYPE, code: row.code, name: row.name },
   });
   const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
@@ -83,6 +86,9 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   return (
     <QuoteRow
       name={row.name} code={row.code}
+      secondary={row.occurrence && <><span className="font-data">{row.occurrence.date}</span>{' · '}
+        <OccurrenceLabel occurrence={row.occurrence} controller={controller} /></>}
+      trailingAction={row.occurrence && <OccurrenceAction code={row.code} name={row.name} occurrence={row.occurrence} controller={controller} />}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -282,8 +288,8 @@ export function ScreenerDrawer() {
   const entryOrder = useEntryOrder(resultCodes, selectedSavedId);
   const sortedLiveRowsLive = useMemo(
     () => (sortMode === 'default'
-      ? stackByEntryOrder(liveRows, entryOrder)
-      : sortScreenerRows(liveRows, sortMode)),
+      ? stackByEntryOrder(occurrenceRows(liveRows), entryOrder)
+      : sortScreenerRows(occurrenceRows(liveRows), sortMode)),
     [liveRows, sortMode, entryOrder],
   );
   // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
@@ -437,7 +443,7 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
-              결과 {lastScan.hasMore && '상위 '}{lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
+              발생 {sortedLiveRows.length}건 · {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목 · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case" style={{ color: 'var(--warn)' }}>
                   · {lastScanStaleReason} — 시작으로 갱신
@@ -493,16 +499,13 @@ export function ScreenerDrawer() {
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
-                    <Fragment key={r.code}><DraggableScreenerRow
+                    <DraggableScreenerRow key={resultKey(r)} controller={occurrenceController}
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
                       onActivate={onActivateRow}
                       onOpenMenu={onOpenRowMenu}
                     />
-                    {!!r.occurrences?.length && <li className="px-md"><OccurrenceDetails code={r.code} name={r.name}
-                      occurrences={r.occurrences} controller={occurrenceController} /></li>}
-                    </Fragment>
                   ))}
                 </ul>
                 {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}
