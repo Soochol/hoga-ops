@@ -499,6 +499,15 @@ chevron+라벨보다 종목명이 왼쪽에서 시작해 위계가 역전되던 
   1동작이면 1단계, 여러 동작·재입력이면 3단계 이상.
 
 ### Modals & popovers — dismissal contract
+
+**Live 종목 검색 (2026-09-09):** `/` 또는 헤더 검색 버튼으로 여는 검색 표면은 최대
+640px, 상단 12vh의 비모달 팝오버다. 전체 높이는 80dvh 이내이며 결과 목록만
+스크롤한다. 입력·종목명은 `text-base`, 코드·시장은 `text-sm`로 종목명 아래에
+묶는다. 최근 검색도 동일한 세로 행을 쓰며 삭제는 종목 선택과 분리된 버튼이다.
+제목·닫기 버튼·적용 대상(그룹/창 수)·키보드 안내를 표시한다. Escape는 검색창만
+닫고, 외부 클릭이 다른 컨트롤에 포커스를 옮긴 경우를 제외하면 이전 포커스를
+복원한다. 기존 테마·폰트 토큰과 최근 5개 저장 정책은 유지한다.
+
 Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss `useEffect`.
 - **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header. **`/live` 의 보조지표(IndicatorPanel)·설정(SettingsSections) 패널이 2026-08-21 부터 여기 속한다**(사용자 결정, 아래 결정 로그) — 둘은 폭·높이·마스터-디테일 nav 를 `frontend/src/live/workspacePanel.ts` 상수로 공유하므로 클래스를 다시 적지 말고 상수를 소비할 것. 그 동기화는 `App.test.tsx`(설정)와 `IndicatorPanel.test.tsx`(지표)가 **같은 상수를 각각 단언**해서 지킨다 — 한쪽이 하드코딩으로 이탈하면 그 테스트가 빨개진다.
 - **Right drawer** (`ModalShell side='right'`, ADR-0116) — ⚠ **2026-08-21 부터 앱 소비자가 0 이다**(설정·보조지표가 중앙 모달로 옮겨갔다; 코드와 `ModalShell.test.tsx` 커버리지는 되돌릴 여지를 위해 남겼다. 새로 쓰기 전에 결정 로그를 읽을 것 — 되돌림이지 신규 선택지가 아니다): full-height right-anchored variant of the same shell — lighter dim (`bg-black/30` vs the center modal's `bg-black/50`), `border-l` instead of the rounded card border, 150ms ease-out slide-in. Purpose: **immediate-apply settings stay visible against the live chart** — the left ~520px of chart remains readable behind the dim, so a toggle's effect is seen in place. Used by the `/live` 보조지표(IndicatorPanel) and 설정(LiveSettingsModal) drawers, which share width (`760px`) and master-detail nav (`240px`) via what is now `frontend/src/live/workspacePanel.ts` (renamed 2026-08-21 — the file no longer describes a drawer) — the two panels must not shift when the user switches between the toolbar buttons, so consume the constants rather than restating the classes.

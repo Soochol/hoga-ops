@@ -6,6 +6,13 @@ test('창 최대화·Escape 복원은 원래 배치를 보존한다', async ({ p
   await page.goto('/live');
   const win = page.locator('[data-win]').first();
   await expect(win).toBeVisible();
+  // The credential-free fixture displays a 42px stream-unavailable banner.
+  // Wait for both it and the canvas ResizeObserver before taking the baseline;
+  // otherwise the initial window can still use the pre-banner canvas height.
+  await expect(page.getByTestId('live-state-banner')).toBeVisible();
+  await expect.poll(() => win.evaluate((el) => Math.abs(
+    el.getBoundingClientRect().height - el.parentElement!.getBoundingClientRect().height,
+  ))).toBeLessThan(1);
   const before = await win.boundingBox();
   await win.getByRole('button', { name: '창 최대화', exact: true }).click();
   await expect(win.getByRole('button', { name: '원래 크기로 복원' })).toBeVisible();

@@ -63,9 +63,9 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
     fireEvent.keyDown(window, { key: '/' });
     const dialog = screen.getByRole('dialog', { name: '종목 검색' });
-    const input = screen.getByPlaceholderText('검색어를 입력해주세요') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('종목명·코드·지수 검색') as HTMLInputElement;
     expect(dialog).toHaveClass('fixed', 'left-1/2', 'top-[12vh]');
-    expect(input).toHaveClass('text-sm');
+    expect(input).toHaveClass('text-base');
     expect(input).not.toHaveClass('text-[22px]');
     expect(document.activeElement).toBe(input);
   });
@@ -75,7 +75,7 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '종목 검색 열기' }));
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('종목명·코드·지수 검색'));
   });
 
   it('clips the trigger contents and hides the kbd chip in narrow containers', () => {
@@ -122,10 +122,85 @@ describe('LiveSymbolSearch', () => {
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.getByText('최근 검색')).toBeInTheDocument();
     expect(screen.getByText('최근 검색')).toHaveClass('text-sm');
-    expect(screen.getByRole('option', { name: /SK하이닉스/ })).toHaveClass('text-sm');
+    expect(screen.getByRole('option', { name: /SK하이닉스/ })).toHaveClass('text-base');
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
     expect(screen.getByText('삼성바이오로직스')).toBeInTheDocument();
     expect(screen.queryByText('셀트리온')).toBeNull();
+  });
+
+  it('deletes recent history without activating a stock or closing the search', () => {
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify([HIT]));
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.click(screen.getByRole('button', { name: '삼성전자 최근 검색 삭제' }));
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(screen.getByText('종목명, 코드 또는 지수를 입력하세요.')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent')!)).toEqual([]);
+    expect(input).toHaveFocus();
+    expect(input).not.toHaveAttribute('aria-activedescendant');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  it('keeps the active descendant valid after deleting the final highlighted recent row', () => {
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify([HIT, RECENT_HITS[0]]));
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('button', { name: 'SK하이닉스 최근 검색 삭제' }));
+    const option = screen.getByRole('option', { selected: true });
+    expect(input).toHaveAttribute('aria-activedescendant', option.id);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBe(HIT.code);
+  });
+
+  it.each([{ isComposing: true }, { keyCode: 229 }])('does not select while committing IME text: %j', (composition) => {
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '삼성' } });
+    fireEvent.keyDown(input, { key: 'Enter', ...composition });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBe(HIT.code);
+  });
+
+  it('Escape closes only the search and restores the opener focus', () => {
+    const backgroundKey = vi.fn();
+    window.addEventListener('keydown', backgroundKey);
+    try {
+      renderSearch();
+      const trigger = screen.getByRole('button', { name: '종목 검색 열기' });
+      trigger.focus();
+      fireEvent.click(trigger);
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(trigger).toHaveFocus();
+      expect(backgroundKey).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', backgroundKey);
+    }
+  });
+
+  it('storage write failure does not interrupt recent deletion or selection', () => {
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify([HIT]));
+    renderSearch();
+    const input = openSearchPopover();
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key) => {
+      if (key === 'hoga.liveSymbolSearch.recent') throw new DOMException('Unavailable');
+    });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: '삼성전자 최근 검색 삭제' }));
+      expect(screen.queryByRole('option')).toBeNull();
+      fireEvent.change(input, { target: { value: '삼성' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(useLivePageStore.getState().activeCode).toBe(HIT.code);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      write.mockRestore();
+    }
   });
 
   it('selecting an index result opens an index instrument in the current view', () => {
@@ -156,6 +231,11 @@ describe('LiveSymbolSearch', () => {
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
     expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    const newGroup = screen.getByRole('textbox', { name: '새 그룹 만들기' });
+    fireEvent.mouseDown(newGroup);
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(newGroup).toBeInTheDocument();
+    expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
   it('Enter on a focused empty input does not select an arbitrary symbol', () => {
@@ -187,7 +267,7 @@ it('search destination follows the activation policy and excludes pinned windows
   try {
     renderSearch();
     openSearchPopover();
-    expect(screen.getByRole('status')).toHaveTextContent('그룹 2 · 연결된 2개 창에 적용 · 고정 창 제외');
+    expect(screen.getByRole('status')).toHaveTextContent('적용 대상: 그룹 2 · 창 2개고정 창 제외');
     act(() => useWorkspaceStore.setState({ windows: windows.map((win) => ({ ...win, pinned: { code: '000660', name: 'SK하이닉스' } })) }));
     expect(screen.getByRole('status')).toHaveTextContent('모든 창이 고정되어 있습니다');
     act(() => useWorkspaceStore.setState({ windows: [], zOrder: [] }));
