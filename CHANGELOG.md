@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.1.1] - 2026-09-09
+
+### Fixed
+- live 활성 창의 외곽선 강조색을 제거하고 모든 창에 동일한 중성색 테두리를 유지한다. 포커스는 기존 헤더 배경색으로만 표시한다.
+
 ## [0.16.1.0] - 2026-09-09
 
 ### Changed
