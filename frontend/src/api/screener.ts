@@ -1,4 +1,4 @@
-import { apiCall } from './client';
+import { apiCall, apiAction } from './client';
 import type { WireDataWarning } from './dataWarnings';
 
 // --- condition params (one per catalog type; type keys MUST match backend) ---
@@ -92,6 +92,7 @@ export interface ScanRequest {
 }
 
 export interface ScreenerRow {
+  occurrences?: ScreenerOccurrence[];
   history_matches?: (HistoryMatch | HistoryTradeValueMatch)[];
   code: string;
   name: string;
@@ -182,12 +183,19 @@ export type ScreenerUpdateResponse =
   | { running: true; done: number; total: number }
   | { running: false; updated: 0; reason: ScreenerUpdateSkipReason };
 
-export function runScan(body: ScanRequest): Promise<ScreenerResponse> {
-  return apiCall<ScreenerResponse>('/api/screener/scan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+// All scan entry points share this revision, including page and drawer scans.
+let exclusionRevision = 0;
+export async function runScan(body: ScanRequest): Promise<ScreenerResponse> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const revision = exclusionRevision;
+    const result = await apiCall<ScreenerResponse>('/api/screener/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (revision === exclusionRevision) return result;
+  }
+  throw new Error('제외 목록이 변경되었습니다. 다시 조회해 주세요.');
 }
 
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
@@ -486,3 +494,36 @@ export const updatePatternSave = (id: string, body: PatternSaveWriteRequest) =>
 
 export const deletePatternSave = (id: string) =>
   apiCall<void>(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
+
+export interface ScreenerOccurrence {
+  condition_id: string;
+  condition_key: string;
+  date: string;
+}
+export interface ScreenerExclusionWrite {
+  condition: ConditionLeaf;
+  code: string;
+  date: string;
+  stock_name: string;
+}
+export interface ScreenerExclusion extends ScreenerExclusionWrite {
+  id: string;
+  condition_key: string;
+  created_at_ms: number;
+}
+export interface ScreenerExclusionsFile {
+  schema_version: number;
+  exclusions: ScreenerExclusion[];
+}
+export const listScreenerExclusions = () => apiCall<ScreenerExclusionsFile>('/api/screener/exclusions');
+export const excludeScreenerOccurrence = async (body: ScreenerExclusionWrite) => {
+  const result = await apiCall<ScreenerExclusion>('/api/screener/exclusions', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  exclusionRevision += 1;
+  return result;
+};
+export const restoreScreenerOccurrence = async (id: string) => {
+  await apiAction(`/api/screener/exclusions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  exclusionRevision += 1;
+};

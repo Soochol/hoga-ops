@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from hoga.api import (
     compute_jobs,
     pattern_saves,
+    screener_exclusions,
     screener_runner,
     screener_saves,
     screener_store,
@@ -457,13 +458,15 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     router = APIRouter(prefix="/api/screener", tags=["screener"])
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
+    from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
+    router.include_router(exclusions_router(data_dir))
     pattern_requests = ReadRequestCoalescer[PatternSearchResponse]()
     sdir = data_dir / "screener"
 
     @router.post("/scan")
     async def scan(req: ScanRequest) -> ScreenerResponse:
         # 동일 바디의 동시 요청은 하나의 스캔으로 합친다(모니터링·멀티탭 중복 제거).
-        key = req.model_dump_json()
+        key = f"{data_dir}:{screener_exclusions.revision(data_dir)}:{req.model_dump_json()}"
         return await _scan_coalescer.run(
             key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req))
 

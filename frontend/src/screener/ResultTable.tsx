@@ -1,3 +1,5 @@
+import { OccurrenceDetails } from './OccurrenceExclusions';
+import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -22,6 +24,7 @@ interface Props {
   depthSides?: DepthSides;
   quoteMode?: 'live' | 'snapshot';
   selection?: ResultSelection;
+  occurrenceController?: OccurrenceExclusions;
 }
 
 interface ResultSelection {
@@ -159,7 +162,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
-function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, selection, quoteMode }: {
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, selection, quoteMode, occurrenceController }: {
   r: ScreenerRowLive;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
@@ -169,6 +172,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   measureRef?: (el: HTMLElement | null) => void;
   index?: number;
   selection?: ResultSelection;
+  occurrenceController?: OccurrenceExclusions;
   quoteMode?: Props['quoteMode'];
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -225,11 +229,13 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       <span className="flex items-center justify-end gap-2">
         <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
       </span>
+      {occurrenceController && !!r.occurrences?.length && <OccurrenceDetails code={r.code} name={r.name}
+        occurrences={r.occurrences} controller={occurrenceController} />}
     </DataTableRow>
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, selection, quoteMode = 'live' }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, selection, quoteMode = 'live', occurrenceController }: Props) {
   // 훅은 표 전체에서 **한 번만** 부른다(useWatchlistMembership 계약: "ONCE per component,
   // not per row"). 행마다 부르던 시절엔 1,000행 = react-query 옵저버 1,000개였다.
   // 실측(재렌더): 500행 44 → 30 ms, 1,000행 65 → 59 ms.
@@ -301,6 +307,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               depthSides={depthSides}
               measureRef={virtualizer.measureElement}
               index={vi.index}
+              occurrenceController={occurrenceController}
               selection={selection}
               quoteMode={quoteMode}
               style={{
@@ -314,6 +321,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
           {rows.map((r) => (
             <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
+              occurrenceController={occurrenceController}
               selection={selection} quoteMode={quoteMode}
               depthValues={depthValues} depthSides={depthSides} />
           ))}

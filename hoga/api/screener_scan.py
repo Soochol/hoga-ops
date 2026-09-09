@@ -10,15 +10,17 @@ from hoga.api.models import (
     BreakoutParams,
     ConditionLeaf,
     HistoryDateRangeParams,
+    ScreenerOccurrence,
     ScreenerRow,
     ScreenerUniverse,
 )
+from hoga.api.screener_exclusions import condition_key
 from hoga.api.screener_trade_value import TRADE_VALUE_SQL as _TV, WON_PER_EOK as _WON_PER_EOK
 from hoga.duck import connect_bounded
 
 
 def _breakout_cte(name: str, col: str, f: BreakoutParams) -> str:
-    """col(high|volume) 의 (lookback,period) 돌파 이력 CTE. VERBATIM — 재작성 금지."""
+    """돌파 판정식의 단일 구현. 발생일을 보존하고 종목 존재 판정은 호출자가 한다."""
     N, M = f.lookback, f.period
     return f"""
     {name}_lb AS (
@@ -33,7 +35,7 @@ def _breakout_cte(name: str, col: str, f: BreakoutParams) -> str:
                       ROWS BETWEEN {M - 1} PRECEDING AND CURRENT ROW) wc
       FROM adj),
     {name} AS (
-      SELECT DISTINCT ON (w.code) w.code
+      SELECT w.code, w.date
       FROM {name}_win w JOIN {name}_lb l ON l.code=w.code
       WHERE w.date >= l.lb_start AND w.v >= w.mx AND w.wc = {M}
       ORDER BY w.code, w.date DESC)"""
@@ -44,14 +46,14 @@ LeafCompiler = Callable[[ConditionLeaf, int], tuple[str, list]]
 
 
 def _compile_trade_value(leaf, i):
-    return f"cond_{i} AS (SELECT code FROM base WHERE {_TV} >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
+    return f"cond_{i} AS (SELECT code, date FROM base WHERE {_TV} >= ?)", [int(leaf.params.min_eok * _WON_PER_EOK)]
 
 
 def _compile_trade_value_period(leaf, i):
     # 돌파 아님 — 최근 N거래일 중 하루라도 거래대금이 임계값 도달. wc 가드 없음.
     n = leaf.params.lookback
-    return (f"cond_{i} AS (SELECT DISTINCT code FROM ("
-            f"SELECT code, {_TV} AS tv, "
+    return (f"cond_{i} AS (SELECT code, date FROM ("
+            f"SELECT code, date, {_TV} AS tv, "
             f"ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) rn FROM adj) t "
             f"WHERE rn <= {n} AND tv >= ?)",
             [int(leaf.params.min_eok * _WON_PER_EOK)])
@@ -73,10 +75,10 @@ def _compile_change_pct(leaf, i):
     expr = "(close/prev_close - 1) * 100"
     op = leaf.params.op
     if op == "gte":
-        return f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} >= ?)", [leaf.params.pct]
+        return f"cond_{i} AS (SELECT code, date FROM base WHERE {guard} AND {expr} >= ?)", [leaf.params.pct]
     if op == "lte":
-        return f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} <= ?)", [leaf.params.pct]
-    return (f"cond_{i} AS (SELECT code FROM base WHERE {guard} AND {expr} BETWEEN ? AND ?)",
+        return f"cond_{i} AS (SELECT code, date FROM base WHERE {guard} AND {expr} <= ?)", [leaf.params.pct]
+    return (f"cond_{i} AS (SELECT code, date FROM base WHERE {guard} AND {expr} BETWEEN ? AND ?)",
             [leaf.params.lo, leaf.params.hi])
 
 
@@ -91,9 +93,9 @@ def _compile_high_off_peak(leaf, i):
         f"cond_{i}_w AS (SELECT code, date, high AS v, "
         f"MAX(high) OVER (PARTITION BY code ORDER BY date "
         f"ROWS BETWEEN {M - 1} PRECEDING AND CURRENT ROW) mx FROM adj), "
-        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, v, mx "
+        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, date, v, mx "
         f"FROM cond_{i}_w ORDER BY code, date DESC), "
-        f"cond_{i} AS (SELECT code FROM cond_{i}_l WHERE mx > 0 AND v {op} mx * ?)"
+        f"cond_{i} AS (SELECT code, date FROM cond_{i}_l WHERE mx > 0 AND v {op} mx * ?)"
     ), [frac]
 
 
@@ -103,7 +105,7 @@ def _compile_price_range(leaf, i):
         clauses.append("close >= ?"); params.append(leaf.params.min)  # noqa: E702 — 셋업 한 줄 압축
     if leaf.params.max is not None:
         clauses.append("close <= ?"); params.append(leaf.params.max)  # noqa: E702 — 셋업 한 줄 압축
-    return f"cond_{i} AS (SELECT code FROM base WHERE {' AND '.join(clauses)})", params
+    return f"cond_{i} AS (SELECT code, date FROM base WHERE {' AND '.join(clauses)})", params
 
 
 def _compile_ma(leaf, i):
@@ -116,9 +118,9 @@ def _compile_ma(leaf, i):
         f"ROWS BETWEEN {N - 1} PRECEDING AND CURRENT ROW) sma, "
         f"COUNT(*) OVER (PARTITION BY code ORDER BY date "
         f"ROWS BETWEEN {N - 1} PRECEDING AND CURRENT ROW) wc FROM adj), "
-        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, v, sma, wc "
+        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, date, v, sma, wc "
         f"FROM cond_{i}_w ORDER BY code, date DESC), "
-        f"cond_{i} AS (SELECT code FROM cond_{i}_l WHERE wc = {N} AND v {op} sma)"
+        f"cond_{i} AS (SELECT code, date FROM cond_{i}_l WHERE wc = {N} AND v {op} sma)"
     ), []
 
 
@@ -150,6 +152,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
              history_pass: dict[str, list[str]] | None = None,
+             occurrence_dates: dict[str, dict[str, list[str]]] | None = None,
+             excluded: set[tuple[str, str, str]] | None = None,
              scope_codes: set[str] | None = None,
              etf_codes: frozenset[str] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
@@ -200,30 +204,31 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
             "FROM adj ORDER BY code, date DESC)"]
     joins: list[str] = []
     params: list = []
+    keys = [condition_key(leaf) for leaf in conditions]
+    con.register("excluded_events", pl.DataFrame(
+        list(excluded or []), schema={"condition_key": pl.Utf8, "code": pl.Utf8, "date": pl.Utf8},
+        orient="row"))
     for i, leaf in enumerate(conditions):
-        if isinstance(leaf.params, HistoryDateRangeParams):
-            if history_pass is None:
+        if isinstance(leaf.params, HistoryDateRangeParams) or leaf.type in _DEPTH_TYPES:
+            if isinstance(leaf.params, HistoryDateRangeParams) and history_pass is None:
                 raise ValueError("날짜 범위 조건은 이력 평가가 필요합니다")
-            rel = f"history_src_{i}"
-            con.register(rel, pl.DataFrame({"code": pl.Series(
-                "code", history_pass.get(leaf.id, []), dtype=pl.Utf8)}))
-            ctes.append(f"cond_{i} AS (SELECT code FROM {rel})")
-            joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
-            continue
-        if leaf.type in _DEPTH_TYPES:
-            # 총잔량 신고: screener_depth 가 계산한 통과 코드셋을 relation 으로 등록해
-            # 읽는다(빈 셋 → 0행 → JOIN 이 전체를 비운다). 같은 con 이라 등록 뷰 유지.
-            codes = (depth_pass or {}).get(leaf.id, [])
-            rel = f"depth_src_{i}"
-            con.register(rel, pl.DataFrame(
-                {"code": pl.Series("code", list(codes), dtype=pl.Utf8)}))
-            ctes.append(f"cond_{i} AS (SELECT code FROM {rel})")
-            joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
-            continue
-        cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
-        ctes.append(cte)
-        joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
-        params += p
+            codes = ((history_pass or {}) if isinstance(leaf.params, HistoryDateRangeParams)
+                     else (depth_pass or {})).get(leaf.id, [])
+            dates = (occurrence_dates or {}).get(leaf.id, {})
+            records = [(code, day) for code in codes for day in dates.get(code, [None])]
+            rel = f"event_src_{i}"
+            con.register(rel, pl.DataFrame(records, schema={"code": pl.Utf8, "date": pl.Utf8}, orient="row"))
+            ctes.append(f"cond_{i}_raw AS (SELECT code, CAST(date AS DATE) date FROM {rel})")
+        else:
+            cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
+            # Rename only the final relation; window helpers keep their existing names.
+            ctes.append(cte.replace(f"cond_{i} AS (", f"cond_{i}_raw AS ("))
+            params += p
+        ctes.append(
+            f"cond_{i} AS (SELECT r.* FROM cond_{i}_raw r WHERE NOT EXISTS ("
+            f"SELECT 1 FROM excluded_events e WHERE e.condition_key = '{keys[i]}' "
+            "AND e.code = r.code AND CAST(e.date AS DATE) = r.date))")
+        joins.append(f"SEMI JOIN cond_{i} ON cond_{i}.code = base.code")
 
     uwheres, uparams = screener_universe.duckdb_wheres(universe)
     params += uparams
@@ -239,6 +244,10 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
            f"({_TV})::BIGINT trade_value_won, "
            "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
            "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct")
+    for i in range(len(conditions)):
+        sel += (f", (SELECT list(DISTINCT strftime(date, '%Y-%m-%d') ORDER BY "
+                f"strftime(date, '%Y-%m-%d') DESC) FROM cond_{i} "
+                f"WHERE code = base.code AND date IS NOT NULL) AS dates_{i}")
     sql = (f"WITH {', '.join(ctes)} SELECT {sel} FROM base JOIN stk ON stk.code=base.code "
            f"{' '.join(joins)} {where_sql} ORDER BY trade_value_won DESC LIMIT {int(limit)}")
 
@@ -250,6 +259,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         out.append(ScreenerRow(
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
             price_date=d["price_date"],
+            occurrences=[ScreenerOccurrence(condition_id=leaf.id, condition_key=keys[i], date=day)
+                         for i, leaf in enumerate(conditions) for day in (d[f"dates_{i}"] or [])],
             trade_value_won=int(d["trade_value_won"]),
             change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None))
     return out

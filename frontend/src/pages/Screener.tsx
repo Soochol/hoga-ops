@@ -1,3 +1,5 @@
+import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
+import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
 import { HistoryCollection } from '../screener/HistoryCollection';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
@@ -129,6 +131,7 @@ export function Screener() {
   // 조회 결과·정렬은 screenerPanel 스토어(localStorage + 30분 TTL)에 산다 — 라우트
   // 이탈/복귀·새로고침 후에도 유지되고 드로어와 마지막 스캔을 공유한다.
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
+  const occurrenceController = useOccurrenceExclusions(lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
@@ -361,6 +364,7 @@ export function Screener() {
             같은 문제). 좌측 pane 은 저장 컨트롤 밑에 이미 `border-t` 를 손으로 긋고
             있었으므로, 종전엔 **한 페이지 안에서 한쪽만 선을 켜 둔 상태**였다. */}
         <DataSection title="결과" className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col gap-sm p-md">
+          <OccurrenceExclusionToolbar controller={occurrenceController} />
           {/* 결과 메타 줄: 개수·기준·조회 시각 + 강등된 경고 칩 + 정렬·갱신 상태.
               개수가 없으면 "결과"라는 제목만으로는 조회가 됐는지조차 알 수 없다. */}
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -435,7 +439,8 @@ export function Screener() {
               ) : (
                 <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
                   <ScreenerResults
-                    key={`${lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
+                    key={`${lastScan.interactionStartedAtMs ?? lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
+                    occurrenceController={occurrenceController}
                     scan={lastScan}
                     liveRows={liveRows}
                     onActivate={openLive}

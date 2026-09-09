@@ -96,6 +96,7 @@ class DepthEvalResult:
     coverage: DepthCoverage | None
     values: dict[str, DepthPeakValue]     # code -> 결과행 검증용 사이드카
     warnings: list[str] = field(default_factory=list)
+    occurrence_dates: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
 def has_depth_conditions(conditions) -> bool:
@@ -354,14 +355,14 @@ def _side_series(
     return series
 
 
-def _period_breakout(
+def _period_occurrences(
     series: dict[str, dict[str, int]],
     axis: list[str],
     *,
     lookback: int,
     period: int,
     threshold_pct: float,
-) -> set[str]:
+) -> dict[str, list[str]]:
     """최근 ``lookback`` 거래일 중 **하루라도** 직전 ``period`` 일 peak 를 돌파한 코드.
 
     비교 창은 그 날을 **제외**한다(strictly before). 당일 조건(:data:`ASK_TYPE`)이
@@ -374,7 +375,7 @@ def _period_breakout(
     오는 위양성이고, 그 방향은 커버리지 배너가 사용자에게 알린다. 당일 조건과 같은
     트레이드오프다.
     """
-    ok: set[str] = set()
+    ok: dict[str, list[str]] = {}
     start = max(0, len(axis) - lookback)
     ratio = threshold_pct / 100.0
     for code, by_date in series.items():
@@ -386,9 +387,14 @@ def _period_breakout(
             if not base:
                 continue  # 기준선 없음 → 비교 불가(제외). 당일 조건의 have==0 과 같다.
             if cur >= max(base) * ratio:
-                ok.add(code)
-                break
+                day = axis[i]
+                ok.setdefault(code, []).append(f"{day[:4]}-{day[4:6]}-{day[6:]}")
     return ok
+
+
+def _period_breakout(series, axis, *, lookback, period, threshold_pct) -> set[str]:
+    return set(_period_occurrences(series, axis, lookback=lookback, period=period,
+                                   threshold_pct=threshold_pct))
 
 
 def evaluate(  # noqa: PLR0912, PLR0915
@@ -423,6 +429,7 @@ def evaluate(  # noqa: PLR0912, PLR0915
     depth_codes = set(name_by) & universe_codes
 
     passing: dict[str, set[str]] = {}
+    occurrence_dates: dict[str, dict[str, list[str]]] = {}
     today_peaks: dict[str, tuple[int | None, int | None]] = {}
     cov_have_by: dict[str, int] = {}
     ask_peak_by: dict[str, int] = {}
@@ -483,6 +490,9 @@ def evaluate(  # noqa: PLR0912, PLR0915
                 if today_val >= past * (thr / 100.0):
                     ok.add(code)
             passing[leaf.id] = ok
+            if today_ref:
+                day = f"{today_ref[:4]}-{today_ref[4:6]}-{today_ref[6:]}"
+                occurrence_dates[leaf.id] = {code: [day] for code in ok}
 
         # --- 기간내 판정 (ask/bid_depth_new_high_period) ---
         # 축(코퍼스 거래일 + 오늘)과 side 시계열은 leaf 파라미터와 무관하므로 side 당
@@ -497,12 +507,13 @@ def evaluate(  # noqa: PLR0912, PLR0915
                     series_cache[side] = _side_series(
                         dd, side, today_ref=today_ref, today_peaks=today_peaks,
                         idx=0 if is_ask else 1)
-                passing[leaf.id] = _period_breakout(
+                occurrence_dates[leaf.id] = _period_occurrences(
                     {c: v for c, v in series_cache[side].items() if c in depth_codes},
                     axis,
                     lookback=leaf.params.lookback, period=leaf.params.period,
                     threshold_pct=leaf.params.threshold_pct,
                 )
+                passing[leaf.id] = set(occurrence_dates[leaf.id])
 
         # 커버리지(집합 관점: excluded/partial)는 가장 넓은 창 기준. 기간내 조건이
         # 요구하는 이력은 lookback + period 다 — 가장 이른 판정일도 자기 직전
@@ -613,6 +624,10 @@ def evaluate(  # noqa: PLR0912, PLR0915
         lookback=max_n, evaluated=len(depth_codes),
         excluded=excluded, partial=partial,
     ) if history_leaves else None
+    for leaf in renewal_leaves:
+        day = f"{today[:4]}-{today[4:6]}-{today[6:]}"
+        occurrence_dates[leaf.id] = {code: [day] for code in passing.get(leaf.id, set())}
     return DepthEvalResult(
         passing=passing, coverage=coverage, values=values, warnings=warnings,
+        occurrence_dates=occurrence_dates,
     )

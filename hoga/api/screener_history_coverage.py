@@ -42,6 +42,7 @@ class HistoryEvaluation:
     coverage: HistoryCoverage
     passing: dict[str, list[str]] = field(default_factory=dict)
     matches: dict[str, list[HistoryMatch | HistoryTradeValueMatch]] = field(default_factory=dict)
+    all_matches: dict[str, list[HistoryMatch | HistoryTradeValueMatch]] = field(default_factory=dict)
     collection_starts: dict[str, dt.date] = field(default_factory=dict)
 
 
@@ -89,10 +90,10 @@ def plan_windows(leaf, calendar: list[dt.date]) -> WindowPlan:
                       calendar_complete, collection_days)
 
 
-def latest_match(plan: WindowPlan, values: dict[dt.date, int]) -> HistoryMatch | None:
+def all_volume_matches(plan: WindowPlan, values: dict[dt.date, int]) -> list[HistoryMatch]:
     peak: deque[int] = deque()
     left, absent = 0, 0
-    latest = None
+    matches = []
     for right, day in enumerate(plan.dates):
         volume = values.get(day)
         absent += volume is None
@@ -109,20 +110,28 @@ def latest_match(plan: WindowPlan, values: dict[dt.date, int]) -> HistoryMatch |
             continue
         maximum = values[plan.dates[peak[0]]]
         if volume == maximum:
-            latest = HistoryMatch(condition_id=plan.condition_id, date=day.isoformat(),
+            matches.append(HistoryMatch(condition_id=plan.condition_id, date=day.isoformat(),
                   volume=volume, maximum=maximum,
-                  window_start=plan.dates[left].isoformat(), window_end=day.isoformat())
-    return latest
+                  window_start=plan.dates[left].isoformat(), window_end=day.isoformat()))
+    return matches
+
+
+def latest_match(plan: WindowPlan, values: dict[dt.date, int]) -> HistoryMatch | None:
+    matches = all_volume_matches(plan, values)
+    return matches[-1] if matches else None
+
+
+def all_trade_value_matches(plan: WindowPlan, values: dict[dt.date, float], min_eok: float):
+    threshold = int(min_eok * WON_PER_EOK)
+    return [HistoryTradeValueMatch(condition_id=plan.condition_id, date=day.isoformat(),
+                                   trade_value_won=values[day])
+            for day, eligible in zip(plan.dates, plan.eligible, strict=True)
+            if eligible and values.get(day, -1) >= threshold]
 
 
 def latest_trade_value_match(plan: WindowPlan, values: dict[dt.date, float], min_eok: float):
-    threshold = int(min_eok * WON_PER_EOK)
-    for day in reversed(plan.dates):
-        amount = values.get(day)
-        if amount is not None and amount >= threshold:
-            return HistoryTradeValueMatch(condition_id=plan.condition_id, date=day.isoformat(),
-                                          trade_value_won=amount)
-    return None
+    matches = all_trade_value_matches(plan, values, min_eok)
+    return matches[-1] if matches else None
 
 
 def evaluate(data_dir: Path, conditions, codes: list[str]) -> HistoryEvaluation:
@@ -214,10 +223,11 @@ def _evaluate(data_dir, conditions, codes, calendar_days) -> HistoryEvaluation:
                 result.collection_starts[code] = min(needed, result.collection_starts.get(code, needed))
             if not factor_ok:
                 continue
-            latest = (latest_trade_value_match(plan, trade_values.get(code, {}), leaf.params.min_eok)
-                      if isinstance(leaf.params, HistoryTradeValueParams) else latest_match(plan, values))
-            if latest:
+            matches = (all_trade_value_matches(plan, trade_values.get(code, {}), leaf.params.min_eok)
+                       if isinstance(leaf.params, HistoryTradeValueParams) else all_volume_matches(plan, values))
+            if matches:
                 result.passing[plan.condition_id].append(code)
-                result.matches.setdefault(code, []).append(latest)
+                result.matches.setdefault(code, []).append(matches[-1])
+                result.all_matches.setdefault(code, []).extend(matches)
     result.coverage.complete = len(codes) - len(incomplete_codes)
     return result

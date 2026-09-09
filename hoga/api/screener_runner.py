@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hoga.api import (
     screener_depth,
+    screener_exclusions,
     screener_history_coverage,
     screener_intraday,
     screener_scan,
@@ -107,6 +108,9 @@ async def run_screener_scan(
             scope=scope, etf_codes=etf_codes)
         history_eval = await asyncio.to_thread(
             screener_history_coverage.evaluate, data_dir, req.conditions, codes)
+    excluded = screener_exclusions.exclusion_keys(
+        await asyncio.to_thread(screener_exclusions.load_exclusions, data_dir))
+    occurrence_dates = _occurrence_dates(depth_eval, history_eval)
     rows = await asyncio.to_thread(
         screener_scan.run_scan,
         sdir / "daily_adjusted.parquet",
@@ -119,10 +123,10 @@ async def run_screener_scan(
         scope_codes=scope,
         etf_codes=etf_codes,
         history_pass=history_eval.passing if history_eval else None,
+        occurrence_dates=occurrence_dates, excluded=excluded,
     )
     if history_eval:
-        for row in rows:
-            row.history_matches = history_eval.matches.get(row.code, [])
+        _attach_history(rows, history_eval)
     return ScreenerResponse(
         history_coverage=history_eval.coverage if history_eval else None,
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
@@ -131,3 +135,24 @@ async def run_screener_scan(
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,
     )
+
+
+def _occurrence_dates(depth_eval, history_eval):
+    dates = dict(depth_eval.occurrence_dates) if depth_eval else {}
+    if history_eval:
+        for code, matches in history_eval.all_matches.items():
+            for match in matches:
+                dates.setdefault(match.condition_id, {}).setdefault(code, []).append(match.date)
+    return dates
+
+
+def _attach_history(rows, history_eval):
+    for row in rows:
+        active = {(m.condition_id, m.date) for m in row.occurrences}
+        latest = {}
+        for match in history_eval.all_matches.get(row.code, []):
+            if (match.condition_id, match.date) in active:
+                old = latest.get(match.condition_id)
+                if old is None or match.date > old.date:
+                    latest[match.condition_id] = match
+        row.history_matches = list(latest.values())

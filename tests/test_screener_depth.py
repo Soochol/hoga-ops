@@ -825,3 +825,23 @@ def test_period_peak_without_baseline_does_not_pass(tmp_path: Path) -> None:
                 obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(500,) * 10)])
     res = _eval_period(data_dir, sdir, _period_leaf(lookback=5, period=2, threshold_pct=100))
     assert res.passing["p1"] == set()
+
+
+async def test_period_exclusion_runs_through_evaluator_and_sql(tmp_path: Path) -> None:
+    from hoga.api.models import ScanRequest, ScreenerExclusionWrite
+    from hoga.api.screener_exclusions import put_exclusion
+    from hoga.api.screener_runner import run_screener_scan
+
+    data_dir, sdir = _seed_period_fixture(tmp_path)
+    (sdir / "status.json").write_text("{}")
+    pl.DataFrame(dict(code=["005930"], name=["삼성전자"], market=["KOSPI"],
+                      is_etf=[False], is_halted=[False])).write_parquet(sdir / "stocks.parquet")
+    condition = _period_leaf(lookback=5, period=2, threshold_pct=100)
+    request = ScanRequest(conditions=[condition], basis="eod")
+    now = dt.datetime(2026, 7, 15, 10, 0)
+    before = await run_screener_scan(data_dir=data_dir, req=request, now=now)
+    assert [o.date for o in before.rows[0].occurrences] == ["2026-07-10", "2026-07-08"]
+    await put_exclusion(data_dir, ScreenerExclusionWrite(condition=condition,
+        code="005930", date=dt.date(2026, 7, 10), stock_name="삼성전자"))
+    after = await run_screener_scan(data_dir=data_dir, req=request, now=now)
+    assert [o.date for o in after.rows[0].occurrences] == ["2026-07-08"]
