@@ -234,7 +234,7 @@ it('시세 보기·정렬에서는 선택을 유지하고 새 조회 완료 후 
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: '삼성전자 005930 선택' }));
   fireEvent.click(screen.getByRole('button', { name: '조회 당시' }));
-  fireEvent.click(screen.getByRole('button', { name: '코드 정렬' }));
+  fireEvent.click(screen.getByRole('button', { name: '종목명 정렬' }));
   expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).toBeChecked();
   const before = useScreenerPanelStore.getState().lastScan;
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
@@ -359,11 +359,11 @@ it('sorts full-page screener results by clicking table headers', async () => {
     '삼성전자 005930 호가창 열기',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: '코드 정렬' }));
+  fireEvent.click(screen.getByRole('button', { name: '종목명 정렬' }));
   expect(resultNames()).toEqual([
+    'NAVER 035420 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
     '삼성전자 005930 호가창 열기',
-    'NAVER 035420 호가창 열기',
   ]);
 });
 

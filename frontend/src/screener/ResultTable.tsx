@@ -109,8 +109,8 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
   );
 }
 
-const COLS = 'grid-cols-[7rem_6rem_3.5rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_4rem_8.5rem_6rem]';
-const SELECTABLE_COLS = 'grid-cols-[1.5rem_7rem_6rem_3.5rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_4rem_8.5rem_6rem]';
+const COLS = 'grid-cols-[7rem_6rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_8.5rem_6rem]';
+const SELECTABLE_COLS = 'grid-cols-[1.5rem_7rem_6rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_8.5rem_6rem]';
 
 /** 이 줄 수를 넘으면 가상화한다. CaptureQueue 의 임계와 같은 값 — 그보다 작으면
  *  DOM 을 다 그려도 재렌더가 10ms 안쪽이고(실측 100행 8ms), 가상화는 스크롤 위치
@@ -125,9 +125,7 @@ const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
 const HEADERS: Array<{ field: ScreenerResultSortField; label: string; sortLabel?: string; align?: 'right' }> = [
   { field: 'occurrence_date', label: '발생일' },
-  { field: 'code', label: '코드' },
   { field: 'name', label: '종목명' },
-  { field: 'market', label: '시장' },
   { field: 'price', label: '현재가(등락률)', sortLabel: '현재가', align: 'right' },
   { field: 'trade_value_won', label: '거래대금(억)', align: 'right' },
 ];
@@ -195,7 +193,6 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
         {r.occurrence && occurrenceController && <OccurrenceAction code={r.code} name={r.name} occurrence={r.occurrence} controller={occurrenceController} />}
         <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
       </span>
-      <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0"><span className="block truncate">{r.name}</span></span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
@@ -209,7 +206,6 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
             : `${m.volume.toLocaleString('ko-KR')}주`}
         </span>) : '—'}
       </span>
-      <span className="font-data text-xs text-fg-dim">{r.market}</span>
       {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
           동일 규칙) — 창 밖·체결 후엔 expected_* 가 사라져 자동 복귀. */}
       {r.expected_price != null ? (
@@ -266,7 +262,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
   return (
     <DataTableShell
       scrollRef={shellRef}
-      minWidth={selection ? '1220px' : '1180px'}
+      minWidth={selection ? '1080px' : '1040px'}
       // rowsRef.offsetTop은 이 스크롤 셸 기준이어야 한다. relative가 없으면 페이지
       // 상단 도구 높이까지 scrollMargin에 섞여 목록 끝의 가상 행이 렌더되지 않는다.
       className={`relative ${embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}`}
