@@ -1,4 +1,4 @@
-"""Historical volume evaluation and collection planning over the same disk snapshot."""
+"""Historical condition evaluation and collection planning over the same disk snapshot."""
 from __future__ import annotations
 
 import bisect
@@ -16,14 +16,18 @@ from hoga.api import trading_days
 from hoga.api.models import (
     HistoryCoverage,
     HistoryCoverageItem,
+    HistoryDateRangeParams,
     HistoryMatch,
+    HistoryTradeValueMatch,
+    HistoryTradeValueParams,
     HistoryVolumeParams,
     ScanRequest,
 )
+from hoga.api.screener_trade_value import TRADE_VALUE_SQL, WON_PER_EOK
 
 
 def history_leaves(conditions):
-    return [leaf for leaf in conditions if isinstance(leaf.params, HistoryVolumeParams)]
+    return [leaf for leaf in conditions if isinstance(leaf.params, HistoryDateRangeParams)]
 
 
 def subtract_years(day: dt.date, years: int) -> dt.date:
@@ -37,7 +41,7 @@ def subtract_years(day: dt.date, years: int) -> dt.date:
 class HistoryEvaluation:
     coverage: HistoryCoverage
     passing: dict[str, list[str]] = field(default_factory=dict)
-    matches: dict[str, list[HistoryMatch]] = field(default_factory=dict)
+    matches: dict[str, list[HistoryMatch | HistoryTradeValueMatch]] = field(default_factory=dict)
     collection_starts: dict[str, dt.date] = field(default_factory=dict)
 
 
@@ -57,17 +61,19 @@ def plan_windows(leaf, calendar: list[dt.date]) -> WindowPlan:
     """Date-only work is shared by every code evaluated for this condition."""
     p = leaf.params
     start, end = dt.date.fromisoformat(p.start_date), dt.date.fromisoformat(p.end_date)
-    n = p.record_period.value
+    volume_condition = isinstance(p, HistoryVolumeParams)
+    n = p.record_period.value if volume_condition else 1
+    years = volume_condition and p.record_period.unit == "years"
     lower = required_start(p, calendar)
     dates = tuple(d for d in calendar if d <= end and
-                  (d > lower if p.record_period.unit == "years" else d >= lower))
+                  (d > lower if years else d >= lower))
     calendar_complete = bool(calendar) and lower >= calendar[0] and end <= calendar[-1]
-    if p.record_period.unit == "trading_days" and bisect.bisect_left(calendar, start) < n - 1:
+    if not years and bisect.bisect_left(calendar, start) < n - 1:
         calendar_complete = False
     known_lower = max(lower, calendar[0]) if calendar else lower
     left, lefts, eligible = 0, [], []
     for right, day in enumerate(dates):
-        if p.record_period.unit == "years":
+        if years:
             boundary = subtract_years(day, n)
             while left <= right and dates[left] <= boundary:
                 left += 1
@@ -109,6 +115,16 @@ def latest_match(plan: WindowPlan, values: dict[dt.date, int]) -> HistoryMatch |
     return latest
 
 
+def latest_trade_value_match(plan: WindowPlan, values: dict[dt.date, float], min_eok: float):
+    threshold = int(min_eok * WON_PER_EOK)
+    for day in reversed(plan.dates):
+        amount = values.get(day)
+        if amount is not None and amount >= threshold:
+            return HistoryTradeValueMatch(condition_id=plan.condition_id, date=day.isoformat(),
+                                          trade_value_won=amount)
+    return None
+
+
 def evaluate(data_dir: Path, conditions, codes: list[str]) -> HistoryEvaluation:
     versions = []
     for name in ("daily_adjusted.parquet", "factors.parquet"):
@@ -129,6 +145,8 @@ def _cached_evaluate(directory, encoded, codes, version, calendar_days):
 
 def required_start(params, calendar):
     start = dt.date.fromisoformat(params.start_date)
+    if isinstance(params, HistoryTradeValueParams):
+        return start
     if params.record_period.unit == "years":
         return subtract_years(start, params.record_period.value)
     first = bisect.bisect_left(calendar, start)
@@ -161,16 +179,24 @@ def _evaluate(data_dir, conditions, codes, calendar_days) -> HistoryEvaluation:
     # evidence requires a code covered by the authoritative factor store.
     factor_codes = _factor_codes(factors_path)
     records: dict[str, dict[dt.date, int]] = {}
+    trade_values: dict[str, dict[dt.date, float]] = {}
+    need_trade_values = any(isinstance(leaf.params, HistoryTradeValueParams) for leaf in leaves)
+    columns: list[str | pl.Expr] = ["code", "date", "volume"]
+    if need_trade_values:
+        columns.append(pl.sql_expr(TRADE_VALUE_SQL).alias("trade_value_won"))
     if path.exists() and codes and plans:
         frame = (pl.scan_parquet(path).filter(pl.col("code").is_in(codes),
                            pl.col("date") <= max(plan.end for plan in plans),
                            pl.col("date") >= min(plan.lower for plan in plans))
-                 .select("code", "date", "volume").collect())
-        for code, day, volume in frame.iter_rows():
+                 .select(columns).collect())
+        for row in frame.iter_rows():
+            code, day, volume = row[:3]
             records.setdefault(code, {})[day] = int(volume)
+            if need_trade_values:
+                trade_values.setdefault(code, {})[day] = float(row[3])
     result = HistoryEvaluation(HistoryCoverage(total=len(codes), complete=0))
     incomplete_codes = set()
-    for plan in plans:
+    for leaf, plan in zip(leaves, plans, strict=True):
         result.passing[plan.condition_id] = []
         for code in codes:
             values = records.get(code, {})
@@ -188,7 +214,8 @@ def _evaluate(data_dir, conditions, codes, calendar_days) -> HistoryEvaluation:
                 result.collection_starts[code] = min(needed, result.collection_starts.get(code, needed))
             if not factor_ok:
                 continue
-            latest = latest_match(plan, values)
+            latest = (latest_trade_value_match(plan, trade_values.get(code, {}), leaf.params.min_eok)
+                      if isinstance(leaf.params, HistoryTradeValueParams) else latest_match(plan, values))
             if latest:
                 result.passing[plan.condition_id].append(code)
                 result.matches.setdefault(code, []).append(latest)

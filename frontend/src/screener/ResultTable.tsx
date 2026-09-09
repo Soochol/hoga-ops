@@ -187,8 +187,11 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0"><span className="block truncate">{r.name}</span>            {(r.history_matches ?? []).map(m => <span key={m.condition_id} className="block text-fg"
-              title={`${m.window_start} ~ ${m.window_end} 최대 ${m.maximum.toLocaleString()}주`}>
-              충족 {m.date} · {m.volume.toLocaleString()}주
+              title={'trade_value_won' in m ? `추정 거래대금 ${m.trade_value_won.toLocaleString()}원`
+                : `${m.window_start} ~ ${m.window_end} 최대 ${m.maximum.toLocaleString()}주`}>
+              충족 {m.date} · {'trade_value_won' in m
+                ? `${(m.trade_value_won / 100_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}억`
+                : `${m.volume.toLocaleString()}주`}
             </span>)}
 </span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}

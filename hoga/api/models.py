@@ -1774,12 +1774,11 @@ class HistoryRecordPeriod(BaseModel):
         return self
 
 
-class HistoryVolumeParams(BaseModel):
+class HistoryDateRangeParams(BaseModel):
     model_config = {"extra": "forbid"}
     mode: Literal["date_range"]
     start_date: str
     end_date: str
-    record_period: HistoryRecordPeriod
 
     @model_validator(mode="after")
     def validate_range(self):
@@ -1788,9 +1787,22 @@ class HistoryVolumeParams(BaseModel):
             raise ValueError("날짜는 YYYY-MM-DD 형식이어야 합니다")
         if start > end or end > dt.datetime.now(KST).date():
             raise ValueError("시작일 ≤ 종료일 ≤ 오늘이어야 합니다")
-        if start.year - (self.record_period.value if self.record_period.unit == "years" else 0) < 1:
+        return self
+
+
+class HistoryVolumeParams(HistoryDateRangeParams):
+    record_period: HistoryRecordPeriod
+
+    @model_validator(mode="after")
+    def validate_record_period(self):
+        years = self.record_period.value if self.record_period.unit == "years" else 0
+        if dt.date.fromisoformat(self.start_date).year - years < 1:
             raise ValueError("비교 기간이 날짜 범위를 벗어납니다")
         return self
+
+
+class HistoryTradeValueParams(HistoryDateRangeParams):
+    min_eok: float = Field(ge=0, allow_inf_nan=False)
 
 
 class PeriodParams(BaseModel):                         # 당일 신고가/신고거래량 — 단일 윈도우
@@ -1880,7 +1892,16 @@ class TradeValueLeaf(BaseModel):
 class TradeValuePeriodLeaf(BaseModel):
     type: Literal["trade_value_period"] = "trade_value_period"
     id: str
-    params: TradeValuePeriodParams
+    params: HistoryTradeValueParams | TradeValuePeriodParams
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_mode(cls, value):
+        if isinstance(value, dict):
+            params = value.get("params", {})
+            if isinstance(params, dict) and {"mode", "start_date", "end_date"}.intersection(params):
+                HistoryTradeValueParams.model_validate(params)
+        return value
 
 class NewHighLeaf(BaseModel):
     type: Literal["new_high"] = "new_high"
@@ -2025,6 +2046,12 @@ class HistoryMatch(BaseModel):
     window_end: str
 
 
+class HistoryTradeValueMatch(BaseModel):
+    condition_id: str
+    date: str
+    trade_value_won: float
+
+
 class HistoryCoverageItem(BaseModel):
     code: str
     condition_id: str
@@ -2067,7 +2094,7 @@ class ScreenerRow(BaseModel):                          # 평면형 — 조건 �
     change_pct: float | None
     # 조회 가격을 가져온 마지막 일봉 날짜. 기간 조건의 충족 발생일과는 다르다.
     price_date: str | None = None
-    history_matches: list[HistoryMatch] = Field(default_factory=list)
+    history_matches: list[HistoryMatch | HistoryTradeValueMatch] = Field(default_factory=list)
 
 class DepthCoverageCode(BaseModel):                    # 총잔량 조건 커버리지 한 종목
     code: str = Field(pattern=CODE_PATTERN)

@@ -63,6 +63,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "HistoryCoverage": frozenset({"total", "complete", "incomplete"}),
     "HistoryCoverageItem": frozenset({"code", "condition_id", "required_from", "required_to", "missing_days",
                                          "reason"}),
+    "HistoryTradeValueMatch": frozenset({"condition_id", "date", "trade_value_won"}),
     "HistoryMatch": frozenset({"condition_id", "date", "volume", "maximum", "window_start", "window_end"}),
     "HistoryJob": frozenset({"id", "status", "request", "codes", "total", "done", "written_rows", "errors",
                              "current_code", "started_at_ms", "cancel_requested", "coverage"}),

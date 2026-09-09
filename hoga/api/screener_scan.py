@@ -9,17 +9,12 @@ from hoga.api import screener_depth, screener_universe
 from hoga.api.models import (
     BreakoutParams,
     ConditionLeaf,
-    HistoryVolumeParams,
+    HistoryDateRangeParams,
     ScreenerRow,
     ScreenerUniverse,
 )
+from hoga.api.screener_trade_value import TRADE_VALUE_SQL as _TV, WON_PER_EOK as _WON_PER_EOK
 from hoga.duck import connect_bounded
-
-_WON_PER_EOK = 100_000_000
-
-# 거래대금 = 평균가(OHLC/4) × 거래량. 코퍼스에 거래대금 컬럼이 없어 매일 산출(ADR-0055/CONTEXT).
-# trade_value·trade_value_period·결과표가 공유하는 단일 식(드리프트 방지).
-_TV = "((open+high+low+close)/4.0)*volume"
 
 
 def _breakout_cte(name: str, col: str, f: BreakoutParams) -> str:
@@ -206,7 +201,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     joins: list[str] = []
     params: list = []
     for i, leaf in enumerate(conditions):
-        if isinstance(leaf.params, HistoryVolumeParams):
+        if isinstance(leaf.params, HistoryDateRangeParams):
             if history_pass is None:
                 raise ValueError("날짜 범위 조건은 이력 평가가 필요합니다")
             rel = f"history_src_{i}"

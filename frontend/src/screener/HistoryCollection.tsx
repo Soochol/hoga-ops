@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '../api/client';
 import type { HistoryCoverage, HistoryJob, ScanRequest } from '../api/screener';
-import { screenerRequestKey } from '../api/screenerRequest';
+import { isHistoricalCondition, screenerRequestKey } from '../api/screenerRequest';
 import { ToolbarButton } from '../ui/PageShell';
 
 const running = (job?: HistoryJob | null) => !!job && ['queued', 'collecting', 'deriving'].includes(job.status);
@@ -24,7 +24,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   request: ScanRequest; coverage?: HistoryCoverage | null; onComplete: () => void;
 }) {
   const client = useQueryClient();
-  const enabled = request.conditions.some(c => c.type === 'new_high_vol' && 'mode' in c.params);
+  const enabled = request.conditions.some(isHistoricalCondition);
   const query = useQuery({ queryKey: ['screener-history-job'], enabled,
     queryFn: () => apiCall<HistoryJob | null>('/api/screener/history/jobs/current'),
     refetchInterval: q => running(q.state.data) ? 2000 : false });
