@@ -5,7 +5,7 @@ import polars as pl
 import pytest
 
 from hoga.api import screener_factors, screener_history_coverage as coverage, screener_history_jobs as jobs
-from hoga.api.models import ScanRequest
+from hoga.api.models import HistoryJob, ScanRequest
 from hoga.api.screener_store import _DAILY_PL_SCHEMA
 
 
@@ -17,7 +17,7 @@ def request():
 
 
 def job():
-    return dict(id='resume', request=request().model_dump(mode='json'), codes=['005930'],
+    return HistoryJob(started_at_ms=1, id='resume', request=request().model_dump(mode='json'), codes=['005930'],
                 status='queued', done=0, total=0, written_rows=0, errors={})
 
 
@@ -42,9 +42,9 @@ async def test_resume_recovers_staged_publication_without_vendor(tmp_path, monke
 
     state = job()
     await jobs.run_job(tmp_path, state, unavailable)
-    assert state['status'] == 'complete'
-    assert not state['errors']
-    assert state['coverage']['complete'] == 1
+    assert state.status == 'complete'
+    assert not state.errors
+    assert state.coverage.complete == 1
     assert not (sdir / 'history_publish.json').exists()
 
 
@@ -64,5 +64,5 @@ async def test_missing_factors_are_collected_even_with_all_dates(tmp_path, monke
     state = job()
     await jobs.run_job(tmp_path, state, fetch)
     assert len(calls) == 1
-    assert state['status'] == 'complete'
+    assert state.status == 'complete'
     assert (sdir / 'factors.parquet').exists()

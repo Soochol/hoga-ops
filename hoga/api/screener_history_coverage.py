@@ -38,42 +38,74 @@ class HistoryEvaluation:
     coverage: HistoryCoverage
     passing: dict[str, list[str]] = field(default_factory=dict)
     matches: dict[str, list[HistoryMatch]] = field(default_factory=dict)
+    collection_starts: dict[str, dt.date] = field(default_factory=dict)
 
 
-def latest_match(leaf, values, required, lower, start):
+@dataclass(frozen=True)
+class WindowPlan:
+    condition_id: str
+    lower: dt.date
+    end: dt.date
+    dates: tuple[dt.date, ...]
+    left_indices: tuple[int, ...]
+    eligible: tuple[bool, ...]
+    calendar_complete: bool
+    collection_days: tuple[dt.date, ...]
+
+
+def plan_windows(leaf, calendar: list[dt.date]) -> WindowPlan:
+    """Date-only work is shared by every code evaluated for this condition."""
     p = leaf.params
+    start, end = dt.date.fromisoformat(p.start_date), dt.date.fromisoformat(p.end_date)
     n = p.record_period.value
-    # Calendar-indexed windows prevent missing rows from silently shortening history.
+    lower = required_start(p, calendar)
+    dates = tuple(d for d in calendar if d <= end and
+                  (d > lower if p.record_period.unit == "years" else d >= lower))
+    calendar_complete = bool(calendar) and lower >= calendar[0] and end <= calendar[-1]
+    if p.record_period.unit == "trading_days" and bisect.bisect_left(calendar, start) < n - 1:
+        calendar_complete = False
+    known_lower = max(lower, calendar[0]) if calendar else lower
+    left, lefts, eligible = 0, [], []
+    for right, day in enumerate(dates):
+        if p.record_period.unit == "years":
+            boundary = subtract_years(day, n)
+            while left <= right and dates[left] <= boundary:
+                left += 1
+            full = boundary >= known_lower
+        else:
+            left = max(0, right - n + 1)
+            full = right - left + 1 == n
+        lefts.append(left)
+        eligible.append(day >= start and full)
+    candidates = [i for i, valid in enumerate(eligible) if valid]
+    collection_days = dates[lefts[candidates[0]]:candidates[-1] + 1] if candidates else ()
+    return WindowPlan(leaf.id, lower, end, dates, tuple(lefts), tuple(eligible),
+                      calendar_complete, collection_days)
+
+
+def latest_match(plan: WindowPlan, values: dict[dt.date, int]) -> HistoryMatch | None:
     peak: deque[int] = deque()
     left, absent = 0, 0
     latest = None
-    for right, day in enumerate(required):
+    for right, day in enumerate(plan.dates):
         volume = values.get(day)
         absent += volume is None
-        if p.record_period.unit == "years":
-            boundary = subtract_years(day, n)
-            while left <= right and required[left] <= boundary:
-                absent -= required[left] not in values
-                left += 1
-            full = boundary >= lower
-        else:
-            while right - left + 1 > n:
-                absent -= required[left] not in values
-                left += 1
-            full = right - left + 1 == n
+        while left < plan.left_indices[right]:
+            absent -= plan.dates[left] not in values
+            left += 1
         while peak and peak[0] < left:
             peak.popleft()
         if volume is not None:
-            while peak and values[required[peak[-1]]] <= volume:
+            while peak and values[plan.dates[peak[-1]]] <= volume:
                 peak.pop()
             peak.append(right)
-        if day < start or not full or absent or volume is None or volume <= 0:
+        if not plan.eligible[right] or absent or volume is None or volume <= 0:
             continue
-        maximum = values[required[peak[0]]]
+        maximum = values[plan.dates[peak[0]]]
         if volume == maximum:
-            latest = HistoryMatch(condition_id=leaf.id, date=day.isoformat(),
+            latest = HistoryMatch(condition_id=plan.condition_id, date=day.isoformat(),
                   volume=volume, maximum=maximum,
-                  window_start=required[left].isoformat(), window_end=day.isoformat())
+                  window_start=plan.dates[left].isoformat(), window_end=day.isoformat())
     return latest
 
 
@@ -122,54 +154,43 @@ def _evaluate(data_dir, conditions, codes, calendar_days) -> HistoryEvaluation:
     leaves = history_leaves(conditions)
     calendar = sorted(dt.datetime.strptime(d, "%Y%m%d").date()
                       for d in calendar_days)
+    plans = [plan_windows(leaf, calendar) for leaf in leaves]
     path = data_dir / "screener" / "daily_adjusted.parquet"
     factors_path = data_dir / "screener" / "factors.parquet"
     # The adjusted store can also contain heuristic split corrections. Historical
     # evidence requires a code covered by the authoritative factor store.
     factor_codes = _factor_codes(factors_path)
     records: dict[str, dict[dt.date, int]] = {}
-    if path.exists() and codes:
+    if path.exists() and codes and plans:
         frame = (pl.scan_parquet(path).filter(pl.col("code").is_in(codes),
-                           pl.col("date") <= max(dt.date.fromisoformat(leaf.params.end_date) for leaf in leaves),
-                           pl.col("date") >= min(required_start(leaf.params, calendar) for leaf in leaves))
+                           pl.col("date") <= max(plan.end for plan in plans),
+                           pl.col("date") >= min(plan.lower for plan in plans))
                  .select("code", "date", "volume").collect())
         for code, day, volume in frame.iter_rows():
             records.setdefault(code, {})[day] = int(volume)
     result = HistoryEvaluation(HistoryCoverage(total=len(codes), complete=0))
     incomplete_codes = set()
-    for leaf in leaves:
-        p = leaf.params
-        start, end = dt.date.fromisoformat(p.start_date), dt.date.fromisoformat(p.end_date)
-        n = p.record_period.value
-        first = bisect.bisect_left(calendar, start)
-        lower = required_start(p, calendar)
-        required = [d for d in calendar if d <= end and
-                    (d > lower if p.record_period.unit == "years" else d >= lower)]
-        calendar_ok = bool(calendar) and lower >= calendar[0] and end <= calendar[-1]
-        if p.record_period.unit == "trading_days" and first < n - 1:
-            calendar_ok = False
-        result.passing[leaf.id] = []
+    for plan in plans:
+        result.passing[plan.condition_id] = []
         for code in codes:
             values = records.get(code, {})
-            missing = sum(d not in values for d in required)
+            missing = sum(d not in values for d in plan.dates)
             factor_ok = code in factor_codes
-            if missing or not calendar_ok or not factor_ok:
+            if missing or not plan.calendar_complete or not factor_ok:
                 incomplete_codes.add(code)
                 result.coverage.incomplete.append(HistoryCoverageItem(
-                    code=code, condition_id=leaf.id, required_from=lower.isoformat(),
-                    required_to=end.isoformat(), missing_days=missing,
-                    reason=("calendar_unavailable" if not calendar_ok else
+                    code=code, condition_id=plan.condition_id, required_from=plan.lower.isoformat(),
+                    required_to=plan.end.isoformat(), missing_days=missing,
+                    reason=("calendar_unavailable" if not plan.calendar_complete else
                             "factor_unavailable" if not factor_ok else "missing_history")))
+            if plan.collection_days and (not factor_ok or any(d not in values for d in plan.collection_days)):
+                needed = plan.collection_days[0]
+                result.collection_starts[code] = min(needed, result.collection_starts.get(code, needed))
             if not factor_ok:
                 continue
-            # Missing calendar coverage makes the whole range incomplete, but
-            # later candidate windows can still be fully observed. For calendar
-            # years, never let a window extend before the known calendar; the
-            # trading-day path independently requires all N calendar entries.
-            known_lower = max(lower, calendar[0]) if calendar else lower
-            latest = latest_match(leaf, values, required, known_lower, start)
+            latest = latest_match(plan, values)
             if latest:
-                result.passing[leaf.id].append(code)
+                result.passing[plan.condition_id].append(code)
                 result.matches.setdefault(code, []).append(latest)
     result.coverage.complete = len(codes) - len(incomplete_codes)
     return result
