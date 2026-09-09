@@ -290,7 +290,7 @@ def test_refresh_publication_serializes_with_history_commit(tmp_path, monkeypatc
     from concurrent.futures import ThreadPoolExecutor
 
     from hoga.api import screener_factor_refresh as refresh
-    from hoga.api.screener_history_jobs import commit_verified
+    from hoga.api.screener_history_storage import commit_verified
 
     sdir = tmp_path / "screener"
     _seed(sdir, _split_corpus(), _factors([("A", dt.date(2026, 1, 2), 1.0)]))
@@ -331,6 +331,6 @@ def test_refresh_publication_serializes_with_history_commit(tmp_path, monkeypatc
         finally:
             release_refresh.set()
         assert refreshing.result(timeout=10).refreshed == ["A"]
-        assert collecting.result(timeout=10) == 1
+        assert collecting.result(timeout=10).written_rows == 1
     adjusted = pl.read_parquet(sdir / "daily_adjusted.parquet")
     assert adjusted.filter(pl.col("code") == "B")["date"].to_list() == [dt.date(2017, 1, 2)]

@@ -5,8 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from hoga.api import screener_history_coverage as coverage
-from hoga.api.models import HistoryVolumeParams, NewHighVolLeaf
-from hoga.api.screener_history_jobs import commit_verified, verified_factors
+from hoga.api.models import HistoryJob, HistoryVolumeParams, NewHighVolLeaf, ScanRequest
+from hoga.api.screener_history_storage import CommitResult, HistoryCorpusExtended, commit_verified, verified_factors
 from hoga.api.screener_store import _DAILY_PL_SCHEMA
 
 
@@ -14,6 +14,13 @@ def leaf(start='2019-01-02', end='2019-01-04', unit='trading_days', value=3):
     return NewHighVolLeaf(id='volume', params=HistoryVolumeParams(
         mode='date_range', start_date=start, end_date=end,
         record_period={'unit': unit, 'value': value}))
+
+
+def make_job(**fields):
+    defaults = dict(id='test', request=ScanRequest(conditions=[leaf(end='2019-01-02', value=1)]),
+                    codes=['005930'], status='queued', done=0, total=0, written_rows=0, errors={},
+                    started_at_ms=1)
+    return HistoryJob(**(defaults | fields))
 
 
 def write_rows(tmp_path, days, volumes):
@@ -79,8 +86,8 @@ def test_split_volume_persisted_and_reused(tmp_path):
     adj = raw.with_columns(pl.lit(100.).alias('close'), pl.lit(100.).alias('open'),
                            pl.lit(100.).alias('high'), pl.lit(100.).alias('low'),
                            pl.lit(500).cast(pl.Int64).alias('volume'))
-    assert commit_verified(tmp_path, [(raw, adj)]) == 2
-    assert commit_verified(tmp_path, [(raw, adj)]) == 0
+    assert commit_verified(tmp_path, [(raw, adj)]).written_rows == 2
+    assert commit_verified(tmp_path, [(raw, adj)]).written_rows == 0
     saved = pl.read_parquet(tmp_path / 'screener/daily_adjusted.parquet')
     assert saved['volume'].to_list() == [500, 500]
     with pytest.raises(ValueError, match='adjusted_volume_mismatch'):
@@ -119,7 +126,7 @@ async def test_job_cancel_survives_save_and_resume_uses_disk(tmp_path, monkeypat
     (tmp_path / 'screener/daily_adjusted.parquet').unlink()
     monkeypatch.setattr(coverage.trading_days, 'trading_days', lambda _: ['20190102'])
     req = ScanRequest(conditions=[leaf(end='2019-01-02', value=1)])
-    job = dict(id='test', request=req.model_dump(mode='json'), codes=['005930'], status='queued',
+    job = make_job(id='test', request=req.model_dump(mode='json'), codes=['005930'], status='queued',
                done=0, total=0, written_rows=0, errors={})
     calls = []
 
@@ -129,16 +136,16 @@ async def test_job_cancel_survives_save_and_resume_uses_disk(tmp_path, monkeypat
 
     jobs._save(tmp_path, job)
     await jobs.run_job(tmp_path, job, fetch)
-    assert job['status'] == 'complete'
+    assert job.status == 'complete'
     assert len(calls) == 1
     await jobs.run_job(tmp_path, job, fetch)
     assert len(calls) == 1
-    job['status'] = 'collecting'
+    job.status = 'collecting'
     jobs._save(tmp_path, job)
-    cancelled = dict(job, cancel_requested=True)
+    cancelled = job.model_copy(update={'cancel_requested': True})
     jobs._save(tmp_path, cancelled)
     jobs._save(tmp_path, job)
-    assert jobs.load_job(tmp_path)['cancel_requested'] is True
+    assert jobs.load_job(tmp_path).cancel_requested is True
 
 
 def test_publication_recovers_before_next_writer(tmp_path, monkeypatch):
@@ -188,7 +195,7 @@ async def test_history_job_http_contract_deduplicates_and_cancels(tmp_path, monk
 
     async def held(directory, job):
         await release.wait()
-        job['status'] = 'interrupted'
+        job.status = 'interrupted'
         jobs._save(directory, job)
 
     monkeypatch.setattr(jobs, 'run_job', held)
@@ -244,7 +251,7 @@ async def test_history_preserves_latest_disk_day_and_refetches_extension(tmp_pat
     monkeypatch.setattr(coverage.trading_days, 'trading_days', lambda _: ['20190102', '20260908', '20260909'])
     monkeypatch.setattr(jobs, 'completed_day', lambda: yesterday if concurrent_extension else today)
     req = ScanRequest(conditions=[leaf(end='2019-01-02', value=1)])
-    job = dict(id='latest', request=req.model_dump(mode='json'), codes=['005930'], status='queued',
+    job = make_job(id='latest', request=req.model_dump(mode='json'), codes=['005930'], status='queued',
                done=0, total=0, written_rows=0, errors={})
     calls = []
 
@@ -261,8 +268,8 @@ async def test_history_preserves_latest_disk_day_and_refetches_extension(tmp_pat
 
     jobs._save(tmp_path, job)
     await jobs.run_job(tmp_path, job, fetch)
-    assert job['status'] == 'complete'
-    assert job['errors'] == {}
+    assert job.status == 'complete'
+    assert job.errors == {}
     assert calls == ([(old, yesterday), (old, today)] if concurrent_extension else [(old, today)])
     saved = pl.read_parquet(tmp_path / 'screener/daily_adjusted.parquet')
     assert saved['date'].to_list() == [old, yesterday, today]
@@ -274,12 +281,12 @@ async def test_history_extension_retry_is_bounded(tmp_path, monkeypatch):
 
     day = dt.date(2019, 1, 2)
     raw = write_rows(tmp_path, [day], [100])
-    job = dict(id='bounded', status='queued', written_rows=0, errors={})
+    job = make_job(id='bounded', status='queued', written_rows=0, errors={})
     attempts = []
 
     def commit(*args):
         attempts.append('commit')
-        raise jobs.HistoryCorpusExtended('005930', day, day)
+        return CommitResult(extensions={'005930': HistoryCorpusExtended('005930', day, day)})
 
     async def fetch(*args):
         attempts.append('fetch')
@@ -288,8 +295,8 @@ async def test_history_extension_retry_is_bounded(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, 'commit_verified', commit)
     await jobs.flush_batch(tmp_path, job, [(raw, raw)], fetch)
     assert attempts == ['commit', 'fetch', 'commit', 'fetch', 'commit']
-    assert job['written_rows'] == 0
-    assert job['errors'] == {'005930': 'history_changed_during_collection'}
+    assert job.written_rows == 0
+    assert job.errors == {'005930': 'history_changed_during_collection'}
 
 
 @pytest.mark.asyncio
@@ -303,7 +310,7 @@ async def test_history_extension_retries_are_bounded_per_code(tmp_path, monkeypa
     pl.concat([frame.filter(pl.col('date') == latest) for frame in frames.values()]).write_parquet(
         tmp_path / 'screener/daily_unadjusted.parquet')
     pending = [(frame.head(1), frame.head(1)) for frame in frames.values()]
-    job = dict(id='multiple', status='queued', written_rows=0, errors={})
+    job = make_job(id='multiple', status='queued', written_rows=0, errors={})
     calls = []
     monkeypatch.setattr(jobs, 'completed_day', lambda: latest)
 
@@ -314,8 +321,8 @@ async def test_history_extension_retries_are_bounded_per_code(tmp_path, monkeypa
 
     await jobs.flush_batch(tmp_path, job, pending, fetch)
     assert calls == codes
-    assert job['errors'] == {}
-    assert job['written_rows'] == 3
+    assert job.errors == {}
+    assert job.written_rows == 3
     saved = pl.read_parquet(tmp_path / 'screener/daily_adjusted.parquet')
     assert saved.height == 6
     assert saved['code'].n_unique() == 3

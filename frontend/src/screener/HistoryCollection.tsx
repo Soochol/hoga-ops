@@ -1,39 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '../api/client';
-import type { ConditionLeaf, HistoryCoverage, HistoryJob, ScanRequest } from '../api/screener';
+import type { HistoryCoverage, HistoryJob, ScanRequest } from '../api/screener';
+import { screenerRequestKey } from '../api/screenerRequest';
 import { ToolbarButton } from '../ui/PageShell';
 
 const running = (job?: HistoryJob | null) => !!job && ['queued', 'collecting', 'deriving'].includes(job.status);
-// Backend models reorder keys and materialize omitted defaults on a round trip.
-// Normalize those differences before associating a server job with the editor.
-function conditionParams(leaf: ConditionLeaf) {
-  switch (leaf.type) {
-    case 'ma': return { ...leaf.params, source: leaf.params.source ?? 'close' };
-    case 'high_off_peak': return { ...leaf.params, side: leaf.params.side ?? 'within' };
-    case 'ask_depth_new_high': case 'bid_depth_new_high':
-    case 'ask_depth_new_high_period': case 'bid_depth_new_high_period':
-      return { ...leaf.params, threshold_pct: leaf.params.threshold_pct ?? 100 };
-    case 'ask_depth_renewal': case 'bid_depth_renewal':
-      return { ...leaf.params, start_hhmm: leaf.params.start_hhmm ?? 1200, threshold_pct: leaf.params.threshold_pct ?? 100 };
-    default: return leaf.params;
-  }
-}
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value)
-      .filter(([, item]) => item != null)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => [key, canonical(item)]));
-  }
-  return value;
-}
-const signature = (request: ScanRequest) => JSON.stringify(canonical({
-  conditions: request.conditions.map(leaf => ({ ...leaf, params: conditionParams(leaf) })),
-  universe: { markets: request.universe?.markets ?? [], exclude_etf: request.universe?.exclude_etf ?? true,
-    exclude_halted: request.universe?.exclude_halted ?? false, scopes: request.universe?.scopes ?? [] },
-  basis: request.basis ?? 'eod', limit: request.limit ?? 1000 }));
 const labels: Record<string, string> = { queued: '대기', collecting: '일봉 수집', deriving: '디스크 저장',
   complete: '완료', partial: '일부 데이터 부족', failed: '실패', interrupted: '중단됨' };
 
@@ -66,8 +38,8 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   const callback = useRef(onComplete);
   callback.current = onComplete;
   const job = query.data;
-  const key = signature(request);
-  const matchingJob = !!job && signature(job.request) === key;
+  const key = screenerRequestKey(request);
+  const matchingJob = !!job && screenerRequestKey(job.request) === key;
   useEffect(() => {
     if (job && ['complete', 'partial'].includes(job.status) && completed.current !== job.id
       && matchingJob) {

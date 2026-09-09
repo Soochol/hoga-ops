@@ -40,6 +40,7 @@ from hoga.api.models import (
 )
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.request_coalescer import ReadRequestCoalescer
+from hoga.api.screener_calendar import EOD_CUTOFF_HOUR as _SCREENER_EOD_CUTOFF_HOUR
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_rest_runtime
@@ -108,7 +109,6 @@ _PROGRESS_MIN_INTERVAL_S = 1.0  # 진행 이벤트 스로틀(테스트는 0으�
 # last_raw_date 가 오늘로 올라가 이후 no_gap 으로 재fetch까지 차단되어, 확정값으로
 # 자가 교체되지 않는 오염이 된다). captures 경로의 16:30 is_today_too_early(hogaplay
 # 집계 lag 버퍼)와는 목적·값이 다르다.
-_SCREENER_EOD_CUTOFF_HOUR = 16
 
 
 def _gap_trading_days(last_raw_date: str, today: str, *, now: datetime) -> list[str]:
