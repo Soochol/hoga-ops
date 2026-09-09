@@ -8,6 +8,12 @@ export interface HistoryVolumeParams {
   mode: 'date_range'; start_date: string; end_date: string;
   record_period: { unit: 'years' | 'trading_days'; value: number };
 }
+export interface HistoryTradeValueParams {
+  mode: 'date_range'; start_date: string; end_date: string; min_eok: number;
+}
+export interface HistoryTradeValueMatch {
+  condition_id: string; date: string; trade_value_won: number;
+}
 export interface HistoryMatch {
   condition_id: string; date: string; volume: number; maximum: number;
   window_start: string; window_end: string;
@@ -49,7 +55,7 @@ export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number 
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }
-  | { id: string; type: 'trade_value_period'; params: TradeValuePeriodParams }
+  | { id: string; type: 'trade_value_period'; params: TradeValuePeriodParams | HistoryTradeValueParams }
   | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
   | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
@@ -86,7 +92,7 @@ export interface ScanRequest {
 }
 
 export interface ScreenerRow {
-  history_matches?: HistoryMatch[];
+  history_matches?: (HistoryMatch | HistoryTradeValueMatch)[];
   code: string;
   name: string;
   market: 'KOSPI' | 'KOSDAQ';

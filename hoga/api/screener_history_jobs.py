@@ -36,7 +36,7 @@ def selected_codes(data_dir: Path, req: ScanRequest) -> list[str]:
 
 def preview(data_dir: Path, req: ScanRequest):
     if not coverage.history_leaves(req.conditions):
-        raise ValueError("날짜 범위 신고거래량 조건이 필요합니다")
+        raise ValueError("날짜 범위 조건이 필요합니다")
     return coverage.evaluate(data_dir, req.conditions, selected_codes(data_dir, req)).coverage
 
 

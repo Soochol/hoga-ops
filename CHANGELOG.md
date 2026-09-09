@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.15.0.0] - 2026-09-09
+
+### Added
+- 스크리너의 기간내 거래대금 조건에서 시작일·종료일과 최소 금액을 지정해, 기간 중 하루라도 일별 추정 거래대금 기준을 충족한 종목을 검색한다.
+- 부족한 과거 일봉을 수집·저장해 재사용하고, 가장 최근 충족일과 추정 거래대금을 결과 및 CSV에서 확인할 수 있다. 기존 최근 N일 조건과 저장한 검색은 유지한다.
+
 ## [0.14.1.0] - 2026-09-09
 
 ### Fixed

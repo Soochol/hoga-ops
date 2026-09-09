@@ -1,4 +1,5 @@
 import type { BreakoutParams, HistoryVolumeParams } from '../api/screener';
+import { HistoryDateRangeFields } from './HistoryDateRangeFields';
 import { BreakoutForm, Num } from './paramForms';
 
 export function HistoryVolumeForm({ params, onChange }: {
@@ -17,13 +18,8 @@ export function HistoryVolumeForm({ params, onChange }: {
     </select>
     {historical ? <>
       <div className="flex flex-wrap items-center gap-2">
-        <input type="date" aria-label="거래량 발생 시작일" value={params.start_date}
-          className="bg-bg-input border border-border rounded-md px-2 py-1 text-sm"
-          onChange={e => onChange({ ...params, start_date: e.target.value })} />
-        <span>~</span>
-        <input type="date" aria-label="거래량 발생 종료일" value={params.end_date}
-          className="bg-bg-input border border-border rounded-md px-2 py-1 text-sm"
-          onChange={e => onChange({ ...params, end_date: e.target.value })} />
+        <HistoryDateRangeFields label="거래량" start={params.start_date} end={params.end_date}
+          onChange={dates => onChange({ ...params, ...dates })} />
         <Num ariaLabel="거래량 비교 기간" min={1} max={params.record_period.unit === 'years' ? 20 : 1000}
           value={params.record_period.value} onChange={value => onChange({ ...params,
             record_period: { ...params.record_period, value: value ?? 1 } })} />

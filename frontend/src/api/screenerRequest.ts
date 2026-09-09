@@ -29,3 +29,7 @@ export const screenerRequestKey = (request: ScanRequest) => JSON.stringify(canon
   universe: { markets: request.universe?.markets ?? [], exclude_etf: request.universe?.exclude_etf ?? true,
     exclude_halted: request.universe?.exclude_halted ?? false, scopes: request.universe?.scopes ?? [] },
   basis: request.basis ?? 'eod', limit: request.limit ?? 1000 }));
+
+export function isHistoricalCondition(leaf: ConditionLeaf): boolean {
+  return (leaf.type === 'new_high_vol' || leaf.type === 'trade_value_period') && 'mode' in leaf.params;
+}
