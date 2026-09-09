@@ -19,6 +19,7 @@ const SORT_FIELDS: readonly ScreenerResultSortField[] = [
   'price',
   'change_pct',
   'trade_value_won',
+  'occurrence_date',
 ];
 const SORT_DIRECTIONS: readonly ScreenerResultSortDirection[] = ['asc', 'desc'];
 

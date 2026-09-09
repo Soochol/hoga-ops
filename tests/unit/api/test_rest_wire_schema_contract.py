@@ -60,7 +60,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     }),
     "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date",
                                "history_matches", "occurrences"}),
-    "ScreenerOccurrence": frozenset({"condition_id", "condition_key", "date"}),
+    "ScreenerOccurrence": frozenset({"condition_id", "condition_key", "date", "history_match"}),
     "ScreenerExclusionWrite": frozenset({"condition", "code", "date", "stock_name"}),
     "ScreenerExclusion": frozenset({"id", "condition_key", "condition", "code", "date", "stock_name", "created_at_ms"}),
     "ScreenerExclusionsFile": frozenset({"schema_version", "exclusions"}),

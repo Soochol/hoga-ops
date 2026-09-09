@@ -1,6 +1,7 @@
-import { OccurrenceDetails } from './OccurrenceExclusions';
+import { resultKey, type OccurrenceRow } from './occurrenceRows';
+import { OccurrenceAction, OccurrenceLabel } from './OccurrenceExclusions';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
-import { useCallback, useRef } from 'react';
+import { Fragment, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import type { DepthPeakValue } from '../api/screener';
@@ -13,7 +14,7 @@ import type { JumpModifiers } from '../live/useJumpToLive';
 
 interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
-  rows: ScreenerRowLive[];
+  rows: (ScreenerRowLive & Partial<OccurrenceRow<ScreenerRowLive>>)[];
   onActivate: (code: string, name?: string, e?: JumpModifiers) => void;
   sortMode?: ScreenerResultSortMode;
   onSortChange?: (mode: ScreenerResultSortMode) => void;
@@ -108,8 +109,8 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
   );
 }
 
-const COLS = 'grid-cols-[3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
-const SELECTABLE_COLS = 'grid-cols-[1.5rem_3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
+const COLS = 'grid-cols-[7rem_6rem_3.5rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_4rem_8.5rem_6rem]';
+const SELECTABLE_COLS = 'grid-cols-[1.5rem_7rem_6rem_3.5rem_minmax(9rem,1fr)_minmax(12rem,1.5fr)_8rem_4rem_8.5rem_6rem]';
 
 /** 이 줄 수를 넘으면 가상화한다. CaptureQueue 의 임계와 같은 값 — 그보다 작으면
  *  DOM 을 다 그려도 재렌더가 10ms 안쪽이고(실측 100행 8ms), 가상화는 스크롤 위치
@@ -123,6 +124,7 @@ const ROW_ESTIMATE_PX = 28;
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
 const HEADERS: Array<{ field: ScreenerResultSortField; label: string; sortLabel?: string; align?: 'right' }> = [
+  { field: 'occurrence_date', label: '발생일' },
   { field: 'code', label: '코드' },
   { field: 'name', label: '종목명' },
   { field: 'market', label: '시장' },
@@ -163,7 +165,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
 function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, selection, quoteMode, occurrenceController }: {
-  r: ScreenerRowLive;
+  r: ScreenerRowLive & Partial<OccurrenceRow<ScreenerRowLive>>;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
   depthValues?: Record<string, DepthPeakValue> | null;
@@ -185,22 +187,27 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
       columns={selection ? SELECTABLE_COLS : COLS}
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
-      {selection && <input type="checkbox" aria-label={`${r.name} ${r.code} 선택`}
-        checked={selection.codes.has(r.code)} onChange={() => selection.onToggle(r.code)}
+      {selection && <input type="checkbox" aria-label={`${r.name} ${r.code}${r.occurrence ? ` ${r.occurrence.date} ${r.occurrence.condition_id}` : ''} 선택`}
+        checked={selection.codes.has(resultKey(r))} onChange={() => selection.onToggle(resultKey(r))}
         onClick={(e) => e.stopPropagation()} style={{ accentColor: 'var(--accent)' }} />}
+      <span className="font-data tabular-nums text-fg-dim">{r.occurrence?.date ?? '미기록'}</span>
+      <span className="flex items-center justify-end gap-2">
+        {r.occurrence && occurrenceController && <OccurrenceAction code={r.code} name={r.name} occurrence={r.occurrence} controller={occurrenceController} />}
+        <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
+      </span>
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0"><span className="block truncate">{r.name}</span>            {(r.history_matches ?? []).map(m => <span key={m.condition_id} className="block text-fg"
-              title={'trade_value_won' in m ? `추정 거래대금 ${m.trade_value_won.toLocaleString()}원`
-                : `${m.window_start} ~ ${m.window_end} 최대 ${m.maximum.toLocaleString()}주`}>
-              충족 {m.date} · {'trade_value_won' in m
-                ? `${(m.trade_value_won / 100_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}억`
-                : `${m.volume.toLocaleString()}주`}
-            </span>)}
-</span>
+        <span className="min-w-0"><span className="block truncate">{r.name}</span></span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
         {depthValues?.[r.code] && depthSides && (depthSides.askRenewal || depthSides.bidRenewal)
           && <DepthRenewalBadge v={depthValues[r.code]} sides={depthSides} />}
+      </span>
+      <span className="min-w-0">{r.occurrence && occurrenceController && <OccurrenceLabel occurrence={r.occurrence} controller={occurrenceController} />}</span>
+      <span className="font-data text-right text-xs" title="발생 당시 조건 충족 수치">
+        {r.history_matches?.length ? r.history_matches.map(m => <span key={m.condition_id} className="block">
+          {'trade_value_won' in m ? `${(m.trade_value_won / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}억`
+            : `${m.volume.toLocaleString('ko-KR')}주`}
+        </span>) : '—'}
       </span>
       <span className="font-data text-xs text-fg-dim">{r.market}</span>
       {/* 동시호가 중엔 예상체결가/등락률로 대체('예' 마커, QuoteRow·HeatmapRow 와
@@ -226,11 +233,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
         </span>
       )}
       <span className="font-data tabular-nums text-right text-fg-dim" title="조회 당시 추정 거래대금 · 평균 OHLC × 거래량">{toEok(r.trade_value_won)}</span>
-      <span className="flex items-center justify-end gap-2">
-        <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
-      </span>
-      {occurrenceController && !!r.occurrences?.length && <OccurrenceDetails code={r.code} name={r.name}
-        occurrences={r.occurrences} controller={occurrenceController} />}
+
     </DataTableRow>
   );
 }
@@ -246,7 +249,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
   const shellRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const virtualize = rows.length > VIRTUALIZE_THRESHOLD;
-  const getItemKey = useCallback((index: number) => rows[index].code, [rows]);
+  const getItemKey = useCallback((index: number) => resultKey(rows[index]), [rows]);
   const virtualizer = useVirtualizer({
     count: rows.length,
     enabled: virtualize,
@@ -263,7 +266,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
   return (
     <DataTableShell
       scrollRef={shellRef}
-      minWidth={selection ? '680px' : '640px'}
+      minWidth={selection ? '1220px' : '1180px'}
       // rowsRef.offsetTop은 이 스크롤 셸 기준이어야 한다. relative가 없으면 페이지
       // 상단 도구 높이까지 scrollMargin에 섞여 목록 끝의 가상 행이 렌더되지 않는다.
       className={`relative ${embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}`}
@@ -274,11 +277,12 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
           ref={(el) => { if (el) el.indeterminate = selection.someSelected && !selection.allSelected; }}
           onChange={selection.onToggleAll} style={{ accentColor: 'var(--accent)' }} />}
         {HEADERS.map((header) => (
-          <SortHeader key={header.field} {...header}
+          <Fragment key={header.field}><SortHeader key={header.field} {...header}
             label={header.field === 'price' && quoteMode === 'snapshot' ? '조회가(등락률)' : header.label}
             sortMode={sortMode} onSortChange={onSortChange} />
+          {header.field === 'occurrence_date' && <span className="text-right text-xs font-semibold text-fg-dim">액션</span>}
+          {header.field === 'name' && <><span className="text-xs font-semibold text-fg-dim">충족 조건</span><span className="text-right text-xs font-semibold text-fg-dim">당시 수치</span></>}</Fragment>
         ))}
-        <span className="text-right text-xs font-semibold uppercase text-fg-dim">액션</span>
       </DataTableHeader>
       {rows.length === 0 ? (
         // sticky left-0: 빈 상태는 DataTableShell 의 min-width(640px) 안에 있어서,
@@ -299,7 +303,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
           style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((vi) => (
             <ResultRow
-              key={rows[vi.index].code}
+              key={resultKey(rows[vi.index])}
               r={rows[vi.index]}
               isMember={isMember}
               onActivate={onActivate}
@@ -320,7 +324,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
       ) : (
         <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
           {rows.map((r) => (
-            <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
+            <ResultRow key={resultKey(r)} r={r} isMember={isMember} onActivate={onActivate}
               occurrenceController={occurrenceController}
               selection={selection} quoteMode={quoteMode}
               depthValues={depthValues} depthSides={depthSides} />

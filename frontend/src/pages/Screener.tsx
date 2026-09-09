@@ -375,7 +375,7 @@ export function Screener() {
                 <span className="text-sm text-fg-dim">조회 중…</span>
               ) : lastScan ? (
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
-                  결과 {lastScan.hasMore && '상위 '}<span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>건
+                  발생 <span className="font-semibold">{rows.reduce((n, row) => n + (row.occurrences?.length || 1), 0).toLocaleString('ko-KR')}</span>건 · {lastScan.hasMore && '상위 '}{rows.length.toLocaleString('ko-KR')}종목
                   <span className="text-fg-dim">
                     {' '}· {lastScan.basis === 'intraday' ? '오늘 장중' : '전일 확정'}
                     {scannedAtLabel && ` · ${scannedAtLabel} 조회`}

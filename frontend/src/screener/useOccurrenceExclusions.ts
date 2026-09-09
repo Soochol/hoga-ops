@@ -106,6 +106,11 @@ export function useOccurrenceExclusions(scan: PanelScan | null) {
   return {
     exclusions: query.data?.exclusions ?? [], busy, error: error ?? (query.isError ? '제외 목록을 불러오지 못했습니다.' : null),
     ready: query.isSuccess, conditions, lastExcluded,
+    affectedOtherRows: (code: string, occurrence: ScreenerOccurrence) => {
+      const events = scan?.rows.find(r => r.code === code)?.occurrences ?? [];
+      return events.filter(e => e.condition_id === occurrence.condition_id).length === 1
+        ? events.filter(e => e.condition_id !== occurrence.condition_id).length : 0;
+    },
     exclude: (code: string, name: string, occurrence: ScreenerOccurrence) => {
       const condition = conditions.find(c => c.id === occurrence.condition_id);
       if (!condition) { setError('이 발생 건의 조회 조건이 없습니다. 다시 조회해 주세요.'); return; }

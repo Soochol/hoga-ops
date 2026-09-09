@@ -2089,6 +2089,7 @@ class ScreenerOccurrence(BaseModel):
     condition_id: str
     condition_key: str
     date: str
+    history_match: HistoryMatch | HistoryTradeValueMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
