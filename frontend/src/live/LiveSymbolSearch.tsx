@@ -47,20 +47,13 @@ function writeRecentSearches(recent: RecentSearch[]) {
   }
 }
 
-function SearchDestination() {
-  const description = useWorkspaceStore((state) => {
-    const target = activationTarget(state);
-    if (target.kind === 'blocked') return '모든 창이 고정되어 있습니다 · 고정을 해제한 뒤 선택하세요';
-    if (target.kind === 'empty') return '그룹 1에 적용 · 창을 추가하면 선택한 종목이 표시됩니다';
-    const group = target.window.group;
-    const count = state.windows.filter((win) => win.group === group && !win.pinned).length;
-    return `그룹 ${group} · 창 ${count}개`;
-  });
+function SearchAvailabilityNotice() {
+  const blocked = useWorkspaceStore((state) => activationTarget(state).kind === 'blocked');
+  if (!blocked) return null;
   return (
-    <div className="mt-3 px-3 text-sm" role="status">
-      <p className="text-fg"><span className="text-fg-dim">적용 대상: </span><strong className="font-semibold">{description}</strong></p>
-      <p className="mt-1 text-xs text-fg-dim">고정 창 제외</p>
-    </div>
+    <p className="mt-3 shrink-0 px-3 text-sm text-fg-dim" role="status">
+      모든 창이 고정되어 있습니다 · 고정을 해제한 뒤 선택하세요
+    </p>
   );
 }
 
@@ -227,7 +220,7 @@ export function LiveSymbolSearch() {
         />
       </div>
 
-      <div className="shrink-0"><SearchDestination /></div>
+      <SearchAvailabilityNotice />
       {showingRecent && <p className="mt-4 mb-1 shrink-0 px-3 text-sm font-semibold text-fg">최근 검색</p>}
       {listVisible ? (
         <div id={listId} {...listProps} aria-label={showingRecent ? '최근 검색' : '검색 결과'}
