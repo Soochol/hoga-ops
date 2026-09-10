@@ -16,7 +16,7 @@ The `/live` page already knows which **Code** the user is looking at through `us
 
 - **Single writer**: `useDocumentTitle` 훅만 `document.title`에 쓴다. 다른 컴포넌트가 직접 `document.title = …`를 호출하면 cleanup 기반 default 복원 가정이 깨진다. 근거: [frontend/src/util/useDocumentTitle.ts](frontend/src/util/useDocumentTitle.ts) (이 spec이 신설).
 - **Default-on-unmount**: Code 페이지(`/live`)에서 다른 페이지로 이동하면 `document.title === 'hoga-ops'`로 복원된다. 근거: 훅의 cleanup 함수가 무조건 `DEFAULT_TITLE`을 쓰며, 비-Code 페이지는 훅을 호출하지 않아 cleanup 후 값이 보존된다.
-- **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `(name (Symbol Master에 있을 때) ?? code)`를 base로 삼고, 해당 **Code**의 **Live Quote**가 있으면 `price`와 `change_pct`를 뒤에 붙인다. base가 없으면 `hoga-ops`. Live Quote가 없거나 `change_pct=null`이면 없는 필드는 생략한다.
+- **Precedence**: 한 번의 `useDocumentTitle(code)` 호출이 결정하는 title은 `(name (Symbol Master에 있을 때) ?? code)`를 base로 삼고, 해당 **Code**의 **Live Quote**가 있으면 `change_pct price base` 순서로 표시한다. base가 없으면 `hoga-ops`. Live Quote가 없거나 `change_pct=null`이면 없는 필드는 생략한다.
 
 ## Invariant impact
 
@@ -24,7 +24,7 @@ The `/live` page already knows which **Code** the user is looking at through `us
 |---|---|---|
 | Single writer | preserves (신설) | grill 단계에서 `git grep "document.title" frontend/src/` 결과 0건 확인 — 이 spec이 도입하는 호출이 유일한 writer가 된다 |
 | Default-on-unmount | preserves | cleanup 함수가 unconditional, 비-Code 페이지는 훅 미호출 → 값 유지 |
-| Precedence | preserves | base resolution(name 우선, 없으면 code) + Live Quote suffix(price, change_pct) 순서가 유지된다. 변경 시 [edge cases](#edge-cases) 표와 함께 갱신 |
+| Precedence | preserves | base resolution(name 우선, 없으면 code) + Live Quote prefix(change_pct, price) 순서가 유지된다. 변경 시 [edge cases](#edge-cases) 표와 함께 갱신 |
 
 기존 정적 `<title>frontend</title>` 값은 invariant가 아닌 단순 하드코딩 default이며, index.html 변경으로 `hoga-ops`로 치환된다 — 사용자 시각 가치를 위한 의도된 변경.
 
@@ -50,14 +50,14 @@ A single hook, `useDocumentTitle(code: string | null | undefined)`, owns all wri
 ```
 LivePage ─→ useDocumentTitle(activeCode) ─→ useSymbols() name lookup ─┐
              └─→ useQuoteByCode(trimmed ? [trimmed] : []) Live Quote lookup
-                                                                  └─→ document.title = base + optional price/change_pct suffix
+                                                                  └─→ document.title = optional change_pct/price prefix + base
                                                                       unmount cleanup → 'hoga-ops'
 ```
 
 Why this shape:
 - **Single writer.** Only the hook touches `document.title`. No other component should set it. This keeps the contract on what's allowed in the title in one place.
 - **Pull, not push.** The hook reads from `useSymbols()` (already cached via TanStack Query) instead of requiring each page to thread the resolved name through. Pages only need to know the code.
-- **Quote suffix in the hook.** The hook also reads the active **Code**'s **Live Quote** through `useQuoteByCode(trimmed ? [trimmed] : [])` and appends only `price` + `change_pct` to the resolved name/code base.
+- **Quote prefix in the hook.** The hook also reads the active **Code**'s **Live Quote** through `useQuoteByCode(trimmed ? [trimmed] : [])` and prepends `change_pct` + `price` to the resolved name/code base.
 - **Default via cleanup, not via every page.** Non-symbol pages do not need to opt in. The previous page's cleanup leaves `document.title === 'hoga-ops'` and that's what shows until something else calls the hook.
 
 ### Components
@@ -84,9 +84,9 @@ const DEFAULT_TITLE = 'hoga-ops';
 
 function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
   if (!quote) return base;
-  const parts = [base, quote.price.toLocaleString('ko-KR')];
+  const parts = [quote.price.toLocaleString('ko-KR'), base];
   if (quote.change_pct !== null) {
-    parts.push(`${quote.change_pct > 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%`);
+    parts.unshift(`${quote.change_pct > 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%`);
   }
   return parts.join(' ');
 }
@@ -137,14 +137,14 @@ useLiveTabsStore active tab
 | Case | Title shown |
 |---|---|
 | `code` is `null`, `undefined`, empty, or whitespace-only | `hoga-ops` |
-| `code` present, name resolved, Live Quote present | `name price change_pct` (e.g. `삼성전자 71,200 +1.23%`) |
-| `code` present, name resolved, Live Quote present but `change_pct=null` | `name price` (e.g. `삼성전자 71,200`) |
+| `code` present, name resolved, Live Quote present | `change_pct price name` (e.g. `+1.23% 71,200 삼성전자`) |
+| `code` present, name resolved, Live Quote present but `change_pct=null` | `price name` (e.g. `71,200 삼성전자`) |
 | `code` present, name resolved, Live Quote missing | name (e.g. `삼성전자`) |
-| `code` present, `useSymbols` still loading, Live Quote present | `code price change_pct` (e.g. `005930 71,200 +1.23%`), updates to name on resolve |
+| `code` present, `useSymbols` still loading, Live Quote present | `change_pct price code` (e.g. `+1.23% 71,200 005930`), updates to name on resolve |
 | `code` present, `useSymbols` still loading, Live Quote missing | `code` |
-| `code` present, **Code** absent from **Symbol Master**, Live Quote present (new IPO / delisted) | `code price change_pct` |
+| `code` present, **Code** absent from **Symbol Master**, Live Quote present (new IPO / delisted) | `change_pct price code` |
 | `code` present, **Code** absent from **Symbol Master**, Live Quote missing (new IPO / delisted) | `code` |
-| `code` present, `useSymbols` query in error state, Live Quote present | `code price change_pct` (e.g. `005930 71,200 +1.23%`) |
+| `code` present, `useSymbols` query in error state, Live Quote present | `change_pct price code` (e.g. `+1.23% 71,200 005930`) |
 | `code` present, `useSymbols` query in error state, Live Quote missing | `code` |
 | `/live` with no `?code=` and empty `activeCode` | `hoga-ops` |
 | Navigation from `/live` → `/inventory` | Previous hook's cleanup writes `hoga-ops`; no hook runs on `/inventory`, so it stays |
@@ -153,7 +153,7 @@ useLiveTabsStore active tab
 
 ### Error handling
 
-The hook has no explicit error path. Loading, network error, and missing symbol all degrade silently through the same precedence list: name if available, otherwise raw code, then Live Quote suffix if a quote is cached. This keeps the title stable while async data settles.
+The hook has no explicit error path. Loading, network error, and missing symbol all degrade silently through the same precedence list: name if available, otherwise raw code, then Live Quote prefix if a quote is cached. This keeps the title stable while async data settles.
 
 ### Testing
 
@@ -161,7 +161,7 @@ The hook has no explicit error path. Loading, network error, and missing symbol 
 
 1. `code = null` or blank/whitespace → `document.title === 'hoga-ops'`.
 2. Known **Code**, no quote → `document.title === 'name'`.
-3. Known **Code**, cached quote with positive / negative / zero / null `change_pct` → `document.title === 'name price change_pct'` or `document.title === 'name price'` when `change_pct=null`.
+3. Known **Code**, cached quote with positive / negative / zero / null `change_pct` → `document.title === 'change_pct price name'` or `document.title === 'price name'` when `change_pct=null`.
 4. Quote arriving after initial render updates the title.
 5. **Code** change does not attach the previous **Code**'s quote while the new quote is pending.
 6. Unknown **Code** with quote uses the raw **Code** as the title base.

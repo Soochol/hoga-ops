@@ -20,9 +20,9 @@ function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
   // 나타나며 깜빡인다 — 값은 수 초 전 last-good 이라 탭 제목엔 충분히 정확하고, 탭 제목엔
   // 신선도 표식이 없어 숨기면 정보만 잃는다. 정렬/집계와 동일 정책(makeChangePctOf 주석 참조).
   if (!quote) return base;
-  const parts = [base, formatTitlePrice(quote.price)];
   const pct = formatTitleChangePct(quote.change_pct);
-  if (pct) parts.push(pct);
+  const parts = [formatTitlePrice(quote.price), base];
+  if (pct) parts.unshift(pct);
   return parts.join(' ');
 }
 
@@ -38,7 +38,7 @@ const TITLE_QUOTE_THROTTLE_MS = 2_000;
 /**
  * Sole writer to `document.title`. Resolves a Code to its Symbol Master name;
  * falls back to the Code itself, then to `'hoga-ops'`. When the live quote cache
- * has the active code, appends current price and non-null change percent.
+ * has the active code, displays change percent, current price, then name.
  * Price-to-price updates are coalesced to TITLE_QUOTE_THROTTLE_MS (trailing,
  * latest value wins); base/first-quote transitions write immediately.
  *

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.3.3] - 2026-09-10
+
+### Changed
+- 브라우저 탭 제목을 등락률·가격·종목명 순서로 표시해 여러 탭에서 시세를 먼저 확인할 수 있게 한다.
+
 ## [0.16.3.2] - 2026-09-10
 
 ### Fixed
