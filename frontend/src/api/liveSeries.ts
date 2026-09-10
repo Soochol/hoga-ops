@@ -90,6 +90,8 @@ export interface LiveSeriesResponse {
 /** 창별 REST 메타데이터와 공유 실시간 스냅샷의 소비 계약. */
 export interface LiveSeriesData {
   initial: LiveSeriesResponse | undefined;
+  /** Coalesced display state; never mixed into the ordered indicator history. */
+  latestOb?: ObSnapshot;
   isLoading: boolean;
   error: unknown;
   // ob/trade are narrowed to the shapes their consumers read (SR-1). The SSE

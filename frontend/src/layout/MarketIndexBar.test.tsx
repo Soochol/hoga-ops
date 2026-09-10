@@ -74,7 +74,7 @@ describe('MarketIndexBar', () => {
     });
   }
 
-  it('renders 실시간 coverage chip = KIS WS + 키움 WS when kiwoom present', async () => {
+  it('renders Kiwoom coverage without double counting the same live_set', async () => {
     mockByUrl({
       running: true, live_set: ['a', 'b', 'c'], capture_reason: 'healthy',
       kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 2, subscribed_count: 40, last_tick_ms: null, accounts: [] },
@@ -82,7 +82,7 @@ describe('MarketIndexBar', () => {
     renderBar();
     const chip = await screen.findByTestId('kiwoom-coverage-chip');
     expect(chip).toHaveTextContent('실시간');
-    expect(chip).toHaveTextContent('43'); // 3 KIS WS + 40 키움 WS
+    expect(chip).toHaveTextContent('40'); // legacy fallback: storage count only
   });
 
   it('paints coverage count with --warn when a kiwoom account is disconnected', async () => {

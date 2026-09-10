@@ -233,9 +233,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 그래서 **LATEST 표시의 유일한 생산점**인 여기가 답이다 — 버퍼 잔존·latch·서버
   // last_ob 세 출처가 이미 `venueOb` 로 합류한 뒤라 한 번에 덮이고, 스팟은 안 스친다.
   const latestSnapshot = useMemo(() => {
-    const snap = latestOrderbookSnapshot(venueOb);
+    const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : venueOb);
     return snap !== null && previousDayObExpired(snap.ts_ms, nowMs) ? null : snap;
-  }, [venueOb, nowMs]);
+  }, [venueOb, live.latestOb, nowMs]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
   const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot);

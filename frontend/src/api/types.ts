@@ -324,6 +324,7 @@ export interface CaptureEventBase {
 }
 
 export type PushEvent =
+  | { type: 'live_history_gap'; code: string }
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
   // Today Promotion advanced a code's on-disk data (WS 푸시 승격 무효화).

@@ -2,14 +2,14 @@
  * 등록은 React의 subscribe(커밋)에서만 한다. 렌더 중 중단된 창은 버퍼를 남기지 않는다.
  */
 import type { LiveSeriesData, LiveSeriesResponse } from './liveSeries';
-import { subscribeLive } from './ws';
+import { subscribeLive, subscribeLiveLatest } from './ws';
 import { LiveSnapshotBuffer, type RawSnapshot, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 export const LIVE_FLUSH_MS = 150;
-type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected'>;
+type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb'>;
 type Raw = Record<SnapshotKind, readonly RawSnapshot[]>;
 const KINDS = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
 const EMPTY: readonly never[] = Object.freeze([]);
@@ -68,9 +68,16 @@ class SharedSeries {
   private served = new Map<LiveVenueOption, ObSnapshot | undefined>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeLatest: (() => void) | null = null;
+  private latestOb = new Map<string, ObSnapshot>();
   readonly listeners = new Set<() => void>();
 
   start(code: string): void {
+    this.unsubscribeLatest = subscribeLiveLatest(code, (entry) => {
+      if (entry.kind !== 'ob') return;
+      this.latestOb.set(typeof entry.venue === 'string' ? entry.venue : 'KRX', entry as ObSnapshot);
+      if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
+    });
     this.unsubscribe = subscribeLive(code, (entry) => {
       this.buffer.push(entry);
       if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
@@ -79,6 +86,7 @@ class SharedSeries {
 
   stop(): void {
     this.unsubscribe?.();
+    this.unsubscribeLatest?.();
     if (this.timer !== null) clearTimeout(this.timer);
   }
 
@@ -134,7 +142,8 @@ class SharedSeries {
       ob = prev?.frames.ob.length === 1 && prev.frames.ob[0] === fallback ? prev.frames.ob : [fallback];
     }
     let frames: Frames = { ob, trade: filtered.trade as readonly TradeSnapshot[], broker: filtered.broker, program: filtered.program,
-      afterHours: filtered.ah, expected: filtered.expected };
+      afterHours: filtered.ah, expected: filtered.expected,
+      latestOb: this.latestOb.get(venue) };
     if (prev && Object.keys(frames).every((k) => frames[k as keyof Frames] === prev.frames[k as keyof Frames])) {
       frames = prev.frames;
     }

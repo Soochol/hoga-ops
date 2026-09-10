@@ -33,6 +33,19 @@ beforeEach(() => {
   installFakeWebSocket(); resetWs();
   vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8080/api/ws');
 });
+
+it('keeps coalesced latest book out of the indicator history', async () => {
+  vi.useFakeTimers();
+  subscribe();
+  const sock = await socket();
+  const frame = (seq: number) => ({ seq, t_ms: seq, kind: 'ob', venue: 'KRX' });
+  sock.message({ ch: 'live_batch', code: CODE, data: [frame(1), frame(2)], latest: [frame(99)], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  const data = readLiveSeries(CODE, DATE, 'KRX');
+  expect(data.ob.map((row) => row.t_ms)).toEqual([1, 2]);
+  expect(data.latestOb?.t_ms).toBe(99);
+  expect(readLiveSeries(CODE, DATE, 'NXT').latestOb).toBeUndefined();
+});
 afterEach(() => {
   cleanup();
   for (const stop of cleanups.splice(0)) stop();

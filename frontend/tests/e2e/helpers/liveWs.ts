@@ -21,6 +21,7 @@ export interface LiveWsHandle {
   waitForSubscribe(code: string): Promise<void>;
   /** `{ch:'live', code, data}` 한 프레임. */
   pushLive(code: string, data: Record<string, unknown>): void;
+  pushBatch(code: string, data: Record<string, unknown>[], latest: Record<string, unknown>[], dropped?: number): void;
   /** 지금까지 구독된 코드들(디버깅용). */
   subscribed(): string[];
 }
@@ -67,6 +68,10 @@ export async function installLiveWs(page: Page): Promise<LiveWsHandle> {
     pushLive(code: string, data: Record<string, unknown>) {
       if (socket === null) throw new Error('WebSocket 이 아직 연결되지 않았다 — waitForSubscribe 먼저');
       socket.send(JSON.stringify({ ch: 'live', code, data }));
+    },
+    pushBatch(code, data, latest, dropped = 0) {
+      if (socket === null) throw new Error('WebSocket is not connected');
+      socket.send(JSON.stringify({ ch: 'live_batch', code, data, latest, dropped, queue_age_ms: 0 }));
     },
     subscribed: () => [...subs],
   };

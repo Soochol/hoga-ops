@@ -181,6 +181,23 @@ def test_frame_envelope_shapes():
     )
 
 
+def test_opt_in_batch_protocol_delivers_ordered_history_and_latest_state():
+    app, _, buf = _make_app()
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"action": "subscribe", "code": "005930", "protocol": 2})
+        assert ws.receive_json() == {"ch": "subscribed", "code": "005930"}
+        client.portal.call(buf.publish, "005930", [
+            LiveSnapshot(t_ms=100, kind=SnapshotKind.OB, payload={"qty": 1}),
+            LiveSnapshot(t_ms=100, kind=SnapshotKind.OB, payload={"qty": 2}),
+        ])
+        frame = ws.receive_json()
+        assert frame["ch"] == "live_batch"
+        assert [r["qty"] for r in frame["data"]] == [1, 2]
+        assert [r["qty"] for r in frame["latest"]] == [2]
+        assert frame["dropped"] == 0
+        ws.close()
+
+
 # ── ADR-0067: lifecycle forward tests ─────────────────────────────────────────
 
 

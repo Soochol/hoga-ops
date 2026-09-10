@@ -90,7 +90,17 @@ export function useEventStream(): void {
 
     const unsubscribe = subscribeEvents((e: PushEvent) => {
       const listSyncAxis = LIST_SYNC_AXES.find((a) => a.event === e.type);
-      if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
+      if (e.type === 'live_history_gap') {
+        // Refresh what the server still retains; the partial flag stays set
+        // because evicted raw ticks cannot be recreated by REST or promotion.
+        coalesce(`live-gap:${e.code}`, 1000, () => {
+          void qc.invalidateQueries({ queryKey: ['live', 'series', e.code] });
+          markPromotion(e.code, Date.now());
+          void qc.invalidateQueries({
+            predicate: (q) => q.queryKey[0] === 'range' && q.queryKey[1] === e.code,
+          });
+        });
+      } else if (e.type === 'inventory_added' || e.type === 'inventory_removed') {
         invalidateInventoryCoalesced();
       } else if (e.type === 'promotion_completed') {
         // Delta today-range hooks refresh via the per-code stamp; simple

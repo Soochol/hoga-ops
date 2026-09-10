@@ -27,7 +27,8 @@ export function deriveCollectionStatus(
  *  realtime 종목만 WS(live_set)에 의존하므로 !live → disconnected.
  *  polling(REST)·waiting_eod는 connection과 독립이라 그대로 통과(오표시 방지). */
 export type DisplayStatus =
-  | 'realtime' | 'polling' | 'waiting_eod' | 'disconnected' | 'uncollected';
+  | 'realtime' | 'polling' | 'waiting_eod' | 'disconnected' | 'uncollected'
+  | 'subscribing' | 'awaiting_tick';
 
 export function deriveDisplayStatus(
   live: boolean,
@@ -46,6 +47,8 @@ export interface DisplayPresentation {
 
 /** 점/라벨/색/aria 단일 출처. CollectionDot이 소비. */
 export const DISPLAY_PRESENTATION: Record<DisplayStatus, DisplayPresentation> = {
+  subscribing: { label: '실시간 구독 준비 중', colorVar: 'var(--warn)', ariaLabel: '실시간 구독 준비 중' },
+  awaiting_tick: { label: '첫 실시간 데이터 대기', colorVar: 'var(--fg-dimmer)', ariaLabel: '첫 실시간 데이터 대기' },
   realtime:     { label: null,       colorVar: 'var(--success)',   ariaLabel: '실시간 수집 중' },
   polling:      { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: 'REST 표시 중' },
   waiting_eod:  { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: '관심종목 대기 중' },
@@ -64,6 +67,8 @@ export interface CollectionViewInput {
   viewedCodes: string[];
   kiwoomCodes?: string[];
   liveConnection?: boolean;
+  registrationReady?: boolean;
+  hasReceivedTick?: boolean;
 }
 
 export interface CollectionView {
@@ -80,7 +85,11 @@ export function deriveCollectionView(input: CollectionViewInput): CollectionView
     input.viewedCodes,
     input.kiwoomCodes ?? [],
   );
-  const displayStatus = deriveDisplayStatus(input.liveConnection ?? true, collectionStatus);
+  let displayStatus = deriveDisplayStatus(input.liveConnection ?? true, collectionStatus);
+  if (input.liveConnection !== false) {
+    if (input.registrationReady === false) displayStatus = 'subscribing';
+    else if (input.registrationReady && input.hasReceivedTick === false) displayStatus = 'awaiting_tick';
+  }
   return {
     collectionStatus,
     displayStatus,

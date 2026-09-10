@@ -140,6 +140,11 @@ export interface KiwoomStatus {
   // 키움 WS 수집 중인 종목 코드(화질 도트용). deriveCollectionStatus가 멤버십으로
   // realtime(●) 판정. 백엔드 신규 필드라 optional — 구 응답엔 없을 수 있음.
   subscribed_codes?: string[];
+  /** Actual REG ACK coverage, separate from the storage ownership set. */
+  ready_codes?: string[];
+  ready_registrations?: string[];
+  /** Keys are code:venue:kind; arrival time, not exchange event time. */
+  data_received_ms?: Record<string, number>;
   last_tick_ms: number | null;
   // 저장셋 REG ACK 미확인 키가 남아 있는가(kiwoom_session.status() 미러). 이게 참이면
   // lifecycle 이 capture_reason='registration_incomplete' 로 승격한다 — 즉 pill 이
@@ -153,6 +158,16 @@ export interface KiwoomAccountStatus {
   connected: boolean;
   sub_expected: number;
   sub_acked: number;
+  registration_ready?: boolean;
+  cooldown_until_ms?: number | null;
+  connection_generation?: number;
+  last_close_code?: number | null;
+  last_error_type?: string | null;
+  last_recv_ms?: number | null;
+  latency?: {
+    dispatch: { count: number; sample_size: number; p95_ms: number; max_ms: number };
+    control: Record<string, { count: number; sample_size: number; p95_ms: number; max_ms: number }>;
+  };
   kicked_by_peer: boolean;
   last_tick_ms: number | null;
 }

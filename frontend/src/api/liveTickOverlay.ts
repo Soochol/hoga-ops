@@ -12,7 +12,7 @@
  * 키움 WS 는 이미 관심종목 전건을 구독해 백엔드 버퍼로 publish 하고 있고
  * (stream.py → buffer per-code), ws.ts 의 live 채널 프레임에는 코드 태그가 붙어
  * 한 소켓이 0..N 코드를 나른다. 즉 전송 계층·백엔드 변경 없이 프론트가 코드별로
- * subscribeLive 를 더 부르기만 하면 된다 — 데이터는 이미 서버에 와 있는데
+ * subscribeLiveLatest 를 더 부르기만 하면 된다 — 데이터는 이미 서버에 와 있는데
  * 구독자가 없어 버려지고 있었다.
  *
  * 이 모듈은 "체결가만" 책임진다. 등락률 합성은 liveQuotes.ts 의 기존 seam
@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { subscribeLive } from './ws';
+import { subscribeLiveLatest } from './ws';
 import type { LiveSnapshotEntry } from './types';
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -244,7 +244,7 @@ export function useLiveTickPrices(
       if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
     };
     const unsubs = subscribed.map((code) =>
-      subscribeLive(code, (entry: LiveSnapshotEntry) => {
+      subscribeLiveLatest(code, (entry: LiveSnapshotEntry) => {
         if (entry.kind === 'ob') {
           const signal = expectedSignal(entry, venueFor(code));
           if (signal === null) return;

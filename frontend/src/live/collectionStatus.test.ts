@@ -53,6 +53,12 @@ describe('deriveDisplayStatus', () => {
 });
 
 describe('deriveCollectionView', () => {
+  it('does not equate an open socket with registration or first data', () => {
+    const input = { code: 'A', liveSet: ['A'], watchlistCodes: [], viewedCodes: ['A'], liveConnection: true };
+    expect(deriveCollectionView({ ...input, registrationReady: false }).displayStatus).toBe('subscribing');
+    expect(deriveCollectionView({ ...input, registrationReady: true, hasReceivedTick: false }).displayStatus).toBe('awaiting_tick');
+    expect(deriveCollectionView({ ...input, registrationReady: true, hasReceivedTick: true }).displayStatus).toBe('realtime');
+  });
   it('returns dot status, aria label, and storage label together', () => {
     const view = deriveCollectionView({
       code: '000660',

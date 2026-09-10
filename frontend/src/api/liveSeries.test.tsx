@@ -53,7 +53,7 @@ describe('useLiveSeries', () => {
     await waitFor(() => expect(fakeSockets.length).toBe(1));
     const sock = fakeSockets[0];
     sock.open();
-    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930', protocol: 2 });
     act(() => {
       sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'ob', total_bid_qty: 999 } });
       sock.message({ ch: 'live', code: '005930', data: { t_ms: 100, kind: 'trade', trades: [] } });

@@ -36,7 +36,7 @@ beforeEach(() => {
   seedSymbolMaster(qc, CODES.map((c) => symbolHit(c, false)));
   quotes = CODES.map((code) => ({ code, price: 10000, change_pct: 0, change_won: 0 }));
   vi.spyOn(client, 'apiCall').mockImplementation(async () => ({ phase: 'open', quotes }));
-  vi.spyOn(ws, 'subscribeLive').mockImplementation((code, handler) => {
+  vi.spyOn(ws, 'subscribeLiveLatest').mockImplementation((code, handler) => {
     handlers.set(code, handler);
     return () => { handlers.delete(code); released(code); };
   });
@@ -65,14 +65,14 @@ describe('스크리너 선택 종목 WS 구독', () => {
   it('조회만 하면 WS는 0개이고 모니터링과 공유하는 전체 결과 REST는 계속 갱신한다', async () => {
     const { result } = renderHook(() => useRowsAndMonitor(ROWS, null), { wrapper: Wrapper });
     await waitFor(() => expect(result.current[0].price).toBe(10000));
-    expect(ws.subscribeLive).not.toHaveBeenCalled();
+    expect(ws.subscribeLiveLatest).not.toHaveBeenCalled();
     expect(client.apiCall).toHaveBeenCalledTimes(1);
     expect(client.apiCall).toHaveBeenCalledWith(`/api/live/quotes?codes=${CODES.join(',')}&venue=KRX`);
 
     quotes = quotes.map((q) => ({ ...q, price: 11000, change_pct: 10, change_won: 1000 }));
     await act(async () => { await vi.advanceTimersByTimeAsync(10_100); });
     await waitFor(() => expect(result.current.every((r) => r.price === 11000)).toBe(true));
-    expect(ws.subscribeLive).not.toHaveBeenCalled();
+    expect(ws.subscribeLiveLatest).not.toHaveBeenCalled();
   });
 
   it('선택한 1개만 틱을 받고 선택 전환·결과 제외·언마운트 시 이전 구독을 반환한다', async () => {
@@ -83,7 +83,7 @@ describe('스크리너 선택 종목 WS 구독', () => {
     );
     await waitFor(() => expect(result.current[349].price).toBe(10000));
     expect([...handlers.keys()]).toEqual([SELECTED]);
-    expect(ws.subscribeLive).toHaveBeenCalledTimes(1);
+    expect(ws.subscribeLiveLatest).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       handlers.get(SELECTED)?.({

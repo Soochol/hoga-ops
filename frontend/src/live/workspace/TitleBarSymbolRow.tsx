@@ -11,6 +11,9 @@
  * 현재가는 candles 폴백이 없어(타이틀바 스코프 밖) quote.price 를 직접 쓴다 —
  * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 미표시한다.
  */
+import { useSyncExternalStore } from 'react';
+import { historyPartial, subscribeHistoryStatus } from '../../api/ws';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
@@ -40,6 +43,8 @@ interface Props {
 export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const venue = useLiveVenueStore((s) => s.venue);
+  const effectiveVenue = useEffectiveVenue(code, venue);
+  const partial = useSyncExternalStore(subscribeHistoryStatus, () => historyPartial(code), () => false);
 
   const symbolLabel = name ? `${name}(${code})` : code;
 
@@ -69,6 +74,11 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     viewedCodes: [code],
     kiwoomCodes: liveStatusData?.kiwoom?.subscribed_codes ?? [],
     liveConnection: live,
+    registrationReady: liveStatusData?.kiwoom?.ready_registrations?.includes(
+      `${code}${effectiveVenue === 'NXT' ? '_NX' : effectiveVenue === 'UN' ? '_AL' : ''}`,
+    ),
+    hasReceivedTick: liveStatusData?.kiwoom?.data_received_ms === undefined ? undefined :
+      Object.keys(liveStatusData.kiwoom.data_received_ms).some((key) => key.startsWith(`${code}:${effectiveVenue}:`)),
   });
 
   const { backfillEarliestDate } = useWindowWarnings(windowId);
@@ -80,6 +90,11 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     >
       {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       <span className="truncate text-sm font-medium text-fg" title={symbolLabel} tabIndex={0}>{name ?? code}</span>
+      {!isIndex && partial && (
+        <span className="text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
+          실시간 이력 일부 누락
+        </span>
+      )}
       {currentPrice !== null && (
         <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="shrink-0 font-data text-sm font-semibold text-fg">
           {formatKoreanInt(currentPrice)}
