@@ -230,7 +230,7 @@ The right-rail sibling of the **Watchlist Panel** (`ScreenerDrawer`), surfaced v
 _Avoid_: "screener sidebar" (collides with **Cursor Sidebar** / **Right Rail** naming); conflating with the `/screener` **Screener** page (the panel runs saved scans and toggles **Watchlist** membership but is read-only w.r.t. **SavedScreener**s — it is not the condition builder).
 
 **Browser Tab Title**:
-The browser chrome title (`document.title`) for the current hoga-ops page. On `/live`, it summarizes the active **Code** for quick OS/browser tab switching: `name price change_pct` when a **Live Quote** has `change_pct`, `name price` when the quote has `change_pct=null`, `name`/`Code` fallback when no quote is available, and `hoga-ops` when there is no active Code.
+The browser chrome title (`document.title`) for the current hoga-ops page. On `/live`, it summarizes the active **Code** for quick OS/browser tab switching: `change_pct price name` when a **Live Quote** has `change_pct`, `price name` when the quote has `change_pct=null`, `name`/`Code` fallback when no quote is available, and `hoga-ops` when there is no active Code.
 _Avoid_: "browser label" (too vague), putting 봉 labels here (kept out to preserve short OS/browser tab text).
 
 **Live Quote**:
