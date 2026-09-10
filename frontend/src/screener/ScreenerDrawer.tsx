@@ -1,7 +1,7 @@
 import { occurrenceRows, resultKey, type OccurrenceRow } from './occurrenceRows';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
-import { OccurrenceAction, OccurrenceLabel, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
+import { OccurrenceAction, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
 import { CONDITION_CATALOG } from './catalog';
 import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -80,14 +80,15 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
     id: screenerDraggableId(resultKey(row)),
     data: { type: SCREENER_ENTRY_TYPE, code: row.code, name: row.name },
   });
+  const condition = controller.conditions.find(c => c.id === row.occurrence?.condition_id);
   const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
       name={row.name} code={row.code}
-      secondary={row.occurrence && <><span className="font-data">{row.occurrence.date}</span>{' · '}
-        <OccurrenceLabel occurrence={row.occurrence} controller={controller} /></>}
+      compact={!!row.occurrence}
+      nameTooltip={condition ? `${row.name} · ${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}` : undefined}
       trailingAction={row.occurrence && <OccurrenceAction code={row.code} name={row.name} occurrence={row.occurrence} controller={controller} />}
       price={row.price}
       pct={row.change_pct}
