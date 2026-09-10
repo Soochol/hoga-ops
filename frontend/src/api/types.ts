@@ -371,7 +371,7 @@ export type PushEvent =
   | { type: 'capture_queued'; items: QueueItem[] }
   | { type: 'capture_dismissed'; item_ids: string[] }
   | { type: 'capture_queue_paused'; reason: 'cookie_expired'; message: string }
-  | { type: 'capture_queue_persistence'; persistence_degraded: boolean; last_persisted_at_ms: number | null }
+  | { type: 'capture_queue_persistence'; persistence_degraded: boolean; last_persisted_at_ms: number | null; persistence_epoch?: string; persistence_revision?: number }
   | { type: 'capture_queue_resumed'; reason: 'user_resume' | 'cancel_all' }
   | {
       type: 'capture_queue_drained';
@@ -610,6 +610,8 @@ export interface QueueSnapshot {
   /** Optional for older servers; timestamps are Unix milliseconds. */
   persistence_degraded?: boolean;
   last_persisted_at_ms?: number | null;
+  persistence_epoch?: string;
+  persistence_revision?: number;
 }
 
 // === RangeBundle (ADR-0013) ===

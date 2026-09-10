@@ -61,3 +61,24 @@ async def test_non_owner_cannot_retry_manifest_write(queue_state, monkeypatch):
     async with captures._lock:
         captures._persist_queue_locked()
     assert not writes
+
+
+async def test_revision_orders_snapshot_and_events_and_new_lifetime_resets_epoch(queue_state, monkeypatch):
+    events = []
+    monkeypatch.setattr(captures, "_publish_event", events.append)
+    monkeypatch.setattr(captures, "save_manifest", lambda *args: True)
+    before = captures.get_queue_snapshot()
+    async with captures._lock:
+        captures._persist_queue_locked()
+    healthy = captures.get_queue_snapshot()
+    monkeypatch.setattr(captures, "save_manifest", lambda *args: False)
+    async with captures._lock:
+        captures._persist_queue_locked()
+    failure = events[-1].model_dump(mode="json")
+    assert failure["persistence_epoch"] == before.persistence_epoch
+    assert failure["persistence_revision"] > healthy.persistence_revision > before.persistence_revision
+    assert captures.get_queue_snapshot().model_dump()["persistence_revision"] == failure["persistence_revision"]
+    captures.reset_state_for_tests()
+    restarted = captures.get_queue_snapshot()
+    assert restarted.persistence_epoch != before.persistence_epoch
+    assert restarted.persistence_revision == 0

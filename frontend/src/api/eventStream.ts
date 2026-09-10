@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient, type QueryFilters } from '@tanstack/react-query';
 import { STOCK_DATES_QUERY_KEY } from './stock-dates';
 import { WATCHLIST_KEY } from '../watchlist/watchlistKeys';
-import { invalidateHeatmapDependents } from '../heatmap/heatmapKeys';
+import { HEATMAP_DEPENDENT_KEYS } from '../heatmap/heatmapKeys';
 import { SCREENER_SAVES_KEY } from '../screener/screenerKeys';
 import { STUDY_VIEW_SAVES_QUERY } from '../studyViews/studyViewKeys';
 import { LIVE_LAYOUT_PRESETS_QUERY } from '../live/presets/liveLayoutPresetKeys';
@@ -56,20 +56,21 @@ const LIST_INVALIDATE_COALESCE_MS = 250;
  *  아니라 코드별 스탬프다. 이건 "목록 동기화 축" 이지 "모든 이벤트" 가 아니다. */
 interface ListSyncAxis {
   readonly event: PushEvent['type'];
+  readonly queryKeys: readonly (readonly unknown[])[];
   readonly invalidate: (qc: QueryClient) => void;
 }
 
-const byKey = (queryKey: readonly unknown[]) => (qc: QueryClient): void => {
-  void qc.invalidateQueries({ queryKey });
-};
+const axis = (event: PushEvent['type'], queryKeys: readonly (readonly unknown[])[]): ListSyncAxis => ({
+  event, queryKeys,
+  invalidate: (qc) => { for (const queryKey of queryKeys) void qc.invalidateQueries({ queryKey }); },
+});
 
 export const LIST_SYNC_AXES: readonly ListSyncAxis[] = [
-  { event: 'watchlist_changed', invalidate: byKey(WATCHLIST_KEY) },
-  // 히트맵만 키가 둘이다(랭킹이 그룹 구성을 투영) — 로컬 mutation 과 같은 함수.
-  { event: 'heatmap_changed', invalidate: invalidateHeatmapDependents },
-  { event: 'screener_saves_changed', invalidate: byKey(SCREENER_SAVES_KEY) },
-  { event: 'study_views_changed', invalidate: byKey(STUDY_VIEW_SAVES_QUERY) },
-  { event: 'live_layout_presets_changed', invalidate: byKey(LIVE_LAYOUT_PRESETS_QUERY) },
+  axis('watchlist_changed', [WATCHLIST_KEY]),
+  axis('heatmap_changed', HEATMAP_DEPENDENT_KEYS),
+  axis('screener_saves_changed', [SCREENER_SAVES_KEY]),
+  axis('study_views_changed', [STUDY_VIEW_SAVES_QUERY]),
+  axis('live_layout_presets_changed', [LIVE_LAYOUT_PRESETS_QUERY]),
 ];
 
 export function useEventStream(): void {
@@ -78,6 +79,13 @@ export function useEventStream(): void {
     // 축(axis)별 접기 타이머. 축이 셋(인벤토리·관심목록·히트맵)이라 클로저 변수를
     // 축마다 늘리는 대신 맵 하나로 든다 — 정리도 한 곳에서 끝난다.
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    let needsReconnectSync = false;
+    let disposed = false;
+    const refreshAfterReconnect = (filters: QueryFilters): void => {
+      void qc.cancelQueries(filters).then(() => {
+        if (!disposed) void qc.invalidateQueries(filters);
+      });
+    };
     const coalesce = (axis: string, ms: number, run: () => void): void => {
       if (timers.has(axis)) return;  // 이미 예약됨 — 창이 끝날 때 한 번만 돈다
       timers.set(axis, setTimeout(() => { timers.delete(axis); run(); }, ms));
@@ -118,27 +126,23 @@ export function useEventStream(): void {
           listSyncAxis.invalidate(qc);
         });
       } else if (e.type === 'disconnected') {
-        // Reconnect recovery (once per disconnect transition; ADR-0019).
-        qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
-        qc.invalidateQueries({ queryKey: ['capture', 'queue'] });
-        // 끊겨 있던 동안의 목록 변경 신호는 재전송되지 않는다(EventBus 는 큐를
-        // 연결에 매달아 두고, 끊긴 연결의 큐는 사라진다). 다시 읽지 않으면 그 사이
-        // 다른 창이 바꾼 목록이 이 창에서만 영영 옛 상태로 남는다 — 축을 추가할 때
-        // 가장 빠뜨리기 쉬운 자리라 **테이블을 순회한다**(LIST_SYNC_AXES 주석).
-        for (const axis of LIST_SYNC_AXES) axis.invalidate(qc);
-        qc.invalidateQueries({
-          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'calendar',
+        needsReconnectSync = true;
+      } else if (e.type === 'connected' && needsReconnectSync) {
+        needsReconnectSync = false;
+        // Drop unfinished reads from the old connection before refreshing. This
+        // also handles initial reads with no cached data (invalidate alone doesn't).
+        refreshAfterReconnect({ queryKey: STOCK_DATES_QUERY_KEY });
+        refreshAfterReconnect({ queryKey: ['capture', 'queue'] });
+        refreshAfterReconnect({
+          predicate: (q) => ['calendar', 'range'].includes(String(q.queryKey[0])),
         });
-        // Promotions may have been missed while disconnected. The delta hooks'
-        // 5-min fallback poll is the real safety net; this refreshes enabled/
-        // simple range queries immediately on reconnect.
-        qc.invalidateQueries({
-          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'range',
-        });
+        for (const axis of LIST_SYNC_AXES) {
+          for (const queryKey of axis.queryKeys) refreshAfterReconnect({ queryKey });
+        }
       }
-      // 'connected' → no query work; UI surfaces use it.
     });
     return () => {
+      disposed = true;
       // 예약된 접기 타이머도 함께 취소한다 — 언마운트 뒤에 발화하면 이미 정리된
       // 클라이언트를 무효화하고, 테스트에서는 타이머가 새는 것으로 나타난다.
       timers.forEach((t) => clearTimeout(t));

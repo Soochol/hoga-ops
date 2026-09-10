@@ -56,7 +56,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "QueueSnapshot": frozenset({
         "active", "queued", "done", "paused", "max_concurrent", "queue_owned",
-        "persistence_degraded", "last_persisted_at_ms",
+        "persistence_degraded", "last_persisted_at_ms", "persistence_epoch", "persistence_revision",
     }),
     "ScreenerResponse": frozenset({
         "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
