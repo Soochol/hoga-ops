@@ -191,7 +191,7 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
 });
 
-it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유지한다', async () => {
+it('시세 검증 실패 안내는 숨기고 결과 상한은 재진입해도 표시한다', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({
     status: 'ok', warnings: ['intraday_quote_invalid'], has_more: true,
     rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 1e11, change_pct: 5.8 }],
@@ -199,11 +199,12 @@ it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유
   const { unmount } = await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
-  expect(screen.getByText(/일부 종목 장중 미반영/)).toBeInTheDocument();
+  expect(screen.queryByText(/일부 종목 장중 미반영/)).not.toBeInTheDocument();
   expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('발생 1건 · 상위 1종목');
   unmount();
   renderPage();
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
+  expect(screen.queryByText(/일부 종목 장중 미반영/)).not.toBeInTheDocument();
 });
 
 it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보존하고 다시 들어와 확인할 수 있다', async () => {

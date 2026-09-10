@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.5.2] - 2026-09-10
+
+### Changed
+- 스크리너 페이지와 우측 패널에서 일부 종목의 시세 검증 실패 안내를 숨긴다.
+
 ## [0.16.5.1] - 2026-09-10
 
 ### Fixed
