@@ -19,10 +19,35 @@ ADR-0015 footer + ADR-0019.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+@contextmanager
+def _atomic_target(path: Path) -> Iterator[Path]:
+    """Publish only a complete write; cleanup must not mask the original error."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+        yield tmp_path
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                log.warning("temporary file cleanup failed: %s", tmp_path, exc_info=True)
 
 
 def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
@@ -35,20 +60,10 @@ def atomic_write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
     Raises:
         OSError: if disk write fails. Callers decide whether to propagate.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
+    with _atomic_target(path) as tmp_path, tmp_path.open("w", encoding="utf-8") as tmp:
         json.dump(payload, tmp, ensure_ascii=False, indent=indent)
         tmp.flush()
         os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    os.replace(tmp_path, path)
 
 
 def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
@@ -62,20 +77,10 @@ def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None
     Raises:
         OSError: 쓰기 실패 시. 실패하면 대상은 **이전 상태 그대로**다.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding=encoding,
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
+    with _atomic_target(path) as tmp_path, tmp_path.open("w", encoding=encoding) as tmp:
         tmp.write(text)
         tmp.flush()
         os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    os.replace(tmp_path, path)
 
 
 def atomic_write_parquet_table(path: Path, table: Any) -> None:
@@ -91,24 +96,12 @@ def atomic_write_parquet_table(path: Path, table: Any) -> None:
 
     Raises:
         OSError: if disk write fails. On failure the target is unchanged
-            (the tempfile may linger; callers can ignore).
+            (temporary file cleanup is attempted without masking the write error).
     """
     import pyarrow.parquet as pq  # local import — heavy  # noqa: PLC0415 — 지연 import(순환/heavy)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
+    with _atomic_target(path) as tmp_path:
         pq.write_table(table, tmp_path)
-        os.replace(tmp_path, path)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
 
 
 def atomic_write_parquet_df(path: Path, df: Any, *, compression: str = "zstd") -> None:
@@ -127,20 +120,8 @@ def atomic_write_parquet_df(path: Path, df: Any, *, compression: str = "zstd") -
         OSError: if disk write fails. On failure the target is unchanged
             (the tempfile is removed).
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
+    with _atomic_target(path) as tmp_path:
         df.write_parquet(tmp_path, compression=compression)
-        os.replace(tmp_path, path)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
 
 
 def atomic_write_parquet(path: Path, records: list[dict[str, Any]]) -> None:
@@ -157,27 +138,13 @@ def atomic_write_parquet(path: Path, records: list[dict[str, Any]]) -> None:
 
     Raises:
         OSError: if disk write fails. On failure the target is unchanged
-            (the tempfile may linger; callers can ignore).
+            (temporary file cleanup is attempted without masking the write error).
     """
     import polars as pl  # local import — heavy module  # noqa: PLC0415 — 지연 import(순환/heavy)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-
     if not records:
         path.unlink(missing_ok=True)
         return
-
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent,
-        prefix=path.name + ".",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
+    with _atomic_target(path) as tmp_path:
         pl.DataFrame(records).write_parquet(tmp_path)
-        os.replace(tmp_path, path)
-    except Exception:
-        # write_parquet raised — tempfile is partial/empty; clean up.
-        tmp_path.unlink(missing_ok=True)
-        raise
