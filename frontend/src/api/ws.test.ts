@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FakeWebSocket, fakeSockets, installFakeWebSocket } from '../test/fakeWebSocket';
-import { __resetForTests, lastHeartbeat, subscribeEvents, subscribeLive } from './ws';
+import { __resetForTests, lastHeartbeat, subscribeEvents, subscribeLive, subscribeLiveLatest, historyPartial } from './ws';
 import * as client from './client';
 
 beforeEach(() => {
@@ -31,8 +31,8 @@ describe('ws.ts', () => {
     subscribeLive('005930', (d) => a.push(d));
     subscribeLive('000660', (d) => b.push(d));
     const sock = await connect();
-    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
-    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '000660' });
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '005930', protocol: 2 });
+    expect(sock.parsedSent()).toContainEqual({ action: 'subscribe', code: '000660', protocol: 2 });
     sock.message({ ch: 'live', code: '005930', data: { t_ms: 1, kind: 'ob' } });
     expect(a).toEqual([{ t_ms: 1, kind: 'ob' }]);
     expect(b).toEqual([]);
@@ -91,7 +91,7 @@ describe('ws.ts', () => {
       subscribeLive('005930', () => {});
       await vi.advanceTimersByTimeAsync(0); // flush open()'s `await wsUrl(...)`
       fakeSockets[0].open();
-      expect(fakeSockets[0].parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
+      expect(fakeSockets[0].parsedSent()).toContainEqual({ action: 'subscribe', code: '005930', protocol: 2 });
 
       fakeSockets[0].serverClose(); // onclose schedules a reconnect timer (500ms)
       await vi.advanceTimersByTimeAsync(500); // fire timer → open() reconstructs socket
@@ -99,9 +99,40 @@ describe('ws.ts', () => {
 
       fakeSockets[1].open();
       // The reconnected socket re-sends the subscribe for the still-active code.
-      expect(fakeSockets[1].parsedSent()).toContainEqual({ action: 'subscribe', code: '005930' });
+      expect(fakeSockets[1].parsedSent()).toContainEqual({ action: 'subscribe', code: '005930', protocol: 2 });
     } finally {
       vi.useRealTimers();
     }
   });
+});
+
+it('delivers latest before ordered history and rejects stale latest batches', async () => {
+  const latest: number[] = []; const history: number[] = [];
+  subscribeLiveLatest('A', (d) => latest.push(d.t_ms));
+  subscribeLive('A', (d) => history.push(d.t_ms));
+  const sock = await connect();
+  const row = (seq: number) => ({ seq, t_ms: seq, venue: 'KRX', kind: 'ob' });
+  sock.message({ ch: 'live_batch', code: 'A', latest: [row(10)], data: [row(1), row(2)], dropped: 3 });
+  sock.message({ ch: 'live_batch', code: 'A', latest: [row(4)], data: [row(3), row(4)], dropped: 0 });
+  expect(latest).toEqual([10]);
+  expect(history).toEqual([1, 2, 3, 4]);
+  expect(historyPartial('A')).toBe(true);
+});
+
+it('reports reconnect gaps and accepts new server sequence numbers', async () => {
+  vi.useFakeTimers();
+  try {
+    const latest: number[] = [];
+    subscribeLiveLatest('A', (d) => latest.push(d.t_ms));
+    await vi.advanceTimersByTimeAsync(0);
+    const sock = fakeSockets[0]; sock.open();
+    const row = (seq: number) => ({ seq, t_ms: seq, kind: 'ob' });
+    sock.message({ ch: 'live_batch', code: 'A', latest: [row(10)], data: [], dropped: 0 });
+    sock.serverClose();
+    expect(historyPartial('A')).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    fakeSockets[1].open();
+    fakeSockets[1].message({ ch: 'live_batch', code: 'A', latest: [row(1)], data: [], dropped: 0 });
+    expect(latest).toEqual([10, 1]);
+  } finally { vi.useRealTimers(); }
 });

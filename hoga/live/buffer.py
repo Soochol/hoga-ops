@@ -50,6 +50,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 
+from .delivery import LiveDelivery, LiveOutbox
 from .snapshot import LiveSnapshot, SnapshotKind
 
 DEFAULT_RETENTION_MS = 900_000  # 15분
@@ -146,24 +147,25 @@ class LiveBuffer:
         #: 소비자가 "마지막으로 성공한 버전" 을 들고 비교하므로 실패가 자연히 재시도된다.
         self._last_ob_version = 0
         # SSE push: per-code set of subscriber queues.
-        self._subscribers: dict[str, set[asyncio.Queue[dict]]] = {}
+        self._subscribers: dict[str, set[asyncio.Queue[dict] | LiveDelivery]] = {}
         self._total_entries = 0
         self._published_total = 0
         self._subscriber_drops = 0
+        self._outboxes: set[LiveOutbox] = set()
         self._high_water_entries = 0
 
-    def subscribe(self, code: str) -> asyncio.Queue[dict]:
+    def subscribe(self, code: str, *, batch: bool = False) -> asyncio.Queue[dict] | LiveDelivery:
         """Subscribe to publishes for `code`. Returns a queue.
 
         Each entry pushed to the queue is a dict with at minimum
         ``t_ms`` and ``kind`` keys plus whatever payload fields the
         snapshot carries.
         """
-        q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1024)
+        q = LiveDelivery() if batch else asyncio.Queue(maxsize=1024)
         self._subscribers.setdefault(code, set()).add(q)
         return q
 
-    def unsubscribe(self, code: str, q: asyncio.Queue[dict]) -> None:
+    def unsubscribe(self, code: str, q: asyncio.Queue[dict] | LiveDelivery) -> None:
         """Remove a previously subscribed queue. Safe to call if already removed."""
         subs = self._subscribers.get(code)
         if subs is not None:
@@ -215,15 +217,27 @@ class LiveBuffer:
         # block the publisher. Bounded queues drop on overflow.
         subs = self._subscribers.get(code)
         if subs:
-            for entry in entries:
+            for index, entry in enumerate(entries):
                 for q in list(subs):
                     try:
-                        q.put_nowait(entry)
+                        if isinstance(q, LiveDelivery):
+                            before = q.dropped_total
+                            q.put_nowait({**entry, "seq": self._published_total - len(entries)
+                                          + index + 1})
+                            self._subscriber_drops += q.dropped_total - before
+                        else:
+                            q.put_nowait(entry)
                     except asyncio.QueueFull:
                         # Subscriber is too slow — drop this entry rather than
                         # blocking. Subscribers can recover via get_series() if
                         # they need the missing data.
                         self._subscriber_drops += 1
+
+    def observe_outbox(self, outbox: LiveOutbox) -> None:
+        self._outboxes.add(outbox)
+
+    def forget_outbox(self, outbox: LiveOutbox) -> None:
+        self._outboxes.discard(outbox)
 
     async def stats_snapshot(self) -> dict[str, object]:
         """Size-only observability. A ring buffer has no hit/miss — it always
@@ -238,6 +252,7 @@ class LiveBuffer:
             "total_entries": self._total_entries,
             "published_total": self._published_total,
             "subscriber_drops": self._subscriber_drops,
+            "ws_delivery": [outbox.snapshot() for outbox in self._outboxes],
             "high_water_entries": self._high_water_entries,
             "per_kind": per_kind,
             "codes": codes,

@@ -54,7 +54,7 @@ beforeEach(() => {
   handlers.clear();
   unsubSpy.mockClear();
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  vi.spyOn(ws, 'subscribeLive').mockImplementation((code, handler) => {
+  vi.spyOn(ws, 'subscribeLiveLatest').mockImplementation((code, handler) => {
     handlers.set(code, handler as (d: unknown) => void);
     return () => { handlers.delete(code); unsubSpy(code); };
   });

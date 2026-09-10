@@ -140,6 +140,101 @@ async def test_sync_partitions_across_accounts():
     await mgr.stop()
 
 
+async def test_slow_account_recovery_does_not_block_other_view_subscriptions():
+    mgr, _ = _fake_manager()
+    await mgr.sync(("A",), n_accounts=2)
+    slow = mgr._conns[0].client
+    slow._missing = {"A"}
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def recover():
+        entered.set()
+        await release.wait()
+        slow._missing.clear()
+        return 1
+
+    slow.resubscribe_missing = recover
+    recovery = asyncio.create_task(mgr.watchdog_pass(_KRX_MS))
+    await entered.wait()
+    # Force the new display onto the healthy account; test isolation, not allocation.
+    mgr._pick_account = lambda: 1
+    view = asyncio.create_task(mgr.on_view_subscribe("Z", {"KRX"}, ref="tab"))
+    try:
+        for _ in range(30):
+            await asyncio.sleep(0)
+        assert view.done(), "view admission waits behind another account's REG"
+        assert view.result()
+        assert "Z" in mgr._conns[1].client.expected_codes
+    finally:
+        release.set()
+        await asyncio.gather(recovery, view)
+        await mgr.stop()
+
+
+async def test_inflight_subscription_updates_converge_to_latest_desired_set():
+    mgr, _ = _fake_manager()
+    await mgr.sync(("A",), n_accounts=1)
+    client = mgr._conns[0].client
+    entered, release = asyncio.Event(), asyncio.Event()
+    original_update = client.update_codes
+    calls = []
+
+    async def update(codes):
+        calls.append(codes)
+        if len(calls) == 1:
+            entered.set()
+            await release.wait()
+        await original_update(codes)
+
+    client.update_codes = update
+    await mgr.sync(("A", "B"), n_accounts=1)
+    await entered.wait()
+    await mgr.sync(("A", "C"), n_accounts=1)
+    await mgr.sync(("A", "D"), n_accounts=1)
+    release.set()
+    for _ in range(30):
+        await asyncio.sleep(0)
+        if not mgr._subscription_tasks:
+            break
+    assert calls == [["A", "B"], ["A", "D"]]
+    assert client.expected_codes == {"A", "D"}
+    await mgr.stop()
+
+
+async def test_stop_cancels_inflight_subscription_work():
+    mgr, _ = _fake_manager()
+    await mgr.sync(("A",), n_accounts=1)
+    entered, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def update(_codes):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    mgr._conns[0].client.update_codes = update
+    await mgr.sync(("A", "B"), n_accounts=1)
+    await entered.wait()
+    await mgr.stop()
+    assert cancelled.is_set()
+    assert not mgr._subscription_tasks
+    assert not mgr._pending_subscriptions
+
+
+async def test_status_separates_ownership_from_ack_coverage():
+    mgr, _ = _fake_manager()
+    await mgr.sync(("A", "B"), n_accounts=1)
+    mgr._conns[0].client._missing = {"B"}
+    status = mgr.status()
+    assert status["subscribed_codes"] == ["A", "B"]
+    assert status["ready_codes"] == ["A"]
+    assert status["ready_registrations"] == ["A"]
+    assert status["registration_incomplete"]
+    assert not status["accounts"][0]["registration_ready"]
+    await mgr.stop()
+
+
 async def test_sync_over_capacity_drops_and_warns():
     mgr, _ = _fake_manager()
     codes = tuple(f"{i:06d}" for i in range(850))  # 800 상한 초과(4×200)
@@ -295,17 +390,21 @@ async def test_watchdog_reconcile_is_time_invariant():
     await mgr.stop()
 
 
-async def test_watchdog_rebuilds_kicked_conn_and_rederives():
-    """킥된 conn 은 재빌드(멤버십 보존) 후 같은 파생 집합으로 복귀한다.
-
-    스왑 경계와 무관해졌으므로 킥 복구만 남긴다(옛 `..._kick_during_swap_...`)."""
-    mgr, built = _fake_manager()
+async def test_watchdog_respects_kick_cooldown_before_rebuilding():
+    now = [_KRX_MS]
+    mgr, built = _fake_manager(now_fn=lambda: now[0])
     await mgr.sync(("005930",), n_accounts=1)
-    assert len(built) == 1
     mgr._conns[0].client.kicked_by_peer = True
-    await mgr.watchdog_pass(_NXT_MS)
+    mgr._conns[0].client._consecutive_kicks = 5
+    for _ in range(3):
+        await mgr.watchdog_pass(now[0])
+    assert len(built) == 1
+    assert mgr.status()["accounts"][0]["cooldown_until_ms"] == now[0] + 60_000
+    now[0] += 60_000
+    await mgr.watchdog_pass(now[0])
     assert len(built) == 2
     assert not mgr._conns[0].client.kicked_by_peer
+    assert mgr._conns[0].client._consecutive_kicks == 5
     assert mgr._conns[0].client.expected_codes == {"005930"}
     await mgr.stop()
 

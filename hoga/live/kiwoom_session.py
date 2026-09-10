@@ -58,6 +58,7 @@ def _nxt_map() -> dict[str, bool | None] | None:
 _DISPLAY_GRACE_MS = 60_000
 # 만석 임계 근처(총 잔여 슬롯 이하)면 유예 0으로 즉시 회수(ADR-0118 §2).
 _NEAR_FULL_SLACK = 8
+_KICK_COOLDOWN_MS = 60_000
 
 
 def _default_now_ms() -> int:
@@ -157,6 +158,12 @@ class KiwoomSessionManager:
         # 보내야 한다(전역 아님: 다른 계정 소유 저장코드의 표시 틱은 이 연결 stream이
         # 조용히 드롭하므로 buffer로 가야 함). 래퍼가 공유 참조, sync가 in-place 갱신.
         self._conn_members: dict[int, set[str]] = {}
+        # Latest desired state, not an unbounded queue of UI commands. Each account
+        # owns one worker; network waits never hold the manager's admission lock.
+        self._subscription_tasks: dict[int, asyncio.Task] = {}
+        self._pending_subscriptions: dict[int, tuple[list[str], bool]] = {}
+        self._kick_cooldowns: dict[int, int] = {}
+        self._reconnect_history: dict[int, dict[str, int]] = {}
 
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         """kiwoom_targets를 계정에 분배하고 conn 멤버십을 정합화. n_accounts=0 또는 빈
@@ -166,6 +173,7 @@ class KiwoomSessionManager:
         분리됐다(ADR-0118 §5) — sync는 저장셋 멤버십만 반영한다."""
         async with self._lock:
             await self._sync_locked(kiwoom_targets, n_accounts=n_accounts)
+        await asyncio.sleep(0)  # dispatch workers; completion is reported by status
 
     async def _sync_locked(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         codes = list(dict.fromkeys(kiwoom_targets))
@@ -201,7 +209,7 @@ class KiwoomSessionManager:
         for account_id, part in wanted.items():
             conn = self._conns.get(account_id)
             if conn is None:
-                built = self._build(account_id, part)
+                built = self._build_if_available(account_id, part)
                 if built is not None:
                     self._conns[account_id] = built
             elif set(conn.codes) != set(part):
@@ -242,6 +250,8 @@ class KiwoomSessionManager:
                 await self._reconcile(conn)
             await self._resubscribe_missing_locked()
             self._check_registration_locked()
+        await asyncio.sleep(0)
+        self._check_registration_locked()
 
     async def _rebuild_dead_locked(self) -> None:
         """죽은 conn(킥 정지·ws/flush 태스크 사망) teardown 후 재빌드 — 저장셋 멤버십
@@ -251,13 +261,30 @@ class KiwoomSessionManager:
         for account_id, conn in list(self._conns.items()):
             if not _conn_dead(conn):
                 continue
+            if conn.client.kicked_by_peer:
+                until = self._kick_cooldowns.setdefault(
+                    account_id, self._now_fn() + _KICK_COOLDOWN_MS,
+                )
+                if self._now_fn() < until:
+                    continue
             _log.warning("live.kiwoom.conn_dead_rebuild account=%d kicked=%s",
                          account_id, conn.client.kicked_by_peer)
             bare = list(conn.codes)  # 저장셋 멤버십 보존
             await self._teardown(account_id)
-            built = self._build(account_id, bare)
+            built = self._build_if_available(account_id, bare)
             if built is not None:
                 self._conns[account_id] = built
+                self._conn_members.setdefault(account_id, set()).update(bare)
+
+    def _build_if_available(self, account_id: int, codes: list[str]) -> _KiwoomConn | None:
+        if self._now_fn() < self._kick_cooldowns.get(account_id, 0):
+            return None
+        built = self._build(account_id, codes)
+        if built is not None:
+            for attr, value in self._reconnect_history.get(account_id, {}).items():
+                setattr(built.client, attr, value)
+            self._kick_cooldowns.pop(account_id, None)
+        return built
 
     async def _reconcile(self, conn: _KiwoomConn) -> None:
         """conn 구독을 파생 집합으로 정합(ADR-0140 §2 — 시분할 폐지, 동시 구독).
@@ -279,20 +306,51 @@ class KiwoomSessionManager:
         for (code, v), entry in self._display.items():
             if entry.owner == conn.account_id and not self._covered_by_storage(code, v, nxt_map=nxt_map):
                 desired.add(apply_venue(code, v))
-        if desired != conn.client.expected_codes:
-            await conn.client.update_codes(sorted(desired))
+        if (desired != conn.client.expected_codes
+                or conn.account_id in self._subscription_tasks):
+            self._schedule_subscription(conn, sorted(desired))
+
+    def _schedule_subscription(
+        self, conn: _KiwoomConn, desired: list[str], *, retry: bool = False,
+    ) -> None:
+        account = conn.account_id
+        previous = self._pending_subscriptions.get(account)
+        self._pending_subscriptions[account] = (desired, retry or bool(previous and previous[1]))
+        task = self._subscription_tasks.get(account)
+        if task is None or task.done():
+            self._subscription_tasks[account] = asyncio.create_task(
+                self._apply_subscriptions(conn), name=f"kiwoom-subscriptions-{account}",
+            )
+
+    async def _apply_subscriptions(self, conn: _KiwoomConn) -> None:
+        account = conn.account_id
+        try:
+            while account in self._pending_subscriptions:
+                current = self._conns.get(account)
+                if current is None or current.client is not conn.client:
+                    return  # a replacement connection owns its own ACK generation
+                desired, retry = self._pending_subscriptions.pop(account)
+                try:
+                    if set(desired) != conn.client.expected_codes:
+                        await conn.client.update_codes(desired)
+                    if retry:
+                        await conn.client.resubscribe_missing()
+                except Exception:  # noqa: BLE001 — watchdog retries this account only
+                    _log.exception("live.kiwoom.subscription_failed account=%d", account)
+        finally:
+            if self._subscription_tasks.get(account) is asyncio.current_task():
+                self._subscription_tasks.pop(account, None)
+            self._check_registration_locked()
 
     async def _resubscribe_missing_locked(self) -> None:
         """미확인(sub_missing) 구독을 conn별 표적 재구독(PR-B ④). conn별 예외 격리 —
         한 conn 실패가 다른 conn을 막지 않게. 30s 주기가 REG 유량을 자연 상한한다."""
         for conn in list(self._conns.values()):
-            try:
-                count = await conn.client.resubscribe_missing()
-                if count:
-                    _log.warning("live.kiwoom.resubscribe account=%d keys=%d",
-                                 conn.account_id, count)
-            except Exception:  # noqa: BLE001 — conn별 격리
-                _log.exception("live.kiwoom.resubscribe_failed account=%d", conn.account_id)
+            if _conn_dead(conn):
+                continue
+            pending = self._pending_subscriptions.get(conn.account_id)
+            desired = pending[0] if pending else sorted(conn.client.expected_codes)
+            self._schedule_subscription(conn, desired, retry=True)
 
     def _check_registration_locked(self) -> None:
         """저장셋 등록 완결을 매 패스 확인. 미완이면 플래그 + 경고(재시도는 ④가 이미 수행).
@@ -367,7 +425,8 @@ class KiwoomSessionManager:
                     "live.kiwoom.on_demand_full_house code=%s venues=%s — 전 연결 슬롯 "
                     "소진, 신규 실시간 거부(ws.py가 요청 탭에 만석 이벤트)", code, sorted(venues),
                 )
-            return not rejected
+        await asyncio.sleep(0)  # request accepted; REG completion is asynchronous
+        return not rejected
 
     async def on_view_unsubscribe(self, code: str, venues: set[str], *, ref: str) -> None:
         """열람 종료 — (code, v)에서 참조 ref를 뺀다. 참조 0이면 즉시 해제하지 않고
@@ -412,7 +471,7 @@ class KiwoomSessionManager:
 
     def _free_slots(self, account_id: int) -> int:
         conn = self._conns.get(account_id)
-        if conn is None:
+        if conn is None or _conn_dead(conn):
             return 0
         nxt_map = _nxt_map()
         display_used = sum(
@@ -591,8 +650,33 @@ class KiwoomSessionManager:
                 # 증거다(2026-07-21: 둘 다 정상인데 last_recv만 2h20m 정체였다).
                 # last_tick과 함께 봐야 "상류 침묵"과 "조용한 시간대"를 구분할 수 있다.
                 "last_recv_ms": c.last_recv_ms,
+                "registration_ready": bool(
+                    getattr(c, "registration_ready", c.connected and not c.sub_missing())
+                    and conn.account_id not in self._subscription_tasks
+                ),
+                "cooldown_until_ms": self._kick_cooldowns.get(conn.account_id),
+                "connection_generation": getattr(c, "connection_generation", 0),
+                "last_close_code": getattr(c, "last_close_code", None),
+                "last_error_type": getattr(c, "last_error_type", None),
+                "latency": {
+                    "dispatch": c.dispatch_latency.snapshot(),
+                    "control": {k: v.snapshot() for k, v in c.control_latency.items()},
+                } if hasattr(c, "dispatch_latency") else {},
             })
         codes = self.active_codes()
+        nxt_map = _nxt_map()
+        ready_codes = []
+        ready_registrations: set[str] = set()
+        for conn in self._conns.values():
+            if not conn.client.connected or _conn_dead(conn):
+                continue
+            registered = conn.client.expected_codes - set(conn.client.sub_missing())
+            ready_registrations.update(registered)
+            ready_codes.extend(
+                code for code in conn.codes
+                if all(apply_venue(code, v) in registered
+                       for v in subscription_venues(code, nxt_map))
+            )
         return {
             "enabled": True,
             "accounts_configured": len(self._conns),
@@ -602,10 +686,22 @@ class KiwoomSessionManager:
             # 멤버십으로 키움 종목을 realtime(●)으로 판정. kis_api_targets(최대 500)와
             # 동급 페이로드라 status 폴링 규모와 정합.
             "subscribed_codes": codes,
+            "ready_codes": ready_codes,
+            "ready_registrations": sorted(ready_registrations),
+            "data_received_ms": {
+                f"{code}:{venue}:{kind}": received
+                for conn in self._conns.values() if conn.client.connected
+                for (code, venue, kind), received
+                in getattr(conn.client, "tick_received_ms", {}).items()
+            },
             "last_tick_ms": last_tick,
             "last_recv_ms": last_recv,
             # 08:50–09:00 워밍 창 저장셋 등록 미완 여부(ADR-0118 §5 진단 표면).
-            "registration_incomplete": self._registration_incomplete,
+            "registration_incomplete": any(
+                not c.client.connected or bool(c.client.sub_missing())
+                or c.account_id in self._subscription_tasks
+                for c in self._conns.values()
+            ),
             # 표시(온디맨드) 등록 수(PR-C 진단·프론트 배지). 저장 커버분 제외한 실등록.
             "on_demand_count": sum(1 for e in self._display.values() if e.owner is not None),
             # 표시 슬롯 총 용량(전 연결 잔여 = Σ(상한−저장)) — 프론트 만석 배지 "count/cap".
@@ -633,7 +729,19 @@ class KiwoomSessionManager:
         conn = self._conns.pop(account_id, None)
         if conn is None:
             return
-        for task in (conn.ws_task, conn.flush_task):
+        self._reconnect_history[account_id] = {
+            attr: getattr(conn.client, attr)
+            for attr in ("_attempt", "_consecutive_kicks", "connection_generation")
+            if hasattr(conn.client, attr)
+        }
+        if conn.client.kicked_by_peer:
+            self._kick_cooldowns.setdefault(account_id, self._now_fn() + _KICK_COOLDOWN_MS)
+        self._pending_subscriptions.pop(account_id, None)
+        subscription_task = self._subscription_tasks.pop(account_id, None)
+        tasks = (conn.ws_task, conn.flush_task)
+        if subscription_task is not None:
+            tasks = (subscription_task, *tasks)
+        for task in tasks:
             if not task.done():
                 task.cancel()
                 try:

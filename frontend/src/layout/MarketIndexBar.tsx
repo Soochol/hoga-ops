@@ -58,14 +58,14 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
   const { data } = useLiveStatus();
   const k = data?.kiwoom;
   if (!data || k == null) return null;
-  const total = data.live_set.length + k.subscribed_count;
-  const degraded = k.connected_accounts < k.accounts_configured;
+  const total = k.ready_codes?.length ?? k.subscribed_count;
+  const degraded = k.connected_accounts < k.accounts_configured || k.registration_incomplete;
   return (
     <div className="flex shrink-0 items-center gap-1" data-testid="kiwoom-coverage-chip">
       {leadingDivider && <span aria-hidden className="h-3 w-px bg-border" />}
       <span
         className="flex items-baseline gap-1 px-1.5"
-        title={`KIS WS ${data.live_set.length} + 키움 WS ${k.subscribed_count} (연결 ${k.connected_accounts}/${k.accounts_configured}계정)`}
+        title={`키움 구독 확인 ${total}/${k.subscribed_count}종목 (연결 ${k.connected_accounts}/${k.accounts_configured}계정)`}
       >
         <span className="font-ui text-xs text-fg-dim">실시간</span>
         <span className={`font-data text-xs ${degraded ? 'text-warn' : 'text-fg'}`}>{total}</span>

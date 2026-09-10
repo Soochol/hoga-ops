@@ -178,7 +178,7 @@ describe('ScreenerDrawer', () => {
 
   it.each(['/live', '/screener'])('%s에서는 보고 있는 차트의 선택 종목만 WS에 연결한다', async (path) => {
     const released = vi.fn();
-    const subscribe = vi.spyOn(ws, 'subscribeLive').mockImplementation((code) => () => released(code));
+    const subscribe = vi.spyOn(ws, 'subscribeLiveLatest').mockImplementation((code) => () => released(code));
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({ lastScan: makeScan(), selectedSavedId: SAVE.id });
     useLivePageStore.setState({ activeCode: '005930' });

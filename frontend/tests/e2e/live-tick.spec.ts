@@ -33,6 +33,42 @@ async function pinQuotes(page: import('@playwright/test').Page) {
 }
 
 test.describe('/live 실시간 틱', () => {
+  test('혼잡 이력보다 최신값을 먼저 표시하고 누락을 알린다', async ({ page }, testInfo) => {
+    const ws = await installLiveWs(page);
+    await installLiveMocks(page);
+    await pinQuotes(page);
+    await page.goto(`/live?code=${CODE}`);
+    await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
+    const row = page.getByTestId(`watchlist-row-${CODE}`);
+    await expect(row).toContainText('30,000');
+    await ws.waitForSubscribe(CODE);
+    await page.evaluate((code) => {
+      const target = document.querySelector(`[data-testid="watchlist-row-${code}"]`)!;
+      const observer = new MutationObserver(() => {
+        if (!target.textContent?.includes('36,000')) return;
+        performance.mark('test-live-dom');
+        observer.disconnect();
+      });
+      observer.observe(target, { subtree: true, characterData: true, childList: true });
+    }, CODE);
+    const frame = (seq: number, price: number) => ({ ...tradeFrame({ price, prevClose: 30_000 }), seq });
+    ws.pushBatch(CODE, [frame(1, 31_000), frame(2, 32_000)], [frame(10, 36_000)], 176);
+    await expect(row).toContainText('36,000');
+    await expect(page.getByTestId('titlebar-symbol-row').first()).toContainText('실시간 이력 일부 누락');
+    const latency = await page.evaluate(async () => {
+      const modulePath = '/src/api/ws.ts';
+      const transport = await import(modulePath);
+      return performance.getEntriesByName('test-live-dom')[0].startTime - transport.wsLastReceivedAt();
+    });
+    expect(latency).toBeGreaterThanOrEqual(0);
+    console.log(`[live-batch] browser receive→DOM ${latency.toFixed(1)}ms`);
+    await testInfo.attach('browser-receive-to-dom-ms', { body: String(latency), contentType: 'text/plain' });
+    // A later historical batch cannot roll the current price back.
+    ws.pushBatch(CODE, [frame(3, 33_000)], [frame(3, 33_000)]);
+    ws.pushBatch(CODE, [frame(11, 37_000)], [frame(11, 37_000)]);
+    await expect(row).toContainText('37,000');
+  });
+
   test('체결 프레임이 관심종목 행의 현재가·등락률을 갱신한다', async ({ page }) => {
     const ws = await installLiveWs(page);   // goto 전에 등록해야 첫 연결을 잡는다
     await installLiveMocks(page);

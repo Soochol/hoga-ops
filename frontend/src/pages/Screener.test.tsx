@@ -187,7 +187,8 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
   await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
-  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
+  // Async query updates can replace the node between findByText and assertion.
+  await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
 });
 
 it('장중 일부 미반영과 결과 상한을 표시하고 재진입해도 유지한다', async () => {

@@ -10,16 +10,20 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Callable
 
 from fastapi import APIRouter, WebSocket
 
 from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
+from hoga.live.delivery import LiveDelivery, LiveOutbox
 
 logger = logging.getLogger(__name__)
 
 _PING_TIMEOUT_S = 30.0
+_MAX_CODE_SUBSCRIPTIONS = 512
+_BATCH_PROTOCOL = 2
 # UN 은 **자체 venue** 다 — `_AL` 직결이라 {KRX,NXT} 합성이 아니다(ADR-0140 §5).
 # 옛 {KRX,NXT} 도 계속 받는다(둘 다 구독하는 뜻으로 그대로 유효).
 _VALID_VENUES = ("KRX", "NXT", "UN")
@@ -51,11 +55,15 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         # ADR-0067: local import to avoid circular imports at module level.
         # Placed here so both receiver() closure and finally block can access it.
         from hoga.live import lifecycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
-        out: asyncio.Queue[dict] = asyncio.Queue(maxsize=2048)
+        out = LiveOutbox()
+        overflow = asyncio.Event()
+        observed_buffer = get_buffer()
+        if observed_buffer is not None:
+            observed_buffer.observe_outbox(out)
         bus_q = bus.subscribe()
         # code → (버퍼 큐, pump 태스크, 구독 venues). venues는 해제 시 동일 키 제거용.
         code_subs: dict[
-            str, tuple[asyncio.Queue[dict], asyncio.Task[None], set[str] | None]
+            str, tuple[asyncio.Queue[dict] | LiveDelivery, asyncio.Task[None], set[str] | None]
         ] = {}
         # 이 연결(탭) 식별 토큰 — 참조 카운트 장부의 ref. 두 탭이 같은 종목을 봐도
         # 각자 ref라 refcount가 정확(한 탭 닫아도 다른 탭 유지, ADR-0118 PR-C).
@@ -66,15 +74,20 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 out.put_nowait(frame)
             except asyncio.QueueFull:
                 # Slow client: log so the consistency gap is visible (mirrors EventBus.publish).
-                logger.warning("WS send queue full, dropped frame: %s", frame.get("ch"))
+                logger.warning("WS control queue full; disconnecting slow client")
+                overflow.set()
 
         async def pump_event() -> None:
             while True:
                 emit({"ch": "event", "data": await bus_q.get()})
 
-        async def pump_live(code: str, q: asyncio.Queue[dict]) -> None:
+        async def pump_live(code: str, q: asyncio.Queue[dict] | LiveDelivery) -> None:
             while True:
-                emit({"ch": "live", "code": code, "data": await q.get()})
+                entry = await q.get()
+                if isinstance(q, LiveDelivery):
+                    out.offer(code, entry)
+                else:
+                    emit({"ch": "live", "code": code, "data": entry})
 
         bus_task = asyncio.create_task(pump_event())
 
@@ -84,7 +97,9 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                     frame = await asyncio.wait_for(out.get(), timeout=ping_timeout_s)
                 except TimeoutError:
                     frame = {"ch": "heartbeat"}
+                started = time.monotonic()
                 await websocket.send_json(frame)
+                out.send_latency.observe((time.monotonic() - started) * 1000)
 
         async def receiver() -> None:
             while True:
@@ -96,7 +111,10 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         buf = get_buffer()
                         if buf is None:
                             continue
-                        q = buf.subscribe(code)
+                        if len(code_subs) >= _MAX_CODE_SUBSCRIPTIONS:  # bounded per-tab resource ownership
+                            overflow.set()
+                            return
+                        q = buf.subscribe(code, batch=msg.get("protocol") == _BATCH_PROTOCOL)
                         venues = _parse_venues(msg.get("venues"))
                         code_subs[code] = (q, asyncio.create_task(pump_live(code, q)), venues)
                         # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
@@ -109,6 +127,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
                     q, task, venues = code_subs.pop(code)
                     task.cancel()
+                    out.discard(code)
                     buf = get_buffer()
                     if buf is not None:
                         buf.unsubscribe(code, q)
@@ -117,20 +136,27 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
 
         send_task = asyncio.create_task(sender())
         recv_task = asyncio.create_task(receiver())
+        overflow_task = asyncio.create_task(overflow.wait())
         try:
-            await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait(
+                {send_task, recv_task, overflow_task}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            if overflow.is_set():
+                await websocket.close(code=1013, reason="Live client is too slow")
         finally:
             # 이 블록은 **이 태스크가 취소된 상태로** 진입할 수 있다(ASGI 서버 종료,
             # TestClient teardown). 그때는 여기서 하는 첫 await 가 즉시 취소를 다시
             # 받는다 — 취소는 스코프가 끝날 때까지 재전달되기 때문이다. 그러니
             # **동기 정리를 전부 await 앞에 둔다**. 순서를 되돌리면 취소 경로에서
             # bus/버퍼 구독이 통째로 샌다(이전 판의 실제 결함).
-            for t in (send_task, recv_task, bus_task):
+            for t in (send_task, recv_task, bus_task, overflow_task):
                 t.cancel()
             subs = list(code_subs.items())
             for _code, (_q, task, _v) in subs:
                 task.cancel()
             bus.unsubscribe(bus_q)
+            if observed_buffer is not None:
+                observed_buffer.forget_outbox(out)
             buf = get_buffer()
             if buf is not None:
                 for code, (q, _task, _v) in subs:
@@ -142,7 +168,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             # 호출자 밖으로 새어 나간다(차단 게이트 위 flake 의 원인이었다).
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(
-                    send_task, recv_task, bus_task,
+                    send_task, recv_task, bus_task, overflow_task,
                     *(task for _code, (_q, task, _v) in subs),
                     return_exceptions=True,
                 )

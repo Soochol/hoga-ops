@@ -5,6 +5,7 @@
 recv)를 재도입하면 즉시 잡힌다. 서버형 FakeWs는 REG/REMOVE/LOGIN 송신에 ACK를 자동 응답한다.
 """
 import asyncio
+import contextlib
 import json
 
 import pytest
@@ -258,6 +259,31 @@ async def test_kick_detection():
     assert KiwoomWsClient._is_kick(FakeClosed(1000, "normal")) is False
 
 
+async def test_immediate_post_login_kicks_do_not_reset_guard(monkeypatch):
+    monkeypatch.setattr(M, "_BACKOFF_S", (0,) * 7)
+    attempts = 0
+
+    class KickingServer(FakeServer):
+        async def send(self, raw):
+            await super().send(raw)
+            if json.loads(raw)["trnm"] == "LOGIN":
+                self.push(FakeClosed(1000, "Bye"))
+
+    async def connect(_url):
+        nonlocal attempts
+        attempts += 1
+        if attempts > 4:
+            raise asyncio.CancelledError
+        return KickingServer()
+
+    client = _client(None, max_consecutive_kicks=3)
+    client._connect = connect
+    with contextlib.suppress(asyncio.CancelledError):
+        await client.run(["005930"])
+    assert client.kicked_by_peer
+    assert attempts == 3
+
+
 async def test_run_stops_after_consecutive_kicks(monkeypatch):
     monkeypatch.setattr(M, "_BACKOFF_S", (0, 0, 0, 0, 0, 0, 0))
 
@@ -275,51 +301,28 @@ async def test_run_stops_after_consecutive_kicks(monkeypatch):
     assert client.kicked_by_peer is True
 
 
-async def test_kick_counter_resets_after_healthy_session(monkeypatch):
-    """리뷰 회귀(Major): 연결 성공(LOGIN)이 킥 카운터를 리셋 — 건강한 세션 사이의
-    간헐 킥이 누적돼 영구 정지하지 않는다. 킥으로 끝나는 정상 세션을 반복해도
-    max_consecutive_kicks에 도달하지 않아야 한다."""
-    monkeypatch.setattr(M, "_BACKOFF_S", (0,) * 7)
-    sessions = {"n": 0}
-
-    async def token_fn():
-        return "tok"
-
-    def connect_factory():
-        async def connect(url):
-            sessions["n"] += 1
-            if sessions["n"] > 4:
-                # 5번째부터는 연결 자체 실패(테스트 종료 유도) — 그 전 4세션은 킥.
-                raise asyncio.CancelledError
-            return FakeServer()  # 정상 연결 → LOGIN 성공 → 이후 킥 주입
-        return connect
-
-    client = KiwoomWsClient(
-        token_fn=token_fn, on_tick=None, date_fn=lambda: DATE,
-        _connect=connect_factory(), max_consecutive_kicks=3,
-    )
-
-    # run을 태스크로 돌리되, 매 세션 연결 후 킥을 주입한다.
-    task = asyncio.create_task(client.run(["005930"]))
-    for _ in range(4):
-        for _ in range(200):
-            await asyncio.sleep(0)
-            if client.connected:
-                break
-        # 연결·LOGIN 성공 상태 → 카운터 리셋됐어야. 킥으로 세션 종료.
+async def test_kick_counter_resets_only_after_registered_stable_session(monkeypatch):
+    clock = [0.0]
+    client = _client(FakeServer(), monotonic_fn=lambda: clock[0])
+    task = await _run_briefly(client, ["005930"])
+    try:
+        client._attempt = 2
+        client._consecutive_kicks = 2
+        clock[0] = 29
+        await client._dispatch(json.dumps({"trnm": "PING"}))
+        assert client._consecutive_kicks == 2
+        clock[0] = 30
+        await client._dispatch(json.dumps({"trnm": "PING"}))
         assert client._consecutive_kicks == 0
-        # 현재 세션의 소켓에 킥 주입.
-        for conn_ws in [client._ws]:
-            if conn_ws is not None:
-                conn_ws.push(FakeClosed(1000, "Bye"))
-        for _ in range(200):
-            await asyncio.sleep(0)
-            if not client.connected:
-                break
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    # 4번 킥당했지만 매번 healthy 세션이라 리셋 → 영구정지 안 함.
-    assert client.kicked_by_peer is False
+        assert client._attempt == 0
+        # Incomplete REG must not count as a stable session, even with traffic.
+        client._acked.clear()
+        client._consecutive_kicks = 2
+        clock[0] = 100
+        await client._dispatch(json.dumps({"trnm": "PING"}))
+        assert client._consecutive_kicks == 2
+    finally:
+        await _cancel(task)
 
 
 async def test_login_failure_invalidates_token():
