@@ -82,3 +82,64 @@ async def test_failure_is_shared_but_next_request_retries():
         return 7
 
     assert await coalescer.run("key", success, request) == 7
+
+
+async def test_last_reader_cancellation_consumes_late_failure_and_close_drains_work():
+    coalescer = ReadRequestCoalescer[int]()
+    started, cancelled, finish = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
+    errors = []
+    previous = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _, context: errors.append(context))
+
+    async def late_failure():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            await finish.wait()
+            raise RuntimeError("late failure") from None
+
+    try:
+        request, _ = _request()
+        reader = asyncio.create_task(coalescer.run("k", late_failure, request))
+        await started.wait()
+        reader.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await reader
+        await cancelled.wait()
+        finish.set()
+        tasks = list(coalescer._tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await coalescer.aclose()
+        assert not coalescer._tasks
+        assert not errors
+        with pytest.raises(HTTPException) as error:
+            await coalescer.run("new", late_failure, request)
+        assert error.value.status_code == 503
+    finally:
+        loop.set_exception_handler(previous)
+
+
+async def test_router_lifespan_closes_owned_read_requests(tmp_path):
+    from hoga.api.screener import _read_requests_lifespan
+
+    coalescer = ReadRequestCoalescer[int]()
+    started, stopped = asyncio.Event(), asyncio.Event()
+
+    async def pending():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    async with _read_requests_lifespan(coalescer)(None):
+        request, _ = _request()
+        reader = asyncio.create_task(coalescer.run("key", pending, request))
+        await started.wait()
+    assert stopped.is_set()
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+    assert not coalescer._tasks

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CaptureQueue } from './CaptureQueue';
 import { computeHeaderSummary } from './queueSummary';
@@ -305,4 +305,17 @@ describe('CaptureQueue dedupe banner', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByTestId('queue-not-owned-banner')).toBeNull();
   });
+});
+
+it('shows persistence risk even for an empty queue and clears it after recovery', async () => {
+  const snapshot: QueueSnapshot = {
+    active: [], queued: [], done: [], paused: false, max_concurrent: 3,
+    persistence_degraded: true, last_persisted_at_ms: null,
+  };
+  const qc = setup(snapshot);
+  render(<CaptureQueue />, { wrapper: W(qc) });
+  expect(await screen.findByTestId('queue-persistence-banner')).toHaveTextContent('재시작하면 일부 작업이 복원되지 않을 수 있습니다');
+  expect(screen.getByTestId('queue-persistence-banner')).toHaveTextContent('저장 성공 기록이 없습니다');
+  act(() => qc.setQueryData(['capture', 'queue'], { ...snapshot, persistence_degraded: false }));
+  await waitFor(() => expect(screen.queryByTestId('queue-persistence-banner')).toBeNull());
 });

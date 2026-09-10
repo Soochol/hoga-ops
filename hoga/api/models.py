@@ -502,6 +502,12 @@ class CaptureQueueResumedEvent(BaseModel):
     reason: Literal["user_resume", "cancel_all"] = "user_resume"
 
 
+class CaptureQueuePersistenceEvent(BaseModel):
+    type: Literal["capture_queue_persistence"] = "capture_queue_persistence"
+    persistence_degraded: bool
+    last_persisted_at_ms: int | None
+
+
 class CaptureQueueDrainedEvent(BaseModel):
     type: Literal["capture_queue_drained"] = "capture_queue_drained"
     total_done: int
@@ -533,6 +539,8 @@ class QueueSnapshot(BaseModel):
     # Defaulted so older wire consumers and tests that build snapshots by hand
     # stay valid.
     queue_owned: bool = True
+    persistence_degraded: bool = False
+    last_persisted_at_ms: int | None = None
 
 
 class QueueManifestItem(BaseModel):

@@ -5,11 +5,9 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TypeVar
 
 import polars as pl
 from fastapi import APIRouter, HTTPException, Request
@@ -48,37 +46,6 @@ from hoga.live import kiwoom_rest_runtime
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
-
-_T = TypeVar("_T")
-
-
-class _ScanCoalescer:
-    """동일 요청 바디의 동시 /scan 을 하나의 실행으로 합친다(결과 공유).
-
-    실시간 모니터링·멀티탭·연타로 같은 조건 스캔이 겹쳐 도착하면 duckdb 스캔 + depth
-    평가를 N번 중복 실행한다(장중 키움 시세 fetch 는 screener_intraday 가 이미 15초 TTL 로
-    coalesce). 첫 요청이 공유 task 를 만들고, 겹친 요청은 같은 결과를 받는다.
-
-    캐시가 아니라 in-flight 코얼레싱이다 — task 완료 즉시 슬롯을 비워 다음 요청은 새
-    스캔을 돈다(결과 stale 방지). await 는 shield 로 감싸 특정 caller(클라이언트
-    disconnect)의 취소가 공유 task 를 죽이지 않게 한다(symbols.py RefreshCoordinator 규칙).
-    """
-
-    def __init__(self) -> None:
-        self._inflight: dict[Hashable, asyncio.Future] = {}
-
-    async def run(self, key: Hashable, factory: Callable[[], Awaitable[_T]]) -> _T:
-        fut = self._inflight.get(key)
-        if fut is None:
-            fut = asyncio.ensure_future(factory())
-            self._inflight[key] = fut
-            # task 완료 시 슬롯 비움 — caller 의 취소 여부와 무관하게 정확히 한 번.
-            fut.add_done_callback(lambda _f, k=key: self._inflight.pop(k, None))
-        return await asyncio.shield(fut)
-
-
-_scan_coalescer = _ScanCoalescer()
-
 
 @dataclass
 class _UpdateProgress:
@@ -450,25 +417,40 @@ def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
     return pat_saves
 
 
+def _read_requests_lifespan(*coalescers: ReadRequestCoalescer):
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        try:
+            yield
+        finally:
+            await asyncio.gather(*(c.aclose() for c in coalescers))
+    return lifespan
+
+
 def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
     # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
     pools: ComputePools = compute if compute is not None else thread_pools()
-    router = APIRouter(prefix="/api/screener", tags=["screener"])
+    scan_requests = ReadRequestCoalescer[ScreenerResponse]()
+    pattern_requests = ReadRequestCoalescer[PatternSearchResponse]()
+
+    router = APIRouter(
+        prefix="/api/screener", tags=["screener"],
+        lifespan=_read_requests_lifespan(scan_requests, pattern_requests),
+    )
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
     from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
     router.include_router(exclusions_router(data_dir))
-    pattern_requests = ReadRequestCoalescer[PatternSearchResponse]()
     sdir = data_dir / "screener"
 
     @router.post("/scan")
-    async def scan(req: ScanRequest) -> ScreenerResponse:
+    async def scan(req: ScanRequest, request: Request) -> ScreenerResponse:
         # 동일 바디의 동시 요청은 하나의 스캔으로 합친다(모니터링·멀티탭 중복 제거).
         key = f"{data_dir}:{screener_exclusions.revision(data_dir)}:{req.model_dump_json()}"
-        return await _scan_coalescer.run(
-            key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req))
+        return await scan_requests.run(
+            key, lambda: screener_runner.run_screener_scan(data_dir=data_dir, req=req), request)
 
     @router.post("/pattern-search")
     async def pattern_search(req: PatternSearchRequest, request: Request) -> PatternSearchResponse:

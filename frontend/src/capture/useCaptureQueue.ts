@@ -83,7 +83,13 @@ export function useCaptureQueueSync(): void {
     };
 
     const unsub = subscribeToCaptureEvents((e: PushEvent) => {
-      if (e.type === 'capture_progress') {
+      if (e.type === 'capture_queue_persistence') {
+        qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) => prev ? {
+          ...prev,
+          persistence_degraded: e.persistence_degraded,
+          last_persisted_at_ms: e.last_persisted_at_ms,
+        } : prev);
+      } else if (e.type === 'capture_progress') {
         qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) =>
           prev ? patchQueueItem(prev, e.item_id, { progress: e.progress, phase: e.phase }) : prev,
         );

@@ -116,11 +116,23 @@ export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
     </InlineState>
   ) : null;
 
+  const persistenceBanner = queue.persistence_degraded && !notOwned ? (
+    <InlineState role="alert" tone="warn" data-testid="queue-persistence-banner" className="py-sm">
+      대기 목록 저장 실패 — 재시작하면 일부 작업이 복원되지 않을 수 있습니다. 저장을 자동 재시도합니다.
+      <span className="block text-xs">
+        {queue.last_persisted_at_ms != null
+          ? `마지막 저장: ${new Date(queue.last_persisted_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (한국 시간)`
+          : '현재 실행에서 저장 성공 기록이 없습니다.'}
+      </span>
+    </InlineState>
+  ) : null;
+
   const totalRows = queue.active.length + queue.queued.length + queue.done.length;
   if (totalRows === 0 && !queue.paused) {
     return (
       <div className="flex min-h-0 h-full flex-col gap-2">
         {notOwnedBanner}
+        {persistenceBanner}
         <EmptyState testId="queue-empty" title="큐가 비어 있습니다">
           왼쪽에서 종목과 날짜 범위를 선택하고 캡처 시작을 누르면 캡처가 시작됩니다
         </EmptyState>
@@ -139,6 +151,7 @@ export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
   return (
     <div className="flex min-h-0 h-full flex-col gap-2">
       {notOwnedBanner}
+      {persistenceBanner}
       <div className="flex items-center gap-3 px-sm">
         {/* role=status: 완료/실패 수가 실시간으로 바뀌는 줄 — 스크린리더에도 공지. */}
         <div role="status" className="flex-1 font-medium text-sm font-data text-fg-dim tabular-nums">

@@ -399,6 +399,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         # 불리므로 liveness 접근자(`get_lifespan_tasks`)가 이 리스트를 늦게 읽는다.
         lifespan_tasks.extend([
             start_trading_calendar_refresher(data_dir),
+            asyncio.create_task(_captures_module.retry_queue_persistence(), name="queue-persistence-retry"),
             await _start_last_ob_persistence(data_dir),
         ])
         # 컴퓨트 풀 예열(ADR-0169) — 첫 range 요청이 spawn+import(실측 ≈0.4초)를 내지
