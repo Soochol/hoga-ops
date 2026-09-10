@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 
 export const HEATMAP_KEY = ['heatmap'] as const;
+export const HEATMAP_DEPENDENT_KEYS = [HEATMAP_KEY, INDEX_SECTOR_RANKINGS_KEY] as const;
 
 /** 히트맵 문서가 바뀌면 같이 스테일이 되는 쿼리 전부를 무효화한다.
  *
@@ -21,6 +22,5 @@ export const HEATMAP_KEY = ['heatmap'] as const;
  *  로드되므로, 무거운 히트맵 피처 모듈을 끌어오면 `/live` 첫 페인트가 히트맵 코드를
  *  기다린다(main.tsx 의 lazy 경계 주석). 이 모듈은 키 상수 + 무효화만 들고 있다. */
 export function invalidateHeatmapDependents(qc: QueryClient): void {
-  void qc.invalidateQueries({ queryKey: HEATMAP_KEY });
-  void qc.invalidateQueries({ queryKey: INDEX_SECTOR_RANKINGS_KEY });
+  for (const queryKey of HEATMAP_DEPENDENT_KEYS) void qc.invalidateQueries({ queryKey });
 }

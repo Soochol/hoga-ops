@@ -10,6 +10,7 @@ import {
   type EnrichedCalendarResponse,
 } from './useCalendar';
 import { phaseToCalendarStatus } from './phase';
+import { readQueueSnapshot, recordQueuePersistence, shareQueueSnapshot } from './queuePersistence';
 import { useCaptureTimings } from './timing/useCaptureTimings';
 import type { QueueItem, QueueSnapshot, PushEvent } from '../api/types';
 
@@ -84,10 +85,10 @@ export function useCaptureQueueSync(): void {
 
     const unsub = subscribeToCaptureEvents((e: PushEvent) => {
       if (e.type === 'capture_queue_persistence') {
+        const state = recordQueuePersistence(qc, e);
         qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) => prev ? {
           ...prev,
-          persistence_degraded: e.persistence_degraded,
-          last_persisted_at_ms: e.last_persisted_at_ms,
+          ...state,
         } : prev);
       } else if (e.type === 'capture_progress') {
         qc.setQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY, (prev) =>
@@ -162,7 +163,8 @@ export function useCaptureQueue() {
   const qc = useQueryClient();
   const queue = useQuery<QueueSnapshot>({
     queryKey: CAPTURE_QUEUE_QUERY_KEY,
-    queryFn: getQueue,
+    queryFn: ({ signal }) => readQueueSnapshot(qc, signal, getQueue),
+    structuralSharing: (oldData, newData) => shareQueueSnapshot(qc, oldData, newData),
     staleTime: 0,
   });
 

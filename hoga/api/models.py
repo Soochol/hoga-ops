@@ -506,6 +506,8 @@ class CaptureQueuePersistenceEvent(BaseModel):
     type: Literal["capture_queue_persistence"] = "capture_queue_persistence"
     persistence_degraded: bool
     last_persisted_at_ms: int | None
+    persistence_epoch: str = ""
+    persistence_revision: int = 0
 
 
 class CaptureQueueDrainedEvent(BaseModel):
@@ -541,6 +543,8 @@ class QueueSnapshot(BaseModel):
     queue_owned: bool = True
     persistence_degraded: bool = False
     last_persisted_at_ms: int | None = None
+    persistence_epoch: str = ""
+    persistence_revision: int = 0
 
 
 class QueueManifestItem(BaseModel):

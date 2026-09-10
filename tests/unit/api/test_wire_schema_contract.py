@@ -46,7 +46,9 @@ EXPECTED_SSE_EVENT_FIELDS: dict[str, frozenset[str]] = {
     ),
     "CaptureQueuedEvent": frozenset({"items", "type"}),
     "CaptureQueuePausedEvent": frozenset({"message", "reason", "type"}),
-    "CaptureQueuePersistenceEvent": frozenset({"type", "persistence_degraded", "last_persisted_at_ms"}),
+    "CaptureQueuePersistenceEvent": frozenset({
+        "type", "persistence_degraded", "last_persisted_at_ms", "persistence_epoch", "persistence_revision",
+    }),
     "CaptureQueueResumedEvent": frozenset({"reason", "type"}),
     "CaptureQueueDrainedEvent": frozenset(
         {"total_cancelled", "total_done", "total_failed", "total_skipped", "type"}
