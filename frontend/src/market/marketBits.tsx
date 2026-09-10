@@ -153,7 +153,7 @@ export function SessionLinesChart({
     return d.trim();
   };
   return (
-    <div className="relative">
+    <div className={names ? 'relative mb-3xl' : 'relative'}>
     <svg
       width="100%"
       height={height}
@@ -176,8 +176,9 @@ export function SessionLinesChart({
       ))}
     </svg>
     {names && <ChartProbe
-      labels={(series[0]?.points ?? []).map((p) => secOfDayLabel(p.sec))}
-      positions={(series[0]?.points ?? []).map((p) => (p.sec - sessionStartSec) / span)}
+      labels={(series[0]?.points ?? []).map((p) => `${secOfDayLabel(p.sec)}:${String(Math.floor(p.sec % 60)).padStart(2, '0')}`)}
+      positions={(series[0]?.points ?? []).map((p) => Math.max(0, Math.min(1, (p.sec - sessionStartSec) / span)))}
+      unavailableRanges={gaps.map(g => ({ start: (g.startSec - sessionStartSec) / span, end: (g.endSec - sessionStartSec) / span }))}
       summaries={(series[0]?.points ?? []).map((_, i) => series.map((s, j) =>
         `${names[j]} ${fmtSigned(s.points[i]?.v ?? null)}${unit}`).join(' · '))}
     />}

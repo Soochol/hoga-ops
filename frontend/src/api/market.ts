@@ -140,6 +140,7 @@ export interface ProgramPoint {
 }
 
 export interface ProgramResponse {
+  truncated?: Record<string, boolean>;
   axis: ProgramAxis;
   markets: Record<string, ProgramPoint[]>;
 }

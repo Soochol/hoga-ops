@@ -112,6 +112,7 @@ class ProgramPoint(BaseModel):
 
 
 class ProgramResponse(BaseModel):
+    truncated: dict[str, bool] = Field(default_factory=dict)
     axis: str
     markets: dict[str, list[ProgramPoint]] = Field(default_factory=dict)
 
@@ -632,7 +633,7 @@ def _flow_collection(data_dir: Path, date: str, *, deriv: bool) -> dict[str, Any
     ).model_dump()
 
 
-def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str, Any]:
+def _investor_flow_payload(data_dir: Path, *, daily_days: int = 120) -> dict[str, Any]:
     """장중 수급 — 저장된 표본을 읽어 3주체 누적 시계열 + 커버리지로.
 
     **읽기 경로는 벤더를 부르지 않는다.** 표본은 수집기가 이미 찍어 뒀고, 소급 조회가
@@ -998,7 +999,7 @@ async def _collect_trade_value(call: Any, *, days: int) -> dict[str, Any]:
     return out
 
 
-async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str) -> dict[str, Any]:
+async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str, walk: Any = None) -> dict[str, Any]:
     """프로그램 매매 추이. `scaled` 는 **기본값 없이** 호출부가 밝힌다 — 같은 이름의
     `kospi200` 이 ka90005 는 ×100, ka90010 은 소수점이라 한 파서로 묶으면 100배 틀린다."""
     from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
@@ -1006,14 +1007,22 @@ async def _collect_program(call: Any, api_id: str, *, scaled: bool, axis: str) -
     date = now_kst().strftime("%Y%m%d")
     out: dict[str, Any] = {"axis": axis, "markets": {}}
     for mrkt_tp, label in (("P00101", "KOSPI"), ("P10102", "KOSDAQ")):
-        rows = await call(
+        result = await (walk if walk is not None else call)(
             api_id,
             {"date": date, "amt_qty_tp": "1", "mrkt_tp": mrkt_tp,
              "min_tic_tp": "0" if scaled else "1", "stex_tp": _STEX_ALL},
             key=("market-program", api_id, mrkt_tp),
         )
-        if rows is None:
+        if result is None:
             continue
+        if walk is not None:
+            rows, truncated = result
+            out.setdefault("truncated", {})[label] = truncated
+        else:
+            rows = result
+        # Cursor boundaries may repeat a timestamp. Keep the newest page value.
+        rows = list({str(row.get("cntr_tm")): row for row in reversed(rows)}.values())
+        rows.sort(key=lambda row: str(row.get("cntr_tm") or ""), reverse=True)
         out["markets"][label] = market_overview.parse_program_trend(
             rows,
             kospi200_scaled=scaled,
@@ -1331,12 +1340,14 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
 
         cache = program_cache if axis == "intraday" else daily_program_cache
         got = await cache.get(
-            lambda: _collect_program(_call, api_id, scaled=scaled, axis=axis)
+            lambda: _collect_program(_call, api_id, scaled=scaled, axis=axis,
+                                     walk=_program_walk if axis == "intraday" else None)
         )
         return got or {"axis": axis, "markets": {}}
 
     async def _walk(
-        api_id: str, body: dict[str, str], *, key: tuple, stop: Any = None
+        api_id: str, body: dict[str, str], *, key: tuple, stop: Any = None,
+        max_pages: int = market_overview.MAX_BREADTH_PAGES
     ) -> tuple[list[dict[str, Any]], bool] | None:
         """커서를 따라가는 호출. `(rows, truncated)` — 절사 여부가 값과 동급이다.
 
@@ -1361,10 +1372,13 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         return await client.walk(
             api_id,
             body,
-            max_pages=market_overview.MAX_BREADTH_PAGES,
+            max_pages=max_pages,
             stop=stop,
             run_page=_run_page,
         )
+
+    async def _program_walk(api_id: str, body: dict[str, str], *, key: tuple) -> Any:
+        return await _walk(api_id, body, key=key, max_pages=12)
 
     @router.get("/breadth", response_model_exclude_none=True)
     async def get_breadth() -> BreadthResponse:

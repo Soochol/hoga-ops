@@ -77,7 +77,7 @@ export function SectorFlowCard() {
         }
       />
 
-      <DataStamp date={flow.data?.date} fetchedAt={flow.dataUpdatedAt} status="선택 주체 순매수 절대값순" />
+      <DataStamp date={flow.data?.date} fetchedAt={flow.dataUpdatedAt} error={flow.isError} status="선택 주체 순매수 절대값순" />
       {all.length === 0 ? (
         // 왜 비었는지 말한다 — 장 시작 전이면 표본이 아직 없는 게 정상이다.
         <EmptyNote>

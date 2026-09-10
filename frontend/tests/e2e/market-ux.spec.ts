@@ -198,3 +198,34 @@ test('investor flow refreshes every ten seconds after 15:30 and recovers from AP
   await expect(card.getByRole('status')).toContainText('정상 수신');
   await expect(card.getByRole('heading')).toContainText('저장 표본 4개');
 });
+
+for (const width of [1440, 600]) test(`flow freshness and inspection fit without clipping at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 900 });
+  await marketMocks(page, true);
+  await page.route(apiPrefix('market/investor-flow'), async route => {
+    const t = Date.UTC(2026, 8, 9, 4);
+    await route.fulfill({ json: {
+      date: '20260909', unit: 'amt_eok', confirmed: false,
+      markets: { KOSPI: [
+        { t_ms: t, individual: 10, foreign: -20, institution: 10 },
+        { t_ms: t + 10000, individual: 30, foreign: -40, institution: 10 },
+      ] }, daily: [], coverage: { KOSPI: { sample_count: 2, first_sample_ms: t, last_sample_ms: t + 10000, gap_ranges: [] } },
+      collection: { server_now_ms: t + 10000, poll_interval_ms: 10000, stale_after_ms: 30000,
+        collection_expected: false, targets: { KOSPI: { status: 'closed', last_success_at_ms: t + 10000, gaps: [] } } },
+    } });
+  });
+  await page.goto('/market');
+  const body = page.locator('.market-investor-body');
+  await expect(body.getByText(/마지막 정상 수신/)).toBeVisible();
+  const probe = body.getByRole('group', { name: /차트 상세/ });
+  await probe.focus();
+  await probe.press('Home');
+  await expect(probe.getByRole('status')).toContainText('개인 +10억원');
+  expect(await body.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  await probe.press('End');
+  await expect(probe.getByRole('status')).toContainText('외국인 -40억원');
+  const details = await probe.getByRole('status').boundingBox();
+  const axis = await body.getByText('15:30', { exact: true }).boundingBox();
+  expect(details!.y + details!.height).toBeLessThanOrEqual(axis!.y);
+  await body.screenshot({ path: testInfo.outputPath('investor-flow.png') });
+});

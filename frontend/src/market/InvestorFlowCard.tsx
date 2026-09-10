@@ -146,6 +146,7 @@ function FlowPicker({
 export function InvestorCard() {
   const [sel, setSel] = useState<Selection>('KOSPI');
   const [mode, setMode] = useState<'intraday' | 'daily'>('intraday');
+  const [days, setDays] = useState<'5' | '20' | '60'>('20');
   const stock = useMarketInvestorFlow();
   const deriv = useMarketDerivFlow();
 
@@ -218,7 +219,7 @@ export function InvestorCard() {
         )}
         {stockSel ? (
           showDaily ? (
-            <StockDaily data={stock.data} market={sel} />
+            <StockDaily data={stock.data} market={sel} days={days} setDays={setDays} />
           ) : (
             <StockIntraday data={stock.data} market={sel} loading={stock.isLoading || (stock.isError && !stock.data)} />
           )
@@ -245,7 +246,9 @@ function FlowBody({
   sessionStartSec,
   sessionEndSec,
   gaps,
+  unit = '억원',
 }: {
+  unit?: string;
   gaps?: { start_ms: number; end_ms: number }[];
   series: { color: string; label: string; values: (number | null)[]; secs: number[] }[];
   last: (s: { values: (number | null)[] }) => number | null;
@@ -265,6 +268,8 @@ function FlowBody({
       {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
           "하루치 흐름" 처럼 읽히던 왜곡을 막는다. 부분 커버리지는 부분 선이다. */}
       <SessionLinesChart
+        names={series.map(s => s.label)}
+        unit={unit}
         series={series.map((s) => ({
           color: s.color,
           points: s.secs.map((sec, i) => ({ sec, v: s.values[i] })),
@@ -317,17 +322,23 @@ function StockIntraday({
 function StockDaily({
   data,
   market,
+  days,
+  setDays,
 }: {
   data: ReturnType<typeof useMarketInvestorFlow>['data'];
   market: string;
+  days: '5' | '20' | '60';
+  setDays: (days: '5' | '20' | '60') => void;
 }) {
-  const daily = data?.daily ?? [];
+  const daily = [...(data?.daily ?? [])].filter(d => d.markets[market]).sort((a, b) => a.date.localeCompare(b.date)).slice(-Number(days));
   if (daily.length === 0) {
     // 장중 표본과 달리 확정본은 뒤늦게도 채워진다(base_dt 랜덤 액세스) — "쌓이는 중" 이다.
     return <EmptyNote>확정 이력이 아직 없습니다. 장 마감 뒤 일일 배치가 하루씩 채웁니다.</EmptyNote>;
   }
   return (
     <div className="flex flex-col gap-2xs">
+      <ModeSwitch value={days} onChange={setDays} label="투자자 일별 기간" options={[['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일']]} />
+      <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {daily.length}거래일 · {daily[0]?.date}–{daily.at(-1)?.date}</p>
       <p className="text-xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>
       <DailyNetList label="투자자 일별 수급" columns={['외국인', '기관']}
         rows={daily.map(d => ({ date: d.date, values: [d.markets[market]?.foreign ?? null, d.markets[market]?.institution ?? null] }))} />
@@ -370,6 +381,7 @@ function DerivIntraday({
   return (
     <>
       <FlowBody
+        unit={eok ? '억원' : '계약'}
         series={[
           {
             color: SERIES_COLORS.individual,

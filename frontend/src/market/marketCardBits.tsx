@@ -119,12 +119,13 @@ export function EmptyNote({ children }: { children: React.ReactNode }) {
 
 
 /** A fetch timestamp is not a trading date. Never infer the latter from the former. */
-export function DataStamp({ date, fetchedAt, status }: {
-  date?: string | null; fetchedAt?: number; status?: string;
+export function DataStamp({ date, fetchedAt, status, error = false }: {
+  date?: string | null; fetchedAt?: number; status?: string; error?: boolean;
 }) {
   return <div className="flex flex-wrap gap-x-sm gap-y-2xs font-data text-2xs text-fg-dim tabular-nums">
     <span>{date ? `${formatMarketDate(date)} 기준` : '기준일 미제공'}</span>
     {status && <span>{status}</span>}
+    {error && <span role="status">서버 연결 확인 필요{fetchedAt ? ' · 마지막 데이터 유지' : ''}</span>}
     {!!fetchedAt && <span title="조회 시각은 데이터의 거래 기준일과 다를 수 있습니다.">{formatMarketTime(fetchedAt)} 조회</span>}
   </div>;
 }

@@ -359,3 +359,17 @@ describe('InvestorCard', () => {
     expect(screen.queryByText('-420')).toBeNull();
   });
 });
+
+it('daily period selection limits rows and totals and exposes short history', async () => {
+  mockApi(derivResponse(), { ...STOCK, daily: Array.from({ length: 8 }, (_, i) => ({
+    date: `2026080${i + 1}`, markets: { KOSPI: { foreign: 100, institution: -50 } },
+  })) });
+  renderCard();
+  await userEvent.click(await screen.findByRole('button', { name: '일별' }));
+  await userEvent.click(screen.getByRole('button', { name: '5거래일' }));
+  expect(screen.getByText(/요청 5거래일/)).toHaveTextContent('제공 5거래일 · 20260804–20260808');
+  expect(screen.getByRole('row', { name: /기간 합계/ })).toHaveTextContent('+500');
+  await userEvent.click(screen.getByRole('button', { name: '60거래일' }));
+  expect(screen.getByText(/요청 60거래일/)).toHaveTextContent('제공 8거래일');
+  expect(screen.getByRole('row', { name: /기간 합계/ })).toHaveTextContent('+800');
+});
