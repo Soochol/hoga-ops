@@ -4,7 +4,7 @@
 // edit the selected Drawing's color, stroke width, and line style, and
 // delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
 
-import { useCallback, useMemo, useState, useRef } from 'react';
+import { useCallback, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
@@ -132,9 +132,14 @@ function commonValue(members: readonly Drawing[], prop: StyleProp): string | num
 }
 
 /** 팝오버 껍데기 — 위치·테두리·그림자만. 안의 목록은 호출부가 넣는다. */
-function PopoverShell({ wide, children }: { wide?: boolean; children: React.ReactNode }) {
+type PopoverRef = React.MutableRefObject<HTMLDivElement | null>;
+
+function PopoverShell({
+  popoverRef, wide, children,
+}: { popoverRef: PopoverRef; wide?: boolean; children: React.ReactNode }) {
   return (
     <div
+      ref={popoverRef}
       className={
         'absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md shadow-xl ' +
         // min-w-max: containing block 인 툴바가 좁아지면 shrink-to-fit 으로 눌려
@@ -178,9 +183,11 @@ function PopoverItem({
 // 아래 다섯 팝오버는 단일 선택 패널과 다중 선택 툴바가 **함께** 쓴다. `current` 가
 // null 이면 "값이 갈렸다"(혼합)는 뜻이고, 그때는 아무 줄도 강조하지 않는다.
 
-function ColorPalettePopover({ current, onPick }: { current: string | null; onPick: (hex: string) => void }) {
+function ColorPalettePopover({
+  popoverRef, current, onPick,
+}: { popoverRef: PopoverRef; current: string | null; onPick: (hex: string) => void }) {
   return (
-    <PopoverShell wide>
+    <PopoverShell popoverRef={popoverRef} wide>
       <div className="grid grid-cols-4 gap-1.5">
         {COLOR_PALETTE.map((hex) => (
           <button
@@ -198,9 +205,11 @@ function ColorPalettePopover({ current, onPick }: { current: string | null; onPi
   );
 }
 
-function WidthPopover({ current, onPick }: { current: number | null; onPick: (w: number) => void }) {
+function WidthPopover({
+  popoverRef, current, onPick,
+}: { popoverRef: PopoverRef; current: number | null; onPick: (w: number) => void }) {
   return (
-    <PopoverShell>
+    <PopoverShell popoverRef={popoverRef}>
       {STROKE_WIDTHS.map((w) => (
         <PopoverItem key={w} testId={`drawing-thickness-item-${w}`} selected={w === current} onClick={() => onPick(w)}>
           <span className="inline-block w-6 border-t border-current" style={{ borderTopWidth: w }} />
@@ -211,9 +220,11 @@ function WidthPopover({ current, onPick }: { current: number | null; onPick: (w:
   );
 }
 
-function LineStylePopover({ current, onPick }: { current: LineStyle | null; onPick: (s: LineStyle) => void }) {
+function LineStylePopover({
+  popoverRef, current, onPick,
+}: { popoverRef: PopoverRef; current: LineStyle | null; onPick: (s: LineStyle) => void }) {
   return (
-    <PopoverShell>
+    <PopoverShell popoverRef={popoverRef}>
       {LINE_STYLES.map((style) => (
         <PopoverItem
           key={style}
@@ -233,10 +244,10 @@ function LineStylePopover({ current, onPick }: { current: LineStyle | null; onPi
 }
 
 function FillOpacityPopover({
-  current, previewColor, onPick,
-}: { current: number | null; previewColor: string; onPick: (op: number) => void }) {
+  popoverRef, current, previewColor, onPick,
+}: { popoverRef: PopoverRef; current: number | null; previewColor: string; onPick: (op: number) => void }) {
   return (
-    <PopoverShell>
+    <PopoverShell popoverRef={popoverRef}>
       {RECT_FILL_OPACITIES.map((op) => (
         <PopoverItem key={op} testId={`drawing-fill-item-${op}`} selected={op === current} onClick={() => onPick(op)}>
           <span
@@ -250,9 +261,11 @@ function FillOpacityPopover({
   );
 }
 
-function FontSizePopover({ current, onPick }: { current: number | null; onPick: (size: number) => void }) {
+function FontSizePopover({
+  popoverRef, current, onPick,
+}: { popoverRef: PopoverRef; current: number | null; onPick: (size: number) => void }) {
   return (
-    <PopoverShell>
+    <PopoverShell popoverRef={popoverRef}>
       {TEXT_FONT_SIZES.map((size) => (
         <PopoverItem
           key={size}
@@ -294,8 +307,9 @@ const DISTRIBUTE_ITEMS: { axis: DistributeAxis; label: string }[] = [
  * 전부 비활성이고 세로 항목은 살아 있다.
  */
 function AlignPopover({
-  members, coords, onDone,
+  popoverRef, members, coords, onDone,
 }: {
+  popoverRef: PopoverRef;
   members: readonly Drawing[];
   coords: AlignCoords | null;
   onDone: (patches: { id: string; patch: Partial<Drawing> }[]) => void;
@@ -311,7 +325,7 @@ function AlignPopover({
     (enabled ? 'text-fg hover:bg-bg-input-hover' : 'text-fg-dim opacity-40 cursor-not-allowed');
 
   return (
-    <PopoverShell>
+    <PopoverShell popoverRef={popoverRef}>
       {ALIGN_ITEMS.map(({ edge, label }) => (
         <button
           key={edge}
@@ -440,9 +454,10 @@ function MultiSelectionToolbar({
     [items, ids],
   );
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const activeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useCallback(() => setOpenPopover(null), []);
-  useDismissablePopover(openPopover != null, rootRef, closePopover);
+  useDismissablePopover(openPopover != null, activeTriggerRef, closePopover, popoverRef);
 
   // 잠금 혼재. `allLocked` 는 자물쇠의 방향을, `lockedCount` 는 개수 표시를 정한다
   // (DrawingMenu 의 일괄 잠금과 같은 규칙).
@@ -478,8 +493,13 @@ function MultiSelectionToolbar({
     setOpenPopover(null);
   };
 
-  const toggle = (which: Exclude<OpenPopover, null>) =>
-    setOpenPopover(openPopover === which ? null : which);
+  const toggle = (
+    which: Exclude<OpenPopover, null>,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    activeTriggerRef.current = event.currentTarget;
+    setOpenPopover((current) => current === which ? null : which);
+  };
   const triggerBase = 'h-7 px-2 inline-flex items-center rounded';
   const triggerClass = (prop: StyleProp) =>
     triggerBase + (editable(prop) ? ' hover:bg-bg-input-hover' : ' opacity-40 cursor-not-allowed');
@@ -488,7 +508,6 @@ function MultiSelectionToolbar({
 
   return (
     <div
-      ref={rootRef}
       data-drawing-property-panel
       data-testid="drawing-multi-selection-panel"
       className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 pl-2.5 shadow-lg"
@@ -504,7 +523,7 @@ function MultiSelectionToolbar({
         data-testid="drawing-color-trigger"
         aria-label="색상"
         disabled={!editable('color')}
-        onClick={() => toggle('color')}
+        onClick={(event) => toggle('color', event)}
         className={triggerClass('color') + ' flex-col justify-center gap-0.5'}
       >
         <span className="text-sm leading-none">✎</span>
@@ -515,7 +534,7 @@ function MultiSelectionToolbar({
         />
       </button>
       {openPopover === 'color' && (
-        <ColorPalettePopover current={color ?? null} onPick={(hex) => apply('color', hex)} />
+        <ColorPalettePopover popoverRef={popoverRef} current={color ?? null} onPick={(hex) => apply('color', hex)} />
       )}
 
       {width !== undefined && (
@@ -524,7 +543,7 @@ function MultiSelectionToolbar({
           data-testid="drawing-thickness-trigger"
           aria-label="두께"
           disabled={!editable('width')}
-          onClick={() => toggle('thickness')}
+          onClick={(event) => toggle('thickness', event)}
           className={triggerClass('width') + ' gap-1.5 text-xs'}
         >
           <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: width ?? 1 }} />
@@ -532,7 +551,7 @@ function MultiSelectionToolbar({
         </button>
       )}
       {openPopover === 'thickness' && (
-        <WidthPopover current={width ?? null} onPick={(w) => apply('width', w)} />
+        <WidthPopover popoverRef={popoverRef} current={width ?? null} onPick={(w) => apply('width', w)} />
       )}
 
       {lineStyle !== undefined && (
@@ -542,7 +561,7 @@ function MultiSelectionToolbar({
           data-current-style={lineStyle ?? 'mixed'}
           aria-label="선 스타일"
           disabled={!editable('lineStyle')}
-          onClick={() => toggle('lineStyle')}
+          onClick={(event) => toggle('lineStyle', event)}
           className={triggerClass('lineStyle')}
         >
           <span
@@ -556,7 +575,7 @@ function MultiSelectionToolbar({
         </button>
       )}
       {openPopover === 'lineStyle' && (
-        <LineStylePopover current={lineStyle ?? null} onPick={(st) => apply('lineStyle', st)} />
+        <LineStylePopover popoverRef={popoverRef} current={lineStyle ?? null} onPick={(st) => apply('lineStyle', st)} />
       )}
 
       {fillOpacity !== undefined && (
@@ -565,7 +584,7 @@ function MultiSelectionToolbar({
           data-testid="drawing-fill-trigger"
           aria-label="채우기 농도"
           disabled={!editable('fillOpacity')}
-          onClick={() => toggle('fill')}
+          onClick={(event) => toggle('fill', event)}
           className={triggerClass('fillOpacity') + ' gap-1.5 text-xs'}
         >
           <span
@@ -579,6 +598,7 @@ function MultiSelectionToolbar({
       )}
       {openPopover === 'fill' && (
         <FillOpacityPopover
+          popoverRef={popoverRef}
           current={fillOpacity ?? null}
           previewColor={color ?? 'var(--fg-dim)'}
           onPick={(op) => apply('fillOpacity', op)}
@@ -664,7 +684,7 @@ function MultiSelectionToolbar({
           data-testid="drawing-font-size-trigger"
           aria-label="글자 크기"
           disabled={!editable('fontSize')}
-          onClick={() => toggle('fontSize')}
+          onClick={(event) => toggle('fontSize', event)}
           className={triggerClass('fontSize') + ' gap-1 text-xs'}
         >
           <span className="font-semibold leading-none">A</span>
@@ -672,7 +692,7 @@ function MultiSelectionToolbar({
         </button>
       )}
       {openPopover === 'fontSize' && (
-        <FontSizePopover current={fontSize ?? null} onPick={(size) => apply('fontSize', size)} />
+        <FontSizePopover popoverRef={popoverRef} current={fontSize ?? null} onPick={(size) => apply('fontSize', size)} />
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />
@@ -682,7 +702,7 @@ function MultiSelectionToolbar({
         aria-label="정렬"
         title="정렬·분배"
         disabled={allLocked}
-        onClick={() => toggle('align')}
+        onClick={(event) => toggle('align', event)}
         className={
           'h-7 px-2 inline-flex items-center rounded text-xs text-fg-dim' +
           (allLocked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
@@ -692,6 +712,7 @@ function MultiSelectionToolbar({
       </button>
       {openPopover === 'align' && (
         <AlignPopover
+          popoverRef={popoverRef}
           members={members}
           // 좌표는 **팝오버를 여는 시점**이 아니라 누르는 시점에 굳는다 — 그 사이
           // 팬·줌이 있었다면 옛 좌표로 정렬해서 눈에 보이는 것과 어긋난다.
@@ -789,7 +810,8 @@ export default function DrawingPropertyPanel({
 
   const hiddenAll = useDrawingsStore((s) => s.defaults.hiddenAll);
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const activeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // The panel is a fixed toolbar docked to the chart's top-center (candle pane
   // top) — CSS `left:50%` + translateX(-50%), so it reads as a toolbar rather
@@ -797,7 +819,14 @@ export default function DrawingPropertyPanel({
   // superseding the draggable/sticky model of ADR-0108/ADR-0032.
 
   const closePopover = useCallback(() => setOpenPopover(null), []);
-  useDismissablePopover(openPopover != null, rootRef, closePopover);
+  useDismissablePopover(openPopover != null, activeTriggerRef, closePopover, popoverRef);
+  const togglePopover = (
+    which: Exclude<OpenPopover, null>,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    activeTriggerRef.current = event.currentTarget;
+    setOpenPopover((current) => current === which ? null : which);
+  };
 
   // Visibility gate. The hiddenAll clause keeps the editor off a hidden layer —
   // there's no shape on screen to point at.
@@ -821,9 +850,8 @@ export default function DrawingPropertyPanel({
   // 고장으로 읽히는 것을 막는 몫이다.
   const locked = isLocked(drawing);
   const controlDisabled = locked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover';
-  // 잠금은 열려 있던 팝오버도 닫는다. `useDismissablePopover` 는 **바깥** mousedown
-  // 에만 반응하는데 자물쇠 버튼은 rootRef 안이라, 이 파생이 없으면 색상 팔레트를
-  // 펼쳐 둔 채 잠갔을 때 그 팔레트가 전부 죽은 채로 남아 있는다.
+  // 잠금은 열려 있던 팝오버도 닫는다. 바깥 mousedown 이 먼저 닫지만 키보드로 잠그는
+  // 경로도 있으므로 파생 게이트가 필요하다.
   const shownPopover: OpenPopover = locked ? null : openPopover;
 
   const pickColor = (color: string) => {
@@ -885,7 +913,6 @@ export default function DrawingPropertyPanel({
 
   return (
     <div
-      ref={rootRef}
       data-drawing-property-panel
       data-testid="drawing-property-panel"
       className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
@@ -901,7 +928,7 @@ export default function DrawingPropertyPanel({
         data-testid="drawing-color-trigger"
         aria-label="색상"
         disabled={locked}
-        onClick={() => setOpenPopover(openPopover === 'color' ? null : 'color')}
+        onClick={(event) => togglePopover('color', event)}
         className={'h-7 px-2 inline-flex flex-col items-center justify-center rounded gap-0.5' + controlDisabled}
       >
         <span className="text-sm leading-none">✎</span>
@@ -912,7 +939,9 @@ export default function DrawingPropertyPanel({
         />
       </button>
 
-      {shownPopover === 'color' && <ColorPalettePopover current={drawing.color} onPick={pickColor} />}
+      {shownPopover === 'color' && (
+        <ColorPalettePopover popoverRef={popoverRef} current={drawing.color} onPick={pickColor} />
+      )}
 
       {!isText && (
       <button
@@ -920,7 +949,7 @@ export default function DrawingPropertyPanel({
         data-testid="drawing-thickness-trigger"
         aria-label="두께"
         disabled={locked}
-        onClick={() => setOpenPopover(openPopover === 'thickness' ? null : 'thickness')}
+        onClick={(event) => togglePopover('thickness', event)}
         className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
       >
         <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: drawing.width }} />
@@ -929,7 +958,7 @@ export default function DrawingPropertyPanel({
       )}
 
       {!isText && shownPopover === 'thickness' && (
-        <WidthPopover current={drawing.width} onPick={pickWidth} />
+        <WidthPopover popoverRef={popoverRef} current={drawing.width} onPick={pickWidth} />
       )}
 
       {!isText && (
@@ -939,7 +968,7 @@ export default function DrawingPropertyPanel({
         data-current-style={drawing.lineStyle}
         aria-label="선 스타일"
         disabled={locked}
-        onClick={() => setOpenPopover(openPopover === 'lineStyle' ? null : 'lineStyle')}
+        onClick={(event) => togglePopover('lineStyle', event)}
         className={'h-7 px-2 inline-flex items-center rounded' + controlDisabled}
       >
         <span
@@ -950,7 +979,7 @@ export default function DrawingPropertyPanel({
       )}
 
       {!isText && shownPopover === 'lineStyle' && (
-        <LineStylePopover current={drawing.lineStyle} onPick={pickLineStyle} />
+        <LineStylePopover popoverRef={popoverRef} current={drawing.lineStyle} onPick={pickLineStyle} />
       )}
 
       {drawing.kind === 'measure' && onSearchPattern != null && (() => {
@@ -979,7 +1008,7 @@ export default function DrawingPropertyPanel({
             data-testid="drawing-fill-trigger"
             aria-label="채우기 농도"
             disabled={locked}
-            onClick={() => setOpenPopover(openPopover === 'fill' ? null : 'fill')}
+            onClick={(event) => togglePopover('fill', event)}
             className={'h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs' + controlDisabled}
           >
             <span
@@ -991,6 +1020,7 @@ export default function DrawingPropertyPanel({
 
           {shownPopover === 'fill' && (
             <FillOpacityPopover
+              popoverRef={popoverRef}
               current={drawing.fillOpacity}
               previewColor={drawing.color}
               onPick={pickFillOpacity}
@@ -1056,7 +1086,7 @@ export default function DrawingPropertyPanel({
             data-testid="drawing-font-size-trigger"
             aria-label="글자 크기"
             disabled={locked}
-            onClick={() => setOpenPopover(openPopover === 'fontSize' ? null : 'fontSize')}
+            onClick={(event) => togglePopover('fontSize', event)}
             className={'h-7 px-2 inline-flex items-center gap-1 rounded text-xs' + controlDisabled}
           >
             <span className="font-semibold leading-none">A</span>
@@ -1064,7 +1094,7 @@ export default function DrawingPropertyPanel({
           </button>
 
           {shownPopover === 'fontSize' && (
-            <FontSizePopover current={drawing.fontSize} onPick={pickFontSize} />
+            <FontSizePopover popoverRef={popoverRef} current={drawing.fontSize} onPick={pickFontSize} />
           )}
         </>
       )}

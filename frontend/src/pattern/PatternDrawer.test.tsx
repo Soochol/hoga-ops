@@ -1354,6 +1354,19 @@ describe('PatternDrawer — 결과에서 자리 빼기', () => {
     expect(await screen.findByRole('button', { name: /SK하이닉스/ })).toBeInTheDocument();
   });
 
+  it('숨김 목록은 다른 조건 칩을 누르는 순간 닫힌다', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    openRowMenu();
+    await user.click(await screen.findByRole('menuitem', { name: /이 자리만 빼기/ }));
+    await user.click(await screen.findByRole('button', { name: /숨김 1/ }));
+    expect(await screen.findByRole('option', { name: /SK하이닉스/ })).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: /100개/ }));
+
+    expect(screen.queryByRole('option', { name: /SK하이닉스/ })).not.toBeInTheDocument();
+  });
+
   /**
    * 키보드로 빼기 — 목록을 훑으며 걸러내는 길이다(우클릭 메뉴는 손이 마우스에 있을 때).
    *
