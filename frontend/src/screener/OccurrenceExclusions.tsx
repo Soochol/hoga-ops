@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
-import type { ScreenerOccurrence } from '../api/screener';
+import type { ScreenerOccurrence, ScreenerRow } from '../api/screener';
 import { CONDITION_CATALOG } from './catalog';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { ModalShell } from '../ui/ModalShell';
@@ -64,4 +64,39 @@ export function OccurrenceLabel({ occurrence, controller }: { occurrence: Screen
   return <span className="text-xs text-fg-dim">{condition
     ? `${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}`
     : '조건 정보 없음 · 재조회 필요'}</span>;
+}
+
+function OccurrenceEvidence({ occurrence, fallback }: {
+  occurrence: ScreenerOccurrence; fallback?: ScreenerRow['history_matches'];
+}) {
+  const evidence = occurrence.history_match
+    ?? fallback?.find(item => item.condition_id === occurrence.condition_id && item.date === occurrence.date);
+  if (!evidence) return <span className="font-data text-right text-fg-dim">—</span>;
+  return <span className="font-data text-right text-fg-dim">{'trade_value_won' in evidence
+    ? `${(evidence.trade_value_won / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}억`
+    : `${evidence.volume.toLocaleString('ko-KR')}주`}</span>;
+}
+
+/** Keep the result table at one row per stock while retaining occurrence-level evidence/actions. */
+export function OccurrenceDetails({ code, name, occurrences, historyMatches, controller }: {
+  code: string; name: string; occurrences: ScreenerOccurrence[]; controller: OccurrenceExclusions;
+  historyMatches?: ScreenerRow['history_matches'];
+}) {
+  const [open, setOpen] = useState(false);
+  return <div className="col-span-full cursor-default pb-sm text-xs"
+    onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+      className="cursor-pointer bg-transparent border-0 py-1 text-fg-dim hover:text-fg" aria-label={`${name} 발생 ${occurrences.length}건`}>
+      발생 {occurrences.length}건
+    </button>
+    {open && <ul className="max-h-64 overflow-auto border-t border-border pl-sm">
+      {occurrences.map(occurrence => <li key={`${occurrence.condition_id}:${occurrence.condition_key}:${occurrence.date}`}
+        className="grid grid-cols-[7rem_minmax(12rem,1fr)_7rem_auto] items-center gap-2 py-1">
+        <span className="font-data tabular-nums">{occurrence.date}</span>
+        <OccurrenceLabel occurrence={occurrence} controller={controller} />
+        <OccurrenceEvidence occurrence={occurrence} fallback={historyMatches} />
+        <OccurrenceAction code={code} name={name} occurrence={occurrence} controller={controller} />
+      </li>)}
+    </ul>}
+  </div>;
 }

@@ -52,14 +52,14 @@ describe('조회 결과 활용', () => {
     expect(activate).not.toHaveBeenCalled();
     const search = screen.getByRole('searchbox', { name: '결과 내 종목 검색' });
     fireEvent.change(search, { target: { value: 'sk 하이닉스' } });
-    expect(screen.getByText(/선택 1건 \(숨김 1건 포함\)/)).toBeInTheDocument();
+    expect(screen.getByText(/선택 1종목 \(숨김 1종목 포함\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: '검색 결과 전체 선택' }));
     fireEvent.click(screen.getByRole('button', { name: '선택 CSV' }));
     expect(download).toHaveBeenLastCalledWith(scan, ['000660', '005930'], live);
     fireEvent.click(screen.getByRole('button', { name: '검색 결과 CSV' }));
     expect(download).toHaveBeenLastCalledWith(scan, ['000660'], live);
     fireEvent.click(screen.getByRole('checkbox', { name: '검색 결과 전체 선택' }));
-    expect(screen.getByText(/선택 1건 \(숨김 1건 포함\)/)).toBeInTheDocument();
+    expect(screen.getByText(/선택 1종목 \(숨김 1종목 포함\)/)).toBeInTheDocument();
     fireEvent.change(search, { target: { value: '005930' } });
     expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));

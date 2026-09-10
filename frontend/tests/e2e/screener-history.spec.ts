@@ -76,6 +76,7 @@ for (const editWhileCollecting of [false, true]) {
       expect(scans).toHaveLength(1);
       await page.getByRole('button', { name: '조회', exact: true }).click();
     }
+    await page.getByRole('button', { name: '삼성전자 발생 1건', exact: true }).click();
     await expect(page.getByText('2020-03-19', { exact: true })).toBeVisible();
     expect(scans).toHaveLength(2);
     expect(scans[1].conditions[0].params).toMatchObject({

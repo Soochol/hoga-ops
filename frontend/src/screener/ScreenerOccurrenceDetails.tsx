@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import type { ScreenerRow } from '../api/screener';
 import { ModalShell } from '../ui/ModalShell';
 import { OccurrenceAction, OccurrenceLabel } from './OccurrenceExclusions';
-import { occurrenceKey } from './occurrenceRows';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 
 /** The rail navigates stocks; dates and per-occurrence actions live here. */
@@ -23,7 +22,7 @@ export function ScreenerOccurrenceDetails({ row, controller, onClose }: {
     </div>
     <div className="min-h-0 overflow-y-auto p-md">
       {row && events.length ? <ul className="divide-y divide-border">
-        {events.map(event => <li key={occurrenceKey(row.code, event)} className="flex items-center gap-sm py-sm">
+        {events.map(event => <li key={`${row.code}:${event.condition_id}:${event.condition_key}:${event.date}`} className="flex items-center gap-sm py-sm">
           <div className="min-w-0 flex-1">
             <div className="font-data text-sm">{event.date}</div>
             <OccurrenceLabel occurrence={event} controller={controller} />

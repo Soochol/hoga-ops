@@ -81,7 +81,7 @@ test('1,000행 가상 결과의 검색·선택·CSV와 조회 당시 값이 유�
   await page.getByRole('checkbox', { name: '종목999 100999 선택', exact: true }).check();
   await expect(page).toHaveURL(/\/screener$/);
   await page.getByRole('searchbox', { name: '결과 내 종목 검색' }).fill('종목0');
-  await expect(page.getByText(/숨김 1건 포함/)).toBeVisible();
+  await expect(page.getByText(/숨김 1종목 포함/)).toBeVisible();
   await page.getByRole('checkbox', { name: '검색 결과 전체 선택' }).check();
   await page.getByRole('button', { name: '조회 당시', exact: true }).click();
   await expect(page.getByRole('button', { name: '종목0 100000 호가창 열기' })).toContainText('10,000 (-10.00%)');
