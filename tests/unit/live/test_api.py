@@ -3310,6 +3310,18 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
     assert body["data_warning"]["reason"] == "credentials_missing"
 
 
+def test_investor_estimate_transient_token_error_is_not_missing_credentials(tmp_path, monkeypatch):
+    from hoga.live.kiwoom_errors import KiwoomAuthTransientError
+
+    fake = _FakeKisForInvestorTrendEstimate([KiwoomAuthTransientError("token service unavailable")])
+    app = _investor_estimate_app(tmp_path, monkeypatch, fake_kis=fake)
+    with TestClient(app) as client:
+        response = client.get("/api/live/investor-trend-estimate", params={"code": "005930"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "error"
+    assert response.json()["data_warning"]["reason"] == "api_error"
+
+
 def test_live_settings_routes_round_trip(tmp_path):
     from hoga.live import lifecycle
     from hoga.live.api import build_router

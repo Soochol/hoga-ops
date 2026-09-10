@@ -30,6 +30,7 @@ from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
+    KiwoomAuthTransientError,
     KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
@@ -170,6 +171,19 @@ def classify_live_error(  # noqa: PLR0911, PLR0912 — 정책 테이블은 분�
             # 발생 시점 분류를 그대로 존중한다 — 타임아웃 계열은 재시도가 대기를
             # 두 배로 만들 뿐이라 `retryable=False` 로 표시돼 온다(kiwoom_errors).
             retry_after_s=3.0 if exc.retryable else None,
+            permanent=False,
+        )
+    if isinstance(exc, KiwoomAuthTransientError):
+        return LiveErrorPolicy(
+            kind="transport",
+            reason="transport_error",
+            code="KIWOOM_TOKEN_TRANSIENT",
+            message=str(exc),
+            log_level=logging.WARNING,
+            include_traceback=False,
+            degraded=True,
+            backoff_cycles=3,
+            retry_after_s=60.0,
             permanent=False,
         )
     if isinstance(exc, KiwoomAuthError):
