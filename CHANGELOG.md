@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.3.1] - 2026-09-10
+
+### Fixed
+- 관심종목 종목명 말풍선이 브라우저 탭·창 전환 후 남지 않도록 비활성화 시 닫는다.
+
 ## [0.16.3.0] - 2026-09-10
 
 ### Changed
