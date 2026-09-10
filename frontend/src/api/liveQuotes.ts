@@ -54,6 +54,7 @@ export interface LiveQuote {
 export interface LiveQuotesResponse {
   phase: 'pre_open' | 'open' | 'closed';
   quotes: LiveQuote[];
+  missing_codes?: string[];
 }
 
 export function isStaleLiveQuote(quote: LiveQuote | undefined): boolean {

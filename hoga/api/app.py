@@ -88,7 +88,9 @@ from hoga.live.lifecycle import (
     stop_live_stream,
     stop_today_promoter,
 )
+from hoga.live.live_quote_fetcher import LiveQuoteFetcher
 from hoga.live.migrate import migrate_to_v2_layout
+from hoga.live.quote_change_resolver import QuoteChangeResolver
 
 
 def _gc_health_section(gc_objects: bool) -> dict:
@@ -331,6 +333,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # but keep buffer + status alive).
             await stop_live_stream()
 
+    quote_fetcher = LiveQuoteFetcher(change_resolver=QuoteChangeResolver(
+        adjusted_daily_path=data_dir / "screener" / "daily_adjusted.parquet",
+    ))
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         migrate_to_v2_layout(data_dir)
@@ -439,6 +445,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # symbols-boot-refresh 태스크 취소만으론 멈추지 않는다. KIS/스케줄러
             # teardown 전에 명시적으로 cancel+await(worker-owned lifecycle).
             await _symbols_module.aclose_refresh()
+            await quote_fetcher.aclose()
             await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
@@ -581,6 +588,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(
         build_live_router(
             get_status=live_get_status,
+            quote_fetcher=quote_fetcher,
             get_buffer=live_get_buffer,
             on_control=_live_control,
             get_today_ask_peak=live_get_today_ask_peak,

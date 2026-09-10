@@ -7,6 +7,7 @@
  * 색 규율(DESIGN.md): 등락은 가격 방향 카테고리(priceDirClass, 색+부호 2중),
  * 라벨은 --fg-dim, 값은 mono --fg. 지수 클릭 = 해당 지수를 /live 현재 뷰로 연다
  * (activateLiveInstrument — 단일 뷰 제자리 교체, ADR-0113). */
+import { useNowMs } from '../util/useNowMs';
 import { useNavigate } from 'react-router';
 import { useLiveStatus } from '../api/liveStatus';
 import { useMarketIndexQuotes, type MarketIndexQuote } from '../api/marketIndexQuotes';
@@ -24,7 +25,8 @@ function formatChange(quote: MarketIndexQuote): string {
   return `${sign}${VALUE_FORMAT.format(quote.change)} (${sign}${quote.changeRate.toFixed(2)}%)`;
 }
 
-function MarketIndexItem({ quote }: { quote: MarketIndexQuote }) {
+function MarketIndexItem({ quote, nowMs }: { quote: MarketIndexQuote; nowMs: number }) {
+  const ageSeconds = Math.max(0, Math.floor((nowMs - quote.tMs) / 1000));
   const navigate = useNavigate();
   const openable = isLiveIndexId(quote.id);
 
@@ -40,9 +42,11 @@ function MarketIndexItem({ quote }: { quote: MarketIndexQuote }) {
       onClick={open}
       disabled={!openable}
       aria-label={`${quote.label} 차트 열기`}
+      title={`시세 기준 ${new Date(quote.tMs).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`}
       className="flex shrink-0 items-baseline gap-1.5 rounded-md px-1.5 hover:bg-bg-input-hover disabled:cursor-default disabled:hover:bg-transparent"
     >
       <span className="font-ui text-xs text-fg-dim">{quote.label}</span>
+      {ageSeconds >= 90 && <span className="font-ui text-xs text-fg-dim">시세 {Math.floor(ageSeconds / 60)}분 전</span>}
       <span className="font-data text-xs text-fg">{VALUE_FORMAT.format(quote.value)}</span>
       <span className={`font-data text-xs ${priceDirClass(quote.change)}`}>
         {formatChange(quote)}
@@ -76,6 +80,7 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
 }
 
 export function MarketIndexBar() {
+  const nowMs = useNowMs(30_000);
   const { data } = useMarketIndexQuotes();
   const { data: status } = useLiveStatus();
   const hasIndices = data != null && data.length > 0;
@@ -93,7 +98,7 @@ export function MarketIndexBar() {
         data.map((quote, i) => (
           <div key={quote.id} className="flex shrink-0 items-center gap-1">
             {i > 0 && <span aria-hidden className="h-3 w-px bg-border" />}
-            <MarketIndexItem quote={quote} />
+            <MarketIndexItem quote={quote} nowMs={nowMs} />
           </div>
         ))}
       <CoverageChip leadingDivider={hasIndices} />

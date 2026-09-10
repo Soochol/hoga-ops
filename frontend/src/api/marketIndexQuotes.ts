@@ -39,6 +39,15 @@ function mapQuote(wire: MarketIndexQuoteWire): MarketIndexQuote {
   };
 }
 
+/** Preserve a newer WS observation when an older REST poll completes. */
+export function mergeIndexQuotes(previous: MarketIndexQuote[] | undefined, incoming: MarketIndexQuote[]): MarketIndexQuote[] {
+  const before = new Map(previous?.map((q) => [q.id, q]));
+  return incoming.map((q) => {
+    const old = before.get(q.id);
+    return old && old.tMs > q.tMs ? old : q;
+  });
+}
+
 export const MARKET_INDEX_QUOTES_REFETCH_MS = 30_000;
 
 export function useMarketIndexQuotes() {
@@ -51,6 +60,9 @@ export function useMarketIndexQuotes() {
       );
       return response.quotes.map(mapQuote);
     },
+    structuralSharing: (previous, incoming) => mergeIndexQuotes(
+      previous as MarketIndexQuote[] | undefined, incoming as MarketIndexQuote[],
+    ),
     refetchInterval: MARKET_INDEX_QUOTES_REFETCH_MS,
     staleTime: 20_000,
   });
