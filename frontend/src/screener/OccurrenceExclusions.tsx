@@ -9,8 +9,9 @@ import { ToolbarButton } from '../ui/PageShell';
 export function OccurrenceExclusionToolbar({ controller }: { controller: OccurrenceExclusions }) {
   const [open, setOpen] = useState(false);
   const { exclusions, busy, ready, error, lastExcluded, restore } = controller;
+  if (!open && exclusions.length === 0 && !busy && !error) return null;
   return <div className="flex flex-wrap items-center gap-2 text-xs text-fg-dim">
-    <ToolbarButton disabled={!ready} onClick={() => setOpen(true)}>제외한 발생 건 {exclusions.length}</ToolbarButton>
+    {exclusions.length > 0 && <ToolbarButton disabled={!ready} onClick={() => setOpen(true)}>제외한 발생 건 {exclusions.length}</ToolbarButton>}
     {busy && <span role="status">저장·결과 갱신 중…</span>}
     {error && <span role="alert" style={{ color: 'var(--error)' }}>{error}</span>}
     {lastExcluded && exclusions.some(e => e.id === lastExcluded.id) && <span role="status">

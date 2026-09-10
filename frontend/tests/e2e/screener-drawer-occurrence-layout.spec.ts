@@ -38,6 +38,7 @@ test('narrow screener drawer keeps dated occurrences compact and exclusion usabl
   await panel.getByRole('button', { name: /시작/ }).click();
   const rows = panel.getByTestId('screener-row-000660');
   await expect(rows).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: /제외한 발생 건/ })).toHaveCount(0);
   await expect.poll(async () => (await rows.boundingBox())!.height).toBeLessThan(36);
   await expect(rows).not.toContainText('2026-09-10');
   const detailsButton = rows.getByRole('button', { name: /발생 312건/ });
@@ -49,6 +50,8 @@ test('narrow screener drawer keeps dated occurrences compact and exclusion usabl
   await dialog.getByRole('button', { name: /2026-09-10 .* 발생 건 제외/ }).click();
   await expect(dialog.getByRole('button', { name: /발생 건 제외/ })).toHaveCount(311);
   expect(exclusions).toHaveLength(1);
+  await expect(panel.getByRole('button', { name: '제외한 발생 건 1', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: /2026-09-09 .* 발생 건 제외/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('occurrence-details.png') });
   await dialog.getByRole('button', { name: '닫기', exact: true }).click();
