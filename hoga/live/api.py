@@ -67,6 +67,7 @@ from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
+    KiwoomAuthTransientError,
     KiwoomRateLimitError,
     KiwoomRestError,
     KiwoomTerminalAuthError,
@@ -1433,6 +1434,9 @@ class LiveInvestorEstimateFetcher:
                     fetched_at_ms=fetched_at_ms,
                     full_history=len(rows) > 1,
                 )
+        except KiwoomAuthTransientError as e:
+            response = self._error_response(code, trading_day, "api_error", str(e))
+            return self._cache_response(key, response)
         except KiwoomAuthError:
             log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
             response = self._error_response(

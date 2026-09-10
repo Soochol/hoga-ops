@@ -37,6 +37,7 @@ from hoga.live import kiwoom_http
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
     KiwoomAuthError,
+    KiwoomAuthTransientError,
     KiwoomBatchLimitError,
     KiwoomRateLimitError,
     KiwoomRestError,
@@ -378,11 +379,15 @@ class KiwoomRestClient:
         await asyncio.to_thread(invalidate)
 
     async def _token(self) -> str:
+        from hoga.live.kiwoom_token_provider import KiwoomAuthTransient  # noqa: PLC0415 — provider 경계
+
         try:
             # **to_thread 필수.** `get_token()` 은 캐시 히트일 땐 lock-and-return 이지만,
             # miss 면 lock 을 쥔 채 동기 httpx POST 를 한다(timeout 10s). async 경로에서
             # 직접 부르면 발급 한 번에 이벤트 루프가 최대 10초 멈춘다.
             return await asyncio.to_thread(self._provider.get_token)
+        except KiwoomAuthTransient as exc:
+            raise KiwoomAuthTransientError(f"token temporarily unavailable: {exc}") from exc
         # 광범위 catch 는 의도적이다 — 토큰 provider 의 어떤 실패든 도메인 예외로
         # 정규화해 호출자가 벤더 내부 예외를 몰라도 되게 한다. re-raise 하므로
         # BLE001 은 발화하지 않는다.

@@ -144,56 +144,49 @@ async def test_user_visible_runs_before_queued_background() -> None:
 
 
 async def test_background_defers_when_user_visible_arrives_during_bucket_wait() -> None:
-    """기계 ④ — **실효 지점은 버킷 대기 중**이다.
-
-    우선순위 큐는 dequeue 시점만 정렬한다. background 가 이미 dequeue 돼 같은 TR 의
-    버킷에서 자는 동안 user_visible 이 도착하면, 양보가 없으면 그대로 진행해버린다 —
-    버킷이 TR별이라 그 대기가 곧 "인터랙티브 팬이 백필 뒤에 줄 서는" 상황이다.
-
-    버킷을 제어 가능한 페이크로 갈아끼워 **벽시계 없이** 그 창을 재현한다.
-    """
+    """대기는 큐에서 하고 준비된 user_visible이 먼저 실행된다. 동일 key는 유지된다."""
     s = _sched(workers=1)
     order: list[str] = []
-    in_bucket = asyncio.Event()
-    release = asyncio.Event()
+    uv_entered, release_uv = asyncio.Event(), asyncio.Event()
+    bucket = s._bucket(0, "ka10001")
+    bucket._next_at = time.monotonic() + 3600
 
-    class _GatedBucket:
-        def __init__(self) -> None:
-            self.first = True
+    async def background(_client=None):
+        order.append("bg")
 
-        async def acquire(self) -> None:
-            if self.first:
-                self.first = False
-                in_bucket.set()
-                await release.wait()
+    async def visible(_client=None):
+        order.append("uv")
+        uv_entered.set()
+        await release_uv.wait()
 
-        def available_at(self) -> float:
-            return 0.0
-
-        def penalize(self, seconds: float) -> None:
-            return None
-
-    # 내부 버킷을 갈아끼워 "대기 중" 창을 결정론적으로 연다 — 벽시계를 쓰지 않기 위해서다.
-    # 키는 (앱키, TR) 다(ADR-0138) — 문자열로 넣으면 주입이 조용히 무시되고 실제 버킷이
-    # 생겨서 이 테스트가 **무한 대기**한다.
-    s._buckets[(0, "ka10001")] = _GatedBucket()
-
-    async def mark(name: str) -> None:
-        order.append(name)
-
-    tb = asyncio.create_task(
-        s.submit(key="bg", api_id="ka10001", priority="background", call=lambda _client: mark("bg")))
-    await in_bucket.wait()          # background 가 버킷에서 자는 중
-
-    tu = asyncio.create_task(
-        s.submit(key="uv", api_id="ka10001", priority="user_visible", call=lambda _client: mark("uv")))
-    await asyncio.sleep(0)
-    release.set()                   # background 를 깨운다
-
-    await asyncio.gather(tb, tu)
-    assert s.background_deferred_due_to_user_visible == 1, "버킷 대기 중 도착한 uv 에 양보해야 한다"
-    assert order == ["uv", "bg"], "양보 결과 user_visible 이 먼저 실행되어야 한다"
-    await s.aclose()
+    tasks = [asyncio.create_task(s.submit(
+        key="bg", api_id="ka10001", priority="background", call=background,
+    ))]
+    try:
+        for _ in range(10):
+            await asyncio.sleep(0)
+        tasks.append(asyncio.create_task(s.submit(
+            key="uv", api_id="ka10001", priority="user_visible", call=visible,
+        )))
+        await asyncio.sleep(0)
+        # 테스트가 호출 가능 시각을 앞당긴다. 실제 대기시간이 아닌 순서가 계약이다.
+        bucket._next_at = 0
+        s._wake.set()
+        await uv_entered.wait()
+        assert "bg" in s._inflight, "양보한 요청도 공유 future를 유지해야 한다"
+        tasks.append(asyncio.create_task(s.submit(
+            key="bg", api_id="ka10001", priority="background", call=background,
+        )))
+        await asyncio.sleep(0)
+        release_uv.set()
+        await asyncio.gather(*tasks)
+        assert order == ["uv", "bg"]
+        assert s.background_deferred_due_to_user_visible == 1
+    finally:
+        await s.aclose()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def test_defer_happens_at_most_once_per_request() -> None:

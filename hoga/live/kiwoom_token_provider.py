@@ -45,8 +45,8 @@ class KiwoomAuthTransient(KiwoomAuthError):
     """**일시** 인증 실패 — 쿨다운·전송 오류·5xx. 기다리면 풀린다.
 
     하위 타입이라 기존 `except KiwoomAuthError` 는 그대로 잡는다 —
-    **오늘 동작은 바뀌지 않는다**(이 provider 에는 `on_issue_failure` latch 를
-    배선한 곳이 없어, 지금은 거버너의 60초 격리 + 1회 되큐로 흘러 이미 옳게 처리된다).
+    REST 경계는 이 타입을 `KiwoomAuthTransientError`로 보존한다. 거버너는 앱키
+    실패 횟수를 올리거나 토큰을 버리지 않고, 다른 건강한 계정이 있으면 1회 재시도한다.
 
     그래도 갈라 두는 이유 둘: ① 로그·진단에서 "인증 실패" 와 "페이싱" 이 구분된다
     ② KIS 쪽은 같은 분류가 **실제 버그를 고친다**(`KisAuthTransient` 참조 —

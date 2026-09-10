@@ -23,7 +23,7 @@
     1. 2단 우선순위    user_visible 이 background 보다 먼저
     2. 중복제거        같은 key 가 떠 있으면 그 future 에 조인
     3. **승격**        background 로 대기 중인 요청을 사용자가 다시 요청하면 끌어올린다
-    4. **양보**        user_visible 이 대기 중이면 background 를 미룬다
+    4. **양보**        호출 가능한 user_visible 을 background 보다 먼저 실행한다
 
 3·4 가 빠지면 **"인터랙티브 팬이 백그라운드 백필 뒤에 줄 서는" 회귀가 재현된다** —
 리포에 실측 이력이 있는 증상이라 테스트로 못 박는다.
@@ -56,7 +56,7 @@ _PRIORITY_ORDER: dict[Priority, int] = {"user_visible": 0, "background": 10}
 #: 유량 초과를 만난 (앱키, TR) 버킷을 뒤로 미는 시간.
 #:
 #: **인증 격리와 달리 이건 실제로 잠을 잔다** — 격리는 `_pick_account` 의 정렬에만
-#: 쓰이지만(`_available_at`), 유량 페널티는 버킷에 얹혀 `acquire()` 가 그만큼 대기한다.
+#: 쓰이지만(`_available_at`), 유량 페널티는 버킷에 얹혀 큐에서 그만큼 대기한다.
 #: 그래서 계정이 하나뿐이면 되큐된 재시도가 이 시간을 온전히 기다린다 — 의도된 동작이고
 #: (`1700` 은 "잠시 뒤 재시도"다), 계정 풀이 있으면 failover 라 대기가 없다.
 _RATE_LIMIT_PENALTY_SECONDS = 1.0
@@ -89,8 +89,7 @@ class _Request:
     call: Callable[[Any], Awaitable[Any]] = field(compare=False, default=None)  # type: ignore[assignment]
     future: asyncio.Future = field(compare=False, default=None)  # type: ignore[assignment]
     deferred: bool = field(compare=False, default=False)
-    """양보는 **요청당 1회**. 무제한이면 user_visible 이 오래 막힐 때 background 가
-    큐를 맴돌며 워커를 태운다."""
+    """양보 관측은 요청당 1회. 대기 요청은 실행 워커를 점유하지 않는다."""
     auth_retried: bool = field(compare=False, default=False)
     """인증 실패 재시도도 **요청당 1회**. 재발급이 쿨다운에 걸렸거나 자격증명 자체가
     틀렸으면 두 번째도 같은 자리에서 실패한다 — 무제한이면 그대로 무한 루프다."""
@@ -143,8 +142,8 @@ class _TokenBucket:
 class KiwoomCapacityScheduler:
     """키움 REST 요청의 단일 진입점.
 
-    워커 수는 동시성 상한일 뿐이고 **실제 게이트는 TR별 버킷**이다. 서로 다른 TR 은
-    자연히 병렬로 흐르고, 같은 TR 은 버킷이 직렬화한다.
+    워커 수는 HTTP 동시 실행 상한이고 **실제 게이트는 TR별 버킷**이다. 호출 가능
+    시각을 기다리는 요청은 큐에 남겨 다른 TR의 준비된 요청이 먼저 실행되게 한다.
     """
 
     def __init__(
@@ -164,6 +163,7 @@ class KiwoomCapacityScheduler:
         # 쓴다 — 자격증명이 없는 환경·테스트에서 이 경로가 정상이다(ADR-0134).
         self._clients: tuple[Any, ...] = ()
         self._queue: asyncio.PriorityQueue[_Request] = asyncio.PriorityQueue()
+        self._wake = asyncio.Event()
         self._inflight: dict[Hashable, asyncio.Future] = {}
         self._queued_priority: dict[Hashable, Priority] = {}
         self._started: set[Hashable] = set()
@@ -225,18 +225,21 @@ class KiwoomCapacityScheduler:
         existing = self._inflight.get(key)
         if existing is not None:
             # 기계 ③ 승격 — 백그라운드로 대기 중인 것을 사용자가 다시 요청했다.
-            if priority == "user_visible" and self._queued_priority.get(key) == "background":
+            if (priority == "user_visible" and key not in self._started
+                    and self._queued_priority.get(key) == "background"):
                 self._queued_priority[key] = "user_visible"
                 self._queue.put_nowait(self._make(key, api_id, priority, call, existing))
+                self._wake.set()
             return await asyncio.shield(existing)  # 기계 ②
 
-        if self._queue.qsize() >= self._max_queued:
+        if self._pending_count() >= self._max_queued:
             raise KiwoomCapacityOverloaded(f"queue full ({self._max_queued})")
 
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._inflight[key] = future
         self._queued_priority[key] = priority
         self._queue.put_nowait(self._make(key, api_id, priority, call, future))
+        self._wake.set()
         return await asyncio.shield(future)
 
     def snapshot(self) -> dict[str, object]:
@@ -254,7 +257,7 @@ class KiwoomCapacityScheduler:
             if n >= _AUTH_FAILING_THRESHOLD
         )
         return {
-            "queued": self._queue.qsize(),
+            "queued": self._pending_count(),
             "inflight": len(self._inflight),
             "workers": len(self._workers),
             "tr_buckets": len(self._buckets),
@@ -292,6 +295,13 @@ class KiwoomCapacityScheduler:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await w
         self._workers.clear()
+        for future in self._inflight.values():
+            future.cancel()
+        self._inflight.clear()
+        self._queued_priority.clear()
+        self._started.clear()
+        self._queue = asyncio.PriorityQueue()
+        self._wake.clear()
 
     # --- 내부 ---------------------------------------------------------------
 
@@ -337,20 +347,57 @@ class KiwoomCapacityScheduler:
         """풀이 비었으면 None — 호출자가 넘긴 클라이언트를 쓰라는 신호다."""
         return self._clients[account_id] if account_id < len(self._clients) else None
 
-    def _should_defer(self, req: _Request) -> bool:
-        """background 를 뒤로 미룰지. 미룰 때 큐에 되넣고 True 를 돌려준다."""
-        if req.deferred or req.priority != "background" or not self._has_queued_user_visible():
-            return False
-        req.deferred = True
-        self.background_deferred_due_to_user_visible += 1
-        self._queue.put_nowait(req)
-        return True
+    def _pending_count(self) -> int:
+        return sum(key not in self._started for key in self._inflight)
 
-    def _has_queued_user_visible(self) -> bool:
-        return any(
-            p == "user_visible" and k not in self._started
-            for k, p in self._queued_priority.items()
-        )
+    async def _next_ready(self) -> tuple[_Request, int]:
+        """Pick a ready request without reserving sleeping slots in a TR bucket.
+
+        Scanning/reinsertion has no await: all workers share one atomic admission
+        decision. Waiting workers wake on new requests or the nearest TR slot;
+        a blocked TR cannot hide a ready lower-priority, unrelated TR.
+        """
+        while True:
+            self._wake.clear()
+            blocked: list[_Request] = []
+            next_at: float | None = None
+            chosen: tuple[_Request, int] | None = None
+            while not self._queue.empty():
+                req = self._queue.get_nowait()
+                # Promotion leaves an obsolete queue record; retries keep the
+                # same future. Neither can acquire a second execution owner.
+                if (req.future.done() or self._inflight.get(req.key) is not req.future
+                        or req.key in self._started
+                        or req.priority != self._queued_priority.get(req.key)):
+                    continue
+                if chosen is not None:
+                    blocked.append(req)
+                    continue
+                account = self._pick_account(req.api_id)
+                available = self._bucket(account, req.api_id).available_at()
+                if available <= time.monotonic():
+                    chosen = req, account
+                    continue
+                blocked.append(req)
+                next_at = available if next_at is None else min(next_at, available)
+            for req in blocked:
+                self._queue.put_nowait(req)
+            if chosen is not None:
+                req, account = chosen
+                if req.priority == "user_visible":
+                    for waiting in blocked:
+                        if waiting.priority == "background" and not waiting.deferred:
+                            waiting.deferred = True
+                            self.background_deferred_due_to_user_visible += 1
+                self._started.add(req.key)
+                return req, account
+            if next_at is None:
+                await self._wake.wait()
+            else:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._wake.wait(), timeout=max(0, next_at - time.monotonic()),
+                    )
 
     def _ensure_started(self) -> None:
         """워커를 **살아 있고 이 루프에 속한 것만** 남기고 모자란 만큼 채운다.
@@ -371,45 +418,33 @@ class KiwoomCapacityScheduler:
             # 루프가 바뀌었으면 큐·inflight 도 전부 죽은 루프 소유다. 남겨 두면
             # 새 요청이 **죽은 future 에 조인해서** 다시 무한 대기한다.
             self._queue = asyncio.PriorityQueue()
+            self._wake = asyncio.Event()
             self._inflight.clear()
             self._queued_priority.clear()
             self._started.clear()
             self._workers = []
         self._loop = loop
         self._workers = [t for t in self._workers if not t.done()]
-        if self._workers:
-            return
-        self._workers = [
+        self._workers.extend(
             asyncio.create_task(self._worker(), name=f"kiwoom-capacity-{i}")
-            for i in range(self._n_workers)
-        ]
+            for i in range(len(self._workers), self._n_workers)
+        )
 
     async def _worker(self) -> None:
         while True:
-            req = await self._queue.get()
+            req, account = await self._next_ready()
             req.requeued = False
-            if req.future.done():
-                continue
-            # 기계 ④ 양보 (1차) — dequeue 직후. 우선순위 큐가 대개 먼저 걸러내므로
-            # 여기서 걸리는 경우는 드물다.
-            if self._should_defer(req):
-                continue
-            account = self._pick_account(req.api_id)
-            self._started.add(req.key)
             try:
+                # _next_ready returned an available bucket without yielding.
+                # acquire reserves this slot immediately, with no pacing sleep.
                 await self._bucket(account, req.api_id).acquire()
-                # 기계 ④ 양보 (2차) — **여기가 실효 지점이다.** background 가 버킷에서
-                # 자는 동안 같은 TR 의 user_visible 이 도착할 수 있다. 버킷은 (앱키, TR)별이라
-                # 그 대기가 곧 "인터랙티브 팬이 백필 뒤에 줄 서는" 상황이다.
-                if self._should_defer(req):
-                    self._started.discard(req.key)
-                    continue
                 self._calls_by_account[account] = self._calls_by_account.get(account, 0) + 1
                 result = await req.call(self._client_for(account))
                 # 벤더 콜이 실제로 돌아왔다 = 이 계정의 토큰이 산다. **연속** 실패만
                 # 지운다(누계는 진단 기록이라 남긴다).
                 self._consecutive_auth_failures.pop(account, None)
             except asyncio.CancelledError:
+                req.future.cancel()
                 raise
             except Exception as exc:  # noqa: BLE001 — future 로 전달, 워커는 살아남는다
                 self._penalize_if_rate_limited(account, req.api_id, exc)
@@ -516,10 +551,28 @@ class KiwoomCapacityScheduler:
         되큐하면 재시도도 대기표를 뽑고, 격리 덕에 **살아 있는 앱키로 자동 failover**
         된다 — 계정 선택이 `_available_at` 정렬 하나로 끝나므로 별도 상태 기계가 없다.
         """
-        from hoga.live.kiwoom_errors import KiwoomAuthError  # noqa: PLC0415 — 순환 절단
+        from hoga.live.kiwoom_errors import (  # noqa: PLC0415 — 순환 절단
+            KiwoomAuthError,
+            KiwoomAuthTransientError,
+        )
 
         if not isinstance(exc, KiwoomAuthError):
             return False
+
+        if isinstance(exc, KiwoomAuthTransientError):
+            # Provider cooldown/503 says nothing about whether the app key is
+            # valid. Keep its cache and permanent-auth counter untouched.
+            self._auth_blocked_until[account_id] = time.monotonic() + _AUTH_BLOCK_SECONDS
+            healthy_alternative = any(
+                a != account_id and self._auth_blocked_until.get(a, 0) <= time.monotonic()
+                for a in self._accounts
+            )
+            if not healthy_alternative or req.auth_retried or req.future.done():
+                return False
+            req.auth_retried = True
+            req.requeued = True
+            self._queue.put_nowait(req)
+            return True
 
         self._auth_failures_by_account[account_id] = (
             self._auth_failures_by_account.get(account_id, 0) + 1
@@ -552,6 +605,7 @@ class KiwoomCapacityScheduler:
 
     def _cleanup(self, req: _Request) -> None:
         self._started.discard(req.key)
+        self._wake.set()
         # 되큐된 요청은 **아직 살아 있다** — inflight 를 떨어뜨리면 같은 key 의 새 요청이
         # 조인할 future 를 잃고 중복 호출이 된다(기계 ②가 뚫린다).
         if req.requeued:

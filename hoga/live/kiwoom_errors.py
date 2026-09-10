@@ -45,6 +45,10 @@ class KiwoomAuthError(KiwoomRestError):
     """토큰 발급 실패 또는 `1513`(authorization 헤더 부재)."""
 
 
+class KiwoomAuthTransientError(KiwoomAuthError):
+    """토큰 서버 일시 장애·발급 대기. 앱키 불량이나 토큰 revoke의 증거가 아니다."""
+
+
 class KiwoomApiError(KiwoomRestError):
     """`return_code != 0` 일반 실패."""
 
