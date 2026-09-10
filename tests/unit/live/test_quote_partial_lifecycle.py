@@ -71,7 +71,7 @@ async def test_detached_failure_is_retrieved_and_logged(monkeypatch, caplog):
         raise RuntimeError('detached failure')
 
     monkeypatch.setattr(fetcher, 'fetch_and_gate', broken)
-    waiter = asyncio.create_task(fetcher.fetch_with_timeout(timeout=None))
+    waiter = asyncio.create_task(fetcher.fetch_with_timeout(None, [], "open", timeout=None))
     await entered.wait()
     waiter.cancel()
     with pytest.raises(asyncio.CancelledError):

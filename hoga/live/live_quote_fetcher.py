@@ -95,11 +95,23 @@ class LiveQuoteFetcher:
     def change_resolver(self) -> QuoteChangeResolver:
         return self._change_resolver
 
-    async def fetch_with_timeout(self, *args, timeout: float = 1.0, **kwargs) -> list[LiveQuote]:
+    async def fetch_with_timeout(
+        self,
+        client: KiwoomRestClient,
+        code_list: list[str],
+        phase: str,
+        today: date | None = None,
+        *,
+        venue: Venue = "KRX",
+        fetch_chunk_fn: kiwoom_multi_quote.ChunkFetcher | None = None,
+        timeout: float | None = 1.0,
+    ) -> list[LiveQuote]:
         """Own background cache fills even after the HTTP waiter times out."""
         if self._closed:
             raise RuntimeError("quote fetcher is closed")
-        task = asyncio.create_task(self.fetch_and_gate(*args, **kwargs), name="live-quote-fill")
+        task = asyncio.create_task(self.fetch_and_gate(
+            client, code_list, phase, today, venue=venue, fetch_chunk_fn=fetch_chunk_fn,
+        ), name="live-quote-fill")
         self._tasks.add(task)
         task.add_done_callback(self._completed)
         return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
@@ -117,10 +129,13 @@ class LiveQuoteFetcher:
         await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
 
-    async def _fetch_partial(self, client, codes, venue, fetch_chunk_fn):
+    async def _fetch_partial(
+        self, client: KiwoomRestClient, codes: list[str], venue: Venue,
+        fetch_chunk_fn: kiwoom_multi_quote.ChunkFetcher | None,
+    ) -> tuple[list[Quote], dict[str, str]]:
         failures: dict[str, str] = {}
 
-        async def fetch(chunk):
+        async def fetch(chunk: list[str]) -> list[Quote]:
             try:
                 rows = await (fetch_chunk_fn(chunk) if fetch_chunk_fn else
                               kiwoom_multi_quote.fetch_chunk(client, chunk, venue=venue))
