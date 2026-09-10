@@ -49,6 +49,7 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
   await page.getByRole('button', { name: '과거 일봉 수집', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: '일봉 수집 · 0/1종목' })).toBeVisible();
   allowCompletion = true;
+  await page.getByRole('button', { name: '삼성전자 발생 1건', exact: true }).click();
   await expect(page.getByText('2020-03-19', { exact: true })).toBeVisible();
   await expect(page.getByText('1,500억', { exact: true })).toBeVisible();
   await expect(page.getByText('전체 기간 평가 가능 1종목', { exact: false })).toBeVisible();

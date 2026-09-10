@@ -46,6 +46,7 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
     await page.goto('/screener');
     await page.getByRole('button', { name: '조회', exact: true }).click();
     await expect(page.locator('details')).toHaveCount(0);
+    await page.getByRole('button', { name: '삼성전자 발생 2건', exact: true }).click();
     const removeLatest = page.getByRole('button', { name: '삼성전자 2026-09-09 기간내 거래대금 발생 건 제외', exact: true });
     await expect(removeLatest).toBeVisible();
     await expect(removeLatest).toBeInViewport();
@@ -64,7 +65,7 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
       return;
     }
     await page.getByRole('searchbox', { name: '결과 내 종목 검색' }).fill('삼성');
-    await page.getByRole('checkbox', { name: '삼성전자 005930 2026-09-08 v 선택', exact: true }).check();
+    await page.getByRole('checkbox', { name: '삼성전자 005930 선택', exact: true }).check();
     await expect(removeLatest).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath('occurrence-details.png'), fullPage: true });
     if (total === 1) {
@@ -79,9 +80,10 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
     await expect(page.getByRole('button', { name: '삼성전자 2026-09-08 기간내 거래대금 발생 건 제외', exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/screener$/);
     await expect(page.getByRole('searchbox', { name: '결과 내 종목 검색' })).toHaveValue('삼성');
-    await expect(page.getByRole('checkbox', { name: '삼성전자 005930 2026-09-08 v 선택', exact: true })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: '삼성전자 005930 선택', exact: true })).toBeChecked();
     await expect(page.getByRole('button', { name: '삼성전자 2026-09-08 기간내 거래대금 발생 건 제외', exact: true })).toBeVisible();
     await page.reload();
+    await page.getByRole('button', { name: '삼성전자 발생 1건', exact: true }).click();
     await expect(page.getByRole('button', { name: /삼성전자 2026-09-09 .* 발생 건 제외/ })).toHaveCount(0);
     await page.getByRole('button', { name: '삼성전자 2026-09-08 기간내 거래대금 발생 건 제외', exact: true }).click();
     await expect(page.getByRole('button', { name: /삼성전자 .* 발생 건 제외/ })).toHaveCount(0);
@@ -90,6 +92,7 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
     await page.getByRole('button', { name: '삼성전자 2026-09-09 복원', exact: true }).click();
     await expect(page.getByRole('button', { name: '삼성전자 2026-09-09 복원', exact: true })).toHaveCount(0);
     await page.getByRole('dialog').getByRole('button', { name: /닫기/ }).click();
+    await page.getByRole('button', { name: '삼성전자 발생 1건', exact: true }).click();
     await expect(removeLatest).toBeVisible();
     expect(excluded.map(e => e.date)).toEqual(['2026-09-08']);
     expect(errors).toEqual([]);
