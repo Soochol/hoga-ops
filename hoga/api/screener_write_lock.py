@@ -43,3 +43,25 @@ def screener_write_lock(sdir: Path):
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+@contextmanager
+def screener_read_lock(sdir: Path):
+    """Read one published corpus; recover an interrupted publication before reading.
+
+    Use only from synchronous worker code. Do not nest inside the writer lock.
+    """
+    sdir.mkdir(parents=True, exist_ok=True)
+    with (sdir / ".writer.lock").open("a") as handle:
+        while True:
+            fcntl.flock(handle, fcntl.LOCK_SH)
+            if not (sdir / "history_publish.json").exists():
+                break
+            fcntl.flock(handle, fcntl.LOCK_UN)
+            # Never upgrade a shared lock in place: concurrent recoverers could deadlock.
+            with screener_write_lock(sdir):
+                pass
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)

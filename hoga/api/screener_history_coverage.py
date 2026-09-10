@@ -24,6 +24,7 @@ from hoga.api.models import (
     ScanRequest,
 )
 from hoga.api.screener_trade_value import TRADE_VALUE_SQL, WON_PER_EOK
+from hoga.api.screener_write_lock import screener_read_lock
 
 
 def history_leaves(conditions):
@@ -135,14 +136,16 @@ def latest_trade_value_match(plan: WindowPlan, values: dict[dt.date, float], min
 
 
 def evaluate(data_dir: Path, conditions, codes: list[str]) -> HistoryEvaluation:
-    versions = []
-    for name in ("daily_adjusted.parquet", "factors.parquet"):
-        path = data_dir / "screener" / name
-        stat = path.stat() if path.exists() else None
-        versions.append((stat.st_ino, stat.st_mtime_ns, stat.st_size) if stat else None)
-    calendar = tuple(sorted(trading_days.trading_days(data_dir)))
-    encoded = json.dumps([leaf.model_dump(mode="json") for leaf in history_leaves(conditions)], sort_keys=True)
-    return copy.deepcopy(_cached_evaluate(str(data_dir), encoded, tuple(codes), tuple(versions), calendar))
+    with screener_read_lock(data_dir / "screener"):
+        versions = []
+        for name in ("daily_adjusted.parquet", "factors.parquet"):
+            path = data_dir / "screener" / name
+            stat = path.stat() if path.exists() else None
+            versions.append((stat.st_ino, stat.st_mtime_ns, stat.st_size) if stat else None)
+        calendar = tuple(sorted(trading_days.trading_days(data_dir)))
+        encoded = json.dumps([leaf.model_dump(mode="json") for leaf in history_leaves(conditions)], sort_keys=True)
+        result = _cached_evaluate(str(data_dir), encoded, tuple(codes), tuple(versions), calendar)
+    return copy.deepcopy(result)
 
 
 @lru_cache(maxsize=4)
