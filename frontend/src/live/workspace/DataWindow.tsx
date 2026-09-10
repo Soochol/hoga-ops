@@ -608,26 +608,30 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
-      <DataContext mode={isSpot ? (bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점') : '최신 호가'} time={snapshot?.ts_ms} />
-      {showAvailableHint && (
-        <div
-          data-testid="orderbook-available-hint"
-          className="px-3 py-1 font-data text-xs text-fg-dim"
-        >
-          다음 가용: {formatKstClock(availableFrom)}
-        </div>
-      )}
-      {/* 위 힌트와 배타적이다 — 저쪽은 `bufferSnap === null`(진짜 공백), 이쪽은
-          `bufferSnap !== null`(버퍼가 답하는 중). 자리·토큰을 공유해 둘이 같은
-          "덜 확정된 상태" 라는 말임을 유지한다. */}
-      {showFormingHint && (
-        <div
-          data-testid="orderbook-forming-hint"
-          className="px-3 py-1 font-data text-xs text-fg-dim"
-        >
-          형성 중 · 실시간
-        </div>
-      )}
+      <DataContext mode={isSpot ? (bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점') : '최신 호가'} time={snapshot?.ts_ms}>
+        {/* 안내를 기준시각 행에 둬 커서 이동으로 사다리 높이가 변하지 않게 한다. */}
+        {showAvailableHint && (
+          <span
+            data-testid="orderbook-available-hint"
+            className="truncate"
+            title={`다음 가용: ${formatKstClock(availableFrom)}`}
+          >
+            다음 가용: {formatKstClock(availableFrom)}
+          </span>
+        )}
+        {/* 위 힌트와 배타적이다 — 저쪽은 `bufferSnap === null`(진짜 공백), 이쪽은
+            `bufferSnap !== null`(버퍼가 답하는 중). 자리·토큰을 공유해 둘이 같은
+            "덜 확정된 상태" 라는 말임을 유지한다. */}
+        {showFormingHint && (
+          <span
+            data-testid="orderbook-forming-hint"
+            className="truncate"
+            title="형성 중 · 실시간"
+          >
+            형성 중 · 실시간
+          </span>
+        )}
+      </DataContext>
       <div className="min-h-0 flex-1">
         <BookPanel
           snapshot={snapshot}

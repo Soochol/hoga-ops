@@ -163,13 +163,15 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText('+1억')).toBeInTheDocument();
   });
 
-  it('shows the 보간 label only when the picked point has gap_risk', () => {
+  it('does not toggle a 보간 label as the cursor crosses gap-risk points', () => {
     const series = seriesOf([
       point(T0, 1, { gap_risk: false }),
       point(T0 + 1000, 2, { gap_risk: true }),
     ]);
-    render(<ProgramTradeSummaryCard series={series} />);
-    expect(screen.getByText(/일부 구간 보간/)).toBeInTheDocument();
+    const { rerender } = render(<ProgramTradeSummaryCard series={series} cursorMs={T0} />);
+    expect(screen.queryByText(/일부 구간 보간/)).not.toBeInTheDocument();
+    rerender(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 1000} />);
+    expect(screen.queryByText(/일부 구간 보간/)).not.toBeInTheDocument();
   });
 });
 

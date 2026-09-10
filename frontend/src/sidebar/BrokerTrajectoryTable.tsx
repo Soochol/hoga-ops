@@ -157,32 +157,34 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
                 gapThresholdMs={gapThresholdMs}
                 onHoverMsChange={setHoverMs}
               />
-              {net == null ? (
-                // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
-                <span data-testid="broker-net-preobs" className="text-fg-dimmer text-right">—</span>
-              ) : (
-                <span className="block text-right">
+              {/* 관측 전·0에도 막대 2px + 간격 1px를 예약한다. 커서 이동으로
+                  막대가 토글돼도 행 높이와 스크롤 유무가 바뀌지 않아야 한다. */}
+              <span className="relative block pb-[3px] text-right">
+                {net == null ? (
+                  // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
+                  <span data-testid="broker-net-preobs" className="text-fg-dimmer">—</span>
+                ) : (
                   <span className={priceDirClass(net)}>
                     {net > 0 ? '+' : ''}
                     {net.toLocaleString('ko-KR')}
                   </span>
-                  {/* 규모 스트립 — 숫자 뒤 배경 바는 긴 값이 열을 채우면 가려져
-                      기능을 잃는다(2026-07-22 검토). 숫자 아래 2px 스트립은 항상
-                      노출되고, 저알파 tint 는 이 두께에서 안 보여 솔리드+감쇠. */}
-                  {maxAbsNet > 0 && net !== 0 && (
-                    <span
-                      aria-hidden
-                      data-testid="broker-net-bar"
-                      className="ml-auto mt-[1px] block h-[2px] rounded-sm"
-                      style={{
-                        width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
-                        background: net > 0 ? 'var(--price-up)' : 'var(--price-down)',
-                        opacity: 0.55,
-                      }}
-                    />
-                  )}
-                </span>
-              )}
+                )}
+                {/* 규모 스트립 — 숫자 뒤 배경 바는 긴 값이 열을 채우면 가려져
+                    기능을 잃는다(2026-07-22 검토). 숫자 아래 2px 스트립은 항상
+                    노출되고, 저알파 tint 는 이 두께에서 안 보여 솔리드+감쇠. */}
+                {net != null && maxAbsNet > 0 && net !== 0 && (
+                  <span
+                    aria-hidden
+                    data-testid="broker-net-bar"
+                    className="absolute bottom-0 right-0 block h-[2px] rounded-sm"
+                    style={{
+                      width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
+                      background: net > 0 ? 'var(--price-up)' : 'var(--price-down)',
+                      opacity: 0.55,
+                    }}
+                  />
+                )}
+              </span>
             </div>
           </div>
         );
