@@ -1,3 +1,4 @@
+import { DailyNetList } from './DailyNetList';
 /** 시장 종합 — 지수 커맨드센터 (#1102).
  *
  * 프로토타입 A 변형(`market/prototype/VariantA.tsx`)의 확정 구성을 실데이터로 옮긴 것이다.
@@ -54,7 +55,6 @@ import {
 import { priceDirClass } from '../ui/priceDir';
 import {
   AdvanceDeclineBar,
-  ComboNetChart,
   CumLinesChart,
   LegendItem,
   PctText,
@@ -559,7 +559,7 @@ export function ProgramCard() {
   const program = useMarketProgram(axis);
   const markets = program.data?.markets ?? {};
   return (
-    <MarketCard className="flex flex-col gap-sm p-sm">
+    <MarketCard className="market-switch-card flex flex-col gap-sm p-sm">
       <CardHeader
         title="프로그램"
         hint={axis === 'intraday' ? '당일 누적 · 억원' : '일별 · 억원'}
@@ -575,77 +575,78 @@ export function ProgramCard() {
           />
         }
       />
-      <DataStamp fetchedAt={program.dataUpdatedAt}
-        date={axis === 'daily' ? Object.values(markets).flat().map((p) => p.t).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
-        status={axis === 'intraday' ? '시간별 누적' : '일별'} />
-      {axis === 'daily' && <p className="text-2xs text-fg-dim">막대: 일별 순매수 · 선: 기간 누적 (각각의 척도)</p>}
-      {Object.keys(markets).length === 0 ? (
-        <EmptyNote>프로그램 매매 데이터를 받지 못했습니다.</EmptyNote>
-      ) : (
-        Object.entries(markets).map(([label, points]) => {
-          // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
-          // 일별은 20일만(프로토타입 확정) — 100일 막대는 콤보에서도 좁아진다.
-          const asc = axis === 'daily' ? [...points].reverse().slice(-20) : [...points].reverse();
-          const total = asc[asc.length - 1]?.total_net_eok ?? null;
-          // 당일(분 단위 ~330점)은 **누적 라인만** — 막대를 겹치면 1px 줄무늬
-          // 노이즈가 된다(실화면, 2026-08-05). 막대+라인 콤보는 일별(20점)의 문법.
-          const isIntraday = axis === 'intraday';
-          const hasValues = asc.some((p) => p.arb_net_eok !== null || p.non_arb_net_eok !== null);
-          const secOf = (t: string, i: number) =>
-            isIntraday && t.length === 6
-              ? Number(t.slice(0, 2)) * 3600 + Number(t.slice(2, 4)) * 60 + Number(t.slice(4))
-              : i;
-          // Some responses include after-hours samples (observed up to 20:00).
-          // Extend both plot and labels together instead of clamping them to 15:30.
-          const seconds = asc.map((p, i) => secOf(p.t, i));
-          const startSec = Math.min(9 * 3600, ...seconds);
-          const endSec = Math.max(15.5 * 3600, ...seconds);
-          return (
-            <div key={label} className="flex flex-col gap-2xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
-                <span className="text-xs font-semibold text-fg-dim">
-                  {MARKET_LABELS[label] ?? label}{' '}
-                  <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
-                    {fmtSigned(total)}
+      <div className="market-program-body flex flex-col gap-sm">
+        <DataStamp fetchedAt={program.dataUpdatedAt}
+          date={axis === 'daily' ? Object.values(markets).flat().map((p) => p.t).map((t) => t.slice(0, 8)).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
+          status={axis === 'intraday' ? '시간별 누적' : Object.values(markets).flat().some(p => p.t.slice(0, 8) === todayKstYyyymmdd()) ? '일별 · 오늘 잠정 포함' : '일별'} />
+        <p className="text-2xs text-fg-dim">{axis === 'daily' ? '단위: 억원 · + 순매수 / − 순매도 · 최신순' : '선: 시간별 누적 순매수'}</p>
+        {Object.keys(markets).length === 0 ? (
+          <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
+        ) : (
+          Object.entries(markets).map(([label, points]) => {
+            // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
+            // 일별은 최근 20거래일을 표로 표시한다.
+            const asc = axis === 'daily' ? [...points].reverse().slice(-20) : [...points].reverse();
+            const total = asc[asc.length - 1]?.total_net_eok ?? null;
+            // 당일(분 단위 ~330점)은 **누적 라인만** — 막대를 겹치면 1px 줄무늬
+            // 노이즈가 된다(실화면, 2026-08-05). 일별은 순매수 금액 표로 비교한다.
+            const isIntraday = axis === 'intraday';
+            const hasValues = asc.some((p) => p.arb_net_eok !== null || p.non_arb_net_eok !== null);
+            const secOf = (t: string, i: number) =>
+              isIntraday && t.length === 6
+                ? Number(t.slice(0, 2)) * 3600 + Number(t.slice(2, 4)) * 60 + Number(t.slice(4))
+                : i;
+            // Some responses include after-hours samples (observed up to 20:00).
+            // Extend both plot and labels together instead of clamping them to 15:30.
+            const seconds = asc.map((p, i) => secOf(p.t, i));
+            const startSec = Math.min(9 * 3600, ...seconds);
+            const endSec = Math.max(15.5 * 3600, ...seconds);
+            return (
+              <div key={label} className="flex flex-col gap-2xs">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
+                  <span className="text-xs font-semibold text-fg-dim">
+                    {MARKET_LABELS[label] ?? label}{' '}
+                    <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
+                      {fmtSigned(total)}
+                    </span>
                   </span>
-                </span>
-                <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-                  <LegendItem color={SERIES_COLORS.arb} label="차익" />
-                  <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
-                </span>
+                  {isIntraday && <span className="flex items-center gap-md font-data text-2xs tabular-nums">
+                    <LegendItem color={SERIES_COLORS.arb} label="차익" />
+                    <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
+                  </span>}
+                </div>
+                {!hasValues && isIntraday ? (
+                  <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
+                ) : isIntraday ? (
+                  <>
+                    <SessionLinesChart
+                      names={['차익', '비차익']}
+                      sessionStartSec={startSec}
+                      sessionEndSec={endSec}
+                      series={[
+                        { color: SERIES_COLORS.arb,
+                          points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
+                        { color: SERIES_COLORS.nonArb,
+                          points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.non_arb_net_eok })) },
+                      ]}
+                      height={96}
+                    />
+                    <SessionAxisLabels startSec={startSec} endSec={endSec} />
+                    <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
+                  </>
+                ) : (
+                  <>
+                    <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
+                      columns={['차익', '비차익', '합계']}
+                      rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
+                    <span className="text-2xs text-fg-dim">표본 {asc.length}거래일</span>
+                  </>
+                )}
               </div>
-              {!hasValues ? (
-                <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
-              ) : isIntraday ? (
-                <>
-                  <SessionLinesChart
-                    names={['차익', '비차익']}
-                    sessionStartSec={startSec}
-                    sessionEndSec={endSec}
-                    series={[
-                      { color: SERIES_COLORS.arb,
-                        points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
-                      { color: SERIES_COLORS.nonArb,
-                        points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.non_arb_net_eok })) },
-                    ]}
-                    height={56}
-                  />
-                  <SessionAxisLabels startSec={startSec} endSec={endSec} />
-                  <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
-                </>
-              ) : (
-                <ComboNetChart
-                  a={{ color: SERIES_COLORS.arb, values: asc.map((p) => p.arb_net_eok) }}
-                  b={{ color: SERIES_COLORS.nonArb, values: asc.map((p) => p.non_arb_net_eok) }}
-                  height={56}
-                  labels={asc.map((p) => formatMarketDate(p.t))}
-                  names={['차익', '비차익']}
-                />
-              )}
-            </div>
-          );
-        })
-      )}
+            );
+          })
+        )}
+      </div>
     </MarketCard>
   );
 }

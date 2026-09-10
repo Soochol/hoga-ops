@@ -44,9 +44,7 @@ export function AdvanceDeclineBar({
 
 type Series = { color: string; values: (number | null)[]; observed?: boolean[] };
 
-function finite(values: (number | null)[]): number[] {
-  return values.filter((v): v is number => v !== null && Number.isFinite(v));
-}
+
 
 /** 다계열 누적 라인 — delta 배열을 누적해 그린다. 0 기준선 공유. */
 export function CumLinesChart({
@@ -95,78 +93,6 @@ export function CumLinesChart({
     </svg>
     {labels && <ChartProbe labels={labels} summaries={labels.map((_, i) =>
       cums.map((values, j) => `${names?.[j] ?? `계열 ${j + 1}`} ${series[j].values[i] == null || series[j].observed?.[i] === false ? '—' : `${values[i]?.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}${unit}`}`).join(' · ')
-    )} />}
-    </div>
-  );
-}
-
-/** 일별 막대(강도) + 누적 라인(방향) 콤보. 같은 계열은 같은 색, 막대는 반투명. */
-export function ComboNetChart({
-  a,
-  b,
-  height = 96,
-  labels,
-  names = ['첫 계열', '둘째 계열'],
-}: {
-  labels?: string[];
-  names?: [string, string];
-  a: Series;
-  b: Series;
-  height?: number;
-}) {
-  const n = a.values.length;
-  if (n < 1) return null;
-  const width = 300;
-  const maxAbs = Math.max(...finite(a.values).map(Math.abs), ...finite(b.values).map(Math.abs), 1);
-  const mid = height / 2;
-  const slot = width / n;
-  const bw = Math.max((slot - 2) / 2, 1.5);
-  const cum = (values: (number | null)[]) => {
-    let acc = 0;
-    return values.map((v) => (acc += v ?? 0));
-  };
-  const aCum = cum(a.values);
-  const bCum = cum(b.values);
-  const all = [...aCum, ...bCum, 0];
-  const cMin = Math.min(...all);
-  const cSpan = Math.max(...all) - cMin || 1;
-  const px = (i: number) => i * slot + slot / 2;
-  const py = (v: number) => height - 3 - ((v - cMin) / cSpan) * (height - 6);
-  const path = (s: number[]) =>
-    s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
-  const bar = (v: number | null, x: number, color: string, key: string) => {
-    if (v === null) return null;
-    const bh = (Math.abs(v) / maxAbs) * (mid - 3);
-    return (
-      <rect
-        key={key}
-        x={x}
-        y={v >= 0 ? mid - bh : mid}
-        width={bw}
-        height={Math.max(bh, 0.75)}
-        fill={color}
-        opacity="0.45"
-      />
-    );
-  };
-  return (
-    <div className="relative">
-    <svg
-      width="100%"
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      className="block"
-    >
-      <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--border-strong)" />
-      {a.values.map((v, i) => bar(v, i * slot + 1, a.color, `a${i}`))}
-      {b.values.map((v, i) => bar(v, i * slot + 1 + bw + 0.5, b.color, `b${i}`))}
-      <path d={path(aCum)} fill="none" stroke={a.color} strokeWidth="1.5" strokeLinejoin="round" />
-      <path d={path(bCum)} fill="none" stroke={b.color} strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
-    {labels && <ChartProbe labels={labels} summaries={labels.map((_, i) =>
-      [a, b].map((series, j) => `${names[j]} 일별 ${fmtSigned(series.values[i])}억 / 누적 ${series.values[i] == null ? '—' : fmtSigned((j === 0 ? aCum : bCum)[i])}억`).join(' · ')
     )} />}
     </div>
   );

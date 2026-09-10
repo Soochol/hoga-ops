@@ -2,10 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
 
-async function marketMocks(page: Page) {
+async function marketMocks(page: Page, populated = false) {
   await installLiveMocks(page);
   await page.route(apiPrefix('market/'), async (route) => {
-    const path = new URL(route.request().url()).pathname.split('/').at(-1);
+    const url = new URL(route.request().url());
+    const path = url.pathname.split('/').at(-1);
     const responses: Record<string, unknown> = {
       sectors: { markets: { '0': { sectors: [{ code: '1', name: '긴 업종 이름', change_pct: 2 }] } }, volatility: { value: 20, change_pct: 1 } },
       'futures-quotes': { quotes: [], session: 'closed' },
@@ -13,7 +14,10 @@ async function marketMocks(page: Page) {
         { date: '20260901', deposit_won: 100e12, credit_won: 30e12, cma_won: 80e12 },
         { date: '20260904', deposit_won: 93.5e12, credit_won: 31e12, cma_won: 81e12 },
       ] },
-      'investor-flow': { date: '20260909', confirmed: false, markets: {}, coverage: {}, daily: [
+      'investor-flow': { date: '20260909', confirmed: false, markets: populated ? { KOSPI: [
+        { t_ms: Date.UTC(2026, 8, 9, 0), individual: 10, foreign: -5, institution: -5 },
+        { t_ms: Date.UTC(2026, 8, 9, 1), individual: 20, foreign: -10, institution: -10 },
+      ] } : {}, coverage: {}, daily: [
         { date: '20260908', markets: { KOSPI: { foreign: 100, institution: -100 } } },
       ] },
       'deriv-flow': { date: '20260909', products: {}, unit: null },
@@ -24,6 +28,13 @@ async function marketMocks(page: Page) {
       ] } },
       streaks: {}, breadth: { markets: {} }, 'trade-value': { markets: {} },
     };
+    if (populated && path === 'program') {
+      const points = ['090000', '100000'].map((t, i) => ({
+        t: url.searchParams.get('axis') === 'daily' ? `2026090${9 - i}000000` : t,
+        arb_net_eok: 100 + i * 10, non_arb_net_eok: -20, total_net_eok: 80 + i * 10,
+      }));
+      responses.program = { markets: { KOSPI: points, KOSDAQ: points } };
+    }
     await route.fulfill({ json: responses[path ?? ''] ?? {} });
   });
   await page.route(apiPrefix('live/index-quotes'), (r) => r.fulfill({ json: { quotes:
@@ -70,4 +81,68 @@ test('market empty-state action, chart keyboard inspection and after-hours axis'
   await chart.press('End');
   await expect(chart.getByRole('status')).toContainText('09/04');
   await expect(chart.getByRole('status')).toContainText('-6.5조원');
+});
+
+for (const populated of [false, true]) for (const width of [1440, 800, 600]) {
+  test(`mode switches preserve card and scroll positions at ${width}px (populated=${populated})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await marketMocks(page, populated);
+    await page.goto('/market');
+    await expect(page.getByText('93.5조', { exact: true })).toBeVisible();
+    for (const label of ['수급 표시 구간', '프로그램 표시 구간']) {
+      const group = page.getByRole('group', { name: label, exact: true });
+      await group.scrollIntoViewIfNeeded();
+      const positions = () => page.locator('.market-page').evaluate((root) => ({
+        headings: [...root.querySelectorAll('h2')].map((el) => el.getBoundingClientRect().top),
+        buttons: [...root.querySelectorAll('[aria-label="수급 표시 구간"] button,[aria-label="프로그램 표시 구간"] button')].map((el) => ({ top: el.getBoundingClientRect().top, left: el.getBoundingClientRect().left })),
+        scroll: [...root.querySelectorAll('*')].filter((el) => el.scrollTop > 0).map((el) => el.scrollTop),
+      }));
+      const before = await positions();
+      for (const mode of ['일별', '당일', '일별', '당일']) {
+        await group.getByRole('button', { name: mode, exact: true }).click();
+        expect(await positions()).toEqual(before);
+        if (populated && label === '프로그램 표시 구간') {
+          if (mode === '일별') await expect(page.getByText('표본 2거래일', { exact: true })).toHaveCount(2);
+          else await expect(page.getByText(/표본 2개/)).toHaveCount(2);
+        }
+        await expect.poll(positions).toEqual(before);
+        if (populated) {
+          const overflow = await page.locator('.market-investor-body,.market-program-body')
+            .evaluateAll(elements => elements.map(el => el.scrollHeight - el.clientHeight));
+          expect(overflow.every(px => px <= 1)).toBe(true);
+        }
+      }
+    }
+  });
+}
+
+test('daily list keeps its header and total visible while dates scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await marketMocks(page);
+  await page.route(apiPrefix('market/investor-flow'), route => route.fulfill({ json: {
+    date: '20260909', markets: {}, daily: Array.from({ length: 20 }, (_, i) => ({
+      date: `202608${String(i + 1).padStart(2, '0')}`,
+      markets: { KOSPI: { foreign: i * 100, institution: -i * 10 } },
+    })),
+  } }));
+  await page.goto('/market');
+  await page.getByRole('group', { name: '수급 표시 구간', exact: true }).getByRole('button', { name: '일별', exact: true }).click();
+  const table = page.getByRole('table', { name: '투자자 일별 수급 · 단위 억원' });
+  await expect(table.locator('.daily-net-rows [role="row"]').first()).toContainText('08/20');
+  const viewport = page.getByRole('region', { name: '투자자 일별 수급 목록 스크롤' });
+  await viewport.scrollIntoViewIfNeeded();
+  const metrics = () => viewport.evaluate(el => ({
+    header: el.querySelector('.daily-net-heading')!.getBoundingClientRect().top,
+    footer: el.querySelector('.daily-net-total')!.getBoundingClientRect().bottom,
+    overflow: el.scrollWidth - el.clientWidth,
+  }));
+  const before = await metrics();
+  await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const after = await metrics();
+  // scrollTop is rounded to CSS pixels, while row heights may be fractional.
+  expect(Math.abs(after.header - before.header)).toBeLessThan(1);
+  expect(Math.abs(after.footer - before.footer)).toBeLessThan(1);
+  expect(after.overflow).toBeLessThanOrEqual(1);
+  expect(before.overflow).toBeLessThanOrEqual(1);
+  await expect(table.locator('.daily-net-rows [role="row"]').last()).toBeInViewport();
 });

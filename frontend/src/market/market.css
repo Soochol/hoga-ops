@@ -14,3 +14,40 @@
   .market-indices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-pair, .market-ranks { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Reserve the same shell for both modes, including pending/empty responses.
+   rem tracks the density dial; px tracks the existing SVG plot heights. */
+.market-switch-card > :first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.market-switch-card h2 > span { display: block; min-height: 2.5em; }
+.market-investor-body { height: calc(128px + 9rem); }
+.market-program-body { height: calc(192px + 13rem); }
+.market-investor-body, .market-program-body { overflow-y: auto; flex-shrink: 0; }
+.market-investor-body > *, .market-program-body > * { flex-shrink: 0; }
+@container market (max-width: 40rem) {
+  .market-investor-body { height: calc(128px + 11rem); }
+}
+
+.daily-net-list {
+  height: 10rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.daily-net-list-compact { height: 8rem; }
+.daily-net-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.daily-net-row {
+  display: grid;
+  grid-template-columns: var(--daily-columns);
+  align-items: center;
+  column-gap: 0.5rem;
+  padding-block: 0.25rem;
+}
+.daily-net-row > * { white-space: nowrap; min-width: 0; }
+.daily-net-rows .daily-net-row { border-bottom: 1px solid var(--border); }
+.daily-net-rows .daily-net-row:last-child { border-bottom: 0; }
+.daily-net-heading { position: sticky; top: 0; z-index: 2; background: var(--bg); }
+.daily-net-total { position: sticky; bottom: 0; z-index: 2; background: var(--bg); border-top: 1px solid var(--border); }

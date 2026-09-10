@@ -66,7 +66,7 @@ export function stockSeriesDiffs(values: (number | null)[]): (number | null)[] {
 }
 
 export function formatMarketDate(date: string): string {
-  return /^\d{8}$/.test(date) ? `${date.slice(4, 6)}/${date.slice(6, 8)}` : date;
+  return /^\d{8}(?:\d{6})?$/.test(date) ? `${date.slice(4, 6)}/${date.slice(6, 8)}` : date;
 }
 
 const kstTime = new Intl.DateTimeFormat('ko-KR', {
