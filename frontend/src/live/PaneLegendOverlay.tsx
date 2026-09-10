@@ -77,6 +77,8 @@ import { formatHhmm } from '../util/tradingTime';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
+  /** Hide indicator legends while keeping the candle OHLC readout. */
+  indicatorLegendsVisible?: boolean;
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneToggles: PaneToggles;
@@ -705,6 +707,7 @@ function CellsLegendRow({
 }
 
 function PaneLegendOverlay({
+  indicatorLegendsVisible = true,
   chart,
   timeframe,
   paneToggles,
@@ -1130,9 +1133,11 @@ function PaneLegendOverlay({
   }).filter(
     (r) =>
       r.kind === 'ohlc' ||
-      r.kind === 'ma' ||
-      (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.type)) ||
-      (r.kind === 'cells' && LEGEND_CELL_PANES.has(r.paneId)),
+      (indicatorLegendsVisible && (
+        r.kind === 'ma' ||
+        (r.kind === 'flag' && LEGEND_FLAG_IDS.has(r.type)) ||
+        (r.kind === 'cells' && LEGEND_CELL_PANES.has(r.paneId))
+      )),
   );
 
   // ── pane geometry (runtime order, not static paneTopY) ─────────────────
@@ -1212,6 +1217,7 @@ function PaneLegendOverlay({
           왼쪽 이름 핸들을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더.
           병합 pane 은 멤버들의 행을 그룹 순서대로 이어 붙인다. */}
       {groups.map((group, idx) => {
+        if (!indicatorLegendsVisible && idx > 0) return null;
         const paneId = group[0].name;
         const groupKey = group.map((s) => s.name).join(',');
         // Pane not mounted yet (first frame after a toggle/reorder) → skip;

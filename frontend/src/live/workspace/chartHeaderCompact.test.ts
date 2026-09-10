@@ -31,9 +31,9 @@ describe('nextHeaderFold', () => {
 
   // 임계 아래에서 마지막 액션 버튼이 overflow-hidden 에 예고 없이 잘려 사라진다
   // (#762 원 실측: 2버튼 시절 250px 에서 41px 스필). 1단계는 그 무성 손실을 막고,
-  // 봉 버튼은 아직 살려둔다 — 300px 는 두 임계 사이(262 ≤ w < 414).
+  // 봉 버튼은 아직 살려둔다 — 두 임계 사이의 폭으로 검증한다.
   it('folds action labels first, keeping the timeframe buttons', () => {
-    const fold = nextHeaderFold(300, HEADER_FOLD_NONE);
+    const fold = nextHeaderFold(HEADER_TIMEFRAME_FOLD_WIDTH_PX + 1, HEADER_FOLD_NONE);
     expect(fold.compactActions).toBe(true);
     expect(fold.compactTimeframe).toBe(false);
   });
@@ -52,25 +52,20 @@ describe('nextHeaderFold', () => {
   // 남아 있었다 — 임계 258 이 실요구 254.25 위 3.75px 여유로 우연히 살아 있어서
   // 무증상이었다. **여유가 근거처럼 보이는 것이 이 계열 버그의 공통 서명이다.**
   it('keeps thresholds above the measured requirement for the current button set', () => {
-    // 2026-08-22 재실측 @1.0× · **240분 라벨(진짜 최장)** · 액션 6버튼
-    // (hogaplay 소스 추가). 다이얼이나 버튼 구성이 바뀌면 `LIVE_HEADER_NEED` 를
-    // 재측정한다. 같은 실측의 대조군(신규 버튼 제외·30분)은 종전 상수 412/257/148 을
-    // 정확히 재현했다 — 그 대조가 절차의 유효성 증거다(파일 도크스트링의 표).
-    const MEASURED_LABEL_WIDTH_PX = 449;
-    const MEASURED_ICON_WIDTH_PX = 286;
+    // 2026-09-10 Chrome @1.0×, 240분 라벨과 레전드 버튼을 포함한 실측 올림.
+    const MEASURED_LABEL_WIDTH_PX = 474;
+    const MEASURED_ICON_WIDTH_PX = 310;
     expect(LIVE_HEADER_NEED.full).toBe(MEASURED_LABEL_WIDTH_PX);
     expect(LIVE_HEADER_NEED.actionsFolded).toBe(MEASURED_ICON_WIDTH_PX);
     expect(HEADER_LABEL_MIN_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_LABEL_WIDTH_PX);
     expect(HEADER_TIMEFRAME_FOLD_WIDTH_PX).toBeGreaterThanOrEqual(MEASURED_ICON_WIDTH_PX);
   });
 
-  // 접힘의 마지막 단계는 **더 접을 것이 없으므로** 그 자체로 `MIN_W` 창에 들어가야
-  // 한다 — 여기서 넘치면 임계를 어떻게 잡아도 오른쪽 끝 버튼이 무성 잘린다.
-  // 두 번째 단언이 하트를 그 단계에서 내리는 이유다: 되살리면 예산을 넘는다.
-  it('fits the fully folded header inside the narrowest window, state icons excluded', () => {
+  // 마지막 단계의 자연폭도 최소 창보다 넓다. 실제 줄바꿈·버튼 접근은 E2E로 검증한다.
+  it('requires wrapping in the narrowest window even with state icons excluded', () => {
     // 창 rect 는 좌우 GAP/2 를 패딩으로 쓰므로 헤더 컨테이너는 MIN_W - 2.
     const container = MIN_W - 2;
-    expect(LIVE_HEADER_NEED.bothFolded).toBeLessThanOrEqual(container);
+    expect(LIVE_HEADER_NEED.bothFolded).toBeGreaterThan(container);
     // 상태 아이콘은 **하나만 되살려도** 예산을 넘는다 — 둘을 각각 재는 것이 요점이다.
     // 하나로 묶어 두면 "하트만 남기면 되지 않나" 를 이 테스트가 답할 수 없다.
     expect(LIVE_HEADER_NEED.bothFolded + HEART_FOLDED_WIDTH_PX).toBeGreaterThan(container);
@@ -201,11 +196,10 @@ describe('/study 접힘 불변식 (#905 실측 고정)', () => {
 });
 
 /**
- * 캘린더 봉 창은 「분봉으로」를 하나 더 든다(2026-08-22 실측 Δ full +70 /
- * actionsFolded +22 / bothFolded 0). #767 이 남긴 규율 그대로, 버튼이 늘었으면
- * 임계도 같이 움직여야 한다.
+ * 캘린더 봉 창에는 분봉 이동·조회 날짜·패턴 영역이 추가된다.
+ * 현재 버튼 구성의 실측으로 분봉과 캘린더 임계를 각각 검증한다.
  */
-describe('캘린더 창 접힘 불변식 (2026-08-22 실측 고정)', () => {
+describe('캘린더 창 접힘 불변식 (2026-09-10 실측 고정)', () => {
   it('각 단계 임계는 그 단계 형태의 요구 폭보다 크다', () => {
     expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx)
       .toBeGreaterThan(LIVE_CALENDAR_HEADER_NEED.full);
@@ -222,17 +216,17 @@ describe('캘린더 창 접힘 불변식 (2026-08-22 실측 고정)', () => {
     expect(HEADER_LABEL_MIN_WIDTH_PX).toBeLessThan(LIVE_CALENDAR_HEADER_NEED.full);
   });
 
-  // 반대 방향도 함께 막는다: 캘린더 값을 분봉 창에 씌우면 라벨이 70px 일찍 사라진다.
+  // 반대 방향도 함께 막는다: 캘린더 값을 분봉 창에 씌우면 라벨이 165px 일찍 사라진다.
   // `/study` 임계를 따로 둔 것과 같은 사유이고, 그 주석이 "양방향으로 틀린다" 로
   // 기록한 실패다.
   it('분봉 창은 자기 임계를 그대로 쓴다 — 캘린더 값에 끌려가지 않는다', () => {
     expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx)
       .toBeGreaterThan(HEADER_LABEL_MIN_WIDTH_PX);
-    expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx - HEADER_LABEL_MIN_WIDTH_PX).toBe(70);
+    expect(LIVE_CALENDAR_HEADER_FOLD.labelMinWidthPx - HEADER_LABEL_MIN_WIDTH_PX).toBe(165);
   });
 
-  it('2단계는 분봉과 같다 — 그 단계에서는 「분봉으로」를 렌더하지 않는다', () => {
-    expect(LIVE_CALENDAR_HEADER_NEED.bothFolded).toBe(LIVE_HEADER_NEED.bothFolded);
+  it('2단계에서도 캘린더 패턴 버튼 공간을 확보한다', () => {
+    expect(LIVE_CALENDAR_HEADER_NEED.bothFolded).toBeGreaterThan(LIVE_HEADER_NEED.bothFolded);
     expect(showsWatchlistHeart({ compactActions: true, compactTimeframe: true })).toBe(false);
   });
 

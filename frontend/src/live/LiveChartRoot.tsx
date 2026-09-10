@@ -286,6 +286,7 @@ function dailyLogicalRange(
 }
 
 interface Props {
+  indicatorLegendsVisible?: boolean;
   code: string | null;
   timeframe: LiveTimeframe;
   /**
@@ -513,6 +514,7 @@ export function shouldShowDepthHeatmapOverlay(
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
 export function LiveChartRoot({
+  indicatorLegendsVisible = true,
   code,
   timeframe,
   onSearchPattern,
@@ -2836,6 +2838,7 @@ export function LiveChartRoot({
               식별자가 안정(2026-06-09 bundle-split)이라 레전드 재렌더가 차단되고, 캔들
               갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
           <PaneLegendOverlay
+            indicatorLegendsVisible={indicatorLegendsVisible}
             chart={chart}
             timeframe={timeframe}
             paneToggles={activePaneToggles}

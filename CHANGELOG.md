@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.6.0] - 2026-09-10
+
+### Added
+- 캔들 차트 상단에 창별 레전드 켜기·끄기 눈 아이콘을 추가한다. 시가·고가·저가·종가는 항상 표시하고 지표 선은 유지한다.
+
+### Changed
+- 버튼 구성에 맞춰 차트 헤더 접힘 기준을 실측 갱신하고, 최소 폭에서도 버튼을 사용할 수 있도록 줄바꿈을 지원한다.
+
 ## [0.16.5.3] - 2026-09-10
 
 ### Changed
