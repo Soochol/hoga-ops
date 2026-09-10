@@ -1,6 +1,7 @@
 """시세 조회·마감 캐시·응답 신선도 정책. FastAPI 라우트와 독립된 모듈."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime
 from typing import NamedTuple
@@ -8,6 +9,7 @@ from typing import NamedTuple
 from pydantic import BaseModel, Field
 
 from hoga.live import kiwoom_multi_quote
+from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.quote_change_resolver import QuoteChangeResolver
@@ -85,7 +87,60 @@ class LiveQuoteFetcher:
         # 증상: 장 마감 후 venue 를 바꿔도 히트맵 행의 캔들·시가가 그대로.
         self._last_quotes: dict[tuple[str, str], _QuoteSample] = {}
         self._generation = 0
+        self._tasks: set[asyncio.Task] = set()
+        self._closed = False
         self._change_resolver = change_resolver or QuoteChangeResolver(adjusted_daily_path=None)
+
+    @property
+    def change_resolver(self) -> QuoteChangeResolver:
+        return self._change_resolver
+
+    async def fetch_with_timeout(self, *args, timeout: float = 1.0, **kwargs) -> list[LiveQuote]:
+        """Own background cache fills even after the HTTP waiter times out."""
+        if self._closed:
+            raise RuntimeError("quote fetcher is closed")
+        task = asyncio.create_task(self.fetch_and_gate(*args, **kwargs), name="live-quote-fill")
+        self._tasks.add(task)
+        task.add_done_callback(self._completed)
+        return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+
+    def _completed(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            log.warning("background quote fill failed: %s", error, exc_info=error)
+
+    async def aclose(self) -> None:
+        self._closed = True
+        tasks = tuple(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
+
+    async def _fetch_partial(self, client, codes, venue, fetch_chunk_fn):
+        failures: dict[str, str] = {}
+
+        async def fetch(chunk):
+            try:
+                rows = await (fetch_chunk_fn(chunk) if fetch_chunk_fn else
+                              kiwoom_multi_quote.fetch_chunk(client, chunk, venue=venue))
+            except Exception as error:  # noqa: BLE001 — vendor I/O boundary, per-chunk fallback
+                reason = ("capacity_overloaded_upstream" if isinstance(error, KiwoomCapacityOverloaded)
+                          else classify_live_error(error).reason)
+                if reason == "unexpected_error":
+                    reason = "fetch_failed"
+                failures.update(dict.fromkeys(chunk, reason))
+                log.warning("quote chunk failed; using cached rows (%d codes, %s): %s",
+                            len(chunk), reason, error)
+                return []
+            returned = {q.code for q in rows}
+            failures.update({code: "quote_missing" for code in chunk if code not in returned})
+            return rows
+
+        quotes = await kiwoom_multi_quote.fetch_multi_price(
+            client, codes, venue=venue, fetch_chunk_fn=fetch,
+        )
+        return quotes, failures
 
     def _remember(
         self, quotes: list[Quote], *, venue: Venue, phase: str, day: date, generation: int,
@@ -178,11 +233,11 @@ class LiveQuoteFetcher:
                 c for c in code_list
                 if not self.is_closing_sample(self._last_quotes.get((venue, c)), day)
             ]
+            failures: dict[str, str] = {}
             if refetch:
                 try:
-                    quotes = await kiwoom_multi_quote.fetch_multi_price(
-                        client, refetch, venue=venue,
-                        fetch_chunk_fn=fetch_chunk_fn,
+                    quotes, failures = await self._fetch_partial(
+                        client, refetch, venue, fetch_chunk_fn,
                     )
                     self._remember(quotes, venue=venue, phase=phase, day=day, generation=generation)
                 except KiwoomCapacityOverloaded:
@@ -201,13 +256,14 @@ class LiveQuoteFetcher:
                 # 소비자(현재가 라인·탭 제목)는 isStaleLiveQuote 로 이걸 거른다.
                 if not self.is_closing_sample(sample, day):
                     row = row.model_copy(
-                        update={"stale": True, "stale_reason": "pre_close_sample"}
+                        update={"stale": True, "stale_reason": "pre_close_sample",
+                                "warnings": [*row.warnings, failures[code]] if code in failures else row.warnings}
                     )
                 rows.append(row)
             return rows
         try:
-            quotes = await kiwoom_multi_quote.fetch_multi_price(
-                client, code_list, venue=venue, fetch_chunk_fn=fetch_chunk_fn,
+            quotes, failures = await self._fetch_partial(
+                client, code_list, venue, fetch_chunk_fn,
             )
         except KiwoomCapacityOverloaded:
             # **재전파한다.** 청킹이 거버너 위로 올라가면서 이 예외가 여기 안쪽에서
@@ -227,7 +283,12 @@ class LiveQuoteFetcher:
                 venue=venue,
             )
         quotes = self._remember(quotes, venue=venue, phase=phase, day=day, generation=generation)
-        return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
+        rows = {q.code: self._to_live_quote(q, phase=phase, today=today) for q in quotes}
+        for code, reason in failures.items():
+            fallback = self.stale_last_good([code], phase, today, venue=venue, stale_reason=reason)
+            if fallback:
+                rows[code] = fallback[0]
+        return [rows[code] for code in code_list if code in rows]
 
     def stale_last_good(
         self,

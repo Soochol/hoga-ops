@@ -680,7 +680,7 @@ _SECTOR_BROADCAST_INTERVAL_S = 1.0
 #: 브로드캐스트가 싣는 필드 — 화면이 실제로 쓰는 것만. 전체 스냅샷을 보내면 시고저·
 #: 누적거래량까지 매초 나가는데 어느 카드도 그걸 안 쓴다.
 _SECTOR_WIRE_FIELDS = (
-    "value", "change", "change_pct", "trade_value_eok",
+    "value", "change", "change_pct", "trade_value_eok", "t_ms",
     "rising", "falling", "flat", "upper", "lower",
 )
 

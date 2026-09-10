@@ -15,7 +15,10 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+
+from hoga.util.timeenc import KST
 
 from . import kiwoom_runtime
 from .buffer import LiveBuffer
@@ -572,9 +575,25 @@ class KiwoomSessionManager:
         tick = parse_sector_row(row)
         if tick is None:
             return
-        self._sector_snapshots[tick.code] = merge_tick(
-            self._sector_snapshots.get(tick.code), tick
-        )
+        previous = self._sector_snapshots.get(tick.code)
+        price_ms = None
+        if tick.value is not None:
+            # Price timestamp belongs to 0J, never to a later breadth-only 0U.
+            stamp = tick.hhmmss
+            if len(stamp) == 6 and stamp.isdigit():  # noqa: PLR2004 — HHMMSS
+                hour, minute, second = int(stamp[:2]), int(stamp[2:4]), int(stamp[4:])
+                if hour < 24 and minute < 60 and second < 60:  # noqa: PLR2004 — clock ranges
+                    observed = datetime.fromtimestamp(now_ms / 1000, KST)
+                    price_ms = int(observed.replace(hour=hour, minute=minute, second=second,
+                                                    microsecond=0).timestamp() * 1000)
+            if price_ms is None:
+                price_ms = now_ms
+            if previous and price_ms < previous.get("t_ms", 0):
+                return
+        merged = merge_tick(previous, tick)
+        if price_ms is not None:
+            merged["t_ms"] = price_ms
+        self._sector_snapshots[tick.code] = merged
         self._sector_tick_count += 1
         self._sector_last_ms = now_ms
 

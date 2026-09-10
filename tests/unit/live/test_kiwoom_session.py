@@ -432,3 +432,22 @@ async def test_watchdog_registration_complete_clears_flag():
     await mgr.watchdog_pass(_NXT_MS)
     assert mgr.status()["registration_incomplete"] is False
     await mgr.stop()
+
+
+def test_sector_price_timestamp_ignores_breadth_and_older_price(monkeypatch):
+    from hoga.live import kiwoom_session
+    from hoga.live.kiwoom_sector_frames import SectorTick
+
+    manager, _ = _fake_manager()
+    ticks = iter([
+        SectorTick(code='001', kind='0J', hhmmss='100000', value=200),
+        SectorTick(code='001', kind='0U', hhmmss='100100', rising=500),
+        SectorTick(code='001', kind='0J', hhmmss='095900', value=100),
+    ])
+    monkeypatch.setattr(kiwoom_session, 'parse_sector_row', lambda row: next(ticks))
+    for _ in range(3):
+        manager._on_sector_row({}, _ms(10, 2))
+    snapshot = manager.sector_snapshot()['001']
+    assert snapshot['value'] == 200
+    assert snapshot['t_ms'] == _ms(10, 0)
+    assert snapshot['rising'] == 500

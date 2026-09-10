@@ -119,3 +119,14 @@ describe('applySectorTick', () => {
     expect(qc.getQueryData(['market', 'sectors'])).toBe(before);
   });
 });
+
+it('advances the price timestamp and ignores an older price tick', () => {
+  const qc = new QueryClient();
+  seedQuotes(qc);
+  applySectorTick(qc, evt({ '001': { value: 6400, t_ms: 300 } }));
+  applySectorTick(qc, evt({ '001': { value: 6200, t_ms: 200 } }));
+  expect(qc.getQueryData<MarketIndexQuote[]>(['market-index-quotes'])?.[0])
+    .toMatchObject({ value: 6400, tMs: 300 });
+  applySectorTick(qc, evt({ '001': { rising: 500 } }));
+  expect(qc.getQueryData<MarketIndexQuote[]>(['market-index-quotes'])?.[0].tMs).toBe(300);
+});

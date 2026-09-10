@@ -780,3 +780,23 @@ def test_quotes_without_summary_fields_still_serve(monkeypatch, tmp_path):
     r = c.get("/api/live/quotes", params={"codes": "005930"})
     assert r.status_code == 200
     assert r.json()["quotes"][0]["fill_strength_pct"] is None
+
+
+def test_partial_chunk_failure_serializes_missing_codes(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, '_quote_phase', lambda now, venue_policy='KRX': 'open')
+
+    class PartialClient:
+        async def fetch_multi_price(self, codes, *, venue='KRX'):
+            if codes == ['000100']:
+                raise RuntimeError('synthetic chunk failure')
+            return [Quote(code, 100, 0) for code in codes]
+
+    app = _app([], tmp_path)
+    kis_runtime.set_kis_client(PartialClient(), 0)
+    with TestClient(app) as client:
+        response = client.get('/api/live/quotes', params={
+            'codes': ','.join(f'{i:06d}' for i in range(101)), 'venue': 'KRX',
+        })
+    assert response.status_code == 200
+    assert len(response.json()['quotes']) == 100
+    assert response.json()['missing_codes'] == ['000100']

@@ -30,6 +30,8 @@ import type { MarketIndexQuote } from './marketIndexQuotes';
 /** 서버가 싣는 필드(= 화면이 쓰는 것만). 전 스냅샷을 보내지 않는 이유는 백엔드
  *  `_SECTOR_WIRE_FIELDS` 주석 참조. 전부 optional — 그 틱이 말한 것만 온다. */
 export interface SectorTickWire {
+  /** Price observation timestamp; breadth-only ticks do not advance it. */
+  t_ms?: number;
   value?: number;
   change?: number;
   change_pct?: number;
@@ -140,10 +142,11 @@ function patchIndexQuotes(qc: QueryClient, sectors: Record<string, SectorTickWir
         (c) => SECTOR_CODE_TO_INDEX_ID[c] === q.id,
       );
       const tick = code ? sectors[code] : undefined;
-      if (!tick) return q;
+      if (!tick || (tick.t_ms !== undefined && tick.t_ms < q.tMs)) return q;
       touched = true;
       return {
         ...q,
+        tMs: tick.t_ms ?? q.tMs,
         value: tick.value ?? q.value,
         change: tick.change ?? q.change,
         changeRate: tick.change_pct ?? q.changeRate,

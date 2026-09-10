@@ -736,6 +736,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
 class LiveQuotesResponse(BaseModel):
     phase: Literal["pre_open", "open", "closed"]
     quotes: list[LiveQuote]
+    missing_codes: list[str] = Field(default_factory=list)
 
 
 LiveTabMetricHogaReason = Literal[
@@ -1884,6 +1885,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     get_vi_status: Callable[[str], dict | None] | None = None,
     ensure_today_peaks_seeded: Callable[[str, str, str], Awaitable[None]] | None = None,
     data_dir: Path | None = None,
+    quote_fetcher: LiveQuoteFetcher | None = None,
 ) -> APIRouter:
     """Build the /api/live router.
 
@@ -2453,14 +2455,14 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
     # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다
     # 새 인스턴스라 마지막-시세 캐시 스코프는 종전(per-router 클로저)과 동일.
-    quote_change_resolver = QuoteChangeResolver(
+    quote_change_resolver = quote_fetcher.change_resolver if quote_fetcher else QuoteChangeResolver(
         adjusted_daily_path=(
             data_dir / "screener" / "daily_adjusted.parquet"
             if data_dir is not None
             else None
         )
     )
-    _quote_fetcher = LiveQuoteFetcher(change_resolver=quote_change_resolver)
+    _quote_fetcher = quote_fetcher or LiveQuoteFetcher(change_resolver=quote_change_resolver)
     _investor_estimate_fetcher = LiveInvestorEstimateFetcher(
         observed_at_store_path=(
             data_dir / "live" / "investor-trend-estimate-observed-at.json"
@@ -2501,7 +2503,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         phase = _quote_phase(now, venue_policy)
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
-            return LiveQuotesResponse(phase=phase, quotes=[])
+            return LiveQuotesResponse(phase=phase, quotes=[], missing_codes=code_list)
         # 기준가를 **한 쿼리로 미리** 채운다. 안 하면 아래 모든 경로가 종목마다
         # DuckDB 쿼리를 1건씩 태우는데(N+1), 그게 전부 `async def` 안이라 296종목이면
         # 이벤트 루프가 초 단위로 멎는다(`--workers` 금지 구조 #998 — 단일 루프가
@@ -2524,18 +2526,17 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             quote_change_resolver.prime_baselines, code_list, today=now.date(),
         )
         if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
+            quotes = _quote_fetcher.stale_last_good(
+                code_list, phase, today=now.date(), venue=quote_venue,
+            )
+            returned_codes = {q.code for q in quotes}
             return LiveQuotesResponse(
-                phase=phase,
-                quotes=_quote_fetcher.stale_last_good(
-                    code_list,
-                    phase,
-                    today=now.date(),
-                    venue=quote_venue,
-                ),
+                phase=phase, quotes=quotes,
+                missing_codes=[code for code in code_list if code not in returned_codes],
             )
         quote_client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
         if quote_client is None:
-            return LiveQuotesResponse(phase=phase, quotes=[])
+            return LiveQuotesResponse(phase=phase, quotes=[], missing_codes=code_list)
         def _quotes_chunk_fn(chunk: list[str]):
                     # 청크 1개 = 거버너 submit 1건. **바깥에서 fetch_and_gate 를
                     # 통째로 감싸면 안 된다** — 거버너는 submit 진입 전에 버킷을 한 번만
@@ -2554,18 +2555,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             )
 
         try:
-            quotes = await asyncio.wait_for(
-                asyncio.shield(
-                    _quote_fetcher.fetch_and_gate(
-                        quote_client,
-                        code_list,
-                        phase,
-                        today=now.date(),
-                        venue=quote_venue,
-                        fetch_chunk_fn=_quotes_chunk_fn,
-                    )
-                ),
-                timeout=1.0,
+            quotes = await _quote_fetcher.fetch_with_timeout(
+                quote_client, code_list, phase, today=now.date(), venue=quote_venue,
+                fetch_chunk_fn=_quotes_chunk_fn,
             )
         except TimeoutError:
             quotes = _quote_fetcher.stale_last_good(
@@ -2587,9 +2579,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 stale_reason="capacity_overloaded_upstream",
                 venue=quote_venue,
             )
+        returned_codes = {q.code for q in quotes}
         return LiveQuotesResponse(
             phase=phase,
             quotes=quotes,
+            missing_codes=[code for code in code_list if code not in returned_codes],
         )
 
     @router.get("/tab-metrics", response_model=LiveTabMetricsResponse)

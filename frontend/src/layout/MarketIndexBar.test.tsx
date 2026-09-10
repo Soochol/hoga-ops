@@ -114,3 +114,10 @@ describe('MarketIndexBar', () => {
     expect(useLivePageStore.getState().activeInstrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
   });
 });
+
+it('shows the age and timestamp of an old quote without treating it as a connection failure', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValue({ quotes: [{ ...KOSPI_WIRE, t_ms: Date.now() - 180_000 }] });
+  renderBar();
+  expect(await screen.findByText('시세 3분 전')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'KOSPI 차트 열기' }).title).toContain('시세 기준');
+});
