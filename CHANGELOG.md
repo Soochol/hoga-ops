@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.4.1] - 2026-09-10
+
+### Fixed
+- 스크리너 우측 패널 결과에서 발생일을 숨기고 종목명·현재가·등락률·제외 버튼을 한 줄로 표시해 좁은 패널에서 글자가 세로로 늘어지는 문제를 해결한다.
+- 조건 설명은 종목명에 마우스를 올릴 때 표시하며, 각 발생 건의 개별 제외 동작은 유지한다.
+
 ## [0.16.4.0] - 2026-09-10
 
 ### Changed
