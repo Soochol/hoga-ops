@@ -85,3 +85,38 @@ it('chart inspection is keyboard accessible and resets after Escape', async () =
   fireEvent.keyDown(chart, { key: 'Escape' });
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
+
+it('separates verified industries, index products and unknown codes without dropping rows', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValue({ markets: { '0': { sectors: [
+    { code: '005', name: '음식료', change_pct: 1 },
+    { code: '604', name: '고배당50', change_pct: 2 },
+    { code: '9999', name: '신규 코드', change_pct: 3 },
+  ] } } });
+  mount(<SectorCard />);
+  await screen.findByText('음식료');
+  await userEvent.click(screen.getByRole('button', { name: '업종' }));
+  expect(screen.getByText('음식료')).toBeInTheDocument();
+  expect(screen.queryByText('고배당50')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '규모·대표지수' }));
+  expect(screen.getByText('고배당50')).toBeInTheDocument();
+  expect(screen.queryByText('음식료')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '미분류' }));
+  expect(screen.getByText('신규 코드')).toBeInTheDocument();
+});
+
+it('reports failed refreshes separately from unknown trading dates', () => {
+  render(<DataStamp fetchedAt={1} error />);
+  expect(screen.getByRole('status')).toHaveTextContent('서버 연결 확인 필요 · 마지막 데이터 유지');
+  expect(screen.getByText('기준일 미제공')).toBeInTheDocument();
+});
+
+it('does not show a nearby sample as an observation inside a failed interval', () => {
+  render(<ChartProbe labels={['09:00', '10:00']} summaries={['개인 +10억원', '개인 +20억원']}
+    positions={[0, 1]} unavailableRanges={[{ start: 0.25, end: 0.75 }]} />);
+  const chart = screen.getByRole('group');
+  vi.spyOn(chart, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, width: 100, height: 100, top: 0, left: 0, right: 100, bottom: 100, toJSON: () => ({}) });
+  fireEvent.pointerMove(chart, { clientX: 50 });
+  expect(screen.getByRole('status')).toHaveTextContent('수신 실패 구간 · 관측값 없음');
+  fireEvent.keyDown(chart, { key: 'Home' });
+  expect(screen.getByRole('status')).toHaveTextContent('09:00 · 개인 +10억원');
+});

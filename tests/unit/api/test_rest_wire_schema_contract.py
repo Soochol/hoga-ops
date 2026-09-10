@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
-from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse
+from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import AfterHoursBookResponse, LiveQuote, RankingRowModel
 from hoga.live.error_policy import LiveErrorKind
@@ -281,6 +281,7 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    ProgramResponse: frozenset({"axis", "markets", "truncated"}),
     InvestorFlowResponse: frozenset({
         "collection", "date", "daily", "unit", "confirmed", "coverage", "markets",
         "session_start_sec", "session_end_sec",

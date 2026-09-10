@@ -1,3 +1,4 @@
+import { sectorCategory } from './sectorCategory';
 import { DailyNetList } from './DailyNetList';
 /** 시장 종합 — 지수 커맨드센터 (#1102).
  *
@@ -254,6 +255,7 @@ export function IndexCards() {
             key={q.id}
             quote={q}
             fetchedAt={modes[q.id] === 'futures' && future ? futures.dataUpdatedAt : quotes.dataUpdatedAt}
+            error={modes[q.id] === 'futures' && future ? futures.isError : quotes.isError}
             sectors={sectors.data}
             future={future}
             snapshot={snapshot}
@@ -263,7 +265,7 @@ export function IndexCards() {
           />
         );
       })}
-      {volatility && <VolatilityCard row={volatility} />}
+      {volatility && <VolatilityCard row={volatility} fetchedAt={sectors.dataUpdatedAt} error={sectors.isError} />}
     </div>
   );
 }
@@ -271,7 +273,7 @@ export function IndexCards() {
 /** 변동성지수(VKOSPI) 카드. 현물 토글도 스파크라인도 없다 — ka20003 은 지수 **레벨과
  *  등락률만** 주고, 등락폭을 등락률에서 역산하면 표시용 근사를 진짜 값처럼 보이게 한다.
  *  없는 것을 만들어 채우느니 있는 두 값만 보여준다. */
-function VolatilityCard({ row }: { row: MarketVolatility }) {
+function VolatilityCard({ row, fetchedAt, error }: { row: MarketVolatility; fetchedAt: number; error: boolean }) {
   return (
     <MarketCard className="flex flex-col gap-sm p-md">
       <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
@@ -293,6 +295,7 @@ function VolatilityCard({ row }: { row: MarketVolatility }) {
           <PctText pct={row.change_pct} />
         </span>
       </div>
+      <DataStamp fetchedAt={fetchedAt} error={error} />
     </MarketCard>
   );
 }
@@ -300,6 +303,7 @@ function VolatilityCard({ row }: { row: MarketVolatility }) {
 /** 지수 카드 1장. **카드가 컴포넌트여야** 분봉 훅을 카드마다 부를 수 있다 —
  *  리스트 안에서 훅을 부르면 순서 규칙을 깬다. */
 function IndexCard({
+  error,
   quote,
   fetchedAt,
   sectors,
@@ -309,6 +313,7 @@ function IndexCard({
   mode,
   onModeChange,
 }: {
+  error?: boolean;
   fetchedAt?: number;
   quote: ReturnType<typeof useMarketIndexQuotes>['data'] extends (infer T)[] | undefined ? T : never;
   sectors: ReturnType<typeof useMarketSectors>['data'];
@@ -485,7 +490,7 @@ function IndexCard({
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
-      <DataStamp fetchedAt={fetchedAt} />
+      <DataStamp fetchedAt={fetchedAt} error={error} />
       {/* 카드 마지막 줄 — **모드가 바뀌어도 높이가 변하면 안 된다.**
           지수 상품(코스피200·코스닥150)은 등락종목수가 없어서(#1100) 현물 모드에 이
           줄이 통째로 비는데, 선물 모드에선 베이시스 한 줄이 생긴다. 그 차이만큼 카드가
@@ -513,6 +518,8 @@ function IndexCard({
 export function SectorCard() {
   const sectors = useMarketSectors();
   const [sort, setSort] = useState<'default' | 'up' | 'down'>('default');
+  const [category, setCategory] = useState<'all' | 'industry' | 'index' | 'unknown'>('all');
+  const [showAll, setShowAll] = useState(false);
   const kospi = sectors.data?.markets['0']?.sectors ?? [];
   const kosdaq = sectors.data?.markets['1']?.sectors ?? [];
   return (
@@ -522,19 +529,27 @@ export function SectorCard() {
           ['default', '기본순'], ['up', '상승순'], ['down', '하락순'],
         ] as const} />
       } />
-      <DataStamp fetchedAt={sectors.dataUpdatedAt} />
+      <DataStamp fetchedAt={sectors.dataUpdatedAt} error={sectors.isError} />
+      <div className="flex flex-wrap items-center justify-between gap-sm">
+        <ModeSwitch value={category} onChange={setCategory} label="업종 지수 유형" options={[
+          ['all', '전체'], ['industry', '업종'], ['index', '규모·대표지수'], ['unknown', '미분류'],
+        ]} />
+        <button type="button" className="text-xs text-accent" aria-expanded={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? '12개씩 보기' : '전체 보기'}</button>
+      </div>
       {kospi.length === 0 && kosdaq.length === 0 ? (
         <EmptyNote>업종 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
         <div className="grid grid-cols-2 gap-x-md">
-          {[kospi, kosdaq].map((list, i) => (
+          {[kospi, kosdaq].map((source, i) => {
+            const list = source.filter(s => category === 'all' || sectorCategory(s.code) === category);
+            return (
             <div key={i} className="flex flex-col gap-2xs">
-              <span className="text-xs font-semibold text-fg-dim">{i === 0 ? '코스피' : '코스닥'}</span>
+              <span className="text-xs font-semibold text-fg-dim">{i === 0 ? '코스피' : '코스닥'} · {showAll ? list.length : Math.min(12, list.length)}/{list.length}개</span>
               {(sort === 'default' ? list : [...list].sort((a, b) => {
                 if (a.change_pct == null) return b.change_pct == null ? 0 : 1;
                 if (b.change_pct == null) return -1;
                 return sort === 'up' ? b.change_pct - a.change_pct : a.change_pct - b.change_pct;
-              })).slice(0, 12).map((s) => (
+              })).slice(0, showAll ? undefined : 12).map((s) => (
                 <div
                   key={s.code}
                   className="grid grid-cols-[1fr_auto] items-center gap-sm rounded-sm px-sm py-2xs"
@@ -545,7 +560,7 @@ export function SectorCard() {
                 </div>
               ))}
             </div>
-          ))}
+          ); })}
         </div>
       )}
     </MarketCard>
@@ -557,6 +572,7 @@ export function SectorCard() {
 export function ProgramCard() {
   const [axis, setAxis] = useState<ProgramAxis>('intraday');
   const program = useMarketProgram(axis);
+  const [days, setDays] = useState<'5' | '20' | '60'>('20');
   const markets = program.data?.markets ?? {};
   return (
     <MarketCard className="market-switch-card flex flex-col gap-sm p-sm">
@@ -576,9 +592,12 @@ export function ProgramCard() {
         }
       />
       <div className="market-program-body flex flex-col gap-sm">
-        <DataStamp fetchedAt={program.dataUpdatedAt}
+        <DataStamp fetchedAt={program.dataUpdatedAt} error={program.isError}
           date={axis === 'daily' ? Object.values(markets).flat().map((p) => p.t).map((t) => t.slice(0, 8)).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
           status={axis === 'intraday' ? '시간별 누적' : Object.values(markets).flat().some(p => p.t.slice(0, 8) === todayKstYyyymmdd()) ? '일별 · 오늘 잠정 포함' : '일별'} />
+        {axis === 'daily' && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
+          ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
+        ]} />}
         <p className="text-2xs text-fg-dim">{axis === 'daily' ? '단위: 억원 · + 순매수 / − 순매도 · 최신순' : '선: 시간별 누적 순매수'}</p>
         {Object.keys(markets).length === 0 ? (
           <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
@@ -586,7 +605,8 @@ export function ProgramCard() {
           Object.entries(markets).map(([label, points]) => {
             // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
             // 일별은 최근 20거래일을 표로 표시한다.
-            const asc = axis === 'daily' ? [...points].reverse().slice(-20) : [...points].reverse();
+            const ordered = [...points].sort((a, b) => a.t.localeCompare(b.t));
+            const asc = axis === 'daily' ? ordered.slice(-Number(days)) : ordered;
             const total = asc[asc.length - 1]?.total_net_eok ?? null;
             // 당일(분 단위 ~330점)은 **누적 라인만** — 막대를 겹치면 1px 줄무늬
             // 노이즈가 된다(실화면, 2026-08-05). 일별은 순매수 금액 표로 비교한다.
@@ -615,6 +635,7 @@ export function ProgramCard() {
                     <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
                   </span>}
                 </div>
+                {isIntraday && <p role="note" className="text-2xs text-fg-dim">제공 구간 {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')} · {asc.length}개 표본{program.data?.truncated?.[label] ? ' · 조회 상한 도달' : ''}{seconds[0] > 9 * 3600 + 60 ? ' · 장 초반 구간 미포함' : ' · 제공 표본만 표시'}</p>}
                 {!hasValues && isIntraday ? (
                   <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
                 ) : isIntraday ? (
@@ -636,6 +657,7 @@ export function ProgramCard() {
                   </>
                 ) : (
                   <>
+                    <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {asc.length}거래일 · {asc[0]?.t.slice(0, 8)}–{asc.at(-1)?.t.slice(0, 8)}</p>
                     <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
                       columns={['차익', '비차익', '합계']}
                       rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
@@ -717,7 +739,7 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
           />
         </div>
       </div>
-      <DataStamp fetchedAt={streaks.dataUpdatedAt} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
+      <DataStamp fetchedAt={streaks.dataUpdatedAt} error={streaks.isError} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
       <div className="grid grid-cols-[minmax(0,1fr)_3rem_5.5rem] gap-xs text-2xs text-fg-dim">
         <span>종목</span><span className="text-right">연속일수</span><span className="text-right" title="연속 매매 기간에 누적된 순매수 또는 순매도 금액">기간 누적(억)</span>
       </div>
@@ -784,6 +806,7 @@ export function FundsCard() {
         </h2>
         <ModeSwitch value={span} onChange={setSpan} options={FUND_SPANS} label="자금 집계 기간" />
       </div>
+      <DataStamp date={asOf} fetchedAt={funds.dataUpdatedAt} error={funds.isError} status="공시 기준 · 실시간 자료 아님" />
       {data?.unavailable === 'credentials_missing' ? (
         <EmptyNote>KOFIA 인증키가 설정되지 않았습니다(.env: KOFIA_API_KEY).</EmptyNote>
       ) : series.length === 0 ? (
@@ -849,7 +872,7 @@ export function RankCard({
   return (
     <MarketCard className="flex flex-col gap-xs p-md">
       <CardHeader title={title} hint={`${q.data?.venue === 'UN' ? '통합' : q.data?.venue ?? '—'} · 코스피+코스닥 · ${q.data?.etfFilterUnavailable ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
-      <DataStamp fetchedAt={q.data?.fetchedAtMs} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
+      <DataStamp fetchedAt={q.data?.fetchedAtMs} error={q.isError} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
       <div className="grid grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] gap-sm text-2xs text-fg-dim">
         <span>#</span><span>종목</span><span className="text-right">{kind === 'value' ? '거래대금(억)' : '현재가(원)'}</span><span className="text-right">등락률</span>
       </div>
