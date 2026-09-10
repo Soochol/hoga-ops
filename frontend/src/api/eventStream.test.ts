@@ -87,7 +87,7 @@ describe('useEventStream promotion handler', () => {
 });
 
 describe('useEventStream disconnect handler', () => {
-  it('invalidates queue + calendar + stock dates on disconnect', async () => {
+  it('refreshes queue + calendar + stock dates only after reconnect', async () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries');
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -95,6 +95,8 @@ describe('useEventStream disconnect handler', () => {
     renderHook(() => useEventStream(), { wrapper });
     const sock = await connect();
     sock.serverClose();
+    expect(spy).not.toHaveBeenCalled();
+    sock.open(); // Deterministic transport reconnect, no retry timer sleep.
     await new Promise((r) => setTimeout(r, 0));
     const calls = spy.mock.calls.map((c) => c[0]);
     expect(calls.some((c: any) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
@@ -244,6 +246,8 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     await new Promise((r) => setTimeout(r, 0));
     fakeSockets[0].open();
     fakeSockets[0].serverClose();
+    expect(spy).not.toHaveBeenCalled();
+    fakeSockets[0].open();
     await new Promise((r) => setTimeout(r, 0));
 
     const onReconnect = new Set(keys(spy));
@@ -257,6 +261,8 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     await new Promise((r) => setTimeout(r, 0));
     fakeSockets[0].open();
     fakeSockets[0].serverClose();
+    expect(spy).not.toHaveBeenCalled();
+    fakeSockets[0].open();
     await new Promise((r) => setTimeout(r, 0));
 
     expect(keys(spy)).toContain('watchlist');
@@ -332,4 +338,36 @@ describe('useEventStream inventory 무효화 접기', () => {
       vi.useRealTimers();
     }
   });
+});
+
+it('cancels old pending queue reads on reconnect, preserves unrelated work, and ignores duplicate connected', async () => {
+  const qc = new QueryClient();
+  const spy = vi.spyOn(qc, 'invalidateQueries');
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: qc }, children);
+  const { unmount } = renderHook(() => useEventStream(), { wrapper });
+  const sock = await connect();
+  expect(spy).not.toHaveBeenCalled();
+  let queueSignal!: AbortSignal;
+  let otherSignal!: AbortSignal;
+  const queueRead = qc.fetchQuery({ queryKey: ['capture', 'queue'], queryFn: ({ signal }) => {
+    queueSignal = signal; return new Promise(() => {});
+  } }).catch(() => {});
+  const otherRead = qc.fetchQuery({ queryKey: ['unrelated'], queryFn: ({ signal }) => {
+    otherSignal = signal; return new Promise(() => {});
+  } }).catch(() => {});
+  sock.serverClose();
+  expect(queueSignal.aborted).toBe(false);
+  sock.open();
+  await queueRead;
+  await Promise.resolve();
+  expect(queueSignal.aborted).toBe(true);
+  expect(otherSignal.aborted).toBe(false);
+  const calls = spy.mock.calls.length;
+  sock.open();
+  await Promise.resolve();
+  expect(spy).toHaveBeenCalledTimes(calls);
+  unmount();
+  qc.clear();
+  await otherRead;
 });

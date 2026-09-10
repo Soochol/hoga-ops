@@ -71,6 +71,10 @@ async function move(page: Page, source: Locator, target: Locator, fraction = 0.5
   await over(page, target, fraction);
   await page.mouse.up();
   await expect(page.getByTestId('heatmap-drag-ghost')).toHaveCount(0);
+  // dnd-kit AbstractPointerSensor.detach retains document click suppression
+  // for 50ms after drop. A fast mocked save can expose Undo before that expires;
+  // clicking then is swallowed even though Playwright sees an enabled button.
+  await page.waitForTimeout(60); // Library cleanup guard, not a network wait.
 }
 const codes = (refs: string[]) => refs;
 

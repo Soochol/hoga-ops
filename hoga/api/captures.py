@@ -11,6 +11,7 @@ import errno
 import logging
 import os
 import time
+import uuid
 from collections.abc import Callable, Coroutine, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -469,9 +470,11 @@ def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons + the
     on-disk manifest (so per-test state never leaks)."""
     global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
-    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+    global _persistence_degraded, _last_persisted_at_ms, _persistence_epoch, _persistence_revision  # noqa: PLW0603
     _persistence_degraded = False
     _last_persisted_at_ms = None
+    _persistence_epoch = uuid.uuid4().hex
+    _persistence_revision = 0
     _queue.clear()
     _active.clear()
     _done.clear()
@@ -624,6 +627,8 @@ def apply_terminal_to_manifest(
 
 _persistence_degraded = False
 _last_persisted_at_ms: int | None = None
+_persistence_epoch = uuid.uuid4().hex
+_persistence_revision = 0
 
 
 async def retry_queue_persistence() -> None:
@@ -648,7 +653,7 @@ def _persist_queue_locked() -> None:
     guard matters even more than skipping the worker pool: a non-owner with a
     stale in-memory queue must not clobber the source of truth on disk.
     """
-    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+    global _persistence_degraded, _last_persisted_at_ms, _persistence_revision  # noqa: PLW0603
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
     if not queue_owned():
@@ -670,6 +675,7 @@ def _persist_queue_locked() -> None:
         _data_dir,
         QueueManifest(paused=_queue_paused, items=items, fail_streaks=dict(_fail_streaks)),
     )
+    _persistence_revision += 1
     was_degraded = _persistence_degraded
     _persistence_degraded = not saved
     if saved:
@@ -678,6 +684,8 @@ def _persist_queue_locked() -> None:
         _publish_event(CaptureQueuePersistenceEvent(
             persistence_degraded=_persistence_degraded,
             last_persisted_at_ms=_last_persisted_at_ms,
+            persistence_epoch=_persistence_epoch,
+            persistence_revision=_persistence_revision,
         ))
 
 
@@ -829,6 +837,8 @@ def get_queue_snapshot() -> QueueSnapshot:
         queue_owned=queue_owned(),  # ADR-0094
         persistence_degraded=_persistence_degraded,
         last_persisted_at_ms=_last_persisted_at_ms,
+        persistence_epoch=_persistence_epoch,
+        persistence_revision=_persistence_revision,
     )
 
 
@@ -1504,9 +1514,11 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     Set ``HOGA_CAPTURE_QUEUE_DISABLED=1`` to opt a dogfood backend out of
     ever contending for the lock.
     """
-    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+    global _persistence_degraded, _last_persisted_at_ms, _persistence_epoch, _persistence_revision  # noqa: PLW0603
     _persistence_degraded = False
     _last_persisted_at_ms = None
+    _persistence_epoch = uuid.uuid4().hex
+    _persistence_revision = 0
     # 소유권은 `ownership` 레지스트리가 쥔다 — 이 모듈에 전역이 없다(2026-08-10 통일).
     # Re-read HOGA_MAX_CONCURRENT / HOGA_RATE_LIMIT_S now that load_env() has run
     # (import-time read was too early for a .env-only value — see the refreshers).

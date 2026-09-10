@@ -253,3 +253,20 @@ it('patches persistence failure and recovery from push without refetching queue 
   expect(invalidate).not.toHaveBeenCalled();
   unmount();
 });
+
+it('retains a failure push received before the initial HTTP response', async () => {
+  let respond!: (snapshot: QueueSnapshot) => void;
+  const response = new Promise<QueueSnapshot>((resolve) => { respond = resolve; });
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, status: 200, json: () => response } as Response);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, unmount } = renderHook(() => { useCaptureQueueSync(); return useCaptureQueue(); },
+    { wrapper: makeWrapper(qc) });
+  fireSse({ type: 'capture_queue_persistence', persistence_degraded: true, last_persisted_at_ms: null,
+    persistence_epoch: 'a', persistence_revision: 2 });
+  await act(async () => respond({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3,
+    persistence_degraded: false, last_persisted_at_ms: null, persistence_epoch: 'a', persistence_revision: 1 }));
+  await waitFor(() => expect(result.current.queue?.persistence_degraded).toBe(true));
+  expect(result.current.queue?.queued).toHaveLength(1);
+  unmount();
+  qc.clear();
+});
