@@ -108,11 +108,10 @@ export function intradayDegradationText(
     const because = cause ? ` · ${cause.cause}` : '';
     return `일부 종목만 장중 반영${because} · 나머지는 ${FALLBACK_SUFFIX}`;
   }
-  // 일부 OHLC/거래량 검증 실패는 요청 자체의 실패와 다르다. 전체 폴백이 아니면
-  // 미반영 종목만 과거 일봉으로 평가됐음을 알린다(옛 서버 응답에도 적용).
+  // 시세 검증 실패만 있는 경우에는 배너를 표시하지 않는다.
+  // 거래량 미확보와 요청 실패 안내는 각각의 사유로 표시한다.
   if (!warnings.includes('intraday_fallback_eod')) {
     const missing: string[] = [];
-    if (warnings.includes('intraday_quote_invalid')) missing.push('시세 검증 실패');
     if (warnings.includes('intraday_volume_unavailable')) missing.push('거래량 미확보');
     if (missing.length > 0) {
       return `일부 종목 장중 미반영(${missing.join('·')}) · 해당 종목은 전일 확정 데이터로 평가`;
