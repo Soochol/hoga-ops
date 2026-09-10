@@ -162,6 +162,23 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
   const openText = (c: HTMLElement) =>
     c.querySelector('.legend-ohlc-open')?.textContent ?? '';
 
+  it('레전드를 숨겨도 OHLC는 유지하고 다시 켜면 지표 레전드가 복원된다', () => {
+    const chart = makeChart([120, 100]);
+    const props = { chart, timeframe: 'D' as const, candles: CANDLES, axis,
+      paneToggles: { foreignNet: false, institutionNet: false, volumeEnabled: true } };
+    const { container, rerender } = render(<PaneLegendOverlay {...props} />);
+    expect(container.querySelector('.legend-row-ma')).not.toBeNull();
+    expect(screen.getByTestId('pane-legend-rows-volume')).toBeInTheDocument();
+    rerender(<PaneLegendOverlay {...props} indicatorLegendsVisible={false} />);
+    expect(openText(container)).toContain('120');
+    expect(container.querySelector('.legend-row-ma')).toBeNull();
+    expect(screen.queryByTestId('pane-legend-rows-volume')).not.toBeInTheDocument();
+    rerender(<PaneLegendOverlay {...props} indicatorLegendsVisible />);
+    expect(openText(container)).toContain('120');
+    expect(container.querySelector('.legend-row-ma')).not.toBeNull();
+    expect(screen.getByTestId('pane-legend-rows-volume')).toBeInTheDocument();
+  });
+
   it('동기화 발행이 없으면 최신 봉을 읽는다 — 종전 폴백', () => {
     const { container } = renderWithCandles();
     expect(openText(container)).toContain('120'); // DAY3 시가

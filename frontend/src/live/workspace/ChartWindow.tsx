@@ -18,6 +18,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
+import EyeGlyph from '../EyeGlyph';
+import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import { useLiveChartData } from '../useLiveChartData';
@@ -89,6 +91,7 @@ import {
   showsWatchlistHeart,
   LIVE_CALENDAR_HEADER_FOLD,
   LIVE_HEADER_FOLD,
+  COMPACT_PADDING_INLINE,
 } from './chartHeaderCompact';
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 import type { JumpRange } from '../minuteJumpDestination';
@@ -522,6 +525,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
   /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
   const [jumpDestination, setJumpDestination] = useState<string | null>(null);
+  const [indicatorLegendsVisible, setIndicatorLegendsVisible] = useState(true);
   // 이 분봉 창이 보고 있는 날짜(라이브 엣지면 null) — 시간축이 하루 안에서는 날짜를
   // 안 찍어서 화면만 봐서는 며칠인지 알 수 없다(#1506 조사 D3).
   const [viewedDate, setViewedDate] = useState<{
@@ -794,14 +798,14 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex shrink-0 items-center gap-1 overflow-hidden bg-bg-card px-1 py-0.5"
+        className="flex flex-wrap shrink-0 items-center gap-1 overflow-hidden bg-bg-card px-1 py-0.5"
       >
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
-            이 헤더는 봉·그리기·보조지표·저장·수집만 소유한다. */}
+            이 헤더는 봉·그리기·보조지표·레전드·저장·수집을 소유한다. */}
         {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
             ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
             ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)
-            창은 MIN_W=160px 까지 좁아지므로 ②가 없으면 다시 잘린다. */}
+            창은 MIN_W=160px 까지 좁아진다. ② 이후에도 부족하면 버튼 묶음을 줄바꿈한다. */}
         <TimeframeControl
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
@@ -855,7 +859,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             />
           </div>
         )}
-        <div className="ml-auto flex items-center gap-0.5">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
           {/* 「분봉으로」는 캘린더 봉 창에만 뜬다. 액션 그룹 맨 앞에 두는 이유:
               이것만 **다른 창을 움직이는** 동사라, 이 창을 대상으로 하는 나머지와
               섞이지 않게 앞에 세운다.
@@ -914,6 +918,14 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             onClick={() => requestIndicatorDrawer(win.id)}
             showLabel={!headerFold.compactActions}
           />
+          <IconToolbarButton
+            aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
+            title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} · 시가·고가·저가·종가는 항상 표시`}
+            aria-pressed={indicatorLegendsVisible}
+            onClick={() => setIndicatorLegendsVisible(visible => !visible)}
+            style={{ paddingInline: COMPACT_PADDING_INLINE }}
+            icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
+          />
           {/* 봉 패턴은 일봉 개념이라 그 봉에서만 보인다 — 속성 패널의 「패턴 찾기」와
               같은 판정이고, 게이트를 두 곳에 두지 않으려 `onSearchPattern` 의 존재로 잰다. */}
           {onSearchPattern != null && (
@@ -936,6 +948,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <ChartErrorBoundary>
           <ChartDrawingShell>
             <LiveChartRoot
+              indicatorLegendsVisible={indicatorLegendsVisible}
               code={d.workareaCode}
               timeframe={view.timeframe}
               onSearchPattern={onSearchPattern}
