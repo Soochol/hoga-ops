@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.4.0] - 2026-09-10
+
+### Changed
+- 시장 투자자 수급을 수집 시간대에 10초 간격으로 갱신하고, 마지막 API 수신 시각과 수집 지연·실패 상태를 표시한다.
+- 값이 변하지 않아 저장 표본이 늘지 않아도 정상 수신 여부를 확인할 수 있으며, 수집 실패 구간은 차트에서 끊어 표시한다.
+- 수급 파일 읽기를 캐시해 짧아진 조회 주기의 서버 부하를 줄인다.
+
+### Fixed
+- 한 시장·상품의 수집 실패가 다른 수급 데이터 수집을 막지 않도록 한다.
+
 ## [0.16.3.3] - 2026-09-10
 
 ### Changed

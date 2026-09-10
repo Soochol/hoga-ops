@@ -149,3 +149,22 @@ async def test_observed_time_is_recorded_not_the_close_time(tmp_path):
     c = _make(tmp_path, now_ms=_ms(16, 10), after_close=True)
     await c.catch_up_after_close()
     assert {s.sampled_at_ms for s in c.store.load_samples(_DATE)} == {_ms(16, 10)}
+
+
+@pytest.mark.asyncio
+async def test_fetch_exception_during_catchup_does_not_block_other_products(tmp_path):
+    calls = []
+
+    async def fetch(_iscd, key):
+        calls.append(key)
+        if key == PRODUCTS[0].key:
+            raise TimeoutError("upstream timeout")
+        return _row()
+
+    collector = _make(tmp_path, now_ms=_ms(16, 10), after_close=True, fetch=fetch)
+    assert await collector.catch_up_after_close() == len(PRODUCTS) - 1
+    assert calls == [product.key for product in PRODUCTS]
+    assert {sample.product for sample in collector.store.load_samples(_DATE)} == {
+        product.key for product in PRODUCTS[1:]
+    }
+    assert collector.receipts.state is None  # Closing catch-up is not live receipt evidence.

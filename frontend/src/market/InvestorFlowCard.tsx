@@ -35,6 +35,7 @@ import {
   useMarketDerivFlow,
   useMarketInvestorFlow,
   type DerivFlowProduct,
+  type FlowCollection,
   type InvestorFlowPoint,
 } from '../api/market';
 import {
@@ -91,6 +92,17 @@ const SEG_OFF = 'text-fg-dim hover:bg-bg-input-hover';
 
 function isStock(sel: Selection): boolean {
   return (STOCK_KEYS as readonly string[]).includes(sel);
+}
+
+/** Final/confirmation points can arrive after collection stops with an open failure. */
+function chartGaps(collection: FlowCollection | null | undefined, target: string) {
+  const health = collection?.targets[target];
+  if (!health) return undefined;
+  if (health.failure_started_at_ms == null || !collection) return health.gaps;
+  return [...health.gaps, {
+    start_ms: health.failure_started_at_ms,
+    end_ms: collection.server_now_ms,
+  }];
 }
 
 function FlowPicker({
@@ -216,7 +228,7 @@ export function InvestorCard() {
             eok={derivEok}
             reason={units?.reason}
             loading={deriv.isLoading || (deriv.isError && !deriv.data)}
-            gaps={deriv.data?.collection?.targets[sel]?.gaps}
+            gaps={chartGaps(deriv.data?.collection, sel)}
             sessionStartSec={deriv.data?.session_start_sec}
             sessionEndSec={deriv.data?.session_end_sec}
           />
@@ -295,7 +307,7 @@ function StockIntraday({
         { color: SERIES_COLORS.institution, label: '기관', values: points.map((p) => p.institution), secs },
       ]}
       last={(s) => s.values[s.values.length - 1] ?? null}
-      gaps={data?.collection?.targets[market]?.gaps}
+      gaps={chartGaps(data?.collection, market)}
       sessionStartSec={data?.session_start_sec}
       sessionEndSec={data?.session_end_sec}
     />

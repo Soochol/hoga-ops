@@ -343,8 +343,21 @@ export interface InvestorFlowResponse {
   session_end_sec: number;
 }
 
+export type FlowStatus = 'waiting' | 'receiving' | 'delayed' | 'closed' | 'unavailable' | 'unknown';
+
+export interface ReceiptGap {
+  start_ms: number;
+  end_ms: number;
+}
+
+export interface CollectionRun {
+  run_id: string;
+  started_at_ms: number;
+  poll_interval_ms: number;
+}
+
 export interface FlowHealth {
-  status: 'waiting' | 'receiving' | 'delayed' | 'closed' | 'unavailable' | 'unknown';
+  status: FlowStatus;
   last_attempt_at_ms: number | null;
   last_success_at_ms: number | null;
   last_written_at_ms: number | null;
@@ -352,7 +365,7 @@ export interface FlowHealth {
   consecutive_failures: number;
   error_kind: string | null;
   failure_started_at_ms: number | null;
-  gaps: { start_ms: number; end_ms: number }[];
+  gaps: ReceiptGap[];
 }
 
 export interface FlowCollection {
@@ -360,6 +373,9 @@ export interface FlowCollection {
   collection_expected: boolean;
   poll_interval_ms: number;
   stale_after_ms: number;
+  /** Optional while older API processes are still serving during rollout. */
+  last_cycle_duration_ms?: number | null;
+  runs?: CollectionRun[];
   targets: Record<string, FlowHealth>;
 }
 
