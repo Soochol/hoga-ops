@@ -105,10 +105,14 @@ def test_gap_threshold_is_relative_to_poll_interval(interval_ms):
     """주기 상대 임계 — 주기를 바꾸면 판정이 따라와야 하고, 정상 지터를 갭으로 안 센다."""
     step = interval_ms
     normal = [_sample(step * i) for i in range(4)]
+    for sample in normal:
+        sample.poll_interval_ms = interval_ms
     assert compute_coverage(normal, poll_interval_ms=interval_ms).gap_ranges == []
 
     # 임계(3주기)를 넘는 점프 하나
     jumped = [_sample(0), _sample(step * (GAP_MIN_JUMP_INTERVALS + 1))]
+    for sample in jumped:
+        sample.poll_interval_ms = interval_ms
     cov = compute_coverage(jumped, poll_interval_ms=interval_ms)
     assert len(cov.gap_ranges) == 1
     assert cov.gap_ranges[0] == {"start_ms": 0, "end_ms": step * (GAP_MIN_JUMP_INTERVALS + 1)}

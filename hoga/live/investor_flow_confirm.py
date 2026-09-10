@@ -96,7 +96,10 @@ async def confirm_days(
         rows: list[dict[str, Any]] = []
         ok = True
         for mrkt_tp in MARKETS:
-            got = await fetch_market_fn(mrkt_tp, date)
+            try:
+                got = await fetch_market_fn(mrkt_tp, date)
+            except Exception:  # noqa: BLE001 — one failed day is deferred, never partially confirmed
+                got = None
             if got is None:
                 # 한 시장이라도 못 받으면 그날은 확정하지 않는다 — 반쪽 확정본을
                 # 쓰면 파일 존재가 곧 확정이라는 계약이 거짓말이 된다.

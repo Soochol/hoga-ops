@@ -28,6 +28,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from hoga.live import kiwoom_access, market_overview
+from hoga.live.flow_receipts import FlowCollection, collection_health
 from hoga.live.market_funds_runtime import MarketFundsCache
 from hoga.live.market_overview import MarketName, StreakDirection
 
@@ -210,6 +211,7 @@ class InvestorFlowDailyRow(BaseModel):
 
 
 class InvestorFlowResponse(BaseModel):
+    collection: FlowCollection | None = None
     date: str
     daily: list[InvestorFlowDailyRow] = Field(default_factory=list)
     unit: str
@@ -268,6 +270,7 @@ class DerivFlowProduct(BaseModel):
 
 
 class DerivFlowResponse(BaseModel):
+    collection: FlowCollection | None = None
     date: str
     #: 억원 축이 살아 있으면 `amt_eok`, 단위 미확정이면 null. 이름에 단위를 박는
     #: 규약(#1117)을 따르되 **null 이 가능한 것**이 이 표면의 차이다.
@@ -606,6 +609,29 @@ def _recent_dates(today: str, *, days: int) -> list[str]:
     return sorted(out)
 
 
+def _flow_collection(data_dir: Path, date: str, *, deriv: bool) -> dict[str, Any]:
+    from hoga.collector.orchestrator import now_kst  # noqa: PLC0415
+    from hoga.live import deriv_flow_runtime, investor_flow_runtime  # noqa: PLC0415
+    from hoga.live.deriv_flow_products import PRODUCTS  # noqa: PLC0415
+    from hoga.live.session_gate import (  # noqa: PLC0415
+        DERIV_OPEN_MIN,
+        INVESTOR_FLOW_OPEN_MIN,
+        deriv_capture_window,
+        investor_flow_capture_window,
+    )
+
+    now_ms = int(now_kst().timestamp() * 1000)
+    runtime = deriv_flow_runtime if deriv else investor_flow_runtime
+    gate = deriv_capture_window if deriv else investor_flow_capture_window
+    open_min = DERIV_OPEN_MIN if deriv else INVESTOR_FLOW_OPEN_MIN
+    return collection_health(
+        data_dir / ("deriv-flow" if deriv else "investor-flow"), date,
+        now_ms=now_ms, expected=gate(now_ms), available=runtime.is_available(data_dir),
+        keys=[p.key for p in PRODUCTS] if deriv else ["KOSPI", "KOSDAQ"],
+        open_ms=_session_close_ms(date, open_min),
+    ).model_dump()
+
+
 def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str, Any]:
     """장중 수급 — 저장된 표본을 읽어 3주체 누적 시계열 + 커버리지로.
 
@@ -697,6 +723,7 @@ def _investor_flow_payload(data_dir: Path, *, daily_days: int = 40) -> dict[str,
     return {
         "daily": daily,
         "date": date,
+        "collection": _flow_collection(data_dir, date, deriv=False),
         # 단위는 수집 시 요청이 정했다 — 이름에 박아 화면이 축을 못 헷갈리게 한다.
         "unit": "amt_eok",
         "confirmed": store.is_confirmed(date),
@@ -785,11 +812,13 @@ def _deriv_flow_payload(data_dir: Path) -> dict[str, Any]:
                 pt[name] = None if (amt is None or to_eok is None) else amt * to_eok
                 pt[f"{name}_qty"] = _deriv_num(s.row, qty_key)
             points.append(pt)
-        ts = sorted(s.sampled_at_ms for s in rows)
+        ordered = sorted(rows, key=lambda s: s.sampled_at_ms)
+        ts = [s.sampled_at_ms for s in ordered]
         gaps = [
-            {"start_ms": prev, "end_ms": cur}
-            for prev, cur in zip(ts, ts[1:], strict=False)
-            if cur - prev > poll_ms * GAP_MIN_JUMP_INTERVALS
+            {"start_ms": a.sampled_at_ms, "end_ms": b.sampled_at_ms}
+            for a, b in zip(ordered, ordered[1:], strict=False)
+            if b.sampled_at_ms - a.sampled_at_ms
+            > max(a.poll_interval_ms or 30_000, b.poll_interval_ms or 30_000) * GAP_MIN_JUMP_INTERVALS
         ]
         products[product.key] = {
             "label": product.label,
@@ -807,6 +836,7 @@ def _deriv_flow_payload(data_dir: Path) -> dict[str, Any]:
 
     return {
         "date": date,
+        "collection": _flow_collection(data_dir, date, deriv=True),
         "unit": "amt_eok" if verdict.amount else None,
         "units": {
             "quantity": verdict.quantity,

@@ -12,7 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from './client';
-import { isMarketHours, useMarketInvestorFlow } from './market';
+import { isMarketHours, useMarketInvestorFlow, useMarketDerivFlow } from './market';
 
 /** KST 로 해석되는 시각을 만든다 — 러너 TZ 에 의존하지 않기 위해 오프셋을 명시한다. */
 function kst(y: number, m: number, d: number, hh: number, mm: number): Date {
@@ -96,5 +96,38 @@ describe('장외 하트비트 — 게이트가 스스로 깨어난다', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(spy.mock.calls.length).toBeGreaterThan(afterMount);
+  });
+});
+
+// The response owns collection windows; a 15:31 stock-clock cutoff must not slow derivatives.
+describe('수급 전용 서버 주기', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it.each([useMarketInvestorFlow, useMarketDerivFlow])('15:31에도 %s는 10초마다 받으며 서버가 닫으면 60초로 전환한다', async (useFlow) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(kst(2026, 9, 10, 15, 31));
+    let expected = true;
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation(async () => ({
+      collection: { server_now_ms: Date.now(), collection_expected: expected,
+        poll_interval_ms: 10_000, stale_after_ms: 30_000, targets: {} },
+      markets: {}, coverage: {}, daily: [],
+    }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const view = renderHook(() => useFlow(), { wrapper });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expected = false;
+    await vi.advanceTimersByTimeAsync(10_000);
+    const closedCalls = spy.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(spy).toHaveBeenCalledTimes(closedCalls);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(spy).toHaveBeenCalledTimes(closedCalls + 1);
+    view.unmount();
+    qc.clear();
   });
 });

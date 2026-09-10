@@ -1,3 +1,4 @@
+import { FlowFreshness } from './FlowFreshness';
 import { DailyNetList } from './DailyNetList';
 /** 투자자 수급 카드 — 주식 2 + 파생 7 을 **한 선택기**로 갈아 끼운다.
  *
@@ -34,6 +35,7 @@ import {
   useMarketDerivFlow,
   useMarketInvestorFlow,
   type DerivFlowProduct,
+  type FlowCollection,
   type InvestorFlowPoint,
 } from '../api/market';
 import {
@@ -90,6 +92,17 @@ const SEG_OFF = 'text-fg-dim hover:bg-bg-input-hover';
 
 function isStock(sel: Selection): boolean {
   return (STOCK_KEYS as readonly string[]).includes(sel);
+}
+
+/** Final/confirmation points can arrive after collection stops with an open failure. */
+function chartGaps(collection: FlowCollection | null | undefined, target: string) {
+  const health = collection?.targets[target];
+  if (!health) return undefined;
+  if (health.failure_started_at_ms == null || !collection) return health.gaps;
+  return [...health.gaps, {
+    start_ms: health.failure_started_at_ms,
+    end_ms: collection.server_now_ms,
+  }];
 }
 
 function FlowPicker({
@@ -155,12 +168,12 @@ export function InvestorCard() {
       // 존재로 파생된 값이라 저장된 플래그가 아니다(#1115).
       const status = stock.data?.confirmed ? '확정' : '잠정';
       return mode === 'intraday'
-        ? `당일 누적 · 억원 · ${status}${cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : ''}`
+        ? `당일 누적 · 억원 · ${status}${cov ? ` · 저장 표본 ${cov.sample_count}개` : ''}`
         : '일별 확정 · 억원';
     }
     const cov = product?.coverage;
     const axis = derivEok ? '억원' : '계약';
-    const sample = cov ? ` · 표본 ${cov.sample_count}/${cov.expected_count ?? '—'}` : '';
+    const sample = cov ? ` · 저장 표본 ${cov.sample_count}개` : '';
     // 단위 미확정은 **숨기지 않는다** — 억원 축이 왜 비었는지 화면이 말해야 한다.
     return `당일 누적 · ${axis} · 잠정${derivEok ? '' : ' · 단위 미확정'}${sample}`;
   })();
@@ -190,6 +203,14 @@ export function InvestorCard() {
       />
       <div className="market-investor-body flex flex-col gap-sm">
         <DataStamp date={showDaily ? stock.data?.daily.at(-1)?.date : stockSel ? stock.data?.date : deriv.data?.date} />
+        {!showDaily && <FlowFreshness
+          collection={stockSel ? stock.data?.collection : deriv.data?.collection}
+          target={sel}
+          receivedAt={stockSel ? stock.dataUpdatedAt : deriv.dataUpdatedAt}
+          error={stockSel ? stock.isError : deriv.isError}
+          coverage={stockSel ? stock.data?.coverage?.[sel] : product?.coverage}
+        />}
+        {showDaily && stock.isError && <p role="status" className="text-2xs text-fg-dim">서버 연결 확인 필요</p>}
         <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
         <FlowPicker value={sel} onChange={setSel} products={products} />
         {stockSel && !showDaily && !stock.isLoading && (stock.data?.markets[sel]?.length ?? 0) === 0 && (
@@ -199,14 +220,15 @@ export function InvestorCard() {
           showDaily ? (
             <StockDaily data={stock.data} market={sel} />
           ) : (
-            <StockIntraday data={stock.data} market={sel} loading={stock.isLoading} />
+            <StockIntraday data={stock.data} market={sel} loading={stock.isLoading || (stock.isError && !stock.data)} />
           )
         ) : (
           <DerivIntraday
             product={product}
             eok={derivEok}
             reason={units?.reason}
-            loading={deriv.isLoading}
+            loading={deriv.isLoading || (deriv.isError && !deriv.data)}
+            gaps={chartGaps(deriv.data?.collection, sel)}
             sessionStartSec={deriv.data?.session_start_sec}
             sessionEndSec={deriv.data?.session_end_sec}
           />
@@ -222,7 +244,9 @@ function FlowBody({
   last,
   sessionStartSec,
   sessionEndSec,
+  gaps,
 }: {
+  gaps?: { start_ms: number; end_ms: number }[];
   series: { color: string; label: string; values: (number | null)[]; secs: number[] }[];
   last: (s: { values: (number | null)[] }) => number | null;
   sessionStartSec?: number;
@@ -247,6 +271,7 @@ function FlowBody({
         }))}
         sessionStartSec={sessionStartSec}
         sessionEndSec={sessionEndSec}
+        gaps={gaps?.map(g => ({ startSec: kstSecOfDay(g.start_ms), endSec: kstSecOfDay(g.end_ms) }))}
         height={128}
       />
       <SessionAxisLabels startSec={sessionStartSec} endSec={sessionEndSec} />
@@ -282,6 +307,7 @@ function StockIntraday({
         { color: SERIES_COLORS.institution, label: '기관', values: points.map((p) => p.institution), secs },
       ]}
       last={(s) => s.values[s.values.length - 1] ?? null}
+      gaps={chartGaps(data?.collection, market)}
       sessionStartSec={data?.session_start_sec}
       sessionEndSec={data?.session_end_sec}
     />
@@ -316,7 +342,9 @@ function DerivIntraday({
   loading,
   sessionStartSec,
   sessionEndSec,
+  gaps,
 }: {
+  gaps?: { start_ms: number; end_ms: number }[];
   product: DerivFlowProduct | undefined;
   eok: boolean;
   reason: string | undefined;
@@ -363,6 +391,7 @@ function DerivIntraday({
           },
         ]}
         last={(s) => s.values[s.values.length - 1] ?? null}
+        gaps={gaps}
         sessionStartSec={sessionStartSec}
         sessionEndSec={sessionEndSec}
       />

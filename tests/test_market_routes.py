@@ -318,7 +318,7 @@ async def test_investor_flow_reads_stored_samples_without_calling_the_vendor(tmp
     #
     # 값을 게이트 상수에서 계산해 적지 않는 이유: 그러면 산출부와 같은 식이 되어
     # 동어반복이 된다. 값으로 세워야 실패 메시지가 "창이 바뀌었다" 를 말해 준다.
-    assert cov["expected_count"] == 1020
+    assert cov["expected_count"] == 3060
     # 창은 응답이 말한다 — 화면이 x축을 하드코딩하면 선은 08:00–16:30 까지 그려지는데
     # 눈금은 09:00–15:30 이라고 말한다(`SessionAxisLabels` 주석의 그 함정).
     assert got["session_start_sec"] == 8 * 3600

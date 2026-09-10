@@ -9,8 +9,8 @@ import pytest
 
 from hoga.live.investor_flow_collector import InvestorFlowCollector
 
-_ROWS_A = [{"inds_cd": "001_AL", "frgnr_netprps": "+100"}]
-_ROWS_B = [{"inds_cd": "001_AL", "frgnr_netprps": "+200"}]
+_ROWS_A = [{"inds_cd": "001_AL", "frgnr_netprps": "+100", "ind_netprps": "-150", "orgn_netprps": "50"}]
+_ROWS_B = [{"inds_cd": "001_AL", "frgnr_netprps": "+200", "ind_netprps": "-150", "orgn_netprps": "50"}]
 
 
 def _make(tmp_path, *, gate=True, now_ms=1_000, fetch=None, calls=None):
@@ -20,7 +20,7 @@ def _make(tmp_path, *, gate=True, now_ms=1_000, fetch=None, calls=None):
     async def _default_fetch(mrkt_tp: str, date: str):
         if calls is not None:
             calls.append((mrkt_tp, date))
-        return list(_ROWS_A)
+        return [{**_ROWS_A[0], "inds_cd": "001_AL" if mrkt_tp == "0" else "101_AL"}]
 
     return InvestorFlowCollector(
         data_dir=tmp_path,
@@ -69,7 +69,7 @@ async def test_changed_values_append_a_new_sample(tmp_path):
         # 코스피만 두 번째 사이클에서 값이 바뀐다
         if mrkt_tp == "0" and seq["n"] > 0:
             return list(_ROWS_B)
-        return list(_ROWS_A)
+        return [{**_ROWS_A[0], "inds_cd": "001_AL" if mrkt_tp == "0" else "101_AL"}]
 
     c = _make(tmp_path, fetch=_fetch)
     await c.run_once()
@@ -104,8 +104,9 @@ async def test_cycle_error_does_not_kill_the_collector(tmp_path):
         raise RuntimeError("upstream exploded")
 
     c = _make(tmp_path, fetch=_boom)
-    with pytest.raises(RuntimeError):
-        await c.run_once()  # run_once 는 던진다 — 삼키는 것은 _loop 의 책임
+    await c.run_once()  # 한 시장 예외를 격리하고 다음 시장도 시도한다.
+    assert c.receipts.state.targets["KOSPI"].consecutive_failures == 1
+    assert c.receipts.state.targets["KOSDAQ"].consecutive_failures == 1
     c._record_cycle_error(RuntimeError("upstream exploded"))
     assert c.status.last_error is not None
     assert c.status.last_error_kind is not None

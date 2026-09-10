@@ -11,12 +11,7 @@
   "누가 보고 있었는가" 의 함수가 되어 어떤 구멍도 해석할 수 없게 된다.
 - **누적값을 그대로 적재한다**(스토어 계약) — 표본을 놓쳐도 다음 표본이 전체 누적을
   다시 들고 오므로 결손이 해상도 손실이지 정합성 손상이 아니다.
-- **30초 폴, 동일 값이면 미기록**(#1099). 예전엔 60초였다 — "벤더 갱신 ≈90초" 라는
-  2026-08-05 실측(3분 관측·변화 2회)에 맞춘 값인데, **2026-08-10 재측정이 그 전제를
-  뒤집었다**: 우연히 두 수집기가 위상을 달리해 돈 구간에서 24·36초 해상도가 생겼고,
-  그 짧은 간격 쌍에서 값이 실제로 바뀌었다(코스닥 27쌍 중 17건, 코스피 9건, 최단
-  13초). 즉 60초 폴은 갱신을 놓치고 있었다. 상한은 아직 모른다 — 30초에서 다시
-  재려면 같은 방법(짧은 간격 쌍의 값 차이)을 쓴다.
+- **10초 폴, 동일 값이면 미기록.** 수신 상태는 별도로 기록하고 읽기 캐시로 반복 파싱을 줄인다.
 
 `run_with_capacity` 는 **1 submit = 1 업스트림 콜**이다(ADR-0137). 두 시장을 한
 submit 에 묶으면 버킷은 1 을 세고 벤더는 2 를 센다.
@@ -31,18 +26,17 @@ from typing import Any
 
 from hoga.live import kiwoom_access
 from hoga.live.error_policy import classify_live_error, format_live_error
+from hoga.live.flow_receipts import DEFAULT_POLL_INTERVAL_S, FlowReceipts
 from hoga.live.investor_flow_store import IntradaySample, InvestorFlowStore, rows_equal
+from hoga.live.market_overview import market_investor_row
 from hoga.live.session_gate import ws_capture_window_async
 
 log = logging.getLogger(__name__)
 
 # 경로는 `kiwoom_rest.TR` 레지스트리가 안다(ka10051 → PATH_SECT) — 여기서 다시 적지 않는다.
 API_ID = "ka10051"
-#: 2026-08-10 실측으로 60 → 30 (모듈 docstring). 유량은 2콜/30초 = `(앱키, TR)` 당
-#: 5 req/s 버킷의 **1.4%** 라 제약이 아니다. 진짜 대가는 저장량이다 — `rows_equal` 이
-#: 업종 행 전체를 비교해 중복 억제가 거의 걸리지 않으므로(실측 스킵률 코스피
-#: 41/103 · 코스닥 9/103) 파일이 대략 주기에 반비례해 커진다.
-POLL_INTERVAL_S = 30.0
+#: 10초 수집. 기존 벤더별 호출 제한기를 공유하며 사이클 소요 시간을 관측한다.
+POLL_INTERVAL_S = DEFAULT_POLL_INTERVAL_S
 
 # 시장 구분 — 코스닥은 **별도 콜**이다(실측: mrkt_tp=0 은 코스피 28행, 1 은 코스닥 32행).
 MARKETS: tuple[str, ...] = ("0", "1")
@@ -58,6 +52,7 @@ class InvestorFlowCollectorStatus:
 
     def __init__(self) -> None:
         self.running = False
+        self.last_cycle_duration_ms: int | None = None
         self.last_sampled_at_ms: int | None = None
         self.last_written_at_ms: int | None = None
         self.skipped_duplicates = 0
@@ -77,6 +72,7 @@ class InvestorFlowCollector:
         poll_interval_s: float = POLL_INTERVAL_S,
     ) -> None:
         self.store = InvestorFlowStore(data_dir)
+        self.receipts = FlowReceipts(Path(data_dir) / "investor-flow", poll_interval_s)
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
         self._fetch_market_fn = fetch_market_fn
@@ -114,13 +110,23 @@ class InvestorFlowCollector:
         """**퍼페추얼 루프다** — 정상 반환이 곧 조용한 죽음이므로 `ONE_SHOT_TASK_NAMES`
         에 넣으면 안 된다(ADR-0064)."""
         while True:
+            started = asyncio.get_running_loop().time()
             try:
                 await self.run_once()
             except Exception as e:  # noqa: BLE001 — 수집 루프의 감독자. 한 사이클의 어떤
                 # 예외도 루프를 죽이면 안 된다(죽으면 수집이 조용히 멈춘다). 삼키는 게
                 # 아니라 분류해 상태로 노출한다.
                 self._record_cycle_error(e)
-            await asyncio.sleep(self._poll_interval_s)
+            elapsed = asyncio.get_running_loop().time() - started
+            self.status.last_cycle_duration_ms = round(elapsed * 1000)
+            try:
+                await asyncio.to_thread(
+                    self.receipts.cycle_completed, self._now_ms_fn(), self.status.last_cycle_duration_ms,
+                )
+            except OSError as exc:
+                self._record_cycle_error(exc)
+            elapsed = asyncio.get_running_loop().time() - started
+            await asyncio.sleep(max(self._poll_interval_s - elapsed, 0.1))
 
     async def run_once(self) -> None:
         now_ms = self._now_ms_fn()
@@ -129,30 +135,48 @@ class InvestorFlowCollector:
         date = self._date_fn()
         self.status.last_sampled_at_ms = now_ms
 
-        for mrkt_tp in MARKETS:
-            rows = await self._fetch_market_fn(mrkt_tp, date)
-            if rows is None:
-                # 한 시장만 실패하면 그 시장의 줄만 빠진다 — 커버리지가 비대칭을
-                # 그대로 드러내므로 여기서 억지로 메우지 않는다.
-                continue
-            prev = self.store.last_sample(date, mrkt_tp)
-            if rows_equal(prev, rows):
-                self.status.skipped_duplicates += 1
-                continue
-            self.store.append_sample(
-                date,
-                IntradaySample(
-                    sampled_at_ms=now_ms,
-                    request={
-                        "mrkt_tp": mrkt_tp,
-                        "amt_qty_tp": AMT_QTY_AMOUNT_EOK,
-                        "base_dt": date,
-                        "stex_tp": STEX_ALL,
-                    },
-                    rows=rows,
-                ),
-            )
-            self.status.last_written_at_ms = now_ms
+        try:
+            await asyncio.to_thread(self.receipts.begin, date, now_ms, ["KOSPI", "KOSDAQ"])
+        except OSError as exc:
+            self._record_cycle_error(exc)  # receipt persistence must not stop raw capture
+        for mrkt_tp, key in zip(MARKETS, ["KOSPI", "KOSDAQ"], strict=True):
+            try:
+                self.receipts.attempt(key, self._now_ms_fn())
+                try:
+                    rows = await self._fetch_market_fn(mrkt_tp, date)
+                except Exception as exc:  # noqa: BLE001 — isolate one market, preserve policy kind
+                    self.receipts.failure(key, self._now_ms_fn(), classify_live_error(exc).kind)
+                    continue
+                received_ms = self._now_ms_fn()
+                got = market_investor_row(rows or [])
+                if got is None or got[0] != key or any(v is None for v in got[1].values()):
+                    self.receipts.failure(key, received_ms, "data_quality")
+                    continue
+                assert rows is not None
+                try:
+                    written = await asyncio.to_thread(self._write_sample, date, mrkt_tp, rows, received_ms)
+                except Exception as exc:  # noqa: BLE001 — isolate persistence failure
+                    self.receipts.failure(key, received_ms, "storage")
+                    self._record_cycle_error(exc)
+                    continue
+                self.receipts.success(key, received_ms, written=written)
+            finally:
+                try:
+                    await asyncio.to_thread(self.receipts.save, self._now_ms_fn())
+                except OSError as exc:
+                    self._record_cycle_error(exc)
+
+    def _write_sample(self, date: str, mrkt_tp: str, rows: list[dict[str, Any]], now_ms: int) -> bool:
+        if rows_equal(self.store.last_sample(date, mrkt_tp), rows):
+            self.status.skipped_duplicates += 1
+            return False
+        self.store.append_sample(date, IntradaySample(
+            sampled_at_ms=now_ms, poll_interval_ms=int(self._poll_interval_s * 1000),
+            request={"mrkt_tp": mrkt_tp, "amt_qty_tp": AMT_QTY_AMOUNT_EOK,
+                     "base_dt": date, "stex_tp": STEX_ALL}, rows=rows,
+        ))
+        self.status.last_written_at_ms = now_ms
+        return True
 
     def _record_cycle_error(self, exc: Exception) -> None:
         policy = classify_live_error(exc, internal=True)
@@ -168,8 +192,7 @@ class InvestorFlowCollector:
 def make_kiwoom_fetch(scheduler: Any, client: Any) -> Callable[[str, str], Awaitable[list[dict[str, Any]] | None]]:
     """거버너를 거치는 실 fetch. **1 submit = 1 콜** — 두 시장을 묶지 않는다.
 
-    실패를 `None` 으로 접는다: 한 사이클의 한 시장 실패는 다음 폴에서 회복되고,
-    누적값을 저장하므로 놓친 표본이 정합성을 깨지 않는다.
+    예외는 호출자가 시장별로 분류한다. 확정 수렴도 호출 경계에서 실패를 처리한다.
     """
 
     async def _fetch(mrkt_tp: str, date: str) -> list[dict[str, Any]] | None:
@@ -179,19 +202,15 @@ def make_kiwoom_fetch(scheduler: Any, client: Any) -> Callable[[str, str], Await
             "base_dt": date,
             "stex_tp": STEX_ALL,
         }
-        try:
-            page = await kiwoom_access.run_with_capacity(
-                scheduler,
-                key=("investor-flow", mrkt_tp, date),
-                api_id=API_ID,
-                priority="background",
-                client=client,
-                # 기본인자 바인딩 — late binding 이면 모든 호출이 마지막 값을 본다.
-                fetch_fn=lambda c, b=body: c.call(API_ID, b),
-            )
-        except Exception as e:  # noqa: BLE001 — 폴 1회 실패는 다음 주기에 회복된다.
-            log.debug("investor_flow.fetch_failed mrkt=%s error=%s", mrkt_tp, e)
-            return None
+        page = await kiwoom_access.run_with_capacity(
+            scheduler,
+            key=("investor-flow", mrkt_tp, date),
+            api_id=API_ID,
+            priority="background",
+            client=client,
+            # 기본인자 바인딩 — late binding 이면 모든 호출이 마지막 값을 본다.
+            fetch_fn=lambda c, b=body: c.call(API_ID, b),
+        )
         return list(getattr(page, "rows", []) or [])
 
     return _fetch

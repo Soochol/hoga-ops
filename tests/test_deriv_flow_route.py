@@ -110,7 +110,7 @@ def test_coverage_counts_per_product(tmp_path):
     assert got["products"]["OC01"]["coverage"]["sample_count"] == 0
     # 405분 세션(09:00–15:45) / 30초 = 810. 분모가 폴 주기를 따라가므로 수집 주기를
     # 바꾸면 여기도 같이 바뀐다(2026-08-10 60→30초).
-    assert got["products"]["F001"]["coverage"]["expected_count"] == 810
+    assert got["products"]["F001"]["coverage"]["expected_count"] == 2430
 
 
 def _ds(ms: int, product: str = "101W09") -> DerivSample:

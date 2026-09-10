@@ -258,3 +258,24 @@ def test_stamp_treats_naive_now_as_kst_on_a_utc_machine(monkeypatch):
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+@pytest.mark.asyncio
+async def test_fetch_exception_defers_day_but_allows_later_days_and_retry(tmp_path):
+    failed = True
+
+    async def fetch(market, date):
+        if failed and date == "20260803" and market == "1":
+            raise TimeoutError("upstream timeout")
+        return [{"inds_cd": "001_AL" if market == "0" else "101_AL"}]
+
+    dates = ["20260803", "20260804"]
+    now_ms = _kst_ms(2026, 8, 5)
+    assert await confirm_days(tmp_path, dates=dates, fetch_market_fn=fetch, now_ms_fn=lambda: now_ms) == 1
+    store = InvestorFlowStore(tmp_path)
+    assert store.load_confirmed("20260803") is None
+    assert store.load_confirmed("20260804") is not None
+
+    failed = False
+    assert await confirm_days(tmp_path, dates=dates, fetch_market_fn=fetch, now_ms_fn=lambda: now_ms) == 1
+    assert store.load_confirmed("20260803") is not None

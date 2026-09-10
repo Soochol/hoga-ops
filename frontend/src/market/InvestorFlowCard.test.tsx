@@ -5,7 +5,7 @@
  * 아래 테스트는 그 세 갈림이 화면에서 정직하게 드러나는지를 잰다.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../api/client';
@@ -140,6 +140,46 @@ describe('InvestorCard', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+  });
+
+  it.each(['KOSPI', 'F001'])('does not connect a final %s point across an unresolved collection failure', async (target) => {
+    const finalAt = Date.UTC(2026, 7, 7, 8, 0); // 17:00 KST: confirmation/catch-up
+    const collection = {
+      server_now_ms: finalAt + 60_000,
+      collection_expected: false,
+      poll_interval_ms: 10_000,
+      stale_after_ms: 30_000,
+      targets: {
+        [target]: {
+          status: 'closed',
+          last_attempt_at_ms: T0 + 30_000,
+          last_success_at_ms: T0,
+          last_written_at_ms: T0,
+          consecutive_failures: 1,
+          error_kind: 'network',
+          failure_started_at_ms: T0 + 30_000,
+          gaps: [],
+        },
+      },
+    };
+    const deriv = derivResponse();
+    deriv.products.F001.points = [derivPoint(T0, 1), derivPoint(finalAt, 2)];
+    const stock = {
+      ...STOCK,
+      confirmed: true,
+      markets: { ...STOCK.markets, KOSPI: [
+        STOCK.markets.KOSPI[0],
+        { ...STOCK.markets.KOSPI[1], t_ms: Date.UTC(2026, 7, 7, 7, 30) },
+      ] },
+    };
+    mockApi({ ...deriv, collection }, { ...stock, collection });
+    const { container } = renderCard();
+    if (target === 'F001') await userEvent.click(await screen.findByRole('button', { name: '선물' }));
+    await waitFor(() => {
+      const paths = container.querySelectorAll('svg path');
+      expect(paths).toHaveLength(3);
+      for (const path of paths) expect(path.getAttribute('d')?.match(/[ML]/g)).toEqual(['M', 'M']);
+    });
   });
 
   it('주식 2 + 파생 7 이 한 선택기에 선다', async () => {

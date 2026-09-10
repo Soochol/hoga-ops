@@ -145,3 +145,72 @@ async def test_unresolved_units_do_not_block_storage(tmp_path):
     assert c.status.units is not None
     assert not c.status.units.resolved
     assert len(c.store.load_samples(_DATE)) == len(PRODUCTS)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["fetch", "missing", "nan", "infinite", "storage"])
+async def test_product_errors_are_recorded_without_blocking_later_products(tmp_path, monkeypatch, failure):
+    failed_key = PRODUCTS[0].key
+    calls = []
+
+    async def fetch(_iscd, key):
+        calls.append(key)
+        if key != failed_key:
+            return _row()
+        if failure == "fetch":
+            raise TimeoutError("upstream timeout")
+        row = _row()
+        if failure == "missing":
+            del row["frgn_ntby_qty"]
+        elif failure in {"nan", "infinite"}:
+            row["frgn_ntby_qty"] = "nan" if failure == "nan" else "inf"
+        return row
+
+    collector = _make(tmp_path, fetch=fetch)
+    append = collector.store.append_sample
+
+    def append_with_failure(date, sample):
+        if failure == "storage" and sample.product == failed_key:
+            raise OSError("disk full")
+        return append(date, sample)
+
+    monkeypatch.setattr(collector.store, "append_sample", append_with_failure)
+    await collector.run_once()
+
+    assert calls == [product.key for product in PRODUCTS]
+    assert {sample.product for sample in collector.store.load_samples(_DATE)} == {
+        product.key for product in PRODUCTS[1:]
+    }
+    target = collector.receipts.state.targets[failed_key]
+    assert target.consecutive_failures == 1
+    assert target.last_success_at_ms is None
+    assert target.error_kind == (
+        "storage" if failure == "storage" else "unexpected" if failure == "fetch" else "data_quality"
+    )
+    assert all(
+        collector.receipts.state.targets[product.key].last_success_at_ms == 1_000
+        for product in PRODUCTS[1:]
+    )
+
+
+@pytest.mark.asyncio
+async def test_receipt_write_failure_preserves_raw_capture_and_dedup_success(tmp_path, monkeypatch):
+    collector = _make(tmp_path)
+    attempts = []
+
+    def fail_receipt_write(now_ms):
+        attempts.append(now_ms)
+        raise OSError("receipt directory unavailable")
+
+    monkeypatch.setattr(collector.receipts, "save", fail_receipt_write)
+    await collector.run_once()
+    collector._now_ms_fn = lambda: 11_000
+    await collector.run_once()
+
+    assert len(collector.store.load_samples(_DATE)) == len(PRODUCTS)
+    assert len(attempts) >= 2 * len(PRODUCTS)
+    assert collector.status.skipped_duplicates == len(PRODUCTS)
+    for target in collector.receipts.state.targets.values():
+        assert target.last_success_at_ms == 11_000
+        assert target.last_written_at_ms == 1_000
+        assert target.consecutive_failures == 0

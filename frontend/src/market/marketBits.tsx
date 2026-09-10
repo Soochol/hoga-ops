@@ -118,6 +118,7 @@ export function SessionLinesChart({
   height = 96,
   names,
   unit = '억원',
+  gaps = [],
 }: {
   series: { color: string; points: { sec: number; v: number | null }[] }[];
   sessionStartSec?: number;
@@ -125,6 +126,7 @@ export function SessionLinesChart({
   height?: number;
   names?: string[];
   unit?: string;
+  gaps?: { startSec: number; endSec: number }[];
 }) {
   const width = 300;
   const span = sessionEndSec - sessionStartSec || 1;
@@ -140,9 +142,13 @@ export function SessionLinesChart({
   const py = (v: number) => height - 3 - ((v - min) / vspan) * (height - 6);
   const path = (pts: { sec: number; v: number | null }[]) => {
     let d = '';
+    let previous: number | null = null;
     for (const p of pts) {
-      if (p.v === null) continue;
-      d += `${d ? 'L' : 'M'}${px(p.sec).toFixed(1)},${py(p.v).toFixed(1)} `;
+      if (p.v === null) { previous = null; continue; }
+      const lastSec = previous;
+      const interrupted = lastSec === null || gaps.some(g => g.startSec < p.sec && g.endSec > lastSec);
+      d += `${interrupted ? 'M' : 'L'}${px(p.sec).toFixed(1)},${py(p.v).toFixed(1)} `;
+      previous = p.sec;
     }
     return d.trim();
   };
@@ -182,7 +188,7 @@ export function SessionLinesChart({
 /** 자정 기준 초 → `HH:MM`. **축 라벨을 하드코딩하지 않기 위한 것**이다 — 선은 서버가
  *  준 세션 창까지 그려지는데 눈금만 다른 시각을 말하면 조용한 거짓말이 된다.
  *  같은 값에서 파생시키면 어긋날 수가 없다. */
-export function secOfDayLabel(sec: number): string {
+function secOfDayLabel(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;

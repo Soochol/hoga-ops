@@ -146,3 +146,55 @@ test('daily list keeps its header and total visible while dates scroll', async (
   expect(before.overflow).toBeLessThanOrEqual(1);
   await expect(table.locator('.daily-net-rows [role="row"]').last()).toBeInViewport();
 });
+
+test('investor flow refreshes every ten seconds after 15:30 and recovers from API failure', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-10T15:31:00+09:00') });
+  await marketMocks(page, true);
+  let count = 2;
+  let failing = false;
+  let requests = 0;
+  const t = Date.parse('2026-09-10T15:31:00+09:00');
+  await page.route(apiPrefix('market/investor-flow'), async (route) => {
+    requests++;
+    if (failing) {
+      await route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } });
+      return;
+    }
+    const received = t + (count - 2) * 10_000;
+    await route.fulfill({ json: {
+      date: '20260910', unit: 'amt_eok', confirmed: false, daily: [],
+      session_start_sec: 8 * 3600, session_end_sec: 16.5 * 3600,
+      markets: { KOSPI: [
+        { t_ms: t - 10_000, individual: 10, foreign: -5, institution: -5 },
+        { t_ms: received, individual: 20, foreign: -10, institution: -10 },
+      ] },
+      coverage: { KOSPI: { first_sample_ms: t - 10_000, last_sample_ms: received,
+        sample_count: count, expected_count: 3060, gap_ranges: [] } },
+      collection: { server_now_ms: received, collection_expected: true,
+        poll_interval_ms: 10_000, stale_after_ms: 30_000, targets: { KOSPI: {
+          status: 'receiving', last_success_at_ms: received, last_written_at_ms: received,
+          last_attempt_at_ms: received, consecutive_failures: 0, error_kind: null,
+          failure_started_at_ms: null, gaps: [],
+        } } },
+    } });
+  });
+  await page.goto('/market');
+  const card = page.locator('.market-switch-card').filter({ has: page.getByRole('heading', { name: /투자자 수급/ }) });
+  await expect(card.getByRole('status')).toContainText('정상 수신');
+  await expect(card.getByRole('heading')).toContainText('저장 표본 2개');
+  count = 3;
+  await page.clock.fastForward(10_000);
+  await expect(card.getByRole('heading')).toContainText('저장 표본 3개');
+  failing = true;
+  const beforeFailure = requests;
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => requests).toBeGreaterThan(beforeFailure);
+  await page.clock.fastForward(2000); // query retry, not an arbitrary real-time sleep
+  await expect(card.getByRole('status')).toContainText('서버 연결 확인 필요');
+  await expect(card.getByRole('heading')).toContainText('저장 표본 3개');
+  failing = false;
+  count = 4;
+  await page.clock.fastForward(10_000);
+  await expect(card.getByRole('status')).toContainText('정상 수신');
+  await expect(card.getByRole('heading')).toContainText('저장 표본 4개');
+});
