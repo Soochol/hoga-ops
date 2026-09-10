@@ -16,7 +16,30 @@ function row(props: Partial<ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
-  it('shows the full name and code on hover and row focus, dismissing on Escape and scroll', () => {
+  it.each(['blur', 'visibilitychange'])('dismisses a hovered name on %s without a mouseleave and stays closed on return', (event) => {
+    row({ code: '005930' });
+    const target = screen.getByTestId('quote-row-005930');
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('삼성전자 · 005930');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get');
+    try {
+      visibility.mockReturnValue('hidden');
+      fireEvent(event === 'blur' ? window : document, new Event(event));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(target).not.toHaveAttribute('aria-describedby');
+      visibility.mockReturnValue('visible');
+      fireEvent(document, new Event('visibilitychange'));
+      fireEvent(window, new Event('focus'));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      fireEvent.mouseLeave(target);
+      fireEvent.mouseEnter(screen.getByText('삼성전자'));
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
+  it('shows the full name and code only on name hover, dismissing on leave, Escape and scroll', () => {
     row({ code: '005930' });
     fireEvent.mouseEnter(screen.getByText('삼성전자'));
     expect(screen.getByRole('tooltip')).toHaveTextContent('삼성전자 · 005930');
@@ -24,8 +47,13 @@ describe('QuoteRow', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
     const target = screen.getByTestId('quote-row-005930');
     fireEvent.focus(target);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
     expect(target).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
     fireEvent.keyDown(target, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
+    fireEvent.mouseLeave(screen.getByText('삼성전자'));
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
