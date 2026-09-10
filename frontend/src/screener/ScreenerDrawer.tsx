@@ -1,8 +1,7 @@
-import { occurrenceRows, resultKey, type OccurrenceRow } from './occurrenceRows';
-import type { OccurrenceExclusions } from './useOccurrenceExclusions';
-import { useOccurrenceExclusions } from './useOccurrenceExclusions';
-import { OccurrenceAction, OccurrenceExclusionToolbar } from './OccurrenceExclusions';
+import { ScreenerOccurrenceDetails } from './ScreenerOccurrenceDetails';
 import { CONDITION_CATALOG } from './catalog';
+import { useOccurrenceExclusions } from './useOccurrenceExclusions';
+import { OccurrenceExclusionToolbar } from './OccurrenceExclusions';
 import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
@@ -63,33 +62,37 @@ function screenerDraggableId(code: string): string {
  *  행이 리스트에 남는다). */
 const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row,
-  controller,
+  onOccurrences,
   active,
   flash,
   onActivate,
   onOpenMenu,
 }: {
-  row: OccurrenceRow<ScreenerRowLive>;
-  controller: OccurrenceExclusions;
+  row: ScreenerRowLive;
+  onOccurrences: (code: string) => void;
   active: boolean;
   flash: boolean;
   onActivate: (row: ScreenerRowLive, e?: JumpModifiers) => void;
   onOpenMenu: (row: ScreenerRowLive, e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
-    id: screenerDraggableId(resultKey(row)),
+    id: screenerDraggableId(row.code),
     data: { type: SCREENER_ENTRY_TYPE, code: row.code, name: row.name },
   });
-  const condition = controller.conditions.find(c => c.id === row.occurrence?.condition_id);
   const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
       name={row.name} code={row.code}
-      compact={!!row.occurrence}
-      nameTooltip={condition ? `${row.name} · ${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}` : undefined}
-      trailingAction={row.occurrence && <OccurrenceAction code={row.code} name={row.name} occurrence={row.occurrence} controller={controller} />}
+      compact={!!row.occurrences?.length}
+      trailingAction={!!row.occurrences?.length && <button type="button"
+        className="text-2xs text-fg-dim hover:text-fg rounded focus-visible:outline focus-visible:outline-1"
+        aria-label={`${row.name} 발생 ${row.occurrences.length}건 보기`}
+        onPointerDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onOccurrences(row.code); }}>
+        발생 {row.occurrences.length}건
+      </button>}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -146,6 +149,7 @@ export function ScreenerDrawer() {
 
   // 결과 행 우클릭 → 관심 그룹 편집 메뉴(하트 버튼 대체). raw 커서 좌표만 담고
   // 위치 클램프는 ScreenerRowMenu 가 실측 보정한다(관심·히트맵 메뉴와 동일 관용구).
+  const [occurrenceCode, setOccurrenceCode] = useState<string | null>(null);
   const [rowMenu, setRowMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
@@ -289,8 +293,8 @@ export function ScreenerDrawer() {
   const entryOrder = useEntryOrder(resultCodes, selectedSavedId);
   const sortedLiveRowsLive = useMemo(
     () => (sortMode === 'default'
-      ? stackByEntryOrder(occurrenceRows(liveRows), entryOrder)
-      : sortScreenerRows(occurrenceRows(liveRows), sortMode)),
+      ? stackByEntryOrder(liveRows, entryOrder)
+      : sortScreenerRows(liveRows, sortMode)),
     [liveRows, sortMode, entryOrder],
   );
   // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
@@ -444,7 +448,7 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
-              발생 {sortedLiveRows.length}건 · {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목 · {lastScan.savedName ?? '임시 조건'}
+              발생 {scanRows.reduce((count, row) => count + (row.occurrences?.length || 1), 0)}건 · {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목 · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case" style={{ color: 'var(--warn)' }}>
                   · {lastScanStaleReason} — 시작으로 갱신
@@ -500,7 +504,7 @@ export function ScreenerDrawer() {
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
-                    <DraggableScreenerRow key={resultKey(r)} controller={occurrenceController}
+                    <DraggableScreenerRow key={r.code} onOccurrences={setOccurrenceCode}
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
@@ -526,6 +530,11 @@ export function ScreenerDrawer() {
             : '저장된 조건을 선택하세요'}</RailState>
         )}
       </RailDrawerBody>
+
+      {occurrenceCode && <ScreenerOccurrenceDetails
+        row={scanRows.find(row => row.code === occurrenceCode)}
+        controller={occurrenceController} onClose={() => setOccurrenceCode(null)}
+      />}
 
       {rowMenu && (
         <QuoteRowGroupMenu

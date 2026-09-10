@@ -7,7 +7,7 @@ test('narrow screener drawer keeps dated occurrences compact and exclusion usabl
   const condition = { id: 'v', type: 'new_high_vol', params: {
     mode: 'date_range', start_date: '2011-01-01', end_date: '2031-12-31', record_period: { unit: 'years', value: 2 },
   } };
-  const events = ['2021-08-12', '2021-08-11'];
+  const events = Array.from({ length: 312 }, (_, i) => new Date(Date.UTC(2026, 8, 10 - i)).toISOString().slice(0, 10));
   const exclusions: unknown[] = [];
   await page.route(apiExact('screener/saves'), r => r.fulfill({ json: { schema_version: 1, saves: [
     { id: 's1', name: '신고가, 거래대금', conditions: [condition], universe: {}, created_at_ms: 1, updated_at_ms: 1 },
@@ -37,18 +37,21 @@ test('narrow screener drawer keeps dated occurrences compact and exclusion usabl
   await panel.evaluate(el => { el.style.width = '260px'; });
   await panel.getByRole('button', { name: /시작/ }).click();
   const rows = panel.getByTestId('screener-row-000660');
-  await expect(rows).toHaveCount(2);
-  await expect.poll(async () => (await rows.first().boundingBox())!.height).toBeLessThan(36);
-  await expect(rows.first().getByText('2021-08-12', { exact: true })).toHaveCount(0);
-  await expect(rows.first()).not.toContainText('기간내 신고거래량');
-  await rows.first().getByText('SK하이닉스', { exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('기간내 신고거래량');
-  await page.mouse.move(0, 0);
-  await expect(rows.first().getByRole('button', { name: /발생 건 제외/ })).toBeInViewport();
-  await page.screenshot({ path: testInfo.outputPath('narrow-occurrences.png') });
-  await rows.first().getByRole('button', { name: /발생 건 제외/ }).click();
   await expect(rows).toHaveCount(1);
+  await expect.poll(async () => (await rows.boundingBox())!.height).toBeLessThan(36);
+  await expect(rows).not.toContainText('2026-09-10');
+  const detailsButton = rows.getByRole('button', { name: /발생 312건/ });
+  await expect(detailsButton).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('narrow-occurrences.png') });
+  await detailsButton.click();
+  const dialog = page.getByRole('dialog', { name: 'SK하이닉스 발생 건' });
+  await expect(dialog.getByRole('button', { name: /발생 건 제외/ })).toHaveCount(312);
+  await dialog.getByRole('button', { name: /2026-09-10 .* 발생 건 제외/ }).click();
+  await expect(dialog.getByRole('button', { name: /발생 건 제외/ })).toHaveCount(311);
   expect(exclusions).toHaveLength(1);
-  await expect(rows.first().getByText('2021-08-11', { exact: true })).toHaveCount(0);
-  await expect(rows.first().getByRole('button', { name: /2021-08-11 .* 발생 건 제외/ })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /2026-09-09 .* 발생 건 제외/ })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('occurrence-details.png') });
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.getByRole('button', { name: /발생 311건/ })).toBeVisible();
 });
