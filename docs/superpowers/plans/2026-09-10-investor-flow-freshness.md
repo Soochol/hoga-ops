@@ -35,7 +35,7 @@
 대상: `hoga/live/investor_flow_collector.py`, `deriv_flow_collector.py`, 각 store/runtime, `hoga/api/scheduler.py`.
 
 - 현물은 시장별, 파생은 상품별로 `last_attempt_at_ms`, `last_success_at_ms`, `last_written_at_ms`, 연속 실패 횟수와 안전한 오류 분류를 기록한다.
-- `last_success_at_ms`는 대상 시장·상품의 필수 데이터 검증까지 성공한 뒤 갱신한다. HTTP 200이어도 필요한 행이 없거나 파싱에 실패하면 정상 수신으로 세지 않는다.
+- `last_success_at_ms`는 대상 시장·상품의 필수 데이터 검증과 저장(또는 동일 값 저장 생략)이 성공한 뒤 갱신한다. HTTP 200이어도 필요한 행이 없거나 파싱에 실패하면 정상 수신으로 세지 않는다. 원본 저장에 실패하면 `storage` 오류를 기록하고 정상 수신 시각을 갱신하지 않는다.
 - 동일 값 수신도 정상 성공 시각을 갱신한다. 한 시장만 성공했을 때 다른 시장의 실패가 가려지지 않게 한다.
 - 현물·파생 fetch가 예외를 `None`으로 접지 않고 호출 경계까지 전달한다. 수집기가 시장/상품별로 예외를 분류하고 다음 대상을 계속 수집한다. 확정 수렴 호출부는 실패한 날짜를 다음 실행으로 미룬다.
 - 원본 값 JSONL의 중복 생략은 유지한다. 별도의 작은 상태 파일을 수집 사이클당 원자적으로 갱신하고, 날짜·수집 실행 식별자를 포함한다. 읽기 서버와 수집 소유 프로세스가 달라도 같은 상태를 보게 한다.
@@ -48,13 +48,17 @@
 
 대상: `hoga/api/market_routes.py`, `hoga/live/session_gate.py` 및 수집 상태 모듈.
 
-기존 응답에 하위 호환 필드를 추가한다.
+`GET /api/market/investor-flow`와 `GET /api/market/deriv-flow` 응답에 하위 호환 객체 `collection`을 추가한다. 현물 대상 키는 `KOSPI`·`KOSDAQ`, 파생 대상 키는 응답 `products`의 상품 키다.
 
 | 위치 | 추가 정보 | 의미 |
 |---|---|---|
-| 응답 공통 | `server_now_ms`, `collection_expected`, `poll_interval_ms`, `stale_after_ms` | 서버 시각·거래일 달력·수집 창을 기준으로 판정 |
-| 시장/상품별 | `last_success_at_ms`, `last_written_at_ms`, `consecutive_failures`, `error_kind` | 정상 수신과 실제 저장을 분리 |
-| 시장/상품별 | `status` | `waiting`, `receiving`, `delayed`, `closed`, `unavailable`, `unknown` |
+| `collection` | `server_now_ms`, `collection_expected`, `poll_interval_ms`, `stale_after_ms` | 서버 시각·거래일 달력·수집 창을 기준으로 판정 |
+| `collection` | `last_cycle_duration_ms`, `runs` | 마지막 사이클 소요 시간과 실행별 `run_id`·`started_at_ms`·`poll_interval_ms` 이력 |
+| `collection.targets[key]` | `last_attempt_at_ms`, `last_success_at_ms`, `last_written_at_ms`, `consecutive_failures`, `error_kind` | 시도·정상 수신·실제 저장을 분리 |
+| `collection.targets[key]` | `waiting_since_ms`, `failure_started_at_ms`, `gaps` | 첫 수신 유예 기준·미복구 실패 시작·복구된 실패 구간(`start_ms`, `end_ms`) |
+| `collection.targets[key]` | `status` | `waiting`, `receiving`, `delayed`, `closed`, `unavailable`, `unknown` |
+
+아직 관측하지 않은 시각·오류·사이클 소요 시간은 `null`, 실행 이력과 복구 구간이 없으면 빈 배열이다. `waiting_since_ms`는 상태 파일이 없으면 `null`이다. 구버전 응답의 `collection`은 없거나 `null`일 수 있으므로 프론트는 기존 갱신 정책으로 폴백한다.
 
 - 수집 창과 거래일 여부는 기존 서버 게이트를 재사용한다. 벤더 조회는 기존 수집기만 수행한다.
 - 기본 지연 임계는 10초 수집의 3주기인 30초로 제안한다. 실제 요청·거버너 대기 시간을 측정해 오탐 여부를 검증한다. 서버 정책 상수 하나에서 응답과 판정에 함께 사용한다.
@@ -146,7 +150,7 @@
 - 수신 상태는 `<investor-flow 또는 deriv-flow>/receipts/YYYYMMDD.json`에 원자적으로 저장한다. 시장/상품별 수신·저장 시각, 실패/복구 구간, 실행/주기 이력을 제공한다. 상태 파일 쓰기 실패도 원본 수집을 중단시키지 않는다.
 - API에 `collection`을 추가했다. 기존 원본과 확정점은 정상 수신 시각의 근거로 사용하지 않는다. 구버전 데이터는 `unknown`으로 표시한다.
 - 화면은 서버 일정·주기를 따르며 10초 갱신, 마지막 정상 수신 시각, 연결 오류와 수신 지연을 표시한다. 소형 상태 컴포넌트만 경과 시간을 갱신하므로 전체 차트를 매초 다시 그리지 않는다.
-- 저장 표본 수의 분모를 제거하고 첫/마지막 저장 및 공백을 펼쳐 볼 수 있게 했다. 확인된 실패/복구 구간에서는 선을 연결하지 않는다.
+- 저장 표본 수의 분모를 제거하고 첫/마지막 저장 및 공백을 펼쳐 볼 수 있게 했다. 확인된 실패/복구 구간과 아직 복구되지 않은 실패 구간에서는 선을 연결하지 않는다. 장 마감 후 확정점이나 파생 추가 표본이 붙어도 실패 구간을 연속 관측처럼 그리지 않는다.
 - 표본마다 수집 주기를 남긴다. 주기 정보가 없는 과거 표본은 기존 30초 기준을 유지해 10초 전환으로 과거 공백 판정이 달라지지 않게 했다.
 
 ### 검증 증거
@@ -165,5 +169,7 @@
 측정은 각 조건에서 최초 캐시 미스와 이후 적중을 포함한 10요청이다. HTTP 전송·브라우저 렌더·수신 상태/자격증명 조회는 제외하고 표본 읽기, 응답 검증·JSON 직렬화를 포함했다. 전체 벤치마크 프로세스의 최고 RSS는 약 562MiB로, 증분 메모리나 실서버 전체 메모리 사용량으로 해석하면 안 된다. 1초 응답 목표와 기존 250ms 루프 지연 경고선 아래여서 증분 파싱은 추가하지 않았다. 파일이 매번 바뀌는 실제 운영의 장시간 비용은 별도 확인 대상이다.
 
 ### 남은 운영 검증
+
+PR 전 추가 검증: 전체 백엔드 5,056개, 전체 프론트 7,333개 테스트와 TypeScript 검사·프론트 빌드가 통과했다. 수집기 보강 40개 및 API wire 계약 28개 테스트, 전체 Playwright E2E 111개도 통과했다. 이 검증은 실자격증명 장중 관찰을 포함하지 않는다.
 
 현재 작업은 워크트리에 있으며 사용 중인 5173/8000 서버에는 적용하지 않았다. 실제 자격증명이 필요한 10초 수집의 장중 30분 관찰(제한 오류·공유 대기·실제 갱신률)은 배포 후 수행해야 한다. 이 항목을 로컬 테스트 통과로 대체하지 않는다. 새 벤더 수집기를 별도로 띄우거나 사용자 서버를 재시작하지 않았다.

@@ -43,6 +43,12 @@ list tells the attacker's domain apart (ADR-0134).
 
 The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KIS 는 파생 전용 — ADR-0136). The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
 
+`/market`의 **투자자 수급**은 현물 08:00–16:30, 파생 09:00–15:45의 거래일 수집 창에서
+기본 10초마다 수집·화면 갱신한다. 마지막 정상 수신 시각과 수신 지연·서버 연결 오류를
+구분하며, **수집 이력**에서 저장 시각과 공백을 확인한다. 값이 같으면 저장을 생략하므로
+저장 표본 수는 수신 횟수가 아니다. [수신 상태·검증 기록](./docs/superpowers/plans/2026-09-10-investor-flow-freshness.md)에
+API 계약과 측정 방법을 정리했다. 실서버 적용 후 장중 30분 안정성 관찰은 아직 남아 있다.
+
 `/live`에서 `/` 또는 헤더 검색 버튼으로 종목·지수를 찾는다. 방향키로 이동하고
 Enter로 표시된 그룹에 적용하며, Esc로 검색창을 닫는다. 최근 기록의 삭제 버튼은
 종목을 바꾸지 않는다. [검색 UX 결정과 검증](./docs/plans/2026-09-09-live-search-ux.md)을 참고한다.
