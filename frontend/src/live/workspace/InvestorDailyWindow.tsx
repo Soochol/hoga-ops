@@ -137,7 +137,10 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         )}
       </div>
 
-      <div className="shrink-0 px-2.5 pb-1 text-2xs text-fg-dim">일별 순매수 · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
+      <div
+        className="shrink-0 truncate px-2.5 pb-1 text-2xs text-fg-dim"
+        title={`일별 순매수 · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
+      >일별 순매수 · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
       {table.rows.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-3 py-4 text-center font-data text-xs text-fg-dim">
           {stateText ?? '일별 투자자 데이터 없음'}

@@ -90,11 +90,6 @@ export default function ProgramTradeSummaryCard({
         closePoints={closePoints}
         onHoverMsChange={setHoverMs}
       />
-      {point?.gap_risk && (
-        <div className="pt-1 text-xs text-fg-dim">
-          일부 구간 보간
-        </div>
-      )}
     </div>
   );
 }
