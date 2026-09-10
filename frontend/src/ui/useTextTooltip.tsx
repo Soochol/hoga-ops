@@ -9,11 +9,19 @@ export function useTextTooltip(text: string) {
   useEffect(() => {
     if (!anchor) return;
     const dismiss = () => setAnchor(null);
+    // Switching tabs can skip mouseleave on the hovered stock name.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') dismiss();
+    };
     window.addEventListener('scroll', dismiss, true);
     window.addEventListener('resize', dismiss);
+    window.addEventListener('blur', dismiss);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('scroll', dismiss, true);
       window.removeEventListener('resize', dismiss);
+      window.removeEventListener('blur', dismiss);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [anchor]);
   return {
