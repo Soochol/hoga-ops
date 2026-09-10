@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.5.1] - 2026-09-10
+
+### Fixed
+- 스크리너 우측 패널을 종목당 한 줄로 표시해 같은 종목의 과거 발생 건이 수백 행으로 반복되는 문제를 해결한다.
+- 발생 건수 버튼으로 날짜·조건별 상세 목록을 열고 개별 건을 제외할 수 있다. 전체 스크리너 페이지의 발생 건별 표시는 유지한다.
+
 ## [0.16.5.0] - 2026-09-10
 
 ### Changed
