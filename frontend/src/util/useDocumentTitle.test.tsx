@@ -80,28 +80,28 @@ describe('useDocumentTitle', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
   });
 
   it('includes live price and negative change percent when quote is cached', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', { price: 70500, change_pct: -0.8, change_won: -570 });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 70,500 -0.80%');
+    expect(document.title).toBe('-0.80% 70,500 삼성전자');
   });
 
   it('includes live price and zero change percent without a plus sign', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', { price: 70000, change_pct: 0, change_won: 0 });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 70,000 0.00%');
+    expect(document.title).toBe('0.00% 70,000 삼성전자');
   });
 
   it('omits change percent when the live quote has null change_pct', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', { price: 70000, change_pct: null, change_won: null });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 70,000');
+    expect(document.title).toBe('70,000 삼성전자');
   });
 
   it('keeps stale live quote values in the title (last-good, 깜빡임 방지)', () => {
@@ -116,7 +116,7 @@ describe('useDocumentTitle', () => {
       stale_reason: 'capacity_timeout',
     });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 70,000 +2.34%');
+    expect(document.title).toBe('+2.34% 70,000 삼성전자');
   });
 
   it('falls back to the raw code when Symbol Master has no match', () => {
@@ -153,7 +153,7 @@ describe('useDocumentTitle', () => {
     });
 
     await waitFor(() => {
-      expect(document.title).toBe('삼성전자 71,200 +1.23%');
+      expect(document.title).toBe('+1.23% 71,200 삼성전자');
     });
   });
 
@@ -178,7 +178,7 @@ describe('useDocumentTitle', () => {
       ({ code }: { code: string }) => useDocumentTitle(code),
       { wrapper: wrap(qc), initialProps: { code: '005930' } },
     );
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
 
     rerender({ code: '000660' });
     expect(document.title).toBe('SK하이닉스');
@@ -188,7 +188,7 @@ describe('useDocumentTitle', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '999999', { price: 12345, change_pct: 4.56, change_won: 540 });
     renderHook(() => useDocumentTitle('999999'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('999999 12,345 +4.56%');
+    expect(document.title).toBe('+4.56% 12,345 999999');
   });
 
   it('restores "hoga-ops" on unmount', () => {
@@ -223,25 +223,25 @@ describe('useDocumentTitle quote throttle', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
 
     // 스로틀 창 안의 가격 갱신은 지연된다 — 체결마다 제목이 바뀌면 탭이 깜빡인다.
     act(() => {
       seedQuote(qc, '005930', { price: 71300, change_pct: 1.37, change_won: 960 });
     });
     flushQueryNotify();
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
 
     // 창 안에서 또 갱신되면 이전 대기분은 버려지고 최신값만 남는다(latest wins).
     act(() => {
       seedQuote(qc, '005930', { price: 71400, change_pct: 1.51, change_won: 1060 });
     });
     flushQueryNotify();
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(document.title).toBe('삼성전자 71,400 +1.51%');
+    expect(document.title).toBe('+1.51% 71,400 삼성전자');
   });
 
   it('writes immediately when the code changes inside the throttle window', () => {
@@ -266,11 +266,11 @@ describe('useDocumentTitle quote throttle', () => {
       ({ code }: { code: string }) => useDocumentTitle(code),
       { wrapper: wrap(qc), initialProps: { code: '005930' } },
     );
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
 
     // 종목 전환은 스로틀 창 안이어도 즉시 — 이전 종목명이 남으면 그게 더 어긋난다.
     rerender({ code: '000660' });
-    expect(document.title).toBe('SK하이닉스 250,000 +2.50%');
+    expect(document.title).toBe('+2.50% 250,000 SK하이닉스');
   });
 
   it('attaches the first quote immediately after a bare-name title', () => {
@@ -283,7 +283,7 @@ describe('useDocumentTitle quote throttle', () => {
       seedQuote(qc, '005930', { price: 71200, change_pct: 1.23, change_won: 860 });
     });
     flushQueryNotify();
-    expect(document.title).toBe('삼성전자 71,200 +1.23%');
+    expect(document.title).toBe('+1.23% 71,200 삼성전자');
   });
 
   it('clears the pending throttled write on unmount', () => {
