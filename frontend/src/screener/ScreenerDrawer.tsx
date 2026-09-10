@@ -460,7 +460,7 @@ export function ScreenerDrawer() {
         )}
       </RailDrawerSection>
 
-      <RailDrawerSection><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>
+      <RailDrawerSection className="empty:hidden"><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>
 
       {/* Results */}
       <RailDrawerBody testId="screener-scroll" quoteNav>

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.5.3] - 2026-09-10
+
+### Changed
+- 스크리너에서 제외한 발생 건이 0건이면 목록 버튼과 빈 영역을 숨긴다. 제외 기록이 있으면 목록·복원을 표시하고, 제외 직후 되돌리기는 유지한다.
+
 ## [0.16.5.2] - 2026-09-10
 
 ### Changed
