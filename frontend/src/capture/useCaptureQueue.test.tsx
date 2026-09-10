@@ -236,3 +236,20 @@ describe('useCaptureQueue retryItems mutation', () => {
     await waitFor(() => expect(postedBody).toEqual({ item_ids: ['f1', 'f2'] }));
   });
 });
+
+it('patches persistence failure and recovery from push without refetching queue rows', () => {
+  const qc = new QueryClient();
+  const snap: QueueSnapshot = { active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 };
+  qc.setQueryData(CAPTURE_QUEUE_QUERY_KEY, snap);
+  const invalidate = vi.spyOn(qc, 'invalidateQueries');
+  const { unmount } = renderHook(() => useCaptureQueueSync(), { wrapper: makeWrapper(qc) });
+  fireSse({ type: 'capture_queue_persistence', persistence_degraded: true, last_persisted_at_ms: 1000 });
+  expect(qc.getQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY)?.persistence_degraded).toBe(true);
+  fireSse({ type: 'capture_queue_persistence', persistence_degraded: false, last_persisted_at_ms: 2000 });
+  const recovered = qc.getQueryData<QueueSnapshot>(CAPTURE_QUEUE_QUERY_KEY);
+  expect(recovered?.persistence_degraded).toBe(false);
+  expect(recovered?.last_persisted_at_ms).toBe(2000);
+  expect(recovered?.queued).toEqual(snap.queued);
+  expect(invalidate).not.toHaveBeenCalled();
+  unmount();
+});

@@ -43,6 +43,7 @@ from hoga.api.models import (
     # 쓰게 되면서 이름이 실제로 필요해졌다.
     CaptureQueueDrainedEvent,
     CaptureQueuePausedEvent,
+    CaptureQueuePersistenceEvent,
     CaptureQueueResumedEvent,
     CaptureResult,
     CaptureTimingEvent,
@@ -468,6 +469,9 @@ def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons + the
     on-disk manifest (so per-test state never leaks)."""
     global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
+    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+    _persistence_degraded = False
+    _last_persisted_at_ms = None
     _queue.clear()
     _active.clear()
     _done.clear()
@@ -618,6 +622,19 @@ def apply_terminal_to_manifest(
     )
 
 
+_persistence_degraded = False
+_last_persisted_at_ms: int | None = None
+
+
+async def retry_queue_persistence() -> None:
+    """Lifespan-owned retry; always snapshot current state under the queue lock."""
+    while True:
+        await asyncio.sleep(30)
+        if _persistence_degraded:
+            async with _lock:
+                _persist_queue_locked()
+
+
 def _persist_queue_locked() -> None:
     """Snapshot _active + _queue + _queue_paused + _fail_streaks to the
     on-disk manifest.
@@ -631,6 +648,7 @@ def _persist_queue_locked() -> None:
     guard matters even more than skipping the worker pool: a non-owner with a
     stale in-memory queue must not clobber the source of truth on disk.
     """
+    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
     if not queue_owned():
@@ -648,10 +666,19 @@ def _persist_queue_locked() -> None:
         )
         for s in _items_in_restore_order()
     ]
-    save_manifest(
+    saved = save_manifest(
         _data_dir,
         QueueManifest(paused=_queue_paused, items=items, fail_streaks=dict(_fail_streaks)),
     )
+    was_degraded = _persistence_degraded
+    _persistence_degraded = not saved
+    if saved:
+        _last_persisted_at_ms = int(time.time() * 1000)
+    if was_degraded != _persistence_degraded:
+        _publish_event(CaptureQueuePersistenceEvent(
+            persistence_degraded=_persistence_degraded,
+            last_persisted_at_ms=_last_persisted_at_ms,
+        ))
 
 
 def _restore_queue_from_manifest(data_dir: Path) -> None:
@@ -800,6 +827,8 @@ def get_queue_snapshot() -> QueueSnapshot:
         paused=_queue_paused,
         max_concurrent=_max_concurrent,
         queue_owned=queue_owned(),  # ADR-0094
+        persistence_degraded=_persistence_degraded,
+        last_persisted_at_ms=_last_persisted_at_ms,
     )
 
 
@@ -1475,6 +1504,9 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     Set ``HOGA_CAPTURE_QUEUE_DISABLED=1`` to opt a dogfood backend out of
     ever contending for the lock.
     """
+    global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+    _persistence_degraded = False
+    _last_persisted_at_ms = None
     # 소유권은 `ownership` 레지스트리가 쥔다 — 이 모듈에 전역이 없다(2026-08-10 통일).
     # Re-read HOGA_MAX_CONCURRENT / HOGA_RATE_LIMIT_S now that load_env() has run
     # (import-time read was too early for a .env-only value — see the refreshers).

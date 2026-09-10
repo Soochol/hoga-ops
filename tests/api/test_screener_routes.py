@@ -4,9 +4,11 @@ import polars as pl
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from hoga.api.models import ScreenerResponse
-from hoga.api.screener import _ScanCoalescer, build_router
+from hoga.api.request_coalescer import ReadRequestCoalescer
+from hoga.api.screener import build_router
 
 
 def _app(tmp_path):
@@ -86,7 +88,7 @@ def test_status_days_behind_deterministic(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_scan_coalescer_shares_one_run_for_concurrent_same_key():
-    coalescer = _ScanCoalescer()
+    coalescer = ReadRequestCoalescer()
     calls = 0
     gate = asyncio.Event()
 
@@ -96,8 +98,8 @@ async def test_scan_coalescer_shares_one_run_for_concurrent_same_key():
         await gate.wait()          # 두 caller 가 확실히 겹치도록 게이트로 붙잡는다
         return "result"
 
-    a = asyncio.create_task(coalescer.run("k", factory))
-    b = asyncio.create_task(coalescer.run("k", factory))
+    a = asyncio.create_task(coalescer.run("k", factory, Request({"type": "http"}, asyncio.Queue().get)))
+    b = asyncio.create_task(coalescer.run("k", factory, Request({"type": "http"}, asyncio.Queue().get)))
     await asyncio.sleep(0)         # 두 태스크가 run 에 진입하도록 양보
     gate.set()
     results = await asyncio.gather(a, b)
@@ -108,7 +110,7 @@ async def test_scan_coalescer_shares_one_run_for_concurrent_same_key():
 
 @pytest.mark.asyncio
 async def test_scan_coalescer_distinct_keys_run_separately():
-    coalescer = _ScanCoalescer()
+    coalescer = ReadRequestCoalescer()
     calls = 0
 
     async def factory():
@@ -116,9 +118,9 @@ async def test_scan_coalescer_distinct_keys_run_separately():
         calls += 1
         return calls
 
-    r1 = await coalescer.run("a", factory)
-    r2 = await coalescer.run("b", factory)      # 다른 키
-    r3 = await coalescer.run("a", factory)      # 이전 flight 완료 후 → 새 실행(캐시 아님)
+    r1 = await coalescer.run("a", factory, Request({"type": "http"}, asyncio.Queue().get))
+    r2 = await coalescer.run("b", factory, Request({"type": "http"}, asyncio.Queue().get))      # 다른 키
+    r3 = await coalescer.run("a", factory, Request({"type": "http"}, asyncio.Queue().get))  # 새 실행
 
     assert (r1, r2, r3) == (1, 2, 3)
     assert calls == 3
@@ -126,7 +128,7 @@ async def test_scan_coalescer_distinct_keys_run_separately():
 
 @pytest.mark.asyncio
 async def test_scan_coalescer_caller_cancel_does_not_kill_shared_flight():
-    coalescer = _ScanCoalescer()
+    coalescer = ReadRequestCoalescer()
     gate = asyncio.Event()
     ran = False
 
@@ -136,8 +138,8 @@ async def test_scan_coalescer_caller_cancel_does_not_kill_shared_flight():
         ran = True
         return "ok"
 
-    a = asyncio.create_task(coalescer.run("k", factory))
-    b = asyncio.create_task(coalescer.run("k", factory))
+    a = asyncio.create_task(coalescer.run("k", factory, Request({"type": "http"}, asyncio.Queue().get)))
+    b = asyncio.create_task(coalescer.run("k", factory, Request({"type": "http"}, asyncio.Queue().get)))
     await asyncio.sleep(0)
     a.cancel()                      # 한 caller 취소(클라이언트 disconnect 모사)
     with pytest.raises(asyncio.CancelledError):

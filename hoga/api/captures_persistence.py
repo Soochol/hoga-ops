@@ -24,18 +24,21 @@ def manifest_path(data_dir: Path) -> Path:
     return data_dir / MANIFEST_FILENAME
 
 
-def save_manifest(data_dir: Path, manifest: QueueManifest) -> None:
+def save_manifest(data_dir: Path, manifest: QueueManifest) -> bool:
     """Atomic write. OSError is caught + logged so disk failure does NOT
-    break in-memory queue operations. Caller holds any relevant locks.
+    break in-memory queue operations. Return whether persistence succeeded.
+    Caller holds any relevant locks.
     """
     try:
         atomic_write_json(manifest_path(data_dir), manifest.model_dump(mode="json"))
+        return True
     except OSError as e:
         logger.warning(
             "queue manifest write failed (%s); in-memory queue continues, "
             "restart recovery may lose state",
             e,
         )
+        return False
 
 
 def load_manifest(data_dir: Path) -> QueueManifest | None:

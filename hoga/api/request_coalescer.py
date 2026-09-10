@@ -36,12 +36,28 @@ def _consume_result(task: asyncio.Task) -> None:
 class ReadRequestCoalescer(Generic[T]):
     def __init__(self) -> None:
         self._inflight: dict[str, _Flight[T]] = {}
+        self._tasks: set[asyncio.Task[T]] = set()
+        self._closed = False
+
+    async def aclose(self) -> None:
+        self._closed = True
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _finished(self, task: asyncio.Task[T]) -> None:
+        self._tasks.discard(task)
+        _consume_result(task)
 
     async def run(self, key: str, factory: Callable[[], Awaitable[T]], request: Request) -> T:
+        if self._closed:
+            raise HTTPException(503, "read requests are shutting down")
         flight = self._inflight.get(key)
         if flight is None:
             task = asyncio.create_task(factory())
-            task.add_done_callback(_consume_result)
+            self._tasks.add(task)
+            task.add_done_callback(self._finished)
             flight = self._inflight[key] = _Flight(task)
         flight.readers += 1
         disconnected = asyncio.create_task(_disconnected(request))

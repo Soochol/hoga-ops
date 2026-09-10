@@ -274,6 +274,62 @@ def daily_enqueue_codes(data_dir: Path) -> list[str]:
     return list(dict.fromkeys(codes))
 
 
+def _pending_enqueues_path(data_dir: Path) -> Path:
+    return data_dir / "scheduler_pending_enqueues.json"
+
+
+def _save_pending_enqueues(data_dir: Path, today: str, codes: list[str]) -> None:
+    try:
+        atomic_write_json(_pending_enqueues_path(data_dir), {"date": today, "codes": codes})
+    except OSError:
+        log.exception("scheduler: failed to save pending capture enqueues")
+
+
+async def _enqueue_daily_codes(data_dir: Path, codes: list[str], *, now: dt.datetime) -> None:
+    """Register through the queue client; retain only unexpected failures for retry.
+
+    Checkpoint before calls, then remove each settled entry. A crash between enqueue
+    and checkpoint is safe: the queue client's existing dedupe handles replay.
+    Policy blocks (fail-streak cap) are settled and must not be bypassed.
+    """
+    today = now.strftime("%Y%m%d")
+    pending = list(dict.fromkeys(codes))
+    _save_pending_enqueues(data_dir, today, pending)
+    for code in list(pending):
+        try:
+            resp = await enqueue_items_core(
+                EnqueueRequest(code=code, dates=[today]), data_dir=data_dir, now=now,
+            )
+            _log_blocked(resp, context="daily")
+        except Exception:
+            log.exception("daily enqueue failed for %s/%s; will retry", code, today)
+        else:
+            pending.remove(code)
+            _save_pending_enqueues(data_dir, today, pending)
+
+
+async def retry_pending_enqueues(data_dir: Path, *, now: dt.datetime) -> None:
+    """Retry today's failed registrations only, without repeating daily maintenance."""
+    try:
+        payload = json.loads(_pending_enqueues_path(data_dir).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError):
+        log.exception("scheduler: cannot read pending capture enqueues")
+        return
+    if not isinstance(payload, dict):
+        return
+    codes = payload.get("codes")
+    if not isinstance(codes, list) or not codes or not all(isinstance(c, str) for c in codes):
+        return
+    today = now.strftime("%Y%m%d")
+    if payload.get("date") != today:
+        log.warning("scheduler: expired %d pending enqueues for %s", len(codes), payload.get("date"))
+        _save_pending_enqueues(data_dir, today, [])
+        return
+    await _enqueue_daily_codes(data_dir, codes, now=now)
+
+
 async def run_trading_stage(data_dir: Path) -> bool:
     """거래일 게이트와 그 뒤 단계(enqueue·스크리너·depth_daily). 확정이면 True.
 
@@ -301,16 +357,7 @@ async def run_trading_stage(data_dir: Path) -> bool:
     # 등록하는 대로 커지고, 큐 소진 시간(≈ N×90초÷동시성)과 하루 디스크 사용량
     # (≈ N×150MB)이 여기에 선형이다. 실측 271종목 = ~2.3시간 · ~35GB/day.
     log.info("daily run: enqueueing %d code(s) for %s", len(codes), today)
-    for code in codes:
-        try:
-            resp = await enqueue_items_core(
-                EnqueueRequest(code=code, dates=[today]),
-                data_dir=data_dir,
-                now=now,
-            )
-            _log_blocked(resp, context="daily")
-        except Exception:  # one bad entry mustn't kill the run
-            log.exception("daily enqueue failed for %s/%s", code, today)
+    await _enqueue_daily_codes(data_dir, codes, now=now)
 
     # Screener daily gap update (local import avoids an import cycle). A
     # screener failure must not kill the rest of the daily run.
@@ -535,6 +582,8 @@ async def _daily_loop(data_dir: Path) -> None:
                         write_last_trading_stage_date(data_dir, today)
                 except Exception:
                     log.exception("daily trading stage retry crashed; loop continues")
+            else:
+                await retry_pending_enqueues(data_dir, now=now)
         except Exception:
             # 판정·마커 읽기 실패도 루프를 죽이면 안 된다.
             log.exception("daily loop tick failed; loop continues")
