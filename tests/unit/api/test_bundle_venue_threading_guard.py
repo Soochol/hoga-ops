@@ -48,7 +48,7 @@ GUARDED = (
     _HOGA / "api" / "past_indicators_cache.py",
     _HOGA / "api" / "queries.py",
     _HOGA / "api" / "heatmap_group_flow.py",
-    _HOGA / "live" / "api.py",
+    _HOGA / "live" / "live_quote_fetcher.py",
     _HOGA / "live" / "promote.py",
     # 아래 넷은 **등록 누락 감사가 잡아서** 들어왔다 — 손으로 훑을 때 `async def` 를
     # 통째로 빠뜨렸다. 목록을 사람이 적는 한 같은 일이 또 생기므로 그 감사가 있다.

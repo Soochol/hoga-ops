@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from hoga.live import api as live_api
-from hoga.live.api import LiveQuoteFetcher
+from hoga.live import live_quote_fetcher as live_api
+from hoga.live.live_quote_fetcher import LiveQuoteFetcher
 from hoga.live.quote_models import Quote
 
 
