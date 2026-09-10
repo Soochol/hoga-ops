@@ -1,5 +1,5 @@
 import { ChevronIcon } from '../ui/ChevronIcon';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { PatternExclusion, PatternMatchRow } from '../api/screener';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
@@ -83,31 +83,38 @@ export function PatternConditionChips({
     conditions.excludeEtf ? 'ETF 제외' : null,
   ].filter((item): item is string => item !== null);
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(open != null, rootRef, () => setOpen(null));
+  // dismiss 의 내부 범위는 현재 트리거와 그 팝오버뿐이다. 조건 줄 전체를 앵커로
+  // 잡으면 요약·다른 조건 칩·여백까지 내부 클릭이 되어 목록이 붙어 남는다.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const close = useCallback(() => setOpen(null), []);
+  useDismissablePopover(open != null, triggerRef, close, popoverRef);
 
   const set = (patch: Partial<PatternConditions>) => {
     onChange({ ...conditions, ...patch });
     setOpen(null);
   };
-  const toggle = (k: Popover) => setOpen(open === k ? null : k);
+  const toggle = (k: Exclude<Popover, null>, event: ReactMouseEvent<HTMLButtonElement>) => {
+    triggerRef.current = event.currentTarget;
+    setOpen((current) => current === k ? null : k);
+  };
   const periodLabel = PERIODS.find((p) => p.key === conditions.period)?.label ?? '전체 기간';
   const passing = passingFloor(rows, conditions.simFloor).length;
 
   return (
-    <div ref={rootRef} className="relative flex flex-wrap gap-1 border-b border-border px-md py-sm">
+    <div className="relative flex flex-wrap gap-1 border-b border-border px-md py-sm">
       {/* 봉 단위가 **맨 앞**이다 — 다른 조건들이 「그 코퍼스 안에서」 걸리므로 읽는
           순서도 그래야 한다. 공장값(일봉)이어도 늘 활성으로 그린다: 이 값을 모르면
           「5·20 이평」이 5일인지 5주인지 화면 어디에서도 알 수 없다. */}
-      <Chip active onClick={() => toggle('timeframe')}>
+      <Chip active onClick={(event) => toggle('timeframe', event)}>
         {TIMEFRAMES.find((f) => f.key === conditions.timeframe)?.label ?? '일봉'}
       </Chip>
-      <Chip active={conditions.period !== 'all'} onClick={() => toggle('period')}>
+      <Chip active={conditions.period !== 'all'} onClick={(event) => toggle('period', event)}>
         {periodLabel}
       </Chip>
       {/* 「기본과 다른가」를 뜻하는 칩이라 상수를 베끼지 않는다 — 공장값이 바뀌면
           여기도 함께 움직여야 한다(2026-09-02 에 40 → 100 이 됐다). */}
-      <Chip active={conditions.count !== DEFAULT_CONDITIONS.count} onClick={() => toggle('count')}>
+      <Chip active={conditions.count !== DEFAULT_CONDITIONS.count} onClick={(event) => toggle('count', event)}>
         {conditions.count}개
       </Chip>
       {collapsible && <button type="button" aria-expanded={expanded} aria-controls="pattern-advanced-conditions"
@@ -120,29 +127,29 @@ export function PatternConditionChips({
       </p>}
       <div id={collapsible ? 'pattern-advanced-conditions' : undefined} hidden={collapsible && !expanded}
         className={collapsible && !expanded ? '' : 'flex w-full flex-wrap gap-1'}>
-      <Chip active={conditions.simFloor > 0} onClick={() => toggle('sim')}>
+      <Chip active={conditions.simFloor > 0} onClick={(event) => toggle('sim', event)}>
         {conditions.simFloor > 0 ? `유사도 ${conditions.simFloor.toFixed(2)}+` : '유사도 전체'}
       </Chip>
       {/* 구조 게이트 — 「높낮이를 안 본다」의 답이다. 상관은 창 전체의 평균이라 「고가는
           전고를 넘었는데 종가는 못 넘었다」 같은 국소 관계를 못 본다(실측: 상관 상위
           100 중 같은 구조 8개). 서버 조건이다 — 모집단을 거른다. */}
-      <Chip active={conditions.structTolerance !== null} onClick={() => toggle('struct')}>
+      <Chip active={conditions.structTolerance !== null} onClick={(event) => toggle('struct', event)}>
         {structLabel(conditions.structTolerance)}
         {/* 기준선이 공장값과 다르면 칩이 그 사실을 인다 — 팝오버를 열지 않아도
             「무엇을 기준으로 맞춘 목록인가」가 보여야 한다. */}
         {conditions.structTolerance !== null && conditions.structAnchor !== 'running'
           && ` · ${STRUCT_ANCHORS.find((a) => a.key === conditions.structAnchor)?.label}`}
       </Chip>
-      <Chip active={conditions.flexBars > 0} onClick={() => toggle('flex')}>
+      <Chip active={conditions.flexBars > 0} onClick={(event) => toggle('flex', event)}>
         {conditions.flexBars > 0 ? `길이 ±${conditions.flexBars}봉` : '길이 고정'}
       </Chip>
-      <Chip active={conditions.maPreset !== 'off'} onClick={() => toggle('ma')}>
+      <Chip active={conditions.maPreset !== 'off'} onClick={(event) => toggle('ma', event)}>
         {maLabel(conditions.maPreset, conditions.timeframe)}
       </Chip>
-      <Chip active onClick={() => toggle('tv')}>
+      <Chip active onClick={(event) => toggle('tv', event)}>
         {conditions.minTvEok > 0 ? `${conditions.minTvEok}억+` : '거래대금 무관'}
       </Chip>
-      <Chip active={conditions.excludeEtf} onClick={() => toggle('etf')}>
+      <Chip active={conditions.excludeEtf} onClick={(event) => toggle('etf', event)}>
         {conditions.excludeEtf ? 'ETF 제외' : 'ETF 포함'}
       </Chip>
       </div>
@@ -150,13 +157,13 @@ export function PatternConditionChips({
           이유는 「지금 목록에 무엇이 걸려 있나」를 한 곳에서 읽게 하려는 것이고,
           `conditions` 에 넣지 않았으므로 조건 저장·복원 경로와는 섞이지 않는다. */}
       {excluded.length > 0 && (
-        <Chip active onClick={() => toggle('hidden')}>
+        <Chip active onClick={(event) => toggle('hidden', event)}>
           숨김 {excluded.length}
         </Chip>
       )}
 
       {open === 'period' && (
-        <Popover title="그 패턴이 나온 시기 · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="그 패턴이 나온 시기 · 다시 검색한다">
           {PERIODS.map((p) => (
             <Item
               key={p.key}
@@ -174,7 +181,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'count' && (
-        <Popover title="최대 몇 개까지">
+        <Popover popoverRef={popoverRef} title="최대 몇 개까지">
           {RESULT_COUNTS.map((n) => (
             <Item
               key={n}
@@ -187,7 +194,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'sim' && (
-        <Popover
+        <Popover popoverRef={popoverRef}
           title={`유사도 하한 · 받아 둔 ${rows.length}개 중${p9999 != null ? ` · p99.99 = ${p9999.toFixed(3)}` : ''}`}
         >
           {SIM_FLOORS.map((f) => {
@@ -206,7 +213,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'struct' && (
-        <Popover
+        <Popover popoverRef={popoverRef}
           title={`봉별 색·전고·전저 관계를 맞춘다 · 다시 검색한다${
             structHist ? '' : ' · 켠 뒤에는 단계별 개수가 보인다'
           }`}
@@ -246,7 +253,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'flex' && (
-        <Popover title="같은 모양이 더 길게·짧게 전개된 것도 · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="같은 모양이 더 길게·짧게 전개된 것도 · 다시 검색한다">
           {FLEX_STEPS.map((f) => (
             <Item
               key={f}
@@ -259,7 +266,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'timeframe' && (
-        <Popover title="봉 단위 · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="봉 단위 · 다시 검색한다">
           {TIMEFRAMES.map((f) => (
             <Item
               key={f.key}
@@ -274,7 +281,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'ma' && (
-        <Popover title="이평선도 맞출지 · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="이평선도 맞출지 · 다시 검색한다">
           {MA_PRESETS.map((m) => (
             <Item
               key={m.key}
@@ -289,7 +296,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'hidden' && (
-        <Popover title="이 검색에서 뺀 자리 · 눌러서 되돌린다">
+        <Popover popoverRef={popoverRef} title="이 검색에서 뺀 자리 · 눌러서 되돌린다">
           {excluded.map((e) => (
             <Item
               key={exclusionKey(e)}
@@ -312,7 +319,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'tv' && (
-        <Popover title="창 평균 거래대금 · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="창 평균 거래대금 · 다시 검색한다">
           {TV_STEPS.map((v) => (
             <Item
               key={v}
@@ -324,7 +331,7 @@ export function PatternConditionChips({
         </Popover>
       )}
       {open === 'etf' && (
-        <Popover title="ETF·ETN · 다시 검색한다">
+        <Popover popoverRef={popoverRef} title="ETF·ETN · 다시 검색한다">
           {[true, false].map((v) => (
             <Item
               key={String(v)}
@@ -341,7 +348,11 @@ export function PatternConditionChips({
 
 function Chip({
   active, onClick, children,
-}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+}: {
+  active: boolean;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -359,9 +370,16 @@ function Chip({
   );
 }
 
-function Popover({ title, children }: { title: string; children: React.ReactNode }) {
+function Popover({
+  popoverRef, title, children,
+}: {
+  popoverRef: React.MutableRefObject<HTMLDivElement | null>;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
+      ref={popoverRef}
       role="listbox"
       className="absolute left-md top-[calc(100%-4px)] z-20 flex min-w-[190px] flex-col rounded border border-border-strong bg-bg-card p-1 shadow-panel"
     >

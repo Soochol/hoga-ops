@@ -144,6 +144,15 @@ describe('DrawingPropertyPanel — color', () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
   });
+
+  it('popover closes when another toolbar control receives mousedown', () => {
+    render(<DrawingPropertyPanel scope="005930|minute" />);
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+
+    fireEvent.mouseDown(screen.getByTestId('drawing-thickness-trigger'));
+
+    expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
+  });
 });
 
 describe('DrawingPropertyPanel — line style', () => {
@@ -346,6 +355,15 @@ describe('DrawingPropertyPanel — 다중 선택', () => {
   it('선택 개수를 보여 준다', () => {
     render(<DrawingPropertyPanel scope={SCOPE} />);
     expect(screen.getByTestId('drawing-multi-count').textContent).toBe('2개 선택');
+  });
+
+  it('다른 툴바 컨트롤을 누르면 열린 팝오버가 닫힌다', () => {
+    render(<DrawingPropertyPanel scope={SCOPE} />);
+    fireEvent.click(screen.getByTestId('drawing-color-trigger'));
+
+    fireEvent.mouseDown(screen.getByTestId('drawing-thickness-trigger'));
+
+    expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
   });
 
   it('삭제는 선택한 것만 지운다', () => {
