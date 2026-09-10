@@ -24,6 +24,7 @@ from hoga.api import (
     captures as _captures_module,
     gc_probe,
     screener as _screener_module,
+    screener_history_jobs,
     symbols as _symbols_module,
 )
 from hoga.api.calendar import build_router as build_calendar_router
@@ -440,6 +441,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
+            await screener_history_jobs.shutdown_jobs(data_dir)
             await _screener_module.shutdown_update_job()
             # 심볼 .mst 리프레시 워커는 코디네이터-소유(호출자와 분리)라
             # symbols-boot-refresh 태스크 취소만으론 멈추지 않는다. KIS/스케줄러

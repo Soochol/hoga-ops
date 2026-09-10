@@ -22,6 +22,44 @@ _COMMIT_BATCH = 20
 _MAX_EXTENSION_RETRIES = 2
 _tasks: dict[str, asyncio.Task] = {}
 _gates: dict[str, asyncio.Lock] = {}
+_stopping: set[str] = set()
+
+
+async def _finish_disk_write(fn, *args):
+    """Cancellation cannot stop a thread: drain publication before releasing ownership."""
+    task = asyncio.create_task(asyncio.to_thread(fn, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        try:
+            await task
+        except Exception:
+            log.exception("historical publication failed during shutdown")
+        raise
+
+
+async def shutdown_jobs(data_dir: Path) -> None:
+    key = str(data_dir)
+    _stopping.add(key)
+    async with _gates.setdefault(key, asyncio.Lock()):
+        task = _tasks.get(key)
+        if task is not None:
+            if not task.done():
+                task.cancel()
+            results = await asyncio.gather(task, return_exceptions=True)
+            if isinstance(results[0], Exception):
+                log.error("historical job failed during shutdown", exc_info=results[0])
+            _tasks.pop(key, None)
+        # A task cancelled before its first instruction never enters run_job's finally.
+        try:
+            job = JobCheckpoint(data_dir).load()
+            if job is not None and job.status in ACTIVE_STATUSES:
+                job.status = "interrupted"
+                job.current_code = None
+                _save(data_dir, job)
+        except (OSError, ValueError):
+            # A broken checkpoint/disk must not prevent vendor and DB teardown.
+            log.exception("historical shutdown checkpoint failed")
 
 
 def selected_codes(data_dir: Path, req: ScanRequest) -> list[str]:
@@ -96,7 +134,7 @@ async def flush_batch(data_dir: Path, job: HistoryJob, pending: list[DailyPair],
     # published successes never re-enter a retry batch.
     for attempt in range(_MAX_EXTENSION_RETRIES + 1):
         try:
-            result = await asyncio.to_thread(commit_verified, data_dir, list(pending))
+            result = await _finish_disk_write(commit_verified, data_dir, list(pending))
         except Exception as exc:
             log.exception("historical batch publication failed")
             job.errors.update({raw["code"][0]: str(exc)[:200] for raw, _ in pending})
@@ -124,7 +162,7 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
     req = job.request
     try:
         # Complete already validated staged writes before planning any vendor work.
-        await asyncio.to_thread(recover_publication, data_dir)
+        await _finish_disk_write(recover_publication, data_dir)
         # A failed publication is retried from authoritative disk observations by the same
         # collection operation, not treated as proof that the missing interval is complete.
         report = await asyncio.to_thread(coverage.evaluate, data_dir, req.conditions, job.codes)
@@ -167,6 +205,9 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
         report = await asyncio.to_thread(coverage.evaluate, data_dir, req.conditions, job.codes)
         job.coverage = report.coverage
         job.status = "partial" if job.errors or report.coverage.incomplete else "complete"
+    except asyncio.CancelledError:
+        job.status = "interrupted"
+        raise
     except Exception as exc:
         log.exception("historical collection job failed")
         job.status = "failed"
@@ -177,6 +218,7 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
 
 
 def build_router(data_dir: Path):
+    _stopping.discard(str(data_dir))
     router = APIRouter(prefix="/history")
 
     @router.post("/preview")
@@ -194,6 +236,8 @@ def build_router(data_dir: Path):
     async def create(req: ScanRequest) -> HistoryJob:
         key = str(data_dir)
         async with _gates.setdefault(key, asyncio.Lock()):
+            if key in _stopping:
+                raise HTTPException(503, "서버 종료 중입니다")
             active = load_job(data_dir)
             if active and active.status in ACTIVE_STATUSES:
                 if active.request != req:
