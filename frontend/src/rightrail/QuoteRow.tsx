@@ -38,7 +38,9 @@ export interface QuoteRowProps {
   // 행 좌측 선행 슬롯(순위 패널의 순위번호). 미전달 시 기존 레이아웃 그대로.
   leading?: React.ReactNode;
   trailingAction?: React.ReactNode;
-  secondary?: React.ReactNode;
+  /** Flat occurrence lists reserve more room for the name in narrow rails. */
+  compact?: boolean;
+  nameTooltip?: string;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
@@ -81,12 +83,12 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
-  active, ariaLabel, testId, onClick, leading, trailingAction, secondary,
+  active, ariaLabel, testId, onClick, leading, trailingAction, compact = false, nameTooltip,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, indented, flash, matched,
 }: QuoteRowProps) {
-  const nameTip = useTextTooltip(code ? `${name} · ${code}` : name);
+  const nameTip = useTextTooltip(nameTooltip ?? (code ? `${name} · ${code}` : name));
   void _changeWon;
   // 예상 표시 모드 — 셀 대체 규칙(가격·등락% 를 예상값으로)도 마커 자리(종목명 앞
   // '*')도 이제 HeatmapRow 와 같다. 이 행이 2026-08-14 에 먼저 '*' 로 갔고(이 행엔
@@ -151,7 +153,7 @@ export function QuoteRow({
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer touch-none ${leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center gap-2 border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group cursor-pointer touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
@@ -183,7 +185,6 @@ export function QuoteRow({
           <span className="text-fg-dim" data-testid={`${testId}-expected-marker`}>*</span>
         )}
         {name}
-        {secondary != null && <span className="block whitespace-normal text-2xs text-fg-dim">{secondary}</span>}
       </span>
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
@@ -191,7 +192,7 @@ export function QuoteRow({
       <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
-      <span className={`flex-none w-[3.5rem] text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
+      <span className={`flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
         {shownPct != null ? formatPct(shownPct) : ''}
       </span>
       {trailingAction != null && (
