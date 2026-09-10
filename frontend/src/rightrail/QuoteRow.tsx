@@ -148,7 +148,6 @@ export function QuoteRow({
       onClick={onClick}
       onKeyDown={onKeyDown}
       aria-describedby={nameTip.id}
-      onFocus={(e) => { if (e.target === e.currentTarget) nameTip.show(e.currentTarget); }}
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
@@ -174,7 +173,7 @@ export function QuoteRow({
           truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를
           무시해 긴 종목명이 가격 컬럼을 침범했다). 가격/% 는 flex-none 고정폭이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
-      <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">
+      <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} onMouseLeave={nameTip.hide} className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">
         {/* 동시호가 예상 마커. truncate 는 위 부모(flex 아이템)에 걸려 있으므로 이
             inline span 은 자기 폭을 갖지 않고, 긴 종목명은 뒤쪽이 잘리며 마커는 항상
             남는다. 크기는 종목명 상속(text-xs) — 별표 글리프 자체가 이미 작아
