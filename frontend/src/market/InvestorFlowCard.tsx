@@ -1,3 +1,4 @@
+import { DailyNetList } from './DailyNetList';
 /** 투자자 수급 카드 — 주식 2 + 파생 7 을 **한 선택기**로 갈아 끼운다.
  *
  * 프로토타입 판정 A+T2(2026-08-07). 두 대안을 실데이터 밀도에서 나란히 보고 고른 것이다:
@@ -36,13 +37,12 @@ import {
   type InvestorFlowPoint,
 } from '../api/market';
 import {
-  ComboNetChart,
   LegendItem,
   SessionAxisLabels,
   SessionLinesChart,
 } from './marketBits';
 import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
-import { SERIES_COLORS, formatMarketDate } from './marketFormat';
+import { SERIES_COLORS } from './marketFormat';
 
 const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
 
@@ -166,7 +166,7 @@ export function InvestorCard() {
   })();
 
   return (
-    <MarketCard className="flex flex-col gap-sm p-md">
+    <MarketCard className="market-switch-card flex flex-col gap-sm p-md">
       <CardHeader
         title="투자자 수급"
         hint={hint}
@@ -188,28 +188,30 @@ export function InvestorCard() {
           )
         }
       />
-      <DataStamp date={showDaily ? stock.data?.daily.at(-1)?.date : stockSel ? stock.data?.date : deriv.data?.date} />
-      <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
-      <FlowPicker value={sel} onChange={setSel} products={products} />
-      {stockSel && !showDaily && !stock.isLoading && (stock.data?.markets[sel]?.length ?? 0) === 0 && (
-        <button type="button" className="self-center min-h-[1.5rem] rounded px-sm py-2xs text-xs text-accent hover:bg-bg-input-hover" onClick={() => setMode('daily')}>일별 수급 보기</button>
-      )}
-      {stockSel ? (
-        showDaily ? (
-          <StockDaily data={stock.data} market={sel} />
+      <div className="market-investor-body flex flex-col gap-sm">
+        <DataStamp date={showDaily ? stock.data?.daily.at(-1)?.date : stockSel ? stock.data?.date : deriv.data?.date} />
+        <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
+        <FlowPicker value={sel} onChange={setSel} products={products} />
+        {stockSel && !showDaily && !stock.isLoading && (stock.data?.markets[sel]?.length ?? 0) === 0 && (
+          <button type="button" className="self-center min-h-[1.5rem] rounded px-sm py-2xs text-xs text-accent hover:bg-bg-input-hover" onClick={() => setMode('daily')}>일별 수급 보기</button>
+        )}
+        {stockSel ? (
+          showDaily ? (
+            <StockDaily data={stock.data} market={sel} />
+          ) : (
+            <StockIntraday data={stock.data} market={sel} loading={stock.isLoading} />
+          )
         ) : (
-          <StockIntraday data={stock.data} market={sel} loading={stock.isLoading} />
-        )
-      ) : (
-        <DerivIntraday
-          product={product}
-          eok={derivEok}
-          reason={units?.reason}
-          loading={deriv.isLoading}
-          sessionStartSec={deriv.data?.session_start_sec}
-          sessionEndSec={deriv.data?.session_end_sec}
-        />
-      )}
+          <DerivIntraday
+            product={product}
+            eok={derivEok}
+            reason={units?.reason}
+            loading={deriv.isLoading}
+            sessionStartSec={deriv.data?.session_start_sec}
+            sessionEndSec={deriv.data?.session_end_sec}
+          />
+        )}
+      </div>
     </MarketCard>
   );
 }
@@ -235,6 +237,7 @@ function FlowBody({
           ))}
         </span>
       </div>
+      <p className="text-2xs text-fg-dim">선: 시간별 누적 순매수</p>
       {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
           "하루치 흐름" 처럼 읽히던 왜곡을 막는다. 부분 커버리지는 부분 선이다. */}
       <SessionLinesChart
@@ -297,29 +300,11 @@ function StockDaily({
     // 장중 표본과 달리 확정본은 뒤늦게도 채워진다(base_dt 랜덤 액세스) — "쌓이는 중" 이다.
     return <EmptyNote>확정 이력이 아직 없습니다. 장 마감 뒤 일일 배치가 하루씩 채웁니다.</EmptyNote>;
   }
-  const foreign = daily.map((d) => d.markets[market]?.foreign ?? null);
-  const inst = daily.map((d) => d.markets[market]?.institution ?? null);
   return (
     <div className="flex flex-col gap-2xs">
-      <div className="flex flex-wrap items-baseline justify-end gap-x-sm">
-        <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-          <LegendItem color={SERIES_COLORS.foreign} label="외국인" />
-          <LegendItem color={SERIES_COLORS.institution} label="기관" />
-        </span>
-      </div>
-      <p className="text-2xs text-fg-dim">막대: 일별 순매수 · 선: 기간 누적 (각각의 척도)</p>
-      <ComboNetChart
-        labels={daily.map((d) => formatMarketDate(d.date))}
-        names={['외국인', '기관']}
-        a={{ color: SERIES_COLORS.foreign, values: foreign }}
-        b={{ color: SERIES_COLORS.institution, values: inst }}
-      />
-      <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
-        <span>{daily[0]?.date.slice(4, 6)}/{daily[0]?.date.slice(6)}</span>
-        <span>
-          {daily[daily.length - 1]?.date.slice(4, 6)}/{daily[daily.length - 1]?.date.slice(6)}
-        </span>
-      </div>
+      <p className="text-xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>
+      <DailyNetList label="투자자 일별 수급" columns={['외국인', '기관']}
+        rows={daily.map(d => ({ date: d.date, values: [d.markets[market]?.foreign ?? null, d.markets[market]?.institution ?? null] }))} />
     </div>
   );
 }
