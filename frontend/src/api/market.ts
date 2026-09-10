@@ -1,19 +1,8 @@
-/** `/market` 시장 종합 API 클라이언트 (#1102).
- *
- * 폴링 주기는 **백엔드 TTL 을 두 번 치지 않는 선**으로 잡는다 — 서버가 이미
- * 코얼레스하므로 프론트가 더 자주 물어도 같은 값이 온다(#1099 의 TTL 표):
- *
- *     sectors 30s · program 20s · streaks/breadth 5m · funds 6h · investor-flow 30s
- *
- * ⚠ **수급 두 표면(`investor-flow`·`deriv-flow`)은 TTL 이 없다.** 저장된 표본을 읽을
- * 뿐 벤더를 부르지 않아서 서버가 코얼레스할 것이 없다 — 여기서 주기를 조이면 그만큼
- * 디스크 파싱이 늘어난다(하루치 전량 파싱, 장 마감 무렵 4MB+). 그래서 수집기 주기
- * (30s)보다 더 촘촘히 물어봐야 얻는 것이 없다.
- *
- * 장중이 아니면 폴링을 **60초 하트비트로 늦춘다**(멈추지는 않는다 — `pollWhileOpen`
- * 의 주석 참조: `false` 는 스스로 되살아나지 못한다). 표시 전용 표면은 결손이
- * 생기지 않으므로 마감 후에도 last-good 이 그대로 서빙되고, 장중 수급은 **서버가
- * 무조건 적재**하므로 프론트 폴링 주기가 데이터에 구멍을 내지 않는다.
+/** 시장 종합 API 클라이언트.
+ * 수급은 서버의 거래일·수집 창·주기를 따른다(기본 10초). 값 파일의 변경 감지 캐시와
+ * 별도 수신 상태를 사용하므로 동일 값 정상 수신도 화면에 반영된다.
+ * 다른 카드는 기존 정규장 게이트와 표면별 주기를 유지한다.
+ * 장외에도 60초 하트비트를 남겨 다음 개장에 스스로 깨어나게 한다.
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
@@ -333,6 +322,7 @@ export interface InvestorFlowDailyRow {
 }
 
 export interface InvestorFlowResponse {
+  collection?: FlowCollection | null;
   date: string;
   /** 확정본이 있는 날만. **비어 있는 것이 정상 시작 상태**다 — 장중 표본과 달리
    *  확정본은 뒤늦게도 채워진다(`base_dt` 랜덤 액세스). */
@@ -353,14 +343,41 @@ export interface InvestorFlowResponse {
   session_end_sec: number;
 }
 
+export interface FlowHealth {
+  status: 'waiting' | 'receiving' | 'delayed' | 'closed' | 'unavailable' | 'unknown';
+  last_attempt_at_ms: number | null;
+  last_success_at_ms: number | null;
+  last_written_at_ms: number | null;
+  waiting_since_ms?: number | null;
+  consecutive_failures: number;
+  error_kind: string | null;
+  failure_started_at_ms: number | null;
+  gaps: { start_ms: number; end_ms: number }[];
+}
+
+export interface FlowCollection {
+  server_now_ms: number;
+  collection_expected: boolean;
+  poll_interval_ms: number;
+  stale_after_ms: number;
+  targets: Record<string, FlowHealth>;
+}
+
+/** The server owns the calendar and each collection window. Keep a heartbeat alive. */
+export function flowRefetchInterval(collection?: FlowCollection | null): number {
+  if (!collection) return pollWhileOpen(30_000); // rolling deployment / old API
+  return collection.collection_expected
+    ? Math.max(1000, collection.poll_interval_ms) : OFF_HOURS_HEARTBEAT_MS;
+}
+
 export function useMarketInvestorFlow() {
   return useQuery({
     queryKey: ['market', 'investor-flow'],
     queryFn: () => apiCall<InvestorFlowResponse>('/api/market/investor-flow'),
-    // 수집기가 30초로 찍으므로 그보다 자주 물어도 새 표본이 없다(위 ⚠ 참조 —
-    // 여긴 TTL 이 없어서 초과 요청이 그대로 디스크 파싱이 된다).
-    refetchInterval: () => pollWhileOpen(30_000),
-    staleTime: 15_000,
+    refetchInterval: (query) => flowRefetchInterval(query.state.data?.collection),
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 5_000,
   });
 }
 
@@ -398,6 +415,7 @@ export interface DerivFlowProduct {
 }
 
 export interface DerivFlowResponse {
+  collection?: FlowCollection | null;
   date: string;
   /**
    * `amt_eok` 또는 **null**. 주식 쪽(`InvestorFlowResponse.unit`)과 달리 null 이
@@ -417,8 +435,9 @@ export function useMarketDerivFlow() {
   return useQuery({
     queryKey: ['market', 'deriv-flow'],
     queryFn: () => apiCall<DerivFlowResponse>('/api/market/deriv-flow'),
-    // 수집기가 30초로 찍으므로 그보다 자주 물어도 새 표본이 없다 — 주식 쪽과 같다.
-    refetchInterval: () => pollWhileOpen(30_000),
-    staleTime: 15_000,
+    refetchInterval: (query) => flowRefetchInterval(query.state.data?.collection),
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 5_000,
   });
 }

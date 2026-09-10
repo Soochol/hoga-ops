@@ -128,3 +128,14 @@ describe('SessionLinesChart (세션 시간 비례 x축)', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+it('확인된 미수신 구간을 연속 선으로 연결하지 않는다', async () => {
+  const { SessionLinesChart } = await import('./marketBits');
+  const { container } = render(<SessionLinesChart
+    series={[{ color: 'red', points: [{ sec: 32400, v: 1 }, { sec: 32500, v: 2 }, { sec: 32510, v: 3 }] }]}
+    gaps={[{ startSec: 32410, endSec: 32490 }]}
+  />);
+  const d = container.querySelector('path')!.getAttribute('d')!;
+  expect(d.match(/M/g)).toHaveLength(2);
+  expect(d.match(/L/g)).toHaveLength(1);
+});

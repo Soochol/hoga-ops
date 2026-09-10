@@ -36,6 +36,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from hoga.live.flow_file_cache import load_flow_samples
 from hoga.util.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,8 @@ class IntradaySample(BaseModel):
     """
 
     sampled_at_ms: int
+    # None identifies legacy samples; never reinterpret their cadence as 10 seconds.
+    poll_interval_ms: int | None = None
     source: str = SOURCE
     request: dict[str, str]
     rows: list[dict[str, Any]]
@@ -152,23 +155,7 @@ class InvestorFlowStore:
         """그날 표본 전부. **개행으로 끝나지 않은 마지막 줄은 버린다** — append 중
         크래시하면 반쪽 줄이 남는데, 그것을 파싱하려 들면 하루치가 통째로 죽는다
         (히트맵 그룹플로우 테일 리더와 같은 불변식)."""
-        path = self.intraday_path(date)
-        if not path.exists():
-            return []
-        raw = path.read_text(encoding="utf-8")
-        lines = raw.split("\n")
-        if raw and not raw.endswith("\n"):
-            lines = lines[:-1]  # 미완 꼬리 폐기
-        out: list[IntradaySample] = []
-        for ln in lines:
-            if not ln.strip():
-                continue
-            try:
-                out.append(IntradaySample.model_validate_json(ln))
-            except ValidationError:
-                # 한 줄이 깨져도 나머지는 유효하다 — 로그만 남기고 계속.
-                log.warning("investor-flow: 손상된 표본 줄 무시 date=%s", date)
-        return out
+        return load_flow_samples(self.intraday_path(date), IntradaySample)
 
     def last_sample(self, date: str, request_key: str) -> IntradaySample | None:
         """같은 요청(시장)의 직전 표본. 중복 쓰기 회피(#1099)의 비교 대상."""
@@ -236,10 +223,12 @@ def compute_coverage(
     """
     if not samples:
         return IntradayCoverage()
-    ts = sorted(s.sampled_at_ms for s in samples)
-    threshold = poll_interval_ms * GAP_MIN_JUMP_INTERVALS
+    ordered = sorted(samples, key=lambda s: s.sampled_at_ms)
+    ts = [s.sampled_at_ms for s in ordered]
     gaps: list[dict[str, int]] = []
-    for prev, cur in zip(ts, ts[1:], strict=False):
+    for a, b in zip(ordered, ordered[1:], strict=False):
+        prev, cur = a.sampled_at_ms, b.sampled_at_ms
+        threshold = max(a.poll_interval_ms or 30_000, b.poll_interval_ms or 30_000) * GAP_MIN_JUMP_INTERVALS
         if cur - prev > threshold:
             gaps.append({"start_ms": prev, "end_ms": cur})
     return IntradayCoverage(

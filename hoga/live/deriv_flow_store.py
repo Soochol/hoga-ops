@@ -32,8 +32,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from hoga.live.flow_file_cache import load_flow_samples
 from hoga.live.session_gate import DERIV_CLOSE_MIN, DERIV_OPEN_MIN
 
 log = logging.getLogger(__name__)
@@ -60,6 +61,8 @@ class DerivSample(BaseModel):
     """
 
     sampled_at_ms: int
+    # None identifies legacy samples; never reinterpret their cadence as 10 seconds.
+    poll_interval_ms: int | None = None
     source: str = SOURCE
     #: 상품 키 = `fid_input_iscd_2`. 줄을 상품으로 가르는 축이라 `request` 안에만
     #: 두지 않고 최상위로 올린다(읽기 경로가 매 줄 dict 를 파고들지 않게).
@@ -111,23 +114,7 @@ class DerivFlowStore:
         **파일 부재는 정상 상태다**(writer 계약, #1176) — 장 시작 전이거나 그날
         수집이 아직 아무것도 못 쓴 것이고, 리더가 빈 목록으로 막는다.
         """
-        path = self.intraday_path(date)
-        if not path.exists():
-            return []
-        raw = path.read_text(encoding="utf-8")
-        lines = raw.split("\n")
-        if raw and not raw.endswith("\n"):
-            lines = lines[:-1]  # 미완 꼬리 폐기
-        out: list[DerivSample] = []
-        for ln in lines:
-            if not ln.strip():
-                continue
-            try:
-                out.append(DerivSample.model_validate_json(ln))
-            except ValidationError:
-                # 한 줄이 깨져도 나머지는 유효하다 — 로그만 남기고 계속.
-                log.warning("deriv-flow: 손상된 표본 줄 무시 date=%s", date)
-        return out
+        return load_flow_samples(self.intraday_path(date), DerivSample)
 
     def last_sample(self, date: str, product: str) -> DerivSample | None:
         """같은 상품의 직전 표본. 중복 쓰기 회피의 비교 대상이다."""

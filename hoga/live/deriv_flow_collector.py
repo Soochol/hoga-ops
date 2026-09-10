@@ -10,10 +10,7 @@
 - **페이지 개방 여부와 무관하게 서버에서 돈다.** 화면 수요에 묶으면 시계열이
   "누가 보고 있었는가" 의 함수가 되어 어떤 구멍도 해석할 수 없다.
 - **누적값을 그대로 적재한다** — 표본을 놓쳐도 다음 표본이 전체 누적을 다시 들고 온다.
-- **30초 폴, 동일 값이면 미기록.** 60 → 30 의 근거는 주식보다 오히려 강하다
-  (2026-08-10 실측): 표본이 거의 전부 값 변화였고(선물 128/128 중복 0), 폴 격자보다
-  짧은 간격 쌍에서도 값이 바뀌었다 — **최단 29초, 주식선물(S001)은 4초**.
-  즉 60초는 확실히 느렸다.
+- **10초 폴, 동일 값이면 미기록.** 수신 상태는 별도로 기록하고 읽기 캐시로 반복 파싱을 줄인다.
 
   다만 **상한은 여전히 모른다.** 짧은 간격 쌍은 그날 수집기가 두 벌 돈 구간이 만든
   것이라(머신 전역 data_dir + 워크트리 백엔드) 정상 상태에서는 재현되지 않는다.
@@ -35,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -43,15 +41,14 @@ from hoga.live.deriv_flow_products import BY_KEY, PRODUCTS, UNIT_PROBE_KEY
 from hoga.live.deriv_flow_store import DerivFlowStore, DerivSample, rows_equal
 from hoga.live.deriv_flow_units import UnitVerdict, infer_units
 from hoga.live.error_policy import classify_live_error, format_live_error
+from hoga.live.flow_receipts import DEFAULT_POLL_INTERVAL_S, FlowReceipts
 from hoga.live.session_gate import deriv_after_close_async, deriv_capture_window_async
 
 log = logging.getLogger(__name__)
 
 API_ID = "FHPTJ04030000"
-#: 60 → 30 (모듈 docstring). 상품 7개 × 2콜/분 = 14콜/분이 28콜/분이 된다 — KIS 는
-#: 이 표면의 유일한 소비자라 여유가 있지만, **여기가 늘면 옵션 심리 패널(ADR-0135)과
-#: 같은 앱키를 나눠 쓴다**는 점은 기억해 둘 것.
-POLL_INTERVAL_S = 30.0
+#: 10초 수집. 기존 벤더별 호출 제한기를 공유하며 사이클 소요 시간을 관측한다.
+POLL_INTERVAL_S = DEFAULT_POLL_INTERVAL_S
 
 
 class DerivFlowCollectorStatus:
@@ -59,6 +56,7 @@ class DerivFlowCollectorStatus:
 
     def __init__(self) -> None:
         self.running = False
+        self.last_cycle_duration_ms: int | None = None
         self.last_sampled_at_ms: int | None = None
         self.last_written_at_ms: int | None = None
         self.skipped_duplicates = 0
@@ -81,6 +79,7 @@ class DerivFlowCollector:
         poll_interval_s: float = POLL_INTERVAL_S,
     ) -> None:
         self.store = DerivFlowStore(data_dir)
+        self.receipts = FlowReceipts(Path(data_dir) / "deriv-flow", poll_interval_s)
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
         self._fetch_fn = fetch_fn
@@ -119,13 +118,23 @@ class DerivFlowCollector:
         """**퍼페추얼 루프다** — 정상 반환이 곧 조용한 죽음이므로 `ONE_SHOT_TASK_NAMES`
         에 넣으면 안 된다(ADR-0064)."""
         while True:
+            started = asyncio.get_running_loop().time()
             try:
                 await self.run_once()
             except Exception as e:  # noqa: BLE001 — 수집 루프의 감독자. 한 사이클의 어떤
                 # 예외도 루프를 죽이면 안 된다(죽으면 수집이 조용히 멈춘다). 삼키는 게
                 # 아니라 분류해 상태로 노출한다.
                 self._record_cycle_error(e)
-            await asyncio.sleep(self._poll_interval_s)
+            elapsed = asyncio.get_running_loop().time() - started
+            self.status.last_cycle_duration_ms = round(elapsed * 1000)
+            try:
+                await asyncio.to_thread(
+                    self.receipts.cycle_completed, self._now_ms_fn(), self.status.last_cycle_duration_ms,
+                )
+            except OSError as exc:
+                self._record_cycle_error(exc)
+            elapsed = asyncio.get_running_loop().time() - started
+            await asyncio.sleep(max(self._poll_interval_s - elapsed, 0.1))
 
     async def run_once(self) -> None:
         now_ms = self._now_ms_fn()
@@ -134,28 +143,50 @@ class DerivFlowCollector:
         date = self._date_fn()
         self.status.last_sampled_at_ms = now_ms
 
+        try:
+            await asyncio.to_thread(self.receipts.begin, date, now_ms, [p.key for p in PRODUCTS])
+        except OSError as exc:
+            self._record_cycle_error(exc)  # receipt persistence must not stop raw capture
         for product in PRODUCTS:
-            row = await self._fetch_fn(product.iscd, product.key)
-            if row is None:
-                # 한 상품만 실패하면 그 상품의 줄만 빠진다 — 커버리지가 비대칭을
-                # 그대로 드러내므로 여기서 억지로 메우지 않는다.
-                continue
-            if product.key == UNIT_PROBE_KEY:
-                self._probe_units(row)
-            prev = self.store.last_sample(date, product.key)
-            if rows_equal(prev, row):
-                self.status.skipped_duplicates += 1
-                continue
-            self.store.append_sample(
-                date,
-                DerivSample(
-                    sampled_at_ms=now_ms,
-                    product=product.key,
-                    request={"fid_input_iscd": product.iscd, "fid_input_iscd_2": product.key},
-                    row=row,
-                ),
-            )
-            self.status.last_written_at_ms = now_ms
+            try:
+                self.receipts.attempt(product.key, self._now_ms_fn())
+                try:
+                    row = await self._fetch_fn(product.iscd, product.key)
+                except Exception as exc:  # noqa: BLE001 — isolate one product
+                    self.receipts.failure(product.key, self._now_ms_fn(), classify_live_error(exc).kind)
+                    continue
+                received_ms = self._now_ms_fn()
+                if not valid_flow_row(row):
+                    self.receipts.failure(product.key, received_ms, "data_quality")
+                    continue
+                assert row is not None
+                if product.key == UNIT_PROBE_KEY:
+                    self._probe_units(row)
+                try:
+                    written = await asyncio.to_thread(
+                        self._write_sample, date, product.key, product.iscd, row, received_ms,
+                    )
+                except Exception as exc:  # noqa: BLE001 — isolate persistence failure
+                    self.receipts.failure(product.key, received_ms, "storage")
+                    self._record_cycle_error(exc)
+                    continue
+                self.receipts.success(product.key, received_ms, written=written)
+            finally:
+                try:
+                    await asyncio.to_thread(self.receipts.save, self._now_ms_fn())
+                except OSError as exc:
+                    self._record_cycle_error(exc)
+
+    def _write_sample(self, date: str, key: str, iscd: str, row: dict[str, Any], now_ms: int) -> bool:
+        if rows_equal(self.store.last_sample(date, key), row):
+            self.status.skipped_duplicates += 1
+            return False
+        self.store.append_sample(date, DerivSample(
+            sampled_at_ms=now_ms, poll_interval_ms=int(self._poll_interval_s * 1000), product=key,
+            request={"fid_input_iscd": iscd, "fid_input_iscd_2": key}, row=row,
+        ))
+        self.status.last_written_at_ms = now_ms
+        return True
 
     async def catch_up_after_close(self) -> int:
         """마감 후 그날 **최종 누적을 1회** 담는다. 담은 줄 수를 돌려준다.
@@ -191,7 +222,11 @@ class DerivFlowCollector:
 
         written = 0
         for product in PRODUCTS:
-            row = await self._fetch_fn(product.iscd, product.key)
+            try:
+                row = await self._fetch_fn(product.iscd, product.key)
+            except Exception as exc:  # noqa: BLE001 — catch-up also isolates a product
+                log.warning("deriv_flow.catchup.failed product=%s kind=%s", product.key, classify_live_error(exc).kind)
+                continue
             if row is None:
                 continue
             if product.key == UNIT_PROBE_KEY:
@@ -202,7 +237,8 @@ class DerivFlowCollector:
             self.store.append_sample(
                 date,
                 DerivSample(
-                    sampled_at_ms=now_ms,
+                    sampled_at_ms=self._now_ms_fn(),
+                    poll_interval_ms=int(self._poll_interval_s * 1000),
                     product=product.key,
                     request={"fid_input_iscd": product.iscd, "fid_input_iscd_2": product.key},
                     row=row,
@@ -257,15 +293,20 @@ def make_kis_fetch(client: Any) -> Callable[[str, str], Awaitable[dict[str, Any]
     (`kis_runtime._account_rate_limiter`). 키움처럼 `run_with_capacity` 로 감싸면
     유량 회계가 두 곳으로 갈린다.
 
-    실패를 `None` 으로 접는다: 한 사이클의 한 상품 실패는 다음 폴에서 회복되고,
-    누적값을 저장하므로 놓친 표본이 정합성을 깨지 않는다.
+    예외 분류와 상품별 격리는 수집기 호출 경계에서 수행한다.
     """
 
     async def _fetch(iscd: str, iscd2: str) -> dict[str, Any] | None:
-        try:
-            return await client.fetch_market_investor(iscd, iscd2)
-        except Exception as e:  # noqa: BLE001 — 폴 1회 실패는 다음 주기에 회복된다.
-            log.debug("deriv_flow.fetch_failed iscd=%s iscd2=%s error=%s", iscd, iscd2, e)
-            return None
+        return await client.fetch_market_investor(iscd, iscd2)
 
     return _fetch
+
+
+def valid_flow_row(row: dict[str, Any] | None) -> bool:
+    """Three quantity values are required even when amount units are unresolved."""
+    if row is None:
+        return False
+    try:
+        return all(math.isfinite(float(row[f"{actor}_ntby_qty"])) for actor in ("prsn", "frgn", "orgn"))
+    except (KeyError, TypeError, ValueError):
+        return False
