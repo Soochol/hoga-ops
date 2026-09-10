@@ -39,7 +39,7 @@ describe('QuoteRow', () => {
     }
   });
 
-  it('shows the full name and code on hover and row focus, dismissing on Escape and scroll', () => {
+  it('shows the full name and code only on name hover, dismissing on leave, Escape and scroll', () => {
     row({ code: '005930' });
     fireEvent.mouseEnter(screen.getByText('삼성전자'));
     expect(screen.getByRole('tooltip')).toHaveTextContent('삼성전자 · 005930');
@@ -47,8 +47,13 @@ describe('QuoteRow', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
     const target = screen.getByTestId('quote-row-005930');
     fireEvent.focus(target);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
     expect(target).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
     fireEvent.keyDown(target, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
+    fireEvent.mouseLeave(screen.getByText('삼성전자'));
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 

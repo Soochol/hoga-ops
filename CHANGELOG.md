@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.16.3.2] - 2026-09-10
+
+### Fixed
+- 관심종목 종목명 말풍선을 마우스 호버 중에만 표시하고, 종목명을 벗어나면 즉시 닫는다. 키보드 포커스만으로는 표시하지 않는다.
+
 ## [0.16.3.1] - 2026-09-10
 
 ### Fixed
