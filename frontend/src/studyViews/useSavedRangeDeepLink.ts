@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useWorkspaceStore } from '../state/workspace';
 import { useQuery } from '@tanstack/react-query';
 import { getStudyView } from '../api/studyViews';
 import { activateLiveCode } from '../live/liveNavigate';
@@ -57,5 +58,6 @@ export function useSavedRangeDeepLink(viewId: string | null): void {
     seededViewIdRef.current = viewId;
     activateLiveCode(data.code, data.label);
     useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(data));
+    useWorkspaceStore.getState().restoreTransferredPins();
   }, [viewId, data]);
 }
