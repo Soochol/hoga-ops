@@ -247,3 +247,28 @@ describe('창 복제·하이드레이션의 lastMinuteTimeframe', () => {
     expect(win?.chart && 'indicators' in win.chart).toBe(false);
   });
 });
+
+
+describe('창별 레전드 영속화', () => {
+  it('대상 창만 바꾸고 봉 전환 후에도 표시 상태를 유지한다', () => {
+    seed([chartWindow('c1'), chartWindow('c2'), bookWindow('b1')]);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('c1', false);
+    useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
+    expect(chartOf('c1').indicatorLegendsVisible).toBe(false);
+    expect(chartOf('c2').indicatorLegendsVisible ?? true).toBe(true);
+    const before = useWorkspaceStore.getState().windows;
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('b1', false);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('missing', false);
+    expect(useWorkspaceStore.getState().windows).toBe(before);
+  });
+
+  it('새로고침 시 탭 저장소에서 창별 표시 상태를 복원한다', async () => {
+    const rect = { x: 0, y: 0, w: 0.4, h: 0.5 };
+    seed([chartWindow('c1', { rect }), chartWindow('c2', { rect })]);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('c1', false);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('c2', true);
+    vi.resetModules();
+    const { useWorkspaceStore: reloaded } = await import('./workspace');
+    expect(reloaded.getState().windows.map(w => w.chart?.indicatorLegendsVisible)).toEqual([false, true]);
+  });
+});
