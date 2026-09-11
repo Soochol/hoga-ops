@@ -525,7 +525,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
   /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
   const [jumpDestination, setJumpDestination] = useState<string | null>(null);
-  const [indicatorLegendsVisible, setIndicatorLegendsVisible] = useState(true);
+  const indicatorLegendsVisible = win.chart?.indicatorLegendsVisible ?? true;
   // 이 분봉 창이 보고 있는 날짜(라이브 엣지면 null) — 시간축이 하루 안에서는 날짜를
   // 안 찍어서 화면만 봐서는 며칠인지 알 수 없다(#1506 조사 D3).
   const [viewedDate, setViewedDate] = useState<{
@@ -922,7 +922,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
             title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} · 시가·고가·저가·종가는 항상 표시`}
             aria-pressed={indicatorLegendsVisible}
-            onClick={() => setIndicatorLegendsVisible(visible => !visible)}
+            onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
             style={{ paddingInline: COMPACT_PADDING_INLINE }}
             icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
           />

@@ -388,3 +388,27 @@ describe('프리셋 지표 왕복 (ADR-0159)', () => {
     expect(Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, KEY_A)).toBe(false);
   });
 });
+
+
+describe('창별 레전드 표시 저장·복원', () => {
+  it('서로 다른 표시 상태를 캡처하고 같은 창 id에도 다시 적용한다', () => {
+    useWorkspaceStore.setState({ windows: [chart('a', 1), chart('c', 1)], zOrder: ['a', 'c'] });
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('a', false);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('c', true);
+    const payload = capturePresetPayload();
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('a', true);
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('c', false);
+    applyPresetPayload(JSON.parse(JSON.stringify(payload)), 'legends');
+    expect(useWorkspaceStore.getState().windows.map(w => w.chart?.indicatorLegendsVisible)).toEqual([false, true]);
+  });
+
+  it.each([undefined, null, 'false', 0])('기존·잘못된 표시 값 %s는 켜짐으로 복원한다', value => {
+    useWorkspaceStore.getState().setChartIndicatorLegendsVisible('a', false);
+    const win = chart('a', 1);
+    applyPresetPayload({
+      windows: [{ ...win, chart: { ...win.chart, indicatorLegendsVisible: value } }],
+      zOrder: ['a'], groupSymbols: {},
+    }, 'legacy');
+    expect(useWorkspaceStore.getState().windows[0].chart?.indicatorLegendsVisible ?? true).toBe(true);
+  });
+});

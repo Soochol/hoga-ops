@@ -107,7 +107,7 @@ export interface WorkspaceRect {
 }
 
 /**
- * 차트 창 전용 설정 — 창이 소유하는 것은 **봉뿐**이다(#708).
+ * 차트 창 전용 설정 — 봉과 창별 레전드 표시 여부를 소유한다.
  *
  * 지표 설정도 한때 여기 있었지만(#712) 전역 저장소(`live.indicators.v2`)로
  * 되돌렸다 — 워크스페이스는 탭별 sessionStorage 라, 창이 지표를 **소유하면**
@@ -122,6 +122,8 @@ export interface ChartWindowConfig {
   timeframe: LiveTimeframe;
   /** 마지막 분봉 기억(창별) — 봉 컨트롤의 분봉 슬롯 복귀·Shift+m 용. 없으면 '1m'. */
   lastMinuteTimeframe?: MinuteTimeframe;
+  /** 창별 지표 레전드 표시. 생략은 켜짐(기존 저장값 호환), OHLC는 항상 표시. */
+  indicatorLegendsVisible?: boolean;
 }
 
 /** 창별 비영속 런타임 뷰 상태 (#713 뷰포트 비저장과 정합 — 세션 한정).
@@ -278,6 +280,7 @@ type Store = Persisted & {
   // 버킷인가"만 정한다(`windowView` 의 `useIndicatorActions`).
   /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
+  setChartIndicatorLegendsVisible: (id: string, visible: boolean) => void;
   /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
   extendChartHistoricalRange: (id: string, date: string) => void;
   /** 좌측 팬 창을 **앞으로** 당긴다(축소) — `extend` 의 반대 방향.
@@ -381,6 +384,9 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
     win.chart = {
       timeframe: isLiveTimeframe(cfg.timeframe) ? cfg.timeframe : '1m',
     };
+    if (typeof cfg.indicatorLegendsVisible === 'boolean') {
+      win.chart.indicatorLegendsVisible = cfg.indicatorLegendsVisible;
+    }
     if (isMinuteFrameValue(cfg.lastMinuteTimeframe)) {
       win.chart.lastMinuteTimeframe = cfg.lastMinuteTimeframe;
     } else if (isMinuteFrameValue(win.chart.timeframe)) {
@@ -952,6 +958,15 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const windows = state.windows.map((w) => ({ ...w, rect: toFrac(w.rect as Rect, canvas) }));
       persistFromState({ ...state, windows });
       return { windows, pendingNormalize: false };
+    });
+  },
+
+  setChartIndicatorLegendsVisible: (id, visible) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => ({ ...chart, indicatorLegendsVisible: visible }));
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
     });
   },
 
