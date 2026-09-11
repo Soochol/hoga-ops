@@ -31,7 +31,7 @@ it('10개 그룹이 모두 사용 중이면 기존 창을 변경하지 않고 �
   const open = vi.spyOn(window, 'open').mockReturnValue(null);
   expect(openSectorStock('005930', '삼성전자', 1, null)).toBeNull();
   expect(useWorkspaceStore.getState().windows).toBe(before);
-  expect(open).toHaveBeenCalledWith('/live?code=005930', '_blank', 'noopener');
+  expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
   open.mockRestore();
 });
 it('최대화는 저장된 배치를 바꾸지 않고 복원·포커스 전환·닫기로 해제된다', () => {

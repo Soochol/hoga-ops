@@ -106,12 +106,12 @@ describe('useJumpToLive — ctrl/⌘+클릭 새 탭', () => {
 
   it('ctrl+클릭은 /live?code= 를 새 탭으로 연다', () => {
     jumpAt('/live').current('005930', '삼성전자', { ctrlKey: true, metaKey: false });
-    expect(open).toHaveBeenCalledWith('/live?code=005930', '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
   });
 
   it('⌘+클릭도 같다(mac)', () => {
     jumpAt('/live').current('005930', '삼성전자', { ctrlKey: false, metaKey: true });
-    expect(open).toHaveBeenCalledWith('/live?code=005930', '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
   });
 
   it('새 탭으로 열 때 현재 뷰의 종목은 바뀌지 않는다', () => {
