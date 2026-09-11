@@ -1,3 +1,4 @@
+import { indicatorBucketStartMs } from '../util/stockSessions';
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
 import { krxTick } from '../chart/surge/krxTick';
@@ -166,6 +167,7 @@ export function bucketHogaSeries(
   bucketMs: number,
   sessionCloseMs: number = Number.POSITIVE_INFINITY,
   sessionOpenMs: number = Number.NEGATIVE_INFINITY,
+  venue: string = 'KRX',
 ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
   if (bucketMs <= 0) throw new Error(`bucketMs must be positive, got ${bucketMs}`);
 
@@ -203,7 +205,7 @@ export function bucketHogaSeries(
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
   const seenPre = new Set<number>();
   for (const s of obSorted) {
-    const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
+    const t = indicatorBucketStartMs(s.t_ms, bucketMs, venue);
     if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s, sessionOpenMs)) {
       // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
       // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
@@ -258,7 +260,7 @@ export function bucketHogaSeries(
   const tradeSorted = [...trade].sort((a, b) => a.t_ms - b.t_ms);
   const fillByBucket = new Map<number, FillStrengthPoint>();
   for (const s of tradeSorted) {
-    const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
+    const t = indicatorBucketStartMs(s.t_ms, bucketMs, venue);
     let bucket = fillByBucket.get(t);
     if (!bucket) {
       bucket = { t, buy_qty: 0, sell_qty: 0 };

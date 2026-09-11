@@ -99,6 +99,7 @@ from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.session_gate import is_after_hours_single_price_window
+from hoga.live.stock_sessions import krx_aftermarket_introduced
 from hoga.live.venue import LiveVenuePolicy, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
@@ -1004,7 +1005,8 @@ def _quote_phase(now: datetime, venue_policy: LiveVenuePolicy = "KRX") -> Litera
         if t < time(8, 0) or t >= time(20, 0):
             return "closed"
         return "open"
-    if t < time(8, 0) or t >= time(16, 0):
+    close = time(20, 0) if krx_aftermarket_introduced(now.strftime("%Y%m%d")) else time(16, 0)
+    if t < time(8, 0) or t >= close:
         return "closed"
     return "pre_open" if t < time(9, 0) else "open"
 
@@ -3006,7 +3008,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         )
 
     @router.get("/vi-status")
-    async def _get_vi_status(code: str = Query(...)) -> LiveViStatusResponse:
+    async def _get_vi_status(code: str = Query(...), venue: LiveVenuePolicy = Query("KRX")) -> LiveViStatusResponse:
         """종목의 최신 VI 이벤트 상태(키움 1h). 이벤트 없음/미배선이면 vi=null.
 
         legend·shape 는 kiwoom_vi_state.parse_vi_row(실측 확정 2026-07-21,
@@ -3016,7 +3018,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         """
         if not _CODE_RE.match(code):
             raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
-        vi = get_vi_status(code) if get_vi_status is not None else None
+        state_key = code + {"KRX": "", "NXT": "_NX", "UN": "_AL"}[venue]
+        vi = get_vi_status(state_key) if get_vi_status is not None else None
         return {"code": code, "vi": vi}
 
     @router.get("/stock-limits", response_model=StockLimitsResponse)

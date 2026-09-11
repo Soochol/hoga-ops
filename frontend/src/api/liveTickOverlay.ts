@@ -22,6 +22,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { subscribeLiveLatest } from './ws';
+import { useKstDay } from '../util/useKstDay';
+import { unixMsToKSTDate } from '../util/time';
 import type { LiveSnapshotEntry } from './types';
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -55,6 +57,10 @@ export const MAX_TICK_SUBSCRIBED_CODES = 300;
 /** 한 코드의 최신 체결 표본. price 를 뺀 나머지는 전부 optional —
  *  거래원 REST 합성 틱과 구버전 백엔드엔 해당 키가 없다. */
 export interface LiveTickSample {
+  tMs?: number;
+  seenAtMs?: number;
+  venue?: LiveVenueOption;
+  receivedDay?: string;
   /** 마지막 체결가. */
   price: number;
   /** 전일종가 — 키움 FID 11(전일대비)에서 백엔드가 유도해 실어 보낸다. */
@@ -99,18 +105,6 @@ function positiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
-/** 표본이 직전과 완전히 같은지 — 같으면 flush 를 예약하지 않는다.
- *  전 필드를 비교해야 한다: 가격이 그대로여도 고가·저가가 갱신되는 구간이 있고,
- *  그걸 놓치면 화면이 낡은 OHLC 를 계속 보여준다. */
-function sameSample(a: LiveTickSample | undefined, b: LiveTickSample): boolean {
-  return a !== undefined
-    && a.price === b.price
-    && a.prevClose === b.prevClose
-    && a.dayOpen === b.dayOpen
-    && a.dayHigh === b.dayHigh
-    && a.dayLow === b.dayLow;
-}
-
 /** trade 프레임에서 체결 표본을 꺼낸다. payload 는
  *  {"trades": [{t_ms, price, qty, side, ...}], "prev_close"?, "phase", "venue"}
  *  (kiwoom_frames._parse_trade + stream.on_tick 이 phase/venue 를 덧붙임).
@@ -138,6 +132,9 @@ function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTick
   };
   return {
     price,
+    tMs,
+    seenAtMs: Date.now(),
+    venue,
     prevClose: positiveNumber(e.prev_close),
     dayOpen: positiveNumber(e.day_open),
     dayHigh: positiveNumber(e.day_high),
@@ -207,6 +204,7 @@ export function useLiveTickPrices(
   // 구독 집합은 정렬·dedup 한 문자열 키에서 파생해, 리스트 재정렬이나 매 렌더의
   // 새 배열 identity 가 전 종목 재구독(unsubscribe → subscribe 왕복)을 부르지
   // 않게 한다 — liveQuotes.ts 의 queryKey 정렬과 같은 이유.
+  const day = useKstDay();
   const codesKey = useMemo(() => [...new Set(codes)].sort().join(','), [codes]);
   const subscribed = useMemo(
     () => (codesKey === '' ? [] : codesKey.split(',').slice(0, MAX_TICK_SUBSCRIBED_CODES)),
@@ -234,6 +232,8 @@ export function useLiveTickPrices(
     // 두 배로 들어오고 accum 리셋 경계가 갈린다.
     const venueFor = (code: string): LiveVenueOption => resolveVenue?.(code) ?? venue;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+    const latestExpectedTimes = new Map<string, number>();
     const flush = () => {
       timer = null;
       snapshotRef.current = new Map(accumRef.current);
@@ -243,24 +243,52 @@ export function useLiveTickPrices(
     const scheduleFlush = () => {
       if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
     };
+    const scheduleExpiry = () => {
+      if (expiryTimer !== null || expectedAccumRef.current.size === 0) return;
+      const deadline = Math.min(...[...expectedAccumRef.current.values()].map(
+        sample => sample.seenAtMs + EXPECTED_FILL_TTL_MS,
+      ));
+      expiryTimer = setTimeout(() => {
+        expiryTimer = null;
+        const now = Date.now();
+        let changed = false;
+        for (const [code, sample] of expectedAccumRef.current) {
+          if (now - sample.seenAtMs >= EXPECTED_FILL_TTL_MS) {
+            expectedAccumRef.current.delete(code);
+            changed = true;
+          }
+        }
+        if (changed) scheduleFlush();
+        scheduleExpiry();
+      }, Math.max(1, deadline - Date.now()));
+    };
     const unsubs = subscribed.map((code) =>
       subscribeLiveLatest(code, (entry: LiveSnapshotEntry) => {
         if (entry.kind === 'ob') {
           const signal = expectedSignal(entry, venueFor(code));
-          if (signal === null) return;
+          if (signal === null || !Number.isFinite(signal.tMs)
+            || unixMsToKSTDate(signal.tMs) !== day) return;
+          const lastTrade = accumRef.current.get(code)?.tMs;
+          if ((lastTrade != null && signal.tMs <= lastTrade)
+            || signal.tMs < (latestExpectedTimes.get(code) ?? -Infinity)) return;
+          latestExpectedTimes.set(code, signal.tMs);
           // 값이 직전과 같아도 매번 set + flush 한다 — seenAtMs 갱신이 곧 "아직
           // 동시호가 진행 중" 신호라서다. 값 비교로 건너뛰면 예상가가 안 움직이는
           // 저유동 종목에서 seenAtMs 가 얼어 TTL 백스톱이 진행 중인 창을 오탐
           // 청소한다. 재렌더 비용은 LIVE_FLUSH_MS 코얼레싱이 이미 상한을 친다.
           expectedAccumRef.current.set(code, signal);
           scheduleFlush();
+          scheduleExpiry();
           return;
         }
         const sample = tradeSample(entry, venueFor(code));
-        if (sample === null) return;
+        if (sample === null || sample.tMs == null || !Number.isFinite(sample.tMs)
+          || unixMsToKSTDate(sample.tMs) !== day) return;
+        sample.receivedDay = day;
+        const previous = accumRef.current.get(code);
+        if (previous?.tMs != null && sample.tMs != null && sample.tMs < previous.tMs) return;
         // venue 게이트를 통과한 체결 = 단일가가 맺혔다는 뜻 — 예상 표본을 폐기한다
-        // (데이터 주도 전환의 종료 신호 ①). sameSample 로 표본 갱신을 건너뛰는
-        // 경우에도 폐기는 수행해야 하므로 dedup 앞에 둔다.
+        // (데이터 주도 전환의 종료 신호 ①).
         //
         // 단 **거래소 시각을 비교**해야 한다. 마감 동시호가(15:20~)는 연속장에서
         // 곧바로 이어지므로 15:19:59 에 맺힌 체결 프레임이 첫 예상 프레임(15:20:00+)
@@ -275,10 +303,8 @@ export function useLiveTickPrices(
           expectedAccumRef.current.delete(code);
           scheduleFlush();
         }
-        // 같은 값 재체결은 재렌더를 만들 이유가 없다(호가만 흔들리는 구간에서
-        // 흔하다). 스로틀 앞단에서 걸러 flush 자체를 아낀다. prevClose 도 비교에
-        // 넣는 건 첫 프레임에서 뒤늦게 채워지는 경우를 놓치지 않기 위해서다.
-        if (sameSample(accumRef.current.get(code), sample)) return;
+        // 같은 가격의 새 체결도 수신 시각을 갱신한다. 그 사이 REST가 우선권을
+        // 얻었을 수 있으므로 새 표본을 발행한다. flush 스로틀은 그대로 적용한다.
         accumRef.current.set(code, sample);
         scheduleFlush();
       }),
@@ -286,6 +312,7 @@ export function useLiveTickPrices(
     return () => {
       for (const unsub of unsubs) unsub();
       if (timer !== null) clearTimeout(timer);
+      if (expiryTimer !== null) clearTimeout(expiryTimer);
       // 구독 집합이 바뀌면 이전 코드의 체결가는 남기지 않는다 — 폴링값으로
       // 되돌아가는 게 옛 틱을 계속 보여주는 것보다 정직하다.
       accumRef.current = new Map();
@@ -297,7 +324,7 @@ export function useLiveTickPrices(
     // 누적된 off-venue 체결가가 새 선택에 남지 않는다. `resolveVenue` 도 같은 이유로
     // deps 다 — 심볼 마스터가 늦게 도착하면 해석이 바뀌므로 그때 한 번 재구독해
     // 낡은 게이트로 걸러진 누적본을 버린다(안정 identity 라 그 1회로 끝난다).
-  }, [subscribed, venue, resolveVenue]);
+  }, [subscribed, venue, resolveVenue, day]);
 
   return { prices: snapshotRef.current, expected: expectedSnapshotRef.current };
 }

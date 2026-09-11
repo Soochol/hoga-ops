@@ -5,6 +5,7 @@ from __future__ import annotations
 from itertools import groupby
 
 from hoga.api.models import DepthHeatmapPoint
+from hoga.live.stock_sessions import indicator_bucket_intra
 from hoga.util.timeenc import ms_from_midnight_to_unix_ms
 
 ONE_MINUTE_MS = 60_000
@@ -32,6 +33,7 @@ def reaggregate_depth_heatmap(
     *,
     date: str,
     bucket_ms: int,
+    venue: str = "KRX",
 ) -> list[DepthHeatmapPoint]:
     """Sorted complete 1m points → N-minute points, aligned to KST midnight.
 
@@ -45,13 +47,16 @@ def reaggregate_depth_heatmap(
         return points
     midnight = ms_from_midnight_to_unix_ms(date, 0)
     out = []
-    for bucket, group in groupby(points, key=lambda p: (p.t_ms - midnight) // bucket_ms):
+    def key(point: DepthHeatmapPoint) -> int:
+        return indicator_bucket_intra(point.t_ms - midnight, bucket_ms, date=date, venue=venue)
+
+    for bucket, group in groupby(points, key=key):
         rows = list(group)
         maximum = max(rows, key=_maximum_key)
         out.append(
             rows[-1].model_copy(
                 update={
-                    "t_ms": midnight + bucket * bucket_ms,
+                    "t_ms": midnight + bucket,
                     "asks_max": maximum.asks_max,
                     "bids_max": maximum.bids_max,
                     "asks_price_max": _price_max(rows, "ask"),

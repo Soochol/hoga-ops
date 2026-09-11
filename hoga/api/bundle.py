@@ -68,6 +68,7 @@ from hoga.api.sources import (
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.collector.orchestrator import now_kst
 from hoga.live.program_trade_store import ProgramTradeStore, is_significant_gap_event
+from hoga.live.stock_sessions import has_aftermarket_buckets
 from hoga.live.venue import Venue
 from hoga.tables import (
     brokers as brokers_tbl,
@@ -116,6 +117,28 @@ def _resolve_cache(engine: QueryEngine, cache: object) -> PastIndicatorsCache | 
     if cache is _RESOLVE:
         return engine.indicators_cache
     return cache  # type: ignore[return-value]
+
+
+def _cache_for_session(
+    engine: QueryEngine, cache: PastIndicatorsCache | None, *, code: str, date: str,
+    source: str, venue: Venue, session_open_ms: int | None, session_close_ms: int | None,
+) -> tuple[PastIndicatorsCache | None, int | None, int | None]:
+    """Resolve omitted bounds from metadata; cache only its canonical window.
+
+    Ad-hoc windows compute independently, so they cannot poison the canonical
+    cache or share a flight with a different window. Meta generation changes
+    already invalidate the canonical cache through PastIndicatorsCache.
+    """
+    try:
+        meta, _ = normalize_session_bounds(engine.get_meta(date, code, source, venue=venue))
+        canonical = indicator_session_bounds(meta)
+        if not all(isinstance(value, int) for value in canonical):
+            return None, session_open_ms, session_close_ms
+    except (FileNotFoundError, StockDateNotFound, OSError, ValueError, KeyError):
+        return None, session_open_ms, session_close_ms
+    opening = canonical[0] if session_open_ms is None else session_open_ms
+    closing = canonical[1] if session_close_ms is None else session_close_ms
+    return (cache if canonical == (opening, closing) else None), opening, closing
 
 
 def _resolve_today_kst(today_kst: object) -> str | None:
@@ -187,10 +210,8 @@ def _today_kst_yyyymmdd() -> str:
 def _hhmm_to_hhmmssms(value: int) -> int:
     hh = value // 100
     mm = value % 100
-    if hh < 9 or hh > 15 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-        raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
-    if hh == 15 and mm > 20:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-        raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
+    if hh < 9 or hh > 19 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1959")
     return hh * 10_000_000 + mm * 100_000
 
 
@@ -222,7 +243,7 @@ def _query_fill_rows(engine: QueryEngine, code_dir, bucket_ms: int) -> list[Fill
 
 
 def downsample_candles(
-    candles: list[ApiCandle], *, bucket_ms: int, date: str
+    candles: list[ApiCandle], *, bucket_ms: int, date: str, venue: Venue = "KRX",
 ) -> list[ApiCandle]:
     """Re-aggregate 1-minute OHLCV candles into the requested Timeframe bucket.
 
@@ -248,16 +269,23 @@ def downsample_candles(
     달라진다**. 대가는 공유된 한계다: 반휴장일(12:30 마감) 이후 시간외가 창 안에
     들어오면 양쪽 다 통과시킨다.
     """
+    from hoga.live.stock_sessions import (  # noqa: PLC0415 — local session policy dependency
+        krx_aftermarket_window,
+        minute_bucket_start,
+    )
+
     validate_bucket_ms(bucket_ms)
     if bucket_ms in CLIPPED_TIMEFRAME_MS:
         open_ms = hhmmssms_to_unix_ms(date, _REGULAR_OPEN_HHMMSSMS)
         close_ms = hhmmssms_to_unix_ms(date, _REGULAR_CLOSE_HHMMSSMS)
-        candles = [c for c in candles if open_ms <= c.ts_ms <= close_ms]
+        candles = [c for c in candles if open_ms <= c.ts_ms <= close_ms or (
+            venue == "KRX" and krx_aftermarket_window(c.ts_ms)
+        )]
     if bucket_ms == 60_000 or not candles:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
         return list(candles)
 
     out: list[ApiCandle] = []
-    bucket_start = (candles[0].ts_ms // bucket_ms) * bucket_ms
+    bucket_start = minute_bucket_start(candles[0].ts_ms, bucket_ms, venue)
     bucket_open = candles[0].open
     bucket_high = candles[0].high
     bucket_low = candles[0].low
@@ -266,7 +294,7 @@ def downsample_candles(
     bucket_vb = candles[0].vol_b
 
     for c in candles[1:]:
-        c_bucket = (c.ts_ms // bucket_ms) * bucket_ms
+        c_bucket = minute_bucket_start(c.ts_ms, bucket_ms, venue)
         if c_bucket != bucket_start:
             out.append(ApiCandle(
                 ts_ms=bucket_start, open=bucket_open, close=bucket_close,
@@ -382,7 +410,14 @@ def build_quote_ratio_slice(
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> QuoteRatio:
+    requested_bucket_ms = bucket_ms
+    if has_aftermarket_buckets(date, venue, bucket_ms):
+        bucket_ms = _ONE_MINUTE_MS
     cache = _resolve_cache(engine, cache)
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     today_kst = _resolve_today_kst(today_kst)
     # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
     # ask/bid quantity columns, the last-in-bucket selection, the closing-auction
@@ -396,7 +431,7 @@ def build_quote_ratio_slice(
     if not path_obj.exists():
         # ADR-0043: today promotion (promote_kiwoom_today) writes empty records
         # as unlink → missing file is the valid "no data" state, not an error.
-        return QuoteRatio(bucket_ms=bucket_ms, points=[])
+        return QuoteRatio(bucket_ms=requested_bucket_ms, points=[])
     if _indicator_cacheable(cache, today_kst, date, bucket_ms):
         # Past day + minute bucket: cache the 1-minute representatives once and
         # re-aggregate up (reaggregate_ratio == a direct bucket_ms query, proven
@@ -443,8 +478,10 @@ def build_quote_ratio_slice(
             engine.conn, path=path_obj, bucket_ms=bucket_ms,
             session_open_ms=session_open_ms, session_close_ms=session_close_ms,
         )
+    if requested_bucket_ms != bucket_ms:
+        rows = reaggregate_ratio(rows, requested_bucket_ms, date=date, venue=venue)
     return QuoteRatio(
-        bucket_ms=bucket_ms,
+        bucket_ms=requested_bucket_ms,
         points=[
             QuoteRatioPoint(
                 # r.bucket_intra_ms is bucket-aligned ms-from-midnight, not
@@ -523,6 +560,10 @@ def build_volume_distribution_slice(
     prefix를 공유한다. 디스크에 cutoff별 결과를 쓰지 않으며, 오늘/명시적 우회는
     원시 조회를 유지한다. 최초 생성 비용과 메모리 상한은 trade_binning 모듈 참조."""
     cache = _resolve_cache(engine, cache)
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     today_kst = _resolve_today_kst(today_kst)
     code_dir = engine.parquet_dir(date, code, source, venue=venue)
     candles_path = code_dir / "candles.parquet"
@@ -639,6 +680,9 @@ def build_fill_strength_slice(
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> FillStrength:
+    requested_bucket_ms = bucket_ms
+    if has_aftermarket_buckets(date, venue, bucket_ms):
+        bucket_ms = _ONE_MINUTE_MS
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
     # ADR-0001: the bucketing SQL + schema knowledge now lives in the table
@@ -659,7 +703,7 @@ def build_fill_strength_slice(
                 lambda: _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS),
             )
             if rows_1m is None:
-                return FillStrength(bucket_ms=bucket_ms, points=[])
+                return FillStrength(bucket_ms=requested_bucket_ms, points=[])
             cache.store_fill(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
         rows = reaggregate_fill(rows_1m, bucket_ms)
     elif (
@@ -681,7 +725,7 @@ def build_fill_strength_slice(
                 # ADR-0043: fills·trades 둘 다 없음 = 유효한 "체결 없음".
                 # **None 은 캐시하지 않는다** — 시가 직후 파일이 늦게 생길 수 있고
                 # stale None 이 최대 TTL 만큼 그것을 가린다(기존 테스트가 잠근다).
-                return FillStrength(bucket_ms=bucket_ms, points=[])
+                return FillStrength(bucket_ms=requested_bucket_ms, points=[])
             # ADR-0090: `_query_fill_rows` 가 fills.parquet 우선·trades 폴백이라, trades
             # 유래 결과를 캐시한 뒤 fills.parquet 이 같은 15s 창 안에 늦게 도착하면 이후
             # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
@@ -694,10 +738,12 @@ def build_fill_strength_slice(
         direct = _query_fill_rows(engine, code_dir, bucket_ms)
         if direct is None:
             # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
-            return FillStrength(bucket_ms=bucket_ms, points=[])
+            return FillStrength(bucket_ms=requested_bucket_ms, points=[])
         rows = direct
+    if requested_bucket_ms != bucket_ms:
+        rows = reaggregate_fill(rows, requested_bucket_ms, date=date, venue=venue)
     return FillStrength(
-        bucket_ms=bucket_ms,
+        bucket_ms=requested_bucket_ms,
         points=[
             FillStrengthPoint(
                 # r.bucket_intra_ms is bucket-aligned ms-from-midnight (linear),
@@ -736,6 +782,10 @@ def build_ask_peak_slice(
     분봉 전환이 재계산이다 — **주 경로는 더 이상 그렇지 않다**. 오늘·과거일 모두 1분
     으로 한 번 스캔하고 굵은 봉은 rep 재집계로 파생한다(`_today_peak_slices` ·
     `_peak_slices_from_1m_cache`). 이 문장을 "peak 은 봉마다 재계산된다" 로 읽지 말 것."""
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_ask_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_ask_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
@@ -861,7 +911,7 @@ def _compute_ask_peak(
             return None
         return _ask_peak_from_dual_row(date, row)
     row = snapshots_tbl.query_day_ask_peak(
-        engine.conn, path=path_obj, bucket_ms=bucket_ms,
+        engine.conn, path=path_obj, bucket_ms=bucket_ms, date=date, venue=venue,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if row is None:
@@ -887,6 +937,10 @@ def build_bid_peak_slice(
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
 ) -> BidPeak | None:
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     cacheable = cache is not None and today_kst is not None and date != today_kst
     if cacheable and cache.has_bid_peak(code, date, source, bucket_ms, venue=venue):  # type: ignore[union-attr]
         return cache.get_bid_peak(code, date, source, bucket_ms, venue=venue)  # type: ignore[union-attr]
@@ -926,7 +980,7 @@ def _compute_bid_peak(
             return None
         return _bid_peak_from_dual_row(date, row)
     row = snapshots_tbl.query_day_bid_peak(
-        engine.conn, path=path_obj, bucket_ms=bucket_ms,
+        engine.conn, path=path_obj, bucket_ms=bucket_ms, date=date, venue=venue,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
     if row is None:
@@ -1041,6 +1095,7 @@ def _derive_coarse_from_rep(
     *,
     date: str,
     bucket_ms: int,
+    venue: Venue = "KRX",
 ) -> tuple[AskPeak | None, BidPeak | None]:
     """1분 base + 1분 rep 행 → 굵은 봉 출력. 과거일·오늘이 **같은 코드**를 쓴다.
 
@@ -1051,13 +1106,13 @@ def _derive_coarse_from_rep(
         None if base_ask is None else _peak_with_rep_outputs(
             base_ask, date=date,
             reduced=snapshots_tbl.reaggregate_peak_rep(
-                [r for r in rep_rows if r.side == "ask"], side="ask", bucket_ms=bucket_ms,
+                [r for r in rep_rows if r.side == "ask"], side="ask", bucket_ms=bucket_ms, date=date, venue=venue,
             ),
         ),
         None if base_bid is None else _peak_with_rep_outputs(
             base_bid, date=date,
             reduced=snapshots_tbl.reaggregate_peak_rep(
-                [r for r in rep_rows if r.side == "bid"], side="bid", bucket_ms=bucket_ms,
+                [r for r in rep_rows if r.side == "bid"], side="bid", bucket_ms=bucket_ms, date=date, venue=venue,
             ),
         ),
     )
@@ -1122,7 +1177,7 @@ def _peak_slices_from_1m_cache(
         cache.store_bid_peak(code, date, source, one, base_bid, venue=venue)
         cache.store_peak_rep(code, date, source, rep_rows, venue=venue)
     return _derive_coarse_from_rep(
-        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms,
+        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms, venue=venue,
     )
 
 
@@ -1197,7 +1252,7 @@ def _today_peak_slices(
     if bucket_ms == one:
         return base_ask, base_bid
     return _derive_coarse_from_rep(
-        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms,
+        base_ask, base_bid, rep_rows, date=date, bucket_ms=bucket_ms, venue=venue,
     )
 
 
@@ -1215,6 +1270,10 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> tuple[AskPeak | None, BidPeak | None]:
     cache = _resolve_cache(engine, cache)
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     today_kst = _resolve_today_kst(today_kst)
     ask_cached = (
         cache is not None
@@ -1294,6 +1353,18 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         if today_derived is not None:
             return today_derived
 
+    if bucket_ms > _ONE_MINUTE_MS and bucket_ms % _ONE_MINUTE_MS == 0:
+        # No-cache path must agree with the minute-cache derivation above.
+        ask_row, bid_row, rep_rows = snapshots_tbl.query_day_ask_bid_peak_dual_with_rep(
+            engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=_ONE_MINUTE_MS,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+        return _derive_coarse_from_rep(
+            _ask_peak_from_dual_row(date, ask_row) if ask_row is not None else None,
+            _bid_peak_from_dual_row(date, bid_row) if bid_row is not None else None,
+            rep_rows, date=date, bucket_ms=bucket_ms, venue=venue,
+        )
+
     # Concurrent identical dual-peak computes are collapsed by single-flight
     # (SLICE_COALESCER), same as every other per-day slice. The 2-slot
     # semaphore that used to cap DISTINCT-key concurrency here (ADR-0085,
@@ -1366,6 +1437,10 @@ def build_trade_volume_poc_slice(
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> TradeVolumePoc | None:
     cache = _resolve_cache(engine, cache)
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     today_kst = _resolve_today_kst(today_kst)
     code_dir = engine.parquet_dir(date, code, source, venue=venue)
     trades_path = code_dir / "trades.parquet"
@@ -1456,7 +1531,17 @@ def build_depth_heatmap_slice(
     ``session_open_ms``는 개장 동시호가 배제의 하한(ADR-0062 v3) — 쿼리의 공용 술어
     ``_book_indicator_eligible_sql``로 전달된다. 호가비·매도벽과 동일 규칙.
     """
+    if has_aftermarket_buckets(date, venue, bucket_ms):
+        minutes = build_depth_heatmap_slice(
+            engine, code=code, date=date, bucket_ms=_ONE_MINUTE_MS, source=source, venue=venue,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms, cache=cache, today_kst=today_kst,
+        )
+        return reaggregate_depth_heatmap(minutes, date=date, bucket_ms=bucket_ms, venue=venue)
     cache = _resolve_cache(engine, cache)
+    cache, session_open_ms, session_close_ms = _cache_for_session(
+        engine, cache, code=code, date=date, source=source, venue=venue,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     today_kst = _resolve_today_kst(today_kst)
     try:
         path_obj = engine.parquet_dir(date, code, source, venue=venue) / "snapshots.parquet"
@@ -1472,7 +1557,7 @@ def build_depth_heatmap_slice(
     if cacheable and bucket_ms > _ONE_MINUTE_MS and bucket_ms % _ONE_MINUTE_MS == 0:
         one_minute = cache.get_depth(code, date, source, _ONE_MINUTE_MS, venue=venue)
         if one_minute is not CACHE_MISS:
-            out = reaggregate_depth_heatmap(one_minute, date=date, bucket_ms=bucket_ms)
+            out = reaggregate_depth_heatmap(one_minute, date=date, bucket_ms=bucket_ms, venue=venue)
             cache.store_depth(code, date, source, bucket_ms, out, venue=venue)
             return out
     # ADR-0090: 오늘자는 디스크 캐시 금지(프로모션 중)라 형제 지표(ratio/fill/peak)처럼
@@ -2322,7 +2407,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         elif candles_only:
             price_range = None
             trade_indicator_source = source
-            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d)
+            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d, venue=venue)
         else:
             raw_lows = [c.low for c in raw_candles]
             raw_highs = [c.high for c in raw_candles]
@@ -2349,7 +2434,9 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 if needs_trade_price_range
                 else source
             )
-            candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d)
+            candles_d = [] if sidecar_only else downsample_candles(
+                raw_candles, bucket_ms=bucket_ms, date=d, venue=venue,
+            )
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         # 지표 슬라이스가 쓰는 경계는 **정규장이 아니라 venue 별 지표 구간**이다
         # (ADR-0140). NXT·UN 은 08:00–20:00 이고, 이걸 정규장(09:00–15:30)으로

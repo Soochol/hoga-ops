@@ -445,7 +445,7 @@ def backfill_live_meta_cmd(
     tag = "dry-run" if dry_run else "done"
     console.print(
         f"[green]backfill-live-meta {tag}[/green]: "
-        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped} invalid={res.invalid}"
     )
 
 
@@ -471,7 +471,7 @@ def backfill_hogaplay_meta_cmd(
     tag = "dry-run" if dry_run else "done"
     console.print(
         f"[green]backfill-hogaplay-meta {tag}[/green]: "
-        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped} invalid={res.invalid}"
     )
 
 
@@ -500,7 +500,7 @@ def backfill_indicator_session_cmd(
     tag = "dry-run" if dry_run else "done"
     console.print(
         f"[green]backfill-indicator-session {tag}[/green]: "
-        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped} invalid={res.invalid}"
     )
 
 
@@ -526,7 +526,7 @@ def backfill_venue_gaps_cmd(
     tag = "dry-run" if dry_run else "done"
     console.print(
         f"[green]backfill-venue-gaps {tag}[/green]: "
-        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}\n"
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped} invalid={res.invalid}\n"
         f"  is_partial False→True={res.partial_false_to_true} "
         f"True→False={res.partial_true_to_false}  gap 개수 증감={res.gap_count_delta:+d}"
     )

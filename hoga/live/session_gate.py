@@ -9,18 +9,22 @@ from datetime import datetime
 from typing import Literal
 
 from .kis_client import KST
+from .stock_sessions import krx_aftermarket_introduced, krx_aftermarket_window
 
 
-def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed"]:
+def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "aftermarket", "closed"]:
     """KRX session phase by clock alone (no calendar awareness).
 
     regular: 09:00-15:30 KST
     after_hours_closing: 15:30-16:00 KST
+    aftermarket: 16:00-20:00 KST from 2026-09-14
     closed: everything else
 
     Calendar-aware gating (holidays, weekends) lives in :func:`should_run_now`
     so the phase predicate stays pure and reusable from non-poller contexts.
     """
+    if krx_aftermarket_window(t_ms):
+        return "aftermarket"
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
     h, m = kst.hour, kst.minute
     if h == 15 and m >= 30:  # noqa: PLR2004
@@ -36,14 +40,14 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
 # 걸어 창 밖 프레임의 예상체결을 버린다.
 #
 #   KRX     장전 08:30–09:00 · 장마감 15:20–15:30
-#   NXT     애프터마켓 시가단일가 15:30–15:40   ← 그 하나뿐이다
+#   NXT     예정 시가단일가 15:30–15:40 (불규칙 VI/재개 단일가는 별도)
 #   UN(_AL) 위 셋 전부 (병합 스트림이라 어느 쪽 단일가든 실릴 수 있다)
 #
 # NXT 시각의 근거(증권사 안내 4곳 일치, 2026-08-07 확인): 08:00–08:50 프리마켓과
 # 15:40–20:00 애프터마켓은 **접속매매**라 단일가가 없고, 08:50–09:00:30 · 15:20–15:30
 # 은 KRX 단일가 동안 NXT 가 거래정지다. 15:30–15:40 만 "호가접수만 가능, 체결은 15:40
 # 부터" 인 단일가 구간이다 — KRX 동시호가와 동형(접수 창 → 종료 시점 체결)이라 그
-# 10분이 예상체결이 나오는 유일한 NXT 구간이다.
+# 10분이 기존에 지원하던 예정 NXT 단일가 구간이다.
 #
 # 이 표가 생기기 전엔 NXT 를 venue 블랙리스트로 통째 막았다(ADR-0140 §6.1: "단일가
 # 국면 시각을 우리가 모른다"). 그래서 NXT·통합 사용자는 15:30–15:40 예상체결을 **한
@@ -51,7 +55,7 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
 # 시각을 알아낸 지금은 venue 축이 아니라 이 시계 표가 그 역할을 대신한다.
 #
 # ⚠ 장중 VI 단일가는 불규칙 시각이라 이 스케줄 창에 없다 — 필요 시 VI 이벤트로 별도
-#   판정. (NXT 에는 VI 자체가 없다 — ADR-0140 §6.1 실물 확인.)
+#   판정. 2026-09-14 NXT VI/재개 단일가는 고정 시계 창으로 추정하지 않는다.
 _PREOPEN_AUCTION_MIN = (8 * 60 + 30, 9 * 60)              # [08:30, 09:00)  KRX 시가
 _CLOSING_AUCTION_MIN = (15 * 60 + 20, 15 * 60 + 30)       # [15:20, 15:30)  KRX 종가
 _NXT_AFTER_AUCTION_MIN = (15 * 60 + 30, 15 * 60 + 40)     # [15:30, 15:40)  NXT 애프터 시가
@@ -108,6 +112,8 @@ def is_after_hours_single_price_window(t_ms: int) -> bool:
     확실하고, 토·일 내내 폴링이 도는 것은 명백한 낭비다.
     """
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
+    if krx_aftermarket_introduced(kst.strftime("%Y%m%d")):
+        return False
     if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return False
     lo, hi = _AFTER_HOURS_SINGLE_PRICE_MIN
@@ -253,6 +259,10 @@ def venue_capture_windows(now_ms: int) -> frozenset[str]:
     # 못 담는다 — 그래서 거래일 판정을 따로 하는 `ws_connection_window` 를 쓴다.
     if ws_connection_window(now_ms):
         open_venues.update(("NXT", "UN"))
+        # Separate reopening drains the regular book at 15:30. A symbol with no
+        # new after-market ticks cannot carry its regular book into the evening.
+        if krx_aftermarket_window(now_ms):
+            open_venues.add("KRX")
     return frozenset(open_venues)
 
 

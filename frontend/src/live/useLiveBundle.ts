@@ -40,10 +40,12 @@ import {
   aggregateCandles,
   aggregateCalendar,
   calendarBucketKey,
-  keepRegularSessionCandles,
-  isRegularSessionMs,
+  keepMinuteSessionCandles,
+  isMinuteSessionMs,
+  minuteBucketStartMs,
 } from './aggregateCandles';
 import { collapseClosingAuction } from './collapseClosingAuction';
+import { isKrxAftermarketWindow } from '../util/stockSessions';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -61,7 +63,6 @@ import {
   effectiveSessionBoundsByDate,
   liveVenueAcceptsFrame,
   liveVenueSessionBoundsMs,
-  liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
@@ -107,10 +108,6 @@ function segmentSourceByDate(bundle: RangeBundle | null | undefined, date: strin
   return bundle?.segments.find((s) => s.date === date)?.source;
 }
 
-function bucketStartMs(tMs: number, bucketMs: number): number {
-  return Math.floor(tMs / bucketMs) * bucketMs;
-}
-
 function candlePriceRange(candles: readonly Candle[], startMs: number, endMs: number): { min: number; max: number } | null {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -134,7 +131,7 @@ export function overlayLiveTradesOnCandles(
 ): Candle[] {
   if (candles.length === 0 || bucketMs <= 0) return candles as Candle[];
   const lastBase = candles[candles.length - 1];
-  const lastBaseBucket = bucketStartMs(lastBase.ts_ms, bucketMs);
+  const lastBaseBucket = minuteBucketStartMs(lastBase.ts_ms, bucketMs, venue);
   const byBucket = new Map<number, Array<{ price: number; qty: number; tMs: number }>>();
 
   for (const snapshot of trades) {
@@ -154,12 +151,12 @@ export function overlayLiveTradesOnCandles(
         isKstWeekend(realMsToYyyymmdd(tMs)) ||
         // 120·240 전용 — 과거봉 클립(`keepRegularSessionCandles`)과 **같은 술어**를
         // 본다. 다르게 재계산하면 정규장 마지막 봉만 tail 이 어긋난다.
-        (clipToRegularSession && !isRegularSessionMs(tMs)) ||
+        (clipToRegularSession && !isMinuteSessionMs(tMs, venue)) ||
         !liveVenueAcceptsFrame(venue, snapshot.venue)
       ) {
         continue;
       }
-      const bucket = bucketStartMs(tMs, bucketMs);
+      const bucket = minuteBucketStartMs(tMs, bucketMs, venue);
       if (bucket < lastBaseBucket) continue;
       const bucketTrades = byBucket.get(bucket) ?? [];
       bucketTrades.push({ price: ev.price, qty: ev.qty, tMs });
@@ -189,7 +186,8 @@ export function overlayLiveTradesOnCandles(
       const prev = out[out.length - 1];
       out.push({
         ts_ms: bucket,
-        open: prev.close,
+        open: venue === 'KRX' && isKrxAftermarketWindow(bucket)
+          && !isKrxAftermarketWindow(prev.ts_ms) ? bucketTrades[0].price : prev.close,
         high: tradeHigh,
         low: tradeLow,
         close: lastTrade.price,
@@ -247,6 +245,8 @@ export function overlayLiveTradesOnCalendarCandles(
         // 주말 캔들이 붙고, 저장뷰 to_date 가 토/일로 박제된다. 백엔드 파서가 1차로
         // 거르지만(kiwoom_frames), 버퍼에 남은 틱까지 덮도록 여기서도 막는다.
         isKstWeekend(realMsToYyyymmdd(tMs)) ||
+        // Official KRX D/W/M close remains the regular-session close.
+        (venue === 'KRX' && isKrxAftermarketWindow(tMs)) ||
         !liveVenueAcceptsFrame(venue, snapshot.venue)
       ) {
         continue;
@@ -913,10 +913,10 @@ export function useLiveBundle(
     if (raw.length === 0) return EMPTY_CANDLES;
     // 120·240 만 정규장으로 클립한 뒤 접는다. 입력은 30m 라 15:30 이 봉 경계로 남아
     // 있어 봉 단위 클립이 성립한다 — 표시 tf 로 받았다면 이미 혼합된 봉이라 불가능.
-    const src = needsRegularSessionClip(timeframe) ? keepRegularSessionCandles(raw) : raw;
+    const src = needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, venue) : raw;
     if (src.length === 0) return EMPTY_CANDLES;
-    return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
-  }, [isMinute, timeframe, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
+    return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000, venue).map(kisBarToCandle);
+  }, [isMinute, timeframe, venue, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
@@ -1148,7 +1148,7 @@ export function useLiveBundle(
   // (ADR-0003 "Hogaplay is a KRX-only product" · ADR-0078 venue=KIS 실시간 전용).
   // 그래서 venue=UN 이어도 확장창(08:00~20:00)이 아니라 KRX 정규창을 써야 한다 —
   // 안 그러면 KRX 캔들에 데이터 없는 확장 구간이 붙어 축이 비대칭해진다.
-  const useExtendedWindow = liveVenueUsesExtendedMinuteWindow(venue) && !restBypassEnabled;
+  const useExtendedWindow = !restBypassEnabled;
   const todayChartSession = useMemo(
     () => {
       if (!isMinute) return defaultKrxSession;
@@ -1280,6 +1280,7 @@ export function useLiveBundle(
         // `todayChartSession` 이 venue 분기(확장창 08:00–20:00)와 우회 ON 예외(KRX 정규창)를
         // 이미 삼켰으므로, 여기서 갈라지면 축과 지표가 다시 어긋난다.
         todaySession: todayChartSession,
+        venue,
         pastBundle: scaledHogaData,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
@@ -1291,7 +1292,7 @@ export function useLiveBundle(
         depthHeatmapEnabled,
       }),
     [
-      todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs,
+      todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs, venue,
       depthHeatmapEnabled,
     ],
   );

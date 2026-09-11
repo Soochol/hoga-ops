@@ -373,8 +373,21 @@ def _series_snapshots_no_gaps(a: StockDateArtifacts) -> list[Violation]:
     )
     from hoga.util.timeenc import HogaMs  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     ts_values = [HogaMs(ts) for ts in raw_ts]
+    raw_windows = norm_meta.get("indicator_continuous_windows")
+    windows = None
+    if isinstance(raw_windows, list):
+        parsed = []
+        for pair in raw_windows:
+            match pair:
+                case [int(opening), int(closing)] if opening < closing:
+                    parsed.append((opening, closing))
+                case _:
+                    break
+        else:
+            windows = tuple(parsed)
     if not has_meaningful_gaps(
         ts_values, session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
+        continuous_windows=windows,
     ):
         return []
     return [Violation(

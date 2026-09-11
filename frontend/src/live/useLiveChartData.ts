@@ -1,3 +1,4 @@
+import { useEffectiveVenue } from './useEffectiveVenue';
 /**
  * useLiveChartData — /live 차트 데이터 파이프라인 (ADR-0119 PR-C2a).
  *
@@ -320,6 +321,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
   // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기
   // 종료 없이 두 번 완주하므로 이 훅에서 가장 비싼 항이다(위 게이트 주석 참조).
+  const pocVenue = useEffectiveVenue(activeCode, venue);
   const tradeVolumePocs = useTradeVolumePocs(
     tradeVolumePocOn ? live.trade : EMPTY_TRADE_SNAPSHOTS,
     candlePathBundle?.trade_volume_pocs ?? [],
@@ -328,6 +330,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isMinute ? (candlePathBundle?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
     isMinute ? (candlePathBundle?.segments ?? []) : [],
     tradeVolumePocOn ? live.ob : EMPTY_OB_SNAPSHOTS,
+    pocVenue,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     // `candlePathBundle` 은 `stockChartBundle ?? stockBundle` 이라 `stockBundle` 이 있으면

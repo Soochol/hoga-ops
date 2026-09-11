@@ -1,6 +1,7 @@
 import type { Candle } from '../api/types';
 import { realMsToYyyymmdd, regularSessionCloseMs } from './liveDateTime';
 import { AUCTION_WINDOW_LENGTH_MS } from '../util/sessionTime';
+import { krxRegularCloseFromWindow } from '../util/stockSessions';
 
 /**
  * 마감 동시호가(단일가) 구간의 봉들을 **한 봉으로 접고 단일가로 평탄화**한다.
@@ -48,7 +49,7 @@ export function collapseClosingAuction(
   if (candles.length === 0) return candles as Candle[];
 
   const closeMsFor = (date: string): number =>
-    sessionCloseByDate?.get(date)?.close_ms ?? regularSessionCloseMs(date);
+    krxRegularCloseFromWindow(date, sessionCloseByDate?.get(date)?.close_ms ?? regularSessionCloseMs(date));
 
   const out: Candle[] = [];
   // 현재 날짜 창에서 마지막으로 본 봉. 창을 벗어나거나 날짜가 바뀔 때 flush 한다.

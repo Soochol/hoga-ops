@@ -1,3 +1,4 @@
+import { isKrxAftermarketWindow } from '../util/stockSessions';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import type { Candle, RangeSegment } from '../api/types';
 import { createSessionCandleLookup } from './sessionCandles';
@@ -133,12 +134,12 @@ function isEligibleSide(side: number): boolean {
 
 function isTradeTimeEligible(
   tMs: number,
-  options: { openMinute: number; continuousBeforeMs?: number | null },
+  options: { openMinute: number; continuousBeforeMs?: number | null; venue?: string },
 ): boolean {
   if (options.continuousBeforeMs != null) {
     return kstMinuteOfDay(tMs) >= options.openMinute && tMs < options.continuousBeforeMs;
   }
-  return isRegularContinuousTrade(tMs);
+  return isRegularContinuousTrade(tMs) || ((options.venue ?? 'KRX') === 'KRX' && isKrxAftermarketWindow(tMs));
 }
 
 export function priceRangeFromCandles(candles: readonly Candle[]): { min: number; max: number } | null {
@@ -201,6 +202,7 @@ export function computeTradeVolumePoc(
     candles?: readonly Candle[];
     rangeCount?: number;
     segment?: RangeSegment;
+    venue?: string;
     continuousBeforeMs?: number | null;
   } = {},
 ): TradeVolumePoc | null {
@@ -215,7 +217,7 @@ export function computeTradeVolumePoc(
       for (const event of snapshot.trades) {
         const tMs = event.t_ms ?? snapshot.t_ms;
         if (tMs < options.segment.session_open_ms || tMs >= options.segment.session_close_ms) continue;
-        if (!isTradeTimeEligible(tMs, { openMinute, continuousBeforeMs: options.continuousBeforeMs })) continue;
+        if (!isTradeTimeEligible(tMs, { openMinute, venue: options.venue, continuousBeforeMs: options.continuousBeforeMs })) continue;
         if (!isEligibleSide(event.side)) continue;
         const rawPrice = event.price;
         const qty = event.qty;
@@ -239,7 +241,7 @@ export function computeTradeVolumePoc(
   for (const snapshot of trades) {
     for (const event of snapshot.trades) {
       const tMs = event.t_ms ?? snapshot.t_ms;
-      if (!isTradeTimeEligible(tMs, { openMinute: REGULAR_OPEN_MIN, continuousBeforeMs: options.continuousBeforeMs })) continue;
+      if (!isTradeTimeEligible(tMs, { openMinute: REGULAR_OPEN_MIN, venue: options.venue, continuousBeforeMs: options.continuousBeforeMs })) continue;
       if (!isEligibleSide(event.side)) continue;
       const rawPrice = event.price;
       const qty = event.qty;
@@ -283,6 +285,7 @@ export type TradeVolumePocDistParams = {
   sessionOpenMs: number;
   sessionCloseMs: number;
   continuousBeforeMs: number | null;
+  venue?: string;
 };
 
 export class IncrementalTradeVolumePoc {
@@ -294,7 +297,7 @@ export class IncrementalTradeVolumePoc {
 
   update(trades: readonly TradeSnapshot[], params: TradeVolumePocDistParams): TradeVolumePoc | null {
     const key = `${params.rangeMin}|${params.rangeMax}|${params.rangeCount}`
-      + `|${params.sessionOpenMs}|${params.sessionCloseMs}|${params.continuousBeforeMs ?? 'n'}`;
+      + `|${params.sessionOpenMs}|${params.sessionCloseMs}|${params.continuousBeforeMs ?? 'n'}|${params.venue ?? 'KRX'}`;
     const appendOnly = trades.length >= this.consumed
       && (this.consumed === 0 || trades[this.consumed - 1] === this.lastRef);
     if (key !== this.key || !appendOnly) {
@@ -316,7 +319,7 @@ export class IncrementalTradeVolumePoc {
       for (const event of snapshot.trades) {
         const tMs = event.t_ms ?? snapshot.t_ms;
         if (tMs < params.sessionOpenMs || tMs >= params.sessionCloseMs) continue;
-        if (!isTradeTimeEligible(tMs, { openMinute: this.openMinute, continuousBeforeMs: params.continuousBeforeMs })) continue;
+        if (!isTradeTimeEligible(tMs, { openMinute: this.openMinute, venue: params.venue, continuousBeforeMs: params.continuousBeforeMs })) continue;
         if (!isEligibleSide(event.side)) continue;
         const rawPrice = event.price;
         const qty = event.qty;
@@ -334,7 +337,7 @@ export class IncrementalTradeVolumePoc {
 export function computeCandleVolumePocs(
   candles: readonly Candle[],
   segments: readonly RangeSegment[],
-  options: { bandPct?: number; rangeCount?: number } = {},
+  options: { bandPct?: number; rangeCount?: number; venue?: string } = {},
 ): TradeVolumePoc[] {
   const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
   const rangeCount = options.rangeCount;
@@ -348,7 +351,7 @@ export function computeCandleVolumePocs(
       if (range === null) continue;
       const buckets = emptyDistributionBuckets(range.min, range.max, rangeCount);
       for (const candle of segmentCandles) {
-        if (!isRegularContinuousTrade(candle.ts_ms)) continue;
+        if (!isTradeTimeEligible(candle.ts_ms, { openMinute: REGULAR_OPEN_MIN, venue: options.venue })) continue;
         const price = candle.close;
         const qty = Math.max(0, Math.round((candle.vol_a ?? 0) + (candle.vol_b ?? 0)));
         if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || qty <= 0) continue;
@@ -365,7 +368,7 @@ export function computeCandleVolumePocs(
     const byPrice = new Map<number, PriceBucket>();
     let order = 0;
     for (const candle of segmentCandles) {
-      if (!isRegularContinuousTrade(candle.ts_ms)) continue;
+      if (!isTradeTimeEligible(candle.ts_ms, { openMinute: REGULAR_OPEN_MIN, venue: options.venue })) continue;
       const price = Math.round(candle.close);
       const qty = Math.max(0, Math.round((candle.vol_a ?? 0) + (candle.vol_b ?? 0)));
       if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || qty <= 0) continue;

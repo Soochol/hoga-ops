@@ -24,6 +24,7 @@ from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
 from .session_gate import market_phase, venue_capture_windows_async
 from .snapshot import LiveSnapshot, SnapshotKind
+from .stock_sessions import krx_aftermarket_window, stock_indicator_window
 from .ticks import WsTick
 from .writer import LiveWriter
 
@@ -308,7 +309,7 @@ class LiveStream:
             )
             total_ask = tick.payload.get("total_ask_qty")
             if (
-                market_phase(tick.t_ms) == "regular"
+                stock_indicator_window(tick.t_ms, tick.venue)
                 and _is_continuous_book(valid_asks, valid_bids)
                 and type(total_ask) is int
             ):
@@ -326,7 +327,11 @@ class LiveStream:
         # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
         # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여
         # ingest는 전환 drain이 마감 당일로 귀속한다.
-        if tick.venue in self._open_venues:
+        if tick.venue in self._open_venues or (
+            tick.venue == "KRX" and "UN" in self._open_venues and krx_aftermarket_window(tick.t_ms)
+        ):
+            # UN being open carries the calendar decision. Accept the 16:00
+            # opening tick even if it precedes the next 10-second gate refresh.
             self._ds.ingest(tick)
             # 캔들 합성도 같은 게이트·KRX 격리 안에서 raw 틱을 받는다(다운샘플
             # 이전이라 per-tick 가격·cum_volume 정확). trade가 아니면 no-op.
@@ -583,7 +588,7 @@ def ingest_ask_peak_tick(tick: WsTick, get_state: Callable[[], TodayAskPeakState
         return
 
     if tick.kind is SnapshotKind.OB:
-        if market_phase(tick.t_ms) != "regular":
+        if not stock_indicator_window(tick.t_ms, tick.venue):
             return
         asks = tick.payload.get("asks")
         if not isinstance(asks, Sequence) or isinstance(asks, (str, bytes)):
@@ -629,7 +634,7 @@ def ingest_bid_peak_tick(tick: WsTick, get_state: Callable[[], TodayBidPeakState
         return
 
     if tick.kind is SnapshotKind.OB:
-        if market_phase(tick.t_ms) != "regular":
+        if not stock_indicator_window(tick.t_ms, tick.venue):
             return
         asks = tick.payload.get("asks")
         valid_asks = (

@@ -35,6 +35,13 @@ export function useNxtEnabledResolver(): NxtEnabledResolver {
   return useCallback((code: string) => byCode.get(code), [byCode]);
 }
 
+/** Known product exclusions; false here is not proof that a stock can trade. */
+export function useKrxAftermarketExcluded(code: string): boolean {
+  const { data } = useSymbols();
+  const type = data?.symbols.find(hit => hit.code === code)?.security_type;
+  return type === 'etf' || type === 'etn';
+}
+
 /** 선택 venue + 심볼 마스터 → 코드별 유효 venue resolver. */
 export function useEffectiveVenueResolver(
   selectedVenue: LiveVenueOption,

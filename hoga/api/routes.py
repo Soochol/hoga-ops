@@ -840,10 +840,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             _cursor_to_native(from_date, volume_distribution_cutoff_ms)
         hh = broker_late_entry_start_hhmm // 100
         mm = broker_late_entry_start_hhmm % 100
-        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        if hh < 9 or hh > 19 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
             raise HTTPException(
                 400,
-                "broker_late_entry_start_hhmm must be between 900 and 1520",
+                "broker_late_entry_start_hhmm must be between 900 and 1959",
             )
         # 위 검증(400)은 **상한 밖**이다 — 잘못된 요청이 큐를 기다릴 이유가 없고,
         # 기다리면 그 자리만큼 정상 요청이 밀린다.

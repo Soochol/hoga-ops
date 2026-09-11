@@ -372,7 +372,7 @@ class LiveMinuteCandleBackfill:
             fresh_dates=[],
             data_warnings=warnings,
             effective_sessions=[
-                _effective_session(date_s, venue)
+                _effective_session(date_s, venue, code=code)
                 for date_s, venue in sorted(effective_session_venues.items())
             ],
             adjust_factors=_factors_for_candles(rows, cached_factors),
@@ -544,7 +544,7 @@ class LiveMinuteCandleBackfill:
             cached_dates=cached_dates,
             fresh_dates=fresh_dates,
             data_warnings=warnings,
-            effective_sessions=_effective_sessions_for_candles(candles_all, venue),
+            effective_sessions=_effective_sessions_for_candles(candles_all, venue, code=code),
             adjust_factors=_factors_for_candles(candles_all, factors),
         )
         elapsed_ms = perf_debug.elapsed_ms(t0)
@@ -992,8 +992,12 @@ def _session_bound_ms(date_s: str, hhmmss: str) -> int:
     )
 
 
-def _effective_session(date_s: str, venue: Venue) -> dict:
-    open_hhmmss, close_hhmmss = session_window_hhmmss(venue)
+def _effective_session(date_s: str, venue: Venue, *, code: str | None = None) -> dict:
+    from hoga.api.symbols import krx_aftermarket_eligibility  # noqa: PLC0415 — avoids module cycle
+
+    open_hhmmss, close_hhmmss = session_window_hhmmss(venue, date=date_s)
+    if venue == "KRX" and code is not None and krx_aftermarket_eligibility(code) is False:
+        close_hhmmss = "153000"
     return {
         "date": date_s,
         "venue": venue,
@@ -1002,9 +1006,11 @@ def _effective_session(date_s: str, venue: Venue) -> dict:
     }
 
 
-def _effective_sessions_for_candles(candles: list[dict], venue: Venue) -> list[dict]:
+def _effective_sessions_for_candles(
+    candles: list[dict], venue: Venue, *, code: str | None = None,
+) -> list[dict]:
     return [
-        _effective_session(date_s, venue)
+        _effective_session(date_s, venue, code=code)
         for date_s in sorted(_dates_for_candles(candles))
     ]
 

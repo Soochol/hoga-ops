@@ -24,6 +24,7 @@ from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.live.promote_executor import PromoteExecutor, run_promote_job
+from hoga.live.stock_sessions import krx_aftermarket_introduced, krx_continuous_windows
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
 from hoga.tables.candles import (
     Candle,
@@ -76,11 +77,21 @@ _VENUE_INDICATOR_SESSION_MS: dict[str, tuple[HogaMs, HogaMs]] = {
     "UN": (HogaMs(80000000), HogaMs(200000000)),
 }
 
+
+def indicator_session_for_date(
+    date: str, venue: str, *, aftermarket_eligible: bool | None = None,
+) -> tuple[HogaMs, HogaMs]:
+    """Historical records retain their schedule; official close stays 15:30."""
+    if venue == "KRX" and krx_aftermarket_introduced(date) and aftermarket_eligible is not False:
+        return HogaMs(90000000), HogaMs(200000000)
+    return _VENUE_INDICATOR_SESSION_MS.get(venue, _VENUE_INDICATOR_SESSION_MS["KRX"])
+
 _log = logging.getLogger(__name__)
 
 
 def _collection_finished(
     date: str, *, venue: str = "KRX", now: datetime | None = None,
+    aftermarket_eligible: bool | None = None,
 ) -> bool:
     """Time-based completeness verdict for a live (kiwoom_live/kis_api) promotion.
 
@@ -107,11 +118,14 @@ def _collection_finished(
     if date > today:
         return False
     finalize = _VENUE_FINALIZE_HHMM.get(venue, _SESSION_FINALIZE_HHMM)
+    if venue == "KRX" and krx_aftermarket_introduced(date) and aftermarket_eligible is not False:
+        finalize = (20, 5)
     return (now.hour, now.minute) >= finalize
 
 
 def _completeness_fields(
     ts_values: Iterable[HogaMs], *, collection_complete: bool,
+    continuous_windows: tuple[tuple[int, int], ...] | None = None,
     session_open_ms: HogaMs | None = None,
     session_close_ms: HogaMs | None = None,
 ) -> dict:
@@ -137,8 +151,11 @@ def _completeness_fields(
     close = session_close_ms if session_close_ms is not None else _REGULAR_SESSION_CLOSE_MS
     gaps = analyze_gaps(
         ts_values, session_open_ms=open_ms, session_close_ms=close, anchor_edges=True,
+        continuous_windows=continuous_windows,
     )
     return {
+        **({"indicator_continuous_windows": [list(window) for window in continuous_windows]}
+           if continuous_windows is not None else {}),
         "collection_complete": collection_complete,
         "is_partial": gaps.is_partial,
         "gap_ranges": [
@@ -455,8 +472,11 @@ def _build_meta(
 ) -> dict:
     # 모르는 venue 는 KRX 로 떨어진다 — `_collection_finished` 와 같은 보수 규칙
     # (더 넓은 창이 아니라 **기존 동작**으로 수렴).
-    indicator_open, indicator_close = _VENUE_INDICATOR_SESSION_MS.get(
-        venue, _VENUE_INDICATOR_SESSION_MS["KRX"],
+    from hoga.api.symbols import krx_aftermarket_eligibility  # noqa: PLC0415 — avoid live/API cycle
+
+    eligibility = krx_aftermarket_eligibility(code)
+    indicator_open, indicator_close = indicator_session_for_date(
+        date, venue, aftermarket_eligible=eligibility,
     )
     meta = {
         "source": source,
@@ -486,11 +506,16 @@ def _build_meta(
         # 글자 그대로 같아지는 지문이 다시 생긴다.
         **_completeness_fields(
             [HogaMs(s.ts_ms) for s in snapshots],
-            collection_complete=_collection_finished(date, venue=venue),
+            collection_complete=_collection_finished(date, venue=venue, aftermarket_eligible=eligibility),
             session_open_ms=indicator_open,
             session_close_ms=indicator_close,
+            continuous_windows=krx_continuous_windows(date, venue, int(indicator_open), int(indicator_close)),
         ),
     }
+    if venue == "KRX" and krx_aftermarket_introduced(date):
+        # Persist the knowledge used at capture time. None is deliberately not
+        # "eligible": a silent afternoon may be unsupported, not a feed outage.
+        meta["krx_aftermarket_eligible"] = eligibility
     if source == "kis_api":
         meta["sampling_ms"] = 30000
         meta["created_from"] = "kis_rest"

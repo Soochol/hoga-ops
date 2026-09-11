@@ -249,12 +249,12 @@ describe('총잔량 급증 설정', () => {
     expect(re?.max).toBe(95);
   });
 
-  it('surgeStartHHMM(기본 900, 900–1520) enabledBy surgeMarkerEnabled', () => {
+  it('surgeStartHHMM(기본 900, 900–1959) enabledBy surgeMarkerEnabled', () => {
     expect(DEFAULT_PREFS.surgeStartHHMM).toBe(900);
     const st = CHART_NUMERIC_PREFS.find((p) => p.key === 'surgeStartHHMM');
     expect(st?.enabledBy).toBe('surgeMarkerEnabled');
     expect(st?.min).toBe(900);
-    expect(st?.max).toBe(1520);
+    expect(st?.max).toBe(1959);
   });
 
   it('persist 된 surge 값 보존 + 범위 밖은 폴백', () => {

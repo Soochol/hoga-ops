@@ -32,7 +32,7 @@ function wrap() {
 function pushTrade(code: string, price: number, prevClose?: number): void {
   act(() => {
     const frame: Record<string, unknown> = {
-      t_ms: 1, kind: 'trade', trades: [{ t_ms: 1, price, qty: 1 }],
+      t_ms: Date.now(), kind: 'trade', trades: [{ t_ms: Date.now(), price, qty: 1 }],
     };
     if (prevClose !== undefined) frame.prev_close = prevClose;
     handlers.get(code)?.(frame);
@@ -192,7 +192,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     act(() => {
       for (const price of [245000, 246000, 247000]) {
-        handlers.get('005930')?.({ t_ms: 1, kind: 'trade', trades: [{ price }] });
+        handlers.get('005930')?.({ t_ms: Date.now(), kind: 'trade', trades: [{ price }] });
       }
       // 스로틀 창 안 — 아직 반영되지 않아야 한다.
     });
@@ -334,7 +334,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     act(() => {
       handlers.get('005930')?.({
-        t_ms: 1, kind: 'trade', trades: [{ price: 241200 }],
+        t_ms: Date.now(), kind: 'trade', trades: [{ price: 241200 }],
         prev_close: 240000, day_high: 242000, // 고가만 갱신
       });
       vi.advanceTimersByTime(200);
@@ -363,7 +363,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     act(() => {
       handlers.get('005930')?.({
-        t_ms: 1, kind: 'trade', trades: [{ price: 249000 }],
+        t_ms: Date.now(), kind: 'trade', trades: [{ price: 249000 }],
         prev_close: 255000, day_open: 250000, day_high: 252000, day_low: 243500,
       });
       vi.advanceTimersByTime(200);
@@ -400,7 +400,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     act(() => {
       const frame = (high: number) => ({
-        t_ms: 1, kind: 'trade', trades: [{ price: 249000 }],
+        t_ms: Date.now(), kind: 'trade', trades: [{ price: 249000 }],
         prev_close: 255000, day_high: high,
       });
       handlers.get('005930')?.(frame(251000));
@@ -417,7 +417,7 @@ describe('WS 틱 등락률 오버레이', () => {
     const { result } = await renderOverlay(['005930']);
 
     act(() => {
-      handlers.get('005930')?.({ t_ms: 1, kind: 'ob', asks: [{ price: 300000, qty: 1 }] });
+      handlers.get('005930')?.({ t_ms: Date.now(), kind: 'ob', asks: [{ price: 300000, qty: 1 }] });
       vi.advanceTimersByTime(200);
     });
 
@@ -427,7 +427,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
   describe('동시호가 예상체결 오버레이', () => {
     /** ob 프레임 한 건 밀어넣고 스로틀 창을 넘긴다. fields 로 expected_* 유무를 제어. */
-    function pushOb(code: string, fields: Record<string, unknown> = {}, tMs = 1): void {
+    function pushOb(code: string, fields: Record<string, unknown> = {}, tMs = Date.now()): void {
       act(() => {
         handlers.get(code)?.({ t_ms: tMs, kind: 'ob', asks: [], bids: [], ...fields });
         vi.advanceTimersByTime(200);
@@ -510,6 +510,7 @@ describe('WS 틱 등락률 오버레이', () => {
       // 오래된 체결이 더 새로운 예상값을 죽여 표시가 깜빡인다.
       const t1519 = Date.UTC(2026, 4, 18, 6, 19, 59); // 15:19:59 KST
       const t1520 = Date.UTC(2026, 4, 18, 6, 20, 1);  // 15:20:01 KST
+      vi.setSystemTime(t1520);
       mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
       const { result } = await renderOverlay(['005930']);
 
@@ -531,6 +532,7 @@ describe('WS 틱 등락률 오버레이', () => {
       // 위 가드가 종료 신호까지 막아버리면 예상가가 TTL 까지 30초 남는다.
       const t1529 = Date.UTC(2026, 4, 18, 6, 29, 59); // 15:29:59 KST
       const t1530 = Date.UTC(2026, 4, 18, 6, 30, 0);  // 15:30:00 KST 크로스
+      vi.setSystemTime(t1530);
       mockQuotes([{ code: '005930', price: 244500, change_pct: -4.12, change_won: -10500 }]);
       const { result } = await renderOverlay(['005930']);
 
@@ -562,6 +564,7 @@ describe('WS 틱 등락률 오버레이', () => {
       // 08:30 KST — 예전 시분할 규칙에선 "NXT 시간대"라 KRX 태그가 배제되던 구간.
       // 동시 구독이 되면서 이 시각의 KRX 프레임도 정상 데이터다.
       const kst0830 = Date.UTC(2026, 4, 17, 23, 30, 0);
+      vi.setSystemTime(kst0830);
       mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
       const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'KRX'), { wrapper: wrap() });
       await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
@@ -575,6 +578,7 @@ describe('WS 틱 등락률 오버레이', () => {
     it('UN 선택에 KRX 태그 프레임은 배제한다 — 합집합이 아니다', async () => {
       // `_AL` 은 거래소 병합본이라 자기 태그로 온다. KRX 를 함께 받으면 이중 계상.
       const kst1000 = Date.UTC(2026, 4, 18, 1, 0, 0);
+      vi.setSystemTime(kst1000);
       mockQuotes([{ code: '005930', price: 244500, change_pct: null, change_won: null, baseline_price: 255000 }]);
       const hook = renderHook(() => useLiveQuoteOverlay(['005930'], 'UN'), { wrapper: wrap() });
       await waitFor(() => expect(hook.result.current.quoteByCode.size).toBeGreaterThan(0));
@@ -631,7 +635,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     // KRX 선택인데 NXT 태그 체결 → 소스에서 배제되어 폴링 등락률이 그대로 유지된다.
     act(() => {
-      handlers.get('005930')?.({ t_ms: 1, kind: 'trade', venue: 'NXT', trades: [{ t_ms: 1, price: 249000, qty: 1 }] });
+      handlers.get('005930')?.({ t_ms: Date.now(), kind: 'trade', venue: 'NXT', trades: [{ t_ms: Date.now(), price: 249000, qty: 1 }] });
       vi.advanceTimersByTime(200);
     });
     expect(hook.result.current.quoteByCode.get('005930')?.price).toBe(244500);
@@ -639,7 +643,7 @@ describe('WS 틱 등락률 오버레이', () => {
 
     // 대조: KRX 태그 체결은 반영된다.
     act(() => {
-      handlers.get('005930')?.({ t_ms: 1, kind: 'trade', venue: 'KRX', trades: [{ t_ms: 1, price: 249000, qty: 1 }] });
+      handlers.get('005930')?.({ t_ms: Date.now(), kind: 'trade', venue: 'KRX', trades: [{ t_ms: Date.now(), price: 249000, qty: 1 }] });
       vi.advanceTimersByTime(200);
     });
     expect(hook.result.current.quoteByCode.get('005930')?.price).toBe(249000);

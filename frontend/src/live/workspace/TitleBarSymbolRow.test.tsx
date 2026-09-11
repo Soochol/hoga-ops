@@ -1,3 +1,4 @@
+import { liveQuotesQueryKey } from '../../api/liveQuotes';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,7 +29,7 @@ function renderRow(
     next_run_at_ms: 0,
   });
   if (quote) {
-    qc.setQueryData(['live-quotes', code, 'KRX'], { phase: 'open', quotes: [{ code, ...quote }] });
+    qc.setQueryData(liveQuotesQueryKey([code], 'KRX'), { phase: 'open', quotes: [{ code, ...quote }] });
   }
   qc.setQueryData(['live', 'status'], {
     running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,

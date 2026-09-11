@@ -1,3 +1,4 @@
+import { unixMsToKSTDate } from '../util/time';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
@@ -68,7 +69,7 @@ it('includes venue in the request URL and query key', async () => {
   await getQuotes(['005930'], 'UN');
 
   expect(spy).toHaveBeenCalledWith('/api/live/quotes?codes=005930&venue=UN');
-  expect(liveQuotesQueryKey(['005930'], 'UN')).toEqual(['live-quotes', '005930', 'UN']);
+  expect(liveQuotesQueryKey(['005930'], 'UN')).toEqual(['live-quotes', '005930', 'UN', unixMsToKSTDate(Date.now())]);
 });
 
 it('dedupes codes before requesting quotes and building the query key', async () => {
@@ -83,7 +84,7 @@ it('dedupes codes before requesting quotes and building the query key', async ()
   expect(liveQuotesQueryKey(['005930', '000660', '005930'], 'KRX')).toEqual([
     'live-quotes',
     '000660,005930',
-    'KRX',
+    'KRX', unixMsToKSTDate(Date.now()),
   ]);
 });
 

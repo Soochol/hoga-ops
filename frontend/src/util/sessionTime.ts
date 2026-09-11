@@ -29,6 +29,9 @@
  * `axis.contains` / `axis.inClosingAuctionWindow` helpers delegate here.
  */
 
+import { krxRegularCloseFromWindow } from './stockSessions';
+import { unixMsToKSTDate, unixMsToKSTHhmm } from './time';
+
 export type SessionPhase = 'pre-open' | 'regular' | 'auction' | 'gap' | 'pre-axis' | 'post-axis';
 
 export interface SessionSegment {
@@ -64,8 +67,11 @@ export function classifyWithinSegment(seg: SessionSegment, realMs: number): Sess
   if (realMs < preOpenStart) return 'pre-axis';
   if (realMs < seg.sessionOpenMs) return 'pre-open';
   if (realMs > seg.sessionCloseMs) return 'post-axis';
-  const auctionStart = seg.sessionCloseMs - AUCTION_WINDOW_LENGTH_MS;
-  return realMs >= auctionStart ? 'auction' : 'regular';
+  const close = unixMsToKSTHhmm(seg.sessionOpenMs) === 900
+    ? krxRegularCloseFromWindow(unixMsToKSTDate(seg.sessionOpenMs), seg.sessionCloseMs)
+    : seg.sessionCloseMs;
+  const auctionStart = close - AUCTION_WINDOW_LENGTH_MS;
+  return realMs >= auctionStart && realMs <= close ? 'auction' : 'regular';
 }
 
 /** Last index whose pre-open band start (`sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS`)

@@ -19,6 +19,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, cast
 
+from .stock_sessions import krx_aftermarket_introduced
+
 Venue = Literal["KRX", "NXT", "UN"]
 LiveVenuePolicy = Literal["KRX", "NXT", "UN"]
 
@@ -45,7 +47,9 @@ def parse_live_venue_policy(value: str | None) -> LiveVenuePolicy:
     raise ValueError("venue must be one of KRX, NXT, UN")
 
 
-def session_window_hhmmss(venue: Venue) -> tuple[str, str]:
+def session_window_hhmmss(venue: Venue, *, date: str | None = None) -> tuple[str, str]:
+    if venue == "KRX" and date is not None and krx_aftermarket_introduced(date):
+        return "090000", "200000"
     return _SESSION_WINDOWS[parse_venue(venue)]
 
 

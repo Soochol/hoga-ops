@@ -45,6 +45,9 @@ _HOGA = Path(__file__).resolve().parents[3] / "hoga"
 #: 추가한다. 아래 `test_guarded_list_covers_every_module` 가 누락을 잡는다.
 GUARDED = (
     _HOGA / "api" / "bundle.py",
+    _HOGA / "api" / "indicator_reaggregate.py",
+    _HOGA / "api" / "depth_heatmap_reaggregate.py",
+    _HOGA / "tables" / "snapshots.py",
     _HOGA / "api" / "past_indicators_cache.py",
     _HOGA / "api" / "queries.py",
     _HOGA / "api" / "heatmap_group_flow.py",

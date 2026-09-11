@@ -1,5 +1,7 @@
 import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
 import { realMsToYyyymmdd, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
+import { isKrxAftermarketWindow } from '../util/stockSessions';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 이 시각이 자기 날짜의 정규장 `[09:00, 15:30]` KST 안인가.
  *
@@ -24,6 +26,25 @@ export function isRegularSessionMs(tMs: number): boolean {
  * and Candle-shaped rows alike. */
 export function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
   return candles.filter((c) => isRegularSessionMs(c.t_ms));
+}
+
+export function isMinuteSessionMs(tMs: number, venue: LiveVenueOption): boolean {
+  return isRegularSessionMs(tMs) || (venue === 'KRX' && isKrxAftermarketWindow(tMs));
+}
+
+export function keepMinuteSessionCandles<T extends { t_ms: number }>(
+  candles: readonly T[], venue: LiveVenueOption,
+): T[] {
+  return candles.filter(c => isMinuteSessionMs(c.t_ms, venue));
+}
+
+/** Large KRX bars restart at 16:00 instead of merging with the 15:00 bar. */
+export function minuteBucketStartMs(tMs: number, bucketMs: number, venue: LiveVenueOption = 'KRX'): number {
+  if (bucketMs >= 2 * 3600_000 && venue === 'KRX' && isKrxAftermarketWindow(tMs)) {
+    const anchor = regularSessionOpenMs(realMsToYyyymmdd(tMs)) + 7 * 3600_000;
+    return anchor + Math.floor((tMs - anchor) / bucketMs) * bucketMs;
+  }
+  return Math.floor(tMs / bucketMs) * bucketMs;
 }
 
 /** OHLCV aggregation of a sorted candle stream into `bucketSeconds`-sized
@@ -57,6 +78,7 @@ export interface AggregatedCandle {
 export function aggregateCandles(
   source: readonly LiveCandle[],
   bucketSec: number,
+  venue: LiveVenueOption = 'KRX',
 ): AggregatedCandle[] {
   if (bucketSec <= 0) throw new Error(`bucketSec must be positive, got ${bucketSec}`);
   if (source.length === 0) return [];
@@ -64,7 +86,7 @@ export function aggregateCandles(
   const out: AggregatedCandle[] = [];
   let cur: AggregatedCandle | null = null;
   for (const c of source) {
-    const bucketStart = Math.floor(c.t_ms / bucketMs) * bucketMs;
+    const bucketStart = minuteBucketStartMs(c.t_ms, bucketMs, venue);
     if (cur === null || bucketStart !== cur.t_ms) {
       if (cur !== null) out.push(cur);
       cur = {

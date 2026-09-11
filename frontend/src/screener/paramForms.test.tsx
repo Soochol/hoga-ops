@@ -12,13 +12,13 @@ describe('기준시각 HHMM ↔ <input type="time"> 변환', () => {
     expect(hhmmToTimeValue(1520)).toBe('15:20');
   });
   it('시각 문자열을 HHMM 정수로 — 왕복이 항등', () => {
-    for (const hhmm of [900, 905, 1200, 1459, 1520]) {
+    for (const hhmm of [900, 905, 1200, 1459, 1520, 1700, 1959]) {
       expect(timeValueToHhmm(hhmmToTimeValue(hhmm))).toBe(hhmm);
     }
   });
   it('허용 범위 밖·형식 불량은 null — 서버 422 를 부르는 값을 만들지 않는다', () => {
     expect(timeValueToHhmm('08:59')).toBeNull();   // 개장 전
-    expect(timeValueToHhmm('15:21')).toBeNull();   // 상한 초과
+    expect(timeValueToHhmm('20:00')).toBeNull();   // 상한 초과
     expect(timeValueToHhmm('')).toBeNull();        // 입력 지우는 중
     expect(timeValueToHhmm('1200')).toBeNull();    // 콜론 없음
   });

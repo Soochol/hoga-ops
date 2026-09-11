@@ -49,7 +49,7 @@ export interface DepthPeakParams { lookback: number; threshold_pct: number }
 // 여기서는 BreakoutParams 규약대로 "기간내" 의 그 기간이고 비교 창은 `period` 다.
 export interface DepthPeakPeriodParams { lookback: number; period: number; threshold_pct: number }
 // 매도/매수 총잔량 기준시각 돌파(당일 전용): start_hhmm 이후 최댓값 ≥ (threshold_pct/100)
-// × 개장~start_hhmm 최댓값. start_hhmm 은 HHMM(예: 1200 = 12:00), 0900~1520 KST.
+// × 개장~start_hhmm 최댓값. start_hhmm 은 HHMM(예: 1200 = 12:00), 0900~1959 KST.
 // 100 은 동률 포함("renews or revisits") — 엄밀히 더 큰 것만 원하면 101 이상.
 export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number }
 

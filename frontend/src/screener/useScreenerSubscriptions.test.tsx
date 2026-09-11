@@ -87,7 +87,7 @@ describe('스크리너 선택 종목 WS 구독', () => {
 
     await act(async () => {
       handlers.get(SELECTED)?.({
-        t_ms: 1, kind: 'trade', trades: [{ t_ms: 1, price: 12000, qty: 1 }],
+        t_ms: Date.now(), kind: 'trade', trades: [{ t_ms: Date.now(), price: 12000, qty: 1 }],
       });
       await vi.advanceTimersByTimeAsync(200);
     });

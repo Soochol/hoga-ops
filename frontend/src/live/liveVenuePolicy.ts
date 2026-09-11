@@ -1,6 +1,7 @@
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { LIVE_VENUE_LABELS, type LiveVenueOption } from '../state/liveVenue';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
+import { isKrxAftermarketWindow, krxAftermarketIntroduced } from '../util/stockSessions';
 import {
   isKrxRegularSessionNow,
   realMsToYyyymmdd,
@@ -43,7 +44,10 @@ export function liveVenueUsesExtendedMinuteWindow(venue: LiveVenueOption): boole
  * ⚠ 시각을 손으로 다시 적지 말 것. 세션 창이 바뀌면 `liveVenueSessionBoundsMs` 와
  * 이 라벨이 조용히 갈리고, 갈린 쪽이 **선택 화면**이라 사용자가 먼저 본다.
  */
-export function liveVenueSessionWindowLabel(venue: LiveVenueOption): string {
+export function liveVenueSessionWindowLabel(
+  venue: LiveVenueOption, date: string = realMsToYyyymmdd(Date.now()),
+): string {
+  if (venue === 'KRX' && krxAftermarketIntroduced(date)) return '09:00–15:30 · 16:00–20:00';
   return liveVenueUsesExtendedMinuteWindow(venue) ? '08:00–20:00' : '09:00–15:30';
 }
 
@@ -69,7 +73,11 @@ export function liveVenueSessionBoundsMs(
   venue: LiveVenueOption,
 ): { open_ms: number; close_ms: number } {
   if (!liveVenueUsesExtendedMinuteWindow(venue)) {
-    return { open_ms: regularSessionOpenMs(yyyymmdd), close_ms: regularSessionCloseMs(yyyymmdd) };
+    return {
+      open_ms: regularSessionOpenMs(yyyymmdd),
+      close_ms: krxAftermarketIntroduced(yyyymmdd)
+        ? extendedVenueSessionCloseMs(yyyymmdd) : regularSessionCloseMs(yyyymmdd),
+    };
   }
   return { open_ms: extendedVenueSessionOpenMs(yyyymmdd), close_ms: extendedVenueSessionCloseMs(yyyymmdd) };
 }
@@ -92,7 +100,7 @@ export function effectiveSessionBoundsByDate(
 }
 
 export function isLiveVenueSessionNow(venue: LiveVenueOption, nowMs: number = Date.now()): boolean {
-  if (venue === 'KRX') return isKrxRegularSessionNow(nowMs);
+  if (venue === 'KRX') return isKrxRegularSessionNow(nowMs) || isKrxAftermarketWindow(nowMs);
   const today = realMsToYyyymmdd(nowMs);
   if (!isKstWeekday(today)) return false;
   const { open_ms, close_ms } = liveVenueSessionBoundsMs(today, venue);

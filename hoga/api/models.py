@@ -1370,7 +1370,7 @@ SignalAlertScope = Literal["inbox", "all"]
 
 
 def validate_session_start_hhmm(value: int) -> int:
-    """장중 기준시각 HHMM(0900~1520 KST) 검증. 유효하면 그대로 반환.
+    """장중 기준시각 HHMM(0900~1959 KST) 검증. 유효하면 그대로 반환.
 
     실시간 알림(:class:`SellTotalRenewalSettings`)과 스크리너 조건
     (:class:`DepthRenewalParams`)이 **같은 의미의 기준시각**을 받는다 — 판정 로직은
@@ -1379,8 +1379,8 @@ def validate_session_start_hhmm(value: int) -> int:
     """
     hh = value // 100
     mm = value % 100
-    if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-        raise ValueError("start_hhmm must be between 0900 and 1520 KST")
+    if hh < 9 or hh > 19 or mm < 0 or mm > 59:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+        raise ValueError("start_hhmm must be between 0900 and 1959 KST")
     return value
 
 

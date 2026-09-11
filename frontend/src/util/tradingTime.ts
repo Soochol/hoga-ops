@@ -5,10 +5,10 @@
  * 포맷(900 / 0930 / 11:30)을 쓰던 것을 하나의 소스로 모은다(P1-9).
  *
  * 입력은 관대하게: "0930"(4자리 HHMM)도, "9:30"·"09:30"(콜론)도 모두 받는다.
- * 검증 창은 정규장 09:00–15:20(마감 동시호가 시작). 범위 밖이면 null. */
+ * 검증 창은 정규장 09:00–19:59. 범위 밖이면 null. */
 
 export const TRADING_TIME_MIN_HHMM = 900;
-export const TRADING_TIME_MAX_HHMM = 1520;
+export const TRADING_TIME_MAX_HHMM = 1959;
 
 export function formatHhmm(hhmm: number): string {
   const hours = String(Math.floor(hhmm / 100)).padStart(2, '0');
@@ -27,7 +27,7 @@ function validateHhmm(hours: number, minutes: number): number | null {
   ) {
     return null;
   }
-  if (hours < 9 || hours > 15 || (hours === 15 && minutes > 20)) {
+  if (hours < 9 || hours > 19) {
     return null;
   }
   return hours * 100 + minutes;

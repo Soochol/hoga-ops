@@ -3,7 +3,7 @@ import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenew
 // 기준시각 허용 범위(KST) — 백엔드 validate_session_start_hhmm 과 같은 경계다.
 // 여기서 막는 것은 편의고, 진짜 계약은 서버가 지킨다.
 const RENEWAL_MIN_HHMM = 900;
-const RENEWAL_MAX_HHMM = 1520;
+const RENEWAL_MAX_HHMM = 1959;
 
 /** HHMM 정수(1200) ↔ <input type="time"> 값('12:00'). 저장 형식은 정수로 유지한다. */
 export function hhmmToTimeValue(hhmm: number): string {

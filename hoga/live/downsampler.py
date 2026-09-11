@@ -11,11 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .snapshot import LiveSnapshot, SnapshotKind
+from .stock_sessions import krx_capture_partition
 from .ticks import WsTick
 
 
 @dataclass
 class _CodeState:
+    capture_partition: tuple[str, bool] | None = None
     last_ob: dict | None = None
     last_broker: dict | None = None
     buy_qty: int = 0
@@ -34,8 +36,24 @@ class TickDownsampler:
         # `tick.code` 만으로는 두 시장이 구분되지 않는다.
         self._codes: dict[tuple[str, str], _CodeState] = {}
 
-    def ingest(self, tick: WsTick) -> None:
+    def _state_for_tick(self, tick: WsTick) -> _CodeState | None:
+        if tick.venue == "KRX":
+            key = (tick.code, tick.venue)
+            partition = krx_capture_partition(tick.t_ms)
+            previous = self._codes.get(key)
+            if previous is not None and previous.capture_partition != partition:
+                if previous.capture_partition is not None and partition < previous.capture_partition:
+                    return None  # A delayed regular frame cannot replace the evening book.
+                del self._codes[key]
         st = self._codes.setdefault((tick.code, tick.venue), _CodeState())
+        if tick.venue == "KRX":
+            st.capture_partition = partition
+        return st
+
+    def ingest(self, tick: WsTick) -> None:
+        st = self._state_for_tick(tick)
+        if st is None:
+            return
         if tick.kind is SnapshotKind.OB:
             st.last_ob = tick.payload
         elif tick.kind is SnapshotKind.BROKER:
@@ -95,9 +113,20 @@ class TickDownsampler:
         trades 폴백·SSE per-trade 버킷팅과 어긋난다. 상태형(ob/broker)은
         '마감 순간의 상태'이므로 now_ms 유지. None이면 now_ms 폴백(직접 호출
         테스트 호환)."""
-        label_ms = fill_t_ms if fill_t_ms is not None else now_ms
+        window_label_ms = fill_t_ms if fill_t_ms is not None else now_ms
+        partition = krx_capture_partition(now_ms)
         out: dict[tuple[str, str], list[LiveSnapshot]] = {}
         for key, st in self._codes.items():
+            if key[1] == "KRX" and st.capture_partition != partition:
+                # A suspended process can miss the 15:30 drain. In that case
+                # excluded/quiet stocks still must not get fake evening books.
+                continue
+            label_ms = window_label_ms
+            if key[1] == "KRX" and partition[1]:
+                # The global flush clock may still precede the 16:00 reopening.
+                # 16:00 KST = 07:00 UTC; never label new trades with the break.
+                reopening_ms = now_ms // 86_400_000 * 86_400_000 + 7 * 3_600_000
+                label_ms = max(label_ms, reopening_ms)
             snaps: list[LiveSnapshot] = []
             if st.last_ob is not None:
                 payload = {**st.last_ob, "phase": phase}

@@ -19,6 +19,7 @@ from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
 from hoga.collector.orchestrator import now_kst
 from hoga.duck import connect_bounded
+from hoga.live.stock_sessions import krx_continuous_windows
 from hoga.live.venue import Venue
 from hoga.tables import snapshots
 from hoga.tables.trade_binning import TradeBinningCache
@@ -704,6 +705,9 @@ class QueryEngine:
             (HogaMs(r[0]) for r in rows),
             session_open_ms=HogaMs(open_ms),
             session_close_ms=HogaMs(close_ms),
+            continuous_windows=krx_continuous_windows(
+                date, venue, open_ms, close_ms, regular_close_ms=norm_meta.get("regular_session_close_ms"),
+            ),
         )
         ranges = [(int(s), int(e)) for s, e in analysis.gap_ranges]
         sparse = analysis.in_session_count < 2 and not ranges  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리

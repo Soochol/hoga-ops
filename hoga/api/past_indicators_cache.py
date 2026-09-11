@@ -73,7 +73,7 @@ _log = logging.getLogger(__name__)
 #
 # 2026-08-10 (ADR-0140 venue 축): 세션 경계가 meta 의 정규장에서 **venue 별 지표
 # 구간**으로 바뀌어 NXT·UN 의 프리·애프터마켓이 집계에 들어온다 → 경계를 타는 kind 만
-# 범프. **범프가 필수인 이유**: `_is_stale` 은 capture meta 의 mtime 만 보므로
+# 범프. **범프가 필수인 이유**: `_is_stale` 은 capture meta 의 파일 세대만 보므로
 # "데이터가 바뀌었나" 는 알아도 **"계산 로직이 바뀌었나" 는 모른다**. 실제로 meta 를
 # 소급 재작성한 직후 구버전 서버가 캐시를 다시 채웠고, 새 코드가 그 잘린 캐시를
 # 그대로 읽었다(실측). 경계 의미를 바꾸면서 여기를 안 올리면 그게 재발한다.
@@ -104,7 +104,7 @@ KIND_VERSIONS: dict[str, int] = {
     "fill": 6,
     # 8 (ADR-0156): 터치 판정이 "이벤트 이후 아무 때나" → "벽이 관측된 그 1분 안" 으로
     # 바뀌었고 `untraded_*`(사후미터치) 계열이 사라졌다. **범프가 필수다** — `_is_stale`
-    # 은 capture meta 의 mtime 만 보므로 "계산 규칙이 바뀌었나" 를 모른다. 아래 문단이
+    # 은 capture meta 의 파일 세대만 보므로 "계산 규칙이 바뀌었나" 를 모른다. 아래 문단이
     # 경고하는 /study 콜드 로드 비용(peak 재계산 = 콜드의 95%)을 이번엔 치른다: 값이
     # 실제로 달라졌으므로 구 캐시를 살려 두면 화면이 구 규칙으로 굳는다.
     # 9: traded_record_peaks/traded_record_max_peaks(기록 갱신 시퀀스) 추가 —
@@ -220,13 +220,13 @@ class PastIndicatorsCache:
         # summarizes. Incident: a sparse 08:18 hogaplay capture cached ONE ratio
         # point; the 08:38 full re-capture replaced snapshots.parquet (8.9k rows);
         # /live kept serving the 1 point because neither disk nor mem was
-        # invalidated. meta.json mtime is the capture identity — bumped on every
+        # invalidated. meta.json file generation is the capture identity — bumped on every
         # capture, shared by every kind of the Stock-Date. Disk staleness is gated
         # in _read/_read_model_cache; mem staleness is gated by _sync_generation,
         # which purges these dicts on a token change.
-        self._gen: dict[tuple[str, str, str, str], int] = {}
+        self._gen: dict[tuple[str, str, str, str], str | None] = {}
         self._all_mem_dicts: tuple[OrderedDict, ...] = (
-            self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
+            self._mem_peak_rep, self._mem_ratio, self._mem_fill, self._mem_ask_peak, self._mem_bid_peak,
             self._mem_trade_volume_poc, self._mem_depth,
             self._mem_vdist, self._mem_broker_late, self._mem_continuous_before,
         )
@@ -257,6 +257,7 @@ class PastIndicatorsCache:
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
     def _mem_put(self, od: OrderedDict, key, value, stats: CacheStats | None = None) -> None:
+        self._sync_generation(key[0], key[1], key[2], venue=key[3])
         with self._lock:
             od[key] = value
             od.move_to_end(key)
@@ -317,27 +318,37 @@ class PastIndicatorsCache:
         except OSError:
             return 0
 
-    def _is_stale(self, path: Path, fetched_at_ms: object) -> bool:
-        """True when the source capture is newer than this cache artifact.
+    def _capture_generation(
+        self, code: str, date: str, source: str, *, venue: Venue = "KRX",
+    ) -> str | None:
+        """Filesystem identity survives process restarts, not source replacement.
 
-        Derives (code, date, source, venue) from the cache ``path`` layout
-        (kis-past-indicators/<code>/<source>[/<venue>]/<date>.<suffix>.json) so both
-        disk readers share one gate without threading the key through. venue 세그먼트는
-        `source_venue_dir` 규율대로 **여러 venue 를 덮는 source 에만** 있다 — 없으면
-        그 source 는 정의상 KRX 전용이다. Lenient on any surprise (unparseable path,
-        missing meta → token 0, missing timestamp): returns False so a cache we cannot
-        prove stale is never discarded."""
+        ctime/inode detect restored files even when backup tools preserve mtime.
+        One stat keeps hot-cache validation independent of metadata file size.
+        """
+        from hoga.api.sources import source_venue_dir  # noqa: PLC0415
+
+        meta = source_venue_dir(self._data_dir / "parquet" / date / code, source, venue) / "meta.json"
+        try:
+            st = meta.stat()
+        except OSError:
+            return None
+        return f"{st.st_dev}:{st.st_ino}:{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}"
+
+    def _generation_for_path(self, path: Path) -> str | None:
         try:
             rel = path.relative_to(self._data_dir / "kis-past-indicators")
             code, source = rel.parts[0], rel.parts[1]
-            venue = cast("Venue", rel.parts[2]) if len(rel.parts) > 3 else "KRX"  # noqa: PLR2004 — code/source/venue/file
+            venue = cast("Venue", rel.parts[2]) if len(rel.parts) > 3 else "KRX"  # noqa: PLR2004
             date = path.name.split(".", 1)[0]
         except (ValueError, IndexError):
-            return False
-        tok = self._capture_mtime_ms(code, date, source, venue=venue)
-        if tok == 0 or not isinstance(fetched_at_ms, (int, float)):
-            return False
-        return tok > int(fetched_at_ms)
+            return None
+        return self._capture_generation(code, date, source, venue=venue)
+
+    def _is_stale(self, path: Path, source_generation: object) -> bool:
+        # Legacy artifacts without provenance must be rebuilt when the source
+        # exists. A vanished source also invalidates a formerly identified cache.
+        return self._generation_for_path(path) != source_generation
 
     def _sync_generation(self, code: str, date: str, source: str, *, venue: Venue = "KRX") -> None:
         """Evict in-memory entries for ``(code, date, source, venue)`` when its capture
@@ -352,13 +363,13 @@ class PastIndicatorsCache:
         항목까지 쓸어 간다 — 정확성은 유지되지만(디스크 read-through) 재캡처마다
         무관한 시장의 캐시를 버린다."""
         key = (code, date, source, venue)
-        tok = self._capture_mtime_ms(code, date, source, venue=venue)
+        tok = self._capture_generation(code, date, source, venue=venue)
         with self._lock:
-            prev = self._gen.get(key)
+            prev = self._gen.get(key, _CACHE_MISS)
             if prev == tok:
                 return
             self._gen[key] = tok
-            if prev is None:
+            if prev is _CACHE_MISS:
                 return  # first sighting — nothing memoized under the old token
             for od in self._all_mem_dicts:
                 # list(od) 로 스냅샷을 뜬 뒤 지운다 — 순회 중 삭제는 같은 스레드에서도
@@ -558,7 +569,7 @@ class PastIndicatorsCache:
         # Version mismatch (semantics changed) OR source re-captured after this
         # slice was cached (07/22 stale-slice incident) → miss, next store heals.
         if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
-            path, body.get("fetched_at_ms")
+            path, body.get("source_generation")
         ):
             return _CACHE_MISS
         value = body.get("value")
@@ -575,6 +586,7 @@ class PastIndicatorsCache:
             "version": KIND_VERSIONS[kind],
             "value": None if value is None else value.model_dump(mode="json"),
             "fetched_at_ms": int(time.time() * 1000),
+            "source_generation": self._generation_for_path(path),
         }
         try:
             atomic_write_json(path, payload)
@@ -738,6 +750,7 @@ class PastIndicatorsCache:
     ) -> None:
         stats = self._stats["depth"]
         od = self._mem_depth
+        self._sync_generation(key[0], key[1], key[2], venue=key[3])
         with self._lock:
             od[key] = value
             od.move_to_end(key)
@@ -887,7 +900,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
         if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
-            path, body.get("fetched_at_ms")
+            path, body.get("source_generation")
         ):
             return _CACHE_MISS
         raw = body.get(payload_key)
@@ -906,6 +919,7 @@ class PastIndicatorsCache:
             "version": KIND_VERSIONS[kind],
             payload_key: [m.model_dump(mode="json") for m in items],
             "fetched_at_ms": int(time.time() * 1000),
+            "source_generation": self._generation_for_path(path),
         }
         try:
             atomic_write_json(path, payload)
@@ -987,7 +1001,7 @@ class PastIndicatorsCache:
             stats.record_miss()
             return _CACHE_MISS
         if body.get("version") != KIND_VERSIONS["continuous_before"] or self._is_stale(
-            path, body.get("fetched_at_ms")
+            path, body.get("source_generation")
         ):
             stats.record_miss()
             return _CACHE_MISS
@@ -1006,10 +1020,12 @@ class PastIndicatorsCache:
         stats = self._stats["continuous_before"]
         stats.record_store()
         self._mem_put(self._mem_continuous_before, key, value, stats)
+        path = self._continuous_before_path(code, date, source, session_close_ms, venue=venue)
         payload = {
             "version": KIND_VERSIONS["continuous_before"],
             "value": value,
             "fetched_at_ms": int(time.time() * 1000),
+            "source_generation": self._generation_for_path(path),
         }
         try:
             atomic_write_json(
@@ -1036,7 +1052,7 @@ class PastIndicatorsCache:
         if body.get("version") != KIND_VERSIONS[kind]:
             # Semantics changed under an old file — ignore; next store heals it.
             return None
-        if self._is_stale(p, body.get("fetched_at_ms")):
+        if self._is_stale(p, body.get("source_generation")):
             # Source re-captured after this slice was cached — ignore; next store heals.
             return None
         rows = body.get("rows")
@@ -1049,6 +1065,7 @@ class PastIndicatorsCache:
         payload = {
             "version": KIND_VERSIONS[kind], "rows": rows,
             "fetched_at_ms": int(time.time() * 1000),
+            "source_generation": self._generation_for_path(path),
         }
         try:
             atomic_write_json(path, payload)
