@@ -32,6 +32,7 @@ proven by tests/unit/api/test_indicator_reaggregate.py against the same parquet:
 """
 from __future__ import annotations
 
+from hoga.live.stock_sessions import indicator_bucket_intra
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
@@ -47,7 +48,9 @@ def _imb_mag(bid: int, ask: int) -> float:
     return 1.0
 
 
-def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[QuoteRatioRow]:
+def reaggregate_ratio(
+    rows_1m: list[QuoteRatioRow], bucket_ms: int, *, date: str = "", venue: str = "KRX",
+) -> list[QuoteRatioRow]:
     """Re-aggregate 1-minute quote_ratio rows to ``bucket_ms`` (a multiple of 1m).
 
     Per target bucket: the depth totals of the LAST non-``(0, 0)`` 1-minute row,
@@ -78,7 +81,7 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     imb_best: dict[int, tuple[float, int, int]] = {}  # (mag, imb_max_bid, imb_max_ask)
     order: list[int] = []
     for r in rows_1m:
-        tb = (r.bucket_intra_ms // bucket_ms) * bucket_ms
+        tb = indicator_bucket_intra(r.bucket_intra_ms, bucket_ms, date=date, venue=venue)
         if tb not in last_any:
             order.append(tb)
             bid_max[tb] = 0
@@ -104,7 +107,9 @@ def reaggregate_ratio(rows_1m: list[QuoteRatioRow], bucket_ms: int) -> list[Quot
     return out
 
 
-def reaggregate_fill(rows_1m: list[FillStrengthRow], bucket_ms: int) -> list[FillStrengthRow]:
+def reaggregate_fill(
+    rows_1m: list[FillStrengthRow], bucket_ms: int, *, date: str = "", venue: str = "KRX",
+) -> list[FillStrengthRow]:
     """Re-aggregate 1-minute fill_strength rows to ``bucket_ms`` (a multiple of 1m).
 
     Per target bucket: the sum of constituent 1-minute buy/sell quantities — the
@@ -118,7 +123,7 @@ def reaggregate_fill(rows_1m: list[FillStrengthRow], bucket_ms: int) -> list[Fil
     sell: dict[int, int] = {}
     order: list[int] = []
     for r in rows_1m:
-        tb = (r.bucket_intra_ms // bucket_ms) * bucket_ms
+        tb = indicator_bucket_intra(r.bucket_intra_ms, bucket_ms, date=date, venue=venue)
         if tb not in buy:
             order.append(tb)
             buy[tb] = 0

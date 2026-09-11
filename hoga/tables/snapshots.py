@@ -23,6 +23,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from hoga.live.stock_sessions import indicator_bucket_intra, indicator_bucket_sql
 from hoga.util.atomic_write import atomic_write_parquet_table
 from hoga.util.timeenc import hhmmssms_to_intra_ms_sql
 
@@ -1736,6 +1737,8 @@ def query_day_ask_peak(
     *,
     path: Path,
     bucket_ms: int,
+    date: str = "",
+    venue: str = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> AskPeakRow | None:
@@ -1772,7 +1775,7 @@ def query_day_ask_peak(
         WITH cont AS (
           SELECT *,
                  ROW_NUMBER() OVER (
-                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   PARTITION BY {indicator_bucket_sql(intra, bucket_ms, date=date, venue=venue)}
                    ORDER BY ts_ms DESC
                  ) AS rn
           FROM read_parquet(?) WHERE {where}
@@ -1825,6 +1828,8 @@ def query_day_bid_peak(
     *,
     path: Path,
     bucket_ms: int,
+    date: str = "",
+    venue: str = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> BidPeakRow | None:
@@ -1846,7 +1851,7 @@ def query_day_bid_peak(
         WITH cont AS (
           SELECT *,
                  ROW_NUMBER() OVER (
-                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   PARTITION BY {indicator_bucket_sql(intra, bucket_ms, date=date, venue=venue)}
                    ORDER BY ts_ms DESC
                  ) AS rn
           FROM read_parquet(?) WHERE {where}
@@ -2123,7 +2128,7 @@ def _rep_frame_from_rows(rows: Sequence[PeakRepRow]) -> pl.DataFrame:
 
 
 def reaggregate_peak_rep(
-    rows: Sequence[PeakRepRow], *, side: str, bucket_ms: int,
+    rows: Sequence[PeakRepRow], *, side: str, bucket_ms: int, date: str = "", venue: str = "KRX",
 ) -> dict[str, Any] | None:
     """1분 rep 행 → `bucket_ms` 의 **rep 파생** 출력(종가 대표 계열).
 
@@ -2149,11 +2154,10 @@ def reaggregate_peak_rep(
     per_minute = ONE_MINUTE_MS
     if bucket_ms % per_minute != 0:
         raise ValueError(f"bucket_ms must be a multiple of {per_minute}: {bucket_ms}")
-    step = bucket_ms // per_minute
     # 창별로 rep 가 존재하는 마지막 1분 버킷만 남긴다.
     last_minute_of_window: dict[int, int] = {}
     for r in rows:
-        w = r.bucket_id // step
+        w = indicator_bucket_intra(r.bucket_id * per_minute, bucket_ms, date=date, venue=venue)
         if r.bucket_id > last_minute_of_window.get(w, -1):
             last_minute_of_window[w] = r.bucket_id
     keep = set(last_minute_of_window.values())

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { useKstDay } from '../util/useKstDay';
+import { unixMsToKSTDate } from '../util/time';
 import {
   EXPECTED_FILL_TTL_MS,
   useLiveTickPrices,
@@ -52,6 +54,9 @@ export interface LiveQuote {
 }
 
 export interface LiveQuotesResponse {
+  /** Client receipt provenance, never sent by the backend. */
+  requestStartedAtMs?: number;
+  receivedDay?: string;
   phase: 'pre_open' | 'open' | 'closed';
   quotes: LiveQuote[];
   missing_codes?: string[];
@@ -110,18 +115,23 @@ export function getQuotes(codes: string[], venue: LiveVenueOption = 'KRX'): Prom
 export function liveQuotesQueryKey(
   codes: string[],
   venue: LiveVenueOption = 'KRX',
-): readonly ['live-quotes', string, LiveVenueOption] {
-  return ['live-quotes', uniqueSortedCodes(codes).join(','), venue] as const;
+  day: string = unixMsToKSTDate(Date.now()),
+): readonly ['live-quotes', string, LiveVenueOption, string] {
+  return ['live-quotes', uniqueSortedCodes(codes).join(','), venue, day] as const;
 }
 
 /** 코드 목록의 현재가+등락률을 10초 폴링. codes 비면 비활성. */
 export function useQuotes(codes: string[], venue: LiveVenueOption = 'KRX') {
+  const day = useKstDay();
   // 순서 무관 캐시 키: 관심종목 재정렬(같은 집합·다른 순서)이 queryKey 를 바꿔
   // 전 종목 시세를 불필요하게 재요청하지 않도록 정렬한 키를 쓴다. 백엔드 응답은
   // 코드 집합에만 의존하므로 요청 자체는 원래 순서 그대로 보낸다.
   return useQuery({
-    queryKey: liveQuotesQueryKey(codes, venue),
-    queryFn: () => getQuotes(codes, venue),
+    queryKey: liveQuotesQueryKey(codes, venue, day),
+    queryFn: async () => {
+      const requestStartedAtMs = Date.now();
+      return {...await getQuotes(codes, venue), requestStartedAtMs, receivedDay: day};
+    },
     enabled: codes.length > 0,
     staleTime: 10_000,
     refetchInterval: (q) => quotesRefetchInterval(q.state.data?.phase),
@@ -147,7 +157,8 @@ export function useQuotes(codes: string[], venue: LiveVenueOption = 'KRX') {
     // codes 집합이 바뀌면 새 queryKey라 data가 잠시 undefined → 전 셀이 '—'로
     // 깜빡인다. 직전 결과를 유지해 겹치는 코드는 그대로 두고 새 코드만 채워지게
     // 한다(형제 훅 range.ts·livePastCandles.ts 와 동일 패턴).
-    placeholderData: (prev) => prev,
+    placeholderData: (prev, previousQuery) =>
+      previousQuery?.queryKey[2] === venue && previousQuery.queryKey[3] === day ? prev : undefined,
   });
 }
 
@@ -185,8 +196,16 @@ function referenceClose(q: LiveQuote): number | null {
  *  없어서이고, 실측상 ①과 ②는 같은 값을 준다(2026-07-20 5종목 전건 일치).
  *
  *  셋 다 실패하면 폴링값을 그대로 둔다 — 기준가 없이 등락률을 지어내지 않는다. */
-function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): LiveQuote {
-  if (tick === undefined) return quote;
+function withTickPrice(
+  quote: LiveQuote, tick: LiveTickSample | undefined, requestStartedAtMs: number | undefined,
+  day: string, venue: LiveVenueOption,
+): LiveQuote {
+  if (tick === undefined || (tick.venue != null && tick.venue !== venue)
+    || (tick.receivedDay != null && tick.receivedDay !== day)) return quote;
+  // A successful non-stale REST request supersedes ticks received before it
+  // began. Ticks arriving during that request win; stale REST never displaces them.
+  if (!quote.stale && quote.price > 0 && requestStartedAtMs != null
+    && tick.seenAtMs != null && tick.seenAtMs < requestStartedAtMs) return quote;
   // 가격이 폴링값과 같고 OHLC 도 새 정보가 없으면 재계산 없이 폴링 quote 를
   // 신뢰한다. 같은 입력이라도 등락률 반올림 규칙이 갈리기 때문이다 — 백엔드
   // round()는 banker's(half-to-even), 여기 Math.round 는 half-up 이라 .xx5
@@ -196,7 +215,7 @@ function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): Live
     && (tick.dayHigh ?? quote.high) === quote.high
     && (tick.dayLow ?? quote.low) === quote.low
     && (tick.dayOpen ?? quote.open) === quote.open) {
-    return quote;
+    return quote.stale ? { ...quote, stale: false, stale_reason: null } : quote;
   }
   const ref = tick.prevClose ?? referenceClose(quote);
   // 기준가를 못 구하면 등락률도 OHLC 도 덮지 않는다. 이 상태의 종목은 폴링값
@@ -213,7 +232,7 @@ function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): Live
   if (tick.price === quote.price && changePct === quote.change_pct
     && changeWon === quote.change_won && open === quote.open
     && high === quote.high && low === quote.low) {
-    return quote;
+    return quote.stale ? { ...quote, stale: false, stale_reason: null } : quote;
   }
   return {
     ...quote,
@@ -221,6 +240,8 @@ function withTickPrice(quote: LiveQuote, tick: LiveTickSample | undefined): Live
     change_pct: changePct,
     change_won: changeWon,
     change_pct_source: 'ws_tick',
+    stale: false,
+    stale_reason: null,
     open,
     high,
     low,
@@ -244,7 +265,7 @@ function withExpectedFill(
   expected: LiveExpectedSample | undefined,
   nowMs: number,
 ): LiveQuote {
-  if (expected === undefined || nowMs - expected.seenAtMs > EXPECTED_FILL_TTL_MS) return quote;
+  if (expected === undefined || nowMs - expected.seenAtMs >= EXPECTED_FILL_TTL_MS) return quote;
   const ref = referenceClose(quote);
   const expectedPct = ref === null
     ? null
@@ -295,6 +316,7 @@ export function useLiveQuoteOverlay(
   // 코드별 유효 venue 해석기. identity 가 안정적이라(useEffectiveVenue 참조) 아래
   // useMemo·useEffect deps 에 그대로 넣을 수 있다.
   const resolveVenue = useEffectiveVenueResolver(venue);
+  const day = useKstDay();
   const codesKey = uniqueSortedCodes(codes).join(',');
   const { primary, fallback, fallbackVenue } = useMemo(
     () => partitionCodesByEffectiveVenue(codes, venue, resolveVenue),
@@ -329,14 +351,14 @@ export function useLiveQuoteOverlay(
     const subscribed = new Set(subscribedKey.split(',').filter(Boolean));
     const lastGood = lastGoodByCodeRef.current;
     for (const code of lastGood.keys()) {
-      if (!subscribed.has(code)) lastGood.delete(code);
+      if (!subscribed.has(code.split('|')[0]) || code.split('|')[2] !== day) lastGood.delete(code);
     }
-  }, [subscribedKey]);
+  }, [subscribedKey, day]);
   const quoteByCode = useMemo(() => {
     // 두 응답을 이어 붙인다 — 코드 집합이 서로소(파티션)라 충돌이 없다. 한쪽만
     // 도착한 상태에서도 도착분은 즉시 표시한다(둘 다 없을 때만 빈 Map).
-    const primaryQuotes = q.data?.quotes;
-    const fallbackQuotes = qFallback.data?.quotes;
+    const primaryQuotes = q.data?.quotes.filter(quote => resolveVenue(quote.code) === venue);
+    const fallbackQuotes = qFallback.data?.quotes.filter(quote => fallback.includes(quote.code) && resolveVenue(quote.code) === fallbackVenue);
     if (primaryQuotes == null && fallbackQuotes == null) return new Map<string, LiveQuote>();
     const currentQuotes = [...(primaryQuotes ?? []), ...(fallbackQuotes ?? [])];
     // TTL 판정용 시계 읽기는 useMemo 당 1회. 프레임이 끊긴 뒤의 재평가 계기는
@@ -344,22 +366,25 @@ export function useLiveQuoteOverlay(
     const nowMs = Date.now();
     const next = new Map<string, LiveQuote>();
     for (const quote of currentQuotes) {
-      const merged = withLastGoodChangeFields(quote, lastGoodByCodeRef.current.get(quote.code));
+      const effectiveVenue = resolveVenue(quote.code);
+      const key = `${quote.code}|${effectiveVenue}|${day}|${quote.baseline_date ?? ''}|${quote.baseline_price ?? ''}`;
+      const merged = withLastGoodChangeFields(quote, lastGoodByCodeRef.current.get(key));
       // last-good 은 틱을 덮기 **전** 값으로 남긴다 — 이 캐시의 용도는 폴링이
       // unavailable 을 낼 때의 등락률 폴백이라, 틱 파생값을 섞으면 다음 폴백의
       // 근거가 흐려진다.
-      lastGoodByCodeRef.current.set(quote.code, merged);
+      lastGoodByCodeRef.current.set(key, merged);
       next.set(
         quote.code,
         withExpectedFill(
-          withTickPrice(merged, tickPrices.get(quote.code)),
+          withTickPrice(merged, tickPrices.get(quote.code),
+            (fallback.includes(quote.code) ? qFallback.data : q.data)?.requestStartedAtMs, day, effectiveVenue),
           expectedFills.get(quote.code),
           nowMs,
         ),
       );
     }
     return next;
-  }, [q.data, qFallback.data, tickPrices, expectedFills]);
+  }, [q.data, qFallback.data, tickPrices, expectedFills, resolveVenue, day, fallback, venue, fallbackVenue]);
   return {
     quoteByCode,
     // phase 는 **primary 것**이다. 두 응답의 phase 가 갈릴 수 있지만(08:50–09:00 에

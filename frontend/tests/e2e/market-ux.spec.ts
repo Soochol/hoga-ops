@@ -216,7 +216,10 @@ for (const width of [1440, 600]) test(`flow freshness and inspection fit without
   });
   await page.goto('/market');
   const body = page.locator('.market-investor-body');
-  await expect(body.getByText(/마지막 정상 수신/)).toBeVisible();
+  const lastReceipt = body.getByTitle('마지막 정상 수신 시각');
+  await expect(lastReceipt).toBeVisible();
+  await expect(lastReceipt).toHaveText('13:00:10 수신');
+  await expect(body.getByText('수집 종료', { exact: true })).toBeVisible();
   const probe = body.getByRole('group', { name: /차트 상세/ });
   await probe.focus();
   await probe.press('Home');

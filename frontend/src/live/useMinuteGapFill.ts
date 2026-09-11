@@ -63,7 +63,7 @@ import {
   type RangeMissingDate,
   type Timeframe,
 } from '../api/types';
-import { aggregateCandles, keepRegularSessionCandles } from './aggregateCandles';
+import { aggregateCandles, keepMinuteSessionCandles } from './aggregateCandles';
 import { realMsToYyyymmdd } from './liveDateTime';
 import { gapFillRunKey, planMinuteGapFill, type GapFillRun } from './minuteGapFillPlan';
 
@@ -174,7 +174,7 @@ function foldToTimeframe(
     if (raw.length === 0) continue;
     // 날짜별로 접는다 — 버킷 경계가 날짜를 넘지 않으므로 결과는 통짜 집계와 같고,
     // 날짜 사이가 비어 있어도(구멍은 원래 흩어져 있다) 빈 버킷이 생기지 않는다.
-    const src = needsRegularSessionClip(timeframe) ? keepRegularSessionCandles(raw) : raw;
+    const src = needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, 'KRX') : raw;
     if (src.length === 0) continue;
     for (const bar of aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000)) {
       out.push(toCandle(bar));

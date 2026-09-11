@@ -23,10 +23,10 @@ describe('parseTradingTimeInput', () => {
     expect(parseTradingTimeInput('10:05')).toBe(1005);
   });
 
-  it('장중 창(09:00–15:20) 밖은 null', () => {
+  it('장중 창(09:00–19:59) 밖은 null', () => {
     expect(parseTradingTimeInput('0859')).toBeNull(); // 개장 전
-    expect(parseTradingTimeInput('1521')).toBeNull(); // 마감 동시호가 이후
-    expect(parseTradingTimeInput('16:00')).toBeNull();
+    expect(parseTradingTimeInput('2000')).toBeNull(); // 마감 이후
+    expect(parseTradingTimeInput('24:00')).toBeNull();
     expect(parseTradingTimeInput('09:75')).toBeNull(); // 분 범위 초과
   });
 
@@ -35,4 +35,10 @@ describe('parseTradingTimeInput', () => {
     expect(parseTradingTimeInput('  ')).toBeNull();
     expect(parseTradingTimeInput('abc')).toBeNull();
   });
+});
+
+it('accepts saved afternoon start times', () => {
+  expect(parseTradingTimeInput('16:00')).toBe(1600);
+  expect(parseTradingTimeInput('17:00')).toBe(1700);
+  expect(parseTradingTimeInput('19:59')).toBe(1959);
 });

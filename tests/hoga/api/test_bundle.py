@@ -339,7 +339,7 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
     candles.assert_called_once()
     # `date` 는 정규장 클립의 기준이라 **날짜별 루프의 그 날짜**여야 한다 — 여기서
     # 값을 못박지 않으면 엉뚱한 날짜가 넘어가도 통과한다(클립 tf 에서만 증상).
-    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000, date="20260625")
+    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000, date="20260625", venue="KRX")
     quote_ratio.assert_not_called()
     fill_strength.assert_not_called()
     distribution.assert_not_called()
@@ -1691,9 +1691,11 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     eng = MagicMock()
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
+    eng.get_meta.return_value = {"regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000}
 
     p1 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
-                              source="hogaplay", cache=cache, today_kst="20260613")
+                              source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+                              cache=cache, today_kst="20260613")
     assert p1 is not None and p1.qty == 5000 and p1.date == "20260610"
     assert p1.max_qty == 5000 and p1.max_price == 25100
     assert p1.max_t_ms == p1.t_ms
@@ -1702,13 +1704,15 @@ def test_build_ask_peak_slice_caches_past_days(tmp_path) -> None:
     # 두번째 호출: parquet_dir이 깨져도 캐시에서 반환(재스캔 안 함).
     eng.parquet_dir.side_effect = AssertionError("should not recompute a cached past day")
     p2 = build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
-                              source="hogaplay", cache=cache, today_kst="20260613")
+                              source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+                              cache=cache, today_kst="20260613")
     assert p2 == p1
 
     # 오늘 날짜는 cacheable 아님 → 캐시에 저장하지 않는다(매번 재계산해 ratchet seed 갱신).
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     build_ask_peak_slice(eng, code="005930", date="20260613", bucket_ms=60_000,
-                         source="hogaplay", cache=cache, today_kst="20260613")
+                         source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+                              cache=cache, today_kst="20260613")
     assert not cache.has_ask_peak("005930", "20260613", "hogaplay", 60_000)
 
 
@@ -1734,6 +1738,7 @@ def test_build_ask_peak_slice_cache_key_is_bucket_ms_aware(tmp_path) -> None:
     eng = MagicMock()
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay", *, venue="KRX": tmp_path
     eng.conn = duckdb.connect()
+    eng.get_meta.return_value = {"regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000}
 
     build_ask_peak_slice(eng, code="005930", date="20260610", bucket_ms=60_000,
                          source="hogaplay", cache=cache, today_kst="20260613")

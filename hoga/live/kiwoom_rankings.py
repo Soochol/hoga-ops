@@ -240,14 +240,19 @@ def _build_body(
     }
 
 
-def _market_open_now(now: datetime | None = None) -> bool:
-    """거래일 && 정규장 시간(09:00~15:30 KST). is_trading_day None(캘린더 부재)은
+def _market_open_now(now: datetime | None = None, venue: str = "KRX") -> bool:
+    """거래일 && 시행일·거래소별 거래 시간. is_trading_day None(캘린더 부재)은
     관용 기본(개장으로 간주) — live-path 정책(폴링을 막지 않음)."""
     now = now or datetime.now(_KST)
     today = now.strftime("%Y%m%d")
-    if is_trading_day(today) is False:
+    if now.weekday() >= 5 or is_trading_day(today) is False:  # noqa: PLR2004 — Saturday/Sunday
         return False
-    return _MARKET_OPEN <= now.timetz().replace(tzinfo=None) < _MARKET_CLOSE
+    from hoga.live.stock_sessions import krx_aftermarket_window  # noqa: PLC0415
+
+    clock = now.timetz().replace(tzinfo=None)
+    if venue in ("NXT", "UN"):
+        return dt_time(8, 0) <= clock < dt_time(20, 0)
+    return _MARKET_OPEN <= clock < _MARKET_CLOSE or krx_aftermarket_window(int(now.timestamp() * 1000))
 
 
 def _is_trading_day_now(now: datetime | None = None) -> bool:
@@ -309,7 +314,7 @@ class KiwoomRankingsFetcher:
             if hit is not None and now_ms - hit[1] < _CACHE_TTL_MS:
                 return hit[0]
             now = self._now_kst()
-            market_open = _market_open_now(now)
+            market_open = _market_open_now(now, venue)
             if not _is_trading_day_now(now):
                 # 비거래일: 상류 스킵. 웜 캐시 rows 는 유지하되 신선도·개장만 갱신.
                 prev_rows = hit[0].rows if hit is not None else ()

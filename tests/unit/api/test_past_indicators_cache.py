@@ -439,7 +439,7 @@ def test_depth_disk_payload_shape_is_frozen(tmp_path: Path) -> None:
     body = json.loads(
         (_store_dir(tmp_path) / f"{DATE}.depth.60000.json").read_text(encoding="utf-8")
     )
-    assert set(body) == {"version", "points", "fetched_at_ms"}
+    assert set(body) == {"version", "points", "fetched_at_ms", "source_generation"}
     assert body["version"] == KIND_VERSIONS["depth"]
     assert body["points"] == [p.model_dump(mode="json") for p in _DEPTH]
     assert isinstance(body["fetched_at_ms"], int)
@@ -955,7 +955,7 @@ def _instrument(cache: PastIndicatorsCache) -> _TrackedLock:
     _production_count = len(cache._all_mem_dicts)
     cache._all_mem_dicts = tuple(
         getattr(cache, n) for n in (
-            "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
+            "_mem_peak_rep", "_mem_ratio", "_mem_fill", "_mem_ask_peak", "_mem_bid_peak",
             "_mem_trade_volume_poc", "_mem_depth",
             "_mem_vdist", "_mem_broker_late", "_mem_continuous_before",
         )
@@ -1015,3 +1015,41 @@ def test_lock_assertion_catches_an_unlocked_mutation(tmp_path: Path) -> None:
     _instrument(cache)
     with pytest.raises(AssertionError, match="락 밖에서"):
         cache._mem_ratio["x"] = []
+
+
+@pytest.mark.parametrize("restore", ["older", "same", "replace", "delete"])
+def test_restore_invalidates_warm_and_cold_cache(tmp_path: Path, restore: str) -> None:
+    meta = tmp_path / "parquet" / DATE / CODE / SRC / "KRX" / "meta.json"
+    meta.parent.mkdir(parents=True)
+    meta.write_text('{}')
+    stamp = meta.stat().st_mtime_ns
+    cache = PastIndicatorsCache(tmp_path)
+    cache.store_ratio(CODE, DATE, SRC, RATIO)
+    cache.store_peak_rep(CODE, DATE, SRC, [])
+    cache.store_continuous_before(CODE, DATE, SRC, 153000000, None)
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
+    if restore == "delete":
+        meta.unlink()
+    else:
+        target = meta.with_suffix('.replacement') if restore == "replace" else meta
+        target.write_text('{}')  # Same size and content: only filesystem generation changes.
+        restored_stamp = stamp - 60_000_000_000 if restore == "older" else stamp
+        os.utime(target, ns=(restored_stamp, restored_stamp))
+        if target != meta:
+            target.replace(meta)
+    for reader in (cache, PastIndicatorsCache(tmp_path)):
+        assert reader.get_ratio(CODE, DATE, SRC) is None
+        assert reader.get_peak_rep(CODE, DATE, SRC) is CACHE_MISS
+        assert reader.get_continuous_before(CODE, DATE, SRC, 153000000) is CACHE_MISS
+
+
+def test_legacy_disk_cache_requires_generation_when_source_exists(tmp_path: Path) -> None:
+    meta = tmp_path / "parquet" / DATE / CODE / SRC / "KRX" / "meta.json"
+    meta.parent.mkdir(parents=True)
+    meta.write_text('{}')
+    PastIndicatorsCache(tmp_path).store_ratio(CODE, DATE, SRC, RATIO)
+    path = _store_dir(tmp_path) / f"{DATE}.ratio.json"
+    payload = json.loads(path.read_text())
+    del payload['source_generation']
+    path.write_text(json.dumps(payload))
+    assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None

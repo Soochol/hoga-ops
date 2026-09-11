@@ -671,6 +671,19 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     return matches[:limit]
 
 
+def krx_aftermarket_eligibility(code: str) -> bool | None:
+    """Known exclusions only. NXT eligibility says nothing about KRX after-market.
+
+    The public Kiwoom master has no confirmed KRX eligibility flag. Do not
+    declare an ordinary stock eligible just because it is not an ETF/ETN.
+    Called at query/promotion boundaries, never on the per-tick hot path.
+    """
+    for hit in _cache or ():
+        if hit.code == code:
+            return False if hit.security_type in ("etf", "etn") else None
+    return None
+
+
 def all_etf_etn_codes() -> frozenset[str] | None:
     """마스터 전체의 etf/etn 코드 집합. 마스터 미로드면 ``None`` — "ETF 제외" SSOT.
 

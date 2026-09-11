@@ -1,9 +1,10 @@
+import { krxAftermarketIntroduced } from '../util/stockSessions';
 import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
 import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from './liveDateTime';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 
 /**
- * 매물대 집계 창을 KRX 정규장으로 좁힌 segment 사본.
+ * 매물대 집계 창의 segment 사본. 시행 이후 KRX는 오후 거래까지 포함한다.
  *
  * venue=UN 은 분봉 표시창이 08:00~20:00 확장창이라(liveVenuePolicy) segment 의
  * 세션 경계도 확장창이 된다. 그 경계를 그대로 집계에 쓰면 NXT 프리·애프터 체결이
@@ -15,9 +16,10 @@ import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
  *
  * 백엔드 실측 세션(effective_sessions)이 정규장보다 좁으면 그쪽을 존중한다(교집합).
  */
-export function regularSessionBinningSegment(segment: RangeSegment): RangeSegment {
+export function regularSessionBinningSegment(segment: RangeSegment, venue: string = "KRX"): RangeSegment {
   const openMs = Math.max(segment.session_open_ms, regularSessionOpenMs(segment.date));
-  const closeMs = Math.min(segment.session_close_ms, regularSessionCloseMs(segment.date));
+  const after = venue === 'KRX' && krxAftermarketIntroduced(segment.date);
+  const closeMs = after ? segment.session_close_ms : Math.min(segment.session_close_ms, regularSessionCloseMs(segment.date));
   if (openMs === segment.session_open_ms && closeMs === segment.session_close_ms) return segment;
   return { ...segment, session_open_ms: openMs, session_close_ms: closeMs };
 }
@@ -160,6 +162,8 @@ export function selectVolumeDistributionProfile(args: {
 export function firstTrailingSinglePriceBookMs(
   snapshots: readonly ObSnapshot[],
   sessionCloseMs: number,
+  sessionOpenMs: number = Number.NEGATIVE_INFINITY,
+  venue: string = 'KRX',
 ): number | null {
   let lastContinuous: number | null = null;
   for (const snapshot of snapshots) {
@@ -181,7 +185,10 @@ export function firstTrailingSinglePriceBookMs(
         firstSinglePrice == null ? snapshot.t_ms : Math.min(firstSinglePrice, snapshot.t_ms);
     }
   }
-  return firstSinglePrice;
+  const date = Number.isFinite(sessionOpenMs) ? realMsToYyyymmdd(sessionOpenMs) : '';
+  const reopening = date ? regularSessionOpenMs(date) + 7 * 3600_000 : Infinity;
+  return firstSinglePrice != null && venue === 'KRX' && krxAftermarketIntroduced(date)
+    && sessionCloseMs > reopening && firstSinglePrice < reopening ? null : firstSinglePrice;
 }
 
 export function volumeDistributionClosePoints(args: {

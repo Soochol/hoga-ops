@@ -2,13 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import { isKrxRegularSessionNow } from '../live/liveDateTime';
+import { isKrxAftermarketWindow } from '../util/stockSessions';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 키움 1h VI 이벤트의 종목별 최신 상태 — 백엔드 kiwoom_vi_state.parse_vi_row shape.
  * legend 는 실측 확정(docs/research/2026-07-21-kiwoom-vi-price-sources.md). */
 export interface LiveViEvent {
   code: string;
   direction: 'up' | 'down';
-  kind: 'static' | 'dynamic' | 'both';
+  kind: 'static' | 'dynamic' | 'both' | 'extended';
   trigger_price: number | null;
   static_base: number | null;
   dynamic_base: number | null;
@@ -27,14 +29,13 @@ export interface LiveViStatusResponse {
 /** GET /api/live/vi-status — VI 는 발동 후 2분 지속이라 10s 폴링이면 강조 표시에
  * 충분하다(실시간 push 승격은 SSE 버퍼에 kind 를 추가하는 별도 작업). 정규장
  * 밖에선 새 발동이 없으므로 폴링 중단. */
-export function useLiveViStatus(code: string | null) {
+export function useLiveViStatus(code: string | null, venue: LiveVenueOption = 'KRX') {
   return useQuery({
-    queryKey: ['live', 'vi-status', code] as const,
+    queryKey: ['live', 'vi-status', code, venue] as const,
     queryFn: ({ signal }) =>
-      apiCall<LiveViStatusResponse>(`/api/live/vi-status?code=${code}`, { signal }),
+      apiCall<LiveViStatusResponse>(`/api/live/vi-status?code=${code}&venue=${venue}`, { signal }),
     enabled: !!code,
     staleTime: 5_000,
-    refetchInterval: () => (isKrxRegularSessionNow() ? 10_000 : false),
-    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
+    refetchInterval: () => (isKrxRegularSessionNow() || isKrxAftermarketWindow() ? 10_000 : false),
   });
 }

@@ -4,8 +4,9 @@ legend 는 실이벤트 60건으로 확정했다(docs/research/2026-07-21-kiwoom
 9069 발동방향 1=상승/2=하락 · 9068 발동구분 1=정적/2=동적/3=동적+정적 ·
 해제 = 같은 프레임이 1224(해제시각)만 채워져 재발화 · _AL(통합)+bare(KRX) 중복 2row.
 
-시장 전체 스트림에서 종목별 **최신 1건**만 유지한다(last-write-wins — _AL 중복도
-자연 해소). 관측 캡처(kiwoom_vi_capture, raw 보존)와 별개로, 이 모듈은 표시 소비용
+시장 전체 스트림에서 종목·시장별 **최신 1건**을 유지한다. 2026-09-14부터
+_AL(통합)·_NX(NXT)·bare(KRX)를 분리해 NXT VI가 KRX 상태를 덮지 않는다.
+관측 캡처(kiwoom_vi_capture, raw 보존)와 별개로, 이 모듈은 표시 소비용
 파싱만 담당한다. 예상 발동가는 프론트 계산(기준가×1.1/0.9 틱 반올림)이고, 여기의
 trigger_price 는 발동 후 정적기준가의 근사(해제 단일가 ≈ 발동가 부근)로도 쓰인다.
 """
@@ -14,11 +15,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .stock_sessions import krx_aftermarket_introduced, krx_capture_partition
+
 _log = logging.getLogger(__name__)
 
 # 실측 legend (2026-07-21, 60건 전건 무모순)
 _DIRECTION = {"1": "up", "2": "down"}
-_KIND = {"1": "static", "2": "dynamic", "3": "both"}
+# Kiwoom notice 2026-09-10, seqid=60: FID 9068 adds 4 (VI extension).
+_KIND = {"1": "static", "2": "dynamic", "3": "both", "4": "extended"}
 
 
 def _int_or_none(raw: object) -> int | None:
@@ -88,7 +92,14 @@ class KiwoomViState:
         try:
             state = parse_vi_row(row, now_ms)
             if state is not None:
-                self._by_code[state["code"]] = state
+                item = row.get("item")
+                suffix = item.rsplit("_", 1)[-1] if isinstance(item, str) and "_" in item else ""
+                key = state["code"] + (f"_{suffix}" if suffix in ("NX", "AL") else "")
+                self._by_code[key] = state
+                # Historically AL was a duplicate of KRX. New NXT VI events
+                # must not overwrite the KRX state via an integrated row.
+                if suffix == "AL" and not krx_aftermarket_introduced(krx_capture_partition(now_ms)[0]):
+                    self._by_code[state["code"]] = state
         except Exception:  # noqa: BLE001 — 상태 갱신 실패가 recv 루프를 못 해치게
             _log.warning("live.kiwoom.vi_state_failed", exc_info=True)
 

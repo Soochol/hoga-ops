@@ -636,6 +636,8 @@ def analyze_gaps(
     session_open_ms: HogaMs,
     session_close_ms: HogaMs,
     anchor_edges: bool = False,
+    closing_auction_ms: int = _AUCTION_WINDOW_DURATION_MS,
+    continuous_windows: tuple[tuple[int, int], ...] | None = None,
 ) -> GapAnalysis:
     """Scan the continuous-trading window for ≥1min gaps, returning each gap's
     boundary pair. Pure function — no I/O.
@@ -688,8 +690,20 @@ def analyze_gaps(
         crash) has no interior gap yet is plainly partial, and only the edge
         anchors catch it.
     """
+    if continuous_windows is not None:
+        values = list(ts_ms_values)
+        parts = [analyze_gaps(
+            values, session_open_ms=HogaMs(max(int(session_open_ms), opening)),
+            session_close_ms=HogaMs(min(int(session_close_ms), closing)),
+            anchor_edges=anchor_edges, closing_auction_ms=0,
+        ) for opening, closing in continuous_windows
+            if max(int(session_open_ms), opening) < min(int(session_close_ms), closing)]
+        return GapAnalysis(
+            in_session_count=sum(part.in_session_count for part in parts),
+            gap_ranges=[gap for part in parts for gap in part.gap_ranges],
+        )
     open_linear = _hhmmssms_to_intra_ms(session_open_ms)
-    auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - _AUCTION_WINDOW_DURATION_MS
+    auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - closing_auction_ms
     # (linear, original HogaMs) pairs, sorted by linear time. Retaining the
     # original lets gap boundaries stay HHMMSSmmm (no linear→HogaMs decode).
     in_session = sorted(
@@ -723,6 +737,7 @@ def has_meaningful_gaps(
     *,
     session_open_ms: HogaMs,
     session_close_ms: HogaMs,
+    continuous_windows: tuple[tuple[int, int], ...] | None = None,
 ) -> bool:
     """True if any consecutive pair within continuous-trading hours has a gap
     ≥ 1 minute, OR the window has fewer than 2 datapoints (too sparse to prove
@@ -735,4 +750,5 @@ def has_meaningful_gaps(
         ts_ms_values,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        continuous_windows=continuous_windows,
     ).is_partial

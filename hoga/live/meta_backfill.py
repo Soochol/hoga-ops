@@ -22,8 +22,10 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.api.invariants import normalize_session_bounds
 from hoga.api.sources import source_venue_dir
 from hoga.live.promote import _completeness_fields
+from hoga.live.stock_sessions import krx_continuous_windows
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST, HogaMs
 
@@ -46,6 +48,7 @@ class BackfillResult:
     scanned: int = 0   # live meta.json files inspected
     updated: int = 0   # metas that gained completeness fields
     skipped: int = 0   # already finalized (collection_complete=True) or today/future
+    invalid: int = 0   # unreadable/schema-invalid files; path and reason are logged
 
 
 def _is_yyyymmdd(name: str) -> bool:
@@ -58,11 +61,54 @@ def _is_yyyymmdd(name: str) -> bool:
     return True
 
 
+def _validate_session_bounds(meta: dict) -> None:
+    for prefix in ("regular_session", "indicator_session"):
+        for edge in ("open", "close"):
+            key = f"{prefix}_{edge}_ms"
+            if key not in meta:
+                continue
+            value = meta[key]
+            if type(value) is not int or value < 0:
+                raise ValueError(f"{key} must be a nonnegative HHMMSSmmm integer")
+            hour, remainder = divmod(value, 10_000_000)
+            minute, remainder = divmod(remainder, 100_000)
+            second = remainder // 1000
+            if hour >= 24 or minute >= 60 or second >= 60:  # noqa: PLR2004 — native clock fields
+                raise ValueError(f"{key} is not a valid clock time")
+        opening, closing = meta.get(f"{prefix}_open_ms"), meta.get(f"{prefix}_close_ms")
+        if opening is not None and closing is not None and opening >= closing:
+            raise ValueError(f"{prefix} must open before close")
+
+
+def _load_meta(path: Path) -> dict | None:
+    """Validate one file before a sweep changes it; isolate input errors."""
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            raise ValueError("meta must be an object")
+        if "date" in meta and (not isinstance(meta["date"], str) or not _is_yyyymmdd(meta["date"])):
+            raise ValueError("invalid date")
+        _validate_session_bounds(meta)
+        for key in ("collection_complete", "is_partial", "krx_aftermarket_eligible"):
+            if key in meta and meta[key] is not None and type(meta[key]) is not bool:
+                raise ValueError(f"{key} must be boolean or null")
+        for key in ("gap_ranges", "indicator_continuous_windows"):
+            if key in meta and not isinstance(meta[key], list):
+                raise ValueError(f"{key} must be a list")
+        normalized = normalize_session_bounds(meta)[0]
+        _validate_session_bounds(normalized)
+        return normalized
+    except (OSError, ValueError, TypeError) as exc:
+        _log.warning("meta_backfill.invalid path=%s reason=%s", path, exc)
+        return None
+
+
 def _recompute_fields(
     snapshots_path: Path, *,
     session_open_ms: HogaMs | None = None,
     session_close_ms: HogaMs | None = None,
     collection_complete: bool = True,
+    continuous_windows: tuple[tuple[int, int], ...] | None = None,
 ) -> dict:
     """Recompute the three completeness fields from a snapshots.parquet.
 
@@ -88,6 +134,7 @@ def _recompute_fields(
         collection_complete=collection_complete,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        continuous_windows=continuous_windows,
     )
 
 
@@ -101,7 +148,7 @@ def backfill_live_meta(
     """
     today = (now or datetime.now(_KST)).strftime("%Y%m%d")
     parquet_root = data_dir / "parquet"
-    scanned = updated = skipped = 0
+    scanned = updated = skipped = invalid = 0
     if not parquet_root.exists():
         return BackfillResult()
     for date_dir in sorted(parquet_root.iterdir()):
@@ -118,26 +165,30 @@ def backfill_live_meta(
                 if not meta_path.exists():
                     continue
                 scanned += 1
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                except (ValueError, OSError):
-                    # Corrupt/unreadable meta — leave it for a real re-promote
-                    # rather than clobbering source/row_counts with a
-                    # completeness-only rewrite.
-                    _log.warning("meta_backfill.meta_unreadable path=%s", meta_path)
+                meta = _load_meta(meta_path)
+                if meta is None:
                     skipped += 1
+                    invalid += 1
                     continue
                 if meta.get("collection_complete") is True:
                     skipped += 1
                     continue
-                fields = _recompute_fields(src_dir / "snapshots.parquet")
+                open_ms = int(meta.get("indicator_session_open_ms", meta.get("regular_session_open_ms", 90000000)))
+                close_ms = int(meta.get("indicator_session_close_ms", meta.get("regular_session_close_ms", 153000000)))
+                fields = _recompute_fields(
+                    src_dir / "snapshots.parquet", session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
+                    continuous_windows=krx_continuous_windows(
+                        date_dir.name, "KRX", open_ms, close_ms,
+                        regular_close_ms=meta.get("regular_session_close_ms"),
+                    ),
+                )
                 if dry_run:
                     updated += 1
                     continue
                 meta.update(fields)
                 atomic_write_json(meta_path, meta, indent=2)
                 updated += 1
-    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped, invalid=invalid)
 
 
 def backfill_hogaplay_meta(
@@ -150,9 +201,10 @@ def backfill_hogaplay_meta(
     ``anchor_edges=False``, so a leading gap — a next-morning capture past the
     ~18h upstream window that lost the AM session — was recorded as
     ``is_partial=false`` and mis-ranked as COMPLETE. This one-shot sweep
-    recomputes the two gap fields from the on-disk ``snapshots.parquet`` using
-    the edge anchors and the meta's per-date close, rewriting ONLY
-    ``is_partial``/``gap_ranges``. ``collection_complete`` and every other field
+    recomputes the gap verdict and continuous-window provenance from the on-disk
+    ``snapshots.parquet`` using the edge anchors and the meta's per-date close,
+    rewriting ``is_partial``/``gap_ranges`` and available
+    ``indicator_continuous_windows``. ``collection_complete`` and every other field
     are preserved (unlike the live sweep, which *adds* missing fields). Idempotent:
     a second run finds no diff and skips.
 
@@ -161,7 +213,7 @@ def backfill_hogaplay_meta(
     """
     today = (now or datetime.now(_KST)).strftime("%Y%m%d")
     parquet_root = data_dir / "parquet"
-    scanned = updated = skipped = 0
+    scanned = updated = skipped = invalid = 0
     if not parquet_root.exists():
         return BackfillResult()
     for date_dir in sorted(parquet_root.iterdir()):
@@ -176,11 +228,10 @@ def backfill_hogaplay_meta(
             if not meta_path.exists():
                 continue
             scanned += 1
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                _log.warning("meta_backfill.hogaplay_unreadable path=%s", meta_path)
+            meta = _load_meta(meta_path)
+            if meta is None:
                 skipped += 1
+                invalid += 1
                 continue
             close_raw = meta.get("regular_session_close_ms")
             close_ms = (
@@ -190,21 +241,39 @@ def backfill_hogaplay_meta(
                 code_dir / "hogaplay" / "snapshots.parquet",
                 session_close_ms=close_ms,
                 collection_complete=bool(meta.get("collection_complete", True)),
+                continuous_windows=krx_continuous_windows(
+                    date_dir.name, "KRX", 90000000, int(close_ms or 153000000),
+                    regular_close_ms=int(close_ms or 153000000),
+                ),
             )
-            if (
-                meta.get("is_partial") == new_fields["is_partial"]
-                and meta.get("gap_ranges") == new_fields["gap_ranges"]
-            ):
+            gap_fields = {key: new_fields[key] for key in
+                          ("is_partial", "gap_ranges", "indicator_continuous_windows") if key in new_fields}
+            if all(meta.get(key) == value for key, value in gap_fields.items()):
                 skipped += 1
                 continue
             if dry_run:
                 updated += 1
                 continue
-            meta["is_partial"] = new_fields["is_partial"]
-            meta["gap_ranges"] = new_fields["gap_ranges"]
+            meta.update(gap_fields)
             atomic_write_json(meta_path, meta, indent=2)
             updated += 1
-    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped, invalid=invalid)
+
+
+def _repair_indicator_bounds(meta: dict, date: str, venue: str) -> tuple[int, int]:
+    from hoga.live.promote import indicator_session_for_date  # noqa: PLC0415 — session policy
+
+    defaults = indicator_session_for_date(date, venue, aftermarket_eligible=meta.get("krx_aftermarket_eligible"))
+    current = (meta.get("indicator_session_open_ms"), meta.get("indicator_session_close_ms"))
+    regular = (meta.get("regular_session_open_ms", 90000000), meta.get("regular_session_close_ms", 153000000))
+    legacy = (90000000, 153000000)
+    if None not in current and current != legacy:
+        return current
+    if venue == "KRX" and regular != legacy:
+        return regular
+    if current == legacy:
+        return defaults
+    return tuple(value if value is not None else default for value, default in zip(current, defaults, strict=True))
 
 
 def backfill_indicator_session_bounds(
@@ -220,25 +289,25 @@ def backfill_indicator_session_bounds(
 
     위 두 스윕과 다른 점 셋:
 
-    - **KRX 도 훑는다.** 값이 정규장과 같아 무변경이지만, 키가 있는 것과 없는 것이
-      섞이면 "왜 이 파일만 없지" 를 나중에 다시 판정해야 한다. 멱등이라 손해가 없다.
+    - **KRX 도 훑는다.** 날짜·참여 여부에 따른 기본값을 보완하되 명시된 예외
+      거래시간을 보존한다. 경계가 바뀌면 연속매매 창과 결손 판정도 함께 갱신한다.
     - **``collection_complete`` 를 보지 않는다.** 대상은 전부 True(이미 마감된 과거일)
       이라 live 스윕의 스킵 조건을 그대로 쓰면 **한 건도 안 고친다**.
     - **오늘·미래는 건드리지 않는다.** 오늘 것은 promote 가 계속 다시 쓰므로 새 코드가
       도는 순간 저절로 맞는다(위 두 스윕과 같은 규율).
 
     ⚠ 부수효과가 하나 있고, 그게 **의도된 것**이다: 지표 캐시
-    (``kis-past-indicators``)의 정체성 토큰이 meta.json 의 mtime 이라
-    (``past_indicators_cache._capture_mtime_ms``), 이 재작성이 **잘린 값으로 캐시된
+    (``kis-past-indicators``)의 정체성 토큰이 meta.json 의 파일 세대라
+    (``past_indicators_cache._capture_generation``), 이 재작성이 **잘린 값으로 캐시된
     지표를 자동 무효화**한다. 이 스윕 없이 판독부만 고치면 캐시가 stale 인 채 남아
     화면이 안 바뀐다.
 
     멱등: 이미 값이 맞는 meta 는 skip 한다.
     """
-    from hoga.live.promote import _VENUE_INDICATOR_SESSION_MS  # noqa: PLC0415 — 순환 절단(지연)
+    from hoga.live.promote import _VENUE_INDICATOR_SESSION_MS  # noqa: PLC0415 — session policy
 
     parquet_root = data_dir / "parquet"
-    scanned = updated = skipped = 0
+    scanned = updated = skipped = invalid = 0
     if not parquet_root.exists():
         return BackfillResult()
     today = datetime.now(_KST).strftime("%Y%m%d")
@@ -250,16 +319,21 @@ def backfill_indicator_session_bounds(
         for code_dir in sorted(date_dir.iterdir()):
             if not code_dir.is_dir():
                 continue
-            for venue, (open_ms, close_ms) in _VENUE_INDICATOR_SESSION_MS.items():
+            for venue in _VENUE_INDICATOR_SESSION_MS:
                 meta_path = code_dir / "kiwoom_live" / venue / "meta.json"
                 if not meta_path.exists():
                     continue
                 scanned += 1
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                except (ValueError, OSError):
-                    _log.warning("meta_backfill.indicator_unreadable path=%s", meta_path)
+                meta = _load_meta(meta_path)
+                if meta is None:
                     skipped += 1
+                    invalid += 1
+                    continue
+                open_ms, close_ms = _repair_indicator_bounds(meta, date_dir.name, venue)
+                if open_ms >= close_ms:
+                    _log.warning("meta_backfill.invalid path=%s reason=inferred open must precede close", meta_path)
+                    skipped += 1
+                    invalid += 1
                     continue
                 if (
                     meta.get("indicator_session_open_ms") == int(open_ms)
@@ -272,9 +346,18 @@ def backfill_indicator_session_bounds(
                     continue
                 meta["indicator_session_open_ms"] = int(open_ms)
                 meta["indicator_session_close_ms"] = int(close_ms)
+                meta.update(_recompute_fields(
+                    meta_path.parent / "snapshots.parquet",
+                    session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
+                    collection_complete=bool(meta.get("collection_complete", True)),
+                    continuous_windows=krx_continuous_windows(
+                        date_dir.name, venue, open_ms, close_ms,
+                        regular_close_ms=meta.get("regular_session_close_ms"),
+                    ),
+                ))
                 atomic_write_json(meta_path, meta, indent=2)
                 updated += 1
-    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped)
+    return BackfillResult(scanned=scanned, updated=updated, skipped=skipped, invalid=invalid)
 
 
 @dataclass(frozen=True)
@@ -302,22 +385,26 @@ def _recompute_one_gap_meta(meta_path: Path) -> tuple[dict, dict] | None:
         normalize_session_bounds,
     )
 
-    try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        _log.warning("meta_backfill.gap_unreadable path=%s", meta_path)
+    meta = _load_meta(meta_path)
+    if meta is None:
         return None
     norm_meta, _ = normalize_session_bounds(meta)
     try:
         open_ms, close_ms = indicator_session_bounds(norm_meta)
     except KeyError:
         # 경계 키가 없는 meta — 창을 추측하지 않는다(갭을 지어낼 자리다).
+        _log.warning("meta_backfill.invalid path=%s reason=missing session bounds", meta_path)
         return None
     new_fields = _recompute_fields(
         meta_path.parent / "snapshots.parquet",
         session_open_ms=HogaMs(open_ms),
         session_close_ms=HogaMs(close_ms),
         collection_complete=bool(meta.get("collection_complete", True)),
+        continuous_windows=krx_continuous_windows(
+            str(meta.get("date", "")),
+            meta_path.parent.name if meta_path.parent.name in ("KRX", "NXT", "UN") else "KRX",
+            open_ms, close_ms, regular_close_ms=norm_meta.get("regular_session_close_ms"),
+        ),
     )
     return meta, new_fields
 
@@ -341,7 +428,7 @@ def backfill_venue_gap_ranges(
     from hoga.live.promote import _VENUE_INDICATOR_SESSION_MS  # noqa: PLC0415 — 순환 절단(지연)
 
     parquet_root = data_dir / "parquet"
-    scanned = updated = skipped = 0
+    scanned = updated = skipped = invalid = 0
     f2t = t2f = gap_delta = 0
     if not parquet_root.exists():
         return GapRecomputeResult()
@@ -358,13 +445,13 @@ def backfill_venue_gap_ranges(
                 pair = _recompute_one_gap_meta(meta_path)
                 if pair is None:
                     skipped += 1
+                    invalid += 1
                     continue
                 meta, new_fields = pair
                 old_partial, old_gaps = meta.get("is_partial"), meta.get("gap_ranges")
-                if (
-                    old_partial == new_fields["is_partial"]
-                    and old_gaps == new_fields["gap_ranges"]
-                ):
+                gap_fields = {key: new_fields[key] for key in
+                              ("is_partial", "gap_ranges", "indicator_continuous_windows") if key in new_fields}
+                if all(meta.get(key) == value for key, value in gap_fields.items()):
                     skipped += 1
                     continue
                 if old_partial is False and new_fields["is_partial"] is True:
@@ -375,11 +462,10 @@ def backfill_venue_gap_ranges(
                 updated += 1
                 if dry_run:
                     continue
-                meta["is_partial"] = new_fields["is_partial"]
-                meta["gap_ranges"] = new_fields["gap_ranges"]
+                meta.update(gap_fields)
                 atomic_write_json(meta_path, meta, indent=2)
     return GapRecomputeResult(
-        scanned=scanned, updated=updated, skipped=skipped,
+        scanned=scanned, updated=updated, skipped=skipped, invalid=invalid,
         partial_false_to_true=f2t, partial_true_to_false=t2f,
         gap_count_delta=gap_delta,
     )

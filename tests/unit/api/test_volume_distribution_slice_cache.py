@@ -30,6 +30,10 @@ def _engine(tmp_path: Path) -> MagicMock:
     (code_dir / "candles.parquet").touch()
     (code_dir / "trades.parquet").touch()
     engine = MagicMock()
+    engine.get_meta.return_value = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+    }
     engine.conn = object()
     engine.parquet_dir.return_value = code_dir
     engine.indicators_cache = PastIndicatorsCache(tmp_path)

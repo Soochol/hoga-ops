@@ -359,11 +359,12 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
 
     from .kis_client import KST  # noqa: PLC0415
     from .session_gate import market_phase  # noqa: PLC0415
+    from .stock_sessions import krx_aftermarket_window  # noqa: PLC0415
 
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KST)
     if kst.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return True
-    return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
+    return market_phase(now_ms) != "regular" and not krx_aftermarket_window(now_ms)
 
 
 def get_status() -> LiveStatus:

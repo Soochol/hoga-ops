@@ -24,21 +24,25 @@ export interface LiveWsHandle {
   pushBatch(code: string, data: Record<string, unknown>[], latest: Record<string, unknown>[], dropped?: number): void;
   /** 지금까지 구독된 코드들(디버깅용). */
   subscribed(): string[];
+  connectionCount(): number;
 }
 
-/** KRX 정규장 안의 **고정** 시각(2026-06-01 10:00 KST).
- *
- *  `liveVenueAcceptsFrame` 은 AUTO venue 에서 `liveSubscriptionVenueForMs(t_ms)` 와 태그를
- *  비교하는데, 그 함수는 **t_ms 의 순수 함수**다(그 날짜의 09:00 기준 08:50~15:31 이면 KRX).
- *  따라서 고정 시각을 쓰면 테스트가 **언제 돌든** 같은 판정을 받는다 — `Date.now()` 를 쓰면
- *  장 시간 밖에서 NXT 로 판정돼 프레임이 조용히 버려진다. */
-export const KRX_SESSION_MS = Date.UTC(2026, 5, 1, 1, 0, 0); // 10:00 KST = 01:00 UTC
+/** 실행 당일 KST 10:00. 날짜 검증과 정규장 프레임 조건을 함께 만족한다. */
+function krxSessionMs(): number {
+  // Keep the real performance clock used by receive-to-DOM measurements.
+  // Synthetic trades use 10:00 KST on the browser host's current KST date.
+  const day = new Date(Date.now() + 9 * 60 * 60_000);
+  return Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 1);
+}
 
 export async function installLiveWs(page: Page): Promise<LiveWsHandle> {
   let socket: WebSocketRoute | null = null;
+  let connections = 0;
   const subs = new Set<string>();
 
   await page.routeWebSocket('**/api/ws', (ws) => {
+    connections += 1;
+    subs.clear();
     socket = ws;
     ws.onMessage((message) => {
       let parsed: { action?: string; code?: string };
@@ -74,6 +78,7 @@ export async function installLiveWs(page: Page): Promise<LiveWsHandle> {
       socket.send(JSON.stringify({ ch: 'live_batch', code, data, latest, dropped, queue_age_ms: 0 }));
     },
     subscribed: () => [...subs],
+    connectionCount: () => connections,
   };
 }
 
@@ -89,7 +94,7 @@ export function tradeFrame(opts: {
   venue?: 'KRX' | 'NXT';
 }): Record<string, unknown> {
   return {
-    t_ms: opts.tMs ?? KRX_SESSION_MS,
+    t_ms: opts.tMs ?? krxSessionMs(),
     kind: 'trade',
     venue: opts.venue ?? 'KRX',
     trades: [{ price: opts.price }],

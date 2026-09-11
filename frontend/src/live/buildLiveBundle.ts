@@ -1,3 +1,4 @@
+import { indicatorBucketStartMs } from '../util/stockSessions';
 import type {
   RangeBundle,
   RangeSegment,
@@ -43,6 +44,7 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
 const AFTER_HOURS_EXTENSION_MS = 30 * 60 * 1000;
 
 export interface BuildLiveBundleInput {
+  venue?: string;
   code: string;
   todayDate: string;
   todaySession: { open_ms: number; close_ms: number };
@@ -66,6 +68,7 @@ export interface BuildLiveBundleInput {
  * can be memoised WITHOUT the ob/trade array deps, so a live tick doesn't churn
  * the candle path (2026-06-09 bundle-split design). */
 export interface BuildHogaSeriesInput {
+  venue?: string;
   todaySession: { open_ms: number; close_ms: number };
   pastBundle: RangeBundle | null;
   sseOb: readonly ObSnapshot[];
@@ -143,7 +146,7 @@ function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionClose
 
 export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   const {
-    todaySession, pastBundle, sseOb, sseTrade, bucketMs,
+    todaySession, pastBundle, sseOb, sseTrade, bucketMs, venue = 'KRX',
     depthHeatmapEnabled = true,
   } = input;
 
@@ -176,7 +179,7 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   // NXT 프리·애프터마켓 호가가 전부 0-센티넬이 됐다 — 캔들 축은 확장창인데 호가만
   // 정규장이라, 화면상 "캔들은 있고 라인만 없는" 상태로 나타났다.
   const sseBuckets = bucketHogaSeries(
-    sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms,
+    sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms, venue,
   );
   const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > pastMaxQrT);
   const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > pastMaxFsT);
@@ -185,7 +188,7 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
     depth_heatmap_today: depthHeatmapEnabled
-      ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms)
+      ? bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms, todaySession.open_ms, venue)
       : [],
   };
 }
@@ -237,6 +240,7 @@ export function bucketDepthHeatmap(
   bucketMs: number,
   sessionCloseMs: number = Number.POSITIVE_INFINITY,
   sessionOpenMs: number = Number.NEGATIVE_INFINITY,
+  venue: string = 'KRX',
 ): DepthHeatmapPoint[] {
   const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
   let lastContinuousMs = Number.NEGATIVE_INFINITY;
@@ -261,7 +265,7 @@ export function bucketDepthHeatmap(
     // 버킷은 통째로 드롭 = 빈 컬럼(백엔드 WHERE 사전 필터 드롭과 파리티).
     if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s, sessionOpenMs)) continue;
     if (!s.asks || !s.bids) continue;
-    const t = bucketStartMs(s.t_ms, bucketMs);
+    const t = indicatorBucketStartMs(s.t_ms, bucketMs, venue);
     const curTotal = s.total_bid_qty + s.total_ask_qty;
     const prev = byBucket.get(t);
     if (!prev) order.push(t);
@@ -293,11 +297,9 @@ function isOrderedByTime<T extends { t_ms: number }>(items: readonly T[]): boole
   return true;
 }
 
-function bucketStartMs(tMs: number, bucketMs: number): number {
-  return Math.floor(tMs / bucketMs) * bucketMs;
-}
 
 class IncrementalHogaBucketer {
+  private venue = 'KRX';
   private bucketMs = 0;
   private sessionCloseMs = Number.POSITIVE_INFINITY;
   // 개장 하한. sessionCloseMs 와 **같은 등급의 리셋 트리거**다 — venue 를 바꾸면
@@ -343,6 +345,7 @@ class IncrementalHogaBucketer {
     sessionCloseMs: number,
     sessionOpenMs: number,
     depthHeatmapEnabled: boolean,
+    venue: string,
   ): {
     quoteRatioPoints: QuoteRatioPoint[];
     fillStrengthPoints: FillStrengthPoint[];
@@ -352,6 +355,7 @@ class IncrementalHogaBucketer {
     // 배열만" 보고 오라클과 같은 답을 내므로 정합이 구조적으로 보장된다 — 빠른
     // 경로가 감당 못 하는 입력에서 **틀린 값** 대신 **느린 값**이 나오게 하는 장치다.
     const rebuild = () => {
+      this.venue = venue;
       this.reset(bucketMs, sessionCloseMs, sessionOpenMs, depthHeatmapEnabled);
       const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
       const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
@@ -362,6 +366,7 @@ class IncrementalHogaBucketer {
     };
 
     if (
+      this.venue !== venue ||
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
       this.sessionOpenMs !== sessionOpenMs ||
@@ -436,19 +441,19 @@ class IncrementalHogaBucketer {
     if (!obEvicted && !tradeEvicted) return true;
 
     if (obEvicted) {
-      const headBucket = bucketStartMs(ob[0].t_ms, this.bucketMs);
+      const headBucket = indicatorBucketStartMs(ob[0].t_ms, this.bucketMs, this.venue);
       this.dropObBucketsBefore(headBucket);
       this.clearObBucket(headBucket);
       let end = 0;
-      while (end < ob.length && bucketStartMs(ob[end].t_ms, this.bucketMs) === headBucket) end += 1;
+      while (end < ob.length && indicatorBucketStartMs(ob[end].t_ms, this.bucketMs, this.venue) === headBucket) end += 1;
       if (!this.appendOb(ob.slice(0, end))) return false;
     }
     if (tradeEvicted) {
-      const headBucket = bucketStartMs(trade[0].t_ms, this.bucketMs);
+      const headBucket = indicatorBucketStartMs(trade[0].t_ms, this.bucketMs, this.venue);
       this.dropFillBucketsBefore(headBucket);
       this.clearFillBucket(headBucket);
       let end = 0;
-      while (end < trade.length && bucketStartMs(trade[end].t_ms, this.bucketMs) === headBucket) end += 1;
+      while (end < trade.length && indicatorBucketStartMs(trade[end].t_ms, this.bucketMs, this.venue) === headBucket) end += 1;
       this.appendTrade(trade.slice(0, end));
     }
     // 선두 버킷을 지웠다 다시 넣으면 삽입 순서 배열의 끝으로 가므로 시간순으로 되돌린다
@@ -557,7 +562,7 @@ class IncrementalHogaBucketer {
       if (s.t_ms <= this.sessionCloseMs && isContinuousBook(s)) {
         nextBoundary = nextBoundary === null ? s.t_ms : Math.max(nextBoundary, s.t_ms);
         // 버킷별로도 남긴다 — 축출로 버킷을 버린 뒤 경계를 다시 구하는 근거.
-        const cb = bucketStartMs(s.t_ms, this.bucketMs);
+        const cb = indicatorBucketStartMs(s.t_ms, this.bucketMs, this.venue);
         const prevC = this.continuousByBucket.get(cb);
         if (prevC === undefined || s.t_ms > prevC) this.continuousByBucket.set(cb, s.t_ms);
       }
@@ -576,7 +581,7 @@ class IncrementalHogaBucketer {
     this.continuousBoundaryMs = nextBoundary;
     const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
     for (const s of obs) {
-      const t = bucketStartMs(s.t_ms, this.bucketMs);
+      const t = indicatorBucketStartMs(s.t_ms, this.bucketMs, this.venue);
       // ADR-0062 v2/v3 (동시호가 배제 통일): bucketHogaSeries와 동일하게 시간 상한 +
       // 공용 술어 isIndicatorEligibleBook(구조 + 개장 하한)을 요구해 장중 VI
       // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
@@ -659,7 +664,7 @@ class IncrementalHogaBucketer {
 
   private appendTrade(trades: readonly TradeSnapshot[]) {
     for (const s of trades) {
-      const t = bucketStartMs(s.t_ms, this.bucketMs);
+      const t = indicatorBucketStartMs(s.t_ms, this.bucketMs, this.venue);
       let bucket = this.fillByBucket.get(t);
       if (!bucket) {
         bucket = { t, buy_qty: 0, sell_qty: 0 };
@@ -695,7 +700,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
 
   return (input: BuildHogaSeriesInput): HogaSeries => {
     const {
-      todaySession, pastBundle, sseOb, sseTrade, bucketMs,
+      todaySession, pastBundle, sseOb, sseTrade, bucketMs, venue = 'KRX',
       depthHeatmapEnabled = true,
     } = input;
     if (pastBundleRef !== pastBundle || pastSessionCloseMs !== todaySession.close_ms) {
@@ -710,7 +715,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
 
     const sseBuckets = bucketer.update(
       sseOb, sseTrade, bucketMs, todaySession.close_ms, todaySession.open_ms,
-      depthHeatmapEnabled,
+      depthHeatmapEnabled, venue,
     );
     const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > cachedPastMaxQrT);
     const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > cachedPastMaxFsT);
@@ -867,7 +872,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
  * halves separately so an SSE tick only rebuilds the hoga half. */
 export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
   const { code, todayDate, todaySession, pastBundle, sseOb, sseTrade, kisCandles, candleSourceByDate, bucketMs } = input;
-  const hoga = buildHogaSeries({ todaySession, pastBundle, sseOb, sseTrade, bucketMs });
+  const hoga = buildHogaSeries({ todaySession, pastBundle, sseOb, sseTrade, bucketMs, venue: input.venue });
   const chart = buildChartBundle({
     code,
     todayDate,

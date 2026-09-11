@@ -26,6 +26,7 @@
  */
 import { unixMsToKSTClock, unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { krxAftermarketIntroduced, krxBookPhaseLabel } from '../util/stockSessions';
 
 /** 사다리가 어느 장의 것인가. */
 export type BookSessionMode = 'regular' | 'afterHours';
@@ -56,6 +57,8 @@ const AFTER_HOURS_SINGLE_PRICE_CLOSE = 1800;
  * 하단 스트립이 이미 그린다.
  */
 export function defaultBookSessionMode(nowMs: number = Date.now()): BookSessionMode {
+  // The existing real-time ladder also serves the new continuous market.
+  if (krxAftermarketIntroduced(unixMsToKSTDate(nowMs))) return 'regular';
   return unixMsToKSTHhmm(nowMs) >= AFTER_HOURS_SINGLE_PRICE_OPEN ? 'afterHours' : 'regular';
 }
 
@@ -172,8 +175,9 @@ export function nxtPhaseLabel(nowMs: number = Date.now()): string {
 export function hasBookSessionToggle(
   nxtEnabled: boolean | null | undefined,
   isSpot: boolean,
+  nowMs: number = Date.now(),
 ): boolean {
-  return !isSpot && nxtEnabled === false;
+  return !krxAftermarketIntroduced(unixMsToKSTDate(nowMs)) && !isSpot && nxtEnabled === false;
 }
 
 /**
@@ -212,6 +216,8 @@ export function bookSessionControl(args: {
    * 쓰면(시각·모드로 재판정) 라벨과 화면이 갈린다.
    */
   regularLadderAtMs?: number | null;
+  ladderAtMs?: number | null;
+  aftermarketExcluded?: boolean;
   nowMs?: number;
 }): BookSessionControl {
   const { nxtEnabled, venue, isSpot } = args;
@@ -219,6 +225,12 @@ export function bookSessionControl(args: {
   // 과거 시점 위에 "지금 어느 장인가" 를 얹지 않는다 — 증감 뱃지·시간외 폴링이
   // 스팟에서 꺼지는 것과 같은 규율(`DataWindow`).
   if (isSpot) return { kind: 'none' };
+  if (krxAftermarketIntroduced(unixMsToKSTDate(nowMs)) && venue === 'KRX') {
+    if (args.aftermarketExcluded && unixMsToKSTHhmm(nowMs) >= 1600) {
+      return { kind: 'label', label: '애프터마켓 대상 제외' };
+    }
+    return { kind: 'label', label: krxBookPhaseLabel(nowMs, args.ladderAtMs) };
+  }
   if (nxtEnabled === true) {
     // KRX 를 고른 NXT 종목: 애프터마켓 프레임이 걸러지므로 그 라벨을 쓸 수 없다.
     if (venue === 'KRX') {
@@ -226,7 +238,7 @@ export function bookSessionControl(args: {
     }
     return { kind: 'label', label: nxtPhaseLabel(nowMs) };
   }
-  if (hasBookSessionToggle(nxtEnabled, isSpot)) {
+  if (hasBookSessionToggle(nxtEnabled, isSpot, nowMs)) {
     return {
       kind: 'toggle',
       regularLabel: krxRegularLabel(args.regularLadderAtMs),

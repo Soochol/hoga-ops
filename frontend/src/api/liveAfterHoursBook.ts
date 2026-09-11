@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type { OrderbookLevel, OrderbookSnapshot } from './types';
+import { krxAftermarketIntroduced } from '../util/stockSessions';
+import { unixMsToKSTDate } from '../util/time';
 
 /**
  * GET /api/live/after-hours-book — 키움 ka10087 시간외 단일가 **5단** 호가.
@@ -110,6 +112,7 @@ export interface LiveAfterHoursBookResponse {
  *  않고 `active:false` 를 주므로 안전은 이미 확보돼 있다 — 이 술어의 목적은 무의미한
  *  왕복을 아예 만들지 않는 것뿐이다. 그래서 여기서 틀려도 유량 사고가 아니다. */
 export function isAfterHoursSinglePriceWindow(nowMs: number = Date.now()): boolean {
+  if (krxAftermarketIntroduced(unixMsToKSTDate(nowMs))) return false;
   // KST = UTC+9. 로컬 타임존에 의존하지 않도록 UTC 기준으로 옮겨 계산한다 —
   // 사용자 브라우저가 KST 가 아닐 수 있고, 그때 로컬 시각으로 판정하면 창이 통째로
   // 어긋난다(`util/time` 의 unixMsToKSTDate 와 같은 규율).
@@ -137,8 +140,9 @@ export function useAfterHoursBook(
   opts: { includeStored?: boolean } = {},
 ) {
   const inWindow = isAfterHoursSinglePriceWindow();
-  const enabled = !!code && (inWindow || opts.includeStored === true);
-  return useQuery({
+  const retired = krxAftermarketIntroduced(unixMsToKSTDate(Date.now()));
+  const enabled = !retired && !!code && (inWindow || opts.includeStored === true);
+  const query = useQuery({
     // **창 안/밖이 키에 들어간다.** 같은 키를 쓰면 18:00 을 넘긴 뒤에도 창 안에서
     // 받아 둔 응답이 캐시에 남아 그대로 그려지고(폴링은 멎었으므로 갱신되지 않는다),
     // 화면은 저장본이 아닌 것을 저장본 라벨 없이 계속 보인다. 키를 가르면 경계를
@@ -157,6 +161,9 @@ export function useAfterHoursBook(
         { signal },
       ),
   });
+  // A disabled query can still expose its previous cache entry. Retiring the
+  // endpoint must also prevent that 5-level book from replacing the live book.
+  return retired ? { ...query, data: undefined } : query;
 }
 
 const EMPTY_LEVEL: OrderbookLevel = { price: 0, qty: 0 };

@@ -11,6 +11,11 @@ from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_pa
 from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
 
 
+class SessionMetadata:
+    def get_meta(self, date, code, source, *, venue="KRX"):
+        return {"regular_session_open_ms": 90000000, "regular_session_close_ms": 153000000}
+
+
 def _ob(ts_ms: int, seq: int = 1) -> Orderbook:
     z = tuple([0] * 10)
     return Orderbook(
@@ -39,7 +44,7 @@ def ratio_fixture(tmp_path):
     d.mkdir(parents=True)
     snapshots_write_parquet([_ob(90000000), _ob(90060000, seq=2)], d / "snapshots.parquet")
 
-    class FakeEngine:
+    class FakeEngine(SessionMetadata):
         conn = duckdb.connect()
 
         def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
@@ -58,7 +63,7 @@ def fill_fixture(tmp_path):
         [_trade(90000500, side=1), _trade(90000700, side=-1)], d / "trades.parquet"
     )
 
-    class FakeEngine:
+    class FakeEngine(SessionMetadata):
         conn = duckdb.connect()
 
         def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
@@ -76,7 +81,7 @@ def peak_fixture(tmp_path):
     snapshots_write_parquet([_ob(90000000), _ob(90060000, seq=2)], d / "snapshots.parquet")
     trades_write_parquet([_trade(90000500, price=25000, side=1)], d / "trades.parquet")
 
-    class FakeEngine:
+    class FakeEngine(SessionMetadata):
         conn = duckdb.connect()
 
         def parquet_dir(self, dd, cc, ss, *, venue="KRX"):
@@ -133,7 +138,7 @@ def test_today_fill_strength_none_result_is_not_cached(tmp_path):
     d = tmp_path / date / code / source
     d.mkdir(parents=True)  # no fills.parquet, no trades.parquet
 
-    class FakeEngine:
+    class FakeEngine(SessionMetadata):
         conn = duckdb.connect()
 
         def parquet_dir(self, dd, cc, ss, *, venue="KRX"):

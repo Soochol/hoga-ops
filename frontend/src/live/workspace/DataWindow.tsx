@@ -51,7 +51,7 @@ import {
 } from '../../api/useLiveCursor';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import { useEffectiveVenue, useNxtEnabledResolver } from '../useEffectiveVenue';
+import { useEffectiveVenue, useKrxAftermarketExcluded, useNxtEnabledResolver } from '../useEffectiveVenue';
 import {
   bookSessionControl,
   bookSessionEpoch,
@@ -265,6 +265,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 모드에 달렸기 때문이다.
   const nxtEnabledOf = useNxtEnabledResolver();
   const nxtEnabled = nxtEnabledOf(code);
+  const aftermarketExcluded = useKrxAftermarketExcluded(code);
   const effectiveVenue = useEffectiveVenue(code, venue);
   // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
   // 하기 위해서다(탭이 잠들었다 깨어나도 맞는다. `bookSessionMode` docstring).
@@ -274,7 +275,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     setSessionOverride({ mode, epoch: bookSessionEpoch() });
   }, []);
   /** 모드가 출처를 가르는가 — 갈래 A 에서만 참. 갈래 B·모름은 종전 동작 그대로다. */
-  const modeGated = hasBookSessionToggle(nxtEnabled, isSpot);
+  const modeGated = hasBookSessionToggle(nxtEnabled, isSpot, nowMs);
   const showAfterHours = !modeGated || sessionMode === 'afterHours';
 
   // 시간외 단일가 5단(ka10087) — 16:00–18:00 창에서는 벤더를 폴링한다. 그 구간엔 WS
@@ -380,6 +381,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   ]);
   const afterHoursLabel = activeSinglePrice !== null ? '시간외 단일가' : '시간외';
   const sessionControl = bookSessionControl({
+    nowMs,
+    ladderAtMs: snapshot?.ts_ms,
+    aftermarketExcluded,
     nxtEnabled,
     // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
     // 화면엔 15:30 정지본이 뜨므로, 라벨이 그 사실을 말해야 한다.
@@ -474,7 +478,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 기준가에서 파생된 상하한가와 다르므로 아래에서 비운다.
   const stockLimits = useLiveStockLimits(code);
   // VI 이벤트 상태(키움 1h) — 예상 발동가의 기준가 갱신 + 발동 중 강조.
-  const viStatus = useLiveViStatus(code);
+  const viStatus = useLiveViStatus(code, effectiveVenue);
   // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
   // auctionWindowMask 토글이 켜져 있으면 매수/매도 비율을 마스킹한다. 판정은 링크
   // 차트 창 번들의 세션 세그먼트로 — 전역 axis store 는 멀티창 last-writer-wins 라
@@ -799,6 +803,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 필터하므로 매물대도 venue 정합(이전엔 원본 혼재 버퍼를 그대로 소비).
   const venue = useLiveVenueStore((s) => s.venue);
   const live = useLiveSeries(code, venue);
+  const effectiveVenue = useEffectiveVenue(code, venue);
   const link = useGroupChartLink(win.group);
   // 링크의 code 가 창의 code 와 다르면(그룹 종목 교체 직후 발행 지연 프레임) 소비하지
   // 않는다 — 이전 종목 번들이 새 종목 창에 새는 것을 막는 가드.
@@ -845,9 +850,11 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     if (!todaySegment) return null;
     return firstTrailingSinglePriceBookMs(
       live.ob,
-      regularSessionBinningSegment(todaySegment).session_close_ms,
+      regularSessionBinningSegment(todaySegment, effectiveVenue).session_close_ms,
+      regularSessionBinningSegment(todaySegment, effectiveVenue).session_open_ms,
+      effectiveVenue,
     );
-  }, [bundle, todayKst, live.ob]);
+  }, [bundle, todayKst, live.ob, effectiveVenue]);
   // 원본(축용) — 확장창이면 확장창 그대로.
   const activeSegment = useMemo(
     () => bundle?.segments.find((segment) => segment.date === activeDate) ?? null,
@@ -855,8 +862,8 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   );
   const todaySegment = useMemo(() => {
     const raw = bundle?.segments.find((segment) => segment.date === todayKst) ?? null;
-    return raw ? regularSessionBinningSegment(raw) : null;
-  }, [bundle, todayKst]);
+    return raw ? regularSessionBinningSegment(raw, effectiveVenue) : null;
+  }, [bundle, todayKst, effectiveVenue]);
   const persistedToday = useMemo(
     () => (todayKst
       ? persistedDistributions.find((profile) => profile.date === todayKst) ?? null
@@ -906,7 +913,7 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     adjustFactors: linked ? link.adjustFactors : undefined,
     liveTrades: liveDistribution.trades,
     candles: activeCandles,
-    segment: activeSegment ? regularSessionBinningSegment(activeSegment) : null,
+    segment: activeSegment ? regularSessionBinningSegment(activeSegment, effectiveVenue) : null,
   });
   const closePoints = useMemo(
     () => (activeDate ? volumeDistributionClosePointsFromCandles(activeCandles) : []),

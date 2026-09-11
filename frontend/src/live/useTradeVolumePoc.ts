@@ -45,6 +45,7 @@ export function useTradeVolumePocs(
   candles: readonly Candle[] = [],
   segments: readonly RangeSegment[] = [],
   orderbooks: readonly ObSnapshot[] = [],
+  venue: string = "KRX",
 ): TradeVolumePoc[] {
   const rangeCount = useWindowIndicator((s) => s.volumeDistributionRangeCount);
   // 당일 distribution POC 증분 누적기 — 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례).
@@ -59,7 +60,7 @@ export function useTradeVolumePocs(
     : [], [candles, todaySegment]);
   const todayLive = useMemo(() => {
     const todayContinuousBeforeMs = todaySegment
-      ? firstTrailingSinglePriceBookMs(orderbooks, todaySegment.session_close_ms)
+      ? firstTrailingSinglePriceBookMs(orderbooks, todaySegment.session_close_ms, todaySegment.session_open_ms, venue)
       : null;
     // distribution 분기(candles+segment+유효 rangeCount)만 증분 누적기로 라우팅한다.
     // computeTradeVolumePoc 의 그 분기와 동일 조건 — 나머지(무효 rangeCount·todaySegment
@@ -75,6 +76,7 @@ export function useTradeVolumePocs(
         rangeMin: distributionRange.min,
         rangeMax: distributionRange.max,
         rangeCount: rangeCount as number,
+        venue,
         sessionOpenMs: todaySegment.session_open_ms,
         sessionCloseMs: todaySegment.session_close_ms,
         continuousBeforeMs: todayContinuousBeforeMs,
@@ -84,19 +86,21 @@ export function useTradeVolumePocs(
       return null;
     } else {
       return computeTradeVolumePoc(trades, {
+        venue,
+        segment: todaySegment ?? undefined,
         date: todayKst,
         bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT,
         continuousBeforeMs: todayContinuousBeforeMs,
       });
     }
-  }, [trades, todayKst, code, todaySegment, todayCandles, rangeCount, orderbooks]);
+  }, [trades, todayKst, code, todaySegment, todayCandles, rangeCount, orderbooks, venue]);
   const hasTodayLive = todayLive !== null;
   const fallbackSegments = useMemo(() => segments.filter(segment =>
     !seedsByDate.has(segment.date) && !(segment.date === todayKst && hasTodayLive)),
   [segments, seedsByDate, todayKst, hasTodayLive]);
   const candleFallbacks = useMemo(() => computeCandleVolumePocs(candles, fallbackSegments,
-    { bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT, rangeCount }),
-  [candles, fallbackSegments, rangeCount]);
+    { bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT, rangeCount, venue }),
+  [candles, fallbackSegments, rangeCount, venue]);
   return useMemo(() => {
     const out = Array.from(seedsByDate.values()).filter(p => p.date !== todayKst).map(tradeVolumePocFromWire);
     const seenDates = new Set(out.map(p => p.date));
