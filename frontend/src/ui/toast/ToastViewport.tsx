@@ -14,6 +14,7 @@ import type { ReactNode } from 'react';
 export function ToastViewport({ children }: { children: ReactNode }) {
   return (
     <div
+      id="toast-viewport"
       aria-live="polite"
       className="pointer-events-none fixed bottom-[16px] left-1/2 z-[90] flex w-[20rem] -translate-x-1/2 flex-col-reverse gap-2"
     >

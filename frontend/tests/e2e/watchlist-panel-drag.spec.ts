@@ -84,8 +84,8 @@ test('같은 그룹 재정렬과 되돌리기', async ({ page }) => {
   const state = await setup(page);
   await move(page, handle(page, A, '005930'), row(page, A, '000660'), 0.8);
   await expect.poll(() => codes(state.items()[A])).toEqual(['000660', '005930']);
-  await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect(page.getByRole('button', { name: '실행취소', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '실행취소', exact: true }).click();
   await expect.poll(() => codes(state.items()[A])).toEqual(['005930', '000660']);
 });
 
@@ -132,7 +132,7 @@ test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 
   await page.mouse.up();
   await expect.poll(() => codes(state.items()[B])).toEqual(['035420', '005930', '000660']);
   expect(state.items()[A]).toEqual([]);
-  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await page.getByRole('button', { name: '실행취소', exact: true }).click();
   await expect.poll(state.items).toEqual(initial);
   await expect(page.getByTestId('watchlist-drag-ghost')).toHaveCount(0);
   await page.screenshot({ path: '/tmp/hoga-watchlist-drag-selection.png' });
@@ -186,10 +186,10 @@ test('저장 실패를 안내하며 원래 소속을 유지한다', async ({ pag
 test('이동 이후 다른 변경이 있으면 되돌리기가 덮어쓰지 않는다', async ({ page }) => {
   const state = await setup(page);
   await move(page, handle(page, A, '005930'), row(page, B, '035420'), 0.8);
-  await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '실행취소', exact: true })).toBeVisible();
   const changed = [code('051910'), code('005930'), code('035420')];
   state.change(B, changed);
-  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await page.getByRole('button', { name: '실행취소', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: '되돌리기를 완료하지 못했습니다' })).toBeVisible();
   expect(state.items()[B]).toEqual(changed);
 });

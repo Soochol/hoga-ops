@@ -4,7 +4,7 @@ import { transactWatchlistItems, type WatchlistResponse, type WatchlistFolderIte
 import { WATCHLIST_KEY } from './watchlistKeys';
 import { applyTransfer, inverseTransfer } from './transferItems';
 
-const AUTO_DISMISS_MS = 5000;
+export const WATCHLIST_TRANSFER_NOTICE_MS = 5000;
 
 export function useWatchlistTransfer() {
   const qc = useQueryClient();
@@ -18,7 +18,7 @@ export function useWatchlistTransfer() {
     const timer = setTimeout(() => {
       setMessage('');
       setUndo(null);
-    }, AUTO_DISMISS_MS);
+    }, WATCHLIST_TRANSFER_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [busy, succeeded, message, undo]);
 
@@ -46,7 +46,7 @@ export function useWatchlistTransfer() {
       void qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
     }
   };
-  return { busy, message, canUndo: !!undo && !busy, run,
+  return { busy, message, succeeded, canUndo: !!undo && !busy, run,
     undo: () => undo ? run(undo.changes, undo.label, true) : Promise.resolve(false),
     dismiss: () => { setMessage(''); setUndo(null); },
   };
