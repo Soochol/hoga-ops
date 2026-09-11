@@ -49,6 +49,7 @@ import { precisePanelCollision } from './panelDragCollision';
 import { DragPanelAssist } from './DragPanelAssist';
 import { folderItems, planTransfer, type TransferSource } from './transferItems';
 import { useWatchlistTransfer } from './useWatchlistTransfer';
+import { WatchlistTransferToast } from './WatchlistTransferToast';
 import { RailDragOverlay } from '../rightrail/RailDragOverlay';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -1384,11 +1385,7 @@ export function WatchlistDrawer() {
         </div>
         {searching && <p role="status" className="text-xs text-fg-dim">검색 결과 {filteredGroups.reduce((n, g) => n + g.count, 0)}개 · {filteredGroups.length}그룹</p>}
       </div>
-      {transfer.message && <div role="status" className="flex flex-wrap items-center gap-2 border-y border-border px-md py-2 text-xs">
-        <span>{transfer.message}</span>
-        {transfer.canUndo && <button type="button" className="text-accent" onClick={() => void transfer.undo()}>되돌리기</button>}
-        {!transfer.busy && <button type="button" aria-label="이동 안내 닫기" onClick={transfer.dismiss}>×</button>}
-      </div>}
+      <WatchlistTransferToast transfer={transfer} />
       <RailDestination />
       <RailDrawerBody testId="watchlist-scroll" scrollRef={scrollRef} quoteNav>
         {searching && filteredGroups.length === 0 && <RailState>검색 결과가 없습니다 · 다른 종목명이나 그룹명을 입력하세요</RailState>}
