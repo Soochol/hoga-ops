@@ -598,7 +598,7 @@ export function ProgramCard() {
         {axis === 'daily' && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
           ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
         ]} />}
-        <p className="text-2xs text-fg-dim">{axis === 'daily' ? '단위: 억원 · + 순매수 / − 순매도 · 최신순' : '선: 시간별 누적 순매수'}</p>
+        {axis === 'daily' && <p className="text-2xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>}
         {Object.keys(markets).length === 0 ? (
           <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
         ) : (
@@ -813,7 +813,6 @@ export function FundsCard() {
         <EmptyNote>자금 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
         <>
-          <p className="text-2xs text-fg-dim">선: 기간 첫 유효 잔고 대비 증감 · 조원</p>
           <CumLinesChart
             series={[
               { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))), observed: series.map((r) => r.deposit_won != null) },
