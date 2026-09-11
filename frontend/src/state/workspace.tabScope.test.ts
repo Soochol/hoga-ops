@@ -88,9 +88,9 @@ describe('워크스페이스 영속 스코프 (전 탭 격리)', () => {
     expect(snapshot(localStorage)?.groupSymbols?.[1].code).toBe('005930');
   });
 
-  it('?index= 로 열린 탭도 같은 격리를 받는다', async () => {
+  it.each(['?index=KOSPI', '?view=saved-view'])('%s 로 열린 탭도 같은 격리를 받는다', async search => {
     seedSharedWorkspace('005930');
-    const { useWorkspaceStore } = await loadWorkspaceAt('?index=KOSPI');
+    const { useWorkspaceStore } = await loadWorkspaceAt(search);
 
     useWorkspaceStore.getState().setGroupSymbol(1, { code: 'KOSPI', name: 'KOSPI' });
 
