@@ -53,7 +53,7 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
  *  공유 키(localStorage)는 이제 **새 탭의 시드 전용**이다 — 이미 열린 탭은 하이드레이션
  *  이후 두 번 다시 읽지 않으므로 누가 마지막에 썼든 무해하다. 메인 탭(쿼리 없는
  *  `/live`)만 write-through 로 시드를 갱신해 "새 탭 = 마지막으로 쓰던 레이아웃"을
- *  유지한다. 딥링크 탭(`?code=`·`?index=`)은 종전대로 공유 키를 건드리지 않는다.
+ *  유지한다. 딥링크 탭(`?code=`·`?index=`·`?view=`)은 종전대로 공유 키를 건드리지 않는다.
  *
  *  대가: 탭을 닫으면 그 탭에서만 하던 배치는 사라진다(메인 탭은 시드에 남는다).
  *  아끼는 배치는 레이아웃 프리셋으로 저장한다 — 프리셋이 탭 간 유일한 다리다.
@@ -64,7 +64,7 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
 function detectDeepLinkTab(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.has('code') || params.has('index');
+    return params.has('code') || params.has('index') || params.has('view');
   } catch {
     return false;
   }
@@ -432,14 +432,14 @@ function defaultWindows(): WorkspaceWindow[] {
 /** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 공유 시드를
  *  **읽기만 해서** 물려받는다: 사용자가 늘 쓰던 레이아웃 그대로 열리되, 이후 변경은
  *  그 탭에서 시작한다. 시드는 이 시점에 쓰지 않는다(열기만 해서는 아무것도 안 바뀜). */
-function readWorkspaceSnapshot(): Record<string, unknown> {
+function readWorkspaceSnapshot(): { snapshot: Record<string, unknown>; inherited: boolean } {
   const own = readJsonObject(WORKSPACE_STORAGE_KEY, 'tab');
-  if (Array.isArray(own.windows)) return own;
-  return readJsonObject(WORKSPACE_STORAGE_KEY, 'shared');
+  if (Array.isArray(own.windows)) return { snapshot: own, inherited: false };
+  return { snapshot: readJsonObject(WORKSPACE_STORAGE_KEY, 'shared'), inherited: true };
 }
 
 /**
- * 딥링크 탭(`?code=`·`?index=`)은 **핀을 물려받지 않는다**.
+ * 딥링크 탭(`?code=`·`?index=`·`?view=`)은 **핀을 물려받지 않는다**.
  *
  * 딥링크 탭은 공유 시드에서 레이아웃을 물려받는데(`readWorkspaceSnapshot`), 그 시드에
  * 핀이 있으면 새 탭이 **핀이 걸린 채로 열린다**. 그러면 `LivePage` 의 1회 시드
@@ -448,9 +448,11 @@ function readWorkspaceSnapshot(): Record<string, unknown> {
  *
  * 이 탭에서만 지우므로 원래 탭의 핀은 그대로다(sessionStorage 격리). "딥링크 탭 =
  * 그 종목을 보러 새로 연 탭" 이라는 그 탭의 존재 이유와도 맞는다.
+ * 자기 탭 저장소에서 복원할 때는 핀을 보존한다 — 이 탭에서 직접 켠 핀이
+ * 새로고침마다 풀리지 않도록 공유 시드 상속과 구분한다.
  */
 function readStorage(): Persisted & { pendingNormalize: boolean } {
-  const parsed = readWorkspaceSnapshot();
+  const { snapshot: parsed, inherited } = readWorkspaceSnapshot();
   // v2 = 비율 rect(ADR-0122). 버전이 없거나 낮으면 레거시 px — 값은 그대로 싣고
   // pendingNormalize 로 표시해 캔버스 첫 실측 때 비율화한다.
   const legacyPx = parsed.schema_version !== WORKSPACE_SCHEMA_VERSION;
@@ -488,7 +490,7 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     return { ...fresh, pendingNormalize: false };
   }
   return {
-    windows: isDeepLinkTab() ? windows.map(withoutPin) : windows,
+    windows: isDeepLinkTab() && inherited ? windows.map(withoutPin) : windows,
     zOrder: normalizeZOrder(parsed.zOrder, windows),
     groupSymbols: readGroupSymbols(parsed.groupSymbols),
     pendingNormalize: legacyPx,

@@ -295,12 +295,20 @@ describe('영속·프리셋·딥링크', () => {
     expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
   });
 
-  it('딥링크 탭은 시드의 핀을 물려받지 않는다 — 안 그러면 그 URL 이 죽는다', async () => {
+  it.each(['?code=035720', '?index=KOSPI', '?view=saved-view'])('%s 새 탭은 공유 핀을 해제하고 직접 설정한 핀은 새로고침해도 유지한다', async search => {
     seed([{ id: 'w1', group: 1, pinned: SAMSUNG }], { 1: SAMSUNG });
+    const shared = sessionStorage.getItem(WORKSPACE_STORAGE_KEY)!;
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, shared);
+    sessionStorage.clear();
 
-    const { useWorkspaceStore } = await loadStore('?code=035720');
+    const first = await loadStore(search);
+    expect(first.useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+    first.useWorkspaceStore.getState().setGroupSymbol(1, KAKAO);
+    first.useWorkspaceStore.getState().toggleWindowPin('w1');
 
-    expect(useWorkspaceStore.getState().windows[0].pinned).toBeUndefined();
+    const again = await loadStore(search);
+    expect(again.useWorkspaceStore.getState().windows[0].pinned).toEqual(KAKAO);
+    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBe(shared);
   });
 
   it('일반 탭은 그대로 물려받는다(위 딥링크 단언의 대조군)', async () => {
