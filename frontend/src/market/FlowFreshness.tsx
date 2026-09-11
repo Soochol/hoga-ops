@@ -1,6 +1,7 @@
 import { flowStatus } from './flowStatus';
 import { useEffect, useState } from 'react';
-import type { FlowCollection, InvestorFlowCoverage } from '../api/market';
+import type { FlowCollection } from '../api/market';
+import { DataStamp } from './marketCardBits';
 
 const STATUS_LABELS = {
   waiting: '수신 대기', receiving: '정상 수신', delayed: '수신 지연',
@@ -15,12 +16,12 @@ function time(ms: number | null | undefined): string {
 }
 
 /** Only this small status surface ticks; the full-day chart does not rerender each second. */
-export function FlowFreshness({ collection, target, receivedAt, error, coverage }: {
+export function FlowFreshness({ collection, target, receivedAt, error, date }: {
   collection?: FlowCollection | null;
   target: string;
   receivedAt: number;
   error: boolean;
-  coverage?: InvestorFlowCoverage;
+  date?: string | null;
 }) {
   const [elapsed, setElapsed] = useState({ stamp: 0, ms: 0 });
   useEffect(() => {
@@ -33,33 +34,19 @@ export function FlowFreshness({ collection, target, receivedAt, error, coverage 
   const health = collection?.targets[target];
   const status = collection && health
     ? flowStatus(collection, health, elapsed.stamp === receivedAt ? elapsed.ms : 0) : 'unknown';
-  const gaps = coverage?.gap_ranges ?? [];
   return (
-    <div className="text-2xs text-fg-dim">
-      <p role="status">
-        {error ? '서버 연결 확인 필요' : STATUS_LABELS[status]}
-        {health?.last_success_at_ms != null && ` · 마지막 정상 수신 ${time(health.last_success_at_ms)}`}
-        {error && receivedAt > 0 && ' · 마지막 데이터 유지'}
+    <div className="flex flex-wrap items-baseline gap-x-sm gap-y-2xs text-2xs text-fg-dim">
+      <DataStamp date={date} />
+      <p role="status" className="flex flex-wrap gap-x-sm gap-y-2xs">
+        {health?.last_success_at_ms != null && (
+          <span className="font-data tabular-nums" title="마지막 정상 수신 시각">
+            {time(health.last_success_at_ms)} 수신
+          </span>
+        )}
+        <span>{error ? '서버 연결 확인 필요' : STATUS_LABELS[status]}
+          {error && receivedAt > 0 && ' · 마지막 데이터 유지'}
+        </span>
       </p>
-      {coverage && (
-        <details>
-          <summary className="cursor-pointer">수집 이력 · 첫 저장 {time(coverage.first_sample_ms)}</summary>
-          <p>마지막 저장 {time(coverage.last_sample_ms)} · 동일 응답은 저장을 생략합니다.</p>
-          <p>첫 저장 이전에는 저장 이력이 없습니다.</p>
-          {gaps.map((gap) => (
-            <p key={`${gap.start_ms}-${gap.end_ms}`}>
-              저장 표본 공백 {time(gap.start_ms)}–{time(gap.end_ms)} · {health?.gaps.some(f => f.start_ms < gap.end_ms && f.end_ms > gap.start_ms)
-                ? '수신 실패 기록 포함' : '원인 확인 불가'}
-            </p>
-          ))}
-          {health?.gaps.map((gap) => (
-            <p key={`receipt-${gap.start_ms}-${gap.end_ms}`}>
-              수신 실패 기록 {time(gap.start_ms)}–{time(gap.end_ms)}
-            </p>
-          ))}
-          {health?.failure_started_at_ms != null && <p>수신 실패 기록 {time(health.failure_started_at_ms)}부터</p>}
-        </details>
-      )}
     </div>
   );
 }

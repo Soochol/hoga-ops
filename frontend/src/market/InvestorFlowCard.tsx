@@ -203,13 +203,13 @@ export function InvestorCard() {
         }
       />
       <div className="market-investor-body flex flex-col gap-sm">
-        <DataStamp date={showDaily ? stock.data?.daily.at(-1)?.date : stockSel ? stock.data?.date : deriv.data?.date} />
+        {showDaily && <DataStamp date={stock.data?.daily.at(-1)?.date} />}
         {!showDaily && <FlowFreshness
           collection={stockSel ? stock.data?.collection : deriv.data?.collection}
           target={sel}
           receivedAt={stockSel ? stock.dataUpdatedAt : deriv.dataUpdatedAt}
           error={stockSel ? stock.isError : deriv.isError}
-          coverage={stockSel ? stock.data?.coverage?.[sel] : product?.coverage}
+          date={stockSel ? stock.data?.date : deriv.data?.date}
         />}
         {showDaily && stock.isError && <p role="status" className="text-2xs text-fg-dim">서버 연결 확인 필요</p>}
         <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
