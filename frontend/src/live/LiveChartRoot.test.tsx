@@ -1,3 +1,8 @@
+// These tests stub lwc layout; real axis sizing is covered by price-axis-width.spec.ts.
+vi.mock('../chart/util/retainRightPriceScaleWidth', () => ({
+  retainRightPriceScaleWidth: vi.fn(() => () => {}),
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor, createEvent, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,6 +25,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 
 import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
+import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from '../util/time';
@@ -1509,6 +1515,21 @@ describe('LiveChartRoot', () => {
       | { layout?: { attributionLogo?: boolean } }
       | undefined;
     expect(options?.layout?.attributionLogo).toBe(false);
+  });
+
+  it('owns the price-axis width guard for the lifetime of its chart', () => {
+    const release = vi.fn();
+    vi.mocked(retainRightPriceScaleWidth).mockReturnValueOnce(release);
+    const { unmount } = render(
+      <LiveChartRoot code="005930" timeframe="D" bundle={DEFAULT_BUNDLE}
+        clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results.at(-1)?.value;
+    expect(retainRightPriceScaleWidth).toHaveBeenLastCalledWith(chart);
+    unmount();
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release.mock.invocationCallOrder[0]).toBeLessThan(chart.remove.mock.invocationCallOrder[0]);
   });
 
   // Crosshair axis-label chips (2026-08-10). lightweight-charts 5.2.0 defaults
