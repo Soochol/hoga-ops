@@ -306,6 +306,7 @@ function seedWorkspace(
     zOrder: [TEST_WIN],
     groupSymbols: {},
     chartRuntime: {},
+    pendingTransferPinIds: undefined,
   });
 }
 
@@ -387,6 +388,16 @@ describe('LivePage shell', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['/live?code=000660', '000660'],
+    ['/live?index=KOSPI', 'KOSPI'],
+  ])('%s 종목 시드 뒤 전달된 핀을 복원한다', (url, code) => {
+    useWorkspaceStore.setState({ pendingTransferPinIds: [TEST_WIN] });
+    renderWithRouter(url);
+    expect(useWorkspaceStore.getState().windows[0].pinned?.code).toBe(code);
+    expect(useWorkspaceStore.getState().pendingTransferPinIds).toBeUndefined();
   });
 
   it('renders the flip chrome: chart window header + workspace toolbar + canvas window', () => {

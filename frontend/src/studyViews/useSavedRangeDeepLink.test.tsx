@@ -9,6 +9,7 @@ vi.mock('../live/liveNavigate', () => ({ activateLiveCode: vi.fn() }));
 import { getStudyView, type StudyViewListRow } from '../api/studyViews';
 import { activateLiveCode } from '../live/liveNavigate';
 import { useLivePageStore } from '../state/livePage';
+import { useWorkspaceStore } from '../state/workspace';
 import { useSavedRangeDeepLink } from './useSavedRangeDeepLink';
 
 const ROW: StudyViewListRow = {
@@ -41,6 +42,7 @@ describe('useSavedRangeDeepLink', () => {
   });
 
   it('seeds the live symbol and the saved-range slot from ?view=', async () => {
+    const restorePins = vi.spyOn(useWorkspaceStore.getState(), 'restoreTransferredPins');
     vi.mocked(getStudyView).mockResolvedValue(ROW);
     const qc = new QueryClient();
 
@@ -51,6 +53,9 @@ describe('useSavedRangeDeepLink', () => {
     // 라벨까지 넘겨야 창 헤더가 `005930(005930)` 이 되지 않는다(`activateLiveCode` 의
     // `label ?? code` 폴백).
     expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+    expect(restorePins).toHaveBeenCalledOnce();
+    expect(restorePins.mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(activateLiveCode).mock.invocationCallOrder[0]);
+    restorePins.mockRestore();
     expect(useLivePageStore.getState().savedRangeFocus).toEqual({
       viewId: 'v-1',
       code: '005930',

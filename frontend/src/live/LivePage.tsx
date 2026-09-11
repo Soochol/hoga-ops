@@ -79,8 +79,11 @@ export function LivePage() {
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode) { activateLiveCode(queryCode, symbolNameOf(queryCode)); return; }
-    if (isLiveIndexId(queryIndex)) activateLiveInstrument(indexInstrument(queryIndex, queryIndex));
+    if (queryCode) activateLiveCode(queryCode, symbolNameOf(queryCode));
+    else if (isLiveIndexId(queryIndex)) activateLiveInstrument(indexInstrument(queryIndex, queryIndex));
+    else return;
+    // 전 창이 핀이어도 URL 종목이 먼저 들어간 뒤 고정한다.
+    useWorkspaceStore.getState().restoreTransferredPins();
   }, [queryCode, queryIndex, symbolNameOf]);
 
   // 실명 보강 — 시드가 놓친 경우 + 검색창의 "6자리 코드 + Enter"(드롭다운이 비어

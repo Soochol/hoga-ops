@@ -45,12 +45,17 @@ it.each(['?code=000660', '?index=KOSPI', '?view=saved'])('현재 딥링크 탭 �
   const childNavigate = await import('../live/liveNavigate');
   childNavigate.activateLiveCode('000660', 'SK하이닉스');
   expect(child.getState().groupSymbols[2]?.code).toBe('000660');
+  child.getState().restoreTransferredPins();
+  expect(child.getState().windows[0].pinned).toEqual({ code: '000660', name: 'SK하이닉스' });
+  expect(child.getState().pendingTransferPinIds).toBeUndefined();
+  expect(JSON.parse(sessionStorage.getItem(WORKSPACE_STORAGE_KEY)!).windows[0].pinned.code).toBe('000660');
   child.getState().setChartTimeframe('source', '5m');
   childNavigate.openLiveInNewTab({ kind: 'stock', code: '035720', label: '카카오' });
   sessionStorage.clear();
   window.history.replaceState({}, '', open.mock.calls[1][0]);
   vi.resetModules();
   const grandchild = (await import('./workspace')).useWorkspaceStore;
+  expect(grandchild.getState().pendingTransferPinIds).toEqual(['source']);
   expect(grandchild.getState().windows[0].chart).toMatchObject({ timeframe: '5m', indicatorLegendsVisible: false });
   expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBe(sharedBefore);
 });
@@ -81,4 +86,32 @@ it('저장소 쓰기가 불가능하면 기존 링크로 연다', () => {
   const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
   expect(stageWorkspaceTransfer('/live?code=1', { windows: [] })).toBe('/live?code=1');
   write.mockRestore();
+});
+
+
+it('핀 복원 대기는 새로고침을 견디며 켜졌던 창만 한 번 복원한다', async () => {
+  const url = stageWorkspaceTransfer('/live?code=000660', {
+    schema_version: 2,
+    windows: ['pinned', 'free'].map(id => ({ id, kind: 'chart', group: 1,
+      rect: { x: 0, y: 0, w: .5, h: .5 }, chart: { timeframe: 'D' } })),
+    zOrder: ['pinned', 'free'], groupSymbols: { 1: { code: '005930', name: '삼성전자' } },
+    pendingTransferPinIds: ['pinned'],
+  });
+  window.history.replaceState({}, '', url);
+  vi.resetModules();
+  const first = (await import('./workspace')).useWorkspaceStore;
+  first.getState().setChartTimeframe('free', '5m');
+  vi.resetModules();
+  const reloaded = (await import('./workspace')).useWorkspaceStore;
+  expect(reloaded.getState().pendingTransferPinIds).toEqual(['pinned']);
+  (await import('../live/liveNavigate')).activateLiveCode('000660', 'SK하이닉스');
+  reloaded.getState().restoreTransferredPins();
+  expect(reloaded.getState().windows.map(w => w.pinned?.code)).toEqual(['000660', undefined]);
+  vi.resetModules();
+  const finished = (await import('./workspace')).useWorkspaceStore;
+  expect(finished.getState().windows[0].pinned?.code).toBe('000660');
+  expect(finished.getState().pendingTransferPinIds).toBeUndefined();
+  finished.getState().toggleWindowPin('pinned');
+  finished.getState().restoreTransferredPins();
+  expect(finished.getState().windows[0].pinned).toBeUndefined();
 });

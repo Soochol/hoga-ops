@@ -201,6 +201,8 @@ export interface GroupSymbol {
 }
 
 type Persisted = {
+  /** 새 탭의 URL 종목 적용 뒤 복원할 핀. 완료 시 제거하며 대기 중 새로고침에는 유지. */
+  pendingTransferPinIds?: string[];
   windows: WorkspaceWindow[];
   /** 창 id 의 z순서 — 마지막이 포커스(최상단). */
   zOrder: string[];
@@ -220,6 +222,7 @@ type Persisted = {
 export type WorkspaceSnapshot = Omit<Persisted, 'groupSymbols'>;
 
 type Store = Persisted & {
+  restoreTransferredPins: () => void;
   /** 창별 비영속 런타임(팬 백필 from-date 등). 창 닫힘·종목 교체 시 정리. */
   chartRuntime: Record<string, ChartWindowRuntime>;
   canvasSize: Canvas | null;
@@ -498,6 +501,9 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     return { ...fresh, pendingNormalize: false };
   }
   return {
+    pendingTransferPinIds: Array.isArray(parsed.pendingTransferPinIds)
+      ? parsed.pendingTransferPinIds.filter((id): id is string => typeof id === 'string' && windows.some(w => w.id === id))
+      : undefined,
     windows: isDeepLinkTab() && inherited ? windows.map(withoutPin) : windows,
     zOrder: normalizeZOrder(parsed.zOrder, windows),
     groupSymbols: readGroupSymbols(parsed.groupSymbols),
@@ -512,6 +518,7 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
 function persistFromState(state: Persisted): void {
   const snapshot = {
     schema_version: WORKSPACE_SCHEMA_VERSION,
+    ...(state.pendingTransferPinIds?.length ? { pendingTransferPinIds: state.pendingTransferPinIds } : {}),
     windows: state.windows,
     zOrder: state.zOrder,
     groupSymbols: state.groupSymbols,
@@ -859,6 +866,20 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
+  restoreTransferredPins: () => {
+    set((state) => {
+      if (!state.pendingTransferPinIds?.length) return {};
+      const wanted = new Set(state.pendingTransferPinIds);
+      const windows = state.windows.map(w => {
+        const symbol = windowSymbolOf(state, w);
+        return wanted.has(w.id) && !w.pinned && symbol ? { ...w, pinned: symbol } : w;
+      });
+      const next = { windows, pendingTransferPinIds: undefined };
+      persistFromState({ ...state, ...next });
+      return next;
+    });
+  },
+
   pinWindows: (ids) => {
     set((state) => {
       const wanted = new Set(ids);
@@ -1124,7 +1145,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
             return pin ? { ...w, pinned: pin } : w;
           });
       // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
-      const next = { windows, zOrder: normalized.zOrder, groupSymbols: state.groupSymbols };
+      const next = { windows, zOrder: normalized.zOrder, groupSymbols: state.groupSymbols, pendingTransferPinIds: undefined };
       persistFromState(next);
       // 창이 통째로 갈리며 id 도 프리셋 것으로 바뀐다 → 창에 매인 비영속 런타임은
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).
