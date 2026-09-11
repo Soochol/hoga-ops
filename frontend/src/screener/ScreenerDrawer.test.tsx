@@ -644,7 +644,7 @@ describe('ScreenerDrawer', () => {
 
     fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
 
-    expect(open).toHaveBeenCalledWith('/live?code=005930', '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
     // 현재 뷰는 건드리지 않는다 — 종목도 경로도 그대로.
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     expect(screen.getByTestId('pathname').textContent).toBe('/inventory');

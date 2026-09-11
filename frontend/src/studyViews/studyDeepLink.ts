@@ -1,3 +1,5 @@
+import { openWorkspaceInNewTab } from '../live/openWorkspaceInNewTab';
+
 /**
  * 저장뷰 딥링크 — 경로 조립과 "새 브라우저 탭으로 열기" 한 쌍.
  *
@@ -57,5 +59,5 @@ export function savedViewDeepLinkPath(viewId: string): string {
  *  (`openLiveInNewTab` 과 동일). 이 탭의 종목·기간 슬롯은 건드리지 않는다 — 호출부가
  *  `activateLiveCode`·`focusSavedRange` 를 부르지 않는 것이 그 계약의 전부다. */
 export function openSavedViewInNewTab(viewId: string): void {
-  window.open(savedViewDeepLinkPath(viewId), '_blank', 'noopener');
+  openWorkspaceInNewTab(savedViewDeepLinkPath(viewId));
 }

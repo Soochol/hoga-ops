@@ -1,3 +1,4 @@
+import { openWorkspaceInNewTab } from './openWorkspaceInNewTab';
 import { useLivePageStore } from '../state/livePage';
 import { activationTarget, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import {
@@ -85,7 +86,7 @@ export function liveDeepLinkPath(instrument: LiveInstrument): string {
  *  딥링크로 열린 탭은 워크스페이스를 sessionStorage 에 격리하므로(workspace.ts)
  *  이 창의 창 배치·종목을 덮어쓰지 않는다. */
 export function openLiveInNewTab(instrument: LiveInstrument): void {
-  window.open(liveDeepLinkPath(instrument), '_blank', 'noopener');
+  openWorkspaceInNewTab(liveDeepLinkPath(instrument));
 }
 
 export function toGroupSymbol(instrument: LiveInstrument): GroupSymbol {

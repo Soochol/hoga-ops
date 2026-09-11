@@ -4,6 +4,7 @@ import { MAX_GROUP, MIN_GROUP, isGroupId, type GroupId } from '../workspace/grou
 import { create } from 'zustand';
 import { persistJson, readJsonObject } from './persist';
 import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
+import { consumeWorkspaceTransfer } from './workspaceTransfer';
 import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -56,7 +57,8 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
  *  유지한다. 딥링크 탭(`?code=`·`?index=`·`?view=`)은 종전대로 공유 키를 건드리지 않는다.
  *
  *  대가: 탭을 닫으면 그 탭에서만 하던 배치는 사라진다(메인 탭은 시드에 남는다).
- *  아끼는 배치는 레이아웃 프리셋으로 저장한다 — 프리셋이 탭 간 유일한 다리다.
+ *  아끼는 배치는 레이아웃 프리셋으로 저장한다. Ctrl+클릭 새 탭은 클릭 시점의
+ *  배치를 일회성 전달함으로 복사한다(`workspaceTransfer`).
  *
  *  탭 수명 동안 고정한다(모듈 로드 1회 결정). `readStorage()` 가 모듈 초기화 시점에
  *  실행되므로 그보다 늦게 정해지면 하이드레이션이 틀린 저장소를 읽는다. SPA 내에서
@@ -429,12 +431,18 @@ function defaultWindows(): WorkspaceWindow[] {
   return liveDefaultWindows(newWindowId);
 }
 
-/** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 공유 시드를
- *  **읽기만 해서** 물려받는다: 사용자가 늘 쓰던 레이아웃 그대로 열리되, 이후 변경은
+/** raw 스냅샷 — 자기 탭 저장소가 authoritative. 비어 있으면(새 탭) 클릭한 탭의
+ *  일회성 전달을 우선하고, 전달이 없으면 공유 시드를 읽어 물려받는다: 사용자가 늘 쓰던 레이아웃 그대로 열리되, 이후 변경은
  *  그 탭에서 시작한다. 시드는 이 시점에 쓰지 않는다(열기만 해서는 아무것도 안 바뀜). */
 function readWorkspaceSnapshot(): { snapshot: Record<string, unknown>; inherited: boolean } {
   const own = readJsonObject(WORKSPACE_STORAGE_KEY, 'tab');
   if (Array.isArray(own.windows)) return { snapshot: own, inherited: false };
+  const transferred = consumeWorkspaceTransfer();
+  if (transferred) {
+    // 다음 새로고침은 일회성 전달함이 아니라 이 탭의 배치를 복원한다.
+    persistJson(WORKSPACE_STORAGE_KEY, transferred, 'tab');
+    return { snapshot: transferred, inherited: true };
+  }
   return { snapshot: readJsonObject(WORKSPACE_STORAGE_KEY, 'shared'), inherited: true };
 }
 
