@@ -78,7 +78,6 @@ export function TradeValueCard() {
   return <MarketCard className="flex flex-col gap-sm p-md">
     <CardHeader title="거래대금 추이" hint="일별 거래대금 · 조원"
       right={<ModeSwitch value={span} onChange={setSpan} options={SPANS} label="거래대금 기간" />} />
-    <p className="text-xs text-fg-dim">막대: 일별 거래대금 · 점선: 직전 기간 하루 평균 · 두 시장은 같은 눈금</p>
     <div className="market-pair market-trade-body grid gap-md">
       {tiles.every(t => t.points.length === 0) ? <EmptyNote>{tv.isLoading ? '거래대금 이력을 불러오는 중입니다.' : '거래대금 이력을 받지 못했습니다.'}</EmptyNote>
         : tiles.map(t => t.points.length ? <Tile key={t.name} {...t} max={max} today={today} />

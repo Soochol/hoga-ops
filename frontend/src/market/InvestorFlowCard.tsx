@@ -212,7 +212,6 @@ export function InvestorCard() {
           date={stockSel ? stock.data?.date : deriv.data?.date}
         />}
         {showDaily && stock.isError && <p role="status" className="text-2xs text-fg-dim">서버 연결 확인 필요</p>}
-        <p className="text-2xs text-fg-dim">현물 · KOSPI 200 파생 · 미니 파생 · 주식선물</p>
         <FlowPicker value={sel} onChange={setSel} products={products} />
         {stockSel && !showDaily && !stock.isLoading && (stock.data?.markets[sel]?.length ?? 0) === 0 && (
           <button type="button" className="self-center min-h-[1.5rem] rounded px-sm py-2xs text-xs text-accent hover:bg-bg-input-hover" onClick={() => setMode('daily')}>일별 수급 보기</button>
@@ -264,7 +263,6 @@ function FlowBody({
           ))}
         </span>
       </div>
-      <p className="text-2xs text-fg-dim">선: 시간별 누적 순매수</p>
       {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
           "하루치 흐름" 처럼 읽히던 왜곡을 막는다. 부분 커버리지는 부분 선이다. */}
       <SessionLinesChart
