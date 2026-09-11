@@ -9,7 +9,6 @@ import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs } from '../../state/chartPrefs';
 import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
-import { formatKoreanInt } from '../../util/koreanNumber';
 import { useShallow } from 'zustand/react/shallow';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { cumulativeCachedData, cumulativePriceFormat } from './fillStrength';
@@ -37,7 +36,7 @@ const useVolumeContext = (): VolumePaneContext =>
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => formatKoreanInt(v),
+  formatter: (v: number) => `${(v / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 3 })}K`,
   minMove: 1,
 };
 

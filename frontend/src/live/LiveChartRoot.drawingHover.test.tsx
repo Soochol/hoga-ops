@@ -1,3 +1,8 @@
+// These tests stub lwc layout; real axis sizing is covered by price-axis-width.spec.ts.
+vi.mock('../chart/util/retainRightPriceScaleWidth', () => ({
+  retainRightPriceScaleWidth: vi.fn(() => () => {}),
+}));
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

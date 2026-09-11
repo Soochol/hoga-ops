@@ -26,6 +26,7 @@ import {
 } from './paneGroupSpecs';
 import { resolveAxisMode } from '../chart/paneGroups';
 import { usePaneFolding } from './usePaneFolding';
+import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
 import { deriveHogaMissingDetail, deriveHogaMissingNotice } from './hogaMissingNotice';
@@ -1817,6 +1818,7 @@ export function LiveChartRoot({
       rightPriceScale: { borderVisible: false },
       autoSize: true,
     });
+    const releasePriceScaleWidth = retainRightPriceScaleWidth(c as IChartApi);
     setChartEntry({ chart: c as IChartApi, key: viewKey });
     // autoSize: true already attaches lightweight-charts' own ResizeObserver
     // to the container — an extra manual observer here just produces the
@@ -1845,6 +1847,7 @@ export function LiveChartRoot({
     }
 
     return () => {
+      releasePriceScaleWidth();
       c.remove();
       setChartEntry(null);
       // 파괴된 차트를 dev 전역이 계속 붙들면 그 인스턴스와 데이터가 window 에서
