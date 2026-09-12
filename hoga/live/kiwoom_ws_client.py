@@ -217,20 +217,24 @@ class KiwoomWsClient:
 
         킥(close 1000)이 _max_kicks회 연속되면 kicked_by_peer로 정지(무한 핑퐁 방지).
         """
+        from . import provider_errors  # noqa: PLC0415
         self._codes = list(codes)
         while True:
             if self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
                 self.connected = False
                 await asyncio.sleep(30)
                 continue
+            self._error_generation = provider_errors.begin(self, "session")
             try:
                 await self._session_once()
             except asyncio.CancelledError:
+                provider_errors.clear(self)
                 self.connected = False
                 raise
             except Exception as e:  # noqa: BLE001 — 연결 오류는 전부 재시도 대상
                 self.last_close_code = getattr(e, "code", None)
                 self.last_error_type = type(e).__name__
+                provider_errors.finish(self, "session", self._error_generation, "ws", e)
                 self.connected = False
                 self._ws = None
                 if self._is_kick(e):
@@ -294,6 +298,10 @@ class KiwoomWsClient:
                 await self._register_sectors(ws)
                 await self._register_all(ws, list(self._codes))
                 await self._register_vi(ws)
+                from . import provider_errors  # noqa: PLC0415
+                provider_errors.finish(self, "session", getattr(self, "_error_generation", 0), "ws")
+                self.last_error_type = None
+                self.last_close_code = None
                 self._registration_finished = True
                 self._ready_since = self._monotonic() if self.registration_ready else None
                 self._reset_after_stable_session()
@@ -368,7 +376,8 @@ class KiwoomWsClient:
             if self._invalidate_fn is not None:
                 with contextlib.suppress(Exception):
                     self._invalidate_fn()  # 거부 토큰 캐시 무효화 → 다음 재연결이 재발급
-            raise RuntimeError(f"kiwoom LOGIN failed rc={rc} {ack.get('return_msg')!r}")
+            from .kiwoom_errors import KiwoomAuthError  # noqa: PLC0415
+            raise KiwoomAuthError(f"kiwoom LOGIN failed rc={rc}")
 
     async def _register_all(self, ws: _WsLike, codes: list[str]) -> None:
         """전 종목을 배치(50)로 REG. 성공(rc=0) 배치만 _acked에 추가 — 거부/유량소진 배치는

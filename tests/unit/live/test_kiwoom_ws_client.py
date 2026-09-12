@@ -497,3 +497,25 @@ async def test_send_error_survives_concurrent_receive_failure():
         await client._session_once()
     ws.close.assert_awaited_once()
     assert not client._ack_waiters
+
+
+async def test_login_rejection_is_published_as_auth_and_recovery_clears_it(monkeypatch):
+    from hoga.live import provider_errors
+
+    provider_errors._observations.clear()
+    monkeypatch.setattr(M, "_BACKOFF_S", [0.01] * 8)
+    ws = FakeServer(login_rc=1)
+    client = _client(ws)
+    task = await _run_briefly(client, [], hold=0.005)
+    try:
+        assert any(f.channel == 'ws' and f.kind == 'auth' for f in provider_errors.failures())
+        ws._login_rc = 0
+        for _ in range(100):
+            if client._registration_finished:
+                break
+            await asyncio.sleep(0.001)
+        assert client.connected
+        assert client._registration_finished
+        assert not any(f.channel == 'ws' for f in provider_errors.failures())
+    finally:
+        await _cancel(task)
