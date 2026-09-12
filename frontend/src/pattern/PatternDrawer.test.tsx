@@ -874,11 +874,27 @@ describe('PatternDrawer — 저장 목록과 불러오기', () => {
     expect(body.since).toMatch(/^\d{8}$/);
   });
 
-  it('삭제는 목록에서 바로 한다', async () => {
+  it('삭제 성공 시 새로고침 없이 저장 행과 개수를 갱신한다', async () => {
+    let saves = [SAVE_RECENT, SAVE_FIXED, SAVE_MA_OFF];
+    listPatternSaves.mockImplementation(async () => ({ schema_version: 1, saves }));
+    const actualApi = await vi.importActual<typeof import('../api/screener')>('../api/screener');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/config.json')) return Response.json({ api_url: 'http://test' });
+      // The real server deletes the save and returns an empty HTTP 204 response.
+      saves = saves.filter((save) => save.id !== 'f1');
+      return new Response(null, { status: 204 });
+    });
+    deletePatternSave.mockImplementation((id: string) => actualApi.deletePatternSave(id));
     const user = userEvent.setup();
     await openSaves(user);
     await user.click(await screen.findByRole('button', { name: /abcd 삭제/ }));
     expect(deletePatternSave).toHaveBeenCalledWith('f1');
+    try {
+      await vi.waitFor(() => expect(screen.queryByTestId('pattern-save-f1')).not.toBeInTheDocument());
+      expect(screen.getByText(/2개 저장됨/)).toBeInTheDocument();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

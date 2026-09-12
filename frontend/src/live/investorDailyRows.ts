@@ -52,8 +52,8 @@ export const INVESTOR_COLUMNS: readonly InvestorColumn[] = [
   { key: 'nation', label: '국가', group: 'orgn' },
 ];
 
-/** 표시 기간 칩. 벤더 페이지가 100행(≈5개월)이라 **셋 다 콜 1회**로 덮인다. */
-export const INVESTOR_DAILY_SPANS = [5, 20, 60] as const;
+/** 0은 전체: 최근 60행부터 스크롤로 확장한다. 양수는 고정 거래일 수다. */
+export const INVESTOR_DAILY_SPANS = [5, 20, 60, 0] as const;
 export type InvestorDailySpan = (typeof INVESTOR_DAILY_SPANS)[number];
 
 export type InvestorCellValues = Record<InvestorColumnKey, number | null>;
