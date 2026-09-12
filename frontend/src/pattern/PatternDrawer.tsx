@@ -25,6 +25,7 @@ import {
   DEFAULT_CONDITIONS,
   PERIODS,
   mergeByHeadroom,
+  distinctPatternRanges,
   sinceFor,
   exclusionKey,
   isExcludedRow,
@@ -610,9 +611,9 @@ export function PatternDrawer() {
       // 병합 경로도 **자르기 전에** 제외를 건다(`visibleRows` 와 같은 순서).
       // ⚠ `isExcludedRow` 를 써야 한다 — 자리 키만 보면 **종목 전체 제외가 안 걸린다**.
       //   공장값이 ±2봉이라 이 경로가 기본이고, 그래서 브라우저에서 바로 드러났다.
-      return mergeByHeadroom(data.results)
-        .filter((m) => m.row.corr >= conditions.simFloor && !isExcludedRow(m.row, excludedKeys))
-        .slice(0, conditions.count);
+      const candidates = mergeByHeadroom(data.results)
+        .filter((m) => m.row.corr >= conditions.simFloor && !isExcludedRow(m.row, excludedKeys));
+      return distinctPatternRanges(candidates).slice(0, conditions.count);
     }
     if (!result) return [];
     return visibleRows(result.matches, conditions, excludedKeys).map((row) => ({

@@ -2530,6 +2530,8 @@ class PatternMatchRow(BaseModel):
     from_date: str = Field(pattern=r"^\d{8}$")
     to_date: str = Field(pattern=r"^\d{8}$")
     corr: float
+    #: 같은 응답의 동일 종목 내 실제 봉 위치. 구간 중복 판정용.
+    bar_offset: int | None = Field(default=None, ge=0)
     #: 매치 구간의 원가격 봉 — `[open, high, low, close]` 가 길이 L 만큼. 썸네일용이다.
     bars: list[list[float]]
     #: `history` 전용 — 매치 **뒤** `forward_days` 봉의 종가. 「그 다음에 뭐가 왔나」가

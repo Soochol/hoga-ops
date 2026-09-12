@@ -294,3 +294,28 @@ export function visibleRows(
     : passing;
   return kept.slice(0, count);
 }
+
+/** 순위순 후보에서 시작·끝이 각각 2봉 이내인 같은 종목의 구간은 대표 하나만 남긴다.
+ * 필터 이후, 개수 제한 이전에 적용한다. 날짜 간격은 휴장·주봉·월봉 때문에 쓰지 않는다.
+ * 대표와 직접 비교하므로 인접 후보의 연쇄로 먼 구간까지 사라지지 않는다.
+ */
+export function distinctPatternRanges(
+  matches: ReturnType<typeof mergeByHeadroom>,
+): ReturnType<typeof mergeByHeadroom> {
+  const kept: ReturnType<typeof mergeByHeadroom> = [];
+  for (const match of matches) {
+    const duplicate = kept.some((other) => {
+      if (match.row.code !== other.row.code) return false;
+      const a = match.row.bar_offset;
+      const b = other.row.bar_offset;
+      if (a == null || b == null) {
+        return match.row.from_date === other.row.from_date
+          && match.row.to_date === other.row.to_date;
+      }
+      return Math.abs(a - b) <= 2
+        && Math.abs(a + match.length - b - other.length) <= 2;
+    });
+    if (!duplicate) kept.push(match);
+  }
+  return kept;
+}

@@ -475,7 +475,8 @@ def test_route_response_passes_response_model_with_wire_keys(client):
     assert set(result["dist"]) == {"p50", "p95", "p99", "p99_99", "sample"}
     row = result["matches"][0]
     assert set(row) == {"code", "name", "from_date", "to_date", "corr", "bars",
-                        "tail", "forward_pct", "ma", "struct_match", "struct_miss"}
+                        "tail", "forward_pct", "ma", "struct_match", "struct_miss", "bar_offset"}
+    assert isinstance(row["bar_offset"], int)
     assert len(row["bars"][0]) == 4                    # [open, high, low, close]
 
 
@@ -1343,3 +1344,16 @@ def test_multi_length_scrub_reports_the_furthest_failure_not_the_first(tmp_path)
         exclude_etf=False, top=10))
     assert res.results == []
     assert res.empty_reason == "no_candidates", "첫 길이(flat)를 채택하면 여기서 갈린다"
+
+
+@pytest.mark.parametrize("mode", ["now", "history"])
+def test_flex_matches_expose_actual_bar_offsets(corpus, mode):
+    result = _reason(corpus, mode=mode, flex_bars=2)
+    assert len(result.results) > 1
+    dates = _dates(60)
+    for block in result.results:
+        assert block.matches
+        for match in block.matches:
+            assert match.bar_offset is not None
+            assert dates[match.bar_offset].strftime("%Y%m%d") == match.from_date
+            assert dates[match.bar_offset + block.length - 1].strftime("%Y%m%d") == match.to_date

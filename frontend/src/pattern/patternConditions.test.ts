@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow,
+  distinctPatternRanges, mergeByHeadroom, sinceFor, visibleRows, PERIODS, withWholeCodeExcluded, isExcludedRow,
   DEFAULT_CONDITIONS, defaultConditionsFor, forwardBarsFor, maLabel, periodIsThinFor,
   STRUCT_ANCHORS, STRUCT_STEPS, structLabel, structRemaining,
 } from './patternConditions';
@@ -176,5 +176,39 @@ describe('기준선 방식 — 하나로 고르지 않는다', () => {
 
   it('둘 다 설명을 진다 — 판별력이 아니라 **질문이 바뀌는** 축이라서', () => {
     for (const a of STRUCT_ANCHORS) expect(a.note).toBeTruthy();
+  });
+});
+
+describe('distinctPatternRanges', () => {
+  const candidate = (offset: number, length = 7, code = 'a', corr = .95) => ({
+    row: { ...row(corr, code), bar_offset: offset }, length, headroom: corr - .8,
+  });
+
+  it('시작 또는 끝이 2봉 다른 구간은 최고 순위 하나만 남긴다', () => {
+    const best = candidate(10);
+    expect(distinctPatternRanges([best, candidate(10, 9), candidate(12), candidate(9, 8)]))
+      .toEqual([best]);
+  });
+
+  it('다른 종목과 먼 구간은 유지하고 인접 후보를 연쇄 병합하지 않는다', () => {
+    const matches = [candidate(10), candidate(12), candidate(14), candidate(10, 7, 'b')];
+    expect(distinctPatternRanges(matches)).toEqual([matches[0], matches[2], matches[3]]);
+  });
+
+  it('시작과 끝 둘 다 가까워야 한다', () => {
+    const matches = [candidate(10), candidate(10, 10), candidate(7, 10)];
+    expect(distinctPatternRanges(matches)).toEqual(matches);
+  });
+
+  it('필터를 통과한 후보에서 대표를 고르고 개수 제한은 중복 제거 뒤 적용한다', () => {
+    const matches = [candidate(10, 7, 'a', .8), candidate(11), candidate(12), candidate(30)];
+    expect(distinctPatternRanges(matches.filter((m) => m.row.corr >= .9)).slice(0, 2))
+      .toEqual([matches[1], matches[3]]);
+  });
+
+  it('봉 위치가 없는 구 응답은 날짜가 완전히 같은 경우만 합친다', () => {
+    const first = { row: row(.95), length: 7, headroom: .15 };
+    const distant = { ...first, row: { ...first.row, from_date: '20230101' } };
+    expect(distinctPatternRanges([first, first, distant])).toEqual([first, distant]);
   });
 });
