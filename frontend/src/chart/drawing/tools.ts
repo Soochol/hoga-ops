@@ -1420,8 +1420,8 @@ export const textTool: DrawingToolSpec = {
   cursor: 'text',
   shortcut: { alt: true, key: 't' },
   onPointerDown(ctx) {
-    // Anchor the label at the click; the overlay opens a DOM <input> there and
-    // commits the text on Enter/blur (IME-safe). If an edit is already open the
+    // Anchor the label at the click; the overlay opens a DOM <textarea> there and
+    // commits the text on Enter/blur (IME-safe); Shift+Enter inserts a newline. If an edit is already open the
     // overlay commits it first (pointerdown precedes the input's blur).
     const paneId = ctx.paneIdAtY(ctx.py);
     // Resolve an anchor; fall back to a price-only point in the empty band so a

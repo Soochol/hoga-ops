@@ -1,4 +1,5 @@
 // frontend/src/chart/drawing/render.ts
+import { textLayout } from './textLayout';
 import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
@@ -526,18 +527,18 @@ function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selec
   c.font = textFont(t.fontSize);
   c.textBaseline = 'top';
   c.textAlign = 'left';
+  const layout = textLayout(t.text, t.fontSize, selected ? (line) => c.measureText(line).width : undefined);
   if (selected) {
-    const w = c.measureText(t.text).width;
     c.save();
     c.strokeStyle = t.color;
     c.globalAlpha = 0.6;
     c.lineWidth = 1;
     c.setLineDash([3, 2]);
-    c.strokeRect(x - 3, y - 2, w + 6, t.fontSize + 4);
+    c.strokeRect(x - 3, y - 2, layout.width + 6, layout.height + 4);
     c.restore();
   }
   c.fillStyle = t.color;
-  c.fillText(t.text, x, y);
+  layout.lines.forEach((line, index) => c.fillText(line, x, y + index * layout.lineHeight));
   c.restore();
 }
 
