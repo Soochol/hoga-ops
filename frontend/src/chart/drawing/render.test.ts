@@ -772,3 +772,14 @@ describe('renderAlignGuides', () => {
     expect(c.stroke).not.toHaveBeenCalled();
   });
 });
+
+
+it('renders explicit lines and empty lines inside one selection box', () => {
+  const c = makeCanvasSpy();
+  const ctx = { ...makeProjectCtx(), realMsToXClamped: () => 10, priceToY: () => 20 };
+  const t: Text = { id: 'multi', kind: 'text', at: { realMs: 1, price: 1 },
+    text: '가나다라\n\n마바사아', fontSize: 20, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' };
+  renderDrawing(c, ctx, t, true);
+  expect(c.fillText.mock.calls).toEqual([['가나다라', 10, 20], ['', 10, 45], ['마바사아', 10, 70]]);
+  expect(c.strokeRect).toHaveBeenCalledWith(7, 18, 46, 74);
+});

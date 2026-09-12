@@ -12,6 +12,7 @@
 // Trendline shifts both endpoints. Pencil shifts every vertex.
 
 import type { Drawing, Hline, Measure, PaneId, Pencil, Rect, Text, Trendline, Vline } from './types';
+import { textLayout } from './textLayout';
 import { isLocked } from './types';
 
 /**
@@ -383,12 +384,8 @@ function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | 
   let min = Math.min(...projected);
   let max = Math.max(...projected);
   if (m.kind === 'text') {
-    if (axis === 'y') {
-      max = min + m.fontSize;
-    } else {
-      const w = coords.measureTextWidth?.(m.text, m.fontSize);
-      if (w != null) max = min + w;
-    }
+    const layout = textLayout(m.text, m.fontSize, coords.measureTextWidth);
+    max = min + (axis === 'y' ? layout.height : layout.width);
   }
   return { min, max, center: (min + max) / 2 };
 }

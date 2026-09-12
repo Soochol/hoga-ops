@@ -11,6 +11,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useIsFocusedWindow } from '../live/workspace/windowView';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
+import { textLayout } from './drawing/textLayout';
 import { textFont, measureTextWidth, type GhostPreview } from './drawing/render';
 import {
   DrawingsPrimitive,
@@ -270,10 +271,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // 같은 이유로 언마운트 정리가 최신 되돌리기 상태를 걷게 하는 통로.
   const cancelForwardRef = useRef<() => void>(() => {});
 
-  // Text editing — a DOM <input> rendered over the canvas (IME-safe).
+  // Text editing — a DOM <textarea> rendered over the canvas (IME-safe).
   const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
   const [textValue, setTextValue] = useState('');
-  const textInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
   const marqueeBoxRef = useRef<HTMLDivElement>(null);
   // `textEdit` is also mirrored to a ref so the pointer/keyboard closures (which
   // don't re-bind every render) can read the current editing state.
@@ -1404,6 +1405,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     return x != null && y != null ? { x, y } : { x: edit.px, y: edit.py };
   };
   const textEditPos = textEdit ? textEditorPoint(textEdit) : null;
+  const editorLayout = textEdit ? textLayout(textValue, textEdit.fontSize, measureTextWidth) : null;
 
   /**
    * Reposition the open editor from inside lwc's frame (via DrawingsSnapshot's
@@ -1475,10 +1477,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         style={{ display: 'none' }}
       />
 
-      {textEdit && textEditPos && (
-        <input
+      {textEdit && textEditPos && editorLayout && (
+        <textarea
           ref={textInputRef}
           data-drawing-text-input
+          aria-label="텍스트 그리기"
+          title="Shift+Enter 줄바꿈 · Enter 완료 · Esc 취소"
+          wrap="off"
+          rows={editorLayout.lines.length}
           value={textValue}
           onChange={(e) => setTextValue(e.target.value)}
           onBlur={(e) => commitText(e.currentTarget.value)}
@@ -1494,7 +1500,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           onPointerUp={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
               // Blur instead of committing inline. blur() first ends any active
               // IME composition (한글 조합 확정) — committing the composed char to
               // the input value — then fires onBlur, which commits. This is the
@@ -1510,7 +1516,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             e.stopPropagation();
           }}
           placeholder="텍스트…"
-          className="absolute z-30 rounded border border-accent bg-bg-card px-1 py-0 text-fg outline-none"
+          className="absolute z-30 resize-none rounded border border-accent bg-bg-card px-1 py-0 text-fg outline-none"
           style={{
             // Positioned by transform, not left/top: `syncTextEditorPosition`
             // rewrites it every lwc frame so the box tracks its anchor during a
@@ -1519,6 +1525,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             top: 0,
             transform: `translate(${textEditPos.x}px, ${textEditPos.y}px)`,
             font: textFont(textEdit.fontSize),
+            lineHeight: `${editorLayout.lineHeight}px`,
+            width: `${editorLayout.width + 10}px`,
+            height: `${editorLayout.lines.length * editorLayout.lineHeight + 2}px`,
+            maxWidth: '80%',
+            maxHeight: '50vh',
             pointerEvents: 'auto',
             minWidth: '4rem',
           }}

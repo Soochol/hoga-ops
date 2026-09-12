@@ -1,5 +1,6 @@
 // frontend/src/chart/drawing/hitTest.ts
 
+import { textLayout } from './textLayout';
 import type { Drawing, PaneId } from './types';
 import { HIT_THRESHOLD, subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 
@@ -153,14 +154,14 @@ export function hitTestDrawings(
       const projectX = coord.realMsToCanvasXClamped ?? coord.realMsToCanvasX;
       const x = projectX(d.at.realMs);
       const y = coord.priceToCanvasY(d.at.price, d.paneId);
-      const w = coord.measureTextWidth?.(d.text, d.fontSize) ?? 0;
+      const { width: w, height: h } = textLayout(d.text, d.fontSize, coord.measureTextWidth);
       if (
         x != null &&
         y != null &&
         px >= x - 3 &&
         px <= x + w + 3 &&
         py >= y - 2 &&
-        py <= y + d.fontSize + 4
+        py <= y + h + 4
       ) {
         return d;
       }
@@ -342,10 +343,10 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
       const x = projectX(d.at.realMs);
       const y = coord.priceToCanvasY(d.at.price, d.paneId);
       if (x == null || y == null) return false;
-      const w = coord.measureTextWidth?.(d.text, d.fontSize) ?? 0;
+      const { width: w, height: h } = textLayout(d.text, d.fontSize, coord.measureTextWidth);
       // Same box renderText draws into (and hitTestDrawings clicks), minus the
       // few px of click slop — a marquee is aimed, not fumbled for.
-      return boxesOverlap({ x1: x, y1: y, x2: x + w, y2: y + d.fontSize }, rect);
+      return boxesOverlap({ x1: x, y1: y, x2: x + w, y2: y + h }, rect);
     }
     case 'pencil': {
       const poly: Pixel[] = [];
