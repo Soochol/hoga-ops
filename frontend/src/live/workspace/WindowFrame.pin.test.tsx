@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { WINDOW_KINDS } from '../../state/workspace';
 import { WindowFrame } from './WindowFrame';
 
 /** 프레임 크롬만 보므로 종목 없는 데이터 창으로 렌더한다 — 차트 창은 `symbolCode` 가
@@ -124,10 +125,10 @@ describe('창 헤더 고정(핀) 버튼', () => {
   });
 });
 
-it('차트 최대화 옆 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async () => {
+it.each(WINDOW_KINDS)('%s 최대화 옆 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async (kind) => {
   const onToggleAlwaysOnTop = vi.fn();
   const onHandleDown = vi.fn();
-  renderFrame({ kind: 'chart', symbolCode: null, alwaysOnTop: true,
+  renderFrame({ kind, symbolCode: null, alwaysOnTop: true,
     onToggleAlwaysOnTop, onHandleDown, onToggleMaximize: vi.fn() });
   const button = screen.getByRole('button', { name: '항상 위' });
   expect(button).toHaveAttribute('aria-pressed', 'true');

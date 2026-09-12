@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+import { WINDOW_KINDS } from './workspace';
 import { windowStackOrder } from '../workspace/zOrder';
 
 beforeEach(() => {
@@ -7,9 +8,9 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-it('항상 위는 포커스와 독립적이며 저장·복원과 해제가 가능하다', async () => {
+it.each(WINDOW_KINDS)('%s 창의 항상 위는 포커스와 독립적이며 저장·복원과 해제가 가능하다', async (kind) => {
   const { useWorkspaceStore, snapshotWorkspace } = await import('./workspace');
-  const top = useWorkspaceStore.getState().addWindow('chart');
+  const top = useWorkspaceStore.getState().addWindow(kind);
   const normal = useWorkspaceStore.getState().addWindow('chart');
   useWorkspaceStore.getState().toggleAlwaysOnTop(top);
   useWorkspaceStore.getState().focusWindow(normal);
