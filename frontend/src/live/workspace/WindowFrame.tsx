@@ -153,7 +153,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </svg>
             </button>
           )}
-          {kind === 'chart' && onToggleAlwaysOnTop && (
+          {onToggleAlwaysOnTop && (
             <button
               type="button"
               aria-label="항상 위"

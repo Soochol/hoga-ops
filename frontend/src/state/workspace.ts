@@ -385,8 +385,8 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
     const pinned = readSymbol(w.pinned);
     if (pinned) win.pinned = pinned;
   }
+  if (w.alwaysOnTop === true) win.alwaysOnTop = true;
   if (w.kind === 'chart') {
-    if (w.alwaysOnTop === true) win.alwaysOnTop = true;
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
     // (`indicatorsWindowMigration`) 다음 저장 때 자연 소멸한다.
@@ -800,7 +800,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 
   toggleAlwaysOnTop: (id) => {
     set((state) => {
-      if (!state.windows.some((w) => w.id === id && w.kind === 'chart')) return {};
+      if (!state.windows.some((w) => w.id === id)) return {};
       const windows = state.windows.map((w) => w.id === id
         ? { ...w, alwaysOnTop: !w.alwaysOnTop } : w);
       persistFromState({ ...state, windows });
