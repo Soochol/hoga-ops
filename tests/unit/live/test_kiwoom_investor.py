@@ -464,3 +464,32 @@ def test_signed_parser_tolerates_vendor_plus_prefix() -> None:
 def test_signed_parser_never_raises(bad) -> None:
     from hoga.live.kiwoom_investor import _signed
     assert _signed(bad) == 0
+
+
+@pytest.mark.parametrize('axis', ['1', '2'])
+@pytest.mark.parametrize(('side', 'vendor_side'), [('buy', '1'), ('sell', '2')])
+async def test_daily_gross_trade_side_uses_vendor_totals(axis, side, vendor_side):
+    # Synthetic gross fixture: direction signs must not make gross sales negative.
+    row = dict(ROW_59, frgnr_invsr='-120', natfor='-5', orgn='-80',
+               ind_invsr='-200', etc_corp='-10', fnnc_invt='-80', insrnc='0',
+               invtrt='0', etc_fnnc='0', bank='0', penfnd_etc='0', samo_fund='0', natn='0')
+
+    def handler(request):
+        body = json.loads(request.content)
+        assert body['trde_tp'] == vendor_side
+        assert body['amt_qty_tp'] == axis
+        assert body['unit_tp'] == '1'
+        return _ok('stk_invsr_orgn', [row])
+
+    client = _client(handler)
+    try:
+        result = await fetch_investor_net(client, '005930', '20260803', '20260803',
+                                          axis=axis, trade_side=side)
+    finally:
+        await client.aclose()
+    point = result.points[0]
+    assert point.foreign_net == 125
+    assert point.institution_net == 80
+    assert point.breakdown.individual == 200
+    assert point.breakdown.fin_invest == 80
+    assert not result.violations

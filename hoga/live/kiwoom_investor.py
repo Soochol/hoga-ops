@@ -68,6 +68,7 @@ from hoga.live.investor import (
     InvestorNetInvariantViolation,
     InvestorNetPoint,
     InvestorSubjectBreakdown,
+    InvestorTradeSide,
     InvestorTrendEstimateRow,
 )
 from hoga.live.kiwoom_errors import KiwoomApiError
@@ -129,6 +130,8 @@ _ORGN_PARTS: tuple[tuple[str, str], ...] = (
 _AMOUNT_ROUNDING_TOLERANCE = (len(_ORGN_PARTS) + 1) // 2
 
 _TRDE_TP_ALL = "0"
+# Official ka10059 contract: https://openapi.kiwoom.com/m/guide/apiguide/01/ka10059
+INVESTOR_TRADE_PARAM: dict[InvestorTradeSide, str] = {"net": "0", "buy": "1", "sell": "2"}
 _STEX_ALL = "3"
 _DATE_LEN = 8
 _MAX_PAGES = 6
@@ -194,6 +197,7 @@ async def fetch_investor_net(
     to_yyyymmdd: str,
     *,
     axis: str = AMT_QTY_QUANTITY,
+    trade_side: InvestorTradeSide = "net",
     run_page: PageRunner | None = None,
 ) -> InvestorNetFetchResult:
     """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
@@ -215,13 +219,18 @@ async def fetch_investor_net(
         "ka10059",
         {
             "stk_cd": code, "dt": to_yyyymmdd,
-            "amt_qty_tp": axis, "trde_tp": _TRDE_TP_ALL,
+            "amt_qty_tp": axis, "trde_tp": INVESTOR_TRADE_PARAM[trade_side],
             "unit_tp": UNIT_TP_SHARES,
         },
         max_pages=_MAX_PAGES,
         stop=_covered,
         run_page=run_page,
     )
+
+    def value(raw: object) -> int:
+        parsed = _signed(raw)
+        # Gross buy/sell are magnitudes; net alone preserves direction.
+        return parsed if trade_side == "net" else abs(parsed)
 
     points: list[InvestorNetPoint] = []
     violations: list[InvestorNetInvariantViolation] = []
@@ -237,8 +246,8 @@ async def fetch_investor_net(
         if date_s in seen or not (from_yyyymmdd <= date_s <= to_yyyymmdd):
             continue
         seen.add(date_s)
-        institution = _signed(row.get("orgn"))
-        parts = {field: _signed(row.get(key)) for key, field in _ORGN_PARTS}
+        institution = value(row.get("orgn"))
+        parts = {field: value(row.get(key)) for key, field in _ORGN_PARTS}
         # 항등식 경계 방어. 실측 표본이 1종목뿐이라(#1041 계열 주석) 나머지 종목은
         # 런타임이 본다 — 어긋나도 **행을 버리지 않는다**: 상위 3주체는 벤더가 직접
         # 준 값이라 여전히 옳고, 버리면 멀쩡한 날이 화면에서 사라진다. 대신 경고를
@@ -254,12 +263,12 @@ async def fetch_investor_net(
             ))
         points.append(InvestorNetPoint(
             t_ms=daily_anchor_ms(date_s),
-            foreign_net=foreign_net(row, base="frgnr_invsr", native="natfor"),
+            foreign_net=value(row.get("frgnr_invsr")) + value(row.get("natfor")),
             institution_net=institution,
             breakdown=InvestorSubjectBreakdown(
-                individual=_signed(row.get("ind_invsr")),
-                native_foreign=_signed(row.get("natfor")),
-                other_corp=_signed(row.get("etc_corp")),
+                individual=value(row.get("ind_invsr")),
+                native_foreign=value(row.get("natfor")),
+                other_corp=value(row.get("etc_corp")),
                 **parts,
             ),
         ))

@@ -1932,10 +1932,10 @@ def _kiwoom_investor_seam(monkeypatch):
 
     _fake_kiwoom_client["client"] = None
 
-    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, axis="2", run_page=None):
+    async def _net(client, code, from_yyyymmdd, to_yyyymmdd, *, axis="2", trade_side="net", run_page=None):
         if run_page is not None:
             await run_page(_fake_page_fetch, 0)
-        return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd, axis=axis)
+        return await client.fetch_investor_net(code, from_yyyymmdd, to_yyyymmdd, axis=axis, trade_side=trade_side)
 
     async def _market_day(client, index, date_yyyymmdd):
         # ka10051 은 하루치 TR 이다(ADR-0137) — 페이크 클라이언트는 아직 구간 API 라
@@ -2058,17 +2058,19 @@ class _FakeKisForInvestor:
         self.calls: list[tuple[str, str, str]] = []
         #: 어댑터에 도달한 축("2"=수량 · "1"=금액) — 라우트가 축을 뚫는지 본다.
         self.axes: list[str] = []
+        self.trade_sides: list[str] = []
         self.violations: list[InvestorNetInvariantViolation] = []
         self.raise_rate_limit_on_call: int | None = None
         #: 실으면 모든 포인트가 같은 분해를 든다. 기본 None 은 지수 경로와 같은 모양이다.
         self.breakdown: InvestorSubjectBreakdown | None = None
 
     async def fetch_investor_net(
-        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, *, axis: str = "2"
+        self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, *, axis: str = "2", trade_side="net"
     ) -> InvestorNetFetchResult:
         idx = len(self.calls)
         self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
         self.axes.append(axis)
+        self.trade_sides.append(trade_side)
         if self.raise_rate_limit_on_call is not None and idx == self.raise_rate_limit_on_call:
             from hoga.live.kiwoom_errors import KiwoomRateLimitError
 
@@ -2428,7 +2430,7 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> 
 
 def test_past_investor_net_empty_result_cached(tmp_path, monkeypatch) -> None:
     class _EmptyKis(_FakeKisForInvestor):
-        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd, *, axis="2"):
+        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd, *, axis="2", trade_side="net"):
             self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
             self.axes.append(axis)
             return InvestorNetFetchResult(points=[], violations=[])
@@ -3557,3 +3559,39 @@ def test_overdue_status_schedules_recovery_outside_ws_window(tmp_path, monkeypat
     assert result.status_code == 200
     assert result.json()['provider_status']['connection'] == 'paused'
     probe.assert_awaited_once_with(tmp_path, DEFAULT_NOTICE)
+
+
+def test_daily_investor_six_modes_have_separate_caches(tmp_path, monkeypatch):
+    class Modes(_FakeKisForInvestor):
+        async def fetch_investor_net(self, code, from_yyyymmdd, to_yyyymmdd, *, axis='2', trade_side='net'):
+            result = await super().fetch_investor_net(
+                code, from_yyyymmdd, to_yyyymmdd, axis=axis, trade_side=trade_side)
+            magnitude = {'net': -10, 'buy': 120, 'sell': 130}[trade_side] * int(axis)
+            for point in result.points:
+                point.foreign_net = magnitude
+            return result
+
+    fake = Modes()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    url = '/api/live/past-investor-net?code=005930&from=20240101&to=20240102'
+    with TestClient(app) as client:
+        for attempt in range(3):
+            if attempt == 2:
+                from hoga.live import api as live_api
+                monkeypatch.setattr(live_api.live_settings, "rest_bypass_enabled", lambda _: True)
+            for axis, vendor_axis, unit in [('qty', '2', 'qty_shares'), ('amount', '1', 'amt_mwon')]:
+                for side in ['net', 'buy', 'sell']:
+                    response = client.get(f'{url}&axis={axis}&trade_side={side}')
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert set(data) == {
+                        'code', 'from', 'to', 'unit', 'trade_side', 'points',
+                        'cached_batches', 'fresh_batches', 'data_warnings',
+                    }
+                    assert data['trade_side'] == side
+                    assert data['unit'] == unit
+                    expected = {'net': -10, 'buy': 120, 'sell': 130}[side] * int(vendor_axis)
+                    assert data['points'][0]['foreign_net'] == expected
+        assert client.get(f'{url}&trade_side=unknown').status_code == 422
+    assert list(zip(fake.axes, fake.trade_sides, strict=True)) == [
+        (axis, side) for axis in ['2', '1'] for side in ['net', 'buy', 'sell']]
