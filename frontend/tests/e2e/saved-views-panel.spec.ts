@@ -4,9 +4,9 @@ import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import type { StudyViewReference } from '../../src/api/studyViews';
 const A = '005930', B = '000660';
 const saved = (id: string, code = A): StudyViewReference => ({
-  id, schema_version: 2, name: `복기 ${id}`, code, label: code === A ? '삼성전자' : 'SK하이닉스',
+  id, schema_version: 2, group_id: code, name: `복기 ${id}`, code, label: code === A ? '삼성전자' : 'SK하이닉스',
   timeframe: '5m', memo: '', tags: [],
-  range: { from_date: '20260901', to_date: '20260902', from_ms: 1000, to_ms: 2000 },
+  range: { from_date: '20260901', to_date: '20260902', from_ms: Date.parse('2026-09-01T09:00:00+09:00'), to_ms: Date.parse('2026-09-02T10:00:00+09:00') },
   viewport: { right_edge_ms: 2000, bar_span: 10, at_live_edge: false }, created_at_ms: 1, updated_at_ms: 1,
 });
 const panel = (page: Page) => page.getByRole('complementary', { name: '저장뷰', exact: true });
@@ -17,9 +17,15 @@ const notice = (page: Page) => panel(page).getByRole('status', { name: '저장�
 async function setup(page: Page, initial = [saved('a'), saved('b'), saved('c'), saved('d', B)]) {
   await installLiveMocks(page);
   let saves = structuredClone(initial);
+  const groups = [{ id: A, name: '돌파 복기' }, { id: B, name: '눌림목 복기' }];
   const deleted: string[] = [];
   const failing = new Set<string>();
-  await page.route(apiExact('study-views/saves'), (r) => r.fulfill({ json: { schema_version: 2, saves } }));
+  await page.route(apiExact('study-views/saves'), (r) => r.fulfill({ json: { schema_version: 2, groups, saves } }));
+  await page.route(apiExact('study-views/move'), (r) => {
+    const body = r.request().postDataJSON();
+    saves = saves.map((s) => body.ids.includes(s.id) ? { ...s, group_id: body.group_id } : s);
+    return r.fulfill({ json: { schema_version: 2, groups, saves } });
+  });
   await page.route(apiPrefix('study-views/saves/'), (r) => {
     const id = new URL(r.request().url()).pathname.split('/').at(-1)!;
     if (r.request().method() !== 'DELETE') return r.fulfill({ json: saves.find((s) => s.id === id) });
@@ -58,7 +64,7 @@ async function move(page: Page, source: Locator, target: Locator, fraction: numb
 
 test('검색은 접힌 결과를 임시로 펼치며 이름 정렬은 수동 정렬로 전환할 수 있다', async ({ page }) => {
   await setup(page);
-  await page.getByRole('button', { name: '삼성전자 005930 접기' }).click();
+  await page.getByRole('button', { name: '돌파 복기 접기' }).click();
   await page.getByRole('textbox', { name: '저장뷰 검색' }).fill('복기 b');
   await expect(row(page, 'b')).toBeVisible();
   await expect(row(page, 'a')).toHaveCount(0);
@@ -66,7 +72,7 @@ test('검색은 접힌 결과를 임시로 펼치며 이름 정렬은 수동 정
   await expect(notice(page)).toContainText('검색 중에는');
   await page.getByRole('button', { name: '검색어 지우기' }).click();
   await expect(row(page, 'b')).toHaveCount(0);
-  await page.getByRole('button', { name: '삼성전자 005930 펼치기' }).click();
+  await page.getByRole('button', { name: '돌파 복기 펼치기' }).click();
   await page.getByRole('button', { name: '이름 오름차순 정렬' }).click();
   await expect(handle(page, 'a')).toBeDisabled();
   await expect(notice(page)).toContainText('이름 정렬 중에는');
@@ -78,7 +84,7 @@ test('행 위아래 정확한 삽입과 기간 안내, 되돌리기 및 새로�
   await setup(page);
   await start(page, handle(page, 'a'));
   await over(page, row(page, 'b'), .8);
-  await expect(notice(page)).toContainText('삼성전자 · 복기 b (5m · 2026-09-01~09-02) 아래로 이동');
+  await expect(notice(page)).toContainText('삼성전자 · 복기 b (5분봉 · 2026-09-01 09:00:00–2026-09-02 10:00:00 KST) 아래로 이동');
   await page.screenshot({ path: '/tmp/hoga-saved-view-drag.png' });
   await page.mouse.up();
   await expect.poll(() => order(page)).toEqual(['b', 'a', 'c']);
@@ -90,19 +96,20 @@ test('행 위아래 정확한 삽입과 기간 안내, 되돌리기 및 새로�
   await expect.poll(() => order(page)).toEqual(['a', 'c', 'b']);
 });
 
-test('전용 그룹 핸들로 재정렬하며 행을 다른 종목이나 패널 밖에 놓으면 취소한다', async ({ page }) => {
+test('다른 그룹으로 이동하고 패널 밖 드롭은 취소한다', async ({ page }) => {
   await setup(page);
   await move(page, handle(page, 'a'), row(page, 'd'), .8);
-  expect(await order(page)).toEqual(['a', 'b', 'c']);
-  await start(page, handle(page, 'a'));
+  await expect.poll(() => order(page)).toEqual(['b', 'c']);
+  await expect.poll(() => order(page, B)).toEqual(['d', 'a']);
+  await start(page, handle(page, 'b'));
   await page.mouse.move(20, 20, { steps: 10 }); await page.mouse.up();
-  expect(await order(page)).toEqual(['a', 'b', 'c']);
-  await move(page, page.getByRole('button', { name: '삼성전자 그룹 이동', exact: true }), page.getByTestId(`saved-view-group-${B}`), .8);
-  await expect.poll(() => panel(page).locator('section[aria-label]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('aria-label')))).toEqual(['SK하이닉스 000660 저장뷰', '삼성전자 005930 저장뷰']);
-  await expect(page.getByRole('button', { name: '삼성전자 005930 접기' })).toBeVisible();
+  expect(await order(page)).toEqual(['b', 'c']);
+  await move(page, page.getByRole('button', { name: '돌파 복기 그룹 이동', exact: true }), page.getByTestId(`saved-view-group-${B}`), .8);
+  await expect.poll(() => panel(page).locator('section[aria-label]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('aria-label')))).toEqual(['눌림목 복기 저장뷰', '돌파 복기 저장뷰']);
+  await expect(page.getByRole('button', { name: '돌파 복기 접기' })).toBeVisible();
 });
 
-test('다중 선택 묶음 순서를 유지하고 여러 종목 선택은 재정렬을 제한한다', async ({ page }) => {
+test('다중 선택 묶음 순서를 유지하고 여러 그룹의 항목도 함께 이동한다', async ({ page }) => {
   await setup(page, [saved('a'), saved('b'), saved('c'), saved('e'), saved('d', B)]);
   await page.getByRole('button', { name: '다중 선택' }).click();
   await page.getByRole('checkbox', { name: '복기 a 선택', exact: true }).check();
@@ -117,9 +124,10 @@ test('다중 선택 묶음 순서를 유지하고 여러 종목 선택은 재정
   await expect(panel(page).getByRole('status').filter({ hasText: '3개 선택' })).toBeVisible();
   await start(page, handle(page, 'a'));
   await over(page, row(page, 'b'), .2);
-  await expect(notice(page)).toContainText('같은 종목 안에서만');
+  await expect(notice(page)).toContainText('위로 이동');
   await page.mouse.up();
-  expect(await order(page)).toEqual(['b', 'e', 'a', 'c']);
+  await expect.poll(() => order(page)).toEqual(['a', 'c', 'd', 'b', 'e']);
+  await expect.poll(() => order(page, B)).toEqual([]);
 });
 
 test('Delete 후 다음 행에 포커스하며 패널을 닫아도 실행 취소할 수 있다', async ({ page }) => {

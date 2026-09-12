@@ -1,3 +1,7 @@
+import { studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
+import { StudyGroupDialog, type StudyGroupAction } from './StudyGroupDialog';
+import { useStudyViewReveal } from './studyViewReveal';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 import { ClearSearchIcon } from '../ui/ClearSearchIcon';
 import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
 import { RailSelectionControl } from '../rightrail/RailSelectionControl';
@@ -50,6 +54,7 @@ import {
 import { useStudyViewTreeState } from './useStudyViewTreeState';
 import { StudyViewRowMenu } from './StudyViewRowMenu';
 
+const EMPTY_GROUPS: import('../api/studyViews').StudyViewGroup[] = [];
 const NO_COLLAPSED_GROUPS = new Set<string>();
 const ignoreExpand = () => {};
 
@@ -59,40 +64,19 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
   return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
 }
 
-/** YYYYMMDD → "YYYY-MM-DD", `withYear=false` 면 "MM-DD".
- *
- *  원래는 "같은 연도 가정" 으로 연도를 통째로 버렸는데, 저장뷰는 해를 넘겨 쌓이므로
- *  그 전제가 성립하지 않았다 — 목록만 봐선 어느 해의 복기인지 알 수 없다. 이제
- *  연도를 다는 것이 기본이고, 생략은 아래 범위 표기에서 **앞뒤 연도가 같을 때만**
- *  쓰는 축약이다. */
-function shortDate(yyyymmdd: string, withYear: boolean): string {
-  if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd;
-  const monthDay = `${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
-  return withYear ? `${yyyymmdd.slice(0, 4)}-${monthDay}` : monthDay;
-}
-
-/** 저장뷰 아이템 메타 = 타임프레임 · 복기 대상일(범위면 from~to). 종목은 그룹
- *  헤더가 이미 이므로 생략 — 아이템엔 "무엇을 저장했나"(분봉·날짜)만 남긴다.
- *
- *  범위가 한 해 안에 있으면 `to` 쪽 연도를 접는다(`2026-07-01~07-08`). 메타행이
- *  `truncate` 라 넘치면 잘려 나가는 게 하필 `to` 날짜여서, 폭을 아끼는 편이
- *  같은 연도를 두 번 찍는 것보다 읽힌다. 해를 걸치면 접지 않는다. */
-export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string } }): string {
-  const { from_date, to_date } = row.range;
-  if (from_date === to_date) return `${row.timeframe} · ${shortDate(from_date, true)}`;
-  const sameYear = from_date.slice(0, 4) === to_date.slice(0, 4);
-  return `${row.timeframe} · ${shortDate(from_date, true)}~${shortDate(to_date, !sameYear)}`;
+export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
+  return `${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`;
 }
 
 type TreeDragHandle = { listeners: DraggableSyntheticListeners; setActivatorNodeRef: (node: HTMLElement | null) => void };
-function SortableStudyViewGroup({ id, code, disabled, indicator, children }: {
-  id: string; code: string; disabled: boolean; indicator?: DropIndicator;
+function SortableStudyViewGroup({ id, disabled, indicator, children }: {
+  id: string; disabled: boolean; indicator?: DropIndicator;
   children: (handle: TreeDragHandle) => ReactNode;
 }) {
   const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useSortable({
-    id: studyViewGroupDndId(id), disabled, data: { type: 'group', code },
+    id: studyViewGroupDndId(id), disabled, data: { type: 'group', groupKey: id },
   });
-  return <div ref={setNodeRef} data-testid={`saved-view-group-${code}`} className={`relative ${dropIndicatorClass(indicator)}`}
+  return <div ref={setNodeRef} data-testid={`saved-view-group-${id}`} className={`relative ${dropIndicatorClass(indicator)}`}
     style={{ opacity: isDragging ? 0.35 : undefined }}>
     {children({ listeners, setActivatorNodeRef })}
   </div>;
@@ -113,6 +97,13 @@ function SortableStudyViewRow({ row, groupKey, disabled, indicator, children }: 
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
+  const [groupAction, setGroupAction] = useState<StudyGroupAction | null>(null);
+  const [groupMenu, setGroupMenu] = useState<string | null>(null);
+  const groupMenuRef = useRef<HTMLDivElement>(null);
+  useDismissablePopover(!!groupMenu, groupMenuRef, () => setGroupMenu(null));
+  const [moveError, setMoveError] = useState('');
+  const reveal = useStudyViewReveal((s) => s.target);
+  const savedGroups = data?.groups ?? EMPTY_GROUPS;
   const [rowMenu, setRowMenu] = useState<{ row: StudyViewListRow; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const [memoState, setMemoState] = useState<{ id: string; value: string; error: string | null } | null>(null);
@@ -124,7 +115,7 @@ export function StudyViewsDrawer() {
   const [destination, setDestination] = useState<{ id: string; side: DropIndicator; label: string } | null>(null);
   const pointRef = useRef<{ x: number; y: number } | null>(null);
   const dragIds = useRef<string[]>([]);
-  const [dragHint, setDragHint] = useState('같은 종목의 원하는 위치에 놓으세요 · 패널 밖은 취소');
+  const [dragHint, setDragHint] = useState('원하는 그룹이나 위치에 놓으세요 · 패널 밖은 취소');
   const renameCommittingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const memoCommittingRef = useRef(false);
@@ -138,6 +129,7 @@ export function StudyViewsDrawer() {
   const {
     query,
     setQuery,
+    revealGroup,
     sortAction,
     cycleSortMode,
     dragEnabled,
@@ -147,9 +139,26 @@ export function StudyViewsDrawer() {
     toggleGroup,
     toggleVisibleGroups,
     placeRows, placeGroup, searching, orderMessage, canUndoOrder, undoReorder, useManualSort,
-  } = useStudyViewTreeState(allSaves, data !== undefined);
+  } = useStudyViewTreeState(allSaves, savedGroups, data !== undefined);
   // Keep pending deletions in the order model so Undo also restores their exact position.
-  const visibleGroups = treeGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hiddenIds.has(r.id)) })).filter((g) => g.rows.length > 0);
+  const visibleGroups = treeGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hiddenIds.has(r.id)) }));
+  useEffect(() => {
+    if (!reveal || !allSaves.some((r) => r.id === reveal.id)) return;
+    revealGroup(reveal.groupId);
+    const frame = requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-saved-row="${reveal.id}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      document.querySelector<HTMLElement>(`[data-saved-row="${reveal.id}"]`)?.focus();
+      useStudyViewReveal.setState({ target: null });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reveal, data]);
+  const searchScroll = useRef<number | null>(null);
+  useEffect(() => {
+    const node = document.querySelector('[data-testid="saved-views-scroll"]');
+    if (!node) return;
+    if (searching && searchScroll.current === null) { searchScroll.current = node.scrollTop; node.scrollTop = 0; }
+    if (!searching && searchScroll.current !== null) { node.scrollTop = searchScroll.current; searchScroll.current = null; }
+  }, [searching]);
   // Toast retries enter the shared queue without going through this drawer's
   // delete handler. Release editing state at that external state transition.
   useEffect(() => useStudyViewDeletion.subscribe((state) => {
@@ -164,7 +173,7 @@ export function StudyViewsDrawer() {
       setMemoState(null);
     }
   }), [renameState, memoState]);
-  const canDrag = dragEnabled && !renameState && !memoState;
+  const canDrag = dragEnabled && !renameState && !memoState && !mutations.move.isPending;
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
   /**
    * "지금 열려 있는 저장뷰" = `/live` 의 **저장 구간 슬롯**(2026-08-23).
@@ -325,12 +334,12 @@ export function StudyViewsDrawer() {
   const getDestination = (event: DragMoveEvent | DragEndEvent) => {
     const intent = resolveStudyViewTreeDrag(event);
     if (!intent || !event.over) return null;
-    if (intent.type === 'row' && dragIds.current.some((id) => allSaves.find((r) => r.id === id)?.code !== intent.groupKey)) return null;
+
     const point = pointRef.current ?? dropPoint(event);
     const side: DropIndicator = point && point.y > event.over.rect.top + event.over.rect.height / 2 ? 'after' : 'before';
     const row = intent.type === 'row' ? allSaves.find((r) => r.id === intent.overId) : null;
-    const name = row ? `${row.label} · ${row.name} (${formatStudyViewMeta(row)})` : visibleGroups.find((g) => g.key === (intent.type === 'group' ? intent.overKey : ''))?.label;
-    return { id: String(event.over.id), side, label: `${name ?? ''} ${side === 'after' ? '아래' : '위'}로 이동` };
+    const name = row ? `${row.label} · ${row.name} (${formatStudyViewMeta(row)})` : visibleGroups.find((g) => g.key === (intent.type === 'group' ? intent.overKey : intent.groupKey))?.label;
+    return { id: String(event.over.id), side, label: intent.type === 'row' && !intent.overId ? `${name ?? ''} 그룹으로 이동` : `${name ?? ''} ${side === 'after' ? '아래' : '위'}로 이동` };
   };
   const handleDragStart = (event: DragStartEvent) => {
     cancelPendingStudyViewNavigation();
@@ -339,8 +348,7 @@ export function StudyViewsDrawer() {
     dragIds.current = row ? selected.has(row.id) ? selectedRows.map((r) => r.id) : [row.id] : [];
     setGhost(row ? dragIds.current.length > 1 ? `${dragIds.current.length}개 저장뷰` : row.name
       : visibleGroups.find((g) => studyViewGroupDndId(g.key) === String(event.active.id))?.label ?? '그룹');
-    setDragHint(new Set(selectedRows.filter((r) => dragIds.current.includes(r.id)).map((r) => r.code)).size > 1
-      ? '묶음 순서 변경은 같은 종목 안에서만 가능합니다' : '같은 종목의 원하는 위치에 놓으세요 · 패널 밖은 취소');
+    setDragHint('원하는 그룹이나 위치에 놓으세요 · 패널 밖은 취소');
   };
   const handleDragMove = (event: DragMoveEvent) => {
     const next = getDestination(event);
@@ -353,7 +361,15 @@ export function StudyViewsDrawer() {
     finishDrag();
     if (!intent || !next) return;
     if (intent.type === 'group') placeGroup(intent.activeKey, intent.overKey, next.side);
-    else placeRows(intent.groupKey, dragIds.current, intent.overId, next.side);
+    else if (dragIds.current.every((id) => allSaves.find((r) => r.id === id)?.group_id === intent.groupKey) && intent.overId) {
+      placeRows(intent.groupKey, dragIds.current, intent.overId, next.side);
+    } else {
+      setMoveError('');
+      mutations.move.mutate({ ids: dragIds.current, groupId: intent.groupKey }, {
+        onSuccess: () => { placeRows(intent.groupKey, dragIds.current, intent.overId, next.side); setSelected(new Set()); revealGroup(intent.groupKey); },
+        onError: (e) => setMoveError(e instanceof Error ? e.message : '이동에 실패했습니다'),
+      });
+    }
   };
 
   const renderStudyViewRow = (row: StudyViewListRow, handle: TreeDragHandle) => {
@@ -363,6 +379,7 @@ export function StudyViewsDrawer() {
       <RailTreeRow
         key={row.id}
         data-saved-row={row.id}
+        title={`${row.label} ${row.code} · ${row.name} · ${formatStudyViewMeta(row)}`}
         className="group"
         role={isEditing ? undefined : 'button'}
         tabIndex={isEditing ? undefined : 0}
@@ -471,11 +488,11 @@ export function StudyViewsDrawer() {
                   startRename(row);
                 }}
               >
-                {row.name}
+                {row.label || row.code} · {row.name}
               </div>
               {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
-                  타임프레임 · 복기 대상일(종목은 그룹 헤더가 이미 표시). */}
-              <div className="truncate text-badge text-fg-dimmer tabular-nums">
+                  타임프레임 · 복기 대상일(종목은 위 이름행에 표시). */}
+              <div className="text-xs text-fg-dim font-data break-words">
                 {formatStudyViewMeta(row)}
               </div>
               {/* 메모 미리보기(첫 줄) — 검색만 되고 화면엔 없던 복기 노트를 목록에서
@@ -484,9 +501,7 @@ export function StudyViewsDrawer() {
                 <div className="truncate text-badge text-fg-dim">{row.memo.split('\n', 1)[0]}</div>
               )}
             </div>
-            {/* 행 메뉴 ⋯ — 평시 opacity-0 + pointer-events-none 이라 클릭이 행(열기)으로
-                통과하고, 호버/포커스 시에만 보이며 클릭 가능(관심종목 RowTrailing 과 동일
-                계약). opacity(=DOM 유지)라 Tab 포커스가 닿는다. */}
+            {/* 메뉴는 항상 클릭 가능하게 두어 키보드와 포인터로 그룹 이동에 접근한다. */}
             <button
               type="button"
               aria-label={`${row.name} 행 메뉴`}
@@ -496,7 +511,7 @@ export function StudyViewsDrawer() {
                 cancelPendingStudyViewNavigation();
                 setRowMenu({ row, left: e.clientX, top: e.clientY });
               }}
-              className="shrink-0 grid h-6 w-6 place-items-center rounded text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+              className="shrink-0 grid h-6 w-6 place-items-center rounded text-fg-dimmer hover:text-fg opacity-60 hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreIcon />
             </button>
@@ -510,13 +525,14 @@ export function StudyViewsDrawer() {
     <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장뷰">
       <RailDrawerHeader
         title="저장뷰"
+        actions={<button type="button" className="h-7 rounded px-2 text-xs text-accent" onClick={() => setGroupAction({ type: 'create' })}>+ 그룹</button>}
       />
       <RailDrawerSection className="p-3">
           <div className="flex items-center gap-1">
             <div className="relative min-w-0 flex-1">
               <input
                 aria-label="저장뷰 검색"
-                placeholder="저장뷰·종목 검색"
+                placeholder="그룹·종목·저장뷰 검색"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
@@ -543,6 +559,7 @@ export function StudyViewsDrawer() {
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             <RailSelectionControl active={selecting} count={selectedRows.length}
               onToggle={() => { setSelecting(!selecting); setSelected(new Set()); }} />
+            {selecting && <button type="button" disabled={!selectedRows.length} className="h-7 rounded px-2 text-xs text-accent disabled:opacity-40" onClick={() => setGroupAction({ type: 'move', ids: selectedRows.map((r) => r.id) })}>그룹 이동</button>}
             {selecting && <button type="button" disabled={!selectedRows.length} className="h-7 rounded px-2 text-xs text-error disabled:opacity-40"
               onClick={() => requestDeleteRows(selectedRows)}>선택 삭제</button>}
             <SortCycleButton onClick={cycleSortMode} direction={sortAction.direction === 'default' ? 'none' : sortAction.direction}
@@ -557,10 +574,10 @@ export function StudyViewsDrawer() {
             <button type="button" onClick={() => refetch()} className="mt-2 underline">다시 시도</button>
           </RailState>
         )}
-        {!isLoading && !isError && (data?.saves.length ?? 0) === 0 && (
-          <RailState>저장된 뷰가 없습니다</RailState>
+        {!isLoading && !isError && (data?.groups.length ?? 0) === 0 && (
+          <RailState>그룹을 만들고 캔들차트의 저장 버튼으로 추가하세요</RailState>
         )}
-        {!isLoading && !isError && (data?.saves.length ?? 0) > 0 && visibleGroups.length === 0 && (
+        {!isLoading && !isError && (data?.groups.length ?? 0) > 0 && visibleGroups.length === 0 && (
           <RailState>{hiddenIds.size > 0 && !searching ? '삭제 대기 중입니다 · 실행 취소로 복원할 수 있습니다' : '검색 결과가 없습니다'}</RailState>
         )}
         <RailDrawerBody testId="saved-views-scroll">
@@ -576,18 +593,18 @@ export function StudyViewsDrawer() {
               {visibleGroups.map((group) => {
                 const groupCollapsed = isCollapsed(group.key);
                 return (
-                  <SortableStudyViewGroup key={group.key} id={group.key} code={group.code} disabled={!canDrag} indicator={destination?.id === studyViewGroupDndId(group.key) ? destination.side : undefined}>
+                  <SortableStudyViewGroup key={group.key} id={group.key} disabled={!canDrag} indicator={destination?.id === studyViewGroupDndId(group.key) ? destination.side : undefined}>
                     {(groupHandle) => (
-                      <section aria-label={`${group.label} ${group.code} 저장뷰`}>
+                      <section aria-label={`${group.label} 저장뷰`}>
                         <div className="group sticky top-0 z-10 flex items-center bg-bg">
                           <button type="button" aria-label={`${group.label} 그룹 이동`} disabled={!canDrag}
                             ref={groupHandle.setActivatorNodeRef} {...groupHandle.listeners}
                             className="ml-2 grid place-items-center h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30"><GripIcon /></button>
                         <RailGroupHeader
                           type="button"
-                          aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
+                          aria-label={`${group.label} ${groupCollapsed ? '펼치기' : '접기'}`}
                           aria-expanded={!groupCollapsed}
-                          title={`${group.label} ${group.code}`}
+                          title={`${group.label}`}
                           // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 앱 탭으로 열던 분기는
                           // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
                           // 행에 생긴 브라우저 새 탭(ctrl/⌘+클릭)을 여기까지 넓히지 않은 것은
@@ -603,7 +620,23 @@ export function StudyViewsDrawer() {
                         >
                           {group.label}
                         </RailGroupHeader>
+                        {searching && <span className="text-xs text-fg-dim">전체 {allSaves.filter((r) => r.group_id === group.key).length}</span>}
+                        <div className="relative" ref={groupMenu === group.key ? groupMenuRef : undefined}>
+                          <button type="button" aria-label={`${group.label} 그룹 메뉴`} aria-haspopup="menu" className="h-7 w-7 text-fg-dim" onClick={() => setGroupMenu(groupMenu === group.key ? null : group.key)}><MoreIcon /></button>
+                          {groupMenu === group.key && <div role="menu" className="absolute right-0 z-30 w-32 rounded border bg-bg-card p-1 shadow-lg">
+                            {(['rename', 'delete'] as const).map((type) => <button type="button" role="menuitem" key={type} className="block w-full px-2 py-1 text-left text-xs hover:bg-bg-input-hover" onClick={() => {
+                              const found = savedGroups.find((g) => g.id === group.key);
+                              const rows = allSaves.filter((r) => r.group_id === group.key);
+                              if (found) {
+                                if (type === 'delete' && rows.length === 0) mutations.deleteGroup.mutate(found.id, { onError: (e) => setMoveError(e.message) });
+                                else setGroupAction({ type, group: found, count: rows.length, ids: rows.map((r) => r.id) });
+                              }
+                              setGroupMenu(null);
+                            }}>{type === 'rename' ? '이름 변경' : '그룹 삭제'}</button>)}
+                          </div>}
                         </div>
+                        </div>
+                        {!groupCollapsed && group.rows.length === 0 && <p className="px-4 py-3 text-xs text-fg-dim">캔들차트의 저장 버튼으로 추가</p>}
                         {!groupCollapsed && (
                           <SortableContext items={group.rows.map((row) => studyViewRowDndId(row.id))} strategy={verticalListSortingStrategy}>
                             {group.rows.map((row) => (
@@ -631,12 +664,16 @@ export function StudyViewsDrawer() {
         {!ghost && canUndoOrder && <button type="button" className="shrink-0 text-accent" onClick={undoReorder}>순서 되돌리기</button>}
         {!ghost && !dragEnabled && !searching && <button type="button" className="shrink-0 text-accent" onClick={useManualSort}>수동 정렬</button>}
       </div>
+      {moveError && <p role="alert" className="p-3 text-xs text-error">{moveError}</p>}
+      {groupAction && <StudyGroupDialog action={groupAction} groups={savedGroups} onClose={() => { setGroupAction(null); setSelected(new Set()); }} />}
       {rowMenu && (
         <StudyViewRowMenu
           x={rowMenu.left}
           y={rowMenu.top}
           name={rowMenu.row.name}
           onOpen={() => openSavedRangeInLive(rowMenu.row)}
+          onOpenNewTab={() => openSavedViewInNewTab(rowMenu.row.id)}
+          onMove={() => setGroupAction({ type: 'move', ids: [rowMenu.row.id] })}
           onRename={() => startRename(rowMenu.row)}
           onEditMemo={() => startMemoEdit(rowMenu.row)}
           onDelete={() => requestDelete(rowMenu.row)}

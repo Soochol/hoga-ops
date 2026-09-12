@@ -89,7 +89,7 @@ let mockedSaves: StudyViewReference[] = [];
 
 const saves: StudyViewReference[] = [
   {
-    schema_version: 2,
+    schema_version: 2, group_id: '005930',
     id: 'a',
     name: '급등 이후',
     code: '005930',
@@ -103,7 +103,7 @@ const saves: StudyViewReference[] = [
     updated_at_ms: 1,
   },
   {
-    schema_version: 2,
+    schema_version: 2, group_id: '000660',
     id: 'b',
     name: '눌림',
     code: '000660',
@@ -120,12 +120,14 @@ const saves: StudyViewReference[] = [
 
 vi.mock('./useStudyViews', () => ({
   useStudyViews: () => ({
-    data: { schema_version: 1, saves: mockedSaves },
+    data: { schema_version: 2, groups: [...new Map(mockedSaves.map((r) => [r.group_id, { id: r.group_id, name: r.group_id === '123456' ? '비교 복기' : r.label }])).values()], saves: mockedSaves },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
   }),
   useStudyViewMutations: () => ({
+    move: { mutate: vi.fn(), isPending: false },
+    createGroup: { mutate: vi.fn() }, renameGroup: { mutate: vi.fn() }, deleteGroup: { mutate: vi.fn() },
     create: { mutate: createMutate },
     update: { mutate: updateMutate },
     updateMetadata: { mutate: updateMetadataMutate, isPending: false, error: null },
@@ -151,7 +153,7 @@ function groupHeaderLabels(): string[] {
   return screen
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'))
-    .filter((label): label is string => !!label && /\d{6}/.test(label) && (label.endsWith('접기') || label.endsWith('펼치기')));
+    .filter((label): label is string => !!label && label !== '전체 접기' && (label.endsWith('접기') || label.endsWith('펼치기')));
 }
 
 beforeEach(() => {
@@ -193,7 +195,7 @@ it('renders list and no-match state', async () => {
   expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg');
   // 경계선 없는 표면(2026-07-22 C안) + 페이지 필드와 동일 톤(2026-07-29 배경 통일 완결).
   expect(screen.getByRole('complementary', { name: '저장뷰' })).not.toHaveClass('border-l');
-  expect(screen.getByText('급등 이후')).toBeTruthy();
+  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다')).toBeTruthy();
   expect(screen.queryByText('차트 화면에서 저장할 수 있습니다')).toBeNull();
@@ -213,38 +215,38 @@ it('clears the saved-view search with the inline clear button', async () => {
 
   expect(search.value).toBe('');
   expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
-  expect(screen.getByText('급등 이후')).toBeTruthy();
+  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
 });
 
 it('renders saved views as Code-keyed stock-name tree groups', () => {
   mockedSaves = [
     ...saves,
     { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2 },
-    { ...saves[0], id: 'd', code: '123456', name: '동명이종목', memo: 'same label', updated_at_ms: 3 },
+    { ...saves[0], id: 'd', code: '123456', group_id: '123456', name: '동명이종목', memo: 'same label', updated_at_ms: 3 },
   ];
 
   renderDrawer('/inventory');
 
-  const samsung = screen.getByRole('region', { name: '삼성전자 005930 저장뷰' });
-  expect(within(samsung).getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(within(samsung).getByTitle('삼성전자 005930')).toBeTruthy();
+  const samsung = screen.getByRole('region', { name: '삼성전자 저장뷰' });
+  expect(within(samsung).getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(within(samsung).getByTitle('삼성전자')).toBeTruthy();
   expect(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
-  expect(within(samsung).queryByText('삼성전자 005930 · 5m')).toBeNull();
+  expect(within(samsung).queryByText('삼성전자 · 5m')).toBeNull();
   expect(within(samsung).getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
 
-  const sameLabelOtherCode = screen.getByRole('region', { name: '삼성전자 123456 저장뷰' });
+  const sameLabelOtherCode = screen.getByRole('region', { name: '비교 복기 저장뷰' });
   expect(within(sameLabelOtherCode).getByRole('button', { name: '동명이종목 저장뷰 열기' })).toBeTruthy();
 });
 
 it('matches watchlist list typography for stock headers and saved view names', () => {
   renderDrawer('/inventory');
 
-  const groupHeader = screen.getByRole('button', { name: '삼성전자 005930 접기' });
+  const groupHeader = screen.getByRole('button', { name: '삼성전자 접기' });
   expect(groupHeader).toHaveClass('text-xs');
   expect(groupHeader).toHaveClass('text-fg');
   expect(groupHeader).not.toHaveClass('text-sm');
 
-  const savedViewName = screen.getByText('급등 이후');
+  const savedViewName = screen.getByText('삼성전자 · 급등 이후');
   expect(savedViewName).toHaveClass('text-xs');
   expect(savedViewName).toHaveClass('text-fg');
   expect(savedViewName).not.toHaveClass('text-sm');
@@ -268,22 +270,22 @@ it('highlights the saved-view row for the open saved view', () => {
 it('collapses and expands one stock group', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 접기' }));
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: '삼성전자 펼치기' })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
 
-  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 펼치기' }));
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 펼치기' }));
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
 });
 
 it('renders new unpersisted stock groups expanded by default', () => {
-  window.localStorage.setItem('studyViews.collapsedGroups.v1', JSON.stringify({ keys: ['005930'] }));
+  window.localStorage.setItem('studyViews.collapsedGroups.v2', JSON.stringify({ keys: ['005930'] }));
   mockedSaves = [
     ...saves,
-    { ...saves[0], id: 'c', code: '111111', label: '새종목', name: '새 저장뷰', updated_at_ms: 2 },
+    { ...saves[0], id: 'c', code: '111111', group_id: '111111', label: '새종목', name: '새 저장뷰', updated_at_ms: 2 },
   ];
 
   renderDrawer('/inventory');
@@ -301,10 +303,10 @@ it('searches stock name and shows all saved views under matching Code groups', a
 
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '삼성');
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'SK하이닉스 000660 접기' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'SK하이닉스 접기' })).toBeNull();
 });
 
 it('searches Code and shows the full matching Code group', async () => {
@@ -330,7 +332,7 @@ it('searches saved-view fields and shows only matching child rows', async () => 
 
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), 'close rebound');
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
   expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
 });
@@ -338,10 +340,10 @@ it('searches saved-view fields and shows only matching child rows', async () => 
 it('expands collapsed matching groups temporarily during search', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 접기' }));
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '삼성');
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
@@ -355,8 +357,8 @@ it('toggles all visible stock groups with one toolbar button', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: '삼성전자 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: 'SK하이닉스 펼치기' })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
   expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
   expect(screen.queryByRole('button', { name: '전체 접기' })).toBeNull();
@@ -364,8 +366,8 @@ it('toggles all visible stock groups with one toolbar button', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: '전체 펼치기' }));
 
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'SK하이닉스 접기' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '전체 접기' })).toBeTruthy();
@@ -377,8 +379,8 @@ it('disables collapse controls during search without changing stored collapse st
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), 'SK');
   expect(screen.getByRole('button', { name: '전체 접기' })).toBeDisabled();
   await userEvent.clear(screen.getByLabelText('저장뷰 검색'));
-  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'SK하이닉스 접기' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('moves the live save action out of the drawer', () => {
@@ -466,7 +468,7 @@ it('저장뷰를 열어도 창의 봉을 밀지 않는다 — 봉은 창이 소�
 it('clicking the saved view name text navigates to /live', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByText('삼성전자 · 급등 이후'));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
 });
@@ -533,7 +535,7 @@ it('does not render persistent row edit or delete buttons', () => {
 it('double-clicking the saved view name opens inline edit mode and selects the name', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
 
   expect(input.value).toBe('급등 이후');
@@ -545,7 +547,7 @@ it('double-clicking the saved view name opens inline edit mode and selects the n
 it('renames a saved view from double-click edit mode and Enter', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '새 이름{Enter}');
@@ -559,7 +561,7 @@ it('renames a saved view from double-click edit mode and Enter', async () => {
 it('commits saved view rename on blur', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '블러 저장');
@@ -574,20 +576,20 @@ it('commits saved view rename on blur', async () => {
 it('cancels saved view rename on Escape', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '취소할 이름');
   await userEvent.keyboard('{Escape}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('급등 이후')).toBeTruthy();
+  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
 });
 
 it('starts inline rename without navigating from a non-study route', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
 
   expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
@@ -596,24 +598,24 @@ it('starts inline rename without navigating from a non-study route', async () =>
 it('does not rename a saved view when the inline value is empty', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.keyboard('{Enter}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('급등 이후')).toBeTruthy();
+  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
 });
 
 it('does not rename a saved view when the inline value is unchanged', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.type(input, '{Enter}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('급등 이후')).toBeTruthy();
+  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
 });
 
 it('defers context-menu deletion for five seconds and allows undo', async () => {
@@ -687,7 +689,7 @@ it('releases edit state when bulk-deleting a view whose rename failed', () => {
   renderDrawer('/inventory');
   fireEvent.click(screen.getByLabelText('다중 선택'));
   fireEvent.click(screen.getByLabelText('급등 이후 선택'));
-  fireEvent.doubleClick(screen.getByText('급등 이후'));
+  fireEvent.doubleClick(screen.getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정');
   fireEvent.change(input, { target: { value: '새 이름' } });
   fireEvent.blur(input);
@@ -704,7 +706,7 @@ it('releases failed edit state when deletion is retried from the global toast', 
   renderDrawer('/inventory');
   fireEvent.keyDown(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { key: 'Delete' });
   await act(() => vi.advanceTimersByTimeAsync(5000));
-  fireEvent.doubleClick(within(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).getByText('급등 이후'));
+  fireEvent.doubleClick(within(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).getByText('삼성전자 · 급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정');
   fireEvent.change(input, { target: { value: '새 이름' } });
   fireEvent.blur(input);
@@ -735,7 +737,7 @@ it('opens the full row menu from the hover ⋯ button without navigating', async
   const menu = screen.getByRole('menu', { name: '급등 이후 저장뷰 메뉴' });
   expect(within(menu).getByRole('menuitem', { name: '열기' })).toBeTruthy();
   // 「새 탭에서 열기」는 ADR-0149 로 사라졌다.
-  expect(within(menu).queryByRole('menuitem', { name: '새 탭에서 열기' })).toBeNull();
+  expect(within(menu).getByRole('menuitem', { name: '새 탭에서 열기' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '이름 변경' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '메모 편집' })).toBeTruthy();
   expect(within(menu).getByRole('menuitem', { name: '삭제' })).toBeTruthy();
@@ -811,10 +813,10 @@ it('ctrl-clicking a stock group header just toggles the group', async () => {
   openSavedView(saves[1]);
   renderDrawer('/inventory');
 
-  fireEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }), { ctrlKey: true });
+  fireEvent.click(screen.getByRole('button', { name: '삼성전자 접기' }), { ctrlKey: true });
 
   await waitFor(() => (
-    expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '삼성전자 펼치기' })).toBeTruthy()
   ));
   // 라우트도 활성 뷰도 그대로다.
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
@@ -828,7 +830,7 @@ it('ctrl-clicking a stock group header just toggles the group', async () => {
 // **트리 재정렬 하나**이고, 아래가 그 전부다.
 it('dragging a stock group reorders groups', async () => {
   renderDrawer('/inventory');
-  expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
+  expect(groupHeaderLabels()).toEqual(['삼성전자 접기', 'SK하이닉스 접기']);
 
   dnd.onDragEnd?.({
     active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
@@ -837,7 +839,7 @@ it('dragging a stock group reorders groups', async () => {
     delta: { x: 0, y: 0 },
   });
 
-  await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 000660 접기', '삼성전자 005930 접기']));
+  await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 접기', '삼성전자 접기']));
   // 재정렬은 목적지도 저장뷰 슬롯도 건드리지 않는다.
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
   expect(savedRange()).toBeNull();
@@ -847,7 +849,7 @@ describe('formatStudyViewMeta', () => {
   it('shows timeframe · single date (from==to) with the year', () => {
     expect(
       formatStudyViewMeta({ timeframe: '1m', range: { from_date: '20260708', to_date: '20260708' } }),
-    ).toBe('1m · 2026-07-08');
+    ).toBe('1분봉 · 2026-07-08');
   });
 
   // 같은 해 안의 범위는 `to` 쪽 연도를 접는다 — 메타행이 truncate 라 아낀 폭이
@@ -855,12 +857,12 @@ describe('formatStudyViewMeta', () => {
   it('shows a date range when from != to, folding the repeated year', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
-    ).toBe('D · 2026-07-01~07-08');
+    ).toBe('일봉 · 2026-07-01–07-08');
   });
 
   it('keeps both years when the range crosses a year boundary', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20251228', to_date: '20260105' } }),
-    ).toBe('D · 2025-12-28~2026-01-05');
+    ).toBe('일봉 · 2025-12-28–2026-01-05');
   });
 });

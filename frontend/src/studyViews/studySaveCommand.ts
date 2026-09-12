@@ -1,3 +1,4 @@
+import { studyViewPeriod } from './studyViewPeriod';
 import type { StudyViewListRow, StudyViewWriteRequest } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
@@ -105,7 +106,7 @@ export function makeStudySaveCommand({
     dialog: {
       defaultName: commandDefaultName({ mode, source, requestName: request.name }),
       defaultMemo: request.memo ?? '',
-      rangeLabel: `${request.range.from_date} ~ ${request.range.to_date}`,
+      rangeLabel: studyViewPeriod(request.range, request.timeframe),
     },
   };
 }

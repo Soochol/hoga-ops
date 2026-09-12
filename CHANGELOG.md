@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [Unreleased]
+
+### Changed
+- 저장뷰를 종목별 자동 분류에서 사용자 그룹으로 변경한다. 다른 종목과 같은 종목의 여러 저장 기간을 함께 담고 그룹 간 이동할 수 있다.
+- 캔들차트 저장 창에서 그룹 선택 또는 새 그룹 생성과 저장을 한 번에 처리한다. 분봉 목록은 KST 저장 시각을 표시한다.
+- 새 저장 형식을 처음 읽을 때 기존 저장뷰 목록을 한 번 초기화한다. 원본 캔들·수집 데이터는 유지한다.
+
 ## [0.16.6.0] - 2026-09-10
 
 ### Added

@@ -1,9 +1,10 @@
+import type { StudyViewGroup } from '../api/studyViews';
 import { useEffect, useMemo, useState } from 'react';
 import { insertStudyViewIds } from './studyViewOrder';
 import { persistJson, readJsonObject } from '../state/persist';
 import {
   filterStudyViewGroups,
-  groupStudyViewsByCode,
+  groupStudyViews,
   studyViewTreeSortAction,
   type StudyViewTreeGroup,
   type StudyViewTreeManualOrder,
@@ -11,9 +12,9 @@ import {
   type StudyViewTreeSortMode,
 } from './studyViewTree';
 
-const COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY = 'studyViews.collapsedGroups.v1';
-const STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY = 'studyViews.treeSortMode.v1';
-const STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY = 'studyViews.treeManualOrder.v1';
+const COLLAPSED_STUDY_VIEW_GROUPS_STORAGE_KEY = 'studyViews.collapsedGroups.v2';
+const STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY = 'studyViews.treeSortMode.v2';
+const STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY = 'studyViews.treeManualOrder.v2';
 
 function readStudyViewTreeSortMode(): StudyViewTreeSortMode {
   const saved = readJsonObject(STUDY_VIEW_TREE_SORT_MODE_STORAGE_KEY);
@@ -92,15 +93,20 @@ function persistCollapsedStudyViewGroups<T extends StudyViewTreeRow>(
   });
 }
 
-export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loaded = true) {
+export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], groups: StudyViewGroup[], loaded = true) {
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    try {
+      for (const key of ['studyViews.collapsedGroups.v1', 'studyViews.treeSortMode.v1', 'studyViews.treeManualOrder.v1']) localStorage.removeItem(key);
+    } catch { /* Storage may be unavailable; the new keys never read the legacy state. */ }
+  }, []);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedStudyViewGroups());
   const [sortMode, setSortMode] = useState<StudyViewTreeSortMode>(() => readStudyViewTreeSortMode());
   const [manualOrder, setManualOrder] = useState<StudyViewTreeManualOrder>(() => readStudyViewTreeManualOrder());
   const [orderMessage, setOrderMessage] = useState('');
   const [undoOrder, setUndoOrder] = useState<{ before: StudyViewTreeManualOrder; after: StudyViewTreeManualOrder } | null>(null);
-  const sourceGroups = useMemo(() => groupStudyViewsByCode(rows), [rows]);
-  const allGroups = useMemo(() => groupStudyViewsByCode(rows, sortMode, manualOrder), [manualOrder, rows, sortMode]);
+  const sourceGroups = useMemo(() => groupStudyViews(rows, groups), [rows, groups]);
+  const allGroups = useMemo(() => groupStudyViews(rows, groups, sortMode, manualOrder), [manualOrder, rows, groups, sortMode]);
   const visibleGroups = useMemo(() => filterStudyViewGroups(allGroups, query), [allGroups, query]);
   const searching = query.trim() !== '';
   const visibleGroupsCollapsed = !searching && visibleGroups.length > 0 && visibleGroups.every((group) => collapsedGroups.has(group.key));
@@ -157,8 +163,8 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loa
   };
 
   const snapshot = (): StudyViewTreeManualOrder => {
-    const groups = groupStudyViewsByCode(rows, 'default', manualOrder);
-    return { groupKeys: groups.map((g) => g.key), rowIdsByGroup: Object.fromEntries(groups.map((g) => [g.key, g.rows.map((r) => r.id)])) };
+    const orderedGroups = groupStudyViews(rows, groups, 'default', manualOrder);
+    return { groupKeys: orderedGroups.map((g) => g.key), rowIdsByGroup: Object.fromEntries(orderedGroups.map((g) => [g.key, g.rows.map((r) => r.id)])) };
   };
   const writeOrder = (next: StudyViewTreeManualOrder) => {
     try { localStorage.setItem(STUDY_VIEW_TREE_MANUAL_ORDER_STORAGE_KEY, JSON.stringify(next)); }
@@ -183,10 +189,13 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loa
   const placeRows = (groupKey: string, ids: string[], overId: string, side: 'before' | 'after') => {
     const next = snapshot();
     const current = next.rowIdsByGroup[groupKey];
-    if (!current || !ids.every((id) => current.includes(id))) return;
-    const at = current.indexOf(overId);
+    if (!current) return;
+    const at = overId ? current.indexOf(overId) : current.length;
     if (at < 0) return;
-    next.rowIdsByGroup[groupKey] = insertStudyViewIds(current, ids, at + (side === 'after' ? 1 : 0));
+    for (const key of Object.keys(next.rowIdsByGroup)) {
+      if (key !== groupKey) next.rowIdsByGroup[key] = next.rowIdsByGroup[key].filter((id) => !ids.includes(id));
+    }
+    next.rowIdsByGroup[groupKey] = insertStudyViewIds([...current, ...ids.filter((id) => !current.includes(id))], ids, at + (side === 'after' ? 1 : 0));
     commitOrder(next);
   };
   const undoReorder = () => {
@@ -208,6 +217,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[], loa
   };
 
   return {
+    revealGroup: (key: string) => { setQuery(''); setCollapsedGroups((old) => { const next = new Set(old); next.delete(key); return next; }); },
     query,
     setQuery,
     sortMode,

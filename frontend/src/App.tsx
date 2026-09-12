@@ -1,3 +1,4 @@
+import { StudyViewSaveToastHost } from './studyViews/StudyViewSaveToastHost';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
@@ -173,6 +174,7 @@ export default function App() {
         <DiskHeadroomToastHost />
         <DrawingClearToastHost />
         <StudyViewDeleteToastHost />
+        <StudyViewSaveToastHost />
         {/* 레전드 칩 ✕(지표 인스턴스 삭제)의 실행취소 — 그림 지우기 토스트와 같은
             부류라 나란히 둔다. 둘 다 "확인 없이 지우고 되돌릴 기회를 준다". */}
         <IndicatorRemoveUndoToastHost />

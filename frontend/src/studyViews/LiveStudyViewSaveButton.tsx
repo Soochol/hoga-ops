@@ -1,3 +1,8 @@
+import { studyTimeframeLabel } from './studyViewPeriod';
+import { persistJson, readJsonObject } from '../state/persist';
+import { useStudySaveNotice } from './StudyViewSaveToastHost';
+import { createPortal } from 'react-dom';
+import { ModalShell } from '../ui/ModalShell';
 /**
  * 「현재 뷰 저장」 — 차트 창 헤더 소유.
  *
@@ -11,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
 import type { LiveStudySaveSource } from './studySaveCommand';
 import { StudyViewSaveDialog, type SaveCoverage } from './StudyViewSaveDialog';
-import { useStudyViewMutations } from './useStudyViews';
+import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { bulkItems, coveragePreview } from '../api/captures';
 import { CAPTURE_QUEUE_QUERY_KEY } from '../capture/useCaptureQueue';
 import { COMPACT_PADDING_INLINE } from '../live/workspace/chartHeaderCompact';
@@ -26,6 +31,7 @@ export function LiveStudyViewSaveButton({
   showLabel?: boolean;
 }) {
   const mutations = useStudyViewMutations();
+  const groupsQuery = useStudyViews();
   const queryClient = useQueryClient();
   const [command, setCommand] = useState<StudySaveCommand | null>(null);
   const createError = mutations.create.error instanceof Error ? mutations.create.error.message : null;
@@ -64,6 +70,7 @@ export function LiveStudyViewSaveButton({
 
   const openDialog = () => {
     if (!source) return;
+    mutations.create.reset();
     const nextCommand = makeStudySaveCommand({ mode: 'create', source, existingSave: null });
     if (nextCommand) setCommand(nextCommand);
   };
@@ -83,9 +90,19 @@ export function LiveStudyViewSaveButton({
         <span aria-hidden="true" className="font-data">▤</span>
         {showLabel && <span>저장</span>}
       </button>
-      {command && (
+      {command && !groupsQuery.data && createPortal(<ModalShell ariaLabel="저장 그룹 불러오기" width="w-[360px]" onClose={() => setCommand(null)}>
+        <div role="status" className="space-y-3 p-4 text-sm text-fg-dim">
+          {groupsQuery.isError ? <button onClick={() => groupsQuery.refetch()}>그룹을 불러오지 못했습니다 · 다시 시도</button> : '그룹 불러오는 중'}
+          <button className="block" onClick={() => setCommand(null)}>취소</button>
+        </div>
+      </ModalShell>, document.body)}
+      {command && groupsQuery.data && (
         <StudyViewSaveDialog
           mode="create"
+          groups={groupsQuery.data.groups}
+          initialGroupId={String(readJsonObject('studyViews.lastGroup.v2').id ?? '')}
+          subjectLabel={`${command.request.label} ${command.request.code} · ${studyTimeframeLabel(command.request.timeframe)}`}
+
           defaultName={command.dialog.defaultName}
           defaultMemo={command.dialog.defaultMemo}
           rangeLabel={command.dialog.rangeLabel}
@@ -93,13 +110,20 @@ export function LiveStudyViewSaveButton({
           isSubmitting={mutations.create.isPending}
           errorMessage={createError}
           onCancel={() => setCommand(null)}
-          onSubmit={({ name, memo, capture }) => {
+          onSubmit={({ name, memo, capture, ...group }) => {
             const missing = previewQuery.data?.missing ?? [];
             mutations.create.mutate(
-              studySaveCommandBody(command, { name, memo }),
+              { ...studySaveCommandBody(command, { name, memo }), ...group },
               {
-                onSuccess: () => {
-                  if (capture && missing.length > 0) collect.mutate(missing);
+                onSuccess: (row) => {
+                  persistJson('studyViews.lastGroup.v2', { id: row.group_id });
+                  const notice = { id: row.id, groupId: row.group_id, label: group.new_group_name ?? groupsQuery.data.groups.find((g) => g.id === row.group_id)?.name ?? '그룹' };
+                  useStudySaveNotice.setState({ notice });
+                  const enqueue = () => collect.mutate(missing, {
+                    onSuccess: () => useStudySaveNotice.setState({ notice }),
+                    onError: () => useStudySaveNotice.setState({ notice: { ...notice, retryCapture: enqueue } }),
+                  });
+                  if (capture && missing.length > 0) enqueue();
                   setCommand(null);
                 },
               },

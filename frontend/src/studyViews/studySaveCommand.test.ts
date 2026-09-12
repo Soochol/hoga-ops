@@ -48,7 +48,7 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
 
 function savedView(overrides: Partial<StudyViewReference> = {}): StudyViewReference {
   return {
-    schema_version: 2,
+    schema_version: 2, group_id: '005930',
     id: 'view1',
     name: '기존 저장뷰',
     code: '005930',
@@ -106,7 +106,7 @@ describe('makeStudySaveCommand', () => {
       dialog: {
         defaultName: '',
         defaultMemo: '',
-        rangeLabel: '20260616 ~ 20260616',
+        rangeLabel: '2026-06-16 09:35:00–09:40:00 KST',
       },
     });
     expect(command?.request).toMatchObject({

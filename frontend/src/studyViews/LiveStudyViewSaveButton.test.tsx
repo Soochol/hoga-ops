@@ -11,8 +11,9 @@ const coveragePreviewMock = vi.hoisted(() => vi.fn());
 const bulkItemsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./useStudyViews', () => ({
+  useStudyViews: () => ({ data: { schema_version: 2, groups: [{ id: 'g', name: '복기' }], saves: [] } }),
   useStudyViewMutations: () => ({
-    create: { mutate: createMutate },
+    create: { mutate: createMutate, reset: vi.fn() },
     update: { mutate: vi.fn() },
     remove: { mutate: vi.fn() },
   }),
@@ -83,6 +84,7 @@ function liveSource(): LiveStudySaveSource {
 }
 
 beforeEach(() => {
+  localStorage.setItem('studyViews.lastGroup.v2', JSON.stringify({ id: 'g' }));
   createMutate.mockReset();
   bulkItemsMock.mockReset();
   bulkItemsMock.mockResolvedValue({ enqueued: 1, deduped: 0, blocked: 0, failed: 0, codes: 1 });
@@ -110,7 +112,7 @@ it('opens create dialog and creates from the live source', async () => {
   render(<LiveStudyViewSaveButton source={liveSource()} />, { wrapper });
 
   await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
-  expect(screen.getByRole('dialog', { name: '저장뷰 만들기' })).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: '저장뷰 저장' })).toBeTruthy();
   expect(screen.getByLabelText('이름')).toHaveValue('');
   await userEvent.type(screen.getByLabelText('이름'), ' 라이브 저장 ');
   await userEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -146,7 +148,7 @@ it('previews hogaplay coverage for the saved range', async () => {
 // missing 만 넘긴다 — 이미 COMPLETE 인 날짜를 다시 넣으면 already_complete 스킵이
 // fail_streak 를 태워(ATTEMPT_CAP=5) 반복 저장이 자기 종목을 막는다.
 it('enqueues only the missing dates after a successful save', async () => {
-  createMutate.mockImplementation((_body, opts) => opts?.onSuccess?.());
+  createMutate.mockImplementation((_body, opts) => opts?.onSuccess?.({ id: 'new', group_id: 'g' }));
   render(<LiveStudyViewSaveButton source={liveSource()} />, { wrapper });
 
   await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
@@ -159,7 +161,7 @@ it('enqueues only the missing dates after a successful save', async () => {
 });
 
 it('skips capture when the user unchecks it', async () => {
-  createMutate.mockImplementation((_body, opts) => opts?.onSuccess?.());
+  createMutate.mockImplementation((_body, opts) => opts?.onSuccess?.({ id: 'new', group_id: 'g' }));
   render(<LiveStudyViewSaveButton source={liveSource()} />, { wrapper });
 
   await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
