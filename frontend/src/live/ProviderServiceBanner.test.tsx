@@ -33,3 +33,17 @@ it('shows disconnected service without inventing maintenance', () => {
   expect(screen.getByRole('status')).toHaveTextContent('키움 연결 불가');
   expect(screen.getByRole('status')).not.toHaveTextContent('점검');
 });
+
+it('shows API failure even with healthy WS and removes it on scoped recovery', () => {
+  const failed: ProviderStatus = {
+    ...status, connection: 'connected', notice: null, notice_phase: null,
+    failures: [{ channel: 'rest', kind: 'server', operation: 'ka10001', observed_at_ms: status.observed_at_ms, code: '503' }],
+  };
+  const { rerender } = render(<ProviderServiceNotice status={failed} error={false} />);
+  expect(screen.getByRole('status')).toHaveTextContent('키움 오류 감지');
+  expect(screen.getByRole('status')).toHaveTextContent('API 조회 · 서버 오류');
+  expect(screen.getByRole('status')).toHaveTextContent('503');
+  expect(screen.getByRole('status')).not.toHaveTextContent('점검');
+  rerender(<ProviderServiceNotice status={{ ...failed, failures: [] }} error={false} />);
+  expect(screen.queryByRole('status')).toBeNull();
+});

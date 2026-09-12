@@ -40,6 +40,10 @@ _HTTP_SERVER_ERROR = 500
 class KiwoomAuthError(RuntimeError):
     """키움 토큰 발급/인증 실패."""
 
+    def __init__(self, message: str, *, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
 
 class KiwoomAuthTransient(KiwoomAuthError):
     """**일시** 인증 실패 — 쿨다운·전송 오류·5xx. 기다리면 풀린다.
@@ -159,11 +163,13 @@ class KiwoomTokenProvider:
             raise KiwoomAuthTransient(f"token issue transport failed: {e}") from e
         if resp.status_code >= _HTTP_SERVER_ERROR:
             raise KiwoomAuthTransient(
-                f"token issue HTTP {resp.status_code} {resp.text[:200]}"
+                f"token issue HTTP {resp.status_code} {resp.text[:200]}", http_status=resp.status_code
             )
         if resp.status_code != _HTTP_OK:
             # 4xx 는 **영구** — 키/시크릿 오설정이면 재시도해도 같다.
-            raise KiwoomAuthError(f"token issue HTTP {resp.status_code} {resp.text[:200]}")
+            raise KiwoomAuthError(
+                f"token issue HTTP {resp.status_code} {resp.text[:200]}", http_status=resp.status_code,
+            )
         body = resp.json()
         token = body.get("token") or body.get("access_token")
         if not token:

@@ -243,9 +243,27 @@ class KiwoomRestClient:
         )
 
     async def aclose(self) -> None:
+        from . import provider_errors  # noqa: PLC0415
+        provider_errors.clear(self)
         await self._client.aclose()
 
     async def call(
+        self, api_id: str, body: dict[str, Any], *, cont: bool = False, next_key: str = "",
+    ) -> Page:
+        from . import provider_errors  # noqa: PLC0415
+        spec = TR.get(api_id)
+        if spec is None or any(key not in body for key in spec.required):
+            return await self._call_observed(api_id, body, cont=cont, next_key=next_key)
+        generation = provider_errors.begin(self, api_id)
+        try:
+            result = await self._call_observed(api_id, body, cont=cont, next_key=next_key)
+        except Exception as exc:
+            provider_errors.finish(self, api_id, generation, 'rest', exc)
+            raise
+        provider_errors.finish(self, api_id, generation, 'rest')
+        return result
+
+    async def _call_observed(
         self,
         api_id: str,
         body: dict[str, Any],

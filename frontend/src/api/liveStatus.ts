@@ -27,6 +27,7 @@ export interface ProviderStatus {
   notice: { id: string; starts_at_ms: number; ends_at_ms: number; reason: string; source: string } | null;
   notice_phase: "scheduled" | "active" | "overdue" | null;
   notice_config_error: boolean;
+  failures?: { channel: "ws" | "rest"; kind: "auth" | "rate_limit" | "timeout" | "transport" | "server" | "request" | "unknown"; operation: string; observed_at_ms: number; code: string | null }[];
 }
 
 export interface LiveStatus {

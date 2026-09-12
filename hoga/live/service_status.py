@@ -6,9 +6,11 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from hoga.util.atomic_write import atomic_write_json
+
+from .provider_errors import ProviderFailure, failures
 
 _log = logging.getLogger(__name__)
 FRESH_MS = 120_000
@@ -44,6 +46,7 @@ class ProviderStatus(BaseModel):
     notice: MaintenanceNotice | None = None
     notice_phase: Literal["scheduled", "active", "overdue"] | None = None
     notice_config_error: bool = False
+    failures: list[ProviderFailure] = Field(default_factory=list)
 
 
 def _load_notice(data_dir: Path | None) -> tuple[MaintenanceNotice | None, bool]:
@@ -76,7 +79,7 @@ def provider_status(data_dir: Path | None, session: dict | None, now_ms: int) ->
         connection = "connected"
     result = ProviderStatus(
         observed_at_ms=now_ms, connection=connection, connected_accounts=connected,
-        configured_accounts=configured, last_received_at_ms=k.get("last_recv_ms"),
+        configured_accounts=configured, last_received_at_ms=k.get("last_recv_ms"), failures=failures(),
     )
     if not configured:
         return result

@@ -262,3 +262,28 @@ test('주말 market에서도 점검과 연결 상태를 상단에 표시한다',
   await page.goto('/live');
   await expect(banner).toBeVisible();
 });
+
+test('실시간 연결이 정상이어도 REST 서버 오류를 표시한다', async ({ page }) => {
+  await marketMocks(page);
+  await page.route(apiPrefix('live/status'), (route) => route.fulfill({ json: {
+    running: true, started_at_ms: null, last_tick_ms: null, cycle_lag_ms: 0,
+    watchlist_count: 0, live_set: [], capture_healthy: true, capture_reason: 'healthy',
+    rest_bypass_enabled: false,
+    provider_status: {
+      observed_at_ms: 1789180000000, connection: 'connected', connected_accounts: 5,
+      configured_accounts: 5, last_received_at_ms: 1789180000000, notice_config_error: false,
+      notice_phase: null, notice: null,
+      failures: [{ channel: 'rest', kind: 'server', operation: 'ka10001',
+        observed_at_ms: 1789180000000, code: '503' }],
+    },
+  } }));
+  await page.goto('/market');
+  const banner = page.getByRole('status', { name: '키움 서비스 상태' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('키움 오류 감지');
+  await expect(banner).toContainText('실시간 연결 정상');
+  await expect(banner).toContainText('API 조회 · 서버 오류');
+  await banner.locator('summary').click();
+  await expect(banner.getByText(/ka10001.*503/)).toBeVisible();
+  await expect(banner).not.toContainText('점검');
+});
