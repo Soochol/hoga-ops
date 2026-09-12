@@ -88,3 +88,58 @@ test('일별 투자자 총매수·총매도에서 단위 전환과 과거 스크
   await expect(win.getByText('일별 순매수 · 오늘은 잠정')).toBeVisible();
   await expect(rows).toHaveCount(60);
 });
+
+test('같은 그룹의 커서 날짜로 이동하고 과거를 조회하며 따라가기 해제 시 위치를 유지한다', async ({ page }, testInfo) => {
+  await installLiveMocks(page);
+  await page.addInitScript(() => localStorage.setItem('live.investorDailySpan.v1', JSON.stringify({ span: 0 })));
+  let recentFrom = '';
+  const windows: string[] = [];
+  await page.route('**/api/live/past-investor-net?**', async (route) => {
+    const p = new URL(route.request().url()).searchParams;
+    const from = p.get('from')!;
+    const to = p.get('to')!;
+    recentFrom ||= from;
+    windows.push(from);
+    const parse = (s: string) => Date.parse(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}T00:00:00Z`);
+    const points = [];
+    for (let t = parse(from); t <= parse(to); t += 86400000) {
+      points.push({ t_ms: t, foreign_net: 100, institution_net: -100 });
+    }
+    await route.fulfill({ json: { code: p.get('code'), from, to, unit: 'qty_shares', trade_side: 'net',
+      points, cached_batches: [], fresh_batches: [], data_warnings: [] } });
+  });
+  await page.goto('/live?code=098460');
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-investor-daily').click();
+  const scroller = page.getByLabel('일별 투자자 내역');
+  const win = page.locator('[data-win]').filter({ has: scroller });
+  await expect(win.getByTestId(/^investor-daily-row-/)).toHaveCount(60);
+  // Publish through the same group-gated cursor bus as chart mouse movement.
+  const publish = async (date: string | null, sameGroup = true) => page.evaluate(async ({ date, sameGroup }) => {
+    const workspacePath = '/src/state/workspace.ts';
+    const cursorPath = '/src/live/useLiveCursorStore.ts';
+    const { useWorkspaceStore } = await import(workspacePath);
+    const { useLiveCursorStore } = await import(cursorPath);
+    const investor = useWorkspaceStore.getState().windows.find((w: { kind: string }) => w.kind === 'investor-daily');
+    useLiveCursorStore.setState({ sidebarCursorMs: date ? Date.parse(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6)}T00:00:00Z`) : null,
+      sidebarCursorOrigin: date ? { windowId: 'cursor-test', group: sameGroup ? investor.group : 99, code: '098460', timeframe: 'D' } : null });
+  }, { date, sameGroup });
+  await publish(recentFrom);
+  const target = win.getByTestId(`investor-daily-row-${recentFrom}`);
+  await expect(target).toBeInViewport();
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(new Set(windows).size).toBe(1); // Automatic scrolling must not load another page.
+  const oldDate = String(Number(recentFrom.slice(0, 4)) - 1) + recentFrom.slice(4);
+  await publish(oldDate);
+  await expect(win.getByTestId(`investor-daily-row-${oldDate}`)).toBeInViewport({ timeout: 15000 });
+  await page.screenshot({ path: testInfo.outputPath('investor-cursor-follow.png') });
+  const position = await scroller.evaluate((el) => el.scrollTop);
+  await publish(null);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(position);
+  await win.getByRole('button', { name: '커서 따라가기' }).click();
+  await publish(recentFrom);
+  await expect(win.getByText(new RegExp(`커서 날짜 ${recentFrom}`))).toBeVisible();
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(position);
+  await publish('19990101', false);
+  await expect(win.getByText(/커서 날짜 19990101/)).toHaveCount(0);
+});

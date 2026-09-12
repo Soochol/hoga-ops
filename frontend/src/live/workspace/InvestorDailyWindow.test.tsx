@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InvestorNetPoint, InvestorSubjectBreakdown } from '../../api/types';
@@ -337,4 +337,83 @@ it('매매 기준을 바꾸는 동안 기존 순매수를 재해석하지 않고
   expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'sell']);
   fireEvent.click(screen.getByRole('button', { name: '총매수' }));
   expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'buy']);
+});
+
+it('커서 행을 sticky 헤더·합계 사이로 이동하고 같은 날짜와 커서 이탈에는 위치를 유지한다', async () => {
+  mockPoints([point('20260803'), point('20260804')]);
+  const { rerender } = render(<InvestorDailyWindow code="005930" cursorDate="20260803" />);
+  const scroller = screen.getByLabelText('일별 투자자 내역');
+  vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 500, 200));
+  vi.spyOn(screen.getByTestId('investor-daily-row-20260803'), 'getBoundingClientRect')
+    .mockReturnValue(new DOMRect(0, 400, 500, 20));
+  await waitFor(() => expect(scroller.scrollTop).toBe(310));
+  scroller.scrollTop = 50;
+  rerender(<InvestorDailyWindow code="005930" cursorDate="20260803" />);
+  expect(scroller.scrollTop).toBe(50);
+  rerender(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  expect(scroller.scrollTop).toBe(50);
+});
+
+it('고정 기간 밖 날짜는 기간을 바꾸지 않고 안내하며 따라가기를 끄면 조회하지 않는다', async () => {
+  mockPoints([point('20260803')]);
+  render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
+  await screen.findByText('커서 날짜가 표시 기간 밖에 있습니다 · 전체에서 따라가기');
+  expect(useInvestorDailySpanStore.getState().span).toBe(20);
+  expect(historyMock.mock.results.at(-1)?.value.fetchNextPage).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '커서 따라가기' }));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+it('전체에서 아직 렌더하지 않은 캐시 행을 펼쳐 커서 날짜를 찾는다', async () => {
+  useInvestorDailySpanStore.setState({ span: 0 });
+  const points = Array.from({ length: 90 }, (_, i) => ({ ...point('20260803'), t_ms: anchor('20260803') - i * 86400000 }));
+  mockPoints(points);
+  render(<InvestorDailyWindow code="005930" cursorDate="20260506" />);
+  await waitFor(() => expect(screen.getAllByTestId(/^investor-daily-row-/)).toHaveLength(90));
+  expect(historyMock.mock.results.at(-1)?.value.fetchNextPage).not.toHaveBeenCalled();
+});
+
+it('과거 조회는 날짜에 머문 뒤 한 페이지씩 진행하고 커서가 사라지면 추가 조회를 멈춘다', async () => {
+  useInvestorDailySpanStore.setState({ span: 0 });
+  mockPoints([point('20260803')]);
+  const fetchNextPage = vi.fn();
+  historyMock.mockReturnValue({ data: undefined, isFetching: false, isError: false, hasNextPage: false, fetchNextPage });
+  const { rerender } = render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
+  expect(fetchNextPage).not.toHaveBeenCalled();
+  await waitFor(() => expect(fetchNextPage).toHaveBeenCalledTimes(1));
+  historyMock.mockReturnValue({ data: { pages: [{ from: '20250101', points: [] }] },
+    isFetching: false, isError: false, fetchNextPage });
+  rerender(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  expect(fetchNextPage).toHaveBeenCalledTimes(1);
+});
+
+it('커서가 빠르게 지나가거나 따라가기를 끄면 대기 중인 과거 조회를 취소한다', async () => {
+  vi.useFakeTimers();
+  try {
+    useInvestorDailySpanStore.setState({ span: 0 });
+    mockPoints([point('20260803')]);
+    const fetchNextPage = vi.fn();
+    historyMock.mockReturnValue({ data: undefined, isFetching: false, isError: false, hasNextPage: false, fetchNextPage });
+    const { rerender } = render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
+    rerender(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    rerender(<InvestorDailyWindow code="005930" cursorDate="20240103" />);
+    fireEvent.click(screen.getByRole('button', { name: '커서 따라가기' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(fetchNextPage).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('조회한 구간에 없는 날짜는 건너뛰거나 계속 조회하지 않고 데이터 없음을 안내한다', async () => {
+  useInvestorDailySpanStore.setState({ span: 0 });
+  mockPoints([point('20260803')]);
+  const fetchNextPage = vi.fn();
+  historyMock.mockReturnValue({ data: { pages: [{ from: '20200101', points: [] }] },
+    isFetching: false, isError: false, hasNextPage: true, fetchNextPage });
+  render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
+  await screen.findByText('커서 날짜의 투자자 데이터 없음');
+  expect(fetchNextPage).not.toHaveBeenCalled();
 });
