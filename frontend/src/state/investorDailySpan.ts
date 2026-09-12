@@ -8,10 +8,8 @@ import { INVESTOR_DAILY_SPANS, type InvestorDailySpan } from '../live/investorDa
  * **창별이 아니라 전역이다** — `investorEstimateUnit` 과 같은 논거다: 같은 종목을
  * 두 창에 띄웠는데 기간이 서로 다르면 나란히 놓고 비교하는 일 자체가 불가능해진다.
  *
- * 기간 전환은 **서버 왕복이 없다.** 창이 요청하는 달력 구간은 기간과 무관하게
- * 고정이고(가장 긴 기간을 덮는 값), 자르기는 `buildInvestorDailyTable` 이 클라에서
- * 한다. 기간마다 다른 `from` 을 보내면 react-query 키가 갈려 칩을 누를 때마다
- * 새 요청이 나가는데, 벤더 페이지가 100행(≈5개월)이라 그 재요청은 전부 낭비다.
+ * 고정 기간은 최근 응답을 클라이언트에서 자른다. 전체(0)는 창별 과거 조회를
+ * 허용하되, 조회한 깊이는 저장하지 않는다.
  */
 const STORAGE_KEY = 'live.investorDailySpan.v1';
 
@@ -46,7 +44,7 @@ function persist(span: InvestorDailySpan): void {
 }
 
 export const useInvestorDailySpanStore = create<Store>((set) => ({
-  span: readStorage() ?? 20,
+  span: readStorage() ?? 0,
 
   setSpan: (value) => {
     if (!isSpan(value)) return;
@@ -56,7 +54,7 @@ export const useInvestorDailySpanStore = create<Store>((set) => ({
 
   hydrateFromStorage: () => {
     const stored = readStorage();
-    if (stored) set({ span: stored });
+    if (stored !== null) set({ span: stored });
   },
 }));
 

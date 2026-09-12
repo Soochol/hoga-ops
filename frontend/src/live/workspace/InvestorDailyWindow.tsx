@@ -5,17 +5,19 @@
  * 저쪽은 장중 차수별 가집계 3주체, 이쪽은 일별 확정 13주체다. 한 창에 탭으로 묶지
  * 않은 이유가 그 차이다 — 갱신 주기(장중 폴링 ↔ 일별 캐시)까지 다르다.
  *
- * ## 벤더 콜을 늘리지 않는다
+ * ## 기존 조회 경로 재사용
  *
  * `/api/live/past-investor-net` 은 일봉 차트의 외국인·기관 pane 이 이미 쓰던
  * 경로다. 이 창이 추가로 요구한 것은 **같은 응답에 이미 오던 필드**뿐이라
- * 새 폴러도, 새 TR 도 없다.
+ * 새 폴러도, 새 TR 도 없다. 전체 모드의 과거 조회만 필요에 따라 같은 경로를 호출한다.
  *
  * ## 요청 구간이 기간 칩과 무관하게 고정인 이유
  *
  * 칩(5·20·60거래일)마다 `from` 을 바꾸면 react-query 키가 갈려 누를 때마다 새
  * 요청이 나간다. 벤더 페이지가 100행(≈5개월)이라 가장 긴 기간도 콜 1회에 들어오므로,
  * 넉넉한 달력 구간을 한 번 받고 **자르기는 클라에서** 한다(`buildInvestorDailyTable`).
+ * 전체(0)는 60행부터 시작해 캐시 행을 먼저 펼치고, 부족하면 130달력일씩 과거를 조회한다.
+ * 과거 페이지는 장중 폴링에서 제외하며 누적은 현재 표시된 행 기준이다.
  *
  * ## 단위 토글 — 축은 서버가, 표시는 응답이 정한다
  *
@@ -48,9 +50,10 @@
  * 대신 컬럼마다 최소 폭을 주고 넘치면 가로로 흐르게 하며, 날짜 컬럼과 헤더는
  * sticky 로 붙잡는다.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
+import { useInvestorDailyHistory } from '../useInvestorDailyHistory';
 import type { InvestorNetUnit } from '../../api/types';
 import {
   formatAmount,
@@ -103,7 +106,21 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const from = useMemo(() => subtractDaysKst(today, REQUEST_CALENDAR_DAYS), [today]);
 
   const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty');
-  const points = query.data?.points;
+  const history = useInvestorDailyHistory(code, from, unit === 'amount' ? 'amount' : 'qty');
+  const scope = `${code}:${unit}:${span}`;
+  const [depth, setDepth] = useState({ scope, count: 60 });
+  if (depth.scope !== scope) setDepth({ scope, count: 60 });
+  const visibleCount = depth.scope === scope ? depth.count : 60;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingRef = useRef(false);
+  const points = useMemo(() => {
+    // History has no placeholder: never mix a previous code or quantity axis.
+    const matchingAxis = (query.data?.unit ?? 'qty_shares') === (unit === 'amount' ? 'amt_mwon' : 'qty_shares');
+    const byTime = new Map((span === 0 && matchingAxis ? history.data?.pages : undefined)?.flatMap((page) => page.points)
+      .map((point) => [point.t_ms, point] as const));
+    for (const point of query.data?.points ?? []) byTime.set(point.t_ms, point);
+    return [...byTime.values()];
+  }, [query.data?.points, query.data?.unit, history.data, unit, span]);
   // **데이터가 자기 단위를 말한다.** 없으면(옛 백엔드) 수량으로 읽는다 — 그게
   // 이 라우트가 축 파라미터를 갖기 전의 유일한 축이었다.
   const dataUnit: InvestorNetUnit = query.data?.unit ?? 'qty_shares';
@@ -112,9 +129,30 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   // 이미 말하므로 여기서는 세지 않는다.
   const axisPending = query.data !== undefined && dataUnit !== requestedUnit;
   const table = useMemo(
-    () => buildInvestorDailyTable(points ?? [], span),
-    [points, span],
+    () => buildInvestorDailyTable(points, span === 0 ? visibleCount : span),
+    [points, span, visibleCount],
   );
+
+  const loadOlder = async () => {
+    if (span !== 0 || axisPending || query.isLoading || query.error
+      || history.isFetching || pendingRef.current) return;
+    if (points.length > visibleCount) {
+      setDepth({ scope, count: visibleCount + 60 });
+      return;
+    }
+    if (!history.hasNextPage && history.data) return;
+    pendingRef.current = true;
+    try {
+      const result = await history.fetchNextPage();
+      if (!result.isError) setDepth((current) => current.scope === scope
+        ? { scope, count: visibleCount + 60 } : current);
+    } finally {
+      pendingRef.current = false;
+    }
+  };
+  const lastHistoryPage = history.data?.pages.at(-1);
+  const emptyHistoryPage = lastHistoryPage?.points.length === 0;
+  const canLoadOlder = points.length > visibleCount || !history.data || history.hasNextPage;
 
   const stateText = axisPending
     ? `${INVESTOR_ESTIMATE_UNIT_LABELS[unit]} 조회 중`
@@ -124,7 +162,11 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     <div className="flex h-full flex-col bg-bg-card">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-2.5 py-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <SpanChips span={span} onSelect={setSpan} />
+          <SpanChips span={span} onSelect={(value) => {
+            setSpan(value);
+            setDepth({ scope: `${code}:${unit}:${value}`, count: 60 });
+            if (scrollRef.current) scrollRef.current.scrollTop = 0;
+          }} />
           <UnitChip unit={unit} onToggle={toggleUnit} />
           <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails((shown) => !shown)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
         </div>
@@ -141,12 +183,33 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         className="shrink-0 truncate px-2.5 pb-1 text-2xs text-fg-dim"
         title={`일별 순매수 · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
       >일별 순매수 · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
+      {span === 0 && table.rows.length > 0 && (
+        <div className="px-2.5 pb-1 text-2xs text-fg-dim">
+          {table.rows.at(-1)?.date}–{table.rows[0].date} · {table.rows.length}거래일
+        </div>
+      )}
       {table.rows.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-3 py-4 text-center font-data text-xs text-fg-dim">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 py-4 text-center font-data text-xs text-fg-dim">
           {stateText ?? '일별 투자자 데이터 없음'}
+          {span === 0 && query.data && !axisPending && canLoadOlder && (
+            <button type="button" disabled={history.isFetching} className="text-fg-dim hover:text-accent"
+              onClick={() => void loadOlder()}>
+              {history.isFetching ? '과거 데이터 조회 중' : history.isError ? '다시 시도' : '과거 데이터 더 보기'}
+            </button>
+          )}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          key={`${code}:${unit}`}
+          ref={scrollRef}
+          aria-label="일별 투자자 내역"
+          className="min-h-0 flex-1 overflow-auto"
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            if (node.scrollTop > 0 && node.scrollHeight - node.scrollTop - node.clientHeight < 80
+              && !history.isError && !emptyHistoryPage) void loadOlder();
+          }}
+        >
           {/* 전환 중에는 표를 흐리게 둔다 — 지우지 않는 것이 요점이다. 축을 오갈
               때마다 표가 사라지면 비교가 끊기고, 그대로 두면 안 바뀐 것처럼 보인다. */}
           <table
@@ -199,7 +262,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             <tfoot className="sticky bottom-0 z-20">
               <tr>
                 <HeadCell sticky foot className="text-left">
-                  누적
+                  누적{span === 0 ? ` ${table.rows.length}일` : ''}
                   {table.missingBreakdown > 0 && (
                     // 조용히 작은 합계를 보여 주지 않는다 — 분해가 빠진 날이 있으면
                     // 그 컬럼들의 누적은 그만큼 덜 더해진 값이다.
@@ -223,6 +286,19 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               </tr>
             </tfoot>
           </table>
+          {span === 0 && (
+            <div className="px-2.5 py-2 text-center text-2xs text-fg-dim" aria-live="polite">
+              {history.isError && <span>과거 데이터 조회 실패 · </span>}
+              {emptyHistoryPage && <span>이전 조회 구간에 데이터 없음 · </span>}
+              {canLoadOlder ? (
+                <button type="button" className="text-fg-dim hover:text-accent"
+                  disabled={history.isFetching || axisPending}
+                  onClick={() => void loadOlder()}>
+                  {history.isFetching ? '과거 데이터 조회 중' : history.isError ? '다시 시도' : '과거 데이터 더 보기'}
+                </button>
+              ) : '과거 데이터 조회 완료'}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -253,7 +329,7 @@ function SpanChips({
                 : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
             }`}
           >
-            {value}일
+            {value === 0 ? '전체' : `${value}일`}
           </button>
         );
       })}
