@@ -454,3 +454,15 @@ describe('marqueeRect', () => {
     expect(marqueeRect(50, 20, 10, 80)).toEqual(expected);
   });
 });
+
+
+it('selects the lower line by click and marquee, without treating total string length as width', () => {
+  const t: Drawing = { id: 'multi', kind: 'text', at: { realMs: 100, price: 100 },
+    text: '가나다라\n마바사아', fontSize: 20, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' };
+  const coord: HitCoord = { realMsToCanvasX: (x) => x, priceToCanvasY: (y) => y,
+    paneIdAtY: () => 'candle', measureTextWidth: (line) => line.length * 20 };
+  expect(hitTestDrawings(coord, [t], 150, 140)).toBe(t);
+  expect(hitTestDrawings(coord, [t], 200, 140)).toBeNull();
+  expect(hitTestDrawings(coord, [t], 150, 155)).toBeNull();
+  expect(drawingsInRect(coord, [t], { x1: 110, y1: 130, x2: 120, y2: 140 })).toEqual([t]);
+});

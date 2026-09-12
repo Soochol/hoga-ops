@@ -361,6 +361,34 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     );
   }
 
+  it('Shift+Enter keeps editing; pasted multiline text commits on Enter and survives re-editing', () => {
+    const store = useDrawingsStore.getState();
+    const scope = '005930|minute';
+    store.setActiveScope(scope);
+    store.setActiveTool('text');
+    const { container } = mountWithCandlePane();
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+    fireEvent.pointerDown(overlay, { clientX: 100, clientY: 50, button: 0 });
+    const input = container.querySelector('textarea[data-drawing-text-input]')!;
+    expect(input).not.toBeNull();
+    fireEvent.change(input, { target: { value: '가나다라' } });
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true);
+    expect(store.drawingsFor(scope)).toHaveLength(0);
+    // jsdom does not perform textarea's native newline insertion; browser E2E does.
+    fireEvent.change(input, { target: { value: '가나다라\n\n마바사아' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(container.querySelector('[data-drawing-text-input]')).toBeNull();
+    expect(store.drawingsFor(scope)).toHaveLength(1);
+    expect(store.drawingsFor(scope)[0]).toMatchObject({ text: '가나다라\n\n마바사아' });
+    act(() => store.setActiveTool('select'));
+    fireEvent.doubleClick(overlay, { clientX: 100, clientY: 50, button: 0 });
+    const editor = container.querySelector('textarea[data-drawing-text-input]')!;
+    expect(editor).toHaveValue('가나다라\n\n마바사아');
+    fireEvent.change(editor, { target: { value: '바꾼 줄\n둘째 줄' } });
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    expect(store.drawingsFor(scope)[0]).toMatchObject({ text: '가나다라\n\n마바사아' });
+  });
+
   // Regression for the "입력창이 안 나와요" report: the editor opens at the
   // cursor, so a real user's next press lands ON the input (click-to-type,
   // double-click habit). That pointerdown used to bubble into the overlay's

@@ -634,6 +634,13 @@ describe('planAlign — 텍스트 상자', () => {
     expect(patchOf(plan, 't')!.at!.price).toBe(210);
   });
 
+  it('여러 줄 텍스트의 아래변과 가장 긴 줄의 오른쪽을 맞춘다', () => {
+    const t = text('t', 0, 300, { text: 'ab\nabcd' });
+    const r = rect('r', [0, 100], [100_000, 200]);
+    expect(patchOf(planAlign([r, t], 'bottom', coords), 't')!.at!.price).toBe(145);
+    expect(patchOf(planAlign([r, t], 'right', coords), 't')!.at!.realMs).toBe(52_000);
+  });
+
   it('아래 정렬 — 글상자의 아래변이 맞는다', () => {
     // rect 아래변 y 300(가격 100). text 상자 아래변은 앵커 y + 20.
     // 앵커 y 가 280 → 가격 120 이어야 한다.
