@@ -21,7 +21,7 @@ it('shows sourced maintenance and actual connectivity together', () => {
 });
 it('retains overdue notice until actual recovery and shows API failure over cached success', () => {
   const { rerender } = render(<ProviderServiceNotice status={{ ...status, notice_phase: 'overdue' }} error={false} />);
-  expect(screen.getByRole('status')).toHaveTextContent('실제 실시간 연결 복구 확인 중');
+  expect(screen.getByRole('status')).toHaveTextContent('조회 API 정상 응답 확인 중');
   rerender(<ProviderServiceNotice status={{ ...status, notice: null, notice_phase: null, connection: 'connected' }} error={false} />);
   expect(screen.queryByRole('status')).toBeNull();
   rerender(<ProviderServiceNotice status={{ ...status, notice: null, connection: 'connected' }} error />);
@@ -46,4 +46,14 @@ it('shows API failure even with healthy WS and removes it on scoped recovery', (
   expect(screen.getByRole('status')).not.toHaveTextContent('점검');
   rerender(<ProviderServiceNotice status={{ ...failed, failures: [] }} error={false} />);
   expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('hides recovered maintenance during scheduled WS downtime but retains real API errors', () => {
+  const paused: ProviderStatus = { ...status, connection: 'paused', notice: null, notice_phase: null };
+  const { rerender } = render(<ProviderServiceNotice status={paused} error={false} />);
+  expect(screen.queryByRole('status')).toBeNull();
+  rerender(<ProviderServiceNotice status={{ ...paused, failures: [{
+    channel: 'rest', kind: 'auth', operation: 'ka10001', observed_at_ms: status.observed_at_ms, code: '401',
+  }] }} error={false} />);
+  expect(screen.getByRole('status')).toHaveTextContent('인증 실패');
 });

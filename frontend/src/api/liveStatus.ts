@@ -20,7 +20,7 @@ export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_inc
 
 export interface ProviderStatus {
   observed_at_ms: number;
-  connection: "unconfigured" | "connecting" | "unavailable" | "partial" | "connected";
+  connection: "unconfigured" | "paused" | "connecting" | "unavailable" | "partial" | "connected";
   connected_accounts: number;
   configured_accounts: number;
   last_received_at_ms: number | null;

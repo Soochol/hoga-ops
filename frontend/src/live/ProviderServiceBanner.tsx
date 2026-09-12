@@ -16,6 +16,7 @@ const FAILURE_COPY = {
   unknown: '원인 미확인 오류 · 연결/응답 오류가 발생했습니다',
 };
 const CONNECTION = {
+  paused: '실시간 연결 대기 시간(휴장·운영시간 외)',
   unconfigured: '키움 미설정', connecting: '키움 연결 확인 중',
   unavailable: '키움 연결 불가', partial: '키움 일부 연결 또는 응답 지연',
   connected: '키움 실시간 연결 정상',
@@ -24,7 +25,7 @@ const CONNECTION = {
 export function ProviderServiceNotice({ status, error }: { status?: ProviderStatus | null; error: boolean }) {
   if (!status && !error) return null;
   if (!error && status && !status.notice && !status.notice_config_error && !status.failures?.length &&
-      (status.connection === 'connected' || status.connection === 'unconfigured')) return null;
+      (status.connection === 'connected' || status.connection === 'unconfigured' || status.connection === 'paused')) return null;
   const notice = status?.notice;
   const phase = status?.notice_phase;
   return <section role="status" aria-label="키움 서비스 상태"
@@ -41,7 +42,7 @@ export function ProviderServiceNotice({ status, error }: { status?: ProviderStat
         : status && `${CONNECTION[status.connection]} · 연결 ${status.connected_accounts}/${status.configured_accounts}계정`}
       {status?.last_received_at_ms != null && ` · 마지막 실시간 응답 ${stamp(status.last_received_at_ms)}`}
       {status && status.connection !== 'connected' && status.connection !== 'unconfigured' && ' · 표시 중인 값은 저장 데이터일 수 있습니다.'}
-      {phase === 'overdue' && ' · 실제 실시간 연결 복구 확인 중'}
+      {phase === 'overdue' && ' · 조회 API 정상 응답 확인 중 · 1분 간격'}
     </div>
     {!error && !!status?.failures?.length && <details className="mt-1 text-fg-dim">
       <summary className="cursor-pointer">

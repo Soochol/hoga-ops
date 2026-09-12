@@ -3533,6 +3533,27 @@ def test_status_exposes_weekend_maintenance_separately_from_closed(tmp_path, mon
     assert response.status_code == 200
     body = response.json()
     assert body['capture_reason'] == 'closed'
-    assert body['provider_status']['connection'] == 'unavailable'
+    assert body['provider_status']['connection'] == 'paused'
     assert body['provider_status']['notice_phase'] == 'active'
     assert body['provider_status']['notice']['id'] == DEFAULT_NOTICE.id
+
+
+def test_overdue_status_schedules_recovery_outside_ws_window(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from hoga.live import api, lifecycle, maintenance_recovery, session_gate
+    from hoga.live.service_status import DEFAULT_NOTICE
+
+    lifecycle.reset_for_tests()
+    status = lifecycle.get_status().model_copy(update={
+        'kiwoom': {'enabled': True, 'accounts_configured': 5, 'connected_accounts': 0, 'accounts': []},
+    })
+    monkeypatch.setattr(api.monotonic_time, 'time', lambda: DEFAULT_NOTICE.ends_at_ms / 1000 + 10)
+    monkeypatch.setattr(session_gate, 'ws_connection_window_async', AsyncMock(return_value=False))
+    probe = AsyncMock()
+    monkeypatch.setattr(maintenance_recovery, 'check_recovery', probe)
+    with TestClient(_make_test_app(get_status_fn=lambda: status, data_dir=tmp_path)) as client:
+        result = client.get('/api/live/status')
+    assert result.status_code == 200
+    assert result.json()['provider_status']['connection'] == 'paused'
+    probe.assert_awaited_once_with(tmp_path, DEFAULT_NOTICE)

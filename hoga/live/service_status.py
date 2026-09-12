@@ -39,7 +39,7 @@ DEFAULT_NOTICE = MaintenanceNotice(
 
 class ProviderStatus(BaseModel):
     observed_at_ms: int
-    connection: Literal["unconfigured", "connecting", "unavailable", "partial", "connected"]
+    connection: Literal["unconfigured", "paused", "connecting", "unavailable", "partial", "connected"]
     connected_accounts: int
     configured_accounts: int
     last_received_at_ms: int | None = None
@@ -60,7 +60,9 @@ def _load_notice(data_dir: Path | None) -> tuple[MaintenanceNotice | None, bool]
         return None, True
 
 
-def provider_status(data_dir: Path | None, session: dict | None, now_ms: int) -> ProviderStatus:
+def provider_status(
+    data_dir: Path | None, session: dict | None, now_ms: int, *, ws_expected: bool = True,
+) -> ProviderStatus:
     """Only current per-account control responses establish WS recovery, never REST health."""
     k = session or {}
     configured = k.get("accounts_configured", 0) if k.get("enabled") else 0
@@ -72,7 +74,7 @@ def provider_status(data_dir: Path | None, session: dict | None, now_ms: int) ->
         connection = "unconfigured"
     elif connected == 0:
         failed = any(a.get("last_error_type") or a.get("last_close_code") for a in accounts)
-        connection = "unavailable" if failed else "connecting"
+        connection = "paused" if not ws_expected else ("unavailable" if failed else "connecting")
     elif connected < configured or len(fresh) != configured:
         connection = "partial"
     else:

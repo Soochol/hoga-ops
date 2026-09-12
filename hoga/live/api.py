@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from hoga.api import symbols
@@ -1909,12 +1909,17 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     router = APIRouter(prefix="/api/live")
 
     @router.get("/status", response_model=LiveStatus)
-    async def _get_status(request: Request) -> LiveStatus:
+    async def _get_status(request: Request, background_tasks: BackgroundTasks) -> LiveStatus:
         status = get_status()
+        from .maintenance_recovery import check_recovery  # noqa: PLC0415
         from .service_status import provider_status  # noqa: PLC0415
-        update: dict[str, object] = {
-            "provider_status": provider_status(data_dir, status.kiwoom, int(monotonic_time.time() * 1000)),
-        }
+        from .session_gate import ws_connection_window_async  # noqa: PLC0415
+        now_ms = int(monotonic_time.time() * 1000)
+        ws_expected = await ws_connection_window_async(now_ms) if status.kiwoom else False
+        provider = provider_status(data_dir, status.kiwoom, now_ms, ws_expected=ws_expected)
+        if data_dir is not None and provider.notice_phase == "overdue" and provider.notice is not None:
+            background_tasks.add_task(check_recovery, data_dir, provider.notice)
+        update: dict[str, object] = {"provider_status": provider}
         # 거버너 관측 표면 — PR-J(#1046)에서 KIS 스케줄러가 사라지고 키움 거버너가
         # 대신한다. **이제 진짜 프론트 계약이다**: `KiwoomGovernorSnapshot` 으로 shape 이
         # 선언돼 있고(`lifecycle.py`), 프론트가 `auth_failing_env_keys` 를 읽어 죽은
