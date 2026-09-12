@@ -11,6 +11,11 @@ vi.mock('../../api/livePastInvestorNet', () => ({
   useLivePastInvestorNet: (...args: unknown[]) => useLivePastInvestorNet(...args),
 }));
 
+const historyMock = vi.fn();
+vi.mock('../useInvestorDailyHistory', () => ({
+  useInvestorDailyHistory: (...args: unknown[]) => historyMock(...args),
+}));
+
 const { InvestorDailyWindow } = await import('./InvestorDailyWindow');
 
 /** 실측 행(005930 · 20260803). 백엔드 `ROW_59` · `investorDailyRows.test.ts` 와 같은 값. */
@@ -50,6 +55,7 @@ const DATES = ['20260728', '20260729', '20260730', '20260731', '20260803', '2026
 
 beforeEach(() => {
   useLivePastInvestorNet.mockReset();
+  historyMock.mockReturnValue({ data: undefined, isFetching: false, isError: false, fetchNextPage: vi.fn() });
   useInvestorDailySpanStore.setState({ span: 20 });
   useInvestorEstimateUnitStore.setState({ unit: 'qty' });
 });
@@ -232,4 +238,78 @@ describe('InvestorDailyWindow', () => {
   expect(useLivePastInvestorNet.mock.calls.at(-1)).toEqual(args);
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 접기' }));
   expect(screen.queryByRole('columnheader', { name: '금융투자' })).toBeNull();
+});
+
+
+describe('전체 과거 스크롤', () => {
+  it('60행부터 캐시를 먼저 펼치고 하단에서 과거 구간을 조회한다', () => {
+    const points = Array.from({ length: 90 }, (_, i) => ({ ...point('20260803'), t_ms: anchor('20260803') - i * 86400000 }));
+    mockPoints(points);
+    useInvestorDailySpanStore.setState({ span: 0 });
+    const fetchNextPage = vi.fn().mockResolvedValue({ isError: false });
+    historyMock.mockReturnValue({ fetchNextPage });
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    expect(screen.getAllByTestId(/^investor-daily-row-/)).toHaveLength(60);
+    const scroller = screen.getByLabelText('일별 투자자 내역');
+    Object.defineProperties(scroller, { scrollHeight: { value: 1000 }, clientHeight: { value: 400 } });
+    fireEvent.scroll(scroller, { target: { scrollTop: 600 } });
+    expect(screen.getAllByTestId(/^investor-daily-row-/)).toHaveLength(90);
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    fireEvent.scroll(scroller, { target: { scrollTop: 610 } });
+    fireEvent.scroll(scroller, { target: { scrollTop: 611 } });
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    expect(scroller.scrollTop).toBe(611);
+  });
+
+  it('실패나 빈 구간 뒤에는 스크롤로 자동 재요청하지 않고 수동 재시도한다', () => {
+    mockPoints([point('20260803')]);
+    useInvestorDailySpanStore.setState({ span: 0 });
+    const fetchNextPage = vi.fn().mockResolvedValue({ isError: true });
+    historyMock.mockReturnValue({ isError: true, fetchNextPage });
+    render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    fireEvent.scroll(screen.getByLabelText('일별 투자자 내역'), { target: { scrollTop: 100 } });
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByTestId(/^investor-daily-row-/)).toHaveLength(1);
+  });
+});
+
+it('전체의 빈 최근 구간에서도 과거 조회를 시작할 수 있다', () => {
+  mockPoints([]);
+  useInvestorDailySpanStore.setState({ span: 0 });
+  const fetchNextPage = vi.fn().mockResolvedValue({ isError: false });
+  historyMock.mockReturnValue({ fetchNextPage });
+  render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  fireEvent.click(screen.getByRole('button', { name: '과거 데이터 더 보기' }));
+  expect(fetchNextPage).toHaveBeenCalledTimes(1);
+});
+
+it('단위 전환 중 최근 응답과 다른 축의 과거 행을 섞지 않는다', () => {
+  mockPoints([point('20260803')], 'qty_shares');
+  useInvestorDailySpanStore.setState({ span: 0 });
+  useInvestorEstimateUnitStore.setState({ unit: 'amount' });
+  historyMock.mockReturnValue({ data: { pages: [{ points: [point('20260101')] }] } });
+  render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  expect(screen.queryByTestId('investor-daily-row-20260101')).toBeNull();
+  expect(screen.getByText('억 조회 중')).toBeInTheDocument();
+});
+
+it('빈 과거 구간에서는 자동 조회를 멈추되 더 과거로 진행할 수 있다', () => {
+  mockPoints([point('20260803')]);
+  useInvestorDailySpanStore.setState({ span: 0 });
+  const fetchNextPage = vi.fn().mockResolvedValue({ isError: false });
+  historyMock.mockReturnValue({ data: { pages: [{ points: [] }] }, hasNextPage: true, fetchNextPage });
+  render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  fireEvent.scroll(screen.getByLabelText('일별 투자자 내역'), { target: { scrollTop: 100 } });
+  expect(fetchNextPage).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '과거 데이터 더 보기' }));
+  expect(fetchNextPage).toHaveBeenCalledTimes(1);
+});
+
+it('전체(0) 선택도 저장된 값과 탭 동기화에서 복원한다', () => {
+  localStorage.setItem('live.investorDailySpan.v1', JSON.stringify({ span: 0 }));
+  useInvestorDailySpanStore.getState().hydrateFromStorage();
+  expect(useInvestorDailySpanStore.getState().span).toBe(0);
+  localStorage.removeItem('live.investorDailySpan.v1');
 });
