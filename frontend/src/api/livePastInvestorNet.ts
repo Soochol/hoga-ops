@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
-import type { InvestorNetPoint, InvestorNetUnit } from './types';
+import type { InvestorNetPoint, InvestorNetUnit, InvestorTradeSide } from './types';
 import { isKrxRegularSessionNow } from '../live/liveDateTime';
 
 export interface LivePastInvestorNetWarning {
@@ -24,6 +24,8 @@ export interface LivePastInvestorNetResponse {
   /** 값의 물리량 — 축이 정한다. **표시 포맷은 저장된 토글이 아니라 이 값으로
    *  고른다**(아래 훅 도크스트링). 옛 백엔드는 이 키가 없어 옵셔널이다. */
   unit?: InvestorNetUnit;
+  /** Legacy responses omitted this field and always contained net buys. */
+  trade_side?: InvestorTradeSide;
   points: InvestorNetPoint[];
   cached_batches: string[];
   fresh_batches: string[];
@@ -46,15 +48,19 @@ export function useLivePastInvestorNet(
   from: string | null,
   to: string | null,
   axis: InvestorNetAxis = 'qty',
+  tradeSide: InvestorTradeSide = 'net',
 ) {
   const enabled = !!(code && from && to && from <= to);
   return useQuery({
-    queryKey: ['live', 'past-investor-net', code, from, to, axis] as const,
-    queryFn: ({ signal }) =>
-      apiCall<LivePastInvestorNetResponse>(
-        `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}&axis=${axis}`,
+    queryKey: ['live', 'past-investor-net', code, from, to, axis, tradeSide] as const,
+    queryFn: async ({ signal }) => {
+      const response = await apiCall<LivePastInvestorNetResponse>(
+        `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}&axis=${axis}&trade_side=${tradeSide}`,
         { signal },
-      ),
+      );
+      if ((response.trade_side ?? 'net') !== tradeSide) throw new Error('매매 기준이 다른 응답입니다');
+      return response;
+    },
     enabled,
     staleTime: 60_000,
     refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),

@@ -47,9 +47,9 @@ from typing import Literal, get_args, get_origin
 from hoga.api import events, models as m, sources
 from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
 from hoga.live import flow_receipts, futures_runtime, market_overview
-from hoga.live.api import AfterHoursBookResponse, LiveQuote, RankingRowModel
+from hoga.live.api import AfterHoursBookResponse, LivePastInvestorNetResponse, LiveQuote, RankingRowModel
 from hoga.live.error_policy import LiveErrorKind
-from hoga.live.investor import InvestorNetUnit
+from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -290,6 +290,10 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    LivePastInvestorNetResponse: frozenset({
+        "code", "from_", "to", "unit", "trade_side", "points",
+        "cached_batches", "fresh_batches", "data_warnings",
+    }),
     ProgramResponse: frozenset({"axis", "markets", "truncated"}),
     InvestorFlowResponse: frozenset({
         "collection", "date", "daily", "unit", "confirmed", "coverage", "markets",
@@ -452,6 +456,10 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     # 값이 갈리면 **자릿수가 100배 틀린 화면**이 나오고 타입은 아무 말도 안 한다.
     # BE 가 라우트마다 인라인 Literal 을 적었으면 이 감사가 원리적으로 못 본다 —
     # 그래서 도메인에 named alias 를 두고 두 응답 모델이 그것을 쓴다.
+    "InvestorTradeSide": (
+        frozenset(get_args(InvestorTradeSide)),
+        "frontend/src/api/types.ts",
+    ),
     "InvestorNetUnit": (
         frozenset(get_args(InvestorNetUnit)),
         "frontend/src/api/types.ts",

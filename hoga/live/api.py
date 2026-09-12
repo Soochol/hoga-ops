@@ -56,7 +56,7 @@ from hoga.live.index_registry import (
     get_representative_index,
     list_representative_indices,
 )
-from hoga.live.investor import InvestorNetUnit, InvestorTrendEstimateRow
+from hoga.live.investor import InvestorNetUnit, InvestorTradeSide, InvestorTrendEstimateRow
 from hoga.live.kis_client import (
     KisApiError,
     KisAuthError,
@@ -1632,6 +1632,7 @@ class LiveInvestorNetPoint(BaseModel):
 
 
 class LivePastInvestorNetResponse(BaseModel):
+    trade_side: InvestorTradeSide = "net"
     code: str
     from_: str = Field(alias="from")
     to: str
@@ -2783,32 +2784,35 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
     # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor
     # walk-back + batch/gap memory cache shape, just storing point dicts.
-    #: 축(수량/금액)마다 **캐시와 백필을 한 쌍씩** 둔다.
+    #: 축(수량/금액) × 매매 기준(순매수/총매수/총매도)마다 캐시와 백필을 둔다.
     #:
     #: 한 캐시를 공유할 수 없다: 배치 키가 `(venue, code)` 뿐이라 축이 들어갈 자리가
     #: 없고, 그러면 수량 배치가 금액 요청에 그대로 응답한다. 값이 그럴듯해서
     #: 화면에서도 안 드러나는 부류다. 축을 `venue` 슬롯에 밀어 넣는 우회는 쓰지
     #: 않는다 — `stats_snapshot` 을 비롯한 모든 독자에게 거짓말을 한다.
-    investor_caches: dict[str, PastDailyCandlesCache] = (
-        {axis: PastDailyCandlesCache() for axis in _INVESTOR_AXIS_PARAM.values()}
+    investor_caches: dict[tuple[str, InvestorTradeSide], PastDailyCandlesCache] = (
+        {(axis, side): PastDailyCandlesCache()
+         for axis in _INVESTOR_AXIS_PARAM.values()
+         for side in kiwoom_investor.INVESTOR_TRADE_PARAM}
         if data_dir is not None else {}
     )
     #: 수량 축 캐시 — 기존 관측(`stats_snapshot` 의 `investor_net_daily`)과 REST
     #: 우회 경로가 이 이름으로 잡고 있다. 금액 축은 아래 dict 로만 닿는다.
     investor_cache_instance: PastDailyCandlesCache | None = investor_caches.get(
-        kiwoom_investor.AMT_QTY_QUANTITY
+        (kiwoom_investor.AMT_QTY_QUANTITY, "net")
     )
-    investor_net_backfills: dict[str, LiveInvestorNetBackfill] = (
+    investor_net_backfills: dict[tuple[str, InvestorTradeSide], LiveInvestorNetBackfill] = (
         {
-            axis: LiveInvestorNetBackfill(
+            (axis, side): LiveInvestorNetBackfill(
                 data_dir=data_dir,
                 cache=cache,
                 # PR-E(#1041): 키움 거버너다 — KIS 스케줄러와 무관한 축이다.
                 scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
                 walkback=batched_daily_walkback,
                 axis=axis,
+                trade_side=side,
             )
-            for axis, cache in investor_caches.items()
+            for (axis, side), cache in investor_caches.items()
         }
         if data_dir is not None
         else {}
@@ -2960,10 +2964,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
         axis: Literal["qty", "amount"] = Query("qty"),
+        trade_side: InvestorTradeSide = Query("net"),
     ) -> LivePastInvestorNetResponse:
-        """Daily investor net-buy across [from, to], one axis per call.
+        """Daily investor trading across [from, to], one axis and trade side per call.
 
-        KIS investor-trade-by-stock-daily (FHPTJ04160001) supports date-cursor
+        Kiwoom ka10059 supports date-cursor
         walk-back (ADR-0055), so this mirrors /past-daily-candles: batch/gap
         memory cache + per-gap walk-back fetch + today tri-state. Net-buy is
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
@@ -2973,14 +2978,17 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         덕분에 축을 안 보내던 호출자는 그대로 돈다. 축을 바꾸면 벤더 콜이 하나 더
         나지만 그 뒤로는 축별 캐시가 받는다.
 
+        `trade_side`는 순매수(net, 기본)·총매수(buy)·총매도(sell)를 고른다.
+        기존 `_net` 필드명은 호환성을 유지하고, 응답의 `trade_side`가 의미를 정한다.
+
         단위는 축이 정하고 **응답이 스스로 말한다**(`unit`, #1119) — 프론트가
         저장된 토글이 아니라 이 필드로 포맷해야 축 전환 순간에 옛 축의 값을
         새 단위로 그리지 않는다.
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
         vendor_axis = _INVESTOR_AXIS_PARAM[axis]
-        unit = {"unit": _INVESTOR_AXIS_UNIT[axis]}
-        axis_cache = investor_caches.get(vendor_axis)
+        unit = {"unit": _INVESTOR_AXIS_UNIT[axis], "trade_side": trade_side}
+        axis_cache = investor_caches.get((vendor_axis, trade_side))
         if (
             data_dir is not None
             and axis_cache is not None
@@ -3002,7 +3010,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 503,
                 {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"},
             )
-        backfill = investor_net_backfills.get(vendor_axis)
+        backfill = investor_net_backfills.get((vendor_axis, trade_side))
         if backfill is None:
             raise HTTPException(
                 503,

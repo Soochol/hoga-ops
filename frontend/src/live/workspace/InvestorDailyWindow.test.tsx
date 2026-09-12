@@ -313,3 +313,28 @@ it('전체(0) 선택도 저장된 값과 탭 동기화에서 복원한다', () =
   expect(useInvestorDailySpanStore.getState().span).toBe(0);
   localStorage.removeItem('live.investorDailySpan.v1');
 });
+
+it('매매 기준을 바꾸는 동안 기존 순매수를 재해석하지 않고 새 총매도를 표시한다', () => {
+  mockPoints([point('20260803')]);
+  const { rerender } = render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  fireEvent.click(screen.getByRole('button', { name: '총매도' }));
+  expect(screen.getByText('총매도 조회 중')).toBeInTheDocument();
+  expect(screen.getByText('일별 순매수 · 오늘은 잠정')).toBeInTheDocument();
+  expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['qty', 'sell']);
+  expect(historyMock.mock.lastCall?.slice(2)).toEqual(['qty', 'sell']);
+  expect(screen.getByRole('table')).toHaveAttribute('data-axis-pending', 'true');
+  useLivePastInvestorNet.mockReturnValue({ data: {
+    unit: 'qty_shares', trade_side: 'sell',
+    points: [{ ...point('20260803'), foreign_net: 123, institution_net: 456, breakdown: null }],
+  }, isLoading: false, error: null });
+  rerender(<InvestorDailyWindow code="005930" cursorDate={null} />);
+  expect(screen.getByText('일별 총매도 · 오늘은 잠정')).toBeInTheDocument();
+  expect(screen.getByRole('table')).not.toHaveAttribute('data-axis-pending');
+  const row = screen.getByTestId('investor-daily-row-20260803');
+  expect(within(row).getByText('123')).toBeInTheDocument();
+  expect(within(row).queryByText('+123')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /표시 단위/ }));
+  expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'sell']);
+  fireEvent.click(screen.getByRole('button', { name: '총매수' }));
+  expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'buy']);
+});

@@ -1,5 +1,5 @@
 /**
- * 일별 투자자 창 — `ka10059` 확정 순매수를 주체 13종으로 펼친 표.
+ * 일별 투자자 창 — `ka10059` 순매수·총매수·총매도를 주체 13종으로 펼친 표.
  *
  * 형제인 `잠정투자자`(`InvestorTrendEstimateCard`, `ka10064`)와 **축이 다르다**:
  * 저쪽은 장중 차수별 가집계 3주체, 이쪽은 일별 확정 13주체다. 한 창에 탭으로 묶지
@@ -24,6 +24,8 @@
  * `ka10059` 는 수량·금액을 **한 응답에 주지 않는다**(별개 콜). 그래서 축이 쿼리
  * 키에 들어가고, 토글은 다시 받아 온다 — 첫 전환에만 벤더 콜 하나가 더 나고
  * 그 뒤로는 축별 캐시가 받는다.
+ *
+ * 매매 기준도 별도 요청·캐시를 사용한다. 응답의 `trade_side`가 숫자의 의미를 정한다.
  *
  * ⚠ **셀 포맷은 `data.unit` 이 고른다 — 저장된 토글이 아니다.** 축 전환 직후
  * `placeholderData` 가 옛 축의 값을 넘겨주는 한 프레임이 있는데, 그때 토글을
@@ -54,7 +56,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import { useInvestorDailyHistory } from '../useInvestorDailyHistory';
-import type { InvestorNetUnit } from '../../api/types';
+import type { InvestorNetUnit, InvestorTradeSide } from '../../api/types';
 import {
   formatAmount,
   formatQty,
@@ -79,6 +81,7 @@ import { subtractDaysKst, todayKstYyyymmdd } from '../liveDateTime';
  * 100행(벤더 1페이지) 안에 든다 — 그 상한을 넘기면 walk 가 페이지를 더 돈다.
  */
 const REQUEST_CALENDAR_DAYS = 130;
+const TRADE_SIDE_LABELS: Record<InvestorTradeSide, string> = { net: '순매수', buy: '총매수', sell: '총매도' };
 
 /** 상위 주체 컬럼 수 = 기관 세부가 시작하는 인덱스. 그룹 라벨이 사라진 뒤로는
  *  **구분선의 위치**가 이 상수의 유일한 용도다 — 경계를 말하는 것이 선뿐이라
@@ -92,6 +95,7 @@ type Props = {
 };
 
 export function InvestorDailyWindow({ code, cursorDate }: Props) {
+  const [tradeSide, setTradeSide] = useState<InvestorTradeSide>('net');
   const [showDetails, setShowDetails] = useState(false);
   const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
   const span = useInvestorDailySpanStore((s) => s.span);
@@ -105,9 +109,9 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const today = useMemo(() => todayKstYyyymmdd(), []);
   const from = useMemo(() => subtractDaysKst(today, REQUEST_CALENDAR_DAYS), [today]);
 
-  const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty');
-  const history = useInvestorDailyHistory(code, from, unit === 'amount' ? 'amount' : 'qty');
-  const scope = `${code}:${unit}:${span}`;
+  const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty', tradeSide);
+  const history = useInvestorDailyHistory(code, from, unit === 'amount' ? 'amount' : 'qty', tradeSide);
+  const scope = `${code}:${unit}:${tradeSide}:${span}`;
   const [depth, setDepth] = useState({ scope, count: 60 });
   if (depth.scope !== scope) setDepth({ scope, count: 60 });
   const visibleCount = depth.scope === scope ? depth.count : 60;
@@ -116,18 +120,20 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const points = useMemo(() => {
     // History has no placeholder: never mix a previous code or quantity axis.
     const matchingAxis = (query.data?.unit ?? 'qty_shares') === (unit === 'amount' ? 'amt_mwon' : 'qty_shares');
-    const byTime = new Map((span === 0 && matchingAxis ? history.data?.pages : undefined)?.flatMap((page) => page.points)
+    const byTime = new Map((span === 0 && matchingAxis && (query.data?.trade_side ?? 'net') === tradeSide ? history.data?.pages : undefined)?.flatMap((page) => page.points)
       .map((point) => [point.t_ms, point] as const));
     for (const point of query.data?.points ?? []) byTime.set(point.t_ms, point);
     return [...byTime.values()];
-  }, [query.data?.points, query.data?.unit, history.data, unit, span]);
+  }, [query.data?.points, query.data?.unit, query.data?.trade_side, history.data, unit, span, tradeSide]);
   // **데이터가 자기 단위를 말한다.** 없으면(옛 백엔드) 수량으로 읽는다 — 그게
   // 이 라우트가 축 파라미터를 갖기 전의 유일한 축이었다.
   const dataUnit: InvestorNetUnit = query.data?.unit ?? 'qty_shares';
   const requestedUnit: InvestorNetUnit = unit === 'amount' ? 'amt_mwon' : 'qty_shares';
   // 표가 아직 **옛 축**을 그리고 있다. 데이터가 아예 없을 때(첫 로딩)는 빈 상태가
   // 이미 말하므로 여기서는 세지 않는다.
-  const axisPending = query.data !== undefined && dataUnit !== requestedUnit;
+  const dataSide = query.data?.trade_side ?? 'net';
+  const sidePending = query.data !== undefined && dataSide !== tradeSide;
+  const axisPending = query.data !== undefined && (dataUnit !== requestedUnit || sidePending);
   const table = useMemo(
     () => buildInvestorDailyTable(points, span === 0 ? visibleCount : span),
     [points, span, visibleCount],
@@ -154,7 +160,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const emptyHistoryPage = lastHistoryPage?.points.length === 0;
   const canLoadOlder = points.length > visibleCount || !history.data || history.hasNextPage;
 
-  const stateText = axisPending
+  const stateText = query.error ? '조회 실패' : sidePending
+    ? `${TRADE_SIDE_LABELS[tradeSide]} 조회 중` : axisPending
     ? `${INVESTOR_ESTIMATE_UNIT_LABELS[unit]} 조회 중`
     : getStateText(query, table.rows.length);
 
@@ -164,9 +171,19 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SpanChips span={span} onSelect={(value) => {
             setSpan(value);
-            setDepth({ scope: `${code}:${unit}:${value}`, count: 60 });
+            setDepth({ scope: `${code}:${unit}:${tradeSide}:${value}`, count: 60 });
             if (scrollRef.current) scrollRef.current.scrollTop = 0;
           }} />
+          <div role="group" aria-label="매매 기준" className="flex shrink-0 items-center gap-1">
+            {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
+              <button key={side} type="button" aria-pressed={tradeSide === side}
+                title={side === 'net' ? '총매수 − 총매도' : TRADE_SIDE_LABELS[side]}
+                onClick={() => setTradeSide(side)}
+                className={`rounded border px-1.5 py-px text-2xs ${tradeSide === side ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+                {TRADE_SIDE_LABELS[side]}
+              </button>
+            ))}
+          </div>
           <UnitChip unit={unit} onToggle={toggleUnit} />
           <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails((shown) => !shown)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
         </div>
@@ -181,8 +198,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
       <div
         className="shrink-0 truncate px-2.5 pb-1 text-2xs text-fg-dim"
-        title={`일별 순매수 · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
-      >일별 순매수 · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
+        title={`일별 ${TRADE_SIDE_LABELS[dataSide]} · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
+      >일별 {TRADE_SIDE_LABELS[dataSide]} · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
       {span === 0 && table.rows.length > 0 && (
         <div className="px-2.5 pb-1 text-2xs text-fg-dim">
           {table.rows.at(-1)?.date}–{table.rows[0].date} · {table.rows.length}거래일
@@ -200,7 +217,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         </div>
       ) : (
         <div
-          key={`${code}:${unit}`}
+          key={`${code}:${unit}:${tradeSide}`}
           ref={scrollRef}
           aria-label="일별 투자자 내역"
           className="min-h-0 flex-1 overflow-auto"
@@ -252,6 +269,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                         key={column.key}
                         value={row.values[column.key]}
                         dataUnit={dataUnit}
+                        dataSide={dataSide}
                         className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                       />
                     ))}
@@ -279,6 +297,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     key={column.key}
                     value={table.totals[column.key]}
                     dataUnit={dataUnit}
+                    dataSide={dataSide}
                     foot
                     className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                   />
@@ -383,12 +402,14 @@ function DateCell({ date, isToday }: { date: string; isToday: boolean }) {
 function ValueCell({
   value,
   dataUnit,
+  dataSide,
   className = '',
   foot = false,
 }: {
   value: number | null;
   /** **응답이 말한 단위** — 토글이 아니다(위 도크스트링). */
   dataUnit: InvestorNetUnit;
+  dataSide: InvestorTradeSide;
   className?: string;
   foot?: boolean;
 }) {
@@ -398,9 +419,9 @@ function ValueCell({
     <td
       className={`whitespace-nowrap px-1.5 py-1 text-right ${
         foot ? 'border-t border-border bg-bg-card font-medium' : ''
-      } ${qtyClass(value)} ${className}`}
+      } ${qtyClass(value === null || dataSide === 'net' ? value : dataSide === 'sell' ? -value : value)} ${className}`}
     >
-      {value === null ? '' : formatCell(value, dataUnit)}
+      {value === null ? '' : dataSide === 'net' ? formatCell(value, dataUnit) : formatCell(value, dataUnit).replace(/^\+/, '')}
     </td>
   );
 }

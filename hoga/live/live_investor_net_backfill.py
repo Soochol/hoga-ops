@@ -5,6 +5,7 @@ from datetime import date
 from typing import Protocol
 
 from hoga.live import kiwoom_access, kiwoom_investor, kiwoom_rest_runtime
+from hoga.live.investor import InvestorTradeSide
 from hoga.live.kiwoom_capacity import Priority
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.single_flight import SingleFlight
@@ -41,11 +42,13 @@ class LiveInvestorNetBackfill:
         scheduler: KiwoomRestScheduler,
         walkback: Walkback,
         axis: str = kiwoom_investor.AMT_QTY_QUANTITY,
+        trade_side: InvestorTradeSide = "net",
     ) -> None:
         self._data_dir = data_dir
         self._cache = cache
         # 축은 인스턴스 차원이다 — `collect` 도크스트링이 이유를 적는다.
         self._axis = axis
+        self._trade_side = trade_side
         self._scheduler = scheduler
         self._walkback = walkback
         # Coalesce concurrent same-code cold walk-backs (see single_flight.py):
@@ -84,7 +87,7 @@ class LiveInvestorNetBackfill:
                 return kiwoom_access.run_with_capacity(
                     self._scheduler,   # 주입된 거버너 — 테스트가 갈아끼우는 이음매다
                     # 축이 키에 든다 — 빠지면 두 축의 같은 구간이 서로를 중복제거한다.
-                    key=("live-investor-net", self._axis, code_, from_s, to_s, page_idx),
+                    key=("live-investor-net", self._axis, self._trade_side, code_, from_s, to_s, page_idx),
                     api_id="ka10059",
                     priority="background",
                     client=client,
@@ -92,7 +95,7 @@ class LiveInvestorNetBackfill:
                 )
 
             result = await kiwoom_investor.fetch_investor_net(
-                client, code_, from_s, to_s, axis=self._axis, run_page=_run_page,
+                client, code_, from_s, to_s, axis=self._axis, trade_side=self._trade_side, run_page=_run_page,
             )
             # 세 번째 칸(`covered_to`)은 `None` 이다 — `ka10059` 커서는 `to` 상대라
             # 요청 구간 밖을 받지 않는다. 일봉만 기준일에서 걸어 내려오며 넓게

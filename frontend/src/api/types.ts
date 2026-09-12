@@ -754,6 +754,9 @@ export type InvestorSubjectBreakdown = {
  *  `qty_shares` 주 · `amt_mwon` 백만원(종목 금액 축) · `amt_eok` 억원(지수 경로).
  *  **표시는 응답의 이 값으로 고른다** — 저장된 토글로 고르면 축을 바꾼 직후
  *  옛 축의 값을 새 단위로 그린다(#1119 부류, 100배 오독). */
+/** Daily investor API mode. Legacy `_net` point keys carry this selected measure. */
+export type InvestorTradeSide = 'net' | 'buy' | 'sell';
+
 export type InvestorNetUnit = 'qty_shares' | 'amt_mwon' | 'amt_eok';
 
 export type ProgramTradePoint = {

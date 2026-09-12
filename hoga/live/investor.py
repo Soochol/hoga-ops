@@ -17,6 +17,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+InvestorTradeSide = Literal["net", "buy", "sell"]
+
 InvestorNetUnit = Literal["qty_shares", "amt_mwon", "amt_eok"]
 """순매수 값의 물리량. **응답이 스스로 말한다**(#1119).
 
@@ -84,6 +86,7 @@ class InvestorNetPoint(BaseModel):
     3,000억 순매수" 가 시장 관례이고 시장 전체 '주' 합산은 표시 가치가 없다.
     """
     t_ms: int             # epoch ms (UTC) — 09:00 KST anchor
+    # Daily API gross modes reuse these legacy keys; response trade_side declares the measure.
     foreign_net: int      # 외국인 순매수 — 단위는 응답의 unit 필드가 정한다
     institution_net: int  # 기관계 순매수 — 상동
     #: 주체 분해. 종목 경로(`ka10059`)만 채운다 — 지수/시장 경로는 `None`.

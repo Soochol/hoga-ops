@@ -54,3 +54,27 @@ it('does not advance past partial failures; retries the same window and preserve
   expect(spy.mock.calls[2][0]).toEqual(spy.mock.calls[1][0]);
   await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
 });
+
+it('keeps gross buy and sell history separate from net and rejects a mismatched response', async () => {
+  const spy = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => ({ ...response(url),
+    trade_side: new URL(url, 'http://localhost').searchParams.get('trade_side') as 'net' | 'buy' | 'sell' }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, rerender } = renderHook(({ side }: { side: 'net' | 'buy' | 'sell' }) =>
+    ({ ...useInvestorDailyHistory('005930', '20260505', 'qty', side) }), {
+    initialProps: { side: 'net' },
+    wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+  });
+  for (const side of ['net', 'buy', 'sell'] as const) {
+    rerender({ side });
+    expect(result.current.data).toBeUndefined();
+    await act(async () => { await result.current.fetchNextPage(); });
+    await waitFor(() => expect(result.current.data?.pages[0].trade_side).toBe(side));
+  }
+  rerender({ side: 'buy' });
+  expect(result.current.data?.pages[0].trade_side).toBe('buy');
+  expect(spy).toHaveBeenCalledTimes(3);
+  spy.mockImplementationOnce(async (url) => response(url));
+  await act(async () => { await result.current.fetchNextPage(); });
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(result.current.data?.pages).toHaveLength(1);
+});
