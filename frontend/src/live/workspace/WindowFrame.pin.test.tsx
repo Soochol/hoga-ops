@@ -123,3 +123,16 @@ describe('창 헤더 고정(핀) 버튼', () => {
     expect(screen.queryByTestId('window-pin-toggle')).toBeNull();
   });
 });
+
+it('차트 최대화 옆 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async () => {
+  const onToggleAlwaysOnTop = vi.fn();
+  const onHandleDown = vi.fn();
+  renderFrame({ kind: 'chart', symbolCode: null, alwaysOnTop: true,
+    onToggleAlwaysOnTop, onHandleDown, onToggleMaximize: vi.fn() });
+  const button = screen.getByRole('button', { name: '항상 위' });
+  expect(button).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: '창 최대화' }).nextElementSibling).toBe(button);
+  await userEvent.click(button);
+  expect(onToggleAlwaysOnTop).toHaveBeenCalledWith('w1');
+  expect(onHandleDown).not.toHaveBeenCalled();
+});

@@ -165,6 +165,8 @@ export interface WorkspaceWindow {
   rect: WorkspaceRect;
   /** kind==='chart' 에서만 존재. */
   chart?: ChartWindowConfig;
+  /** 포커스·종목 고정과 독립적인 표시 순서. */
+  alwaysOnTop?: boolean;
   /**
    * 종목 고정(핀) — **이 창을 링크 그룹에서 뗀 상태**이고, 값이 곧 그 창이 붙든 종목이다.
    *
@@ -240,6 +242,7 @@ type Store = Persisted & {
   addWindow: (kind: WindowKind) => string;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
+  toggleAlwaysOnTop: (id: string) => void;
   /** 단일 창 rect 커밋(드래그/리사이즈 종료 시). */
   setWindowRect: (id: string, rect: WorkspaceRect) => void;
   /** 여러 창 rect 를 한 번에 커밋(스플리터: 드래그 창 + follower 들). */
@@ -383,6 +386,7 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
     if (pinned) win.pinned = pinned;
   }
   if (w.kind === 'chart') {
+    if (w.alwaysOnTop === true) win.alwaysOnTop = true;
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
     // (`indicatorsWindowMigration`) 다음 저장 때 자연 소멸한다.
@@ -791,6 +795,16 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const zOrder = [...state.zOrder.filter((i) => i !== id), id];
       persistFromState({ ...state, zOrder });
       return { zOrder, maximizedId: null };
+    });
+  },
+
+  toggleAlwaysOnTop: (id) => {
+    set((state) => {
+      if (!state.windows.some((w) => w.id === id && w.kind === 'chart')) return {};
+      const windows = state.windows.map((w) => w.id === id
+        ? { ...w, alwaysOnTop: !w.alwaysOnTop } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
     });
   },
 

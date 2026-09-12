@@ -342,6 +342,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   // 고정할 종목이 없는 창은 핀을 켤 수 없다 — 스토어 가드(`toggleWindowPin`)와 **같은
   // 술어**를 UI 에도 세워 "눌렀는데 아무 일도 안 남" 을 만들지 않는다.
   const canPin = win.pinned != null || symbol != null;
+  const toggleAlwaysOnTop = useWorkspaceStore((s) => s.toggleAlwaysOnTop);
   return (
     <WindowFrame
       id={win.id}
@@ -355,6 +356,8 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
       symbolCode={symbol?.code ?? null}
       isIndex={symbol?.kind === 'index'}
       paletteOpen={paletteOpen}
+      alwaysOnTop={win.alwaysOnTop}
+      onToggleAlwaysOnTop={toggleAlwaysOnTop}
       maximized={maximized}
       onToggleMaximize={onToggleMaximize}
       pinned={win.pinned != null}
