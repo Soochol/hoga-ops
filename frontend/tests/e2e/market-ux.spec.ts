@@ -232,3 +232,33 @@ for (const width of [1440, 600]) test(`flow freshness and inspection fit without
   expect(details!.y + details!.height).toBeLessThanOrEqual(axis!.y);
   await body.screenshot({ path: testInfo.outputPath('investor-flow.png') });
 });
+
+test('주말 market에서도 점검과 연결 상태를 상단에 표시한다', async ({ page }) => {
+  await marketMocks(page);
+  await page.route(apiPrefix('live/status'), (route) => route.fulfill({ json: {
+    running: false, started_at_ms: null, last_tick_ms: null, cycle_lag_ms: 0,
+    watchlist_count: 0, live_set: [], capture_healthy: false, capture_reason: 'closed',
+    rest_bypass_enabled: false,
+    provider_status: {
+      observed_at_ms: 1789180000000, connection: 'unavailable', connected_accounts: 0,
+      configured_accounts: 5, last_received_at_ms: null, notice_config_error: false,
+      notice_phase: 'active', notice: {
+        id: 'kiwoom-20260912', starts_at_ms: 1789169400000, ends_at_ms: 1789210800000,
+        reason: 'KRX 애프터마켓 이행 관련 시스템 작업', source: '사용자 제공 키움 공지',
+      },
+    },
+  } }));
+  await page.goto('/market');
+  const banner = page.getByRole('status', { name: '키움 서비스 상태' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('연결 0/5계정');
+  await expect(banner).toContainText('20:00');
+  const bannerBounds = await banner.boundingBox();
+  const mainBounds = await page.locator('main').boundingBox();
+  expect(bannerBounds).not.toBeNull();
+  expect(mainBounds).not.toBeNull();
+  expect(bannerBounds!.y + bannerBounds!.height).toBeLessThanOrEqual(mainBounds!.y + 1);
+  await page.screenshot({ path: '/tmp/hoga-kiwoom-maintenance.png' });
+  await page.goto('/live');
+  await expect(banner).toBeVisible();
+});

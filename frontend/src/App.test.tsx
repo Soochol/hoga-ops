@@ -123,7 +123,7 @@ describe('App document title', () => {
 });
 
 describe('App shell layout', () => {
-  it('renders a column shell (main stack | full-height right panel) with the main stack as 3 rows', () => {
+  it('renders a column shell (main stack | full-height right panel) with a dedicated collapsible service banner row', () => {
     const { container } = wrap(<div>Heatmap</div>, '/heatmap');
     const shell = container.firstElementChild as HTMLElement;
     const mainStack = screen.getByTestId('app-main-stack');
@@ -137,7 +137,7 @@ describe('App shell layout', () => {
     // 341px). 아이템의 min-h-0 은 *트랙* 최소값을 풀지 못한다.
     expect(shell.style.gridTemplateRows).toBe('minmax(0, 1fr)');
     // 왼쪽 스택: top nav / 페이지 / 하단 바(auto — 바 null 이면 0 으로 접힘) 3행.
-    expect(mainStack.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
+    expect(mainStack.style.gridTemplateRows).toBe('var(--h-top-nav) auto minmax(0, 1fr) auto');
   });
 
   it('holds a responsive floor instead of compressing below it (min-w, not 100vw)', () => {

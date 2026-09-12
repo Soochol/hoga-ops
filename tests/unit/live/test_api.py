@@ -3514,3 +3514,25 @@ def test_series_response_never_strips_unknown_keys():
     # 장 중이면 close 가 없다 — 정당한 null 이므로 지우지 않는다.
     assert got["session_close_ms"] is None
     assert got["bid_peak_today"] is None
+
+
+def test_status_exposes_weekend_maintenance_separately_from_closed(tmp_path, monkeypatch):
+    from hoga.live import api, lifecycle
+    from hoga.live.service_status import DEFAULT_NOTICE
+
+    lifecycle.reset_for_tests()
+    status = lifecycle.get_status().model_copy(update={
+        "capture_reason": "closed", "capture_healthy": False,
+        "kiwoom": {"enabled": True, "accounts_configured": 1, "connected_accounts": 0,
+                   "accounts": [{"connected": False, "last_error_type": "ConnectionError"}]},
+    })
+    monkeypatch.setattr(api.monotonic_time, "time", lambda: DEFAULT_NOTICE.starts_at_ms / 1000)
+    app = _make_test_app(get_status_fn=lambda: status, data_dir=tmp_path)
+    with TestClient(app) as client:
+        response = client.get('/api/live/status')
+    assert response.status_code == 200
+    body = response.json()
+    assert body['capture_reason'] == 'closed'
+    assert body['provider_status']['connection'] == 'unavailable'
+    assert body['provider_status']['notice_phase'] == 'active'
+    assert body['provider_status']['notice']['id'] == DEFAULT_NOTICE.id

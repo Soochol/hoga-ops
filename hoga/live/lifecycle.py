@@ -33,6 +33,7 @@ from . import kis_runtime
 from .buffer import LiveBuffer
 from .promote import promote_kiwoom_today
 from .promote_executor import PromoteExecutor
+from .service_status import ProviderStatus
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import StorageRuntimeSnapshot, stop_storage_runtime, sync_storage_runtime
@@ -80,6 +81,7 @@ class KiwoomGovernorSnapshot(BaseModel):
 class LiveStatus(BaseModel):
     """Wire model for GET /api/live/status (spec §6)."""
 
+    provider_status: ProviderStatus | None = None
     running: bool
     started_at_ms: int | None
     last_tick_ms: int | None

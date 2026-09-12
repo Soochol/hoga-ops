@@ -18,7 +18,19 @@ import { apiCall } from './client';
  */
 export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_incomplete';
 
+export interface ProviderStatus {
+  observed_at_ms: number;
+  connection: "unconfigured" | "connecting" | "unavailable" | "partial" | "connected";
+  connected_accounts: number;
+  configured_accounts: number;
+  last_received_at_ms: number | null;
+  notice: { id: string; starts_at_ms: number; ends_at_ms: number; reason: string; source: string } | null;
+  notice_phase: "scheduled" | "active" | "overdue" | null;
+  notice_config_error: boolean;
+}
+
 export interface LiveStatus {
+  provider_status?: ProviderStatus | null;
   running: boolean;
   started_at_ms: number | null;
   last_tick_ms: number | null;

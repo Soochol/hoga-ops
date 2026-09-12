@@ -1911,7 +1911,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     @router.get("/status", response_model=LiveStatus)
     async def _get_status(request: Request) -> LiveStatus:
         status = get_status()
-        update: dict[str, object] = {}
+        from .service_status import provider_status  # noqa: PLC0415
+        update: dict[str, object] = {
+            "provider_status": provider_status(data_dir, status.kiwoom, int(monotonic_time.time() * 1000)),
+        }
         # 거버너 관측 표면 — PR-J(#1046)에서 KIS 스케줄러가 사라지고 키움 거버너가
         # 대신한다. **이제 진짜 프론트 계약이다**: `KiwoomGovernorSnapshot` 으로 shape 이
         # 선언돼 있고(`lifecycle.py`), 프론트가 `auth_failing_env_keys` 를 읽어 죽은

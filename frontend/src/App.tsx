@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
+import { ProviderServiceBanner } from './live/ProviderServiceBanner';
 import { MarketIndexBar } from './layout/MarketIndexBar';
 import { useDrawerAutoCollapse } from './layout/useDrawerAutoCollapse';
 import { WORKSPACE_NAV_ITEMS } from './nav/items';
@@ -206,9 +207,10 @@ export default function App() {
       <div
         data-testid="app-main-stack"
         className="grid min-h-0 min-w-0 overflow-hidden"
-        style={{ gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto' }}
+        style={{ gridTemplateRows: 'var(--h-top-nav) auto minmax(0, 1fr) auto' }}
       >
         <TopNav onOpenSettings={() => { setSettingsTarget(undefined); setSettingsOpen(true); }} />
+        <div><ProviderServiceBanner /></div>
         <main className="overflow-hidden min-w-0"><Outlet /></main>
         <MarketIndexBar />
       </div>
