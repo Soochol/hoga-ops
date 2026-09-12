@@ -493,7 +493,7 @@ export const updatePatternSave = (id: string, body: PatternSaveWriteRequest) =>
   });
 
 export const deletePatternSave = (id: string) =>
-  apiCall<void>(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
+  apiAction(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
 export interface ScreenerOccurrence {
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
