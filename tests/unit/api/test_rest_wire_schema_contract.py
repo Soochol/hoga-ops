@@ -179,7 +179,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "PatternBaseline": frozenset({"fwd_median_pct", "fwd_win_rate_pct", "sample"}),
     "PatternMatchRow": frozenset(
         {"code", "name", "from_date", "to_date", "corr", "bars", "tail", "forward_pct", "ma",
-         "struct_match", "struct_miss"}
+         "struct_match", "struct_miss", "bar_offset"}
     ),
     "PatternQueryWindow": frozenset({"length", "from_date", "to_date", "bars", "ma"}),
     "PatternLengthResult": frozenset(

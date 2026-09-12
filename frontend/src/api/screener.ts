@@ -304,6 +304,8 @@ export interface PatternBaseline {
 }
 
 export interface PatternMatchRow {
+  /** 같은 응답·종목 내 실제 봉 위치. 구 응답에서는 없을 수 있다. */
+  bar_offset?: number | null;
   code: string;
   name: string;
   from_date: string;

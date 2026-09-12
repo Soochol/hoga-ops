@@ -1485,9 +1485,28 @@ describe('PatternDrawer — 길이 유연 병합 경로의 제외', () => {
       timeframe: 'D' as const,
       results: [
         lengthResult(6, 'SK하이닉스', { history: true }),
-        lengthResult(7, 'SK하이닉스', { history: true }),
+        { ...lengthResult(7, 'SK하이닉스', { history: true }),
+          matches: lengthResult(7, 'SK하이닉스', { history: true }).matches.map((m) => ({
+            ...m, to_date: String(Number(m.to_date) + 3),
+          })),
+        },
       ],
     }));
+  });
+
+  it('±2봉 결과의 같은 구간은 실제 봉 위치로 하나만 표시한다', async () => {
+    searchPattern.mockResolvedValue({
+      ...RESP_BASE, code: '005930', name: '삼성전자', mode: 'history', timeframe: 'D',
+      results: [6, 7, 8].map((length) => ({
+        ...lengthResult(length, 'SK하이닉스', { history: true }),
+        matches: lengthResult(length, 'SK하이닉스', { history: true }).matches.map((m) => ({
+          ...m, bar_offset: 20, to_date: String(Number(m.to_date) + length - 6),
+        })),
+      })),
+    });
+    renderDrawer();
+    expect(await screen.findAllByRole('button', { name: /SK하이닉스/ })).toHaveLength(1);
+    expect(await screen.findAllByRole('button', { name: /한솔테크닉스/ })).toHaveLength(1);
   });
 
   it('종목 전체 제외가 병합된 목록의 **여러 자리를 한 번에** 덮는다', async () => {

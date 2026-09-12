@@ -1005,6 +1005,7 @@ def _append_one(
             from_date=_ymd_from(c, m.series, m.offset),
             to_date=_ymd_to(c, m.series, m.offset + length - 1),
             corr=m.score,
+            bar_offset=m.offset,
             bars=bars_at(c, m.series, m.offset, length),
             tail=(closes_at(c, m.series, m.offset + length, req.forward_days)
                   if req.mode == "history" else None),
