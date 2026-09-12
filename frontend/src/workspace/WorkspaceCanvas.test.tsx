@@ -148,3 +148,22 @@ describe('WorkspaceCanvasCore — 드래그 중 재렌더 경계', () => {
     expect(seen[0]).toBe(seen[seen.length - 1]);
   });
 });
+
+it('항상 위 창은 일반 창의 포커스 후에도 표시 순서와 드롭 판정에서 위에 남는다', () => {
+  function StackItem({ win, zIndex, focused }: WindowItemProps<W, Ctx>) {
+    return <div data-testid={win.id} style={{ zIndex }} data-focused={focused} />;
+  }
+  let hit: (() => W | null) | undefined;
+  const windows: W[] = [
+    { id: 'top', alwaysOnTop: true, rect: { x: 0, y: 0, w: 1, h: 1 } },
+    { id: 'normal', rect: { x: 0, y: 0, w: 1, h: 1 } },
+  ];
+  const { getByTestId } = render(<WorkspaceCanvasCore
+    windows={windows} zOrder={['top', 'normal']} focusWindow={() => {}}
+    setWindowRects={() => {}} windowItem={StackItem} itemCtx={ITEM_CTX}
+    onApi={(api) => { hit = api ? () => api.windowAtPoint(0, 0) : undefined; }}
+  />);
+  expect(Number(getByTestId('top').style.zIndex)).toBeGreaterThan(Number(getByTestId('normal').style.zIndex));
+  expect(getByTestId('normal').dataset.focused).toBe('true');
+  expect(hit?.()?.id).toBe('top');
+});

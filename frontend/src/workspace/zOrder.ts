@@ -30,3 +30,12 @@ export function normalizeZOrder<W extends { readonly id: string }>(
   }
   return next;
 }
+
+/** 항상 위 창들을 표시·히트 테스트의 마지막 층으로 옮긴다. */
+export function windowStackOrder(
+  zOrder: readonly string[],
+  windows: readonly { id: string; alwaysOnTop?: boolean }[],
+): string[] {
+  const topIds = new Set(windows.filter((w) => w.alwaysOnTop).map((w) => w.id));
+  return [...zOrder.filter((id) => !topIds.has(id)), ...zOrder.filter((id) => topIds.has(id))];
+}

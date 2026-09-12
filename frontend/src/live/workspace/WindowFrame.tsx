@@ -34,6 +34,8 @@ export interface WindowFrameProps {
   isIndex?: boolean;
   paletteOpen: boolean;
   maximized?: boolean;
+  alwaysOnTop?: boolean;
+  onToggleAlwaysOnTop?: (id: string) => void;
   onToggleMaximize?: (id: string) => void;
   /** 종목 고정 상태 — 켜져 있으면 이 창은 링크 그룹을 따르지 않고 자기 종목을 든다. */
   pinned?: boolean;
@@ -86,6 +88,8 @@ function WindowFrameImpl(props: WindowFrameProps) {
     isIndex = false,
     paletteOpen,
     maximized = false,
+    alwaysOnTop = false,
+    onToggleAlwaysOnTop,
     onToggleMaximize,
     pinned = false,
     canPin = true,
@@ -146,6 +150,24 @@ function WindowFrameImpl(props: WindowFrameProps) {
               onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
+              </svg>
+            </button>
+          )}
+          {kind === 'chart' && onToggleAlwaysOnTop && (
+            <button
+              type="button"
+              aria-label="항상 위"
+              aria-pressed={alwaysOnTop}
+              title={alwaysOnTop ? '항상 위 해제' : '항상 위 — 다른 창에 가려지지 않게 표시'}
+              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
+                ? 'bg-tint-selection text-accent hover:brightness-125'
+                : 'text-fg-dim hover:bg-tint-selection hover:text-fg'}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onToggleAlwaysOnTop(id)}
+            >
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16M12 18V8m-5 5 5-5 5 5" />
+                {alwaysOnTop && <path d="M4 21h16" />}
               </svg>
             </button>
           )}

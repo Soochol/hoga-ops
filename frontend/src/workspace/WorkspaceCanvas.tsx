@@ -14,6 +14,7 @@
  * px, 변환은 이 코어 한 곳에서만.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { windowStackOrder } from './zOrder';
 import { toFrac, toPx, type FracRect } from './rectSpace';
 import {
   computeMove,
@@ -48,6 +49,7 @@ const PURE_EDGES: readonly Edge[] = ['e', 'w', 'n', 's'];
 export interface WorkspaceWindowLike {
   id: string;
   rect: FracRect;
+  alwaysOnTop?: boolean;
 }
 
 /**
@@ -134,7 +136,9 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   // 이동 드래그 대상 창 id — 프레임 리프트(그림자)용. 리사이즈는 리프트하지 않는다.
   const [movingId, setMovingId] = useState<string | null>(null);
 
-  // zOrder 의 마지막 = 최상단 창. 헤더 틴트의 유일한 소비처.
+  const stackOrder = useMemo(() => windowStackOrder(zOrder, windows), [zOrder, windows]);
+
+  // zOrder 의 마지막 = 포커스 창. 헤더 틴트의 유일한 소비처.
   const focusedId = zOrder[zOrder.length - 1];
 
   /** 드래그 종료(커밋 없이) — 상태만 리셋. pointercancel/abort 경로가 공유. */
@@ -273,11 +277,11 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   // 전 갱신이면 충분하다.
   const canvasRef = useRef(canvasBox);
   const windowsRef = useRef(windows);
-  const zOrderRef = useRef(zOrder);
+  const zOrderRef = useRef(stackOrder);
   useLayoutEffect(() => {
     canvasRef.current = canvasBox;
     windowsRef.current = windows;
-    zOrderRef.current = zOrder;
+    zOrderRef.current = stackOrder;
   });
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -404,7 +408,7 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
           key={w.id}
           win={w}
           rect={rectOf(w)}
-          zIndex={Math.max(0, zOrder.indexOf(w.id))}
+          zIndex={Math.max(0, stackOrder.indexOf(w.id))}
           focused={w.id === focusedId}
           lifting={w.id === movingId}
           onHandleDown={onHandleDown}
