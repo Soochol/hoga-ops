@@ -1,5 +1,7 @@
+import type { StudyViewGroup } from '../api/studyViews';
 export type StudyViewTreeRow = {
   id: string;
+  group_id: string;
   label: string;
   code: string;
   name: string;
@@ -9,7 +11,6 @@ export type StudyViewTreeRow = {
 export type StudyViewTreeGroup<T extends StudyViewTreeRow> = {
   key: string;
   label: string;
-  code: string;
   rows: T[];
 };
 export type StudyViewTreeSortMode = 'default' | 'name-asc' | 'name-desc';
@@ -44,7 +45,7 @@ function sortStudyViewGroupsByName<T extends StudyViewTreeRow>(
         factor * (compareTreeText(a.name, b.name) || compareTreeText(a.code, b.code) || compareTreeText(a.id, b.id)),
       ),
     }))
-    .sort((a, b) => factor * (compareTreeText(a.label, b.label) || compareTreeText(a.code, b.code)));
+    .sort((a, b) => factor * (compareTreeText(a.label, b.label) || compareTreeText(a.key, b.key)));
 }
 
 function orderByKeys<T>(items: T[], keys: string[], keyOf: (item: T) => string): T[] {
@@ -79,24 +80,15 @@ function applyManualStudyViewOrder<T extends StudyViewTreeRow>(
   }));
 }
 
-export function groupStudyViewsByCode<T extends StudyViewTreeRow>(
+export function groupStudyViews<T extends StudyViewTreeRow>(
   rows: T[],
+  savedGroups: StudyViewGroup[],
   sortMode: StudyViewTreeSortMode = 'default',
   manualOrder?: StudyViewTreeManualOrder,
 ): StudyViewTreeGroup<T>[] {
-  const groups: StudyViewTreeGroup<T>[] = [];
-  const byCode = new Map<string, StudyViewTreeGroup<T>>();
-
-  for (const row of rows) {
-    const existing = byCode.get(row.code);
-    if (existing) {
-      existing.rows.push(row);
-      continue;
-    }
-    const group = { key: row.code, label: row.label || row.code, code: row.code, rows: [row] };
-    byCode.set(row.code, group);
-    groups.push(group);
-  }
+  const groups: StudyViewTreeGroup<T>[] = savedGroups.map((g) => ({ key: g.id, label: g.name, rows: [] }));
+  const byId = new Map(groups.map((g) => [g.key, g]));
+  for (const row of rows) byId.get(row.group_id)?.rows.push(row);
 
   if (sortMode === 'name-asc') return sortStudyViewGroupsByName(groups, 'asc');
   if (sortMode === 'name-desc') return sortStudyViewGroupsByName(groups, 'desc');
@@ -121,11 +113,11 @@ export function filterStudyViewGroups<T extends StudyViewTreeRow>(
   if (!q) return groups;
 
   return groups.flatMap((group) => {
-    const stockMatches = [group.label, group.code].some((value) => normalizeStudyViewQuery(value).includes(q));
+    const stockMatches = [group.label].some((value) => normalizeStudyViewQuery(value).includes(q));
     if (stockMatches) return [group];
 
     const rows = group.rows.filter((row) =>
-      [row.name, row.memo].some((value) => normalizeStudyViewQuery(value).includes(q)),
+      [row.label, row.code, row.name, row.memo].some((value) => normalizeStudyViewQuery(value).includes(q)),
     );
     return rows.length > 0 ? [{ ...group, rows }] : [];
   });

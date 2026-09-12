@@ -8,6 +8,8 @@ interface Props {
   y: number;
   name: string;         // 접근성 라벨용
   onOpen: () => void;
+  onMove: () => void;
+  onOpenNewTab: () => void;
   onRename: () => void;
   onEditMemo: () => void;
   onDelete: () => void;
@@ -36,11 +38,9 @@ const itemClass =
  * 발견 가능하게 한다. 위치 보정·dismiss 계약은 WatchlistRowMenu와
  * 동일 primitive(useClampedFixedPosition + useDismissablePopover).
  *
- * 「새 탭에서 열기」 메뉴 항목은 ADR-0149 로 사라졌다 — 그건 **앱 안의 저장뷰 탭**이었고,
- * `/study` 는 저장뷰를 한 번에 하나만 본다. 브라우저 탭으로 곁눈질하는 길은 행
- * ctrl/⌘+클릭 하나뿐이며(StudyViewsDrawer), 메뉴로는 중복 노출하지 않는다.
+ * 「새 탭에서 열기」는 브라우저 탭이며 저장뷰 그룹과 독립된 동작이다.
  */
-export function StudyViewRowMenu({ x, y, name, onOpen, onRename, onEditMemo, onDelete, onClose }: Props) {
+export function StudyViewRowMenu({ x, y, name, onOpen, onMove, onOpenNewTab, onRename, onEditMemo, onDelete, onClose }: Props) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   useDismissablePopover(true, ref, onClose);
 
@@ -59,6 +59,8 @@ export function StudyViewRowMenu({ x, y, name, onOpen, onRename, onEditMemo, onD
       <button type="button" role="menuitem" onClick={run(onOpen)} className={itemClass}>
         <span className="w-4 grid place-items-center"><OpenIcon /></span> 열기
       </button>
+      <button type="button" role="menuitem" onClick={run(onOpenNewTab)} className={itemClass}>새 탭에서 열기</button>
+      <button type="button" role="menuitem" onClick={run(onMove)} className={itemClass}>그룹 이동</button>
       <div role="separator" className="my-1 border-t border-border" />
       <button type="button" role="menuitem" onClick={run(onRename)} className={itemClass}>
         <span className="w-4 grid place-items-center"><PencilIcon /></span> 이름 변경

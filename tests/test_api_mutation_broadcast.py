@@ -67,6 +67,7 @@ _SAVE_CREATE = {
         "/api/study-views/saves",
         {
             "name": "뷰A",
+            "new_group_name": "복기",
             "code": "005930",
             "label": "삼성전자",
             "timeframe": "1m",

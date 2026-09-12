@@ -17,6 +17,7 @@ def _ref_req(**overrides):
     from_ms = hhmmssms_to_unix_ms("20260616", 90_000_000)
     to_ms = hhmmssms_to_unix_ms("20260618", 153_000_000)
     base = {
+        "group_id": "test-group",
         "name": "삼성전자 복기",
         "code": "005930",
         "label": "삼성전자",
@@ -37,6 +38,7 @@ def _ref_req(**overrides):
 
 @pytest.fixture
 def study_client(tmp_path):
+    sv.save_saves(tmp_path, StudyViewsFile(groups=[{"id": "test-group", "name": "복기"}]))
     app = FastAPI()
     app.include_router(build_router(data_dir=tmp_path))
     return TestClient(app)
@@ -112,13 +114,15 @@ def test_reference_model_strips_name():
 def test_study_views_file_is_v2_only():
     raw = {
         "schema_version": 1,
-        "saves": [{
-            "schema_version": 2,
-            "id": "view1",
-            **_ref_req(),
-            "created_at_ms": 1,
-            "updated_at_ms": 2,
-        }],
+        "saves": [
+            {
+                "schema_version": 2,
+                "id": "view1",
+                **_ref_req(),
+                "created_at_ms": 1,
+                "updated_at_ms": 2,
+            }
+        ],
     }
 
     file = StudyViewsFile.model_validate(raw)
@@ -130,13 +134,15 @@ def test_study_views_file_is_v2_only():
 def test_study_views_file_rejects_legacy_rows_without_schema_version():
     raw = {
         "schema_version": 1,
-        "saves": [{
-            "id": "legacy1",
-            "name": "옛 저장뷰",
-            "code": "005930",
-            "label": "삼성전자",
-            "timeframe": "5m",
-        }],
+        "saves": [
+            {
+                "id": "legacy1",
+                "name": "옛 저장뷰",
+                "code": "005930",
+                "label": "삼성전자",
+                "timeframe": "5m",
+            }
+        ],
     }
 
     with pytest.raises(ValidationError):
@@ -211,6 +217,7 @@ def test_study_view_routes_missing_ids_return_study_specific_404(study_client):
 
 
 def test_study_views_create_update_delete_reference(tmp_path):
+    sv.save_saves(tmp_path, StudyViewsFile(groups=[{"id": "test-group", "name": "복기"}]))
     req = StudyViewReferenceWriteRequest.model_validate(_ref_req())
 
     created = sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
@@ -257,3 +264,73 @@ def test_metadata_patch_missing_id_returns_404(study_client):
 
     assert patch.status_code == 404
     assert patch.json()["detail"]["code"] == "study_view_not_found"
+
+
+def test_user_groups_mix_codes_and_keep_duplicate_periods(study_client):
+    group = study_client.post("/api/study-views/groups", json={"name": "돌파 복기"}).json()
+    ids = []
+    for code in ["005930", "000660", "005930"]:
+        response = study_client.post("/api/study-views/saves", json=_ref_req(group_id=group["id"], code=code))
+        assert response.status_code == 201
+        ids.append(response.json()["id"])
+    assert len(set(ids)) == 3
+    other = study_client.post("/api/study-views/groups", json={"name": "눌림목"}).json()
+    response = study_client.post("/api/study-views/move", json={"ids": ids, "group_id": other["id"]})
+    assert response.status_code == 200
+    assert {row["group_id"] for row in response.json()["saves"]} == {other["id"]}
+    assert {row["id"] for row in response.json()["saves"]} == set(ids)
+    assert any(g["id"] == group["id"] for g in response.json()["groups"])
+    assert study_client.delete(f"/api/study-views/groups/{other['id']}").status_code == 204
+    assert study_client.get("/api/study-views/saves").json()["saves"] == []
+
+
+def test_create_group_and_save_is_atomic_and_validates_destination(study_client):
+    before = study_client.get("/api/study-views/saves").json()
+    bad = _ref_req(group_id=None, new_group_name="새 그룹", name="")
+    assert study_client.post("/api/study-views/saves", json=bad).status_code == 422
+    assert study_client.get("/api/study-views/saves").json() == before
+    response = study_client.post("/api/study-views/saves", json=_ref_req(group_id=None, new_group_name=" 새 그룹 "))
+    assert response.status_code == 201
+    saved = response.json()
+    groups = study_client.get("/api/study-views/saves").json()["groups"]
+    assert next(g for g in groups if g["id"] == saved["group_id"])["name"] == "새 그룹"
+    assert study_client.post("/api/study-views/groups", json={"name": " 새 그룹 "}).status_code == 409
+    assert study_client.post("/api/study-views/saves", json=_ref_req(group_id="missing")).status_code == 409
+    assert (
+        study_client.post("/api/study-views/saves", json=_ref_req(group_id=None, new_group_name="  ")).status_code
+        == 422
+    )
+    assert (
+        study_client.post(
+            "/api/study-views/move", json={"ids": [saved["id"], "missing"], "group_id": "test-group"}
+        ).status_code
+        == 409
+    )
+    assert study_client.get(f"/api/study-views/saves/{saved['id']}").json()["group_id"] == saved["group_id"]
+
+
+def test_old_list_reset_happens_once_and_leaves_market_data(tmp_path):
+    import json
+
+    path = tmp_path / "study_views" / "saves.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"schema_version": 1, "saves": []}))
+    market = tmp_path / "candles.parquet"
+    market.write_bytes(b"market data")
+    assert sv.load_saves(tmp_path).schema_version == 2
+    req = StudyViewReferenceWriteRequest.model_validate(_ref_req(group_id=None, new_group_name="새 그룹"))
+    sv.create_save_sync(tmp_path, req=req, id="new", now_ms=1)
+    assert sv.load_saves(tmp_path).saves[0].id == "new"
+    assert market.read_bytes() == b"market data"
+
+
+@pytest.mark.parametrize(
+    "raw", ["{broken", '{"schema_version": 99, "saves": []}', '{"schema_version": 1, "saves": "broken"}']
+)
+def test_unknown_or_corrupt_file_is_not_overwritten(tmp_path, raw):
+    path = tmp_path / "study_views" / "saves.json"
+    path.parent.mkdir()
+    path.write_text(raw)
+    with pytest.raises(ValueError):
+        sv.load_saves(tmp_path)
+    assert path.read_text() == raw

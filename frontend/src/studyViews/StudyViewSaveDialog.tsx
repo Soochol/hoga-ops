@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ModalShell } from '../ui/ModalShell';
+import type { StudyViewGroup } from '../api/studyViews';
+import { StudyGroupPicker, validStudyGroupChoice, type StudyGroupChoice } from './StudyGroupPicker';
 
 /** 저장 구간의 hogaplay 커버리지 — 저장과 함께 수집할지 판단할 재료. */
 export type SaveCoverage = {
@@ -12,6 +15,9 @@ export type SaveCoverage = {
 
 export function StudyViewSaveDialog({
   mode,
+  groups,
+  initialGroupId,
+  subjectLabel,
   defaultName,
   defaultMemo,
   rangeLabel,
@@ -24,6 +30,9 @@ export function StudyViewSaveDialog({
   onSubmit,
 }: {
   mode: 'create' | 'overwrite';
+  groups: StudyViewGroup[];
+  initialGroupId?: string;
+  subjectLabel?: string;
   defaultName: string;
   defaultMemo: string;
   rangeLabel?: string;
@@ -34,13 +43,15 @@ export function StudyViewSaveDialog({
   isSubmitting?: boolean;
   errorMessage?: string | null;
   onCancel: () => void;
-  onSubmit: (v: { name: string; memo: string; capture: boolean }) => void;
+  onSubmit: (v: { name: string; memo: string; capture: boolean } & StudyGroupChoice) => void;
 }) {
   const [name, setName] = useState(defaultName);
   const [memo, setMemo] = useState(defaultMemo);
   const [capture, setCapture] = useState(true);
-  const valid = name.trim().length > 0;
-  const title = mode === 'overwrite' ? '저장뷰 덮어쓰기' : '저장뷰 만들기';
+  const [group, setGroup] = useState<StudyGroupChoice>(() => groups.length === 0 ? { new_group_name: '' } : { group_id: initialGroupId });
+  const valid = validStudyGroupChoice(groups, group);
+  const duplicate = group.new_group_name !== undefined && groups.some((g) => g.name.toLocaleLowerCase() === group.new_group_name!.trim().toLocaleLowerCase());
+  const title = mode === 'overwrite' ? '저장뷰 덮어쓰기' : '저장뷰 저장';
   const estHours = coverage ? coverage.estMinutes / 60 : 0;
   const estLabel = !coverage
     ? ''
@@ -49,27 +60,34 @@ export function StudyViewSaveDialog({
       : `≈ ${coverage.estMinutes}분`;
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+    <ModalShell ariaLabel={title} width="w-[400px]" onClose={() => { if (!isSubmitting) onCancel(); }}>
       <form
-        className="w-[360px] max-w-[calc(100vw-24px)] space-y-3 rounded border bg-bg p-4 shadow-lg"
+        className="max-h-[85vh] overflow-y-auto space-y-3 p-4"
+        onKeyDown={(e) => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) onSubmit({ name: name.trim(), memo: memo.trim(), capture });
+          if (valid && !isSubmitting) onSubmit({ name: name.trim() || `${subjectLabel ?? '저장뷰'} · ${rangeLabel ?? ''}`, memo: memo.trim(), capture, ...group, ...(group.new_group_name !== undefined ? { new_group_name: group.new_group_name.trim() } : {}) });
         }}
       >
-        <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장 뷰 만들기'}</h2>
+        <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장뷰 저장'}</h2>
         {mode === 'overwrite' && (
           <p className="text-xs text-fg-dim">기존 저장뷰를 현재 복기 구간으로 덮어쓰기합니다.</p>
         )}
+        {subjectLabel && <p className="text-xs">{subjectLabel} · KRX 기준</p>}
         {rangeLabel ? (
           <p className="text-xs text-fg-dim">기간 참조 · {rangeLabel}</p>
         ) : barCount != null && sizeBytes != null ? (
           <p className="text-xs text-fg-dim">{barCount}개 봉 · 약 {Math.ceil(sizeBytes / 1024)}KB</p>
         ) : null}
+        <fieldset disabled={isSubmitting}>
+          <StudyGroupPicker groups={groups} value={group} onChange={setGroup} />
+          {duplicate && <p role="alert" className="mt-1 text-xs text-error">이미 있는 그룹입니다 · 기존 그룹에서 선택하세요</p>}
+        </fieldset>
         <label className="block text-xs">
-          이름
+          이름 <span className="text-fg-dim">선택</span>
           <input
             aria-label="이름"
+            placeholder="비우면 종목·봉·기간으로 자동 생성"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded border bg-bg-input px-2 py-1 text-sm"
@@ -126,16 +144,16 @@ export function StudyViewSaveDialog({
           </div>
         )}
         {errorMessage && (
-          <p role="alert" className="text-xs text-red-500">{errorMessage}</p>
+          <p role="alert" className="text-xs text-error">{errorMessage}</p>
         )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} disabled={isSubmitting} className="rounded border px-3 py-1 text-sm disabled:opacity-50">취소</button>
           <button type="submit" disabled={!valid || isSubmitting} className="rounded border bg-accent px-3 py-1 text-sm text-white disabled:opacity-50">
-            {isSubmitting ? '저장 중...' : '저장'}
+            {isSubmitting ? '저장 중...' : group.new_group_name !== undefined ? '그룹 만들고 저장' : '저장'}
           </button>
         </div>
       </form>
-    </div>,
+    </ModalShell>,
     document.body,
   );
 }

@@ -6,7 +6,7 @@ import StudyViewDeleteToastHost from './StudyViewDeleteToastHost';
 import { useStudyViewDeletion } from './studyViewDeletion';
 
 const row = (id: string): StudyViewReference => ({
-  id, schema_version: 2, name: id, code: '005930', label: '삼성전자', timeframe: '5m', memo: '', tags: [],
+  id, schema_version: 2, group_id: '005930', name: id, code: '005930', label: '삼성전자', timeframe: '5m', memo: '', tags: [],
   range: { from_date: '20260901', to_date: '20260901', from_ms: 1000, to_ms: 2000 },
   viewport: { right_edge_ms: 2000, bar_span: 10, at_live_edge: false }, created_at_ms: 1, updated_at_ms: 1,
 });

@@ -15,7 +15,7 @@ const DAY_MS = 86_400_000;
 
 function save(overrides: Partial<StudyViewReference> = {}): StudyViewReference {
   return {
-    schema_version: 2,
+    schema_version: 2, group_id: '005930',
     id: 'view-1',
     name: '복기',
     code: '005930',

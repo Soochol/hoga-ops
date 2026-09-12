@@ -10,8 +10,11 @@ from fastapi import APIRouter, HTTPException
 from hoga.api import study_views
 from hoga.api.events import EventBus
 from hoga.api.models import (
+    StudyViewGroup,
+    StudyViewGroupWriteRequest,
     StudyViewListRow,
     StudyViewMetadataUpdateRequest,
+    StudyViewMoveRequest,
     StudyViewReferenceWriteRequest,
     StudyViewsFile,
 )
@@ -51,25 +54,28 @@ def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
     @router.post("/saves", status_code=201, response_model=StudyViewListRow)
     async def create_save(req: StudyViewReferenceWriteRequest) -> StudyViewListRow:
         now_ms = int(time.time() * 1000)
-        save = await study_views.create_save(
-            data_dir,
-            req=req,
-            id=uuid.uuid4().hex,
-            now_ms=now_ms,
-        )
+        try:
+            save = await study_views.create_save(
+                data_dir,
+                req=req,
+                id=uuid.uuid4().hex,
+                now_ms=now_ms,
+            )
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
         return save
 
     @router.get("/saves/{save_id}", response_model=StudyViewListRow)
     async def get_save(save_id: str) -> StudyViewListRow:
         try:
             return study_views.get_save_sync(data_dir, id=save_id)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
 
     @router.patch("/saves/{save_id}/metadata", response_model=StudyViewListRow)
-    async def update_save_metadata(
-        save_id: str, req: StudyViewMetadataUpdateRequest
-    ) -> StudyViewListRow:
+    async def update_save_metadata(save_id: str, req: StudyViewMetadataUpdateRequest) -> StudyViewListRow:
         try:
             return await study_views.update_save_metadata(
                 data_dir,
@@ -77,13 +83,13 @@ def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
                 req=req,
                 now_ms=int(time.time() * 1000),
             )
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
 
     @router.put("/saves/{save_id}", response_model=StudyViewListRow)
-    async def update_save(
-        save_id: str, req: StudyViewReferenceWriteRequest
-    ) -> StudyViewListRow:
+    async def update_save(save_id: str, req: StudyViewReferenceWriteRequest) -> StudyViewListRow:
         try:
             now_ms = int(time.time() * 1000)
             save = await study_views.update_save(
@@ -92,6 +98,8 @@ def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
                 req=req,
                 now_ms=now_ms,
             )
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
         return save
@@ -100,7 +108,41 @@ def build_router(*, data_dir: Path, bus: EventBus | None = None) -> APIRouter:
     async def delete_save(save_id: str) -> None:
         try:
             await study_views.delete_save(data_dir, id=save_id)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
         except study_views.StudyViewNotFoundError as e:
             raise _not_found(save_id) from e
 
+    _register_group_routes(router, data_dir)
+
     return router
+
+
+def _register_group_routes(router: APIRouter, data_dir: Path) -> None:
+    @router.post("/groups", status_code=201)
+    async def create_group(req: StudyViewGroupWriteRequest) -> StudyViewGroup:
+        try:
+            return await study_views.create_group(data_dir, req)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
+
+    @router.patch("/groups/{group_id}")
+    async def rename_group(group_id: str, req: StudyViewGroupWriteRequest) -> StudyViewGroup:
+        try:
+            return await study_views.rename_group(data_dir, group_id, req)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
+
+    @router.delete("/groups/{group_id}", status_code=204)
+    async def delete_group(group_id: str) -> None:
+        try:
+            await study_views.delete_group(data_dir, group_id)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e
+
+    @router.post("/move")
+    async def move_saves(req: StudyViewMoveRequest) -> StudyViewsFile:
+        try:
+            return await study_views.move_saves(data_dir, req)
+        except study_views.StudyViewGroupError as e:
+            raise HTTPException(status_code=409, detail={"message": str(e)}) from e

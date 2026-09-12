@@ -2706,7 +2706,28 @@ class StudyViewRange(BaseModel):
         return self
 
 
+class StudyViewGroup(BaseModel):
+    id: str
+    name: str
+
+
+class StudyViewGroupWriteRequest(BaseModel):
+    name: str = Field(max_length=60)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+
+class StudyViewMoveRequest(BaseModel):
+    group_id: str
+    ids: list[str] = Field(min_length=1)
+
+
 class StudyViewReferenceWriteRequest(BaseModel):
+    group_id: str | None = None
+    new_group_name: str | None = Field(default=None, max_length=60)
     name: str
     code: str = Field(pattern=CODE_PATTERN)
     label: str
@@ -2715,6 +2736,11 @@ class StudyViewReferenceWriteRequest(BaseModel):
     viewport: StudyViewport
     memo: str = ""
     tags: list[str] = Field(default_factory=list)
+
+    @field_validator("new_group_name")
+    @classmethod
+    def _strip_group_name(cls, v: str | None) -> str | None:
+        return None if v is None else _strip_nonblank_name(v)
 
     @field_validator("name")
     @classmethod
@@ -2759,6 +2785,7 @@ class StudyViewMetadataUpdateRequest(BaseModel):
 
 class StudyViewReference(BaseModel):
     schema_version: Literal[2] = 2
+    group_id: str
     id: str
     name: str
     code: str = Field(pattern=CODE_PATTERN)
@@ -2781,7 +2808,8 @@ StudyViewListRow = StudyViewReference
 
 
 class StudyViewsFile(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 2
+    groups: list[StudyViewGroup] = Field(default_factory=list)
     saves: list[StudyViewListRow] = Field(default_factory=list)
 
 

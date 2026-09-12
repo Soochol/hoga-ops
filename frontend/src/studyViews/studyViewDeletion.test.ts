@@ -8,7 +8,7 @@ import { savedRangeFocusFromView } from './savedRangeFocus';
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../api/studyViews', () => ({ deleteStudyView: remove }));
 const row = (id: string): StudyViewReference => ({
-  id, schema_version: 2, name: id, code: '005930', label: '삼성전자', timeframe: '5m', memo: '', tags: [],
+  id, schema_version: 2, group_id: '005930', name: id, code: '005930', label: '삼성전자', timeframe: '5m', memo: '', tags: [],
   range: { from_date: '20260901', to_date: '20260901', from_ms: 1000, to_ms: 2000 },
   viewport: { right_edge_ms: 2000, bar_span: 10, at_live_edge: false }, created_at_ms: 1, updated_at_ms: 1,
 });
@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   remove.mockReset().mockResolvedValue(undefined);
   client = new QueryClient();
-  client.setQueryData(STUDY_VIEW_SAVES_QUERY, { schema_version: 2, saves: [row('a'), row('b'), row('c')] });
+  client.setQueryData(STUDY_VIEW_SAVES_QUERY, { schema_version: 2, groups: [{ id: '005930', name: '복기' }], saves: [row('a'), row('b'), row('c')] });
   useLivePageStore.getState().clearSavedRange();
 });
 afterEach(() => {

@@ -55,6 +55,15 @@ from hoga.live.lifecycle import LiveStatus
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "StudyViewGroup": frozenset({"id", "name"}),
+    "StudyViewsFile": frozenset({"schema_version", "groups", "saves"}),
+    "StudyViewReference": frozenset({
+        "schema_version", "group_id", "id", "name", "code", "label", "timeframe", "range",
+        "viewport", "memo", "tags", "created_at_ms", "updated_at_ms",
+    }),
+    "StudyViewReferenceWriteRequest": frozenset({
+        "group_id", "new_group_name", "name", "code", "label", "timeframe", "range", "viewport", "memo", "tags",
+    }),
     "QueueSnapshot": frozenset({
         "active", "queued", "done", "paused", "max_concurrent", "queue_owned",
         "persistence_degraded", "last_persisted_at_ms", "persistence_epoch", "persistence_revision",

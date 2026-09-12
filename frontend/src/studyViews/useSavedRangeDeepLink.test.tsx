@@ -13,7 +13,7 @@ import { useWorkspaceStore } from '../state/workspace';
 import { useSavedRangeDeepLink } from './useSavedRangeDeepLink';
 
 const ROW: StudyViewListRow = {
-  schema_version: 2,
+  schema_version: 2, group_id: '005930',
   id: 'v-1',
   name: '6월 급등 구간',
   code: '005930',

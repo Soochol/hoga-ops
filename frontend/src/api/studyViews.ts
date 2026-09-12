@@ -19,6 +19,7 @@ export type StudyViewRange = {
 
 export type StudyViewReference = {
   schema_version: 2;
+  group_id: string;
   id: string;
   name: string;
   code: string;
@@ -33,9 +34,12 @@ export type StudyViewReference = {
 };
 
 export type StudyViewListRow = StudyViewReference;
-export type StudyViewsFile = { schema_version: number; saves: StudyViewListRow[] };
+export type StudyViewGroup = { id: string; name: string };
+export type StudyViewsFile = { schema_version: number; groups: StudyViewGroup[]; saves: StudyViewListRow[] };
 
 export type StudyViewWriteRequest = {
+  group_id?: string;
+  new_group_name?: string;
   name: string;
   code: string;
   label: string;
@@ -68,3 +72,12 @@ export const updateStudyViewMetadata = (id: string, body: StudyViewMetadataUpdat
   apiCall<StudyViewListRow>(`/api/study-views/saves/${id}/metadata`, { method: 'PATCH', ...json(body) });
 export const deleteStudyView = (id: string) =>
   apiAction(`/api/study-views/saves/${id}`, { method: 'DELETE' });
+
+export const createStudyViewGroup = (name: string) =>
+  apiCall<StudyViewGroup>('/api/study-views/groups', { method: 'POST', ...json({ name }) });
+export const renameStudyViewGroup = (id: string, name: string) =>
+  apiCall<StudyViewGroup>(`/api/study-views/groups/${id}`, { method: 'PATCH', ...json({ name }) });
+export const deleteStudyViewGroup = (id: string) =>
+  apiAction(`/api/study-views/groups/${id}`, { method: 'DELETE' });
+export const moveStudyViews = (ids: string[], group_id: string) =>
+  apiCall<StudyViewsFile>('/api/study-views/move', { method: 'POST', ...json({ ids, group_id }) });

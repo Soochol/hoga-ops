@@ -12,8 +12,9 @@ export const studyViewTreeCollision: CollisionDetection = (args) => {
   const p = args.pointerCoordinates;
   const bounds = document.querySelector('[data-testid="saved-views-scroll"]')?.getBoundingClientRect();
   if (p && bounds && (p.x < bounds.left || p.x > bounds.right || p.y < bounds.top || p.y > bounds.bottom)) return [];
-  const sameType = args.droppableContainers.filter((container) => container.data.current?.type === type
-    && (type !== 'row' || container.data.current?.groupKey === args.active.data.current?.groupKey));
+  const sameType = args.droppableContainers.filter((container) => type === 'row' || container.data.current?.type === type);
+  // Prefer the row under the pointer over its containing group.
+  sameType.sort((a, b) => Number(b.data.current?.type === 'row') - Number(a.data.current?.type === 'row'));
   // Use actual visible bounds so scrolled headers cannot target an unrelated row.
   const droppableRects = new Map(args.droppableRects);
   for (const target of sameType) if (target.node.current) droppableRects.set(target.id, target.node.current.getBoundingClientRect());
@@ -50,10 +51,9 @@ export function resolveStudyViewTreeDrag(event: DragEndEvent): StudyViewTreeDrag
   if (active.data.current?.type === 'row') {
     const activeId = parseRowDndId(String(active.id));
     const overId = parseRowDndId(String(over.id));
-    const activeGroup = active.data.current.groupKey;
-    const overGroup = over.data.current?.groupKey;
-    if (activeId && overId && typeof activeGroup === 'string' && activeGroup === overGroup) {
-      return { type: 'row', groupKey: activeGroup, activeId, overId };
+    const overGroup = over.data.current?.groupKey ?? parseGroupDndId(String(over.id));
+    if (activeId && typeof overGroup === 'string') {
+      return { type: 'row', groupKey: overGroup, activeId, overId: overId ?? '' };
     }
   }
 

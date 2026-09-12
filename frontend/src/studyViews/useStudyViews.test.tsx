@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api/studyViews', () => ({
+  createStudyViewGroup: vi.fn(), renameStudyViewGroup: vi.fn(), deleteStudyViewGroup: vi.fn(), moveStudyViews: vi.fn(),
   createStudyView: vi.fn(),
   deleteStudyView: vi.fn(async () => undefined),
   listStudyViews: vi.fn(),
