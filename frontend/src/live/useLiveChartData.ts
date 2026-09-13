@@ -93,6 +93,8 @@ export interface UseLiveChartDataArgs {
   venue: LiveVenueOption;
   /** 활성 지표에서 파생한 투자자 순매수 게이트(호출측이 공급 — 전역/창별). */
   investorNetEnabled: boolean;
+  dailyProgramEnabled?: boolean;
+  dailyProgramTradeSide?: InvestorTradeSide;
   foreignTradeSide?: InvestorTradeSide;
   institutionTradeSide?: InvestorTradeSide;
   foreignInvestorEnabled?: boolean;
@@ -194,6 +196,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     gapFill,
   } = useLiveBundle(activeCode, timeframe, today, live, {
     investorNetEnabled,
+    dailyProgramEnabled: args.dailyProgramEnabled,
+    dailyProgramTradeSide: args.dailyProgramTradeSide,
     foreignTradeSide: args.foreignTradeSide,
     institutionTradeSide: args.institutionTradeSide,
     foreignInvestorEnabled: args.foreignInvestorEnabled,

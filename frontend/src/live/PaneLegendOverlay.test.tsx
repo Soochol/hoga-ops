@@ -934,11 +934,22 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     fireEvent.click(screen.getByRole('button', { name: `${name} pane 이동/병합` }));
   };
 
+  it('프로그램 일봉은 조회 상태와 선택 기준을 범례에 표시한다', () => {
+    const props = { chart: makeChart(CANONICAL_PANE_ORDER.map(() => 100)),
+      timeframe: 'D' as const, paneToggles: { foreignNet: false, institutionNet: false, dailyProgramEnabled: true } };
+    const { rerender } = render(<PaneLegendOverlay {...props} dailyProgramTradeSide="sell" dailyProgramStatus="loading" />);
+    expect(screen.getByTestId('pane-chip-program-daily')).toHaveTextContent('프로그램 총매도량 · 조회 중');
+    for (const [status, label] of [['error', '조회 실패'], ['partial', '일부 데이터 미제공'], ['empty', '데이터 없음']] as const) {
+      rerender(<PaneLegendOverlay {...props} dailyProgramTradeSide="buy" dailyProgramStatus={status} />);
+      expect(screen.getByTestId('pane-chip-program-daily')).toHaveTextContent(`프로그램 총매수량 · ${label}`);
+    }
+  });
+
   it('모든 보조 pane 은 데이터 등록 전에도 이름으로 이동할 수 있다', () => {
     render(<PaneLegendOverlay
       chart={makeChart(CANONICAL_PANE_ORDER.map(() => 100))}
       timeframe="D"
-      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true }}
+      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true, dailyProgramEnabled: true }}
     />);
     for (const pane of CANONICAL_PANE_ORDER.filter((id) => id !== 'candle')) {
       openMenu(PANE_DISPLAY_NAME[pane]);
@@ -987,7 +998,7 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     fireEvent.click(screen.getByTestId('pane-menu-move-up'));
     const order = useLivePageStore.getState().paneOrder;
     expect(order.indexOf('ratio')).toBeLessThan(order.indexOf('quote-totals'));
-    expect(order.slice(-2)).toEqual(['investor-foreign', 'investor-institution']);
+    expect(order.slice(-3)).toEqual(['investor-foreign', 'investor-institution', 'program-daily']);
     expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
   });
 

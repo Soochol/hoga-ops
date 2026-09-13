@@ -19,6 +19,7 @@ export type IndicatorPanePrefs = {
   ratioEnabled: boolean;
   fillStrengthEnabled: boolean;
   programTradeEnabled: boolean;
+  dailyProgramEnabled?: boolean;
   foreignNetEnabled: boolean;
   institutionNetEnabled: boolean;
   peakWallPaneEnabled: boolean;
@@ -27,7 +28,7 @@ export type IndicatorPanePrefs = {
 export type PanePrefKey = keyof IndicatorPanePrefs;
 
 /** 소비자가 store 에서 골라오는, 이미 resolve 된 pane 토글 7종. */
-export type PanePrefsIndicatorSource = Pick<PersistedIndicators, PanePrefKey>;
+export type PanePrefsIndicatorSource = Pick<PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled'>> & { dailyProgramEnabled?: boolean };
 
 export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
@@ -41,6 +42,7 @@ export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'ratioEnabled',
   'fillStrengthEnabled',
   'programTradeEnabled',
+  'dailyProgramEnabled',
   'foreignNetEnabled',
   'institutionNetEnabled',
   'peakWallPaneEnabled',
@@ -90,6 +92,7 @@ export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPa
     ratioEnabled: indicators.ratioEnabled,
     fillStrengthEnabled: indicators.fillStrengthEnabled,
     programTradeEnabled: indicators.programTradeEnabled,
+    dailyProgramEnabled: indicators.dailyProgramEnabled === true,
     foreignNetEnabled: indicators.foreignNetEnabled,
     institutionNetEnabled: indicators.institutionNetEnabled,
     peakWallPaneEnabled: indicators.peakWallPaneEnabled,
@@ -124,6 +127,7 @@ export function resolvePaneToggles(input: {
     ratioEnabled: prefs.ratioEnabled,
     fillStrengthEnabled: prefs.fillStrengthEnabled,
     programTradeEnabled: prefs.programTradeEnabled,
+    dailyProgramEnabled: prefs.dailyProgramEnabled,
     peakWallPaneEnabled: prefs.peakWallPaneEnabled && input.peakWallPaneHasContent,
     hogaPanes: input.hogaPanes,
     forceHogaPanes: input.forceHogaPanes,

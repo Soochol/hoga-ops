@@ -344,6 +344,8 @@ export type PersistedIndicators = {
   fillStrengthEnabled: boolean;
   /** 프로그램 순매수 pane on/off. Default TRUE. */
   programTradeEnabled: boolean;
+  dailyProgramEnabled: boolean;
+  dailyProgramTradeSide: import('../api/types').InvestorTradeSide;
   /**
    * 신규 거래원 등장 **인스턴스 배열**. 같은 지표를 기준 시각만 달리해 여러 개
    * 띄울 수 있다(Phase 3 의 첫 대상 — 타입 도크스트링 참조).
@@ -739,6 +741,8 @@ export function mergeLiveIndicatorPrefs(
     ratioLevelStyle,
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
+    dailyProgramEnabled: obj?.dailyProgramEnabled === true,
+    dailyProgramTradeSide: normalizeInvestorTradeSide(obj?.dailyProgramTradeSide),
     brokerLateEntries,
     brokerLateEntryEnabled,
     brokerLateEntryHidden,

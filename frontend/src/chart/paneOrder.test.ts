@@ -6,7 +6,7 @@ describe('CANONICAL_PANE_ORDER', () => {
     expect(CANONICAL_PANE_ORDER[0]).toBe('candle');
     expect(CANONICAL_PANE_ORDER).toContain('investor-foreign');
     expect(CANONICAL_PANE_ORDER).toContain('investor-institution');
-    expect(CANONICAL_PANE_ORDER).toHaveLength(9);
+    expect(CANONICAL_PANE_ORDER).toHaveLength(10);
   });
 });
 
@@ -22,7 +22,7 @@ describe('normalizePaneOrder', () => {
     // candle 앞에 있던 volume/ratio 는 candle 뒤로 밀리고, 나머지 누락은 append.
     expect(out).toEqual([
       'candle', 'volume', 'ratio', 'program-trade',
-      'quote-totals', 'peak-wall', 'fill-strength', 'investor-foreign', 'investor-institution',
+      'quote-totals', 'peak-wall', 'fill-strength', 'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
 
@@ -31,7 +31,7 @@ describe('normalizePaneOrder', () => {
     expect(out).toEqual([
       'candle', 'ratio', 'volume',
       'quote-totals', 'peak-wall', 'fill-strength', 'program-trade',
-      'investor-foreign', 'investor-institution',
+      'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
 });
@@ -96,10 +96,10 @@ describe('movePaneBeside', () => {
     const out = movePaneBeside(order, 'investor-foreign', 'volume', 'before');
     expect(out).toEqual([
       'candle', 'investor-foreign', 'volume', 'quote-totals', 'peak-wall', 'ratio',
-      'fill-strength', 'program-trade', 'investor-institution',
+      'fill-strength', 'program-trade', 'investor-institution', 'program-daily',
     ]);
     // 분봉 투영(IF/II 제외): volume 이 여전히 candle 바로 뒤 → leapfrog 없음.
-    const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution');
+    const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution' && id !== 'program-daily');
     expect(minuteView).toEqual(['candle', 'volume', 'quote-totals', 'peak-wall', 'ratio', 'fill-strength', 'program-trade']);
   });
 });

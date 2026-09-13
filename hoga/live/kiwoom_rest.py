@@ -144,6 +144,8 @@ TR: dict[str, TrSpec] = {
     # ⚠ 같은 이름의 `kospi200` 이 ka90005 는 ×100 정수, ka90010 은 소수점이다.
     "ka90005": TrSpec("ka90005", PATH_MRKCOND, "prm_trde_trnsn", cursor=True,
                       required=("date", "amt_qty_tp", "mrkt_tp", "min_tic_tp", "stex_tp")),
+    "ka90013": TrSpec("ka90013", PATH_STKINFO, "stk_daly_prm_trde_trnsn", cursor=True,
+                      required=("stk_cd", "date", "amt_qty_tp")),
     "ka90010": TrSpec("ka90010", PATH_MRKCOND, "prm_trde_trnsn", cursor=True,
                       required=("date", "amt_qty_tp", "mrkt_tp", "min_tic_tp", "stex_tp")),
     "ka10131": TrSpec("ka10131", PATH_FRGNISTT, "orgn_frgnr_cont_trde_prst",

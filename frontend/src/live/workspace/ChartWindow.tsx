@@ -323,6 +323,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     investorNetEnabled,
     foreignTradeSide: ind.foreignTradeSide,
     institutionTradeSide: ind.institutionTradeSide,
+    dailyProgramEnabled: ind.dailyProgramEnabled,
+    dailyProgramTradeSide: ind.dailyProgramTradeSide,
     foreignInvestorEnabled: ind.foreignNetEnabled,
     institutionInvestorEnabled: ind.institutionNetEnabled,
     sidecarDemands,

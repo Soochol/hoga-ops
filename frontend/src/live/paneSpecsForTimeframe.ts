@@ -5,6 +5,7 @@ import {
   INVESTOR_FOREIGN_SPEC,
   INVESTOR_INSTITUTION_SPEC,
 } from '../chart/projectors/investorNet';
+import { DAILY_PROGRAM_TRADE_SPEC } from '../chart/projectors/dailyProgramTrade';
 import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
 
 /** Indicator toggles that gate which panes mount. The two investor flags are
@@ -18,6 +19,7 @@ export type PaneToggles = {
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
   programTradeEnabled?: boolean;
+  dailyProgramEnabled?: boolean;
   hogaPanes?: boolean;
   forceHogaPanes?: boolean;
   /** 최대벽 강도 pane (기존 「당일 최대벽」의 시간축 표현). **opt-in** — `=== true`
@@ -71,6 +73,7 @@ const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
  */
 const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   ...PANE_SPECS.map((spec) => ({ spec, gate: GATE_BY_NAME[spec.name] ?? ((): boolean => true) })),
+  { spec: DAILY_PROGRAM_TRADE_SPEC, gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
   { spec: INVESTOR_FOREIGN_SPEC, gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: INVESTOR_INSTITUTION_SPEC, gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
   // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일

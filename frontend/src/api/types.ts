@@ -922,6 +922,9 @@ export type RangeBundle = {
   investorTradeSide?: InvestorTradeSide;
   investorStatus?: 'loading' | 'error';
   /** Per-pane data; absent on legacy/index bundles which share investorPoints. */
+  dailyProgramPoints?: import('./liveDailyProgramTrade').DailyProgramTradePoint[];
+  dailyProgramTradeSide?: InvestorTradeSide;
+  dailyProgramStatus?: 'loading' | 'error' | 'partial' | 'empty';
   institutionInvestorPoints?: InvestorNetPoint[];
   institutionInvestorTradeSide?: InvestorTradeSide;
   institutionInvestorStatus?: 'loading' | 'error';

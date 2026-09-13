@@ -12,6 +12,7 @@ const RESOLVED_PREFS = {
   ratioEnabled: false,
   fillStrengthEnabled: false,
   programTradeEnabled: false,
+  dailyProgramEnabled: false,
   foreignNetEnabled: true,
   institutionNetEnabled: false,
   peakWallPaneEnabled: false,

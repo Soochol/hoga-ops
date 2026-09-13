@@ -25,6 +25,7 @@ export const CANONICAL_PANE_ORDER = [
   'program-trade',
   'investor-foreign',
   'investor-institution',
+  'program-daily',
 ] as const satisfies readonly PaneId[];
 
 // PaneId 유니온이 늘어나면 이 할당이 실패한다(위 배열에 새 pane 추가를 강제).
@@ -112,6 +113,7 @@ export function movePaneBeside(
  * 드리프트 테스트가 두 표를 대조한다. 캔들은 패널에 항목이 없다(끌 수 없는 고정 pane).
  */
 export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
+  'program-daily': '프로그램 순매수량',
   candle: '캔들',
   volume: '거래량',
   ratio: '호가비',

@@ -1895,6 +1895,7 @@ export function LiveChartRoot({
   const prefQuoteTotalsEnabled = useWindowIndicator((s) => s.quoteTotalsEnabled);
   const prefRatioEnabled = useWindowIndicator((s) => s.ratioEnabled);
   const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
+  const prefDailyProgramEnabled = useWindowIndicator((s) => s.dailyProgramEnabled);
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
   const prefPeakWallPaneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
@@ -1913,13 +1914,14 @@ export function LiveChartRoot({
       ratioEnabled: prefRatioEnabled,
       fillStrengthEnabled: prefFillStrengthEnabled,
       programTradeEnabled: prefProgramTradeEnabled,
+      dailyProgramEnabled: prefDailyProgramEnabled,
       foreignNetEnabled: prefForeignNetEnabled,
       institutionNetEnabled: prefInstitutionNetEnabled,
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
     [prefMovingAverages,
       prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
-      prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled,
+      prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled, prefDailyProgramEnabled,
       prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
   );
   // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
@@ -2845,6 +2847,8 @@ export function LiveChartRoot({
             investorStatus={cb?.investorStatus}
             institutionInvestorTradeSide={cb?.institutionInvestorTradeSide}
             institutionInvestorStatus={cb?.institutionInvestorStatus}
+            dailyProgramTradeSide={cb?.dailyProgramTradeSide}
+            dailyProgramStatus={cb?.dailyProgramStatus}
             indicatorLegendsVisible={indicatorLegendsVisible}
             chart={chart}
             timeframe={timeframe}

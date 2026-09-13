@@ -89,6 +89,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       ratioLevelStyle: 'dashed',
       fillStrengthEnabled: true,
       programTradeEnabled: true,
+      dailyProgramEnabled: false,
+      dailyProgramTradeSide: 'net',
       // 인스턴스 배열(Phase 3) — flat 6필드는 레거시 입력으로만 남는다.
       brokerLateEntries: DEFAULT_BROKER_LATE_ENTRIES.map((e) => ({ ...e })),
       brokerLateEntryEnabled: false,
@@ -100,7 +102,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       panePrefsByTimeframe: {},
       paneOrder: [
         'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
-        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
       ],
       paneStretch: {},
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
@@ -266,7 +268,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
   it('defaults paneOrder to the canonical order with candle first', () => {
     expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
       'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
-      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
 
@@ -274,7 +276,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
     const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
     expect(m.paneOrder).toEqual([
       'candle', 'ratio', 'volume',
-      'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
 });

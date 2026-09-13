@@ -15,6 +15,7 @@ const CATEGORY_TO_PANE: Record<string, PaneId> = {
   ratio: 'ratio',
   'fill-strength': 'fill-strength',
   'program-trade': 'program-trade',
+  'program-daily': 'program-daily',
   'foreign-net': 'investor-foreign',
   'institution-net': 'investor-institution',
 };

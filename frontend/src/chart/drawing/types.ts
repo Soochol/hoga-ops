@@ -58,6 +58,7 @@ export type PaneId =
   | 'program-trade'
   | 'investor-foreign'
   | 'investor-institution'
+  | 'program-daily'
   | 'peak-wall';
 
 interface DrawingBase {
