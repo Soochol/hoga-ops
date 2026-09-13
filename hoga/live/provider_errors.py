@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
 from .kiwoom_errors import (
+    KiwoomApiError,
     KiwoomAuthError,
     KiwoomAuthTransientError,
     KiwoomBatchLimitError,
@@ -34,6 +35,8 @@ _observations: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 def classify(exc: Exception) -> tuple[str, str | None]:
     """Use exception types/structured codes, not ambiguous message keywords."""
     code = getattr(exc, 'code', None)
+    # Verified vendor subcode: wrong URI/API combination, not a network failure.
+    wrong_path = isinstance(exc, KiwoomApiError) and code == 1 and '[1504:' in exc.msg
     http_status = getattr(getattr(exc, 'response', None), 'status_code', None)
     cause = exc
     timed_out = False
@@ -48,8 +51,8 @@ def classify(exc: Exception) -> tuple[str, str | None]:
         with contextlib.suppress(ValueError):
             http_status = int(code[5:])
     safe_code = str(http_status) if isinstance(http_status, int) else str(code) if isinstance(code, int) else None
-    if isinstance(exc, KiwoomBatchLimitError):
-        return 'request', safe_code
+    if isinstance(exc, KiwoomBatchLimitError) or wrong_path:
+        return 'request', '1504' if wrong_path else safe_code
     if isinstance(exc, KiwoomRateLimitError) or http_status == httpx.codes.TOO_MANY_REQUESTS:
         return 'rate_limit', safe_code
     if timed_out or isinstance(exc, (TimeoutError, httpx.TimeoutException)) or (

@@ -1,3 +1,4 @@
+import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
 import { useLiveStatus } from '../api/liveStatus';
@@ -50,6 +51,10 @@ export default function DiskHeadroomToastHost() {
         남은 공간 {disk?.free_pct}% ({disk?.free_gib}GiB). 가득 차면 캡처와 실시간
         기록이 조용히 실패합니다 — `hoga prune` 으로 회수량을 확인하세요
       </div>
+      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
+        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
+        서비스 상태 보기
+      </button>
     </ToastCard>
   );
 }

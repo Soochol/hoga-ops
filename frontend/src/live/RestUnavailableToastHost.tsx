@@ -1,3 +1,4 @@
+import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useEffect, useRef } from 'react';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
@@ -94,6 +95,10 @@ export default function RestUnavailableToastHost() {
           onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
         />
       </div>
+      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
+        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
+        서비스 상태 보기
+      </button>
     </ToastCard>
   );
 }

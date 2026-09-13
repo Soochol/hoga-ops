@@ -1,3 +1,4 @@
+import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
 import { deadSupervisedTasks, useLiveStatus } from '../api/liveStatus';
@@ -51,6 +52,10 @@ export default function SupervisedTaskFailureToastHost() {
         {overflow > 0 ? ` 외 ${overflow}개` : ''}
         가 정지했습니다. 자동 복구되지 않으므로 서버를 재시작해야 합니다.
       </div>
+      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
+        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
+        서비스 상태 보기
+      </button>
     </ToastCard>
   );
 }
