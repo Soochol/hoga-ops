@@ -120,3 +120,19 @@ def test_unwired_endpoint_is_explicit():
     app.include_router(build_router(get_status=lifecycle.get_status))
     with TestClient(app) as http:
         assert http.get("/api/live/daily-program-trade?code=005930&from=20260105&to=20260105").status_code == 503
+
+
+@pytest.mark.parametrize("raw_net", [None, "", "--617383"])
+async def test_missing_or_unparseable_net_is_recovered_from_complete_gross_quantities(raw_net):
+    # The live API returned null net for this net-selling day while both gross
+    # quantities survived. Also cover an unsupported signed representation.
+    client = vendor_client(lambda _: response([
+        row("20260901", net=raw_net, buy="3758661", sell="4376044"),
+    ]))
+    async def run_page(fetch, _idx):
+        return await fetch(client)
+    points, warnings, _ = await fetch_daily_program_trade(
+        client, "005930", "20260901", "20260901", run_page=run_page,
+    )
+    assert points[0]["net_qty"] == -617383
+    assert not warnings
