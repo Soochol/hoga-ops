@@ -64,6 +64,16 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
   return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
 }
 
+/** 이미 종목명으로 시작하는 저장 이름에는 종목명을 다시 붙이지 않는다. */
+export function formatStudyViewTitle(row: { label: string; code: string; name: string }): string {
+  const stock = row.label || row.code;
+  const name = row.name.trim();
+  const suffix = name.slice(stock.length);
+  return name.startsWith(stock) && (suffix === '' || /^[\s·:：—–-]/.test(suffix))
+    ? name
+    : `${stock} · ${name}`;
+}
+
 export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
   return `${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`;
 }
@@ -338,7 +348,7 @@ export function StudyViewsDrawer() {
     const point = pointRef.current ?? dropPoint(event);
     const side: DropIndicator = point && point.y > event.over.rect.top + event.over.rect.height / 2 ? 'after' : 'before';
     const row = intent.type === 'row' ? allSaves.find((r) => r.id === intent.overId) : null;
-    const name = row ? `${row.label} · ${row.name} (${formatStudyViewMeta(row)})` : visibleGroups.find((g) => g.key === (intent.type === 'group' ? intent.overKey : intent.groupKey))?.label;
+    const name = row ? `${formatStudyViewTitle(row)} (${formatStudyViewMeta(row)})` : visibleGroups.find((g) => g.key === (intent.type === 'group' ? intent.overKey : intent.groupKey))?.label;
     return { id: String(event.over.id), side, label: intent.type === 'row' && !intent.overId ? `${name ?? ''} 그룹으로 이동` : `${name ?? ''} ${side === 'after' ? '아래' : '위'}로 이동` };
   };
   const handleDragStart = (event: DragStartEvent) => {
@@ -379,7 +389,7 @@ export function StudyViewsDrawer() {
       <RailTreeRow
         key={row.id}
         data-saved-row={row.id}
-        title={`${row.label} ${row.code} · ${row.name} · ${formatStudyViewMeta(row)}`}
+        title={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}`}
         className="group"
         role={isEditing ? undefined : 'button'}
         tabIndex={isEditing ? undefined : 0}
@@ -488,7 +498,7 @@ export function StudyViewsDrawer() {
                   startRename(row);
                 }}
               >
-                {row.label || row.code} · {row.name}
+                {formatStudyViewTitle(row)}
               </div>
               {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
                   타임프레임 · 복기 대상일(종목은 위 이름행에 표시). */}
