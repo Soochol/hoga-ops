@@ -77,6 +77,8 @@ import { formatHhmm } from '../util/tradingTime';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 type Props = {
+  investorTradeSide?: import('../api/types').InvestorTradeSide;
+  investorStatus?: 'loading' | 'error';
   /** Hide indicator legends while keeping the candle OHLC readout. */
   indicatorLegendsVisible?: boolean;
   chart: IChartApi;
@@ -671,8 +673,10 @@ function CellsLegendRow({
   row,
   timeframe,
   nameControl,
+  nameLabel,
 }: {
   row: Extract<LegendRow, { kind: 'cells' }>;
+  nameLabel?: string;
   timeframe: LiveTimeframe;
   nameControl?: React.ReactNode;
 }) {
@@ -691,7 +695,7 @@ function CellsLegendRow({
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
           {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
-          {(!nameControl || c.label !== PANE_DISPLAY_NAME[row.paneId]) && (
+          {(!nameControl || c.label !== (nameLabel ?? PANE_DISPLAY_NAME[row.paneId])) && (
             <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
           )}
           <span style={valueCellStyle}>{c.formatted}</span>
@@ -707,6 +711,8 @@ function CellsLegendRow({
 }
 
 function PaneLegendOverlay({
+  investorTradeSide = 'net',
+  investorStatus,
   indicatorLegendsVisible = true,
   chart,
   timeframe,
@@ -716,6 +722,13 @@ function PaneLegendOverlay({
   axis,
   code = null,
 }: Props) {
+  const paneDisplayName = (paneId: PaneId) => {
+    if (paneId !== 'investor-foreign' && paneId !== 'investor-institution') return PANE_DISPLAY_NAME[paneId];
+    const subject = paneId === 'investor-foreign' ? '외국인' : '기관';
+    const measure = { net: '순매수량', buy: '총매수량', sell: '총매도량' }[investorTradeSide];
+    const status = investorStatus === 'loading' ? ' · 조회 중' : investorStatus === 'error' ? ' · 조회 실패' : '';
+    return `${subject} ${measure}${status}`;
+  };
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -1024,7 +1037,7 @@ function PaneLegendOverlay({
       toggleKey: spec?.legendToggleKey,
       cells: entries.map((entry, i) => ({
         key: `${paneId}:${i}`,
-        label: entry.meta.label,
+        label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
         value: readSeriesValue(entry.series, seriesData, syncValueTimeSec),
         format: entry.meta.format,
@@ -1229,7 +1242,7 @@ function PaneLegendOverlay({
           const memberRows = rowsByPane.get(member.name) ?? [];
           return idx > 0 && !memberRows.some((row) => row.kind === 'cells')
             ? [{
-              kind: 'cells', paneId: member.name, title: PANE_DISPLAY_NAME[member.name], cells: [],
+              kind: 'cells', paneId: member.name, title: paneDisplayName(member.name), cells: [],
               toggleKey: group.length > 1 ? member.legendToggleKey : undefined,
             }, ...memberRows]
             : memberRows;
@@ -1289,7 +1302,7 @@ function PaneLegendOverlay({
                   const nameControl = idx > 0 && row.kind === 'cells' ? (
                     <PaneChip
                       paneId={member.name}
-                      label={PANE_DISPLAY_NAME[member.name]}
+                      label={paneDisplayName(member.name)}
                       axisBadge={(() => {
                         if (group.length <= 1) return null;
                         const mode = resolveAxisMode(paneGroupIds(group), paneAxisMode);
@@ -1306,7 +1319,7 @@ function PaneLegendOverlay({
                         const point = containerPoint({ clientX: rect.left, clientY: rect.bottom });
                         setChipMenu((m) => m?.pane === member.name ? null : { pane: member.name, ...point });
                       }}
-                      onPointerDown={chipPointerDown(member.name, PANE_DISPLAY_NAME[member.name], group.length > 1)}
+                      onPointerDown={chipPointerDown(member.name, paneDisplayName(member.name), group.length > 1)}
                       onPointerMove={chipPointerMove}
                       onPointerUp={chipPointerUp}
                       onPointerCancel={chipPointerCancel}
@@ -1333,7 +1346,7 @@ function PaneLegendOverlay({
                       ) : row.kind === 'flag' ? (
                         <FlagLegendRow row={row} />
                       ) : (
-                        <CellsLegendRow row={row} timeframe={timeframe} nameControl={nameControl} />
+                        <CellsLegendRow nameLabel={paneDisplayName(row.paneId)} row={row} timeframe={timeframe} nameControl={nameControl} />
                       )}
                     </div>
                   );
@@ -1461,7 +1474,7 @@ function PaneLegendOverlay({
         const merged = groups[gi].length > 1;
         const ownIds = paneGroupIds(groups[gi]);
         const axisMode = resolveAxisMode(ownIds, paneAxisMode);
-        const secondName = groups[gi].length > 1 ? PANE_DISPLAY_NAME[groups[gi][1].name] : null;
+        const secondName = groups[gi].length > 1 ? paneDisplayName(groups[gi][1].name) : null;
         // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
         const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
         const downGroup = gi + 1 < Math.min(groups.length, paneTops.length) ? groups[gi + 1] : null;
@@ -1520,7 +1533,7 @@ function PaneLegendOverlay({
                   type="button"
                   data-testid={`pane-menu-move-${direction}`}
                   disabled={!neighbor}
-                  aria-label={`${groups[gi].map((s) => PANE_DISPLAY_NAME[s.name]).join(' + ')} pane ${text}`}
+                  aria-label={`${groups[gi].map((s) => paneDisplayName(s.name)).join(' + ')} pane ${text}`}
                   style={{ ...itemStyle, opacity: neighbor ? 1 : 0.4, cursor: neighbor ? 'pointer' : 'default' }}
                   onMouseEnter={hoverOn}
                   onMouseLeave={hoverOff}
@@ -1595,7 +1608,7 @@ function PaneLegendOverlay({
                   paneGroups, chipMenu.pane, paneGroupIndexOf(paneGroups, chipMenu.pane) + 1,
                 ))}
               >
-                {`『${PANE_DISPLAY_NAME[chipMenu.pane]}』 새 pane 으로 분리`}
+                {`『${paneDisplayName(chipMenu.pane)}』 새 pane 으로 분리`}
               </button>
             )}
             {upGroup && (
@@ -1607,7 +1620,7 @@ function PaneLegendOverlay({
                 onMouseLeave={hoverOff}
                 onClick={() => commit(mergePaneIntoGroup(paneGroups, chipMenu.pane, upGroup[0].name))}
               >
-                {`위 pane(『${PANE_DISPLAY_NAME[upGroup[0].name]}』)과 합치기`}
+                {`위 pane(『${paneDisplayName(upGroup[0].name)}』)과 합치기`}
               </button>
             )}
             {downGroup && (
@@ -1619,7 +1632,7 @@ function PaneLegendOverlay({
                 onMouseLeave={hoverOff}
                 onClick={() => commit(mergePaneIntoGroup(paneGroups, chipMenu.pane, downGroup[0].name))}
               >
-                {`아래 pane(『${PANE_DISPLAY_NAME[downGroup[0].name]}』)과 합치기`}
+                {`아래 pane(『${paneDisplayName(downGroup[0].name)}』)과 합치기`}
               </button>
             )}
           </div>

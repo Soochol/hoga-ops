@@ -175,6 +175,7 @@ export type PersistedIndicators = {
   movingAverageEnabled: boolean;
   /** ADR-0055: foreign-investor net-buy bar pane. Opt-in (default false). */
   foreignNetEnabled: boolean;
+  investorTradeSide: import('../api/types').InvestorTradeSide;
   /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
   institutionNetEnabled: boolean;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
@@ -659,6 +660,7 @@ export function mergeLiveIndicatorPrefs(
     movingAverages: mas,
     movingAverageEnabled: enabled,
     foreignNetEnabled: fNet,
+    investorTradeSide: obj?.investorTradeSide === 'buy' || obj?.investorTradeSide === 'sell' ? obj.investorTradeSide : 'net',
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
     movingAverageHidden: hidden,

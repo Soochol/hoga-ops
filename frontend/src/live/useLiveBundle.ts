@@ -434,6 +434,7 @@ export interface UseLiveBundleResult {
 export type SidecarDemands = { programTrade?: boolean; volumeDistribution?: boolean };
 
 type UseLiveBundleOptions = {
+  investorTradeSide?: import('../api/types').InvestorTradeSide;
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
@@ -778,7 +779,12 @@ export function useLiveBundle(
     enableInvestor ? code : null,
     enableInvestor ? dailyPastFrom : null,
     enableInvestor ? dailyPastTo : null,
+    'qty',
+    options.investorTradeSide ?? 'net',
   );
+  const investorTradeSide = investorQuery.data ? investorQuery.data.trade_side ?? 'net' : options.investorTradeSide ?? 'net';
+  const investorStatus = !enableInvestor ? undefined : investorQuery.error ? 'error' as const
+    : investorQuery.isLoading || investorTradeSide !== (options.investorTradeSide ?? 'net') ? 'loading' as const : undefined;
   const investorPoints = useMemo<InvestorNetPoint[]>(
     () => (enableInvestor ? investorQuery.data?.points ?? EMPTY_INVESTOR_POINTS : EMPTY_INVESTOR_POINTS),
     [enableInvestor, investorQuery.data],
@@ -1196,6 +1202,8 @@ export function useLiveBundle(
       investorPoints,
       sessionBoundsForDate,
     });
+    built.investorTradeSide = investorTradeSide;
+    built.investorStatus = investorStatus;
     const sidecarSource = scaledSidecarData;
     if (sidecarSource) {
       built.ask_peaks = sidecarSource.ask_peaks ?? [];
@@ -1262,6 +1270,8 @@ export function useLiveBundle(
     bucketMs,
     hasTodayObSignal,
     investorPoints,
+    investorTradeSide,
+    investorStatus,
     sessionBoundsForDate,
     effProgramTradeEnabled,
     programOnlySidecarProgramTrade,

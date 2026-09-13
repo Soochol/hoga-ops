@@ -2841,6 +2841,8 @@ export function LiveChartRoot({
               식별자가 안정(2026-06-09 bundle-split)이라 레전드 재렌더가 차단되고, 캔들
               갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
           <PaneLegendOverlay
+            investorTradeSide={cb?.investorTradeSide}
+            investorStatus={cb?.investorStatus}
             indicatorLegendsVisible={indicatorLegendsVisible}
             chart={chart}
             timeframe={timeframe}

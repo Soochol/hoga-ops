@@ -321,6 +321,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     historicalFromDate: view.historicalFromDate,
     venue,
     investorNetEnabled,
+    investorTradeSide: ind.investorTradeSide,
     sidecarDemands,
     savedRangeFreeze,
     hogaplaySource: hogaplaySourceEnabled,

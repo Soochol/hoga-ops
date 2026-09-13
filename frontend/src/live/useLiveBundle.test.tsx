@@ -142,11 +142,12 @@ vi.mock('../api/screenerDailyCandles', () => ({
 }));
 
 const investorMock = {
+  side: undefined as 'net' | 'buy' | 'sell' | undefined,
   isLoading: false,
   points: [] as Array<{ t_ms: number; foreign_net: number; institution_net: number }>,
 };
 const livePastInvestorNetSpy = vi.fn(() => ({
-  data: { points: investorMock.points },
+  data: { points: investorMock.points, trade_side: investorMock.side },
   isLoading: investorMock.isLoading,
   error: null,
 }));
@@ -936,6 +937,7 @@ describe('useLiveBundle', () => {
     screenerDailyCandlesMock.from = '';
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
+    investorMock.side = undefined;
     investorMock.isLoading = false;
     investorMock.points = [];
     useLivePageStore.setState({
@@ -2658,6 +2660,24 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(lastDailyCall[3]).toBe('KRX');
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBeNull();
+  });
+
+  it('passes the selected side and preserves previous net metadata while gross data loads', () => {
+    investorMock.points = [{ t_ms: Date.UTC(2026, 4, 27), foreign_net: -10, institution_net: -20 }];
+    const { result, rerender } = renderHook(({ side }: { side: 'net' | 'sell' }) =>
+      useLiveBundle('005930', 'D', '20260527', liveFixture, { investorNetEnabled: true, investorTradeSide: side }),
+      { wrapper, initialProps: { side: 'net' } });
+    rerender({ side: 'sell' });
+    const args = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(args.slice(3)).toEqual(['qty', 'sell']);
+    expect(result.current.chartBundle?.investorTradeSide).toBe('net');
+    expect(result.current.chartBundle?.investorStatus).toBe('loading');
+    investorMock.side = 'sell';
+    investorMock.points = [{ t_ms: Date.UTC(2026, 4, 27), foreign_net: 130, institution_net: 200 }];
+    rerender({ side: 'sell' });
+    expect(result.current.chartBundle?.investorTradeSide).toBe('sell');
+    expect(result.current.chartBundle?.investorStatus).toBeUndefined();
+    expect(result.current.chartBundle?.investorPoints[0].foreign_net).toBe(130);
   });
 
   it('D timeframe disables investor query when investor panes are hidden', () => {

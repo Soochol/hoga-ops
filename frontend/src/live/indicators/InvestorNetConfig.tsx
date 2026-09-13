@@ -1,18 +1,29 @@
 import SignColorLegend from './SignColorLegend';
+import { useIndicatorActions, useWindowIndicator } from '../workspace/windowView';
 
-/**
- * 외국인 / 기관 순매수량의 상세 pane — 부호색 막대뿐이라 슬롯 설정이 없다.
- *
- * **`which` prop 이 사라진 이유**: 두 지표가 갈리던 유일한 자리가 제목과 설명이었고,
- * 그 둘은 이제 카테고리 표(`CATEGORIES`)가 헤더에서 말한다. 남은 내용은 범례와
- * 봉 제약뿐이라 방향에 무관하다 — prop 을 남겨 두면 아무 데도 안 쓰이는 스위치가
- * 되고, 읽는 사람은 그게 뭔가를 가른다고 믿는다.
- */
-export default function InvestorNetConfig() {
+export default function InvestorNetConfig({ grossSupported = true }: { grossSupported?: boolean }) {
+  const storedSide = useWindowIndicator((s) => s.investorTradeSide);
+  const side = grossSupported ? storedSide : 'net';
+  const setSide = useIndicatorActions().setInvestorTradeSide;
   return (
-    <div>
-      <SignColorLegend up="순매수" down="순매도" />
-      <p className="text-fg-dim text-xs mt-3">일봉(D)에서만 표시됩니다</p>
+    <div className="space-y-3">
+      <label className="flex items-center justify-between gap-3 text-xs text-fg">
+        매매 기준
+        <select aria-label="투자자 매매 기준" value={side} disabled={!grossSupported}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === 'net' || value === 'buy' || value === 'sell') setSide(value);
+          }} className="rounded border border-border bg-bg-card px-2 py-1">
+          <option value="net">순매수</option>
+          <option value="buy">총매수</option>
+          <option value="sell">총매도</option>
+        </select>
+      </label>
+      <p className="text-xs text-fg-dim">이 차트의 외국인·기관 지표에 함께 적용됩니다.</p>
+      {side === 'net' ? <SignColorLegend up="순매수" down="순매도" />
+        : <p className="text-xs text-fg-dim">{side === 'buy' ? '총매수량 · 매수 색상' : '총매도량 · 매도 색상'} · 수량(주)</p>}
+      {!grossSupported && <p className="text-xs text-fg-dim">지수 차트는 순매수만 지원합니다.</p>}
+      <p className="text-fg-dim text-xs">일봉(D)에서만 표시됩니다</p>
     </div>
   );
 }

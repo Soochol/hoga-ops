@@ -120,9 +120,9 @@ export const CATEGORIES: ReadonlyArray<{
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga', placement: 'overlay',
     description: '각 분봉 시점의 10호가 매수·매도 잔량을 캔들 뒤 색상 강도로 표시합니다. 강도는 화면에 보이는 범위의 최대 잔량 기준으로 정규화됩니다. 분봉 차트에서만 표시됩니다' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker',  placement: 'pane',
-    description: '일자별 외국인의 순매수 수량(매수 − 매도)을 막대로 표시합니다.' },
+    description: '일자별 외국인의 순매수·총매수·총매도 수량을 선택해 막대로 표시합니다.' },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker',  placement: 'pane',
-    description: '일자별 기관의 순매수 수량(매수 − 매도)을 막대로 표시합니다.' },
+    description: '일자별 기관의 순매수·총매수·총매도 수량을 선택해 막대로 표시합니다.' },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker', placement: 'overlay',
     description: '기준 시각 이후에 처음 등장한 거래원을 마커로 표시합니다. 시각대를 나눠 보려면 세트를 추가하세요.' },
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program', placement: 'pane',
@@ -627,7 +627,7 @@ export default function IndicatorPanel({
               {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
               {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selectedAdded && selectedId === 'volume' && <VolumeConfig />}
-              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig />}
+              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig grossSupported={capabilities.investorNet === 'stock'} />}
               {selectedAdded && selectedId === 'broker-late-entry' && <BrokerLateEntryConfig />}
               {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}
               {selectedAdded && selectedId === 'trade-volume-poc' && <TradeVolumePocConfig />}
