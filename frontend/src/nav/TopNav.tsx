@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { MouseEvent } from 'react';
 import { WORKSPACE_NAV_ITEMS } from './items';
 import TopNavItem from './TopNavItem';
@@ -54,7 +54,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
             폭이고, 앱 셸 최소 폭(993px, DESIGN.md)보다 작아 오버플로가 나지 않는다.
             메뉴 항목을 늘릴 땐 이 여유(≈85px)를 다시 계산할 것. */}
         <div className="flex h-full items-center gap-xl">
-          <div className="inline-flex shrink-0 items-center gap-sm whitespace-nowrap">
+          <Link to="/" title="홈으로 이동" aria-label="hoga-ops 홈" className="inline-flex shrink-0 items-center gap-sm whitespace-nowrap">
             <span
               aria-hidden="true"
               className="grid h-[22px] w-[22px] place-items-center rounded bg-fg text-bg text-xs font-extrabold leading-none"
@@ -62,7 +62,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
               H
             </span>
             <span className="text-lg font-extrabold leading-none text-fg">hoga-ops</span>
-          </div>
+          </Link>
 
           {WORKSPACE_NAV_ITEMS.map((item) => (
             <TopNavItem

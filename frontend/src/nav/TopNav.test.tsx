@@ -44,7 +44,7 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
+      'Hhoga-ops', '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
     ]);
     expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
@@ -149,4 +149,9 @@ describe('TopNav', () => {
     expect(onOpenSettings).toHaveBeenCalledOnce();
     expect(screen.queryByRole('link', { name: '설정' })).toBeNull();
   });
+});
+
+it('links the brand to the project home', () => {
+  render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+  expect(screen.getByRole('link', { name: 'hoga-ops 홈' })).toHaveAttribute('href', '/');
 });
