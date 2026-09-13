@@ -34,6 +34,13 @@ def test_token_server_error_not_bad_credentials():
     assert errors.classify(outer) == ('server', '503')
 
 
+def test_verified_wrong_api_path_is_request_error_with_safe_subcode():
+    exc = KiwoomApiError(1, '잘못된 요청입니다[1504:해당 URI에서는 지원하는 API ID가 아닙니다. SECRET]')
+    assert errors.classify(exc) == ('request', '1504')
+    assert errors.classify(KiwoomApiError(1, 'unclassified SECRET')) == ('unknown', '1')
+    assert errors.classify(KiwoomApiError('HTTP/503', '[1504:SECRET]')) == ('server', '503')
+
+
 class Provider:
     def get_token(self):
         return 'SECRET'

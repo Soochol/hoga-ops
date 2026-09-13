@@ -233,7 +233,7 @@ for (const width of [1440, 600]) test(`flow freshness and inspection fit without
   await body.screenshot({ path: testInfo.outputPath('investor-flow.png') });
 });
 
-test('주말 market에서도 점검과 연결 상태를 상단에 표시한다', async ({ page }) => {
+test('주말 market에서 공통 상태 패널로 점검과 연결 상태를 확인한다', async ({ page }) => {
   await marketMocks(page);
   await page.route(apiPrefix('live/status'), (route) => route.fulfill({ json: {
     running: false, started_at_ms: null, last_tick_ms: null, cycle_lag_ms: 0,
@@ -249,7 +249,8 @@ test('주말 market에서도 점검과 연결 상태를 상단에 표시한다',
     },
   } }));
   await page.goto('/market');
-  const banner = page.getByRole('status', { name: '키움 서비스 상태' });
+  await page.getByRole('button', { name: /서비스 상태/ }).click();
+  const banner = page.getByRole('dialog', { name: '서비스 상태' });
   await expect(banner).toBeVisible();
   await expect(banner).toContainText('연결 0/5계정');
   await expect(banner).toContainText('20:00');
@@ -257,9 +258,14 @@ test('주말 market에서도 점검과 연결 상태를 상단에 표시한다',
   const mainBounds = await page.locator('main').boundingBox();
   expect(bannerBounds).not.toBeNull();
   expect(mainBounds).not.toBeNull();
-  expect(bannerBounds!.y + bannerBounds!.height).toBeLessThanOrEqual(mainBounds!.y + 1);
+  expect(bannerBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bannerBounds!.x + bannerBounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const mainY = mainBounds!.y;
+  await banner.getByRole('button', { name: '서비스 상태 닫기' }).click();
+  expect((await page.locator('main').boundingBox())!.y).toBe(mainY);
   await page.screenshot({ path: '/tmp/hoga-kiwoom-maintenance.png' });
   await page.goto('/live');
+  await page.getByRole('button', { name: /서비스 상태/ }).click();
   await expect(banner).toBeVisible();
 });
 
@@ -278,12 +284,26 @@ test('실시간 연결이 정상이어도 REST 서버 오류를 표시한다', a
     },
   } }));
   await page.goto('/market');
-  const banner = page.getByRole('status', { name: '키움 서비스 상태' });
+  await page.getByRole('button', { name: /서비스 상태/ }).click();
+  const banner = page.getByRole('dialog', { name: '서비스 상태' });
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText('키움 오류 감지');
+  await expect(banner).toContainText('종목정보 조회 실패');
   await expect(banner).toContainText('실시간 연결 정상');
-  await expect(banner).toContainText('API 조회 · 서버 오류');
+  await expect(banner).toContainText('서버 오류');
   await banner.locator('summary').click();
-  await expect(banner.getByText(/ka10001.*503/)).toBeVisible();
+  await expect(banner.getByText('API · ka10001')).toBeVisible();
+  await expect(banner.getByText('오류 코드 · 503')).toBeVisible();
   await expect(banner).not.toContainText('점검');
+  await page.screenshot({ path: '/tmp/hoga-service-status.png' });
+  for (const width of [1024, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    const trigger = page.getByRole('button', { name: /서비스 상태 · 문제/ });
+    await expect(trigger).toBeInViewport();
+    const bounds = await banner.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+  }
+  await page.keyboard.press('Escape');
+  await expect(banner).not.toBeVisible();
+  await expect(page.getByRole('button', { name: /서비스 상태 · 문제/ })).toBeFocused();
 });

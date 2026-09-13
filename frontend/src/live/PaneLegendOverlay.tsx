@@ -1,3 +1,4 @@
+import { useServiceStatusPanel } from '../serviceStatus/controls';
 // Pane Legend — a TradingView-style legend pinned to each chart pane's
 // top-left: indicator label + color swatch + the value under the cursor
 // (latest point when the cursor is away), with ✕ (turn the indicator off) and
@@ -1362,6 +1363,12 @@ function PaneLegendOverlay({
                         <FlagLegendRow row={row} />
                       ) : (
                         <CellsLegendRow nameLabel={paneDisplayName(row.paneId)} row={row} timeframe={timeframe} nameControl={nameControl} />
+                      )}
+                      {row.paneId === 'program-daily' && (dailyProgramStatus === 'error' || dailyProgramStatus === 'partial') && (
+                        <button type="button" aria-label="프로그램매매 오류 상세" className="ml-2 rounded border border-border px-1 text-xs text-warn"
+                          style={{ pointerEvents: 'auto' }} onClick={() => useServiceStatusPanel.getState().show('ka90013')}>
+                          상태 보기
+                        </button>
                       )}
                     </div>
                   );

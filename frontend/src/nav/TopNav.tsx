@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react';
 import { WORKSPACE_NAV_ITEMS } from './items';
 import TopNavItem from './TopNavItem';
 import { CaptureInlineStatus } from './CaptureInlineStatus';
-import StatusDot from './StatusDot';
+import { ServiceStatusButton } from '../serviceStatus/ServiceStatusButton';
 import { LiveSymbolSearch } from '../live/LiveSymbolSearch';
 import ClockLabel from './ClockLabel';
 import { useRightRailStore } from '../state/rightRail';
@@ -105,7 +105,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
           <button type="button" onClick={onOpenSettings} className={NAV_BUTTON_CLASS}>
             설정
           </button>
-          <StatusDot />
+          <ServiceStatusButton />
         </div>
       </div>
     </nav>
