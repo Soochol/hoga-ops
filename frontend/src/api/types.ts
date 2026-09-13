@@ -921,6 +921,10 @@ export type RangeBundle = {
   /** Client-composed investor series metadata; absent in server /range responses (net default). */
   investorTradeSide?: InvestorTradeSide;
   investorStatus?: 'loading' | 'error';
+  /** Per-pane data; absent on legacy/index bundles which share investorPoints. */
+  institutionInvestorPoints?: InvestorNetPoint[];
+  institutionInvestorTradeSide?: InvestorTradeSide;
+  institutionInvestorStatus?: 'loading' | 'error';
   /** 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개. 프론트가 각 항목을 그날 segment
    *  x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet(useDayAskPeaks)이 live.ob로 갱신.
    *  D·W·M/무데이터 → []. */

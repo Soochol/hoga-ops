@@ -2843,6 +2843,8 @@ export function LiveChartRoot({
           <PaneLegendOverlay
             investorTradeSide={cb?.investorTradeSide}
             investorStatus={cb?.investorStatus}
+            institutionInvestorTradeSide={cb?.institutionInvestorTradeSide}
+            institutionInvestorStatus={cb?.institutionInvestorStatus}
             indicatorLegendsVisible={indicatorLegendsVisible}
             chart={chart}
             timeframe={timeframe}

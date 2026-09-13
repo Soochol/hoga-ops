@@ -36,14 +36,16 @@ export function projectInvestorNet(
   which: 'foreign' | 'institution',
 ): HistogramData<Time>[] {
   const { up, down } = resolveTokensThemed(TOKEN_SPEC);
-  return bundle.investorPoints
+  const points = which === 'institution' ? bundle.institutionInvestorPoints ?? bundle.investorPoints : bundle.investorPoints;
+  const side = which === 'institution' ? bundle.institutionInvestorTradeSide ?? bundle.investorTradeSide : bundle.investorTradeSide;
+  return points
     .filter((p) => axis.contains(p.t_ms))
     .map((p): HistogramData<Time> => {
       const value = which === 'foreign' ? p.foreign_net : p.institution_net;
       return {
         time: (axis.toVirtual(p.t_ms) / 1000) as UTCTimestamp,
         value,
-        color: bundle.investorTradeSide === 'sell' ? down : bundle.investorTradeSide === 'buy' ? up : value >= 0 ? up : down,
+        color: side === 'sell' ? down : side === 'buy' ? up : value >= 0 ? up : down,
       };
     });
 }

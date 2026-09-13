@@ -175,7 +175,8 @@ export type PersistedIndicators = {
   movingAverageEnabled: boolean;
   /** ADR-0055: foreign-investor net-buy bar pane. Opt-in (default false). */
   foreignNetEnabled: boolean;
-  investorTradeSide: import('../api/types').InvestorTradeSide;
+  foreignTradeSide: import('../api/types').InvestorTradeSide;
+  institutionTradeSide: import('../api/types').InvestorTradeSide;
   /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
   institutionNetEnabled: boolean;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
@@ -495,6 +496,10 @@ function normalizeBrokerLateEntrySideMode(value: unknown): BrokerLateEntrySideMo
  *  boolean false (any other shape — missing, null, "true" string — falls back to true so
  *  legacy stores written before this field existed keep showing MAs). 이 마스터 4필드는
  *  **읽기 전용 레거시**다(타입 주석 참조) — v1 blob 파싱과 v2 collapse 의 입력으로만 산다. */
+function normalizeInvestorTradeSide(value: unknown): import('../api/types').InvestorTradeSide {
+  return value === 'buy' || value === 'sell' ? value : 'net';
+}
+
 export function mergeLiveIndicatorPrefs(
   raw: PersistedIndicators | undefined | null | unknown,
 ): PersistedIndicators {
@@ -660,7 +665,8 @@ export function mergeLiveIndicatorPrefs(
     movingAverages: mas,
     movingAverageEnabled: enabled,
     foreignNetEnabled: fNet,
-    investorTradeSide: obj?.investorTradeSide === 'buy' || obj?.investorTradeSide === 'sell' ? obj.investorTradeSide : 'net',
+    foreignTradeSide: normalizeInvestorTradeSide(obj?.foreignTradeSide ?? obj?.investorTradeSide),
+    institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
     movingAverageHidden: hidden,

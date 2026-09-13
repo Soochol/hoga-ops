@@ -434,7 +434,10 @@ export interface UseLiveBundleResult {
 export type SidecarDemands = { programTrade?: boolean; volumeDistribution?: boolean };
 
 type UseLiveBundleOptions = {
-  investorTradeSide?: import('../api/types').InvestorTradeSide;
+  foreignTradeSide?: import('../api/types').InvestorTradeSide;
+  institutionTradeSide?: import('../api/types').InvestorTradeSide;
+  foreignInvestorEnabled?: boolean;
+  institutionInvestorEnabled?: boolean;
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
@@ -775,19 +778,39 @@ export function useLiveBundle(
   // Optional pane data: if no investor pane is visible, do not fetch it or let
   // its later response churn the D chart bundle after the candles are revealed.
   const enableInvestor = !!(code && timeframe === 'D' && options.investorNetEnabled === true);
+  const enableForeignInvestor = enableInvestor && options.foreignInvestorEnabled !== false;
+  const enableInstitutionInvestor = enableInvestor && options.institutionInvestorEnabled !== false;
   const investorQuery = useLivePastInvestorNet(
-    enableInvestor ? code : null,
-    enableInvestor ? dailyPastFrom : null,
-    enableInvestor ? dailyPastTo : null,
+    enableForeignInvestor ? code : null,
+    enableForeignInvestor ? dailyPastFrom : null,
+    enableForeignInvestor ? dailyPastTo : null,
     'qty',
-    options.investorTradeSide ?? 'net',
+    options.foreignTradeSide ?? 'net',
   );
-  const investorTradeSide = investorQuery.data ? investorQuery.data.trade_side ?? 'net' : options.investorTradeSide ?? 'net';
-  const investorStatus = !enableInvestor ? undefined : investorQuery.error ? 'error' as const
-    : investorQuery.isLoading || investorTradeSide !== (options.investorTradeSide ?? 'net') ? 'loading' as const : undefined;
+  const investorTradeSide = investorQuery.data ? investorQuery.data.trade_side ?? 'net' : options.foreignTradeSide ?? 'net';
+  const investorStatus = !enableForeignInvestor ? undefined : investorQuery.error ? 'error' as const
+    : investorQuery.isLoading || investorTradeSide !== (options.foreignTradeSide ?? 'net') ? 'loading' as const : undefined;
   const investorPoints = useMemo<InvestorNetPoint[]>(
-    () => (enableInvestor ? investorQuery.data?.points ?? EMPTY_INVESTOR_POINTS : EMPTY_INVESTOR_POINTS),
-    [enableInvestor, investorQuery.data],
+    () => (enableForeignInvestor ? investorQuery.data?.points ?? EMPTY_INVESTOR_POINTS : EMPTY_INVESTOR_POINTS),
+    [enableForeignInvestor, investorQuery.data],
+  );
+
+  // Two observers share React Query's key/cache when their trade sides match.
+  // Distinct sides never combine participant values from different responses.
+  const institutionQuery = useLivePastInvestorNet(
+    enableInstitutionInvestor ? code : null,
+    enableInstitutionInvestor ? dailyPastFrom : null,
+    enableInstitutionInvestor ? dailyPastTo : null,
+    'qty',
+    options.institutionTradeSide ?? 'net',
+  );
+  const institutionInvestorTradeSide = institutionQuery.data
+    ? institutionQuery.data.trade_side ?? 'net' : options.institutionTradeSide ?? 'net';
+  const institutionInvestorStatus = !enableInstitutionInvestor ? undefined : institutionQuery.error ? 'error' as const
+    : institutionQuery.isLoading || institutionInvestorTradeSide !== (options.institutionTradeSide ?? 'net') ? 'loading' as const : undefined;
+  const institutionInvestorPoints = useMemo<InvestorNetPoint[]>(
+    () => enableInstitutionInvestor ? institutionQuery.data?.points ?? EMPTY_INVESTOR_POINTS : EMPTY_INVESTOR_POINTS,
+    [enableInstitutionInvestor, institutionQuery.data],
   );
 
   useEffect(() => {
@@ -1204,6 +1227,9 @@ export function useLiveBundle(
     });
     built.investorTradeSide = investorTradeSide;
     built.investorStatus = investorStatus;
+    built.institutionInvestorPoints = institutionInvestorPoints;
+    built.institutionInvestorTradeSide = institutionInvestorTradeSide;
+    built.institutionInvestorStatus = institutionInvestorStatus;
     const sidecarSource = scaledSidecarData;
     if (sidecarSource) {
       built.ask_peaks = sidecarSource.ask_peaks ?? [];
@@ -1272,6 +1298,9 @@ export function useLiveBundle(
     investorPoints,
     investorTradeSide,
     investorStatus,
+    institutionInvestorPoints,
+    institutionInvestorTradeSide,
+    institutionInvestorStatus,
     sessionBoundsForDate,
     effProgramTradeEnabled,
     programOnlySidecarProgramTrade,
@@ -1736,7 +1765,7 @@ export function useLiveBundle(
      */
     candleSourceKey: `${restBypassEnabled ? 'disk' : 'vendor'}|${todayKstYyyymmdd}`,
     minuteScrollbackFloorDate,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableForeignInvestor && investorQuery.isLoading) || (enableInstitutionInvestor && institutionQuery.isLoading),
     isInitialMinuteHistoryPending: enableMinute && historicalFromDate === null
       && pastCandlesQuery.isWalkingHistory === true,
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,

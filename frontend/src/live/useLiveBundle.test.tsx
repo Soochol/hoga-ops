@@ -2665,10 +2665,10 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   it('passes the selected side and preserves previous net metadata while gross data loads', () => {
     investorMock.points = [{ t_ms: Date.UTC(2026, 4, 27), foreign_net: -10, institution_net: -20 }];
     const { result, rerender } = renderHook(({ side }: { side: 'net' | 'sell' }) =>
-      useLiveBundle('005930', 'D', '20260527', liveFixture, { investorNetEnabled: true, investorTradeSide: side }),
+      useLiveBundle('005930', 'D', '20260527', liveFixture, { investorNetEnabled: true, foreignTradeSide: side }),
       { wrapper, initialProps: { side: 'net' } });
     rerender({ side: 'sell' });
-    const args = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
+    const args = livePastInvestorNetSpy.mock.calls.at(-2) as unknown as unknown[];
     expect(args.slice(3)).toEqual(['qty', 'sell']);
     expect(result.current.chartBundle?.investorTradeSide).toBe('net');
     expect(result.current.chartBundle?.investorStatus).toBe('loading');
