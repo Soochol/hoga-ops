@@ -1,3 +1,4 @@
+import type { InvestorTradeSide } from '../api/types';
 import { useEffectiveVenue } from './useEffectiveVenue';
 /**
  * useLiveChartData — /live 차트 데이터 파이프라인 (ADR-0119 PR-C2a).
@@ -92,6 +93,7 @@ export interface UseLiveChartDataArgs {
   venue: LiveVenueOption;
   /** 활성 지표에서 파생한 투자자 순매수 게이트(호출측이 공급 — 전역/창별). */
   investorNetEnabled: boolean;
+  investorTradeSide?: InvestorTradeSide;
   /** 같은 그룹 데이터 창의 sidecar 강제 fetch 수요(ADR-0119 PR-D) — 그룹 링크
    *  발행 차트 창만 공급. useLiveBundle 로 그대로 전달된다. */
   sidecarDemands?: SidecarDemands;
@@ -189,6 +191,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     gapFill,
   } = useLiveBundle(activeCode, timeframe, today, live, {
     investorNetEnabled,
+    investorTradeSide: args.investorTradeSide,
     venue,
     sidecarDemands,
     frozenRangeFrom: freeze?.fromDate ?? null,

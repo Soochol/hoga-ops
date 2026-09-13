@@ -675,11 +675,11 @@ describe('IndicatorPanel', () => {
 
     // 외국인 순매수량 → its detail.
     openDetail('외국인 순매수량');
-    expect(screen.getByText(/외국인.*순매수 수량/)).toBeTruthy();
+    expect(screen.getByText(/외국인.*순매수·총매수·총매도 수량/)).toBeTruthy();
 
     // 기관 순매수량 → its detail.
     openDetail('기관 순매수량');
-    expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
+    expect(screen.getByText(/기관.*순매수·총매수·총매도 수량/)).toBeTruthy();
   });
 
 

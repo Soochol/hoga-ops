@@ -1,3 +1,4 @@
+import type { InvestorTradeSide } from '../api/types';
 import type { LineStyle } from '../chart/drawing/types';
 import {
   BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
@@ -468,6 +469,8 @@ export const INDICATOR_OPS = {
    *
    * pane 이 닫혀 있어도 기록한다 — 여는 클릭이 저장된 모드를 그대로 쓴다.
    */
+  setInvestorTradeSide: (cur: IndicatorSettings, side: InvestorTradeSide): Patch =>
+    cur.investorTradeSide === side ? null : { investorTradeSide: side },
   setPeakWallPaneMode: (cur: IndicatorSettings, mode: PeakWallPaneMode): Patch =>
     (cur.peakWallPaneMode === mode ? null : { peakWallPaneMode: mode }),
 

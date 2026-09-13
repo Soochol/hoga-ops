@@ -10,9 +10,8 @@ import { resolveTokensThemed } from '../../util/tokens';
 import { formatKoreanInt } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
-// Bar color is fixed by SIGN, not by investor — net buy = 매수(red), net
-// sell = 매도(blue), mirroring the volume pane. Foreign vs institution is
-// disambiguated by the pane, so the color axis is free to carry buy/sell.
+// Net bars use their sign. Gross buy/sell bars use the response mode: a
+// positive gross sell quantity is still a sell (blue), not a net buy (red).
 const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
   down: ['--price-down', '#3485FA'],
@@ -44,7 +43,7 @@ export function projectInvestorNet(
       return {
         time: (axis.toVirtual(p.t_ms) / 1000) as UTCTimestamp,
         value,
-        color: value >= 0 ? up : down,
+        color: bundle.investorTradeSide === 'sell' ? down : bundle.investorTradeSide === 'buy' ? up : value >= 0 ? up : down,
       };
     });
 }
