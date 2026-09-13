@@ -99,6 +99,7 @@ function eulReul(word: string): string {
  * 가드(모든 PaneId 는 어딘가에서 보인다)가 누락을 빨갛게 만든다.
  */
 const ALL_ON: PaneToggles = {
+  dailyProgramEnabled: true,
   foreignNet: true,
   institutionNet: true,
   peakWallPaneEnabled: true,

@@ -12,6 +12,7 @@ import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
 import ColorSwatchPicker from './ColorSwatchPicker';
+import DailyProgramTradeConfig from './DailyProgramTradeConfig';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
 import {
@@ -48,6 +49,7 @@ export type CategoryId =
   | 'ratio'
   | 'fill-strength'
   | 'broker-late-entry'
+  | 'program-daily'
   | 'program-trade';
 
 type GroupId = 'top' | 'hoga' | 'program' | 'broker';
@@ -125,8 +127,10 @@ export const CATEGORIES: ReadonlyArray<{
     description: '일자별 기관의 순매수·총매수·총매도 수량을 선택해 막대로 표시합니다.' },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker', placement: 'overlay',
     description: '기준 시각 이후에 처음 등장한 거래원을 마커로 표시합니다. 시각대를 나눠 보려면 세트를 추가하세요.' },
+  { id: 'program-daily', label: '프로그램 순매수량', group: 'program', placement: 'pane',
+    description: '일자별 프로그램 순매수·총매수·총매도 수량을 선택해 막대로 표시합니다. 종목 일봉 전용입니다.' },
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program', placement: 'pane',
-    description: 'KIS REST 저장 데이터의 시간별 프로그램 누적 순매수 금액을 표시합니다.' },
+    description: '시간별 프로그램 누적 순매수 금액을 표시합니다.' },
 ];
 
 // 모든 지표 설정이 현재 봉(분/일/주/월) 버킷에 저장되므로(#699), 카테고리별
@@ -144,6 +148,7 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
   ratio: 'ratioEnabled',
   'fill-strength': 'fillStrengthEnabled',
   'program-trade': 'programTradeEnabled',
+  'program-daily': 'dailyProgramEnabled',
   'foreign-net': 'foreignNetEnabled',
   'institution-net': 'institutionNetEnabled',
 };
@@ -280,6 +285,7 @@ export default function IndicatorPanel({
     ratioEnabled: ind.ratioEnabled,
     fillStrengthEnabled: ind.fillStrengthEnabled,
     programTradeEnabled: ind.programTradeEnabled,
+    dailyProgramEnabled: ind.dailyProgramEnabled,
     foreignNetEnabled: ind.foreignNetEnabled,
     institutionNetEnabled: ind.institutionNetEnabled,
     peakWallPaneEnabled: ind.peakWallPaneEnabled,
@@ -331,6 +337,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (c.id === 'program-daily') return capabilities.investorNet === 'stock';
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
       return false;
@@ -345,7 +352,7 @@ export default function IndicatorPanel({
   // so the left checkbox is the whole control for them.
   const checkedFor = (id: CategoryId): boolean => {
     const paneKey = PANE_CATEGORY_TO_KEY[id];
-    if (paneKey) return selectedPanePrefs[paneKey];
+    if (paneKey) return selectedPanePrefs[paneKey] === true;
     switch (id) {
       case 'moving-average': return maEnabled;
       case 'daily-moving-average': return dailyMaEnabled;
@@ -689,6 +696,7 @@ export default function IndicatorPanel({
               {selectedAdded && selectedId === 'quote-totals' && <QuoteTotalsConfig />}
               {selectedAdded && selectedId === 'ratio' && <RatioConfig />}
               {selectedAdded && selectedId === 'fill-strength' && <FillStrengthConfig />}
+              {selected === 'program-daily' && <DailyProgramTradeConfig />}
               {selected === 'program-trade' && <ProgramTradeConfig />}
           </section>
         </div>

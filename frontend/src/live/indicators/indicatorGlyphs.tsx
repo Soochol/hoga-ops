@@ -184,6 +184,7 @@ export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
       <path d="M13 3 L7.5 5 L13 7 Z" fill="currentColor" />
     </>,
   ),
+  'program-daily': svg(<>{PANE_FRAME}<path d="M3 14V10M7 14V7M11 14V9" stroke="currentColor" strokeWidth="2" /></>),
   'program-trade': svg(
     <>
       {PANE_FRAME}

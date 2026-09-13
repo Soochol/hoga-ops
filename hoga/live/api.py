@@ -34,6 +34,7 @@ from hoga.live import (
     kiwoom_runtime,
 )
 from hoga.live.after_hours_store import load_book as load_stored_after_hours_book, today_kst_yyyymmdd
+from hoga.live.daily_program_trade import DailyProgramTradeBackfill, DailyProgramTradePoint
 from hoga.live.data_warnings import (
     LiveDataWarning,
     make_data_warning,
@@ -1631,6 +1632,16 @@ class LiveInvestorNetPoint(BaseModel):
     breakdown: LiveInvestorSubjectBreakdown | None = None
 
 
+class LiveDailyProgramTradeResponse(BaseModel):
+    code: str
+    from_: str = Field(alias="from")
+    to: str
+    points: list[DailyProgramTradePoint] = Field(default_factory=list)
+    cached_batches: list[str] = Field(default_factory=list)
+    fresh_batches: list[str] = Field(default_factory=list)
+    data_warnings: list[LiveDataWarning] = Field(default_factory=list)
+
+
 class LivePastInvestorNetResponse(BaseModel):
     trade_side: InvestorTradeSide = "net"
     code: str
@@ -2817,6 +2828,29 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if data_dir is not None
         else {}
     )
+
+    program_daily_cache = PastDailyCandlesCache() if data_dir is not None else None
+    program_daily_backfill = DailyProgramTradeBackfill(
+        data_dir=data_dir, cache=program_daily_cache,
+        scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
+        walkback=batched_daily_walkback,
+    ) if data_dir is not None else None
+
+    @router.get("/daily-program-trade")
+    async def _get_daily_program_trade(
+        code: str = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> LiveDailyProgramTradeResponse:
+        frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
+        if data_dir is not None and live_settings.rest_bypass_enabled(data_dir):
+            return _collect_daily_series_cache_only(
+                cache=program_daily_cache, output_key="points", code=code,
+                frm=frm, too=too, today_d=today_d, from_label=from_, to_label=to,
+            )
+        if program_daily_backfill is None or kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"})
+        return await program_daily_backfill.collect(code=code, frm=frm, too=too, today_d=today_d)
 
     @router.get("/past-candles")
     async def _get_past_candles(

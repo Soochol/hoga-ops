@@ -81,6 +81,8 @@ type Props = {
   investorStatus?: 'loading' | 'error';
   institutionInvestorTradeSide?: import('../api/types').InvestorTradeSide;
   institutionInvestorStatus?: 'loading' | 'error';
+  dailyProgramTradeSide?: import('../api/types').InvestorTradeSide;
+  dailyProgramStatus?: 'loading' | 'error' | 'partial' | 'empty';
   /** Hide indicator legends while keeping the candle OHLC readout. */
   indicatorLegendsVisible?: boolean;
   chart: IChartApi;
@@ -717,6 +719,8 @@ function PaneLegendOverlay({
   investorStatus,
   institutionInvestorTradeSide,
   institutionInvestorStatus,
+  dailyProgramTradeSide = 'net',
+  dailyProgramStatus,
   indicatorLegendsVisible = true,
   chart,
   timeframe,
@@ -727,6 +731,11 @@ function PaneLegendOverlay({
   code = null,
 }: Props) {
   const paneDisplayName = (paneId: PaneId) => {
+    if (paneId === 'program-daily') {
+      const measure = { net: '순매수량', buy: '총매수량', sell: '총매도량' }[dailyProgramTradeSide];
+      const status = dailyProgramStatus ? { loading: '조회 중', error: '조회 실패', partial: '일부 데이터 미제공', empty: '데이터 없음' }[dailyProgramStatus] : '';
+      return `프로그램 ${measure}${status ? ` · ${status}` : ''}`;
+    }
     if (paneId !== 'investor-foreign' && paneId !== 'investor-institution') return PANE_DISPLAY_NAME[paneId];
     const subject = paneId === 'investor-foreign' ? '외국인' : '기관';
     const side = paneId === 'investor-institution' ? institutionInvestorTradeSide ?? investorTradeSide : investorTradeSide;

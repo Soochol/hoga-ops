@@ -47,7 +47,14 @@ from typing import Literal, get_args, get_origin
 from hoga.api import events, models as m, sources
 from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
 from hoga.live import flow_receipts, futures_runtime, market_overview
-from hoga.live.api import AfterHoursBookResponse, LivePastInvestorNetResponse, LiveQuote, RankingRowModel
+from hoga.live.api import (
+    AfterHoursBookResponse,
+    LiveDailyProgramTradeResponse,
+    LivePastInvestorNetResponse,
+    LiveQuote,
+    RankingRowModel,
+)
+from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.lifecycle import LiveStatus
@@ -290,6 +297,10 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    DailyProgramTradePoint: frozenset({"t_ms", "net_qty", "buy_qty", "sell_qty"}),
+    LiveDailyProgramTradeResponse: frozenset({
+        "code", "from_", "to", "points", "cached_batches", "fresh_batches", "data_warnings",
+    }),
     LivePastInvestorNetResponse: frozenset({
         "code", "from_", "to", "unit", "trade_side", "points",
         "cached_batches", "fresh_batches", "data_warnings",

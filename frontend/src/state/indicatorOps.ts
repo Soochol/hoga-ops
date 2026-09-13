@@ -637,6 +637,10 @@ export const INDICATOR_OPS = {
 
   setFillStrengthEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ fillStrengthEnabled: enabled }),
+  setDailyProgramEnabled: (_s: Readonly<IndicatorSettings>, enabled: boolean): Partial<IndicatorSettings> =>
+    ({ dailyProgramEnabled: enabled }),
+  setDailyProgramTradeSide: (_s: Readonly<IndicatorSettings>, side: import('../api/types').InvestorTradeSide): Partial<IndicatorSettings> =>
+    ({ dailyProgramTradeSide: side }),
   setProgramTradeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ programTradeEnabled: enabled }),
 

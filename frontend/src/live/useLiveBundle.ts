@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
+import { useLiveDailyProgramTrade } from '../api/liveDailyProgramTrade';
 import type { WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
@@ -434,6 +435,8 @@ export interface UseLiveBundleResult {
 export type SidecarDemands = { programTrade?: boolean; volumeDistribution?: boolean };
 
 type UseLiveBundleOptions = {
+  dailyProgramEnabled?: boolean;
+  dailyProgramTradeSide?: import('../api/types').InvestorTradeSide;
   foreignTradeSide?: import('../api/types').InvestorTradeSide;
   institutionTradeSide?: import('../api/types').InvestorTradeSide;
   foreignInvestorEnabled?: boolean;
@@ -777,6 +780,16 @@ export function useLiveBundle(
   // daily points would fall outside axis.contains and render a near-empty pane.
   // Optional pane data: if no investor pane is visible, do not fetch it or let
   // its later response churn the D chart bundle after the candles are revealed.
+  const enableDailyProgram = !!(code && timeframe === 'D' && options.dailyProgramEnabled);
+  const dailyProgramQuery = useLiveDailyProgramTrade(
+    enableDailyProgram ? code : null, enableDailyProgram ? dailyPastFrom : null, enableDailyProgram ? dailyPastTo : null,
+  );
+  const dailyProgramTradeSide = options.dailyProgramTradeSide ?? 'net';
+  const dailyProgramPoints = dailyProgramQuery.data?.points;
+  const dailyProgramStatus = !enableDailyProgram ? undefined : dailyProgramQuery.error ? 'error' as const
+    : dailyProgramQuery.isLoading ? 'loading' as const
+      : dailyProgramQuery.data?.data_warnings.length ? 'partial' as const
+        : !dailyProgramPoints?.some((point) => point[`${dailyProgramTradeSide}_qty`] != null) ? 'empty' as const : undefined;
   const enableInvestor = !!(code && timeframe === 'D' && options.investorNetEnabled === true);
   const enableForeignInvestor = enableInvestor && options.foreignInvestorEnabled !== false;
   const enableInstitutionInvestor = enableInvestor && options.institutionInvestorEnabled !== false;
@@ -1225,6 +1238,9 @@ export function useLiveBundle(
       investorPoints,
       sessionBoundsForDate,
     });
+    built.dailyProgramPoints = enableDailyProgram ? dailyProgramPoints : undefined;
+    built.dailyProgramTradeSide = dailyProgramTradeSide;
+    built.dailyProgramStatus = dailyProgramStatus;
     built.investorTradeSide = investorTradeSide;
     built.investorStatus = investorStatus;
     built.institutionInvestorPoints = institutionInvestorPoints;
@@ -1298,6 +1314,7 @@ export function useLiveBundle(
     investorPoints,
     investorTradeSide,
     investorStatus,
+    enableDailyProgram, dailyProgramPoints, dailyProgramTradeSide, dailyProgramStatus,
     institutionInvestorPoints,
     institutionInvestorTradeSide,
     institutionInvestorStatus,

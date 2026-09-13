@@ -92,9 +92,9 @@ describe('IndicatorPanel', () => {
   });
 
   // 목록이 두 모드로 갈리므로 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
-  // 대신 **합집합이 14종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
+  // 대신 **합집합이 15종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
   // 그게 이 목록이 지켜야 할 총계다.
-  it('내 지표 + 카탈로그의 합집합이 14종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  it('내 지표 + 카탈로그의 합집합이 15종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -114,7 +114,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const addable = labelsEndingWith(' 추가');
 
-    expect(new Set([...mine, ...addable]).size).toBe(14);
+    expect(new Set([...mine, ...addable]).size).toBe(15);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);
@@ -418,7 +418,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByText('10호가 지표')).toBeNull();
     expect(screen.queryByText('프로그램 지표')).toBeNull();
     expect(screen.getByText('거래원 지표')).toBeTruthy();
-    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '프로그램 순매수량', '당일 최대 매물대', '당일 최대벽']) {
       expect(screen.queryByRole('button', { name })).toBeNull();
       expect(screen.queryByRole('button', { name: `${name} 추가` })).toBeNull();
     }
@@ -484,7 +484,7 @@ describe('IndicatorPanel', () => {
   it('프로그램 순매수 라벨 클릭 → 설명 표시', () => {
     renderPanel();
     openDetail('프로그램 순매수');
-    expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
+    expect(screen.getByText(/시간별 프로그램 누적 순매수 금액/)).toBeTruthy();
   });
 
   /**
