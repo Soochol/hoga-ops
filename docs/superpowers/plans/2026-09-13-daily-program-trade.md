@@ -6,7 +6,7 @@
 
 키움 공식 ka90013 문서: https://openapi.kiwoom.com/m/guide/apiguide/01/ka90013
 
-- `/api/dostk/stkinfo`, `stk_daly_prm_trde_trnsn` 응답 배열, 날짜 `dt`.
+- `/api/dostk/mrkcond`, `stk_daly_prm_trde_trnsn` 응답 배열, 날짜 `dt`.
 - 요청 `stk_cd`는 KRX 종목 코드, `date`는 조회 기준일, `amt_qty_tp=2`는 수량.
 - `prm_netprps_qty`, `prm_buy_qty`, `prm_sell_qty`는 모두 주 단위다. 금액 필드는 백만원이며 이번 pane에서 사용하지 않는다.
 - 세 값을 같은 응답에서 받으므로 표시 기준 변경은 로컬 선택이며 추가 조회가 없다.
@@ -23,3 +23,9 @@
 ## 분봉 검토
 
 분봉 확장도 가능하다. `ProgramTradeByStockRow` 원본과 디스크 sidecar에는 `buy_qty`, `sell_qty`, `buy_amount`, `sell_amount`가 이미 있다. 다만 `ProgramTradePoint` wire와 `build_program_trade_series`, 라이브 tail 투영은 현재 순매수/증감만 전달한다. 총매수·총매도를 지원하려면 저장분의 버킷 마지막 누적값, 0w 라이브 전달, FE tail 병합 및 누적 선 프로젝터까지 함께 확장해야 한다. 과거 파일에서 누락된 값은 순매수만으로 복원할 수 없다. 이번 일봉 구현은 이 분봉 경로를 변경하지 않는다.
+
+## 2026-09-13 경로 오류 정정
+
+운영 API의 삼성전자 20260901~20260911 응답에서 `1504:해당 URI에서는 지원하는 API ID가 아닙니다`를 확인했다. 웹 가이드의 `/stkinfo` 표기와 달리 키움 공식 실행 예제는 `/mrkcond`를 사용한다. 초기 구현과 모의 테스트가 웹 가이드의 잘못된 경로를 함께 따랐기 때문에 테스트가 오류를 감지하지 못했다. TR 등록과 요청 경로 회귀 검증을 공식 실행 예제에 맞춰 수정한다.
+
+근거: https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/examples/국내주식/시세/get_domestic_stock_program_daily_trend.py

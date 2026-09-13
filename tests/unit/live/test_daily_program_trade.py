@@ -49,7 +49,8 @@ async def test_cursor_pages_go_through_scheduler_and_cache_all_sides(tmp_path, m
 
     def handler(request):
         requests.append(request)
-        assert request.url.path == "/api/dostk/stkinfo"
+        # Official executable example uses mrkcond; stkinfo returns vendor error 1504.
+        assert request.url.path == "/api/dostk/mrkcond"
         assert request.headers["api-id"] == "ka90013"
         assert json.loads(request.content) == {"stk_cd": "005930", "date": "20260106", "amt_qty_tp": "2"}
         if len(requests) == 1:
