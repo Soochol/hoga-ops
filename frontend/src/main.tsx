@@ -25,6 +25,7 @@ import './styles/global.css';
  * 라우트라 항상 로드되므로, 거기서 정적 import 하면 라우트만 lazy 로 바꿔도 초기
  * 번들이 줄지 않는다(그쪽 주석에 실측 수치).
  */
+const LandingPage = lazy(() => import('./home/LandingPage'));
 const Heatmap = lazy(() => import('./pages/Heatmap').then((m) => ({ default: m.Heatmap })));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m.Screener })));
@@ -99,8 +100,8 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Suspense fallback={null}><LandingPage /></Suspense>} />
           <Route element={<App />}>
-            <Route path="/" element={<Navigate to="/live" replace />} />
             <Route path="live" element={<LivePage />} />
             {/* lazy 라우트는 각자 Suspense 로 감싼다 — App(레이아웃) 안쪽이라
                 청크를 기다리는 동안에도 nav·레일·하단 바는 그대로 서 있다.
