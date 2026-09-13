@@ -21,7 +21,7 @@ function savedRange() {
 function openSavedView(save: StudyViewReference) {
   useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(save));
 }
-import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
+import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta, formatStudyViewTitle } from './StudyViewsDrawer';
 
 type DndHandlers = {
   onDragStart: null | ((event: unknown) => void);
@@ -865,4 +865,21 @@ describe('formatStudyViewMeta', () => {
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20251228', to_date: '20260105' } }),
     ).toBe('일봉 · 2025-12-28–2026-01-05');
   });
+});
+
+it('shows the stock name once when the saved title already begins with it', () => {
+  mockedSaves = [{ ...saves[0], group_id: '123456', name: '삼성전자 5m 저장뷰' }];
+  renderDrawer('/live');
+  const row = screen.getByRole('button', { name: '삼성전자 5m 저장뷰 저장뷰 열기' });
+  expect(row.textContent?.match(/삼성전자/g)).toHaveLength(1);
+});
+
+it.each([
+  ['삼성전자 5m 저장뷰', '삼성전자 5m 저장뷰'],
+  ['삼성전자', '삼성전자'],
+  ['삼성전자 · 눌림', '삼성전자 · 눌림'],
+  ['눌림', '삼성전자 · 눌림'],
+  ['삼성전자우 비교', '삼성전자 · 삼성전자우 비교'],
+])('formats saved title %s without losing stock identity', (name, expected) => {
+  expect(formatStudyViewTitle({ label: '삼성전자', code: '005930', name })).toBe(expected);
 });
