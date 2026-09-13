@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
 
-test('investor panes share a trade mode, preserve another chart and restore after reload', async ({ page }, testInfo) => {
+test('investor panes have independent modes and restore both after reload', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1800, height: 1000 });
   await installLiveMocks(page);
   const t = Date.UTC(2026, 4, 27);
@@ -37,7 +37,7 @@ test('investor panes share a trade mode, preserve another chart and restore afte
     for (const w of charts) {
       store.getState().setWindowSymbol(w.id, { code: '098460', name: '고영', kind: 'stock' });
       useLivePageStore.getState().patchIndicatorsScoped({ windowKey: `live:${w.id}` }, 'D',
-        { foreignNetEnabled: true, institutionNetEnabled: true, investorTradeSide: 'net' });
+        { foreignNetEnabled: true, institutionNetEnabled: true, foreignTradeSide: 'net', institutionTradeSide: 'net' });
     }
   });
   const headers = page.getByTestId('chart-window-header');
@@ -51,14 +51,18 @@ test('investor panes share a trade mode, preserve another chart and restore afte
   await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량 · 조회 중');
   releaseSell();
   await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 총매도량');
-  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 총매도량');
+  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 순매수량');
   await expect(second.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량');
+  await panel.getByRole('button', { name: '기관 순매수량', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '투자자 매매 기준' })).toHaveValue('net');
   await page.getByRole('combobox', { name: '투자자 매매 기준' }).selectOption('buy');
   await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 총매수량');
+  await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 총매도량');
   expect(requests).toEqual(expect.arrayContaining(['net', 'sell', 'buy']));
   await panel.getByRole('button', { name: '닫기', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('chart-investor-buy.png') });
   await page.reload();
-  await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 총매수량');
+  await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 총매도량');
+  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 총매수량');
   await expect(second.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량');
 });

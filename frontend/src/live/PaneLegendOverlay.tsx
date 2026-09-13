@@ -79,6 +79,8 @@ import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 type Props = {
   investorTradeSide?: import('../api/types').InvestorTradeSide;
   investorStatus?: 'loading' | 'error';
+  institutionInvestorTradeSide?: import('../api/types').InvestorTradeSide;
+  institutionInvestorStatus?: 'loading' | 'error';
   /** Hide indicator legends while keeping the candle OHLC readout. */
   indicatorLegendsVisible?: boolean;
   chart: IChartApi;
@@ -713,6 +715,8 @@ function CellsLegendRow({
 function PaneLegendOverlay({
   investorTradeSide = 'net',
   investorStatus,
+  institutionInvestorTradeSide,
+  institutionInvestorStatus,
   indicatorLegendsVisible = true,
   chart,
   timeframe,
@@ -725,8 +729,10 @@ function PaneLegendOverlay({
   const paneDisplayName = (paneId: PaneId) => {
     if (paneId !== 'investor-foreign' && paneId !== 'investor-institution') return PANE_DISPLAY_NAME[paneId];
     const subject = paneId === 'investor-foreign' ? '외국인' : '기관';
-    const measure = { net: '순매수량', buy: '총매수량', sell: '총매도량' }[investorTradeSide];
-    const status = investorStatus === 'loading' ? ' · 조회 중' : investorStatus === 'error' ? ' · 조회 실패' : '';
+    const side = paneId === 'investor-institution' ? institutionInvestorTradeSide ?? investorTradeSide : investorTradeSide;
+    const loading = paneId === 'investor-institution' && institutionInvestorTradeSide !== undefined ? institutionInvestorStatus : investorStatus;
+    const measure = { net: '순매수량', buy: '총매수량', sell: '총매도량' }[side];
+    const status = loading === 'loading' ? ' · 조회 중' : loading === 'error' ? ' · 조회 실패' : '';
     return `${subject} ${measure}${status}`;
   };
   const containerRef = useRef<HTMLDivElement>(null);

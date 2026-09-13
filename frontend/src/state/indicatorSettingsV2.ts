@@ -342,7 +342,14 @@ export function diffIndicatorSettingsFromFactory(
  *  diff 에서 자연 탈락). */
 function sanitizeSettingsPatch(raw: unknown): Partial<IndicatorSettings> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const partial = raw as Record<string, unknown>;
+  const partial = { ...raw as Record<string, unknown> };
+  // Read the former shared setting before the known-key filter drops it.
+  // Explicit per-pane values (including net) always win; never persist the legacy key.
+  if ('investorTradeSide' in partial) {
+    for (const key of ['foreignTradeSide', 'institutionTradeSide']) {
+      if (!(key in partial)) partial[key] = partial.investorTradeSide;
+    }
+  }
   // 1단계 — 런타임 타입이 공장값과 다른 엔트리를 먼저 버린다. 코어서의 boolean
   // 폴백은 v1 기본값(예: quoteTotalsEnabled → true)이라 새 공장값(false)과 다를
   // 수 있어, 타입 불일치 쓰레기가 영구 오버라이드로 승격되는 것을 여기서 막는다.

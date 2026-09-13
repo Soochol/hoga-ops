@@ -488,3 +488,16 @@ describe('resolveIndicatorSettings — 참조 안정성', () => {
     expect(resolveIndicatorSettings({}, '1m')).toBe(FACTORY_INDICATOR_SETTINGS);
   });
 });
+
+it('migrates shared investor settings and does not resurrect them after resetting one pane to net', () => {
+  const old = normalizeIndicatorsV2({ byWindow: { 'live:w1': { D: { investorTradeSide: 'sell' } } } });
+  expect(old.byWindow['live:w1'].D).toEqual({ foreignTradeSide: 'sell', institutionTradeSide: 'sell' });
+  const changed = normalizeIndicatorsV2({ ...old, byWindow: {
+    'live:w1': { D: { ...old.byWindow['live:w1'].D, foreignTradeSide: 'net' } },
+  } });
+  const restored = normalizeIndicatorsV2(JSON.parse(JSON.stringify(changed)));
+  const settings = resolveIndicatorSettings(restored.byWindow['live:w1'], 'D');
+  expect(settings.foreignTradeSide).toBe('net');
+  expect(settings.institutionTradeSide).toBe('sell');
+  expect(restored.byWindow['live:w1'].D).not.toHaveProperty('investorTradeSide');
+});

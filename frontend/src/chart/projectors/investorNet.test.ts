@@ -62,3 +62,18 @@ it('gross sell bars remain positive and use the sell color for both investors', 
   gross.investorTradeSide = 'buy';
   expect(projectInvestorNet(gross, axis, 'institution')[0].color).toBe(buyColor);
 });
+
+it('uses separate institution points and side without borrowing foreign values or colors', () => {
+  const bundle = bundleWith([{ t_ms: OPEN_MS, foreign_net: 1000, institution_net: 9000 }]);
+  bundle.investorTradeSide = 'buy';
+  bundle.institutionInvestorPoints = [{ t_ms: OPEN_MS, foreign_net: 8000, institution_net: -30 }];
+  bundle.institutionInvestorTradeSide = 'net';
+  const foreign = projectInvestorNet(bundle, axis, 'foreign')[0];
+  const institution = projectInvestorNet(bundle, axis, 'institution')[0];
+  expect(foreign.value).toBe(1000);
+  expect(institution.value).toBe(-30);
+  expect(institution.color).not.toBe(foreign.color);
+  bundle.institutionInvestorPoints = [];
+  expect(projectInvestorNet(bundle, axis, 'institution')).toEqual([]);
+  expect(projectInvestorNet(bundle, axis, 'foreign')[0].value).toBe(1000);
+});

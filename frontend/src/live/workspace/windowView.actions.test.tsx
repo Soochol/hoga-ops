@@ -386,8 +386,12 @@ describe('removeMovingAverageWithUndo — 삭제 시점 캡처', () => {
 it('investor trade mode changes only the selected chart window', () => {
   seedWorkspace([chartWindow('w1', 'D'), chartWindow('w2', 'D')]);
   const first = renderHook(() => useIndicatorActions(), { wrapper: provider(windowValue('w1', 'D')) });
-  first.result.current.setInvestorTradeSide('sell');
+  first.result.current.setForeignTradeSide('sell');
   const second = renderHook(() => useWindowIndicators(), { wrapper: provider(windowValue('w2', 'D')) });
-  expect(bucket('D', 'w1')?.investorTradeSide).toBe('sell');
-  expect(second.result.current.investorTradeSide).toBe('net');
+  expect(bucket('D', 'w1')?.foreignTradeSide).toBe('sell');
+  expect(second.result.current.foreignTradeSide).toBe('net');
+  expect(bucket('D', 'w1')?.institutionTradeSide ?? 'net').toBe('net');
+  first.result.current.setInstitutionTradeSide('buy');
+  expect(bucket('D', 'w1')?.foreignTradeSide).toBe('sell');
+  expect(bucket('D', 'w1')?.institutionTradeSide).toBe('buy');
 });

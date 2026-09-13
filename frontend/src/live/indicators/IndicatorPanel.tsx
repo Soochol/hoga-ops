@@ -627,7 +627,7 @@ export default function IndicatorPanel({
               {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
               {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selectedAdded && selectedId === 'volume' && <VolumeConfig />}
-              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig grossSupported={capabilities.investorNet === 'stock'} />}
+              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig which={selectedId === 'foreign-net' ? 'foreign' : 'institution'} grossSupported={capabilities.investorNet === 'stock'} />}
               {selectedAdded && selectedId === 'broker-late-entry' && <BrokerLateEntryConfig />}
               {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}
               {selectedAdded && selectedId === 'trade-volume-poc' && <TradeVolumePocConfig />}

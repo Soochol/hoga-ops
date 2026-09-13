@@ -13,7 +13,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
       movingAverageEnabled: true,
       foreignNetEnabled: false,
-      investorTradeSide: 'net',
+      foreignTradeSide: 'net',
+      institutionTradeSide: 'net',
       institutionNetEnabled: false,
       volumeEnabled: true,
       movingAverageHidden: false,
@@ -615,8 +616,10 @@ describe('mergeLiveIndicatorPrefs — daily MA', () => {
 it('round-trips investor trade modes and defaults legacy/invalid settings to net', () => {
   for (const side of ['net', 'buy', 'sell']) {
     const settings = mergeLiveIndicatorPrefs({ investorTradeSide: side });
-    expect(mergeLiveIndicatorPrefs(JSON.parse(JSON.stringify(settings))).investorTradeSide).toBe(side);
+    expect(mergeLiveIndicatorPrefs(JSON.parse(JSON.stringify(settings))).foreignTradeSide).toBe(side);
+    expect(settings.institutionTradeSide).toBe(side);
+    expect(settings).not.toHaveProperty('investorTradeSide');
   }
-  expect(mergeLiveIndicatorPrefs({}).investorTradeSide).toBe('net');
-  expect(mergeLiveIndicatorPrefs({ investorTradeSide: 'invalid' }).investorTradeSide).toBe('net');
+  expect(mergeLiveIndicatorPrefs({}).foreignTradeSide).toBe('net');
+  expect(mergeLiveIndicatorPrefs({ investorTradeSide: 'invalid' }).institutionTradeSide).toBe('net');
 });
