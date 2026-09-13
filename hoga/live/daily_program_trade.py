@@ -69,11 +69,17 @@ async def fetch_daily_program_trade(client, code: str, from_s: str, to_s: str, *
             continue
         if not from_s <= day <= to_s or day in points:
             continue
+        buy_qty = _quantity(row.get("prm_buy_qty"), gross=True)
+        sell_qty = _quantity(row.get("prm_sell_qty"), gross=True)
+        net_qty = _quantity(row.get("prm_netprps_qty"))
+        # Net-selling days can have an unusable net field while both gross
+        # share counts are present. Their exact difference recovers the net;
+        # never substitute zero or infer a missing gross quantity.
+        if net_qty is None and buy_qty is not None and sell_qty is not None:
+            net_qty = buy_qty - sell_qty
         point = DailyProgramTradePoint(
-            t_ms=daily_anchor_ms(day),
-            net_qty=_quantity(row.get("prm_netprps_qty")),
-            buy_qty=_quantity(row.get("prm_buy_qty"), gross=True),
-            sell_qty=_quantity(row.get("prm_sell_qty"), gross=True),
+            t_ms=daily_anchor_ms(day), net_qty=net_qty,
+            buy_qty=buy_qty, sell_qty=sell_qty,
         )
         if any(value is None for value in (point.net_qty, point.buy_qty, point.sell_qty)):
             violations.append(ProgramTradeViolation(day, "malformed_row", "missing program quantity"))
