@@ -8,7 +8,7 @@
  *
  * 중앙 가격축을 좌우 4개 블록이 둘러싼다. **우측 요약 패널의 높이는 정확히 11행
  * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
- * 항목을 늘리거나 줄일 때 SUMMARY_ROWS 개수를 함께 맞출 것.
+ * 요약 12항목은 이 높이 안에 균등 배치한다. SUMMARY_ROWS는 항목 수가 아닌 호가 높이다.
  *
  * **소비처는 `DataWindow` 하나다.** 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
@@ -59,6 +59,7 @@ type Props = {
   deltaBadges?: OrderbookDeltaBadges | null;
   /** 상하한가·250일 최고/최저. null = 미로드/미제공 → 대시. */
   limits?: BookStockLimits | null;
+  krxClose?: number | null;
   /** 종목의 최신 VI 이벤트(키움 1h). null = 오늘 이벤트 없음 → 예상가만 표시. */
   vi?: LiveViEvent | null;
   /**
@@ -133,6 +134,7 @@ export default function BookPanel({
   lastPrice,
   deltaBadges = null,
   limits = null,
+  krxClose = null,
   vi = null,
   afterHoursTotals = null,
   afterHoursLabel = '시간외',
@@ -330,9 +332,9 @@ export default function BookPanel({
             ))}
           </div>
 
-          {/* 우: 요약 패널(11행 고정) → 매수 잔량 바 */}
+          {/* 우: 요약 12항목(11호가 높이 고정) → 매수 잔량 바 */}
           <div className="flex flex-col">
-            <div className="flex flex-col" style={{ height: ROW_H * SUMMARY_ROWS }}>
+            <div className="book-summary flex flex-col" style={{ height: ROW_H * SUMMARY_ROWS }}>
               {/* 칩은 **사다리 밖일 때만** 뜬다 — 등장 자체가 「이 값은 지금 사다리에
                   없다」는 신호다(`offLadderChip`). 폭은 안전하다: 실측 최고+칩 111px
                   vs 이 열의 제약을 쥔 `250일` 149px. */}
@@ -353,6 +355,7 @@ export default function BookPanel({
                 color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
                 chip={offLadderChip('저', summary, onScreenPrices)}
               />
+              <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
               {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
                   620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
               {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
@@ -777,7 +780,7 @@ function SummaryRow({
       className={`flex items-center justify-between gap-3 px-2 ${
         divider ? 'border-t border-border' : ''
       } ${highlight ? 'bg-bg-subtle' : ''}`}
-      style={{ height: ROW_H }}
+      style={{ height: 'var(--book-summary-row-height, 22px)' }}
     >
       {/* nowrap = 행 높이 계약(11행=매수 바 정렬)의 CSS 방어선. 폭이 모자라면
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}

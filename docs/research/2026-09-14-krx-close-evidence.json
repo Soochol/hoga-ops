@@ -1,0 +1,167 @@
+[
+  {
+    "api": "ka10095",
+    "observed_at": "2026-09-14T07:58:29.816582+00:00",
+    "return_code": 0,
+    "return_msg": "정상적으로 처리되었습니다",
+    "rows": {
+      "atn_stk_infr": [
+        {
+          "stk_cd": "000660",
+          "stk_nm": "SK하이닉스",
+          "dt": "20260914",
+          "cur_prc": "-1692000",
+          "close_pric": "-1692000",
+          "base_pric": "1812000",
+          "pred_pre": "-120000",
+          "open_pric": "-1707000",
+          "high_pric": "-1740000",
+          "low_pric": "-1686000"
+        },
+        {
+          "stk_cd": "005930",
+          "stk_nm": "삼성전자",
+          "dt": "20260914",
+          "cur_prc": "-249000",
+          "close_pric": "-249000",
+          "base_pric": "259500",
+          "pred_pre": "-10500",
+          "open_pric": "-249500",
+          "high_pric": "-254500",
+          "low_pric": "-248500"
+        },
+        {
+          "stk_cd": "000660_NX",
+          "stk_nm": "SK하이닉스",
+          "dt": "20260914",
+          "cur_prc": "-1692000",
+          "close_pric": "-1692000",
+          "base_pric": "1812000",
+          "pred_pre": "-120000",
+          "open_pric": "-1750000",
+          "high_pric": "-1770000",
+          "low_pric": "-1687000"
+        }
+      ]
+    }
+  },
+  {
+    "api": "ka10086",
+    "observed_at": "2026-09-14T07:58:30.841899+00:00",
+    "return_code": 0,
+    "return_msg": "정상적으로 처리되었습니다",
+    "rows": {
+      "daly_stkpc": [
+        {
+          "date": "20260914",
+          "close_pric": "-1692000",
+          "open_pric": "-1707000",
+          "high_pric": "-1740000",
+          "low_pric": "-1686000"
+        },
+        {
+          "date": "20260911",
+          "close_pric": "-1812000",
+          "open_pric": "-1773000",
+          "high_pric": "-1827000",
+          "low_pric": "-1768000"
+        },
+        {
+          "date": "20260910",
+          "close_pric": "-1853000",
+          "open_pric": "+1879000",
+          "high_pric": "+1890000",
+          "low_pric": "-1811000"
+        }
+      ]
+    }
+  },
+  {
+    "api": "ka10081",
+    "observed_at": "2026-09-14T07:58:31.888270+00:00",
+    "return_code": 0,
+    "return_msg": "정상적으로 처리되었습니다",
+    "rows": {
+      "stk_dt_pole_chart_qry": [
+        {
+          "dt": "20260914",
+          "cur_prc": "1692000",
+          "pred_pre": "-120000",
+          "open_pric": "1707000",
+          "high_pric": "1740000",
+          "low_pric": "1686000"
+        },
+        {
+          "dt": "20260911",
+          "cur_prc": "1812000",
+          "pred_pre": "-41000",
+          "open_pric": "1773000",
+          "high_pric": "1827000",
+          "low_pric": "1768000"
+        },
+        {
+          "dt": "20260910",
+          "cur_prc": "1853000",
+          "pred_pre": "-3000",
+          "open_pric": "1879000",
+          "high_pric": "1890000",
+          "low_pric": "1811000"
+        }
+      ]
+    }
+  },
+  {
+    "api": "ka10080",
+    "observed_at": "2026-09-14T07:58:57.290937+00:00",
+    "return_code": 0,
+    "return_msg": "정상적으로 처리되었습니다",
+    "rows": {
+      "stk_min_pole_chart_qry": [
+        {
+          "cur_prc": "-1692000",
+          "pred_pre": "-120000",
+          "open_pric": "-1692000",
+          "high_pric": "-1693000",
+          "low_pric": "-1691000",
+          "cntr_tm": "20260914165800"
+        },
+        {
+          "cur_prc": "-1697000",
+          "pred_pre": "-115000",
+          "open_pric": "-1697000",
+          "high_pric": "-1697000",
+          "low_pric": "-1697000",
+          "cntr_tm": "20260914153000"
+        }
+      ]
+    },
+    "code": "000660"
+  },
+  {
+    "api": "ka10080",
+    "observed_at": "2026-09-14T08:04:50.949174+00:00",
+    "return_code": 0,
+    "return_msg": "정상적으로 처리되었습니다",
+    "rows": {
+      "stk_min_pole_chart_qry": [
+        {
+          "cur_prc": "-249000",
+          "pred_pre": "-10500",
+          "open_pric": "-248500",
+          "high_pric": "-249000",
+          "low_pric": "-248500",
+          "cntr_tm": "20260914170400"
+        },
+        {
+          "cur_prc": "-249000",
+          "pred_pre": "-10500",
+          "open_pric": "-249000",
+          "high_pric": "-249000",
+          "low_pric": "-249000",
+          "cntr_tm": "20260914153000"
+        }
+      ]
+    },
+    "code": "005930"
+  }
+]
