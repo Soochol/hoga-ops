@@ -30,6 +30,8 @@ export type DrawingKind =
   | 'pencil';
 
 export type DrawingTool =
+  | 'day-high'
+  | 'day-low'
   | 'select'
   | 'hline'
   | 'vline'
@@ -40,10 +42,9 @@ export type DrawingTool =
   | 'pencil'
   | 'eraser';
 
-/** Narrow a tool to a drawable kind — everything except the non-drawing modes
- *  (select / eraser). Used to pick the per-kind style slot for the active tool. */
+/** Narrow tools with their own persisted shape/style; day tools create hlines. */
 export function isDrawingKind(tool: DrawingTool): tool is DrawingKind {
-  return tool !== 'select' && tool !== 'eraser';
+  return tool !== 'select' && tool !== 'eraser' && tool !== 'day-high' && tool !== 'day-low';
 }
 
 /** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
@@ -88,6 +89,8 @@ interface DrawingBase {
 }
 
 export interface Hline extends DrawingBase {
+  /** Snapshot label; changing candles never moves this manually created line. */
+  dayExtreme?: { date: string; side: 'high' | 'low' };
   kind: 'hline';
   /** The single price level. Renders as a horizontal line spanning the canvas. */
   price: number;

@@ -783,3 +783,15 @@ it('renders explicit lines and empty lines inside one selection box', () => {
   expect(c.fillText.mock.calls).toEqual([['가나다라', 10, 20], ['', 10, 45], ['마바사아', 10, 70]]);
   expect(c.strokeRect).toHaveBeenCalledWith(7, 18, 46, 74);
 });
+
+
+it('labels a day extreme without changing the horizontal line geometry', () => {
+  const c = makeCanvasSpy();
+  const ctx = makeProjectCtx();
+  const line: Hline = { id: 'day', kind: 'hline', paneId: 'candle', price: 100,
+    color: '#fff', width: 2, lineStyle: 'solid', dayExtreme: { date: '20260914', side: 'high' } };
+  renderDrawing(c, ctx, line, false);
+  expect(c.moveTo).toHaveBeenCalledWith(0, 200);
+  expect(c.lineTo).toHaveBeenCalledWith(ctx.width, 200);
+  expect(c.fillText).toHaveBeenCalledWith('2026.09.14 고점 · 100', ctx.width - 8, 196);
+});

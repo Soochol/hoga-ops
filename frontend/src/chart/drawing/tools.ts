@@ -255,6 +255,8 @@ export type Ref<T> = { current: T };
  * never reach into `useDrawingsStore` directly.
  */
 export type ToolCtx = {
+  /** Resolve the clicked trading date using the candle pane, independently of cursor Y. */
+  dayExtremeAtX?: (x: number, side: 'high' | 'low') => { date: string; price: number } | null;
   /** Cursor pixel X relative to the overlay container. */
   px: number;
   /** Cursor pixel Y relative to the overlay container. */
@@ -429,9 +431,8 @@ export type ToolCtx = {
    *  포함**. 마퀴는 지목이지 편집이 아니고, 잠긴 것을 담을 수 있어야 일괄 잠금
    *  해제가 성립한다. 편집 관문은 스토어에 그대로다(ADR-0164). */
   drawingsInRect(rect: MarqueeRect): Drawing[];
-  /** Legacy post-commit hook kept in the context for compatibility with older
-   *  tests/callers. Current drawing tools keep their active tool after commit
-   *  and select the new drawing through `setSelected` instead. */
+  /** Finish a one-shot tool and select its new drawing. Used by day high/low;
+   *  ordinary drawing tools retain their active tool after creation. */
   revertToSelectMode(newId: string): void;
 };
 
@@ -445,9 +446,9 @@ export interface DrawingToolSpec {
    *  overlay's pointer-events gating already differentiates), kept on
    *  the spec for future styling. */
   cursor: string;
-  /** Optional keyboard shortcut (Alt + key). DrawingOverlay's keydown
+  /** Optional keyboard shortcut (Alt or Shift + key). DrawingOverlay's keydown
    *  effect iterates TOOLS to dispatch. `key` is lowercase ASCII. */
-  shortcut?: { alt: true; key: string };
+  shortcut?: { alt?: true; shift?: true; key: string };
   onPointerDown?(ctx: ToolCtx): void;
   onPointerMove?(ctx: ToolCtx): void;
   onPointerUp?(ctx: ToolCtx): void;
@@ -1178,6 +1179,25 @@ export const hlineTool: DrawingToolSpec = {
   },
 };
 
+function dayExtremeTool(side: 'high' | 'low'): DrawingToolSpec {
+  return {
+    kind: side === 'high' ? 'day-high' : 'day-low',
+    label: side === 'high' ? '일자 고점 수평선' : '일자 저점 수평선',
+    glyph: side === 'high' ? '⌃' : '⌄',
+    cursor: 'crosshair',
+    shortcut: { shift: true, key: side === 'high' ? 'h' : 'l' },
+    onPointerDown(ctx) {
+      const point = ctx.dayExtremeAtX?.(ctx.px, side);
+      if (!point) return;
+      const id = nanoid(8);
+      ctx.add({ id, kind: 'hline', paneId: 'candle', price: point.price,
+        color: ctx.defaults.color, width: ctx.defaults.width, lineStyle: ctx.defaults.lineStyle,
+        dayExtreme: { date: point.date, side } });
+      ctx.revertToSelectMode(id);
+    },
+  };
+}
+
 // ─── vline ─────────────────────────────────────────────────────────────────
 export const vlineTool: DrawingToolSpec = {
   kind: 'vline',
@@ -1573,6 +1593,8 @@ export const eraserTool: DrawingToolSpec = {
 export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
   select: selectTool,
   hline: hlineTool,
+  'day-high': dayExtremeTool('high'),
+  'day-low': dayExtremeTool('low'),
   vline: vlineTool,
   trendline: trendlineTool,
   rect: rectTool,
@@ -1584,6 +1606,8 @@ export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
 
 export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
   'hline',
+  'day-high',
+  'day-low',
   'vline',
   'trendline',
   'rect',
@@ -1593,21 +1617,21 @@ export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
   'eraser',
 ];
 
-/**
- * Match a keyboard event against the `shortcut` field of every tool in
- * the registry. Returns the tool kind to activate, or null if no spec
- * matches or a non-Alt modifier is also held (Ctrl/Meta combos are
- * reserved for the browser/OS — we don't want to clobber Ctrl+H "history"
- * or Cmd+T "new tab"). Shift is allowed because the user may have
- * Caps-Lock on or hold Shift incidentally; key matching is
- * case-insensitive.
- */
+/** Match registered Alt/Shift shortcuts; Ctrl/Meta remain reserved.
+ * Existing Alt tools continue accepting incidental Shift. */
 export function matchShortcut(e: KeyboardEvent): DrawingTool | null {
-  if (!e.altKey) return null;
   if (e.ctrlKey || e.metaKey) return null;
   const k = e.key.toLowerCase();
   for (const spec of Object.values(TOOLS)) {
-    if (spec.shortcut && spec.shortcut.key === k) return spec.kind;
+    const shortcut = spec.shortcut;
+    if (!shortcut) continue;
+    const matchesKey = shortcut.key === k || (shortcut.shift && e.code === `Key${shortcut.key.toUpperCase()}`);
+    if (!matchesKey) continue;
+    if (shortcut.alt ? e.altKey : !e.altKey && e.shiftKey && shortcut.shift) return spec.kind;
   }
   return null;
+}
+
+export function shortcutLabel(shortcut: NonNullable<DrawingToolSpec['shortcut']>): string {
+  return `${shortcut.alt ? '⌥' : '⇧'}${shortcut.key.toUpperCase()}`;
 }

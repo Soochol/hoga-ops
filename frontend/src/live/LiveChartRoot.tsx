@@ -2851,6 +2851,7 @@ export function LiveChartRoot({
             onChartHoverPassthrough={handleDrawingOverlayHover}
             bucketMs={drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined)}
             candles={cb?.candles}
+            dayExtremesReady={(isMinuteTimeframe(timeframe) || timeframe === 'D') && !isPastCandlesLoading && !isInitialMinuteHistoryPending}
           />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the

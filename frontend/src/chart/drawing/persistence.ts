@@ -138,6 +138,11 @@ export function normalizeItems(raw: unknown): Drawing[] {
       if (normalized.kind === 'rect' && normalized.extendRight !== true) {
         delete normalized.extendRight;
       }
+      if (normalized.kind === 'hline' && normalized.dayExtreme) {
+        const meta = normalized.dayExtreme;
+        if (typeof meta.date !== 'string' || !/^\d{8}$/.test(meta.date)
+          || (meta.side !== 'high' && meta.side !== 'low')) delete normalized.dayExtreme;
+      }
       if (normalized.kind === 'pencil') {
         const subX = normalizeSubX(normalized.subX);
         // Deleted rather than set to undefined: a present-but-undefined key
