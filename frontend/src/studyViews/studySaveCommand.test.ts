@@ -110,7 +110,7 @@ describe('makeStudySaveCommand', () => {
       },
     });
     expect(command?.request).toMatchObject({
-      name: '삼성전자 5m 저장뷰',
+      name: '삼성전자 · 06.16',
       code: '005930',
       label: '삼성전자',
       viewport: {

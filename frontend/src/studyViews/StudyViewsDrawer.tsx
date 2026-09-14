@@ -1,4 +1,4 @@
-import { studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
+import { compactStudyViewPeriod, studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
 import { StudyGroupDialog, type StudyGroupAction } from './StudyGroupDialog';
 import { useStudyViewReveal } from './studyViewReveal';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -75,7 +75,7 @@ export function formatStudyViewTitle(row: { label: string; code: string; name: s
 }
 
 export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
-  return `${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`;
+  return `${studyTimeframeLabel(row.timeframe)} · ${compactStudyViewPeriod(row.range, row.timeframe)}`;
 }
 
 type TreeDragHandle = { listeners: DraggableSyntheticListeners; setActivatorNodeRef: (node: HTMLElement | null) => void };
@@ -502,7 +502,7 @@ export function StudyViewsDrawer() {
               </div>
               {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
                   타임프레임 · 복기 대상일(종목은 위 이름행에 표시). */}
-              <div className="text-xs text-fg-dim font-data break-words">
+              <div className="truncate text-xs text-fg-dim font-data" title={`${row.code} · ${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`}>
                 {formatStudyViewMeta(row)}
               </div>
               {/* 메모 미리보기(첫 줄) — 검색만 되고 화면엔 없던 복기 노트를 목록에서

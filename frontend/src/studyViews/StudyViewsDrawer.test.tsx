@@ -846,10 +846,12 @@ it('dragging a stock group reorders groups', async () => {
 });
 
 describe('formatStudyViewMeta', () => {
-  it('shows timeframe · single date (from==to) with the year', () => {
+  beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 14)); });
+  afterEach(() => { vi.restoreAllMocks(); });
+  it('shows timeframe · single date (from==to) without the current year', () => {
     expect(
       formatStudyViewMeta({ timeframe: '1m', range: { from_date: '20260708', to_date: '20260708' } }),
-    ).toBe('1분봉 · 2026-07-08');
+    ).toBe('1분봉 · 07.08');
   });
 
   // 같은 해 안의 범위는 `to` 쪽 연도를 접는다 — 메타행이 truncate 라 아낀 폭이
@@ -857,13 +859,13 @@ describe('formatStudyViewMeta', () => {
   it('shows a date range when from != to, folding the repeated year', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
-    ).toBe('일봉 · 2026-07-01–07-08');
+    ).toBe('일봉 · 07.01–07.08');
   });
 
-  it('keeps both years when the range crosses a year boundary', () => {
+  it('keeps the past year when the range crosses a year boundary', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20251228', to_date: '20260105' } }),
-    ).toBe('일봉 · 2025-12-28–2026-01-05');
+    ).toBe('일봉 · 25.12.28–01.05');
   });
 });
 

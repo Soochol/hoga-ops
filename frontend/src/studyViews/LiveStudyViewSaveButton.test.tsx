@@ -172,3 +172,13 @@ it('skips capture when the user unchecks it', async () => {
   await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
   expect(bulkItemsMock).not.toHaveBeenCalled();
 });
+
+it('saves the compact suggested title when the name is left blank', async () => {
+  render(<LiveStudyViewSaveButton source={liveSource()} />, { wrapper });
+  await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
+  const input = screen.getByLabelText('이름');
+  const suggestion = input.getAttribute('placeholder')?.replace('자동: ', '');
+  expect(suggestion).toMatch(/^삼성전자 · (?:\d{2}\.)?06\.16$/);
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  expect(createMutate.mock.calls[0][0].name).toBe(suggestion);
+});

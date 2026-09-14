@@ -104,6 +104,7 @@ export function LiveStudyViewSaveButton({
           subjectLabel={`${command.request.label} ${command.request.code} · ${studyTimeframeLabel(command.request.timeframe)}`}
 
           defaultName={command.dialog.defaultName}
+          fallbackName={command.request.name}
           defaultMemo={command.dialog.defaultMemo}
           rangeLabel={command.dialog.rangeLabel}
           coverage={coverage}
