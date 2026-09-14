@@ -15,6 +15,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { createVirtualAxis } from '../util/virtualAxis';
 import DrawingOverlay, { __test__ } from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
@@ -1397,5 +1398,54 @@ describe('DrawingOverlay — 빈 밴드 앵커는 축이 담는 마지막 봉이
     // 앵커가 마지막 **플롯** 봉이라 x 150 = 50봉 앞 = LAST_REAL + 50 × BUCKET.
     expect(line.a.realMs).toBe(LAST_REAL + 50 * BUCKET);
     expect(line.b.realMs).toBe(LAST_REAL + 80 * BUCKET);
+  });
+});
+
+describe('day extreme placement', () => {
+  beforeEach(() => useDrawingsStore.getState().__resetForTests());
+  const open = Date.UTC(2026, 8, 14, 0);
+  const bars = [
+    { ts_ms: open, open: 100, close: 110, high: 120, low: 90 },
+    { ts_ms: open + 180000, open: 110, close: 130, high: 150, low: 80 },
+  ];
+  function mount(ready = true, bucketMs = 180000) {
+    const pane = { paneIndex: () => 0, getHeight: () => 400 };
+    const series = { getPane: () => pane, priceToCoordinate: (p: number) => p, coordinateToPrice: (p: number) => p };
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: (x: number) => x < 200 ? x : null,
+        timeToCoordinate: (x: number) => x,
+        coordinateToLogical: (x: number) => x, logicalToCoordinate: (x: number) => x,
+      }),
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const axis = createVirtualAxis([{ date: '20260914', sessionOpenMs: open, sessionCloseMs: open + 23400000 }], open);
+    return render(<DrawingOverlay chart={chart as never} axis={axis as never}
+      scope="005930|minute" paneSeries={new Map([['candle', series]]) as never}
+      candles={bars} bucketMs={bucketMs} dayExtremesReady={ready} />);
+  }
+  it.each([['H', 150], ['L', 80]] as const)('Shift+%s creates the day price regardless of cursor Y, then supports undo', (key, price) => {
+    const { container } = mount();
+    fireEvent.keyDown(window, { key, shiftKey: true });
+    fireEvent.pointerDown(container.querySelector('[data-drawing-overlay]')!, { button: 0, clientX: 10, clientY: 300, pointerId: 1 });
+    const store = useDrawingsStore.getState();
+    expect(store.drawingsFor('005930|minute')).toEqual([expect.objectContaining({ kind: 'hline', price, paneId: 'candle' })]);
+    expect(store.activeTool).toBe('select');
+    act(() => store.undo('005930|minute'));
+    expect(useDrawingsStore.getState().drawingsFor('005930|minute')).toHaveLength(0);
+  });
+  it('does not use an incomplete initial load', () => {
+    const { container } = mount(false);
+    fireEvent.keyDown(window, { key: 'H', shiftKey: true });
+    fireEvent.pointerDown(container.querySelector('[data-drawing-overlay]')!, { button: 0, clientX: 10, clientY: 300, pointerId: 1 });
+    expect(useDrawingsStore.getState().drawingsFor('005930|minute')).toHaveLength(0);
+  });
+  it('does not hijack typing', () => {
+    mount();
+    const input = document.createElement('input'); document.body.append(input);
+    fireEvent.keyDown(input, { key: 'H', shiftKey: true });
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
+    input.remove();
   });
 });

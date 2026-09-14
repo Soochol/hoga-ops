@@ -4,6 +4,8 @@
 //   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
 //   - docs/adr/0028-drawing-pane-binding.md
 
+import { indexDayExtremes } from './drawing/dayExtremes';
+import { unixMsToKSTDate } from '../util/time';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import type { IChartApi } from 'lightweight-charts';
@@ -152,6 +154,8 @@ type Props = {
   onChartHoverPassthrough?: (point: { x: number; y: number }) => void;
   /** Active timeframe bucket (ms) — forwarded to the measure tool's readout. */
   bucketMs?: number;
+  /** False while initial day data is pending or the timeframe is unsupported. */
+  dayExtremesReady?: boolean;
   /** Candles for magnet snapping (ts_ms + OHLC). Empty/absent → no snapping. */
   candles?: readonly SnapCandle[];
 };
@@ -183,7 +187,7 @@ const PAN_SETTLE_MS = 120;
  *  않는 바닥값. */
 const PAN_PROBE_FLOOR_MS = 250;
 
-export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles: bundleCandles }: Props) {
+export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChartHoverPassthrough, bucketMs, candles: bundleCandles, dayExtremesReady = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // The bars the chart actually plotted. The bundle's array can END on a bar the
   // axis rejects (Kiwoom's daily 15:35 after-hours print), and everything below
@@ -193,6 +197,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const candles = useMemo(() => onAxisCandles(axis, bundleCandles), [axis, bundleCandles]);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
+  const dayToolActive = activeTool === 'day-high' || activeTool === 'day-low';
+  const dayExtremes = useMemo(
+    () => indexDayExtremes(dayToolActive ? (bundleCandles ?? []).filter(c => axis.contains(c.ts_ms)) : []),
+    [dayToolActive, axis, bundleCandles],
+  );
   const drawings = useDrawingsStore((s) =>
     scope == null ? EMPTY_DRAWINGS : (s.byScope.get(scope) ?? EMPTY_DRAWINGS),
   );
@@ -288,8 +297,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const futureBand = futureBandFor(axis, candles, bucketMs);
   const lastRealMs = futureBand?.lastRealMs;
 
-  // Legacy post-commit hook. Current drawing tools keep their active tool and
-  // call setSelected(id) directly; Escape is the explicit return to select mode.
+  // Day high/low tools finish after one click; ordinary tools stay active.
   const revertToSelectMode = useCallback((newId: string) => {
     useDrawingsStore.getState().setActiveTool('select');
     if (scopeRef.current != null) useDrawingsStore.getState().setSelected(scopeRef.current, newId);
@@ -758,6 +766,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // temporarily overrides magnet off.
     const snap = activeTool !== 'pencil' && !(e.ctrlKey || e.metaKey);
     return {
+      dayExtremeAtX: (x, side) => {
+        if (!dayExtremesReady || !paneSeries.has('candle') || (bucketMs != null && bucketMs > 86_400_000)) return null;
+        const realMs = projCanvasXToRealMs(chart, axis, x);
+        if (realMs == null) return null;
+        const date = unixMsToKSTDate(realMs);
+        const extremes = dayExtremes.get(date);
+        return extremes ? { date, price: extremes[side] } : null;
+      },
       px: e.clientX - rect.left,
       py: e.clientY - rect.top,
       // Same container-relative frame as px/py. `getCoalescedEvents` is
@@ -824,7 +840,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
       // never read this (they don't create shapes), so INITIAL_STYLE is a safe
       // filler there.
-      defaults: isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
+      defaults: activeTool === 'day-high' || activeTool === 'day-low'
+        ? defaults.styleByKind.hline
+        : isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
       trendlineDraft,
       pencilDraft,
       rectDraft,
@@ -1458,6 +1476,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     <div
       ref={containerRef}
       data-drawing-overlay
+      data-day-extremes-ready={dayExtremesReady}
       className="absolute inset-0 z-20"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -1467,6 +1486,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
+      {(activeTool === 'day-high' || activeTool === 'day-low') && (
+        <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">
+          {dayExtremesReady ? '날짜를 클릭하세요 · Esc 취소' : '분봉·일봉 데이터가 준비되면 날짜를 클릭하세요'}
+        </div>
+      )}
       {/* 마퀴(Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
           드래그마다 마운트/언마운트하면 첫 프레임이 React 렌더를 기다린다. */}
       <div

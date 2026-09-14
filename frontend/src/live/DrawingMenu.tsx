@@ -13,7 +13,7 @@
  * 봉 버튼과 같은 활성 문법(tint-selection + accent)을 입는다.
  *
  * 해제 경로 3개: 메뉴 첫 항목 '선택' · Escape(`DrawingOverlay` 가 이미 처리) ·
- * 트리거 재클릭 후 '선택'. 도구는 한 번 고르면 바꿀 때까지 유지(sticky)한다.
+ * 트리거 재클릭 후 '선택'. 일반 도구는 바꿀 때까지 유지하고, 일자 고점·저점은 한 번 그리면 선택으로 돌아간다.
  * Escape 와 우클릭은 **같은 하나의 출구**다 — 한 번에 도구와 선택을 함께 푼다
  * (`useDrawingsStore.exitDrawingMode`).
  *
@@ -24,7 +24,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { DRAWABLE_TOOLS_ORDER, TOOLS } from '../chart/drawing/tools';
+import { DRAWABLE_TOOLS_ORDER, TOOLS, shortcutLabel } from '../chart/drawing/tools';
 import type { DrawingTool } from '../chart/drawing/types';
 import { drawingScopeFor, useDrawingsStore } from '../state/drawings';
 import type { LiveTimeframe } from '../state/livePage';
@@ -104,7 +104,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       aria-label="그리기 도구"
       data-testid="drawing-menu"
       onMouseDown={(event) => event.stopPropagation()}
-      className="z-50 w-[184px] rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
+      className="z-50 w-[240px] rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
       style={{ position: 'fixed', left, top }}
     >
       {MENU_TOOLS.map((tool) => {
@@ -116,6 +116,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             type="button"
             role="menuitemradio"
             aria-checked={active}
+            aria-keyshortcuts={spec.shortcut ? `${spec.shortcut.alt ? 'Alt' : 'Shift'}+${spec.shortcut.key.toUpperCase()}` : undefined}
             onClick={() => pickTool(tool)}
             className={itemClass(active)}
           >
@@ -123,7 +124,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             <span>{spec.label}</span>
             {spec.shortcut && (
               <span className="ml-auto font-data text-2xs text-fg-dim">
-                ⌥{spec.shortcut.key.toUpperCase()}
+                {shortcutLabel(spec.shortcut)}
               </span>
             )}
           </button>

@@ -67,7 +67,7 @@ export function ShortcutHelpModal({ route, onClose }: { route: HelpRoute; onClos
       setDrawTools(
         Object.values(m.TOOLS)
           .filter((t) => t.shortcut)
-          .map((t) => ({ key: t.shortcut!.key.toUpperCase(), label: t.label })),
+          .map((t) => ({ key: m.shortcutLabel(t.shortcut!), label: t.label })),
       );
     });
     return () => { alive = false; };
@@ -88,7 +88,7 @@ export function ShortcutHelpModal({ route, onClose }: { route: HelpRoute; onClos
             </Section>
             <Section title="그리기">
               {(drawTools ?? []).map((t) => (
-                <Row key={t.key} keys={[`⌥${t.key}`]} desc={t.label} />
+                <Row key={t.key} keys={[t.key]} desc={t.label} />
               ))}
               <Row keys={['⇧클릭']} desc="선택에 더하기/빼기" />
               <Row keys={['⇧드래그']} desc="범위로 여러 개 선택" />
