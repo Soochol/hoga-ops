@@ -287,6 +287,7 @@ function dailyLogicalRange(
 }
 
 interface Props {
+  hoverLinked?: boolean;
   indicatorLegendsVisible?: boolean;
   code: string | null;
   timeframe: LiveTimeframe;
@@ -515,6 +516,7 @@ export function shouldShowDepthHeatmapOverlay(
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
 export function LiveChartRoot({
+  hoverLinked = true,
   indicatorLegendsVisible = true,
   code,
   timeframe,
@@ -955,7 +957,20 @@ export function LiveChartRoot({
     useLiveCursorStore.getState().clearSyncCursorFrom(ownerWindowId);
   }, [cancelPendingSidebarCursor]);
 
+  // Keep the publication callback stable: changing this option must not rebuild
+  // crosshair subscriptions or clear the independent chart synchronization channel.
+  const hoverLinkedRef = useRef(hoverLinked);
+  useEffect(() => {
+    hoverLinkedRef.current = hoverLinked;
+    if (!hoverLinked) {
+      cancelPendingSidebarCursor();
+      sidebarCursorLastPublishAtRef.current = null;
+      useLiveCursorStore.getState().clearSidebarCursorFrom(cursorOriginRef.current.windowId);
+    }
+  }, [hoverLinked, cancelPendingSidebarCursor]);
+
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
+    if (!hoverLinkedRef.current) return;
     const aligned = alignSidebarCursorMs(cursorMs, bucketMsRef.current);
     if (sidebarCursorTimeoutRef.current !== null) {
       // Trailing timer already armed — refresh the pending value only. NOT
@@ -965,6 +980,7 @@ export function LiveChartRoot({
       return;
     }
     const publish = (next: number) => {
+      if (!hoverLinkedRef.current) return;
       const current = useLiveCursorStore.getState().sidebarCursorMs;
       if (shouldPublishSidebarCursor(current, next)) {
         sidebarCursorLastPublishAtRef.current = performance.now();

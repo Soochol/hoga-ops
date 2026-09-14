@@ -149,4 +149,28 @@ describe('LiveChartRoot drawing hover passthrough', () => {
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
     expect(useLiveCursorStore.getState().cursorMs).toBe(sessionOpenMs);
   });
+  it('disables data-window hover while retaining the candle cursor and chart sync, then re-enables it', async () => {
+    const chart = (hoverLinked: boolean) => (
+      <LiveChartRoot code="005930" timeframe="1m" bundle={bundle}
+        clampEngaged={false} captureFloorEngaged={false}
+        isPastCandlesLoading={false} hoverLinked={hoverLinked} />
+    );
+    const { rerender } = render(chart(true), { wrapper });
+    const hover = async () => {
+      act(() => drawingHover?.({ x: 120, y: 80 }));
+      await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    };
+    await hover();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(sessionOpenMs);
+    rerender(chart(false));
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+    await hover();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(sessionOpenMs);
+    expect(useLiveCursorStore.getState().syncCursorMs).toBe(sessionOpenMs);
+    rerender(chart(true));
+    await hover();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(sessionOpenMs);
+  });
+
 });

@@ -531,6 +531,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
   /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
   const [jumpDestination, setJumpDestination] = useState<string | null>(null);
+  const hoverLinked = win.chart?.hoverLinked ?? true;
   const indicatorLegendsVisible = win.chart?.indicatorLegendsVisible ?? true;
   // 이 분봉 창이 보고 있는 날짜(라이브 엣지면 null) — 시간축이 하루 안에서는 날짜를
   // 안 찍어서 화면만 봐서는 며칠인지 알 수 없다(#1506 조사 D3).
@@ -932,6 +933,22 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             style={{ paddingInline: COMPACT_PADDING_INLINE }}
             icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
           />
+          {isMinuteTimeframe(view.timeframe) && (
+            <IconToolbarButton
+              aria-label="호버 연동"
+              title={`호버 연동 ${hoverLinked ? '켜짐' : '꺼짐'} · ${hoverLinked ? '연결된 데이터 창이 분봉 커서 시점을 따라갑니다' : '연결된 데이터 창에 최신 데이터를 표시합니다'}`}
+              aria-pressed={hoverLinked}
+              onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
+              style={{ paddingInline: COMPACT_PADDING_INLINE }}
+              className="aria-pressed:text-accent"
+              icon={(
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m4 3 7 17 2-7 7-2Z" />
+                  <path d="m13 13 6 6" />
+                </svg>
+              )}
+            />
+          )}
           {/* 봉 패턴은 일봉 개념이라 그 봉에서만 보인다 — 속성 패널의 「패턴 찾기」와
               같은 판정이고, 게이트를 두 곳에 두지 않으려 `onSearchPattern` 의 존재로 잰다. */}
           {onSearchPattern != null && (
@@ -954,6 +971,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <ChartErrorBoundary>
           <ChartDrawingShell>
             <LiveChartRoot
+              hoverLinked={hoverLinked}
               indicatorLegendsVisible={indicatorLegendsVisible}
               code={d.workareaCode}
               timeframe={view.timeframe}
