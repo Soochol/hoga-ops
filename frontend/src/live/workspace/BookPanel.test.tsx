@@ -55,13 +55,13 @@ describe('BookPanel', () => {
     expect(screen.getByText('-3.33%')).toBeInTheDocument(); // 246,500
   });
 
-  it('요약 패널은 정확히 11행이다 — 매수 잔량 바 정렬의 근거', () => {
+  it('요약 패널은 12항목을 11호가 높이에 담는다 — 매수 잔량 바 정렬의 근거', () => {
     // 이 불변식이 깨지면 우측 매수 바가 매수 가격 행과 어긋난다(조용한 시각 결함).
     // 행 수 = 상한가 여백 1 + 매도 10.
     const { container } = renderPanel();
     const summary = container.querySelector('div[style*="242px"]');
     expect(summary).not.toBeNull();
-    expect(summary!.querySelectorAll('div[style*="22px"]')).toHaveLength(11);
+    expect(summary!.querySelectorAll('div[style*="22px"]')).toHaveLength(12);
   });
 
   it('3열 공통 경계선을 한 줄 × 3열 = 3개 그린다 — 한 줄로 이어져야 한다', () => {
@@ -784,4 +784,11 @@ describe('BookPanel 빈 상태에서도 세션 컨트롤은 산다', () => {
     expect(screen.queryByTestId('book-session-only-strip')).not.toBeInTheDocument();
     expect(screen.getByTestId('book-session-toggle')).toBeInTheDocument();
   });
+});
+
+it('shows the separate KRX close immediately below the low', () => {
+  renderPanel({ krxClose: 1697000 });
+  const row = screen.getByText('KRX종가').parentElement!;
+  expect(row).toHaveTextContent('1,697,000');
+  expect(row.previousElementSibling).toHaveTextContent('최저');
 });

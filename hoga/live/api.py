@@ -89,6 +89,7 @@ from hoga.live.kiwoom_rankings import (
 )
 from hoga.live.kiwoom_rest import KiwoomRestClient, PageFetch
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
+from hoga.live.krx_close import KrxCloseResponse, KrxCloseStore
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
@@ -3071,6 +3072,38 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         state_key = code + {"KRX": "", "NXT": "_NX", "UN": "_AL"}[venue]
         vi = get_vi_status(state_key) if get_vi_status is not None else None
         return {"code": code, "vi": vi}
+
+    krx_close_store = KrxCloseStore(data_dir)
+
+    @router.get("/krx-close", response_model=KrxCloseResponse)
+    async def _get_krx_close(code: str = Query(...)) -> KrxCloseResponse:
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
+
+        async def fetch_close_rows() -> list[dict]:
+            client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None
+            if client is None or live_settings.rest_bypass_enabled(data_dir):
+                raise HTTPException(503, {
+                    "code": LiveErrorCode.NOT_WIRED, "message": "kiwoom quote source unavailable",
+                })
+            page = await kiwoom_access.run_with_capacity(
+                kiwoom_rest_runtime.ensure_scheduler(data_dir),
+                key=("krx-close", code),
+                api_id="ka10080",
+                priority="user_visible",
+                fetch_fn=lambda c: c.call("ka10080", {
+                    "stk_cd": code, "tic_scope": "1", "upd_stkpc_tp": "0",
+                }),
+                client=client,
+            )
+            return page.rows
+
+        try:
+            return await krx_close_store.get(code, datetime.now(KST), fetch_close_rows)
+        except (KiwoomRestError, KiwoomCapacityOverloaded, httpx.HTTPError) as e:
+            raise HTTPException(502, {
+                "code": LiveErrorCode.KIWOOM_API_ERROR, "message": "KRX closing price temporarily unavailable",
+            }) from e
 
     @router.get("/stock-limits", response_model=StockLimitsResponse)
     async def _get_stock_limits(code: str = Query(...)) -> StockLimitsResponse:

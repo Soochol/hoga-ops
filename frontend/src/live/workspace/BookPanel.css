@@ -6,3 +6,6 @@
   .book-panel[data-expanded-summary="false"] .book-summary-extra { display: none; }
   .book-panel[data-expanded-summary="false"] .book-summary-expand { display: block; }
 }
+
+/* Twelve summary items fit the same eleven ladder rows; bid bars stay aligned. */
+.book-summary { --book-summary-row-height: calc(242px / 12); }

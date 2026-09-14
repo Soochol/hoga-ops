@@ -28,6 +28,13 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
     retiredRequests += 1;
     return route.fulfill({json:{code:CODE,active:false}});
   });
+  await page.route(apiPrefix('live/krx-close'), async route => {
+    const timestamp = await page.evaluate(() => Date.now());
+    return route.fulfill({ json: {
+      code: CODE, date: '20260914', price: timestamp >= at(15, 31) ? 31000 : null,
+      close_at_ms: at(15, 30), fetched_at_ms: timestamp,
+    } });
+  });
   await page.goto(`/live?code=${CODE}`);
   await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
   // Set up the actual workspace, then drive market data through its WebSocket.
@@ -55,6 +62,8 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
   await page.clock.fastForward(30*60_000);
   await expect(page.getByText('애프터마켓 · 수신 대기',{exact:true})).toBeVisible();
   push(at(16),32000);
+  const closeRow = page.getByText('KRX종가', { exact: true }).locator('..');
+  await expect(closeRow).toContainText('31,000');
   await expect(page.getByText('애프터마켓',{exact:true})).toBeVisible();
   await expect.poll(() => chartCloses(page,chartId)).toContain(32000);
   const connections = ws.connectionCount();
@@ -68,5 +77,7 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
   await page.clock.fastForward(60_000);
   await expect(page.getByText('애프터마켓 · 마지막',{exact:true})).toBeVisible();
   expect(await chartCloses(page,chartId)).toContain(33000);
+  await expect(closeRow).toContainText('31,000');
+  await page.screenshot({ path: 'test-results/krx-close-aftermarket.png' });
   expect(retiredRequests).toBe(0);
 });

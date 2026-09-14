@@ -42,6 +42,7 @@ import { useLiveSeries } from '../../api/liveSeries';
 import { useMinuteClock } from '../useMinuteClock';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useQuoteByCode } from '../../api/liveQuotes';
+import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import {
@@ -477,6 +478,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 달라져도 고정이라 오늘 스팟 커서에서 유효하지만, 과거 날짜 커서에서는 그날의
   // 기준가에서 파생된 상하한가와 다르므로 아래에서 비운다.
   const stockLimits = useLiveStockLimits(code);
+  const krxClose = useLiveKrxClose(isSpot ? null : code, todayKst);
   // VI 이벤트 상태(키움 1h) — 예상 발동가의 기준가 갱신 + 발동 중 강조.
   const viStatus = useLiveViStatus(code, effectiveVenue);
   // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
@@ -645,6 +647,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           sessionMode={sessionMode}
           onSelectSessionMode={selectSessionMode}
           baselinePrice={baselinePrice}
+          krxClose={!isSpot && krxClose.data?.date === todayKst ? krxClose.data.price : null}
           summary={summary}
           trades={bookTrades}
           maskRatio={maskRatio}

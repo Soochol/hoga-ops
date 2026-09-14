@@ -57,6 +57,7 @@ from hoga.live.api import (
 from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
+from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.lifecycle import LiveStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -323,6 +324,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     }),
     flow_receipts.CollectionRun: frozenset({"run_id", "started_at_ms", "poll_interval_ms"}),
     flow_receipts.ReceiptGap: frozenset({"start_ms", "end_ms"}),
+    KrxCloseResponse: frozenset({"code", "date", "price", "close_at_ms", "fetched_at_ms"}),
     RankingRowModel: frozenset({"rank", "code", "name", "price", "change_pct", "trade_value_won"}),
     # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
     #
