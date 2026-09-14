@@ -1037,3 +1037,15 @@ describe('useDrawingsStore — reorder / addMany / setSelection', () => {
     expect(ids()).toEqual(['a', 'b', 'c', 'd']);
   });
 });
+
+it('remembers horizontal label picks without changing other lines or tools', () => {
+  const s = useDrawingsStore.getState();
+  s.add(A, mkHline('a', 100));
+  s.add(B, mkHline('b', 200));
+  s.update(A, 'a', { labelHidden: true });
+  expect(s.styleForKind('hline').labelHidden).toBe(true);
+  expect(s.styleForKind('vline').labelHidden).toBeUndefined();
+  expect(s.drawingsFor(B)[0]).not.toHaveProperty('labelHidden');
+  s.update(A, 'a', { labelHidden: false });
+  expect(s.styleForKind('hline').labelHidden).toBe(false);
+});

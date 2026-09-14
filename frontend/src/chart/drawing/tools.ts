@@ -1170,6 +1170,7 @@ export const hlineTool: DrawingToolSpec = {
     ctx.add({
       id,
       kind: 'hline',
+      ...(ctx.defaults.labelHidden === true ? { labelHidden: true } : {}),
       price,
       color: ctx.defaults.color,
       width: ctx.defaults.width,
@@ -1192,6 +1193,7 @@ function dayExtremeTool(side: 'high' | 'low'): DrawingToolSpec {
       const id = nanoid(8);
       ctx.add({ id, kind: 'hline', paneId: 'candle', price: point.price,
         color: ctx.defaults.color, width: ctx.defaults.width, lineStyle: ctx.defaults.lineStyle,
+        ...(ctx.defaults.labelHidden === true ? { labelHidden: true } : {}),
         dayExtreme: { date: point.date, side } });
       ctx.revertToSelectMode(id);
     },
