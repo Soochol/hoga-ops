@@ -345,6 +345,8 @@ export const COLOR_PALETTE = [
  *  carries both so the type stays flat and the propagation whitelist is a single
  *  field list regardless of which kind was edited. */
 export type DrawingStyle = {
+  /** Last label visibility for horizontal lines, including day extremes. */
+  labelHidden?: boolean;
   color: string;
   width: number;
   lineStyle: LineStyle;
