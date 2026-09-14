@@ -126,6 +126,8 @@ export interface ChartWindowConfig {
   lastMinuteTimeframe?: MinuteTimeframe;
   /** 창별 지표 레전드 표시. 생략은 켜짐(기존 저장값 호환), OHLC는 항상 표시. */
   indicatorLegendsVisible?: boolean;
+  /** 분봉 호버로 같은 그룹의 데이터 창 시점을 연동한다. 생략 시 켜짐. */
+  hoverLinked?: boolean;
 }
 
 /** 창별 비영속 런타임 뷰 상태 (#713 뷰포트 비저장과 정합 — 세션 한정).
@@ -288,6 +290,7 @@ type Store = Persisted & {
   // 버킷인가"만 정한다(`windowView` 의 `useIndicatorActions`).
   /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
+  setChartHoverLinked: (id: string, enabled: boolean) => void;
   setChartIndicatorLegendsVisible: (id: string, visible: boolean) => void;
   /** 좌측 팬 딥 백필의 창별 from-date 확장 — 단조 감소 가드(livePage 미러). */
   extendChartHistoricalRange: (id: string, date: string) => void;
@@ -393,6 +396,7 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
     win.chart = {
       timeframe: isLiveTimeframe(cfg.timeframe) ? cfg.timeframe : '1m',
     };
+    if (typeof cfg.hoverLinked === 'boolean') win.chart.hoverLinked = cfg.hoverLinked;
     if (typeof cfg.indicatorLegendsVisible === 'boolean') {
       win.chart.indicatorLegendsVisible = cfg.indicatorLegendsVisible;
     }
@@ -1003,6 +1007,15 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const windows = state.windows.map((w) => ({ ...w, rect: toFrac(w.rect as Rect, canvas) }));
       persistFromState({ ...state, windows });
       return { windows, pendingNormalize: false };
+    });
+  },
+
+  setChartHoverLinked: (id, enabled) => {
+    set((state) => {
+      const windows = withChart(state, id, (chart) => ({ ...chart, hoverLinked: enabled }));
+      if (!windows) return {};
+      persistFromState({ ...state, windows });
+      return { windows };
     });
   },
 
