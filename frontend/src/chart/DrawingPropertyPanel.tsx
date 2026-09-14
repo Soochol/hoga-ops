@@ -1001,6 +1001,26 @@ export default function DrawingPropertyPanel({
         );
       })()}
 
+      {drawing.kind === 'hline' && (
+        <button
+          type="button"
+          aria-label="라벨 표시"
+          aria-pressed={drawing.labelHidden !== true}
+          disabled={locked}
+          title="날짜·가격 라벨 표시/숨기기"
+          onClick={() => useDrawingsStore.getState().update(scope, id, {
+            labelHidden: drawing.labelHidden !== true,
+          })}
+          className={
+            'h-7 px-2 inline-flex items-center justify-center rounded text-xs' +
+            (locked ? controlDisabled : drawing.labelHidden !== true
+              ? ' bg-tint-selection text-accent' : controlDisabled)
+          }
+        >
+          라벨
+        </button>
+      )}
+
       {drawing.kind === 'rect' && (
         <>
           <button

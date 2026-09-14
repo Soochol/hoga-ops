@@ -557,7 +557,7 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
-  if (h.dayExtreme) {
+  if (h.dayExtreme && h.labelHidden !== true) {
     const { date, side } = h.dayExtreme;
     c.save();
     c.fillStyle = h.color;
@@ -582,6 +582,7 @@ export function renderHlinePriceBadge(
 ) {
   const y = ctx.priceToY(h.price);
   if (y == null) return;
+  if (h.labelHidden === true) return;
   drawPriceBadge(c, ctx.width, y, h.price, h.paneId, h.color, selected);
 }
 

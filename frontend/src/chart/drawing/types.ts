@@ -89,6 +89,8 @@ interface DrawingBase {
 }
 
 export interface Hline extends DrawingBase {
+  /** Hide both the caption and price-axis badge. Absent means visible. */
+  labelHidden?: boolean;
   /** Snapshot label; changing candles never moves this manually created line. */
   dayExtreme?: { date: string; side: 'high' | 'low' };
   kind: 'hline';

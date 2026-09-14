@@ -365,3 +365,13 @@ describe('day extreme line metadata', () => {
     expect(loadDrawings('005930|minute')).toEqual([line]);
   });
 });
+
+it('roundtrips hidden horizontal labels and defaults malformed values to visible', () => {
+  const line: Drawing = { id: 'hidden', kind: 'hline', paneId: 'candle', price: 123,
+    color: '#fff', width: 2, lineStyle: 'solid', labelHidden: true };
+  saveDrawings('005930|minute', [line]);
+  expect(loadDrawings('005930|minute')).toEqual([line]);
+  for (const labelHidden of [undefined, false, 'true', 1]) {
+    expect(normalizeItems([{ ...line, labelHidden }])[0]).not.toHaveProperty('labelHidden');
+  }
+});
