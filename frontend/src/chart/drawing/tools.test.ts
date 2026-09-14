@@ -2028,3 +2028,13 @@ describe('day extreme horizontal lines', () => {
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'ㅗ', code: 'KeyH', shiftKey: true }))).toBe('day-high');
   });
 });
+
+it.each(['hline', 'day-high', 'day-low'] as const)('%s uses the last horizontal label preference', kind => {
+  const ctx = makeCtx({ dayExtremeAtX: () => ({ date: '20260914', price: 120 }) });
+  ctx.defaults = { ...ctx.defaults, labelHidden: true };
+  TOOLS[kind].onPointerDown!(ctx);
+  expect(ctx.add).toHaveBeenCalledWith(expect.objectContaining({ labelHidden: true }));
+  ctx.defaults = { ...ctx.defaults, labelHidden: false };
+  TOOLS[kind].onPointerDown!(ctx);
+  expect(ctx.add).toHaveBeenLastCalledWith(expect.not.objectContaining({ labelHidden: true }));
+});

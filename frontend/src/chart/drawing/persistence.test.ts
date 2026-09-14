@@ -375,3 +375,16 @@ it('roundtrips hidden horizontal labels and defaults malformed values to visible
     expect(normalizeItems([{ ...line, labelHidden }])[0]).not.toHaveProperty('labelHidden');
   }
 });
+
+it('restores the last horizontal label preference after saving defaults', () => {
+  const previous = loadDefaults();
+  const defaults = { ...previous, styleByKind: { ...previous.styleByKind,
+    hline: { ...previous.styleByKind.hline, labelHidden: true },
+  } };
+  saveDefaults(defaults);
+  expect(loadDefaults().styleByKind.hline.labelHidden).toBe(true);
+  saveDefaults({ ...defaults, styleByKind: {
+    ...defaults.styleByKind, hline: { ...defaults.styleByKind.hline, labelHidden: false },
+  } });
+  expect(loadDefaults().styleByKind.hline.labelHidden).toBe(false);
+});
