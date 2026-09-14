@@ -1,3 +1,4 @@
+import { compactStudyViewName } from './studyViewPeriod';
 import type {
   StudyViewListRow,
   StudyViewWriteRequest,
@@ -8,8 +9,8 @@ import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import type { TabViewport } from '../live/viewportAnchor';
 import type { LiveTimeframe } from '../state/livePage';
 
-export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, timeframe: string): string {
-  return row?.name ?? `${label} ${timeframe} 저장뷰`;
+export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, toDate: string): string {
+  return row?.name ?? compactStudyViewName(label, toDate);
 }
 
 export function fallbackViewport(bundle: RangeBundle): StudyViewport | null {
@@ -145,7 +146,7 @@ export function buildStudyReferenceSaveRequest(liveSource: LiveStudySaveSource):
   const range = rangeForWindow(liveSource.bundle, window.fromIndex, window.toIndex);
   if (!range) return null;
   return {
-    name: defaultStudyViewName(undefined, liveSource.label, liveSource.timeframe),
+    name: defaultStudyViewName(undefined, liveSource.label, range.to_date),
     memo: '',
     code: liveSource.code,
     label: liveSource.label,

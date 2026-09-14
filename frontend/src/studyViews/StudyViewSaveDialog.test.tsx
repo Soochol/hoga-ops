@@ -80,11 +80,11 @@ it('shows save progress and backend errors', () => {
 
 it('creates a first group and defaults the name from the saved period', async () => {
   const submit = vi.fn();
-  render(<StudyViewSaveDialog groups={[]} mode="create" defaultName="" defaultMemo="" subjectLabel="삼성전자 · 1분봉" rangeLabel="2026-09-10 09:00–10:30 KST" onCancel={vi.fn()} onSubmit={submit} />);
+  render(<StudyViewSaveDialog groups={[]} mode="create" defaultName="" fallbackName="삼성전자 · 09.10" defaultMemo="" subjectLabel="삼성전자 · 1분봉" rangeLabel="2026-09-10 09:00–10:30 KST" onCancel={vi.fn()} onSubmit={submit} />);
   expect(screen.getByRole('button', { name: '그룹 만들고 저장' })).toBeDisabled();
   await userEvent.type(screen.getByLabelText('새 그룹 이름'), ' 돌파 복기 ');
   await userEvent.click(screen.getByRole('button', { name: '그룹 만들고 저장' }));
-  expect(submit).toHaveBeenCalledWith({ new_group_name: '돌파 복기', name: '삼성전자 · 1분봉 · 2026-09-10 09:00–10:30 KST', memo: '', capture: true });
+  expect(submit).toHaveBeenCalledWith({ new_group_name: '돌파 복기', name: '삼성전자 · 09.10', memo: '', capture: true });
 });
 
 it('keeps input on errors and requires choosing a valid group after deletion', async () => {

@@ -81,10 +81,10 @@ export function makeStudySaveCommand({
   const label = sourceLabel(source);
   const timeframe = sourceTimeframe(source);
   const window = saveWindow(bundle, viewport, todayKstYyyymmdd());
-  const name = defaultStudyViewName(mode === 'overwrite' ? existingSave ?? undefined : undefined, label, timeframe);
   const memo = mode === 'overwrite' ? existingSave?.memo ?? '' : '';
   const range = rangeForWindow(bundle, window.fromIndex, window.toIndex);
   if (!range) return null;
+  const name = defaultStudyViewName(mode === 'overwrite' ? existingSave ?? undefined : undefined, label, range.to_date);
   const request: StudyViewWriteRequest = {
     name,
     memo,

@@ -19,6 +19,7 @@ export function StudyViewSaveDialog({
   initialGroupId,
   subjectLabel,
   defaultName,
+  fallbackName,
   defaultMemo,
   rangeLabel,
   barCount,
@@ -34,6 +35,7 @@ export function StudyViewSaveDialog({
   initialGroupId?: string;
   subjectLabel?: string;
   defaultName: string;
+  fallbackName?: string;
   defaultMemo: string;
   rangeLabel?: string;
   barCount?: number;
@@ -66,7 +68,7 @@ export function StudyViewSaveDialog({
         onKeyDown={(e) => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid && !isSubmitting) onSubmit({ name: name.trim() || `${subjectLabel ?? '저장뷰'} · ${rangeLabel ?? ''}`, memo: memo.trim(), capture, ...group, ...(group.new_group_name !== undefined ? { new_group_name: group.new_group_name.trim() } : {}) });
+          if (valid && !isSubmitting) onSubmit({ name: name.trim() || fallbackName || defaultName || '저장뷰', memo: memo.trim(), capture, ...group, ...(group.new_group_name !== undefined ? { new_group_name: group.new_group_name.trim() } : {}) });
         }}
       >
         <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장뷰 저장'}</h2>
@@ -87,7 +89,7 @@ export function StudyViewSaveDialog({
           이름 <span className="text-fg-dim">선택</span>
           <input
             aria-label="이름"
-            placeholder="비우면 종목·봉·기간으로 자동 생성"
+            placeholder={fallbackName ? `자동: ${fallbackName}` : '비우면 종목·기준일로 자동 생성'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded border bg-bg-input px-2 py-1 text-sm"
