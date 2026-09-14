@@ -214,3 +214,28 @@ async def test_receipt_write_failure_preserves_raw_capture_and_dedup_success(tmp
         assert target.last_success_at_ms == 11_000
         assert target.last_written_at_ms == 1_000
         assert target.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("hour", "minute", "expected_calls"), [
+    (15, 45, len(PRODUCTS)), (15, 59, len(PRODUCTS)), (16, 0, 0),
+])
+async def test_collects_delayed_updates_until_1600(tmp_path, monkeypatch, hour, minute, expected_calls):
+    from datetime import datetime
+
+    from hoga.util.timeenc import KST
+
+    monkeypatch.setattr("hoga.live.session_gate.is_trading_day_now", lambda _: True)
+    stamp = int(datetime(2026, 8, 7, hour, minute, tzinfo=KST).timestamp() * 1000)
+    calls = []
+
+    async def fetch(iscd, key):
+        calls.append(key)
+        return _row()
+
+    collector = DerivFlowCollector(
+        data_dir=tmp_path, date_fn=lambda: _DATE, now_ms_fn=lambda: stamp, fetch_fn=fetch,
+    )
+    await collector.run_once()
+    assert len(calls) == expected_calls
+    assert len(collector.store.load_samples(_DATE)) == expected_calls

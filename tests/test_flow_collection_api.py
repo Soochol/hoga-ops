@@ -12,7 +12,7 @@ from hoga.util.timeenc import KST
 @pytest.mark.parametrize(("deriv", "hour", "minute", "expected"), [
     (False, 7, 59, False), (False, 8, 0, True), (True, 8, 59, False),
     (True, 9, 0, True), (False, 15, 31, True), (True, 15, 31, True),
-    (True, 15, 45, False), (False, 16, 29, True), (False, 16, 30, False),
+    (True, 15, 45, True), (True, 15, 59, True), (True, 16, 0, False), (False, 16, 29, True), (False, 16, 30, False),
 ])
 def test_collection_uses_its_own_window(tmp_path, monkeypatch, deriv, hour, minute, expected):
     now = dt.datetime(2026, 9, 10, hour, minute, tzinfo=KST)

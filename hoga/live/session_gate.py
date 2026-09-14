@@ -287,18 +287,20 @@ async def venue_capture_windows_async(now_ms: int) -> frozenset[str]:
 # investor-flow 계약이다).
 #: **밑줄 없는 public 상수다** — 커버리지 분모(`deriv_flow_store.SESSION_MINUTES`)와
 #: 응답의 x축(`/api/market/deriv-flow`)이 같은 창을 말해야 하는데, 두 곳에 숫자를
-#: 다시 적으면 창을 조정할 때 조용히 갈린다. 게이트가 SSOT 다.
+#: 다시 적으면 창을 조정할 때 조용히 갈린다. 거래시간과 수집 종료는 별개다.
 DERIV_OPEN_MIN = 9 * 60             # 09:00 KST
 DERIV_CLOSE_MIN = 15 * 60 + 45      # 15:45 KST
+#: 마감 후 지연 갱신을 받기 위한 투자자 수급 수집 종료. 차트 축은 거래시간을 유지한다.
+DERIV_FLOW_CAPTURE_CLOSE_MIN = 16 * 60  # 16:00 KST
 
 
 def _within_deriv_clock(t_ms: int) -> bool:
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
-    return DERIV_OPEN_MIN <= (kst.hour * 60 + kst.minute) < DERIV_CLOSE_MIN
+    return DERIV_OPEN_MIN <= (kst.hour * 60 + kst.minute) < DERIV_FLOW_CAPTURE_CLOSE_MIN
 
 
 def deriv_capture_window(now_ms: int) -> bool:
-    """파생 수집 게이트: 거래일 && 09:00–15:45 KST.
+    """파생 수급 수집 게이트: 거래일 && 09:00–16:00 KST.
 
     ⚠ BLOCKING: 거래일 판정이 캐시 미스 시 동기 KIS HTTP 를 칠 수 있다 — 이벤트
     루프에서 직접 호출 금지, 코루틴은 ``deriv_capture_window_async`` 를 await.
