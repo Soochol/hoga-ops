@@ -980,3 +980,27 @@ describe('DrawingPropertyPanel — 다중 우측 확장', () => {
     expect(screen.getByTestId('drawing-extend-right')).not.toBeDisabled();
   });
 });
+
+describe('horizontal line label visibility', () => {
+  it('toggles labels per line and supports undo', () => {
+    const scope = '005930|minute';
+    useDrawingsStore.getState().add(scope, HLINE);
+    useDrawingsStore.getState().setSelected(scope, HLINE.id);
+    render(<DrawingPropertyPanel scope={scope} />);
+    const button = screen.getByRole('button', { name: '라벨 표시' });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(button);
+    expect(useDrawingsStore.getState().drawingsFor(scope)[0]).toMatchObject({ labelHidden: true });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    act(() => useDrawingsStore.getState().undo(scope));
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not allow changing a locked line', () => {
+    const scope = '005930|minute';
+    useDrawingsStore.getState().add(scope, { ...HLINE, locked: true });
+    useDrawingsStore.getState().setSelected(scope, HLINE.id);
+    render(<DrawingPropertyPanel scope={scope} />);
+    expect(screen.getByRole('button', { name: '라벨 표시' })).toBeDisabled();
+  });
+});

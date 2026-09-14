@@ -52,6 +52,25 @@ for (const timeframe of ['3m', 'D'] as const) {
       expect((await readDrawings()).at(-1)).toMatchObject({ kind: 'hline', price: target.price, dayExtreme: { side } });
       await expect(page.getByTestId('drawing-menu-trigger').first()).toHaveAttribute('aria-label', '그리기');
     }
+    const linePosition = await page.evaluate(() => {
+      const charts = (window as unknown as { __liveCharts: Map<string, import('lightweight-charts').IChartApi> }).__liveCharts;
+      const series = charts.values().next().value!.panes()[0].getSeries()
+        .find(s => s.seriesType() === 'Candlestick')!;
+      const rows = series.data() as readonly { low: number }[];
+      const overlay = document.querySelector('[data-drawing-overlay]')!.getBoundingClientRect();
+      return { x: overlay.left + 100, y: overlay.top + series.priceToCoordinate(rows.at(-1)!.low)! };
+    });
+    await page.mouse.move(linePosition.x, linePosition.y);
+    await expect(page.locator('[data-drawing-overlay]').first()).toHaveCSS('pointer-events', 'auto');
+    await page.mouse.click(linePosition.x, linePosition.y);
+    const labels = page.getByRole('button', { name: '라벨 표시', exact: true });
+    await expect(labels).toHaveAttribute('aria-pressed', 'true');
+    await labels.click();
+    await expect(labels).toHaveAttribute('aria-pressed', 'false');
+    expect((await readDrawings()).at(-1)).toMatchObject({ labelHidden: true });
+    await page.screenshot({ path: testInfo.outputPath('hidden-line-label.png') });
+    await page.keyboard.press('Control+z');
+    await expect(labels).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({ path: testInfo.outputPath('day-extreme-lines.png') });
     await page.keyboard.press('Control+z');
     await expect.poll(async () => (await readDrawings()).length).toBe(1);

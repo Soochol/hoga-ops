@@ -795,3 +795,16 @@ it('labels a day extreme without changing the horizontal line geometry', () => {
   expect(c.lineTo).toHaveBeenCalledWith(ctx.width, 200);
   expect(c.fillText).toHaveBeenCalledWith('2026.09.14 고점 · 100', ctx.width - 8, 196);
 });
+
+it('hides the caption and axis badge while preserving the horizontal stroke', () => {
+  const c = makeCanvasSpy();
+  const ctx = makeProjectCtx();
+  const line: Hline = { id: 'hidden', kind: 'hline', paneId: 'candle', price: 100,
+    color: '#fff', width: 2, lineStyle: 'solid', labelHidden: true,
+    dayExtreme: { date: '20260914', side: 'high' } };
+  renderDrawing(c, ctx, line, false);
+  renderHlinePriceBadge(c, ctx, line, false);
+  expect(c.lineTo).toHaveBeenCalledWith(ctx.width, 200);
+  expect(c.stroke).toHaveBeenCalled();
+  expect(c.fillText).not.toHaveBeenCalled();
+});
