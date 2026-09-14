@@ -73,6 +73,24 @@ describe('ChartErrorBoundary', () => {
     Reflect.deleteProperty(navigator, 'clipboard');
   });
 
+  it.each([true, false])('오류 복사에 원본 예외를 보존한다 (stack=%s)', async (withStack) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true,
+    });
+    const error = new Error('Value is null');
+    error.stack = 'Error: Value is null\n    at ensureNotNull (lightweight-charts.js:135:15)\n    at SeriesApi.setData (lightweight-charts.js:12800:9)';
+    if (!withStack) error.stack = undefined;
+    function LibraryFailure(): never { throw error; }
+    render(<ChartErrorBoundary><LibraryFailure /></ChartErrorBoundary>);
+    fireEvent.click(screen.getByTestId('chart-error-copy'));
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain(error.stack ?? error.message);
+    expect(payload).toContain('LibraryFailure');
+    expect(await screen.findByText('복사됨')).toBeTruthy();
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
   it('clipboard 가 없는 환경에서도 복사 버튼이 상자를 깨뜨리지 않는다', () => {
     // 비-secure origin 이면 `navigator.clipboard` 가 아예 없어 호출이 undefined 다.
     // 거기에 `.then` 을 걸던 판이 폴백 상자를 스스로 터뜨렸다(red-check 대상).

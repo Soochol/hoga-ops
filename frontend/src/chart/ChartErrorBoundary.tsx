@@ -61,7 +61,7 @@ export default class ChartErrorBoundary extends Component<Props, State> {
     this.setState({ error: null, componentStack: null, copied: false });
   };
 
-  /** 메시지 + 컴포넌트 스택 **전문**. 상자에 보이는 것은 앞 몇 줄뿐이라, 붙여넣기용
+  /** 원본 예외 + 컴포넌트 스택 **전문**. 상자에 보이는 것은 앞 몇 줄뿐이라, 붙여넣기용
    *  값은 따로 만든다. */
   private report(): string {
     const { error, componentStack } = this.state;
@@ -73,7 +73,9 @@ export default class ChartErrorBoundary extends Component<Props, State> {
     // 잡힌다. 상자의 헤드라인은 첫 신고만 보여 주지만, 붙여넣기는 조사에 쓰이므로
     // 나머지를 버리면 조사가 다시 한 왕복 늘어난다.
     return [
-      error?.message ?? '',
+      // React's component stack identifies the owner, but only error.stack
+      // identifies the failing library call (e.g. addSeries vs setData).
+      error?.stack || error?.message || '',
       componentStack ?? '',
       ...readUpdateLoopReports().map(formatUpdateLoopReport),
     ].join('\n').trim();
