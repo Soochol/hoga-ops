@@ -21,12 +21,14 @@ import { HeartIcon } from '../ui/HeartIcon';
  * 로직은 WatchlistGroupPicker 와 동일 훅(useAddMember/useRemoveMember/
  * useWatchlistMembership)을 재사용한다. 하단은 새 그룹 생성 + 전체 관심 해제.
  */
-export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
+export function QuoteRowGroupMenu({ code, name, x, y, onClose, children, testId = 'quote-row-group-menu' }: {
   code: string;
   name: string;
   x: number;
   y: number;
   onClose: () => void;
+  children?: React.ReactNode;
+  testId?: string;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   useDismissablePopover(true, ref, onClose);
@@ -37,21 +39,35 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
   const createM = useCreateFolder();
   const removeAllM = useRemoveFromWatchlist();
   const [newName, setNewName] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const busy = addM.isPending || removeM.isPending || createM.isPending || removeAllM.isPending;
   const folders = useMemo(
     () => [...(data?.folders ?? [])].sort((a, b) => a.order - b.order), [data]);
   const member = folderIdsOf(code);
   const isMember = member.size > 0;
 
   const toggle = (folderId: string) => {
-    if (member.has(folderId)) removeM.mutate({ folderId, code });
-    else addM.mutate({ folderId, code, name });
+    if (busy) return;
+    const removing = member.has(folderId);
+    const folder = folders.find((f) => f.id === folderId);
+    const options = {
+      onSuccess: () => setFeedback(`${name} → ${folder?.name ?? ''} ${removing ? '해제됨' : '추가됨'}`),
+      onError: () => setFeedback('저장하지 못했습니다. 다시 시도해 주세요.'),
+    };
+    if (removing) removeM.mutate({ folderId, code }, options);
+    else addM.mutate({ folderId, code, name }, options);
   };
   const createAndAdd = async () => {
     const n = newName.trim();
-    if (!n) return;
-    const f = await createM.mutateAsync(n);
-    addM.mutate({ folderId: f.id, code, name });
-    setNewName('');
+    if (!n || busy) return;
+    try {
+      const f = await createM.mutateAsync(n);
+      setNewName('');
+      await addM.mutateAsync({ folderId: f.id, code, name });
+      setFeedback(`${name} → ${n} 추가됨`);
+    } catch {
+      setFeedback('저장하지 못했습니다. 다시 시도해 주세요.');
+    }
   };
 
   return (
@@ -59,9 +75,9 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
       ref={ref}
       role="menu"
       aria-label={`${name} 관심 그룹`}
-      data-testid="quote-row-group-menu"
+      data-testid={testId}
       onContextMenu={(e) => e.preventDefault()}
-      className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px]"
+      className="bg-bg-card border border-border rounded shadow-lg z-30 py-1 min-w-[200px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto"
       style={{ position: 'fixed', left, top }}
     >
       <div className="px-3 py-1 text-xs text-fg-dim">관심 그룹에 추가</div>
@@ -76,6 +92,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
             type="button"
             role="menuitemcheckbox"
             aria-checked={checked}
+            disabled={busy}
             data-testid={`quote-menu-group-${f.id}`}
             onClick={() => toggle(f.id)}
             className="w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:text-fg hover:bg-bg-input-hover flex items-center gap-2"
@@ -88,6 +105,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
       <div className="mt-1 border-t border-border px-3 py-1.5 flex items-center gap-1">
         <span className="text-accent leading-none">＋</span>
         <input
+          disabled={busy}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') createAndAdd(); }}
@@ -97,6 +115,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
           className="flex-1 bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-fg-dimmer"
         />
       </div>
+      {(busy || feedback) && <div role="status" className="px-3 py-1 text-xs text-fg-dim">{busy ? '저장 중…' : feedback}</div>}
       {isMember && (
         <button
           type="button"
@@ -109,6 +128,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose }: {
           관심 해제
         </button>
       )}
+      {children}
     </div>
   );
 }
