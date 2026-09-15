@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import CandleTooltip from './CandleTooltip';
+import { useLiveCursorStore } from './useLiveCursorStore';
+import { markSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
 
@@ -13,6 +15,7 @@ vi.mock('../api/liveDailyProgramTrade', () => ({ useLiveDailyProgramTrade: daily
 
 const origRAF = globalThis.requestAnimationFrame;
 beforeEach(() => {
+  useLiveCursorStore.getState().resetCursor();
   dailyQueries.investor.mockReset().mockReturnValue({ data: undefined, isLoading: false, isError: false });
   dailyQueries.program.mockReset().mockReturnValue({ data: undefined, isLoading: false, isError: false });
   // rAF 동기 실행
@@ -50,8 +53,8 @@ function makeChart(paneHeights: number[] = [400]) {
     unsubscribeCrosshairMove: () => { handler = null; },
     panes: () => paneHeights.map((h) => ({ getHeight: () => h })),
     chartElement: () => ({ clientWidth: 800, clientHeight: 400 }),
-  } as never;
-  return { chart, fire: (p: unknown) => act(() => { handler?.(p); }) };
+  };
+  return { chart: chart as never, rawChart: chart, fire: (p: unknown) => act(() => { handler?.(p); }) };
 }
 
 function renderTip(chart: never) {
@@ -338,5 +341,100 @@ describe('daily candle details independent of indicator legends', () => {
     useChartPrefsStore.setState({ candleTooltipEnabled: false });
     mountDaily();
     expect(dailyQueries.program).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('CandleTooltip synchronized hover', () => {
+  const day1 = Date.UTC(2026, 8, 14, 0);
+  const day2 = Date.UTC(2026, 8, 15, 0);
+  const dailyBundle = { quote_ratio: { bucket_ms: 60_000, points: [] }, code: '005930', candles: [
+    C(day1, 100, 110, 90, 105, 10), C(day2, 105, 125, 100, 120, 20),
+  ] } as never;
+  const publish = (ts: number) => act(() => {
+    useLiveCursorStore.getState().setSyncCursor(ts, {
+      windowId: 'minute-window', group: null, code: '005930', timeframe: '1m',
+    });
+  });
+  function setup(sync = true) {
+    const { rawChart: base, fire } = makeChart();
+    let x: number | null = 200;
+    let rangeHandler = () => {};
+    const chart = { ...base, timeScale: () => ({
+      timeToCoordinate: () => x, width: () => 700,
+      subscribeVisibleLogicalRangeChange: (h: () => void) => { rangeHandler = h; },
+      unsubscribeVisibleLogicalRangeChange: () => {},
+    }) } as never;
+    const paneSeries = new Map([['candle', {
+      priceToCoordinate: () => 100,
+      getPane: () => ({ paneIndex: () => 0 }),
+    }]]) as never;
+    const rendered = render(<CandleTooltip chart={chart} bundle={dailyBundle} axis={axis}
+      paneSeries={paneSeries} timeframe="D" cursorSyncCrosshair={sync} />);
+    return { chart, fire, ...rendered, pan: (next: number | null) => act(() => { x = next; rangeHandler(); }) };
+  }
+  it('follows the minute cursor date without a local mouse event, and clears on exit', () => {
+    setup();
+    publish(day1 + 3 * 3600_000);
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/14');
+    publish(day2 + 4 * 3600_000);
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/15');
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('120');
+    act(() => useLiveCursorStore.getState().resetCursor());
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+  });
+  it('ignores synthetic refreshes with a stale date', () => {
+    const { chart, fire } = setup();
+    publish(day2);
+    markSyntheticCrosshair(chart);
+    fire({ point: { x: 100, y: 50 }, time: day1 / 1000 });
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/15');
+  });
+  it('hides offscreen and missing dates, and restores after a pan', () => {
+    const { pan } = setup();
+    publish(day1);
+    pan(-20);
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+    pan(250);
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/14');
+    publish(day2 + 86400_000);
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+  });
+  it('respects the synchronization toggle', () => {
+    setup(false);
+    publish(day1);
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+  });
+  it('does not let an already queued refresh overwrite a newer synchronized date', () => {
+    const { fire } = setup();
+    let pending: FrameRequestCallback | undefined;
+    globalThis.requestAnimationFrame = (cb) => { pending = cb; return 1; };
+    fire({ point: { x: 100, y: 50 }, time: day1 / 1000 });
+    publish(day2);
+    act(() => pending?.(0));
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/15');
+  });
+  it('preserves direct mouse hover when ownership returns to this chart', () => {
+    const { chart, fire } = setup();
+    publish(day2);
+    markSyntheticCrosshair(chart);
+    fire({ point: { x: 100, y: 50 }, time: day1 / 1000, sourceEvent: {} });
+    act(() => useLiveCursorStore.getState().resetCursor());
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/14');
+  });
+  it('hides when disabled and resolves the current date when re-enabled', () => {
+    setup();
+    publish(day1);
+    act(() => useChartPrefsStore.setState({ candleTooltipEnabled: false }));
+    publish(day2);
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
+    act(() => useChartPrefsStore.setState({ candleTooltipEnabled: true }));
+    expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('2026/09/15');
+  });
+  it('does not revive a local tooltip from a synthetic data update', () => {
+    const { chart, fire } = setup(false);
+    markSyntheticCrosshair(chart);
+    fire({ point: { x: 100, y: 50 }, time: day1 / 1000 });
+    expect(screen.queryByTestId('candle-tooltip')).toBeNull();
   });
 });

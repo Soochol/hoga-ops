@@ -1,18 +1,21 @@
+import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
+import { useCursorSyncResolution } from './useCursorSyncResolution';
+import { isSyncConsumerTimeframe } from '../chart/cursorSync';
 import DailyCandleDetails from './DailyCandleDetails';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { IChartApi, MouseEventParams } from 'lightweight-charts';
+import type { IChartApi, MouseEventParams, UTCTimestamp } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { LiveTimeframe } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
-import { paneIdAtY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates';
+import { paneIdAtY, priceToCanvasY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { lowerBoundT } from '../chart/projectors/pastCachedProjector';
 import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
-type Hover = { tsMs: number; left: number; top: number; x: number; y: number };
+type Hover = { source: 'pointer' | 'sync'; tsMs: number; left: number; top: number; x: number; y: number };
 
 type Props = {
   chart: IChartApi;
@@ -21,6 +24,7 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;
+  cursorSyncCrosshair?: boolean;
 };
 
 // 레전드 boxStyle 선례(불투명 표면 + DESIGN 토큰).
@@ -78,10 +82,14 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   );
 }
 
-function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe }: Props) {
+function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe, cursorSyncCrosshair = false }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const quoteTotalsIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
+  const resolution = useCursorSyncResolution({ candles: bundle.candles, timeframe, code: bundle.code ?? null });
+  const syncEnabled = enabled && cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe);
+  const syncKind = syncEnabled ? resolution.kind : 'none';
+  const syncTarget = syncEnabled && resolution.kind === 'hit' ? resolution.candle : null;
   const tipRef = useRef<HTMLDivElement>(null);
   const hoverRef = useRef<Hover | null>(null);
   // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
@@ -96,7 +104,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   const publishHover = useCallback((next: Hover) => {
     const prev = hoverRef.current;
     hoverRef.current = next;
-    if (prev?.tsMs === next.tsMs) {
+    if (prev?.tsMs === next.tsMs && prev.source === next.source) {
       const tip = tipRef.current;
       if (tip) {
         tip.style.left = `${next.left}px`;
@@ -143,8 +151,8 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   // 핸들러가 읽는 최신 데이터(drawn·vsecToIndex·paneSeries)는 ref 로 — 구독 effect 가
   // [chart, enabled] 에만 의존하게 해, 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지
   // 않도록(스펙 §거동, ADR-0059). 매 렌더 커밋 후 sync → 다음 크로스헤어 이벤트엔 항상 최신.
-  const live = useRef({ drawn, vsecToIndex, paneSeries });
-  useEffect(() => { live.current = { drawn, vsecToIndex, paneSeries }; }, [drawn, vsecToIndex, paneSeries]);
+  const live = useRef({ drawn, vsecToIndex, paneSeries, syncKind });
+  useEffect(() => { live.current = { drawn, vsecToIndex, paneSeries, syncKind }; }, [drawn, vsecToIndex, paneSeries, syncKind]);
 
   useEffect(() => {
     // 토글 OFF: 구독하지 않는다. 직전 effect 의 cleanup 이 이미 hover 를 비웠고,
@@ -152,16 +160,25 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
     if (!enabled) return;
     let pending: number | null = null;
     const handler = (param: MouseEventParams) => {
+      // Capture synthetic status before rAF: cleanup may release the marker meanwhile.
+      if (!param.sourceEvent && (hasSyntheticCrosshair(chart) || live.current.syncKind !== 'none')) {
+        if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+        if (hoverRef.current?.source === 'pointer') clearHover();
+        return;
+      }
       if (param.point == null || typeof param.time !== 'number') {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         clearHover();
         return;
       }
       const point = param.point;
+      const fromPointer = param.sourceEvent != null;
       const time = param.time as number;
       if (pending !== null) cancelAnimationFrame(pending);
       pending = requestAnimationFrame(() => {
         pending = null;
+        // A remote cursor can arrive while an earlier refresh is waiting for rAF.
+        if (!fromPointer && live.current.syncKind !== 'none') return;
         const { drawn: d, vsecToIndex: vmap, paneSeries: ps } = live.current;
         // 캔들 페인 한정.
         if (paneIdAtY(chart, ps, point.y) !== 'candle') { clearHover(); return; }
@@ -174,7 +191,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
           el?.clientWidth ?? 0, el?.clientHeight ?? 0,
           tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130,
         );
-        publishHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top, x: point.x, y: point.y });
+        publishHover({ source: 'pointer', tsMs: d[vidx].ts_ms, left: place.left, top: place.top, x: point.x, y: point.y });
       });
     };
     chart.subscribeCrosshairMove(handler);
@@ -184,6 +201,40 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
       clearHover();
     };
   }, [chart, clearHover, enabled, publishHover]);
+
+  // Use the same candle resolution as the crosshair/legend. Synthetic chart events
+  // are not a reliable clock: setCrosshairPosition is silent, setData can replay it.
+  useEffect(() => {
+    if (!syncTarget) {
+      if (syncKind !== 'none' || hoverRef.current?.source === 'sync') clearHover();
+      return;
+    }
+    const ts = chart.timeScale();
+    const reposition = () => {
+      const x = axis.contains(syncTarget.ts_ms)
+        ? ts.timeToCoordinate((axis.toVirtual(syncTarget.ts_ms) / 1000) as UTCTimestamp)
+        : null;
+      const y = priceToCanvasY(chart, paneSeries, 'candle', syncTarget.close);
+      const el = chart.chartElement();
+      if (x === null || y === null || x < 0 || x > ts.width() || y < 0 || y > el.clientHeight
+        || paneIdAtY(chart, paneSeries, y) !== 'candle') {
+        clearHover();
+        return;
+      }
+      const tip = tipRef.current;
+      const place = placeTooltip(x, y, el.clientWidth, el.clientHeight,
+        tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130);
+      publishHover({ source: 'sync', tsMs: syncTarget.ts_ms, ...place, x, y });
+    };
+    reposition();
+    ts.subscribeVisibleLogicalRangeChange(reposition);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reposition);
+    observer?.observe(chart.chartElement());
+    return () => {
+      safeUnsubscribe(() => ts.unsubscribeVisibleLogicalRangeChange(reposition));
+      observer?.disconnect();
+    };
+  }, [syncKind, syncTarget, chart, axis, paneSeries, clearHover, publishHover]);
 
   // Daily data can arrive after the tooltip first opens. Re-measure its actual
   // size so the extra rows stay inside the chart even with a stationary cursor.
