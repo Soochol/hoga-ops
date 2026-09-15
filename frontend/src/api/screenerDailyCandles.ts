@@ -10,6 +10,7 @@ export interface ScreenerDailyCandle {
   low: number;
   close: number;
   volume: number;
+  trade_value_won?: number | null;
 }
 
 /** 일봉 candles 중 `date`(YYYYMMDD) **직전 거래일**의 close = 그 date 기준 전일 종가.

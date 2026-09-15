@@ -1,3 +1,4 @@
+import DailyCandleDetails from './DailyCandleDetails';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
@@ -10,6 +11,8 @@ import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+
+type Hover = { tsMs: number; left: number; top: number; x: number; y: number };
 
 type Props = {
   chart: IChartApi;
@@ -80,17 +83,17 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   const quoteTotalsIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
   const tipRef = useRef<HTMLDivElement>(null);
-  const hoverRef = useRef<{ tsMs: number; left: number; top: number } | null>(null);
+  const hoverRef = useRef<Hover | null>(null);
   // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
   // 확장)로 시프트되지만 ts_ms 는 불변 — 리베이스 중 정지 커서에서도 같은 봉을 가리킨다.
   // 툴팁 내용 모델은 아래 렌더에서 현재 drawn 으로 파생하므로 SSE 틱마다 in-place 갱신된다.
-  const [hover, setHover] = useState<{ tsMs: number; left: number; top: number } | null>(null);
+  const [hover, setHover] = useState<Hover | null>(null);
   const clearHover = useCallback(() => {
     if (hoverRef.current === null) return;
     hoverRef.current = null;
     setHover(null);
   }, []);
-  const publishHover = useCallback((next: { tsMs: number; left: number; top: number }) => {
+  const publishHover = useCallback((next: Hover) => {
     const prev = hoverRef.current;
     hoverRef.current = next;
     if (prev?.tsMs === next.tsMs) {
@@ -171,7 +174,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
           el?.clientWidth ?? 0, el?.clientHeight ?? 0,
           tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130,
         );
-        publishHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top });
+        publishHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top, x: point.x, y: point.y });
       });
     };
     chart.subscribeCrosshairMove(handler);
@@ -181,6 +184,26 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
       clearHover();
     };
   }, [chart, clearHover, enabled, publishHover]);
+
+  // Daily data can arrive after the tooltip first opens. Re-measure its actual
+  // size so the extra rows stay inside the chart even with a stationary cursor.
+  useEffect(() => {
+    const tip = tipRef.current;
+    if (!enabled || !hover || !tip || typeof ResizeObserver === 'undefined') return;
+    const reposition = () => {
+      const current = hoverRef.current;
+      if (!current) return;
+      const el = chart.chartElement();
+      const place = placeTooltip(current.x, current.y, el.clientWidth, el.clientHeight, tip.offsetWidth, tip.offsetHeight);
+      hoverRef.current = { ...current, ...place };
+      tip.style.left = `${place.left}px`;
+      tip.style.top = `${place.top}px`;
+    };
+    const observer = new ResizeObserver(reposition);
+    observer.observe(tip);
+    reposition();
+    return () => observer.disconnect();
+  }, [chart, enabled, hover]);
 
   // 내용 모델은 렌더에서 현재 데이터로 파생(순수) — SSE 틱/리베이스로 drawn 이 갱신되면
   // 커서를 안 움직여도 자동으로 최신 봉. 호버 봉이 사라지면(idx 부재) 숨김.
@@ -212,6 +235,9 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
       <Row k="거래량비">
         <span style={valStyle}>{m.volumeRatioPct == null ? '—' : `${Math.round(m.volumeRatioPct)}%`}</span>
       </Row>
+      {timeframe === 'D' && /^\d{6}$/.test(bundle.code) && (
+        <DailyCandleDetails code={bundle.code} candles={drawn} candle={drawn[idx]} />
+      )}
       {m.quoteAskTotal !== null && m.quoteBidTotal !== null && (
         <>
           <Row k="총잔량">

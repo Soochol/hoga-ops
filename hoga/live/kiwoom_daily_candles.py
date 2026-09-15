@@ -106,7 +106,7 @@ def resolve_base_dt(*, to_yyyymmdd: str, adjust: bool, adjusted_as_of: str | Non
 
 def _abs_int(raw: object) -> int | None:
     """원 단위 정수. 부호는 등락 방향이므로 가격에서는 버린다(함정 ③)."""
-    text = str(raw or "").strip().replace("+", "").replace("-", "")
+    text = str("" if raw is None else raw).strip().replace("+", "").replace("-", "")
     if not text:
         return None
     try:
@@ -161,8 +161,10 @@ def parse_row(
             date_yyyymmdd=date_s, reason="ohlc_inconsistent",
             detail=f"o={o} h={h} l={low} c={c}",
         )
+    amount = _abs_int(row.get("trde_prica"))  # ka10081: million KRW
     return LiveCandle(
         t_ms=daily_anchor_ms(date_s), open=o, high=h, low=low, close=c, volume=v,
+        trade_value_won=None if amount is None else amount * 1_000_000,
     ), None
 
 

@@ -53,7 +53,7 @@ export type StockDate = {
   blocked: boolean;
 };
 
-export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };
+export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number; trade_value_won?: number | null };
 
 export type PriceLevelHit = {
   date: string;

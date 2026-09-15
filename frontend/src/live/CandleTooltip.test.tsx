@@ -1,12 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import CandleTooltip from './CandleTooltip';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
 
+const dailyQueries = vi.hoisted(() => ({
+  investor: vi.fn(), program: vi.fn(),
+}));
+vi.mock('../api/livePastInvestorNet', () => ({ useLivePastInvestorNet: dailyQueries.investor }));
+vi.mock('../api/liveDailyProgramTrade', () => ({ useLiveDailyProgramTrade: dailyQueries.program }));
+
 const origRAF = globalThis.requestAnimationFrame;
 beforeEach(() => {
+  dailyQueries.investor.mockReset().mockReturnValue({ data: undefined, isLoading: false, isError: false });
+  dailyQueries.program.mockReset().mockReturnValue({ data: undefined, isLoading: false, isError: false });
   // rAF 동기 실행
   globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 0; }) as never;
   useChartPrefsStore.setState({
@@ -251,5 +259,84 @@ describe('CandleTooltip', () => {
       </Profiler>,
     );
     expect(tip.style.left).toBe(latestLeft);
+  });
+});
+
+
+describe('daily candle details independent of indicator legends', () => {
+  const day = Date.UTC(2026, 8, 15);
+  const yesterday = day - 86_400_000;
+  const candles = [C(yesterday, 100, 105, 99, 102, 10), {
+    ...C(day, 102, 108, 101, 107, 20), trade_value_won: 123_450_000_000,
+  }];
+  function mountDaily(timeframe: 'D' | 'W' = 'D') {
+    const { chart, fire } = makeChart();
+    render(<CandleTooltip chart={chart} bundle={{ code: '005930', candles, quote_ratio: { points: [] } } as never}
+      axis={axis} paneSeries={new Map() as never} timeframe={timeframe} />);
+    fire({ time: day / 1000, point: { x: 40, y: 40 } });
+    return fire;
+  }
+  it('shows turnover and daily net quantities without indicator panes', () => {
+    dailyQueries.investor.mockReturnValue({ data: { code: '005930', unit: 'qty_shares', trade_side: 'net',
+      points: [{ t_ms: day, institution_net: 123456, foreign_net: -45678 }] } });
+    dailyQueries.program.mockReturnValue({ data: { code: '005930', points: [{ t_ms: day, net_qty: 12345, buy_qty: 99999 }] } });
+    mountDaily();
+    const tip = screen.getByTestId('candle-tooltip');
+    expect(tip).toHaveTextContent('거래대금1,234.5억');
+    expect(tip).toHaveTextContent('기관 순매수+123,456주');
+    expect(tip).toHaveTextContent('외인 순매수-45,678주');
+    expect(tip).toHaveTextContent('프로그램 순매수+12,345주');
+    expect(dailyQueries.investor).toHaveBeenCalledWith('005930', '20260914', '20260915', 'qty', 'net');
+  });
+  it('never fills a missing date with the previous day and preserves zero', () => {
+    dailyQueries.investor.mockReturnValue({ data: { code: '005930', points: [{ t_ms: yesterday, institution_net: 0, foreign_net: 100 }] } });
+    const fire = mountDaily();
+    expect(screen.getByTestId('daily-candle-details')).toHaveTextContent('기관 순매수—');
+    fire({ time: yesterday / 1000, point: { x: 40, y: 40 } });
+    expect(screen.getByTestId('daily-candle-details')).toHaveTextContent('기관 순매수0주');
+    expect(screen.getByTestId('daily-candle-details')).toHaveTextContent('거래대금—');
+  });
+  it('does not show stale data from another stock or a buy-only response', () => {
+    dailyQueries.investor.mockReturnValue({ data: { code: '005930', trade_side: 'buy', points: [{ t_ms: day, institution_net: 999, foreign_net: 999 }] } });
+    dailyQueries.program.mockReturnValue({ data: { code: '000660', points: [{ t_ms: day, net_qty: 888 }] } });
+    mountDaily();
+    expect(screen.getByTestId('daily-candle-details')).not.toHaveTextContent('999');
+    expect(screen.getByTestId('daily-candle-details')).not.toHaveTextContent('888');
+  });
+  it('shows loading and failure separately from missing values', () => {
+    dailyQueries.investor.mockReturnValue({ isLoading: true });
+    dailyQueries.program.mockReturnValue({ isError: true });
+    mountDaily();
+    expect(screen.getByTestId('daily-candle-details')).toHaveTextContent('기관 순매수불러오는 중');
+    expect(screen.getByTestId('daily-candle-details')).toHaveTextContent('프로그램 순매수조회 실패');
+  });
+  it('repositions when asynchronously loaded rows increase tooltip height', () => {
+    const original = globalThis.ResizeObserver;
+    let resize: (() => void) | undefined;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) { resize = callback; }
+      observe() {}
+      disconnect() {}
+    } as never;
+    try {
+      const fire = mountDaily();
+      fire({ time: day / 1000, point: { x: 790, y: 390 } });
+      const tip = screen.getByTestId('candle-tooltip');
+      Object.defineProperties(tip, { offsetWidth: { value: 300 }, offsetHeight: { value: 270 } });
+      act(() => resize?.());
+      expect(tip.style.left).toBe('476px');
+      expect(tip.style.top).toBe('108px');
+    } finally {
+      cleanup();
+      globalThis.ResizeObserver = original;
+    }
+  });
+  it('does not query daily details on weekly candles or when the tooltip is off', () => {
+    mountDaily('W');
+    expect(dailyQueries.investor).not.toHaveBeenCalled();
+    cleanup();
+    useChartPrefsStore.setState({ candleTooltipEnabled: false });
+    mountDaily();
+    expect(dailyQueries.program).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,7 @@ export interface LivePastDailyCandle {
   low: number;
   close: number;
   volume: number;
+  trade_value_won?: number | null;
 }
 
 export interface LivePastDailyCandlesWarning extends WireDataWarning {

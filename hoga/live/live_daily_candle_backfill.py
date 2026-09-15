@@ -340,6 +340,7 @@ def _candle_to_dict(c) -> dict:
         "low": c.low,
         "close": c.close,
         "volume": c.volume,
+        **({"trade_value_won": c.trade_value_won} if c.trade_value_won is not None else {}),
     }
 
 
