@@ -2876,7 +2876,7 @@ export function LiveChartRoot({
             axis={axis}
             code={code}
           />
-          <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
+          <CandleTooltip cursorSyncCrosshair={cursorSyncCrosshair} chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. DOM 없는
               primitive 호스트라 팬/줌 재계산은 lwc 캔버스 패스가 담당한다(캔들과 같은
               프레임). SSE 틱엔 미재렌더(cb 안정), 토글 self-gate. */}
