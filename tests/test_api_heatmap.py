@@ -219,7 +219,7 @@ def test_get_empty_heatmap_reports_the_shared_next_run(tmp_path: Path):
     assert body["entries"] == []
     assert body["folders"] == []
     assert body["capture_markers"] == {}
-    # ADR-0142: 히트맵도 17:00 일일 런의 적재 대상이므로 next_run_at_ms 가 있다.
+    # ADR-0142: 히트맵도 22:00 일일 런의 적재 대상이므로 next_run_at_ms 가 있다.
     # 값은 관심목록 라우트와 **같은 함수**(scheduler.next_run_at_ms)에서 나온다 —
     # 두 화면이 다른 시각을 말하면 그 자체가 버그이므로 그 함수와 대조한다.
     import datetime as _dt

@@ -24,29 +24,29 @@ def _at(h: int, m: int = 0, day: int = 26) -> dt.datetime:
     return dt.datetime(2026, 5, day, h, m, 0, tzinfo=KST)
 
 
-def test_before_17_returns_today_17():
-    from hoga.api.scheduler import seconds_until_next_17_kst
-    secs = seconds_until_next_17_kst(_at(16, 59))
+def test_before_22_returns_today_22():
+    from hoga.api.scheduler import seconds_until_next_daily_kst
+    secs = seconds_until_next_daily_kst(_at(21, 59))
     assert 50 < secs < 70
 
 
-def test_at_exactly_17_returns_tomorrow_17():
-    from hoga.api.scheduler import seconds_until_next_17_kst
-    secs = seconds_until_next_17_kst(_at(17, 0))
+def test_at_exactly_22_returns_tomorrow_22():
+    from hoga.api.scheduler import seconds_until_next_daily_kst
+    secs = seconds_until_next_daily_kst(_at(22, 0))
     assert secs == pytest.approx(24 * 3600, abs=2)
 
 
-def test_after_17_returns_tomorrow_17():
-    from hoga.api.scheduler import seconds_until_next_17_kst
-    secs = seconds_until_next_17_kst(_at(17, 1))
-    # 23h 59m to tomorrow's 17:00.
+def test_after_22_returns_tomorrow_22():
+    from hoga.api.scheduler import seconds_until_next_daily_kst
+    secs = seconds_until_next_daily_kst(_at(22, 1))
+    # 23h 59m to tomorrow's 22:00.
     assert 23 * 3600 + 59 * 60 - 2 < secs < 23 * 3600 + 59 * 60 + 2
 
 
-def test_midnight_returns_17h():
-    from hoga.api.scheduler import seconds_until_next_17_kst
-    secs = seconds_until_next_17_kst(_at(0, 0))
-    assert secs == pytest.approx(17 * 3600, abs=2)
+def test_midnight_returns_22h():
+    from hoga.api.scheduler import seconds_until_next_daily_kst
+    secs = seconds_until_next_daily_kst(_at(0, 0))
+    assert secs == pytest.approx(22 * 3600, abs=2)
 
 
 @pytest.mark.asyncio
@@ -678,7 +678,7 @@ async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
         raise RuntimeError("simulated crash inside _daily_run")
 
     with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
-         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(22, 0)), \
          patch("hoga.api.scheduler._daily_run", side_effect=boom) as run_spy, pytest.raises(_asyncio.CancelledError):
         await scheduler._daily_loop(tmp_path)
     # First iteration ran _daily_run (which crashed); the loop did NOT
@@ -689,21 +689,22 @@ async def test_daily_loop_survives_daily_run_crash(tmp_path: Path):
     assert scheduler.read_last_daily_run_date(tmp_path) == "20260526"
 
 
-# ── 놓친 실행 복구 / 절전 드리프트 (17:00 단발 sleep 교체) ────────────────────
+# ── 놓친 실행 복구 / 절전 드리프트 (22:00 단발 sleep 교체) ────────────────────
 
-def test_daily_run_not_due_before_17():
+def test_daily_run_not_due_before_22():
     from hoga.api.scheduler import daily_run_due
-    assert daily_run_due(_at(16, 59), last_run_date=None) is False
+    assert daily_run_due(_at(17, 0), last_run_date=None) is False
+    assert daily_run_due(_at(21, 59), last_run_date=None) is False
 
 
-def test_daily_run_due_after_17_when_never_run():
-    """16:00 크래시 → 17:30 재기동이 그날 런을 복구해야 한다.
+def test_daily_run_due_after_22_when_never_run():
+    """21:00 크래시 → 22:30 재기동이 그날 런을 복구해야 한다.
 
-    구 동작은 다음 17:00 까지 ~23시간을 단발로 잤고, 그래서 그날 런(승격·prune·
+    구 동작은 다음 22:00 까지 ~23시간을 단발로 잤고, 그래서 그날 런(승격·prune·
     오늘 enqueue·스크리너·depth_daily)이 영구히 건너뛰어졌다.
     """
     from hoga.api.scheduler import daily_run_due
-    assert daily_run_due(_at(17, 30), last_run_date=None) is True
+    assert daily_run_due(_at(22, 30), last_run_date=None) is True
 
 
 def test_daily_run_not_due_when_already_ran_today():
@@ -713,7 +714,7 @@ def test_daily_run_not_due_when_already_ran_today():
 
 def test_daily_run_due_again_the_next_day():
     from hoga.api.scheduler import daily_run_due
-    assert daily_run_due(_at(17, 0, day=27), last_run_date="20260526") is True
+    assert daily_run_due(_at(22, 0, day=27), last_run_date="20260526") is True
 
 
 def test_last_daily_run_date_roundtrips(tmp_path: Path):
@@ -744,7 +745,7 @@ async def test_daily_loop_runs_once_per_day_across_many_ticks(tmp_path: Path):
             raise _asyncio.CancelledError
 
     with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
-         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 5)), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(22, 5)), \
          patch("hoga.api.scheduler._daily_run", new=AsyncMock()) as run_spy, \
          pytest.raises(_asyncio.CancelledError):
         await scheduler._daily_loop(tmp_path)
@@ -755,7 +756,7 @@ async def test_daily_loop_runs_once_per_day_across_many_ticks(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_daily_loop_skips_run_before_trigger_hour(tmp_path: Path):
-    """17:00 전에는 폴링만 하고 실행하지 않는다."""
+    """22:00 전에는 폴링만 하고 실행하지 않는다."""
     import asyncio as _asyncio
 
     from hoga.api import scheduler
@@ -808,7 +809,7 @@ async def test_trading_stage_is_unsettled_when_verdict_unavailable(tmp_path: Pat
 
     with patch("hoga.api.scheduler.daily_run_allowed_by_calendar", AsyncMock(return_value=None)), \
          patch("hoga.api.scheduler.load_watchlist") as watchlist_spy, \
-         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)):
+         patch("hoga.api.scheduler.now_kst", return_value=_at(22, 0)):
         settled = await scheduler.run_trading_stage(tmp_path)
 
     assert settled is False
@@ -823,7 +824,7 @@ async def test_trading_stage_is_settled_on_a_confirmed_holiday(tmp_path: Path):
 
     with patch("hoga.api.scheduler.daily_run_allowed_by_calendar", AsyncMock(return_value=False)), \
          patch("hoga.api.scheduler.load_watchlist") as watchlist_spy, \
-         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)):
+         patch("hoga.api.scheduler.now_kst", return_value=_at(22, 0)):
         settled = await scheduler.run_trading_stage(tmp_path)
 
     assert settled is True
@@ -855,7 +856,7 @@ async def test_daily_loop_retries_only_the_trading_stage_until_it_settles(tmp_pa
         return retry_results.pop(0)
 
     with patch("hoga.api.scheduler.asyncio.sleep", side_effect=fake_sleep), \
-         patch("hoga.api.scheduler.now_kst", return_value=_at(17, 0)), \
+         patch("hoga.api.scheduler.now_kst", return_value=_at(22, 0)), \
          patch("hoga.api.scheduler._daily_run", AsyncMock(return_value=False)) as full_run, \
          patch("hoga.api.scheduler.run_trading_stage", side_effect=fake_trading_stage) as retry, \
          pytest.raises(_asyncio.CancelledError):

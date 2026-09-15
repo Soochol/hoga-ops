@@ -31,30 +31,32 @@ from hoga.util.atomic_write import atomic_write_json
 log = logging.getLogger(__name__)
 
 
-def seconds_until_next_17_kst(now: dt.datetime) -> float:
-    """Seconds from ``now`` until the next KST 17:00 boundary.
+_DAILY_TRIGGER_HOUR = 22
 
-    If ``now`` is exactly 17:00 or later, returns the duration to
-    *tomorrow's* 17:00. ``now`` must be tz-aware (Asia/Seoul).
+
+def seconds_until_next_daily_kst(now: dt.datetime) -> float:
+    """Seconds from ``now`` until the next KST 22:00 boundary.
+
+    If ``now`` is exactly 22:00 or later, returns the duration to
+    *tomorrow's* 22:00. ``now`` must be tz-aware (Asia/Seoul).
     """
-    today_17 = now.replace(hour=17, minute=0, second=0, microsecond=0)
-    target = today_17 if now < today_17 else today_17 + dt.timedelta(days=1)
+    today_trigger = now.replace(hour=_DAILY_TRIGGER_HOUR, minute=0, second=0, microsecond=0)
+    target = today_trigger if now < today_trigger else today_trigger + dt.timedelta(days=1)
     return (target - now).total_seconds()
 
 
-_DAILY_TRIGGER_HOUR = 17
 # 폴링 주기. 단발 sleep 대신 짧게 반복 확인하는 이유는 _daily_loop docstring 참고.
 _DAILY_POLL_INTERVAL_S = 60.0
 
 
 def next_run_at_ms(now: dt.datetime) -> int:
-    """다음 17:00 KST 경계의 Unix-ms (ADR-0003).
+    """다음 22:00 KST 경계의 Unix-ms (ADR-0003).
 
     관심목록·히트맵 두 라우트가 **같은 함수**를 쓴다 — 하나의 일일 런이 두 목록을
     적재하므로(ADR-0142) 두 화면이 다른 시각을 표시하면 그 자체가 버그다. 각자
     계산하던 시절엔 식이 갈라질 여지가 있었다.
     """
-    return int((now + dt.timedelta(seconds=seconds_until_next_17_kst(now))).timestamp() * 1000)
+    return int((now + dt.timedelta(seconds=seconds_until_next_daily_kst(now))).timestamp() * 1000)
 
 
 def _scheduler_state_path(data_dir: Path) -> Path:
@@ -132,10 +134,10 @@ def write_last_trading_stage_date(data_dir: Path, date: str) -> None:
 
 
 def daily_run_due(now: dt.datetime, last_run_date: str | None) -> bool:
-    """오늘 17:00 을 지났고 오늘 아직 시도하지 않았는가.
+    """오늘 22:00 을 지났고 오늘 아직 시도하지 않았는가.
 
-    마커가 없으면(첫 부팅·업그레이드 직후) 17:00 이후라면 due 다 — 이건 의도한
-    복구 동작이다. "17:00 을 지났는데 오늘 런 기록이 없다" 는 정확히 놓친 실행의
+    마커가 없으면(첫 부팅·업그레이드 직후) 22:00 이후라면 due 다 — 이건 의도한
+    복구 동작이다. "22:00 을 지났는데 오늘 런 기록이 없다" 는 정확히 놓친 실행의
     정의이고, 런 자체가 멱등이라 한 번 더 도는 비용이 하루를 잃는 비용보다 싸다.
     """
     if now.hour < _DAILY_TRIGGER_HOUR:
@@ -396,7 +398,7 @@ async def run_trading_stage(data_dir: Path) -> bool:
     # 주워 간다. 여기(거래일 게이트 뒤)에 있는 것이 중요하다: 휴장일에 확정본을
     # 만들면 그날이 영원히 "확정된 빈 날" 이 된다.
     #
-    # **오늘치는 여기서 쓰고 다음 거래일 런이 덮어쓴다.** 당일 17:00 재조회는 벤더
+    # **오늘치는 여기서 쓰고 다음 거래일 런이 덮어쓴다.** 기존 당일 17:00 재조회는 벤더
     # 최종값이 아니라서(기관 13~32% 어긋남, 실측은 investor_flow_confirm 모듈
     # docstring) 한 번만 쓰면 그 오차가 영구 고정된다. 그래서 이 호출은 **하루에 한
     # 날짜씩 두 번** 벤더를 부른다 — 당일 + D+1. D+1 이 Δ0 인 것은 실측됐다.
@@ -521,7 +523,7 @@ async def _catchup_run(data_dir: Path) -> None:
     startup sweep never aborts because one entry failed.
 
     Watchlist only — the heatmap has no catch-up path (ADR-0142). Its codes are
-    picked up by the 17:00 daily run; a restart does not re-sweep them.
+    picked up by the 22:00 daily run; a restart does not re-sweep them.
     """
     now = now_kst()
     for entry in load_watchlist(data_dir):
@@ -533,12 +535,12 @@ async def _catchup_run(data_dir: Path) -> None:
 
 
 async def _daily_loop(data_dir: Path) -> None:
-    """Perpetual: 매 틱 벽시계를 다시 읽어 "오늘 17:00 을 지났고 오늘 아직 안 돌았다" 를
+    """Perpetual: 매 틱 벽시계를 다시 읽어 "오늘 22:00 을 지났고 오늘 아직 안 돌았다" 를
     판정해 _daily_run 을 실행한다.
 
-    다음 17:00 까지 한 번에 자는(≈23시간) 방식이 아닌 이유가 둘이다:
+    다음 22:00 까지 한 번에 자는(≈23시간) 방식이 아닌 이유가 둘이다:
 
-    1. **놓친 실행 복구.** 16:00 에 죽고 17:30 에 재기동하면 그날 17:00 런(승격 ·
+    1. **놓친 실행 복구.** 21:00 에 죽고 22:30 에 재기동하면 그날 22:00 런(승격 ·
        prune · 오늘 enqueue · 스크리너 · depth_daily)이 영구히 건너뛰어졌다. 다음 날
        런도 그 날짜를 메우지 않는다(``dates=[today]`` 뿐) — 메우는 경로는 기본 off 인
        startup catch-up 하나였다.
