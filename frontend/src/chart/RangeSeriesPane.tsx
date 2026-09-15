@@ -1,3 +1,4 @@
+import { replaceSeriesData } from './replaceSeriesData';
 import { memo, useEffect, useRef } from 'react';
 import {
   type IChartApi,
@@ -408,11 +409,14 @@ function RangeSeriesPaneInner<Ctx>({
       if (forceSetData) {
         const decision = classifyDataChange(lastDataRef.current[i] ?? null, data);
         if (decision.kind !== 'skip') {
-          seriesList[i].setData(data);
+          replaceSeriesData(chart, seriesList[i], data, lastDataRef.current[i]);
           lastDataRef.current[i] = data;
         }
       } else {
-        lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
+        lastDataRef.current[i] = syncSeriesData({
+          setData: (next) => replaceSeriesData(chart, seriesList[i], next, lastDataRef.current[i]),
+          update: (point) => seriesList[i].update(point),
+        }, lastDataRef.current[i] ?? null, data);
       }
       // Markers: order vs setData is irrelevant — SurgeMarkersPrimitive draws by
       // timeToCoordinate at render time, not by a snapshotted series index.

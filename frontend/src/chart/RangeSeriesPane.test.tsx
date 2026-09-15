@@ -39,6 +39,7 @@ function makeChart() {
   const removeSeries = vi.fn();
   const chart = {
     addSeries,
+    clearCrosshairPosition: vi.fn(),
     removeSeries,
   } as never;
   return { chart, created, addSeries, removeSeries };
@@ -434,6 +435,7 @@ function makePaneChart() {
       panes[paneIndex].push(series);
       return series;
     }),
+    clearCrosshairPosition: vi.fn(),
     removeSeries: vi.fn((series: unknown) => {
       const i = panes.findIndex((p) => p.includes(series));
       if (i < 0) return;

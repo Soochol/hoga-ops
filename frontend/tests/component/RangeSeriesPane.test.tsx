@@ -18,6 +18,7 @@ const makeMockChart = () => {
         seriesList.push(s);
         return s;
       }),
+      clearCrosshairPosition: vi.fn(),
       removeSeries: vi.fn(),
     } as any,
     seriesList,
