@@ -27,11 +27,12 @@ describe('summary date and unit alignment', () => {
     expect(s.total('individual')).toBeNull();
   });
 });
-it('K formatting distinguishes zero from small positive and negative quantities', () => {
-  expect(formatInvestorK(85200, true)).toBe('+85.2K');
+it('K formatting uses whole thousands and distinguishes zero from sub-1K quantities', () => {
+  expect(formatInvestorK(85200, true)).toBe('+85K');
   expect(formatInvestorK(85000)).toBe('85K');
+  expect(formatInvestorK(85600)).toBe('86K');
   expect(formatInvestorK(0, true)).toBe('0K');
-  expect(formatInvestorK(1, true)).toBe('+<0.1K');
-  expect(formatInvestorK(-99, true)).toBe('−<0.1K');
-  expect(formatInvestorK(-100, true)).toBe('−0.1K');
+  expect(formatInvestorK(1, true)).toBe('+<1K');
+  expect(formatInvestorK(-999, true)).toBe('−<1K');
+  expect(formatInvestorK(-1000, true)).toBe('−1K');
 });

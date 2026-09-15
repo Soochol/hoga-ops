@@ -176,7 +176,7 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
     const row = screen.getByTestId('investor-daily-row-20260803');
-    expect(within(row).getByText('+8,658.2K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
     expect(within(row).queryByText(/억/)).toBeNull();
     // 칩은 스토어를 따른다 — 눌림 상태와 숫자의 출처가 다른 것이 요점이다.
     expect(screen.getByRole('button', { name: /표시 단위/ })).toHaveAttribute('aria-pressed', 'true');
@@ -196,7 +196,7 @@ describe('InvestorDailyWindow', () => {
     // 표는 **지우지 않는다** — 축을 오갈 때마다 사라지면 비교가 끊긴다. 범위를 행으로
     // 좁히는 것은 단일 행 픽스처에서 누적행이 같은 값을 들기 때문이다(표 전체로
     // 찾으면 "multiple elements" 로 터진다).
-    expect(within(row).getByText('+8,658.2K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
   });
 
   it('축이 도착하면 흐림과 문구가 함께 사라진다', () => {
@@ -217,7 +217,7 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
     const row = screen.getByTestId('investor-daily-row-20260803');
-    expect(within(row).getByText('+8,658.2K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
   });
 
   it('데이터가 없으면 빈 상태를 보여 준다 — 무자격 dev 의 정상 경로다', () => {
@@ -320,7 +320,7 @@ it('매매 기준을 바꾸는 동안 기존 순매수를 재해석하지 않고
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
   fireEvent.click(screen.getByRole('button', { name: '총매도' }));
   expect(screen.getByText('총매도 조회 중')).toBeInTheDocument();
-  expect(screen.getByText('일별 순매수 · 오늘은 잠정')).toBeInTheDocument();
+  expect(screen.queryByText(/오늘은 잠정/)).toBeNull();
   expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['qty', 'sell']);
   expect(historyMock.mock.lastCall?.slice(2)).toEqual(['qty', 'sell']);
   expect(screen.getByRole('table')).toHaveAttribute('data-axis-pending', 'true');
@@ -329,7 +329,7 @@ it('매매 기준을 바꾸는 동안 기존 순매수를 재해석하지 않고
     points: [{ ...point('20260803'), foreign_net: 123, institution_net: 456, breakdown: null }],
   }, isLoading: false, error: null });
   rerender(<InvestorDailyWindow code="005930" cursorDate={null} />);
-  expect(screen.getByText('일별 총매도 · 오늘은 잠정')).toBeInTheDocument();
+  expect(screen.queryByText(/일별 총매도/)).toBeNull();
   expect(screen.getByRole('table')).not.toHaveAttribute('data-axis-pending');
   const row = screen.getByTestId('investor-daily-row-20260803');
   expect(within(row).getByText('123')).toBeInTheDocument();
@@ -430,17 +430,26 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   const row = screen.getByTestId('investor-daily-row-20260803');
   expect(within(row).getAllByRole('cell')).toHaveLength(4);
   const foreign = within(row).getAllByRole('cell')[1];
-  expect(foreign).toHaveTextContent('+85.2K·285.4K·200.2K');
+  expect(foreign).toHaveTextContent('+85K·285K·200K');
   expect(within(foreign).getByTitle('총매수 285,400주')).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: '매매 기준' })).toBeNull();
+  expect(screen.getByRole('group', { name: '표기 방법' })).toBeInTheDocument();
   expect(screen.getByText('단위: K주 · 1K = 1,000주')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   expect(foreign).toHaveTextContent('+85,200·285,400·200,200');
   expect(screen.getByText('단위: 주')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
+  fireEvent.click(screen.getByRole('button', { name: '총매수' }));
+  expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])
+    .toHaveTextContent('285K');
+  expect(screen.queryByText('순매수', { selector: 'span.font-semibold' })).toBeNull();
+  fireEvent.click(within(screen.getByRole('group', { name: '표기 방법' }))
+    .getByRole('button', { name: '모두' }));
+  expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])
+    .toHaveTextContent('+85K·285K·200K');
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
   expect(screen.getByRole('group', { name: '매매 기준' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '총매도' }));
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 접기' }));
-  expect(screen.getByTestId('investor-daily-row-20260803')).toHaveTextContent('+85.2K');
+  expect(screen.getByTestId('investor-daily-row-20260803')).toHaveTextContent('+85K');
 });

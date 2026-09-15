@@ -55,7 +55,7 @@
  * sticky 로 붙잡는다.
  */
 import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
-import { investorDailySummary } from '../investorDailySummary';
+import { formatInvestorK, investorDailySummary } from '../investorDailySummary';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
@@ -86,6 +86,10 @@ import { realMsToYyyymmdd, subtractDaysKst, todayKstYyyymmdd } from '../liveDate
  */
 const REQUEST_CALENDAR_DAYS = 130;
 const TRADE_SIDE_LABELS: Record<InvestorTradeSide, string> = { net: '순매수', buy: '총매수', sell: '총매도' };
+type CompactDisplay = 'all' | InvestorTradeSide;
+const COMPACT_DISPLAY_LABELS: Record<CompactDisplay, string> = {
+  all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
+};
 
 /** 상위 주체 컬럼 수 = 기관 세부가 시작하는 인덱스. 그룹 라벨이 사라진 뒤로는
  *  **구분선의 위치**가 이 상수의 유일한 용도다 — 경계를 말하는 것이 선뿐이라
@@ -106,8 +110,9 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const automaticScrollRef = useRef(false);
   const [selectedTradeSide, setTradeSide] = useState<InvestorTradeSide>('net');
   const [showDetails, setShowDetails] = useState(false);
+  const [compactDisplay, setCompactDisplay] = useState<CompactDisplay>('all');
   const [useK, setUseK] = useState(true);
-  const tradeSide = showDetails ? selectedTradeSide : 'net';
+  const tradeSide = showDetails ? selectedTradeSide : compactDisplay === 'all' ? 'net' : compactDisplay;
   const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
   const span = useInvestorDailySpanStore((s) => s.span);
   const setSpan = useInvestorDailySpanStore((s) => s.setSpan);
@@ -123,8 +128,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const history = useInvestorDailyHistory(code, from, unit === 'amount' ? 'amount' : 'qty', tradeSide);
   // Keep a stable recent range across period chips; expand only for loaded history.
   const grossFrom = span === 0 ? (history.data?.pages.at(-1)?.from ?? from) : from;
-  const buyQuery = useLivePastInvestorNet(showDetails ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'buy');
-  const sellQuery = useLivePastInvestorNet(showDetails ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'sell');
+  const buyQuery = useLivePastInvestorNet(showDetails || compactDisplay !== 'all' ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'buy');
+  const sellQuery = useLivePastInvestorNet(showDetails || compactDisplay !== 'all' ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'sell');
   const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty', tradeSide);
   const scope = `${code}:${unit}:${tradeSide}:${span}`;
   const [depth, setDepth] = useState({ scope, count: 60 });
@@ -265,6 +270,16 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               </button>
             ))}
           </div>}
+          {!showDetails && <div role="group" aria-label="표기 방법" className="flex shrink-0 items-center gap-1">
+            {(Object.keys(COMPACT_DISPLAY_LABELS) as CompactDisplay[]).map((display) => (
+              <button key={display} type="button" aria-pressed={compactDisplay === display}
+                onClick={() => setCompactDisplay(display)}
+                className={`rounded border px-1.5 py-px text-2xs ${compactDisplay === display
+                  ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+                {COMPACT_DISPLAY_LABELS[display]}
+              </button>
+            ))}
+          </div>}
           <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor((value) => !value)}
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${followCursor ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>
             커서 따라가기
@@ -285,25 +300,17 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         )}
       </div>
 
-      <div
-        className="shrink-0 truncate px-2.5 pb-1 text-2xs text-fg-dim"
-        title={`일별 ${showDetails ? TRADE_SIDE_LABELS[dataSide] : '투자자'} · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
-      >일별 {showDetails ? TRADE_SIDE_LABELS[dataSide] : '투자자'} · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
       {!showDetails && <div className="flex shrink-0 flex-wrap items-center gap-x-2 px-2.5 pb-1 text-2xs text-fg-dim">
-        <span className="font-semibold">순매수</span><span aria-hidden="true">·</span>
-        <span className="text-price-up">총매수</span><span aria-hidden="true">·</span>
-        <span className="text-price-down">총매도</span>
+        {compactDisplay === 'all' && <><span className="font-semibold">순매수</span><span aria-hidden="true">·</span>
+          <span className="text-price-up">총매수</span><span aria-hidden="true">·</span>
+          <span className="text-price-down">총매도</span></>}
+        {compactDisplay !== 'all' && <span>{TRADE_SIDE_LABELS[dataSide]}</span>}
         <span>{dataUnit === 'qty_shares' ? useK ? '단위: K주 · 1K = 1,000주' : '단위: 주' : '단위: 억원'}</span>
-        {(buyQuery.isLoading || sellQuery.isLoading) && <span>매수·매도 조회 중</span>}
-        {(buyQuery.error || sellQuery.error) && <span role="status">매수·매도 조회 실패</span>}
+        {compactDisplay === 'all' && (buyQuery.isLoading || sellQuery.isLoading) && <span>매수·매도 조회 중</span>}
+        {compactDisplay === 'all' && (buyQuery.error || sellQuery.error) && <span role="status">매수·매도 조회 실패</span>}
       </div>}
       {followCursor && cursorDate && cursorNotice && (
         <div role="status" className="px-2.5 pb-1 text-2xs text-fg-dim">{cursorNotice}</div>
-      )}
-      {span === 0 && table.rows.length > 0 && (
-        <div className="px-2.5 pb-1 text-2xs text-fg-dim">
-          {table.rows.at(-1)?.date}–{table.rows[0].date} · {table.rows.length}거래일
-        </div>
       )}
       {table.rows.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 py-4 text-center font-data text-xs text-fg-dim">
@@ -371,7 +378,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     className={isCursor ? 'bg-tint-selection' : undefined}
                   >
                     <DateCell date={row.date} isToday={row.date === today} />
-                    {columns.map((column, index) => (!showDetails ?
+                    {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
                       <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} values={{
                         net: dataSide === 'net' ? row.values[column.key] : null,
                         buy: summary.buy.value(row.date, column.key),
@@ -381,6 +388,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                         value={row.values[column.key]}
                         dataUnit={dataUnit}
                         dataSide={dataSide}
+                        compact={!showDetails}
+                        useK={useK}
                         className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                       />
                     ))}
@@ -403,7 +412,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     </span>
                   )}
                 </HeadCell>
-                {columns.map((column, index) => (!showDetails ?
+                {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
                   <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} foot values={{
                     net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
                     buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
@@ -412,6 +421,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     value={table.totals[column.key]}
                     dataUnit={dataUnit}
                     dataSide={dataSide}
+                    compact={!showDetails}
+                    useK={useK}
                     foot
                     className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                   />
@@ -521,6 +532,8 @@ function ValueCell({
   dataSide,
   className = '',
   foot = false,
+  compact = false,
+  useK = false,
 }: {
   value: number | null;
   /** **응답이 말한 단위** — 토글이 아니다(위 도크스트링). */
@@ -528,6 +541,8 @@ function ValueCell({
   dataSide: InvestorTradeSide;
   className?: string;
   foot?: boolean;
+  compact?: boolean;
+  useK?: boolean;
 }) {
   // 값 없음(분해 부재)은 0 이 아니라 공백이다 — `formatQty` 의 '-' 를 쓰면 0 과
   // 헷갈리지 않지만, 표 전체가 '-' 로 덮이면 노이즈라 흐린 색으로 눕힌다.
@@ -537,7 +552,9 @@ function ValueCell({
         foot ? 'border-t border-border bg-bg-card font-medium' : ''
       } ${qtyClass(value === null || dataSide === 'net' ? value : dataSide === 'sell' ? -value : value)} ${className}`}
     >
-      {value === null ? '' : dataSide === 'net' ? formatCell(value, dataUnit) : formatCell(value, dataUnit).replace(/^\+/, '')}
+      {value === null ? '' : dataUnit === 'qty_shares' && compact && useK
+        ? formatInvestorK(value, dataSide === 'net')
+        : dataSide === 'net' ? formatCell(value, dataUnit) : formatCell(value, dataUnit).replace(/^\+/, '')}
     </td>
   );
 }
