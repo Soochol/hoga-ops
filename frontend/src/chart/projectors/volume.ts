@@ -11,6 +11,7 @@ import { useActivePrefs } from '../../state/chartPrefs';
 import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
+import { formatKoreanK } from '../../util/koreanNumber';
 import { cumulativeCachedData, cumulativePriceFormat } from './fillStrength';
 import type { PaneSpec } from '../RangeSeriesPane';
 
@@ -36,7 +37,7 @@ const useVolumeContext = (): VolumePaneContext =>
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => `${(v / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 3 })}K`,
+  formatter: formatKoreanK,
   minMove: 1,
 };
 
@@ -135,7 +136,7 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      data: (bundle: RangeBundle, axis: VirtualAxis, _ctx: VolumePaneContext) => projectVolumeCached(bundle, axis),
+      data: (bundle: RangeBundle, axis: VirtualAxis) => projectVolumeCached(bundle, axis),
     },
     {
       type: LineSeries,

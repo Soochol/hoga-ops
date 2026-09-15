@@ -3,6 +3,10 @@
 export const formatKoreanInt = (v: number): string =>
   Math.round(v).toLocaleString('ko-KR');
 
+/** 수량을 천 단위 K로 표시한다. 거래량 및 투자자 수량 축·레전드 공통. */
+export const formatKoreanK = (v: number): string =>
+  `${Math.round(v / 1000).toLocaleString('ko-KR')}K`;
+
 /** 원화 금액을 국내 주식 UI에서 읽기 쉬운 억 단위로 표시한다.
  *  예: 169039074500 → "1,690억", -806001750 → "-8.1억". */
 export function formatKoreanWonEok(value: number): string {
