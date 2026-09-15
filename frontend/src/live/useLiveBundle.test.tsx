@@ -3464,3 +3464,18 @@ describe('minuteScrollbackFloorDate · clampEngaged', () => {
     expect(disk.result.current.clampEngaged).toBe(false);
   });
 });
+
+it('preserves daily turnover through the API-to-chart candle projection', () => {
+  const previous = dailyCandlesMock.candles;
+  dailyCandlesMock.candles = [{ ...DEFAULT_CANDLE, ...{ trade_value_won: 123_450_000_000 } }];
+  try {
+    const { result, unmount } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527', liveFixture, { hogaplaySourceEnabled: false }),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.chartBundle?.candles.find(c => c.ts_ms === DEFAULT_CANDLE.t_ms)?.trade_value_won).toBe(123_450_000_000);
+    unmount();
+  } finally {
+    dailyCandlesMock.candles = previous;
+  }
+});

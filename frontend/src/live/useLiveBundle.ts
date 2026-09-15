@@ -89,7 +89,7 @@ function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
 }
 
-function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: number; close: number; volume: number }): Candle {
+function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: number; close: number; volume: number; trade_value_won?: number | null }): Candle {
   return {
     ts_ms: b.t_ms,
     open: b.open,
@@ -98,6 +98,7 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
     low: b.low,
     vol_a: b.volume,
     vol_b: 0,
+    ...(b.trade_value_won != null ? { trade_value_won: b.trade_value_won } : {}),
   };
 }
 

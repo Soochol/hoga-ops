@@ -242,7 +242,7 @@ The per-**Code** 현재가 (price) + 등락률 (`change_pct`) + 전일대비 등
 _Avoid_: "live price" alone (the bundle includes **등락률** + 전일대비 등락액); calling it real-time tick data (N-second REST polling per ADR-0038, like **Live Capture**); deriving it from the **Screener** corpus (explicitly rejected — ADR-0056); confusing its **등락률** with **봉대비** (the **Candle Tooltip**'s 직전-봉 metric — a different reference).
 
 **Candle Tooltip (캔들 호버 툴팁)**:
-The floating, cursor-following readout shown while hovering a candle on the `/live` chart's **candle pane** (and only there) — 시·고·저·종 + 봉대비 변동(액·률) + 거래량 + 직전봉 거래량비. Appears **only on hover** (unlike the always-on pane legend) and hides when the cursor leaves the candle pane. Computed entirely in-memory from the drawn (Timeframe-aggregated) candle array — no fetch. Its reference convention is **봉대비**, *not* the **Live Quote** 등락률.
+The floating, cursor-following readout shown while hovering a candle on the `/live` chart's **candle pane** (and only there) — 시·고·저·종 + 봉대비 변동(액·률) + 거래량 + 직전봉 거래량비. Appears **only on hover** (unlike the always-on pane legend) and hides when the cursor leaves the candle pane. 일봉 종목에서는 해당 거래일의 실제 거래대금(억원)과 기관·외인·프로그램 순매수량(주)을 함께 보여주며, 레전드·보조지표 표시 및 매수/매도 선택과 독립적이다. 제공되지 않은 값은 0이나 전날 값으로 대체하지 않는다. Its reference convention is **봉대비**, *not* the **Live Quote** 등락률.
 _Avoid_: "legend" (that is the always-on pane legend, which tracks latest-when-idle); implying it shows the **Live Quote** 등락률 (it uses **봉대비**, a different reference).
 
 **봉대비 (Bar-over-Bar)**:

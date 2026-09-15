@@ -362,3 +362,17 @@ def test_anchor_is_0900_kst_same_as_the_kis_path() -> None:
     assert candle is not None
     got = datetime.datetime.fromtimestamp(candle.t_ms / 1000, tz=KST)
     assert (got.year, got.month, got.day, got.hour, got.minute) == (2026, 8, 3, 9, 0)
+
+
+def test_daily_turnover_is_preserved_in_won():
+    candle, violation = parse_row(ROW, from_yyyymmdd="20260803", to_yyyymmdd="20260803")
+    assert violation is None
+    assert candle.trade_value_won == 6_736_161_000_000
+    from hoga.live.live_daily_candle_backfill import _candle_to_dict
+    assert _candle_to_dict(candle)["trade_value_won"] == 6_736_161_000_000
+
+
+@pytest.mark.parametrize("raw, expected", [(None, None), ("", None), ("bad", None), ("0", 0), (0, 0)])
+def test_daily_turnover_missing_is_not_zero(raw, expected):
+    candle, _ = parse_row({**ROW, "trde_prica": raw}, from_yyyymmdd="20260803", to_yyyymmdd="20260803")
+    assert candle.trade_value_won == expected

@@ -35,6 +35,7 @@ class LiveCandle(BaseModel):
     low: int
     close: int
     volume: int
+    trade_value_won: int | None = None  # Actual daily turnover, never OHLC × volume.
 
 
 class IndexCandlePoint(BaseModel):

@@ -1534,6 +1534,7 @@ class LiveCandleRow(BaseModel):
     low: float
     close: float
     volume: float
+    trade_value_won: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class LiveEffectiveSession(BaseModel):
