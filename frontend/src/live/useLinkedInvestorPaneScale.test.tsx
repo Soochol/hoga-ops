@@ -10,7 +10,7 @@ const DAY = 86_400_000;
 const START = Date.UTC(2026, 8, 14);
 
 describe('useLinkedInvestorPaneScale', () => {
-  it('sets both scales to the same visible range and restores autoscale on cleanup', async () => {
+  it('keeps manual scale across bundle churn and restores autoscale when disabled', async () => {
     const axis = createVirtualAxis([{
       date: '20260914', sessionOpenMs: START, sessionCloseMs: START + DAY,
     }]);
@@ -40,8 +40,10 @@ describe('useLinkedInvestorPaneScale', () => {
     };
     const chart = { timeScale: () => timeScale } as unknown as IChartApi;
 
-    const { unmount } = renderHook(() => useLinkedInvestorPaneScale({
-      chart, bundle, axis, paneSeries, enabled: true,
+    let renderedBundle = bundle;
+    let enabled = true;
+    const { rerender } = renderHook(() => useLinkedInvestorPaneScale({
+      chart, bundle: renderedBundle, axis, paneSeries, enabled,
     }));
     await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
 
@@ -54,7 +56,22 @@ describe('useLinkedInvestorPaneScale', () => {
     });
     expect(foreignScale.setVisibleRange).toHaveBeenCalledTimes(2);
 
-    unmount();
+    // A refetch/live composition replaces the bundle object while the same linked
+    // panes stay mounted. The scale must remain manual between the old effect's
+    // cleanup and the next animation frame, otherwise the bars flash at lwc's
+    // independent autoscale before returning to the shared range.
+    foreignScale.setAutoScale.mockClear();
+    institutionScale.setAutoScale.mockClear();
+    renderedBundle = { ...bundle };
+    rerender();
+    expect(foreignScale.setAutoScale).not.toHaveBeenCalledWith(true);
+    expect(institutionScale.setAutoScale).not.toHaveBeenCalledWith(true);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    foreignScale.setAutoScale.mockClear();
+    institutionScale.setAutoScale.mockClear();
+    enabled = false;
+    rerender();
     expect(foreignScale.setAutoScale).toHaveBeenLastCalledWith(true);
     expect(institutionScale.setAutoScale).toHaveBeenLastCalledWith(true);
     expect(timeScale.unsubscribeVisibleTimeRangeChange).toHaveBeenCalled();

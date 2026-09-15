@@ -73,7 +73,6 @@ export function useLinkedInvestorPaneScale({
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       safeUnsubscribe(() => timeScale.unsubscribeVisibleTimeRangeChange(schedule));
-      scales.forEach(restoreAutoScale);
     };
   }, [chart, bundle, axis, paneSeries, enabled]);
 }
