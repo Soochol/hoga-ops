@@ -21,13 +21,14 @@ import { HeartIcon } from '../ui/HeartIcon';
  * 로직은 WatchlistGroupPicker 와 동일 훅(useAddMember/useRemoveMember/
  * useWatchlistMembership)을 재사용한다. 하단은 새 그룹 생성 + 전체 관심 해제.
  */
-export function QuoteRowGroupMenu({ code, name, x, y, onClose, children, testId = 'quote-row-group-menu' }: {
+export function QuoteRowGroupMenu({ code, name, x, y, onClose, children, beforeRemove, testId = 'quote-row-group-menu' }: {
   code: string;
   name: string;
   x: number;
   y: number;
   onClose: () => void;
   children?: React.ReactNode;
+  beforeRemove?: React.ReactNode;
   testId?: string;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
@@ -116,6 +117,7 @@ export function QuoteRowGroupMenu({ code, name, x, y, onClose, children, testId 
         />
       </div>
       {(busy || feedback) && <div role="status" className="px-3 py-1 text-xs text-fg-dim">{busy ? '저장 중…' : feedback}</div>}
+      {beforeRemove}
       {isMember && (
         <button
           type="button"

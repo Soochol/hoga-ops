@@ -419,7 +419,7 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     const notCancelled = fireEvent.contextMenu(screen.getByTestId('watchlist-row-005930'));
     expect(notCancelled).toBe(false);  // preventDefault suppresses native menu
-    fireEvent.click(screen.getByTestId('watchlist-menu-remove'));
+    fireEvent.click(screen.getByTestId('quote-menu-remove-all'));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('005930'));
     expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();
   });
@@ -550,15 +550,14 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeInTheDocument();
   });
 
-  it('우클릭 → 그룹 편집 opens the group picker (v3)', async () => {
+  it('우클릭에서 스크리너와 동일한 관심 그룹 메뉴를 바로 연다', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
     fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
-    fireEvent.click(screen.getByTestId('watchlist-menu-edit-groups'));
-    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
-    expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 행 메뉴 닫힘
+    expect(screen.getByRole('menu', { name: 'SK하이닉스 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByText('관심 그룹에 추가')).toBeInTheDocument();
   });
 
   it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {
