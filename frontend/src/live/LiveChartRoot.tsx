@@ -26,6 +26,7 @@ import {
 } from './paneGroupSpecs';
 import { resolveAxisMode } from '../chart/paneGroups';
 import { usePaneFolding } from './usePaneFolding';
+import { useLinkedInvestorPaneScale } from './useLinkedInvestorPaneScale';
 import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
@@ -2083,6 +2084,26 @@ export function LiveChartRoot({
     return keys;
   }, [visiblePaneGroups, groupAxisModes]);
 
+  // 분리된 외국인·기관 pane만 연결한다. 한 pane으로 병합된 쌍은 lwc가 이미 같은
+  // priceScaleId의 가시 데이터를 합쳐 자동 스케일하므로 수동 범위를 덧씌우지 않는다.
+  // 다른 지표와 병합된 경우도 그 지표의 축을 뜻밖에 잠그지 않도록 제외한다.
+  const linkedInvestorPaneIndexes = useMemo(() => {
+    const foreign = visiblePaneGroups.findIndex(
+      (group) => group.length === 1 && group[0].name === 'investor-foreign',
+    );
+    const institution = visiblePaneGroups.findIndex(
+      (group) => group.length === 1 && group[0].name === 'investor-institution',
+    );
+    return foreign >= 0 && institution >= 0 ? [foreign, institution] as const : null;
+  }, [visiblePaneGroups]);
+  useLinkedInvestorPaneScale({
+    chart,
+    bundle: cb,
+    axis,
+    paneSeries,
+    enabled: linkedInvestorPaneIndexes !== null,
+  });
+
   // 왼쪽 축 컬럼의 차트 레벨 게이트 — 시리즈를 'left' 스케일에 얹는 것만으로는
   // 컬럼이 렌더되지 않는다(실측: pane 스케일 visible=true·시리즈 부착 상태에서도
   // width 0, 차트 옵션을 켜야 72px 로 렌더). 어느 그룹이든 'left' 모드면 켜고,
@@ -2117,6 +2138,12 @@ export function LiveChartRoot({
   useEffect(() => {
     if (!chart || !cb) return;
     const groups = visiblePaneGroups;
+    const linkedInvestorStretch = linkedInvestorPaneIndexes === null
+      ? null
+      : Math.max(
+        paneGroupStretch(groups[linkedInvestorPaneIndexes[0]], paneStretch, paneGroupStretchOverrides),
+        paneGroupStretch(groups[linkedInvestorPaneIndexes[1]], paneStretch, paneGroupStretchOverrides),
+      );
     paneGroupsRef.current = groups;
     let cancelled = false;
     const apply = () => {
@@ -2137,7 +2164,11 @@ export function LiveChartRoot({
           // 그룹 키 오버라이드 우선, 없으면 멤버 유효값 최대(`paneGroupStretch`).
           // 저장값 재적용은 멱등이라 cb identity churn(실시간 틱·refetch)이
           // 사용자 드래그를 스펙 기본값으로 되돌리던 스냅백이 사라진다(#703).
-          p.setStretchFactor(paneGroupStretch(group, paneStretch, paneGroupStretchOverrides));
+          const linked = linkedInvestorPaneIndexes !== null
+            && (i === linkedInvestorPaneIndexes[0] || i === linkedInvestorPaneIndexes[1]);
+          p.setStretchFactor(linked && linkedInvestorStretch !== null
+            ? linkedInvestorStretch
+            : paneGroupStretch(group, paneStretch, paneGroupStretchOverrides));
         });
       } catch {
         // chart tearing down
@@ -2148,7 +2179,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, visiblePaneGroups, paneStretch, paneGroupStretchOverrides]);
+  }, [chart, cb, visiblePaneGroups, paneStretch, paneGroupStretchOverrides, linkedInvestorPaneIndexes]);
 
   // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
   // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한
