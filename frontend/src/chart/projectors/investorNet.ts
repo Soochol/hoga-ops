@@ -7,7 +7,7 @@ import {
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokensThemed } from '../../util/tokens';
-import { formatKoreanInt } from '../../util/koreanNumber';
+import { formatKoreanK } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 // Net bars use their sign. Gross buy/sell bars use the response mode: a
@@ -19,7 +19,7 @@ const TOKEN_SPEC = {
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => formatKoreanInt(v),
+  formatter: formatKoreanK,
   minMove: 1,
 };
 
@@ -62,7 +62,7 @@ export const INVESTOR_FOREIGN_SPEC = {
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'foreign'),
-      legend: { label: '외국인 순매수량' },
+      legend: { label: '외국인 순매수량', format: formatKoreanK },
     },
   ],
 } satisfies PaneSpec;
@@ -77,7 +77,7 @@ export const INVESTOR_INSTITUTION_SPEC = {
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'institution'),
-      legend: { label: '기관 순매수량' },
+      legend: { label: '기관 순매수량', format: formatKoreanK },
     },
   ],
 } satisfies PaneSpec;

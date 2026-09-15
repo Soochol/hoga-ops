@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { formatKoreanInt, formatKoreanWonEok } from './koreanNumber';
+import { formatKoreanInt, formatKoreanK, formatKoreanWonEok } from './koreanNumber';
 
 describe('formatKoreanInt', () => {
   it('rounds and thousands-separates with ko-KR', () => {
@@ -8,6 +8,14 @@ describe('formatKoreanInt', () => {
     expect(formatKoreanInt(-1061741)).toBe('-1,061,741');
     expect(formatKoreanInt(1234.7)).toBe('1,235');
     expect(formatKoreanInt(0)).toBe('0');
+  });
+});
+
+describe('formatKoreanK', () => {
+  it('rounds quantities to an integer K value', () => {
+    expect(formatKoreanK(1_234_567)).toBe('1,235K');
+    expect(formatKoreanK(-12_500)).toBe('-12K');
+    expect(formatKoreanK(500)).toBe('1K');
   });
 });
 
