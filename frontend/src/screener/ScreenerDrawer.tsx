@@ -1,4 +1,3 @@
-import { ScreenerOccurrenceDetails } from './ScreenerOccurrenceDetails';
 import { CONDITION_CATALOG } from './catalog';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from './OccurrenceExclusions';
@@ -62,14 +61,12 @@ function screenerDraggableId(code: string): string {
  *  행이 리스트에 남는다). */
 const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row,
-  onOccurrences,
   active,
   flash,
   onActivate,
   onOpenMenu,
 }: {
   row: ScreenerRowLive;
-  onOccurrences: (code: string) => void;
   active: boolean;
   flash: boolean;
   onActivate: (row: ScreenerRowLive, e?: JumpModifiers) => void;
@@ -85,14 +82,6 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   return (
     <QuoteRow
       name={row.name} code={row.code}
-      compact={!!row.occurrences?.length}
-      trailingAction={!!row.occurrences?.length && <button type="button"
-        className="text-2xs text-fg-dim hover:text-fg rounded focus-visible:outline focus-visible:outline-1"
-        aria-label={`${row.name} 발생 ${row.occurrences.length}건 보기`}
-        onPointerDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onOccurrences(row.code); }}>
-        발생 {row.occurrences.length}건
-      </button>}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -149,7 +138,6 @@ export function ScreenerDrawer() {
 
   // 결과 행 우클릭 → 관심 그룹 편집 메뉴(하트 버튼 대체). raw 커서 좌표만 담고
   // 위치 클램프는 ScreenerRowMenu 가 실측 보정한다(관심·히트맵 메뉴와 동일 관용구).
-  const [occurrenceCode, setOccurrenceCode] = useState<string | null>(null);
   const [rowMenu, setRowMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
@@ -504,7 +492,7 @@ export function ScreenerDrawer() {
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
-                    <DraggableScreenerRow key={r.code} onOccurrences={setOccurrenceCode}
+                    <DraggableScreenerRow key={r.code}
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
@@ -531,10 +519,7 @@ export function ScreenerDrawer() {
         )}
       </RailDrawerBody>
 
-      {occurrenceCode && <ScreenerOccurrenceDetails
-        row={scanRows.find(row => row.code === occurrenceCode)}
-        controller={occurrenceController} onClose={() => setOccurrenceCode(null)}
-      />}
+
 
       {rowMenu && (
         <QuoteRowGroupMenu

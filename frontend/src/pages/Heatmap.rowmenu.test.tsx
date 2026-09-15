@@ -81,7 +81,7 @@ it('행 우클릭 메뉴에 그룹 이동 목록이 없다', async () => {
  it('관심 그룹 추가는 메뉴를 유지하고 히트맵 소속을 변경하지 않는다', async () => {
   renderPage();
   fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
-  fireEvent.click(await screen.findByRole('checkbox', { name: '관찰' }));
+  fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: '관찰' }));
   await waitFor(() => expect(addMember).toHaveBeenCalledWith('w1', '005930', undefined));
   expect(await screen.findByText('삼성전자 → 관찰 추가됨')).toBeInTheDocument();
   expect(screen.getByTestId('heatmap-row-menu')).toBeInTheDocument();
@@ -94,7 +94,7 @@ it('관심 그룹 저장 실패를 안내하고 체크를 복구한다', async (
   vi.mocked(addMember).mockRejectedValueOnce(new Error('offline'));
   renderPage();
   fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
-  fireEvent.click(await screen.findByRole('checkbox', { name: '관찰' }));
+  fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: '관찰' }));
   expect(await screen.findByText('저장하지 못했습니다. 다시 시도해 주세요.')).toBeInTheDocument();
-  expect(screen.getByRole('checkbox', { name: '관찰' })).not.toBeChecked();
+  expect(screen.getByRole('menuitemcheckbox', { name: '관찰' })).toHaveAttribute('aria-checked', 'false');
 });

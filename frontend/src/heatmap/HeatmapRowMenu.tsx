@@ -1,6 +1,6 @@
-import { WatchlistGroupPickerContent } from '../watchlist/WatchlistGroupPicker';
+import { QuoteRowGroupMenu } from '../rightrail/QuoteRowGroupMenu';
 import { TrashIcon } from '../ui/TrashIcon';
-import { HeatmapContextMenu, type HeatmapMenuItem } from './HeatmapContextMenu';
+import type { HeatmapMenuItem } from './HeatmapContextMenu';
 
 interface Props {
   code: string;
@@ -38,10 +38,17 @@ export function HeatmapRowMenu({ x, y, code, name, onRemove, onClose, onCollect 
     },
   ];
   return (
-    <HeatmapContextMenu x={x} y={y} ariaLabel={`${name} 컨텍스트 메뉴`}
-      testId="heatmap-row-menu" itemTestIdPrefix="heatmap-menu"
-      items={items} onClose={onClose}>
-      <WatchlistGroupPickerContent key={code} code={code} name={name} />
-    </HeatmapContextMenu>
+    <QuoteRowGroupMenu code={code} name={name} x={x} y={y} onClose={onClose} testId="heatmap-row-menu">
+      <div className="mt-1 border-t border-border pt-1">
+        {items.map((item) => (
+          <button key={item.key} type="button" role="menuitem" data-testid={`heatmap-menu-${item.key}`}
+            onClick={() => { item.onClick(); onClose(); }}
+            className="w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:text-fg hover:bg-bg-input-hover flex items-center gap-2">
+            <span className="w-4 grid place-items-center">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </QuoteRowGroupMenu>
   );
 }
