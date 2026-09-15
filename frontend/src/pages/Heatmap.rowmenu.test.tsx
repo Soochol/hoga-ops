@@ -34,6 +34,12 @@ vi.mock('../live/liveNavigate', () => ({
   activateLiveInstrument: vi.fn(),
 }));
 
+vi.mock('../api/watchlist', async (orig) => ({
+  ...(await orig<typeof import('../api/watchlist')>()),
+  getWatchlist: vi.fn(() => Promise.resolve({ folders: [{ id: 'w1', name: '관찰', order: 0 }], entries: [], memos: [], next_run_at_ms: 0 })),
+  addMember: vi.fn(() => Promise.resolve()),
+}));
+import { addMember } from '../api/watchlist';
 import { Heatmap } from './Heatmap';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { removeFromHeatmapFolder, moveHeatmapEntries } from '../api/heatmap';
@@ -68,6 +74,27 @@ it('행 우클릭 메뉴에 그룹 이동 목록이 없다', async () => {
   expect(screen.queryByText('그룹으로 이동')).toBeNull();
   // 메뉴 항목은 제거 + 수집 둘뿐(testid 로 단언 — 라벨엔 아이콘 글리프가 섞인다).
   expect(screen.getAllByRole('menuitem').map((b) => b.getAttribute('data-testid')))
-    .toEqual(['heatmap-menu-remove', 'heatmap-menu-collect']);
+    .toEqual(['heatmap-menu-collect', 'heatmap-menu-remove']);
   expect(moveHeatmapEntries).not.toHaveBeenCalled();
+});
+
+ it('관심 그룹 추가는 메뉴를 유지하고 히트맵 소속을 변경하지 않는다', async () => {
+  renderPage();
+  fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '관찰' }));
+  await waitFor(() => expect(addMember).toHaveBeenCalledWith('w1', '005930', undefined));
+  expect(await screen.findByText('삼성전자 → 관찰 추가됨')).toBeInTheDocument();
+  expect(screen.getByTestId('heatmap-row-menu')).toBeInTheDocument();
+  expect(removeFromHeatmapFolder).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByTestId('heatmap-row-menu')).toBeNull();
+});
+
+it('관심 그룹 저장 실패를 안내하고 체크를 복구한다', async () => {
+  vi.mocked(addMember).mockRejectedValueOnce(new Error('offline'));
+  renderPage();
+  fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '관찰' }));
+  expect(await screen.findByText('저장하지 못했습니다. 다시 시도해 주세요.')).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: '관찰' })).not.toBeChecked();
 });

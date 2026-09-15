@@ -968,7 +968,7 @@ export function HeatmapDrawer() {
           미전달 → HeatmapRowMenu 가 '그룹으로 이동' 섹션을 자체 생략). 제거는 menu.folderId
           스코프 — 다른 그룹에 같은 종목이 등록돼 있으면 그쪽은 남는다. */}
       {menu && (
-        <HeatmapRowMenu x={menu.x} y={menu.y} name={menu.name}
+        <HeatmapRowMenu x={menu.x} y={menu.y} code={menu.code} name={menu.name}
           onRemove={() => removeRow(menu.code, menu.folderId)}
           onClose={() => setMenu(null)} />
       )}

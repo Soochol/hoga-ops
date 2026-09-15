@@ -1,7 +1,9 @@
+import { WatchlistGroupPickerContent } from '../watchlist/WatchlistGroupPicker';
 import { TrashIcon } from '../ui/TrashIcon';
 import { HeatmapContextMenu, type HeatmapMenuItem } from './HeatmapContextMenu';
 
 interface Props {
+  code: string;
   x: number;            // raw 커서 viewport 좌표
   y: number;
   name: string;         // 접근성 라벨용
@@ -20,24 +22,26 @@ interface Props {
  * 보드에서 메뉴가 화면을 덮었다(38개 실측). 그룹 간 이동은 드래그앤드롭이 대신한다 —
  * 보드·드로어 모두 다른 그룹 블록에 떨구면 이동, Ctrl 을 누른 채면 복제(ADR-0132).
  */
-export function HeatmapRowMenu({ x, y, name, onRemove, onClose, onCollect }: Props) {
+export function HeatmapRowMenu({ x, y, code, name, onRemove, onClose, onCollect }: Props) {
   const items: HeatmapMenuItem[] = [
-    {
-      key: 'remove',
-      label: '히트맵에서 제거',
-      icon: <TrashIcon className="w-[1em] h-[1em]" />,
-      onClick: onRemove,
-    },
     ...(onCollect ? [{
       key: 'collect',
       label: '지난 N일 수집',
       icon: <>⬇</>,
       onClick: onCollect,
     }] : []),
+    {
+      key: 'remove',
+      label: '히트맵에서 제거',
+      icon: <TrashIcon className="w-[1em] h-[1em]" />,
+      onClick: onRemove,
+    },
   ];
   return (
     <HeatmapContextMenu x={x} y={y} ariaLabel={`${name} 컨텍스트 메뉴`}
       testId="heatmap-row-menu" itemTestIdPrefix="heatmap-menu"
-      items={items} onClose={onClose} />
+      items={items} onClose={onClose}>
+      <WatchlistGroupPickerContent key={code} code={code} name={name} />
+    </HeatmapContextMenu>
   );
 }

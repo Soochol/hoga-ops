@@ -18,16 +18,17 @@ export type HeatmapMenuItem = {
  * 실측해 우/하단 오버플로를 보정하고, `useDismissablePopover` 가 바깥 클릭/Escape 를 닫는다.
  *
  * 관심종목 패널(WatchlistRowMenu)과 같은 **짧은 항목 리스트** 문법이다 — 아이콘 1열 + 라벨.
- * 목록형(그룹 전부 나열) 섹션은 두지 않는다: 그룹이 수십 개인 보드에서 메뉴가 화면을 덮어
- * 이 저장소에서 한 번 걷어낸 패턴이다(ADR-0132, 그룹 간 이동은 드래그가 담당).
+ * 행 메뉴는 높이가 제한된 관심 그룹 선택 내용을 children으로 제공한다.
+ * 히트맵 그룹 간 이동은 드래그가 담당한다.
  */
-export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, items, onClose }: {
+export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, items, onClose, children }: {
   x: number;
   y: number;
   ariaLabel: string;
   testId: string;
   itemTestIdPrefix: string;
   items: HeatmapMenuItem[];
+  children?: React.ReactNode;
   onClose: () => void;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
@@ -35,7 +36,8 @@ export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, 
   useEffect(() => {
     const trigger = document.activeElement;
     const menu = ref.current;
-    menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    if (menu?.getAttribute('role') === 'dialog') menu.focus();
+    else menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     return () => {
       if ((document.activeElement === document.body || menu?.contains(document.activeElement))
         && trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
@@ -45,13 +47,17 @@ export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, 
   return (
     <div
       ref={ref}
-      role="menu"
+      tabIndex={-1}
+      role={children ? "dialog" : "menu"}
       aria-label={ariaLabel}
       data-testid={testId}
       onContextMenu={(e) => e.preventDefault()}
-      className="bg-bg-card border border-border rounded shadow-lg z-30 py-1"
-      style={{ position: 'fixed', left, top, minWidth: '8rem' }}
+      className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 max-h-[calc(100vh-16px)] overflow-y-auto max-w-[calc(100vw-16px)]"
+      style={{ position: 'fixed', left, top, minWidth: '8rem', width: children ? '18rem' : undefined }}
     >
+      {children}
+      {children && <div className="border-t border-border my-1" />}
+      <div role={children ? "menu" : undefined} aria-label={children ? "종목 작업" : undefined}>
       {items.map((item) => (
         <button
           key={item.key}
@@ -59,7 +65,7 @@ export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, 
           role="menuitem"
           data-testid={`${itemTestIdPrefix}-${item.key}`}
           onClick={() => { item.onClick(); onClose(); }}
-          className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+          className={`${children && item.key === 'remove' ? 'border-t border-border mt-1 ' : ''}w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
             item.tone === 'danger'
               ? 'text-error hover:bg-tint-error'
               : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover'
@@ -69,6 +75,7 @@ export function HeatmapContextMenu({ x, y, ariaLabel, testId, itemTestIdPrefix, 
           {item.label}
         </button>
       ))}
+      </div>
     </div>
   );
 }
