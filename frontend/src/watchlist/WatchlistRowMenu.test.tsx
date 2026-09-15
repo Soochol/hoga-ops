@@ -1,61 +1,57 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { WatchlistRowMenu, WatchlistMemoRowMenu } from './WatchlistRowMenu';
 
-describe('WatchlistRowMenu (v3, ADR-0070)', () => {
-  it('renders 그룹 편집 + 관심 해제 (no legacy 그룹으로 이동)', () => {
-    render(<WatchlistRowMenu x={10} y={20} name="삼성전자"
-      onEditGroups={vi.fn()} onRemove={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByTestId('watchlist-row-menu').getAttribute('role')).toBe('menu');
-    expect(screen.getByText('그룹 편집')).toBeInTheDocument();
-    expect(screen.getByText('관심 해제')).toBeInTheDocument();
-    expect(screen.queryByText('그룹으로 이동')).toBeNull();
-  });
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { addMember, removeFromWatchlist } from '../api/watchlist';
+vi.mock('../api/watchlist', async (original) => ({
+  ...(await original<typeof import('../api/watchlist')>()),
+  getWatchlist: vi.fn(async () => ({ folders: [
+    { id: 'f1', name: '관찰', order: 0 }, { id: 'f2', name: '추가 그룹', order: 1 },
+  ], entries: [{ code: '005930', name: '삼성전자', folder_id: 'f1', order: 0 }], memos: [] })),
+  addMember: vi.fn(async () => undefined),
+  removeFromWatchlist: vi.fn(async () => undefined),
+}));
 
-  it('clicking 그룹 편집 calls onEditGroups then onClose', () => {
-    const onEditGroups = vi.fn();
+function renderStockMenu(props: Partial<React.ComponentProps<typeof WatchlistRowMenu>> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>
+    <WatchlistRowMenu code="005930" name="삼성전자" x={10} y={20} onClose={vi.fn()} {...props} />
+  </QueryClientProvider>);
+}
+
+describe('WatchlistRowMenu', () => {
+  it('바로 그룹 소속을 표시하고 추가 후 메뉴를 유지한다', async () => {
     const onClose = vi.fn();
-    render(<WatchlistRowMenu x={0} y={0} name="삼성전자"
-      onEditGroups={onEditGroups} onRemove={vi.fn()} onClose={onClose} />);
-    fireEvent.click(screen.getByTestId('watchlist-menu-edit-groups'));
-    expect(onEditGroups).toHaveBeenCalledOnce();
+    renderStockMenu({ onClose });
+    expect(await screen.findByRole('menuitemcheckbox', { name: '관찰' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: '추가 그룹' }));
+    expect(await screen.findByText('삼성전자 → 추가 그룹 추가됨')).toBeInTheDocument();
+    expect(addMember).toHaveBeenCalledWith('f2', '005930', undefined);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText('그룹 편집')).not.toBeInTheDocument();
+  });
+  it('관심 해제는 기존 전체 해제 동작을 유지한다', async () => {
+    const onClose = vi.fn();
+    renderStockMenu({ onClose });
+    fireEvent.click(await screen.findByRole('menuitem', { name: '관심 해제' }));
+    await waitFor(() => expect(removeFromWatchlist).toHaveBeenCalledWith('005930'));
     expect(onClose).toHaveBeenCalledOnce();
   });
-
-  it('clicking 관심 해제 calls onRemove then onClose', () => {
-    const onRemove = vi.fn();
-    const onClose = vi.fn();
-    render(<WatchlistRowMenu x={0} y={0} name="삼성전자"
-      onEditGroups={vi.fn()} onRemove={onRemove} onClose={onClose} />);
-    fireEvent.click(screen.getByTestId('watchlist-menu-remove'));
-    expect(onRemove).toHaveBeenCalledOnce();
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
-  it('hides 삽입 항목 when the callbacks are not passed (미분류·등락률 정렬 그룹)', () => {
-    render(<WatchlistRowMenu x={0} y={0} name="삼성전자"
-      onEditGroups={vi.fn()} onRemove={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.queryByText('위에 종목 추가')).toBeNull();
-    expect(screen.queryByText('위에 빈칸 삽입')).toBeNull();
-  });
-
-  it('clicking 위에 종목 추가 calls onAddSymbolAbove then onClose', () => {
+  it('삽입 작업은 관심 해제 위에 유지하며 종목 추가 후 닫힌다', async () => {
     const onAddSymbolAbove = vi.fn();
     const onClose = vi.fn();
-    render(<WatchlistRowMenu x={0} y={0} name="삼성전자"
-      onEditGroups={vi.fn()} onRemove={vi.fn()}
-      onAddSymbolAbove={onAddSymbolAbove} onClose={onClose} />);
+    renderStockMenu({ onAddSymbolAbove, onInsertMemoAbove: vi.fn(), onClose });
+    await screen.findByRole('menuitem', { name: '관심 해제' });
+    expect(screen.getAllByRole('menuitem').map(b => b.textContent)).toEqual(['위에 종목 추가', '위에 빈칸 삽입', '관심 해제']);
     fireEvent.click(screen.getByTestId('watchlist-menu-add-symbol'));
     expect(onAddSymbolAbove).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
   });
-
-  it('puts 관심 해제 last so the destructive item is farthest from the cursor', () => {
-    render(<WatchlistRowMenu x={0} y={0} name="삼성전자"
-      onEditGroups={vi.fn()} onRemove={vi.fn()}
-      onAddSymbolAbove={vi.fn()} onInsertMemoAbove={vi.fn()} onClose={vi.fn()} />);
-    const labels = screen.getAllByRole('menuitem').map((b) => b.textContent);
-    expect(labels).toEqual(['그룹 편집', '위에 종목 추가', '위에 빈칸 삽입', '관심 해제']);
+  it('삽입 콜백이 없으면 삽입 항목을 숨긴다', () => {
+    renderStockMenu();
+    expect(screen.queryByText('위에 종목 추가')).toBeNull();
+    expect(screen.queryByText('위에 빈칸 삽입')).toBeNull();
   });
 });
 

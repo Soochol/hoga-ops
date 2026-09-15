@@ -30,7 +30,6 @@ import { Banner } from '../ui/Banner';
 import { WatchlistEditModal } from './WatchlistEditModal';
 import { GroupNameModal } from './GroupNameModal';
 import { WatchlistRowMenu, WatchlistMemoRowMenu } from './WatchlistRowMenu';
-import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 import { WatchlistAddForm } from './WatchlistAddForm';
 import { DUPLICATE_FLASH_MS } from './duplicateFlash';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -762,9 +761,6 @@ export function WatchlistDrawer() {
   const [groupSortModes, setGroupSortModes] = useState<FolderSortModeMap>(() => readFolderSortModeMapFromStorage());
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
-  // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0070 P5).
-  const [groupPicker, setGroupPicker] =
-    useState<{ code: string; name: string; x: number; y: number } | null>(null);
   // 메모("빈칸") 행 우클릭 메뉴(v5). 종목 행 메뉴와 항목이 달라 state 를 따로 둔다 —
   // 하나로 합치면 두 메뉴의 필드가 서로 optional 이 되어 어느 쪽이 열렸는지 흐려진다.
   const [memoMenu, setMemoMenu] = useState<
@@ -1538,9 +1534,7 @@ export function WatchlistDrawer() {
       </RailDrawerSection>
 
       {menu && (
-        <WatchlistRowMenu x={menu.x} y={menu.y} name={menu.name}
-          onEditGroups={() => setGroupPicker({ code: menu.code, name: menu.name, x: menu.x, y: menu.y })}
-          onRemove={() => removeM.mutate(menu.code)}
+        <WatchlistRowMenu code={menu.code} x={menu.x} y={menu.y} name={menu.name}
           // 이 행이 차지한 items 인덱스에 삽입 → 기존 행은 한 칸 밀린다("위에" 삽입).
           //
           // 두 경우에 항목을 아예 띄우지 않는다:
@@ -1593,10 +1587,6 @@ export function WatchlistDrawer() {
             setSymbolInsert(null);
           }}
           onClose={() => setSymbolInsert(null)} />
-      )}
-      {groupPicker && (
-        <WatchlistGroupPicker code={groupPicker.code} name={groupPicker.name}
-          x={groupPicker.x} y={groupPicker.y} onClose={() => setGroupPicker(null)} />
       )}
       {editOpen && <WatchlistEditModal onClose={() => setEditOpen(false)} />}
       {addGroupOpen && (

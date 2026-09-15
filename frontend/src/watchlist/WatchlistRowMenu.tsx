@@ -1,7 +1,6 @@
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
-import { HeartIcon } from '../ui/HeartIcon';
-import { CheckIcon } from '../ui/CheckIcon';
+import { QuoteRowGroupMenu } from '../rightrail/QuoteRowGroupMenu';
 import { TrashIcon } from '../ui/TrashIcon';
 
 type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: () => void };
@@ -67,11 +66,10 @@ function ContextMenuShell({ x, y, ariaLabel, testId, items, onClose }: {
 }
 
 interface Props {
+  code: string;
   x: number;            // raw 커서 viewport 좌표
   y: number;
   name: string;         // 접근성 라벨용
-  onEditGroups: () => void;   // "그룹 편집" → WatchlistGroupPicker 오픈(v3, ADR-0070)
-  onRemove: () => void;       // 관심 해제(모든 폴더에서 제거)
   /** "위에 종목 추가" — 이 행 자리에 종목을 넣는다(v5). 미분류·등락률 정렬 그룹은
    *  삽입 위치가 의미를 잃으므로 미전달 → 항목이 아예 안 뜬다(빈칸 삽입과 같은 게이트). */
   onAddSymbolAbove?: () => void;
@@ -81,24 +79,11 @@ interface Props {
   onClose: () => void;
 }
 
-/**
- * 관심종목 **종목 행** 우클릭 컨텍스트 메뉴 (워치리스트 전용, v3).
- * v2의 "그룹으로 이동"(단일 folder_id 교체)은 다중 소속에서 의미가 깨져, "그룹 편집"
- * (WatchlistGroupPicker)으로 통일했다 — 하트 팝업과 동일 primitive(ADR-0070 P5).
- *
- * 항목 순서는 **삽입 계열을 가운데 묶는다**: 그룹 편집 / (종목·빈칸 삽입) / 관심 해제.
- * 파괴적 항목(관심 해제)이 맨 아래라 오클릭 거리가 가장 멀다.
- */
+/** 스크리너와 같은 관심 그룹 메뉴에 종목·빈칸 삽입 작업을 제공한다. */
 export function WatchlistRowMenu({
-  x, y, name, onEditGroups, onRemove, onAddSymbolAbove, onInsertMemoAbove, onClose,
+  x, y, code, name, onAddSymbolAbove, onInsertMemoAbove, onClose,
 }: Props) {
   const items: MenuItem[] = [
-    {
-      key: 'edit-groups',
-      label: '그룹 편집',
-      icon: <CheckIcon filled size={16} />,
-      onClick: () => { onEditGroups(); onClose(); },
-    },
     ...(onAddSymbolAbove ? [{
       key: 'add-symbol',
       label: '위에 종목 추가',
@@ -111,17 +96,18 @@ export function WatchlistRowMenu({
       icon: <BlankRowIcon />,
       onClick: () => { onInsertMemoAbove(); onClose(); },
     }] : []),
-    {
-      key: 'remove',
-      label: '관심 해제',
-      icon: <HeartIcon filled className="w-[1em] h-[1em]" />,
-      onClick: () => { onRemove(); onClose(); },
-    },
   ];
 
   return (
-    <ContextMenuShell x={x} y={y} ariaLabel={`${name} 컨텍스트 메뉴`}
-      testId="watchlist-row-menu" items={items} onClose={onClose} />
+    <QuoteRowGroupMenu code={code} name={name} x={x} y={y} onClose={onClose}
+      testId="watchlist-row-menu"
+      beforeRemove={items.length > 0 ? <div className="mt-1 border-t border-border pt-1">
+        {items.map((item) => <button key={item.key} type="button" role="menuitem"
+          data-testid={`watchlist-menu-${item.key}`} onClick={item.onClick}
+          className="w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:text-fg hover:bg-bg-input-hover flex items-center gap-2">
+          <span className="w-4 grid place-items-center">{item.icon}</span>{item.label}
+        </button>)}
+      </div> : undefined} />
   );
 }
 
