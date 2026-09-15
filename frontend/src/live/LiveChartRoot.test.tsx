@@ -88,6 +88,7 @@ vi.mock('lightweight-charts', async () => {
       remove: vi.fn(),
       resize: vi.fn(),
       applyOptions: vi.fn(),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
       chartElement: vi.fn(() => ({ clientWidth: 0, clientHeight: 0 })),
@@ -176,6 +177,7 @@ describe('LiveChartRoot', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(() => {
         throw new Error('Value is undefined');
@@ -599,6 +601,7 @@ describe('LiveChartRoot', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
       subscribeClick: vi.fn(),
@@ -681,6 +684,7 @@ describe('LiveChartRoot', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn((handler) => { crosshairHandler = handler; }),
       unsubscribeCrosshairMove: vi.fn(),
       subscribeClick: vi.fn(),
@@ -768,6 +772,7 @@ describe('LiveChartRoot', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
       subscribeClick: vi.fn((handler) => { clickHandler = handler; }),
@@ -938,6 +943,7 @@ describe('LiveChartRoot', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -2823,6 +2829,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -3723,6 +3730,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -4028,6 +4036,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -4360,6 +4369,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -5100,6 +5110,7 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
     remove: vi.fn(),
     resize: vi.fn(),
     applyOptions: vi.fn(),
+    clearCrosshairPosition: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
     unsubscribeCrosshairMove: vi.fn(),
   };
@@ -5309,6 +5320,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         remove: vi.fn(),
         resize: vi.fn(),
         applyOptions: vi.fn(),
+        clearCrosshairPosition: vi.fn(),
         subscribeCrosshairMove: vi.fn(),
         unsubscribeCrosshairMove: vi.fn(),
       };
@@ -5450,6 +5462,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
         remove: vi.fn(),
         resize: vi.fn(),
         applyOptions: vi.fn(),
+        clearCrosshairPosition: vi.fn(),
         subscribeCrosshairMove: vi.fn(),
         unsubscribeCrosshairMove: vi.fn(),
       };
@@ -5632,6 +5645,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       resize: vi.fn(),
       applyOptions: vi.fn(),
       options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      clearCrosshairPosition: vi.fn(),
       subscribeCrosshairMove: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
     };
@@ -5733,6 +5747,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     resize: vi.fn(),
     applyOptions: vi.fn(),
     options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+    clearCrosshairPosition: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
     unsubscribeCrosshairMove: vi.fn(),
     subscribeClick: vi.fn(),
