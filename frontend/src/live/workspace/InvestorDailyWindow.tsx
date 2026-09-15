@@ -25,7 +25,9 @@
  * 키에 들어가고, 토글은 다시 받아 온다 — 첫 전환에만 벤더 콜 하나가 더 나고
  * 그 뒤로는 축별 캐시가 받는다.
  *
- * 매매 기준도 별도 요청·캐시를 사용한다. 응답의 `trade_side`가 숫자의 의미를 정한다.
+ * 접힌 표는 순매수·총매수·총매도를 한 셀에 함께 표시한다. 매매 기준별 요청·캐시를
+ * 사용하고 응답의 `trade_side`와 날짜·단위를 대조한다. 기관 상세에서는 한 기준을 선택한다.
+ * 접힌 수량 표의 K 단위 옵션은 표시만 바꾸며 서버 요청 축을 바꾸지 않는다.
  *
  * ⚠ **셀 포맷은 `data.unit` 이 고른다 — 저장된 토글이 아니다.** 축 전환 직후
  * `placeholderData` 가 옛 축의 값을 넘겨주는 한 프레임이 있는데, 그때 토글을
@@ -52,6 +54,8 @@
  * 대신 컬럼마다 최소 폭을 주고 넘치면 가로로 흐르게 하며, 날짜 컬럼과 헤더는
  * sticky 로 붙잡는다.
  */
+import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
+import { investorDailySummary } from '../investorDailySummary';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
@@ -100,8 +104,10 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const [cursorNotice, setCursorNotice] = useState<string | null>(null);
   const followedRef = useRef<string | null>(null);
   const automaticScrollRef = useRef(false);
-  const [tradeSide, setTradeSide] = useState<InvestorTradeSide>('net');
+  const [selectedTradeSide, setTradeSide] = useState<InvestorTradeSide>('net');
   const [showDetails, setShowDetails] = useState(false);
+  const [useK, setUseK] = useState(true);
+  const tradeSide = showDetails ? selectedTradeSide : 'net';
   const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
   const span = useInvestorDailySpanStore((s) => s.span);
   const setSpan = useInvestorDailySpanStore((s) => s.setSpan);
@@ -114,8 +120,12 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const today = useMemo(() => todayKstYyyymmdd(), []);
   const from = useMemo(() => subtractDaysKst(today, REQUEST_CALENDAR_DAYS), [today]);
 
-  const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty', tradeSide);
   const history = useInvestorDailyHistory(code, from, unit === 'amount' ? 'amount' : 'qty', tradeSide);
+  // Keep a stable recent range across period chips; expand only for loaded history.
+  const grossFrom = span === 0 ? (history.data?.pages.at(-1)?.from ?? from) : from;
+  const buyQuery = useLivePastInvestorNet(showDetails ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'buy');
+  const sellQuery = useLivePastInvestorNet(showDetails ? null : code, grossFrom, today, unit === 'amount' ? 'amount' : 'qty', 'sell');
+  const query = useLivePastInvestorNet(code, from, today, unit === 'amount' ? 'amount' : 'qty', tradeSide);
   const scope = `${code}:${unit}:${tradeSide}:${span}`;
   const [depth, setDepth] = useState({ scope, count: 60 });
   if (depth.scope !== scope) setDepth({ scope, count: 60 });
@@ -143,6 +153,14 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     () => buildInvestorDailyTable(points, span === 0 ? visibleCount : span),
     [points, span, visibleCount],
   );
+
+  const summary = useMemo(() => {
+    const dates = table.rows.map((row) => row.date);
+    return {
+      buy: investorDailySummary(buyQuery.data, code, dataUnit, 'buy', dates),
+      sell: investorDailySummary(sellQuery.data, code, dataUnit, 'sell', dates),
+    };
+  }, [buyQuery.data, sellQuery.data, code, dataUnit, table.rows]);
 
   const dates = useMemo(() => points.map((point) => realMsToYyyymmdd(point.t_ms)).sort().reverse(), [points]);
   useEffect(() => {
@@ -237,7 +255,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             setDepth({ scope: `${code}:${unit}:${tradeSide}:${value}`, count: 60 });
             if (scrollRef.current) scrollRef.current.scrollTop = 0;
           }} />
-          <div role="group" aria-label="매매 기준" className="flex shrink-0 items-center gap-1">
+          {showDetails && <div role="group" aria-label="매매 기준" className="flex shrink-0 items-center gap-1">
             {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
               <button key={side} type="button" aria-pressed={tradeSide === side}
                 title={side === 'net' ? '총매수 − 총매도' : TRADE_SIDE_LABELS[side]}
@@ -246,12 +264,16 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                 {TRADE_SIDE_LABELS[side]}
               </button>
             ))}
-          </div>
+          </div>}
           <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor((value) => !value)}
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${followCursor ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>
             커서 따라가기
           </button>
-          <UnitChip unit={unit} onToggle={toggleUnit} />
+          <UnitChip unit={unit} onToggle={toggleUnit} compact={!showDetails && useK} />
+          {!showDetails && unit === 'qty' && <button type="button" aria-pressed={useK}
+            onClick={() => setUseK((value) => !value)}
+            title="K 단위: 1K = 1,000주"
+            className={`shrink-0 rounded border px-1.5 py-px text-2xs ${useK ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>}
           <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails((shown) => !shown)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
         </div>
         {/* 상태는 표가 거짓말을 하고 있을 때만 한 줄이 생긴다 — 항상 있는 크롬이면
@@ -265,8 +287,16 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
       <div
         className="shrink-0 truncate px-2.5 pb-1 text-2xs text-fg-dim"
-        title={`일별 ${TRADE_SIDE_LABELS[dataSide]} · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
-      >일별 {TRADE_SIDE_LABELS[dataSide]} · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
+        title={`일별 ${showDetails ? TRADE_SIDE_LABELS[dataSide] : '투자자'} · 오늘은 잠정${cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}`}
+      >일별 {showDetails ? TRADE_SIDE_LABELS[dataSide] : '투자자'} · 오늘은 잠정{cursorDate ? ` · 커서 날짜 ${cursorDate}` : ''}</div>
+      {!showDetails && <div className="flex shrink-0 flex-wrap items-center gap-x-2 px-2.5 pb-1 text-2xs text-fg-dim">
+        <span className="font-semibold">순매수</span><span aria-hidden="true">·</span>
+        <span className="text-price-up">총매수</span><span aria-hidden="true">·</span>
+        <span className="text-price-down">총매도</span>
+        <span>{dataUnit === 'qty_shares' ? useK ? '단위: K주 · 1K = 1,000주' : '단위: 주' : '단위: 억원'}</span>
+        {(buyQuery.isLoading || sellQuery.isLoading) && <span>매수·매도 조회 중</span>}
+        {(buyQuery.error || sellQuery.error) && <span role="status">매수·매도 조회 실패</span>}
+      </div>}
       {followCursor && cursorDate && cursorNotice && (
         <div role="status" className="px-2.5 pb-1 text-2xs text-fg-dim">{cursorNotice}</div>
       )}
@@ -321,8 +351,9 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                 <HeadCell sticky className="text-left">날짜</HeadCell>
                 {columns.map((column, index) => (
                   <HeadCell
+                    center={!showDetails}
                     key={column.key}
-                    className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+                    className={!showDetails || index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                   >
                     {column.label}
                   </HeadCell>
@@ -340,8 +371,12 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     className={isCursor ? 'bg-tint-selection' : undefined}
                   >
                     <DateCell date={row.date} isToday={row.date === today} />
-                    {columns.map((column, index) => (
-                      <ValueCell
+                    {columns.map((column, index) => (!showDetails ?
+                      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} values={{
+                        net: dataSide === 'net' ? row.values[column.key] : null,
+                        buy: summary.buy.value(row.date, column.key),
+                        sell: summary.sell.value(row.date, column.key),
+                      }} /> : <ValueCell
                         key={column.key}
                         value={row.values[column.key]}
                         dataUnit={dataUnit}
@@ -368,8 +403,11 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     </span>
                   )}
                 </HeadCell>
-                {columns.map((column, index) => (
-                  <ValueCell
+                {columns.map((column, index) => (!showDetails ?
+                  <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} foot values={{
+                    net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
+                    buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
+                  }} /> : <ValueCell
                     key={column.key}
                     value={table.totals[column.key]}
                     dataUnit={dataUnit}
@@ -437,8 +475,10 @@ function HeadCell({
   className = '',
   sticky = false,
   foot = false,
+  center = false,
 }: {
   children?: React.ReactNode;
+  center?: boolean;
   className?: string;
   sticky?: boolean;
   foot?: boolean;
@@ -449,7 +489,7 @@ function HeadCell({
   return (
     <th
       scope="col"
-      className={`whitespace-nowrap ${edge} border-border bg-bg-card px-1.5 py-1 text-right font-medium ${
+      className={`whitespace-nowrap ${edge} border-border bg-bg-card px-1.5 py-1 font-medium ${center ? 'text-center' : 'text-right'} ${
         sticky ? 'sticky left-0 z-10' : ''
       } ${className}`}
     >
@@ -516,9 +556,11 @@ function formatCell(value: number, dataUnit: InvestorNetUnit): string {
 function UnitChip({
   unit,
   onToggle,
+  compact = false,
 }: {
   unit: InvestorEstimateUnit;
   onToggle: () => void;
+  compact?: boolean;
 }) {
   const isAmount = unit === 'amount';
   return (
@@ -534,7 +576,7 @@ function UnitChip({
           : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
       }`}
     >
-      {isAmount ? '금액(억원)' : '수량(주)'}
+      {isAmount ? '금액(억원)' : compact ? '수량(K주)' : '수량(주)'}
     </button>
   );
 }
