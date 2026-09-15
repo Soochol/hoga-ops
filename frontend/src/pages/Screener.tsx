@@ -440,7 +440,6 @@ export function Screener() {
                 <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
                   <ScreenerResults
                     key={`${lastScan.interactionStartedAtMs ?? lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
-                    occurrenceController={occurrenceController}
                     scan={lastScan}
                     liveRows={liveRows}
                     onActivate={openLive}

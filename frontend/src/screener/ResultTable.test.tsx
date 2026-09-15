@@ -4,7 +4,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ResultTable } from './ResultTable';
 import type { ScreenerResultSortMode } from './sortResults';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
-import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 
 vi.mock('../watchlist/WatchlistHeartButton', () => ({
   WatchlistHeartButton: () => <button type="button" aria-label="관심 그룹 편집" />,
@@ -91,27 +90,19 @@ describe('ResultTable', () => {
     expect(within(row).getAllByText('—').length).toBeGreaterThan(0);
   });
 
-  it('shows one stock row and expands all dated occurrences inside it', () => {
+  it('keeps occurrence data out of the stock result row', () => {
     const occurrenceRows: ScreenerRowLive[] = [{ ...rows[0], occurrences: [
       { condition_id: 'v', condition_key: 'value', date: '2026-09-10', history_match: {
         condition_id: 'v', date: '2026-09-10', trade_value_won: 20_000_000_000,
       } },
       { condition_id: 'v', condition_key: 'value', date: '2026-09-09' },
     ] }];
-    const controller = {
-      exclusions: [], busy: false, error: null, ready: true, lastExcluded: null,
-      conditions: [{ id: 'v', type: 'trade_value_period', params: { lookback: 30, min_eok: 100 } }],
-      exclude: vi.fn(), restore: vi.fn(), affectedOtherRows: () => 0,
-    } as OccurrenceExclusions;
-    render(withClient(<ResultTable rows={occurrenceRows} onActivate={vi.fn()} occurrenceController={controller} />));
+    render(withClient(<ResultTable rows={occurrenceRows} onActivate={vi.fn()} />));
 
     expect(screen.getAllByRole('button', { name: /호가창 열기/ })).toHaveLength(1);
     expect(screen.queryByText('2026-09-10')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('삼성전자 발생 2건'));
-    expect(screen.getByText('2026-09-10')).toBeInTheDocument();
-    expect(screen.getByText('2026-09-09')).toBeInTheDocument();
-    expect(screen.getByText('200억')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /발생 건 제외/ })).toHaveLength(2);
+    expect(screen.queryByText(/발생 .*건/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '관심 그룹 편집' })).toBeInTheDocument();
   });
 });
 
