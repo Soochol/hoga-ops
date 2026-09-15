@@ -68,15 +68,15 @@ def test_get_empty_watchlist(tmp_path: Path):
     assert r.status_code == 200
     body = r.json()
     assert body["entries"] == []
-    # next_run_at_ms is today's 17:00 KST in Unix-ms.
-    expected = int(dt.datetime(2026, 5, 26, 17, 0, tzinfo=KST).timestamp() * 1000)
+    # next_run_at_ms is today's 22:00 KST in Unix-ms.
+    expected = int(dt.datetime(2026, 5, 26, 22, 0, tzinfo=KST).timestamp() * 1000)
     assert body["next_run_at_ms"] == expected
 
 
 @pytest.mark.asyncio
 async def test_get_returns_entries(tmp_path: Path):
     await _seed_backend(tmp_path, code="003490", name="대한항공", today_kst_date="20260526")
-    fake_now = dt.datetime(2026, 5, 26, 19, 0, tzinfo=KST)  # after 17 → tomorrow
+    fake_now = dt.datetime(2026, 5, 26, 23, 0, tzinfo=KST)  # after 22 → tomorrow
     with patch("hoga.api.watchlist_routes.now_kst", return_value=fake_now):
         client = TestClient(_app(tmp_path))
         r = client.get("/api/watchlist")
@@ -84,8 +84,8 @@ async def test_get_returns_entries(tmp_path: Path):
     body = r.json()
     assert len(body["entries"]) == 1
     assert body["entries"][0]["code"] == "003490"
-    # 2026-05-27 17:00 KST
-    expected = int(dt.datetime(2026, 5, 27, 17, 0, tzinfo=KST).timestamp() * 1000)
+    # 2026-05-27 22:00 KST
+    expected = int(dt.datetime(2026, 5, 27, 22, 0, tzinfo=KST).timestamp() * 1000)
     assert body["next_run_at_ms"] == expected
 
 

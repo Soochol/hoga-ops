@@ -3,10 +3,10 @@
 The Heatmap is an independent monitoring list (ADR-0068). This router mirrors
 /api/watchlist's folder/entry CRUD but deliberately OMITS the catch-up routes:
 since ADR-0142 the heatmap IS a daily capture target, but catch-up is same-day
-only and the 17:00 run already covers it — a per-row "collect today" button
+only and the 22:00 run already covers it — a per-row "collect today" button
 would just race the scheduler. Past gaps go through the 수집 다이얼로그.
 
-``next_run_at_ms`` IS served (ADR-0142) — the same 17:00 KST boundary the
+``next_run_at_ms`` IS served (ADR-0142) — the same 22:00 KST boundary the
 watchlist reports, because one daily run now enqueues both lists.
 
 Heatmap codes also feed the Kiwoom WS storage set (ADR-0116/0118), so every
@@ -137,7 +137,7 @@ def build_router(  # noqa: PLR0915
     @router.get("", response_model=HeatmapResponse)
     async def get_heatmap() -> HeatmapResponse:
         doc = load_document(data_dir)
-        # next_run_at_ms 는 관심목록과 **같은 함수**를 쓴다(ADR-0142: 하나의 17:00 런이
+        # next_run_at_ms 는 관심목록과 **같은 함수**를 쓴다(ADR-0142: 하나의 22:00 런이
         # 두 목록을 함께 적재하므로 두 화면이 다른 시각을 말하면 그 자체로 버그다).
         return HeatmapResponse(
             folders=_folder_views(doc.folders),
