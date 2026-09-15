@@ -1,4 +1,3 @@
-import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { useMemo, useState } from 'react';
 import type { PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
@@ -26,9 +25,8 @@ function depthSidesForScan(scan: PanelScan): DepthSides {
 }
 
 /** 부모는 새 조회마다 key를 바꾼다. 검색/선택은 한 조회에만 속하며 시세 갱신과는 독립. */
-export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate, occurrenceController }: {
+export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate }: {
   scan: PanelScan;
-  occurrenceController?: OccurrenceExclusions;
   liveRows: ScreenerRowLive[];
   sortMode: ScreenerResultSortMode;
   onSortChange: (mode: ScreenerResultSortMode) => void;
@@ -90,7 +88,6 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
       </div>
       <p className="pb-sm text-xs text-fg-dim">
         {mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 가격 아래 날짜는 조회 가격의 기준일'}
-        {' · '}발생 내역: 종목 행에서 펼쳐 조건·날짜·당시 수치 확인
         {' · '}거래대금: 조회 당시 추정치
         {' · '}CSV에는 조회 당시 값과 현재 시세를 함께 저장
       </p>
@@ -101,7 +98,6 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </EmptyState>
       ) : (
         <ResultTable rows={filtered} onActivate={onActivate} sortMode={sortMode} onSortChange={onSortChange}
-          occurrenceController={occurrenceController}
           embedded depthValues={scan.depthValues} depthSides={depthSides} quoteMode={mode}
           selection={{ codes: selected, allSelected, someSelected: shownSelected > 0, onToggle: toggle, onToggleAll: toggleAll }} />
       )}
