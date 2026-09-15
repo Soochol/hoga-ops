@@ -4,7 +4,6 @@ import { useWatchlist, useAddMember, useRemoveMember, useCreateFolder } from './
 import { useWatchlistMembership } from './useWatchlistMembership';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
-import { CheckIcon } from '../ui/CheckIcon';
 
 /**
  * 단일 멤버십 primitive (v3, ADR-0070). code의 그룹 소속을 체크박스로 토글 + 새 그룹
@@ -24,7 +23,19 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
   // Register the portal as a nested layer so its clicks do not dismiss a
   // containing symbol search before the menu can handle them.
   useDismissablePopover(true, ref, onClose, ref);
-  const { data } = useWatchlist();
+  return createPortal((
+    <div ref={ref} role="dialog" aria-label="내 관심 그룹"
+      data-testid="watchlist-group-picker"
+      className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 w-72 max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto"
+      style={{ position: 'fixed', left, top }}>
+      <WatchlistGroupPickerContent code={code} name={name} />
+    </div>
+  ), document.body);
+}
+
+/** 관심 그룹 선택 내용을 공유해 컨텍스트 메뉴에서도 한 번에 등록한다. */
+export function WatchlistGroupPickerContent({ code, name }: { code: string; name?: string }) {
+  const { data, isError, refetch } = useWatchlist();
   const { folderIdsOf } = useWatchlistMembership();
   const addM = useAddMember();
   const removeM = useRemoveMember();
@@ -37,48 +48,58 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
   const displayName = name ?? data?.entries.find((e) => e.code === code)?.name ?? code;
 
   const toggle = (folderId: string) => {
-    if (member.has(folderId)) removeM.mutate({ folderId, code });
-    else addM.mutate({ folderId, code, name: displayName });
+    const removing = member.has(folderId);
+    const folder = folders.find((f) => f.id === folderId);
+    const options = {
+      onSuccess: () => setFeedback(`${displayName} → ${folder?.name ?? ''} ${removing ? '해제됨' : '추가됨'}`),
+      onError: () => setFeedback('저장하지 못했습니다. 다시 시도해 주세요.'),
+    };
+    if (removing) removeM.mutate({ folderId, code }, options);
+    else addM.mutate({ folderId, code, name: displayName }, options);
   };
   const createAndAdd = async () => {
     const n = newName.trim();
-    if (!n) return;
-    const f = await createM.mutateAsync(n);
-    addM.mutate({ folderId: f.id, code, name: displayName });
-    setNewName('');
+    if (!n || busy) return;
+    try {
+      const f = await createM.mutateAsync(n);
+      setNewName('');
+      await addM.mutateAsync({ folderId: f.id, code, name: displayName });
+      setFeedback(`${displayName} → ${n} 추가됨`);
+    } catch {
+      setFeedback('저장하지 못했습니다. 그룹 목록을 확인하고 다시 시도해 주세요.');
+    }
   };
 
-  // `document.body` 로 portal — 호출처가 `contain` 을 건 조상 안에 있어도 좌표계가
-  // 뷰포트로 유지된다. `/live` 차트 창 카드가 `contain: layout paint` + `overflow-hidden`
-  // 이라 그 안에서 직접 렌더하면 **카드가 fixed 의 containing block 이 되어** 위치가
-  // 창 기준으로 어긋나고, 카드 밖으로 나가는 부분은 잘린다(피커 min-w 200px vs 창
-  // MIN_W 160px → 확정적). 같은 카드 안의 DrawingMenu·TimeframeControl 이 먼저 쓰던
-  // 처방이다. React 트리는 그대로라 이벤트 버블링 의미는 변하지 않는다 —
-  // useDismissablePopover 의 `ref.contains` 판정도 실제 DOM 노드를 보므로 그대로 산다.
-  return createPortal((
-    <div ref={ref} role="menu" aria-label="내 관심 그룹"
-      data-testid="watchlist-group-picker"
-      className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 min-w-[200px]"
-      style={{ position: 'fixed', left, top }}>
-      <div className="px-3 py-1 text-xs text-fg-dim">내 관심 그룹</div>
-      {folders.map((f) => {
-        const checked = member.has(f.id);
-        return (
-          <button key={f.id} type="button" role="menuitemcheckbox" aria-checked={checked}
-            onClick={() => toggle(f.id)}
-            className="w-full text-left px-3 py-1.5 text-sm text-fg-dim hover:text-fg hover:bg-bg-input-hover flex items-center gap-2">
-            <span className="w-4 grid place-items-center"><CheckIcon filled={checked} size={16} /></span>
-            <span className="truncate">{f.name}</span>
-          </button>
-        );
-      })}
-      <div className="mt-1 border-t border-border px-3 py-1.5 flex items-center gap-1">
-        <span className="text-accent leading-none">＋</span>
-        <input value={newName} onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') createAndAdd(); }}
-          maxLength={40} placeholder="새 그룹 만들기" aria-label="새 그룹 만들기"
-          className="flex-1 bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-fg-dimmer" />
+  const [search, setSearch] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const busy = addM.isPending || removeM.isPending || createM.isPending;
+  const visibleFolders = folders.filter((f) => f.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  return (
+    <section aria-label="관심 그룹 선택">
+      <div className="px-3 py-2 border-b border-border">
+        <div className="text-sm font-medium text-fg">{displayName} <span className="text-xs text-fg-dim">{code}</span></div>
+        <div className="text-xs text-fg-dim mt-1">관심 그룹 · 선택 즉시 반영</div>
       </div>
-    </div>
-  ), document.body);
+      {folders.length > 6 && <input aria-label="관심 그룹 검색" placeholder="관심 그룹 검색"
+        value={search} onChange={(e) => setSearch(e.target.value)}
+        className="block w-full px-3 py-2 text-sm bg-transparent border-b border-border" />}
+      {data ? <div className="max-h-52 overflow-y-auto overscroll-contain py-1">
+        {visibleFolders.map((f) => (
+          <label key={f.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-bg-input-hover">
+            <input type="checkbox" checked={member.has(f.id)} disabled={busy}
+              onChange={() => toggle(f.id)} />
+            <span className="truncate" title={f.name}>{f.name}</span>
+          </label>
+        ))}
+        {!visibleFolders.length && <p className="px-3 py-2 text-xs text-fg-dim">{folders.length ? '검색 결과가 없습니다' : '관심 그룹을 만들어 추가하세요'}</p>}
+      </div> : <p className="px-3 py-2 text-xs text-fg-dim">{isError ? <button type="button" onClick={() => void refetch()}>불러오기 실패 · 다시 시도</button> : '관심 그룹을 불러오는 중…'}</p>}
+      <form onSubmit={(e) => { e.preventDefault(); void createAndAdd(); }} className="border-t border-border px-3 py-2 flex gap-2">
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40}
+          placeholder="새 그룹 만들기" aria-label="새 그룹 만들기" disabled={busy}
+          className="min-w-0 flex-1 bg-transparent text-sm" />
+        <button type="submit" disabled={busy || !newName.trim()} className="text-sm text-accent disabled:opacity-40">추가</button>
+      </form>
+      <div role="status" aria-live="polite" className="px-3 text-xs text-fg-dim break-words">{busy ? '저장 중…' : feedback}</div>
+    </section>
+  );
 }

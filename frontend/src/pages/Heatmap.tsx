@@ -292,7 +292,7 @@ export function Heatmap() {
             이제 드래그앤드롭이 대신한다(다른 그룹에 드롭=이동, Ctrl=복제). */}
         {menu && (
           <HeatmapRowMenu
-            x={menu.x} y={menu.y} name={menu.name}
+            x={menu.x} y={menu.y} code={menu.code} name={menu.name}
             onRemove={() => removeM.mutate({ code: menu.code, folderId: menu.folderId })}
             onCollect={() => setCollectOne({ code: menu.code, name: menu.name })}
             onClose={() => setMenu(null)}

@@ -557,7 +557,7 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
     fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
     fireEvent.click(screen.getByTestId('watchlist-menu-edit-groups'));
-    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
     expect(screen.queryByTestId('watchlist-row-menu')).toBeNull();   // 행 메뉴 닫힘
   });
 

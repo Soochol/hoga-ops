@@ -230,7 +230,7 @@ describe('LiveSymbolSearch', () => {
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
-    expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
     const newGroup = screen.getByRole('textbox', { name: '새 그룹 만들기' });
     fireEvent.mouseDown(newGroup);
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
