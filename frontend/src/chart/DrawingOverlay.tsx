@@ -1579,7 +1579,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             height: `${editorLayout.lines.length * editorLayout.lineHeight + 2}px`,
             maxWidth: '80%',
             maxHeight: '50vh',
-            overflowX: 'auto',
+            // Keep native caret-follow scrolling but hide the horizontal bar.
+            // With a one-line editor the bar consumes most of the line height
+            // and makes the text itself look clipped (especially on Linux).
+            overflowX: 'hidden',
             pointerEvents: 'auto',
             minWidth: '4rem',
           }}

@@ -426,6 +426,7 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
 
     const x = Number(input.style.transform.match(/translate\(([-\d.]+)px/)?.[1]);
     expect(x + Number.parseFloat(input.style.width)).toBeLessThanOrEqual(296);
+    expect(input.style.overflowX).toBe('hidden');
   });
 
   // Regression for the focus-steal kill: a REAL click's native mousedown
