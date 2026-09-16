@@ -15,7 +15,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
   localStorage.clear();
-  useProgramTradeDisplayStore.setState({ side: 'net', measure: 'amount' });
+  useProgramTradeDisplayStore.setState({ measure: 'amount' });
 });
 const T0 = Date.UTC(2026, 6, 21, 0, 0, 0); // = KST 09:00
 
@@ -164,14 +164,15 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText('+1억')).toBeInTheDocument();
     expect(screen.getByText('5억')).toBeInTheDocument();
     expect(screen.getByText('4억')).toBeInTheDocument();
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('2억');
 
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
     expect(screen.getByText('+10')).toBeInTheDocument();
     expect(screen.getByText('70')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('20');
 
-    fireEvent.click(screen.getByRole('button', { name: '총매수70' }));
-    expect(screen.getByRole('button', { name: '총매수70' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
   });
 
   it('keeps the selected measure when the card remounts for another symbol', () => {
@@ -184,7 +185,6 @@ describe('ProgramTradeSummaryCard — render states', () => {
     })]);
     const first = render(<ProgramTradeSummaryCard series={series} />);
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
-    fireEvent.click(screen.getByRole('button', { name: '총매수70' }));
     expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
     expect(localStorage.getItem('live.programTradeDisplay.v1')).toContain('"measure":"qty"');
 
@@ -192,7 +192,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     render(<ProgramTradeSummaryCard series={series} />);
 
     expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '총매수70' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
     expect(screen.getByText('+10')).toBeInTheDocument();
   });
 

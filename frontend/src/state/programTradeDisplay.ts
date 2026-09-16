@@ -1,22 +1,15 @@
 import { create } from 'zustand';
 
-export type ProgramTradeSide = 'net' | 'buy' | 'sell';
 export type ProgramTradeMeasure = 'amount' | 'qty';
 
 const STORAGE_KEY = 'live.programTradeDisplay.v1';
 
 type Persisted = {
-  side: ProgramTradeSide;
   measure: ProgramTradeMeasure;
 };
 
 interface Store extends Persisted {
-  setSide: (side: ProgramTradeSide) => void;
   setMeasure: (measure: ProgramTradeMeasure) => void;
-}
-
-function isSide(value: unknown): value is ProgramTradeSide {
-  return value === 'net' || value === 'buy' || value === 'sell';
 }
 
 function isMeasure(value: unknown): value is ProgramTradeMeasure {
@@ -26,14 +19,13 @@ function isMeasure(value: unknown): value is ProgramTradeMeasure {
 function readStorage(): Persisted {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { side: 'net', measure: 'amount' };
+    if (!raw) return { measure: 'amount' };
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     return {
-      side: isSide(parsed.side) ? parsed.side : 'net',
       measure: isMeasure(parsed.measure) ? parsed.measure : 'amount',
     };
   } catch {
-    return { side: 'net', measure: 'amount' };
+    return { measure: 'amount' };
   }
 }
 
@@ -45,16 +37,11 @@ function persist(value: Persisted): void {
   }
 }
 
-export const useProgramTradeDisplayStore = create<Store>((set, get) => ({
+export const useProgramTradeDisplayStore = create<Store>((set) => ({
   ...readStorage(),
-  setSide: (side) => {
-    if (!isSide(side)) return;
-    set({ side });
-    persist({ side, measure: get().measure });
-  },
   setMeasure: (measure) => {
     if (!isMeasure(measure)) return;
     set({ measure });
-    persist({ side: get().side, measure });
+    persist({ measure });
   },
 }));
