@@ -413,6 +413,21 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     expect(container.querySelector('[data-drawing-text-input]')).not.toBeNull();
   });
 
+  it('keeps a growing text editor inside the chart instead of creating horizontal overflow', () => {
+    useDrawingsStore.getState().setActiveScope('005930|minute');
+    useDrawingsStore.getState().setActiveTool('text');
+    const { container } = mountWithCandlePane();
+    const overlay = container.querySelector<HTMLElement>('[data-drawing-overlay]')!;
+    Object.defineProperty(overlay, 'clientWidth', { configurable: true, value: 300 });
+
+    fireEvent.pointerDown(overlay, { clientX: 280, clientY: 50, button: 0 });
+    const input = container.querySelector<HTMLTextAreaElement>('[data-drawing-text-input]')!;
+    fireEvent.change(input, { target: { value: '오른쪽에서도 입력한 글자가 계속 보여야 합니다' } });
+
+    const x = Number(input.style.transform.match(/translate\(([-\d.]+)px/)?.[1]);
+    expect(x + Number.parseFloat(input.style.width)).toBeLessThanOrEqual(296);
+  });
+
   // Regression for the focus-steal kill: a REAL click's native mousedown
   // (compat event, ~1ms after pointerdown) moves focus to the non-focusable
   // overlay, blurring the just-opened editor → onBlur commits empty → the box

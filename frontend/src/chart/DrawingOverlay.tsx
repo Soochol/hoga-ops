@@ -160,6 +160,25 @@ type Props = {
   candles?: readonly SnapCandle[];
 };
 
+const TEXT_EDITOR_EDGE_PX = 4;
+const TEXT_EDITOR_MIN_WIDTH_PX = 64;
+const TEXT_EDITOR_MAX_WIDTH_RATIO = 0.8;
+
+/** Keep the DOM text editor inside the chart. CSS max-width alone is not enough:
+ * a transformed absolutely-positioned element still enlarges scrollable overflow
+ * when its anchor is near the right edge. */
+function fitTextEditorBox(anchorX: number, naturalWidth: number, containerWidth: number) {
+  if (containerWidth <= 0) return { x: anchorX, width: naturalWidth };
+  const available = Math.max(1, containerWidth - TEXT_EDITOR_EDGE_PX * 2);
+  const maxWidth = Math.min(available, containerWidth * TEXT_EDITOR_MAX_WIDTH_RATIO);
+  const width = Math.min(Math.max(naturalWidth, TEXT_EDITOR_MIN_WIDTH_PX), maxWidth);
+  const x = Math.min(
+    Math.max(TEXT_EDITOR_EDGE_PX, anchorX),
+    containerWidth - TEXT_EDITOR_EDGE_PX - width,
+  );
+  return { x: Math.max(TEXT_EDITOR_EDGE_PX, x), width };
+}
+
 /** Open text-editor state — a DOM <input> the overlay renders over the canvas.
  *  `id` is null for a new label, or the id of an existing text being re-edited. */
 type TextEdit = {
@@ -1424,6 +1443,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   };
   const textEditPos = textEdit ? textEditorPoint(textEdit) : null;
   const editorLayout = textEdit ? textLayout(textValue, textEdit.fontSize, measureTextWidth) : null;
+  const editorBox = textEditPos && editorLayout
+    ? fitTextEditorBox(textEditPos.x, editorLayout.width + 10, containerRef.current?.clientWidth ?? 0)
+    : null;
 
   /**
    * Reposition the open editor from inside lwc's frame (via DrawingsSnapshot's
@@ -1469,7 +1491,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const edit = textEditRef.current;
     if (!el || !edit) return;
     const p = textEditorPoint(edit);
-    el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+    const layout = textLayout(el.value, edit.fontSize, measureTextWidth);
+    const box = fitTextEditorBox(p.x, layout.width + 10, containerRef.current?.clientWidth ?? 0);
+    el.style.transform = `translate(${box.x}px, ${p.y}px)`;
+    el.style.width = `${box.width}px`;
   };
 
   return (
@@ -1501,7 +1526,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         style={{ display: 'none' }}
       />
 
-      {textEdit && textEditPos && editorLayout && (
+      {textEdit && textEditPos && editorLayout && editorBox && (
         <textarea
           ref={textInputRef}
           data-drawing-text-input
@@ -1547,13 +1572,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             // pan. These are the opening coordinates.
             left: 0,
             top: 0,
-            transform: `translate(${textEditPos.x}px, ${textEditPos.y}px)`,
+            transform: `translate(${editorBox.x}px, ${textEditPos.y}px)`,
             font: textFont(textEdit.fontSize),
             lineHeight: `${editorLayout.lineHeight}px`,
-            width: `${editorLayout.width + 10}px`,
+            width: `${editorBox.width}px`,
             height: `${editorLayout.lines.length * editorLayout.lineHeight + 2}px`,
             maxWidth: '80%',
             maxHeight: '50vh',
+            overflowX: 'auto',
             pointerEvents: 'auto',
             minWidth: '4rem',
           }}
