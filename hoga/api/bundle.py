@@ -1799,8 +1799,8 @@ def _bucket_program_trade_points(
     어긋나 "프론트 버킷의 마지막 점" 이 아닌 값이 남을 수 있다.
 
     필드별 집계 규칙 — **누적이냐 증분이냐로 갈린다**:
-    - `net_qty`·`net_amount`: **마지막 값**. 당일 누적이라 합치면 안 된다. 프론트
-      프로젝터의 `byBucket.set`(뒤가 이김)과 같은 규칙이다.
+    - `net_*`·`buy_*`·`sell_*`: **마지막 값**. 당일 누적이라 합치면 안 된다.
+      프론트 프로젝터의 `byBucket.set`(뒤가 이김)과 같은 규칙이다.
     - `delta_qty`·`delta_amount`: **non-null 합**. 구간 증분이라 합이 그 버킷의 증분이다.
       전부 null 이면 null 이다 — 거래일 첫 행은 delta 가 null 이므로(수집기가 새 거래일에
       `_last_net` 을 리셋한다) 0 으로 만들면 "증분 없음" 과 "모름" 이 뭉개진다.
@@ -1826,6 +1826,10 @@ def _bucket_program_trade_points(
                 t=start,
                 net_qty=last.net_qty,
                 net_amount=last.net_amount,
+                buy_qty=last.buy_qty,
+                sell_qty=last.sell_qty,
+                buy_amount=last.buy_amount,
+                sell_amount=last.sell_amount,
                 delta_qty=_sum_or_none(p.delta_qty for p in group),
                 delta_amount=_sum_or_none(p.delta_amount for p in group),
                 gap_risk=any(p.gap_risk for p in group),
@@ -1909,6 +1913,10 @@ def build_program_trade_series(
                     t=row.t_ms,
                     net_qty=row.net_qty,
                     net_amount=row.net_amount,
+                    buy_qty=row.buy_qty,
+                    sell_qty=row.sell_qty,
+                    buy_amount=row.buy_amount,
+                    sell_amount=row.sell_amount,
                     delta_qty=row.delta_qty,
                     delta_amount=row.delta_amount,
                     gap_risk=row.bsop_hour in gap_times,

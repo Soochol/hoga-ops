@@ -434,10 +434,10 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   expect(within(foreign).getByTitle('총매수 285,400주')).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: '매매 기준' })).toBeNull();
   expect(screen.getByRole('group', { name: '표기 방법' })).toBeInTheDocument();
-  expect(screen.getByText('단위: K주 · 1K = 1,000주')).toBeInTheDocument();
+  expect(screen.queryByText('단위: K주 · 1K = 1,000주')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   expect(foreign).toHaveTextContent('+85,200·285,400·200,200');
-  expect(screen.getByText('단위: 주')).toBeInTheDocument();
+  expect(screen.queryByText('단위: 주')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   fireEvent.click(screen.getByRole('button', { name: '총매수' }));
   expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])

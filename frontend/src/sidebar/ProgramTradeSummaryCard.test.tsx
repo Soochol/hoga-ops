@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import ProgramTradeSummaryCard, {
@@ -16,12 +16,17 @@ const T0 = Date.UTC(2026, 6, 21, 0, 0, 0); // = KST 09:00
 function point(
   t: number,
   net_amount: number | null,
-  opts: { net_qty?: number | null; gap_risk?: boolean } = {},
+  opts: Partial<Pick<ProgramTradePoint,
+    'net_qty' | 'buy_qty' | 'sell_qty' | 'buy_amount' | 'sell_amount' | 'gap_risk'>> = {},
 ): ProgramTradePoint {
   return {
     t,
     net_qty: opts.net_qty ?? null,
     net_amount,
+    buy_qty: opts.buy_qty ?? null,
+    sell_qty: opts.sell_qty ?? null,
+    buy_amount: opts.buy_amount ?? null,
+    sell_amount: opts.sell_amount ?? null,
     gap_risk: opts.gap_risk ?? false,
   };
 }
@@ -137,15 +142,30 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText(/프로그램 순매수 데이터 없음/)).toBeInTheDocument();
   });
 
-  it('renders amount/qty of the cursor-picked point', () => {
+  it('shows net/buy/sell together and switches all values between amount and quantity', () => {
     const series = seriesOf([
-      point(T0, 100_000_000, { net_qty: 10 }),
-      point(T0 + 1000, 200_000_000, { net_qty: 20 }),
+      point(T0, 100_000_000, {
+        net_qty: 10, buy_amount: 500_000_000, sell_amount: 400_000_000,
+        buy_qty: 70, sell_qty: 60,
+      }),
+      point(T0 + 1000, 200_000_000, {
+        net_qty: 20, buy_amount: 700_000_000, sell_amount: 500_000_000,
+        buy_qty: 90, sell_qty: 70,
+      }),
     ]);
     render(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 500} />);
     // 커서 → 첫 point (1억).
     expect(screen.getByText('+1억')).toBeInTheDocument();
+    expect(screen.getByText('5억')).toBeInTheDocument();
+    expect(screen.getByText('4억')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
     expect(screen.getByText('+10')).toBeInTheDocument();
+    expect(screen.getByText('70')).toBeInTheDocument();
+    expect(screen.getByText('60')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '총매수70' }));
+    expect(screen.getByRole('button', { name: '총매수70' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows empty state in latest mode when the series has no today point', () => {
@@ -531,9 +551,10 @@ describe('ProgramTradeSummaryCard — 커서가 순매수 첫 관측보다 앞�
       />,
     );
     // 숫자는 대시 — 그 시각에 관측이 없다는 뜻이다(0 으로 채우면 "순매수 0" 이라는
-    // 없는 관측을 만들어낸다). 시각은 커서 위치를 그대로 읽어준다.
-    expect(screen.getAllByText('-')).toHaveLength(2);
-    expect(screen.getByText('09:05:00')).toBeInTheDocument();
+    // 없는 관측을 만들어낸다). 상단 제목·시각 라벨은 렌더하지 않는다.
+    expect(screen.getAllByText('-')).toHaveLength(3);
+    expect(screen.queryByText('누적 순매수')).not.toBeInTheDocument();
+    expect(screen.queryByText('09:05:00')).not.toBeInTheDocument();
     expect(screen.queryByText('+1억')).toBeNull();
   });
 

@@ -362,6 +362,10 @@ class ProgramTradePoint(BaseModel):
     t: int
     net_qty: int | None
     net_amount: int | None
+    buy_qty: int | None = None
+    sell_qty: int | None = None
+    buy_amount: int | None = None
+    sell_amount: int | None = None
     delta_qty: int | None
     delta_amount: int | None
     gap_risk: bool = False

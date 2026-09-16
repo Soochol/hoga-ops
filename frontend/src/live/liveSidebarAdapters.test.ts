@@ -6,6 +6,8 @@ import {
   latestAfterHoursTotals,
   latestOrderbookSnapshot,
   aggregateBrokerSeries,
+  aggregateProgramTrade,
+  mergeProgramTradeWithLiveTail,
   latestTradeSummary,
   fillTradeSummaryFromQuote,
   EMPTY_TRADE_SUMMARY,
@@ -20,6 +22,30 @@ const MIN = 60 * 1000;
 const HOUR = 3600 * 1000;
 const ob = (t_ms: number, venue?: LiveFrameVenue): ObSnapshot =>
   ({ t_ms, total_ask_qty: 0, total_bid_qty: 0, ...(venue ? { venue } : {}) });
+
+describe('program trade live tail', () => {
+  it('preserves net/buy/sell amount and quantity from the 0w frame', () => {
+    expect(aggregateProgramTrade([{
+      t_ms: 10,
+      net_qty: -5, buy_qty: 100, sell_qty: 105,
+      net_amount: -50, buy_amount: 1_000, sell_amount: 1_050,
+    }])).toEqual([{
+      t: 10,
+      net_qty: -5, buy_qty: 100, sell_qty: 105,
+      net_amount: -50, buy_amount: 1_000, sell_amount: 1_050,
+      gap_risk: false,
+    }]);
+  });
+
+  it('keeps gross fields when appending the live tail after the persisted seam', () => {
+    const merged = mergeProgramTradeWithLiveTail({
+      points: [{ t: 10, net_qty: 1, net_amount: 10, buy_qty: 2, sell_qty: 1,
+        buy_amount: 20, sell_amount: 10, gap_risk: false }],
+    }, [{ t: 20, net_qty: 2, net_amount: 20, buy_qty: 4, sell_qty: 2,
+      buy_amount: 40, sell_amount: 20, gap_risk: false }]);
+    expect(merged.points[1]).toMatchObject({ buy_qty: 4, sell_qty: 2, buy_amount: 40, sell_amount: 20 });
+  });
+});
 
 describe('filterObByVenue', () => {
   it('KRX 선택: KRX 태그와 무태그(구백엔드)만 남기고 NXT 배제', () => {
