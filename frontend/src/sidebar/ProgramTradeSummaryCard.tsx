@@ -228,7 +228,7 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
             : <table className="w-full border-collapse font-data text-xs tabular-nums">
               <thead className="sticky top-0 z-20 text-fg-dim"><tr>
                 <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
-                <th className="whitespace-nowrap border-b border-l border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램</th>
+                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램</th>
               </tr></thead>
               <tbody>{rows.map((row) => {
                 const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
@@ -240,7 +240,7 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
                     {formatDailyDate(row.t_ms)}
                   </th>
                   {display === 'all'
-                    ? <InvestorDailySummaryCell values={values} unit="qty_shares" useK={useK} />
+                    ? <InvestorDailySummaryCell values={values} unit="qty_shares" useK={useK} divided={false} />
                     : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
                 </tr>;
               })}</tbody>
@@ -249,7 +249,7 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
                   누적 {rows.length}일
                 </th>
                 {display === 'all'
-                  ? <InvestorDailySummaryCell values={totals} unit="qty_shares" useK={useK} foot />
+                  ? <InvestorDailySummaryCell values={totals} unit="qty_shares" useK={useK} foot divided={false} />
                   : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />}
               </tr></tfoot>
             </table>}
@@ -268,8 +268,8 @@ function ProgramDailyValueCell({ value, side, format, foot = false }: {
   format: (value: number | null) => string;
   foot?: boolean;
 }) {
-  return <td className={`whitespace-nowrap border-l border-border px-1.5 py-1 text-right ${
-    foot ? 'border-t bg-bg-card font-medium' : ''
+  return <td className={`whitespace-nowrap px-1.5 py-1 text-right ${
+    foot ? 'border-t border-border bg-bg-card font-medium' : ''
   } ${programValueClass(side, value)}`}>
     {formatProgramDailyValue(value, side, format)}
   </td>;

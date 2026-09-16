@@ -6,13 +6,14 @@ import { formatAmount, qtyClass } from '../../sidebar/InvestorTrendEstimateCard'
 const labels = { net: '순매수', buy: '총매수', sell: '총매도' };
 const sides = ['net', 'buy', 'sell'] as const;
 
-export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false }: {
+export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false, divided = true }: {
   values: Record<InvestorTradeSide, number | null>;
   unit: InvestorNetUnit;
   useK?: boolean;
   foot?: boolean;
+  divided?: boolean;
 }) {
-  return <td className={`whitespace-nowrap border-l border-border px-2 py-1 text-right ${foot ? 'border-t bg-bg-card' : ''}`}>
+  return <td className={`whitespace-nowrap px-2 py-1 text-right ${divided ? 'border-l border-border' : ''} ${foot ? 'border-t border-border bg-bg-card' : ''}`}>
     <div className="grid grid-cols-[minmax(7ch,1fr)_auto_minmax(7ch,1fr)_auto_minmax(7ch,1fr)] items-baseline gap-x-1 tabular-nums">
       {sides.map((side, index) => {
         const value = values[side];

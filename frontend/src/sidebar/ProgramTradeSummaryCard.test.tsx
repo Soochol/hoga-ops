@@ -204,6 +204,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(row).toHaveClass('bg-tint-selection');
     expect(row).toHaveTextContent('07-21');
     expect(row).toHaveTextContent('+9K·203K·194K');
+    expect(row.querySelector('td')).not.toHaveClass('border-l');
     expect(screen.getByText('누적 1일')).toBeInTheDocument();
     expect(screen.getAllByTitle('총매수 203,000주')).toHaveLength(2);
     expect(screen.getByRole('button', { name: '커서 따라가기' })).toHaveAttribute('aria-pressed', 'true');
