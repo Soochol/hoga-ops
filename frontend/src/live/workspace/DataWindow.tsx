@@ -721,7 +721,6 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <DataContext mode={scope.kind === 'minute-cursor' ? '커서 시점' : '최신'} time={card.cursorMs} detail={`순매수(주) · ${card.series?.length ?? 0}개 거래원`} />
       <BrokerScrollArea>
       <BrokerTrajectoryTable
         series={card.series}
@@ -974,7 +973,6 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <DataContext mode={scope.kind === 'minute-cursor' ? '커서 시점' : '최신 · 당일 누적'} time={scope.cursorMs} />
       <div className="min-h-0 flex-1 overflow-auto">
       <ProgramTradeSummaryCard
         series={series}

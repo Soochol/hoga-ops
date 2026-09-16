@@ -293,6 +293,7 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     renderWithQuery(<DataWindow win={dataWin('program')} symbol={symbol} />);
     expect(screen.getByText('매물대 분포 없음')).toBeInTheDocument();
     expect(screen.getByText('프로그램 순매수 데이터 없음')).toBeInTheDocument();
+    expect(screen.queryByText('최신 · 당일 누적')).not.toBeInTheDocument();
     expect(screen.queryByText(/차트 창 연동 대기/)).not.toBeInTheDocument();
   });
 
