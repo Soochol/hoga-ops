@@ -300,15 +300,12 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         )}
       </div>
 
-      {!showDetails && <div className="flex shrink-0 flex-wrap items-center gap-x-2 px-2.5 pb-1 text-2xs text-fg-dim">
-        {compactDisplay === 'all' && <><span className="font-semibold">순매수</span><span aria-hidden="true">·</span>
-          <span className="text-price-up">총매수</span><span aria-hidden="true">·</span>
-          <span className="text-price-down">총매도</span></>}
-        {compactDisplay !== 'all' && <span>{TRADE_SIDE_LABELS[dataSide]}</span>}
-        <span>{dataUnit === 'qty_shares' ? useK ? '단위: K주 · 1K = 1,000주' : '단위: 주' : '단위: 억원'}</span>
-        {compactDisplay === 'all' && (buyQuery.isLoading || sellQuery.isLoading) && <span>매수·매도 조회 중</span>}
-        {compactDisplay === 'all' && (buyQuery.error || sellQuery.error) && <span role="status">매수·매도 조회 실패</span>}
-      </div>}
+      {!showDetails && compactDisplay === 'all'
+        && (buyQuery.isLoading || sellQuery.isLoading || buyQuery.error || sellQuery.error)
+        && <div className="flex shrink-0 flex-wrap items-center gap-x-2 px-2.5 pb-1 text-2xs text-fg-dim">
+          {(buyQuery.isLoading || sellQuery.isLoading) && <span>매수·매도 조회 중</span>}
+          {(buyQuery.error || sellQuery.error) && <span role="status">매수·매도 조회 실패</span>}
+        </div>}
       {followCursor && cursorDate && cursorNotice && (
         <div role="status" className="px-2.5 pb-1 text-2xs text-fg-dim">{cursorNotice}</div>
       )}

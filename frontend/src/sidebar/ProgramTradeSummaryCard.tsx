@@ -71,11 +71,7 @@ export default function ProgramTradeSummaryCard({
 
   return (
     <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
-      <div className="flex items-center justify-between gap-2 text-fg-dimmer">
-        <span>누적 순매수</span>
-        <span>{formatTime(anchorT)}</span>
-      </div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 pt-2 tabular-nums">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 tabular-nums">
         <span className="text-fg-dimmer">금액</span>
         <span className={`text-right text-sm font-semibold ${amountClass}`}>
           {formatSignedAmount(point?.net_amount ?? null)}
@@ -486,14 +482,4 @@ function formatSignedAmount(value: number | null): string {
 function signedClass(value: number | null): string {
   if (value === null || value === 0) return 'text-fg-dimmer';
   return value > 0 ? 'text-price-up' : 'text-price-down';
-}
-
-function formatTime(tsMs: number): string {
-  return new Date(tsMs).toLocaleTimeString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
 }

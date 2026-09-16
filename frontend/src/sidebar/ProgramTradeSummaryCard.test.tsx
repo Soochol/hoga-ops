@@ -531,9 +531,10 @@ describe('ProgramTradeSummaryCard — 커서가 순매수 첫 관측보다 앞�
       />,
     );
     // 숫자는 대시 — 그 시각에 관측이 없다는 뜻이다(0 으로 채우면 "순매수 0" 이라는
-    // 없는 관측을 만들어낸다). 시각은 커서 위치를 그대로 읽어준다.
+    // 없는 관측을 만들어낸다). 상단 제목·시각 라벨은 렌더하지 않는다.
     expect(screen.getAllByText('-')).toHaveLength(2);
-    expect(screen.getByText('09:05:00')).toBeInTheDocument();
+    expect(screen.queryByText('누적 순매수')).not.toBeInTheDocument();
+    expect(screen.queryByText('09:05:00')).not.toBeInTheDocument();
     expect(screen.queryByText('+1억')).toBeNull();
   });
 
