@@ -763,6 +763,10 @@ export type ProgramTradePoint = {
   t: number;
   net_qty: number | null;
   net_amount: number | null;
+  buy_qty?: number | null;
+  sell_qty?: number | null;
+  buy_amount?: number | null;
+  sell_amount?: number | null;
   delta_qty?: number | null;
   delta_amount?: number | null;
   gap_risk: boolean;

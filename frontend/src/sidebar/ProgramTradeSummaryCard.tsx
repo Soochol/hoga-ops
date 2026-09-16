@@ -30,6 +30,13 @@ type Props = {
   todayKst?: string | null;
 };
 
+type ProgramSide = 'net' | 'buy' | 'sell';
+type ProgramMeasure = 'amount' | 'qty';
+
+const SIDE_LABELS: Record<ProgramSide, string> = {
+  net: '순매수', buy: '총매수', sell: '총매도',
+};
+
 export default function ProgramTradeSummaryCard({
   series,
   cursorMs = null,
@@ -41,6 +48,8 @@ export default function ProgramTradeSummaryCard({
   // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 시각·금액·
   // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
+  const [side, setSide] = useState<ProgramSide>('net');
+  const [measure, setMeasure] = useState<ProgramMeasure>('amount');
   const effectiveCursor = hoverMs ?? cursorMs;
   // 빈 상태 판정은 latest(커서 무관) 로만 한다 — "데이터가 없다" 와 "커서 위치에
   // 아직 관측이 없다" 는 다른 사건이다. 예전엔 커서 기준 point 하나로 둘을 함께
@@ -61,8 +70,6 @@ export default function ProgramTradeSummaryCard({
     );
   }
 
-  const amountClass = signedClass(point?.net_amount ?? null);
-  const qtyClass = signedClass(point?.net_qty ?? null);
   // 궤적의 날짜 스코프. 커서 위치에 관측이 없으면(point null) 커서 날짜를 쓴다 —
   // 그 날 궤적은 그대로 보여주고 상단 숫자만 비운다.
   // 마지막 `?? 0` 은 도달 불가다: effectiveCursor 가 null 이면 point 는 latest 경로로
@@ -71,18 +78,36 @@ export default function ProgramTradeSummaryCard({
 
   return (
     <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 tabular-nums">
-        <span className="text-fg-dimmer">금액</span>
-        <span className={`text-right text-sm font-semibold ${amountClass}`}>
-          {formatSignedAmount(point?.net_amount ?? null)}
-        </span>
-        <span className="text-fg-dimmer">수량</span>
-        <span className={`text-right ${qtyClass}`}>{formatSigned(point?.net_qty ?? null)}</span>
+      <div className="flex justify-end" role="group" aria-label="프로그램 표시 단위">
+        {(['amount', 'qty'] as const).map((value) => (
+          <button key={value} type="button" aria-pressed={measure === value}
+            onClick={() => setMeasure(value)}
+            className={`border px-2 py-px text-2xs first:rounded-l last:rounded-r ${measure === value
+              ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+            {value === 'amount' ? '금액' : '수량'}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-3 gap-1 tabular-nums">
+        {(['net', 'buy', 'sell'] as const).map((candidate) => {
+          const value = programValue(point, candidate, measure);
+          return <button key={candidate} type="button" aria-pressed={side === candidate}
+            onClick={() => setSide(candidate)}
+            className={`min-w-0 rounded border px-1.5 py-1 text-left ${side === candidate
+              ? 'border-accent bg-accent/5' : 'border-border hover:border-border-strong'}`}>
+            <span className="block truncate text-2xs text-fg-dimmer">{SIDE_LABELS[candidate]}</span>
+            <span className={`block truncate text-right font-semibold ${programValueClass(candidate, value)}`}>
+              {formatProgramValue(value, candidate, measure)}
+            </span>
+          </button>;
+        })}
       </div>
       <ProgramTradeSparkline
         points={points}
         anchorT={anchorT}
         cursorMs={effectiveCursor}
+        side={side}
+        measure={measure}
         closePoints={closePoints}
         onHoverMsChange={setHoverMs}
       />
@@ -98,12 +123,16 @@ function ProgramTradeSparkline({
   points,
   anchorT,
   cursorMs,
+  side,
+  measure,
   closePoints,
   onHoverMsChange,
 }: {
   points: readonly ProgramTradePoint[];
   anchorT: number;
   cursorMs: number | null;
+  side: ProgramSide;
+  measure: ProgramMeasure;
   closePoints: readonly ProgramClosePoint[] | null;
   onHoverMsChange: (ms: number | null) => void;
 }) {
@@ -120,11 +149,10 @@ function ProgramTradeSparkline({
     const day = realMsToYyyymmdd(anchorT);
     return points
       .filter(
-        (p): p is ProgramTradePoint & { net_amount: number } =>
-          p.net_amount !== null && realMsToYyyymmdd(p.t) === day,
+        (p) => programValue(p, side, measure) !== null && realMsToYyyymmdd(p.t) === day,
       )
-      .map((p) => ({ t: p.t, v: p.net_amount }));
-  }, [points, anchorT]);
+      .map((p) => ({ t: p.t, v: programValue(p, side, measure)! }));
+  }, [points, anchorT, side, measure]);
 
   // 당일 종가 오버레이 — 순매수와 같은 KST 날짜(anchorT)만 잘라 시간 오름차순.
   const drawablePrice = useMemo(() => {
@@ -286,7 +314,7 @@ function ProgramTradeSparkline({
               key={`${seg.kind}${i}`}
               data-testid={seg.kind === 'solid' ? 'sparkline-solid' : 'sparkline-dashed'}
               fill="none"
-              stroke="var(--accent)"
+              stroke={side === 'buy' ? 'var(--price-up)' : side === 'sell' ? 'var(--price-down)' : 'var(--accent)'}
               strokeWidth={1.5}
               strokeDasharray={seg.kind === 'dashed' ? '3,3' : undefined}
               vectorEffect="non-scaling-stroke"
@@ -327,7 +355,7 @@ function ProgramTradeSparkline({
             style={{
               left: `${(cursorX / W) * 100}%`,
               top: `${dotTopPct}%`,
-              background: 'var(--accent)',
+              background: side === 'buy' ? 'var(--price-up)' : side === 'sell' ? 'var(--price-down)' : 'var(--accent)',
               border: '1px solid var(--bg-card)',
             }}
           />
@@ -340,17 +368,17 @@ function ProgramTradeSparkline({
         data-testid="program-sparkline-axis"
         className="relative flex shrink-0 flex-col items-end justify-between font-data text-badge leading-none text-fg-dimmer tabular-nums"
       >
-        <span data-testid="axis-label-max">{formatKoreanWonEok(vMax)}</span>
+        <span data-testid="axis-label-max">{formatProgramAxisValue(vMax, measure)}</span>
         {showZeroLabel && (
           <span
             data-testid="axis-label-zero"
             className="absolute right-0 -translate-y-1/2"
             style={{ top: `${zeroPct}%` }}
           >
-            {formatKoreanWonEok(0)}
+            {formatProgramAxisValue(0, measure)}
           </span>
         )}
-        <span data-testid="axis-label-min">{formatKoreanWonEok(vMin)}</span>
+        <span data-testid="axis-label-min">{formatProgramAxisValue(vMin, measure)}</span>
         {/* 커서 값 배지 — 캔들차트 crosshair 의 price-axis 라벨과 같은 역할.
             가로선(cursor-hline)과 같은 높이(마우스 Y)에 앉아 그 지점 값을
             읽어준다(곡선 스냅 없음). 눈금 라벨을 덮도록 마지막에 렌더. */}
@@ -363,7 +391,7 @@ function ProgramTradeSparkline({
             // 중앙대에서는 마우스 Y·가로선과 정확히 같은 높이에 앉는다.
             style={{ top: `clamp(0.5rem, ${cursorYPct}%, calc(100% - 0.5rem))` }}
           >
-            {formatKoreanWonEok(cursorValue)}
+            {formatProgramAxisValue(cursorValue, measure)}
           </span>
         )}
       </div>
@@ -467,16 +495,34 @@ export function pickProgramTradePoint(
   return null;
 }
 
-function formatSigned(value: number | null): string {
-  if (value === null) return '-';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${formatKoreanInt(value)}`;
+function programValue(
+  point: ProgramTradePoint | null,
+  side: ProgramSide,
+  measure: ProgramMeasure,
+): number | null {
+  if (!point) return null;
+  const value = point[`${side}_${measure}` as keyof ProgramTradePoint];
+  return typeof value === 'number' ? value : null;
 }
 
-function formatSignedAmount(value: number | null): string {
+function formatProgramValue(
+  value: number | null,
+  side: ProgramSide,
+  measure: ProgramMeasure,
+): string {
   if (value === null) return '-';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${formatKoreanWonEok(value)}`;
+  const formatted = measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
+  return side === 'net' && value > 0 ? `+${formatted}` : formatted;
+}
+
+function formatProgramAxisValue(value: number, measure: ProgramMeasure): string {
+  return measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
+}
+
+function programValueClass(side: ProgramSide, value: number | null): string {
+  if (side === 'buy') return 'text-price-up';
+  if (side === 'sell') return 'text-price-down';
+  return signedClass(value);
 }
 
 function signedClass(value: number | null): string {

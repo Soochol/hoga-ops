@@ -565,10 +565,18 @@ export function aggregateProgramTrade(
     if (typeof t !== 'number') continue;
     const netQty = snap.net_qty;
     const netAmount = snap.net_amount;
+    const buyQty = snap.buy_qty;
+    const sellQty = snap.sell_qty;
+    const buyAmount = snap.buy_amount;
+    const sellAmount = snap.sell_amount;
     out.push({
       t,
       net_qty: typeof netQty === 'number' ? netQty : null,
       net_amount: typeof netAmount === 'number' ? netAmount : null,
+      buy_qty: typeof buyQty === 'number' ? buyQty : null,
+      sell_qty: typeof sellQty === 'number' ? sellQty : null,
+      buy_amount: typeof buyAmount === 'number' ? buyAmount : null,
+      sell_amount: typeof sellAmount === 'number' ? sellAmount : null,
       gap_risk: false,
     });
   }

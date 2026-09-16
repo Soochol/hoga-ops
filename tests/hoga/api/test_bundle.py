@@ -462,10 +462,10 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
                 price=70000,
                 net_qty=1000,
                 net_amount=70_000_000,
-                buy_qty=None,
-                sell_qty=None,
-                buy_amount=None,
-                sell_amount=None,
+                buy_qty=3_000,
+                sell_qty=2_000,
+                buy_amount=210_000_000,
+                sell_amount=140_000_000,
                 delta_qty=1000,
                 delta_amount=70_000_000,
             )
@@ -491,6 +491,10 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     assert [(p.t, p.net_amount, p.delta_amount) for p in rb.program_trade.points] == [
         (1_747_006_200_000, 70_000_000, 70_000_000)
     ]
+    assert [
+        (p.buy_qty, p.sell_qty, p.buy_amount, p.sell_amount)
+        for p in rb.program_trade.points
+    ] == [(3_000, 2_000, 210_000_000, 140_000_000)]
 
 
 def test_build_program_trade_series_reads_the_requested_venue(tmp_path):
@@ -2345,10 +2349,12 @@ def test_build_depth_heatmap_slice_missing_parquet_returns_empty(tmp_path):
     assert points == []
 
 
-def _pt(t: int, *, net=None, delta=None, gap=False):
+def _pt(t: int, *, net=None, delta=None, gap=False, buy=None, sell=None):
     from hoga.api.models import ProgramTradePoint
     return ProgramTradePoint(
-        t=t, net_qty=net, net_amount=net, delta_qty=delta, delta_amount=delta, gap_risk=gap,
+        t=t, net_qty=net, net_amount=net,
+        buy_qty=buy, buy_amount=buy, sell_qty=sell, sell_amount=sell,
+        delta_qty=delta, delta_amount=delta, gap_risk=gap,
     )
 
 
@@ -2364,10 +2370,10 @@ def test_bucket_program_trade_points_aggregation_rules():
     open_ms = 1_000_000
     out = _bucket_program_trade_points(
         [
-            _pt(open_ms + 0, net=100, delta=10),
-            _pt(open_ms + 30_000, net=130, delta=30, gap=True),
-            _pt(open_ms + 59_000, net=175, delta=45),
-            _pt(open_ms + 60_000, net=200, delta=25),   # 다음 버킷
+            _pt(open_ms + 0, net=100, delta=10, buy=500, sell=400),
+            _pt(open_ms + 30_000, net=130, delta=30, gap=True, buy=560, sell=430),
+            _pt(open_ms + 59_000, net=175, delta=45, buy=650, sell=475),
+            _pt(open_ms + 60_000, net=200, delta=25, buy=700, sell=500),   # 다음 버킷
         ],
         open_ms=open_ms,
         bucket_ms=60_000,
@@ -2375,6 +2381,8 @@ def test_bucket_program_trade_points_aggregation_rules():
 
     assert [p.t for p in out] == [open_ms, open_ms + 60_000]
     assert [p.net_amount for p in out] == [175, 200]        # 누적 → 마지막
+    assert [p.buy_amount for p in out] == [650, 700]        # 총매수 누적 → 마지막
+    assert [p.sell_amount for p in out] == [475, 500]       # 총매도 누적 → 마지막
     assert [p.delta_amount for p in out] == [85, 25]        # 증분 → 합(10+30+45)
     assert [p.gap_risk for p in out] == [True, False]       # any
 
@@ -2591,4 +2599,3 @@ def test_build_range_bundle_breathes_once_per_date():
     # 한 덩어리로 돌아가는 회귀다. **빌더를 추가하면 그 앞에 지점을 넣고 이 수를
     # 올릴 것** — mergeRangeBundles 가 필드를 전수 나열하는 것과 같은 규율이다.
     assert breathe.call_count == 7 * len(dates)
-
