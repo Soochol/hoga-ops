@@ -1333,6 +1333,59 @@ describe('DrawingOverlay 키보드 — 다중 선택 편의', () => {
     key({ key: 'd', ctrlKey: true });
     expect(s().drawingsFor(SCOPE)).toHaveLength(3);
   });
+
+  it('Ctrl+C 후 Ctrl+V 는 선택 전체를 붙이고 사본을 선택한다', () => {
+    mount(['h1', 'h3']);
+
+    expect(key({ key: 'c', ctrlKey: true })).toBe(true);
+    expect(key({ key: 'v', ctrlKey: true })).toBe(true);
+
+    const all = s().drawingsFor(SCOPE);
+    expect(all).toHaveLength(5);
+    const pasted = all.slice(3);
+    expect(s().selectedFor(SCOPE)).toEqual(pasted.map((d) => d.id));
+    expect(pasted.map((d) => d.id)).not.toContain('h1');
+  });
+
+  it('반복 Ctrl+V 는 원본 클립보드를 유지하며 매번 새 사본을 만든다', () => {
+    mount(['h1']);
+    key({ key: 'c', ctrlKey: true });
+
+    key({ key: 'v', ctrlKey: true });
+    const firstId = s().drawingsFor(SCOPE).at(-1)!.id;
+    key({ key: 'v', ctrlKey: true });
+    const secondId = s().drawingsFor(SCOPE).at(-1)!.id;
+
+    expect(s().drawingsFor(SCOPE)).toHaveLength(5);
+    expect(secondId).not.toBe(firstId);
+    expect(s().selectedFor(SCOPE)).toEqual([secondId]);
+  });
+
+  it('붙여넣은 잠금 객체는 잠금이 풀린다', () => {
+    mount(['h1']);
+    act(() => s().update(SCOPE, 'h1', { locked: true }));
+    key({ key: 'c', ctrlKey: true });
+    key({ key: 'v', ctrlKey: true });
+
+    expect(s().drawingsFor(SCOPE).at(-1)!.locked).toBeUndefined();
+  });
+
+  it('다중 붙여넣기는 되돌리기 한 단계다', () => {
+    mount(['h1', 'h2']);
+    key({ key: 'c', ctrlKey: true });
+    key({ key: 'v', ctrlKey: true });
+    expect(s().drawingsFor(SCOPE)).toHaveLength(5);
+
+    act(() => s().undo(SCOPE));
+    expect(s().drawingsFor(SCOPE)).toHaveLength(3);
+  });
+
+  it('선택이나 앱 클립보드가 없으면 Ctrl+C/V 를 브라우저에 흘려보낸다', () => {
+    mount();
+    expect(key({ key: 'c', ctrlKey: true })).toBe(false);
+    expect(key({ key: 'v', ctrlKey: true })).toBe(false);
+    expect(s().drawingsFor(SCOPE)).toHaveLength(3);
+  });
 });
 
 // ── 빈 밴드 앵커는 「마지막 플롯된 봉」 ─────────────────────────────────────
