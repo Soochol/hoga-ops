@@ -41,6 +41,8 @@ import {
 import { useLiveSeries } from '../../api/liveSeries';
 import { useMinuteClock } from '../useMinuteClock';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
+import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
+import { useProgramTradeDisplayStore } from '../../state/programTradeDisplay';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
@@ -952,6 +954,14 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
+  const programView = useProgramTradeDisplayStore((s) => s.view);
+  const dailyTo = link?.todayKst ?? '';
+  const dailyFrom = dailyTo ? subtractDaysKst(dailyTo, 130) : '';
+  const dailyProgram = useLiveDailyProgramTrade(
+    programView === 'daily' ? code : null,
+    programView === 'daily' ? dailyFrom : null,
+    programView === 'daily' ? dailyTo : null,
+  );
   // program(0w) WS 실시간 꼬리 — `live.program` 도 선택 venue 로 걸러져 온다
   // (liveSeries.ts 의 filterByVenueTag). 백엔드의 KRX-only 발행 강제는 ADR-0140 §2 에서
   // 걷혔고, 지금은 세 venue 모두 venue 태그를 달고 publish 된다. 5분 주기 번들의 program_trade
@@ -981,6 +991,9 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         // 거래원식 오늘 스코프 — 마지막 점이 오늘이 아니면(새날 아침) 전일 마감
         // 누적을 현재값처럼 보여주지 않고 빈 상태로 리셋한다.
         todayKst={link.todayKst}
+        dailyPoints={dailyProgram.data?.points}
+        dailyLoading={dailyProgram.isLoading}
+        dailyError={Boolean(dailyProgram.error)}
       />
       </div>
     </div>
