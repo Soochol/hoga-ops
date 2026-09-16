@@ -38,11 +38,35 @@ describe('mergeProgramTradeSeriesWithLiveTail', () => {
           t: 300,
           net_qty: 3,
           net_amount: 3_000,
+          buy_qty: null,
+          sell_qty: null,
+          buy_amount: null,
+          sell_amount: null,
           delta_qty: null,
           delta_amount: null,
           gap_risk: false,
         },
       ],
+    });
+  });
+
+  it('keeps gross buy and sell values on the latest live point', () => {
+    const merged = mergeProgramTradeSeriesWithLiveTail(null, [{
+      t_ms: 300,
+      kind: 'program',
+      net_qty: -5,
+      net_amount: -50,
+      buy_qty: 100,
+      sell_qty: 105,
+      buy_amount: 1_000,
+      sell_amount: 1_050,
+    }]);
+
+    expect(merged.points[0]).toMatchObject({
+      buy_qty: 100,
+      sell_qty: 105,
+      buy_amount: 1_000,
+      sell_amount: 1_050,
     });
   });
 
@@ -69,6 +93,10 @@ describe('mergeProgramTradeSeriesWithLiveTail', () => {
         t: 100,
         net_qty: null,
         net_amount: null,
+        buy_qty: null,
+        sell_qty: null,
+        buy_amount: null,
+        sell_amount: null,
         delta_qty: null,
         delta_amount: null,
         gap_risk: false,
