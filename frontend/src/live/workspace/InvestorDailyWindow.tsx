@@ -68,6 +68,10 @@ import {
 } from '../../sidebar/InvestorTrendEstimateCard';
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
 import {
+  useInvestorDailyDisplayStore,
+  type InvestorDailyCompactDisplay,
+} from '../../state/investorDailyDisplay';
+import {
   INVESTOR_ESTIMATE_UNIT_LABELS,
   useInvestorEstimateUnitStore,
   type InvestorEstimateUnit,
@@ -86,8 +90,7 @@ import { realMsToYyyymmdd, subtractDaysKst, todayKstYyyymmdd } from '../liveDate
  */
 const REQUEST_CALENDAR_DAYS = 130;
 const TRADE_SIDE_LABELS: Record<InvestorTradeSide, string> = { net: '순매수', buy: '총매수', sell: '총매도' };
-type CompactDisplay = 'all' | InvestorTradeSide;
-const COMPACT_DISPLAY_LABELS: Record<CompactDisplay, string> = {
+const COMPACT_DISPLAY_LABELS: Record<InvestorDailyCompactDisplay, string> = {
   all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
 };
 
@@ -103,15 +106,20 @@ type Props = {
 };
 
 export function InvestorDailyWindow({ code, cursorDate }: Props) {
-  const [followCursor, setFollowCursor] = useState(true);
+  const followCursor = useInvestorDailyDisplayStore((s) => s.followCursor);
+  const setFollowCursor = useInvestorDailyDisplayStore((s) => s.setFollowCursor);
   const [cursorTarget, setCursorTarget] = useState<{ scope: string; date: string } | null>(null);
   const [cursorNotice, setCursorNotice] = useState<string | null>(null);
   const followedRef = useRef<string | null>(null);
   const automaticScrollRef = useRef(false);
-  const [selectedTradeSide, setTradeSide] = useState<InvestorTradeSide>('net');
-  const [showDetails, setShowDetails] = useState(false);
-  const [compactDisplay, setCompactDisplay] = useState<CompactDisplay>('all');
-  const [useK, setUseK] = useState(true);
+  const selectedTradeSide = useInvestorDailyDisplayStore((s) => s.selectedTradeSide);
+  const setTradeSide = useInvestorDailyDisplayStore((s) => s.setSelectedTradeSide);
+  const showDetails = useInvestorDailyDisplayStore((s) => s.showDetails);
+  const setShowDetails = useInvestorDailyDisplayStore((s) => s.setShowDetails);
+  const compactDisplay = useInvestorDailyDisplayStore((s) => s.compactDisplay);
+  const setCompactDisplay = useInvestorDailyDisplayStore((s) => s.setCompactDisplay);
+  const useK = useInvestorDailyDisplayStore((s) => s.useK);
+  const setUseK = useInvestorDailyDisplayStore((s) => s.setUseK);
   const tradeSide = showDetails ? selectedTradeSide : compactDisplay === 'all' ? 'net' : compactDisplay;
   const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
   const span = useInvestorDailySpanStore((s) => s.span);
@@ -271,7 +279,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             ))}
           </div>}
           {!showDetails && <div role="group" aria-label="표기 방법" className="flex shrink-0 items-center gap-1">
-            {(Object.keys(COMPACT_DISPLAY_LABELS) as CompactDisplay[]).map((display) => (
+            {(Object.keys(COMPACT_DISPLAY_LABELS) as InvestorDailyCompactDisplay[]).map((display) => (
               <button key={display} type="button" aria-pressed={compactDisplay === display}
                 onClick={() => setCompactDisplay(display)}
                 className={`rounded border px-1.5 py-px text-2xs ${compactDisplay === display
@@ -280,16 +288,16 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               </button>
             ))}
           </div>}
-          <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor((value) => !value)}
+          <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor(!followCursor)}
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${followCursor ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>
             커서 따라가기
           </button>
           <UnitChip unit={unit} onToggle={toggleUnit} compact={!showDetails && useK} />
           {!showDetails && unit === 'qty' && <button type="button" aria-pressed={useK}
-            onClick={() => setUseK((value) => !value)}
+            onClick={() => setUseK(!useK)}
             title="K 단위: 1K = 1,000주"
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${useK ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>}
-          <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails((shown) => !shown)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
+          <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails(!showDetails)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
         </div>
         {/* 상태는 표가 거짓말을 하고 있을 때만 한 줄이 생긴다 — 항상 있는 크롬이면
             그게 라벨이 된다(잠정투자자 카드와 같은 방침).
