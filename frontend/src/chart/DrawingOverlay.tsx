@@ -292,7 +292,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
   // snapshotRef. Set just before the return.
-  const duplicateSelectedRef = useRef<() => void>(() => {});
+  const drawingClipboardActionRef = useRef<(action: 'copy' | 'paste' | 'duplicate') => boolean>(
+    () => false,
+  );
+  /** 앱 내부 드로잉 클립보드. OS 클립보드를 덮어쓰지 않고, 복사한 좌표가 의미를
+   *  유지하는 같은 scope 에서만 붙인다. `pasteCount` 로 반복 붙여넣기를 계단식으로
+   *  배치한다. */
+  const drawingClipboardRef = useRef<{
+    scope: string;
+    drawings: readonly Drawing[];
+    pasteCount: number;
+  } | null>(null);
   /** 방향키 미세 이동 — (dx, dy) 는 -1/0/1, `big` 은 Shift(열 배). 복제와 같은
    *  이유로 ref 경유다: 키다운 effect 가 `[]` deps 라 좌표 클로저가 stale 이 된다. */
   const nudgeSelectedRef = useRef<(dx: number, dy: number, big: boolean) => void>(() => {});
@@ -464,8 +474,20 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           return;
         }
         if (key === 'd') {
-          duplicateSelectedRef.current();
+          drawingClipboardActionRef.current('duplicate');
           e.preventDefault(); // suppress the browser bookmark dialog
+          return;
+        }
+        if (key === 'c') {
+          // 선택이 없으면 브라우저의 기본 복사를 그대로 둔다. 텍스트 편집기는
+          // shouldIgnoreEvent 에서 더 일찍 빠지므로 네이티브 글자 복사도 보존된다.
+          if (drawingClipboardActionRef.current('copy')) e.preventDefault();
+          return;
+        }
+        if (key === 'v') {
+          // 이 차트에서 복사한 도형이 있을 때만 키를 가져간다. 다른 scope 의 좌표를
+          // 억지로 붙이지 않고, 빈 클립보드에서는 브라우저 동작을 방해하지 않는다.
+          if (drawingClipboardActionRef.current('paste')) e.preventDefault();
           return;
         }
         if (key === 'a') {
@@ -1336,20 +1358,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     store.clearAllSelections();
   }, [activeTool]);
 
-  // Duplicate the selected drawing with a ~14px down-right offset (derived from
-  // the current coordinate closures so the offset is visually constant across
-  // panes/timeframes). Reassigned each render; called from the keydown effect.
-  duplicateSelectedRef.current = () => {
+  // Clone drawings with a screen-space down-right offset. Ctrl+D and clipboard
+  // paste share this path so pane/time-gap behavior cannot drift apart.
+  const pasteDrawings = (members: readonly Drawing[], offsetPx: number): boolean => {
     const store = useDrawingsStore.getState();
-    if (scope == null) return;
-    const ids = store.selectedByScope.get(scope) ?? EMPTY_SELECTION;
-    if (ids.length === 0) return;
-    const items = store.byScope.get(scope) ?? EMPTY_DRAWINGS;
-    const members = ids
-      .map((id) => items.find((x) => x.id === id))
-      .filter((d): d is Drawing => d != null);
-    if (members.length === 0) return;
-    const OFFSET_PX = 14;
+    if (scope == null) return false;
+    if (members.length === 0) return false;
     // 오프셋은 **한 번만** 계산해 전원에게 적용한다(기준은 primary = 마지막 멤버).
     // 멤버마다 자기 ref 로 재면 팬·구간이 다를 때 델타가 갈려 **대형이 어긋난 채로
     // 복제된다** — 그룹 이동이 하나의 델타를 공유하는 것과 같은 이유다.
@@ -1367,7 +1381,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     if (ref.realMs != null) {
       const x = realMsToCanvasX(ref.realMs);
       if (x != null) {
-        const shifted = rawCanvasXToRealMs(x + OFFSET_PX);
+        const shifted = rawCanvasXToRealMs(x + offsetPx);
         if (shifted != null) {
           const dBar = dragBars.toBar(shifted) - dragBars.toBar(ref.realMs);
           shiftMs = (ms) => dragBars.toReal(dragBars.toBar(ms) + dBar);
@@ -1377,7 +1391,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     if (ref.price != null) {
       const y = priceToCanvasY(ref.price, refPaneId);
       if (y != null) {
-        const shifted = canvasYToPrice(y + OFFSET_PX, refPaneId);
+        const shifted = canvasYToPrice(y + offsetPx, refPaneId);
         if (shifted != null) dPrice = shifted - ref.price;
       }
     }
@@ -1388,6 +1402,37 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // 선택은 사본으로 옮겨 간다 — 단일 복제가 하던 것과 같고, 곧바로 이어서
     // 옮기거나 스타일을 바꿀 수 있다.
     store.setSelection(scope, clones.map((c) => c.id));
+    return true;
+  };
+
+  const selectedDrawings = (): Drawing[] => {
+    if (scope == null) return [];
+    const store = useDrawingsStore.getState();
+    const ids = store.selectedByScope.get(scope) ?? EMPTY_SELECTION;
+    const items = store.byScope.get(scope) ?? EMPTY_DRAWINGS;
+    return ids
+      .map((id) => items.find((x) => x.id === id))
+      .filter((d): d is Drawing => d != null);
+  };
+
+  drawingClipboardActionRef.current = (action) => {
+    if (action === 'duplicate') return pasteDrawings(selectedDrawings(), 14);
+    if (action === 'copy') {
+      if (scope == null) return false;
+      const members = selectedDrawings();
+      if (members.length === 0) return false;
+      // Store immutable drawing snapshots. Store updates replace drawings rather
+      // than mutating them, so later edits/deletes cannot change this clipboard.
+      drawingClipboardRef.current = { scope, drawings: members, pasteCount: 0 };
+      return true;
+    }
+
+    const clipboard = drawingClipboardRef.current;
+    if (scope == null || clipboard == null || clipboard.scope !== scope) return false;
+    const nextCount = clipboard.pasteCount + 1;
+    if (!pasteDrawings(clipboard.drawings, 14 * nextCount)) return false;
+    clipboard.pasteCount = nextCount;
+    return true;
   };
 
   /**
