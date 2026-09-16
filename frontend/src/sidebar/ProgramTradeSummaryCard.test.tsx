@@ -15,7 +15,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
   localStorage.clear();
-  useProgramTradeDisplayStore.setState({ measure: 'amount' });
+  useProgramTradeDisplayStore.setState({
+    measure: 'amount', view: 'intraday', dailyDisplay: 'all', dailySpan: 20, dailyUseK: true,
+  });
 });
 const T0 = Date.UTC(2026, 6, 21, 0, 0, 0); // = KST 09:00
 
@@ -174,6 +176,21 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByTestId('axis-label-max')).toHaveTextContent('20');
 
     expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
+  });
+
+  it('switches to the daily list with investor-style controls and three quantities', () => {
+    render(<ProgramTradeSummaryCard series={seriesOf([point(T0, 1)])} dailyPoints={[{
+      t_ms: T0, net_qty: -8_393, buy_qty: 28_697, sell_qty: 37_090,
+    }]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '일별' }));
+
+    expect(screen.getByRole('group', { name: '일별 프로그램 표시 기간' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: '일별 프로그램 표기 방법' })).toBeInTheDocument();
+    expect(screen.getByText('-8K')).toBeInTheDocument();
+    expect(screen.getByText('29K')).toBeInTheDocument();
+    expect(screen.getByText('37K')).toBeInTheDocument();
+    expect(screen.queryByTestId('program-sparkline')).not.toBeInTheDocument();
   });
 
   it('keeps the selected measure when the card remounts for another symbol', () => {

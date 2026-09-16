@@ -3,11 +3,14 @@ import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
+import { formatKoreanK } from '../util/koreanNumber';
+import type { DailyProgramTradePoint } from '../api/liveDailyProgramTrade';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import {
   useProgramTradeDisplayStore,
   type ProgramTradeMeasure,
+  type ProgramDailyDisplay,
 } from '../state/programTradeDisplay';
 
 /** 스파크라인 점선(관측 공백) 판정 임계. 수집 주기(program_trade_collector
@@ -32,6 +35,9 @@ type Props = {
    *  /live 데이터 창만 전달하고 /study(과거 저장뷰)는 생략해 기존 "마지막 점 =
    *  latest" 를 유지한다. */
   todayKst?: string | null;
+  dailyPoints?: readonly DailyProgramTradePoint[];
+  dailyLoading?: boolean;
+  dailyError?: boolean;
 };
 
 type ProgramTradeMetric = 'net' | 'buy' | 'sell';
@@ -45,6 +51,9 @@ export default function ProgramTradeSummaryCard({
   cursorMs = null,
   closePoints = null,
   todayKst = null,
+  dailyPoints = [],
+  dailyLoading = false,
+  dailyError = false,
 }: Props) {
   const points = series?.points ?? [];
   // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
@@ -53,6 +62,8 @@ export default function ProgramTradeSummaryCard({
   const [hoverMs, setHoverMs] = useState<number | null>(null);
   const measure = useProgramTradeDisplayStore((state) => state.measure);
   const setMeasure = useProgramTradeDisplayStore((state) => state.setMeasure);
+  const view = useProgramTradeDisplayStore((state) => state.view);
+  const setView = useProgramTradeDisplayStore((state) => state.setView);
   const effectiveCursor = hoverMs ?? cursorMs;
   // 빈 상태 판정은 latest(커서 무관) 로만 한다 — "데이터가 없다" 와 "커서 위치에
   // 아직 관측이 없다" 는 다른 사건이다. 예전엔 커서 기준 point 하나로 둘을 함께
@@ -65,6 +76,11 @@ export default function ProgramTradeSummaryCard({
   // 읽을 것(커서 위치 point)도 그릴 것(오늘 스코프 latest)도 없을 때만 빈 상태다.
   // latest 만으로 판정하면 새날 아침에 전일 캔들을 호버하는 경로(point 는 전일 값을
   // floor 로 집는다)가 함께 죽는다 — 그건 todayKst 스코프가 막으려던 대상이 아니다.
+  if (view === 'daily') {
+    return <ProgramDailySummary points={dailyPoints} loading={dailyLoading} error={dailyError}
+      onShowIntraday={() => setView('intraday')} />;
+  }
+
   if (!latest && !point) {
     return (
       <SidebarState className="min-h-[88px] px-3 py-4">
@@ -81,7 +97,9 @@ export default function ProgramTradeSummaryCard({
 
   return (
     <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
-      <div className="flex justify-end" role="group" aria-label="프로그램 표시 단위">
+      <div className="flex justify-between gap-2">
+        <ViewChips view="intraday" onSelect={setView} />
+        <div className="flex" role="group" aria-label="프로그램 표시 단위">
         {(['amount', 'qty'] as const).map((value) => (
           <button key={value} type="button" aria-pressed={measure === value}
             onClick={() => setMeasure(value)}
@@ -90,6 +108,7 @@ export default function ProgramTradeSummaryCard({
             {value === 'amount' ? '금액' : '수량'}
           </button>
         ))}
+        </div>
       </div>
       <div
         data-testid="program-metric-strip"
@@ -115,6 +134,92 @@ export default function ProgramTradeSummaryCard({
       />
     </div>
   );
+}
+
+function ViewChips({ view, onSelect }: {
+  view: 'intraday' | 'daily';
+  onSelect: (value: 'intraday' | 'daily') => void;
+}) {
+  return <div className="flex shrink-0 items-center gap-1" role="group" aria-label="프로그램 조회 구분">
+    {(['intraday', 'daily'] as const).map((value) => <button key={value} type="button"
+      aria-pressed={view === value} onClick={() => onSelect(value)}
+      className={`rounded border px-1.5 py-px text-2xs ${view === value
+        ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+      {value === 'intraday' ? '당일 누적' : '일별'}
+    </button>)}
+  </div>;
+}
+
+function ProgramDailySummary({ points, loading, error, onShowIntraday }: {
+  points: readonly DailyProgramTradePoint[];
+  loading: boolean;
+  error: boolean;
+  onShowIntraday: () => void;
+}) {
+  const display = useProgramTradeDisplayStore((s) => s.dailyDisplay);
+  const setDisplay = useProgramTradeDisplayStore((s) => s.setDailyDisplay);
+  const span = useProgramTradeDisplayStore((s) => s.dailySpan);
+  const setSpan = useProgramTradeDisplayStore((s) => s.setDailySpan);
+  const useK = useProgramTradeDisplayStore((s) => s.dailyUseK);
+  const setUseK = useProgramTradeDisplayStore((s) => s.setDailyUseK);
+  const rows = [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span);
+  const labels: Record<ProgramDailyDisplay, string> = {
+    all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
+  };
+  const format = (value: number | null) => value == null ? '-' : useK ? formatKoreanK(value) : formatKoreanInt(value);
+  return <div className="flex h-full min-h-[96px] flex-col bg-bg-card font-data text-xs">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 px-2.5 py-1">
+      <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
+      <div role="group" aria-label="일별 프로그램 표시 기간" className="flex gap-1">
+        {([5, 20, 60] as const).map((value) => <button key={value} type="button"
+          aria-pressed={span === value} onClick={() => setSpan(value)}
+          className={`rounded border px-1.5 py-px text-2xs ${span === value
+            ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>{value}일</button>)}
+      </div>
+      <div role="group" aria-label="일별 프로그램 표기 방법" className="flex gap-1">
+        {(Object.keys(labels) as ProgramDailyDisplay[]).map((value) => <button key={value} type="button"
+          aria-pressed={display === value} onClick={() => setDisplay(value)}
+          className={`rounded border px-1.5 py-px text-2xs ${display === value
+            ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>{labels[value]}</button>)}
+      </div>
+      <button type="button" aria-pressed={useK} onClick={() => setUseK(!useK)}
+        className={`rounded border px-1.5 py-px text-2xs ${useK
+          ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>
+    </div>
+    <div className="min-h-0 flex-1 overflow-auto">
+      {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
+        : loading && rows.length === 0 ? <SidebarState>일별 프로그램 조회 중</SidebarState>
+          : rows.length === 0 ? <SidebarState>일별 프로그램 데이터 없음</SidebarState>
+            : <table className="w-full border-collapse tabular-nums">
+              <thead className="sticky top-0 bg-bg-card text-fg-dim"><tr>
+                <th className="px-2.5 py-1 text-left font-medium">날짜</th>
+                <th className="px-2.5 py-1 text-right font-medium">프로그램</th>
+              </tr></thead>
+              <tbody>{rows.map((row) => {
+                const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
+                const selected = display === 'all' ? (['net', 'buy', 'sell'] as const) : [display];
+                return <tr key={row.t_ms} className="border-t border-border-subtle">
+                  <td className="px-2.5 py-1.5 text-fg-dim">{formatDailyDate(row.t_ms)}</td>
+                  <td className="px-2.5 py-1.5 text-right">{selected.map((side, index) =>
+                    <span key={side} className={programValueClass(side, values[side])}>
+                      {index > 0 && <span className="px-1 text-fg-dimmer">·</span>}
+                      {formatProgramDailyValue(values[side], side, format)}
+                    </span>)}</td>
+                </tr>;
+              })}</tbody>
+            </table>}
+    </div>
+  </div>;
+}
+
+function formatDailyDate(ms: number): string {
+  const ymd = realMsToYyyymmdd(ms);
+  return `${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
+}
+
+function formatProgramDailyValue(value: number | null, side: ProgramTradeMetric, format: (v: number | null) => string): string {
+  const out = format(value);
+  return side === 'net' && value != null && value > 0 ? `+${out}` : out;
 }
 
 /** 카드 하단 금액(net_amount) 누적 스파크라인. 메인 차트의 '프로그램 순매수'
