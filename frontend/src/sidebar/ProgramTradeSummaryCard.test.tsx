@@ -165,6 +165,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText('5억')).toBeInTheDocument();
     expect(screen.getByText('4억')).toBeInTheDocument();
     expect(screen.getByTestId('axis-label-max')).toHaveTextContent('2억');
+    expect(screen.getByTestId('program-metric-strip')).not.toHaveClass('border');
 
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
     expect(screen.getByText('+10')).toBeInTheDocument();
