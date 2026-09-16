@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
@@ -27,6 +27,7 @@ export type ProgramClosePoint = { t_ms: number; close: number };
 type Props = {
   series?: ProgramTradeSeries | null;
   cursorMs?: number | null;
+  cursorDate?: string | null;
   /** 당일 분봉 종가(같은 번들의 candles). 순매수 곡선 위에 dim 참조선으로
    *  오버레이한다. 여러 날이 섞여 와도 카드가 anchorT 날짜로 잘라 쓴다. */
   closePoints?: readonly ProgramClosePoint[] | null;
@@ -49,6 +50,7 @@ const METRIC_LABELS: Record<ProgramTradeMetric, string> = {
 export default function ProgramTradeSummaryCard({
   series,
   cursorMs = null,
+  cursorDate = null,
   closePoints = null,
   todayKst = null,
   dailyPoints = [],
@@ -78,6 +80,7 @@ export default function ProgramTradeSummaryCard({
   // floor 로 집는다)가 함께 죽는다 — 그건 todayKst 스코프가 막으려던 대상이 아니다.
   if (view === 'daily') {
     return <ProgramDailySummary points={dailyPoints} loading={dailyLoading} error={dailyError}
+      cursorDate={cursorDate}
       onShowIntraday={() => setView('intraday')} />;
   }
 
@@ -150,10 +153,11 @@ function ViewChips({ view, onSelect }: {
   </div>;
 }
 
-function ProgramDailySummary({ points, loading, error, onShowIntraday }: {
+function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntraday }: {
   points: readonly DailyProgramTradePoint[];
   loading: boolean;
   error: boolean;
+  cursorDate: string | null;
   onShowIntraday: () => void;
 }) {
   const display = useProgramTradeDisplayStore((s) => s.dailyDisplay);
@@ -162,11 +166,33 @@ function ProgramDailySummary({ points, loading, error, onShowIntraday }: {
   const setSpan = useProgramTradeDisplayStore((s) => s.setDailySpan);
   const useK = useProgramTradeDisplayStore((s) => s.dailyUseK);
   const setUseK = useProgramTradeDisplayStore((s) => s.setDailyUseK);
+  const followCursor = useProgramTradeDisplayStore((s) => s.dailyFollowCursor);
+  const setFollowCursor = useProgramTradeDisplayStore((s) => s.setDailyFollowCursor);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followedRef = useRef<string | null>(null);
   const rows = [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span);
   const labels: Record<ProgramDailyDisplay, string> = {
     all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
   };
   const format = (value: number | null) => value == null ? '-' : useK ? formatKoreanK(value) : formatKoreanInt(value);
+  useEffect(() => {
+    if (!followCursor || cursorDate === null) return;
+    const targetKey = `${span}:${cursorDate}`;
+    if (followedRef.current === targetKey) return;
+    const timer = window.setTimeout(() => {
+      const scroller = scrollRef.current;
+      const row = scroller?.querySelector<HTMLElement>(`[data-testid="program-daily-row-${cursorDate}"]`);
+      if (!scroller || !row) return;
+      const viewport = scroller.getBoundingClientRect();
+      const bounds = row.getBoundingClientRect();
+      const top = viewport.top + (scroller.querySelector('thead')?.getBoundingClientRect().height ?? 0);
+      if (bounds.top < top || bounds.bottom > viewport.bottom) {
+        scroller.scrollTop += (bounds.top + bounds.bottom - top - viewport.bottom) / 2;
+      }
+      followedRef.current = targetKey;
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [cursorDate, followCursor, rows, span]);
   return <div className="flex h-full min-h-[96px] flex-col bg-bg-card font-data text-xs">
     <div className="flex shrink-0 flex-wrap items-center gap-2 px-2.5 py-1">
       <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
@@ -185,22 +211,28 @@ function ProgramDailySummary({ points, loading, error, onShowIntraday }: {
       <button type="button" aria-pressed={useK} onClick={() => setUseK(!useK)}
         className={`rounded border px-1.5 py-px text-2xs ${useK
           ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>
+      <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor(!followCursor)}
+        className={`rounded border px-1.5 py-px text-2xs ${followCursor
+          ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>커서 따라가기</button>
     </div>
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div ref={scrollRef} aria-label="일별 프로그램 내역" className="min-h-0 flex-1 overflow-auto">
       {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
         : loading && rows.length === 0 ? <SidebarState>일별 프로그램 조회 중</SidebarState>
           : rows.length === 0 ? <SidebarState>일별 프로그램 데이터 없음</SidebarState>
             : <table className="w-full border-collapse tabular-nums">
               <thead className="sticky top-0 bg-bg-card text-fg-dim"><tr>
-                <th className="px-2.5 py-1 text-left font-medium">날짜</th>
-                <th className="px-2.5 py-1 text-right font-medium">프로그램</th>
+                <th className="px-2.5 py-1 text-center font-medium">날짜</th>
+                <th className="px-2.5 py-1 text-center font-medium">프로그램</th>
               </tr></thead>
               <tbody>{rows.map((row) => {
                 const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
                 const selected = display === 'all' ? (['net', 'buy', 'sell'] as const) : [display];
-                return <tr key={row.t_ms} className="border-t border-border-subtle">
-                  <td className="px-2.5 py-1.5 text-fg-dim">{formatDailyDate(row.t_ms)}</td>
-                  <td className="px-2.5 py-1.5 text-right">{selected.map((side, index) =>
+                const rowDate = realMsToYyyymmdd(row.t_ms);
+                const isCursor = followCursor && cursorDate === rowDate;
+                return <tr key={row.t_ms} data-testid={`program-daily-row-${rowDate}`}
+                  className={`border-t border-border-subtle ${isCursor ? 'bg-tint-selection' : ''}`}>
+                  <td className="px-2.5 py-1.5 text-center text-fg-dim">{formatDailyDate(row.t_ms)}</td>
+                  <td className="px-2.5 py-1.5 text-center">{selected.map((side, index) =>
                     <span key={side} className={programValueClass(side, values[side])}>
                       {index > 0 && <span className="px-1 text-fg-dimmer">·</span>}
                       {formatProgramDailyValue(values[side], side, format)}
