@@ -11,6 +11,10 @@ function livePoint(snapshot: Record<string, unknown>): ProgramTradePoint | null 
     t,
     net_qty: nullableSafeInteger(snapshot.net_qty),
     net_amount: nullableSafeInteger(snapshot.net_amount),
+    buy_qty: nullableSafeInteger(snapshot.buy_qty),
+    sell_qty: nullableSafeInteger(snapshot.sell_qty),
+    buy_amount: nullableSafeInteger(snapshot.buy_amount),
+    sell_amount: nullableSafeInteger(snapshot.sell_amount),
     // 0w raw frames expose cumulative values only. Do not fabricate the
     // collector's 30-second delta semantics at the per-frame display cadence.
     delta_qty: null,
