@@ -5,6 +5,10 @@ import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
+import {
+  useProgramTradeDisplayStore,
+  type ProgramTradeMeasure,
+} from '../state/programTradeDisplay';
 
 /** 스파크라인 점선(관측 공백) 판정 임계. 수집 주기(program_trade_collector
  *  30초 drain)의 3배 — 이보다 벌어진 이웃 점 사이는 실측 없이 잇는
@@ -30,10 +34,9 @@ type Props = {
   todayKst?: string | null;
 };
 
-type ProgramSide = 'net' | 'buy' | 'sell';
-type ProgramMeasure = 'amount' | 'qty';
+type ProgramTradeMetric = 'net' | 'buy' | 'sell';
 
-const SIDE_LABELS: Record<ProgramSide, string> = {
+const METRIC_LABELS: Record<ProgramTradeMetric, string> = {
   net: '순매수', buy: '총매수', sell: '총매도',
 };
 
@@ -48,8 +51,8 @@ export default function ProgramTradeSummaryCard({
   // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 시각·금액·
   // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
-  const [side, setSide] = useState<ProgramSide>('net');
-  const [measure, setMeasure] = useState<ProgramMeasure>('amount');
+  const measure = useProgramTradeDisplayStore((state) => state.measure);
+  const setMeasure = useProgramTradeDisplayStore((state) => state.setMeasure);
   const effectiveCursor = hoverMs ?? cursorMs;
   // 빈 상태 판정은 latest(커서 무관) 로만 한다 — "데이터가 없다" 와 "커서 위치에
   // 아직 관측이 없다" 는 다른 사건이다. 예전엔 커서 기준 point 하나로 둘을 함께
@@ -91,22 +94,18 @@ export default function ProgramTradeSummaryCard({
       <div className="mt-1 grid grid-cols-3 gap-1 tabular-nums">
         {(['net', 'buy', 'sell'] as const).map((candidate) => {
           const value = programValue(point, candidate, measure);
-          return <button key={candidate} type="button" aria-pressed={side === candidate}
-            onClick={() => setSide(candidate)}
-            className={`min-w-0 rounded border px-1.5 py-1 text-left ${side === candidate
-              ? 'border-accent bg-accent/5' : 'border-border hover:border-border-strong'}`}>
-            <span className="block truncate text-2xs text-fg-dimmer">{SIDE_LABELS[candidate]}</span>
+          return <div key={candidate} className="min-w-0 rounded border border-border px-1.5 py-1 text-left">
+            <span className="block truncate text-2xs text-fg-dimmer">{METRIC_LABELS[candidate]}</span>
             <span className={`block truncate text-right font-semibold ${programValueClass(candidate, value)}`}>
               {formatProgramValue(value, candidate, measure)}
             </span>
-          </button>;
+          </div>;
         })}
       </div>
       <ProgramTradeSparkline
         points={points}
         anchorT={anchorT}
         cursorMs={effectiveCursor}
-        side={side}
         measure={measure}
         closePoints={closePoints}
         onHoverMsChange={setHoverMs}
@@ -123,7 +122,6 @@ function ProgramTradeSparkline({
   points,
   anchorT,
   cursorMs,
-  side,
   measure,
   closePoints,
   onHoverMsChange,
@@ -131,8 +129,7 @@ function ProgramTradeSparkline({
   points: readonly ProgramTradePoint[];
   anchorT: number;
   cursorMs: number | null;
-  side: ProgramSide;
-  measure: ProgramMeasure;
+  measure: ProgramTradeMeasure;
   closePoints: readonly ProgramClosePoint[] | null;
   onHoverMsChange: (ms: number | null) => void;
 }) {
@@ -149,10 +146,10 @@ function ProgramTradeSparkline({
     const day = realMsToYyyymmdd(anchorT);
     return points
       .filter(
-        (p) => programValue(p, side, measure) !== null && realMsToYyyymmdd(p.t) === day,
+        (p) => programValue(p, 'net', measure) !== null && realMsToYyyymmdd(p.t) === day,
       )
-      .map((p) => ({ t: p.t, v: programValue(p, side, measure)! }));
-  }, [points, anchorT, side, measure]);
+      .map((p) => ({ t: p.t, v: programValue(p, 'net', measure)! }));
+  }, [points, anchorT, measure]);
 
   // 당일 종가 오버레이 — 순매수와 같은 KST 날짜(anchorT)만 잘라 시간 오름차순.
   const drawablePrice = useMemo(() => {
@@ -314,7 +311,7 @@ function ProgramTradeSparkline({
               key={`${seg.kind}${i}`}
               data-testid={seg.kind === 'solid' ? 'sparkline-solid' : 'sparkline-dashed'}
               fill="none"
-              stroke={side === 'buy' ? 'var(--price-up)' : side === 'sell' ? 'var(--price-down)' : 'var(--accent)'}
+              stroke="var(--accent)"
               strokeWidth={1.5}
               strokeDasharray={seg.kind === 'dashed' ? '3,3' : undefined}
               vectorEffect="non-scaling-stroke"
@@ -355,7 +352,7 @@ function ProgramTradeSparkline({
             style={{
               left: `${(cursorX / W) * 100}%`,
               top: `${dotTopPct}%`,
-              background: side === 'buy' ? 'var(--price-up)' : side === 'sell' ? 'var(--price-down)' : 'var(--accent)',
+              background: 'var(--accent)',
               border: '1px solid var(--bg-card)',
             }}
           />
@@ -497,8 +494,8 @@ export function pickProgramTradePoint(
 
 function programValue(
   point: ProgramTradePoint | null,
-  side: ProgramSide,
-  measure: ProgramMeasure,
+  side: ProgramTradeMetric,
+  measure: ProgramTradeMeasure,
 ): number | null {
   if (!point) return null;
   const value = point[`${side}_${measure}` as keyof ProgramTradePoint];
@@ -507,19 +504,19 @@ function programValue(
 
 function formatProgramValue(
   value: number | null,
-  side: ProgramSide,
-  measure: ProgramMeasure,
+  side: ProgramTradeMetric,
+  measure: ProgramTradeMeasure,
 ): string {
   if (value === null) return '-';
   const formatted = measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
   return side === 'net' && value > 0 ? `+${formatted}` : formatted;
 }
 
-function formatProgramAxisValue(value: number, measure: ProgramMeasure): string {
+function formatProgramAxisValue(value: number, measure: ProgramTradeMeasure): string {
   return measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
 }
 
-function programValueClass(side: ProgramSide, value: number | null): string {
+function programValueClass(side: ProgramTradeMetric, value: number | null): string {
   if (side === 'buy') return 'text-price-up';
   if (side === 'sell') return 'text-price-down';
   return signedClass(value);

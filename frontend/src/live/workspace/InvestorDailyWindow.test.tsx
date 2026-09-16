@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InvestorNetPoint, InvestorSubjectBreakdown } from '../../api/types';
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
 import { useInvestorEstimateUnitStore } from '../../state/investorEstimateUnit';
+import { useInvestorDailyDisplayStore } from '../../state/investorDailyDisplay';
 import { todayKstYyyymmdd } from '../liveDateTime';
 
 const useLivePastInvestorNet = vi.fn();
@@ -54,13 +55,33 @@ function mockPoints(points: InvestorNetPoint[], unit = 'qty_shares') {
 const DATES = ['20260728', '20260729', '20260730', '20260731', '20260803', '20260804'];
 
 beforeEach(() => {
+  localStorage.clear();
   useLivePastInvestorNet.mockReset();
   historyMock.mockReturnValue({ data: undefined, isFetching: false, isError: false, fetchNextPage: vi.fn() });
   useInvestorDailySpanStore.setState({ span: 20 });
   useInvestorEstimateUnitStore.setState({ unit: 'qty' });
+  useInvestorDailyDisplayStore.setState({
+    compactDisplay: 'all', selectedTradeSide: 'net', useK: true,
+    showDetails: false, followCursor: true,
+  });
 });
 
 describe('InvestorDailyWindow', () => {
+  it('종목을 바꿔 창이 다시 마운트돼도 표기 방법과 K 단위를 유지한다', () => {
+    mockPoints([point('20260803')]);
+    const first = render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
+    fireEvent.click(screen.getByRole('button', { name: '총매수' }));
+    expect(screen.getByRole('button', { name: 'K 단위' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '총매수' })).toHaveAttribute('aria-pressed', 'true');
+
+    first.unmount();
+    render(<InvestorDailyWindow code="000660" cursorDate={null} />);
+
+    expect(screen.getByRole('button', { name: 'K 단위' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '총매수' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('상위 4주체와 기관 세부 8종을 모두 컬럼으로 세운다', () => {
     mockPoints([point('20260803')]);
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);

@@ -1,16 +1,22 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import ProgramTradeSummaryCard, {
   buildTimeGapSegments,
   pickProgramTradePoint,
   PROGRAM_SPARK_GAP_THRESHOLD_MS,
 } from './ProgramTradeSummaryCard';
+import { useProgramTradeDisplayStore } from '../state/programTradeDisplay';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 
 // KST 2026-07-21 09:00 기준 시각 — 날짜 클립 테스트에서 실제 달력 날짜가
 // 의미를 가지므로 epoch 0 근처 대신 실전 대역을 쓴다.
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+beforeEach(() => {
+  localStorage.clear();
+  useProgramTradeDisplayStore.setState({ measure: 'amount' });
+});
 const T0 = Date.UTC(2026, 6, 21, 0, 0, 0); // = KST 09:00
 
 function point(
@@ -158,14 +164,36 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText('+1억')).toBeInTheDocument();
     expect(screen.getByText('5억')).toBeInTheDocument();
     expect(screen.getByText('4억')).toBeInTheDocument();
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('2억');
 
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
     expect(screen.getByText('+10')).toBeInTheDocument();
     expect(screen.getByText('70')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('20');
 
-    fireEvent.click(screen.getByRole('button', { name: '총매수70' }));
-    expect(screen.getByRole('button', { name: '총매수70' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the selected measure when the card remounts for another symbol', () => {
+    const series = seriesOf([point(T0, 100_000_000, {
+      net_qty: 10,
+      buy_amount: 500_000_000,
+      sell_amount: 400_000_000,
+      buy_qty: 70,
+      sell_qty: 60,
+    })]);
+    const first = render(<ProgramTradeSummaryCard series={series} />);
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
+    expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('live.programTradeDisplay.v1')).toContain('"measure":"qty"');
+
+    first.unmount();
+    render(<ProgramTradeSummaryCard series={series} />);
+
+    expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
+    expect(screen.getByText('+10')).toBeInTheDocument();
   });
 
   it('shows empty state in latest mode when the series has no today point', () => {
