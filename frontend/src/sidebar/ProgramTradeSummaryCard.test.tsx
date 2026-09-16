@@ -188,13 +188,13 @@ describe('ProgramTradeSummaryCard — render states', () => {
 
     expect(screen.getByRole('group', { name: '일별 프로그램 표시 기간' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: '일별 프로그램 표기 방법' })).toBeInTheDocument();
-    expect(screen.getByText('-8K')).toBeInTheDocument();
-    expect(screen.getByText('29K')).toBeInTheDocument();
-    expect(screen.getByText('37K')).toBeInTheDocument();
+    expect(screen.getAllByText('−8K')).toHaveLength(2);
+    expect(screen.getAllByText('29K')).toHaveLength(2);
+    expect(screen.getAllByText('37K')).toHaveLength(2);
     expect(screen.queryByTestId('program-sparkline')).not.toBeInTheDocument();
   });
 
-  it('centers daily cells and highlights the linked cursor date', () => {
+  it('uses the daily-investor row format and highlights the linked cursor date', () => {
     useProgramTradeDisplayStore.setState({ view: 'daily' });
     render(<ProgramTradeSummaryCard series={null} cursorDate="20260721" dailyPoints={[{
       t_ms: T0, net_qty: 9_000, buy_qty: 203_000, sell_qty: 194_000,
@@ -202,9 +202,10 @@ describe('ProgramTradeSummaryCard — render states', () => {
 
     const row = screen.getByTestId('program-daily-row-20260721');
     expect(row).toHaveClass('bg-tint-selection');
-    expect(row.querySelectorAll('td')[0]).toHaveClass('text-center');
-    expect(row.querySelectorAll('td')[1]).toHaveClass('text-center');
+    expect(row).toHaveTextContent('07-21');
     expect(row).toHaveTextContent('+9K·203K·194K');
+    expect(screen.getByText('누적 1일')).toBeInTheDocument();
+    expect(screen.getAllByTitle('총매수 203,000주')).toHaveLength(2);
     expect(screen.getByRole('button', { name: '커서 따라가기' })).toHaveAttribute('aria-pressed', 'true');
   });
 
