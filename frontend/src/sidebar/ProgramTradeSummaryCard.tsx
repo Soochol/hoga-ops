@@ -7,6 +7,7 @@ import { formatKoreanK } from '../util/koreanNumber';
 import type { DailyProgramTradePoint } from '../api/liveDailyProgramTrade';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
+import { InvestorDailySummaryCell } from '../live/workspace/InvestorDailySummaryCell';
 import {
   useProgramTradeDisplayStore,
   type ProgramTradeMeasure,
@@ -171,6 +172,11 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
   const scrollRef = useRef<HTMLDivElement>(null);
   const followedRef = useRef<string | null>(null);
   const rows = [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span);
+  const totals = rows.reduce((sum, row) => ({
+    net: sum.net + (row.net_qty ?? 0),
+    buy: sum.buy + (row.buy_qty ?? 0),
+    sell: sum.sell + (row.sell_qty ?? 0),
+  }), { net: 0, buy: 0, sell: 0 });
   const labels: Record<ProgramDailyDisplay, string> = {
     all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
   };
@@ -219,26 +225,33 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
       {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
         : loading && rows.length === 0 ? <SidebarState>일별 프로그램 조회 중</SidebarState>
           : rows.length === 0 ? <SidebarState>일별 프로그램 데이터 없음</SidebarState>
-            : <table className="w-full border-collapse tabular-nums">
-              <thead className="sticky top-0 bg-bg-card text-fg-dim"><tr>
-                <th className="px-2.5 py-1 text-center font-medium">날짜</th>
-                <th className="px-2.5 py-1 text-center font-medium">프로그램</th>
+            : <table className="w-full border-collapse font-data text-xs tabular-nums">
+              <thead className="sticky top-0 z-20 text-fg-dim"><tr>
+                <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
+                <th className="whitespace-nowrap border-b border-l border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램</th>
               </tr></thead>
               <tbody>{rows.map((row) => {
                 const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
-                const selected = display === 'all' ? (['net', 'buy', 'sell'] as const) : [display];
                 const rowDate = realMsToYyyymmdd(row.t_ms);
                 const isCursor = followCursor && cursorDate === rowDate;
                 return <tr key={row.t_ms} data-testid={`program-daily-row-${rowDate}`}
-                  className={`border-t border-border-subtle ${isCursor ? 'bg-tint-selection' : ''}`}>
-                  <td className="px-2.5 py-1.5 text-center text-fg-dim">{formatDailyDate(row.t_ms)}</td>
-                  <td className="px-2.5 py-1.5 text-center">{selected.map((side, index) =>
-                    <span key={side} className={programValueClass(side, values[side])}>
-                      {index > 0 && <span className="px-1 text-fg-dimmer">·</span>}
-                      {formatProgramDailyValue(values[side], side, format)}
-                    </span>)}</td>
+                  className={isCursor ? 'bg-tint-selection' : undefined}>
+                  <th scope="row" className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-1.5 py-1 text-left font-normal text-fg-dim">
+                    {formatDailyDate(row.t_ms)}
+                  </th>
+                  {display === 'all'
+                    ? <InvestorDailySummaryCell values={values} unit="qty_shares" useK={useK} />
+                    : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
                 </tr>;
               })}</tbody>
+              <tfoot className="sticky bottom-0 z-20"><tr>
+                <th className="sticky left-0 z-10 whitespace-nowrap border-t border-border bg-bg-card px-1.5 py-1 text-left font-medium">
+                  누적 {rows.length}일
+                </th>
+                {display === 'all'
+                  ? <InvestorDailySummaryCell values={totals} unit="qty_shares" useK={useK} foot />
+                  : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />}
+              </tr></tfoot>
             </table>}
     </div>
   </div>;
@@ -246,7 +259,20 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
 
 function formatDailyDate(ms: number): string {
   const ymd = realMsToYyyymmdd(ms);
-  return `${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
+  return `${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
+}
+
+function ProgramDailyValueCell({ value, side, format, foot = false }: {
+  value: number | null;
+  side: ProgramTradeMetric;
+  format: (value: number | null) => string;
+  foot?: boolean;
+}) {
+  return <td className={`whitespace-nowrap border-l border-border px-1.5 py-1 text-right ${
+    foot ? 'border-t bg-bg-card font-medium' : ''
+  } ${programValueClass(side, value)}`}>
+    {formatProgramDailyValue(value, side, format)}
+  </td>;
 }
 
 function formatProgramDailyValue(value: number | null, side: ProgramTradeMetric, format: (v: number | null) => string): string {
