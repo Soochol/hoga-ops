@@ -13,6 +13,7 @@ type Persisted = {
   dailyDisplay: ProgramDailyDisplay;
   dailySpan: ProgramDailySpan;
   dailyUseK: boolean;
+  dailyFollowCursor: boolean;
 };
 
 interface Store extends Persisted {
@@ -21,6 +22,7 @@ interface Store extends Persisted {
   setDailyDisplay: (display: ProgramDailyDisplay) => void;
   setDailySpan: (span: ProgramDailySpan) => void;
   setDailyUseK: (value: boolean) => void;
+  setDailyFollowCursor: (value: boolean) => void;
 }
 
 function isMeasure(value: unknown): value is ProgramTradeMeasure {
@@ -29,6 +31,7 @@ function isMeasure(value: unknown): value is ProgramTradeMeasure {
 
 const defaults: Persisted = {
   measure: 'amount', view: 'intraday', dailyDisplay: 'all', dailySpan: 20, dailyUseK: true,
+  dailyFollowCursor: true,
 };
 
 const validView = (value: unknown): value is ProgramTradeView => value === 'intraday' || value === 'daily';
@@ -47,6 +50,8 @@ function readStorage(): Persisted {
       dailyDisplay: validDisplay(parsed.dailyDisplay) ? parsed.dailyDisplay : defaults.dailyDisplay,
       dailySpan: validSpan(parsed.dailySpan) ? parsed.dailySpan : defaults.dailySpan,
       dailyUseK: typeof parsed.dailyUseK === 'boolean' ? parsed.dailyUseK : defaults.dailyUseK,
+      dailyFollowCursor: typeof parsed.dailyFollowCursor === 'boolean'
+        ? parsed.dailyFollowCursor : defaults.dailyFollowCursor,
     };
   } catch {
     return defaults;
@@ -68,6 +73,7 @@ export const useProgramTradeDisplayStore = create<Store>((set, get) => {
     persist({
       measure: state.measure, view: state.view, dailyDisplay: state.dailyDisplay,
       dailySpan: state.dailySpan, dailyUseK: state.dailyUseK,
+      dailyFollowCursor: state.dailyFollowCursor,
     });
   };
   return {
@@ -80,5 +86,8 @@ export const useProgramTradeDisplayStore = create<Store>((set, get) => {
   setDailyDisplay: (dailyDisplay) => { if (validDisplay(dailyDisplay)) update({ dailyDisplay }); },
   setDailySpan: (dailySpan) => { if (validSpan(dailySpan)) update({ dailySpan }); },
   setDailyUseK: (dailyUseK) => { if (typeof dailyUseK === 'boolean') update({ dailyUseK }); },
+  setDailyFollowCursor: (dailyFollowCursor) => {
+    if (typeof dailyFollowCursor === 'boolean') update({ dailyFollowCursor });
+  },
   };
 });

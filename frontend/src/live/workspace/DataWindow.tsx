@@ -987,6 +987,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <ProgramTradeSummaryCard
         series={series}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
+        cursorDate={cursorMs === null ? null : realMsToYyyymmdd(cursorMs)}
         closePoints={closePoints}
         // 거래원식 오늘 스코프 — 마지막 점이 오늘이 아니면(새날 아침) 전일 마감
         // 누적을 현재값처럼 보여주지 않고 빈 상태로 리셋한다.
