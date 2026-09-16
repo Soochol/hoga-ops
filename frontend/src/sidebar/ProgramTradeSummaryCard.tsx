@@ -91,12 +91,15 @@ export default function ProgramTradeSummaryCard({
           </button>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-3 gap-1 tabular-nums">
+      <div
+        data-testid="program-metric-strip"
+        className="mt-1 grid grid-cols-3 divide-x divide-border py-1 tabular-nums"
+      >
         {(['net', 'buy', 'sell'] as const).map((candidate) => {
           const value = programValue(point, candidate, measure);
-          return <div key={candidate} className="min-w-0 rounded border border-border px-1.5 py-1 text-left">
+          return <div key={candidate} className="min-w-0 px-2 text-center first:pl-0 last:pr-0">
             <span className="block truncate text-2xs text-fg-dimmer">{METRIC_LABELS[candidate]}</span>
-            <span className={`block truncate text-right font-semibold ${programValueClass(candidate, value)}`}>
+            <span className={`mt-0.5 block truncate font-semibold ${programValueClass(candidate, value)}`}>
               {formatProgramValue(value, candidate, measure)}
             </span>
           </div>;
