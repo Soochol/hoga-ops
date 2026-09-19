@@ -1,3 +1,4 @@
+import { formatKoreanInt } from '../../util/koreanNumber';
 import {
   CandlestickSeries,
   type CandlestickData,
@@ -23,7 +24,7 @@ const DEFAULT_CONTEXT: CandlePaneContext = { muteAuctionCandles: true };
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
+  formatter: formatKoreanInt,
   minMove: 1,
 };
 

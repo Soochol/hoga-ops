@@ -36,7 +36,7 @@ describe('liveVenuePolicy', () => {
     // 두 함수를 같은 날짜로 맞대어 두어 한쪽만 고쳐지는 걸 막는다.
     for (const venue of ['KRX', 'NXT', 'UN'] as const) {
       const { open_ms, close_ms } = liveVenueSessionBoundsMs('20260518', venue);
-      const label = liveVenueSessionWindowLabel(venue);
+      const label = liveVenueSessionWindowLabel(venue, '20260518');
       const fmt = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', {
         timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit',
       });

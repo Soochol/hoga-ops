@@ -142,6 +142,10 @@ function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: ()
   );
 }
 
+const quantityFormatter = new Intl.NumberFormat('ko-KR');
+const amountFormatters = [0, 1].map((maximumFractionDigits) =>
+  new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 0, maximumFractionDigits }));
+
 /** 추정 수급 **수량**(주) 표시 — 축약하지 않는다(2026-08-04 사용자 결정).
  *  20,000 은 "2만" 이 아니라 "20,000" 이다. 가집계가 천주 단위로 반올림돼 오므로
  *  자릿수가 길어도 뒤 세 자리는 항상 0 이고, 만 단위 축약은 그 반올림 위에 반올림을
@@ -150,7 +154,7 @@ function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: ()
 export function formatQty(value: number | null | undefined): string {
   if (value === null || value === undefined) return '-';
   if (value === 0) return '0';
-  return `${value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}`;
+  return `${value > 0 ? '+' : ''}${quantityFormatter.format(value)}`;
 }
 
 /** 추정 수급 **금액** 표시 — 벤더 단위(백만원) → 억원.
@@ -175,10 +179,7 @@ export function formatAmount(mwon: number | null | undefined): string {
   // -0 은 "0" 으로 접는다 — 부호만 남은 0 은 방향을 주장하지 않는다.
   const rounded = Object.is(Number(eok.toFixed(digits)), -0) ? 0 : Number(eok.toFixed(digits));
   if (rounded === 0) return '0';
-  const body = rounded.toLocaleString('ko-KR', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
+  const body = amountFormatters[digits].format(rounded);
   return `${rounded > 0 ? '+' : ''}${body}억`;
 }
 

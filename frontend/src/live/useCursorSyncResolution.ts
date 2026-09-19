@@ -18,6 +18,7 @@
  * 헤더 숫자이기 때문이다.
  */
 import { useContext, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { WindowViewContext } from './workspace/windowView';
 import { useActivePrefs } from '../state/chartPrefs';
@@ -37,10 +38,9 @@ export function useCursorSyncResolution(params: {
   timeframe: LiveTimeframe;
   /** 이 창의 종목 — 발행 origin 과 대조한다. */
   code: string | null;
+  enabled?: boolean;
 }): SyncResolution {
-  const { candles, timeframe, code } = params;
-  const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
-  const syncCursorOrigin = useLiveCursorStore((s) => s.syncCursorOrigin);
+  const { candles, timeframe, code, enabled = true } = params;
   const winCtx = useContext(WindowViewContext);
   const myWindowId = winCtx?.windowId ?? null;
   const myGroup = winCtx?.group ?? null;
@@ -58,17 +58,18 @@ export function useCursorSyncResolution(params: {
     [byDate, candles],
   );
 
-  return useMemo(
-    () => resolveSyncTarget({
-      cursor: syncCursorMs !== null && syncCursorOrigin !== null
-        ? { tsMs: syncCursorMs, origin: syncCursorOrigin }
+  // Subscribe to the resolved result, not every raw cursor publication. Shallow
+  // equality keeps a daily hit stable while minute cursors move within its date.
+  return useLiveCursorStore(useShallow((s): SyncResolution => enabled
+    ? resolveSyncTarget({
+      cursor: s.syncCursorMs !== null && s.syncCursorOrigin !== null
+        ? { tsMs: s.syncCursorMs, origin: s.syncCursorOrigin }
         : null,
       myWindowId,
       myGroup,
       myCode: code,
       source,
       allowCrossSymbol,
-    }),
-    [syncCursorMs, syncCursorOrigin, myWindowId, myGroup, code, source, allowCrossSymbol],
-  );
+    })
+    : { kind: 'none' }));
 }

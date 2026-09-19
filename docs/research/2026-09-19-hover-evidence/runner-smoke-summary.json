@@ -1,0 +1,42 @@
+{
+  "source": "runner-smoke.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 1,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 1,
+      "TaskDurationMs": 880.09,
+      "TaskDurationRangeMs": [
+        880.09,
+        880.09
+      ],
+      "ScriptDurationMs": 437.87,
+      "ScriptDurationRangeMs": [
+        437.87,
+        437.87
+      ],
+      "LayoutDurationMs": 61.2,
+      "LayoutDurationRangeMs": [
+        61.2,
+        61.2
+      ],
+      "dataCalls": 1124,
+      "dataRows": 91072,
+      "dataMs": 7.7,
+      "rectReads": 840,
+      "LayoutCount": 62,
+      "crosshairEvents": 60,
+      "cursorUpdates": 60,
+      "frameP95Ms": 16.7,
+      "frameMaxMs": 16.8,
+      "framesOver25Ms": 0,
+      "frameSamples": 121,
+      "longTasks": 0,
+      "tooltips": [
+        0
+      ]
+    }
+  ]
+}

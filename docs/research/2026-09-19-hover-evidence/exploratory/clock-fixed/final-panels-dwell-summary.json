@@ -1,0 +1,109 @@
+{
+  "source": "final-panels-dwell.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 1,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 253.96,
+      "TaskDurationRangeMs": [
+        240.78,
+        267.93
+      ],
+      "ScriptDurationMs": 96.62,
+      "ScriptDurationRangeMs": [
+        96.26,
+        101.28
+      ],
+      "LayoutDurationMs": 8.54,
+      "LayoutDurationRangeMs": [
+        7.91,
+        8.83
+      ],
+      "dataCalls": 136,
+      "dataRows": 11744,
+      "dataMs": 1,
+      "rectReads": 188,
+      "LayoutCount": 15,
+      "crosshairEvents": 12,
+      "cursorUpdates": 8,
+      "frameP95Ms": 16,
+      "frameMaxMs": 21,
+      "framesOver25Ms": 0,
+      "frameSamples": 1129,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0,
+        0
+      ],
+      "formatCalls": 0,
+      "sidebarUpdates": 8,
+      "investorRows": 60,
+      "programRows": 60,
+      "scrollWrites": [
+        4,
+        4,
+        4
+      ],
+      "requests": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 236.06,
+      "TaskDurationRangeMs": [
+        219.97,
+        376.31
+      ],
+      "ScriptDurationMs": 91.09,
+      "ScriptDurationRangeMs": [
+        89.52,
+        96.5
+      ],
+      "LayoutDurationMs": 4.57,
+      "LayoutDurationRangeMs": [
+        4.05,
+        4.62
+      ],
+      "dataCalls": 56,
+      "dataRows": 0,
+      "dataMs": 0,
+      "rectReads": 84,
+      "LayoutCount": 8,
+      "crosshairEvents": 12,
+      "cursorUpdates": 8,
+      "frameP95Ms": 16,
+      "frameMaxMs": 40,
+      "framesOver25Ms": 1,
+      "frameSamples": 1129,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0,
+        0
+      ],
+      "formatCalls": 28,
+      "sidebarUpdates": 8,
+      "investorRows": 60,
+      "programRows": 60,
+      "scrollWrites": [
+        2,
+        0,
+        0
+      ],
+      "requests": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

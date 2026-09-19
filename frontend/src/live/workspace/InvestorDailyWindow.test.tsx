@@ -5,6 +5,7 @@ import type { InvestorNetPoint, InvestorSubjectBreakdown } from '../../api/types
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
 import { useInvestorEstimateUnitStore } from '../../state/investorEstimateUnit';
 import { useInvestorDailyDisplayStore } from '../../state/investorDailyDisplay';
+import * as summaryFormatting from '../investorDailySummary';
 import { todayKstYyyymmdd } from '../liveDateTime';
 
 const useLivePastInvestorNet = vi.fn();
@@ -473,4 +474,29 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   fireEvent.click(screen.getByRole('button', { name: '총매도' }));
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 접기' }));
   expect(screen.getByTestId('investor-daily-row-20260803')).toHaveTextContent('+85K');
+});
+
+
+it('cursor dates and follow timers do not reformat unchanged numeric cells', () => {
+  vi.useFakeTimers();
+  const format = vi.spyOn(summaryFormatting, 'formatInvestorK');
+  try {
+    mockPoints(DATES.map((date) => point(date)));
+    const { rerender } = render(<InvestorDailyWindow code="005930" cursorDate={null} />);
+    expect(format).toHaveBeenCalled();
+    format.mockClear();
+    for (const date of DATES) {
+      rerender(<InvestorDailyWindow code="005930" cursorDate={date} />);
+      act(() => vi.advanceTimersByTime(350));
+      expect(screen.getByTestId(`investor-daily-row-${date}`)).toHaveClass('bg-tint-selection');
+    }
+    expect(format).not.toHaveBeenCalled();
+    // Real data updates under a stationary cursor must still update cells.
+    mockPoints(DATES.map((date) => ({ ...point(date), foreign_net: 123000 })));
+    rerender(<InvestorDailyWindow code="005930" cursorDate={DATES.at(-1)!} />);
+    expect(format).toHaveBeenCalledWith(123000, true);
+  } finally {
+    format.mockRestore();
+    vi.useRealTimers();
+  }
 });

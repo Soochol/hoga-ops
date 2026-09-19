@@ -1,0 +1,109 @@
+{
+  "source": "final-panels-moving.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 1,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 506.69,
+      "TaskDurationRangeMs": [
+        480.16,
+        515.07
+      ],
+      "ScriptDurationMs": 187.69,
+      "ScriptDurationRangeMs": [
+        175.92,
+        194.88
+      ],
+      "LayoutDurationMs": 34.14,
+      "LayoutDurationRangeMs": [
+        32.77,
+        35.42
+      ],
+      "dataCalls": 638,
+      "dataRows": 54316,
+      "dataMs": 3,
+      "rectReads": 633,
+      "LayoutCount": 71,
+      "crosshairEvents": 60,
+      "cursorUpdates": 37,
+      "frameP95Ms": 19,
+      "frameMaxMs": 22,
+      "framesOver25Ms": 0,
+      "frameSamples": 249,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0,
+        0
+      ],
+      "formatCalls": 0,
+      "sidebarUpdates": 11,
+      "investorRows": 60,
+      "programRows": 60,
+      "scrollWrites": [
+        0,
+        0,
+        0
+      ],
+      "requests": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 403.11,
+      "TaskDurationRangeMs": [
+        393.54,
+        420.65
+      ],
+      "ScriptDurationMs": 180.0,
+      "ScriptDurationRangeMs": [
+        175.03,
+        195.98
+      ],
+      "LayoutDurationMs": 16.26,
+      "LayoutDurationRangeMs": [
+        16.03,
+        16.34
+      ],
+      "dataCalls": 268,
+      "dataRows": 0,
+      "dataMs": 0,
+      "rectReads": 411,
+      "LayoutCount": 37,
+      "crosshairEvents": 60,
+      "cursorUpdates": 37,
+      "frameP95Ms": 18,
+      "frameMaxMs": 29,
+      "framesOver25Ms": 1,
+      "frameSamples": 242,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0,
+        0
+      ],
+      "formatCalls": 134,
+      "sidebarUpdates": 11,
+      "investorRows": 60,
+      "programRows": 60,
+      "scrollWrites": [
+        0,
+        0,
+        0
+      ],
+      "requests": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

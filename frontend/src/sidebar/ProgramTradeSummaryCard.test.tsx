@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import * as summaryFormatting from '../live/investorDailySummary';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProgramTradeSummaryCard, {
   buildTimeGapSegments,
@@ -644,4 +645,34 @@ describe('ProgramTradeSummaryCard — 커서가 순매수 첫 관측보다 앞�
     expect(screen.queryByText(/프로그램 순매수 데이터 없음/)).toBeNull();
     expect(screen.getByText('+2억')).toBeInTheDocument();
   });
+});
+
+
+it('daily follow completes during same-date minute updates without reformatting cells', () => {
+  vi.useFakeTimers();
+  const format = vi.spyOn(summaryFormatting, 'formatInvestorK');
+  try {
+    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    const dailyPoints = [{ t_ms: T0, net_qty: 123000, buy_qty: 200000, sell_qty: 77000 }];
+    const { rerender } = render(<ProgramTradeSummaryCard dailyPoints={dailyPoints} cursorDate="20260721" cursorMs={T0} />);
+    const row = screen.getByTestId('program-daily-row-20260721');
+    const scroller = screen.getByLabelText('일별 프로그램 내역');
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 100));
+    vi.spyOn(row, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 200, 300, 20));
+    const scroll = vi.spyOn(scroller, 'scrollTop', 'set');
+    expect(format).toHaveBeenCalled();
+    format.mockClear();
+    for (let i = 1; i <= 3; i++) {
+      act(() => vi.advanceTimersByTime(100));
+      rerender(<ProgramTradeSummaryCard dailyPoints={dailyPoints} cursorDate="20260721" cursorMs={T0 + i * 60000} />);
+    }
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(format.mock.calls).toHaveLength(0);
+    expect(row).toHaveClass('bg-tint-selection');
+    rerender(<ProgramTradeSummaryCard dailyPoints={[{ ...dailyPoints[0], net_qty: 124000 }]} cursorDate="20260721" />);
+    expect(row).toHaveTextContent('+124K');
+  } finally {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  }
 });

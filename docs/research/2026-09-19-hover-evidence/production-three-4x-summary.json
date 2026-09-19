@@ -1,0 +1,155 @@
+{
+  "source": "production-three-4x.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 4,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "format-cache",
+      "runs": 3,
+      "TaskDurationMs": 2425.77,
+      "TaskDurationRangeMs": [
+        2306.77,
+        2561.14
+      ],
+      "ScriptDurationMs": 903.48,
+      "ScriptDurationRangeMs": [
+        874.47,
+        1063.1
+      ],
+      "LayoutDurationMs": 195.94,
+      "LayoutDurationRangeMs": [
+        192.9,
+        196.79
+      ],
+      "dataCalls": 1124,
+      "dataRows": 91072,
+      "dataMs": 26.5,
+      "rectReads": 840,
+      "LayoutCount": 62,
+      "crosshairEvents": 60,
+      "cursorUpdates": 60,
+      "frameP95Ms": 33.4,
+      "frameMaxMs": 49.9,
+      "framesOver25Ms": 82,
+      "frameSamples": 362,
+      "longTasks": 1,
+      "tooltips": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 2575.95,
+      "TaskDurationRangeMs": [
+        2533.89,
+        2596.21
+      ],
+      "ScriptDurationMs": 1116.72,
+      "ScriptDurationRangeMs": [
+        1100.39,
+        1133.73
+      ],
+      "LayoutDurationMs": 191.56,
+      "LayoutDurationRangeMs": [
+        185.37,
+        192.37
+      ],
+      "dataCalls": 1124,
+      "dataRows": 91072,
+      "dataMs": 33.8,
+      "rectReads": 840,
+      "LayoutCount": 63,
+      "crosshairEvents": 60,
+      "cursorUpdates": 60,
+      "frameP95Ms": 33.4,
+      "frameMaxMs": 50,
+      "framesOver25Ms": 103,
+      "frameSamples": 363,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "format-cache",
+      "runs": 3,
+      "TaskDurationMs": 2248.75,
+      "TaskDurationRangeMs": [
+        2246.94,
+        2404.37
+      ],
+      "ScriptDurationMs": 1056.38,
+      "ScriptDurationRangeMs": [
+        1048.22,
+        1156.25
+      ],
+      "LayoutDurationMs": 108.61,
+      "LayoutDurationRangeMs": [
+        106.16,
+        108.69
+      ],
+      "dataCalls": 480,
+      "dataRows": 0,
+      "dataMs": 1.8,
+      "rectReads": 480,
+      "LayoutCount": 62,
+      "crosshairEvents": 72,
+      "cursorUpdates": 60,
+      "frameP95Ms": 33.4,
+      "frameMaxMs": 66.8,
+      "framesOver25Ms": 47,
+      "frameSamples": 362,
+      "longTasks": 1,
+      "tooltips": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "baseline",
+      "runs": 3,
+      "TaskDurationMs": 2479.01,
+      "TaskDurationRangeMs": [
+        2476.05,
+        2691.05
+      ],
+      "ScriptDurationMs": 1306.58,
+      "ScriptDurationRangeMs": [
+        1302.43,
+        1418.38
+      ],
+      "LayoutDurationMs": 104.84,
+      "LayoutDurationRangeMs": [
+        103.85,
+        110.86
+      ],
+      "dataCalls": 480,
+      "dataRows": 0,
+      "dataMs": 2.1,
+      "rectReads": 480,
+      "LayoutCount": 63,
+      "crosshairEvents": 72,
+      "cursorUpdates": 60,
+      "frameP95Ms": 50,
+      "frameMaxMs": 66.6,
+      "framesOver25Ms": 77,
+      "frameSamples": 362,
+      "longTasks": 2,
+      "tooltips": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

@@ -56,7 +56,7 @@
  */
 import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
 import { formatInvestorK, investorDailySummary } from '../investorDailySummary';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import { useInvestorDailyHistory } from '../useInvestorDailyHistory';
@@ -97,6 +97,7 @@ const COMPACT_DISPLAY_LABELS: Record<InvestorDailyCompactDisplay, string> = {
 /** 상위 주체 컬럼 수 = 기관 세부가 시작하는 인덱스. 그룹 라벨이 사라진 뒤로는
  *  **구분선의 위치**가 이 상수의 유일한 용도다 — 경계를 말하는 것이 선뿐이라
  *  값이 틀리면 선이 엉뚱한 컬럼 앞에 선다. */
+const TOP_COLUMNS = INVESTOR_COLUMNS.filter((c) => c.group === 'top');
 const TOP_COLUMN_COUNT = INVESTOR_COLUMNS.filter((c) => c.group === 'top').length;
 
 type Props = {
@@ -121,7 +122,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   const useK = useInvestorDailyDisplayStore((s) => s.useK);
   const setUseK = useInvestorDailyDisplayStore((s) => s.setUseK);
   const tradeSide = showDetails ? selectedTradeSide : compactDisplay === 'all' ? 'net' : compactDisplay;
-  const columns = showDetails ? INVESTOR_COLUMNS : INVESTOR_COLUMNS.filter((c) => c.group === 'top');
+  const columns = showDetails ? INVESTOR_COLUMNS : TOP_COLUMNS;
   const span = useInvestorDailySpanStore((s) => s.span);
   const setSpan = useInvestorDailySpanStore((s) => s.setSpan);
   const unit = useInvestorEstimateUnitStore((s) => s.unit);
@@ -174,6 +175,47 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
       sell: investorDailySummary(sellQuery.data, code, dataUnit, 'sell', dates),
     };
   }, [buyQuery.data, sellQuery.data, code, dataUnit, table.rows]);
+
+  // Cursor highlighting and follow timers do not invalidate numeric cell contents.
+  const rowContents = useMemo(() => table.rows.map((row) => ({
+    date: row.date,
+    cells: <>
+      <DateCell date={row.date} isToday={row.date === today} />
+      {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
+        <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} values={{
+          net: dataSide === 'net' ? row.values[column.key] : null,
+          buy: summary.buy.value(row.date, column.key),
+          sell: summary.sell.value(row.date, column.key),
+        }} /> : <ValueCell
+          key={column.key}
+          value={row.values[column.key]}
+          dataUnit={dataUnit}
+          dataSide={dataSide}
+          compact={!showDetails}
+          useK={useK}
+          className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+        />
+      ))}
+    </>,
+  })), [table.rows, today, columns, showDetails, compactDisplay, dataUnit, useK, dataSide, summary]);
+
+  const totalCells = useMemo(() => (<>
+    {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
+      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} foot values={{
+        net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
+        buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
+      }} /> : <ValueCell
+        key={column.key}
+        value={table.totals[column.key]}
+        dataUnit={dataUnit}
+        dataSide={dataSide}
+        compact={!showDetails}
+        useK={useK}
+        foot
+        className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+      />
+    ))}
+  </>), [columns, showDetails, compactDisplay, dataUnit, useK, dataSide, table, summary]);
 
   const dates = useMemo(() => points.map((point) => realMsToYyyymmdd(point.t_ms)).sort().reverse(), [points]);
   useEffect(() => {
@@ -373,34 +415,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               </tr>
             </thead>
             <tbody>
-              {table.rows.map((row) => {
-                const isCursor = cursorDate !== null && row.date === cursorDate;
-                return (
-                  <tr
-                    key={row.t_ms}
-                    data-testid={`investor-daily-row-${row.date}`}
-                    // 선택 행은 배경 틴트만 — 좌측 accent 바 금지(DESIGN.md list-row rule).
-                    className={isCursor ? 'bg-tint-selection' : undefined}
-                  >
-                    <DateCell date={row.date} isToday={row.date === today} />
-                    {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-                      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} values={{
-                        net: dataSide === 'net' ? row.values[column.key] : null,
-                        buy: summary.buy.value(row.date, column.key),
-                        sell: summary.sell.value(row.date, column.key),
-                      }} /> : <ValueCell
-                        key={column.key}
-                        value={row.values[column.key]}
-                        dataUnit={dataUnit}
-                        dataSide={dataSide}
-                        compact={!showDetails}
-                        useK={useK}
-                        className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
-                      />
-                    ))}
-                  </tr>
-                );
-              })}
+              {rowContents.map(({ date, cells }) => <InvestorRow key={date} date={date}
+                isCursor={cursorDate === date} cells={cells} />)}
             </tbody>
             <tfoot className="sticky bottom-0 z-20">
               <tr>
@@ -417,21 +433,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     </span>
                   )}
                 </HeadCell>
-                {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-                  <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} foot values={{
-                    net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
-                    buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
-                  }} /> : <ValueCell
-                    key={column.key}
-                    value={table.totals[column.key]}
-                    dataUnit={dataUnit}
-                    dataSide={dataSide}
-                    compact={!showDetails}
-                    useK={useK}
-                    foot
-                    className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
-                  />
-                ))}
+                {totalCells}
               </tr>
             </tfoot>
           </table>
@@ -612,3 +614,13 @@ function getStateText(
   if (query.data && rowCount === 0) return '일별 투자자 데이터 없음';
   return null;
 }
+
+
+const InvestorRow = memo(function InvestorRow({ date, isCursor, cells }: {
+  date: string;
+  isCursor: boolean;
+  cells: ReactNode;
+}) {
+  return <tr data-testid={`investor-daily-row-${date}`}
+    className={isCursor ? 'bg-tint-selection' : undefined}>{cells}</tr>;
+});
