@@ -1,0 +1,165 @@
+import { test, expect } from '@playwright/test';
+import { installLiveMocks } from './helpers/liveMocks';
+import { writeFileSync } from 'node:fs';
+
+test('measure hover', async ({page}) => {
+  const errors:string[]=[];
+  const apiRequests:string[]=[];page.on('request',r=>{if(/\/api\/live\/(past-investor-net|daily-program-trade)/.test(r.url()))apiRequests.push(r.url());});
+  page.on('pageerror', e=>errors.push(e.message));
+  await page.route(/^http:\/\/[^/]+\/api\//, r=>r.fulfill({status:503,json:{detail:'unavailable in isolated benchmark'}}));
+  await installLiveMocks(page);
+  await page.routeWebSocket(/\/api\/ws/,()=>{});
+  const days:number[]=[];
+  for(let t=Date.UTC(2026,0,1);t<=Date.UTC(2026,8,18);t+=86400000) if(![0,6].includes(new Date(t).getUTCDay())) days.push(t);
+  const candle=(t:number,i:number)=>({t_ms:t,open:35000+(i%100)*10,high:35200+(i%100)*10,low:34900+(i%100)*10,close:35100+(i%100)*10,volume:100+i%40});
+  const daily=days.map(candle);
+  const minute=days.slice(-30).flatMap(t=>Array.from({length:390},(_,i)=>candle(t+i*60000,i)));
+  for(const [path,data] of [['past-daily-candles',daily],['past-candles',minute]] as const) await page.route(new RegExp('^http://[^/]+/api/live/'+path+'(?:\\?|$)'),r=>r.fulfill({json:{code:'098460',from:'20260101',to:'20260918',candles:data,cached_dates:[],fresh_dates:[],cached_batches:[],fresh_batches:[],data_warnings:[]}}));
+  await page.route('**/config.json',r=>r.fulfill({json:{api_url:'http://127.0.0.1:5197'}}));
+  if(process.env.HOVER_PANELS){
+    const ymd=(t:number)=>new Date(t).toISOString().slice(0,10).replaceAll('-','');
+    await page.route(/^http:\/\/[^/]+\/api\/live\/past-investor-net/,r=>{
+      const q=new URL(r.request().url()).searchParams;const side=q.get('trade_side')??'net';
+      const points=days.filter(t=>ymd(t)>=(q.get('from')??'')&&ymd(t)<=(q.get('to')??'99999999')).map((t,i)=>{
+        const k=10000+i*100; const gross=side==='net'?1:side==='buy'?5:4;
+        return {t_ms:t,foreign_net:k*gross,institution_net:8*k*gross,breakdown:{individual:side==='net'?-10*k:12*k*gross,native_foreign:0,other_corp:k*gross,fin_invest:k*gross,insurance:k*gross,trust:k*gross,other_fin:k*gross,bank:k*gross,pension:k*gross,private_fund:k*gross,nation:k*gross}};
+      });
+      return r.fulfill({json:{code:'098460',from:q.get('from'),to:q.get('to'),unit:q.get('axis')==='amount'?'amt_mwon':'qty_shares',trade_side:side,points,cached_batches:[],fresh_batches:[],data_warnings:[]}});
+    });
+    await page.route(/^http:\/\/[^/]+\/api\/live\/daily-program-trade/,r=>{const q=new URL(r.request().url()).searchParams;return r.fulfill({json:{code:'098460',from:q.get('from'),to:q.get('to'),points:days.filter(t=>ymd(t)>=(q.get('from')??'')&&ymd(t)<=(q.get('to')??'99999999')).map((t,i)=>({t_ms:t,net_qty:10000+i*100,buy_qty:50000+i*500,sell_qty:40000+i*400})),cached_batches:[],fresh_batches:[],data_warnings:[]}});});
+  }
+  await page.addInitScript(span=>{window.__probeSpan=span;},process.env.HOVER_SPAN?Number(process.env.HOVER_SPAN):null);
+  await page.goto('/live?code=098460');
+  await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
+  await page.evaluate(async count=>{
+    const {useWorkspaceStore:s}=await (window.__hoverModules?.['/src/state/workspace.ts'] ?? import('/src/state/workspace.ts'));
+    while(s.getState().windows.filter(w=>w.kind==='chart').length<count)s.getState().addWindow('chart');
+    const wins=s.getState().windows.filter(w=>w.kind==='chart').slice(0,count);
+    s.setState({windows:wins.map((w,i)=>({...w,group:1,rect:{x:i/count,y:0,w:1/count,h:1},chart:{timeframe:'D'}})),zOrder:wins.map(w=>w.id),maximizedId:null});
+    wins.forEach(w=>s.getState().setWindowSymbol(w.id,{code:'098460',name:'고영',kind:'stock'}));
+  },Number(process.env.HOVER_WINDOWS ?? 3));
+  await expect(page.locator('.legend-ohlc-open')).toHaveCount(Number(process.env.HOVER_WINDOWS ?? 3));
+  if(process.env.HOVER_PANELS){
+    await page.evaluate(async()=>{
+      const {useWorkspaceStore:s}=await (window.__hoverModules?.['/src/state/workspace.ts']??import('/src/state/workspace.ts'));
+      const {useProgramTradeDisplayStore:p}=await (window.__hoverModules?.['/src/state/programTradeDisplay.ts']??import('/src/state/programTradeDisplay.ts'));
+      p.getState().setView('daily');p.getState().setDailySpan(60);
+      s.getState().addWindow('program');s.getState().addWindow('investor-daily');
+      let j=0;s.setState({windows:s.getState().windows.map(w=>({...w,group:1,rect:w.kind==='chart'?{...w.rect,h:.6}:{x:j++*.5,y:.6,w:.5,h:.4}}))});
+      for(const w of s.getState().windows)s.getState().setWindowSymbol(w.id,{code:'098460',name:'고영',kind:'stock'});
+    });
+    await expect(page.locator('[data-testid^="investor-daily-row-"]')).toHaveCount(60);
+    await expect(page.locator('[data-testid^="program-daily-row-"]')).toHaveCount(60);
+  }
+  const cdp=await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  if(process.env.HOVER_THROTTLE)await cdp.send('Emulation.setCPUThrottlingRate',{rate:Number(process.env.HOVER_THROTTLE)});
+  const results:any[]=[];
+  const formatParity=await page.evaluate(()=>{const nf=new Intl.NumberFormat('ko-KR');return [0,-0,0.49,-0.49,0.5,-0.5,1234,1234567890123,NaN,Infinity,-Infinity].every(n=>nf.format(Math.round(n))===Math.round(n).toLocaleString('ko-KR'));});
+  expect(formatParity).toBe(true);
+  for(const tf of (process.env.HOVER_TF?.split(',') ?? ['D','1m'])) {
+    await page.mouse.move(0,0);
+    await page.evaluate(async tf=>{
+      const {useWorkspaceStore:s}=await (window.__hoverModules?.['/src/state/workspace.ts'] ?? import('/src/state/workspace.ts'));
+      for(const w of s.getState().windows.filter(w=>w.kind==='chart')) s.getState().setChartTimeframe(w.id,tf);
+    },tf);
+    await expect(page.locator('.legend-ohlc-open')).toHaveCount(Number(process.env.HOVER_WINDOWS ?? 3));
+    await page.waitForFunction(count=>[...window.__liveCharts.values()].length===count,Number(process.env.HOVER_WINDOWS ?? 3));
+    await page.waitForTimeout(1000); // settle data/MA setup outside measurement
+    await page.evaluate(async()=>{
+      const mods=await Promise.all([(window.__hoverModules?.['/src/live/indicators/maSeriesRegistry.ts'] ?? import('/src/live/indicators/maSeriesRegistry.ts')),(window.__hoverModules?.['/src/live/indicators/dailyMaSeriesRegistry.ts'] ?? import('/src/live/indicators/dailyMaSeriesRegistry.ts')),(window.__hoverModules?.['/src/live/indicators/paneLegendRegistry.ts'] ?? import('/src/live/indicators/paneLegendRegistry.ts'))]);
+      const series=new Set();
+      for(const m of mods)for(const store of Object.values(m)) if(store?.getState)for(const map of store.getState().byScope.values()) for(const item of map.values()) {
+        if(Array.isArray(item))item.forEach(x=>series.add(x.series)); else series.add(item);
+      }
+      window.__perfSeries=[...series];
+      for(const s of series) {
+        if(s.__originalData)continue;
+        s.__originalData=s.data.bind(s);s.__cachedData=s.data();
+        s.data=()=>{
+          const start=performance.now();const data=window.__useCached?s.__cachedData:s.__originalData();
+          const p=window.__hoverPerf;
+          if(p){p.dataCalls++;p.dataRows+=data.length;p.dataMs+=performance.now()-start;}
+          return data;
+        };
+      }
+      window.__panelProbe=document.querySelector('[aria-label="일별 투자자 내역"]')!==null;
+      const charts=[...window.__liveCharts.values()];
+      charts.forEach(c=>{const bars=c.panes()[0].getSeries().find(s=>s.seriesType()==='Candlestick').data();const last=c.timeScale().timeToIndex(bars.at(-1).time);c.timeScale().setVisibleLogicalRange({from:last-(window.__probeSpan??(window.__panelProbe?50:100)),to:last-5});});
+      if(!window.__originalRect){window.__originalRect=Element.prototype.getBoundingClientRect;Element.prototype.getBoundingClientRect=function(){if(window.__hoverPerf)window.__hoverPerf.rectReads++;return window.__originalRect.call(this);};}
+    });
+    for(const scenario of (process.env.HOVER_SCENARIOS?.split(',') ?? ['baseline','cached-data','format-cache','labels-off','other-group','same-bar'])) {
+      await page.mouse.move(0,0);
+      await page.evaluate(async({scenario,tf,tooltip})=>{
+        window.__useCached=scenario==='cached-data';
+        if(!window.__originalLocale){window.__formatters=new Map();window.__originalLocale=Number.prototype.toLocaleString;window.__cachedFormatter=new Intl.NumberFormat('ko-KR');Number.prototype.toLocaleString=function(locale,opts){if(window.__hoverPerf)window.__hoverPerf.formatCalls++;if(window.__formatAllCached){const key=JSON.stringify([locale,opts]);let f=window.__formatters.get(key);if(!f){f=new Intl.NumberFormat(locale,opts);window.__formatters.set(key,f);}return f.format(Number(this));}return window.__formatCached&&locale==='ko-KR'&&opts===undefined?window.__cachedFormatter.format(Number(this)):window.__originalLocale.call(this,locale,opts);};}
+        window.__formatCached=scenario==='format-cache';window.__formatAllCached=scenario==='format-all-cache';
+        const {useChartPrefsStore:p}=await (window.__hoverModules?.['/src/state/chartPrefs.ts'] ?? import('/src/state/chartPrefs.ts'));
+        const {useWorkspaceStore:s}=await (window.__hoverModules?.['/src/state/workspace.ts'] ?? import('/src/state/workspace.ts'));
+        p.getState().setToggle('candleTooltipEnabled',tooltip && scenario!=='tooltip-off');
+        p.getState().setToggle('highLowLabelsEnabled',scenario!=='labels-off');
+        const wins=s.getState().windows;
+        s.setState({windows:wins.map((w,i)=>({...w,group:i>0&&scenario==='other-group'?2:1,pinned:window.__panelProbe?undefined:{code:'098460',name:'고영',kind:'stock'}}))});
+        if(window.__panelProbe){
+          const {useInvestorDailyDisplayStore:inv}=await (window.__hoverModules?.['/src/state/investorDailyDisplay.ts']??import('/src/state/investorDailyDisplay.ts'));
+          const {useProgramTradeDisplayStore:prog}=await (window.__hoverModules?.['/src/state/programTradeDisplay.ts']??import('/src/state/programTradeDisplay.ts'));
+          inv.getState().setFollowCursor(!['follow-off','investor-follow-off'].includes(scenario));prog.getState().setDailyFollowCursor(!['follow-off','program-follow-off'].includes(scenario));
+          for(const w of s.getState().windows.filter(w=>w.kind==='chart'))s.getState().setChartHoverLinked(w.id,scenario!=='linked-off');
+          if(!window.__scrollDesc){window.__scrollDesc=Object.getOwnPropertyDescriptor(Element.prototype,'scrollTop');const d=window.__scrollDesc;Object.defineProperty(Element.prototype,'scrollTop',{...d,set(value){const p=window.__hoverPerf;if(p){const label=this.getAttribute('aria-label');p.scrollWrites.push({label,value});}d.set.call(this,value);}});}
+        }
+      },{scenario,tf,tooltip:process.env.HOVER_TOOLTIP==='1'});
+      await page.waitForTimeout(250);
+      if(process.env.HOVER_PANELS){await expect(page.locator('[data-testid^="investor-daily-row-"]')).toHaveCount(60);await expect(page.locator('[data-testid^="program-daily-row-"]')).toHaveCount(60);}
+      await page.evaluate(async()=>{
+        const mods=await Promise.all([(window.__hoverModules?.['/src/live/indicators/maSeriesRegistry.ts'] ?? import('/src/live/indicators/maSeriesRegistry.ts')),(window.__hoverModules?.['/src/live/indicators/dailyMaSeriesRegistry.ts'] ?? import('/src/live/indicators/dailyMaSeriesRegistry.ts')),(window.__hoverModules?.['/src/live/indicators/paneLegendRegistry.ts'] ?? import('/src/live/indicators/paneLegendRegistry.ts'))]);
+        const series=new Set();
+        for(const m of mods)for(const store of Object.values(m))if(store?.getState)for(const map of store.getState().byScope.values())for(const item of map.values()){
+          if(Array.isArray(item))item.forEach(x=>series.add(x.series));else series.add(item);
+        }
+        window.__perfSeries=[...series];
+        for(const s of series){
+          if(!s.__originalData){s.__originalData=s.data.bind(s);s.data=()=>{const start=performance.now();const data=window.__useCached?s.__cachedData:s.__originalData();const p=window.__hoverPerf;if(p){p.dataCalls++;p.dataRows+=data.length;p.dataMs+=performance.now()-start;}return data;};}
+          s.__cachedData=s.__originalData();
+        }
+      });
+      const box=await page.evaluate(()=>{const c=[...window.__liveCharts.values()][0];const el=c.panes()[0].getHTMLElement();const b=el.getBoundingClientRect();return {x:b.x,y:b.y,w:c.timeScale().width(),h:b.height};});
+      for(let repeat=0;repeat<Number(process.env.HOVER_REPEATS ?? 3);repeat++) {
+        await page.mouse.move(box.x+box.w*.3,box.y+box.h*.6);
+        await page.waitForTimeout(100);
+        await page.evaluate(()=>{
+          window.__hoverPerf={dataCalls:0,dataRows:0,dataMs:0,rectReads:0,frames:[],longTasks:[],crosshairEvents:0,cursorUpdates:0,sidebarUpdates:0,formatCalls:0,scrollWrites:[]};
+          const p=window.__hoverPerf;let last=performance.now();
+          function frame(t){if(window.__hoverPerf!==p)return;p.frames.push(t-last);last=t;requestAnimationFrame(frame);}requestAnimationFrame(frame);
+          const observer=new PerformanceObserver(list=>p.longTasks.push(...list.getEntries().map(e=>e.duration)));observer.observe({entryTypes:['longtask']});window.__perfObserver=observer;
+          window.__perfUnsub=window.__liveCursorStore.subscribe((s,prev)=>{if(s.syncCursorMs!==null&&s.syncCursorMs!==prev.syncCursorMs)p.cursorUpdates++;if(s.sidebarCursorMs!==prev.sidebarCursorMs)p.sidebarUpdates++;});
+          window.__perfCrosshair=()=>p.crosshairEvents++;[...window.__liveCharts.values()][0].subscribeCrosshairMove(window.__perfCrosshair);
+        });
+        if(process.env.HOVER_PROFILE && scenario==='baseline' && repeat===0){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');}
+        const requestStart=apiRequests.length;
+        const before=Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(x=>[x.name,x.value]));
+        for(let i=0;i<Number(process.env.HOVER_STEPS ?? 60);i++) {
+          const fx=scenario==='same-bar'?.5:.2+.6*(i%45)/44;
+          await page.mouse.move(box.x+box.w*fx,box.y+box.h*(.55+.1*Math.sin(i/8)));
+          if(process.env.HOVER_DWELL)await page.waitForTimeout(Number(process.env.HOVER_DWELL));
+          if(!process.env.HOVER_FAST)await page.evaluate(()=>new Promise(requestAnimationFrame));
+        }
+        if(process.env.HOVER_SETTLE)await page.waitForTimeout(Number(process.env.HOVER_SETTLE));
+        if(process.env.HOVER_PROFILE && scenario==='baseline' && repeat===0){const {profile}=await cdp.send('Profiler.stop');writeFileSync(`../docs/research/2026-09-19-hover-evidence/${tf}-${scenario}-${repeat}.cpuprofile`,JSON.stringify(profile));}
+        await page.evaluate(()=>new Promise(requestAnimationFrame));
+        const after=Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(x=>[x.name,x.value]));
+        const data=await page.evaluate(()=>{
+          const p=window.__hoverPerf;window.__hoverPerf=null;window.__perfObserver.disconnect();window.__perfUnsub();[...window.__liveCharts.values()][0].unsubscribeCrosshairMove(window.__perfCrosshair);
+          return {...p,investorRows:document.querySelectorAll('[data-testid^="investor-daily-row-"]').length,programRows:document.querySelectorAll('[data-testid^="program-daily-row-"]').length,seriesLengths:window.__perfSeries.map(s=>s.__cachedData.length),cursor:window.__liveCursorStore.getState().syncCursorMs,tooltips:document.querySelectorAll('[data-testid="candle-tooltip"]').length};
+        });
+        const delta={};for(const k of ['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'])delta[k]=after[k]-before[k];
+        const row={tf,scenario,repeat,...delta,...data,requests:apiRequests.slice(requestStart)};results.push(row);
+        console.log('MEASURE',JSON.stringify({...row,frames:undefined,longTasks:row.longTasks.length,seriesLengths:row.seriesLengths.slice(0,5)}));
+      }
+    }
+  }
+  writeFileSync(`../docs/research/2026-09-19-hover-evidence/${process.env.HOVER_OUTPUT ?? 'results'}.json`,JSON.stringify({browser:await page.context().browser()?.version(),panels:!!process.env.HOVER_PANELS,dwellMs:Number(process.env.HOVER_DWELL??0),inputPacing:process.env.HOVER_FAST?'CDP mouse moves, no extra rAF':'CDP mouse move plus rAF',windows:Number(process.env.HOVER_WINDOWS ?? 3),tooltip:process.env.HOVER_TOOLTIP==='1',cpuThrottle:Number(process.env.HOVER_THROTTLE ?? 1),steps:Number(process.env.HOVER_STEPS ?? 60),errors,results},null,2));
+  expect(errors).toEqual([]);
+  expect(results.every(r=>r.crosshairEvents>Math.min(30,Number(process.env.HOVER_STEPS??60)/2)&&r.cursor!==null)).toBe(true);
+  if(process.env.HOVER_TOOLTIP!=='1')expect(results.every(r=>r.tooltips===0)).toBe(true);
+
+});

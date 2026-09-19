@@ -1,0 +1,20 @@
+import * as workspace from './src/state/workspace';
+import * as prefs from './src/state/chartPrefs';
+import * as ma from './src/live/indicators/maSeriesRegistry';
+import * as dailyMa from './src/live/indicators/dailyMaSeriesRegistry';
+import * as panes from './src/live/indicators/paneLegendRegistry';
+import {useLiveCursorStore} from './src/live/useLiveCursorStore';
+Object.assign(window,{__liveCursorStore:useLiveCursorStore,__hoverModules:{
+  '/src/state/workspace.ts':workspace,
+  '/src/state/chartPrefs.ts':prefs,
+  '/src/live/indicators/maSeriesRegistry.ts':ma,
+  '/src/live/indicators/dailyMaSeriesRegistry.ts':dailyMa,
+  '/src/live/indicators/paneLegendRegistry.ts':panes,
+}});
+
+import * as investorDisplay from './src/state/investorDailyDisplay';
+import * as programDisplay from './src/state/programTradeDisplay';
+Object.assign(window.__hoverModules,{
+ '/src/state/investorDailyDisplay.ts':investorDisplay,
+ '/src/state/programTradeDisplay.ts':programDisplay,
+});

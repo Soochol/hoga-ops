@@ -1,0 +1,199 @@
+{
+  "source": "panels-dwell.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 1,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 2,
+      "TaskDurationMs": 1040.77,
+      "TaskDurationRangeMs": [
+        1035.65,
+        1045.88
+      ],
+      "ScriptDurationMs": 830.49,
+      "ScriptDurationRangeMs": [
+        830.26,
+        830.72
+      ],
+      "LayoutDurationMs": 9.58,
+      "LayoutDurationRangeMs": [
+        9.57,
+        9.59
+      ],
+      "dataCalls": 152.0,
+      "dataRows": 11744.0,
+      "dataMs": 1.25,
+      "rectReads": 188.0,
+      "LayoutCount": 14.0,
+      "crosshairEvents": 12.0,
+      "cursorUpdates": 8.0,
+      "frameP95Ms": 16.8,
+      "frameMaxMs": 50.1,
+      "framesOver25Ms": 30,
+      "frameSamples": 710,
+      "longTasks": 8,
+      "tooltips": [
+        0,
+        0
+      ],
+      "formatCalls": 37680.0,
+      "sidebarUpdates": 8.0,
+      "investorRows": 60.0,
+      "programRows": 60.0,
+      "scrollWrites": [
+        4,
+        4
+      ],
+      "requests": [
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "D",
+      "scenario": "follow-off",
+      "runs": 2,
+      "TaskDurationMs": 469.42,
+      "TaskDurationRangeMs": [
+        452.96,
+        485.88
+      ],
+      "ScriptDurationMs": 305.71,
+      "ScriptDurationRangeMs": [
+        279.75,
+        331.66
+      ],
+      "LayoutDurationMs": 8.82,
+      "LayoutDurationRangeMs": [
+        8.51,
+        9.14
+      ],
+      "dataCalls": 152.0,
+      "dataRows": 11744.0,
+      "dataMs": 0.95,
+      "rectReads": 132.0,
+      "LayoutCount": 14.0,
+      "crosshairEvents": 12.0,
+      "cursorUpdates": 8.0,
+      "frameP95Ms": 16.8,
+      "frameMaxMs": 33.4,
+      "framesOver25Ms": 19,
+      "frameSamples": 733,
+      "longTasks": 1,
+      "tooltips": [
+        0,
+        0
+      ],
+      "formatCalls": 15720.0,
+      "sidebarUpdates": 8.0,
+      "investorRows": 60.0,
+      "programRows": 60.0,
+      "scrollWrites": [
+        0,
+        0
+      ],
+      "requests": [
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "baseline",
+      "runs": 2,
+      "TaskDurationMs": 422.84,
+      "TaskDurationRangeMs": [
+        401.22,
+        444.46
+      ],
+      "ScriptDurationMs": 283.42,
+      "ScriptDurationRangeMs": [
+        273.91,
+        292.94
+      ],
+      "LayoutDurationMs": 5.37,
+      "LayoutDurationRangeMs": [
+        5.2,
+        5.55
+      ],
+      "dataCalls": 72.0,
+      "dataRows": 0.0,
+      "dataMs": 0.05,
+      "rectReads": 87.5,
+      "LayoutCount": 14.0,
+      "crosshairEvents": 12.0,
+      "cursorUpdates": 8.0,
+      "frameP95Ms": 16.8,
+      "frameMaxMs": 33.4,
+      "framesOver25Ms": 5,
+      "frameSamples": 747,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0
+      ],
+      "formatCalls": 16488.0,
+      "sidebarUpdates": 8.0,
+      "investorRows": 60.0,
+      "programRows": 60.0,
+      "scrollWrites": [
+        2,
+        0
+      ],
+      "requests": [
+        0,
+        0
+      ]
+    },
+    {
+      "timeframe": "1m",
+      "scenario": "follow-off",
+      "runs": 2,
+      "TaskDurationMs": 478.65,
+      "TaskDurationRangeMs": [
+        432.22,
+        525.08
+      ],
+      "ScriptDurationMs": 315.36,
+      "ScriptDurationRangeMs": [
+        306.65,
+        324.07
+      ],
+      "LayoutDurationMs": 6.02,
+      "LayoutDurationRangeMs": [
+        5.96,
+        6.09
+      ],
+      "dataCalls": 72.0,
+      "dataRows": 0.0,
+      "dataMs": 0.0,
+      "rectReads": 84.0,
+      "LayoutCount": 15.0,
+      "crosshairEvents": 12.0,
+      "cursorUpdates": 8.0,
+      "frameP95Ms": 16.8,
+      "frameMaxMs": 33.4,
+      "framesOver25Ms": 9,
+      "frameSamples": 743,
+      "longTasks": 0,
+      "tooltips": [
+        0,
+        0
+      ],
+      "formatCalls": 15756.0,
+      "sidebarUpdates": 8.0,
+      "investorRows": 60.0,
+      "programRows": 60.0,
+      "scrollWrites": [
+        0,
+        0
+      ],
+      "requests": [
+        0,
+        0
+      ]
+    }
+  ]
+}

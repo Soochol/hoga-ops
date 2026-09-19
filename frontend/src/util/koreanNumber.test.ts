@@ -27,3 +27,11 @@ describe('formatKoreanWonEok', () => {
     expect(formatKoreanWonEok(0)).toBe('0억');
   });
 });
+
+
+it.each([0, -0, 0.49, -0.49, 0.5, -0.5, 1234.567, -1234.567, 999999999999, NaN, Infinity, -Infinity])(
+  'preserves legacy rounding and locale output for %s', (value) => {
+    expect(formatKoreanInt(value)).toBe(Math.round(value).toLocaleString('ko-KR'));
+    expect(formatKoreanK(value)).toBe(`${Math.round(value / 1000).toLocaleString('ko-KR')}K`);
+  },
+);

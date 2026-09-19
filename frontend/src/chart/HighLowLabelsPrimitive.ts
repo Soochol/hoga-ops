@@ -1,3 +1,4 @@
+import { formatKoreanInt } from '../util/koreanNumber';
 import type {
   IChartApi,
   IPrimitivePaneRenderer,
@@ -359,7 +360,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         if (xc === null) continue;
 
         const fullText = formatExtremeLabel(item.e.price, item.e.pct);
-        const shortText = Math.round(item.e.price).toLocaleString('ko-KR');
+        const shortText = formatKoreanInt(item.e.price);
         const prev = this.previous.get(item.place);
         const label = chooseClearExtremeLabel({
           place: item.place, x: xc, y: yc, paneWidth, paneHeight,

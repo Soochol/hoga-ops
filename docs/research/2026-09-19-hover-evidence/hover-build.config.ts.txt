@@ -1,0 +1,7 @@
+import {defineConfig,mergeConfig} from 'vite';
+import base from './vite.config';
+export default mergeConfig(base,defineConfig({build:{outDir:'/tmp/hoga-hover-perf-dist',emptyOutDir:true},plugins:[{
+  name:'hover-diagnostic-handles',enforce:'pre',
+  transform(code,id){if(id.endsWith('/live/LiveChartRoot.tsx'))return code.replaceAll('import.meta.env.DEV','true');},
+  transformIndexHtml:{order:'pre',handler(){return [{tag:'script',attrs:{type:'module',src:'/hover-perf-entry.ts'},injectTo:'body'}];}}
+}]}));

@@ -1,0 +1,1 @@
+Exploratory runs with Playwright Clock.setFixedTime. Clock also installs timer/rAF instrumentation. Excluded from native before/after comparison. The final-* JSON files in the evidence root were rerun without time mocking.

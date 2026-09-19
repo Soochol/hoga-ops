@@ -1,11 +1,15 @@
+const koreanNumber = new Intl.NumberFormat('ko-KR');
+const koreanFractions = [0, 1, 2].map((maximumFractionDigits) =>
+  new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 0, maximumFractionDigits }));
+
 /** 차트 값 표시용 공유 정수 포맷터 — 거래량·순매수·Pane Legend 공통.
  *  반올림 후 ko-KR 천단위 구분(예: 311400 → "311,400", -1061741 → "-1,061,741"). */
 export const formatKoreanInt = (v: number): string =>
-  Math.round(v).toLocaleString('ko-KR');
+  koreanNumber.format(Math.round(v));
 
 /** 수량을 천 단위 K로 표시한다. 거래량 및 투자자 수량 축·레전드 공통. */
 export const formatKoreanK = (v: number): string =>
-  `${Math.round(v / 1000).toLocaleString('ko-KR')}K`;
+  `${koreanNumber.format(Math.round(v / 1000))}K`;
 
 /** 원화 금액을 국내 주식 UI에서 읽기 쉬운 억 단위로 표시한다.
  *  예: 169039074500 → "1,690억", -806001750 → "-8.1억". */
@@ -17,9 +21,6 @@ export function formatKoreanWonEok(value: number): string {
   const roundedValue = Object.is(Number(eok.toFixed(digits)), -0)
     ? 0
     : Number(eok.toFixed(digits));
-  const rounded = roundedValue.toLocaleString('ko-KR', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
+  const rounded = koreanFractions[digits].format(roundedValue);
   return `${rounded}억`;
 }

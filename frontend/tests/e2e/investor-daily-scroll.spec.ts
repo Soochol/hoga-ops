@@ -70,9 +70,12 @@ test('일별 투자자 총매수·총매도에서 단위 전환과 과거 스크
   const win = page.locator('[data-win]').filter({ has: scroller });
   const rows = win.getByTestId(/^investor-daily-row-/);
   await expect(rows).toHaveCount(60);
+  // Verify exact share values independently of the persisted K display preference.
+  const useK = win.getByRole('button', { name: 'K 단위', exact: true });
+  if (await useK.getAttribute('aria-pressed') === 'true') await useK.click();
   for (const side of ['총매수', '총매도']) {
     await win.getByRole('button', { name: side, exact: true }).click();
-    await expect(win.getByText(`일별 ${side} · 오늘은 잠정`)).toBeVisible();
+    await expect(win.getByRole('button', { name: side, exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(rows.first().getByRole('cell').nth(1)).toHaveText(side === '총매수' ? '120' : '130');
   }
   await win.getByRole('button', { name: /표시 단위/ }).click();
@@ -85,7 +88,7 @@ test('일별 투자자 총매수·총매도에서 단위 전환과 과거 스크
   await expect.poll(() => rows.count()).toBeGreaterThan(100);
   expect(new Set(requests.filter((r) => r.side === 'sell' && r.axis === 'amount').map((r) => r.from)).size).toBeGreaterThanOrEqual(2);
   await win.getByRole('button', { name: '순매수', exact: true }).click();
-  await expect(win.getByText('일별 순매수 · 오늘은 잠정')).toBeVisible();
+  await expect(win.getByRole('button', { name: '순매수', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(rows).toHaveCount(60);
 });
 
@@ -138,8 +141,10 @@ test('같은 그룹의 커서 날짜로 이동하고 과거를 조회하며 따�
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(position);
   await win.getByRole('button', { name: '커서 따라가기' }).click();
   await publish(recentFrom);
-  await expect(win.getByText(new RegExp(`커서 날짜 ${recentFrom}`))).toBeVisible();
+  // Follow OFF stops scrolling; date highlighting remains active.
+  await expect(target).toHaveClass(/bg-tint-selection/);
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(position);
   await publish('19990101', false);
-  await expect(win.getByText(/커서 날짜 19990101/)).toHaveCount(0);
+  await expect(win.locator('tr.bg-tint-selection')).toHaveCount(0);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(position);
 });

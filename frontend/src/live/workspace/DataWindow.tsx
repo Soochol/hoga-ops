@@ -169,13 +169,18 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
  * 그룹 게이트된 스팟 커서 — 같은 링크 그룹 차트 창의 호버만 통과시킨다
  * (ADR-0119 PR-D 크로스헤어 버스). 다른 그룹 차트를 호버 중이면 latest 유지.
  */
-function useGroupCursor(group: GroupId): { cursorMs: number | null; timeframe: LiveTimeframe | null } {
-  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
-  const origin = useLiveCursorStore((s) => s.sidebarCursorOrigin);
+function useGroupCursor(group: GroupId, enabled = true): { cursorMs: number | null; timeframe: LiveTimeframe | null } {
+  const cursorMs = useLiveCursorStore((s) => enabled && s.sidebarCursorOrigin?.group === group ? s.sidebarCursorMs : null);
+  const origin = useLiveCursorStore((s) => enabled && s.sidebarCursorOrigin?.group === group ? s.sidebarCursorOrigin : null);
   if (cursorMs === null || origin === null || origin.group !== group) {
     return { cursorMs: null, timeframe: null };
   }
   return { cursorMs, timeframe: origin.timeframe };
+}
+
+function useGroupCursorDate(group: GroupId): string | null {
+  return useLiveCursorStore((s) => s.sidebarCursorMs !== null && s.sidebarCursorOrigin?.group === group
+    ? realMsToYyyymmdd(s.sidebarCursorMs) : null);
 }
 
 /** 매물대·프로그램의 연동 대기 카드 — 같은 그룹에 차트 창이 없을 때. */
@@ -778,13 +783,12 @@ function TradeWindow({ code }: { code: string }) {
 
 /** 일별 투자자 — 커서 날짜만 위에서 풀어 넘긴다.
  *
- *  `useGroupCursor` 를 표 컴포넌트 안에서 부르지 않는 이유: 그러면 표가 워크스페이스
+ *  `useGroupCursorDate` 를 표 컴포넌트 안에서 부르지 않는 이유: 그러면 표가 워크스페이스
  *  스토어에 묶여 단위 테스트가 그룹 배선까지 세워야 한다. 거래원·프로그램 창과 같은
  *  의미론(같은 링크 그룹 차트의 호버만 통과)을 여기 한 겹에서 해석한다.
  */
 function InvestorDailyPane({ win, code }: { win: WorkspaceWindow; code: string }) {
-  const { cursorMs } = useGroupCursor(win.group);
-  const cursorDate = cursorMs === null ? null : realMsToYyyymmdd(cursorMs);
+  const cursorDate = useGroupCursorDate(win.group);
   return <InvestorDailyWindow code={code} cursorDate={cursorDate} />;
 }
 
@@ -951,10 +955,11 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
 
 function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const link = useGroupChartLink(win.group);
-  const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
+  const programView = useProgramTradeDisplayStore((s) => s.view);
+  const cursorDate = useGroupCursorDate(win.group);
+  const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group, programView !== 'daily');
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const linked = link !== null && link.code === code;
-  const programView = useProgramTradeDisplayStore((s) => s.view);
   const dailyTo = link?.todayKst ?? '';
   const dailyFrom = dailyTo ? subtractDaysKst(dailyTo, 130) : '';
   const dailyProgram = useLiveDailyProgramTrade(
@@ -987,7 +992,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <ProgramTradeSummaryCard
         series={series}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
-        cursorDate={cursorMs === null ? null : realMsToYyyymmdd(cursorMs)}
+        cursorDate={cursorDate}
         closePoints={closePoints}
         // 거래원식 오늘 스코프 — 마지막 점이 오늘이 아니면(새날 아침) 전일 마감
         // 누적을 현재값처럼 보여주지 않고 빈 상태로 리셋한다.

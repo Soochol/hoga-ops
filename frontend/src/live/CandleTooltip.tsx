@@ -86,8 +86,8 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const quoteTotalsIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
   const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
-  const resolution = useCursorSyncResolution({ candles: bundle.candles, timeframe, code: bundle.code ?? null });
   const syncEnabled = enabled && cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe);
+  const resolution = useCursorSyncResolution({ candles: bundle.candles, timeframe, code: bundle.code ?? null, enabled: syncEnabled });
   const syncKind = syncEnabled ? resolution.kind : 'none';
   const syncTarget = syncEnabled && resolution.kind === 'hit' ? resolution.candle : null;
   const tipRef = useRef<HTMLDivElement>(null);

@@ -26,9 +26,11 @@ export function investorDailySummary(data: LivePastInvestorNetResponse | undefin
   };
 }
 
+const investorKFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
 export function formatInvestorK(value: number, signed = false): string {
   const prefix = value < 0 ? '−' : signed && value > 0 ? '+' : '';
   const abs = Math.abs(value);
   if (abs > 0 && abs < 1000) return `${prefix}<1K`;
-  return `${prefix}${(abs / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })}K`;
+  return `${prefix}${investorKFormatter.format(abs / 1000)}K`;
 }

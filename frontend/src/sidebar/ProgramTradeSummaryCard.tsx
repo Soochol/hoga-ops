@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
@@ -171,16 +171,34 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
   const setFollowCursor = useProgramTradeDisplayStore((s) => s.setDailyFollowCursor);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followedRef = useRef<string | null>(null);
-  const rows = [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span);
-  const totals = rows.reduce((sum, row) => ({
+  const rows = useMemo(() => [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span), [points, span]);
+  const totals = useMemo(() => rows.reduce((sum, row) => ({
     net: sum.net + (row.net_qty ?? 0),
     buy: sum.buy + (row.buy_qty ?? 0),
     sell: sum.sell + (row.sell_qty ?? 0),
-  }), { net: 0, buy: 0, sell: 0 });
+  }), { net: 0, buy: 0, sell: 0 }), [rows]);
   const labels: Record<ProgramDailyDisplay, string> = {
     all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
   };
-  const format = (value: number | null) => value == null ? '-' : useK ? formatKoreanK(value) : formatKoreanInt(value);
+  const format = useMemo(() => (value: number | null) => value == null ? '-' : useK ? formatKoreanK(value) : formatKoreanInt(value), [useK]);
+  const rowContents = useMemo(() => rows.map((row) => {
+    const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
+    return {
+      date: realMsToYyyymmdd(row.t_ms),
+      cells: <>
+        <th scope="row" className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-1.5 py-1 text-left font-normal text-fg-dim">
+          {formatDailyDate(row.t_ms)}
+        </th>
+        {display === 'all'
+          ? <InvestorDailySummaryCell values={values} unit="qty_shares" useK={useK} divided={false} />
+          : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
+      </>,
+    };
+  }), [rows, display, useK, format]);
+  const totalCells = useMemo(() => display === 'all'
+    ? <InvestorDailySummaryCell values={totals} unit="qty_shares" useK={useK} foot divided={false} />
+    : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />,
+  [display, totals, useK, format]);
   useEffect(() => {
     if (!followCursor || cursorDate === null) return;
     const targetKey = `${span}:${cursorDate}`;
@@ -230,27 +248,13 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
                 <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
                 <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램</th>
               </tr></thead>
-              <tbody>{rows.map((row) => {
-                const values = { net: row.net_qty, buy: row.buy_qty, sell: row.sell_qty };
-                const rowDate = realMsToYyyymmdd(row.t_ms);
-                const isCursor = followCursor && cursorDate === rowDate;
-                return <tr key={row.t_ms} data-testid={`program-daily-row-${rowDate}`}
-                  className={isCursor ? 'bg-tint-selection' : undefined}>
-                  <th scope="row" className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-1.5 py-1 text-left font-normal text-fg-dim">
-                    {formatDailyDate(row.t_ms)}
-                  </th>
-                  {display === 'all'
-                    ? <InvestorDailySummaryCell values={values} unit="qty_shares" useK={useK} divided={false} />
-                    : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
-                </tr>;
-              })}</tbody>
+              <tbody>{rowContents.map(({ date, cells }) => <ProgramDailyRow key={date} date={date}
+                isCursor={followCursor && cursorDate === date} cells={cells} />)}</tbody>
               <tfoot className="sticky bottom-0 z-20"><tr>
                 <th className="sticky left-0 z-10 whitespace-nowrap border-t border-border bg-bg-card px-1.5 py-1 text-left font-medium">
                   누적 {rows.length}일
                 </th>
-                {display === 'all'
-                  ? <InvestorDailySummaryCell values={totals} unit="qty_shares" useK={useK} foot divided={false} />
-                  : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />}
+                {totalCells}
               </tr></tfoot>
             </table>}
     </div>
@@ -692,3 +696,13 @@ function signedClass(value: number | null): string {
   if (value === null || value === 0) return 'text-fg-dimmer';
   return value > 0 ? 'text-price-up' : 'text-price-down';
 }
+
+
+const ProgramDailyRow = memo(function ProgramDailyRow({ date, isCursor, cells }: {
+  date: string;
+  isCursor: boolean;
+  cells: ReactNode;
+}) {
+  return <tr data-testid={`program-daily-row-${date}`}
+    className={isCursor ? 'bg-tint-selection' : undefined}>{cells}</tr>;
+});

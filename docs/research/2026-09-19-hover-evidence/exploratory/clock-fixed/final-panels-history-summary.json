@@ -1,0 +1,52 @@
+{
+  "source": "final-panels-history.json",
+  "browser": "153.0.8010.52",
+  "cpuThrottle": 1,
+  "rows": [
+    {
+      "timeframe": "D",
+      "scenario": "baseline",
+      "runs": 1,
+      "TaskDurationMs": 510.64,
+      "TaskDurationRangeMs": [
+        510.64,
+        510.64
+      ],
+      "ScriptDurationMs": 159.2,
+      "ScriptDurationRangeMs": [
+        159.2,
+        159.2
+      ],
+      "LayoutDurationMs": 48.44,
+      "LayoutDurationRangeMs": [
+        48.44,
+        48.44
+      ],
+      "dataCalls": 204,
+      "dataRows": 18432,
+      "dataMs": 2,
+      "rectReads": 216,
+      "LayoutCount": 27,
+      "crosshairEvents": 12,
+      "cursorUpdates": 12,
+      "frameP95Ms": 17,
+      "frameMaxMs": 61,
+      "framesOver25Ms": 4,
+      "frameSamples": 374,
+      "longTasks": 0,
+      "tooltips": [
+        0
+      ],
+      "formatCalls": 0,
+      "sidebarUpdates": 12,
+      "investorRows": 120,
+      "programRows": 60,
+      "scrollWrites": [
+        4
+      ],
+      "requests": [
+        3
+      ]
+    }
+  ]
+}
