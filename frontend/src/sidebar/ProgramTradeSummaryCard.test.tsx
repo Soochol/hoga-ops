@@ -152,6 +152,21 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText(/프로그램 순매수 데이터 없음/)).toBeInTheDocument();
   });
 
+  it('keeps the view switch available when intraday data is empty', () => {
+    render(<ProgramTradeSummaryCard series={null} dailyPoints={[{
+      t_ms: T0,
+      net_qty: 10,
+      buy_qty: 70,
+      sell_qty: 60,
+    }]} />);
+
+    expect(screen.getByRole('button', { name: '당일 누적' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '일별' }));
+
+    expect(screen.getByRole('button', { name: '일별' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
   it('shows net/buy/sell together and switches all values between amount and quantity', () => {
     const series = seriesOf([
       point(T0, 100_000_000, {
