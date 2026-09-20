@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import type { PaneGroupStretchMap } from '../chart/paneGroups';
 import { paneGroupStretch, type PaneSpecGroup } from './paneGroupSpecs';
@@ -47,15 +47,24 @@ export function usePaneFolding(
   groups: readonly PaneSpecGroup[],
   paneStretch: PaneStretchMap,
   groupStretchOverrides?: PaneGroupStretchMap,
-): [PaneGroupFoldResult, (el: HTMLElement | null) => void] {
+): [PaneGroupFoldResult, (el: HTMLElement | null) => void, () => void] {
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [heightPx, setHeightPx] = useState(0);
+  // 사용자가 접힌 지표를 명시적으로 되살린 동안만 자동 접기를 우회한다. 다음 창 크기
+  // 변경에서 자동 모드로 돌아가므로 저장 설정이나 이후 레이아웃을 바꾸지 않는다.
+  const [showAll, setShowAll] = useState(false);
+  const measuredHeightRef = useRef(0);
 
   useEffect(() => {
     if (!el) return undefined;
+    // 같은 높이의 새 노드로 교체돼도 명시 복원 상태를 넘기지 않는다.
+    measuredHeightRef.current = Number.NaN;
     // 서브픽셀 진동으로 재계산이 도는 것을 막는다 — 0.5px 미만 변화는 무시.
     const push = (h: number): void => {
-      setHeightPx((prev) => (Math.abs(prev - h) < 0.5 ? prev : h));
+      if (Math.abs(measuredHeightRef.current - h) < 0.5) return;
+      measuredHeightRef.current = h;
+      setShowAll(false);
+      setHeightPx(h);
     };
     push(el.clientHeight);
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -81,15 +90,29 @@ export function usePaneFolding(
     return next;
   }, [groups, heightPx, paneStretch, groupStretchOverrides]);
 
+  const revealAll = useCallback(() => setShowAll(true), []);
+
+  // 지표 구성 자체가 바뀌면 새 구성은 자동 접기 정책으로 다시 판정한다.
+  useEffect(() => setShowAll(false), [groups]);
+
+  const effectiveFoldedCount = showAll ? 0 : foldedCount;
+  const effectiveTimeAxisVisible = showAll ? true : timeAxisVisible;
+
   // 목록 identity 는 (원본, 접힘 수)에만 의존한다 — 드래그 중 높이가 1px 씩 바뀌어도
   // 접힘 수가 그대로면 같은 배열을 돌려줘 하위 재조정이 돌지 않는다.
   const foldedGroups = useMemo(
-    () => (foldedCount === 0 ? groups : groups.slice(0, groups.length - foldedCount)),
-    [groups, foldedCount],
+    () => (effectiveFoldedCount === 0
+      ? groups
+      : groups.slice(0, groups.length - effectiveFoldedCount)),
+    [groups, effectiveFoldedCount],
   );
 
   // 결과 객체는 접힘 수가 그대로면 같은 필드값을 돌려주지만 객체 자체는 매 렌더
   // 새로 만든다 — 소비처가 구조분해로 받아 쓰므로(위 `foldedGroups` 의 identity 가
   // 실제 계약) 여기서 memo 할 이득이 없다. 튜플로 감싸도 같다.
-  return [{ groups: foldedGroups, foldedCount, timeAxisVisible }, setEl];
+  return [{
+    groups: foldedGroups,
+    foldedCount: effectiveFoldedCount,
+    timeAxisVisible: effectiveTimeAxisVisible,
+  }, setEl, revealAll];
 }

@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { FoldedPaneNotice } from './FoldedPaneNotice';
 
 describe('FoldedPaneNotice', () => {
@@ -8,9 +9,14 @@ describe('FoldedPaneNotice', () => {
     expect(screen.queryByTestId('folded-pane-notice')).toBeNull();
   });
 
-  it('접힌 개수를 표시한다', () => {
-    render(<FoldedPaneNotice count={3} />);
-    expect(screen.getByTestId('folded-pane-notice')).toHaveTextContent('지표 3 숨김');
+  it('접힌 개수와 즉시 복원 동작을 표시한다', async () => {
+    const onShowAll = vi.fn();
+    render(<FoldedPaneNotice count={3} onShowAll={onShowAll} />);
+    const notice = screen.getByRole('button', { name: /지표 3개/ });
+    expect(notice).toHaveTextContent('지표 3 숨김');
+    expect(notice).toHaveTextContent('모두 표시');
+    await userEvent.click(notice);
+    expect(onShowAll).toHaveBeenCalledOnce();
   });
 
   // 이 알림의 존재 이유 — 사용자가 "지표가 꺼졌다"고 오해하고 드로어를 다시 만지는 것을
@@ -22,9 +28,9 @@ describe('FoldedPaneNotice', () => {
     expect(label).toContain('창을 키우면');
   });
 
-  it('크로스헤어를 가리지 않도록 포인터 이벤트를 받지 않는다', () => {
-    render(<FoldedPaneNotice count={1} />);
-    expect(screen.getByTestId('folded-pane-notice')).toHaveStyle({ pointerEvents: 'none' });
+  it('복원 버튼만 포인터 이벤트를 받는다', () => {
+    render(<FoldedPaneNotice count={1} onShowAll={() => {}} />);
+    expect(screen.getByTestId('folded-pane-notice')).toHaveStyle({ pointerEvents: 'auto' });
   });
 
   // 시간축이 보이는데 바닥에 붙이면 눈금 라벨을 덮는다. 글랜스 티어에서 축이 숨으면
