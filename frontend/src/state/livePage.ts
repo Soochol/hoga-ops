@@ -55,8 +55,14 @@ import {
 } from './chartPrefs';
 import {
   profileKeyForTimeframe,
+  INDICATOR_PANE_PROFILE_KEYS,
   type PanePrefKey,
 } from '../live/indicators/indicatorPaneProfiles';
+import {
+  normalizePaneGroupStretchByTimeframe,
+  type PaneGroupStretchByTimeframe,
+  type PaneStretchByTimeframe,
+} from './paneStretchByTimeframe';
 import {
   instrumentToActiveCode,
   isLiveInstrument,
@@ -293,10 +299,13 @@ type Store = Persisted & IndicatorSettings & {
   /** 병합 그룹별 y축 모드 오버라이드(shared/isolated/left) — 키는 구성(정렬 join),
    *  없는 키는 화이트리스트 기본값(`resolveAxisMode`). */
   paneAxisMode: PaneAxisModeMap;
-  /** 병합 그룹별 stretch 오버라이드 — 없는 키는 멤버 최대값 파생. */
+  /** Provider 밖 ambient 봉의 병합 그룹 stretch 투영. */
   paneGroupStretch: PaneGroupStretchMap;
-  /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
+  /** Provider 밖 ambient 봉의 pane stretch 투영. */
   paneStretch: PaneStretchMap;
+  /** 봉 프로필별 pane 높이 원본. 위 flat 두 필드는 ambient 봉 투영이다. */
+  paneGroupStretchByTimeframe: PaneGroupStretchByTimeframe;
+  paneStretchByTimeframe: PaneStretchByTimeframe;
   /** 앱 전역 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). 창 세트의
    *  **시드·폴백 뿌리**다. (ADR-0146 의 페이지 축은 ADR-0157 로 걷혔다.) */
   indicatorsByTimeframe: IndicatorSettingsByTimeframe;
@@ -437,12 +446,16 @@ type Store = Persisted & IndicatorSettings & {
   /** 병합 그룹 하나의 y축 모드를 지정한다(칩 메뉴 「y축 공유/분리/왼쪽 축」). */
   setPaneAxisMode: (members: readonly PaneId[], mode: PaneAxisMode) => void;
   /** 병합 그룹 하나의 stretch 를 그룹 키에 기록한다(separator 드래그 캡처). */
-  setPaneGroupStretch: (members: readonly PaneId[], factor: number) => void;
+  setPaneGroupStretch: (members: readonly PaneId[], factor: number, timeframe?: LiveTimeframe) => void;
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
-  setPaneStretch: (patch: PaneStretchMap) => void;
+  setPaneStretch: (patch: PaneStretchMap, timeframe?: LiveTimeframe) => void;
   /** separator 종료 스냅샷을 단일 store commit 으로 저장한다. */
-  setPaneLayoutStretch: (panePatch: PaneStretchMap, groupPatch: PaneGroupStretchMap) => void;
+  setPaneLayoutStretch: (
+    panePatch: PaneStretchMap,
+    groupPatch: PaneGroupStretchMap,
+    timeframe?: LiveTimeframe,
+  ) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4).
    *  대상은 **공용 세트뿐이다** — 분리된 창은 영향받지 않는다. 프리셋은 "모든
    *  창의 기본 구성"을 갈아끼우는 물건이고, 분리는 사용자가 그 창을 기본에서
@@ -614,8 +627,12 @@ export const useLivePageStore = create<Store>((set, get) => {
       paneOrder: s.paneOrder,
       paneGroups: s.paneGroups,
       paneAxisMode: s.paneAxisMode,
-      paneGroupStretch: s.paneGroupStretch,
-      paneStretch: s.paneStretch,
+      // 구 빌드 호환 flat 필드는 minute 프로필의 미러다. 런타임 flat 필드는
+      // Provider 밖 ambient 봉 투영일 수 있으므로 그대로 쓰면 D 편집이 분봉에 샌다.
+      paneGroupStretch: s.paneGroupStretchByTimeframe.minute ?? {},
+      paneStretch: s.paneStretchByTimeframe.minute ?? {},
+      paneGroupStretchByTimeframe: s.paneGroupStretchByTimeframe,
+      paneStretchByTimeframe: s.paneStretchByTimeframe,
       byTimeframe: s.indicatorsByTimeframe,
       byWindow: s.indicatorsByWindow,
     });
@@ -691,8 +708,11 @@ export const useLivePageStore = create<Store>((set, get) => {
    *  chartPrefs 의 indicator-modal 투영(PR-B)도 같은 틱에 함께 맞춘다. */
   const projectIndicatorsFor = (tf: LiveTimeframe): Partial<Store> => {
     syncIndicatorModalTimeframe(tf);
+    const profileKey = profileKeyForTimeframe(tf);
     return {
       indicatorTimeframe: tf,
+      paneStretch: get().paneStretchByTimeframe[profileKey] ?? {},
+      paneGroupStretch: get().paneGroupStretchByTimeframe[profileKey] ?? {},
       ...resolveIndicatorSettings(get().indicatorsByTimeframe, tf),
     };
   };
@@ -703,8 +723,14 @@ export const useLivePageStore = create<Store>((set, get) => {
     paneOrder: initialIndicatorsV2.paneOrder,
     paneGroups: initialIndicatorsV2.paneGroups,
     paneAxisMode: initialIndicatorsV2.paneAxisMode,
-    paneGroupStretch: initialIndicatorsV2.paneGroupStretch,
-    paneStretch: initialIndicatorsV2.paneStretch,
+    paneGroupStretch: initialIndicatorsV2.paneGroupStretchByTimeframe[
+      profileKeyForTimeframe(initialPage.candleTimeframe)
+    ] ?? {},
+    paneStretch: initialIndicatorsV2.paneStretchByTimeframe[
+      profileKeyForTimeframe(initialPage.candleTimeframe)
+    ] ?? {},
+    paneGroupStretchByTimeframe: initialIndicatorsV2.paneGroupStretchByTimeframe,
+    paneStretchByTimeframe: initialIndicatorsV2.paneStretchByTimeframe,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorsByWindow: initialIndicatorsV2.byWindow,
     indicatorTimeframe: initialPage.candleTimeframe,
@@ -753,6 +779,11 @@ export const useLivePageStore = create<Store>((set, get) => {
         paneGroups: groups,
         paneAxisMode: normalizePaneAxisMode(get().paneAxisMode, groups),
         paneGroupStretch: normalizePaneGroupStretch(get().paneGroupStretch, groups),
+        paneGroupStretchByTimeframe: normalizePaneGroupStretchByTimeframe(
+          get().paneGroupStretchByTimeframe,
+          get().paneGroupStretch,
+          groups,
+        ),
       });
       persistIndicators();
     },
@@ -765,6 +796,11 @@ export const useLivePageStore = create<Store>((set, get) => {
         // 새 구성과 매칭되는 키만 유지 — 해체·재구성된 그룹의 오버라이드는 기본값으로.
         paneAxisMode: normalizePaneAxisMode(get().paneAxisMode, normalized),
         paneGroupStretch: normalizePaneGroupStretch(get().paneGroupStretch, normalized),
+        paneGroupStretchByTimeframe: normalizePaneGroupStretchByTimeframe(
+          get().paneGroupStretchByTimeframe,
+          get().paneGroupStretch,
+          normalized,
+        ),
       });
       persistIndicators();
     },
@@ -780,31 +816,64 @@ export const useLivePageStore = create<Store>((set, get) => {
       persistIndicators();
     },
 
-    setPaneGroupStretch: (members, factor) => {
+    setPaneGroupStretch: (members, factor, timeframe = get().indicatorTimeframe) => {
       if (members.length <= 1) return;
       if (!Number.isFinite(factor) || factor <= 0) return;
+      const current = get();
+      const key = profileKeyForTimeframe(timeframe);
+      const bucket = normalizePaneGroupStretch(
+        { ...(current.paneGroupStretchByTimeframe[key] ?? {}), [paneGroupKey(members)]: factor },
+        current.paneGroups,
+      );
       set({
-        paneGroupStretch: normalizePaneGroupStretch(
-          { ...get().paneGroupStretch, [paneGroupKey(members)]: factor },
-          get().paneGroups,
-        ),
+        paneGroupStretchByTimeframe: {
+          ...current.paneGroupStretchByTimeframe,
+          [key]: bucket,
+        },
+        ...(key === profileKeyForTimeframe(current.indicatorTimeframe)
+          ? { paneGroupStretch: bucket }
+          : {}),
       });
       persistIndicators();
     },
 
-    setPaneStretch: (patch) => {
-      set({ paneStretch: normalizePaneStretch({ ...get().paneStretch, ...patch }) });
+    setPaneStretch: (patch, timeframe = get().indicatorTimeframe) => {
+      const current = get();
+      const key = profileKeyForTimeframe(timeframe);
+      const bucket = normalizePaneStretch({
+        ...(current.paneStretchByTimeframe[key] ?? {}),
+        ...patch,
+      });
+      set({
+        paneStretchByTimeframe: { ...current.paneStretchByTimeframe, [key]: bucket },
+        ...(key === profileKeyForTimeframe(current.indicatorTimeframe)
+          ? { paneStretch: bucket }
+          : {}),
+      });
       persistIndicators();
     },
 
-    setPaneLayoutStretch: (panePatch, groupPatch) => {
+    setPaneLayoutStretch: (panePatch, groupPatch, timeframe = get().indicatorTimeframe) => {
       const current = get();
+      const key = profileKeyForTimeframe(timeframe);
+      const paneBucket = normalizePaneStretch({
+        ...(current.paneStretchByTimeframe[key] ?? {}),
+        ...panePatch,
+      });
+      const groupBucket = normalizePaneGroupStretch(
+        { ...(current.paneGroupStretchByTimeframe[key] ?? {}), ...groupPatch },
+        current.paneGroups,
+      );
       set({
-        paneStretch: normalizePaneStretch({ ...current.paneStretch, ...panePatch }),
-        paneGroupStretch: normalizePaneGroupStretch(
-          { ...current.paneGroupStretch, ...groupPatch },
-          current.paneGroups,
-        ),
+        paneStretchByTimeframe: { ...current.paneStretchByTimeframe, [key]: paneBucket },
+        paneGroupStretchByTimeframe: {
+          ...current.paneGroupStretchByTimeframe,
+          [key]: groupBucket,
+        },
+        ...(key === profileKeyForTimeframe(current.indicatorTimeframe) ? {
+          paneStretch: paneBucket,
+          paneGroupStretch: groupBucket,
+        } : {}),
       });
       persistIndicators();
     },
@@ -815,6 +884,9 @@ export const useLivePageStore = create<Store>((set, get) => {
       const byTimeframe = applyPresetEnableByTimeframe(s.indicatorsByTimeframe, byTimeframeEnable);
       const nextPaneOrder = normalizePaneOrder(paneOrder);
       const nextPaneStretch = normalizePaneStretch(paneStretch);
+      const nextPaneStretchByTimeframe = Object.fromEntries(
+        INDICATOR_PANE_PROFILE_KEYS.map((key) => [key, { ...nextPaneStretch }]),
+      ) as PaneStretchByTimeframe;
       set({
         paneOrder: nextPaneOrder,
         // 프리셋 payload 엔 그룹이 없다(레이아웃 프리셋은 flat 순서만 나른다) —
@@ -823,6 +895,12 @@ export const useLivePageStore = create<Store>((set, get) => {
         paneAxisMode: {},
         paneGroupStretch: {},
         paneStretch: nextPaneStretch,
+        paneGroupStretchByTimeframe: normalizePaneGroupStretchByTimeframe(
+          undefined,
+          {},
+          paneGroupsFromOrder(nextPaneOrder),
+        ),
+        paneStretchByTimeframe: nextPaneStretchByTimeframe,
         indicatorsByTimeframe: byTimeframe,
         ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
       });
@@ -920,12 +998,15 @@ export const useLivePageStore = create<Store>((set, get) => {
 
     hydrateIndicatorsFromStorage: () => {
       const stored = readIndicatorsV2Storage();
+      const profileKey = profileKeyForTimeframe(get().indicatorTimeframe);
       set({
         paneOrder: stored.paneOrder,
         paneGroups: stored.paneGroups,
         paneAxisMode: stored.paneAxisMode,
-        paneGroupStretch: stored.paneGroupStretch,
-        paneStretch: stored.paneStretch,
+        paneGroupStretch: stored.paneGroupStretchByTimeframe[profileKey] ?? {},
+        paneStretch: stored.paneStretchByTimeframe[profileKey] ?? {},
+        paneGroupStretchByTimeframe: stored.paneGroupStretchByTimeframe,
+        paneStretchByTimeframe: stored.paneStretchByTimeframe,
         indicatorsByTimeframe: stored.byTimeframe,
         // `/study` 세트도 함께 받는다 — 안 받으면 이 탭의 스토어엔 다른 탭이 바꾼
         // 값이 없고, 이 탭의 다음 편집이 `persistIndicators` 로 그것을 덮어 지운다.

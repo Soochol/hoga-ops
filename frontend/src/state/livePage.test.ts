@@ -311,7 +311,13 @@ describe('useLivePageStore.setPaneOrder', () => {
 describe('useLivePageStore.setPaneStretch', () => {
   beforeEach(() => {
     localStorage.clear();
-    useLivePageStore.setState({ paneStretch: {} });
+    useLivePageStore.setState({
+      indicatorTimeframe: '1m',
+      paneStretch: {},
+      paneStretchByTimeframe: {},
+      paneGroupStretch: {},
+      paneGroupStretchByTimeframe: {},
+    });
   });
 
   it('merges the patch and persists to live.indicators.v2', () => {

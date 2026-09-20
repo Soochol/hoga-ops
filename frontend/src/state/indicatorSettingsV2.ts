@@ -4,7 +4,6 @@ import {
   flattenPaneGroups,
   normalizePaneAxisMode,
   normalizePaneGroups,
-  normalizePaneGroupStretch,
   paneGroupsFromOrder,
   type PaneAxisModeMap,
   type PaneGroups,
@@ -25,11 +24,17 @@ import {
   type IndicatorPaneProfileKey,
 } from '../live/indicators/indicatorPaneProfiles';
 import type { LiveTimeframe } from './livePage';
+import {
+  normalizePaneGroupStretchByTimeframe,
+  normalizePaneStretchByTimeframe,
+  type PaneGroupStretchByTimeframe,
+  type PaneStretchByTimeframe,
+} from './paneStretchByTimeframe';
 
 /**
  * per-timeframe 지표 설정 v2 (지도 #694 / 최종 스펙 #699).
  *
- * 저장 모델: `live.indicators.v2` = { paneOrder·paneStretch(전역 레이아웃)
+ * 저장 모델: `live.indicators.v2` = { paneOrder(전역)·paneStretch(봉 프로필별 레이아웃)
  * + byTimeframe/studyByTimeframe(페이지 세트) + byWindow(창 세트) }. 각 세트는
  * 분/D/W/M 4버킷 sparse 오버라이드이고, 읽기 = 공장 기본값 ⊕ 그 봉 버킷이다.
  * flat 상속과 `panePrefsByTimeframe` 병합(구 모델)은 폐지 — 기존 pane 토글 7종도
@@ -98,9 +103,11 @@ export type PersistedIndicatorsV2 = {
   /** 병합 그룹별 stretch 오버라이드 — separator 드래그가 그룹 키에 기록(멤버 개별
    *  값 오염 없이, 분리 시 각자의 옛 크기가 살아난다). 같은 스테일 소멸 규칙. */
   paneGroupStretch: PaneGroupStretchMap;
-  /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
-   *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
+  /** 구 빌드 호환용 minute Pane 크기 가중치 미러. 새 코드는 아래 봉별 원본을 쓴다. */
   paneStretch: PaneStretchMap;
+  /** 봉 프로필별 pane 높이. 위 두 flat 필드는 구 빌드 호환용 minute 미러다. */
+  paneGroupStretchByTimeframe: PaneGroupStretchByTimeframe;
+  paneStretchByTimeframe: PaneStretchByTimeframe;
   /**
    * `/live` 의 **페이지 세트** — 이 필드의 저장 형태는 종전 그대로다(ADR-0146).
    *
@@ -466,12 +473,24 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
         .map(([k, v]) => [k, v ? 'shared' : 'isolated']),
     )
     : undefined;
+  const paneStretchByTimeframe = normalizePaneStretchByTimeframe(
+    obj.paneStretchByTimeframe,
+    obj.paneStretch,
+  );
+  const paneGroupStretchByTimeframe = normalizePaneGroupStretchByTimeframe(
+    obj.paneGroupStretchByTimeframe,
+    obj.paneGroupStretch,
+    paneGroups,
+  );
   return {
     paneOrder: flattenPaneGroups(paneGroups),
     paneGroups,
     paneAxisMode: normalizePaneAxisMode(obj.paneAxisMode ?? legacyShare, paneGroups),
-    paneGroupStretch: normalizePaneGroupStretch(obj.paneGroupStretch, paneGroups),
-    paneStretch: normalizePaneStretch(obj.paneStretch),
+    // flat 미러는 구 빌드가 새 블롭을 읽을 때 사용할 minute 프로필이다.
+    paneGroupStretch: paneGroupStretchByTimeframe.minute ?? {},
+    paneStretch: paneStretchByTimeframe.minute ?? {},
+    paneGroupStretchByTimeframe,
+    paneStretchByTimeframe,
     byTimeframe: normalizeBucketMap(obj.byTimeframe),
     byWindow: normalizeByWindow(obj.byWindow),
   };
@@ -583,6 +602,15 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
     paneGroupStretch: {},
     // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
     paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
+    paneGroupStretchByTimeframe: normalizePaneGroupStretchByTimeframe(
+      undefined,
+      {},
+      paneGroupsFromOrder(seededPaneOrder),
+    ),
+    paneStretchByTimeframe: normalizePaneStretchByTimeframe(
+      undefined,
+      (v1raw as { paneStretch?: unknown } | null)?.paneStretch,
+    ),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
     // 창 축도 없었다. 빈 맵이면 마운트 시드가 각 창에 이 값을 복사한다(ADR-0152).
     byWindow: {},

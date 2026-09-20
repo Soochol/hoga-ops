@@ -112,7 +112,10 @@ beforeEach(() => {
     indicatorsByWindow: {},
     indicatorTimeframe: '1m',
     paneOrder: normalizePaneOrder([]),
+    paneGroupStretch: {},
     paneStretch: {},
+    paneGroupStretchByTimeframe: {},
+    paneStretchByTimeframe: {},
   });
   useChartPrefsStore.setState({
     indicatorModalByTimeframe: {},
@@ -121,6 +124,43 @@ beforeEach(() => {
     surgeMarkerEnabled: true,
   });
   seedWorkspace([chartWindow('w1'), chartWindow('w2')]);
+});
+
+describe('pane stretch 는 봉 프로필별이다', () => {
+  it('일봉에서 조정한 높이가 분봉에 전파되지 않고 각 프로필을 복구한다', () => {
+    seedWorkspace([chartWindow('minute', '1m'), chartWindow('daily', 'D')]);
+    useLivePageStore.setState({ paneGroups: [['candle'], ['volume', 'ratio']] });
+    const minute = renderWindow(windowValue('minute', '1m'));
+    const daily = renderWindow(windowValue('daily', 'D'));
+
+    minute.result.current.actions.setPaneLayoutStretch(
+      { candle: 2.4 },
+      { 'ratio,volume': 0.7 },
+    );
+    daily.result.current.actions.setPaneLayoutStretch(
+      { candle: 4.2 },
+      { 'ratio,volume': 1.2 },
+    );
+
+    const state = useLivePageStore.getState();
+    expect(state.paneStretchByTimeframe.minute).toEqual({ candle: 2.4 });
+    expect(state.paneStretchByTimeframe.D).toEqual({ candle: 4.2 });
+    expect(state.paneGroupStretchByTimeframe.minute).toEqual({ 'ratio,volume': 0.7 });
+    expect(state.paneGroupStretchByTimeframe.D).toEqual({ 'ratio,volume': 1.2 });
+  });
+
+  it('서로 다른 분봉은 minute 프로필을 공유한다', () => {
+    seedWorkspace([chartWindow('one', '1m'), chartWindow('five', '5m')]);
+    const one = renderWindow(windowValue('one', '1m'));
+    const five = renderWindow(windowValue('five', '5m'));
+
+    one.result.current.actions.setPaneLayoutStretch({ volume: 0.8 }, {});
+    five.result.current.actions.setPaneLayoutStretch({ volume: 1.1 }, {});
+
+    expect(useLivePageStore.getState().paneStretchByTimeframe).toMatchObject({
+      minute: { volume: 1.1 },
+    });
+  });
 });
 
 // 여기 「두 페이지는 서로 동기화하지 않는다」 5케이스가 있었다. 그 축(`IndicatorPageScope`)
