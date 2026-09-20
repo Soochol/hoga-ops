@@ -10,6 +10,28 @@ const DAY = 86_400_000;
 const START = Date.UTC(2026, 8, 14);
 
 describe('useLinkedInvestorPaneScale', () => {
+  it('ignores a detached series handle whose pane no longer exists', () => {
+    const axis = createVirtualAxis([{
+      date: '20260914', sessionOpenMs: START, sessionCloseMs: START + DAY,
+    }]);
+    const detached = {
+      priceScale: () => { throw new Error('Value is null'); },
+    } as unknown as ISeriesApi<SeriesType>;
+    const paneSeries = new Map<PaneId, ISeriesApi<SeriesType>>([
+      ['investor-foreign', detached],
+    ]);
+    const chart = { timeScale: vi.fn() } as unknown as IChartApi;
+
+    expect(() => renderHook(() => useLinkedInvestorPaneScale({
+      chart,
+      bundle: null,
+      axis,
+      paneSeries,
+      enabled: false,
+    }))).not.toThrow();
+    expect(chart.timeScale).not.toHaveBeenCalled();
+  });
+
   it('keeps manual scale across bundle churn and restores autoscale when disabled', async () => {
     const axis = createVirtualAxis([{
       date: '20260914', sessionOpenMs: START, sessionCloseMs: START + DAY,
