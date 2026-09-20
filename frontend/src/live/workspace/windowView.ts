@@ -340,6 +340,7 @@ export type IndicatorActions = BoundIndicatorOps & {
   setPaneAxisMode: (members: readonly PaneId[], mode: PaneAxisMode) => void;
   setPaneStretch: (patch: PaneStretchMap) => void;
   setPaneGroupStretch: (members: readonly PaneId[], factor: number) => void;
+  setPaneLayoutStretch: (panePatch: PaneStretchMap, groupPatch: PaneGroupStretchMap) => void;
   resetIndicators: () => void;
   applyIndicatorPreset: (preset: {
     paneOrder: PaneId[];
@@ -456,6 +457,7 @@ function buildGlobalIndicatorActions(): IndicatorActions {
   out.setPaneAxisMode = s.setPaneAxisMode;
   out.setPaneStretch = s.setPaneStretch;
   out.setPaneGroupStretch = s.setPaneGroupStretch;
+  out.setPaneLayoutStretch = s.setPaneLayoutStretch;
   out.resetIndicators = s.resetIndicators;
   out.applyIndicatorPreset = s.applyIndicatorPreset;
   // 전역 판의 대상은 ambient 봉 버킷 — 스코프는 창 없음, 봉은 호출 시점 투영 포인터.
@@ -502,6 +504,8 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
     setPaneAxisMode: (members, mode) => ps().setPaneAxisMode(members, mode),
     setPaneStretch: (patch) => ps().setPaneStretch(patch),
     setPaneGroupStretch: (members, factor) => ps().setPaneGroupStretch(members, factor),
+    setPaneLayoutStretch: (panePatch, groupPatch) =>
+      ps().setPaneLayoutStretch(panePatch, groupPatch),
     resetIndicators: () => ps().resetIndicatorsScoped(scope, tf()),
     // 지표 프리셋은 그 **페이지 세트**를 갈아끼운다 — 즉 이 창에는 보이지 않는다.
     // 현재 UI 진입점이 없는 휴면 표면이라 그대로 두되(ADR-0152 Consequences),

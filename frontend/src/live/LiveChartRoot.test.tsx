@@ -1232,7 +1232,7 @@ describe('LiveChartRoot', () => {
     );
 
     act(() => {
-      container.querySelector('[data-testid="live-chart-root"]')!.dispatchEvent(
+      container.querySelector('.live-chart-canvas')!.dispatchEvent(
         new WheelEvent('wheel', {
           bubbles: true,
           cancelable: true,
@@ -5762,6 +5762,28 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     });
   };
 
+  it('keeps every enabled pane mounted and gives the chart a scrollable minimum-height surface', async () => {
+    const panes = Array.from({ length: 6 }, () => makePane(1));
+    vi.mocked(createChartEx).mockReturnValue(makeChartWithPanes(panes) as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    expect(screen.queryByTestId('folded-pane-notice')).toBeNull();
+    expect(screen.getByTestId('live-chart-root')).toHaveStyle({ overflowY: 'auto' });
+    expect(screen.getByTestId('live-chart-surface')).toHaveStyle({ minHeight: '373px' });
+  });
+
   it('applies saved Pane Stretch over spec defaults, and keeps it across bundle churn', async () => {
     const panes = Array.from({ length: 6 }, () => makePane(1));
     const chart = makeChartWithPanes(panes);
@@ -5845,6 +5867,59 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     // 영속까지: live.indicators.v2 에 실렸는지.
     const persisted = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(persisted.paneStretch?.candle).toBe(3.3);
+  });
+
+  it('commits singleton and merged-pane stretch in one store update after drag', async () => {
+    useLivePageStore.setState({
+      paneGroups: [
+        ['candle'],
+        ['volume'],
+        ['quote-totals', 'ratio'],
+        ['fill-strength'],
+        ['program-trade'],
+        ['peak-wall'],
+        ['investor-foreign'],
+        ['investor-institution'],
+        ['program-daily'],
+      ],
+    });
+    const panes = [3.1, 0.8, 0.65, 0.45, 0.35].map(makePane);
+    const chart = makeChartWithPanes(panes);
+    vi.mocked(createChartEx).mockReturnValue(chart as never);
+    const atomic = vi.spyOn(useLivePageStore.getState(), 'setPaneLayoutStretch');
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        captureFloorEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    const el = vi.mocked(createChartEx).mock.calls.at(-1)![0] as HTMLElement;
+    const handle = document.createElement('div');
+    handle.style.cursor = 'row-resize';
+    el.appendChild(handle);
+    await act(async () => {
+      handle.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      window.dispatchEvent(new Event('pointerup'));
+    });
+
+    expect(atomic).toHaveBeenCalledTimes(1);
+    expect(atomic).toHaveBeenCalledWith(
+      {
+        candle: 3.1,
+        volume: 0.8,
+        'fill-strength': 0.45,
+        'program-trade': 0.35,
+      },
+      { 'quote-totals,ratio': 0.65 },
+    );
   });
 
   it('ignores pointerdown that does not start on a separator handle', async () => {

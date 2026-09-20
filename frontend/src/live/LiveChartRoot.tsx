@@ -24,12 +24,11 @@ import {
   paneGroupStretch,
   type PaneSpecGroup,
 } from './paneGroupSpecs';
-import { resolveAxisMode } from '../chart/paneGroups';
-import { usePaneFolding } from './usePaneFolding';
+import { paneGroupKey, resolveAxisMode, type PaneGroupStretchMap } from '../chart/paneGroups';
 import { useLinkedInvestorPaneScale } from './useLinkedInvestorPaneScale';
 import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
-import { FoldedPaneNotice } from './FoldedPaneNotice';
 import { HogaMissingNotice } from './HogaMissingNotice';
+import { chartPaneContentMinHeight } from './chartPaneLayout';
 import { deriveHogaMissingDetail, deriveHogaMissingNotice } from './hogaMissingNotice';
 import { CandleEmptyState } from './CandleEmptyState';
 import { deriveSourceBadge } from './sourceBadge';
@@ -1950,8 +1949,7 @@ export function LiveChartRoot({
   const paneStretch = useWindowPaneStretch();
   // 병합 그룹별 stretch 오버라이드 — 없으면 멤버 최대값 파생(`paneGroupStretch`).
   const paneGroupStretchOverrides = useWindowPaneGroupStretch();
-  const setPaneStretch = useIndicatorActions().setPaneStretch;
-  const setPaneGroupStretch = useIndicatorActions().setPaneGroupStretch;
+  const setPaneLayoutStretch = useIndicatorActions().setPaneLayoutStretch;
   // separator 드래그 진행 중 여부 — stretch 재적용 effect 의 가드.
   const paneDragRef = useRef(false);
   // 드래그 종료 시 pane index → 그룹(멤버 PaneId들) 매핑에 쓰는 최신 그룹 목록.
@@ -2044,15 +2042,10 @@ export function LiveChartRoot({
     () => paneGroupSpecsForTimeframe(timeframe, activePaneToggles, paneGroups),
     [timeframe, activePaneToggles, paneGroups],
   );
-  // 접기(점진적 degradation) 적용 후 실제로 마운트할 그룹 목록 — 접기의 원자 단위는
-  // 그룹이다(그룹의 절반만 접히는 상태 없음). stretch 재적용 effect 와 렌더 JSX 가
-  // **반드시 같은 목록**을 봐야 pane index → 그룹 매핑이 어긋나지 않는다.
-  // 접기는 렌더 시점 파생값이며 저장 설정에는 쓰지 않는다(`paneFolding.ts` 참조).
-  const [
-    { groups: visiblePaneGroups, foldedCount: foldedPaneCount, timeAxisVisible },
-    observePaneFoldTarget,
-    showAllFoldedPanes,
-  ] = usePaneFolding(gatedPaneGroups, paneStretch, paneGroupStretchOverrides);
+  // 사용자가 켠 pane 은 창 크기와 무관하게 전부 마운트한다. 공간 부족은 아래 렌더의
+  // chart surface 최소 높이 + viewport 세로 스크롤이 처리한다. 지표를 임의로 빼면
+  // 설정의 "켜짐"과 실제 화면이 달라지고 separator 저장 인덱스도 흔들린다.
+  const visiblePaneGroups = gatedPaneGroups;
 
   // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
   // 으로 들어가 "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜
@@ -2119,22 +2112,10 @@ export function LiveChartRoot({
     }
   }, [chart, groupAxisModes]);
 
-  // 컨테이너 ref 합성 — 접기 관측자는 노드 등장을 봐야 하므로 callback ref 이고
-  // (그 훅의 주석 참조), `containerRef` 는 차트 생성·휠·구분선 드래그·폭 측정이
-  // 계속 쓴다. `observePaneFoldTarget` 이 `useState` setter 라 참조가 안정적이므로
-  // 이 합성 콜백도 안정적이다 — 렌더마다 detach/attach 가 돌지 않는다.
+  // 차트 생성·휠·구분선 드래그·폭 측정이 함께 쓰는 안정 ref.
   const setContainer = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el;
-    observePaneFoldTarget(el);
-  }, [observePaneFoldTarget]);
-
-  // 글랜스 티어 — 보조 pane 이 전부 접히고도 캔들이 좁으면 시간축(28px)까지 숨겨
-  // 캔들에 돌려준다. 이 크기에서 28px 는 전체의 20% 가 넘는 사치이고, 절대 시각은
-  // 크로스헤어 툴팁이 대신한다. 시간 척도 자체는 그대로라 좌표 변환에 영향이 없다.
-  useEffect(() => {
-    if (!chart) return;
-    chart.applyOptions({ timeScale: { visible: timeAxisVisible } });
-  }, [chart, timeAxisVisible]);
+  }, []);
 
   useEffect(() => {
     if (!chart || !cb) return;
@@ -2210,20 +2191,23 @@ export function LiveChartRoot({
         try {
           const groups = paneGroupsRef.current;
           const patch: PaneStretchMap = {};
+          const groupPatch: PaneGroupStretchMap = {};
           chart.panes().forEach((p, i) => {
             const group = groups[i];
             if (!group || typeof p.getStretchFactor !== 'function') return;
             const f = p.getStretchFactor();
             if (!Number.isFinite(f) || f <= 0) return;
             if (group.length > 1) {
-              // 병합 pane 은 **그룹 키에** 기록한다(v3 승격) — 멤버 개별 값을
-              // 오염시키지 않아, 분리 시 각자의 옛 크기가 살아난다.
-              setPaneGroupStretch(paneGroupIds(group), f);
+              groupPatch[paneGroupKey(paneGroupIds(group))] = f;
             } else {
               patch[group[0].name] = f;
             }
           });
-          if (Object.keys(patch).length > 0) setPaneStretch(patch);
+          // 수집 도중 store 를 갱신하면 effect 가 아직 읽지 않은 pane 에 이전 stretch 를
+          // 재적용할 수 있다. 모든 값을 먼저 읽고 단일 commit 으로 저장한다.
+          if (Object.keys(patch).length > 0 || Object.keys(groupPatch).length > 0) {
+            setPaneLayoutStretch(patch, groupPatch);
+          }
         } catch {
           // chart torn down mid-drag
         }
@@ -2238,7 +2222,7 @@ export function LiveChartRoot({
       detachOnUp();
       paneDragRef.current = false;
     };
-  }, [chart, setPaneStretch, setPaneGroupStretch]);
+  }, [chart, setPaneLayoutStretch]);
 
   // ── 최대벽 렌더의 **단일 소스** ───────────────────────────────────────────
   //
@@ -2754,25 +2738,25 @@ export function LiveChartRoot({
     <div
       data-testid="live-chart-root"
       onContextMenu={(event) => event.preventDefault()}
-      style={{ position: 'relative', width: '100%', height: '100%' }}
+      style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}
     >
+      <div
+        data-testid="live-chart-surface"
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          minHeight: chartPaneContentMinHeight(visiblePaneGroups.length),
+        }}
+      >
       <div
         ref={setContainer}
         className="live-chart-canvas"
         style={{ width: '100%', height: '100%', background: 'var(--bg-card)' }}
       />
-      {/* 접힌 지표 알림 — 설정이 꺼진 것으로 오해하지 않도록. 차트 마운트 여부와
-          무관하게 접힘이 있으면 띄운다. */}
-      <FoldedPaneNotice
-        count={foldedPaneCount}
-        timeAxisVisible={timeAxisVisible}
-        onShowAll={showAllFoldedPanes}
-      />
-      {/* 호가 pane 이 빈 이유 — 같은 모서리에 쌓는다(둘 다 "덜 보여주고 있다" 는 말). */}
+      {/* 호가 pane 이 빈 이유. */}
       <HogaMissingNotice
         text={showHogaMissing ? hogaMissingText : null}
-        timeAxisVisible={timeAxisVisible}
-        stacked={foldedPaneCount > 0}
         // 뒷문장이 사유마다 갈린다 — 기본값은 호가 pane 전용이라 업스트림 결손엔 틀린다.
         ariaLabel={showHogaMissing
           ? `${hogaMissingText}. ${deriveHogaMissingDetail(missingDates, datesWithCandles)}`
@@ -2785,8 +2769,7 @@ export function LiveChartRoot({
       {!candleEmpty && (
         <HogaMissingNotice
           text={sourceBadge}
-          timeAxisVisible={timeAxisVisible}
-          stacked={foldedPaneCount > 0 || !!showHogaMissing}
+          stacked={!!showHogaMissing}
           testId="source-badge"
           // 배지가 소스만 내던 시절엔 "…데이터로 그려졌습니다" 가 맞았는데, 이제 결손
           // 크기도 실린다("키움 WS · 결손 5시간 31분"). 문장에 끼우면 어색해지므로
@@ -3114,6 +3097,7 @@ export function LiveChartRoot({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

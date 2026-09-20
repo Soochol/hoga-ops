@@ -89,10 +89,8 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneToggles: PaneToggles;
-  /** 접기(`paneFolding.ts`) 적용 후 실제로 마운트된 pane **그룹** 목록(병합 반영).
-   *  주면 이걸 쓰고, 없으면 게이트 결과를 그대로 계산한다. 접힌 pane 이 섞이면 pane
-   *  이동 컨트롤의 "아래로" 가 보이지 않는 pane 을 가리켜 클릭해도 아무 일도 안 하는
-   *  것처럼 보인다. */
+  /** 실제로 마운트된 pane **그룹** 목록(병합 반영). 주면 이걸 쓰고, 없으면 게이트
+   *  결과를 그대로 계산한다. */
   visibleGroups?: readonly PaneSpecGroup[];
   /** 캔들 pane 최상단 OHLC 레전드(항상 표시)용 캔들 배열 + 가상축. `axis` 로
    *  그려진(보이는) 봉만 추려 `param.time`(가상초)→봉을 해석하고, 커서 밖이면 최신

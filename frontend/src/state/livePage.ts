@@ -441,6 +441,8 @@ type Store = Persisted & IndicatorSettings & {
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
   setPaneStretch: (patch: PaneStretchMap) => void;
+  /** separator 종료 스냅샷을 단일 store commit 으로 저장한다. */
+  setPaneLayoutStretch: (panePatch: PaneStretchMap, groupPatch: PaneGroupStretchMap) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4).
    *  대상은 **공용 세트뿐이다** — 분리된 창은 영향받지 않는다. 프리셋은 "모든
    *  창의 기본 구성"을 갈아끼우는 물건이고, 분리는 사용자가 그 창을 기본에서
@@ -792,6 +794,18 @@ export const useLivePageStore = create<Store>((set, get) => {
 
     setPaneStretch: (patch) => {
       set({ paneStretch: normalizePaneStretch({ ...get().paneStretch, ...patch }) });
+      persistIndicators();
+    },
+
+    setPaneLayoutStretch: (panePatch, groupPatch) => {
+      const current = get();
+      set({
+        paneStretch: normalizePaneStretch({ ...current.paneStretch, ...panePatch }),
+        paneGroupStretch: normalizePaneGroupStretch(
+          { ...current.paneGroupStretch, ...groupPatch },
+          current.paneGroups,
+        ),
+      });
       persistIndicators();
     },
 
