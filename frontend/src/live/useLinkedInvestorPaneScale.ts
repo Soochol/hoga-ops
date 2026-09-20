@@ -22,6 +22,19 @@ function restoreAutoScale(scale: ReturnType<ISeriesApi<SeriesType>['priceScale']
   }
 }
 
+function attachedPriceScale(
+  series: ISeriesApi<SeriesType> | undefined,
+): ReturnType<ISeriesApi<SeriesType>['priceScale']> | undefined {
+  if (!series) return undefined;
+  try {
+    return series.priceScale();
+  } catch {
+    // The pane registry is React state, so a removed series can remain visible
+    // for one render while lightweight-charts has already detached its pane.
+    return undefined;
+  }
+}
+
 /** Keep the two separate daily investor panes on one visible-value scale. */
 export function useLinkedInvestorPaneScale({
   chart,
@@ -34,11 +47,13 @@ export function useLinkedInvestorPaneScale({
     if (!chart) return undefined;
     const foreign = paneSeries.get('investor-foreign');
     const institution = paneSeries.get('investor-institution');
-    const scales = [foreign?.priceScale(), institution?.priceScale()].filter(
+    const foreignScale = attachedPriceScale(foreign);
+    const institutionScale = attachedPriceScale(institution);
+    const scales = [foreignScale, institutionScale].filter(
       (scale): scale is NonNullable<typeof scale> => scale !== undefined,
     );
 
-    if (!enabled || !bundle || !foreign || !institution) {
+    if (!enabled || !bundle || !foreignScale || !institutionScale) {
       scales.forEach(restoreAutoScale);
       return undefined;
     }
