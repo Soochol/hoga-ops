@@ -97,9 +97,12 @@ export default function ProgramTradeSummaryCard({
 
   if (!latest && !point) {
     return (
-      <SidebarState className="min-h-[88px] px-3 py-4">
-        프로그램 순매수 데이터 없음
-      </SidebarState>
+      <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
+        <ViewChips view="intraday" onSelect={setView} />
+        <SidebarState className="min-h-[64px] flex-1 px-3 py-4">
+          프로그램 순매수 데이터 없음
+        </SidebarState>
+      </div>
     );
   }
 
