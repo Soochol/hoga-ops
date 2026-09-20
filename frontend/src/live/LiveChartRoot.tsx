@@ -2051,6 +2051,7 @@ export function LiveChartRoot({
   const [
     { groups: visiblePaneGroups, foldedCount: foldedPaneCount, timeAxisVisible },
     observePaneFoldTarget,
+    showAllFoldedPanes,
   ] = usePaneFolding(gatedPaneGroups, paneStretch, paneGroupStretchOverrides);
 
   // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
@@ -2762,7 +2763,11 @@ export function LiveChartRoot({
       />
       {/* 접힌 지표 알림 — 설정이 꺼진 것으로 오해하지 않도록. 차트 마운트 여부와
           무관하게 접힘이 있으면 띄운다. */}
-      <FoldedPaneNotice count={foldedPaneCount} timeAxisVisible={timeAxisVisible} />
+      <FoldedPaneNotice
+        count={foldedPaneCount}
+        timeAxisVisible={timeAxisVisible}
+        onShowAll={showAllFoldedPanes}
+      />
       {/* 호가 pane 이 빈 이유 — 같은 모서리에 쌓는다(둘 다 "덜 보여주고 있다" 는 말). */}
       <HogaMissingNotice
         text={showHogaMissing ? hogaMissingText : null}

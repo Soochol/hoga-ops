@@ -9,7 +9,7 @@ import { TIME_AXIS_PX } from './paneFolding';
  * "어떻게 되돌리는지"를 한 줄로 알려주는 게 이 컴포넌트의 전부다.
  *
  * 레전드와 같은 크롬(불투명 `--bg-card` + `--radius-md` + mono `--text-xs`)을 쓰고,
- * 크로스헤어가 아래에서 계속 추적하도록 `pointerEvents: none` 이다.
+ * 사용자가 저장 비율 때문에 복원 임계에 갇혀도 직접 되살릴 수 있도록 버튼이다.
  */
 const noticeStyle: CSSProperties = {
   position: 'absolute',
@@ -36,23 +36,40 @@ const noticeStyle: CSSProperties = {
 export function FoldedPaneNotice({
   count,
   timeAxisVisible = true,
+  onShowAll,
 }: {
   count: number;
   /** 시간축이 보이면 그 위로 띄운다 — 안 그러면 눈금 라벨을 덮는다. */
   timeAxisVisible?: boolean;
+  /** 현재 창 크기에서 자동 접기를 한 번 우회하고 접힌 pane 을 모두 마운트한다. */
+  onShowAll?: () => void;
 }) {
   if (count <= 0) return null;
+  const style = {
+    ...noticeStyle,
+    bottom: timeAxisVisible
+      ? `calc(${TIME_AXIS_PX}px + var(--space-2xs))`
+      : 'var(--space-xs)',
+  };
+  const label = `창이 작아 지표 ${count}개를 표시하지 않았습니다. 창을 키우면 다시 나타나며, 지금 모두 표시할 수도 있습니다.`;
+  if (onShowAll) {
+    return (
+      <button
+        type="button"
+        data-testid="folded-pane-notice"
+        style={{ ...style, pointerEvents: 'auto', border: 0, cursor: 'pointer' }}
+        aria-label={label}
+        onClick={onShowAll}
+      >
+        지표 {count} 숨김 · 모두 표시
+      </button>
+    );
+  }
   return (
     <div
       data-testid="folded-pane-notice"
-      style={{
-        ...noticeStyle,
-        bottom: timeAxisVisible
-          ? `calc(${TIME_AXIS_PX}px + var(--space-2xs))`
-          : 'var(--space-xs)',
-      }}
-      // 마우스를 올릴 수 없으니(pointerEvents:none) 스크린리더용으로만 남긴다.
-      aria-label={`창이 작아 지표 ${count}개를 표시하지 않았습니다. 창을 키우면 다시 나타납니다.`}
+      style={style}
+      aria-label={label}
     >
       지표 {count} 숨김
     </div>

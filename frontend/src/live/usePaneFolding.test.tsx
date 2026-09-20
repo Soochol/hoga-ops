@@ -66,11 +66,20 @@ const SINGLETON_GROUPS = PANE_SPECS.map((s) => [s] as const);
 const FOLDING_HEIGHT_PX = 400;
 const EXPECTED_AT_400 = '2:4'; // foldedCount:남은 pane 수
 
-function Host({ present, nodeKey = 'a' }: { present: boolean; nodeKey?: string }) {
-  const [{ groups, foldedCount }, observe] = usePaneFolding(SINGLETON_GROUPS, NO_STRETCH);
+function Host({
+  present,
+  nodeKey = 'a',
+  paneStretch = NO_STRETCH,
+}: {
+  present: boolean;
+  nodeKey?: string;
+  paneStretch?: PaneStretchMap;
+}) {
+  const [{ groups, foldedCount }, observe, showAll] = usePaneFolding(SINGLETON_GROUPS, paneStretch);
   return (
     <div>
       <span data-testid="fold">{`${foldedCount}:${groups.length}`}</span>
+      <button type="button" onClick={showAll}>모두 표시</button>
       {present && <div key={nodeKey} data-testid="pane-host" ref={observe} />}
     </div>
   );
@@ -136,5 +145,17 @@ describe('usePaneFolding — 관측 부착', () => {
     rerender(<Host present />);
 
     expect(observed).toHaveLength(1);
+  });
+
+  it('저장 비율 때문에 접힌 pane 을 즉시 모두 표시하고 다음 크기 변경부터 자동 접기로 돌아간다', () => {
+    render(<Host present paneStretch={{ candle: 10, volume: 0.05 }} />);
+    act(() => observed[0].fire(800));
+    expect(screen.getByTestId('fold')).toHaveTextContent('5:1');
+
+    act(() => screen.getByRole('button', { name: '모두 표시' }).click());
+    expect(screen.getByTestId('fold')).toHaveTextContent('0:6');
+
+    act(() => observed[0].fire(799));
+    expect(screen.getByTestId('fold')).toHaveTextContent('5:1');
   });
 });
