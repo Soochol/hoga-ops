@@ -22,7 +22,14 @@ function makeChartMock() {
     return s;
   });
   const removeSeries = vi.fn((s: ReturnType<typeof makeSeriesMock>) => { seriesById.delete(String(s._internalId)); });
-  return { chart: { addSeries, removeSeries } as unknown, addSeries, removeSeries, seriesById };
+  const clearCrosshairPosition = vi.fn();
+  return {
+    chart: { addSeries, removeSeries, clearCrosshairPosition } as unknown,
+    addSeries,
+    removeSeries,
+    clearCrosshairPosition,
+    seriesById,
+  };
 }
 
 const D_0612 = 1781222400000; // 2026-06-12 09:00 KST
@@ -93,6 +100,16 @@ describe('DailyMovingAverageOverlay', () => {
     const data = first.setData.mock.calls.at(-1)?.[0] as Array<{ time: number; value?: number }>;
     expect(data).toHaveLength(3);
     expect(data.every((d) => d.value === 100)).toBe(true);
+  });
+
+  it('clears the crosshair before replacing a changed time grid', () => {
+    const m = makeChartMock();
+    renderOverlay(m);
+    const first = m.addSeries.mock.results[0].value as { setData: ReturnType<typeof vi.fn> };
+
+    expect(m.clearCrosshairPosition).toHaveBeenCalled();
+    expect(m.clearCrosshairPosition.mock.invocationCallOrder[0])
+      .toBeLessThan(first.setData.mock.invocationCallOrder[0]);
   });
 
   it('passes the Daily MA fetch window and venue into resolved daily candles', () => {

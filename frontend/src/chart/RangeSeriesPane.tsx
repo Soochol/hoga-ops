@@ -1,4 +1,4 @@
-import { replaceSeriesData } from './replaceSeriesData';
+import { replaceSeriesData, syncChartSeriesData } from './replaceSeriesData';
 import { memo, useEffect, useRef } from 'react';
 import {
   type IChartApi,
@@ -10,7 +10,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
-import { classifyDataChange, syncSeriesData } from './seriesDataDiff';
+import { classifyDataChange } from './seriesDataDiff';
 import { priceScaleIdForGroupMember, type PaneAxisMode } from './paneGroups';
 import {
   BrokerLateEntryMarkersPrimitive,
@@ -399,8 +399,8 @@ function RangeSeriesPaneInner<Ctx>({
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
       const data = s.data(bundle, axis, ctx);
-      // The decision (skip / update(tail) / setData(full)), the series mutation,
-      // and the cache update all live behind syncSeriesData's seam — so the
+      // The decision (skip / update(tail) / setData(full)), safe full replacement,
+      // and cache update all live behind syncChartSeriesData's seam — so the
       // invariant "lastDataRef equals what the series holds" can't drift across
       // this effect. Rationale for the tail-diff (lwc re-ingests + re-autoscales
       // the whole array on every setData, ≈66ms/tick at 90-day deep scroll vs
@@ -413,10 +413,12 @@ function RangeSeriesPaneInner<Ctx>({
           lastDataRef.current[i] = data;
         }
       } else {
-        lastDataRef.current[i] = syncSeriesData({
-          setData: (next) => replaceSeriesData(chart, seriesList[i], next, lastDataRef.current[i]),
-          update: (point) => seriesList[i].update(point),
-        }, lastDataRef.current[i] ?? null, data);
+        lastDataRef.current[i] = syncChartSeriesData(
+          chart,
+          seriesList[i],
+          lastDataRef.current[i] ?? null,
+          data,
+        );
       }
       // Markers: order vs setData is irrelevant — SurgeMarkersPrimitive draws by
       // timeToCoordinate at render time, not by a snapshotted series index.

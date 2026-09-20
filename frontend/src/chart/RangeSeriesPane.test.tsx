@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import RangeSeriesPane, { type PaneSpec } from './RangeSeriesPane';
 
-// RangeSeriesPane's only runtime (non-type) import besides syncSeriesData is the
+// RangeSeriesPane's only runtime dependency besides its data-sync module is the
 // `SurgeMarkersPrimitive` class. Mock it so each instance records its setMarkers
 // payloads into `markerSetCalls` for assertion (lightweight-charts imports are
 // all type-only and erased, so no module mock is needed for it).
@@ -37,12 +37,13 @@ function makeChart() {
     return series;
   });
   const removeSeries = vi.fn();
+  const clearCrosshairPosition = vi.fn();
   const chart = {
     addSeries,
-    clearCrosshairPosition: vi.fn(),
+    clearCrosshairPosition,
     removeSeries,
   } as never;
-  return { chart, created, addSeries, removeSeries };
+  return { chart, created, addSeries, removeSeries, clearCrosshairPosition };
 }
 
 const SPEC: PaneSpec = {
@@ -221,6 +222,23 @@ describe('RangeSeriesPane', () => {
     );
     expect(created).toHaveLength(1); // series not re-created
     expect(created[0].setData).toHaveBeenCalledTimes(1); // redundant push SKIPPED
+  });
+
+  it('clears the crosshair before a changed time grid is fully replaced', () => {
+    const { chart, created, clearCrosshairPosition } = makeChart();
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
+    );
+    clearCrosshairPosition.mockClear();
+    created[0].setData.mockClear();
+
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 2, close: 100 }])} axis={axis} paneIndex={1} precedingPaneKey="" spec={PROJECT_SPEC} />,
+    );
+
+    expect(clearCrosshairPosition).toHaveBeenCalledOnce();
+    expect(clearCrosshairPosition.mock.invocationCallOrder[0])
+      .toBeLessThan(created[0].setData.mock.invocationCallOrder[0]);
   });
 
   it('uses update(tail) when only the last bar changes / one bar appends — not over-skipping', () => {
