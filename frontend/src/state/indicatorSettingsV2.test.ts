@@ -179,6 +179,36 @@ describe('normalizeIndicatorsV2', () => {
     expect(roundtripped.paneGroupStretch).toEqual({ 'ratio,volume': 0.9 });
   });
 
+  it('구 전역 pane 높이를 네 봉 프로필에 복제해 시각적 마이그레이션을 보존한다', () => {
+    const v2 = normalizeIndicatorsV2({
+      paneGroups: [['candle'], ['volume', 'ratio']],
+      paneStretch: { candle: 3.4, volume: 0.8 },
+      paneGroupStretch: { 'ratio,volume': 0.9 },
+    });
+
+    for (const key of ['minute', 'D', 'W', 'M'] as const) {
+      expect(v2.paneStretchByTimeframe[key]).toEqual({ candle: 3.4, volume: 0.8 });
+      expect(v2.paneGroupStretchByTimeframe[key]).toEqual({ 'ratio,volume': 0.9 });
+    }
+  });
+
+  it('봉별 pane 높이는 왕복 후 독립성을 유지하고 flat 호환 필드는 minute를 미러한다', () => {
+    const v2 = normalizeIndicatorsV2({
+      paneStretch: { candle: 9 },
+      paneStretchByTimeframe: {
+        minute: { candle: 2.2 },
+        D: { candle: 4.4 },
+      },
+    });
+    const roundtripped = normalizeIndicatorsV2(JSON.parse(JSON.stringify(v2)));
+
+    expect(roundtripped.paneStretch).toEqual({ candle: 2.2 });
+    expect(roundtripped.paneStretchByTimeframe.minute).toEqual({ candle: 2.2 });
+    expect(roundtripped.paneStretchByTimeframe.D).toEqual({ candle: 4.4 });
+    // 부분 새 저장값의 빈 프로필은 레거시 flat 값으로 안전하게 채운다.
+    expect(roundtripped.paneStretchByTimeframe.W).toEqual({ candle: 9 });
+  });
+
   it('구 boolean paneAxisShare(PR #1553) 블롭은 모드로 변환해 읽는다 — 1회성 폴백', () => {
     const v2 = normalizeIndicatorsV2({
       paneGroups: [['candle'], ['volume', 'ratio'], ['investor-foreign', 'investor-institution']],

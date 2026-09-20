@@ -42,6 +42,10 @@ import {
   type IndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import {
+  paneGroupStretchForTimeframe,
+  paneStretchForTimeframe,
+} from '../../state/paneStretchByTimeframe';
+import {
   FLAG_INDICATOR_LABEL,
   INDICATOR_OPS,
   bindIndicatorOps,
@@ -296,12 +300,18 @@ export function useWindowPaneAxisMode(): PaneAxisModeMap {
 
 /** 병합 그룹별 stretch 오버라이드 — 같은 레이아웃 슬라이스 규율. */
 export function useWindowPaneGroupStretch(): PaneGroupStretchMap {
-  return useLivePageStore((s) => s.paneGroupStretch);
+  const timeframe = useWindowIndicatorTimeframe();
+  return useLivePageStore((s) => timeframe
+    ? paneGroupStretchForTimeframe(s.paneGroupStretchByTimeframe, timeframe)
+    : s.paneGroupStretch);
 }
 
 /** pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스 규율. */
 export function useWindowPaneStretch(): PaneStretchMap {
-  return useLivePageStore((s) => s.paneStretch);
+  const timeframe = useWindowIndicatorTimeframe();
+  return useLivePageStore((s) => timeframe
+    ? paneStretchForTimeframe(s.paneStretchByTimeframe, timeframe)
+    : s.paneStretch);
 }
 
 // ── 쓰기 경로 (ADR-0119 C2c-2a) ──────────────────────────────────────────────
@@ -502,10 +512,10 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
     setPaneOrder: (order) => ps().setPaneOrder(order),
     setPaneGroups: (groups) => ps().setPaneGroups(groups),
     setPaneAxisMode: (members, mode) => ps().setPaneAxisMode(members, mode),
-    setPaneStretch: (patch) => ps().setPaneStretch(patch),
-    setPaneGroupStretch: (members, factor) => ps().setPaneGroupStretch(members, factor),
+    setPaneStretch: (patch) => ps().setPaneStretch(patch, tf()),
+    setPaneGroupStretch: (members, factor) => ps().setPaneGroupStretch(members, factor, tf()),
     setPaneLayoutStretch: (panePatch, groupPatch) =>
-      ps().setPaneLayoutStretch(panePatch, groupPatch),
+      ps().setPaneLayoutStretch(panePatch, groupPatch, tf()),
     resetIndicators: () => ps().resetIndicatorsScoped(scope, tf()),
     // 지표 프리셋은 그 **페이지 세트**를 갈아끼운다 — 즉 이 창에는 보이지 않는다.
     // 현재 UI 진입점이 없는 휴면 표면이라 그대로 두되(ADR-0152 Consequences),

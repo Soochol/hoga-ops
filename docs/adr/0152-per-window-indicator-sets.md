@@ -16,6 +16,7 @@
   개념이 아니라 **내용물을 창 스냅샷(탭별 sessionStorage)에 담은 것**이었다.
 - ADR-0072 — 한 지표의 prefs 가 `livePage`·`chartPrefs` 두 store 에 나뉜다.
 - ADR-0114 §3 — pane 순서·크기는 전역 1세트(이 ADR 이 바꾸지 않는다).
+  크기의 봉별 프로필 분리는 후속 ADR-0172가 수정한다.
 - `frontend/src/state/indicatorSettingsV2.ts` (`byWindow`),
   `frontend/src/state/indicatorScopeGc.ts`,
   `frontend/src/live/workspace/windowView.ts`.
@@ -59,6 +60,7 @@
    store 가 한 드로어에 함께 뜨므로). 멤버십의 SSOT 는 `livePage.indicatorsByWindow`
    이고 `chartPrefs.indicatorModalByWindow` 는 그 미러다 — 시드·회수는 항상 동반 호출.
 9. **레이아웃(pane 순서·크기)은 전역 1세트 유지**(ADR-0114 §3).
+   단, 후속 ADR-0172 이후 크기는 창별이 아닌 봉 프로필별 4세트다.
 
 ## Context
 
