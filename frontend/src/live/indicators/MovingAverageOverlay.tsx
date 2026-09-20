@@ -4,7 +4,8 @@ import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { createMovingAverageProjection } from '../../chart/projectors/maProjection';
-import { syncSeriesData, type SeriesDataSink } from '../../chart/seriesDataDiff';
+import type { SeriesDataSink } from '../../chart/seriesDataDiff';
+import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
 import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
@@ -34,7 +35,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
   const projectRef = useRef<ReturnType<typeof createMovingAverageProjection> | null>(null);
   if (projectRef.current === null) projectRef.current = createMovingAverageProjection();
-  const pushedRef = useRef(new WeakMap<LineApi, ReturnType<typeof syncSeriesData>>());
+  const pushedRef = useRef(new WeakMap<LineApi, ReturnType<typeof syncChartSeriesData>>());
   // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
   const scope = useWindowScopeId();
 
@@ -105,11 +106,11 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       const drawn = cfg.enabled;
       s.applyOptions({ visible: drawn });
       if (!drawn) {
-        pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
+        pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
         continue;
       }
       const data = projected.get(cfg.id) ?? [];
-      pushedRef.current.set(s, syncSeriesData(s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
+      pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
     }
     // `chart` is a dep because the series-creation effect above re-creates
     // every MA series when the chart instance changes (/live remounts the
