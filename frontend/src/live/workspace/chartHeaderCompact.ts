@@ -8,8 +8,7 @@
  *
  * **관측 대상은 헤더 컨테이너 폭이어야 한다.** 내용물 폭(scrollWidth)을 재면
  * `좁음 → 라벨 접기 → 내용물 넓어짐 → 펴기 → 다시 좁음` 으로 진동한다.
- * 컨테이너 폭은 창 크기가 정하므로 접힘이 그것을 되바꾸지 않는다 —
- * `usePaneFolding` 이 컨테이너 *높이* 를 재는 것과 같은 이유다.
+ * 컨테이너 폭은 창 크기가 정하므로 접힘이 그것을 되바꾸지 않는다.
  *
  * 순수 판정은 아래 함수로 분리해 테스트가 ResizeObserver 없이 임계·히스테리시스를
  * 직접 검증할 수 있게 한다(훅은 관측만 담당).
@@ -51,8 +50,7 @@ export const LIVE_CALENDAR_HEADER_NEED = {
 /** 라벨을 유지할 수 있는 헤더 최소 폭(px) = `full` 요구폭 + 여유 2. */
 export const HEADER_LABEL_MIN_WIDTH_PX = LIVE_HEADER_NEED.full + 2;
 
-/** 되펴기 임계 — 접힘/펴짐 경계에서 1px 떨림에 깜빡이지 않도록 dead band 를 둔다.
- *  `usePaneFolding` 의 히스테리시스와 같은 취지. */
+/** 되펴기 임계 — 접힘/펴짐 경계에서 1px 떨림에 깜빡이지 않도록 dead band 를 둔다. */
 export const HEADER_LABEL_RESTORE_WIDTH_PX = HEADER_LABEL_MIN_WIDTH_PX + 24;
 
 /**

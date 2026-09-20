@@ -17,7 +17,7 @@ import { paneGroupKey, type PaneGroupStretchMap } from '../chart/paneGroups';
  *  - 그룹 배열: 자기 구성(멤버 이름 시퀀스)으로 캐시 — 다른 그룹이 바뀌어도 이
  *    그룹의 identity 는 유지된다. `RangeSeriesPane` 이 이 배열을 `groupPaneIds`
  *    dep 으로 받으므로, 이 안정성이 "무관한 그룹 편집이 전 pane 을 재생성"을 막는다.
- *  - 파티션(바깥 배열): 전체 구성으로 캐시 — `usePaneFolding`/stretch effect 의
+ *  - 파티션(바깥 배열): 전체 구성으로 캐시 — stretch effect 의
  *    memo 가 봉 틱마다 churn 하지 않는다(flat 판의 `paneCache` 와 같은 규율).
  */
 export type PaneSpecGroup = readonly BoundPaneSpec[];
