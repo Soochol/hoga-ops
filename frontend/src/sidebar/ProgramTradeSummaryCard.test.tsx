@@ -195,6 +195,31 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.queryByTestId('program-sparkline')).not.toBeInTheDocument();
   });
 
+  it('offers an all-history view and expands older rows on demand', () => {
+    const loadOlder = vi.fn();
+    const dailyPoints = Array.from({ length: 80 }, (_, index) => ({
+      t_ms: T0 - index * DAY_MS,
+      net_qty: index,
+      buy_qty: index + 100,
+      sell_qty: 100,
+    }));
+    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    render(<ProgramTradeSummaryCard dailyPoints={dailyPoints} dailyHasOlder
+      onLoadOlder={loadOlder} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    expect(localStorage.getItem('live.programTradeDisplay.v1')).toContain('"dailySpan":0');
+    expect(screen.getByText('누적 60일')).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^program-daily-row-/)).toHaveLength(60);
+
+    fireEvent.click(screen.getByRole('button', { name: '과거 데이터 더 보기' }));
+    expect(screen.getByText('누적 80일')).toBeInTheDocument();
+    expect(loadOlder).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '과거 데이터 더 보기' }));
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the daily-investor row format and highlights the linked cursor date', () => {
     useProgramTradeDisplayStore.setState({ view: 'daily' });
     render(<ProgramTradeSummaryCard series={null} cursorDate="20260721" dailyPoints={[{

@@ -40,6 +40,10 @@ type Props = {
   dailyPoints?: readonly DailyProgramTradePoint[];
   dailyLoading?: boolean;
   dailyError?: boolean;
+  dailyHasOlder?: boolean;
+  dailyLoadingOlder?: boolean;
+  dailyOlderError?: boolean;
+  onLoadOlder?: () => void;
 };
 
 type ProgramTradeMetric = 'net' | 'buy' | 'sell';
@@ -57,6 +61,10 @@ export default function ProgramTradeSummaryCard({
   dailyPoints = [],
   dailyLoading = false,
   dailyError = false,
+  dailyHasOlder = false,
+  dailyLoadingOlder = false,
+  dailyOlderError = false,
+  onLoadOlder,
 }: Props) {
   const points = series?.points ?? [];
   // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
@@ -82,6 +90,8 @@ export default function ProgramTradeSummaryCard({
   if (view === 'daily') {
     return <ProgramDailySummary points={dailyPoints} loading={dailyLoading} error={dailyError}
       cursorDate={cursorDate}
+      hasOlder={dailyHasOlder} loadingOlder={dailyLoadingOlder} olderError={dailyOlderError}
+      onLoadOlder={onLoadOlder}
       onShowIntraday={() => setView('intraday')} />;
   }
 
@@ -154,11 +164,18 @@ function ViewChips({ view, onSelect }: {
   </div>;
 }
 
-function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntraday }: {
+function ProgramDailySummary({
+  points, loading, error, cursorDate, hasOlder, loadingOlder, olderError,
+  onLoadOlder, onShowIntraday,
+}: {
   points: readonly DailyProgramTradePoint[];
   loading: boolean;
   error: boolean;
   cursorDate: string | null;
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  olderError: boolean;
+  onLoadOlder?: () => void;
   onShowIntraday: () => void;
 }) {
   const display = useProgramTradeDisplayStore((s) => s.dailyDisplay);
@@ -171,7 +188,12 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
   const setFollowCursor = useProgramTradeDisplayStore((s) => s.setDailyFollowCursor);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followedRef = useRef<string | null>(null);
-  const rows = useMemo(() => [...points].sort((a, b) => b.t_ms - a.t_ms).slice(0, span), [points, span]);
+  const [visibleCount, setVisibleCount] = useState(60);
+  const sortedRows = useMemo(() => [...points].sort((a, b) => b.t_ms - a.t_ms), [points]);
+  const rows = useMemo(
+    () => sortedRows.slice(0, span === 0 ? visibleCount : span),
+    [sortedRows, span, visibleCount],
+  );
   const totals = useMemo(() => rows.reduce((sum, row) => ({
     net: sum.net + (row.net_qty ?? 0),
     buy: sum.buy + (row.buy_qty ?? 0),
@@ -221,10 +243,16 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
     <div className="flex shrink-0 flex-wrap items-center gap-2 px-2.5 py-1">
       <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
       <div role="group" aria-label="일별 프로그램 표시 기간" className="flex gap-1">
-        {([5, 20, 60] as const).map((value) => <button key={value} type="button"
-          aria-pressed={span === value} onClick={() => setSpan(value)}
+        {([5, 20, 60, 0] as const).map((value) => <button key={value} type="button"
+          aria-pressed={span === value} onClick={() => {
+            setSpan(value);
+            setVisibleCount(60);
+            if (scrollRef.current) scrollRef.current.scrollTop = 0;
+          }}
           className={`rounded border px-1.5 py-px text-2xs ${span === value
-            ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>{value}일</button>)}
+            ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+          {value === 0 ? '전체' : `${value}일`}
+        </button>)}
       </div>
       <div role="group" aria-label="일별 프로그램 표기 방법" className="flex gap-1">
         {(Object.keys(labels) as ProgramDailyDisplay[]).map((value) => <button key={value} type="button"
@@ -257,6 +285,19 @@ function ProgramDailySummary({ points, loading, error, cursorDate, onShowIntrada
                 {totalCells}
               </tr></tfoot>
             </table>}
+      {span === 0 && rows.length > 0 && (sortedRows.length > visibleCount || hasOlder || olderError) && (
+        <div className="px-2.5 py-2 text-center text-2xs text-fg-dim" aria-live="polite">
+          {olderError && <span>과거 데이터 조회 실패 · </span>}
+          <button type="button" className="text-fg-dim hover:text-accent"
+            disabled={loadingOlder}
+            onClick={() => {
+              if (sortedRows.length > visibleCount) setVisibleCount(visibleCount + 60);
+              else onLoadOlder?.();
+            }}>
+            {loadingOlder ? '과거 데이터 조회 중' : olderError ? '다시 시도' : '과거 데이터 더 보기'}
+          </button>
+        </div>
+      )}
     </div>
   </div>;
 }

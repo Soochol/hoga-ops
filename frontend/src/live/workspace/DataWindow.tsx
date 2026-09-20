@@ -42,6 +42,7 @@ import { useLiveSeries } from '../../api/liveSeries';
 import { useMinuteClock } from '../useMinuteClock';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
+import { useDailyProgramTradeHistory } from '../useDailyProgramTradeHistory';
 import { useProgramTradeDisplayStore } from '../../state/programTradeDisplay';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
@@ -967,6 +968,18 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     programView === 'daily' ? dailyFrom : null,
     programView === 'daily' ? dailyTo : null,
   );
+  const dailyHistory = useDailyProgramTradeHistory(
+    programView === 'daily' && linked ? code : null,
+    programView === 'daily' && linked ? dailyFrom : null,
+  );
+  const dailyPoints = useMemo(() => {
+    const byTime = new Map<number, import('../../api/liveDailyProgramTrade').DailyProgramTradePoint>();
+    for (const page of dailyHistory.data?.pages ?? []) {
+      for (const point of page.points) byTime.set(point.t_ms, point);
+    }
+    for (const point of dailyProgram.data?.points ?? []) byTime.set(point.t_ms, point);
+    return [...byTime.values()];
+  }, [dailyHistory.data, dailyProgram.data?.points]);
   // program(0w) WS 실시간 꼬리 — `live.program` 도 선택 venue 로 걸러져 온다
   // (liveSeries.ts 의 filterByVenueTag). 백엔드의 KRX-only 발행 강제는 ADR-0140 §2 에서
   // 걷혔고, 지금은 세 venue 모두 venue 태그를 달고 publish 된다. 5분 주기 번들의 program_trade
@@ -990,6 +1003,7 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     <div className="flex h-full flex-col bg-bg-card">
       <div className="min-h-0 flex-1 overflow-auto">
       <ProgramTradeSummaryCard
+        key={code}
         series={series}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
         cursorDate={cursorDate}
@@ -997,9 +1011,13 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         // 거래원식 오늘 스코프 — 마지막 점이 오늘이 아니면(새날 아침) 전일 마감
         // 누적을 현재값처럼 보여주지 않고 빈 상태로 리셋한다.
         todayKst={link.todayKst}
-        dailyPoints={dailyProgram.data?.points}
+        dailyPoints={dailyPoints}
         dailyLoading={dailyProgram.isLoading}
         dailyError={Boolean(dailyProgram.error)}
+        dailyHasOlder={dailyHistory.data === undefined || Boolean(dailyHistory.hasNextPage)}
+        dailyLoadingOlder={dailyHistory.isFetching}
+        dailyOlderError={dailyHistory.isError}
+        onLoadOlder={() => { void dailyHistory.fetchNextPage(); }}
       />
       </div>
     </div>

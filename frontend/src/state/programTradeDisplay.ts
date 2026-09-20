@@ -3,7 +3,8 @@ import { create } from 'zustand';
 export type ProgramTradeMeasure = 'amount' | 'qty';
 export type ProgramTradeView = 'intraday' | 'daily';
 export type ProgramDailyDisplay = 'all' | 'net' | 'buy' | 'sell';
-export type ProgramDailySpan = 5 | 20 | 60;
+/** 0 = loaded history 전체. Older pages are fetched progressively by the data window. */
+export type ProgramDailySpan = 0 | 5 | 20 | 60;
 
 const STORAGE_KEY = 'live.programTradeDisplay.v1';
 
@@ -37,7 +38,8 @@ const defaults: Persisted = {
 const validView = (value: unknown): value is ProgramTradeView => value === 'intraday' || value === 'daily';
 const validDisplay = (value: unknown): value is ProgramDailyDisplay =>
   value === 'all' || value === 'net' || value === 'buy' || value === 'sell';
-const validSpan = (value: unknown): value is ProgramDailySpan => value === 5 || value === 20 || value === 60;
+const validSpan = (value: unknown): value is ProgramDailySpan =>
+  value === 0 || value === 5 || value === 20 || value === 60;
 
 function readStorage(): Persisted {
   try {
