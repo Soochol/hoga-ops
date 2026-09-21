@@ -155,6 +155,8 @@ function attachFamilies(
     // 가 top-3 으로 떨어지므로 구백엔드에서도 종전 동작이 유지된다.
     traded_record_peaks: records.close,
     traded_record_max_peaks: records.max,
+    all_record_peaks: records.allClose,
+    all_record_max_peaks: records.allMax,
     // 분별 최대 — 같은 두 출처(`buildPeakBarSeries`)에서 왔고, 비면 봉별 모드가
     // 그리지 않는다(top-3 폴백이 **없다** — 그 모듈 docstring 참조).
     traded_bar_peaks: bars.traded.close,

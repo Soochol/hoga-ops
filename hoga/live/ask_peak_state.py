@@ -56,6 +56,8 @@ class _TodaySidePeakState:
     #: 터치 무관 `all_*` 계열의 top-3. **가격별 딕셔너리를 들지 않는다** — 근거는
     #: `_offer_all` docstring. 이것이 이 클래스의 유일한 `all` 상태다.
     all_top: list[Peak] = field(default_factory=list)
+    #: 터치 무관 전체벽의 시간순 prefix maxima — 전체 최대벽 pane 누적 계단 입력.
+    all_record: list[Peak] = field(default_factory=list)
     #: 분 → (가격 → 아직 터치 안 된 벽). `_PENDING_MINUTE_SLACK` 창만 보관.
     pending_by_minute: dict[int, dict[int, Peak]] = field(default_factory=dict)
     #: 분 → 그 분 체결가의 극값(ask=max, bid=min). pending 과 같은 창만 보관.
@@ -175,6 +177,7 @@ class _TodaySidePeakState:
 
             peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
             self._offer_all(peak)
+            self._offer_all_record(peak)
             self._offer_all_bar_max(peak)
             # 미도달 — 당일 극값이 아직 지배하지 못한 가격만 담는다. 극값은 단조라
             # "삽입 시점에 이하였던 가격"은 최종에도 이하이므로 처음부터 안 담는 것이
@@ -277,6 +280,7 @@ class _TodaySidePeakState:
             # `traded_max_peaks` 에 이미 같은 배열을 싣는다. 그래서 필드도 하나만 내고
             # 프론트가 양쪽 축에 같은 배열을 배선한다(`attachFamilies`).
             "traded_record_peaks": [_peak_payload(p) for p in self.traded_record],
+            "all_record_peaks": [_peak_payload(p) for p in self.all_record],
             # 분별 최대 — 위 기록 시퀀스와 **같은 축 규약**이다(rep/cont 를 가르지
             # 않는다). 시간순으로 낸다: 소비처가 시간축에 그린다.
             "traded_bar_peaks": [
@@ -395,6 +399,23 @@ class _TodaySidePeakState:
         records[i:j] = [peak]
         del records[_TRADED_RECORD_CAP:]
 
+    def _offer_all_record(self, peak: Peak) -> None:
+        """전체벽의 정확한 시간순 prefix maxima 를 유지한다.
+
+        전체벽은 매 호가 관측이 즉시 확정되므로 터치 창을 기다리지 않는다. 기록 수를
+        자르면 최종 top-3 밖의 중간 계단을 복원할 수 없어 상한을 두지 않는다.
+        """
+        records = self.all_record
+        i = len(records)
+        while i > 0 and records[i - 1].t_ms > peak.t_ms:
+            i -= 1
+        if i > 0 and records[i - 1].qty >= peak.qty:
+            return
+        j = i
+        while j < len(records) and records[j].qty <= peak.qty:
+            j += 1
+        records[i:j] = [peak]
+
     def merge_from(self, other: _TodaySidePeakState) -> None:
         """다른 상태(오늘 JSONL 재생본)의 **확정 계열만** 흡수한다.
 
@@ -412,6 +433,8 @@ class _TodaySidePeakState:
         """
         for peak in other.all_top:
             self._offer_all(peak)
+        for peak in other.all_record:
+            self._offer_all_record(peak)
         for peak in other.closed_traded:
             self._record_closed_peak(peak)
         # 기록 시퀀스는 **따로** 흡수한다 — `closed_traded` 는 top-3 라 재생본의 오전

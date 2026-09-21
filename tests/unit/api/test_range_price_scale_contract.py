@@ -124,6 +124,7 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     # 기록 갱신 시퀀스 — 컨테이너는 구조 필드고, 가격은 내부 AskPeakCandidate.price 가
     # 가격 분류를 받는다. FE 곱셈은 scalePeak 의 rank() 가 담당(다른 배열과 동일).
     "AskPeak.traded_record_peaks", "AskPeak.traded_record_max_peaks",
+    "AskPeak.all_record_peaks", "AskPeak.all_record_max_peaks",
     # 봉별 최대 — 같은 규약(컨테이너는 구조, 가격은 내부 candidate 가 받는다).
     "AskPeak.traded_bar_peaks", "AskPeak.traded_bar_max_peaks",
     "AskPeak.all_bar_peaks", "AskPeak.all_bar_max_peaks",
@@ -136,6 +137,7 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "BidPeak.all_qty", "BidPeak.all_t_ms", "BidPeak.all_max_qty", "BidPeak.all_max_t_ms",
     "BidPeak.traded_peaks", "BidPeak.traded_max_peaks",
     "BidPeak.traded_record_peaks", "BidPeak.traded_record_max_peaks",
+    "BidPeak.all_record_peaks", "BidPeak.all_record_max_peaks",
     "BidPeak.traded_bar_peaks", "BidPeak.traded_bar_max_peaks",
     "BidPeak.all_bar_peaks", "BidPeak.all_bar_max_peaks",
     "BidPeak.unreached_bar_peaks",

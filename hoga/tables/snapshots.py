@@ -912,6 +912,9 @@ class AskPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: 터치 여부와 무관한 전체벽의 기록 갱신 시퀀스. 전체 최대벽 pane 누적 계단의 원천.
+    all_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    all_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
     #: 기록 갱신 시퀀스(시간순 prefix maxima) — `_peak_record_sequence` 참조. 봉 무관.
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
@@ -988,6 +991,9 @@ class BidPeakDualRow:
     all_max_intra_ms: int
     all_peaks: tuple[AskPeakCandidateRow, ...] = ()
     all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    #: AskPeakDualRow 의 같은 필드 주석 참조.
+    all_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    all_record_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
     #: 기록 갱신 시퀀스(시간순 prefix maxima) — `_peak_record_sequence` 참조. 봉 무관.
     #: 기본값 () 는 오라클·픽스처 생성 편의 — 실제 쿼리(_side_row)는 항상 채운다.
     traded_record_peaks: tuple[AskPeakCandidateRow, ...] = ()
@@ -1980,7 +1986,9 @@ def _peak_candidates(df: pl.DataFrame, limit: int | None) -> tuple[AskPeakCandid
 _PEAK_RECORD_CAP = 128
 
 
-def _peak_record_sequence(df: pl.DataFrame) -> tuple[AskPeakCandidateRow, ...]:
+def _peak_record_sequence(
+    df: pl.DataFrame, *, touched_only: bool = True,
+) -> tuple[AskPeakCandidateRow, ...]:
     """터치된 이벤트 프레임 → **기록 갱신 시퀀스**(시간순 prefix maxima).
 
     "그 시점까지 체결된 벽 중 최대" 를 시간축으로 복원하는 원천이다. `traded_peaks`
@@ -1996,15 +2004,21 @@ def _peak_record_sequence(df: pl.DataFrame) -> tuple[AskPeakCandidateRow, ...]:
     - cap 은 앞에서 128개(`_PEAK_RECORD_CAP`) — 꼬리(그날 최종 최대 부근)는 어차피
       `traded_peaks` 가 나르므로 프론트 병합이 보정한다. 앞을 자르면 오전이 다시 빈다.
     """
-    touched = df.filter(pl.col("touched")) if "touched" in df.columns else df
-    if touched.height == 0:
+    source = (
+        df.filter(pl.col("touched"))
+        if touched_only and "touched" in df.columns
+        else df
+    )
+    if source.height == 0:
         return ()
     # 같은 스냅샷의 10단계가 (intra_ms, seq)를 공유한다 — 동시각에선 qty 내림차순으로
     # 최대 단계가 먼저 오게 해, 같은 시각의 더 작은 단계가 기록으로 끼는 비결정을 없앤다.
-    ordered = touched.sort(["intra_ms", "seq", "qty"], descending=[False, False, True])
+    ordered = source.sort(["intra_ms", "seq", "qty"], descending=[False, False, True])
     records = ordered.filter(
         pl.col("qty") > pl.col("qty").cum_max().shift(1, fill_value=-1),
-    ).head(_PEAK_RECORD_CAP)
+    )
+    if touched_only:
+        records = records.head(_PEAK_RECORD_CAP)
     return tuple(
         AskPeakCandidateRow(price=p_, qty=q, intra_ms=i)
         for p_, q, i in zip(records["price"], records["qty"], records["intra_ms"], strict=True)
@@ -2324,6 +2338,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             # 기록 갱신 시퀀스 — dedup 전 원본 프레임에서(사유는 헬퍼 docstring).
             "traded_record_peaks": _peak_record_sequence(rep),
             "traded_record_max_peaks": _peak_record_sequence(cont),
+            "all_record_peaks": _peak_record_sequence(rep, touched_only=False),
+            "all_record_max_peaks": _peak_record_sequence(cont, touched_only=False),
             # 봉별 최대 — 같은 프레임의 다른 접기(bucket_id 당 1개). dedup 전 원본에서
             # 뽑는 것은 기록 시퀀스와 같은 이유다(가격당 rank-1 을 태우면 봉이 사라진다).
             "traded_bar_peaks": _peak_bar_max_sequence(rep),
@@ -2357,6 +2373,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
             traded_record_peaks=ask["traded_record_peaks"],
             traded_record_max_peaks=ask["traded_record_max_peaks"],
+            all_record_peaks=ask["all_record_peaks"],
+            all_record_max_peaks=ask["all_record_max_peaks"],
             traded_bar_peaks=ask["traded_bar_peaks"],
             traded_bar_max_peaks=ask["traded_bar_max_peaks"],
             all_bar_peaks=ask["all_bar_peaks"],
@@ -2379,6 +2397,8 @@ def query_day_ask_bid_peak_dual_with_rep(
             traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
             traded_record_peaks=bid["traded_record_peaks"],
             traded_record_max_peaks=bid["traded_record_max_peaks"],
+            all_record_peaks=bid["all_record_peaks"],
+            all_record_max_peaks=bid["all_record_max_peaks"],
             traded_bar_peaks=bid["traded_bar_peaks"],
             traded_bar_max_peaks=bid["traded_bar_max_peaks"],
             all_bar_peaks=bid["all_bar_peaks"],

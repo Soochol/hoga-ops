@@ -137,6 +137,8 @@ function scalePeak<T extends AskPeak | BidPeak>(peak: T, factor: number): T {
     traded_max_peaks: rank(peak.traded_max_peaks),
     traded_record_peaks: rank(peak.traded_record_peaks),
     traded_record_max_peaks: rank(peak.traded_record_max_peaks),
+    all_record_peaks: rank(peak.all_record_peaks),
+    all_record_max_peaks: rank(peak.all_record_max_peaks),
     traded_bar_peaks: rank(peak.traded_bar_peaks),
     traded_bar_max_peaks: rank(peak.traded_bar_max_peaks),
     all_bar_peaks: rank(peak.all_bar_peaks),

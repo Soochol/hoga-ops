@@ -129,8 +129,10 @@ KIND_VERSIONS: dict[str, int] = {
     #     사유다(구 캐시엔 필드가 없고 pydantic 이 빈 리스트로 조용히 채운다).
     # 15: unreached_bar_peaks(봉별 미도달, **그 봉 시점 판정**) 추가 — 13·14 와 같은
     #     사유(구 캐시엔 필드가 없고 pydantic 이 빈 리스트로 조용히 채운다).
-    "ask_peak": 15,
-    "bid_peak": 15,
+    # 16: all_record_peaks/all_record_max_peaks 추가 — 전체 최대벽 누적 계단의 오전
+    #     이력을 복원한다. 구 캐시는 빈 리스트로 채워져 최종 top-3 시각부터 시작한다.
+    "ask_peak": 16,
+    "bid_peak": 16,
     "poc": 7,
     # 8: asks_price_max/bids_price_max(가격대마다 따로 잰 최댓값) 추가. 구 캐시엔 그
     #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새

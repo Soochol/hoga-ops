@@ -166,6 +166,24 @@ describe('usePeakWallRender', () => {
     expect(r.current.allWallStepSegments.length).toBeGreaterThan(0);
   });
 
+  it('전체 최대벽 계단은 최종 top-3 밖의 오전 기록부터 시작한다', () => {
+    act(() => useLivePageStore.setState({ askPeakAllWallPaneEnabled: true }));
+    const peak = {
+      ...ALL_PEAK,
+      all_peaks: [{ price: 130, qty: 900, t_ms: 2 * MIN }],
+      all_record_peaks: [
+        { price: 110, qty: 100, t_ms: 0 },
+        { price: 120, qty: 300, t_ms: MIN },
+        { price: 130, qty: 900, t_ms: 2 * MIN },
+      ],
+    } as AskPeak & { all_record_peaks: AskPeak['traded_record_peaks'] };
+    const r = render(true, [peak], true);
+    expect(r.current.allWallStepSegments
+      .map((segment) => [segment.qty, Number(segment.peakTime)])
+      .sort((a, b) => a[1] - b[1]))
+      .toEqual([[100, 0], [300, 60], [900, 120]]);
+  });
+
   /** pane 마스터가 꺼져 있으면 슬롯이 켜져 있어도 계산하지 않는다(`needStepSegments`). */
   it('pane 마스터가 꺼져 있으면 슬롯과 무관하게 계단이 없다', () => {
     const r = render(true, [PEAK], false);

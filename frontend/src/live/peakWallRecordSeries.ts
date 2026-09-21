@@ -25,20 +25,29 @@ export type PeakRecordSeries = {
   close: AskPeakCandidate[];
   /** cont 축(연속) — `traded_record_max_peaks` 로 나간다. */
   max: AskPeakCandidate[];
+  /** 전체벽 rep 축. */
+  allClose: AskPeakCandidate[];
+  /** 전체벽 cont 축. */
+  allMax: AskPeakCandidate[];
 };
 
 /** 기록이 전혀 없을 때의 **공유** 빈 계열 — 매번 새 객체를 만들면 소비처 memo 가 흔들린다. */
-export const EMPTY_PEAK_RECORD_SERIES: PeakRecordSeries = { close: [], max: [] };
+export const EMPTY_PEAK_RECORD_SERIES: PeakRecordSeries = {
+  close: [], max: [], allClose: [], allMax: [],
+};
 
 /** `/api/range` seed 가 나르는 두 축. 과거일과 같은 계산이라 rep/cont 가 **따로** 있다. */
 type RecordSeed = {
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  all_record_peaks?: AskPeakCandidate[];
+  all_record_max_peaks?: AskPeakCandidate[];
 };
 
 /** 라이브 스냅샷이 나르는 한 축. 축 구분이 없는 이유는 `liveSeries.ts` 필드 주석 참조. */
 type RecordLive = {
   traded_record_peaks?: AskPeakCandidate[];
+  all_record_peaks?: AskPeakCandidate[];
 };
 
 function candidateKey(candidate: AskPeakCandidate): string {
@@ -94,9 +103,12 @@ export function buildPeakRecordSeries(
   session: readonly AskPeakCandidate[] = [],
 ): PeakRecordSeries {
   const liveRecords = live?.traded_record_peaks;
+  const liveAllRecords = live?.all_record_peaks;
   return {
     close: mergeRecordCandidates(seed?.traded_record_peaks, liveRecords, session),
     max: mergeRecordCandidates(seed?.traded_record_max_peaks, liveRecords, session),
+    allClose: mergeRecordCandidates(seed?.all_record_peaks, liveAllRecords),
+    allMax: mergeRecordCandidates(seed?.all_record_max_peaks, liveAllRecords),
   };
 }
 
@@ -156,6 +168,7 @@ export function offerPeakRecord(records: AskPeakCandidate[], peak: AskPeakCandid
 export class PeakRecordAccumulator {
   private key = '';
   private records: AskPeakCandidate[] = [];
+  private allRecords: AskPeakCandidate[] = [];
 
   /**
    * 이번 갱신의 top-3 을 제시하고 누적된 기록을 돌려준다.
@@ -164,13 +177,19 @@ export class PeakRecordAccumulator {
    * 인스턴스를 `useRef` 로 붙들어 종목 전환을 인스턴스 교체로 표현할 수 없기 때문이고,
    * `IncrementalPeakWallSource` 가 `sessionOpenMs` 에 대해 쓰는 것과 같은 장치다.
    */
-  update(scopeKey: string, candidates: readonly AskPeakCandidate[]): readonly AskPeakCandidate[] {
+  update(
+    scopeKey: string,
+    candidates: readonly AskPeakCandidate[],
+    allCandidates: readonly AskPeakCandidate[] = [],
+  ): { traded: readonly AskPeakCandidate[]; all: readonly AskPeakCandidate[] } {
     if (scopeKey !== this.key) {
       this.key = scopeKey;
       this.records = [];
+      this.allRecords = [];
     }
     for (const candidate of candidates) offerPeakRecord(this.records, candidate);
-    return this.records;
+    for (const candidate of allCandidates) offerPeakRecord(this.allRecords, candidate);
+    return { traded: this.records, all: this.allRecords };
   }
 }
 
@@ -187,8 +206,11 @@ export class PeakRecordAccumulator {
 export function withSessionRecords<T extends {
   date: string;
   traded_peaks?: AskPeakCandidate[];
+  all_peaks?: AskPeakCandidate[];
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  all_record_peaks?: AskPeakCandidate[];
+  all_record_max_peaks?: AskPeakCandidate[];
 }>(
   rows: T[],
   accumulator: PeakRecordAccumulator,
@@ -197,14 +219,20 @@ export function withSessionRecords<T extends {
 ): T[] {
   const index = rows.findIndex((row) => row.date === todayKst);
   const today = index >= 0 ? rows[index] : null;
-  const session = accumulator.update(scopeKey, today?.traded_peaks ?? []);
+  const session = accumulator.update(
+    scopeKey,
+    today?.traded_peaks ?? [],
+    today?.all_peaks ?? [],
+  );
   // 참조 안정성: 얹을 것이 없으면 원 배열을 그대로 돌려준다(소비처 memo 가 흔들리지 않게).
-  if (today === null || session.length === 0) return rows;
+  if (today === null || (session.traded.length === 0 && session.all.length === 0)) return rows;
   const out = rows.slice();
   out[index] = {
     ...today,
-    traded_record_peaks: mergeRecordCandidates(today.traded_record_peaks, session),
-    traded_record_max_peaks: mergeRecordCandidates(today.traded_record_max_peaks, session),
+    traded_record_peaks: mergeRecordCandidates(today.traded_record_peaks, session.traded),
+    traded_record_max_peaks: mergeRecordCandidates(today.traded_record_max_peaks, session.traded),
+    all_record_peaks: mergeRecordCandidates(today.all_record_peaks, session.all),
+    all_record_max_peaks: mergeRecordCandidates(today.all_record_max_peaks, session.all),
   };
   return out;
 }

@@ -817,6 +817,9 @@ export type AskPeak = PeakBase & {
    *  구백엔드 부재 → optional. */
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  /** 전체벽(터치 무관)의 시간순 prefix maxima — 전체 최대벽 pane 누적 계단용. */
+  all_record_peaks?: AskPeakCandidate[];
+  all_record_max_peaks?: AskPeakCandidate[];
   /** 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순, 상한 없음).
    *  최대벽 강도 pane 의 **봉별 모드** 입력이고 traded_record_*(누적 계단)와 같은
    *  데이터의 다른 축이다. ⚠ **항상 1분 해상도**로 온다 — 굵은 봉은 프론트가 캔들 봉에
@@ -847,6 +850,9 @@ export type BidPeak = PeakBase & {
   /** ask 쪽 주석 참조 — 동일 규약 미러. */
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  /** ask 쪽 주석 참조 — 동일 규약 미러. */
+  all_record_peaks?: AskPeakCandidate[];
+  all_record_max_peaks?: AskPeakCandidate[];
   /** ask 쪽 주석 참조 — 동일 규약 미러. */
   traded_bar_peaks?: AskPeakCandidate[];
   traded_bar_max_peaks?: AskPeakCandidate[];
