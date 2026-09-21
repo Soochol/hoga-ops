@@ -23,6 +23,17 @@ describe('buildPeakRecordSeries', () => {
     expect(series.max).toEqual([c(100, 60, 3), c(105, 300, 5), c(110, 900, 9)]);
   });
 
+  it('전체 최대벽 기록도 seed 두 축과 라이브 단일 축을 합친다', () => {
+    const morning = c(100, 50, 3);
+    const afternoon = c(110, 900, 9);
+    const series = buildPeakRecordSeries(
+      { all_record_peaks: [morning], all_record_max_peaks: [morning] },
+      { all_record_peaks: [afternoon] },
+    );
+    expect(series.allClose).toEqual([morning, afternoon]);
+    expect(series.allMax).toEqual([morning, afternoon]);
+  });
+
   it('상한을 걸지 않는다 — 랭커를 태우면 top-3 으로 잘려 계열의 존재 이유가 사라진다', () => {
     const many = Array.from({ length: 12 }, (_, i) => c(100 + i, 10 * (i + 1), i));
     expect(buildPeakRecordSeries({ traded_record_peaks: many }, null).close).toHaveLength(12);

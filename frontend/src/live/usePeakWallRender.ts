@@ -457,8 +457,9 @@ export function usePeakWallRender({
   const unreachedBuilt = unreachedResult.segments;
 
   // 하위 계열의 계단 입력 — 그리기 선과 같은 carrier 리맵을 쓰되 랭크로 자르지
-  // 않는다(stepHistory). 두 계열 다 `traded_record_*` 가 없어 후보는 그 계열의
-  // top-3(과거일은 rank-1 스칼라)이다 — 빌더 docstring 이 그 근사를 적는다.
+  // 않는다(stepHistory). 전체벽은 `toAllWallPeakInputs` 가 `all_record_*` 를 record
+  // carrier 로 옮겨 최초 관측부터 정확한 누적 계단을 만든다. 미도달만 별도 기록축이
+  // 없어 최종 top-3 후보로 근사한다.
   const allWallStepBuilt = useMemo(() => (
     needStepSegments && !paneBarMode && applicable && enabled && paneAllWallEnabled
       ? buildPeakWallOverlaySegments({

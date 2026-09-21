@@ -31,6 +31,8 @@ export type PeakWallInput = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   traded_record_peaks?: AskPeakCandidate[];
   traded_record_max_peaks?: AskPeakCandidate[];
+  all_record_peaks?: AskPeakCandidate[];
+  all_record_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
   unreached_peaks?: AskPeakCandidate[];
@@ -66,7 +68,8 @@ function allCandidate(
  *   carrier, 배열은 traded_peaks 로 옮긴다.
  *
  * `all_*` 가 전혀 없는 날(legacy payload)은 건너뛴다 — 그날만 선이 빠진다.
- * record 필드는 옮기지 않는다(전체 벽 선은 강도 pane 계단에 참여하지 않는다).
+ * `all_record_*` 는 traded record carrier 로 함께 옮긴다. 그래야 강도 pane 누적 계단이
+ * 최종 top-3 발생 시점이 아니라 그날 최초 전체벽 기록부터 시작한다.
  */
 export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallInput[] {
   const out: PeakWallInput[] = [];
@@ -88,6 +91,8 @@ export function toAllWallPeakInputs(peaks: readonly PeakWallInput[]): PeakWallIn
       max_t_ms: max?.t_ms ?? null,
       traded_peaks: closeArr,
       traded_max_peaks: maxArr,
+      traded_record_peaks: p.all_record_peaks,
+      traded_record_max_peaks: p.all_record_max_peaks,
     });
   }
   return out;

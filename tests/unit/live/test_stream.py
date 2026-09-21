@@ -392,6 +392,10 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
         "traded_t_ms": now + 5_000,
         "traded_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
         "traded_record_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
+        "all_record_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now + 5_000},
+            {"price": 102, "qty": 9, "t_ms": now + 5_000},
+        ],
         "traded_bar_peaks": [{"price": 101, "qty": 3, "t_ms": now + 5_000}],
         "all_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now + 5_000}],
         "unreached_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now + 5_000}],
@@ -436,6 +440,10 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
         "traded_t_ms": now + 5_000,
         "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
         "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
+        "all_record_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": now + 5_000},
+            {"price": 68_900, "qty": 12_000, "t_ms": now + 5_000},
+        ],
         "traded_bar_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now + 5_000}],
         "all_bar_peaks": [{"price": 68_900, "qty": 12_000, "t_ms": now + 5_000}],
         "unreached_bar_peaks": [{"price": 68_900, "qty": 12_000, "t_ms": now + 5_000}],
@@ -496,6 +504,10 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_pa
             {"price": 101, "qty": 3, "t_ms": now},
         ],
         "traded_record_peaks": [{"price": 101, "qty": 3, "t_ms": now}],
+        "all_record_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 102, "qty": 9, "t_ms": now},
+        ],
         "traded_bar_peaks": [{"price": 101, "qty": 3, "t_ms": now}],
         "all_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now}],
         "unreached_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now}],
@@ -550,6 +562,10 @@ async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_pa
             {"price": 70_000, "qty": 5_000, "t_ms": now},
         ],
         "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now}],
+        "all_record_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": now},
+            {"price": 68_900, "qty": 12_000, "t_ms": now},
+        ],
         "traded_bar_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": now}],
         "all_bar_peaks": [{"price": 68_900, "qty": 12_000, "t_ms": now}],
         "unreached_bar_peaks": [{"price": 68_900, "qty": 12_000, "t_ms": now}],
@@ -589,6 +605,10 @@ async def test_on_tick_orderbook_populates_all_peak_arrays_without_trades(tmp_pa
         "traded_t_ms": None,
         "traded_peaks": [],
         "traded_record_peaks": [],
+        "all_record_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 102, "qty": 9, "t_ms": now},
+        ],
         "traded_bar_peaks": [],
         "all_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now}],
         "unreached_bar_peaks": [{"price": 102, "qty": 9, "t_ms": now}],
@@ -650,6 +670,10 @@ async def test_on_tick_continuous_trade_touches_every_same_minute_wall_at_or_bel
         "traded_record_peaks": [
             {"price": 101, "qty": 3, "t_ms": now},
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
+        ],
+        "all_record_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 102, "qty": 9, "t_ms": now},
         ],
         # 봉별은 그 분의 **최대 하나**다 — 기록 시퀀스가 둘을 남기는 것과
         # 정확히 갈리는 자리(같은 분 안의 101@3 → 101@8).
@@ -907,6 +931,10 @@ async def test_today_peak_seed_loads_full_day_ask_peak_and_full_coverage(tmp_pat
         "traded_t_ms": None,
         "traded_peaks": [],
         "traded_record_peaks": [],
+        "all_record_peaks": [
+            {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
+            {"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)},
+        ],
         "traded_bar_peaks": [],
         "all_bar_peaks": [{"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)}],
         "unreached_bar_peaks": [{"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)}],
@@ -978,6 +1006,10 @@ async def test_today_peak_seed_loads_full_day_bid_peak_and_full_coverage(tmp_pat
         "traded_t_ms": _bid_ob_ms,
         "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
         "traded_record_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
+        "all_record_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms},
+            {"price": 68_900, "qty": 12_000, "t_ms": _bid_ob_ms},
+        ],
         "traded_bar_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": _bid_ob_ms}],
         "all_bar_peaks": [{
             "price": 68_900, "qty": 12_000,

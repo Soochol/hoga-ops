@@ -37,7 +37,10 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_qty": None,
         "traded_t_ms": None,
         "traded_peaks": [],
-        "traded_record_peaks": [],
+            "traded_record_peaks": [],
+            "all_record_peaks": [
+                {"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)},
+            ],
         "traded_bar_peaks": [],
         "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "unreached_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
@@ -61,7 +64,10 @@ def test_ask_wall_touched_by_same_minute_tick_moves_to_traded():
         "traded_qty": 500,
         "traded_t_ms": at(10, 1_000),
         "traded_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
-        "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+            "traded_record_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
+            "all_record_peaks": [
+                {"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)},
+            ],
         "traded_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         "all_bar_peaks": [{"price": 10_100, "qty": 500, "t_ms": at(10, 1_000)}],
         # ⚠ **두 미도달 계열이 여기서 갈린다.** 위 `unreached_*`(하루 판)은 체결이
@@ -401,6 +407,35 @@ def test_record_sequence_keeps_morning_records_that_top_three_drops():
     assert [p["t_ms"] for p in snap["traded_record_peaks"]] == [
         at(10 + i, 1_000) for i in range(5)
     ]
+
+
+def test_all_record_sequence_keeps_every_running_max_without_touch():
+    """전체 최대벽은 터치 여부와 무관하게 최초 관측부터 누적 최대를 보존한다."""
+    state = TodayAskPeakState()
+    for i, qty in enumerate([100, 200, 150, 400, 500]):
+        state.ingest_orderbook(
+            t_ms=at(10 + i, 1_000),
+            asks=[{"price": 10_000 + i * 10, "qty": qty}],
+        )
+
+    snap = state.snapshot()
+    assert [p["qty"] for p in snap["all_peaks"]] == [500, 400, 200]
+    assert [p["qty"] for p in snap["all_record_peaks"]] == [100, 200, 400, 500]
+
+
+def test_all_record_sequence_is_not_truncated_at_traded_record_cap():
+    """전체벽 계단은 최종 top-3로 꼬리를 보정할 수 없어 모든 갱신점을 보존한다."""
+    state = TodayAskPeakState()
+    for i in range(_TRADED_RECORD_CAP + 5):
+        state.ingest_orderbook(
+            t_ms=at(10 + i, 1_000),
+            asks=[{"price": 10_000 + i, "qty": 100 + i}],
+        )
+
+    records = state.snapshot()["all_record_peaks"]
+    assert len(records) == _TRADED_RECORD_CAP + 5
+    assert records[0]["qty"] == 100
+    assert records[-1]["qty"] == 100 + _TRADED_RECORD_CAP + 4
 
 
 def test_record_sequence_orders_by_wall_time_not_touch_order():

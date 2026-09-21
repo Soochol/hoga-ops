@@ -227,6 +227,9 @@ class AskPeak(BaseModel):
     # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
     traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # 전체벽(터치 무관)의 시간순 prefix maxima — 전체 최대벽 pane 누적 계단용.
+    all_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    all_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순).
     # 최대벽 강도 pane 의 **봉별 모드** 입력이고 `traded_record_*`(누적 계단)와 같은
     # 데이터의 다른 축이다. 상한 없음(잘린 구간이 "체결 벽 없는 봉"과 구별되지 않는다).
@@ -283,6 +286,9 @@ class BidPeak(BaseModel):
     # snapshots._peak_record_sequence docstring 참조. 봉 무관(cont 절반과 같은 취급).
     traded_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     traded_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    # AskPeak 의 같은 필드 주석 참조.
+    all_record_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    all_record_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     # 봉별 최대 체결 벽 — 봉마다 "그 봉에서 가장 크게 체결된 벽" 하나(시간순).
     # 최대벽 강도 pane 의 **봉별 모드** 입력이고 `traded_record_*`(누적 계단)와 같은
     # 데이터의 다른 축이다. 상한 없음(잘린 구간이 "체결 벽 없는 봉"과 구별되지 않는다).

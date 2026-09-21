@@ -181,17 +181,22 @@ def _peak_bucket_dedup(classified: list[tuple[_WallEvent, bool]]) -> list[_WallE
     return list(best.values())
 
 
-def _record_sequence(classified: list[tuple[_WallEvent, bool]]) -> tuple[AskPeakCandidateRow, ...]:
+def _record_sequence(
+    classified: list[tuple[_WallEvent, bool]], *, touched_only: bool = True,
+) -> tuple[AskPeakCandidateRow, ...]:
     """기록 갱신 시퀀스의 **독립 구현**(순수 파이썬 루프) — 프로덕션 polars cum_max 와
     fuzz 로 교차 검증된다. 규칙 동일: (intra_ms, seq, -qty) 정렬 · strict > · cap 128."""
-    touched = sorted((e for e, t in classified if t), key=lambda e: (e.intra_ms, e.seq, -e.qty))
+    touched = sorted(
+        (e for e, t in classified if t or not touched_only),
+        key=lambda e: (e.intra_ms, e.seq, -e.qty),
+    )
     out: list[AskPeakCandidateRow] = []
     best = -1
     for e in touched:
         if e.qty > best:
             out.append(AskPeakCandidateRow(price=e.price, qty=e.qty, intra_ms=e.intra_ms))
             best = e.qty
-        if len(out) >= 128:
+        if touched_only and len(out) >= 128:
             break
     return tuple(out)
 
@@ -327,6 +332,8 @@ def oracle_query_day_ask_bid_peak_dual(
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
             "traded_record_peaks": _record_sequence(rep_classified),
             "traded_record_max_peaks": _record_sequence(cont_classified),
+            "all_record_peaks": _record_sequence(rep_classified, touched_only=False),
+            "all_record_max_peaks": _record_sequence(cont_classified, touched_only=False),
             "traded_bar_peaks": _bar_max_sequence(rep_classified),
             "traded_bar_max_peaks": _bar_max_sequence(cont_classified),
             "all_bar_peaks": _bar_max_sequence(rep_classified, touched_only=False),
@@ -353,6 +360,8 @@ def oracle_query_day_ask_bid_peak_dual(
             traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
             traded_record_peaks=ask["traded_record_peaks"],
             traded_record_max_peaks=ask["traded_record_max_peaks"],
+            all_record_peaks=ask["all_record_peaks"],
+            all_record_max_peaks=ask["all_record_max_peaks"],
             traded_bar_peaks=ask["traded_bar_peaks"],
             traded_bar_max_peaks=ask["traded_bar_max_peaks"],
             all_bar_peaks=ask["all_bar_peaks"],
@@ -375,6 +384,8 @@ def oracle_query_day_ask_bid_peak_dual(
             traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
             traded_record_peaks=bid["traded_record_peaks"],
             traded_record_max_peaks=bid["traded_record_max_peaks"],
+            all_record_peaks=bid["all_record_peaks"],
+            all_record_max_peaks=bid["all_record_max_peaks"],
             traded_bar_peaks=bid["traded_bar_peaks"],
             traded_bar_max_peaks=bid["traded_bar_max_peaks"],
             all_bar_peaks=bid["all_bar_peaks"],
