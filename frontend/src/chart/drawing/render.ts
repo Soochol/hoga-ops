@@ -1,6 +1,6 @@
 // frontend/src/chart/drawing/render.ts
 import { textLayout } from './textLayout';
-import { CANVAS_FONT_STACK, RENDERED_ROOT_PX } from '../../styles/design-tokens';
+import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
   Drawing,
@@ -557,16 +557,6 @@ function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, sel
     c.lineTo(ctx.width, y);
     c.stroke();
   });
-  if (h.dayExtreme && h.labelHidden !== true) {
-    const { date, side } = h.dayExtreme;
-    c.save();
-    c.fillStyle = h.color;
-    c.font = textFont(RENDERED_ROOT_PX * 0.75);
-    c.textAlign = 'right';
-    c.textBaseline = y < 20 ? 'top' : 'bottom';
-    c.fillText(`${date.slice(0, 4)}.${date.slice(4, 6)}.${date.slice(6, 8)} ${side === 'high' ? '고점' : '저점'} · ${formatBadgePrice(h.price, 'candle')}`, ctx.width - 8, y < 20 ? y + 4 : y - 4);
-    c.restore();
-  }
 }
 
 /**
