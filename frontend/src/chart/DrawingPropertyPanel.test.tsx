@@ -988,6 +988,7 @@ describe('horizontal line label visibility', () => {
     useDrawingsStore.getState().setSelected(scope, HLINE.id);
     render(<DrawingPropertyPanel scope={scope} />);
     const button = screen.getByRole('button', { name: '라벨 표시' });
+    expect(button).toHaveAttribute('title', '가격 라벨 표시/숨기기');
     expect(button).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(button);
     expect(useDrawingsStore.getState().drawingsFor(scope)[0]).toMatchObject({ labelHidden: true });

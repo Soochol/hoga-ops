@@ -1007,7 +1007,7 @@ export default function DrawingPropertyPanel({
           aria-label="라벨 표시"
           aria-pressed={drawing.labelHidden !== true}
           disabled={locked}
-          title="날짜·가격 라벨 표시/숨기기"
+          title="가격 라벨 표시/숨기기"
           onClick={() => useDrawingsStore.getState().update(scope, id, {
             labelHidden: drawing.labelHidden !== true,
           })}
