@@ -142,7 +142,7 @@ export function normalizeItems(raw: unknown): Drawing[] {
       if (normalized.kind === 'hline' && normalized.dayExtreme) {
         const meta = normalized.dayExtreme;
         if (typeof meta.date !== 'string' || !/^\d{8}$/.test(meta.date)
-          || (meta.side !== 'high' && meta.side !== 'low')) delete normalized.dayExtreme;
+          || (meta.side !== 'high' && meta.side !== 'low' && meta.side !== 'close')) delete normalized.dayExtreme;
       }
       if (normalized.kind === 'pencil') {
         const subX = normalizeSubX(normalized.subX);

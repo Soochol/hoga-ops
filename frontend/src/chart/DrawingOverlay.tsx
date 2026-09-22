@@ -216,7 +216,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const candles = useMemo(() => onAxisCandles(axis, bundleCandles), [axis, bundleCandles]);
 
   const activeTool = useDrawingsStore((s) => s.activeTool);
-  const dayToolActive = activeTool === 'day-high' || activeTool === 'day-low';
+  const dayToolActive = activeTool === 'day-high' || activeTool === 'day-low' || activeTool === 'day-close';
   const dayExtremes = useMemo(
     () => indexDayExtremes(dayToolActive ? (bundleCandles ?? []).filter(c => axis.contains(c.ts_ms)) : []),
     [dayToolActive, axis, bundleCandles],
@@ -881,7 +881,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       // Narrow the per-kind defaults to the active tool's slot. select/eraser
       // never read this (they don't create shapes), so INITIAL_STYLE is a safe
       // filler there.
-      defaults: activeTool === 'day-high' || activeTool === 'day-low'
+      defaults: activeTool === 'day-high' || activeTool === 'day-low' || activeTool === 'day-close'
         ? defaults.styleByKind.hline
         : isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
       trendlineDraft,
@@ -1556,7 +1556,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
-      {(activeTool === 'day-high' || activeTool === 'day-low') && (
+      {(activeTool === 'day-high' || activeTool === 'day-low' || activeTool === 'day-close') && (
         <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">
           {dayExtremesReady ? '날짜를 클릭하세요 · Esc 취소' : '분봉·일봉 데이터가 준비되면 날짜를 클릭하세요'}
         </div>

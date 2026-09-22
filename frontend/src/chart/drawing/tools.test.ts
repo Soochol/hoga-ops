@@ -112,14 +112,14 @@ describe('TOOLS registry shape', () => {
     // If the union grows, this fails to compile — the cast forces alignment.
     const keys: string[] = Object.keys(TOOLS).sort();
     expect(keys).toEqual([
-      'day-high', 'day-low', 'eraser', 'hline', 'measure', 'pencil', 'rect', 'select', 'text', 'trendline', 'vline',
+      'day-close', 'day-high', 'day-low', 'eraser', 'hline', 'measure', 'pencil', 'rect', 'select', 'text', 'trendline', 'vline',
     ]);
   });
 
   it('DRAWABLE_TOOLS_ORDER lists only non-select tools', () => {
     expect(DRAWABLE_TOOLS_ORDER).not.toContain('select');
     expect(DRAWABLE_TOOLS_ORDER).toEqual([
-      'hline', 'day-high', 'day-low', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil', 'eraser',
+      'hline', 'day-high', 'day-low', 'day-close', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil', 'eraser',
     ]);
   });
 
@@ -2002,14 +2002,15 @@ describe('selectTool — 잠긴 도형도 고른다', () => {
 });
 
 
-describe('day extreme horizontal lines', () => {
-  it.each(['high', 'low'] as const)('creates a frozen %s line on the candle pane and exits', side => {
-    const resolve = vi.fn(() => ({ date: '20260914', price: side === 'high' ? 120 : 80 }));
+describe('day price horizontal lines', () => {
+  it.each(['high', 'low', 'close'] as const)('creates a frozen %s line on the candle pane and exits', side => {
+    const price = side === 'high' ? 120 : side === 'low' ? 80 : 100;
+    const resolve = vi.fn(() => ({ date: '20260914', price }));
     const ctx = makeCtx({ py: 999, paneIdAtY: () => 'volume', dayExtremeAtX: resolve });
-    TOOLS[side === 'high' ? 'day-high' : 'day-low'].onPointerDown!(ctx);
+    TOOLS[`day-${side}`].onPointerDown!(ctx);
     expect(resolve).toHaveBeenCalledWith(ctx.px, side);
     expect(ctx.add).toHaveBeenCalledWith(expect.objectContaining({ kind: 'hline', paneId: 'candle',
-      price: side === 'high' ? 120 : 80, dayExtreme: { date: '20260914', side } }));
+      price, dayExtreme: { date: '20260914', side } }));
     expect(ctx.pixelToData).not.toHaveBeenCalled();
     expect(ctx.revertToSelectMode).toHaveBeenCalledWith(expect.any(String));
   });
@@ -2019,17 +2020,19 @@ describe('day extreme horizontal lines', () => {
     expect(ctx.add).not.toHaveBeenCalled();
     expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
-  it('matches Shift+H/L without stealing Alt+H or Ctrl combinations', () => {
+  it('matches Shift+H/L/C without stealing Alt+H or Ctrl combinations', () => {
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'H', shiftKey: true }))).toBe('day-high');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'L', shiftKey: true }))).toBe('day-low');
+    expect(matchShortcut(new KeyboardEvent('keydown', { key: 'C', shiftKey: true }))).toBe('day-close');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'h', altKey: true }))).toBe('hline');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'H', shiftKey: true, ctrlKey: true }))).toBeNull();
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'l' }))).toBeNull();
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'ㅗ', code: 'KeyH', shiftKey: true }))).toBe('day-high');
+    expect(matchShortcut(new KeyboardEvent('keydown', { key: 'ㅊ', code: 'KeyC', shiftKey: true }))).toBe('day-close');
   });
 });
 
-it.each(['hline', 'day-high', 'day-low'] as const)('%s uses the last horizontal label preference', kind => {
+it.each(['hline', 'day-high', 'day-low', 'day-close'] as const)('%s uses the last horizontal label preference', kind => {
   const ctx = makeCtx({ dayExtremeAtX: () => ({ date: '20260914', price: 120 }) });
   ctx.defaults = { ...ctx.defaults, labelHidden: true };
   TOOLS[kind].onPointerDown!(ctx);
