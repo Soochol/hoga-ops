@@ -32,6 +32,7 @@ export type DrawingKind =
 export type DrawingTool =
   | 'day-high'
   | 'day-low'
+  | 'day-close'
   | 'select'
   | 'hline'
   | 'vline'
@@ -44,7 +45,8 @@ export type DrawingTool =
 
 /** Narrow tools with their own persisted shape/style; day tools create hlines. */
 export function isDrawingKind(tool: DrawingTool): tool is DrawingKind {
-  return tool !== 'select' && tool !== 'eraser' && tool !== 'day-high' && tool !== 'day-low';
+  return tool !== 'select' && tool !== 'eraser'
+    && tool !== 'day-high' && tool !== 'day-low' && tool !== 'day-close';
 }
 
 /** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
@@ -92,7 +94,7 @@ export interface Hline extends DrawingBase {
   /** Hide both the caption and price-axis badge. Absent means visible. */
   labelHidden?: boolean;
   /** Snapshot label; changing candles never moves this manually created line. */
-  dayExtreme?: { date: string; side: 'high' | 'low' };
+  dayExtreme?: { date: string; side: 'high' | 'low' | 'close' };
   kind: 'hline';
   /** The single price level. Renders as a horizontal line spanning the canvas. */
   price: number;
