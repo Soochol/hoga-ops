@@ -256,7 +256,7 @@ export type Ref<T> = { current: T };
  */
 export type ToolCtx = {
   /** Resolve the clicked trading date using the candle pane, independently of cursor Y. */
-  dayExtremeAtX?: (x: number, side: 'high' | 'low' | 'close') => { date: string; price: number } | null;
+  dayExtremeAtX?: (x: number, side: 'high' | 'low' | 'open' | 'close') => { date: string; price: number } | null;
   /** Cursor pixel X relative to the overlay container. */
   px: number;
   /** Cursor pixel Y relative to the overlay container. */
@@ -431,7 +431,7 @@ export type ToolCtx = {
    *  포함**. 마퀴는 지목이지 편집이 아니고, 잠긴 것을 담을 수 있어야 일괄 잠금
    *  해제가 성립한다. 편집 관문은 스토어에 그대로다(ADR-0164). */
   drawingsInRect(rect: MarqueeRect): Drawing[];
-  /** Finish a one-shot tool and select its new drawing. Used by day high/low/close;
+  /** Finish a one-shot tool and select its new drawing. Used by day high/low/open/close;
    *  ordinary drawing tools retain their active tool after creation. */
   revertToSelectMode(newId: string): void;
 };
@@ -1180,12 +1180,14 @@ export const hlineTool: DrawingToolSpec = {
   },
 };
 
-function dayExtremeTool(side: 'high' | 'low' | 'close'): DrawingToolSpec {
+function dayExtremeTool(side: 'high' | 'low' | 'open' | 'close'): DrawingToolSpec {
   const config = side === 'high'
     ? { kind: 'day-high' as const, label: '일자 고점 수평선', glyph: '⌃', key: 'h' }
     : side === 'low'
       ? { kind: 'day-low' as const, label: '일자 저점 수평선', glyph: '⌄', key: 'l' }
-      : { kind: 'day-close' as const, label: '일자 종가 수평선', glyph: '━', key: 'c' };
+      : side === 'open'
+        ? { kind: 'day-open' as const, label: '일자 시가 수평선', glyph: '┄', key: 'o' }
+        : { kind: 'day-close' as const, label: '일자 종가 수평선', glyph: '━', key: 'c' };
   return {
     kind: config.kind,
     label: config.label,
@@ -1602,6 +1604,7 @@ export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
   hline: hlineTool,
   'day-high': dayExtremeTool('high'),
   'day-low': dayExtremeTool('low'),
+  'day-open': dayExtremeTool('open'),
   'day-close': dayExtremeTool('close'),
   vline: vlineTool,
   trendline: trendlineTool,
@@ -1616,6 +1619,7 @@ export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
   'hline',
   'day-high',
   'day-low',
+  'day-open',
   'day-close',
   'vline',
   'trendline',

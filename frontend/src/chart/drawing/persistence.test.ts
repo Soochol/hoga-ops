@@ -358,7 +358,7 @@ describe('normalizeItems — extendRight', () => {
 });
 
 describe('day extreme line metadata', () => {
-  it.each(['high', 'low', 'close'] as const)('preserves fixed %s price and date metadata through save/load', side => {
+  it.each(['high', 'low', 'open', 'close'] as const)('preserves fixed %s price and date metadata through save/load', side => {
     const line: Drawing = { id: 'day', kind: 'hline', paneId: 'candle', price: 123,
       color: '#fff', width: 2, lineStyle: 'solid', dayExtreme: { date: '20260914', side } };
     saveDrawings('005930|minute', [line]);

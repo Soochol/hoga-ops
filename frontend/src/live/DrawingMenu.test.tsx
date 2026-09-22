@@ -21,7 +21,7 @@ describe('DrawingMenu', () => {
     await openMenu();
 
     const menu = screen.getByTestId('drawing-menu');
-    for (const label of ['선택', '수평선', '일자 고점 수평선', '일자 저점 수평선', '일자 종가 수평선', '수직선', '추세선', '사각형', '측정자', '텍스트', '연필', '지우개']) {
+    for (const label of ['선택', '수평선', '일자 고점 수평선', '일자 저점 수평선', '일자 시가 수평선', '일자 종가 수평선', '수직선', '추세선', '사각형', '측정자', '텍스트', '연필', '지우개']) {
       expect(within(menu).getByRole('menuitemradio', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
     }
     expect(within(menu).getByRole('menuitemcheckbox', { name: /자석/ })).toBeInTheDocument();
