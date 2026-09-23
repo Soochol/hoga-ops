@@ -662,7 +662,7 @@ describe('planRestoreSeat — 복원 대기의 처분(#1614 후속)', () => {
   });
 });
 
-describe('previousDayObExpired — 전일 사다리는 다음 거래일 08:00 에 화면에서 내린다', () => {
+describe('previousDayObExpired — KRX 06:00, NXT 08:00에 전일 사다리를 내린다', () => {
   /** KST 벽시계 → Unix ms. KST = UTC+9. */
   const kst = (ymd: string, h: number, m = 0) =>
     Date.UTC(
@@ -682,26 +682,31 @@ describe('previousDayObExpired — 전일 사다리는 다음 거래일 08:00 �
     expect(previousDayObExpired(kst('20260901', 15, 30), kst('20260901', 20, 0))).toBe(false);
   });
 
-  it('전일 프레임은 08:00 **정각부터** 만료된다', () => {
-    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 7, 59))).toBe(false);
-    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 8, 0))).toBe(true);
+  it('KRX 전일 프레임은 06:00 정각부터 만료된다', () => {
+    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 5, 59), 'KRX')).toBe(false);
+    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 6, 0), 'KRX')).toBe(true);
+  });
+
+  it('NXT 전일 프레임은 기존대로 08:00에 만료된다', () => {
+    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 7, 59), 'NXT')).toBe(false);
+    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 8, 0), 'NXT')).toBe(true);
   });
 
   it('사용자 신고 시각(08:11)에 만료된다 — 이 테스트가 회귀 가드다', () => {
     expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 8, 11))).toBe(true);
   });
 
-  it('08:00 이전(자정~07:59)은 통과 — 그 시각엔 새로 올 호가가 없어 지우면 빈 화면만 남는다', () => {
+  it('KRX는 06:00 이전까지 전일 프레임을 통과시킨다', () => {
     expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 0, 1))).toBe(false);
-    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 6, 0))).toBe(false);
+    expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 5, 59))).toBe(false);
   });
 
-  it('한번 만료되면 그날 내내 만료다 — 08:00 은 시작점이지 창이 아니다', () => {
+  it('한번 만료되면 그날 내내 만료다 — 06:00 은 시작점이지 창이 아니다', () => {
     expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 12, 0))).toBe(true);
     expect(previousDayObExpired(YESTERDAY_CLOSE, kst('20260901', 23, 59))).toBe(true);
   });
 
-  describe('주말은 통과시킨다 — 만료는 다음 **거래일** 08:00 이다', () => {
+  describe('주말은 통과시킨다 — KRX 만료는 다음 **거래일** 06:00 이다', () => {
     // 2026-09-04 금 · 09-05 토 · 09-06 일 · 09-07 월
     const FRIDAY_CLOSE = kst('20260904', 15, 30);
 
@@ -716,9 +721,9 @@ describe('previousDayObExpired — 전일 사다리는 다음 거래일 08:00 �
       expect(previousDayObExpired(FRIDAY_CLOSE, kst('20260906', 12, 0))).toBe(false);
     });
 
-    it('월요일 08:00 에 비로소 만료된다', () => {
-      expect(previousDayObExpired(FRIDAY_CLOSE, kst('20260907', 7, 59))).toBe(false);
-      expect(previousDayObExpired(FRIDAY_CLOSE, kst('20260907', 8, 0))).toBe(true);
+    it('월요일 06:00 에 비로소 만료된다', () => {
+      expect(previousDayObExpired(FRIDAY_CLOSE, kst('20260907', 5, 59))).toBe(false);
+      expect(previousDayObExpired(FRIDAY_CLOSE, kst('20260907', 6, 0))).toBe(true);
     });
   });
 });
