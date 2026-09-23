@@ -1043,12 +1043,13 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       });
     });
 
-    describe('다음날 아침 — 전일 사다리는 08:00 에 내려간다(사용자 신고 2026-09-01)', () => {
+    describe('다음날 아침 — KRX 전일 사다리는 06:00 에 내려간다', () => {
       /** 2026-08-28(금) 08:11 KST — 사용자가 "어제 정규장 마지막 모습이 보인다" 고
        *  신고한 그 시각. 화면에 남아 있던 것은 `REGULAR_TS`(08-27 15:30)다. */
       const NEXT_DAY_0811 = Date.UTC(2026, 7, 27, 23, 11);
-      /** 같은 아침 07:59 — 만료 **직전**. */
-      const NEXT_DAY_0759 = Date.UTC(2026, 7, 27, 22, 59);
+      /** 같은 아침 05:59 — 만료 직전. */
+      const NEXT_DAY_0559 = Date.UTC(2026, 7, 27, 20, 59);
+      const NEXT_DAY_0600 = Date.UTC(2026, 7, 27, 21, 0);
       /** 같은 아침 08:05 에 찍힌 **그날** 프레임(NXT 프리마켓은 08:00 에 시작한다). */
       const TODAY_0805 = Date.UTC(2026, 7, 27, 23, 5);
 
@@ -1063,10 +1064,16 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
         expect(screen.getByText('snapshot:null')).toBeInTheDocument();
       });
 
-      it('07:59 에는 아직 그린다 — 그 시각엔 새로 올 호가가 없어 지우면 빈 화면만 남는다', () => {
-        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0759);
+      it('05:59 에는 아직 마지막 사다리를 그린다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0559);
         renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
         expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
+      });
+
+      it('06:00 정각에 전일 사다리를 내린다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0600);
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText('snapshot:null')).toBeInTheDocument();
       });
 
       it('같은 08:11 이라도 **그날** 프레임은 통과 — 만료 축은 날짜지 시각이 아니다', () => {
