@@ -87,7 +87,6 @@ function snapshot(over: Partial<DrawingsSnapshot> = {}): DrawingsSnapshot {
     drafts: { trendline: null, rect: null, measure: null, pencil: null },
     draftStyles: { trendline: STYLE, rect: STYLE, pencil: STYLE },
     ghost: null,
-    alignGuides: null,
     ...over,
   };
 }
@@ -204,16 +203,17 @@ describe('DrawingsPrimitive', () => {
     expect(c2.moveTo).not.toHaveBeenCalled();
   });
 
-  it('drops the ghost snap dot on the cursor pane only', () => {
+  it('draws a plain placement ghost on the cursor pane only', () => {
     const ghost = {
       kind: 'hline' as const, style: STYLE, cursorPx: 42,
-      cursorPaneId: 'candle' as const, price: 100, realMs: null, snapped: true,
+      cursorPaneId: 'candle' as const, price: 100, realMs: null,
     };
     const { prim } = attach('candle');
     prim.setSource(() => snapshot({ ghost }));
     const c = makeCanvasSpy();
     draw(prim, c);
-    expect(c.arc).toHaveBeenCalledWith(42, 200, 3.5, 0, Math.PI * 2);
+    expect(c.arc).not.toHaveBeenCalled();
+    expect(c.moveTo).toHaveBeenCalledWith(0, 200);
 
     // The volume pane sees the same ghost but must not draw an hline preview
     // that belongs to the pane the cursor is over.

@@ -4,6 +4,7 @@
 // edit the selected Drawing's color, stroke width, and line style, and
 // delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
 
+import { extendRectToTime } from './drawing/rectCoordinates';
 import { useCallback, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -657,14 +658,12 @@ function MultiSelectionToolbar({
               if (rightMs == null) return;
               const patches = extendToViewTargets.flatMap((r) => {
                 if (r.kind !== 'rect') return [];
-                // 어느 코너가 오른쪽인지는 저장 순서(a/b)가 아니라 realMs 비교로 정한다.
+                // 어느 코너가 오른쪽인지는 봉 내부 보정을 포함한 좌표로 정한다.
                 // 핸들을 가로질러 끌면 `a` 가 `b` 의 오른쪽에 놓이므로, `b` 를 고정으로
                 // 삼으면 그 사각형은 **왼쪽 변이 끌려가 뒤집힌다**(단일 패널의 함정을
                 // 그대로 옮겨 왔다). price 는 보존한다 — 이 버튼은 가로 폭만 다룬다.
-                const farKey = r.b.realMs >= r.a.realMs ? 'b' : 'a';
-                const far = r[farKey];
-                if (far.realMs === rightMs) return []; // 이미 그 자리
-                return [{ id: r.id, patch: { [farKey]: { realMs: rightMs, price: far.price } } as Partial<Drawing> }];
+                const patch = extendRectToTime(r, rightMs, resolveAlignCoords?.() ?? undefined);
+                return patch ? [{ id: r.id, patch }] : [];
               });
               useDrawingsStore.getState().updateMany(scope, patches);
             }}
@@ -890,7 +889,7 @@ export default function DrawingPropertyPanel({
    * 오른쪽 코너를 **지금 화면 오른쪽 끝**으로. 늘리기도 줄이기도 한다("보이는
    * 영역까지" 가 곧 계약이다) — 되돌리기가 한 단계이므로 잘못 눌러도 비용이 없다.
    *
-   * 어느 코너가 오른쪽인지는 저장 순서(a/b)가 아니라 `realMs` 비교로 정한다. 핸들을
+   * 어느 코너가 오른쪽인지는 봉 내부 보정을 포함한 좌표로 정한다. 핸들을
    * 가로질러 끌면 `a` 가 `b` 의 오른쪽에 놓이므로, `b` 를 고정으로 삼으면 그 사각형은
    * 왼쪽 변이 끌려가 뒤집힌다. **price 는 보존한다** — 이 버튼은 가로 폭만 다룬다.
    */
@@ -898,13 +897,8 @@ export default function DrawingPropertyPanel({
     if (drawing.kind !== 'rect') return;
     const rightMs = resolveVisibleRightRealMs?.() ?? null;
     if (rightMs == null) return;
-    const farKey = drawing.b.realMs >= drawing.a.realMs ? 'b' : 'a';
-    const far = drawing[farKey];
-    // 이미 그 자리면 아무것도 하지 않는다 — 되돌리기 스택에 빈 단계를 쌓지 않기 위해.
-    if (far.realMs === rightMs) return;
-    useDrawingsStore
-      .getState()
-      .update(scope, id, { [farKey]: { realMs: rightMs, price: far.price } } as Partial<Drawing>);
+    const patch = extendRectToTime(drawing, rightMs, resolveAlignCoords?.() ?? undefined);
+    if (patch) useDrawingsStore.getState().update(scope, id, patch);
   };
 
   // Text labels have no stroke width or line style; they carry a font size

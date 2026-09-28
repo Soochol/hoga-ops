@@ -16,7 +16,7 @@ describe('DrawingMenu', () => {
     useDrawingsStore.getState().__resetForTests();
   });
 
-  it('lists 선택 plus every drawable tool, then 자석 and 모두 지우기', async () => {
+  it('lists 선택 plus every drawable tool, then 모두 지우기 without a magnet toggle', async () => {
     render(<DrawingMenu code={CODE} timeframe={TF} />);
     await openMenu();
 
@@ -24,7 +24,7 @@ describe('DrawingMenu', () => {
     for (const label of ['선택', '수평선', '일자 고점 수평선', '일자 저점 수평선', '일자 시가 수평선', '일자 종가 수평선', '수직선', '추세선', '사각형', '측정자', '텍스트', '연필', '지우개']) {
       expect(within(menu).getByRole('menuitemradio', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
     }
-    expect(within(menu).getByRole('menuitemcheckbox', { name: /자석/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitemcheckbox', { name: /자석/ })).not.toBeInTheDocument();
     expect(within(menu).getByTestId('drawing-menu-clear')).toBeInTheDocument();
   });
 
@@ -54,16 +54,6 @@ describe('DrawingMenu', () => {
     expect(screen.getByTestId('drawing-menu-trigger')).toHaveTextContent('그리기');
   });
 
-  it('toggles 자석 without closing the menu', async () => {
-    render(<DrawingMenu code={CODE} timeframe={TF} />);
-    await openMenu();
-
-    const before = useDrawingsStore.getState().defaults.magnet;
-    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: /자석/ }));
-
-    expect(useDrawingsStore.getState().defaults.magnet).toBe(!before);
-    expect(screen.getByTestId('drawing-menu')).toBeInTheDocument();
-  });
 
   // 메뉴 항목은 더 이상 직접 지우지 않는다 — 확인 요청만 낸다(팝업은
   // DrawingClearConfirmHost). scope 는 종목×봉 슬롯이라, 그 요청이 "지금 이

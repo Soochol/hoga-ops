@@ -1,3 +1,4 @@
+import { barPitchPx } from '../chart/drawing/chartCoordinates';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChartEx,
@@ -827,8 +828,9 @@ export function LiveChartRoot({
   const resolveAlignCoords = useCallback((): AlignCoords | null => {
     if (chart == null) return null;
     const future = futureBandFor(axis, cb?.candles, drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined));
-    const bars = dragBarDomain(axis, future);
+    const bars = dragBarDomain(axis, future, cb?.candles);
     return {
+      barPx: barPitchPx(chart) ?? undefined,
       realMsToCanvasX: (ms) => realMsToCanvasX(chart, axis, ms, future),
       canvasXToRealMs: (px) => canvasXToRealMs(chart, axis, px, future),
       priceToCanvasY: (price, paneId) => priceToCanvasY(chart, paneSeries, paneId, price),

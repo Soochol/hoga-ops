@@ -28,6 +28,7 @@
 // This makes each tool unit-testable in isolation (see tools.test.ts).
 
 import { nanoid } from 'nanoid';
+import { captureRectCorner, rectCornerBar, rectGeometry, projectRectX, translateRectBars, type RectCorner } from './rectCoordinates';
 import {
   type Drawing,
   type DrawingStyle,
@@ -46,15 +47,6 @@ import {
 } from './translate';
 import { marqueeRect, type MarqueeRect } from './hitTest';
 import { constrainAngle } from './snap';
-import {
-  alignSnapBox,
-  anchorsOf,
-  pointAnchors,
-  type AlignGuide,
-  type Anchors,
-  type RawAlignGuide,
-  type SnapBox,
-} from './alignSnap';
 import { simplifyByPixels, PENCIL_SIMPLIFY_EPSILON } from './simplify';
 import type { DragBarDomain } from './chartCoordinates';
 
@@ -111,7 +103,7 @@ export const PENCIL_MIN_SAMPLE_PX = 0.5;
 
 /** A per-gesture draft for the rect tool — one corner captured on pointer-down,
  *  the opposite corner tracked on move, committed on pointer-up. */
-export type RectDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
+export type RectDraft = { a: RectCorner; b?: RectCorner; pointerId: number; paneId: PaneId };
 
 /** A per-gesture draft for the measure tool. Same 2-point drag shape as rect. */
 export type MeasureDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
@@ -153,13 +145,8 @@ export type DragMode =
        * pointermove recomputes the total (Δbar, Δprice) against this snapshot
        * and re-derives the shape from it.
        *
-       * Why it has to be this way. Alignment snapping ADDS a correction to the
-       * delta, and under the old frame-to-frame accumulation that correction
-       * fed straight back into the anchor on the next move — so the moment the
-       * shape unsnapped it stayed permanently offset from the cursor by
-       * however much the magnet had pulled it. The invariant that kills that
-       * class of bug: **a snap correction never enters an accumulator.** With
-       * an absolute anchor there is no accumulator to poison.
+       * Measuring from the original snapshot prevents rounding error from
+       * accumulating during sub-bar movement and preserves the box width.
        *
        * Safe to hold by reference: the store replaces the object on every
        * update (`{ ...d, ...patch }`), so this snapshot is never mutated
@@ -291,19 +278,8 @@ export type ToolCtx = {
   capturePointer(): void;
   releasePointer(): void;
 
-  /** Convert (px, py) → (realMs, price) using `paneId`'s price scale.
-   *  Magnet snapping is already applied when the toggle is on. */
+  /** Convert (px, py) → (realMs, price) using `paneId`'s price scale. */
   pixelToData(px: number, py: number, paneId: PaneId): Point | null;
-  /**
-   * The same conversion with the MAGNET OFF — the cursor's own point.
-   *
-   * Only for undoing a snap that collapsed a shape: `rectTool` compares the
-   * snapped corner against its anchor and falls back to this on the axis that
-   * degenerated. Never use it to place a point (that would silently ignore the
-   * user's magnet); the snapped value is the intent, this is the escape hatch
-   * for when honouring that intent would produce nothing at all.
-   */
-  pixelToDataUnsnapped(px: number, py: number, paneId: PaneId): Point | null;
   /** Convert a stored realMs to a canvas X. Returns null when the realMs
    *  falls outside every Virtual Axis segment. */
   realMsToCanvasX(realMs: number): number | null;
@@ -394,21 +370,6 @@ export type ToolCtx = {
    *  bar-anchored `realMs` discarded into a fraction of this. */
   barPx(): number | null;
 
-  /**
-   * Whether shape-to-shape alignment snapping is armed — the magnet toggle is
-   * on and the per-event Ctrl/Meta override is not held.
-   *
-   * Separate from the candle magnet's gate even though the same toggle drives
-   * both: candle snapping needs loaded candles and lives inside `pixelToData`,
-   * while this one needs only other rectangles and has to be visible to the
-   * TOOL (it changes geometry, not a coordinate lookup). See alignSnap.ts.
-   */
-  alignSnapEnabled: boolean;
-  /** Publish this frame's alignment guide lines, or `[]` to clear them. Tools
-   *  MUST call it on every move — including the moves that snap nothing — or a
-   *  stale guide stays painted after the shape has left it. */
-  setAlignGuides(guides: readonly AlignGuide[]): void;
-
   /** Trigger a single canvas redraw on the next animation frame. Tools
    *  call this after mutating a draft ref to surface a live preview
    *  (pencil during drag, future trendline preview, …) — store
@@ -465,8 +426,8 @@ function hitRectCorner(
   ctx: ToolCtx,
   r: Rect,
 ): { msKey: 'a' | 'b'; priceKey: 'a' | 'b' } | null {
-  const xa = ctx.realMsToCanvasX(r.a.realMs);
-  const xb = ctx.realMsToCanvasX(r.b.realMs);
+  const xa = projectRectX(r.a.realMs, r.subX?.a, ctx.realMsToCanvasX, ctx.barPx());
+  const xb = projectRectX(r.b.realMs, r.subX?.b, ctx.realMsToCanvasX, ctx.barPx());
   const ya = ctx.priceToCanvasY(r.a.price, r.paneId);
   const yb = ctx.priceToCanvasY(r.b.price, r.paneId);
   if (xa == null || xb == null || ya == null || yb == null) return null;
@@ -490,219 +451,6 @@ function hitRectCorner(
     }
   }
   return null;
-}
-
-// ─── alignment snapping helpers ────────────────────────────────────────────
-//
-// The kernel in alignSnap.ts is domain-agnostic; these three bind it to the
-// chart. X travels as a BAR ORDINAL, never as realMs — that is the domain body
-// drag already translates in, and the reason is the same one spelled out in
-// `DragBarDomain`: a flat Δ-real-ms swallows inter-session gaps and strands
-// corners inside them.
-
-/**
- * Rectangles on `paneId` that a moving shape may align to.
- *
- * Same pane only — each pane has its own Y domain (KRW here, share counts
- * there), so a price from one is not comparable with a price from another.
- *
- * LOCKED rectangles are deliberately included. A lock says "don't edit me",
- * not "don't measure against me", and a locked shape is in fact the ideal
- * reference: the user pinned it precisely so other things could line up on it.
- *
- * Off-screen candidates need no filter — they fail the kernel's pixel
- * threshold on their own, and one that is merely unprojectable comes back as
- * a null pixel and is skipped there too.
- *
- * `exclude` is a SET, not one id, because a group drag has to remove every
- * member: leave one in and the group aligns to its own moving part, which is
- * the multi-selection version of a shape snapping to where it used to be.
- */
-function alignTargets(ctx: ToolCtx, paneId: PaneId, exclude?: ReadonlySet<string>): SnapBox[] {
-  const out: SnapBox[] = [];
-  for (const d of ctx.drawings) {
-    if (d.kind !== 'rect' || d.paneId !== paneId || exclude?.has(d.id)) continue;
-    out.push({
-      id: d.id,
-      x: anchorsOf(ctx.dragBars.toBar(d.a.realMs), ctx.dragBars.toBar(d.b.realMs)),
-      y: anchorsOf(d.a.price, d.b.price),
-    });
-  }
-  return out;
-}
-
-/** Lift kernel guides (bar ordinals / prices) into the domain coordinates the
- *  renderer projects — the same shape `GhostPreview` travels in, for the same
- *  reason: one description, drawn by whichever pane canvas owns it. */
-function toPaneGuides(
-  ctx: ToolCtx,
-  paneId: PaneId,
-  raw: readonly RawAlignGuide[],
-): AlignGuide[] {
-  return raw.map((g) =>
-    g.axis === 'x'
-      ? { axis: 'x' as const, paneId, at: ctx.dragBars.toReal(g.at), from: g.from, to: g.to }
-      : {
-          axis: 'y' as const,
-          paneId,
-          at: g.at,
-          from: ctx.dragBars.toReal(g.from),
-          to: ctx.dragBars.toReal(g.to),
-        },
-  );
-}
-
-/**
- * Align a single point to neighbouring rectangles — the creation and
- * corner-resize path.
- *
- * A point, not the whole box, because in both gestures exactly ONE corner
- * moves. Feeding the resulting rectangle in would let the FIXED corner's
- * accidental alignment with some neighbour yank the corner the user is
- * actually dragging.
- *
- * `snapX: false` when the time axis can't resolve the cursor (the empty band
- * right of the last candle): the caller is holding X still there, and a magnet
- * that moved it anyway would look like the shape jumping on its own.
- */
-function snapPointToRects(
-  ctx: ToolCtx,
-  p: Point,
-  paneId: PaneId,
-  opts: { excludeId?: string; snapX?: boolean } = {},
-): { point: Point; guides: AlignGuide[] } {
-  if (!ctx.alignSnapEnabled) return { point: p, guides: [] };
-  const targets = alignTargets(ctx, paneId, opts.excludeId ? new Set([opts.excludeId]) : undefined);
-  if (targets.length === 0) return { point: p, guides: [] };
-  const bar = ctx.dragBars.toBar(p.realMs);
-  const snapped = alignSnapBox({ x: pointAnchors(bar), y: pointAnchors(p.price) }, targets, {
-    xToPx:
-      opts.snapX === false ? () => null : (b) => ctx.realMsToCanvasX(ctx.dragBars.toReal(b)),
-    yToPx: (v) => ctx.priceToCanvasY(v, paneId),
-  });
-  return {
-    point: {
-      // toReal only when the magnet actually fired: it rounds onto the bar
-      // grid, and an untouched realMs must come through byte-identical.
-      realMs: snapped.dx === 0 ? p.realMs : ctx.dragBars.toReal(bar + snapped.dx),
-      price: p.price + snapped.dy,
-    },
-    guides: toPaneGuides(ctx, paneId, snapped.guides),
-  };
-}
-
-/** Plan entries keyed by drawing id, for reading a planned position back. */
-type GroupPlan = ReturnType<typeof planGroupTranslate>;
-
-/**
- * Bounding box of the group's RECTANGLES after a plan is applied, in the
- * kernel's domains (bar ordinals for x, prices for y).
- *
- * Read from the PLAN's patches rather than recomputed from the originals plus
- * a delta: the vertical delta enters `planGroupTranslate` as PIXELS and is
- * converted per member against that member's own reference price, so the plan's
- * output is the only place the resulting prices actually exist.
- *
- * Rectangles only — they are what alignment is defined on. A group may also
- * hold lines and labels; they ride along on whatever the rectangles decide.
- */
-function groupRectBox(
-  rects: readonly Rect[],
-  plan: GroupPlan,
-  toBar: (realMs: number) => number,
-): { x: Anchors; y: Anchors } | null {
-  const byId = new Map(plan.map((e) => [e.id, e.patch as Partial<Rect>]));
-  let xLo = Infinity, xHi = -Infinity, yLo = Infinity, yHi = -Infinity;
-  for (const r of rects) {
-    const patch = byId.get(r.id);
-    const a = patch?.a ?? r.a;
-    const b = patch?.b ?? r.b;
-    for (const bar of [toBar(a.realMs), toBar(b.realMs)]) {
-      xLo = Math.min(xLo, bar); xHi = Math.max(xHi, bar);
-    }
-    for (const price of [a.price, b.price]) {
-      yLo = Math.min(yLo, price); yHi = Math.max(yHi, price);
-    }
-  }
-  if (!Number.isFinite(xLo) || !Number.isFinite(yLo)) return null;
-  return { x: anchorsOf(xLo, xHi), y: anchorsOf(yLo, yHi) };
-}
-
-/** Agreement tolerance in canvas px when checking whether the clamps let a
- *  group snap through intact. Sub-pixel, because the question is "did the plan
- *  land where the magnet asked", not "is it close enough to look right". */
-const GROUP_SNAP_EPS_PX = 0.5;
-
-/**
- * Alignment snapping for a GROUP body drag: the selection's rectangle bounding
- * box grabs its neighbours' edges, and every member moves with it.
- *
- * Two passes, because the vertical delta is denominated in pixels and the
- * clamps are computed for the whole set: the only way to know where the group
- * WOULD land is to plan it. So pass 1 plans without the magnet, the box that
- * produces is what gets matched against the neighbours, and pass 2 re-plans
- * with the correction folded into the same raw deltas.
- *
- * Then the result is CHECKED before it is accepted. A group clamp can trim the
- * correction (a member hitting its pane's edge caps the whole set), and a
- * trimmed snap is the one outcome worse than none: the guide line claims the
- * edges are flush while the group sits a few pixels off. If pass 2 did not land
- * where the magnet asked, pass 1 stands and no guide is drawn.
- *
- * Snapping needs every rectangle on ONE pane. The candidate list is per-pane
- * (prices are only comparable within a scale), so a selection straddling panes
- * has no single place to take its references from — and unlike the single-shape
- * path there is no obvious pane to prefer. Such a group drags unsnapped.
- */
-function groupAlignSnap(
-  ctx: ToolCtx,
-  members: readonly Drawing[],
-  plan0: GroupPlan,
-  dBarRaw: number,
-  dyPxRaw: number,
-  coords: GroupTranslateCoords,
-): { plan: GroupPlan; guides: AlignGuide[] } {
-  const none = { plan: plan0, guides: [] as AlignGuide[] };
-  if (!ctx.alignSnapEnabled) return none;
-  const rects = members.filter((m): m is Rect => m.kind === 'rect');
-  if (rects.length === 0) return none;
-  const paneId = rects[0].paneId;
-  if (rects.some((r) => r.paneId !== paneId)) return none;
-
-  const box = groupRectBox(rects, plan0, coords.toBar);
-  if (box == null) return none;
-  // Every member leaves the candidate list, not just the rectangles: an id that
-  // stayed in would let the group align to a piece of itself.
-  const targets = alignTargets(ctx, paneId, new Set(members.map((m) => m.id)));
-  if (targets.length === 0) return none;
-
-  const xToPx = (bar: number) => ctx.realMsToCanvasX(coords.toReal(bar));
-  const yToPx = (price: number) => ctx.priceToCanvasY(price, paneId);
-  const snap = alignSnapBox(box, targets, { xToPx, yToPx });
-  if (snap.dx === 0 && snap.dy === 0) return none;
-
-  // The kernel speaks prices; the group plan takes pixels. Convert against the
-  // box's own top edge so the two agree on this pane's scale.
-  let dyPxSnap = 0;
-  if (snap.dy !== 0) {
-    const y0 = yToPx(box.y.min);
-    const y1 = yToPx(box.y.min + snap.dy);
-    if (y0 == null || y1 == null) return none;
-    dyPxSnap = y1 - y0;
-  }
-
-  const plan1 = planGroupTranslate(members, dBarRaw + snap.dx, dyPxRaw + dyPxSnap, coords);
-  const landed = groupRectBox(rects, plan1, coords.toBar);
-  if (landed == null) return none;
-  const agrees = (
-    got: number | null,
-    want: number | null,
-  ) => got != null && want != null && Math.abs(got - want) < GROUP_SNAP_EPS_PX;
-  const okX = snap.dx === 0 || agrees(xToPx(landed.x.min), xToPx(box.x.min + snap.dx));
-  const okY = snap.dy === 0 || agrees(yToPx(landed.y.min), yToPx(box.y.min + snap.dy));
-  if (!okX || !okY) return none;
-
-  return { plan: plan1, guides: toPaneGuides(ctx, paneId, snap.guides) };
 }
 
 // ─── select ────────────────────────────────────────────────────────────────
@@ -822,19 +570,14 @@ export const selectTool: DrawingToolSpec = {
     // 여기서 건드리지 않는다 — 끌지 않고 놓았을 때만(slop 미달) pointerUp 이
     // 이 하나로 접는다.
     if (hit && ctx.selectedIds.length > 1 && ctx.selectedIds.includes(hit.id)) {
+      const origins = ctx.drawings.filter((d) => ctx.selectedIds.includes(d.id) && !isLocked(d));
+      const startBar = cursorBar(ctx, origins.some((d) => d.kind === 'rect'));
       ctx.dragRef.current = {
         kind: 'body-multi',
-        // Snapshot the members as grabbed. Locked ones are dropped HERE rather
-        // than every frame: the set the user grabbed is the set that moves.
-        origins: ctx.drawings.filter((d) => ctx.selectedIds.includes(d.id) && !isLocked(d)),
-        startBar: (() => {
-          const ms = ctx.canvasXToRealMs(ctx.px);
-          return ms == null ? null : ctx.dragBars.toBar(ms);
-        })(),
-        lastBar: (() => {
-          const ms = ctx.canvasXToRealMs(ctx.px);
-          return ms == null ? null : ctx.dragBars.toBar(ms);
-        })(),
+        // Freeze membership and geometry at grab time; locked members stay put.
+        origins,
+        startBar,
+        lastBar: startBar,
         startPx: ctx.px,
         startPy: ctx.py,
         pressedId: hit.id,
@@ -868,7 +611,7 @@ export const selectTool: DrawingToolSpec = {
       const price = ctx.canvasYToPrice(ctx.py, hit.paneId);
       if (price == null) return;
       const data = ctx.pixelToData(ctx.px, ctx.py, hit.paneId);
-      const startBar = data ? ctx.dragBars.toBar(data.realMs) : null;
+      const startBar = data ? pointBar(ctx, data, hit.kind === 'rect') : null;
       ctx.dragRef.current = {
         kind: 'body',
         id: hit.id,
@@ -911,12 +654,12 @@ export const selectTool: DrawingToolSpec = {
       // 스토어가 어차피 거부할 패치를 내보내지 않는 편이 정직하다.
       const members = drag.origins.filter((d) => !isLocked(d));
       if (members.length === 0) return;
-      const curRealMs = ctx.canvasXToRealMs(ctx.px);
+      const curBar = cursorBar(ctx, members.some((m) => m.kind === 'rect'));
       // 빈 밴드에서 시작한 그랩은 첫 해석 샘플을 원점으로 삼는다(단일 body 와 동일).
-      if (drag.startBar == null && curRealMs != null) {
-        drag.startBar = ctx.dragBars.toBar(curRealMs);
+      if (drag.startBar == null && curBar != null) {
+        drag.startBar = curBar;
       }
-      if (curRealMs != null) drag.lastBar = ctx.dragBars.toBar(curRealMs);
+      if (curBar != null) drag.lastBar = curBar;
       const dBarRaw =
         drag.lastBar != null && drag.startBar != null ? drag.lastBar - drag.startBar : 0;
       const dyPxRaw = ctx.py - drag.startPy;
@@ -928,18 +671,7 @@ export const selectTool: DrawingToolSpec = {
         toReal: ctx.dragBars.toReal,
         originBar: ctx.dragBars.originBar,
       };
-      // 스냅 보정은 plan 에만 들어가고 startBar/startPy 는 건드리지 않는다 —
-      // 단일 드래그와 같은 불변식이다.
-      const planned = groupAlignSnap(
-        ctx,
-        members,
-        planGroupTranslate(members, dBarRaw, dyPxRaw, coords),
-        dBarRaw,
-        dyPxRaw,
-        coords,
-      );
-      ctx.setAlignGuides(planned.guides);
-      ctx.updateMany(planned.plan);
+      ctx.updateMany(planGroupTranslate(members, dBarRaw, dyPxRaw, coords));
       return;
     }
     // vline body drag: horizontal only, no price scale involved. The delta is
@@ -965,25 +697,18 @@ export const selectTool: DrawingToolSpec = {
       const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
       const price = ctx.canvasYToPrice(clampedY, drag.paneId);
       if (price == null) return;
-      const data = ctx.pixelToData(ctx.px, clampedY, drag.paneId);
+      const data = rectCursor(ctx, ctx.px, clampedY, drag.paneId);
       const curRealMs = data?.realMs ?? null;
       // Update the corner's X (msKey point) and Y (priceKey point). In the empty
       // band keep the existing realMs (X unresolvable) and move vertically only.
       const msPoint = drag.msKey === 'a' ? target.a : target.b;
       const prPoint = drag.priceKey === 'a' ? target.a : target.b;
-      // The moving corner, aligned to neighbouring rects. Resize is already
-      // absolute (the corner is assigned, not accumulated), so the snap needs
-      // no anchoring machinery here — only the point.
-      const corner = snapPointToRects(
-        ctx,
-        { realMs: curRealMs ?? msPoint.realMs, price },
-        drag.paneId,
-        { excludeId: target.id, snapX: curRealMs != null },
-      );
-      ctx.setAlignGuides(corner.guides);
-      const newMs = corner.point.realMs;
-      const newPrice = corner.point.price;
-      const patch: Partial<Pick<Rect, 'a' | 'b'>> = {};
+      const corner = { realMs: curRealMs ?? msPoint.realMs,
+        subX: data ? data.subX ?? 0 : target.subX?.[drag.msKey], price };
+      const newMs = corner.realMs;
+      const newPrice = corner.price;
+      const patch: Partial<Pick<Rect, 'a' | 'b' | 'subX'>> = {};
+      if (target.subX || corner.subX) patch.subX = { a: target.subX?.a ?? 0, b: target.subX?.b ?? 0, [drag.msKey]: corner.subX ?? 0 };
       if (drag.msKey === drag.priceKey) {
         patch[drag.msKey] = { realMs: newMs, price: newPrice };
       } else {
@@ -1025,13 +750,14 @@ export const selectTool: DrawingToolSpec = {
       // columns per one of the cursor's and the shape stretched. Ordinals are
       // the screen's own units, so cursor and every vertex move together.
       const origin = drag.origin;
+      const curBar = data ? pointBar(ctx, data, origin.kind === 'rect') : null;
       // A grab that began in the empty band has no origin bar yet; adopt the
       // first resolvable sample instead of measuring from nothing, or the
       // shape would leap by the whole absolute ordinal on re-entry.
-      if (drag.startBar == null && curRealMs != null) {
-        drag.startBar = ctx.dragBars.toBar(curRealMs);
+      if (drag.startBar == null && curBar != null) {
+        drag.startBar = curBar;
       }
-      if (curRealMs != null) drag.lastBar = ctx.dragBars.toBar(curRealMs);
+      if (curBar != null) drag.lastBar = curBar;
       // `lastBar` (not the live cursor) so the X freezes in the empty band
       // where the time axis can't resolve, while vertical drag keeps working.
       const rawDBar =
@@ -1039,7 +765,7 @@ export const selectTool: DrawingToolSpec = {
       // Shape-preserving cap against the axis origin — the time-axis sibling
       // of the price cap below. Without it a leftward overshoot would floor
       // vertices one by one at the first session's open, compressing the shape.
-      let dBar = clampDBarForDrawing(
+      const dBar = clampDBarForDrawing(
         origin,
         rawDBar,
         ctx.dragBars.originBar,
@@ -1050,56 +776,16 @@ export const selectTool: DrawingToolSpec = {
       // clamping would have collapsed a trendline/pencil that touched the
       // boundary asymmetrically.
       const paneBounds = ctx.priceBoundsForPane(drag.paneId);
-      let dPrice = paneBounds
+      const dPrice = paneBounds
         ? clampDPriceForDrawing(origin, price - drag.startPrice, paneBounds)
         : price - drag.startPrice;
-
-      // Alignment snapping rides on TOP of the clamped delta, and its result is
-      // written to the locals only — `drag.startBar`/`startPrice` never see it.
-      // That is the invariant from DragMode.origin: a correction that entered
-      // the anchor would survive the unsnap as a permanent cursor offset.
-      let guides: AlignGuide[] = [];
-      if (origin.kind === 'rect' && ctx.alignSnapEnabled) {
-        const targets = alignTargets(ctx, drag.paneId, new Set([origin.id]));
-        const snapped = alignSnapBox(
-          {
-            x: anchorsOf(
-              ctx.dragBars.toBar(origin.a.realMs) + dBar,
-              ctx.dragBars.toBar(origin.b.realMs) + dBar,
-            ),
-            y: anchorsOf(origin.a.price + dPrice, origin.b.price + dPrice),
-          },
-          targets,
-          {
-            xToPx: (bar) => ctx.realMsToCanvasX(ctx.dragBars.toReal(bar)),
-            yToPx: (v) => ctx.priceToCanvasY(v, drag.paneId),
-            // Refuse a correction the caps would trim. A TRIMMED snap is the
-            // one outcome worse than no snap: the guide line claims the edges
-            // are flush while the shape sits a few pixels off it.
-            acceptX: (d) =>
-              clampDBarForDrawing(
-                origin,
-                dBar + d,
-                ctx.dragBars.originBar,
-                ctx.dragBars.toBar,
-              ) === dBar + d,
-            acceptY: (d) =>
-              paneBounds == null ||
-              clampDPriceForDrawing(origin, dPrice + d, paneBounds) === dPrice + d,
-          },
-        );
-        dBar += snapped.dx;
-        dPrice += snapped.dy;
-        guides = toPaneGuides(ctx, drag.paneId, snapped.guides);
-      }
-      ctx.setAlignGuides(guides);
 
       // The round-trip runs even when dBar is 0: for a healthy vertex it is the
       // identity, and for one stranded in a gap by the old real-ms drags it
       // snaps forward to the next session open — grabbing a broken drawing
       // heals it.
       const shift = (ms: number) => ctx.dragBars.toReal(ctx.dragBars.toBar(ms) + dBar);
-      ctx.update(origin.id, translateDrawing(origin, shift, dPrice));
+      ctx.update(origin.id, origin.kind === 'rect' ? translateRectBars(origin, dBar, dPrice, ctx.dragBars) : translateDrawing(origin, shift, dPrice));
     }
   },
   onPointerUp(ctx) {
@@ -1125,7 +811,6 @@ export const selectTool: DrawingToolSpec = {
     ctx.dragRef.current = null;
     // Guides are per-gesture: leaving them up would paint a line against a
     // shape that is no longer moving.
-    ctx.setAlignGuides([]);
     ctx.releasePointer();
   },
 };
@@ -1159,12 +844,8 @@ export const hlineTool: DrawingToolSpec = {
     // where coordinateToTime — and thus pixelToData — returns null: the user
     // could add an hline over candles but not in the empty area. This mirrors
     // the body-drag fix in selectTool, which already decoupled the same way.
-    // Magnet: pixelToData is the snapped path (price → nearest candle OHLC), so
-    // prefer it and take just the price. Fall back to the price-only
-    // canvasYToPrice in the empty band where the time axis can't resolve (no
-    // future ref) — there's nothing to snap to there anyway.
-    const snapped = ctx.pixelToData(ctx.px, ctx.py, paneId);
-    const price = snapped ? snapped.price : ctx.canvasYToPrice(ctx.py, paneId);
+    const point = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    const price = point ? point.price : ctx.canvasYToPrice(ctx.py, paneId);
     if (price == null) return;
     const id = nanoid(8);
     ctx.add({
@@ -1284,44 +965,23 @@ export const trendlineTool: DrawingToolSpec = {
   },
 };
 
-// ─── rect ──────────────────────────────────────────────────────────────────
-/**
- * 스냅이 앵커와 같은 값으로 눌러 버린 축만 **스냅 이전 커서 좌표**로 되돌린다.
- *
- * 왜 필요한가: 빈 밴드에서는 `nearestCandleIndex` 가 **항상 마지막 캔들**을 준다 —
- * 오른쪽에 다른 후보가 없다. 그 캔들이 도지(O=H=L=C, 장 마감 후 종가 단일가 봉이
- * 대표적)면 가격 하나가 `SNAP_PX` 16px 양쪽 **세로 32px 전체**를 삼키고, 그 안에서
- * 시작해 그 안에서 끝낸 드래그는 두 모서리가 같은 price 를 갖는다. 사각형은 어느 한
- * 축만 무너져도 거부되므로(아래 `||`), 사용자에게는 **아무 일도 일어나지 않는다** —
- * 오류도 없고 도형도 없다. /live 실측 재현(2026-08-31): 자석 ON · 밴드
- * (500,80)→(580,100) 은 안 그려지고, 같은 세로 폭이라도 축 안이거나 끝점이 스냅
- * 반경 밖이면 그려졌다.
- *
- * 자석은 **정렬을 돕는 장치이지 도형을 없애는 장치가 아니다.** `alignSnapBox` 의
- * `acceptX`/`acceptY` 가 이미 같은 판단을 한다 — 캡에 잘릴 보정은 안 하느니만 못하다.
- *
- * **무너진 축만** 되돌리는 이유: 반대 축의 스냅은 사용자가 의도한 정렬이고, 둘 다
- * 풀면 자석을 켠 의미가 사라진다. 되돌린 뒤에도 여전히 같으면(제자리 클릭 같은 진짜
- * 퇴화) 호출부의 거부가 그대로 걸린다 — 이 함수는 **판정하지 않고 좌표만 고친다.**
- */
-function uncollapseCorner(
-  ctx: ToolCtx,
-  anchor: Point,
-  snapped: Point,
-  py: number,
-  paneId: PaneId,
-): Point {
-  const flatMs = snapped.realMs === anchor.realMs;
-  const flatPrice = snapped.price === anchor.price;
-  if (!flatMs && !flatPrice) return snapped;
-  const cursor = ctx.pixelToDataUnsnapped(ctx.px, py, paneId);
-  if (!cursor) return snapped;
-  return {
-    realMs: flatMs ? cursor.realMs : snapped.realMs,
-    price: flatPrice ? cursor.price : snapped.price,
-  };
+function rectCursor(ctx: ToolCtx, px: number, py: number, paneId: PaneId): RectCorner | null {
+  const point = ctx.pixelToData(px, py, paneId);
+  return point ? captureRectCorner(point, px, ctx.realMsToCanvasX, ctx.dragBars.barSized ? ctx.barPx() : null, false) : null;
 }
 
+function pointBar(ctx: ToolCtx, point: Point, free: boolean): number {
+  const corner = captureRectCorner(point, ctx.px, ctx.realMsToCanvasX,
+    free && ctx.dragBars.barSized ? ctx.barPx() : null, false);
+  return rectCornerBar(corner, ctx.dragBars);
+}
+
+function cursorBar(ctx: ToolCtx, free: boolean): number | null {
+  const ms = ctx.canvasXToRealMs(ctx.px);
+  return ms == null ? null : pointBar(ctx, { realMs: ms, price: 0 }, free);
+}
+
+// ─── rect ──────────────────────────────────────────────────────────────────
 export const rectTool: DrawingToolSpec = {
   kind: 'rect',
   label: '사각형',
@@ -1330,52 +990,35 @@ export const rectTool: DrawingToolSpec = {
   shortcut: { alt: true, key: 'r' },
   onPointerDown(ctx) {
     const paneId = ctx.paneIdAtY(ctx.py);
-    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    const data = rectCursor(ctx, ctx.px, ctx.py, paneId);
     if (!data) return;
-    // The first corner aligns too — a new rect can be born flush against its
-    // neighbour, which is the whole point of drawing one next to another. No
-    // exclude id: the shape being drawn is not in the store yet.
-    const anchor = snapPointToRects(ctx, data, paneId);
-    ctx.setAlignGuides(anchor.guides);
-    ctx.rectDraft.current = { a: anchor.point, pointerId: ctx.pointerId, paneId };
+    ctx.rectDraft.current = { a: data, pointerId: ctx.pointerId, paneId };
     ctx.capturePointer();
   },
   onPointerMove(ctx) {
     const draft = ctx.rectDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    const data = rectCursor(ctx, ctx.px, clampedY, draft.paneId);
     if (!data) return;
-    const moving = snapPointToRects(ctx, data, draft.paneId);
-    ctx.setAlignGuides(moving.guides);
-    draft.b = moving.point;
+    draft.b = data;
     ctx.requestRedraw();
   },
   onPointerUp(ctx) {
     const draft = ctx.rectDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const raw = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
-    // Commit the SNAPPED corner, not the raw one: the preview showed the
-    // aligned box, so anything else would visibly shift on pointer-up.
-    const snapped = raw ? snapPointToRects(ctx, raw, draft.paneId).point : null;
+    const data = rectCursor(ctx, ctx.px, clampedY, draft.paneId);
     ctx.rectDraft.current = null;
-    ctx.setAlignGuides([]);
     ctx.releasePointer();
-    if (!snapped) return;
-    // 스냅이 이 모서리를 앵커 위로 눌러 버렸으면 그 축만 커서 좌표로 되살린다 —
-    // 안 그러면 아래 거부가 삼켜 사용자에게 아무 일도 일어나지 않는다.
-    const data = uncollapseCorner(ctx, draft.a, snapped, clampedY, draft.paneId);
-    // Reject a zero-area rect: EITHER axis collapsing (same time OR same price)
-    // makes it a degenerate line, not a box. 되살린 뒤에도 같다면 커서가 정말로
-    // 그 자리에 있는 것이므로 거부가 맞다.
-    if (data.realMs === draft.a.realMs || data.price === draft.a.price) return;
+    if (!data) return;
+    // Same timestamp is valid when the two sub-bar positions differ.
+    if (rectCornerBar(data, ctx.dragBars) === rectCornerBar(draft.a, ctx.dragBars) || data.price === draft.a.price) return;
     const id = nanoid(8);
     ctx.add({
       id,
       kind: 'rect',
-      a: draft.a,
-      b: data,
+      ...rectGeometry(draft.a, data),
       color: ctx.defaults.color,
       width: ctx.defaults.width,
       lineStyle: ctx.defaults.lineStyle,

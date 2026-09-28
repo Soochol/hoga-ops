@@ -4,6 +4,7 @@
 //   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
 //   - docs/adr/0028-drawing-pane-binding.md
 
+import { translateRectBars } from './drawing/rectCoordinates';
 import { indexDayExtremes } from './drawing/dayExtremes';
 import { unixMsToKSTDate } from '../util/time';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,8 +23,7 @@ import {
 } from './DrawingsPrimitive';
 import type { Drawing, PaneId, Point } from './drawing/types';
 import { INITIAL_STYLE, isDrawingKind, isLocked } from './drawing/types';
-import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
-import type { AlignGuide } from './drawing/alignSnap';
+import type { SnapCandle } from './drawing/snap';
 import { resetGestureRefs, type GestureRefs } from './drawing/gestureReset';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import { planGroupTranslate, type TimeShift } from './drawing/translate';
@@ -156,7 +156,7 @@ type Props = {
   bucketMs?: number;
   /** False while initial day data is pending or the timeframe is unsupported. */
   dayExtremesReady?: boolean;
-  /** Candles for magnet snapping (ts_ms + OHLC). Empty/absent → no snapping. */
+  /** Candles for day-extreme tools, the future band and drag coordinates. */
   candles?: readonly SnapCandle[];
 };
 
@@ -210,7 +210,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const containerRef = useRef<HTMLDivElement>(null);
   // The bars the chart actually plotted. The bundle's array can END on a bar the
   // axis rejects (Kiwoom's daily 15:35 after-hours print), and everything below
-  // that reads "the last candle" — the empty-band anchor, magnet span, drag
+  // that reads "the last candle" — the empty-band anchor, drag
   // column count — must mean the last PLOTTED one, or the band goes dead from
   // 15:35 until the next session's first bar. See `onAxisCandles`.
   const candles = useMemo(() => onAxisCandles(axis, bundleCandles), [axis, bundleCandles]);
@@ -258,13 +258,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // One primitive per mounted pane — the actual renderers. See DrawingsPrimitive.ts.
   const primitivesRef = useRef<Map<PaneId, DrawingsPrimitive>>(new Map());
   // hline/vline placement preview, in DOMAIN coordinates (price / realMs) with
-  // magnet snapping already resolved, so each pane's primitive can project it.
+  // so each pane's primitive can project it.
   // Null when not hovering with those tools.
   const ghostRef = useRef<GhostPreview | null>(null);
   /** Alignment guides for the in-flight drag. A ref, not state: it changes on
    *  every pointermove and a setState per sample would re-render the whole
    *  overlay at pointer cadence. */
-  const alignGuidesRef = useRef<{ guides: readonly AlignGuide[]; color: string } | null>(null);
   /** Everything one gesture owns, bundled so all three exits (Escape,
    *  right-click, pointercancel) clear the SAME list. Stable identity: the
    *  keydown effect below has `[]` deps and captures this once. */
@@ -275,7 +274,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     measureDraft,
     marqueeDraft,
     dragRef,
-    alignGuides: alignGuidesRef,
   }).current;
   // Last known cursor position in CLIENT coords, tracked unconditionally. The
   // pointer-events gate needs it to settle the moment select mode is entered —
@@ -414,7 +412,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       pencil: defaults.styleByKind.pencil,
     },
     ghost: ghostRef.current,
-    alignGuides: alignGuidesRef.current,
     onFrame: textEdit ? syncTextEditorPosition : undefined,
   });
 
@@ -564,17 +561,14 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // `onPointerUp` reads `dragRef` to decide whether to release it. 마퀴도
         // 같은 이유로 남는다(그쪽도 캡처를 쥔다) — 다만 이 effect 는 진행 중인
         // 마퀴에서 조기 반환하므로 여기 도달하지 않는다.
-        const { guidesCleared } = resetGestureRefs(gestureRefs, { keepDrag: true });
-        if (guidesCleared) requestRedraw();
+        resetGestureRefs(gestureRefs, { keepDrag: true });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Coordinate helpers — pane-aware closures. `magnetActive` gates the snap; the
-  // per-event Ctrl override is applied in buildCtx (which owns the event).
-  const magnetOn = defaults.magnet && candles != null && candles.length > 0;
+  // Coordinate helpers — no automatic candle/shape snapping.
   const rawPixelToData = (px: number, py: number, paneId: PaneId) =>
     projPixelToData(chart, axis, paneSeries, paneId, px, py, futureBand);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs, futureBand);
@@ -584,22 +578,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
 
-  // Magnet-aware variants: snap the raw result to the nearest candle when magnet
-  // is on and the override (Ctrl) isn't held. Pencil opts out (see buildCtx).
-  const pixelToDataSnapped = (px: number, py: number, paneId: PaneId, snap: boolean) => {
-    const raw = rawPixelToData(px, py, paneId);
-    if (!raw || !snap || !magnetOn) return raw;
-    return snapPoint(raw, {
-      candles: candles!,
-      paneId,
-      priceToY: (p) => priceToCanvasY(p, paneId),
-    });
-  };
-  const canvasXToRealMsSnapped = (px: number, snap: boolean) => {
-    const raw = rawCanvasXToRealMs(px);
-    if (raw == null || !snap || !magnetOn) return raw;
-    return snapRealMs(candles!, raw);
-  };
   const canvasYToPrice = (py: number, paneId: PaneId) =>
     projCanvasYToPrice(chart, paneSeries, paneId, py);
   const paneIdAtY = (py: number) => projPaneIdAtY(chart, paneSeries, py);
@@ -727,86 +705,21 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     setTextValue('');
   };
 
-  /**
-   * Resolve the hline/vline placement ghost for a cursor position, in DOMAIN
-   * coordinates. Magnet snapping is applied HERE rather than in the renderer:
-   * the ghost has to commit to exactly the value the click will persist, and
-   * the snap needs candles + the chart-global pane lookup that only the overlay
-   * has. Each pane's primitive then just projects the result.
-   */
+  /** The placement ghost uses the same unmodified coordinates as input. */
   const computeGhost = (px: number, py: number): GhostPreview | null => {
     if (activeTool !== 'hline' && activeTool !== 'vline') return null;
     const cursorPaneId = paneIdAtY(py);
     const style = defaults.styleByKind[activeTool];
-    const magnetActive = defaults.magnet && candles != null && candles.length > 0;
-    const cursorPrice = canvasYToPrice(py, cursorPaneId);
-
-    if (activeTool === 'hline') {
-      let price = cursorPrice;
-      let snapped = false;
-      // Magnet on the candle pane only — indicator panes have no OHLC to snap to.
-      if (magnetActive && cursorPaneId === 'candle') {
-        const raw = rawPixelToData(px, py, cursorPaneId);
-        if (raw) {
-          price = snapPoint(raw, {
-            candles: candles!,
-            paneId: cursorPaneId,
-            priceToY: (pr) => priceToCanvasY(pr, cursorPaneId),
-          }).price;
-          // Dot whenever magnet is engaged, even if it resolved to the cursor's
-          // own level — it signals "this is what will be committed".
-          snapped = true;
-        }
-      }
-      return { kind: 'hline', style, cursorPx: px, cursorPaneId, price, realMs: null, snapped };
-    }
-
-    const rawMs = rawCanvasXToRealMs(px);
-    let realMs = rawMs;
-    let snapped = false;
-    if (magnetActive && rawMs != null) {
-      realMs = snapRealMs(candles!, rawMs);
-      snapped = true;
-    }
-    return { kind: 'vline', style, cursorPx: px, cursorPaneId, price: cursorPrice, realMs, snapped };
-  };
-
-  /**
-   * Publish (or clear) the drag's alignment guides.
-   *
-   * The COLOR is resolved here rather than inside the tool: a tool knows the
-   * geometry that snapped but not which drawing the user is holding, and the
-   * guide has to wear that drawing's color (see `renderAlignGuides`). During a
-   * creation drag there is no such drawing yet, so the rect tool's own sticky
-   * color stands in — which is exactly the color the draft is being drawn in.
-   *
-   * The clear path early-returns when nothing was showing, so the common case
-   * (a drag that never snaps) costs no redraws at all.
-   */
-  const setAlignGuides = (guides: readonly AlignGuide[]) => {
-    if (guides.length === 0) {
-      if (alignGuidesRef.current !== null) {
-        alignGuidesRef.current = null;
-        requestRedraw();
-      }
-      return;
-    }
-    const drag = dragRef.current;
-    const draggingId = drag != null && 'id' in drag ? drag.id : undefined;
-    const dragging = draggingId ? drawings.find((d) => d.id === draggingId) : undefined;
-    alignGuidesRef.current = {
-      guides,
-      color: dragging?.color ?? defaults.styleByKind.rect.color,
+    const price = canvasYToPrice(py, cursorPaneId);
+    return {
+      kind: activeTool, style, cursorPx: px, cursorPaneId, price,
+      realMs: activeTool === 'vline' ? rawCanvasXToRealMs(px) : null,
     };
-    requestRedraw();
   };
 
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
-    // Snap applies to every tool except pencil; Ctrl/Meta held on the event
-    // temporarily overrides magnet off.
-    const snap = activeTool !== 'pencil' && !(e.ctrlKey || e.metaKey);
     return {
       dayExtremeAtX: (x, side) => {
         if (!dayExtremesReady || !paneSeries.has('candle') || (bucketMs != null && bucketMs > 86_400_000)) return null;
@@ -849,17 +762,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           // Never captured, or released already — nothing to undo.
         }
       },
-      // Shape alignment rides the SAME magnet toggle and the same Ctrl/Meta
-      // override as candle snapping — the user already calls this "자석" and
-      // splitting it into a second switch would make the toggle mean half of
-      // what it says. Unlike the candle magnet it does not require loaded
-      // candles: its references are other rectangles.
-      alignSnapEnabled: defaults.magnet && !(e.ctrlKey || e.metaKey),
-      setAlignGuides,
-      pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
-      pixelToDataUnsnapped: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, false),
+      pixelToData: rawPixelToData,
       realMsToCanvasX,
-      canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
+      canvasXToRealMs: rawCanvasXToRealMs,
       priceToCanvasY,
       canvasYToPrice,
       barPx: () => barPitchPx(chart),
@@ -1057,10 +962,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   // pointer lost) and contextmenu. Keep this in sync with the draft refs the
   // tools own — a new draft-bearing tool must reset here too.
   const resetGesture = () => {
-    const { guidesCleared, marqueeCleared } = resetGestureRefs(gestureRefs);
+    const { marqueeCleared } = resetGestureRefs(gestureRefs);
     // 마퀴 상자는 DOM 이라 ref 를 비우는 것만으로는 화면에서 사라지지 않는다 —
     // `requestRedraw` 가 `syncMarqueeBox` 를 함께 돌린다.
-    if (guidesCleared || marqueeCleared) requestRedraw();
+    if (marqueeCleared) requestRedraw();
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
@@ -1379,6 +1284,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // and a virtual-ms delta would move the vertices that straddle a boundary
     // further than the ref (clone wider than the original).
     let shiftMs: TimeShift = 0;
+    let rectDBar = 0;
     let dPrice = 0;
     if (ref.realMs != null) {
       const x = realMsToCanvasX(ref.realMs);
@@ -1397,9 +1303,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         if (shifted != null) dPrice = shifted - ref.price;
       }
     }
+    const pitch = barPitchPx(chart);
+    if (pitch != null && pitch > 0) rectDBar = offsetPx / pitch;
     // 사본은 **잠금이 풀린 채로** 태어난다(cloneWithOffset) — 복제는 쓸 수 있는
     // 도형을 달라는 요청이지 못 움직이는 것을 하나 더 달라는 요청이 아니다.
-    const clones = members.map((d) => cloneWithOffset(d, shiftMs, dPrice));
+    const clones = members.map((d) => {
+      const clone = cloneWithOffset(d, shiftMs, dPrice);
+      return d.kind === 'rect' && pitch != null && pitch > 0
+        ? { ...clone, ...translateRectBars(d, rectDBar, dPrice, dragBars) } as Drawing
+        : clone;
+    });
     store.addMany(scope, clones);
     // 선택은 사본으로 옮겨 간다 — 단일 복제가 하던 것과 같고, 곧바로 이어서
     // 옮기거나 스타일을 바꿀 수 있다.

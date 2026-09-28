@@ -253,7 +253,7 @@ describe('drawing defaults persistence', () => {
   });
 
   it('round-trips a written value', () => {
-    const written = { styleByKind: initialStyleByKind(), magnet: true, hiddenAll: false };
+    const written = { styleByKind: initialStyleByKind(), hiddenAll: false };
     written.styleByKind.trendline = {
       color: '#F43F5E', width: 4, lineStyle: 'dashed', fontSize: 13, fillOpacity: 0.2,
     };
@@ -278,7 +278,7 @@ describe('drawing defaults persistence', () => {
     }));
     const loaded = loadDefaults();
     // Session flags carry over.
-    expect(loaded.magnet).toBe(true);
+    expect(loaded).not.toHaveProperty('magnet');
     // The single v1 style seeds EVERY kind's slot, so nothing feels reset.
     for (const kind of ['hline', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil'] as const) {
       expect(loaded.styleByKind[kind]).toMatchObject({
@@ -387,4 +387,32 @@ it('restores the last horizontal label preference after saving defaults', () => 
     ...defaults.styleByKind, hline: { ...defaults.styleByKind.hline, labelHidden: false },
   } });
   expect(loadDefaults().styleByKind.hline.labelHidden).toBe(false);
+});
+
+
+describe('rectangle sub-bar persistence', () => {
+  const rect = { id: 'free', kind: 'rect' as const, paneId: 'candle' as const, lineStyle: 'solid' as const,
+    a: { realMs: 1_000, price: 100 }, b: { realMs: 1_000, price: 200 }, color: '#fff', width: 2, fillOpacity: 0.1 };
+  it('round-trips both residuals and keeps legacy rectangles without offsets', () => {
+    saveDrawings(SCOPE, [{ ...rect, subX: { a: -0.2, b: 0.3 } }, { ...rect, id: 'legacy' }]);
+    expect(loadDrawings(SCOPE)).toEqual([{ ...rect, subX: { a: -0.2, b: 0.3 } }, { ...rect, id: 'legacy' }]);
+  });
+  it('normalizes malformed residuals in imported JSON', () => {
+    expect(normalizeItems([{ ...rect, subX: { a: 'bad', b: 0.3 } }])[0]).toMatchObject({ subX: { a: 0, b: 0.3 } });
+    for (const subX of [null, 'bad', [1, 2]]) {
+      expect(normalizeItems([{ ...rect, subX }])[0]).not.toHaveProperty('subX');
+    }
+  });
+});
+
+
+it('ignores a previously enabled magnet preference without resetting drawing styles', () => {
+  localStorage.setItem(DEFAULTS_KEY, JSON.stringify({ v: 2, value: {
+    styleByKind: { ...initialStyleByKind(), rect: { ...INITIAL_STYLE, color: '#F43F5E' } },
+    magnet: true, hiddenAll: true,
+  } }));
+  const loaded = loadDefaults();
+  expect(loaded).not.toHaveProperty('magnet');
+  expect(loaded.hiddenAll).toBe(true);
+  expect(loaded.styleByKind.rect.color).toBe('#F43F5E');
 });

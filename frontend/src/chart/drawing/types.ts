@@ -119,6 +119,10 @@ export interface Trendline extends DrawingBase {
 
 export interface Rect extends DrawingBase {
   kind: 'rect';
+  /** Horizontal residuals as fractions of one viewing bar. Absent = 0.
+   * Keeps free corners between candle centers across zoom/pan. Like Pencil.subX,
+   * fractions are reinterpreted when switching timeframes in the minute slot. */
+  subX?: { a: number; b: number };
   /** Opposite corners. Rendered/hit-tested after min/max normalization, so the
    *  two corners may be stored in any order (a handle drag can cross them). */
   a: Point;
@@ -199,11 +203,11 @@ export interface Pencil extends DrawingBase {
    * would fix that, but ms is exactly what the calendar-mode axis cannot
    * represent between bars (see above).
    *
-   * ⚠ NOT applicable to the other kinds. hline/vline/trendline/rect/measure/
+   * hline/vline/trendline/measure/
    * text anchor to bars deliberately (a trendline endpoint on a candle is the
-   * point), and magnet snapping reinforces that. Pencil is the one tool whose
-   * whole value is the shape between bars, and the one tool that opts out of
-   * magnet (see DrawingOverlay's `buildCtx`).
+   * point). Rect stores its own optional
+   * corner offsets. Pencil is the tool whose
+   * whole value is the shape between bars.
    */
   subX?: number[];
 }
@@ -365,14 +369,11 @@ export type DrawingStyle = {
 /** Sticky drawing defaults. Style is now kept PER TOOL (kind): picking red on a
  *  trendline no longer recolors the next rectangle — each tool remembers its own
  *  last-used color / width / lineStyle (+ fontSize for text, fillOpacity for
- *  rect). `magnet` / `hiddenAll` stay session-global (they are not styles), so
- *  they never live inside a per-kind slot. See ADR-0032 / drawing-tools notes. */
+ *  rect). `hiddenAll` stays session-global (it is not a style), so
+ *  it never lives inside a per-kind slot. See ADR-0032 / drawing-tools notes. */
 export type DrawingDefaults = {
   /** One `DrawingStyle` per drawable kind. */
   styleByKind: Record<DrawingKind, DrawingStyle>;
-  /** Magnet mode — snap creation/handle drags to the nearest candle. Session
-   *  preference persisted alongside style defaults; NOT a per-drawing field. */
-  magnet: boolean;
   /** Hide all drawings without deleting them (rail eye toggle). */
   hiddenAll: boolean;
 };
@@ -402,9 +403,8 @@ export function initialStyleByKind(): Record<DrawingKind, DrawingStyle> {
 }
 
 /** Seed used when no persisted defaults exist. Every tool starts identical;
- *  magnet off, all visible. */
+ *  all drawings visible. */
 export const INITIAL_DEFAULTS: DrawingDefaults = {
   styleByKind: initialStyleByKind(),
-  magnet: false,
   hiddenAll: false,
 };

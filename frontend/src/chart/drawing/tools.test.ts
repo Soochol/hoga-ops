@@ -43,10 +43,6 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     revertToSelectMode: vi.fn(),
     releasePointer: vi.fn(),
     pixelToData: vi.fn(() => defaultPoint),
-    // Same point by default: with no magnet there is nothing to un-snap, so the
-    // collapse-recovery path is a no-op for every pre-existing assertion. The
-    // rect band tests override it to make the two differ.
-    pixelToDataUnsnapped: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
     canvasXToRealMs: vi.fn(() => defaultPoint.realMs),
     priceToCanvasY: vi.fn(() => 200),
@@ -77,10 +73,6 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     measureDraft: { current: null },
     marqueeDraft: { current: null },
     dragRef: { current: null },
-    // Off by default so every pre-existing assertion measures the unsnapped
-    // geometry it was written against; the alignment tests opt in explicitly.
-    alignSnapEnabled: false,
-    setAlignGuides: vi.fn(),
     beginTextEdit: vi.fn(),
     requestRedraw: vi.fn(),
     add: vi.fn(),
@@ -106,6 +98,109 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   }
   return ctx;
 }
+
+describe('rectangle free positioning', () => {
+  it('creates a box inside one candle without losing the pointer X positions', () => {
+    const ctx = makeCtx({
+      px: 96, py: 100,
+      barPx: () => 20,
+      realMsToCanvasX: () => 100,
+      pixelToData: (_x, y) => ({ realMs: 1_000, price: y }),
+    });
+    rectTool.onPointerDown!(ctx);
+    ctx.px = 104;
+    ctx.py = 110;
+    rectTool.onPointerMove!(ctx);
+    rectTool.onPointerUp!(ctx);
+    expect(ctx.add).toHaveBeenCalledOnce();
+    expect(vi.mocked(ctx.add).mock.calls[0][0]).toMatchObject({
+      a: { realMs: 1_000, price: 100 },
+      b: { realMs: 1_000, price: 110 },
+      subX: { a: -0.2, b: 0.2 },
+    });
+  });
+
+  it('moves a box by four pixels inside one candle and restores it on return', () => {
+    const origin: Rect = {
+      id: 'free', kind: 'rect', paneId: 'candle', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1,
+      a: { realMs: 60_000, price: 100 }, b: { realMs: 120_000, price: 200 }, subX: { a: -0.2, b: 0.3 },
+    };
+    const ctx = makeCtx({
+      px: 22, py: 150, drawings: [origin], hitTestAt: () => origin,
+      barPx: () => 20, realMsToCanvasX: ms => ms / 3_000,
+      dragBars: { toBar: ms => ms / 60_000, toReal: bar => Math.round(bar) * 60_000, originBar: 0, barSized: true },
+      pixelToData: () => ({ realMs: 60_000, price: 150 }), canvasYToPrice: () => 150,
+    });
+    selectTool.onPointerDown!(ctx);
+    ctx.px = 26;
+    selectTool.onPointerMove!(ctx);
+    const patch = vi.mocked(ctx.update).mock.calls[0][1] as Partial<Rect>;
+    expect(patch.subX?.a).toBeCloseTo(0);
+    expect((patch.b?.realMs ?? 0) / 3_000 + (patch.subX?.b ?? 0) * 20).toBeCloseTo(50);
+    ctx.px = 22;
+    selectTool.onPointerMove!(ctx);
+    const restored = vi.mocked(ctx.update).mock.calls[1][1] as Partial<Rect>;
+    expect(restored.a).toEqual(origin.a);
+    expect(restored.b).toEqual(origin.b);
+    expect(restored.subX?.a).toBeCloseTo(-0.2);
+    expect(restored.subX?.b).toBeCloseTo(0.3);
+  });
+
+  it('resizes the visual corner and keeps the other corner offset', () => {
+    const origin: Rect = {
+      id: 'free', kind: 'rect', paneId: 'candle', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1,
+      a: { realMs: 60_000, price: 100 }, b: { realMs: 120_000, price: 200 }, subX: { a: -0.2, b: 0.3 },
+    };
+    const ctx = makeCtx({
+      px: 16, py: 100, drawings: [origin], selectedId: origin.id,
+      barPx: () => 20, realMsToCanvasX: ms => ms / 3_000, priceToCanvasY: price => price,
+      dragBars: { toBar: ms => ms / 60_000, toReal: bar => Math.round(bar) * 60_000, originBar: 0, barSized: true },
+      pixelToData: (_x, y) => ({ realMs: 60_000, price: y }),
+      canvasYToPrice: y => y,
+    });
+    selectTool.onPointerDown!(ctx);
+    expect(ctx.dragRef.current?.kind).toBe('rect-handle');
+    ctx.px = 18;
+    ctx.py = 110;
+    selectTool.onPointerMove!(ctx);
+    expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({
+      a: { realMs: 60_000, price: 110 }, subX: { a: -0.1, b: 0.3 },
+    });
+  });
+
+  it('clears an existing residual when resizing exactly onto the candle center', () => {
+    const origin: Rect = {
+      id: 'free', kind: 'rect', paneId: 'candle', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1,
+      a: { realMs: 60_000, price: 100 }, b: { realMs: 120_000, price: 200 }, subX: { a: -0.2, b: 0.3 },
+    };
+    const ctx = makeCtx({
+      px: 16, py: 100, drawings: [origin], selectedId: origin.id,
+      barPx: () => 20, realMsToCanvasX: ms => ms / 3_000, priceToCanvasY: price => price,
+      pixelToData: (_x, y) => ({ realMs: 60_000, price: y }),
+      canvasYToPrice: y => y,
+    });
+    selectTool.onPointerDown!(ctx);
+    ctx.px = 20;
+    selectTool.onPointerMove!(ctx);
+    expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({ subX: { a: 0, b: 0.3 } });
+  });
+
+  it('keeps the pointer position even next to another rectangle', () => {
+    const neighbour: Rect = {
+      id: 'target', kind: 'rect', paneId: 'candle', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1,
+      a: { realMs: 60_000, price: 100 }, b: { realMs: 120_000, price: 200 }, subX: { a: -0.2, b: 0.3 },
+    };
+    const ctx = makeCtx({
+      px: 17, py: 300, drawings: [neighbour],
+      barPx: () => 20, realMsToCanvasX: ms => ms / 3_000, priceToCanvasY: price => price,
+      dragBars: { toBar: ms => ms / 60_000, toReal: bar => Math.round(bar) * 60_000, originBar: 0, barSized: true },
+      pixelToData: (_x, y) => ({ realMs: 60_000, price: y }),
+    });
+    rectTool.onPointerDown!(ctx);
+    expect(ctx.rectDraft.current?.a.subX).toBeCloseTo(-0.15);
+  });
+
+});
 
 describe('TOOLS registry shape', () => {
   it('covers every DrawingTool union member', () => {
@@ -169,9 +264,8 @@ describe('hlineTool.onPointerDown', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('uses the snapped pixelToData price (magnet) over canvasYToPrice when available', () => {
-    // pixelToData is the snapped path; its price must win over the raw
-    // canvasYToPrice so magnet snapping reaches the committed hline.
+  it('uses the pane-aware point price with a price-only fallback', () => {
+    // Pane-aware point conversion supplies the price when time resolves.
     const ctx = makeCtx({
       pixelToData: vi.fn(() => ({ realMs: 1_700_000_000_000, price: 71_500 })),
       canvasYToPrice: vi.fn(() => 71_342.7),
@@ -246,62 +340,13 @@ describe('rectTool — drag commits a 2-corner box', () => {
     let call = 0;
     const ctx = makeCtx({
       pixelToData: vi.fn(() => (call++ === 0 ? a : flat)),
-      // Magnet OFF: the unsnapped point IS the snapped one, so the collapse is
-      // the cursor's own doing (a truly flat drag) and stays rejected. Spelled
-      // out because the recovery path below keys on these two differing.
-      pixelToDataUnsnapped: vi.fn(() => flat),
     });
     rectTool.onPointerDown!(ctx);
     rectTool.onPointerUp!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  // ── 자석이 도형을 붕괴시키는 경우 — 빈 밴드의 도지 봉 ──────────────────────
-  //
-  // 빈 밴드에서는 `nearestCandleIndex` 가 **항상 마지막 캔들**을 준다(다른 후보가
-  // 없다). 그 캔들이 도지(O=H=L=C — 장 마감 후 종가 단일가 봉이 대표적)면 가격 하나가
-  // `SNAP_PX` 16px 양쪽, 즉 **세로 32px 전체**를 삼킨다. 그 안에서 시작해 그 안에서
-  // 끝낸 드래그는 두 모서리가 같은 price 로 스냅돼 `||` 제로 면적 거부에 걸리고,
-  // 사용자에게는 **아무 일도 일어나지 않는다**. /live 실측 재현(2026-08-31):
-  // 자석 ON · 밴드 (500,80)→(580,100) 은 안 그려지고, 같은 폭이라도 축 안이거나
-  // 끝점이 스냅 반경 밖이면 그려졌다.
-  //
-  // 자석은 정렬을 도우려는 장치이지 도형을 없애려는 장치가 아니다. `alignSnapBox` 의
-  // acceptX/acceptY 가 이미 같은 판단을 한다("보정이 캡에 잘릴 바에는 보정하지 않는다").
-  it('빈 밴드에서 자석이 두 모서리를 같은 가격에 붙여도 사각형을 만든다', () => {
-    const a: Point = { realMs: 1_000, price: 100 };
-    const snappedFlat: Point = { realMs: 2_000, price: 100 }; // 도지 봉으로 붕괴
-    const cursor: Point = { realMs: 2_000, price: 180 }; // 스냅 이전 커서
-    let call = 0;
-    const ctx = makeCtx({
-      pixelToData: vi.fn(() => (call++ === 0 ? a : snappedFlat)),
-      pixelToDataUnsnapped: vi.fn(() => cursor),
-    });
-    rectTool.onPointerDown!(ctx);
-    rectTool.onPointerUp!(ctx);
-    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
-      | Drawing
-      | undefined;
-    expect(added?.kind).toBe('rect');
-    if (added?.kind === 'rect') {
-      // 붕괴한 축(price)만 커서 값으로 되살린다.
-      expect(added.b.price).toBe(180);
-      // 멀쩡한 축(realMs)의 스냅은 그대로 둔다 — 사용자가 의도한 정렬이다.
-      expect(added.b.realMs).toBe(2_000);
-    }
-  });
 
-  it('되살려도 여전히 붕괴하면(제자리 클릭) 거부를 유지한다', () => {
-    const a: Point = { realMs: 1_000, price: 100 };
-    let call = 0;
-    const ctx = makeCtx({
-      pixelToData: vi.fn(() => (call++ === 0 ? a : { ...a })),
-      pixelToDataUnsnapped: vi.fn(() => ({ ...a })),
-    });
-    rectTool.onPointerDown!(ctx);
-    rectTool.onPointerUp!(ctx);
-    expect(ctx.add).not.toHaveBeenCalled();
-  });
 });
 
 describe('trendlineTool — Shift constrains the endpoint angle', () => {
@@ -1431,177 +1476,6 @@ describe('selectTool — 다중 선택', () => {
 // than the constant-returning defaults, because these assertions are about
 // pixel distances: with a constant converter every candidate sits 0 px away
 // and the threshold would never be exercised.
-describe('selectTool — alignment snapping (rect body drag)', () => {
-  const linear = {
-    realMsToCanvasX: (ms: number) => ms / 1_000,
-    priceToCanvasY: (p: number) => 1_000 - p,
-  };
-
-  /** Neighbour: x px 100..200, y px 500..400. */
-  const neighbour = (over: Partial<Drawing> = {}): Drawing =>
-    ({
-      id: 'n1', kind: 'rect',
-      a: { realMs: 100_000, price: 500 },
-      b: { realMs: 200_000, price: 600 },
-      fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-      ...over,
-    }) as Drawing;
-
-  /** Dragged shape. Width (220 000) deliberately differs from the neighbour's
-   *  so exactly ONE anchor pair lands inside the threshold — equal widths make
-   *  min↔min and max↔max tie, and the tie-break would decide the test. */
-  const moving = (): Drawing => ({
-    id: 'm1', kind: 'rect',
-    a: { realMs: 300_000, price: 300 },
-    b: { realMs: 520_000, price: 400 },
-    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-  });
-
-  /** A drag context whose cursor the caller can move between pointermoves.
-   *  Spies arrive through `over`, the same way every other test in this file
-   *  passes them — a dedicated parameter typed off `vi.fn`'s return loses the
-   *  contextual typing that makes a bare `vi.fn()` fit a ToolCtx slot. */
-  function dragCtx(
-    opts: {
-      origin: Drawing;
-      others: Drawing[];
-      cursorBar: { v: number };
-      alignSnapEnabled?: boolean;
-    },
-    over: Partial<ToolCtx> = {},
-  ) {
-    return makeCtx({
-      drawings: [opts.origin, ...opts.others],
-      ...linear,
-      alignSnapEnabled: opts.alignSnapEnabled ?? true,
-      dragRef: {
-        current: {
-          kind: 'body', id: opts.origin.id, origin: opts.origin,
-          startBar: 0, startPrice: 350, lastBar: 0, pointerId: 1, paneId: 'candle',
-        },
-      },
-      pixelToData: vi.fn(() => ({ realMs: opts.cursorBar.v, price: 350 })),
-      canvasYToPrice: vi.fn(() => 350),
-      priceBoundsForPane: vi.fn(() => ({ top: 10_000, bottom: 0 })),
-      ...over,
-    });
-  }
-
-  it('pulls the dragged rect flush onto a neighbour edge', () => {
-    // Cursor moves -195 000 bars: the left edge lands at 105 000 (px 105),
-    // 5 px from the neighbour's left (px 100) — inside the 8 px threshold.
-    const update = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 } },
-      { update },
-    );
-    selectTool.onPointerMove!(ctx);
-    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
-    expect(patch.a.realMs).toBe(100_000);          // snapped, not 105 000
-    expect(patch.b.realMs).toBe(320_000);          // width preserved
-    expect(patch.a.price).toBe(300);               // Y untouched — axes independent
-    expect(patch.b.price).toBe(400);
-  });
-
-  it('does not snap when the magnet is off', () => {
-    const update = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 }, alignSnapEnabled: false },
-      { update },
-    );
-    selectTool.onPointerMove!(ctx);
-    const patch = update.mock.calls[0][1] as { a: Point };
-    expect(patch.a.realMs).toBe(105_000);
-  });
-
-  it('NEVER lets the snap correction reach the drag anchor', () => {
-    // The invariant absolute anchoring exists for. Frame 1 snaps (-5 000 of
-    // pull); frame 2 returns the cursor to the grab point. If that pull had
-    // been folded into startBar, the shape would come back 5 000 short.
-    const update = vi.fn();
-    const cursorBar = { v: -195_000 };
-    const ctx = dragCtx({ origin: moving(), others: [neighbour()], cursorBar }, { update });
-    selectTool.onPointerMove!(ctx);
-    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(100_000);
-
-    cursorBar.v = 0;
-    selectTool.onPointerMove!(ctx);
-    const back = update.mock.calls[1][1] as { a: Point; b: Point };
-    expect(back.a.realMs).toBe(300_000);
-    expect(back.b.realMs).toBe(520_000);
-    const drag = ctx.dragRef.current as { startBar: number | null; startPrice: number };
-    expect(drag.startBar).toBe(0);
-    expect(drag.startPrice).toBe(350);
-  });
-
-  it('aligns to a LOCKED neighbour — a lock forbids editing, not measuring', () => {
-    const update = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour({ locked: true })], cursorBar: { v: -195_000 } },
-      { update },
-    );
-    selectTool.onPointerMove!(ctx);
-    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(100_000);
-  });
-
-  it('ignores a rect on another pane (its price domain is a different unit)', () => {
-    const update = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour({ paneId: 'volume' })], cursorBar: { v: -195_000 } },
-      { update },
-    );
-    selectTool.onPointerMove!(ctx);
-    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(105_000);
-  });
-
-  it('ignores itself — a shape cannot align to where it used to be', () => {
-    const update = vi.fn();
-    const origin = moving();
-    // The store still holds the pre-drag geometry, so without the self-exclude
-    // the shape would snap back onto its own starting edge.
-    const ctx = dragCtx({ origin, others: [], cursorBar: { v: -1_000 } }, { update });
-    selectTool.onPointerMove!(ctx);
-    expect((update.mock.calls[0][1] as { a: Point }).a.realMs).toBe(299_000);
-  });
-
-  it('leaves non-rect shapes alone (only rectangles carry edges to align)', () => {
-    const hline: Drawing = {
-      id: 'h9', kind: 'hline', price: 350,
-      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-    };
-    const update = vi.fn();
-    const ctx = dragCtx({ origin: hline, others: [neighbour()], cursorBar: { v: -195_000 } }, { update });
-    selectTool.onPointerMove!(ctx);
-    expect(update).toHaveBeenCalledWith('h9', { price: 350 });
-  });
-
-  it('publishes a guide while snapped and clears it on pointer-up', () => {
-    const setAlignGuides = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour()], cursorBar: { v: -195_000 } },
-      { setAlignGuides },
-    );
-    selectTool.onPointerMove!(ctx);
-    expect(setAlignGuides).toHaveBeenCalledWith([
-      // Vertical line at the aligned time, spanning both boxes' prices.
-      { axis: 'x', paneId: 'candle', at: 100_000, from: 300, to: 600 },
-    ]);
-    selectTool.onPointerUp!(ctx);
-    expect(setAlignGuides).toHaveBeenLastCalledWith([]);
-  });
-
-  it('publishes an empty guide list on a move that snaps nothing', () => {
-    // Otherwise a guide drawn on an earlier frame would stay painted.
-    const setAlignGuides = vi.fn();
-    const ctx = dragCtx(
-      { origin: moving(), others: [neighbour()], cursorBar: { v: 0 } },
-      { setAlignGuides },
-    );
-    selectTool.onPointerMove!(ctx);
-    expect(setAlignGuides).toHaveBeenCalledWith([]);
-  });
-});
-
 describe('selectTool — 우측 확장 사각형의 오른쪽 코너 핸들', () => {
   // realMsToCanvasX = ms/1000, priceToCanvasY = 1000-price
   // → a(100_000, 300) = (100, 700), b(200_000, 400) = (200, 600).
@@ -1669,308 +1543,6 @@ describe('selectTool — 우측 확장 사각형의 오른쪽 코너 핸들', ()
   });
 });
 
-describe('selectTool — alignment snapping (rect corner resize)', () => {
-  const linear = {
-    realMsToCanvasX: (ms: number) => ms / 1_000,
-    priceToCanvasY: (p: number) => 1_000 - p,
-  };
-  const resized: Drawing = {
-    id: 'r9', kind: 'rect',
-    a: { realMs: 100_000, price: 300 },
-    b: { realMs: 200_000, price: 400 },
-    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-  };
-  const neighbour: Drawing = {
-    id: 'n9', kind: 'rect',
-    a: { realMs: 300_000, price: 500 },
-    b: { realMs: 400_000, price: 600 },
-    fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-  };
-
-  function handleCtx(over: Partial<ToolCtx> = {}) {
-    return makeCtx({
-      drawings: [resized, neighbour],
-      ...linear,
-      alignSnapEnabled: true,
-      dragRef: {
-        current: {
-          kind: 'rect-handle', id: 'r9', msKey: 'b', priceKey: 'b',
-          pointerId: 1, paneId: 'candle',
-        },
-      },
-      // Corner cursor 5 px shy of the neighbour's left edge and 5 px shy of
-      // its top — both inside the threshold, on both axes.
-      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
-      canvasYToPrice: vi.fn(() => 505),
-      ...over,
-    });
-  }
-
-  it('snaps the moving corner to a neighbour on both axes', () => {
-    const update = vi.fn();
-    const ctx = handleCtx({ update });
-    selectTool.onPointerMove!(ctx);
-    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 300_000, price: 500 } });
-  });
-
-  it('holds X still where the time axis cannot resolve it', () => {
-    // In the empty band the caller keeps the corner's stored realMs; a magnet
-    // that moved X anyway would read as the shape jumping on its own.
-    //
-    // The neighbour is placed 5 px from the corner's STORED x (200 000 → px
-    // 200) rather than the default one 100 px away: the gate can only be
-    // measured where a snap would otherwise fire. With the far neighbour this
-    // test passed with the gate deleted.
-    const near: Drawing = {
-      ...neighbour,
-      a: { realMs: 205_000, price: 500 },
-      b: { realMs: 305_000, price: 600 },
-    } as Drawing;
-    const update = vi.fn();
-    const ctx = handleCtx({
-      update,
-      drawings: [resized, near],
-      pixelToData: vi.fn(() => null),
-    });
-    selectTool.onPointerMove!(ctx);
-    // Y still snaps (505 → 500); X stays on the stored 200 000.
-    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 200_000, price: 500 } });
-  });
-
-  it('does not snap when the magnet is off', () => {
-    const update = vi.fn();
-    const ctx = handleCtx({ update, alignSnapEnabled: false });
-    selectTool.onPointerMove!(ctx);
-    expect(update).toHaveBeenCalledWith('r9', { b: { realMs: 295_000, price: 505 } });
-  });
-});
-
-describe('rectTool — alignment snapping while drawing', () => {
-  const linear = {
-    realMsToCanvasX: (ms: number) => ms / 1_000,
-    priceToCanvasY: (p: number) => 1_000 - p,
-  };
-  const neighbour: Drawing = {
-    id: 'n8', kind: 'rect',
-    a: { realMs: 300_000, price: 500 },
-    b: { realMs: 400_000, price: 600 },
-    fillOpacity: 0.1, color: '#F43F5E', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-  };
-
-  it('aligns the first corner on pointer-down', () => {
-    const ctx = makeCtx({
-      drawings: [neighbour],
-      ...linear,
-      alignSnapEnabled: true,
-      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
-    });
-    rectTool.onPointerDown!(ctx);
-    expect(ctx.rectDraft.current?.a).toEqual({ realMs: 300_000, price: 500 });
-  });
-
-  it('commits the SNAPPED corner, matching what the preview showed', () => {
-    const add = vi.fn();
-    const ctx = makeCtx({
-      drawings: [neighbour],
-      ...linear,
-      alignSnapEnabled: true,
-      add,
-      rectDraft: {
-        current: { a: { realMs: 100_000, price: 300 }, pointerId: 1, paneId: 'candle' },
-      },
-      pixelToData: vi.fn(() => ({ realMs: 295_000, price: 505 })),
-    });
-    rectTool.onPointerUp!(ctx);
-    expect(add).toHaveBeenCalledOnce();
-    const created = add.mock.calls[0][0] as { a: Point; b: Point };
-    expect(created.b).toEqual({ realMs: 300_000, price: 500 });
-    // …and the guides go with the gesture.
-    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
-  });
-});
-
-// ── 그룹 정렬 스냅 (다중 선택 body 드래그) ─────────────────────────────────
-//
-// 좌표 스텁은 여기서도 선형이다(1 000ms = 1px, 1price = 1px). 그룹은 수직
-// 델타를 PIXEL 로 나르므로 두 축의 단위가 실제로 다르고, 그 변환이 맞는지를
-// 재는 것이 이 블록의 절반이다.
-describe('selectTool — 그룹 정렬 스냅', () => {
-  const linear = {
-    realMsToCanvasX: (ms: number) => ms / 1_000,
-    priceToCanvasY: (p: number) => 1_000 - p,
-    canvasYToPrice: (y: number) => 1_000 - y,
-  };
-
-  const box = (
-    id: string, x1: number, y1: number, x2: number, y2: number,
-    over: Partial<Rect> = {},
-  ): Drawing => ({
-    id, kind: 'rect',
-    a: { realMs: x1, price: y1 }, b: { realMs: x2, price: y2 },
-    fillOpacity: 0.1, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-    ...over,
-  }) as Drawing;
-
-  /** 이웃: x px 100~200, y px 500~400. */
-  const neighbour = () => box('n1', 100_000, 500, 200_000, 600);
-  /** 그룹 두 장. 합쳐서 bbox x 300 000~520 000, y price 300~400. */
-  const m1 = () => box('m1', 300_000, 300, 400_000, 350);
-  const m2 = () => box('m2', 450_000, 360, 520_000, 400);
-
-  function groupCtx(opts: {
-    members: Drawing[];
-    others?: Drawing[];
-    cursor: { px: number; py: number };
-    alignSnapEnabled?: boolean;
-  }, over: Partial<ToolCtx> = {}) {
-    const members = opts.members;
-    const ctx = makeCtx({
-      drawings: [...members, ...(opts.others ?? [])],
-      ...linear,
-      alignSnapEnabled: opts.alignSnapEnabled ?? true,
-      // 앵커는 원점(bar 0 · py 0). 커서 위치가 곧 총 델타가 된다.
-      canvasXToRealMs: vi.fn(() => opts.cursor.px * 1_000),
-      priceBoundsForPane: vi.fn(() => ({ top: 10_000, bottom: -10_000 })),
-      dragRef: {
-        current: {
-          kind: 'body-multi', origins: members,
-          startBar: 0, lastBar: 0,
-          startPx: 0, startPy: 0, pressedId: members[0].id, moved: true,
-          pointerId: 1, paneId: 'candle',
-        },
-      },
-      ...over,
-    });
-    // px/py 는 **살아 있는 참조**여야 한다. 값으로 굳히면 왕복 테스트에서 커서를
-    // 되돌려도 ctx 는 첫 위치에 머물러, 앵커 오염이 없는데도 있는 것처럼 보인다
-    // (실제로 처음에 그렇게 틀렸다 — X 는 함수 스텁이라 따라가고 Y 만 멈췄다).
-    if (!('px' in over)) Object.defineProperty(ctx, 'px', { get: () => opts.cursor.px });
-    if (!('py' in over)) Object.defineProperty(ctx, 'py', { get: () => opts.cursor.py });
-    return ctx;
-  }
-
-  /** updateMany 로 나간 패치를 id → patch 로. */
-  const patches = (ctx: ToolCtx) => {
-    const calls = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls;
-    return new Map(
-      (calls[0][0] as { id: string; patch: Partial<Rect> }[]).map((e) => [e.id, e.patch]),
-    );
-  };
-
-  it('그룹의 바운딩 박스가 이웃 모서리에 붙는다 — 멤버는 대형을 유지한 채', () => {
-    // 커서 -195 000 바 · -95px: bbox 왼쪽이 이웃 왼쪽에서 5px, 위가 이웃
-    // 아래에서 5px. 두 축 모두 임계 안이라 함께 붙는다.
-    const ctx = groupCtx({
-      members: [m1(), m2()], others: [neighbour()],
-      cursor: { px: -195_000 / 1_000, py: -95 },
-    });
-    selectTool.onPointerMove!(ctx);
-    const p = patches(ctx);
-    // X: 왼쪽 변이 이웃의 왼쪽과 같은 값. Y: 그룹 아래가 이웃 위와 맞닿는다.
-    expect(p.get('m1')!.a).toEqual({ realMs: 100_000, price: 400 });
-    expect(p.get('m1')!.b).toEqual({ realMs: 200_000, price: 450 });
-    // 대형 유지: m2 는 m1 과 같은 델타만큼 움직였다.
-    expect(p.get('m2')!.a).toEqual({ realMs: 250_000, price: 460 });
-    expect(p.get('m2')!.b).toEqual({ realMs: 320_000, price: 500 });
-  });
-
-  it('자석이 꺼져 있으면 붙지 않는다', () => {
-    const ctx = groupCtx({
-      members: [m1(), m2()], others: [neighbour()],
-      cursor: { px: -195_000 / 1_000, py: -95 }, alignSnapEnabled: false,
-    });
-    selectTool.onPointerMove!(ctx);
-    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 105_000, price: 395 });
-  });
-
-  it('그룹은 자기 멤버에게 붙지 않는다', () => {
-    // 5 000바(=5px)만 끈다. 멤버가 후보에 남아 있으면 m1 의 원래 왼쪽 변이
-    // 정확히 5px 거리라 그리로 되붙어 제자리처럼 보인다.
-    const ctx = groupCtx({
-      members: [m1(), m2()], others: [], cursor: { px: -5, py: 0 },
-    });
-    selectTool.onPointerMove!(ctx);
-    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 295_000, price: 300 });
-  });
-
-  it('페인이 섞인 그룹은 붙지 않는다 — 가격을 견줄 공통 축이 없다', () => {
-    const ctx = groupCtx({
-      members: [m1(), box('m2', 450_000, 360, 520_000, 400, { paneId: 'volume' })],
-      others: [neighbour()],
-      cursor: { px: -195_000 / 1_000, py: -95 },
-    });
-    selectTool.onPointerMove!(ctx);
-    expect(patches(ctx).get('m1')!.a).toEqual({ realMs: 105_000, price: 395 });
-  });
-
-  it('사각형이 없는 그룹은 붙지 않는다 — 정렬은 모서리 위에 정의된다', () => {
-    const line: Drawing = {
-      id: 'l1', kind: 'hline', price: 300,
-      color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
-    };
-    const ctx = groupCtx({
-      members: [line], others: [neighbour()], cursor: { px: -195_000 / 1_000, py: -95 },
-    });
-    selectTool.onPointerMove!(ctx);
-    expect(patches(ctx).get('l1')).toEqual({ price: 395 });
-  });
-
-  it('클램프에 잘릴 스냅은 채택하지 않는다 — 가이드가 거짓말을 하느니', () => {
-    // 경계를 **상한**으로 잡는다. 하한으로 조이면 원본 가격이 이미 범위 밖이 되어
-    // `clampDPriceForDrawing` 이 곧바로 0 을 돌려주고(드래그 freeze), 스냅이
-    // 잘리는 상황 자체가 만들어지지 않는다 — 처음에 그렇게 틀렸다.
-    //
-    // 498 은 스냅 전(m2 의 위쪽이 495 까지)은 통과시키고 스냅 후(500)는 자르는
-    // 자리다. 잘린 채 붙이면 가이드만 "맞닿았다"고 말하게 된다.
-    const ctx = groupCtx(
-      { members: [m1(), m2()], others: [neighbour()],
-        cursor: { px: -195_000 / 1_000, py: -95 } },
-      { priceBoundsForPane: vi.fn(() => ({ top: 498, bottom: -10_000 })) },
-    );
-    selectTool.onPointerMove!(ctx);
-    // 축은 전부-아니면-전무라 X 스냅도 함께 빠진다.
-    const a = patches(ctx).get('m1')!.a as Point;
-    expect(a.realMs).toBe(105_000);
-    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
-  });
-
-  it('스냅 보정이 그룹 앵커로 새지 않는다 — 왕복하면 원위치', () => {
-    const cursor = { px: -195_000 / 1_000, py: -95 };
-    const ctx = groupCtx({ members: [m1(), m2()], others: [neighbour()], cursor });
-    selectTool.onPointerMove!(ctx);
-    const first = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[0][0] as
-      { id: string; patch: Partial<Rect> }[];
-    expect(first.find((e) => e.id === 'm1')!.patch.a).toEqual({ realMs: 100_000, price: 400 });
-
-    // 커서를 그랩 지점으로 되돌린다. 앵커가 오염됐다면 여기서 어긋난다.
-    cursor.px = 0; cursor.py = 0;
-    selectTool.onPointerMove!(ctx);
-    const back = (ctx.updateMany as ReturnType<typeof vi.fn>).mock.calls[1][0] as
-      { id: string; patch: Partial<Rect> }[];
-    expect(back.find((e) => e.id === 'm1')!.patch.a).toEqual({ realMs: 300_000, price: 300 });
-    expect(back.find((e) => e.id === 'm2')!.patch.b).toEqual({ realMs: 520_000, price: 400 });
-    const drag = ctx.dragRef.current as { startBar: number | null; startPy: number };
-    expect(drag.startBar).toBe(0);
-    expect(drag.startPy).toBe(0);
-  });
-
-  it('붙는 동안 가이드를 내고, 붙지 않는 프레임엔 빈 배열을 낸다', () => {
-    const cursor = { px: -195_000 / 1_000, py: -95 };
-    const ctx = groupCtx({ members: [m1(), m2()], others: [neighbour()], cursor });
-    selectTool.onPointerMove!(ctx);
-    const guides = (ctx.setAlignGuides as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(guides).toHaveLength(2);
-    expect(guides.map((g: { axis: string }) => g.axis).sort()).toEqual(['x', 'y']);
-
-    cursor.px = 0; cursor.py = 0;
-    selectTool.onPointerMove!(ctx);
-    expect(ctx.setAlignGuides).toHaveBeenLastCalledWith([]);
-  });
-});
-
-// ─── selectTool — 잠긴 도형의 다중 선택 ────────────────────────────────────
-//
-// 잠긴 것을 고를 수 있어야 **한꺼번에 풀 수 있다**. 선택은 지목이지 편집이 아니다.
 describe('selectTool — 잠긴 도형도 고른다', () => {
   const locked = (id: string): Drawing => ({
     id, kind: 'hline', price: 100, color: '#14B8A6', width: 1.5,

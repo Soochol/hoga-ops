@@ -11,6 +11,7 @@
 // so its translate-by-(Δms, Δprice) collapses to a price-only shift.
 // Trendline shifts both endpoints. Pencil shifts every vertex.
 
+import { projectRectX, rectCorner, rectCornerBar, translateRectBars } from './rectCoordinates';
 import type { Drawing, Hline, Measure, PaneId, Pencil, Rect, Text, Trendline, Vline } from './types';
 import { textLayout } from './textLayout';
 import { isLocked } from './types';
@@ -77,6 +78,7 @@ function translateTrendline(t: Trendline, shift: ShiftFn, dPrice: number): Parti
 
 function translateRect(r: Rect, shift: ShiftFn, dPrice: number): Partial<Rect> {
   return {
+    ...(r.subX ? { subX: { ...r.subX } } : {}),
     a: { realMs: shift(r.a.realMs), price: r.a.price + dPrice },
     b: { realMs: shift(r.b.realMs), price: r.b.price + dPrice },
   };
@@ -174,7 +176,9 @@ export function clampDBarForDrawing(
   const times = timesOf(drawing);
   if (times.length === 0) return dBar;
   let minBar = Infinity;
-  for (const t of times) minBar = Math.min(minBar, toBar(t));
+  if (drawing.kind === 'rect') {
+    minBar = Math.min(rectCornerBar(rectCorner(drawing, 'a'), { toBar }), rectCornerBar(rectCorner(drawing, 'b'), { toBar }));
+  } else for (const t of times) minBar = Math.min(minBar, toBar(t));
   return Math.max(dBar, originBar - minBar);
 }
 
@@ -301,7 +305,7 @@ export function planGroupTranslate(
     // Emit even when both deltas are 0: the shift round-trip is the identity
     // for a healthy vertex and HEALS one stranded in an inter-session gap by an
     // old real-ms drag (same reasoning as the single-drag path).
-    out.push({ id: m.id, patch: translateDrawing(m, shift, dPrice) });
+    out.push({ id: m.id, patch: m.kind === 'rect' ? translateRectBars(m, dBar, dPrice, coords) : translateDrawing(m, shift, dPrice) });
   }
   return out;
 }
@@ -323,6 +327,7 @@ export type GeometryAxis = 'x' | 'y';
 
 export type AlignCoords = GroupTranslateCoords & {
   realMsToCanvasX(realMs: number): number | null;
+  barPx?: number;
   /** 픽셀 X → realMs. 캔들 오른쪽 빈 구간에서는 null 이라 그 멤버의 수평 이동을
    *  건너뛴다(다른 경로들과 같은 degrade). */
   canvasXToRealMs(px: number): number | null;
@@ -374,6 +379,12 @@ type Span = { min: number; max: number; center: number };
  * 것은 실수가 아니니 "고치지" 말 것.
  */
 function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | null {
+  if (axis === 'x' && m.kind === 'rect') {
+    const xs = [projectRectX(m.a.realMs, m.subX?.a, coords.realMsToCanvasX, coords.barPx), projectRectX(m.b.realMs, m.subX?.b, coords.realMsToCanvasX, coords.barPx)].filter((x): x is number => x != null);
+    if (xs.length === 0) return null;
+    const min = Math.min(...xs), max = Math.max(...xs);
+    return { min, max, center: (min + max) / 2 };
+  }
   const values = axis === 'x' ? timesOf(m) : pricesOf(m);
   const projected: number[] = [];
   for (const v of values) {
@@ -399,6 +410,10 @@ function patchFromPixelDelta(
 ): Partial<Drawing> | null {
   if (deltaPx === 0) return null;
   if (axis === 'x') {
+    if (m.kind === 'rect' && coords.barPx != null && coords.barPx > 0) {
+      const dBar = clampDBarForDrawing(m, deltaPx / coords.barPx, coords.originBar, coords.toBar);
+      return dBar === 0 ? null : translateRectBars(m, dBar, 0, coords);
+    }
     const times = timesOf(m);
     const ref = times[0];
     const x = coords.realMsToCanvasX(ref);
