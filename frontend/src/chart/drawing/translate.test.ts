@@ -677,3 +677,19 @@ describe('planAlign — 텍스트 상자', () => {
     expect(patchOf(plan, 't')!.at!.price).toBe(170);
   });
 });
+
+
+it('clamps and moves free rectangles together without dropping fractional widths', () => {
+  const free: Drawing = { id: 'free', kind: 'rect', paneId: 'candle', lineStyle: 'solid', color: '#fff', width: 2,
+    fillOpacity: 0.1, a: { realMs: 60_000, price: 100 }, b: { realMs: 120_000, price: 200 }, subX: { a: -0.2, b: 0.3 } };
+  const other = { ...free, id: 'other', a: { realMs: 180_000, price: 100 }, b: { realMs: 240_000, price: 200 } };
+  const coords = { toBar: (ms: number) => ms / 60_000, toReal: (bar: number) => Math.round(bar) * 60_000,
+    originBar: 0, priceToCanvasY: (price: number) => price, canvasYToPrice: (y: number) => y,
+    priceBoundsForPane: () => ({ top: 1_000, bottom: 0 }) };
+  const plan = planGroupTranslate([free, other], -2, 0, coords);
+  const first = plan[0].patch as Partial<Rect>;
+  const second = plan[1].patch as Partial<Rect>;
+  expect(coords.toBar(first.a!.realMs) + first.subX!.a).toBeCloseTo(0);
+  expect(coords.toBar(first.b!.realMs) + first.subX!.b).toBeCloseTo(1.5);
+  expect(coords.toBar(second.a!.realMs) + second.subX!.a).toBeCloseTo(2);
+});

@@ -458,11 +458,11 @@ describe('useDrawingsStore — defaults', () => {
   });
 
   it('setDefaults patches and persists the session flags', () => {
-    useDrawingsStore.getState().setDefaults({ magnet: true });
-    expect(useDrawingsStore.getState().defaults.magnet).toBe(true);
+    useDrawingsStore.getState().setDefaults({ hiddenAll: true });
+    expect(useDrawingsStore.getState().defaults.hiddenAll).toBe(true);
     useDrawingsStore.getState().flushPending();
     const raw = JSON.parse(localStorage.getItem(DEFAULTS_KEY)!);
-    expect(raw.value.magnet).toBe(true);
+    expect(raw.value.hiddenAll).toBe(true);
   });
 
   it('setKindStyle patches one kind slot and persists', () => {
@@ -1048,4 +1048,23 @@ it('remembers horizontal label picks without changing other lines or tools', () 
   expect(s.drawingsFor(B)[0]).not.toHaveProperty('labelHidden');
   s.update(A, 'a', { labelHidden: false });
   expect(s.styleForKind('hline').labelHidden).toBe(false);
+});
+
+
+it('preserves free rectangle geometry through undo, redo and storage, and protects locked offsets', () => {
+  const rect: Drawing = { id: 'free', kind: 'rect', paneId: 'candle', lineStyle: 'solid', color: '#fff', width: 2,
+    fillOpacity: 0.1, a: { realMs: 1_000, price: 100 }, b: { realMs: 1_000, price: 200 }, subX: { a: -0.2, b: 0.3 } };
+  const store = useDrawingsStore.getState();
+  store.setActiveScope(A);
+  store.add(A, rect);
+  store.update(A, rect.id, { subX: { a: -0.1, b: 0.4 } });
+  store.undo(A);
+  expect(useDrawingsStore.getState().drawingsFor(A)[0]).toMatchObject({ subX: { a: -0.2, b: 0.3 } });
+  store.redo(A);
+  expect(useDrawingsStore.getState().drawingsFor(A)[0]).toMatchObject({ subX: { a: -0.1, b: 0.4 } });
+  store.update(A, rect.id, { locked: true });
+  store.update(A, rect.id, { subX: { a: 0, b: 0 } });
+  store.flushPending();
+  expect(JSON.parse(localStorage.getItem('replay.drawings.v2.005930|minute')!).items[0])
+    .toMatchObject({ locked: true, subX: { a: -0.1, b: 0.4 } });
 });

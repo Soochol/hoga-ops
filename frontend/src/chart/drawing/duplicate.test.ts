@@ -107,3 +107,13 @@ describe('cloneWithOffset — 잠금', () => {
     expect(cloneWithOffset(plain, 0, 10).locked).toBeUndefined();
   });
 });
+
+
+it('duplicates free rectangle residuals without sharing the original object', () => {
+  const original: Drawing = { id: 'free', kind: 'rect', ...style, fillOpacity: 0.1,
+    a: { realMs: 1_000, price: 100 }, b: { realMs: 1_000, price: 200 }, subX: { a: -0.2, b: 0.3 } };
+  const clone = cloneWithOffset(original, 1_000, 10);
+  expect(clone).toMatchObject({ a: { realMs: 2_000, price: 110 }, subX: original.subX });
+  if (clone.kind !== 'rect') throw new Error('Expected rectangle clone');
+  expect(clone.subX).not.toBe(original.subX);
+});

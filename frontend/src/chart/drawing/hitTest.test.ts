@@ -466,3 +466,16 @@ it('selects the lower line by click and marquee, without treating total string l
   expect(hitTestDrawings(coord, [t], 150, 155)).toBeNull();
   expect(drawingsInRect(coord, [t], { x1: 110, y1: 130, x2: 120, y2: 140 })).toEqual([t]);
 });
+
+
+describe('free rectangle selection', () => {
+  it('hits the displayed interior and marquee instead of the candle anchor', () => {
+    const rect: Drawing = { id: 'free', kind: 'rect', paneId: 'candle', lineStyle: 'solid', color: '#fff', width: 2,
+      a: { realMs: 100, price: 100 }, b: { realMs: 100, price: 200 },
+      subX: { a: -0.4, b: -0.2 }, fillOpacity: 0.1 };
+    const coord: HitCoord = { realMsToCanvasX: ms => ms, priceToCanvasY: price => price, paneIdAtY: () => 'candle', barPx: 100 };
+    expect(hitTestDrawings(coord, [rect], 70, 150)).toBe(rect);
+    expect(hitTestDrawings(coord, [rect], 100, 150)).toBeNull();
+    expect(drawingsInRect(coord, [rect], { x1: 65, x2: 75, y1: 140, y2: 160 })).toEqual([rect]);
+  });
+});

@@ -1,4 +1,5 @@
 // frontend/src/chart/drawing/persistence.ts
+import { finiteSubX } from './rectCoordinates';
 import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults, DrawingStyle } from './types';
 import { PANE_SPECS } from '../paneSpecs';
 import { INITIAL_DEFAULTS, INITIAL_STYLE, initialStyleByKind } from './types';
@@ -136,6 +137,12 @@ export function normalizeItems(raw: unknown): Drawing[] {
       // 우측 확장도 **정확히 `true` 아니면 부재**다 — `locked` 와 같은 이유이고 같은
       // 처리다. 손으로 고친 export 의 `'yes'` / `1` 은 `isExtendedRight` 의 `=== true`
       // 에 걸려 꺼진 것으로 읽히는데, 사람 눈엔 켜진 것으로 읽혀 두 판정이 갈린다.
+      if (normalized.kind === 'rect' && 'subX' in normalized) {
+        const sub = normalized.subX;
+        if (sub != null && typeof sub === 'object' && !Array.isArray(sub)) {
+          normalized.subX = { a: finiteSubX(sub.a), b: finiteSubX(sub.b) };
+        } else delete normalized.subX;
+      }
       if (normalized.kind === 'rect' && normalized.extendRight !== true) {
         delete normalized.extendRight;
       }
@@ -193,7 +200,6 @@ type LegacyV1Defaults = {
   width?: number;
   lineStyle?: LineStyle;
   fontSize?: number;
-  magnet?: boolean;
   hiddenAll?: boolean;
 };
 
@@ -209,7 +215,7 @@ function migrateV1(v1: LegacyV1Defaults): DrawingDefaults {
   };
   const styleByKind = initialStyleByKind();
   for (const k of Object.keys(styleByKind) as DrawingKind[]) styleByKind[k] = { ...seed };
-  return { styleByKind, magnet: v1.magnet ?? false, hiddenAll: v1.hiddenAll ?? false };
+  return { styleByKind, hiddenAll: v1.hiddenAll ?? false };
 }
 
 /** Merge a persisted v2 payload over the seed, tolerating missing kinds/fields
@@ -225,7 +231,6 @@ function mergeV2(value: Partial<DrawingDefaults>): DrawingDefaults {
   }
   return {
     styleByKind,
-    magnet: value.magnet ?? false,
     hiddenAll: value.hiddenAll ?? false,
   };
 }

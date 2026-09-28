@@ -14,7 +14,6 @@ function refs(over: Partial<Record<keyof GestureRefs, unknown>> = {}): GestureRe
     measureDraft: { current: pick('measureDraft', { a: 1 }) },
     marqueeDraft: { current: pick('marqueeDraft', { ax: 1, ay: 1 }) },
     dragRef: { current: pick('dragRef', { kind: 'body' }) },
-    alignGuides: { current: pick('alignGuides', { guides: [1], color: '#fff' }) },
   };
 }
 
@@ -25,11 +24,6 @@ describe('resetGestureRefs', () => {
     for (const [name, ref] of Object.entries(r)) {
       expect(ref.current, `${name} should be cleared`).toBeNull();
     }
-  });
-
-  it('reports whether guides were showing, so the caller can skip a redraw', () => {
-    expect(resetGestureRefs(refs()).guidesCleared).toBe(true);
-    expect(resetGestureRefs(refs({ alignGuides: null })).guidesCleared).toBe(false);
   });
 
   it('reports whether a 마퀴 was up — its box is DOM and needs its own repaint', () => {
@@ -46,8 +40,6 @@ describe('resetGestureRefs', () => {
     resetGestureRefs(r, { keepDrag: true });
     expect(r.dragRef.current).not.toBeNull();
     expect(r.marqueeDraft.current).not.toBeNull();
-    // …but the guides still go, because a guide belongs to the gesture.
-    expect(r.alignGuides.current).toBeNull();
     expect(r.rectDraft.current).toBeNull();
   });
 });

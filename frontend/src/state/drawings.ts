@@ -329,9 +329,9 @@ type Actions = {
   dismissClearToast(): void;
   undo(scope: string): void;
   redo(scope: string): void;
-  /** Patch the SESSION-global flags (magnet / hiddenAll). Style is per-kind now
+  /** Patch the SESSION-global visibility flag (hiddenAll). Style is per-kind now
    *  and goes through `setKindStyle`. */
-  setDefaults(patch: Partial<Pick<DrawingDefaults, 'magnet' | 'hiddenAll'>>): void;
+  setDefaults(patch: Partial<Pick<DrawingDefaults, 'hiddenAll'>>): void;
   /** Patch one tool's sticky style (the per-kind last-used). */
   setKindStyle(kind: DrawingKind, patch: Partial<DrawingStyle>): void;
   /** The last-used style for `kind` (non-reactive read; used to seed new drawings). */

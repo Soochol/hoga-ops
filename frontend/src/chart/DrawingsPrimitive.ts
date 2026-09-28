@@ -40,7 +40,6 @@ import {
 } from './drawing/chartCoordinates';
 import {
   renderDrawing,
-  renderAlignGuides,
   renderGhostPreview,
   renderHlinePriceBadge,
   renderMeasureDraft,
@@ -50,7 +49,6 @@ import {
   type ProjectCtx,
 } from './drawing/render';
 import type { Drawing, DrawingStyle, Hline, PaneId } from './drawing/types';
-import type { AlignGuide } from './drawing/alignSnap';
 import type {
   MeasureDraft,
   PencilDraft,
@@ -92,13 +90,6 @@ export type DrawingsSnapshot = {
     pencil: DrawingStyle;
   };
   ghost: GhostPreview | null;
-  /**
-   * Alignment guides for the in-flight drag, plus the color to draw them in
-   * (the dragged shape's own — see `renderAlignGuides`). Null while nothing is
-   * snapping. Lives on a ref like the drafts above: it changes at pointer
-   * cadence, not at React's.
-   */
-  alignGuides: { guides: readonly AlignGuide[]; color: string } | null;
   /**
    * Called at the end of each pane's draw, inside lwc's frame. Lets the overlay
    * reposition DOM it anchors to chart coordinates (the text editor) in the
@@ -229,9 +220,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
 
       if (snap.ghost) renderGhostPreview(c, ctx, snap.ghost);
       // Last, so a guide is never buried under the shapes it measures.
-      if (snap.alignGuides) {
-        renderAlignGuides(c, ctx, snap.alignGuides.guides, snap.alignGuides.color);
-      }
+
     });
 
     // Outside the coordinate scope: this repositions DOM, not canvas.

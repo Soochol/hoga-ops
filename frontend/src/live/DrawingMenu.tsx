@@ -60,8 +60,6 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
   const scope = drawingScopeFor(code, timeframe);
   const activeTool = useDrawingsStore((state) => state.activeTool);
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
-  const magnet = useDrawingsStore((state) => state.defaults.magnet);
-  const setDefaults = useDrawingsStore((state) => state.setDefaults);
   const requestClearAll = useDrawingsStore((state) => state.requestClearAll);
   const setLockedAll = useDrawingsStore((state) => state.setLockedAll);
   // 항목 라벨이 **다음에 할 일**을 말해야 하므로 개수가 아니라 상태를 센다.
@@ -132,30 +130,6 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       })}
 
       <div className="my-1 border-t border-border" />
-      <button
-        type="button"
-        role="menuitemcheckbox"
-        aria-checked={magnet}
-        onClick={() => setDefaults({ magnet: !magnet })}
-        className={itemClass(false)}
-        title="캔들 · 도형에 스냅 (Ctrl로 일시 해제)"
-      >
-        <span aria-hidden="true" className="w-4 text-center">🧲</span>
-        <span>자석</span>
-        <span
-          aria-hidden="true"
-          className={`ml-auto flex h-[15px] w-[26px] items-center rounded-full px-[2px] transition-colors ${
-            magnet ? 'bg-accent' : 'bg-border-strong'
-          }`}
-        >
-          <span
-            className={`h-[11px] w-[11px] rounded-full bg-white transition-transform ${
-              magnet ? 'translate-x-[11px]' : ''
-            }`}
-          />
-        </span>
-      </button>
-
       {/* 잠금 일괄 토글. 두 항목(잠금/해제)으로 나누지 않는 이유는 둘 중 하나가
           항상 아무 일도 안 하는 죽은 항목이 되기 때문이다 — 라벨이 다음에 할 일을
           말하면 그 모호함이 없다. 스토어가 **한 번의 되돌리기**로 묶는다(ADR-0164). */}

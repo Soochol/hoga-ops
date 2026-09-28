@@ -1,5 +1,6 @@
 // frontend/src/chart/drawing/hitTest.ts
 
+import { projectRectX, rectCorner, type RectCorner } from './rectCoordinates';
 import { textLayout } from './textLayout';
 import type { Drawing, PaneId } from './types';
 import { HIT_THRESHOLD, subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
@@ -142,8 +143,8 @@ export function hitTestDrawings(
       // chart is still pannable by starting the drag OUTSIDE the box. (Previously
       // border-only, which made a filled box feel unmovable — the reported bug.)
       if (
-        rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId, isExtendedRight(d)) ||
-        rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId, isExtendedRight(d))
+        rectBorderHit({ x: px, y: py }, coord, d.kind === 'rect' ? rectCorner(d, 'a') : d.a, d.kind === 'rect' ? rectCorner(d, 'b') : d.b, d.paneId, isExtendedRight(d)) ||
+        rectInteriorHit({ x: px, y: py }, coord, d.kind === 'rect' ? rectCorner(d, 'a') : d.a, d.kind === 'rect' ? rectCorner(d, 'b') : d.b, d.paneId, isExtendedRight(d))
       ) {
         return d;
       }
@@ -257,8 +258,8 @@ function rightEdgeOf(coord: HitCoord): number {
  *  resolve, or when neither corner resolves horizontally. */
 function boxOf(
   coord: HitCoord,
-  a: { realMs: number; price: number },
-  b: { realMs: number; price: number },
+  a: RectCorner,
+  b: RectCorner,
   paneId: PaneId,
   extendRight = false,
 ): MarqueeRect | null {
@@ -266,8 +267,8 @@ function boxOf(
   const yb = coord.priceToCanvasY(b.price, paneId);
   if (ya == null || yb == null) return null;
   const span = rectXSpan(
-    coord.realMsToCanvasX(a.realMs),
-    coord.realMsToCanvasX(b.realMs),
+    projectRectX(a.realMs, a.subX, coord.realMsToCanvasX, coord.barPx),
+    projectRectX(b.realMs, b.subX, coord.realMsToCanvasX, coord.barPx),
     rightEdgeOf(coord),
     extendRight,
   );
@@ -335,7 +336,7 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
     }
     case 'rect': {
       // 마퀴도 **확장된 폭**을 본다 — 사용자가 둘러싼 것은 화면에 보이는 띠다.
-      const box = boxOf(coord, d.a, d.b, d.paneId, isExtendedRight(d));
+      const box = boxOf(coord, rectCorner(d, 'a'), rectCorner(d, 'b'), d.paneId, isExtendedRight(d));
       return box != null && boxesOverlap(box, rect);
     }
     case 'text': {
@@ -376,8 +377,8 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
 function rectBorderHit(
   p: Pixel,
   coord: HitCoord,
-  a: { realMs: number; price: number },
-  b: { realMs: number; price: number },
+  a: RectCorner,
+  b: RectCorner,
   paneId: PaneId,
   extendRight = false,
 ): boolean {
@@ -407,8 +408,8 @@ function rectBorderHit(
 function rectInteriorHit(
   p: Pixel,
   coord: HitCoord,
-  a: { realMs: number; price: number },
-  b: { realMs: number; price: number },
+  a: RectCorner,
+  b: RectCorner,
   paneId: PaneId,
   extendRight = false,
 ): boolean {
