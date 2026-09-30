@@ -22,6 +22,7 @@ from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
+from .second_trade_store import SecondTradeStore
 from .session_gate import market_phase, venue_capture_windows_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .stock_sessions import krx_aftermarket_window, stock_indicator_window
@@ -106,7 +107,9 @@ class LiveStream:
         writer: LiveWriter,
         date_fn: Callable[[], str],
         phase_fn: Callable[[], str] | None = None,
+        seconds: SecondTradeStore | None = None,
     ) -> None:
+        self._seconds = seconds
         self._buffer = buffer
         self._writer = writer
         self._date_fn = date_fn
@@ -233,6 +236,14 @@ class LiveStream:
         # 재생성되므로 표시·저장 모두 입구에서 드롭.
         if self._active_codes is not None and tick.code not in self._active_codes:
             return
+        # Assign receive order before any await; legacy display/storage remain independent.
+        if self._seconds is not None and (
+            tick.venue in self._open_venues or (
+                tick.venue == "KRX" and "UN" in self._open_venues
+                and krx_aftermarket_window(tick.t_ms)
+            )
+        ):
+            self._seconds.ingest(tick)
         # 프로그램매매(0w)는 두 소비자로 fan-out한다:
         # ① 표시 buffer → /api/live/series + WS push, ② latch →
         # ProgramTradeCollector 30초 drain → program_trade_store. 일반 ingest
@@ -342,6 +353,8 @@ class LiveStream:
         seal_candle_venues: frozenset[str] = frozenset(),
     ) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
+        if self._seconds is not None:
+            await self._seconds.flush(now_ms=now_ms, force=bool(seal_candle_venues))
         # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
         # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
         # date_fn이 아직 당일이어서 마지막 부분 윈도가 올바른 날짜로 기록된다.

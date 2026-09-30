@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
+import { SecondChartWindow } from './SecondChartWindow';
 import EyeGlyph from '../EyeGlyph';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { ChartDrawingShell } from '../ChartDrawingShell';
@@ -154,7 +155,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 
   return (
     <WindowViewContext.Provider value={view}>
-      <ChartWindowInner win={win} symbol={symbol} />
+      {timeframe === '10s' ? <SecondChartWindow win={win} symbol={symbol} /> : <ChartWindowInner win={win} symbol={symbol} />}
     </WindowViewContext.Provider>
   );
 }
@@ -811,6 +812,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
           onChange={(tf) => setChartTimeframe(win.id, tf)}
+          secondsEnabled={symbol?.kind !== 'index'}
           compact={headerFold.compactTimeframe}
         />
         {/* 저장뷰 기간 칩은 **헤더에 있다.** 차트 위 오버레이로 두면 `PaneLegendOverlay`

@@ -1523,7 +1523,7 @@ describe('LiveChartRoot', () => {
     expect(options?.layout?.attributionLogo).toBe(false);
   });
 
-  it('owns the price-axis width guard for the lifetime of its chart', () => {
+  it('owns the price-axis width guard for the lifetime of its chart', async () => {
     const release = vi.fn();
     vi.mocked(retainRightPriceScaleWidth).mockReturnValueOnce(release);
     const { unmount } = render(
@@ -1535,6 +1535,7 @@ describe('LiveChartRoot', () => {
     expect(retainRightPriceScaleWidth).toHaveBeenLastCalledWith(chart);
     unmount();
     expect(release).toHaveBeenCalledTimes(1);
+    await act(async () => {});
     expect(release.mock.invocationCallOrder[0]).toBeLessThan(chart.remove.mock.invocationCallOrder[0]);
   });
 
@@ -5385,7 +5386,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     } as const;
   }
 
-  it('recreates the lwc chart on a timeframe switch and disposes the old one', () => {
+  it('recreates the lwc chart on a timeframe switch and disposes the old one', async () => {
     const { rerender } = render(
       <LiveChartRoot {...chartProps('005930', '1m', TODAY_ONLY_BUNDLE)} />,
       { wrapper },
@@ -5396,6 +5397,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     const first = vi.mocked(createChartEx).mock.results[0].value as {
       remove: ReturnType<typeof vi.fn>;
     };
+    await act(async () => {});
     expect(first.remove).toHaveBeenCalledTimes(1);
   });
 

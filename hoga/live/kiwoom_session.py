@@ -216,6 +216,9 @@ class KiwoomSessionManager:
                 if built is not None:
                     self._conns[account_id] = built
             elif set(conn.codes) != set(part):
+                seconds = getattr(conn.stream, "_seconds", None)
+                if seconds is not None:
+                    await seconds.prepare(part)
                 _set_active(conn.stream, set(part))
                 self._conns[account_id] = _replace_codes(conn, tuple(part))
         # 라우팅용 연결별 파티션(_conn_members) + 커버용 전역 멤버십(_storage_members)을
@@ -774,6 +777,7 @@ class KiwoomSessionManager:
                                  exc_info=True)
 
     def _default_build_conn(self, account_id: int, codes: list[str]) -> _KiwoomConn | None:
+        from .second_trade_store import second_trade_store  # noqa: PLC0415
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
         from .writer import LiveWriter  # noqa: PLC0415
 
@@ -781,9 +785,11 @@ class KiwoomSessionManager:
         if prov is None:  # 키움 자격증명 부재 — 조용히 스킵(계좌는 설정됐으나 키 없음)
             _log.warning("live.kiwoom.no_creds account=%d — skip", account_id)
             return None
+        seconds = second_trade_store(self._data_dir)
         stream = LiveStream(
             buffer=self._buffer,
             writer=LiveWriter(self._data_dir / "live_kiwoom"),
+            seconds=seconds,
             date_fn=self._date_fn,
         )
         stream.set_active_codes(set(codes))  # stream 필터는 bare(WsTick.code=bare)
@@ -814,11 +820,18 @@ class KiwoomSessionManager:
         # reconcile 이 따라갔다. 이제 갈아 끼울 것이 없어 초기 wire 가 곧 최종 wire 다.
         nxt_map = _nxt_map()
         wire = [apply_venue(c, v) for c in codes for v in subscription_venues(c, nxt_map)]
+        async def run_prepared() -> None:
+            await seconds.prepare(codes)
+            try:
+                await client.run(wire)
+            finally:
+                await seconds.flush(now_ms=int(time.time() * 1000), force=True)
+
         return _KiwoomConn(
             account_id=account_id,
             stream=stream,
             client=client,
-            ws_task=asyncio.create_task(client.run(wire), name=f"kiwoom-ws-{account_id}"),
+            ws_task=asyncio.create_task(run_prepared(), name=f"kiwoom-ws-{account_id}"),
             flush_task=asyncio.create_task(
                 stream.run_flush_loop(), name=f"kiwoom-flush-{account_id}"
             ),

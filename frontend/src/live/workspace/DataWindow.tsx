@@ -19,11 +19,9 @@
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
 import { useCallback, useMemo, useState } from 'react';
-import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { returnGroupToLatest } from './returnGroupToLatest';
-import { useWorkspaceStore } from '../../state/workspace';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
@@ -31,6 +29,7 @@ import BookPanel, { type BookTrade } from './BookPanel';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
+import { SecondVolumeDistributionWindow } from './SecondVolumeDistributionWindow';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
 import { InvestorTrendEstimateCard } from '../../sidebar/InvestorTrendEstimateCard';
 import { InvestorDailyWindow } from './InvestorDailyWindow';
@@ -813,6 +812,13 @@ function InvestorWindow({ code }: { code: string }) {
 const VDIST_FALLBACK = { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false };
 
 function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
+  const link = useGroupChartLink(win.group);
+  return link?.code === code && link.timeframe === '10s'
+    ? <SecondVolumeDistributionWindow win={win} code={code} settings={link.vdist} />
+    : <LegacyVdistWindow win={win} code={code} />;
+}
+
+function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 매물대는 live.trade 로 당일 분포를 잇는다 — useLiveSeries 가 선택 venue 로 소스에서
   // 필터하므로 매물대도 venue 정합(이전엔 원본 혼재 버퍼를 그대로 소비).
   const venue = useLiveVenueStore((s) => s.venue);
@@ -941,10 +947,6 @@ function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <DataContext mode={isSpot ? (vdistSettings.hoverCutoffEnabled ? '커서까지 누적' : '커서 날짜 전체') : '당일 누적'}
-        detail={`${activeDate ?? '날짜 없음'} · ${timeframe} · ${vdistSettings.rangeCount}구간`}>
-        <button type="button" className="text-accent hover:underline" title="연결 차트의 보조지표 설정 열기" onClick={() => { useWorkspaceStore.getState().focusWindow(link.windowId); requestIndicatorDrawer(link.windowId); }}>보조지표 설정</button>
-      </DataContext>
       <div className="min-h-0 flex-1 overflow-auto">
       <VolumeDistributionCard
         profile={cutoffProfile}

@@ -264,7 +264,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       indexId: activeIndexId,
       from: indexCandles.data.from,
       to: indexCandles.data.to,
-      bucketMs: INDEX_BUCKET_MS[timeframe],
+      bucketMs: timeframe === '10s' ? 10_000 : INDEX_BUCKET_MS[timeframe],
       candles: indexCandles.data.candles,
       investorPoints: indexInvestorNet.data?.points ?? [],
     });

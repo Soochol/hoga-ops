@@ -292,14 +292,15 @@ async def test_on_tick_krx_and_nxt_flows_stay_in_separate_files(tmp_path):
     assert {tr["venue"] for tr in series["trades"]} == {"KRX", "NXT"}
 
 
-async def test_ingest_gate_is_per_venue(tmp_path):
+async def test_ingest_gate_is_per_venue(tmp_path, monkeypatch):
     """저장 게이트가 venue 별이다 — KRX 가 닫혀도(15:30 이후) NXT 는 계속 저장된다."""
     buf = LiveBuffer()
     writer = LiveWriter(tmp_path / "live")
     stream = LiveStream(buffer=buf, writer=writer,
                         date_fn=lambda: "20260605", phase_fn=lambda: "regular")
     stream._open_venues = frozenset({"NXT", "UN"})  # 15:30~20:00 구간
-    now = int(time.time() * 1000)
+    now = _kst_ms(15, 45)  # outside KRX regular and 16:00 aftermarket windows
+    monkeypatch.setattr("hoga.live.buffer.time.time", lambda: now / 1000)
     await stream.on_tick(_trade_tick(now, qty=7, side=1))       # KRX — 게이트 밖
     await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))  # NXT — 게이트 안
     await stream.flush_once(now_ms=now + 10_000)
