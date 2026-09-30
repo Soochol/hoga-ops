@@ -21,6 +21,6 @@ export function SecondVolumeDistributionWindow({ win, code, settings, timeframe,
   return <div className="h-full flex flex-col bg-bg-card">
     <div className="min-h-0 flex-1 overflow-auto"><VolumeDistributionCard profile={profile} cursorMs={cursor} closePoints={query.data?.bars.map(bar => ({ t_ms: bar.t_ms, close: bar.close }))}
       color={settings.color} maxColor={settings.maxColor} /></div>
-    <div className="text-fg-dim text-xs px-2 py-1" role="status">{query.isError ? '매물대를 불러오지 못했습니다' : '수집된 체결 기준'}</div>
+    <div className="text-fg-dim text-xs px-2 py-1" role="status">{query.isError ? '매물대를 불러오지 못했습니다' : query.data?.source === 'hogaplay' ? '과거 체결 원본 기준' : '수집된 체결 기준'}</div>
   </div>;
 }

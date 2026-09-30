@@ -2986,6 +2986,7 @@ class SecondPriceModel(BaseModel):
 
 
 class SecondAggregatesResponse(BaseModel):
+    source: Literal["second_trades", "hogaplay"] | None = None
     code: str
     venue: Literal["KRX", "NXT", "UN"]
     date: str

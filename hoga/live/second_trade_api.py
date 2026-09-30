@@ -1,4 +1,4 @@
-"""Observed second bars and their shared price histogram (no legacy fallback)."""
+"""Observed seconds from live aggregates or original historical executions."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +13,7 @@ from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
 
 from .second_trade_agg import SecondTradeBar, aggregate_bars
+from .second_trade_history import historical_second_rows
 from .second_trade_store import second_trade_store
 
 
@@ -58,12 +59,20 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 bar.ingest(seq=seq, **trade)
                 bar.applied_late_seq = seq
                 merged[t] = bar.record()
+        source = "second_trades" if merged else None
+        # Select one source for the entire day. Never add historical volumes to
+        # overlapping live seconds or interpret 10s price bins as ordered ticks.
+        if not merged:
+            history = await asyncio.to_thread(historical_second_rows, data_dir, code, venue, date)
+            if history:
+                merged = {row["t_ms"]: row for row in history}
+                source = "hogaplay"
         rows = sorted((row for t, row in merged.items() if start <= t < end), key=lambda r: r["t_ms"])
         bars = aggregate_bars(rows, seconds * 1000)
         return SecondAggregatesResponse(
             code=code, venue=venue, date=date, seconds=seconds,
             status="observed" if rows else "unavailable",
-            coverage="unverified", storage_error=store.storage_error,
+            coverage="unverified", storage_error=store.storage_error, source=source,
             first_observed_ms=min(row["first"][0] for row in merged.values()) if merged else None,
             last_observed_ms=max(row["last"][0] for row in merged.values()) if merged else None,
             bars=[SecondBarModel(**{k: row[k] for k in SecondBarModel.model_fields}) for row in bars],
