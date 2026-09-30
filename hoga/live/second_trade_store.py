@@ -317,6 +317,9 @@ class SecondTradeStore:
     def pending_corrections(self, code: str, venue: str, date: str) -> list[dict[str, Any]]:
         return list(self._late.get((code, venue, date), []))
 
+    def live_dates(self, code: str, venue: str) -> set[str]:
+        return {trade_date(t) for c, v, t in self._bars if c == code and v == venue}
+
     def live_rows(self, code: str, venue: str, date: str) -> list[dict[str, Any]]:
         return [bar.record() for (c, v, t), bar in self._bars.items()
                 if c == code and v == venue and trade_date(t) == date]

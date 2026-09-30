@@ -2998,3 +2998,7 @@ class SecondAggregatesResponse(BaseModel):
     last_observed_ms: int | None
     bars: list[SecondBarModel]
     prices: list[SecondPriceModel]
+
+
+class SecondTradeDatesResponse(BaseModel):
+    dates: list[str]

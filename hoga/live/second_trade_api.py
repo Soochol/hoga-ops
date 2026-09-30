@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from hoga.api.models import SecondAggregatesResponse, SecondBarModel, SecondPriceModel
+from hoga.api.models import SecondAggregatesResponse, SecondBarModel, SecondPriceModel, SecondTradeDatesResponse
 from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
 
@@ -20,6 +21,31 @@ from .second_trade_store import second_trade_store
 def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/live", tags=["live"])
     store = second_trade_store(data_dir)
+
+    @router.get("/second-trade-dates", response_model=SecondTradeDatesResponse)
+    async def get_dates(
+        code: str = Query(pattern=CODE_PATTERN),
+        venue: Literal["KRX", "NXT", "UN"] = "KRX",
+    ) -> SecondTradeDatesResponse:
+        def disk_dates() -> set[str]:
+            found: set[str] = set()
+            for root in (store.root, data_dir / "parquet"):
+                if not root.exists():
+                    continue
+                for path in root.iterdir():
+                    if not path.is_dir() or not re.fullmatch(r"\d{8}", path.name):
+                        continue
+                    journal = store.path(code, venue, path.name)
+                    original = path / code / "hogaplay" / "trades.parquet"
+                    if ((journal.is_file() and journal.stat().st_size > 0)
+                            or (store.root / path.name / venue / code / "manifest.json").is_file()
+                            or (root.name == "parquet" and venue == "KRX" and original.is_file())):
+                        found.add(path.name)
+            return found
+
+        live_dates = store.live_dates(code, venue)
+        dates = await asyncio.to_thread(disk_dates)
+        return SecondTradeDatesResponse(dates=sorted(dates | live_dates))
 
     @router.get("/second-aggregates", response_model=SecondAggregatesResponse)
     async def get_seconds(

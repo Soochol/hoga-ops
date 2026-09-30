@@ -52,10 +52,11 @@ test('1·5·10·30초봉은 주기를 조회하고 새로고침 후 복원하며
   expect(pageErrors).toEqual([]);
 });
 
-test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복귀를 처리한다', async ({ page }) => {
+test('날짜 선택 없이 과거 초봉 커서가 매물대와 호가에 연동된다', async ({ page }) => {
   const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
   const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
   const yesterdayKey = yesterday.replaceAll('-', '');
+  await page.route('**/api/live/second-trade-dates?**', r => r.fulfill({ json: { dates: [yesterdayKey] } }));
   const historyRequests: string[] = [];
   const bookRequests: URL[] = [];
   const pageErrors: string[] = [];
@@ -96,11 +97,10 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
   await page.getByRole('button', { name: '창 추가', exact: true }).click();
   await page.getByRole('menuitem', { name: '매물대 가격대별 체결 분포', exact: true }).click();
   const chart = page.getByTestId('second-chart');
-  await chart.getByLabel('초봉 날짜', { exact: true }).fill(yesterday);
+  await expect(chart.getByLabel('초봉 날짜')).toHaveCount(0);
+  await expect(chart).toHaveAttribute('data-bar-count', '30');
   await expect(chart.getByText('선택한 날짜에 저장된 초봉이 없습니다', { exact: true })).toHaveCount(0);
   await expect(chart.getByText('초봉 불러오는 중', { exact: true })).toHaveCount(0);
-  await expect.poll(() => historyRequests.some(q => q.includes(`date=${yesterdayKey}`) && q.includes('include_prices=true'))).toBe(true);
-  await expect(chart.getByText('과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다', { exact: true })).toBeVisible();
   const plot = await chart.locator('canvas').first().boundingBox();
   expect(plot).not.toBeNull();
   for (const fraction of [0.75, 0.6, 0.45, 0.3]) {
@@ -109,6 +109,7 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
     if (bookRequests.some(url => url.searchParams.get('date') === yesterdayKey)) break;
   }
   await expect.poll(() => bookRequests.some(url => url.searchParams.get('date') === yesterdayKey)).toBe(true);
+  await expect.poll(() => historyRequests.some(q => q.includes(`date=${yesterdayKey}`) && q.includes('include_prices=true'))).toBe(true);
   const historicalBook = bookRequests.find(url => url.searchParams.get('date') === yesterdayKey)!;
   expect(historicalBook.searchParams.has('bucket_ms')).toBe(false);
   await expect(page.getByText('저장 호가', { exact: true })).toBeVisible();
@@ -116,14 +117,47 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
   await page.mouse.move(0, 0);
   await chart.getByRole('button', { name: '초봉 선택 열기: 10초', exact: true }).click();
   await page.getByRole('menuitemradio', { name: '1초', exact: true }).click();
-  await expect(chart.getByLabel('초봉 날짜')).toHaveValue(yesterday);
+  await expect(chart.getByLabel('초봉 날짜')).toHaveCount(0);
   await expect.poll(() => historyRequests.some(q => q.includes(`date=${yesterdayKey}`) && q.includes('seconds=1&'))).toBe(true);
-  await chart.getByRole('button', { name: '초봉 이전 날짜', exact: true }).click();
-  await expect(chart.getByText('선택한 날짜에 저장된 초봉이 없습니다', { exact: true })).toBeVisible();
-  await chart.getByRole('button', { name: '초봉 다음 날짜', exact: true }).click();
-  await expect(chart.getByLabel('초봉 날짜')).toHaveValue(yesterday);
-  await chart.getByRole('button', { name: '오늘', exact: true }).click();
-  await expect(chart.getByLabel('초봉 날짜')).toHaveValue(today);
-  await expect(chart.getByRole('button', { name: '초봉 다음 날짜', exact: true })).toBeDisabled();
   expect(pageErrors).toEqual([]);
+});
+
+
+test('초봉 240개를 두 거래일로 연결하고 이전 일자 커서를 실제 시각으로 조회한다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await installLiveMocks(page);
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const day = (offset: number) => new Date(Date.parse(`${today}T12:00:00Z`) - offset * 86400000).toISOString().slice(0, 10);
+  const dates = [day(2).replaceAll('-', ''), day(1).replaceAll('-', '')];
+  const bookDates: string[] = [];
+  await page.route('**/api/live/second-trade-dates?**', r => r.fulfill({ json: { dates } }));
+  await page.route('**/api/orderbook?**', r => {
+    const url = new URL(r.request().url()); bookDates.push(url.searchParams.get('date')!);
+    return r.fulfill({ json: { source: 'hogaplay', snapshot: null, available_from: null } });
+  });
+  await page.route('**/api/live/second-aggregates?**', r => {
+    const url = new URL(r.request().url());
+    const date = url.searchParams.get('date')!;
+    const step = Number(url.searchParams.get('seconds')) * 1000;
+    const first = Date.parse(`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6)}T14:30:00+09:00`);
+    const all = dates.includes(date) ? Array.from({ length: 120 }, (_, i) => ({ t_ms: first + i * step,
+      open: 100, high: 110, low: 90, close: 105, volume: 10, trade_value: 1000, count: 1 })) : [];
+    const from = Number(url.searchParams.get('from_ms') ?? 0), to = Number(url.searchParams.get('to_ms') ?? Infinity);
+    return r.fulfill({ json: { code: '098460', venue: 'KRX', date, seconds: step / 1000, source: 'hogaplay',
+      status: all.length ? 'observed' : 'unavailable', coverage: 'unverified', storage_error: null,
+      first_observed_ms: all[0]?.t_ms ?? null, last_observed_ms: all.at(-1)?.t_ms ?? null,
+      bars: all.filter(b => b.t_ms >= from && b.t_ms < to), prices: [] } });
+  });
+  await page.goto('/live?code=098460');
+  await page.getByRole('button', { name: '분봉 선택 열기: 1분', exact: true }).first().click();
+  await page.getByRole('menuitemradio', { name: '10초', exact: true }).click();
+  const chart = page.getByTestId('second-chart');
+  await expect(chart.getByLabel('초봉 날짜')).toHaveCount(0);
+  await expect(chart).toHaveAttribute('data-day-count', '2');
+  await expect(chart).toHaveAttribute('data-bar-count', '240');
+  const plot = await chart.locator('canvas').first().boundingBox();
+  await page.mouse.move(plot!.x + plot!.width * 0.2, plot!.y + plot!.height * 0.4);
+  await expect.poll(() => bookDates.includes(dates[0])).toBe(true);
+  expect(errors).toEqual([]);
 });

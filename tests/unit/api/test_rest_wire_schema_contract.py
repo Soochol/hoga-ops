@@ -63,6 +63,7 @@ from hoga.live.lifecycle import LiveStatus
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "SecondTradeDatesResponse": frozenset({"dates"}),
     "SecondAggregatesResponse": frozenset({
         "source", "code", "venue", "date", "seconds", "status", "coverage", "storage_error",
         "first_observed_ms", "last_observed_ms", "bars", "prices",
