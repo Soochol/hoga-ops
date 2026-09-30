@@ -9,6 +9,7 @@ export type SecondBar = {
 };
 export type SecondPrice = { t_ms: number; price: number; side: -1 | 0 | 1; qty: number; count: number };
 export type SecondAggregates = {
+  source: 'second_trades' | 'hogaplay' | null;
   code: string; venue: 'KRX' | 'NXT' | 'UN'; date: string; seconds: 1 | 5 | 10 | 30;
   status: 'observed' | 'unavailable'; coverage: 'unverified'; storage_error: string | null;
   first_observed_ms: number | null; last_observed_ms: number | null;

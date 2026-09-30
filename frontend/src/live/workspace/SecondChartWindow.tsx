@@ -168,7 +168,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
       </div>}
     </div>
     <div className="shrink-0 px-2 py-1 text-fg-dim text-xs" role="status">
-      {query.data?.storage_error ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}
+      {query.data?.storage_error ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : query.data?.source === 'hogaplay' ? '과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}
     </div>
   </div>;
 }

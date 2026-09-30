@@ -84,7 +84,7 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
     const bars = observed ? Array.from({ length: 30 }, (_, i) => ({ t_ms: t + i * seconds * 1000,
       open: 35000, high: 35100, low: 34900, close: 35050, volume: 100, count: 5, trade_value: 3500000 })) : [];
     return route.fulfill({ json: { code: url.searchParams.get('code'), venue: url.searchParams.get('venue'),
-      date, seconds, coverage: 'unverified', status: observed ? 'observed' : 'unavailable', storage_error: null,
+      date, seconds, source: observed ? 'hogaplay' : null, coverage: 'unverified', status: observed ? 'observed' : 'unavailable', storage_error: null,
       first_observed_ms: observed ? t : null, last_observed_ms: bars.at(-1)?.t_ms ?? null,
       bars: bars.filter(bar => bar.t_ms >= from),
       prices: observed && url.searchParams.get('include_prices') === 'true'
@@ -100,6 +100,7 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
   await expect(chart.getByText('선택한 날짜에 저장된 초봉이 없습니다', { exact: true })).toHaveCount(0);
   await expect(chart.getByText('초봉 불러오는 중', { exact: true })).toHaveCount(0);
   await expect.poll(() => historyRequests.some(q => q.includes(`date=${yesterdayKey}`) && q.includes('include_prices=true'))).toBe(true);
+  await expect(chart.getByText('과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다', { exact: true })).toBeVisible();
   const plot = await chart.locator('canvas').first().boundingBox();
   expect(plot).not.toBeNull();
   for (const fraction of [0.75, 0.6, 0.45, 0.3]) {
