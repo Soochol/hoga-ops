@@ -23,6 +23,8 @@ import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 
 const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
+const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+const shiftDate = (date: string, days: number) => new Date(Date.parse(`${isoDate(date)}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '');
 const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
 type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: SecondTimeframe };
@@ -31,18 +33,21 @@ export function SecondChartWindow({ win, symbol, timeframe }: Props) {
   const selectedVenue = useLiveVenueStore(s => s.venue);
   const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
   const venue = useEffectiveVenue(code, selectedVenue);
-  const date = realMsToYyyymmdd(useMinuteClock());
+  const today = realMsToYyyymmdd(useMinuteClock());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const date = selectedDate ?? today;
+  const selectDate = (next: string) => setSelectedDate(next === today ? null : next);
   return <SecondChartContent key={`${code}|${venue}|${date}|${timeframe}|${currentThemeKey()}`} win={win} symbol={symbol}
-    code={code} venue={venue} date={date} timeframe={timeframe} />;
+    code={code} venue={venue} date={date} timeframe={timeframe} today={today} onDateChange={selectDate} />;
 }
 
-function SecondChartContent({ win, symbol, code, venue, date, timeframe }: Props & {
-  code: string | null; venue: LiveVenueOption; date: string;
+function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, onDateChange }: Props & {
+  code: string | null; venue: LiveVenueOption; date: string; today: string; onDateChange: (date: string) => void;
 }) {
   const indicators = useWindowIndicators();
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
-  const [fromMs, setFromMs] = useState(() => Math.max(midnight, Date.now() - 30 * 60_000));
+  const [fromMs, setFromMs] = useState(() => Math.max(midnight, (date === today ? Date.now() : midnight + 86_400_000) - 30 * 60_000));
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
   const query = useSecondAggregates(code, venue, date, fromMs, false, seconds);
   // Adjust the range when the market's last observed bar is older than the
@@ -62,11 +67,11 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe }: Props
   useEffect(() => {
     if (!target) return;
     publishGroupChartLink({ windowId: win.id, group: win.group, code, timeframe, bundle: null,
-      adjustFactors: undefined, todayKst: date,
+      adjustFactors: undefined, todayKst: today, secondDate: date,
       vdist: { rangeCount: indicators.volumeDistributionRangeCount, color: indicators.volumeDistributionColor,
         maxColor: indicators.volumeDistributionMaxColor, hoverCutoffEnabled: indicators.volumeDistributionHoverCutoffEnabled } });
     return () => clearGroupChartLink(win.group, win.id);
-  }, [target, win.id, win.group, code, date, timeframe, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
+  }, [target, win.id, win.group, code, date, today, timeframe, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
     indicators.volumeDistributionMaxColor, indicators.volumeDistributionHoverCutoffEnabled]);
 
   useEffect(() => {
@@ -138,8 +143,16 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe }: Props
   }, [query.data]);
 
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart">
-    <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap">
+    <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
+      <div className="ml-auto flex shrink-0 items-center gap-1 font-data text-xs">
+        <button type="button" aria-label="초봉 이전 날짜" className="rounded px-1.5 py-1 hover:bg-bg-input-hover" onClick={() => onDateChange(shiftDate(date, -1))}>‹</button>
+        <input type="date" aria-label="초봉 날짜" value={isoDate(date)} max={isoDate(today)}
+          className="w-[122px] rounded border border-border bg-bg-card px-1 py-1 text-fg"
+          onChange={event => { if (event.currentTarget.value && event.currentTarget.validity.valid) onDateChange(event.currentTarget.value.replaceAll('-', '')); }} />
+        <button type="button" aria-label="초봉 다음 날짜" disabled={date >= today} className="rounded px-1.5 py-1 hover:bg-bg-input-hover disabled:opacity-30" onClick={() => onDateChange(shiftDate(date, 1))}>›</button>
+        <button type="button" disabled={date === today} className="rounded px-2 py-1 hover:bg-bg-input-hover disabled:opacity-30" onClick={() => onDateChange(today)}>오늘</button>
+      </div>
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"
@@ -149,7 +162,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe }: Props
         onWheel={() => { userGesture.current = true; }} />
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
       {(query.isPending || query.isError || !query.data?.bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
-        {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '수집된 초봉이 없습니다'}
+        {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}
       </div>}
     </div>
     <div className="shrink-0 px-2 py-1 text-fg-dim text-xs" role="status">

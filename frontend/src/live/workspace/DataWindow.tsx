@@ -814,7 +814,7 @@ const VDIST_FALLBACK = { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', 
 function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const link = useGroupChartLink(win.group);
   return link?.code === code && isSecondTimeframe(link.timeframe)
-    ? <SecondVolumeDistributionWindow win={win} code={code} settings={link.vdist} timeframe={link.timeframe} />
+    ? <SecondVolumeDistributionWindow win={win} code={code} settings={link.vdist} timeframe={link.timeframe} date={link.secondDate ?? link.todayKst} />
     : <LegacyVdistWindow win={win} code={code} />;
 }
 

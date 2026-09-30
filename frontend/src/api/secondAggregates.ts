@@ -1,3 +1,4 @@
+import { todayKstYyyymmdd } from '../live/liveDateTime';
 import { apiCall } from './client';
 import { useQuery } from '@tanstack/react-query';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -23,7 +24,7 @@ export function useSecondAggregates(code: string | null, venue: LiveVenueOption,
       if (fromMs !== null) params.set('from_ms', String(fromMs));
       return apiCall<SecondAggregates>(`/api/live/second-aggregates?${params}`, { signal });
     },
-    refetchInterval: 1000,
-    staleTime: 750,
+    refetchInterval: date === todayKstYyyymmdd() ? 1000 : false,
+    staleTime: date === todayKstYyyymmdd() ? 750 : Infinity,
   });
 }
