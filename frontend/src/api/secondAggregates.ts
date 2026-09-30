@@ -13,13 +13,13 @@ export type SecondAggregates = {
   first_observed_ms: number | null; last_observed_ms: number | null;
   bars: SecondBar[]; prices: SecondPrice[];
 };
-export function useSecondAggregates(code: string | null, venue: LiveVenueOption, date: string, fromMs: number | null, prices = false) {
+export function useSecondAggregates(code: string | null, venue: LiveVenueOption, date: string, fromMs: number | null, prices = false, seconds: SecondAggregates['seconds'] = 10) {
   return useQuery({
-    queryKey: ['second-aggregates', code, venue, date, fromMs, prices],
+    queryKey: ['second-aggregates', code, venue, date, fromMs, prices, seconds],
     enabled: code !== null,
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ code: code!, venue,
-        date, seconds: '10', include_prices: String(prices) });
+        date, seconds: String(seconds), include_prices: String(prices) });
       if (fromMs !== null) params.set('from_ms', String(fromMs));
       return apiCall<SecondAggregates>(`/api/live/second-aggregates?${params}`, { signal });
     },

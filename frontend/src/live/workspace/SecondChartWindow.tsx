@@ -1,4 +1,4 @@
-/** First seconds rollout: observed 10-second candles, volume and a 20-bar MA.
+/** First seconds rollout: observed second candles, volume and a 20-bar MA.
  * A separate pipeline prevents minute vendor requests and slower indicator
  * interpolation from silently pretending to be second-resolution data.
  */
@@ -19,30 +19,32 @@ import { useMinuteClock } from '../useMinuteClock';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { useThemeChangeRerender } from '../../state/themePrefs';
 import { currentThemeKey } from '../../util/tokens';
+import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 
 const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
 const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
-type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null };
-export function SecondChartWindow({ win, symbol }: Props) {
+type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: SecondTimeframe };
+export function SecondChartWindow({ win, symbol, timeframe }: Props) {
   useThemeChangeRerender();
   const selectedVenue = useLiveVenueStore(s => s.venue);
   const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
   const venue = useEffectiveVenue(code, selectedVenue);
   const date = realMsToYyyymmdd(useMinuteClock());
-  return <SecondChartContent key={`${code}|${venue}|${date}|${currentThemeKey()}`} win={win} symbol={symbol}
-    code={code} venue={venue} date={date} />;
+  return <SecondChartContent key={`${code}|${venue}|${date}|${timeframe}|${currentThemeKey()}`} win={win} symbol={symbol}
+    code={code} venue={venue} date={date} timeframe={timeframe} />;
 }
 
-function SecondChartContent({ win, symbol, code, venue, date }: Props & {
+function SecondChartContent({ win, symbol, code, venue, date, timeframe }: Props & {
   code: string | null; venue: LiveVenueOption; date: string;
 }) {
   const indicators = useWindowIndicators();
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
   const [fromMs, setFromMs] = useState(() => Math.max(midnight, Date.now() - 30 * 60_000));
-  const query = useSecondAggregates(code, venue, date, fromMs);
+  const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
+  const query = useSecondAggregates(code, venue, date, fromMs, false, seconds);
   // Adjust the range when the market's last observed bar is older than the
   // initial 30-minute window. This bounded adjustment happens before commit.
   const last = query.data?.last_observed_ms;
@@ -59,12 +61,12 @@ function SecondChartContent({ win, symbol, code, venue, date }: Props & {
 
   useEffect(() => {
     if (!target) return;
-    publishGroupChartLink({ windowId: win.id, group: win.group, code, timeframe: '10s', bundle: null,
+    publishGroupChartLink({ windowId: win.id, group: win.group, code, timeframe, bundle: null,
       adjustFactors: undefined, todayKst: date,
       vdist: { rangeCount: indicators.volumeDistributionRangeCount, color: indicators.volumeDistributionColor,
         maxColor: indicators.volumeDistributionMaxColor, hoverCutoffEnabled: indicators.volumeDistributionHoverCutoffEnabled } });
     return () => clearGroupChartLink(win.group, win.id);
-  }, [target, win.id, win.group, code, date, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
+  }, [target, win.id, win.group, code, date, timeframe, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
     indicators.volumeDistributionMaxColor, indicators.volumeDistributionHoverCutoffEnabled]);
 
   useEffect(() => {
@@ -101,7 +103,7 @@ function SecondChartContent({ win, symbol, code, venue, date }: Props & {
     const onCursor = (event: { time?: Time }) => {
       const store = useLiveCursorStore.getState();
       if (typeof event.time === 'number') store.setSidebarCursor(event.time * 1000,
-        { windowId: win.id, group: win.group, code, timeframe: '10s' });
+        { windowId: win.id, group: win.group, code, timeframe });
       else store.clearSidebarCursorFrom(win.id);
     };
     chart.subscribeCrosshairMove(onCursor);
@@ -119,7 +121,7 @@ function SecondChartContent({ win, symbol, code, venue, date }: Props & {
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [code, venue, midnight, win.id, win.group]);
+  }, [code, venue, midnight, win.id, win.group, timeframe]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -137,7 +139,7 @@ function SecondChartContent({ win, symbol, code, venue, date }: Props & {
 
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart">
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap">
-      <span><TimeframeControl timeframe="10s" rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
+      <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"

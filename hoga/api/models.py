@@ -2641,7 +2641,7 @@ class SavedScreenersFile(BaseModel):
 
 
 LiveTimeframeModel = Literal[
-    "10s", "1m", "3m", "5m", "10m", "15m", "30m", "60m", "120m", "240m", "D", "W", "M"
+    "1s", "5s", "10s", "30s", "1m", "3m", "5m", "10m", "15m", "30m", "60m", "120m", "240m", "D", "W", "M"
 ]
 
 #: `/api/range` 의 `mode` — **어떤 슬라이스 집합을 만드느냐**를 고르는 값이다.

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   CALENDAR_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
+  SECOND_TIMEFRAMES,
   isMinuteTimeframe,
   isSecondTimeframe,
   type CalendarTimeframe,
@@ -74,10 +75,10 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
   };
 
   // compact 은 캘린더 봉도 이 버튼이 표시한다 — 현재 봉을 그대로 보여준다.
-  const triggerLabel = isSecondTimeframe(timeframe) ? '10초' : compact && !isCurrentMinute
+  const triggerLabel = isSecondTimeframe(timeframe) ? `${timeframe.slice(0, -1)}초` : compact && !isCurrentMinute
     ? CALENDAR_LABELS[timeframe as CalendarTimeframe]
     : minuteLabel(displayedMinute);
-  const minuteButtonLabel = isSecondTimeframe(timeframe) ? '초봉 선택 열기: 10초' : compact
+  const minuteButtonLabel = isSecondTimeframe(timeframe) ? `초봉 선택 열기: ${triggerLabel}` : compact
     ? `봉 선택 열기: ${triggerLabel}`
     : isCurrentMinute
       ? `분봉 선택 열기: ${minuteLabel(displayedMinute)}`
@@ -112,11 +113,11 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
         );
       })}
       {compact && <div className="my-1 border-t border-border" />}
-      {secondsEnabled && <button type="button" role="menuitemradio" aria-checked={timeframe === '10s'}
-        onClick={() => { setMinuteMenuOpen(false); onChange('10s'); }}
-        className="w-full text-left px-3 py-1.5 text-sm font-data text-fg-dim hover:bg-bg-input-hover">
-        10초
-      </button>}
+      {secondsEnabled && SECOND_TIMEFRAMES.map(second => <button key={second} type="button" role="menuitemradio" aria-checked={timeframe === second}
+        onClick={() => { setMinuteMenuOpen(false); onChange(second); }}
+        className={`w-full text-left px-3 py-1.5 text-sm font-data ${timeframe === second ? 'bg-bg-input-hover text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}>
+        {second.slice(0, -1)}초
+      </button>)}
       {secondsEnabled && <div className="my-1 border-t border-border" />}
       {MINUTE_TIMEFRAMES.map((minute) => {
         const selected = isCurrentMinute && timeframe === minute;
@@ -158,8 +159,8 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
             padding: '4px 10px',
             // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
             // compact 에서는 이 버튼이 항상 현재 봉을 나타내므로 늘 활성이다.
-            background: compact || isCurrentMinute ? 'var(--tint-selection)' : 'transparent',
-            color: compact || isCurrentMinute ? 'var(--accent)' : 'var(--fg-dim)',
+            background: compact || isCurrentMinute || isSecondTimeframe(timeframe) ? 'var(--tint-selection)' : 'transparent',
+            color: compact || isCurrentMinute || isSecondTimeframe(timeframe) ? 'var(--accent)' : 'var(--fg-dim)',
           }}
         >
           <span>{triggerLabel}</span>

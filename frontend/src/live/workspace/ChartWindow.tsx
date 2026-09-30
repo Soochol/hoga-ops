@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
+import { isSecondTimeframe } from '../../state/livePage';
 import { SecondChartWindow } from './SecondChartWindow';
 import EyeGlyph from '../EyeGlyph';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
@@ -155,7 +156,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 
   return (
     <WindowViewContext.Provider value={view}>
-      {timeframe === '10s' ? <SecondChartWindow win={win} symbol={symbol} /> : <ChartWindowInner win={win} symbol={symbol} />}
+      {isSecondTimeframe(timeframe) ? <SecondChartWindow win={win} symbol={symbol} timeframe={timeframe} /> : <ChartWindowInner win={win} symbol={symbol} />}
     </WindowViewContext.Provider>
   );
 }

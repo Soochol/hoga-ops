@@ -65,7 +65,7 @@ import {
   type BookSessionOverride,
 } from '../bookSessionMode';
 import { useChartPrefsStore } from '../../state/chartPrefs';
-import { isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
 import { isClosingAuction, type SessionSegment } from '../../util/sessionTime';
 import {
@@ -813,8 +813,8 @@ const VDIST_FALLBACK = { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', 
 
 function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const link = useGroupChartLink(win.group);
-  return link?.code === code && link.timeframe === '10s'
-    ? <SecondVolumeDistributionWindow win={win} code={code} settings={link.vdist} />
+  return link?.code === code && isSecondTimeframe(link.timeframe)
+    ? <SecondVolumeDistributionWindow win={win} code={code} settings={link.vdist} timeframe={link.timeframe} />
     : <LegacyVdistWindow win={win} code={code} />;
 }
 
