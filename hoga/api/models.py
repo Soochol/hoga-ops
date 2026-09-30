@@ -2641,7 +2641,7 @@ class SavedScreenersFile(BaseModel):
 
 
 LiveTimeframeModel = Literal[
-    "1m", "3m", "5m", "10m", "15m", "30m", "60m", "120m", "240m", "D", "W", "M"
+    "1s", "5s", "10s", "30s", "1m", "3m", "5m", "10m", "15m", "30m", "60m", "120m", "240m", "D", "W", "M"
 ]
 
 #: `/api/range` 의 `mode` — **어떤 슬라이스 집합을 만드느냐**를 고르는 값이다.
@@ -2964,3 +2964,36 @@ class OptionSentimentResponse(BaseModel):
     oi_distribution: OiDistributionModel | None = None
     gamma_exposure: GammaExposureModel | None = None
     iv_skew: IvSkewModel | None = None
+
+
+class SecondBarModel(BaseModel):
+    t_ms: int
+    open: int
+    high: int
+    low: int
+    close: int
+    volume: int
+    trade_value: int
+    count: int
+
+
+class SecondPriceModel(BaseModel):
+    t_ms: int
+    price: int
+    side: Literal[-1, 0, 1]
+    qty: int
+    count: int
+
+
+class SecondAggregatesResponse(BaseModel):
+    code: str
+    venue: Literal["KRX", "NXT", "UN"]
+    date: str
+    seconds: Literal[1, 5, 10, 30]
+    status: Literal["observed", "unavailable"]
+    coverage: Literal["unverified"]
+    storage_error: str | None
+    first_observed_ms: int | None
+    last_observed_ms: int | None
+    bars: list[SecondBarModel]
+    prices: list[SecondPriceModel]

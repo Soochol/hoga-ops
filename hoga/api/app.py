@@ -92,6 +92,7 @@ from hoga.live.lifecycle import (
 from hoga.live.live_quote_fetcher import LiveQuoteFetcher
 from hoga.live.migrate import migrate_to_v2_layout
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.second_trade_api import build_router as build_second_trade_router
 
 
 def _gc_health_section(gc_objects: bool) -> dict:
@@ -566,6 +567,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         return JSONResponse(body, status_code=503 if degraded else 200)
 
     app.include_router(build_router(engine, compute=pools))
+    app.include_router(build_second_trade_router(data_dir=data_dir))
     app.include_router(build_ws_router(bus, live_get_buffer))
     app.include_router(
         build_captures_router(data_dir=data_dir, client_factory=client_factory)

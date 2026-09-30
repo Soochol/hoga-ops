@@ -99,9 +99,15 @@ export { MA_PALETTE };
  * series; see ``aggregateCandles``. Daily/weekly/monthly frames render
  * the indicator pane empty (Addendum 9.4 — hoga indicators are intraday only). */
 export const LIVE_TIMEFRAMES = [
-  '1m', '3m', '5m', '10m', '15m', '30m', '60m', '120m', '240m', 'D', 'W', 'M',
+  '1s', '5s', '10s', '30s', '1m', '3m', '5m', '10m', '15m', '30m', '60m', '120m', '240m', 'D', 'W', 'M',
 ] as const;
 export type LiveTimeframe = (typeof LIVE_TIMEFRAMES)[number];
+
+export const SECOND_TIMEFRAMES = ['1s', '5s', '10s', '30s'] as const;
+export type SecondTimeframe = (typeof SECOND_TIMEFRAMES)[number];
+export function isSecondTimeframe(tf: LiveTimeframe): tf is SecondTimeframe {
+  return (SECOND_TIMEFRAMES as readonly string[]).includes(tf);
+}
 
 /** Server-side base timeframes (no client aggregation). */
 export const BASE_TIMEFRAMES = ['1m', 'D', 'W', 'M'] as const;
@@ -186,6 +192,7 @@ export function baseFor(tf: LiveTimeframe): BaseTimeframe {
 /** Bucket size in seconds for a minute display timeframe, or null for D/W/M
  * (calendar buckets — handled by the server). */
 export function bucketSeconds(tf: LiveTimeframe): number | null {
+  if (isSecondTimeframe(tf)) return Number(tf.slice(0, -1));
   if (tf === '1m') return 60;
   if (tf === '3m') return 180;
   if (tf === '5m') return 300;

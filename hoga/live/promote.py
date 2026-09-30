@@ -586,8 +586,12 @@ def promote_kiwoom_today_sync(
     pairs = _kiwoom_jsonl_paths(data_dir, today, code)
     if not pairs:
         return None
+    from .second_trade_store import SecondTradeStore  # noqa: PLC0415
+
+    seconds = SecondTradeStore(data_dir / "second_trades")
     for venue, jsonl_path in pairs:
         _promote_one_venue(data_dir, today, code, venue, jsonl_path)
+        seconds.publish(code, venue, today)
     _write_source_meta(
         data_dir, today, code, [v for v, _ in pairs], nxt_enabled=nxt_enabled,
     )

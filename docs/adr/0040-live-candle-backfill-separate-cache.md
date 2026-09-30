@@ -85,3 +85,12 @@ The separate KIS candle endpoint remains, but its cache is no longer disk
 durable. Minute candles now match daily candles as process-memory-only
 temporary results. `kis-past-candles` JSON files are legacy artifacts and are
 not part of runtime cache behavior.
+
+## 개정: 초 단위 관측 체결 (2026-09-30)
+
+초봉은 분봉 벤더 캐시를 축소하지 않는다. 원본 `Live Tick`에서 1초 OHLCV와
+가격·방향별 수량을 함께 생성하고 `second_trades`에 격리한다. UI는 주식 1·5·10·30초봉,
+관측 거래량, 20봉 MA이다. 대표 지수는 지원하지 않는다. 비관측 초를 가격 carry로
+채우지 않으며, 기존 분봉 파이프라인·분봉 점프·저장 캐시는 계속 별도로 사용한다.
+현재 첫 UI의 시간축은 KST 실시각이며 초를 표시한다. 일중 팬은 당일 범위만 확장한다.
+다른 날 조회는 서버 API에서 지원하며 다일 세션 압축 축은 후속 단계다.

@@ -76,7 +76,10 @@ describe('창별 TimeframeControl (ChartWindow 배선 미러)', () => {
     });
     // 위 루프는 `MINUTE_TIMEFRAMES` 자체를 돌기 때문에 **목록에서 tf 가 빠지면 같이
     // 조용해진다** — 항목 수와 60분을 따로 못박아야 그 구멍이 닫힌다.
-    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(MINUTE_TIMEFRAMES.length);
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(MINUTE_TIMEFRAMES.length + 4);
+    for (const seconds of [1, 5, 10, 30]) {
+      expect(within(menu).getByRole('menuitemradio', { name: `${seconds}초` })).toBeInTheDocument();
+    }
     expect(within(menu).getByRole('menuitemradio', { name: '60분' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitemradio', { name: '3분' })).toHaveAttribute('aria-checked', 'false');
 

@@ -8,7 +8,7 @@
  * "what date is right now in Korea?" — keeping the date math in one place means
  * localising any future Half-Day Session handling here.
  */
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS } from '../api/types';
 import { unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
 
@@ -229,7 +229,7 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   if (tf === 'M') return target * 31;
   if (tf === 'W') return target * 7;
   if (tf === 'D') return Math.ceil(target / TRADING_DAYS_PER_CALENDAR_DAYS);
-  const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+  const tfMinutes = isSecondTimeframe(tf) ? Number(tf.slice(0, -1)) / 60 : TIMEFRAME_TO_MS[tf] / 60_000;
   const tradingDays = (target * tfMinutes) / TRADING_MINUTES_PER_DAY;
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
@@ -267,6 +267,7 @@ const TRADING_DAYS_PER_MONTH = 21;
  *   M=50개월×21거래일. D=50평일=70캘린더일(기존과 동치), W=250평일=350캘린더일
  *   (기존과 동치), M=1050평일≈1470캘린더일(기존 1550의 의도된 근사). */
 export const STEP_TRADING_DAYS: Record<LiveTimeframe, number> = {
+  '1s': 1, '5s': 1, '10s': 1, '30s': 1,
   '1m': 5,
   '3m': 5 * 3,
   '5m': 5 * 5,

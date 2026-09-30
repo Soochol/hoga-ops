@@ -10,7 +10,7 @@ import {
   loadDefaults, saveDefaults,
   drawingScope, type DrawingSlot,
 } from '../chart/drawing/persistence';
-import { isMinuteTimeframe, type LiveTimeframe } from './livePage';
+import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from './livePage';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -18,7 +18,7 @@ const PERSIST_DEBOUNCE_MS = 250;
  *  Lives here rather than in `chart/drawing/` so the drawing layer stays free
  *  of the /live timeframe vocabulary — it only ever sees an opaque scope. */
 export function slotForTimeframe(tf: LiveTimeframe): DrawingSlot {
-  return isMinuteTimeframe(tf) ? 'minute' : tf;
+  return isSecondTimeframe(tf) ? 'seconds' : isMinuteTimeframe(tf) ? 'minute' : tf;
 }
 
 /** The store/persistence key for a chart showing `code` at `tf`. Null code
@@ -48,7 +48,7 @@ export function drawingBarMsFor(
   tf: LiveTimeframe,
   bundleBucketMs: number | undefined,
 ): number | undefined {
-  return isMinuteTimeframe(tf) ? bundleBucketMs : CALENDAR_BAR_MS[tf];
+  return isSecondTimeframe(tf) ? Number(tf.slice(0, -1)) * 1000 : isMinuteTimeframe(tf) ? bundleBucketMs : CALENDAR_BAR_MS[tf];
 }
 
 // ── Undo/Redo (ADR-0107) ─────────────────────────────────────────────────

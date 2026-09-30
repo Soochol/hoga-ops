@@ -83,3 +83,24 @@ ADR-0038의 거부 근거가 그대로 유효 — close() 전 crash 시 file foo
 - N≥30종목으로 확대되어 5분 주기 overwrite의 디스크 IO가 `cycle_lag_ms` 측정에 보이기 시작할 때 — incremental append(jsonl 마지막 offset 추적 + 새 records만 Parquet에 append) 또는 주기 늘리기.
 - "Today Promotion 직후 새로고침해도 차트가 최신이 아닌" 사용자 시그널 발생 시 — 주기를 1분으로 줄이거나 polling cycle 종료 신호(post-publish 콜백)에 trigger 추가.
 - Daily Promotion이 archive 이동을 자동화하는 대신 사용자 명시적 동의 후 이동하는 정책이 필요해질 때.
+
+## 개정: 공통 1초 집계의 독립 journal (2026-09-30)
+
+기존 10초 가격·방향 합산 JSONL을 유지하면서 원본 체결을 독립 `second_trades`로
+fan-out한다. 분석 단위 1초와 쓰기 주기 10초를 분리한다. 같은 timestamp의 OHLC
+순서는 프로세스가 수신한 순서이며 거래소 원본 순서를 보증하지 않는다. 거래량은
+관측 `qty` 합계로, 누적거래량 차이를 임의 가격에 배분하지 않는다.
+
+버킷 full revision을 fsync한 뒤 메모리에서 승인한다. 최근 60초 수정과 더 오래된
+지연 체결 correction journal을 구분하며 수신 id로 재생 중 중복 적용을 막는다.
+재시작은 최근 checkpoint와 이후 journal을 읽는다. 체크포인트가 없거나 손상됐을
+때는 journal을 재생한다. 저장 실패 시 미승인 버킷을 보존하고 메모리 한도를 넘는
+추가 셀은 명시적 storage error로 보고한다. 강제 종료 직전 아직 flush되지 않은
+체결은 복구할 수 없다.
+
+Today Promotion worker는 `trade_seconds.parquet`와 `trade_second_prices.parquet`를
+같은 generation에 쓴 후 manifest를 원자적으로 교체한다. reader는 generation
+lease로 두 테이블을 읽고 이후 journal을 적용한다. 현재·이전 generation만 보존한다.
+새 데이터의 coverage는 `unverified`이다. 수집 연결이 완전했다는 증거를 만들지
+않으며, 빈 구간을 무체결로 단정하지 않는다. 연결/구독 coverage 계측과 누적량
+quality reconciliation은 운영 검증 후 별도 확장한다.

@@ -1866,7 +1866,10 @@ export function LiveChartRoot({
 
     return () => {
       releasePriceScaleWidth();
-      c.remove();
+      // React runs parent passive cleanup before child pane/primitive cleanup.
+      // Keep the chart alive through that pass: detachPrimitive/removeSeries
+      // otherwise schedules a new paint on the already-disposed time axis.
+      queueMicrotask(() => c.remove());
       setChartEntry(null);
       // 파괴된 차트를 dev 전역이 계속 붙들면 그 인스턴스와 데이터가 window 에서
       // 도달 가능한 채로 남아 힙 스냅샷 조사를 오염시킨다(이 파일의 진단 대상이

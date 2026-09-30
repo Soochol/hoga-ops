@@ -15,7 +15,7 @@ const VERSION = 1;
  *  renders correctly on 15m, and switching among them reads as a zoom change
  *  rather than a different chart. D/W/M each get their own.
  *  Mirrors `LiveTimeframeShortcutSlot` (live/useLiveKeyboard.ts). */
-export type DrawingSlot = 'minute' | 'D' | 'W' | 'M';
+export type DrawingSlot = 'seconds' | 'minute' | 'D' | 'W' | 'M';
 
 /** The persistence/store key: a `code` scoped to one timeframe slot.
  *  `|` is safe as the separator — it appears in neither symbol codes nor index

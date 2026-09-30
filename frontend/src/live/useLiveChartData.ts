@@ -15,7 +15,7 @@ import { useEffectiveVenue } from './useEffectiveVenue';
  * 무관하게 여기서 파생되는 값만 반환한다.
  */
 import { useMemo } from 'react';
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useLiveBundle, type SidecarDemands } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks } from './useDayAskPeaks';
@@ -264,7 +264,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       indexId: activeIndexId,
       from: indexCandles.data.from,
       to: indexCandles.data.to,
-      bucketMs: INDEX_BUCKET_MS[timeframe],
+      bucketMs: isSecondTimeframe(timeframe) ? Number(timeframe.slice(0, -1)) * 1000 : INDEX_BUCKET_MS[timeframe],
       candles: indexCandles.data.candles,
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
