@@ -69,6 +69,10 @@ export interface WindowFrameCoreProps {
   flat?: boolean;
   /** 겹친 창의 경계를 표시하는 외곽선과 짧은 안착 그림자. */
   outlined?: boolean;
+  /** Page-specific chrome; the default keeps other workspace surfaces unchanged. */
+  className?: string;
+  headerClassName?: string;
+  gap?: number;
   resizable?: boolean;
   onHandleDown: (e: React.PointerEvent, id: string, mode: 'move' | ResizeMode) => void;
   onFocus: (id: string) => void;
@@ -77,20 +81,20 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, outlined = false, resizable = true, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', lifting = false, flat = false, outlined = false, className = '', headerClassName = '', gap = GAP, resizable = true, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
     <div
       data-win={id}
-      className="absolute"
+      className={`absolute ${className}`}
       style={{
         left: rect.x,
         top: rect.y,
         width: rect.w,
         height: rect.h,
         zIndex,
-        padding: GAP / 2,
+        padding: gap / 2,
       }}
       onPointerDown={() => onFocus(id)}
     >
@@ -110,7 +114,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           data-focused={focused ? '' : undefined}
           className={`flex h-[26px] shrink-0 cursor-grab items-center gap-1.5 px-1.5 active:cursor-grabbing ${
             focused ? 'bg-tint-selection' : 'bg-bg-subtle'
-          }`}
+          } ${headerClassName}`}
           onPointerDown={(e) => onHandleDown(e, id, 'move')}
         >
           <span className="select-none text-xs leading-none text-fg-dimmer">⠿</span>

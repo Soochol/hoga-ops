@@ -957,11 +957,11 @@ export function HeatmapDrawer() {
         </DndContext>
       </RailDrawerBody>
 
-      <div role="status" aria-live="polite" aria-atomic="true" className="flex min-h-12 shrink-0 items-center gap-2 border-t border-border px-md py-1 text-xs text-fg-dim">
+      <div role="status" aria-live="polite" aria-atomic="true" className={`flex shrink-0 items-center text-xs text-fg-dim${ghost || notice || transfer.message || transfer.canUndo ? ' min-h-12 gap-2 border-t border-border px-md py-1' : ''}`}>
         <span className="line-clamp-3 flex-1">{ghost
           ? destination ? `${data?.folders.find((f) => f.id === destination.folderId)?.name} · ${destination.where} ${copyIntent ? '복제' : '이동'}${!entrySortEnabled ? isSearching ? ' · 검색 중에는 맨 아래에 배치' : ' · 정렬 기준에 따라 배치' : ''}${destination.duplicates ? ` · 기존 ${destination.duplicates}종목${copyIntent ? '은 유지' : '과 합침'}` : ''}`
             : isEntryDragging ? dragHint : '그룹 핸들을 원하는 그룹 위치에 놓으세요'
-          : notice || transfer.message || '핸들로 이동 · Ctrl 복제 · Delete로 현재 그룹에서 제외'}</span>
+          : notice || transfer.message || null}</span>
         {!ghost && transfer.canUndo && <button type="button" className="shrink-0 text-accent" disabled={busy} onClick={() => { setNotice(''); void transfer.undo(); }}>되돌리기</button>}
       </div>
       {/* 행 ⋯ 메뉴는 '이 그룹에서 제거'만 — 그룹 이동은 행 드래그앤드롭으로 대체(folders/onMove

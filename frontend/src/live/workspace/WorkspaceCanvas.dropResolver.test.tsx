@@ -89,6 +89,22 @@ describe('WorkspaceCanvas — 창별 정밀 드롭 리졸버 (ADR-0119 PR-D2)', 
     expect(useWorkspaceStore.getState().groupSymbols[1]).toBeUndefined();
   });
 
+  it('겹쳐 열린 패널 위의 드롭은 뒤쪽 차트 종목을 바꾸지 않는다', () => {
+    useWorkspaceStore.setState({
+      windows: [chart('a', 1, { x: 0, y: 0, w: frac(200), h: frac(200) })],
+      zOrder: ['a'], groupSymbols: {},
+    });
+    render(<WorkspaceCanvas />);
+    const panel = document.createElement('aside');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => panel) });
+    try {
+      expect(resolveDropOnChart({ x: 50, y: 50 }, { code: '005930' })).toBe(false);
+      expect(useWorkspaceStore.getState().groupSymbols[1]).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(document, 'elementFromPoint');
+    }
+  });
+
   it('name 부재 시 code 를 name 폴백으로 쓴다(GroupSymbol 계약)', () => {
     useWorkspaceStore.setState({
       windows: [chart('a', 3, { x: 0, y: 0, w: frac(100), h: frac(100) })],

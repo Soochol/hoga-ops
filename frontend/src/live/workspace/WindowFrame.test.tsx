@@ -92,13 +92,12 @@ describe('WindowFrame 포커스 표시', () => {
     expect(headerOf(container)).not.toHaveClass('bg-tint-selection');
   });
 
-  it('live 창은 필드 배경과 짧은 안착 그림자를 사용한다', () => {
+  it('live 창은 카드 배경과 짧은 안착 그림자를 사용한다', () => {
     const card = renderFrame(false, true).container.querySelector('[data-win="w1"] > div');
 
-    expect(card).toHaveClass('bg-bg', 'window-shadow');
-    expect(card).not.toHaveClass('bg-bg-card');
+    expect(card).toHaveClass('bg-bg-card', 'window-shadow');
+    expect(card).not.toHaveClass('bg-bg');
     expect(card).not.toHaveClass('shadow-panel');
     expect(card).not.toHaveClass('shadow-modal');
   });
 });
-

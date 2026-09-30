@@ -106,7 +106,7 @@ export function WorkspaceCanvas() {
     if (!api) return undefined;
     const hitTest = (clientX: number, clientY: number): boolean => {
       const rect = api.boxRect();
-      if (!rect) return false;
+      if (!rect || !api.isUnoccludedAtPoint(clientX, clientY)) return false;
       return clientX >= rect.left && clientX <= rect.right
         && clientY >= rect.top && clientY <= rect.bottom;
     };
@@ -124,7 +124,7 @@ export function WorkspaceCanvas() {
       entry: { code: string; name?: string },
     ): boolean => {
       const rect = api.boxRect();
-      if (!rect) return false;
+      if (!rect || !api.isUnoccludedAtPoint(point.x, point.y)) return false;
       const win = api.windowAtPoint(point.x - rect.left, point.y - rect.top);
       if (!win) return false;
       // 창 스코프의 문(`setWindowSymbol`) — 핀 창이면 그 창 슬롯에, 아니면 종전대로

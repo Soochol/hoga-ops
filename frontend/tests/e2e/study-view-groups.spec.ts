@@ -20,6 +20,8 @@ test('차트에서 새 그룹과 저장뷰를 만들고 같은 기간을 다시 
     store.getState().setChartTimeframe(chart.id, 'D');
     store.getState().setWindowSymbol(chart.id, { code: '098460', name: '고영', kind: 'stock' });
   });
+  const more = page.getByRole('button', { name: '차트 더보기' }).first();
+  await more.click();
   const saveButton = page.getByRole('button', { name: '현재 뷰 저장' }).first();
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
@@ -29,6 +31,7 @@ test('차트에서 새 그룹과 저장뷰를 만들고 같은 기간을 다시 
   await page.screenshot({ path: testInfo.outputPath('create-group-and-save.png') });
   await dialog.getByRole('button', { name: '그룹 만들고 저장' }).click();
   await expect(dialog).toHaveCount(0);
+  await more.click();
   await saveButton.click();
   await expect(dialog.getByLabel('저장 그룹')).not.toHaveValue('');
   await dialog.getByLabel('이름', { exact: true }).fill('기간 B');

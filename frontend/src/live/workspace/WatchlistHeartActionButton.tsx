@@ -29,6 +29,7 @@ export function WatchlistHeartActionButton({
   name,
   isMember,
   compact = false,
+  showLabel = false,
 }: {
   /** 이 창의 종목 코드. 지수이거나 종목 미선택이면 null → 비활성. */
   code: string | null;
@@ -38,6 +39,7 @@ export function WatchlistHeartActionButton({
   isMember: boolean;
   /** 헤더 1단계 접힘. 이웃 버튼이 아이콘만 남을 때 패딩을 같이 좁힌다. */
   compact?: boolean;
+  showLabel?: boolean;
 }) {
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
 
@@ -62,7 +64,7 @@ export function WatchlistHeartActionButton({
           // 클래스가 없어 부모의 hover:text-fg 를 그대로 상속받는다.
           <HeartIcon filled={isMember} className={`h-3 w-3${isMember ? ' text-fg' : ''}`} />
         )}
-      />
+      >{showLabel && '관심 그룹 편집'}</IconToolbarButton>
       {picker && code != null && (
         <WatchlistGroupPicker
           code={code}

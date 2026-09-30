@@ -28,14 +28,17 @@ test('chart legends toggle independently while OHLC stays visible, including nar
   const second = headers.nth(1).locator('..');
   await expect(first.locator('.legend-ohlc-open')).toBeVisible();
   await expect(first.locator('.legend-row-ma')).toBeVisible();
-  await headers.nth(0).getByRole('button', { name: '레전드 끄기', exact: true }).click();
+  await headers.nth(0).getByRole('button', { name: '차트 더보기' }).click();
+  const actions = page.getByRole('dialog', { name: '차트 추가 기능' });
+  await actions.getByRole('button', { name: '레전드 끄기', exact: true }).click();
   await expect(first.locator('.legend-row-ma')).toHaveCount(0);
   await expect(first.locator('.legend-ohlc-open')).toBeVisible();
   await expect(second.locator('.legend-row-ma')).toBeVisible();
-  await expect(headers.nth(0).getByRole('button', { name: '레전드 켜기', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(actions.getByRole('button', { name: '레전드 켜기', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.screenshot({ path: testInfo.outputPath('legend-off.png') });
-  await headers.nth(0).getByRole('button', { name: '레전드 켜기', exact: true }).click();
+  await actions.getByRole('button', { name: '레전드 켜기', exact: true }).click();
   await expect(first.locator('.legend-row-ma')).toBeVisible();
+  await page.keyboard.press('Escape');
   for (const timeframe of ['D', '240m']) {
     await page.evaluate(async tf => {
       const path = '/src/state/workspace.ts';
@@ -49,27 +52,20 @@ test('chart legends toggle independently while OHLC stays visible, including nar
       if (width < 200) await expect(headers.nth(0)).toHaveAttribute('data-compact-timeframe', '');
       else await expect(headers.nth(0)).not.toHaveAttribute('data-compact-timeframe');
       await expect.poll(() => headers.nth(0).evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-      const measurement = await headers.nth(0).evaluate(el => {
-        const clone = el.cloneNode(true) as HTMLElement;
-        clone.style.width = 'max-content';
-        clone.style.flexWrap = 'nowrap';
-        clone.style.position = 'fixed';
-        clone.style.visibility = 'hidden';
-        for (const child of clone.children) (child as HTMLElement).style.flexWrap = 'nowrap';
-        document.body.append(clone);
-        const withToggle = clone.getBoundingClientRect().width;
-        clone.querySelector('[aria-label="레전드 끄기"]')?.remove();
-        const withoutToggle = clone.getBoundingClientRect().width;
-        clone.remove();
-        return { withToggle, withoutToggle };
-      });
-      console.log('legend-header-width', timeframe, width, measurement);
-      const button = headers.nth(0).getByRole('button', { name: '레전드 끄기', exact: true });
+      await headers.nth(0).getByRole('button', { name: '차트 더보기' }).click();
+      const button = actions.getByRole('button', { name: '레전드 끄기', exact: true });
       await expect(button).toBeInViewport();
       await button.click();
       await expect(first.locator('.legend-row-ma')).toHaveCount(0);
-      await headers.nth(0).getByRole('button', { name: '레전드 켜기', exact: true }).click();
+      await actions.getByRole('button', { name: '레전드 켜기', exact: true }).click();
+      await page.keyboard.press('Escape');
     }
   }
+  await page.setViewportSize({ width: 1100, height: 800 });
+  const main = page.getByTestId('app-main-stack');
+  const mainWidth = await main.evaluate(el => el.getBoundingClientRect().width);
+  await page.getByRole('button', { name: '관심종목 패널 토글' }).click();
+  await expect(page.getByRole('complementary', { name: '관심종목' })).toBeVisible();
+  await expect.poll(() => main.evaluate(el => el.getBoundingClientRect().width)).toBe(mainWidth);
   await page.screenshot({ path: testInfo.outputPath('legend-narrow.png') });
 });
