@@ -693,3 +693,14 @@ it('clamps and moves free rectangles together without dropping fractional widths
   expect(coords.toBar(first.b!.realMs) + first.subX!.b).toBeCloseTo(1.5);
   expect(coords.toBar(second.a!.realMs) + second.subX!.a).toBeCloseTo(2);
 });
+
+
+it.each([-200, 200])('moves rectangle groups beyond pane bounds by %s pixels', dy => {
+  const rect: Rect = { id: 'one', kind: 'rect', paneId: 'candle', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1,
+    a: { realMs: 100, price: 20 }, b: { realMs: 200, price: 80 } };
+  const coords = { toBar: (ms: number) => ms, toReal: (bar: number) => bar, originBar: 0,
+    priceToCanvasY: (price: number) => price, canvasYToPrice: (y: number) => y,
+    priceBoundsForPane: () => ({ top: 0, bottom: 100 }) };
+  const plan = planGroupTranslate([rect, { ...rect, id: 'two' }], 0, dy, coords);
+  for (const { patch } of plan) expect(patch).toMatchObject({ a: { price: 20 + dy }, b: { price: 80 + dy } });
+});

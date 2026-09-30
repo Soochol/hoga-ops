@@ -694,10 +694,9 @@ export const selectTool: DrawingToolSpec = {
     if (drag.kind === 'rect-handle') {
       const target = ctx.drawings.find((d) => d.id === drag.id);
       if (!target || target.kind !== 'rect') return;
-      const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
-      const price = ctx.canvasYToPrice(clampedY, drag.paneId);
+      const price = ctx.canvasYToPrice(ctx.py, drag.paneId);
       if (price == null) return;
-      const data = rectCursor(ctx, ctx.px, clampedY, drag.paneId);
+      const data = rectCursor(ctx, ctx.px, ctx.py, drag.paneId);
       const curRealMs = data?.realMs ?? null;
       // Update the corner's X (msKey point) and Y (priceKey point). In the empty
       // band keep the existing realMs (X unresolvable) and move vertically only.
@@ -718,17 +717,17 @@ export const selectTool: DrawingToolSpec = {
       ctx.update(target.id, patch as Partial<Drawing>);
       return;
     }
-    const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
+    const target = ctx.drawings.find((d) => d.id === drag.id);
+    if (!target) return;
+    const pointerY = target.kind === 'rect' ? ctx.py : ctx.clampYToPane(drag.paneId, ctx.py);
     // Price resolves off the Y axis everywhere the pane is mounted; realMs is
     // null in the empty right band (coordinateToTime can't resolve a coordinate
     // past the last candle). Decoupling them is what lets an hline keep
     // dragging there instead of freezing.
-    const price = ctx.canvasYToPrice(clampedY, drag.paneId);
+    const price = ctx.canvasYToPrice(pointerY, drag.paneId);
     if (price == null) return;
-    const data = ctx.pixelToData(ctx.px, clampedY, drag.paneId);
+    const data = ctx.pixelToData(ctx.px, pointerY, drag.paneId);
     const curRealMs = data?.realMs ?? null;
-    const target = ctx.drawings.find((d) => d.id === drag.id);
-    if (!target) return;
     if (drag.kind === 'handle' && (target.kind === 'trendline' || target.kind === 'measure')) {
       // In the empty band keep the endpoint's realMs (X unresolvable) and move
       // it vertically; over data, move both axes.
@@ -998,8 +997,7 @@ export const rectTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const draft = ctx.rectDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = rectCursor(ctx, ctx.px, clampedY, draft.paneId);
+    const data = rectCursor(ctx, ctx.px, ctx.py, draft.paneId);
     if (!data) return;
     draft.b = data;
     ctx.requestRedraw();
@@ -1007,8 +1005,7 @@ export const rectTool: DrawingToolSpec = {
   onPointerUp(ctx) {
     const draft = ctx.rectDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = rectCursor(ctx, ctx.px, clampedY, draft.paneId);
+    const data = rectCursor(ctx, ctx.px, ctx.py, draft.paneId);
     ctx.rectDraft.current = null;
     ctx.releasePointer();
     if (!data) return;
