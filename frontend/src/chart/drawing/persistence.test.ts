@@ -416,3 +416,14 @@ it('ignores a previously enabled magnet preference without resetting drawing sty
   expect(loaded.hiddenAll).toBe(true);
   expect(loaded.styleByKind.rect.color).toBe('#F43F5E');
 });
+
+
+it('roundtrips both trendline label states and keeps legacy labels opt-in', () => {
+  const line: Drawing = { id: 'trend', kind: 'trendline', paneId: 'candle',
+    a: { realMs: 100, price: 100 }, b: { realMs: 200, price: 125 }, color: '#fff', width: 2, lineStyle: 'solid' };
+  for (const labelHidden of [true, false]) {
+    saveDrawings(SCOPE, [{ ...line, labelHidden }]);
+    expect(loadDrawings(SCOPE)).toEqual([{ ...line, labelHidden }]);
+  }
+  for (const labelHidden of [undefined, 'false', 0]) expect(normalizeItems([{ ...line, labelHidden }])[0]).not.toHaveProperty('labelHidden');
+});

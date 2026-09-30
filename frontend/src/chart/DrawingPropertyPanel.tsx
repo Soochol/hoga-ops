@@ -904,6 +904,8 @@ export default function DrawingPropertyPanel({
   // Text labels have no stroke width or line style; they carry a font size
   // instead. Hide the stroke controls and show a size picker for them.
   const isText = drawing.kind === 'text';
+  const labelVisible = drawing.kind === 'trendline' ? drawing.labelHidden === false
+    : drawing.kind === 'hline' && drawing.labelHidden !== true;
 
   return (
     <div
@@ -995,19 +997,19 @@ export default function DrawingPropertyPanel({
         );
       })()}
 
-      {drawing.kind === 'hline' && (
+      {(drawing.kind === 'hline' || drawing.kind === 'trendline') && (
         <button
           type="button"
           aria-label="라벨 표시"
-          aria-pressed={drawing.labelHidden !== true}
+          aria-pressed={labelVisible}
           disabled={locked}
-          title="가격 라벨 표시/숨기기"
+          title={drawing.kind === 'trendline' ? '가격 변화·등락률 라벨 표시/숨기기' : '가격 라벨 표시/숨기기'}
           onClick={() => useDrawingsStore.getState().update(scope, id, {
-            labelHidden: drawing.labelHidden !== true,
+            labelHidden: labelVisible,
           })}
           className={
             'h-7 px-2 inline-flex items-center justify-center rounded text-xs' +
-            (locked ? controlDisabled : drawing.labelHidden !== true
+            (locked ? controlDisabled : labelVisible
               ? ' bg-tint-selection text-accent' : controlDisabled)
           }
         >

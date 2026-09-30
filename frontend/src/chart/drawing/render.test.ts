@@ -284,6 +284,7 @@ describe('renderTrendline delta label', () => {
     const t: Trendline = {
       id: 't1',
       kind: 'trendline',
+      labelHidden: false,
       a: { realMs: 1_000, price: 100 },
       b: { realMs: 2_000, price: 125 },
       color: '#14B8A6',
@@ -296,6 +297,13 @@ describe('renderTrendline delta label', () => {
 
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
     expect(labels).toContain('+25 (+25.00%)');
+    for (const labelHidden of [undefined, true]) {
+      const hidden = makeCanvasSpy();
+      renderDrawing(hidden, ctx, { ...t, labelHidden }, false);
+      expect(hidden.fillText).not.toHaveBeenCalled();
+      expect(hidden.setLineDash).not.toHaveBeenCalledWith([4, 4]);
+      expect(hidden.stroke).toHaveBeenCalled();
+    }
   });
 });
 

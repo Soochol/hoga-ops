@@ -112,6 +112,8 @@ export interface Vline extends DrawingBase {
 }
 
 export interface Trendline extends DrawingBase {
+  /** Delta label and guide are opt-in; absent means hidden. */
+  labelHidden?: boolean;
   kind: 'trendline';
   a: Point;
   b: Point;
@@ -353,7 +355,7 @@ export const COLOR_PALETTE = [
  *  carries both so the type stays flat and the propagation whitelist is a single
  *  field list regardless of which kind was edited. */
 export type DrawingStyle = {
-  /** Last label visibility for horizontal lines, including day extremes. */
+  /** Last label visibility for horizontal lines and trendlines. */
   labelHidden?: boolean;
   color: string;
   width: number;
