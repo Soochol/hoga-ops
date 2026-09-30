@@ -1615,3 +1615,34 @@ it.each(['hline', 'day-high', 'day-low', 'day-open', 'day-close'] as const)('%s 
   TOOLS[kind].onPointerDown!(ctx);
   expect(ctx.add).toHaveBeenLastCalledWith(expect.not.objectContaining({ labelHidden: true }));
 });
+
+
+describe('rectangle vertical pane overshoot', () => {
+  const rect: Rect = { id: 'outside', kind: 'rect', paneId: 'volume', color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.1, a: { realMs: 100, price: 20 }, b: { realMs: 200, price: 80 } };
+  function context() {
+    return makeCtx({ px: 150, py: 50, drawings: [rect], hitTestAt: () => rect,
+      paneIdAtY: () => 'volume', clampYToPane: (_id, y) => Math.max(0, Math.min(100, y)),
+      pixelToData: (x, y) => ({ realMs: x, price: y }), canvasYToPrice: y => y,
+      priceToCanvasY: y => y, realMsToCanvasX: x => x,
+      priceBoundsForPane: () => ({ top: 0, bottom: 100 }),
+    });
+  }
+  it.each([-50, 150])('creates past the pane edge at %s', y => {
+    const ctx = context(); rectTool.onPointerDown!(ctx); ctx.px = 250; ctx.py = y;
+    rectTool.onPointerMove!(ctx);
+    expect(ctx.rectDraft.current?.b?.price).toBe(y);
+    rectTool.onPointerUp!(ctx);
+    expect(vi.mocked(ctx.add).mock.calls[0][0]).toMatchObject({ paneId: 'volume', b: { price: y } });
+  });
+  it.each([-50, 150])('moves the entire box past the pane edge at %s', y => {
+    const ctx = context(); selectTool.onPointerDown!(ctx); ctx.py = y;
+    selectTool.onPointerMove!(ctx);
+    expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({ a: { price: 20 + y - 50 }, b: { price: 80 + y - 50 } });
+  });
+  it.each([-50, 150])('resizes a corner past the pane edge at %s', y => {
+    const ctx = context(); ctx.selectedId = rect.id; ctx.px = 100; ctx.py = 20;
+    selectTool.onPointerDown!(ctx); expect(ctx.dragRef.current?.kind).toBe('rect-handle');
+    ctx.py = y; selectTool.onPointerMove!(ctx);
+    expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({ a: { price: y } });
+  });
+});

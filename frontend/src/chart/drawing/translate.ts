@@ -198,6 +198,8 @@ export function clampDPriceForDrawing(
   dPrice: number,
   bounds: { top: number; bottom: number },
 ): number {
+  // Rectangles may extend beyond their owning pane's visible price range.
+  if (drawing.kind === 'rect') return dPrice;
   const lo = Math.min(bounds.top, bounds.bottom);
   const hi = Math.max(bounds.top, bounds.bottom);
   const prices = pricesOf(drawing);
