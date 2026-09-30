@@ -135,7 +135,9 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
     const priorRange = previousFirst.current !== null && bars[0]?.t_ms !== previousFirst.current
       ? chartRef.current?.timeScale().getVisibleRange() : null;
     series.candles.setData(bars.map(bar => ({ time: time(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
-    series.volume.setData(bars.map(bar => ({ time: time(bar.t_ms), value: bar.volume })));
+    const { upColor, downColor } = series.candles.options();
+    series.volume.setData(bars.map(bar => ({ time: time(bar.t_ms), value: bar.volume,
+      color: bar.close >= bar.open ? upColor : downColor })));
     series.ma.setData(movingAverageSeconds(bars, 20));
     if (priorRange) chartRef.current?.timeScale().setVisibleRange(priorRange);
     previousFirst.current = bars[0]?.t_ms ?? null;
