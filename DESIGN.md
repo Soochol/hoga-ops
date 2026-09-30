@@ -57,6 +57,16 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Typography
 
+**Live window roles (2026-09-30, user-approved):** Use the investor estimate
+window as the reference across `/live`: window titles, primary data, and controls
+use `--text-sm` (11.5px); table headers, metadata, percentage readouts, legends,
+and badges use `--text-xs` (10.5px). These roles are scoped to `.live-window`,
+including shared sidebar cards mounted there. Preserve weight/color hierarchy,
+the single-line candle header, and the same sizes in narrow windows. Existing
+fixed canvas axis/primitive sizes remain governed by the canvas exceptions above.
+The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
+with its label folded at narrow widths, rather than inside the More popup.
+
 **One typeface, two figure styles.** Pretendard carries Latin + Hangul, prose and data alike. There is **no monospace face in the system** — column alignment comes from tabular figures (`tnum`), not from a monospaced typeface.
 
 - **Display / Hero / Brand:** Pretendard 600–700 — neutral geometric sans, distinctive without being decorative.
@@ -674,7 +684,8 @@ A fourth category limited to identifying which capture source produced the data.
 ### 2026-09-30 — 라이브 차트 중심 구성
 
 사용자가 선택한 차트 중심 안을 `/live`에 적용한다. 창 간 여백은 8px로 넓히고,
-기존 색상·서체·크기 토큰으로 종목명과 최신 시세의 위계를 구분한다. 현재가의
+기존 색상·서체·크기 토큰으로 종목명과 최신 시세의 위계를 구분한다.
+종목명·코드·현재가·등락률은 사용자 후속 요청에 따라 한 줄에 배치한다. 현재가의
 소유권은 각 차트 타이틀바에 유지하며 커서 시점 시세와 섞지 않는다. 포커스 창은
 옅은 배경으로 구분한다. 다른 워크스페이스의 기본 창 간격과 헤더는 유지한다.
 
