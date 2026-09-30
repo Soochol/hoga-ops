@@ -22,9 +22,10 @@ export interface GroupBadgeProps {
   onPick: (group: GroupId) => void;
   /** 뱃지 호버 툴팁. 페이지마다 번호가 가리키는 것이 달라 문구를 열어 둔다. */
   title?: string;
+  showLabel?: boolean;
 }
 
-export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그룹 변경' }: GroupBadgeProps) {
+export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그룹 변경', showLabel = false }: GroupBadgeProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(open, anchorRef, onToggle);
 
@@ -34,14 +35,14 @@ export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그�
         type="button"
         aria-label={`링크 그룹 ${group} 변경`}
         aria-expanded={open}
-        className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-tint-selection font-data text-2xs font-semibold text-accent hover:brightness-125"
+        className={`inline-flex h-5 ${showLabel ? 'gap-1 px-1.5 text-sm' : 'w-5 text-2xs'} items-center justify-center rounded-sm bg-tint-selection font-data font-semibold text-accent hover:brightness-125`}
         // 타이틀바는 창 이동 드래그 핸들이다 — 뱃지에서 시작한 포인터가 창을 끌지
         // 않도록 여기서 끊는다.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onToggle}
         title={title}
       >
-        {group}
+        {showLabel && <span className="live-group-label">연결</span>}{group}
       </button>
       {open && (
         <div

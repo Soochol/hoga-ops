@@ -24,6 +24,7 @@ import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerContro
 import { registerCollectDialogOpener, type CollectTarget } from './workspace/collectDialogControls';
 import { liveOpenCodesKey, useLiveRangeCacheEviction } from './useLiveRangeCacheEviction';
 import { useSavedRangeDeepLink } from '../studyViews/useSavedRangeDeepLink';
+import './LiveWorkspace.css';
 
 /**
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
@@ -203,7 +204,7 @@ export function LivePage() {
       // 두 워크스페이스 페이지의 창 영역이 갈리지 않는다(2026-08-17). 종전엔 여기
       // 리터럴(`px-md pt-sm`)과 `/study` 의 `PageContainer`(`p-md`)가 따로 값을 들고 있었다.
       // 여백은 그리드 컨테이너에 두므로 트랙(minmax)·캔버스 clamp 는 그대로다.
-      className={`h-full grid ${WORKSPACE_PAGE_PAD}`}
+      className={`live-workspace h-full grid ${WORKSPACE_PAGE_PAD}`}
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height. 상태바 폐지로 행이 3개로

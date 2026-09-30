@@ -22,6 +22,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
+import { returnGroupToLatest } from './returnGroupToLatest';
 import { useWorkspaceStore } from '../../state/workspace';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
@@ -617,12 +618,14 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           호가 불러오기 실패
         </span>
         <span className="text-2xs text-fg-dim">커서를 다시 움직이면 재시도합니다</span>
+        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
       </div>
     );
   }
   return (
     <div className="flex h-full flex-col">
-      <DataContext mode={isSpot ? (bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점') : '최신 호가'} time={snapshot?.ts_ms}>
+      {isSpot && <DataContext mode={bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점'} time={snapshot?.ts_ms}
+        tone="cursor">
         {/* 안내를 기준시각 행에 둬 커서 이동으로 사다리 높이가 변하지 않게 한다. */}
         {showAvailableHint && (
           <span
@@ -645,7 +648,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
             형성 중 · 실시간
           </span>
         )}
-      </DataContext>
+        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
+      </DataContext>}
       <div className="min-h-0 flex-1">
         <BookPanel
           snapshot={snapshot}
@@ -729,6 +733,9 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="flex h-full flex-col bg-bg-card">
+      {scope.kind === 'minute-cursor' && <div className="flex shrink-0 justify-end p-1">
+        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
+      </div>}
       <BrokerScrollArea>
       <BrokerTrajectoryTable
         series={card.series}
@@ -774,7 +781,6 @@ function TradeWindow({ code }: { code: string }) {
     // 배경을 10호가(BookPanel)와 동일한 --bg-card 로 — flat 창 프레임(--bg)이 비쳐
     // 체결창만 회색(Toss 라이트)으로 갈리던 것을 통일.
     <div className="flex h-full flex-col bg-bg-card">
-      <DataContext mode="최신 체결" time={view.ticks[0]?.tMs} detail={`최근 ${TRADE_TICK_LIMIT}건 · 15분 버퍼`} />
       <div className="min-h-0 flex-1 overflow-auto">
         <TradeTickTable view={view} highlight={highlight} emptyText={connected ? '최근 수신 체결 없음 · 새 체결 수신 대기' : '실시간 연결 확인 중 · 체결 수신 대기'} />
       </div>
@@ -797,7 +803,6 @@ function InvestorWindow({ code }: { code: string }) {
   const query = useLiveInvestorTrendEstimate(code);
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <DataContext mode="최신 잠정치" detail="차트 커서와 독립 · 차수별 관측 시각" />
       <div className="min-h-0 flex-1 overflow-auto"><InvestorTrendEstimateCard query={query} /></div>
     </div>
   );

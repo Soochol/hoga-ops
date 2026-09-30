@@ -86,34 +86,37 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   return (
     <span
       data-testid="titlebar-symbol-row"
-      className="inline-flex min-w-0 items-center gap-1.5 tabular-nums"
+      className="live-symbol-row tabular-nums"
     >
-      {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
-      <span className="truncate text-sm font-medium text-fg" title={symbolLabel} tabIndex={0}>{name ?? code}</span>
+      <span className="live-symbol-identity">
+        <span className="live-symbol-name truncate text-fg" title={symbolLabel} tabIndex={0}>{name ?? code}</span>
+        {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
+        {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
+      </span>
       {!isIndex && partial && (
         <span className="text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
           실시간 이력 일부 누락
         </span>
       )}
       {currentPrice !== null && (
-        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="shrink-0 font-data text-sm font-semibold text-fg">
+        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg">
           {formatKoreanInt(currentPrice)}
         </span>
       )}
       {quote && (
-        <span data-testid="titlebar-change" className="shrink-0 font-data text-xs">
+        <span data-testid="titlebar-change" className="live-symbol-change shrink-0 font-data">
           {/* 등락률(%)만 — 현재가가 옆에 있어 등락액 생략(레전드·상태바와 동일). */}
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>
       )}
+      {currentPrice !== null && <span className="live-symbol-current-label">최신 시세</span>}
       {showHeatmapChip && (
         <span
           data-testid="titlebar-heatmap-group"
-          className="truncate text-xs"
-          style={{ color: heatmapGroupName === null ? 'var(--fg-dimmer)' : 'var(--fg-dim)' }}
+          className="live-symbol-sector truncate"
           title={heatmapGroupName ? `히트맵 그룹: ${heatmapGroupName}` : '히트맵 그룹 없음'}
         >
-          히트맵 · {heatmapGroupName ?? '없음'}
+          {heatmapGroupName ?? '히트맵 그룹 없음'}
         </span>
       )}
       {backfillEarliestDate && (() => {

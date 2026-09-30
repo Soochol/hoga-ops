@@ -1491,11 +1491,11 @@ export function WatchlistDrawer() {
       </RailDrawerBody>
       <div role="status" aria-live="polite" aria-atomic="true"
         title={destination?.label}
-        className="flex h-12 shrink-0 items-center border-t border-border px-md text-xs text-fg-dim">
+        className={`flex shrink-0 items-center text-xs text-fg-dim${dragGhost?.kind === 'entry' || searching ? ' h-12 border-t border-border px-md' : ''}`}>
         <span className={dragGhost?.kind === 'entry' ? 'line-clamp-3 text-accent' : ''}>
           {dragGhost?.kind === 'entry'
             ? destination?.label ?? dragHint
-            : searching ? '검색 중에는 순서를 변경할 수 없습니다' : '핸들로 이동 · Delete로 현재 그룹에서 제외'}
+            : searching ? '검색 중에는 순서를 변경할 수 없습니다' : null}
         </span>
       </div>
 

@@ -111,9 +111,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
       zIndex={zIndex}
       focused={focused}
       lifting={lifting}
-      // 배경은 필드와 맞추고, 겹친 창의 경계는 외곽선과 짧은 그림자로 구분한다.
-      flat
+      // 카드 배경을 쓰고, 겹친 창의 경계는 외곽선과 짧은 그림자로 구분한다.
       outlined
+      className={`live-window live-window-${kind}`}
+      headerClassName="live-window-titlebar"
+      gap={8}
       onHandleDown={maximized ? () => {} : onHandleDown}
       resizable={!maximized}
       onFocus={onFocus}
@@ -124,6 +126,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
               번호가 가리키는 것만 페이지가 정하고 제스처는 하나다. */}
           <GroupBadge
+            showLabel
             group={group}
             open={paletteOpen}
             onToggle={() => onTogglePalette(id)}

@@ -1,0 +1,66 @@
+/* Live chrome uses the existing theme, type and spacing tokens. */
+.live-app-shell { position: relative; }
+.live-app-shell > [data-testid="app-main-stack"] { isolation: isolate; }
+/* At laptop widths, opening a discovery drawer preserves the chart workspace.
+   Above this width it uses the existing docked layout. */
+@media (max-width: 80rem) {
+  .live-app-shell { grid-template-columns: minmax(0, 1fr) var(--rail-w) !important; }
+  .live-app-shell > aside {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: var(--rail-w);
+    z-index: 30;
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-overlay);
+  }
+}
+.live-workspace { gap: var(--space-xs); }
+.live-workspace > [data-testid="workspace-live-toolbar"] {
+  background: transparent;
+  padding-inline: var(--space-xs);
+}
+.live-workspace > [data-testid="workspace-live-toolbar"] button { font-size: var(--text-sm); }
+.live-window { container-type: inline-size; }
+.live-window .live-window-titlebar {
+  height: auto;
+  min-height: 2.5rem;
+  padding: var(--space-sm);
+  gap: var(--space-sm);
+  background: var(--bg-card);
+}
+.live-window .live-window-titlebar[data-focused] { background: var(--bg-subtle); }
+.live-window-chart .live-window-titlebar { min-height: 3.75rem; }
+.live-window .live-window-titlebar > button { width: 1.5rem; height: 1.5rem; }
+.live-window .live-window-titlebar > [data-testid="window-header-spacer"] { display: none; }
+.live-window .live-window-titlebar > .flex-1 { flex-grow: 0; }
+.live-symbol-row { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: center; column-gap: var(--space-sm); row-gap: var(--space-2xs); }
+.live-symbol-identity { display: flex; align-items: center; gap: var(--space-sm); width: 100%; min-width: 0; }
+.live-symbol-name { font-size: var(--text-lg); font-weight: 600; }
+.live-symbol-code { font-size: var(--text-sm); color: var(--fg-dim); }
+.live-symbol-price { font-size: var(--text-lg); font-weight: 600; }
+.live-symbol-change { font-size: var(--text-base); }
+.live-symbol-sector { margin-left: auto; font-size: var(--text-sm); color: var(--fg-dim); }
+.live-symbol-current-label { font-size: var(--text-sm); color: var(--fg-dim); }
+.live-chart-toolbar { padding: var(--space-xs) var(--space-sm); gap: var(--space-xs); min-height: 2.5rem; }
+.live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }
+.live-chart-toolbar-divider { width: 1px; height: 1rem; background: var(--border); margin-inline: var(--space-xs); }
+.chart-more-actions:not([hidden]) { display: flex; flex-direction: column; gap: var(--space-xs); }
+.chart-more-actions button { width: 100%; justify-content: flex-start; font-size: var(--text-base); min-height: 2rem; }
+.chart-more-actions-heading { padding: var(--space-xs) var(--space-sm); font-size: var(--text-sm); color: var(--fg-dim); }
+.chart-more-actions-divider { height: 1px; margin-block: var(--space-xs); background: var(--border); }
+.live-data-context { min-height: 2rem; padding: var(--space-xs) var(--space-sm); gap: var(--space-sm); font-size: var(--text-sm); }
+.live-data-mode { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--fg); font-weight: 500; }
+.live-data-mode[data-tone="cursor"] { color: var(--accent); }
+.live-data-mode-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: currentColor; }
+.live-data-return { padding: var(--space-xs) var(--space-sm); font-size: var(--text-sm); border-radius: var(--radius-md); color: var(--accent); background: var(--tint-selection); white-space: nowrap; }
+.live-window-broker [aria-label="거래원 목록"] > div > div { font-size: var(--text-base); }
+.live-window .book-panel .font-data.text-sm { font-size: var(--text-base); }
+@container (max-width: 480px) { .live-symbol-sector { display: none; } }
+@container (max-width: 300px) {
+  .live-window-titlebar { gap: var(--space-xs) !important; padding-inline: var(--space-xs) !important; }
+  .live-symbol-current-label, .live-symbol-code { display: none; }
+  .live-group-label { display: none; }
+  .live-symbol-name, .live-symbol-price { font-size: var(--text-base); }
+  .live-symbol-change { font-size: var(--text-sm); }
+}

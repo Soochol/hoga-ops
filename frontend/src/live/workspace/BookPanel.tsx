@@ -229,7 +229,10 @@ export default function BookPanel({
 
   return (
     <div className="book-panel flex h-full flex-col bg-bg-card" data-expanded-summary={expandedSummary}>
-      {expandedSummary && <button type="button" className="shrink-0 px-2 py-1 text-right text-2xs text-accent" onClick={() => setExpandedSummary(false)}>상세 통계 접기</button>}
+      <button type="button" className={`book-details-toggle shrink-0 px-2 py-1 text-right text-sm text-accent${expandedSummary ? ' is-expanded' : ''}`}
+        aria-expanded={expandedSummary} onClick={() => setExpandedSummary((value) => !value)}>
+        {expandedSummary ? '상세 통계 접기' : '상세 통계 펼치기'}
+      </button>
       {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0.
           `exp_price`/`exp_qty` 가 스냅샷 필드라 사다리와 같이 흐려진다. */}
       <ExpectedFillBanner
@@ -270,7 +273,7 @@ export default function BookPanel({
                 C안: strong→border 한 단계 완화, 격자는 잔향만). */}
             <div
               data-book-divider=""
-              className="flex items-center justify-between border-t border-border px-2"
+              className="book-compact-secondary flex items-center justify-between border-t border-border px-2"
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
@@ -289,7 +292,7 @@ export default function BookPanel({
                 2행 삐져나와 하단이 어긋났다. `중` 행이 21→22 로 밀었던 것을 ADR-0170
                 이 되돌렸다 — **한 열에서만 행을 더하거나 빼면 하단이 어긋난다.** */}
             {trades.slice(0, 9).map((t, i) => (
-              <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
+              <div key={i} className="book-compact-secondary flex items-center justify-between px-2" style={{ height: ROW_H }}>
                 <span
                   className={`font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
                 >
@@ -367,7 +370,6 @@ export default function BookPanel({
                 value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
               />
               <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
-              <button type="button" className="book-summary-expand px-2 py-1 text-left text-2xs text-accent" onClick={() => setExpandedSummary(true)}>상세 통계 펼치기</button>
               <div className="book-summary-extra">
                 {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
                 <SummaryRow
@@ -603,11 +605,11 @@ function PriceCell({
   const cell = (
     <div
       className={`relative flex items-baseline justify-center gap-1.5 px-2 ${
-        boxed ? 'rounded-md border border-fg-dim' : ''
+        boxed ? 'rounded-md border border-fg-dim bg-tint-selection font-semibold' : ''
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      <span className={`relative font-data text-[0.75rem] tabular-nums ${color}`}>
+      <span className={`relative font-data text-base tabular-nums ${color}`}>
         <PriceBadges marker={marker} />
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
@@ -691,7 +693,7 @@ function QtyBar({
             증감 오버레이는 teal/fuchsia 를 썼지만(히트맵과의 색 충돌 회피), 2026-08-25
             에 제거됐다. */}
         {badge !== null && (
-          <span className={`shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
+          <span className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>

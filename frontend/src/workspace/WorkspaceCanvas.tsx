@@ -79,6 +79,8 @@ export interface WorkspaceCanvasApi<W extends WorkspaceWindowLike> {
   windowAtPoint(localX: number, localY: number): W | null;
   /** 캔버스 DOM rect. 미마운트면 null. */
   boxRect(): DOMRect | null;
+  /** A drawer or modal covering the canvas must own the drop at this point. */
+  isUnoccludedAtPoint(clientX: number, clientY: number): boolean;
   /** 캔버스 실측 크기 — 비율 rect 를 px 로 펴는 기준. */
   canvasSize(): Canvas;
 }
@@ -330,6 +332,8 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
     () => ({
       windowAtPoint,
       boxRect: () => boxRef.current?.getBoundingClientRect() ?? null,
+      isUnoccludedAtPoint: (x, y) => typeof document.elementFromPoint !== 'function'
+        || !!boxRef.current?.contains(document.elementFromPoint(x, y)),
       canvasSize: () => canvasRef.current,
     }),
     [windowAtPoint],

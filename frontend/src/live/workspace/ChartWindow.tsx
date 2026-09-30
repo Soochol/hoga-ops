@@ -81,17 +81,14 @@ import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
+import { ChartMoreActions } from './ChartMoreActions';
 import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
 } from './HogaplaySourceButton';
 import { HogaplaySourceChip, type HogaplayChipGapFill } from './HogaplaySourceChip';
 import {
-  showsHeaderStateIcons,
-  showsWatchlistHeart,
-  LIVE_CALENDAR_HEADER_FOLD,
-  LIVE_HEADER_FOLD,
-  COMPACT_PADDING_INLINE,
+  LIVE_FOCUS_HEADER_FOLD,
 } from './chartHeaderCompact';
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 import type { JumpRange } from '../minuteJumpDestination';
@@ -514,11 +511,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
   // 헤더에도 둘 중 하나만 뜬다.
   const canJump = canPublishTimeframeJump(view.timeframe);
-  // 접힘 임계는 **창의 봉**이 정한다 — 「분봉으로」가 캘린더 창에만 떠서 요구폭이
-  // 갈린다(실측 Δ full +70 / actionsFolded +22). 하나로 합치면 분봉 헤더가 70px
-  // 일찍 접힌다. 모듈 상수 둘 중 하나를 고르므로 참조가 안정적이다(관측자 재구독 없음).
+  // 봉별 보조 액션은 더보기로 옮겨 기본 도구 행의 접힘 임계를 공유한다.
   const [headerFold, headerRef] = useChartHeaderFold(
-    canJump ? LIVE_CALENDAR_HEADER_FOLD : LIVE_HEADER_FOLD,
+    LIVE_FOCUS_HEADER_FOLD,
   );
   // 보낼 곳이 있는가. **자기 자신은 세지 않는다**(캘린더 창이라 어차피 대상이 아니지만,
   // 조건을 창 종류에 기대면 봉이 바뀔 때 조용히 어긋난다).
@@ -805,14 +800,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         data-testid="chart-window-header"
         data-compact={headerFold.compactActions ? '' : undefined}
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
-        className="flex flex-wrap shrink-0 items-center gap-1 overflow-hidden bg-bg-card px-1 py-0.5"
+        className="live-chart-toolbar flex flex-wrap shrink-0 items-center overflow-hidden bg-bg-card"
       >
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
             이 헤더는 봉·그리기·보조지표·레전드·저장·수집을 소유한다. */}
-        {/* 2단계 접힘(#762) — 기능 손실 없이 폭만 줄인다.
-            ① 좁아지면 액션 라벨을 접고 아이콘만(요구폭 ~213px)
-            ② 더 좁아지면 일·주·월을 분봉 드롭다운에 합친다(~110px)
-            창은 MIN_W=160px 까지 좁아진다. ② 이후에도 부족하면 버튼 묶음을 줄바꿈한다. */}
+        {/* 좁아지면 액션 라벨을 접고, 더 좁아지면 일·주·월을 분봉
+            드롭다운에 합친다. 보조 기능은 더보기에서 항상 접근할 수 있다.
+            최소 폭에서도 부족하면 버튼 묶음을 줄바꿈한다. */}
         <TimeframeControl
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
@@ -866,105 +860,40 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             />
           </div>
         )}
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
-          {/* 「분봉으로」는 캘린더 봉 창에만 뜬다. 액션 그룹 맨 앞에 두는 이유:
-              이것만 **다른 창을 움직이는** 동사라, 이 창을 대상으로 하는 나머지와
-              섞이지 않게 앞에 세운다.
-              **2단계 접힘에서는 내린다** — 상태 아이콘들과 같은 폭 예산 사유이고,
-              도달 경로가 `g` 단축키로 남는다(#762 의 "기능 손실 없이" 를 지키는 조건).
-              게이트를 `showsHeaderStateIcons` 와 공유하는 것은 이름이 아니라 **판정
-              축이 같아서**다(둘 다 "2단계에서 렌더하지 않는다") — 따로 두면 한쪽만
-              고쳤을 때 예산이 조용히 깨진다. */}
-          {canJump && showsHeaderStateIcons(headerFold) && (
-            <JumpToMinuteButton
-              timeframe={view.timeframe as CalendarTimeframe}
-              destinationDate={jumpDestination}
-              hasMinuteWindow={hasMinuteWindow}
-              onRun={runJump}
-              showLabel={!headerFold.compactActions}
-            />
-          )}
-          {/* hogaplay 소스는 액션 행 **맨 왼쪽**(하트보다 앞) — 2026-08-22 사용자
-              지정. 의미로도 맞는다: 오른쪽 넷은 차트 조작이고 하트는 종목 속성인데,
-              이것은 그 둘보다 앞선 **차트가 무엇을 그리는가**(소스)라 동사 묶음에서
-              가장 멀다.
-              **2단계 접힘에서는 하트와 함께 내린다** — 근거·실패 모드는 아래 하트
-              주석과 `showsHeaderStateIcons` 참조(둘이 같은 폭 예산을 나눈다). */}
-          {showsHeaderStateIcons(headerFold) && (
-            <HogaplaySourceButton
-              enabled={hogaplaySourceEnabled}
-              disabledReason={hogaplayDisabledReason}
-              onToggle={toggleHogaplaySource}
-              compact={headerFold.compactActions}
-            />
-          )}
-          {/* 관심 하트는 액션 행 맨 왼쪽 — 나머지 넷은 차트 조작이고 이것만
-              종목 속성이라, 그리기 왼쪽에 두어 동사 묶음 앞에 세운다.
-              **2단계 접힘에서는 내린다.** 그 단계의 요구폭이 하트 포함 170px 인데
-              창은 MIN_W=160px(컨테이너 158px)까지 좁아져 12px 넘치고, 넘친 만큼
-              오른쪽 끝 「수집」이 overflow-hidden 에 무성 잘린다(2026-08-14 실측으로
-              확인 — #767 과 같은 실패 모드). #762 의 "기능 손실 없이 폭만 줄인다" 를
-              여기서만 밟는 대가로 잘림을 0 으로 되돌린다 — 하트는 우측 레일·종목
-              검색에도 있어 도달 경로가 남는다.
-              발진하지 않는다: 접힘 판정은 **컨테이너 폭**을 보므로(useChartHeaderFold)
-              내용물이 줄어드는 이 변화가 판정을 되돌리지 못한다. */}
-          {showsWatchlistHeart(headerFold) && (
-            <WatchlistHeartActionButton
-              code={heartCode}
-              name={symbol?.name ?? null}
-              isMember={heartCode != null && isMember(heartCode)}
-              compact={headerFold.compactActions}
-            />
-          )}
-          <DrawingMenu
-            code={d.workareaCode}
-            timeframe={view.timeframe}
-            showLabel={!headerFold.compactActions}
-          />
-          <IndicatorsButton
-            onClick={() => requestIndicatorDrawer(win.id)}
-            showLabel={!headerFold.compactActions}
-          />
-          <IconToolbarButton
-            aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
-            title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} · 시가·고가·저가·종가는 항상 표시`}
-            aria-pressed={indicatorLegendsVisible}
-            onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
-            style={{ paddingInline: COMPACT_PADDING_INLINE }}
-            icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
-          />
-          {isMinuteTimeframe(view.timeframe) && (
+        <span aria-hidden className="live-chart-toolbar-divider" />
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={!headerFold.compactActions} />
+          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={!headerFold.compactActions} />
+          <ChartMoreActions compact={headerFold.compactActions}>
+            <span className="chart-more-actions-heading">표시 · 연동</span>
             <IconToolbarButton
-              aria-label="호버 연동"
-              title={`호버 연동 ${hoverLinked ? '켜짐' : '꺼짐'} · ${hoverLinked ? '연결된 데이터 창이 분봉 커서 시점을 따라갑니다' : '연결된 데이터 창에 최신 데이터를 표시합니다'}`}
-              aria-pressed={hoverLinked}
-              onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
-              style={{ paddingInline: COMPACT_PADDING_INLINE }}
-              className="aria-pressed:text-accent"
-              icon={(
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m4 3 7 17 2-7 7-2Z" />
-                  <path d="m13 13 6 6" />
-                </svg>
-              )}
-            />
-          )}
-          {/* 봉 패턴은 일봉 개념이라 그 봉에서만 보인다 — 속성 패널의 「패턴 찾기」와
-              같은 판정이고, 게이트를 두 곳에 두지 않으려 `onSearchPattern` 의 존재로 잰다. */}
-          {onSearchPattern != null && (
-            <PatternAreaButton showLabel={!headerFold.compactActions} />
-          )}
-          <LiveStudyViewSaveButton
-            source={studySaveSource}
-            showLabel={!headerFold.compactActions}
-          />
-          {/* 수집 대상은 이 창의 종목 — 지수 창은 코드가 없어 비활성. */}
-          <CollectButton
-            code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
-            name={symbol?.name ?? null}
-            showLabel={!headerFold.compactActions}
-            getVisibleRange={getCollectVisibleRange}
-          />
+              aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
+              title="시가·고가·저가·종가는 항상 표시"
+              aria-pressed={indicatorLegendsVisible}
+              onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
+              icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
+            >지표 레전드 {indicatorLegendsVisible ? '켜짐' : '꺼짐'}</IconToolbarButton>
+            {isMinuteTimeframe(view.timeframe) && (
+              <IconToolbarButton aria-label="호버 연동" aria-pressed={hoverLinked}
+                title="연결된 데이터 창이 분봉 커서 시점을 따라갑니다"
+                onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
+                className="aria-pressed:text-accent"
+                icon={<span aria-hidden>↔</span>}
+              >커서 연동 {hoverLinked ? '켜짐' : '꺼짐'}</IconToolbarButton>
+            )}
+            <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
+              onToggle={toggleHogaplaySource} compact={false} showLabel />
+            {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
+              destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump} />}
+            {onSearchPattern != null && <PatternAreaButton />}
+            <span aria-hidden className="chart-more-actions-divider" />
+            <span className="chart-more-actions-heading">종목 · 저장</span>
+            <WatchlistHeartActionButton code={heartCode} name={symbol?.name ?? null}
+              isMember={heartCode != null && isMember(heartCode)} compact={false} showLabel />
+            <LiveStudyViewSaveButton source={studySaveSource} />
+            <CollectButton code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
+              name={symbol?.name ?? null} getVisibleRange={getCollectVisibleRange} />
+          </ChartMoreActions>
         </div>
       </div>
       <div className="min-h-0 flex-1">

@@ -39,6 +39,7 @@ export function HogaplaySourceButton({
   disabledReason,
   onToggle,
   compact = false,
+  showLabel = false,
 }: {
   /** 지금 이 창이 디스크를 읽는가. 채움 아이콘 + `aria-pressed` 가 나른다. */
   enabled: boolean;
@@ -47,6 +48,7 @@ export function HogaplaySourceButton({
   onToggle: (next: boolean) => void;
   /** 헤더 1단계 접힘. 이웃 버튼이 아이콘만 남을 때 패딩을 같이 좁힌다. */
   compact?: boolean;
+  showLabel?: boolean;
 }) {
   const title = disabledReason
     ? DISABLED_TITLE[disabledReason]
@@ -67,7 +69,7 @@ export function HogaplaySourceButton({
       }}
       style={compact ? { paddingInline: COMPACT_PADDING_INLINE } : undefined}
       icon={<DiskStackIcon filled={enabled} className={`h-3 w-3${enabled ? ' text-fg' : ''}`} />}
-    />
+    >{showLabel && (enabled ? 'hogaplay 저장 데이터 사용 중' : 'hogaplay 저장 데이터로 보기')}</IconToolbarButton>
   );
 }
 

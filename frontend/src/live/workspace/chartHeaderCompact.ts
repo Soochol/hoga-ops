@@ -152,6 +152,16 @@ export type HeaderFoldThresholds = {
   timeframeRestoreWidthPx: number;
 };
 
+/** Focus toolbar: timeframe + indicators + drawing + more. Chrome @1× measured
+ *  352px for 1분; reserve the longer 240분 label and a small safety margin. Calendar
+ *  actions live in More, so both timeframe families now share this budget. */
+export const LIVE_FOCUS_HEADER_FOLD: HeaderFoldThresholds = {
+  labelMinWidthPx: 400,
+  labelRestoreWidthPx: 424,
+  timeframeFoldWidthPx: 270,
+  timeframeRestoreWidthPx: 294,
+};
+
 /** `/live` **분봉** 차트 창 헤더 — 액션 4버튼(그리기·보조지표·저장뷰·수집) 실측. */
 export const LIVE_HEADER_FOLD: HeaderFoldThresholds = {
   labelMinWidthPx: HEADER_LABEL_MIN_WIDTH_PX,
