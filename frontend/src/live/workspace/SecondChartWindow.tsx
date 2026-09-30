@@ -2,7 +2,7 @@
  * A separate pipeline prevents minute vendor requests and slower indicator
  * interpolation from silently pretending to be second-resolution data.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
@@ -25,7 +25,6 @@ import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 
 const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
 const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
-const shiftDate = (date: string, days: number) => new Date(Date.parse(`${isoDate(date)}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '');
 const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
 type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: SecondTimeframe };
@@ -35,15 +34,13 @@ export function SecondChartWindow({ win, symbol, timeframe }: Props) {
   const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
   const venue = useEffectiveVenue(code, selectedVenue);
   const today = realMsToYyyymmdd(useMinuteClock());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const date = selectedDate ?? today;
-  const selectDate = (next: string) => setSelectedDate(next === today ? null : next);
+  const date = today;
   return <SecondChartContent key={`${code}|${venue}|${date}|${timeframe}|${currentThemeKey()}`} win={win} symbol={symbol}
-    code={code} venue={venue} date={date} timeframe={timeframe} today={today} onDateChange={selectDate} />;
+    code={code} venue={venue} date={date} timeframe={timeframe} today={today} />;
 }
 
-function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, onDateChange }: Props & {
-  code: string | null; venue: LiveVenueOption; date: string; today: string; onDateChange: (date: string) => void;
+function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }: Props & {
+  code: string | null; venue: LiveVenueOption; date: string; today: string;
 }) {
   const indicators = useWindowIndicators();
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
@@ -167,14 +164,6 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart" data-day-count={axis.segments.length} data-bar-count={bars.length}>
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
-      <div className="ml-auto flex shrink-0 items-center gap-1 font-data text-xs">
-        <button type="button" aria-label="초봉 이전 날짜" className="rounded px-1.5 py-1 hover:bg-bg-input-hover" onClick={() => onDateChange(shiftDate(date, -1))}>‹</button>
-        <input type="date" aria-label="초봉 날짜" value={isoDate(date)} max={isoDate(today)}
-          className="w-[122px] rounded border border-border bg-bg-card px-1 py-1 text-fg"
-          onChange={event => { if (event.currentTarget.value && event.currentTarget.validity.valid) onDateChange(event.currentTarget.value.replaceAll('-', '')); }} />
-        <button type="button" aria-label="초봉 다음 날짜" disabled={date >= today} className="rounded px-1.5 py-1 hover:bg-bg-input-hover disabled:opacity-30" onClick={() => onDateChange(shiftDate(date, 1))}>›</button>
-        <button type="button" disabled={date === today} className="rounded px-2 py-1 hover:bg-bg-input-hover disabled:opacity-30" onClick={() => onDateChange(today)}>오늘</button>
-      </div>
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"
