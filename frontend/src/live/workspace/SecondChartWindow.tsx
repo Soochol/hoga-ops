@@ -2,9 +2,10 @@
  * A separate pipeline prevents minute vendor requests and slower indicator
  * interpolation from silently pretending to be second-resolution data.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
-import { useSecondAggregates } from '../../api/secondAggregates';
+import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
+import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWorkspaceStore, type WorkspaceWindow, type GroupSymbol } from '../../state/workspace';
 import { TimeframeControl } from '../TimeframeControl';
@@ -47,15 +48,25 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
   const indicators = useWindowIndicators();
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
-  const [fromMs, setFromMs] = useState(() => Math.max(midnight, (date === today ? Date.now() : midnight + 86_400_000) - 30 * 60_000));
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
-  const query = useSecondAggregates(code, venue, date, fromMs, false, seconds);
-  // Adjust the range when the market's last observed bar is older than the
-  // initial 30-minute window. This bounded adjustment happens before commit.
-  const last = query.data?.last_observed_ms;
-  if (last != null && last < fromMs && !query.data?.bars.length) {
-    setFromMs(Math.max(midnight, last - 30 * 60_000));
-  }
+  const query = useSecondHistory(code, venue, date, seconds);
+  const bars = query.bars;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  const axis = useMemo(() => {
+    const days = new Map<string, { date: string; sessionOpenMs: number; sessionCloseMs: number }>();
+    for (const bar of bars) {
+      const key = realMsToYyyymmdd(bar.t_ms);
+      const day = days.get(key);
+      if (day) day.sessionCloseMs = bar.t_ms;
+      else days.set(key, { date: key, sessionOpenMs: bar.t_ms, sessionCloseMs: bar.t_ms });
+    }
+    return createVirtualAxis([...days.values()], bars[0]?.t_ms ?? midnight);
+  }, [bars, midnight]);
+  const axisRef = useRef<VirtualAxis>(axis);
+  const loadMore = useRef(() => {});
+  useEffect(() => {
+    loadMore.current = () => { if (hasNextPage && !isFetchingNextPage) void fetchNextPage(); };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const container = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{ candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; ma: ISeriesApi<'Line'> } | null>(null);
@@ -83,8 +94,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
       width: container.current.clientWidth, height: container.current.clientHeight,
       layout: { ...CHART_LAYOUT_OPTIONS, attributionLogo: false, background: { color: color('--bg-card', '#ffffff') }, textColor: color('--fg-dim', '#64748b') },
       grid: { vertLines: { visible: false }, horzLines: { color: color('--border', '#e2e8f0') } },
-      timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: (t: Time) => typeof t === 'number' ? kstTime(t) : '' },
-      localization: { timeFormatter: (t: Time) => typeof t === 'number' ? kstTime(t) : '' },
+      timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000))).slice(5)} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
+      localization: { timeFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000)))} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
     });
     const candles = chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } }, 0);
     const ma = chart.addSeries(LineSeries, { color: color('--accent', '#2563eb'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
@@ -96,7 +107,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
         // setData/resize also emits range changes. Consume this gesture so a
         // single wheel movement cannot cascade into loading the entire day.
         userGesture.current = false;
-        setFromMs(current => Math.max(midnight, current - 30 * 60_000));
+        loadMore.current();
       }
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
@@ -107,7 +118,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
     resize.observe(container.current);
     const onCursor = (event: { time?: Time }) => {
       const store = useLiveCursorStore.getState();
-      if (typeof event.time === 'number') store.setSidebarCursor(event.time * 1000,
+      if (typeof event.time === 'number') store.setSidebarCursor(axisRef.current.toReal(event.time * 1000),
         { windowId: win.id, group: win.group, code, timeframe });
       else store.clearSidebarCursorFrom(win.id);
     };
@@ -130,21 +141,30 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
 
   useEffect(() => {
     const series = seriesRef.current;
-    if (!series || !query.data) return;
-    const bars = query.data.bars;
+    if (!series) return;
     const priorRange = previousFirst.current !== null && bars[0]?.t_ms !== previousFirst.current
       ? chartRef.current?.timeScale().getVisibleRange() : null;
-    series.candles.setData(bars.map(bar => ({ time: time(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
+    const oldAxis = axisRef.current;
+    axisRef.current = axis;
+    const projectedTime = (ms: number) => time(axis.toVirtual(ms));
+    series.candles.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
     const { upColor, downColor } = series.candles.options();
-    series.volume.setData(bars.map(bar => ({ time: time(bar.t_ms), value: bar.volume,
+    series.volume.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), value: bar.volume,
       color: bar.close >= bar.open ? upColor : downColor })));
-    series.ma.setData(movingAverageSeconds(bars, 20));
-    if (priorRange) chartRef.current?.timeScale().setVisibleRange(priorRange);
+    series.ma.setData(movingAverageSeconds(bars, 20).map(point => ({ ...point, time: projectedTime(Number(point.time) * 1000) })));
+    if (priorRange && !initial.current) chartRef.current?.timeScale().setVisibleRange({ from: projectedTime(oldAxis.toReal(Number(priorRange.from) * 1000)), to: projectedTime(oldAxis.toReal(Number(priorRange.to) * 1000)) });
     previousFirst.current = bars[0]?.t_ms ?? null;
-    if (initial.current && bars.length) { chartRef.current?.timeScale().fitContent(); initial.current = false; }
-  }, [query.data]);
+    if (initial.current && bars.length) {
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - SECOND_INITIAL_BARS), to: bars.length - 1 });
+      if (bars.length >= SECOND_INITIAL_BARS || (!query.hasNextPage && !query.catalogPending)) initial.current = false;
+    }
+  }, [bars, axis, query.hasNextPage, query.catalogPending]);
 
-  return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart">
+  useEffect(() => {
+    if (bars.length < SECOND_INITIAL_BARS && hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [bars.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart" data-day-count={axis.segments.length} data-bar-count={bars.length}>
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
       <div className="ml-auto flex shrink-0 items-center gap-1 font-data text-xs">
@@ -163,12 +183,13 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today, 
         onPointerCancel={() => { userGesture.current = false; }}
         onWheel={() => { userGesture.current = true; }} />
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
-      {(query.isPending || query.isError || !query.data?.bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
+      {(!bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
         {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}
       </div>}
     </div>
+    {query.hasNextPage && <button type="button" className="shrink-0 text-xs text-fg-dim hover:text-fg" disabled={query.isFetchingNextPage} onClick={() => loadMore.current()}>{query.isFetchingNextPage ? '이전 구간 불러오는 중' : '이전 구간 불러오기'}</button>}
     <div className="shrink-0 px-2 py-1 text-fg-dim text-xs" role="status">
-      {query.data?.storage_error ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : query.data?.source === 'hogaplay' ? '과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}
+      {query.storageError ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : query.source === 'hogaplay' ? '과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}
     </div>
   </div>;
 }

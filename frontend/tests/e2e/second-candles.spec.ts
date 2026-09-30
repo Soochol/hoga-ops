@@ -127,3 +127,43 @@ test('과거 초봉 날짜는 매물대와 연동하고 빈 날짜와 오늘 복
   await expect(chart.getByRole('button', { name: '초봉 다음 날짜', exact: true })).toBeDisabled();
   expect(pageErrors).toEqual([]);
 });
+
+
+test('초봉 240개를 두 거래일로 연결하고 이전 일자 커서를 실제 시각으로 조회한다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await installLiveMocks(page);
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+  const day = (offset: number) => new Date(Date.parse(`${today}T12:00:00Z`) - offset * 86400000).toISOString().slice(0, 10);
+  const dates = [day(2).replaceAll('-', ''), day(1).replaceAll('-', '')];
+  const bookDates: string[] = [];
+  await page.route('**/api/live/second-trade-dates?**', r => r.fulfill({ json: { dates } }));
+  await page.route('**/api/orderbook?**', r => {
+    const url = new URL(r.request().url()); bookDates.push(url.searchParams.get('date')!);
+    return r.fulfill({ json: { source: 'hogaplay', snapshot: null, available_from: null } });
+  });
+  await page.route('**/api/live/second-aggregates?**', r => {
+    const url = new URL(r.request().url());
+    const date = url.searchParams.get('date')!;
+    const step = Number(url.searchParams.get('seconds')) * 1000;
+    const first = Date.parse(`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6)}T14:30:00+09:00`);
+    const all = dates.includes(date) ? Array.from({ length: 120 }, (_, i) => ({ t_ms: first + i * step,
+      open: 100, high: 110, low: 90, close: 105, volume: 10, trade_value: 1000, count: 1 })) : [];
+    const from = Number(url.searchParams.get('from_ms') ?? 0), to = Number(url.searchParams.get('to_ms') ?? Infinity);
+    return r.fulfill({ json: { code: '098460', venue: 'KRX', date, seconds: step / 1000, source: 'hogaplay',
+      status: all.length ? 'observed' : 'unavailable', coverage: 'unverified', storage_error: null,
+      first_observed_ms: all[0]?.t_ms ?? null, last_observed_ms: all.at(-1)?.t_ms ?? null,
+      bars: all.filter(b => b.t_ms >= from && b.t_ms < to), prices: [] } });
+  });
+  await page.goto('/live?code=098460');
+  await page.getByRole('button', { name: '분봉 선택 열기: 1분', exact: true }).first().click();
+  await page.getByRole('menuitemradio', { name: '10초', exact: true }).click();
+  const chart = page.getByTestId('second-chart');
+  await chart.getByLabel('초봉 날짜').fill(day(1));
+  await expect(chart).toHaveAttribute('data-day-count', '2');
+  await expect(chart).toHaveAttribute('data-bar-count', '240');
+  const plot = await chart.locator('canvas').first().boundingBox();
+  await page.mouse.move(plot!.x + plot!.width * 0.2, plot!.y + plot!.height * 0.4);
+  await expect.poll(() => bookDates.includes(dates[0])).toBe(true);
+  expect(errors).toEqual([]);
+});

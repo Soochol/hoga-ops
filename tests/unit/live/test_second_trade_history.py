@@ -85,3 +85,16 @@ def test_history_cache_invalidates_after_capture_replacement(tmp_path):
     assert historical_second_rows(tmp_path, CODE, "KRX", DATE)[0]["close"] == 100
     save(tmp_path, [trade(90000000, 1, 200), trade(90000500, 2, 210)])
     assert historical_second_rows(tmp_path, CODE, "KRX", DATE)[0]["close"] == 210
+
+
+def test_date_catalog_excludes_live_10s_and_other_venues(tmp_path):
+    save(tmp_path, [trade(90000000, 1, 100)])
+    save(tmp_path, [trade(90000000, 1, 100)], "kiwoom_live/KRX")
+    api = client(tmp_path)
+    url = f"/api/live/second-trade-dates?code={CODE}"
+    assert api.get(url + "&venue=KRX").json() == {"dates": [DATE]}
+    assert api.get(url + "&venue=UN").json() == {"dates": []}
+    root = tmp_path / "second_trades/20260930/NXT"
+    root.mkdir(parents=True)
+    (root / f"{CODE}.jsonl").write_text('{"t_ms":1}\n')
+    assert api.get(url + "&venue=NXT").json() == {"dates": ["20260930"]}
