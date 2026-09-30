@@ -21,7 +21,14 @@
   padding-inline: var(--space-xs);
 }
 .live-workspace > [data-testid="workspace-live-toolbar"] button { font-size: var(--text-sm); }
-.live-window { container-type: inline-size; }
+.live-window {
+  container-type: inline-size;
+  /* Investor estimate is the reference: data 11.5px, metadata 10.5px.
+     Keep these roles local so shared sidebar cards retain their other layouts. */
+  --live-text-data: var(--text-sm);
+  --live-text-meta: var(--text-xs);
+  font-size: var(--live-text-data);
+}
 .live-window .live-window-titlebar {
   height: auto;
   min-height: 2.5rem;
@@ -30,37 +37,46 @@
   background: var(--bg-card);
 }
 .live-window .live-window-titlebar[data-focused] { background: var(--bg-subtle); }
-.live-window-chart .live-window-titlebar { min-height: 3.75rem; }
 .live-window .live-window-titlebar > button { width: 1.5rem; height: 1.5rem; }
 .live-window .live-window-titlebar > [data-testid="window-header-spacer"] { display: none; }
 .live-window .live-window-titlebar > .flex-1 { flex-grow: 0; }
-.live-symbol-row { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: center; column-gap: var(--space-sm); row-gap: var(--space-2xs); }
-.live-symbol-identity { display: flex; align-items: center; gap: var(--space-sm); width: 100%; min-width: 0; }
-.live-symbol-name { font-size: var(--text-lg); font-weight: 600; }
-.live-symbol-code { font-size: var(--text-sm); color: var(--fg-dim); }
-.live-symbol-price { font-size: var(--text-lg); font-weight: 600; }
-.live-symbol-change { font-size: var(--text-base); }
-.live-symbol-sector { margin-left: auto; font-size: var(--text-sm); color: var(--fg-dim); }
-.live-symbol-current-label { font-size: var(--text-sm); color: var(--fg-dim); }
+.live-symbol-row { display: flex; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; align-items: center; gap: var(--space-sm); }
+.live-symbol-identity { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
+.live-symbol-name { font-size: var(--live-text-data); font-weight: 600; }
+.live-symbol-code { flex-shrink: 0; font-size: var(--live-text-meta); color: var(--fg-dim); }
+.live-symbol-price { font-size: var(--live-text-data); font-weight: 600; }
+.live-symbol-change { font-size: var(--live-text-data); }
+.live-symbol-sector { margin-left: auto; font-size: var(--live-text-meta); color: var(--fg-dim); }
 .live-chart-toolbar { padding: var(--space-xs) var(--space-sm); gap: var(--space-xs); min-height: 2.5rem; }
 .live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }
 .live-chart-toolbar-divider { width: 1px; height: 1rem; background: var(--border); margin-inline: var(--space-xs); }
 .chart-more-actions:not([hidden]) { display: flex; flex-direction: column; gap: var(--space-xs); }
-.chart-more-actions button { width: 100%; justify-content: flex-start; font-size: var(--text-base); min-height: 2rem; }
-.chart-more-actions-heading { padding: var(--space-xs) var(--space-sm); font-size: var(--text-sm); color: var(--fg-dim); }
+.chart-more-actions button { width: 100%; justify-content: flex-start; font-size: var(--text-sm); min-height: 2rem; }
+.chart-more-actions-heading { padding: var(--space-xs) var(--space-sm); font-size: var(--text-xs); color: var(--fg-dim); }
 .chart-more-actions-divider { height: 1px; margin-block: var(--space-xs); background: var(--border); }
-.live-data-context { min-height: 2rem; padding: var(--space-xs) var(--space-sm); gap: var(--space-sm); font-size: var(--text-sm); }
+.live-data-context { min-height: 2rem; padding: var(--space-xs) var(--space-sm); gap: var(--space-sm); font-size: var(--live-text-meta); }
 .live-data-mode { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--fg); font-weight: 500; }
 .live-data-mode[data-tone="cursor"] { color: var(--accent); }
 .live-data-mode-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: currentColor; }
 .live-data-return { padding: var(--space-xs) var(--space-sm); font-size: var(--text-sm); border-radius: var(--radius-md); color: var(--accent); background: var(--tint-selection); white-space: nowrap; }
-.live-window-broker [aria-label="거래원 목록"] > div > div { font-size: var(--text-base); }
-.live-window .book-panel .font-data.text-sm { font-size: var(--text-base); }
+/* Table values share the estimate table's size; headers remain subordinate.
+   These explicit roles replace the old broker DOM-depth / book-only overrides. */
+.live-window table,
+.live-window [data-testid="program-metric-strip"],
+.live-window .book-panel .font-data.text-base {
+  font-size: var(--live-text-data);
+}
+.live-window thead,
+.live-window .text-2xs,
+.live-window .text-badge {
+  font-size: var(--live-text-meta);
+}
+.live-window button,
+.live-window button.text-2xs,
+.live-window button.text-badge { font-size: var(--live-text-data); }
 @container (max-width: 480px) { .live-symbol-sector { display: none; } }
 @container (max-width: 300px) {
   .live-window-titlebar { gap: var(--space-xs) !important; padding-inline: var(--space-xs) !important; }
-  .live-symbol-current-label, .live-symbol-code { display: none; }
+  .live-symbol-code { display: none; }
   .live-group-label { display: none; }
-  .live-symbol-name, .live-symbol-price { font-size: var(--text-base); }
-  .live-symbol-change { font-size: var(--text-sm); }
 }

@@ -109,7 +109,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>
       )}
-      {currentPrice !== null && <span className="live-symbol-current-label">최신 시세</span>}
       {showHeatmapChip && (
         <span
           data-testid="titlebar-heatmap-group"

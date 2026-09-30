@@ -864,6 +864,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={!headerFold.compactActions} />
           <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={!headerFold.compactActions} />
+          {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
+            destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
+            showLabel={!headerFold.compactActions} />}
           <ChartMoreActions compact={headerFold.compactActions}>
             <span className="chart-more-actions-heading">표시 · 연동</span>
             <IconToolbarButton
@@ -883,8 +886,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             )}
             <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
               onToggle={toggleHogaplaySource} compact={false} showLabel />
-            {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
-              destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump} />}
             {onSearchPattern != null && <PatternAreaButton />}
             <span aria-hidden className="chart-more-actions-divider" />
             <span className="chart-more-actions-heading">종목 · 저장</span>
