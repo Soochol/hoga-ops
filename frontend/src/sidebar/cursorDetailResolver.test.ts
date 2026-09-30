@@ -3,6 +3,7 @@ import type { BrokerSeriesEntry, OrderbookSnapshot } from '../api/types';
 import {
   resolveBrokerCardProps,
   resolveCursorDetailScope,
+  resolveOrderbookCursorScope,
   resolveOrderbookCardSnapshot,
 } from './cursorDetailResolver';
 
@@ -124,5 +125,20 @@ describe('cursorDetailResolver', () => {
       inactiveSeries: brokers,
       inactiveCursorMs: 9_000,
     })).toEqual({ series: brokers, cursorMs: 9_000 });
+  });
+});
+
+describe('second orderbook cursor', () => {
+  it.each(['1s', '5s', '10s', '30s'] as const)('enables %s only for orderbooks', (timeframe) => {
+    expect(resolveOrderbookCursorScope({ cursorMs: 7000, timeframe }).kind).toBe('second-cursor');
+    expect(resolveCursorDetailScope({ cursorMs: 7000, timeframe }).kind).toBe('inactive');
+  });
+  it('merges the recent buffer tail and rejects future/stale previous-day books', () => {
+    const scope = resolveOrderbookCursorScope({ cursorMs: 7000, timeframe: '5s' });
+    const resolve = (spot: OrderbookSnapshot | null, buffer: OrderbookSnapshot | null) =>
+      resolveOrderbookCardSnapshot({ scope, spotSnapshot: spot, bufferFallbackSnapshot: buffer, inactiveSnapshot: null });
+    expect(resolve(snapshot, { ...snapshot, ts_ms: 6000 })?.ts_ms).toBe(6000);
+    expect(resolve({ ...snapshot, ts_ms: 8000 }, snapshot)?.ts_ms).toBe(1000);
+    expect(resolve({ ...snapshot, ts_ms: -86400000 }, null)).toBeNull();
   });
 });

@@ -36,6 +36,7 @@ import { InvestorDailyWindow } from './InvestorDailyWindow';
 import {
   resolveBrokerCardProps,
   resolveCursorDetailScope,
+  resolveOrderbookCursorScope,
   resolveOrderbookCardSnapshot,
 } from '../../sidebar/cursorDetailResolver';
 import { useLiveSeries } from '../../api/liveSeries';
@@ -79,6 +80,7 @@ import {
   latestTradeSummary,
   fillTradeSummaryFromQuote,
   orderbookSnapshotAtCursor,
+  orderbookSnapshotBeforeCursor,
 } from '../liveSidebarAdapters';
 import {
   afterHoursBookToSnapshot,
@@ -206,10 +208,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const live = useLiveSeries(code, venue);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const link = useGroupChartLink(win.group);
-  // 스팟 진입은 분봉 호버만(ADR-0044) — D/W/M 호버는 latest 유지.
-  const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
-  const isSpot = scope.kind === 'minute-cursor';
-  const spotTimeframe = isSpot ? scope.minuteTimeframe : null;
+  // 초봉은 커서 이전 최근 호가, 분봉은 기존 봉 대표 호가를 조회한다.
+  const scope = resolveOrderbookCursorScope({ cursorMs, timeframe: cursorTimeframe });
+  const isSpot = scope.kind !== 'inactive';
+  const spotTimeframe = scope.kind === 'second-cursor' ? scope.secondTimeframe : scope.minuteTimeframe;
   const {
     spot: spotOrderbook,
     stale: spotOrderbookStale,
@@ -253,7 +255,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 승격 지연 ~2-5분 커버). 레거시 LiveSidebar 폴백과 동일 조성.
   const bufferSnap = useMemo(
     () =>
-      isSpot && spotSnap === null && spotTimeframe !== null && scope.cursorMs !== null
+      scope.kind === 'second-cursor'
+        ? orderbookSnapshotBeforeCursor(venueOb, scope.cursorMs)
+        : isSpot && spotSnap === null && spotTimeframe !== null && scope.cursorMs !== null
         ? orderbookSnapshotAtCursor(venueOb, scope.cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
         : null,
     [isSpot, spotSnap, spotTimeframe, scope.cursorMs, venueOb],
@@ -523,7 +527,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   //
   // `spotSnap === null && bufferSnap !== null` 이 마감 후 오표시를 막는다: 승격이
   // 끝나면 파케이가 답하므로(그때는 값이 고정) 힌트가 저절로 사라진다.
-  const spotBucketMs = spotTimeframe !== null ? TIMEFRAME_TO_MS[spotTimeframe as Timeframe] : null;
+  const spotBucketMs = scope.kind === 'minute-cursor' && spotTimeframe !== null ? TIMEFRAME_TO_MS[spotTimeframe as Timeframe] : null;
   const linkLastCandleMs =
     link !== null && link.bundle !== null && link.bundle.candles.length > 0
       ? link.bundle.candles[link.bundle.candles.length - 1].ts_ms
@@ -623,7 +627,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
-      {isSpot && <DataContext mode={bookStale ? '커서 조회 중 · 이전 호가' : '커서 시점'} time={snapshot?.ts_ms}
+      {isSpot && <DataContext mode={bookStale ? '커서 조회 중 · 이전 호가' : scope.kind === 'second-cursor' ? '저장 호가' : '커서 시점'} time={snapshot?.ts_ms}
         tone="cursor">
         {/* 안내를 기준시각 행에 둬 커서 이동으로 사다리 높이가 변하지 않게 한다. */}
         {showAvailableHint && (
