@@ -6,15 +6,13 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
 import { secondPriceDistribution } from './secondAggregateProjectors';
-import { todayKstYyyymmdd } from '../liveDateTime';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import type { GroupChartLinkVdistSettings } from './groupChartLinkSource';
 
 
-export function SecondVolumeDistributionWindow({ win, code, settings, timeframe }: { win: WorkspaceWindow; code: string; settings: GroupChartLinkVdistSettings; timeframe: SecondTimeframe }) {
+export function SecondVolumeDistributionWindow({ win, code, settings, timeframe, date }: { win: WorkspaceWindow; code: string; settings: GroupChartLinkVdistSettings; timeframe: SecondTimeframe; date: string }) {
   const selected = useLiveVenueStore(s => s.venue);
   const venue = useEffectiveVenue(code, selected);
-  const date = todayKstYyyymmdd();
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
   const query = useSecondAggregates(code, venue, date, null, true, seconds);
   const cursor = useLiveCursorStore(s => s.sidebarCursorOrigin?.group === win.group && s.sidebarCursorOrigin?.code === code

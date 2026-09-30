@@ -405,6 +405,15 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     });
   });
 
+  it.each(['1s', '5s', '10s', '30s'] as const)('같은 그룹 %s 커서 → 최근 저장 호가 조회', (timeframe) => {
+    useLiveCursorStore.getState().setSidebarCursor(CURSOR_MS, {
+      windowId: 'cw1', group: 1, code: '005930', timeframe,
+    });
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({ code: '005930', timeframe, venue: 'KRX' });
+    expect(screen.getByText('저장 호가')).toBeInTheDocument();
+  });
+
   it('다른 그룹 호버 → code null (latest 유지)', () => {
     useLiveCursorStore.getState().setSidebarCursor(CURSOR_MS, {
       windowId: 'cw2', group: 2, code: '000660', timeframe: '1m',

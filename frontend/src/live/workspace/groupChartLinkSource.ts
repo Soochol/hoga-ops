@@ -44,6 +44,8 @@ export type GroupChartLink = {
    *  우회 ON 이면 `undefined` — 그 모드는 캔들도 디스크(원주가)라 환산이 없다. */
   adjustFactors: Readonly<Record<string, number>> | undefined;
   todayKst: string;
+  /** Seconds chart date; omitted by the legacy minute pipeline. */
+  secondDate?: string;
   vdist: GroupChartLinkVdistSettings;
 };
 

@@ -350,6 +350,19 @@ export function fillTradeSummaryFromQuote(
  *
  * Assumes `ob` is ascending by t_ms (the buffer maintains arrival order).
  */
+/** Latest observed book at/before a second cursor, restricted to its KST day. */
+export function orderbookSnapshotBeforeCursor(
+  ob: readonly ObSnapshot[], cursorMs: number,
+): OrderbookSnapshot | null {
+  const dayStart = Math.floor((cursorMs + 9 * 3_600_000) / 86_400_000) * 86_400_000 - 9 * 3_600_000;
+  let pick: ObSnapshot | null = null;
+  for (const s of ob) {
+    if (s.t_ms < dayStart || s.t_ms > cursorMs || (!s.asks && !s.bids)) continue;
+    if (pick === null || s.t_ms >= pick.t_ms) pick = s;
+  }
+  return pick === null ? null : orderbookSnapshotAtCursor([pick], pick.t_ms, 1);
+}
+
 export function orderbookSnapshotAtCursor(
   ob: readonly ObSnapshot[],
   cursorMs: number,

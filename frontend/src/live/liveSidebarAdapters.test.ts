@@ -12,6 +12,7 @@ import {
   fillTradeSummaryFromQuote,
   EMPTY_TRADE_SUMMARY,
   orderbookSnapshotAtCursor,
+  orderbookSnapshotBeforeCursor,
 } from './liveSidebarAdapters';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { LiveFrameVenue } from './liveVenuePolicy';
@@ -508,3 +509,16 @@ describe('latestAfterHoursTotals', () => {
     expect(latestAfterHoursTotals([ah(22_367, 0, 1)], null)).toEqual({ ask: 22_367, bid: 0 });
   });
 })
+
+describe('second cursor book lookup', () => {
+  it('selects the closest earlier book from unordered arrivals, including exact matches', () => {
+    const books: ObSnapshot[] = [9000, 1000, 6000].map(t_ms => ({ t_ms, asks: deepBook(100), bids: deepBook(99), total_ask_qty: 10, total_bid_qty: 10 }));
+    expect(orderbookSnapshotBeforeCursor(books, 7000)?.ts_ms).toBe(6000);
+    expect(orderbookSnapshotBeforeCursor(books, 6000)?.ts_ms).toBe(6000);
+    expect(orderbookSnapshotBeforeCursor(books, 500)).toBeNull();
+  });
+  it('does not carry a previous-day book across KST midnight', () => {
+    const midnight = Date.UTC(2026, 8, 29, 15);
+    expect(orderbookSnapshotBeforeCursor([{ t_ms: midnight - 1, asks: deepBook(100), total_ask_qty: 10, total_bid_qty: 10 }], midnight + 7000)).toBeNull();
+  });
+});

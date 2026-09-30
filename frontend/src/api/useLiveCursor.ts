@@ -23,7 +23,7 @@ import { useBrokerSeriesForDay } from './brokerSeries';
 import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
 import type { OrderbookSnapshot, BrokerSeriesEntry, SourceName } from './types';
-import type { MinuteTimeframe } from '../state/livePage';
+import { isSecondTimeframe, type SecondTimeframe, type MinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { unixMsToKSTDate } from '../util/time';
 import {
@@ -146,13 +146,14 @@ export interface LiveOrderbookSpotResult {
  * carried value belongs to an older key; `error` says the fetch failed and the
  * value was dropped rather than left to rot. See LiveOrderbookSpotResult.
  */
-export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpotResult {
+export function useLiveOrderbookAtCursor(p: Omit<Params, 'timeframe'> & { timeframe: MinuteTimeframe | SecondTimeframe | null }): LiveOrderbookSpotResult {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   // 선택값이 아니라 이 종목의 **유효** venue 로 조회한다 — 근거는 VenueParam.
   // code=null 이면 해석이 항등이라 무조건 불러도 안전하다(훅 순서 고정).
   const venue = useEffectiveVenue(p.code, p.venue);
   const sourcePref = useOrderflowSourcePref();
-  const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
+  const isSecond = p.timeframe !== null && isSecondTimeframe(p.timeframe);
+  const bucketMs = isSecond ? 1000 : p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
     cursorMs !== null && bucketMs !== null
       ? Math.floor(cursorMs / bucketMs) * bucketMs
@@ -161,11 +162,11 @@ export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpotResult {
 
   const key =
     p.code && date && alignedT !== null && bucketMs !== null && sourcePref
-      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${venue}`
+      ? `live|ob|${p.code}|${date}|${alignedT}|${bucketMs}|${sourcePref}|${venue}|${isSecond ? 'at' : 'bucket'}`
       : null;
   const { data, isFetching, error } = useSpot<LiveOrderbookSpot>(key, (signal) =>
     apiGet<OrderbookResponse>(
-      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}&bucket_ms=${bucketMs}&source_pref=${sourcePref}&venue=${venue}`,
+      `/api/orderbook?code=${p.code}&date=${date}&t=${alignedT}${isSecond ? '' : `&bucket_ms=${bucketMs}`}&source_pref=${sourcePref}&venue=${venue}`,
       { signal },
     ).then((r) => ({
       snapshot: r.snapshot,

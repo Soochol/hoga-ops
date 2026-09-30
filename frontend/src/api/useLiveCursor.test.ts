@@ -96,6 +96,16 @@ describe('useLiveOrderbookAtCursor', () => {
     });
   });
 
+  it.each(['1s', '5s', '10s', '30s'] as const)('queries %s at the cursor second without future bucket look-ahead', async (timeframe) => {
+    useLiveCursorStore.getState().setSidebarCursor(1_779_930_007_000);
+    renderSpotHook(() => useLiveOrderbookAtCursor({ code: '005930', timeframe, venue: 'KRX' }));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    const url = vi.mocked(apiGet).mock.calls[0][0];
+    expect(url).toContain('t=1779930007000');
+    expect(url).toContain('date=20260528');
+    expect(url).not.toContain('bucket_ms');
+  });
+
   it('returns an empty spot and does not fetch when cursorMs is null', async () => {
     const { result } = renderSpotHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m', venue: 'KRX' }),
